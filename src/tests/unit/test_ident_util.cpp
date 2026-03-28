@@ -20,8 +20,7 @@
 
 using namespace il::frontends::basic;
 
-int main()
-{
+int main() {
     // Canon lowers ASCII and validates
     assert(Canon("FooBar_123") == std::string("foobar_123"));
     assert(Canon("FOO") == std::string("foo"));

@@ -19,17 +19,14 @@
 #include <cmath>
 #include <string>
 
-namespace
-{
-std::string toStd(rt_string s)
-{
+namespace {
+std::string toStd(rt_string s) {
     // Use the public API which handles both SSO and heap-backed strings
     return std::string(rt_string_cstr(s), (size_t)rt_str_len(s));
 }
 } // namespace
 
-int main()
-{
+int main() {
     rt_string spaced = rt_const_cstr("  -12.5E+1x");
     assert(rt_val(spaced) == -125.0);
     assert(rt_val(rt_const_cstr("abc")) == 0.0);
@@ -44,8 +41,7 @@ int main()
     assert(ok && parsed == 42.0);
 
     const double vals[] = {0.0, 1.25, -2.5, 123.456, -3.5, 1.0e20};
-    for (double v : vals)
-    {
+    for (double v : vals) {
         rt_string t = rt_str(v);
         double r = rt_val(t);
         assert(r == v);

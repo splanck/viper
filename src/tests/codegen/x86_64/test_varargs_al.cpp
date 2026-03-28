@@ -19,27 +19,23 @@
 
 using namespace viper::codegen::x64;
 
-namespace
-{
+namespace {
 
-[[nodiscard]] ILValue makeParam(int id, ILValue::Kind kind) noexcept
-{
+[[nodiscard]] ILValue makeParam(int id, ILValue::Kind kind) noexcept {
     ILValue v{};
     v.kind = kind;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept
-{
+[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept {
     ILValue v{};
     v.kind = kind;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue makeLabel(const char *name) noexcept
-{
+[[nodiscard]] ILValue makeLabel(const char *name) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::LABEL;
     v.id = -1;
@@ -47,8 +43,7 @@ namespace
     return v;
 }
 
-static std::string buildAsmWithCallee(const char *callee)
-{
+static std::string buildAsmWithCallee(const char *callee) {
     // Pretend signature: int rt_snprintf(char*, size_t, double, double, ...)
     // IL: call "rt_snprintf"(buf, size, f0, f1) -> i64
     ILValue buf = makeParam(0, ILValue::Kind::PTR);
@@ -85,8 +80,7 @@ static std::string buildAsmWithCallee(const char *callee)
 
 } // namespace
 
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Windows x64 ABI doesn't use %al for varargs XMM count.
     // This test is SysV ABI specific.

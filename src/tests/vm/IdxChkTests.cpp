@@ -22,10 +22,8 @@
 
 using namespace il::core;
 
-namespace
-{
-Module buildIdxChkPassModule()
-{
+namespace {
+Module buildIdxChkPassModule() {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I16), {});
@@ -53,8 +51,7 @@ Module buildIdxChkPassModule()
     return module;
 }
 
-Module buildIdxChkTrapModule(Opcode getter, int64_t idxConst, int64_t hiConst)
-{
+Module buildIdxChkTrapModule(Opcode getter, int64_t idxConst, int64_t hiConst) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -120,21 +117,18 @@ Module buildIdxChkTrapModule(Opcode getter, int64_t idxConst, int64_t hiConst)
     return module;
 }
 
-int64_t runBoundsGetterWithIdx(Opcode getter, int64_t idxConst, int64_t hiConst)
-{
+int64_t runBoundsGetterWithIdx(Opcode getter, int64_t idxConst, int64_t hiConst) {
     Module module = buildIdxChkTrapModule(getter, idxConst, hiConst);
     il::vm::VM vm(module);
     return vm.run();
 }
 
-int64_t runBoundsGetter(Opcode getter)
-{
+int64_t runBoundsGetter(Opcode getter) {
     return runBoundsGetterWithIdx(getter, 99, 10);
 }
 } // namespace
 
-int main()
-{
+int main() {
     {
         Module module = buildIdxChkPassModule();
         il::vm::VM vm(module);

@@ -21,8 +21,7 @@
 #include <cassert>
 #include <sstream>
 
-int main()
-{
+int main() {
     const char *src = R"VIPER(il 0.2.0
 extern @print(str) -> void
 func @main() -> void {

@@ -44,12 +44,10 @@
 #include "rt_internal.h"
 #include <stdlib.h>
 
-static void *rt_alloc_impl(int64_t bytes)
-{
+static void *rt_alloc_impl(int64_t bytes) {
     if (bytes < 0)
         return rt_trap("negative allocation"), NULL;
-    if ((uint64_t)bytes > SIZE_MAX)
-    {
+    if ((uint64_t)bytes > SIZE_MAX) {
         rt_trap("allocation too large");
         return NULL;
     }
@@ -72,8 +70,7 @@ static rt_alloc_hook_fn g_rt_alloc_hook = NULL;
 ///          behaviour.  Intended for unit tests that need to simulate allocator
 ///          failures without exhausting system memory.
 /// @param hook Replacement function or @c NULL to disable overrides.
-void rt_set_alloc_hook(rt_alloc_hook_fn hook)
-{
+void rt_set_alloc_hook(rt_alloc_hook_fn hook) {
     g_rt_alloc_hook = hook;
 }
 
@@ -83,8 +80,7 @@ void rt_set_alloc_hook(rt_alloc_hook_fn hook)
 /// @param bytes Number of bytes requested by the caller.
 /// @return Pointer to zeroed storage on success; @c NULL after reporting a trap
 ///         when the allocation fails.
-void *rt_alloc(int64_t bytes)
-{
+void *rt_alloc(int64_t bytes) {
     if (g_rt_alloc_hook)
         return g_rt_alloc_hook(bytes, rt_alloc_impl);
     return rt_alloc_impl(bytes);

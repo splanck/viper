@@ -48,15 +48,13 @@
 #include <string>
 #include <string_view>
 
-namespace il::runtime
-{
+namespace il::runtime {
 struct RuntimeDescriptor;
 struct RuntimeSignature;
 using RuntimeHandler = void (*)(void **args, void *result);
 } // namespace il::runtime
 
-namespace il::vm
-{
+namespace il::vm {
 
 union Slot; // defined in VM.hpp
 
@@ -142,8 +140,7 @@ const ExternDesc *resolveExternIn(ExternRegistry &registry,
 //===----------------------------------------------------------------------===//
 
 /// @brief Stores runtime call metadata for trap diagnostics.
-struct RuntimeCallContext
-{
+struct RuntimeCallContext {
     il::support::SourceLoc loc{}; ///< Source location of the active runtime call.
     std::string function;         ///< Name of the calling function.
     std::string block;            ///< Label of the calling basic block.
@@ -175,8 +172,7 @@ struct RuntimeCallContext
  * @see ExternRegistry for the underlying abstraction.
  * @see processGlobalExternRegistry() for explicit global registry access.
  */
-class RuntimeBridge
-{
+class RuntimeBridge {
   public:
     /// @brief Invoke runtime function @p name with arguments @p args.
     /// @param name Runtime function symbol.

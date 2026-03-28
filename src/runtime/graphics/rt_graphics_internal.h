@@ -49,8 +49,7 @@ extern void rt_trap(const char *msg);
 
 /// @brief Internal canvas wrapper structure.
 /// @details Contains the vptr (for future OOP support) and the vgfx window handle.
-typedef struct
-{
+typedef struct {
     void *vptr;              ///< VTable pointer (reserved for future use)
     vgfx_window_t gfx_win;   ///< ViperGFX window handle
     int64_t should_close;    ///< Close request flag
@@ -62,8 +61,7 @@ typedef struct
 } rt_canvas;
 
 /// @brief Forward declaration for pixels internal access.
-typedef struct rt_pixels_impl
-{
+typedef struct rt_pixels_impl {
     int64_t width;
     int64_t height;
     uint32_t *data;
@@ -74,27 +72,23 @@ typedef struct rt_pixels_impl
 //=============================================================================
 
 /// @brief Absolute value for int64_t.
-static inline int64_t rtg_abs64(int64_t x)
-{
+static inline int64_t rtg_abs64(int64_t x) {
     return x < 0 ? -x : x;
 }
 
 /// @brief Minimum of two int64_t values.
-static inline int64_t rtg_min64(int64_t a, int64_t b)
-{
+static inline int64_t rtg_min64(int64_t a, int64_t b) {
     return a < b ? a : b;
 }
 
 /// @brief Maximum of two int64_t values.
-static inline int64_t rtg_max64(int64_t a, int64_t b)
-{
+static inline int64_t rtg_max64(int64_t a, int64_t b) {
     return a > b ? a : b;
 }
 
 /// @brief Simple sine approximation using a lookup table (degrees).
 /// @return sin(deg) * 1024 for fixed-point precision.
-static inline int64_t rtg_sin_deg_fp(int64_t deg)
-{
+static inline int64_t rtg_sin_deg_fp(int64_t deg) {
     // Normalize to 0-359
     deg = deg % 360;
     if (deg < 0)
@@ -105,26 +99,21 @@ static inline int64_t rtg_sin_deg_fp(int64_t deg)
         0, 176, 342, 500, 643, 766, 866, 940, 985, 1004, 992, 951, 883};
 
     int64_t sign = 1;
-    if (deg >= 180)
-    {
+    if (deg >= 180) {
         deg -= 180;
         sign = -1;
     }
-    if (deg > 90)
-    {
+    if (deg > 90) {
         deg = 180 - deg;
     }
 
     int64_t val;
-    if (deg <= 90)
-    {
+    if (deg <= 90) {
         int64_t i = deg / 10;
         if (i > 9)
             i = 9;
         val = sin_table[i];
-    }
-    else
-    {
+    } else {
         int64_t i = (180 - deg) / 10;
         if (i > 9)
             i = 9;
@@ -136,8 +125,7 @@ static inline int64_t rtg_sin_deg_fp(int64_t deg)
 
 /// @brief Simple cosine approximation using sin_deg_fp(deg + 90).
 /// @return cos(deg) * 1024 for fixed-point precision.
-static inline int64_t rtg_cos_deg_fp(int64_t deg)
-{
+static inline int64_t rtg_cos_deg_fp(int64_t deg) {
     return rtg_sin_deg_fp(deg + 90);
 }
 
@@ -146,21 +134,17 @@ static inline int64_t rtg_cos_deg_fp(int64_t deg)
 /// @param s Output saturation (0-100).
 /// @param l Output lightness (0-100).
 static inline void rtg_rgb_to_hsl(
-    int64_t r, int64_t g, int64_t b, int64_t *h, int64_t *s, int64_t *l)
-{
+    int64_t r, int64_t g, int64_t b, int64_t *h, int64_t *s, int64_t *l) {
     int64_t max_c = (r > g) ? (r > b ? r : b) : (g > b ? g : b);
     int64_t min_c = (r < g) ? (r < b ? r : b) : (g < b ? g : b);
     int64_t delta = max_c - min_c;
 
     *l = (max_c + min_c) * 100 / 510;
 
-    if (delta == 0)
-    {
+    if (delta == 0) {
         *h = 0;
         *s = 0;
-    }
-    else
-    {
+    } else {
         if (*l <= 50)
             *s = delta * 100 / (max_c + min_c);
         else
@@ -179,8 +163,7 @@ static inline void rtg_rgb_to_hsl(
 }
 
 /// @brief Hue to RGB conversion helper for HSL.
-static inline int64_t rtg_hue_to_rgb_helper(int64_t p, int64_t q, int64_t t)
-{
+static inline int64_t rtg_hue_to_rgb_helper(int64_t p, int64_t q, int64_t t) {
     if (t < 0)
         t += 360;
     if (t > 360)
@@ -202,10 +185,8 @@ static inline int64_t rtg_hue_to_rgb_helper(int64_t p, int64_t q, int64_t t)
 /// @param g Output green (0-255).
 /// @param b Output blue (0-255).
 static inline void rtg_hsl_to_rgb(
-    int64_t h, int64_t s, int64_t l, int64_t *r, int64_t *g, int64_t *b)
-{
-    if (s == 0)
-    {
+    int64_t h, int64_t s, int64_t l, int64_t *r, int64_t *g, int64_t *b) {
+    if (s == 0) {
         *r = *g = *b = l * 255 / 100;
         return;
     }

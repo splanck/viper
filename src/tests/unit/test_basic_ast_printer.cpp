@@ -21,46 +21,39 @@
 
 using namespace il::frontends::basic;
 
-namespace
-{
+namespace {
 
-ExprPtr makeInt(int64_t value)
-{
+ExprPtr makeInt(int64_t value) {
     auto expr = std::make_unique<IntExpr>();
     expr->value = value;
     return expr;
 }
 
-ExprPtr makeFloat(double value)
-{
+ExprPtr makeFloat(double value) {
     auto expr = std::make_unique<FloatExpr>();
     expr->value = value;
     return expr;
 }
 
-ExprPtr makeString(std::string value)
-{
+ExprPtr makeString(std::string value) {
     auto expr = std::make_unique<StringExpr>();
     expr->value = std::move(value);
     return expr;
 }
 
-ExprPtr makeBool(bool value)
-{
+ExprPtr makeBool(bool value) {
     auto expr = std::make_unique<BoolExpr>();
     expr->value = value;
     return expr;
 }
 
-ExprPtr makeVar(std::string name)
-{
+ExprPtr makeVar(std::string name) {
     auto expr = std::make_unique<VarExpr>();
     expr->name = std::move(name);
     return expr;
 }
 
-ExprPtr makeArray(std::string name, ExprPtr index)
-{
+ExprPtr makeArray(std::string name, ExprPtr index) {
     auto expr = std::make_unique<ArrayExpr>();
     expr->name = std::move(name);
     expr->indices.push_back(std::move(index));
@@ -73,8 +66,7 @@ ExprPtr makeArray(std::string name, ExprPtr index)
 // statements, array accesses, builtin calls, and various expression forms.
 // The printer should produce a deterministic textual dump that matches the
 // expected snapshot for these representative nodes.
-int main()
-{
+int main() {
     Program prog;
 
     auto func = std::make_unique<FunctionDecl>();
@@ -308,8 +300,7 @@ int main()
         "100: (GOTO 200)\n"
         "110: (RETURN (FNRESULT B ARR(I)))\n"
         "120: (END)\n";
-    if (dump != expected)
-    {
+    if (dump != expected) {
         std::cerr << "ACTUAL:\n" << dump << "\nEXPECTED:\n" << expected << "\n";
     }
     assert(dump == expected);

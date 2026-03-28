@@ -33,14 +33,12 @@ using namespace viper::codegen::x64;
 
 // ===== Helpers ==============================================================
 
-namespace
-{
+namespace {
 
 // --- IL value constructors ---
 
 /// SSA reference (I64).
-[[nodiscard]] ILValue val(int id) noexcept
-{
+[[nodiscard]] ILValue val(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::I64;
     v.id = id;
@@ -48,8 +46,7 @@ namespace
 }
 
 /// SSA reference (F64).
-[[nodiscard]] ILValue valF(int id) noexcept
-{
+[[nodiscard]] ILValue valF(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::F64;
     v.id = id;
@@ -57,8 +54,7 @@ namespace
 }
 
 /// SSA reference (I1 / boolean).
-[[nodiscard]] ILValue valB(int id) noexcept
-{
+[[nodiscard]] ILValue valB(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::I1;
     v.id = id;
@@ -66,8 +62,7 @@ namespace
 }
 
 /// Integer immediate.
-[[nodiscard]] ILValue imm(int64_t v) noexcept
-{
+[[nodiscard]] ILValue imm(int64_t v) noexcept {
     ILValue c{};
     c.kind = ILValue::Kind::I64;
     c.id = -1;
@@ -76,8 +71,7 @@ namespace
 }
 
 /// Label reference.
-[[nodiscard]] ILValue lab(const char *name) noexcept
-{
+[[nodiscard]] ILValue lab(const char *name) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::LABEL;
     v.id = -1;
@@ -90,8 +84,7 @@ namespace
 [[nodiscard]] ILInstr makeOp(const char *opc,
                              std::vector<ILValue> ops,
                              int res,
-                             ILValue::Kind k = ILValue::Kind::I64)
-{
+                             ILValue::Kind k = ILValue::Kind::I64) {
     ILInstr instr{};
     instr.opcode = opc;
     instr.ops = std::move(ops);
@@ -100,8 +93,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeRet(int id, ILValue::Kind k = ILValue::Kind::I64)
-{
+[[nodiscard]] ILInstr makeRet(int id, ILValue::Kind k = ILValue::Kind::I64) {
     ILInstr instr{};
     instr.opcode = "ret";
     ILValue ref{};
@@ -111,16 +103,14 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeBr(const char *target)
-{
+[[nodiscard]] ILInstr makeBr(const char *target) {
     ILInstr instr{};
     instr.opcode = "br";
     instr.ops = {lab(target)};
     return instr;
 }
 
-[[nodiscard]] ILInstr makeCbr(int condId, const char *trueTarget, const char *falseTarget)
-{
+[[nodiscard]] ILInstr makeCbr(int condId, const char *trueTarget, const char *falseTarget) {
     ILInstr instr{};
     instr.opcode = "cbr";
     instr.ops = {valB(condId), lab(trueTarget), lab(falseTarget)};
@@ -129,12 +119,10 @@ namespace
 
 // --- Assembly analysis ---
 
-[[nodiscard]] std::size_t countOccurrences(const std::string &text, const std::string &pattern)
-{
+[[nodiscard]] std::size_t countOccurrences(const std::string &text, const std::string &pattern) {
     std::size_t count = 0;
     std::size_t pos = 0;
-    while ((pos = text.find(pattern, pos)) != std::string::npos)
-    {
+    while ((pos = text.find(pattern, pos)) != std::string::npos) {
         ++count;
         pos += pattern.size();
     }
@@ -142,8 +130,7 @@ namespace
 }
 
 /// Count spill stores: movq %rXX, -NNN(%rbp) patterns.
-[[nodiscard]] std::size_t countSpillStores(const std::string &text)
-{
+[[nodiscard]] std::size_t countSpillStores(const std::string &text) {
     const std::regex pattern(R"(movq\s+%r\w+,\s*-\d+\(%rbp\))");
     auto begin = std::sregex_iterator(text.begin(), text.end(), pattern);
     auto end = std::sregex_iterator();
@@ -151,8 +138,7 @@ namespace
 }
 
 /// Count spill loads: movq -NNN(%rbp), %rXX patterns.
-[[nodiscard]] std::size_t countSpillLoads(const std::string &text)
-{
+[[nodiscard]] std::size_t countSpillLoads(const std::string &text) {
     const std::regex pattern(R"(movq\s+-\d+\(%rbp\),\s*%r\w+)");
     auto begin = std::sregex_iterator(text.begin(), text.end(), pattern);
     auto end = std::sregex_iterator();
@@ -160,8 +146,7 @@ namespace
 }
 
 /// Count register-to-register movq %rXX, %rYY (both GPR, not memory).
-[[nodiscard]] std::size_t countRegToRegMoves(const std::string &text)
-{
+[[nodiscard]] std::size_t countRegToRegMoves(const std::string &text) {
     const std::regex pattern(R"(movq\s+%r\w+,\s*%r\w+)");
     auto begin = std::sregex_iterator(text.begin(), text.end(), pattern);
     auto end = std::sregex_iterator();
@@ -170,8 +155,7 @@ namespace
 
 // --- Test reporting ---
 
-struct TestResult
-{
+struct TestResult {
     const char *name{};
     bool passed{false};
     std::size_t spillStores{0};
@@ -181,14 +165,12 @@ struct TestResult
     std::string failReason{};
 };
 
-void printSummary(const std::vector<TestResult> &results)
-{
+void printSummary(const std::vector<TestResult> &results) {
     std::cout << "\n=== Register Allocator Stress Tests ===" << std::endl;
     std::cout << std::left << std::setw(30) << "Test" << std::setw(8) << "Status" << std::setw(8)
               << "Spills" << std::setw(10) << "Reloads" << std::setw(10) << "RegMoves" << std::endl;
     std::cout << std::string(66, '-') << std::endl;
-    for (const auto &r : results)
-    {
+    for (const auto &r : results) {
         std::cout << std::left << std::setw(30) << r.name << std::setw(8)
                   << (r.passed ? "PASS" : "FAIL") << std::setw(8) << r.spillStores << std::setw(10)
                   << r.spillLoads << std::setw(10) << r.regMoves << std::endl;
@@ -197,8 +179,7 @@ void printSummary(const std::vector<TestResult> &results)
 
 // ===== Test 1: Spill Pressure ===============================================
 
-[[nodiscard]] TestResult testSpillPressure()
-{
+[[nodiscard]] TestResult testSpillPressure() {
     TestResult result{};
     result.name = "1. Spill pressure";
 
@@ -250,29 +231,24 @@ void printSummary(const std::vector<TestResult> &results)
     result.spillLoads = countSpillLoads(cg.asmText);
     result.regMoves = countRegToRegMoves(cg.asmText);
 
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         result.failReason = "Compilation failed: " + cg.errors;
         return result;
     }
-    if (cg.asmText.find("addq") == std::string::npos)
-    {
+    if (cg.asmText.find("addq") == std::string::npos) {
         result.failReason = "Missing addq instruction";
         return result;
     }
-    if (cg.asmText.find("subq") == std::string::npos)
-    {
+    if (cg.asmText.find("subq") == std::string::npos) {
         result.failReason = "Missing subq instruction";
         return result;
     }
-    if (cg.asmText.find("imulq") == std::string::npos)
-    {
+    if (cg.asmText.find("imulq") == std::string::npos) {
         result.failReason = "Missing imulq instruction";
         return result;
     }
     // With 16 live values and ~14 allocatable GPRs, expect at least 1 spill
-    if (result.spillStores == 0 && result.spillLoads == 0)
-    {
+    if (result.spillStores == 0 && result.spillLoads == 0) {
         result.failReason = "Expected spills with 16 live values but found none";
         return result;
     }
@@ -283,8 +259,7 @@ void printSummary(const std::vector<TestResult> &results)
 
 // ===== Test 2: Callee-Saved Preservation ====================================
 
-[[nodiscard]] TestResult testCalleeSaved()
-{
+[[nodiscard]] TestResult testCalleeSaved() {
     TestResult result{};
     result.name = "2. Callee-saved";
 
@@ -339,23 +314,20 @@ void printSummary(const std::vector<TestResult> &results)
     result.spillLoads = countSpillLoads(cg.asmText);
     result.regMoves = countRegToRegMoves(cg.asmText);
 
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         result.failReason = "Compilation failed: " + cg.errors;
         return result;
     }
 
     // Extract just the stress_callee_saved function's assembly
     const std::size_t funcStart = cg.asmText.find("stress_callee_saved:");
-    if (funcStart == std::string::npos)
-    {
+    if (funcStart == std::string::npos) {
         result.failReason = "Cannot find stress_callee_saved function label";
         return result;
     }
     const std::string funcAsm = cg.asmText.substr(funcStart);
 
-    if (funcAsm.find("callq") == std::string::npos)
-    {
+    if (funcAsm.find("callq") == std::string::npos) {
         result.failReason = "Missing callq instruction";
         return result;
     }
@@ -369,8 +341,7 @@ void printSummary(const std::vector<TestResult> &results)
                                funcAsm.find("movq %r13,") != std::string::npos ||
                                funcAsm.find("movq %r14,") != std::string::npos ||
                                funcAsm.find("movq %r15,") != std::string::npos;
-    if (!hasPush && !hasCalleeSave)
-    {
+    if (!hasPush && !hasCalleeSave) {
         result.failReason = "No callee-saved register preservation found";
         return result;
     }
@@ -382,8 +353,7 @@ void printSummary(const std::vector<TestResult> &results)
                                       funcAsm.find("), %r13") != std::string::npos ||
                                       funcAsm.find("), %r14") != std::string::npos ||
                                       funcAsm.find("), %r15") != std::string::npos;
-    if (!hasCalleeSaveRestore)
-    {
+    if (!hasCalleeSaveRestore) {
         result.failReason = "No callee-saved register restoration found";
         return result;
     }
@@ -394,8 +364,7 @@ void printSummary(const std::vector<TestResult> &results)
 
 // ===== Test 3: Nested Loop Register Competition =============================
 
-[[nodiscard]] TestResult testNestedLoop()
-{
+[[nodiscard]] TestResult testNestedLoop() {
     TestResult result{};
     result.name = "3. Nested loops";
 
@@ -460,30 +429,26 @@ void printSummary(const std::vector<TestResult> &results)
     result.spillLoads = countSpillLoads(cg.asmText);
     result.regMoves = countRegToRegMoves(cg.asmText);
 
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         result.failReason = "Compilation failed: " + cg.errors;
         return result;
     }
 
     // Should have multiple labels (loop structure)
-    if (countOccurrences(cg.asmText, ":") < 4)
-    {
+    if (countOccurrences(cg.asmText, ":") < 4) {
         result.failReason = "Expected at least 4 labels for nested loop structure";
         return result;
     }
 
     // imulq must be present for inner multiply
-    if (cg.asmText.find("imulq") == std::string::npos)
-    {
+    if (cg.asmText.find("imulq") == std::string::npos) {
         result.failReason = "Missing imulq instruction in inner loop";
         return result;
     }
 
     // Check for backward jumps (loop back-edges)
     if (cg.asmText.find("jmp") == std::string::npos && cg.asmText.find("jl") == std::string::npos &&
-        cg.asmText.find("jge") == std::string::npos)
-    {
+        cg.asmText.find("jge") == std::string::npos) {
         result.failReason = "Missing backward jump for loop";
         return result;
     }
@@ -494,8 +459,7 @@ void printSummary(const std::vector<TestResult> &results)
 
 // ===== Test 4: Mixed Integer/FP Allocation ==================================
 
-[[nodiscard]] TestResult testMixedIntFp()
-{
+[[nodiscard]] TestResult testMixedIntFp() {
     TestResult result{};
     result.name = "4. Mixed int/fp";
 
@@ -539,54 +503,45 @@ void printSummary(const std::vector<TestResult> &results)
     result.spillLoads = countSpillLoads(cg.asmText);
     result.regMoves = countRegToRegMoves(cg.asmText);
 
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         result.failReason = "Compilation failed: " + cg.errors;
         return result;
     }
 
     // GPR mnemonics
-    if (cg.asmText.find("addq") == std::string::npos)
-    {
+    if (cg.asmText.find("addq") == std::string::npos) {
         result.failReason = "Missing addq instruction";
         return result;
     }
-    if (cg.asmText.find("imulq") == std::string::npos)
-    {
+    if (cg.asmText.find("imulq") == std::string::npos) {
         result.failReason = "Missing imulq instruction";
         return result;
     }
-    if (cg.asmText.find("subq") == std::string::npos)
-    {
+    if (cg.asmText.find("subq") == std::string::npos) {
         result.failReason = "Missing subq instruction";
         return result;
     }
 
     // XMM mnemonics
-    if (cg.asmText.find("addsd") == std::string::npos)
-    {
+    if (cg.asmText.find("addsd") == std::string::npos) {
         result.failReason = "Missing addsd instruction";
         return result;
     }
-    if (cg.asmText.find("mulsd") == std::string::npos)
-    {
+    if (cg.asmText.find("mulsd") == std::string::npos) {
         result.failReason = "Missing mulsd instruction";
         return result;
     }
-    if (cg.asmText.find("divsd") == std::string::npos)
-    {
+    if (cg.asmText.find("divsd") == std::string::npos) {
         result.failReason = "Missing divsd instruction";
         return result;
     }
 
     // Conversion instructions
-    if (cg.asmText.find("cvtsi2sd") == std::string::npos)
-    {
+    if (cg.asmText.find("cvtsi2sd") == std::string::npos) {
         result.failReason = "Missing cvtsi2sd instruction";
         return result;
     }
-    if (cg.asmText.find("cvttsd2si") == std::string::npos)
-    {
+    if (cg.asmText.find("cvttsd2si") == std::string::npos) {
         result.failReason = "Missing cvttsd2si instruction";
         return result;
     }
@@ -597,8 +552,7 @@ void printSummary(const std::vector<TestResult> &results)
 
 // ===== Test 5: Caller-Saved Spill Storm =====================================
 
-[[nodiscard]] TestResult testCallerSavedStorm()
-{
+[[nodiscard]] TestResult testCallerSavedStorm() {
     TestResult result{};
     result.name = "5. Caller-saved storm";
 
@@ -674,16 +628,14 @@ void printSummary(const std::vector<TestResult> &results)
     result.spillLoads = countSpillLoads(funcAsm);
     result.regMoves = countRegToRegMoves(funcAsm);
 
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         result.failReason = "Compilation failed: " + cg.errors;
         return result;
     }
 
     // 4 callq instructions
     const std::size_t callCount = countOccurrences(funcAsm, "callq");
-    if (callCount < 4)
-    {
+    if (callCount < 4) {
         result.failReason = "Expected 4 callq but found " + std::to_string(callCount);
         return result;
     }
@@ -691,8 +643,7 @@ void printSummary(const std::vector<TestResult> &results)
     // With 4 calls and intermediate results alive across them, expect spills or
     // callee-saved register usage (pushq/popq). Either approach is valid.
     const std::size_t pushCount = countOccurrences(funcAsm, "pushq");
-    if (result.spillStores == 0 && pushCount == 0)
-    {
+    if (result.spillStores == 0 && pushCount == 0) {
         result.failReason = "Expected spills or callee-saved pushes around calls but found neither";
         return result;
     }
@@ -703,8 +654,7 @@ void printSummary(const std::vector<TestResult> &results)
 
 // ===== Test 6: Long Dependency Chain ========================================
 
-[[nodiscard]] TestResult testDependencyChain()
-{
+[[nodiscard]] TestResult testDependencyChain() {
     TestResult result{};
     result.name = "6. Dependency chain";
 
@@ -744,25 +694,21 @@ void printSummary(const std::vector<TestResult> &results)
     result.spillLoads = countSpillLoads(cg.asmText);
     result.regMoves = countRegToRegMoves(cg.asmText);
 
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         result.failReason = "Compilation failed: " + cg.errors;
         return result;
     }
 
     // All ALU instructions should be present
-    if (cg.asmText.find("addq") == std::string::npos)
-    {
+    if (cg.asmText.find("addq") == std::string::npos) {
         result.failReason = "Missing addq instruction";
         return result;
     }
-    if (cg.asmText.find("subq") == std::string::npos)
-    {
+    if (cg.asmText.find("subq") == std::string::npos) {
         result.failReason = "Missing subq instruction";
         return result;
     }
-    if (cg.asmText.find("imulq") == std::string::npos)
-    {
+    if (cg.asmText.find("imulq") == std::string::npos) {
         result.failReason = "Missing imulq instruction";
         return result;
     }
@@ -773,8 +719,7 @@ void printSummary(const std::vector<TestResult> &results)
 
 } // anonymous namespace
 
-int main()
-{
+int main() {
     std::vector<TestResult> results;
 
     results.push_back(testSpillPressure());
@@ -787,10 +732,8 @@ int main()
     printSummary(results);
 
     bool allPassed = true;
-    for (const auto &r : results)
-    {
-        if (!r.passed)
-        {
+    for (const auto &r : results) {
+        if (!r.passed) {
             allPassed = false;
             std::cerr << "\nFAILED: " << r.name << "\n  Reason: " << r.failReason << "\n";
             std::cerr << "  Assembly:\n" << r.asmText << "\n";

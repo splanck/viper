@@ -19,8 +19,7 @@
 #include <algorithm>
 #include <unordered_map>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
@@ -31,8 +30,7 @@ using namespace runtime;
 // This provides 40-60% speedup for collection-heavy code.
 
 /// @brief Enumeration of collection method identifiers for fast dispatch.
-enum class CollectionMethod
-{
+enum class CollectionMethod {
     Unknown = 0,
     // List methods
     Get,
@@ -66,26 +64,22 @@ enum class CollectionMethod
     Values
 };
 
-namespace
-{
+namespace {
 
 /// @brief Convert a method name to lowercase for case-insensitive lookup.
 /// @param name Input method name.
 /// @return Lowercase copy of the method name.
-std::string toLowerStr(const std::string &name)
-{
+std::string toLowerStr(const std::string &name) {
     std::string lower;
     lower.reserve(name.size());
-    for (char c : name)
-    {
+    for (char c : name) {
         lower += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
     return lower;
 }
 
 /// @brief Static dispatch table mapping lowercase method names to CollectionMethod enum.
-const std::unordered_map<std::string, CollectionMethod> &getMethodDispatchTable()
-{
+const std::unordered_map<std::string, CollectionMethod> &getMethodDispatchTable() {
     static const std::unordered_map<std::string, CollectionMethod> table = {
         // List/common methods
         {"get", CollectionMethod::Get},
@@ -123,12 +117,10 @@ const std::unordered_map<std::string, CollectionMethod> &getMethodDispatchTable(
 /// @brief Look up a method name in the dispatch table.
 /// @param methodName Method name to look up (case-insensitive).
 /// @return The corresponding CollectionMethod enum value, or Unknown if not found.
-CollectionMethod lookupMethod(const std::string &methodName)
-{
+CollectionMethod lookupMethod(const std::string &methodName) {
     const auto &table = getMethodDispatchTable();
     auto it = table.find(toLowerStr(methodName));
-    if (it != table.end())
-    {
+    if (it != table.end()) {
         return it->second;
     }
     return CollectionMethod::Unknown;
@@ -143,16 +135,13 @@ CollectionMethod lookupMethod(const std::string &methodName)
 std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
                                                         TypeRef baseType,
                                                         const std::string &methodName,
-                                                        CallExpr *expr)
-{
+                                                        CallExpr *expr) {
     // Use O(1) dispatch table lookup instead of sequential string comparisons
     const CollectionMethod method = lookupMethod(methodName);
 
-    switch (method)
-    {
+    switch (method) {
         case CollectionMethod::Get:
-            if (expr->args.size() >= 1)
-            {
+            if (expr->args.size() >= 1) {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
                 Value boxed =
                     emitCallRet(Type(Type::Kind::Ptr), kListGet, {baseValue, indexResult.value});
@@ -165,8 +154,7 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             break;
 
         case CollectionMethod::RemoveAt:
-            if (expr->args.size() >= 1)
-            {
+            if (expr->args.size() >= 1) {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
                 emitCall(kListRemoveAt, {baseValue, indexResult.value});
                 return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
@@ -174,8 +162,7 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             break;
 
         case CollectionMethod::Remove:
-            if (expr->args.size() >= 1)
-            {
+            if (expr->args.size() >= 1) {
                 auto valueResult = lowerExpr(expr->args[0].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[0].value.get());
                 Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
@@ -186,8 +173,7 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             break;
 
         case CollectionMethod::Insert:
-            if (expr->args.size() >= 2)
-            {
+            if (expr->args.size() >= 2) {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
                 auto valueResult = lowerExpr(expr->args[1].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[1].value.get());
@@ -199,8 +185,7 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
 
         case CollectionMethod::Find:
         case CollectionMethod::IndexOf:
-            if (expr->args.size() >= 1)
-            {
+            if (expr->args.size() >= 1) {
                 auto valueResult = lowerExpr(expr->args[0].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[0].value.get());
                 Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
@@ -212,8 +197,7 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
 
         case CollectionMethod::Has:
         case CollectionMethod::Contains:
-            if (expr->args.size() >= 1)
-            {
+            if (expr->args.size() >= 1) {
                 auto valueResult = lowerExpr(expr->args[0].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[0].value.get());
                 Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
@@ -224,8 +208,7 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             break;
 
         case CollectionMethod::Set:
-            if (expr->args.size() >= 2)
-            {
+            if (expr->args.size() >= 2) {
                 auto indexResult = lowerExpr(expr->args[0].value.get());
                 auto valueResult = lowerExpr(expr->args[1].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[1].value.get());
@@ -236,13 +219,11 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             break;
 
         case CollectionMethod::Add:
-        case CollectionMethod::Push:
-        {
+        case CollectionMethod::Push: {
             std::vector<Value> args;
             args.reserve(expr->args.size() + 1);
             args.push_back(baseValue);
-            for (auto &arg : expr->args)
-            {
+            for (auto &arg : expr->args) {
                 auto result = lowerExpr(arg.value.get());
                 TypeRef argType = sema_.typeOf(arg.value.get());
                 args.push_back(emitBoxValue(result.value, result.type, argType));
@@ -251,8 +232,7 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
             return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
         }
 
-        case CollectionMethod::Pop:
-        {
+        case CollectionMethod::Pop: {
             // Pop removes and returns the last element as a boxed obj.
             Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListPop, {baseValue});
             TypeRef elemType = baseType ? baseType->elementType() : nullptr;
@@ -265,16 +245,14 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
         case CollectionMethod::Size:
         case CollectionMethod::Count:
         case CollectionMethod::Length:
-        case CollectionMethod::Len:
-        {
+        case CollectionMethod::Len: {
             std::vector<Value> args;
             args.push_back(baseValue);
             Value result = emitCallRet(Type(Type::Kind::I64), kListCount, args);
             return LowerResult{result, Type(Type::Kind::I64)};
         }
 
-        case CollectionMethod::Clear:
-        {
+        case CollectionMethod::Clear: {
             std::vector<Value> args;
             args.push_back(baseValue);
             emitCall(kListClear, args);
@@ -311,19 +289,16 @@ std::optional<LowerResult> Lowerer::lowerListMethodCall(Value baseValue,
 std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
                                                        TypeRef baseType,
                                                        const std::string &methodName,
-                                                       CallExpr *expr)
-{
+                                                       CallExpr *expr) {
     TypeRef valType = baseType->typeArgs.size() > 1 ? baseType->typeArgs[1] : nullptr;
 
     // Use O(1) dispatch table lookup instead of sequential string comparisons
     const CollectionMethod method = lookupMethod(methodName);
 
-    switch (method)
-    {
+    switch (method) {
         case CollectionMethod::Set:
         case CollectionMethod::Put:
-            if (expr->args.size() >= 2)
-            {
+            if (expr->args.size() >= 2) {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
                 auto valueResult = lowerExpr(expr->args[1].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[1].value.get());
@@ -334,13 +309,11 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
             break;
 
         case CollectionMethod::Get:
-            if (expr->args.size() >= 1)
-            {
+            if (expr->args.size() >= 1) {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
                 Value boxed =
                     emitCallRet(Type(Type::Kind::Ptr), kMapGet, {baseValue, keyResult.value});
-                if (valType)
-                {
+                if (valType) {
                     Type ilValueType = mapType(valType);
                     return emitUnboxValue(boxed, ilValueType, valType);
                 }
@@ -349,16 +322,14 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
             break;
 
         case CollectionMethod::GetOr:
-            if (expr->args.size() >= 2)
-            {
+            if (expr->args.size() >= 2) {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
                 auto defaultResult = lowerExpr(expr->args[1].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[1].value.get());
                 Value boxedDefault = emitBoxValue(defaultResult.value, defaultResult.type, argType);
                 Value boxed = emitCallRet(
                     Type(Type::Kind::Ptr), kMapGetOr, {baseValue, keyResult.value, boxedDefault});
-                if (valType)
-                {
+                if (valType) {
                     Type ilValueType = mapType(valType);
                     return emitUnboxValue(boxed, ilValueType, valType);
                 }
@@ -369,8 +340,7 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
         case CollectionMethod::ContainsKey:
         case CollectionMethod::HasKey:
         case CollectionMethod::Has:
-            if (expr->args.size() >= 1)
-            {
+            if (expr->args.size() >= 1) {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
                 Value result = emitCallRet(
                     Type(Type::Kind::I1), kMapContainsKey, {baseValue, keyResult.value});
@@ -381,15 +351,13 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
         case CollectionMethod::Size:
         case CollectionMethod::Count:
         case CollectionMethod::Length:
-        case CollectionMethod::Len:
-        {
+        case CollectionMethod::Len: {
             Value result = emitCallRet(Type(Type::Kind::I64), kMapCount, {baseValue});
             return LowerResult{result, Type(Type::Kind::I64)};
         }
 
         case CollectionMethod::Remove:
-            if (expr->args.size() >= 1)
-            {
+            if (expr->args.size() >= 1) {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
                 Value result =
                     emitCallRet(Type(Type::Kind::I1), kMapRemove, {baseValue, keyResult.value});
@@ -398,8 +366,7 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
             break;
 
         case CollectionMethod::SetIfMissing:
-            if (expr->args.size() >= 2)
-            {
+            if (expr->args.size() >= 2) {
                 auto keyResult = lowerExpr(expr->args[0].value.get());
                 auto valueResult = lowerExpr(expr->args[1].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[1].value.get());
@@ -415,14 +382,12 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
             emitCall(kMapClear, {baseValue});
             return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
 
-        case CollectionMethod::Keys:
-        {
+        case CollectionMethod::Keys: {
             Value seq = emitCallRet(Type(Type::Kind::Ptr), kMapKeys, {baseValue});
             return LowerResult{seq, Type(Type::Kind::Ptr)};
         }
 
-        case CollectionMethod::Values:
-        {
+        case CollectionMethod::Values: {
             Value seq = emitCallRet(Type(Type::Kind::Ptr), kMapValues, {baseValue});
             return LowerResult{seq, Type(Type::Kind::Ptr)};
         }
@@ -441,16 +406,13 @@ std::optional<LowerResult> Lowerer::lowerMapMethodCall(Value baseValue,
 std::optional<LowerResult> Lowerer::lowerSetMethodCall(Value baseValue,
                                                        TypeRef baseType,
                                                        const std::string &methodName,
-                                                       CallExpr *expr)
-{
+                                                       CallExpr *expr) {
     const CollectionMethod method = lookupMethod(methodName);
 
-    switch (method)
-    {
+    switch (method) {
         case CollectionMethod::Has:
         case CollectionMethod::Contains:
-            if (expr->args.size() >= 1)
-            {
+            if (expr->args.size() >= 1) {
                 auto valueResult = lowerExpr(expr->args[0].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[0].value.get());
                 Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
@@ -461,8 +423,7 @@ std::optional<LowerResult> Lowerer::lowerSetMethodCall(Value baseValue,
 
         case CollectionMethod::Add:
         case CollectionMethod::Put:
-            if (expr->args.size() >= 1)
-            {
+            if (expr->args.size() >= 1) {
                 auto valueResult = lowerExpr(expr->args[0].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[0].value.get());
                 Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
@@ -472,8 +433,7 @@ std::optional<LowerResult> Lowerer::lowerSetMethodCall(Value baseValue,
             break;
 
         case CollectionMethod::Remove:
-            if (expr->args.size() >= 1)
-            {
+            if (expr->args.size() >= 1) {
                 auto valueResult = lowerExpr(expr->args[0].value.get());
                 TypeRef argType = sema_.typeOf(expr->args[0].value.get());
                 Value boxedValue = emitBoxValue(valueResult.value, valueResult.type, argType);
@@ -485,8 +445,7 @@ std::optional<LowerResult> Lowerer::lowerSetMethodCall(Value baseValue,
         case CollectionMethod::Size:
         case CollectionMethod::Count:
         case CollectionMethod::Length:
-        case CollectionMethod::Len:
-        {
+        case CollectionMethod::Len: {
             Value result = emitCallRet(Type(Type::Kind::I64), kSetCount, {baseValue});
             return LowerResult{result, Type(Type::Kind::I64)};
         }
@@ -509,16 +468,14 @@ std::optional<LowerResult> Lowerer::lowerSetMethodCall(Value baseValue,
 LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
                                      const std::string &typeName,
                                      Value selfValue,
-                                     CallExpr *expr)
-{
+                                     CallExpr *expr) {
     // Look up the cached method type - this has already-substituted types for generics
     TypeRef methodType = sema_.getMethodType(typeName, method);
     if (!methodType)
         methodType = sema_.getMethodType(typeName, method->name);
     std::vector<TypeRef> paramTypes;
     TypeRef returnType = types::voidType();
-    if (methodType && methodType->kind == TypeKindSem::Function)
-    {
+    if (methodType && methodType->kind == TypeKindSem::Function) {
         paramTypes = methodType->paramTypes();
         returnType = methodType->returnType();
     }
@@ -527,30 +484,22 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
     args.reserve(expr->args.size() + 1);
     args.push_back(selfValue);
 
-    for (size_t i = 0; i < expr->args.size(); ++i)
-    {
+    for (size_t i = 0; i < expr->args.size(); ++i) {
         auto &arg = expr->args[i];
         auto result = lowerExpr(arg.value.get());
         Value argValue = result.value;
 
         // Use cached param type from methodType instead of resolving from AST
-        if (i < paramTypes.size())
-        {
+        if (i < paramTypes.size()) {
             TypeRef paramType = paramTypes[i];
             TypeRef argType = sema_.typeOf(arg.value.get());
-            if (paramType && paramType->kind == TypeKindSem::Optional)
-            {
+            if (paramType && paramType->kind == TypeKindSem::Optional) {
                 TypeRef innerType = paramType->innerType();
-                if (argType && argType->kind == TypeKindSem::Optional)
-                {
+                if (argType && argType->kind == TypeKindSem::Optional) {
                     argValue = result.value;
-                }
-                else if (argType && argType->kind == TypeKindSem::Unit)
-                {
+                } else if (argType && argType->kind == TypeKindSem::Unit) {
                     argValue = Value::null();
-                }
-                else if (innerType)
-                {
+                } else if (innerType) {
                     argValue = emitOptionalWrap(result.value, innerType);
                 }
             }
@@ -566,13 +515,10 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
         methodName = typeName + "." + method->name;
 
     // Handle void return types correctly - don't try to store void results
-    if (ilReturnType.kind == Type::Kind::Void)
-    {
+    if (ilReturnType.kind == Type::Kind::Void) {
         emitCall(methodName, args);
         return {Value::constInt(0), Type(Type::Kind::Void)};
-    }
-    else
-    {
+    } else {
         Value result = emitCallRet(ilReturnType, methodName, args);
         return {result, ilReturnType};
     }
@@ -583,8 +529,7 @@ LowerResult Lowerer::lowerMethodCall(MethodDecl *method,
 //=============================================================================
 
 std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string &typeName,
-                                                               CallExpr *expr)
-{
+                                                               CallExpr *expr) {
     const ValueTypeInfo *infoPtr = getOrCreateValueTypeInfo(typeName);
     if (!infoPtr)
         return std::nullopt;
@@ -593,8 +538,7 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
 
     // Lower arguments
     std::vector<Value> argValues;
-    for (auto &arg : expr->args)
-    {
+    for (auto &arg : expr->args) {
         auto result = lowerExpr(arg.value.get());
         argValues.push_back(result.value);
     }
@@ -612,25 +556,20 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
 
     // BUG-010 fix: Check if the value type has an explicit init method
     auto initIt = info.methodMap.find("init");
-    if (initIt != info.methodMap.end())
-    {
+    if (initIt != info.methodMap.end()) {
         // Call the explicit init method (like entity types do)
         std::string initName = sema_.loweredMethodName(typeName, initIt->second);
         if (initName.empty())
             initName = typeName + ".init";
         std::vector<Value> initArgs;
         initArgs.push_back(ptr); // self is first argument
-        for (const auto &argVal : argValues)
-        {
+        for (const auto &argVal : argValues) {
             initArgs.push_back(argVal);
         }
         emitCall(initName, initArgs);
-    }
-    else
-    {
+    } else {
         // No init method - store arguments directly into fields (original behavior)
-        for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i)
-        {
+        for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i) {
             const FieldLayout &field = info.fields[i];
 
             // GEP to get field address
@@ -662,8 +601,7 @@ std::optional<LowerResult> Lowerer::lowerValueTypeConstruction(const std::string
 //=============================================================================
 
 std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::string &typeName,
-                                                                CallExpr *expr)
-{
+                                                                CallExpr *expr) {
     const EntityTypeInfo *infoPtr = getOrCreateEntityTypeInfo(typeName);
     if (!infoPtr)
         return std::nullopt;
@@ -672,8 +610,7 @@ std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::strin
 
     // Lower arguments
     std::vector<Value> argValues;
-    for (auto &arg : expr->args)
-    {
+    for (auto &arg : expr->args) {
         auto result = lowerExpr(arg.value.get());
         argValues.push_back(result.value);
     }
@@ -686,37 +623,28 @@ std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::strin
 
     // Check if the entity has an explicit init method
     auto initIt = info.methodMap.find("init");
-    if (initIt != info.methodMap.end())
-    {
+    if (initIt != info.methodMap.end()) {
         // Call the explicit init method
         std::string initName = sema_.loweredMethodName(typeName, initIt->second);
         if (initName.empty())
             initName = typeName + ".init";
         std::vector<Value> initArgs;
         initArgs.push_back(ptr); // self is first argument
-        for (const auto &argVal : argValues)
-        {
+        for (const auto &argVal : argValues) {
             initArgs.push_back(argVal);
         }
         emitCall(initName, initArgs);
-    }
-    else
-    {
+    } else {
         // No explicit init - do inline field initialization
-        for (size_t i = 0; i < info.fields.size(); ++i)
-        {
+        for (size_t i = 0; i < info.fields.size(); ++i) {
             const auto &field = info.fields[i];
             Type ilFieldType = mapType(field.type);
             Value fieldValue;
 
-            if (i < argValues.size())
-            {
+            if (i < argValues.size()) {
                 fieldValue = argValues[i];
-            }
-            else
-            {
-                switch (ilFieldType.kind)
-                {
+            } else {
+                switch (ilFieldType.kind) {
                     case Type::Kind::I1:
                         fieldValue = Value::constBool(false);
                         break;
@@ -755,12 +683,10 @@ std::optional<LowerResult> Lowerer::lowerEntityTypeConstruction(const std::strin
 /// @brief Lower a struct-literal expression: `TypeName { field = val, ... }`.
 /// @details Reorders the named fields by declaration order, then delegates to
 /// the same alloca+init logic used by lowerValueTypeConstruction.
-LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr)
-{
+LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr) {
     const std::string &typeName = expr->typeName;
     const ValueTypeInfo *infoPtr = getOrCreateValueTypeInfo(typeName);
-    if (!infoPtr)
-    {
+    if (!infoPtr) {
         // Fallback: treat as a zero-initialised value (unreachable after sema checks)
         return {Value::constInt(0), Type(Type::Kind::Ptr)};
     }
@@ -768,8 +694,7 @@ LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr)
 
     // Build a map from field name → lowered value for quick lookup.
     std::unordered_map<std::string, Value> fieldValues;
-    for (auto &f : expr->fields)
-    {
+    for (auto &f : expr->fields) {
         auto result = lowerExpr(f.value.get());
         fieldValues[f.name] = result.value;
     }
@@ -777,15 +702,11 @@ LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr)
     // Build arg list in field declaration order (matches init parameter order).
     std::vector<Value> argValues;
     argValues.reserve(info.fields.size());
-    for (const auto &field : info.fields)
-    {
+    for (const auto &field : info.fields) {
         auto it = fieldValues.find(field.name);
-        if (it != fieldValues.end())
-        {
+        if (it != fieldValues.end()) {
             argValues.push_back(it->second);
-        }
-        else
-        {
+        } else {
             // Missing field → zero-initialise
             argValues.push_back(Value::constInt(0));
         }
@@ -804,8 +725,7 @@ LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr)
 
     // If an explicit init method exists, call it (same as lowerValueTypeConstruction).
     auto initIt = info.methodMap.find("init");
-    if (initIt != info.methodMap.end())
-    {
+    if (initIt != info.methodMap.end()) {
         std::string initName = sema_.loweredMethodName(typeName, initIt->second);
         if (initName.empty())
             initName = typeName + ".init";
@@ -814,12 +734,9 @@ LowerResult Lowerer::lowerStructLiteral(StructLiteralExpr *expr)
         for (const auto &argVal : argValues)
             initArgs.push_back(argVal);
         emitCall(initName, initArgs);
-    }
-    else
-    {
+    } else {
         // No init method — store args directly into fields by declaration order.
-        for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i)
-        {
+        for (size_t i = 0; i < argValues.size() && i < info.fields.size(); ++i) {
             const FieldLayout &field = info.fields[i];
             unsigned gepId = nextTempId();
             il::core::Instr gepInstr;

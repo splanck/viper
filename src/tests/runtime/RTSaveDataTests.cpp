@@ -38,15 +38,13 @@
 #define GETPID getpid
 #endif
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
@@ -54,11 +52,9 @@ extern "C" void vm_trap(const char *msg)
 }
 
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             (expr);                                                                                \
             g_trap_expected = false;                                                               \
             assert(!"Expected trap did not fire");                                                 \
@@ -67,8 +63,7 @@ extern "C" void vm_trap(const char *msg)
     } while (0)
 
 /// @brief Helper: create rt_string from C literal.
-static rt_string S(const char *s)
-{
+static rt_string S(const char *s) {
     return rt_const_cstr(s);
 }
 
@@ -76,8 +71,7 @@ static rt_string S(const char *s)
 // Null Safety Tests
 // ============================================================================
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     printf("--- Null Safety ---\n");
 
     // All operations on NULL should not crash
@@ -94,8 +88,7 @@ static void test_null_safety()
     printf("  test_null_safety: PASSED\n");
 }
 
-static void test_empty_name_traps()
-{
+static void test_empty_name_traps() {
     printf("--- Constructor Validation ---\n");
 
     EXPECT_TRAP(rt_savedata_new(S("")));
@@ -106,8 +99,7 @@ static void test_empty_name_traps()
 // In-Memory Key-Value Operations
 // ============================================================================
 
-static void test_set_get_int()
-{
+static void test_set_get_int() {
     void *sd = rt_savedata_new(S("test-int"));
     assert(sd != nullptr);
 
@@ -132,8 +124,7 @@ static void test_set_get_int()
     printf("  test_set_get_int: PASSED\n");
 }
 
-static void test_set_get_string()
-{
+static void test_set_get_string() {
     void *sd = rt_savedata_new(S("test-str"));
     assert(sd != nullptr);
 
@@ -158,8 +149,7 @@ static void test_set_get_string()
     printf("  test_set_get_string: PASSED\n");
 }
 
-static void test_type_mismatch_defaults()
-{
+static void test_type_mismatch_defaults() {
     void *sd = rt_savedata_new(S("test-types"));
     assert(sd != nullptr);
 
@@ -175,8 +165,7 @@ static void test_type_mismatch_defaults()
     printf("  test_type_mismatch_defaults: PASSED\n");
 }
 
-static void test_type_overwrite()
-{
+static void test_type_overwrite() {
     void *sd = rt_savedata_new(S("test-overwrite"));
     assert(sd != nullptr);
 
@@ -196,8 +185,7 @@ static void test_type_overwrite()
 // HasKey, Remove, Clear, Count
 // ============================================================================
 
-static void test_has_key()
-{
+static void test_has_key() {
     void *sd = rt_savedata_new(S("test-haskey"));
     assert(sd != nullptr);
 
@@ -210,8 +198,7 @@ static void test_has_key()
     printf("  test_has_key: PASSED\n");
 }
 
-static void test_remove()
-{
+static void test_remove() {
     void *sd = rt_savedata_new(S("test-remove"));
     assert(sd != nullptr);
 
@@ -231,8 +218,7 @@ static void test_remove()
     printf("  test_remove: PASSED\n");
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *sd = rt_savedata_new(S("test-clear"));
     assert(sd != nullptr);
 
@@ -248,8 +234,7 @@ static void test_clear()
     printf("  test_clear: PASSED\n");
 }
 
-static void test_count()
-{
+static void test_count() {
     void *sd = rt_savedata_new(S("test-count"));
     assert(sd != nullptr);
 
@@ -272,8 +257,7 @@ static void test_count()
 // Path Computation
 // ============================================================================
 
-static void test_path_contains_game_name()
-{
+static void test_path_contains_game_name() {
     void *sd = rt_savedata_new(S("mygame"));
     assert(sd != nullptr);
 
@@ -290,8 +274,7 @@ static void test_path_contains_game_name()
 // Save / Load Round-Trip
 // ============================================================================
 
-static void test_save_load_round_trip()
-{
+static void test_save_load_round_trip() {
     /* Use a PID-unique game name to avoid collisions in parallel test runs */
     char game[64];
     snprintf(game, sizeof(game), "viper-test-%d", (int)GETPID());
@@ -338,8 +321,7 @@ static void test_save_load_round_trip()
     printf("  test_save_load_round_trip: PASSED\n");
 }
 
-static void test_load_nonexistent_returns_zero()
-{
+static void test_load_nonexistent_returns_zero() {
     void *sd = rt_savedata_new(S("no-such-game-ever-9999"));
     assert(sd != nullptr);
 
@@ -349,8 +331,7 @@ static void test_load_nonexistent_returns_zero()
     printf("  test_load_nonexistent_returns_zero: PASSED\n");
 }
 
-static void test_save_overwrite()
-{
+static void test_save_overwrite() {
     char game[64];
     snprintf(game, sizeof(game), "viper-overwrite-%d", (int)GETPID());
 
@@ -385,8 +366,7 @@ static void test_save_overwrite()
 // Edge Cases
 // ============================================================================
 
-static void test_empty_key_ignored()
-{
+static void test_empty_key_ignored() {
     void *sd = rt_savedata_new(S("test-emptykey"));
     assert(sd != nullptr);
 
@@ -400,8 +380,7 @@ static void test_empty_key_ignored()
     printf("  test_empty_key_ignored: PASSED\n");
 }
 
-static void test_special_chars_in_values()
-{
+static void test_special_chars_in_values() {
     char game[64];
     snprintf(game, sizeof(game), "viper-special-%d", (int)GETPID());
 
@@ -435,8 +414,7 @@ static void test_special_chars_in_values()
     printf("  test_special_chars_in_values: PASSED\n");
 }
 
-static void test_large_int_values()
-{
+static void test_large_int_values() {
     void *sd = rt_savedata_new(S("test-large"));
     assert(sd != nullptr);
 
@@ -453,8 +431,7 @@ static void test_large_int_values()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== RTSaveDataTests ===\n\n");
 
     test_null_safety();

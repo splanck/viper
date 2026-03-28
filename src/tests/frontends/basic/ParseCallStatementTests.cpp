@@ -22,8 +22,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     const std::string src = "10 SUB GREET(N$)\n"
                             "20 PRINT \"Hi, \"; N$\n"
                             "30 END SUB\n"

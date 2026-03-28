@@ -24,8 +24,7 @@
 #include <string.h>
 
 /* T1: Window Creation – Valid Parameters */
-void test_window_valid_params(void)
-{
+void test_window_valid_params(void) {
     TEST_BEGIN("T1: Window Creation - Valid Parameters");
 
     vgfx_window_params_t params = {
@@ -48,8 +47,7 @@ void test_window_valid_params(void)
 }
 
 /* T2: Window Creation – Dimensions Exceed Max */
-void test_window_exceed_max(void)
-{
+void test_window_exceed_max(void) {
     TEST_BEGIN("T2: Window Creation - Dimensions Exceed Max");
 
     vgfx_window_params_t params = {
@@ -66,8 +64,7 @@ void test_window_exceed_max(void)
 }
 
 /* T3: Window Creation – Invalid Dimensions Use Defaults */
-void test_window_invalid_dimensions_use_defaults(void)
-{
+void test_window_invalid_dimensions_use_defaults(void) {
     TEST_BEGIN("T3: Window Creation - Invalid Dimensions Use Defaults");
 
     vgfx_window_params_t params = {
@@ -90,8 +87,7 @@ void test_window_invalid_dimensions_use_defaults(void)
 /// What: Entry point for window lifecycle tests.
 /// Why:  Validate that window create/resize/teardown flows are robust.
 /// How:  Creates a window, triggers resizes/events, then cleans up deterministically.
-int main(void)
-{
+int main(void) {
     printf("========================================\n");
     printf("ViperGFX Window Tests (T1-T3)\n");
     printf("========================================\n");

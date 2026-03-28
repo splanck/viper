@@ -16,8 +16,7 @@
 #include <algorithm>
 #include <cctype>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
@@ -31,8 +30,7 @@ using namespace runtime;
 ///          to begin emitting instructions into it.
 /// @param base Base name for the block label (e.g., "then", "else", "loop").
 /// @return Index of the newly created block.
-size_t Lowerer::createBlock(const std::string &base)
-{
+size_t Lowerer::createBlock(const std::string &base) {
     return blockMgr_.createBlock(base);
 }
 
@@ -40,8 +38,7 @@ size_t Lowerer::createBlock(const std::string &base)
 /// @details All subsequent instruction emissions will append to this block
 ///          until setBlock() is called again with a different index.
 /// @param blockIdx Index of the block to make current (from createBlock()).
-void Lowerer::setBlock(size_t blockIdx)
-{
+void Lowerer::setBlock(size_t blockIdx) {
     blockMgr_.setBlock(blockIdx);
 }
 
@@ -49,8 +46,7 @@ void Lowerer::setBlock(size_t blockIdx)
 // Instruction Emission Helpers
 //=============================================================================
 
-Lowerer::Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
-{
+Lowerer::Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs) {
     unsigned id = nextTempId();
     il::core::Instr instr;
     instr.result = id;
@@ -62,8 +58,7 @@ Lowerer::Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
     return Value::temp(id);
 }
 
-Lowerer::Value Lowerer::emitUnary(Opcode op, Type ty, Value operand)
-{
+Lowerer::Value Lowerer::emitUnary(Opcode op, Type ty, Value operand) {
     unsigned id = nextTempId();
     il::core::Instr instr;
     instr.result = id;
@@ -75,8 +70,7 @@ Lowerer::Value Lowerer::emitUnary(Opcode op, Type ty, Value operand)
     return Value::temp(id);
 }
 
-Lowerer::Value Lowerer::widenByteToInteger(Value value)
-{
+Lowerer::Value Lowerer::widenByteToInteger(Value value) {
     // Zero-extend i32 to i64 via alloca/store/load pattern
     // Store i32 value, load as i64 (upper bits will be zero due to alloca zeroing)
     unsigned slotId = nextTempId();
@@ -102,16 +96,14 @@ Lowerer::Value Lowerer::widenByteToInteger(Value value)
 /// @details These functions return pointers into existing data structures
 ///          rather than newly allocated strings. Releasing them would cause
 ///          dangling pointers in the owning collection.
-static bool isBorrowedStringCall(const std::string &callee)
-{
+static bool isBorrowedStringCall(const std::string &callee) {
     return callee == kSeqGetStr || // raw pointer into Seq
            callee == kUnboxStr;    // pointer into Box
 }
 
 Lowerer::Value Lowerer::emitCallRet(Type retTy,
                                     const std::string &callee,
-                                    const std::vector<Value> &args)
-{
+                                    const std::vector<Value> &args) {
     usedExterns_.insert(callee);
     unsigned id = nextTempId();
     il::core::Instr instr;
@@ -133,8 +125,7 @@ Lowerer::Value Lowerer::emitCallRet(Type retTy,
     return result;
 }
 
-void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args)
-{
+void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args) {
     usedExterns_.insert(callee);
     il::core::Instr instr;
     instr.op = Opcode::Call;
@@ -145,15 +136,13 @@ void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args
     blockMgr_.currentBlock()->instructions.push_back(instr);
 }
 
-void Lowerer::emitCallIndirect(Value funcPtr, const std::vector<Value> &args)
-{
+void Lowerer::emitCallIndirect(Value funcPtr, const std::vector<Value> &args) {
     il::core::Instr instr;
     instr.op = Opcode::CallIndirect;
     instr.type = Type(Type::Kind::Void);
     // For call.indirect, the function pointer is the first operand
     instr.operands.push_back(funcPtr);
-    for (const auto &arg : args)
-    {
+    for (const auto &arg : args) {
         instr.operands.push_back(arg);
     }
     instr.loc = curLoc_;
@@ -162,8 +151,7 @@ void Lowerer::emitCallIndirect(Value funcPtr, const std::vector<Value> &args)
 
 Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy,
                                             Value funcPtr,
-                                            const std::vector<Value> &args)
-{
+                                            const std::vector<Value> &args) {
     unsigned id = nextTempId();
     il::core::Instr instr;
     instr.result = id;
@@ -171,8 +159,7 @@ Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy,
     instr.type = retTy;
     // For call.indirect, the function pointer is the first operand
     instr.operands.push_back(funcPtr);
-    for (const auto &arg : args)
-    {
+    for (const auto &arg : args) {
         instr.operands.push_back(arg);
     }
     instr.loc = curLoc_;
@@ -182,23 +169,19 @@ Lowerer::Value Lowerer::emitCallIndirectRet(Type retTy,
 
 LowerResult Lowerer::emitCallWithReturn(const std::string &callee,
                                         const std::vector<Value> &args,
-                                        Type returnType)
-{
-    if (returnType.kind == Type::Kind::Void)
-    {
+                                        Type returnType) {
+    if (returnType.kind == Type::Kind::Void) {
         emitCall(callee, args);
         return {Value::constInt(0), Type(Type::Kind::Void)};
     }
     return {emitCallRet(returnType, callee, args), returnType};
 }
 
-Lowerer::Value Lowerer::emitToString(Value val, TypeRef sourceType)
-{
+Lowerer::Value Lowerer::emitToString(Value val, TypeRef sourceType) {
     if (!sourceType)
         return val;
 
-    switch (sourceType->kind)
-    {
+    switch (sourceType->kind) {
         case TypeKindSem::String:
             return val;
         case TypeKindSem::Integer:
@@ -212,8 +195,7 @@ Lowerer::Value Lowerer::emitToString(Value val, TypeRef sourceType)
     }
 }
 
-void Lowerer::emitBr(size_t targetIdx)
-{
+void Lowerer::emitBr(size_t targetIdx) {
     // Use index-based access to avoid stale pointer after vector reallocation
     il::core::Instr instr;
     instr.op = Opcode::Br;
@@ -225,8 +207,7 @@ void Lowerer::emitBr(size_t targetIdx)
     blockMgr_.currentBlock()->terminated = true;
 }
 
-void Lowerer::emitCBr(Value cond, size_t trueIdx, size_t falseIdx)
-{
+void Lowerer::emitCBr(Value cond, size_t trueIdx, size_t falseIdx) {
     // Use index-based access to avoid stale pointer after vector reallocation
     il::core::Instr instr;
     instr.op = Opcode::CBr;
@@ -241,8 +222,7 @@ void Lowerer::emitCBr(Value cond, size_t trueIdx, size_t falseIdx)
     blockMgr_.currentBlock()->terminated = true;
 }
 
-void Lowerer::emitRet(Value val)
-{
+void Lowerer::emitRet(Value val) {
     // Use index-based access to avoid stale pointer after vector reallocation
     il::core::Instr instr;
     instr.op = Opcode::Ret;
@@ -253,8 +233,7 @@ void Lowerer::emitRet(Value val)
     blockMgr_.currentBlock()->terminated = true;
 }
 
-void Lowerer::emitRetVoid()
-{
+void Lowerer::emitRetVoid() {
     // Use index-based access to avoid stale pointer after vector reallocation
     il::core::Instr instr;
     instr.op = Opcode::Ret;
@@ -264,13 +243,11 @@ void Lowerer::emitRetVoid()
     blockMgr_.currentBlock()->terminated = true;
 }
 
-Lowerer::Value Lowerer::emitConstStr(const std::string &globalName)
-{
+Lowerer::Value Lowerer::emitConstStr(const std::string &globalName) {
     return builder_->emitConstStr(globalName, curLoc_);
 }
 
-unsigned Lowerer::nextTempId()
-{
+unsigned Lowerer::nextTempId() {
     return builder_->reserveTempId();
 }
 
@@ -278,18 +255,15 @@ unsigned Lowerer::nextTempId()
 // Boxing/Unboxing Helpers
 //=============================================================================
 
-Lowerer::Value Lowerer::emitBox(Value val, Type type)
-{
-    switch (type.kind)
-    {
+Lowerer::Value Lowerer::emitBox(Value val, Type type) {
+    switch (type.kind) {
         case Type::Kind::I64:
         case Type::Kind::I32:
         case Type::Kind::I16:
             return emitCallRet(Type(Type::Kind::Ptr), kBoxI64, {val});
         case Type::Kind::F64:
             return emitCallRet(Type(Type::Kind::Ptr), kBoxF64, {val});
-        case Type::Kind::I1:
-        {
+        case Type::Kind::I1: {
             // rt_box_i1 expects i64, not i1 — zero-extend first
             Value i64Val = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), val);
             return emitCallRet(Type(Type::Kind::Ptr), kBoxI1, {i64Val});
@@ -304,15 +278,13 @@ Lowerer::Value Lowerer::emitBox(Value val, Type type)
     }
 }
 
-Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticType)
-{
+Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticType) {
     // Check if this is a value type that needs heap allocation
-    if (semanticType && semanticType->kind == TypeKindSem::Value && ilType.kind == Type::Kind::Ptr)
-    {
+    if (semanticType && semanticType->kind == TypeKindSem::Value &&
+        ilType.kind == Type::Kind::Ptr) {
         // Look up the value type info
         const ValueTypeInfo *info = getOrCreateValueTypeInfo(semanticType->name);
-        if (info && info->totalSize > 0)
-        {
+        if (info && info->totalSize > 0) {
             // Read all field values BEFORE allocating heap memory. The source
             // pointer (val) may point into a callee's C stack frame that was
             // just returned from; in native code that frame is freed on return
@@ -342,31 +314,25 @@ Lowerer::Value Lowerer::emitBoxValue(Value val, Type ilType, TypeRef semanticTyp
     return emitBox(val, ilType);
 }
 
-LowerResult Lowerer::emitUnbox(Value boxed, Type expectedType)
-{
-    switch (expectedType.kind)
-    {
+LowerResult Lowerer::emitUnbox(Value boxed, Type expectedType) {
+    switch (expectedType.kind) {
         case Type::Kind::I64:
         case Type::Kind::I32:
-        case Type::Kind::I16:
-        {
+        case Type::Kind::I16: {
             Value unboxed = emitCallRet(Type(Type::Kind::I64), kUnboxI64, {boxed});
             return {unboxed, Type(Type::Kind::I64)};
         }
-        case Type::Kind::F64:
-        {
+        case Type::Kind::F64: {
             Value unboxed = emitCallRet(Type(Type::Kind::F64), kUnboxF64, {boxed});
             return {unboxed, Type(Type::Kind::F64)};
         }
-        case Type::Kind::I1:
-        {
+        case Type::Kind::I1: {
             // The runtime function rt_unbox_i1 returns i64 (0 or 1), not i1.
             // Use I64 as the IL return type to match the runtime signature "i64(obj)".
             Value unboxed = emitCallRet(Type(Type::Kind::I64), kUnboxI1, {boxed});
             return {unboxed, Type(Type::Kind::I64)};
         }
-        case Type::Kind::Str:
-        {
+        case Type::Kind::Str: {
             Value unboxed = emitCallRet(Type(Type::Kind::Str), kUnboxStr, {boxed});
             return {unboxed, Type(Type::Kind::Str)};
         }
@@ -378,15 +344,13 @@ LowerResult Lowerer::emitUnbox(Value boxed, Type expectedType)
     }
 }
 
-LowerResult Lowerer::emitUnboxValue(Value boxed, Type ilType, TypeRef semanticType)
-{
+LowerResult Lowerer::emitUnboxValue(Value boxed, Type ilType, TypeRef semanticType) {
     // Check if this is a value type that needs copying from heap to stack
-    if (semanticType && semanticType->kind == TypeKindSem::Value && ilType.kind == Type::Kind::Ptr)
-    {
+    if (semanticType && semanticType->kind == TypeKindSem::Value &&
+        ilType.kind == Type::Kind::Ptr) {
         // Look up the value type info
         const ValueTypeInfo *info = getOrCreateValueTypeInfo(semanticType->name);
-        if (info && info->totalSize > 0)
-        {
+        if (info && info->totalSize > 0) {
             // Allocate stack memory for the copy
             Value stackCopy = emitValueTypeCopy(*info, boxed);
             return {stackCopy, Type(Type::Kind::Ptr)};
@@ -397,8 +361,7 @@ LowerResult Lowerer::emitUnboxValue(Value boxed, Type ilType, TypeRef semanticTy
     return emitUnbox(boxed, ilType);
 }
 
-Lowerer::Value Lowerer::emitOptionalWrap(Value val, TypeRef innerType)
-{
+Lowerer::Value Lowerer::emitOptionalWrap(Value val, TypeRef innerType) {
     Type ilType = mapType(innerType);
     // Object references (Ptr) are already nullable pointers — wrapping is a no-op.
     if (ilType.kind == Type::Kind::Ptr)
@@ -407,8 +370,7 @@ Lowerer::Value Lowerer::emitOptionalWrap(Value val, TypeRef innerType)
     return emitBox(val, ilType);
 }
 
-LowerResult Lowerer::emitOptionalUnwrap(Value val, TypeRef innerType)
-{
+LowerResult Lowerer::emitOptionalUnwrap(Value val, TypeRef innerType) {
     Type ilType = mapType(innerType);
     // Object references (Ptr) are already the underlying value — no unboxing needed.
     // Optional reference types use null to represent None, so the pointer IS the value.
@@ -422,8 +384,7 @@ LowerResult Lowerer::emitOptionalUnwrap(Value val, TypeRef innerType)
 // Low-Level Instruction Emission
 //=============================================================================
 
-Lowerer::Value Lowerer::emitGEP(Value ptr, int64_t offset)
-{
+Lowerer::Value Lowerer::emitGEP(Value ptr, int64_t offset) {
     unsigned gepId = nextTempId();
     il::core::Instr gepInstr;
     gepInstr.result = gepId;
@@ -435,8 +396,7 @@ Lowerer::Value Lowerer::emitGEP(Value ptr, int64_t offset)
     return Value::temp(gepId);
 }
 
-Lowerer::Value Lowerer::emitLoad(Value ptr, Type type)
-{
+Lowerer::Value Lowerer::emitLoad(Value ptr, Type type) {
     unsigned loadId = nextTempId();
     il::core::Instr loadInstr;
     loadInstr.result = loadId;
@@ -448,8 +408,7 @@ Lowerer::Value Lowerer::emitLoad(Value ptr, Type type)
     return Value::temp(loadId);
 }
 
-void Lowerer::emitStore(Value ptr, Value val, Type type)
-{
+void Lowerer::emitStore(Value ptr, Value val, Type type) {
     il::core::Instr storeInstr;
     storeInstr.op = Opcode::Store;
     storeInstr.type = type;
@@ -458,8 +417,7 @@ void Lowerer::emitStore(Value ptr, Value val, Type type)
     blockMgr_.currentBlock()->instructions.push_back(std::move(storeInstr));
 }
 
-Lowerer::Value Lowerer::emitFieldLoad(const FieldLayout *field, Value selfPtr)
-{
+Lowerer::Value Lowerer::emitFieldLoad(const FieldLayout *field, Value selfPtr) {
     Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
     // Fixed-size arrays: return the base address of the inline storage (no load).
     if (field->type && field->type->kind == TypeKindSem::FixedArray)
@@ -474,28 +432,23 @@ Lowerer::Value Lowerer::emitFieldLoad(const FieldLayout *field, Value selfPtr)
     return loaded;
 }
 
-void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val)
-{
+void Lowerer::emitFieldStore(const FieldLayout *field, Value selfPtr, Value val) {
     Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field->offset));
     Type fieldType = mapType(field->type);
     // BUG-ADV-002: Retain/release string fields on store to maintain correct
     // refcounts.  Without this, the caller's deferred release may free the
     // string while the entity still holds a pointer to it.
-    if (fieldType.kind == Type::Kind::Str)
-    {
+    if (fieldType.kind == Type::Kind::Str) {
         Value oldValue = emitLoad(fieldAddr, fieldType);
         emitCall(runtime::kStrRetainMaybe, {val});
         emitStore(fieldAddr, val, fieldType);
         emitCall(runtime::kStrReleaseMaybe, {oldValue});
-    }
-    else
-    {
+    } else {
         emitStore(fieldAddr, val, fieldType);
     }
 }
 
-Lowerer::Value Lowerer::emitValueTypeCopy(const ValueTypeInfo &info, Value sourcePtr)
-{
+Lowerer::Value Lowerer::emitValueTypeCopy(const ValueTypeInfo &info, Value sourcePtr) {
     // Allocate stack space for the copy
     unsigned allocaId = nextTempId();
     il::core::Instr allocaInstr;
@@ -510,13 +463,11 @@ Lowerer::Value Lowerer::emitValueTypeCopy(const ValueTypeInfo &info, Value sourc
     // Copy all fields from source to destination.
     // Use raw stores — the destination is freshly allocated (uninitialized),
     // so emitFieldStore's retain/release on the "old value" would read garbage.
-    for (const auto &field : info.fields)
-    {
+    for (const auto &field : info.fields) {
         Value srcValue = emitFieldLoad(&field, sourcePtr);
         Type fieldType = mapType(field.type);
         Value fieldAddr = emitGEP(destPtr, static_cast<int64_t>(field.offset));
-        if (fieldType.kind == Type::Kind::Str)
-        {
+        if (fieldType.kind == Type::Kind::Str) {
             // Retain the source string for the new copy
             emitCall(runtime::kStrRetainMaybe, {srcValue});
         }
@@ -526,8 +477,7 @@ Lowerer::Value Lowerer::emitValueTypeCopy(const ValueTypeInfo &info, Value sourc
     return destPtr;
 }
 
-Lowerer::Value Lowerer::emitValueTypeAlloc(const ValueTypeInfo &info)
-{
+Lowerer::Value Lowerer::emitValueTypeAlloc(const ValueTypeInfo &info) {
     // Allocate stack space for the value type
     unsigned allocaId = nextTempId();
     il::core::Instr allocaInstr;
@@ -540,12 +490,10 @@ Lowerer::Value Lowerer::emitValueTypeAlloc(const ValueTypeInfo &info)
     Value destPtr = Value::temp(allocaId);
 
     // Zero-initialize all fields
-    for (const auto &field : info.fields)
-    {
+    for (const auto &field : info.fields) {
         Value zeroVal;
         Type fieldType = mapType(field.type);
-        switch (fieldType.kind)
-        {
+        switch (fieldType.kind) {
             case Type::Kind::I64:
             case Type::Kind::I32:
             case Type::Kind::I16:
@@ -555,8 +503,7 @@ Lowerer::Value Lowerer::emitValueTypeAlloc(const ValueTypeInfo &info)
             case Type::Kind::F64:
                 zeroVal = Value::constFloat(0.0);
                 break;
-            case Type::Kind::Str:
-            {
+            case Type::Kind::Str: {
                 // String fields need null initialization via raw ptr store.
                 // Cannot use emitFieldStore here because it calls retain/release
                 // which require a valid str-typed value, and constStr("") points
@@ -580,18 +527,15 @@ Lowerer::Value Lowerer::emitValueTypeAlloc(const ValueTypeInfo &info)
 // Type Mapping
 //=============================================================================
 
-Lowerer::Type Lowerer::mapType(TypeRef type)
-{
+Lowerer::Type Lowerer::mapType(TypeRef type) {
     if (!type)
         return Type(Type::Kind::Void);
 
     return Type(toILType(*type));
 }
 
-TypeRef Lowerer::reverseMapType(Type ilType)
-{
-    switch (ilType.kind)
-    {
+TypeRef Lowerer::reverseMapType(Type ilType) {
+    switch (ilType.kind) {
         case Type::Kind::I64:
             return types::integer();
         case Type::Kind::F64:
@@ -618,10 +562,8 @@ TypeRef Lowerer::reverseMapType(Type ilType)
 ///          integers/floats, 4 for i32, 2 for i16, 1 for i1.
 /// @param type IL type to measure.
 /// @return Size in bytes.
-size_t Lowerer::getILTypeSize(Type type)
-{
-    switch (type.kind)
-    {
+size_t Lowerer::getILTypeSize(Type type) {
+    switch (type.kind) {
         case Type::Kind::I64:
         case Type::Kind::F64:
         case Type::Kind::Ptr:
@@ -644,12 +586,10 @@ size_t Lowerer::getILTypeSize(Type type)
 ///          misalignment when adjacent to pointer-sized fields.
 /// @param type IL type to query.
 /// @return Alignment in bytes.
-size_t Lowerer::getILTypeAlignment(Type type)
-{
+size_t Lowerer::getILTypeAlignment(Type type) {
     // All types align to their size, with a minimum of 8 for pointer-sized types
     // This matches the x86-64 SysV ABI requirements
-    switch (type.kind)
-    {
+    switch (type.kind) {
         case Type::Kind::I64:
         case Type::Kind::F64:
         case Type::Kind::Ptr:
@@ -674,8 +614,7 @@ size_t Lowerer::getILTypeAlignment(Type type)
 /// @param offset Current byte offset to align.
 /// @param alignment Required alignment (must be a power of 2).
 /// @return Smallest value >= @p offset that is a multiple of @p alignment.
-size_t Lowerer::alignTo(size_t offset, size_t alignment)
-{
+size_t Lowerer::alignTo(size_t offset, size_t alignment) {
     return il::support::alignUp(offset, alignment);
 }
 
@@ -683,20 +622,17 @@ size_t Lowerer::alignTo(size_t offset, size_t alignment)
 // Local Variable Management
 //=============================================================================
 
-void Lowerer::defineLocal(const std::string &name, Value value)
-{
+void Lowerer::defineLocal(const std::string &name, Value value) {
     locals_[name] = value;
 }
 
-Lowerer::Value *Lowerer::lookupLocal(const std::string &name)
-{
+Lowerer::Value *Lowerer::lookupLocal(const std::string &name) {
     // Check regular locals first
     auto it = locals_.find(name);
     return it != locals_.end() ? &it->second : nullptr;
 }
 
-Lowerer::Value Lowerer::createSlot(const std::string &name, Type type)
-{
+Lowerer::Value Lowerer::createSlot(const std::string &name, Type type) {
     // Allocate stack space for the variable
     unsigned allocaId = nextTempId();
     il::core::Instr allocaInstr;
@@ -712,8 +648,7 @@ Lowerer::Value Lowerer::createSlot(const std::string &name, Type type)
     return slot;
 }
 
-void Lowerer::storeToSlot(const std::string &name, Value value, Type type)
-{
+void Lowerer::storeToSlot(const std::string &name, Value value, Type type) {
     auto it = slots_.find(name);
     if (it == slots_.end())
         return;
@@ -726,8 +661,7 @@ void Lowerer::storeToSlot(const std::string &name, Value value, Type type)
     blockMgr_.currentBlock()->instructions.push_back(storeInstr);
 }
 
-Lowerer::Value Lowerer::loadFromSlot(const std::string &name, Type type)
-{
+Lowerer::Value Lowerer::loadFromSlot(const std::string &name, Type type) {
     auto it = slots_.find(name);
     if (it == slots_.end())
         return Value::constInt(0);
@@ -744,25 +678,21 @@ Lowerer::Value Lowerer::loadFromSlot(const std::string &name, Type type)
     return Value::temp(loadId);
 }
 
-void Lowerer::removeSlot(const std::string &name)
-{
+void Lowerer::removeSlot(const std::string &name) {
     slots_.erase(name);
 }
 
-bool Lowerer::getSelfPtr(Value &result)
-{
+bool Lowerer::getSelfPtr(Value &result) {
     // Check if self is stored in a slot (used in entity/value type methods)
     auto slotIt = slots_.find("self");
-    if (slotIt != slots_.end())
-    {
+    if (slotIt != slots_.end()) {
         result = loadFromSlot("self", Type(Type::Kind::Ptr));
         return true;
     }
 
     // Check if self is a regular local
     Value *local = lookupLocal("self");
-    if (local)
-    {
+    if (local) {
         result = *local;
         return true;
     }
@@ -774,25 +704,21 @@ bool Lowerer::getSelfPtr(Value &result)
 // Helper Functions
 //=============================================================================
 
-std::string Lowerer::mangleFunctionName(const std::string &name)
-{
+std::string Lowerer::mangleFunctionName(const std::string &name) {
     // Entry point is special
     if (name == "start")
         return "main";
     return name;
 }
 
-std::string Lowerer::getStringGlobal(const std::string &value)
-{
+std::string Lowerer::getStringGlobal(const std::string &value) {
     return stringTable_.intern(value);
 }
 
-bool Lowerer::equalsIgnoreCase(const std::string &a, const std::string &b)
-{
+bool Lowerer::equalsIgnoreCase(const std::string &a, const std::string &b) {
     if (a.size() != b.size())
         return false;
-    for (size_t i = 0; i < a.size(); ++i)
-    {
+    for (size_t i = 0; i < a.size(); ++i) {
         if (std::tolower(static_cast<unsigned char>(a[i])) !=
             std::tolower(static_cast<unsigned char>(b[i])))
             return false;
@@ -804,12 +730,10 @@ bool Lowerer::equalsIgnoreCase(const std::string &a, const std::string &b)
 // Deferred Release (Automatic Memory Management)
 //=============================================================================
 
-bool Lowerer::needsRelease(TypeRef type) const
-{
+bool Lowerer::needsRelease(TypeRef type) const {
     if (!type)
         return false;
-    switch (type->kind)
-    {
+    switch (type->kind) {
         case TypeKindSem::String:
         case TypeKindSem::Entity:
         case TypeKindSem::List:
@@ -824,15 +748,12 @@ bool Lowerer::needsRelease(TypeRef type) const
     }
 }
 
-bool Lowerer::isStringType(TypeRef type) const
-{
+bool Lowerer::isStringType(TypeRef type) const {
     return type && type->kind == TypeKindSem::String;
 }
 
-Lowerer::Value Lowerer::emitManagedReleaseRet(Value value, bool isString)
-{
-    if (isString)
-    {
+Lowerer::Value Lowerer::emitManagedReleaseRet(Value value, bool isString) {
+    if (isString) {
         emitCall(kStrReleaseMaybe, {value});
         return Value::constInt(0);
     }
@@ -865,26 +786,21 @@ Lowerer::Value Lowerer::emitManagedReleaseRet(Value value, bool isString)
     return emitLoad(resultSlot, Type(Type::Kind::I64));
 }
 
-void Lowerer::emitManagedRelease(Value value, bool isString)
-{
+void Lowerer::emitManagedRelease(Value value, bool isString) {
     (void)emitManagedReleaseRet(value, isString);
 }
 
-void Lowerer::deferRelease(Value v, bool isString)
-{
+void Lowerer::deferRelease(Value v, bool isString) {
     deferredTemps_.push_back({v, isString, blockMgr_.currentBlockIndex()});
 }
 
-void Lowerer::consumeDeferred(Value v)
-{
+void Lowerer::consumeDeferred(Value v) {
     if (v.kind != Value::Kind::Temp)
         return;
 
     // Remove the LAST matching entry (most recently deferred)
-    for (auto it = deferredTemps_.rbegin(); it != deferredTemps_.rend(); ++it)
-    {
-        if (it->value.kind == Value::Kind::Temp && it->value.id == v.id)
-        {
+    for (auto it = deferredTemps_.rbegin(); it != deferredTemps_.rend(); ++it) {
+        if (it->value.kind == Value::Kind::Temp && it->value.id == v.id) {
             // Convert reverse iterator to forward iterator for erase
             deferredTemps_.erase(std::next(it).base());
             return;
@@ -892,10 +808,8 @@ void Lowerer::consumeDeferred(Value v)
     }
 }
 
-void Lowerer::releaseDeferredTemps()
-{
-    if (deferredTemps_.empty() || isTerminated())
-    {
+void Lowerer::releaseDeferredTemps() {
+    if (deferredTemps_.empty() || isTerminated()) {
         deferredTemps_.clear();
         return;
     }
@@ -904,8 +818,7 @@ void Lowerer::releaseDeferredTemps()
     // Temps from other blocks cannot be referenced here without violating SSA;
     // they are dropped (accepted leak — the proper fix is spilling to alloca).
     size_t curBlock = blockMgr_.currentBlockIndex();
-    for (auto &t : deferredTemps_)
-    {
+    for (auto &t : deferredTemps_) {
         if (t.blockIdx != curBlock)
             continue;
         emitManagedRelease(t.value, t.isString);
@@ -913,20 +826,18 @@ void Lowerer::releaseDeferredTemps()
     deferredTemps_.clear();
 }
 
-void Lowerer::emitDestructorDispatch()
-{
+void Lowerer::emitDestructorDispatch() {
     std::vector<std::pair<int, std::string>> destructors;
     destructors.reserve(entityTypes_.size());
-    for (const auto &[typeName, info] : entityTypes_)
-    {
+    for (const auto &[typeName, info] : entityTypes_) {
         const std::string dtorName = typeName + ".__dtor";
         if (definedFunctions_.count(dtorName) > 0)
             destructors.emplace_back(info.classId, dtorName);
     }
 
-    std::sort(destructors.begin(),
-              destructors.end(),
-              [](const auto &lhs, const auto &rhs) { return lhs.first < rhs.first; });
+    std::sort(destructors.begin(), destructors.end(), [](const auto &lhs, const auto &rhs) {
+        return lhs.first < rhs.first;
+    });
 
     Function *savedFunc = currentFunc_;
     auto savedLocals = std::move(locals_);
@@ -954,12 +865,9 @@ void Lowerer::emitDestructorDispatch()
     setBlock(fn.blocks.size() - 1);
 
     Value selfValue = Value::temp(fn.blocks.back().params[0].id);
-    if (destructors.empty())
-    {
+    if (destructors.empty()) {
         emitRetVoid();
-    }
-    else
-    {
+    } else {
         Value classId = emitCallRet(Type(Type::Kind::I64), "rt_obj_class_id", {selfValue});
         size_t defaultIdx = createBlock("dtor_default");
         std::vector<size_t> testBlocks;
@@ -967,15 +875,13 @@ void Lowerer::emitDestructorDispatch()
         testBlocks.reserve(destructors.size());
         callBlocks.reserve(destructors.size());
 
-        for (size_t i = 0; i < destructors.size(); ++i)
-        {
+        for (size_t i = 0; i < destructors.size(); ++i) {
             testBlocks.push_back(i == 0 ? blockMgr_.currentBlockIndex()
                                         : createBlock("dtor_test_" + std::to_string(i)));
             callBlocks.push_back(createBlock("dtor_call_" + std::to_string(i)));
         }
 
-        for (size_t i = 0; i < destructors.size(); ++i)
-        {
+        for (size_t i = 0; i < destructors.size(); ++i) {
             if (i != 0)
                 setBlock(testBlocks[i]);
             Value match = emitBinary(Opcode::ICmpEq,

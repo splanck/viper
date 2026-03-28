@@ -34,56 +34,55 @@
 #pragma once
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Show a native "Open File" dialog and return the selected file path.
-    ///
-    /// @details Opens the operating system's native file-open dialog. The dialog
-    ///          blocks until the user selects a file or cancels. The returned
-    ///          string is dynamically allocated and must be freed by the caller.
-    ///
-    /// @param title          Dialog window title (e.g. "Open File").
-    /// @param initial_path   Initial directory to display (may be NULL for default).
-    /// @param filter_name    Human-readable filter label (e.g. "C Source Files").
-    /// @param filter_pattern Semicolon-separated glob patterns (e.g. "*.c;*.h").
-    /// @return Heap-allocated full file path, or NULL if the user cancelled.
-    char *vg_native_open_file(const char *title,
-                              const char *initial_path,
-                              const char *filter_name,
-                              const char *filter_pattern);
+/// @brief Show a native "Open File" dialog and return the selected file path.
+///
+/// @details Opens the operating system's native file-open dialog. The dialog
+///          blocks until the user selects a file or cancels. The returned
+///          string is dynamically allocated and must be freed by the caller.
+///
+/// @param title          Dialog window title (e.g. "Open File").
+/// @param initial_path   Initial directory to display (may be NULL for default).
+/// @param filter_name    Human-readable filter label (e.g. "C Source Files").
+/// @param filter_pattern Semicolon-separated glob patterns (e.g. "*.c;*.h").
+/// @return Heap-allocated full file path, or NULL if the user cancelled.
+char *vg_native_open_file(const char *title,
+                          const char *initial_path,
+                          const char *filter_name,
+                          const char *filter_pattern);
 
-    /// @brief Show a native "Save File" dialog and return the chosen save path.
-    ///
-    /// @details Opens the operating system's native file-save dialog with an
-    ///          optional pre-filled filename. The dialog blocks until the user
-    ///          confirms a path or cancels. The returned string is dynamically
-    ///          allocated and must be freed by the caller.
-    ///
-    /// @param title          Dialog window title (e.g. "Save As").
-    /// @param initial_path   Initial directory to display (may be NULL for default).
-    /// @param default_name   Pre-filled filename suggestion (may be NULL).
-    /// @param filter_name    Human-readable filter label.
-    /// @param filter_pattern Semicolon-separated glob patterns.
-    /// @return Heap-allocated full file path, or NULL if the user cancelled.
-    char *vg_native_save_file(const char *title,
-                              const char *initial_path,
-                              const char *default_name,
-                              const char *filter_name,
-                              const char *filter_pattern);
+/// @brief Show a native "Save File" dialog and return the chosen save path.
+///
+/// @details Opens the operating system's native file-save dialog with an
+///          optional pre-filled filename. The dialog blocks until the user
+///          confirms a path or cancels. The returned string is dynamically
+///          allocated and must be freed by the caller.
+///
+/// @param title          Dialog window title (e.g. "Save As").
+/// @param initial_path   Initial directory to display (may be NULL for default).
+/// @param default_name   Pre-filled filename suggestion (may be NULL).
+/// @param filter_name    Human-readable filter label.
+/// @param filter_pattern Semicolon-separated glob patterns.
+/// @return Heap-allocated full file path, or NULL if the user cancelled.
+char *vg_native_save_file(const char *title,
+                          const char *initial_path,
+                          const char *default_name,
+                          const char *filter_name,
+                          const char *filter_pattern);
 
-    /// @brief Show a native "Select Folder" dialog and return the chosen directory.
-    ///
-    /// @details Opens the operating system's native folder-selection dialog. The
-    ///          dialog blocks until the user selects a folder or cancels. The
-    ///          returned string is dynamically allocated and must be freed by
-    ///          the caller.
-    ///
-    /// @param title        Dialog window title (e.g. "Select Folder").
-    /// @param initial_path Initial directory to display (may be NULL for default).
-    /// @return Heap-allocated full directory path, or NULL if the user cancelled.
-    char *vg_native_select_folder(const char *title, const char *initial_path);
+/// @brief Show a native "Select Folder" dialog and return the chosen directory.
+///
+/// @details Opens the operating system's native folder-selection dialog. The
+///          dialog blocks until the user selects a folder or cancels. The
+///          returned string is dynamically allocated and must be freed by
+///          the caller.
+///
+/// @param title        Dialog window title (e.g. "Select Folder").
+/// @param initial_path Initial directory to display (may be NULL for default).
+/// @return Heap-allocated full directory path, or NULL if the user cancelled.
+char *vg_native_select_folder(const char *title, const char *initial_path);
 
 #ifdef __cplusplus
 }

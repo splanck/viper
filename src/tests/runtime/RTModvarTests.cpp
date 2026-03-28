@@ -18,8 +18,7 @@
 #include <string>
 #include <vector>
 
-int main()
-{
+int main() {
     RtContext ctx{};
     rt_context_init(&ctx);
     rt_set_current_context(&ctx);
@@ -28,8 +27,7 @@ int main()
     std::vector<int64_t *> addrs;
     addrs.reserve(kVars);
 
-    for (int i = 0; i < kVars; ++i)
-    {
+    for (int i = 0; i < kVars; ++i) {
         std::string name = "X" + std::to_string(i);
         rt_string s = rt_string_from_bytes(name.c_str(), name.size());
         assert(s != nullptr);
@@ -40,8 +38,7 @@ int main()
         rt_string_unref(s);
     }
 
-    for (int i = 0; i < kVars; i += 7)
-    {
+    for (int i = 0; i < kVars; i += 7) {
         std::string name = "X" + std::to_string(i);
         rt_string s = rt_string_from_bytes(name.c_str(), name.size());
         assert(s != nullptr);

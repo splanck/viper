@@ -53,8 +53,7 @@ RT_ARR_DEFINE_ASSERT_HEADER_FN(rt_arr_str_assert_header, RT_ELEM_STR)
 ///          the heap allocator.
 /// @param len Requested element count.
 /// @return Pointer to the array payload, or NULL when allocation fails.
-rt_string *rt_arr_str_alloc(size_t len)
-{
+rt_string *rt_arr_str_alloc(size_t len) {
     // Allocate array with RT_ELEM_STR element kind
     rt_string *arr =
         (rt_string *)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_STR, sizeof(rt_string), len, len);
@@ -68,8 +67,7 @@ rt_string *rt_arr_str_alloc(size_t len)
 ///          then releases the array allocation itself.
 /// @param arr Array payload pointer (may be NULL).
 /// @param size Number of elements in the array.
-void rt_arr_str_release(rt_string *arr, size_t size)
-{
+void rt_arr_str_release(rt_string *arr, size_t size) {
     if (!arr)
         return;
 
@@ -77,8 +75,7 @@ void rt_arr_str_release(rt_string *arr, size_t size)
     rt_arr_str_assert_header(hdr);
 
     // Release each string element
-    for (size_t i = 0; i < size; ++i)
-    {
+    for (size_t i = 0; i < size; ++i) {
         rt_str_release_maybe(arr[i]);
         arr[i] = NULL; // Clear slot after release
     }
@@ -93,8 +90,7 @@ void rt_arr_str_release(rt_string *arr, size_t size)
 /// @param arr Array payload pointer; must be non-null.
 /// @param idx Zero-based index within the array length.
 /// @return String handle at @p idx (retained for caller), or NULL if slot is empty.
-rt_string rt_arr_str_get(rt_string *arr, size_t idx)
-{
+rt_string rt_arr_str_get(rt_string *arr, size_t idx) {
     if (!arr)
         rt_trap("rt_arr_str_get: null array");
 
@@ -118,8 +114,7 @@ rt_string rt_arr_str_get(rt_string *arr, size_t idx)
 /// @param arr Array payload pointer; must be non-null.
 /// @param idx Zero-based index within the array length.
 /// @param value String handle to store (may be NULL); will be retained.
-void rt_arr_str_put(rt_string *arr, size_t idx, rt_string value)
-{
+void rt_arr_str_put(rt_string *arr, size_t idx, rt_string value) {
     if (!arr)
         rt_trap("rt_arr_str_put: null array");
 
@@ -143,8 +138,7 @@ void rt_arr_str_put(rt_string *arr, size_t idx, rt_string value)
 /// @details Returns the element count stored in the heap header.
 /// @param arr Array payload pointer.
 /// @return Number of accessible elements; 0 when @p arr is NULL.
-size_t rt_arr_str_len(rt_string *arr)
-{
+size_t rt_arr_str_len(rt_string *arr) {
     if (!arr)
         return 0;
 

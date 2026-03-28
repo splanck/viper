@@ -24,17 +24,14 @@
 
 #include <utility>
 
-namespace viper::tui::text
-{
+namespace viper::tui::text {
 /// @brief Begin a new transaction, grouping subsequent edits together.
 /// @details When a transaction is already open the call is ignored, allowing
 ///          nested begin/end pairs from higher-level code to collapse into a
 ///          single logical unit.  Starting a transaction clears any partially
 ///          recorded operations so the caller can append fresh edits.
-void EditHistory::beginTxn()
-{
-    if (in_txn_)
-    {
+void EditHistory::beginTxn() {
+    if (in_txn_) {
         return;
     }
     in_txn_ = true;
@@ -46,21 +43,16 @@ void EditHistory::beginTxn()
 ///          buffer; otherwise the recorded operations are moved into the undo
 ///          stack and the redo stack is invalidated because the edit history now
 ///          diverges from the previously undone timeline.
-void EditHistory::endTxn()
-{
-    if (!in_txn_)
-    {
+void EditHistory::endTxn() {
+    if (!in_txn_) {
         return;
     }
     in_txn_ = false;
-    if (!current_.empty())
-    {
+    if (!current_.empty()) {
         undo_stack_.push_back(std::move(current_));
         current_ = Txn{};
         redo_stack_.clear();
-    }
-    else
-    {
+    } else {
         current_.clear();
     }
 }
@@ -70,8 +62,7 @@ void EditHistory::endTxn()
 ///          text that was originally added, regardless of subsequent buffer
 ///          mutations.  The helper delegates to @ref append to handle transaction
 ///          grouping.
-void EditHistory::recordInsert(std::size_t pos, std::string text)
-{
+void EditHistory::recordInsert(std::size_t pos, std::string text) {
     append(Op{OpType::Insert, pos, std::move(text)});
 }
 
@@ -79,8 +70,7 @@ void EditHistory::recordInsert(std::size_t pos, std::string text)
 /// @details Erase operations capture the deleted text so undo can faithfully
 ///          restore it.  Like insertions, they are funnelled through @ref append
 ///          to honour the active transaction and reset the redo stack.
-void EditHistory::recordErase(std::size_t pos, std::string text)
-{
+void EditHistory::recordErase(std::size_t pos, std::string text) {
     append(Op{OpType::Erase, pos, std::move(text)});
 }
 
@@ -89,17 +79,14 @@ void EditHistory::recordErase(std::size_t pos, std::string text)
 ///          operations in reverse order via the provided callback, and pushes the
 ///          transaction onto the redo stack.  Returns @c false when no undo state
 ///          is available.
-bool EditHistory::undo(const Replay &replay)
-{
-    if (undo_stack_.empty())
-    {
+bool EditHistory::undo(const Replay &replay) {
+    if (undo_stack_.empty()) {
         return false;
     }
 
     Txn txn = std::move(undo_stack_.back());
     undo_stack_.pop_back();
-    for (auto it = txn.rbegin(); it != txn.rend(); ++it)
-    {
+    for (auto it = txn.rbegin(); it != txn.rend(); ++it) {
         replay(*it);
     }
     redo_stack_.push_back(std::move(txn));
@@ -111,17 +98,14 @@ bool EditHistory::undo(const Replay &replay)
 ///          order through @p replay, and appended back to the undo stack so the
 ///          history returns to its pre-undo state.  Returns @c false when redo is
 ///          not possible.
-bool EditHistory::redo(const Replay &replay)
-{
-    if (redo_stack_.empty())
-    {
+bool EditHistory::redo(const Replay &replay) {
+    if (redo_stack_.empty()) {
         return false;
     }
 
     Txn txn = std::move(redo_stack_.back());
     redo_stack_.pop_back();
-    for (const auto &op : txn)
-    {
+    for (const auto &op : txn) {
         replay(op);
     }
     undo_stack_.push_back(std::move(txn));
@@ -132,8 +116,7 @@ bool EditHistory::redo(const Replay &replay)
 /// @details Clears both stacks, removes any in-flight transaction data, and marks
 ///          the history as not inside a transaction.  Useful when the owning text
 ///          buffer loads new content.
-void EditHistory::clear()
-{
+void EditHistory::clear() {
     undo_stack_.clear();
     redo_stack_.clear();
     current_.clear();
@@ -146,16 +129,13 @@ void EditHistory::clear()
 ///          appended to the scratch buffer; otherwise a single-operation
 ///          transaction is pushed onto the undo stack.  Any new edit invalidates
 ///          the redo stack so redo cannot cross divergent histories.
-void EditHistory::append(Op op)
-{
-    if (op.text.empty())
-    {
+void EditHistory::append(Op op) {
+    if (op.text.empty()) {
         return;
     }
 
     redo_stack_.clear();
-    if (in_txn_)
-    {
+    if (in_txn_) {
         current_.push_back(std::move(op));
         return;
     }

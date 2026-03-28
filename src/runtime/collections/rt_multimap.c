@@ -49,16 +49,14 @@
 #define MM_LOAD_FACTOR_DEN 4
 #include "rt_hash_util.h"
 
-typedef struct rt_mm_entry
-{
+typedef struct rt_mm_entry {
     char *key;
     size_t key_len;
     void *values; // Seq of values for this key
     struct rt_mm_entry *next;
 } rt_mm_entry;
 
-typedef struct rt_multimap_impl
-{
+typedef struct rt_multimap_impl {
     void **vptr;
     rt_mm_entry **buckets;
     size_t capacity;
@@ -66,11 +64,9 @@ typedef struct rt_multimap_impl
     size_t total_count;
 } rt_multimap_impl;
 
-static const char *get_key_data(rt_string key, size_t *out_len)
-{
+static const char *get_key_data(rt_string key, size_t *out_len) {
     const char *cstr = rt_string_cstr(key);
-    if (!cstr)
-    {
+    if (!cstr) {
         *out_len = 0;
         return "";
     }
@@ -78,18 +74,15 @@ static const char *get_key_data(rt_string key, size_t *out_len)
     return cstr;
 }
 
-static rt_mm_entry *find_entry(rt_mm_entry *head, const char *key, size_t key_len)
-{
-    for (rt_mm_entry *e = head; e; e = e->next)
-    {
+static rt_mm_entry *find_entry(rt_mm_entry *head, const char *key, size_t key_len) {
+    for (rt_mm_entry *e = head; e; e = e->next) {
         if (e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
             return e;
     }
     return NULL;
 }
 
-static void free_entry(rt_mm_entry *entry)
-{
+static void free_entry(rt_mm_entry *entry) {
     if (!entry)
         return;
     free(entry->key);
@@ -98,16 +91,13 @@ static void free_entry(rt_mm_entry *entry)
     free(entry);
 }
 
-static void mm_resize(rt_multimap_impl *mm, size_t new_cap)
-{
+static void mm_resize(rt_multimap_impl *mm, size_t new_cap) {
     rt_mm_entry **new_buckets = (rt_mm_entry **)calloc(new_cap, sizeof(rt_mm_entry *));
     if (!new_buckets)
         return;
-    for (size_t i = 0; i < mm->capacity; ++i)
-    {
+    for (size_t i = 0; i < mm->capacity; ++i) {
         rt_mm_entry *e = mm->buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_mm_entry *next = e->next;
             uint64_t h = rt_fnv1a(e->key, e->key_len);
             size_t idx = h % new_cap;
@@ -121,18 +111,15 @@ static void mm_resize(rt_multimap_impl *mm, size_t new_cap)
     mm->capacity = new_cap;
 }
 
-static void maybe_resize(rt_multimap_impl *mm)
-{
-    if (mm->key_count * MM_LOAD_FACTOR_DEN > mm->capacity * MM_LOAD_FACTOR_NUM)
-    {
+static void maybe_resize(rt_multimap_impl *mm) {
+    if (mm->key_count * MM_LOAD_FACTOR_DEN > mm->capacity * MM_LOAD_FACTOR_NUM) {
         if (mm->capacity > SIZE_MAX / 2)
             return;
         mm_resize(mm, mm->capacity * 2);
     }
 }
 
-static void rt_multimap_finalize(void *obj)
-{
+static void rt_multimap_finalize(void *obj) {
     if (!obj)
         return;
     rt_multimap_impl *mm = (rt_multimap_impl *)obj;
@@ -144,15 +131,13 @@ static void rt_multimap_finalize(void *obj)
     mm->capacity = 0;
 }
 
-void *rt_multimap_new(void)
-{
+void *rt_multimap_new(void) {
     rt_multimap_impl *mm = (rt_multimap_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multimap_impl));
     if (!mm)
         return NULL;
     mm->vptr = NULL;
     mm->buckets = (rt_mm_entry **)calloc(MM_INITIAL_CAPACITY, sizeof(rt_mm_entry *));
-    if (!mm->buckets)
-    {
+    if (!mm->buckets) {
         mm->capacity = 0;
         mm->key_count = 0;
         mm->total_count = 0;
@@ -169,8 +154,7 @@ void *rt_multimap_new(void)
 /// @brief Perform multimap len operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_multimap_len(void *obj)
-{
+int64_t rt_multimap_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_multimap_impl *)obj)->total_count;
@@ -179,8 +163,7 @@ int64_t rt_multimap_len(void *obj)
 /// @brief Perform multimap key count operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_multimap_key_count(void *obj)
-{
+int64_t rt_multimap_key_count(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_multimap_impl *)obj)->key_count;
@@ -189,8 +172,7 @@ int64_t rt_multimap_key_count(void *obj)
 /// @brief Perform multimap is empty operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_multimap_is_empty(void *obj)
-{
+int8_t rt_multimap_is_empty(void *obj) {
     return rt_multimap_len(obj) == 0;
 }
 
@@ -198,8 +180,7 @@ int8_t rt_multimap_is_empty(void *obj)
 /// @param obj
 /// @param key
 /// @param value
-void rt_multimap_put(void *obj, rt_string key, void *value)
-{
+void rt_multimap_put(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
     rt_multimap_impl *mm = (rt_multimap_impl *)obj;
@@ -212,8 +193,7 @@ void rt_multimap_put(void *obj, rt_string key, void *value)
     size_t idx = hash % mm->capacity;
 
     rt_mm_entry *existing = find_entry(mm->buckets[idx], key_data, key_len);
-    if (existing)
-    {
+    if (existing) {
         rt_seq_push(existing->values, value);
         mm->total_count++;
         return;
@@ -224,8 +204,7 @@ void rt_multimap_put(void *obj, rt_string key, void *value)
     if (!entry)
         return;
     entry->key = (char *)malloc(key_len + 1);
-    if (!entry->key)
-    {
+    if (!entry->key) {
         free(entry);
         return;
     }
@@ -244,8 +223,7 @@ void rt_multimap_put(void *obj, rt_string key, void *value)
     maybe_resize(mm);
 }
 
-void *rt_multimap_get(void *obj, rt_string key)
-{
+void *rt_multimap_get(void *obj, rt_string key) {
     if (!obj)
         return rt_seq_new();
     rt_multimap_impl *mm = (rt_multimap_impl *)obj;
@@ -269,8 +247,7 @@ void *rt_multimap_get(void *obj, rt_string key)
     return result;
 }
 
-void *rt_multimap_get_first(void *obj, rt_string key)
-{
+void *rt_multimap_get_first(void *obj, rt_string key) {
     if (!obj)
         return NULL;
     rt_multimap_impl *mm = (rt_multimap_impl *)obj;
@@ -292,8 +269,7 @@ void *rt_multimap_get_first(void *obj, rt_string key)
 /// @param obj
 /// @param key
 /// @return Result value.
-int8_t rt_multimap_has(void *obj, rt_string key)
-{
+int8_t rt_multimap_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
     rt_multimap_impl *mm = (rt_multimap_impl *)obj;
@@ -311,8 +287,7 @@ int8_t rt_multimap_has(void *obj, rt_string key)
 /// @param obj
 /// @param key
 /// @return Result value.
-int64_t rt_multimap_count_for(void *obj, rt_string key)
-{
+int64_t rt_multimap_count_for(void *obj, rt_string key) {
     if (!obj)
         return 0;
     rt_multimap_impl *mm = (rt_multimap_impl *)obj;
@@ -332,8 +307,7 @@ int64_t rt_multimap_count_for(void *obj, rt_string key)
 /// @param obj
 /// @param key
 /// @return Result value.
-int8_t rt_multimap_remove_all(void *obj, rt_string key)
-{
+int8_t rt_multimap_remove_all(void *obj, rt_string key) {
     if (!obj)
         return 0;
     rt_multimap_impl *mm = (rt_multimap_impl *)obj;
@@ -347,10 +321,8 @@ int8_t rt_multimap_remove_all(void *obj, rt_string key)
 
     rt_mm_entry **prev_ptr = &mm->buckets[idx];
     rt_mm_entry *entry = mm->buckets[idx];
-    while (entry)
-    {
-        if (entry->key_len == key_len && memcmp(entry->key, key_data, key_len) == 0)
-        {
+    while (entry) {
+        if (entry->key_len == key_len && memcmp(entry->key, key_data, key_len) == 0) {
             *prev_ptr = entry->next;
             mm->total_count -= (size_t)rt_seq_len(entry->values);
             mm->key_count--;
@@ -365,16 +337,13 @@ int8_t rt_multimap_remove_all(void *obj, rt_string key)
 
 /// @brief Perform multimap clear operation.
 /// @param obj
-void rt_multimap_clear(void *obj)
-{
+void rt_multimap_clear(void *obj) {
     if (!obj)
         return;
     rt_multimap_impl *mm = (rt_multimap_impl *)obj;
-    for (size_t i = 0; i < mm->capacity; ++i)
-    {
+    for (size_t i = 0; i < mm->capacity; ++i) {
         rt_mm_entry *entry = mm->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_mm_entry *next = entry->next;
             free_entry(entry);
             entry = next;
@@ -385,17 +354,14 @@ void rt_multimap_clear(void *obj)
     mm->total_count = 0;
 }
 
-void *rt_multimap_keys(void *obj)
-{
+void *rt_multimap_keys(void *obj) {
     void *result = rt_seq_new();
     rt_seq_set_owns_elements(result, 1);
     if (!obj)
         return result;
     rt_multimap_impl *mm = (rt_multimap_impl *)obj;
-    for (size_t i = 0; i < mm->capacity; ++i)
-    {
-        for (rt_mm_entry *e = mm->buckets[i]; e; e = e->next)
-        {
+    for (size_t i = 0; i < mm->capacity; ++i) {
+        for (rt_mm_entry *e = mm->buckets[i]; e; e = e->next) {
             rt_string ks = rt_string_from_bytes(e->key, e->key_len);
             rt_seq_push(result, (void *)ks);
             rt_str_release_maybe(ks);

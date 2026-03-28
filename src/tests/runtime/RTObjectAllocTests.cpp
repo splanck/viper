@@ -19,8 +19,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-int main()
-{
+int main() {
     const size_t payload_size = 32;
     uint8_t *payload = (uint8_t *)rt_obj_new_i64(42, (int64_t)payload_size);
     assert(payload != NULL);

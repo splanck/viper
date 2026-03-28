@@ -21,8 +21,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     // NEW without arguments produces NewExpr with empty arg list.
     {
         std::string src = "10 LET O = NEW Foo()\n20 END\n";

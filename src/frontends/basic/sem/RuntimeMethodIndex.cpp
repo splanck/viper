@@ -46,8 +46,7 @@
 #include "frontends/basic/sem/RuntimeMethodIndex.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 //===----------------------------------------------------------------------===//
 // Type Conversion
@@ -71,10 +70,8 @@ namespace il::frontends::basic
 /// @note The compiler will warn if new ILScalarType values are added
 ///       but not handled here, ensuring the mapping stays complete.
 ///
-BasicType toBasicType(il::runtime::ILScalarType t)
-{
-    switch (t)
-    {
+BasicType toBasicType(il::runtime::ILScalarType t) {
+    switch (t) {
         case il::runtime::ILScalarType::I64:
             // BASIC uses "Int" terminology for integers
             return BasicType::Int;
@@ -120,8 +117,7 @@ BasicType toBasicType(il::runtime::ILScalarType t)
 /// The method is retained for backward compatibility with existing code
 /// that calls seed() during initialization.
 ///
-void RuntimeMethodIndex::seed()
-{
+void RuntimeMethodIndex::seed() {
     // No-op: RuntimeRegistry handles all indexing at the IL layer.
     // This method is kept for API compatibility.
 }
@@ -142,8 +138,7 @@ void RuntimeMethodIndex::seed()
 ///
 std::optional<RuntimeMethodInfo> RuntimeMethodIndex::find(std::string_view classQName,
                                                           std::string_view method,
-                                                          std::size_t arity) const
-{
+                                                          std::size_t arity) const {
     // Delegate to the IL-layer RuntimeRegistry
     const auto &registry = il::runtime::RuntimeRegistry::instance();
     auto parsed = registry.findMethod(classQName, method, arity);
@@ -159,8 +154,7 @@ std::optional<RuntimeMethodInfo> RuntimeMethodIndex::find(std::string_view class
     // Others are raw tags (e.g., "ResultOk") that don't match any descriptor.
     // For raw tags, construct the qualified name as classQName.methodName.
     info.target = parsed->target ? parsed->target : "";
-    if (!info.target.empty() && !il::runtime::findRuntimeDescriptor(info.target))
-    {
+    if (!info.target.empty() && !il::runtime::findRuntimeDescriptor(info.target)) {
         std::string qualifiedTarget = std::string(classQName) + "." + std::string(method);
         if (il::runtime::findRuntimeDescriptor(qualifiedTarget))
             info.target = qualifiedTarget;
@@ -184,8 +178,7 @@ std::optional<RuntimeMethodInfo> RuntimeMethodIndex::find(std::string_view class
 /// the user what arities are available.
 ///
 std::vector<std::string> RuntimeMethodIndex::candidates(std::string_view classQName,
-                                                        std::string_view method) const
-{
+                                                        std::string_view method) const {
     const auto &registry = il::runtime::RuntimeRegistry::instance();
     return registry.methodCandidates(classQName, method);
 }
@@ -204,8 +197,7 @@ std::vector<std::string> RuntimeMethodIndex::candidates(std::string_view classQN
 /// to RuntimeRegistry), this is essentially just providing a consistent
 /// access point for the API.
 ///
-RuntimeMethodIndex &runtimeMethodIndex()
-{
+RuntimeMethodIndex &runtimeMethodIndex() {
     static RuntimeMethodIndex idx;
     return idx;
 }

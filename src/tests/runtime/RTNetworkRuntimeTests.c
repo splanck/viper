@@ -20,11 +20,9 @@ static int tests_run = 0;
 static int tests_failed = 0;
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+        if (!(cond)) {                                                                             \
             tests_failed++;                                                                        \
             fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                        \
         }                                                                                          \
@@ -50,8 +48,7 @@ extern int rt_ws_parse_url_for_test(
 extern int rt_ws_validate_handshake_response_for_test(const char *response, const char *key_copy);
 extern char *rt_ws_compute_accept_key(const char *key_cstr);
 
-static void test_http_server_parses_exact_body(void)
-{
+static void test_http_server_parses_exact_body(void) {
     const char raw[] = "POST /submit?q=1 HTTP/1.1\r\n"
                        "Host: example.test\r\n"
                        "Content-Length: 5\r\n"
@@ -74,16 +71,14 @@ static void test_http_server_parses_exact_body(void)
     free(body);
 }
 
-static void test_http_server_rejects_invalid_content_length(void)
-{
+static void test_http_server_rejects_invalid_content_length(void) {
     const char raw[] = "POST /x HTTP/1.1\r\n"
                        "Content-Length: -1\r\n"
                        "\r\n";
     ASSERT(rt_http_server_test_parse_request(raw, strlen(raw), NULL, NULL, NULL, NULL) == 0);
 }
 
-static void test_http_server_rejects_truncated_body(void)
-{
+static void test_http_server_rejects_truncated_body(void) {
     const char raw[] = "POST /x HTTP/1.1\r\n"
                        "Content-Length: 5\r\n"
                        "\r\n"
@@ -91,12 +86,8 @@ static void test_http_server_rejects_truncated_body(void)
     ASSERT(rt_http_server_test_parse_request(raw, strlen(raw), NULL, NULL, NULL, NULL) == 0);
 }
 
-static void test_http_server_builds_large_header_block(void)
-{
-    enum
-    {
-        header_count = 40
-    };
+static void test_http_server_builds_large_header_block(void) {
+    enum { header_count = 40 };
 
     const char *body = "{\"ok\":true}";
     const char *header_names[header_count];
@@ -104,8 +95,7 @@ static void test_http_server_builds_large_header_block(void)
     char name_storage[header_count][24];
     char value_storage[header_count][40];
 
-    for (int i = 0; i < header_count; i++)
-    {
+    for (int i = 0; i < header_count; i++) {
         snprintf(name_storage[i], sizeof(name_storage[i]), "X-Test-%02d", i);
         snprintf(value_storage[i], sizeof(value_storage[i]), "value-%02d-abcdefghijklmnop", i);
         header_names[i] = name_storage[i];
@@ -116,8 +106,7 @@ static void test_http_server_builds_large_header_block(void)
     char *resp = rt_http_server_test_build_response(
         200, body, strlen(body), header_names, header_values, header_count, &resp_len);
     ASSERT(resp != NULL);
-    if (resp)
-    {
+    if (resp) {
         ASSERT(resp_len > strlen(body));
         ASSERT(strstr(resp, "X-Test-39: value-39-abcdefghijklmnop\r\n") != NULL);
         ASSERT(strstr(resp, "Content-Length: 11\r\n") != NULL);
@@ -127,8 +116,7 @@ static void test_http_server_builds_large_header_block(void)
     free(resp);
 }
 
-static void test_http_parse_url_accepts_ipv6_literal(void)
-{
+static void test_http_parse_url_accepts_ipv6_literal(void) {
     char *host = NULL;
     char *path = NULL;
     int port = 0;
@@ -145,8 +133,7 @@ static void test_http_parse_url_accepts_ipv6_literal(void)
     free(path);
 }
 
-static void test_ws_parse_url_accepts_ipv6_literal(void)
-{
+static void test_ws_parse_url_accepts_ipv6_literal(void) {
     int secure = 0;
     int port = 0;
     char *host = NULL;
@@ -162,8 +149,7 @@ static void test_ws_parse_url_accepts_ipv6_literal(void)
     free(path);
 }
 
-static void test_ws_handshake_validation_accepts_valid_response(void)
-{
+static void test_ws_handshake_validation_accepts_valid_response(void) {
     static const char key[] = "dGhlIHNhbXBsZSBub25jZQ==";
     char *accept = rt_ws_compute_accept_key(key);
     ASSERT(accept != NULL);
@@ -184,8 +170,7 @@ static void test_ws_handshake_validation_accepts_valid_response(void)
     free(accept);
 }
 
-static void test_ws_handshake_validation_rejects_spurious_101(void)
-{
+static void test_ws_handshake_validation_rejects_spurious_101(void) {
     static const char key[] = "dGhlIHNhbXBsZSBub25jZQ==";
     char *accept = rt_ws_compute_accept_key(key);
     ASSERT(accept != NULL);
@@ -207,8 +192,7 @@ static void test_ws_handshake_validation_rejects_spurious_101(void)
     free(accept);
 }
 
-int main(void)
-{
+int main(void) {
     test_http_server_parses_exact_body();
     test_http_server_rejects_invalid_content_length();
     test_http_server_rejects_truncated_body();

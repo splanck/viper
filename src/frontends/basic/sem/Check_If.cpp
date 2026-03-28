@@ -34,10 +34,8 @@
 
 #include <string>
 
-namespace il::frontends::basic::sem
-{
-namespace
-{
+namespace il::frontends::basic::sem {
+namespace {
 /// @brief Analyse a branch arm (THEN/ELSEIF/ELSE) while maintaining scope.
 ///
 /// The helper opens a new lexical scope for the branch and recursively visits
@@ -48,16 +46,13 @@ namespace
 ///
 /// @param context Control-flow checking context that tracks scopes and loops.
 /// @param branch Pointer to the branch AST node (may be null or a statement list).
-void analyzeBranch(ControlCheckContext &context, const StmtPtr &branch)
-{
+void analyzeBranch(ControlCheckContext &context, const StmtPtr &branch) {
     if (!branch)
         return;
 
     auto scope = context.pushScope();
-    if (const auto *list = as<const StmtList>(*branch))
-    {
-        for (const auto &child : list->stmts)
-        {
+    if (const auto *list = as<const StmtList>(*branch)) {
+        for (const auto &child : list->stmts) {
             if (!child)
                 continue;
             context.visitStmt(*child);
@@ -78,8 +73,7 @@ void analyzeBranch(ControlCheckContext &context, const StmtPtr &branch)
 ///
 /// @param analyzer Semantic analyzer coordinating validation.
 /// @param expr Expression node forming the condition.
-void checkConditionExpr(SemanticAnalyzer &analyzer, Expr &expr)
-{
+void checkConditionExpr(SemanticAnalyzer &analyzer, Expr &expr) {
     ControlCheckContext context(analyzer);
     const auto condTy = context.evaluateExpr(expr);
     using Type = SemanticAnalyzer::Type;
@@ -110,8 +104,7 @@ void checkConditionExpr(SemanticAnalyzer &analyzer, Expr &expr)
 ///
 /// @param analyzer Semantic analyzer coordinating validation.
 /// @param stmt IF statement AST node to analyse.
-void analyzeIf(SemanticAnalyzer &analyzer, const IfStmt &stmt)
-{
+void analyzeIf(SemanticAnalyzer &analyzer, const IfStmt &stmt) {
     ControlCheckContext context(analyzer);
 
     if (stmt.cond)
@@ -119,8 +112,7 @@ void analyzeIf(SemanticAnalyzer &analyzer, const IfStmt &stmt)
 
     analyzeBranch(context, stmt.then_branch);
 
-    for (const auto &elseifArm : stmt.elseifs)
-    {
+    for (const auto &elseifArm : stmt.elseifs) {
         if (elseifArm.cond)
             checkConditionExpr(context.analyzer(), *elseifArm.cond);
         analyzeBranch(context, elseifArm.then_branch);

@@ -42,11 +42,9 @@
 #include <utility>
 #include <vector>
 
-namespace il::io::detail
-{
+namespace il::io::detail {
 
-namespace
-{
+namespace {
 
 using il::core::Type;
 using il::support::Expected;
@@ -61,45 +59,36 @@ using viper::parse::SourcePos;
 /// the syntax omits required punctuation such as the `->` arrow, the helper
 /// returns a diagnostic describing the missing token.  Successful parses append
 /// the signature to @c ParserState::m.externs.
-Expected<void> parseExtern_E(const std::string &line, ParserState &st)
-{
+Expected<void> parseExtern_E(const std::string &line, ParserState &st) {
     size_t at = line.find('@');
-    if (at == std::string::npos)
-    {
+    if (at == std::string::npos) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing '@'")};
     }
     size_t lp = line.find('(', at);
-    if (lp == std::string::npos)
-    {
+    if (lp == std::string::npos) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing '('")};
     }
     size_t rp = line.find(')', lp);
-    if (rp == std::string::npos)
-    {
+    if (rp == std::string::npos) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing ')'")};
     }
     size_t arr = line.find("->", rp);
-    if (arr == std::string::npos)
-    {
+    if (arr == std::string::npos) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing '->'")};
     }
     std::string name = trim(line.substr(at + 1, lp - at - 1));
-    if (name.empty())
-    {
+    if (name.empty()) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing extern name")};
     }
     std::string paramsStr = line.substr(lp + 1, rp - lp - 1);
     std::vector<Type> params;
     std::string trimmedParams = trim(paramsStr);
-    if (!trimmedParams.empty())
-    {
+    if (!trimmedParams.empty()) {
         std::stringstream pss(paramsStr);
         std::string rawParam;
-        while (std::getline(pss, rawParam, ','))
-        {
+        while (std::getline(pss, rawParam, ',')) {
             std::string trimmed = trim(rawParam);
-            if (trimmed.empty())
-            {
+            if (trimmed.empty()) {
                 std::ostringstream oss;
                 oss << "malformed extern parameter";
                 if (!rawParam.empty())
@@ -111,8 +100,7 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
             }
             bool ok = true;
             Type ty = parseType(trimmed, &ok);
-            if (!ok)
-            {
+            if (!ok) {
                 std::ostringstream oss;
                 oss << "unknown type '" << trimmed << "'";
                 return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
@@ -123,8 +111,7 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
     std::string retStr = trim(line.substr(arr + 2));
     bool retOk = true;
     Type retTy = parseType(retStr, &retOk);
-    if (!retOk)
-    {
+    if (!retOk) {
         std::ostringstream oss;
         oss << "unknown type '" << retStr << "'";
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
@@ -132,8 +119,7 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
     auto hasDuplicate = std::any_of(st.m.externs.begin(),
                                     st.m.externs.end(),
                                     [&](const il::core::Extern &ext) { return ext.name == name; });
-    if (hasDuplicate)
-    {
+    if (hasDuplicate) {
         std::ostringstream oss;
         oss << "duplicate extern '" << name << "'";
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
@@ -150,11 +136,9 @@ Expected<void> parseExtern_E(const std::string &line, ParserState &st)
 /// decoding escape sequences with @ref il::io::decodeEscapedString.  Missing
 /// delimiters or invalid escapes produce diagnostics; otherwise a UTF-8 string
 /// global is appended to @c ParserState::m.globals.
-Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
-{
+Expected<void> parseGlobal_E(const std::string &line, ParserState &st) {
     size_t at = line.find('@');
-    if (at == std::string::npos)
-    {
+    if (at == std::string::npos) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing '@'")};
     }
 
@@ -163,67 +147,56 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
     std::istringstream qss(qualifiers);
     std::vector<std::string> tokens;
     std::string token;
-    while (qss >> token)
-    {
+    while (qss >> token) {
         tokens.push_back(token);
     }
 
     // Parse optional linkage keyword (export/import) before "const".
     il::core::Linkage globalLinkage = il::core::Linkage::Internal;
-    if (!tokens.empty() && (tokens.front() == "export" || tokens.front() == "import"))
-    {
+    if (!tokens.empty() && (tokens.front() == "export" || tokens.front() == "import")) {
         globalLinkage =
             (tokens.front() == "export") ? il::core::Linkage::Export : il::core::Linkage::Import;
         tokens.erase(tokens.begin());
     }
 
-    if (!tokens.empty() && tokens.front() == "const")
-    {
+    if (!tokens.empty() && tokens.front() == "const") {
         tokens.erase(tokens.begin());
-        if (tokens.empty())
-        {
+        if (tokens.empty()) {
             return Expected<void>{
                 il::io::makeLineErrorDiag({}, st.lineNo, "missing global type after 'const'")};
         }
     }
 
-    if (tokens.empty())
-    {
+    if (tokens.empty()) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing global type")};
     }
 
-    if (tokens.size() != 1)
-    {
+    if (tokens.size() != 1) {
         return Expected<void>{
             il::io::makeLineErrorDiag({}, st.lineNo, "unexpected tokens before '@'")};
     }
 
     const std::string &typeToken = tokens.front();
-    if (typeToken != "str")
-    {
+    if (typeToken != "str") {
         std::ostringstream oss;
         oss << "unsupported global type '" << typeToken << "' (expected 'str')";
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, oss.str())};
     }
 
     size_t eq = line.find('=', at);
-    if (eq == std::string::npos)
-    {
+    if (eq == std::string::npos) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing '='")};
     }
     size_t q1 = line.find('"', eq);
-    if (q1 == std::string::npos)
-    {
+    if (q1 == std::string::npos) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing opening '\"'")};
     }
     size_t q2 = line.rfind('"');
-    if (q2 == std::string::npos || q2 <= q1)
-    {
+    if (q2 == std::string::npos || q2 <= q1) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing closing '\"'")};
     }
     std::string name = trim(line.substr(at + 1, eq - at - 1));
-    if (name.empty())
-    {
+    if (name.empty()) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, "missing global name")};
     }
     std::string init = line.substr(q1 + 1, q2 - q1 - 1);
@@ -231,15 +204,13 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
     auto trailingEnd = line.end();
     auto nonWs = std::find_if(
         trailingBegin, trailingEnd, [](unsigned char ch) { return !std::isspace(ch); });
-    if (nonWs != trailingEnd)
-    {
+    if (nonWs != trailingEnd) {
         return Expected<void>{
             il::io::makeLineErrorDiag({}, st.lineNo, "unexpected characters after closing '\"'")};
     }
     std::string decoded;
     std::string errMsg;
-    if (!il::io::decodeEscapedString(init, decoded, &errMsg))
-    {
+    if (!il::io::decodeEscapedString(init, decoded, &errMsg)) {
         return Expected<void>{il::io::makeLineErrorDiag({}, st.lineNo, errMsg)};
     }
     st.m.globals.push_back({name, Type(Type::Kind::Str), decoded, globalLinkage});
@@ -260,12 +231,9 @@ Expected<void> parseGlobal_E(const std::string &line, ParserState &st)
 ///          When a directive is malformed or appears out of order, a diagnostic
 ///          containing the current line number is returned so the caller can
 ///          surface precise feedback to the user.
-Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserState &st)
-{
-    if (line.rfind("il", 0) == 0)
-    {
-        if (st.sawVersion)
-        {
+Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserState &st) {
+    if (line.rfind("il", 0) == 0) {
+        if (st.sawVersion) {
             return Expected<void>{
                 il::io::makeLineErrorDiag({}, st.lineNo, "duplicate 'il' version directive")};
         }
@@ -273,38 +241,31 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
         std::string kw;
         ls >> kw;
         std::string ver;
-        if (ls >> ver)
-        {
+        if (ls >> ver) {
             st.m.version = ver;
-        }
-        else
-        {
+        } else {
             return Expected<void>{
                 il::io::makeLineErrorDiag({}, st.lineNo, "missing version after 'il' directive")};
         }
         st.sawVersion = true;
         return {};
     }
-    if (!st.sawVersion)
-    {
+    if (!st.sawVersion) {
         return Expected<void>{
             il::io::makeLineErrorDiag({}, st.lineNo, "missing 'il' version directive")};
     }
-    if (line.rfind("target", 0) == 0)
-    {
+    if (line.rfind("target", 0) == 0) {
         std::istringstream ls(line);
         std::string kw;
         ls >> kw;
         ls >> std::ws;
-        if (ls.peek() != '"')
-        {
+        if (ls.peek() != '"') {
             return Expected<void>{
                 il::io::makeLineErrorDiag({}, st.lineNo, "missing quoted target triple")};
         }
 
         std::string triple;
-        if (ls >> std::quoted(triple))
-        {
+        if (ls >> std::quoted(triple)) {
             st.m.target = triple;
             return {};
         }
@@ -312,8 +273,7 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
         return Expected<void>{
             il::io::makeLineErrorDiag({}, st.lineNo, "missing quoted target triple")};
     }
-    if (line.rfind("extern", 0) == 0)
-    {
+    if (line.rfind("extern", 0) == 0) {
         constexpr size_t kExternKeywordLen = 6;
         if (line.size() == kExternKeywordLen)
             return parseExtern_E(line, st);
@@ -321,15 +281,13 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
         if (!std::isalnum(next) && next != '_')
             return parseExtern_E(line, st);
     }
-    if (line.rfind("global", 0) == 0)
-    {
+    if (line.rfind("global", 0) == 0) {
         const bool atEnd = line.size() == 6;
         const bool hasWhitespace = !atEnd && std::isspace(static_cast<unsigned char>(line[6]));
         if (atEnd || hasWhitespace)
             return parseGlobal_E(line, st);
     }
-    if (line.rfind("func", 0) == 0)
-    {
+    if (line.rfind("func", 0) == 0) {
         Cursor cursor{line, SourcePos{st.lineNo, 0}};
         if (cursor.consumeKeyword("func"))
             return parseFunction(is, line, st);
@@ -352,11 +310,9 @@ Expected<void> parseModuleHeader_E(std::istream &is, std::string &line, ParserSt
 /// @param st Parser state accumulating module contents.
 /// @param err Output stream receiving diagnostic text when parsing fails.
 /// @return @c true on success, @c false when a diagnostic was emitted.
-bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std::ostream &err)
-{
+bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std::ostream &err) {
     auto result = parseModuleHeader_E(is, line, st);
-    if (!result)
-    {
+    if (!result) {
         il::support::printDiag(result.error(), err);
         return false;
     }

@@ -31,8 +31,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::x64::lowering
-{
+namespace viper::codegen::x64::lowering {
 
 /// @brief Lower an IL call instruction into the backend call plan.
 /// @details Builds a @ref CallLoweringPlan by classifying the callee operand,
@@ -43,10 +42,8 @@ namespace viper::codegen::x64::lowering
 ///          IR so scheduling and register allocation see the pending call.
 /// @param instr High-level IL instruction describing the call.
 /// @param builder MIR construction context that owns register state.
-void emitCall(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.ops.empty())
-    {
+void emitCall(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.ops.empty()) {
         phaseAUnsupported("call: missing callee");
     }
 
@@ -57,32 +54,24 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
     // Query the runtime signature registry to determine if the callee uses
     // C-style variadic arguments. The utility consults registered signatures
     // first, then falls back to a curated list of known vararg C functions.
-    if (!plan.calleeLabel.empty())
-    {
+    if (!plan.calleeLabel.empty()) {
         plan.isVarArg = il::runtime::isVarArgCallee(plan.calleeLabel);
     }
 
-    for (std::size_t idx = 1; idx < instr.ops.size(); ++idx)
-    {
+    for (std::size_t idx = 1; idx < instr.ops.size(); ++idx) {
         const auto &argVal = instr.ops[idx];
         CallArg arg{};
         arg.kind = builder.regClassFor(argVal.kind) == RegClass::GPR ? CallArg::GPR : CallArg::XMM;
 
-        if (builder.isImmediate(argVal))
-        {
+        if (builder.isImmediate(argVal)) {
             arg.isImm = true;
             arg.imm = argVal.i64;
-        }
-        else
-        {
+        } else {
             const Operand operand =
                 builder.makeOperandForValue(argVal, builder.regClassFor(argVal.kind));
-            if (const auto *reg = std::get_if<OpReg>(&operand))
-            {
+            if (const auto *reg = std::get_if<OpReg>(&operand)) {
                 arg.vreg = reg->idOrPhys;
-            }
-            else if (const auto *imm = std::get_if<OpImm>(&operand))
-            {
+            } else if (const auto *imm = std::get_if<OpImm>(&operand)) {
                 arg.isImm = true;
                 arg.imm = imm->val;
             }
@@ -93,11 +82,9 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
 
     VReg resultVReg{};
     bool hasResult = (instr.resultId >= 0);
-    if (hasResult)
-    {
+    if (hasResult) {
         resultVReg = builder.ensureVReg(instr.resultId, instr.resultKind);
-        if (instr.resultKind == ILValue::Kind::F64)
-        {
+        if (instr.resultKind == ILValue::Kind::F64) {
             plan.returnsF64 = true;
         }
     }
@@ -107,26 +94,20 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
         MInstr::make(MOpcode::CALL, std::vector<Operand>{builder.makeLabelOperand(instr.ops[0])}));
 
     // Emit MOV to capture return value from ABI return register to result virtual register
-    if (hasResult)
-    {
+    if (hasResult) {
         const Operand resultOp = makeVRegOperand(resultVReg.cls, resultVReg.id);
-        if (instr.resultKind == ILValue::Kind::F64)
-        {
+        if (instr.resultKind == ILValue::Kind::F64) {
             // Float return in XMM0
             const Operand retReg = makePhysRegOperand(
                 RegClass::XMM, static_cast<uint16_t>(builder.target().f64ReturnReg));
             builder.append(MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
-        }
-        else if (instr.resultKind == ILValue::Kind::I1)
-        {
+        } else if (instr.resultKind == ILValue::Kind::I1) {
             // Boolean return in RAX — zero-extend from low byte to clear garbage upper bits
             const Operand retReg = makePhysRegOperand(
                 RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
             builder.append(
                 MInstr::make(MOpcode::MOVZXrr32, std::vector<Operand>{resultOp, retReg}));
-        }
-        else
-        {
+        } else {
             // Integer/pointer return in RAX
             const Operand retReg = makePhysRegOperand(
                 RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
@@ -141,37 +122,28 @@ void emitCall(const ILInstr &instr, MIRBuilder &builder)
 ///          for argument setup and appends a CALL with an indirect target.
 /// @param instr High-level IL instruction describing the indirect call.
 /// @param builder MIR construction context that owns register state.
-void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.ops.empty())
-    {
+void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.ops.empty()) {
         phaseAUnsupported("call.indirect: missing target");
     }
 
     CallLoweringPlan plan{};
     // No label for indirect calls; vararg detection is conservative here.
 
-    for (std::size_t idx = 1; idx < instr.ops.size(); ++idx)
-    {
+    for (std::size_t idx = 1; idx < instr.ops.size(); ++idx) {
         const auto &argVal = instr.ops[idx];
         CallArg arg{};
         arg.kind = builder.regClassFor(argVal.kind) == RegClass::GPR ? CallArg::GPR : CallArg::XMM;
 
-        if (builder.isImmediate(argVal))
-        {
+        if (builder.isImmediate(argVal)) {
             arg.isImm = true;
             arg.imm = argVal.i64;
-        }
-        else
-        {
+        } else {
             const Operand operand =
                 builder.makeOperandForValue(argVal, builder.regClassFor(argVal.kind));
-            if (const auto *reg = std::get_if<OpReg>(&operand))
-            {
+            if (const auto *reg = std::get_if<OpReg>(&operand)) {
                 arg.vreg = reg->idOrPhys;
-            }
-            else if (const auto *imm = std::get_if<OpImm>(&operand))
-            {
+            } else if (const auto *imm = std::get_if<OpImm>(&operand)) {
                 arg.isImm = true;
                 arg.imm = imm->val;
             }
@@ -182,11 +154,9 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder)
 
     VReg resultVReg{};
     bool hasResult = (instr.resultId >= 0);
-    if (hasResult)
-    {
+    if (hasResult) {
         resultVReg = builder.ensureVReg(instr.resultId, instr.resultKind);
-        if (instr.resultKind == ILValue::Kind::F64)
-        {
+        if (instr.resultKind == ILValue::Kind::F64) {
             plan.returnsF64 = true;
         }
     }
@@ -197,18 +167,14 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder)
     builder.append(MInstr::make(MOpcode::CALL, std::vector<Operand>{calleeOp}));
 
     // Emit MOV to capture return value from ABI return register to result virtual register
-    if (hasResult)
-    {
+    if (hasResult) {
         const Operand resultOp = makeVRegOperand(resultVReg.cls, resultVReg.id);
-        if (instr.resultKind == ILValue::Kind::F64)
-        {
+        if (instr.resultKind == ILValue::Kind::F64) {
             // Float return in XMM0
             const Operand retReg = makePhysRegOperand(
                 RegClass::XMM, static_cast<uint16_t>(builder.target().f64ReturnReg));
             builder.append(MInstr::make(MOpcode::MOVSDrr, std::vector<Operand>{resultOp, retReg}));
-        }
-        else
-        {
+        } else {
             // Integer/pointer return in RAX
             const Operand retReg = makePhysRegOperand(
                 RegClass::GPR, static_cast<uint16_t>(builder.target().intReturnReg));
@@ -224,8 +190,7 @@ void emitCallIndirect(const ILInstr &instr, MIRBuilder &builder)
 ///          correct class for the instruction's result kind.
 /// @param instr IL instruction representing the load.
 /// @param builder MIR construction context.
-void emitLoadAuto(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitLoadAuto(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitLoad(instr, builder.regClassFor(instr.resultKind));
 }
 
@@ -236,8 +201,7 @@ void emitLoadAuto(const ILInstr &instr, MIRBuilder &builder)
 ///          consistent operand validation.
 /// @param instr IL store instruction.
 /// @param builder MIR construction context.
-void emitStore(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitStore(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitStore(instr);
 }
 
@@ -246,10 +210,8 @@ void emitStore(const ILInstr &instr, MIRBuilder &builder)
 ///          storing the result in the destination vreg.
 /// @param instr IL const_str instruction with string operand.
 /// @param builder MIR construction context.
-void emitConstStr(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.ops.empty() || instr.resultId < 0)
-    {
+void emitConstStr(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.ops.empty() || instr.resultId < 0) {
         phaseAUnsupported("const_str: missing operands");
     }
 
@@ -273,10 +235,8 @@ void emitConstStr(const ILInstr &instr, MIRBuilder &builder)
 ///          The actual frame offset is assigned during FrameLowering pass.
 /// @param instr IL alloca instruction with size operand.
 /// @param builder MIR construction context.
-void emitAlloca(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.resultId < 0)
-    {
+void emitAlloca(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.resultId < 0) {
         return;
     }
 
@@ -302,10 +262,8 @@ void emitAlloca(const ILInstr &instr, MIRBuilder &builder)
 /// @details Computes base + offset and stores the result pointer.
 /// @param instr IL GEP instruction with base and offset operands.
 /// @param builder MIR construction context.
-void emitGEP(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.resultId < 0 || instr.ops.size() < 2)
-    {
+void emitGEP(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.resultId < 0 || instr.ops.size() < 2) {
         phaseAUnsupported("gep: missing operands");
     }
 
@@ -320,46 +278,35 @@ void emitGEP(const ILInstr &instr, MIRBuilder &builder)
     // Get the offset
     const auto &offsetVal = instr.ops[1];
 
-    if (baseReg && builder.isImmediate(offsetVal))
-    {
+    if (baseReg && builder.isImmediate(offsetVal)) {
         // Base is a register, offset is immediate -> use LEA [base + imm]
         const int32_t offset = static_cast<int32_t>(offsetVal.i64);
         const Operand mem = makeMemOperand(*baseReg, offset);
         builder.append(MInstr::make(MOpcode::LEA, std::vector<Operand>{dest, mem}));
-    }
-    else if (baseReg)
-    {
+    } else if (baseReg) {
         // Both base and offset are registers -> use LEA [base + index*1]
         const Operand offsetOp = builder.makeOperandForValue(offsetVal, RegClass::GPR);
         const auto *offsetReg = std::get_if<OpReg>(&offsetOp);
-        if (offsetReg)
-        {
+        if (offsetReg) {
             const Operand mem = makeMemOperand(*baseReg, *offsetReg, 1, 0);
             builder.append(MInstr::make(MOpcode::LEA, std::vector<Operand>{dest, mem}));
-        }
-        else
-        {
+        } else {
             // Fallback: copy base to dest, then add offset
             builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, baseOp}));
             builder.append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{dest, offsetOp}));
         }
-    }
-    else
-    {
+    } else {
         // Base is not a register - materialize it first
         const VReg tmpReg = builder.makeTempVReg(RegClass::GPR);
         const Operand tmp = makeVRegOperand(tmpReg.cls, tmpReg.id);
         builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{tmp, baseOp}));
 
-        if (builder.isImmediate(offsetVal))
-        {
+        if (builder.isImmediate(offsetVal)) {
             const int32_t offset = static_cast<int32_t>(offsetVal.i64);
             const auto tmpBaseReg = std::get<OpReg>(tmp);
             const Operand mem = makeMemOperand(tmpBaseReg, offset);
             builder.append(MInstr::make(MOpcode::LEA, std::vector<Operand>{dest, mem}));
-        }
-        else
-        {
+        } else {
             const Operand offsetOp = builder.makeOperandForValue(offsetVal, RegClass::GPR);
             builder.append(MInstr::make(MOpcode::MOVrr, std::vector<Operand>{dest, tmp}));
             builder.append(MInstr::make(MOpcode::ADDrr, std::vector<Operand>{dest, offsetOp}));
@@ -369,10 +316,8 @@ void emitGEP(const ILInstr &instr, MIRBuilder &builder)
 
 /// @brief Lower a const_null instruction (null pointer constant).
 /// @details Produces a zero-valued pointer by moving immediate 0 into the result register.
-void emitConstNull(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.resultId < 0)
-    {
+void emitConstNull(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.resultId < 0) {
         return;
     }
 
@@ -384,10 +329,8 @@ void emitConstNull(const ILInstr &instr, MIRBuilder &builder)
 /// @brief Lower a const_f64 instruction (double-precision floating-point constant).
 /// @details Materialises the 64-bit constant by transferring the bit pattern through
 ///          a GPR temporary into the XMM destination register.
-void emitConstF64(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.resultId < 0 || instr.ops.empty())
-    {
+void emitConstF64(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.resultId < 0 || instr.ops.empty()) {
         return;
     }
 
@@ -402,10 +345,8 @@ void emitConstF64(const ILInstr &instr, MIRBuilder &builder)
 
 /// @brief Lower a gaddr instruction (global address).
 /// @details Loads the address of a global symbol into the result register using LEA.
-void emitGAddr(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.resultId < 0 || instr.ops.empty())
-    {
+void emitGAddr(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.resultId < 0 || instr.ops.empty()) {
         return;
     }
 
@@ -421,10 +362,8 @@ void emitGAddr(const ILInstr &instr, MIRBuilder &builder)
 /// @brief Lower an addr_of instruction (address of a local alloca).
 /// @details The alloca instruction already produces a pointer to the stack slot.
 ///          AddrOf simply forwards that pointer to the result register.
-void emitAddrOf(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.resultId < 0 || instr.ops.empty())
-    {
+void emitAddrOf(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.resultId < 0 || instr.ops.empty()) {
         return;
     }
 

@@ -35,8 +35,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Lower a sequence of statements that forms the body of the enclosing loop.
 /// @details Iterates the provided @p body statements, invoking @ref lowerStmt for
@@ -44,10 +43,8 @@ namespace il::frontends::basic
 ///          been terminated. The helper acts as the common body driver for all
 ///          loop forms so they honour break/exit semantics consistently.
 /// @param body Ordered collection of statements representing the loop body.
-void Lowerer::lowerLoopBody(const std::vector<StmtPtr> &body)
-{
-    for (const auto &stmt : body)
-    {
+void Lowerer::lowerLoopBody(const std::vector<StmtPtr> &body) {
+    for (const auto &stmt : body) {
         if (!stmt)
             continue;
         lowerStmt(*stmt);
@@ -65,8 +62,7 @@ void Lowerer::lowerLoopBody(const std::vector<StmtPtr> &body)
 ///          the block that follows the loop and whether it remains fallthrough.
 /// @param stmt Parsed WHILE statement supplying the condition and body.
 /// @return Control-flow snapshot pointing at the loop's done block.
-Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
-{
+Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt) {
     LocationScope loc(*this, stmt.loc);
     CtrlState state{};
     auto &ctx = context();
@@ -120,8 +116,7 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
     auto *bodyCur = ctx.current();
     bool exitTaken = ctx.loopState().taken();
     bool term = bodyCur && bodyCur->terminated;
-    if (!term)
-    {
+    if (!term) {
         func = ctx.function();
         head = &func->blocks[headIdx];
         emitBr(head);
@@ -151,8 +146,7 @@ Lowerer::CtrlState Lowerer::emitWhile(const WhileStmt &stmt)
 ///          procedure context's current block to the returned block so that
 ///          subsequent statements append to the correct successor.
 /// @param stmt WHILE statement to lower into IL blocks.
-void Lowerer::lowerWhile(const WhileStmt &stmt)
-{
+void Lowerer::lowerWhile(const WhileStmt &stmt) {
     CtrlState state = emitWhile(stmt);
     if (state.cur)
         context().setCurrent(state.cur);
@@ -166,8 +160,7 @@ void Lowerer::lowerWhile(const WhileStmt &stmt)
 ///          the body finishes executing.
 /// @param stmt DO statement containing loop body, test, and metadata.
 /// @return Control state capturing the block following the DO loop.
-Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
-{
+Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt) {
     LocationScope loc(*this, stmt.loc);
     CtrlState state{};
     auto &ctx = context();
@@ -196,8 +189,7 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     state.after = done;
     ctx.setCurrentByIndex(currentIdx);
     ctx.loopState().push(done);
-    auto emitHead = [&]()
-    {
+    auto emitHead = [&]() {
         func = ctx.function();
         if (func->blocks[headIdx].label.empty())
             func->blocks[headIdx].label = headLbl;
@@ -205,27 +197,22 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
             func->blocks[bodyIdx].label = bodyLbl;
         auto *head = &func->blocks[headIdx];
         ctx.setCurrent(head);
-        if (stmt.condKind == DoStmt::CondKind::None)
-        {
+        if (stmt.condKind == DoStmt::CondKind::None) {
             emitBr(&func->blocks[bodyIdx]);
             return;
         }
         assert(stmt.cond && "DO loop missing condition for conditional form");
         auto *body = &func->blocks[bodyIdx];
         auto *doneBlk = &func->blocks[doneIdx];
-        if (stmt.condKind == DoStmt::CondKind::While)
-        {
+        if (stmt.condKind == DoStmt::CondKind::While) {
             lowerCondBranch(*stmt.cond, body, doneBlk, stmt.loc);
-        }
-        else
-        {
+        } else {
             lowerCondBranch(*stmt.cond, doneBlk, body, stmt.loc);
         }
     };
 
     func = ctx.function();
-    switch (stmt.testPos)
-    {
+    switch (stmt.testPos) {
         case DoStmt::TestPos::Pre:
             if (func->blocks[headIdx].label.empty())
                 func->blocks[headIdx].label = headLbl;
@@ -246,8 +233,7 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
     bool exitTaken = ctx.loopState().taken();
     bool term = bodyCur && bodyCur->terminated;
 
-    if (!term)
-    {
+    if (!term) {
         func = ctx.function();
         if (func->blocks[headIdx].label.empty())
             func->blocks[headIdx].label = headLbl;
@@ -282,8 +268,7 @@ Lowerer::CtrlState Lowerer::emitDo(const DoStmt &stmt)
 ///          block is returned, rebinds the context so subsequent statements emit
 ///          after the loop terminates.
 /// @param stmt DO statement to lower.
-void Lowerer::lowerDo(const DoStmt &stmt)
-{
+void Lowerer::lowerDo(const DoStmt &stmt) {
     CtrlState state = emitDo(stmt);
     if (state.cur)
         context().setCurrent(state.cur);
@@ -297,8 +282,7 @@ void Lowerer::lowerDo(const DoStmt &stmt)
 ///          callers can immediately start emitting control flow.
 /// @param varStep Indicates whether the loop step is a runtime value.
 /// @return Indices of the newly created blocks.
-Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
-{
+Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep) {
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     assert(func && ctx.current());
@@ -307,8 +291,7 @@ Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
     size_t base = func->blocks.size();
     unsigned id = blockNamer ? blockNamer->nextFor() : 0;
     ForBlocks fb;
-    if (varStep)
-    {
+    if (varStep) {
         std::string headPosLbl =
             blockNamer ? blockNamer->generic("for_head_pos") : mangler.block("for_head_pos");
         std::string headNegLbl =
@@ -318,9 +301,7 @@ Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
         fb.headPosIdx = base;
         fb.headNegIdx = base + 1;
         base += 2;
-    }
-    else
-    {
+    } else {
         std::string headLbl = blockNamer ? blockNamer->forHead(id) : mangler.block("for_head");
         builder->addBlock(*func, headLbl);
         fb.headIdx = base;
@@ -351,8 +332,7 @@ Lowerer::ForBlocks Lowerer::setupForBlocks(bool varStep)
 /// @param step Lowered representation of the step expression.
 /// @param stepConst Constant value of the step used to choose comparison sense.
 void Lowerer::lowerForConstStep(
-    const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst)
-{
+    const ForStmt &stmt, Value slot, RVal end, RVal step, int64_t stepConst) {
     LocationScope loc(*this, stmt.loc);
     ForBlocks fb = setupForBlocks(false);
     ProcedureContext &ctx = context();
@@ -372,8 +352,7 @@ void Lowerer::lowerForConstStep(
     BasicBlock *current = ctx.current();
     bool exitTaken = ctx.loopState().taken();
     bool term = current && current->terminated;
-    if (!term)
-    {
+    if (!term) {
         emitBr(&func->blocks[fb.incIdx]);
         ctx.setCurrent(&func->blocks[fb.incIdx]);
         emitForStep(slot, step.value);
@@ -399,8 +378,7 @@ void Lowerer::lowerForConstStep(
 /// @param slot Slot representing the induction variable storage.
 /// @param end Lowered end bound expression.
 /// @param step Lowered step expression.
-void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step)
-{
+void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal step) {
     LocationScope loc(*this, stmt.loc);
     Value stepNonNeg =
         emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), step.value, Value::constInt(0));
@@ -425,8 +403,7 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
     BasicBlock *current = ctx.current();
     bool exitTaken = ctx.loopState().taken();
     bool term = current && current->terminated;
-    if (!term)
-    {
+    if (!term) {
         emitBr(&func->blocks[fb.incIdx]);
         ctx.setCurrent(&func->blocks[fb.incIdx]);
         emitForStep(slot, step.value);
@@ -451,8 +428,7 @@ void Lowerer::lowerForVarStep(const ForStmt &stmt, Value slot, RVal end, RVal st
 /// @param end Lowered end bound result.
 /// @param step Lowered step expression.
 /// @return Control state representing the loop's continuation.
-Lowerer::CtrlState Lowerer::emitFor(const ForStmt &stmt, Value slot, RVal end, RVal step)
-{
+Lowerer::CtrlState Lowerer::emitFor(const ForStmt &stmt, Value slot, RVal end, RVal step) {
     CtrlState state{};
     lowerForVarStep(stmt, slot, end, step);
     state.cur = context().current();
@@ -468,8 +444,7 @@ Lowerer::CtrlState Lowerer::emitFor(const ForStmt &stmt, Value slot, RVal end, R
 ///          the current block in the procedure context is updated to the loop's
 ///          continuation.
 /// @param stmt Source FOR statement to lower.
-void Lowerer::lowerFor(const ForStmt &stmt)
-{
+void Lowerer::lowerFor(const ForStmt &stmt) {
     LocationScope loc(*this, stmt.loc);
     RVal start = lowerScalarExpr(*stmt.start);
     RVal end = lowerScalarExpr(*stmt.end);
@@ -479,12 +454,10 @@ void Lowerer::lowerFor(const ForStmt &stmt)
     // BUG-081 fix: Handle expression-based loop variables
     // Get pointer to the loop variable storage (lvalue)
     Value ctrlSlot;
-    if (!stmt.varExpr)
-    {
+    if (!stmt.varExpr) {
         // Missing loop variable expression - this is a parser bug.
         // Emit error and skip lowering to avoid generating invalid IL.
-        if (auto *em = diagnosticEmitter())
-        {
+        if (auto *em = diagnosticEmitter()) {
             em->emit(il::support::Severity::Error,
                      "E_FOR_NO_VAR",
                      stmt.loc,
@@ -492,36 +465,25 @@ void Lowerer::lowerFor(const ForStmt &stmt)
                      "FOR loop missing control variable");
         }
         return;
-    }
-    else if (auto *varExpr = as<VarExpr>(*stmt.varExpr))
-    {
+    } else if (auto *varExpr = as<VarExpr>(*stmt.varExpr)) {
         // Simple variable: FOR i = 1 TO 10
         // Use unified variable storage resolution so global loop variables update
         // their module-level storage instead of a loop-local slot (BUG-078).
-        if (auto storage = resolveVariableStorage(varExpr->name, stmt.loc))
-        {
+        if (auto storage = resolveVariableStorage(varExpr->name, stmt.loc)) {
             ctrlSlot = storage->pointer;
-        }
-        else
-        {
+        } else {
             const auto *info = findSymbol(varExpr->name);
             assert(info && info->slotId);
             ctrlSlot = Value::temp(*info->slotId);
         }
-    }
-    else if (auto *memberAccess = as<MemberAccessExpr>(*stmt.varExpr))
-    {
+    } else if (auto *memberAccess = as<MemberAccessExpr>(*stmt.varExpr)) {
         // Member access: FOR obj.field = 1 TO 10
-        if (auto access = resolveMemberField(*memberAccess))
-        {
+        if (auto access = resolveMemberField(*memberAccess)) {
             ctrlSlot = access->ptr;
-        }
-        else
-        {
+        } else {
             // Member field resolution failed - likely undefined object/field.
             // Emit error and skip lowering.
-            if (auto *em = diagnosticEmitter())
-            {
+            if (auto *em = diagnosticEmitter()) {
                 std::string msg = "cannot resolve member field '" + memberAccess->member +
                                   "' for FOR loop control variable";
                 em->emit(il::support::Severity::Error,
@@ -532,13 +494,10 @@ void Lowerer::lowerFor(const ForStmt &stmt)
             }
             return;
         }
-    }
-    else if (auto *arrayExpr = as<ArrayExpr>(*stmt.varExpr))
-    {
+    } else if (auto *arrayExpr = as<ArrayExpr>(*stmt.varExpr)) {
         // Array element loop variables (e.g., FOR arr(i) = 1 TO 10) are not yet supported.
         // Emit a compile-time error and skip lowering to avoid generating bogus IL.
-        if (auto *em = diagnosticEmitter())
-        {
+        if (auto *em = diagnosticEmitter()) {
             std::string msg = "FOR control variable cannot be an array element (" +
                               arrayExpr->name + "(...)); not yet supported";
             em->emit(il::support::Severity::Error,
@@ -548,13 +507,10 @@ void Lowerer::lowerFor(const ForStmt &stmt)
                      std::move(msg));
         }
         return; // Skip lowering - do not generate bogus IL
-    }
-    else
-    {
+    } else {
         // Unsupported expression type for FOR control variable.
         // Emit a compile-time error and skip lowering.
-        if (auto *em = diagnosticEmitter())
-        {
+        if (auto *em = diagnosticEmitter()) {
             std::string msg = "FOR control variable must be a simple variable or object field";
             em->emit(il::support::Severity::Error,
                      "E_FOR_UNSUPPORTED_CTRL",
@@ -583,8 +539,7 @@ void Lowerer::lowerFor(const ForStmt &stmt)
 ///              ... body ...
 ///              index = index + 1
 /// @param stmt FOR EACH statement to lower.
-void Lowerer::lowerForEach(const ForEachStmt &stmt)
-{
+void Lowerer::lowerForEach(const ForEachStmt &stmt) {
     LocationScope loc(*this, stmt.loc);
     auto &ctx = context();
     auto *func = ctx.function();
@@ -593,16 +548,14 @@ void Lowerer::lowerForEach(const ForEachStmt &stmt)
 
     // Resolve the array symbol
     const auto *arrSym = findSymbol(stmt.arrayName);
-    if (!arrSym || !arrSym->slotId)
-    {
+    if (!arrSym || !arrSym->slotId) {
         emitTrap();
         return;
     }
 
     // Resolve the element variable (should have been created by semantic analysis)
     const auto *elemSym = findSymbol(stmt.elementVar);
-    if (!elemSym || !elemSym->slotId)
-    {
+    if (!elemSym || !elemSym->slotId) {
         emitTrap();
         return;
     }
@@ -668,25 +621,18 @@ void Lowerer::lowerForEach(const ForEachStmt &stmt)
 
     // Access array element and store to element variable
     // Use appropriate runtime function based on element type
-    if (arrSym->type == AstType::Str)
-    {
+    if (arrSym->type == AstType::Str) {
         Value elem = emitCallRet(Type(Type::Kind::Str), "rt_arr_str_get", {arrBase, curIndex});
         emitStore(Type(Type::Kind::Str), elemSlot, elem);
-    }
-    else if (arrSym->isObject)
-    {
+    } else if (arrSym->isObject) {
         Value elem = emitCallRet(Type(Type::Kind::Ptr), "rt_arr_obj_get", {arrBase, curIndex});
         emitStore(Type(Type::Kind::Ptr), elemSlot, elem);
-    }
-    else if (arrSym->type == AstType::F64)
-    {
+    } else if (arrSym->type == AstType::F64) {
         // Float arrays - use rt_arr_f64_get runtime function
         requireArrayF64Get();
         Value elem = emitCallRet(Type(Type::Kind::F64), "rt_arr_f64_get", {arrBase, curIndex});
         emitStore(Type(Type::Kind::F64), elemSlot, elem);
-    }
-    else
-    {
+    } else {
         // Integer arrays - use rt_arr_i64_get runtime function
         Value elem = emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_get", {arrBase, curIndex});
         emitStore(Type(Type::Kind::I64), elemSlot, elem);
@@ -699,8 +645,7 @@ void Lowerer::lowerForEach(const ForEachStmt &stmt)
     bool term = current && current->terminated;
 
     // Increment block
-    if (!term)
-    {
+    if (!term) {
         emitBr(&func->blocks[incIdx]);
         ctx.setCurrent(&func->blocks[incIdx]);
         Value idx = emitLoad(Type(Type::Kind::I64), indexSlot);
@@ -722,8 +667,7 @@ void Lowerer::lowerForEach(const ForEachStmt &stmt)
 ///          therefore ignored. The stub remains so future loop finalisation
 ///          logic has a dedicated extension point.
 /// @param next NEXT statement node (unused).
-void Lowerer::lowerNext(const NextStmt &next)
-{
+void Lowerer::lowerNext(const NextStmt &next) {
     (void)next;
 }
 
@@ -733,18 +677,15 @@ void Lowerer::lowerNext(const NextStmt &next)
 ///          branches to the exit block and records that the exit path has been
 ///          taken so the loop continuation remains reachable.
 /// @param stmt EXIT statement to lower.
-void Lowerer::lowerExit(const ExitStmt &stmt)
-{
+void Lowerer::lowerExit(const ExitStmt &stmt) {
     LocationScope loc(*this, stmt.loc);
     ProcedureContext &ctx = context();
 
     // EXIT FUNCTION/SUB should branch directly to the procedure's exit block,
     // not to the current loop's exit block.
-    if (stmt.kind == ExitStmt::LoopKind::Function || stmt.kind == ExitStmt::LoopKind::Sub)
-    {
+    if (stmt.kind == ExitStmt::LoopKind::Function || stmt.kind == ExitStmt::LoopKind::Sub) {
         Function *func = ctx.function();
-        if (!func || ctx.exitIndex() >= func->blocks.size())
-        {
+        if (!func || ctx.exitIndex() >= func->blocks.size()) {
             emitTrap();
             return;
         }
@@ -755,8 +696,7 @@ void Lowerer::lowerExit(const ExitStmt &stmt)
 
     // For regular loops (FOR/WHILE/DO), use the loop exit target
     BasicBlock *target = ctx.loopState().current();
-    if (!target)
-    {
+    if (!target) {
         emitTrap();
         return;
     }

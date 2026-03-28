@@ -22,12 +22,10 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Parameter in FUNCTION or SUB declaration.
-struct Param
-{
+struct Param {
     /// Parameter name including optional suffix.
     Identifier name;
 
@@ -48,10 +46,8 @@ struct Param
 };
 
 /// @brief FUNCTION declaration with optional parameters and return type.
-struct FunctionDecl : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct FunctionDecl : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::FunctionDecl;
     }
 
@@ -97,10 +93,8 @@ struct FunctionDecl : Stmt
 };
 
 /// @brief SUB declaration representing a void procedure.
-struct SubDecl : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct SubDecl : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::SubDecl;
     }
 
@@ -132,10 +126,8 @@ struct SubDecl : Stmt
 };
 
 /// @brief Sequence of statements executed left-to-right on one BASIC line.
-struct StmtList : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct StmtList : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::StmtList;
     }
 
@@ -146,10 +138,8 @@ struct StmtList : Stmt
 };
 
 /// @brief Constructor declaration for a CLASS.
-struct ConstructorDecl : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct ConstructorDecl : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::ConstructorDecl;
     }
 
@@ -170,10 +160,8 @@ struct ConstructorDecl : Stmt
 };
 
 /// @brief Destructor declaration for a CLASS.
-struct DestructorDecl : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct DestructorDecl : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::DestructorDecl;
     }
 
@@ -187,10 +175,8 @@ struct DestructorDecl : Stmt
 };
 
 /// @brief Method declaration inside a CLASS.
-struct MethodDecl : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct MethodDecl : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::MethodDecl;
     }
 
@@ -228,10 +214,8 @@ struct MethodDecl : Stmt
 };
 
 /// @brief CLASS declaration grouping fields and members.
-struct ClassDecl : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct ClassDecl : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::ClassDecl;
     }
 
@@ -254,8 +238,7 @@ struct ClassDecl : Stmt
     bool isFinal{false};
 
     /// Field definition within the class.
-    struct Field
-    {
+    struct Field {
         std::string name;
         Type type{Type::I64};
         /// Access specifier (PUBLIC/PRIVATE); defaults to PUBLIC.
@@ -284,10 +267,8 @@ struct ClassDecl : Stmt
 };
 
 /// @brief PROPERTY declaration inside a CLASS, with optional GET/SET bodies.
-struct PropertyDecl : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct PropertyDecl : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::PropertyDecl;
     }
 
@@ -306,15 +287,13 @@ struct PropertyDecl : Stmt
     /// Overall visibility of the property head.
     Access access{Access::Public};
 
-    struct Getter
-    {
+    struct Getter {
         Access access{Access::Public};
         std::vector<StmtPtr> body;
         bool present{false};
     } get;
 
-    struct Setter
-    {
+    struct Setter {
         Access access{Access::Public};
         std::string paramName{"value"};
         std::vector<StmtPtr> body;
@@ -326,10 +305,8 @@ struct PropertyDecl : Stmt
 };
 
 /// @brief TYPE declaration defining a structured record type.
-struct TypeDecl : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct TypeDecl : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::TypeDecl;
     }
 
@@ -337,8 +314,7 @@ struct TypeDecl : Stmt
     std::string name;
 
     /// Field definition within the type.
-    struct Field
-    {
+    struct Field {
         std::string name;
         Type type{Type::I64};
         /// Access specifier (PUBLIC/PRIVATE); defaults to PUBLIC.
@@ -352,10 +328,8 @@ struct TypeDecl : Stmt
 };
 
 /// @brief ENUM declaration defining a set of named integer constants.
-struct EnumDecl : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct EnumDecl : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::EnumDecl;
     }
 
@@ -363,8 +337,7 @@ struct EnumDecl : Stmt
     std::string name;
 
     /// Individual enum member with an optional explicit integer value.
-    struct Member
-    {
+    struct Member {
         std::string name;
         std::optional<long long> value;
     };
@@ -372,22 +345,18 @@ struct EnumDecl : Stmt
     /// Ordered members declared in the enum.
     std::vector<Member> members;
 
-    void accept(StmtVisitor &visitor) const override
-    {
+    void accept(StmtVisitor &visitor) const override {
         visitor.visit(*this);
     }
 
-    void accept(MutStmtVisitor &visitor) override
-    {
+    void accept(MutStmtVisitor &visitor) override {
         visitor.visit(*this);
     }
 };
 
 /// @brief NAMESPACE declaration grouping declarations under a qualified path.
-struct NamespaceDecl : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct NamespaceDecl : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::NamespaceDecl;
     }
 
@@ -398,22 +367,18 @@ struct NamespaceDecl : Stmt
     std::vector<StmtPtr> body;
 
     /// Acceptors inline to avoid extra TU edits.
-    void accept(StmtVisitor &visitor) const override
-    {
+    void accept(StmtVisitor &visitor) const override {
         visitor.visit(*this);
     }
 
-    void accept(MutStmtVisitor &visitor) override
-    {
+    void accept(MutStmtVisitor &visitor) override {
         visitor.visit(*this);
     }
 };
 
 /// @brief INTERFACE declaration grouping abstract member signatures.
-struct InterfaceDecl : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct InterfaceDecl : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::InterfaceDecl;
     }
 
@@ -428,10 +393,8 @@ struct InterfaceDecl : Stmt
 };
 
 /// @brief USING directive importing a namespace at file scope.
-struct UsingDecl : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct UsingDecl : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::UsingDecl;
     }
 
@@ -441,13 +404,11 @@ struct UsingDecl : Stmt
     /// Optional alias for the imported namespace; empty if no AS clause present.
     std::string alias;
 
-    void accept(StmtVisitor &visitor) const override
-    {
+    void accept(StmtVisitor &visitor) const override {
         visitor.visit(*this);
     }
 
-    void accept(MutStmtVisitor &visitor) override
-    {
+    void accept(MutStmtVisitor &visitor) override {
         visitor.visit(*this);
     }
 };

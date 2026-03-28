@@ -46,24 +46,20 @@
 #include <functional>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 class Parser;
 
 /// @brief Helper that manages separators, labels, and statement iteration.
-class StatementSequencer
-{
+class StatementSequencer {
   public:
     /// @brief Aggregated information about a terminating keyword.
-    struct TerminatorInfo
-    {
+    struct TerminatorInfo {
         int line = 0;                 ///< Optional line number preceding terminator.
         il::support::SourceLoc loc{}; ///< Location where terminator keyword appeared.
     };
 
     /// @brief Classification of the most recently consumed separator.
-    enum class SeparatorKind
-    {
+    enum class SeparatorKind {
         None,      ///< No separator observed since last statement.
         Colon,     ///< Colon separated adjacent statements.
         LineBreak, ///< Line break separated adjacent statements.
@@ -111,16 +107,14 @@ class StatementSequencer
 
   private:
     /// @brief Status returned when deciding how to handle the current line context.
-    enum class LineAction
-    {
+    enum class LineAction {
         Continue,  ///< Proceed with parsing the statement body.
         Defer,     ///< Defer parsing until additional input arrives.
         Terminate, ///< Stop collection because a terminator was encountered.
     };
 
     /// @brief Local state threaded through statement collection iterations.
-    struct CollectionState
-    {
+    struct CollectionState {
         SeparatorKind separatorBefore =
             SeparatorKind::None;     ///< Separator preceding the current line.
         bool hadPendingLine = false; ///< True when a pending line label exists before processing.

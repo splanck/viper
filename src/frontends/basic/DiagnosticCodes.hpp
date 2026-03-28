@@ -17,8 +17,7 @@
 
 #include <string_view>
 
-namespace viper::basic::diag
-{
+namespace viper::basic::diag {
 
 /// Parser error codes (B0001-B0999)
 constexpr std::string_view LabelAlreadyDefined = "B0001";

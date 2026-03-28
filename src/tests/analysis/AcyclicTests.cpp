@@ -20,8 +20,7 @@
 using namespace il::core;
 using namespace viper::analysis;
 
-int main()
-{
+int main() {
     Module m;
     il::build::IRBuilder b(m);
 

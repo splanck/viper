@@ -28,15 +28,12 @@
 #include "il/core/Opcode.hpp"
 #include "il/core/fwd.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// \brief Pattern describing when a rule should trigger.
-struct Match
-{
+struct Match {
     /// Kinds of patterns the peephole engine supports.
-    enum class Kind
-    {
+    enum class Kind {
         ConstOperand,      ///< Match a specific integer constant at operand index.
         ConstFloatOperand, ///< Match a specific float constant at operand index.
         SameOperands       ///< Match when both operands are identical.
@@ -56,11 +53,9 @@ struct Match
 };
 
 /// \brief Replacement describing how to rewrite a matched instruction.
-struct Replace
-{
+struct Replace {
     /// Strategy for producing the replacement value.
-    enum class Kind
-    {
+    enum class Kind {
         Operand,   ///< Forward an existing operand.
         Const,     ///< Synthesize an integer/boolean literal.
         ConstFloat ///< Synthesize a floating-point literal.
@@ -78,8 +73,7 @@ struct Replace
 };
 
 /// \brief A peephole rule mapping a match to its replacement.
-struct Rule
-{
+struct Rule {
     Match match;      ///< Match pattern.
     Replace repl;     ///< Replacement action.
     const char *name; ///< Debug identifier for tracing.

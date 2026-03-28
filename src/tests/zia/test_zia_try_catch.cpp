@@ -18,17 +18,14 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-static bool hasFunction(const il::core::Module &mod, const std::string &fnName)
-{
-    for (const auto &fn : mod.functions)
-    {
+static bool hasFunction(const il::core::Module &mod, const std::string &fnName) {
+    for (const auto &fn : mod.functions) {
         if (fn.name == fnName)
             return true;
     }
@@ -36,16 +33,11 @@ static bool hasFunction(const il::core::Module &mod, const std::string &fnName)
 }
 
 /// @brief Check if a function contains an instruction with the given opcode.
-static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == op)
                         return true;
                 }
@@ -56,10 +48,8 @@ static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il
 }
 
 /// @brief Count blocks in a specific function.
-static size_t blockCount(const il::core::Module &mod, const std::string &fnName)
-{
-    for (const auto &fn : mod.functions)
-    {
+static size_t blockCount(const il::core::Module &mod, const std::string &fnName) {
+    for (const auto &fn : mod.functions) {
         if (fn.name == fnName)
             return fn.blocks.size();
     }
@@ -71,8 +61,7 @@ static size_t blockCount(const il::core::Module &mod, const std::string &fnName)
 // ============================================================================
 
 /// @brief Test basic try/catch compiles and produces EH opcodes.
-TEST(ZiaTryCatch, BasicTryCatch)
-{
+TEST(ZiaTryCatch, BasicTryCatch) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -90,10 +79,8 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -113,8 +100,7 @@ func start() {
 }
 
 /// @brief Test try/finally (no catch clause).
-TEST(ZiaTryCatch, TryFinally)
-{
+TEST(ZiaTryCatch, TryFinally) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -132,10 +118,8 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -152,8 +136,7 @@ func start() {
 }
 
 /// @brief Test try/catch/finally (all three clauses).
-TEST(ZiaTryCatch, TryCatchFinally)
-{
+TEST(ZiaTryCatch, TryCatchFinally) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -183,8 +166,7 @@ func start() {
 }
 
 /// @brief Test throw statement compiles and emits Trap.
-TEST(ZiaTryCatch, ThrowStatement)
-{
+TEST(ZiaTryCatch, ThrowStatement) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -205,8 +187,7 @@ func start() {
 }
 
 /// @brief Test catch without variable binding.
-TEST(ZiaTryCatch, CatchWithoutVariable)
-{
+TEST(ZiaTryCatch, CatchWithoutVariable) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -233,7 +214,6 @@ func start() {
 
 } // anonymous namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

@@ -23,33 +23,25 @@
 #include "il/core/Function.hpp"
 #include "il/core/Instr.hpp"
 
-namespace viper::il
-{
+namespace viper::il {
 
-UseDefInfo::UseDefInfo(::il::core::Function &F)
-{
+UseDefInfo::UseDefInfo(::il::core::Function &F) {
     build(F);
 }
 
-void UseDefInfo::build(::il::core::Function &F)
-{
+void UseDefInfo::build(::il::core::Function &F) {
     uses_.clear();
 
-    for (auto &B : F.blocks)
-    {
-        for (auto &I : B.instructions)
-        {
+    for (auto &B : F.blocks) {
+        for (auto &I : B.instructions) {
             // Record uses in instruction operands
-            for (auto &Op : I.operands)
-            {
+            for (auto &Op : I.operands) {
                 recordUse(Op);
             }
 
             // Record uses in branch arguments
-            for (auto &argList : I.brArgs)
-            {
-                for (auto &Arg : argList)
-                {
+            for (auto &argList : I.brArgs) {
+                for (auto &Arg : argList) {
                     recordUse(Arg);
                 }
             }
@@ -57,33 +49,27 @@ void UseDefInfo::build(::il::core::Function &F)
     }
 }
 
-void UseDefInfo::recordUse(::il::core::Value &v)
-{
-    if (v.kind == ::il::core::Value::Kind::Temp)
-    {
+void UseDefInfo::recordUse(::il::core::Value &v) {
+    if (v.kind == ::il::core::Value::Kind::Temp) {
         uses_[v.id].push_back(&v);
     }
 }
 
-std::size_t UseDefInfo::replaceAllUses(unsigned tempId, const ::il::core::Value &replacement)
-{
+std::size_t UseDefInfo::replaceAllUses(unsigned tempId, const ::il::core::Value &replacement) {
     auto it = uses_.find(tempId);
-    if (it == uses_.end())
-    {
+    if (it == uses_.end()) {
         return 0;
     }
 
     std::size_t count = 0;
-    for (auto *usePtr : it->second)
-    {
+    for (auto *usePtr : it->second) {
         *usePtr = replacement;
         ++count;
     }
 
     // Clear the use list since we've replaced all uses
     // If the replacement is also a temp, we should add these to that temp's uses
-    if (replacement.kind == ::il::core::Value::Kind::Temp)
-    {
+    if (replacement.kind == ::il::core::Value::Kind::Temp) {
         auto &newUses = uses_[replacement.id];
         newUses.insert(newUses.end(), it->second.begin(), it->second.end());
     }
@@ -92,14 +78,12 @@ std::size_t UseDefInfo::replaceAllUses(unsigned tempId, const ::il::core::Value 
     return count;
 }
 
-bool UseDefInfo::hasUses(unsigned tempId) const
-{
+bool UseDefInfo::hasUses(unsigned tempId) const {
     auto it = uses_.find(tempId);
     return it != uses_.end() && !it->second.empty();
 }
 
-std::size_t UseDefInfo::useCount(unsigned tempId) const
-{
+std::size_t UseDefInfo::useCount(unsigned tempId) const {
     auto it = uses_.find(tempId);
     return it != uses_.end() ? it->second.size() : 0;
 }

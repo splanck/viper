@@ -42,16 +42,13 @@ static vg_widget_vtable_t g_colorswatch_vtable = {.destroy = colorswatch_destroy
 // Helper: Draw checkerboard pattern for transparency
 //=============================================================================
 
-static void draw_checkerboard(void *canvas, float x, float y, float w, float h, int check_size)
-{
+static void draw_checkerboard(void *canvas, float x, float y, float w, float h, int check_size) {
     vgfx_window_t win = (vgfx_window_t)canvas;
     if (check_size <= 0)
         check_size = 8;
 
-    for (int cy = 0; cy * check_size < (int)h; cy++)
-    {
-        for (int cx = 0; cx * check_size < (int)w; cx++)
-        {
+    for (int cy = 0; cy * check_size < (int)h; cy++) {
+        for (int cx = 0; cx * check_size < (int)w; cx++) {
             uint32_t color = ((cx + cy) % 2 == 0) ? 0x00AAAAAA : 0x00888888;
             int rx = (int)x + cx * check_size;
             int ry = (int)y + cy * check_size;
@@ -71,8 +68,7 @@ static void draw_checkerboard(void *canvas, float x, float y, float w, float h, 
 // ColorSwatch Implementation
 //=============================================================================
 
-vg_colorswatch_t *vg_colorswatch_create(vg_widget_t *parent, uint32_t color)
-{
+vg_colorswatch_t *vg_colorswatch_create(vg_widget_t *parent, uint32_t color) {
     vg_colorswatch_t *swatch = calloc(1, sizeof(vg_colorswatch_t));
     if (!swatch)
         return NULL;
@@ -106,22 +102,21 @@ vg_colorswatch_t *vg_colorswatch_create(vg_widget_t *parent, uint32_t color)
     swatch->base.constraints.preferred_height = swatch->size;
 
     // Add to parent
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &swatch->base);
     }
 
     return swatch;
 }
 
-static void colorswatch_destroy(vg_widget_t *widget)
-{
+static void colorswatch_destroy(vg_widget_t *widget) {
     (void)widget;
     // No owned resources to free
 }
 
-static void colorswatch_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void colorswatch_measure(vg_widget_t *widget,
+                                float available_width,
+                                float available_height) {
     vg_colorswatch_t *swatch = (vg_colorswatch_t *)widget;
     (void)available_width;
     (void)available_height;
@@ -130,27 +125,23 @@ static void colorswatch_measure(vg_widget_t *widget, float available_width, floa
     widget->measured_height = swatch->size;
 
     // Apply constraints
-    if (widget->constraints.min_width > widget->measured_width)
-    {
+    if (widget->constraints.min_width > widget->measured_width) {
         widget->measured_width = widget->constraints.min_width;
     }
-    if (widget->constraints.min_height > widget->measured_height)
-    {
+    if (widget->constraints.min_height > widget->measured_height) {
         widget->measured_height = widget->constraints.min_height;
     }
-    if (widget->constraints.max_width > 0 && widget->measured_width > widget->constraints.max_width)
-    {
+    if (widget->constraints.max_width > 0 &&
+        widget->measured_width > widget->constraints.max_width) {
         widget->measured_width = widget->constraints.max_width;
     }
     if (widget->constraints.max_height > 0 &&
-        widget->measured_height > widget->constraints.max_height)
-    {
+        widget->measured_height > widget->constraints.max_height) {
         widget->measured_height = widget->constraints.max_height;
     }
 }
 
-static void colorswatch_paint(vg_widget_t *widget, void *canvas)
-{
+static void colorswatch_paint(vg_widget_t *widget, void *canvas) {
     vg_colorswatch_t *swatch = (vg_colorswatch_t *)widget;
 
     vgfx_window_t win = (vgfx_window_t)canvas;
@@ -163,8 +154,7 @@ static void colorswatch_paint(vg_widget_t *widget, void *canvas)
     uint8_t alpha = (swatch->color >> 24) & 0xFF;
 
     // If color has transparency, draw checkerboard first
-    if (alpha < 255)
-    {
+    if (alpha < 255) {
         draw_checkerboard(canvas, widget->x, widget->y, widget->width, widget->height, 4);
     }
 
@@ -172,8 +162,7 @@ static void colorswatch_paint(vg_widget_t *widget, void *canvas)
     vgfx_fill_rect(win, x, y, w, h, swatch->color & 0x00FFFFFF);
 
     // Draw border
-    if (swatch->show_border)
-    {
+    if (swatch->show_border) {
         uint32_t border = swatch->selected ? swatch->selected_border : swatch->border_color;
         if (widget->state & VG_STATE_HOVERED)
             border = swatch->selected_border;
@@ -181,25 +170,20 @@ static void colorswatch_paint(vg_widget_t *widget, void *canvas)
     }
 }
 
-static bool colorswatch_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool colorswatch_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_colorswatch_t *swatch = (vg_colorswatch_t *)widget;
 
-    if (widget->state & VG_STATE_DISABLED)
-    {
+    if (widget->state & VG_STATE_DISABLED) {
         return false;
     }
 
-    if (event->type == VG_EVENT_CLICK)
-    {
+    if (event->type == VG_EVENT_CLICK) {
         // Call selection callback
-        if (swatch->on_select)
-        {
+        if (swatch->on_select) {
             swatch->on_select(widget, swatch->color, swatch->on_select_data);
         }
         // Also call widget's generic on_click if set
-        if (widget->on_click)
-        {
+        if (widget->on_click) {
             widget->on_click(widget, widget->callback_data);
         }
         return true;
@@ -208,8 +192,7 @@ static bool colorswatch_handle_event(vg_widget_t *widget, vg_event_t *event)
     return false;
 }
 
-static bool colorswatch_can_focus(vg_widget_t *widget)
-{
+static bool colorswatch_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
@@ -217,8 +200,7 @@ static bool colorswatch_can_focus(vg_widget_t *widget)
 // ColorSwatch API
 //=============================================================================
 
-void vg_colorswatch_set_color(vg_colorswatch_t *swatch, uint32_t color)
-{
+void vg_colorswatch_set_color(vg_colorswatch_t *swatch, uint32_t color) {
     if (!swatch)
         return;
 
@@ -226,33 +208,27 @@ void vg_colorswatch_set_color(vg_colorswatch_t *swatch, uint32_t color)
     swatch->base.needs_paint = true;
 }
 
-uint32_t vg_colorswatch_get_color(vg_colorswatch_t *swatch)
-{
+uint32_t vg_colorswatch_get_color(vg_colorswatch_t *swatch) {
     if (!swatch)
         return 0;
     return swatch->color;
 }
 
 /// @brief Colorswatch set selected.
-void vg_colorswatch_set_selected(vg_colorswatch_t *swatch, bool selected)
-{
+void vg_colorswatch_set_selected(vg_colorswatch_t *swatch, bool selected) {
     if (!swatch)
         return;
 
     swatch->selected = selected;
-    if (selected)
-    {
+    if (selected) {
         swatch->base.state |= VG_STATE_SELECTED;
-    }
-    else
-    {
+    } else {
         swatch->base.state &= ~VG_STATE_SELECTED;
     }
     swatch->base.needs_paint = true;
 }
 
-bool vg_colorswatch_is_selected(vg_colorswatch_t *swatch)
-{
+bool vg_colorswatch_is_selected(vg_colorswatch_t *swatch) {
     if (!swatch)
         return false;
     return swatch->selected;
@@ -261,8 +237,7 @@ bool vg_colorswatch_is_selected(vg_colorswatch_t *swatch)
 /// @brief Colorswatch set on select.
 void vg_colorswatch_set_on_select(vg_colorswatch_t *swatch,
                                   vg_colorswatch_callback_t callback,
-                                  void *user_data)
-{
+                                  void *user_data) {
     if (!swatch)
         return;
 
@@ -271,8 +246,7 @@ void vg_colorswatch_set_on_select(vg_colorswatch_t *swatch,
 }
 
 /// @brief Colorswatch set size.
-void vg_colorswatch_set_size(vg_colorswatch_t *swatch, float size)
-{
+void vg_colorswatch_set_size(vg_colorswatch_t *swatch, float size) {
     if (!swatch || size <= 0)
         return;
 

@@ -27,16 +27,14 @@
 #include "il/core/Type.hpp"
 #include <string>
 
-namespace il::core
-{
+namespace il::core {
 /// @brief Module-scope variable or constant.
 ///
 /// Globals provide named storage that is accessible to all functions within a
 /// module. Each global carries its own identifier, declared type, and optional
 /// initializer for constant data. The owning `Module` manages the lifetime of
 /// these objects.
-struct Global
-{
+struct Global {
     /// @brief Identifier of the global within its module.
     /// @invariant Unique among all globals owned by the module.
     std::string name;

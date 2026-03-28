@@ -28,46 +28,45 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// IMA ADPCM 89-entry step size table
-    extern const int16_t rt_adpcm_step_table[89];
+/// IMA ADPCM 89-entry step size table
+extern const int16_t rt_adpcm_step_table[89];
 
-    /// IMA ADPCM 16-entry index adjustment table
-    extern const int8_t rt_adpcm_index_table[16];
+/// IMA ADPCM 16-entry index adjustment table
+extern const int8_t rt_adpcm_index_table[16];
 
-    /// Encode a raw PCM buffer to an ADPCM block.
-    /// Returns bytes written to output.
-    int64_t rt_adpcm_encode_block(const int16_t *pcm,
-                                  int64_t sample_count,
-                                  uint8_t *output,
-                                  int64_t output_capacity);
+/// Encode a raw PCM buffer to an ADPCM block.
+/// Returns bytes written to output.
+int64_t rt_adpcm_encode_block(const int16_t *pcm,
+                              int64_t sample_count,
+                              uint8_t *output,
+                              int64_t output_capacity);
 
-    /// Decode an ADPCM block to PCM.
-    /// Returns samples decoded.
-    int64_t rt_adpcm_decode_block(const uint8_t *adpcm,
-                                  int64_t block_bytes,
-                                  int16_t *output,
-                                  int64_t output_capacity);
+/// Decode an ADPCM block to PCM.
+/// Returns samples decoded.
+int64_t rt_adpcm_decode_block(const uint8_t *adpcm,
+                              int64_t block_bytes,
+                              int16_t *output,
+                              int64_t output_capacity);
 
-    /// Encode a WAV file to .vaf format.
-    /// Returns 1 on success, 0 on failure.
-    int8_t rt_audio_encode_vaf(rt_string input_wav_path, rt_string output_vaf_path);
+/// Encode a WAV file to .vaf format.
+/// Returns 1 on success, 0 on failure.
+int8_t rt_audio_encode_vaf(rt_string input_wav_path, rt_string output_vaf_path);
 
-    /// Decode a .vaf file to raw PCM.
-    /// Returns malloc'd PCM buffer; caller must free. Sets out params.
-    int16_t *rt_audio_decode_vaf(const char *path,
-                                 int32_t *out_channels,
-                                 int32_t *out_sample_rate,
-                                 int64_t *out_sample_count);
+/// Decode a .vaf file to raw PCM.
+/// Returns malloc'd PCM buffer; caller must free. Sets out params.
+int16_t *rt_audio_decode_vaf(const char *path,
+                             int32_t *out_channels,
+                             int32_t *out_sample_rate,
+                             int64_t *out_sample_count);
 
-    /// Check if a file is .vaf format by reading header magic.
-    int8_t rt_audio_is_vaf(const char *path);
+/// Check if a file is .vaf format by reading header magic.
+int8_t rt_audio_is_vaf(const char *path);
 
-    /// Exposed to Zia as Viper.Sound.Encode
-    int8_t rt_audio_encode(rt_string input_path, rt_string output_path);
+/// Exposed to Zia as Viper.Sound.Encode
+int8_t rt_audio_encode(rt_string input_path, rt_string output_path);
 
 #ifdef __cplusplus
 }

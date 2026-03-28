@@ -23,8 +23,7 @@
 #include <string>
 #include <string_view>
 
-namespace il::io
-{
+namespace il::io {
 
 /// @brief Remove leading and trailing whitespace from the supplied text.
 /// @param text Input string that may contain surrounding whitespace.
@@ -72,8 +71,7 @@ std::optional<std::string_view> trapKindTokenFromValue(long long value);
 /// @return Populated diagnostic object.
 inline il::support::Diag makeLineErrorDiag(il::support::SourceLoc loc,
                                            unsigned lineNo,
-                                           std::string_view message)
-{
+                                           std::string_view message) {
     return il::support::makeError(loc, formatLineDiag(lineNo, message));
 }
 

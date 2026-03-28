@@ -20,8 +20,7 @@
 
 #if SIZE_MAX < INT64_MAX
 
-int main()
-{
+int main() {
     rt_string sample = rt_const_cstr("ABCDE");
     int64_t huge = (int64_t)SIZE_MAX + 42;
 
@@ -45,8 +44,7 @@ int main()
 
 #else
 
-int main()
-{
+int main() {
     return 0;
 }
 

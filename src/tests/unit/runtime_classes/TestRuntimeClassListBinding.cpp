@@ -12,18 +12,15 @@
 #include <algorithm>
 #include <string>
 
-namespace
-{
-[[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name)
-{
+namespace {
+[[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name) {
     const auto &externs = module.externs;
     return std::any_of(
         externs.begin(), externs.end(), [&](const il::core::Extern &e) { return e.name == name; });
 }
 } // namespace
 
-TEST(RuntimeClassListBinding, EmitsListExterns)
-{
+TEST(RuntimeClassListBinding, EmitsListExterns) {
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     const char *kSrc = R"BASIC(
@@ -50,8 +47,7 @@ TEST(RuntimeClassListBinding, EmitsListExterns)
     EXPECT_TRUE(hasExtern(result.module, "Viper.Collections.List.Set"));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

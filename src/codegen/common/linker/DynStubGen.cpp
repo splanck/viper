@@ -28,14 +28,11 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
-namespace
-{
+namespace {
 
-void emitLE32(std::vector<uint8_t> &buf, uint32_t v)
-{
+void emitLE32(std::vector<uint8_t> &buf, uint32_t v) {
     buf.push_back(static_cast<uint8_t>(v));
     buf.push_back(static_cast<uint8_t>(v >> 8));
     buf.push_back(static_cast<uint8_t>(v >> 16));
@@ -44,8 +41,7 @@ void emitLE32(std::vector<uint8_t> &buf, uint32_t v)
 
 } // namespace
 
-ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynamicSyms)
-{
+ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynamicSyms) {
     ObjFile stubObj;
     stubObj.name = "<objc-stubs>";
     stubObj.format = ObjFileFormat::ELF;
@@ -56,14 +52,11 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
     // Collect objc_msgSend$selector symbols and remove them from dynamicSyms
     // (they'll be resolved by our generated stubs, not by dyld).
     std::vector<std::string> selectorSyms;
-    for (auto it = dynamicSyms.begin(); it != dynamicSyms.end();)
-    {
-        if (it->find("objc_msgSend$") == 0)
-        {
+    for (auto it = dynamicSyms.begin(); it != dynamicSyms.end();) {
+        if (it->find("objc_msgSend$") == 0) {
             selectorSyms.push_back(*it);
             it = dynamicSyms.erase(it);
-        }
-        else
+        } else
             ++it;
     }
     if (selectorSyms.empty())
@@ -106,8 +99,7 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
 
     // First pass: build selector strings in rodata and sel ref pointers in data.
     std::vector<size_t> strOffsets;
-    for (const auto &sym : selectorSyms)
-    {
+    for (const auto &sym : selectorSyms) {
         std::string selector = sym.substr(sym.find('$') + 1);
 
         strOffsets.push_back(rodataSec.data.size());
@@ -119,8 +111,7 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
     }
 
     // Build symbols and relocations.
-    for (size_t i = 0; i < selectorSyms.size(); ++i)
-    {
+    for (size_t i = 0; i < selectorSyms.size(); ++i) {
         const size_t stubOff = i * 12;
         const size_t selrefOff = i * 8;
 
@@ -192,8 +183,7 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
     stubObj.symbols.push_back(std::move(msgSendSym));
 
     // Add B relocations for each stub -> objc_msgSend.
-    for (size_t i = 0; i < selectorSyms.size(); ++i)
-    {
+    for (size_t i = 0; i < selectorSyms.size(); ++i) {
         ObjReloc bReloc;
         bReloc.offset = i * 12 + 8;
         bReloc.type = elf_a64::kJump26;
@@ -208,8 +198,7 @@ ObjFile generateObjcSelectorStubsAArch64(std::unordered_set<std::string> &dynami
     return stubObj;
 }
 
-ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSyms)
-{
+ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSyms) {
     ObjFile stubObj;
     stubObj.name = "<dyld-stubs>";
     stubObj.format = ObjFileFormat::ELF;
@@ -243,8 +232,7 @@ ObjFile generateDynStubsAArch64(const std::unordered_set<std::string> &dynamicSy
     std::vector<std::string> sorted(dynamicSyms.begin(), dynamicSyms.end());
     std::sort(sorted.begin(), sorted.end());
 
-    for (size_t i = 0; i < sorted.size(); ++i)
-    {
+    for (size_t i = 0; i < sorted.size(); ++i) {
         const size_t stubOff = i * 12;
         const size_t gotOff = i * 8;
 

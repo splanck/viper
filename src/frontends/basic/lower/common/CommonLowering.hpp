@@ -24,26 +24,22 @@
 #include <string_view>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 struct BasicBlock;
 struct Function;
 } // namespace il::core
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 class Lowerer;
 }
 
-namespace il::frontends::basic::lower::common
-{
+namespace il::frontends::basic::lower::common {
 
 /// @brief Provides reusable IL emission helpers shared across BASIC lowering components.
 /// @invariant Each helper assumes the caller established an active basic block in the
 ///            @ref Lowerer procedure context before invocation.
 /// @ownership Does not own IR objects; borrows Lowerer state that outlives the helper.
-class CommonLowering
-{
+class CommonLowering {
   public:
     using Type = il::core::Type;
     using Value = il::core::Value;

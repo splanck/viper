@@ -32,41 +32,34 @@
 #include <iosfwd>
 #include <string>
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
-struct PipelineResult
-{
+struct PipelineResult {
     int exit_code{0};
     std::string stdout_text{};
     std::string stderr_text{};
 };
 
 /// Options controlling optional MIR dumps and diagnostics.
-struct PipelineOptions
-{
+struct PipelineOptions {
     bool dumpMirBeforeRA = false;
     bool dumpMirAfterRA = false;
     bool useBinaryEmit = false; ///< When true, also run BinaryEmitPass after EmitPass.
 };
 
-class CodegenPipeline
-{
+class CodegenPipeline {
   public:
-    enum class AssemblerMode
-    {
+    enum class AssemblerMode {
         System,
         Native,
     };
 
-    enum class LinkMode
-    {
+    enum class LinkMode {
         System,
         Native,
     };
 
-    struct Options
-    {
+    struct Options {
         std::string input_il_path{};
         std::string output_obj_path{};
         std::string output_asm_path{};

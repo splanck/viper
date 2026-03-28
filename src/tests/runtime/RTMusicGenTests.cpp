@@ -24,8 +24,7 @@
 #include <cassert>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     (void)msg;
 }
 
@@ -33,8 +32,7 @@ extern "C" void vm_trap(const char *msg)
 // Null Safety
 // ============================================================================
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     // All operations on NULL song should not crash
     assert(rt_musicgen_add_channel(nullptr, 0) == -1);
     assert(rt_musicgen_get_bpm(nullptr) == 0);
@@ -65,8 +63,7 @@ static void test_null_safety()
 // Creation and Defaults
 // ============================================================================
 
-static void test_create()
-{
+static void test_create() {
     void *song = rt_musicgen_new(120);
     assert(song != nullptr);
     assert(rt_musicgen_get_bpm(song) == 120);
@@ -76,8 +73,7 @@ static void test_create()
     printf("  test_create: PASSED\n");
 }
 
-static void test_bpm_clamping()
-{
+static void test_bpm_clamping() {
     // Below minimum
     void *slow = rt_musicgen_new(5);
     assert(rt_musicgen_get_bpm(slow) == 20);
@@ -99,8 +95,7 @@ static void test_bpm_clamping()
 // Channel Management
 // ============================================================================
 
-static void test_add_channels()
-{
+static void test_add_channels() {
     void *song = rt_musicgen_new(120);
 
     // Add all 5 waveform types
@@ -124,8 +119,7 @@ static void test_add_channels()
     printf("  test_add_channels: PASSED\n");
 }
 
-static void test_waveform_clamping()
-{
+static void test_waveform_clamping() {
     void *song = rt_musicgen_new(120);
 
     // Negative waveform clamped to 0
@@ -143,8 +137,7 @@ static void test_waveform_clamping()
 // Envelope Configuration
 // ============================================================================
 
-static void test_set_envelope()
-{
+static void test_set_envelope() {
     void *song = rt_musicgen_new(120);
     rt_musicgen_add_channel(song, 1);
 
@@ -162,8 +155,7 @@ static void test_set_envelope()
 // Effect Settings
 // ============================================================================
 
-static void test_set_effects()
-{
+static void test_set_effects() {
     void *song = rt_musicgen_new(120);
     rt_musicgen_add_channel(song, 1);
 
@@ -188,8 +180,7 @@ static void test_set_effects()
 // Note Addition
 // ============================================================================
 
-static void test_add_notes()
-{
+static void test_add_notes() {
     void *song = rt_musicgen_new(120);
     rt_musicgen_add_channel(song, 1);
 
@@ -205,14 +196,12 @@ static void test_add_notes()
     printf("  test_add_notes: PASSED\n");
 }
 
-static void test_note_capacity()
-{
+static void test_note_capacity() {
     void *song = rt_musicgen_new(120);
     rt_musicgen_add_channel(song, 0);
 
     // Fill to capacity
-    for (int i = 0; i < MUSICGEN_MAX_NOTES; i++)
-    {
+    for (int i = 0; i < MUSICGEN_MAX_NOTES; i++) {
         assert(rt_musicgen_add_note(song, 0, (int64_t)i * 10, 60, 10) == 1);
     }
 
@@ -226,8 +215,7 @@ static void test_note_capacity()
 // Build — Empty Song
 // ============================================================================
 
-static void test_build_empty()
-{
+static void test_build_empty() {
     // No channels
     void *song1 = rt_musicgen_new(120);
     rt_musicgen_set_length(song1, 400);
@@ -251,11 +239,10 @@ static void test_build_empty()
 // Build — Single Note (smoke test)
 // ============================================================================
 
-static void test_build_single_note()
-{
+static void test_build_single_note() {
     void *song = rt_musicgen_new(120);
-    rt_musicgen_add_channel(song, 1); // square
-    rt_musicgen_set_length(song, 400); // 4 beats
+    rt_musicgen_add_channel(song, 1);          // square
+    rt_musicgen_set_length(song, 400);         // 4 beats
     rt_musicgen_add_note(song, 0, 0, 69, 200); // A4, 2 beats
 
     void *sound = rt_musicgen_build(song);
@@ -271,8 +258,7 @@ static void test_build_single_note()
 // Build — Multi-channel with Effects
 // ============================================================================
 
-static void test_build_multichannel()
-{
+static void test_build_multichannel() {
     void *song = rt_musicgen_new(140);
 
     int64_t mel = rt_musicgen_add_channel(song, 1);  // square
@@ -317,8 +303,7 @@ static void test_build_multichannel()
 // Build — Loopable
 // ============================================================================
 
-static void test_build_loopable()
-{
+static void test_build_loopable() {
     void *song = rt_musicgen_new(120);
     rt_musicgen_add_channel(song, 0); // sine
     rt_musicgen_set_length(song, 400);
@@ -336,8 +321,7 @@ static void test_build_loopable()
 // Build — All Effects Active
 // ============================================================================
 
-static void test_build_all_effects()
-{
+static void test_build_all_effects() {
     void *song = rt_musicgen_new(120);
     int64_t ch = rt_musicgen_add_channel(song, 1);
 
@@ -369,8 +353,7 @@ static void test_build_all_effects()
 // Edge Cases
 // ============================================================================
 
-static void test_overlapping_notes()
-{
+static void test_overlapping_notes() {
     void *song = rt_musicgen_new(120);
     rt_musicgen_add_channel(song, 1);
     rt_musicgen_set_length(song, 400);
@@ -387,8 +370,7 @@ static void test_overlapping_notes()
         printf("  test_overlapping_notes: PASSED (audio unavailable)\n");
 }
 
-static void test_zero_duration_note()
-{
+static void test_zero_duration_note() {
     void *song = rt_musicgen_new(120);
     rt_musicgen_add_channel(song, 1);
     rt_musicgen_set_length(song, 400);
@@ -403,8 +385,7 @@ static void test_zero_duration_note()
         printf("  test_zero_duration_note: PASSED (audio unavailable)\n");
 }
 
-static void test_song_properties()
-{
+static void test_song_properties() {
     void *song = rt_musicgen_new(120);
 
     rt_musicgen_set_length(song, 800);
@@ -424,8 +405,7 @@ static void test_song_properties()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("RTMusicGenTests:\n");
 
     test_null_safety();

@@ -20,8 +20,7 @@
 //===----------------------------------------------------------------------===//
 #pragma once
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Entry point for lowering BASIC source into IL.
 class Lowerer;
@@ -80,27 +79,23 @@ enum class OverflowPolicy;
 /// @brief Policy describing signedness expectations in numeric lowering.
 enum class Signedness;
 
-namespace builtins
-{
+namespace builtins {
 /// @brief Context object used when lowering builtin functions.
 class LowerCtx;
 } // namespace builtins
 
-namespace lower
-{
+namespace lower {
 /// @brief IL emitter abstraction for lowering submodules.
 class Emitter;
 /// @brief Context object for lowering builtin operations.
 class BuiltinLowerContext;
 
-namespace common
-{
+namespace common {
 /// @brief Shared lowering utilities used by multiple frontend components.
 class CommonLowering;
 } // namespace common
 
-namespace detail
-{
+namespace detail {
 /// @brief Helper that scans expressions for type constraints.
 class ExprTypeScanner;
 /// @brief Helper that detects runtime feature needs during lowering.

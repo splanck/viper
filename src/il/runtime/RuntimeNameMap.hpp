@@ -19,8 +19,7 @@
 #include <optional>
 #include <string_view>
 
-namespace il::runtime
-{
+namespace il::runtime {
 
 /// @brief Maps a canonical Viper.* runtime symbol to its C rt_* implementation.
 /// @details Each entry pairs a high-level Viper namespace symbol (e.g.,
@@ -28,8 +27,7 @@ namespace il::runtime
 ///          runtime function name (e.g., "rt_str_substr"). The native code
 ///          generator uses this mapping to resolve IL extern references to
 ///          linkable C symbols.
-struct RuntimeNameAlias
-{
+struct RuntimeNameAlias {
     std::string_view canonical; ///< High-level Viper.* symbol name (e.g., "Viper.String.Length").
     std::string_view runtime;   ///< Low-level C runtime symbol (e.g., "rt_str_len").
 };
@@ -44,10 +42,8 @@ inline constexpr RuntimeNameAlias kRuntimeNameAliases[] = {
 
 /// @brief Resolve a canonical Viper.* runtime name to the C runtime symbol.
 /// @return Mapped symbol when present; std::nullopt otherwise.
-inline constexpr std::optional<std::string_view> mapCanonicalRuntimeName(std::string_view name)
-{
-    for (const auto &alias : kRuntimeNameAliases)
-    {
+inline constexpr std::optional<std::string_view> mapCanonicalRuntimeName(std::string_view name) {
+    for (const auto &alias : kRuntimeNameAliases) {
         if (alias.canonical == name)
             return alias.runtime;
     }

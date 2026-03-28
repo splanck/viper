@@ -36,10 +36,8 @@ using namespace viper::codegen::linker;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -49,8 +47,7 @@ static void check(bool cond, const char *msg, int line)
 
 // ─── ELF structures for parsing written files ────────────────────────────
 
-struct Elf64_Ehdr
-{
+struct Elf64_Ehdr {
     uint8_t e_ident[16];
     uint16_t e_type;
     uint16_t e_machine;
@@ -67,8 +64,7 @@ struct Elf64_Ehdr
     uint16_t e_shstrndx;
 };
 
-struct Elf64_Phdr
-{
+struct Elf64_Phdr {
     uint32_t p_type;
     uint32_t p_flags;
     uint64_t p_offset;
@@ -79,8 +75,7 @@ struct Elf64_Phdr
     uint64_t p_align;
 };
 
-struct Elf64_Shdr
-{
+struct Elf64_Shdr {
     uint32_t sh_name;
     uint32_t sh_type;
     uint64_t sh_flags;
@@ -111,8 +106,7 @@ static constexpr uint32_t SHF_EXECINSTR = 0x4;
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
 /// Read entire file into a byte vector.
-static std::vector<uint8_t> readFile(const std::string &path)
-{
+static std::vector<uint8_t> readFile(const std::string &path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f)
         return {};
@@ -124,16 +118,14 @@ static std::vector<uint8_t> readFile(const std::string &path)
 }
 
 /// Create a temporary file path for test output.
-static std::string tmpPath(const std::string &name)
-{
+static std::string tmpPath(const std::string &name) {
     auto dir = std::filesystem::temp_directory_path() / "viper_elf_test";
     std::filesystem::create_directories(dir);
     return (dir / name).string();
 }
 
 /// Clean up temp directory.
-static void cleanupTmp()
-{
+static void cleanupTmp() {
     std::error_code ec;
     std::filesystem::remove_all(std::filesystem::temp_directory_path() / "viper_elf_test", ec);
 }
@@ -141,8 +133,7 @@ static void cleanupTmp()
 /// Build a minimal LinkLayout with the given sections.
 static LinkLayout makeLayout(const std::vector<OutputSection> &sections,
                              uint64_t entryAddr = 0x401000,
-                             size_t pageSize = 0x1000)
-{
+                             size_t pageSize = 0x1000) {
     LinkLayout layout;
     layout.sections = sections;
     layout.entryAddr = entryAddr;
@@ -156,8 +147,7 @@ static OutputSection makeSec(const std::string &name,
                              uint64_t va,
                              bool exec,
                              bool writable,
-                             uint8_t fillByte = 0xCC)
-{
+                             uint8_t fillByte = 0xCC) {
     OutputSection sec;
     sec.name = name;
     sec.data.resize(size, fillByte);
@@ -171,8 +161,7 @@ static OutputSection makeSec(const std::string &name,
 // ─── Tests ───────────────────────────────────────────────────────────────
 
 /// Test 1: Single .text section — verify ELF header fields.
-static void testSingleTextSection()
-{
+static void testSingleTextSection() {
     auto path = tmpPath("single_text.elf");
     auto sec = makeSec(".text", 64, 0x401000, true, false, 0x90); // NOP-filled
 
@@ -215,8 +204,7 @@ static void testSingleTextSection()
 }
 
 /// Test 2: Multi-section layout — .text, .rodata, .data.
-static void testMultiSection()
-{
+static void testMultiSection() {
     auto path = tmpPath("multi_sec.elf");
     auto text = makeSec(".text", 128, 0x401000, true, false, 0xC3);     // RET-filled
     auto rodata = makeSec(".rodata", 64, 0x402000, false, false, 0x42); // 'B'-filled
@@ -293,8 +281,7 @@ static void testMultiSection()
 }
 
 /// Test 3: W^X violation — section with both writable and executable flags.
-static void testWxViolation()
-{
+static void testWxViolation() {
     auto path = tmpPath("wx_violation.elf");
     auto badSec = makeSec(".evil", 64, 0x401000, true, true); // W+X!
 
@@ -306,8 +293,7 @@ static void testWxViolation()
 }
 
 /// Test 4: AArch64 architecture — verify EM_AARCH64 in header.
-static void testAArch64Machine()
-{
+static void testAArch64Machine() {
     auto path = tmpPath("aarch64.elf");
     auto sec = makeSec(".text", 32, 0x401000, true, false);
 
@@ -325,8 +311,7 @@ static void testAArch64Machine()
 }
 
 /// Test 5: Entry point propagation — verify e_entry matches layout.entryAddr.
-static void testEntryPoint()
-{
+static void testEntryPoint() {
     auto path = tmpPath("entry.elf");
     auto sec = makeSec(".text", 256, 0x401000, true, false);
 
@@ -342,8 +327,7 @@ static void testEntryPoint()
 }
 
 /// Test 6: Section header verification — names, types, and flags.
-static void testSectionHeaders()
-{
+static void testSectionHeaders() {
     auto path = tmpPath("shdrs.elf");
     auto text = makeSec(".text", 64, 0x401000, true, false);
     auto dataSec = makeSec(".data", 32, 0x402000, false, true);
@@ -401,8 +385,7 @@ static void testSectionHeaders()
 }
 
 /// Test 7: Page alignment — segments are page-aligned in file.
-static void testPageAlignment()
-{
+static void testPageAlignment() {
     auto path = tmpPath("page_align.elf");
     auto text = makeSec(".text", 100, 0x401000, true, false);
     auto dataSec = makeSec(".data", 50, 0x402000, false, true);
@@ -420,18 +403,15 @@ static void testPageAlignment()
     std::memcpy(phdrs.data(), data.data() + ehdr.e_phoff, ehdr.e_phnum * sizeof(Elf64_Phdr));
 
     // Each PT_LOAD segment file offset should be page-aligned.
-    for (size_t i = 0; i < phdrs.size(); ++i)
-    {
-        if (phdrs[i].p_type == PT_LOAD)
-        {
+    for (size_t i = 0; i < phdrs.size(); ++i) {
+        if (phdrs[i].p_type == PT_LOAD) {
             CHECK(phdrs[i].p_offset % 0x1000 == 0);
         }
     }
 }
 
 /// Test 8: Empty sections skipped — sections with no data don't get PT_LOAD.
-static void testEmptySectionSkipped()
-{
+static void testEmptySectionSkipped() {
     auto path = tmpPath("empty_sec.elf");
     OutputSection empty;
     empty.name = ".bss";
@@ -461,8 +441,7 @@ static void testEmptySectionSkipped()
 }
 
 /// Test 9: Large page size (16KB for macOS arm64-style layout).
-static void testLargePageSize()
-{
+static void testLargePageSize() {
     auto path = tmpPath("large_page.elf");
     auto text = makeSec(".text", 200, 0x401000, true, false);
     auto dataSec = makeSec(".data", 100, 0x405000, false, true);
@@ -481,10 +460,8 @@ static void testLargePageSize()
     std::memcpy(phdrs.data(), data.data() + ehdr.e_phoff, ehdr.e_phnum * sizeof(Elf64_Phdr));
 
     // PT_LOAD segments should be 16KB-aligned.
-    for (size_t i = 0; i < phdrs.size(); ++i)
-    {
-        if (phdrs[i].p_type == PT_LOAD)
-        {
+    for (size_t i = 0; i < phdrs.size(); ++i) {
+        if (phdrs[i].p_type == PT_LOAD) {
             CHECK(phdrs[i].p_offset % 0x4000 == 0);
             CHECK(phdrs[i].p_align == 0x4000);
         }
@@ -492,8 +469,7 @@ static void testLargePageSize()
 }
 
 /// Test 10: GNU-stack section header exists in section headers.
-static void testGnuStackSectionHeader()
-{
+static void testGnuStackSectionHeader() {
     auto path = tmpPath("gnu_stack.elf");
     auto text = makeSec(".text", 32, 0x401000, true, false);
 
@@ -515,11 +491,9 @@ static void testGnuStackSectionHeader()
 
     // Find .note.GNU-stack section header.
     bool found = false;
-    for (size_t i = 0; i < shdrs.size(); ++i)
-    {
+    for (size_t i = 0; i < shdrs.size(); ++i) {
         if (shdrs[i].sh_name < strtabShdr.sh_size &&
-            std::strcmp(strtab + shdrs[i].sh_name, ".note.GNU-stack") == 0)
-        {
+            std::strcmp(strtab + shdrs[i].sh_name, ".note.GNU-stack") == 0) {
             found = true;
             CHECK(shdrs[i].sh_type == SHT_PROGBITS);
             CHECK(shdrs[i].sh_size == 0); // No data.
@@ -531,8 +505,7 @@ static void testGnuStackSectionHeader()
 
 // ─── Main ────────────────────────────────────────────────────────────────
 
-int main()
-{
+int main() {
     testSingleTextSection();
     testMultiSection();
     testWxViolation();
@@ -546,8 +519,7 @@ int main()
 
     cleanupTmp();
 
-    if (gFail > 0)
-    {
+    if (gFail > 0) {
         std::cerr << gFail << " check(s) FAILED\n";
         return 1;
     }

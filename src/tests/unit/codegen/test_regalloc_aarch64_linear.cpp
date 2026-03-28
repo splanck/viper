@@ -24,8 +24,7 @@
 
 using namespace viper::codegen::aarch64;
 
-TEST(Arm64RegAlloc, SpillsAndCalleeSaved)
-{
+TEST(Arm64RegAlloc, SpillsAndCalleeSaved) {
     auto &ti = darwinTarget();
     MFunction fn{};
     fn.name = "ra_test";
@@ -40,8 +39,7 @@ TEST(Arm64RegAlloc, SpillsAndCalleeSaved)
     // Create many virtual temporaries to exceed the available caller-saved pool
     // and force usage of callee-saved + spills. We define 40 vregs sequentially.
     const int N = 40;
-    for (int i = 0; i < N; ++i)
-    {
+    for (int i = 0; i < N; ++i) {
         MOperand dst = MOperand::vregOp(RegClass::GPR, static_cast<uint16_t>(i));
         bb.instrs.push_back(MInstr{MOpcode::MovRI, {dst, MOperand::immOp(i)}});
     }
@@ -57,11 +55,9 @@ TEST(Arm64RegAlloc, SpillsAndCalleeSaved)
     auto result = allocate(fn, ti);
     // Expect that we used at least one callee-saved register
     bool usedCallee = false;
-    for (auto r : fn.savedGPRs)
-    {
+    for (auto r : fn.savedGPRs) {
         if (std::find(ti.calleeSavedGPR.begin(), ti.calleeSavedGPR.end(), r) !=
-            ti.calleeSavedGPR.end())
-        {
+            ti.calleeSavedGPR.end()) {
             usedCallee = true;
         }
     }
@@ -78,14 +74,12 @@ TEST(Arm64RegAlloc, SpillsAndCalleeSaved)
 
     // Prologue must adjust sp by total frame size
     const int frameSize = fn.frame.totalBytes;
-    if (frameSize > 0)
-    {
+    if (frameSize > 0) {
         const std::string sub = "sub sp, sp, #" + std::to_string(frameSize);
         EXPECT_NE(asmText.find(sub), std::string::npos);
     }
     // Callee-saved used in RA must be saved in prologue
-    for (auto r : fn.savedGPRs)
-    {
+    for (auto r : fn.savedGPRs) {
         const char *name = regName(r);
         // look for either stp/str with the name
         const std::string needle1 = std::string("stp ") + name;
@@ -95,8 +89,7 @@ TEST(Arm64RegAlloc, SpillsAndCalleeSaved)
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

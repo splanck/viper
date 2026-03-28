@@ -23,18 +23,15 @@
 
 #include <utility>
 
-namespace
-{
+namespace {
 /// @brief Map a verifier diagnostic code to its string prefix.
 /// @details The verifier exposes a small catalogue of diagnostic codes that are
 ///          grouped by subsystem.  This helper translates the enumerator into a
 ///          stable string used as part of the user-facing diagnostic identifier
 ///          (for example "verify.eh.underflow").
-std::string_view diagCodeToPrefix(il::verify::VerifyDiagCode code)
-{
+std::string_view diagCodeToPrefix(il::verify::VerifyDiagCode code) {
     using il::verify::VerifyDiagCode;
-    switch (code)
-    {
+    switch (code) {
         case VerifyDiagCode::Unknown:
             return {};
         case VerifyDiagCode::EhStackUnderflow:
@@ -54,15 +51,13 @@ std::string_view diagCodeToPrefix(il::verify::VerifyDiagCode code)
 }
 } // namespace
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Convert a diagnostic code into its string representation.
 /// @details Thin wrapper that forwards to @ref diagCodeToPrefix so external
 ///          callers do not need to reach into the anonymous namespace when they
 ///          only care about the string form of the code.
-std::string_view toString(VerifyDiagCode code)
-{
+std::string_view toString(VerifyDiagCode code) {
     return diagCodeToPrefix(code);
 }
 
@@ -73,8 +68,7 @@ std::string_view toString(VerifyDiagCode code)
 il::support::Diag makeVerifierDiag(VerifyDiagCode code,
                                    il::support::Severity severity,
                                    il::support::SourceLoc loc,
-                                   std::string message)
-{
+                                   std::string message) {
     const std::string_view prefix = diagCodeToPrefix(code);
     return {severity, std::move(message), loc, std::string(prefix)};
 }
@@ -85,32 +79,28 @@ il::support::Diag makeVerifierDiag(VerifyDiagCode code,
 ///          site.
 il::support::Diag makeVerifierError(VerifyDiagCode code,
                                     il::support::SourceLoc loc,
-                                    std::string message)
-{
+                                    std::string message) {
     return makeVerifierDiag(code, il::support::Severity::Error, loc, std::move(message));
 }
 
 /// @brief Append a diagnostic to the collection in arrival order.
 /// @details The sink simply stores diagnostics in a vector, preserving the order
 ///          they were reported so clients can iterate deterministically.
-void CollectingDiagSink::report(il::support::Diag diag)
-{
+void CollectingDiagSink::report(il::support::Diag diag) {
     diags_.push_back(std::move(diag));
 }
 
 /// @brief Access the accumulated diagnostics without copying.
 /// @details Returns a reference to the internal vector so callers can inspect or
 ///          iterate the collected diagnostics without incurring a copy.
-const std::vector<il::support::Diag> &CollectingDiagSink::diagnostics() const
-{
+const std::vector<il::support::Diag> &CollectingDiagSink::diagnostics() const {
     return diags_;
 }
 
 /// @brief Clear all stored diagnostics.
 /// @details Empties the backing container, allowing the same sink instance to be
 ///          reused across multiple verification runs.
-void CollectingDiagSink::clear()
-{
+void CollectingDiagSink::clear() {
     diags_.clear();
 }
 

@@ -12,8 +12,7 @@
 
 #include "frontends/zia/Parser.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //===----------------------------------------------------------------------===//
 // Statement Parsing
@@ -23,10 +22,8 @@ namespace il::frontends::zia
 /// @details Handles blocks, var/final declarations, Java-style declarations, if, while, for,
 ///          return, guard, match, break, continue, print/println, and expression statements.
 /// @return The parsed statement, or nullptr on error.
-StmtPtr Parser::parseStatement()
-{
-    if (++stmtDepth_ > kMaxStmtDepth)
-    {
+StmtPtr Parser::parseStatement() {
+    if (++stmtDepth_ > kMaxStmtDepth) {
         --stmtDepth_;
         error("statement nesting too deep (limit: 512)");
         return nullptr;
@@ -36,16 +33,14 @@ StmtPtr Parser::parseStatement()
     StmtPtr result;
 
     // Block
-    if (check(TokenKind::LBrace))
-    {
+    if (check(TokenKind::LBrace)) {
         result = parseBlock();
         --stmtDepth_;
         return result;
     }
 
     // var/final variable declaration: var x = 5; final y: Integer = 10;
-    if (check(TokenKind::KwVar) || check(TokenKind::KwFinal))
-    {
+    if (check(TokenKind::KwVar) || check(TokenKind::KwFinal)) {
         result = parseVarDecl();
         --stmtDepth_;
         return result;
@@ -53,11 +48,9 @@ StmtPtr Parser::parseStatement()
 
     // Java-style variable declaration: Type name = expr;
     // Try parsing it speculatively (no heuristics); if it fails, fall back to expression parsing.
-    if (check(TokenKind::Identifier) || check(TokenKind::LParen))
-    {
+    if (check(TokenKind::Identifier) || check(TokenKind::LParen)) {
         Speculation speculative(*this);
-        if (StmtPtr decl = parseJavaStyleVarDecl())
-        {
+        if (StmtPtr decl = parseJavaStyleVarDecl()) {
             speculative.commit();
             --stmtDepth_;
             return decl;
@@ -65,48 +58,42 @@ StmtPtr Parser::parseStatement()
     }
 
     // If statement
-    if (check(TokenKind::KwIf))
-    {
+    if (check(TokenKind::KwIf)) {
         result = parseIfStmt();
         --stmtDepth_;
         return result;
     }
 
     // While statement
-    if (check(TokenKind::KwWhile))
-    {
+    if (check(TokenKind::KwWhile)) {
         result = parseWhileStmt();
         --stmtDepth_;
         return result;
     }
 
     // For statement
-    if (check(TokenKind::KwFor))
-    {
+    if (check(TokenKind::KwFor)) {
         result = parseForStmt();
         --stmtDepth_;
         return result;
     }
 
     // Return statement
-    if (check(TokenKind::KwReturn))
-    {
+    if (check(TokenKind::KwReturn)) {
         result = parseReturnStmt();
         --stmtDepth_;
         return result;
     }
 
     // Guard statement
-    if (check(TokenKind::KwGuard))
-    {
+    if (check(TokenKind::KwGuard)) {
         result = parseGuardStmt();
         --stmtDepth_;
         return result;
     }
 
     // Match statement (only when followed by a scrutinee, not when used as identifier)
-    if (check(TokenKind::KwMatch))
-    {
+    if (check(TokenKind::KwMatch)) {
         auto nextKind = peek(1).kind;
         bool isMatchStmt =
             (nextKind == TokenKind::Identifier || nextKind == TokenKind::IntegerLiteral ||
@@ -114,8 +101,7 @@ StmtPtr Parser::parseStatement()
              nextKind == TokenKind::LParen || nextKind == TokenKind::KwTrue ||
              nextKind == TokenKind::KwFalse || nextKind == TokenKind::KwNull ||
              nextKind == TokenKind::KwSelf);
-        if (isMatchStmt)
-        {
+        if (isMatchStmt) {
             result = parseMatchStmt();
             --stmtDepth_;
             return result;
@@ -124,10 +110,8 @@ StmtPtr Parser::parseStatement()
     }
 
     // Break
-    if (match(TokenKind::KwBreak))
-    {
-        if (!expect(TokenKind::Semicolon, ";"))
-        {
+    if (match(TokenKind::KwBreak)) {
+        if (!expect(TokenKind::Semicolon, ";")) {
             --stmtDepth_;
             return nullptr;
         }
@@ -136,10 +120,8 @@ StmtPtr Parser::parseStatement()
     }
 
     // Continue
-    if (match(TokenKind::KwContinue))
-    {
-        if (!expect(TokenKind::Semicolon, ";"))
-        {
+    if (match(TokenKind::KwContinue)) {
+        if (!expect(TokenKind::Semicolon, ";")) {
             --stmtDepth_;
             return nullptr;
         }
@@ -148,16 +130,14 @@ StmtPtr Parser::parseStatement()
     }
 
     // Try/catch/finally
-    if (check(TokenKind::KwTry))
-    {
+    if (check(TokenKind::KwTry)) {
         result = parseTryStmt();
         --stmtDepth_;
         return result;
     }
 
     // Throw statement
-    if (check(TokenKind::KwThrow))
-    {
+    if (check(TokenKind::KwThrow)) {
         result = parseThrowStmt();
         --stmtDepth_;
         return result;
@@ -165,14 +145,12 @@ StmtPtr Parser::parseStatement()
 
     // Expression statement
     ExprPtr expr = parseExpression();
-    if (!expr)
-    {
+    if (!expr) {
         --stmtDepth_;
         return nullptr;
     }
 
-    if (!expect(TokenKind::Semicolon, ";"))
-    {
+    if (!expect(TokenKind::Semicolon, ";")) {
         --stmtDepth_;
         return nullptr;
     }
@@ -185,16 +163,14 @@ StmtPtr Parser::parseStatement()
 /// @details Includes error recovery: on parse failure, skips to the next semicolon or brace
 ///          to continue parsing subsequent statements.
 /// @return The parsed BlockStmt, or nullptr on error.
-StmtPtr Parser::parseBlock()
-{
+StmtPtr Parser::parseBlock() {
     Token lbraceTok;
     if (!expect(TokenKind::LBrace, "{", &lbraceTok))
         return nullptr;
     SourceLoc loc = lbraceTok.loc;
 
     std::vector<StmtPtr> statements;
-    while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
-    {
+    while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
         // Check for declaration keywords that shouldn't appear inside a block.
         // If we see these, the block was likely not properly closed.
         // Note: 'value' is not included because it can be used as an identifier
@@ -203,15 +179,13 @@ StmtPtr Parser::parseBlock()
         if (check(TokenKind::KwFunc) ||
             (check(TokenKind::KwExpose) && check(TokenKind::KwFunc, 1)) ||
             (check(TokenKind::KwHide) && check(TokenKind::KwFunc, 1)) ||
-            check(TokenKind::KwEntity) || check(TokenKind::KwInterface))
-        {
+            check(TokenKind::KwEntity) || check(TokenKind::KwInterface)) {
             error("unexpected declaration keyword in block - possible missing '}'");
             break;
         }
 
         StmtPtr stmt = parseStatement();
-        if (!stmt)
-        {
+        if (!stmt) {
             resyncAfterError();
             continue;
         }
@@ -226,14 +200,12 @@ StmtPtr Parser::parseBlock()
 
 /// @brief Parse a local variable declaration (var x: Type = expr; or final x = expr;).
 /// @return The parsed VarStmt, or nullptr on error.
-StmtPtr Parser::parseVarDecl()
-{
+StmtPtr Parser::parseVarDecl() {
     Token kwTok = advance(); // consume var/final
     SourceLoc loc = kwTok.loc;
     bool isFinal = kwTok.kind == TokenKind::KwFinal;
 
-    if (!checkIdentifierLike())
-    {
+    if (!checkIdentifierLike()) {
         error("expected variable name");
         return nullptr;
     }
@@ -242,8 +214,7 @@ StmtPtr Parser::parseVarDecl()
 
     // Optional type annotation
     TypePtr type;
-    if (match(TokenKind::Colon))
-    {
+    if (match(TokenKind::Colon)) {
         type = parseType();
         if (!type)
             return nullptr;
@@ -251,8 +222,7 @@ StmtPtr Parser::parseVarDecl()
 
     // Optional initializer — allow struct literals in this position
     ExprPtr init;
-    if (match(TokenKind::Equal))
-    {
+    if (match(TokenKind::Equal)) {
         allowStructLiterals_ = true;
         init = parseExpression();
         allowStructLiterals_ = false;
@@ -270,8 +240,7 @@ StmtPtr Parser::parseVarDecl()
 /// @brief Parse a Java-style local variable declaration (Type name = expr;).
 /// @details Used speculatively; returns nullptr if the token sequence does not match.
 /// @return The parsed VarStmt, or nullptr if not a valid Java-style declaration.
-StmtPtr Parser::parseJavaStyleVarDecl()
-{
+StmtPtr Parser::parseJavaStyleVarDecl() {
     SourceLoc loc = peek().loc;
 
     // Parse the type (e.g., Integer, List[String], etc.)
@@ -280,8 +249,7 @@ StmtPtr Parser::parseJavaStyleVarDecl()
         return nullptr;
 
     // Now we expect a variable name
-    if (!checkIdentifierLike())
-    {
+    if (!checkIdentifierLike()) {
         error("expected variable name after type");
         return nullptr;
     }
@@ -290,8 +258,7 @@ StmtPtr Parser::parseJavaStyleVarDecl()
 
     // Optional initializer (= expr)
     ExprPtr init;
-    if (match(TokenKind::Equal))
-    {
+    if (match(TokenKind::Equal)) {
         init = parseExpression();
         if (!init)
             return nullptr;
@@ -306,8 +273,7 @@ StmtPtr Parser::parseJavaStyleVarDecl()
 
 /// @brief Parse an if statement with optional else clause (if cond { body } else { body }).
 /// @return The parsed IfStmt, or nullptr on error.
-StmtPtr Parser::parseIfStmt()
-{
+StmtPtr Parser::parseIfStmt() {
     Token ifTok = advance(); // consume 'if'
     SourceLoc loc = ifTok.loc;
 
@@ -321,8 +287,7 @@ StmtPtr Parser::parseIfStmt()
         return nullptr;
 
     StmtPtr elseBranch;
-    if (match(TokenKind::KwElse))
-    {
+    if (match(TokenKind::KwElse)) {
         elseBranch = parseStatement();
         if (!elseBranch)
             return nullptr;
@@ -334,8 +299,7 @@ StmtPtr Parser::parseIfStmt()
 
 /// @brief Parse a while loop (while condition { body }).
 /// @return The parsed WhileStmt, or nullptr on error.
-StmtPtr Parser::parseWhileStmt()
-{
+StmtPtr Parser::parseWhileStmt() {
     Token whileTok = advance(); // consume 'while'
     SourceLoc loc = whileTok.loc;
 
@@ -356,37 +320,31 @@ StmtPtr Parser::parseWhileStmt()
 ///          For-in: for x in collection { body }
 ///          For-in tuple: for (k, v) in map { body }
 /// @return The parsed ForStmt or ForInStmt, or nullptr on error.
-StmtPtr Parser::parseForStmt()
-{
+StmtPtr Parser::parseForStmt() {
     Token forTok = advance(); // consume 'for'
     SourceLoc loc = forTok.loc;
 
     bool hasParen = match(TokenKind::LParen);
 
-    auto isCStyleFor = [&]() -> bool
-    {
+    auto isCStyleFor = [&]() -> bool {
         int depth = 0;
-        for (int i = 0;; ++i)
-        {
+        for (int i = 0;; ++i) {
             TokenKind kind = peek(i).kind;
             if (kind == TokenKind::Eof)
                 break;
             if (!hasParen && kind == TokenKind::LBrace)
                 break;
-            if (kind == TokenKind::LParen)
-            {
+            if (kind == TokenKind::LParen) {
                 depth++;
                 continue;
             }
-            if (kind == TokenKind::RParen)
-            {
+            if (kind == TokenKind::RParen) {
                 if (depth == 0)
                     break;
                 depth--;
                 continue;
             }
-            if (depth == 0)
-            {
+            if (depth == 0) {
                 if (kind == TokenKind::Semicolon)
                     return true;
                 if (kind == TokenKind::KwIn)
@@ -396,25 +354,19 @@ StmtPtr Parser::parseForStmt()
         return false;
     };
 
-    if (isCStyleFor())
-    {
-        if (!hasParen)
-        {
+    if (isCStyleFor()) {
+        if (!hasParen) {
             error("expected '(' in C-style for loop");
             return nullptr;
         }
 
         StmtPtr init;
-        if (!check(TokenKind::Semicolon))
-        {
-            if (check(TokenKind::KwVar) || check(TokenKind::KwFinal))
-            {
+        if (!check(TokenKind::Semicolon)) {
+            if (check(TokenKind::KwVar) || check(TokenKind::KwFinal)) {
                 init = parseVarDecl();
                 if (!init)
                     return nullptr;
-            }
-            else
-            {
+            } else {
                 ExprPtr initExpr = parseExpression();
                 if (!initExpr)
                     return nullptr;
@@ -422,15 +374,12 @@ StmtPtr Parser::parseForStmt()
                     return nullptr;
                 init = std::make_unique<ExprStmt>(initExpr->loc, std::move(initExpr));
             }
-        }
-        else if (!expect(TokenKind::Semicolon, ";"))
-        {
+        } else if (!expect(TokenKind::Semicolon, ";")) {
             return nullptr;
         }
 
         ExprPtr condition;
-        if (!check(TokenKind::Semicolon))
-        {
+        if (!check(TokenKind::Semicolon)) {
             condition = parseExpression();
             if (!condition)
                 return nullptr;
@@ -439,8 +388,7 @@ StmtPtr Parser::parseForStmt()
             return nullptr;
 
         ExprPtr update;
-        if (!check(TokenKind::RParen))
-        {
+        if (!check(TokenKind::RParen)) {
             update = parseExpression();
             if (!update)
                 return nullptr;
@@ -459,14 +407,12 @@ StmtPtr Parser::parseForStmt()
 
     // Optional extra parentheses for tuple binding: for ((a, b) in ...)
     bool hasTupleParen = false;
-    if (hasParen && check(TokenKind::LParen))
-    {
+    if (hasParen && check(TokenKind::LParen)) {
         hasTupleParen = true;
         advance();
     }
 
-    if (!checkIdentifierLike())
-    {
+    if (!checkIdentifierLike()) {
         error("expected variable name in for loop");
         return nullptr;
     }
@@ -475,8 +421,7 @@ StmtPtr Parser::parseForStmt()
     std::string varName = varTok.text;
 
     TypePtr varType;
-    if (match(TokenKind::Colon))
-    {
+    if (match(TokenKind::Colon)) {
         varType = parseType();
         if (!varType)
             return nullptr;
@@ -486,27 +431,23 @@ StmtPtr Parser::parseForStmt()
     std::string secondVar;
     TypePtr secondType;
 
-    if (match(TokenKind::Comma))
-    {
+    if (match(TokenKind::Comma)) {
         isTuple = true;
-        if (!checkIdentifierLike())
-        {
+        if (!checkIdentifierLike()) {
             error("expected variable name in tuple binding");
             return nullptr;
         }
         Token secondTok = advance();
         secondVar = secondTok.text;
 
-        if (match(TokenKind::Colon))
-        {
+        if (match(TokenKind::Colon)) {
             secondType = parseType();
             if (!secondType)
                 return nullptr;
         }
     }
 
-    if (hasTupleParen)
-    {
+    if (hasTupleParen) {
         if (!expect(TokenKind::RParen, ")"))
             return nullptr;
     }
@@ -518,8 +459,7 @@ StmtPtr Parser::parseForStmt()
     if (!iterable)
         return nullptr;
 
-    if (hasParen)
-    {
+    if (hasParen) {
         if (!expect(TokenKind::RParen, ")"))
             return nullptr;
     }
@@ -529,14 +469,11 @@ StmtPtr Parser::parseForStmt()
         return nullptr;
 
     std::unique_ptr<ForInStmt> stmt;
-    if (isTuple)
-    {
+    if (isTuple) {
         stmt = std::make_unique<ForInStmt>(
             loc, std::move(varName), std::move(secondVar), std::move(iterable), std::move(body));
         stmt->secondVariableType = std::move(secondType);
-    }
-    else
-    {
+    } else {
         stmt = std::make_unique<ForInStmt>(
             loc, std::move(varName), std::move(iterable), std::move(body));
     }
@@ -546,14 +483,12 @@ StmtPtr Parser::parseForStmt()
 
 /// @brief Parse a return statement (return [expr];).
 /// @return The parsed ReturnStmt, or nullptr on error.
-StmtPtr Parser::parseReturnStmt()
-{
+StmtPtr Parser::parseReturnStmt() {
     Token returnTok = advance(); // consume 'return'
     SourceLoc loc = returnTok.loc;
 
     ExprPtr value;
-    if (!check(TokenKind::Semicolon))
-    {
+    if (!check(TokenKind::Semicolon)) {
         allowStructLiterals_ = true;
         value = parseExpression();
         allowStructLiterals_ = false;
@@ -570,8 +505,7 @@ StmtPtr Parser::parseReturnStmt()
 /// @brief Parse a guard statement (guard condition else { body }).
 /// @details The else block must contain a control flow exit (return, break, continue).
 /// @return The parsed GuardStmt, or nullptr on error.
-StmtPtr Parser::parseGuardStmt()
-{
+StmtPtr Parser::parseGuardStmt() {
     Token guardTok = advance(); // consume 'guard'
     SourceLoc loc = guardTok.loc;
 
@@ -599,8 +533,7 @@ StmtPtr Parser::parseGuardStmt()
 /// @details Each arm consists of a pattern, optional guard (if condition), and a body
 ///          that is either a block or a single expression followed by a semicolon.
 /// @return The parsed MatchStmt, or nullptr on error.
-StmtPtr Parser::parseMatchStmt()
-{
+StmtPtr Parser::parseMatchStmt() {
     Token matchTok = advance(); // consume 'match'
     SourceLoc loc = matchTok.loc;
 
@@ -615,13 +548,11 @@ StmtPtr Parser::parseMatchStmt()
     std::vector<MatchArm> arms;
 
     // Parse match arms
-    while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
-    {
+    while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
         MatchArm arm;
 
         arm.pattern = parseMatchPattern();
-        if (match(TokenKind::KwIf))
-        {
+        if (match(TokenKind::KwIf)) {
             arm.pattern.guard = parseExpression();
             if (!arm.pattern.guard)
                 return nullptr;
@@ -632,18 +563,15 @@ StmtPtr Parser::parseMatchStmt()
             return nullptr;
 
         // Parse arm body (expression or block)
-        if (check(TokenKind::LBrace))
-        {
+        if (check(TokenKind::LBrace)) {
             // Block body - parse as block expression
             Token lbraceTok = advance(); // consume '{'
             SourceLoc blockLoc = lbraceTok.loc;
 
             std::vector<StmtPtr> statements;
-            while (!check(TokenKind::RBrace) && !check(TokenKind::Eof))
-            {
+            while (!check(TokenKind::RBrace) && !check(TokenKind::Eof)) {
                 StmtPtr stmt = parseStatement();
-                if (!stmt)
-                {
+                if (!stmt) {
                     resyncAfterError();
                     continue;
                 }
@@ -654,9 +582,7 @@ StmtPtr Parser::parseMatchStmt()
                 return nullptr;
 
             arm.body = std::make_unique<BlockExpr>(blockLoc, std::move(statements), nullptr);
-        }
-        else
-        {
+        } else {
             // Expression body
             arm.body = parseExpression();
             if (!arm.body)
@@ -683,8 +609,7 @@ StmtPtr Parser::parseMatchStmt()
 ///   [catch(varName) { catchBody }]
 ///   [finally { finallyBody }]
 /// At least one of catch or finally must be present.
-StmtPtr Parser::parseTryStmt()
-{
+StmtPtr Parser::parseTryStmt() {
     Token tryTok = advance(); // consume 'try'
     SourceLoc loc = tryTok.loc;
 
@@ -696,20 +621,15 @@ StmtPtr Parser::parseTryStmt()
         return nullptr;
 
     // Parse optional catch clause
-    if (match(TokenKind::KwCatch))
-    {
+    if (match(TokenKind::KwCatch)) {
         // Optional catch variable: catch(e), catch(e: ErrorType), or catch
-        if (match(TokenKind::LParen))
-        {
-            if (checkIdentifierLike())
-            {
+        if (match(TokenKind::LParen)) {
+            if (checkIdentifierLike()) {
                 stmt->catchVar = advance().text;
 
                 // Optional typed catch: catch(e: ErrorType)
-                if (match(TokenKind::Colon))
-                {
-                    if (!check(TokenKind::Identifier))
-                    {
+                if (match(TokenKind::Colon)) {
+                    if (!check(TokenKind::Identifier)) {
                         error("expected error type name after ':' in catch clause");
                         return nullptr;
                     }
@@ -726,16 +646,14 @@ StmtPtr Parser::parseTryStmt()
     }
 
     // Parse optional finally clause
-    if (match(TokenKind::KwFinally))
-    {
+    if (match(TokenKind::KwFinally)) {
         stmt->finallyBody = parseBlock();
         if (!stmt->finallyBody)
             return nullptr;
     }
 
     // At least one of catch or finally must be present
-    if (!stmt->catchBody && !stmt->finallyBody)
-    {
+    if (!stmt->catchBody && !stmt->finallyBody) {
         error("try statement requires at least a catch or finally clause");
         return nullptr;
     }
@@ -744,8 +662,7 @@ StmtPtr Parser::parseTryStmt()
 }
 
 /// @brief Parse a throw statement: throw expr;
-StmtPtr Parser::parseThrowStmt()
-{
+StmtPtr Parser::parseThrowStmt() {
     Token throwTok = advance(); // consume 'throw'
     SourceLoc loc = throwTok.loc;
 

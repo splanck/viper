@@ -78,8 +78,7 @@
 #include <cctype>
 #include <utility>
 
-namespace il::runtime
-{
+namespace il::runtime {
 
 //===----------------------------------------------------------------------===//
 /// @name Catalog Construction Macros
@@ -87,24 +86,21 @@ namespace il::runtime
 /// @{
 //===----------------------------------------------------------------------===//
 
-namespace
-{
+namespace {
 
 /// @brief Constructs a RuntimeProperty descriptor from .inc parameters.
 /// @details This macro is invoked by the generated RuntimeClasses.inc file
 /// to create property descriptors. The readonly flag is automatically set
 /// based on whether the setter pointer is null.
 #define RUNTIME_PROP(_name, _type, _getter, _setter)                                               \
-    ::il::runtime::RuntimeProperty                                                                 \
-    {                                                                                              \
+    ::il::runtime::RuntimeProperty {                                                               \
         (_name), (_type), (_getter), (_setter), !(_setter)                                         \
     }
 
 /// @brief Constructs a vector of RuntimeProperty descriptors.
 /// @details Wraps multiple RUNTIME_PROP() invocations into a std::vector.
 #define RUNTIME_PROPS(...)                                                                         \
-    std::vector<::il::runtime::RuntimeProperty>                                                    \
-    {                                                                                              \
+    std::vector<::il::runtime::RuntimeProperty> {                                                  \
         __VA_ARGS__                                                                                \
     }
 
@@ -112,16 +108,14 @@ namespace
 /// @details Creates a method descriptor with name, signature string, and
 /// canonical extern target name.
 #define RUNTIME_METHOD(_name, _sig, _target)                                                       \
-    ::il::runtime::RuntimeMethod                                                                   \
-    {                                                                                              \
+    ::il::runtime::RuntimeMethod {                                                                 \
         (_name), (_sig), (_target)                                                                 \
     }
 
 /// @brief Constructs a vector of RuntimeMethod descriptors.
 /// @details Wraps multiple RUNTIME_METHOD() invocations into a std::vector.
 #define RUNTIME_METHODS(...)                                                                       \
-    std::vector<::il::runtime::RuntimeMethod>                                                      \
-    {                                                                                              \
+    std::vector<::il::runtime::RuntimeMethod> {                                                    \
         __VA_ARGS__                                                                                \
     }
 
@@ -171,10 +165,8 @@ namespace
 ///
 /// @note The returned reference is valid for the lifetime of the program.
 ///
-const std::vector<RuntimeClass> &runtimeClassCatalog()
-{
-    static const std::vector<RuntimeClass> catalog_init = []
-    {
+const std::vector<RuntimeClass> &runtimeClassCatalog() {
+    static const std::vector<RuntimeClass> catalog_init = [] {
         std::vector<RuntimeClass> catalog;
         catalog.reserve(8); // Initial capacity; grows as classes are added
 
@@ -210,31 +202,23 @@ const std::vector<RuntimeClass> &runtimeClassCatalog()
 /// @return Pointer to the matching RuntimeClass, or nullptr if not found.
 ///         The returned pointer is valid for the lifetime of the program.
 ///
-const RuntimeClass *findRuntimeClassByQName(std::string_view qname)
-{
+const RuntimeClass *findRuntimeClassByQName(std::string_view qname) {
     const auto &catalog = runtimeClassCatalog();
-    for (const auto &c : catalog)
-    {
+    for (const auto &c : catalog) {
         std::string_view cname{c.qname};
 
         // Quick length check before expensive character comparison
-        if (qname.size() != cname.size())
-        {
+        if (qname.size() != cname.size()) {
             continue;
         }
 
         // Case-insensitive comparison using std::equal with a custom comparator
-        bool match = std::equal(qname.begin(),
-                                qname.end(),
-                                cname.begin(),
-                                cname.end(),
-                                [](char a, char b)
-                                {
-                                    return std::toupper(static_cast<unsigned char>(a)) ==
-                                           std::toupper(static_cast<unsigned char>(b));
-                                });
-        if (match)
-        {
+        bool match =
+            std::equal(qname.begin(), qname.end(), cname.begin(), cname.end(), [](char a, char b) {
+                return std::toupper(static_cast<unsigned char>(a)) ==
+                       std::toupper(static_cast<unsigned char>(b));
+            });
+        if (match) {
             return &c;
         }
     }
@@ -270,8 +254,7 @@ const RuntimeClass *findRuntimeClassByQName(std::string_view qname)
 ///
 /// @return The corresponding ILScalarType, or Unknown if not recognized.
 ///
-ILScalarType mapILToken(std::string_view tok)
-{
+ILScalarType mapILToken(std::string_view tok) {
     // Direct string comparisons are fast for these short tokens.
     // Using a switch on the first character would add complexity
     // without meaningful performance benefit.
@@ -332,16 +315,14 @@ ILScalarType mapILToken(std::string_view tok)
 /// @return Parsed signature with return type and parameter types.
 ///         Check isValid() to verify successful parsing.
 ///
-ParsedSignature parseRuntimeSignature(std::string_view sig)
-{
+ParsedSignature parseRuntimeSignature(std::string_view sig) {
     ParsedSignature result;
 
     // Find the parentheses delimiting return type from parameters.
     // Expected format: "ret(args)" where args may be empty.
     auto lparen = sig.find('(');
     auto rparen = sig.rfind(')');
-    if (lparen == std::string_view::npos || rparen == std::string_view::npos || rparen < lparen)
-    {
+    if (lparen == std::string_view::npos || rparen == std::string_view::npos || rparen < lparen) {
         // Malformed signature—return with Unknown type to signal error
         return result;
     }
@@ -354,8 +335,7 @@ ParsedSignature parseRuntimeSignature(std::string_view sig)
         retTok.remove_suffix(1);
 
     // Check for optional return type (trailing '?')
-    if (!retTok.empty() && retTok.back() == '?')
-    {
+    if (!retTok.empty() && retTok.back() == '?') {
         result.isOptionalReturn = true;
         retTok.remove_suffix(1);
     }
@@ -363,11 +343,9 @@ ParsedSignature parseRuntimeSignature(std::string_view sig)
     // Check for parameterized collection type: "seq<str>", "list<str>", etc.
     // These indicate a typed sequence return where the element type is known.
     auto langle = retTok.find('<');
-    if (langle != std::string_view::npos)
-    {
+    if (langle != std::string_view::npos) {
         auto rangle = retTok.rfind('>');
-        if (rangle != std::string_view::npos && rangle > langle)
-        {
+        if (rangle != std::string_view::npos && rangle > langle) {
             // Extract element type name (e.g. "str" from "seq<str>")
             result.elementTypeName = std::string(retTok.substr(langle + 1, rangle - langle - 1));
             // Trim any whitespace from element type name
@@ -393,8 +371,7 @@ ParsedSignature parseRuntimeSignature(std::string_view sig)
 
     // Parse comma-separated parameter tokens
     std::size_t pos = 0;
-    while (pos < args.size())
-    {
+    while (pos < args.size()) {
         // Skip leading whitespace and commas
         while (pos < args.size() && (args[pos] == ' ' || args[pos] == ','))
             ++pos;
@@ -432,8 +409,7 @@ ParsedSignature parseRuntimeSignature(std::string_view sig)
 /// @param s The string to convert.
 /// @return New lowercase string.
 ///
-std::string RuntimeRegistry::toLower(std::string_view s)
-{
+std::string RuntimeRegistry::toLower(std::string_view s) {
     std::string out;
     out.reserve(s.size());
     for (unsigned char c : s)
@@ -456,8 +432,7 @@ std::string RuntimeRegistry::toLower(std::string_view s)
 ///
 std::string RuntimeRegistry::methodKey(std::string_view cls,
                                        std::string_view method,
-                                       std::size_t arity)
-{
+                                       std::size_t arity) {
     std::string key;
     key.reserve(cls.size() + method.size() + 16);
     key.append(toLower(cls));
@@ -478,8 +453,7 @@ std::string RuntimeRegistry::methodKey(std::string_view cls,
 /// @param prop The property name.
 /// @return The hash key string.
 ///
-std::string RuntimeRegistry::propertyKey(std::string_view cls, std::string_view prop)
-{
+std::string RuntimeRegistry::propertyKey(std::string_view cls, std::string_view prop) {
     std::string key;
     key.reserve(cls.size() + prop.size() + 2);
     key.append(toLower(cls));
@@ -498,8 +472,7 @@ std::string RuntimeRegistry::propertyKey(std::string_view cls, std::string_view 
 /// @param name The canonical extern function name.
 /// @return The hash key string.
 ///
-std::string RuntimeRegistry::functionKey(std::string_view name)
-{
+std::string RuntimeRegistry::functionKey(std::string_view name) {
     return toLower(name);
 }
 
@@ -509,8 +482,7 @@ std::string RuntimeRegistry::functionKey(std::string_view name)
 /// accessed. Iterates through the entire catalog and builds hash indexes
 /// for methods, properties, and functions.
 ///
-RuntimeRegistry::RuntimeRegistry()
-{
+RuntimeRegistry::RuntimeRegistry() {
     buildIndexes();
 }
 
@@ -535,17 +507,14 @@ RuntimeRegistry::RuntimeRegistry()
 /// is the average number of methods/properties per class. This happens once
 /// at startup and enables O(1) lookups thereafter.
 ///
-void RuntimeRegistry::buildIndexes()
-{
+void RuntimeRegistry::buildIndexes() {
     const auto &catalog = runtimeClassCatalog();
 
-    for (const auto &cls : catalog)
-    {
+    for (const auto &cls : catalog) {
         const char *qname = cls.qname;
 
         // Index all methods for this class
-        for (const auto &m : cls.methods)
-        {
+        for (const auto &m : cls.methods) {
             // Parse the signature string into structured form
             ParsedSignature sig = parseRuntimeSignature(m.signature ? m.signature : "");
             if (!sig.isValid())
@@ -566,8 +535,7 @@ void RuntimeRegistry::buildIndexes()
         }
 
         // Index all properties for this class
-        for (const auto &p : cls.properties)
-        {
+        for (const auto &p : cls.properties) {
             // Build the ParsedProperty descriptor
             ParsedProperty pp;
             pp.name = p.name;
@@ -580,8 +548,7 @@ void RuntimeRegistry::buildIndexes()
             propertyIndex_[propertyKey(qname, p.name)] = pp;
 
             // Index getter as a zero-parameter function returning the property type
-            if (p.getter)
-            {
+            if (p.getter) {
                 ParsedSignature getterSig;
                 getterSig.returnType = pp.type;
                 // Getter takes only the receiver (no explicit params)
@@ -589,8 +556,7 @@ void RuntimeRegistry::buildIndexes()
             }
 
             // Index setter as a void function taking the property type
-            if (p.setter)
-            {
+            if (p.setter) {
                 ParsedSignature setterSig;
                 setterSig.returnType = ILScalarType::Void;
                 setterSig.params.push_back(pp.type);
@@ -607,8 +573,7 @@ void RuntimeRegistry::buildIndexes()
 ///
 /// @return Const reference to the singleton instance.
 ///
-const RuntimeRegistry &RuntimeRegistry::instance()
-{
+const RuntimeRegistry &RuntimeRegistry::instance() {
     static RuntimeRegistry reg;
     return reg;
 }
@@ -637,8 +602,7 @@ const RuntimeRegistry &RuntimeRegistry::instance()
 ///
 std::optional<ParsedMethod> RuntimeRegistry::findMethod(std::string_view classQName,
                                                         std::string_view methodName,
-                                                        std::size_t arity) const
-{
+                                                        std::size_t arity) const {
     auto it = methodIndex_.find(methodKey(classQName, methodName, arity));
     if (it == methodIndex_.end())
         return std::nullopt;
@@ -667,8 +631,7 @@ std::optional<ParsedMethod> RuntimeRegistry::findMethod(std::string_view classQN
 /// @return The parsed property info if found, std::nullopt otherwise.
 ///
 std::optional<ParsedProperty> RuntimeRegistry::findProperty(std::string_view classQName,
-                                                            std::string_view propertyName) const
-{
+                                                            std::string_view propertyName) const {
     auto it = propertyIndex_.find(propertyKey(classQName, propertyName));
     if (it == propertyIndex_.end())
         return std::nullopt;
@@ -695,8 +658,7 @@ std::optional<ParsedProperty> RuntimeRegistry::findProperty(std::string_view cla
 ///
 /// @return The parsed signature if found, std::nullopt otherwise.
 ///
-std::optional<ParsedSignature> RuntimeRegistry::findFunction(std::string_view canonicalName) const
-{
+std::optional<ParsedSignature> RuntimeRegistry::findFunction(std::string_view canonicalName) const {
     auto it = functionIndex_.find(functionKey(canonicalName));
     if (it == functionIndex_.end())
         return std::nullopt;
@@ -720,8 +682,7 @@ std::optional<ParsedSignature> RuntimeRegistry::findFunction(std::string_view ca
 /// @return List of strings like "MethodName/arity" for each available overload.
 ///
 std::vector<std::string> RuntimeRegistry::methodCandidates(std::string_view classQName,
-                                                           std::string_view methodName) const
-{
+                                                           std::string_view methodName) const {
     std::vector<std::string> out;
 
     // Build the prefix we're searching for: "class|method#"
@@ -734,8 +695,7 @@ std::vector<std::string> RuntimeRegistry::methodCandidates(std::string_view clas
 
     // Scan all method keys for matching prefix
     // (A trie would be more efficient but this is only used for error messages)
-    for (const auto &p : methodIndex_)
-    {
+    for (const auto &p : methodIndex_) {
         const std::string &k = p.first;
         if (k.rfind(prefix, 0) == 0) // Starts with prefix
         {
@@ -755,8 +715,7 @@ std::vector<std::string> RuntimeRegistry::methodCandidates(std::string_view clas
 ///
 /// @return Const reference to the catalog vector.
 ///
-const std::vector<RuntimeClass> &RuntimeRegistry::rawCatalog() const
-{
+const std::vector<RuntimeClass> &RuntimeRegistry::rawCatalog() const {
     return runtimeClassCatalog();
 }
 

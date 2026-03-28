@@ -19,12 +19,10 @@
 
 #include <cstring>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 // ELF64 structures — defined inline to avoid system header dependencies.
-namespace elf
-{
+namespace elf {
 static constexpr uint16_t ET_REL = 1;
 static constexpr uint16_t EM_X86_64 = 62;
 static constexpr uint16_t EM_AARCH64 = 183;
@@ -48,8 +46,7 @@ static constexpr uint16_t SHN_UNDEF = 0;
 static constexpr uint16_t SHN_ABS = 0xFFF1;
 static constexpr uint16_t SHN_COMMON = 0xFFF2;
 
-struct Elf64_Ehdr
-{
+struct Elf64_Ehdr {
     uint8_t e_ident[16];
     uint16_t e_type;
     uint16_t e_machine;
@@ -66,8 +63,7 @@ struct Elf64_Ehdr
     uint16_t e_shstrndx;
 };
 
-struct Elf64_Shdr
-{
+struct Elf64_Shdr {
     uint32_t sh_name;
     uint32_t sh_type;
     uint64_t sh_flags;
@@ -80,8 +76,7 @@ struct Elf64_Shdr
     uint64_t sh_entsize;
 };
 
-struct Elf64_Sym
-{
+struct Elf64_Sym {
     uint32_t st_name;
     uint8_t st_info;
     uint8_t st_other;
@@ -90,8 +85,7 @@ struct Elf64_Sym
     uint64_t st_size;
 };
 
-struct Elf64_Rela
-{
+struct Elf64_Rela {
     uint64_t r_offset;
     uint64_t r_info;
     int64_t r_addend;
@@ -99,16 +93,14 @@ struct Elf64_Rela
 
 } // namespace elf
 
-template <typename T> static const T *readStruct(const uint8_t *data, size_t size, size_t offset)
-{
+template <typename T> static const T *readStruct(const uint8_t *data, size_t size, size_t offset) {
     if (offset + sizeof(T) > size)
         return nullptr;
     return reinterpret_cast<const T *>(data + offset);
 }
 
 static const char *readString(
-    const uint8_t *data, size_t size, size_t strTabOff, size_t strTabSize, uint32_t nameOff)
-{
+    const uint8_t *data, size_t size, size_t strTabOff, size_t strTabSize, uint32_t nameOff) {
     size_t pos = strTabOff + nameOff;
     if (pos >= size)
         return "";
@@ -116,11 +108,9 @@ static const char *readString(
 }
 
 bool readElfObj(
-    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err)
-{
+    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err) {
     const auto *ehdr = readStruct<elf::Elf64_Ehdr>(data, size, 0);
-    if (!ehdr)
-    {
+    if (!ehdr) {
         err << "error: " << name << ": truncated ELF header\n";
         return false;
     }
@@ -139,11 +129,9 @@ bool readElfObj(
 
     // Read section headers.
     std::vector<const elf::Elf64_Shdr *> shdrs(shnum);
-    for (uint16_t i = 0; i < shnum; ++i)
-    {
+    for (uint16_t i = 0; i < shnum; ++i) {
         shdrs[i] = readStruct<elf::Elf64_Shdr>(data, size, ehdr->e_shoff + i * ehdr->e_shentsize);
-        if (!shdrs[i])
-        {
+        if (!shdrs[i]) {
             err << "error: " << name << ": truncated section header " << i << "\n";
             return false;
         }
@@ -151,8 +139,7 @@ bool readElfObj(
 
     // Locate .shstrtab for section names.
     size_t shstrOff = 0, shstrSize = 0;
-    if (shstrndx < shnum)
-    {
+    if (shstrndx < shnum) {
         shstrOff = static_cast<size_t>(shdrs[shstrndx]->sh_offset);
         shstrSize = static_cast<size_t>(shdrs[shstrndx]->sh_size);
     }
@@ -163,8 +150,7 @@ bool readElfObj(
     obj.sections.resize(1); // Null section at index 0.
     obj.sections[0].name = "";
 
-    for (uint16_t i = 1; i < shnum; ++i)
-    {
+    for (uint16_t i = 1; i < shnum; ++i) {
         const auto *sh = shdrs[i];
         if (sh->sh_type == elf::SHT_SYMTAB || sh->sh_type == elf::SHT_STRTAB ||
             sh->sh_type == elf::SHT_RELA)
@@ -188,12 +174,9 @@ bool readElfObj(
             ((sh->sh_flags & SHF_MERGE) != 0 && (sh->sh_flags & SHF_STRINGS) != 0) ||
             sec.name.find(".str") != std::string::npos;
 
-        if (sh->sh_type == elf::SHT_NOBITS)
-        {
+        if (sh->sh_type == elf::SHT_NOBITS) {
             sec.data.resize(static_cast<size_t>(sh->sh_size), 0);
-        }
-        else if (sh->sh_size > 0 && sh->sh_offset + sh->sh_size <= size)
-        {
+        } else if (sh->sh_size > 0 && sh->sh_offset + sh->sh_size <= size) {
             auto off = static_cast<size_t>(sh->sh_offset);
             auto sz = static_cast<size_t>(sh->sh_size);
             sec.data.assign(data + off, data + off + sz);
@@ -205,10 +188,8 @@ bool readElfObj(
 
     // Find symbol table.
     const elf::Elf64_Shdr *symSh = nullptr;
-    for (uint16_t i = 1; i < shnum; ++i)
-    {
-        if (shdrs[i]->sh_type == elf::SHT_SYMTAB)
-        {
+    for (uint16_t i = 1; i < shnum; ++i) {
+        if (shdrs[i]->sh_type == elf::SHT_SYMTAB) {
             symSh = shdrs[i];
             break;
         }
@@ -216,19 +197,16 @@ bool readElfObj(
 
     // Locate string table for symbols.
     size_t strOff = 0, strSize = 0;
-    if (symSh && symSh->sh_link < shnum)
-    {
+    if (symSh && symSh->sh_link < shnum) {
         strOff = static_cast<size_t>(shdrs[symSh->sh_link]->sh_offset);
         strSize = static_cast<size_t>(shdrs[symSh->sh_link]->sh_size);
     }
 
     // Read symbols.
     std::vector<uint32_t> symMap; // ELF sym index → ObjFile sym index.
-    if (symSh)
-    {
+    if (symSh) {
         const uint32_t symCount = static_cast<uint32_t>(symSh->sh_size / sizeof(elf::Elf64_Sym));
-        if (symCount > kMaxObjSymbols)
-        {
+        if (symCount > kMaxObjSymbols) {
             err << "error: " << name << ": symbol count " << symCount << " exceeds limit\n";
             return false;
         }
@@ -237,8 +215,7 @@ bool readElfObj(
         obj.symbols.resize(1); // Null symbol at index 0.
         obj.symbols[0] = ObjSymbol{};
 
-        for (uint32_t i = 1; i < symCount; ++i)
-        {
+        for (uint32_t i = 1; i < symCount; ++i) {
             const auto *sym = readStruct<elf::Elf64_Sym>(
                 data, size, static_cast<size_t>(symSh->sh_offset) + i * sizeof(elf::Elf64_Sym));
             if (!sym)
@@ -270,8 +247,7 @@ bool readElfObj(
     }
 
     // Read relocations from .rela sections.
-    for (uint16_t i = 1; i < shnum; ++i)
-    {
+    for (uint16_t i = 1; i < shnum; ++i) {
         if (shdrs[i]->sh_type != elf::SHT_RELA)
             continue;
 
@@ -284,8 +260,7 @@ bool readElfObj(
         const uint32_t relCount =
             static_cast<uint32_t>(shdrs[i]->sh_size / sizeof(elf::Elf64_Rela));
 
-        for (uint32_t r = 0; r < relCount; ++r)
-        {
+        for (uint32_t r = 0; r < relCount; ++r) {
             const auto *rela = readStruct<elf::Elf64_Rela>(
                 data, size, static_cast<size_t>(shdrs[i]->sh_offset) + r * sizeof(elf::Elf64_Rela));
             if (!rela)

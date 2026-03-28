@@ -20,48 +20,41 @@
 #include <csetjmp>
 #include <cstring>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 static int g_finalizer_calls = 0;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
 
-static void rt_release_obj(void *p)
-{
+static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
 }
 
-static void *new_obj()
-{
+static void *new_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
 }
 
-static void count_finalizer(void *)
-{
+static void count_finalizer(void *) {
     ++g_finalizer_calls;
 }
 
-static rt_string make_key(const char *text)
-{
+static rt_string make_key(const char *text) {
     assert(text != nullptr);
     return rt_string_from_bytes(text, strlen(text));
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
@@ -70,8 +63,7 @@ static bool str_eq(rt_string s, const char *expected)
 // Tests
 // ---------------------------------------------------------------------------
 
-static void test_new_cache()
-{
+static void test_new_cache() {
     void *cache = rt_lrucache_new(10);
     assert(cache != nullptr);
     assert(rt_lrucache_len(cache) == 0);
@@ -80,8 +72,7 @@ static void test_new_cache()
     rt_release_obj(cache);
 }
 
-static void test_put_and_get()
-{
+static void test_put_and_get() {
     void *cache = rt_lrucache_new(5);
     rt_string k1 = make_key("alpha");
     rt_string k2 = make_key("beta");
@@ -107,8 +98,7 @@ static void test_put_and_get()
     rt_release_obj(cache);
 }
 
-static void test_put_overwrites()
-{
+static void test_put_overwrites() {
     void *cache = rt_lrucache_new(5);
     rt_string k1 = make_key("key");
     void *v1 = new_obj();
@@ -129,8 +119,7 @@ static void test_put_overwrites()
     rt_release_obj(cache);
 }
 
-static void test_eviction()
-{
+static void test_eviction() {
     void *cache = rt_lrucache_new(3);
     rt_string k1 = make_key("a");
     rt_string k2 = make_key("b");
@@ -166,8 +155,7 @@ static void test_eviction()
     rt_release_obj(cache);
 }
 
-static void test_get_promotes()
-{
+static void test_get_promotes() {
     void *cache = rt_lrucache_new(3);
     rt_string k1 = make_key("a");
     rt_string k2 = make_key("b");
@@ -203,8 +191,7 @@ static void test_get_promotes()
     rt_release_obj(cache);
 }
 
-static void test_peek_does_not_promote()
-{
+static void test_peek_does_not_promote() {
     void *cache = rt_lrucache_new(3);
     rt_string k1 = make_key("a");
     rt_string k2 = make_key("b");
@@ -239,8 +226,7 @@ static void test_peek_does_not_promote()
     rt_release_obj(cache);
 }
 
-static void test_remove()
-{
+static void test_remove() {
     void *cache = rt_lrucache_new(5);
     rt_string k1 = make_key("x");
     rt_string k2 = make_key("y");
@@ -266,8 +252,7 @@ static void test_remove()
     rt_release_obj(cache);
 }
 
-static void test_remove_oldest()
-{
+static void test_remove_oldest() {
     void *cache = rt_lrucache_new(5);
     rt_string k1 = make_key("first");
     rt_string k2 = make_key("second");
@@ -296,8 +281,7 @@ static void test_remove_oldest()
     rt_release_obj(cache);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *cache = rt_lrucache_new(5);
     rt_string k1 = make_key("a");
     rt_string k2 = make_key("b");
@@ -325,8 +309,7 @@ static void test_clear()
     rt_release_obj(cache);
 }
 
-static void test_keys_and_values_order()
-{
+static void test_keys_and_values_order() {
     void *cache = rt_lrucache_new(5);
     rt_string k1 = make_key("a");
     rt_string k2 = make_key("b");
@@ -364,8 +347,7 @@ static void test_keys_and_values_order()
     rt_release_obj(cache);
 }
 
-static void test_finalizer_on_eviction()
-{
+static void test_finalizer_on_eviction() {
     void *cache = rt_lrucache_new(2);
     rt_string k1 = make_key("a");
     rt_string k2 = make_key("b");
@@ -395,8 +377,7 @@ static void test_finalizer_on_eviction()
     rt_release_obj(cache);
 }
 
-static void test_finalizer_on_cache_free()
-{
+static void test_finalizer_on_cache_free() {
     void *cache = rt_lrucache_new(5);
     rt_string k1 = make_key("a");
     void *v1 = new_obj();
@@ -413,8 +394,7 @@ static void test_finalizer_on_cache_free()
     assert(g_finalizer_calls == 1);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     rt_string k = make_key("test");
 
     // All functions should handle NULL gracefully
@@ -432,8 +412,7 @@ static void test_null_safety()
     rt_string_unref(k);
 }
 
-static void test_capacity_one()
-{
+static void test_capacity_one() {
     void *cache = rt_lrucache_new(1);
     rt_string k1 = make_key("a");
     rt_string k2 = make_key("b");
@@ -457,15 +436,13 @@ static void test_capacity_one()
     rt_release_obj(cache);
 }
 
-static void test_remove_oldest_on_empty()
-{
+static void test_remove_oldest_on_empty() {
     void *cache = rt_lrucache_new(5);
     assert(rt_lrucache_remove_oldest(cache) == 0);
     rt_release_obj(cache);
 }
 
-int main()
-{
+int main() {
     test_new_cache();
     test_put_and_get();
     test_put_overwrites();

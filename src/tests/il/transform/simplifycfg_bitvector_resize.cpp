@@ -17,8 +17,7 @@
 
 #include "tests/TestHarness.hpp"
 
-TEST(IL, SimplifyCFGBitVectorResize)
-{
+TEST(IL, SimplifyCFGBitVectorResize) {
     using il::transform::simplify_cfg::BitVector;
 
     BitVector bits(2);
@@ -37,8 +36,7 @@ TEST(IL, SimplifyCFGBitVectorResize)
     ASSERT_TRUE(bits.test(1));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

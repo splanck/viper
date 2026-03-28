@@ -39,21 +39,17 @@
 #include <queue>
 #include <vector>
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
-namespace
-{
+namespace {
 
 // ---------------------------------------------------------------------------
 // Latency model
 // ---------------------------------------------------------------------------
 
 /// @brief Return the output latency (cycles from write to use) for an opcode.
-static unsigned instrLatency(MOpcode opc) noexcept
-{
-    switch (opc)
-    {
+static unsigned instrLatency(MOpcode opc) noexcept {
+    switch (opc) {
         // Loads: L1 hit ~4 cycles on Apple M-series.
         case MOpcode::LdrRegFpImm:
         case MOpcode::LdrRegBaseImm:
@@ -95,10 +91,8 @@ static unsigned instrLatency(MOpcode opc) noexcept
 // Memory classification helpers
 // ---------------------------------------------------------------------------
 
-static bool isLoad(MOpcode opc) noexcept
-{
-    switch (opc)
-    {
+static bool isLoad(MOpcode opc) noexcept {
+    switch (opc) {
         case MOpcode::LdrRegFpImm:
         case MOpcode::LdrRegBaseImm:
         case MOpcode::LdrFprFpImm:
@@ -111,10 +105,8 @@ static bool isLoad(MOpcode opc) noexcept
     }
 }
 
-static bool isStore(MOpcode opc) noexcept
-{
-    switch (opc)
-    {
+static bool isStore(MOpcode opc) noexcept {
+    switch (opc) {
         case MOpcode::StrRegFpImm:
         case MOpcode::StrRegBaseImm:
         case MOpcode::StrRegSpImm:
@@ -129,10 +121,8 @@ static bool isStore(MOpcode opc) noexcept
     }
 }
 
-static bool isTerminator(MOpcode opc) noexcept
-{
-    switch (opc)
-    {
+static bool isTerminator(MOpcode opc) noexcept {
+    switch (opc) {
         case MOpcode::Ret:
         case MOpcode::Br:
         case MOpcode::BCond:
@@ -159,17 +149,14 @@ static constexpr std::size_t kIdxSP = kNumPhysRegs + 1; // 65
 static constexpr std::size_t kNumTracked = kNumPhysRegs + 2;
 
 /// Map a physical register ID (or sentinel) to a flat-array index.
-static std::size_t regIdx(uint32_t reg) noexcept
-{
+static std::size_t regIdx(uint32_t reg) noexcept {
     // PhysReg enum values are 0..63, which map to themselves.
     return static_cast<std::size_t>(reg);
 }
 
 /// @brief Returns true if the opcode sets the NZCV condition flags.
-static bool setsFlags(MOpcode opc) noexcept
-{
-    switch (opc)
-    {
+static bool setsFlags(MOpcode opc) noexcept {
+    switch (opc) {
         case MOpcode::AddsRRR:
         case MOpcode::SubsRRR:
         case MOpcode::AddsRI:
@@ -185,10 +172,8 @@ static bool setsFlags(MOpcode opc) noexcept
 }
 
 /// @brief Returns true if the opcode reads the NZCV condition flags.
-static bool usesFlags(MOpcode opc) noexcept
-{
-    switch (opc)
-    {
+static bool usesFlags(MOpcode opc) noexcept {
+    switch (opc) {
         case MOpcode::BCond:
         case MOpcode::Cset:
         case MOpcode::Csel:
@@ -203,17 +188,14 @@ static bool usesFlags(MOpcode opc) noexcept
 // ---------------------------------------------------------------------------
 
 /// @brief Returns true if the opcode implicitly modifies the stack pointer.
-static bool modifiesSP(MOpcode opc) noexcept
-{
+static bool modifiesSP(MOpcode opc) noexcept {
     return opc == MOpcode::SubSpImm || opc == MOpcode::AddSpImm;
 }
 
 /// @brief Returns true if the opcode implicitly reads the stack pointer
 ///        (SP-relative loads/stores for outgoing arguments).
-static bool usesSP(MOpcode opc) noexcept
-{
-    switch (opc)
-    {
+static bool usesSP(MOpcode opc) noexcept {
+    switch (opc) {
         case MOpcode::StrRegSpImm:
         case MOpcode::StrFprSpImm:
         case MOpcode::SubSpImm:
@@ -234,10 +216,8 @@ static bool usesSP(MOpcode opc) noexcept
 ///
 /// Most ALU instructions define ops[0] only.  Pair loads define ops[0] and
 /// ops[1].  Stores, compares, branches, and calls define no explicit register.
-static int numDefOperands(MOpcode opc) noexcept
-{
-    switch (opc)
-    {
+static int numDefOperands(MOpcode opc) noexcept {
+    switch (opc) {
         // Stores: ops[0] is the source register being stored, NOT a definition.
         case MOpcode::StrRegFpImm:
         case MOpcode::StrRegBaseImm:
@@ -280,8 +260,7 @@ static int numDefOperands(MOpcode opc) noexcept
 }
 
 /// @brief Returns true if the opcode is a call (Bl or Blr).
-static bool isCall(MOpcode opc) noexcept
-{
+static bool isCall(MOpcode opc) noexcept {
     return opc == MOpcode::Bl || opc == MOpcode::Blr;
 }
 
@@ -289,8 +268,7 @@ static bool isCall(MOpcode opc) noexcept
 // Dependency node
 // ---------------------------------------------------------------------------
 
-struct DepNode
-{
+struct DepNode {
     std::size_t instrIdx;           ///< Index into the body instruction array.
     std::vector<std::size_t> preds; ///< Predecessor indices (must complete first).
     std::vector<unsigned> predLat;  ///< Latency for each predecessor edge.
@@ -302,8 +280,7 @@ struct DepNode
 // Block scheduler
 // ---------------------------------------------------------------------------
 
-static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
-{
+static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body) {
     const std::size_t N = body.size();
     if (N <= 1)
         return body;
@@ -317,10 +294,8 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         nodes[i].instrIdx = i;
 
     // Helper: add a dependency edge from instruction i to predecessor p.
-    auto addDep = [&](std::size_t i, std::size_t p, unsigned lat)
-    {
-        if (p != i)
-        {
+    auto addDep = [&](std::size_t i, std::size_t p, unsigned lat) {
+        if (p != i) {
             nodes[i].preds.push_back(p);
             nodes[i].predLat.push_back(lat);
         }
@@ -365,15 +340,13 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         static_cast<uint32_t>(PhysReg::V30), static_cast<uint32_t>(PhysReg::V31),
     };
 
-    for (std::size_t i = 0; i < N; ++i)
-    {
+    for (std::size_t i = 0; i < N; ++i) {
         const MInstr &mi = body[i];
         const int nDefs = numDefOperands(mi.opc);
 
         // --- Register USE dependencies (RAW) ---
         // Operands at index >= nDefs are uses; they depend on the last def.
-        for (std::size_t opIdx = static_cast<std::size_t>(nDefs); opIdx < mi.ops.size(); ++opIdx)
-        {
+        for (std::size_t opIdx = static_cast<std::size_t>(nDefs); opIdx < mi.ops.size(); ++opIdx) {
             const auto &op = mi.ops[opIdx];
             if (op.kind != MOperand::Kind::Reg || !op.reg.isPhys)
                 continue;
@@ -385,8 +358,7 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
 
         // For Blr, ops[0] is a USE (the target register to call through).
         if (mi.opc == MOpcode::Blr && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Reg &&
-            mi.ops[0].reg.isPhys)
-        {
+            mi.ops[0].reg.isPhys) {
             const std::size_t ri = regIdx(mi.ops[0].reg.idOrPhys);
             if (lastDef[ri] != kNone)
                 addDep(i, lastDef[ri], instrLatency(body[lastDef[ri]].opc));
@@ -395,8 +367,7 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
 
         // --- NZCV flag dependencies (RAW on flags) ---
         // If this instruction uses flags, depend on the last flag-setter.
-        if (usesFlags(mi.opc))
-        {
+        if (usesFlags(mi.opc)) {
             if (lastDef[kIdxNZCV] != kNone)
                 addDep(i, lastDef[kIdxNZCV], 1);
             usesSinceDef[kIdxNZCV].push_back(i);
@@ -404,15 +375,13 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
 
         // --- Stack pointer dependencies ---
         // SP-relative ops (StrRegSpImm, SubSpImm, AddSpImm) implicitly read SP.
-        if (usesSP(mi.opc))
-        {
+        if (usesSP(mi.opc)) {
             if (lastDef[kIdxSP] != kNone)
                 addDep(i, lastDef[kIdxSP], 1);
             usesSinceDef[kIdxSP].push_back(i);
         }
         // SubSpImm/AddSpImm implicitly define SP (WAW + WAR).
-        if (modifiesSP(mi.opc))
-        {
+        if (modifiesSP(mi.opc)) {
             if (lastDef[kIdxSP] != kNone)
                 addDep(i, lastDef[kIdxSP], 1);
             for (auto u : usesSinceDef[kIdxSP])
@@ -422,15 +391,12 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         }
 
         // --- Conservative memory dependencies ---
-        if (isLoad(mi.opc))
-        {
+        if (isLoad(mi.opc)) {
             // Load depends on last store (RAW through memory).
             if (lastStore != kNone)
                 addDep(i, lastStore, 1);
             lastLoad = i;
-        }
-        else if (isStore(mi.opc))
-        {
+        } else if (isStore(mi.opc)) {
             // Store depends on last store (WAW) and last load (WAR).
             if (lastStore != kNone)
                 addDep(i, lastStore, 1);
@@ -440,16 +406,14 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         }
 
         // --- Calls act as full memory barriers ---
-        if (isCall(mi.opc))
-        {
+        if (isCall(mi.opc)) {
             if (lastStore != kNone)
                 addDep(i, lastStore, 1);
             if (lastLoad != kNone)
                 addDep(i, lastLoad, 1);
             // Call also reads any live registers (conservatively: depend on all
             // recent defs of caller-saved regs so they aren't reordered past call).
-            for (uint32_t r : callerSaved)
-            {
+            for (uint32_t r : callerSaved) {
                 const std::size_t ri = regIdx(r);
                 if (lastDef[ri] != kNone)
                     addDep(i, lastDef[ri], 1);
@@ -463,10 +427,8 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         //      it must come after the old definition.
         // WAR: if this instruction defines a register that was previously read,
         //      it must come after that reader (so the reader sees the old value).
-        for (int d = 0; d < nDefs && d < static_cast<int>(mi.ops.size()); ++d)
-        {
-            if (mi.ops[d].kind == MOperand::Kind::Reg && mi.ops[d].reg.isPhys)
-            {
+        for (int d = 0; d < nDefs && d < static_cast<int>(mi.ops.size()); ++d) {
+            if (mi.ops[d].kind == MOperand::Kind::Reg && mi.ops[d].reg.isPhys) {
                 const std::size_t ri = regIdx(mi.ops[d].reg.idOrPhys);
                 if (lastDef[ri] != kNone)
                     addDep(i, lastDef[ri], 1); // WAW dependency
@@ -478,8 +440,7 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         }
 
         // Flag definitions — WAW + WAR on flags too.
-        if (setsFlags(mi.opc))
-        {
+        if (setsFlags(mi.opc)) {
             if (lastDef[kIdxNZCV] != kNone)
                 addDep(i, lastDef[kIdxNZCV], 1);
             for (auto u : usesSinceDef[kIdxNZCV])
@@ -490,10 +451,8 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
 
         // Call clobbers: Bl/Blr implicitly define all caller-saved registers
         // and flags (the callee may clobber them).  Add WAW + WAR deps.
-        if (isCall(mi.opc))
-        {
-            for (uint32_t r : callerSaved)
-            {
+        if (isCall(mi.opc)) {
+            for (uint32_t r : callerSaved) {
                 const std::size_t ri = regIdx(r);
                 if (lastDef[ri] != kNone)
                     addDep(i, lastDef[ri], 1); // WAW
@@ -514,8 +473,7 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
     }
 
     // Deduplicate predecessor lists (a node may have been added multiple times).
-    for (auto &n : nodes)
-    {
+    for (auto &n : nodes) {
         auto &p = n.preds;
         auto &l = n.predLat;
         // Sort by pred index, then remove duplicates keeping max latency.
@@ -530,8 +488,7 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
                  pl.end());
         p.clear();
         l.clear();
-        for (auto &[pidx, lat] : pl)
-        {
+        for (auto &[pidx, lat] : pl) {
             p.push_back(pidx);
             l.push_back(lat);
         }
@@ -551,15 +508,13 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
     // -----------------------------------------------------------------------
     // Process in reverse topological order (reverse program order is
     // approximately topological for sequential code).
-    for (std::size_t i = N; i-- > 0;)
-    {
+    for (std::size_t i = N; i-- > 0;) {
         // critPath(i) = instrLatency(i) + max over successors s of critPath(s).
         // This gives the total latency from scheduling node i to the end of
         // the DAG, making loads (4 cycles) and multiplies (3 cycles) higher
         // priority than single-cycle ALU ops.
         unsigned maxSuccCrit = 0;
-        for (auto s : succs[i])
-        {
+        for (auto s : succs[i]) {
             if (nodes[s].critPath > maxSuccCrit)
                 maxSuccCrit = nodes[s].critPath;
         }
@@ -591,8 +546,7 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
     scheduled.reserve(N);
     std::vector<bool> done(N, false);
 
-    while (!ready.empty())
-    {
+    while (!ready.empty()) {
         auto [neg_crit, idx] = ready.top();
         ready.pop();
 
@@ -602,8 +556,7 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
         scheduled.push_back(body[idx]);
 
         // Decrement pred counts for successors; enqueue newly-ready ones.
-        for (auto s : succs[idx])
-        {
+        for (auto s : succs[idx]) {
             if (done[s])
                 continue;
             ++nodes[s].predsDone;
@@ -625,10 +578,8 @@ static std::vector<MInstr> scheduleBlock(std::vector<MInstr> body)
 // Per-function entry point
 // ---------------------------------------------------------------------------
 
-static void scheduleFunction(MFunction &fn)
-{
-    for (auto &bb : fn.blocks)
-    {
+static void scheduleFunction(MFunction &fn) {
+    for (auto &bb : fn.blocks) {
         if (bb.instrs.size() <= 1)
             continue;
 
@@ -658,11 +609,9 @@ static void scheduleFunction(MFunction &fn)
         result.reserve(bb.instrs.size());
         std::vector<MInstr> segment;
 
-        for (std::size_t i = 0; i < termStart; ++i)
-        {
+        for (std::size_t i = 0; i < termStart; ++i) {
             auto &mi = bb.instrs[i];
-            if (isTerminator(mi.opc))
-            {
+            if (isTerminator(mi.opc)) {
                 // Mid-block terminator — schedule the preceding segment,
                 // then append the terminator as a barrier.
                 if (segment.size() > 1)
@@ -670,9 +619,7 @@ static void scheduleFunction(MFunction &fn)
                 result.insert(result.end(), segment.begin(), segment.end());
                 segment.clear();
                 result.push_back(mi); // Keep the mid-block branch in place.
-            }
-            else
-            {
+            } else {
                 segment.push_back(mi);
             }
         }
@@ -697,8 +644,7 @@ static void scheduleFunction(MFunction &fn)
 // Pass implementation
 // ---------------------------------------------------------------------------
 
-bool SchedulerPass::run(AArch64Module &module, Diagnostics & /*diags*/)
-{
+bool SchedulerPass::run(AArch64Module &module, Diagnostics & /*diags*/) {
     for (auto &fn : module.mir)
         scheduleFunction(fn);
     return true;

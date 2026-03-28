@@ -31,8 +31,7 @@
 ///          of the registry share the same bookkeeping so lowering steps can
 ///          toggle them without worrying about deduplication.
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Compute a hash value for a runtime feature flag.
 /// @details Features are encoded as compact enumerators.  Casting to their
@@ -41,16 +40,14 @@ namespace il::frontends::basic
 ///          containers with zero overhead.
 /// @param f Feature to hash.
 /// @return Integer hash suitable for unordered containers.
-std::size_t RuntimeHelperTracker::RuntimeFeatureHash::operator()(RuntimeFeature f) const
-{
+std::size_t RuntimeHelperTracker::RuntimeFeatureHash::operator()(RuntimeFeature f) const {
     return static_cast<std::size_t>(f);
 }
 
 /// @brief Clear all runtime helper tracking state.
 /// @details Drops any pending requests, the deduplicated set, and the ordered
 ///          replay list so a fresh lowering run can start from a clean slate.
-void RuntimeHelperTracker::reset()
-{
+void RuntimeHelperTracker::reset() {
     requested_.reset();
     ordered_.clear();
     tracked_.clear();
@@ -63,8 +60,7 @@ void RuntimeHelperTracker::reset()
 ///          helper must be emitted when declarations are synthesised.
 ///
 /// @param feature Feature whose helper must be available.
-void RuntimeHelperTracker::requestHelper(RuntimeFeature feature)
-{
+void RuntimeHelperTracker::requestHelper(RuntimeFeature feature) {
     requested_.set(static_cast<std::size_t>(feature));
 }
 
@@ -74,8 +70,7 @@ void RuntimeHelperTracker::requestHelper(RuntimeFeature feature)
 ///
 /// @param feature Feature whose helper requirement is being checked.
 /// @return True when the helper has been requested.
-bool RuntimeHelperTracker::isHelperNeeded(RuntimeFeature feature) const
-{
+bool RuntimeHelperTracker::isHelperNeeded(RuntimeFeature feature) const {
     return requested_.test(static_cast<std::size_t>(feature));
 }
 
@@ -86,8 +81,7 @@ bool RuntimeHelperTracker::isHelperNeeded(RuntimeFeature feature) const
 ///          arise out of order during lowering.
 ///
 /// @param feature Feature whose helper was touched during lowering.
-void RuntimeHelperTracker::trackRuntime(RuntimeFeature feature)
-{
+void RuntimeHelperTracker::trackRuntime(RuntimeFeature feature) {
     // Mark the feature as "needed" for the unordered pass.
     requestHelper(feature);
 
@@ -97,27 +91,22 @@ void RuntimeHelperTracker::trackRuntime(RuntimeFeature feature)
         return;
 
     // Only *ordered* Feature-lowered helpers belong in ordered_.
-    if (desc->lowering.kind == il::runtime::RuntimeLoweringKind::Feature && desc->lowering.ordered)
-    {
-        if (tracked_.insert(feature).second)
-        {
+    if (desc->lowering.kind == il::runtime::RuntimeLoweringKind::Feature &&
+        desc->lowering.ordered) {
+        if (tracked_.insert(feature).second) {
             ordered_.push_back(feature);
         }
-    }
-    else
-    {
+    } else {
         // Keep bookkeeping for completeness (no push to ordered_).
         tracked_.insert(feature);
     }
 }
 
-void RuntimeHelperTracker::trackCalleeName(std::string_view name)
-{
+void RuntimeHelperTracker::trackCalleeName(std::string_view name) {
     usedNames_.insert(std::string(name));
 }
 
-namespace
-{
+namespace {
 /// @brief Declare a runtime extern using the canonical signature database.
 /// @details Centralises the IRBuilder call so declarations pulled from the
 ///          runtime registry share a single implementation.  Any future metadata
@@ -125,8 +114,7 @@ namespace
 ///
 /// @param b IR builder that will receive the extern declaration.
 /// @param desc Runtime descriptor describing the helper to declare.
-void declareRuntimeExtern(build::IRBuilder &b, const il::runtime::RuntimeDescriptor &desc)
-{
+void declareRuntimeExtern(build::IRBuilder &b, const il::runtime::RuntimeDescriptor &desc) {
     b.addExtern(std::string(desc.name), desc.signature.retType, desc.signature.paramTypes);
 }
 
@@ -138,8 +126,7 @@ void declareRuntimeExtern(build::IRBuilder &b, const il::runtime::RuntimeDescrip
 ///          fall back to the directly named descriptor.
 /// @param name Any registered runtime helper name (legacy or canonical).
 /// @return Pointer to the preferred descriptor when found; nullptr if unknown.
-const il::runtime::RuntimeDescriptor *resolveCanonicalDescriptor(std::string_view name)
-{
+const il::runtime::RuntimeDescriptor *resolveCanonicalDescriptor(std::string_view name) {
     using namespace il::runtime;
 
     const RuntimeDescriptor *desc = findRuntimeDescriptor(name);
@@ -147,20 +134,17 @@ const il::runtime::RuntimeDescriptor *resolveCanonicalDescriptor(std::string_vie
         return nullptr;
 
     // Identify the generated signature id for the provided descriptor name.
-    if (auto sigId = findRuntimeSignatureId(desc->name))
-    {
+    if (auto sigId = findRuntimeSignatureId(desc->name)) {
         // Search for a descriptor that shares the same signature id but uses a
         // canonical namespace-qualified name (prefer entries containing a '.').
         const RuntimeDescriptor *best = desc;
-        for (const auto &entry : runtimeRegistry())
-        {
+        for (const auto &entry : runtimeRegistry()) {
             const auto otherId = findRuntimeSignatureId(entry.name);
             if (!otherId || *otherId != *sigId)
                 continue;
             // Prefer names that don't look like legacy flat symbols.
             const bool isCanonical = entry.name.find('.') != std::string_view::npos;
-            if (isCanonical)
-            {
+            if (isCanonical) {
                 best = &entry;
                 break; // Found a canonical alias; stop searching.
             }
@@ -182,58 +166,46 @@ const il::runtime::RuntimeDescriptor *resolveCanonicalDescriptor(std::string_vie
 ///
 /// @param b IR builder used to register extern declarations.
 /// @param boundsChecks Whether array bounds helpers should be declared.
-void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boundsChecks) const
-{
+void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boundsChecks) const {
     std::unordered_set<std::string> declared;
 
-    auto tryDeclare = [&](const il::runtime::RuntimeDescriptor &d)
-    {
+    auto tryDeclare = [&](const il::runtime::RuntimeDescriptor &d) {
         // If any variant (alias/canonical) of this signature id was used at a
         // call site, declare only that used spelling and skip the others.
         std::optional<std::string_view> usedSpelling;
-        if (auto sigId = il::runtime::findRuntimeSignatureId(d.name))
-        {
+        if (auto sigId = il::runtime::findRuntimeSignatureId(d.name)) {
             const auto &reg = il::runtime::runtimeRegistry();
-            for (const auto &other : reg)
-            {
+            for (const auto &other : reg) {
                 auto otherId = il::runtime::findRuntimeSignatureId(other.name);
                 if (!otherId || *otherId != *sigId)
                     continue;
-                if (usedNames_.contains(std::string(other.name)))
-                {
+                if (usedNames_.contains(std::string(other.name))) {
                     usedSpelling = other.name;
                     break;
                 }
             }
         }
-        if (usedSpelling)
-        {
+        if (usedSpelling) {
             // Only declare spellings that were actually used at call sites.
             // This allows declaring multiple aliases in the same signature
             // group when both were referenced (e.g., Viper.String.Mid and
             // Viper.String.Substring).
             if (!usedNames_.contains(std::string(d.name)))
                 return;
-        }
-        else
-        {
+        } else {
             // No specific spelling used: prefer canonical Viper.* names. If a
             // canonical exists for this signature id and we're looking at the alias,
             // skip the alias to avoid duplicates.
             const bool isAlias = d.name.find('.') == std::string_view::npos;
-            if (isAlias)
-            {
-                if (auto sigId = il::runtime::findRuntimeSignatureId(d.name))
-                {
+            if (isAlias) {
+                if (auto sigId = il::runtime::findRuntimeSignatureId(d.name)) {
                     const auto &reg = il::runtime::runtimeRegistry();
-                    for (const auto &other : reg)
-                    {
+                    for (const auto &other : reg) {
                         const bool isCanonical = other.name.find('.') != std::string_view::npos;
                         if (!isCanonical)
                             continue;
                         auto otherId = il::runtime::findRuntimeSignatureId(other.name);
-                        if (otherId && *otherId == *sigId)
-                        {
+                        if (otherId && *otherId == *sigId) {
                             // Canonical exists; skip alias.
                             return;
                         }
@@ -243,18 +215,14 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
 
             // Prefer Viper.Terminal.* over Viper.Console.* (Console
             // is now an alias for backward compatibility).
-            if (d.name.rfind("Viper.Console.", 0) == 0)
-            {
-                if (auto sigId = il::runtime::findRuntimeSignatureId(d.name))
-                {
+            if (d.name.rfind("Viper.Console.", 0) == 0) {
+                if (auto sigId = il::runtime::findRuntimeSignatureId(d.name)) {
                     const auto &reg = il::runtime::runtimeRegistry();
-                    for (const auto &other : reg)
-                    {
+                    for (const auto &other : reg) {
                         auto otherId = il::runtime::findRuntimeSignatureId(other.name);
                         if (!otherId || *otherId != *sigId)
                             continue;
-                        if (other.name.rfind("Viper.Terminal.", 0) == 0)
-                        {
+                        if (other.name.rfind("Viper.Terminal.", 0) == 0) {
                             // Prefer the Viper.Terminal.* variant.
                             return;
                         }
@@ -265,23 +233,19 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
             // Avoid declaring certain OOP-style or ctor helpers unless used.
             // Tests/goldens expect these only when referenced.
             if (d.name == std::string_view{"Viper.String.get_IsEmpty"} ||
-                d.name == std::string_view{"Viper.String.FromStr"})
-            {
+                d.name == std::string_view{"Viper.String.FromStr"}) {
                 return;
             }
         }
 
-        if (declared.insert(std::string(d.name)).second)
-        {
+        if (declared.insert(std::string(d.name)).second) {
             declareRuntimeExtern(b, d);
         }
     };
 
     const auto &registry = il::runtime::runtimeRegistry();
-    for (const auto &entry : registry)
-    {
-        switch (entry.lowering.kind)
-        {
+    for (const auto &entry : registry) {
+        switch (entry.lowering.kind) {
             case il::runtime::RuntimeLoweringKind::Always:
                 tryDeclare(entry);
                 break;
@@ -299,8 +263,7 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
     }
 
     // Replay only ordered features; trackRuntime recorded them deterministically.
-    for (RuntimeFeature feature : ordered_)
-    {
+    for (RuntimeFeature feature : ordered_) {
         const auto *desc = il::runtime::findRuntimeDescriptor(feature);
         assert(desc && "requested runtime feature missing from registry");
         if (!desc)
@@ -312,13 +275,11 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
     // This keeps IL lean (no unconditional alias declarations) while ensuring
     // names like Viper.Text.StringBuilder.* and Viper.String.Builder.* appear
     // only when referenced.
-    for (const auto &name : usedNames_)
-    {
+    for (const auto &name : usedNames_) {
         // Skip rt_* manual helpers; Lowerer::declareRequiredRuntime handles them
         if (name.rfind("rt_", 0) == 0)
             continue;
-        if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
-        {
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(name)) {
             if (declared.insert(std::string(desc->name)).second)
                 declareRuntimeExtern(b, *desc);
         }
@@ -332,8 +293,7 @@ void RuntimeHelperTracker::declareRequiredRuntime(build::IRBuilder &b, bool boun
 ///          @ref declareRequiredRuntime can emit it.
 ///
 /// @param helper Manual helper whose declaration should be emitted.
-void Lowerer::setManualHelperRequired(ManualRuntimeHelper helper)
-{
+void Lowerer::setManualHelperRequired(ManualRuntimeHelper helper) {
     manualHelperRequirements_[manualRuntimeHelperIndex(helper)] = true;
 }
 
@@ -342,16 +302,14 @@ void Lowerer::setManualHelperRequired(ManualRuntimeHelper helper)
 ///
 /// @param helper Manual helper whose requirement is being checked.
 /// @return True when the helper should be emitted.
-bool Lowerer::isManualHelperRequired(ManualRuntimeHelper helper) const
-{
+bool Lowerer::isManualHelperRequired(ManualRuntimeHelper helper) const {
     return manualHelperRequirements_[manualRuntimeHelperIndex(helper)];
 }
 
 /// @brief Clear all manual helper requirements.
 /// @details Reinitialises the manual helper bitset so a new lowering invocation
 ///          starts without stale requirements.
-void Lowerer::resetManualHelpers()
-{
+void Lowerer::resetManualHelpers() {
     manualHelperRequirements_.fill(false);
 }
 
@@ -361,275 +319,235 @@ void Lowerer::resetManualHelpers()
 ///          diagnostics). This helper must be declared regardless of the
 ///          bounds-checking configuration, since traps are not exclusive to
 ///          array bounds operations.
-void Lowerer::requireTrap()
-{
+void Lowerer::requireTrap() {
     setManualHelperRequired(ManualRuntimeHelper::Trap);
 }
 
 /// @brief Request the manual helper that allocates I32 arrays.
 /// @details Sets the manual-helper toggle so the allocation routine for new
 ///          integer arrays is emitted alongside other runtime externs.
-void Lowerer::requireArrayI32New()
-{
+void Lowerer::requireArrayI32New() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32New);
 }
 
 /// @brief Request the manual helper that resizes I32 arrays.
 /// @details Marks the helper so the reallocating routine is emitted; required
 ///          when lowering constructs such as `REDIM`.
-void Lowerer::requireArrayI32Resize()
-{
+void Lowerer::requireArrayI32Resize() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Resize);
 }
 
 /// @brief Request the manual helper that reads the length of I32 arrays.
 /// @details Ensures the length-query routine is declared for clients that need
 ///          to observe the current logical size of a runtime array.
-void Lowerer::requireArrayI32Len()
-{
+void Lowerer::requireArrayI32Len() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Len);
 }
 
 /// @brief Request the manual helper that loads an element from an I32 array.
 /// @details Flags the helper so bounds-checked element loads can be lowered to
 ///          the shared runtime routine.
-void Lowerer::requireArrayI32Get()
-{
+void Lowerer::requireArrayI32Get() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Get);
 }
 
 /// @brief Request the manual helper that stores an element into an I32 array.
 /// @details Marks the store routine as required so writes funnel through the
 ///          shared runtime implementation with consistent bounds checks.
-void Lowerer::requireArrayI32Set()
-{
+void Lowerer::requireArrayI32Set() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Set);
 }
 
 /// @brief Request the manual helper that increments an I32 array reference.
 /// @details Ensures the reference-counting retain helper is declared for array
 ///          handles shared across procedures.
-void Lowerer::requireArrayI32Retain()
-{
+void Lowerer::requireArrayI32Retain() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Retain);
 }
 
 /// @brief Request the manual helper that releases an I32 array reference.
 /// @details Marks the release helper so decrements of reference counts reuse the
 ///          runtime-provided implementation.
-void Lowerer::requireArrayI32Release()
-{
+void Lowerer::requireArrayI32Release() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI32Release);
 }
 
 /// @brief Request the manual helper that allocates I64 arrays (LONG).
-void Lowerer::requireArrayI64New()
-{
+void Lowerer::requireArrayI64New() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI64New);
 }
 
 /// @brief Request the manual helper that resizes I64 arrays (LONG).
-void Lowerer::requireArrayI64Resize()
-{
+void Lowerer::requireArrayI64Resize() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI64Resize);
 }
 
 /// @brief Request the manual helper that reads the length of I64 arrays.
-void Lowerer::requireArrayI64Len()
-{
+void Lowerer::requireArrayI64Len() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI64Len);
 }
 
 /// @brief Request the manual helper that loads an element from an I64 array.
-void Lowerer::requireArrayI64Get()
-{
+void Lowerer::requireArrayI64Get() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI64Get);
 }
 
 /// @brief Request the manual helper that stores an element into an I64 array.
-void Lowerer::requireArrayI64Set()
-{
+void Lowerer::requireArrayI64Set() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI64Set);
 }
 
 /// @brief Request the manual helper that increments an I64 array reference.
-void Lowerer::requireArrayI64Retain()
-{
+void Lowerer::requireArrayI64Retain() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI64Retain);
 }
 
 /// @brief Request the manual helper that releases an I64 array reference.
-void Lowerer::requireArrayI64Release()
-{
+void Lowerer::requireArrayI64Release() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayI64Release);
 }
 
 /// @brief Request the manual helper that allocates F64 arrays (SINGLE/DOUBLE).
-void Lowerer::requireArrayF64New()
-{
+void Lowerer::requireArrayF64New() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayF64New);
 }
 
 /// @brief Request the manual helper that resizes F64 arrays.
-void Lowerer::requireArrayF64Resize()
-{
+void Lowerer::requireArrayF64Resize() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayF64Resize);
 }
 
 /// @brief Request the manual helper that gets F64 array length.
-void Lowerer::requireArrayF64Len()
-{
+void Lowerer::requireArrayF64Len() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayF64Len);
 }
 
 /// @brief Request the manual helper that loads an element from an F64 array.
-void Lowerer::requireArrayF64Get()
-{
+void Lowerer::requireArrayF64Get() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayF64Get);
 }
 
 /// @brief Request the manual helper that stores an element into an F64 array.
-void Lowerer::requireArrayF64Set()
-{
+void Lowerer::requireArrayF64Set() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayF64Set);
 }
 
 /// @brief Request the manual helper that increments an F64 array reference.
-void Lowerer::requireArrayF64Retain()
-{
+void Lowerer::requireArrayF64Retain() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayF64Retain);
 }
 
 /// @brief Request the manual helper that releases an F64 array reference.
-void Lowerer::requireArrayF64Release()
-{
+void Lowerer::requireArrayF64Release() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayF64Release);
 }
 
 /// @brief Request the manual helper that allocates string arrays.
 /// @details Sets the manual-helper toggle so the allocation routine for new
 ///          string arrays is emitted alongside other runtime externs.
-void Lowerer::requireArrayStrAlloc()
-{
+void Lowerer::requireArrayStrAlloc() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayStrAlloc);
 }
 
 /// @brief Request the manual helper that releases a string array reference.
 /// @details Marks the release helper so decrements of reference counts reuse the
 ///          runtime-provided implementation.
-void Lowerer::requireArrayStrRelease()
-{
+void Lowerer::requireArrayStrRelease() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayStrRelease);
 }
 
 /// @brief Request the manual helper that loads an element from a string array.
 /// @details Flags the helper so bounds-checked element loads can be lowered to
 ///          the shared runtime routine.
-void Lowerer::requireArrayStrGet()
-{
+void Lowerer::requireArrayStrGet() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayStrGet);
 }
 
 /// @brief Request the manual helper that stores an element into a string array.
 /// @details Marks the store routine as required so writes funnel through the
 ///          shared runtime implementation with consistent bounds checks.
-void Lowerer::requireArrayStrPut()
-{
+void Lowerer::requireArrayStrPut() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayStrPut);
 }
 
 /// @brief Request the manual helper that reads the length of string arrays.
 /// @details Ensures the length-query routine is declared for clients that need
 ///          to observe the current logical size of a runtime array.
-void Lowerer::requireArrayStrLen()
-{
+void Lowerer::requireArrayStrLen() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayStrLen);
 }
 
 // --- Object array helper require hooks ---
-void Lowerer::requireArrayObjNew()
-{
+void Lowerer::requireArrayObjNew() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayObjNew);
 }
 
-void Lowerer::requireArrayObjLen()
-{
+void Lowerer::requireArrayObjLen() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayObjLen);
 }
 
-void Lowerer::requireArrayObjGet()
-{
+void Lowerer::requireArrayObjGet() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayObjGet);
 }
 
-void Lowerer::requireArrayObjPut()
-{
+void Lowerer::requireArrayObjPut() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayObjPut);
 }
 
-void Lowerer::requireArrayObjResize()
-{
+void Lowerer::requireArrayObjResize() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayObjResize);
 }
 
-void Lowerer::requireArrayObjRelease()
-{
+void Lowerer::requireArrayObjRelease() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayObjRelease);
 }
 
 /// @brief Request the helper that reports array out-of-bounds panics.
 /// @details Ensures the trap routine used for bounds failures is available when
 ///          lowering explicit checks.
-void Lowerer::requireArrayOobPanic()
-{
+void Lowerer::requireArrayOobPanic() {
     setManualHelperRequired(ManualRuntimeHelper::ArrayOobPanic);
 }
 
 /// @brief Request the helper that opens a file and reports errors via strings.
 /// @details Marks the manual helper responsible for returning structured error
 ///          data when opening file channels fails.
-void Lowerer::requireOpenErrVstr()
-{
+void Lowerer::requireOpenErrVstr() {
     setManualHelperRequired(ManualRuntimeHelper::OpenErrVstr);
 }
 
 /// @brief Request the helper that closes a file descriptor and reports errors.
 /// @details Flags the close helper so file teardown code can reuse the shared
 ///          error-reporting path.
-void Lowerer::requireCloseErr()
-{
+void Lowerer::requireCloseErr() {
     setManualHelperRequired(ManualRuntimeHelper::CloseErr);
 }
 
 /// @brief Request the helper that repositions a channel with error reporting.
 /// @details Toggles the manual helper used to implement SEEK with structured
 ///          error handling.
-void Lowerer::requireSeekChErr()
-{
+void Lowerer::requireSeekChErr() {
     setManualHelperRequired(ManualRuntimeHelper::SeekChErr);
 }
 
 /// @brief Request the helper that writes to a file channel without newline.
 /// @details Ensures the runtime routine used by PRINT# without newline is
 ///          declared when lowering file output statements.
-void Lowerer::requireWriteChErr()
-{
+void Lowerer::requireWriteChErr() {
     setManualHelperRequired(ManualRuntimeHelper::WriteChErr);
 }
 
 /// @brief Request the helper that prints a character with error handling.
 /// @details Marks the newline-print helper used for PRINT# statements that
 ///          append a terminator.
-void Lowerer::requirePrintlnChErr()
-{
+void Lowerer::requirePrintlnChErr() {
     setManualHelperRequired(ManualRuntimeHelper::PrintlnChErr);
 }
 
 /// @brief Request the helper that reads a line with error reporting.
 /// @details Toggles the manual helper used for LINE INPUT# so runtime errors are
 ///          surfaced consistently.
-void Lowerer::requireLineInputChErr()
-{
+void Lowerer::requireLineInputChErr() {
     setManualHelperRequired(ManualRuntimeHelper::LineInputChErr);
 }
 
@@ -637,50 +555,42 @@ void Lowerer::requireLineInputChErr()
 /// @brief Request the helper that tests EOF status on a channel.
 /// @details Marks the EOF-check helper so BASIC's EOF functions can be lowered
 ///          without duplicating runtime logic.
-void Lowerer::requireEofCh()
-{
+void Lowerer::requireEofCh() {
     setManualHelperRequired(ManualRuntimeHelper::EofCh);
 }
 
 /// @brief Request the helper that computes the length of a file channel.
 /// @details Ensures the LOF implementation is emitted for consumers that query
 ///          the logical file length.
-void Lowerer::requireLofCh()
-{
+void Lowerer::requireLofCh() {
     setManualHelperRequired(ManualRuntimeHelper::LofCh);
 }
 
 /// @brief Request the helper that reports the current position of a channel.
 /// @details Marks the LOC helper so callers can query file offsets through the
 ///          shared runtime API.
-void Lowerer::requireLocCh()
-{
+void Lowerer::requireLocCh() {
     setManualHelperRequired(ManualRuntimeHelper::LocCh);
 }
 
 // Module-level globals helpers
-void Lowerer::requireModvarAddrI64()
-{
+void Lowerer::requireModvarAddrI64() {
     setManualHelperRequired(ManualRuntimeHelper::ModvarAddrI64);
 }
 
-void Lowerer::requireModvarAddrF64()
-{
+void Lowerer::requireModvarAddrF64() {
     setManualHelperRequired(ManualRuntimeHelper::ModvarAddrF64);
 }
 
-void Lowerer::requireModvarAddrI1()
-{
+void Lowerer::requireModvarAddrI1() {
     setManualHelperRequired(ManualRuntimeHelper::ModvarAddrI1);
 }
 
-void Lowerer::requireModvarAddrPtr()
-{
+void Lowerer::requireModvarAddrPtr() {
     setManualHelperRequired(ManualRuntimeHelper::ModvarAddrPtr);
 }
 
-void Lowerer::requireModvarAddrStr()
-{
+void Lowerer::requireModvarAddrStr() {
     setManualHelperRequired(ManualRuntimeHelper::ModvarAddrStr);
 }
 
@@ -689,38 +599,33 @@ void Lowerer::requireModvarAddrStr()
 /// @brief Request the helper that conditionally retains a string handle.
 /// @details Ensures the helper that guards null handles before retaining is
 ///          emitted; used when lowering optional string temporaries.
-void Lowerer::requireStrRetainMaybe()
-{
+void Lowerer::requireStrRetainMaybe() {
     setManualHelperRequired(ManualRuntimeHelper::StrRetainMaybe);
 }
 
 /// @brief Request the helper that conditionally releases a string handle.
 /// @details Flags the corresponding release helper so shared string lifetimes
 ///          remain balanced even when handles are optional.
-void Lowerer::requireStrReleaseMaybe()
-{
+void Lowerer::requireStrReleaseMaybe() {
     setManualHelperRequired(ManualRuntimeHelper::StrReleaseMaybe);
 }
 
 /// @brief Request the sleep helper used by the SLEEP statement.
 /// @details Flags the `rt_sleep_ms` helper for extern declaration.
-void Lowerer::requireSleepMs()
-{
+void Lowerer::requireSleepMs() {
     setManualHelperRequired(ManualRuntimeHelper::SleepMs);
 }
 
 /// @brief Request the timer helper used by the TIMER builtin.
 /// @details Flags the `rt_timer_ms` helper for extern declaration.
-void Lowerer::requireTimerMs()
-{
+void Lowerer::requireTimerMs() {
     setManualHelperRequired(ManualRuntimeHelper::TimerMs);
 }
 
 /// @brief Forward a runtime feature request to the shared tracker.
 /// @details Invokes @ref RuntimeHelperTracker::requestHelper so the
 ///          feature-specific helper is considered during extern emission.
-void Lowerer::requestHelper(RuntimeFeature feature)
-{
+void Lowerer::requestHelper(RuntimeFeature feature) {
     runtimeTracker.requestHelper(feature);
 }
 
@@ -728,8 +633,7 @@ void Lowerer::requestHelper(RuntimeFeature feature)
 /// @details Pass-through convenience wrapper around
 ///          @ref RuntimeHelperTracker::isHelperNeeded used by lowering code to
 ///          gate feature-dependent behaviour.
-bool Lowerer::isHelperNeeded(RuntimeFeature feature) const
-{
+bool Lowerer::isHelperNeeded(RuntimeFeature feature) const {
     return runtimeTracker.isHelperNeeded(feature);
 }
 
@@ -737,8 +641,7 @@ bool Lowerer::isHelperNeeded(RuntimeFeature feature) const
 /// @details Calls @ref RuntimeHelperTracker::trackRuntime so that ordered
 ///          helpers are replayed deterministically when declarations are
 ///          emitted.
-void Lowerer::trackRuntime(RuntimeFeature feature)
-{
+void Lowerer::trackRuntime(RuntimeFeature feature) {
     runtimeTracker.trackRuntime(feature);
 }
 
@@ -746,12 +649,10 @@ void Lowerer::trackRuntime(RuntimeFeature feature)
 /// @details Delegates feature-driven helpers to @ref RuntimeHelperTracker and
 ///          then walks the manual helper table, declaring any entries whose
 ///          toggles were flipped earlier in lowering.
-void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
-{
+void Lowerer::declareRequiredRuntime(build::IRBuilder &b) {
     runtimeTracker.declareRequiredRuntime(b, boundsChecks);
 
-    struct ManualHelperDescriptor
-    {
+    struct ManualHelperDescriptor {
         std::string_view name;
         ManualRuntimeHelper helper;
         [[maybe_unused]] void (Lowerer::*requireHook)();
@@ -831,39 +732,30 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         {"rt_timer_ms", ManualRuntimeHelper::TimerMs, &Lowerer::requireTimerMs},
     }};
 
-    auto declareManual = [&](std::string_view name)
-    {
+    auto declareManual = [&](std::string_view name) {
         // Prefer the spelling observed at call sites when available so extern
         // declarations match emitted calls (avoids alias duplicates under
         // dual-namespace mode). Fall back to the provided default name.
         std::string spelling(name);
-        if (const auto *base = il::runtime::findRuntimeDescriptor(name))
-        {
-            if (auto sigId = il::runtime::findRuntimeSignatureId(base->name))
-            {
-                for (const auto &other : il::runtime::runtimeRegistry())
-                {
+        if (const auto *base = il::runtime::findRuntimeDescriptor(name)) {
+            if (auto sigId = il::runtime::findRuntimeSignatureId(base->name)) {
+                for (const auto &other : il::runtime::runtimeRegistry()) {
                     auto otherId = il::runtime::findRuntimeSignatureId(other.name);
                     if (!otherId || *otherId != *sigId)
                         continue;
-                    if (runtimeTracker.usedNames().contains(std::string(other.name)))
-                    {
+                    if (runtimeTracker.usedNames().contains(std::string(other.name))) {
                         spelling = std::string(other.name);
                         break;
                     }
                 }
             }
         }
-        if (const auto *desc = il::runtime::findRuntimeDescriptor(spelling))
-        {
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(spelling)) {
             // Avoid duplicates when a previous pass declared the chosen spelling.
             bool alreadyDeclared = false;
-            if (mod)
-            {
-                for (const auto &ex : mod->externs)
-                {
-                    if (ex.name == spelling)
-                    {
+            if (mod) {
+                for (const auto &ex : mod->externs) {
+                    if (ex.name == spelling) {
                         alreadyDeclared = true;
                         break;
                     }
@@ -875,8 +767,7 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         }
     };
 
-    for (const auto &helper : manualHelpers)
-    {
+    for (const auto &helper : manualHelpers) {
         if (isManualHelperRequired(helper.helper))
             declareManual(helper.name);
     }
@@ -891,26 +782,19 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
     // are Manual. When lowering emits calls to rt_* names, the alias-specific
     // externs would otherwise be skipped. Declare those alias spellings here so
     // the verifier can resolve the callees while preserving stable output.
-    for (const auto &used : runtimeTracker.usedNames())
-    {
-        if (const auto *desc = il::runtime::findRuntimeDescriptor(used))
-        {
-            if (desc->lowering.kind == il::runtime::RuntimeLoweringKind::Manual)
-            {
+    for (const auto &used : runtimeTracker.usedNames()) {
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(used)) {
+            if (desc->lowering.kind == il::runtime::RuntimeLoweringKind::Manual) {
                 bool alreadyDeclared = false;
-                if (mod)
-                {
-                    for (const auto &ex : mod->externs)
-                    {
-                        if (ex.name == used)
-                        {
+                if (mod) {
+                    for (const auto &ex : mod->externs) {
+                        if (ex.name == used) {
                             alreadyDeclared = true;
                             break;
                         }
                     }
                 }
-                if (!alreadyDeclared)
-                {
+                if (!alreadyDeclared) {
                     b.addExtern(
                         std::string(used), desc->signature.retType, desc->signature.paramTypes);
                 }
@@ -918,17 +802,14 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
         }
     }
 
-    auto ensureExtern = [&](std::string_view name)
-    {
+    auto ensureExtern = [&](std::string_view name) {
         if (!mod)
             return;
-        for (const auto &ex : mod->externs)
-        {
+        for (const auto &ex : mod->externs) {
             if (ex.name == name)
                 return; // already present
         }
-        if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
-        {
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(name)) {
             b.addExtern(std::string(name), desc->signature.retType, desc->signature.paramTypes);
         }
     };
@@ -936,13 +817,10 @@ void Lowerer::declareRequiredRuntime(build::IRBuilder &b)
     // Declare any used bounds-checked helpers regardless of the global
     // boundsChecks flag, since some ops (e.g., Diagnostics.Trap) are invoked
     // explicitly in generated IL even without array bounds checks enabled.
-    for (const auto &name : used)
-    {
-        if (const auto *desc = il::runtime::findRuntimeDescriptor(name))
-        {
+    for (const auto &name : used) {
+        if (const auto *desc = il::runtime::findRuntimeDescriptor(name)) {
             if (desc->lowering.kind == il::runtime::RuntimeLoweringKind::BoundsChecked ||
-                desc->lowering.kind == il::runtime::RuntimeLoweringKind::Feature)
-            {
+                desc->lowering.kind == il::runtime::RuntimeLoweringKind::Feature) {
                 ensureExtern(name);
             }
         }

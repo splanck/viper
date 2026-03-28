@@ -19,11 +19,9 @@
 
 #include "tools/lsp-common/JsonRpc.hpp"
 
-namespace viper::server
-{
+namespace viper::server {
 
-bool parseRequest(const JsonValue &msg, JsonRpcRequest &out)
-{
+bool parseRequest(const JsonValue &msg, JsonRpcRequest &out) {
     if (msg.type() != JsonType::Object)
         return false;
 
@@ -44,8 +42,7 @@ bool parseRequest(const JsonValue &msg, JsonRpcRequest &out)
     return true;
 }
 
-std::string buildResponse(const JsonValue &id, const JsonValue &result)
-{
+std::string buildResponse(const JsonValue &id, const JsonValue &result) {
     auto response = JsonValue::object({
         {"jsonrpc", JsonValue("2.0")},
         {"id", id},
@@ -57,8 +54,7 @@ std::string buildResponse(const JsonValue &id, const JsonValue &result)
 std::string buildError(const JsonValue &id,
                        int code,
                        const std::string &message,
-                       const JsonValue &data)
-{
+                       const JsonValue &data) {
     JsonValue::ObjectType errObj;
     errObj.emplace_back("code", JsonValue(static_cast<int64_t>(code)));
     errObj.emplace_back("message", JsonValue(message));
@@ -73,8 +69,7 @@ std::string buildError(const JsonValue &id,
     return response.toCompactString();
 }
 
-std::string buildNotification(const std::string &method, const JsonValue &params)
-{
+std::string buildNotification(const std::string &method, const JsonValue &params) {
     auto notification = JsonValue::object({
         {"jsonrpc", JsonValue("2.0")},
         {"method", JsonValue(method)},

@@ -26,13 +26,11 @@
 using il::runtime::signatures::make_signature;
 using il::runtime::signatures::SigParam;
 
-static int64_t times2(int64_t x)
-{
+static int64_t times2(int64_t x) {
     return x * 2;
 }
 
-static void times2_handler(void **args, void *result)
-{
+static void times2_handler(void **args, void *result) {
     const auto ptr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
     const int64_t x = ptr ? *ptr : 0;
     const int64_t y = times2(x);
@@ -40,8 +38,7 @@ static void times2_handler(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = y;
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
@@ -58,8 +55,7 @@ int main(int argc, char *argv[])
         arg.i64 = 21;
         il::vm::Slot res = il::vm::RuntimeBridge::call(ctx, "times2", {arg}, {}, "", "");
         // Debug: ensure we see failures clearly if any
-        if (res.i64 != 42)
-        {
+        if (res.i64 != 42) {
             std::fprintf(stderr, "VM_ExternRegistryTests: case1 got unexpected result\n");
         }
         assert(res.i64 == 42);
@@ -70,14 +66,12 @@ int main(int argc, char *argv[])
 
     // Case 2: Unknown extern -> trap (capture in child).
     {
-        auto result = viper::tests::runIsolated(
-            []()
-            {
-                il::vm::RuntimeCallContext ctx{};
-                il::vm::Slot arg{};
-                arg.i64 = 7;
-                (void)il::vm::RuntimeBridge::call(ctx, "times2", {arg}, {}, "", "");
-            });
+        auto result = viper::tests::runIsolated([]() {
+            il::vm::RuntimeCallContext ctx{};
+            il::vm::Slot arg{};
+            arg.i64 = 7;
+            (void)il::vm::RuntimeBridge::call(ctx, "times2", {arg}, {}, "", "");
+        });
         assert(result.trapped());
         assert(result.stderrText.find("unknown runtime helper 'times2'") != std::string::npos);
     }
@@ -90,13 +84,11 @@ int main(int argc, char *argv[])
         ext.fn = reinterpret_cast<void *>(&times2_handler);
         il::vm::RuntimeBridge::registerExtern(ext);
 
-        auto result = viper::tests::runIsolated(
-            []()
-            {
-                il::vm::RuntimeCallContext ctx{};
-                // Provide wrong number of args (0 instead of 1)
-                (void)il::vm::RuntimeBridge::call(ctx, "times2", {}, {}, "", "");
-            });
+        auto result = viper::tests::runIsolated([]() {
+            il::vm::RuntimeCallContext ctx{};
+            // Provide wrong number of args (0 instead of 1)
+            (void)il::vm::RuntimeBridge::call(ctx, "times2", {}, {}, "", "");
+        });
         assert(result.trapped());
         assert(result.stderrText.find("expected 1 argument(s), got 0") != std::string::npos);
 

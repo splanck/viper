@@ -21,8 +21,7 @@
 #include <sstream>
 #include <unordered_map>
 
-int main()
-{
+int main() {
     const char *source = R"(il 0.2.0
 global const str @nl = "\n"
 global const str @tab = "tab:\t"

@@ -25,17 +25,16 @@
 #include "rt_string.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    void *rt_navmesh3d_build(void *mesh, double agent_radius, double agent_height);
-    void *rt_navmesh3d_find_path(void *navmesh, void *from, void *to);
-    void *rt_navmesh3d_sample_position(void *navmesh, void *point);
-    int8_t rt_navmesh3d_is_walkable(void *navmesh, void *point);
-    int64_t rt_navmesh3d_get_triangle_count(void *navmesh);
-    void rt_navmesh3d_set_max_slope(void *navmesh, double degrees);
-    void rt_navmesh3d_debug_draw(void *navmesh, void *canvas);
+void *rt_navmesh3d_build(void *mesh, double agent_radius, double agent_height);
+void *rt_navmesh3d_find_path(void *navmesh, void *from, void *to);
+void *rt_navmesh3d_sample_position(void *navmesh, void *point);
+int8_t rt_navmesh3d_is_walkable(void *navmesh, void *point);
+int64_t rt_navmesh3d_get_triangle_count(void *navmesh);
+void rt_navmesh3d_set_max_slope(void *navmesh, double degrees);
+void rt_navmesh3d_debug_draw(void *navmesh, void *canvas);
 
 #ifdef __cplusplus
 }

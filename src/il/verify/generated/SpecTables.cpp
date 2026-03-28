@@ -33,10 +33,8 @@
 
 #include "il/verify/SpecTables.hpp"
 
-namespace il::verify
-{
-namespace
-{
+namespace il::verify {
+namespace {
 /// @brief Compact description of verifier rules for every opcode.
 /// @details Each entry matches the order of @ref il::core::Opcode and records
 ///          operand arity, result types, and whether overflow-safe variants are
@@ -1051,8 +1049,7 @@ inline constexpr std::array<InstructionSpec, il::core::kNumOpcodes> kSpecs = {{
 
 } // namespace
 
-const InstructionSpec &getInstructionSpec(il::core::Opcode opcode)
-{
+const InstructionSpec &getInstructionSpec(il::core::Opcode opcode) {
     return kSpecs[static_cast<size_t>(opcode)];
 }
 } // namespace il::verify

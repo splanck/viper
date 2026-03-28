@@ -26,8 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct rt_typewriter_impl
-{
+struct rt_typewriter_impl {
     char *full_text;
     char *visible_buf;
     int64_t total_len;
@@ -38,11 +37,9 @@ struct rt_typewriter_impl
     int8_t complete;
 };
 
-rt_typewriter rt_typewriter_new(void)
-{
+rt_typewriter rt_typewriter_new(void) {
     struct rt_typewriter_impl *t =
-        (struct rt_typewriter_impl *)rt_obj_new_i64(
-            0, (int64_t)sizeof(struct rt_typewriter_impl));
+        (struct rt_typewriter_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_typewriter_impl));
     if (!t)
         return NULL;
 
@@ -58,8 +55,7 @@ rt_typewriter rt_typewriter_new(void)
     return t;
 }
 
-void rt_typewriter_destroy(void *tw)
-{
+void rt_typewriter_destroy(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t)
         return;
@@ -69,8 +65,7 @@ void rt_typewriter_destroy(void *tw)
         rt_obj_free(t);
 }
 
-void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms)
-{
+void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t)
         return;
@@ -91,8 +86,7 @@ void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms)
     t->complete = 0;
 }
 
-int8_t rt_typewriter_update(void *tw, int64_t dt)
-{
+int8_t rt_typewriter_update(void *tw, int64_t dt) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t || !t->active || t->complete)
         return 0;
@@ -100,15 +94,13 @@ int8_t rt_typewriter_update(void *tw, int64_t dt)
     t->accum += dt;
 
     int8_t just_completed = 0;
-    while (t->accum >= t->rate_ms && t->char_index < t->total_len)
-    {
+    while (t->accum >= t->rate_ms && t->char_index < t->total_len) {
         t->accum -= t->rate_ms;
         t->visible_buf[t->char_index] = t->full_text[t->char_index];
         t->char_index++;
         t->visible_buf[t->char_index] = '\0';
 
-        if (t->char_index >= t->total_len)
-        {
+        if (t->char_index >= t->total_len) {
             t->complete = 1;
             t->active = 0;
             just_completed = 1;
@@ -118,14 +110,12 @@ int8_t rt_typewriter_update(void *tw, int64_t dt)
     return just_completed;
 }
 
-void rt_typewriter_skip(void *tw)
-{
+void rt_typewriter_skip(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t || !t->full_text)
         return;
 
-    if (t->visible_buf && t->full_text)
-    {
+    if (t->visible_buf && t->full_text) {
         memcpy(t->visible_buf, t->full_text, (size_t)t->total_len);
         t->visible_buf[t->total_len] = '\0';
     }
@@ -134,8 +124,7 @@ void rt_typewriter_skip(void *tw)
     t->active = 0;
 }
 
-void rt_typewriter_reset(void *tw)
-{
+void rt_typewriter_reset(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t)
         return;
@@ -150,50 +139,43 @@ void rt_typewriter_reset(void *tw)
     t->complete = 0;
 }
 
-rt_string rt_typewriter_get_visible_text(void *tw)
-{
+rt_string rt_typewriter_get_visible_text(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t || !t->visible_buf)
         return rt_string_from_bytes("", 0);
     return rt_string_from_bytes(t->visible_buf, (int64_t)strlen(t->visible_buf));
 }
 
-rt_string rt_typewriter_get_full_text(void *tw)
-{
+rt_string rt_typewriter_get_full_text(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t || !t->full_text)
         return rt_string_from_bytes("", 0);
     return rt_string_from_bytes(t->full_text, (int64_t)strlen(t->full_text));
 }
 
-int8_t rt_typewriter_is_active(void *tw)
-{
+int8_t rt_typewriter_is_active(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     return (t && t->active) ? 1 : 0;
 }
 
-int8_t rt_typewriter_is_complete(void *tw)
-{
+int8_t rt_typewriter_is_complete(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     return (t && t->complete) ? 1 : 0;
 }
 
-int64_t rt_typewriter_progress(void *tw)
-{
+int64_t rt_typewriter_progress(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     if (!t || t->total_len == 0)
         return 0;
     return t->char_index * 100 / t->total_len;
 }
 
-int64_t rt_typewriter_char_count(void *tw)
-{
+int64_t rt_typewriter_char_count(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     return t ? t->char_index : 0;
 }
 
-int64_t rt_typewriter_total_chars(void *tw)
-{
+int64_t rt_typewriter_total_chars(void *tw) {
     struct rt_typewriter_impl *t = (struct rt_typewriter_impl *)tw;
     return t ? t->total_len : 0;
 }

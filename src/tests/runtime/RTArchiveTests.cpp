@@ -35,15 +35,13 @@
 #include "tests/common/PosixCompat.h"
 #endif
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
@@ -51,12 +49,10 @@ extern "C" void vm_trap(const char *msg)
 }
 
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
         g_last_trap = nullptr;                                                                     \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             expr;                                                                                  \
             assert(false && "Expected trap did not occur");                                        \
         }                                                                                          \
@@ -64,17 +60,14 @@ extern "C" void vm_trap(const char *msg)
     } while (0)
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Get bytes data pointer
-static uint8_t *get_bytes_data(void *bytes)
-{
-    struct bytes_impl
-    {
+static uint8_t *get_bytes_data(void *bytes) {
+    struct bytes_impl {
         int64_t len;
         uint8_t *data;
     };
@@ -83,14 +76,12 @@ static uint8_t *get_bytes_data(void *bytes)
 }
 
 /// @brief Get bytes length
-static int64_t get_bytes_len(void *bytes)
-{
+static int64_t get_bytes_len(void *bytes) {
     return rt_bytes_len(bytes);
 }
 
 /// @brief Compare two byte arrays
-static bool bytes_equal(void *a, void *b)
-{
+static bool bytes_equal(void *a, void *b) {
     int64_t len_a = get_bytes_len(a);
     int64_t len_b = get_bytes_len(b);
     if (len_a != len_b)
@@ -99,8 +90,7 @@ static bool bytes_equal(void *a, void *b)
 }
 
 /// @brief Create bytes from string literal
-static void *make_bytes_str(const char *str)
-{
+static void *make_bytes_str(const char *str) {
     size_t len = strlen(str);
     void *bytes = rt_bytes_new((int64_t)len);
     memcpy(get_bytes_data(bytes), str, len);
@@ -109,8 +99,7 @@ static void *make_bytes_str(const char *str)
 
 /// @brief Get a temporary file path for testing
 /// @note Uses rotating buffers to allow multiple concurrent paths
-static const char *get_temp_path(const char *name)
-{
+static const char *get_temp_path(const char *name) {
     static char paths[4][256];
     static int idx = 0;
     char *path = paths[idx];
@@ -127,8 +116,7 @@ static const char *get_temp_path(const char *name)
 }
 
 /// @brief Delete a file if it exists
-static void delete_file(const char *path)
-{
+static void delete_file(const char *path) {
     unlink(path);
 }
 
@@ -136,8 +124,7 @@ static void delete_file(const char *path)
 // Basic Archive Tests
 //=============================================================================
 
-static void test_create_empty_archive()
-{
+static void test_create_empty_archive() {
     printf("Testing Create Empty Archive:\n");
 
     const char *path = get_temp_path("test_empty.zip");
@@ -161,8 +148,7 @@ static void test_create_empty_archive()
     delete_file(path);
 }
 
-static void test_create_single_file()
-{
+static void test_create_single_file() {
     printf("Testing Create Single File:\n");
 
     const char *path = get_temp_path("test_single.zip");
@@ -185,8 +171,7 @@ static void test_create_single_file()
     delete_file(path);
 }
 
-static void test_create_multiple_files()
-{
+static void test_create_multiple_files() {
     printf("Testing Create Multiple Files:\n");
 
     const char *path = get_temp_path("test_multi.zip");
@@ -225,8 +210,7 @@ static void test_create_multiple_files()
     delete_file(path);
 }
 
-static void test_add_string()
-{
+static void test_add_string() {
     printf("Testing AddStr:\n");
 
     const char *path = get_temp_path("test_addstr.zip");
@@ -243,8 +227,7 @@ static void test_add_string()
     delete_file(path);
 }
 
-static void test_add_directory()
-{
+static void test_add_directory() {
     printf("Testing AddDir:\n");
 
     const char *path = get_temp_path("test_dir.zip");
@@ -267,8 +250,7 @@ static void test_add_directory()
     delete_file(path);
 }
 
-static void test_invalid_entry_names()
-{
+static void test_invalid_entry_names() {
     printf("Testing Invalid Entry Names:\n");
 
     const char *path = get_temp_path("test_invalid_names.zip");
@@ -297,8 +279,7 @@ static void test_invalid_entry_names()
 // Compression Tests
 //=============================================================================
 
-static void test_compression_stored()
-{
+static void test_compression_stored() {
     printf("Testing Stored Compression:\n");
 
     const char *path = get_temp_path("test_stored.zip");
@@ -317,8 +298,7 @@ static void test_compression_stored()
     delete_file(path);
 }
 
-static void test_compression_deflate()
-{
+static void test_compression_deflate() {
     printf("Testing Deflate Compression:\n");
 
     const char *path = get_temp_path("test_deflate.zip");
@@ -326,8 +306,7 @@ static void test_compression_deflate()
 
     // Create compressible data (repeated pattern)
     char buffer[2000];
-    for (int i = 0; i < 2000; i++)
-    {
+    for (int i = 0; i < 2000; i++) {
         buffer[i] = 'A' + (i % 26);
     }
     void *large = rt_bytes_new(2000);
@@ -366,8 +345,7 @@ static void test_compression_deflate()
 // Property Tests
 //=============================================================================
 
-static void test_properties()
-{
+static void test_properties() {
     printf("Testing Properties:\n");
 
     const char *path = get_temp_path("test_props.zip");
@@ -395,8 +373,7 @@ static void test_properties()
     delete_file(path);
 }
 
-static void test_entry_info()
-{
+static void test_entry_info() {
     printf("Testing Entry Info:\n");
 
     const char *path = get_temp_path("test_info.zip");
@@ -430,8 +407,7 @@ static void test_entry_info()
 // FromBytes Tests
 //=============================================================================
 
-static void test_from_bytes()
-{
+static void test_from_bytes() {
     printf("Testing FromBytes:\n");
 
     const char *path = get_temp_path("test_frombytes.zip");
@@ -474,8 +450,7 @@ static void test_from_bytes()
 // Static Methods Tests
 //=============================================================================
 
-static void test_is_zip()
-{
+static void test_is_zip() {
     printf("Testing IsZip:\n");
 
     const char *zip_path = get_temp_path("test_iszip.zip");
@@ -503,8 +478,7 @@ static void test_is_zip()
     delete_file(txt_path);
 }
 
-static void test_is_zip_bytes()
-{
+static void test_is_zip_bytes() {
     printf("Testing IsZipBytes:\n");
 
     const char *path = get_temp_path("test_iszipbytes.zip");
@@ -537,8 +511,7 @@ static void test_is_zip_bytes()
 // Binary Data Tests
 //=============================================================================
 
-static void test_binary_data()
-{
+static void test_binary_data() {
     printf("Testing Binary Data:\n");
 
     const char *path = get_temp_path("test_binary.zip");
@@ -547,8 +520,7 @@ static void test_binary_data()
     // Create binary data with all byte values
     void *binary = rt_bytes_new(256);
     uint8_t *data = get_bytes_data(binary);
-    for (int i = 0; i < 256; i++)
-    {
+    for (int i = 0; i < 256; i++) {
         data[i] = (uint8_t)i;
     }
 
@@ -563,8 +535,7 @@ static void test_binary_data()
     delete_file(path);
 }
 
-static void test_large_file()
-{
+static void test_large_file() {
     printf("Testing Large File:\n");
 
     const char *path = get_temp_path("test_large.zip");
@@ -574,8 +545,7 @@ static void test_large_file()
     size_t size = 100 * 1024;
     void *large = rt_bytes_new((int64_t)size);
     uint8_t *data = get_bytes_data(large);
-    for (size_t i = 0; i < size; i++)
-    {
+    for (size_t i = 0; i < size; i++) {
         data[i] = (uint8_t)(i & 0xFF);
     }
 
@@ -594,8 +564,7 @@ static void test_large_file()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
     printf("Test skipped: POSIX temp paths not available on Windows\n");

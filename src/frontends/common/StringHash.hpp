@@ -18,18 +18,15 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::common
-{
+namespace il::frontends::common {
 
 /// @brief Hash functor for heterogeneous string lookup (C++20).
 /// @details Enables lookup with std::string_view keys in unordered_map
 ///          without allocating temporary std::string objects.
-struct StringHash
-{
+struct StringHash {
     using is_transparent = void;
 
-    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept
-    {
+    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept {
         return std::hash<std::string_view>{}(std::string_view(key));
     }
 };
@@ -37,8 +34,7 @@ struct StringHash
 /// @brief Utility to convert a string to lowercase.
 /// @param s Input string.
 /// @return Lowercase copy of the string.
-inline std::string toLower(const std::string &s)
-{
+inline std::string toLower(const std::string &s) {
     std::string result = s;
     for (char &c : result)
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -49,12 +45,10 @@ inline std::string toLower(const std::string &s)
 /// @param a First string.
 /// @param b Second string.
 /// @return True if strings are equal ignoring case.
-inline bool equalsIgnoreCase(std::string_view a, std::string_view b)
-{
+inline bool equalsIgnoreCase(std::string_view a, std::string_view b) {
     if (a.size() != b.size())
         return false;
-    for (std::size_t i = 0; i < a.size(); ++i)
-    {
+    for (std::size_t i = 0; i < a.size(); ++i) {
         if (std::tolower(static_cast<unsigned char>(a[i])) !=
             std::tolower(static_cast<unsigned char>(b[i])))
             return false;
@@ -64,34 +58,28 @@ inline bool equalsIgnoreCase(std::string_view a, std::string_view b)
 
 /// @brief Case-insensitive string hash functor.
 /// @details Enables case-insensitive lookup in unordered containers.
-struct CaseInsensitiveHash
-{
+struct CaseInsensitiveHash {
     using is_transparent = void;
 
-    [[nodiscard]] std::size_t operator()(std::string_view key) const noexcept
-    {
+    [[nodiscard]] std::size_t operator()(std::string_view key) const noexcept {
         std::size_t hash = 0;
-        for (char c : key)
-        {
+        for (char c : key) {
             hash =
                 hash * 31 + static_cast<std::size_t>(std::tolower(static_cast<unsigned char>(c)));
         }
         return hash;
     }
 
-    [[nodiscard]] std::size_t operator()(const std::string &key) const noexcept
-    {
+    [[nodiscard]] std::size_t operator()(const std::string &key) const noexcept {
         return (*this)(std::string_view(key));
     }
 };
 
 /// @brief Case-insensitive string equality functor.
-struct CaseInsensitiveEqual
-{
+struct CaseInsensitiveEqual {
     using is_transparent = void;
 
-    [[nodiscard]] bool operator()(std::string_view a, std::string_view b) const noexcept
-    {
+    [[nodiscard]] bool operator()(std::string_view a, std::string_view b) const noexcept {
         return equalsIgnoreCase(a, b);
     }
 };

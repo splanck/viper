@@ -25,31 +25,26 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Hash functor for heterogeneous string lookup (C++20).
-struct OopStringHash
-{
+struct OopStringHash {
     using is_transparent = void;
 
-    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept
-    {
+    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept {
         return std::hash<std::string_view>{}(std::string_view(key));
     }
 };
 
 /// @brief Signature used for interface slots (parameters + return type).
-struct IfaceMethodSig
-{
+struct IfaceMethodSig {
     std::string name;               ///< Method name within the interface.
     std::vector<Type> paramTypes;   ///< Parameter types in order.
     std::optional<Type> returnType; ///< Optional return type.
 };
 
 /// @brief Interface metadata including stable ID and slot layout.
-struct InterfaceInfo
-{
+struct InterfaceInfo {
     int ifaceId = -1;                  ///< Monotonic stable interface identifier.
     std::string qualifiedName;         ///< Fully-qualified interface name (A.B.I).
     std::vector<IfaceMethodSig> slots; ///< Declared methods in slot order.
@@ -58,8 +53,7 @@ struct InterfaceInfo
 /// @brief Captures the signature of a CLASS method.
 /// @details Stores parameter types, return type, and access control for a method.
 ///          The implicit instance receiver is not included in paramTypes.
-struct MethodSig
-{
+struct MethodSig {
     /// @brief Ordered parameter types, excluding the implicit instance parameter.
     std::vector<Type> paramTypes;
 
@@ -75,11 +69,9 @@ struct MethodSig
 };
 
 /// @brief Aggregated information extracted from a CLASS declaration.
-struct ClassInfo
-{
+struct ClassInfo {
     /// @brief Field metadata copied from the CLASS definition.
-    struct FieldInfo
-    {
+    struct FieldInfo {
         std::string name;                    ///< Declared field name.
         Type type = Type::I64;               ///< Declared field type.
         Access access{Access::Public};       ///< Field access control.
@@ -89,8 +81,7 @@ struct ClassInfo
     };
 
     /// @brief Signature metadata for constructor parameters.
-    struct CtorParam
-    {
+    struct CtorParam {
         Type type = Type::I64; ///< Declared parameter type.
         bool isArray = false;  ///< True when parameter declared with trailing ().
     };
@@ -110,8 +101,7 @@ struct ClassInfo
     std::vector<CtorParam> ctorParams;   ///< Constructor signature if declared.
 
     /// @brief Extended method metadata used for vtable construction and checks.
-    struct MethodInfo
-    {
+    struct MethodInfo {
         MethodSig sig;                   ///< Signature (params/return/access).
         bool isStatic = false;           ///< True when declared STATIC (no implicit receiver).
         bool isVirtual = false;          ///< Declared or implied virtual.
@@ -146,8 +136,7 @@ struct ClassInfo
 /// @details Stores one ClassInfo entry per declared CLASS and one InterfaceInfo
 ///          entry per declared INTERFACE. Populated during the OOP scanning phase
 ///          and consulted throughout lowering for layout, vtable, and method resolution.
-class OopIndex
-{
+class OopIndex {
   public:
     /// @brief Map from class name to its metadata.
     using ClassTable = std::unordered_map<std::string, ClassInfo>;
@@ -155,20 +144,17 @@ class OopIndex
     using IfaceTable = std::unordered_map<std::string, InterfaceInfo>;
 
     /// @brief Access the mutable class table.
-    [[nodiscard]] ClassTable &classes() noexcept
-    {
+    [[nodiscard]] ClassTable &classes() noexcept {
         return classes_;
     }
 
     /// @brief Access the immutable class table.
-    [[nodiscard]] const ClassTable &classes() const noexcept
-    {
+    [[nodiscard]] const ClassTable &classes() const noexcept {
         return classes_;
     }
 
     /// @brief Remove all indexed classes.
-    void clear() noexcept
-    {
+    void clear() noexcept {
         classes_.clear();
         interfacesByQname_.clear();
         nextInterfaceId_ = 0;
@@ -221,32 +207,27 @@ class OopIndex
         const std::string &className, std::string_view methodName) const;
 
     /// @brief Access the interface table by qualified name.
-    [[nodiscard]] IfaceTable &interfacesByQname() noexcept
-    {
+    [[nodiscard]] IfaceTable &interfacesByQname() noexcept {
         return interfacesByQname_;
     }
 
     /// @brief Access the immutable interface table by qualified name.
     /// @return Const reference to the interface table.
-    [[nodiscard]] const IfaceTable &interfacesByQname() const noexcept
-    {
+    [[nodiscard]] const IfaceTable &interfacesByQname() const noexcept {
         return interfacesByQname_;
     }
 
     /// @brief Allocate the next stable interface ID.
     /// @return A unique, monotonically increasing interface identifier.
-    int allocateInterfaceId() noexcept
-    {
+    int allocateInterfaceId() noexcept {
         return nextInterfaceId_++;
     }
 
     /// @brief Metadata for an ENUM type: named integer constants.
-    struct EnumInfo
-    {
+    struct EnumInfo {
         std::string name;
 
-        struct Member
-        {
+        struct Member {
             std::string name;
             long long value{0};
         };
@@ -257,27 +238,23 @@ class OopIndex
     using EnumTable = std::unordered_map<std::string, EnumInfo, OopStringHash, std::equal_to<>>;
 
     /// @brief Access the enum table.
-    [[nodiscard]] EnumTable &enums() noexcept
-    {
+    [[nodiscard]] EnumTable &enums() noexcept {
         return enums_;
     }
 
     /// @brief Access the immutable enum table.
-    [[nodiscard]] const EnumTable &enums() const noexcept
-    {
+    [[nodiscard]] const EnumTable &enums() const noexcept {
         return enums_;
     }
 
     /// @brief Look up an enum variant value.
     /// @return The variant's integer value, or std::nullopt if not found.
     [[nodiscard]] std::optional<long long> findEnumVariant(const std::string &enumName,
-                                                           const std::string &variantName) const
-    {
+                                                           const std::string &variantName) const {
         auto it = enums_.find(enumName);
         if (it == enums_.end())
             return std::nullopt;
-        for (const auto &m : it->second.members)
-        {
+        for (const auto &m : it->second.members) {
             if (m.name == variantName)
                 return m.value;
         }

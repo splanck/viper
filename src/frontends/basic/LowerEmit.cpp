@@ -22,8 +22,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Predeclare procedures and gather main-body statement handles.
 ///
@@ -34,11 +33,9 @@ namespace il::frontends::basic
 ///
 /// @param prog Parsed BASIC program.
 /// @return Emission context populated with declaration state and main sequence.
-Lowerer::ProgramEmitContext Lowerer::collectProgramDeclarations(const Program &prog)
-{
+Lowerer::ProgramEmitContext Lowerer::collectProgramDeclarations(const Program &prog) {
     collectProcedureSignatures(prog);
-    for (const auto &s : prog.procs)
-    {
+    for (const auto &s : prog.procs) {
         if (auto *fn = as<const FunctionDecl>(*s))
             lowerFunctionDecl(*fn);
         else if (auto *sub = as<const SubDecl>(*s))
@@ -48,14 +45,11 @@ Lowerer::ProgramEmitContext Lowerer::collectProgramDeclarations(const Program &p
     // Also predeclare and lower procedures declared inside namespace blocks in the main body
     // so fully-qualified calls can resolve at runtime.
     std::function<void(const std::vector<StmtPtr> &)> scan;
-    scan = [&](const std::vector<StmtPtr> &stmts)
-    {
-        for (const auto &stmtPtr : stmts)
-        {
+    scan = [&](const std::vector<StmtPtr> &stmts) {
+        for (const auto &stmtPtr : stmts) {
             if (!stmtPtr)
                 continue;
-            switch (stmtPtr->stmtKind())
-            {
+            switch (stmtPtr->stmtKind()) {
                 case Stmt::Kind::NamespaceDecl:
                     scan(static_cast<const NamespaceDecl &>(*stmtPtr).body);
                     break;
@@ -91,8 +85,7 @@ Lowerer::ProgramEmitContext Lowerer::collectProgramDeclarations(const Program &p
 ///             epilogue emission.
 ///
 /// @param state Mutable emission context storing block references.
-void Lowerer::buildMainFunctionSkeleton(ProgramEmitContext &state)
-{
+void Lowerer::buildMainFunctionSkeleton(ProgramEmitContext &state) {
     // BUG-063 fix: Clear any deferred temps from prior procedures
     clearDeferredTemps();
 
@@ -111,8 +104,7 @@ void Lowerer::buildMainFunctionSkeleton(ProgramEmitContext &state)
     b.addBlock(f, "entry");
 
     auto &lineBlocks = ctx.blockNames().lineBlocks();
-    for (const auto *stmt : state.mainStmts)
-    {
+    for (const auto *stmt : state.mainStmts) {
         int vLine = virtualLine(*stmt);
         if (lineBlocks.find(vLine) != lineBlocks.end())
             continue;
@@ -134,8 +126,7 @@ void Lowerer::buildMainFunctionSkeleton(ProgramEmitContext &state)
 ///          body so storage can be allocated before emission.
 ///
 /// @param state Emission context containing the main statement list.
-void Lowerer::collectMainVariables(ProgramEmitContext &state)
-{
+void Lowerer::collectMainVariables(ProgramEmitContext &state) {
     resetSymbolState();
     collectVars(state.mainStmts);
 }
@@ -148,8 +139,7 @@ void Lowerer::collectMainVariables(ProgramEmitContext &state)
 ///          conventions.
 ///
 /// @param state Emission context seeded by @ref buildMainFunctionSkeleton.
-void Lowerer::allocateMainLocals(ProgramEmitContext &state)
-{
+void Lowerer::allocateMainLocals(ProgramEmitContext &state) {
     ProcedureContext &ctx = context();
     assert(state.entry && "buildMainFunctionSkeleton must run before allocateMainLocals");
     ctx.setCurrent(state.entry);
@@ -166,18 +156,14 @@ void Lowerer::allocateMainLocals(ProgramEmitContext &state)
 ///          return instruction.
 ///
 /// @param state Emission context describing the main function layout.
-void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state)
-{
+void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state) {
     ProcedureContext &ctx = context();
     assert(state.function && "buildMainFunctionSkeleton must populate function");
 
-    if (state.mainStmts.empty())
-    {
+    if (state.mainStmts.empty()) {
         curLoc = {};
         emitRet(Value::constInt(0));
-    }
-    else
-    {
+    } else {
         ctx.setCurrent(state.entry);
         lowerStatementSequence(state.mainStmts,
                                /*stopOnTerminated=*/false,
@@ -191,13 +177,11 @@ void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state)
         // BUG-052 guard: Some preallocated per-line blocks may remain unused
         // (no instructions emitted). Fill truly empty blocks with an explicit
         // branch to the exit block so the verifier does not report "empty block".
-        for (std::size_t i = 0; i < state.function->blocks.size(); ++i)
-        {
+        for (std::size_t i = 0; i < state.function->blocks.size(); ++i) {
             if (i == 0 || i == static_cast<std::size_t>(ctx.exitIndex()))
                 continue; // skip entry and exit
             auto &bb = state.function->blocks[i];
-            if (bb.instructions.empty())
-            {
+            if (bb.instructions.empty()) {
                 ctx.setCurrent(&bb);
                 emitBr(&state.function->blocks[ctx.exitIndex()]);
             }
@@ -222,8 +206,7 @@ void Lowerer::emitMainBodyAndEpilogue(ProgramEmitContext &state)
 ///          the shared @ref ProgramEmitContext assembled in this function.
 ///
 /// @param prog BASIC program to lower into IL.
-void Lowerer::emitProgram(const Program &prog)
-{
+void Lowerer::emitProgram(const Program &prog) {
     // BUG-097 fix: Cache module-level object array types BEFORE lowering procedures.
     // Procedure bodies may reference global arrays (e.g., g_widgets(i).Update()),
     // and resolveObjectClass needs the element class info during procedure lowering.

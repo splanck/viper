@@ -44,8 +44,7 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 //===----------------------------------------------------------------------===//
 /// @name Type Nodes
 /// @brief AST nodes representing type annotations in source code.
@@ -57,8 +56,7 @@ namespace il::frontends::zia
 /// @brief Enumerates the kinds of type annotation nodes.
 /// @details Used for runtime type identification when processing type nodes.
 /// Each TypeKind corresponds to exactly one TypeNode subclass.
-enum class TypeKind
-{
+enum class TypeKind {
     /// @brief Simple named type reference.
     /// @details Examples: `Integer`, `String`, `MyClass`
     /// @see NamedType
@@ -107,8 +105,7 @@ enum class TypeKind
 /// - TupleType: Tuple types like `(Int, String)`
 ///
 /// @invariant `kind` correctly identifies the concrete subclass type.
-struct TypeNode
-{
+struct TypeNode {
     /// @brief Identifies the concrete type node kind for downcasting.
     TypeKind kind;
 
@@ -134,8 +131,7 @@ struct TypeNode
 /// - `String` - Built-in UTF-8 string type
 /// - `Player` - User-defined entity type
 /// - `Point` - User-defined value type
-struct NamedType : TypeNode
-{
+struct NamedType : TypeNode {
     /// @brief The type name as written in source code.
     /// @details Must be resolved during semantic analysis to determine
     /// what type it actually refers to.
@@ -156,8 +152,7 @@ struct NamedType : TypeNode
 /// - `List[Integer]` - List containing integers
 /// - `Map[String, Integer]` - Map from strings to integers
 /// - `Result[User]` - Result type with User as success type
-struct GenericType : TypeNode
-{
+struct GenericType : TypeNode {
     /// @brief The generic type name (e.g., "List", "Map", "Result").
     std::string name;
 
@@ -171,9 +166,7 @@ struct GenericType : TypeNode
     /// @param n The generic type name.
     /// @param a The type arguments.
     GenericType(SourceLoc l, std::string n, std::vector<TypePtr> a)
-        : TypeNode(TypeKind::Generic, l), name(std::move(n)), args(std::move(a))
-    {
-    }
+        : TypeNode(TypeKind::Generic, l), name(std::move(n)), args(std::move(a)) {}
 };
 
 /// @brief Optional (nullable) type wrapper: `T?`.
@@ -190,8 +183,7 @@ struct GenericType : TypeNode
 /// - Explicit null handling with `??` (coalesce) operator
 /// - Safe chaining with `?.` (optional chain) operator
 /// - Pattern matching for null checks
-struct OptionalType : TypeNode
-{
+struct OptionalType : TypeNode {
     /// @brief The underlying type that is made optional.
     /// @details For `String?`, this points to a NamedType("String").
     TypePtr inner;
@@ -213,8 +205,7 @@ struct OptionalType : TypeNode
 /// - `(Integer) -> Boolean` - Function taking int, returning bool
 /// - `(String, Integer) -> String` - Function taking string and int
 /// - `() -> Unit` - Function taking nothing, returning unit (void-like)
-struct FunctionType : TypeNode
-{
+struct FunctionType : TypeNode {
     /// @brief The parameter types in order.
     /// @details Each element is the type of one parameter.
     std::vector<TypePtr> params;
@@ -230,9 +221,7 @@ struct FunctionType : TypeNode
     /// @param p Parameter types.
     /// @param ret Return type (nullptr for void).
     FunctionType(SourceLoc l, std::vector<TypePtr> p, TypePtr ret)
-        : TypeNode(TypeKind::Function, l), params(std::move(p)), returnType(std::move(ret))
-    {
-    }
+        : TypeNode(TypeKind::Function, l), params(std::move(p)), returnType(std::move(ret)) {}
 };
 
 /// @brief Tuple type grouping multiple types: `(A, B)`.
@@ -242,8 +231,7 @@ struct FunctionType : TypeNode
 /// ## Examples
 /// - `(Integer, String)` - Pair of integer and string
 /// - `(Boolean, Integer, String)` - Triple of three different types
-struct TupleType : TypeNode
-{
+struct TupleType : TypeNode {
     /// @brief The element types in order.
     std::vector<TypePtr> elements;
 
@@ -251,9 +239,7 @@ struct TupleType : TypeNode
     /// @param l Source location of the type.
     /// @param e Element types.
     TupleType(SourceLoc l, std::vector<TypePtr> e)
-        : TypeNode(TypeKind::Tuple, l), elements(std::move(e))
-    {
-    }
+        : TypeNode(TypeKind::Tuple, l), elements(std::move(e)) {}
 };
 
 /// @brief Fixed-size array type: `Integer[64]`, `Number[8]`.
@@ -264,8 +250,7 @@ struct TupleType : TypeNode
 /// ## Examples
 /// - `Integer[64]` — 64 contiguous i64 values (512 bytes)
 /// - `Number[4]` — 4 contiguous f64 values (32 bytes)
-struct FixedArrayType : TypeNode
-{
+struct FixedArrayType : TypeNode {
     /// @brief The element type of the fixed-size array.
     TypePtr elementType;
 
@@ -277,9 +262,7 @@ struct FixedArrayType : TypeNode
     /// @param elem The element type (e.g., NamedType("Integer")).
     /// @param n Number of elements.
     FixedArrayType(SourceLoc l, TypePtr elem, size_t n)
-        : TypeNode(TypeKind::FixedArray, l), elementType(std::move(elem)), count(n)
-    {
-    }
+        : TypeNode(TypeKind::FixedArray, l), elementType(std::move(elem)), count(n) {}
 };
 
 /// @}

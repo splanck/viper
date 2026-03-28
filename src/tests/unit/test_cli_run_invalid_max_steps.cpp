@@ -21,19 +21,16 @@
 #include <string>
 #include <vector>
 
-namespace
-{
+namespace {
 
-int invokeRunIL(const std::vector<std::string> &extraArgs, std::string &stderrText)
-{
+int invokeRunIL(const std::vector<std::string> &extraArgs, std::string &stderrText) {
     std::vector<std::string> storage;
     storage.emplace_back("placeholder.il");
     storage.insert(storage.end(), extraArgs.begin(), extraArgs.end());
 
     std::vector<char *> argv;
     argv.reserve(storage.size());
-    for (auto &arg : storage)
-    {
+    for (auto &arg : storage) {
         argv.push_back(arg.data());
     }
 
@@ -51,13 +48,11 @@ int invokeRunIL(const std::vector<std::string> &extraArgs, std::string &stderrTe
 
 static bool gUsageCalled = false;
 
-void usage()
-{
+void usage() {
     gUsageCalled = true;
 }
 
-int main()
-{
+int main() {
     std::string err;
 
     gUsageCalled = false;

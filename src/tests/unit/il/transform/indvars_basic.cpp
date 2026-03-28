@@ -25,18 +25,14 @@
 #include "tests/TestHarness.hpp"
 using namespace il::core;
 
-namespace
-{
+namespace {
 /// @brief Make registry.
-il::transform::AnalysisRegistry makeRegistry()
-{
+il::transform::AnalysisRegistry makeRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fn) { return il::transform::buildCFG(mod, fn); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fn)
-        {
+        "dominators", [](Module &mod, Function &fn) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
@@ -50,8 +46,7 @@ il::transform::AnalysisRegistry makeRegistry()
 
 } // namespace
 
-TEST(IndVarSimplify, StrengthReductionApplies)
-{
+TEST(IndVarSimplify, StrengthReductionApplies) {
     Module M;
     Function F;
     F.name = "indvars";
@@ -143,8 +138,7 @@ TEST(IndVarSimplify, StrengthReductionApplies)
     EXPECT_FALSE(hasAddrAdd);
 }
 
-TEST(IndVarSimplify, SkipsNonCanonicalLoop)
-{
+TEST(IndVarSimplify, SkipsNonCanonicalLoop) {
     Module M;
     Function F;
     F.name = "indvars_skip";
@@ -217,8 +211,7 @@ TEST(IndVarSimplify, SkipsNonCanonicalLoop)
     EXPECT_EQ(hdr.params.size(), 0U);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

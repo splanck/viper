@@ -16,8 +16,7 @@
 
 #include "frontends/basic/print/Print_Stmt_Common.hpp"
 
-namespace il::frontends::basic::print_stmt
-{
+namespace il::frontends::basic::print_stmt {
 
 /// @brief Print a @c GOTO statement in the s-expression printer format.
 /// @details Writes the literal token followed by the target label while relying
@@ -25,8 +24,7 @@ namespace il::frontends::basic::print_stmt
 ///          introduced beyond what the BASIC syntax requires.
 /// @param stmt AST node describing the @c GOTO statement.
 /// @param ctx Printer context providing the output stream and helpers.
-void printGoto(const GotoStmt &stmt, Context &ctx)
-{
+void printGoto(const GotoStmt &stmt, Context &ctx) {
     ctx.stream() << "(GOTO " << stmt.target << ')';
 }
 
@@ -35,8 +33,7 @@ void printGoto(const GotoStmt &stmt, Context &ctx)
 ///          canonical s-expression format used in golden tests.
 /// @param stmt AST node describing the @c GOSUB statement.
 /// @param ctx Printer context writing to the destination stream.
-void printGosub(const GosubStmt &stmt, Context &ctx)
-{
+void printGosub(const GosubStmt &stmt, Context &ctx) {
     ctx.stream() << "(GOSUB " << stmt.targetLine << ')';
 }
 
@@ -46,16 +43,13 @@ void printGosub(const GosubStmt &stmt, Context &ctx)
 ///          the s-expression.
 /// @param stmt AST node describing the @c RETURN statement.
 /// @param ctx Printer context used for expression printing.
-void printReturn(const ReturnStmt &stmt, Context &ctx)
-{
+void printReturn(const ReturnStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(RETURN";
-    if (stmt.isGosubReturn)
-    {
+    if (stmt.isGosubReturn) {
         os << " GOSUB";
     }
-    if (stmt.value)
-    {
+    if (stmt.value) {
         os << ' ';
         ctx.printExpr(*stmt.value);
     }
@@ -68,16 +62,12 @@ void printReturn(const ReturnStmt &stmt, Context &ctx)
 ///          output.
 /// @param stmt AST node describing the handler redirection.
 /// @param ctx Printer context with the destination stream.
-void printOnErrorGoto(const OnErrorGoto &stmt, Context &ctx)
-{
+void printOnErrorGoto(const OnErrorGoto &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(ON-ERROR GOTO ";
-    if (stmt.toZero)
-    {
+    if (stmt.toZero) {
         os << '0';
-    }
-    else
-    {
+    } else {
         os << stmt.target;
     }
     os << ')';
@@ -89,12 +79,10 @@ void printOnErrorGoto(const OnErrorGoto &stmt, Context &ctx)
 ///          preserves the absence of a suffix for @c RESUME SAME.
 /// @param stmt AST node describing the resume behaviour.
 /// @param ctx Printer context with streaming utilities.
-void printResume(const Resume &stmt, Context &ctx)
-{
+void printResume(const Resume &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(RESUME";
-    switch (stmt.mode)
-    {
+    switch (stmt.mode) {
         case Resume::Mode::Same:
             break;
         case Resume::Mode::Next:

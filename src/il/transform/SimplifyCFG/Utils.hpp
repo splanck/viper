@@ -41,22 +41,18 @@
 #endif
 
 #ifndef VIPER_HAVE_LLVM_LIKE_BITVECTOR
-namespace llvm_like
-{
+namespace llvm_like {
 
 /// @brief Minimal BitVector drop-in used when llvm_like is unavailable.
-class BitVector
-{
+class BitVector {
   public:
     BitVector() = default;
 
     explicit BitVector(size_t count, bool value = false) : bits_(count, value) {}
 
-    void resize(size_t count, bool value = false)
-    {
+    void resize(size_t count, bool value = false) {
         const size_t currentSize = bits_.size();
-        if (count <= currentSize)
-        {
+        if (count <= currentSize) {
             bits_.resize(count);
             return;
         }
@@ -64,18 +60,15 @@ class BitVector
         bits_.resize(count, value);
     }
 
-    bool test(size_t index) const
-    {
+    bool test(size_t index) const {
         return bits_.at(index);
     }
 
-    void set(size_t index)
-    {
+    void set(size_t index) {
         bits_.at(index) = true;
     }
 
-    size_t size() const
-    {
+    size_t size() const {
         return bits_.size();
     }
 
@@ -87,8 +80,7 @@ class BitVector
 
 #endif // VIPER_HAVE_LLVM_LIKE_BITVECTOR
 
-namespace il::transform::simplify_cfg
-{
+namespace il::transform::simplify_cfg {
 
 using BitVector = llvm_like::BitVector;
 

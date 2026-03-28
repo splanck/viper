@@ -23,12 +23,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that type narrowing works after "x != null" check.
-TEST(ZiaOptionalNarrowing, NarrowingAfterNotNullCheck)
-{
+TEST(ZiaOptionalNarrowing, NarrowingAfterNotNullCheck) {
     const std::string src = R"(
 module Test;
 
@@ -56,11 +54,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for NarrowingAfterNotNullCheck:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -70,8 +66,7 @@ func start() {
 }
 
 /// @brief Test that type narrowing works in else branch after "x == null" check.
-TEST(ZiaOptionalNarrowing, NarrowingInElseBranchAfterNullCheck)
-{
+TEST(ZiaOptionalNarrowing, NarrowingInElseBranchAfterNullCheck) {
     const std::string src = R"(
 module Test;
 
@@ -101,11 +96,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for NarrowingInElseBranchAfterNullCheck:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -115,8 +108,7 @@ func start() {
 }
 
 /// @brief Test that type narrowing works with reversed null check (null != x).
-TEST(ZiaOptionalNarrowing, NarrowingWithReversedNullCheck)
-{
+TEST(ZiaOptionalNarrowing, NarrowingWithReversedNullCheck) {
     const std::string src = R"(
 module Test;
 
@@ -144,11 +136,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for NarrowingWithReversedNullCheck:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -158,8 +148,7 @@ func start() {
 }
 
 /// @brief Test that narrowed type allows method calls.
-TEST(ZiaOptionalNarrowing, NarrowedTypeAllowsMethodCalls)
-{
+TEST(ZiaOptionalNarrowing, NarrowedTypeAllowsMethodCalls) {
     const std::string src = R"(
 module Test;
 
@@ -191,11 +180,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for NarrowedTypeAllowsMethodCalls:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -209,8 +196,7 @@ func start() {
 //=============================================================================
 
 /// @brief Test that force-unwrap converts Optional[Entity] to Entity.
-TEST(ZiaForceUnwrap, ForceUnwrapEntity)
-{
+TEST(ZiaForceUnwrap, ForceUnwrapEntity) {
     const std::string src = R"(
 module Test;
 
@@ -234,11 +220,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for ForceUnwrapEntity:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -248,8 +232,7 @@ func start() {
 }
 
 /// @brief Test that force-unwrap works in function call arguments.
-TEST(ZiaForceUnwrap, ForceUnwrapInCallArg)
-{
+TEST(ZiaForceUnwrap, ForceUnwrapInCallArg) {
     const std::string src = R"(
 module Test;
 
@@ -276,11 +259,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for ForceUnwrapInCallArg:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -290,8 +271,7 @@ func start() {
 }
 
 /// @brief Test that force-unwrap on non-optional produces an error.
-TEST(ZiaForceUnwrap, ForceUnwrapNonOptionalError)
-{
+TEST(ZiaForceUnwrap, ForceUnwrapNonOptionalError) {
     const std::string src = R"(
 module Test;
 
@@ -311,8 +291,7 @@ func start() {
 }
 
 /// @brief Test force-unwrap chains with field access.
-TEST(ZiaForceUnwrap, ForceUnwrapThenFieldAccess)
-{
+TEST(ZiaForceUnwrap, ForceUnwrapThenFieldAccess) {
     const std::string src = R"(
 module Test;
 
@@ -336,11 +315,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for ForceUnwrapThenFieldAccess:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -351,8 +328,7 @@ func start() {
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

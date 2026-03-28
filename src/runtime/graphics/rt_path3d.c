@@ -37,8 +37,7 @@ extern double rt_vec3_z(void *v);
 
 #define PATH3D_INIT_CAP 16
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     double *xs, *ys, *zs;
     int32_t point_count;
@@ -48,8 +47,7 @@ typedef struct
     int8_t length_dirty;
 } rt_path3d;
 
-static void path3d_finalizer(void *obj)
-{
+static void path3d_finalizer(void *obj) {
     rt_path3d *p = (rt_path3d *)obj;
     free(p->xs);
     free(p->ys);
@@ -58,11 +56,9 @@ static void path3d_finalizer(void *obj)
     p->point_count = p->point_capacity = 0;
 }
 
-void *rt_path3d_new(void)
-{
+void *rt_path3d_new(void) {
     rt_path3d *p = (rt_path3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_path3d));
-    if (!p)
-    {
+    if (!p) {
         rt_trap("Path3D.New: allocation failed");
         return NULL;
     }
@@ -79,14 +75,12 @@ void *rt_path3d_new(void)
     return p;
 }
 
-void rt_path3d_add_point(void *obj, void *pos)
-{
+void rt_path3d_add_point(void *obj, void *pos) {
     if (!obj || !pos)
         return;
     rt_path3d *p = (rt_path3d *)obj;
 
-    if (p->point_count >= p->point_capacity)
-    {
+    if (p->point_count >= p->point_capacity) {
         int32_t new_cap = p->point_capacity * 2;
         p->xs = (double *)realloc(p->xs, (size_t)new_cap * sizeof(double));
         p->ys = (double *)realloc(p->ys, (size_t)new_cap * sizeof(double));
@@ -117,8 +111,7 @@ static void catmull_rom_3d(double p0x,
                            double t,
                            double *ox,
                            double *oy,
-                           double *oz)
-{
+                           double *oz) {
     double t2 = t * t, t3 = t2 * t;
     *ox = 0.5 * ((2.0 * p1x) + (-p0x + p2x) * t + (2.0 * p0x - 5.0 * p1x + 4.0 * p2x - p3x) * t2 +
                  (-p0x + 3.0 * p1x - 3.0 * p2x + p3x) * t3);
@@ -129,8 +122,7 @@ static void catmull_rom_3d(double p0x,
 }
 
 /// @brief Get index clamped or wrapped for Catmull-Rom neighbor lookup.
-static int32_t path_idx(const rt_path3d *p, int32_t i)
-{
+static int32_t path_idx(const rt_path3d *p, int32_t i) {
     if (p->looping)
         return ((i % p->point_count) + p->point_count) % p->point_count;
     if (i < 0)
@@ -140,27 +132,22 @@ static int32_t path_idx(const rt_path3d *p, int32_t i)
     return i;
 }
 
-void *rt_path3d_get_position_at(void *obj, double t)
-{
+void *rt_path3d_get_position_at(void *obj, double t) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
     rt_path3d *p = (rt_path3d *)obj;
-    if (p->point_count < 2)
-    {
+    if (p->point_count < 2) {
         if (p->point_count == 1)
             return rt_vec3_new(p->xs[0], p->ys[0], p->zs[0]);
         return rt_vec3_new(0, 0, 0);
     }
 
     /* Clamp or wrap t */
-    if (p->looping)
-    {
+    if (p->looping) {
         t = fmod(t, 1.0);
         if (t < 0)
             t += 1.0;
-    }
-    else
-    {
+    } else {
         if (t < 0.0)
             t = 0.0;
         if (t > 1.0)
@@ -171,8 +158,7 @@ void *rt_path3d_get_position_at(void *obj, double t)
     double seg_f = t * (double)(n - 1);
     int seg = (int)seg_f;
     double local_t = seg_f - (double)seg;
-    if (seg >= n - 1)
-    {
+    if (seg >= n - 1) {
         seg = n - 2;
         local_t = 1.0;
     }
@@ -202,8 +188,7 @@ void *rt_path3d_get_position_at(void *obj, double t)
     return rt_vec3_new(ox, oy, oz);
 }
 
-void *rt_path3d_get_direction_at(void *obj, double t)
-{
+void *rt_path3d_get_direction_at(void *obj, double t) {
     double eps = 0.001;
     void *p0 = rt_path3d_get_position_at(obj, t - eps);
     void *p1 = rt_path3d_get_position_at(obj, t + eps);
@@ -211,8 +196,7 @@ void *rt_path3d_get_direction_at(void *obj, double t)
     double dy = rt_vec3_y(p1) - rt_vec3_y(p0);
     double dz = rt_vec3_z(p1) - rt_vec3_z(p0);
     double len = sqrt(dx * dx + dy * dy + dz * dz);
-    if (len > 1e-8)
-    {
+    if (len > 1e-8) {
         dx /= len;
         dy /= len;
         dz /= len;
@@ -220,8 +204,7 @@ void *rt_path3d_get_direction_at(void *obj, double t)
     return rt_vec3_new(dx, dy, dz);
 }
 
-double rt_path3d_get_length(void *obj)
-{
+double rt_path3d_get_length(void *obj) {
     if (!obj)
         return 0.0;
     rt_path3d *p = (rt_path3d *)obj;
@@ -232,13 +215,11 @@ double rt_path3d_get_length(void *obj)
 
     int steps = p->point_count * 20;
     double total = 0.0, prev_x = 0, prev_y = 0, prev_z = 0;
-    for (int i = 0; i <= steps; i++)
-    {
+    for (int i = 0; i <= steps; i++) {
         double t = (double)i / (double)steps;
         void *pt = rt_path3d_get_position_at(obj, t);
         double x = rt_vec3_x(pt), y = rt_vec3_y(pt), z = rt_vec3_z(pt);
-        if (i > 0)
-        {
+        if (i > 0) {
             double dx = x - prev_x, dy = y - prev_y, dz = z - prev_z;
             total += sqrt(dx * dx + dy * dy + dz * dz);
         }
@@ -251,13 +232,11 @@ double rt_path3d_get_length(void *obj)
     return total;
 }
 
-int64_t rt_path3d_get_point_count(void *obj)
-{
+int64_t rt_path3d_get_point_count(void *obj) {
     return obj ? ((rt_path3d *)obj)->point_count : 0;
 }
 
-void rt_path3d_set_looping(void *obj, int8_t loop)
-{
+void rt_path3d_set_looping(void *obj, int8_t loop) {
     if (!obj)
         return;
     rt_path3d *p = (rt_path3d *)obj;
@@ -265,8 +244,7 @@ void rt_path3d_set_looping(void *obj, int8_t loop)
     p->length_dirty = 1;
 }
 
-void rt_path3d_clear(void *obj)
-{
+void rt_path3d_clear(void *obj) {
     if (!obj)
         return;
     rt_path3d *p = (rt_path3d *)obj;

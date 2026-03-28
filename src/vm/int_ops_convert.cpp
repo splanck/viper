@@ -29,18 +29,15 @@
 ///          signed and unsigned variants, emitting traps when conversions would
 ///          violate IL semantics.
 
-namespace il::vm::detail::integer
-{
-namespace
-{
+namespace il::vm::detail::integer {
+namespace {
 /// @brief Traits for range-checking signed integer narrowing conversions.
 /// @details Provides helper routines that interpret slot values as signed
 ///          operands, test whether they fit within narrower types, and compute
 ///          canonical boolean representations.  The interface is consumed by
 ///          @ref handleCastNarrowChkImpl so signed and unsigned handlers can
 ///          share the same implementation body.
-struct SignedNarrowCastTraits
-{
+struct SignedNarrowCastTraits {
     using WideType = int64_t;
     static constexpr const char *kOutOfRangeMessage = "value out of range in cast.si_narrow.chk";
     static constexpr const char *kUnsupportedTypeMessage =
@@ -49,16 +46,14 @@ struct SignedNarrowCastTraits
     /// @brief Convert the raw slot value into the wide representation.
     /// @param raw Slot value read from the VM frame.
     /// @return Operand interpreted as a signed 64-bit quantity.
-    static WideType toWide(int64_t raw)
-    {
+    static WideType toWide(int64_t raw) {
         return raw;
     }
 
     /// @brief Translate the wide representation back into storage form.
     /// @param value Narrowed value in the wide representation.
     /// @return Storage value suitable for writing to a slot.
-    static int64_t toStorage(WideType value)
-    {
+    static int64_t toStorage(WideType value) {
         return value;
     }
 
@@ -66,8 +61,7 @@ struct SignedNarrowCastTraits
     /// @tparam NarrowT Signed integer type to check.
     /// @param value Operand expressed as a signed 64-bit number.
     /// @return True when @p value is representable in @p NarrowT.
-    template <typename NarrowT> static bool fits(WideType value)
-    {
+    template <typename NarrowT> static bool fits(WideType value) {
         return fitsSignedRange<NarrowT>(value);
     }
 
@@ -75,24 +69,21 @@ struct SignedNarrowCastTraits
     /// @tparam NarrowT Signed integer type to narrow to.
     /// @param value Operand expressed as a signed 64-bit number.
     /// @return Storage value after narrowing to @p NarrowT.
-    template <typename NarrowT> static int64_t narrow(WideType value)
-    {
+    template <typename NarrowT> static int64_t narrow(WideType value) {
         return static_cast<int64_t>(static_cast<NarrowT>(value));
     }
 
     /// @brief Check whether the operand encodes a valid boolean value.
     /// @param value Operand expressed as a signed 64-bit number.
     /// @return True when @p value equals 0 or 1.
-    static bool checkBoolean(WideType value)
-    {
+    static bool checkBoolean(WideType value) {
         return (value == 0) || (value == 1);
     }
 
     /// @brief Produce the canonical boolean storage value.
     /// @param value Operand expressed as a signed 64-bit number.
     /// @return Least significant bit suitable for @c i1 storage.
-    static int64_t booleanValue(WideType value)
-    {
+    static int64_t booleanValue(WideType value) {
         return value & 1;
     }
 };
@@ -100,8 +91,7 @@ struct SignedNarrowCastTraits
 /// @brief Traits for range-checking unsigned integer narrowing conversions.
 /// @details Mirrors @ref SignedNarrowCastTraits but treats operands as unsigned
 ///          quantities so range checks follow modulo arithmetic semantics.
-struct UnsignedNarrowCastTraits
-{
+struct UnsignedNarrowCastTraits {
     using WideType = uint64_t;
     static constexpr const char *kOutOfRangeMessage = "value out of range in cast.ui_narrow.chk";
     static constexpr const char *kUnsupportedTypeMessage =
@@ -110,16 +100,14 @@ struct UnsignedNarrowCastTraits
     /// @brief Convert the raw slot value into the unsigned wide representation.
     /// @param raw Slot value read from the VM frame.
     /// @return Operand interpreted as an unsigned 64-bit quantity.
-    static WideType toWide(int64_t raw)
-    {
+    static WideType toWide(int64_t raw) {
         return static_cast<WideType>(raw);
     }
 
     /// @brief Translate the unsigned wide representation back into storage form.
     /// @param value Narrowed value in the unsigned wide representation.
     /// @return Storage value suitable for writing to a slot.
-    static int64_t toStorage(WideType value)
-    {
+    static int64_t toStorage(WideType value) {
         return static_cast<int64_t>(value);
     }
 
@@ -127,8 +115,7 @@ struct UnsignedNarrowCastTraits
     /// @tparam NarrowT Unsigned integer type to check.
     /// @param value Operand expressed as an unsigned 64-bit number.
     /// @return True when @p value is representable in @p NarrowT.
-    template <typename NarrowT> static bool fits(WideType value)
-    {
+    template <typename NarrowT> static bool fits(WideType value) {
         return fitsUnsignedRange<NarrowT>(value);
     }
 
@@ -136,24 +123,21 @@ struct UnsignedNarrowCastTraits
     /// @tparam NarrowT Unsigned integer type to narrow to.
     /// @param value Operand expressed as an unsigned 64-bit number.
     /// @return Storage value after narrowing to @p NarrowT.
-    template <typename NarrowT> static int64_t narrow(WideType value)
-    {
+    template <typename NarrowT> static int64_t narrow(WideType value) {
         return static_cast<int64_t>(static_cast<NarrowT>(value));
     }
 
     /// @brief Check whether the operand encodes a valid boolean value.
     /// @param value Operand expressed as an unsigned 64-bit number.
     /// @return True when @p value equals 0 or 1.
-    static bool checkBoolean(WideType value)
-    {
+    static bool checkBoolean(WideType value) {
         return value <= 1;
     }
 
     /// @brief Produce the canonical boolean storage value.
     /// @param value Operand expressed as an unsigned 64-bit number.
     /// @return Least significant bit suitable for @c i1 storage.
-    static int64_t booleanValue(WideType value)
-    {
+    static int64_t booleanValue(WideType value) {
         return static_cast<int64_t>(value & 1);
     }
 };
@@ -173,44 +157,38 @@ template <typename Traits>
 VM::ExecResult handleCastNarrowChkImpl(const Slot &value,
                                        Frame &fr,
                                        const il::core::Instr &in,
-                                       const il::core::BasicBlock *bb)
-{
+                                       const il::core::BasicBlock *bb) {
     using Wide = typename Traits::WideType;
     const Wide operand = Traits::toWide(value.i64);
 
-    auto trapOutOfRange = [&]()
-    { emitTrap(TrapKind::InvalidCast, Traits::kOutOfRangeMessage, in, fr, bb); };
+    auto trapOutOfRange = [&]() {
+        emitTrap(TrapKind::InvalidCast, Traits::kOutOfRangeMessage, in, fr, bb);
+    };
 
     int64_t narrowed = Traits::toStorage(operand);
     bool inRange = true;
-    switch (in.type.kind)
-    {
-        case il::core::Type::Kind::I16:
-        {
+    switch (in.type.kind) {
+        case il::core::Type::Kind::I16: {
             using NarrowT = std::
                 conditional_t<std::is_same_v<Traits, UnsignedNarrowCastTraits>, uint16_t, int16_t>;
             inRange = Traits::template fits<NarrowT>(operand);
-            if (inRange)
-            {
+            if (inRange) {
                 narrowed = Traits::template narrow<NarrowT>(operand);
             }
             break;
         }
-        case il::core::Type::Kind::I32:
-        {
+        case il::core::Type::Kind::I32: {
             using NarrowT = std::
                 conditional_t<std::is_same_v<Traits, UnsignedNarrowCastTraits>, uint32_t, int32_t>;
             inRange = Traits::template fits<NarrowT>(operand);
-            if (inRange)
-            {
+            if (inRange) {
                 narrowed = Traits::template narrow<NarrowT>(operand);
             }
             break;
         }
         case il::core::Type::Kind::I1:
             inRange = Traits::checkBoolean(operand);
-            if (inRange)
-            {
+            if (inRange) {
                 narrowed = Traits::booleanValue(operand);
             }
             break;
@@ -221,8 +199,7 @@ VM::ExecResult handleCastNarrowChkImpl(const Slot &value,
             return {};
     }
 
-    if (!inRange)
-    {
+    if (!inRange) {
         trapOutOfRange();
         return {};
     }
@@ -250,8 +227,7 @@ VM::ExecResult handleCastSiNarrowChk(VM &vm,
                                      const il::core::Instr &in,
                                      const VM::BlockMap &blocks,
                                      const il::core::BasicBlock *&bb,
-                                     size_t &ip)
-{
+                                     size_t &ip) {
     (void)blocks;
     (void)ip;
     const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
@@ -273,8 +249,7 @@ VM::ExecResult handleCastUiNarrowChk(VM &vm,
                                      const il::core::Instr &in,
                                      const VM::BlockMap &blocks,
                                      const il::core::BasicBlock *&bb,
-                                     size_t &ip)
-{
+                                     size_t &ip) {
     (void)blocks;
     (void)ip;
     const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
@@ -296,8 +271,7 @@ VM::ExecResult handleCastSiToFp(VM &vm,
                                 const il::core::Instr &in,
                                 const VM::BlockMap &blocks,
                                 const il::core::BasicBlock *&bb,
-                                size_t &ip)
-{
+                                size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -324,8 +298,7 @@ VM::ExecResult handleCastUiToFp(VM &vm,
                                 const il::core::Instr &in,
                                 const VM::BlockMap &blocks,
                                 const il::core::BasicBlock *&bb,
-                                size_t &ip)
-{
+                                size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -354,8 +327,7 @@ VM::ExecResult handleTruncOrZext1(VM &vm,
                                   const il::core::Instr &in,
                                   const VM::BlockMap &blocks,
                                   const il::core::BasicBlock *&bb,
-                                  size_t &ip)
-{
+                                  size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -363,8 +335,7 @@ VM::ExecResult handleTruncOrZext1(VM &vm,
     const bool truthy = operand.i64 != 0;
 
     Slot result{};
-    switch (in.op)
-    {
+    switch (in.op) {
         case il::core::Opcode::Trunc1:
             result.i64 = operand.i64 & 1;
             break;

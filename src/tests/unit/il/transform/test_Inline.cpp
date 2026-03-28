@@ -28,8 +28,7 @@
 
 using namespace il::core;
 
-static Function makeAdd2()
-{
+static Function makeAdd2() {
     Function f;
     f.name = "add2";
     f.retType = Type(Type::Kind::I64);
@@ -56,8 +55,7 @@ static Function makeAdd2()
     return f;
 }
 
-static Function makeCaller()
-{
+static Function makeCaller() {
     Function f;
     f.name = "caller";
     f.retType = Type(Type::Kind::I64);
@@ -80,8 +78,7 @@ static Function makeCaller()
     return f;
 }
 
-static void test_inline_and_fold()
-{
+static void test_inline_and_fold() {
     Module M;
     M.functions.push_back(makeAdd2());
     M.functions.push_back(makeCaller());
@@ -107,10 +104,8 @@ static void test_inline_and_fold()
 
     // Caller ret should be a single constant 42 (now potentially in a continuation block)
     bool foundConstRet = false;
-    for (const auto &B : caller.blocks)
-    {
-        for (const auto &I : B.instructions)
-        {
+    for (const auto &B : caller.blocks) {
+        for (const auto &I : B.instructions) {
             if (I.op != Opcode::Ret)
                 continue;
             assert(!foundConstRet);
@@ -123,8 +118,7 @@ static void test_inline_and_fold()
     assert(foundConstRet);
 }
 
-static void test_no_inline_recursive()
-{
+static void test_no_inline_recursive() {
     Module M;
     Function f;
     f.name = "self";
@@ -162,8 +156,7 @@ static void test_no_inline_recursive()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_inline_and_fold();
     test_no_inline_recursive();
     return 0;

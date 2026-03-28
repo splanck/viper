@@ -31,11 +31,9 @@
 #include <array>
 #include <cstdint>
 
-namespace il::vm::generated
-{
+namespace il::vm::generated {
 /// @brief Compile-time metadata for a single IL opcode used by VM dispatch and introspection.
-struct OpSchemaEntry
-{
+struct OpSchemaEntry {
     const char *mnemonic; ///< @brief Human-readable opcode name (e.g., "add", "br").
     il::core::ResultArity
         resultArity; ///< @brief Number of result values produced (None, One, Optional).
@@ -1285,8 +1283,7 @@ inline constexpr std::array<OpSchemaEntry, il::core::kNumOpcodes> kOpSchema = {
 /// @brief Look up the compile-time schema entry for a given opcode.
 /// @param op Opcode whose metadata is requested.
 /// @return Reference to the corresponding OpSchemaEntry in the static table.
-inline constexpr const OpSchemaEntry &schema(il::core::Opcode op)
-{
+inline constexpr const OpSchemaEntry &schema(il::core::Opcode op) {
     return kOpSchema[static_cast<size_t>(op)];
 }
 } // namespace il::vm::generated

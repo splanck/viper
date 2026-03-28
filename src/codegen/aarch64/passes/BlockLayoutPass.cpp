@@ -34,15 +34,12 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
-namespace
-{
+namespace {
 
 /// @brief Reorder the blocks of a single function using the greedy trace.
-static void layoutFunction(MFunction &fn)
-{
+static void layoutFunction(MFunction &fn) {
     const std::size_t n = fn.blocks.size();
     if (n <= 1)
         return;
@@ -59,26 +56,21 @@ static void layoutFunction(MFunction &fn)
 
     // Greedy trace: always start at the entry block (index 0).
     std::size_t cur = 0;
-    while (order.size() < n)
-    {
-        if (!placed[cur])
-        {
+    while (order.size() < n) {
+        if (!placed[cur]) {
             placed[cur] = true;
             order.push_back(cur);
 
             // Look at the last instruction of this block to find the preferred
             // fall-through successor.
             const MBasicBlock &bb = fn.blocks[cur];
-            if (!bb.instrs.empty())
-            {
+            if (!bb.instrs.empty()) {
                 const MInstr &last = bb.instrs.back();
                 if (last.opc == MOpcode::Br && !last.ops.empty() &&
-                    last.ops[0].kind == MOperand::Kind::Label)
-                {
+                    last.ops[0].kind == MOperand::Kind::Label) {
                     const std::string &target = last.ops[0].label;
                     auto it = nameToIdx.find(target);
-                    if (it != nameToIdx.end() && !placed[it->second])
-                    {
+                    if (it != nameToIdx.end() && !placed[it->second]) {
                         cur = it->second;
                         continue; // extend the trace
                     }
@@ -88,10 +80,8 @@ static void layoutFunction(MFunction &fn)
 
         // Advance to the next unplaced block in original order.
         bool found = false;
-        for (std::size_t i = 0; i < n; ++i)
-        {
-            if (!placed[i])
-            {
+        for (std::size_t i = 0; i < n; ++i) {
+            if (!placed[i]) {
                 cur = i;
                 found = true;
                 break;
@@ -103,10 +93,8 @@ static void layoutFunction(MFunction &fn)
 
     // If the trace didn't differ from original order, skip the reorder.
     bool changed = false;
-    for (std::size_t i = 0; i < n; ++i)
-    {
-        if (order[i] != i)
-        {
+    for (std::size_t i = 0; i < n; ++i) {
+        if (order[i] != i) {
             changed = true;
             break;
         }
@@ -124,8 +112,7 @@ static void layoutFunction(MFunction &fn)
 
 } // namespace
 
-bool BlockLayoutPass::run(AArch64Module &module, Diagnostics & /*diags*/)
-{
+bool BlockLayoutPass::run(AArch64Module &module, Diagnostics & /*diags*/) {
     for (MFunction &fn : module.mir)
         layoutFunction(fn);
     return true;

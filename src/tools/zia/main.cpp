@@ -25,8 +25,7 @@
 /// @param argc Number of command-line arguments in @p argv.
 /// @param argv Argument vector passed to the process.
 /// @return Exit status propagated from the frontend tool runner.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper::tools::FrontendToolCallbacks callbacks{
         .fileExtension = ".zia",
         .languageName = "Zia",

@@ -40,24 +40,21 @@ static vg_widget_vtable_t g_progressbar_vtable = {
 // VTable Implementations
 //=============================================================================
 
-static void progressbar_measure(vg_widget_t *widget, float avail_w, float avail_h)
-{
+static void progressbar_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     (void)avail_w;
     (void)avail_h;
     widget->measured_width = 100.0f;
     widget->measured_height = 8.0f;
 }
 
-static void progressbar_arrange(vg_widget_t *widget, float x, float y, float w, float h)
-{
+static void progressbar_arrange(vg_widget_t *widget, float x, float y, float w, float h) {
     widget->x = x;
     widget->y = y;
     widget->width = w;
     widget->height = h;
 }
 
-static void progressbar_paint(vg_widget_t *widget, void *canvas)
-{
+static void progressbar_paint(vg_widget_t *widget, void *canvas) {
     vg_progressbar_t *pb = (vg_progressbar_t *)widget;
     vgfx_window_t win = (vgfx_window_t)canvas;
     int32_t x = (int32_t)widget->x, y = (int32_t)widget->y;
@@ -66,16 +63,13 @@ static void progressbar_paint(vg_widget_t *widget, void *canvas)
     /* Track background */
     vgfx_fill_rect(win, x, y, w, h, pb->track_color);
 
-    if (pb->style == VG_PROGRESS_BAR)
-    {
+    if (pb->style == VG_PROGRESS_BAR) {
         /* Determinate fill bar */
         float clamped = pb->value < 0.0f ? 0.0f : (pb->value > 1.0f ? 1.0f : pb->value);
         int32_t fill_w = (int32_t)(clamped * (float)w);
         if (fill_w > 0)
             vgfx_fill_rect(win, x, y, fill_w, h, pb->fill_color);
-    }
-    else if (pb->style == VG_PROGRESS_INDETERMINATE)
-    {
+    } else if (pb->style == VG_PROGRESS_INDETERMINATE) {
         /* Indeterminate: sliding block using animation_phase [0,1) */
         float phase = pb->animation_phase - (int)pb->animation_phase; /* fractional part */
         int32_t block_w = w / 4;
@@ -91,8 +85,7 @@ static void progressbar_paint(vg_widget_t *widget, void *canvas)
     }
 
     /* Optional percentage text */
-    if (pb->show_percentage && pb->font && pb->style == VG_PROGRESS_BAR)
-    {
+    if (pb->show_percentage && pb->font && pb->style == VG_PROGRESS_BAR) {
         char buf[8];
         int pct = (int)(pb->value * 100.0f + 0.5f);
         snprintf(buf, sizeof(buf), "%d%%", pct);
@@ -102,8 +95,7 @@ static void progressbar_paint(vg_widget_t *widget, void *canvas)
     }
 }
 
-vg_progressbar_t *vg_progressbar_create(vg_widget_t *parent)
-{
+vg_progressbar_t *vg_progressbar_create(vg_widget_t *parent) {
     vg_progressbar_t *progress = calloc(1, sizeof(vg_progressbar_t));
     if (!progress)
         return NULL;
@@ -120,8 +112,7 @@ vg_progressbar_t *vg_progressbar_create(vg_widget_t *parent)
     progress->corner_radius = 4;
     progress->font_size = 12;
 
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &progress->base);
     }
 
@@ -129,8 +120,7 @@ vg_progressbar_t *vg_progressbar_create(vg_widget_t *parent)
 }
 
 /// @brief Progressbar set value.
-void vg_progressbar_set_value(vg_progressbar_t *progress, float value)
-{
+void vg_progressbar_set_value(vg_progressbar_t *progress, float value) {
     if (!progress)
         return;
     if (value < 0)
@@ -141,34 +131,29 @@ void vg_progressbar_set_value(vg_progressbar_t *progress, float value)
 }
 
 /// @brief Progressbar get value.
-float vg_progressbar_get_value(vg_progressbar_t *progress)
-{
+float vg_progressbar_get_value(vg_progressbar_t *progress) {
     return progress ? progress->value : 0;
 }
 
 /// @brief Progressbar set style.
-void vg_progressbar_set_style(vg_progressbar_t *progress, vg_progress_style_t style)
-{
+void vg_progressbar_set_style(vg_progressbar_t *progress, vg_progress_style_t style) {
     if (!progress)
         return;
     progress->style = style;
 }
 
 /// @brief Progressbar show percentage.
-void vg_progressbar_show_percentage(vg_progressbar_t *progress, bool show)
-{
+void vg_progressbar_show_percentage(vg_progressbar_t *progress, bool show) {
     if (!progress)
         return;
     progress->show_percentage = show;
 }
 
 /// @brief Progressbar tick.
-void vg_progressbar_tick(vg_progressbar_t *progress, float dt)
-{
+void vg_progressbar_tick(vg_progressbar_t *progress, float dt) {
     if (!progress)
         return;
-    if (progress->style == VG_PROGRESS_INDETERMINATE)
-    {
+    if (progress->style == VG_PROGRESS_INDETERMINATE) {
         // Advance animation phase at a moderate speed; wrap at 1.0
         progress->animation_phase += dt * 0.7f;
         if (progress->animation_phase >= 1.0f)

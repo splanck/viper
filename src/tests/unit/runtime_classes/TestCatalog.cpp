@@ -20,18 +20,16 @@
 
 using il::runtime::runtimeClassCatalog;
 
-TEST(RuntimeClassCatalogBasic, ContainsStringMembers)
-{
+TEST(RuntimeClassCatalogBasic, ContainsStringMembers) {
     const auto &cat = runtimeClassCatalog();
-    auto it = std::find_if(cat.begin(),
-                           cat.end(),
-                           [](const auto &c) { return std::string(c.qname) == "Viper.String"; });
+    auto it = std::find_if(cat.begin(), cat.end(), [](const auto &c) {
+        return std::string(c.qname) == "Viper.String";
+    });
     ASSERT_NE(it, cat.end());
     // Properties include Length and IsEmpty
     bool hasLenProp = false;
     bool hasIsEmpty = false;
-    for (const auto &p : it->properties)
-    {
+    for (const auto &p : it->properties) {
         hasLenProp = hasLenProp || std::string(p.name) == "Length";
         hasIsEmpty = hasIsEmpty || std::string(p.name) == "IsEmpty";
     }
@@ -44,19 +42,16 @@ TEST(RuntimeClassCatalogBasic, ContainsStringMembers)
     EXPECT_TRUE(hasSubstr);
 }
 
-TEST(RuntimeClassCatalogBasic, ContainsTextStringBuilderMembers)
-{
+TEST(RuntimeClassCatalogBasic, ContainsTextStringBuilderMembers) {
     const auto &cat = runtimeClassCatalog();
-    auto it = std::find_if(cat.begin(),
-                           cat.end(),
-                           [](const auto &c)
-                           { return std::string(c.qname) == "Viper.Text.StringBuilder"; });
+    auto it = std::find_if(cat.begin(), cat.end(), [](const auto &c) {
+        return std::string(c.qname) == "Viper.Text.StringBuilder";
+    });
     ASSERT_NE(it, cat.end());
     // Properties include Length and Capacity
     bool hasLenProp = false;
     bool hasCapProp = false;
-    for (const auto &p : it->properties)
-    {
+    for (const auto &p : it->properties) {
         hasLenProp = hasLenProp || std::string(p.name) == "Length";
         hasCapProp = hasCapProp || std::string(p.name) == "Capacity";
     }
@@ -69,23 +64,19 @@ TEST(RuntimeClassCatalogBasic, ContainsTextStringBuilderMembers)
     EXPECT_TRUE(hasAppend);
 }
 
-TEST(RuntimeClassCatalogBasic, ContainsCanonicalTypes)
-{
+TEST(RuntimeClassCatalogBasic, ContainsCanonicalTypes) {
     const auto &cat = runtimeClassCatalog();
-    auto hasQ = [&](const char *qname)
-    {
-        return std::find_if(cat.begin(),
-                            cat.end(),
-                            [&](const auto &c)
-                            { return std::string(c.qname) == qname; }) != cat.end();
+    auto hasQ = [&](const char *qname) {
+        return std::find_if(cat.begin(), cat.end(), [&](const auto &c) {
+                   return std::string(c.qname) == qname;
+               }) != cat.end();
     };
     EXPECT_TRUE(hasQ("Viper.Core.Object"));
     EXPECT_TRUE(hasQ("Viper.IO.File"));
     EXPECT_TRUE(hasQ("Viper.Collections.List"));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

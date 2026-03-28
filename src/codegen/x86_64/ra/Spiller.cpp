@@ -33,11 +33,9 @@
 ///          allocator reuse when materialising PX_COPY bundles or evicting live
 ///          ranges.
 
-namespace viper::codegen::x64::ra
-{
+namespace viper::codegen::x64::ra {
 
-namespace
-{
+namespace {
 
 /// @brief Wrap a physical register in a Machine IR operand.
 /// @details The helper mirrors the allocator's operand construction routine so
@@ -47,8 +45,7 @@ namespace
 /// @param cls Register class describing the operand.
 /// @param reg Physical register referenced by the operand.
 /// @return Machine operand representing @p reg.
-[[nodiscard]] Operand makePhysOperand(RegClass cls, PhysReg reg)
-{
+[[nodiscard]] Operand makePhysOperand(RegClass cls, PhysReg reg) {
     return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
 }
 
@@ -64,16 +61,13 @@ namespace
 /// @return Index of a reusable slot, or -1 if none found.
 int Spiller::findReusableSlot(std::vector<SlotLifetime> &lifetimes,
                               std::size_t start,
-                              std::size_t end) const
-{
-    for (std::size_t i = 0; i < lifetimes.size(); ++i)
-    {
+                              std::size_t end) const {
+    for (std::size_t i = 0; i < lifetimes.size(); ++i) {
         auto &slot = lifetimes[i];
         // Slot can be reused if:
         // 1. It's not currently in use, OR
         // 2. Its lifetime ended before our lifetime starts (non-overlapping)
-        if (!slot.inUse || slot.end <= start)
-        {
+        if (!slot.inUse || slot.end <= start) {
             return static_cast<int>(i);
         }
     }
@@ -88,15 +82,12 @@ int Spiller::findReusableSlot(std::vector<SlotLifetime> &lifetimes,
 ///          return early, ensuring each value reuses the same slot.
 /// @param cls Register class whose spill storage is being provisioned.
 /// @param plan Spill descriptor that records slot ownership.
-void Spiller::ensureSpillSlot(RegClass cls, SpillPlan &plan)
-{
-    if (plan.slot >= 0)
-    {
+void Spiller::ensureSpillSlot(RegClass cls, SpillPlan &plan) {
+    if (plan.slot >= 0) {
         return;
     }
     plan.needsSpill = true;
-    if (cls == RegClass::GPR)
-    {
+    if (cls == RegClass::GPR) {
         plan.slot = nextSpillSlotGPR_++;
         // Add a lifetime entry with infinite duration to prevent reuse.
         // This ensures slots allocated without reuse analysis (e.g., for
@@ -122,10 +113,8 @@ void Spiller::ensureSpillSlot(RegClass cls, SpillPlan &plan)
 void Spiller::ensureSpillSlotWithReuse(RegClass cls,
                                        SpillPlan &plan,
                                        std::size_t start,
-                                       std::size_t end)
-{
-    if (plan.slot >= 0)
-    {
+                                       std::size_t end) {
+    if (plan.slot >= 0) {
         return;
     }
     plan.needsSpill = true;
@@ -135,8 +124,7 @@ void Spiller::ensureSpillSlotWithReuse(RegClass cls,
 
     // Try to find a reusable slot
     int reusableSlot = findReusableSlot(lifetimes, start, end);
-    if (reusableSlot >= 0)
-    {
+    if (reusableSlot >= 0) {
         // Reuse existing slot, update its lifetime
         plan.slot = reusableSlot;
         lifetimes[static_cast<std::size_t>(reusableSlot)].start = start;
@@ -155,17 +143,14 @@ void Spiller::ensureSpillSlotWithReuse(RegClass cls,
 ///          slot to be reused by future spills with non-overlapping lifetimes.
 /// @param cls Register class of the slot.
 /// @param slot Slot index to release.
-void Spiller::releaseSlot(RegClass cls, int slot)
-{
-    if (slot < 0)
-    {
+void Spiller::releaseSlot(RegClass cls, int slot) {
+    if (slot < 0) {
         return;
     }
 
     auto &lifetimes = (cls == RegClass::GPR) ? gprSlotLifetimes_ : xmmSlotLifetimes_;
     auto idx = static_cast<std::size_t>(slot);
-    if (idx < lifetimes.size())
-    {
+    if (idx < lifetimes.size()) {
         lifetimes[idx].inUse = false;
     }
 }
@@ -179,10 +164,8 @@ void Spiller::releaseSlot(RegClass cls, int slot)
 /// @param dst Physical register receiving the value.
 /// @param plan Spill plan describing the source slot.
 /// @return Machine instruction that reloads the spilled value.
-MInstr Spiller::makeLoad(RegClass cls, PhysReg dst, const SpillPlan &plan) const
-{
-    if (cls == RegClass::GPR)
-    {
+MInstr Spiller::makeLoad(RegClass cls, PhysReg dst, const SpillPlan &plan) const {
+    if (cls == RegClass::GPR) {
         return MInstr::make(MOpcode::MOVmr,
                             {makePhysOperand(cls, dst), makeFrameOperand(plan.slot)});
     }
@@ -197,10 +180,8 @@ MInstr Spiller::makeLoad(RegClass cls, PhysReg dst, const SpillPlan &plan) const
 /// @param plan Spill plan containing the destination slot.
 /// @param src Physical register providing the value to spill.
 /// @return Machine instruction that writes the register to the stack slot.
-MInstr Spiller::makeStore(RegClass cls, const SpillPlan &plan, PhysReg src) const
-{
-    if (cls == RegClass::GPR)
-    {
+MInstr Spiller::makeStore(RegClass cls, const SpillPlan &plan, PhysReg src) const {
+    if (cls == RegClass::GPR) {
         return MInstr::make(MOpcode::MOVrm,
                             {makeFrameOperand(plan.slot), makePhysOperand(cls, src)});
     }
@@ -224,8 +205,7 @@ void Spiller::spillValue(RegClass cls,
                          VirtualAllocation &alloc,
                          std::deque<PhysReg> &pool,
                          std::vector<MInstr> &prefix,
-                         AllocationResult &result)
-{
+                         AllocationResult &result) {
     ensureSpillSlot(cls, alloc.spill);
     prefix.push_back(makeStore(cls, alloc.spill, alloc.phys));
     pool.push_back(alloc.phys);
@@ -256,8 +236,7 @@ void Spiller::spillValueWithReuse(RegClass cls,
                                   std::vector<MInstr> &prefix,
                                   AllocationResult &result,
                                   std::size_t intervalStart,
-                                  std::size_t intervalEnd)
-{
+                                  std::size_t intervalEnd) {
     ensureSpillSlotWithReuse(cls, alloc.spill, intervalStart, intervalEnd);
     prefix.push_back(makeStore(cls, alloc.spill, alloc.phys));
     pool.push_back(alloc.phys);
@@ -275,8 +254,7 @@ void Spiller::spillValueWithReuse(RegClass cls,
 ///          placeholders which use -(resultId + 1) * 8.
 /// @param slot Zero-based slot index to reference.
 /// @return Memory operand pointing to the spill slot.
-Operand Spiller::makeFrameOperand(int slot) const
-{
+Operand Spiller::makeFrameOperand(int slot) const {
     const auto base = makePhysReg(RegClass::GPR, static_cast<uint16_t>(PhysReg::RBP));
     const int32_t offset = -static_cast<int32_t>((slot + kSpillSlotOffset + 1) * kSlotSizeBytes);
     return makeMemOperand(base, offset);

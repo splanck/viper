@@ -66,8 +66,7 @@ extern void rt_trap(const char *msg);
 /// @param c Character to check.
 ///
 /// @return Non-zero if c is '/' or '\', zero otherwise.
-static inline int is_path_sep(char c)
-{
+static inline int is_path_sep(char c) {
     return c == '/' || c == '\\';
 }
 
@@ -79,8 +78,7 @@ static inline int is_path_sep(char c)
 /// @param s Runtime string handle (may be NULL).
 ///
 /// @return Length in bytes, or 0 if s is NULL or contains NULL data.
-static inline size_t rt_string_safe_len(rt_string s)
-{
+static inline size_t rt_string_safe_len(rt_string s) {
     if (!s || !s->data)
         return 0;
     return (s->heap && s->heap != RT_SSO_SENTINEL) ? rt_heap_len(s->data) : s->literal_len;
@@ -94,8 +92,7 @@ static inline size_t rt_string_safe_len(rt_string s)
 /// @param s Runtime string handle (may be NULL).
 ///
 /// @return Pointer to string data, or "" if s is NULL or contains NULL data.
-static inline const char *rt_string_safe_data(rt_string s)
-{
+static inline const char *rt_string_safe_data(rt_string s) {
     if (!s || !s->data)
         return "";
     return s->data;
@@ -146,8 +143,7 @@ static inline const char *rt_string_safe_data(rt_string s)
 ///
 /// @see rt_path_dir For extracting the directory portion
 /// @see rt_path_name For extracting the filename portion
-rt_string rt_path_join(rt_string a, rt_string b)
-{
+rt_string rt_path_join(rt_string a, rt_string b) {
     const char *a_data = rt_string_safe_data(a);
     size_t a_len = rt_string_safe_len(a);
     const char *b_data = rt_string_safe_data(b);
@@ -169,8 +165,7 @@ rt_string rt_path_join(rt_string a, rt_string b)
 #ifdef _WIN32
     // Check for Windows drive letter (C:) or UNC path
     if ((b_len >= 2 && isalpha((unsigned char)b_data[0]) && b_data[1] == ':') ||
-        (b_len >= 2 && is_path_sep(b_data[0]) && is_path_sep(b_data[1])))
-    {
+        (b_len >= 2 && is_path_sep(b_data[0]) && is_path_sep(b_data[1]))) {
         return rt_string_from_bytes(b_data, b_len);
     }
 #endif
@@ -239,8 +234,7 @@ rt_string rt_path_join(rt_string a, rt_string b)
 ///
 /// @see rt_path_name For extracting the filename portion
 /// @see rt_path_join For combining directory and filename
-rt_string rt_path_dir(rt_string path)
-{
+rt_string rt_path_dir(rt_string path) {
     const char *data = rt_string_safe_data(path);
     size_t len = rt_string_safe_len(path);
 
@@ -252,8 +246,7 @@ rt_string rt_path_dir(rt_string path)
     while (i > 0 && !is_path_sep(data[i - 1]))
         i--;
 
-    if (i == 0)
-    {
+    if (i == 0) {
         // No separator found - return "." for relative path
         return rt_string_from_bytes(".", 1);
     }
@@ -264,13 +257,11 @@ rt_string rt_path_dir(rt_string path)
         return rt_string_from_bytes(data, 3);
 
     // Handle UNC paths (e.g., "\\server\share\")
-    if (i >= 2 && is_path_sep(data[0]) && is_path_sep(data[1]))
-    {
+    if (i >= 2 && is_path_sep(data[0]) && is_path_sep(data[1])) {
         // Find the end of server\share part
         size_t slashes = 0;
         size_t j = 2;
-        while (j < len && slashes < 2)
-        {
+        while (j < len && slashes < 2) {
             if (is_path_sep(data[j]))
                 slashes++;
             j++;
@@ -329,8 +320,7 @@ rt_string rt_path_dir(rt_string path)
 /// @see rt_path_dir For extracting the directory portion
 /// @see rt_path_stem For filename without extension
 /// @see rt_path_ext For just the extension
-rt_string rt_path_name(rt_string path)
-{
+rt_string rt_path_name(rt_string path) {
     const char *data = rt_string_safe_data(path);
     size_t len = rt_string_safe_len(path);
 
@@ -403,25 +393,21 @@ rt_string rt_path_name(rt_string path)
 /// @see rt_path_name For filename with extension
 /// @see rt_path_ext For just the extension
 /// @see rt_path_with_ext For changing the extension
-rt_string rt_path_stem(rt_string path)
-{
+rt_string rt_path_stem(rt_string path) {
     // First get the filename
     rt_string name = rt_path_name(path);
     const char *data = rt_string_safe_data(name);
     size_t len = rt_string_safe_len(name);
 
-    if (len == 0)
-    {
+    if (len == 0) {
         rt_string_unref(name);
         return rt_str_empty();
     }
 
     // Find the last dot
     size_t dot_pos = len;
-    for (size_t i = len; i > 0; i--)
-    {
-        if (data[i - 1] == '.')
-        {
+    for (size_t i = len; i > 0; i--) {
+        if (data[i - 1] == '.') {
             dot_pos = i - 1;
             break;
         }
@@ -430,8 +416,7 @@ rt_string rt_path_stem(rt_string path)
     // Handle special cases: ".file" and "file."
     // ".file" -> stem is ".file" (hidden file)
     // "file." -> stem is "file"
-    if (dot_pos == 0)
-    {
+    if (dot_pos == 0) {
         // Starts with dot - no extension
         return name;
     }
@@ -490,33 +475,28 @@ rt_string rt_path_stem(rt_string path)
 /// @see rt_path_stem For filename without extension
 /// @see rt_path_with_ext For changing the extension
 /// @see rt_path_name For full filename
-rt_string rt_path_ext(rt_string path)
-{
+rt_string rt_path_ext(rt_string path) {
     // First get the filename
     rt_string name = rt_path_name(path);
     const char *data = rt_string_safe_data(name);
     size_t len = rt_string_safe_len(name);
 
-    if (len == 0)
-    {
+    if (len == 0) {
         rt_string_unref(name);
         return rt_str_empty();
     }
 
     // Find the last dot
     size_t dot_pos = len;
-    for (size_t i = len; i > 0; i--)
-    {
-        if (data[i - 1] == '.')
-        {
+    for (size_t i = len; i > 0; i--) {
+        if (data[i - 1] == '.') {
             dot_pos = i - 1;
             break;
         }
     }
 
     // No dot found, or only at start (hidden file)
-    if (dot_pos == len || dot_pos == 0)
-    {
+    if (dot_pos == len || dot_pos == 0) {
         rt_string_unref(name);
         return rt_str_empty();
     }
@@ -571,8 +551,7 @@ rt_string rt_path_ext(rt_string path)
 ///
 /// @see rt_path_ext For extracting the current extension
 /// @see rt_path_stem For filename without extension
-rt_string rt_path_with_ext(rt_string path, rt_string new_ext)
-{
+rt_string rt_path_with_ext(rt_string path, rt_string new_ext) {
     const char *path_data = rt_string_safe_data(path);
     size_t path_len = rt_string_safe_len(path);
     const char *ext_data = rt_string_safe_data(new_ext);
@@ -588,13 +567,10 @@ rt_string rt_path_with_ext(rt_string path, rt_string new_ext)
 
     // Find the last dot in the filename portion
     size_t dot_pos = path_len;
-    for (size_t i = path_len; i > name_start; i--)
-    {
-        if (path_data[i - 1] == '.')
-        {
+    for (size_t i = path_len; i > name_start; i--) {
+        if (path_data[i - 1] == '.') {
             // Don't treat leading dot as extension separator
-            if (i - 1 > name_start)
-            {
+            if (i - 1 > name_start) {
                 dot_pos = i - 1;
                 break;
             }
@@ -608,8 +584,7 @@ rt_string rt_path_with_ext(rt_string path, rt_string new_ext)
     rt_sb_append_bytes(&sb, path_data, dot_pos);
 
     // Add new extension with dot if needed
-    if (ext_len > 0)
-    {
+    if (ext_len > 0) {
         if (ext_data[0] != '.')
             rt_sb_append_bytes(&sb, ".", 1);
         rt_sb_append_bytes(&sb, ext_data, ext_len);
@@ -671,8 +646,7 @@ rt_string rt_path_with_ext(rt_string path, rt_string new_ext)
 ///
 /// @see rt_path_abs For converting relative to absolute
 /// @see rt_path_join For combining path components
-int64_t rt_path_is_abs(rt_string path)
-{
+int64_t rt_path_is_abs(rt_string path) {
     const char *data = rt_string_safe_data(path);
     size_t len = rt_string_safe_len(path);
 
@@ -742,8 +716,7 @@ int64_t rt_path_is_abs(rt_string path)
 /// @see rt_path_is_abs For checking if path is absolute
 /// @see rt_path_norm For normalizing without making absolute
 /// @see rt_dir_current For getting current working directory
-rt_string rt_path_abs(rt_string path)
-{
+rt_string rt_path_abs(rt_string path) {
     const char *data = rt_string_safe_data(path);
     size_t len = rt_string_safe_len(path);
 
@@ -753,8 +726,7 @@ rt_string rt_path_abs(rt_string path)
 
     // Get current working directory
     char cwd[4096];
-    if (!getcwd(cwd, sizeof(cwd)))
-    {
+    if (!getcwd(cwd, sizeof(cwd))) {
         // Failed to get cwd, just return normalized input
         return rt_path_norm(path);
     }
@@ -830,8 +802,7 @@ rt_string rt_path_abs(rt_string path)
 ///
 /// @see rt_path_abs For making paths absolute
 /// @see rt_path_join For combining path components
-rt_string rt_path_norm(rt_string path)
-{
+rt_string rt_path_norm(rt_string path) {
     const char *data = rt_string_safe_data(path);
     size_t len = rt_string_safe_len(path);
 
@@ -842,8 +813,7 @@ rt_string rt_path_norm(rt_string path)
     // We'll store component start/end pairs
     size_t *comp_starts = (size_t *)malloc(len * sizeof(size_t));
     size_t *comp_ends = (size_t *)malloc(len * sizeof(size_t));
-    if (!comp_starts || !comp_ends)
-    {
+    if (!comp_starts || !comp_ends) {
         free(comp_starts);
         free(comp_ends);
         rt_trap("rt_path: memory allocation failed");
@@ -855,24 +825,19 @@ rt_string rt_path_norm(rt_string path)
 
     // Determine prefix (root portion)
 #ifdef _WIN32
-    if (len >= 2 && isalpha((unsigned char)data[0]) && data[1] == ':')
-    {
+    if (len >= 2 && isalpha((unsigned char)data[0]) && data[1] == ':') {
         prefix_len = 2;
-        if (len >= 3 && is_path_sep(data[2]))
-        {
+        if (len >= 3 && is_path_sep(data[2])) {
             prefix_len = 3;
             is_absolute = 1;
         }
-    }
-    else if (len >= 2 && is_path_sep(data[0]) && is_path_sep(data[1]))
-    {
+    } else if (len >= 2 && is_path_sep(data[0]) && is_path_sep(data[1])) {
         // UNC path
         is_absolute = 1;
         prefix_len = 2;
         // Find end of server\share
         int slashes = 0;
-        while (prefix_len < len && slashes < 2)
-        {
+        while (prefix_len < len && slashes < 2) {
             if (is_path_sep(data[prefix_len]))
                 slashes++;
             else if (slashes == 0 || slashes == 1)
@@ -880,19 +845,16 @@ rt_string rt_path_norm(rt_string path)
             if (slashes < 2)
                 prefix_len++;
         }
-    }
-    else
+    } else
 #endif
-        if (is_path_sep(data[0]))
-    {
+        if (is_path_sep(data[0])) {
         prefix_len = 1;
         is_absolute = 1;
     }
 
     // Parse components
     size_t i = prefix_len;
-    while (i < len)
-    {
+    while (i < len) {
         // Skip separators
         while (i < len && is_path_sep(data[i]))
             i++;
@@ -908,43 +870,32 @@ rt_string rt_path_norm(rt_string path)
         size_t comp_len = i - start;
 
         // Handle . and ..
-        if (comp_len == 1 && data[start] == '.')
-        {
+        if (comp_len == 1 && data[start] == '.') {
             // Skip "." components
             continue;
-        }
-        else if (comp_len == 2 && data[start] == '.' && data[start + 1] == '.')
-        {
+        } else if (comp_len == 2 && data[start] == '.' && data[start + 1] == '.') {
             // Handle ".." - go up one level if possible
-            if (comp_count > 0)
-            {
+            if (comp_count > 0) {
                 // Check if previous component is also ".."
                 size_t prev_len = comp_ends[comp_count - 1] - comp_starts[comp_count - 1];
                 const char *prev = data + comp_starts[comp_count - 1];
-                if (prev_len == 2 && prev[0] == '.' && prev[1] == '.')
-                {
+                if (prev_len == 2 && prev[0] == '.' && prev[1] == '.') {
                     // Previous is "..", keep this one too
                     comp_starts[comp_count] = start;
                     comp_ends[comp_count] = i;
                     comp_count++;
-                }
-                else
-                {
+                } else {
                     // Remove previous component
                     comp_count--;
                 }
-            }
-            else if (!is_absolute)
-            {
+            } else if (!is_absolute) {
                 // Keep ".." at start of relative path
                 comp_starts[comp_count] = start;
                 comp_ends[comp_count] = i;
                 comp_count++;
             }
             // else: at root, ignore ".."
-        }
-        else
-        {
+        } else {
             // Regular component
             comp_starts[comp_count] = start;
             comp_ends[comp_count] = i;
@@ -957,13 +908,11 @@ rt_string rt_path_norm(rt_string path)
     rt_sb_init(&sb);
 
     // Add prefix
-    if (prefix_len > 0)
-    {
+    if (prefix_len > 0) {
         rt_sb_append_bytes(&sb, data, prefix_len);
 #ifdef _WIN32
         // Normalize prefix separators on Windows
-        for (size_t j = 0; j < sb.len; j++)
-        {
+        for (size_t j = 0; j < sb.len; j++) {
             if (sb.data[j] == '/')
                 sb.data[j] = '\\';
         }
@@ -971,8 +920,7 @@ rt_string rt_path_norm(rt_string path)
     }
 
     // Add components
-    for (size_t j = 0; j < comp_count; j++)
-    {
+    for (size_t j = 0; j < comp_count; j++) {
         if (j > 0 || (prefix_len > 0 && !is_path_sep(data[prefix_len - 1])))
             rt_sb_append_bytes(&sb, PATH_SEP_STR, 1);
 
@@ -980,8 +928,7 @@ rt_string rt_path_norm(rt_string path)
     }
 
     // Handle empty result
-    if (sb.len == 0)
-    {
+    if (sb.len == 0) {
         rt_sb_free(&sb);
         free(comp_starts);
         free(comp_ends);
@@ -1035,7 +982,6 @@ rt_string rt_path_norm(rt_string path)
 /// @note Always returns a single-character string.
 ///
 /// @see rt_path_join For the preferred way to build paths
-rt_string rt_path_sep(void)
-{
+rt_string rt_path_sep(void) {
     return rt_string_from_bytes(PATH_SEP_STR, 1);
 }

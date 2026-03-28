@@ -29,22 +29,18 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-void verifyOrDie(const Module &module)
-{
+void verifyOrDie(const Module &module) {
     auto result = il::verify::Verifier::verify(module);
-    if (!result)
-    {
+    if (!result) {
         il::support::printDiag(result.error(), std::cerr);
         ASSERT_TRUE(false);
     }
 }
 
 /// Count instructions with a specific opcode across all blocks of a function.
-size_t countOpcode(const Function &fn, Opcode op)
-{
+size_t countOpcode(const Function &fn, Opcode op) {
     size_t count = 0;
     for (const auto &bb : fn.blocks)
         for (const auto &instr : bb.instructions)
@@ -54,12 +50,10 @@ size_t countOpcode(const Function &fn, Opcode op)
 }
 
 /// Check if any Ret instruction in the function returns a specific constant.
-bool retReturnsConst(const Function &fn, int64_t expected)
-{
+bool retReturnsConst(const Function &fn, int64_t expected) {
     for (const auto &bb : fn.blocks)
         for (const auto &instr : bb.instructions)
-            if (instr.op == Opcode::Ret && !instr.operands.empty())
-            {
+            if (instr.op == Opcode::Ret && !instr.operands.empty()) {
                 const auto &v = instr.operands[0];
                 if (v.kind == Value::Kind::ConstInt && v.i64 == expected)
                     return true;
@@ -68,8 +62,7 @@ bool retReturnsConst(const Function &fn, int64_t expected)
 }
 
 /// Check if any Ret instruction returns a temp (i.e. not folded to a constant).
-bool anyRetReturnsTemp(const Function &fn)
-{
+bool anyRetReturnsTemp(const Function &fn) {
     for (const auto &bb : fn.blocks)
         for (const auto &instr : bb.instructions)
             if (instr.op == Opcode::Ret && !instr.operands.empty())
@@ -93,8 +86,7 @@ bool anyRetReturnsTemp(const Function &fn)
 //       ret %x
 //
 // After SCCP+SimplifyCFG+DCE: ret 42
-TEST(MissedOpt, ConstPropThroughBlockParam)
-{
+TEST(MissedOpt, ConstPropThroughBlockParam) {
     Module m;
     Function fn;
     fn.name = "test";
@@ -151,8 +143,7 @@ TEST(MissedOpt, ConstPropThroughBlockParam)
 //       ret %1
 //
 // After peephole: iadd.ovf is gone.
-TEST(MissedOpt, IdentityAddZero)
-{
+TEST(MissedOpt, IdentityAddZero) {
     Module m;
     Function fn;
     fn.name = "test";
@@ -207,8 +198,7 @@ TEST(MissedOpt, IdentityAddZero)
 //       ret %1
 //
 // After peephole: imul.ovf is gone.
-TEST(MissedOpt, IdentityMulOne)
-{
+TEST(MissedOpt, IdentityMulOne) {
     Module m;
     Function fn;
     fn.name = "test";
@@ -263,8 +253,7 @@ TEST(MissedOpt, IdentityMulOne)
 //       ret %1
 //
 // After peephole: ret 0.
-TEST(MissedOpt, IdentitySubSelf)
-{
+TEST(MissedOpt, IdentitySubSelf) {
     Module m;
     Function fn;
     fn.name = "test";
@@ -321,8 +310,7 @@ TEST(MissedOpt, IdentitySubSelf)
 //       ret %4
 //
 // After earlycse: %3 is replaced by %2, so only 2 Add remain (not 3).
-TEST(MissedOpt, CSEDuplicateExpr)
-{
+TEST(MissedOpt, CSEDuplicateExpr) {
     Module m;
     Function fn;
     fn.name = "test";
@@ -410,8 +398,7 @@ TEST(MissedOpt, CSEDuplicateExpr)
 //       ret %2
 //
 // After mem2reg: alloca eliminated, ret uses %0 directly.
-TEST(MissedOpt, Mem2RegPromotion)
-{
+TEST(MissedOpt, Mem2RegPromotion) {
     Module m;
     Function fn;
     fn.name = "test";
@@ -482,8 +469,7 @@ TEST(MissedOpt, Mem2RegPromotion)
 //       ret %1
 //
 // After peephole: sdiv.chk0 is gone.
-TEST(MissedOpt, DivByOne)
-{
+TEST(MissedOpt, DivByOne) {
     Module m;
     Function fn;
     fn.name = "test";
@@ -538,8 +524,7 @@ TEST(MissedOpt, DivByOne)
 //       ret %1
 //
 // After peephole: ret 0.
-TEST(MissedOpt, RemByOne)
-{
+TEST(MissedOpt, RemByOne) {
     Module m;
     Function fn;
     fn.name = "test";
@@ -601,8 +586,7 @@ TEST(MissedOpt, RemByOne)
 //       ret %2
 //
 // After peephole: both sub instructions survive (no multi-instr pattern match).
-TEST(MissedOpt, MissedDoubleNegation)
-{
+TEST(MissedOpt, MissedDoubleNegation) {
     Module m;
     Function fn;
     fn.name = "test";
@@ -669,8 +653,7 @@ TEST(MissedOpt, MissedDoubleNegation)
 //       ret %1
 //
 // After peephole: mul survives (no power-of-2 strength reduction).
-TEST(MissedOpt, MissedMulByPowerOf2)
-{
+TEST(MissedOpt, MissedMulByPowerOf2) {
     Module m;
     Function fn;
     fn.name = "test";
@@ -720,8 +703,7 @@ TEST(MissedOpt, MissedMulByPowerOf2)
     EXPECT_EQ(countOpcode(m.functions[0], Opcode::Mul), 1u);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -33,8 +33,7 @@ using viper::tui::ui::Event;
 using viper::tui::views::TextView;
 using viper::tui::widgets::SearchBar;
 
-TEST(TUI, Search)
-{
+TEST(TUI, Search) {
     TextBuffer buf;
     buf.load("alpha beta alpha gamma alpha");
 
@@ -54,8 +53,7 @@ TEST(TUI, Search)
 
     Event ev{};
     const char *pat = "alpha";
-    for (int i = 0; pat[i]; ++i)
-    {
+    for (int i = 0; pat[i]; ++i) {
         ev.key.code = KeyEvent::Code::Unknown;
         ev.key.codepoint = static_cast<uint32_t>(pat[i]);
         bar.onEvent(ev);
@@ -74,8 +72,7 @@ TEST(TUI, Search)
     ASSERT_EQ(sb.at(0, 11).style, theme.style(Role::Accent));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

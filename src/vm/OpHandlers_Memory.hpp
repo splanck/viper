@@ -38,23 +38,19 @@
 #include <string>
 #include <string_view>
 
-namespace il::vm::detail::memory
-{
+namespace il::vm::detail::memory {
 /// @brief Execution state alias used by memory handlers.
 using ExecState = VMAccess::ExecState;
 
-namespace inline_impl
-{
+namespace inline_impl {
 /// @brief Return the minimum alignment required for a given IL type kind.
 /// @details The VM validates alignment before performing memory operations so
 ///          misaligned accesses can trap deterministically. The alignment is
 ///          based on the host representation of the IL type.
 /// @param kind IL type kind to query.
 /// @return Required alignment in bytes.
-inline size_t minimumAlignmentFor(il::core::Type::Kind kind)
-{
-    switch (kind)
-    {
+inline size_t minimumAlignmentFor(il::core::Type::Kind kind) {
+    switch (kind) {
         case il::core::Type::Kind::I1:
             return alignof(uint8_t);
         case il::core::Type::Kind::I16:
@@ -83,10 +79,8 @@ inline size_t minimumAlignmentFor(il::core::Type::Kind kind)
 ///          of bytes affected by an operation. Void returns zero.
 /// @param kind IL type kind to query.
 /// @return Size in bytes for the type, or 0 for void.
-inline size_t sizeOfKind(il::core::Type::Kind kind)
-{
-    switch (kind)
-    {
+inline size_t sizeOfKind(il::core::Type::Kind kind) {
+    switch (kind) {
         case il::core::Type::Kind::I1:
             return 1;
         case il::core::Type::Kind::I16:
@@ -119,63 +113,53 @@ inline size_t sizeOfKind(il::core::Type::Kind kind)
 /// @param kind IL type kind describing the value at @p ptr.
 /// @param ptr Pointer to the source memory.
 /// @return Slot containing the loaded value.
-inline Slot loadSlotFromPtr(il::core::Type::Kind kind, void *ptr)
-{
+inline Slot loadSlotFromPtr(il::core::Type::Kind kind, void *ptr) {
     Slot out{};
-    switch (kind)
-    {
-        case il::core::Type::Kind::I16:
-        {
+    switch (kind) {
+        case il::core::Type::Kind::I16: {
             int16_t tmp;
             std::memcpy(&tmp, ptr, sizeof(tmp));
             out.i64 = static_cast<int64_t>(tmp);
             break;
         }
-        case il::core::Type::Kind::I32:
-        {
+        case il::core::Type::Kind::I32: {
             int32_t tmp;
             std::memcpy(&tmp, ptr, sizeof(tmp));
             out.i64 = static_cast<int64_t>(tmp);
             break;
         }
-        case il::core::Type::Kind::I64:
-        {
+        case il::core::Type::Kind::I64: {
             int64_t tmp;
             std::memcpy(&tmp, ptr, sizeof(tmp));
             out.i64 = tmp;
             break;
         }
-        case il::core::Type::Kind::I1:
-        {
+        case il::core::Type::Kind::I1: {
             uint8_t tmp;
             std::memcpy(&tmp, ptr, sizeof(tmp));
             out.i64 = static_cast<int64_t>(tmp & 1U);
             break;
         }
-        case il::core::Type::Kind::F64:
-        {
+        case il::core::Type::Kind::F64: {
             double tmp;
             std::memcpy(&tmp, ptr, sizeof(tmp));
             out.f64 = tmp;
             break;
         }
-        case il::core::Type::Kind::Str:
-        {
+        case il::core::Type::Kind::Str: {
             rt_string tmp;
             std::memcpy(&tmp, ptr, sizeof(tmp));
             out.str = tmp;
             break;
         }
-        case il::core::Type::Kind::Ptr:
-        {
+        case il::core::Type::Kind::Ptr: {
             void *tmp;
             std::memcpy(&tmp, ptr, sizeof(tmp));
             out.ptr = tmp;
             break;
         }
         case il::core::Type::Kind::Error:
-        case il::core::Type::Kind::ResumeTok:
-        {
+        case il::core::Type::Kind::ResumeTok: {
             void *tmp;
             std::memcpy(&tmp, ptr, sizeof(tmp));
             out.ptr = tmp;
@@ -195,42 +179,34 @@ inline Slot loadSlotFromPtr(il::core::Type::Kind kind, void *ptr)
 /// @param kind IL type kind describing the value at @p ptr.
 /// @param ptr Destination memory pointer.
 /// @param value Slot value to store.
-inline void storeSlotToPtr(il::core::Type::Kind kind, void *ptr, const Slot &value)
-{
-    switch (kind)
-    {
-        case il::core::Type::Kind::I16:
-        {
+inline void storeSlotToPtr(il::core::Type::Kind kind, void *ptr, const Slot &value) {
+    switch (kind) {
+        case il::core::Type::Kind::I16: {
             int16_t tmp = static_cast<int16_t>(value.i64);
             std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
         }
-        case il::core::Type::Kind::I32:
-        {
+        case il::core::Type::Kind::I32: {
             int32_t tmp = static_cast<int32_t>(value.i64);
             std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
         }
-        case il::core::Type::Kind::I64:
-        {
+        case il::core::Type::Kind::I64: {
             int64_t tmp = value.i64;
             std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
         }
-        case il::core::Type::Kind::I1:
-        {
+        case il::core::Type::Kind::I1: {
             uint8_t tmp = static_cast<uint8_t>(value.i64 & 1U);
             std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
         }
-        case il::core::Type::Kind::F64:
-        {
+        case il::core::Type::Kind::F64: {
             double tmp = value.f64;
             std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
         }
-        case il::core::Type::Kind::Str:
-        {
+        case il::core::Type::Kind::Str: {
             // Release currently stored string (if any), retain incoming, then store
             rt_string current{};
             std::memcpy(&current, ptr, sizeof(current));
@@ -240,15 +216,13 @@ inline void storeSlotToPtr(il::core::Type::Kind kind, void *ptr, const Slot &val
             std::memcpy(ptr, &incoming, sizeof(incoming));
             break;
         }
-        case il::core::Type::Kind::Ptr:
-        {
+        case il::core::Type::Kind::Ptr: {
             void *tmp = value.ptr;
             std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
         }
         case il::core::Type::Kind::Error:
-        case il::core::Type::Kind::ResumeTok:
-        {
+        case il::core::Type::Kind::ResumeTok: {
             void *tmp = value.ptr;
             std::memcpy(ptr, &tmp, sizeof(tmp));
             break;
@@ -278,15 +252,13 @@ inline VM::ExecResult handleLoadImpl(VM &vm,
                                      const il::core::Instr &in,
                                      const VM::BlockMap &blocks,
                                      const il::core::BasicBlock *&bb,
-                                     size_t &ip)
-{
+                                     size_t &ip) {
     (void)state;
     (void)blocks;
     (void)ip;
 
     void *ptr = VMAccess::eval(vm, fr, in.operands[0]).ptr;
-    if (!ptr)
-    {
+    if (!ptr) {
         const std::string blockLabel = bb ? bb->label : std::string();
         RuntimeBridge::trap(TrapKind::InvalidOperation,
                             "null load",
@@ -303,8 +275,7 @@ inline VM::ExecResult handleLoadImpl(VM &vm,
     // Fast-path: use bitmask for power-of-two alignments; fall back to modulo otherwise.
     if (alignment > 1U && (((alignment & (alignment - 1U)) == 0U)
                                ? ((rawPtr & (static_cast<uintptr_t>(alignment) - 1U)) != 0U)
-                               : ((rawPtr % alignment) != 0U)))
-    {
+                               : ((rawPtr % alignment) != 0U))) {
         const std::string blockLabel = bb ? bb->label : std::string();
         RuntimeBridge::trap(TrapKind::InvalidOperation,
                             "misaligned load",
@@ -338,15 +309,13 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
                                       const il::core::Instr &in,
                                       const VM::BlockMap &blocks,
                                       const il::core::BasicBlock *&bb,
-                                      size_t &ip)
-{
+                                      size_t &ip) {
     (void)state;
     (void)blocks;
 
     const std::string blockLabel = bb ? bb->label : std::string();
     void *ptr = VMAccess::eval(vm, fr, in.operands[0]).ptr;
-    if (!ptr)
-    {
+    if (!ptr) {
         RuntimeBridge::trap(TrapKind::InvalidOperation,
                             "null store",
                             in.loc,
@@ -362,8 +331,7 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
     // Fast-path: use bitmask for power-of-two alignments; fall back to modulo otherwise.
     if (alignment > 1U && (((alignment & (alignment - 1U)) == 0U)
                                ? ((rawPtr & (static_cast<uintptr_t>(alignment) - 1U)) != 0U)
-                               : ((rawPtr % alignment) != 0U)))
-    {
+                               : ((rawPtr % alignment) != 0U))) {
         RuntimeBridge::trap(TrapKind::InvalidOperation,
                             "misaligned store",
                             in.loc,
@@ -378,8 +346,7 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
 
     // Memory watch hook: use fast-path flag to skip entirely when no watches are active.
     // This eliminates the VMAccess::debug() call and vector empty check in the common case.
-    if (VMAccess::hasMemWatchesActive(vm)) [[unlikely]]
-    {
+    if (VMAccess::hasMemWatchesActive(vm)) [[unlikely]] {
         const size_t writeSize = inline_impl::sizeOfKind(in.type.kind);
         if (writeSize)
             VMAccess::debug(vm).onMemWrite(ptr, writeSize);
@@ -389,16 +356,12 @@ inline VM::ExecResult handleStoreImpl(VM &vm,
 
     // Variable watch hook: use fast-path flag to skip entirely when no watches are active.
     // This avoids operand kind check, id lookup, and string comparisons in the common case.
-    if (VMAccess::hasVarWatchesActive(vm)) [[unlikely]]
-    {
-        if (in.operands[0].kind == il::core::Value::Kind::Temp)
-        {
+    if (VMAccess::hasVarWatchesActive(vm)) [[unlikely]] {
+        if (in.operands[0].kind == il::core::Value::Kind::Temp) {
             const unsigned id = in.operands[0].id;
-            if (id < fr.func->valueNames.size())
-            {
+            if (id < fr.func->valueNames.size()) {
                 const std::string &name = fr.func->valueNames[id];
-                if (!name.empty())
-                {
+                if (!name.empty()) {
                     const std::string_view fnView =
                         fr.func ? std::string_view(fr.func->name) : std::string_view{};
                     const std::string_view blockView =

@@ -20,38 +20,32 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C"
-{
+extern "C" {
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 
-    void vm_trap(const char *msg)
-    {
-        fprintf(stderr, "TRAP: %s\n", msg);
-        rt_abort(msg);
-    }
+void vm_trap(const char *msg) {
+    fprintf(stderr, "TRAP: %s\n", msg);
+    rt_abort(msg);
+}
 }
 
 /// @brief Simple node for testing cycle detection.
-struct test_node
-{
+struct test_node {
     void *child;
     int id;
 };
 
-extern "C"
-{
-    static void test_node_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx)
-    {
-        struct test_node *node = (struct test_node *)obj;
-        if (node->child)
-            visitor(node->child, ctx);
-    }
+extern "C" {
+static void test_node_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    struct test_node *node = (struct test_node *)obj;
+    if (node->child)
+        visitor(node->child, ctx);
+}
 }
 
-static void *make_node(int id)
-{
+static void *make_node(int id) {
     void *obj = rt_obj_new_i64(0, (int64_t)sizeof(struct test_node));
     struct test_node *n = (struct test_node *)obj;
     n->child = NULL;
@@ -59,8 +53,7 @@ static void *make_node(int id)
     return obj;
 }
 
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -69,8 +62,7 @@ static void test_result(const char *name, bool passed)
 // Test: Self-referencing cycle is collected
 //=============================================================================
 
-static void test_self_cycle()
-{
+static void test_self_cycle() {
     printf("Testing self-cycle collection:\n");
 
     void *a = make_node(1);
@@ -88,8 +80,7 @@ static void test_self_cycle()
 // Test: Two-node cycle is collected
 //=============================================================================
 
-static void test_two_node_cycle()
-{
+static void test_two_node_cycle() {
     printf("Testing two-node cycle collection:\n");
 
     void *a = make_node(1);
@@ -112,8 +103,7 @@ static void test_two_node_cycle()
 // Test: Non-cyclic object is NOT collected
 //=============================================================================
 
-static void test_no_false_positive()
-{
+static void test_no_false_positive() {
     printf("Testing non-cyclic object retention:\n");
 
     void *a = make_node(1);
@@ -134,8 +124,7 @@ static void test_no_false_positive()
 // Test: Multiple collections don't corrupt state
 //=============================================================================
 
-static void test_multiple_passes()
-{
+static void test_multiple_passes() {
     printf("Testing multiple GC passes:\n");
 
     // Create and collect a cycle
@@ -162,8 +151,7 @@ static void test_multiple_passes()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT GC Batch Lock Tests ===\n\n");
 
     test_self_cycle();

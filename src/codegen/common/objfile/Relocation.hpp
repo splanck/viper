@@ -24,8 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace viper::codegen::objfile
-{
+namespace viper::codegen::objfile {
 
 /// Architecture-agnostic relocation kinds.
 ///
@@ -33,8 +32,7 @@ namespace viper::codegen::objfile
 ///   ELF:    R_X86_64_* / R_AARCH64_*
 ///   Mach-O: X86_64_RELOC_* / ARM64_RELOC_*
 ///   COFF:   IMAGE_REL_AMD64_* / IMAGE_REL_ARM64_*
-enum class RelocKind : uint8_t
-{
+enum class RelocKind : uint8_t {
     // === x86_64 relocations ===
 
     /// 32-bit PC-relative (RIP-relative data references).
@@ -95,8 +93,7 @@ enum class RelocKind : uint8_t
 };
 
 /// A relocation entry recorded during binary encoding.
-struct Relocation
-{
+struct Relocation {
     size_t offset;        ///< Byte offset in section where fixup applies.
     RelocKind kind;       ///< Architecture-agnostic relocation type.
     uint32_t symbolIndex; ///< Index into SymbolTable.

@@ -27,8 +27,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 constexpr std::string_view kClassSnippet = R"BASIC(
 10 CLASS Klass
 20   value AS INTEGER
@@ -63,12 +62,10 @@ END CLASS
 END
 )BASIC";
 
-[[nodiscard]] bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs)
-{
+[[nodiscard]] bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs) {
     if (lhs.size() != rhs.size())
         return false;
-    for (std::size_t i = 0; i < lhs.size(); ++i)
-    {
+    for (std::size_t i = 0; i < lhs.size(); ++i) {
         const unsigned char lc = static_cast<unsigned char>(lhs[i]);
         const unsigned char rc = static_cast<unsigned char>(rhs[i]);
         if (std::tolower(lc) != std::tolower(rc))
@@ -78,8 +75,7 @@ END
 }
 } // namespace
 
-TEST(BasicOOPParsingTest, ParsesClassWithMembersWithoutDiagnostics)
-{
+TEST(BasicOOPParsingTest, ParsesClassWithMembersWithoutDiagnostics) {
     SourceManager sourceManager;
     uint32_t fileId = sourceManager.addFile("basic_oop.bas");
 
@@ -105,20 +101,17 @@ TEST(BasicOOPParsingTest, ParsesClassWithMembersWithoutDiagnostics)
     const ConstructorDecl *ctor = nullptr;
     const DestructorDecl *dtor = nullptr;
     const MethodDecl *inc = nullptr;
-    for (const auto &member : klass->members)
-    {
+    for (const auto &member : klass->members) {
         if (!member)
             continue;
-        switch (member->stmtKind())
-        {
+        switch (member->stmtKind()) {
             case Stmt::Kind::ConstructorDecl:
                 ctor = static_cast<const ConstructorDecl *>(member.get());
                 break;
             case Stmt::Kind::DestructorDecl:
                 dtor = static_cast<const DestructorDecl *>(member.get());
                 break;
-            case Stmt::Kind::MethodDecl:
-            {
+            case Stmt::Kind::MethodDecl: {
                 const auto *method = static_cast<const MethodDecl *>(member.get());
                 if (equalsIgnoreCase(method->name, "inc"))
                     inc = method;
@@ -139,8 +132,7 @@ TEST(BasicOOPParsingTest, ParsesClassWithMembersWithoutDiagnostics)
     EXPECT_FALSE(inc->body.empty());
 }
 
-TEST(BasicOOPParsingTest, ParsesMethodParametersWithExplicitTypes)
-{
+TEST(BasicOOPParsingTest, ParsesMethodParametersWithExplicitTypes) {
     SourceManager sourceManager;
     uint32_t fileId = sourceManager.addFile("basic_oop_typed_params.bas");
 
@@ -172,8 +164,7 @@ TEST(BasicOOPParsingTest, ParsesMethodParametersWithExplicitTypes)
     EXPECT_FALSE(method->params[1].is_array);
 }
 
-TEST(BasicOOPParsingTest, ParsesFieldsWithOptionalDimPrefix)
-{
+TEST(BasicOOPParsingTest, ParsesFieldsWithOptionalDimPrefix) {
     SourceManager sourceManager;
     uint32_t fileId = sourceManager.addFile("basic_oop_dim_field.bas");
 
@@ -198,8 +189,7 @@ TEST(BasicOOPParsingTest, ParsesFieldsWithOptionalDimPrefix)
     EXPECT_EQ(klass->fields[1].type, Type::I64);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

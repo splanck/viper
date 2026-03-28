@@ -35,13 +35,11 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::tui::term
-{
+namespace viper::tui::term {
 /// @brief Outcome of processing a CSI escape sequence.
 /// @details Indicates whether the sequence was successfully mapped to an input
 ///          event and whether it triggered bracketed paste mode entry.
-struct CsiResult
-{
+struct CsiResult {
     bool start_paste{false}; ///< True when bracketed paste mode begins.
     bool handled{false};     ///< True if the sequence mapped to a known action.
 };
@@ -51,8 +49,7 @@ struct CsiResult
 ///          converts them into structured KeyEvent and MouseEvent objects. Handles
 ///          special keys, function keys, modifier encoding, SGR mouse reporting,
 ///          and bracketed paste mode markers.
-class CsiParser
-{
+class CsiParser {
   public:
     /// @brief Construct a parser bound to output event buffers.
     CsiParser(std::vector<KeyEvent> &keys,

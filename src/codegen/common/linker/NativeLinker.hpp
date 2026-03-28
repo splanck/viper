@@ -28,12 +28,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Options for the native linker.
-struct NativeLinkerOptions
-{
+struct NativeLinkerOptions {
     std::string objPath;                   ///< Path to the user's compiled .o file.
     std::string exePath;                   ///< Output executable path.
     std::vector<std::string> archivePaths; ///< Runtime archive .a paths (in dependency order).

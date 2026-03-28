@@ -19,20 +19,16 @@
 #include <iostream>
 #include <string>
 
-namespace viper::codegen::x64
-{
-namespace
-{
-[[nodiscard]] ILValue makeI64Param(int id) noexcept
-{
+namespace viper::codegen::x64 {
+namespace {
+[[nodiscard]] ILValue makeI64Param(int id) noexcept {
     ILValue value{};
     value.kind = ILValue::Kind::I64;
     value.id = id;
     return value;
 }
 
-[[nodiscard]] ILValue makeI64Const(int64_t val) noexcept
-{
+[[nodiscard]] ILValue makeI64Const(int64_t val) noexcept {
     ILValue constant{};
     constant.kind = ILValue::Kind::I64;
     constant.id = -1;
@@ -40,8 +36,7 @@ namespace
     return constant;
 }
 
-[[nodiscard]] ILValue makeF64Const(double val) noexcept
-{
+[[nodiscard]] ILValue makeF64Const(double val) noexcept {
     ILValue constant{};
     constant.kind = ILValue::Kind::F64;
     constant.id = -1;
@@ -49,16 +44,14 @@ namespace
     return constant;
 }
 
-[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept
-{
+[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept {
     ILValue ref{};
     ref.kind = kind;
     ref.id = id;
     return ref;
 }
 
-[[nodiscard]] ILModule makeI64SelectModule()
-{
+[[nodiscard]] ILModule makeI64SelectModule() {
     ILValue lhs = makeI64Param(0);
     ILValue rhs = makeI64Param(1);
 
@@ -94,8 +87,7 @@ namespace
     return module;
 }
 
-[[nodiscard]] ILModule makeF64SelectModule()
-{
+[[nodiscard]] ILModule makeF64SelectModule() {
     ILValue lhs = makeI64Param(0);
     ILValue rhs = makeI64Param(1);
 
@@ -131,17 +123,14 @@ namespace
     return module;
 }
 
-[[nodiscard]] bool hasCmovPattern(const std::string &asmText)
-{
+[[nodiscard]] bool hasCmovPattern(const std::string &asmText) {
     const std::size_t testPos = asmText.find("testq");
-    if (testPos == std::string::npos)
-    {
+    if (testPos == std::string::npos) {
         return false;
     }
 
     const std::size_t movPos = asmText.find("movq", testPos);
-    if (movPos == std::string::npos)
-    {
+    if (movPos == std::string::npos) {
         return false;
     }
 
@@ -149,41 +138,34 @@ namespace
     return cmovPos != std::string::npos;
 }
 
-[[nodiscard]] bool hasBranchyMovsdPattern(const std::string &asmText)
-{
+[[nodiscard]] bool hasBranchyMovsdPattern(const std::string &asmText) {
     const std::size_t testPos = asmText.find("testq");
-    if (testPos == std::string::npos)
-    {
+    if (testPos == std::string::npos) {
         return false;
     }
 
     const std::size_t jePos = asmText.find("je ", testPos);
-    if (jePos == std::string::npos)
-    {
+    if (jePos == std::string::npos) {
         return false;
     }
 
     const std::size_t movsdTruePos = asmText.find("movsd", jePos);
-    if (movsdTruePos == std::string::npos)
-    {
+    if (movsdTruePos == std::string::npos) {
         return false;
     }
 
     const std::size_t jmpPos = asmText.find("jmp", movsdTruePos);
-    if (jmpPos == std::string::npos)
-    {
+    if (jmpPos == std::string::npos) {
         return false;
     }
 
     const std::size_t falseLabelPos = asmText.find(".Lfalse", jmpPos);
-    if (falseLabelPos == std::string::npos)
-    {
+    if (falseLabelPos == std::string::npos) {
         return false;
     }
 
     const std::size_t movsdFalsePos = asmText.find("movsd", falseLabelPos);
-    if (movsdFalsePos == std::string::npos)
-    {
+    if (movsdFalsePos == std::string::npos) {
         return false;
     }
 
@@ -194,22 +176,19 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
 
     const ILModule intModule = makeI64SelectModule();
     const CodegenResult intResult = emitModuleToAssembly(intModule, {});
-    if (!intResult.errors.empty() || !hasCmovPattern(intResult.asmText))
-    {
+    if (!intResult.errors.empty() || !hasCmovPattern(intResult.asmText)) {
         std::cerr << "Unexpected integer select assembly:\n" << intResult.asmText;
         return EXIT_FAILURE;
     }
 
     const ILModule floatModule = makeF64SelectModule();
     const CodegenResult floatResult = emitModuleToAssembly(floatModule, {});
-    if (!floatResult.errors.empty() || !hasBranchyMovsdPattern(floatResult.asmText))
-    {
+    if (!floatResult.errors.empty() || !hasBranchyMovsdPattern(floatResult.asmText)) {
         std::cerr << "Unexpected floating select assembly:\n" << floatResult.asmText;
         return EXIT_FAILURE;
     }

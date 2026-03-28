@@ -32,13 +32,11 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Read a file into a byte vector.
 /// @throws std::runtime_error on open or read failure.
-inline std::vector<uint8_t> readFile(const std::string &path)
-{
+inline std::vector<uint8_t> readFile(const std::string &path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f)
         throw std::runtime_error("cannot read file: " + path);
@@ -55,12 +53,10 @@ inline std::vector<uint8_t> readFile(const std::string &path)
 ///
 /// Spaces become underscores, all chars lowered.
 /// e.g. "Viper IDE" -> "viper_ide"
-inline std::string normalizeExecName(const std::string &name)
-{
+inline std::string normalizeExecName(const std::string &name) {
     std::string result;
     result.reserve(name.size());
-    for (char c : name)
-    {
+    for (char c : name) {
         if (c == ' ')
             result.push_back('_');
         else
@@ -73,12 +69,10 @@ inline std::string normalizeExecName(const std::string &name)
 ///
 /// Spaces and underscores become hyphens, all chars lowered.
 /// e.g. "Viper IDE" -> "viper-ide"
-inline std::string normalizeDebName(const std::string &name)
-{
+inline std::string normalizeDebName(const std::string &name) {
     std::string result;
     result.reserve(name.size());
-    for (char c : name)
-    {
+    for (char c : name) {
         if (c == ' ' || c == '_')
             result.push_back('-');
         else
@@ -100,8 +94,7 @@ inline std::string normalizeDebName(const std::string &name)
 inline void safeDirectoryIterate(
     const std::filesystem::path &root,
     const std::filesystem::path &projectRoot,
-    const std::function<void(const std::filesystem::directory_entry &)> &callback)
-{
+    const std::function<void(const std::filesystem::directory_entry &)> &callback) {
     namespace fs = std::filesystem;
     std::error_code ec;
     fs::path canonicalRoot = fs::canonical(projectRoot, ec);
@@ -111,10 +104,8 @@ inline void safeDirectoryIterate(
     for (auto it = fs::recursive_directory_iterator(
              root, fs::directory_options::skip_permission_denied, ec);
          it != fs::recursive_directory_iterator();
-         it.increment(ec))
-    {
-        if (ec)
-        {
+         it.increment(ec)) {
+        if (ec) {
             std::cerr << "warning: cannot access '" << it->path().string()
                       << "', skipping: " << ec.message() << "\n";
             ec.clear();
@@ -124,11 +115,9 @@ inline void safeDirectoryIterate(
         const auto &entry = *it;
 
         // Check for symlinks escaping the project root
-        if (entry.is_symlink())
-        {
+        if (entry.is_symlink()) {
             fs::path resolved = fs::canonical(entry.path(), ec);
-            if (ec)
-            {
+            if (ec) {
                 std::cerr << "warning: cannot resolve symlink '" << entry.path().string()
                           << "', skipping\n";
                 ec.clear();
@@ -139,8 +128,7 @@ inline void safeDirectoryIterate(
             // Check if resolved path is within project root
             auto mismatch =
                 std::mismatch(canonicalRoot.begin(), canonicalRoot.end(), resolved.begin());
-            if (mismatch.first != canonicalRoot.end())
-            {
+            if (mismatch.first != canonicalRoot.end()) {
                 std::cerr << "warning: symlink '" << entry.path().string()
                           << "' escapes project root, skipping\n";
                 if (entry.is_directory())

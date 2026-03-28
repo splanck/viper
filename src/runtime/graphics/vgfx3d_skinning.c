@@ -25,16 +25,13 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
                           vgfx3d_vertex_t *dst,
                           uint32_t vertex_count,
                           const float *palette,
-                          int32_t bone_count)
-{
-    for (uint32_t v = 0; v < vertex_count; v++)
-    {
+                          int32_t bone_count) {
+    for (uint32_t v = 0; v < vertex_count; v++) {
         float pos[3] = {0, 0, 0};
         float nrm[3] = {0, 0, 0};
         float total_w = 0.0f;
 
-        for (int b = 0; b < 4; b++)
-        {
+        for (int b = 0; b < 4; b++) {
             float w = src[v].bone_weights[b];
             if (w < 1e-6f)
                 continue;
@@ -44,8 +41,7 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
 
             const float *m = &palette[idx * 16];
             /* pos += w * (M * src_pos) — row-major multiply */
-            for (int i = 0; i < 3; i++)
-            {
+            for (int i = 0; i < 3; i++) {
                 pos[i] += w * (m[i * 4 + 0] * src[v].pos[0] + m[i * 4 + 1] * src[v].pos[1] +
                                m[i * 4 + 2] * src[v].pos[2] + m[i * 4 + 3]);
                 nrm[i] += w * (m[i * 4 + 0] * src[v].normal[0] + m[i * 4 + 1] * src[v].normal[1] +
@@ -58,13 +54,11 @@ void vgfx3d_skin_vertices(const vgfx3d_vertex_t *src,
         if (dst != src)
             dst[v] = src[v];
 
-        if (total_w > 1e-6f)
-        {
+        if (total_w > 1e-6f) {
             memcpy(dst[v].pos, pos, sizeof(float) * 3);
             /* Normalize skinned normal */
             float len = sqrtf(nrm[0] * nrm[0] + nrm[1] * nrm[1] + nrm[2] * nrm[2]);
-            if (len > 1e-8f)
-            {
+            if (len > 1e-8f) {
                 nrm[0] /= len;
                 nrm[1] /= len;
                 nrm[2] /= len;

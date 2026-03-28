@@ -32,18 +32,15 @@
 
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 
-namespace detail
-{
+namespace detail {
 /// @brief Clamp splitter ratios to a practical interactive range.
 /// @details Prevents callers from collapsing a child entirely (less than 5%) or
 ///          hiding the opposite child (greater than 95%).
 /// @param r Requested ratio from user input.
 /// @return Ratio snapped into the inclusive [0.05, 0.95] interval.
-inline float clampRatio(float r)
-{
+inline float clampRatio(float r) {
     if (r < 0.05F)
         return 0.05F;
     if (r > 0.95F)
@@ -57,12 +54,10 @@ inline float clampRatio(float r)
 ///          (forwards to the derived class's onKeyEvent handler). The ratio_ member
 ///          controls proportional space allocation between the two children.
 /// @tparam Derived The concrete splitter type (HSplitter or VSplitter) for static dispatch.
-template <typename Derived> class SplitterBase : public ui::Widget
-{
+template <typename Derived> class SplitterBase : public ui::Widget {
   public:
     /// @brief Paint both child widgets into the provided screen buffer.
-    void paint(render::ScreenBuffer &sb) override
-    {
+    void paint(render::ScreenBuffer &sb) override {
         auto &self = static_cast<Derived &>(*this);
         if (self.first_)
             self.first_->paint(sb);
@@ -71,8 +66,7 @@ template <typename Derived> class SplitterBase : public ui::Widget
     }
 
     /// @brief Bridge generic UI events to the derived class key handler.
-    bool onEvent(const ui::Event &ev) override
-    {
+    bool onEvent(const ui::Event &ev) override {
         return static_cast<Derived &>(*this).onKeyEvent(ev.key);
     }
 
@@ -84,8 +78,7 @@ template <typename Derived> class SplitterBase : public ui::Widget
 /// @details The ratio parameter controls what fraction of the total width is allocated
 ///          to the left child. The right child receives the remainder. Keyboard input
 ///          (Left/Right arrow keys) adjusts the split ratio interactively.
-class HSplitter : public SplitterBase<HSplitter>
-{
+class HSplitter : public SplitterBase<HSplitter> {
   public:
     /// @brief Construct horizontal splitter.
     /// @param left Widget placed on the left side.
@@ -109,8 +102,7 @@ class HSplitter : public SplitterBase<HSplitter>
 /// @details The ratio parameter controls what fraction of the total height is allocated
 ///          to the top child. The bottom child receives the remainder. Keyboard input
 ///          (Up/Down arrow keys) adjusts the split ratio interactively.
-class VSplitter : public SplitterBase<VSplitter>
-{
+class VSplitter : public SplitterBase<VSplitter> {
   public:
     /// @brief Construct vertical splitter.
     /// @param top Widget placed at the top.

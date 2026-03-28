@@ -29,11 +29,9 @@
 #include <cstdint>
 #include <optional>
 
-namespace
-{
+namespace {
 
-il::core::Module makeModule()
-{
+il::core::Module makeModule() {
     using namespace il::core;
 
     Module m;
@@ -96,16 +94,14 @@ il::core::Module makeModule()
 
 } // namespace
 
-int main()
-{
+int main() {
     il::core::Module module = makeModule();
     il::vm::VM vm(module);
 
     const auto &fn = module.functions.front();
     il::vm::VMTestHook::State state = il::vm::VMTestHook::prepare(vm, fn);
 
-    auto stepExpectRunning = [&](il::vm::VM &machine, il::vm::VMTestHook::State &exec)
-    {
+    auto stepExpectRunning = [&](il::vm::VM &machine, il::vm::VMTestHook::State &exec) {
         std::optional<il::vm::Slot> slot = il::vm::VMTestHook::step(machine, exec);
         assert(!slot.has_value());
     };

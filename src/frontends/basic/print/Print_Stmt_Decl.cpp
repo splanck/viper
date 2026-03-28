@@ -17,29 +17,23 @@
 #include "frontends/basic/BasicTypes.hpp"
 #include "frontends/basic/print/Print_Stmt_Common.hpp"
 
-namespace il::frontends::basic::print_stmt
-{
-namespace
-{
+namespace il::frontends::basic::print_stmt {
+namespace {
 /// @brief Print a space-separated parameter list with array suffix markers.
 /// @details Emits each parameter name, inserting `()` for array parameters to
 ///          mirror BASIC's declaration syntax. Items are separated by single
 ///          spaces so the resulting `(PARAMS ...)` form stays compact.
 /// @param params Parameter descriptors gathered from the AST node.
 /// @param ctx Printer context providing the destination stream.
-void printParamList(const std::vector<Param> &params, Context &ctx)
-{
+void printParamList(const std::vector<Param> &params, Context &ctx) {
     bool firstParam = true;
-    for (const auto &param : params)
-    {
-        if (!firstParam)
-        {
+    for (const auto &param : params) {
+        if (!firstParam) {
             ctx.stream() << ' ';
         }
         firstParam = false;
         ctx.stream() << param.name;
-        if (param.is_array)
-        {
+        if (param.is_array) {
             ctx.stream() << "()";
         }
     }
@@ -52,16 +46,13 @@ void printParamList(const std::vector<Param> &params, Context &ctx)
 /// @tparam FieldT Struct-like type exposing `name` and `type` members.
 /// @param fields Sequence of fields to render.
 /// @param ctx Printer context with formatting helpers.
-template <typename FieldT> void printFields(const std::vector<FieldT> &fields, Context &ctx)
-{
-    if (fields.empty())
-    {
+template <typename FieldT> void printFields(const std::vector<FieldT> &fields, Context &ctx) {
+    if (fields.empty()) {
         return;
     }
     auto &os = ctx.stream();
     os << " (FIELDS";
-    for (const auto &field : fields)
-    {
+    for (const auto &field : fields) {
         os << ' ' << field.name << ':' << typeToString(field.type);
     }
     os << ')';
@@ -73,8 +64,7 @@ template <typename FieldT> void printFields(const std::vector<FieldT> &fields, C
 ///          render both expressions so nested formatting remains consistent.
 /// @param stmt Assignment statement describing the target and expression.
 /// @param ctx Printer context that owns the stream.
-void printLet(const LetStmt &stmt, Context &ctx)
-{
+void printLet(const LetStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(LET ";
     ctx.printExpr(*stmt.target);
@@ -87,13 +77,11 @@ void printLet(const LetStmt &stmt, Context &ctx)
 /// @details Prints the constant name, initializer expression, and optional type.
 /// @param stmt CONST statement to render.
 /// @param ctx Printer context responsible for nested expressions.
-void printConst(const ConstStmt &stmt, Context &ctx)
-{
+void printConst(const ConstStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(CONST " << stmt.name << " = ";
     ctx.printExpr(*stmt.initializer);
-    if (stmt.type != Type::I64)
-    {
+    if (stmt.type != Type::I64) {
         os << " AS " << typeToString(stmt.type);
     }
     os << ')';
@@ -106,24 +94,18 @@ void printConst(const ConstStmt &stmt, Context &ctx)
 ///          integer the helper skips the redundant `AS` clause.
 /// @param stmt DIM statement to render.
 /// @param ctx Printer context responsible for nested expressions.
-void printDim(const DimStmt &stmt, Context &ctx)
-{
+void printDim(const DimStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(DIM " << stmt.name;
-    if (stmt.isArray)
-    {
-        if (stmt.size)
-        {
+    if (stmt.isArray) {
+        if (stmt.size) {
             os << ' ';
             ctx.printExpr(*stmt.size);
         }
-        if (stmt.type != Type::I64)
-        {
+        if (stmt.type != Type::I64) {
             os << " AS " << typeToString(stmt.type);
         }
-    }
-    else
-    {
+    } else {
         os << " AS " << typeToString(stmt.type);
     }
     os << ')';
@@ -134,12 +116,10 @@ void printDim(const DimStmt &stmt, Context &ctx)
 ///          compact s-expression used across BASIC printer output.
 /// @param stmt REDIM statement describing the target array.
 /// @param ctx Printer context supplying expression formatting.
-void printReDim(const ReDimStmt &stmt, Context &ctx)
-{
+void printReDim(const ReDimStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(REDIM " << stmt.name;
-    if (stmt.size)
-    {
+    if (stmt.size) {
         os << ' ';
         ctx.printExpr(*stmt.size);
     }
@@ -152,24 +132,19 @@ void printReDim(const ReDimStmt &stmt, Context &ctx)
 ///          statements maintain their original line numbers.
 /// @param stmt Function declaration node with parameters and body.
 /// @param ctx Printer context delegating nested printing tasks.
-void printFunction(const FunctionDecl &stmt, Context &ctx)
-{
+void printFunction(const FunctionDecl &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(FUNCTION " << stmt.name;
     os << " qualifiedName: ";
-    if (!stmt.qualifiedName.empty())
-    {
+    if (!stmt.qualifiedName.empty()) {
         os << stmt.qualifiedName;
-    }
-    else
-    {
+    } else {
         os << "<null>";
     }
     os << " RET " << typeToString(stmt.ret) << " (";
     printParamList(stmt.params, ctx);
     os << ")";
-    if (stmt.explicitRetType != BasicType::Unknown && stmt.explicitRetType != BasicType::Void)
-    {
+    if (stmt.explicitRetType != BasicType::Unknown && stmt.explicitRetType != BasicType::Void) {
         os << " AS " << toString(stmt.explicitRetType);
     }
     ctx.printNumberedBody(stmt.body);
@@ -180,17 +155,13 @@ void printFunction(const FunctionDecl &stmt, Context &ctx)
 ///          reflect BASIC's subroutine syntax.
 /// @param stmt Subroutine declaration to print.
 /// @param ctx Printer context responsible for nested formatting.
-void printSub(const SubDecl &stmt, Context &ctx)
-{
+void printSub(const SubDecl &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(SUB " << stmt.name;
     os << " qualifiedName: ";
-    if (!stmt.qualifiedName.empty())
-    {
+    if (!stmt.qualifiedName.empty()) {
         os << stmt.qualifiedName;
-    }
-    else
-    {
+    } else {
         os << "<null>";
     }
     os << " (";
@@ -204,8 +175,7 @@ void printSub(const SubDecl &stmt, Context &ctx)
 ///          for consistency with other procedure declarations.
 /// @param stmt Constructor declaration holding parameters and body.
 /// @param ctx Printer context providing stream access.
-void printConstructor(const ConstructorDecl &stmt, Context &ctx)
-{
+void printConstructor(const ConstructorDecl &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(CONSTRUCTOR";
     if (stmt.isStatic)
@@ -221,8 +191,7 @@ void printConstructor(const ConstructorDecl &stmt, Context &ctx)
 ///          no parameters, so only the body is rendered.
 /// @param stmt Destructor declaration to print.
 /// @param ctx Printer context managing body formatting.
-void printDestructor(const DestructorDecl &stmt, Context &ctx)
-{
+void printDestructor(const DestructorDecl &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(DESTRUCTOR";
     ctx.printNumberedBody(stmt.body);
@@ -233,15 +202,13 @@ void printDestructor(const DestructorDecl &stmt, Context &ctx)
 ///          before delegating body emission to the context.
 /// @param stmt Method declaration node describing the member.
 /// @param ctx Printer context with expression helpers.
-void printMethod(const MethodDecl &stmt, Context &ctx)
-{
+void printMethod(const MethodDecl &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(METHOD ";
     if (stmt.isStatic)
         os << "STATIC ";
     os << stmt.name;
-    if (stmt.ret)
-    {
+    if (stmt.ret) {
         os << " RET " << typeToString(*stmt.ret);
     }
     os << " (";
@@ -256,17 +223,14 @@ void printMethod(const MethodDecl &stmt, Context &ctx)
 ///          methods, and nested declarations.
 /// @param stmt Class declaration AST node.
 /// @param ctx Printer context handling nested emission.
-namespace
-{
+namespace {
 // Specialised print for CLASS fields so we can include STATIC markers.
-void printClassFields(const std::vector<ClassDecl::Field> &fields, Context &ctx)
-{
+void printClassFields(const std::vector<ClassDecl::Field> &fields, Context &ctx) {
     if (fields.empty())
         return;
     auto &os = ctx.stream();
     os << " (FIELDS";
-    for (const auto &field : fields)
-    {
+    for (const auto &field : fields) {
         os << ' ';
         if (field.isStatic)
             os << "STATIC ";
@@ -276,29 +240,22 @@ void printClassFields(const std::vector<ClassDecl::Field> &fields, Context &ctx)
 }
 } // namespace
 
-void printClass(const ClassDecl &stmt, Context &ctx)
-{
+void printClass(const ClassDecl &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(CLASS " << stmt.name;
     os << " qualifiedName: ";
-    if (!stmt.qualifiedName.empty())
-    {
+    if (!stmt.qualifiedName.empty()) {
         os << stmt.qualifiedName;
-    }
-    else
-    {
+    } else {
         os << "<null>";
     }
     printClassFields(stmt.fields, ctx);
     // Implements list
-    if (!stmt.implementsQualifiedNames.empty())
-    {
+    if (!stmt.implementsQualifiedNames.empty()) {
         os << " (IMPLEMENTS";
-        for (const auto &qn : stmt.implementsQualifiedNames)
-        {
+        for (const auto &qn : stmt.implementsQualifiedNames) {
             os << ' ';
-            for (size_t i = 0; i < qn.size(); ++i)
-            {
+            for (size_t i = 0; i < qn.size(); ++i) {
                 if (i)
                     os << '.';
                 os << qn[i];
@@ -314,8 +271,7 @@ void printClass(const ClassDecl &stmt, Context &ctx)
 ///          the field formatting consistent between classes and types.
 /// @param stmt TYPE declaration describing the aggregate.
 /// @param ctx Printer context for stream access.
-void printType(const TypeDecl &stmt, Context &ctx)
-{
+void printType(const TypeDecl &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(TYPE " << stmt.name;
     printFields(stmt.fields, ctx);
@@ -326,12 +282,10 @@ void printType(const TypeDecl &stmt, Context &ctx)
 /// @details Prints `(INTERFACE A.B.I)` and then the numbered member body.
 /// @param stmt Interface declaration AST node.
 /// @param ctx Printer context handling nested emission.
-void printInterface(const InterfaceDecl &stmt, Context &ctx)
-{
+void printInterface(const InterfaceDecl &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(INTERFACE ";
-    for (size_t i = 0; i < stmt.qualifiedName.size(); ++i)
-    {
+    for (size_t i = 0; i < stmt.qualifiedName.size(); ++i) {
         if (i)
             os << '.';
         os << stmt.qualifiedName[i];
@@ -344,16 +298,14 @@ void printInterface(const InterfaceDecl &stmt, Context &ctx)
 ///          blocks when present.
 /// @param stmt Property declaration AST node.
 /// @param ctx Printer context handling nested emission.
-void printProperty(const PropertyDecl &stmt, Context &ctx)
-{
+void printProperty(const PropertyDecl &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(PROPERTY ";
     if (stmt.isStatic)
         os << "STATIC ";
     os << stmt.name << ':' << typeToString(stmt.type);
     // Getter
-    if (stmt.get.present)
-    {
+    if (stmt.get.present) {
         os << " (GET";
         if (stmt.get.access != stmt.access)
             os << ' ' << (stmt.get.access == Access::Public ? "PUBLIC" : "PRIVATE");
@@ -361,8 +313,7 @@ void printProperty(const PropertyDecl &stmt, Context &ctx)
         os << ')';
     }
     // Setter
-    if (stmt.set.present)
-    {
+    if (stmt.set.present) {
         os << " (SET";
         if (stmt.set.access != stmt.access)
             os << ' ' << (stmt.set.access == Access::Public ? "PUBLIC" : "PRIVATE");
@@ -379,8 +330,7 @@ void printProperty(const PropertyDecl &stmt, Context &ctx)
 ///          formatting rules.
 /// @param stmt DELETE statement to output.
 /// @param ctx Printer context owning the output stream.
-void printDelete(const DeleteStmt &stmt, Context &ctx)
-{
+void printDelete(const DeleteStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(DELETE ";
     ctx.printExpr(*stmt.target);

@@ -16,7 +16,6 @@
 /// @details The cmdFrontBasic implementation calls the global usage() function
 ///          when argument parsing fails. For vbasic, we redirect to our own
 ///          vbasic-specific help text.
-void usage()
-{
+void usage() {
     vbasic::printUsage();
 }

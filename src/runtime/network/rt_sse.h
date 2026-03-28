@@ -21,17 +21,16 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    void *rt_sse_connect(rt_string url);
-    rt_string rt_sse_recv(void *client);
-    rt_string rt_sse_recv_for(void *client, int64_t timeout_ms);
-    int8_t rt_sse_is_open(void *client);
-    void rt_sse_close(void *client);
-    rt_string rt_sse_last_event_type(void *client);
-    rt_string rt_sse_last_event_id(void *client);
+void *rt_sse_connect(rt_string url);
+rt_string rt_sse_recv(void *client);
+rt_string rt_sse_recv_for(void *client, int64_t timeout_ms);
+int8_t rt_sse_is_open(void *client);
+void rt_sse_close(void *client);
+rt_string rt_sse_last_event_type(void *client);
+rt_string rt_sse_last_event_id(void *client);
 
 #ifdef __cplusplus
 }

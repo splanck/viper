@@ -33,18 +33,15 @@ using namespace viper::server;
 
 // --- Mock transport that captures written messages ---
 
-class MockTransport : public Transport
-{
+class MockTransport : public Transport {
   public:
     std::vector<std::string> written;
 
-    bool readMessage(RawMessage & /*msg*/) override
-    {
+    bool readMessage(RawMessage & /*msg*/) override {
         return false;
     }
 
-    void writeMessage(const std::string &message) override
-    {
+    void writeMessage(const std::string &message) override {
         written.push_back(message);
     }
 };
@@ -52,20 +49,18 @@ class MockTransport : public Transport
 /// Helper: build a JsonRpcRequest.
 static JsonRpcRequest makeReq(const std::string &method,
                               JsonValue params = JsonValue::object({}),
-                              JsonValue id = JsonValue(1))
-{
+                              JsonValue id = JsonValue(1)) {
     return {method, std::move(params), std::move(id)};
 }
 
 /// Helper: build a notification (null id).
-static JsonRpcRequest makeNotif(const std::string &method, JsonValue params = JsonValue::object({}))
-{
+static JsonRpcRequest makeNotif(const std::string &method,
+                                JsonValue params = JsonValue::object({})) {
     return {method, std::move(params), JsonValue()};
 }
 
 /// Helper: parse response.
-static JsonValue parseResponse(const std::string &resp)
-{
+static JsonValue parseResponse(const std::string &resp) {
     EXPECT_TRUE(!resp.empty());
     return JsonValue::parse(resp);
 }
@@ -76,8 +71,7 @@ static const char *kValidSource =
 
 // ===== Lifecycle =====
 
-TEST(LspHandler, Initialize)
-{
+TEST(LspHandler, Initialize) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -95,8 +89,7 @@ TEST(LspHandler, Initialize)
     EXPECT_EQ(info["name"].asString(), "zia-server");
 }
 
-TEST(LspHandler, InitializedNotification)
-{
+TEST(LspHandler, InitializedNotification) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -105,8 +98,7 @@ TEST(LspHandler, InitializedNotification)
     EXPECT_TRUE(resp.empty());
 }
 
-TEST(LspHandler, Shutdown)
-{
+TEST(LspHandler, Shutdown) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -117,8 +109,7 @@ TEST(LspHandler, Shutdown)
     EXPECT_TRUE(resp["result"].isNull());
 }
 
-TEST(LspHandler, UnknownMethod)
-{
+TEST(LspHandler, UnknownMethod) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -129,8 +120,7 @@ TEST(LspHandler, UnknownMethod)
 
 // ===== Document Sync =====
 
-TEST(LspHandler, DidOpenPublishesDiagnostics)
-{
+TEST(LspHandler, DidOpenPublishesDiagnostics) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -153,8 +143,7 @@ TEST(LspHandler, DidOpenPublishesDiagnostics)
     EXPECT_EQ(diag["params"]["uri"].asString(), "file:///test.zia");
 }
 
-TEST(LspHandler, DidChangeUpdatesDiagnostics)
-{
+TEST(LspHandler, DidChangeUpdatesDiagnostics) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -194,8 +183,7 @@ TEST(LspHandler, DidChangeUpdatesDiagnostics)
     EXPECT_TRUE(diag["params"]["diagnostics"].size() > 0u);
 }
 
-TEST(LspHandler, DidCloseClearsDiagnostics)
-{
+TEST(LspHandler, DidCloseClearsDiagnostics) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -227,8 +215,7 @@ TEST(LspHandler, DidCloseClearsDiagnostics)
 
 // ===== Completion =====
 
-TEST(LspHandler, CompletionAfterDot)
-{
+TEST(LspHandler, CompletionAfterDot) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -260,8 +247,7 @@ TEST(LspHandler, CompletionAfterDot)
     EXPECT_TRUE(result.size() > 0u);
 }
 
-TEST(LspHandler, CompletionOnClosedDoc)
-{
+TEST(LspHandler, CompletionOnClosedDoc) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -278,8 +264,7 @@ TEST(LspHandler, CompletionOnClosedDoc)
 
 // ===== Hover =====
 
-TEST(LspHandler, HoverOnClosedDoc)
-{
+TEST(LspHandler, HoverOnClosedDoc) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -294,8 +279,7 @@ TEST(LspHandler, HoverOnClosedDoc)
     EXPECT_TRUE(resp["result"].isNull());
 }
 
-TEST(LspHandler, HoverReturnsMarkdownContent)
-{
+TEST(LspHandler, HoverReturnsMarkdownContent) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -326,8 +310,7 @@ TEST(LspHandler, HoverReturnsMarkdownContent)
     EXPECT_TRUE(contents["value"].asString().find("func start") != std::string::npos);
 }
 
-TEST(LspHandler, HoverOnLocalVariableViaLsp)
-{
+TEST(LspHandler, HoverOnLocalVariableViaLsp) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -358,8 +341,7 @@ TEST(LspHandler, HoverOnLocalVariableViaLsp)
     EXPECT_TRUE(value.find("Integer") != std::string::npos);
 }
 
-TEST(LspHandler, HoverOnWhitespaceReturnsNull)
-{
+TEST(LspHandler, HoverOnWhitespaceReturnsNull) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -389,8 +371,7 @@ TEST(LspHandler, HoverOnWhitespaceReturnsNull)
 
 // ===== Document Symbol =====
 
-TEST(LspHandler, DocumentSymbolsListsFunctions)
-{
+TEST(LspHandler, DocumentSymbolsListsFunctions) {
     CompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
@@ -416,8 +397,7 @@ TEST(LspHandler, DocumentSymbolsListsFunctions)
     auto result = resp["result"];
     // Should contain at least "start" function
     bool foundStart = false;
-    for (size_t i = 0; i < result.size(); ++i)
-    {
+    for (size_t i = 0; i < result.size(); ++i) {
         if (result.at(i)["name"].asString() == "start")
             foundStart = true;
     }
@@ -426,32 +406,27 @@ TEST(LspHandler, DocumentSymbolsListsFunctions)
 
 // ===== DocumentStore =====
 
-TEST(DocumentStore, UriToPathUnix)
-{
+TEST(DocumentStore, UriToPathUnix) {
     auto path = DocumentStore::uriToPath("file:///Users/test/file.zia");
     EXPECT_EQ(path, "/Users/test/file.zia");
 }
 
-TEST(DocumentStore, UriToPathWindowsDrive)
-{
+TEST(DocumentStore, UriToPathWindowsDrive) {
     auto path = DocumentStore::uriToPath("file:///C:/Users/test/file.zia");
     EXPECT_EQ(path, "C:/Users/test/file.zia");
 }
 
-TEST(DocumentStore, UriToPathPercentDecode)
-{
+TEST(DocumentStore, UriToPathPercentDecode) {
     auto path = DocumentStore::uriToPath("file:///path/my%20file.zia");
     EXPECT_EQ(path, "/path/my file.zia");
 }
 
-TEST(DocumentStore, UriToPathPlainPath)
-{
+TEST(DocumentStore, UriToPathPlainPath) {
     auto path = DocumentStore::uriToPath("/just/a/path.zia");
     EXPECT_EQ(path, "/just/a/path.zia");
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -33,15 +33,13 @@
 #include "tui/style/theme.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 
 /// @brief Incremental search command palette for discovering and executing commands.
 /// @details Displays a text input field and a filtered list of registered commands.
 ///          As the user types, commands are filtered by name. Pressing Enter executes
 ///          the selected command. Designed to be shown as a modal overlay.
-class CommandPalette : public ui::Widget
-{
+class CommandPalette : public ui::Widget {
   public:
     /// @brief Construct a command palette bound to a keymap and theme.
     /// @param km Keymap containing registered commands to search. Must outlive the widget.

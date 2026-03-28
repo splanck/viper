@@ -51,16 +51,12 @@
 /// @details Uses a tanh-like curve above the threshold to gently limit peaks.
 /// @param sample Input sample (may exceed 16-bit range).
 /// @return Clipped sample in 16-bit range.
-static inline int16_t soft_clip(int32_t sample)
-{
-    if (sample > VAUD_CLIP_THRESHOLD)
-    {
+static inline int16_t soft_clip(int32_t sample) {
+    if (sample > VAUD_CLIP_THRESHOLD) {
         float excess = (float)(sample - VAUD_CLIP_THRESHOLD);
         float compressed = VAUD_CLIP_THRESHOLD + excess * VAUD_CLIP_KNEE;
         sample = (int32_t)compressed;
-    }
-    else if (sample < -VAUD_CLIP_THRESHOLD)
-    {
+    } else if (sample < -VAUD_CLIP_THRESHOLD) {
         float excess = (float)(-sample - VAUD_CLIP_THRESHOLD);
         float compressed = -(VAUD_CLIP_THRESHOLD + excess * VAUD_CLIP_KNEE);
         sample = (int32_t)compressed;
@@ -78,8 +74,7 @@ static inline int16_t soft_clip(int32_t sample)
 /// @param pan Pan value (-1.0 = left, 0.0 = center, 1.0 = right).
 /// @param left_gain Output: left channel gain.
 /// @param right_gain Output: right channel gain.
-static void calculate_pan_gains(float pan, float *left_gain, float *right_gain)
-{
+static void calculate_pan_gains(float pan, float *left_gain, float *right_gain) {
     /* Constant power panning law */
     if (pan < -1.0f)
         pan = -1.0f;
@@ -104,8 +99,7 @@ static void calculate_pan_gains(float pan, float *left_gain, float *right_gain)
 /// @param frames Number of frames to mix.
 /// @param master_vol Master volume multiplier.
 /// @return 1 if voice is still active, 0 if finished.
-static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float master_vol)
-{
+static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float master_vol) {
     if (!voice || voice->state != VAUD_VOICE_PLAYING || !voice->sound)
         return 0;
 
@@ -125,16 +119,11 @@ static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float m
     int32_t left_gain_fp = (int32_t)(left_gain * 256.0f);
     int32_t right_gain_fp = (int32_t)(right_gain * 256.0f);
 
-    for (int32_t i = 0; i < frames; i++)
-    {
-        if (pos >= sound_frames)
-        {
-            if (voice->loop)
-            {
+    for (int32_t i = 0; i < frames; i++) {
+        if (pos >= sound_frames) {
+            if (voice->loop) {
                 pos = 0;
-            }
-            else
-            {
+            } else {
                 voice->state = VAUD_VOICE_INACTIVE;
                 voice->sound = NULL;
                 voice->position = pos;
@@ -166,8 +155,7 @@ static int mix_voice(vaud_voice *voice, int32_t *output, int32_t frames, float m
 /// @param output Output buffer (stereo interleaved).
 /// @param frames Number of frames to mix.
 /// @param master_vol Master volume multiplier.
-static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float master_vol)
-{
+static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float master_vol) {
     if (!music || music->state != VAUD_MUSIC_PLAYING)
         return;
 
@@ -177,17 +165,14 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
     int32_t frames_remaining = frames;
     int32_t output_offset = 0;
 
-    while (frames_remaining > 0)
-    {
+    while (frames_remaining > 0) {
         /* Check if we need to refill buffer */
-        if (music->buffer_position >= music->buffer_frames[music->current_buffer])
-        {
+        if (music->buffer_position >= music->buffer_frames[music->current_buffer]) {
             /* Move to next buffer */
             int32_t next_buffer = (music->current_buffer + 1) % VAUD_MUSIC_BUFFER_COUNT;
 
             /* Refill current buffer in background (simplified: do it inline for now) */
-            if (music->file)
-            {
+            if (music->file) {
                 int16_t *buf = music->buffers[music->current_buffer];
                 int32_t read = vaud_wav_read_frames(music->file,
                                                     buf,
@@ -195,10 +180,8 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
                                                     music->channels,
                                                     music->bits_per_sample);
 
-                if (read == 0)
-                {
-                    if (music->loop)
-                    {
+                if (read == 0) {
+                    if (music->loop) {
                         /* Seek to beginning of PCM data (C-4: was incorrectly using
                          * music->position which is a frame counter, not a byte offset) */
                         fseek((FILE *)music->file, (long)music->data_offset, SEEK_SET);
@@ -210,8 +193,7 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
                                                     music->bits_per_sample);
                     }
 
-                    if (read == 0)
-                    {
+                    if (read == 0) {
                         music->state = VAUD_MUSIC_STOPPED;
                         return;
                     }
@@ -230,8 +212,7 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
         int32_t to_mix = (frames_remaining < available) ? frames_remaining : available;
 
         int32_t src_offset = music->buffer_position * 2; /* Stereo */
-        for (int32_t i = 0; i < to_mix; i++)
-        {
+        for (int32_t i = 0; i < to_mix; i++) {
             int16_t left = src[src_offset + i * 2];
             int16_t right = src[src_offset + i * 2 + 1];
 
@@ -250,16 +231,14 @@ static void mix_music(vaud_music_t music, int32_t *output, int32_t frames, float
 // Main Mixer Entry Point
 //===----------------------------------------------------------------------===//
 
-void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames)
-{
+void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames) {
     if (!ctx || !output || frames <= 0)
         return;
 
     /* H-1: Use pre-allocated 32-bit accumulator (no malloc in real-time audio callback).
      * ctx->accum_buf holds VAUD_BUFFER_FRAMES * VAUD_CHANNELS int32s; guard against
      * oversized requests that would overflow it. */
-    if (frames > VAUD_BUFFER_FRAMES)
-    {
+    if (frames > VAUD_BUFFER_FRAMES) {
         memset(output, 0, (size_t)(frames * 2 * sizeof(int16_t)));
         return;
     }
@@ -274,16 +253,13 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames)
     float master = ctx->master_volume;
 
     /* Mix all active voices */
-    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++)
-    {
+    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
         mix_voice(&ctx->voices[i], accum, frames, master);
     }
 
     /* Mix active music streams */
-    for (int32_t i = 0; i < ctx->music_count; i++)
-    {
-        if (ctx->active_music[i])
-        {
+    for (int32_t i = 0; i < ctx->music_count; i++) {
+        if (ctx->active_music[i]) {
             mix_music(ctx->active_music[i], accum, frames, master);
         }
     }
@@ -293,8 +269,7 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames)
     vaud_mutex_unlock(&ctx->mutex);
 
     /* Convert to 16-bit with soft clipping */
-    for (int32_t i = 0; i < frames * 2; i++)
-    {
+    for (int32_t i = 0; i < frames * 2; i++) {
         output[i] = soft_clip(accum[i]);
     }
     /* H-1: accum is ctx->accum_buf — no free needed */
@@ -304,8 +279,7 @@ void vaud_mixer_render(vaud_context_t ctx, int16_t *output, int32_t frames)
 // Voice Management
 //===----------------------------------------------------------------------===//
 
-vaud_voice *vaud_alloc_voice(vaud_context_t ctx)
-{
+vaud_voice *vaud_alloc_voice(vaud_context_t ctx) {
     if (!ctx)
         return NULL;
 
@@ -313,26 +287,22 @@ vaud_voice *vaud_alloc_voice(vaud_context_t ctx)
     int64_t oldest_time = ctx->frame_counter + 1;
 
     /* First pass: look for inactive voice */
-    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++)
-    {
-        if (ctx->voices[i].state == VAUD_VOICE_INACTIVE)
-        {
+    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
+        if (ctx->voices[i].state == VAUD_VOICE_INACTIVE) {
             ctx->voices[i].id = ctx->next_voice_id++;
             ctx->voices[i].start_time = ctx->frame_counter;
             return &ctx->voices[i];
         }
 
         /* Track oldest non-looping voice for stealing */
-        if (!ctx->voices[i].loop && ctx->voices[i].start_time < oldest_time)
-        {
+        if (!ctx->voices[i].loop && ctx->voices[i].start_time < oldest_time) {
             oldest = &ctx->voices[i];
             oldest_time = ctx->voices[i].start_time;
         }
     }
 
     /* Second pass: steal oldest non-looping voice */
-    if (oldest)
-    {
+    if (oldest) {
         oldest->state = VAUD_VOICE_INACTIVE;
         oldest->sound = NULL;
         oldest->id = ctx->next_voice_id++;
@@ -341,17 +311,14 @@ vaud_voice *vaud_alloc_voice(vaud_context_t ctx)
     }
 
     /* All voices are looping - steal absolute oldest */
-    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++)
-    {
-        if (ctx->voices[i].start_time < oldest_time)
-        {
+    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
+        if (ctx->voices[i].start_time < oldest_time) {
             oldest = &ctx->voices[i];
             oldest_time = ctx->voices[i].start_time;
         }
     }
 
-    if (oldest)
-    {
+    if (oldest) {
         oldest->state = VAUD_VOICE_INACTIVE;
         oldest->sound = NULL;
         oldest->id = ctx->next_voice_id++;
@@ -362,15 +329,12 @@ vaud_voice *vaud_alloc_voice(vaud_context_t ctx)
     return NULL;
 }
 
-vaud_voice *vaud_find_voice(vaud_context_t ctx, vaud_voice_id id)
-{
+vaud_voice *vaud_find_voice(vaud_context_t ctx, vaud_voice_id id) {
     if (!ctx || id == VAUD_INVALID_VOICE)
         return NULL;
 
-    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++)
-    {
-        if (ctx->voices[i].id == id && ctx->voices[i].state != VAUD_VOICE_INACTIVE)
-        {
+    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
+        if (ctx->voices[i].id == id && ctx->voices[i].state != VAUD_VOICE_INACTIVE) {
             return &ctx->voices[i];
         }
     }

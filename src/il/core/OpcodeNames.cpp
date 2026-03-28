@@ -25,10 +25,8 @@
 
 #include <array>
 
-namespace il::core
-{
-namespace
-{
+namespace il::core {
+namespace {
 constexpr std::array<const char *, kNumOpcodes> kOpcodeNames = {
 #define IL_OPCODE(NAME, MNEMONIC, ...) MNEMONIC,
 #include "il/core/Opcode.def"
@@ -47,8 +45,7 @@ static_assert(kOpcodeNames.size() == kNumOpcodes, "Opcode name table must match 
 /// @param op Opcode enumeration value to translate.
 /// @return Pointer to the null-terminated mnemonic or an empty string when
 ///         @p op is out of range.
-const char *toString(Opcode op)
-{
+const char *toString(Opcode op) {
     const size_t index = static_cast<size_t>(op);
     if (index < kOpcodeNames.size())
         return kOpcodeNames[index];

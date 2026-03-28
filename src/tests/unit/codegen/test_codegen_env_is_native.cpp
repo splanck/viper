@@ -29,8 +29,7 @@
 using namespace viper::tests;
 using namespace viper::tools::ilc;
 
-namespace
-{
+namespace {
 
 constexpr const char kIlSource[] = R"(il 0.2.0
 
@@ -44,8 +43,7 @@ entry:
 }
 )";
 
-il::core::Module parseModule()
-{
+il::core::Module parseModule() {
     std::istringstream iss{kIlSource};
     il::core::Module module;
     auto parseResult = il::io::Parser::parse(iss, module);
@@ -59,8 +57,7 @@ il::core::Module parseModule()
     return module;
 }
 
-bool isArm64Host()
-{
+bool isArm64Host() {
 #if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
     return true;
 #else
@@ -70,16 +67,14 @@ bool isArm64Host()
 
 } // namespace
 
-TEST(EnvironmentIsNative, VmReportsFalse)
-{
+TEST(EnvironmentIsNative, VmReportsFalse) {
     VmFixture fixture;
     il::core::Module module = parseModule();
     const auto result = fixture.run(module);
     EXPECT_EQ(result, 0);
 }
 
-TEST(EnvironmentIsNative, NativeArm64ReportsTrueWhenAvailable)
-{
+TEST(EnvironmentIsNative, NativeArm64ReportsTrueWhenAvailable) {
     if (!isArm64Host())
         VIPER_TEST_SKIP("ARM64 native backend not available on this host");
 
@@ -98,8 +93,7 @@ TEST(EnvironmentIsNative, NativeArm64ReportsTrueWhenAvailable)
     EXPECT_EQ(rc & 0xFF, 1);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

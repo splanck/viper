@@ -22,18 +22,15 @@
 #include <cstdio>
 #include <string>
 
-namespace viper::server
-{
+namespace viper::server {
 
 /// @brief A raw message read from or written to the transport.
-struct RawMessage
-{
+struct RawMessage {
     std::string content; ///< JSON string content
 };
 
 /// @brief Abstract base for reading/writing protocol messages over stdio.
-class Transport
-{
+class Transport {
   public:
     virtual ~Transport() = default;
 
@@ -51,8 +48,7 @@ class Transport
 ///
 /// Each message is a single JSON object on one line, terminated by newline.
 /// Handles both \n and \r\n line endings on read.
-class McpTransport : public Transport
-{
+class McpTransport : public Transport {
   public:
     McpTransport(FILE *in, FILE *out);
     bool readMessage(RawMessage &out) override;
@@ -69,8 +65,7 @@ class McpTransport : public Transport
 ///   Content-Length: <length>\r\n
 ///   \r\n
 ///   <json-body>
-class LspTransport : public Transport
-{
+class LspTransport : public Transport {
   public:
     LspTransport(FILE *in, FILE *out);
     bool readMessage(RawMessage &out) override;

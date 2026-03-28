@@ -27,8 +27,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-static std::string getAllOutput(const std::string &source, const char *filename = "test.bas")
-{
+static std::string getAllOutput(const std::string &source, const char *filename = "test.bas") {
     SourceManager sm;
     uint32_t fileId = sm.addFile(filename);
     Parser parser(source, fileId);
@@ -47,8 +46,7 @@ static std::string getAllOutput(const std::string &source, const char *filename 
     return out;
 }
 
-static void test_duplicate_proc_message()
-{
+static void test_duplicate_proc_message() {
     // Two SUB declarations of the same name inside A.B
     const std::string src = "100 NAMESPACE A\n"
                             "110 NAMESPACE B\n"
@@ -67,8 +65,7 @@ static void test_duplicate_proc_message()
     assert(out.find("again at ") != std::string::npos);
 }
 
-static void test_unknown_qualified_proc()
-{
+static void test_unknown_qualified_proc() {
     // After BUG-082 fix and semantic validation improvements:
     // A.B.F() where A is not a known namespace is parsed as an expression (method call).
     // Semantic analysis now validates the base expression and catches undefined variables.
@@ -78,8 +75,7 @@ static void test_unknown_qualified_proc()
     std::string out = getAllOutput(src);
     // Debug output
     if (out.find("unknown variable") == std::string::npos &&
-        out.find("unknown procedure") == std::string::npos)
-    {
+        out.find("unknown procedure") == std::string::npos) {
         fprintf(stderr, "Actual output:\n%s\n", out.c_str());
     }
     // Accept either the new error message or the old one (for compatibility)
@@ -88,8 +84,7 @@ static void test_unknown_qualified_proc()
     assert(hasNewError || hasOldError);
 }
 
-int main()
-{
+int main() {
     test_duplicate_proc_message();
     test_unknown_qualified_proc();
     return 0;

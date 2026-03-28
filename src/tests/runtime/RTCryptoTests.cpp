@@ -25,26 +25,22 @@
 #include <set>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Create a Bytes object from raw data.
-static void *make_bytes(const uint8_t *data, size_t len)
-{
+static void *make_bytes(const uint8_t *data, size_t len) {
     void *bytes = rt_bytes_new((int64_t)len);
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         rt_bytes_set(bytes, (int64_t)i, data[i]);
     }
     return bytes;
 }
 
 /// @brief Create a Bytes object from a C string.
-static void *make_bytes_str(const char *str)
-{
+static void *make_bytes_str(const char *str) {
     return make_bytes((const uint8_t *)str, strlen(str));
 }
 
@@ -52,8 +48,7 @@ static void *make_bytes_str(const char *str)
 // HMAC-MD5 Tests (RFC 2202)
 //=============================================================================
 
-static void test_hmac_md5()
-{
+static void test_hmac_md5() {
     printf("Testing Hash.HmacMD5:\n");
 
     // Test 1: key = 0x0b repeated 16 times, data = "Hi There"
@@ -103,8 +98,7 @@ static void test_hmac_md5()
 // HMAC-SHA1 Tests (RFC 2202)
 //=============================================================================
 
-static void test_hmac_sha1()
-{
+static void test_hmac_sha1() {
     printf("Testing Hash.HmacSHA1:\n");
 
     // Test 1: key = 0x0b repeated 20 times, data = "Hi There"
@@ -157,8 +151,7 @@ static void test_hmac_sha1()
 // HMAC-SHA256 Tests (RFC 4231)
 //=============================================================================
 
-static void test_hmac_sha256()
-{
+static void test_hmac_sha256() {
     printf("Testing Hash.HmacSHA256:\n");
 
     // Test 1: key = 0x0b repeated 20 times, data = "Hi There"
@@ -227,8 +220,7 @@ static void test_hmac_sha256()
     printf("\n");
 }
 
-static void test_sha256_incremental_matches_one_shot()
-{
+static void test_sha256_incremental_matches_one_shot() {
     printf("Testing SHA-256 incremental API:\n");
 
     static const char payload[] =
@@ -253,8 +245,7 @@ static void test_sha256_incremental_matches_one_shot()
 // PBKDF2-SHA256 Tests (RFC 6070 extended)
 //=============================================================================
 
-static void test_pbkdf2_sha256()
-{
+static void test_pbkdf2_sha256() {
     printf("Testing KeyDerive.Pbkdf2SHA256:\n");
 
     // Test 1: password="password", salt="salt", iterations=1000, dkLen=32
@@ -302,8 +293,7 @@ static void test_pbkdf2_sha256()
 // Secure Random Tests
 //=============================================================================
 
-static void test_crypto_rand()
-{
+static void test_crypto_rand() {
     printf("Testing Rand:\n");
 
     // Test 1: Bytes returns correct length
@@ -318,10 +308,8 @@ static void test_crypto_rand()
         void *bytes2 = rt_crypto_rand_bytes(16);
 
         bool different = false;
-        for (int i = 0; i < 16; i++)
-        {
-            if (rt_bytes_get(bytes1, i) != rt_bytes_get(bytes2, i))
-            {
+        for (int i = 0; i < 16; i++) {
+            if (rt_bytes_get(bytes1, i) != rt_bytes_get(bytes2, i)) {
                 different = true;
                 break;
             }
@@ -332,11 +320,9 @@ static void test_crypto_rand()
     // Test 3: Int returns values in range
     {
         bool all_in_range = true;
-        for (int i = 0; i < 100; i++)
-        {
+        for (int i = 0; i < 100; i++) {
             int64_t val = rt_crypto_rand_int(10, 20);
-            if (val < 10 || val > 20)
-            {
+            if (val < 10 || val > 20) {
                 all_in_range = false;
                 break;
             }
@@ -353,8 +339,7 @@ static void test_crypto_rand()
     // Test 5: Int produces variety (not always same value)
     {
         std::set<int64_t> values;
-        for (int i = 0; i < 50; i++)
-        {
+        for (int i = 0; i < 50; i++) {
             values.insert(rt_crypto_rand_int(0, 100));
         }
         // Should have at least 10 different values in 50 tries
@@ -364,11 +349,9 @@ static void test_crypto_rand()
     // Test 6: Int with negative range
     {
         bool all_in_range = true;
-        for (int i = 0; i < 100; i++)
-        {
+        for (int i = 0; i < 100; i++) {
             int64_t val = rt_crypto_rand_int(-100, -50);
-            if (val < -100 || val > -50)
-            {
+            if (val < -100 || val > -50) {
                 all_in_range = false;
                 break;
             }
@@ -380,8 +363,7 @@ static void test_crypto_rand()
     {
         bool saw_negative = false;
         bool saw_positive = false;
-        for (int i = 0; i < 100; i++)
-        {
+        for (int i = 0; i < 100; i++) {
             int64_t val = rt_crypto_rand_int(-10, 10);
             if (val < 0)
                 saw_negative = true;
@@ -399,8 +381,7 @@ static void test_crypto_rand()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Crypto Tests ===\n\n");
 
     test_hmac_md5();

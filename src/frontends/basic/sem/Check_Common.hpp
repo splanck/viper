@@ -27,15 +27,13 @@
 #include <utility>
 #include <vector>
 
-namespace il::frontends::basic::sem
-{
+namespace il::frontends::basic::sem {
 
 /// @brief Shared context for control-statement semantic checks.
 /// @details Wraps the analyzer state so helpers can manipulate loop and label
 ///          tracking consistently. On destruction the context asserts that loop
 ///          and FOR-variable stacks have been balanced by the checker.
-class ControlCheckContext
-{
+class ControlCheckContext {
   public:
     /// @brief Construct a control-flow check context wrapping the given analyzer.
     /// @details Snapshots the current loop and FOR-variable stack depths so that
@@ -43,15 +41,12 @@ class ControlCheckContext
     /// @param analyzer The semantic analyzer whose loop/label state is being wrapped.
     explicit ControlCheckContext(SemanticAnalyzer &analyzer) noexcept
         : analyzer_(&analyzer), stmtContext_(analyzer), loopDepth_(analyzer.loopStack_.size()),
-          forDepth_(analyzer.forStack_.size())
-    {
-    }
+          forDepth_(analyzer.forStack_.size()) {}
 
     ControlCheckContext(const ControlCheckContext &) = delete;
     ControlCheckContext &operator=(const ControlCheckContext &) = delete;
 
-    ~ControlCheckContext()
-    {
+    ~ControlCheckContext() {
         assert(analyzer_ != nullptr && "context detached from analyzer");
         assert(analyzer_->loopStack_.size() == loopDepth_ &&
                "loop stack unbalanced by control-flow check");
@@ -61,45 +56,39 @@ class ControlCheckContext
 
     /// @brief Access the wrapped semantic analyzer (mutable).
     /// @return Reference to the underlying SemanticAnalyzer instance.
-    [[nodiscard]] SemanticAnalyzer &analyzer() noexcept
-    {
+    [[nodiscard]] SemanticAnalyzer &analyzer() noexcept {
         return *analyzer_;
     }
 
     /// @brief Access the wrapped semantic analyzer (const).
     /// @return Const reference to the underlying SemanticAnalyzer instance.
-    [[nodiscard]] const SemanticAnalyzer &analyzer() const noexcept
-    {
+    [[nodiscard]] const SemanticAnalyzer &analyzer() const noexcept {
         return *analyzer_;
     }
 
     /// @brief Access the control-statement context for structured statement tracking.
     /// @return Reference to the ControlStmtContext used for loop guard management.
-    [[nodiscard]] semantic_analyzer_detail::ControlStmtContext &stmt() noexcept
-    {
+    [[nodiscard]] semantic_analyzer_detail::ControlStmtContext &stmt() noexcept {
         return stmtContext_;
     }
 
     /// @brief Access the control-statement context (const).
     /// @return Const reference to the ControlStmtContext.
-    [[nodiscard]] const semantic_analyzer_detail::ControlStmtContext &stmt() const noexcept
-    {
+    [[nodiscard]] const semantic_analyzer_detail::ControlStmtContext &stmt() const noexcept {
         return stmtContext_;
     }
 
     /// @brief Check whether a line-number label has been defined in the program.
     /// @param label The integer line-number label to look up.
     /// @return True if the label is in the defined-labels set.
-    [[nodiscard]] bool hasKnownLabel(int label) const noexcept
-    {
+    [[nodiscard]] bool hasKnownLabel(int label) const noexcept {
         return analyzer_->labels_.count(label) != 0;
     }
 
     /// @brief Check whether a line-number label has been referenced by GOTO/GOSUB.
     /// @param label The integer line-number label to look up.
     /// @return True if the label has been referenced.
-    [[nodiscard]] bool hasReferencedLabel(int label) const noexcept
-    {
+    [[nodiscard]] bool hasReferencedLabel(int label) const noexcept {
         return analyzer_->labelRefs_.count(label) != 0;
     }
 
@@ -108,8 +97,7 @@ class ControlCheckContext
     ///          procedure scope (if any) so it can track cross-scope label references.
     /// @param label The integer line-number label being referenced.
     /// @return True if this is the first reference to the label (newly inserted).
-    bool insertLabelReference(int label)
-    {
+    bool insertLabelReference(int label) {
         auto insertResult = analyzer_->labelRefs_.insert(label);
         if (insertResult.second && analyzer_->activeProcScope_)
             analyzer_->activeProcScope_->noteLabelRefInserted(label);
@@ -118,38 +106,33 @@ class ControlCheckContext
 
     /// @brief Check whether there is at least one active enclosing loop.
     /// @return True if the loop stack is non-empty.
-    [[nodiscard]] bool hasActiveLoop() const noexcept
-    {
+    [[nodiscard]] bool hasActiveLoop() const noexcept {
         return !analyzer_->loopStack_.empty();
     }
 
     /// @brief Return the kind of the innermost enclosing loop.
     /// @pre hasActiveLoop() must be true.
     /// @return The LoopKind of the top of the loop stack.
-    [[nodiscard]] SemanticAnalyzer::LoopKind currentLoop() const noexcept
-    {
+    [[nodiscard]] SemanticAnalyzer::LoopKind currentLoop() const noexcept {
         assert(hasActiveLoop() && "no active loop available");
         return analyzer_->loopStack_.back();
     }
 
     /// @brief Create a RAII loop guard that pushes While onto the loop stack.
     /// @return A LoopGuard that pops the loop stack on destruction.
-    semantic_analyzer_detail::ControlStmtContext::LoopGuard whileLoopGuard()
-    {
+    semantic_analyzer_detail::ControlStmtContext::LoopGuard whileLoopGuard() {
         return {*analyzer_, SemanticAnalyzer::LoopKind::While};
     }
 
     /// @brief Create a RAII loop guard that pushes Do onto the loop stack.
     /// @return A LoopGuard that pops the loop stack on destruction.
-    semantic_analyzer_detail::ControlStmtContext::LoopGuard doLoopGuard()
-    {
+    semantic_analyzer_detail::ControlStmtContext::LoopGuard doLoopGuard() {
         return {*analyzer_, SemanticAnalyzer::LoopKind::Do};
     }
 
     /// @brief Create a RAII loop guard that pushes For onto the loop stack.
     /// @return A LoopGuard that pops the loop stack on destruction.
-    semantic_analyzer_detail::ControlStmtContext::LoopGuard forLoopGuard()
-    {
+    semantic_analyzer_detail::ControlStmtContext::LoopGuard forLoopGuard() {
         return {*analyzer_, SemanticAnalyzer::LoopKind::For};
     }
 
@@ -157,8 +140,7 @@ class ControlCheckContext
     /// @details Used when entering a SUB declaration body so that EXIT SUB
     ///          can be validated against the enclosing scope kind.
     /// @return A LoopGuard that pops the loop stack on destruction.
-    semantic_analyzer_detail::ControlStmtContext::LoopGuard subLoopGuard()
-    {
+    semantic_analyzer_detail::ControlStmtContext::LoopGuard subLoopGuard() {
         return {*analyzer_, SemanticAnalyzer::LoopKind::Sub};
     }
 
@@ -166,8 +148,7 @@ class ControlCheckContext
     /// @details Used when entering a FUNCTION declaration body so that
     ///          EXIT FUNCTION can be validated against the enclosing scope kind.
     /// @return A LoopGuard that pops the loop stack on destruction.
-    semantic_analyzer_detail::ControlStmtContext::LoopGuard functionLoopGuard()
-    {
+    semantic_analyzer_detail::ControlStmtContext::LoopGuard functionLoopGuard() {
         return {*analyzer_, SemanticAnalyzer::LoopKind::Function};
     }
 
@@ -176,18 +157,15 @@ class ControlCheckContext
     ///          validation sees the correct innermost FOR variable.
     /// @param name The name of the FOR loop counter variable.
     /// @return A ForLoopGuard that pops the variable on destruction.
-    semantic_analyzer_detail::ControlStmtContext::ForLoopGuard trackForVariable(std::string name)
-    {
+    semantic_analyzer_detail::ControlStmtContext::ForLoopGuard trackForVariable(std::string name) {
         return {*analyzer_, std::move(name)};
     }
 
     /// @brief Convert an AST ExitStmt::LoopKind to the analyzer's LoopKind.
     /// @param kind The AST-level loop kind from an EXIT statement.
     /// @return The corresponding SemanticAnalyzer::LoopKind value.
-    SemanticAnalyzer::LoopKind toLoopKind(ExitStmt::LoopKind kind) const noexcept
-    {
-        switch (kind)
-        {
+    SemanticAnalyzer::LoopKind toLoopKind(ExitStmt::LoopKind kind) const noexcept {
+        switch (kind) {
             case ExitStmt::LoopKind::For:
                 return SemanticAnalyzer::LoopKind::For;
             case ExitStmt::LoopKind::While:
@@ -205,10 +183,8 @@ class ControlCheckContext
     /// @brief Return the BASIC keyword name for a loop kind (e.g. "FOR", "WHILE").
     /// @param kind The loop kind to convert to a human-readable name.
     /// @return A null-terminated C string with the BASIC keyword.
-    const char *loopKindName(SemanticAnalyzer::LoopKind kind) const noexcept
-    {
-        switch (kind)
-        {
+    const char *loopKindName(SemanticAnalyzer::LoopKind kind) const noexcept {
+        switch (kind) {
             case SemanticAnalyzer::LoopKind::For:
                 return "FOR";
             case SemanticAnalyzer::LoopKind::While:
@@ -225,102 +201,88 @@ class ControlCheckContext
 
     /// @brief Push a new lexical scope for block-structured statements.
     /// @return A RAII guard that pops the scope on destruction.
-    ScopeTracker::ScopedScope pushScope()
-    {
+    ScopeTracker::ScopedScope pushScope() {
         return ScopeTracker::ScopedScope(analyzer_->scopes_);
     }
 
     /// @brief Check whether the FOR variable tracking stack is non-empty.
     /// @return True if at least one FOR variable is being tracked.
-    [[nodiscard]] bool hasForVariable() const noexcept
-    {
+    [[nodiscard]] bool hasForVariable() const noexcept {
         return !analyzer_->forStack_.empty();
     }
 
     /// @brief Return the name of the innermost FOR loop variable.
     /// @return The variable name, or an empty view if no FOR loop is active.
-    [[nodiscard]] std::string_view currentForVariable() const noexcept
-    {
+    [[nodiscard]] std::string_view currentForVariable() const noexcept {
         if (analyzer_->forStack_.empty())
             return {};
         return analyzer_->forStack_.back();
     }
 
     /// @brief Pop the innermost FOR variable from the tracking stack.
-    void popForVariable()
-    {
+    void popForVariable() {
         analyzer_->popForVariable();
     }
 
     /// @brief Install an error handler targeting the given line label.
     /// @param label The line-number label where ON ERROR GOTO branches.
-    void installErrorHandler(int label)
-    {
+    void installErrorHandler(int label) {
         analyzer_->installErrorHandler(label);
     }
 
     /// @brief Remove the currently active error handler.
-    void clearErrorHandler()
-    {
+    void clearErrorHandler() {
         analyzer_->clearErrorHandler();
     }
 
     /// @brief Check whether an ON ERROR GOTO handler is currently active.
     /// @return True if an error handler has been installed and not yet cleared.
-    [[nodiscard]] bool hasActiveErrorHandler() const noexcept
-    {
+    [[nodiscard]] bool hasActiveErrorHandler() const noexcept {
         return analyzer_->hasActiveErrorHandler();
     }
 
     /// @brief Check whether the analyzer is currently inside a SUB or FUNCTION body.
     /// @return True if a procedure scope is active.
-    [[nodiscard]] bool hasActiveProcScope() const noexcept
-    {
+    [[nodiscard]] bool hasActiveProcScope() const noexcept {
         return analyzer_->activeProcScope_ != nullptr;
     }
 
     /// @brief Check whether a loop of the specified kind exists on the loop stack.
     /// @param kind The loop kind to search for (For, While, Do, Sub, Function).
     /// @return True if the loop stack contains an entry matching kind.
-    [[nodiscard]] bool hasLoopOfKind(SemanticAnalyzer::LoopKind kind) const noexcept
-    {
+    [[nodiscard]] bool hasLoopOfKind(SemanticAnalyzer::LoopKind kind) const noexcept {
         return analyzer_->hasLoopOfKind(kind);
     }
 
     /// @brief Access the diagnostic sink for emitting semantic errors and warnings.
     /// @return Reference to the SemanticDiagnostics instance.
-    [[nodiscard]] SemanticDiagnostics &diagnostics() noexcept
-    {
+    [[nodiscard]] SemanticDiagnostics &diagnostics() noexcept {
         return analyzer_->de;
     }
 
     /// @brief Resolve a loop variable name and register it as a definition.
     /// @param name The variable name to resolve (may be case-folded in place).
-    void resolveLoopVariable(std::string &name)
-    {
+    void resolveLoopVariable(std::string &name) {
         analyzer_->resolveAndTrackSymbol(name, SemanticAnalyzer::SymbolKind::Definition);
     }
 
     /// @brief Evaluate an expression and return its inferred type.
     /// @param expr The expression node to type-check.
     /// @return The inferred semantic type of the expression.
-    SemanticAnalyzer::Type evaluateExpr(Expr &expr)
-    {
+    SemanticAnalyzer::Type evaluateExpr(Expr &expr) {
         return analyzer_->visitExpr(expr);
     }
 
     /// @brief Recursively visit and type-check a statement.
     /// @param stmt The statement node to check.
-    void visitStmt(Stmt &stmt)
-    {
+    void visitStmt(Stmt &stmt) {
         analyzer_->visitStmt(stmt);
     }
 
     /// @brief Record that an implicit type conversion is applied to an expression.
     /// @param expr The expression being implicitly converted.
     /// @param target The target type of the implicit conversion.
-    void markImplicitConversion(const Expr &expr, SemanticAnalyzer::Type target)
-    {
+    void markImplicitConversion(const Expr &expr, SemanticAnalyzer::Type target) {
         analyzer_->markImplicitConversion(expr, target);
     }
 
@@ -336,8 +298,7 @@ class ControlCheckContext
 ///          implicit conversions while exposing diagnostics. visitExpr expects
 ///          mutable nodes, so evaluate() internally casts away constness when
 ///          callers only have const handles.
-class ExprCheckContext
-{
+class ExprCheckContext {
   public:
     /// @brief Construct an expression check context wrapping the given analyzer.
     /// @param analyzer The semantic analyzer providing type tables and diagnostics.
@@ -345,23 +306,20 @@ class ExprCheckContext
 
     /// @brief Access the wrapped semantic analyzer (mutable).
     /// @return Reference to the underlying SemanticAnalyzer instance.
-    [[nodiscard]] SemanticAnalyzer &analyzer() noexcept
-    {
+    [[nodiscard]] SemanticAnalyzer &analyzer() noexcept {
         return *analyzer_;
     }
 
     /// @brief Access the wrapped semantic analyzer (const).
     /// @return Const reference to the underlying SemanticAnalyzer instance.
-    [[nodiscard]] const SemanticAnalyzer &analyzer() const noexcept
-    {
+    [[nodiscard]] const SemanticAnalyzer &analyzer() const noexcept {
         return *analyzer_;
     }
 
     /// @brief Evaluate an expression and return its inferred type.
     /// @param expr The expression node to type-check (mutable for cast insertion).
     /// @return The inferred semantic type of the expression.
-    SemanticAnalyzer::Type evaluate(Expr &expr)
-    {
+    SemanticAnalyzer::Type evaluate(Expr &expr) {
         return analyzer_->visitExpr(expr);
     }
 
@@ -371,23 +329,20 @@ class ExprCheckContext
     ///          convenient entry point when the caller only has a const handle.
     /// @param expr The expression node to type-check.
     /// @return The inferred semantic type of the expression.
-    SemanticAnalyzer::Type evaluate(const Expr &expr)
-    {
+    SemanticAnalyzer::Type evaluate(const Expr &expr) {
         return analyzer_->visitExpr(const_cast<Expr &>(expr));
     }
 
     /// @brief Record that an implicit type conversion is applied to an expression.
     /// @param expr The expression being implicitly converted.
     /// @param target The target type of the implicit conversion.
-    void markImplicitConversion(const Expr &expr, SemanticAnalyzer::Type target)
-    {
+    void markImplicitConversion(const Expr &expr, SemanticAnalyzer::Type target) {
         analyzer_->markImplicitConversion(expr, target);
     }
 
     /// @brief Access the diagnostic sink for emitting semantic errors and warnings.
     /// @return Reference to the SemanticDiagnostics instance.
-    [[nodiscard]] SemanticDiagnostics &diagnostics() noexcept
-    {
+    [[nodiscard]] SemanticDiagnostics &diagnostics() noexcept {
         return analyzer_->de;
     }
 
@@ -397,8 +352,7 @@ class ExprCheckContext
     /// @param expr The call expression whose callee name is resolved.
     /// @param kind Whether to search for Sub or Function signatures.
     /// @return Pointer to the matching ProcSignature, or nullptr if not found.
-    const ProcSignature *resolveCallee(const CallExpr &expr, ProcSignature::Kind kind)
-    {
+    const ProcSignature *resolveCallee(const CallExpr &expr, ProcSignature::Kind kind) {
         return analyzer_->resolveCallee(expr, kind);
     }
 
@@ -409,8 +363,7 @@ class ExprCheckContext
     /// @param sig The resolved procedure signature to check against (may be null).
     /// @return Vector of inferred types for each actual argument.
     std::vector<SemanticAnalyzer::Type> checkCallArgs(const CallExpr &expr,
-                                                      const ProcSignature *sig)
-    {
+                                                      const ProcSignature *sig) {
         return analyzer_->checkCallArgs(expr, sig);
     }
 
@@ -418,8 +371,7 @@ class ExprCheckContext
     /// @param expr The call expression to infer a return type for.
     /// @param sig The resolved procedure signature (may be null for unknown callees).
     /// @return The inferred return type of the call.
-    SemanticAnalyzer::Type inferCallType(const CallExpr &expr, const ProcSignature *sig)
-    {
+    SemanticAnalyzer::Type inferCallType(const CallExpr &expr, const ProcSignature *sig) {
         return analyzer_->inferCallType(expr, sig);
     }
 
@@ -430,47 +382,41 @@ class ExprCheckContext
     /// @brief Resolve a symbol name and record it with the given definition/reference kind.
     /// @param name The symbol name to resolve (may be case-folded in place).
     /// @param kind Whether this is a definition or a reference.
-    void resolveAndTrackSymbol(std::string &name, SemanticAnalyzer::SymbolKind kind)
-    {
+    void resolveAndTrackSymbol(std::string &name, SemanticAnalyzer::SymbolKind kind) {
         analyzer_->resolveAndTrackSymbol(name, kind);
     }
 
     /// @brief Resolve a symbol name and record it as a reference (read-use).
     /// @param name The symbol name to resolve (may be case-folded in place).
-    void resolveAndTrackSymbolRef(std::string &name)
-    {
+    void resolveAndTrackSymbolRef(std::string &name) {
         analyzer_->resolveAndTrackSymbol(name, SemanticAnalyzer::SymbolKind::Reference);
     }
 
     /// @brief Check whether a symbol with the given name has been declared.
     /// @param name The symbol name to look up (case-sensitive after folding).
     /// @return True if the symbol exists in the symbol table.
-    [[nodiscard]] bool hasSymbol(const std::string &name) const
-    {
+    [[nodiscard]] bool hasSymbol(const std::string &name) const {
         return analyzer_->symbols_.count(name) != 0;
     }
 
     /// @brief Check whether a name refers to a declared enum type.
     /// @param name The name to look up in the OOP index enum table.
     /// @return True if the name matches a registered enum.
-    [[nodiscard]] bool isEnumName(const std::string &name) const
-    {
+    [[nodiscard]] bool isEnumName(const std::string &name) const {
         const auto &enums = analyzer_->oopIndex_.enums();
         return enums.find(name) != enums.end();
     }
 
     /// @brief Access the full set of declared symbol names.
     /// @return Const reference to the unordered set of all known symbol names.
-    [[nodiscard]] const std::unordered_set<std::string> &symbols() const noexcept
-    {
+    [[nodiscard]] const std::unordered_set<std::string> &symbols() const noexcept {
         return analyzer_->symbols_;
     }
 
     /// @brief Look up the declared type of a variable by name.
     /// @param name The variable name to look up.
     /// @return The variable's type if found, or std::nullopt if undeclared.
-    [[nodiscard]] std::optional<SemanticAnalyzer::Type> varType(const std::string &name) const
-    {
+    [[nodiscard]] std::optional<SemanticAnalyzer::Type> varType(const std::string &name) const {
         auto it = analyzer_->varTypes_.find(name);
         if (it != analyzer_->varTypes_.end())
             return it->second;
@@ -484,16 +430,14 @@ class ExprCheckContext
     /// @brief Check whether an array with the given name has been declared.
     /// @param name The array name to look up.
     /// @return True if the array exists in the array metadata table.
-    [[nodiscard]] bool hasArray(const std::string &name) const
-    {
+    [[nodiscard]] bool hasArray(const std::string &name) const {
         return analyzer_->arrays_.count(name) != 0;
     }
 
     /// @brief Look up the metadata (dimensions, element type) for a declared array.
     /// @param name The array name to look up.
     /// @return Pointer to the ArrayMetadata if found, or nullptr if undeclared.
-    [[nodiscard]] const ArrayMetadata *arrayMetadata(const std::string &name) const
-    {
+    [[nodiscard]] const ArrayMetadata *arrayMetadata(const std::string &name) const {
         auto it = analyzer_->arrays_.find(name);
         if (it != analyzer_->arrays_.end())
             return &it->second;
@@ -505,8 +449,7 @@ class ExprCheckContext
     ///          used for automatic widening (e.g. Int to Float).
     /// @param expr The expression to wrap with a cast.
     /// @param target The target type for the implicit cast.
-    void insertImplicitCast(Expr &expr, SemanticAnalyzer::Type target)
-    {
+    void insertImplicitCast(Expr &expr, SemanticAnalyzer::Type target) {
         analyzer_->insertImplicitCast(expr, target);
     }
 
@@ -524,8 +467,7 @@ inline void emitTypeMismatch(SemanticDiagnostics &diagnostics,
                              std::string code,
                              il::support::SourceLoc loc,
                              uint32_t length,
-                             std::string message)
-{
+                             std::string message) {
     diagnostics.emit(
         il::support::Severity::Error, std::move(code), loc, length, std::move(message));
 }
@@ -538,8 +480,7 @@ inline void emitTypeMismatch(SemanticDiagnostics &diagnostics,
 /// @param diagId The diagnostic code to use; if empty, no diagnostic is emitted.
 inline void emitOperandTypeMismatch(SemanticDiagnostics &diagnostics,
                                     const BinaryExpr &expr,
-                                    std::string_view diagId)
-{
+                                    std::string_view diagId) {
     if (diagId.empty())
         return;
 
@@ -551,8 +492,7 @@ inline void emitOperandTypeMismatch(SemanticDiagnostics &diagnostics,
 ///          division or modulo operations.
 /// @param diagnostics The diagnostic sink to emit the error into.
 /// @param expr The binary expression with the zero divisor.
-inline void emitDivideByZero(SemanticDiagnostics &diagnostics, const BinaryExpr &expr)
-{
+inline void emitDivideByZero(SemanticDiagnostics &diagnostics, const BinaryExpr &expr) {
     diagnostics.emit(il::support::Severity::Error, "B2002", expr.loc, 1, "divide by zero");
 }
 

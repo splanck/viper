@@ -12,32 +12,27 @@
 
 #include "frontends/zia/Parser.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //===----------------------------------------------------------------------===//
 // Type Parsing
 //===----------------------------------------------------------------------===//
 
-TypePtr Parser::parseType()
-{
-    if (++typeDepth_ > kMaxTypeDepth)
-    {
+TypePtr Parser::parseType() {
+    if (++typeDepth_ > kMaxTypeDepth) {
         --typeDepth_;
         error("type nesting too deep (limit: 256)");
         return nullptr;
     }
 
     TypePtr base = parseBaseType();
-    if (!base)
-    {
+    if (!base) {
         --typeDepth_;
         return nullptr;
     }
 
     // Check for optional suffix ?
-    while (match(TokenKind::Question))
-    {
+    while (match(TokenKind::Question)) {
         base = std::make_unique<OptionalType>(base->loc, std::move(base));
     }
 
@@ -45,11 +40,9 @@ TypePtr Parser::parseType()
     return base;
 }
 
-TypePtr Parser::parseBaseType()
-{
+TypePtr Parser::parseBaseType() {
     // [Type] shorthand for List[Type] — e.g., [Integer] desugars to List[Integer]
-    if (check(TokenKind::LBracket))
-    {
+    if (check(TokenKind::LBracket)) {
         Token lbTok = advance(); // consume '['
         SourceLoc loc = lbTok.loc;
         auto innerType = parseType(); // recurse: [[T]] → List[List[T]]
@@ -63,17 +56,14 @@ TypePtr Parser::parseBaseType()
     }
 
     // Named type (possibly qualified: Module.Type or Module.SubModule.Type)
-    if (check(TokenKind::Identifier))
-    {
+    if (check(TokenKind::Identifier)) {
         Token nameTok = advance();
         SourceLoc loc = nameTok.loc;
         std::string name = nameTok.text;
 
         // Handle qualified type names: Module.Type, Viper.Collections.List, etc.
-        while (match(TokenKind::Dot))
-        {
-            if (!check(TokenKind::Identifier))
-            {
+        while (match(TokenKind::Dot)) {
+            if (!check(TokenKind::Identifier)) {
                 error("expected identifier after '.' in qualified type name");
                 return nullptr;
             }
@@ -83,17 +73,14 @@ TypePtr Parser::parseBaseType()
         }
 
         // Check for fixed-size array (T[N]) or generic parameters (T[Type, ...])
-        if (check(TokenKind::LBracket))
-        {
+        if (check(TokenKind::LBracket)) {
             // Peek past '[' to see if the next token is an integer literal.
             // If so, parse as a fixed-size array type: T[N].
             // Otherwise fall through to the generic type path: T[Type, ...].
-            if (peek(1).kind == TokenKind::IntegerLiteral)
-            {
+            if (peek(1).kind == TokenKind::IntegerLiteral) {
                 advance(); // consume '['
                 int64_t count = std::stoll(peek().text);
-                if (count < 0)
-                {
+                if (count < 0) {
                     error("fixed-size array count must be non-negative");
                     return nullptr;
                 }
@@ -108,8 +95,7 @@ TypePtr Parser::parseBaseType()
             advance(); // consume '['
             std::vector<TypePtr> args;
 
-            do
-            {
+            do {
                 TypePtr arg = parseType();
                 if (!arg)
                     return nullptr;
@@ -127,15 +113,12 @@ TypePtr Parser::parseBaseType()
 
     // Tuple or function type: (A, B) or (A, B) -> C
     Token lparenTok;
-    if (match(TokenKind::LParen, &lparenTok))
-    {
+    if (match(TokenKind::LParen, &lparenTok)) {
         SourceLoc loc = lparenTok.loc;
         std::vector<TypePtr> elements;
 
-        if (!check(TokenKind::RParen))
-        {
-            do
-            {
+        if (!check(TokenKind::RParen)) {
+            do {
                 TypePtr elem = parseType();
                 if (!elem)
                     return nullptr;
@@ -147,8 +130,7 @@ TypePtr Parser::parseBaseType()
             return nullptr;
 
         // Check for function type
-        if (match(TokenKind::Arrow))
-        {
+        if (match(TokenKind::Arrow)) {
             TypePtr returnType = parseType();
             if (!returnType)
                 return nullptr;

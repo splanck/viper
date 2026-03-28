@@ -36,11 +36,9 @@
 #include <cassert>
 #include <string>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
-namespace
-{
+namespace {
 
 constexpr PhysReg kScratchGPR = PhysReg::R11;
 constexpr PhysReg kScratchXMM = PhysReg::XMM15;
@@ -55,16 +53,12 @@ constexpr PhysReg kScratchXMM = PhysReg::XMM15;
 /// @param instr Instruction whose operands are inspected.
 /// @param vreg Virtual register identifier associated with the SSA value.
 /// @return True when the instruction writes @p vreg as a boolean result.
-[[nodiscard]] bool isBoolProducer(const MInstr &instr, uint16_t vreg)
-{
-    if (instr.operands.empty())
-    {
+[[nodiscard]] bool isBoolProducer(const MInstr &instr, uint16_t vreg) {
+    if (instr.operands.empty()) {
         return false;
     }
-    if (const auto *reg = std::get_if<OpReg>(&instr.operands.front()); reg)
-    {
-        if (!reg->isPhys && reg->idOrPhys == vreg)
-        {
+    if (const auto *reg = std::get_if<OpReg>(&instr.operands.front()); reg) {
+        if (!reg->isPhys && reg->idOrPhys == vreg) {
             return instr.opcode == MOpcode::SETcc;
         }
     }
@@ -84,26 +78,19 @@ constexpr PhysReg kScratchXMM = PhysReg::XMM15;
 ///        of the block.
 /// @param vreg Virtual register identifier being classified.
 /// @return True when @p vreg is produced by a recognised boolean pattern.
-[[nodiscard]] bool isI1Value(const MBasicBlock &block, std::size_t searchLimit, uint16_t vreg)
-{
-    if (searchLimit > block.instructions.size())
-    {
+[[nodiscard]] bool isI1Value(const MBasicBlock &block, std::size_t searchLimit, uint16_t vreg) {
+    if (searchLimit > block.instructions.size()) {
         searchLimit = block.instructions.size();
     }
-    while (searchLimit > 0)
-    {
+    while (searchLimit > 0) {
         --searchLimit;
         const auto &instr = block.instructions[searchLimit];
-        if (isBoolProducer(instr, vreg))
-        {
+        if (isBoolProducer(instr, vreg)) {
             return true;
         }
-        if (!instr.operands.empty())
-        {
-            if (const auto *reg = std::get_if<OpReg>(&instr.operands.front()); reg)
-            {
-                if (!reg->isPhys && reg->idOrPhys == vreg)
-                {
+        if (!instr.operands.empty()) {
+            if (const auto *reg = std::get_if<OpReg>(&instr.operands.front()); reg) {
+                if (!reg->isPhys && reg->idOrPhys == vreg) {
                     return false;
                 }
             }
@@ -120,8 +107,7 @@ constexpr PhysReg kScratchXMM = PhysReg::XMM15;
 ///
 /// @param offset Byte offset from the stack pointer where the slot begins.
 /// @return Memory operand pointing at the requested stack slot.
-[[nodiscard]] Operand makeStackSlot(int32_t offset)
-{
+[[nodiscard]] Operand makeStackSlot(int32_t offset) {
     return makeMemOperand(makePhysBase(PhysReg::RSP), offset);
 }
 
@@ -147,15 +133,13 @@ void lowerCall(MBasicBlock &block,
                std::size_t insertIdx,
                const CallLoweringPlan &plan,
                const TargetInfo &target,
-               FrameInfo &frame)
-{
+               FrameInfo &frame) {
     assert(insertIdx <= block.instructions.size() && "insert index out of range");
 
     auto insertIt = block.instructions.begin();
     std::advance(insertIt, static_cast<std::ptrdiff_t>(insertIdx));
 
-    auto insertInstr = [&](MInstr instr)
-    {
+    auto insertInstr = [&](MInstr instr) {
         insertIt = block.instructions.insert(insertIt, std::move(instr));
         ++insertIt;
     };
@@ -168,31 +152,22 @@ void lowerCall(MBasicBlock &block,
     std::size_t preGprUsed = 0;
     std::size_t preXmmUsed = 0;
     std::size_t preStackBytes = target.shadowSpace; // Windows requires 32-byte shadow space
-    for (const auto &argScan : plan.args)
-    {
-        if (argScan.kind == CallArg::GPR)
-        {
-            if (preGprUsed < target.maxGPRArgs)
-            {
+    for (const auto &argScan : plan.args) {
+        if (argScan.kind == CallArg::GPR) {
+            if (preGprUsed < target.maxGPRArgs) {
                 ++preGprUsed;
                 if (isWin64)
                     ++preXmmUsed;
-            }
-            else
-            {
+            } else {
                 preStackBytes += kSlotSizeBytes;
             }
-        }
-        else // XMM
+        } else // XMM
         {
-            if (preXmmUsed < target.maxFPArgs)
-            {
+            if (preXmmUsed < target.maxFPArgs) {
                 ++preXmmUsed;
                 if (isWin64)
                     ++preGprUsed;
-            }
-            else
-            {
+            } else {
                 preStackBytes += kSlotSizeBytes;
             }
         }
@@ -203,8 +178,7 @@ void lowerCall(MBasicBlock &block,
     // padding subtraction before writing stack slots and restoring it after the
     // call. The padding accounts for the return address pushed by CALL.
     const int32_t padBytes = static_cast<int32_t>((16 - (preStackBytes % 16)) % 16);
-    if (padBytes != 0)
-    {
+    if (padBytes != 0) {
         insertInstr(MInstr::make(MOpcode::ADDri,
                                  {makePhysOperand(RegClass::GPR, PhysReg::RSP),
                                   makeImmOperand(-static_cast<int64_t>(padBytes))}));
@@ -220,78 +194,59 @@ void lowerCall(MBasicBlock &block,
     std::size_t stackBytes = target.shadowSpace;
 
     // Pass 1: Handle all vreg (non-immediate) arguments first
-    for (const auto &arg : plan.args)
-    {
+    for (const auto &arg : plan.args) {
         const auto currentIdx =
             static_cast<std::size_t>(std::distance(block.instructions.begin(), insertIt));
 
-        if (arg.kind == CallArg::GPR)
-        {
-            if (gprUsed < target.maxGPRArgs)
-            {
+        if (arg.kind == CallArg::GPR) {
+            if (gprUsed < target.maxGPRArgs) {
                 const PhysReg destReg = target.intArgOrder[gprUsed++];
                 if (isWin64)
                     xmmUsed++; // Win64: consume unified position slot
-                if (!arg.isImm)
-                {
+                if (!arg.isImm) {
                     const Operand src = makeVRegOperand(RegClass::GPR, arg.vreg);
                     // Route through scratch register to avoid conflicts
                     const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
-                    if (isI1Value(block, currentIdx, arg.vreg))
-                    {
+                    if (isI1Value(block, currentIdx, arg.vreg)) {
                         insertInstr(MInstr::make(MOpcode::MOVZXrr32, {scratch, src}));
-                    }
-                    else
-                    {
+                    } else {
                         insertInstr(MInstr::make(MOpcode::MOVrr, {scratch, src}));
                     }
                     insertInstr(MInstr::make(MOpcode::MOVrr,
                                              {makePhysOperand(RegClass::GPR, destReg), scratch}));
                 }
-            }
-            else
-            {
+            } else {
                 const auto slotOffset = static_cast<int32_t>(stackBytes);
                 stackBytes += kSlotSizeBytes;
-                if (!arg.isImm)
-                {
+                if (!arg.isImm) {
                     const Operand dest = makeStackSlot(slotOffset);
                     const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
-                    if (isI1Value(block, currentIdx, arg.vreg))
-                    {
+                    if (isI1Value(block, currentIdx, arg.vreg)) {
                         insertInstr(
                             MInstr::make(MOpcode::MOVZXrr32,
                                          {scratch, makeVRegOperand(RegClass::GPR, arg.vreg)}));
-                    }
-                    else
-                    {
+                    } else {
                         insertInstr(MInstr::make(
                             MOpcode::MOVrr, {scratch, makeVRegOperand(RegClass::GPR, arg.vreg)}));
                     }
                     insertInstr(MInstr::make(MOpcode::MOVrm, {dest, scratch}));
                 }
             }
-        }
-        else // XMM
+        } else // XMM
         {
-            if (xmmUsed < target.maxFPArgs)
-            {
+            if (xmmUsed < target.maxFPArgs) {
                 const PhysReg destReg = target.f64ArgOrder[xmmUsed++];
                 if (isWin64)
                     gprUsed++; // Win64: consume unified position slot
-                if (!arg.isImm)
-                {
+                if (!arg.isImm) {
                     insertInstr(MInstr::make(MOpcode::MOVSDrr,
                                              {makePhysOperand(RegClass::XMM, destReg),
                                               makeVRegOperand(RegClass::XMM, arg.vreg)}));
                 }
-            }
-            else
-            {
+            } else {
                 const auto slotOffset = static_cast<int32_t>(stackBytes);
                 stackBytes += kSlotSizeBytes;
-                if (!arg.isImm)
-                {
+                if (!arg.isImm) {
                     const Operand dest = makeStackSlot(slotOffset);
                     // For XMM vreg stack args, use scratch XMM then store
                     const Operand scratchXmm = makePhysOperand(RegClass::XMM, kScratchXMM);
@@ -307,57 +262,44 @@ void lowerCall(MBasicBlock &block,
     gprUsed = 0;
     xmmUsed = 0;
     stackBytes = target.shadowSpace;
-    for (const auto &arg : plan.args)
-    {
-        if (arg.kind == CallArg::GPR)
-        {
-            if (gprUsed < target.maxGPRArgs)
-            {
+    for (const auto &arg : plan.args) {
+        if (arg.kind == CallArg::GPR) {
+            if (gprUsed < target.maxGPRArgs) {
                 const PhysReg destReg = target.intArgOrder[gprUsed++];
                 if (isWin64)
                     xmmUsed++; // Win64: consume unified position slot
-                if (arg.isImm)
-                {
+                if (arg.isImm) {
                     insertInstr(MInstr::make(
                         MOpcode::MOVri,
                         {makePhysOperand(RegClass::GPR, destReg), makeImmOperand(arg.imm)}));
                 }
-            }
-            else
-            {
+            } else {
                 const auto slotOffset = static_cast<int32_t>(stackBytes);
                 stackBytes += kSlotSizeBytes;
-                if (arg.isImm)
-                {
+                if (arg.isImm) {
                     const Operand dest = makeStackSlot(slotOffset);
                     const Operand scratch = makePhysOperand(RegClass::GPR, kScratchGPR);
                     insertInstr(MInstr::make(MOpcode::MOVri, {scratch, makeImmOperand(arg.imm)}));
                     insertInstr(MInstr::make(MOpcode::MOVrm, {dest, scratch}));
                 }
             }
-        }
-        else // XMM
+        } else // XMM
         {
-            if (xmmUsed < target.maxFPArgs)
-            {
+            if (xmmUsed < target.maxFPArgs) {
                 const PhysReg destReg = target.f64ArgOrder[xmmUsed++];
                 if (isWin64)
                     gprUsed++; // Win64: consume unified position slot
-                if (arg.isImm)
-                {
+                if (arg.isImm) {
                     const Operand scratchGpr = makePhysOperand(RegClass::GPR, kScratchGPR);
                     insertInstr(
                         MInstr::make(MOpcode::MOVri, {scratchGpr, makeImmOperand(arg.imm)}));
                     insertInstr(MInstr::make(
                         MOpcode::MOVQrx, {makePhysOperand(RegClass::XMM, destReg), scratchGpr}));
                 }
-            }
-            else
-            {
+            } else {
                 const auto slotOffset = static_cast<int32_t>(stackBytes);
                 stackBytes += kSlotSizeBytes;
-                if (arg.isImm)
-                {
+                if (arg.isImm) {
                     const Operand dest = makeStackSlot(slotOffset);
                     const Operand scratchGpr = makePhysOperand(RegClass::GPR, kScratchGPR);
                     const Operand scratchXmm = makePhysOperand(RegClass::XMM, kScratchXMM);
@@ -375,8 +317,7 @@ void lowerCall(MBasicBlock &block,
 
     // SysV AMD64 varargs: %al must carry the number of XMM registers used.
     // Windows x64 does not require this - varargs just use the standard integer registers.
-    if (plan.isVarArg && target.shadowSpace == 0)
-    {
+    if (plan.isVarArg && target.shadowSpace == 0) {
         const Operand rax = makePhysOperand(RegClass::GPR, PhysReg::RAX);
         insertInstr(
             MInstr::make(MOpcode::MOVri, {rax, makeImmOperand(static_cast<int64_t>(xmmUsed))}));
@@ -387,16 +328,13 @@ void lowerCall(MBasicBlock &block,
 
     // If we inserted dynamic padding earlier, restore %rsp immediately after
     // the CALL. Advance insertion point past the CALL placeholder and emit ADD.
-    if (padBytes != 0)
-    {
+    if (padBytes != 0) {
         // Find the CALL at or after the current insertion position.
         auto seekIt = insertIt;
-        while (seekIt != block.instructions.end() && seekIt->opcode != MOpcode::CALL)
-        {
+        while (seekIt != block.instructions.end() && seekIt->opcode != MOpcode::CALL) {
             ++seekIt;
         }
-        if (seekIt != block.instructions.end())
-        {
+        if (seekIt != block.instructions.end()) {
             ++seekIt; // position after CALL
             seekIt = block.instructions.insert(
                 seekIt,

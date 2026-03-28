@@ -28,15 +28,12 @@
 #include <limits>
 #include <vector>
 
-namespace viper
-{
-namespace bytecode
-{
+namespace viper {
+namespace bytecode {
 
 #if defined(__GNUC__) || defined(__clang__)
 
-void BytecodeVM::runThreaded()
-{
+void BytecodeVM::runThreaded() {
     // Dispatch table for computed goto
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -192,12 +189,9 @@ void BytecodeVM::runThreaded()
 
     // Fill uninitialized entries with default handler (once only)
     static bool tableInitialized = false;
-    if (!tableInitialized)
-    {
-        for (int i = 0; i < 256; i++)
-        {
-            if (dispatchTable[i] == nullptr)
-            {
+    if (!tableInitialized) {
+        for (int i = 0; i < 256; i++) {
+            if (dispatchTable[i] == nullptr) {
                 dispatchTable[i] = &&L_DEFAULT;
             }
         }
@@ -215,23 +209,20 @@ void BytecodeVM::runThreaded()
     uint32_t instr;
 
 #define DISPATCH()                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         instr = code[pc++];                                                                        \
         ++instrCount_;                                                                             \
         goto *dispatchTable[instr & 0xFF];                                                         \
     } while (0)
 
 #define SYNC_STATE()                                                                               \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         fp_->pc = pc;                                                                              \
         sp_ = sp;                                                                                  \
     } while (0)
 
 #define RELOAD_STATE()                                                                             \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         code = fp_->func->code.data();                                                             \
         pc = fp_->pc;                                                                              \
         sp = sp_;                                                                                  \
@@ -263,16 +254,14 @@ L_POP2:
     sp -= 2;
     DISPATCH();
 
-L_SWAP:
-{
+L_SWAP: {
     BCSlot tmp = sp[-1];
     sp[-1] = sp[-2];
     sp[-2] = tmp;
     DISPATCH();
 }
 
-L_ROT3:
-{
+L_ROT3: {
     BCSlot tmp = sp[-1];
     sp[-1] = sp[-2];
     sp[-2] = sp[-3];
@@ -281,15 +270,13 @@ L_ROT3:
 }
 
     // Local Variable Operations
-L_LOAD_LOCAL:
-{
+L_LOAD_LOCAL: {
     uint8_t slot = decodeArg8_0(instr);
     *sp++ = locals[slot];
     DISPATCH();
 }
 
-L_STORE_LOCAL:
-{
+L_STORE_LOCAL: {
     uint8_t slot = decodeArg8_0(instr);
     locals[slot] = *--sp;
     DISPATCH();
@@ -332,8 +319,7 @@ L_LOAD_F64:
     sp++;
     DISPATCH();
 
-L_LOAD_STR:
-{
+L_LOAD_STR: {
     uint16_t idx = decodeArg16(instr);
     // Use the cached rt_string object (not raw C string!)
     // The runtime expects rt_string (pointer to rt_string_impl struct)
@@ -357,27 +343,21 @@ L_LOAD_ONE:
     sp++;
     DISPATCH();
 
-L_LOAD_GLOBAL:
-{
+L_LOAD_GLOBAL: {
     uint16_t gIdx = decodeArg16(instr);
-    if (gIdx < globals_.size())
-    {
+    if (gIdx < globals_.size()) {
         *sp = globals_[gIdx];
-    }
-    else
-    {
+    } else {
         sp->i64 = 0;
     }
     sp++;
     DISPATCH();
 }
 
-L_STORE_GLOBAL:
-{
+L_STORE_GLOBAL: {
     sp--;
     uint16_t gIdx = decodeArg16(instr);
-    if (gIdx < globals_.size())
-    {
+    if (gIdx < globals_.size()) {
         globals_[gIdx] = *sp;
     }
     DISPATCH();
@@ -425,15 +405,13 @@ L_NEG_I64:
     sp[-1].i64 = -sp[-1].i64;
     DISPATCH();
 
-L_ADD_I64_OVF:
-{
+L_ADD_I64_OVF: {
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     int64_t a = sp[-2].i64, b = sp[-1].i64;
     int64_t result = a + b;
     bool overflow = false;
-    switch (targetType)
-    {
+    switch (targetType) {
         case 1: // I16
             overflow = (result < INT16_MIN || result > INT16_MAX);
             break;
@@ -444,8 +422,7 @@ L_ADD_I64_OVF:
             overflow = addOverflow(a, b, result);
             break;
     }
-    if (overflow)
-    {
+    if (overflow) {
         SYNC_STATE();
         trap(TrapKind::Overflow, "Overflow: integer overflow in add");
         return;
@@ -455,15 +432,13 @@ L_ADD_I64_OVF:
     DISPATCH();
 }
 
-L_SUB_I64_OVF:
-{
+L_SUB_I64_OVF: {
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     int64_t a = sp[-2].i64, b = sp[-1].i64;
     int64_t result = a - b;
     bool overflow = false;
-    switch (targetType)
-    {
+    switch (targetType) {
         case 1: // I16
             overflow = (result < INT16_MIN || result > INT16_MAX);
             break;
@@ -474,8 +449,7 @@ L_SUB_I64_OVF:
             overflow = subOverflow(a, b, result);
             break;
     }
-    if (overflow)
-    {
+    if (overflow) {
         SYNC_STATE();
         trap(TrapKind::Overflow, "Overflow: integer overflow in sub");
         return;
@@ -485,15 +459,13 @@ L_SUB_I64_OVF:
     DISPATCH();
 }
 
-L_MUL_I64_OVF:
-{
+L_MUL_I64_OVF: {
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     int64_t a = sp[-2].i64, b = sp[-1].i64;
     int64_t result = a * b;
     bool overflow = false;
-    switch (targetType)
-    {
+    switch (targetType) {
         case 1: // I16
             overflow = (result < INT16_MIN || result > INT16_MAX);
             break;
@@ -504,8 +476,7 @@ L_MUL_I64_OVF:
             overflow = mulOverflow(a, b, result);
             break;
     }
-    if (overflow)
-    {
+    if (overflow) {
         SYNC_STATE();
         trap(TrapKind::Overflow, "Overflow: integer overflow in mul");
         return;
@@ -516,12 +487,10 @@ L_MUL_I64_OVF:
 }
 
 L_SDIV_I64_CHK:
-    if (sp[-1].i64 == 0)
-    {
+    if (sp[-1].i64 == 0) {
         SYNC_STATE();
         sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivideByZero))
-        {
+        if (!dispatchTrap(TrapKind::DivideByZero)) {
             trap(TrapKind::DivideByZero, "division by zero");
             return;
         }
@@ -533,12 +502,10 @@ L_SDIV_I64_CHK:
     DISPATCH();
 
 L_UDIV_I64_CHK:
-    if (sp[-1].i64 == 0)
-    {
+    if (sp[-1].i64 == 0) {
         SYNC_STATE();
         sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivideByZero))
-        {
+        if (!dispatchTrap(TrapKind::DivideByZero)) {
             trap(TrapKind::DivideByZero, "division by zero");
             return;
         }
@@ -551,12 +518,10 @@ L_UDIV_I64_CHK:
     DISPATCH();
 
 L_SREM_I64_CHK:
-    if (sp[-1].i64 == 0)
-    {
+    if (sp[-1].i64 == 0) {
         SYNC_STATE();
         sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivideByZero))
-        {
+        if (!dispatchTrap(TrapKind::DivideByZero)) {
             trap(TrapKind::DivideByZero, "division by zero");
             return;
         }
@@ -568,12 +533,10 @@ L_SREM_I64_CHK:
     DISPATCH();
 
 L_UREM_I64_CHK:
-    if (sp[-1].i64 == 0)
-    {
+    if (sp[-1].i64 == 0) {
         SYNC_STATE();
         sp_ = sp;
-        if (!dispatchTrap(TrapKind::DivideByZero))
-        {
+        if (!dispatchTrap(TrapKind::DivideByZero)) {
             trap(TrapKind::DivideByZero, "division by zero");
             return;
         }
@@ -585,13 +548,11 @@ L_UREM_I64_CHK:
     sp--;
     DISPATCH();
 
-L_IDX_CHK:
-{
+L_IDX_CHK: {
     int64_t hi = sp[-1].i64;
     int64_t lo = sp[-2].i64;
     int64_t idx = sp[-3].i64;
-    if (idx < lo || idx >= hi)
-    {
+    if (idx < lo || idx >= hi) {
         SYNC_STATE();
         trap(TrapKind::Bounds, "index out of bounds");
         return;
@@ -762,15 +723,13 @@ L_I64_TO_BOOL:
     sp[-1].i64 = (sp[-1].i64 != 0) ? 1 : 0;
     DISPATCH();
 
-L_I64_NARROW_CHK:
-{
+L_I64_NARROW_CHK: {
     // Signed narrow conversion with overflow check
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     int64_t val = sp[-1].i64;
     bool inRange = true;
-    switch (targetType)
-    {
+    switch (targetType) {
         case 0: // I1 (boolean)
             inRange = (val == 0 || val == 1);
             break;
@@ -783,8 +742,7 @@ L_I64_NARROW_CHK:
         default: // I64 - always in range
             break;
     }
-    if (!inRange)
-    {
+    if (!inRange) {
         SYNC_STATE();
         trap(TrapKind::Overflow, "Overflow: signed narrow conversion overflow");
         return;
@@ -793,15 +751,13 @@ L_I64_NARROW_CHK:
     DISPATCH();
 }
 
-L_U64_NARROW_CHK:
-{
+L_U64_NARROW_CHK: {
     // Unsigned narrow conversion with overflow check
     // Target type encoded in arg: 0=I1, 1=I16, 2=I32, 3=I64
     uint8_t targetType = decodeArg8_0(instr);
     uint64_t val = static_cast<uint64_t>(sp[-1].i64);
     bool inRange = true;
-    switch (targetType)
-    {
+    switch (targetType) {
         case 0: // I1 (boolean)
             inRange = (val <= 1);
             break;
@@ -814,8 +770,7 @@ L_U64_NARROW_CHK:
         default: // I64 - always in range
             break;
     }
-    if (!inRange)
-    {
+    if (!inRange) {
         SYNC_STATE();
         trap(TrapKind::Overflow, "Overflow: unsigned narrow conversion overflow");
         return;
@@ -824,13 +779,11 @@ L_U64_NARROW_CHK:
     DISPATCH();
 }
 
-L_F64_TO_I64_CHK:
-{
+L_F64_TO_I64_CHK: {
     // Float to signed int64 with overflow check and round-to-even
     double val = sp[-1].f64;
     // Check for NaN
-    if (val != val)
-    {
+    if (val != val) {
         SYNC_STATE();
         trap(TrapKind::InvalidCast, "InvalidCast: float to int conversion of NaN");
         return;
@@ -841,8 +794,7 @@ L_F64_TO_I64_CHK:
     // Note: comparing doubles, so we use slightly wider bounds
     constexpr double maxI64 = 9223372036854775807.0;  // INT64_MAX as double
     constexpr double minI64 = -9223372036854775808.0; // INT64_MIN as double
-    if (rounded > maxI64 || rounded < minI64)
-    {
+    if (rounded > maxI64 || rounded < minI64) {
         SYNC_STATE();
         trap(TrapKind::InvalidCast, "InvalidCast: float to int conversion overflow");
         return;
@@ -851,13 +803,11 @@ L_F64_TO_I64_CHK:
     DISPATCH();
 }
 
-L_F64_TO_U64_CHK:
-{
+L_F64_TO_U64_CHK: {
     // Float to unsigned int64 with overflow check and round-to-even
     double val = sp[-1].f64;
     // Check for NaN
-    if (val != val)
-    {
+    if (val != val) {
         SYNC_STATE();
         trap(TrapKind::InvalidCast, "InvalidCast: float to uint conversion of NaN");
         return;
@@ -866,8 +816,7 @@ L_F64_TO_U64_CHK:
     double rounded = std::rint(val);
     // Check for out of range (0 to UINT64_MAX)
     constexpr double maxU64 = 18446744073709551615.0; // UINT64_MAX as double
-    if (rounded < 0.0 || rounded > maxU64)
-    {
+    if (rounded < 0.0 || rounded > maxU64) {
         SYNC_STATE();
         trap(TrapKind::InvalidCast, "InvalidCast: float to uint conversion overflow");
         return;
@@ -877,19 +826,16 @@ L_F64_TO_U64_CHK:
 }
 
     // Memory Operations
-L_ALLOCA:
-{
+L_ALLOCA: {
     // Allocate from the separate alloca buffer (not operand stack)
     int64_t size = (--sp)->i64;
     // Align to 8 bytes
     size = (size + 7) & ~7;
 
     // Check for alloca overflow
-    if (allocaTop_ + static_cast<size_t>(size) > allocaBuffer_.size())
-    {
+    if (allocaTop_ + static_cast<size_t>(size) > allocaBuffer_.size()) {
         size_t newSize = allocaBuffer_.size() * 2;
-        if (newSize > 16 * 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize)
-        {
+        if (newSize > 16 * 1024 * 1024 || allocaTop_ + static_cast<size_t>(size) > newSize) {
             trap(TrapKind::StackOverflow, "alloca stack overflow");
             return;
         }
@@ -903,13 +849,11 @@ L_ALLOCA:
     DISPATCH();
 }
 
-L_GEP:
-{
+L_GEP: {
     int64_t offset = (--sp)->i64;
     uint8_t *ptr = static_cast<uint8_t *>(sp[-1].ptr);
     // Null pointer check for debugging field access
-    if (ptr == nullptr && offset != 0)
-    {
+    if (ptr == nullptr && offset != 0) {
         SYNC_STATE();
         fprintf(stderr, "*** NULL POINTER DEREFERENCE ***\n");
         fprintf(stderr,
@@ -921,8 +865,7 @@ L_GEP:
                 fp_->func->name.empty() ? "<unknown>" : fp_->func->name.c_str());
         // Print call stack
         fprintf(stderr, "Call stack:\n");
-        for (size_t i = 0; i < callStack_.size(); i++)
-        {
+        for (size_t i = 0; i < callStack_.size(); i++) {
             const auto &frame = callStack_[i];
             fprintf(stderr,
                     "  [%zu] %s (PC: %u)\n",
@@ -939,36 +882,31 @@ L_GEP:
     DISPATCH();
 }
 
-L_LOAD_I8_MEM:
-{
+L_LOAD_I8_MEM: {
     int8_t val;
     std::memcpy(&val, sp[-1].ptr, sizeof(val));
     sp[-1].i64 = val;
     DISPATCH();
 }
 
-L_LOAD_I16_MEM:
-{
+L_LOAD_I16_MEM: {
     int16_t val;
     std::memcpy(&val, sp[-1].ptr, sizeof(val));
     sp[-1].i64 = val;
     DISPATCH();
 }
 
-L_LOAD_I32_MEM:
-{
+L_LOAD_I32_MEM: {
     int32_t val;
     std::memcpy(&val, sp[-1].ptr, sizeof(val));
     sp[-1].i64 = val;
     DISPATCH();
 }
 
-L_LOAD_I64_MEM:
-{
+L_LOAD_I64_MEM: {
     void *addr = sp[-1].ptr;
     // Null/invalid pointer check for debugging
-    if (addr == nullptr || reinterpret_cast<uintptr_t>(addr) < 4096)
-    {
+    if (addr == nullptr || reinterpret_cast<uintptr_t>(addr) < 4096) {
         SYNC_STATE();
         fprintf(stderr, "*** NULL POINTER READ (i64) ***\n");
         fprintf(stderr, "Attempting to read from address %p\n", addr);
@@ -978,8 +916,7 @@ L_LOAD_I64_MEM:
                 fp_->func->name.empty() ? "<unknown>" : fp_->func->name.c_str());
         // Print call stack
         fprintf(stderr, "Call stack:\n");
-        for (size_t i = 0; i < callStack_.size(); i++)
-        {
+        for (size_t i = 0; i < callStack_.size(); i++) {
             const auto &frame = callStack_[i];
             fprintf(stderr,
                     "  [%zu] %s (PC: %u)\n",
@@ -997,20 +934,17 @@ L_LOAD_I64_MEM:
     DISPATCH();
 }
 
-L_LOAD_F64_MEM:
-{
+L_LOAD_F64_MEM: {
     double val;
     std::memcpy(&val, sp[-1].ptr, sizeof(val));
     sp[-1].f64 = val;
     DISPATCH();
 }
 
-L_LOAD_PTR_MEM:
-{
+L_LOAD_PTR_MEM: {
     void *addr = sp[-1].ptr;
     // Null/invalid pointer check for debugging
-    if (addr == nullptr || reinterpret_cast<uintptr_t>(addr) < 4096)
-    {
+    if (addr == nullptr || reinterpret_cast<uintptr_t>(addr) < 4096) {
         SYNC_STATE();
         fprintf(stderr, "*** NULL POINTER READ (ptr) ***\n");
         fprintf(stderr, "Attempting to read from address %p\n", addr);
@@ -1020,8 +954,7 @@ L_LOAD_PTR_MEM:
                 fp_->func->name.empty() ? "<unknown>" : fp_->func->name.c_str());
         // Print call stack
         fprintf(stderr, "Call stack:\n");
-        for (size_t i = 0; i < callStack_.size(); i++)
-        {
+        for (size_t i = 0; i < callStack_.size(); i++) {
             const auto &frame = callStack_[i];
             fprintf(stderr,
                     "  [%zu] %s (PC: %u)\n",
@@ -1039,48 +972,42 @@ L_LOAD_PTR_MEM:
     DISPATCH();
 }
 
-L_STORE_I8_MEM:
-{
+L_STORE_I8_MEM: {
     int8_t val = static_cast<int8_t>((--sp)->i64);
     void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
 
-L_STORE_I16_MEM:
-{
+L_STORE_I16_MEM: {
     int16_t val = static_cast<int16_t>((--sp)->i64);
     void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
 
-L_STORE_I32_MEM:
-{
+L_STORE_I32_MEM: {
     int32_t val = static_cast<int32_t>((--sp)->i64);
     void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
 
-L_STORE_I64_MEM:
-{
+L_STORE_I64_MEM: {
     int64_t val = (--sp)->i64;
     void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
 
-L_STORE_F64_MEM:
-{
+L_STORE_F64_MEM: {
     double val = (--sp)->f64;
     void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
     DISPATCH();
 }
 
-L_STORE_PTR_MEM:
-{
+L_STORE_PTR_MEM: {
     void *val = (--sp)->ptr;
     void *ptr = (--sp)->ptr;
     std::memcpy(ptr, &val, sizeof(val));
@@ -1093,15 +1020,13 @@ L_JUMP:
     DISPATCH();
 
 L_JUMP_IF_TRUE:
-    if ((--sp)->i64 != 0)
-    {
+    if ((--sp)->i64 != 0) {
         pc += decodeArgI16(instr);
     }
     DISPATCH();
 
 L_JUMP_IF_FALSE:
-    if ((--sp)->i64 == 0)
-    {
+    if ((--sp)->i64 == 0) {
         pc += decodeArgI16(instr);
     }
     DISPATCH();
@@ -1110,8 +1035,7 @@ L_JUMP_LONG:
     pc += decodeArgI24(instr);
     DISPATCH();
 
-L_SWITCH:
-{
+L_SWITCH: {
     // Format: SWITCH [numCases:u32] [defaultOffset:i32] [caseVal:i32 caseOffset:i32]...
     // Pop scrutinee from stack
     int32_t scrutinee = static_cast<int32_t>((--sp)->i64);
@@ -1124,13 +1048,11 @@ L_SWITCH:
 
     // Search for matching case
     bool found = false;
-    for (uint32_t i = 0; i < numCases; ++i)
-    {
+    for (uint32_t i = 0; i < numCases; ++i) {
         int32_t caseVal = static_cast<int32_t>(code[pc++]);
         uint32_t caseOffsetPos = pc++;
 
-        if (caseVal == scrutinee)
-        {
+        if (caseVal == scrutinee) {
             // Found matching case - jump to its target
             // Offset is relative to the offset word position (same as EH_PUSH)
             int32_t caseOffset = static_cast<int32_t>(code[caseOffsetPos]);
@@ -1140,8 +1062,7 @@ L_SWITCH:
         }
     }
 
-    if (!found)
-    {
+    if (!found) {
         // No match - use default offset
         int32_t defaultOffset = static_cast<int32_t>(code[defaultOffsetPos]);
         pc = defaultOffsetPos + defaultOffset;
@@ -1150,11 +1071,9 @@ L_SWITCH:
     DISPATCH();
 }
 
-L_CALL:
-{
+L_CALL: {
     uint16_t funcIdx = decodeArg16(instr);
-    if (funcIdx >= module_->functions.size())
-    {
+    if (funcIdx >= module_->functions.size()) {
         SYNC_STATE();
         trap(TrapKind::RuntimeError, "Invalid function index");
         return;
@@ -1167,13 +1086,11 @@ L_CALL:
     DISPATCH();
 }
 
-L_CALL_NATIVE:
-{
+L_CALL_NATIVE: {
     uint8_t nativeIdx = decodeArg8_0(instr);
     uint8_t argCount = decodeArg8_1(instr);
 
-    if (nativeIdx >= module_->nativeFuncs.size())
-    {
+    if (nativeIdx >= module_->nativeFuncs.size()) {
         SYNC_STATE();
         trap(TrapKind::RuntimeError, "Invalid native function index");
         return;
@@ -1183,8 +1100,7 @@ L_CALL_NATIVE:
     BCSlot *args = sp - argCount;
     BCSlot result{};
 
-    if (runtimeBridgeEnabled_)
-    {
+    if (runtimeBridgeEnabled_) {
         // Use RuntimeBridge for native function calls
         il::vm::Slot *vmArgs = reinterpret_cast<il::vm::Slot *>(args);
         std::vector<il::vm::Slot> argVec(vmArgs, vmArgs + argCount);
@@ -1194,12 +1110,9 @@ L_CALL_NATIVE:
             il::vm::RuntimeBridge::call(ctx, ref.name, argVec, il::support::SourceLoc{}, "", "");
 
         result.i64 = vmResult.i64;
-    }
-    else
-    {
+    } else {
         auto it = nativeHandlers_.find(ref.name);
-        if (it == nativeHandlers_.end())
-        {
+        if (it == nativeHandlers_.end()) {
             SYNC_STATE();
             trap(TrapKind::RuntimeError, "Native function not registered");
             return;
@@ -1208,15 +1121,13 @@ L_CALL_NATIVE:
     }
 
     sp -= argCount;
-    if (ref.hasReturn)
-    {
+    if (ref.hasReturn) {
         *sp++ = result;
     }
     DISPATCH();
 }
 
-L_CALL_INDIRECT:
-{
+L_CALL_INDIRECT: {
     // Indirect call through function pointer
     // Stack layout: [callee][arg0][arg1]...[argN] <- sp
     uint8_t argCount = decodeArg8_0(instr);
@@ -1229,12 +1140,10 @@ L_CALL_INDIRECT:
     constexpr uint64_t kFuncPtrTag = 0x8000000000000000ULL;
     uint64_t calleeVal = static_cast<uint64_t>(callee->i64);
 
-    if (calleeVal & kFuncPtrTag)
-    {
+    if (calleeVal & kFuncPtrTag) {
         // Tagged function index - extract and call
         uint32_t funcIdx = static_cast<uint32_t>(calleeVal & 0x7FFFFFFFULL);
-        if (funcIdx >= module_->functions.size())
-        {
+        if (funcIdx >= module_->functions.size()) {
             SYNC_STATE();
             trap(TrapKind::RuntimeError, "Invalid indirect function index");
             return;
@@ -1242,8 +1151,7 @@ L_CALL_INDIRECT:
 
         // Shift arguments down to overwrite the callee slot
         // This is needed because call() expects args at the top of stack
-        for (int i = 0; i < argCount; ++i)
-        {
+        for (int i = 0; i < argCount; ++i) {
             callee[i] = args[i];
         }
         sp = callee + argCount; // Adjust stack pointer
@@ -1253,16 +1161,12 @@ L_CALL_INDIRECT:
         fp_->pc = pc;
         call(&module_->functions[funcIdx]);
         RELOAD_STATE();
-    }
-    else if (calleeVal == 0)
-    {
+    } else if (calleeVal == 0) {
         // Null function pointer
         SYNC_STATE();
         trap(TrapKind::NullPointer, "Null indirect callee");
         return;
-    }
-    else
-    {
+    } else {
         // Unknown pointer format - try runtime bridge
         // (This handles cases where the function pointer came from runtime)
         SYNC_STATE();
@@ -1272,13 +1176,11 @@ L_CALL_INDIRECT:
     DISPATCH();
 }
 
-L_RETURN:
-{
+L_RETURN: {
     BCSlot result = *--sp;
     SYNC_STATE();
     sp_ = sp;
-    if (!popFrame())
-    {
+    if (!popFrame()) {
         *sp_++ = result;
         state_ = VMState::Halted;
         return;
@@ -1288,12 +1190,10 @@ L_RETURN:
     DISPATCH();
 }
 
-L_RETURN_VOID:
-{
+L_RETURN_VOID: {
     SYNC_STATE();
     sp_ = sp;
-    if (!popFrame())
-    {
+    if (!popFrame()) {
         state_ = VMState::Halted;
         return;
     }
@@ -1305,8 +1205,7 @@ L_RETURN_VOID:
     // Exception Handling
     //==========================================================================
 
-L_EH_PUSH:
-{
+L_EH_PUSH: {
     // Handler offset is in the next code word (raw i32 offset)
     int32_t offset = static_cast<int32_t>(code[pc++]);
     uint32_t handlerPc = static_cast<uint32_t>(static_cast<int32_t>(pc - 1) + offset);
@@ -1316,22 +1215,19 @@ L_EH_PUSH:
     DISPATCH();
 }
 
-L_EH_POP:
-{
+L_EH_POP: {
     SYNC_STATE();
     popExceptionHandler();
     DISPATCH();
 }
 
-L_EH_ENTRY:
-{
+L_EH_ENTRY: {
     // Handler entry marker - no-op
     // The error and resume token are already on the stack from dispatchTrap
     DISPATCH();
 }
 
-L_ERR_GET_KIND:
-{
+L_ERR_GET_KIND: {
     // Get trap kind from error object on stack (or use current trap kind)
     // If there's an operand, it's on the stack; otherwise use current
     // For simplicity, always return the current trap kind
@@ -1340,38 +1236,33 @@ L_ERR_GET_KIND:
     DISPATCH();
 }
 
-L_ERR_GET_CODE:
-{
+L_ERR_GET_CODE: {
     // Get error code - maps trap kind to BASIC error code
     sp->i64 = static_cast<int64_t>(currentErrorCode_);
     sp++;
     DISPATCH();
 }
 
-L_ERR_GET_IP:
-{
+L_ERR_GET_IP: {
     // Get fault instruction pointer - return current PC
     sp->i64 = static_cast<int64_t>(fp_->pc);
     sp++;
     DISPATCH();
 }
 
-L_ERR_GET_LINE:
-{
+L_ERR_GET_LINE: {
     // Get source line - we don't track this in bytecode VM, return -1
     sp->i64 = -1;
     sp++;
     DISPATCH();
 }
 
-L_TRAP:
-{
+L_TRAP: {
     uint8_t kind = decodeArg8_0(instr);
     TrapKind trapKind = static_cast<TrapKind>(kind);
     SYNC_STATE();
     sp_ = sp;
-    if (!dispatchTrap(trapKind))
-    {
+    if (!dispatchTrap(trapKind)) {
         // Include trap kind name in message
         const char *msg =
             (trapKind == TrapKind::Overflow) ? "Overflow: unhandled trap" : "Trap: unhandled trap";
@@ -1382,14 +1273,12 @@ L_TRAP:
     DISPATCH();
 }
 
-L_TRAP_FROM_ERR:
-{
+L_TRAP_FROM_ERR: {
     int64_t errCode = (--sp)->i64;
     TrapKind trapKind = static_cast<TrapKind>(errCode);
     SYNC_STATE();
     sp_ = sp;
-    if (!dispatchTrap(trapKind))
-    {
+    if (!dispatchTrap(trapKind)) {
         trap(trapKind, "Unhandled trap from error");
         return;
     }
@@ -1397,28 +1286,24 @@ L_TRAP_FROM_ERR:
     DISPATCH();
 }
 
-L_RESUME_SAME:
-{
+L_RESUME_SAME: {
     // Resume at fault point - for now just continue
     DISPATCH();
 }
 
-L_RESUME_NEXT:
-{
+L_RESUME_NEXT: {
     // Resume after fault - for now just continue
     DISPATCH();
 }
 
-L_RESUME_LABEL:
-{
+L_RESUME_LABEL: {
     // Target offset is in the next code word (raw i32 offset)
     int32_t offset = static_cast<int32_t>(code[pc++]);
     pc = static_cast<uint32_t>(static_cast<int32_t>(pc - 1) + offset);
     DISPATCH();
 }
 
-L_TRAP_KIND:
-{
+L_TRAP_KIND: {
     // Push the current trap kind as an I64 for typed-catch comparison.
     // Values 0-11 are aligned with il::vm::TrapKind (vm/Trap.hpp).
     // BC-specific kinds (100+) map to RuntimeError(9) as catch-all.

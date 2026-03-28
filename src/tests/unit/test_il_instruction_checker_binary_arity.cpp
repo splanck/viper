@@ -28,8 +28,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-int main()
-{
+int main() {
     using namespace il::core;
     using il::verify::TypeInference;
     using il::verify::verifyInstruction;

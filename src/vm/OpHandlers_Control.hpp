@@ -42,31 +42,27 @@
 #include <variant>
 #include <vector>
 
-namespace il::vm::detail::control
-{
+namespace il::vm::detail::control {
 /// @brief Execution state alias used by control handlers.
 using ExecState = VMAccess::ExecState;
 
 /// @brief Metadata extracted from a switch instruction.
 /// @details Captures distinct case values, their successor indices, and the
 ///          default target index so the VM can build efficient dispatch tables.
-struct SwitchMeta
-{
+struct SwitchMeta {
     const void *key = nullptr;
     std::vector<int32_t> values;
     std::vector<int32_t> succIdx;
     int32_t defaultIdx = -1;
 };
 
-namespace inline_impl
-{
+namespace inline_impl {
 /// @brief Extract switch case metadata from an instruction.
 /// @details Builds a list of distinct case values and their successor indices.
 ///          Duplicate case values are ignored to preserve deterministic behavior.
 /// @param in switch.i32 instruction to analyze.
 /// @return Populated SwitchMeta describing cases and default index.
-inline SwitchMeta collectSwitchMeta(const il::core::Instr &in)
-{
+inline SwitchMeta collectSwitchMeta(const il::core::Instr &in) {
     assert(in.op == il::core::Opcode::SwitchI32 && "expected switch.i32 instruction");
 
     SwitchMeta meta{};
@@ -80,8 +76,7 @@ inline SwitchMeta collectSwitchMeta(const il::core::Instr &in)
     std::unordered_set<int32_t> seenValues;
     seenValues.reserve(caseCount);
 
-    for (size_t idx = 0; idx < caseCount; ++idx)
-    {
+    for (size_t idx = 0; idx < caseCount; ++idx) {
         const il::core::Value &value = switchCaseValue(in, idx);
         assert(value.kind == il::core::Value::Kind::ConstInt &&
                "switch case requires integer literal");
@@ -104,8 +99,7 @@ inline SwitchMeta collectSwitchMeta(const il::core::Instr &in)
 /// @param sel Switch selector value.
 /// @param defIdx Default successor index.
 /// @return Target successor index, or @p defIdx if out of range.
-inline int32_t lookupDense(const viper::vm::DenseJumpTable &table, int32_t sel, int32_t defIdx)
-{
+inline int32_t lookupDense(const viper::vm::DenseJumpTable &table, int32_t sel, int32_t defIdx) {
     const int64_t offset = static_cast<int64_t>(sel) - static_cast<int64_t>(table.base);
     if (offset < 0 || offset >= static_cast<int64_t>(table.targets.size()))
         return defIdx;
@@ -120,8 +114,7 @@ inline int32_t lookupDense(const viper::vm::DenseJumpTable &table, int32_t sel, 
 /// @param sel Switch selector value.
 /// @param defIdx Default successor index.
 /// @return Target successor index, or @p defIdx if no match.
-inline int32_t lookupSorted(const viper::vm::SortedCases &cases, int32_t sel, int32_t defIdx)
-{
+inline int32_t lookupSorted(const viper::vm::SortedCases &cases, int32_t sel, int32_t defIdx) {
     auto it = std::lower_bound(cases.keys.begin(), cases.keys.end(), sel);
     if (it == cases.keys.end() || *it != sel)
         return defIdx;
@@ -136,8 +129,7 @@ inline int32_t lookupSorted(const viper::vm::SortedCases &cases, int32_t sel, in
 /// @param sel Switch selector value.
 /// @param defIdx Default successor index.
 /// @return Target successor index, or @p defIdx if no match.
-inline int32_t lookupHashed(const viper::vm::HashedCases &cases, int32_t sel, int32_t defIdx)
-{
+inline int32_t lookupHashed(const viper::vm::HashedCases &cases, int32_t sel, int32_t defIdx) {
     auto it = cases.map.find(sel);
     return (it == cases.map.end()) ? defIdx : it->second;
 }
@@ -149,45 +141,38 @@ inline int32_t lookupHashed(const viper::vm::HashedCases &cases, int32_t sel, in
 ///          ranges and hashes for sparse large ranges.
 /// @param meta Switch metadata containing case values.
 /// @return Selected backend kind.
-inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta)
-{
+inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta) {
     if (meta.values.empty())
         return viper::vm::SwitchCacheEntry::Sorted;
 
-    struct Tunables
-    {
+    struct Tunables {
         int64_t denseMaxRange = 4096;
         double denseMinDensity = 0.60;
         std::size_t hashMinCases = 64;
         double hashMaxDensity = 0.15;
     };
 
-    static const Tunables t = []
-    {
+    static const Tunables t = [] {
         Tunables tv{};
-        if (const char *s = std::getenv("VIPER_SWITCH_DENSE_MAX_RANGE"))
-        {
+        if (const char *s = std::getenv("VIPER_SWITCH_DENSE_MAX_RANGE")) {
             char *end = nullptr;
             long long v = std::strtoll(s, &end, 10);
             if (end && *end == '\0' && v > 0)
                 tv.denseMaxRange = static_cast<int64_t>(v);
         }
-        if (const char *s = std::getenv("VIPER_SWITCH_DENSE_MIN_DENSITY"))
-        {
+        if (const char *s = std::getenv("VIPER_SWITCH_DENSE_MIN_DENSITY")) {
             char *end = nullptr;
             double v = std::strtod(s, &end);
             if (end && *end == '\0' && v > 0.0 && v <= 1.0)
                 tv.denseMinDensity = v;
         }
-        if (const char *s = std::getenv("VIPER_SWITCH_HASH_MIN_CASES"))
-        {
+        if (const char *s = std::getenv("VIPER_SWITCH_HASH_MIN_CASES")) {
             char *end = nullptr;
             long v = std::strtol(s, &end, 10);
             if (end && *end == '\0' && v >= 0)
                 tv.hashMinCases = static_cast<std::size_t>(v);
         }
-        if (const char *s = std::getenv("VIPER_SWITCH_HASH_MAX_DENSITY"))
-        {
+        if (const char *s = std::getenv("VIPER_SWITCH_HASH_MAX_DENSITY")) {
             char *end = nullptr;
             double v = std::strtod(s, &end);
             if (end && *end == '\0' && v > 0.0 && v <= 1.0)
@@ -214,8 +199,7 @@ inline viper::vm::SwitchCacheEntry::Kind chooseBackend(const SwitchMeta &meta)
 ///          entries with successor indices or -1 for missing values.
 /// @param meta Switch metadata containing case values and successor indices.
 /// @return Dense jump table representation.
-inline viper::vm::DenseJumpTable buildDense(const SwitchMeta &meta)
-{
+inline viper::vm::DenseJumpTable buildDense(const SwitchMeta &meta) {
     viper::vm::DenseJumpTable table;
     if (meta.values.empty())
         return table;
@@ -234,8 +218,7 @@ inline viper::vm::DenseJumpTable buildDense(const SwitchMeta &meta)
 ///          lookup when the selector range is sparse.
 /// @param meta Switch metadata containing case values and successor indices.
 /// @return Hashed case representation.
-inline viper::vm::HashedCases buildHashed(const SwitchMeta &meta)
-{
+inline viper::vm::HashedCases buildHashed(const SwitchMeta &meta) {
     viper::vm::HashedCases hashed;
     hashed.map.reserve(meta.values.size() * 2);
     for (size_t i = 0; i < meta.values.size(); ++i)
@@ -248,18 +231,16 @@ inline viper::vm::HashedCases buildHashed(const SwitchMeta &meta)
 ///          search can be used during dispatch.
 /// @param meta Switch metadata containing case values and successor indices.
 /// @return Sorted case representation.
-inline viper::vm::SortedCases buildSorted(const SwitchMeta &meta)
-{
+inline viper::vm::SortedCases buildSorted(const SwitchMeta &meta) {
     std::vector<size_t> order(meta.values.size());
     std::iota(order.begin(), order.end(), 0);
-    std::sort(order.begin(),
-              order.end(),
-              [&](size_t a, size_t b) { return meta.values[a] < meta.values[b]; });
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        return meta.values[a] < meta.values[b];
+    });
     viper::vm::SortedCases sorted;
     sorted.keys.reserve(order.size());
     sorted.targetIdx.reserve(order.size());
-    for (size_t idx : order)
-    {
+    for (size_t idx : order) {
         sorted.keys.push_back(meta.values[idx]);
         sorted.targetIdx.push_back(meta.succIdx[idx]);
     }
@@ -274,8 +255,7 @@ inline viper::vm::SortedCases buildSorted(const SwitchMeta &meta)
 /// @param in switch.i32 instruction to cache.
 /// @return Reference to the cached entry for @p in.
 inline viper::vm::SwitchCacheEntry &getOrBuildSwitchCache(viper::vm::SwitchCache &cache,
-                                                          const il::core::Instr &in)
-{
+                                                          const il::core::Instr &in) {
     SwitchMeta meta = collectSwitchMeta(in);
     auto it = cache.entries.find(meta.key);
     if (it != cache.entries.end())
@@ -284,10 +264,8 @@ inline viper::vm::SwitchCacheEntry &getOrBuildSwitchCache(viper::vm::SwitchCache
     viper::vm::SwitchCacheEntry entry{};
     entry.defaultIdx = meta.defaultIdx;
     const viper::vm::SwitchMode mode = viper::vm::getSwitchMode();
-    if (mode != viper::vm::SwitchMode::Auto)
-    {
-        switch (mode)
-        {
+    if (mode != viper::vm::SwitchMode::Auto) {
+        switch (mode) {
             case viper::vm::SwitchMode::Dense:
                 entry.kind = viper::vm::SwitchCacheEntry::Dense;
                 entry.backend = buildDense(meta);
@@ -307,13 +285,10 @@ inline viper::vm::SwitchCacheEntry &getOrBuildSwitchCache(viper::vm::SwitchCache
             case viper::vm::SwitchMode::Auto:
                 break;
         }
-    }
-    else
-    {
+    } else {
         const auto kind = chooseBackend(meta);
         entry.kind = kind;
-        switch (kind)
-        {
+        switch (kind) {
             case viper::vm::SwitchCacheEntry::Dense:
                 entry.backend = buildDense(meta);
                 break;
@@ -369,8 +344,7 @@ inline VM::ExecResult handleBrImpl(VM &vm,
                                    const il::core::Instr &in,
                                    const VM::BlockMap &blocks,
                                    const il::core::BasicBlock *&bb,
-                                   size_t &ip)
-{
+                                   size_t &ip) {
     (void)state;
     return branchToTarget(vm, fr, in, 0, blocks, bb, ip);
 }
@@ -392,8 +366,7 @@ inline VM::ExecResult handleCBrImpl(VM &vm,
                                     const il::core::Instr &in,
                                     const VM::BlockMap &blocks,
                                     const il::core::BasicBlock *&bb,
-                                    size_t &ip)
-{
+                                    size_t &ip) {
     (void)state;
     Slot cond = VMAccess::eval(vm, fr, in.operands[0]);
     const size_t targetIdx = (cond.i64 != 0) ? 0 : 1;
@@ -418,8 +391,7 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
                                           const il::core::Instr &in,
                                           const VM::BlockMap &blocks,
                                           const il::core::BasicBlock *&bb,
-                                          size_t &ip)
-{
+                                          size_t &ip) {
     const auto scrutineeScalar = il::vm::ops::common::eval_scrutinee(fr, in);
     const int32_t sel = scrutineeScalar.value;
 
@@ -434,36 +406,28 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
 #if defined(VIPER_VM_DEBUG_SWITCH_LINEAR)
     (void)forceLinear;
     const size_t caseCount = switchCaseCount(in);
-    for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
-    {
+    for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx) {
         const il::core::Value &caseValue = switchCaseValue(in, caseIdx);
         const int32_t caseSel = static_cast<int32_t>(caseValue.i64);
-        if (caseSel == sel)
-        {
+        if (caseSel == sel) {
             idx = static_cast<int32_t>(caseIdx + 1);
             break;
         }
     }
 #else
-    if (forceLinear)
-    {
+    if (forceLinear) {
         const size_t caseCount = switchCaseCount(in);
-        for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
-        {
+        for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx) {
             const il::core::Value &caseValue = switchCaseValue(in, caseIdx);
             const int32_t caseSel = static_cast<int32_t>(caseValue.i64);
-            if (caseSel == sel)
-            {
+            if (caseSel == sel) {
                 idx = static_cast<int32_t>(caseIdx + 1);
                 break;
             }
         }
-    }
-    else
-    {
+    } else {
         std::visit(
-            [&](auto &backend)
-            {
+            [&](auto &backend) {
                 using BackendT = std::decay_t<decltype(backend)>;
                 if constexpr (std::is_same_v<BackendT, viper::vm::DenseJumpTable>)
                     idx = inline_impl::lookupDense(backend, sel, entry.defaultIdx);
@@ -477,8 +441,7 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
 #endif
 
     // Fast path: idx directly encodes the label index to jump to.
-    if (idx < 0 || static_cast<size_t>(idx) >= in.labels.size())
-    {
+    if (idx < 0 || static_cast<size_t>(idx) >= in.labels.size()) {
         VM::ExecResult result{};
         result.returned = true;
         RuntimeBridge::trap(TrapKind::InvalidOperation,
@@ -489,8 +452,7 @@ inline VM::ExecResult handleSwitchI32Impl(VM &vm,
         return result;
     }
 
-    auto makeTarget = [&](size_t labelIndex)
-    {
+    auto makeTarget = [&](size_t labelIndex) {
         il::vm::ops::common::Target target{};
         target.vm = &vm;
         target.instr = &in;

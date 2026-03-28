@@ -31,23 +31,19 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// @brief Little-endian and big-endian encoding utilities for binary writers.
-namespace encoding
-{
+namespace encoding {
 
 /// Append a 16-bit value in little-endian byte order.
-inline void writeLE16(std::vector<uint8_t> &buf, uint16_t v)
-{
+inline void writeLE16(std::vector<uint8_t> &buf, uint16_t v) {
     buf.push_back(static_cast<uint8_t>(v));
     buf.push_back(static_cast<uint8_t>(v >> 8));
 }
 
 /// Append a 32-bit value in little-endian byte order.
-inline void writeLE32(std::vector<uint8_t> &buf, uint32_t v)
-{
+inline void writeLE32(std::vector<uint8_t> &buf, uint32_t v) {
     buf.push_back(static_cast<uint8_t>(v));
     buf.push_back(static_cast<uint8_t>(v >> 8));
     buf.push_back(static_cast<uint8_t>(v >> 16));
@@ -55,15 +51,13 @@ inline void writeLE32(std::vector<uint8_t> &buf, uint32_t v)
 }
 
 /// Append a 64-bit value in little-endian byte order.
-inline void writeLE64(std::vector<uint8_t> &buf, uint64_t v)
-{
+inline void writeLE64(std::vector<uint8_t> &buf, uint64_t v) {
     for (int i = 0; i < 8; ++i)
         buf.push_back(static_cast<uint8_t>(v >> (i * 8)));
 }
 
 /// Append a 32-bit value in big-endian byte order (network byte order).
-inline void writeBE32(std::vector<uint8_t> &buf, uint32_t v)
-{
+inline void writeBE32(std::vector<uint8_t> &buf, uint32_t v) {
     buf.push_back(static_cast<uint8_t>(v >> 24));
     buf.push_back(static_cast<uint8_t>(v >> 16));
     buf.push_back(static_cast<uint8_t>(v >> 8));
@@ -71,17 +65,14 @@ inline void writeBE32(std::vector<uint8_t> &buf, uint32_t v)
 }
 
 /// Append a 64-bit value in big-endian byte order.
-inline void writeBE64(std::vector<uint8_t> &buf, uint64_t v)
-{
+inline void writeBE64(std::vector<uint8_t> &buf, uint64_t v) {
     writeBE32(buf, static_cast<uint32_t>(v >> 32));
     writeBE32(buf, static_cast<uint32_t>(v));
 }
 
 /// Append an unsigned LEB128-encoded value (used by Mach-O bind/rebase opcodes).
-inline void writeULEB128(std::vector<uint8_t> &buf, uint64_t val)
-{
-    do
-    {
+inline void writeULEB128(std::vector<uint8_t> &buf, uint64_t val) {
+    do {
         uint8_t byte = val & 0x7F;
         val >>= 7;
         if (val != 0)
@@ -91,11 +82,9 @@ inline void writeULEB128(std::vector<uint8_t> &buf, uint64_t val)
 }
 
 /// Append a signed LEB128-encoded value (used by DWARF line number deltas).
-inline void writeSLEB128(std::vector<uint8_t> &buf, int64_t val)
-{
+inline void writeSLEB128(std::vector<uint8_t> &buf, int64_t val) {
     bool more = true;
-    while (more)
-    {
+    while (more) {
         uint8_t byte = static_cast<uint8_t>(val) & 0x7F;
         val >>= 7;
         if ((val == 0 && (byte & 0x40) == 0) || (val == -1 && (byte & 0x40) != 0))
@@ -107,14 +96,12 @@ inline void writeSLEB128(std::vector<uint8_t> &buf, int64_t val)
 }
 
 /// Append \p count zero bytes.
-inline void writePad(std::vector<uint8_t> &buf, size_t count)
-{
+inline void writePad(std::vector<uint8_t> &buf, size_t count) {
     buf.insert(buf.end(), count, 0);
 }
 
 /// Append a null-terminated string, padded or truncated to \p maxLen bytes.
-inline void writeStr(std::vector<uint8_t> &buf, const char *s, size_t maxLen)
-{
+inline void writeStr(std::vector<uint8_t> &buf, const char *s, size_t maxLen) {
     size_t len = std::strlen(s);
     size_t n = (len < maxLen) ? len : maxLen;
     buf.insert(buf.end(), s, s + n);
@@ -124,8 +111,7 @@ inline void writeStr(std::vector<uint8_t> &buf, const char *s, size_t maxLen)
 
 /// Pad the buffer with zeros until it reaches \p targetSize bytes.
 /// No-op if the buffer is already at or beyond the target.
-inline void padTo(std::vector<uint8_t> &buf, size_t targetSize)
-{
+inline void padTo(std::vector<uint8_t> &buf, size_t targetSize) {
     if (buf.size() < targetSize)
         buf.insert(buf.end(), targetSize - buf.size(), 0);
 }
@@ -134,8 +120,7 @@ inline void padTo(std::vector<uint8_t> &buf, size_t targetSize)
 
 /// Resolve the "main" or "_main" entry point symbol from the layout.
 /// @return The resolved virtual address, or 0 if not found.
-inline uint64_t resolveMainAddress(const LinkLayout &layout)
-{
+inline uint64_t resolveMainAddress(const LinkLayout &layout) {
     auto it = layout.globalSyms.find("main");
     if (it != layout.globalSyms.end())
         return it->second.resolvedAddr;
@@ -149,10 +134,8 @@ inline uint64_t resolveMainAddress(const LinkLayout &layout)
 /// Only includes sections with non-empty data.
 inline void classifySections(const LinkLayout &layout,
                              std::vector<size_t> &textIndices,
-                             std::vector<size_t> &dataIndices)
-{
-    for (size_t i = 0; i < layout.sections.size(); ++i)
-    {
+                             std::vector<size_t> &dataIndices) {
+    for (size_t i = 0; i < layout.sections.size(); ++i) {
         if (layout.sections[i].data.empty())
             continue;
         if (!layout.sections[i].alloc)
@@ -168,14 +151,12 @@ inline void classifySections(const LinkLayout &layout,
 /// Returns the byte distance from the first section's VA to the end of the last section.
 /// Handles VA gaps between sections (e.g., page-aligned subsections).
 /// Returns 0 if the index list is empty.
-inline size_t computeSegmentSpan(const LinkLayout &layout, const std::vector<size_t> &indices)
-{
+inline size_t computeSegmentSpan(const LinkLayout &layout, const std::vector<size_t> &indices) {
     if (indices.empty())
         return 0;
     uint64_t firstVA = layout.sections[indices.front()].virtualAddr;
     size_t span = 0;
-    for (size_t idx : indices)
-    {
+    for (size_t idx : indices) {
         const auto &sec = layout.sections[idx];
         size_t endOff = static_cast<size_t>(sec.virtualAddr + sec.data.size() - firstVA);
         if (endOff > span)

@@ -25,8 +25,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace il::runtime
-{
+namespace il::runtime {
 
 /// @brief Adapter that invokes a concrete runtime function from VM call stubs.
 ///
@@ -34,8 +33,7 @@ namespace il::runtime
 ///          the generic `void **` argument array provided by the VM into typed
 ///          parameters.  The @ref invoke entry point matches the signature
 ///          expected by @ref RuntimeDescriptor.
-template <auto Fn, typename Ret, typename... Args> struct DirectHandler
-{
+template <auto Fn, typename Ret, typename... Args> struct DirectHandler {
     /// @brief Dispatch the runtime call using the supplied argument array.
     ///
     /// @details Expands the argument pack through @ref call using an index
@@ -45,8 +43,7 @@ template <auto Fn, typename Ret, typename... Args> struct DirectHandler
     ///
     /// @param args Pointer to the marshalled argument array.
     /// @param result Optional pointer to storage for the return value.
-    static void invoke(void **args, void *result)
-    {
+    static void invoke(void **args, void *result) {
         call(args, result, std::index_sequence_for<Args...>{});
     }
 
@@ -57,14 +54,10 @@ template <auto Fn, typename Ret, typename... Args> struct DirectHandler
     ///          appropriate type.  When the function returns a value the helper
     ///          stores it through @p result.
     template <std::size_t... I>
-    static void call(void **args, void *result, std::index_sequence<I...>)
-    {
-        if constexpr (std::is_void_v<Ret>)
-        {
+    static void call(void **args, void *result, std::index_sequence<I...>) {
+        if constexpr (std::is_void_v<Ret>) {
             Fn(*reinterpret_cast<Args *>(args[I])...);
-        }
-        else
-        {
+        } else {
             Ret value = Fn(*reinterpret_cast<Args *>(args[I])...);
             *reinterpret_cast<Ret *>(result) = value;
         }
@@ -78,29 +71,24 @@ template <auto Fn, typename Ret, typename... Args> struct DirectHandler
 ///          the call to keep values alive.  The wrapper first retains any
 ///          string arguments and then delegates to @ref DirectHandler to
 ///          perform the actual call/return marshalling.
-template <auto Fn, typename Ret, typename... Args> struct ConsumingStringHandler
-{
+template <auto Fn, typename Ret, typename... Args> struct ConsumingStringHandler {
     /// @brief Invoke a runtime helper after retaining string arguments.
     /// @param args VM-supplied argument array.
     /// @param result Optional pointer to storage for the return value.
-    static void invoke(void **args, void *result)
-    {
+    static void invoke(void **args, void *result) {
         retainStrings(args, std::index_sequence_for<Args...>{});
         DirectHandler<Fn, Ret, Args...>::invoke(args, result);
     }
 
   private:
     /// @brief Retain every string argument present in the parameter pack.
-    template <std::size_t... I> static void retainStrings(void **args, std::index_sequence<I...>)
-    {
+    template <std::size_t... I> static void retainStrings(void **args, std::index_sequence<I...>) {
         (retainArg<Args>(args, I), ...);
     }
 
     /// @brief Retain a single argument when it is of type @c rt_string.
-    template <typename T> static void retainArg(void **args, std::size_t index)
-    {
-        if constexpr (std::is_same_v<std::remove_cv_t<T>, rt_string>)
-        {
+    template <typename T> static void retainArg(void **args, std::size_t index) {
+        if constexpr (std::is_same_v<std::remove_cv_t<T>, rt_string>) {
             if (!args)
                 return;
             void *slot = args[index];

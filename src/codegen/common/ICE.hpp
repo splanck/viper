@@ -27,8 +27,7 @@
 #include <iostream>
 #include <string>
 
-namespace viper::codegen::common
-{
+namespace viper::codegen::common {
 
 /// @brief Report an internal compiler error with file/line context, then abort.
 ///
@@ -39,8 +38,7 @@ namespace viper::codegen::common
 /// @param file Source file where the error was detected.
 /// @param line Line number where the error was detected.
 /// @param msg  Human-readable description of the internal failure.
-[[noreturn]] inline void reportICE(const char *file, int line, const std::string &msg)
-{
+[[noreturn]] inline void reportICE(const char *file, int line, const std::string &msg) {
     std::cerr << "internal compiler error at " << file << ":" << line << ": " << msg << "\n"
               << "This is a bug in the Viper compiler. Please report it.\n";
     std::abort();

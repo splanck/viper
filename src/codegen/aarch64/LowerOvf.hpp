@@ -18,8 +18,7 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Expand overflow-checked arithmetic pseudo-opcodes into guarded sequences.
 ///

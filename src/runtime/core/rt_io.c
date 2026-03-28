@@ -70,19 +70,16 @@ static _Thread_local jmp_buf *rt_trap_recovery_ = NULL;
 static _Thread_local char rt_trap_error_[512] = "";
 static _Thread_local int rt_trap_net_code_ = 0;
 
-void rt_trap_set_recovery(jmp_buf *buf)
-{
+void rt_trap_set_recovery(jmp_buf *buf) {
     rt_trap_recovery_ = buf;
 }
 
-void rt_trap_clear_recovery(void)
-{
+void rt_trap_clear_recovery(void) {
     rt_trap_recovery_ = NULL;
     rt_trap_error_[0] = '\0';
 }
 
-const char *rt_trap_get_error(void)
-{
+const char *rt_trap_get_error(void) {
     return rt_trap_error_;
 }
 
@@ -93,8 +90,7 @@ const char *rt_trap_get_error(void)
 ///          and therefore never returns.
 /// @param msg Optional diagnostic message describing the reason for the abort.
 /// @return This function does not return.
-void rt_abort(const char *msg)
-{
+void rt_abort(const char *msg) {
     if (msg && *msg)
         fprintf(stderr, "%s\n", msg);
     else
@@ -115,8 +111,7 @@ void rt_abort(const char *msg)
 // Tests can define their own vm_trap to override this.
 // The alternatename directive provides the fallback when vm_trap is not
 // explicitly defined by the application.
-void vm_trap_default(const char *msg)
-{
+void vm_trap_default(const char *msg) {
     rt_abort(msg);
 }
 
@@ -127,8 +122,7 @@ extern void vm_trap(const char *msg);
 #endif
 #else
 // On Unix, use weak linkage attribute for override capability
-RT_WEAK void vm_trap(const char *msg)
-{
+RT_WEAK void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 #endif
@@ -140,10 +134,8 @@ RT_WEAK void vm_trap(const char *msg)
 ///          Otherwise forwards the message to @ref vm_trap.
 /// @param msg Null-terminated string describing the trap condition.
 /// @return This function does not return.
-void rt_trap(const char *msg)
-{
-    if (rt_trap_recovery_)
-    {
+void rt_trap(const char *msg) {
+    if (rt_trap_recovery_) {
         snprintf(rt_trap_error_, sizeof(rt_trap_error_), "%s", msg ? msg : "Unknown trap");
         longjmp(*rt_trap_recovery_, 1);
     }
@@ -156,8 +148,7 @@ void rt_trap(const char *msg)
 ///          rt_trap_get_net_code() for programmatic error classification.
 /// @param msg Human-readable description of the network failure.
 /// @param err_code One of the Err_Connection*/Err_Dns*/Err_Network* codes.
-void rt_trap_net(const char *msg, int err_code)
-{
+void rt_trap_net(const char *msg, int err_code) {
     rt_trap_net_code_ = err_code;
     char buf[600];
     snprintf(buf, sizeof(buf), "Network error %d: %s", err_code, msg ? msg : "unknown");
@@ -166,8 +157,7 @@ void rt_trap_net(const char *msg, int err_code)
 
 /// @brief Retrieve the error code from the most recent network trap.
 /// @return The Err_* code set by the last rt_trap_net() call on this thread.
-int rt_trap_get_net_code(void)
-{
+int rt_trap_get_net_code(void) {
     return rt_trap_net_code_;
 }
 
@@ -178,8 +168,7 @@ int rt_trap_get_net_code(void)
 /// @brief Get the length of a runtime string safely.
 /// @param s Runtime string handle; may be null.
 /// @return Length in bytes, or 0 if s is null or has null data.
-static inline size_t rt_string_safe_len(rt_string s)
-{
+static inline size_t rt_string_safe_len(rt_string s) {
     if (!s || !s->data)
         return 0;
     return (s->heap && s->heap != RT_SSO_SENTINEL) ? rt_heap_len(s->data) : s->literal_len;
@@ -189,27 +178,21 @@ static inline size_t rt_string_safe_len(rt_string s)
 /// @param sb String builder to free on error.
 /// @param op_name Name of the operation for error message.
 /// @param status Error status from string builder operation.
-static void rt_sb_check_status(rt_string_builder *sb, const char *op_name, rt_sb_status_t status)
-{
+static void rt_sb_check_status(rt_string_builder *sb, const char *op_name, rt_sb_status_t status) {
     if (status == RT_SB_OK)
         return;
 
     const char *msg = op_name;
-    if (status == RT_SB_ERROR_ALLOC)
-    {
+    if (status == RT_SB_ERROR_ALLOC) {
         // Use a static buffer to avoid allocation in error path
         static char alloc_msg[64];
         snprintf(alloc_msg, sizeof(alloc_msg), "%s: alloc", op_name);
         msg = alloc_msg;
-    }
-    else if (status == RT_SB_ERROR_OVERFLOW)
-    {
+    } else if (status == RT_SB_ERROR_OVERFLOW) {
         static char overflow_msg[64];
         snprintf(overflow_msg, sizeof(overflow_msg), "%s: overflow", op_name);
         msg = overflow_msg;
-    }
-    else if (status == RT_SB_ERROR_INVALID)
-    {
+    } else if (status == RT_SB_ERROR_INVALID) {
         static char invalid_msg[64];
         snprintf(invalid_msg, sizeof(invalid_msg), "%s: invalid", op_name);
         msg = invalid_msg;
@@ -224,8 +207,7 @@ static void rt_sb_check_status(rt_string_builder *sb, const char *op_name, rt_sb
 ///          the centralized output buffering system for improved performance.
 ///          When batch mode is active, output accumulates until the batch ends.
 /// @param s Runtime string handle to print; may be null.
-void rt_print_str(rt_string s)
-{
+void rt_print_str(rt_string s) {
     size_t len = rt_string_safe_len(s);
     if (len == 0)
         return;
@@ -240,8 +222,7 @@ void rt_print_str(rt_string s)
 ///          descriptive message so misconfigurations become visible during
 ///          testing.
 /// @param v Value to print.
-void rt_print_i64(int64_t v)
-{
+void rt_print_i64(int64_t v) {
     rt_string_builder sb;
     rt_sb_init(&sb);
     rt_sb_status_t status = rt_sb_append_int(&sb, v);
@@ -257,8 +238,7 @@ void rt_print_i64(int64_t v)
 ///          special values consistently. Uses centralized output buffering for
 ///          improved performance.
 /// @param v Double precision value to print.
-void rt_print_f64(double v)
-{
+void rt_print_f64(double v) {
     char buf[64];
     rt_format_f64(v, buf, sizeof(buf));
     rt_output_str(buf);
@@ -272,8 +252,7 @@ void rt_print_f64(double v)
 /// @param buf [in,out] Pointer to the buffer pointer to grow.
 /// @param cap [in,out] Pointer to the capacity counter associated with @p buf.
 /// @return Result enumerator describing whether the buffer was resized.
-rt_input_grow_result_t rt_input_try_grow(char **buf, size_t *cap)
-{
+rt_input_grow_result_t rt_input_try_grow(char **buf, size_t *cap) {
     if (!buf || !cap || !*buf)
         return RT_INPUT_GROW_ALLOC_FAILED;
 
@@ -298,21 +277,17 @@ rt_input_grow_result_t rt_input_try_grow(char **buf, size_t *cap)
 ///          end-of-input. Flushes output first to ensure prompts are visible.
 /// @return Newly allocated runtime string without the trailing newline, or
 ///         @c NULL on EOF before reading data.
-rt_string rt_input_line(void)
-{
+rt_string rt_input_line(void) {
     // Flush output before reading input so prompts are visible
     rt_output_flush();
 
     size_t cap = 1024;
     size_t len = 0;
     char *buf = (char *)rt_alloc(cap);
-    for (;;)
-    {
+    for (;;) {
         int ch = fgetc(stdin);
-        if (ch == EOF)
-        {
-            if (len == 0)
-            {
+        if (ch == EOF) {
+            if (len == 0) {
                 free(buf);
                 return NULL;
             }
@@ -320,17 +295,14 @@ rt_string rt_input_line(void)
         }
         if (ch == '\n')
             break;
-        if (len + 1 >= cap)
-        {
+        if (len + 1 >= cap) {
             rt_input_grow_result_t grow = rt_input_try_grow(&buf, &cap);
-            if (grow == RT_INPUT_GROW_OVERFLOW)
-            {
+            if (grow == RT_INPUT_GROW_OVERFLOW) {
                 free(buf);
                 rt_trap("rt_input_line: overflow");
                 return NULL;
             }
-            if (grow != RT_INPUT_GROW_OK)
-            {
+            if (grow != RT_INPUT_GROW_OK) {
                 free(buf);
                 rt_trap("out of memory");
                 return NULL;
@@ -356,21 +328,16 @@ rt_string rt_input_line(void)
 /// @param out_fields Destination array receiving up to @p max_fields entries.
 /// @param max_fields Maximum number of fields to populate; negative values are treated as zero.
 /// @return Total number of fields present in @p line.
-int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields)
-{
-    if (max_fields <= 0)
-    {
+int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_fields) {
+    if (max_fields <= 0) {
         max_fields = 0;
-    }
-    else if (!out_fields)
-    {
+    } else if (!out_fields) {
         rt_trap("rt_str_split_fields: null output");
     }
 
     const char *data = "";
     size_t len = 0;
-    if (line && line->data)
-    {
+    if (line && line->data) {
         data = line->data;
         if (line->heap && line->heap != RT_SSO_SENTINEL)
             len = rt_heap_len(line->data);
@@ -383,42 +350,28 @@ int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_f
     size_t start = 0;
     bool in_quotes = false;
     size_t i = 0;
-    while (i <= len)
-    {
+    while (i <= len) {
         bool finalize = false;
-        if (i == len)
-        {
+        if (i == len) {
             finalize = true;
-        }
-        else
-        {
+        } else {
             char ch = data[i];
-            if (ch == '"')
-            {
-                if (in_quotes)
-                {
-                    if (i + 1 < len && data[i + 1] == '"')
-                    {
+            if (ch == '"') {
+                if (in_quotes) {
+                    if (i + 1 < len && data[i + 1] == '"') {
                         ++i;
-                    }
-                    else
-                    {
+                    } else {
                         in_quotes = false;
                     }
-                }
-                else
-                {
+                } else {
                     in_quotes = true;
                 }
-            }
-            else if (ch == ',' && !in_quotes)
-            {
+            } else if (ch == ',' && !in_quotes) {
                 finalize = true;
             }
         }
 
-        if (finalize)
-        {
+        if (finalize) {
             size_t field_start = start;
             size_t field_end = i;
             while (field_start < field_end && isspace((unsigned char)data[field_start]))
@@ -426,29 +379,21 @@ int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_f
             while (field_end > field_start && isspace((unsigned char)data[field_end - 1]))
                 --field_end;
             bool had_quotes = false;
-            if (field_end > field_start && data[field_start] == '"' && data[field_end - 1] == '"')
-            {
+            if (field_end > field_start && data[field_start] == '"' && data[field_end - 1] == '"') {
                 ++field_start;
                 --field_end;
                 had_quotes = true;
             }
 
-            if (stored < max_fields)
-            {
-                if (field_end <= field_start)
-                {
+            if (stored < max_fields) {
+                if (field_end <= field_start) {
                     out_fields[stored++] = rt_str_empty();
-                }
-                else
-                {
-                    if (had_quotes)
-                    {
+                } else {
+                    if (had_quotes) {
                         size_t unescaped_len = 0;
                         size_t j = field_start;
-                        while (j < field_end)
-                        {
-                            if (data[j] == '"' && j + 1 < field_end && data[j + 1] == '"')
-                            {
+                        while (j < field_end) {
+                            if (data[j] == '"' && j + 1 < field_end && data[j + 1] == '"') {
                                 ++j;
                             }
                             ++unescaped_len;
@@ -456,23 +401,18 @@ int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_f
                         }
 
                         char *tmp = (char *)malloc(unescaped_len);
-                        if (!tmp && unescaped_len > 0)
-                        {
+                        if (!tmp && unescaped_len > 0) {
                             rt_trap("out of memory");
                         }
 
                         j = field_start;
                         size_t write = 0;
-                        while (j < field_end)
-                        {
+                        while (j < field_end) {
                             char ch = data[j];
-                            if (ch == '"' && j + 1 < field_end && data[j + 1] == '"')
-                            {
+                            if (ch == '"' && j + 1 < field_end && data[j + 1] == '"') {
                                 tmp[write++] = '"';
                                 j += 2;
-                            }
-                            else
-                            {
+                            } else {
                                 tmp[write++] = ch;
                                 ++j;
                             }
@@ -480,9 +420,7 @@ int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_f
 
                         out_fields[stored++] = rt_string_from_bytes(tmp, unescaped_len);
                         free(tmp);
-                    }
-                    else
-                    {
+                    } else {
                         out_fields[stored++] =
                             rt_string_from_bytes(data + field_start, field_end - field_start);
                     }
@@ -495,8 +433,7 @@ int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_f
         ++i;
     }
 
-    if (max_fields > 0 && total < max_fields)
-    {
+    if (max_fields > 0 && total < max_fields) {
         char msg[128];
         snprintf(msg,
                  sizeof(msg),
@@ -517,8 +454,7 @@ int64_t rt_str_split_fields(rt_string line, rt_string *out_fields, int64_t max_f
 ///          failure.
 /// @param ch Channel identifier registered with the runtime file subsystem.
 /// @return Negative @ref Err value on failure, -1 when at EOF, or 0 when more data is available.
-int rt_eof_ch(int ch)
-{
+int rt_eof_ch(int ch) {
     int fd = -1;
     int32_t status = rt_file_channel_fd(ch, &fd);
     if (status != 0)
@@ -531,22 +467,18 @@ int rt_eof_ch(int ch)
 
     errno = 0;
     int64_t cur = lseek(fd, 0, SEEK_CUR);
-    if (cur >= 0)
-    {
+    if (cur >= 0) {
         int64_t end = lseek(fd, 0, SEEK_END);
-        if (end < 0)
-        {
+        if (end < 0) {
             (void)lseek(fd, cur, SEEK_SET);
             rt_file_channel_set_eof(ch, 0);
             return (int32_t)Err_IOError;
         }
-        if (lseek(fd, cur, SEEK_SET) < 0)
-        {
+        if (lseek(fd, cur, SEEK_SET) < 0) {
             rt_file_channel_set_eof(ch, 0);
             return (int32_t)Err_IOError;
         }
-        if (end <= cur)
-        {
+        if (end <= cur) {
             rt_file_channel_set_eof(ch, 1);
             return -1;
         }
@@ -568,18 +500,15 @@ int rt_eof_ch(int ch)
 ///          conventions.
 /// @param ch Channel identifier registered with the runtime file subsystem.
 /// @return File length in bytes, or the negated runtime error code on failure.
-int64_t rt_lof_ch(int ch)
-{
+int64_t rt_lof_ch(int ch) {
     int fd = -1;
     int32_t status = rt_file_channel_fd(ch, &fd);
     if (status != 0)
         return -(int64_t)status;
 
     struct stat st;
-    if (fstat(fd, &st) == 0)
-    {
-        if (S_ISREG(st.st_mode) || S_ISBLK(st.st_mode))
-        {
+    if (fstat(fd, &st) == 0) {
+        if (S_ISREG(st.st_mode) || S_ISBLK(st.st_mode)) {
             if (st.st_size >= 0)
                 return (int64_t)st.st_size;
             return 0;
@@ -588,16 +517,14 @@ int64_t rt_lof_ch(int ch)
 
     errno = 0;
     int64_t cur = lseek(fd, 0, SEEK_CUR);
-    if (cur < 0)
-    {
+    if (cur < 0) {
         if (errno == ESPIPE || errno == EINVAL)
             return -(int64_t)Err_InvalidOperation;
         return -(int64_t)Err_IOError;
     }
 
     int64_t end = lseek(fd, 0, SEEK_END);
-    if (end < 0)
-    {
+    if (end < 0) {
         (void)lseek(fd, cur, SEEK_SET);
         return -(int64_t)Err_IOError;
     }
@@ -618,8 +545,7 @@ int64_t rt_lof_ch(int ch)
 ///          semantics.
 /// @param ch Channel identifier.
 /// @return Current offset in bytes, or a negated runtime error code on failure.
-int64_t rt_loc_ch(int ch)
-{
+int64_t rt_loc_ch(int ch) {
     int fd = -1;
     int32_t status = rt_file_channel_fd(ch, &fd);
     if (status != 0)
@@ -627,8 +553,7 @@ int64_t rt_loc_ch(int ch)
 
     errno = 0;
     int64_t cur = lseek(fd, 0, SEEK_CUR);
-    if (cur < 0)
-    {
+    if (cur < 0) {
         if (errno == ESPIPE || errno == EINVAL)
             return -(int64_t)Err_InvalidOperation;
         return -(int64_t)Err_IOError;
@@ -644,8 +569,7 @@ int64_t rt_loc_ch(int ch)
 /// @param ch Channel identifier.
 /// @param pos Absolute offset to seek to; must be non-negative.
 /// @return Zero on success or a runtime error code on failure.
-int32_t rt_seek_ch_err(int ch, int64_t pos)
-{
+int32_t rt_seek_ch_err(int ch, int64_t pos) {
     if (pos < 0)
         return (int32_t)Err_InvalidOperation;
 
@@ -660,8 +584,7 @@ int32_t rt_seek_ch_err(int ch, int64_t pos)
         return (int32_t)Err_InvalidOperation;
 
     int64_t res = lseek(fd, target, SEEK_SET);
-    if (res == -1)
-    {
+    if (res == -1) {
         if (errno == ESPIPE || errno == EINVAL)
             return (int32_t)Err_InvalidOperation;
         return (int32_t)Err_IOError;
@@ -677,8 +600,7 @@ int32_t rt_seek_ch_err(int ch, int64_t pos)
 
 /// @brief Print a string followed by a newline.
 /// @param s Runtime string to print; may be null.
-void rt_term_say(rt_string s)
-{
+void rt_term_say(rt_string s) {
     rt_print_str(s);
     rt_output_str("\n");
     rt_output_flush();
@@ -686,8 +608,7 @@ void rt_term_say(rt_string s)
 
 /// @brief Print an integer followed by a newline.
 /// @param v Integer value to print.
-void rt_term_say_i64(int64_t v)
-{
+void rt_term_say_i64(int64_t v) {
     rt_print_i64(v);
     rt_output_str("\n");
     rt_output_flush();
@@ -695,8 +616,7 @@ void rt_term_say_i64(int64_t v)
 
 /// @brief Print a floating-point number followed by a newline.
 /// @param v Double value to print.
-void rt_term_say_f64(double v)
-{
+void rt_term_say_f64(double v) {
     rt_print_f64(v);
     rt_output_str("\n");
     rt_output_flush();
@@ -704,40 +624,35 @@ void rt_term_say_f64(double v)
 
 /// @brief Print a boolean as "true" or "false" followed by a newline.
 /// @param v Boolean value (0 = false, non-zero = true).
-void rt_term_say_bool(int8_t v)
-{
+void rt_term_say_bool(int8_t v) {
     rt_output_str(v ? "true\n" : "false\n");
     rt_output_flush();
 }
 
 /// @brief Print a string without a trailing newline.
 /// @param s Runtime string to print; may be null.
-void rt_term_print(rt_string s)
-{
+void rt_term_print(rt_string s) {
     rt_print_str(s);
     rt_output_flush();
 }
 
 /// @brief Print an integer without a trailing newline.
 /// @param v Integer value to print.
-void rt_term_print_i64(int64_t v)
-{
+void rt_term_print_i64(int64_t v) {
     rt_print_i64(v);
     rt_output_flush();
 }
 
 /// @brief Print a floating-point number without a trailing newline.
 /// @param v Double value to print.
-void rt_term_print_f64(double v)
-{
+void rt_term_print_f64(double v) {
     rt_print_f64(v);
     rt_output_flush();
 }
 
 /// @brief Print a boolean as "true" or "false" without a trailing newline.
 /// @param v Boolean value (0 = false, non-zero = true).
-void rt_term_print_bool(int8_t v)
-{
+void rt_term_print_bool(int8_t v) {
     rt_output_str(v ? "true" : "false");
     rt_output_flush();
 }
@@ -745,8 +660,7 @@ void rt_term_print_bool(int8_t v)
 /// @brief Print a prompt and read a line of input.
 /// @param prompt Runtime string to display before reading input.
 /// @return Newly allocated runtime string containing the user's input.
-rt_string rt_term_ask(rt_string prompt)
-{
+rt_string rt_term_ask(rt_string prompt) {
     rt_print_str(prompt);
     rt_output_flush();
     return rt_input_line();
@@ -754,7 +668,6 @@ rt_string rt_term_ask(rt_string prompt)
 
 /// @brief Read a line of input from stdin.
 /// @return Newly allocated runtime string containing the input line.
-rt_string rt_term_read_line(void)
-{
+rt_string rt_term_read_line(void) {
     return rt_input_line();
 }

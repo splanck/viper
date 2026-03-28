@@ -130,8 +130,7 @@ typedef int socket_t;
 #endif
 
 /// @brief Suppress SIGPIPE for a socket (macOS only; no-op elsewhere).
-static void suppress_sigpipe(socket_t sock)
-{
+static void suppress_sigpipe(socket_t sock) {
 #ifdef __APPLE__
     int val = 1;
     setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val));
@@ -147,12 +146,10 @@ static void suppress_sigpipe(socket_t sock)
 extern void rt_trap_net(const char *msg, int err_code);
 
 /// @brief Map platform errno / WSAGetLastError() to an Err_* network code.
-static int net_classify_errno(void)
-{
+static int net_classify_errno(void) {
     int e = GET_LAST_ERROR();
 #ifdef _WIN32
-    switch (e)
-    {
+    switch (e) {
         case WSAECONNREFUSED:
             return Err_ConnectionRefused;
         case WSAECONNRESET:
@@ -170,8 +167,7 @@ static int net_classify_errno(void)
             return Err_NetworkError;
     }
 #else
-    switch (e)
-    {
+    switch (e) {
         case ECONNREFUSED:
             return Err_ConnectionRefused;
         case ECONNRESET:
@@ -194,21 +190,18 @@ static int net_classify_errno(void)
 // Internal Bytes Access
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     int64_t len;
     uint8_t *data;
 } bytes_impl;
 
-static inline uint8_t *bytes_data(void *obj)
-{
+static inline uint8_t *bytes_data(void *obj) {
     if (!obj)
         return NULL;
     return ((bytes_impl *)obj)->data;
 }
 
-static inline int64_t bytes_len(void *obj)
-{
+static inline int64_t bytes_len(void *obj) {
     if (!obj)
         return 0;
     return ((bytes_impl *)obj)->len;
@@ -218,8 +211,7 @@ static inline int64_t bytes_len(void *obj)
 // Tcp Connection Structure
 //=============================================================================
 
-typedef struct rt_tcp
-{
+typedef struct rt_tcp {
     socket_t sock;       // Socket descriptor
     char *host;          // Remote host (allocated)
     int port;            // Remote port
@@ -233,43 +225,36 @@ typedef struct rt_tcp
 // TcpServer Structure
 //=============================================================================
 
-typedef struct rt_tcp_server
-{
+typedef struct rt_tcp_server {
     socket_t sock;     // Listening socket
     char *address;     // Bound address (allocated)
     int port;          // Listening port
     bool is_listening; // Server state
 } rt_tcp_server_t;
 
-static void rt_tcp_finalize(void *obj)
-{
+static void rt_tcp_finalize(void *obj) {
     if (!obj)
         return;
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
-    if (tcp->is_open)
-    {
+    if (tcp->is_open) {
         CLOSE_SOCKET(tcp->sock);
         tcp->is_open = false;
     }
-    if (tcp->host)
-    {
+    if (tcp->host) {
         free(tcp->host);
         tcp->host = NULL;
     }
 }
 
-static void rt_tcp_server_finalize(void *obj)
-{
+static void rt_tcp_server_finalize(void *obj) {
     if (!obj)
         return;
     rt_tcp_server_t *server = (rt_tcp_server_t *)obj;
-    if (server->is_listening)
-    {
+    if (server->is_listening) {
         CLOSE_SOCKET(server->sock);
         server->is_listening = false;
     }
-    if (server->address)
-    {
+    if (server->address) {
         free(server->address);
         server->address = NULL;
     }
@@ -282,13 +267,11 @@ static void rt_tcp_server_finalize(void *obj)
 #ifdef _WIN32
 static volatile LONG wsa_init_state = 0; // 0=uninit, 1=in-progress, 2=done
 
-static void rt_net_cleanup_wsa(void)
-{
+static void rt_net_cleanup_wsa(void) {
     WSACleanup();
 }
 
-void rt_net_init_wsa(void)
-{
+void rt_net_init_wsa(void) {
     // Fast path: already done.
     if (wsa_init_state == 2)
         return;
@@ -297,8 +280,7 @@ void rt_net_init_wsa(void)
     LONG prev = InterlockedCompareExchange(&wsa_init_state, 1, 0);
     if (prev == 2)
         return;
-    if (prev == 1)
-    {
+    if (prev == 1) {
         while (wsa_init_state != 2)
             Sleep(0);
         return;
@@ -307,8 +289,7 @@ void rt_net_init_wsa(void)
     // We won (prev == 0, state is now 1). Do the actual init.
     WSADATA wsa_data;
     int result = WSAStartup(MAKEWORD(2, 2), &wsa_data);
-    if (result != 0)
-    {
+    if (result != 0) {
         InterlockedExchange(&wsa_init_state, 0);
         rt_trap("Network: WSAStartup failed");
     }
@@ -326,8 +307,7 @@ void rt_net_init_wsa(void) {}
 
 /// @brief Set socket to non-blocking mode.
 /// @return true on success, false if the syscall failed.
-static bool set_nonblocking(socket_t sock, bool nonblocking)
-{
+static bool set_nonblocking(socket_t sock, bool nonblocking) {
 #ifdef _WIN32
     u_long mode = nonblocking ? 1 : 0;
     return ioctlsocket(sock, FIONBIO, &mode) == 0;
@@ -341,15 +321,13 @@ static bool set_nonblocking(socket_t sock, bool nonblocking)
 }
 
 /// @brief Enable TCP_NODELAY on socket.
-static void set_nodelay(socket_t sock)
-{
+static void set_nodelay(socket_t sock) {
     int flag = 1;
     setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, (const char *)&flag, sizeof(flag));
 }
 
 /// @brief Set socket timeout.
-static void set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv)
-{
+static void set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv) {
 #ifdef _WIN32
     DWORD tv = (DWORD)timeout_ms;
     setsockopt(
@@ -364,8 +342,7 @@ static void set_socket_timeout(socket_t sock, int timeout_ms, bool is_recv)
 
 /// @brief Wait for socket to become readable/writable with timeout.
 /// @return 1 if ready, 0 if timeout, -1 on error.
-static int wait_socket(socket_t sock, int timeout_ms, bool for_write)
-{
+static int wait_socket(socket_t sock, int timeout_ms, bool for_write) {
     fd_set fds;
     FD_ZERO(&fds);
     FD_SET(sock, &fds);
@@ -384,12 +361,10 @@ static int wait_socket(socket_t sock, int timeout_ms, bool for_write)
 }
 
 /// @brief Get local port from socket.
-static int get_local_port(socket_t sock)
-{
+static int get_local_port(socket_t sock) {
     struct sockaddr_in addr;
     socklen_t len = sizeof(addr);
-    if (getsockname(sock, (struct sockaddr *)&addr, &len) == 0)
-    {
+    if (getsockname(sock, (struct sockaddr *)&addr, &len) == 0) {
         return ntohs(addr.sin_port);
     }
     return 0;
@@ -399,32 +374,27 @@ static int get_local_port(socket_t sock)
 // Tcp Client - Connection Creation
 //=============================================================================
 
-void *rt_tcp_connect(rt_string host, int64_t port)
-{
+void *rt_tcp_connect(rt_string host, int64_t port) {
     // Default 30-second timeout prevents indefinite blocking on unreachable hosts.
     return rt_tcp_connect_for(host, port, 30000);
 }
 
-void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
-{
+void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     rt_net_init_wsa();
 
     const char *host_ptr = rt_string_cstr(host);
-    if (!host_ptr || *host_ptr == '\0')
-    {
+    if (!host_ptr || *host_ptr == '\0') {
         rt_trap("Network: invalid host");
     }
 
-    if (port < 1 || port > 65535)
-    {
+    if (port < 1 || port > 65535) {
         rt_trap("Network: invalid port number");
     }
 
     // Copy host string
     size_t host_len = strlen(host_ptr);
     char *host_cstr = (char *)malloc(host_len + 1);
-    if (!host_cstr)
-    {
+    if (!host_cstr) {
         rt_trap("Network: memory allocation failed");
     }
     memcpy(host_cstr, host_ptr, host_len + 1);
@@ -439,16 +409,14 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
     snprintf(port_str, sizeof(port_str), "%d", (int)port);
 
     int status = getaddrinfo(host_cstr, port_str, &hints, &res);
-    if (status != 0)
-    {
+    if (status != 0) {
         free(host_cstr);
         rt_trap_net("Network: host not found", Err_HostNotFound);
     }
 
     // Create socket
     socket_t sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
-    if (sock == INVALID_SOCK)
-    {
+    if (sock == INVALID_SOCK) {
         freeaddrinfo(res);
         free(host_cstr);
         rt_trap("Network: failed to create socket");
@@ -457,11 +425,9 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
 
     // Connect with optional timeout
     int connect_result;
-    if (timeout_ms > 0)
-    {
+    if (timeout_ms > 0) {
         // Non-blocking connect with timeout
-        if (!set_nonblocking(sock, true))
-        {
+        if (!set_nonblocking(sock, true)) {
             CLOSE_SOCKET(sock);
             freeaddrinfo(res);
             free(host_cstr);
@@ -470,8 +436,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
 
         connect_result = connect(sock, res->ai_addr, (int)res->ai_addrlen);
 
-        if (connect_result == SOCK_ERROR)
-        {
+        if (connect_result == SOCK_ERROR) {
             int err = GET_LAST_ERROR();
 #ifdef _WIN32
             if (err == WSAEWOULDBLOCK)
@@ -481,8 +446,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
             {
                 // Wait for connection to complete
                 int ready = wait_socket(sock, (int)timeout_ms, true);
-                if (ready <= 0)
-                {
+                if (ready <= 0) {
                     CLOSE_SOCKET(sock);
                     freeaddrinfo(res);
                     free(host_cstr);
@@ -493,8 +457,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
                 int so_error;
                 socklen_t len = sizeof(so_error);
                 getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len);
-                if (so_error != 0)
-                {
+                if (so_error != 0) {
                     CLOSE_SOCKET(sock);
                     freeaddrinfo(res);
                     free(host_cstr);
@@ -502,9 +465,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
                         rt_trap_net("Network: connection refused", Err_ConnectionRefused);
                     rt_trap_net("Network: connection failed", Err_NetworkError);
                 }
-            }
-            else
-            {
+            } else {
                 CLOSE_SOCKET(sock);
                 freeaddrinfo(res);
                 free(host_cstr);
@@ -515,20 +476,16 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
         }
 
         // Switch back to blocking mode
-        if (!set_nonblocking(sock, false))
-        {
+        if (!set_nonblocking(sock, false)) {
             CLOSE_SOCKET(sock);
             freeaddrinfo(res);
             free(host_cstr);
             rt_trap("Network: failed to restore blocking mode");
         }
-    }
-    else
-    {
+    } else {
         // Blocking connect
         connect_result = connect(sock, res->ai_addr, (int)res->ai_addrlen);
-        if (connect_result == SOCK_ERROR)
-        {
+        if (connect_result == SOCK_ERROR) {
             int err = GET_LAST_ERROR();
             CLOSE_SOCKET(sock);
             freeaddrinfo(res);
@@ -546,8 +503,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
 
     // Create connection object
     rt_tcp_t *tcp = (rt_tcp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tcp_t));
-    if (!tcp)
-    {
+    if (!tcp) {
         CLOSE_SOCKET(sock);
         free(host_cstr);
         rt_trap("Network: memory allocation failed");
@@ -569,8 +525,7 @@ void *rt_tcp_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
 // Tcp Client - Properties
 //=============================================================================
 
-rt_string rt_tcp_host(void *obj)
-{
+rt_string rt_tcp_host(void *obj) {
     if (!obj)
         rt_trap("Network: NULL connection");
 
@@ -578,8 +533,7 @@ rt_string rt_tcp_host(void *obj)
     return rt_const_cstr(tcp->host);
 }
 
-int64_t rt_tcp_port(void *obj)
-{
+int64_t rt_tcp_port(void *obj) {
     if (!obj)
         rt_trap("Network: NULL connection");
 
@@ -587,8 +541,7 @@ int64_t rt_tcp_port(void *obj)
     return tcp->port;
 }
 
-int64_t rt_tcp_local_port(void *obj)
-{
+int64_t rt_tcp_local_port(void *obj) {
     if (!obj)
         rt_trap("Network: NULL connection");
 
@@ -596,8 +549,7 @@ int64_t rt_tcp_local_port(void *obj)
     return tcp->local_port;
 }
 
-int8_t rt_tcp_is_open(void *obj)
-{
+int8_t rt_tcp_is_open(void *obj) {
     if (!obj)
         rt_trap("Network: NULL connection");
 
@@ -605,8 +557,7 @@ int8_t rt_tcp_is_open(void *obj)
     return tcp->is_open ? 1 : 0;
 }
 
-int64_t rt_tcp_available(void *obj)
-{
+int64_t rt_tcp_available(void *obj) {
     if (!obj)
         rt_trap("Network: NULL connection");
 
@@ -629,8 +580,7 @@ int64_t rt_tcp_available(void *obj)
 // Tcp Client - Send Methods
 //=============================================================================
 
-int64_t rt_tcp_send(void *obj, void *data)
-{
+int64_t rt_tcp_send(void *obj, void *data) {
     if (!obj)
         rt_trap("Network: NULL connection");
     if (!data)
@@ -649,8 +599,7 @@ int64_t rt_tcp_send(void *obj, void *data)
     // Clamp to INT_MAX to prevent silent truncation on large buffers
     int to_send = (len > INT_MAX) ? INT_MAX : (int)len;
     int sent = send(tcp->sock, (const char *)buf, to_send, SEND_FLAGS);
-    if (sent == SOCK_ERROR)
-    {
+    if (sent == SOCK_ERROR) {
         tcp->is_open = false;
         rt_trap_net("Network: send failed", net_classify_errno());
     }
@@ -658,8 +607,7 @@ int64_t rt_tcp_send(void *obj, void *data)
     return sent;
 }
 
-int64_t rt_tcp_send_str(void *obj, rt_string text)
-{
+int64_t rt_tcp_send_str(void *obj, rt_string text) {
     if (!obj)
         rt_trap("Network: NULL connection");
 
@@ -675,8 +623,7 @@ int64_t rt_tcp_send_str(void *obj, rt_string text)
     // Clamp to INT_MAX to prevent silent truncation on large strings
     int to_send = (len > INT_MAX) ? INT_MAX : (int)len;
     int sent = send(tcp->sock, text_ptr, to_send, SEND_FLAGS);
-    if (sent == SOCK_ERROR)
-    {
+    if (sent == SOCK_ERROR) {
         tcp->is_open = false;
         rt_trap_net("Network: send failed", net_classify_errno());
     }
@@ -684,8 +631,7 @@ int64_t rt_tcp_send_str(void *obj, rt_string text)
     return sent;
 }
 
-void rt_tcp_send_all(void *obj, void *data)
-{
+void rt_tcp_send_all(void *obj, void *data) {
     if (!obj)
         rt_trap("Network: NULL connection");
     if (!data)
@@ -699,18 +645,15 @@ void rt_tcp_send_all(void *obj, void *data)
     uint8_t *buf = bytes_data(data);
 
     int64_t total_sent = 0;
-    while (total_sent < len)
-    {
+    while (total_sent < len) {
         int64_t remaining = len - total_sent;
         int chunk = (int)(remaining > INT_MAX ? INT_MAX : remaining);
         int sent = send(tcp->sock, (const char *)(buf + total_sent), chunk, SEND_FLAGS);
-        if (sent == SOCK_ERROR)
-        {
+        if (sent == SOCK_ERROR) {
             tcp->is_open = false;
             rt_trap_net("Network: send failed", net_classify_errno());
         }
-        if (sent == 0)
-        {
+        if (sent == 0) {
             tcp->is_open = false;
             rt_trap_net("Network: connection closed by peer", Err_ConnectionClosed);
         }
@@ -718,8 +661,7 @@ void rt_tcp_send_all(void *obj, void *data)
     }
 }
 
-void rt_tcp_send_all_raw(void *obj, const void *data, int64_t len)
-{
+void rt_tcp_send_all_raw(void *obj, const void *data, int64_t len) {
     if (!obj)
         rt_trap("Network: NULL connection");
     if (!data && len > 0)
@@ -734,18 +676,15 @@ void rt_tcp_send_all_raw(void *obj, const void *data, int64_t len)
 
     const uint8_t *buf = (const uint8_t *)data;
     int64_t total_sent = 0;
-    while (total_sent < len)
-    {
+    while (total_sent < len) {
         int64_t remaining = len - total_sent;
         int chunk = (int)(remaining > INT_MAX ? INT_MAX : remaining);
         int sent = send(tcp->sock, (const char *)(buf + total_sent), chunk, SEND_FLAGS);
-        if (sent == SOCK_ERROR)
-        {
+        if (sent == SOCK_ERROR) {
             tcp->is_open = false;
             rt_trap_net("Network: send failed", net_classify_errno());
         }
-        if (sent == 0)
-        {
+        if (sent == 0) {
             tcp->is_open = false;
             rt_trap_net("Network: connection closed by peer", Err_ConnectionClosed);
         }
@@ -757,8 +696,7 @@ void rt_tcp_send_all_raw(void *obj, const void *data, int64_t len)
 // Tcp Client - Receive Methods
 //=============================================================================
 
-void *rt_tcp_recv(void *obj, int64_t max_bytes)
-{
+void *rt_tcp_recv(void *obj, int64_t max_bytes) {
     if (!obj)
         rt_trap("Network: NULL connection");
 
@@ -774,8 +712,7 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes)
     uint8_t *buf = bytes_data(result);
 
     int received = recv(tcp->sock, (char *)buf, (int)max_bytes, 0);
-    if (received == SOCK_ERROR)
-    {
+    if (received == SOCK_ERROR) {
         // Check if it's a timeout
 #ifdef _WIN32
         if (WSAGetLastError() == WSAETIMEDOUT)
@@ -794,8 +731,7 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes)
         rt_trap_net("Network: receive failed", net_classify_errno());
     }
 
-    if (received == 0)
-    {
+    if (received == 0) {
         // Connection closed by peer
         tcp->is_open = false;
         if (rt_obj_release_check0(result))
@@ -804,8 +740,7 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes)
     }
 
     // Return exact size received (release over-allocated buffer)
-    if (received < max_bytes)
-    {
+    if (received < max_bytes) {
         void *exact = rt_bytes_new(received);
         memcpy(bytes_data(exact), buf, received);
         if (rt_obj_release_check0(result))
@@ -816,8 +751,7 @@ void *rt_tcp_recv(void *obj, int64_t max_bytes)
     return result;
 }
 
-rt_string rt_tcp_recv_str(void *obj, int64_t max_bytes)
-{
+rt_string rt_tcp_recv_str(void *obj, int64_t max_bytes) {
     void *bytes = rt_tcp_recv(obj, max_bytes);
     rt_string str = rt_bytes_to_str(bytes);
     if (bytes && rt_obj_release_check0(bytes))
@@ -825,8 +759,7 @@ rt_string rt_tcp_recv_str(void *obj, int64_t max_bytes)
     return str;
 }
 
-void *rt_tcp_recv_exact(void *obj, int64_t count)
-{
+void *rt_tcp_recv_exact(void *obj, int64_t count) {
     if (!obj)
         rt_trap("Network: NULL connection");
 
@@ -841,19 +774,16 @@ void *rt_tcp_recv_exact(void *obj, int64_t count)
     uint8_t *buf = bytes_data(result);
 
     int64_t total_received = 0;
-    while (total_received < count)
-    {
+    while (total_received < count) {
         int received =
             recv(tcp->sock, (char *)(buf + total_received), (int)(count - total_received), 0);
-        if (received == SOCK_ERROR)
-        {
+        if (received == SOCK_ERROR) {
             tcp->is_open = false;
             if (rt_obj_release_check0(result))
                 rt_obj_free(result);
             rt_trap_net("Network: receive failed", net_classify_errno());
         }
-        if (received == 0)
-        {
+        if (received == 0) {
             tcp->is_open = false;
             if (rt_obj_release_check0(result))
                 rt_obj_free(result);
@@ -866,8 +796,7 @@ void *rt_tcp_recv_exact(void *obj, int64_t count)
     return result;
 }
 
-rt_string rt_tcp_recv_line(void *obj)
-{
+rt_string rt_tcp_recv_line(void *obj) {
     if (!obj)
         rt_trap("Network: NULL connection");
 
@@ -882,49 +811,41 @@ rt_string rt_tcp_recv_line(void *obj)
     if (!line)
         rt_trap("Network: memory allocation failed");
 
-    while (1)
-    {
+    while (1) {
         char c;
         int received = recv(tcp->sock, &c, 1, 0);
-        if (received == SOCK_ERROR)
-        {
+        if (received == SOCK_ERROR) {
             free(line);
             tcp->is_open = false;
             rt_trap_net("Network: receive failed", net_classify_errno());
         }
-        if (received == 0)
-        {
+        if (received == 0) {
             free(line);
             tcp->is_open = false;
             rt_trap_net("Network: connection closed before end of line", Err_ConnectionClosed);
         }
 
-        if (c == '\n')
-        {
+        if (c == '\n') {
             // Strip trailing CR if present
-            if (len > 0 && line[len - 1] == '\r')
-            {
+            if (len > 0 && line[len - 1] == '\r') {
                 len--;
             }
             break;
         }
 
         // Cap at 64KB to prevent unbounded memory growth from a malicious peer.
-        if (len >= 65536)
-        {
+        if (len >= 65536) {
             free(line);
             rt_trap_net("Network: line exceeds 64KB limit", Err_ProtocolError);
         }
 
         // Add character to buffer, growing if needed.
-        if (len >= cap)
-        {
+        if (len >= cap) {
             cap *= 2;
             if (cap > 65536)
                 cap = 65536;
             char *new_line = (char *)realloc(line, cap);
-            if (!new_line)
-            {
+            if (!new_line) {
                 free(line);
                 rt_trap("Network: memory allocation failed");
             }
@@ -943,8 +864,7 @@ rt_string rt_tcp_recv_line(void *obj)
 // Tcp Client - Timeout and Close
 //=============================================================================
 
-void rt_tcp_set_recv_timeout(void *obj, int64_t timeout_ms)
-{
+void rt_tcp_set_recv_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         rt_trap("Network: NULL connection");
 
@@ -953,8 +873,7 @@ void rt_tcp_set_recv_timeout(void *obj, int64_t timeout_ms)
     set_socket_timeout(tcp->sock, (int)timeout_ms, true);
 }
 
-void rt_tcp_set_send_timeout(void *obj, int64_t timeout_ms)
-{
+void rt_tcp_set_send_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         rt_trap("Network: NULL connection");
 
@@ -963,14 +882,12 @@ void rt_tcp_set_send_timeout(void *obj, int64_t timeout_ms)
     set_socket_timeout(tcp->sock, (int)timeout_ms, false);
 }
 
-void rt_tcp_close(void *obj)
-{
+void rt_tcp_close(void *obj) {
     if (!obj)
         return;
 
     rt_tcp_t *tcp = (rt_tcp_t *)obj;
-    if (tcp->is_open)
-    {
+    if (tcp->is_open) {
         CLOSE_SOCKET(tcp->sock);
         tcp->is_open = false;
     }
@@ -980,17 +897,14 @@ void rt_tcp_close(void *obj)
 // TcpServer - Creation
 //=============================================================================
 
-void *rt_tcp_server_listen(int64_t port)
-{
+void *rt_tcp_server_listen(int64_t port) {
     return rt_tcp_server_listen_at(rt_const_cstr("0.0.0.0"), port);
 }
 
-void *rt_tcp_server_listen_at(rt_string address, int64_t port)
-{
+void *rt_tcp_server_listen_at(rt_string address, int64_t port) {
     rt_net_init_wsa();
 
-    if (port < 1 || port > 65535)
-    {
+    if (port < 1 || port > 65535) {
         rt_trap("Network: invalid port number");
     }
 
@@ -998,16 +912,14 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port)
     const char *addr_ptr = rt_string_cstr(address);
     size_t addr_len = strlen(addr_ptr);
     char *addr_cstr = (char *)malloc(addr_len + 1);
-    if (!addr_cstr)
-    {
+    if (!addr_cstr) {
         rt_trap("Network: memory allocation failed");
     }
     memcpy(addr_cstr, addr_ptr, addr_len + 1);
 
     // Create socket
     socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == INVALID_SOCK)
-    {
+    if (sock == INVALID_SOCK) {
         free(addr_cstr);
         rt_trap("Network: failed to create socket");
     }
@@ -1023,15 +935,13 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port)
     bind_addr.sin_family = AF_INET;
     bind_addr.sin_port = htons((uint16_t)port);
 
-    if (inet_pton(AF_INET, addr_cstr, &bind_addr.sin_addr) != 1)
-    {
+    if (inet_pton(AF_INET, addr_cstr, &bind_addr.sin_addr) != 1) {
         CLOSE_SOCKET(sock);
         free(addr_cstr);
         rt_trap("Network: invalid address");
     }
 
-    if (bind(sock, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) == SOCK_ERROR)
-    {
+    if (bind(sock, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) == SOCK_ERROR) {
         int err = GET_LAST_ERROR();
         CLOSE_SOCKET(sock);
         free(addr_cstr);
@@ -1043,8 +953,7 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port)
     }
 
     // Start listening
-    if (listen(sock, SOMAXCONN) == SOCK_ERROR)
-    {
+    if (listen(sock, SOMAXCONN) == SOCK_ERROR) {
         CLOSE_SOCKET(sock);
         free(addr_cstr);
         rt_trap_net("Network: listen failed", Err_NetworkError);
@@ -1053,8 +962,7 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port)
     // Create server object
     rt_tcp_server_t *server =
         (rt_tcp_server_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tcp_server_t));
-    if (!server)
-    {
+    if (!server) {
         CLOSE_SOCKET(sock);
         free(addr_cstr);
         rt_trap("Network: memory allocation failed");
@@ -1073,8 +981,7 @@ void *rt_tcp_server_listen_at(rt_string address, int64_t port)
 // TcpServer - Properties
 //=============================================================================
 
-int64_t rt_tcp_server_port(void *obj)
-{
+int64_t rt_tcp_server_port(void *obj) {
     if (!obj)
         rt_trap("Network: NULL server");
 
@@ -1082,8 +989,7 @@ int64_t rt_tcp_server_port(void *obj)
     return server->port;
 }
 
-rt_string rt_tcp_server_address(void *obj)
-{
+rt_string rt_tcp_server_address(void *obj) {
     if (!obj)
         rt_trap("Network: NULL server");
 
@@ -1091,8 +997,7 @@ rt_string rt_tcp_server_address(void *obj)
     return rt_const_cstr(server->address);
 }
 
-int8_t rt_tcp_server_is_listening(void *obj)
-{
+int8_t rt_tcp_server_is_listening(void *obj) {
     if (!obj)
         rt_trap("Network: NULL server");
 
@@ -1104,13 +1009,11 @@ int8_t rt_tcp_server_is_listening(void *obj)
 // TcpServer - Accept and Close
 //=============================================================================
 
-void *rt_tcp_server_accept(void *obj)
-{
+void *rt_tcp_server_accept(void *obj) {
     return rt_tcp_server_accept_for(obj, 0);
 }
 
-void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms)
-{
+void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms) {
     if (!obj)
         rt_trap("Network: NULL server");
 
@@ -1119,16 +1022,13 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms)
         rt_trap_net("Network: server not listening", Err_ConnectionClosed);
 
     // Use select for timeout
-    if (timeout_ms > 0)
-    {
+    if (timeout_ms > 0) {
         int ready = wait_socket(server->sock, (int)timeout_ms, false);
-        if (ready == 0)
-        {
+        if (ready == 0) {
             // Timeout - return NULL
             return NULL;
         }
-        if (ready < 0)
-        {
+        if (ready < 0) {
             rt_trap_net("Network: accept failed", Err_NetworkError);
         }
     }
@@ -1138,8 +1038,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms)
     socklen_t client_len = sizeof(client_addr);
 
     socket_t client_sock = accept(server->sock, (struct sockaddr *)&client_addr, &client_len);
-    if (client_sock == INVALID_SOCK)
-    {
+    if (client_sock == INVALID_SOCK) {
         // Check if server was closed
         if (!server->is_listening)
             return NULL;
@@ -1156,8 +1055,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms)
     inet_ntop(AF_INET, &client_addr.sin_addr, host_buf, sizeof(host_buf));
 
     char *host_cstr = (char *)malloc(strlen(host_buf) + 1);
-    if (!host_cstr)
-    {
+    if (!host_cstr) {
         CLOSE_SOCKET(client_sock);
         rt_trap("Network: memory allocation failed");
     }
@@ -1165,8 +1063,7 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms)
 
     // Create connection object
     rt_tcp_t *tcp = (rt_tcp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tcp_t));
-    if (!tcp)
-    {
+    if (!tcp) {
         CLOSE_SOCKET(client_sock);
         free(host_cstr);
         rt_trap("Network: memory allocation failed");
@@ -1184,14 +1081,12 @@ void *rt_tcp_server_accept_for(void *obj, int64_t timeout_ms)
     return tcp;
 }
 
-void rt_tcp_server_close(void *obj)
-{
+void rt_tcp_server_close(void *obj) {
     if (!obj)
         return;
 
     rt_tcp_server_t *server = (rt_tcp_server_t *)obj;
-    if (server->is_listening)
-    {
+    if (server->is_listening) {
         CLOSE_SOCKET(server->sock);
         server->is_listening = false;
     }
@@ -1201,8 +1096,7 @@ void rt_tcp_server_close(void *obj)
 // Udp Socket Structure
 //=============================================================================
 
-typedef struct rt_udp
-{
+typedef struct rt_udp {
     socket_t sock;                     // Socket descriptor
     char *address;                     // Bound address (allocated, or NULL if unbound)
     int port;                          // Bound port (0 if unbound)
@@ -1213,19 +1107,16 @@ typedef struct rt_udp
     int recv_timeout_ms;               // Receive timeout (0 = none)
 } rt_udp_t;
 
-static void rt_udp_finalize(void *obj)
-{
+static void rt_udp_finalize(void *obj) {
     if (!obj)
         return;
     rt_udp_t *udp = (rt_udp_t *)obj;
-    if (udp->is_open)
-    {
+    if (udp->is_open) {
         CLOSE_SOCKET(udp->sock);
         udp->is_open = false;
     }
     udp->is_bound = false;
-    if (udp->address)
-    {
+    if (udp->address) {
         free(udp->address);
         udp->address = NULL;
     }
@@ -1235,20 +1126,17 @@ static void rt_udp_finalize(void *obj)
 // Udp - Creation
 //=============================================================================
 
-void *rt_udp_new(void)
-{
+void *rt_udp_new(void) {
     rt_net_init_wsa();
 
     socket_t sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (sock == INVALID_SOCK)
-    {
+    if (sock == INVALID_SOCK) {
         rt_trap("Network: failed to create UDP socket");
     }
     suppress_sigpipe(sock);
 
     rt_udp_t *udp = (rt_udp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_udp_t));
-    if (!udp)
-    {
+    if (!udp) {
         CLOSE_SOCKET(sock);
         rt_trap("Network: memory allocation failed");
     }
@@ -1266,30 +1154,25 @@ void *rt_udp_new(void)
     return udp;
 }
 
-void *rt_udp_bind(int64_t port)
-{
+void *rt_udp_bind(int64_t port) {
     return rt_udp_bind_at(rt_const_cstr("0.0.0.0"), port);
 }
 
-void *rt_udp_bind_at(rt_string address, int64_t port)
-{
+void *rt_udp_bind_at(rt_string address, int64_t port) {
     rt_net_init_wsa();
 
-    if (port < 0 || port > 65535)
-    {
+    if (port < 0 || port > 65535) {
         rt_trap("Network: invalid port number");
     }
 
     const char *addr_ptr = rt_string_cstr(address);
-    if (!addr_ptr || *addr_ptr == '\0')
-    {
+    if (!addr_ptr || *addr_ptr == '\0') {
         rt_trap("Network: invalid address");
     }
 
     // Create socket
     socket_t sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (sock == INVALID_SOCK)
-    {
+    if (sock == INVALID_SOCK) {
         rt_trap("Network: failed to create UDP socket");
     }
     suppress_sigpipe(sock);
@@ -1304,14 +1187,12 @@ void *rt_udp_bind_at(rt_string address, int64_t port)
     bind_addr.sin_family = AF_INET;
     bind_addr.sin_port = htons((uint16_t)port);
 
-    if (inet_pton(AF_INET, addr_ptr, &bind_addr.sin_addr) != 1)
-    {
+    if (inet_pton(AF_INET, addr_ptr, &bind_addr.sin_addr) != 1) {
         CLOSE_SOCKET(sock);
         rt_trap("Network: invalid address");
     }
 
-    if (bind(sock, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) == SOCK_ERROR)
-    {
+    if (bind(sock, (struct sockaddr *)&bind_addr, sizeof(bind_addr)) == SOCK_ERROR) {
         int err = GET_LAST_ERROR();
         CLOSE_SOCKET(sock);
         if (err == ADDR_IN_USE)
@@ -1323,12 +1204,10 @@ void *rt_udp_bind_at(rt_string address, int64_t port)
 
     // Get actual port if 0 was specified
     int actual_port = (int)port;
-    if (port == 0)
-    {
+    if (port == 0) {
         struct sockaddr_in bound_addr;
         socklen_t len = sizeof(bound_addr);
-        if (getsockname(sock, (struct sockaddr *)&bound_addr, &len) == 0)
-        {
+        if (getsockname(sock, (struct sockaddr *)&bound_addr, &len) == 0) {
             actual_port = ntohs(bound_addr.sin_port);
         }
     }
@@ -1336,8 +1215,7 @@ void *rt_udp_bind_at(rt_string address, int64_t port)
     // Copy address string
     size_t addr_len = strlen(addr_ptr);
     char *addr_cstr = (char *)malloc(addr_len + 1);
-    if (!addr_cstr)
-    {
+    if (!addr_cstr) {
         CLOSE_SOCKET(sock);
         rt_trap("Network: memory allocation failed");
     }
@@ -1345,8 +1223,7 @@ void *rt_udp_bind_at(rt_string address, int64_t port)
 
     // Create UDP object
     rt_udp_t *udp = (rt_udp_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_udp_t));
-    if (!udp)
-    {
+    if (!udp) {
         CLOSE_SOCKET(sock);
         free(addr_cstr);
         rt_trap("Network: memory allocation failed");
@@ -1369,8 +1246,7 @@ void *rt_udp_bind_at(rt_string address, int64_t port)
 // Udp - Properties
 //=============================================================================
 
-int64_t rt_udp_port(void *obj)
-{
+int64_t rt_udp_port(void *obj) {
     if (!obj)
         rt_trap("Network: NULL socket");
 
@@ -1378,8 +1254,7 @@ int64_t rt_udp_port(void *obj)
     return udp->port;
 }
 
-rt_string rt_udp_address(void *obj)
-{
+rt_string rt_udp_address(void *obj) {
     if (!obj)
         rt_trap("Network: NULL socket");
 
@@ -1389,8 +1264,7 @@ rt_string rt_udp_address(void *obj)
     return rt_str_empty();
 }
 
-int8_t rt_udp_is_bound(void *obj)
-{
+int8_t rt_udp_is_bound(void *obj) {
     if (!obj)
         rt_trap("Network: NULL socket");
 
@@ -1403,15 +1277,13 @@ int8_t rt_udp_is_bound(void *obj)
 //=============================================================================
 
 /// @brief Helper to resolve hostname and create sockaddr_in.
-static int resolve_host(const char *host, int port, struct sockaddr_in *addr)
-{
+static int resolve_host(const char *host, int port, struct sockaddr_in *addr) {
     memset(addr, 0, sizeof(*addr));
     addr->sin_family = AF_INET;
     addr->sin_port = htons((uint16_t)port);
 
     // Try parsing as IP address first
-    if (inet_pton(AF_INET, host, &addr->sin_addr) == 1)
-    {
+    if (inet_pton(AF_INET, host, &addr->sin_addr) == 1) {
         return 0;
     }
 
@@ -1421,8 +1293,7 @@ static int resolve_host(const char *host, int port, struct sockaddr_in *addr)
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_DGRAM;
 
-    if (getaddrinfo(host, NULL, &hints, &res) != 0)
-    {
+    if (getaddrinfo(host, NULL, &hints, &res) != 0) {
         return -1;
     }
 
@@ -1433,8 +1304,7 @@ static int resolve_host(const char *host, int port, struct sockaddr_in *addr)
     return 0;
 }
 
-int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data)
-{
+int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data) {
     if (!obj)
         rt_trap("Network: NULL socket");
     if (!data)
@@ -1472,8 +1342,7 @@ int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data)
                       SEND_FLAGS,
                       (struct sockaddr *)&dest_addr,
                       sizeof(dest_addr));
-    if (sent == SOCK_ERROR)
-    {
+    if (sent == SOCK_ERROR) {
 #ifdef _WIN32
         int err = WSAGetLastError();
         if (err == WSAEMSGSIZE)
@@ -1488,8 +1357,7 @@ int64_t rt_udp_send_to(void *obj, rt_string host, int64_t port, void *data)
     return sent;
 }
 
-int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string text)
-{
+int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string text) {
     if (!obj)
         rt_trap("Network: NULL socket");
 
@@ -1524,8 +1392,7 @@ int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string te
                       SEND_FLAGS,
                       (struct sockaddr *)&dest_addr,
                       sizeof(dest_addr));
-    if (sent == SOCK_ERROR)
-    {
+    if (sent == SOCK_ERROR) {
         rt_trap_net("Network: send failed", net_classify_errno());
     }
 
@@ -1536,13 +1403,11 @@ int64_t rt_udp_send_to_str(void *obj, rt_string host, int64_t port, rt_string te
 // Udp - Receive Methods
 //=============================================================================
 
-void *rt_udp_recv(void *obj, int64_t max_bytes)
-{
+void *rt_udp_recv(void *obj, int64_t max_bytes) {
     return rt_udp_recv_from(obj, max_bytes);
 }
 
-void *rt_udp_recv_from(void *obj, int64_t max_bytes)
-{
+void *rt_udp_recv_from(void *obj, int64_t max_bytes) {
     if (!obj)
         rt_trap("Network: NULL socket");
 
@@ -1563,8 +1428,7 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes)
     int received = recvfrom(
         udp->sock, (char *)buf, (int)max_bytes, 0, (struct sockaddr *)&sender_addr, &sender_len);
 
-    if (received == SOCK_ERROR)
-    {
+    if (received == SOCK_ERROR) {
         // Check for timeout
 #ifdef _WIN32
         if (WSAGetLastError() == WSAETIMEDOUT)
@@ -1585,8 +1449,7 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes)
     udp->sender_port = ntohs(sender_addr.sin_port);
 
     // Return exact size received
-    if (received < max_bytes)
-    {
+    if (received < max_bytes) {
         void *exact = rt_bytes_new(received);
         memcpy(bytes_data(exact), buf, received);
         // Release the over-allocated buffer
@@ -1598,8 +1461,7 @@ void *rt_udp_recv_from(void *obj, int64_t max_bytes)
     return result;
 }
 
-void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms)
-{
+void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms) {
     if (!obj)
         rt_trap("Network: NULL socket");
 
@@ -1608,16 +1470,13 @@ void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms)
         rt_trap_net("Network: socket closed", Err_ConnectionClosed);
 
     // Use select for timeout
-    if (timeout_ms > 0)
-    {
+    if (timeout_ms > 0) {
         int ready = wait_socket(udp->sock, (int)timeout_ms, false);
-        if (ready == 0)
-        {
+        if (ready == 0) {
             // Timeout - return NULL
             return NULL;
         }
-        if (ready < 0)
-        {
+        if (ready < 0) {
             rt_trap_net("Network: receive failed", net_classify_errno());
         }
     }
@@ -1625,8 +1484,7 @@ void *rt_udp_recv_for(void *obj, int64_t max_bytes, int64_t timeout_ms)
     return rt_udp_recv_from(obj, max_bytes);
 }
 
-rt_string rt_udp_sender_host(void *obj)
-{
+rt_string rt_udp_sender_host(void *obj) {
     if (!obj)
         rt_trap("Network: NULL socket");
 
@@ -1634,8 +1492,7 @@ rt_string rt_udp_sender_host(void *obj)
     return rt_const_cstr(udp->sender_host);
 }
 
-int64_t rt_udp_sender_port(void *obj)
-{
+int64_t rt_udp_sender_port(void *obj) {
     if (!obj)
         rt_trap("Network: NULL socket");
 
@@ -1647,8 +1504,7 @@ int64_t rt_udp_sender_port(void *obj)
 // Udp - Options and Close
 //=============================================================================
 
-void rt_udp_set_broadcast(void *obj, int8_t enable)
-{
+void rt_udp_set_broadcast(void *obj, int8_t enable) {
     if (!obj)
         rt_trap("Network: NULL socket");
 
@@ -1658,14 +1514,12 @@ void rt_udp_set_broadcast(void *obj, int8_t enable)
 
     int flag = enable ? 1 : 0;
     if (setsockopt(udp->sock, SOL_SOCKET, SO_BROADCAST, (const char *)&flag, sizeof(flag)) ==
-        SOCK_ERROR)
-    {
+        SOCK_ERROR) {
         rt_trap_net("Network: failed to set broadcast option", Err_NetworkError);
     }
 }
 
-void rt_udp_join_group(void *obj, rt_string group_addr)
-{
+void rt_udp_join_group(void *obj, rt_string group_addr) {
     if (!obj)
         rt_trap("Network: NULL socket");
 
@@ -1679,14 +1533,12 @@ void rt_udp_join_group(void *obj, rt_string group_addr)
 
     // Validate multicast address (224.0.0.0 - 239.255.255.255)
     struct in_addr mcast_addr;
-    if (inet_pton(AF_INET, addr_ptr, &mcast_addr) != 1)
-    {
+    if (inet_pton(AF_INET, addr_ptr, &mcast_addr) != 1) {
         rt_trap("Network: invalid multicast address");
     }
 
     uint32_t addr_val = ntohl(mcast_addr.s_addr);
-    if ((addr_val & 0xF0000000) != 0xE0000000)
-    {
+    if ((addr_val & 0xF0000000) != 0xE0000000) {
         rt_trap("Network: invalid multicast address (must be 224.0.0.0 - 239.255.255.255)");
     }
 
@@ -1695,14 +1547,12 @@ void rt_udp_join_group(void *obj, rt_string group_addr)
     mreq.imr_interface.s_addr = htonl(INADDR_ANY);
 
     if (setsockopt(udp->sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const char *)&mreq, sizeof(mreq)) ==
-        SOCK_ERROR)
-    {
+        SOCK_ERROR) {
         rt_trap_net("Network: failed to join multicast group", Err_NetworkError);
     }
 }
 
-void rt_udp_leave_group(void *obj, rt_string group_addr)
-{
+void rt_udp_leave_group(void *obj, rt_string group_addr) {
     if (!obj)
         rt_trap("Network: NULL socket");
 
@@ -1725,8 +1575,7 @@ void rt_udp_leave_group(void *obj, rt_string group_addr)
     setsockopt(udp->sock, IPPROTO_IP, IP_DROP_MEMBERSHIP, (const char *)&mreq, sizeof(mreq));
 }
 
-void rt_udp_set_recv_timeout(void *obj, int64_t timeout_ms)
-{
+void rt_udp_set_recv_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         rt_trap("Network: NULL socket");
 
@@ -1735,14 +1584,12 @@ void rt_udp_set_recv_timeout(void *obj, int64_t timeout_ms)
     set_socket_timeout(udp->sock, (int)timeout_ms, true);
 }
 
-void rt_udp_close(void *obj)
-{
+void rt_udp_close(void *obj) {
     if (!obj)
         return;
 
     rt_udp_t *udp = (rt_udp_t *)obj;
-    if (udp->is_open)
-    {
+    if (udp->is_open) {
         CLOSE_SOCKET(udp->sock);
         udp->is_open = false;
         udp->is_bound = false;
@@ -1755,8 +1602,7 @@ void rt_udp_close(void *obj)
 
 /// @brief Check if a string is a valid IPv4 address (without DNS lookup).
 /// @details Parses dotted decimal format: four octets 0-255 separated by dots.
-static bool parse_ipv4(const char *addr)
-{
+static bool parse_ipv4(const char *addr) {
     if (!addr || !*addr)
         return false;
 
@@ -1764,25 +1610,19 @@ static bool parse_ipv4(const char *addr)
     int value = 0;
     bool has_digit = false;
 
-    for (const char *p = addr; *p; p++)
-    {
-        if (*p >= '0' && *p <= '9')
-        {
+    for (const char *p = addr; *p; p++) {
+        if (*p >= '0' && *p <= '9') {
             value = value * 10 + (*p - '0');
             if (value > 255)
                 return false;
             has_digit = true;
-        }
-        else if (*p == '.')
-        {
+        } else if (*p == '.') {
             if (!has_digit || parts >= 3)
                 return false;
             parts++;
             value = 0;
             has_digit = false;
-        }
-        else
-        {
+        } else {
             return false;
         }
     }
@@ -1792,8 +1632,7 @@ static bool parse_ipv4(const char *addr)
 
 /// @brief Check if a string is a valid IPv6 address (without DNS lookup).
 /// @details Parses colon hex format with :: for zero compression.
-static bool parse_ipv6(const char *addr)
-{
+static bool parse_ipv6(const char *addr) {
     if (!addr || !*addr)
         return false;
 
@@ -1802,8 +1641,7 @@ static bool parse_ipv6(const char *addr)
     return inet_pton(AF_INET6, addr, &result) == 1;
 }
 
-rt_string rt_dns_resolve(rt_string hostname)
-{
+rt_string rt_dns_resolve(rt_string hostname) {
     rt_net_init_wsa();
 
     const char *host_ptr = rt_string_cstr(hostname);
@@ -1816,8 +1654,7 @@ rt_string rt_dns_resolve(rt_string hostname)
 
     struct addrinfo *result = NULL;
     int ret = getaddrinfo(host_ptr, NULL, &hints, &result);
-    if (ret != 0 || !result)
-    {
+    if (ret != 0 || !result) {
         if (result)
             freeaddrinfo(result);
         rt_trap_net("Network: hostname not found", Err_DnsError);
@@ -1831,8 +1668,7 @@ rt_string rt_dns_resolve(rt_string hostname)
     return rt_string_from_bytes(ip_str, strlen(ip_str));
 }
 
-void *rt_dns_resolve_all(rt_string hostname)
-{
+void *rt_dns_resolve_all(rt_string hostname) {
     rt_net_init_wsa();
 
     const char *host_ptr = rt_string_cstr(hostname);
@@ -1845,8 +1681,7 @@ void *rt_dns_resolve_all(rt_string hostname)
 
     struct addrinfo *result = NULL;
     int ret = getaddrinfo(host_ptr, NULL, &hints, &result);
-    if (ret != 0 || !result)
-    {
+    if (ret != 0 || !result) {
         if (result)
             freeaddrinfo(result);
         rt_trap_net("Network: hostname not found", Err_DnsError);
@@ -1855,22 +1690,16 @@ void *rt_dns_resolve_all(rt_string hostname)
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
 
-    for (struct addrinfo *rp = result; rp != NULL; rp = rp->ai_next)
-    {
+    for (struct addrinfo *rp = result; rp != NULL; rp = rp->ai_next) {
         char ip_str[INET6_ADDRSTRLEN];
 
-        if (rp->ai_family == AF_INET)
-        {
+        if (rp->ai_family == AF_INET) {
             struct sockaddr_in *addr = (struct sockaddr_in *)rp->ai_addr;
             inet_ntop(AF_INET, &addr->sin_addr, ip_str, sizeof(ip_str));
-        }
-        else if (rp->ai_family == AF_INET6)
-        {
+        } else if (rp->ai_family == AF_INET6) {
             struct sockaddr_in6 *addr = (struct sockaddr_in6 *)rp->ai_addr;
             inet_ntop(AF_INET6, &addr->sin6_addr, ip_str, sizeof(ip_str));
-        }
-        else
-        {
+        } else {
             continue;
         }
 
@@ -1883,8 +1712,7 @@ void *rt_dns_resolve_all(rt_string hostname)
     return seq;
 }
 
-rt_string rt_dns_resolve4(rt_string hostname)
-{
+rt_string rt_dns_resolve4(rt_string hostname) {
     rt_net_init_wsa();
 
     const char *host_ptr = rt_string_cstr(hostname);
@@ -1897,8 +1725,7 @@ rt_string rt_dns_resolve4(rt_string hostname)
 
     struct addrinfo *result = NULL;
     int ret = getaddrinfo(host_ptr, NULL, &hints, &result);
-    if (ret != 0 || !result)
-    {
+    if (ret != 0 || !result) {
         if (result)
             freeaddrinfo(result);
         rt_trap_net("Network: no IPv4 address found", Err_DnsError);
@@ -1912,8 +1739,7 @@ rt_string rt_dns_resolve4(rt_string hostname)
     return rt_string_from_bytes(ip_str, strlen(ip_str));
 }
 
-rt_string rt_dns_resolve6(rt_string hostname)
-{
+rt_string rt_dns_resolve6(rt_string hostname) {
     rt_net_init_wsa();
 
     const char *host_ptr = rt_string_cstr(hostname);
@@ -1926,8 +1752,7 @@ rt_string rt_dns_resolve6(rt_string hostname)
 
     struct addrinfo *result = NULL;
     int ret = getaddrinfo(host_ptr, NULL, &hints, &result);
-    if (ret != 0 || !result)
-    {
+    if (ret != 0 || !result) {
         if (result)
             freeaddrinfo(result);
         rt_trap_net("Network: no IPv6 address found", Err_DnsError);
@@ -1941,8 +1766,7 @@ rt_string rt_dns_resolve6(rt_string hostname)
     return rt_string_from_bytes(ip_str, strlen(ip_str));
 }
 
-rt_string rt_dns_reverse(rt_string ip_address)
-{
+rt_string rt_dns_reverse(rt_string ip_address) {
     rt_net_init_wsa();
 
     const char *addr_ptr = rt_string_cstr(ip_address);
@@ -1955,39 +1779,32 @@ rt_string rt_dns_reverse(rt_string ip_address)
     struct sockaddr *sa = NULL;
     socklen_t sa_len = 0;
 
-    if (inet_pton(AF_INET, addr_ptr, &sa4.sin_addr) == 1)
-    {
+    if (inet_pton(AF_INET, addr_ptr, &sa4.sin_addr) == 1) {
         sa4.sin_family = AF_INET;
         sa4.sin_port = 0;
         sa = (struct sockaddr *)&sa4;
         sa_len = sizeof(sa4);
-    }
-    else if (inet_pton(AF_INET6, addr_ptr, &sa6.sin6_addr) == 1)
-    {
+    } else if (inet_pton(AF_INET6, addr_ptr, &sa6.sin6_addr) == 1) {
         sa6.sin6_family = AF_INET6;
         sa6.sin6_port = 0;
         sa6.sin6_flowinfo = 0;
         sa6.sin6_scope_id = 0;
         sa = (struct sockaddr *)&sa6;
         sa_len = sizeof(sa6);
-    }
-    else
-    {
+    } else {
         rt_trap_net("Network: invalid IP address", Err_InvalidUrl);
     }
 
     char host[NI_MAXHOST];
     int ret = getnameinfo(sa, sa_len, host, sizeof(host), NULL, 0, NI_NAMEREQD);
-    if (ret != 0)
-    {
+    if (ret != 0) {
         rt_trap_net("Network: reverse lookup failed", Err_DnsError);
     }
 
     return rt_string_from_bytes(host, strlen(host));
 }
 
-int8_t rt_dns_is_ipv4(rt_string address)
-{
+int8_t rt_dns_is_ipv4(rt_string address) {
     const char *addr_ptr = rt_string_cstr(address);
     if (!addr_ptr || *addr_ptr == '\0')
         return 0;
@@ -1995,8 +1812,7 @@ int8_t rt_dns_is_ipv4(rt_string address)
     return parse_ipv4(addr_ptr) ? 1 : 0;
 }
 
-int8_t rt_dns_is_ipv6(rt_string address)
-{
+int8_t rt_dns_is_ipv6(rt_string address) {
     const char *addr_ptr = rt_string_cstr(address);
     if (!addr_ptr || *addr_ptr == '\0')
         return 0;
@@ -2004,26 +1820,22 @@ int8_t rt_dns_is_ipv6(rt_string address)
     return parse_ipv6(addr_ptr) ? 1 : 0;
 }
 
-int8_t rt_dns_is_ip(rt_string address)
-{
+int8_t rt_dns_is_ip(rt_string address) {
     return rt_dns_is_ipv4(address) || rt_dns_is_ipv6(address);
 }
 
-rt_string rt_dns_local_host(void)
-{
+rt_string rt_dns_local_host(void) {
     rt_net_init_wsa();
 
     char hostname[256];
-    if (gethostname(hostname, sizeof(hostname)) != 0)
-    {
+    if (gethostname(hostname, sizeof(hostname)) != 0) {
         rt_trap_net("Network: failed to get hostname", Err_DnsError);
     }
 
     return rt_string_from_bytes(hostname, strlen(hostname));
 }
 
-void *rt_dns_local_addrs(void)
-{
+void *rt_dns_local_addrs(void) {
     rt_net_init_wsa();
 
     void *seq = rt_seq_new();
@@ -2038,42 +1850,33 @@ void *rt_dns_local_addrs(void)
 
     ULONG flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
     ULONG ret = GetAdaptersAddresses(AF_UNSPEC, flags, NULL, addrs, &bufLen);
-    if (ret == ERROR_BUFFER_OVERFLOW)
-    {
+    if (ret == ERROR_BUFFER_OVERFLOW) {
         free(addrs);
         addrs = (PIP_ADAPTER_ADDRESSES)malloc(bufLen);
         if (!addrs)
             return seq;
         ret = GetAdaptersAddresses(AF_UNSPEC, flags, NULL, addrs, &bufLen);
     }
-    if (ret != NO_ERROR)
-    {
+    if (ret != NO_ERROR) {
         free(addrs);
         return seq;
     }
 
-    for (PIP_ADAPTER_ADDRESSES adapter = addrs; adapter; adapter = adapter->Next)
-    {
+    for (PIP_ADAPTER_ADDRESSES adapter = addrs; adapter; adapter = adapter->Next) {
         if (adapter->OperStatus != IfOperStatusUp)
             continue;
 
-        for (PIP_ADAPTER_UNICAST_ADDRESS ua = adapter->FirstUnicastAddress; ua; ua = ua->Next)
-        {
+        for (PIP_ADAPTER_UNICAST_ADDRESS ua = adapter->FirstUnicastAddress; ua; ua = ua->Next) {
             char ip_str[INET6_ADDRSTRLEN];
             int family = ua->Address.lpSockaddr->sa_family;
 
-            if (family == AF_INET)
-            {
+            if (family == AF_INET) {
                 struct sockaddr_in *addr = (struct sockaddr_in *)ua->Address.lpSockaddr;
                 inet_ntop(AF_INET, &addr->sin_addr, ip_str, sizeof(ip_str));
-            }
-            else if (family == AF_INET6)
-            {
+            } else if (family == AF_INET6) {
                 struct sockaddr_in6 *addr = (struct sockaddr_in6 *)ua->Address.lpSockaddr;
                 inet_ntop(AF_INET6, &addr->sin6_addr, ip_str, sizeof(ip_str));
-            }
-            else
-            {
+            } else {
                 continue;
             }
 
@@ -2094,26 +1897,20 @@ void *rt_dns_local_addrs(void)
     if (getifaddrs(&ifaddr) == -1)
         return seq;
 
-    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next)
-    {
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
         if (ifa->ifa_addr == NULL)
             continue;
 
         char ip_str[INET6_ADDRSTRLEN];
         int family = ifa->ifa_addr->sa_family;
 
-        if (family == AF_INET)
-        {
+        if (family == AF_INET) {
             struct sockaddr_in *addr = (struct sockaddr_in *)ifa->ifa_addr;
             inet_ntop(AF_INET, &addr->sin_addr, ip_str, sizeof(ip_str));
-        }
-        else if (family == AF_INET6)
-        {
+        } else if (family == AF_INET6) {
             struct sockaddr_in6 *addr = (struct sockaddr_in6 *)ifa->ifa_addr;
             inet_ntop(AF_INET6, &addr->sin6_addr, ip_str, sizeof(ip_str));
-        }
-        else
-        {
+        } else {
             continue;
         }
 

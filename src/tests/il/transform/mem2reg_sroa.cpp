@@ -25,8 +25,7 @@
 
 using namespace il::core;
 
-static bool hasOp(const Function &F, Opcode op)
-{
+static bool hasOp(const Function &F, Opcode op) {
     for (const auto &B : F.blocks)
         for (const auto &I : B.instructions)
             if (I.op == op)
@@ -34,8 +33,7 @@ static bool hasOp(const Function &F, Opcode op)
     return false;
 }
 
-static Function makeTwoFieldAggregate()
-{
+static Function makeTwoFieldAggregate() {
     Function F;
     F.name = "two_fields";
     F.retType = Type(Type::Kind::I64);
@@ -109,8 +107,7 @@ static Function makeTwoFieldAggregate()
     return F;
 }
 
-static Function makeDynamicGEP()
-{
+static Function makeDynamicGEP() {
     Function F;
     F.name = "dynamic_gep";
     F.retType = Type(Type::Kind::I64);
@@ -170,8 +167,7 @@ static Function makeDynamicGEP()
     return F;
 }
 
-TEST(IL, test_scalarize_two_fields)
-{
+TEST(IL, test_scalarize_two_fields) {
     Module M;
     M.functions.push_back(makeTwoFieldAggregate());
 
@@ -184,8 +180,7 @@ TEST(IL, test_scalarize_two_fields)
     ASSERT_FALSE(hasOp(F, Opcode::GEP));
 }
 
-TEST(IL, test_skip_dynamic_gep)
-{
+TEST(IL, test_skip_dynamic_gep) {
     Module M;
     M.functions.push_back(makeDynamicGEP());
 
@@ -197,8 +192,7 @@ TEST(IL, test_skip_dynamic_gep)
 }
 
 /// @brief Main.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

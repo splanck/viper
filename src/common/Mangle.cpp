@@ -27,8 +27,7 @@
 
 #include <cctype>
 
-namespace viper::common
-{
+namespace viper::common {
 
 /// @brief Convert a dotted qualified name into a safe linker symbol.
 /// @details The transformation lowercases all ASCII letters and replaces dots
@@ -38,22 +37,15 @@ namespace viper::common
 ///          No prefix is added to maintain compatibility across platforms.
 /// @param qualified Qualified name such as "A.B.Func" or "Klass.__ctor".
 /// @return Mangled ASCII symbol safe to pass to the native toolchain.
-std::string MangleLink(std::string_view qualified)
-{
+std::string MangleLink(std::string_view qualified) {
     std::string out;
     out.reserve(qualified.size());
-    for (unsigned char ch : qualified)
-    {
-        if (ch == '.')
-        {
+    for (unsigned char ch : qualified) {
+        if (ch == '.') {
             out.push_back('_');
-        }
-        else if (std::isalnum(ch) || ch == '_')
-        {
+        } else if (std::isalnum(ch) || ch == '_') {
             out.push_back(static_cast<char>(std::tolower(ch)));
-        }
-        else
-        {
+        } else {
             // Map other characters (e.g., '$') to underscore deterministically
             out.push_back('_');
         }
@@ -68,15 +60,13 @@ std::string MangleLink(std::string_view qualified)
 ///          goal is a human-readable, stable identifier for diagnostics.
 /// @param symbol Mangled symbol such as "@a_b_func".
 /// @return A dotted identifier such as "a.b.func".
-std::string DemangleLink(std::string_view symbol)
-{
+std::string DemangleLink(std::string_view symbol) {
     std::string_view body = symbol;
     if (!body.empty() && body.front() == '@')
         body.remove_prefix(1);
     std::string out;
     out.reserve(body.size());
-    for (unsigned char ch : body)
-    {
+    for (unsigned char ch : body) {
         out.push_back(ch == '_' ? '.' : static_cast<char>(ch));
     }
     return out;

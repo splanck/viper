@@ -32,8 +32,7 @@
 ///
 /// @see MachineIR.hpp for the MOpcode definitions
 /// @see il/core/Opcode.hpp for IL opcode definitions
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Mapping entry for binary arithmetic IL operations to AArch64 instructions.
 ///
@@ -51,8 +50,7 @@ namespace viper::codegen::aarch64
 /// For IL `%r = add %a, 5`:
 /// - If supportsImmediate=true, emit: `ADD Xr, Xa, #5`
 /// - If supportsImmediate=false, emit: `MOV Xtmp, #5; ADD Xr, Xa, Xtmp`
-struct BinaryOpMapping
-{
+struct BinaryOpMapping {
     il::core::Opcode ilOp;  ///< The IL opcode this mapping applies to.
     MOpcode mirOp;          ///< The register-register-register MIR opcode (e.g., ADD Xd, Xn, Xm).
     bool supportsImmediate; ///< True if this operation has an immediate variant.
@@ -74,8 +72,7 @@ struct BinaryOpMapping
 /// @par Example:
 /// For IL `%r = scmp_lt %a, %b` (signed less than):
 /// - Emit: `CMP Xa, Xb; CSET Xr, lt`
-struct CompareMapping
-{
+struct CompareMapping {
     il::core::Opcode ilOp; ///< The IL comparison opcode.
     const char *condition; ///< The AArch64 condition code string (e.g., "eq", "lt").
 };
@@ -84,8 +81,7 @@ struct CompareMapping
 ///
 /// Maps single-operand IL operations (like negation, bitwise NOT) to their
 /// corresponding AArch64 machine instructions.
-struct UnaryOpMapping
-{
+struct UnaryOpMapping {
     il::core::Opcode ilOp; ///< The IL unary opcode.
     MOpcode mirOp;         ///< The MIR opcode for this unary operation.
 };
@@ -163,109 +159,89 @@ constexpr CompareMapping kCompareOps[] = {
 ///
 /// @note This function returns pointers to static storage, so the returned
 ///       pointer remains valid for the lifetime of the program.
-inline const BinaryOpMapping *lookupBinaryOp(il::core::Opcode op)
-{
+inline const BinaryOpMapping *lookupBinaryOp(il::core::Opcode op) {
     using Opc = il::core::Opcode;
-    switch (op)
-    {
+    switch (op) {
         // Integer operations
-        case Opc::Add:
-        {
+        case Opc::Add: {
             static constexpr BinaryOpMapping m{Opc::Add, MOpcode::AddRRR, true, MOpcode::AddRI};
             return &m;
         }
-        case Opc::IAddOvf:
-        {
+        case Opc::IAddOvf: {
             static constexpr BinaryOpMapping m{
                 Opc::IAddOvf, MOpcode::AddOvfRRR, true, MOpcode::AddOvfRI};
             return &m;
         }
-        case Opc::Sub:
-        {
+        case Opc::Sub: {
             static constexpr BinaryOpMapping m{Opc::Sub, MOpcode::SubRRR, true, MOpcode::SubRI};
             return &m;
         }
-        case Opc::ISubOvf:
-        {
+        case Opc::ISubOvf: {
             static constexpr BinaryOpMapping m{
                 Opc::ISubOvf, MOpcode::SubOvfRRR, true, MOpcode::SubOvfRI};
             return &m;
         }
-        case Opc::Mul:
-        {
+        case Opc::Mul: {
             static constexpr BinaryOpMapping m{Opc::Mul, MOpcode::MulRRR, false, MOpcode::MulRRR};
             return &m;
         }
-        case Opc::IMulOvf:
-        {
+        case Opc::IMulOvf: {
             static constexpr BinaryOpMapping m{
                 Opc::IMulOvf, MOpcode::MulOvfRRR, false, MOpcode::MulOvfRRR};
             return &m;
         }
-        case Opc::And:
-        {
+        case Opc::And: {
             static constexpr BinaryOpMapping m{Opc::And, MOpcode::AndRRR, true, MOpcode::AndRI};
             return &m;
         }
-        case Opc::Or:
-        {
+        case Opc::Or: {
             static constexpr BinaryOpMapping m{Opc::Or, MOpcode::OrrRRR, true, MOpcode::OrrRI};
             return &m;
         }
-        case Opc::Xor:
-        {
+        case Opc::Xor: {
             static constexpr BinaryOpMapping m{Opc::Xor, MOpcode::EorRRR, true, MOpcode::EorRI};
             return &m;
         }
-        case Opc::Shl:
-        {
+        case Opc::Shl: {
             static constexpr BinaryOpMapping m{Opc::Shl, MOpcode::LslvRRR, true, MOpcode::LslRI};
             return &m;
         }
-        case Opc::LShr:
-        {
+        case Opc::LShr: {
             static constexpr BinaryOpMapping m{Opc::LShr, MOpcode::LsrvRRR, true, MOpcode::LsrRI};
             return &m;
         }
-        case Opc::AShr:
-        {
+        case Opc::AShr: {
             static constexpr BinaryOpMapping m{Opc::AShr, MOpcode::AsrvRRR, true, MOpcode::AsrRI};
             return &m;
         }
         // Division (no immediate form on AArch64)
-        case Opc::SDiv:
-        {
+        case Opc::SDiv: {
             static constexpr BinaryOpMapping m{
                 Opc::SDiv, MOpcode::SDivRRR, false, MOpcode::SDivRRR};
             return &m;
         }
-        case Opc::UDiv:
-        {
+        case Opc::UDiv: {
             static constexpr BinaryOpMapping m{
                 Opc::UDiv, MOpcode::UDivRRR, false, MOpcode::UDivRRR};
             return &m;
         }
         // Floating-point operations
-        case Opc::FAdd:
-        {
+        case Opc::FAdd: {
             static constexpr BinaryOpMapping m{
                 Opc::FAdd, MOpcode::FAddRRR, false, MOpcode::FAddRRR};
             return &m;
         }
-        case Opc::FSub:
-        {
+        case Opc::FSub: {
             static constexpr BinaryOpMapping m{
                 Opc::FSub, MOpcode::FSubRRR, false, MOpcode::FSubRRR};
             return &m;
         }
-        case Opc::FMul:
-        {
+        case Opc::FMul: {
             static constexpr BinaryOpMapping m{
                 Opc::FMul, MOpcode::FMulRRR, false, MOpcode::FMulRRR};
             return &m;
         }
-        case Opc::FDiv:
-        {
+        case Opc::FDiv: {
             static constexpr BinaryOpMapping m{
                 Opc::FDiv, MOpcode::FDivRRR, false, MOpcode::FDivRRR};
             return &m;
@@ -297,11 +273,9 @@ inline const BinaryOpMapping *lookupBinaryOp(il::core::Opcode op)
 ///
 /// @param op The IL comparison opcode.
 /// @return The condition code string, or nullptr if not a comparison opcode.
-inline const char *lookupCondition(il::core::Opcode op)
-{
+inline const char *lookupCondition(il::core::Opcode op) {
     using Opc = il::core::Opcode;
-    switch (op)
-    {
+    switch (op) {
         case Opc::ICmpEq:
             return "eq";
         case Opc::ICmpNe:
@@ -336,8 +310,7 @@ inline const char *lookupCondition(il::core::Opcode op)
 ///
 /// @param op The IL opcode to test.
 /// @return True if op is a comparison opcode, false otherwise.
-inline bool isCompareOp(il::core::Opcode op)
-{
+inline bool isCompareOp(il::core::Opcode op) {
     return lookupCondition(op) != nullptr;
 }
 
@@ -349,10 +322,8 @@ inline bool isCompareOp(il::core::Opcode op)
 ///
 /// @param op The IL opcode to test.
 /// @return True if op is a floating-point arithmetic opcode, false otherwise.
-inline bool isFloatingPointOp(il::core::Opcode op)
-{
-    switch (op)
-    {
+inline bool isFloatingPointOp(il::core::Opcode op) {
+    switch (op) {
         case il::core::Opcode::FAdd:
         case il::core::Opcode::FSub:
         case il::core::Opcode::FMul:

@@ -16,8 +16,7 @@
 #pragma once
 
 public:
-enum class ExprType
-{
+enum class ExprType {
     I64,
     F64,
     Str,

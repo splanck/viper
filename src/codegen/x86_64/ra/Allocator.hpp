@@ -32,14 +32,12 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::x64::ra
-{
+namespace viper::codegen::x64::ra {
 
 class Coalescer;
 
 /// @brief Allocation state for a single virtual register.
-struct VirtualAllocation
-{
+struct VirtualAllocation {
     bool seen{false};
     RegClass cls{RegClass::GPR};
     bool hasPhys{false};
@@ -50,8 +48,7 @@ struct VirtualAllocation
 };
 
 /// @brief Core linear-scan allocator working over Machine IR.
-class LinearScanAllocator
-{
+class LinearScanAllocator {
   public:
     /// @brief Construct a linear-scan allocator for the supplied Machine IR function.
     /// @details Captures references to the function, target description, and precomputed live
@@ -68,14 +65,12 @@ class LinearScanAllocator
   private:
     friend class Coalescer;
 
-    struct OperandRole
-    {
+    struct OperandRole {
         bool isUse{false};
         bool isDef{false};
     };
 
-    struct ScratchRelease
-    {
+    struct ScratchRelease {
         PhysReg phys{PhysReg::RAX};
         RegClass cls{RegClass::GPR};
     };

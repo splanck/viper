@@ -24,11 +24,9 @@
 
 #include <limits>
 
-namespace viper::codegen::x64::ra
-{
+namespace viper::codegen::x64::ra {
 
-namespace
-{
+namespace {
 
 /// @brief Update an interval with a new observation position.
 /// @details The helper expands the closed-open [start, end) range tracked by the
@@ -40,10 +38,8 @@ namespace
 /// @param interval Interval structure that records the first and last touches
 ///                  of a virtual register.
 /// @param pos Instruction index associated with the latest observation.
-void updateInterval(LiveInterval &interval, std::size_t pos)
-{
-    if (interval.start == 0U && interval.end == 0U)
-    {
+void updateInterval(LiveInterval &interval, std::size_t pos) {
+    if (interval.start == 0U && interval.end == 0U) {
         interval.start = pos;
         interval.end = pos + 1U;
         return;
@@ -63,62 +59,44 @@ void updateInterval(LiveInterval &interval, std::size_t pos)
 ///          previous results before executing so repeated invocations stay
 ///          deterministic.
 /// @param func Machine function whose instructions should be analysed.
-void LiveIntervals::run(const MFunction &func)
-{
+void LiveIntervals::run(const MFunction &func) {
     intervals_.clear();
 
     std::size_t index = 0U;
-    for (const auto &block : func.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
-            for (const auto &operand : instr.operands)
-            {
-                if (const auto *reg = std::get_if<OpReg>(&operand); reg && !reg->isPhys)
-                {
+    for (const auto &block : func.blocks) {
+        for (const auto &instr : block.instructions) {
+            for (const auto &operand : instr.operands) {
+                if (const auto *reg = std::get_if<OpReg>(&operand); reg && !reg->isPhys) {
                     auto &interval = intervals_[reg->idOrPhys];
-                    if (interval.vreg == kInvalidVReg)
-                    {
+                    if (interval.vreg == kInvalidVReg) {
                         interval.vreg = reg->idOrPhys;
                         interval.cls = reg->cls;
                         interval.start = index;
                         interval.end = index + 1U;
-                    }
-                    else
-                    {
+                    } else {
                         updateInterval(interval, index);
                     }
-                }
-                else if (const auto *mem = std::get_if<OpMem>(&operand))
-                {
-                    if (!mem->base.isPhys)
-                    {
+                } else if (const auto *mem = std::get_if<OpMem>(&operand)) {
+                    if (!mem->base.isPhys) {
                         auto &interval = intervals_[mem->base.idOrPhys];
-                        if (interval.vreg == kInvalidVReg)
-                        {
+                        if (interval.vreg == kInvalidVReg) {
                             interval.vreg = mem->base.idOrPhys;
                             interval.cls = mem->base.cls;
                             interval.start = index;
                             interval.end = index + 1U;
-                        }
-                        else
-                        {
+                        } else {
                             updateInterval(interval, index);
                         }
                     }
                     // Also track the index register if present
-                    if (mem->hasIndex && !mem->index.isPhys)
-                    {
+                    if (mem->hasIndex && !mem->index.isPhys) {
                         auto &interval = intervals_[mem->index.idOrPhys];
-                        if (interval.vreg == kInvalidVReg)
-                        {
+                        if (interval.vreg == kInvalidVReg) {
                             interval.vreg = mem->index.idOrPhys;
                             interval.cls = mem->index.cls;
                             interval.start = index;
                             interval.end = index + 1U;
-                        }
-                        else
-                        {
+                        } else {
                             updateInterval(interval, index);
                         }
                     }
@@ -137,11 +115,9 @@ void LiveIntervals::run(const MFunction &func)
 /// @param vreg Identifier of the virtual register to query.
 /// @return Pointer to the interval owned by the analysis, or @c nullptr when no
 ///         interval exists.
-const LiveInterval *LiveIntervals::lookup(uint16_t vreg) const noexcept
-{
+const LiveInterval *LiveIntervals::lookup(uint16_t vreg) const noexcept {
     auto it = intervals_.find(vreg);
-    if (it == intervals_.end())
-    {
+    if (it == intervals_.end()) {
         return nullptr;
     }
     return &it->second;

@@ -68,8 +68,7 @@
 static volatile uint64_t g_fallback_counter = 0;
 
 /// @brief Atomic increment of the fallback counter.
-static inline uint64_t atomic_fetch_add_counter(void)
-{
+static inline uint64_t atomic_fetch_add_counter(void) {
 #if defined(_WIN32)
     return (uint64_t)InterlockedIncrement64((volatile LONGLONG *)&g_fallback_counter);
 #else
@@ -80,8 +79,7 @@ static inline uint64_t atomic_fetch_add_counter(void)
 /// @brief xorshift64* PRNG - fast and good statistical properties.
 /// @param state Pointer to PRNG state (modified in place).
 /// @return Next 64-bit random value.
-static inline uint64_t xorshift64star(uint64_t *state)
-{
+static inline uint64_t xorshift64star(uint64_t *state) {
     uint64_t x = *state;
     x ^= x >> 12;
     x ^= x << 25;
@@ -95,8 +93,7 @@ static inline uint64_t xorshift64star(uint64_t *state)
 ///          stack address to ensure uniqueness even under concurrent access.
 /// @param buf Destination buffer.
 /// @param len Number of bytes to fill.
-static void fallback_random_bytes(uint8_t *buf, size_t len)
-{
+static void fallback_random_bytes(uint8_t *buf, size_t len) {
     // Combine multiple entropy sources for the seed:
     // 1. Atomic counter ensures unique seed per invocation
     // 2. Time adds some environmental entropy
@@ -117,8 +114,7 @@ static void fallback_random_bytes(uint8_t *buf, size_t len)
 
     // Generate random bytes
     size_t i = 0;
-    while (i < len)
-    {
+    while (i < len) {
         uint64_t r = xorshift64star(&state);
         size_t to_copy = len - i;
         if (to_copy > sizeof(uint64_t))
@@ -131,12 +127,10 @@ static void fallback_random_bytes(uint8_t *buf, size_t len)
 /// @brief Fill buffer with cryptographically random bytes.
 /// @param buf Destination buffer.
 /// @param len Number of bytes to fill.
-static void get_random_bytes(uint8_t *buf, size_t len)
-{
+static void get_random_bytes(uint8_t *buf, size_t len) {
 #if defined(_WIN32)
     HCRYPTPROV hProv;
-    if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT))
-    {
+    if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
         CryptGenRandom(hProv, (DWORD)len, buf);
         CryptReleaseContext(hProv, 0);
         return;
@@ -146,12 +140,10 @@ static void get_random_bytes(uint8_t *buf, size_t len)
 #else
     // Unix and ViperDOS: use /dev/urandom
     int fd = open("/dev/urandom", O_RDONLY);
-    if (fd >= 0)
-    {
+    if (fd >= 0) {
         ssize_t result = read(fd, buf, len);
         close(fd);
-        if (result == (ssize_t)len)
-        {
+        if (result == (ssize_t)len) {
             return;
         }
     }
@@ -203,8 +195,7 @@ static void get_random_bytes(uint8_t *buf, size_t len)
 ///
 /// @see rt_guid_empty For the nil UUID constant
 /// @see rt_guid_is_valid For validating UUID strings
-rt_string rt_guid_new(void)
-{
+rt_string rt_guid_new(void) {
     uint8_t bytes[16];
     get_random_bytes(bytes, 16);
 
@@ -263,8 +254,7 @@ rt_string rt_guid_new(void)
 ///
 /// @see rt_guid_new For generating unique UUIDs
 /// @see rt_guid_is_valid For validation
-rt_string rt_guid_empty(void)
-{
+rt_string rt_guid_empty(void) {
     return rt_const_cstr("00000000-0000-0000-0000-000000000000");
 }
 
@@ -309,36 +299,27 @@ rt_string rt_guid_empty(void)
 ///
 /// @see rt_guid_new For generating valid UUIDs
 /// @see rt_guid_to_bytes For converting valid UUIDs to bytes
-int8_t rt_guid_is_valid(rt_string str)
-{
-    if (!str)
-    {
+int8_t rt_guid_is_valid(rt_string str) {
+    if (!str) {
         return 0;
     }
 
     const char *s = rt_string_cstr(str);
-    if (!s || strlen(s) != 36)
-    {
+    if (!s || strlen(s) != 36) {
         return 0;
     }
 
     // Expected format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
     // Dash positions: 8, 13, 18, 23
-    for (int i = 0; i < 36; i++)
-    {
-        if (i == 8 || i == 13 || i == 18 || i == 23)
-        {
+    for (int i = 0; i < 36; i++) {
+        if (i == 8 || i == 13 || i == 18 || i == 23) {
             // Dash positions
-            if (s[i] != '-')
-            {
+            if (s[i] != '-') {
                 return 0;
             }
-        }
-        else
-        {
+        } else {
             // Hex digit positions
-            if (!isxdigit((unsigned char)s[i]))
-            {
+            if (!isxdigit((unsigned char)s[i])) {
                 return 0;
             }
         }
@@ -382,10 +363,8 @@ int8_t rt_guid_is_valid(rt_string str)
 ///
 /// @see rt_guid_from_bytes For the inverse operation
 /// @see rt_guid_is_valid For validating before conversion
-void *rt_guid_to_bytes(rt_string str)
-{
-    if (!rt_guid_is_valid(str))
-    {
+void *rt_guid_to_bytes(rt_string str) {
+    if (!rt_guid_is_valid(str)) {
         rt_trap("Guid.ToBytes: invalid GUID format");
         return NULL;
     }
@@ -395,11 +374,9 @@ void *rt_guid_to_bytes(rt_string str)
     int str_pos = 0;
     int byte_idx = 0;
 
-    while (s[str_pos] && byte_idx < 16)
-    {
+    while (s[str_pos] && byte_idx < 16) {
         // Skip dashes
-        if (s[str_pos] == '-')
-        {
+        if (s[str_pos] == '-') {
             str_pos++;
             continue;
         }
@@ -456,18 +433,15 @@ void *rt_guid_to_bytes(rt_string str)
 ///
 /// @see rt_guid_to_bytes For the inverse operation
 /// @see rt_guid_new For generating new UUIDs
-rt_string rt_guid_from_bytes(void *bytes)
-{
-    if (rt_bytes_len(bytes) != 16)
-    {
+rt_string rt_guid_from_bytes(void *bytes) {
+    if (rt_bytes_len(bytes) != 16) {
         rt_trap("Guid.FromBytes: requires exactly 16 bytes");
         return NULL;
     }
 
     // Extract byte values
     uint8_t data[16];
-    for (int i = 0; i < 16; i++)
-    {
+    for (int i = 0; i < 16; i++) {
         data[i] = (uint8_t)rt_bytes_get(bytes, i);
     }
 

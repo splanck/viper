@@ -19,8 +19,7 @@
 
 using namespace viper::codegen::x64;
 
-TEST(Codegen_X64_RuntimeNameMap, CanonicalNamesMapToRuntimeSymbols)
-{
+TEST(Codegen_X64_RuntimeNameMap, CanonicalNamesMapToRuntimeSymbols) {
     AsmEmitter::RoDataPool pool;
     AsmEmitter emitter(pool);
 
@@ -40,8 +39,7 @@ TEST(Codegen_X64_RuntimeNameMap, CanonicalNamesMapToRuntimeSymbols)
     EXPECT_EQ(asmText.find("Viper.Terminal.PrintI64"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

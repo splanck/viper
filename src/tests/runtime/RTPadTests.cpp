@@ -17,8 +17,7 @@
 #include <cmath>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -26,8 +25,7 @@ extern "C" void vm_trap(const char *msg)
 // Button Constants
 // ============================================================================
 
-static void test_button_constants()
-{
+static void test_button_constants() {
     // Test button constant getters return expected values
     assert(rt_pad_button_a() == 0);
     assert(rt_pad_button_b() == 1);
@@ -51,8 +49,7 @@ static void test_button_constants()
 // Initial State
 // ============================================================================
 
-static void test_initial_state()
-{
+static void test_initial_state() {
     rt_pad_init();
     rt_pad_poll();
 
@@ -64,10 +61,8 @@ static void test_initial_state()
     assert(rt_pad_is_connected(4) == 0);
     assert(rt_pad_is_connected(999) == 0);
 
-    for (int i = 0; i < VIPER_PAD_MAX; ++i)
-    {
-        if (!rt_pad_is_connected(i))
-        {
+    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
+        if (!rt_pad_is_connected(i)) {
             assert(rt_pad_is_down(i, VIPER_PAD_A) == 0);
             assert(rt_pad_is_up(i, VIPER_PAD_A) == 1);
             assert(rt_pad_was_pressed(i, VIPER_PAD_A) == 0);
@@ -78,9 +73,7 @@ static void test_initial_state()
             assert(rt_pad_right_y(i) == 0.0);
             assert(rt_pad_left_trigger(i) == 0.0);
             assert(rt_pad_right_trigger(i) == 0.0);
-        }
-        else
-        {
+        } else {
             assert(rt_pad_left_x(i) >= -1.0 && rt_pad_left_x(i) <= 1.0);
             assert(rt_pad_left_y(i) >= -1.0 && rt_pad_left_y(i) <= 1.0);
             assert(rt_pad_right_x(i) >= -1.0 && rt_pad_right_x(i) <= 1.0);
@@ -97,8 +90,7 @@ static void test_initial_state()
 // Deadzone Handling
 // ============================================================================
 
-static void test_deadzone()
-{
+static void test_deadzone() {
     rt_pad_init();
 
     // Default deadzone should be 0.1
@@ -126,8 +118,7 @@ static void test_deadzone()
 // Boundary Cases
 // ============================================================================
 
-static void test_boundary_cases()
-{
+static void test_boundary_cases() {
     rt_pad_init();
 
     // Invalid controller indices should not crash
@@ -180,8 +171,7 @@ static void test_boundary_cases()
 // Frame Reset
 // ============================================================================
 
-static void test_frame_reset()
-{
+static void test_frame_reset() {
     rt_pad_init();
 
     // Begin frame should reset per-frame state
@@ -198,8 +188,7 @@ static void test_frame_reset()
 // Poll Function
 // ============================================================================
 
-static void test_poll()
-{
+static void test_poll() {
     rt_pad_init();
 
     // Poll should not crash
@@ -215,8 +204,7 @@ static void test_poll()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Viper.Input.Pad Tests ===\n\n");
 
     test_button_constants();

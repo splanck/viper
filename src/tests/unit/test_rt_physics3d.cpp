@@ -20,41 +20,32 @@
 #include <cmath>
 #include <cstdio>
 
-extern "C"
-{
-    extern void *rt_vec3_new(double x, double y, double z);
-    extern double rt_vec3_x(void *v);
-    extern double rt_vec3_y(void *v);
-    extern double rt_vec3_z(void *v);
+extern "C" {
+extern void *rt_vec3_new(double x, double y, double z);
+extern double rt_vec3_x(void *v);
+extern double rt_vec3_y(void *v);
+extern double rt_vec3_z(void *v);
 }
 
 static int tests_passed = 0;
 static int tests_run = 0;
 
 #define EXPECT_TRUE(cond, msg)                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+        if (!(cond)) {                                                                             \
             fprintf(stderr, "FAIL: %s\n", msg);                                                    \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
 
 #define EXPECT_NEAR(a, b, eps, msg)                                                                \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (fabs((double)(a) - (double)(b)) > (eps))                                               \
-        {                                                                                          \
+        if (fabs((double)(a) - (double)(b)) > (eps)) {                                             \
             fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));    \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
@@ -63,8 +54,7 @@ static int tests_run = 0;
  * Body creation tests
  *=========================================================================*/
 
-static void test_body_new_aabb()
-{
+static void test_body_new_aabb() {
     void *b = rt_body3d_new_aabb(1.0, 2.0, 3.0, 10.0);
     EXPECT_TRUE(b != nullptr, "AABB body created");
     EXPECT_NEAR(rt_body3d_get_mass(b), 10.0, 0.01, "AABB mass = 10");
@@ -73,22 +63,19 @@ static void test_body_new_aabb()
     EXPECT_TRUE(rt_body3d_is_static(b) == 0, "Dynamic body not static");
 }
 
-static void test_body_new_sphere()
-{
+static void test_body_new_sphere() {
     void *b = rt_body3d_new_sphere(2.5, 5.0);
     EXPECT_TRUE(b != nullptr, "Sphere body created");
     EXPECT_NEAR(rt_body3d_get_mass(b), 5.0, 0.01, "Sphere mass = 5");
 }
 
-static void test_body_new_capsule()
-{
+static void test_body_new_capsule() {
     void *b = rt_body3d_new_capsule(0.5, 2.0, 8.0);
     EXPECT_TRUE(b != nullptr, "Capsule body created");
     EXPECT_NEAR(rt_body3d_get_mass(b), 8.0, 0.01, "Capsule mass = 8");
 }
 
-static void test_body_static_zero_mass()
-{
+static void test_body_static_zero_mass() {
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 0.0);
     EXPECT_TRUE(rt_body3d_is_static(b) != 0, "Zero-mass body is static");
 }
@@ -97,8 +84,7 @@ static void test_body_static_zero_mass()
  * Property accessors
  *=========================================================================*/
 
-static void test_body_position()
-{
+static void test_body_position() {
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     rt_body3d_set_position(b, 3.0, 5.0, 7.0);
     void *pos = rt_body3d_get_position(b);
@@ -107,8 +93,7 @@ static void test_body_position()
     EXPECT_NEAR(rt_vec3_z(pos), 7.0, 0.01, "Position Z = 7");
 }
 
-static void test_body_velocity()
-{
+static void test_body_velocity() {
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     rt_body3d_set_velocity(b, 1.0, 2.0, 3.0);
     void *vel = rt_body3d_get_velocity(b);
@@ -117,8 +102,7 @@ static void test_body_velocity()
     EXPECT_NEAR(rt_vec3_z(vel), 3.0, 0.01, "Velocity Z = 3");
 }
 
-static void test_body_collision_layer_mask()
-{
+static void test_body_collision_layer_mask() {
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     rt_body3d_set_collision_layer(b, 4);
     rt_body3d_set_collision_mask(b, 6);
@@ -126,8 +110,7 @@ static void test_body_collision_layer_mask()
     EXPECT_TRUE(rt_body3d_get_collision_mask(b) == 6, "Collision mask = 6");
 }
 
-static void test_body_trigger()
-{
+static void test_body_trigger() {
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     EXPECT_TRUE(rt_body3d_is_trigger(b) == 0, "Default: not trigger");
     rt_body3d_set_trigger(b, 1);
@@ -138,15 +121,13 @@ static void test_body_trigger()
  * World tests
  *=========================================================================*/
 
-static void test_world_create()
-{
+static void test_world_create() {
     void *w = rt_world3d_new(0, -9.81, 0);
     EXPECT_TRUE(w != nullptr, "World created");
     EXPECT_TRUE(rt_world3d_body_count(w) == 0, "World starts empty");
 }
 
-static void test_world_add_remove()
-{
+static void test_world_add_remove() {
     void *w = rt_world3d_new(0, -9.81, 0);
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     rt_world3d_add(w, b);
@@ -155,8 +136,7 @@ static void test_world_add_remove()
     EXPECT_TRUE(rt_world3d_body_count(w) == 0, "Body count = 0 after remove");
 }
 
-static void test_gravity_integration()
-{
+static void test_gravity_integration() {
     void *w = rt_world3d_new(0, -10.0, 0);
     void *b = rt_body3d_new_aabb(0.5, 0.5, 0.5, 1.0);
     rt_body3d_set_position(b, 0, 10, 0);
@@ -172,8 +152,7 @@ static void test_gravity_integration()
     EXPECT_NEAR(rt_vec3_y(pos), 0.0, 0.1, "After 1s: position Y = 0");
 }
 
-static void test_force_application()
-{
+static void test_force_application() {
     void *w = rt_world3d_new(0, 0, 0); /* no gravity */
     void *b = rt_body3d_new_aabb(0.5, 0.5, 0.5, 2.0);
     rt_body3d_set_position(b, 0, 0, 0);
@@ -190,8 +169,7 @@ static void test_force_application()
     EXPECT_NEAR(rt_vec3_x(pos), 5.0, 0.01, "Force: position X = 5");
 }
 
-static void test_impulse_application()
-{
+static void test_impulse_application() {
     void *b = rt_body3d_new_aabb(0.5, 0.5, 0.5, 2.0);
     rt_body3d_apply_impulse(b, 10.0, 0, 0);
     void *vel = rt_body3d_get_velocity(b);
@@ -203,8 +181,7 @@ static void test_impulse_application()
  * Collision tests
  *=========================================================================*/
 
-static void test_collision_aabb_overlap()
-{
+static void test_collision_aabb_overlap() {
     void *w = rt_world3d_new(0, 0, 0); /* no gravity */
     void *a = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
@@ -222,8 +199,7 @@ static void test_collision_aabb_overlap()
     EXPECT_TRUE(gap > 1.5, "AABB collision pushes bodies apart");
 }
 
-static void test_collision_layer_filtering()
-{
+static void test_collision_layer_filtering() {
     void *w = rt_world3d_new(0, 0, 0);
     void *a = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
@@ -247,8 +223,7 @@ static void test_collision_layer_filtering()
     EXPECT_NEAR(gap, 1.5, 0.01, "Filtered layers: no collision push");
 }
 
-static void test_trigger_no_push()
-{
+static void test_trigger_no_push() {
     void *w = rt_world3d_new(0, 0, 0);
     void *a = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
     void *b = rt_body3d_new_aabb(1.0, 1.0, 1.0, 1.0);
@@ -266,8 +241,7 @@ static void test_trigger_no_push()
     EXPECT_NEAR(gap, 1.5, 0.01, "Trigger body: no collision push");
 }
 
-static void test_ground_detection()
-{
+static void test_ground_detection() {
     void *w = rt_world3d_new(0, -10.0, 0);
     /* Floor: static AABB at y=0, half-extents (10,0.5,10) */
     void *floor = rt_body3d_new_aabb(10.0, 0.5, 10.0, 0.0);
@@ -291,15 +265,13 @@ static void test_ground_detection()
  * Character controller tests
  *=========================================================================*/
 
-static void test_character_create()
-{
+static void test_character_create() {
     void *c = rt_character3d_new(0.5, 2.0, 80.0);
     EXPECT_TRUE(c != nullptr, "Character controller created");
     EXPECT_NEAR(rt_character3d_get_step_height(c), 0.3, 0.01, "Default step height = 0.3");
 }
 
-static void test_character_position()
-{
+static void test_character_position() {
     void *c = rt_character3d_new(0.5, 2.0, 80.0);
     rt_character3d_set_position(c, 1.0, 2.0, 3.0);
     void *pos = rt_character3d_get_position(c);
@@ -308,8 +280,7 @@ static void test_character_position()
     EXPECT_NEAR(rt_vec3_z(pos), 3.0, 0.01, "Character pos Z = 3");
 }
 
-static void test_character_step_height()
-{
+static void test_character_step_height() {
     void *c = rt_character3d_new(0.5, 2.0, 80.0);
     rt_character3d_set_step_height(c, 0.5);
     EXPECT_NEAR(rt_character3d_get_step_height(c), 0.5, 0.01, "Step height set to 0.5");
@@ -319,28 +290,24 @@ static void test_character_step_height()
  * Trigger3D tests
  *=========================================================================*/
 
-static void test_trigger_create()
-{
+static void test_trigger_create() {
     void *t = rt_trigger3d_new(-1, -1, -1, 1, 1, 1);
     EXPECT_TRUE(t != nullptr, "Trigger3D created");
 }
 
-static void test_trigger_contains_inside()
-{
+static void test_trigger_contains_inside() {
     void *t = rt_trigger3d_new(-2, -2, -2, 2, 2, 2);
     void *p = rt_vec3_new(0, 0, 0);
     EXPECT_TRUE(rt_trigger3d_contains(t, p) != 0, "Origin inside [-2,2] trigger");
 }
 
-static void test_trigger_contains_outside()
-{
+static void test_trigger_contains_outside() {
     void *t = rt_trigger3d_new(-1, -1, -1, 1, 1, 1);
     void *p = rt_vec3_new(5, 0, 0);
     EXPECT_TRUE(rt_trigger3d_contains(t, p) == 0, "Point at (5,0,0) outside [-1,1] trigger");
 }
 
-static void test_trigger_enter_detection()
-{
+static void test_trigger_enter_detection() {
     void *w = rt_world3d_new(0, 0, 0);
     void *body = rt_body3d_new_aabb(0.1, 0.1, 0.1, 1.0);
     rt_body3d_set_position(body, 5, 0, 0);
@@ -361,8 +328,7 @@ static void test_trigger_enter_detection()
     EXPECT_TRUE(rt_trigger3d_get_exit_count(t) == 0, "Frame 2: no exit");
 }
 
-static void test_trigger_exit_detection()
-{
+static void test_trigger_exit_detection() {
     void *w = rt_world3d_new(0, 0, 0);
     void *body = rt_body3d_new_aabb(0.1, 0.1, 0.1, 1.0);
     rt_body3d_set_position(body, 0, 0, 0);
@@ -383,8 +349,7 @@ static void test_trigger_exit_detection()
     EXPECT_TRUE(rt_trigger3d_get_enter_count(t) == 0, "Frame 2: no re-enter");
 }
 
-static void test_trigger_multiple_bodies()
-{
+static void test_trigger_multiple_bodies() {
     void *w = rt_world3d_new(0, 0, 0);
     void *b1 = rt_body3d_new_aabb(0.1, 0.1, 0.1, 1.0);
     void *b2 = rt_body3d_new_aabb(0.1, 0.1, 0.1, 1.0);
@@ -410,8 +375,7 @@ static void test_trigger_multiple_bodies()
     EXPECT_TRUE(rt_trigger3d_get_enter_count(t) == 1, "Frame 3: second body enters");
 }
 
-static void test_trigger_set_bounds()
-{
+static void test_trigger_set_bounds() {
     void *t = rt_trigger3d_new(0, 0, 0, 1, 1, 1);
     void *p = rt_vec3_new(5, 5, 5);
     EXPECT_TRUE(rt_trigger3d_contains(t, p) == 0, "Before resize: outside");
@@ -420,8 +384,7 @@ static void test_trigger_set_bounds()
     EXPECT_TRUE(rt_trigger3d_contains(t, p) != 0, "After resize: inside");
 }
 
-int main()
-{
+int main() {
     /* Body creation */
     test_body_new_aabb();
     test_body_new_sphere();

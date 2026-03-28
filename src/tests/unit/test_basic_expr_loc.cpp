@@ -20,8 +20,7 @@
 using namespace il::frontends::basic;
 using il::support::SourceManager;
 
-int main()
-{
+int main() {
     SourceManager sm;
     uint32_t fid = sm.addFile("expr.bas");
     std::string src = "PRINT 1+2*3\n";

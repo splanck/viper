@@ -29,8 +29,7 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -38,38 +37,31 @@ static int tests_passed = 0;
 static int tests_total = 0;
 
 #define TEST(name)                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_total++;                                                                             \
         printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 #define PASS()                                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_passed++;                                                                            \
         printf("ok\n");                                                                            \
     } while (0)
 #define FAIL(msg)                                                                                  \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("FAIL: %s\n", msg);                                                                 \
     } while (0)
 
 #define EXPECT_EQ(a, b)                                                                            \
-    do                                                                                             \
-    {                                                                                              \
-        if ((a) != (b))                                                                            \
-        {                                                                                          \
+    do {                                                                                           \
+        if ((a) != (b)) {                                                                          \
             printf("FAIL: expected %lld, got %lld\n", (long long)(b), (long long)(a));             \
             return;                                                                                \
         }                                                                                          \
     } while (0)
 
 #define EXPECT_NEAR(a, b, eps)                                                                     \
-    do                                                                                             \
-    {                                                                                              \
-        if (std::fabs((double)(a) - (double)(b)) > (eps))                                          \
-        {                                                                                          \
+    do {                                                                                           \
+        if (std::fabs((double)(a) - (double)(b)) > (eps)) {                                        \
             printf("FAIL: expected ~%f, got %f\n", (double)(b), (double)(a));                      \
             return;                                                                                \
         }                                                                                          \
@@ -89,8 +81,7 @@ extern "C" const void *vgfx3d_select_backend(void);
 // Mesh3D tests
 //=============================================================================
 
-static void test_mesh_empty()
-{
+static void test_mesh_empty() {
     TEST("Mesh3D.New creates empty mesh");
     void *m = rt_mesh3d_new();
     assert(m);
@@ -99,8 +90,7 @@ static void test_mesh_empty()
     PASS();
 }
 
-static void test_mesh_add_vertex_triangle()
-{
+static void test_mesh_add_vertex_triangle() {
     TEST("Mesh3D AddVertex/AddTriangle");
     void *m = rt_mesh3d_new();
     rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
@@ -112,8 +102,7 @@ static void test_mesh_add_vertex_triangle()
     PASS();
 }
 
-static void test_mesh_reject_invalid_triangle_indices()
-{
+static void test_mesh_reject_invalid_triangle_indices() {
     TEST("Mesh3D.AddTriangle rejects invalid indices");
     void *m = rt_mesh3d_new();
     rt_mesh3d_add_vertex(m, 0, 0, 0, 0, 1, 0, 0, 0);
@@ -127,8 +116,7 @@ static void test_mesh_reject_invalid_triangle_indices()
     PASS();
 }
 
-static void test_mesh_box()
-{
+static void test_mesh_box() {
     TEST("Mesh3D.NewBox — 24 verts, 12 tris");
     void *m = rt_mesh3d_new_box(1.0, 1.0, 1.0);
     assert(m);
@@ -137,8 +125,7 @@ static void test_mesh_box()
     PASS();
 }
 
-static void test_mesh_sphere()
-{
+static void test_mesh_sphere() {
     TEST("Mesh3D.NewSphere — correct vertex count");
     void *m = rt_mesh3d_new_sphere(1.0, 8);
     assert(m);
@@ -149,8 +136,7 @@ static void test_mesh_sphere()
     PASS();
 }
 
-static void test_mesh_plane()
-{
+static void test_mesh_plane() {
     TEST("Mesh3D.NewPlane — 4 verts, 2 tris");
     void *m = rt_mesh3d_new_plane(2.0, 2.0);
     assert(m);
@@ -159,8 +145,7 @@ static void test_mesh_plane()
     PASS();
 }
 
-static void test_mesh_cylinder()
-{
+static void test_mesh_cylinder() {
     TEST("Mesh3D.NewCylinder — correct geometry");
     void *m = rt_mesh3d_new_cylinder(1.0, 2.0, 8);
     assert(m);
@@ -171,8 +156,7 @@ static void test_mesh_cylinder()
     PASS();
 }
 
-static void test_mesh_clone()
-{
+static void test_mesh_clone() {
     TEST("Mesh3D.Clone preserves geometry");
     void *m = rt_mesh3d_new_box(1.0, 1.0, 1.0);
     void *c = rt_mesh3d_clone(m);
@@ -182,8 +166,7 @@ static void test_mesh_clone()
     PASS();
 }
 
-static void test_mesh_recalc_normals()
-{
+static void test_mesh_recalc_normals() {
     TEST("Mesh3D.RecalcNormals — produces unit normals");
     void *m = rt_mesh3d_new();
     // Flat triangle in XY plane
@@ -197,8 +180,7 @@ static void test_mesh_recalc_normals()
     PASS();
 }
 
-static void test_mesh_obj_loader()
-{
+static void test_mesh_obj_loader() {
     TEST("Mesh3D.FromOBJ — loads test cube");
     /* Try multiple paths since ctest working directory may differ.
      * We must check with fopen BEFORE calling FromOBJ because FromOBJ
@@ -208,18 +190,15 @@ static void test_mesh_obj_loader()
                            "../tests/runtime/test_cube.obj",
                            "src/tests/../../../tests/runtime/test_cube.obj",
                            NULL};
-    for (int i = 0; paths[i]; i++)
-    {
+    for (int i = 0; paths[i]; i++) {
         FILE *f = fopen(paths[i], "r");
-        if (f)
-        {
+        if (f) {
             fclose(f);
             found = paths[i];
             break;
         }
     }
-    if (!found)
-    {
+    if (!found) {
         printf("SKIP (test_cube.obj not found in any search path)\n");
         tests_passed++;
         return;
@@ -236,8 +215,7 @@ static void test_mesh_obj_loader()
 // Camera3D tests
 //=============================================================================
 
-static void test_camera_new()
-{
+static void test_camera_new() {
     TEST("Camera3D.New — fov preserved");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
     assert(cam);
@@ -245,8 +223,7 @@ static void test_camera_new()
     PASS();
 }
 
-static void test_camera_set_fov()
-{
+static void test_camera_set_fov() {
     TEST("Camera3D.SetFov — updates projection");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
     rt_camera3d_set_fov(cam, 90.0);
@@ -254,8 +231,7 @@ static void test_camera_set_fov()
     PASS();
 }
 
-static void test_camera_look_at()
-{
+static void test_camera_look_at() {
     TEST("Camera3D.LookAt — position updated");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
     void *eye = rt_vec3_new(0.0, 5.0, 10.0);
@@ -271,8 +247,7 @@ static void test_camera_look_at()
     PASS();
 }
 
-static void test_camera_forward()
-{
+static void test_camera_forward() {
     TEST("Camera3D.Forward — points toward target");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
     void *eye = rt_vec3_new(0.0, 0.0, 5.0);
@@ -287,8 +262,7 @@ static void test_camera_forward()
     PASS();
 }
 
-static void test_camera_orbit()
-{
+static void test_camera_orbit() {
     TEST("Camera3D.Orbit — position on sphere");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
     void *target = rt_vec3_new(0.0, 0.0, 0.0);
@@ -303,8 +277,7 @@ static void test_camera_orbit()
     PASS();
 }
 
-static void test_camera_screen_to_ray()
-{
+static void test_camera_screen_to_ray() {
     TEST("Camera3D.ScreenToRay — center ray along view direction");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
     void *eye = rt_vec3_new(0.0, 0.0, 5.0);
@@ -325,24 +298,21 @@ static void test_camera_screen_to_ray()
 // Material3D tests
 //=============================================================================
 
-static void test_material_new()
-{
+static void test_material_new() {
     TEST("Material3D.New — default white");
     void *m = rt_material3d_new();
     assert(m);
     PASS();
 }
 
-static void test_material_new_color()
-{
+static void test_material_new_color() {
     TEST("Material3D.NewColor — stores color");
     void *m = rt_material3d_new_color(0.5, 0.3, 0.1);
     assert(m);
     PASS();
 }
 
-static void test_material_new_textured()
-{
+static void test_material_new_textured() {
     TEST("Material3D.NewTextured — accepts Pixels");
     void *px = rt_pixels_new(4, 4);
     void *m = rt_material3d_new_textured(px);
@@ -354,8 +324,7 @@ static void test_material_new_textured()
 // Light3D tests
 //=============================================================================
 
-static void test_light_directional()
-{
+static void test_light_directional() {
     TEST("Light3D.NewDirectional — creates light");
     void *dir = rt_vec3_new(-1.0, -1.0, -1.0);
     void *l = rt_light3d_new_directional(dir, 1.0, 1.0, 1.0);
@@ -363,8 +332,7 @@ static void test_light_directional()
     PASS();
 }
 
-static void test_light_point()
-{
+static void test_light_point() {
     TEST("Light3D.NewPoint — creates light");
     void *pos = rt_vec3_new(0.0, 5.0, 0.0);
     void *l = rt_light3d_new_point(pos, 1.0, 1.0, 1.0, 0.5);
@@ -372,16 +340,14 @@ static void test_light_point()
     PASS();
 }
 
-static void test_light_ambient()
-{
+static void test_light_ambient() {
     TEST("Light3D.NewAmbient — creates light");
     void *l = rt_light3d_new_ambient(0.1, 0.1, 0.1);
     assert(l);
     PASS();
 }
 
-static void test_light_set_intensity()
-{
+static void test_light_set_intensity() {
     TEST("Light3D.SetIntensity — no crash");
     void *dir = rt_vec3_new(-1.0, -1.0, 0.0);
     void *l = rt_light3d_new_directional(dir, 1.0, 1.0, 1.0);
@@ -389,8 +355,7 @@ static void test_light_set_intensity()
     PASS();
 }
 
-static void test_light_set_color()
-{
+static void test_light_set_color() {
     TEST("Light3D.SetColor — no crash");
     void *l = rt_light3d_new_ambient(0.1, 0.1, 0.1);
     rt_light3d_set_color(l, 0.5, 0.5, 0.5);
@@ -401,8 +366,7 @@ static void test_light_set_color()
 // Mesh3D — additional tests
 //=============================================================================
 
-static void test_mesh_many_vertices()
-{
+static void test_mesh_many_vertices() {
     TEST("Mesh3D — dynamic growth (1000 vertices)");
     void *m = rt_mesh3d_new();
     for (int i = 0; i < 1000; i++)
@@ -411,8 +375,7 @@ static void test_mesh_many_vertices()
     PASS();
 }
 
-static void test_mesh_many_triangles()
-{
+static void test_mesh_many_triangles() {
     TEST("Mesh3D — many triangles (500 tris)");
     void *m = rt_mesh3d_new();
     for (int i = 0; i < 1500; i++)
@@ -423,8 +386,7 @@ static void test_mesh_many_triangles()
     PASS();
 }
 
-static void test_mesh_null_safety()
-{
+static void test_mesh_null_safety() {
     TEST("Mesh3D — null safety (no crash)");
     rt_mesh3d_add_vertex(NULL, 0, 0, 0, 0, 0, 0, 0, 0);
     rt_mesh3d_add_triangle(NULL, 0, 1, 2);
@@ -435,8 +397,7 @@ static void test_mesh_null_safety()
     PASS();
 }
 
-static void test_mesh_sphere_low_segments()
-{
+static void test_mesh_sphere_low_segments() {
     TEST("Mesh3D.NewSphere — minimum segments (4)");
     void *m = rt_mesh3d_new_sphere(1.0, 4);
     assert(m);
@@ -445,8 +406,7 @@ static void test_mesh_sphere_low_segments()
     PASS();
 }
 
-static void test_mesh_cylinder_low_segments()
-{
+static void test_mesh_cylinder_low_segments() {
     TEST("Mesh3D.NewCylinder — minimum segments (3)");
     void *m = rt_mesh3d_new_cylinder(0.5, 1.0, 3);
     assert(m);
@@ -455,8 +415,7 @@ static void test_mesh_cylinder_low_segments()
     PASS();
 }
 
-static void test_mesh_box_dimensions()
-{
+static void test_mesh_box_dimensions() {
     TEST("Mesh3D.NewBox — different dimensions");
     void *m = rt_mesh3d_new_box(2.0, 0.5, 3.0);
     assert(m);
@@ -465,8 +424,7 @@ static void test_mesh_box_dimensions()
     PASS();
 }
 
-static void test_mesh_transform_identity()
-{
+static void test_mesh_transform_identity() {
     TEST("Mesh3D.Transform — identity preserves geometry");
     void *m = rt_mesh3d_new_box(1.0, 1.0, 1.0);
     void *c = rt_mesh3d_clone(m);
@@ -480,8 +438,7 @@ static void test_mesh_transform_identity()
 // Camera3D — additional tests
 //=============================================================================
 
-static void test_camera_null_safety()
-{
+static void test_camera_null_safety() {
     TEST("Camera3D — null safety (no crash)");
     rt_camera3d_look_at(NULL, NULL, NULL, NULL);
     rt_camera3d_orbit(NULL, NULL, 5.0, 0, 0);
@@ -493,8 +450,7 @@ static void test_camera_null_safety()
     PASS();
 }
 
-static void test_camera_right_vector()
-{
+static void test_camera_right_vector() {
     TEST("Camera3D.Right — perpendicular to forward");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
     void *eye = rt_vec3_new(0, 0, 5);
@@ -511,8 +467,7 @@ static void test_camera_right_vector()
     PASS();
 }
 
-static void test_camera_orbit_yaw()
-{
+static void test_camera_orbit_yaw() {
     TEST("Camera3D.Orbit — yaw 90° moves to +X");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
     void *target = rt_vec3_new(0, 0, 0);
@@ -525,8 +480,7 @@ static void test_camera_orbit_yaw()
     PASS();
 }
 
-static void test_camera_orbit_pitch()
-{
+static void test_camera_orbit_pitch() {
     TEST("Camera3D.Orbit — pitch 45° elevates camera");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
     void *target = rt_vec3_new(0, 0, 0);
@@ -537,8 +491,7 @@ static void test_camera_orbit_pitch()
     PASS();
 }
 
-static void test_camera_screen_to_ray_corners()
-{
+static void test_camera_screen_to_ray_corners() {
     TEST("Camera3D.ScreenToRay — corner rays diverge from center");
     void *cam = rt_camera3d_new(60.0, 1.333, 0.1, 100.0);
     void *eye = rt_vec3_new(0, 0, 5);
@@ -558,16 +511,14 @@ static void test_camera_screen_to_ray_corners()
 // Material3D — additional tests
 //=============================================================================
 
-static void test_material_set_color()
-{
+static void test_material_set_color() {
     TEST("Material3D.SetColor — changes material");
     void *m = rt_material3d_new();
     rt_material3d_set_color(m, 0.1, 0.2, 0.3);
     PASS();
 }
 
-static void test_material_set_shininess()
-{
+static void test_material_set_shininess() {
     TEST("Material3D.SetShininess — accepts values");
     void *m = rt_material3d_new();
     rt_material3d_set_shininess(m, 128.0);
@@ -575,8 +526,7 @@ static void test_material_set_shininess()
     PASS();
 }
 
-static void test_material_set_unlit()
-{
+static void test_material_set_unlit() {
     TEST("Material3D.SetUnlit — toggles lighting");
     void *m = rt_material3d_new();
     rt_material3d_set_unlit(m, 1);
@@ -584,8 +534,7 @@ static void test_material_set_unlit()
     PASS();
 }
 
-static void test_material_null_safety()
-{
+static void test_material_null_safety() {
     TEST("Material3D — null safety");
     rt_material3d_set_color(NULL, 0, 0, 0);
     rt_material3d_set_texture(NULL, NULL);
@@ -598,8 +547,7 @@ static void test_material_null_safety()
 // Light3D — additional tests
 //=============================================================================
 
-static void test_light_null_safety()
-{
+static void test_light_null_safety() {
     TEST("Light3D — null safety");
     rt_light3d_set_intensity(NULL, 1.0);
     rt_light3d_set_color(NULL, 0, 0, 0);
@@ -610,16 +558,14 @@ static void test_light_null_safety()
 // Phase 9 — Multi-texture material tests
 //=============================================================================
 
-static void test_material_set_emissive()
-{
+static void test_material_set_emissive() {
     TEST("Material3D.SetEmissiveColor — no crash");
     void *m = rt_material3d_new();
     rt_material3d_set_emissive_color(m, 1.0, 0.5, 0.2);
     PASS();
 }
 
-static void test_material_set_maps()
-{
+static void test_material_set_maps() {
     TEST("Material3D — set normal/specular/emissive maps");
     void *m = rt_material3d_new();
     void *px = rt_pixels_new(4, 4);
@@ -633,8 +579,7 @@ static void test_material_set_maps()
     PASS();
 }
 
-static void test_mesh_calc_tangents()
-{
+static void test_mesh_calc_tangents() {
     TEST("Mesh3D.CalcTangents — plane tangent along +X");
     void *m = rt_mesh3d_new();
     /* Flat quad in XZ plane with standard UVs */
@@ -655,8 +600,7 @@ static void test_mesh_calc_tangents()
 // Phase 10 — Alpha blending tests
 //=============================================================================
 
-static void test_material_alpha()
-{
+static void test_material_alpha() {
     TEST("Material3D.Alpha — default 1.0, set/get works");
     void *m = rt_material3d_new();
     EXPECT_NEAR(rt_material3d_get_alpha(m), 1.0, 0.001);
@@ -674,8 +618,7 @@ static void test_material_alpha()
 // Phase 11 — Cube map tests
 //=============================================================================
 
-static void test_cubemap_new()
-{
+static void test_cubemap_new() {
     TEST("CubeMap3D.New — 6 faces creates valid cube map");
     void *px = rt_pixels_new(16, 16);
     void *cm = rt_cubemap3d_new(px, px, px, px, px, px);
@@ -686,8 +629,7 @@ static void test_cubemap_new()
     PASS();
 }
 
-static void test_material_reflectivity()
-{
+static void test_material_reflectivity() {
     TEST("Material3D.Reflectivity — default 0.0, set/get works");
     void *m = rt_material3d_new();
     EXPECT_NEAR(rt_material3d_get_reflectivity(m), 0.0, 0.001);
@@ -708,16 +650,14 @@ static void test_material_reflectivity()
 // RenderTarget3D tests
 //=============================================================================
 
-static void test_rendertarget_new()
-{
+static void test_rendertarget_new() {
     TEST("RenderTarget3D.New — creates target");
     void *rt = rt_rendertarget3d_new(256, 256);
     assert(rt);
     PASS();
 }
 
-static void test_rendertarget_dimensions()
-{
+static void test_rendertarget_dimensions() {
     TEST("RenderTarget3D — width/height match constructor");
     void *rt = rt_rendertarget3d_new(128, 64);
     EXPECT_EQ(rt_rendertarget3d_get_width(rt), 128);
@@ -725,8 +665,7 @@ static void test_rendertarget_dimensions()
     PASS();
 }
 
-static void test_rendertarget_as_pixels()
-{
+static void test_rendertarget_as_pixels() {
     TEST("RenderTarget3D.AsPixels — returns non-null");
     void *rt = rt_rendertarget3d_new(16, 16);
     void *px = rt_rendertarget3d_as_pixels(rt);
@@ -734,8 +673,7 @@ static void test_rendertarget_as_pixels()
     PASS();
 }
 
-static void test_rendertarget_null_safety()
-{
+static void test_rendertarget_null_safety() {
     TEST("RenderTarget3D — null safety");
     EXPECT_EQ(rt_rendertarget3d_get_width(NULL), 0);
     EXPECT_EQ(rt_rendertarget3d_get_height(NULL), 0);
@@ -749,8 +687,7 @@ static void test_rendertarget_null_safety()
 // Backend selection tests
 //=============================================================================
 
-static void test_backend_select()
-{
+static void test_backend_select() {
     TEST("Backend selection — returns non-null");
     const void *b = vgfx3d_select_backend();
     assert(b != NULL);
@@ -761,8 +698,7 @@ static void test_backend_select()
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== Graphics3D Unit Tests ===\n\n");
 
     /* Mesh3D — basic */

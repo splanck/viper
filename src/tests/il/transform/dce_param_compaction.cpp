@@ -28,8 +28,7 @@
 
 using namespace il::core;
 
-TEST(IL, testSingleUnusedParam)
-{
+TEST(IL, testSingleUnusedParam) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -60,8 +59,7 @@ TEST(IL, testSingleUnusedParam)
     ASSERT_TRUE(verifyResult && "Module should verify after DCE");
 }
 
-TEST(IL, testUsedParamPreserved)
-{
+TEST(IL, testUsedParamPreserved) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -88,8 +86,7 @@ TEST(IL, testUsedParamPreserved)
     ASSERT_TRUE(br.brArgs.size() == 1 && br.brArgs[0].size() == 1);
 }
 
-TEST(IL, testSelectiveRemoval)
-{
+TEST(IL, testSelectiveRemoval) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -136,8 +133,7 @@ TEST(IL, testSelectiveRemoval)
     ASSERT_TRUE(verifyResult && "Module should verify after DCE");
 }
 
-TEST(IL, testMultiplePredecessors)
-{
+TEST(IL, testMultiplePredecessors) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -187,8 +183,7 @@ TEST(IL, testMultiplePredecessors)
     ASSERT_TRUE(verifyResult && "Module should verify after DCE");
 }
 
-TEST(IL, testCBrSameTarget)
-{
+TEST(IL, testCBrSameTarget) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -231,8 +226,7 @@ TEST(IL, testCBrSameTarget)
     ASSERT_TRUE(verifyResult && "Module should verify after DCE");
 }
 
-TEST(IL, testEntryParamPrefixPreservedWhenIdsDiffer)
-{
+TEST(IL, testEntryParamPrefixPreservedWhenIdsDiffer) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -260,8 +254,7 @@ TEST(IL, testEntryParamPrefixPreservedWhenIdsDiffer)
     ASSERT_TRUE(verifyResult && "Module should verify after DCE");
 }
 
-TEST(IL, testManyParamsAndPreds)
-{
+TEST(IL, testManyParamsAndPreds) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -275,8 +268,7 @@ TEST(IL, testManyParamsAndPreds)
     builder.createBlock(fn, "right");
 
     std::vector<Param> params;
-    for (size_t i = 0; i < numParams; ++i)
-    {
+    for (size_t i = 0; i < numParams; ++i) {
         params.push_back(
             Param{"p" + std::to_string(i), Type(Type::Kind::I64), static_cast<unsigned>(i + 1)});
     }
@@ -317,8 +309,7 @@ TEST(IL, testManyParamsAndPreds)
         init.operands.push_back(Value::constInt(0));
         target.instructions.push_back(init);
     }
-    for (size_t i = 2; i < numParams; i += 2)
-    {
+    for (size_t i = 2; i < numParams; i += 2) {
         unsigned newId = builder.reserveTempId();
         Instr add;
         add.op = Opcode::IAddOvf;
@@ -354,8 +345,7 @@ TEST(IL, testManyParamsAndPreds)
     ASSERT_TRUE(verifyResult && "Module should verify after DCE");
 }
 
-TEST(IL, testAllParamsUnused)
-{
+TEST(IL, testAllParamsUnused) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -389,8 +379,7 @@ TEST(IL, testAllParamsUnused)
     ASSERT_TRUE(verifyResult && "Module should verify after DCE");
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -39,12 +39,10 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::runtime
-{
+namespace il::runtime {
 
 /// @brief Enumerates runtime signatures covered by the generated registry subset.
-enum class RtSig : std::size_t
-{
+enum class RtSig : std::size_t {
 #define SIG(name, type) name,
 #include "il/runtime/RuntimeSigs.def"
 #undef SIG
@@ -52,8 +50,7 @@ enum class RtSig : std::size_t
 };
 
 /// @brief Enumerates optional runtime helpers that lowering may request.
-enum class RuntimeFeature : std::size_t
-{
+enum class RuntimeFeature : std::size_t {
     Concat,
     CsvQuote,
     InputLine,
@@ -136,8 +133,7 @@ enum class RuntimeFeature : std::size_t
 };
 
 /// @brief Lowering requirement classification for runtime helpers.
-enum class RuntimeLoweringKind
-{
+enum class RuntimeLoweringKind {
     Always,
     BoundsChecked,
     Feature,
@@ -145,8 +141,7 @@ enum class RuntimeLoweringKind
 };
 
 /// @brief Metadata describing when lowering should declare a runtime helper.
-struct RuntimeLowering
-{
+struct RuntimeLowering {
     RuntimeLoweringKind kind{RuntimeLoweringKind::Manual}; ///< Dispatch strategy.
     RuntimeFeature feature{
         RuntimeFeature::Count}; ///< Feature identifier when @ref kind is Feature.
@@ -158,28 +153,24 @@ using RuntimeHandler = void (*)(void **args, void *result);
 
 /// @brief Describes the IL signature for a runtime helper function.
 /// @notes Parameter order matches the runtime C ABI.
-enum class RuntimeHiddenParamKind
-{
+enum class RuntimeHiddenParamKind {
     None,
     PowStatusPointer,
 };
 
 /// @brief Hidden runtime argument injected by the VM bridge.
-struct RuntimeHiddenParam
-{
+struct RuntimeHiddenParam {
     RuntimeHiddenParamKind kind{
         RuntimeHiddenParamKind::None}; ///< Classification for bridge marshalling.
 };
 
 /// @brief Classification guiding runtime trap handling for helper invocations.
-enum class RuntimeTrapClass
-{
+enum class RuntimeTrapClass {
     None,
     PowDomainOverflow,
 };
 
-struct RuntimeSignature
-{
+struct RuntimeSignature {
     il::core::Type retType;                       ///< Return type of the helper.
     std::vector<il::core::Type> paramTypes;       ///< Parameter types in declaration order.
     std::vector<RuntimeHiddenParam> hiddenParams; ///< Hidden arguments appended by the bridge.
@@ -191,8 +182,7 @@ struct RuntimeSignature
 };
 
 /// @brief Aggregated descriptor covering signature, handler, and lowering metadata.
-struct RuntimeDescriptor
-{
+struct RuntimeDescriptor {
     std::string_view name;      ///< Symbol exported by the runtime library.
     RuntimeSignature signature; ///< Canonical IL signature for the helper.
     RuntimeHandler handler;     ///< Adapter that invokes the C implementation.
@@ -261,8 +251,7 @@ const RuntimeSignature *findRuntimeSignature(RtSig sig);
 [[nodiscard]] bool selfCheckRuntimeDescriptors();
 
 /// @brief Mode controlling how runtime signature invariant violations are reported.
-enum class InvariantViolationMode
-{
+enum class InvariantViolationMode {
     Abort, ///< Default: call std::abort() immediately.
     Trap,  ///< Use registered trap handler when available, otherwise abort.
 };

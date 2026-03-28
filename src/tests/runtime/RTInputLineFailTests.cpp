@@ -22,8 +22,7 @@
 
 #ifdef _WIN32
 // This test requires overriding realloc which doesn't work with Windows DLL CRT
-int main()
-{
+int main() {
     printf("Test skipped: Cannot override CRT functions on Windows DLL\n");
     return 0;
 }
@@ -32,21 +31,18 @@ int main()
 static const char *g_msg = nullptr;
 
 // Stub realloc to simulate allocation failure.
-extern "C" void *realloc(void *ptr, size_t size)
-{
+extern "C" void *realloc(void *ptr, size_t size) {
     (void)ptr;
     (void)size;
     return NULL;
 }
 
 // Stub vm_trap to capture message without aborting.
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_msg = msg;
 }
 
-int main()
-{
+int main() {
     // Create a temporary file with test input instead of using a pipe
     // This avoids stdin redirection issues across platforms
     char tmpname[] = "/tmp/viper_input_test_XXXXXX";

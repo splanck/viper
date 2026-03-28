@@ -58,15 +58,13 @@ static int g_output_init_state = 0;
 /// @details Allows nested begin/end batch calls to work correctly across threads.
 static int g_batch_mode_depth = 0;
 
-void rt_output_init(void)
-{
+void rt_output_init(void) {
     if (__atomic_load_n(&g_output_init_state, __ATOMIC_ACQUIRE) == 2)
         return;
 
     int expected = 0;
     if (__atomic_compare_exchange_n(
-            &g_output_init_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
-    {
+            &g_output_init_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
         // Configure stdout for full buffering with our internal buffer.
         // _IOFBF = full buffering: output is written when buffer is full or fflush() is called.
         // This is the key change that reduces system calls.
@@ -76,59 +74,49 @@ void rt_output_init(void)
     }
 
     // Another thread is initializing; spin until done.
-    while (__atomic_load_n(&g_output_init_state, __ATOMIC_ACQUIRE) != 2)
-    {
+    while (__atomic_load_n(&g_output_init_state, __ATOMIC_ACQUIRE) != 2) {
         // spin
     }
 }
 
-void rt_output_str(const char *s)
-{
+void rt_output_str(const char *s) {
     if (!s)
         return;
     fputs(s, stdout);
 }
 
-void rt_output_strn(const char *s, size_t len)
-{
+void rt_output_strn(const char *s, size_t len) {
     if (!s || len == 0)
         return;
     fwrite(s, 1, len, stdout);
 }
 
-void rt_output_flush(void)
-{
+void rt_output_flush(void) {
     fflush(stdout);
 }
 
-void rt_output_begin_batch(void)
-{
+void rt_output_begin_batch(void) {
     __atomic_fetch_add(&g_batch_mode_depth, 1, __ATOMIC_ACQ_REL);
 }
 
-void rt_output_end_batch(void)
-{
+void rt_output_end_batch(void) {
     // Guard against unbalanced end without begin
     int cur = __atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE);
     if (cur <= 0)
         return;
     int prev = __atomic_fetch_sub(&g_batch_mode_depth, 1, __ATOMIC_ACQ_REL);
-    if (prev <= 1)
-    {
+    if (prev <= 1) {
         // Exiting outermost batch mode: flush accumulated output
         fflush(stdout);
     }
 }
 
-int8_t rt_output_is_batch_mode(void)
-{
+int8_t rt_output_is_batch_mode(void) {
     return __atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE) > 0;
 }
 
-void rt_output_flush_if_not_batch(void)
-{
-    if (__atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE) == 0)
-    {
+void rt_output_flush_if_not_batch(void) {
+    if (__atomic_load_n(&g_batch_mode_depth, __ATOMIC_ACQUIRE) == 0) {
         fflush(stdout);
     }
 }

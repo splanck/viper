@@ -38,8 +38,7 @@
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "support/source_location.hpp"
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Machine IR opcodes for AArch64 code generation.
 ///
@@ -50,8 +49,7 @@ namespace viper::codegen::aarch64
 /// Generated from MOpcodeDef.inc — the single source of truth for opcode
 /// names. Add new opcodes ONLY in MOpcodeDef.inc; the enum and name table
 /// are auto-generated from that file.
-enum class MOpcode
-{
+enum class MOpcode {
 #define VIPER_MIR_OPCODE(name) name,
 #include "codegen/aarch64/MOpcodeDef.inc"
 };
@@ -61,8 +59,7 @@ enum class MOpcode
 /// Before register allocation, isPhys=false and idOrPhys contains a virtual
 /// register ID. After allocation, isPhys=true and idOrPhys contains the
 /// PhysReg enum value cast to uint16_t.
-struct MReg
-{
+struct MReg {
     bool isPhys{false};          ///< True if this is a physical register.
     RegClass cls{RegClass::GPR}; ///< Register class (GPR or FPR).
     uint16_t idOrPhys{0U};       ///< Virtual reg ID or PhysReg enum value.
@@ -72,10 +69,8 @@ struct MReg
 ///
 /// Operands can be registers, immediates, condition codes, or labels.
 /// The interpretation depends on the MOpcode of the containing MInstr.
-struct MOperand
-{
-    enum class Kind
-    {
+struct MOperand {
+    enum class Kind {
         Reg,  ///< Physical or virtual register.
         Imm,  ///< Immediate constant.
         Cond, ///< Condition code (eq, ne, lt, etc.).
@@ -88,8 +83,7 @@ struct MOperand
     std::string label;         ///< Label name (when kind==Label).
 
     /// @brief Create a physical register operand.
-    static MOperand regOp(PhysReg r)
-    {
+    static MOperand regOp(PhysReg r) {
         MOperand o{};
         o.kind = Kind::Reg;
         o.reg.isPhys = true;
@@ -101,8 +95,7 @@ struct MOperand
     /// @brief Create a virtual register operand.
     /// @param cls Register class (GPR or FPR).
     /// @param id Virtual register identifier.
-    static MOperand vregOp(RegClass cls, uint16_t id)
-    {
+    static MOperand vregOp(RegClass cls, uint16_t id) {
         MOperand o{};
         o.kind = Kind::Reg;
         o.reg.isPhys = false;
@@ -112,8 +105,7 @@ struct MOperand
     }
 
     /// @brief Create an immediate operand.
-    static MOperand immOp(long long v)
-    {
+    static MOperand immOp(long long v) {
         MOperand o{};
         o.kind = Kind::Imm;
         o.imm = v;
@@ -121,8 +113,7 @@ struct MOperand
     }
 
     /// @brief Create a condition code operand (e.g., "eq", "ne", "lt").
-    static MOperand condOp(const char *c)
-    {
+    static MOperand condOp(const char *c) {
         MOperand o{};
         o.kind = Kind::Cond;
         o.cond = c;
@@ -130,8 +121,7 @@ struct MOperand
     }
 
     /// @brief Create a label operand (function name or block label).
-    static MOperand labelOp(std::string name)
-    {
+    static MOperand labelOp(std::string name) {
         MOperand o{};
         o.kind = Kind::Label;
         o.label = std::move(name);
@@ -144,8 +134,7 @@ struct MOperand
 /// Contains an opcode and a vector of operands. Operand interpretation
 /// depends on the opcode - typically destination register first, then
 /// source registers/immediates.
-struct MInstr
-{
+struct MInstr {
     MOpcode opc{};                ///< The operation to perform.
     std::vector<MOperand> ops{};  ///< Instruction operands.
     il::support::SourceLoc loc{}; ///< Source location (for debug info).
@@ -155,8 +144,7 @@ struct MInstr
 ///
 /// Basic blocks are named units of sequential code with a single entry
 /// and (typically) ending in a branch or return instruction.
-struct MBasicBlock
-{
+struct MBasicBlock {
     std::string name;           ///< Block label (used for branches).
     std::vector<MInstr> instrs; ///< Instructions in program order.
 };
@@ -165,8 +153,7 @@ struct MBasicBlock
 ///
 /// Contains all basic blocks, callee-saved register information, and
 /// stack frame layout computed during lowering and register allocation.
-struct MFunction
-{
+struct MFunction {
     std::string name;                ///< Function symbol name.
     std::vector<MBasicBlock> blocks; ///< Basic blocks in layout order.
 
@@ -186,8 +173,7 @@ struct MFunction
     int localFrameSize{0};
 
     /// @brief Describes a stack-allocated local variable.
-    struct StackLocal
-    {
+    struct StackLocal {
         unsigned tempId{0}; ///< IL temporary ID this slot is for.
         int size{0};        ///< Size in bytes.
         int align{8};       ///< Alignment requirement.
@@ -195,8 +181,7 @@ struct MFunction
     };
 
     /// @brief Describes a spill slot for a virtual register.
-    struct SpillSlot
-    {
+    struct SpillSlot {
         uint16_t vreg{0}; ///< Virtual register ID.
         int size{8};      ///< Size in bytes.
         int align{8};     ///< Alignment requirement.
@@ -204,8 +189,7 @@ struct MFunction
     };
 
     /// @brief Stack frame layout information.
-    struct FrameLayout
-    {
+    struct FrameLayout {
         std::vector<StackLocal> locals; ///< Local variable slots.
         std::vector<SpillSlot> spills;  ///< Spill slots for virtual registers.
         int totalBytes{0};              ///< Total frame size (aligned to 16 bytes).
@@ -216,8 +200,7 @@ struct MFunction
         /// @return Negative FP-relative offset, or 0 if @p tempId is not a local.
         /// @note 0 is safe as a sentinel because valid locals always have
         ///       negative offsets (below the frame pointer).
-        int getLocalOffset(unsigned tempId) const
-        {
+        int getLocalOffset(unsigned tempId) const {
             for (const auto &L : locals)
                 if (L.tempId == tempId)
                     return L.offset;

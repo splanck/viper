@@ -44,8 +44,7 @@ extern void rt_material3d_set_shininess(void *m, double s);
 
 #define WATER_GRID 32
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     double width, depth;
     double height;
@@ -57,16 +56,13 @@ typedef struct
     void *material;
 } rt_water3d;
 
-static void water3d_finalizer(void *obj)
-{
+static void water3d_finalizer(void *obj) {
     (void)obj;
 }
 
-void *rt_water3d_new(double width, double depth)
-{
+void *rt_water3d_new(double width, double depth) {
     rt_water3d *w = (rt_water3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_water3d));
-    if (!w)
-    {
+    if (!w) {
         rt_trap("Water3D.New: allocation failed");
         return NULL;
     }
@@ -91,8 +87,7 @@ void *rt_water3d_new(double width, double depth)
 /// @brief Perform water3d set height operation.
 /// @param obj
 /// @param y
-void rt_water3d_set_height(void *obj, double y)
-{
+void rt_water3d_set_height(void *obj, double y) {
     if (obj)
         ((rt_water3d *)obj)->height = y;
 }
@@ -102,8 +97,7 @@ void rt_water3d_set_height(void *obj, double y)
 /// @param speed
 /// @param amplitude
 /// @param frequency
-void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, double frequency)
-{
+void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, double frequency) {
     if (!obj)
         return;
     rt_water3d *w = (rt_water3d *)obj;
@@ -118,8 +112,7 @@ void rt_water3d_set_wave_params(void *obj, double speed, double amplitude, doubl
 /// @param g
 /// @param b
 /// @param a
-void rt_water3d_set_color(void *obj, double r, double g, double b, double a)
-{
+void rt_water3d_set_color(void *obj, double r, double g, double b, double a) {
     if (!obj)
         return;
     rt_water3d *w = (rt_water3d *)obj;
@@ -132,8 +125,7 @@ void rt_water3d_set_color(void *obj, double r, double g, double b, double a)
 /// @brief Perform water3d update operation.
 /// @param obj
 /// @param dt
-void rt_water3d_update(void *obj, double dt)
-{
+void rt_water3d_update(void *obj, double dt) {
     if (!obj || dt <= 0)
         return;
     rt_water3d *w = (rt_water3d *)obj;
@@ -142,8 +134,7 @@ void rt_water3d_update(void *obj, double dt)
     /* Regenerate mesh with new wave positions (reuse allocation to avoid GC pressure) */
     if (!w->mesh)
         w->mesh = rt_mesh3d_new();
-    else
-    {
+    else {
         rt_mesh3d *m = (rt_mesh3d *)w->mesh;
         m->vertex_count = 0;
         m->index_count = 0;
@@ -153,10 +144,8 @@ void rt_water3d_update(void *obj, double dt)
     double step_z = w->depth / WATER_GRID;
 
     /* Vertices */
-    for (int gz = 0; gz <= WATER_GRID; gz++)
-    {
-        for (int gx = 0; gx <= WATER_GRID; gx++)
-        {
+    for (int gz = 0; gz <= WATER_GRID; gz++) {
+        for (int gx = 0; gx <= WATER_GRID; gx++) {
             double x = -hx + gx * step_x;
             double z = -hz + gz * step_z;
 
@@ -168,8 +157,7 @@ void rt_water3d_update(void *obj, double dt)
             double dydx = w->wave_amplitude * w->wave_frequency * cos(phase);
             double nx = -dydx, ny = 1.0, nz = -dydx;
             double nlen = sqrt(nx * nx + ny * ny + nz * nz);
-            if (nlen > 1e-8)
-            {
+            if (nlen > 1e-8) {
                 nx /= nlen;
                 ny /= nlen;
                 nz /= nlen;
@@ -183,10 +171,8 @@ void rt_water3d_update(void *obj, double dt)
 
     /* Triangles */
     int row = WATER_GRID + 1;
-    for (int gz = 0; gz < WATER_GRID; gz++)
-    {
-        for (int gx = 0; gx < WATER_GRID; gx++)
-        {
+    for (int gz = 0; gz < WATER_GRID; gz++) {
+        for (int gx = 0; gx < WATER_GRID; gx++) {
             int base = gz * row + gx;
             rt_mesh3d_add_triangle(w->mesh, base, base + row, base + 1);
             rt_mesh3d_add_triangle(w->mesh, base + 1, base + row, base + row + 1);
@@ -194,13 +180,10 @@ void rt_water3d_update(void *obj, double dt)
     }
 
     /* Update material — create on first use, update color every frame */
-    if (!w->material)
-    {
+    if (!w->material) {
         w->material = rt_material3d_new_color(w->color[0], w->color[1], w->color[2]);
         rt_material3d_set_shininess(w->material, 128.0);
-    }
-    else
-    {
+    } else {
         rt_material3d_set_color(w->material, w->color[0], w->color[1], w->color[2]);
     }
     rt_material3d_set_alpha(w->material, w->alpha);
@@ -210,8 +193,7 @@ void rt_water3d_update(void *obj, double dt)
 /// @param canvas
 /// @param obj
 /// @param camera
-void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera)
-{
+void rt_canvas3d_draw_water(void *canvas, void *obj, void *camera) {
     if (!canvas || !obj)
         return;
     rt_water3d *w = (rt_water3d *)obj;

@@ -53,11 +53,9 @@
 ///          is set to ``1`` the demo performs a single render and exits.  When
 ///          interactive, keyboard events are decoded until Ctrl+Q is received.
 /// @return Zero on success after the application exits.
-int main()
-{
+int main() {
     bool headless = false;
-    if (const char *v = std::getenv("VIPERTUI_NO_TTY"))
-    {
+    if (const char *v = std::getenv("VIPERTUI_NO_TTY")) {
         headless = (v[0] == '1');
     }
 
@@ -80,24 +78,20 @@ int main()
     app.focus().registerWidget(lv_ptr);
 
     app.tick();
-    if (headless)
-    {
+    if (headless) {
         return 0;
     }
 
     viper::tui::term::InputDecoder decoder;
 #if defined(_WIN32)
-    while (true)
-    {
+    while (true) {
         int c = _getch();
-        if (c == 17)
-        {
+        if (c == 17) {
             break; // Ctrl+Q
         }
         char ch = static_cast<char>(c);
         decoder.feed(std::string_view(&ch, 1));
-        for (auto &ev : decoder.drain())
-        {
+        for (auto &ev : decoder.drain()) {
             viper::tui::ui::Event e{};
             e.key = ev;
             app.pushEvent(e);
@@ -106,31 +100,25 @@ int main()
     }
 #else
     char in[64];
-    while (true)
-    {
+    while (true) {
         ssize_t n = ::read(STDIN_FILENO, in, sizeof(in));
-        if (n <= 0)
-        {
+        if (n <= 0) {
             break;
         }
         bool quit = false;
-        for (ssize_t i = 0; i < n; ++i)
-        {
-            if (in[i] == 17)
-            {
+        for (ssize_t i = 0; i < n; ++i) {
+            if (in[i] == 17) {
                 quit = true; // Ctrl+Q
             }
         }
         decoder.feed(std::string_view(in, static_cast<size_t>(n)));
-        for (auto &ev : decoder.drain())
-        {
+        for (auto &ev : decoder.drain()) {
             viper::tui::ui::Event e{};
             e.key = ev;
             app.pushEvent(e);
         }
         app.tick();
-        if (quit)
-        {
+        if (quit) {
             break;
         }
     }

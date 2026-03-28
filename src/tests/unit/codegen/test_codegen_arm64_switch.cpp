@@ -22,31 +22,27 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
     return ss.str();
 }
 
-TEST(Arm64CLI, SwitchSmall)
-{
+TEST(Arm64CLI, SwitchSmall) {
     const std::string in = outPath("arm64_switch_small.il");
     const std::string out = outPath("arm64_switch_small.s");
     const std::string il = "il 0.1\n"
@@ -73,8 +69,7 @@ TEST(Arm64CLI, SwitchSmall)
     EXPECT_NE(asmText.find("b LLd"), std::string::npos);
 }
 
-TEST(Arm64CLI, SwitchMany)
-{
+TEST(Arm64CLI, SwitchMany) {
     const std::string in = outPath("arm64_switch_many.il");
     const std::string out = outPath("arm64_switch_many.s");
     std::ostringstream il;
@@ -85,8 +80,7 @@ TEST(Arm64CLI, SwitchMany)
     for (int i = 0; i < 8; ++i)
         il << ", " << i << " -> ^L" << i;
     il << "\n";
-    for (int i = 0; i < 8; ++i)
-    {
+    for (int i = 0; i < 8; ++i) {
         il << "L" << i << "():\n";
         il << "  ret " << (100 + i) << "\n";
     }
@@ -102,8 +96,7 @@ TEST(Arm64CLI, SwitchMany)
     EXPECT_NE(asmText.find("b LLd"), std::string::npos);
 }
 
-TEST(Arm64CLI, SwitchDefaultOnly)
-{
+TEST(Arm64CLI, SwitchDefaultOnly) {
     const std::string in = outPath("arm64_switch_default_only.il");
     const std::string out = outPath("arm64_switch_default_only.s");
     const std::string il = "il 0.1\n"
@@ -124,8 +117,7 @@ TEST(Arm64CLI, SwitchDefaultOnly)
     EXPECT_NE(asmText.find("LLd:"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

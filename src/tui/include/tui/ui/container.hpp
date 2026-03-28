@@ -31,15 +31,13 @@
 #include <memory>
 #include <vector>
 
-namespace viper::tui::ui
-{
+namespace viper::tui::ui {
 /// @brief Base container holding child widgets with ownership and layout delegation.
 /// @details Provides the common infrastructure for composite widgets: child ownership
 ///          via unique_ptr, delegation of paint() to children in insertion order, and
 ///          a two-phase layout protocol where layout() stores the container's rect and
 ///          then calls the pure virtual layoutChildren() for concrete arrangement.
-class Container : public Widget
-{
+class Container : public Widget {
   public:
     /// @brief Transfer ownership of a child widget into the container.
     /// @details Appends the widget to the children list. The container assumes
@@ -69,8 +67,7 @@ class Container : public Widget
 /// @brief Vertical stack container that arranges children top-to-bottom.
 /// @details Divides the container's height equally among all children.
 ///          Each child receives the full container width.
-class VStack : public Container
-{
+class VStack : public Container {
   protected:
     void layoutChildren() override;
 };
@@ -78,8 +75,7 @@ class VStack : public Container
 /// @brief Horizontal stack container that arranges children left-to-right.
 /// @details Divides the container's width equally among all children.
 ///          Each child receives the full container height.
-class HStack : public Container
-{
+class HStack : public Container {
   protected:
     void layoutChildren() override;
 };

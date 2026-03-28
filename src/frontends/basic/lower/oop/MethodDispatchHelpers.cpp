@@ -24,8 +24,7 @@
 #include "frontends/basic/sem/RuntimeMethodIndex.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // ============================================================================
 // MethodDispatchResolver
@@ -35,12 +34,10 @@ MethodDispatchResolver::MethodDispatchResolver(Lowerer &lowerer) noexcept : lowe
 
 std::string MethodDispatchResolver::checkAccessControl(const ClassInfo &classInfo,
                                                        const std::string &methodName,
-                                                       il::support::SourceLoc loc)
-{
+                                                       il::support::SourceLoc loc) {
     auto it = classInfo.methods.find(methodName);
     if (it != classInfo.methods.end() && it->second.sig.access == Access::Private &&
-        lowerer_.currentClass() != classInfo.qualifiedName)
-    {
+        lowerer_.currentClass() != classInfo.qualifiedName) {
         return "cannot access private member '" + methodName + "' of class '" +
                classInfo.qualifiedName + "'";
     }
@@ -51,13 +48,11 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveStaticCall(
     const std::string &classQName,
     const std::string &methodName,
     const std::vector<Type> &argTypes,
-    il::support::SourceLoc loc)
-{
+    il::support::SourceLoc loc) {
     Resolution result;
 
     // Check user-defined class first
-    if (const ClassInfo *ci = lowerer_.oopIndex_.findClass(classQName))
-    {
+    if (const ClassInfo *ci = lowerer_.oopIndex_.findClass(classQName)) {
         // Resolve overload
         std::string selected = methodName;
         if (auto resolved = sem::resolveMethodOverload(lowerer_.oopIndex_,
@@ -67,26 +62,21 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveStaticCall(
                                                        argTypes,
                                                        lowerer_.currentClass(),
                                                        lowerer_.diagnosticEmitter(),
-                                                       loc))
-        {
+                                                       loc)) {
             selected = resolved->methodName;
-        }
-        else if (lowerer_.diagnosticEmitter())
-        {
+        } else if (lowerer_.diagnosticEmitter()) {
             result.kind = Resolution::Kind::Unresolved;
             return result;
         }
 
         auto it = ci->methods.find(selected);
-        if (it != ci->methods.end() && it->second.isStatic)
-        {
+        if (it != ci->methods.end() && it->second.isStatic) {
             result.kind = Resolution::Kind::Direct;
             result.target = mangleMethod(ci->qualifiedName, selected);
             result.hasReceiver = false;
 
             // Determine return type
-            if (auto retType = lowerer_.findMethodReturnType(classQName, selected))
-            {
+            if (auto retType = lowerer_.findMethodReturnType(classQName, selected)) {
                 result.returnKind = type_conv::astToIlType(*retType).kind;
             }
             return result;
@@ -94,8 +84,7 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveStaticCall(
     }
 
     // Try runtime catalog
-    if (auto catalogResult = tryRuntimeCatalog(classQName, methodName, argTypes.size()))
-    {
+    if (auto catalogResult = tryRuntimeCatalog(classQName, methodName, argTypes.size())) {
         return *catalogResult;
     }
 
@@ -108,23 +97,19 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
     const std::string &methodName,
     const std::vector<Type> &argTypes,
     bool isBaseQualified,
-    il::support::SourceLoc loc)
-{
+    il::support::SourceLoc loc) {
     Resolution result;
     result.hasReceiver = true;
 
-    if (receiverClassQName.empty())
-    {
+    if (receiverClassQName.empty()) {
         result.kind = Resolution::Kind::Unresolved;
         return result;
     }
 
     // Access control check
-    if (const ClassInfo *ci = lowerer_.oopIndex_.findClass(receiverClassQName))
-    {
+    if (const ClassInfo *ci = lowerer_.oopIndex_.findClass(receiverClassQName)) {
         std::string accessError = checkAccessControl(*ci, methodName, loc);
-        if (!accessError.empty())
-        {
+        if (!accessError.empty()) {
             result.kind = Resolution::Kind::Unresolved;
             result.accessDenied = true;
             result.accessErrorMsg = accessError;
@@ -143,13 +128,10 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
                                                    argTypes,
                                                    lowerer_.currentClass(),
                                                    lowerer_.diagnosticEmitter(),
-                                                   loc))
-    {
+                                                   loc)) {
         selected = resolved->methodName;
         declaringClass = resolved->qualifiedClass; // Use declaring class for dispatch
-    }
-    else if (lowerer_.diagnosticEmitter())
-    {
+    } else if (lowerer_.diagnosticEmitter()) {
         result.kind = Resolution::Kind::Unresolved;
         return result;
     }
@@ -159,13 +141,10 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
 
     // Determine target class for direct dispatch - use declaring class for inherited methods
     std::string directQClass = declaringClass;
-    if (isBaseQualified)
-    {
+    if (isBaseQualified) {
         const std::string cur = lowerer_.currentClass();
-        if (!cur.empty())
-        {
-            if (const ClassInfo *ci = lowerer_.oopIndex_.findClass(cur))
-            {
+        if (!cur.empty()) {
+            if (const ClassInfo *ci = lowerer_.oopIndex_.findClass(cur)) {
                 if (!ci->baseQualified.empty())
                     directQClass = ci->baseQualified;
             }
@@ -173,13 +152,11 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
     }
 
     // Virtual dispatch (not BASE-qualified)
-    if (slot >= 0 && !isBaseQualified)
-    {
+    if (slot >= 0 && !isBaseQualified) {
         result.kind = Resolution::Kind::Virtual;
         result.slot = slot;
         // BUG-OOP-002/003 fix: Use declaring class for return type lookup
-        if (auto retType = lowerer_.findMethodReturnType(declaringClass, selected))
-        {
+        if (auto retType = lowerer_.findMethodReturnType(declaringClass, selected)) {
             result.returnKind = type_conv::astToIlType(*retType).kind;
         }
         return result;
@@ -193,8 +170,7 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
 
     // Return type lookup - use base class for BASE-qualified calls
     const std::string retClassLookup = isBaseQualified ? directQClass : receiverClassQName;
-    if (auto retType = lowerer_.findMethodReturnType(retClassLookup, selected))
-    {
+    if (auto retType = lowerer_.findMethodReturnType(retClassLookup, selected)) {
         result.returnKind = type_conv::astToIlType(*retType).kind;
     }
 
@@ -202,37 +178,31 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInstanceCall(
 }
 
 MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInterfaceCall(
-    const std::string &interfaceQName, const std::string &methodName, std::size_t argCount)
-{
+    const std::string &interfaceQName, const std::string &methodName, std::size_t argCount) {
     Resolution result;
     result.hasReceiver = true;
 
     // Find interface in OOP index
     const InterfaceInfo *iface = nullptr;
-    for (const auto &p : lowerer_.oopIndex_.interfacesByQname())
-    {
-        if (p.first == interfaceQName)
-        {
+    for (const auto &p : lowerer_.oopIndex_.interfacesByQname()) {
+        if (p.first == interfaceQName) {
             iface = &p.second;
             break;
         }
     }
 
-    if (!iface)
-    {
+    if (!iface) {
         result.kind = Resolution::Kind::Unresolved;
         return result;
     }
 
     // Find slot by method name and arity
     int slotIndex = -1;
-    for (std::size_t idx = 0; idx < iface->slots.size(); ++idx)
-    {
+    for (std::size_t idx = 0; idx < iface->slots.size(); ++idx) {
         const auto &sig = iface->slots[idx];
         if (sig.name != methodName)
             continue;
-        if (sig.paramTypes.size() == argCount)
-        {
+        if (sig.paramTypes.size() == argCount) {
             slotIndex = static_cast<int>(idx);
             break;
         }
@@ -241,8 +211,7 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInterfaceCall(
             slotIndex = static_cast<int>(idx);
     }
 
-    if (slotIndex < 0)
-    {
+    if (slotIndex < 0) {
         result.kind = Resolution::Kind::Unresolved;
         return result;
     }
@@ -252,10 +221,8 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInterfaceCall(
     result.ifaceId = iface->ifaceId;
 
     // Return type from interface signature
-    if (slotIndex >= 0 && static_cast<std::size_t>(slotIndex) < iface->slots.size())
-    {
-        if (iface->slots[static_cast<std::size_t>(slotIndex)].returnType)
-        {
+    if (slotIndex >= 0 && static_cast<std::size_t>(slotIndex) < iface->slots.size()) {
+        if (iface->slots[static_cast<std::size_t>(slotIndex)].returnType) {
             result.returnKind = type_conv::astToIlType(
                                     *iface->slots[static_cast<std::size_t>(slotIndex)].returnType)
                                     .kind;
@@ -266,8 +233,7 @@ MethodDispatchResolver::Resolution MethodDispatchResolver::resolveInterfaceCall(
 }
 
 std::optional<MethodDispatchResolver::Resolution> MethodDispatchResolver::tryRuntimeCatalog(
-    const std::string &classQName, const std::string &methodName, std::size_t argCount)
-{
+    const std::string &classQName, const std::string &methodName, std::size_t argCount) {
     // Check if this is a runtime class
     if (!il::runtime::findRuntimeClassByQName(classQName))
         return std::nullopt;
@@ -298,26 +264,20 @@ void BoundsCheckEmitter::emitBoundsCheck(il::core::Value arrHandle,
                                          Type elemKind,
                                          bool isObjectArray,
                                          il::support::SourceLoc loc,
-                                         std::string_view labelPrefix)
-{
+                                         std::string_view labelPrefix) {
     lowerer_.curLoc = loc;
 
     // Get array length using appropriate helper
     il::core::Value len;
-    if (elemKind == Type::Str)
-    {
+    if (elemKind == Type::Str) {
         lowerer_.requireArrayStrLen();
         len = lowerer_.emitCallRet(
             il::core::Type(il::core::Type::Kind::I64), "rt_arr_str_len", {arrHandle});
-    }
-    else if (isObjectArray)
-    {
+    } else if (isObjectArray) {
         lowerer_.requireArrayObjLen();
         len = lowerer_.emitCallRet(
             il::core::Type(il::core::Type::Kind::I64), "rt_arr_obj_len", {arrHandle});
-    }
-    else
-    {
+    } else {
         lowerer_.requireArrayI64Len();
         len = lowerer_.emitCallRet(
             il::core::Type(il::core::Type::Kind::I64), "rt_arr_i64_len", {arrHandle});
@@ -378,8 +338,7 @@ void BoundsCheckEmitter::emitBoundsCheck(il::core::Value arrHandle,
 il::core::Value BoundsCheckEmitter::computeFlattenedIndex(
     const std::vector<il::core::Value> &indices,
     const std::vector<long long> &extents,
-    il::support::SourceLoc loc)
-{
+    il::support::SourceLoc loc) {
     if (indices.empty())
         return il::core::Value::constInt(0);
 
@@ -408,8 +367,7 @@ il::core::Value BoundsCheckEmitter::computeFlattenedIndex(
                                                  il::core::Value::constInt(stride));
 
     // Add remaining dimension contributions
-    for (std::size_t k = 1; k < indices.size(); ++k)
-    {
+    for (std::size_t k = 1; k < indices.size(); ++k) {
         stride = 1;
         for (std::size_t i = k + 1; i < lengths.size(); ++i)
             stride *= lengths[i];

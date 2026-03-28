@@ -34,36 +34,30 @@ using namespace viper::codegen::x64;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-namespace
-{
+namespace {
 
 /// Helper: create a GPR register operand for a physical register.
-Operand gpr(PhysReg pr)
-{
+Operand gpr(PhysReg pr) {
     return OpReg{true, RegClass::GPR, static_cast<uint16_t>(pr)};
 }
 
 /// Helper: create an XMM register operand.
-Operand xmm(PhysReg pr)
-{
+Operand xmm(PhysReg pr) {
     return OpReg{true, RegClass::XMM, static_cast<uint16_t>(pr)};
 }
 
 /// Helper: create an immediate operand.
-Operand imm(int64_t val)
-{
+Operand imm(int64_t val) {
     return OpImm{val};
 }
 
 /// Helper: create a label operand.
-Operand lbl(const std::string &name)
-{
+Operand lbl(const std::string &name) {
     return OpLabel{name};
 }
 
 /// Helper: build a single-block function with given instructions.
-MFunction makeFunc(const std::string &blockLabel, std::vector<MInstr> instrs)
-{
+MFunction makeFunc(const std::string &blockLabel, std::vector<MInstr> instrs) {
     MFunction fn{};
     fn.name = "test_fn";
     MBasicBlock block{};
@@ -79,8 +73,7 @@ MFunction makeFunc(const std::string &blockLabel, std::vector<MInstr> instrs)
 // Pass 1a: MOV #0 -> XOR
 // ---------------------------------------------------------------------------
 
-TEST(X86Peephole, MovZeroToXor)
-{
+TEST(X86Peephole, MovZeroToXor) {
     // mov rax, #0 should become xor eax, eax
     auto fn = makeFunc(".Lentry",
                        {
@@ -97,8 +90,7 @@ TEST(X86Peephole, MovZeroToXor)
     EXPECT_EQ(instrs[0].opcode, MOpcode::XORrr32);
 }
 
-TEST(X86Peephole, MovZeroToXorSkipsWhenFlagsRead)
-{
+TEST(X86Peephole, MovZeroToXorSkipsWhenFlagsRead) {
     // mov rax, #0 followed by JCC reading flags — should NOT rewrite to XOR
     auto fn = makeFunc(".Lentry",
                        {
@@ -113,8 +105,7 @@ TEST(X86Peephole, MovZeroToXorSkipsWhenFlagsRead)
     auto &instrs = fn.blocks[0].instructions;
     // The MOVri should still be there since JCC reads flags
     bool hasMov = false;
-    for (auto &i : instrs)
-    {
+    for (auto &i : instrs) {
         if (i.opcode == MOpcode::MOVri)
             hasMov = true;
     }
@@ -125,8 +116,7 @@ TEST(X86Peephole, MovZeroToXorSkipsWhenFlagsRead)
 // Pass 1b: CMP #0 -> TEST
 // ---------------------------------------------------------------------------
 
-TEST(X86Peephole, CmpZeroToTest)
-{
+TEST(X86Peephole, CmpZeroToTest) {
     // cmp rax, #0 should become test rax, rax
     auto fn = makeFunc(".Lentry",
                        {
@@ -141,8 +131,7 @@ TEST(X86Peephole, CmpZeroToTest)
     auto &instrs = fn.blocks[0].instructions;
     // First instruction should now be TESTrr
     bool hasTest = false;
-    for (auto &i : instrs)
-    {
+    for (auto &i : instrs) {
         if (i.opcode == MOpcode::TESTrr)
             hasTest = true;
     }
@@ -153,8 +142,7 @@ TEST(X86Peephole, CmpZeroToTest)
 // Pass 1c: Arithmetic Identity Elimination
 // ---------------------------------------------------------------------------
 
-TEST(X86Peephole, ArithIdentityAddZero)
-{
+TEST(X86Peephole, ArithIdentityAddZero) {
     // add rax, #0 should be eliminated (when flags not read)
     auto fn = makeFunc(".Lentry",
                        {
@@ -167,14 +155,12 @@ TEST(X86Peephole, ArithIdentityAddZero)
 
     // add #0 should be removed, leaving only RET
     auto &instrs = fn.blocks[0].instructions;
-    for (auto &i : instrs)
-    {
+    for (auto &i : instrs) {
         EXPECT_NE(i.opcode, MOpcode::ADDri);
     }
 }
 
-TEST(X86Peephole, ArithIdentityShiftZero)
-{
+TEST(X86Peephole, ArithIdentityShiftZero) {
     // shl rax, #0 should be eliminated (when flags not read)
     auto fn = makeFunc(".Lentry",
                        {
@@ -186,14 +172,12 @@ TEST(X86Peephole, ArithIdentityShiftZero)
     EXPECT_TRUE(count > 0U);
 
     auto &instrs = fn.blocks[0].instructions;
-    for (auto &i : instrs)
-    {
+    for (auto &i : instrs) {
         EXPECT_NE(i.opcode, MOpcode::SHLri);
     }
 }
 
-TEST(X86Peephole, ArithIdentityAndAllOnes)
-{
+TEST(X86Peephole, ArithIdentityAndAllOnes) {
     // and rax, #-1 should be eliminated (when flags not read)
     auto fn = makeFunc(".Lentry",
                        {
@@ -205,14 +189,12 @@ TEST(X86Peephole, ArithIdentityAndAllOnes)
     EXPECT_TRUE(count > 0U);
 
     auto &instrs = fn.blocks[0].instructions;
-    for (auto &i : instrs)
-    {
+    for (auto &i : instrs) {
         EXPECT_NE(i.opcode, MOpcode::ANDri);
     }
 }
 
-TEST(X86Peephole, ArithIdentityOrZero)
-{
+TEST(X86Peephole, ArithIdentityOrZero) {
     // or rax, #0 should be eliminated
     auto fn = makeFunc(".Lentry",
                        {
@@ -223,14 +205,12 @@ TEST(X86Peephole, ArithIdentityOrZero)
     runPeepholes(fn);
 
     auto &instrs = fn.blocks[0].instructions;
-    for (auto &i : instrs)
-    {
+    for (auto &i : instrs) {
         EXPECT_NE(i.opcode, MOpcode::ORri);
     }
 }
 
-TEST(X86Peephole, ArithIdentityPreservedWhenFlagsRead)
-{
+TEST(X86Peephole, ArithIdentityPreservedWhenFlagsRead) {
     // add rax, #0 followed by JCC reading flags — should NOT be removed
     auto fn = makeFunc(".Lentry",
                        {
@@ -243,8 +223,7 @@ TEST(X86Peephole, ArithIdentityPreservedWhenFlagsRead)
 
     auto &instrs = fn.blocks[0].instructions;
     bool hasAdd = false;
-    for (auto &i : instrs)
-    {
+    for (auto &i : instrs) {
         if (i.opcode == MOpcode::ADDri)
             hasAdd = true;
     }
@@ -255,8 +234,7 @@ TEST(X86Peephole, ArithIdentityPreservedWhenFlagsRead)
 // Pass 1d: Strength Reduction (MUL power-of-2 -> SHL)
 // ---------------------------------------------------------------------------
 
-TEST(X86Peephole, StrengthReductionMulPow2)
-{
+TEST(X86Peephole, StrengthReductionMulPow2) {
     // Load #8 into rcx, then imul rax, rcx -> shl rax, #3
     auto fn = makeFunc(".Lentry",
                        {
@@ -270,10 +248,8 @@ TEST(X86Peephole, StrengthReductionMulPow2)
 
     auto &instrs = fn.blocks[0].instructions;
     bool hasShl = false;
-    for (auto &i : instrs)
-    {
-        if (i.opcode == MOpcode::SHLri)
-        {
+    for (auto &i : instrs) {
+        if (i.opcode == MOpcode::SHLri) {
             hasShl = true;
             // Should shift by 3 (since 2^3 = 8)
             ASSERT_TRUE(i.operands.size() >= 2U);
@@ -285,8 +261,7 @@ TEST(X86Peephole, StrengthReductionMulPow2)
     EXPECT_TRUE(hasShl);
 }
 
-TEST(X86Peephole, StrengthReductionNoRewriteNonPow2)
-{
+TEST(X86Peephole, StrengthReductionNoRewriteNonPow2) {
     // Load #7 into rcx, then imul rax, rcx — 7 is not power-of-2, no rewrite
     auto fn = makeFunc(".Lentry",
                        {
@@ -299,8 +274,7 @@ TEST(X86Peephole, StrengthReductionNoRewriteNonPow2)
 
     auto &instrs = fn.blocks[0].instructions;
     bool hasImul = false;
-    for (auto &i : instrs)
-    {
+    for (auto &i : instrs) {
         if (i.opcode == MOpcode::IMULrr)
             hasImul = true;
     }
@@ -311,8 +285,7 @@ TEST(X86Peephole, StrengthReductionNoRewriteNonPow2)
 // Pass 3: Identity Move Removal
 // ---------------------------------------------------------------------------
 
-TEST(X86Peephole, RemoveIdentityMovRR)
-{
+TEST(X86Peephole, RemoveIdentityMovRR) {
     // mov rax, rax (identity) should be removed
     auto fn =
         makeFunc(".Lentry",
@@ -329,16 +302,14 @@ TEST(X86Peephole, RemoveIdentityMovRR)
     auto &instrs = fn.blocks[0].instructions;
     // Should remove 2 identity moves, leaving non-identity mov + ret
     int movCount = 0;
-    for (auto &i : instrs)
-    {
+    for (auto &i : instrs) {
         if (i.opcode == MOpcode::MOVrr)
             ++movCount;
     }
     EXPECT_EQ(movCount, 1); // Only the non-identity mov remains
 }
 
-TEST(X86Peephole, RemoveIdentityMovSDRR)
-{
+TEST(X86Peephole, RemoveIdentityMovSDRR) {
     // movsd xmm0, xmm0 (identity) should be removed
     auto fn = makeFunc(
         ".Lentry",
@@ -353,8 +324,7 @@ TEST(X86Peephole, RemoveIdentityMovSDRR)
 
     auto &instrs = fn.blocks[0].instructions;
     int movsdCount = 0;
-    for (auto &i : instrs)
-    {
+    for (auto &i : instrs) {
         if (i.opcode == MOpcode::MOVSDrr)
             ++movsdCount;
     }
@@ -365,8 +335,7 @@ TEST(X86Peephole, RemoveIdentityMovSDRR)
 // Pass 9: Conditional Branch Inversion
 // ---------------------------------------------------------------------------
 
-TEST(X86Peephole, BranchInversion)
-{
+TEST(X86Peephole, BranchInversion) {
     // JCC(eq, .Lnext) / JMP(.Lexit) where .Lnext is the next block
     // Should become JCC(ne, .Lexit) with JMP removed.
     MFunction fn{};
@@ -400,8 +369,7 @@ TEST(X86Peephole, BranchInversion)
     // After inversion: .Lentry should have CMP + JCC(ne, .Lexit), no JMP
     auto &entryInstrs = fn.blocks[0].instructions;
     bool hasJmp = false;
-    for (auto &i : entryInstrs)
-    {
+    for (auto &i : entryInstrs) {
         if (i.opcode == MOpcode::JMP)
             hasJmp = true;
     }
@@ -412,8 +380,7 @@ TEST(X86Peephole, BranchInversion)
 // Pass 10: Fallthrough Jump Removal
 // ---------------------------------------------------------------------------
 
-TEST(X86Peephole, FallthroughJumpRemoval)
-{
+TEST(X86Peephole, FallthroughJumpRemoval) {
     // JMP .Lnext where .Lnext is the immediately following block
     MFunction fn{};
     fn.name = "test_fallthrough";
@@ -439,8 +406,7 @@ TEST(X86Peephole, FallthroughJumpRemoval)
     // The JMP to the next block should be removed
     auto &entryInstrs = fn.blocks[0].instructions;
     bool hasJmp = false;
-    for (auto &i : entryInstrs)
-    {
+    for (auto &i : entryInstrs) {
         if (i.opcode == MOpcode::JMP)
             hasJmp = true;
     }
@@ -451,8 +417,7 @@ TEST(X86Peephole, FallthroughJumpRemoval)
 // Pass 8: Branch Chain Elimination
 // ---------------------------------------------------------------------------
 
-TEST(X86Peephole, BranchChainElimination)
-{
+TEST(X86Peephole, BranchChainElimination) {
     // .Lentry: JMP .Ltrampoline
     // .Ltrampoline: JMP .Ltarget (single-JMP block)
     // .Ltarget: RET
@@ -487,12 +452,9 @@ TEST(X86Peephole, BranchChainElimination)
     // (may have been further optimized by trace layout and fallthrough removal,
     // but the chain should be resolved)
     bool chainResolved = true;
-    for (auto &block : fn.blocks)
-    {
-        for (auto &i : block.instructions)
-        {
-            if (i.opcode == MOpcode::JMP)
-            {
+    for (auto &block : fn.blocks) {
+        for (auto &i : block.instructions) {
+            if (i.opcode == MOpcode::JMP) {
                 auto *target = std::get_if<OpLabel>(&i.operands[0]);
                 if (target && target->name == ".Ltrampoline")
                     chainResolved = false;
@@ -506,8 +468,7 @@ TEST(X86Peephole, BranchChainElimination)
 // Pass 7: Cold Block Reordering
 // ---------------------------------------------------------------------------
 
-TEST(X86Peephole, ColdBlockMovedToEnd)
-{
+TEST(X86Peephole, ColdBlockMovedToEnd) {
     // Blocks: entry, trap_div0, body — trap should move after body
     MFunction fn{};
     fn.name = "test_cold_block";
@@ -546,8 +507,7 @@ TEST(X86Peephole, ColdBlockMovedToEnd)
 // Multiple optimizations in combination
 // ---------------------------------------------------------------------------
 
-TEST(X86Peephole, CombinedOptimizations)
-{
+TEST(X86Peephole, CombinedOptimizations) {
     // Combines: MOV #0->XOR, identity mov removal, CMP #0->TEST
     auto fn = makeFunc(
         ".Lentry",
@@ -564,15 +524,13 @@ TEST(X86Peephole, CombinedOptimizations)
 
     auto &instrs = fn.blocks[0].instructions;
     bool hasXor = false, hasTest = false, hasIdentityMov = false;
-    for (auto &i : instrs)
-    {
+    for (auto &i : instrs) {
         if (i.opcode == MOpcode::XORrr32)
             hasXor = true;
         if (i.opcode == MOpcode::TESTrr)
             hasTest = true;
         // Check for identity mov (same src and dst)
-        if (i.opcode == MOpcode::MOVrr && i.operands.size() == 2)
-        {
+        if (i.opcode == MOpcode::MOVrr && i.operands.size() == 2) {
             auto *d = std::get_if<OpReg>(&i.operands[0]);
             auto *s = std::get_if<OpReg>(&i.operands[1]);
             if (d && s && d->isPhys && s->isPhys && d->idOrPhys == s->idOrPhys)
@@ -588,8 +546,7 @@ TEST(X86Peephole, CombinedOptimizations)
 // Main
 // ---------------------------------------------------------------------------
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

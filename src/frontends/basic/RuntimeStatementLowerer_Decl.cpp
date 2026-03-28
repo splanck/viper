@@ -24,8 +24,7 @@
 using namespace il::core;
 using AstType = ::il::frontends::basic::Type;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Lower a BASIC @c CONST statement.
 ///
@@ -34,8 +33,7 @@ namespace il::frontends::basic
 ///          as read-only variables at compile-time (semantic analysis prevents reassignment).
 ///
 /// @param stmt Parsed @c CONST statement.
-void RuntimeStatementLowerer::lowerConst(const ConstStmt &stmt)
-{
+void RuntimeStatementLowerer::lowerConst(const ConstStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
 
     // Evaluate the initializer expression
@@ -49,15 +47,12 @@ void RuntimeStatementLowerer::lowerConst(const ConstStmt &stmt)
 
     // Store the value
     Lowerer::SlotType slotInfo = storage->slotInfo;
-    if (slotInfo.isArray)
-    {
+    if (slotInfo.isArray) {
         lowerer_.storeArray(storage->pointer,
                             value.value,
                             /*elementType*/ AstType::I64,
                             /*isObjectArray*/ storage->slotInfo.isObject);
-    }
-    else
-    {
+    } else {
         assignScalarSlot(slotInfo, storage->pointer, std::move(value), stmt.loc);
     }
 }
@@ -71,8 +66,7 @@ void RuntimeStatementLowerer::lowerConst(const ConstStmt &stmt)
 ///          uses of the variable will reference the module-level storage.
 ///
 /// @param stmt Parsed @c STATIC statement identifying the variable name and type.
-void RuntimeStatementLowerer::lowerStatic(const StaticStmt &stmt)
-{
+void RuntimeStatementLowerer::lowerStatic(const StaticStmt &stmt) {
     // No code emission needed - storage is allocated as module-level global
     // during variable collection phase, and variable references will resolve
     // to that global storage automatically.
@@ -93,8 +87,7 @@ void RuntimeStatementLowerer::lowerStatic(const StaticStmt &stmt)
 /// @return Validated length value produced by the runtime helper.
 Value RuntimeStatementLowerer::emitArrayLengthCheck(Value bound,
                                                     il::support::SourceLoc loc,
-                                                    std::string_view labelBase)
-{
+                                                    std::string_view labelBase) {
     LocationScope location(lowerer_, loc);
     Value length =
         lowerer_.emitCommon(loc).add_checked(bound, Value::constInt(1), OverflowPolicy::Checked);
@@ -102,8 +95,7 @@ Value RuntimeStatementLowerer::emitArrayLengthCheck(Value bound,
     ProcedureContext &ctx = lowerer_.context();
     Function *func = ctx.function();
     BasicBlock *original = ctx.current();
-    if (func && original)
-    {
+    if (func && original) {
         size_t curIdx = static_cast<size_t>(original - &func->blocks[0]);
         BlockNamer *blockNamer = ctx.blockNames().namer();
 
@@ -168,20 +160,15 @@ Value RuntimeStatementLowerer::emitArrayLengthCheck(Value bound,
 ///          the memory.
 ///
 /// @param stmt Parsed @c DIM statement to lower.
-void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt)
-{
+void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
 
     // Collect dimension expressions (backward compat: check 'size' first, then 'dimensions')
     std::vector<const ExprPtr *> dimExprs;
-    if (stmt.size)
-    {
+    if (stmt.size) {
         dimExprs.push_back(&stmt.size);
-    }
-    else
-    {
-        for (const auto &dimExpr : stmt.dimensions)
-        {
+    } else {
+        for (const auto &dimExpr : stmt.dimensions) {
             if (dimExpr)
                 dimExprs.push_back(&dimExpr);
         }
@@ -192,25 +179,19 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt)
     // to compute array size as a compile-time constant. This handles CONST dimensions
     // correctly without needing runtime module variable lookups.
     Value length;
-    if (!stmt.resolvedExtents.empty() && stmt.resolvedExtents.size() == dimExprs.size())
-    {
+    if (!stmt.resolvedExtents.empty() && stmt.resolvedExtents.size() == dimExprs.size()) {
         // Compute total size from resolved extents (add 1 to each for 0-based indexing)
         long long totalSize = 1;
-        for (long long extent : stmt.resolvedExtents)
-        {
+        for (long long extent : stmt.resolvedExtents) {
             totalSize *= (extent + 1);
         }
         length = lowerer_.emitConstI64(totalSize);
-    }
-    else if (dimExprs.size() == 1)
-    {
+    } else if (dimExprs.size() == 1) {
         // For single-dimensional arrays, use the dimension directly
         Lowerer::RVal bound = lowerer_.lowerExpr(**dimExprs[0]);
         bound = lowerer_.ensureI64(std::move(bound), stmt.loc);
         length = emitArrayLengthCheck(bound.value, stmt.loc, "dim_len");
-    }
-    else
-    {
+    } else {
         // For multi-dimensional arrays, compute total size = product of all extents.
         // Use an alloca to store running product because emitArrayLengthCheck creates
         // new basic blocks, and values from predecessor blocks aren't accessible
@@ -224,8 +205,7 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt)
         lowerer_.emitStore(il::core::Type(il::core::Type::Kind::I64), sizeSlot, firstLen);
 
         // Multiply by remaining dimensions
-        for (size_t i = 1; i < dimExprs.size(); ++i)
-        {
+        for (size_t i = 1; i < dimExprs.size(); ++i) {
             Lowerer::RVal dimBound = lowerer_.lowerExpr(**dimExprs[i]);
             dimBound = lowerer_.ensureI64(std::move(dimBound), stmt.loc);
             Value dimLen = emitArrayLengthCheck(dimBound.value, stmt.loc, "dim_len");
@@ -243,29 +223,22 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt)
     const auto *info = lowerer_.findSymbol(stmt.name);
     // Determine array element type and call appropriate runtime allocator
     Value handle;
-    if (info->type == AstType::Str)
-    {
+    if (info->type == AstType::Str) {
         // String array: use rt_arr_str_alloc
         lowerer_.requireArrayStrAlloc();
         handle = lowerer_.emitCallRet(
             il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_str_alloc", {length});
-    }
-    else if (info->isObject)
-    {
+    } else if (info->isObject) {
         // Object array
         lowerer_.requireArrayObjNew();
         handle = lowerer_.emitCallRet(
             il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_obj_new", {length});
-    }
-    else if (info->type == AstType::F64)
-    {
+    } else if (info->type == AstType::F64) {
         // Float array (SINGLE/DOUBLE): use rt_arr_f64_new
         lowerer_.requireArrayF64New();
         handle = lowerer_.emitCallRet(
             il::core::Type(il::core::Type::Kind::Ptr), "rt_arr_f64_new", {length});
-    }
-    else
-    {
+    } else {
         // Integer/numeric array: use rt_arr_i64_new (all Viper integers are 64-bit)
         lowerer_.requireArrayI64New();
         handle = lowerer_.emitCallRet(
@@ -273,19 +246,15 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt)
     }
 
     // Store into the resolved storage (supports module-level globals across procedures)
-    if (auto storage = lowerer_.resolveVariableStorage(stmt.name, stmt.loc))
-    {
+    if (auto storage = lowerer_.resolveVariableStorage(stmt.name, stmt.loc)) {
         lowerer_.storeArray(
             storage->pointer, handle, info ? info->type : AstType::I64, info && info->isObject);
-    }
-    else
-    {
+    } else {
         // Avoid hard assertions in production builds; emit a trap so the
         // failure is observable without terminating the entire test suite.
         lowerer_.emitTrap();
     }
-    if (lowerer_.boundsChecks)
-    {
+    if (lowerer_.boundsChecks) {
         if (info && info->arrayLengthSlot)
             lowerer_.emitStore(il::core::Type(il::core::Type::Kind::I64),
                                Value::temp(*info->arrayLengthSlot),
@@ -301,8 +270,7 @@ void RuntimeStatementLowerer::lowerDim(const DimStmt &stmt)
 ///          to prevent leaks.
 ///
 /// @param stmt Parsed @c REDIM statement describing the new bounds.
-void RuntimeStatementLowerer::lowerReDim(const ReDimStmt &stmt)
-{
+void RuntimeStatementLowerer::lowerReDim(const ReDimStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
     Lowerer::RVal bound = lowerer_.lowerExpr(*stmt.size);
     bound = lowerer_.ensureI64(std::move(bound), stmt.loc);
@@ -314,18 +282,13 @@ void RuntimeStatementLowerer::lowerReDim(const ReDimStmt &stmt)
         return; // Safety: skip if storage lookup fails in Release builds.
     Value current = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr), storage->pointer);
     const char *resizeFn = "rt_arr_i64_resize";
-    if (info && info->isObject)
-    {
+    if (info && info->isObject) {
         lowerer_.requireArrayObjResize();
         resizeFn = "rt_arr_obj_resize";
-    }
-    else if (info && info->type == AstType::F64)
-    {
+    } else if (info && info->type == AstType::F64) {
         lowerer_.requireArrayF64Resize();
         resizeFn = "rt_arr_f64_resize";
-    }
-    else
-    {
+    } else {
         lowerer_.requireArrayI64Resize();
     }
     Value resized = lowerer_.emitCallRet(
@@ -346,8 +309,7 @@ void RuntimeStatementLowerer::lowerReDim(const ReDimStmt &stmt)
 ///          invokes the helper that applies the seed.
 ///
 /// @param stmt Parsed @c RANDOMIZE statement.
-void RuntimeStatementLowerer::lowerRandomize(const RandomizeStmt &stmt)
-{
+void RuntimeStatementLowerer::lowerRandomize(const RandomizeStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
     Lowerer::RVal s = lowerer_.lowerExpr(*stmt.seed);
     Value seed = lowerer_.coerceToI64(std::move(s), stmt.loc).value;
@@ -361,8 +323,7 @@ void RuntimeStatementLowerer::lowerRandomize(const RandomizeStmt &stmt)
 ///          Uses a temporary slot to hold the first value during the exchange.
 ///
 /// @param stmt Parsed @c SWAP statement.
-void RuntimeStatementLowerer::lowerSwap(const SwapStmt &stmt)
-{
+void RuntimeStatementLowerer::lowerSwap(const SwapStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
 
     // Lower both lvalues to get their RVals
@@ -374,32 +335,24 @@ void RuntimeStatementLowerer::lowerSwap(const SwapStmt &stmt)
     lowerer_.emitStore(lhsVal.type, tempSlot, lhsVal.value);
 
     // Assign rhs to lhs
-    if (auto *var = as<const VarExpr>(*stmt.lhs))
-    {
+    if (auto *var = as<const VarExpr>(*stmt.lhs)) {
         auto storage = lowerer_.resolveVariableStorage(var->name, stmt.loc);
-        if (storage)
-        {
+        if (storage) {
             assignScalarSlot(storage->slotInfo, storage->pointer, rhsVal, stmt.loc);
         }
-    }
-    else if (auto *arr = as<const ArrayExpr>(*stmt.lhs))
-    {
+    } else if (auto *arr = as<const ArrayExpr>(*stmt.lhs)) {
         assignArrayElement(*arr, rhsVal, stmt.loc);
     }
 
     // Assign temp to rhs
     Value tempVal = lowerer_.emitLoad(lhsVal.type, tempSlot);
     Lowerer::RVal tempRVal{tempVal, lhsVal.type};
-    if (auto *var = as<const VarExpr>(*stmt.rhs))
-    {
+    if (auto *var = as<const VarExpr>(*stmt.rhs)) {
         auto storage = lowerer_.resolveVariableStorage(var->name, stmt.loc);
-        if (storage)
-        {
+        if (storage) {
             assignScalarSlot(storage->slotInfo, storage->pointer, tempRVal, stmt.loc);
         }
-    }
-    else if (auto *arr = as<const ArrayExpr>(*stmt.rhs))
-    {
+    } else if (auto *arr = as<const ArrayExpr>(*stmt.rhs)) {
         assignArrayElement(*arr, tempRVal, stmt.loc);
     }
 }

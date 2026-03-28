@@ -20,23 +20,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -45,8 +42,7 @@ static std::string readFile(const std::string &path)
 
 /// A simple leaf function (no calls) should NOT have stp x29, x30 in its body.
 /// Note: @main always has runtime init calls, so we test a non-main function.
-TEST(Arm64LeafFunc, LeafFunctionSkipsPrologue)
-{
+TEST(Arm64LeafFunc, LeafFunctionSkipsPrologue) {
     const std::string il = "il 0.1.2\n"
                            "func @leaf(%x:i64, %y:i64) -> i64 {\n"
                            "entry:\n"
@@ -92,8 +88,7 @@ TEST(Arm64LeafFunc, LeafFunctionSkipsPrologue)
 }
 
 /// A non-leaf function (with calls) should still have the full prologue.
-TEST(Arm64LeafFunc, NonLeafFunctionHasPrologue)
-{
+TEST(Arm64LeafFunc, NonLeafFunctionHasPrologue) {
     const std::string il = "il 0.1.2\n"
                            "func @helper() -> i64 {\n"
                            "entry:\n"
@@ -137,8 +132,7 @@ TEST(Arm64LeafFunc, NonLeafFunctionHasPrologue)
     EXPECT_NE(callerAsm.find("stp x29, x30"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

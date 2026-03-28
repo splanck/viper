@@ -29,8 +29,7 @@
 #include <sstream>
 #include <string>
 
-int main()
-{
+int main() {
     namespace fs = std::filesystem;
 
     fs::path tempFile;

@@ -20,42 +20,36 @@
 #include <cstdlib>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_string(const char *s)
-{
+static rt_string make_string(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_shell_true()
-{
+static void test_shell_true() {
     // "true" command should return 0
     rt_string cmd = make_string("true");
     int64_t result = rt_exec_shell(cmd);
     assert(result == 0);
 }
 
-static void test_shell_false()
-{
+static void test_shell_false() {
     // "false" command should return 1
     rt_string cmd = make_string("false");
     int64_t result = rt_exec_shell(cmd);
     assert(result == 1);
 }
 
-static void test_shell_echo()
-{
+static void test_shell_echo() {
     // Run echo through shell
     rt_string cmd = make_string("echo hello");
     int64_t result = rt_exec_shell(cmd);
     assert(result == 0);
 }
 
-static void test_shell_capture_echo()
-{
+static void test_shell_capture_echo() {
     // Capture output of echo
     rt_string cmd = make_string("echo hello");
     rt_string output = rt_exec_shell_capture(cmd);
@@ -66,8 +60,7 @@ static void test_shell_capture_echo()
     assert(strncmp(out_str, "hello", 5) == 0);
 }
 
-static void test_shell_capture_multiline()
-{
+static void test_shell_capture_multiline() {
     // Capture multiline output
     rt_string cmd = make_string("echo line1; echo line2");
     rt_string output = rt_exec_shell_capture(cmd);
@@ -78,14 +71,12 @@ static void test_shell_capture_multiline()
     assert(strstr(out_str, "line2") != nullptr);
 }
 
-static void test_run_true()
-{
+static void test_run_true() {
     // Direct execution of /bin/true (or /usr/bin/true)
     rt_string prog = make_string("/bin/true");
     int64_t result = rt_exec_run(prog);
     // Might fail if /bin/true doesn't exist, try /usr/bin/true
-    if (result < 0)
-    {
+    if (result < 0) {
         prog = make_string("/usr/bin/true");
         result = rt_exec_run(prog);
     }
@@ -94,8 +85,7 @@ static void test_run_true()
     assert(result == 0 || result == -1);
 }
 
-static void test_run_args()
-{
+static void test_run_args() {
     // Run echo with arguments
     rt_string prog = make_string("/bin/echo");
     void *args = rt_seq_new();
@@ -104,8 +94,7 @@ static void test_run_args()
 
     int64_t result = rt_exec_run_args(prog, args);
     // Might fail if /bin/echo doesn't exist
-    if (result < 0)
-    {
+    if (result < 0) {
         prog = make_string("/usr/bin/echo");
         result = rt_exec_run_args(prog, args);
     }
@@ -113,8 +102,7 @@ static void test_run_args()
     assert(result == 0 || result == -1);
 }
 
-static void test_capture_args()
-{
+static void test_capture_args() {
     // Capture output of echo with arguments
     rt_string prog = make_string("/bin/echo");
     void *args = rt_seq_new();
@@ -124,31 +112,27 @@ static void test_capture_args()
     rt_string output = rt_exec_capture_args(prog, args);
 
     // Try /usr/bin/echo if /bin/echo failed
-    if (rt_str_len(output) == 0)
-    {
+    if (rt_str_len(output) == 0) {
         prog = make_string("/usr/bin/echo");
         output = rt_exec_capture_args(prog, args);
     }
 
     // If we got output, verify it
-    if (rt_str_len(output) > 0)
-    {
+    if (rt_str_len(output) > 0) {
         const char *out_str = rt_string_cstr(output);
         assert(strstr(out_str, "test") != nullptr);
         assert(strstr(out_str, "output") != nullptr);
     }
 }
 
-static void test_shell_empty_command()
-{
+static void test_shell_empty_command() {
     // Empty command should return 0
     rt_string cmd = make_string("");
     int64_t result = rt_exec_shell(cmd);
     assert(result == 0);
 }
 
-static void test_shell_capture_empty()
-{
+static void test_shell_capture_empty() {
     // Empty command should return empty string
     rt_string cmd = make_string("");
     rt_string output = rt_exec_shell_capture(cmd);
@@ -156,16 +140,14 @@ static void test_shell_capture_empty()
     assert(rt_str_len(output) == 0);
 }
 
-static void test_nonexistent_program()
-{
+static void test_nonexistent_program() {
     // Nonexistent program should return -1
     rt_string prog = make_string("/nonexistent/program/path");
     int64_t result = rt_exec_run(prog);
     assert(result == -1);
 }
 
-static void test_capture_nonexistent()
-{
+static void test_capture_nonexistent() {
     // Nonexistent program should return empty string
     rt_string prog = make_string("/nonexistent/program/path");
     rt_string output = rt_exec_capture(prog);
@@ -173,16 +155,14 @@ static void test_capture_nonexistent()
     assert(rt_str_len(output) == 0);
 }
 
-static void test_shell_exit_code()
-{
+static void test_shell_exit_code() {
     // Shell command with specific exit code
     rt_string cmd = make_string("exit 42");
     int64_t result = rt_exec_shell(cmd);
     assert(result == 42);
 }
 
-static void test_shell_capture_stderr()
-{
+static void test_shell_capture_stderr() {
     // Note: ShellCapture only captures stdout, not stderr
     // This test verifies that behavior
     rt_string cmd = make_string("echo stdout; echo stderr >&2");
@@ -195,21 +175,18 @@ static void test_shell_capture_stderr()
     // stderr goes to stderr, not captured
 }
 
-static void test_run_null_args()
-{
+static void test_run_null_args() {
     // Run with NULL args should work (no arguments)
     rt_string prog = make_string("/bin/true");
     int64_t result = rt_exec_run_args(prog, nullptr);
-    if (result < 0)
-    {
+    if (result < 0) {
         prog = make_string("/usr/bin/true");
         result = rt_exec_run_args(prog, nullptr);
     }
     assert(result == 0 || result == -1);
 }
 
-static void test_shell_full_success()
-{
+static void test_shell_full_success() {
     // ShellFull on a successful command: exit code 0, output captured
     rt_string cmd = make_string("echo hello_full");
     rt_string output = rt_exec_shell_full(cmd);
@@ -221,8 +198,7 @@ static void test_shell_full_success()
     assert(code == 0);
 }
 
-static void test_shell_full_exit_code()
-{
+static void test_shell_full_exit_code() {
     // ShellFull records the exit code from a failing command
     rt_string cmd = make_string("exit 7");
     rt_exec_shell_full(cmd);
@@ -230,8 +206,7 @@ static void test_shell_full_exit_code()
     assert(code == 7);
 }
 
-static void test_shell_full_with_stderr_merge()
-{
+static void test_shell_full_with_stderr_merge() {
     // ShellFull does NOT auto-merge stderr. Caller adds "2>&1" to the command
     // to merge streams (same contract as ShellCapture). Verify stdout is captured
     // and stderr-merged variant works when user adds 2>&1.
@@ -246,8 +221,7 @@ static void test_shell_full_with_stderr_merge()
     assert(code == 0);
 }
 
-static void test_shell_full_empty()
-{
+static void test_shell_full_empty() {
     // Empty command: empty output, exit 0
     rt_string cmd = make_string("");
     rt_string output = rt_exec_shell_full(cmd);
@@ -257,8 +231,7 @@ static void test_shell_full_empty()
     assert(code == 0);
 }
 
-static void test_last_exit_code_initial()
-{
+static void test_last_exit_code_initial() {
     // Before any ShellFull call, last exit code is -1
     // (We can't reset the TLS state between tests, so just call it after
     // the previous test and check that it returns the last recorded code.)
@@ -267,8 +240,7 @@ static void test_last_exit_code_initial()
     (void)code; // value depends on prior test; just ensure no crash
 }
 
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses POSIX shell commands (true, false, /bin/echo)
     // that don't exist on Windows

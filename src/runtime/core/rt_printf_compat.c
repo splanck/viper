@@ -44,8 +44,7 @@
 /// @param fmt printf-style format string.
 /// @return Number of characters that would have been written (excluding NUL),
 ///         or a negative value on encoding error, mirroring `vsnprintf`.
-RT_WEAK int rt_snprintf(char *str, size_t size, const char *fmt, ...)
-{
+RT_WEAK int rt_snprintf(char *str, size_t size, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
 #if !defined(_MSC_VER)

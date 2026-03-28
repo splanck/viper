@@ -30,10 +30,8 @@
 
 #include <fstream>
 
-namespace il::tools::common
-{
-namespace
-{
+namespace il::tools::common {
+namespace {
 /// @brief Build a successful load result with no diagnostics attached.
 ///
 /// @details Initialises the @ref LoadResult structure with
@@ -44,8 +42,7 @@ namespace
 ///
 /// @param path Path that was successfully loaded.
 /// @return A result with @ref LoadStatus::Success and an empty diagnostic.
-LoadResult makeSuccess(const std::string &path)
-{
+LoadResult makeSuccess(const std::string &path) {
     return {LoadStatus::Success, std::nullopt, path};
 }
 
@@ -59,8 +56,7 @@ LoadResult makeSuccess(const std::string &path)
 /// @param path Path that could not be opened.
 /// @param message Human-readable description of the I/O failure.
 /// @return Result tagged with @ref LoadStatus::FileError.
-LoadResult makeFileError(const std::string &path, std::string message)
-{
+LoadResult makeFileError(const std::string &path, std::string message) {
     il::support::Diag diag{il::support::Severity::Error, std::move(message), {}, {}};
     return {LoadStatus::FileError, diag, path};
 }
@@ -75,8 +71,7 @@ LoadResult makeFileError(const std::string &path, std::string message)
 /// @param path Path that was being parsed.
 /// @param diag Diagnostic emitted by the parser that explains the failure.
 /// @return A result tagged with @ref LoadStatus::ParseError holding @p diag.
-LoadResult makeParseError(const std::string &path, const il::support::Diag &diag)
-{
+LoadResult makeParseError(const std::string &path, const il::support::Diag &diag) {
     return {LoadStatus::ParseError, diag, path};
 }
 
@@ -86,8 +81,7 @@ LoadResult makeParseError(const std::string &path, const il::support::Diag &diag
 ///
 /// @param diag Diagnostic emitted by the verifier that explains the failure.
 /// @return A result tagged with @ref LoadStatus::VerifyError holding @p diag.
-LoadResult makeVerifyError(const il::support::Diag &diag)
-{
+LoadResult makeVerifyError(const il::support::Diag &diag) {
     return {LoadStatus::VerifyError, diag, {}};
 }
 } // namespace
@@ -118,19 +112,16 @@ LoadResult makeVerifyError(const il::support::Diag &diag)
 LoadResult loadModuleFromFile(const std::string &path,
                               il::core::Module &module,
                               std::ostream &err,
-                              std::string_view ioErrorPrefix)
-{
+                              std::string_view ioErrorPrefix) {
     std::ifstream input(path);
-    if (!input)
-    {
+    if (!input) {
         std::string message = std::string(ioErrorPrefix) + path;
         err << message << '\n';
         return makeFileError(path, std::move(message));
     }
 
     auto parsed = il::api::v2::parse_text_expected(input, module);
-    if (!parsed)
-    {
+    if (!parsed) {
         const auto diag = parsed.error();
         il::support::printDiag(diag, err);
         return makeParseError(path, diag);
@@ -155,11 +146,9 @@ LoadResult loadModuleFromFile(const std::string &path,
 ///         diagnostics to @p err.
 bool verifyModule(const il::core::Module &module,
                   std::ostream &err,
-                  const il::support::SourceManager *sm)
-{
+                  const il::support::SourceManager *sm) {
     auto verified = il::api::v2::verify_module_expected(module);
-    if (!verified)
-    {
+    if (!verified) {
         il::support::printDiag(verified.error(), err, sm);
         return false;
     }
@@ -175,11 +164,9 @@ bool verifyModule(const il::core::Module &module,
 ///
 /// @param module Module that should satisfy verifier invariants.
 /// @return LoadResult with Success or VerifyError status.
-LoadResult verifyModuleResult(const il::core::Module &module)
-{
+LoadResult verifyModuleResult(const il::core::Module &module) {
     auto verified = il::api::v2::verify_module_expected(module);
-    if (!verified)
-    {
+    if (!verified) {
         return makeVerifyError(verified.error());
     }
     return {LoadStatus::Success, std::nullopt, {}};
@@ -202,20 +189,16 @@ LoadResult loadAndVerifyModule(const std::string &path,
                                il::core::Module &module,
                                const il::support::SourceManager *sm,
                                std::ostream &err,
-                               std::string_view ioErrorPrefix)
-{
+                               std::string_view ioErrorPrefix) {
     auto loadResult = loadModuleFromFile(path, module, err, ioErrorPrefix);
-    if (!loadResult.succeeded())
-    {
+    if (!loadResult.succeeded()) {
         return loadResult;
     }
 
     auto verifyResult = verifyModuleResult(module);
-    if (!verifyResult.succeeded())
-    {
+    if (!verifyResult.succeeded()) {
         verifyResult.path = path;
-        if (verifyResult.diag)
-        {
+        if (verifyResult.diag) {
             il::support::printDiag(*verifyResult.diag, err, sm);
         }
         return verifyResult;
@@ -235,19 +218,14 @@ LoadResult loadAndVerifyModule(const std::string &path,
 /// @param sm Optional source manager used to resolve diagnostic file paths.
 void printLoadResult(const LoadResult &result,
                      std::ostream &err,
-                     const il::support::SourceManager *sm)
-{
-    if (result.succeeded())
-    {
+                     const il::support::SourceManager *sm) {
+    if (result.succeeded()) {
         return;
     }
 
-    if (result.diag)
-    {
+    if (result.diag) {
         il::support::printDiag(*result.diag, err, sm);
-    }
-    else if (result.isFileError())
-    {
+    } else if (result.isFileError()) {
         err << "error: unable to open " << result.path << '\n';
     }
 }

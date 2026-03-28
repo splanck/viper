@@ -22,8 +22,7 @@
 #include <stdio.h>
 #include <vgfx.h>
 
-int main(void)
-{
+int main(void) {
     printf("ViperGFX macOS Backend Test\n");
     printf("============================\n\n");
 
@@ -36,8 +35,7 @@ int main(void)
     params.resizable = 0;
 
     vgfx_window_t win = vgfx_create_window(&params);
-    if (!win)
-    {
+    if (!win) {
         fprintf(stderr, "FAIL: %s\n", vgfx_get_last_error());
         return 1;
     }
@@ -69,8 +67,7 @@ int main(void)
 
     /* Update display */
     printf("3. Presenting to screen...\n");
-    if (!vgfx_update(win))
-    {
+    if (!vgfx_update(win)) {
         fprintf(stderr, "FAIL: %s\n", vgfx_get_last_error());
         return 1;
     }
@@ -81,30 +78,23 @@ int main(void)
     int frames = 0;
     int running = 1;
 
-    while (running && frames < 30)
-    {
+    while (running && frames < 30) {
         vgfx_event_t event;
-        while (vgfx_poll_event(win, &event))
-        {
-            if (event.type == VGFX_EVENT_CLOSE)
-            {
+        while (vgfx_poll_event(win, &event)) {
+            if (event.type == VGFX_EVENT_CLOSE) {
                 printf("   ✓ User closed window\n");
                 running = 0;
                 break;
-            }
-            else if (event.type == VGFX_EVENT_KEY_DOWN)
-            {
+            } else if (event.type == VGFX_EVENT_KEY_DOWN) {
                 printf("   ✓ Key pressed: %d\n", event.data.key.key);
-                if (event.data.key.key == VGFX_KEY_ESCAPE)
-                {
+                if (event.data.key.key == VGFX_KEY_ESCAPE) {
                     running = 0;
                     break;
                 }
             }
         }
 
-        if (!vgfx_update(win))
-        {
+        if (!vgfx_update(win)) {
             fprintf(stderr, "FAIL: %s\n", vgfx_get_last_error());
             return 1;
         }

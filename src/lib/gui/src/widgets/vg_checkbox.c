@@ -42,8 +42,7 @@ static vg_widget_vtable_t g_checkbox_vtable = {.destroy = checkbox_destroy,
 // Checkbox Implementation
 //=============================================================================
 
-vg_checkbox_t *vg_checkbox_create(vg_widget_t *parent, const char *text)
-{
+vg_checkbox_t *vg_checkbox_create(vg_widget_t *parent, const char *text) {
     vg_checkbox_t *checkbox = calloc(1, sizeof(vg_checkbox_t));
     if (!checkbox)
         return NULL;
@@ -77,26 +76,22 @@ vg_checkbox_t *vg_checkbox_create(vg_widget_t *parent, const char *text)
     checkbox->base.constraints.min_width = checkbox->box_size;
 
     // Add to parent
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &checkbox->base);
     }
 
     return checkbox;
 }
 
-static void checkbox_destroy(vg_widget_t *widget)
-{
+static void checkbox_destroy(vg_widget_t *widget) {
     vg_checkbox_t *checkbox = (vg_checkbox_t *)widget;
-    if (checkbox->text)
-    {
+    if (checkbox->text) {
         free((void *)checkbox->text);
         checkbox->text = NULL;
     }
 }
 
-static void checkbox_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void checkbox_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_checkbox_t *checkbox = (vg_checkbox_t *)widget;
     (void)available_width;
     (void)available_height;
@@ -105,13 +100,11 @@ static void checkbox_measure(vg_widget_t *widget, float available_width, float a
     float height = checkbox->box_size;
 
     // Add text width if we have text and font
-    if (checkbox->text && checkbox->text[0] && checkbox->font)
-    {
+    if (checkbox->text && checkbox->text[0] && checkbox->font) {
         vg_text_metrics_t metrics;
         vg_font_measure_text(checkbox->font, checkbox->font_size, checkbox->text, &metrics);
         width += checkbox->gap + metrics.width;
-        if (metrics.height > height)
-        {
+        if (metrics.height > height) {
             height = metrics.height;
         }
     }
@@ -120,18 +113,15 @@ static void checkbox_measure(vg_widget_t *widget, float available_width, float a
     widget->measured_height = height;
 
     // Apply constraints
-    if (widget->measured_width < widget->constraints.min_width)
-    {
+    if (widget->measured_width < widget->constraints.min_width) {
         widget->measured_width = widget->constraints.min_width;
     }
-    if (widget->measured_height < widget->constraints.min_height)
-    {
+    if (widget->measured_height < widget->constraints.min_height) {
         widget->measured_height = widget->constraints.min_height;
     }
 }
 
-static void checkbox_paint(vg_widget_t *widget, void *canvas)
-{
+static void checkbox_paint(vg_widget_t *widget, void *canvas) {
     vg_checkbox_t *checkbox = (vg_checkbox_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
 
@@ -140,14 +130,11 @@ static void checkbox_paint(vg_widget_t *widget, void *canvas)
     uint32_t check_color = checkbox->check_color;
     uint32_t text_color = checkbox->text_color;
 
-    if (widget->state & VG_STATE_DISABLED)
-    {
+    if (widget->state & VG_STATE_DISABLED) {
         box_color = theme->colors.bg_disabled;
         check_color = theme->colors.fg_disabled;
         text_color = theme->colors.fg_disabled;
-    }
-    else if (widget->state & VG_STATE_HOVERED)
-    {
+    } else if (widget->state & VG_STATE_HOVERED) {
         box_color = theme->colors.bg_hover;
     }
 
@@ -165,15 +152,11 @@ static void checkbox_paint(vg_widget_t *widget, void *canvas)
     vgfx_rect(win, bx, by, bs, bs, theme->colors.border_primary);
 
     // Draw check mark or indeterminate mark
-    if (checkbox->checked || checkbox->indeterminate)
-    {
-        if (checkbox->indeterminate)
-        {
+    if (checkbox->checked || checkbox->indeterminate) {
+        if (checkbox->indeterminate) {
             // Dash for indeterminate
             vgfx_fill_rect(win, bx + 3, by + bs / 2 - 1, bs - 6, 2, check_color);
-        }
-        else
-        {
+        } else {
             // Two-segment tick mark (✓): short leg then long leg
             vgfx_line(win, bx + 2, by + bs / 2, bx + bs / 2 - 1, by + bs - 3, check_color);
             vgfx_line(win, bx + bs / 2 - 1, by + bs - 3, bx + bs - 2, by + 2, check_color);
@@ -181,14 +164,12 @@ static void checkbox_paint(vg_widget_t *widget, void *canvas)
     }
 
     // Draw focus ring
-    if (widget->state & VG_STATE_FOCUSED)
-    {
+    if (widget->state & VG_STATE_FOCUSED) {
         vgfx_rect(win, bx - 2, by - 2, bs + 4, bs + 4, theme->colors.border_focus);
     }
 
     // Draw label text
-    if (checkbox->text && checkbox->text[0] && checkbox->font)
-    {
+    if (checkbox->text && checkbox->text[0] && checkbox->font) {
         float text_x = widget->x + checkbox->box_size + checkbox->gap;
 
         vg_font_metrics_t font_metrics;
@@ -206,25 +187,20 @@ static void checkbox_paint(vg_widget_t *widget, void *canvas)
     }
 }
 
-static bool checkbox_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool checkbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_checkbox_t *checkbox = (vg_checkbox_t *)widget;
 
-    if (widget->state & VG_STATE_DISABLED)
-    {
+    if (widget->state & VG_STATE_DISABLED) {
         return false;
     }
 
-    if (event->type == VG_EVENT_CLICK)
-    {
+    if (event->type == VG_EVENT_CLICK) {
         vg_checkbox_toggle(checkbox);
         return true;
     }
 
-    if (event->type == VG_EVENT_KEY_DOWN)
-    {
-        if (event->key.key == VG_KEY_SPACE || event->key.key == VG_KEY_ENTER)
-        {
+    if (event->type == VG_EVENT_KEY_DOWN) {
+        if (event->key.key == VG_KEY_SPACE || event->key.key == VG_KEY_ENTER) {
             vg_checkbox_toggle(checkbox);
             return true;
         }
@@ -233,8 +209,7 @@ static bool checkbox_handle_event(vg_widget_t *widget, vg_event_t *event)
     return false;
 }
 
-static bool checkbox_can_focus(vg_widget_t *widget)
-{
+static bool checkbox_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
@@ -242,41 +217,33 @@ static bool checkbox_can_focus(vg_widget_t *widget)
 // Checkbox API
 //=============================================================================
 
-void vg_checkbox_set_checked(vg_checkbox_t *checkbox, bool checked)
-{
+void vg_checkbox_set_checked(vg_checkbox_t *checkbox, bool checked) {
     if (!checkbox)
         return;
 
-    if (checkbox->checked != checked)
-    {
+    if (checkbox->checked != checked) {
         checkbox->checked = checked;
         checkbox->indeterminate = false;
         checkbox->base.needs_paint = true;
 
-        if (checked)
-        {
+        if (checked) {
             checkbox->base.state |= VG_STATE_CHECKED;
-        }
-        else
-        {
+        } else {
             checkbox->base.state &= ~VG_STATE_CHECKED;
         }
 
-        if (checkbox->on_change)
-        {
+        if (checkbox->on_change) {
             checkbox->on_change(&checkbox->base, checked, checkbox->on_change_data);
         }
     }
 }
 
-bool vg_checkbox_is_checked(vg_checkbox_t *checkbox)
-{
+bool vg_checkbox_is_checked(vg_checkbox_t *checkbox) {
     return checkbox ? checkbox->checked : false;
 }
 
 /// @brief Checkbox toggle.
-void vg_checkbox_toggle(vg_checkbox_t *checkbox)
-{
+void vg_checkbox_toggle(vg_checkbox_t *checkbox) {
     if (!checkbox)
         return;
 
@@ -284,8 +251,7 @@ void vg_checkbox_toggle(vg_checkbox_t *checkbox)
 }
 
 /// @brief Checkbox set indeterminate.
-void vg_checkbox_set_indeterminate(vg_checkbox_t *checkbox, bool indeterminate)
-{
+void vg_checkbox_set_indeterminate(vg_checkbox_t *checkbox, bool indeterminate) {
     if (!checkbox)
         return;
     checkbox->indeterminate = indeterminate;
@@ -293,13 +259,11 @@ void vg_checkbox_set_indeterminate(vg_checkbox_t *checkbox, bool indeterminate)
 }
 
 /// @brief Checkbox set text.
-void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text)
-{
+void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text) {
     if (!checkbox)
         return;
 
-    if (checkbox->text)
-    {
+    if (checkbox->text) {
         free((void *)checkbox->text);
     }
     checkbox->text = text ? strdup(text) : strdup("");
@@ -310,8 +274,7 @@ void vg_checkbox_set_text(vg_checkbox_t *checkbox, const char *text)
 /// @brief Checkbox set on change.
 void vg_checkbox_set_on_change(vg_checkbox_t *checkbox,
                                vg_checkbox_callback_t callback,
-                               void *user_data)
-{
+                               void *user_data) {
     if (!checkbox)
         return;
 

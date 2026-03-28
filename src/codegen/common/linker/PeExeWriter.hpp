@@ -25,12 +25,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// DLL import for PE linking.
-struct DllImport
-{
+struct DllImport {
     std::string dllName;                ///< DLL name (e.g., "kernel32.dll").
     std::vector<std::string> functions; ///< Imported function names.
 };

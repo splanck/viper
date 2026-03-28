@@ -23,8 +23,7 @@
 
 using namespace il::core;
 
-TEST(IL, CallIndirectRoundTrip)
-{
+TEST(IL, CallIndirectRoundTrip) {
     // Textual IL with a zero-arg callee and an indirect call.
     const char *text = R"(il 0.2.0
 func @callee() -> i64 {
@@ -56,8 +55,7 @@ entry:
     ASSERT_EQ(exit, 7);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

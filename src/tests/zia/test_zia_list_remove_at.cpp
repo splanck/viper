@@ -23,12 +23,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that List.removeAt() compiles successfully.
-TEST(ZiaListRemoveAt, RemoveAtMethod)
-{
+TEST(ZiaListRemoveAt, RemoveAtMethod) {
     const std::string src = R"(
 module Test;
 
@@ -46,11 +44,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for RemoveAtMethod:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -60,15 +56,11 @@ func start() {
 
     // Verify the list removeAt function is called
     bool hasRemoveAtCall = false;
-    for (const auto &fn : result.module.functions)
-    {
-        for (const auto &bb : fn.blocks)
-        {
-            for (const auto &in : bb.instructions)
-            {
+    for (const auto &fn : result.module.functions) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &in : bb.instructions) {
                 if (in.op == il::core::Opcode::Call &&
-                    in.callee.find("RemoveAt") != std::string::npos)
-                {
+                    in.callee.find("RemoveAt") != std::string::npos) {
                     hasRemoveAtCall = true;
                 }
             }
@@ -78,8 +70,7 @@ func start() {
 }
 
 /// @brief Test that List.remove(integer) on non-integer list produces error.
-TEST(ZiaListRemoveAt, RemoveTypeMismatchError)
-{
+TEST(ZiaListRemoveAt, RemoveTypeMismatchError) {
     const std::string src = R"(
 module Test;
 
@@ -102,10 +93,8 @@ func start() {
 
     // Check that the error message mentions removeAt
     bool hasHelpfulError = false;
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
-        if (d.message.find("removeAt") != std::string::npos)
-        {
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.message.find("removeAt") != std::string::npos) {
             hasHelpfulError = true;
         }
     }
@@ -113,8 +102,7 @@ func start() {
 }
 
 /// @brief Test that List.remove(value) with matching type works.
-TEST(ZiaListRemoveAt, RemoveMatchingTypeWorks)
-{
+TEST(ZiaListRemoveAt, RemoveMatchingTypeWorks) {
     const std::string src = R"(
 module Test;
 
@@ -132,11 +120,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for RemoveMatchingTypeWorks:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -147,8 +133,7 @@ func start() {
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -22,31 +22,27 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
     return ss.str();
 }
 
-TEST(Arm64CLI, AddImmParam0)
-{
+TEST(Arm64CLI, AddImmParam0) {
     const std::string in = "arm64_addimm_p0.il";
     const std::string out = "arm64_addimm_p0.s";
     const std::string il = "il 0.1\n"
@@ -64,8 +60,7 @@ TEST(Arm64CLI, AddImmParam0)
     EXPECT_NE(asmText.find("adds x0, x0, #5"), std::string::npos);
 }
 
-TEST(Arm64CLI, SubImmParam1)
-{
+TEST(Arm64CLI, SubImmParam1) {
     const std::string in = "arm64_subimm_p1.il";
     const std::string out = "arm64_subimm_p1.s";
     const std::string il = "il 0.1\n"
@@ -85,8 +80,7 @@ TEST(Arm64CLI, SubImmParam1)
     EXPECT_NE(asmText.find("subs x0, x0, #3"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

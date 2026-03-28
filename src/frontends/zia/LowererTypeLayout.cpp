@@ -20,21 +20,17 @@
 
 #include "frontends/zia/LowererTypeLayout.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
-void LowererTypeLayout::registerValueType(const std::string &name, ValueTypeInfo info)
-{
+void LowererTypeLayout::registerValueType(const std::string &name, ValueTypeInfo info) {
     valueTypes_[name] = std::move(info);
 }
 
-void LowererTypeLayout::registerEntityType(const std::string &name, EntityTypeInfo info)
-{
+void LowererTypeLayout::registerEntityType(const std::string &name, EntityTypeInfo info) {
     entityTypes_[name] = std::move(info);
 }
 
-void LowererTypeLayout::registerInterfaceType(const std::string &name, InterfaceTypeInfo info)
-{
+void LowererTypeLayout::registerInterfaceType(const std::string &name, InterfaceTypeInfo info) {
     interfaceTypes_[name] = std::move(info);
 }
 

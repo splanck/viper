@@ -24,8 +24,7 @@
 
 #include "il/transform/SimplifyCFG.hpp"
 
-namespace il::transform::simplify_cfg
-{
+namespace il::transform::simplify_cfg {
 
 /// @brief Merge eligible single-predecessor blocks within the current function.
 /// @details Iterates blocks in order and attempts to merge a block into its sole

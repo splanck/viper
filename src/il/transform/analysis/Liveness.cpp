@@ -30,23 +30,20 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Test whether a value identifier appears in the tracked set.
 ///
 /// @param valueId Dense SSA identifier to query.
 /// @return @c true when the bitset contains the identifier.
-bool LivenessInfo::SetView::contains(unsigned valueId) const
-{
+bool LivenessInfo::SetView::contains(unsigned valueId) const {
     return bits_ != nullptr && valueId < bits_->size() && (*bits_)[valueId];
 }
 
 /// @brief Determine whether the view represents an empty set.
 ///
 /// @return @c true when no bitset is attached or every bit is clear.
-bool LivenessInfo::SetView::empty() const
-{
+bool LivenessInfo::SetView::empty() const {
     return bits_ == nullptr ||
            std::none_of(bits_->begin(), bits_->end(), [](bool bit) { return bit; });
 }
@@ -55,8 +52,7 @@ bool LivenessInfo::SetView::empty() const
 ///
 /// @return Reference to the underlying bitset.
 /// @throws Assertion failure when the view is empty.
-const std::vector<bool> &LivenessInfo::SetView::bits() const
-{
+const std::vector<bool> &LivenessInfo::SetView::bits() const {
     assert(bits_ && "liveness set view is empty");
     return *bits_;
 }
@@ -71,8 +67,7 @@ LivenessInfo::SetView::SetView(const std::vector<bool> *bits) : bits_(bits) {}
 ///
 /// @param block Block whose live-in values are requested.
 /// @return View over the block's live-in bitset.
-LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock &block) const
-{
+LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock &block) const {
     return liveIn(&block);
 }
 
@@ -80,8 +75,7 @@ LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock &block) const
 ///
 /// @param block Block pointer or @c nullptr.
 /// @return View over the block's live-in bitset or an empty view when @p block is null.
-LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock *block) const
-{
+LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock *block) const {
     if (!block)
         return SetView();
     auto it = blockIndex_.find(block);
@@ -94,8 +88,7 @@ LivenessInfo::SetView LivenessInfo::liveIn(const core::BasicBlock *block) const
 ///
 /// @param block Block whose live-out values are requested.
 /// @return View over the block's live-out bitset.
-LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock &block) const
-{
+LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock &block) const {
     return liveOut(&block);
 }
 
@@ -103,8 +96,7 @@ LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock &block) const
 ///
 /// @param block Block pointer or @c nullptr.
 /// @return View over the block's live-out bitset or an empty view when @p block is null.
-LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock *block) const
-{
+LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock *block) const {
     if (!block)
         return SetView();
     auto it = blockIndex_.find(block);
@@ -116,13 +108,11 @@ LivenessInfo::SetView LivenessInfo::liveOut(const core::BasicBlock *block) const
 /// @brief Report the number of dense SSA identifiers tracked by the analysis.
 ///
 /// @return Value identifier capacity discovered during analysis.
-std::size_t LivenessInfo::valueCount() const
-{
+std::size_t LivenessInfo::valueCount() const {
     return valueCount_;
 }
 
-namespace
-{
+namespace {
 
 //===----------------------------------------------------------------------===//
 // ChunkedBitset - SIMD-friendly bitset using uint64_t chunks
@@ -132,64 +122,54 @@ namespace
 /// @details Uses uint64_t words instead of std::vector<bool> to enable
 ///          SIMD-friendly OR operations and better cache behavior during
 ///          the iterative liveness fixed-point computation.
-class ChunkedBitset
-{
+class ChunkedBitset {
   public:
     static constexpr std::size_t kBitsPerChunk = 64;
 
     ChunkedBitset() = default;
 
     explicit ChunkedBitset(std::size_t bitCount)
-        : bitCount_(bitCount), chunks_((bitCount + kBitsPerChunk - 1) / kBitsPerChunk, 0)
-    {
-    }
+        : bitCount_(bitCount), chunks_((bitCount + kBitsPerChunk - 1) / kBitsPerChunk, 0) {}
 
     /// @brief Set a bit at the given index.
-    void set(std::size_t idx)
-    {
+    void set(std::size_t idx) {
         if (idx >= bitCount_)
             return;
         chunks_[idx / kBitsPerChunk] |= (uint64_t{1} << (idx % kBitsPerChunk));
     }
 
     /// @brief Test if a bit is set.
-    bool test(std::size_t idx) const
-    {
+    bool test(std::size_t idx) const {
         if (idx >= bitCount_)
             return false;
         return (chunks_[idx / kBitsPerChunk] & (uint64_t{1} << (idx % kBitsPerChunk))) != 0;
     }
 
     /// @brief Clear all bits.
-    void clear()
-    {
+    void clear() {
         std::fill(chunks_.begin(), chunks_.end(), 0);
     }
 
     /// @brief Merge (OR) another bitset into this one.
     /// @details Uses word-level OR for SIMD-friendly bulk operation.
-    void merge(const ChunkedBitset &other)
-    {
+    void merge(const ChunkedBitset &other) {
         assert(chunks_.size() == other.chunks_.size());
         for (std::size_t i = 0; i < chunks_.size(); ++i)
             chunks_[i] |= other.chunks_[i];
     }
 
     /// @brief Copy assignment from another bitset.
-    void copyFrom(const ChunkedBitset &other)
-    {
+    void copyFrom(const ChunkedBitset &other) {
         assert(chunks_.size() == other.chunks_.size());
         chunks_ = other.chunks_;
     }
 
     /// @brief Check equality with another bitset.
-    bool operator==(const ChunkedBitset &other) const
-    {
+    bool operator==(const ChunkedBitset &other) const {
         return chunks_ == other.chunks_;
     }
 
-    bool operator!=(const ChunkedBitset &other) const
-    {
+    bool operator!=(const ChunkedBitset &other) const {
         return !(*this == other);
     }
 
@@ -198,8 +178,7 @@ class ChunkedBitset
     ///          over the chunks, avoiding multiple iterations.
     void computeLiveIn(const ChunkedBitset &uses,
                        const ChunkedBitset &defs,
-                       const ChunkedBitset &liveOut)
-    {
+                       const ChunkedBitset &liveOut) {
         assert(chunks_.size() == uses.chunks_.size());
         assert(chunks_.size() == defs.chunks_.size());
         assert(chunks_.size() == liveOut.chunks_.size());
@@ -208,19 +187,16 @@ class ChunkedBitset
     }
 
     /// @brief Convert to std::vector<bool> for API compatibility.
-    std::vector<bool> toVectorBool() const
-    {
+    std::vector<bool> toVectorBool() const {
         std::vector<bool> result(bitCount_, false);
-        for (std::size_t i = 0; i < bitCount_; ++i)
-        {
+        for (std::size_t i = 0; i < bitCount_; ++i) {
             if (test(i))
                 result[i] = true;
         }
         return result;
     }
 
-    std::size_t bitCount() const
-    {
+    std::size_t bitCount() const {
         return bitCount_;
     }
 
@@ -229,8 +205,7 @@ class ChunkedBitset
     std::vector<uint64_t> chunks_;
 };
 
-struct BlockInfo
-{
+struct BlockInfo {
     /// @brief Prepare per-block definition/use bitsets sized to @p valueCount.
     explicit BlockInfo(std::size_t valueCount = 0) : defs(valueCount), uses(valueCount) {}
 
@@ -245,12 +220,10 @@ struct BlockInfo
 ///
 /// @param fn Function being analysed.
 /// @return Capacity large enough to index every identifier observed in @p fn.
-std::size_t determineValueCapacity(const core::Function &fn)
-{
+std::size_t determineValueCapacity(const core::Function &fn) {
     unsigned maxId = 0;
     bool sawId = false;
-    auto noteId = [&](unsigned id)
-    {
+    auto noteId = [&](unsigned id) {
         maxId = std::max(maxId, id);
         sawId = true;
     };
@@ -258,22 +231,17 @@ std::size_t determineValueCapacity(const core::Function &fn)
     for (const auto &param : fn.params)
         noteId(param.id);
 
-    for (const auto &block : fn.blocks)
-    {
+    for (const auto &block : fn.blocks) {
         for (const auto &param : block.params)
             noteId(param.id);
 
-        for (const auto &instr : block.instructions)
-        {
-            for (const auto &operand : instr.operands)
-            {
+        for (const auto &instr : block.instructions) {
+            for (const auto &operand : instr.operands) {
                 if (operand.kind == Value::Kind::Temp)
                     noteId(operand.id);
             }
-            for (const auto &argList : instr.brArgs)
-            {
-                for (const auto &arg : argList)
-                {
+            for (const auto &argList : instr.brArgs) {
+                for (const auto &arg : argList) {
                     if (arg.kind == Value::Kind::Temp)
                         noteId(arg.id);
                 }
@@ -299,13 +267,11 @@ std::size_t determineValueCapacity(const core::Function &fn)
 /// @param module Module containing the function.
 /// @param fn Function whose CFG summary should be constructed.
 /// @return Populated CFG information ready for data-flow analysis.
-CFGInfo buildCFG(core::Module &module, core::Function &fn)
-{
+CFGInfo buildCFG(core::Module &module, core::Function &fn) {
     CFGInfo info;
     viper::analysis::CFGContext ctx(module);
 
-    for (auto &block : fn.blocks)
-    {
+    for (auto &block : fn.blocks) {
         auto &succ = info.successors[&block];
         auto succBlocks = viper::analysis::successors(ctx, block);
         succ.reserve(succBlocks.size());
@@ -313,8 +279,7 @@ CFGInfo buildCFG(core::Module &module, core::Function &fn)
             succ.push_back(succBlock);
     }
 
-    for (auto &block : fn.blocks)
-    {
+    for (auto &block : fn.blocks) {
         auto &pred = info.predecessors[&block];
         auto predBlocks = viper::analysis::predecessors(ctx, block);
         pred.reserve(predBlocks.size());
@@ -336,8 +301,7 @@ CFGInfo buildCFG(core::Module &module, core::Function &fn)
 ///          The bitsets use uint64_t chunks enabling SIMD-friendly merge operations
 ///          and better cache behavior compared to std::vector<bool>. Results are
 ///          converted to std::vector<bool> at the end for API compatibility.
-LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFGInfo &cfg)
-{
+LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFGInfo &cfg) {
     static_cast<void>(module);
     const std::size_t valueCount = determineValueCapacity(fn);
 
@@ -352,8 +316,7 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
 
     std::vector<BlockInfo> blockInfo(fn.blocks.size(), BlockInfo(valueCount));
 
-    for (std::size_t idx = 0; idx < fn.blocks.size(); ++idx)
-    {
+    for (std::size_t idx = 0; idx < fn.blocks.size(); ++idx) {
         auto &block = fn.blocks[idx];
         blocks.push_back(&block);
         blockIndex[&block] = idx;
@@ -363,10 +326,8 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
         for (const auto &param : block.params)
             state.defs.set(param.id);
 
-        for (const auto &instr : block.instructions)
-        {
-            for (const auto &operand : instr.operands)
-            {
+        for (const auto &instr : block.instructions) {
+            for (const auto &operand : instr.operands) {
                 if (operand.kind != Value::Kind::Temp)
                     continue;
                 const unsigned id = operand.id;
@@ -375,10 +336,8 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
                 if (!state.defs.test(id))
                     state.uses.set(id);
             }
-            for (const auto &argList : instr.brArgs)
-            {
-                for (const auto &arg : argList)
-                {
+            for (const auto &argList : instr.brArgs) {
+                for (const auto &arg : argList) {
                     if (arg.kind != Value::Kind::Temp)
                         continue;
                     const unsigned id = arg.id;
@@ -398,37 +357,31 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
     ChunkedBitset scratchIn(valueCount);
 
     bool changed = true;
-    while (changed)
-    {
+    while (changed) {
         changed = false;
-        for (std::size_t reverseIdx = fn.blocks.size(); reverseIdx-- > 0;)
-        {
+        for (std::size_t reverseIdx = fn.blocks.size(); reverseIdx-- > 0;) {
             const BasicBlock *block = blocks[reverseIdx];
             BlockInfo &state = blockInfo[reverseIdx];
 
             // Compute liveOut = union of liveIn of all successors
             scratchOut.clear();
             auto succIt = cfg.successors.find(block);
-            if (succIt != cfg.successors.end())
-            {
-                for (const BasicBlock *succ : succIt->second)
-                {
+            if (succIt != cfg.successors.end()) {
+                for (const BasicBlock *succ : succIt->second) {
                     auto succIdxIt = blockIndex.find(succ);
                     if (succIdxIt == blockIndex.end())
                         continue;
                     scratchOut.merge(liveInChunks[succIdxIt->second]);
                 }
             }
-            if (scratchOut != liveOutChunks[reverseIdx])
-            {
+            if (scratchOut != liveOutChunks[reverseIdx]) {
                 liveOutChunks[reverseIdx].copyFrom(scratchOut);
                 changed = true;
             }
 
             // Compute liveIn = uses | (liveOut & ~defs) using optimized method
             scratchIn.computeLiveIn(state.uses, state.defs, liveOutChunks[reverseIdx]);
-            if (scratchIn != liveInChunks[reverseIdx])
-            {
+            if (scratchIn != liveInChunks[reverseIdx]) {
                 liveInChunks[reverseIdx].copyFrom(scratchIn);
                 changed = true;
             }
@@ -443,8 +396,7 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
     info.liveInBits_.reserve(fn.blocks.size());
     info.liveOutBits_.reserve(fn.blocks.size());
 
-    for (std::size_t idx = 0; idx < fn.blocks.size(); ++idx)
-    {
+    for (std::size_t idx = 0; idx < fn.blocks.size(); ++idx) {
         info.liveInBits_.push_back(liveInChunks[idx].toVectorBool());
         info.liveOutBits_.push_back(liveOutChunks[idx].toVectorBool());
     }
@@ -457,8 +409,7 @@ LivenessInfo computeLiveness(core::Module &module, core::Function &fn, const CFG
 /// @param module Module containing the function.
 /// @param fn Function being analysed.
 /// @return Populated liveness information including live-in/live-out bitsets.
-LivenessInfo computeLiveness(core::Module &module, core::Function &fn)
-{
+LivenessInfo computeLiveness(core::Module &module, core::Function &fn) {
     CFGInfo cfg = buildCFG(module, fn);
     return computeLiveness(module, fn, cfg);
 }

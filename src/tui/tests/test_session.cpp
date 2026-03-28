@@ -17,8 +17,7 @@
 #include "tui/term/session.hpp"
 #include <cstdlib>
 
-static void set_no_tty_env()
-{
+static void set_no_tty_env() {
 #if defined(_WIN32)
     _putenv_s("VIPERTUI_NO_TTY", "1");
 #else
@@ -26,15 +25,13 @@ static void set_no_tty_env()
 #endif
 }
 
-TEST(TUI, Session)
-{
+TEST(TUI, Session) {
     set_no_tty_env();              // ensure CI-safe no-op
     viper::tui::TerminalSession s; // should not throw or exit raw mode paths
     ASSERT_FALSE(s.active());      // in CI/headless we expect inactive
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

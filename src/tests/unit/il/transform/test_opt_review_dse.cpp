@@ -27,12 +27,10 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Make dseregistry.
-il::transform::AnalysisRegistry makeDSERegistry()
-{
+il::transform::AnalysisRegistry makeDSERegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
         "basic-aa", [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
@@ -40,8 +38,7 @@ il::transform::AnalysisRegistry makeDSERegistry()
 }
 
 /// @brief Make alloca.
-Instr makeAlloca(unsigned id, Type::Kind typeKind = Type::Kind::Ptr)
-{
+Instr makeAlloca(unsigned id, Type::Kind typeKind = Type::Kind::Ptr) {
     Instr instr;
     instr.result = id;
     instr.op = Opcode::Alloca;
@@ -51,8 +48,7 @@ Instr makeAlloca(unsigned id, Type::Kind typeKind = Type::Kind::Ptr)
 }
 
 /// @brief Make store.
-Instr makeStore(Value ptr, Value val, Type::Kind typeKind = Type::Kind::I64)
-{
+Instr makeStore(Value ptr, Value val, Type::Kind typeKind = Type::Kind::I64) {
     Instr instr;
     instr.op = Opcode::Store;
     instr.type = Type(typeKind);
@@ -61,8 +57,7 @@ Instr makeStore(Value ptr, Value val, Type::Kind typeKind = Type::Kind::I64)
 }
 
 /// @brief Make load.
-Instr makeLoad(unsigned resultId, Value ptr, Type::Kind typeKind = Type::Kind::I64)
-{
+Instr makeLoad(unsigned resultId, Value ptr, Type::Kind typeKind = Type::Kind::I64) {
     Instr instr;
     instr.result = resultId;
     instr.op = Opcode::Load;
@@ -74,8 +69,7 @@ Instr makeLoad(unsigned resultId, Value ptr, Type::Kind typeKind = Type::Kind::I
 } // namespace
 
 // Test that consecutive stores to the same alloca eliminate the first
-TEST(DSE, EliminatesDeadStoreIntraBlock)
-{
+TEST(DSE, EliminatesDeadStoreIntraBlock) {
     Module module;
     Function fn;
     fn.name = "dse_test";
@@ -120,8 +114,7 @@ TEST(DSE, EliminatesDeadStoreIntraBlock)
 }
 
 // Test that a store followed by a load then store does NOT eliminate the first store
-TEST(DSE, PreservesStoreBeforeLoad)
-{
+TEST(DSE, PreservesStoreBeforeLoad) {
     Module module;
     Function fn;
     fn.name = "dse_preserve";
@@ -170,8 +163,7 @@ TEST(DSE, PreservesStoreBeforeLoad)
 }
 
 // Test that stores to different allocas are not eliminated
-TEST(DSE, PreservesStoresToDifferentAllocas)
-{
+TEST(DSE, PreservesStoresToDifferentAllocas) {
     Module module;
     Function fn;
     fn.name = "dse_different";
@@ -217,8 +209,7 @@ TEST(DSE, PreservesStoresToDifferentAllocas)
 }
 
 // Test with empty function (no crash on edge case)
-TEST(DSE, EmptyFunctionNoCrash)
-{
+TEST(DSE, EmptyFunctionNoCrash) {
     Module module;
     Function fn;
     fn.name = "empty";
@@ -242,8 +233,7 @@ TEST(DSE, EmptyFunctionNoCrash)
     EXPECT_FALSE(changed);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

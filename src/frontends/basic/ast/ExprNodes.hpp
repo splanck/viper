@@ -23,19 +23,16 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Qualified identifier with dotted segments and source location.
-struct QualifiedName
-{
+struct QualifiedName {
     std::vector<std::string> segments; ///< Dotted path in declaration order.
     il::support::SourceLoc loc{};      ///< Source location of the first segment.
 };
 
 /// @brief Visitor interface for BASIC expressions.
-struct ExprVisitor
-{
+struct ExprVisitor {
     virtual ~ExprVisitor() = default;
     virtual void visit(const IntExpr &) = 0;
     virtual void visit(const FloatExpr &) = 0;
@@ -59,8 +56,7 @@ struct ExprVisitor
 };
 
 /// @brief Visitor interface for mutable BASIC expressions.
-struct MutExprVisitor
-{
+struct MutExprVisitor {
     virtual ~MutExprVisitor() = default;
     virtual void visit(IntExpr &) = 0;
     virtual void visit(FloatExpr &) = 0;
@@ -84,11 +80,9 @@ struct MutExprVisitor
 };
 
 /// @brief Base class for all BASIC expressions.
-struct Expr
-{
+struct Expr {
     /// @brief Discriminator identifying the concrete expression subclass.
-    enum class Kind
-    {
+    enum class Kind {
         Int,
         Float,
         String,
@@ -116,8 +110,7 @@ struct Expr
     virtual ~Expr() = default;
 
     /// @brief Retrieve the discriminator for this expression.
-    [[nodiscard]] constexpr Kind kind() const noexcept
-    {
+    [[nodiscard]] constexpr Kind kind() const noexcept {
         return kind_;
     }
 
@@ -135,15 +128,13 @@ struct Expr
 };
 
 /// @brief Signed integer literal expression.
-struct IntExpr : Expr
-{
+struct IntExpr : Expr {
     IntExpr() : Expr(Kind::Int) {}
 
     /// Literal 64-bit numeric value parsed from the source.
     std::int64_t value{0};
     /// Optional BASIC suffix enforcing INTEGER or LONG semantics.
-    enum class Suffix
-    {
+    enum class Suffix {
         None,
         Integer,
         Long,
@@ -153,15 +144,13 @@ struct IntExpr : Expr
 };
 
 /// @brief Floating-point literal expression.
-struct FloatExpr : Expr
-{
+struct FloatExpr : Expr {
     FloatExpr() : Expr(Kind::Float) {}
 
     /// Literal double-precision value parsed from the source.
     double value{0.0};
     /// Optional BASIC suffix distinguishing SINGLE from DOUBLE.
-    enum class Suffix
-    {
+    enum class Suffix {
         None,
         Single,
         Double,
@@ -171,8 +160,7 @@ struct FloatExpr : Expr
 };
 
 /// @brief String literal expression.
-struct StringExpr : Expr
-{
+struct StringExpr : Expr {
     StringExpr() : Expr(Kind::String) {}
 
     /// Owned UTF-8 string contents without surrounding quotes.
@@ -182,8 +170,7 @@ struct StringExpr : Expr
 };
 
 /// @brief Boolean literal expression.
-struct BoolExpr : Expr
-{
+struct BoolExpr : Expr {
     BoolExpr() : Expr(Kind::Bool) {}
 
     /// Literal boolean value parsed from the source.
@@ -193,8 +180,7 @@ struct BoolExpr : Expr
 };
 
 /// @brief Reference to a scalar variable.
-struct VarExpr : Expr
-{
+struct VarExpr : Expr {
     VarExpr() : Expr(Kind::Var) {}
 
     /// Variable name including optional type suffix.
@@ -204,8 +190,7 @@ struct VarExpr : Expr
 };
 
 /// @brief Array element access A(i) or A(i,j) for multi-dimensional arrays.
-struct ArrayExpr : Expr
-{
+struct ArrayExpr : Expr {
     ArrayExpr() : Expr(Kind::Array) {}
 
     /// Name of the array variable being indexed.
@@ -230,8 +215,7 @@ struct ArrayExpr : Expr
 };
 
 /// @brief Query the logical lower bound of an array.
-struct LBoundExpr : Expr
-{
+struct LBoundExpr : Expr {
     LBoundExpr() : Expr(Kind::LBound) {}
 
     /// Name of the array operand queried for its lower bound.
@@ -241,8 +225,7 @@ struct LBoundExpr : Expr
 };
 
 /// @brief Query the logical upper bound of an array.
-struct UBoundExpr : Expr
-{
+struct UBoundExpr : Expr {
     UBoundExpr() : Expr(Kind::UBound) {}
 
     /// Name of the array operand queried for its upper bound.
@@ -252,13 +235,11 @@ struct UBoundExpr : Expr
 };
 
 /// @brief Unary expression (e.g., NOT, unary plus/minus).
-struct UnaryExpr : Expr
-{
+struct UnaryExpr : Expr {
     UnaryExpr() : Expr(Kind::Unary) {}
 
     /// Unary operator applied to @ref expr.
-    enum class Op
-    {
+    enum class Op {
         LogicalNot,
         Plus,
         Negate,
@@ -271,13 +252,11 @@ struct UnaryExpr : Expr
 };
 
 /// @brief Binary expression combining two operands.
-struct BinaryExpr : Expr
-{
+struct BinaryExpr : Expr {
     BinaryExpr() : Expr(Kind::Binary) {}
 
     /// Binary operator applied to @ref lhs and @ref rhs.
-    enum class Op
-    {
+    enum class Op {
         Add,
         Sub,
         Mul,
@@ -307,13 +286,11 @@ struct BinaryExpr : Expr
 };
 
 /// @brief Call to a BASIC builtin function.
-struct BuiltinCallExpr : Expr
-{
+struct BuiltinCallExpr : Expr {
     BuiltinCallExpr() : Expr(Kind::BuiltinCall) {}
 
     /// Which builtin function to invoke.
-    enum class Builtin
-    {
+    enum class Builtin {
         Len,
         Mid,
         Left,
@@ -367,8 +344,7 @@ struct BuiltinCallExpr : Expr
 };
 
 /// @brief Call to user-defined FUNCTION or SUB.
-struct CallExpr : Expr
-{
+struct CallExpr : Expr {
     CallExpr() : Expr(Kind::Call) {}
 
     /// Procedure name to invoke.
@@ -389,8 +365,7 @@ struct CallExpr : Expr
 };
 
 /// @brief Allocate a new instance of a class.
-struct NewExpr : Expr
-{
+struct NewExpr : Expr {
     NewExpr() : Expr(Kind::New) {}
 
     /// Name of the class type to instantiate.
@@ -407,8 +382,7 @@ struct NewExpr : Expr
 };
 
 /// @brief Reference to the receiver instance inside methods.
-struct MeExpr : Expr
-{
+struct MeExpr : Expr {
     MeExpr() : Expr(Kind::Me) {}
 
     void accept(ExprVisitor &visitor) const override;
@@ -416,8 +390,7 @@ struct MeExpr : Expr
 };
 
 /// @brief Access a member field on an object.
-struct MemberAccessExpr : Expr
-{
+struct MemberAccessExpr : Expr {
     MemberAccessExpr() : Expr(Kind::MemberAccess) {}
 
     /// Base expression evaluating to an object.
@@ -430,8 +403,7 @@ struct MemberAccessExpr : Expr
 };
 
 /// @brief Invoke a method on an object instance.
-struct MethodCallExpr : Expr
-{
+struct MethodCallExpr : Expr {
     MethodCallExpr() : Expr(Kind::MethodCall) {}
 
     /// Base expression evaluating to the receiver instance.
@@ -447,8 +419,7 @@ struct MethodCallExpr : Expr
 };
 
 /// @brief Runtime type check expression: `value IS Type.Name`.
-struct IsExpr : Expr
-{
+struct IsExpr : Expr {
     IsExpr() : Expr(Kind::Is) {}
 
     /// Value being tested.
@@ -460,8 +431,7 @@ struct IsExpr : Expr
 };
 
 /// @brief Type ascription/cast expression: `value AS Type.Name`.
-struct AsExpr : Expr
-{
+struct AsExpr : Expr {
     AsExpr() : Expr(Kind::As) {}
 
     /// Value being cast.
@@ -474,8 +444,7 @@ struct AsExpr : Expr
 
 /// @brief Expression that obtains a function pointer: `ADDRESSOF SubOrFunction`.
 /// Used for threading APIs that require callback functions.
-struct AddressOfExpr : Expr
-{
+struct AddressOfExpr : Expr {
     AddressOfExpr() : Expr(Kind::AddressOf) {}
 
     /// Name of the SUB or FUNCTION whose address is being taken.

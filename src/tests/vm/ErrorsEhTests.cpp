@@ -21,10 +21,8 @@
 
 using namespace il::core;
 
-namespace
-{
-Module buildResumeNextModule()
-{
+namespace {
+Module buildResumeNextModule() {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -83,8 +81,7 @@ Module buildResumeNextModule()
     return module;
 }
 
-Module buildResumeLabelModule()
-{
+Module buildResumeLabelModule() {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -159,8 +156,7 @@ Module buildResumeLabelModule()
     return module;
 }
 
-Module buildErrGetKindModule()
-{
+Module buildErrGetKindModule() {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -200,8 +196,7 @@ Module buildErrGetKindModule()
     return module;
 }
 
-Module buildErrGetCodeModule()
-{
+Module buildErrGetCodeModule() {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -247,8 +242,7 @@ Module buildErrGetCodeModule()
     return module;
 }
 
-Module buildErrGetIpModule()
-{
+Module buildErrGetIpModule() {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -294,8 +288,7 @@ Module buildErrGetIpModule()
     return module;
 }
 
-Module buildErrGetLineModule()
-{
+Module buildErrGetLineModule() {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -353,8 +346,7 @@ Module buildErrGetLineModule()
 ///
 /// Verifies resume.same correctly re-dispatches to the faulting instruction,
 /// causing a second trap that the outer handler catches.
-Module buildResumeSameModule()
-{
+Module buildResumeSameModule() {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -453,8 +445,7 @@ Module buildResumeSameModule()
     return module;
 }
 
-Module buildTrapKindReadModule()
-{
+Module buildTrapKindReadModule() {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -520,8 +511,7 @@ Module buildTrapKindReadModule()
 }
 } // namespace
 
-int main()
-{
+int main() {
     {
         Module module = buildResumeNextModule();
         il::vm::VM vm(module);

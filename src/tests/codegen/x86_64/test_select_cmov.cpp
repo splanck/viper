@@ -19,20 +19,16 @@
 #include <iostream>
 #include <string>
 
-namespace viper::codegen::x64
-{
-namespace
-{
-[[nodiscard]] ILValue makeParam(int id) noexcept
-{
+namespace viper::codegen::x64 {
+namespace {
+[[nodiscard]] ILValue makeParam(int id) noexcept {
     ILValue value{};
     value.kind = ILValue::Kind::I64;
     value.id = id;
     return value;
 }
 
-[[nodiscard]] ILValue makeConst(int64_t val) noexcept
-{
+[[nodiscard]] ILValue makeConst(int64_t val) noexcept {
     ILValue constant{};
     constant.kind = ILValue::Kind::I64;
     constant.id = -1;
@@ -40,16 +36,14 @@ namespace
     return constant;
 }
 
-[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept
-{
+[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept {
     ILValue ref{};
     ref.kind = kind;
     ref.id = id;
     return ref;
 }
 
-[[nodiscard]] ILModule makeSelectModule()
-{
+[[nodiscard]] ILModule makeSelectModule() {
     ILValue lhs = makeParam(0);
     ILValue rhs = makeParam(1);
 
@@ -85,17 +79,14 @@ namespace
     return module;
 }
 
-[[nodiscard]] bool hasSelectSequence(const std::string &asmText)
-{
+[[nodiscard]] bool hasSelectSequence(const std::string &asmText) {
     const std::size_t testPos = asmText.find("testq");
-    if (testPos == std::string::npos)
-    {
+    if (testPos == std::string::npos) {
         return false;
     }
 
     const std::size_t cmovPos = asmText.find("cmovne", testPos);
-    if (cmovPos == std::string::npos || cmovPos <= testPos)
-    {
+    if (cmovPos == std::string::npos || cmovPos <= testPos) {
         return false;
     }
 
@@ -111,15 +102,13 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makeSelectModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
 
-    if (!result.errors.empty() || !hasSelectSequence(result.asmText))
-    {
+    if (!result.errors.empty() || !hasSelectSequence(result.asmText)) {
         std::cerr << "Unexpected assembly output:\n" << result.asmText;
         return EXIT_FAILURE;
     }

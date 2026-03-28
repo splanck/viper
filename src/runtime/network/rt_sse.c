@@ -34,16 +34,14 @@ extern void rt_trap(const char *msg);
 // Internal Structure
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *tcp; // TCP connection
     bool is_open;
     char *last_event_type; // Most recent "event:" field
     char *last_event_id;   // Most recent "id:" field
 } rt_sse_impl;
 
-static void rt_sse_finalize(void *obj)
-{
+static void rt_sse_finalize(void *obj) {
     if (!obj)
         return;
     rt_sse_impl *sse = (rt_sse_impl *)obj;
@@ -57,19 +55,16 @@ static void rt_sse_finalize(void *obj)
 // URL Parsing Helper (simplified for SSE)
 //=============================================================================
 
-static int parse_sse_url(const char *url, char **host, int *port, char **path)
-{
+static int parse_sse_url(const char *url, char **host, int *port, char **path) {
     *host = NULL;
     *port = 80;
     *path = NULL;
     if (strncmp(url, "http://", 7) == 0)
         url += 7;
-    else if (strncmp(url, "https://", 8) == 0)
-    {
+    else if (strncmp(url, "https://", 8) == 0) {
         url += 8;
         *port = 443;
-    }
-    else
+    } else
         return 0;
 
     const char *end = url;
@@ -82,8 +77,7 @@ static int parse_sse_url(const char *url, char **host, int *port, char **path)
     memcpy(*host, url, hlen);
     (*host)[hlen] = '\0';
 
-    if (*end == ':')
-    {
+    if (*end == ':') {
         *port = atoi(end + 1);
         while (*end && *end != '/')
             end++;
@@ -96,8 +90,7 @@ static int parse_sse_url(const char *url, char **host, int *port, char **path)
 // Public API
 //=============================================================================
 
-void *rt_sse_connect(rt_string url)
-{
+void *rt_sse_connect(rt_string url) {
     const char *url_str = rt_string_cstr(url);
     if (!url_str)
         rt_trap("SSE: NULL URL");
@@ -112,8 +105,7 @@ void *rt_sse_connect(rt_string url)
     void *tcp = rt_tcp_connect_for(host_str, port, 30000);
     rt_string_unref(host_str);
 
-    if (!tcp || !rt_tcp_is_open(tcp))
-    {
+    if (!tcp || !rt_tcp_is_open(tcp)) {
         free(host);
         free(path);
         rt_trap("SSE: connection failed");
@@ -140,14 +132,12 @@ void *rt_sse_connect(rt_string url)
     rt_string_unref(req_str);
 
     // Read and skip the HTTP response headers
-    while (1)
-    {
+    while (1) {
         rt_string line = rt_tcp_recv_line(tcp);
         if (!line)
             break;
         const char *l = rt_string_cstr(line);
-        if (!l || *l == '\0')
-        {
+        if (!l || *l == '\0') {
             rt_string_unref(line);
             break;
         }
@@ -155,8 +145,7 @@ void *rt_sse_connect(rt_string url)
     }
 
     rt_sse_impl *sse = (rt_sse_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sse_impl));
-    if (!sse)
-    {
+    if (!sse) {
         rt_tcp_close(tcp);
         rt_trap("SSE: OOM");
         return NULL;
@@ -171,8 +160,7 @@ void *rt_sse_connect(rt_string url)
 /// @brief Perform sse recv operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_sse_recv(void *obj)
-{
+rt_string rt_sse_recv(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_sse_impl *sse = (rt_sse_impl *)obj;
@@ -185,23 +173,19 @@ rt_string rt_sse_recv(void *obj)
     if (!data_buf)
         return rt_string_from_bytes("", 0);
 
-    while (rt_tcp_is_open(sse->tcp))
-    {
+    while (rt_tcp_is_open(sse->tcp)) {
         rt_string line = rt_tcp_recv_line(sse->tcp);
-        if (!line)
-        {
+        if (!line) {
             sse->is_open = false;
             break;
         }
         const char *l = rt_string_cstr(line);
-        if (!l)
-        {
+        if (!l) {
             rt_string_unref(line);
             break;
         }
 
-        if (*l == '\0')
-        {
+        if (*l == '\0') {
             // Blank line = event boundary; deliver accumulated data
             rt_string_unref(line);
             if (len > 0)
@@ -209,18 +193,15 @@ rt_string rt_sse_recv(void *obj)
             continue;
         }
 
-        if (strncmp(l, "data:", 5) == 0)
-        {
+        if (strncmp(l, "data:", 5) == 0) {
             const char *val = l + 5;
             if (*val == ' ')
                 val++;
             size_t vlen = strlen(val);
-            if (len + vlen + 2 > cap)
-            {
+            if (len + vlen + 2 > cap) {
                 cap = (len + vlen + 2) * 2;
                 char *nb = (char *)realloc(data_buf, cap);
-                if (!nb)
-                {
+                if (!nb) {
                     rt_string_unref(line);
                     break;
                 }
@@ -230,17 +211,13 @@ rt_string rt_sse_recv(void *obj)
                 data_buf[len++] = '\n'; // Multi-line data separated by \n
             memcpy(data_buf + len, val, vlen);
             len += vlen;
-        }
-        else if (strncmp(l, "event:", 6) == 0)
-        {
+        } else if (strncmp(l, "event:", 6) == 0) {
             const char *val = l + 6;
             if (*val == ' ')
                 val++;
             free(sse->last_event_type);
             sse->last_event_type = strdup(val);
-        }
-        else if (strncmp(l, "id:", 3) == 0)
-        {
+        } else if (strncmp(l, "id:", 3) == 0) {
             const char *val = l + 3;
             if (*val == ' ')
                 val++;
@@ -261,8 +238,7 @@ rt_string rt_sse_recv(void *obj)
 /// @param obj
 /// @param timeout_ms
 /// @return Result value.
-rt_string rt_sse_recv_for(void *obj, int64_t timeout_ms)
-{
+rt_string rt_sse_recv_for(void *obj, int64_t timeout_ms) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_sse_impl *sse = (rt_sse_impl *)obj;
@@ -279,8 +255,7 @@ rt_string rt_sse_recv_for(void *obj, int64_t timeout_ms)
 /// @brief Perform sse is open operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_sse_is_open(void *obj)
-{
+int8_t rt_sse_is_open(void *obj) {
     if (!obj)
         return 0;
     rt_sse_impl *sse = (rt_sse_impl *)obj;
@@ -289,14 +264,12 @@ int8_t rt_sse_is_open(void *obj)
 
 /// @brief Perform sse close operation.
 /// @param obj
-void rt_sse_close(void *obj)
-{
+void rt_sse_close(void *obj) {
     if (!obj)
         return;
     rt_sse_impl *sse = (rt_sse_impl *)obj;
     sse->is_open = false;
-    if (sse->tcp)
-    {
+    if (sse->tcp) {
         rt_tcp_close(sse->tcp);
         sse->tcp = NULL;
     }
@@ -305,8 +278,7 @@ void rt_sse_close(void *obj)
 /// @brief Perform sse last event type operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_sse_last_event_type(void *obj)
-{
+rt_string rt_sse_last_event_type(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_sse_impl *sse = (rt_sse_impl *)obj;
@@ -317,8 +289,7 @@ rt_string rt_sse_last_event_type(void *obj)
 /// @brief Perform sse last event id operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_sse_last_event_id(void *obj)
-{
+rt_string rt_sse_last_event_id(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_sse_impl *sse = (rt_sse_impl *)obj;

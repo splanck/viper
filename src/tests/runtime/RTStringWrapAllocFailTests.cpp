@@ -19,22 +19,18 @@
 #include <cassert>
 #include <string>
 
-namespace
-{
+namespace {
 int g_trap_count = 0;
 std::string g_last_trap;
 bool g_fail_next_alloc = false;
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_trap_count++;
     g_last_trap = msg ? msg : "";
 }
 
-void *fail_rt_alloc_once(int64_t bytes, void *(*next)(int64_t))
-{
-    if (g_fail_next_alloc)
-    {
+void *fail_rt_alloc_once(int64_t bytes, void *(*next)(int64_t)) {
+    if (g_fail_next_alloc) {
         g_fail_next_alloc = false;
         (void)bytes;
         return NULL;
@@ -43,8 +39,7 @@ void *fail_rt_alloc_once(int64_t bytes, void *(*next)(int64_t))
 }
 } // namespace
 
-int main()
-{
+int main() {
     g_trap_count = 0;
     g_last_trap.clear();
     g_fail_next_alloc = true;

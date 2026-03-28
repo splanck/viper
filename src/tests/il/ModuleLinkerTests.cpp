@@ -38,15 +38,13 @@ using namespace il::core;
 // ---------------------------------------------------------------------------
 
 /// Create a trivial function with a single entry block that returns void.
-static Function makeVoidFunc(const std::string &name, Linkage linkage)
-{
+static Function makeVoidFunc(const std::string &name, Linkage linkage) {
     Function fn;
     fn.name = name;
     fn.retType = Type(Type::Kind::Void);
     fn.linkage = linkage;
 
-    if (linkage != Linkage::Import)
-    {
+    if (linkage != Linkage::Import) {
         BasicBlock entry;
         entry.label = "entry";
         Instr ret;
@@ -59,15 +57,13 @@ static Function makeVoidFunc(const std::string &name, Linkage linkage)
 }
 
 /// Create a function that returns i64 with a trivial body.
-static Function makeI64Func(const std::string &name, Linkage linkage, long long retVal = 0)
-{
+static Function makeI64Func(const std::string &name, Linkage linkage, long long retVal = 0) {
     Function fn;
     fn.name = name;
     fn.retType = Type(Type::Kind::I64);
     fn.linkage = linkage;
 
-    if (linkage != Linkage::Import)
-    {
+    if (linkage != Linkage::Import) {
         BasicBlock entry;
         entry.label = "entry";
         Instr ret;
@@ -84,8 +80,7 @@ static Function makeI64Func(const std::string &name, Linkage linkage, long long 
 /// Create a function with parameters.
 static Function makeI64FuncWithParams(const std::string &name,
                                       Linkage linkage,
-                                      std::vector<Param> params)
-{
+                                      std::vector<Param> params) {
     Function fn;
     fn.name = name;
     fn.retType = Type(Type::Kind::I64);
@@ -96,15 +91,13 @@ static Function makeI64FuncWithParams(const std::string &name,
 }
 
 /// Check if a function with the given name exists in the module.
-static bool hasFunction(const Module &m, const std::string &name)
-{
+static bool hasFunction(const Module &m, const std::string &name) {
     return std::any_of(
         m.functions.begin(), m.functions.end(), [&](const Function &f) { return f.name == name; });
 }
 
 /// Count functions in the module.
-static size_t countFunctions(const Module &m)
-{
+static size_t countFunctions(const Module &m) {
     return m.functions.size();
 }
 
@@ -112,8 +105,7 @@ static size_t countFunctions(const Module &m)
 // Tests
 // ---------------------------------------------------------------------------
 
-TEST(ModuleLinker, SingleModulePassthrough)
-{
+TEST(ModuleLinker, SingleModulePassthrough) {
     Module m;
     m.functions.push_back(makeI64Func("main", Linkage::Internal));
 
@@ -125,8 +117,7 @@ TEST(ModuleLinker, SingleModulePassthrough)
     EXPECT_TRUE(hasFunction(result.module, "main"));
 }
 
-TEST(ModuleLinker, TwoModulesExportImportResolved)
-{
+TEST(ModuleLinker, TwoModulesExportImportResolved) {
     // Module A: entry module with main, imports "helper"
     Module a;
     a.functions.push_back(makeI64Func("main", Linkage::Internal));
@@ -149,8 +140,7 @@ TEST(ModuleLinker, TwoModulesExportImportResolved)
     EXPECT_EQ(countFunctions(result.module), 2u);
 }
 
-TEST(ModuleLinker, UnresolvedImportFails)
-{
+TEST(ModuleLinker, UnresolvedImportFails) {
     Module a;
     a.functions.push_back(makeI64Func("main", Linkage::Internal));
     a.functions.push_back(makeI64Func("missing", Linkage::Import));
@@ -168,8 +158,7 @@ TEST(ModuleLinker, UnresolvedImportFails)
     EXPECT_TRUE(result.errors[0].find("missing") != std::string::npos);
 }
 
-TEST(ModuleLinker, DuplicateMainFails)
-{
+TEST(ModuleLinker, DuplicateMainFails) {
     Module a;
     a.functions.push_back(makeI64Func("main", Linkage::Internal));
 
@@ -186,8 +175,7 @@ TEST(ModuleLinker, DuplicateMainFails)
     EXPECT_TRUE(result.errors[0].find("multiple modules define 'main'") != std::string::npos);
 }
 
-TEST(ModuleLinker, InternalNameCollisionPrefixed)
-{
+TEST(ModuleLinker, InternalNameCollisionPrefixed) {
     // Both modules have an Internal "helper" — non-entry one gets prefixed.
     Module a;
     a.functions.push_back(makeI64Func("main", Linkage::Internal));
@@ -208,8 +196,7 @@ TEST(ModuleLinker, InternalNameCollisionPrefixed)
     EXPECT_TRUE(hasFunction(result.module, "compute"));
 }
 
-TEST(ModuleLinker, ExternsMergedAndDeduplicated)
-{
+TEST(ModuleLinker, ExternsMergedAndDeduplicated) {
     Module a;
     a.functions.push_back(makeI64Func("main", Linkage::Internal));
     a.externs.push_back({"Viper.Terminal.Say", Type(Type::Kind::Void), {Type(Type::Kind::Str)}});
@@ -229,8 +216,7 @@ TEST(ModuleLinker, ExternsMergedAndDeduplicated)
     EXPECT_EQ(result.module.externs.size(), 1u);
 }
 
-TEST(ModuleLinker, ExternSignatureMismatchFails)
-{
+TEST(ModuleLinker, ExternSignatureMismatchFails) {
     Module a;
     a.functions.push_back(makeI64Func("main", Linkage::Internal));
     a.externs.push_back({"Viper.Foo", Type(Type::Kind::Void), {Type(Type::Kind::I64)}});
@@ -249,8 +235,7 @@ TEST(ModuleLinker, ExternSignatureMismatchFails)
     EXPECT_TRUE(result.errors[0].find("extern signature mismatch") != std::string::npos);
 }
 
-TEST(ModuleLinker, GlobalsMerged)
-{
+TEST(ModuleLinker, GlobalsMerged) {
     Module a;
     a.functions.push_back(makeI64Func("main", Linkage::Internal));
     a.globals.push_back({"str0", Type(Type::Kind::Str), "hello"});
@@ -268,15 +253,13 @@ TEST(ModuleLinker, GlobalsMerged)
     EXPECT_EQ(result.module.globals.size(), 2u);
 }
 
-TEST(ModuleLinker, EmptyModuleListFails)
-{
+TEST(ModuleLinker, EmptyModuleListFails) {
     std::vector<Module> modules;
     auto result = il::link::linkModules(std::move(modules));
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ModuleLinker, NoMainFails)
-{
+TEST(ModuleLinker, NoMainFails) {
     Module a;
     a.functions.push_back(makeVoidFunc("notMain", Linkage::Export));
 
@@ -292,7 +275,6 @@ TEST(ModuleLinker, NoMainFails)
     EXPECT_TRUE(result.errors[0].find("no module defines 'main'") != std::string::npos);
 }
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

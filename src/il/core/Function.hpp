@@ -32,15 +32,13 @@
 #include <string>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 
 /// @brief Container describing semantic attributes for a function.
 /// @details These attributes do not currently influence lowering but allow
 ///          later optimisation passes to query summarised behaviour such as
 ///          exception safety or memory side effects.
-struct FunctionAttrs
-{
+struct FunctionAttrs {
     /// @brief Function is guaranteed not to throw.
     bool nothrow = false;
 
@@ -53,8 +51,7 @@ struct FunctionAttrs
 
 /// @brief Definition of an IL function with parameters and basic blocks.
 /// @see docs/il-guide.md#reference
-struct Function
-{
+struct Function {
     /// Human-readable identifier for the function.
     /// @ownership Stored by the containing Module; immutable after insertion.
     /// @constraint Unique within its Module.
@@ -92,15 +89,13 @@ struct Function
 
     /// @brief Access mutable attribute bundle for the function.
     /// @return Reference to the owned attribute container.
-    [[nodiscard]] FunctionAttrs &attrs()
-    {
+    [[nodiscard]] FunctionAttrs &attrs() {
         return Attrs;
     }
 
     /// @brief Access read-only function attributes.
     /// @return Const reference to the attribute container.
-    [[nodiscard]] const FunctionAttrs &attrs() const
-    {
+    [[nodiscard]] const FunctionAttrs &attrs() const {
         return Attrs;
     }
 };

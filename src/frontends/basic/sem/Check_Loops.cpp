@@ -32,8 +32,7 @@
 
 #include <string>
 
-namespace il::frontends::basic::sem
-{
+namespace il::frontends::basic::sem {
 
 /// @brief Validate a WHILE loop and analyse its body.
 ///
@@ -44,16 +43,14 @@ namespace il::frontends::basic::sem
 ///
 /// @param analyzer Semantic analyzer coordinating validation.
 /// @param stmt AST node representing the WHILE statement.
-void analyzeWhile(SemanticAnalyzer &analyzer, const WhileStmt &stmt)
-{
+void analyzeWhile(SemanticAnalyzer &analyzer, const WhileStmt &stmt) {
     ControlCheckContext context(analyzer);
     if (stmt.cond)
         checkConditionExpr(context.analyzer(), *stmt.cond);
 
     [[maybe_unused]] auto loopGuard = context.whileLoopGuard();
     [[maybe_unused]] auto scope = context.pushScope();
-    for (const auto &bodyStmt : stmt.body)
-    {
+    for (const auto &bodyStmt : stmt.body) {
         if (!bodyStmt)
             continue;
         context.visitStmt(*bodyStmt);
@@ -68,11 +65,9 @@ void analyzeWhile(SemanticAnalyzer &analyzer, const WhileStmt &stmt)
 ///
 /// @param analyzer Semantic analyzer coordinating validation.
 /// @param stmt AST node representing the DO statement.
-void analyzeDo(SemanticAnalyzer &analyzer, const DoStmt &stmt)
-{
+void analyzeDo(SemanticAnalyzer &analyzer, const DoStmt &stmt) {
     ControlCheckContext context(analyzer);
-    const auto checkCond = [&]()
-    {
+    const auto checkCond = [&]() {
         if (stmt.cond)
             checkConditionExpr(context.analyzer(), *stmt.cond);
     };
@@ -83,8 +78,7 @@ void analyzeDo(SemanticAnalyzer &analyzer, const DoStmt &stmt)
     [[maybe_unused]] auto loopGuard = context.doLoopGuard();
     {
         [[maybe_unused]] auto scope = context.pushScope();
-        for (const auto &bodyStmt : stmt.body)
-        {
+        for (const auto &bodyStmt : stmt.body) {
             if (!bodyStmt)
                 continue;
             context.visitStmt(*bodyStmt);
@@ -105,40 +99,31 @@ void analyzeDo(SemanticAnalyzer &analyzer, const DoStmt &stmt)
 /// @param analyzer Semantic analyzer coordinating validation.
 /// @param stmt AST node representing the FOR statement (non-const because the
 ///             analyzer records implicit conversions on it).
-void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt)
-{
+void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt) {
     ControlCheckContext context(analyzer);
 
     // BUG-081 fix: Handle expression-based loop variables
     // Extract variable name for tracking, validate the lvalue expression
     std::string varName;
-    if (stmt.varExpr)
-    {
-        if (auto *varExpr = as<VarExpr>(*stmt.varExpr))
-        {
+    if (stmt.varExpr) {
+        if (auto *varExpr = as<VarExpr>(*stmt.varExpr)) {
             // Simple variable: FOR i = 1 TO 10
             varName = varExpr->name;
             context.resolveLoopVariable(varName);
             // Update the VarExpr with the scoped name (e.g., "I" -> "I_2")
             varExpr->name = varName;
-        }
-        else if (auto *memberAccess = as<MemberAccessExpr>(*stmt.varExpr))
-        {
+        } else if (auto *memberAccess = as<MemberAccessExpr>(*stmt.varExpr)) {
             // Member access: FOR obj.field = 1 TO 10
             // Validate the base expression exists
             context.evaluateExpr(*stmt.varExpr);
             // For tracking purposes, use a placeholder name (NEXT matching with complex
             // expressions is optional)
             varName = "<complex>";
-        }
-        else if (auto *arrayExpr = as<ArrayExpr>(*stmt.varExpr))
-        {
+        } else if (auto *arrayExpr = as<ArrayExpr>(*stmt.varExpr)) {
             // Array element: FOR arr(i) = 1 TO 10
             context.evaluateExpr(*stmt.varExpr);
             varName = "<complex>";
-        }
-        else
-        {
+        } else {
             // Other expression - validate it
             context.evaluateExpr(*stmt.varExpr);
             varName = "<complex>";
@@ -155,8 +140,7 @@ void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt)
     [[maybe_unused]] auto forGuard = context.trackForVariable(varName);
     [[maybe_unused]] auto loopGuard = context.forLoopGuard();
     [[maybe_unused]] auto scope = context.pushScope();
-    for (const auto &bodyStmt : stmt.body)
-    {
+    for (const auto &bodyStmt : stmt.body) {
         if (!bodyStmt)
             continue;
         context.visitStmt(*bodyStmt);
@@ -170,13 +154,11 @@ void analyzeFor(SemanticAnalyzer &analyzer, ForStmt &stmt)
 ///
 /// @param analyzer Semantic analyzer coordinating validation.
 /// @param stmt AST node representing the FOR EACH statement.
-void analyzeForEach(SemanticAnalyzer &analyzer, ForEachStmt &stmt)
-{
+void analyzeForEach(SemanticAnalyzer &analyzer, ForEachStmt &stmt) {
     ControlCheckContext context(analyzer);
 
     // Verify the array exists
-    if (!context.analyzer().lookupArrayMetadata(stmt.arrayName))
-    {
+    if (!context.analyzer().lookupArrayMetadata(stmt.arrayName)) {
         context.diagnostics().emit(il::support::Severity::Error,
                                    "B1020",
                                    stmt.loc,
@@ -194,8 +176,7 @@ void analyzeForEach(SemanticAnalyzer &analyzer, ForEachStmt &stmt)
     [[maybe_unused]] auto forGuard = context.trackForVariable(stmt.elementVar);
     [[maybe_unused]] auto loopGuard = context.forLoopGuard();
     [[maybe_unused]] auto scope = context.pushScope();
-    for (const auto &bodyStmt : stmt.body)
-    {
+    for (const auto &bodyStmt : stmt.body) {
         if (!bodyStmt)
             continue;
         context.visitStmt(*bodyStmt);
@@ -210,27 +191,21 @@ void analyzeForEach(SemanticAnalyzer &analyzer, ForEachStmt &stmt)
 ///
 /// @param analyzer Semantic analyzer coordinating validation.
 /// @param stmt AST node representing the NEXT statement.
-void analyzeNext(SemanticAnalyzer &analyzer, const NextStmt &stmt)
-{
+void analyzeNext(SemanticAnalyzer &analyzer, const NextStmt &stmt) {
     ControlCheckContext context(analyzer);
     if (!context.hasForVariable() ||
-        (!stmt.var.empty() && stmt.var != context.currentForVariable()))
-    {
+        (!stmt.var.empty() && stmt.var != context.currentForVariable())) {
         std::string msg = "mismatched NEXT";
-        if (!stmt.var.empty())
-        {
+        if (!stmt.var.empty()) {
             msg += " '";
             msg += stmt.var;
             msg += "'";
         }
-        if (context.hasForVariable())
-        {
+        if (context.hasForVariable()) {
             msg += ", expected '";
             msg += std::string(context.currentForVariable());
             msg += "'";
-        }
-        else
-        {
+        } else {
             msg += ", no active FOR";
         }
         context.diagnostics().emit(
@@ -249,8 +224,7 @@ void analyzeNext(SemanticAnalyzer &analyzer, const NextStmt &stmt)
 ///
 /// @param analyzer Semantic analyzer coordinating validation.
 /// @param stmt AST node representing the EXIT statement.
-void analyzeExit(SemanticAnalyzer &analyzer, const ExitStmt &stmt)
-{
+void analyzeExit(SemanticAnalyzer &analyzer, const ExitStmt &stmt) {
     ControlCheckContext context(analyzer);
     // Permit EXIT SUB/FUNCTION anywhere within a procedure body. These exits
     // are not tied to loop constructs and should not be validated against the
@@ -261,8 +235,7 @@ void analyzeExit(SemanticAnalyzer &analyzer, const ExitStmt &stmt)
     const auto targetLoop = context.toLoopKind(stmt.kind);
     const char *targetName = context.loopKindName(targetLoop);
 
-    if (!context.hasActiveLoop())
-    {
+    if (!context.hasActiveLoop()) {
         std::string msg = "EXIT ";
         msg += targetName;
         msg += " used outside of any loop";

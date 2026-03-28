@@ -27,12 +27,10 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Result of cross-block liveness analysis.
-struct LivenessInfo
-{
+struct LivenessInfo {
     /// @brief Map of temp ID to the block index where it's defined.
     std::unordered_map<unsigned, std::size_t> tempDefBlock;
 

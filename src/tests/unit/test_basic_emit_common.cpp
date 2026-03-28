@@ -24,8 +24,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     const std::string src = "10 COLOR 1, 2\n"
                             "20 DIM ARR%(2)\n"
                             "30 LET ARR%(0) = 1\n"
@@ -45,10 +44,8 @@ int main()
     il::core::Module module = lowerer.lowerProgram(*program);
 
     const il::core::Function *mainFn = nullptr;
-    for (const auto &fn : module.functions)
-    {
-        if (fn.name == "main")
-        {
+    for (const auto &fn : module.functions) {
+        if (fn.name == "main") {
             mainFn = &fn;
             break;
         }
@@ -60,10 +57,8 @@ int main()
     bool sawLogicalAnd = false;
     bool sawLogicalOr = false;
 
-    for (const auto &block : mainFn->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : mainFn->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == il::core::Opcode::IAddOvf)
                 sawCheckedAdd = true;
             if (instr.op == il::core::Opcode::CastSiNarrowChk)

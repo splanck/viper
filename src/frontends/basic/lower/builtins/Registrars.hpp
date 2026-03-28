@@ -15,8 +15,7 @@
 
 #pragma once
 
-namespace il::frontends::basic::lower::builtins
-{
+namespace il::frontends::basic::lower::builtins {
 /// @brief Populate the builtin registry with the core scalar operations.
 /// @details Installs handlers that implement arithmetic, comparison, and
 ///          control-flow helper intrinsics required by every BASIC program.

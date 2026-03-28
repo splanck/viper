@@ -21,11 +21,9 @@
 
 #include "TargetX64.hpp"
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
-namespace
-{
+namespace {
 
 /// @brief Construct the SysV AMD64 target description for the backend.
 ///
@@ -36,8 +34,7 @@ namespace
 ///          singleton and the resulting object is treated as read-only.
 ///
 /// @return Fully initialised SysV target descriptor.
-TargetInfo makeSysVTarget()
-{
+TargetInfo makeSysVTarget() {
     TargetInfo info{};
     info.callerSavedGPR = {
         PhysReg::RAX,
@@ -112,8 +109,7 @@ TargetInfo makeSysVTarget()
 ///          alignment information according to the Microsoft x64 ABI.
 ///
 /// @return Fully initialised Windows x64 target descriptor.
-TargetInfo makeWin64Target()
-{
+TargetInfo makeWin64Target() {
     TargetInfo info{};
     // Windows x64: RAX, RCX, RDX, R8, R9, R10, R11 are caller-saved (volatile)
     info.callerSavedGPR = {
@@ -201,8 +197,7 @@ TargetInfo win64TargetInstance = makeWin64Target();
 ///          conceptually treating the object as immutable configuration data.
 ///
 /// @return Reference to the global SysV target descriptor.
-const TargetInfo &sysvTarget() noexcept
-{
+const TargetInfo &sysvTarget() noexcept {
     return sysvTargetInstance;
 }
 
@@ -212,8 +207,7 @@ const TargetInfo &sysvTarget() noexcept
 ///          by @ref makeWin64Target().
 ///
 /// @return Reference to the global Windows x64 target descriptor.
-const TargetInfo &win64Target() noexcept
-{
+const TargetInfo &win64Target() noexcept {
     return win64TargetInstance;
 }
 
@@ -222,8 +216,7 @@ const TargetInfo &win64Target() noexcept
 /// @details Returns win64Target() on Windows, sysvTarget() on other platforms.
 ///
 /// @return Reference to the appropriate target descriptor for the host.
-const TargetInfo &hostTarget() noexcept
-{
+const TargetInfo &hostTarget() noexcept {
 #if defined(_WIN32)
     return win64TargetInstance;
 #else
@@ -239,10 +232,8 @@ const TargetInfo &hostTarget() noexcept
 ///
 /// @param reg Physical register to classify.
 /// @return @c true when @p reg identifies a GPR.
-bool isGPR(PhysReg reg) noexcept
-{
-    switch (reg)
-    {
+bool isGPR(PhysReg reg) noexcept {
+    switch (reg) {
         case PhysReg::RAX:
         case PhysReg::RBX:
         case PhysReg::RCX:
@@ -273,10 +264,8 @@ bool isGPR(PhysReg reg) noexcept
 ///
 /// @param reg Physical register to classify.
 /// @return @c true when @p reg is an XMM register.
-bool isXMM(PhysReg reg) noexcept
-{
-    switch (reg)
-    {
+bool isXMM(PhysReg reg) noexcept {
+    switch (reg) {
         case PhysReg::XMM0:
         case PhysReg::XMM1:
         case PhysReg::XMM2:
@@ -309,10 +298,8 @@ bool isXMM(PhysReg reg) noexcept
 ///
 /// @param reg Physical register whose name is requested.
 /// @return Null-terminated string containing the register mnemonic.
-const char *regName(PhysReg reg) noexcept
-{
-    switch (reg)
-    {
+const char *regName(PhysReg reg) noexcept {
+    switch (reg) {
         case PhysReg::RAX:
             return "%rax";
         case PhysReg::RBX:

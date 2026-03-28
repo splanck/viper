@@ -54,8 +54,7 @@
 /// Each entry stores a string in the Bag. Entries are organized into
 /// collision chains (linked lists) within each bucket. The Bag owns
 /// a copy of each string key, not a reference to the original.
-typedef struct rt_bag_entry
-{
+typedef struct rt_bag_entry {
     char *key;                 ///< Owned copy of string (null-terminated).
     size_t key_len;            ///< Length of string (excluding null terminator).
     struct rt_bag_entry *next; ///< Next entry in collision chain (or NULL).
@@ -83,8 +82,7 @@ typedef struct rt_bag_entry
 ///
 /// **Load factor:**
 /// Resizes when count/capacity exceeds 75% (3/4) to maintain O(1) performance.
-typedef struct rt_bag_impl
-{
+typedef struct rt_bag_impl {
     void **vptr;            ///< Vtable pointer placeholder (for OOP compatibility).
     rt_bag_entry **buckets; ///< Array of bucket heads (collision chain pointers).
     size_t capacity;        ///< Number of buckets in the hash table.
@@ -101,8 +99,7 @@ typedef struct rt_bag_impl
 ///
 /// @return Pointer to the string's character data (not owned by caller).
 ///         Returns "" with length 0 if key is NULL.
-static const char *get_key_data(rt_string key, size_t *out_len)
-{
+static const char *get_key_data(rt_string key, size_t *out_len) {
     *out_len = (size_t)rt_str_len(key);
     if (*out_len == 0)
         return "";
@@ -122,10 +119,8 @@ static const char *get_key_data(rt_string key, size_t *out_len)
 /// @return Pointer to the matching entry, or NULL if not found.
 ///
 /// @note O(k) time where k is the chain length (ideally small with good hash).
-static rt_bag_entry *find_entry(rt_bag_entry *head, const char *key, size_t key_len)
-{
-    for (rt_bag_entry *e = head; e; e = e->next)
-    {
+static rt_bag_entry *find_entry(rt_bag_entry *head, const char *key, size_t key_len) {
+    for (rt_bag_entry *e = head; e; e = e->next) {
         if (e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
             return e;
     }
@@ -138,10 +133,8 @@ static rt_bag_entry *find_entry(rt_bag_entry *head, const char *key, size_t key_
 /// copied key string. Called when removing entries or clearing the bag.
 ///
 /// @param entry The entry to free. If NULL, this is a no-op.
-static void free_entry(rt_bag_entry *entry)
-{
-    if (entry)
-    {
+static void free_entry(rt_bag_entry *entry) {
+    if (entry) {
         free(entry->key);
         free(entry);
     }
@@ -157,8 +150,7 @@ static void free_entry(rt_bag_entry *entry)
 /// @param obj Pointer to the Bag object being finalized. May be NULL (no-op).
 ///
 /// @note This function is idempotent - safe to call on already-finalized bags.
-static void rt_bag_finalize(void *obj)
-{
+static void rt_bag_finalize(void *obj) {
     if (!obj)
         return;
     rt_bag_impl *bag = (rt_bag_impl *)obj;
@@ -188,18 +180,15 @@ static void rt_bag_finalize(void *obj)
 ///
 /// @note On allocation failure, the old buckets are kept (silent failure).
 /// @note O(n) time complexity where n is the number of entries.
-static void bag_resize(rt_bag_impl *bag, size_t new_capacity)
-{
+static void bag_resize(rt_bag_impl *bag, size_t new_capacity) {
     rt_bag_entry **new_buckets = (rt_bag_entry **)calloc(new_capacity, sizeof(rt_bag_entry *));
     if (!new_buckets)
         return; // Keep old buckets on allocation failure
 
     // Rehash all entries
-    for (size_t i = 0; i < bag->capacity; ++i)
-    {
+    for (size_t i = 0; i < bag->capacity; ++i) {
         rt_bag_entry *entry = bag->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_bag_entry *next = entry->next;
             uint64_t hash = rt_fnv1a(entry->key, entry->key_len);
             size_t idx = hash % new_capacity;
@@ -223,11 +212,9 @@ static void bag_resize(rt_bag_impl *bag, size_t new_capacity)
 /// @param bag The Bag to potentially resize.
 ///
 /// @note The capacity doubles on each resize.
-static void maybe_resize(rt_bag_impl *bag)
-{
+static void maybe_resize(rt_bag_impl *bag) {
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
-    if (bag->count * BAG_LOAD_FACTOR_DEN > bag->capacity * BAG_LOAD_FACTOR_NUM)
-    {
+    if (bag->count * BAG_LOAD_FACTOR_DEN > bag->capacity * BAG_LOAD_FACTOR_NUM) {
         if (bag->capacity > SIZE_MAX / 2)
             return;
         bag_resize(bag, bag->capacity * 2);
@@ -269,16 +256,14 @@ static void maybe_resize(rt_bag_impl *bag)
 /// @see rt_bag_add For adding strings
 /// @see rt_bag_has For membership testing
 /// @see rt_bag_finalize For cleanup behavior
-void *rt_bag_new(void)
-{
+void *rt_bag_new(void) {
     rt_bag_impl *bag = (rt_bag_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_bag_impl));
     if (!bag)
         return NULL;
 
     bag->vptr = NULL;
     bag->buckets = (rt_bag_entry **)calloc(BAG_INITIAL_CAPACITY, sizeof(rt_bag_entry *));
-    if (!bag->buckets)
-    {
+    if (!bag->buckets) {
         // Can't trap here, just return partially initialized
         bag->capacity = 0;
         bag->count = 0;
@@ -306,8 +291,7 @@ void *rt_bag_new(void)
 /// @see rt_bag_is_empty For a boolean check
 /// @see rt_bag_add For operations that may increase the count
 /// @see rt_bag_remove For operations that decrease the count
-int64_t rt_bag_len(void *obj)
-{
+int64_t rt_bag_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_bag_impl *)obj)->count;
@@ -328,8 +312,7 @@ int64_t rt_bag_len(void *obj)
 ///
 /// @see rt_bag_len For the exact count
 /// @see rt_bag_clear For removing all strings
-int8_t rt_bag_is_empty(void *obj)
-{
+int8_t rt_bag_is_empty(void *obj) {
     return rt_bag_len(obj) == 0;
 }
 
@@ -371,8 +354,7 @@ int8_t rt_bag_is_empty(void *obj)
 ///
 /// @see rt_bag_has For checking membership without modifying
 /// @see rt_bag_remove For removing strings
-int8_t rt_bag_add(void *obj, rt_string str)
-{
+int8_t rt_bag_add(void *obj, rt_string str) {
     if (!obj)
         return 0;
 
@@ -386,8 +368,7 @@ int8_t rt_bag_add(void *obj, rt_string str)
     size_t idx = hash % bag->capacity;
 
     // Check if string already exists
-    if (find_entry(bag->buckets[idx], key_data, key_len))
-    {
+    if (find_entry(bag->buckets[idx], key_data, key_len)) {
         return 0; // Already present
     }
 
@@ -397,8 +378,7 @@ int8_t rt_bag_add(void *obj, rt_string str)
         return 0;
 
     entry->key = (char *)malloc(key_len + 1);
-    if (!entry->key)
-    {
+    if (!entry->key) {
         free(entry);
         return 0;
     }
@@ -450,8 +430,7 @@ int8_t rt_bag_add(void *obj, rt_string str)
 /// @see rt_bag_add For adding strings
 /// @see rt_bag_has For checking membership
 /// @see rt_bag_clear For removing all strings
-int8_t rt_bag_remove(void *obj, rt_string str)
-{
+int8_t rt_bag_remove(void *obj, rt_string str) {
     if (!obj)
         return 0;
 
@@ -467,10 +446,8 @@ int8_t rt_bag_remove(void *obj, rt_string str)
     rt_bag_entry **prev_ptr = &bag->buckets[idx];
     rt_bag_entry *entry = bag->buckets[idx];
 
-    while (entry)
-    {
-        if (entry->key_len == key_len && memcmp(entry->key, key_data, key_len) == 0)
-        {
+    while (entry) {
+        if (entry->key_len == key_len && memcmp(entry->key, key_data, key_len) == 0) {
             *prev_ptr = entry->next;
             free_entry(entry);
             bag->count--;
@@ -516,8 +493,7 @@ int8_t rt_bag_remove(void *obj, rt_string str)
 ///
 /// @see rt_bag_add For adding strings to test later
 /// @see rt_bag_remove For removing strings
-int8_t rt_bag_has(void *obj, rt_string str)
-{
+int8_t rt_bag_has(void *obj, rt_string str) {
     if (!obj)
         return 0;
 
@@ -564,17 +540,14 @@ int8_t rt_bag_has(void *obj, rt_string str)
 ///
 /// @see rt_bag_finalize For complete cleanup including bucket array
 /// @see rt_bag_is_empty For checking if empty
-void rt_bag_clear(void *obj)
-{
+void rt_bag_clear(void *obj) {
     if (!obj)
         return;
 
     rt_bag_impl *bag = (rt_bag_impl *)obj;
-    for (size_t i = 0; i < bag->capacity; ++i)
-    {
+    for (size_t i = 0; i < bag->capacity; ++i) {
         rt_bag_entry *entry = bag->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_bag_entry *next = entry->next;
             free_entry(entry);
             entry = next;
@@ -622,8 +595,7 @@ void rt_bag_clear(void *obj)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_bag_len For getting the count without creating a list
-void *rt_bag_items(void *obj)
-{
+void *rt_bag_items(void *obj) {
     void *result = rt_seq_new();
     if (!obj)
         return result;
@@ -631,11 +603,9 @@ void *rt_bag_items(void *obj)
     rt_bag_impl *bag = (rt_bag_impl *)obj;
 
     // Iterate through all buckets and entries
-    for (size_t i = 0; i < bag->capacity; ++i)
-    {
+    for (size_t i = 0; i < bag->capacity; ++i) {
         rt_bag_entry *entry = bag->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             // Create a copy of the string and push to seq
             rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
             rt_seq_push(result, (void *)str);
@@ -689,21 +659,17 @@ void *rt_bag_items(void *obj)
 ///
 /// @see rt_bag_intersect For set intersection
 /// @see rt_bag_diff For set difference
-void *rt_bag_union(void *obj, void *other)
-{
+void *rt_bag_union(void *obj, void *other) {
     void *result = rt_bag_new();
     if (!result)
         return result;
 
     // Add all elements from first bag
-    if (obj)
-    {
+    if (obj) {
         rt_bag_impl *bag = (rt_bag_impl *)obj;
-        for (size_t i = 0; i < bag->capacity; ++i)
-        {
+        for (size_t i = 0; i < bag->capacity; ++i) {
             rt_bag_entry *entry = bag->buckets[i];
-            while (entry)
-            {
+            while (entry) {
                 rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
                 rt_bag_add(result, str);
                 rt_str_release_maybe(str);
@@ -713,14 +679,11 @@ void *rt_bag_union(void *obj, void *other)
     }
 
     // Add all elements from second bag
-    if (other)
-    {
+    if (other) {
         rt_bag_impl *bag = (rt_bag_impl *)other;
-        for (size_t i = 0; i < bag->capacity; ++i)
-        {
+        for (size_t i = 0; i < bag->capacity; ++i) {
             rt_bag_entry *entry = bag->buckets[i];
-            while (entry)
-            {
+            while (entry) {
                 rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
                 rt_bag_add(result, str);
                 rt_str_release_maybe(str);
@@ -778,8 +741,7 @@ void *rt_bag_union(void *obj, void *other)
 ///
 /// @see rt_bag_union For set union
 /// @see rt_bag_diff For set difference
-void *rt_bag_intersect(void *obj, void *other)
-{
+void *rt_bag_intersect(void *obj, void *other) {
     void *result = rt_bag_new();
     if (!result || !obj || !other)
         return result;
@@ -787,14 +749,11 @@ void *rt_bag_intersect(void *obj, void *other)
     rt_bag_impl *bag = (rt_bag_impl *)obj;
 
     // For each element in first bag, check if it's in second
-    for (size_t i = 0; i < bag->capacity; ++i)
-    {
+    for (size_t i = 0; i < bag->capacity; ++i) {
         rt_bag_entry *entry = bag->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
-            if (rt_bag_has(other, str))
-            {
+            if (rt_bag_has(other, str)) {
                 rt_bag_add(result, str);
             }
             rt_str_release_maybe(str);
@@ -845,19 +804,16 @@ void *rt_bag_intersect(void *obj, void *other)
 ///
 /// @note O(n) time complexity where n is the size of the Bag.
 /// @note The input Bag is not modified.
-void *rt_bag_clone(void *obj)
-{
+void *rt_bag_clone(void *obj) {
     void *result = rt_bag_new();
     if (!result || !obj)
         return result;
 
     rt_bag_impl *bag = (rt_bag_impl *)obj;
 
-    for (size_t i = 0; i < bag->capacity; ++i)
-    {
+    for (size_t i = 0; i < bag->capacity; ++i) {
         rt_bag_entry *entry = bag->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
             rt_bag_add(result, str);
             rt_str_release_maybe(str);
@@ -868,8 +824,7 @@ void *rt_bag_clone(void *obj)
     return result;
 }
 
-void *rt_bag_diff(void *obj, void *other)
-{
+void *rt_bag_diff(void *obj, void *other) {
     void *result = rt_bag_new();
     if (!result || !obj)
         return result;
@@ -877,14 +832,11 @@ void *rt_bag_diff(void *obj, void *other)
     rt_bag_impl *bag = (rt_bag_impl *)obj;
 
     // For each element in first bag, check if it's NOT in second
-    for (size_t i = 0; i < bag->capacity; ++i)
-    {
+    for (size_t i = 0; i < bag->capacity; ++i) {
         rt_bag_entry *entry = bag->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_string str = rt_string_from_bytes(entry->key, entry->key_len);
-            if (!other || !rt_bag_has(other, str))
-            {
+            if (!other || !rt_bag_has(other, str)) {
                 rt_bag_add(result, str);
             }
             rt_str_release_maybe(str);

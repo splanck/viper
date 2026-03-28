@@ -39,8 +39,7 @@
 
 using namespace il::core;
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Validate exception-handling metadata for every function in a module.
 /// @details The verifier iterates each function, constructing an @ref EhModel
@@ -54,12 +53,10 @@ namespace il::verify
 /// @param module Module whose functions are being verified.
 /// @param sink Diagnostic sink reserved for future structured reporting.
 /// @return Empty value on success or the first emitted diagnostic.
-il::support::Expected<void> EhVerifier::run(const Module &module, DiagSink &sink) const
-{
+il::support::Expected<void> EhVerifier::run(const Module &module, DiagSink &sink) const {
     (void)sink;
 
-    for (const auto &fn : module.functions)
-    {
+    for (const auto &fn : module.functions) {
         EhModel model(fn);
         if (!model.hasEhInstructions())
             continue;

@@ -21,19 +21,16 @@
 using viper::codegen::x64::ILInstr;
 using viper::codegen::x64::ILValue;
 
-namespace
-{
+namespace {
 
-ILValue makeValue(ILValue::Kind kind, int id)
-{
+ILValue makeValue(ILValue::Kind kind, int id) {
     ILValue value{};
     value.kind = kind;
     value.id = id;
     return value;
 }
 
-ILValue makeImmediate(ILValue::Kind kind, int64_t imm)
-{
+ILValue makeImmediate(ILValue::Kind kind, int64_t imm) {
     ILValue value{};
     value.kind = kind;
     value.id = -1;
@@ -41,8 +38,7 @@ ILValue makeImmediate(ILValue::Kind kind, int64_t imm)
     return value;
 }
 
-ILValue makeLabel(std::string name)
-{
+ILValue makeLabel(std::string name) {
     ILValue value{};
     value.kind = ILValue::Kind::LABEL;
     value.label = std::move(name);
@@ -52,8 +48,7 @@ ILValue makeLabel(std::string name)
 
 } // namespace
 
-TEST(LoweringRuleLookup, SelectsArithmeticRule)
-{
+TEST(LoweringRuleLookup, SelectsArithmeticRule) {
     ILInstr instr{};
     instr.opcode = "add";
     instr.resultKind = ILValue::Kind::I64;
@@ -66,8 +61,7 @@ TEST(LoweringRuleLookup, SelectsArithmeticRule)
     EXPECT_TRUE(rule->match(instr));
 }
 
-TEST(LoweringRuleLookup, SelectsComparePrefixRule)
-{
+TEST(LoweringRuleLookup, SelectsComparePrefixRule) {
     ILInstr instr{};
     instr.opcode = "icmp_eq";
     instr.resultKind = ILValue::Kind::I1;
@@ -80,8 +74,7 @@ TEST(LoweringRuleLookup, SelectsComparePrefixRule)
     EXPECT_TRUE(rule->match(instr));
 }
 
-TEST(LoweringRuleLookup, SelectsShiftRule)
-{
+TEST(LoweringRuleLookup, SelectsShiftRule) {
     ILInstr instr{};
     instr.opcode = "shl";
     instr.resultKind = ILValue::Kind::I64;
@@ -94,8 +87,7 @@ TEST(LoweringRuleLookup, SelectsShiftRule)
     EXPECT_TRUE(rule->match(instr));
 }
 
-TEST(LoweringRuleLookup, SelectsLoadAndStoreRules)
-{
+TEST(LoweringRuleLookup, SelectsLoadAndStoreRules) {
     ILInstr load{};
     load.opcode = "load";
     load.resultKind = ILValue::Kind::I64;
@@ -119,8 +111,7 @@ TEST(LoweringRuleLookup, SelectsLoadAndStoreRules)
     EXPECT_TRUE(storeRule->match(store));
 }
 
-TEST(LoweringRuleLookup, SelectsCallRule)
-{
+TEST(LoweringRuleLookup, SelectsCallRule) {
     ILInstr instr{};
     instr.opcode = "call";
     instr.ops = {makeLabel("callee"), makeValue(ILValue::Kind::I64, 13)};
@@ -131,8 +122,7 @@ TEST(LoweringRuleLookup, SelectsCallRule)
     EXPECT_TRUE(rule->match(instr));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

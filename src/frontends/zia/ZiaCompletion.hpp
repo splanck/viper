@@ -58,8 +58,7 @@
 #include <string_view>
 #include <vector>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //===----------------------------------------------------------------------===//
 /// @name Public data types
@@ -67,8 +66,7 @@ namespace il::frontends::zia
 //===----------------------------------------------------------------------===//
 
 /// @brief Category of a completion item (maps to an icon in the UI).
-enum class CompletionKind : uint8_t
-{
+enum class CompletionKind : uint8_t {
     Keyword = 0,
     Snippet = 1,
     Variable = 2,
@@ -85,8 +83,7 @@ enum class CompletionKind : uint8_t
 };
 
 /// @brief A single code-completion suggestion.
-struct CompletionItem
-{
+struct CompletionItem {
     std::string label;      ///< Text shown in the popup list
     std::string insertText; ///< Text inserted into the editor buffer
     CompletionKind kind{CompletionKind::Variable};
@@ -120,8 +117,7 @@ std::string serialize(const std::vector<CompletionItem> &items);
 /// ## Thread safety
 ///
 /// Not thread-safe.  Each IDE connection should have its own engine instance.
-class CompletionEngine
-{
+class CompletionEngine {
   public:
     CompletionEngine();
     ~CompletionEngine();
@@ -149,8 +145,7 @@ class CompletionEngine
     //=========================================================================
 
     /// @brief Describes what triggered the completion request.
-    enum class TriggerKind : uint8_t
-    {
+    enum class TriggerKind : uint8_t {
         CtrlSpace,    ///< Explicit request — provide all in-scope symbols
         MemberAccess, ///< Dot ('.') — enumerate members of LHS type
         AfterNew,     ///< 'new ' keyword — provide constructible type names
@@ -159,8 +154,7 @@ class CompletionEngine
     };
 
     /// @brief Parsed context at the completion cursor.
-    struct Context
-    {
+    struct Context {
         TriggerKind trigger{TriggerKind::CtrlSpace};
         /// Expression to the left of '.', e.g. "shell.app" for "shell.app.X"
         std::string triggerExpr;
@@ -242,8 +236,7 @@ class CompletionEngine
     /// @brief FNV-1a hash of a string (fast, ~1µs for 10 KB).
     static uint64_t fnv1a(std::string_view data);
 
-    struct Cache
-    {
+    struct Cache {
         uint64_t hash{0};
         std::string filePath;
         std::unique_ptr<AnalysisResult> result;

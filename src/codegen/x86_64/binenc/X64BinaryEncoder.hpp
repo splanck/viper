@@ -36,13 +36,11 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen
-{
+namespace viper::codegen {
 class DebugLineTable;
 }
 
-namespace viper::codegen::x64::binenc
-{
+namespace viper::codegen::x64::binenc {
 
 using viper::codegen::DebugLineTable;
 
@@ -55,12 +53,10 @@ using viper::codegen::DebugLineTable;
 /// The encoder processes one function at a time. Internal branches are resolved
 /// via patching after all blocks are emitted. External symbols generate
 /// Relocation entries in the CodeSection.
-class X64BinaryEncoder
-{
+class X64BinaryEncoder {
   public:
     /// Set the debug line table for recording address→line mappings.
-    void setDebugLineTable(DebugLineTable *table)
-    {
+    void setDebugLineTable(DebugLineTable *table) {
         debugLines_ = table;
     }
 
@@ -168,8 +164,7 @@ class X64BinaryEncoder
     // === Internal branch resolution ===
 
     /// A branch that needs its rel32 patched after all blocks are emitted.
-    struct PendingBranch
-    {
+    struct PendingBranch {
         size_t patchOffset; ///< Offset in CodeSection of the rel32 placeholder.
         std::string target; ///< Target label name.
     };

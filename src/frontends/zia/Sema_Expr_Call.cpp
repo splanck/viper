@@ -20,19 +20,16 @@
 
 using il::frontends::common::string_utils::iequals;
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //=============================================================================
 // Collection Method Resolution Helpers
 //=============================================================================
 
-namespace
-{
+namespace {
 
 /// @brief Return type categories for collection methods.
-enum class MethodReturnKind
-{
+enum class MethodReturnKind {
     ElementType, ///< Returns the collection's element type
     KeyType,     ///< Returns the map's key type
     ValueType,   ///< Returns the map's value type
@@ -43,8 +40,7 @@ enum class MethodReturnKind
 };
 
 /// @brief Descriptor for a collection method's return type.
-struct CollectionMethodInfo
-{
+struct CollectionMethodInfo {
     std::string_view name;
     MethodReturnKind returnKind;
 };
@@ -133,10 +129,8 @@ const CollectionMethodInfo stringMethods[] = {
 /// @return The method info if found, nullptr otherwise.
 template <std::size_t N>
 const CollectionMethodInfo *findMethod(const CollectionMethodInfo (&methods)[N],
-                                       std::string_view methodName)
-{
-    for (const auto &m : methods)
-    {
+                                       std::string_view methodName) {
+    for (const auto &m : methods) {
         if (iequals(m.name, methodName))
             return &m;
     }
@@ -147,10 +141,8 @@ const CollectionMethodInfo *findMethod(const CollectionMethodInfo (&methods)[N],
 /// @param kind The return kind.
 /// @param baseType The collection type (for element/key/value type resolution).
 /// @return The resolved type.
-TypeRef resolveMethodReturnType(MethodReturnKind kind, TypeRef baseType)
-{
-    switch (kind)
-    {
+TypeRef resolveMethodReturnType(MethodReturnKind kind, TypeRef baseType) {
+    switch (kind) {
         case MethodReturnKind::ElementType:
             return baseType->elementType() ? baseType->elementType() : types::unknown();
         case MethodReturnKind::KeyType:
@@ -173,18 +165,15 @@ TypeRef resolveMethodReturnType(MethodReturnKind kind, TypeRef baseType)
 /// @param expr The expression to extract from.
 /// @param out The output string to append to.
 /// @return True if successful, false otherwise.
-static bool extractDottedName(Expr *expr, std::string &out)
-{
+static bool extractDottedName(Expr *expr, std::string &out) {
     if (!expr)
         return false;
-    if (expr->kind == ExprKind::Ident)
-    {
+    if (expr->kind == ExprKind::Ident) {
         auto *ident = static_cast<IdentExpr *>(expr);
         out = ident->name;
         return true;
     }
-    if (expr->kind == ExprKind::Field)
-    {
+    if (expr->kind == ExprKind::Field) {
         auto *fieldExpr = static_cast<FieldExpr *>(expr);
         if (!extractDottedName(fieldExpr->base.get(), out))
             return false;
@@ -201,8 +190,7 @@ static bool extractDottedName(Expr *expr, std::string &out)
 // Call Argument Validation
 //=============================================================================
 
-void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string &calleeName)
-{
+void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string &calleeName) {
     if (!funcType || funcType->kind != TypeKindSem::Function)
         return;
 
@@ -211,38 +199,29 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
     const size_t numArgs = expr->args.size();
 
     // Check argument count (with default parameter support)
-    if (numArgs > numParams)
-    {
+    if (numArgs > numParams) {
         error(expr->loc,
               "Too many arguments to '" + calleeName + "': expected " + std::to_string(numParams) +
                   ", got " + std::to_string(numArgs));
-    }
-    else if (numArgs < numParams)
-    {
+    } else if (numArgs < numParams) {
         // Check if missing arguments have default values
         FunctionDecl *funcDecl = getFunctionDecl(calleeName);
         bool allDefaulted = false;
-        if (funcDecl && funcDecl->params.size() == numParams)
-        {
+        if (funcDecl && funcDecl->params.size() == numParams) {
             allDefaulted = true;
-            for (size_t i = numArgs; i < numParams; ++i)
-            {
-                if (!funcDecl->params[i].defaultValue)
-                {
+            for (size_t i = numArgs; i < numParams; ++i) {
+                if (!funcDecl->params[i].defaultValue) {
                     allDefaulted = false;
                     break;
                 }
             }
         }
-        if (!allDefaulted)
-        {
+        if (!allDefaulted) {
             size_t minRequired = numParams;
-            if (funcDecl && funcDecl->params.size() == numParams)
-            {
+            if (funcDecl && funcDecl->params.size() == numParams) {
                 // Count required params (those without defaults)
                 minRequired = 0;
-                for (const auto &p : funcDecl->params)
-                {
+                for (const auto &p : funcDecl->params) {
                     if (!p.defaultValue)
                         ++minRequired;
                     else
@@ -257,8 +236,7 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
 
     // Check argument types (up to the shorter of the two lists)
     const size_t checkCount = std::min(numArgs, numParams);
-    for (size_t i = 0; i < checkCount; ++i)
-    {
+    for (size_t i = 0; i < checkCount; ++i) {
         TypeRef argType = exprTypes_.count(expr->args[i].value.get())
                               ? exprTypes_[expr->args[i].value.get()]
                               : nullptr;
@@ -268,8 +246,7 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
             paramType->kind == TypeKindSem::Unknown)
             continue;
 
-        if (!paramType->isAssignableFrom(*argType))
-        {
+        if (!paramType->isAssignableFrom(*argType)) {
             errorTypeMismatch(expr->args[i].value->loc, paramType, argType);
         }
     }
@@ -290,10 +267,8 @@ void Sema::validateCallArgs(CallExpr *expr, TypeRef funcType, const std::string 
 ///          - Collection method calls (List, Map, Set, String methods)
 ///          - Runtime class method calls
 ///          - Regular function and method calls
-TypeRef Sema::analyzeCall(CallExpr *expr)
-{
-    auto analyzeArgTypes = [&]()
-    {
+TypeRef Sema::analyzeCall(CallExpr *expr) {
+    auto analyzeArgTypes = [&]() {
         std::vector<TypeRef> argTypes;
         argTypes.reserve(expr->args.size());
         for (auto &arg : expr->args)
@@ -304,37 +279,28 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
     // Handle generic function calls: identity[Integer](100)
     // Parser produces: CallExpr(callee=IndexExpr(base=IdentExpr, index=IdentExpr/expr), args)
     // We need to detect when the "index" is actually a type argument
-    if (expr->callee->kind == ExprKind::Index)
-    {
+    if (expr->callee->kind == ExprKind::Index) {
         auto *indexExpr = static_cast<IndexExpr *>(expr->callee.get());
-        if (indexExpr->base->kind == ExprKind::Ident)
-        {
+        if (indexExpr->base->kind == ExprKind::Ident) {
             auto *identExpr = static_cast<IdentExpr *>(indexExpr->base.get());
-            if (isGenericFunction(identExpr->name))
-            {
+            if (isGenericFunction(identExpr->name)) {
                 // This is a generic function call!
                 // The "index" should be a type name
                 std::vector<TypeRef> typeArgs;
 
                 // Try to interpret the index expression as a type
-                if (indexExpr->index->kind == ExprKind::Ident)
-                {
+                if (indexExpr->index->kind == ExprKind::Ident) {
                     auto *typeIdent = static_cast<IdentExpr *>(indexExpr->index.get());
                     // Create a NamedType node and resolve it
                     auto typeNode = std::make_unique<NamedType>(typeIdent->loc, typeIdent->name);
                     TypeRef typeArg = resolveTypeNode(typeNode.get());
-                    if (typeArg && typeArg->kind != TypeKindSem::Unknown)
-                    {
+                    if (typeArg && typeArg->kind != TypeKindSem::Unknown) {
                         typeArgs.push_back(typeArg);
-                    }
-                    else
-                    {
+                    } else {
                         error(typeIdent->loc, "Unknown type: " + typeIdent->name);
                         return types::unknown();
                     }
-                }
-                else
-                {
+                } else {
                     error(indexExpr->index->loc,
                           "Expected type argument for generic function call");
                     return types::unknown();
@@ -351,16 +317,14 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 exprTypes_[expr->callee.get()] = funcType;
 
                 // Analyze arguments
-                for (auto &arg : expr->args)
-                {
+                for (auto &arg : expr->args) {
                     analyzeExpr(arg.value.get());
                 }
 
                 validateCallArgs(expr, funcType, mangledName);
 
                 // Return the function's return type
-                if (funcType && funcType->kind == TypeKindSem::Function)
-                {
+                if (funcType && funcType->kind == TypeKindSem::Function) {
                     return funcType->returnType();
                 }
                 return types::unknown();
@@ -371,18 +335,14 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
     // Type inference for generic function calls without explicit type arguments
     // e.g., identity(42) instead of identity[Integer](42)
     // This must come BEFORE the dotted name lookup to catch simple IdentExpr callees
-    if (expr->callee->kind == ExprKind::Ident)
-    {
+    if (expr->callee->kind == ExprKind::Ident) {
         auto *identExpr = static_cast<IdentExpr *>(expr->callee.get());
-        if (isGenericFunction(identExpr->name))
-        {
+        if (isGenericFunction(identExpr->name)) {
             FunctionDecl *genericDecl = getGenericFunction(identExpr->name);
-            if (genericDecl && !genericDecl->genericParams.empty() && !expr->args.empty())
-            {
+            if (genericDecl && !genericDecl->genericParams.empty() && !expr->args.empty()) {
                 // Analyze all arguments first to get their types
                 std::vector<TypeRef> argTypes;
-                for (auto &arg : expr->args)
-                {
+                for (auto &arg : expr->args) {
                     TypeRef argType = analyzeExpr(arg.value.get());
                     argTypes.push_back(argType);
                 }
@@ -393,36 +353,28 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
 
                 // Infer type parameters from argument types
                 std::map<std::string, TypeRef> inferredTypes;
-                for (size_t i = 0; i < genericDecl->params.size() && i < argTypes.size(); ++i)
-                {
+                for (size_t i = 0; i < genericDecl->params.size() && i < argTypes.size(); ++i) {
                     // Check if the parameter type is a type parameter (e.g., T)
                     TypeNode *paramTypeNode = genericDecl->params[i].type.get();
-                    if (paramTypeNode && paramTypeNode->kind == TypeKind::Named)
-                    {
+                    if (paramTypeNode && paramTypeNode->kind == TypeKind::Named) {
                         auto *namedType = static_cast<NamedType *>(paramTypeNode);
                         // Check if this name is a type parameter
-                        if (typeParamNames.count(namedType->name) > 0)
-                        {
+                        if (typeParamNames.count(namedType->name) > 0) {
                             // This parameter has type T, infer T from the argument
                             const std::string &typeParamName = namedType->name;
                             TypeRef argType = argTypes[i];
-                            if (argType && argType->kind != TypeKindSem::Unknown)
-                            {
+                            if (argType && argType->kind != TypeKindSem::Unknown) {
                                 // Check for consistency if already inferred
                                 auto it = inferredTypes.find(typeParamName);
-                                if (it != inferredTypes.end())
-                                {
-                                    if (it->second != argType)
-                                    {
+                                if (it != inferredTypes.end()) {
+                                    if (it->second != argType) {
                                         error(expr->args[i].value->loc,
                                               "Type mismatch in generic function call: "
                                               "cannot infer consistent type for " +
                                                   typeParamName);
                                         return types::unknown();
                                     }
-                                }
-                                else
-                                {
+                                } else {
                                     inferredTypes[typeParamName] = argType;
                                 }
                             }
@@ -432,15 +384,11 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
 
                 // Check that all type parameters were inferred
                 std::vector<TypeRef> typeArgs;
-                for (const auto &paramName : genericDecl->genericParams)
-                {
+                for (const auto &paramName : genericDecl->genericParams) {
                     auto it = inferredTypes.find(paramName);
-                    if (it != inferredTypes.end())
-                    {
+                    if (it != inferredTypes.end()) {
                         typeArgs.push_back(it->second);
-                    }
-                    else
-                    {
+                    } else {
                         error(expr->loc,
                               "Cannot infer type argument for '" + paramName +
                                   "' in generic function call");
@@ -461,8 +409,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 validateCallArgs(expr, funcType, mangledName);
 
                 // Return the function's return type
-                if (funcType && funcType->kind == TypeKindSem::Function)
-                {
+                if (funcType && funcType->kind == TypeKindSem::Function) {
                     return funcType->returnType();
                 }
                 return types::unknown();
@@ -472,24 +419,20 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
 
     // Check if callee is an imported symbol from a bound namespace
     // This handles unqualified calls like Say() when Viper.Terminal is bound
-    if (expr->callee->kind == ExprKind::Ident)
-    {
+    if (expr->callee->kind == ExprKind::Ident) {
         auto *identExpr = static_cast<IdentExpr *>(expr->callee.get());
         auto importIt = importedSymbols_.find(identExpr->name);
-        if (importIt != importedSymbols_.end())
-        {
+        if (importIt != importedSymbols_.end()) {
             // Resolve to the full qualified name
             const std::string &fullName = importIt->second;
             Symbol *sym = lookupSymbol(fullName);
-            if (sym && sym->kind == Symbol::Kind::Function && sym->isExtern)
-            {
+            if (sym && sym->kind == Symbol::Kind::Function && sym->isExtern) {
                 // Store the resolved callee for the lowerer
                 runtimeCallees_[expr] = fullName;
                 exprTypes_[expr->callee.get()] = sym->type;
 
                 // Analyze arguments
-                for (auto &arg : expr->args)
-                {
+                for (auto &arg : expr->args) {
                     analyzeExpr(arg.value.get());
                 }
 
@@ -497,8 +440,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 // include implicit self parameters that don't appear in call syntax.
 
                 // Return the function's return type
-                if (sym->type && sym->type->kind == TypeKindSem::Function)
-                {
+                if (sym->type && sym->type->kind == TypeKindSem::Function) {
                     return sym->type->returnType();
                 }
                 return sym->type;
@@ -506,25 +448,21 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         }
     }
 
-    if (expr->callee->kind == ExprKind::Ident)
-    {
+    if (expr->callee->kind == ExprKind::Ident) {
         auto *identExpr = static_cast<IdentExpr *>(expr->callee.get());
         std::vector<TypeRef> argTypes = analyzeArgTypes();
 
         if (currentSelfType_ && (currentSelfType_->kind == TypeKindSem::Entity ||
-                                 currentSelfType_->kind == TypeKindSem::Value))
-        {
+                                 currentSelfType_->kind == TypeKindSem::Value)) {
             Symbol *local = currentScope_->lookupLocal(identExpr->name);
-            if (!local || local->kind == Symbol::Kind::Method)
-            {
+            if (!local || local->kind == Symbol::Kind::Method) {
                 std::string resolvedOwner;
                 if (MethodDecl *method = resolveMethodOverload(currentSelfType_->name,
                                                                identExpr->name,
                                                                argTypes,
                                                                expr->loc,
                                                                &resolvedOwner,
-                                                               true))
-                {
+                                                               true)) {
                     resolvedMethodDecls_[expr] = method;
                     resolvedMethodOwnerTypes_[expr] = resolvedOwner;
                     resolvedMethodSlotKeys_[expr] = methodSlotKey(resolvedOwner, method);
@@ -539,8 +477,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
 
         std::string loweredName;
         if (FunctionDecl *func =
-                resolveFunctionOverload(identExpr->name, argTypes, expr->loc, &loweredName))
-        {
+                resolveFunctionOverload(identExpr->name, argTypes, expr->loc, &loweredName)) {
             TypeRef funcType = functionDeclTypes_[func];
             resolvedFunctionCallees_[expr] = loweredName;
             resolvedFunctionDecls_[expr] = func;
@@ -554,30 +491,26 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
     // First, try to resolve dotted function names like Viper.Terminal.Say or MyLib.helper
     // This unified lookup works for both runtime functions and user-defined namespaced functions
     std::string dottedName;
-    if (extractDottedName(expr->callee.get(), dottedName))
-    {
+    if (extractDottedName(expr->callee.get(), dottedName)) {
         // Check if the first part is a module alias or imported symbol that needs expansion
         // e.g., "T.Say" where T is an alias for "Viper.Terminal" becomes "Viper.Terminal.Say"
         // or "Canvas.New" where Canvas is imported from Viper.Graphics becomes
         // "Viper.Graphics.Canvas.New"
         auto dotPos = dottedName.find('.');
-        if (dotPos != std::string::npos)
-        {
+        if (dotPos != std::string::npos) {
             std::string firstPart = dottedName.substr(0, dotPos);
             std::string rest = dottedName.substr(dotPos + 1);
 
             // Check if firstPart is a module alias (bound namespace with alias)
             auto aliasIt = aliasToNamespace_.find(firstPart);
-            if (aliasIt != aliasToNamespace_.end())
-            {
+            if (aliasIt != aliasToNamespace_.end()) {
                 // Expand the alias: T.Say -> Viper.Terminal.Say
                 dottedName = aliasIt->second + "." + rest;
             }
 
             // Check if firstPart is an imported symbol (e.g., Canvas from Viper.Graphics)
             auto importIt = importedSymbols_.find(firstPart);
-            if (importIt != importedSymbols_.end())
-            {
+            if (importIt != importedSymbols_.end()) {
                 // Expand: Canvas.New -> Viper.Graphics.Canvas.New
                 dottedName = importIt->second + "." + rest;
             }
@@ -587,8 +520,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
 
         std::string loweredName;
         if (FunctionDecl *func =
-                resolveFunctionOverload(dottedName, argTypes, expr->loc, &loweredName))
-        {
+                resolveFunctionOverload(dottedName, argTypes, expr->loc, &loweredName)) {
             TypeRef funcType = functionDeclTypes_[func];
             resolvedFunctionCallees_[expr] = loweredName;
             resolvedFunctionDecls_[expr] = func;
@@ -600,35 +532,30 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
 
         // Check if it's a known function (runtime or user-defined with qualified name)
         Symbol *sym = lookupSymbol(dottedName);
-        if (sym && sym->kind == Symbol::Kind::Function)
-        {
+        if (sym && sym->kind == Symbol::Kind::Function) {
             // Bug #024 fix: Store the callee's type so the lowerer can access it
             // The lowerer uses sema_.typeOf(expr->callee.get()) to determine return type
             TypeRef funcType = sym->type;
             exprTypes_[expr->callee.get()] = funcType;
 
             // Analyze arguments
-            for (auto &arg : expr->args)
-            {
+            for (auto &arg : expr->args) {
                 analyzeExpr(arg.value.get());
             }
 
             // Only validate user-defined functions — runtime externs have
             // implicit self params that don't appear in Zia call syntax.
-            if (!sym->isExtern)
-            {
+            if (!sym->isExtern) {
                 validateCallArgs(expr, funcType, dottedName);
             }
 
             // For extern functions (runtime library), store the resolved call info
             // so the lowerer knows to emit an extern call
-            if (sym->isExtern)
-            {
+            if (sym->isExtern) {
                 runtimeCallees_[expr] = dottedName;
             }
             // Bug #023 fix: Return the function's return type, not the function type itself
-            if (funcType && funcType->kind == TypeKindSem::Function)
-            {
+            if (funcType && funcType->kind == TypeKindSem::Function) {
                 return funcType->returnType();
             }
 
@@ -636,21 +563,17 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             // This enables for-in iteration over runtime lists and maps
             // For extern functions, sym.type is the return type directly (not wrapped in Function)
             if (sym->isExtern && funcType && funcType->kind == TypeKindSem::Ptr &&
-                !funcType->name.empty())
-            {
+                !funcType->name.empty()) {
                 // Check if this is a List runtime class
-                if (funcType->name == "Viper.Collections.List")
-                {
+                if (funcType->name == "Viper.Collections.List") {
                     // Return a List type with unknown element type
                     return types::list(types::unknown());
                 }
-                if (funcType->name == "Viper.Collections.Map")
-                {
+                if (funcType->name == "Viper.Collections.Map") {
                     // Return a Map type with unknown key/value types
                     return types::map(types::unknown(), types::unknown());
                 }
-                if (funcType->name == "Viper.Collections.Set")
-                {
+                if (funcType->name == "Viper.Collections.Set") {
                     // Return a Set type with unknown element type
                     return types::set(types::unknown());
                 }
@@ -662,25 +585,21 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
 
     // Handle special built-in method calls on collections
     // This allows list.count() as an alternative to list.count
-    if (expr->callee->kind == ExprKind::Field)
-    {
+    if (expr->callee->kind == ExprKind::Field) {
         auto *fieldExpr = static_cast<FieldExpr *>(expr->callee.get());
         std::vector<TypeRef> argTypes = analyzeArgTypes();
 
         if (fieldExpr->base->kind == ExprKind::SuperExpr && currentSelfType_ &&
-            currentSelfType_->kind == TypeKindSem::Entity)
-        {
+            currentSelfType_->kind == TypeKindSem::Entity) {
             auto entityIt = entityDecls_.find(currentSelfType_->name);
-            if (entityIt != entityDecls_.end() && !entityIt->second->baseClass.empty())
-            {
+            if (entityIt != entityDecls_.end() && !entityIt->second->baseClass.empty()) {
                 std::string resolvedOwner;
                 if (MethodDecl *method = resolveMethodOverload(entityIt->second->baseClass,
                                                                fieldExpr->field,
                                                                argTypes,
                                                                expr->loc,
                                                                &resolvedOwner,
-                                                               true))
-                {
+                                                               true)) {
                     resolvedMethodDecls_[expr] = method;
                     resolvedMethodOwnerTypes_[expr] = resolvedOwner;
                     resolvedMethodSlotKeys_[expr] = methodSlotKey(resolvedOwner, method);
@@ -696,18 +615,15 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         TypeRef baseType = analyzeExpr(fieldExpr->base.get());
 
         // Helper to analyze all arguments
-        auto analyzeArgs = [&]()
-        {
-            for (auto &arg : expr->args)
-            {
+        auto analyzeArgs = [&]() {
+            for (auto &arg : expr->args) {
                 analyzeExpr(arg.value.get());
             }
         };
 
         if (baseType &&
             (baseType->kind == TypeKindSem::Value || baseType->kind == TypeKindSem::Entity ||
-             baseType->kind == TypeKindSem::Interface))
-        {
+             baseType->kind == TypeKindSem::Interface)) {
             std::string resolvedOwner;
             if (MethodDecl *method =
                     resolveMethodOverload(baseType->name,
@@ -715,11 +631,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                                           argTypes,
                                           expr->loc,
                                           &resolvedOwner,
-                                          baseType->kind != TypeKindSem::Interface))
-            {
+                                          baseType->kind != TypeKindSem::Interface)) {
                 bool isInsideType = currentSelfType_ && currentSelfType_->name == resolvedOwner;
-                if (method->visibility == Visibility::Private && !isInsideType)
-                {
+                if (method->visibility == Visibility::Private && !isInsideType) {
                     error(expr->loc,
                           "Cannot access private member '" + fieldExpr->field + "' of type '" +
                               resolvedOwner + "'");
@@ -738,42 +652,33 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         }
 
         // Handle List methods using lookup table
-        if (baseType && baseType->kind == TypeKindSem::List)
-        {
+        if (baseType && baseType->kind == TypeKindSem::List) {
             // Range modifier methods — .rev() and .step(n) return same type
-            if (fieldExpr->field == "rev" && expr->args.empty())
-            {
+            if (fieldExpr->field == "rev" && expr->args.empty()) {
                 return baseType;
             }
-            if (fieldExpr->field == "step" && expr->args.size() == 1)
-            {
+            if (fieldExpr->field == "step" && expr->args.size() == 1) {
                 TypeRef argType = analyzeExpr(expr->args[0].value.get());
                 if (argType && !argType->isIntegral())
                     error(expr->args[0].value->loc, "step() argument must be an integer");
                 return baseType;
             }
-            if (auto *method = findMethod(listMethods, fieldExpr->field))
-            {
+            if (auto *method = findMethod(listMethods, fieldExpr->field)) {
                 // Special handling for remove/contains type checking
-                if (fieldExpr->field == "remove" || fieldExpr->field == "contains")
-                {
+                if (fieldExpr->field == "remove" || fieldExpr->field == "contains") {
                     TypeRef elemType = baseType->elementType();
-                    for (auto &arg : expr->args)
-                    {
+                    for (auto &arg : expr->args) {
                         TypeRef argType = analyzeExpr(arg.value.get());
                         if (elemType && argType && !expr->args.empty() &&
                             argType->kind == TypeKindSem::Integer &&
-                            elemType->kind != TypeKindSem::Integer)
-                        {
+                            elemType->kind != TypeKindSem::Integer) {
                             error(expr->args[0].value->loc,
                                   "Type mismatch: " + fieldExpr->field +
                                       "() expects element type, got Integer. "
                                       "Did you mean removeAt() to remove by index?");
                         }
                     }
-                }
-                else
-                {
+                } else {
                     analyzeArgs();
                 }
                 return resolveMethodReturnType(method->returnKind, baseType);
@@ -781,22 +686,17 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         }
 
         // Handle Map methods using lookup table
-        if (baseType && baseType->kind == TypeKindSem::Map)
-        {
-            if (auto *method = findMethod(mapMethods, fieldExpr->field))
-            {
+        if (baseType && baseType->kind == TypeKindSem::Map) {
+            if (auto *method = findMethod(mapMethods, fieldExpr->field)) {
                 analyzeArgs();
                 // Validate string keys for methods that require them
                 if (method->returnKind == MethodReturnKind::ValueType ||
                     method->returnKind == MethodReturnKind::Boolean || fieldExpr->field == "set" ||
-                    fieldExpr->field == "put")
-                {
-                    if (!expr->args.empty())
-                    {
+                    fieldExpr->field == "put") {
+                    if (!expr->args.empty()) {
                         TypeRef keyType = exprTypes_[expr->args[0].value.get()];
                         if (keyType && keyType->kind != TypeKindSem::String &&
-                            keyType->kind != TypeKindSem::Unknown)
-                        {
+                            keyType->kind != TypeKindSem::Unknown) {
                             error(expr->args[0].value->loc, "Map keys must be String");
                         }
                     }
@@ -806,10 +706,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         }
 
         // Handle Set methods using lookup table
-        if (baseType && baseType->kind == TypeKindSem::Set)
-        {
-            if (auto *method = findMethod(setMethods, fieldExpr->field))
-            {
+        if (baseType && baseType->kind == TypeKindSem::Set) {
+            if (auto *method = findMethod(setMethods, fieldExpr->field)) {
                 analyzeArgs();
                 return resolveMethodReturnType(method->returnKind, baseType);
             }
@@ -818,9 +716,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         // Fallback: Map semantic collection types to runtime class methods.
         // Handles runtime-specific methods (get_Length, Put, First, etc.) that aren't
         // in the built-in Zia-friendly method tables above.
-        if (baseType && (baseType->kind == TypeKindSem::Set ||
-                         baseType->kind == TypeKindSem::List || baseType->kind == TypeKindSem::Map))
-        {
+        if (baseType &&
+            (baseType->kind == TypeKindSem::Set || baseType->kind == TypeKindSem::List ||
+             baseType->kind == TypeKindSem::Map)) {
             std::string className;
             if (baseType->kind == TypeKindSem::Set)
                 className = "Viper.Collections.Set";
@@ -831,11 +729,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
 
             std::string fullMethodName = className + "." + fieldExpr->field;
             Symbol *sym = lookupSymbol(fullMethodName);
-            if (sym && sym->kind == Symbol::Kind::Function)
-            {
+            if (sym && sym->kind == Symbol::Kind::Function) {
                 analyzeArgs();
-                if (sym->isExtern)
-                {
+                if (sym->isExtern) {
                     runtimeCallees_[expr] = fullMethodName;
                 }
                 if (sym->type && sym->type->kind == TypeKindSem::Function)
@@ -845,10 +741,8 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         }
 
         // Handle String methods using lookup table
-        if (baseType && baseType->kind == TypeKindSem::String)
-        {
-            if (auto *method = findMethod(stringMethods, fieldExpr->field))
-            {
+        if (baseType && baseType->kind == TypeKindSem::String) {
+            if (auto *method = findMethod(stringMethods, fieldExpr->field)) {
                 analyzeArgs();
                 return resolveMethodReturnType(method->returnKind, baseType);
             }
@@ -856,15 +750,11 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             std::string fullMethodName = "Viper.String." + fieldExpr->field;
             Symbol *sym = nullptr;
 
-            if (const auto *rtClass = il::runtime::findRuntimeClassByQName("Viper.String"))
-            {
-                for (const auto &m : rtClass->methods)
-                {
-                    if (m.name && iequals(m.name, fieldExpr->field) && m.target)
-                    {
+            if (const auto *rtClass = il::runtime::findRuntimeClassByQName("Viper.String")) {
+                for (const auto &m : rtClass->methods) {
+                    if (m.name && iequals(m.name, fieldExpr->field) && m.target) {
                         sym = lookupSymbol(m.target);
-                        if (sym && sym->kind == Symbol::Kind::Function)
-                        {
+                        if (sym && sym->kind == Symbol::Kind::Function) {
                             fullMethodName = m.target;
                             break;
                         }
@@ -875,25 +765,20 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             if (!sym)
                 sym = lookupSymbol(fullMethodName);
 
-            if (sym && sym->kind == Symbol::Kind::Function)
-            {
+            if (sym && sym->kind == Symbol::Kind::Function) {
                 analyzeArgs();
 
-                if (sym->type && sym->type->kind == TypeKindSem::Function)
-                {
+                if (sym->type && sym->type->kind == TypeKindSem::Function) {
                     const auto paramTys = sym->type->paramTypes();
                     const size_t expectedArgs = paramTys.size();
                     const size_t actualArgs = expr->args.size();
 
-                    if (actualArgs > expectedArgs)
-                    {
+                    if (actualArgs > expectedArgs) {
                         error(expr->loc,
                               "Too many arguments to '" + fieldExpr->field + "': expected " +
                                   std::to_string(expectedArgs) + ", got " +
                                   std::to_string(actualArgs));
-                    }
-                    else if (actualArgs < expectedArgs)
-                    {
+                    } else if (actualArgs < expectedArgs) {
                         error(expr->loc,
                               "Too few arguments to '" + fieldExpr->field + "': expected " +
                                   std::to_string(expectedArgs) + ", got " +
@@ -901,8 +786,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                     }
 
                     const size_t checkCount = std::min(actualArgs, expectedArgs);
-                    for (size_t i = 0; i < checkCount; ++i)
-                    {
+                    for (size_t i = 0; i < checkCount; ++i) {
                         TypeRef argType = exprTypes_.count(expr->args[i].value.get())
                                               ? exprTypes_[expr->args[i].value.get()]
                                               : nullptr;
@@ -930,8 +814,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
         // This occurs when a runtime function that returns obj/ptr without a typed seq
         // annotation is used as a method receiver. The typed Seq API (Seq.Get, Seq.get_Length)
         // must be used instead, or the runtime.def entry should be annotated with seq<T>.
-        if (baseType && baseType->kind == TypeKindSem::Ptr && baseType->name.empty())
-        {
+        if (baseType && baseType->kind == TypeKindSem::Ptr && baseType->name.empty()) {
             error(expr->loc,
                   "Cannot call method on an untyped object reference. "
                   "Use Seq.Get/Seq.get_Length for sequence results, or check the runtime.def "
@@ -943,8 +826,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
 
         // Handle runtime class method calls (e.g., canvas.Poll(), canvas.Clear())
         // Runtime classes have names starting with "Viper." and are registered in typeRegistry_
-        if (baseType && baseType->name.find("Viper.") == 0)
-        {
+        if (baseType && baseType->name.find("Viper.") == 0) {
             // Construct full method name: ClassName.MethodName
             std::string fullMethodName = baseType->name + "." + fieldExpr->field;
 
@@ -952,15 +834,11 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
 
             // First, try the RuntimeClasses catalog for instance method dispatch.
             // This finds method targets that accept the implicit receiver arg.
-            if (const auto *rtClass = il::runtime::findRuntimeClassByQName(baseType->name))
-            {
-                for (const auto &m : rtClass->methods)
-                {
-                    if (m.name && std::string_view(m.name) == fieldExpr->field && m.target)
-                    {
+            if (const auto *rtClass = il::runtime::findRuntimeClassByQName(baseType->name)) {
+                for (const auto &m : rtClass->methods) {
+                    if (m.name && std::string_view(m.name) == fieldExpr->field && m.target) {
                         sym = lookupSymbol(m.target);
-                        if (sym && sym->kind == Symbol::Kind::Function)
-                        {
+                        if (sym && sym->kind == Symbol::Kind::Function) {
                             fullMethodName = m.target;
                             break;
                         }
@@ -975,12 +853,10 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             // If not found and this is a GUI widget class, try falling back to Widget base class
             // This handles inherited methods like SetSize, AddChild, SetVisible, etc.
             if (!sym && baseType->name.find("Viper.GUI.") == 0 &&
-                baseType->name != "Viper.GUI.Widget")
-            {
+                baseType->name != "Viper.GUI.Widget") {
                 std::string widgetMethodName = "Viper.GUI.Widget." + fieldExpr->field;
                 sym = lookupSymbol(widgetMethodName);
-                if (sym && sym->kind == Symbol::Kind::Function)
-                {
+                if (sym && sym->kind == Symbol::Kind::Function) {
                     fullMethodName = widgetMethodName;
                 }
             }
@@ -989,20 +865,15 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
             // different class (e.g., Network.Tcp.RecvExact returns Bytes, not Tcp),
             // the variable's Ptr name may not match the actual class. Search all
             // runtime classes for the method as a fallback.
-            if (!sym)
-            {
+            if (!sym) {
                 const auto &catalog = il::runtime::RuntimeRegistry::instance().rawCatalog();
-                for (const auto &cls : catalog)
-                {
+                for (const auto &cls : catalog) {
                     if (!cls.qname || cls.qname == baseType->name)
                         continue;
-                    for (const auto &m : cls.methods)
-                    {
-                        if (m.name && std::string_view(m.name) == fieldExpr->field && m.target)
-                        {
+                    for (const auto &m : cls.methods) {
+                        if (m.name && std::string_view(m.name) == fieldExpr->field && m.target) {
                             sym = lookupSymbol(m.target);
-                            if (sym && sym->kind == Symbol::Kind::Function)
-                            {
+                            if (sym && sym->kind == Symbol::Kind::Function) {
                                 fullMethodName = m.target;
                                 break;
                             }
@@ -1013,11 +884,9 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 }
             }
 
-            if (sym && sym->kind == Symbol::Kind::Function)
-            {
+            if (sym && sym->kind == Symbol::Kind::Function) {
                 // Analyze arguments
-                for (auto &arg : expr->args)
-                {
+                for (auto &arg : expr->args) {
                     analyzeExpr(arg.value.get());
                 }
 
@@ -1025,8 +894,7 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
                 // include implicit self parameters.
 
                 // Store the resolved runtime call info for the lowerer
-                if (sym->isExtern)
-                {
+                if (sym->isExtern) {
                     runtimeCallees_[expr] = fullMethodName;
                 }
                 // Return the function's return type, not the function type itself.
@@ -1042,27 +910,23 @@ TypeRef Sema::analyzeCall(CallExpr *expr)
     TypeRef calleeType = analyzeExpr(expr->callee.get());
 
     // Analyze arguments
-    for (auto &arg : expr->args)
-    {
+    for (auto &arg : expr->args) {
         analyzeExpr(arg.value.get());
     }
 
     // If callee is a function type, validate args and return its return type
-    if (calleeType->kind == TypeKindSem::Function)
-    {
+    if (calleeType->kind == TypeKindSem::Function) {
         validateCallArgs(expr, calleeType, "function");
         return calleeType->returnType();
     }
 
     // If callee is unknown, return unknown
-    if (calleeType->kind == TypeKindSem::Unknown)
-    {
+    if (calleeType->kind == TypeKindSem::Unknown) {
         return types::unknown();
     }
 
     // Could be a constructor call (Type(args))
-    if (calleeType->kind == TypeKindSem::Value || calleeType->kind == TypeKindSem::Entity)
-    {
+    if (calleeType->kind == TypeKindSem::Value || calleeType->kind == TypeKindSem::Entity) {
         return calleeType;
     }
 

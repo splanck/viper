@@ -40,8 +40,7 @@
 
 #ifdef _WIN32
 // Windows doesn't have setenv, use _putenv_s instead
-inline int setenv(const char *name, const char *value, int /*overwrite*/)
-{
+inline int setenv(const char *name, const char *value, int /*overwrite*/) {
     return _putenv_s(name, value);
 }
 #endif
@@ -50,11 +49,9 @@ using namespace il;
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-struct FrontBasicConfig
-{
+struct FrontBasicConfig {
     bool emitIl{false};
     bool run{false};
     bool debugVm{false}; ///< True to use standard VM for debugging.
@@ -73,8 +70,7 @@ struct FrontBasicConfig
 ///          overflow text so callers can detect and elide the redundant report.
 /// @param diag Diagnostic produced by helper routines while loading sources.
 /// @return @c true when the diagnostic indicates SourceManager overflow.
-bool isSourceManagerOverflowDiag(const il::support::Diag &diag)
-{
+bool isSourceManagerOverflowDiag(const il::support::Diag &diag) {
     return diag.message == il::support::kSourceManagerFileIdOverflowMessage;
 }
 
@@ -91,59 +87,39 @@ bool isSourceManagerOverflowDiag(const il::support::Diag &diag)
 /// @param argv Argument vector pointing at UTF-8 encoded strings.
 /// @return Populated configuration on success; otherwise a diagnostic describing
 ///         the parse failure.
-il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **argv)
-{
+il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **argv) {
     FrontBasicConfig config{};
-    for (int i = 0; i < argc; ++i)
-    {
+    for (int i = 0; i < argc; ++i) {
         std::string_view arg = argv[i];
-        if (arg == "-emit-il")
-        {
-            if (i + 1 >= argc)
-            {
+        if (arg == "-emit-il") {
+            if (i + 1 >= argc) {
                 return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
                     il::support::Severity::Error, "missing BASIC source path", {}, {}});
             }
             config.emitIl = true;
             config.sourcePath = argv[++i];
-        }
-        else if (arg == "-run")
-        {
-            if (i + 1 >= argc)
-            {
+        } else if (arg == "-run") {
+            if (i + 1 >= argc) {
                 return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
                     il::support::Severity::Error, "missing BASIC source path", {}, {}});
             }
             config.run = true;
             config.sourcePath = argv[++i];
-        }
-        else if (arg == "--")
-        {
+        } else if (arg == "--") {
             // Remaining tokens are program arguments
             for (int j = i + 1; j < argc; ++j)
                 config.programArgs.emplace_back(argv[j]);
             break;
-        }
-        else if (arg == "-O0")
-        {
+        } else if (arg == "-O0") {
             config.optLevel = "O0";
-        }
-        else if (arg == "-O1" || arg == "-O2")
-        {
+        } else if (arg == "-O1" || arg == "-O2") {
             config.optLevel = std::string(arg.substr(1));
-        }
-        else if (arg == "--no-runtime-namespaces")
-        {
+        } else if (arg == "--no-runtime-namespaces") {
             config.noRuntimeNamespaces = true;
-        }
-        else if (arg == "--debug-vm")
-        {
+        } else if (arg == "--debug-vm") {
             config.debugVm = true;
-        }
-        else
-        {
-            switch (ilc::parseSharedOption(i, argc, argv, config.shared))
-            {
+        } else {
+            switch (ilc::parseSharedOption(i, argc, argv, config.shared)) {
                 case ilc::SharedOptionParseResult::Parsed:
                     continue;
                 case ilc::SharedOptionParseResult::Error:
@@ -156,8 +132,7 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
         }
     }
 
-    if ((config.emitIl == config.run) || config.sourcePath.empty())
-    {
+    if ((config.emitIl == config.run) || config.sourcePath.empty()) {
         return il::support::Expected<FrontBasicConfig>(il::support::Diagnostic{
             il::support::Severity::Error, "specify exactly one of -emit-il or -run", {}, {}});
     }
@@ -183,8 +158,7 @@ il::support::Expected<FrontBasicConfig> parseFrontBasicArgs(int argc, char **arg
 ///         execution fails.
 int runFrontBasic(const FrontBasicConfig &config,
                   const std::string &source,
-                  il::support::SourceManager &sm)
-{
+                  il::support::SourceManager &sm) {
     BasicCompilerOptions compilerOpts{};
     compilerOpts.boundsChecks = config.shared.boundsChecks;
     compilerOpts.dumpTokens = config.shared.dumpTokens;
@@ -197,16 +171,13 @@ int runFrontBasic(const FrontBasicConfig &config,
     compilerInput.fileId = config.sourceFileId;
 
     // Feature control: default ON; allow disabling via CLI for debugging/tests via env var.
-    if (config.noRuntimeNamespaces)
-    {
+    if (config.noRuntimeNamespaces) {
         setenv("VIPER_NO_RUNTIME_NAMESPACES", "1", 1);
     }
 
     auto result = compileBasic(compilerInput, compilerOpts, sm);
-    if (!result.succeeded())
-    {
-        if (result.emitter)
-        {
+    if (!result.succeeded()) {
+        if (result.emitter) {
             result.emitter->printAll(std::cerr);
         }
         return 1;
@@ -216,8 +187,7 @@ int runFrontBasic(const FrontBasicConfig &config,
 
     std::optional<il::support::Expected<void>> cachedVerification{};
 
-    if (config.emitIl)
-    {
+    if (config.emitIl) {
         io::Serializer::write(module, std::cout);
         return 0;
     }
@@ -236,17 +206,14 @@ int runFrontBasic(const FrontBasicConfig &config,
     // instead of producing a nice source-annotated diagnostic.  Skip optimization
     // (and cache the failure) when the module is already ill-formed so that the
     // reporter below can emit the verifier error with proper file locations.
-    if (!useStandardVm && !config.optLevel.empty())
-    {
+    if (!useStandardVm && !config.optLevel.empty()) {
         auto preOptVerify = il::verify::Verifier::verify(module);
-        if (preOptVerify)
-        {
+        if (preOptVerify) {
             il::transform::PassManager pm;
             pm.setVerifyBetweenPasses(false);
 
             // Enable per-pass IL dumps when requested.
-            if (config.shared.dumpILPasses)
-            {
+            if (config.shared.dumpILPasses) {
                 pm.setPrintBeforeEach(true);
                 pm.setPrintAfterEach(true);
                 pm.setInstrumentationStream(std::cerr);
@@ -255,38 +222,31 @@ int runFrontBasic(const FrontBasicConfig &config,
             pm.runPipeline(module, config.optLevel);
 
             // Dump IL after the full optimization pipeline.
-            if (config.shared.dumpILOpt)
-            {
+            if (config.shared.dumpILOpt) {
                 std::cerr << "=== IL after optimization (" << config.optLevel << ") ===\n";
                 io::Serializer::write(module, std::cerr);
                 std::cerr << "=== End IL ===\n";
             }
-        }
-        else
-        {
+        } else {
             cachedVerification = std::move(preOptVerify);
         }
     }
 
     auto verification =
         cachedVerification ? std::move(*cachedVerification) : il::verify::Verifier::verify(module);
-    if (!verification)
-    {
+    if (!verification) {
         il::support::printDiag(verification.error(), std::cerr, &sm);
         return 1;
     }
 
-    if (!config.shared.stdinPath.empty())
-    {
-        if (!freopen(config.shared.stdinPath.c_str(), "r", stdin))
-        {
+    if (!config.shared.stdinPath.empty()) {
+        if (!freopen(config.shared.stdinPath.c_str(), "r", stdin)) {
             std::cerr << "unable to open stdin file\n";
             return 1;
         }
     }
 
-    if (useStandardVm)
-    {
+    if (useStandardVm) {
         vm::TraceConfig traceCfg = config.shared.trace;
         traceCfg.sm = &sm;
 
@@ -298,18 +258,14 @@ int runFrontBasic(const FrontBasicConfig &config,
         vm::Runner runner(module, std::move(runCfg));
         int rc = static_cast<int>(runner.run());
         const auto trapMessage = runner.lastTrapMessage();
-        if (trapMessage)
-        {
-            if (config.shared.dumpTrap && !trapMessage->empty())
-            {
+        if (trapMessage) {
+            if (config.shared.dumpTrap && !trapMessage->empty()) {
                 std::cerr << *trapMessage;
-                if (trapMessage->back() != '\n')
-                {
+                if (trapMessage->back() != '\n') {
                     std::cerr << '\n';
                 }
             }
-            if (rc == 0)
-            {
+            if (rc == 0) {
                 rc = 1;
             }
         }
@@ -335,11 +291,9 @@ int runFrontBasic(const FrontBasicConfig &config,
 ///   3. Delegate to @ref runFrontBasic to either emit IL or execute the program.
 /// Any failure at these stages results in a non-zero exit status with diagnostics
 /// already printed to stderr, matching the behaviour expected by ilc callers.
-int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceManager &sm)
-{
+int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceManager &sm) {
     auto parsed = parseFrontBasicArgs(argc, argv);
-    if (!parsed)
-    {
+    if (!parsed) {
         const auto &diag = parsed.error();
         il::support::printDiag(diag, std::cerr, &sm);
         usage();
@@ -349,11 +303,9 @@ int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceMan
     FrontBasicConfig config = std::move(parsed.value());
 
     auto source = il::tools::common::loadSourceBuffer(config.sourcePath, sm);
-    if (!source)
-    {
+    if (!source) {
         const auto &diag = source.error();
-        if (!isSourceManagerOverflowDiag(diag))
-        {
+        if (!isSourceManagerOverflowDiag(diag)) {
             il::support::printDiag(diag, std::cerr, &sm);
         }
         return 1;
@@ -370,8 +322,7 @@ int cmdFrontBasicWithSourceManager(int argc, char **argv, il::support::SourceMan
 ///          Keeping this entry point tiny allows tests to exercise the driver
 ///          with injected source managers while production builds use the
 ///          default implementation.
-int cmdFrontBasic(int argc, char **argv)
-{
+int cmdFrontBasic(int argc, char **argv) {
     SourceManager sm;
     return cmdFrontBasicWithSourceManager(argc, argv, sm);
 }

@@ -23,14 +23,11 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
-[[nodiscard]] static bool ieq(std::string_view a, std::string_view b)
-{
+namespace {
+[[nodiscard]] static bool ieq(std::string_view a, std::string_view b) {
     if (a.size() != b.size())
         return false;
-    for (size_t i = 0; i < a.size(); ++i)
-    {
+    for (size_t i = 0; i < a.size(); ++i) {
         unsigned char ac = static_cast<unsigned char>(a[i]);
         unsigned char bc = static_cast<unsigned char>(b[i]);
         if (std::tolower(ac) != std::tolower(bc))
@@ -40,8 +37,7 @@ namespace
 }
 
 [[nodiscard]] static const il::core::Function *findFn(const il::core::Module &m,
-                                                      std::string_view name)
-{
+                                                      std::string_view name) {
     for (const auto &fn : m.functions)
         if (ieq(fn.name, name))
             return &fn;
@@ -49,8 +45,7 @@ namespace
 }
 } // namespace
 
-TEST(BasicSelectCaseObjectAssign, EmitsObjectRetainInArms)
-{
+TEST(BasicSelectCaseObjectAssign, EmitsObjectRetainInArms) {
     const std::string src = "10 CLASS Player\n"
                             "20 END CLASS\n"
                             "30 FUNCTION GetPlayer(i AS INTEGER) AS Player\n"
@@ -76,12 +71,9 @@ TEST(BasicSelectCaseObjectAssign, EmitsObjectRetainInArms)
     ASSERT_NE(fn, nullptr);
 
     bool sawRetain = false;
-    for (const auto &bb : fn->blocks)
-    {
-        for (const auto &in : bb.instructions)
-        {
-            if (in.op == il::core::Opcode::Call && ieq(in.callee, "rt_obj_retain_maybe"))
-            {
+    for (const auto &bb : fn->blocks) {
+        for (const auto &in : bb.instructions) {
+            if (in.op == il::core::Opcode::Call && ieq(in.callee, "rt_obj_retain_maybe")) {
                 sawRetain = true;
                 break;
             }
@@ -92,8 +84,7 @@ TEST(BasicSelectCaseObjectAssign, EmitsObjectRetainInArms)
     EXPECT_TRUE(sawRetain);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

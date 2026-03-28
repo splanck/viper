@@ -40,8 +40,7 @@ void rt_canvas_thick_line(void *canvas_ptr,
                           int64_t x2,
                           int64_t y2,
                           int64_t thickness,
-                          int64_t color)
-{
+                          int64_t color) {
     if (!canvas_ptr || thickness <= 0)
         return;
 
@@ -51,8 +50,7 @@ void rt_canvas_thick_line(void *canvas_ptr,
 
     vgfx_color_t col = (vgfx_color_t)color;
 
-    if (thickness == 1)
-    {
+    if (thickness == 1) {
         // Use standard line drawing
         vgfx_line(canvas->gfx_win, (int32_t)x1, (int32_t)y1, (int32_t)x2, (int32_t)y2, col);
         return;
@@ -63,8 +61,7 @@ void rt_canvas_thick_line(void *canvas_ptr,
     // which is a factor-of-r speedup for large thickness values.
     int64_t half = thickness / 2;
 
-    if (x1 == x2 && y1 == y2)
-    {
+    if (x1 == x2 && y1 == y2) {
         vgfx_fill_circle(canvas->gfx_win, (int32_t)x1, (int32_t)y1, (int32_t)half, col);
         return;
     }
@@ -91,15 +88,13 @@ void rt_canvas_thick_line(void *canvas_ptr,
     int32_t y_lo = (int32_t)floor(fmin(fmin(ay, by), fmin(cy, dy_c)));
     int32_t y_hi = (int32_t)ceil(fmax(fmax(ay, by), fmax(cy, dy_c)));
 
-    for (int32_t scan_y = y_lo; scan_y <= y_hi; scan_y++)
-    {
+    for (int32_t scan_y = y_lo; scan_y <= y_hi; scan_y++) {
         double sv = (double)scan_y;
         double x_min = 1e18, x_max = -1e18;
         double xi;
 
         // Edge A->C
-        if (fmin(ay, cy) <= sv && sv <= fmax(ay, cy) && ay != cy)
-        {
+        if (fmin(ay, cy) <= sv && sv <= fmax(ay, cy) && ay != cy) {
             xi = ax + (cx - ax) * (sv - ay) / (cy - ay);
             if (xi < x_min)
                 x_min = xi;
@@ -107,8 +102,7 @@ void rt_canvas_thick_line(void *canvas_ptr,
                 x_max = xi;
         }
         // Edge C->D
-        if (fmin(cy, dy_c) <= sv && sv <= fmax(cy, dy_c) && cy != dy_c)
-        {
+        if (fmin(cy, dy_c) <= sv && sv <= fmax(cy, dy_c) && cy != dy_c) {
             xi = cx + (dx - cx) * (sv - cy) / (dy_c - cy);
             if (xi < x_min)
                 x_min = xi;
@@ -116,8 +110,7 @@ void rt_canvas_thick_line(void *canvas_ptr,
                 x_max = xi;
         }
         // Edge D->B
-        if (fmin(dy_c, by) <= sv && sv <= fmax(dy_c, by) && dy_c != by)
-        {
+        if (fmin(dy_c, by) <= sv && sv <= fmax(dy_c, by) && dy_c != by) {
             xi = dx + (bx - dx) * (sv - dy_c) / (by - dy_c);
             if (xi < x_min)
                 x_min = xi;
@@ -125,8 +118,7 @@ void rt_canvas_thick_line(void *canvas_ptr,
                 x_max = xi;
         }
         // Edge B->A
-        if (fmin(by, ay) <= sv && sv <= fmax(by, ay) && by != ay)
-        {
+        if (fmin(by, ay) <= sv && sv <= fmax(by, ay) && by != ay) {
             xi = bx + (ax - bx) * (sv - by) / (ay - by);
             if (xi < x_min)
                 x_min = xi;
@@ -134,8 +126,7 @@ void rt_canvas_thick_line(void *canvas_ptr,
                 x_max = xi;
         }
 
-        if (x_max >= x_min)
-        {
+        if (x_max >= x_min) {
             vgfx_line(
                 canvas->gfx_win, (int32_t)floor(x_min), scan_y, (int32_t)ceil(x_max), scan_y, col);
         }
@@ -143,8 +134,7 @@ void rt_canvas_thick_line(void *canvas_ptr,
 }
 
 void rt_canvas_round_box(
-    void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t radius, int64_t color)
-{
+    void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t radius, int64_t color) {
     if (!canvas_ptr || w <= 0 || h <= 0)
         return;
 
@@ -161,8 +151,7 @@ void rt_canvas_round_box(
     if (radius < 0)
         radius = 0;
 
-    if (radius == 0)
-    {
+    if (radius == 0) {
         // Just draw a regular filled rectangle
         vgfx_fill_rect(canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, col);
         return;
@@ -211,8 +200,7 @@ void rt_canvas_round_box(
 }
 
 void rt_canvas_round_frame(
-    void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t radius, int64_t color)
-{
+    void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t radius, int64_t color) {
     if (!canvas_ptr || w <= 0 || h <= 0)
         return;
 
@@ -229,8 +217,7 @@ void rt_canvas_round_frame(
     if (radius < 0)
         radius = 0;
 
-    if (radius == 0)
-    {
+    if (radius == 0) {
         // Draw regular rectangle outline
         vgfx_line(canvas->gfx_win, (int32_t)x, (int32_t)y, (int32_t)(x + w - 1), (int32_t)y, col);
         vgfx_line(canvas->gfx_win,
@@ -302,8 +289,7 @@ void rt_canvas_round_frame(
 /// @param start_x
 /// @param start_y
 /// @param color
-void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, int64_t color)
-{
+void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, int64_t color) {
     if (!canvas_ptr)
         return;
 
@@ -317,8 +303,7 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
 
     // Scale start coordinates to physical pixels
     float cs = vgfx_window_get_scale(canvas->gfx_win);
-    if (cs > 1.0f)
-    {
+    if (cs > 1.0f) {
         start_x = (int64_t)(start_x * cs);
         start_y = (int64_t)(start_y * cs);
     }
@@ -348,8 +333,7 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
     int64_t stack_cap = 4096;
     int64_t *stack_x = (int64_t *)malloc((size_t)stack_cap * sizeof(int64_t));
     int64_t *stack_y = (int64_t *)malloc((size_t)stack_cap * sizeof(int64_t));
-    if (!stack_x || !stack_y)
-    {
+    if (!stack_x || !stack_y) {
         free(stack_x);
         free(stack_y);
         return;
@@ -360,8 +344,7 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
     stack_y[stack_top] = start_y;
     stack_top++;
 
-    while (stack_top > 0)
-    {
+    while (stack_top > 0) {
         stack_top--;
         int64_t x = stack_x[stack_top];
         int64_t y = stack_y[stack_top];
@@ -383,23 +366,20 @@ void rt_canvas_flood_fill(void *canvas_ptr, int64_t start_x, int64_t start_y, in
         pixel[3] = 255;
 
         // Grow stack if needed before pushing 4 neighbors
-        if (stack_top + 4 > stack_cap)
-        {
+        if (stack_top + 4 > stack_cap) {
             int64_t new_cap = stack_cap * 2;
             int64_t max_cap = fb.width * fb.height + 4;
             if (new_cap > max_cap)
                 new_cap = max_cap;
             int64_t *nx = (int64_t *)realloc(stack_x, (size_t)new_cap * sizeof(int64_t));
-            if (!nx)
-            {
+            if (!nx) {
                 free(stack_x);
                 free(stack_y);
                 return;
             }
             stack_x = nx;
             int64_t *ny = (int64_t *)realloc(stack_y, (size_t)new_cap * sizeof(int64_t));
-            if (!ny)
-            {
+            if (!ny) {
                 free(stack_x);
                 free(stack_y);
                 return;
@@ -434,8 +414,7 @@ void rt_canvas_triangle(void *canvas_ptr,
                         int64_t y2,
                         int64_t x3,
                         int64_t y3,
-                        int64_t color)
-{
+                        int64_t color) {
     if (!canvas_ptr)
         return;
 
@@ -446,8 +425,7 @@ void rt_canvas_triangle(void *canvas_ptr,
     vgfx_color_t col = (vgfx_color_t)color;
 
     // Sort vertices by y-coordinate (y1 <= y2 <= y3)
-    if (y1 > y2)
-    {
+    if (y1 > y2) {
         int64_t tmp = x1;
         x1 = x2;
         x2 = tmp;
@@ -455,8 +433,7 @@ void rt_canvas_triangle(void *canvas_ptr,
         y1 = y2;
         y2 = tmp;
     }
-    if (y2 > y3)
-    {
+    if (y2 > y3) {
         int64_t tmp = x2;
         x2 = x3;
         x3 = tmp;
@@ -464,8 +441,7 @@ void rt_canvas_triangle(void *canvas_ptr,
         y2 = y3;
         y3 = tmp;
     }
-    if (y1 > y2)
-    {
+    if (y1 > y2) {
         int64_t tmp = x1;
         x1 = x2;
         x2 = tmp;
@@ -475,8 +451,7 @@ void rt_canvas_triangle(void *canvas_ptr,
     }
 
     // Handle degenerate cases
-    if (y1 == y3)
-    {
+    if (y1 == y3) {
         // Horizontal line
         int64_t min_x = rtg_min64(rtg_min64(x1, x2), x3);
         int64_t max_x = rtg_max64(rtg_max64(x1, x2), x3);
@@ -485,21 +460,17 @@ void rt_canvas_triangle(void *canvas_ptr,
     }
 
     // Fill triangle using scanline algorithm
-    for (int64_t y = y1; y <= y3; y++)
-    {
+    for (int64_t y = y1; y <= y3; y++) {
         int64_t xa, xb;
 
-        if (y < y2)
-        {
+        if (y < y2) {
             // Upper part of triangle
             if (y2 != y1)
                 xa = x1 + (x2 - x1) * (y - y1) / (y2 - y1);
             else
                 xa = x1;
             xa = x1 + (x2 - x1) * (y - y1) / rtg_max64(y2 - y1, 1);
-        }
-        else
-        {
+        } else {
             // Lower part of triangle
             if (y3 != y2)
                 xa = x2 + (x3 - x2) * (y - y2) / (y3 - y2);
@@ -513,8 +484,7 @@ void rt_canvas_triangle(void *canvas_ptr,
         else
             xb = x1;
 
-        if (xa > xb)
-        {
+        if (xa > xb) {
             int64_t tmp = xa;
             xa = xb;
             xb = tmp;
@@ -531,8 +501,7 @@ void rt_canvas_triangle_frame(void *canvas_ptr,
                               int64_t y2,
                               int64_t x3,
                               int64_t y3,
-                              int64_t color)
-{
+                              int64_t color) {
     if (!canvas_ptr)
         return;
 
@@ -549,8 +518,7 @@ void rt_canvas_triangle_frame(void *canvas_ptr,
 }
 
 void rt_canvas_ellipse(
-    void *canvas_ptr, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color)
-{
+    void *canvas_ptr, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color) {
     if (!canvas_ptr || rx <= 0 || ry <= 0)
         return;
 
@@ -561,8 +529,7 @@ void rt_canvas_ellipse(
     vgfx_color_t col = (vgfx_color_t)color;
 
     // If rx == ry, it's a circle
-    if (rx == ry)
-    {
+    if (rx == ry) {
         vgfx_fill_circle(canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)rx, col);
         return;
     }
@@ -580,8 +547,7 @@ void rt_canvas_ellipse(
 
     // Region 1
     int64_t p = ry2 - (rx2 * ry) + (rx2 / 4);
-    while (px < py)
-    {
+    while (px < py) {
         // Draw horizontal scanlines
         vgfx_line(canvas->gfx_win,
                   (int32_t)(cx - x),
@@ -600,8 +566,7 @@ void rt_canvas_ellipse(
         px += two_ry2;
         if (p < 0)
             p += ry2 + px;
-        else
-        {
+        else {
             y--;
             py -= two_rx2;
             p += ry2 + px - py;
@@ -610,8 +575,7 @@ void rt_canvas_ellipse(
 
     // Region 2
     p = ry2 * (x * x + x) + rx2 * (y - 1) * (y - 1) - rx2 * ry2 + ry2 / 4;
-    while (y >= 0)
-    {
+    while (y >= 0) {
         vgfx_line(canvas->gfx_win,
                   (int32_t)(cx - x),
                   (int32_t)(cy + y),
@@ -629,8 +593,7 @@ void rt_canvas_ellipse(
         py -= two_rx2;
         if (p > 0)
             p += rx2 - py;
-        else
-        {
+        else {
             x++;
             px += two_ry2;
             p += rx2 - py + px;
@@ -639,8 +602,7 @@ void rt_canvas_ellipse(
 }
 
 void rt_canvas_ellipse_frame(
-    void *canvas_ptr, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color)
-{
+    void *canvas_ptr, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color) {
     if (!canvas_ptr || rx <= 0 || ry <= 0)
         return;
 
@@ -651,8 +613,7 @@ void rt_canvas_ellipse_frame(
     vgfx_color_t col = (vgfx_color_t)color;
 
     // If rx == ry, it's a circle
-    if (rx == ry)
-    {
+    if (rx == ry) {
         vgfx_circle(canvas->gfx_win, (int32_t)cx, (int32_t)cy, (int32_t)rx, col);
         return;
     }
@@ -676,14 +637,12 @@ void rt_canvas_ellipse_frame(
 
     // Region 1
     int64_t p = ry2 - (rx2 * ry) + (rx2 / 4);
-    while (px < py)
-    {
+    while (px < py) {
         x++;
         px += two_ry2;
         if (p < 0)
             p += ry2 + px;
-        else
-        {
+        else {
             y--;
             py -= two_rx2;
             p += ry2 + px - py;
@@ -697,14 +656,12 @@ void rt_canvas_ellipse_frame(
 
     // Region 2
     p = ry2 * (x * x + x) + rx2 * (y - 1) * (y - 1) - rx2 * ry2 + ry2 / 4;
-    while (y >= 0)
-    {
+    while (y >= 0) {
         y--;
         py -= two_rx2;
         if (p > 0)
             p += rx2 - py;
-        else
-        {
+        else {
             x++;
             px += two_ry2;
             p += rx2 - py + px;
@@ -727,8 +684,7 @@ void rt_canvas_arc(void *canvas_ptr,
                    int64_t radius,
                    int64_t start_angle,
                    int64_t end_angle,
-                   int64_t color)
-{
+                   int64_t color) {
     if (!canvas_ptr || radius <= 0)
         return;
 
@@ -746,16 +702,12 @@ void rt_canvas_arc(void *canvas_ptr,
         end_angle += 360;
 
     // Draw filled arc using scanline approach
-    for (int64_t y = -radius; y <= radius; y++)
-    {
-        for (int64_t x = -radius; x <= radius; x++)
-        {
-            if (x * x + y * y <= radius * radius)
-            {
+    for (int64_t y = -radius; y <= radius; y++) {
+        for (int64_t x = -radius; x <= radius; x++) {
+            if (x * x + y * y <= radius * radius) {
                 // Calculate angle of this point (in degrees, 0 = right)
                 int64_t angle;
-                if (x == 0 && y == 0)
-                {
+                if (x == 0 && y == 0) {
                     vgfx_pset(canvas->gfx_win, (int32_t)(cx), (int32_t)(cy), col);
                     continue;
                 }
@@ -775,8 +727,7 @@ void rt_canvas_arc(void *canvas_ptr,
                 if (check_angle < start_angle)
                     check_angle += 360;
 
-                if (check_angle >= start_angle && check_angle <= end_angle)
-                {
+                if (check_angle >= start_angle && check_angle <= end_angle) {
                     vgfx_pset(canvas->gfx_win, (int32_t)(cx + x), (int32_t)(cy - y), col);
                 }
             }
@@ -790,8 +741,7 @@ void rt_canvas_arc_frame(void *canvas_ptr,
                          int64_t radius,
                          int64_t start_angle,
                          int64_t end_angle,
-                         int64_t color)
-{
+                         int64_t color) {
     if (!canvas_ptr || radius <= 0)
         return;
 
@@ -815,8 +765,7 @@ void rt_canvas_arc_frame(void *canvas_ptr,
     if (steps > 360)
         steps = 360;
 
-    for (int64_t i = 0; i <= steps; i++)
-    {
+    for (int64_t i = 0; i <= steps; i++) {
         int64_t angle = start_angle + (end_angle - start_angle) * i / steps;
         int64_t px = cx + (radius * rtg_cos_deg_fp(angle)) / 1024;
         int64_t py = cy - (radius * rtg_sin_deg_fp(angle)) / 1024;
@@ -831,8 +780,7 @@ void rt_canvas_bezier(void *canvas_ptr,
                       int64_t cy,
                       int64_t x2,
                       int64_t y2,
-                      int64_t color)
-{
+                      int64_t color) {
     if (!canvas_ptr)
         return;
 
@@ -847,8 +795,7 @@ void rt_canvas_bezier(void *canvas_ptr,
     int64_t steps = 50;
     int64_t px = x1, py = y1;
 
-    for (int64_t i = 1; i <= steps; i++)
-    {
+    for (int64_t i = 1; i <= steps; i++) {
         int64_t t = (i * 1024) / steps;
         int64_t t2 = (t * t) / 1024;
         int64_t mt = 1024 - t;
@@ -869,8 +816,7 @@ void rt_canvas_bezier(void *canvas_ptr,
 /// @param points_ptr
 /// @param count
 /// @param color
-void rt_canvas_polyline(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color)
-{
+void rt_canvas_polyline(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color) {
     if (!canvas_ptr || !points_ptr || count < 2)
         return;
 
@@ -881,8 +827,7 @@ void rt_canvas_polyline(void *canvas_ptr, void *points_ptr, int64_t count, int64
     vgfx_color_t col = (vgfx_color_t)color;
     int64_t *points = (int64_t *)points_ptr;
 
-    for (int64_t i = 0; i < count - 1; i++)
-    {
+    for (int64_t i = 0; i < count - 1; i++) {
         int64_t x1 = points[i * 2];
         int64_t y1 = points[i * 2 + 1];
         int64_t x2 = points[(i + 1) * 2];
@@ -896,8 +841,7 @@ void rt_canvas_polyline(void *canvas_ptr, void *points_ptr, int64_t count, int64
 /// @param points_ptr
 /// @param count
 /// @param color
-void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color)
-{
+void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color) {
     if (!canvas_ptr || !points_ptr || count < 3)
         return;
 
@@ -910,8 +854,7 @@ void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_
 
     // Find bounding box
     int64_t min_y = points[1], max_y = points[1];
-    for (int64_t i = 1; i < count; i++)
-    {
+    for (int64_t i = 1; i < count; i++) {
         int64_t y = points[i * 2 + 1];
         if (y < min_y)
             min_y = y;
@@ -920,20 +863,17 @@ void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_
     }
 
     // Scanline fill algorithm
-    for (int64_t y = min_y; y <= max_y; y++)
-    {
+    for (int64_t y = min_y; y <= max_y; y++) {
         // Find all edge intersections with this scanline
         int64_t intersections[64];
         int64_t num_intersections = 0;
 
-        for (int64_t i = 0; i < count && num_intersections < 62; i++)
-        {
+        for (int64_t i = 0; i < count && num_intersections < 62; i++) {
             int64_t j = (i + 1) % count;
             int64_t y1 = points[i * 2 + 1];
             int64_t y2 = points[j * 2 + 1];
 
-            if ((y1 <= y && y2 > y) || (y2 <= y && y1 > y))
-            {
+            if ((y1 <= y && y2 > y) || (y2 <= y && y1 > y)) {
                 int64_t x1 = points[i * 2];
                 int64_t x2 = points[j * 2];
                 int64_t x = x1 + (y - y1) * (x2 - x1) / (y2 - y1);
@@ -942,12 +882,9 @@ void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_
         }
 
         // Sort intersections
-        for (int64_t i = 0; i < num_intersections - 1; i++)
-        {
-            for (int64_t j = i + 1; j < num_intersections; j++)
-            {
-                if (intersections[j] < intersections[i])
-                {
+        for (int64_t i = 0; i < num_intersections - 1; i++) {
+            for (int64_t j = i + 1; j < num_intersections; j++) {
+                if (intersections[j] < intersections[i]) {
                     int64_t tmp = intersections[i];
                     intersections[i] = intersections[j];
                     intersections[j] = tmp;
@@ -956,8 +893,7 @@ void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_
         }
 
         // Fill between pairs of intersections
-        for (int64_t i = 0; i + 1 < num_intersections; i += 2)
-        {
+        for (int64_t i = 0; i + 1 < num_intersections; i += 2) {
             vgfx_line(canvas->gfx_win,
                       (int32_t)intersections[i],
                       (int32_t)y,
@@ -973,8 +909,7 @@ void rt_canvas_polygon(void *canvas_ptr, void *points_ptr, int64_t count, int64_
 /// @param points_ptr
 /// @param count
 /// @param color
-void rt_canvas_polygon_frame(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color)
-{
+void rt_canvas_polygon_frame(void *canvas_ptr, void *points_ptr, int64_t count, int64_t color) {
     if (!canvas_ptr || !points_ptr || count < 3)
         return;
 
@@ -986,8 +921,7 @@ void rt_canvas_polygon_frame(void *canvas_ptr, void *points_ptr, int64_t count, 
     int64_t *points = (int64_t *)points_ptr;
 
     // Draw lines connecting all vertices, including back to start
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         int64_t j = (i + 1) % count;
         int64_t x1 = points[i * 2];
         int64_t y1 = points[i * 2 + 1];
@@ -1002,8 +936,7 @@ void rt_canvas_polygon_frame(void *canvas_ptr, void *points_ptr, int64_t count, 
 //=============================================================================
 
 void rt_canvas_gradient_h(
-    void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2)
-{
+    void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2) {
     if (!canvas_ptr || w <= 0 || h <= 0)
         return;
 
@@ -1014,12 +947,10 @@ void rt_canvas_gradient_h(
     // Precompute gradient colours for each column, then blit each row of height h
     // with a single memcpy-equivalent pass — avoids w*vgfx_line() call overhead.
     vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
-    {
+    if (!vgfx_get_framebuffer(canvas->gfx_win, &fb)) {
         // Fallback: per-column vgfx_line for mock/headless contexts.
         // vgfx_line auto-scales via coord_scale, so pass logical coords.
-        for (int64_t col = 0; col < w; col++)
-        {
+        for (int64_t col = 0; col < w; col++) {
             int64_t color = rt_color_lerp(c1, c2, col * 100 / (w - 1 > 0 ? w - 1 : 1));
             vgfx_line(canvas->gfx_win,
                       (int32_t)(x + col),
@@ -1053,8 +984,7 @@ void rt_canvas_gradient_h(
 
     // Gradient interpolation uses logical width so colour distribution is unchanged.
     int64_t w_minus1 = w > 1 ? w - 1 : 1;
-    for (int64_t i = 0; i < draw_w; i++)
-    {
+    for (int64_t i = 0; i < draw_w; i++) {
         // Map physical column back to logical for gradient interpolation.
         int64_t col = ((x0 - px) + i) / isf;
         int64_t color = rt_color_lerp(c1, c2, col * 100 / w_minus1);
@@ -1071,8 +1001,7 @@ void rt_canvas_gradient_h(
 }
 
 void rt_canvas_gradient_v(
-    void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2)
-{
+    void *canvas_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2) {
     if (!canvas_ptr || w <= 0 || h <= 0)
         return;
 
@@ -1083,11 +1012,9 @@ void rt_canvas_gradient_v(
     // Write each row directly into the framebuffer — one colour per row, no per-row
     // vgfx_line() overhead.
     vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(canvas->gfx_win, &fb))
-    {
+    if (!vgfx_get_framebuffer(canvas->gfx_win, &fb)) {
         // Fallback: vgfx_line auto-scales via coord_scale, so pass logical coords.
-        for (int64_t row = 0; row < h; row++)
-        {
+        for (int64_t row = 0; row < h; row++) {
             int64_t color = rt_color_lerp(c1, c2, row * 100 / (h - 1 > 0 ? h - 1 : 1));
             vgfx_line(canvas->gfx_win,
                       (int32_t)x,
@@ -1116,8 +1043,7 @@ void rt_canvas_gradient_v(
     int64_t draw_w = x1_clip - x0;
     int64_t h_minus1 = h > 1 ? h - 1 : 1;
 
-    for (int64_t row = y0; row < y1_clip; row++)
-    {
+    for (int64_t row = y0; row < y1_clip; row++) {
         // Map physical row back to logical for gradient interpolation.
         int64_t r_idx = (row - py) / isf;
         int64_t color = rt_color_lerp(c1, c2, r_idx * 100 / h_minus1);
@@ -1125,8 +1051,7 @@ void rt_canvas_gradient_v(
         uint8_t cg = (uint8_t)((color >> 8) & 0xFF);
         uint8_t cb = (uint8_t)(color & 0xFF);
         uint8_t *dst = &fb.pixels[(size_t)(row * fb.stride + x0 * 4)];
-        for (int64_t i = 0; i < draw_w; i++)
-        {
+        for (int64_t i = 0; i < draw_w; i++) {
             dst[i * 4 + 0] = cr;
             dst[i * 4 + 1] = cg;
             dst[i * 4 + 2] = cb;
@@ -1144,8 +1069,7 @@ void rt_canvas_gradient_v(
 /// @param s
 /// @param l
 /// @return Result value.
-int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l)
-{
+int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l) {
     // Clamp inputs
     h = ((h % 360) + 360) % 360;
     if (s < 0)
@@ -1166,8 +1090,7 @@ int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l)
 /// @brief Get the h value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_h(int64_t color)
-{
+int64_t rt_color_get_h(int64_t color) {
     int64_t r = (color >> 16) & 0xFF;
     int64_t g = (color >> 8) & 0xFF;
     int64_t b = color & 0xFF;
@@ -1179,8 +1102,7 @@ int64_t rt_color_get_h(int64_t color)
 /// @brief Get the s value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_s(int64_t color)
-{
+int64_t rt_color_get_s(int64_t color) {
     int64_t r = (color >> 16) & 0xFF;
     int64_t g = (color >> 8) & 0xFF;
     int64_t b = color & 0xFF;
@@ -1192,8 +1114,7 @@ int64_t rt_color_get_s(int64_t color)
 /// @brief Get the l value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_l(int64_t color)
-{
+int64_t rt_color_get_l(int64_t color) {
     int64_t r = (color >> 16) & 0xFF;
     int64_t g = (color >> 8) & 0xFF;
     int64_t b = color & 0xFF;
@@ -1207,8 +1128,7 @@ int64_t rt_color_get_l(int64_t color)
 /// @param c2
 /// @param t
 /// @return Result value.
-int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t)
-{
+int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t) {
     if (t < 0)
         t = 0;
     if (t > 100)
@@ -1232,32 +1152,28 @@ int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t)
 /// @brief Get the r value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_r(int64_t color)
-{
+int64_t rt_color_get_r(int64_t color) {
     return (color >> 16) & 0xFF;
 }
 
 /// @brief Get the g value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_g(int64_t color)
-{
+int64_t rt_color_get_g(int64_t color) {
     return (color >> 8) & 0xFF;
 }
 
 /// @brief Get the b value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_b(int64_t color)
-{
+int64_t rt_color_get_b(int64_t color) {
     return color & 0xFF;
 }
 
 /// @brief Get the a value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_a(int64_t color)
-{
+int64_t rt_color_get_a(int64_t color) {
     return (color >> 24) & 0xFF;
 }
 
@@ -1265,8 +1181,7 @@ int64_t rt_color_get_a(int64_t color)
 /// @param color
 /// @param amount
 /// @return Result value.
-int64_t rt_color_brighten(int64_t color, int64_t amount)
-{
+int64_t rt_color_brighten(int64_t color, int64_t amount) {
     if (amount < 0)
         amount = 0;
     if (amount > 100)
@@ -1288,8 +1203,7 @@ int64_t rt_color_brighten(int64_t color, int64_t amount)
 /// @param color
 /// @param amount
 /// @return Result value.
-int64_t rt_color_darken(int64_t color, int64_t amount)
-{
+int64_t rt_color_darken(int64_t color, int64_t amount) {
     if (amount < 0)
         amount = 0;
     if (amount > 100)
@@ -1310,8 +1224,7 @@ int64_t rt_color_darken(int64_t color, int64_t amount)
 /// @brief Perform from hex operation.
 /// @param hex
 /// @return Result value.
-int64_t rt_color_from_hex(rt_string hex)
-{
+int64_t rt_color_from_hex(rt_string hex) {
     const char *s = rt_string_cstr(hex);
     if (!s)
         return 0;
@@ -1321,8 +1234,7 @@ int64_t rt_color_from_hex(rt_string hex)
     unsigned long val = strtoul(s, NULL, 16);
     if (len == 6)
         return (int64_t)val; // 0xRRGGBB
-    if (len == 8)
-    {
+    if (len == 8) {
         // Input is RRGGBBAA, store as AARRGGBB
         int64_t r = (val >> 24) & 0xFF;
         int64_t g = (val >> 16) & 0xFF;
@@ -1330,8 +1242,7 @@ int64_t rt_color_from_hex(rt_string hex)
         int64_t a = val & 0xFF;
         return (a << 24) | (r << 16) | (g << 8) | b;
     }
-    if (len == 3)
-    {
+    if (len == 3) {
         // Shorthand: RGB -> RRGGBB
         int64_t r = (val >> 8) & 0xF;
         int64_t g = (val >> 4) & 0xF;
@@ -1344,8 +1255,7 @@ int64_t rt_color_from_hex(rt_string hex)
 /// @brief Perform to hex operation.
 /// @param color
 /// @return Result value.
-rt_string rt_color_to_hex(int64_t color)
-{
+rt_string rt_color_to_hex(int64_t color) {
     char buf[10];
     int64_t a = (color >> 24) & 0xFF;
     int64_t r = (color >> 16) & 0xFF;
@@ -1363,8 +1273,7 @@ rt_string rt_color_to_hex(int64_t color)
 /// @param color
 /// @param amount
 /// @return Result value.
-int64_t rt_color_saturate(int64_t color, int64_t amount)
-{
+int64_t rt_color_saturate(int64_t color, int64_t amount) {
     if (amount < 0)
         amount = 0;
     if (amount > 100)
@@ -1385,8 +1294,7 @@ int64_t rt_color_saturate(int64_t color, int64_t amount)
 /// @param color
 /// @param amount
 /// @return Result value.
-int64_t rt_color_desaturate(int64_t color, int64_t amount)
-{
+int64_t rt_color_desaturate(int64_t color, int64_t amount) {
     if (amount < 0)
         amount = 0;
     if (amount > 100)
@@ -1406,8 +1314,7 @@ int64_t rt_color_desaturate(int64_t color, int64_t amount)
 /// @brief Perform complement operation.
 /// @param color
 /// @return Result value.
-int64_t rt_color_complement(int64_t color)
-{
+int64_t rt_color_complement(int64_t color) {
     int64_t r = (color >> 16) & 0xFF;
     int64_t g = (color >> 8) & 0xFF;
     int64_t b = color & 0xFF;
@@ -1421,8 +1328,7 @@ int64_t rt_color_complement(int64_t color)
 /// @brief Perform grayscale operation.
 /// @param color
 /// @return Result value.
-int64_t rt_color_grayscale(int64_t color)
-{
+int64_t rt_color_grayscale(int64_t color) {
     int64_t r = (color >> 16) & 0xFF;
     int64_t g = (color >> 8) & 0xFF;
     int64_t b = color & 0xFF;
@@ -1434,8 +1340,7 @@ int64_t rt_color_grayscale(int64_t color)
 /// @brief Perform invert operation.
 /// @param color
 /// @return Result value.
-int64_t rt_color_invert(int64_t color)
-{
+int64_t rt_color_invert(int64_t color) {
     int64_t r = 255 - ((color >> 16) & 0xFF);
     int64_t g = 255 - ((color >> 8) & 0xFF);
     int64_t b = 255 - (color & 0xFF);

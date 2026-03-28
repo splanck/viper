@@ -25,12 +25,10 @@
 #include <unordered_set>
 #include <utility>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Construct a registry that records diagnostics through @p d.
-ProcRegistry::ProcRegistry(SemanticDiagnostics &d) : de(d)
-{
+ProcRegistry::ProcRegistry(SemanticDiagnostics &d) : de(d) {
     // Seed built-in extern procedure signatures from runtime registry.
     seedRuntimeBuiltins();
 }
@@ -38,8 +36,7 @@ ProcRegistry::ProcRegistry(SemanticDiagnostics &d) : de(d)
 /// @brief Remove all procedures registered so far.
 /// @details Clears the internal table so a new compilation unit can start with a
 ///          clean namespace.
-void ProcRegistry::clear()
-{
+void ProcRegistry::clear() {
     procs_.clear();
     byQualified_.clear();
     seedRuntimeBuiltins();
@@ -53,24 +50,20 @@ void ProcRegistry::clear()
 ///
 /// @param descriptor Source-level procedure description.
 /// @return Populated signature describing the procedure for later lookup.
-ProcSignature ProcRegistry::buildSignature(const ProcDescriptor &descriptor)
-{
+ProcSignature ProcRegistry::buildSignature(const ProcDescriptor &descriptor) {
     ProcSignature sig;
     sig.kind = descriptor.kind;
     sig.retType = descriptor.retType;
 
     std::unordered_set<std::string> paramNames;
-    for (const auto &p : descriptor.params)
-    {
-        if (!paramNames.insert(p.name).second)
-        {
+    for (const auto &p : descriptor.params) {
+        if (!paramNames.insert(p.name).second) {
             de.emit(diag::BasicDiag::DuplicateParameter,
                     p.loc,
                     static_cast<uint32_t>(p.name.size()),
                     std::initializer_list<diag::Replacement>{diag::Replacement{"name", p.name}});
         }
-        if (p.is_array && p.type != Type::I64 && p.type != Type::Str)
-        {
+        if (p.is_array && p.type != Type::I64 && p.type != Type::Str) {
             de.emit(diag::BasicDiag::ArrayParamType, p.loc, static_cast<uint32_t>(p.name.size()));
         }
         sig.params.push_back({p.type, p.is_array});
@@ -87,8 +80,7 @@ ProcSignature ProcRegistry::buildSignature(const ProcDescriptor &descriptor)
 /// @param name Name of the procedure to register.
 /// @param descriptor Metadata describing the procedure signature.
 /// @param loc Source location of the declaration for diagnostics.
-static std::string stripSuffix(std::string_view name)
-{
+static std::string stripSuffix(std::string_view name) {
     if (name.empty())
         return std::string{};
     char last = name.back();
@@ -97,48 +89,38 @@ static std::string stripSuffix(std::string_view name)
     return std::string{name};
 }
 
-static std::string canonicalizeQualifiedFlat(std::string_view dotted)
-{
+static std::string canonicalizeQualifiedFlat(std::string_view dotted) {
     // Split on '.' and canonicalize each segment (ASCII lowercase).
     // For the final segment only, strip BASIC type suffix before canonicalization.
     std::vector<std::string> parts;
     parts.reserve(4);
     std::string segment;
     std::vector<std::string> raw;
-    for (size_t i = 0; i <= dotted.size(); ++i)
-    {
-        if (i == dotted.size() || dotted[i] == '.')
-        {
+    for (size_t i = 0; i <= dotted.size(); ++i) {
+        if (i == dotted.size() || dotted[i] == '.') {
             raw.emplace_back(std::move(segment));
             segment.clear();
-        }
-        else
-        {
+        } else {
             segment.push_back(dotted[i]);
         }
     }
 
     parts.reserve(raw.size());
-    for (size_t i = 0; i < raw.size(); ++i)
-    {
+    for (size_t i = 0; i < raw.size(); ++i) {
         std::string_view seg = raw[i];
-        if (seg.empty())
-        {
+        if (seg.empty()) {
             parts.emplace_back(std::string{});
             continue;
         }
         // Strip type suffix from the final identifier segment, if present.
-        if (i + 1 == raw.size())
-        {
+        if (i + 1 == raw.size()) {
             char last = seg.back();
-            if (last == '$' || last == '#' || last == '!' || last == '&' || last == '%')
-            {
+            if (last == '$' || last == '#' || last == '!' || last == '&' || last == '%') {
                 seg = seg.substr(0, seg.size() - 1);
             }
         }
         std::string canon = CanonicalizeIdent(seg);
-        if (canon.empty() && !seg.empty())
-        {
+        if (canon.empty() && !seg.empty()) {
             // Invalid character encountered; signal failure.
             return std::string{};
         }
@@ -149,8 +131,7 @@ static std::string canonicalizeQualifiedFlat(std::string_view dotted)
 
 void ProcRegistry::registerProcImpl(std::string_view name,
                                     const ProcDescriptor &descriptor,
-                                    il::support::SourceLoc loc)
-{
+                                    il::support::SourceLoc loc) {
     // Derive canonical qualified key. Lowercase all segments and strip suffix
     // from the final segment for unqualified or dotted names alike.
     std::string key;
@@ -159,8 +140,7 @@ void ProcRegistry::registerProcImpl(std::string_view name,
     else
         key = CanonicalizeIdent(stripSuffix(name));
 
-    if (key.empty())
-    {
+    if (key.empty()) {
         // Fallback to original for error text, but avoid inserting.
         std::string nameStr{name};
         de.emit(diag::BasicDiag::DuplicateProcedure,
@@ -171,17 +151,13 @@ void ProcRegistry::registerProcImpl(std::string_view name,
     }
 
     auto it = byQualified_.find(key);
-    if (it != byQualified_.end())
-    {
+    if (it != byQualified_.end()) {
         // Duplicate name: if the existing entry is a builtin extern, report the
         // dedicated shadowing error; otherwise emit the standard duplicate proc.
         std::string display = key;
-        if (it->second.kind == ProcKind::BuiltinExtern)
-        {
+        if (it->second.kind == ProcKind::BuiltinExtern) {
             diagx::ErrorBuiltinShadow(de.emitter(), display, loc);
-        }
-        else
-        {
+        } else {
             diagx::ErrorDuplicateProc(de.emitter(), display, it->second.loc, loc);
         }
         return;
@@ -198,33 +174,24 @@ void ProcRegistry::registerProcImpl(std::string_view name,
 /// @brief Register a FUNCTION declaration with its return type and parameters.
 /// @details Constructs a @ref ProcDescriptor capturing the declaration metadata
 ///          before delegating to @ref registerProcImpl.
-void ProcRegistry::registerProc(const FunctionDecl &f)
-{
+void ProcRegistry::registerProc(const FunctionDecl &f) {
     const ProcDescriptor descriptor{
         ProcSignature::Kind::Function, f.ret, std::span<const Param>{f.params}, f.loc};
     std::string nameBuf;
     std::string_view nm;
-    if (!f.qualifiedName.empty())
-    {
+    if (!f.qualifiedName.empty()) {
         nm = std::string_view{f.qualifiedName};
-    }
-    else if (!f.namespacePath.empty())
-    {
+    } else if (!f.namespacePath.empty()) {
         // Build a dotted name from namespacePath + name so shadowing checks can fire.
         nameBuf = JoinQualified(f.namespacePath);
-        if (!nameBuf.empty())
-        {
+        if (!nameBuf.empty()) {
             nameBuf.push_back('.');
             nameBuf += f.name;
             nm = std::string_view{nameBuf};
-        }
-        else
-        {
+        } else {
             nm = std::string_view{f.name};
         }
-    }
-    else
-    {
+    } else {
         nm = std::string_view{f.name};
     }
     registerProcImpl(nm, descriptor, f.loc);
@@ -233,40 +200,30 @@ void ProcRegistry::registerProc(const FunctionDecl &f)
 /// @brief Register a SUB declaration with its parameter list.
 /// @details Functions similarly to @ref registerProc for functions but records a
 ///          void return type.
-void ProcRegistry::registerProc(const SubDecl &s)
-{
+void ProcRegistry::registerProc(const SubDecl &s) {
     const ProcDescriptor descriptor{
         ProcSignature::Kind::Sub, std::nullopt, std::span<const Param>{s.params}, s.loc};
     std::string nameBuf;
     std::string_view nm;
-    if (!s.qualifiedName.empty())
-    {
+    if (!s.qualifiedName.empty()) {
         nm = std::string_view{s.qualifiedName};
-    }
-    else if (!s.namespacePath.empty())
-    {
+    } else if (!s.namespacePath.empty()) {
         nameBuf = JoinQualified(s.namespacePath);
-        if (!nameBuf.empty())
-        {
+        if (!nameBuf.empty()) {
             nameBuf.push_back('.');
             nameBuf += s.name;
             nm = std::string_view{nameBuf};
-        }
-        else
-        {
+        } else {
             nm = std::string_view{s.name};
         }
-    }
-    else
-    {
+    } else {
         nm = std::string_view{s.name};
     }
     registerProcImpl(nm, descriptor, s.loc);
 }
 
 /// @brief Access the internal procedure table for iteration.
-const ProcTable &ProcRegistry::procs() const
-{
+const ProcTable &ProcRegistry::procs() const {
     return procs_;
 }
 
@@ -274,8 +231,7 @@ const ProcTable &ProcRegistry::procs() const
 ///
 /// @param name Identifier to search for.
 /// @return Pointer to the stored signature when found; otherwise nullptr.
-const ProcSignature *ProcRegistry::lookup(std::string_view name) const
-{
+const ProcSignature *ProcRegistry::lookup(std::string_view name) const {
     // First try exact lookup for performance (heterogeneous lookup, no allocation)
     auto it = procs_.find(name);
     if (it != procs_.end())
@@ -295,8 +251,7 @@ const ProcSignature *ProcRegistry::lookup(std::string_view name) const
     return it == procs_.end() ? nullptr : &it->second;
 }
 
-void ProcRegistry::AddProc(const FunctionDecl *fn, il::support::SourceLoc loc)
-{
+void ProcRegistry::AddProc(const FunctionDecl *fn, il::support::SourceLoc loc) {
     if (!fn)
         return;
     const ProcDescriptor descriptor{
@@ -306,8 +261,7 @@ void ProcRegistry::AddProc(const FunctionDecl *fn, il::support::SourceLoc loc)
     registerProcImpl(nm, descriptor, loc);
 }
 
-const ProcRegistry::ProcEntry *ProcRegistry::LookupExact(std::string_view qualified) const
-{
+const ProcRegistry::ProcEntry *ProcRegistry::LookupExact(std::string_view qualified) const {
     // Heterogeneous lookup, no allocation
     auto it = byQualified_.find(qualified);
     return it == byQualified_.end() ? nullptr : &it->second;
@@ -318,12 +272,10 @@ const ProcRegistry::ProcEntry *ProcRegistry::LookupExact(std::string_view qualif
 ///          "Viper.*"), maps IL types to BASIC types, and registers them as
 ///          procedures so the semantic analyzer can resolve calls like
 ///          Viper.Terminal.PrintI64.
-void ProcRegistry::seedRuntimeBuiltins()
-{
+void ProcRegistry::seedRuntimeBuiltins() {
     using namespace il::runtime;
     const auto &registry = runtimeRegistry();
-    for (const auto &desc : registry)
-    {
+    for (const auto &desc : registry) {
         // Only publish canonical dotted names; skip legacy flat aliases.
         if (desc.name.find('.') == std::string_view::npos)
             continue;
@@ -344,11 +296,9 @@ void ProcRegistry::seedRuntimeBuiltins()
         std::vector<Param> params;
         params.reserve(desc.signature.paramTypes.size());
         bool ok = true;
-        for (const auto &p : desc.signature.paramTypes)
-        {
+        for (const auto &p : desc.signature.paramTypes) {
             auto mapped = types::mapIlToBasic(p);
-            if (!mapped)
-            {
+            if (!mapped) {
                 ok = false;
                 break;
             }

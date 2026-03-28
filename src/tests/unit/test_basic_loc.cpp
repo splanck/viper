@@ -21,8 +21,7 @@
 using namespace il::frontends::basic;
 using il::support::SourceManager;
 
-int main()
-{
+int main() {
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
     std::string src = "LET X = 1\nPRINT X+2\n";
@@ -47,14 +46,10 @@ int main()
     Lowerer low;
     il::core::Module m = low.lower(*prog);
     bool foundAdd = false;
-    for (const auto &fn : m.functions)
-    {
-        for (const auto &bb : fn.blocks)
-        {
-            for (const auto &in : bb.instructions)
-            {
-                if (in.op == il::core::Opcode::IAddOvf)
-                {
+    for (const auto &fn : m.functions) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &in : bb.instructions) {
+                if (in.op == il::core::Opcode::IAddOvf) {
                     assert(in.loc.line == 2 && in.loc.column == 8);
                     foundAdd = true;
                 }

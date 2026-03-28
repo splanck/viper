@@ -13,26 +13,22 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_empty()
-{
+static void test_empty() {
     void *fs = rt_frozenset_empty();
     assert(fs != NULL);
     assert(rt_frozenset_len(fs) == 0);
     assert(rt_frozenset_is_empty(fs) == 1);
 }
 
-static void test_from_seq()
-{
+static void test_from_seq() {
     void *seq = rt_seq_new();
     rt_seq_push(seq, make_str("apple"));
     rt_seq_push(seq, make_str("banana"));
@@ -43,8 +39,7 @@ static void test_from_seq()
     assert(rt_frozenset_is_empty(fs) == 0);
 }
 
-static void test_has()
-{
+static void test_has() {
     void *seq = rt_seq_new();
     rt_seq_push(seq, make_str("alpha"));
     rt_seq_push(seq, make_str("beta"));
@@ -63,8 +58,7 @@ static void test_has()
     rt_string_unref(c);
 }
 
-static void test_dedup()
-{
+static void test_dedup() {
     void *seq = rt_seq_new();
     rt_seq_push(seq, make_str("dup"));
     rt_seq_push(seq, make_str("dup"));
@@ -75,8 +69,7 @@ static void test_dedup()
     assert(rt_frozenset_len(fs) == 2);
 }
 
-static void test_items()
-{
+static void test_items() {
     void *seq = rt_seq_new();
     rt_seq_push(seq, make_str("x"));
     rt_seq_push(seq, make_str("y"));
@@ -86,8 +79,7 @@ static void test_items()
     assert(rt_seq_len(items) == 2);
 }
 
-static void test_union()
-{
+static void test_union() {
     void *s1 = rt_seq_new();
     rt_seq_push(s1, make_str("a"));
     rt_seq_push(s1, make_str("b"));
@@ -114,8 +106,7 @@ static void test_union()
     rt_string_unref(c);
 }
 
-static void test_intersect()
-{
+static void test_intersect() {
     void *s1 = rt_seq_new();
     rt_seq_push(s1, make_str("a"));
     rt_seq_push(s1, make_str("b"));
@@ -141,8 +132,7 @@ static void test_intersect()
     rt_string_unref(c);
 }
 
-static void test_diff()
-{
+static void test_diff() {
     void *s1 = rt_seq_new();
     rt_seq_push(s1, make_str("a"));
     rt_seq_push(s1, make_str("b"));
@@ -169,8 +159,7 @@ static void test_diff()
     rt_string_unref(c);
 }
 
-static void test_is_subset()
-{
+static void test_is_subset() {
     void *s1 = rt_seq_new();
     rt_seq_push(s1, make_str("a"));
     rt_seq_push(s1, make_str("b"));
@@ -187,8 +176,7 @@ static void test_is_subset()
     assert(rt_frozenset_is_subset(fs2, fs1) == 0);
 }
 
-static void test_equals()
-{
+static void test_equals() {
     void *s1 = rt_seq_new();
     rt_seq_push(s1, make_str("x"));
     rt_seq_push(s1, make_str("y"));
@@ -208,8 +196,7 @@ static void test_equals()
     assert(rt_frozenset_equals(fs1, fs3) == 0);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_frozenset_len(NULL) == 0);
     assert(rt_frozenset_is_empty(NULL) == 1);
     assert(rt_frozenset_has(NULL, NULL) == 0);
@@ -218,8 +205,7 @@ static void test_null_safety()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_empty();
     test_from_seq();
     test_has();

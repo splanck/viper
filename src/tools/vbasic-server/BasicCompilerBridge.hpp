@@ -25,20 +25,17 @@
 
 #include <memory>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 class BasicCompletionEngine;
 }
 
-namespace viper::server
-{
+namespace viper::server {
 
 /// @brief Protocol-agnostic facade wrapping BASIC compiler APIs.
 ///
 /// Each method creates a fresh SourceManager per call for isolation.
 /// The BasicCompletionEngine is shared across calls for LRU cache benefits.
-class BasicCompilerBridge : public ICompilerBridge
-{
+class BasicCompilerBridge : public ICompilerBridge {
   public:
     BasicCompilerBridge();
     ~BasicCompilerBridge() override;

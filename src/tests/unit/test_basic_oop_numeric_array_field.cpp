@@ -23,14 +23,11 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
-[[nodiscard]] static bool ieq(std::string_view a, std::string_view b)
-{
+namespace {
+[[nodiscard]] static bool ieq(std::string_view a, std::string_view b) {
     if (a.size() != b.size())
         return false;
-    for (size_t i = 0; i < a.size(); ++i)
-    {
+    for (size_t i = 0; i < a.size(); ++i) {
         unsigned char ac = static_cast<unsigned char>(a[i]);
         unsigned char bc = static_cast<unsigned char>(b[i]);
         if (std::tolower(ac) != std::tolower(bc))
@@ -40,8 +37,7 @@ namespace
 }
 
 [[nodiscard]] static const il::core::Function *findFn(const il::core::Module &m,
-                                                      std::string_view name)
-{
+                                                      std::string_view name) {
     for (const auto &fn : m.functions)
         if (ieq(fn.name, name))
             return &fn;
@@ -49,8 +45,7 @@ namespace
 }
 } // namespace
 
-TEST(BasicOOPNumericArrayField, ImplicitStoreAndLoadUseNumericArrayHelpers)
-{
+TEST(BasicOOPNumericArrayField, ImplicitStoreAndLoadUseNumericArrayHelpers) {
     const std::string src = "10 CLASS Player\n"
                             "20   DIM slots(10) AS INTEGER\n"
                             "30   SUB Add(n)\n"
@@ -75,12 +70,9 @@ TEST(BasicOOPNumericArrayField, ImplicitStoreAndLoadUseNumericArrayHelpers)
     ASSERT_NE(firstFn, nullptr);
 
     bool sawSet = false;
-    for (const auto &bb : addFn->blocks)
-    {
-        for (const auto &in : bb.instructions)
-        {
-            if (in.op == il::core::Opcode::Call && ieq(in.callee, "rt_arr_i32_set"))
-            {
+    for (const auto &bb : addFn->blocks) {
+        for (const auto &in : bb.instructions) {
+            if (in.op == il::core::Opcode::Call && ieq(in.callee, "rt_arr_i32_set")) {
                 sawSet = true;
                 break;
             }
@@ -91,12 +83,9 @@ TEST(BasicOOPNumericArrayField, ImplicitStoreAndLoadUseNumericArrayHelpers)
     EXPECT_TRUE(sawSet);
 
     bool sawGet = false;
-    for (const auto &bb : firstFn->blocks)
-    {
-        for (const auto &in : bb.instructions)
-        {
-            if (in.op == il::core::Opcode::Call && ieq(in.callee, "rt_arr_i32_get"))
-            {
+    for (const auto &bb : firstFn->blocks) {
+        for (const auto &in : bb.instructions) {
+            if (in.op == il::core::Opcode::Call && ieq(in.callee, "rt_arr_i32_get")) {
                 sawGet = true;
                 break;
             }
@@ -107,8 +96,7 @@ TEST(BasicOOPNumericArrayField, ImplicitStoreAndLoadUseNumericArrayHelpers)
     EXPECT_TRUE(sawGet);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

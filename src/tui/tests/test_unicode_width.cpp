@@ -20,8 +20,7 @@
 using viper::tui::util::char_width;
 using viper::tui::util::decode_utf8;
 
-TEST(TUI, UnicodeWidth)
-{
+TEST(TUI, UnicodeWidth) {
     auto s = decode_utf8("A");
     ASSERT_EQ(s.size(), 1);
     ASSERT_EQ(char_width(s[0]), 1);
@@ -41,21 +40,18 @@ TEST(TUI, UnicodeWidth)
 
     s = decode_utf8("\xED\xA0\x80"); // surrogate U+D800
     ASSERT_EQ(s.size(), 3);
-    for (auto ch : s)
-    {
+    for (auto ch : s) {
         ASSERT_EQ(ch, 0xFFFD);
     }
 
     s = decode_utf8("\xF4\x90\x80\x80"); // > U+10FFFF
     ASSERT_EQ(s.size(), 4);
-    for (auto ch : s)
-    {
+    for (auto ch : s) {
         ASSERT_EQ(ch, 0xFFFD);
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

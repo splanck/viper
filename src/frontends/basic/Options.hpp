@@ -40,8 +40,7 @@
 
 #pragma once
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /**
  * @brief Process-global BASIC front-end feature flags.
@@ -64,8 +63,7 @@ namespace il::frontends::basic
  * | enableRuntimeTypeBridging   | true    | Direct runtime type constructors |
  * | enableSelectCaseConstLabels | true    | CONST labels in SELECT CASE     |
  */
-struct FrontendOptions
-{
+struct FrontendOptions {
     /// @brief Enable treating the reserved root namespace 'Viper' as a readable
     ///        runtime namespace for imports and references.
     /// @details When enabled, USING Viper.* and calls/references to Viper.* are

@@ -29,22 +29,18 @@
 #include <algorithm>
 #include <vector>
 
-namespace il::transform
-{
+namespace il::transform {
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Check whether an opcode could potentially throw or trap.
 /// @details Conservative: any call, trap, or checked arithmetic instruction
 ///          is considered potentially throwing. All other instructions are
 ///          considered safe.
-bool canThrow(Opcode op)
-{
-    switch (op)
-    {
+bool canThrow(Opcode op) {
+    switch (op) {
         case Opcode::Call:
         case Opcode::CallIndirect:
         case Opcode::Trap:
@@ -62,20 +58,17 @@ bool canThrow(Opcode op)
 
 /// @brief Optimize EH pairs in a single function.
 /// @return True if any EH instructions were removed.
-bool ehOptFunction(Function &fn)
-{
+bool ehOptFunction(Function &fn) {
     bool changed = false;
 
-    for (auto &bb : fn.blocks)
-    {
+    for (auto &bb : fn.blocks) {
         // Look for eh.push/eh.pop pairs within the same block where the
         // region between them has no potentially-throwing instructions.
         // This handles the common case of trivial try blocks.
         auto &instrs = bb.instructions;
 
         // Scan for eh.push instructions
-        for (size_t i = 0; i < instrs.size(); ++i)
-        {
+        for (size_t i = 0; i < instrs.size(); ++i) {
             if (instrs[i].op != Opcode::EhPush)
                 continue;
 
@@ -83,18 +76,15 @@ bool ehOptFunction(Function &fn)
             size_t popIdx = SIZE_MAX;
             bool hasThrowingInstr = false;
 
-            for (size_t j = i + 1; j < instrs.size(); ++j)
-            {
-                if (instrs[j].op == Opcode::EhPop)
-                {
+            for (size_t j = i + 1; j < instrs.size(); ++j) {
+                if (instrs[j].op == Opcode::EhPop) {
                     popIdx = j;
                     break;
                 }
                 // Another eh.push means nested EH; stop scanning
                 if (instrs[j].op == Opcode::EhPush)
                     break;
-                if (canThrow(instrs[j].op))
-                {
+                if (canThrow(instrs[j].op)) {
                     hasThrowingInstr = true;
                     break;
                 }
@@ -118,8 +108,7 @@ bool ehOptFunction(Function &fn)
 
 } // namespace
 
-bool ehOpt(Module &module)
-{
+bool ehOpt(Module &module) {
     bool changed = false;
     for (auto &fn : module.functions)
         changed |= ehOptFunction(fn);

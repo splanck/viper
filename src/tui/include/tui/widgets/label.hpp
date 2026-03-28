@@ -30,15 +30,13 @@
 #include "tui/style/theme.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 
 /// @brief Simple read-only text display widget.
 /// @details Renders a single line of text at the top-left of its layout rectangle
 ///          using the theme's normal style. Non-focusable and non-interactive.
 ///          Used for static labels, headings, and descriptive text in the UI.
-class Label : public ui::Widget
-{
+class Label : public ui::Widget {
   public:
     /// @brief Construct label with text and theme.
     /// @param text Text to display.

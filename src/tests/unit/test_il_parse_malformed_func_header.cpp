@@ -19,11 +19,9 @@
 #include <sstream>
 #include <string>
 
-namespace
-{
+namespace {
 
-void expectMalformedHeader(const std::string &header)
-{
+void expectMalformedHeader(const std::string &header) {
     std::string src = "il 0.2.0\n" + header + "\n)";
     std::istringstream in(src);
     il::core::Module m;
@@ -38,8 +36,7 @@ void expectMalformedHeader(const std::string &header)
 
 } // namespace
 
-int main()
-{
+int main() {
     expectMalformedHeader("func @main() -> i64");
     expectMalformedHeader("func main() -> i64"); // Missing '@'
     expectMalformedHeader("func @main) -> i64"); // Missing '('

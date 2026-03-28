@@ -28,8 +28,7 @@
 
 #include "il/core/Function.hpp"
 
-namespace il::core
-{
+namespace il::core {
 
 // No out-of-line methods yet.
 } // namespace il::core

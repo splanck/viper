@@ -31,12 +31,10 @@ using namespace il::core;
 using il::transform::LateCleanup;
 using il::transform::LateCleanupStats;
 
-namespace
-{
+namespace {
 
 /// @brief Run cleanup.
-LateCleanupStats runCleanup(il::core::Module &m)
-{
+LateCleanupStats runCleanup(il::core::Module &m) {
     il::transform::AnalysisRegistry registry;
     il::transform::AnalysisManager am(m, registry);
     LateCleanup pass;
@@ -47,11 +45,9 @@ LateCleanupStats runCleanup(il::core::Module &m)
 }
 
 /// @brief Verify or die.
-void verifyOrDie(const Module &m)
-{
+void verifyOrDie(const Module &m) {
     auto result = il::verify::Verifier::verify(m);
-    if (!result)
-    {
+    if (!result) {
         il::support::printDiag(result.error(), std::cerr);
         ASSERT_TRUE(false && "module verification failed");
     }
@@ -59,8 +55,7 @@ void verifyOrDie(const Module &m)
 
 } // namespace
 
-TEST(IL, testSingleIterationNoChange)
-{
+TEST(IL, testSingleIterationNoChange) {
     Module m;
     il::build::IRBuilder b(m);
     Function &fn = b.startFunction("noop", Type(Type::Kind::I64), {});
@@ -84,8 +79,7 @@ TEST(IL, testSingleIterationNoChange)
     ASSERT_EQ(stats.blocksPerIter.size(), 1);
 }
 
-TEST(IL, testTwoIterationsDCEOnly)
-{
+TEST(IL, testTwoIterationsDCEOnly) {
     Module m;
     il::build::IRBuilder b(m);
     Function &fn = b.startFunction("deadcode", Type(Type::Kind::I64), {});
@@ -120,16 +114,14 @@ TEST(IL, testTwoIterationsDCEOnly)
     ASSERT_TRUE(stats.instrBefore > stats.instrAfter);
     ASSERT_EQ(stats.blocksBefore, stats.blocksAfter);
     ASSERT_EQ(stats.instrPerIter.size(), stats.iterations);
-    for (size_t i = 1; i < stats.instrPerIter.size(); ++i)
-    {
+    for (size_t i = 1; i < stats.instrPerIter.size(); ++i) {
         ASSERT_TRUE(stats.instrPerIter[i] <= stats.instrPerIter[i - 1]);
         ASSERT_TRUE(stats.blocksPerIter[i] <= stats.blocksPerIter[i - 1]);
     }
     ASSERT_TRUE(stats.iterations <= 4);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

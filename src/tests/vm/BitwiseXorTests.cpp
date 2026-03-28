@@ -19,10 +19,8 @@
 
 using namespace il::core;
 
-namespace
-{
-void buildXorFunction(Module &module, int64_t lhs, int64_t rhs)
-{
+namespace {
+void buildXorFunction(Module &module, int64_t lhs, int64_t rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -45,8 +43,7 @@ void buildXorFunction(Module &module, int64_t lhs, int64_t rhs)
     bb.instructions.push_back(ret);
 }
 
-int64_t runXor(int64_t lhs, int64_t rhs)
-{
+int64_t runXor(int64_t lhs, int64_t rhs) {
     Module module;
     buildXorFunction(module, lhs, rhs);
     viper::tests::VmFixture fixture;
@@ -55,8 +52,7 @@ int64_t runXor(int64_t lhs, int64_t rhs)
 
 } // namespace
 
-int main()
-{
+int main() {
     // Basic XOR
     assert(runXor(0, 0) == 0);
     assert(runXor(1, 0) == 1);

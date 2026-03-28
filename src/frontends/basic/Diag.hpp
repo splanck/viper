@@ -48,8 +48,7 @@
 #include <string_view>
 #include <vector>
 
-namespace il::frontends::basic::diagx
-{
+namespace il::frontends::basic::diagx {
 
 /// @brief Emit duplicate procedure error with both definition locations.
 /// @details Formats a single actionable error message:

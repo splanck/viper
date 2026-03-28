@@ -21,8 +21,7 @@
 #include "frontends/basic/Parser.hpp"
 #include <cstdio>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 // -----------------------------------------------------------------------------
 // Token buffer navigation
 // -----------------------------------------------------------------------------
@@ -34,8 +33,7 @@ namespace il::frontends::basic
 ///          productions.
 /// @param k Token kind to test against the next token.
 /// @return True when the buffered token is of kind @p k; false otherwise.
-bool Parser::at(TokenKind k) const
-{
+bool Parser::at(TokenKind k) const {
     return peek().kind == k;
 }
 
@@ -45,14 +43,12 @@ bool Parser::at(TokenKind k) const
 ///          subsequent calls can reuse them.
 /// @param n Lookahead distance, where 0 refers to the current token.
 /// @return Reference to the token at position @p n.
-const Token &Parser::peek(int n) const
-{
+const Token &Parser::peek(int n) const {
     static const int kMaxPeekDistance = 256;
     if (n > kMaxPeekDistance)
         n = kMaxPeekDistance;
     const size_t wantIndex = tokenStart_ + static_cast<size_t>(n);
-    while (tokens_.size() <= wantIndex)
-    {
+    while (tokens_.size() <= wantIndex) {
         tokens_.push_back(lexer_.next());
     }
     return tokens_[wantIndex];
@@ -63,16 +59,14 @@ const Token &Parser::peek(int n) const
 ///          value, then erases it from the front so subsequent reads observe the
 ///          next token.
 /// @return The token currently at the front of the buffer.
-Token Parser::consume()
-{
+Token Parser::consume() {
     Token t = peek();
     ++tokenStart_;
     compactConsumedTokens();
     return t;
 }
 
-void Parser::compactConsumedTokens()
-{
+void Parser::compactConsumedTokens() {
     constexpr size_t kCompactThreshold = 64;
     if (tokenStart_ < kCompactThreshold || tokenStart_ * 2 < tokens_.size())
         return;
@@ -88,17 +82,12 @@ void Parser::compactConsumedTokens()
 ///          so callers can decide how to proceed.
 /// @param k Expected token kind.
 /// @return The matched token on success; otherwise the offending token.
-Token Parser::expect(TokenKind k)
-{
-    if (!at(k))
-    {
+Token Parser::expect(TokenKind k) {
+    if (!at(k)) {
         Token t = peek();
-        if (emitter_)
-        {
+        if (emitter_) {
             emitter_->emitExpected(t.kind, k, t.loc);
-        }
-        else
-        {
+        } else {
             std::fprintf(
                 stderr, "expected %s, got %s\n", tokenKindToString(k), tokenKindToString(t.kind));
         }
@@ -113,15 +102,13 @@ Token Parser::expect(TokenKind k)
 ///          encounters an end-of-line, colon, or end-of-file token.  It avoids
 ///          emitting additional diagnostics so callers remain in control of
 ///          messaging while ensuring the parser resumes at a stable location.
-void Parser::syncToStmtBoundary()
-{
+void Parser::syncToStmtBoundary() {
     // Bounded token consumption prevents compiler hang on pathological input.
     constexpr unsigned kMaxResyncTokens = 10000;
     unsigned consumed = 0;
 
     while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine) && !at(TokenKind::Colon) &&
-           consumed < kMaxResyncTokens)
-    {
+           consumed < kMaxResyncTokens) {
         consume();
         ++consumed;
     }

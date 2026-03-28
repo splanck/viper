@@ -36,12 +36,9 @@
 
 using namespace il::core;
 
-namespace
-{
-BasicBlock *findBlock(Function &function, const std::string &label)
-{
-    for (auto &block : function.blocks)
-    {
+namespace {
+BasicBlock *findBlock(Function &function, const std::string &label) {
+    for (auto &block : function.blocks) {
         if (block.label == label)
             return &block;
     }
@@ -50,8 +47,7 @@ BasicBlock *findBlock(Function &function, const std::string &label)
 
 } // namespace
 
-int main()
-{
+int main() {
     Module module;
     Function fn;
     fn.name = "licm_invariant";
@@ -153,9 +149,7 @@ int main()
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fnRef)
-        {
+        "dominators", [](Module &mod, Function &fnRef) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fnRef);
         });
@@ -183,10 +177,8 @@ int main()
     assert(preheader && "LICM expects LoopSimplify to provide a preheader");
     assert(preheader->terminated);
     const Instr *hoistedInstr = nullptr;
-    for (const Instr &candidate : preheader->instructions)
-    {
-        if (candidate.result && *candidate.result == invariantId)
-        {
+    for (const Instr &candidate : preheader->instructions) {
+        if (candidate.result && *candidate.result == invariantId) {
             hoistedInstr = &candidate;
             break;
         }
@@ -199,8 +191,7 @@ int main()
 
     BasicBlock *loopBlock = findBlock(function, "loop");
     assert(loopBlock);
-    for (const Instr &I : loopBlock->instructions)
-    {
+    for (const Instr &I : loopBlock->instructions) {
         if (!I.result)
             continue;
         assert(*I.result != invariantId && "Hoisted instruction must leave the loop body");

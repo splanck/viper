@@ -53,8 +53,7 @@
 #include <io.h>
 #endif
 
-namespace il::vm
-{
+namespace il::vm {
 
 /// @brief Determine whether tracing output should be emitted for the current configuration.
 /// @details The interpreter consults this helper before performing any trace
@@ -63,13 +62,11 @@ namespace il::vm
 ///          other value signals that diagnostic output is desired and that the
 ///          trace sink should observe VM events.
 /// @return True when tracing is active, false when it is disabled.
-bool TraceConfig::enabled() const
-{
+bool TraceConfig::enabled() const {
     return mode != Off;
 }
 
-namespace
-{
+namespace {
 /// @brief RAII helper that temporarily forces the C locale for numeric formatting.
 /// @details Tracing renders floating-point operands using @c LC_NUMERIC.  Host
 ///          locales that use commas for the decimal separator would otherwise
@@ -78,8 +75,7 @@ namespace
 ///          @c std::ostream before substituting the classic locale.  Destruction
 ///          restores the original state so the rest of the program continues to
 ///          respect user locale preferences.
-class LocaleGuard
-{
+class LocaleGuard {
     std::ostream &os;
     std::locale oldLoc;
     std::string oldC;
@@ -90,8 +86,7 @@ class LocaleGuard
     ///          locale (if available) before forcing both to the classic "C"
     ///          variant.  The constructor performs minimal work so it can wrap
     ///          hot interpreter paths without introducing noticeable overhead.
-    explicit LocaleGuard(std::ostream &s) : os(s), oldLoc(s.getloc())
-    {
+    explicit LocaleGuard(std::ostream &s) : os(s), oldLoc(s.getloc()) {
         if (const char *c = std::setlocale(LC_NUMERIC, nullptr))
             oldC = c;
         os.imbue(std::locale::classic());
@@ -104,8 +99,7 @@ class LocaleGuard
     ///          The guard is intentionally noexcept; even if locale restoration
     ///          fails the destructor suppresses exceptions to keep tracing code
     ///          robust.
-    ~LocaleGuard()
-    {
+    ~LocaleGuard() {
         if (!oldC.empty())
             std::setlocale(LC_NUMERIC, oldC.c_str());
         os.imbue(oldLoc);
@@ -121,10 +115,8 @@ class LocaleGuard
 ///          inspecting @c std::signbit so traces remain faithful to execution.
 /// @param os Stream receiving the textual representation.
 /// @param v  Value to render.
-void printValue(std::ostream &os, const il::core::Value &v)
-{
-    switch (v.kind)
-    {
+void printValue(std::ostream &os, const il::core::Value &v) {
+    switch (v.kind) {
         case il::core::Value::Kind::Temp:
             os << "%t" << std::dec << v.id;
             break;
@@ -134,15 +126,12 @@ void printValue(std::ostream &os, const il::core::Value &v)
             else
                 os << std::dec << v.i64;
             break;
-        case il::core::Value::Kind::ConstFloat:
-        {
-            if (std::signbit(v.f64) && v.f64 == 0.0)
-            {
+        case il::core::Value::Kind::ConstFloat: {
+            if (std::signbit(v.f64) && v.f64 == 0.0) {
                 os << "-0.0";
                 break;
             }
-            if (v.f64 == 0.0)
-            {
+            if (v.f64 == 0.0) {
                 os << "0.0";
                 break;
             }
@@ -171,15 +160,13 @@ void printValue(std::ostream &os, const il::core::Value &v)
 ///          populated lazily, allowing the trace sink to remain cheap when
 ///          tracing is disabled.
 /// @param cfg Trace configuration controlling emission behaviour and source lookup.
-TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
-{
+TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg) {
 #ifdef _WIN32
     _setmode(_fileno(stderr), _O_BINARY);
 #endif
     // Set the C locale for numeric formatting once at session start rather than
     // per-instruction. This avoids two costly setlocale() calls per traced step.
-    if (this->cfg.enabled())
-    {
+    if (this->cfg.enabled()) {
         savedCLocale_ =
             std::setlocale(LC_NUMERIC, nullptr) ? std::setlocale(LC_NUMERIC, nullptr) : "";
         std::setlocale(LC_NUMERIC, "C");
@@ -189,10 +176,8 @@ TraceSink::TraceSink(TraceConfig cfg) : cfg(cfg)
     }
 }
 
-TraceSink::~TraceSink()
-{
-    if (localeSet_)
-    {
+TraceSink::~TraceSink() {
+    if (localeSet_) {
         if (!savedCLocale_.empty())
             std::setlocale(LC_NUMERIC, savedCLocale_.c_str());
         std::cerr.imbue(savedStreamLocale_);
@@ -206,8 +191,7 @@ TraceSink::~TraceSink()
 ///          tracing overhead during tight interpreter loops and is reused for
 ///          subsequent activations of the same function.
 /// @param fr Frame whose function's instructions should be indexed.
-void TraceSink::onFramePrepared(const Frame &fr)
-{
+void TraceSink::onFramePrepared(const Frame &fr) {
     if (!fr.func)
         return;
     auto [it, inserted] = instrLocations.try_emplace(fr.func);
@@ -220,8 +204,7 @@ void TraceSink::onFramePrepared(const Frame &fr)
         totalInstrs += block.instructions.size();
     if (totalInstrs)
         map.reserve(totalInstrs);
-    for (const auto &block : fr.func->blocks)
-    {
+    for (const auto &block : fr.func->blocks) {
         for (size_t idx = 0; idx < block.instructions.size(); ++idx)
             map.emplace(&block.instructions[idx], InstrLocation{&block, idx});
     }
@@ -238,8 +221,7 @@ void TraceSink::onFramePrepared(const Frame &fr)
 /// @param file_id   Source manager identifier for the file.
 /// @param path_hint Optional filesystem path to use when the source manager path is empty.
 /// @return Cached file entry or nullptr when the file cannot be resolved.
-const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std::string path_hint)
-{
+const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std::string path_hint) {
     if (!cfg.sm || file_id == 0)
         return nullptr;
     auto it = fileCache.find(file_id);
@@ -264,8 +246,7 @@ const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std:
     fsPath = std::filesystem::path(entry.path);
 #endif
     std::ifstream f(fsPath);
-    if (f)
-    {
+    if (f) {
         std::string line;
         while (std::getline(f, line))
             entry.lines.push_back(line);
@@ -287,8 +268,7 @@ const TraceSink::FileCacheEntry *TraceSink::getOrLoadFile(uint32_t file_id, std:
 ///          and (when available) the source text for the active instruction.
 /// @param in Instruction being executed.
 /// @param fr Execution frame that provides function and block context.
-void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
-{
+void TraceSink::onStep(const il::core::Instr &in, const Frame &fr) {
     if (!cfg.enabled())
         return;
     // Locale is set once at session start (constructor), no per-step guard needed.
@@ -299,26 +279,21 @@ void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
     const il::core::BasicBlock *blk = nullptr;
     size_t ip = 0;
     auto fnIt = instrLocations.find(fn);
-    if (fnIt != instrLocations.end())
-    {
+    if (fnIt != instrLocations.end()) {
         auto locIt = fnIt->second.find(&in);
-        if (locIt != fnIt->second.end())
-        {
+        if (locIt != fnIt->second.end()) {
             blk = locIt->second.block;
             ip = locIt->second.ip;
         }
     }
     if (!blk)
         return;
-    if (cfg.mode == TraceConfig::IL)
-    {
+    if (cfg.mode == TraceConfig::IL) {
         std::cerr << "[IL] fn=@" << fn->name << " blk=" << blk->label << " ip=#" << ip
                   << " op=" << il::core::toString(in.op);
-        if (!in.operands.empty())
-        {
+        if (!in.operands.empty()) {
             std::cerr << ' ';
-            for (size_t i = 0; i < in.operands.size(); ++i)
-            {
+            for (size_t i = 0; i < in.operands.size(); ++i) {
                 if (i)
                     std::cerr << ", ";
                 printValue(std::cerr, in.operands[i]);
@@ -329,30 +304,24 @@ void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
         std::cerr << '\n' << std::flush;
         return;
     }
-    if (cfg.mode == TraceConfig::SRC)
-    {
+    if (cfg.mode == TraceConfig::SRC) {
         std::string locStr = "<unknown>";
         std::string srcLine;
-        if (cfg.sm && in.loc.hasFile())
-        {
+        if (cfg.sm && in.loc.hasFile()) {
             std::string path(cfg.sm->getPath(in.loc.file_id));
             std::filesystem::path p(path);
             locStr = p.filename().string();
-            if (in.loc.hasLine())
-            {
+            if (in.loc.hasLine()) {
                 locStr += ':' + std::to_string(in.loc.line);
                 if (in.loc.hasColumn())
                     locStr += ':' + std::to_string(in.loc.column);
             }
-            if (!path.empty())
-            {
+            if (!path.empty()) {
                 const auto *entry = getOrLoadFile(in.loc.file_id, std::move(path));
                 if (entry && in.loc.hasLine() &&
-                    static_cast<size_t>(in.loc.line) <= entry->lines.size())
-                {
+                    static_cast<size_t>(in.loc.line) <= entry->lines.size()) {
                     const std::string &line = entry->lines[in.loc.line - 1];
-                    if (!line.empty())
-                    {
+                    if (!line.empty()) {
                         if (in.loc.hasColumn() && in.loc.column - 1 < line.size())
                             srcLine = line.substr(in.loc.column - 1);
                         else
@@ -378,8 +347,7 @@ void TraceSink::onStep(const il::core::Instr &in, const Frame &fr)
 ///          prints a single line to keep ordering relative to steps.
 /// @param from Caller function being replaced.
 /// @param to   Callee function entered via tail-call.
-void TraceSink::onTailCall(const il::core::Function *from, const il::core::Function *to)
-{
+void TraceSink::onTailCall(const il::core::Function *from, const il::core::Function *to) {
     if (!cfg.enabled())
         return;
     std::cerr << "[IL] tailcall " << (from ? from->name : std::string("<unknown>")) << " -> "

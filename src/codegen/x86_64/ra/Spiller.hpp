@@ -27,26 +27,22 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 struct AllocationResult;
 } // namespace viper::codegen::x64
 
-namespace viper::codegen::x64::ra
-{
+namespace viper::codegen::x64::ra {
 
 struct VirtualAllocation; // Forward declaration defined in Allocator.hpp.
 
 /// @brief Describes the spill status of a virtual register.
-struct SpillPlan
-{
+struct SpillPlan {
     bool needsSpill{false}; ///< True when the value must reside in memory.
     int slot{-1};           ///< Assigned spill slot index; -1 until materialised.
 };
 
 /// @brief Describes the lifetime of a spill slot for reuse analysis.
-struct SlotLifetime
-{
+struct SlotLifetime {
     std::size_t start{0}; ///< First instruction index using this slot.
     std::size_t end{0};   ///< Last instruction index using this slot (exclusive).
     bool inUse{false};    ///< True if the slot is currently assigned to a live value.
@@ -55,8 +51,7 @@ struct SlotLifetime
 /// @brief Helper component managing spill slot allocation and load/store codegen.
 /// @details Implements spill slot reuse by tracking the lifetime of each slot
 ///          and assigning slots with non-overlapping lifetimes to different values.
-class Spiller
-{
+class Spiller {
   public:
     Spiller() = default;
 
@@ -111,13 +106,11 @@ class Spiller
                              std::size_t intervalStart,
                              std::size_t intervalEnd);
 
-    [[nodiscard]] int gprSlots() const noexcept
-    {
+    [[nodiscard]] int gprSlots() const noexcept {
         return nextSpillSlotGPR_;
     }
 
-    [[nodiscard]] int xmmSlots() const noexcept
-    {
+    [[nodiscard]] int xmmSlots() const noexcept {
         return nextSpillSlotXMM_;
     }
 

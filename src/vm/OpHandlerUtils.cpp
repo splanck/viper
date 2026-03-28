@@ -31,10 +31,8 @@
 
 #include <cassert>
 
-namespace il::vm::detail
-{
-namespace ops
-{
+namespace il::vm::detail {
+namespace ops {
 /// @brief Write an opcode result into the destination register while honouring
 ///        ownership semantics.
 ///
@@ -53,8 +51,7 @@ namespace ops
 /// @param fr Frame whose register file receives the result.
 /// @param in Instruction describing the destination register and result type.
 /// @param val Evaluated result slot to copy into the register file.
-void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
-{
+void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val) {
     // Early exit for instructions that don't produce a result
     if (!in.result) [[unlikely]]
         return;
@@ -69,10 +66,8 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
 
     // Hot path: register file already sized, non-string type
     // This is the common case for arithmetic/comparison operations
-    if (destIndex < fr.regs.size()) [[likely]]
-    {
-        if (in.type.kind != il::core::Type::Kind::Str) [[likely]]
-        {
+    if (destIndex < fr.regs.size()) [[likely]] {
+        if (in.type.kind != il::core::Type::Kind::Str) [[likely]] {
             fr.regs[destIndex] = val;
             if (destIndex < fr.regIsStr.size()) [[likely]]
                 fr.regIsStr[destIndex] = 0;
@@ -92,8 +87,7 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
     fr.regs.resize(destIndex + 1);
     fr.regIsStr.resize(destIndex + 1, 0);
 
-    if (in.type.kind == il::core::Type::Kind::Str) [[unlikely]]
-    {
+    if (in.type.kind == il::core::Type::Kind::Str) [[unlikely]] {
         // New register, no old value to release, just retain
         rt_str_retain_maybe(val.str);
         fr.regIsStr[destIndex] = 1;
@@ -102,8 +96,7 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val)
 }
 } // namespace ops
 
-namespace control
-{
+namespace control {
 /// @brief Validate that a slot contains the active frame's resume token.
 ///
 /// @details The VM encodes resume tokens as pointers to the owning frame's
@@ -117,8 +110,7 @@ namespace control
 /// @param fr Frame that owns the expected resume state.
 /// @param slot Operand payload supplied by the opcode.
 /// @return Pointer to the validated resume state or @c nullptr when invalid.
-Frame::ResumeState *expectResumeToken(Frame &fr, const Slot &slot)
-{
+Frame::ResumeState *expectResumeToken(Frame &fr, const Slot &slot) {
     auto *token = reinterpret_cast<Frame::ResumeState *>(slot.ptr);
     if (!token || token != &fr.resumeState || !token->valid)
         return nullptr;
@@ -140,8 +132,7 @@ Frame::ResumeState *expectResumeToken(Frame &fr, const Slot &slot)
 void trapInvalidResume(Frame &fr,
                        const il::core::Instr &in,
                        const il::core::BasicBlock *bb,
-                       std::string detail)
-{
+                       std::string detail) {
     const std::string functionName = fr.func ? fr.func->name : std::string{};
     const std::string blockLabel = bb ? bb->label : std::string{};
     RuntimeBridge::trap(TrapKind::InvalidOperation, detail, in.loc, functionName, blockLabel);
@@ -160,8 +151,7 @@ void trapInvalidResume(Frame &fr,
 /// @param fr Frame that owns the fallback error record.
 /// @param slot Operand that may reference a @ref VmError.
 /// @return Pointer to the resolved error description.
-const VmError *resolveErrorToken(Frame &fr, const Slot &slot)
-{
+const VmError *resolveErrorToken(Frame &fr, const Slot &slot) {
     const auto *error = reinterpret_cast<const VmError *>(slot.ptr);
     if (error)
         return error;

@@ -29,11 +29,9 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::x64::peephole
-{
+namespace viper::codegen::x64::peephole {
 
-void traceBlockLayout(MFunction &fn, PeepholeStats &stats)
-{
+void traceBlockLayout(MFunction &fn, PeepholeStats &stats) {
     if (fn.blocks.size() <= 2)
         return;
 
@@ -51,23 +49,18 @@ void traceBlockLayout(MFunction &fn, PeepholeStats &stats)
 
     // Seed with entry block.
     std::size_t cur = 0;
-    while (order.size() < n)
-    {
-        if (!placed[cur])
-        {
+    while (order.size() < n) {
+        if (!placed[cur]) {
             placed[cur] = true;
             order.push_back(cur);
 
             // Follow unconditional JMP target to extend the trace.
             const auto &instrs = fn.blocks[cur].instructions;
-            if (!instrs.empty() && instrs.back().opcode == MOpcode::JMP)
-            {
+            if (!instrs.empty() && instrs.back().opcode == MOpcode::JMP) {
                 const auto *lbl = std::get_if<OpLabel>(&instrs.back().operands[0]);
-                if (lbl)
-                {
+                if (lbl) {
                     auto it = nameToIdx.find(lbl->name);
-                    if (it != nameToIdx.end() && !placed[it->second])
-                    {
+                    if (it != nameToIdx.end() && !placed[it->second]) {
                         cur = it->second;
                         continue;
                     }
@@ -77,10 +70,8 @@ void traceBlockLayout(MFunction &fn, PeepholeStats &stats)
 
         // Find next unplaced block.
         bool found = false;
-        for (std::size_t i = 0; i < n; ++i)
-        {
-            if (!placed[i])
-            {
+        for (std::size_t i = 0; i < n; ++i) {
+            if (!placed[i]) {
                 cur = i;
                 found = true;
                 break;
@@ -92,17 +83,14 @@ void traceBlockLayout(MFunction &fn, PeepholeStats &stats)
 
     // Check if reordering changed anything.
     bool changed = false;
-    for (std::size_t i = 0; i < n; ++i)
-    {
-        if (order[i] != i)
-        {
+    for (std::size_t i = 0; i < n; ++i) {
+        if (order[i] != i) {
             changed = true;
             break;
         }
     }
 
-    if (changed)
-    {
+    if (changed) {
         std::vector<MBasicBlock> reordered;
         reordered.reserve(n);
         for (std::size_t idx : order)
@@ -112,8 +100,7 @@ void traceBlockLayout(MFunction &fn, PeepholeStats &stats)
     }
 }
 
-void moveColdBlocks(MFunction &fn, PeepholeStats &stats)
-{
+void moveColdBlocks(MFunction &fn, PeepholeStats &stats) {
     if (fn.blocks.size() <= 2)
         return;
 
@@ -124,8 +111,7 @@ void moveColdBlocks(MFunction &fn, PeepholeStats &stats)
     hotIndices.push_back(0);
 
     // Classify remaining blocks
-    for (std::size_t bi = 1; bi < fn.blocks.size(); ++bi)
-    {
+    for (std::size_t bi = 1; bi < fn.blocks.size(); ++bi) {
         const auto &block = fn.blocks[bi];
         bool isCold = false;
 
@@ -133,18 +119,14 @@ void moveColdBlocks(MFunction &fn, PeepholeStats &stats)
         const auto &label = block.label;
         if (label.find("trap") != std::string::npos || label.find("error") != std::string::npos ||
             label.find("panic") != std::string::npos ||
-            label.find("unreachable") != std::string::npos)
-        {
+            label.find("unreachable") != std::string::npos) {
             isCold = true;
         }
 
         // Check for UD2 instruction (trap)
-        if (!isCold)
-        {
-            for (const auto &instr : block.instructions)
-            {
-                if (instr.opcode == MOpcode::UD2)
-                {
+        if (!isCold) {
+            for (const auto &instr : block.instructions) {
+                if (instr.opcode == MOpcode::UD2) {
                     isCold = true;
                     break;
                 }
@@ -158,8 +140,7 @@ void moveColdBlocks(MFunction &fn, PeepholeStats &stats)
     }
 
     // Only reorder if we found cold blocks
-    if (!coldIndices.empty() && hotIndices.size() > 1)
-    {
+    if (!coldIndices.empty() && hotIndices.size() > 1) {
         std::vector<MBasicBlock> newBlocks;
         newBlocks.reserve(fn.blocks.size());
 
@@ -168,8 +149,7 @@ void moveColdBlocks(MFunction &fn, PeepholeStats &stats)
             newBlocks.push_back(std::move(fn.blocks[idx]));
 
         // Add cold blocks at the end
-        for (std::size_t idx : coldIndices)
-        {
+        for (std::size_t idx : coldIndices) {
             newBlocks.push_back(std::move(fn.blocks[idx]));
             ++stats.coldBlocksMoved;
         }
@@ -178,14 +158,11 @@ void moveColdBlocks(MFunction &fn, PeepholeStats &stats)
     }
 }
 
-void eliminateBranchChains(MFunction &fn, PeepholeStats &stats)
-{
+void eliminateBranchChains(MFunction &fn, PeepholeStats &stats) {
     // Build forwarding map: label -> ultimate JMP target for single-JMP blocks.
     std::unordered_map<std::string, std::string> forwarding;
-    for (const auto &block : fn.blocks)
-    {
-        if (block.instructions.size() == 1 && block.instructions[0].opcode == MOpcode::JMP)
-        {
+    for (const auto &block : fn.blocks) {
+        if (block.instructions.size() == 1 && block.instructions[0].opcode == MOpcode::JMP) {
             const auto *lbl = std::get_if<OpLabel>(&block.instructions[0].operands[0]);
             if (lbl)
                 forwarding[block.label] = lbl->name;
@@ -193,10 +170,8 @@ void eliminateBranchChains(MFunction &fn, PeepholeStats &stats)
     }
 
     // Resolve chains (limit hops to avoid cycles from self-loops).
-    for (auto &[label, target] : forwarding)
-    {
-        for (int hops = 0; hops < 8; ++hops)
-        {
+    for (auto &[label, target] : forwarding) {
+        for (int hops = 0; hops < 8; ++hops) {
             auto it = forwarding.find(target);
             if (it == forwarding.end() || it->second == target)
                 break;
@@ -205,34 +180,25 @@ void eliminateBranchChains(MFunction &fn, PeepholeStats &stats)
     }
 
     // Retarget branches.
-    if (!forwarding.empty())
-    {
-        for (auto &block : fn.blocks)
-        {
+    if (!forwarding.empty()) {
+        for (auto &block : fn.blocks) {
             if (block.instructions.empty())
                 continue;
             auto &last = block.instructions.back();
-            if (last.opcode == MOpcode::JMP)
-            {
+            if (last.opcode == MOpcode::JMP) {
                 auto *lbl = std::get_if<OpLabel>(&last.operands[0]);
-                if (lbl)
-                {
+                if (lbl) {
                     auto it = forwarding.find(lbl->name);
-                    if (it != forwarding.end() && it->second != lbl->name)
-                    {
+                    if (it != forwarding.end() && it->second != lbl->name) {
                         lbl->name = it->second;
                         ++stats.branchChainsEliminated;
                     }
                 }
-            }
-            else if (last.opcode == MOpcode::JCC && last.operands.size() >= 2)
-            {
+            } else if (last.opcode == MOpcode::JCC && last.operands.size() >= 2) {
                 auto *lbl = std::get_if<OpLabel>(&last.operands[1]);
-                if (lbl)
-                {
+                if (lbl) {
                     auto it = forwarding.find(lbl->name);
-                    if (it != forwarding.end() && it->second != lbl->name)
-                    {
+                    if (it != forwarding.end() && it->second != lbl->name) {
                         lbl->name = it->second;
                         ++stats.branchChainsEliminated;
                     }
@@ -242,12 +208,10 @@ void eliminateBranchChains(MFunction &fn, PeepholeStats &stats)
     }
 }
 
-void invertConditionalBranches(MFunction &fn, PeepholeStats &stats)
-{
+void invertConditionalBranches(MFunction &fn, PeepholeStats &stats) {
     // Pattern:  JCC(cc, label_skip) / JMP(label_exit) where label_skip is the next block
     // Rewrite:  JCC(invert(cc), label_exit) — saves 5 bytes (eliminates JMP)
-    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
-    {
+    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
         auto &block = fn.blocks[bi];
         const auto &nextBlock = fn.blocks[bi + 1];
 
@@ -297,10 +261,8 @@ void invertConditionalBranches(MFunction &fn, PeepholeStats &stats)
     }
 }
 
-void removeFallthroughJumps(MFunction &fn, PeepholeStats &stats)
-{
-    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
-    {
+void removeFallthroughJumps(MFunction &fn, PeepholeStats &stats) {
+    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
         auto &block = fn.blocks[bi];
         const auto &nextBlock = fn.blocks[bi + 1];
 
@@ -309,8 +271,7 @@ void removeFallthroughJumps(MFunction &fn, PeepholeStats &stats)
 
         // Check if the last instruction is an unconditional jump to the next block
         auto &lastInstr = block.instructions.back();
-        if (isJumpTo(lastInstr, nextBlock.label))
-        {
+        if (isJumpTo(lastInstr, nextBlock.label)) {
             block.instructions.pop_back();
             ++stats.branchesToNextRemoved;
         }

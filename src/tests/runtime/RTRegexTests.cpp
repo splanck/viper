@@ -22,27 +22,23 @@
 #include <stdio.h>
 #include <string.h>
 
-static void check(const char *label, int ok)
-{
+static void check(const char *label, int ok) {
     printf("  %-50s %s\n", label, ok ? "PASS" : "FAIL");
     assert(ok);
 }
 
-static rt_string S(const char *s)
-{
+static rt_string S(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static int str_eq_c(rt_string s, const char *expected)
-{
+static int str_eq_c(rt_string s, const char *expected) {
     rt_string exp = S(expected);
     int result = rt_str_eq(s, exp);
     rt_string_unref(exp);
     return result;
 }
 
-static void test_is_match(void)
-{
+static void test_is_match(void) {
     printf("rt_pattern_is_match:\n");
     rt_string text = S("hello world");
     rt_string pat_hello = S("hello");
@@ -65,8 +61,7 @@ static void test_is_match(void)
     rt_string_unref(pat_end);
 }
 
-static void test_find(void)
-{
+static void test_find(void) {
     printf("rt_pattern_find:\n");
     rt_string text = S("foo123bar456");
     rt_string pat = S("\\d+");
@@ -96,8 +91,7 @@ static void test_find(void)
     rt_string_unref(pat_none);
 }
 
-static void test_replace(void)
-{
+static void test_replace(void) {
     printf("rt_pattern_replace:\n");
     rt_string text = S("aabbcc");
     rt_string pat = S("[ab]");
@@ -116,8 +110,7 @@ static void test_replace(void)
     rt_string_unref(repl);
 }
 
-static void test_find_all(void)
-{
+static void test_find_all(void) {
     printf("rt_pattern_find_all:\n");
     rt_string text = S("one two three");
     rt_string pat = S("\\w+");
@@ -136,8 +129,7 @@ static void test_find_all(void)
     rt_string_unref(pat);
 }
 
-static void test_split(void)
-{
+static void test_split(void) {
     printf("rt_pattern_split:\n");
     rt_string text = S("a,b,,c");
     rt_string pat = S(",");
@@ -153,8 +145,7 @@ static void test_split(void)
     rt_string_unref(pat);
 }
 
-static void test_escape(void)
-{
+static void test_escape(void) {
     printf("rt_pattern_escape:\n");
     rt_string special = S("a.b*c?d");
     rt_string escaped = rt_pattern_escape(special);
@@ -173,8 +164,7 @@ static void test_escape(void)
     rt_string_unref(variant);
 }
 
-int main(void)
-{
+int main(void) {
     printf("=== RTRegexTests ===\n");
     test_is_match();
     test_find();

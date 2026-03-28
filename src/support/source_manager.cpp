@@ -37,10 +37,8 @@
 #include <iostream>
 #include <limits>
 
-namespace il::support
-{
-namespace
-{
+namespace il::support {
+namespace {
 /// @brief Normalise a filesystem path into the canonical representation used by diagnostics.
 /// @details The helper constructs a `std::filesystem::path` from the raw input,
 ///          applies @ref std::filesystem::path::lexically_normal to collapse
@@ -52,14 +50,12 @@ namespace
 ///          inside the @ref SourceManager.
 /// @param path Raw filesystem path supplied by the caller.
 /// @return Normalised path string owned by the caller.
-std::string normalizePath(std::string path)
-{
+std::string normalizePath(std::string path) {
     std::filesystem::path p(std::move(path));
     std::string normalized = p.lexically_normal().generic_string();
 
 #ifdef _WIN32
-    for (char &ch : normalized)
-    {
+    for (char &ch : normalized) {
         if (ch >= 'A' && ch <= 'Z')
             ch = static_cast<char>(ch - 'A' + 'a');
     }
@@ -82,15 +78,13 @@ std::string normalizePath(std::string path)
 ///
 /// @param path Filesystem path to normalize and store.
 /// @return Identifier (>0) representing the stored path, or zero on overflow.
-uint32_t SourceManager::addFile(std::string path)
-{
+uint32_t SourceManager::addFile(std::string path) {
     std::string normalized = normalizePath(std::move(path));
 
     if (auto it = path_to_id_.find(normalized); it != path_to_id_.end())
         return it->second;
 
-    if (next_file_id_ > std::numeric_limits<uint32_t>::max())
-    {
+    if (next_file_id_ > std::numeric_limits<uint32_t>::max()) {
         auto diag = makeError({}, std::string{kSourceManagerFileIdOverflowMessage});
         printDiag(diag, std::cerr);
         return 0;
@@ -113,22 +107,19 @@ uint32_t SourceManager::addFile(std::string path)
 ///
 /// @param file_id 1-based identifier previously returned by addFile().
 /// @return Stored path, or empty string view if @p file_id is invalid.
-std::string_view SourceManager::getPath(uint32_t file_id) const
-{
+std::string_view SourceManager::getPath(uint32_t file_id) const {
     if (file_id == 0 || file_id > files_.size())
         return {};
     return files_[file_id - 1];
 }
 
-std::string_view SourceManager::getLine(uint32_t file_id, uint32_t line) const
-{
+std::string_view SourceManager::getLine(uint32_t file_id, uint32_t line) const {
     if (file_id == 0 || line == 0)
         return {};
 
     // Check cache first
     auto it = lineCache_.find(file_id);
-    if (it == lineCache_.end())
-    {
+    if (it == lineCache_.end()) {
         // Load file from disk
         auto path = getPath(file_id);
         if (path.empty())
@@ -144,8 +135,7 @@ std::string_view SourceManager::getLine(uint32_t file_id, uint32_t line) const
         fsPath = std::filesystem::path(std::string(path));
 #endif
         std::ifstream f(fsPath);
-        if (!f)
-        {
+        if (!f) {
             // Cache empty vector to avoid repeated I/O attempts
             lineCache_.emplace(file_id, std::vector<std::string>{});
             return {};

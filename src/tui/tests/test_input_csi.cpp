@@ -20,8 +20,7 @@
 using viper::tui::term::InputDecoder;
 using viper::tui::term::KeyEvent;
 
-TEST(TUI, InputCsi)
-{
+TEST(TUI, InputCsi) {
     InputDecoder d;
 
     d.feed("\x1b[A");
@@ -58,8 +57,7 @@ TEST(TUI, InputCsi)
     ASSERT_EQ(ev[0].mods, KeyEvent::Shift);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

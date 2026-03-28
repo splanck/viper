@@ -27,15 +27,12 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-[[nodiscard]] bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs)
-{
+[[nodiscard]] bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs) {
     if (lhs.size() != rhs.size())
         return false;
-    for (std::size_t i = 0; i < lhs.size(); ++i)
-    {
+    for (std::size_t i = 0; i < lhs.size(); ++i) {
         const unsigned char lc = static_cast<unsigned char>(lhs[i]);
         const unsigned char rc = static_cast<unsigned char>(rhs[i]);
         if (std::tolower(lc) != std::tolower(rc))
@@ -44,20 +41,16 @@ namespace
     return true;
 }
 
-[[nodiscard]] bool hasFunction(const il::core::Module &module, std::string_view name)
-{
+[[nodiscard]] bool hasFunction(const il::core::Module &module, std::string_view name) {
     const auto &functions = module.functions;
-    return std::any_of(functions.begin(),
-                       functions.end(),
-                       [&](const il::core::Function &fn)
-                       { return equalsIgnoreCase(fn.name, name); });
+    return std::any_of(functions.begin(), functions.end(), [&](const il::core::Function &fn) {
+        return equalsIgnoreCase(fn.name, name);
+    });
 }
 
 [[nodiscard]] const il::core::Function *findFunctionCaseInsensitive(const il::core::Module &module,
-                                                                    std::string_view name)
-{
-    for (const auto &fn : module.functions)
-    {
+                                                                    std::string_view name) {
+    for (const auto &fn : module.functions) {
         if (equalsIgnoreCase(fn.name, name))
             return &fn;
     }
@@ -65,14 +58,10 @@ namespace
 }
 
 /// @brief Check if a function contains a call to the given callee name.
-[[nodiscard]] bool hasCallTo(const il::core::Function &fn, std::string_view callee)
-{
-    for (const auto &block : fn.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
-            if (instr.op == il::core::Opcode::Call)
-            {
+[[nodiscard]] bool hasCallTo(const il::core::Function &fn, std::string_view callee) {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == il::core::Opcode::Call) {
                 if (equalsIgnoreCase(instr.callee, callee))
                     return true;
             }
@@ -84,8 +73,7 @@ namespace
 } // namespace
 
 // BUG-OOP-001: Test inherited field access
-TEST(OOP_Inheritance, InheritedFieldAccess)
-{
+TEST(OOP_Inheritance, InheritedFieldAccess) {
     const char *src = R"BAS(
 CLASS Parent
     PUBLIC value AS INTEGER
@@ -113,8 +101,7 @@ PRINT c.value
 }
 
 // BUG-OOP-002: Test inherited method access (SUB)
-TEST(OOP_Inheritance, InheritedMethodSub)
-{
+TEST(OOP_Inheritance, InheritedMethodSub) {
     const char *src = R"BAS(
 CLASS Parent
     PUBLIC SUB Greet()
@@ -145,8 +132,7 @@ c.Greet()
 }
 
 // BUG-OOP-002: Test inherited method access (FUNCTION with return value)
-TEST(OOP_Inheritance, InheritedMethodFunction)
-{
+TEST(OOP_Inheritance, InheritedMethodFunction) {
     const char *src = R"BAS(
 CLASS Parent
     PUBLIC FUNCTION GetMessage() AS STRING
@@ -177,8 +163,7 @@ PRINT c.GetMessage()
 }
 
 // BUG-OOP-007: Test constructor argument coercion (i64 to f64)
-TEST(OOP_Inheritance, ConstructorArgCoercionI64ToF64)
-{
+TEST(OOP_Inheritance, ConstructorArgCoercionI64ToF64) {
     const char *src = R"BAS(
 CLASS Account
     PUBLIC balance AS DOUBLE
@@ -204,8 +189,7 @@ PRINT acc.balance
 }
 
 // Test multi-level inheritance
-TEST(OOP_Inheritance, MultiLevelInheritance)
-{
+TEST(OOP_Inheritance, MultiLevelInheritance) {
     const char *src = R"BAS(
 CLASS GrandParent
     PUBLIC name AS STRING
@@ -238,8 +222,7 @@ PRINT c.age
     EXPECT_TRUE(hasFunction(res.module, "Child.__ctor"));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

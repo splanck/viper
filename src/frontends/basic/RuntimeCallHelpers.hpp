@@ -30,8 +30,7 @@
 #include <string_view>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 class Lowerer;
 
@@ -55,8 +54,7 @@ class Lowerer;
 ///       .withFeature(RuntimeFeature::OpenErrVstr)
 ///       .callWithErrCheck(Type(Type::Kind::I32), "rt_open_err_vstr", "open");
 /// @endcode
-class RuntimeCallBuilder
-{
+class RuntimeCallBuilder {
   public:
     using Value = il::core::Value;
     using Type = il::core::Type;

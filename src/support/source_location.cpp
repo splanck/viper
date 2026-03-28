@@ -24,8 +24,7 @@
 
 #include "support/source_location.hpp"
 
-namespace il::support
-{
+namespace il::support {
 /// @brief Determine whether the location carries a real source attachment.
 ///
 /// @details SourceManager dispenses monotonically increasing identifiers for
@@ -36,8 +35,7 @@ namespace il::support
 ///          diagnostics and serializers to elide missing information.
 ///
 /// @return True when the location originated from a tracked source file.
-bool SourceLoc::isValid() const
-{
+bool SourceLoc::isValid() const {
     return file_id != 0;
 }
 
@@ -51,28 +49,23 @@ bool SourceLoc::isValid() const
 ///          to underline spans of text.
 ///
 /// @return True when both @ref begin and @ref end carry valid file ids.
-bool SourceRange::isValid() const
-{
-    if (!begin.isValid() || !end.isValid())
-    {
+bool SourceRange::isValid() const {
+    if (!begin.isValid() || !end.isValid()) {
         return false;
     }
 
-    if (begin.file_id != end.file_id)
-    {
+    if (begin.file_id != end.file_id) {
         return false;
     }
 
     const bool have_line_info = begin.line != 0 && end.line != 0;
-    if (have_line_info && begin.line > end.line)
-    {
+    if (have_line_info && begin.line > end.line) {
         return false;
     }
 
     const bool have_column_info =
         have_line_info && begin.line == end.line && begin.column != 0 && end.column != 0;
-    if (have_column_info && begin.column > end.column)
-    {
+    if (have_column_info && begin.column > end.column) {
         return false;
     }
 

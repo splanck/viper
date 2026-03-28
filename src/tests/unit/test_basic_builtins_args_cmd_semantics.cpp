@@ -22,8 +22,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     // COMMAND$ should accept 0 args only.
     {
         const std::string src = "10 PRINT COMMAND$(1)\n20 END\n";

@@ -39,8 +39,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // Forward declarations
 struct ClassLayout;
@@ -49,8 +48,7 @@ struct ClassLayout;
 ///
 /// Consolidates symbol operations into a single abstraction with clear
 /// semantics for definition, lookup, and type inference.
-class SymbolTable
-{
+class SymbolTable {
   public:
     using AstType = ::il::frontends::basic::Type;
 
@@ -200,28 +198,24 @@ class SymbolTable
     // =========================================================================
 
     /// @brief Iterate over all symbols (non-const).
-    template <typename Func> void forEach(Func &&fn)
-    {
+    template <typename Func> void forEach(Func &&fn) {
         for (auto &[name, info] : symbols_)
             fn(name, info);
     }
 
     /// @brief Iterate over all symbols (const).
-    template <typename Func> void forEach(Func &&fn) const
-    {
+    template <typename Func> void forEach(Func &&fn) const {
         for (const auto &[name, info] : symbols_)
             fn(name, info);
     }
 
     /// @brief Get the number of symbols in the table.
-    [[nodiscard]] std::size_t size() const noexcept
-    {
+    [[nodiscard]] std::size_t size() const noexcept {
         return symbols_.size();
     }
 
     /// @brief Check if the table is empty.
-    [[nodiscard]] bool empty() const noexcept
-    {
+    [[nodiscard]] bool empty() const noexcept {
         return symbols_.empty();
     }
 
@@ -234,13 +228,11 @@ class SymbolTable
 
     /// @brief Get direct access to the underlying map.
     /// @note Prefer using define/lookup methods for new code.
-    [[nodiscard]] SymbolMap &raw() noexcept
-    {
+    [[nodiscard]] SymbolMap &raw() noexcept {
         return symbols_;
     }
 
-    [[nodiscard]] const SymbolMap &raw() const noexcept
-    {
+    [[nodiscard]] const SymbolMap &raw() const noexcept {
         return symbols_;
     }
 

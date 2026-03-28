@@ -19,10 +19,8 @@
 #include <iostream>
 #include <string>
 
-int main(int argc, char **argv)
-{
-    if (argc != 4)
-    {
+int main(int argc, char **argv) {
+    if (argc != 4) {
         std::cerr << "usage: DebugScriptTests <ilc> <il file> <script>\n";
         return 1;
     }
@@ -37,8 +35,7 @@ int main(int argc, char **argv)
     if (!scriptOut)
         return 1;
     std::string scriptLine;
-    while (std::getline(scriptIn, scriptLine))
-    {
+    while (std::getline(scriptIn, scriptLine)) {
         scriptOut << "\t  " << scriptLine << "  \t\r\n";
     }
     scriptOut << " \t \t\r\n";
@@ -65,20 +62,17 @@ int main(int argc, char **argv)
         return 1;
     std::ifstream err(dbgErr);
     std::string line;
-    while (std::getline(err, line))
-    {
+    while (std::getline(err, line)) {
         if (line.rfind("[BREAK]", 0) == 0)
             break;
     }
     if (line != "[BREAK] fn=@main blk=L3 reason=label")
         return 1;
     int ilLines = 0;
-    while (std::getline(err, line))
-    {
+    while (std::getline(err, line)) {
         if (line.rfind("[IL]", 0) == 0)
             ++ilLines;
-        else if (line.rfind("[BREAK]", 0) == 0)
-        {
+        else if (line.rfind("[BREAK]", 0) == 0) {
             if (line != "[BREAK] fn=@main blk=L3 reason=step")
                 return 1;
             break;
@@ -92,8 +86,7 @@ int main(int argc, char **argv)
     std::ifstream dbgO(dbgOut);
     std::ifstream refO(refOut);
     std::string d, r;
-    while (std::getline(dbgO, d))
-    {
+    while (std::getline(dbgO, d)) {
         if (!std::getline(refO, r) || d != r)
             return 1;
     }
@@ -109,8 +102,7 @@ int main(int argc, char **argv)
         return 1;
     std::ifstream contO(contOut);
     std::ifstream refO2(refOut);
-    while (std::getline(contO, d))
-    {
+    while (std::getline(contO, d)) {
         if (!std::getline(refO2, r) || d != r)
             return 1;
     }

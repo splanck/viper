@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,8 +43,7 @@ static std::string readFile(const std::string &path)
 }
 
 // Test 1: Add with 0 should be optimized away or become mov
-TEST(Arm64PeepholeComprehensive, AddZero)
-{
+TEST(Arm64PeepholeComprehensive, AddZero) {
     const std::string in = outPath("arm64_peep_add0.il");
     const std::string out = outPath("arm64_peep_add0.s");
     const std::string il = "il 0.1\n"
@@ -65,8 +61,7 @@ TEST(Arm64PeepholeComprehensive, AddZero)
 }
 
 // Test 2: Sub with 0 should be optimized
-TEST(Arm64PeepholeComprehensive, SubZero)
-{
+TEST(Arm64PeepholeComprehensive, SubZero) {
     const std::string in = outPath("arm64_peep_sub0.il");
     const std::string out = outPath("arm64_peep_sub0.s");
     const std::string il = "il 0.1\n"
@@ -83,8 +78,7 @@ TEST(Arm64PeepholeComprehensive, SubZero)
 }
 
 // Test 3: Mul by 1 should be identity
-TEST(Arm64PeepholeComprehensive, MulOne)
-{
+TEST(Arm64PeepholeComprehensive, MulOne) {
     const std::string in = outPath("arm64_peep_mul1.il");
     const std::string out = outPath("arm64_peep_mul1.s");
     const std::string il = "il 0.1\n"
@@ -101,8 +95,7 @@ TEST(Arm64PeepholeComprehensive, MulOne)
 }
 
 // Test 4: Mul by 0 should be 0
-TEST(Arm64PeepholeComprehensive, MulZero)
-{
+TEST(Arm64PeepholeComprehensive, MulZero) {
     const std::string in = outPath("arm64_peep_mul0.il");
     const std::string out = outPath("arm64_peep_mul0.s");
     const std::string il = "il 0.1\n"
@@ -119,8 +112,7 @@ TEST(Arm64PeepholeComprehensive, MulZero)
 }
 
 // Test 5: Shift by 0 should be identity
-TEST(Arm64PeepholeComprehensive, ShiftZero)
-{
+TEST(Arm64PeepholeComprehensive, ShiftZero) {
     const std::string in = outPath("arm64_peep_shl0.il");
     const std::string out = outPath("arm64_peep_shl0.s");
     const std::string il = "il 0.1\n"
@@ -137,8 +129,7 @@ TEST(Arm64PeepholeComprehensive, ShiftZero)
 }
 
 // Test 6: And with -1 (all ones) is identity
-TEST(Arm64PeepholeComprehensive, AndAllOnes)
-{
+TEST(Arm64PeepholeComprehensive, AndAllOnes) {
     const std::string in = outPath("arm64_peep_and_ones.il");
     const std::string out = outPath("arm64_peep_and_ones.s");
     const std::string il = "il 0.1\n"
@@ -155,8 +146,7 @@ TEST(Arm64PeepholeComprehensive, AndAllOnes)
 }
 
 // Test 7: Or with 0 is identity
-TEST(Arm64PeepholeComprehensive, OrZero)
-{
+TEST(Arm64PeepholeComprehensive, OrZero) {
     const std::string in = outPath("arm64_peep_or0.il");
     const std::string out = outPath("arm64_peep_or0.s");
     const std::string il = "il 0.1\n"
@@ -173,8 +163,7 @@ TEST(Arm64PeepholeComprehensive, OrZero)
 }
 
 // Test 8: Xor with 0 is identity
-TEST(Arm64PeepholeComprehensive, XorZero)
-{
+TEST(Arm64PeepholeComprehensive, XorZero) {
     const std::string in = outPath("arm64_peep_xor0.il");
     const std::string out = outPath("arm64_peep_xor0.s");
     const std::string il = "il 0.1\n"
@@ -191,8 +180,7 @@ TEST(Arm64PeepholeComprehensive, XorZero)
 }
 
 // Test 9: Branch to next block should be elided
-TEST(Arm64PeepholeComprehensive, FallthroughBranch)
-{
+TEST(Arm64PeepholeComprehensive, FallthroughBranch) {
     const std::string in = outPath("arm64_peep_fallthrough.il");
     const std::string out = outPath("arm64_peep_fallthrough.s");
     const std::string il = "il 0.1\n"
@@ -212,8 +200,7 @@ TEST(Arm64PeepholeComprehensive, FallthroughBranch)
 }
 
 // Test 10: Consecutive moves should be folded
-TEST(Arm64PeepholeComprehensive, ConsecutiveMoves)
-{
+TEST(Arm64PeepholeComprehensive, ConsecutiveMoves) {
     const std::string in = outPath("arm64_peep_moves.il");
     const std::string out = outPath("arm64_peep_moves.s");
     const std::string il = "il 0.1\n"
@@ -232,8 +219,7 @@ TEST(Arm64PeepholeComprehensive, ConsecutiveMoves)
 }
 
 // Test 11: Compare with 0 can use tst
-TEST(Arm64PeepholeComprehensive, CmpZeroToTst)
-{
+TEST(Arm64PeepholeComprehensive, CmpZeroToTst) {
     const std::string in = outPath("arm64_peep_cmp0.il");
     const std::string out = outPath("arm64_peep_cmp0.s");
     const std::string il = "il 0.1\n"
@@ -254,8 +240,7 @@ TEST(Arm64PeepholeComprehensive, CmpZeroToTst)
 }
 
 // Test 12: FP identity operations
-TEST(Arm64PeepholeComprehensive, FPIdentities)
-{
+TEST(Arm64PeepholeComprehensive, FPIdentities) {
     const std::string in = outPath("arm64_peep_fp.il");
     const std::string out = outPath("arm64_peep_fp.s");
     // fadd with 0.0 is identity
@@ -273,8 +258,7 @@ TEST(Arm64PeepholeComprehensive, FPIdentities)
     EXPECT_FALSE(asmText.empty());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

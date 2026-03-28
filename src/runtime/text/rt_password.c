@@ -55,8 +55,7 @@ static void pbkdf2_sha256(const uint8_t *password,
                           size_t salt_len,
                           int64_t iterations,
                           uint8_t *output,
-                          size_t output_len)
-{
+                          size_t output_len) {
     // PBKDF2 with SHA-256: DK = T1 || T2 || ... || Tdklen/hlen
     // Ti = F(Password, Salt, c, i)
     // F(Password, Salt, c, i) = U1 ^ U2 ^ ... ^ Uc
@@ -73,8 +72,7 @@ static void pbkdf2_sha256(const uint8_t *password,
     size_t pos = 0;
     uint32_t block_num = 1;
 
-    while (pos < output_len)
-    {
+    while (pos < output_len) {
         // Set block number (big-endian)
         block_salt[salt_len + 0] = (block_num >> 24) & 0xFF;
         block_salt[salt_len + 1] = (block_num >> 16) & 0xFF;
@@ -87,11 +85,9 @@ static void pbkdf2_sha256(const uint8_t *password,
         memcpy(t, u, 32);
 
         // Ui = HMAC-SHA256(password, U(i-1)), T ^= Ui
-        for (int64_t i = 1; i < iterations; i++)
-        {
+        for (int64_t i = 1; i < iterations; i++) {
             rt_hash_hmac_sha256_raw(password, password_len, u, 32, u);
-            for (int j = 0; j < 32; j++)
-            {
+            for (int j = 0; j < 32; j++) {
                 t[j] ^= u[j];
             }
         }
@@ -116,16 +112,14 @@ static void pbkdf2_sha256(const uint8_t *password,
 static const char base64_chars[] =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
-static char *base64_encode(const uint8_t *data, size_t len, size_t *out_len)
-{
+static char *base64_encode(const uint8_t *data, size_t len, size_t *out_len) {
     size_t olen = ((len + 2) / 3) * 4;
     char *output = (char *)malloc(olen + 1);
     if (!output)
         return NULL;
 
     size_t i = 0, j = 0;
-    while (i < len)
-    {
+    while (i < len) {
         uint32_t octet_a = data[i++];
         uint32_t octet_b = (i < len) ? data[i++] : 0;
         uint32_t octet_c = (i < len) ? data[i++] : 0;
@@ -140,8 +134,7 @@ static char *base64_encode(const uint8_t *data, size_t len, size_t *out_len)
 
     // Add padding based on input length
     size_t padding = (3 - (len % 3)) % 3;
-    for (size_t p = 0; p < padding; p++)
-    {
+    for (size_t p = 0; p < padding; p++) {
         output[j - 1 - p] = '=';
     }
 
@@ -150,8 +143,7 @@ static char *base64_encode(const uint8_t *data, size_t len, size_t *out_len)
     return output;
 }
 
-static int base64_decode_char(char c)
-{
+static int base64_decode_char(char c) {
     if (c >= 'A' && c <= 'Z')
         return c - 'A';
     if (c >= 'a' && c <= 'z')
@@ -165,8 +157,7 @@ static int base64_decode_char(char c)
     return -1;
 }
 
-static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len)
-{
+static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len) {
     if (len % 4 != 0)
         return NULL;
 
@@ -181,8 +172,7 @@ static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len)
         return NULL;
 
     size_t i = 0, j = 0;
-    while (i < len)
-    {
+    while (i < len) {
         int a = data[i] == '=' ? 0 : base64_decode_char(data[i]);
         i++;
         int b = data[i] == '=' ? 0 : base64_decode_char(data[i]);
@@ -192,8 +182,7 @@ static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len)
         int d = data[i] == '=' ? 0 : base64_decode_char(data[i]);
         i++;
 
-        if (a < 0 || b < 0 || c < 0 || d < 0)
-        {
+        if (a < 0 || b < 0 || c < 0 || d < 0) {
             free(output);
             return NULL;
         }
@@ -220,8 +209,7 @@ static uint8_t *base64_decode(const char *data, size_t len, size_t *out_len)
 /// @brief Perform password hash operation.
 /// @param password
 /// @return Result value.
-rt_string rt_password_hash(rt_string password)
-{
+rt_string rt_password_hash(rt_string password) {
     return rt_password_hash_with_iterations(password, DEFAULT_ITERATIONS);
 }
 
@@ -229,11 +217,9 @@ rt_string rt_password_hash(rt_string password)
 /// @param password
 /// @param iterations
 /// @return Result value.
-rt_string rt_password_hash_with_iterations(rt_string password, int64_t iterations)
-{
+rt_string rt_password_hash_with_iterations(rt_string password, int64_t iterations) {
     // Clamp iterations to minimum
-    if (iterations < MIN_ITERATIONS)
-    {
+    if (iterations < MIN_ITERATIONS) {
         iterations = MIN_ITERATIONS;
     }
 
@@ -269,13 +255,11 @@ rt_string rt_password_hash_with_iterations(rt_string password, int64_t iteration
 /// @param password
 /// @param hash
 /// @return Result value.
-int8_t rt_password_verify(rt_string password, rt_string hash)
-{
+int8_t rt_password_verify(rt_string password, rt_string hash) {
     const char *hash_str = rt_string_cstr(hash);
 
     // Parse format: "PBKDF2$iterations$salt_b64$hash_b64"
-    if (strncmp(hash_str, "PBKDF2$", 7) != 0)
-    {
+    if (strncmp(hash_str, "PBKDF2$", 7) != 0) {
         return 0; // Invalid format
     }
 
@@ -285,8 +269,7 @@ int8_t rt_password_verify(rt_string password, rt_string hash)
 
     // Parse iterations
     long long iterations = strtoll(p, &end, 10);
-    if (*end != '$' || iterations < 1)
-    {
+    if (*end != '$' || iterations < 1) {
         return 0;
     }
     p = end + 1;
@@ -295,8 +278,7 @@ int8_t rt_password_verify(rt_string password, rt_string hash)
     const char *salt_start = p;
     while (*p && *p != '$')
         p++;
-    if (*p != '$')
-    {
+    if (*p != '$') {
         return 0;
     }
     size_t salt_b64_len = p - salt_start;
@@ -315,16 +297,14 @@ int8_t rt_password_verify(rt_string password, rt_string hash)
     uint8_t *salt = base64_decode(salt_b64, salt_b64_len, &salt_len);
     free(salt_b64);
 
-    if (!salt)
-    {
+    if (!salt) {
         return 0;
     }
 
     // Decode expected hash
     size_t expected_len;
     uint8_t *expected = base64_decode(hash_b64_start, hash_b64_len, &expected_len);
-    if (!expected)
-    {
+    if (!expected) {
         free(salt);
         return 0;
     }
@@ -341,8 +321,7 @@ int8_t rt_password_verify(rt_string password, rt_string hash)
     // Constant-time comparison
     uint8_t diff = 0;
     size_t cmp_len = expected_len < HASH_LENGTH ? expected_len : HASH_LENGTH;
-    for (size_t i = 0; i < cmp_len; i++)
-    {
+    for (size_t i = 0; i < cmp_len; i++) {
         diff |= computed[i] ^ expected[i];
     }
     // Also check lengths match

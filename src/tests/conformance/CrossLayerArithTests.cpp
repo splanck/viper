@@ -45,18 +45,15 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-int64_t doubleBits(double d)
-{
+int64_t doubleBits(double d) {
     int64_t bits;
     std::memcpy(&bits, &d, sizeof(bits));
     return bits;
 }
 
-double bitsToDouble(int64_t bits)
-{
+double bitsToDouble(int64_t bits) {
     double d;
     std::memcpy(&d, &bits, sizeof(d));
     return d;
@@ -67,8 +64,7 @@ double bitsToDouble(int64_t bits)
 //=============================================================================
 
 /// Build a function: main() -> i64 { return lhs OP rhs; }
-void buildIntBinary(Module &module, Opcode op, int64_t lhs, int64_t rhs)
-{
+void buildIntBinary(Module &module, Opcode op, int64_t lhs, int64_t rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -92,8 +88,7 @@ void buildIntBinary(Module &module, Opcode op, int64_t lhs, int64_t rhs)
 }
 
 /// Build a function: main() -> i64 { return lhs FCMP rhs; } (returns i1→i64)
-void buildFloatCompare(Module &module, Opcode op, double lhs, double rhs)
-{
+void buildFloatCompare(Module &module, Opcode op, double lhs, double rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -145,8 +140,7 @@ void buildFloatCompare(Module &module, Opcode op, double lhs, double rhs)
 }
 
 /// Build a function: main() -> i64 { return lhs FOP rhs; } (returns F64 as bits)
-void buildFloatBinary(Module &module, Opcode op, double lhs, double rhs)
-{
+void buildFloatBinary(Module &module, Opcode op, double lhs, double rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -187,8 +181,7 @@ void buildFloatBinary(Module &module, Opcode op, double lhs, double rhs)
 }
 
 /// Build a conversion function: main() -> i64 { return conv(val); }
-void buildConversion(Module &module, Opcode op, Type::Kind resultKind, int64_t operandBits)
-{
+void buildConversion(Module &module, Opcode op, Type::Kind resultKind, int64_t operandBits) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -196,8 +189,7 @@ void buildConversion(Module &module, Opcode op, Type::Kind resultKind, int64_t o
 
     // For Sitofp: operand is I64, result is F64 (returned as bits)
     // For CastFpToSiRteChk: operand is F64 (from ConstF64), result is I64
-    if (op == Opcode::Sitofp)
-    {
+    if (op == Opcode::Sitofp) {
         Instr conv;
         conv.result = builder.reserveTempId();
         conv.op = op;
@@ -212,9 +204,7 @@ void buildConversion(Module &module, Opcode op, Type::Kind resultKind, int64_t o
         ret.loc = {1, 1, 1};
         ret.operands.push_back(Value::temp(*conv.result));
         bb.instructions.push_back(ret);
-    }
-    else
-    {
+    } else {
         // ConstF64 first
         Instr constF;
         constF.result = builder.reserveTempId();
@@ -245,21 +235,18 @@ void buildConversion(Module &module, Opcode op, Type::Kind resultKind, int64_t o
 // Execution helpers
 //=============================================================================
 
-int64_t runVm(Module &module)
-{
+int64_t runVm(Module &module) {
     viper::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
-std::string captureVmTrap(Module &module)
-{
+std::string captureVmTrap(Module &module) {
     viper::tests::VmFixture fixture;
     return fixture.captureTrap(module);
 }
 
 #if VIPER_HAS_ARM64
-int runNative(Module &module)
-{
+int runNative(Module &module) {
     // Serialize IL to string, write to temp file, run native
     const std::string ilSource = il::io::Serializer::toString(module);
 
@@ -284,8 +271,7 @@ int runNative(Module &module)
 
 /// Run module on VM and native, assert exit codes match (low 8 bits).
 /// Returns the VM i64 result for further assertion.
-int64_t runCrossLayer(Module &module)
-{
+int64_t runCrossLayer(Module &module) {
     int64_t vmResult = runVm(module);
 
 #if VIPER_HAS_ARM64
@@ -294,8 +280,7 @@ int64_t runCrossLayer(Module &module)
 
     int vmExit = static_cast<int>(vmResult) & 0xFF;
     int natExit = nativeResult & 0xFF;
-    if (vmExit != natExit)
-    {
+    if (vmExit != natExit) {
         std::cerr << "  VM result=" << vmResult << " exit=" << vmExit << "  native exit=" << natExit
                   << "\n";
     }
@@ -305,8 +290,7 @@ int64_t runCrossLayer(Module &module)
     return vmResult;
 }
 
-void expectTrapCrossLayer(Module &module, std::string_view needle)
-{
+void expectTrapCrossLayer(Module &module, std::string_view needle) {
     const std::string vmTrap = captureVmTrap(module);
     ASSERT_TRUE(vmTrap.find(needle) != std::string::npos);
 
@@ -325,15 +309,13 @@ void expectTrapCrossLayer(Module &module, std::string_view needle)
 
 // --- Checked integer overflow ---
 
-TEST(CrossLayerArith, AddMaxPlusOne)
-{
+TEST(CrossLayerArith, AddMaxPlusOne) {
     Module module;
     buildIntBinary(module, Opcode::IAddOvf, std::numeric_limits<int64_t>::max(), 1);
     expectTrapCrossLayer(module, "Overflow");
 }
 
-TEST(CrossLayerArith, SubMinMinusOne)
-{
+TEST(CrossLayerArith, SubMinMinusOne) {
     Module module;
     buildIntBinary(module, Opcode::ISubOvf, std::numeric_limits<int64_t>::min(), 1);
     expectTrapCrossLayer(module, "Overflow");
@@ -341,16 +323,14 @@ TEST(CrossLayerArith, SubMinMinusOne)
 
 // --- Integer division truncation ---
 
-TEST(CrossLayerArith, SDivNegativeTruncation)
-{
+TEST(CrossLayerArith, SDivNegativeTruncation) {
     Module module;
     buildIntBinary(module, Opcode::SDivChk0, -7, 2);
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == -3); // Truncation toward zero
 }
 
-TEST(CrossLayerArith, SDivPositiveNegDivisor)
-{
+TEST(CrossLayerArith, SDivPositiveNegDivisor) {
     Module module;
     buildIntBinary(module, Opcode::SDivChk0, 7, -2);
     int64_t result = runCrossLayer(module);
@@ -359,24 +339,21 @@ TEST(CrossLayerArith, SDivPositiveNegDivisor)
 
 // --- Remainder sign rule ---
 
-TEST(CrossLayerArith, SRemNegativeDividend)
-{
+TEST(CrossLayerArith, SRemNegativeDividend) {
     Module module;
     buildIntBinary(module, Opcode::SRemChk0, -7, 2);
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == -1); // Dividend sign
 }
 
-TEST(CrossLayerArith, SRemPositiveDividend)
-{
+TEST(CrossLayerArith, SRemPositiveDividend) {
     Module module;
     buildIntBinary(module, Opcode::SRemChk0, 7, -2);
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == 1); // Dividend sign
 }
 
-TEST(CrossLayerArith, SRemBothNegative)
-{
+TEST(CrossLayerArith, SRemBothNegative) {
     Module module;
     buildIntBinary(module, Opcode::SRemChk0, -7, -2);
     int64_t result = runCrossLayer(module);
@@ -385,32 +362,28 @@ TEST(CrossLayerArith, SRemBothNegative)
 
 // --- Shift masking and extension ---
 
-TEST(CrossLayerArith, ShlMaskTo64)
-{
+TEST(CrossLayerArith, ShlMaskTo64) {
     Module module;
     buildIntBinary(module, Opcode::Shl, 1, 64);
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == 1); // 64 & 63 = 0 → identity
 }
 
-TEST(CrossLayerArith, AShrSignExtend)
-{
+TEST(CrossLayerArith, AShrSignExtend) {
     Module module;
     buildIntBinary(module, Opcode::AShr, -1, 63);
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == -1); // All sign bits
 }
 
-TEST(CrossLayerArith, LShrZeroExtend)
-{
+TEST(CrossLayerArith, LShrZeroExtend) {
     Module module;
     buildIntBinary(module, Opcode::LShr, -1, 63);
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == 1); // Only high bit
 }
 
-TEST(CrossLayerArith, AShrMaskTo64)
-{
+TEST(CrossLayerArith, AShrMaskTo64) {
     Module module;
     buildIntBinary(module, Opcode::AShr, 8, 65);
     int64_t result = runCrossLayer(module);
@@ -422,8 +395,7 @@ TEST(CrossLayerArith, AShrMaskTo64)
 // Float arithmetic tests use runVm() directly because float bit patterns
 // have unpredictable low bytes, making 8-bit exit code comparison meaningless.
 
-TEST(CrossLayerArith, FAddInfinity)
-{
+TEST(CrossLayerArith, FAddInfinity) {
     Module module;
     buildFloatBinary(module, Opcode::FAdd, 1e308, 1e308);
     int64_t result = runVm(module);
@@ -431,8 +403,7 @@ TEST(CrossLayerArith, FAddInfinity)
     EXPECT_TRUE(std::isinf(d) && d > 0);
 }
 
-TEST(CrossLayerArith, FDivZeroZero)
-{
+TEST(CrossLayerArith, FDivZeroZero) {
     Module module;
     buildFloatBinary(module, Opcode::FDiv, 0.0, 0.0);
     int64_t result = runVm(module);
@@ -440,8 +411,7 @@ TEST(CrossLayerArith, FDivZeroZero)
     EXPECT_TRUE(std::isnan(d));
 }
 
-TEST(CrossLayerArith, FDivByZero)
-{
+TEST(CrossLayerArith, FDivByZero) {
     Module module;
     buildFloatBinary(module, Opcode::FDiv, 1.0, 0.0);
     int64_t result = runVm(module);
@@ -449,8 +419,7 @@ TEST(CrossLayerArith, FDivByZero)
     EXPECT_TRUE(std::isinf(d) && d > 0);
 }
 
-TEST(CrossLayerArith, FMulNaN)
-{
+TEST(CrossLayerArith, FMulNaN) {
     Module module;
     buildFloatBinary(module, Opcode::FMul, std::numeric_limits<double>::quiet_NaN(), 5.0);
     int64_t result = runVm(module);
@@ -462,8 +431,7 @@ TEST(CrossLayerArith, FMulNaN)
 // These stay VM-only because NaN payload serialization through the temporary
 // native IL round-trip is not stable enough for cross-layer comparison here.
 
-TEST(CrossLayerArith, FCmpLtNaN)
-{
+TEST(CrossLayerArith, FCmpLtNaN) {
     Module module;
     double nan = std::numeric_limits<double>::quiet_NaN();
     buildFloatCompare(module, Opcode::FCmpLT, nan, 1.0);
@@ -471,8 +439,7 @@ TEST(CrossLayerArith, FCmpLtNaN)
     EXPECT_TRUE(result == 0); // false
 }
 
-TEST(CrossLayerArith, FCmpNeNaN)
-{
+TEST(CrossLayerArith, FCmpNeNaN) {
     Module module;
     double nan = std::numeric_limits<double>::quiet_NaN();
     buildFloatCompare(module, Opcode::FCmpNE, nan, nan);
@@ -480,8 +447,7 @@ TEST(CrossLayerArith, FCmpNeNaN)
     EXPECT_TRUE(result == 1); // true (unordered)
 }
 
-TEST(CrossLayerArith, FCmpEqNaN)
-{
+TEST(CrossLayerArith, FCmpEqNaN) {
     Module module;
     double nan = std::numeric_limits<double>::quiet_NaN();
     buildFloatCompare(module, Opcode::FCmpEQ, nan, nan);
@@ -489,8 +455,7 @@ TEST(CrossLayerArith, FCmpEqNaN)
     EXPECT_TRUE(result == 0); // false
 }
 
-TEST(CrossLayerArith, FCmpGtNaN)
-{
+TEST(CrossLayerArith, FCmpGtNaN) {
     Module module;
     double nan = std::numeric_limits<double>::quiet_NaN();
     buildFloatCompare(module, Opcode::FCmpGT, 1.0, nan);
@@ -498,8 +463,7 @@ TEST(CrossLayerArith, FCmpGtNaN)
     EXPECT_TRUE(result == 0); // false
 }
 
-TEST(CrossLayerArith, FCmpOrdNaN)
-{
+TEST(CrossLayerArith, FCmpOrdNaN) {
     Module module;
     double nan = std::numeric_limits<double>::quiet_NaN();
     buildFloatCompare(module, Opcode::FCmpOrd, nan, 1.0);
@@ -507,8 +471,7 @@ TEST(CrossLayerArith, FCmpOrdNaN)
     EXPECT_TRUE(result == 0); // false
 }
 
-TEST(CrossLayerArith, FCmpUnoNaN)
-{
+TEST(CrossLayerArith, FCmpUnoNaN) {
     Module module;
     double nan = std::numeric_limits<double>::quiet_NaN();
     buildFloatCompare(module, Opcode::FCmpUno, nan, 1.0);
@@ -519,8 +482,7 @@ TEST(CrossLayerArith, FCmpUnoNaN)
 // --- Conversions ---
 
 // Sitofp returns F64 bits — use runVm() (bit pattern in exit code is meaningless).
-TEST(CrossLayerArith, SitofpMax)
-{
+TEST(CrossLayerArith, SitofpMax) {
     // INT64_MAX may lose precision in F64 (only 53 mantissa bits)
     Module module;
     buildConversion(module, Opcode::Sitofp, Type::Kind::F64, std::numeric_limits<int64_t>::max());
@@ -531,16 +493,14 @@ TEST(CrossLayerArith, SitofpMax)
     EXPECT_TRUE(d > 9.2e18);
 }
 
-TEST(CrossLayerArith, CastFpToSiRteChkRoundsToNearestEven)
-{
+TEST(CrossLayerArith, CastFpToSiRteChkRoundsToNearestEven) {
     Module module;
     buildConversion(module, Opcode::CastFpToSiRteChk, Type::Kind::I64, doubleBits(1.9));
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == 2); // Round-to-nearest-even
 }
 
-TEST(CrossLayerArith, CastFpToSiRteChkNegativeRoundsToNearestEven)
-{
+TEST(CrossLayerArith, CastFpToSiRteChkNegativeRoundsToNearestEven) {
     Module module;
     buildConversion(module, Opcode::CastFpToSiRteChk, Type::Kind::I64, doubleBits(-1.9));
     int64_t result = runCrossLayer(module);
@@ -549,24 +509,21 @@ TEST(CrossLayerArith, CastFpToSiRteChkNegativeRoundsToNearestEven)
 
 // --- Normal float comparisons ---
 
-TEST(CrossLayerArith, FCmpLtNormal)
-{
+TEST(CrossLayerArith, FCmpLtNormal) {
     Module module;
     buildFloatCompare(module, Opcode::FCmpLT, 1.0, 2.0);
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == 1); // true
 }
 
-TEST(CrossLayerArith, FCmpLeEqual)
-{
+TEST(CrossLayerArith, FCmpLeEqual) {
     Module module;
     buildFloatCompare(module, Opcode::FCmpLE, 2.0, 2.0);
     int64_t result = runCrossLayer(module);
     EXPECT_TRUE(result == 1); // true
 }
 
-TEST(CrossLayerArith, FCmpOrdNormal)
-{
+TEST(CrossLayerArith, FCmpOrdNormal) {
     Module module;
     buildFloatCompare(module, Opcode::FCmpOrd, 1.0, 2.0);
     int64_t result = runCrossLayer(module);
@@ -575,8 +532,7 @@ TEST(CrossLayerArith, FCmpOrdNormal)
 
 // --- Unsigned arithmetic ---
 
-TEST(CrossLayerArith, UDivTreatAsUnsigned)
-{
+TEST(CrossLayerArith, UDivTreatAsUnsigned) {
     // UINT64_MAX / 2 = INT64_MAX — too large for 8-bit exit code, VM-only.
     Module module;
     buildIntBinary(module, Opcode::UDivChk0, -1, 2);
@@ -584,8 +540,7 @@ TEST(CrossLayerArith, UDivTreatAsUnsigned)
     EXPECT_TRUE(result == std::numeric_limits<int64_t>::max());
 }
 
-TEST(CrossLayerArith, URemTreatAsUnsigned)
-{
+TEST(CrossLayerArith, URemTreatAsUnsigned) {
     Module module;
     buildIntBinary(module, Opcode::URemChk0, -1, 2);
     int64_t result = runCrossLayer(module);
@@ -596,8 +551,7 @@ TEST(CrossLayerArith, URemTreatAsUnsigned)
 // Entry point
 //=============================================================================
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

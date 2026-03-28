@@ -39,18 +39,15 @@
 #include <string>
 #include <unordered_map>
 
-namespace il::core
-{
+namespace il::core {
 struct Module;
 struct Extern;
 } // namespace il::core
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Validates extern declarations and records them for downstream passes.
-class ExternVerifier
-{
+class ExternVerifier {
   public:
     using ExternMap = std::unordered_map<std::string, const il::core::Extern *>;
 

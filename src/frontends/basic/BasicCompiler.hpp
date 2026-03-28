@@ -90,13 +90,11 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Options controlling BASIC compilation behavior.
 /// @invariant Bounds check flag only affects lowering.
-struct BasicCompilerOptions
-{
+struct BasicCompilerOptions {
     /// @brief Enable debug bounds checks when lowering arrays.
     bool boundsChecks{false};
 
@@ -118,8 +116,7 @@ struct BasicCompilerOptions
 
 /// @brief Input parameters describing the source to compile.
 /// @invariant When @ref fileId is set, @ref path may be empty.
-struct BasicCompilerInput
-{
+struct BasicCompilerInput {
     /// @brief BASIC source code to compile.
     std::string_view source;
     /// @brief Path used for diagnostics; defaults to "<input>" when empty.
@@ -130,8 +127,7 @@ struct BasicCompilerInput
 
 /// @brief Aggregated result of compiling BASIC source.
 /// @ownership Owns diagnostics engine and emitter; module returned by value.
-struct BasicCompilerResult
-{
+struct BasicCompilerResult {
     /// @brief Diagnostics accumulated during compilation.
     il::support::DiagnosticEngine diagnostics{};
     /// @brief Formatter for diagnostics bound to the provided source manager.

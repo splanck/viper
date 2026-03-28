@@ -19,37 +19,31 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static void rt_release_obj(void *p)
-{
+static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
 }
 
-static void *new_obj()
-{
+static void *new_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
 }
 
-static rt_string make_key(const char *text)
-{
+static rt_string make_key(const char *text) {
     return rt_string_from_bytes(text, strlen(text));
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
 
-static void test_new()
-{
+static void test_new() {
     void *t = rt_trie_new();
     assert(t != nullptr);
     assert(rt_trie_len(t) == 0);
@@ -57,8 +51,7 @@ static void test_new()
     rt_release_obj(t);
 }
 
-static void test_put_and_get()
-{
+static void test_put_and_get() {
     void *t = rt_trie_new();
     rt_string k1 = make_key("hello");
     rt_string k2 = make_key("help");
@@ -83,8 +76,7 @@ static void test_put_and_get()
     rt_release_obj(t);
 }
 
-static void test_has()
-{
+static void test_has() {
     void *t = rt_trie_new();
     rt_string k = make_key("apple");
     void *v = new_obj();
@@ -101,8 +93,7 @@ static void test_has()
     rt_release_obj(t);
 }
 
-static void test_overwrite()
-{
+static void test_overwrite() {
     void *t = rt_trie_new();
     rt_string k = make_key("key");
     void *v1 = new_obj();
@@ -122,8 +113,7 @@ static void test_overwrite()
     rt_release_obj(t);
 }
 
-static void test_has_prefix()
-{
+static void test_has_prefix() {
     void *t = rt_trie_new();
     rt_string k1 = make_key("apple");
     rt_string k2 = make_key("application");
@@ -149,8 +139,7 @@ static void test_has_prefix()
     rt_release_obj(t);
 }
 
-static void test_with_prefix()
-{
+static void test_with_prefix() {
     void *t = rt_trie_new();
     rt_string k1 = make_key("apple");
     rt_string k2 = make_key("application");
@@ -178,8 +167,7 @@ static void test_with_prefix()
     rt_release_obj(t);
 }
 
-static void test_longest_prefix()
-{
+static void test_longest_prefix() {
     void *t = rt_trie_new();
     void *v = new_obj();
 
@@ -213,8 +201,7 @@ static void test_longest_prefix()
     rt_release_obj(t);
 }
 
-static void test_remove()
-{
+static void test_remove() {
     void *t = rt_trie_new();
     rt_string k1 = make_key("hello");
     rt_string k2 = make_key("help");
@@ -239,8 +226,7 @@ static void test_remove()
     rt_release_obj(t);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *t = rt_trie_new();
     rt_string k = make_key("test");
     void *v = new_obj();
@@ -257,8 +243,7 @@ static void test_clear()
     rt_release_obj(t);
 }
 
-static void test_keys()
-{
+static void test_keys() {
     void *t = rt_trie_new();
     void *v = new_obj();
     rt_string k1 = make_key("banana");
@@ -284,8 +269,7 @@ static void test_keys()
     rt_release_obj(t);
 }
 
-static void test_empty_key()
-{
+static void test_empty_key() {
     void *t = rt_trie_new();
     rt_string k = make_key("");
     void *v = new_obj();
@@ -300,8 +284,7 @@ static void test_empty_key()
     rt_release_obj(t);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     rt_string k = make_key("test");
     assert(rt_trie_len(NULL) == 0);
     assert(rt_trie_is_empty(NULL) == 1);
@@ -314,8 +297,7 @@ static void test_null_safety()
     rt_string_unref(k);
 }
 
-int main()
-{
+int main() {
     test_new();
     test_put_and_get();
     test_has();

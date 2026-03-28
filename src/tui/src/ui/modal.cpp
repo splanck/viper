@@ -23,8 +23,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::ui
-{
+namespace viper::tui::ui {
 /// @brief Construct a modal host that wraps the root content widget.
 ///
 /// @details Ownership of the root widget transfers to the host so it can manage
@@ -39,8 +38,7 @@ ModalHost::ModalHost(std::unique_ptr<Widget> root) : root_(std::move(root)) {}
 ///          managers or perform additional configuration without taking
 ///          ownership away from the host.  The pointer remains valid for the
 ///          host's lifetime.
-Widget *ModalHost::root()
-{
+Widget *ModalHost::root() {
     return root_.get();
 }
 
@@ -49,8 +47,7 @@ Widget *ModalHost::root()
 /// @details Returning @c true allows the host to intercept events before they
 ///          reach underlying widgets, ensuring that modal overlays behave as a
 ///          focus trap until dismissed.
-bool ModalHost::wantsFocus() const
-{
+bool ModalHost::wantsFocus() const {
     return true;
 }
 
@@ -61,10 +58,8 @@ bool ModalHost::wantsFocus() const
 ///          dismiss itself.  Regardless of type, the modal receives ownership via
 ///          @c unique_ptr and is appended to the stack, making it the active
 ///          overlay during painting and event handling.
-void ModalHost::pushModal(std::unique_ptr<Widget> modal)
-{
-    if (auto *p = dynamic_cast<Popup *>(modal.get()))
-    {
+void ModalHost::pushModal(std::unique_ptr<Widget> modal) {
+    if (auto *p = dynamic_cast<Popup *>(modal.get())) {
         p->setOnClose([this] { popModal(); });
     }
     modals_.push_back(std::move(modal));
@@ -76,10 +71,8 @@ void ModalHost::pushModal(std::unique_ptr<Widget> modal)
 ///          transferring focus back to the next modal or the root widget.  Empty
 ///          stacks are ignored so callers can safely invoke this even when no
 ///          modal is present.
-void ModalHost::popModal()
-{
-    if (!modals_.empty())
-    {
+void ModalHost::popModal() {
+    if (!modals_.empty()) {
         modals_.pop_back();
     }
 }
@@ -91,15 +84,12 @@ void ModalHost::popModal()
 ///          modal overlay.  This keeps overlays full-screen while allowing them
 ///          to centre or otherwise position their internal content relative to
 ///          the available space.
-void ModalHost::layout(const Rect &r)
-{
+void ModalHost::layout(const Rect &r) {
     Widget::layout(r);
-    if (root_)
-    {
+    if (root_) {
         root_->layout(r);
     }
-    for (auto &m : modals_)
-    {
+    for (auto &m : modals_) {
         m->layout(r);
     }
 }
@@ -110,17 +100,13 @@ void ModalHost::layout(const Rect &r)
 ///          backdrop is emulated by filling the host rectangle with spaces when
 ///          at least one modal exists.  Finally, each modal paints itself in
 ///          stack order so that later entries appear on top.
-void ModalHost::paint(render::ScreenBuffer &sb)
-{
-    if (root_)
-    {
+void ModalHost::paint(render::ScreenBuffer &sb) {
+    if (root_) {
         root_->paint(sb);
     }
-    if (!modals_.empty())
-    {
+    if (!modals_.empty()) {
         sb.fillRect(rect_.x, rect_.y, rect_.w, rect_.h);
-        for (auto &m : modals_)
-        {
+        for (auto &m : modals_) {
             m->paint(sb);
         }
     }
@@ -132,15 +118,12 @@ void ModalHost::paint(render::ScreenBuffer &sb)
 ///          function reports it as handled.  Without modals the root widget is
 ///          given a chance to handle the event; failing that, the call returns
 ///          @c false to indicate the event was not consumed.
-bool ModalHost::onEvent(const Event &ev)
-{
-    if (!modals_.empty())
-    {
+bool ModalHost::onEvent(const Event &ev) {
+    if (!modals_.empty()) {
         (void)modals_.back()->onEvent(ev);
         return true;
     }
-    if (root_)
-    {
+    if (root_) {
         return root_->onEvent(ev);
     }
     return false;
@@ -159,8 +142,7 @@ Popup::Popup(int w, int h) : width_(w), height_(h) {}
 /// @details Returning @c true guarantees the popup receives key events, allowing
 ///          it to handle escape or enter presses for dismissal without relying
 ///          on bubbling through other widgets.
-bool Popup::wantsFocus() const
-{
+bool Popup::wantsFocus() const {
     return true;
 }
 
@@ -170,8 +152,7 @@ bool Popup::wantsFocus() const
 ///          the modal host.  It is invoked by @ref onEvent when the user presses
 ///          a dismissal key, allowing the host to remove the popup from its
 ///          stack.
-void Popup::setOnClose(std::function<void()> cb)
-{
+void Popup::setOnClose(std::function<void()> cb) {
     onClose_ = std::move(cb);
 }
 
@@ -180,8 +161,7 @@ void Popup::setOnClose(std::function<void()> cb)
 /// @details The box dimensions are clamped so they never exceed the available
 ///          space.  The resulting rectangle is cached in @ref box_ for later use
 ///          when painting borders and background.
-void Popup::layout(const Rect &r)
-{
+void Popup::layout(const Rect &r) {
     Widget::layout(r);
     int w = std::min(width_, r.w);
     int h = std::min(height_, r.h);
@@ -197,8 +177,7 @@ void Popup::layout(const Rect &r)
 ///          the supplied screen buffer and rely on the precomputed @ref box_.
 ///          The routine assumes the box fits entirely within the buffer; the
 ///          layout stage enforces this by clamping dimensions.
-void Popup::paint(render::ScreenBuffer &sb)
-{
+void Popup::paint(render::ScreenBuffer &sb) {
     render::drawBox(sb, box_.x, box_.y, box_.w, box_.h);
 }
 
@@ -208,13 +187,10 @@ void Popup::paint(render::ScreenBuffer &sb)
 ///          when present, signalling the modal host to remove the popup.  Other
 ///          keys are ignored and bubble up by returning @c false, allowing the
 ///          application to decide how to handle them.
-bool Popup::onEvent(const Event &ev)
-{
+bool Popup::onEvent(const Event &ev) {
     const auto &k = ev.key;
-    if (k.code == term::KeyEvent::Code::Esc || k.code == term::KeyEvent::Code::Enter)
-    {
-        if (onClose_)
-        {
+    if (k.code == term::KeyEvent::Code::Esc || k.code == term::KeyEvent::Code::Enter) {
+        if (onClose_) {
             onClose_();
         }
         return true;

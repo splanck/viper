@@ -23,8 +23,7 @@
 
 using namespace il::core;
 
-static Module build_tco_module(uint32_t fileId, uint32_t calleeLine)
-{
+static Module build_tco_module(uint32_t fileId, uint32_t calleeLine) {
     Module m;
     il::build::IRBuilder b(m);
 
@@ -59,8 +58,7 @@ static Module build_tco_module(uint32_t fileId, uint32_t calleeLine)
     return m;
 }
 
-int main()
-{
+int main() {
     il::support::SourceManager sm;
     const auto fileId = sm.addFile("/tmp/examples/tco.il");
 

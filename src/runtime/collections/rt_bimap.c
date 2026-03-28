@@ -49,8 +49,7 @@
 #define BM_LOAD_FACTOR_DEN 4
 #include "rt_hash_util.h"
 
-typedef struct rt_bm_entry
-{
+typedef struct rt_bm_entry {
     char *key;
     size_t key_len;
     char *value;
@@ -58,8 +57,7 @@ typedef struct rt_bm_entry
     struct rt_bm_entry *next;
 } rt_bm_entry;
 
-typedef struct rt_bimap_impl
-{
+typedef struct rt_bimap_impl {
     void **vptr;
     rt_bm_entry **fwd_buckets; // key -> entry
     size_t fwd_capacity;
@@ -67,8 +65,7 @@ typedef struct rt_bimap_impl
     size_t count;
 
     // Separate chains for inverse lookups
-    struct rt_bm_inv_link
-    {
+    struct rt_bm_inv_link {
         rt_bm_entry *entry;
         struct rt_bm_inv_link *next;
     } **inv_chains;
@@ -77,43 +74,35 @@ typedef struct rt_bimap_impl
 // Inverse lookup chain node
 typedef struct rt_bm_inv_link rt_bm_inv_link;
 
-static const char *get_str_data(rt_string s, size_t *out_len)
-{
+static const char *get_str_data(rt_string s, size_t *out_len) {
     *out_len = (size_t)rt_str_len(s);
     if (*out_len == 0)
         return "";
     return s->data;
 }
 
-static rt_bm_entry *find_fwd(rt_bm_entry *head, const char *key, size_t key_len)
-{
-    for (rt_bm_entry *e = head; e; e = e->next)
-    {
+static rt_bm_entry *find_fwd(rt_bm_entry *head, const char *key, size_t key_len) {
+    for (rt_bm_entry *e = head; e; e = e->next) {
         if (e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
             return e;
     }
     return NULL;
 }
 
-static rt_bm_inv_link *find_inv(rt_bm_inv_link *head, const char *val, size_t val_len)
-{
-    for (rt_bm_inv_link *l = head; l; l = l->next)
-    {
+static rt_bm_inv_link *find_inv(rt_bm_inv_link *head, const char *val, size_t val_len) {
+    for (rt_bm_inv_link *l = head; l; l = l->next) {
         if (l->entry->value_len == val_len && memcmp(l->entry->value, val, val_len) == 0)
             return l;
     }
     return NULL;
 }
 
-static void remove_inv_link(rt_bimap_impl *bm, const char *val, size_t val_len)
-{
+static void remove_inv_link(rt_bimap_impl *bm, const char *val, size_t val_len) {
     uint64_t h = rt_fnv1a(val, val_len);
     size_t idx = (size_t)(h % bm->inv_capacity);
     rt_bm_inv_link **pp = &bm->inv_chains[idx];
-    while (*pp)
-    {
-        if ((*pp)->entry->value_len == val_len && memcmp((*pp)->entry->value, val, val_len) == 0)
-        {
+    while (*pp) {
+        if ((*pp)->entry->value_len == val_len && memcmp((*pp)->entry->value, val, val_len) == 0) {
             rt_bm_inv_link *old = *pp;
             *pp = old->next;
             free(old);
@@ -123,8 +112,7 @@ static void remove_inv_link(rt_bimap_impl *bm, const char *val, size_t val_len)
     }
 }
 
-static void add_inv_link(rt_bimap_impl *bm, rt_bm_entry *entry)
-{
+static void add_inv_link(rt_bimap_impl *bm, rt_bm_entry *entry) {
     uint64_t h = rt_fnv1a(entry->value, entry->value_len);
     size_t idx = (size_t)(h % bm->inv_capacity);
     rt_bm_inv_link *link = (rt_bm_inv_link *)malloc(sizeof(rt_bm_inv_link));
@@ -135,8 +123,7 @@ static void add_inv_link(rt_bimap_impl *bm, rt_bm_entry *entry)
     bm->inv_chains[idx] = link;
 }
 
-static void free_entry(rt_bm_entry *entry)
-{
+static void free_entry(rt_bm_entry *entry) {
     if (!entry)
         return;
     free(entry->key);
@@ -144,18 +131,15 @@ static void free_entry(rt_bm_entry *entry)
     free(entry);
 }
 
-static void bimap_finalizer(void *obj)
-{
+static void bimap_finalizer(void *obj) {
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
     if (!bm)
         return;
 
     // Free forward entries
-    for (size_t i = 0; i < bm->fwd_capacity; ++i)
-    {
+    for (size_t i = 0; i < bm->fwd_capacity; ++i) {
         rt_bm_entry *e = bm->fwd_buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_bm_entry *next = e->next;
             free_entry(e);
             e = next;
@@ -164,11 +148,9 @@ static void bimap_finalizer(void *obj)
     free(bm->fwd_buckets);
 
     // Free inverse chains
-    for (size_t i = 0; i < bm->inv_capacity; ++i)
-    {
+    for (size_t i = 0; i < bm->inv_capacity; ++i) {
         rt_bm_inv_link *l = bm->inv_chains[i];
-        while (l)
-        {
+        while (l) {
             rt_bm_inv_link *next = l->next;
             free(l);
             l = next;
@@ -177,8 +159,7 @@ static void bimap_finalizer(void *obj)
     free(bm->inv_chains);
 }
 
-static void resize_fwd(rt_bimap_impl *bm)
-{
+static void resize_fwd(rt_bimap_impl *bm) {
     if (bm->fwd_capacity > SIZE_MAX / 2)
         return;
     size_t new_cap = bm->fwd_capacity * 2;
@@ -186,11 +167,9 @@ static void resize_fwd(rt_bimap_impl *bm)
     if (!new_buckets)
         return;
 
-    for (size_t i = 0; i < bm->fwd_capacity; ++i)
-    {
+    for (size_t i = 0; i < bm->fwd_capacity; ++i) {
         rt_bm_entry *e = bm->fwd_buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_bm_entry *next = e->next;
             uint64_t h = rt_fnv1a(e->key, e->key_len);
             size_t idx = (size_t)(h % new_cap);
@@ -205,8 +184,7 @@ static void resize_fwd(rt_bimap_impl *bm)
     bm->fwd_capacity = new_cap;
 }
 
-static void resize_inv(rt_bimap_impl *bm)
-{
+static void resize_inv(rt_bimap_impl *bm) {
     if (bm->inv_capacity > SIZE_MAX / 2)
         return;
     size_t new_cap = bm->inv_capacity * 2;
@@ -214,11 +192,9 @@ static void resize_inv(rt_bimap_impl *bm)
     if (!new_chains)
         return;
 
-    for (size_t i = 0; i < bm->inv_capacity; ++i)
-    {
+    for (size_t i = 0; i < bm->inv_capacity; ++i) {
         rt_bm_inv_link *l = bm->inv_chains[i];
-        while (l)
-        {
+        while (l) {
             rt_bm_inv_link *next = l->next;
             uint64_t h = rt_fnv1a(l->entry->value, l->entry->value_len);
             size_t idx = (size_t)(h % new_cap);
@@ -233,8 +209,7 @@ static void resize_inv(rt_bimap_impl *bm)
     bm->inv_capacity = new_cap;
 }
 
-void *rt_bimap_new(void)
-{
+void *rt_bimap_new(void) {
     rt_bimap_impl *bm = (rt_bimap_impl *)rt_obj_new_i64(0, sizeof(rt_bimap_impl));
     if (!bm)
         return NULL;
@@ -244,8 +219,7 @@ void *rt_bimap_new(void)
     bm->count = 0;
     bm->fwd_buckets = (rt_bm_entry **)calloc(BM_INITIAL_CAPACITY, sizeof(rt_bm_entry *));
     bm->inv_chains = (rt_bm_inv_link **)calloc(BM_INITIAL_CAPACITY, sizeof(rt_bm_inv_link *));
-    if (!bm->fwd_buckets || !bm->inv_chains)
-    {
+    if (!bm->fwd_buckets || !bm->inv_chains) {
         free(bm->fwd_buckets);
         free(bm->inv_chains);
         if (rt_obj_release_check0(bm))
@@ -260,8 +234,7 @@ void *rt_bimap_new(void)
 /// @brief Perform bimap len operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_bimap_len(void *obj)
-{
+int64_t rt_bimap_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_bimap_impl *)obj)->count;
@@ -270,8 +243,7 @@ int64_t rt_bimap_len(void *obj)
 /// @brief Perform bimap is empty operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_bimap_is_empty(void *obj)
-{
+int8_t rt_bimap_is_empty(void *obj) {
     return rt_bimap_len(obj) == 0 ? 1 : 0;
 }
 
@@ -279,8 +251,7 @@ int8_t rt_bimap_is_empty(void *obj)
 /// @param obj
 /// @param key
 /// @param value
-void rt_bimap_put(void *obj, rt_string key, rt_string value)
-{
+void rt_bimap_put(void *obj, rt_string key, rt_string value) {
     if (!obj)
         return;
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
@@ -307,8 +278,7 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value)
         return;
     entry->key = (char *)malloc(klen + 1);
     entry->value = (char *)malloc(vlen + 1);
-    if (!entry->key || !entry->value)
-    {
+    if (!entry->key || !entry->value) {
         free(entry->key);
         free(entry->value);
         free(entry);
@@ -337,8 +307,7 @@ void rt_bimap_put(void *obj, rt_string key, rt_string value)
 /// @param obj
 /// @param key
 /// @return Result value.
-rt_string rt_bimap_get_by_key(void *obj, rt_string key)
-{
+rt_string rt_bimap_get_by_key(void *obj, rt_string key) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
@@ -359,8 +328,7 @@ rt_string rt_bimap_get_by_key(void *obj, rt_string key)
 /// @param obj
 /// @param value
 /// @return Result value.
-rt_string rt_bimap_get_by_value(void *obj, rt_string value)
-{
+rt_string rt_bimap_get_by_value(void *obj, rt_string value) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
@@ -381,8 +349,7 @@ rt_string rt_bimap_get_by_value(void *obj, rt_string value)
 /// @param obj
 /// @param key
 /// @return Result value.
-int8_t rt_bimap_has_key(void *obj, rt_string key)
-{
+int8_t rt_bimap_has_key(void *obj, rt_string key) {
     if (!obj)
         return 0;
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
@@ -399,8 +366,7 @@ int8_t rt_bimap_has_key(void *obj, rt_string key)
 /// @param obj
 /// @param value
 /// @return Result value.
-int8_t rt_bimap_has_value(void *obj, rt_string value)
-{
+int8_t rt_bimap_has_value(void *obj, rt_string value) {
     if (!obj)
         return 0;
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
@@ -417,8 +383,7 @@ int8_t rt_bimap_has_value(void *obj, rt_string value)
 /// @param obj
 /// @param key
 /// @return Result value.
-int8_t rt_bimap_remove_by_key(void *obj, rt_string key)
-{
+int8_t rt_bimap_remove_by_key(void *obj, rt_string key) {
     if (!obj)
         return 0;
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
@@ -430,11 +395,9 @@ int8_t rt_bimap_remove_by_key(void *obj, rt_string key)
     size_t idx = (size_t)(h % bm->fwd_capacity);
 
     rt_bm_entry **pp = &bm->fwd_buckets[idx];
-    while (*pp)
-    {
+    while (*pp) {
         rt_bm_entry *e = *pp;
-        if (e->key_len == klen && memcmp(e->key, kdata, klen) == 0)
-        {
+        if (e->key_len == klen && memcmp(e->key, kdata, klen) == 0) {
             // Remove from forward chain
             *pp = e->next;
             // Remove from inverse chain
@@ -452,8 +415,7 @@ int8_t rt_bimap_remove_by_key(void *obj, rt_string key)
 /// @param obj
 /// @param value
 /// @return Result value.
-int8_t rt_bimap_remove_by_value(void *obj, rt_string value)
-{
+int8_t rt_bimap_remove_by_value(void *obj, rt_string value) {
     if (!obj)
         return 0;
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
@@ -474,10 +436,8 @@ int8_t rt_bimap_remove_by_value(void *obj, rt_string value)
     uint64_t fh = rt_fnv1a(entry->key, entry->key_len);
     size_t fidx = (size_t)(fh % bm->fwd_capacity);
     rt_bm_entry **pp = &bm->fwd_buckets[fidx];
-    while (*pp)
-    {
-        if (*pp == entry)
-        {
+    while (*pp) {
+        if (*pp == entry) {
             *pp = entry->next;
             break;
         }
@@ -491,18 +451,15 @@ int8_t rt_bimap_remove_by_value(void *obj, rt_string value)
     return 1;
 }
 
-void *rt_bimap_keys(void *obj)
-{
+void *rt_bimap_keys(void *obj) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
 
-    for (size_t i = 0; i < bm->fwd_capacity; ++i)
-    {
-        for (rt_bm_entry *e = bm->fwd_buckets[i]; e; e = e->next)
-        {
+    for (size_t i = 0; i < bm->fwd_capacity; ++i) {
+        for (rt_bm_entry *e = bm->fwd_buckets[i]; e; e = e->next) {
             rt_string k = rt_string_from_bytes(e->key, e->key_len);
             rt_seq_push(seq, (void *)k);
             rt_str_release_maybe(k);
@@ -511,18 +468,15 @@ void *rt_bimap_keys(void *obj)
     return seq;
 }
 
-void *rt_bimap_values(void *obj)
-{
+void *rt_bimap_values(void *obj) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
 
-    for (size_t i = 0; i < bm->fwd_capacity; ++i)
-    {
-        for (rt_bm_entry *e = bm->fwd_buckets[i]; e; e = e->next)
-        {
+    for (size_t i = 0; i < bm->fwd_capacity; ++i) {
+        for (rt_bm_entry *e = bm->fwd_buckets[i]; e; e = e->next) {
             rt_string v = rt_string_from_bytes(e->value, e->value_len);
             rt_seq_push(seq, (void *)v);
             rt_str_release_maybe(v);
@@ -533,17 +487,14 @@ void *rt_bimap_values(void *obj)
 
 /// @brief Perform bimap clear operation.
 /// @param obj
-void rt_bimap_clear(void *obj)
-{
+void rt_bimap_clear(void *obj) {
     if (!obj)
         return;
     rt_bimap_impl *bm = (rt_bimap_impl *)obj;
 
-    for (size_t i = 0; i < bm->fwd_capacity; ++i)
-    {
+    for (size_t i = 0; i < bm->fwd_capacity; ++i) {
         rt_bm_entry *e = bm->fwd_buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_bm_entry *next = e->next;
             free_entry(e);
             e = next;
@@ -551,11 +502,9 @@ void rt_bimap_clear(void *obj)
         bm->fwd_buckets[i] = NULL;
     }
 
-    for (size_t i = 0; i < bm->inv_capacity; ++i)
-    {
+    for (size_t i = 0; i < bm->inv_capacity; ++i) {
         rt_bm_inv_link *l = bm->inv_chains[i];
-        while (l)
-        {
+        while (l) {
             rt_bm_inv_link *next = l->next;
             free(l);
             l = next;

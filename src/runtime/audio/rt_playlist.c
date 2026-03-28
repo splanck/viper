@@ -46,8 +46,7 @@ extern void rt_trap(const char *msg);
 // Internal Structure
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *tracks;         // Seq of path strings
     int64_t current;      // Current track index (-1 if none)
     void *music;          // Currently loaded Music object
@@ -64,15 +63,13 @@ typedef struct
 // Helper Functions
 //=============================================================================
 
-static void generate_shuffle_order(playlist_impl *pl)
-{
+static void generate_shuffle_order(playlist_impl *pl) {
     int64_t count = rt_seq_len(pl->tracks);
     if (count == 0)
         return;
 
     // Release old shuffle order before creating a new one (C-2)
-    if (pl->shuffle_order)
-    {
+    if (pl->shuffle_order) {
         if (rt_obj_release_check0(pl->shuffle_order))
             rt_obj_free(pl->shuffle_order);
         pl->shuffle_order = NULL;
@@ -83,24 +80,21 @@ static void generate_shuffle_order(playlist_impl *pl)
     int64_t *indices = (int64_t *)malloc(count * sizeof(int64_t));
     if (!indices)
         rt_trap("rt_playlist: memory allocation failed");
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         indices[i] = i;
     }
 
     // Fisher-Yates shuffle using thread-safe local PRNG
     uint64_t rng_state = (uint64_t)time(NULL) ^ (uint64_t)(uintptr_t)&indices;
     // Warm up the PRNG
-    for (int w = 0; w < 5; w++)
-    {
+    for (int w = 0; w < 5; w++) {
         rng_state ^= rng_state >> 12;
         rng_state ^= rng_state << 25;
         rng_state ^= rng_state >> 27;
         rng_state *= 0x2545F4914F6CDD1DULL;
     }
 
-    for (int64_t i = count - 1; i > 0; i--)
-    {
+    for (int64_t i = count - 1; i > 0; i--) {
         // xorshift64star step
         rng_state ^= rng_state >> 12;
         rng_state ^= rng_state << 25;
@@ -115,32 +109,26 @@ static void generate_shuffle_order(playlist_impl *pl)
     }
 
     // Store in shuffle_order seq
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         rt_seq_push(pl->shuffle_order, (void *)indices[i]);
     }
 
     free(indices);
 }
 
-static int64_t get_track_index(playlist_impl *pl, int64_t position)
-{
-    if (pl->shuffle && pl->shuffle_order)
-    {
+static int64_t get_track_index(playlist_impl *pl, int64_t position) {
+    if (pl->shuffle && pl->shuffle_order) {
         int64_t count = rt_seq_len(pl->shuffle_order);
-        if (position >= 0 && position < count)
-        {
+        if (position >= 0 && position < count) {
             return (int64_t)(intptr_t)rt_seq_get(pl->shuffle_order, position);
         }
     }
     return position;
 }
 
-static void load_current(playlist_impl *pl)
-{
+static void load_current(playlist_impl *pl) {
     // Stop and free previous music
-    if (pl->music)
-    {
+    if (pl->music) {
         rt_music_stop(pl->music);
         rt_music_destroy(pl->music);
         pl->music = NULL;
@@ -153,8 +141,7 @@ static void load_current(playlist_impl *pl)
     rt_string path = (rt_string)rt_seq_get(pl->tracks, actual_index);
 
     pl->music = rt_music_load(path);
-    if (pl->music)
-    {
+    if (pl->music) {
         rt_music_set_volume(pl->music, pl->volume);
     }
 }
@@ -164,34 +151,29 @@ static void load_current(playlist_impl *pl)
 //=============================================================================
 
 // C-1: Finalizer — releases all GC-tracked resources when a Playlist is collected.
-static void playlist_finalize(void *obj)
-{
+static void playlist_finalize(void *obj) {
     playlist_impl *pl = (playlist_impl *)obj;
 
-    if (pl->music)
-    {
+    if (pl->music) {
         rt_music_stop(pl->music);
         rt_music_destroy(pl->music);
         pl->music = NULL;
     }
 
-    if (pl->shuffle_order)
-    {
+    if (pl->shuffle_order) {
         if (rt_obj_release_check0(pl->shuffle_order))
             rt_obj_free(pl->shuffle_order);
         pl->shuffle_order = NULL;
     }
 
-    if (pl->tracks)
-    {
+    if (pl->tracks) {
         if (rt_obj_release_check0(pl->tracks))
             rt_obj_free(pl->tracks);
         pl->tracks = NULL;
     }
 }
 
-void *rt_playlist_new(void)
-{
+void *rt_playlist_new(void) {
     playlist_impl *pl = (playlist_impl *)rt_obj_new_i64(0, (int64_t)sizeof(playlist_impl));
     memset(pl, 0, sizeof(playlist_impl));
 
@@ -217,8 +199,7 @@ void *rt_playlist_new(void)
 /// @brief Play playlist add.
 /// @param obj
 /// @param path
-void rt_playlist_add(void *obj, rt_string path)
-{
+void rt_playlist_add(void *obj, rt_string path) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -228,8 +209,7 @@ void rt_playlist_add(void *obj, rt_string path)
     rt_seq_push(pl->tracks, (void *)copy);
 
     // Regenerate shuffle order if needed
-    if (pl->shuffle)
-    {
+    if (pl->shuffle) {
         generate_shuffle_order(pl);
     }
 }
@@ -238,8 +218,7 @@ void rt_playlist_add(void *obj, rt_string path)
 /// @param obj
 /// @param index
 /// @param path
-void rt_playlist_insert(void *obj, int64_t index, rt_string path)
-{
+void rt_playlist_insert(void *obj, int64_t index, rt_string path) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -248,13 +227,11 @@ void rt_playlist_insert(void *obj, int64_t index, rt_string path)
     rt_seq_insert(pl->tracks, index, (void *)copy);
 
     // Adjust current if needed
-    if (pl->current >= index)
-    {
+    if (pl->current >= index) {
         pl->current++;
     }
 
-    if (pl->shuffle)
-    {
+    if (pl->shuffle) {
         generate_shuffle_order(pl);
     }
 }
@@ -262,8 +239,7 @@ void rt_playlist_insert(void *obj, int64_t index, rt_string path)
 /// @brief Play playlist remove.
 /// @param obj
 /// @param index
-void rt_playlist_remove(void *obj, int64_t index)
-{
+void rt_playlist_remove(void *obj, int64_t index) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -275,15 +251,11 @@ void rt_playlist_remove(void *obj, int64_t index)
     rt_seq_remove(pl->tracks, index);
 
     // Adjust current
-    if (index < pl->current)
-    {
+    if (index < pl->current) {
         pl->current--;
-    }
-    else if (index == pl->current)
-    {
+    } else if (index == pl->current) {
         // Current track removed
-        if (pl->music)
-        {
+        if (pl->music) {
             rt_music_stop(pl->music);
             rt_music_destroy(pl->music);
             pl->music = NULL;
@@ -292,43 +264,35 @@ void rt_playlist_remove(void *obj, int64_t index)
         pl->paused = 0;
 
         // Try to load next (or wrap)
-        if (rt_seq_len(pl->tracks) > 0)
-        {
-            if (pl->current >= rt_seq_len(pl->tracks))
-            {
+        if (rt_seq_len(pl->tracks) > 0) {
+            if (pl->current >= rt_seq_len(pl->tracks)) {
                 pl->current = 0;
             }
-        }
-        else
-        {
+        } else {
             pl->current = -1;
         }
     }
 
-    if (pl->shuffle)
-    {
+    if (pl->shuffle) {
         generate_shuffle_order(pl);
     }
 }
 
 /// @brief Play playlist clear.
 /// @param obj
-void rt_playlist_clear(void *obj)
-{
+void rt_playlist_clear(void *obj) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
 
-    if (pl->music)
-    {
+    if (pl->music) {
         rt_music_stop(pl->music);
         rt_music_destroy(pl->music);
         pl->music = NULL;
     }
 
     // Clear tracks
-    while (rt_seq_len(pl->tracks) > 0)
-    {
+    while (rt_seq_len(pl->tracks) > 0) {
         rt_seq_pop(pl->tracks);
     }
 
@@ -337,8 +301,7 @@ void rt_playlist_clear(void *obj)
     pl->paused = 0;
 
     // C-3: Release shuffle_order instead of leaking it (C-3)
-    if (pl->shuffle_order)
-    {
+    if (pl->shuffle_order) {
         if (rt_obj_release_check0(pl->shuffle_order))
             rt_obj_free(pl->shuffle_order);
         pl->shuffle_order = NULL;
@@ -348,8 +311,7 @@ void rt_playlist_clear(void *obj)
 /// @brief Play playlist len.
 /// @param obj
 /// @return Result value.
-int64_t rt_playlist_len(void *obj)
-{
+int64_t rt_playlist_len(void *obj) {
     if (!obj)
         return 0;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -360,8 +322,7 @@ int64_t rt_playlist_len(void *obj)
 /// @param obj
 /// @param index
 /// @return Result value.
-rt_string rt_playlist_get(void *obj, int64_t index)
-{
+rt_string rt_playlist_get(void *obj, int64_t index) {
     if (!obj)
         return rt_const_cstr("");
     playlist_impl *pl = (playlist_impl *)obj;
@@ -378,8 +339,7 @@ rt_string rt_playlist_get(void *obj, int64_t index)
 
 /// @brief Play playlist play.
 /// @param obj
-void rt_playlist_play(void *obj)
-{
+void rt_playlist_play(void *obj) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -387,22 +347,19 @@ void rt_playlist_play(void *obj)
     if (rt_seq_len(pl->tracks) == 0)
         return;
 
-    if (pl->paused && pl->music)
-    {
+    if (pl->paused && pl->music) {
         rt_music_resume(pl->music);
         pl->paused = 0;
         pl->playing = 1;
         return;
     }
 
-    if (pl->current < 0)
-    {
+    if (pl->current < 0) {
         pl->current = 0;
     }
 
     load_current(pl);
-    if (pl->music)
-    {
+    if (pl->music) {
         int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
         rt_music_play(pl->music, loop);
         pl->playing = 1;
@@ -412,14 +369,12 @@ void rt_playlist_play(void *obj)
 
 /// @brief Play playlist pause.
 /// @param obj
-void rt_playlist_pause(void *obj)
-{
+void rt_playlist_pause(void *obj) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
 
-    if (pl->music && pl->playing)
-    {
+    if (pl->music && pl->playing) {
         rt_music_pause(pl->music);
         pl->paused = 1;
         pl->playing = 0;
@@ -428,14 +383,12 @@ void rt_playlist_pause(void *obj)
 
 /// @brief Play playlist stop.
 /// @param obj
-void rt_playlist_stop(void *obj)
-{
+void rt_playlist_stop(void *obj) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
 
-    if (pl->music)
-    {
+    if (pl->music) {
         rt_music_stop(pl->music);
     }
 
@@ -446,8 +399,7 @@ void rt_playlist_stop(void *obj)
 
 /// @brief Play playlist next.
 /// @param obj
-void rt_playlist_next(void *obj)
-{
+void rt_playlist_next(void *obj) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -458,19 +410,14 @@ void rt_playlist_next(void *obj)
 
     pl->current++;
 
-    if (pl->current >= count)
-    {
-        if (pl->repeat == RT_REPEAT_ALL)
-        {
+    if (pl->current >= count) {
+        if (pl->repeat == RT_REPEAT_ALL) {
             // Repeat all: go back to start
             pl->current = 0;
-            if (pl->shuffle)
-            {
+            if (pl->shuffle) {
                 generate_shuffle_order(pl);
             }
-        }
-        else
-        {
+        } else {
             // No repeat: stop at end
             pl->current = count - 1;
             rt_playlist_stop(obj);
@@ -480,8 +427,7 @@ void rt_playlist_next(void *obj)
 
     int was_playing = pl->playing || pl->paused;
     load_current(pl);
-    if (was_playing && pl->music)
-    {
+    if (was_playing && pl->music) {
         int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
         rt_music_play(pl->music, loop);
         pl->playing = 1;
@@ -491,8 +437,7 @@ void rt_playlist_next(void *obj)
 
 /// @brief Play playlist prev.
 /// @param obj
-void rt_playlist_prev(void *obj)
-{
+void rt_playlist_prev(void *obj) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -503,23 +448,18 @@ void rt_playlist_prev(void *obj)
 
     pl->current--;
 
-    if (pl->current < 0)
-    {
-        if (pl->repeat == RT_REPEAT_ALL)
-        {
+    if (pl->current < 0) {
+        if (pl->repeat == RT_REPEAT_ALL) {
             // Repeat all: go to end
             pl->current = count - 1;
-        }
-        else
-        {
+        } else {
             pl->current = 0;
         }
     }
 
     int was_playing = pl->playing || pl->paused;
     load_current(pl);
-    if (was_playing && pl->music)
-    {
+    if (was_playing && pl->music) {
         int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
         rt_music_play(pl->music, loop);
         pl->playing = 1;
@@ -530,8 +470,7 @@ void rt_playlist_prev(void *obj)
 /// @brief Play playlist jump.
 /// @param obj
 /// @param index
-void rt_playlist_jump(void *obj, int64_t index)
-{
+void rt_playlist_jump(void *obj, int64_t index) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -544,8 +483,7 @@ void rt_playlist_jump(void *obj, int64_t index)
 
     int was_playing = pl->playing || pl->paused;
     load_current(pl);
-    if (was_playing && pl->music)
-    {
+    if (was_playing && pl->music) {
         int loop = (pl->repeat == RT_REPEAT_ONE) ? 1 : 0;
         rt_music_play(pl->music, loop);
         pl->playing = 1;
@@ -560,14 +498,12 @@ void rt_playlist_jump(void *obj, int64_t index)
 /// @brief Play playlist get current.
 /// @param obj
 /// @return Result value.
-int64_t rt_playlist_get_current(void *obj)
-{
+int64_t rt_playlist_get_current(void *obj) {
     if (!obj)
         return -1;
     playlist_impl *pl = (playlist_impl *)obj;
 
-    if (pl->shuffle && pl->current >= 0)
-    {
+    if (pl->shuffle && pl->current >= 0) {
         return get_track_index(pl, pl->current);
     }
     return pl->current;
@@ -576,8 +512,7 @@ int64_t rt_playlist_get_current(void *obj)
 /// @brief Play playlist is playing.
 /// @param obj
 /// @return Result value.
-int8_t rt_playlist_is_playing(void *obj)
-{
+int8_t rt_playlist_is_playing(void *obj) {
     if (!obj)
         return 0;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -587,8 +522,7 @@ int8_t rt_playlist_is_playing(void *obj)
 /// @brief Play playlist is paused.
 /// @param obj
 /// @return Result value.
-int8_t rt_playlist_is_paused(void *obj)
-{
+int8_t rt_playlist_is_paused(void *obj) {
     if (!obj)
         return 0;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -598,8 +532,7 @@ int8_t rt_playlist_is_paused(void *obj)
 /// @brief Play playlist get volume.
 /// @param obj
 /// @return Result value.
-int64_t rt_playlist_get_volume(void *obj)
-{
+int64_t rt_playlist_get_volume(void *obj) {
     if (!obj)
         return 0;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -609,8 +542,7 @@ int64_t rt_playlist_get_volume(void *obj)
 /// @brief Play playlist set volume.
 /// @param obj
 /// @param volume
-void rt_playlist_set_volume(void *obj, int64_t volume)
-{
+void rt_playlist_set_volume(void *obj, int64_t volume) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -621,8 +553,7 @@ void rt_playlist_set_volume(void *obj, int64_t volume)
         volume = 100;
     pl->volume = volume;
 
-    if (pl->music)
-    {
+    if (pl->music) {
         rt_music_set_volume(pl->music, volume);
     }
 }
@@ -634,16 +565,14 @@ void rt_playlist_set_volume(void *obj, int64_t volume)
 /// @brief Play playlist set shuffle.
 /// @param obj
 /// @param shuffle
-void rt_playlist_set_shuffle(void *obj, int8_t shuffle)
-{
+void rt_playlist_set_shuffle(void *obj, int8_t shuffle) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
 
     pl->shuffle = shuffle ? 1 : 0;
 
-    if (pl->shuffle)
-    {
+    if (pl->shuffle) {
         generate_shuffle_order(pl);
     }
 }
@@ -651,8 +580,7 @@ void rt_playlist_set_shuffle(void *obj, int8_t shuffle)
 /// @brief Play playlist get shuffle.
 /// @param obj
 /// @return Result value.
-int8_t rt_playlist_get_shuffle(void *obj)
-{
+int8_t rt_playlist_get_shuffle(void *obj) {
     if (!obj)
         return 0;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -662,8 +590,7 @@ int8_t rt_playlist_get_shuffle(void *obj)
 /// @brief Play playlist set repeat.
 /// @param obj
 /// @param mode
-void rt_playlist_set_repeat(void *obj, int64_t mode)
-{
+void rt_playlist_set_repeat(void *obj, int64_t mode) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -678,8 +605,7 @@ void rt_playlist_set_repeat(void *obj, int64_t mode)
 /// @brief Play playlist get repeat.
 /// @param obj
 /// @return Result value.
-int64_t rt_playlist_get_repeat(void *obj)
-{
+int64_t rt_playlist_get_repeat(void *obj) {
     if (!obj)
         return 0;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -692,8 +618,7 @@ int64_t rt_playlist_get_repeat(void *obj)
 
 /// @brief Play playlist update.
 /// @param obj
-void rt_playlist_update(void *obj)
-{
+void rt_playlist_update(void *obj) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -702,17 +627,13 @@ void rt_playlist_update(void *obj)
         return;
 
     // Check if current track has ended
-    if (!rt_music_is_playing(pl->music))
-    {
+    if (!rt_music_is_playing(pl->music)) {
         // Track ended
-        if (pl->repeat == RT_REPEAT_ONE)
-        {
+        if (pl->repeat == RT_REPEAT_ONE) {
             // Repeat one: restart same track
             rt_music_seek(pl->music, 0);
             rt_music_play(pl->music, 1);
-        }
-        else
-        {
+        } else {
             // Move to next
             rt_playlist_next(obj);
         }
@@ -726,8 +647,7 @@ void rt_playlist_update(void *obj)
 /// @brief Play playlist set crossfade.
 /// @param obj
 /// @param duration_ms
-void rt_playlist_set_crossfade(void *obj, int64_t duration_ms)
-{
+void rt_playlist_set_crossfade(void *obj, int64_t duration_ms) {
     if (!obj)
         return;
     playlist_impl *pl = (playlist_impl *)obj;
@@ -737,8 +657,7 @@ void rt_playlist_set_crossfade(void *obj, int64_t duration_ms)
 /// @brief Play playlist get crossfade.
 /// @param obj
 /// @return Result value.
-int64_t rt_playlist_get_crossfade(void *obj)
-{
+int64_t rt_playlist_get_crossfade(void *obj) {
     if (!obj)
         return 0;
     return ((playlist_impl *)obj)->crossfade_ms;

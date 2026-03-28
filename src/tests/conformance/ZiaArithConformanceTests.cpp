@@ -24,18 +24,13 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// Check if any function in the module contains the given opcode.
-bool hasOpcode(const il::core::Module &module, il::core::Opcode op)
-{
-    for (const auto &fn : module.functions)
-    {
-        for (const auto &block : fn.blocks)
-        {
-            for (const auto &instr : block.instructions)
-            {
+bool hasOpcode(const il::core::Module &module, il::core::Opcode op) {
+    for (const auto &fn : module.functions) {
+        for (const auto &block : fn.blocks) {
+            for (const auto &instr : block.instructions) {
                 if (instr.op == op)
                     return true;
             }
@@ -47,16 +42,12 @@ bool hasOpcode(const il::core::Module &module, il::core::Opcode op)
 /// Check if any function named `funcName` contains the given opcode.
 bool hasOpcodeInFunc(const il::core::Module &module,
                      const std::string &funcName,
-                     il::core::Opcode op)
-{
-    for (const auto &fn : module.functions)
-    {
+                     il::core::Opcode op) {
+    for (const auto &fn : module.functions) {
         if (fn.name != funcName)
             continue;
-        for (const auto &block : fn.blocks)
-        {
-            for (const auto &instr : block.instructions)
-            {
+        for (const auto &block : fn.blocks) {
+            for (const auto &instr : block.instructions) {
                 if (instr.op == op)
                     return true;
             }
@@ -72,8 +63,7 @@ bool hasOpcodeInFunc(const il::core::Module &module,
 //=============================================================================
 
 /// @brief Integer addition uses IAddOvf in checked mode.
-TEST(ZiaArithConformance, IntAddChecked)
-{
+TEST(ZiaArithConformance, IntAddChecked) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -92,8 +82,7 @@ func start() {
 }
 
 /// @brief Integer division uses SDivChk0 in checked mode.
-TEST(ZiaArithConformance, IntDivChecked)
-{
+TEST(ZiaArithConformance, IntDivChecked) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -112,8 +101,7 @@ func start() {
 }
 
 /// @brief Integer modulo uses SRemChk0 in checked mode.
-TEST(ZiaArithConformance, IntModChecked)
-{
+TEST(ZiaArithConformance, IntModChecked) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -136,8 +124,7 @@ func start() {
 //=============================================================================
 
 /// @brief Integer addition uses plain Add in unchecked mode.
-TEST(ZiaArithConformance, IntAddUnchecked)
-{
+TEST(ZiaArithConformance, IntAddUnchecked) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -157,8 +144,7 @@ func start() {
 }
 
 /// @brief Integer division uses SDiv in unchecked mode.
-TEST(ZiaArithConformance, IntDivUnchecked)
-{
+TEST(ZiaArithConformance, IntDivUnchecked) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -177,8 +163,7 @@ func start() {
 }
 
 /// @brief Integer modulo uses SRem in unchecked mode.
-TEST(ZiaArithConformance, IntModUnchecked)
-{
+TEST(ZiaArithConformance, IntModUnchecked) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -201,8 +186,7 @@ func start() {
 //=============================================================================
 
 /// @brief Integer + Number promotes integer via Sitofp, then uses FAdd.
-TEST(ZiaArithConformance, MixedIntPlusNumber)
-{
+TEST(ZiaArithConformance, MixedIntPlusNumber) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -221,8 +205,7 @@ func start() {
 }
 
 /// @brief Float division uses FDiv.
-TEST(ZiaArithConformance, FloatDiv)
-{
+TEST(ZiaArithConformance, FloatDiv) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -240,8 +223,7 @@ func start() {
 }
 
 /// @brief Float multiplication uses FMul.
-TEST(ZiaArithConformance, FloatMul)
-{
+TEST(ZiaArithConformance, FloatMul) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -259,8 +241,7 @@ func start() {
 }
 
 /// @brief Number return from Integer function is allowed (special narrowing).
-TEST(ZiaArithConformance, NumberReturnFromIntFunc)
-{
+TEST(ZiaArithConformance, NumberReturnFromIntFunc) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -285,8 +266,7 @@ func start() {
 //=============================================================================
 
 /// @brief Integer comparison uses SCmpLT.
-TEST(ZiaArithConformance, IntCompare)
-{
+TEST(ZiaArithConformance, IntCompare) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -304,8 +284,7 @@ func start() {
 }
 
 /// @brief Float comparison uses FCmpLT.
-TEST(ZiaArithConformance, FloatCompare)
-{
+TEST(ZiaArithConformance, FloatCompare) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -323,8 +302,7 @@ func start() {
 }
 
 /// @brief Bitwise AND on integers emits IL And opcode.
-TEST(ZiaArithConformance, BitwiseAnd)
-{
+TEST(ZiaArithConformance, BitwiseAnd) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -345,8 +323,7 @@ func start() {
 // Entry point
 //=============================================================================
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

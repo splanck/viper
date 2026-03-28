@@ -26,8 +26,7 @@ using il::support::SourceManager;
 // recognizes keywords, identifiers, literals, and punctuation correctly. Scenarios include a
 // PRINT statement with concatenation, a LET assignment, fractional numbers with type-suffixed
 // identifiers, and a function call using parentheses and a string argument.
-int main()
-{
+int main() {
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
     // Expect correct tokens for a PRINT statement combining a string literal and arithmetic.
@@ -82,8 +81,7 @@ int main()
     }
     // Validate case-insensitive keyword recognition via lookup table.
     {
-        struct KeywordCase
-        {
+        struct KeywordCase {
             const char *input;
             const char *canonical;
             TokenKind kind;
@@ -97,8 +95,7 @@ int main()
                                      {"oReLsE", "ORELSE", TokenKind::KeywordOrElse},
                                      {"oR", "OR", TokenKind::KeywordOr},
                                      {"fUnCtIoN", "FUNCTION", TokenKind::KeywordFunction}};
-        for (const auto &kw : cases)
-        {
+        for (const auto &kw : cases) {
             std::string src = std::string(kw.input) + "\n";
             Lexer lex(src, fid);
             Token t = lex.next();

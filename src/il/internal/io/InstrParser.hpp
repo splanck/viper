@@ -20,8 +20,7 @@
 #include <ostream>
 #include <string>
 
-namespace il::io::detail
-{
+namespace il::io::detail {
 
 /// @brief Parse a single textual IL instruction and append it to the active block.
 /// @param line Instruction text potentially including a result assignment.

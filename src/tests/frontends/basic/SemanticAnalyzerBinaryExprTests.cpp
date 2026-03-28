@@ -25,18 +25,15 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-struct AnalysisResult
-{
+struct AnalysisResult {
     size_t errors;
     size_t warnings;
     std::string output;
 };
 
-AnalysisResult analyzeSnippet(const std::string &src)
-{
+AnalysisResult analyzeSnippet(const std::string &src) {
     SourceManager sm;
     uint32_t fid = sm.addFile("snippet.bas");
     Parser parser(src, fid);
@@ -55,15 +52,13 @@ AnalysisResult analyzeSnippet(const std::string &src)
     return {emitter.errorCount(), emitter.warningCount(), oss.str()};
 }
 
-std::string makeSnippet(const std::string &expr)
-{
+std::string makeSnippet(const std::string &expr) {
     return "10 LET X = " + expr + "\n20 END\n";
 }
 
 } // namespace
 
-int main()
-{
+int main() {
     {
         using Type = SemanticAnalyzer::Type;
         const auto &rule = semantic_analyzer_detail::exprRule(BinaryExpr::Op::Div);

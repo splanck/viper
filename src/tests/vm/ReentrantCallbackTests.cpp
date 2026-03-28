@@ -35,12 +35,10 @@ using il::runtime::signatures::make_signature;
 using il::runtime::signatures::Signature;
 using il::runtime::signatures::SigParam;
 
-namespace
-{
+namespace {
 
 /// @brief Tracks callback invocations and VM state during extern calls.
-struct CallbackTracker
-{
+struct CallbackTracker {
     int callCount = 0;
     std::vector<bool> sawActiveVM; ///< Whether VM::activeInstance() was non-null during each call.
     std::vector<vm::VM *> activeVMs; ///< Captured VM pointers during each call.
@@ -52,11 +50,9 @@ struct CallbackTracker
 thread_local CallbackTracker *g_tracker = nullptr;
 
 /// @brief Simple extern callback that records VM state.
-void simpleCallback(void **args, void *result)
-{
+void simpleCallback(void **args, void *result) {
     (void)args;
-    if (g_tracker)
-    {
+    if (g_tracker) {
         ++g_tracker->callCount;
         vm::VM *active = vm::activeVMInstance();
         g_tracker->sawActiveVM.push_back(active != nullptr);
@@ -69,11 +65,9 @@ void simpleCallback(void **args, void *result)
 /// @brief Extern callback that re-enters the VM by creating nested ActiveVMGuard.
 /// @details This simulates a host callback that needs to interact with VM state,
 ///          which creates nested ActiveVMGuard scopes.
-void reentrantCallback(void **args, void *result)
-{
+void reentrantCallback(void **args, void *result) {
     (void)args;
-    if (g_tracker)
-    {
+    if (g_tracker) {
         ++g_tracker->callCount;
         ++g_tracker->reentryDepth;
         if (g_tracker->reentryDepth > g_tracker->maxReentryDepth)
@@ -101,14 +95,12 @@ void reentrantCallback(void **args, void *result)
 }
 
 /// @brief Helper to create a void -> i64 signature.
-static Signature makeVoidToI64Sig(const std::string &name)
-{
+static Signature makeVoidToI64Sig(const std::string &name) {
     return make_signature(name, {}, {SigParam::I64});
 }
 
 /// @brief Build a module that calls an extern function once and returns its result.
-core::Module buildSimpleCallbackModule(const std::string &externName)
-{
+core::Module buildSimpleCallbackModule(const std::string &externName) {
     core::Module module;
     build::IRBuilder builder(module);
 
@@ -134,8 +126,7 @@ core::Module buildSimpleCallbackModule(const std::string &externName)
 }
 
 /// @brief Build a module with multiple calls to track callback sequence.
-core::Module buildMultiCallbackModule(const std::string &externName, int numCalls)
-{
+core::Module buildMultiCallbackModule(const std::string &externName, int numCalls) {
     core::Module module;
     build::IRBuilder builder(module);
 
@@ -147,8 +138,7 @@ core::Module buildMultiCallbackModule(const std::string &externName, int numCall
     builder.setInsertPoint(entry);
 
     core::Value lastResult = core::Value::constInt(0);
-    for (int i = 0; i < numCalls; ++i)
-    {
+    for (int i = 0; i < numCalls; ++i) {
         const unsigned tempId = builder.reserveTempId();
         lastResult = core::Value::temp(tempId);
         builder.emitCall(externName, {}, lastResult, {});
@@ -162,8 +152,7 @@ core::Module buildMultiCallbackModule(const std::string &externName, int numCall
 } // namespace
 
 /// @brief Test that a simple extern callback sees the correct active VM.
-void testSimpleCallbackSeesActiveVM()
-{
+void testSimpleCallbackSeesActiveVM() {
     CallbackTracker tracker;
     g_tracker = &tracker;
 
@@ -192,8 +181,7 @@ void testSimpleCallbackSeesActiveVM()
 }
 
 /// @brief Test that nested ActiveVMGuard with the same VM works correctly.
-void testNestedGuardsSameVMInCallback()
-{
+void testNestedGuardsSameVMInCallback() {
     CallbackTracker tracker;
     g_tracker = &tracker;
 
@@ -222,8 +210,7 @@ void testNestedGuardsSameVMInCallback()
 }
 
 /// @brief Test multiple callback invocations maintain correct VM state.
-void testMultipleCallbacksPreserveVMState()
-{
+void testMultipleCallbacksPreserveVMState() {
     CallbackTracker tracker;
     g_tracker = &tracker;
 
@@ -243,8 +230,7 @@ void testMultipleCallbacksPreserveVMState()
     assert(tracker.callCount == 5 && "Callback should be called 5 times");
     assert(tracker.sawActiveVM.size() == 5 && "Should have 5 observations");
 
-    for (int i = 0; i < 5; ++i)
-    {
+    for (int i = 0; i < 5; ++i) {
         assert(tracker.sawActiveVM[i] && "Each callback should see active VM");
         assert(tracker.activeVMs[i] == &vm && "Each callback should see correct VM");
     }
@@ -255,8 +241,7 @@ void testMultipleCallbacksPreserveVMState()
 }
 
 /// @brief Test that activeVMInstance() is null after VM run completes.
-void testActiveVMNullAfterRun()
-{
+void testActiveVMNullAfterRun() {
     auto module = buildSimpleCallbackModule("rt_abs_i64"); // Use a known extern
     vm::VM vm(module);
 
@@ -268,8 +253,7 @@ void testActiveVMNullAfterRun()
 }
 
 /// @brief Test nested guards restore correctly in complex scenarios.
-void testNestedGuardRestorationChain()
-{
+void testNestedGuardRestorationChain() {
     core::Module module1;
     core::Module module2;
 
@@ -304,8 +288,7 @@ void testNestedGuardRestorationChain()
 }
 
 /// @brief Test nullptr guard clears active VM.
-void testNullptrGuardClearsActiveVM()
-{
+void testNullptrGuardClearsActiveVM() {
     core::Module module;
     vm::VM vm(module);
 
@@ -327,8 +310,7 @@ void testNullptrGuardClearsActiveVM()
 }
 
 /// @brief Test guard restoration with interleaved nullptr guards.
-void testInterleavedNullptrGuards()
-{
+void testInterleavedNullptrGuards() {
     core::Module module;
     vm::VM vm(module);
 
@@ -356,8 +338,7 @@ void testInterleavedNullptrGuards()
     assert(vm::activeVMInstance() == nullptr);
 }
 
-int main()
-{
+int main() {
     // Test basic callback functionality
     testSimpleCallbackSeesActiveVM();
     testNestedGuardsSameVMInCallback();

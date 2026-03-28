@@ -29,59 +29,47 @@
 #include <string_view>
 #include <vector>
 
-namespace
-{
-std::string trimWhitespace(std::string_view text)
-{
+namespace {
+std::string trimWhitespace(std::string_view text) {
     const auto begin = text.find_first_not_of(" \t");
-    if (begin == std::string_view::npos)
-    {
+    if (begin == std::string_view::npos) {
         return std::string();
     }
     const auto end = text.find_last_not_of(" \t");
     return std::string(text.substr(begin, end - begin + 1));
 }
 
-std::string normalizeAttributes(std::string line)
-{
+std::string normalizeAttributes(std::string line) {
     std::size_t searchStart = 0;
-    while (true)
-    {
+    while (true) {
         const std::size_t open = line.find('[', searchStart);
-        if (open == std::string::npos)
-        {
+        if (open == std::string::npos) {
             break;
         }
         const std::size_t close = line.find(']', open);
-        if (close == std::string::npos)
-        {
+        if (close == std::string::npos) {
             break;
         }
         const std::string attrs = line.substr(open + 1, close - open - 1);
         std::vector<std::string> parts;
         std::size_t partStart = 0;
-        while (partStart < attrs.size())
-        {
+        while (partStart < attrs.size()) {
             const std::size_t comma = attrs.find(',', partStart);
             const std::size_t length =
                 comma == std::string::npos ? std::string::npos : comma - partStart;
             const std::string piece = trimWhitespace(attrs.substr(partStart, length));
-            if (!piece.empty())
-            {
+            if (!piece.empty()) {
                 parts.push_back(piece);
             }
-            if (comma == std::string::npos)
-            {
+            if (comma == std::string::npos) {
                 break;
             }
             partStart = comma + 1;
         }
         std::stable_sort(parts.begin(), parts.end());
         std::string joined;
-        for (std::size_t i = 0; i < parts.size(); ++i)
-        {
-            if (i != 0)
-            {
+        for (std::size_t i = 0; i < parts.size(); ++i) {
+            if (i != 0) {
                 joined.append(", ");
             }
             joined.append(parts[i]);
@@ -92,14 +80,11 @@ std::string normalizeAttributes(std::string line)
     return line;
 }
 
-std::string normalizeText(const std::string &text)
-{
+std::string normalizeText(const std::string &text) {
     std::string withoutCarriageReturns;
     withoutCarriageReturns.reserve(text.size());
-    for (const char ch : text)
-    {
-        if (ch != '\r')
-        {
+    for (const char ch : text) {
+        if (ch != '\r') {
             withoutCarriageReturns.push_back(ch);
         }
     }
@@ -108,15 +93,12 @@ std::string normalizeText(const std::string &text)
     std::string result;
     std::string line;
     bool firstLine = true;
-    while (std::getline(stream, line))
-    {
-        while (!line.empty() && (line.back() == ' ' || line.back() == '\t'))
-        {
+    while (std::getline(stream, line)) {
+        while (!line.empty() && (line.back() == ' ' || line.back() == '\t')) {
             line.pop_back();
         }
         line = normalizeAttributes(std::move(line));
-        if (!firstLine)
-        {
+        if (!firstLine) {
             result.push_back('\n');
         }
         firstLine = false;
@@ -125,34 +107,26 @@ std::string normalizeText(const std::string &text)
     return result;
 }
 
-std::vector<std::string> splitFixtureDirs(const std::string &dirs)
-{
+std::vector<std::string> splitFixtureDirs(const std::string &dirs) {
     std::vector<std::string> parts;
     std::string current;
-    for (const char ch : dirs)
-    {
-        if (ch == ';' || ch == '|')
-        {
-            if (!current.empty())
-            {
+    for (const char ch : dirs) {
+        if (ch == ';' || ch == '|') {
+            if (!current.empty()) {
                 parts.push_back(current);
                 current.clear();
             }
-        }
-        else
-        {
+        } else {
             current.push_back(ch);
         }
     }
-    if (!current.empty())
-    {
+    if (!current.empty()) {
         parts.push_back(current);
     }
     return parts;
 }
 
-std::vector<std::filesystem::path> collectFixtureFiles()
-{
+std::vector<std::filesystem::path> collectFixtureFiles() {
 #ifdef IL_FIXTURE_DIRS
     const auto dirs = splitFixtureDirs(IL_FIXTURE_DIRS);
 #else
@@ -161,16 +135,13 @@ std::vector<std::filesystem::path> collectFixtureFiles()
 
     std::vector<std::filesystem::path> ilFiles;
     std::error_code ec;
-    for (const auto &dirStr : dirs)
-    {
-        if (dirStr.empty())
-        {
+    for (const auto &dirStr : dirs) {
+        if (dirStr.empty()) {
             continue;
         }
         ec.clear();
         const std::filesystem::path dir(dirStr);
-        if (!std::filesystem::exists(dir, ec))
-        {
+        if (!std::filesystem::exists(dir, ec)) {
             std::cerr << "Fixture directory missing: " << dir << '\n';
             continue;
         }
@@ -178,21 +149,17 @@ std::vector<std::filesystem::path> collectFixtureFiles()
                  it(dir, std::filesystem::directory_options::skip_permission_denied, ec),
              end;
              it != end;
-             it.increment(ec))
-        {
-            if (ec)
-            {
+             it.increment(ec)) {
+            if (ec) {
                 std::cerr << "Error iterating " << dir << ": " << ec.message() << '\n';
                 ec.clear();
                 break;
             }
-            if (!it->is_regular_file(ec))
-            {
+            if (!it->is_regular_file(ec)) {
                 ec.clear();
                 continue;
             }
-            if (it->path().extension() == ".il")
-            {
+            if (it->path().extension() == ".il") {
                 ilFiles.push_back(it->path());
             }
         }
@@ -202,13 +169,11 @@ std::vector<std::filesystem::path> collectFixtureFiles()
     return ilFiles;
 }
 
-void reportDiag(const il::support::Diag &diag)
-{
+void reportDiag(const il::support::Diag &diag) {
     il::support::printDiag(diag, std::cerr);
 }
 
-bool shouldSkipFixture(const std::filesystem::path &path)
-{
+bool shouldSkipFixture(const std::filesystem::path &path) {
     static const std::vector<std::string> kSkipFiles = {"serializer_all_opcodes.il",
                                                         "oop_runtime_complete.il"};
     const auto filename = path.filename().string();
@@ -217,15 +182,12 @@ bool shouldSkipFixture(const std::filesystem::path &path)
 
 } // namespace
 
-TEST(IL, IOPrintParseRoundTrip)
-{
+TEST(IL, IOPrintParseRoundTrip) {
     const auto fixtures = collectFixtureFiles();
     ASSERT_FALSE(fixtures.empty());
 
-    for (const auto &fixture : fixtures)
-    {
-        if (shouldSkipFixture(fixture))
-        {
+    for (const auto &fixture : fixtures) {
+        if (shouldSkipFixture(fixture)) {
             continue;
         }
         std::ifstream input(fixture);
@@ -254,8 +216,7 @@ TEST(IL, IOPrintParseRoundTrip)
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -45,14 +45,12 @@
 #include <string.h>
 
 /// @brief Internal bytes layout — must match rt_bytes.c (same as rt_binfile.c pattern).
-typedef struct
-{
+typedef struct {
     int64_t len;
     uint8_t *data;
 } binbuf_bytes_impl;
 
-static inline uint8_t *binbuf_bytes_data(void *obj)
-{
+static inline uint8_t *binbuf_bytes_data(void *obj) {
     return obj ? ((binbuf_bytes_impl *)obj)->data : NULL;
 }
 
@@ -60,8 +58,7 @@ static inline uint8_t *binbuf_bytes_data(void *obj)
 #define BINBUF_DEFAULT_CAPACITY 256
 
 /// @brief Internal implementation structure for the BinaryBuffer type.
-typedef struct rt_binbuf_impl
-{
+typedef struct rt_binbuf_impl {
     void **vptr;      ///< Vtable pointer placeholder (for OOP compatibility).
     uint8_t *data;    ///< Pointer to heap-allocated byte storage.
     int64_t len;      ///< Logical length (highest byte written + 1).
@@ -72,8 +69,7 @@ typedef struct rt_binbuf_impl
 /// @brief Ensure the buffer has room for `needed` bytes starting at position.
 /// @param buf Buffer implementation pointer.
 /// @param needed Number of bytes needed from the current position.
-static void binbuf_ensure(rt_binbuf_impl *buf, int64_t needed)
-{
+static void binbuf_ensure(rt_binbuf_impl *buf, int64_t needed) {
     if (needed < 0)
         rt_trap("BinaryBuffer: negative size");
     if (buf->position > INT64_MAX - needed)
@@ -86,8 +82,7 @@ static void binbuf_ensure(rt_binbuf_impl *buf, int64_t needed)
     if (new_cap < 1)
         new_cap = 1;
     // IO-H-3: guard against int64 overflow before doubling
-    while (new_cap < required)
-    {
+    while (new_cap < required) {
         if (new_cap > (int64_t)(INT64_MAX / 2))
             rt_trap("BinaryBuffer: capacity overflow");
         new_cap *= 2;
@@ -105,8 +100,7 @@ static void binbuf_ensure(rt_binbuf_impl *buf, int64_t needed)
 
 /// @brief Finalizer callback invoked when a BinaryBuffer is garbage collected.
 /// @param obj Pointer to the BinaryBuffer object being finalized.
-static void binbuf_finalize(void *obj)
-{
+static void binbuf_finalize(void *obj) {
     if (!obj)
         return;
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -120,8 +114,7 @@ static void binbuf_finalize(void *obj)
 /// @brief Advance position after a write and extend len if needed.
 /// @param buf Buffer implementation pointer.
 /// @param n Number of bytes just written.
-static void binbuf_advance_write(rt_binbuf_impl *buf, int64_t n)
-{
+static void binbuf_advance_write(rt_binbuf_impl *buf, int64_t n) {
     buf->position += n;
     if (buf->position > buf->len)
         buf->len = buf->position;
@@ -130,8 +123,7 @@ static void binbuf_advance_write(rt_binbuf_impl *buf, int64_t n)
 /// @brief Check that `count` bytes can be read from the current position.
 /// @param buf Buffer implementation pointer.
 /// @param count Number of bytes to read.
-static void binbuf_check_read(rt_binbuf_impl *buf, int64_t count)
-{
+static void binbuf_check_read(rt_binbuf_impl *buf, int64_t count) {
     if (count < 0)
         rt_trap("BinaryBuffer: negative count");
     if (buf->position > INT64_MAX - count)
@@ -144,13 +136,11 @@ static void binbuf_check_read(rt_binbuf_impl *buf, int64_t count)
 // Constructors
 //=============================================================================
 
-void *rt_binbuf_new(void)
-{
+void *rt_binbuf_new(void) {
     return rt_binbuf_new_cap(BINBUF_DEFAULT_CAPACITY);
 }
 
-void *rt_binbuf_new_cap(int64_t capacity)
-{
+void *rt_binbuf_new_cap(int64_t capacity) {
     if (capacity < 1)
         capacity = 1;
 
@@ -160,8 +150,7 @@ void *rt_binbuf_new_cap(int64_t capacity)
 
     buf->vptr = NULL;
     buf->data = (uint8_t *)calloc((size_t)capacity, 1);
-    if (!buf->data)
-    {
+    if (!buf->data) {
         rt_obj_free(buf);
         rt_trap("BinaryBuffer: memory allocation failed");
     }
@@ -172,8 +161,7 @@ void *rt_binbuf_new_cap(int64_t capacity)
     return buf;
 }
 
-void *rt_binbuf_from_bytes(void *bytes_obj)
-{
+void *rt_binbuf_from_bytes(void *bytes_obj) {
     int64_t blen = bytes_obj ? rt_bytes_len(bytes_obj) : 0;
     int64_t cap = blen > BINBUF_DEFAULT_CAPACITY ? blen : BINBUF_DEFAULT_CAPACITY;
 
@@ -183,8 +171,7 @@ void *rt_binbuf_from_bytes(void *bytes_obj)
 
     buf->vptr = NULL;
     buf->data = (uint8_t *)calloc((size_t)cap, 1);
-    if (!buf->data)
-    {
+    if (!buf->data) {
         rt_obj_free(buf);
         rt_trap("BinaryBuffer: memory allocation failed");
     }
@@ -205,8 +192,7 @@ void *rt_binbuf_from_bytes(void *bytes_obj)
 // Write Operations
 //=============================================================================
 
-void rt_binbuf_write_byte(void *obj, int64_t value)
-{
+void rt_binbuf_write_byte(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -215,8 +201,7 @@ void rt_binbuf_write_byte(void *obj, int64_t value)
     binbuf_advance_write(buf, 1);
 }
 
-void rt_binbuf_write_i16le(void *obj, int64_t value)
-{
+void rt_binbuf_write_i16le(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -226,8 +211,7 @@ void rt_binbuf_write_i16le(void *obj, int64_t value)
     binbuf_advance_write(buf, 2);
 }
 
-void rt_binbuf_write_i16be(void *obj, int64_t value)
-{
+void rt_binbuf_write_i16be(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -237,8 +221,7 @@ void rt_binbuf_write_i16be(void *obj, int64_t value)
     binbuf_advance_write(buf, 2);
 }
 
-void rt_binbuf_write_i32le(void *obj, int64_t value)
-{
+void rt_binbuf_write_i32le(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -250,8 +233,7 @@ void rt_binbuf_write_i32le(void *obj, int64_t value)
     binbuf_advance_write(buf, 4);
 }
 
-void rt_binbuf_write_i32be(void *obj, int64_t value)
-{
+void rt_binbuf_write_i32be(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -263,8 +245,7 @@ void rt_binbuf_write_i32be(void *obj, int64_t value)
     binbuf_advance_write(buf, 4);
 }
 
-void rt_binbuf_write_i64le(void *obj, int64_t value)
-{
+void rt_binbuf_write_i64le(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -280,8 +261,7 @@ void rt_binbuf_write_i64le(void *obj, int64_t value)
     binbuf_advance_write(buf, 8);
 }
 
-void rt_binbuf_write_i64be(void *obj, int64_t value)
-{
+void rt_binbuf_write_i64be(void *obj, int64_t value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -297,8 +277,7 @@ void rt_binbuf_write_i64be(void *obj, int64_t value)
     binbuf_advance_write(buf, 8);
 }
 
-void rt_binbuf_write_str(void *obj, rt_string value)
-{
+void rt_binbuf_write_str(void *obj, rt_string value) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
 
@@ -309,8 +288,7 @@ void rt_binbuf_write_str(void *obj, rt_string value)
     rt_binbuf_write_i32le(obj, slen);
 
     // Write UTF-8 bytes
-    if (slen > 0)
-    {
+    if (slen > 0) {
         rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
         binbuf_ensure(buf, slen);
         memcpy(buf->data + buf->position, cstr, (size_t)slen);
@@ -318,8 +296,7 @@ void rt_binbuf_write_str(void *obj, rt_string value)
     }
 }
 
-void rt_binbuf_write_bytes(void *obj, void *data)
-{
+void rt_binbuf_write_bytes(void *obj, void *data) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
 
@@ -329,8 +306,7 @@ void rt_binbuf_write_bytes(void *obj, void *data)
     rt_binbuf_write_i32le(obj, blen);
 
     // Write raw bytes — use memcpy via raw pointer (avoids O(n) rt_bytes_get calls)
-    if (blen > 0)
-    {
+    if (blen > 0) {
         rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
         binbuf_ensure(buf, blen);
         const uint8_t *src = binbuf_bytes_data(data);
@@ -344,8 +320,7 @@ void rt_binbuf_write_bytes(void *obj, void *data)
 // Read Operations
 //=============================================================================
 
-int64_t rt_binbuf_read_byte(void *obj)
-{
+int64_t rt_binbuf_read_byte(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -355,8 +330,7 @@ int64_t rt_binbuf_read_byte(void *obj)
     return val;
 }
 
-int64_t rt_binbuf_read_i16le(void *obj)
-{
+int64_t rt_binbuf_read_i16le(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -367,8 +341,7 @@ int64_t rt_binbuf_read_i16le(void *obj)
     return val;
 }
 
-int64_t rt_binbuf_read_i16be(void *obj)
-{
+int64_t rt_binbuf_read_i16be(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -379,8 +352,7 @@ int64_t rt_binbuf_read_i16be(void *obj)
     return val;
 }
 
-int64_t rt_binbuf_read_i32le(void *obj)
-{
+int64_t rt_binbuf_read_i32le(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -392,8 +364,7 @@ int64_t rt_binbuf_read_i32le(void *obj)
     return val;
 }
 
-int64_t rt_binbuf_read_i32be(void *obj)
-{
+int64_t rt_binbuf_read_i32be(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -405,8 +376,7 @@ int64_t rt_binbuf_read_i32be(void *obj)
     return val;
 }
 
-int64_t rt_binbuf_read_i64le(void *obj)
-{
+int64_t rt_binbuf_read_i64le(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -420,8 +390,7 @@ int64_t rt_binbuf_read_i64le(void *obj)
     return val;
 }
 
-int64_t rt_binbuf_read_i64be(void *obj)
-{
+int64_t rt_binbuf_read_i64be(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -435,8 +404,7 @@ int64_t rt_binbuf_read_i64be(void *obj)
     return val;
 }
 
-rt_string rt_binbuf_read_str(void *obj)
-{
+rt_string rt_binbuf_read_str(void *obj) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
 
@@ -454,8 +422,7 @@ rt_string rt_binbuf_read_str(void *obj)
     return result;
 }
 
-void *rt_binbuf_read_bytes(void *obj, int64_t count)
-{
+void *rt_binbuf_read_bytes(void *obj, int64_t count) {
     if (!obj)
         rt_trap("BinaryBuffer: null buffer");
     if (count < 0)
@@ -477,15 +444,13 @@ void *rt_binbuf_read_bytes(void *obj, int64_t count)
 // Properties / Control
 //=============================================================================
 
-int64_t rt_binbuf_get_position(void *obj)
-{
+int64_t rt_binbuf_get_position(void *obj) {
     if (!obj)
         return 0;
     return ((rt_binbuf_impl *)obj)->position;
 }
 
-void rt_binbuf_set_position(void *obj, int64_t pos)
-{
+void rt_binbuf_set_position(void *obj, int64_t pos) {
     if (!obj)
         return;
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;
@@ -496,15 +461,13 @@ void rt_binbuf_set_position(void *obj, int64_t pos)
     buf->position = pos;
 }
 
-int64_t rt_binbuf_get_len(void *obj)
-{
+int64_t rt_binbuf_get_len(void *obj) {
     if (!obj)
         return 0;
     return ((rt_binbuf_impl *)obj)->len;
 }
 
-void *rt_binbuf_to_bytes(void *obj)
-{
+void *rt_binbuf_to_bytes(void *obj) {
     if (!obj)
         return rt_bytes_new(0);
 
@@ -518,8 +481,7 @@ void *rt_binbuf_to_bytes(void *obj)
     return result;
 }
 
-void rt_binbuf_reset(void *obj)
-{
+void rt_binbuf_reset(void *obj) {
     if (!obj)
         return;
     rt_binbuf_impl *buf = (rt_binbuf_impl *)obj;

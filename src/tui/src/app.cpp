@@ -20,8 +20,7 @@
 
 #include "tui/app.hpp"
 
-namespace viper::tui
-{
+namespace viper::tui {
 /// @brief Construct an application driver with the provided root widget and terminal.
 /// @details Transfers ownership of the root widget into the application, wires
 ///          up the ANSI renderer to the supplied terminal I/O implementation,
@@ -38,8 +37,7 @@ App::App(std::unique_ptr<ui::Widget> root,
          int rows,
          int cols,
          bool truecolor)
-    : root_(std::move(root)), renderer_(tio, truecolor), rows_(rows), cols_(cols)
-{
+    : root_(std::move(root)), renderer_(tio, truecolor), rows_(rows), cols_(cols) {
     screen_.resize(rows, cols);
 }
 
@@ -49,8 +47,7 @@ App::App(std::unique_ptr<ui::Widget> root,
 ///          changes for Tab traversal before forwarding the remaining events to
 ///          either the keymap or the focused widget.
 /// @param ev Input event captured by the embedder.
-void App::pushEvent(const ui::Event &ev)
-{
+void App::pushEvent(const ui::Event &ev) {
     events_.push_back(ev);
 }
 
@@ -60,8 +57,7 @@ void App::pushEvent(const ui::Event &ev)
 ///          manager remains owned by the application, so the returned reference
 ///          is always valid for the lifetime of the @ref App instance.
 /// @return Reference to the focus manager governing keyboard routing.
-ui::FocusManager &App::focus()
-{
+ui::FocusManager &App::focus() {
     return focus_;
 }
 
@@ -71,8 +67,7 @@ ui::FocusManager &App::focus()
 ///          events during @ref tick(); unhandled events continue on to the
 ///          focused widget.  Passing @c nullptr disables keymap dispatch.
 /// @param km Keymap instance whose lifetime must exceed the application.
-void App::setKeymap(input::Keymap *km)
-{
+void App::setKeymap(input::Keymap *km) {
     keymap_ = km;
 }
 
@@ -88,38 +83,28 @@ void App::setKeymap(input::Keymap *km)
 ///             the next iteration.
 ///          The routine is idempotent with respect to an empty event queue and
 ///          tolerates a null root widget (no rendering performed).
-void App::tick()
-{
-    for (const auto &ev : events_)
-    {
-        if (ev.key.code == term::KeyEvent::Code::Tab)
-        {
-            if (ev.key.mods & term::KeyEvent::Shift)
-            {
+void App::tick() {
+    for (const auto &ev : events_) {
+        if (ev.key.code == term::KeyEvent::Code::Tab) {
+            if (ev.key.mods & term::KeyEvent::Shift) {
                 (void)focus_.prev();
-            }
-            else
-            {
+            } else {
                 (void)focus_.next();
             }
             continue;
         }
         bool handled = false;
-        if (keymap_)
-        {
+        if (keymap_) {
             handled = keymap_->handle(focus_.current(), ev.key);
         }
-        if (!handled)
-        {
-            if (auto *w = focus_.current())
-            {
+        if (!handled) {
+            if (auto *w = focus_.current()) {
                 w->onEvent(ev);
             }
         }
     }
     events_.clear();
-    if (root_)
-    {
+    if (root_) {
         ui::Rect full{0, 0, cols_, rows_};
         root_->layout(full);
         screen_.clear(render::Style{});
@@ -136,8 +121,7 @@ void App::tick()
 ///          relaid out on the next frame.
 /// @param rows Updated terminal row count.
 /// @param cols Updated terminal column count.
-void App::resize(int rows, int cols)
-{
+void App::resize(int rows, int cols) {
     rows_ = rows;
     cols_ = cols;
     screen_.resize(rows_, cols_);

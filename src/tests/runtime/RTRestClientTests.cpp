@@ -16,10 +16,8 @@
 #include <cstdio>
 #include <cstring>
 
-static void test_result(bool cond, const char *name)
-{
-    if (!cond)
-    {
+static void test_result(bool cond, const char *name) {
+    if (!cond) {
         fprintf(stderr, "FAIL: %s\n", name);
         assert(false);
     }
@@ -29,8 +27,7 @@ static void test_result(bool cond, const char *name)
 // Creation Tests
 //=============================================================================
 
-static void test_new_client()
-{
+static void test_new_client() {
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
     test_result(client != NULL, "new_client: should create client");
@@ -40,8 +37,7 @@ static void test_new_client()
                 "new_client: should store base URL");
 }
 
-static void test_new_client_empty_url()
-{
+static void test_new_client_empty_url() {
     void *client = rt_restclient_new(rt_const_cstr(""));
 
     test_result(client != NULL, "new_client_empty: should create client with empty URL");
@@ -50,8 +46,7 @@ static void test_new_client_empty_url()
     test_result(strlen(rt_string_cstr(base)) == 0, "new_client_empty: should have empty base URL");
 }
 
-static void test_new_client_null()
-{
+static void test_new_client_null() {
     rt_string base = rt_restclient_base_url(NULL);
     test_result(strlen(rt_string_cstr(base)) == 0, "null_client: should return empty string");
 }
@@ -60,8 +55,7 @@ static void test_new_client_null()
 // Header Configuration Tests
 //=============================================================================
 
-static void test_set_header()
-{
+static void test_set_header() {
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
     // Setting a header shouldn't crash
@@ -71,8 +65,7 @@ static void test_set_header()
     test_result(true, "set_header: should set header without crash");
 }
 
-static void test_del_header()
-{
+static void test_del_header() {
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
     rt_restclient_set_header(
@@ -84,8 +77,7 @@ static void test_del_header()
     test_result(true, "del_header: should delete header without crash");
 }
 
-static void test_null_client_headers()
-{
+static void test_null_client_headers() {
     // Operations on NULL client should be safe (no-op)
     rt_restclient_set_header(NULL, rt_const_cstr("Header"), rt_const_cstr("Value"));
     rt_restclient_del_header(NULL, rt_const_cstr("Header"));
@@ -97,8 +89,7 @@ static void test_null_client_headers()
 // Authentication Tests
 //=============================================================================
 
-static void test_set_auth_bearer()
-{
+static void test_set_auth_bearer() {
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
     // Setting bearer auth shouldn't crash
@@ -107,8 +98,7 @@ static void test_set_auth_bearer()
     test_result(true, "set_auth_bearer: should set bearer auth without crash");
 }
 
-static void test_set_auth_basic()
-{
+static void test_set_auth_basic() {
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
     // Setting basic auth shouldn't crash
@@ -117,8 +107,7 @@ static void test_set_auth_basic()
     test_result(true, "set_auth_basic: should set basic auth without crash");
 }
 
-static void test_clear_auth()
-{
+static void test_clear_auth() {
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
     rt_restclient_set_auth_bearer(client, rt_const_cstr("token"));
@@ -127,8 +116,7 @@ static void test_clear_auth()
     test_result(true, "clear_auth: should clear auth without crash");
 }
 
-static void test_null_client_auth()
-{
+static void test_null_client_auth() {
     // Auth operations on NULL client should be safe
     rt_restclient_set_auth_bearer(NULL, rt_const_cstr("token"));
     rt_restclient_set_auth_basic(NULL, rt_const_cstr("user"), rt_const_cstr("pass"));
@@ -141,8 +129,7 @@ static void test_null_client_auth()
 // Timeout Tests
 //=============================================================================
 
-static void test_set_timeout()
-{
+static void test_set_timeout() {
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
     rt_restclient_set_timeout(client, 60000); // 60 seconds
@@ -150,8 +137,7 @@ static void test_set_timeout()
     test_result(true, "set_timeout: should set timeout without crash");
 }
 
-static void test_set_timeout_null()
-{
+static void test_set_timeout_null() {
     rt_restclient_set_timeout(NULL, 5000);
 
     test_result(true, "set_timeout_null: should handle NULL safely");
@@ -161,44 +147,38 @@ static void test_set_timeout_null()
 // Status Tests (without actual HTTP)
 //=============================================================================
 
-static void test_last_status_initial()
-{
+static void test_last_status_initial() {
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
     int64_t status = rt_restclient_last_status(client);
     test_result(status == 0, "last_status_initial: should be 0 initially");
 }
 
-static void test_last_response_initial()
-{
+static void test_last_response_initial() {
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
     void *response = rt_restclient_last_response(client);
     test_result(response == NULL, "last_response_initial: should be NULL initially");
 }
 
-static void test_last_ok_initial()
-{
+static void test_last_ok_initial() {
     void *client = rt_restclient_new(rt_const_cstr("https://api.example.com"));
 
     int8_t ok = rt_restclient_last_ok(client);
     test_result(ok == 0, "last_ok_initial: should be false initially");
 }
 
-static void test_last_status_null()
-{
+static void test_last_status_null() {
     int64_t status = rt_restclient_last_status(NULL);
     test_result(status == 0, "last_status_null: should return 0 for NULL");
 }
 
-static void test_last_response_null()
-{
+static void test_last_response_null() {
     void *response = rt_restclient_last_response(NULL);
     test_result(response == NULL, "last_response_null: should return NULL for NULL");
 }
 
-static void test_last_ok_null()
-{
+static void test_last_ok_null() {
     int8_t ok = rt_restclient_last_ok(NULL);
     test_result(ok == 0, "last_ok_null: should return false for NULL");
 }
@@ -212,12 +192,10 @@ static void test_last_ok_null()
 /// Creating many clients exercises the allocation path and ensures no crash
 /// occurs from missing or double-registered finalizers. Under ASAN, any
 /// finalizer bug surfaces as a leak or invalid-free report.
-static void test_restclient_many_instances()
-{
+static void test_restclient_many_instances() {
     const int COUNT = 100;
 
-    for (int i = 0; i < COUNT; i++)
-    {
+    for (int i = 0; i < COUNT; i++) {
         void *c = rt_restclient_new(rt_const_cstr("https://api.example.com"));
         test_result(c != NULL, "many_instances: client created");
 
@@ -240,8 +218,7 @@ static void test_restclient_many_instances()
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     // Creation tests
     test_new_client();
     test_new_client_empty_url();

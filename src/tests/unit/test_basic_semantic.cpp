@@ -28,8 +28,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     std::ostringstream srcBuilder;
     srcBuilder << "100 FUNCTION F(N)\n"
                << "110 RETURN N + 1\n"
@@ -69,8 +68,7 @@ int main()
     Parser p(src, fid);
     auto prog = p.parseProgram();
 
-    for (int i = 0; i < kExtraProcedures; ++i)
-    {
+    for (int i = 0; i < kExtraProcedures; ++i) {
         auto fn = std::make_unique<FunctionDecl>();
         fn->line = 3000 + i * 10;
         fn->name = "EXTRA_FN" + std::to_string(i);
@@ -113,8 +111,7 @@ int main()
 
         prog->procs.push_back(std::move(fn));
     }
-    for (int i = 0; i < kExtraProcedures; ++i)
-    {
+    for (int i = 0; i < kExtraProcedures; ++i) {
         auto sub = std::make_unique<SubDecl>();
         sub->line = 4000 + i * 10;
         sub->name = "EXTRA_SUB" + std::to_string(i);
@@ -177,10 +174,8 @@ int main()
     assert(sema.procs().at("P").params.size() == 1);
 
     bool hasStmtList = false;
-    for (const auto &stmt : prog->main)
-    {
-        if (dynamic_cast<const StmtList *>(stmt.get()))
-        {
+    for (const auto &stmt : prog->main) {
+        if (dynamic_cast<const StmtList *>(stmt.get())) {
             hasStmtList = true;
             break;
         }
@@ -192,8 +187,7 @@ int main()
     bool sawMain = false;
     bool sawFunction = false;
     bool sawSub = false;
-    for (const auto &fn : module.functions)
-    {
+    for (const auto &fn : module.functions) {
         if (fn.name == "main")
             sawMain = true;
         else if (fn.name == "F")
@@ -211,8 +205,7 @@ int main()
                                                                "LARGE_SUB_LOCAL_",
                                                                "LARGE_SUB_INPUT_",
                                                                "LARGE_SUB_ARG_"};
-    for (const auto &name : sema.symbols())
-    {
+    for (const auto &name : sema.symbols()) {
         for (auto prefix : forbiddenPrefixes)
             assert(name.rfind(prefix, 0) != 0);
     }

@@ -24,8 +24,7 @@
 #include "diag_expected.hpp"
 #include "source_manager.hpp"
 
-namespace il::support
-{
+namespace il::support {
 /// @brief Record a diagnostic and update severity counters.
 ///
 /// @details Diagnostics are appended to the internal vector for later
@@ -35,8 +34,7 @@ namespace il::support
 ///          ownership semantics while avoiding copies.
 ///
 /// @param d Diagnostic to store (moved into the engine).
-void DiagnosticEngine::report(Diagnostic d)
-{
+void DiagnosticEngine::report(Diagnostic d) {
     if (d.severity == Severity::Error)
         ++errors_;
     else if (d.severity == Severity::Warning)
@@ -54,10 +52,8 @@ void DiagnosticEngine::report(Diagnostic d)
 ///
 /// @param os Output stream receiving diagnostic text.
 /// @param sm Optional source manager for resolving locations.
-void DiagnosticEngine::printAll(std::ostream &os, const SourceManager *sm) const
-{
-    for (const auto &d : diags_)
-    {
+void DiagnosticEngine::printAll(std::ostream &os, const SourceManager *sm) const {
+    for (const auto &d : diags_) {
         printDiag(d, os, sm);
     }
 }
@@ -70,8 +66,7 @@ void DiagnosticEngine::printAll(std::ostream &os, const SourceManager *sm) const
 ///          policies.
 ///
 /// @return Count of error-severity diagnostics recorded so far.
-size_t DiagnosticEngine::errorCount() const
-{
+size_t DiagnosticEngine::errorCount() const {
     return errors_;
 }
 
@@ -81,8 +76,7 @@ size_t DiagnosticEngine::errorCount() const
 ///          dashboards or CLI tools to summarise non-fatal issues.
 ///
 /// @return Count of warning-severity diagnostics recorded so far.
-size_t DiagnosticEngine::warningCount() const
-{
+size_t DiagnosticEngine::warningCount() const {
     return warnings_;
 }
 } // namespace il::support

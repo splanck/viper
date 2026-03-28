@@ -40,8 +40,7 @@
 
 using il::support::SourceLoc;
 
-namespace
-{
+namespace {
 using il::core::Opcode;
 using il::runtime::RtSig;
 using il::runtime::RuntimeDescriptor;
@@ -84,8 +83,7 @@ static void validateArgumentCount(const RuntimeDescriptor &desc,
                                   std::span<const Slot> args,
                                   const SourceLoc &loc,
                                   const std::string &fn,
-                                  const std::string &block)
-{
+                                  const std::string &block) {
     auto validation = il::vm::validateMarshalArity(desc, args.size());
     if (validation.ok)
         return;
@@ -108,8 +106,7 @@ static void validateArgumentCount(const RuntimeDescriptor &desc,
 static VmResult executeDescriptor(const RuntimeDescriptor &desc,
                                   Slot *argBegin,
                                   std::size_t argCount,
-                                  const RuntimeCallContext &ctx)
-{
+                                  const RuntimeCallContext &ctx) {
     std::span<Slot> argSpan{};
     if (argBegin && argCount)
         argSpan = {argBegin, argCount};
@@ -127,8 +124,7 @@ static VmResult executeDescriptor(const RuntimeDescriptor &desc,
     if (argBegin && argCount)
         readonlyArgs = {argBegin, argCount};
     auto trap = il::vm::classifyPowTrap(desc, powStatus, readonlyArgs, buffers);
-    if (trap.triggered)
-    {
+    if (trap.triggered) {
         // RuntimeBridge::trap escalates into vm_raise when a VM is active.
         RuntimeBridge::trap(trap.kind, trap.message, ctx.loc, ctx.function, ctx.block);
         return Slot{};
@@ -141,8 +137,7 @@ static VmResult executeDescriptor(const RuntimeDescriptor &desc,
 ///
 /// @details The VM and frame parameters are unused for most runtime functions;
 ///          they are present to match the signature expected by the thunk table.
-static VmResult genericThunk(VM &vm, FrameInfo &frame, const RuntimeCallContext &ctx)
-{
+static VmResult genericThunk(VM &vm, FrameInfo &frame, const RuntimeCallContext &ctx) {
     (void)vm;
     (void)frame;
     return executeDescriptor(*ctx.descriptor, ctx.argBegin, ctx.argCount, ctx);
@@ -153,8 +148,7 @@ static VmResult genericThunk(VM &vm, FrameInfo &frame, const RuntimeCallContext 
 /// @details Each entry defaults to the generic thunk for now, but the table is
 ///          built as a constexpr helper so future specialised thunks can be
 ///          registered in one place.
-constexpr std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> buildThunkTable()
-{
+constexpr std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> buildThunkTable() {
     std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> table{};
     table.fill(&genericThunk);
     return table;
@@ -163,29 +157,24 @@ constexpr std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> buildThunkTa
 /// @brief Access the lazily initialised thunk table.
 ///
 /// @return Reference to the singleton thunk array used for runtime dispatch.
-const std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> &thunkTable()
-{
+const std::array<Thunk, static_cast<std::size_t>(RtSig::Count)> &thunkTable() {
     static const auto table = buildThunkTable();
     return table;
 }
 
 /// @brief RAII helper that installs a runtime call context for the current thread.
-struct ContextGuard
-{
+struct ContextGuard {
     RuntimeCallContext *previous;
     RuntimeCallContext *current;
 
     /// @brief Push the provided context as the thread-local active call.
-    explicit ContextGuard(RuntimeCallContext &ctx) : previous(tlsContext), current(&ctx)
-    {
+    explicit ContextGuard(RuntimeCallContext &ctx) : previous(tlsContext), current(&ctx) {
         tlsContext = &ctx;
     }
 
     /// @brief Restore the previous context and clear transient diagnostic fields.
-    ~ContextGuard()
-    {
-        if (current)
-        {
+    ~ContextGuard() {
+        if (current) {
             current->loc = {};
             current->function.clear();
             current->block.clear();
@@ -201,8 +190,7 @@ struct ContextGuard
 using Operands = std::span<const Slot>;
 
 /// @brief Aggregates information required to finalise a runtime trap.
-struct TrapCtx
-{
+struct TrapCtx {
     TrapKind kind;
     const std::string &message;
     const SourceLoc &loc;
@@ -221,10 +209,8 @@ struct TrapCtx
 ///
 /// INVARIANT: If ctx.vm is non-null, VM::activeInstance() must also be non-null.
 /// GUARANTEE: This function does not return to its caller when no handler catches.
-static void finalizeTrap(TrapCtx &ctx)
-{
-    if (ctx.vm)
-    {
+static void finalizeTrap(TrapCtx &ctx) {
+    if (ctx.vm) {
         // Assert that activeInstance is consistent with ctx.vm
         VIPER_TRAP_ASSERT(RuntimeBridge::hasActiveVm(),
                           "ActiveVMGuard inconsistency: ctx.vm set but no active VM");
@@ -236,8 +222,7 @@ static void finalizeTrap(TrapCtx &ctx)
     }
 
     std::string diagnostic = vm_format_error(ctx.error, ctx.frame);
-    if (!ctx.message.empty())
-    {
+    if (!ctx.message.empty()) {
         diagnostic += ": ";
         diagnostic += ctx.message;
     }
@@ -250,8 +235,7 @@ static void finalizeTrap(TrapCtx &ctx)
 /// @param ctx Aggregated trap context to populate.
 /// @param opcode Opcode that triggered the overflow.
 /// @param operands Operands involved in the failing operation.
-static void handleOverflow(TrapCtx &ctx, Opcode opcode, const Operands &operands)
-{
+static void handleOverflow(TrapCtx &ctx, Opcode opcode, const Operands &operands) {
     (void)opcode;
     (void)operands;
     finalizeTrap(ctx);
@@ -262,16 +246,14 @@ static void handleOverflow(TrapCtx &ctx, Opcode opcode, const Operands &operands
 /// @param ctx Aggregated trap context to populate.
 /// @param opcode Opcode that triggered the trap.
 /// @param operands Operands supplied to the operation.
-static void handleDivByZero(TrapCtx &ctx, Opcode opcode, const Operands &operands)
-{
+static void handleDivByZero(TrapCtx &ctx, Opcode opcode, const Operands &operands) {
     (void)opcode;
     (void)operands;
     finalizeTrap(ctx);
 }
 
 /// @brief Finalise traps that do not require operand-specific formatting.
-static void handleGenericTrap(TrapCtx &ctx)
-{
+static void handleGenericTrap(TrapCtx &ctx) {
     finalizeTrap(ctx);
 }
 
@@ -289,12 +271,10 @@ static void handleGenericTrap(TrapCtx &ctx)
 // We don't define vm_trap here to avoid duplicate symbol errors with lld-link.
 #elif defined(__GNUC__) || defined(__clang__)
 /// @brief Weak hook allowing embedders to override VM trap behaviour.
-extern "C" __attribute__((weak)) void vm_trap(const char *msg)
-{
+extern "C" __attribute__((weak)) void vm_trap(const char *msg) {
     const auto *ctx = il::vm::RuntimeBridge::activeContext();
     const char *trapMsg = msg ? msg : "trap";
-    if (ctx)
-    {
+    if (ctx) {
         il::vm::RuntimeBridge::trap(
             TrapKind::DomainError, trapMsg, ctx->loc, ctx->function, ctx->block);
     }
@@ -304,12 +284,10 @@ extern "C" __attribute__((weak)) void vm_trap(const char *msg)
 }
 #else
 /// @brief Default implementation that records traps on the active context.
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     const auto *ctx = il::vm::RuntimeBridge::activeContext();
     const char *trapMsg = msg ? msg : "trap";
-    if (ctx)
-    {
+    if (ctx) {
         il::vm::RuntimeBridge::trap(
             TrapKind::DomainError, trapMsg, ctx->loc, ctx->function, ctx->block);
     }
@@ -319,8 +297,7 @@ extern "C" void vm_trap(const char *msg)
 }
 #endif
 
-namespace il::vm
-{
+namespace il::vm {
 
 //===----------------------------------------------------------------------===//
 // ExternRegistry Implementation
@@ -357,12 +334,10 @@ namespace il::vm
 //
 //===----------------------------------------------------------------------===//
 
-namespace
-{
+namespace {
 
 /// @brief Internal record for a registered external function.
-struct ExtRecord
-{
+struct ExtRecord {
     ExternDesc pub;                                ///< Public descriptor exposed to callers.
     il::runtime::RuntimeSignature runtimeSig;      ///< Converted runtime signature.
     il::runtime::RuntimeHandler handler = nullptr; ///< Native handler function.
@@ -374,20 +349,17 @@ struct ExtRecord
 /// @details This struct holds the actual storage (map + mutex) for external
 ///          function registrations. It is intentionally defined in the .cpp
 ///          file to keep the header opaque.
-struct ExternRegistry
-{
+struct ExternRegistry {
     std::mutex mutex;                                   ///< Protects concurrent access.
     std::unordered_map<std::string, ExtRecord> entries; ///< Name -> record mapping.
     bool strictMode = false; ///< When true, reject re-registration with different signature.
 };
 
-namespace
-{
+namespace {
 
 /// @brief Access the process-global extern registry singleton.
 /// @return Reference to the lazily-initialized global registry.
-ExternRegistry &globalRegistry()
-{
+ExternRegistry &globalRegistry() {
     static ExternRegistry instance;
     return instance;
 }
@@ -399,31 +371,26 @@ ExternRegistry &globalRegistry()
 /// @param a First signature.
 /// @param b Second signature.
 /// @return True if the signatures are structurally equivalent.
-static bool signaturesEqual(const Signature &a, const Signature &b)
-{
+static bool signaturesEqual(const Signature &a, const Signature &b) {
     if (a.params.size() != b.params.size())
         return false;
     if (a.rets.size() != b.rets.size())
         return false;
-    for (size_t i = 0; i < a.params.size(); ++i)
-    {
+    for (size_t i = 0; i < a.params.size(); ++i) {
         if (a.params[i].kind != b.params[i].kind)
             return false;
     }
-    for (size_t i = 0; i < a.rets.size(); ++i)
-    {
+    for (size_t i = 0; i < a.rets.size(); ++i) {
         if (a.rets[i].kind != b.rets[i].kind)
             return false;
     }
     return true;
 }
 
-static il::core::Type mapKind(il::runtime::signatures::SigParam::Kind k)
-{
+static il::core::Type mapKind(il::runtime::signatures::SigParam::Kind k) {
     using K = il::runtime::signatures::SigParam::Kind;
     using il::core::Type;
-    switch (k)
-    {
+    switch (k) {
         case K::I1:
             return Type(Type::Kind::I1);
         case K::I32:
@@ -442,8 +409,7 @@ static il::core::Type mapKind(il::runtime::signatures::SigParam::Kind k)
     return Type(Type::Kind::Void);
 }
 
-static il::runtime::RuntimeSignature toRuntimeSig(const Signature &sig)
-{
+static il::runtime::RuntimeSignature toRuntimeSig(const Signature &sig) {
     il::runtime::RuntimeSignature rs;
     rs.paramTypes.reserve(sig.params.size());
     for (const auto &p : sig.params)
@@ -460,8 +426,7 @@ static il::runtime::RuntimeSignature toRuntimeSig(const Signature &sig)
 }
 } // namespace
 
-std::string canonicalizeExternName(std::string_view n)
-{
+std::string canonicalizeExternName(std::string_view n) {
     std::string out(n);
     for (auto &ch : out)
         ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
@@ -494,8 +459,7 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
                          std::span<const Slot> args,
                          const SourceLoc &loc,
                          const std::string &fn,
-                         const std::string &block)
-{
+                         const std::string &block) {
     ctx.loc = loc;
     ctx.function = fn;
     ctx.block = block;
@@ -506,8 +470,7 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
     // Use the current context's registry (currently always process-global).
     il::runtime::RuntimeDescriptor localDesc;
     const il::runtime::RuntimeDescriptor *desc = resolveRuntimeDescriptor(name, localDesc);
-    if (!desc)
-    {
+    if (!desc) {
         RuntimeBridge::trap(
             TrapKind::DomainError, diag::formatUnknownRuntimeHelper(name), loc, fn, block);
         return result;
@@ -525,14 +488,12 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
 }
 
 static const RuntimeDescriptor *resolveRuntimeDescriptor(std::string_view name,
-                                                         RuntimeDescriptor &localDesc)
-{
+                                                         RuntimeDescriptor &localDesc) {
     il::runtime::RuntimeSignature sig;
     il::runtime::RuntimeHandler handler = nullptr;
     const ExternDesc *extDesc =
         il::vm::resolveExternIn(il::vm::currentExternRegistry(), name, &sig, &handler);
-    if (extDesc)
-    {
+    if (extDesc) {
         localDesc.name = extDesc->name;
         localDesc.signature = sig;
         localDesc.handler = handler;
@@ -546,10 +507,8 @@ static const RuntimeDescriptor *resolveRuntimeDescriptor(std::string_view name,
 static Slot dispatchRuntimeCall(RuntimeCallContext &ctx,
                                 std::string_view name,
                                 const RuntimeDescriptor &desc,
-                                VM *activeVm)
-{
-    if (activeVm)
-    {
+                                VM *activeVm) {
+    if (activeVm) {
         FrameInfo frame{};
         std::optional<RtSig> sigId = il::runtime::findRuntimeSignatureId(name);
         Thunk thunk = nullptr;
@@ -578,70 +537,54 @@ void RuntimeBridge::trap(TrapKind kind,
                          const std::string &msg,
                          const SourceLoc &loc,
                          const std::string &fn,
-                         const std::string &block)
-{
+                         const std::string &block) {
     TrapCtx ctx{kind, msg, loc, fn, block};
     ctx.vm = VM::activeInstance();
-    if (ctx.vm)
-    {
+    if (ctx.vm) {
         auto populateVm =
-            [](VM &vm, const SourceLoc &loc, const std::string &fn, const std::string &block)
-        {
-            if (loc.hasFile())
-            {
-                vm.currentContext.loc = loc;
-                vm.runtimeContext.loc = loc;
-            }
-            else
-            {
-                vm.runtimeContext.loc = {};
-            }
-            if (!fn.empty())
-            {
-                vm.runtimeContext.function = fn;
-            }
-            else
-            {
-                vm.runtimeContext.function.clear();
-                vm.lastTrap.frame.function.clear();
-            }
-            if (!block.empty())
-            {
-                vm.runtimeContext.block = block;
-            }
-            else
-            {
-                vm.runtimeContext.block.clear();
-            }
-            if (!loc.hasLine())
-                vm.lastTrap.frame.line = -1;
-        };
+            [](VM &vm, const SourceLoc &loc, const std::string &fn, const std::string &block) {
+                if (loc.hasFile()) {
+                    vm.currentContext.loc = loc;
+                    vm.runtimeContext.loc = loc;
+                } else {
+                    vm.runtimeContext.loc = {};
+                }
+                if (!fn.empty()) {
+                    vm.runtimeContext.function = fn;
+                } else {
+                    vm.runtimeContext.function.clear();
+                    vm.lastTrap.frame.function.clear();
+                }
+                if (!block.empty()) {
+                    vm.runtimeContext.block = block;
+                } else {
+                    vm.runtimeContext.block.clear();
+                }
+                if (!loc.hasLine())
+                    vm.lastTrap.frame.line = -1;
+            };
         populateVm(*ctx.vm, loc, fn, block);
         ctx.vm->runtimeContext.message = msg;
-    }
-    else
-    {
+    } else {
         auto populateNoVm =
-            [](TrapCtx &c, TrapKind kind, const SourceLoc &loc, const std::string &fn)
-        {
-            c.error.kind = kind;
-            c.error.code = 0;
-            c.error.ip = 0;
-            c.error.line = loc.hasLine() ? static_cast<int32_t>(loc.line) : -1;
+            [](TrapCtx &c, TrapKind kind, const SourceLoc &loc, const std::string &fn) {
+                c.error.kind = kind;
+                c.error.code = 0;
+                c.error.ip = 0;
+                c.error.line = loc.hasLine() ? static_cast<int32_t>(loc.line) : -1;
 
-            c.frame.function = fn.empty() ? std::string("<unknown>") : fn;
-            c.frame.ip = 0;
-            c.frame.line = c.error.line;
-            c.frame.handlerInstalled = false;
-        };
+                c.frame.function = fn.empty() ? std::string("<unknown>") : fn;
+                c.frame.ip = 0;
+                c.frame.line = c.error.line;
+                c.frame.handlerInstalled = false;
+            };
         populateNoVm(ctx, kind, loc, fn);
     }
 
     constexpr Opcode trapOpcode = Opcode::Trap;
     const Operands noOperands{};
 
-    switch (kind)
-    {
+    switch (kind) {
         case TrapKind::Overflow:
             handleOverflow(ctx, trapOpcode, noOperands);
             break;
@@ -664,18 +607,15 @@ void RuntimeBridge::trap(TrapKind kind,
 /// @brief Retrieve the currently installed runtime call context, if any.
 ///
 /// @return Pointer to the context managed by @ref ContextGuard, or @c nullptr when inactive.
-const RuntimeCallContext *RuntimeBridge::activeContext()
-{
+const RuntimeCallContext *RuntimeBridge::activeContext() {
     return tlsContext;
 }
 
-bool RuntimeBridge::hasActiveVm()
-{
+bool RuntimeBridge::hasActiveVm() {
     return VM::activeInstance() != nullptr;
 }
 
-ExternRegistry *RuntimeBridge::activeVmRegistry()
-{
+ExternRegistry *RuntimeBridge::activeVmRegistry() {
     if (VM *vm = VM::activeInstance())
         return vm->externRegistry();
     return nullptr;
@@ -686,8 +626,7 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
                          const std::vector<Slot> &args,
                          const SourceLoc &loc,
                          const std::string &fn,
-                         const std::string &block)
-{
+                         const std::string &block) {
     return RuntimeBridge::call(
         ctx, name, std::span<const Slot>{args.data(), args.size()}, loc, fn, block);
 }
@@ -697,8 +636,7 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
                          std::initializer_list<Slot> args,
                          const SourceLoc &loc,
                          const std::string &fn,
-                         const std::string &block)
-{
+                         const std::string &block) {
     return RuntimeBridge::call(
         ctx, name, std::span<const Slot>{args.begin(), args.size()}, loc, fn, block);
 }
@@ -707,13 +645,11 @@ Slot RuntimeBridge::call(RuntimeCallContext &ctx,
 // ExternRegistry Free Functions
 //===----------------------------------------------------------------------===//
 
-ExternRegistry &processGlobalExternRegistry()
-{
+ExternRegistry &processGlobalExternRegistry() {
     return globalRegistry();
 }
 
-ExternRegistry &currentExternRegistry()
-{
+ExternRegistry &currentExternRegistry() {
     // Check for active VM with a per-VM registry configured.
     // Falls back to the process-global registry when:
     // - No VM is currently active, or
@@ -723,8 +659,7 @@ ExternRegistry &currentExternRegistry()
     return globalRegistry();
 }
 
-ExternRegisterResult registerExternIn(ExternRegistry &registry, const ExternDesc &ext)
-{
+ExternRegisterResult registerExternIn(ExternRegistry &registry, const ExternDesc &ext) {
     ExtRecord rec;
     rec.pub = ext;
     rec.runtimeSig = toRuntimeSig(ext.signature);
@@ -734,20 +669,15 @@ ExternRegisterResult registerExternIn(ExternRegistry &registry, const ExternDesc
 
     // Check for existing entry with same name
     auto it = registry.entries.find(key);
-    if (it != registry.entries.end())
-    {
+    if (it != registry.entries.end()) {
         // Already registered - check signature compatibility
-        if (signaturesEqual(it->second.pub.signature, ext.signature))
-        {
+        if (signaturesEqual(it->second.pub.signature, ext.signature)) {
             // Same signature: update silently (no-op if fn is also the same)
             it->second = std::move(rec);
             return ExternRegisterResult::Success;
-        }
-        else
-        {
+        } else {
             // Different signature: error in strict mode, warning otherwise
-            if (registry.strictMode)
-            {
+            if (registry.strictMode) {
                 return ExternRegisterResult::SignatureMismatch;
             }
             // Non-strict mode: overwrite and continue
@@ -761,15 +691,13 @@ ExternRegisterResult registerExternIn(ExternRegistry &registry, const ExternDesc
     return ExternRegisterResult::Success;
 }
 
-bool unregisterExternIn(ExternRegistry &registry, std::string_view name)
-{
+bool unregisterExternIn(ExternRegistry &registry, std::string_view name) {
     const std::string key = canonicalizeExternName(name);
     std::lock_guard<std::mutex> lock(registry.mutex);
     return registry.entries.erase(key) > 0;
 }
 
-const ExternDesc *findExternIn(ExternRegistry &registry, std::string_view name)
-{
+const ExternDesc *findExternIn(ExternRegistry &registry, std::string_view name) {
     const std::string key = canonicalizeExternName(name);
     std::lock_guard<std::mutex> lock(registry.mutex);
     auto it = registry.entries.find(key);
@@ -781,8 +709,7 @@ const ExternDesc *findExternIn(ExternRegistry &registry, std::string_view name)
 const ExternDesc *resolveExternIn(ExternRegistry &registry,
                                   std::string_view name,
                                   il::runtime::RuntimeSignature *outSig,
-                                  il::runtime::RuntimeHandler *outHandler)
-{
+                                  il::runtime::RuntimeHandler *outHandler) {
     const std::string key = canonicalizeExternName(name);
     std::lock_guard<std::mutex> lock(registry.mutex);
     auto it = registry.entries.find(key);
@@ -799,14 +726,12 @@ const ExternDesc *resolveExternIn(ExternRegistry &registry,
 // ExternRegistry Strict Mode API
 //===----------------------------------------------------------------------===//
 
-void setExternRegistryStrictMode(ExternRegistry &registry, bool enabled)
-{
+void setExternRegistryStrictMode(ExternRegistry &registry, bool enabled) {
     std::lock_guard<std::mutex> lock(registry.mutex);
     registry.strictMode = enabled;
 }
 
-bool isExternRegistryStrictMode(const ExternRegistry &registry)
-{
+bool isExternRegistryStrictMode(const ExternRegistry &registry) {
     // Note: reading a bool is atomic on all supported platforms, but we lock
     // for consistency with the setter and to be future-proof.
     std::lock_guard<std::mutex> lock(const_cast<std::mutex &>(registry.mutex));
@@ -817,13 +742,11 @@ bool isExternRegistryStrictMode(const ExternRegistry &registry)
 // ExternRegistry Factory and Deleter
 //===----------------------------------------------------------------------===//
 
-void ExternRegistryDeleter::operator()(ExternRegistry *reg) const noexcept
-{
+void ExternRegistryDeleter::operator()(ExternRegistry *reg) const noexcept {
     delete reg;
 }
 
-ExternRegistryPtr createExternRegistry()
-{
+ExternRegistryPtr createExternRegistry() {
     return ExternRegistryPtr(new ExternRegistry());
 }
 
@@ -831,18 +754,15 @@ ExternRegistryPtr createExternRegistry()
 // RuntimeBridge Static Methods (Delegate to Process-Global Registry)
 //===----------------------------------------------------------------------===//
 
-void RuntimeBridge::registerExtern(const ExternDesc &ext)
-{
+void RuntimeBridge::registerExtern(const ExternDesc &ext) {
     registerExternIn(processGlobalExternRegistry(), ext);
 }
 
-bool RuntimeBridge::unregisterExtern(std::string_view name)
-{
+bool RuntimeBridge::unregisterExtern(std::string_view name) {
     return unregisterExternIn(processGlobalExternRegistry(), name);
 }
 
-const ExternDesc *RuntimeBridge::findExtern(std::string_view name)
-{
+const ExternDesc *RuntimeBridge::findExtern(std::string_view name) {
     return findExternIn(processGlobalExternRegistry(), name);
 }
 

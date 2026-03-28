@@ -29,20 +29,16 @@ using namespace il::frontends::zia;
 using namespace il::support;
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Helper: compile source and assert success.
-static CompilerResult compileAndAssert(const std::string &source, SourceManager &sm)
-{
+static CompilerResult compileAndAssert(const std::string &source, SourceManager &sm) {
     CompilerInput input{.source = source, .path = "test.zia"};
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Compilation failed:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -51,10 +47,8 @@ static CompilerResult compileAndAssert(const std::string &source, SourceManager 
 }
 
 /// @brief Helper: find a function by name in the module.
-static const Function *findFunction(const Module &mod, const std::string &name)
-{
-    for (const auto &fn : mod.functions)
-    {
+static const Function *findFunction(const Module &mod, const std::string &name) {
+    for (const auto &fn : mod.functions) {
         if (fn.name == name)
             return &fn;
     }
@@ -62,12 +56,9 @@ static const Function *findFunction(const Module &mod, const std::string &name)
 }
 
 /// @brief Helper: check if any instruction in a function uses the given opcode.
-static bool hasOpcode(const Function &fn, Opcode op)
-{
-    for (const auto &block : fn.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+static bool hasOpcode(const Function &fn, Opcode op) {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == op)
                 return true;
         }
@@ -76,12 +67,9 @@ static bool hasOpcode(const Function &fn, Opcode op)
 }
 
 /// @brief Helper: check if any instruction in a function calls the given callee.
-static bool hasCallTo(const Function &fn, const std::string &callee)
-{
-    for (const auto &block : fn.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+static bool hasCallTo(const Function &fn, const std::string &callee) {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == Opcode::Call && instr.callee == callee)
                 return true;
         }
@@ -90,13 +78,10 @@ static bool hasCallTo(const Function &fn, const std::string &callee)
 }
 
 /// @brief Helper: count instructions with a given opcode in a function.
-static int countOpcode(const Function &fn, Opcode op)
-{
+static int countOpcode(const Function &fn, Opcode op) {
     int count = 0;
-    for (const auto &block : fn.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == op)
                 ++count;
         }
@@ -108,8 +93,7 @@ static int countOpcode(const Function &fn, Opcode op)
 // Test: Entity construction lowering (entity with fields)
 // ============================================================================
 
-TEST(ZiaLowerer, EntityConstruction)
-{
+TEST(ZiaLowerer, EntityConstruction) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -142,8 +126,7 @@ func start() {
 // Test: Method dispatch lowering (calling entity methods)
 // ============================================================================
 
-TEST(ZiaLowerer, MethodDispatch)
-{
+TEST(ZiaLowerer, MethodDispatch) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -185,8 +168,7 @@ func start() {
 // Test: Collection lowering (List creation)
 // ============================================================================
 
-TEST(ZiaLowerer, ListCreation)
-{
+TEST(ZiaLowerer, ListCreation) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -216,8 +198,7 @@ func start() {
 // Test: Map collection lowering
 // ============================================================================
 
-TEST(ZiaLowerer, MapCreation)
-{
+TEST(ZiaLowerer, MapCreation) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -244,8 +225,7 @@ func start() {
 // Test: Arithmetic expression lowering (Add/Sub/Mul/SDiv opcodes)
 // ============================================================================
 
-TEST(ZiaLowerer, ArithmeticExpressions)
-{
+TEST(ZiaLowerer, ArithmeticExpressions) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -287,8 +267,7 @@ func start() {
 // Test: Boolean expression lowering (And/Or)
 // ============================================================================
 
-TEST(ZiaLowerer, BooleanExpressions)
-{
+TEST(ZiaLowerer, BooleanExpressions) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -321,8 +300,7 @@ func start() {
 // Test: Control flow lowering (if/else generates CBr)
 // ============================================================================
 
-TEST(ZiaLowerer, IfElseControlFlow)
-{
+TEST(ZiaLowerer, IfElseControlFlow) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -360,8 +338,7 @@ func start() {
 // Test: While loop lowering (generates back edges)
 // ============================================================================
 
-TEST(ZiaLowerer, WhileLoopBackEdge)
-{
+TEST(ZiaLowerer, WhileLoopBackEdge) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -397,8 +374,7 @@ func start() {
 // Test: For loop lowering (generates back edges)
 // ============================================================================
 
-TEST(ZiaLowerer, ForLoopLowering)
-{
+TEST(ZiaLowerer, ForLoopLowering) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -433,8 +409,7 @@ func start() {
 // Test: Function call lowering (Call opcode with correct callee)
 // ============================================================================
 
-TEST(ZiaLowerer, FunctionCallLowering)
-{
+TEST(ZiaLowerer, FunctionCallLowering) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -469,8 +444,7 @@ func start() {
 // Test: Return value lowering (Ret opcode)
 // ============================================================================
 
-TEST(ZiaLowerer, ReturnValueLowering)
-{
+TEST(ZiaLowerer, ReturnValueLowering) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -505,8 +479,7 @@ func start() {
 // Test: IL verification passes for all generated modules
 // ============================================================================
 
-TEST(ZiaLowerer, VerifierPassesComplex)
-{
+TEST(ZiaLowerer, VerifierPassesComplex) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -560,8 +533,7 @@ func start() {
 // Test: String constant lowering produces ConstStr
 // ============================================================================
 
-TEST(ZiaLowerer, StringConstantLowering)
-{
+TEST(ZiaLowerer, StringConstantLowering) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -588,8 +560,7 @@ func start() {
 // Test: Comparison operators lower to ICmp instructions
 // ============================================================================
 
-TEST(ZiaLowerer, ComparisonOperators)
-{
+TEST(ZiaLowerer, ComparisonOperators) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -634,8 +605,7 @@ func start() {
 // Test: Nested control flow produces correct structure
 // ============================================================================
 
-TEST(ZiaLowerer, NestedControlFlow)
-{
+TEST(ZiaLowerer, NestedControlFlow) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -673,8 +643,7 @@ func start() {
 // Test: Multiple function parameters are lowered correctly
 // ============================================================================
 
-TEST(ZiaLowerer, MultipleFunctionParams)
-{
+TEST(ZiaLowerer, MultipleFunctionParams) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -710,8 +679,7 @@ func start() {
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

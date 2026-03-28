@@ -15,8 +15,7 @@
 #include <atomic>
 #include <cstdio>
 
-extern "C"
-{
+extern "C" {
 #include "viper/runtime/rt.h"
 }
 
@@ -28,8 +27,7 @@ static void (*real_rt_str_release_maybe)(rt_string) = &rt_str_release_maybe;
 static std::atomic<int> g_retain_calls{0};
 static std::atomic<int> g_release_calls{0};
 
-static void reset_counts()
-{
+static void reset_counts() {
     g_retain_calls.store(0, std::memory_order_relaxed);
     g_release_calls.store(0, std::memory_order_relaxed);
 }
@@ -45,21 +43,18 @@ extern "C" void test_shim_rt_str_release_maybe(rt_string s);
 
 #include "vm/ViperStringHandle.hpp"
 
-extern "C" void test_shim_rt_str_retain_maybe(rt_string s)
-{
+extern "C" void test_shim_rt_str_retain_maybe(rt_string s) {
     g_retain_calls.fetch_add(1, std::memory_order_relaxed);
     real_rt_str_retain_maybe(s);
 }
 
-extern "C" void test_shim_rt_str_release_maybe(rt_string s)
-{
+extern "C" void test_shim_rt_str_release_maybe(rt_string s) {
     g_release_calls.fetch_add(1, std::memory_order_relaxed);
     real_rt_str_release_maybe(s);
 }
 
 // Helper: make a fresh owned string (not immortal) for testing.
-static rt_string make_owned(const char *s)
-{
+static rt_string make_owned(const char *s) {
     // Use explicit length to avoid treating as immortal literal.
     size_t len = 0;
     while (s[len] != '\0')
@@ -67,18 +62,15 @@ static rt_string make_owned(const char *s)
     return rt_string_from_bytes(s, len);
 }
 
-static int expect_eq(const char *what, long long a, long long b)
-{
-    if (a != b)
-    {
+static int expect_eq(const char *what, long long a, long long b) {
+    if (a != b) {
         std::fprintf(stderr, "EXPECT_EQ failed for %s: %lld != %lld\n", what, a, b);
         return 1;
     }
     return 0;
 }
 
-int main()
-{
+int main() {
     int failures = 0;
 
     // construct_and_destroy_balances_release

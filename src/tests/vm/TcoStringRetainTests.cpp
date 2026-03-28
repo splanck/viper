@@ -20,14 +20,12 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// Build a module with a recursive function that passes its string parameter
 /// back to itself via tail call. This tests the self-assignment case where
 /// args[i] aliases fr.params[id].
-Module buildTcoStringSelfAssignModule()
-{
+Module buildTcoStringSelfAssignModule() {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -142,8 +140,7 @@ Module buildTcoStringSelfAssignModule()
 
 } // namespace
 
-int main()
-{
+int main() {
     // This test exercises the TCO path where a string parameter is passed
     // back to the same function. With incorrect retain/release ordering,
     // the string would be freed before being retained, causing a dangling

@@ -17,20 +17,14 @@
 
 #include <string>
 
-namespace viper::tools
-{
+namespace viper::tools {
 
 /// @brief Target architecture for native code generation.
-enum class TargetArch
-{
-    ARM64,
-    X64
-};
+enum class TargetArch { ARM64, X64 };
 
 /// @brief Detect the host architecture at compile time.
 /// @return ARM64 on Apple Silicon / AArch64, X64 otherwise.
-constexpr TargetArch detectHostArch()
-{
+constexpr TargetArch detectHostArch() {
 #if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
     return TargetArch::ARM64;
 #else

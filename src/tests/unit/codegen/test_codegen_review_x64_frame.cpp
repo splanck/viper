@@ -20,8 +20,7 @@
 using namespace viper::codegen::x64;
 
 // Helper to count instructions with a given opcode
-static int countOpcode(const MFunction &func, MOpcode opc)
-{
+static int countOpcode(const MFunction &func, MOpcode opc) {
     int count = 0;
     for (const auto &block : func.blocks)
         for (const auto &instr : block.instructions)
@@ -33,26 +32,21 @@ static int countOpcode(const MFunction &func, MOpcode opc)
 // Helper to count stack probe instructions: MOVmr loading from (%rsp) into RAX
 // (the probe touch pattern). Excludes loads into RBP which are the standard
 // frame setup `mov (%rsp), %rbp`.
-static int countStackProbes(const MFunction &func)
-{
+static int countStackProbes(const MFunction &func) {
     int count = 0;
-    for (const auto &block : func.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
-            if (instr.opcode == MOpcode::MOVmr && instr.operands.size() >= 2)
-            {
+    for (const auto &block : func.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.opcode == MOpcode::MOVmr && instr.operands.size() >= 2) {
                 // Check if destination is RAX (probe target, not RBP frame restore)
                 const auto *dst = std::get_if<OpReg>(&instr.operands[0]);
                 if (!dst || !dst->isPhys || static_cast<PhysReg>(dst->idOrPhys) != PhysReg::RAX)
                     continue;
 
                 // Check if source is (%rsp) with zero displacement
-                if (const auto *mem = std::get_if<OpMem>(&instr.operands[1]))
-                {
+                if (const auto *mem = std::get_if<OpMem>(&instr.operands[1])) {
                     if (mem->base.isPhys &&
-                        static_cast<PhysReg>(mem->base.idOrPhys) == PhysReg::RSP && mem->disp == 0)
-                    {
+                        static_cast<PhysReg>(mem->base.idOrPhys) == PhysReg::RSP &&
+                        mem->disp == 0) {
                         ++count;
                     }
                 }
@@ -66,8 +60,7 @@ static int countStackProbes(const MFunction &func)
 // Fix: Large frame stack probing now emits actual probe code on Unix/macOS
 // ---------------------------------------------------------------------------
 
-TEST(X64FrameLowering, LargeFrameEmitsProbeLoop)
-{
+TEST(X64FrameLowering, LargeFrameEmitsProbeLoop) {
     MFunction func;
     func.name = "test_large_frame";
     MBasicBlock block;
@@ -90,8 +83,7 @@ TEST(X64FrameLowering, LargeFrameEmitsProbeLoop)
 #endif
 }
 
-TEST(X64FrameLowering, SmallFrameNoProbe)
-{
+TEST(X64FrameLowering, SmallFrameNoProbe) {
     MFunction func;
     func.name = "test_small_frame";
     MBasicBlock block;
@@ -110,8 +102,7 @@ TEST(X64FrameLowering, SmallFrameNoProbe)
     EXPECT_EQ(countStackProbes(func), 0);
 }
 
-TEST(X64FrameLowering, ZeroFrameNoPrologue)
-{
+TEST(X64FrameLowering, ZeroFrameNoPrologue) {
     MFunction func;
     func.name = "test_zero_frame";
     MBasicBlock block;
@@ -131,8 +122,7 @@ TEST(X64FrameLowering, ZeroFrameNoPrologue)
     EXPECT_EQ(movCount, 0); // No prologue for leaf functions
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

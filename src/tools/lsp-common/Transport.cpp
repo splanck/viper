@@ -27,13 +27,11 @@
 #include <io.h>
 #endif
 
-namespace viper::server
-{
+namespace viper::server {
 
 // --- Platform init ---
 
-void platformInitStdio()
-{
+void platformInitStdio() {
 #ifdef _WIN32
     _setmode(_fileno(stdin), _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);
@@ -44,14 +42,11 @@ void platformInitStdio()
 
 McpTransport::McpTransport(FILE *in, FILE *out) : in_(in), out_(out) {}
 
-bool McpTransport::readMessage(RawMessage &out)
-{
+bool McpTransport::readMessage(RawMessage &out) {
     std::string line;
     int c;
-    while ((c = std::fgetc(in_)) != EOF)
-    {
-        if (c == '\n')
-        {
+    while ((c = std::fgetc(in_)) != EOF) {
+        if (c == '\n') {
             // Strip trailing \r if present
             if (!line.empty() && line.back() == '\r')
                 line.pop_back();
@@ -64,8 +59,7 @@ bool McpTransport::readMessage(RawMessage &out)
         line += static_cast<char>(c);
     }
     // Handle last line without trailing newline
-    if (!line.empty())
-    {
+    if (!line.empty()) {
         if (line.back() == '\r')
             line.pop_back();
         out.content = std::move(line);
@@ -74,8 +68,7 @@ bool McpTransport::readMessage(RawMessage &out)
     return false;
 }
 
-void McpTransport::writeMessage(const std::string &json)
-{
+void McpTransport::writeMessage(const std::string &json) {
     std::fwrite(json.data(), 1, json.size(), out_);
     std::fputc('\n', out_);
     std::fflush(out_);
@@ -85,14 +78,11 @@ void McpTransport::writeMessage(const std::string &json)
 
 LspTransport::LspTransport(FILE *in, FILE *out) : in_(in), out_(out) {}
 
-bool LspTransport::readLine(std::string &line)
-{
+bool LspTransport::readLine(std::string &line) {
     line.clear();
     int c;
-    while ((c = std::fgetc(in_)) != EOF)
-    {
-        if (c == '\n')
-        {
+    while ((c = std::fgetc(in_)) != EOF) {
+        if (c == '\n') {
             // Strip trailing \r
             if (!line.empty() && line.back() == '\r')
                 line.pop_back();
@@ -103,35 +93,29 @@ bool LspTransport::readLine(std::string &line)
     return !line.empty();
 }
 
-bool LspTransport::readMessage(RawMessage &out)
-{
+bool LspTransport::readMessage(RawMessage &out) {
     // Read headers until empty line
     int contentLength = -1;
     std::string line;
 
-    while (readLine(line))
-    {
+    while (readLine(line)) {
         if (line.empty())
             break; // End of headers
 
         // Parse Content-Length header (case-insensitive prefix match)
         const char *prefix = "Content-Length:";
         size_t prefixLen = std::strlen(prefix);
-        if (line.size() > prefixLen)
-        {
+        if (line.size() > prefixLen) {
             // Case-insensitive comparison of the prefix
             bool match = true;
-            for (size_t i = 0; i < prefixLen; ++i)
-            {
+            for (size_t i = 0; i < prefixLen; ++i) {
                 if (std::tolower(static_cast<unsigned char>(line[i])) !=
-                    std::tolower(static_cast<unsigned char>(prefix[i])))
-                {
+                    std::tolower(static_cast<unsigned char>(prefix[i]))) {
                     match = false;
                     break;
                 }
             }
-            if (match)
-            {
+            if (match) {
                 // Skip whitespace after colon
                 size_t valStart = prefixLen;
                 while (valStart < line.size() && line[valStart] == ' ')
@@ -153,8 +137,7 @@ bool LspTransport::readMessage(RawMessage &out)
     return true;
 }
 
-void LspTransport::writeMessage(const std::string &json)
-{
+void LspTransport::writeMessage(const std::string &json) {
     char header[64];
     int headerLen =
         std::snprintf(header, sizeof(header), "Content-Length: %zu\r\n\r\n", json.size());

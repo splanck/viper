@@ -36,8 +36,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace viper::tui::text
-{
+namespace viper::tui::text {
 /// @brief Remember an inserted span so observers can be notified later.
 /// @details Stores a copy of the inserted text along with the byte offset at
 ///          which it appeared.  Empty strings clear the tracked span to signal
@@ -45,10 +44,8 @@ namespace viper::tui::text
 ///          receive misleading callbacks.
 /// @param pos Byte offset where the insertion occurred.
 /// @param text Newly inserted UTF-8 slice copied for later notification.
-void PieceTable::Change::recordInsert(std::size_t pos, std::string text)
-{
-    if (text.empty())
-    {
+void PieceTable::Change::recordInsert(std::size_t pos, std::string text) {
+    if (text.empty()) {
         insert_span_.reset();
         return;
     }
@@ -61,10 +58,8 @@ void PieceTable::Change::recordInsert(std::size_t pos, std::string text)
 ///          removals clear the cached span and therefore suppress callbacks.
 /// @param pos Byte offset where the erasure began.
 /// @param text Removed UTF-8 slice copied for later notification.
-void PieceTable::Change::recordErase(std::size_t pos, std::string text)
-{
-    if (text.empty())
-    {
+void PieceTable::Change::recordErase(std::size_t pos, std::string text) {
+    if (text.empty()) {
         erase_span_.reset();
         return;
     }
@@ -76,10 +71,8 @@ void PieceTable::Change::recordErase(std::size_t pos, std::string text)
 ///          The helper keeps notification optional so callers can react only to
 ///          the change types they care about.
 /// @param cb Observer that receives the inserted range.
-void PieceTable::Change::notifyInsert(const Callback &cb) const
-{
-    if (cb && insert_span_)
-    {
+void PieceTable::Change::notifyInsert(const Callback &cb) const {
+    if (cb && insert_span_) {
         cb(insert_span_->pos, insert_span_->text);
     }
 }
@@ -89,55 +82,47 @@ void PieceTable::Change::notifyInsert(const Callback &cb) const
 ///          erasure span exists.  Observers typically update auxiliary indices or
 ///          undo stacks using the supplied payload.
 /// @param cb Observer that receives the erased range.
-void PieceTable::Change::notifyErase(const Callback &cb) const
-{
-    if (cb && erase_span_)
-    {
+void PieceTable::Change::notifyErase(const Callback &cb) const {
+    if (cb && erase_span_) {
         cb(erase_span_->pos, erase_span_->text);
     }
 }
 
 /// @brief Determine whether an insertion was captured for this change.
 /// @return True when @ref recordInsert stored a non-empty span.
-bool PieceTable::Change::hasInsert() const
-{
+bool PieceTable::Change::hasInsert() const {
     return insert_span_.has_value();
 }
 
 /// @brief Determine whether an erasure was captured for this change.
 /// @return True when @ref recordErase stored a non-empty span.
-bool PieceTable::Change::hasErase() const
-{
+bool PieceTable::Change::hasErase() const {
     return erase_span_.has_value();
 }
 
 /// @brief Byte offset associated with the recorded insertion.
 /// @return Offset previously supplied to @ref recordInsert, or zero when no
 ///         insertion was tracked.
-std::size_t PieceTable::Change::insertPos() const
-{
+std::size_t PieceTable::Change::insertPos() const {
     return insert_span_ ? insert_span_->pos : 0U;
 }
 
 /// @brief Byte offset associated with the recorded erasure.
 /// @return Offset previously supplied to @ref recordErase, or zero when no
 ///         erasure was tracked.
-std::size_t PieceTable::Change::erasePos() const
-{
+std::size_t PieceTable::Change::erasePos() const {
     return erase_span_ ? erase_span_->pos : 0U;
 }
 
 /// @brief View of the text that was inserted during the change.
 /// @return Read-only string view referencing the cached insertion payload.
-std::string_view PieceTable::Change::insertedText() const
-{
+std::string_view PieceTable::Change::insertedText() const {
     return insert_span_ ? std::string_view(insert_span_->text) : std::string_view{};
 }
 
 /// @brief View of the text that was erased during the change.
 /// @return Read-only string view referencing the cached erasure payload.
-std::string_view PieceTable::Change::erasedText() const
-{
+std::string_view PieceTable::Change::erasedText() const {
     return erase_span_ ? std::string_view(erase_span_->text) : std::string_view{};
 }
 
@@ -148,11 +133,9 @@ std::string_view PieceTable::Change::erasedText() const
 ///          followed by a full insert so observers can reset their state.
 /// @param text New document contents.
 /// @return Change describing the replacement operation.
-PieceTable::Change PieceTable::load(std::string text)
-{
+PieceTable::Change PieceTable::load(std::string text) {
     Change change;
-    if (size_ > 0)
-    {
+    if (size_ > 0) {
         change.recordErase(0, getText(0, size_));
     }
 
@@ -161,8 +144,7 @@ PieceTable::Change PieceTable::load(std::string text)
     pieces_.clear();
     size_ = original_.size();
 
-    if (!original_.empty())
-    {
+    if (!original_.empty()) {
         pieces_.push_back(Piece{BufferKind::Original, 0, original_.size()});
         change.recordInsert(0, original_);
     }
@@ -172,8 +154,7 @@ PieceTable::Change PieceTable::load(std::string text)
 
 /// @brief Report the number of bytes currently represented by the table.
 /// @return Total length of the logical document in bytes.
-std::size_t PieceTable::size() const
-{
+std::size_t PieceTable::size() const {
     return size_;
 }
 
@@ -186,11 +167,9 @@ std::size_t PieceTable::size() const
 /// @param pos Byte offset where the insertion occurs.
 /// @param text UTF-8 data to splice into the document.
 /// @return Change object describing the inserted span.
-PieceTable::Change PieceTable::insertInternal(std::size_t pos, std::string_view text)
-{
+PieceTable::Change PieceTable::insertInternal(std::size_t pos, std::string_view text) {
     Change change;
-    if (text.empty())
-    {
+    if (text.empty()) {
         return change;
     }
 
@@ -199,21 +178,14 @@ PieceTable::Change PieceTable::insertInternal(std::size_t pos, std::string_view 
     Piece newPiece{BufferKind::Add, add_.size(), text.size()};
     add_.append(text);
 
-    if (it == pieces_.end())
-    {
+    if (it == pieces_.end()) {
         pieces_.push_back(newPiece);
-    }
-    else if (offset == 0)
-    {
+    } else if (offset == 0) {
         pieces_.insert(it, newPiece);
-    }
-    else if (offset == it->length)
-    {
+    } else if (offset == it->length) {
         ++it;
         pieces_.insert(it, newPiece);
-    }
-    else
-    {
+    } else {
         Piece tail = *it;
         tail.start += offset;
         tail.length -= offset;
@@ -237,53 +209,43 @@ PieceTable::Change PieceTable::insertInternal(std::size_t pos, std::string_view 
 /// @param pos Starting byte offset of the removal.
 /// @param len Number of bytes to erase.
 /// @return Change describing the erased span (empty when nothing was removed).
-PieceTable::Change PieceTable::eraseInternal(std::size_t pos, std::size_t len)
-{
+PieceTable::Change PieceTable::eraseInternal(std::size_t pos, std::size_t len) {
     Change change;
-    if (len == 0)
-    {
+    if (len == 0) {
         return change;
     }
 
     std::string removed = getText(pos, len);
-    if (removed.empty())
-    {
+    if (removed.empty()) {
         return change;
     }
 
     std::size_t offset = 0;
     auto it = findPiece(pos, offset);
-    if (it == pieces_.end())
-    {
+    if (it == pieces_.end()) {
         return change;
     }
 
     std::size_t remaining = removed.size();
 
-    if (offset > 0)
-    {
+    if (offset > 0) {
         Piece tail = *it;
         tail.start += offset;
         tail.length -= offset;
         it->length = offset;
         ++it;
-        if (tail.length > 0)
-        {
+        if (tail.length > 0) {
             it = pieces_.insert(it, tail);
         }
     }
 
-    while (it != pieces_.end() && remaining > 0)
-    {
-        if (remaining < it->length)
-        {
+    while (it != pieces_.end() && remaining > 0) {
+        if (remaining < it->length) {
             it->start += remaining;
             it->length -= remaining;
             remaining = 0;
             break;
-        }
-        else
-        {
+        } else {
             remaining -= it->length;
             it = pieces_.erase(it);
         }
@@ -301,15 +263,12 @@ PieceTable::Change PieceTable::eraseInternal(std::size_t pos, std::size_t len)
 /// @param pos Starting byte offset of the slice.
 /// @param len Number of bytes to copy.
 /// @return Newly allocated string containing the requested text.
-std::string PieceTable::getText(std::size_t pos, std::size_t len) const
-{
+std::string PieceTable::getText(std::size_t pos, std::size_t len) const {
     std::string out;
     out.reserve(len);
     std::size_t idx = 0;
-    for (auto it = pieces_.cbegin(); it != pieces_.cend() && len > 0; ++it)
-    {
-        if (pos >= idx + it->length)
-        {
+    for (auto it = pieces_.cbegin(); it != pieces_.cend() && len > 0; ++it) {
+        if (pos >= idx + it->length) {
             idx += it->length;
             continue;
         }
@@ -333,13 +292,10 @@ std::string PieceTable::getText(std::size_t pos, std::size_t len) const
 /// @param offset Receives the relative position within the located piece.
 /// @return Iterator to the piece containing @p pos, or @ref pieces_.end() when
 ///         the position is past the end of the document.
-std::list<PieceTable::Piece>::iterator PieceTable::findPiece(std::size_t pos, std::size_t &offset)
-{
+std::list<PieceTable::Piece>::iterator PieceTable::findPiece(std::size_t pos, std::size_t &offset) {
     std::size_t idx = 0;
-    for (auto it = pieces_.begin(); it != pieces_.end(); ++it)
-    {
-        if (pos <= idx + it->length)
-        {
+    for (auto it = pieces_.begin(); it != pieces_.end(); ++it) {
+        if (pos <= idx + it->length) {
             offset = pos - idx;
             return it;
         }
@@ -358,13 +314,10 @@ std::list<PieceTable::Piece>::iterator PieceTable::findPiece(std::size_t pos, st
 /// @return Const iterator to the piece containing @p pos, or @ref pieces_.cend()
 ///         when the position lies past the end of the document.
 std::list<PieceTable::Piece>::const_iterator PieceTable::findPiece(std::size_t pos,
-                                                                   std::size_t &offset) const
-{
+                                                                   std::size_t &offset) const {
     std::size_t idx = 0;
-    for (auto it = pieces_.cbegin(); it != pieces_.cend(); ++it)
-    {
-        if (pos <= idx + it->length)
-        {
+    for (auto it = pieces_.cbegin(); it != pieces_.cend(); ++it) {
+        if (pos <= idx + it->length) {
             offset = pos - idx;
             return it;
         }

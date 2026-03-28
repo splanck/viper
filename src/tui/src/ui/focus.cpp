@@ -20,23 +20,19 @@
 
 #include <algorithm>
 
-namespace viper::tui::ui
-{
+namespace viper::tui::ui {
 /// @brief Register a widget as focusable if it opts in via wantsFocus().
 ///
 /// @details The manager ignores @c nullptr values as well as widgets that
 ///          decline focus.  When the ring transitions from empty to non-empty
 ///          the index is reset to the first entry so that subsequent navigation
 ///          calls have a well-defined starting point.
-void FocusManager::registerWidget(Widget *w)
-{
-    if (!w || !w->wantsFocus())
-    {
+void FocusManager::registerWidget(Widget *w) {
+    if (!w || !w->wantsFocus()) {
         return;
     }
     ring_.push_back(w);
-    if (ring_.size() == 1)
-    {
+    if (ring_.size() == 1) {
         index_ = 0;
     }
 }
@@ -48,8 +44,7 @@ void FocusManager::registerWidget(Widget *w)
 ///          dispatches @ref Widget::onFocusChanged notifications to both the old
 ///          and new widgets.  Emptying the ring clears the index so future
 ///          registrations start from the beginning.
-void FocusManager::unregisterWidget(Widget *w)
-{
+void FocusManager::unregisterWidget(Widget *w) {
     if (!w)
         return;
     auto it = std::find(ring_.begin(), ring_.end(), w);
@@ -60,11 +55,9 @@ void FocusManager::unregisterWidget(Widget *w)
     bool wasCurrent = (!ring_.empty() && pos == index_);
     ring_.erase(it);
 
-    if (ring_.empty())
-    {
+    if (ring_.empty()) {
         index_ = 0;
-        if (wasCurrent)
-        {
+        if (wasCurrent) {
             w->onFocusChanged(false);
         }
         return;
@@ -73,11 +66,9 @@ void FocusManager::unregisterWidget(Widget *w)
     if (pos < index_ || index_ >= ring_.size())
         index_ = index_ ? (index_ - 1) : 0;
 
-    if (wasCurrent)
-    {
+    if (wasCurrent) {
         w->onFocusChanged(false);
-        if (Widget *now = ring_[index_])
-        {
+        if (Widget *now = ring_[index_]) {
             now->onFocusChanged(true);
         }
     }
@@ -90,15 +81,13 @@ void FocusManager::unregisterWidget(Widget *w)
 ///          lost focus, and informs the new widget that it gained focus.  The
 ///          newly focused widget pointer is returned to facilitate additional
 ///          caller logic such as repaint requests.
-Widget *FocusManager::next()
-{
+Widget *FocusManager::next() {
     if (ring_.empty())
         return nullptr;
     Widget *old = ring_[index_];
     index_ = (index_ + 1) % ring_.size();
     Widget *now = ring_[index_];
-    if (now != old)
-    {
+    if (now != old) {
         if (old)
             old->onFocusChanged(false);
         if (now)
@@ -114,15 +103,13 @@ Widget *FocusManager::next()
 ///          the old and new widgets whenever the focus target changes.  The
 ///          pointer to the widget now holding focus is returned for callers that
 ///          need to react.
-Widget *FocusManager::prev()
-{
+Widget *FocusManager::prev() {
     if (ring_.empty())
         return nullptr;
     Widget *old = ring_[index_];
     index_ = (index_ + ring_.size() - 1) % ring_.size();
     Widget *now = ring_[index_];
-    if (now != old)
-    {
+    if (now != old) {
         if (old)
             old->onFocusChanged(false);
         if (now)
@@ -137,10 +124,8 @@ Widget *FocusManager::prev()
 ///          accessor allows higher-level systems to query focus state without
 ///          mutating it, for example when deciding which widget should receive
 ///          an incoming keyboard event.
-Widget *FocusManager::current() const
-{
-    if (ring_.empty())
-    {
+Widget *FocusManager::current() const {
+    if (ring_.empty()) {
         return nullptr;
     }
     return ring_[index_];

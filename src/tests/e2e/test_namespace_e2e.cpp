@@ -34,8 +34,7 @@ using namespace il::support;
 /// @param shouldLower Whether to attempt IL lowering on success
 /// @return Number of errors encountered
 size_t runMultiFilePipeline(const std::vector<std::pair<std::string, std::string>> &files,
-                            bool shouldLower = true)
-{
+                            bool shouldLower = true) {
     SourceManager sm;
     DiagnosticEngine de;
     DiagnosticEmitter emitter(de, sm);
@@ -43,8 +42,7 @@ size_t runMultiFilePipeline(const std::vector<std::pair<std::string, std::string
     std::vector<std::unique_ptr<Program>> programs;
 
     // Parse each file and add to source manager
-    for (const auto &[filename, source] : files)
-    {
+    for (const auto &[filename, source] : files) {
         uint32_t fileId = sm.addFile(filename);
         emitter.addSource(fileId, source);
 
@@ -61,33 +59,25 @@ size_t runMultiFilePipeline(const std::vector<std::pair<std::string, std::string
     std::vector<StmtPtr> usings;
     std::vector<StmtPtr> others;
 
-    for (auto &prog : programs)
-    {
-        for (auto &stmt : prog->main)
-        {
+    for (auto &prog : programs) {
+        for (auto &stmt : prog->main) {
             // Check if this is a USING statement by attempting dynamic_cast
-            if (dynamic_cast<UsingDecl *>(stmt.get()) != nullptr)
-            {
+            if (dynamic_cast<UsingDecl *>(stmt.get()) != nullptr) {
                 usings.push_back(std::move(stmt));
-            }
-            else
-            {
+            } else {
                 others.push_back(std::move(stmt));
             }
         }
-        for (auto &proc : prog->procs)
-        {
+        for (auto &proc : prog->procs) {
             combined->procs.push_back(std::move(proc));
         }
     }
 
     // Add USING statements first, then all other statements
-    for (auto &u : usings)
-    {
+    for (auto &u : usings) {
         combined->main.push_back(std::move(u));
     }
-    for (auto &o : others)
-    {
+    for (auto &o : others) {
         combined->main.push_back(std::move(o));
     }
 
@@ -98,8 +88,7 @@ size_t runMultiFilePipeline(const std::vector<std::pair<std::string, std::string
     size_t errorCount = emitter.errorCount();
 
     // Debug: print combined program for inspection
-    if (errorCount > 0)
-    {
+    if (errorCount > 0) {
         std::ostringstream oss;
         de.printAll(oss, &sm);
         std::cerr << "Errors:\n" << oss.str() << "\n";
@@ -110,8 +99,7 @@ size_t runMultiFilePipeline(const std::vector<std::pair<std::string, std::string
     }
 
     // Lower to IL if no errors and lowering is requested
-    if (errorCount == 0 && shouldLower)
-    {
+    if (errorCount == 0 && shouldLower) {
         Lowerer lowerer;
         lowerer.setDiagnosticEmitter(&emitter);
         auto module = lowerer.lowerProgram(*combined);
@@ -129,16 +117,14 @@ size_t runMultiFilePipeline(const std::vector<std::pair<std::string, std::string
 /// @return True if diagnostic found with correct file location
 bool hasMultiFileDiagnostic(const std::vector<std::pair<std::string, std::string>> &files,
                             const std::string &expectedMsg,
-                            const std::string &expectedFile = "")
-{
+                            const std::string &expectedFile = "") {
     SourceManager sm;
     DiagnosticEngine de;
     DiagnosticEmitter emitter(de, sm);
 
     std::vector<std::unique_ptr<Program>> programs;
 
-    for (const auto &[filename, source] : files)
-    {
+    for (const auto &[filename, source] : files) {
         uint32_t fileId = sm.addFile(filename);
         emitter.addSource(fileId, source);
 
@@ -152,32 +138,24 @@ bool hasMultiFileDiagnostic(const std::vector<std::pair<std::string, std::string
     std::vector<StmtPtr> usings;
     std::vector<StmtPtr> others;
 
-    for (auto &prog : programs)
-    {
-        for (auto &stmt : prog->main)
-        {
-            if (dynamic_cast<UsingDecl *>(stmt.get()) != nullptr)
-            {
+    for (auto &prog : programs) {
+        for (auto &stmt : prog->main) {
+            if (dynamic_cast<UsingDecl *>(stmt.get()) != nullptr) {
                 usings.push_back(std::move(stmt));
-            }
-            else
-            {
+            } else {
                 others.push_back(std::move(stmt));
             }
         }
-        for (auto &proc : prog->procs)
-        {
+        for (auto &proc : prog->procs) {
             combined->procs.push_back(std::move(proc));
         }
     }
 
     // Add USING statements first, then all other statements
-    for (auto &u : usings)
-    {
+    for (auto &u : usings) {
         combined->main.push_back(std::move(u));
     }
-    for (auto &o : others)
-    {
+    for (auto &o : others) {
         combined->main.push_back(std::move(o));
     }
 
@@ -199,8 +177,7 @@ bool hasMultiFileDiagnostic(const std::vector<std::pair<std::string, std::string
 // Scenario 1: Two-file base/derived with USING (success)
 // =============================================================================
 
-void test_two_file_base_derived_with_using()
-{
+void test_two_file_base_derived_with_using() {
     std::cout << "Running: test_two_file_base_derived_with_using\n";
 
     // File 1: Define base class in namespace
@@ -231,8 +208,7 @@ END
                                                               {"app.bas", file2}};
 
     size_t errorCount = runMultiFilePipeline(files);
-    if (errorCount != 0)
-    {
+    if (errorCount != 0) {
         std::cout << "  FAIL: Expected 0 errors, got " << errorCount << "\n";
         return;
     }
@@ -244,8 +220,7 @@ END
 // Scenario 2: Three-file alias usage (success)
 // =============================================================================
 
-void test_three_file_alias_usage()
-{
+void test_three_file_alias_usage() {
     std::cout << "Running: test_three_file_alias_usage\n";
 
     // File 1: Library definition
@@ -301,8 +276,7 @@ END
 // Scenario 3: Multi-file ambiguity (E_NS_003)
 // =============================================================================
 
-void test_multi_file_ambiguity()
-{
+void test_multi_file_ambiguity() {
     std::cout << "Running: test_multi_file_ambiguity\n";
 
     // File 1: Define Thing in namespace A
@@ -357,8 +331,7 @@ END
 // Scenario 4: File-scoped USING isolation
 // =============================================================================
 
-void test_using_is_file_scoped()
-{
+void test_using_is_file_scoped() {
     std::cout << "Running: test_using_is_file_scoped\n";
 
     // File 1: Define namespace
@@ -408,8 +381,7 @@ END
 // Scenario 5: Multi-file with different aliases
 // =============================================================================
 
-void test_multi_file_different_aliases()
-{
+void test_multi_file_different_aliases() {
     std::cout << "Running: test_multi_file_different_aliases\n";
 
     // File 1: Define namespace
@@ -459,8 +431,7 @@ END
 // Main test runner
 // =============================================================================
 
-int main()
-{
+int main() {
     std::cout << "=== Namespace E2E Multi-File Tests ===\n\n";
 
     test_two_file_base_derived_with_using();

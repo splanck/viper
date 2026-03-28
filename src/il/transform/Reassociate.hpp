@@ -24,8 +24,7 @@
 
 #include "il/core/fwd.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Reassociate commutative+associative integer operations.
 /// @details Flattens chains like `(a + b) + c` and sorts operands by a

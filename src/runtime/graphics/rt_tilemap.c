@@ -65,8 +65,7 @@
 #define TM_MAX_LAYERS 16
 
 /// Per-layer metadata and tile grid
-typedef struct
-{
+typedef struct {
     int64_t *tiles; ///< width * height tile indices (NULL if unused)
     void *tileset;  ///< Per-layer tileset (NULL = use base)
     int64_t tileset_cols;
@@ -78,8 +77,7 @@ typedef struct
 } tm_layer;
 
 /// @brief Tilemap implementation structure.
-typedef struct rt_tilemap_impl
-{
+typedef struct rt_tilemap_impl {
     int64_t width;                            ///< Width in tiles
     int64_t height;                           ///< Height in tiles
     int64_t tile_width;                       ///< Tile width in pixels
@@ -99,15 +97,13 @@ typedef struct rt_tilemap_impl
 // Tilemap Creation
 //=============================================================================
 
-static void tilemap_finalize(void *obj)
-{
+static void tilemap_finalize(void *obj) {
     rt_tilemap_impl *tm = (rt_tilemap_impl *)obj;
     /* Release base tileset */
     if (tm->tileset)
         rt_heap_release(tm->tileset);
     /* Free per-layer owned tiles and release per-layer tilesets */
-    for (int32_t i = 0; i < tm->layer_count; i++)
-    {
+    for (int32_t i = 0; i < tm->layer_count; i++) {
         if (tm->layers[i].owns_tiles && tm->layers[i].tiles)
             free(tm->layers[i].tiles);
         if (tm->layers[i].tileset)
@@ -115,8 +111,7 @@ static void tilemap_finalize(void *obj)
     }
 }
 
-void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t tile_height)
-{
+void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t tile_height) {
     if (width <= 0)
         width = 1;
     if (height <= 0)
@@ -129,8 +124,7 @@ void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t 
     int64_t tile_count = width * height;
 
     // Check for overflow
-    if (tile_count / width != height)
-    {
+    if (tile_count / width != height) {
         rt_trap("Tilemap: dimensions too large");
         return NULL;
     }
@@ -179,40 +173,32 @@ void *rt_tilemap_new(int64_t width, int64_t height, int64_t tile_width, int64_t 
 // Tilemap Properties
 //=============================================================================
 
-int64_t rt_tilemap_get_width(void *tilemap_ptr)
-{
-    if (!tilemap_ptr)
-    {
+int64_t rt_tilemap_get_width(void *tilemap_ptr) {
+    if (!tilemap_ptr) {
         rt_trap("Tilemap.Width: null tilemap");
         return 0;
     }
     return ((rt_tilemap_impl *)tilemap_ptr)->width;
 }
 
-int64_t rt_tilemap_get_height(void *tilemap_ptr)
-{
-    if (!tilemap_ptr)
-    {
+int64_t rt_tilemap_get_height(void *tilemap_ptr) {
+    if (!tilemap_ptr) {
         rt_trap("Tilemap.Height: null tilemap");
         return 0;
     }
     return ((rt_tilemap_impl *)tilemap_ptr)->height;
 }
 
-int64_t rt_tilemap_get_tile_width(void *tilemap_ptr)
-{
-    if (!tilemap_ptr)
-    {
+int64_t rt_tilemap_get_tile_width(void *tilemap_ptr) {
+    if (!tilemap_ptr) {
         rt_trap("Tilemap.TileWidth: null tilemap");
         return 0;
     }
     return ((rt_tilemap_impl *)tilemap_ptr)->tile_width;
 }
 
-int64_t rt_tilemap_get_tile_height(void *tilemap_ptr)
-{
-    if (!tilemap_ptr)
-    {
+int64_t rt_tilemap_get_tile_height(void *tilemap_ptr) {
+    if (!tilemap_ptr) {
         rt_trap("Tilemap.TileHeight: null tilemap");
         return 0;
     }
@@ -223,15 +209,12 @@ int64_t rt_tilemap_get_tile_height(void *tilemap_ptr)
 // Tileset Management
 //=============================================================================
 
-void rt_tilemap_set_tileset(void *tilemap_ptr, void *pixels)
-{
-    if (!tilemap_ptr)
-    {
+void rt_tilemap_set_tileset(void *tilemap_ptr, void *pixels) {
+    if (!tilemap_ptr) {
         rt_trap("Tilemap.SetTileset: null tilemap");
         return;
     }
-    if (!pixels)
-    {
+    if (!pixels) {
         rt_trap("Tilemap.SetTileset: null pixels");
         return;
     }
@@ -263,10 +246,8 @@ void rt_tilemap_set_tileset(void *tilemap_ptr, void *pixels)
     tilemap->layers[0].tile_count = tilemap->tile_count;
 }
 
-int64_t rt_tilemap_get_tile_count(void *tilemap_ptr)
-{
-    if (!tilemap_ptr)
-    {
+int64_t rt_tilemap_get_tile_count(void *tilemap_ptr) {
+    if (!tilemap_ptr) {
         rt_trap("Tilemap.TileCount: null tilemap");
         return 0;
     }
@@ -277,10 +258,8 @@ int64_t rt_tilemap_get_tile_count(void *tilemap_ptr)
 // Tile Access
 //=============================================================================
 
-void rt_tilemap_set_tile(void *tilemap_ptr, int64_t x, int64_t y, int64_t tile_index)
-{
-    if (!tilemap_ptr)
-    {
+void rt_tilemap_set_tile(void *tilemap_ptr, int64_t x, int64_t y, int64_t tile_index) {
+    if (!tilemap_ptr) {
         rt_trap("Tilemap.SetTile: null tilemap");
         return;
     }
@@ -292,10 +271,8 @@ void rt_tilemap_set_tile(void *tilemap_ptr, int64_t x, int64_t y, int64_t tile_i
     tilemap->tiles[y * tilemap->width + x] = tile_index;
 }
 
-int64_t rt_tilemap_get_tile(void *tilemap_ptr, int64_t x, int64_t y)
-{
-    if (!tilemap_ptr)
-    {
+int64_t rt_tilemap_get_tile(void *tilemap_ptr, int64_t x, int64_t y) {
+    if (!tilemap_ptr) {
         rt_trap("Tilemap.GetTile: null tilemap");
         return 0;
     }
@@ -307,10 +284,8 @@ int64_t rt_tilemap_get_tile(void *tilemap_ptr, int64_t x, int64_t y)
     return tilemap->tiles[y * tilemap->width + x];
 }
 
-void rt_tilemap_fill(void *tilemap_ptr, int64_t tile_index)
-{
-    if (!tilemap_ptr)
-    {
+void rt_tilemap_fill(void *tilemap_ptr, int64_t tile_index) {
+    if (!tilemap_ptr) {
         rt_trap("Tilemap.Fill: null tilemap");
         return;
     }
@@ -321,29 +296,24 @@ void rt_tilemap_fill(void *tilemap_ptr, int64_t tile_index)
         tilemap->tiles[i] = tile_index;
 }
 
-void rt_tilemap_clear(void *tilemap_ptr)
-{
+void rt_tilemap_clear(void *tilemap_ptr) {
     rt_tilemap_fill(tilemap_ptr, 0);
 }
 
 void rt_tilemap_fill_rect(
-    void *tilemap_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t tile_index)
-{
-    if (!tilemap_ptr)
-    {
+    void *tilemap_ptr, int64_t x, int64_t y, int64_t w, int64_t h, int64_t tile_index) {
+    if (!tilemap_ptr) {
         rt_trap("Tilemap.FillRect: null tilemap");
         return;
     }
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
 
     // Clamp to bounds
-    if (x < 0)
-    {
+    if (x < 0) {
         w += x;
         x = 0;
     }
-    if (y < 0)
-    {
+    if (y < 0) {
         h += y;
         y = 0;
     }
@@ -361,8 +331,7 @@ void rt_tilemap_fill_rect(
 // Rendering
 //=============================================================================
 
-void rt_tilemap_draw(void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int64_t offset_y)
-{
+void rt_tilemap_draw(void *tilemap_ptr, void *canvas_ptr, int64_t offset_x, int64_t offset_y) {
     if (!tilemap_ptr || !canvas_ptr)
         return;
 
@@ -403,8 +372,7 @@ void rt_tilemap_draw_region(void *tilemap_ptr,
                             int64_t view_x,
                             int64_t view_y,
                             int64_t view_w,
-                            int64_t view_h)
-{
+                            int64_t view_h) {
     if (!tilemap_ptr || !canvas_ptr)
         return;
 
@@ -428,10 +396,8 @@ void rt_tilemap_draw_region(void *tilemap_ptr,
     int64_t ts_cols = tilemap->tileset_cols;
 
     // Draw visible tiles
-    for (int64_t ty = view_y; ty < view_y + view_h; ty++)
-    {
-        for (int64_t tx = view_x; tx < view_x + view_w; tx++)
-        {
+    for (int64_t ty = view_y; ty < view_y + view_h; ty++) {
+        for (int64_t tx = view_x; tx < view_x + view_w; tx++) {
             int64_t tile_index = tilemap->tiles[ty * tilemap->width + tx];
 
             // Skip empty tiles (index 0)
@@ -461,8 +427,7 @@ void rt_tilemap_draw_region(void *tilemap_ptr,
 //=============================================================================
 
 void rt_tilemap_pixel_to_tile(
-    void *tilemap_ptr, int64_t pixel_x, int64_t pixel_y, int64_t *tile_x, int64_t *tile_y)
-{
+    void *tilemap_ptr, int64_t pixel_x, int64_t pixel_y, int64_t *tile_x, int64_t *tile_y) {
     if (!tilemap_ptr || !tile_x || !tile_y)
         return;
 
@@ -471,23 +436,20 @@ void rt_tilemap_pixel_to_tile(
     *tile_y = pixel_y / tilemap->tile_height;
 }
 
-int64_t rt_tilemap_to_tile_x(void *tilemap_ptr, int64_t pixel_x)
-{
+int64_t rt_tilemap_to_tile_x(void *tilemap_ptr, int64_t pixel_x) {
     if (!tilemap_ptr)
         return 0;
     return pixel_x / ((rt_tilemap_impl *)tilemap_ptr)->tile_width;
 }
 
-int64_t rt_tilemap_to_tile_y(void *tilemap_ptr, int64_t pixel_y)
-{
+int64_t rt_tilemap_to_tile_y(void *tilemap_ptr, int64_t pixel_y) {
     if (!tilemap_ptr)
         return 0;
     return pixel_y / ((rt_tilemap_impl *)tilemap_ptr)->tile_height;
 }
 
 void rt_tilemap_tile_to_pixel(
-    void *tilemap_ptr, int64_t tile_x, int64_t tile_y, int64_t *pixel_x, int64_t *pixel_y)
-{
+    void *tilemap_ptr, int64_t tile_x, int64_t tile_y, int64_t *pixel_x, int64_t *pixel_y) {
     if (!tilemap_ptr || !pixel_x || !pixel_y)
         return;
 
@@ -496,15 +458,13 @@ void rt_tilemap_tile_to_pixel(
     *pixel_y = tile_y * tilemap->tile_height;
 }
 
-int64_t rt_tilemap_to_pixel_x(void *tilemap_ptr, int64_t tile_x)
-{
+int64_t rt_tilemap_to_pixel_x(void *tilemap_ptr, int64_t tile_x) {
     if (!tilemap_ptr)
         return 0;
     return tile_x * ((rt_tilemap_impl *)tilemap_ptr)->tile_width;
 }
 
-int64_t rt_tilemap_to_pixel_y(void *tilemap_ptr, int64_t tile_y)
-{
+int64_t rt_tilemap_to_pixel_y(void *tilemap_ptr, int64_t tile_y) {
     if (!tilemap_ptr)
         return 0;
     return tile_y * ((rt_tilemap_impl *)tilemap_ptr)->tile_height;
@@ -514,10 +474,8 @@ int64_t rt_tilemap_to_pixel_y(void *tilemap_ptr, int64_t tile_y)
 // Tile Collision
 //=============================================================================
 
-void rt_tilemap_set_collision(void *tilemap_ptr, int64_t tile_id, int64_t coll_type)
-{
-    if (!tilemap_ptr)
-    {
+void rt_tilemap_set_collision(void *tilemap_ptr, int64_t tile_id, int64_t coll_type) {
+    if (!tilemap_ptr) {
         rt_trap("Tilemap.SetCollision: null tilemap");
         return;
     }
@@ -527,10 +485,8 @@ void rt_tilemap_set_collision(void *tilemap_ptr, int64_t tile_id, int64_t coll_t
     tilemap->collision[tile_id] = (int8_t)coll_type;
 }
 
-int64_t rt_tilemap_get_collision(void *tilemap_ptr, int64_t tile_id)
-{
-    if (!tilemap_ptr)
-    {
+int64_t rt_tilemap_get_collision(void *tilemap_ptr, int64_t tile_id) {
+    if (!tilemap_ptr) {
         rt_trap("Tilemap.GetCollision: null tilemap");
         return 0;
     }
@@ -539,8 +495,7 @@ int64_t rt_tilemap_get_collision(void *tilemap_ptr, int64_t tile_id)
     return ((rt_tilemap_impl *)tilemap_ptr)->collision[tile_id];
 }
 
-int8_t rt_tilemap_is_solid_at(void *tilemap_ptr, int64_t pixel_x, int64_t pixel_y)
-{
+int8_t rt_tilemap_is_solid_at(void *tilemap_ptr, int64_t pixel_x, int64_t pixel_y) {
     if (!tilemap_ptr)
         return 0;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
@@ -559,8 +514,7 @@ int8_t rt_tilemap_is_solid_at(void *tilemap_ptr, int64_t pixel_x, int64_t pixel_
 
 /// @brief Resolve an AABB against solid tiles. Returns 1 if any collision occurred.
 /// Updates the position (out_x, out_y) and velocity (out_vx, out_vy) in-place.
-int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
-{
+int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr) {
     if (!tilemap_ptr || !body_ptr)
         return 0;
 
@@ -601,10 +555,8 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
         bottom = tilemap->height - 1;
 
     // Resolve collisions against each overlapping solid tile
-    for (int64_t ty = top; ty <= bottom; ty++)
-    {
-        for (int64_t tx = left; tx <= right; tx++)
-        {
+    for (int64_t ty = top; ty <= bottom; ty++) {
+        for (int64_t tx = left; tx <= right; tx++) {
             int64_t tile_id = coll_tiles[ty * tilemap->width + tx];
             if (tile_id < 0 || tile_id >= MAX_TILE_COLLISION_IDS)
                 continue;
@@ -629,8 +581,7 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
             // One-way platform: only collide if body is moving down AND came from above.
             // by1 > tile_y1 + 2.0 means the body's top is already below the tile surface —
             // it entered from below and should pass through. Frame-rate independent.
-            if (ctype == TILE_COLLISION_ONE_WAY)
-            {
+            if (ctype == TILE_COLLISION_ONE_WAY) {
                 if (bvy <= 0.0 || by1 > tile_y1 + 2.0)
                     continue;
             }
@@ -640,8 +591,7 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
             double oy = (by2 < tile_y2) ? (by2 - tile_y1) : (tile_y2 - by1);
 
             // Resolve along minimum overlap axis
-            if (ox < oy)
-            {
+            if (ox < oy) {
                 // Horizontal resolution
                 if (bx1 + bw * 0.5 < tile_x1 + (double)tw * 0.5)
                     bx = tile_x1 - bw; // Push left
@@ -651,9 +601,7 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
                 // Refresh derived coordinates for subsequent iterations
                 bx1 = bx;
                 bx2 = bx + bw;
-            }
-            else
-            {
+            } else {
                 // Vertical resolution
                 if (by1 + bh * 0.5 < tile_y1 + (double)th * 0.5)
                     by = tile_y1 - bh; // Push up (landing)
@@ -667,8 +615,7 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
         }
     }
 
-    if (collided)
-    {
+    if (collided) {
         rt_physics2d_body_set_pos(body_ptr, bx, by);
         rt_physics2d_body_set_vel(body_ptr, bvx, bvy);
     }
@@ -680,8 +627,7 @@ int8_t rt_tilemap_collide_body(void *tilemap_ptr, void *body_ptr)
 // Layer Management
 //=============================================================================
 
-int64_t rt_tilemap_add_layer(void *tilemap_ptr, rt_string name)
-{
+int64_t rt_tilemap_add_layer(void *tilemap_ptr, rt_string name) {
     if (!tilemap_ptr)
         return -1;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
@@ -708,11 +654,9 @@ int64_t rt_tilemap_add_layer(void *tilemap_ptr, rt_string name)
 
     // Copy layer name (truncate to 31 chars)
     memset(layer->name, 0, sizeof(layer->name));
-    if (name)
-    {
+    if (name) {
         const char *cstr = rt_string_cstr(name);
-        if (cstr)
-        {
+        if (cstr) {
             size_t len = strlen(cstr);
             if (len > 31)
                 len = 31;
@@ -724,15 +668,13 @@ int64_t rt_tilemap_add_layer(void *tilemap_ptr, rt_string name)
     return (int64_t)idx;
 }
 
-int64_t rt_tilemap_get_layer_count(void *tilemap_ptr)
-{
+int64_t rt_tilemap_get_layer_count(void *tilemap_ptr) {
     if (!tilemap_ptr)
         return 0;
     return ((rt_tilemap_impl *)tilemap_ptr)->layer_count;
 }
 
-int64_t rt_tilemap_get_layer_by_name(void *tilemap_ptr, rt_string name)
-{
+int64_t rt_tilemap_get_layer_by_name(void *tilemap_ptr, rt_string name) {
     if (!tilemap_ptr || !name)
         return -1;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
@@ -740,16 +682,14 @@ int64_t rt_tilemap_get_layer_by_name(void *tilemap_ptr, rt_string name)
     if (!cstr)
         return -1;
 
-    for (int32_t i = 0; i < tilemap->layer_count; i++)
-    {
+    for (int32_t i = 0; i < tilemap->layer_count; i++) {
         if (strcmp(tilemap->layers[i].name, cstr) == 0)
             return (int64_t)i;
     }
     return -1;
 }
 
-void rt_tilemap_remove_layer(void *tilemap_ptr, int64_t layer)
-{
+void rt_tilemap_remove_layer(void *tilemap_ptr, int64_t layer) {
     if (!tilemap_ptr)
         return;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
@@ -784,8 +724,7 @@ void rt_tilemap_remove_layer(void *tilemap_ptr, int64_t layer)
         tilemap->collision_layer--;
 }
 
-void rt_tilemap_set_layer_visible(void *tilemap_ptr, int64_t layer, int8_t visible)
-{
+void rt_tilemap_set_layer_visible(void *tilemap_ptr, int64_t layer, int8_t visible) {
     if (!tilemap_ptr)
         return;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
@@ -794,8 +733,7 @@ void rt_tilemap_set_layer_visible(void *tilemap_ptr, int64_t layer, int8_t visib
     tilemap->layers[layer].visible = visible ? 1 : 0;
 }
 
-int8_t rt_tilemap_get_layer_visible(void *tilemap_ptr, int64_t layer)
-{
+int8_t rt_tilemap_get_layer_visible(void *tilemap_ptr, int64_t layer) {
     if (!tilemap_ptr)
         return 0;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
@@ -808,8 +746,8 @@ int8_t rt_tilemap_get_layer_visible(void *tilemap_ptr, int64_t layer)
 // Per-Layer Tile Access
 //=============================================================================
 
-void rt_tilemap_set_tile_layer(void *tilemap_ptr, int64_t layer, int64_t x, int64_t y, int64_t tile)
-{
+void rt_tilemap_set_tile_layer(
+    void *tilemap_ptr, int64_t layer, int64_t x, int64_t y, int64_t tile) {
     if (!tilemap_ptr)
         return;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
@@ -822,8 +760,7 @@ void rt_tilemap_set_tile_layer(void *tilemap_ptr, int64_t layer, int64_t x, int6
     tilemap->layers[layer].tiles[y * tilemap->width + x] = tile;
 }
 
-int64_t rt_tilemap_get_tile_layer(void *tilemap_ptr, int64_t layer, int64_t x, int64_t y)
-{
+int64_t rt_tilemap_get_tile_layer(void *tilemap_ptr, int64_t layer, int64_t x, int64_t y) {
     if (!tilemap_ptr)
         return 0;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
@@ -836,8 +773,7 @@ int64_t rt_tilemap_get_tile_layer(void *tilemap_ptr, int64_t layer, int64_t x, i
     return tilemap->layers[layer].tiles[y * tilemap->width + x];
 }
 
-void rt_tilemap_fill_layer(void *tilemap_ptr, int64_t layer, int64_t tile)
-{
+void rt_tilemap_fill_layer(void *tilemap_ptr, int64_t layer, int64_t tile) {
     if (!tilemap_ptr)
         return;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
@@ -850,8 +786,7 @@ void rt_tilemap_fill_layer(void *tilemap_ptr, int64_t layer, int64_t tile)
         tilemap->layers[layer].tiles[i] = tile;
 }
 
-void rt_tilemap_clear_layer(void *tilemap_ptr, int64_t layer)
-{
+void rt_tilemap_clear_layer(void *tilemap_ptr, int64_t layer) {
     if (!tilemap_ptr)
         return;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
@@ -867,8 +802,7 @@ void rt_tilemap_clear_layer(void *tilemap_ptr, int64_t layer)
 // Per-Layer Tileset
 //=============================================================================
 
-void rt_tilemap_set_layer_tileset(void *tilemap_ptr, int64_t layer, void *pixels)
-{
+void rt_tilemap_set_layer_tileset(void *tilemap_ptr, int64_t layer, void *pixels) {
     if (!tilemap_ptr)
         return;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
@@ -877,8 +811,7 @@ void rt_tilemap_set_layer_tileset(void *tilemap_ptr, int64_t layer, void *pixels
 
     tm_layer *lyr = &tilemap->layers[layer];
 
-    if (!pixels)
-    {
+    if (!pixels) {
         // Reset to base tileset
         if (lyr->tileset)
             rt_heap_release(lyr->tileset);
@@ -912,8 +845,7 @@ void rt_tilemap_set_layer_tileset(void *tilemap_ptr, int64_t layer, void *pixels
 //=============================================================================
 
 void rt_tilemap_draw_layer(
-    void *tilemap_ptr, void *canvas_ptr, int64_t layer, int64_t cam_x, int64_t cam_y)
-{
+    void *tilemap_ptr, void *canvas_ptr, int64_t layer, int64_t cam_x, int64_t cam_y) {
     if (!tilemap_ptr || !canvas_ptr)
         return;
 
@@ -956,10 +888,8 @@ void rt_tilemap_draw_layer(
     if (vis_w <= 0 || vis_h <= 0)
         return;
 
-    for (int64_t ty = first_y; ty < first_y + vis_h; ty++)
-    {
-        for (int64_t tx = first_x; tx < first_x + vis_w; tx++)
-        {
+    for (int64_t ty = first_y; ty < first_y + vis_h; ty++) {
+        for (int64_t tx = first_x; tx < first_x + vis_w; tx++) {
             int64_t tile_index = lyr->tiles[ty * tilemap->width + tx];
             if (tile_index <= 0 || tile_index > tc)
                 continue;
@@ -979,8 +909,7 @@ void rt_tilemap_draw_layer(
 // Collision Layer
 //=============================================================================
 
-void rt_tilemap_set_collision_layer(void *tilemap_ptr, int64_t layer)
-{
+void rt_tilemap_set_collision_layer(void *tilemap_ptr, int64_t layer) {
     if (!tilemap_ptr)
         return;
     rt_tilemap_impl *tilemap = (rt_tilemap_impl *)tilemap_ptr;
@@ -989,8 +918,7 @@ void rt_tilemap_set_collision_layer(void *tilemap_ptr, int64_t layer)
     tilemap->collision_layer = (int32_t)layer;
 }
 
-int64_t rt_tilemap_get_collision_layer(void *tilemap_ptr)
-{
+int64_t rt_tilemap_get_collision_layer(void *tilemap_ptr) {
     if (!tilemap_ptr)
         return 0;
     return ((rt_tilemap_impl *)tilemap_ptr)->collision_layer;

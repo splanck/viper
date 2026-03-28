@@ -19,11 +19,9 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 // Build a module with a helper function and main that calls it
-void buildCallModule(Module &module, int64_t arg)
-{
+void buildCallModule(Module &module, int64_t arg) {
     il::build::IRBuilder builder(module);
 
     // Build helper function first (so emitCall can find its return type)
@@ -70,8 +68,7 @@ void buildCallModule(Module &module, int64_t arg)
 }
 
 // Build a module with multiple arguments
-void buildMultiArgCallModule(Module &module, int64_t a, int64_t b, int64_t c)
-{
+void buildMultiArgCallModule(Module &module, int64_t a, int64_t b, int64_t c) {
     il::build::IRBuilder builder(module);
 
     // Build sum3 function first (so emitCall can find its return type)
@@ -128,16 +125,14 @@ void buildMultiArgCallModule(Module &module, int64_t a, int64_t b, int64_t c)
     mainBB.instructions.push_back(mainRet);
 }
 
-int64_t runCall(int64_t arg)
-{
+int64_t runCall(int64_t arg) {
     Module module;
     buildCallModule(module, arg);
     viper::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
-int64_t runMultiArgCall(int64_t a, int64_t b, int64_t c)
-{
+int64_t runMultiArgCall(int64_t a, int64_t b, int64_t c) {
     Module module;
     buildMultiArgCallModule(module, a, b, c);
     viper::tests::VmFixture fixture;
@@ -146,8 +141,7 @@ int64_t runMultiArgCall(int64_t a, int64_t b, int64_t c)
 
 } // namespace
 
-int main()
-{
+int main() {
     //=========================================================================
     // Basic call tests
     //=========================================================================

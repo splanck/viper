@@ -31,12 +31,10 @@ using namespace il::frontends::basic::runtime;
 #include <optional>
 #include <string>
 
-namespace
-{
+namespace {
 constexpr std::size_t kPrintZoneWidth = 14;
 
-std::optional<std::size_t> estimatePrintWidth(const il::frontends::basic::Expr &expr)
-{
+std::optional<std::size_t> estimatePrintWidth(const il::frontends::basic::Expr &expr) {
     using namespace il::frontends::basic;
 
     if (const auto *stringExpr = as<const StringExpr>(expr))
@@ -45,8 +43,7 @@ std::optional<std::size_t> estimatePrintWidth(const il::frontends::basic::Expr &
     if (const auto *intExpr = as<const IntExpr>(expr))
         return std::to_string(intExpr->value).size();
 
-    if (const auto *floatExpr = as<const FloatExpr>(expr))
-    {
+    if (const auto *floatExpr = as<const FloatExpr>(expr)) {
         char buffer[64];
         int written = std::snprintf(buffer, sizeof(buffer), "%.15g", floatExpr->value);
         if (written < 0 || static_cast<std::size_t>(written) >= sizeof(buffer))
@@ -61,8 +58,7 @@ std::optional<std::size_t> estimatePrintWidth(const il::frontends::basic::Expr &
 }
 } // namespace
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 using IlType = il::core::Type;
 using Value = il::core::Value;
@@ -85,8 +81,7 @@ IoStatementLowerer::IoStatementLowerer(Lowerer &lowerer) : lowerer_(lowerer) {}
 ///          error triggers emission of a `trap.from_err` via @ref emitRuntimeErrCheck.
 ///
 /// @param stmt Parsed OPEN statement containing operands and source location.
-void IoStatementLowerer::lowerOpen(const OpenStmt &stmt)
-{
+void IoStatementLowerer::lowerOpen(const OpenStmt &stmt) {
     if (!stmt.pathExpr || !stmt.channelExpr)
         return;
 
@@ -107,8 +102,7 @@ void IoStatementLowerer::lowerOpen(const OpenStmt &stmt)
 ///          the result into the standard runtime error check pipeline.
 ///
 /// @param stmt Parsed CLOSE statement.
-void IoStatementLowerer::lowerClose(const CloseStmt &stmt)
-{
+void IoStatementLowerer::lowerClose(const CloseStmt &stmt) {
     if (!stmt.channelExpr)
         return;
 
@@ -127,8 +121,7 @@ void IoStatementLowerer::lowerClose(const CloseStmt &stmt)
 ///          diagnostic handling.
 ///
 /// @param stmt Parsed SEEK statement.
-void IoStatementLowerer::lowerSeek(const SeekStmt &stmt)
-{
+void IoStatementLowerer::lowerSeek(const SeekStmt &stmt) {
     if (!stmt.channelExpr || !stmt.positionExpr)
         return;
 
@@ -150,14 +143,12 @@ void IoStatementLowerer::lowerSeek(const SeekStmt &stmt)
 ///          is not a semicolon, mirroring BASIC behaviour.
 ///
 /// @param stmt Parsed PRINT statement with expression list.
-void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
-{
+void IoStatementLowerer::lowerPrint(const PrintStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
     std::size_t column = 1;
     bool columnKnown = true;
 
-    auto updateColumn = [&](std::optional<std::size_t> width)
-    {
+    auto updateColumn = [&](std::optional<std::size_t> width) {
         if (!columnKnown)
             return;
         if (width)
@@ -166,32 +157,26 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
             columnKnown = false;
     };
 
-    auto resetColumn = [&]()
-    {
+    auto resetColumn = [&]() {
         column = 1;
         columnKnown = true;
     };
 
-    for (const auto &it : stmt.items)
-    {
-        switch (it.kind)
-        {
-            case PrintItem::Kind::Expr:
-            {
+    for (const auto &it : stmt.items) {
+        switch (it.kind) {
+            case PrintItem::Kind::Expr: {
                 std::optional<std::size_t> widthEstimate;
                 if (it.expr)
                     widthEstimate = estimatePrintWidth(*it.expr);
 
                 Lowerer::RVal value = lowerer_.lowerExpr(*it.expr);
-                if (value.type.kind == IlType::Kind::Str)
-                {
+                if (value.type.kind == IlType::Kind::Str) {
                     // Check if expr is an lvalue (borrowed reference that needs retaining)
                     bool isLvalue = as<const VarExpr>(*it.expr) ||
                                     as<const MemberAccessExpr>(*it.expr) ||
                                     as<const ArrayExpr>(*it.expr);
 
-                    if (isLvalue)
-                    {
+                    if (isLvalue) {
                         // Retain borrowed value before passing to print
                         lowerer_.requireStrRetainMaybe();
                         lowerer_.emitCall("rt_str_retain_maybe", {value.value});
@@ -200,8 +185,7 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                     // Print strings via kTerminalPrintStr
                     lowerer_.emitCall(kTerminalPrintStr, {value.value});
 
-                    if (isLvalue)
-                    {
+                    if (isLvalue) {
                         // Release the temporary after print
                         lowerer_.requireStrReleaseMaybe();
                         lowerer_.emitCall("rt_str_release_maybe", {value.value});
@@ -210,15 +194,13 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                     updateColumn(widthEstimate);
                     break;
                 }
-                if (value.type.kind == IlType::Kind::F64)
-                {
+                if (value.type.kind == IlType::Kind::F64) {
                     lowerer_.emitCall(kTerminalPrintF64, {value.value});
                     updateColumn(widthEstimate);
                     break;
                 }
                 // BUG-001 fix: Handle Ptr/object types by converting to string first
-                if (value.type.kind == IlType::Kind::Ptr)
-                {
+                if (value.type.kind == IlType::Kind::Ptr) {
                     Value strVal = lowerer_.emitCallRet(
                         IlType(IlType::Kind::Str), kCoreObjectToString, {value.value});
                     lowerer_.emitCall(kTerminalPrintStr, {strVal});
@@ -234,11 +216,9 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
                 updateColumn(widthEstimate);
                 break;
             }
-            case PrintItem::Kind::Comma:
-            {
+            case PrintItem::Kind::Comma: {
                 std::size_t spaces = kPrintZoneWidth;
-                if (columnKnown)
-                {
+                if (columnKnown) {
                     std::size_t offset = (column - 1) % kPrintZoneWidth;
                     spaces = kPrintZoneWidth - offset;
                     column += spaces;
@@ -255,8 +235,7 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
     }
 
     bool suppress_nl = !stmt.items.empty() && stmt.items.back().kind == PrintItem::Kind::Semicolon;
-    if (!suppress_nl)
-    {
+    if (!suppress_nl) {
         std::string nlLbl = lowerer_.getStringLabel("\n");
         Value nl = lowerer_.emitConstStr(nlLbl);
         lowerer_.emitCall(kTerminalPrintStr, {nl});
@@ -279,11 +258,9 @@ void IoStatementLowerer::lowerPrint(const PrintStmt &stmt)
 PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
                                          const Expr &expr,
                                          Lowerer::RVal value,
-                                         bool quoteStrings)
-{
+                                         bool quoteStrings) {
     LocationScope loc(self.lowerer_, expr.loc);
-    if (value.type.kind == IlType::Kind::Str)
-    {
+    if (value.type.kind == IlType::Kind::Str) {
         if (!quoteStrings)
             return {value.value, std::nullopt};
 
@@ -296,12 +273,10 @@ PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
     const char *runtime = nullptr;
     il::runtime::RuntimeFeature feature = il::runtime::RuntimeFeature::StrFromDouble;
 
-    auto narrowInteger = [&](IlType::Kind target)
-    {
+    auto narrowInteger = [&](IlType::Kind target) {
         value = self.lowerer_.ensureI64(std::move(value), expr.loc);
         int bits = 64;
-        switch (target)
-        {
+        switch (target) {
             case IlType::Kind::I16:
                 bits = 16;
                 break;
@@ -319,8 +294,7 @@ PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
         value.type = IlType(target);
     };
 
-    switch (numericType)
-    {
+    switch (numericType) {
         case TypeRules::NumericType::Integer:
             runtime = kStringFromI16;
             feature = il::runtime::RuntimeFeature::StrFromI16;
@@ -357,15 +331,13 @@ PrintChArgString lowerPrintChArgToString(IoStatementLowerer &self,
 ///
 /// @param stmt Parsed PRINT# statement describing the arguments.
 /// @return Runtime string handle suitable for writing.
-Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt)
-{
+Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt) {
     Value record{};
     bool hasRecord = false;
     std::string commaLbl = self.lowerer_.getStringLabel(",");
     Value comma = self.lowerer_.emitConstStr(commaLbl);
 
-    for (const auto &arg : stmt.args)
-    {
+    for (const auto &arg : stmt.args) {
         if (!arg)
             continue;
 
@@ -374,8 +346,7 @@ Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt)
         if (lowered.feature)
             self.lowerer_.requestHelper(*lowered.feature);
 
-        if (!hasRecord)
-        {
+        if (!hasRecord) {
             record = lowered.text;
             hasRecord = true;
             continue;
@@ -388,8 +359,7 @@ Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt)
             IlType(IlType::Kind::Str), kStringConcat, {record, lowered.text});
     }
 
-    if (!hasRecord)
-    {
+    if (!hasRecord) {
         std::string emptyLbl = self.lowerer_.getStringLabel("");
         record = self.lowerer_.emitConstStr(emptyLbl);
     }
@@ -405,8 +375,7 @@ Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt)
 ///          wrapped in runtime error checking.
 ///
 /// @param stmt Parsed PRINT#/WRITE# statement.
-void IoStatementLowerer::lowerPrintCh(const PrintChStmt &stmt)
-{
+void IoStatementLowerer::lowerPrintCh(const PrintChStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
     if (!stmt.channelExpr)
         return;
@@ -416,10 +385,8 @@ void IoStatementLowerer::lowerPrintCh(const PrintChStmt &stmt)
 
     bool isWrite = stmt.mode == PrintChStmt::Mode::Write;
 
-    if (stmt.args.empty())
-    {
-        if (stmt.trailingNewline || isWrite)
-        {
+    if (stmt.args.empty()) {
+        if (stmt.trailingNewline || isWrite) {
             std::string emptyLbl = lowerer_.getStringLabel("");
             Value empty = lowerer_.emitConstStr(emptyLbl);
             Value err = lowerer_.emitCallRet(
@@ -431,8 +398,7 @@ void IoStatementLowerer::lowerPrintCh(const PrintChStmt &stmt)
         return;
     }
 
-    if (isWrite)
-    {
+    if (isWrite) {
         Value record = buildPrintChWriteRecord(*this, stmt);
         Value err = lowerer_.emitCallRet(
             IlType(IlType::Kind::I32), "rt_println_ch_err", {channel.value, record});
@@ -441,8 +407,7 @@ void IoStatementLowerer::lowerPrintCh(const PrintChStmt &stmt)
         return;
     }
 
-    for (auto it = stmt.args.begin(); it != stmt.args.end(); ++it)
-    {
+    for (auto it = stmt.args.begin(); it != stmt.args.end(); ++it) {
         const auto &arg = *it;
         if (!arg)
             continue;
@@ -453,8 +418,7 @@ void IoStatementLowerer::lowerPrintCh(const PrintChStmt &stmt)
             lowerer_.requestHelper(*lowered.feature);
 
         auto nextIt = it;
-        do
-        {
+        do {
             ++nextIt;
         } while (nextIt != stmt.args.end() && !*nextIt);
 
@@ -470,13 +434,11 @@ void IoStatementLowerer::lowerPrintCh(const PrintChStmt &stmt)
             err, arg->loc, "printch", [&](Value code) { lowerer_.emitTrapFromErr(code); });
     }
 
-    if (stmt.trailingNewline)
-    {
-        auto hasPrintedArg = std::any_of(stmt.args.begin(),
-                                         stmt.args.end(),
-                                         [](const auto &expr) { return static_cast<bool>(expr); });
-        if (!hasPrintedArg)
-        {
+    if (stmt.trailingNewline) {
+        auto hasPrintedArg = std::any_of(stmt.args.begin(), stmt.args.end(), [](const auto &expr) {
+            return static_cast<bool>(expr);
+        });
+        if (!hasPrintedArg) {
             std::string emptyLbl = lowerer_.getStringLabel("");
             Value empty = lowerer_.emitConstStr(emptyLbl);
             Value err = lowerer_.emitCallRet(
@@ -495,13 +457,10 @@ void IoStatementLowerer::lowerPrintCh(const PrintChStmt &stmt)
 ///          release management.
 ///
 /// @param stmt Parsed INPUT statement.
-void IoStatementLowerer::lowerInput(const InputStmt &stmt)
-{
+void IoStatementLowerer::lowerInput(const InputStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
-    if (stmt.prompt)
-    {
-        if (auto *se = as<const StringExpr>(*stmt.prompt))
-        {
+    if (stmt.prompt) {
+        if (auto *se = as<const StringExpr>(*stmt.prompt)) {
             std::string lbl = lowerer_.getStringLabel(se->value);
             Value v = lowerer_.emitConstStr(lbl);
             // Use rt_* printing helper to match unit test expectations
@@ -514,23 +473,15 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
     // Read a full line from the console using kTerminalReadLine.
     Value line = lowerer_.emitCallRet(IlType(IlType::Kind::Str), kTerminalReadLine, {});
     // Precompute store kinds for each variable to avoid repeated symbol lookups.
-    enum class StoreKind
-    {
-        I64,
-        F64,
-        I1,
-        Str
-    };
+    enum class StoreKind { I64, F64, I1, Str };
     std::unordered_map<std::string, StoreKind> storeKinds;
     storeKinds.reserve(stmt.vars.size());
-    for (const auto &vn : stmt.vars)
-    {
+    for (const auto &vn : stmt.vars) {
         if (vn.empty())
             continue;
         Lowerer::SlotType sk = lowerer_.getSlotType(vn);
         StoreKind k = StoreKind::I64;
-        switch (sk.type.kind)
-        {
+        switch (sk.type.kind) {
             case IlType::Kind::Str:
                 k = StoreKind::Str;
                 break;
@@ -546,8 +497,7 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
         storeKinds.emplace(vn, k);
     }
 
-    auto storeField = [&](const std::string &name, Value field)
-    {
+    auto storeField = [&](const std::string &name, Value field) {
         auto storage = lowerer_.resolveVariableStorage(name, stmt.loc);
         assert(storage && "INPUT target should have storage");
         if (!storage)
@@ -556,8 +506,7 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
         // Be robust when symbol typing is incomplete in this context: consult
         // semantic analyzer for declared types to guide conversion (BUG-080).
         if (slotInfo.type.kind != IlType::Kind::Str && slotInfo.type.kind != IlType::Kind::F64 &&
-            slotInfo.type.kind != IlType::Kind::I1)
-        {
+            slotInfo.type.kind != IlType::Kind::I1) {
             // Prefer precomputed kind; fallback to a quick requery if missing.
             auto it = storeKinds.find(name);
             IlType::Kind k = (it != storeKinds.end())
@@ -566,29 +515,22 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
                                     : it->second == StoreKind::I1  ? IlType::Kind::I1
                                                                    : IlType::Kind::I64)
                                  : lowerer_.getSlotType(name).type.kind;
-            if (k == IlType::Kind::Str)
-            {
+            if (k == IlType::Kind::Str) {
                 slotInfo.type = IlType(IlType::Kind::Str);
-            }
-            else if (k == IlType::Kind::F64)
-            {
+            } else if (k == IlType::Kind::F64) {
                 slotInfo.type = IlType(IlType::Kind::F64);
-            }
-            else if (k == IlType::Kind::I1)
-            {
+            } else if (k == IlType::Kind::I1) {
                 slotInfo.type = lowerer_.ilBoolTy();
                 slotInfo.isBoolean = true;
             }
         }
         Value target = storage->pointer;
-        if (slotInfo.type.kind == IlType::Kind::Str)
-        {
+        if (slotInfo.type.kind == IlType::Kind::Str) {
             lowerer_.emitStore(IlType(IlType::Kind::Str), target, field);
             return;
         }
 
-        if (slotInfo.type.kind == IlType::Kind::F64)
-        {
+        if (slotInfo.type.kind == IlType::Kind::F64) {
             // Convert string to double via kConvertToDouble
             lowerer_.requestHelper(il::runtime::RuntimeFeature::ToDouble);
             Value f = lowerer_.emitCallRet(IlType(IlType::Kind::F64), kConvertToDouble, {field});
@@ -601,21 +543,17 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
         // Convert string to integer via kConvertToInt
         lowerer_.requestHelper(il::runtime::RuntimeFeature::ToInt);
         Value n = lowerer_.emitCallRet(IlType(IlType::Kind::I64), kConvertToInt, {field});
-        if (slotInfo.isBoolean)
-        {
+        if (slotInfo.isBoolean) {
             Value b = lowerer_.coerceToBool({n, IlType(IlType::Kind::I64)}, stmt.loc).value;
             lowerer_.emitStore(lowerer_.ilBoolTy(), target, b);
-        }
-        else
-        {
+        } else {
             lowerer_.emitStore(IlType(IlType::Kind::I64), target, n);
         }
         lowerer_.requireStrReleaseMaybe();
         lowerer_.emitCall("rt_str_release_maybe", {field});
     };
 
-    if (stmt.vars.size() == 1)
-    {
+    if (stmt.vars.size() == 1) {
         storeField(stmt.vars.front(), line);
         return;
     }
@@ -629,8 +567,7 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
     lowerer_.requireStrReleaseMaybe();
     lowerer_.emitCall("rt_str_release_maybe", {line});
 
-    for (std::size_t i = 0; i < stmt.vars.size(); ++i)
-    {
+    for (std::size_t i = 0; i < stmt.vars.size(); ++i) {
         long long offset = static_cast<long long>(i * 8);
         Value slot = lowerer_.emitBinary(
             Opcode::GEP, IlType(IlType::Kind::Ptr), fields, Value::constInt(offset));
@@ -646,8 +583,7 @@ void IoStatementLowerer::lowerInput(const InputStmt &stmt)
 ///          parses it into the target slot according to its declared type.
 ///
 /// @param stmt Parsed INPUT# statement.
-void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
-{
+void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
     Value outSlot = lowerer_.emitAlloca(8);
     lowerer_.emitStore(IlType(IlType::Kind::Ptr), outSlot, Value::null());
@@ -674,15 +610,13 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
     lowerer_.requireStrReleaseMaybe();
     lowerer_.emitCall("rt_str_release_maybe", {line});
 
-    auto parseAndStore = [&](const std::string &name, Value field)
-    {
+    auto parseAndStore = [&](const std::string &name, Value field) {
         auto storage = lowerer_.resolveVariableStorage(name, stmt.loc);
         if (!storage)
             return;
         Lowerer::SlotType slotInfo = storage->slotInfo;
         Value slot = storage->pointer;
-        if (slotInfo.type.kind == IlType::Kind::Str)
-        {
+        if (slotInfo.type.kind == IlType::Kind::Str) {
             lowerer_.emitStore(IlType(IlType::Kind::Str), slot, field);
             return;
         }
@@ -690,50 +624,40 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
         Value fieldCstr =
             lowerer_.emitCallRet(IlType(IlType::Kind::Ptr), "rt_string_cstr", {field});
         Value parsedSlot = lowerer_.emitAlloca(8);
-        if (slotInfo.type.kind == IlType::Kind::F64)
-        {
+        if (slotInfo.type.kind == IlType::Kind::F64) {
             Value err = lowerer_.emitCallRet(
                 IlType(IlType::Kind::I32), kParseDouble, {fieldCstr, parsedSlot});
-            lowerer_.emitRuntimeErrCheck(err,
-                                         stmt.loc,
-                                         "inputch_parse",
-                                         [&](Value code) { lowerer_.emitTrapFromErr(code); });
+            lowerer_.emitRuntimeErrCheck(err, stmt.loc, "inputch_parse", [&](Value code) {
+                lowerer_.emitTrapFromErr(code);
+            });
             Value parsed = lowerer_.emitLoad(IlType(IlType::Kind::F64), parsedSlot);
             lowerer_.emitStore(IlType(IlType::Kind::F64), slot, parsed);
-        }
-        else
-        {
+        } else {
             Value err = lowerer_.emitCallRet(
                 IlType(IlType::Kind::I32), kParseInt64, {fieldCstr, parsedSlot});
-            lowerer_.emitRuntimeErrCheck(err,
-                                         stmt.loc,
-                                         "inputch_parse",
-                                         [&](Value code) { lowerer_.emitTrapFromErr(code); });
+            lowerer_.emitRuntimeErrCheck(err, stmt.loc, "inputch_parse", [&](Value code) {
+                lowerer_.emitTrapFromErr(code);
+            });
             Value parsed = lowerer_.emitLoad(IlType(IlType::Kind::I64), parsedSlot);
-            if (slotInfo.isBoolean)
-            {
+            if (slotInfo.isBoolean) {
                 Value b =
                     lowerer_.coerceToBool({parsed, IlType(IlType::Kind::I64)}, stmt.loc).value;
                 lowerer_.emitStore(lowerer_.ilBoolTy(), slot, b);
-            }
-            else
-            {
+            } else {
                 lowerer_.emitStore(IlType(IlType::Kind::I64), slot, parsed);
             }
         }
         lowerer_.emitCall("rt_str_release_maybe", {field});
     };
 
-    if (stmt.targets.empty())
-    {
+    if (stmt.targets.empty()) {
         Value field = lowerer_.emitLoad(IlType(IlType::Kind::Str), fieldsMem);
         // With no explicit targets, nothing further to store.
         lowerer_.emitCall("rt_str_release_maybe", {field});
         return;
     }
 
-    for (std::size_t i = 0; i < stmt.targets.size(); ++i)
-    {
+    for (std::size_t i = 0; i < stmt.targets.size(); ++i) {
         long long offset = static_cast<long long>(i * 8);
         Value slot = lowerer_.emitBinary(
             Opcode::GEP, IlType(IlType::Kind::Ptr), fieldsMem, Value::constInt(offset));
@@ -748,8 +672,7 @@ void IoStatementLowerer::lowerInputCh(const InputChStmt &stmt)
 ///          the target variable when present, and propagates runtime errors.
 ///
 /// @param stmt Parsed LINE INPUT# statement.
-void IoStatementLowerer::lowerLineInputCh(const LineInputChStmt &stmt)
-{
+void IoStatementLowerer::lowerLineInputCh(const LineInputChStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
     if (!stmt.channelExpr || !stmt.targetVar)
         return;
@@ -768,8 +691,7 @@ void IoStatementLowerer::lowerLineInputCh(const LineInputChStmt &stmt)
 
     Value line = lowerer_.emitLoad(IlType(IlType::Kind::Str), outSlot);
 
-    if (const auto *var = as<const VarExpr>(*stmt.targetVar))
-    {
+    if (const auto *var = as<const VarExpr>(*stmt.targetVar)) {
         auto storage = lowerer_.resolveVariableStorage(var->name, stmt.loc);
         if (!storage)
             return;

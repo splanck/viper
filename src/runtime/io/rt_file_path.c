@@ -49,10 +49,8 @@
 /// @param mode BASIC runtime mode flag from the `RT_F_*` enumeration.
 /// @return A null-terminated C string describing the desired mode, or `NULL`
 ///         when the mode is invalid.
-const char *rt_file_mode_string(int32_t mode)
-{
-    switch (mode)
-    {
+const char *rt_file_mode_string(int32_t mode) {
+    switch (mode) {
         case RT_F_INPUT:
             return "r";
         case RT_F_OUTPUT:
@@ -79,16 +77,14 @@ const char *rt_file_mode_string(int32_t mode)
 ///                  must be non-null or the function fails.
 /// @return `true` when the mode string is valid and the flags were written;
 ///         otherwise `false`.
-int8_t rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_out)
-{
+int8_t rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_out) {
     if (flags_out)
         *flags_out = 0;
     if (!mode || !mode[0] || !flags_out)
         return 0;
 
     int flags = 0;
-    switch (mode[0])
-    {
+    switch (mode[0]) {
         case 'r':
             flags = O_RDONLY;
             break;
@@ -104,8 +100,7 @@ int8_t rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_ou
 
     int plus = 0;
     int binary = 0;
-    for (const char *p = mode + 1; *p; ++p)
-    {
+    for (const char *p = mode + 1; *p; ++p) {
         if (*p == '+')
             plus = 1;
         else if (*p == 'b')
@@ -116,16 +111,14 @@ int8_t rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_ou
             return 0;
     }
 
-    if (plus)
-    {
+    if (plus) {
         flags &= ~(O_RDONLY | O_WRONLY);
         flags |= O_RDWR;
     }
     if (basic_mode == RT_F_BINARY || basic_mode == RT_F_RANDOM)
         flags |= O_CREAT;
 #if defined(_WIN32)
-    if (binary)
-    {
+    if (binary) {
 #if defined(O_BINARY)
         flags |= O_BINARY;
 #elif defined(_O_BINARY)
@@ -149,8 +142,7 @@ int8_t rt_file_mode_to_flags(const char *mode, int32_t basic_mode, int *flags_ou
 /// @param path Runtime string handle describing a filesystem path.
 /// @param out_path Optional output pointer updated to the borrowed C string.
 /// @return `true` when the path handle is valid, otherwise `false`.
-int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path)
-{
+int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path) {
     if (out_path)
         *out_path = NULL;
     if (!path || !path->data)
@@ -170,8 +162,7 @@ int8_t rt_file_path_from_vstr(const ViperString *path, const char **out_path)
 /// @param data_out Optional output pointer updated to the raw byte buffer.
 /// @return The number of bytes referenced by the string, or zero when the
 ///         handle is invalid.
-size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out)
-{
+size_t rt_file_string_view(const ViperString *s, const uint8_t **data_out) {
     if (data_out)
         *data_out = NULL;
     if (!s || !s->data)

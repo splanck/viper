@@ -17,12 +17,10 @@
 
 #include "codegen/x86_64/passes/PassManager.hpp"
 
-namespace viper::codegen::x64::passes
-{
+namespace viper::codegen::x64::passes {
 
 /// \brief Lower il::core modules into the backend adapter IL form.
-class LoweringPass final : public Pass
-{
+class LoweringPass final : public Pass {
   public:
     /// @brief Run the lowering pass: translate IL functions into MIR functions.
     /// @param module The codegen module containing the IL to lower.

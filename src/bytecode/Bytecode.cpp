@@ -6,13 +6,10 @@
 
 #include "bytecode/Bytecode.hpp"
 
-namespace viper::bytecode
-{
+namespace viper::bytecode {
 
-const char *opcodeName(BCOpcode op)
-{
-    switch (op)
-    {
+const char *opcodeName(BCOpcode op) {
+    switch (op) {
         // Stack Operations
         case BCOpcode::NOP:
             return "NOP";

@@ -20,26 +20,22 @@
 #include <cstdio>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Create a Seq with integer values (boxed).
-static void *make_int_seq(int64_t *values, size_t count)
-{
+static void *make_int_seq(int64_t *values, size_t count) {
     void *seq = rt_seq_new();
-    for (size_t i = 0; i < count; i++)
-    {
+    for (size_t i = 0; i < count; i++) {
         rt_seq_push(seq, rt_box_i64(values[i]));
     }
     return seq;
 }
 
 /// @brief Get integer value from boxed element.
-static int64_t unbox_int(void *obj)
-{
+static int64_t unbox_int(void *obj) {
     return rt_unbox_i64(obj);
 }
 
@@ -48,36 +44,31 @@ static int64_t unbox_int(void *obj)
 //=============================================================================
 
 /// @brief Predicate: returns true if value is even.
-static int8_t is_even(void *obj)
-{
+static int8_t is_even(void *obj) {
     int64_t val = unbox_int(obj);
     return (val % 2 == 0) ? 1 : 0;
 }
 
 /// @brief Predicate: returns true if value is positive.
-static int8_t is_positive(void *obj)
-{
+static int8_t is_positive(void *obj) {
     int64_t val = unbox_int(obj);
     return (val > 0) ? 1 : 0;
 }
 
 /// @brief Predicate: returns true if value > 5.
-static int8_t is_greater_than_5(void *obj)
-{
+static int8_t is_greater_than_5(void *obj) {
     int64_t val = unbox_int(obj);
     return (val > 5) ? 1 : 0;
 }
 
 /// @brief Predicate: always returns true.
-static int8_t always_true(void *obj)
-{
+static int8_t always_true(void *obj) {
     (void)obj;
     return 1;
 }
 
 /// @brief Predicate: always returns false.
-static int8_t always_false(void *obj)
-{
+static int8_t always_false(void *obj) {
     (void)obj;
     return 0;
 }
@@ -87,15 +78,13 @@ static int8_t always_false(void *obj)
 //=============================================================================
 
 /// @brief Transform: doubles the value.
-static void *double_value(void *obj)
-{
+static void *double_value(void *obj) {
     int64_t val = unbox_int(obj);
     return rt_box_i64(val * 2);
 }
 
 /// @brief Transform: squares the value.
-static void *square_value(void *obj)
-{
+static void *square_value(void *obj) {
     int64_t val = unbox_int(obj);
     return rt_box_i64(val * val);
 }
@@ -105,16 +94,14 @@ static void *square_value(void *obj)
 //=============================================================================
 
 /// @brief Reducer: sums two values.
-static void *sum_reducer(void *acc, void *elem)
-{
+static void *sum_reducer(void *acc, void *elem) {
     int64_t a = unbox_int(acc);
     int64_t b = unbox_int(elem);
     return rt_box_i64(a + b);
 }
 
 /// @brief Reducer: multiplies two values.
-static void *product_reducer(void *acc, void *elem)
-{
+static void *product_reducer(void *acc, void *elem) {
     int64_t a = unbox_int(acc);
     int64_t b = unbox_int(elem);
     return rt_box_i64(a * b);
@@ -124,8 +111,7 @@ static void *product_reducer(void *acc, void *elem)
 // Keep Tests
 //=============================================================================
 
-static void test_seq_keep()
-{
+static void test_seq_keep() {
     printf("Testing Seq.Keep:\n");
 
     // Test 1: Keep even numbers
@@ -166,8 +152,7 @@ static void test_seq_keep()
 // Reject Tests
 //=============================================================================
 
-static void test_seq_reject()
-{
+static void test_seq_reject() {
     printf("Testing Seq.Reject:\n");
 
     // Test 1: Reject even numbers (keep odds)
@@ -188,8 +173,7 @@ static void test_seq_reject()
 // Apply Tests
 //=============================================================================
 
-static void test_seq_apply()
-{
+static void test_seq_apply() {
     printf("Testing Seq.Apply:\n");
 
     // Test 1: Double all values
@@ -222,8 +206,7 @@ static void test_seq_apply()
 // All/Any/None Tests
 //=============================================================================
 
-static void test_seq_predicates()
-{
+static void test_seq_predicates() {
     printf("Testing Seq.All/Any/None:\n");
 
     // Test 1: All positive
@@ -282,8 +265,7 @@ static void test_seq_predicates()
 // CountWhere/FindWhere Tests
 //=============================================================================
 
-static void test_seq_count_find()
-{
+static void test_seq_count_find() {
     printf("Testing Seq.CountWhere/FindWhere:\n");
 
     // Test 1: Count evens
@@ -320,8 +302,7 @@ static void test_seq_count_find()
 // TakeWhile/DropWhile Tests
 //=============================================================================
 
-static void test_seq_take_drop_while()
-{
+static void test_seq_take_drop_while() {
     printf("Testing Seq.TakeWhile/DropWhile:\n");
 
     // Test 1: TakeWhile positive
@@ -369,8 +350,7 @@ static void test_seq_take_drop_while()
 // Fold Tests
 //=============================================================================
 
-static void test_seq_fold()
-{
+static void test_seq_fold() {
     printf("Testing Seq.Fold:\n");
 
     // Test 1: Sum
@@ -406,8 +386,7 @@ static void test_seq_fold()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Seq Functional Tests ===\n\n");
 
     test_seq_keep();

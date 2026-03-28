@@ -35,8 +35,7 @@
 
 #include <cassert>
 
-namespace
-{
+namespace {
 
 // Verification hooks are no-ops.  The PassManager's -verify-each flag provides
 // per-pass verification when needed for debugging.  Internal per-iteration
@@ -52,8 +51,7 @@ void verifyIntermediateState(const il::core::Module *) {}
 /// @brief Mark cached CFG/dominator analyses as stale once the pass modifies IR.
 /// @param function Function whose analyses must be invalidated.
 void invalidateCFGAndDominators(il::core::Function &function,
-                                il::transform::AnalysisManager *analysisManager)
-{
+                                il::transform::AnalysisManager *analysisManager) {
     if (!analysisManager)
         return;
 
@@ -66,8 +64,7 @@ void invalidateCFGAndDominators(il::core::Function &function,
 
 } // namespace
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Execute the SimplifyCFG pass over a single function.
 /// @details Iteratively applies folding and cleanup transforms, running
@@ -76,8 +73,7 @@ namespace il::transform
 /// @param F Function to simplify.
 /// @param outStats Optional pointer receiving aggregate statistics.
 /// @return @c true when the pass modified the function.
-bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
-{
+bool SimplifyCFG::run(il::core::Function &F, Stats *outStats) {
     verifyPreconditions(module_);
 
     Stats stats{};
@@ -85,8 +81,7 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
 
     bool changedAny = false;
 
-    for (int iter = 0; iter < 8; ++iter)
-    {
+    for (int iter = 0; iter < 8; ++iter) {
         bool changed = false;
         if (aggressive)
             changed |= simplify_cfg::foldTrivialSwitches(ctx);
@@ -103,8 +98,7 @@ bool SimplifyCFG::run(il::core::Function &F, Stats *outStats)
         verifyIntermediateState(module_);
     }
 
-    if (changedAny)
-    {
+    if (changedAny) {
         verifyPostconditions(module_);
         invalidateCFGAndDominators(F, analysisManager_);
     }

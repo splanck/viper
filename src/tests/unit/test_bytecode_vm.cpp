@@ -25,8 +25,7 @@ using il::core::BasicBlock;
 ///   entry:
 ///     %result = add %a, %b
 ///     ret %result
-static Module createAddModule()
-{
+static Module createAddModule() {
     Module m;
     IRBuilder b(m);
 
@@ -70,8 +69,7 @@ static Module createAddModule()
 ///     ret %neg
 ///   positive:
 ///     ret %n
-static Module createAbsModule()
-{
+static Module createAbsModule() {
     Module m;
     IRBuilder b(m);
 
@@ -148,8 +146,7 @@ static Module createAbsModule()
 ///     %fib2 = call @fib(%nm2)
 ///     %result = add %fib1, %fib2
 ///     ret %result
-static Module createFibModule()
-{
+static Module createFibModule() {
     Module m;
     IRBuilder b(m);
 
@@ -256,8 +253,7 @@ static Module createFibModule()
 }
 
 /// Test basic bytecode encoding/decoding
-static void test_bytecode_encoding()
-{
+static void test_bytecode_encoding() {
     std::cout << "  test_bytecode_encoding: ";
 
     // Test encodeOp8 / decodeArg8_0
@@ -284,8 +280,7 @@ static void test_bytecode_encoding()
 }
 
 /// Test basic addition function
-static void test_add_function()
-{
+static void test_add_function() {
     std::cout << "  test_add_function: ";
 
     // Create IL module with add function
@@ -316,8 +311,7 @@ static void test_add_function()
 }
 
 /// Test absolute value function (conditional branching)
-static void test_abs_function()
-{
+static void test_abs_function() {
     std::cout << "  test_abs_function: ";
 
     // Create IL module with abs function
@@ -354,8 +348,7 @@ static void test_abs_function()
 }
 
 /// Test fibonacci function (small values)
-static void test_fib_small()
-{
+static void test_fib_small() {
     std::cout << "  test_fib_small: ";
 
     // Create IL module with fib function
@@ -378,16 +371,13 @@ static void test_fib_small()
     // fib(6) = 8, fib(7) = 13, fib(8) = 21, fib(9) = 34, fib(10) = 55
     int64_t expected[] = {0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55};
 
-    for (int i = 0; i <= 10; ++i)
-    {
+    for (int i = 0; i <= 10; ++i) {
         BCSlot result = vm.exec("fib", {BCSlot::fromInt(i)});
-        if (vm.state() != VMState::Halted)
-        {
+        if (vm.state() != VMState::Halted) {
             std::cerr << "fib(" << i << ") failed with trap: " << vm.trapMessage() << "\n";
             assert(false);
         }
-        if (result.i64 != expected[i])
-        {
+        if (result.i64 != expected[i]) {
             std::cerr << "fib(" << i << ") = " << result.i64 << ", expected " << expected[i]
                       << "\n";
             assert(false);
@@ -398,8 +388,7 @@ static void test_fib_small()
 }
 
 /// Benchmark fibonacci function
-static void test_fib_benchmark()
-{
+static void test_fib_benchmark() {
     std::cout << "  test_fib_benchmark: ";
 
     // Create IL module with fib function
@@ -430,8 +419,7 @@ static void test_fib_benchmark()
 
 /// Test native function calls
 /// Creates a function that calls a native "square" function
-static void test_native_calls()
-{
+static void test_native_calls() {
     std::cout << "  test_native_calls: ";
 
     // Build bytecode module manually
@@ -470,13 +458,11 @@ static void test_native_calls()
 
     // Create VM and register native handler
     BytecodeVM vm;
-    vm.registerNativeHandler("square",
-                             [](BCSlot *args, uint32_t argCount, BCSlot *result)
-                             {
-                                 assert(argCount == 1);
-                                 int64_t n = args[0].i64;
-                                 result->i64 = n * n;
-                             });
+    vm.registerNativeHandler("square", [](BCSlot *args, uint32_t argCount, BCSlot *result) {
+        assert(argCount == 1);
+        int64_t n = args[0].i64;
+        result->i64 = n * n;
+    });
 
     vm.load(&bcModule);
 
@@ -495,8 +481,7 @@ static void test_native_calls()
 }
 
 /// Benchmark comparing switch vs threaded dispatch
-static void test_dispatch_benchmark()
-{
+static void test_dispatch_benchmark() {
     std::cout << "  test_dispatch_benchmark:\n";
 
     // Create IL module with fib function
@@ -546,8 +531,7 @@ static void test_dispatch_benchmark()
 }
 
 /// Test a native function that takes multiple arguments
-static void test_native_multi_args()
-{
+static void test_native_multi_args() {
     std::cout << "  test_native_multi_args: ";
 
     BytecodeModule bcModule;
@@ -581,12 +565,10 @@ static void test_native_multi_args()
     bcModule.functionIndex["call_add3"] = 0;
 
     BytecodeVM vm;
-    vm.registerNativeHandler("add3",
-                             [](BCSlot *args, uint32_t argCount, BCSlot *result)
-                             {
-                                 assert(argCount == 3);
-                                 result->i64 = args[0].i64 + args[1].i64 + args[2].i64;
-                             });
+    vm.registerNativeHandler("add3", [](BCSlot *args, uint32_t argCount, BCSlot *result) {
+        assert(argCount == 3);
+        result->i64 = args[0].i64 + args[1].i64 + args[2].i64;
+    });
 
     vm.load(&bcModule);
 
@@ -602,8 +584,7 @@ static void test_native_multi_args()
 }
 
 /// Test exception handling with EH_PUSH, TRAP, and handler dispatch
-static void test_exception_handling()
-{
+static void test_exception_handling() {
     std::cout << "  test_exception_handling: ";
 #ifdef _WIN32
     // Skip on Windows: bytecode VM exception handling has issues (to be investigated)
@@ -672,8 +653,7 @@ static void test_exception_handling()
 }
 
 /// Test unhandled trap
-static void test_unhandled_trap()
-{
+static void test_unhandled_trap() {
     std::cout << "  test_unhandled_trap: ";
 
     BytecodeModule bcModule;
@@ -710,8 +690,7 @@ static void test_unhandled_trap()
 }
 
 /// Test EH_POP (handler unregistration)
-static void test_eh_pop()
-{
+static void test_eh_pop() {
     std::cout << "  test_eh_pop: ";
 
     BytecodeModule bcModule;
@@ -767,8 +746,7 @@ static void test_eh_pop()
 
 /// Test debug API (breakpoints, single-step)
 /// Note: Actual breakpoint interception requires debug-enabled execution mode
-static void test_debug_api()
-{
+static void test_debug_api() {
     std::cout << "  test_debug_api: ";
 
     BytecodeVM vm;
@@ -792,12 +770,10 @@ static void test_debug_api()
 
     // Test debug callback
     bool callbackCalled = false;
-    vm.setDebugCallback(
-        [&](BytecodeVM &, const BytecodeFunction *, uint32_t, bool)
-        {
-            callbackCalled = true;
-            return true;
-        });
+    vm.setDebugCallback([&](BytecodeVM &, const BytecodeFunction *, uint32_t, bool) {
+        callbackCalled = true;
+        return true;
+    });
 
     // Test getter methods
     assert(vm.currentPc() == 0); // No function running
@@ -808,8 +784,7 @@ static void test_debug_api()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     VIPER_DISABLE_ABORT_DIALOG();
     std::cout << "Running bytecode VM tests...\n";
 

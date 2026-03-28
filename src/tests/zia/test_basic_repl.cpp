@@ -29,123 +29,104 @@
 
 using namespace viper::repl;
 
-namespace
-{
+namespace {
 
 // ---------------------------------------------------------------------------
 // BASIC input classifier tests
 // ---------------------------------------------------------------------------
 
-TEST(BasicClassifier, EmptyInput)
-{
+TEST(BasicClassifier, EmptyInput) {
     EXPECT_EQ(ReplInputClassifier::classifyBasic(""), InputKind::Empty);
     EXPECT_EQ(ReplInputClassifier::classifyBasic("   "), InputKind::Empty);
     EXPECT_EQ(ReplInputClassifier::classifyBasic("\t\n"), InputKind::Empty);
 }
 
-TEST(BasicClassifier, MetaCommand)
-{
+TEST(BasicClassifier, MetaCommand) {
     EXPECT_EQ(ReplInputClassifier::classifyBasic(".help"), InputKind::MetaCommand);
     EXPECT_EQ(ReplInputClassifier::classifyBasic(".quit"), InputKind::MetaCommand);
     EXPECT_EQ(ReplInputClassifier::classifyBasic("  .vars"), InputKind::MetaCommand);
 }
 
-TEST(BasicClassifier, CompleteStatements)
-{
+TEST(BasicClassifier, CompleteStatements) {
     EXPECT_EQ(ReplInputClassifier::classifyBasic("PRINT \"hello\""), InputKind::Complete);
     EXPECT_EQ(ReplInputClassifier::classifyBasic("DIM x AS Integer = 42"), InputKind::Complete);
     EXPECT_EQ(ReplInputClassifier::classifyBasic("x = 10"), InputKind::Complete);
 }
 
-TEST(BasicClassifier, SingleLineIfComplete)
-{
+TEST(BasicClassifier, SingleLineIfComplete) {
     // Single-line IF with THEN followed by a statement is complete
     EXPECT_EQ(ReplInputClassifier::classifyBasic("IF x > 0 THEN PRINT x"), InputKind::Complete);
 }
 
-TEST(BasicClassifier, MultiLineIfIncomplete)
-{
+TEST(BasicClassifier, MultiLineIfIncomplete) {
     // IF ... THEN at end of line → multi-line → incomplete
     EXPECT_EQ(ReplInputClassifier::classifyBasic("IF x > 0 THEN"), InputKind::Incomplete);
 }
 
-TEST(BasicClassifier, IfEndIfComplete)
-{
+TEST(BasicClassifier, IfEndIfComplete) {
     std::string input = "IF x > 0 THEN\n  PRINT x\nEND IF";
     EXPECT_EQ(ReplInputClassifier::classifyBasic(input), InputKind::Complete);
 }
 
-TEST(BasicClassifier, ForNextComplete)
-{
+TEST(BasicClassifier, ForNextComplete) {
     std::string input = "FOR i = 1 TO 10\n  PRINT i\nNEXT";
     EXPECT_EQ(ReplInputClassifier::classifyBasic(input), InputKind::Complete);
 }
 
-TEST(BasicClassifier, ForIncomplete)
-{
+TEST(BasicClassifier, ForIncomplete) {
     EXPECT_EQ(ReplInputClassifier::classifyBasic("FOR i = 1 TO 10"), InputKind::Incomplete);
 }
 
-TEST(BasicClassifier, DoLoopComplete)
-{
+TEST(BasicClassifier, DoLoopComplete) {
     std::string input = "DO\n  PRINT x\nLOOP";
     EXPECT_EQ(ReplInputClassifier::classifyBasic(input), InputKind::Complete);
 }
 
-TEST(BasicClassifier, WhileWendComplete)
-{
+TEST(BasicClassifier, WhileWendComplete) {
     std::string input = "WHILE x > 0\n  x = x - 1\nWEND";
     EXPECT_EQ(ReplInputClassifier::classifyBasic(input), InputKind::Complete);
 }
 
-TEST(BasicClassifier, SubEndSubComplete)
-{
+TEST(BasicClassifier, SubEndSubComplete) {
     std::string input = "SUB Hello()\n  PRINT \"Hello\"\nEND SUB";
     EXPECT_EQ(ReplInputClassifier::classifyBasic(input), InputKind::Complete);
 }
 
-TEST(BasicClassifier, SubIncomplete)
-{
+TEST(BasicClassifier, SubIncomplete) {
     EXPECT_EQ(ReplInputClassifier::classifyBasic("SUB Hello()"), InputKind::Incomplete);
 }
 
-TEST(BasicClassifier, FunctionEndFunctionComplete)
-{
+TEST(BasicClassifier, FunctionEndFunctionComplete) {
     std::string input =
         "FUNCTION Add(a AS Integer, b AS Integer) AS Integer\n  RETURN a + b\nEND FUNCTION";
     EXPECT_EQ(ReplInputClassifier::classifyBasic(input), InputKind::Complete);
 }
 
-TEST(BasicClassifier, SelectCaseComplete)
-{
+TEST(BasicClassifier, SelectCaseComplete) {
     std::string input = "SELECT CASE x\n  CASE 1\n    PRINT \"one\"\nEND SELECT";
     EXPECT_EQ(ReplInputClassifier::classifyBasic(input), InputKind::Complete);
 }
 
-TEST(BasicClassifier, CaseInsensitive)
-{
+TEST(BasicClassifier, CaseInsensitive) {
     // Keywords should be case-insensitive
     EXPECT_EQ(ReplInputClassifier::classifyBasic("if x > 0 then"), InputKind::Incomplete);
     std::string input = "for i = 1 to 10\n  print i\nnext";
     EXPECT_EQ(ReplInputClassifier::classifyBasic(input), InputKind::Complete);
 }
 
-TEST(BasicClassifier, CommentIgnored)
-{
+TEST(BasicClassifier, CommentIgnored) {
     // Comment lines should not affect classification
     EXPECT_EQ(ReplInputClassifier::classifyBasic("' This is a comment"), InputKind::Complete);
     EXPECT_EQ(ReplInputClassifier::classifyBasic("PRINT 42 ' with comment"), InputKind::Complete);
 }
 
-TEST(BasicClassifier, NestedBlocks)
-{
+TEST(BasicClassifier, NestedBlocks) {
     // Nested IF inside FOR
     std::string input = "FOR i = 1 TO 10\n  IF i > 5 THEN\n    PRINT i\n  END IF\nNEXT";
     EXPECT_EQ(ReplInputClassifier::classifyBasic(input), InputKind::Complete);
 }
 
-TEST(BasicClassifier, NestedBlocksIncomplete)
-{
+TEST(BasicClassifier, NestedBlocksIncomplete) {
     // Missing NEXT for outer FOR
     std::string input = "FOR i = 1 TO 10\n  IF i > 5 THEN\n    PRINT i\n  END IF";
     EXPECT_EQ(ReplInputClassifier::classifyBasic(input), InputKind::Incomplete);
@@ -155,16 +136,14 @@ TEST(BasicClassifier, NestedBlocksIncomplete)
 // BASIC adapter tests — eval and session state
 // ---------------------------------------------------------------------------
 
-TEST(BasicRepl, SimplePrint)
-{
+TEST(BasicRepl, SimplePrint) {
     BasicReplAdapter adapter;
     auto result = adapter.eval("PRINT \"hello world\"");
     EXPECT_TRUE(result.success);
     EXPECT_NE(result.output.find("hello world"), std::string::npos);
 }
 
-TEST(BasicRepl, IntegerExpression)
-{
+TEST(BasicRepl, IntegerExpression) {
     BasicReplAdapter adapter;
     // Expression auto-print wraps with PRINT
     auto result = adapter.eval("2 + 3");
@@ -172,8 +151,7 @@ TEST(BasicRepl, IntegerExpression)
     EXPECT_NE(result.output.find("5"), std::string::npos);
 }
 
-TEST(BasicRepl, VariablePersistence)
-{
+TEST(BasicRepl, VariablePersistence) {
     BasicReplAdapter adapter;
 
     // Declare a variable
@@ -186,8 +164,7 @@ TEST(BasicRepl, VariablePersistence)
     EXPECT_NE(r2.output.find("50"), std::string::npos);
 }
 
-TEST(BasicRepl, VariableReassignment)
-{
+TEST(BasicRepl, VariableReassignment) {
     BasicReplAdapter adapter;
 
     auto r1 = adapter.eval("DIM x AS Integer = 10");
@@ -201,8 +178,7 @@ TEST(BasicRepl, VariableReassignment)
     EXPECT_NE(r3.output.find("20"), std::string::npos);
 }
 
-TEST(BasicRepl, SubDefinitionAndCall)
-{
+TEST(BasicRepl, SubDefinitionAndCall) {
     BasicReplAdapter adapter;
 
     auto r1 = adapter.eval("SUB Greet()\n  PRINT \"Hello from SUB\"\nEND SUB");
@@ -213,8 +189,7 @@ TEST(BasicRepl, SubDefinitionAndCall)
     EXPECT_NE(r2.output.find("Hello from SUB"), std::string::npos);
 }
 
-TEST(BasicRepl, FunctionDefinitionAndCall)
-{
+TEST(BasicRepl, FunctionDefinitionAndCall) {
     BasicReplAdapter adapter;
 
     auto r1 =
@@ -226,8 +201,7 @@ TEST(BasicRepl, FunctionDefinitionAndCall)
     EXPECT_NE(r2.output.find("42"), std::string::npos);
 }
 
-TEST(BasicRepl, ErrorRecovery)
-{
+TEST(BasicRepl, ErrorRecovery) {
     BasicReplAdapter adapter;
 
     // Valid first
@@ -244,8 +218,7 @@ TEST(BasicRepl, ErrorRecovery)
     EXPECT_NE(r3.output.find("42"), std::string::npos);
 }
 
-TEST(BasicRepl, ListVariables)
-{
+TEST(BasicRepl, ListVariables) {
     BasicReplAdapter adapter;
     adapter.eval("DIM x AS Integer = 42");
     adapter.eval("DIM name AS String = \"test\"");
@@ -258,8 +231,7 @@ TEST(BasicRepl, ListVariables)
     EXPECT_EQ(vars[1].type, "String");
 }
 
-TEST(BasicRepl, ListFunctions)
-{
+TEST(BasicRepl, ListFunctions) {
     BasicReplAdapter adapter;
     adapter.eval("SUB Hello()\n  PRINT \"hi\"\nEND SUB");
 
@@ -268,15 +240,13 @@ TEST(BasicRepl, ListFunctions)
     EXPECT_EQ(funcs[0].name, "Hello");
 }
 
-TEST(BasicRepl, NoBinds)
-{
+TEST(BasicRepl, NoBinds) {
     BasicReplAdapter adapter;
     auto binds = adapter.listBinds();
     EXPECT_TRUE(binds.empty());
 }
 
-TEST(BasicRepl, Reset)
-{
+TEST(BasicRepl, Reset) {
     BasicReplAdapter adapter;
     adapter.eval("DIM x AS Integer = 42");
     adapter.eval("SUB Hi()\n  PRINT \"hi\"\nEND SUB");
@@ -289,8 +259,7 @@ TEST(BasicRepl, Reset)
     EXPECT_TRUE(funcs.empty());
 }
 
-TEST(BasicRepl, LanguageName)
-{
+TEST(BasicRepl, LanguageName) {
     BasicReplAdapter adapter;
     EXPECT_EQ(adapter.languageName(), "basic");
 }
@@ -299,17 +268,14 @@ TEST(BasicRepl, LanguageName)
 // BASIC tab completion tests
 // ---------------------------------------------------------------------------
 
-TEST(BasicCompletion, KeywordCompletion)
-{
+TEST(BasicCompletion, KeywordCompletion) {
     BasicReplAdapter adapter;
     auto matches = adapter.complete("PRI", 3);
 
     // Should have PRINT
     bool found = false;
-    for (const auto &m : matches)
-    {
-        if (m.find("PRINT") != std::string::npos)
-        {
+    for (const auto &m : matches) {
+        if (m.find("PRINT") != std::string::npos) {
             found = true;
             break;
         }
@@ -317,17 +283,14 @@ TEST(BasicCompletion, KeywordCompletion)
     EXPECT_TRUE(found);
 }
 
-TEST(BasicCompletion, VariableCompletion)
-{
+TEST(BasicCompletion, VariableCompletion) {
     BasicReplAdapter adapter;
     adapter.eval("DIM myCounter AS Integer = 0");
 
     auto matches = adapter.complete("myC", 3);
     bool found = false;
-    for (const auto &m : matches)
-    {
-        if (m.find("myCounter") != std::string::npos)
-        {
+    for (const auto &m : matches) {
+        if (m.find("myCounter") != std::string::npos) {
             found = true;
             break;
         }
@@ -335,23 +298,19 @@ TEST(BasicCompletion, VariableCompletion)
     EXPECT_TRUE(found);
 }
 
-TEST(BasicCompletion, EmptyInput)
-{
+TEST(BasicCompletion, EmptyInput) {
     BasicReplAdapter adapter;
     auto matches = adapter.complete("", 0);
     EXPECT_TRUE(matches.empty());
 }
 
-TEST(BasicCompletion, CaseInsensitive)
-{
+TEST(BasicCompletion, CaseInsensitive) {
     BasicReplAdapter adapter;
     // Lowercase "di" should match uppercase DIM
     auto matches = adapter.complete("DI", 2);
     bool found = false;
-    for (const auto &m : matches)
-    {
-        if (m.find("DIM") != std::string::npos)
-        {
+    for (const auto &m : matches) {
+        if (m.find("DIM") != std::string::npos) {
             found = true;
             break;
         }
@@ -363,8 +322,7 @@ TEST(BasicCompletion, CaseInsensitive)
 // BASIC classifier via adapter interface
 // ---------------------------------------------------------------------------
 
-TEST(BasicRepl, ClassifyInputUsesBasicRules)
-{
+TEST(BasicRepl, ClassifyInputUsesBasicRules) {
     BasicReplAdapter adapter;
     // Bracket-only Zia classifier would say this is complete (no brackets).
     // BASIC classifier should detect the incomplete block.
@@ -374,7 +332,6 @@ TEST(BasicRepl, ClassifyInputUsesBasicRules)
 
 } // anonymous namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

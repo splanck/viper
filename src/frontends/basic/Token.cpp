@@ -23,10 +23,8 @@
 
 #include <cstddef>
 
-namespace il::frontends::basic
-{
-namespace
-{
+namespace il::frontends::basic {
+namespace {
 constexpr const char *kTokenNames[] = {
 #define TOKEN(K, S) S,
 #include "frontends/basic/TokenKinds.def"
@@ -46,11 +44,9 @@ static_assert(kTokenNameCount == static_cast<std::size_t>(TokenKind::Count),
 ///          entries surface during compilation.
 /// @param k Token kind to convert.
 /// @return Null-terminated string naming @p k, or "?" if no mapping exists.
-const char *tokenKindToString(TokenKind k)
-{
+const char *tokenKindToString(TokenKind k) {
     const auto index = static_cast<std::size_t>(k);
-    if (index < kTokenNameCount)
-    {
+    if (index < kTokenNameCount) {
         return kTokenNames[index];
     }
     return "?";

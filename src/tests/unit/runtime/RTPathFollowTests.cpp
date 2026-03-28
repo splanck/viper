@@ -13,8 +13,7 @@ static int tests_failed = 0;
 
 #define TEST(name) static void test_##name()
 #define RUN_TEST(name)                                                                             \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("  %s...", #name);                                                                  \
         test_##name();                                                                             \
         printf(" OK\n");                                                                           \
@@ -22,18 +21,15 @@ static int tests_failed = 0;
     } while (0)
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
             tests_failed++;                                                                        \
             return;                                                                                \
         }                                                                                          \
     } while (0)
 
-TEST(create_destroy)
-{
+TEST(create_destroy) {
     rt_pathfollow path = rt_pathfollow_new();
     ASSERT(path != NULL);
     ASSERT(rt_pathfollow_point_count(path) == 0);
@@ -41,8 +37,7 @@ TEST(create_destroy)
     rt_pathfollow_destroy(path);
 }
 
-TEST(add_points)
-{
+TEST(add_points) {
     rt_pathfollow path = rt_pathfollow_new();
 
     ASSERT(rt_pathfollow_add_point(path, 0, 0) == 1);
@@ -54,8 +49,7 @@ TEST(add_points)
     rt_pathfollow_destroy(path);
 }
 
-TEST(start_stop)
-{
+TEST(start_stop) {
     rt_pathfollow path = rt_pathfollow_new();
     rt_pathfollow_add_point(path, 0, 0);
     rt_pathfollow_add_point(path, 100000, 0);
@@ -76,8 +70,7 @@ TEST(start_stop)
     rt_pathfollow_destroy(path);
 }
 
-TEST(movement)
-{
+TEST(movement) {
     rt_pathfollow path = rt_pathfollow_new();
     rt_pathfollow_add_point(path, 0, 0);
     /// @brief Rt_pathfollow_add_point.
@@ -94,8 +87,7 @@ TEST(movement)
     rt_pathfollow_destroy(path);
 }
 
-TEST(once_mode)
-{
+TEST(once_mode) {
     rt_pathfollow path = rt_pathfollow_new();
     rt_pathfollow_add_point(path, 0, 0);
     /// @brief Rt_pathfollow_add_point.
@@ -106,8 +98,7 @@ TEST(once_mode)
     rt_pathfollow_start(path);
 
     // Run to completion
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         rt_pathfollow_update(path, 100);
     }
 
@@ -117,8 +108,7 @@ TEST(once_mode)
     rt_pathfollow_destroy(path);
 }
 
-TEST(loop_mode)
-{
+TEST(loop_mode) {
     rt_pathfollow path = rt_pathfollow_new();
     rt_pathfollow_add_point(path, 0, 0);
     rt_pathfollow_add_point(path, 10000, 0);
@@ -127,8 +117,7 @@ TEST(loop_mode)
     rt_pathfollow_start(path);
 
     // Run past end
-    for (int i = 0; i < 20; i++)
-    {
+    for (int i = 0; i < 20; i++) {
         rt_pathfollow_update(path, 100);
     }
 
@@ -139,8 +128,7 @@ TEST(loop_mode)
     rt_pathfollow_destroy(path);
 }
 
-TEST(pingpong_mode)
-{
+TEST(pingpong_mode) {
     rt_pathfollow path = rt_pathfollow_new();
     rt_pathfollow_add_point(path, 0, 0);
     rt_pathfollow_add_point(path, 10000, 0);
@@ -149,14 +137,12 @@ TEST(pingpong_mode)
     rt_pathfollow_start(path);
 
     // Run to end
-    for (int i = 0; i < 5; i++)
-    {
+    for (int i = 0; i < 5; i++) {
         rt_pathfollow_update(path, 50);
     }
 
     // Should be near end, then reversing
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         rt_pathfollow_update(path, 50);
     }
 
@@ -166,8 +152,7 @@ TEST(pingpong_mode)
     rt_pathfollow_destroy(path);
 }
 
-TEST(progress)
-{
+TEST(progress) {
     rt_pathfollow path = rt_pathfollow_new();
     rt_pathfollow_add_point(path, 0, 0);
     rt_pathfollow_add_point(path, 100000, 0);
@@ -184,8 +169,7 @@ TEST(progress)
     rt_pathfollow_destroy(path);
 }
 
-TEST(set_progress)
-{
+TEST(set_progress) {
     rt_pathfollow path = rt_pathfollow_new();
     rt_pathfollow_add_point(path, 0, 0);
     rt_pathfollow_add_point(path, 100000, 0);
@@ -198,8 +182,7 @@ TEST(set_progress)
     rt_pathfollow_destroy(path);
 }
 
-TEST(clear)
-{
+TEST(clear) {
     rt_pathfollow path = rt_pathfollow_new();
     rt_pathfollow_add_point(path, 0, 0);
     rt_pathfollow_add_point(path, 100000, 0);
@@ -212,8 +195,7 @@ TEST(clear)
     rt_pathfollow_destroy(path);
 }
 
-TEST(segment)
-{
+TEST(segment) {
     rt_pathfollow path = rt_pathfollow_new();
     rt_pathfollow_add_point(path, 0, 0);
     rt_pathfollow_add_point(path, 100000, 0);
@@ -232,8 +214,7 @@ TEST(segment)
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     printf("RTPathFollowTests:\n");
     RUN_TEST(create_destroy);
     RUN_TEST(add_points);

@@ -24,8 +24,7 @@
 
 #include "frontends/common/NameMangler.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // Re-export common OOP name mangling functions for BASIC frontend compatibility
 using ::il::frontends::common::mangleClassCtor;

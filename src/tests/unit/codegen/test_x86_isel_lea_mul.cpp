@@ -43,14 +43,12 @@ using namespace viper::codegen::x64;
 // Helpers
 // ---------------------------------------------------------------------------
 
-namespace
-{
+namespace {
 
 /// Build a minimal MFunction containing:
 ///   MOVri  vreg1, <factor>
 ///   IMULrr vreg2, vreg1
-MFunction buildMulFunc(int64_t factor)
-{
+MFunction buildMulFunc(int64_t factor) {
     MFunction fn{};
     fn.name = "test_mul";
 
@@ -70,8 +68,7 @@ MFunction buildMulFunc(int64_t factor)
 }
 
 /// Build a MFunction where the constant register has two uses.
-MFunction buildMultiUseMulFunc(int64_t factor)
-{
+MFunction buildMultiUseMulFunc(int64_t factor) {
     MFunction fn{};
     fn.name = "test_mul_multiuse";
 
@@ -93,8 +90,7 @@ MFunction buildMultiUseMulFunc(int64_t factor)
     return fn;
 }
 
-bool hasOpcode(const MFunction &fn, MOpcode op)
-{
+bool hasOpcode(const MFunction &fn, MOpcode op) {
     for (const auto &block : fn.blocks)
         for (const auto &instr : block.instructions)
             if (instr.opcode == op)
@@ -103,8 +99,7 @@ bool hasOpcode(const MFunction &fn, MOpcode op)
 }
 
 /// Count total occurrences of an opcode in a function.
-int countOpcode(const MFunction &fn, MOpcode op)
-{
+int countOpcode(const MFunction &fn, MOpcode op) {
     int n = 0;
     for (const auto &block : fn.blocks)
         for (const auto &instr : block.instructions)
@@ -114,12 +109,9 @@ int countOpcode(const MFunction &fn, MOpcode op)
 }
 
 /// Return the scale used in the LEA memory operand, or 0 if not found.
-uint8_t leaScale(const MFunction &fn)
-{
-    for (const auto &block : fn.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+uint8_t leaScale(const MFunction &fn) {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.opcode != MOpcode::LEA || instr.operands.size() < 2)
                 continue;
             if (const auto *mem = std::get_if<OpMem>(&instr.operands[1]))
@@ -134,8 +126,7 @@ uint8_t leaScale(const MFunction &fn)
 // ---------------------------------------------------------------------------
 // Test 1: IMULrr by 3 → LEA with scale=2
 // ---------------------------------------------------------------------------
-TEST(X86ISelLeaMul, Factor3ToLeaScale2)
-{
+TEST(X86ISelLeaMul, Factor3ToLeaScale2) {
     auto fn = buildMulFunc(3);
     ISel isel{sysvTarget()};
     isel.lowerArithmetic(fn);
@@ -154,8 +145,7 @@ TEST(X86ISelLeaMul, Factor3ToLeaScale2)
 // ---------------------------------------------------------------------------
 // Test 2: IMULrr by 5 → LEA with scale=4
 // ---------------------------------------------------------------------------
-TEST(X86ISelLeaMul, Factor5ToLeaScale4)
-{
+TEST(X86ISelLeaMul, Factor5ToLeaScale4) {
     auto fn = buildMulFunc(5);
     ISel isel{sysvTarget()};
     isel.lowerArithmetic(fn);
@@ -169,8 +159,7 @@ TEST(X86ISelLeaMul, Factor5ToLeaScale4)
 // ---------------------------------------------------------------------------
 // Test 3: IMULrr by 9 → LEA with scale=8
 // ---------------------------------------------------------------------------
-TEST(X86ISelLeaMul, Factor9ToLeaScale8)
-{
+TEST(X86ISelLeaMul, Factor9ToLeaScale8) {
     auto fn = buildMulFunc(9);
     ISel isel{sysvTarget()};
     isel.lowerArithmetic(fn);
@@ -184,8 +173,7 @@ TEST(X86ISelLeaMul, Factor9ToLeaScale8)
 // ---------------------------------------------------------------------------
 // Test 4: IMULrr by 2 → NOT transformed to LEA (power-of-2 → peephole SHL)
 // ---------------------------------------------------------------------------
-TEST(X86ISelLeaMul, Factor2NoLea)
-{
+TEST(X86ISelLeaMul, Factor2NoLea) {
     auto fn = buildMulFunc(2);
     ISel isel{sysvTarget()};
     isel.lowerArithmetic(fn);
@@ -198,8 +186,7 @@ TEST(X86ISelLeaMul, Factor2NoLea)
 // ---------------------------------------------------------------------------
 // Test 5: IMULrr by 7 → NOT transformed (7 != 1+2^k for any k)
 // ---------------------------------------------------------------------------
-TEST(X86ISelLeaMul, Factor7NoLea)
-{
+TEST(X86ISelLeaMul, Factor7NoLea) {
     auto fn = buildMulFunc(7);
     ISel isel{sysvTarget()};
     isel.lowerArithmetic(fn);
@@ -211,8 +198,7 @@ TEST(X86ISelLeaMul, Factor7NoLea)
 // ---------------------------------------------------------------------------
 // Test 6: Multi-use constant → IMUL kept, MOVri not erased
 // ---------------------------------------------------------------------------
-TEST(X86ISelLeaMul, MultiUseConstantNotFolded)
-{
+TEST(X86ISelLeaMul, MultiUseConstantNotFolded) {
     auto fn = buildMultiUseMulFunc(3);
     ISel isel{sysvTarget()};
     isel.lowerArithmetic(fn);
@@ -225,8 +211,7 @@ TEST(X86ISelLeaMul, MultiUseConstantNotFolded)
     EXPECT_FALSE(hasOpcode(fn, MOpcode::LEA));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

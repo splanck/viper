@@ -24,19 +24,15 @@
 ///          representation.  Formatting choices mirror the statement printer so
 ///          AST dumps remain both human-readable and deterministic.
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-namespace
-{
-} // namespace
+namespace {} // namespace
 
 /// @brief Visitor that renders expression nodes to the printer's stream.
 /// @details Each override emits prefix-style textual forms that match the
 ///          companion statement printer, ensuring dumps remain stable and easy
 ///          to parse visually.
-struct AstPrinter::ExprPrinter final : ExprVisitor
-{
+struct AstPrinter::ExprPrinter final : ExprVisitor {
     /// @brief Construct the visitor with a destination printer.
     /// @details The style parameter is currently unused but preserved so
     ///          expression and statement visitors share a consistent signature.
@@ -47,8 +43,7 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     /// @brief Dispatch expression printing through the visitor interface.
     /// @details Delegates to @ref Expr::accept, enabling virtual dispatch across
     ///          the node hierarchy while keeping the call site concise.
-    void print(const Expr &expr)
-    {
+    void print(const Expr &expr) {
         expr.accept(*this);
     }
 
@@ -56,16 +51,14 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     /// @details Employs a `static_assert` so that adding a new node kind without
     ///          updating the printer yields a compiler error rather than a silent
     ///          omission from dumps.
-    template <typename NodeT> void visit([[maybe_unused]] const NodeT &)
-    {
+    template <typename NodeT> void visit([[maybe_unused]] const NodeT &) {
         static_assert(sizeof(NodeT) == 0, "Unhandled expression node in AstPrinter");
     }
 
     /// @brief Print an integer literal expression.
     /// @details Writes the literal value verbatim, relying on the parser to have
     ///          normalised the token text already.
-    void visit(const IntExpr &expr) override
-    {
+    void visit(const IntExpr &expr) override {
         printer.os << expr.value;
     }
 
@@ -73,8 +66,7 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     /// @details Streams the value through an @c ostringstream so the default C++
     ///          formatting rules apply while avoiding locale-sensitive
     ///          behaviour.
-    void visit(const FloatExpr &expr) override
-    {
+    void visit(const FloatExpr &expr) override {
         std::ostringstream os;
         os << expr.value;
         printer.os << os.str();
@@ -84,35 +76,30 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     /// @details Emits the value wrapped in double quotes.  Characters are
     ///          written verbatim because the parser already normalises escape
     ///          sequences during AST construction.
-    void visit(const StringExpr &expr) override
-    {
+    void visit(const StringExpr &expr) override {
         printer.os << '"' << expr.value << '"';
     }
 
     /// @brief Print a boolean literal as TRUE/FALSE tokens.
     /// @details Uses uppercase tokens to match the BASIC surface syntax and
     ///          golden tests.
-    void visit(const BoolExpr &expr) override
-    {
+    void visit(const BoolExpr &expr) override {
         printer.os << (expr.value ? "TRUE" : "FALSE");
     }
 
     /// @brief Print a variable reference by name.
     /// @details Emits the canonical identifier spelling stored on the node.
-    void visit(const VarExpr &expr) override
-    {
+    void visit(const VarExpr &expr) override {
         printer.os << expr.name;
     }
 
     /// @brief Print an array element access with its index expression(s).
     /// @details Emits `name(expr)` or `name(i,j,k)` preserving the syntactic
     ///          order of the original index expressions.
-    void visit(const ArrayExpr &expr) override
-    {
+    void visit(const ArrayExpr &expr) override {
         printer.os << expr.name << '(';
         bool first = true;
-        for (const auto &indexPtr : expr.indices)
-        {
+        for (const auto &indexPtr : expr.indices) {
             if (!indexPtr)
                 continue;
             if (!first)
@@ -126,11 +113,9 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     /// @brief Print a unary expression with explicit operator tokens.
     /// @details Uses prefix notation to avoid ambiguity with chained unary
     ///          operators while keeping the textual output compact.
-    void visit(const UnaryExpr &expr) override
-    {
+    void visit(const UnaryExpr &expr) override {
         printer.os << '(';
-        switch (expr.op)
-        {
+        switch (expr.op) {
             case UnaryExpr::Op::LogicalNot:
                 printer.os << "NOT ";
                 break;
@@ -149,8 +134,7 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     /// @details The operator table mirrors the enum order so the visitor remains
     ///          data driven; prefix notation keeps evaluation order explicit for
     ///          nested expressions.
-    void visit(const BinaryExpr &expr) override
-    {
+    void visit(const BinaryExpr &expr) override {
         static constexpr std::array<const char *, 17> ops = {"+",
                                                              "-",
                                                              "*",
@@ -179,11 +163,9 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     /// @details Prepends the builtin mnemonic obtained from metadata and prints
     ///          each argument separated by spaces to match the prefix style used
     ///          throughout dumps.
-    void visit(const BuiltinCallExpr &expr) override
-    {
+    void visit(const BuiltinCallExpr &expr) override {
         printer.os << '(' << getBuiltinInfo(expr.builtin).name;
-        for (const auto &arg : expr.args)
-        {
+        for (const auto &arg : expr.args) {
             printer.os << ' ';
             arg->accept(*this);
         }
@@ -192,40 +174,32 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
 
     /// @brief Print an LBOUND expression with its array operand.
     /// @details Emits `(LBOUND name)` mirroring the parser's canonical form.
-    void visit(const LBoundExpr &expr) override
-    {
+    void visit(const LBoundExpr &expr) override {
         printer.os << "(LBOUND " << expr.name << ')';
     }
 
     /// @brief Print a UBOUND expression with its array operand.
     /// @details Mirrors the `LBOUND` formatting while using the appropriate
     ///          mnemonic.
-    void visit(const UBoundExpr &expr) override
-    {
+    void visit(const UBoundExpr &expr) override {
         printer.os << "(UBOUND " << expr.name << ')';
     }
 
     /// @brief Print a user-defined call expression with its argument list.
     /// @details Emits `(callee arg1 arg2 ...)`, retaining the argument order
     ///          recorded in the AST.
-    void visit(const CallExpr &expr) override
-    {
+    void visit(const CallExpr &expr) override {
         printer.os << '(';
-        if (!expr.calleeQualified.empty())
-        {
-            for (size_t i = 0; i < expr.calleeQualified.size(); ++i)
-            {
+        if (!expr.calleeQualified.empty()) {
+            for (size_t i = 0; i < expr.calleeQualified.size(); ++i) {
                 if (i)
                     printer.os << '.';
                 printer.os << expr.calleeQualified[i];
             }
-        }
-        else
-        {
+        } else {
             printer.os << expr.callee;
         }
-        for (const auto &arg : expr.args)
-        {
+        for (const auto &arg : expr.args) {
             printer.os << ' ';
             arg->accept(*this);
         }
@@ -235,24 +209,18 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     /// @brief Print an object construction expression.
     /// @details Serialises `(NEW ClassName args...)`, matching the lowering
     ///          pipeline's expectations when parsing dumps.
-    void visit(const NewExpr &expr) override
-    {
+    void visit(const NewExpr &expr) override {
         printer.os << "(NEW ";
-        if (!expr.qualifiedType.empty())
-        {
-            for (size_t i = 0; i < expr.qualifiedType.size(); ++i)
-            {
+        if (!expr.qualifiedType.empty()) {
+            for (size_t i = 0; i < expr.qualifiedType.size(); ++i) {
                 if (i)
                     printer.os << '.';
                 printer.os << expr.qualifiedType[i];
             }
-        }
-        else
-        {
+        } else {
             printer.os << expr.className;
         }
-        for (const auto &arg : expr.args)
-        {
+        for (const auto &arg : expr.args) {
             printer.os << ' ';
             arg->accept(*this);
         }
@@ -262,8 +230,7 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     /// @brief Print the ME receiver expression.
     /// @details Emits the keyword `ME`, mirroring how the source language refers
     ///          to the current instance inside type members.
-    void visit(const MeExpr &) override
-    {
+    void visit(const MeExpr &) override {
         printer.os << "Me";
     }
 
@@ -271,8 +238,7 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     /// @details Wraps the expression in parentheses to keep nesting unambiguous
     ///          and prints the base expression followed by `.` and the member
     ///          identifier.
-    void visit(const MemberAccessExpr &expr) override
-    {
+    void visit(const MemberAccessExpr &expr) override {
         printer.os << '(';
         expr.base->accept(*this);
         printer.os << '.' << expr.member << ')';
@@ -282,13 +248,11 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     /// @details Prints the receiver expression, the method name, and each
     ///          argument using the same prefix convention as other calls so
     ///          chained invocations remain easy to read.
-    void visit(const MethodCallExpr &expr) override
-    {
+    void visit(const MethodCallExpr &expr) override {
         printer.os << '(';
         expr.base->accept(*this);
         printer.os << '.' << expr.method;
-        for (const auto &arg : expr.args)
-        {
+        for (const auto &arg : expr.args) {
             printer.os << ' ';
             arg->accept(*this);
         }
@@ -296,13 +260,11 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print an IS expression as (IS <expr> <dotted-type>).
-    void visit(const IsExpr &expr) override
-    {
+    void visit(const IsExpr &expr) override {
         printer.os << "(IS ";
         expr.value->accept(*this);
         printer.os << ' ';
-        for (size_t i = 0; i < expr.typeName.size(); ++i)
-        {
+        for (size_t i = 0; i < expr.typeName.size(); ++i) {
             if (i)
                 printer.os << '.';
             printer.os << expr.typeName[i];
@@ -311,13 +273,11 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print an AS expression as (AS <expr> <dotted-type>).
-    void visit(const AsExpr &expr) override
-    {
+    void visit(const AsExpr &expr) override {
         printer.os << "(AS ";
         expr.value->accept(*this);
         printer.os << ' ';
-        for (size_t i = 0; i < expr.typeName.size(); ++i)
-        {
+        for (size_t i = 0; i < expr.typeName.size(); ++i) {
             if (i)
                 printer.os << '.';
             printer.os << expr.typeName[i];
@@ -326,8 +286,7 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
     }
 
     /// @brief Print an ADDRESSOF expression as (ADDRESSOF <name>).
-    void visit(const AddressOfExpr &expr) override
-    {
+    void visit(const AddressOfExpr &expr) override {
         printer.os << "(ADDRESSOF " << expr.targetName << ')';
     }
 
@@ -339,8 +298,7 @@ struct AstPrinter::ExprPrinter final : ExprVisitor
 /// @details Constructs the visitor and forwards the expression and style, which
 ///          allows the caller to remain agnostic to the concrete visitor
 ///          implementation.
-void AstPrinter::printExpr(const Expr &expr, Printer &printer, PrintStyle &style)
-{
+void AstPrinter::printExpr(const Expr &expr, Printer &printer, PrintStyle &style) {
     ExprPrinter exprPrinter{printer, style};
     exprPrinter.print(expr);
 }

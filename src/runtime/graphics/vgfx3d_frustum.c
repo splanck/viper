@@ -38,8 +38,7 @@
  *=========================================================================*/
 
 /// @brief 3D Frustum Extract operation.
-void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16])
-{
+void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16]) {
     /* Left: row3 + row0 */
     f->planes[0][0] = vp[12] + vp[0];
     f->planes[0][1] = vp[13] + vp[1];
@@ -77,12 +76,10 @@ void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16])
     f->planes[5][3] = vp[15] - vp[11];
 
     /* Normalize each plane so distance tests give metric results */
-    for (int i = 0; i < 6; i++)
-    {
+    for (int i = 0; i < 6; i++) {
         float len = sqrtf(f->planes[i][0] * f->planes[i][0] + f->planes[i][1] * f->planes[i][1] +
                           f->planes[i][2] * f->planes[i][2]);
-        if (len > 1e-8f)
-        {
+        if (len > 1e-8f) {
             float inv = 1.0f / len;
             f->planes[i][0] *= inv;
             f->planes[i][1] *= inv;
@@ -102,11 +99,9 @@ void vgfx3d_frustum_extract(vgfx3d_frustum_t *f, const float vp[16])
  *=========================================================================*/
 
 /// @brief 3D Frustum Test Aabb operation.
-int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], const float max[3])
-{
+int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], const float max[3]) {
     int result = 2; /* assume fully inside */
-    for (int i = 0; i < 6; i++)
-    {
+    for (int i = 0; i < 6; i++) {
         /* Select p-vertex: corner most along plane normal */
         float px = f->planes[i][0] >= 0 ? max[0] : min[0];
         float py = f->planes[i][1] >= 0 ? max[1] : min[1];
@@ -133,11 +128,9 @@ int vgfx3d_frustum_test_aabb(const vgfx3d_frustum_t *f, const float min[3], cons
  *=========================================================================*/
 
 /// @brief 3D Frustum Test Sphere operation.
-int vgfx3d_frustum_test_sphere(const vgfx3d_frustum_t *f, const float center[3], float radius)
-{
+int vgfx3d_frustum_test_sphere(const vgfx3d_frustum_t *f, const float center[3], float radius) {
     int result = 2; /* assume fully inside */
-    for (int i = 0; i < 6; i++)
-    {
+    for (int i = 0; i < 6; i++) {
         float dist = f->planes[i][0] * center[0] + f->planes[i][1] * center[1] +
                      f->planes[i][2] * center[2] + f->planes[i][3];
         if (dist < -radius)
@@ -159,14 +152,12 @@ void vgfx3d_transform_aabb(const float obj_min[3],
                            const float obj_max[3],
                            const double world_matrix[16],
                            float out_min[3],
-                           float out_max[3])
-{
+                           float out_max[3]) {
     out_min[0] = out_min[1] = out_min[2] = FLT_MAX;
     out_max[0] = out_max[1] = out_max[2] = -FLT_MAX;
 
     /* Iterate all 8 corners of the AABB */
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         float cx = (i & 1) ? obj_max[0] : obj_min[0];
         float cy = (i & 2) ? obj_max[1] : obj_min[1];
         float cz = (i & 4) ? obj_max[2] : obj_min[2];
@@ -202,24 +193,20 @@ void vgfx3d_compute_mesh_aabb(const void *vertices,
                               uint32_t vertex_count,
                               uint32_t vertex_stride,
                               float out_min[3],
-                              float out_max[3])
-{
+                              float out_max[3]) {
     out_min[0] = out_min[1] = out_min[2] = FLT_MAX;
     out_max[0] = out_max[1] = out_max[2] = -FLT_MAX;
 
-    if (!vertices || vertex_count == 0)
-    {
+    if (!vertices || vertex_count == 0) {
         out_min[0] = out_min[1] = out_min[2] = 0.0f;
         out_max[0] = out_max[1] = out_max[2] = 0.0f;
         return;
     }
 
     const uint8_t *base = (const uint8_t *)vertices;
-    for (uint32_t i = 0; i < vertex_count; i++)
-    {
+    for (uint32_t i = 0; i < vertex_count; i++) {
         const float *pos = (const float *)(base + i * vertex_stride);
-        for (int j = 0; j < 3; j++)
-        {
+        for (int j = 0; j < 3; j++) {
             if (pos[j] < out_min[j])
                 out_min[j] = pos[j];
             if (pos[j] > out_max[j])

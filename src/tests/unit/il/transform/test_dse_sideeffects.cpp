@@ -27,12 +27,10 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Make dseregistry.
-il::transform::AnalysisRegistry makeDSERegistry()
-{
+il::transform::AnalysisRegistry makeDSERegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
         "basic-aa", [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
@@ -40,8 +38,7 @@ il::transform::AnalysisRegistry makeDSERegistry()
 }
 
 /// @brief Make alloca.
-Instr makeAlloca(unsigned id, Type::Kind typeKind = Type::Kind::Ptr)
-{
+Instr makeAlloca(unsigned id, Type::Kind typeKind = Type::Kind::Ptr) {
     Instr instr;
     instr.result = id;
     instr.op = Opcode::Alloca;
@@ -51,8 +48,7 @@ Instr makeAlloca(unsigned id, Type::Kind typeKind = Type::Kind::Ptr)
 }
 
 /// @brief Make store.
-Instr makeStore(Value ptr, Value val, Type::Kind typeKind = Type::Kind::I64)
-{
+Instr makeStore(Value ptr, Value val, Type::Kind typeKind = Type::Kind::I64) {
     Instr instr;
     instr.op = Opcode::Store;
     instr.type = Type(typeKind);
@@ -61,8 +57,7 @@ Instr makeStore(Value ptr, Value val, Type::Kind typeKind = Type::Kind::I64)
 }
 
 /// @brief Make load.
-Instr makeLoad(unsigned resultId, Value ptr, Type::Kind typeKind = Type::Kind::I64)
-{
+Instr makeLoad(unsigned resultId, Value ptr, Type::Kind typeKind = Type::Kind::I64) {
     Instr instr;
     instr.result = resultId;
     instr.op = Opcode::Load;
@@ -72,8 +67,7 @@ Instr makeLoad(unsigned resultId, Value ptr, Type::Kind typeKind = Type::Kind::I
 }
 
 /// @brief Make ret.
-Instr makeRet(Value val)
-{
+Instr makeRet(Value val) {
     Instr instr;
     instr.op = Opcode::Ret;
     instr.type = Type(Type::Kind::I64);
@@ -82,8 +76,7 @@ Instr makeRet(Value val)
 }
 
 /// @brief Make ret void.
-Instr makeRetVoid()
-{
+Instr makeRetVoid() {
     Instr instr;
     instr.op = Opcode::Ret;
     instr.type = Type(Type::Kind::Void);
@@ -91,8 +84,7 @@ Instr makeRetVoid()
 }
 
 /// @brief Make br.
-Instr makeBr(const std::string &target)
-{
+Instr makeBr(const std::string &target) {
     Instr instr;
     instr.op = Opcode::Br;
     instr.type = Type(Type::Kind::Void);
@@ -102,8 +94,7 @@ Instr makeBr(const std::string &target)
 }
 
 /// @brief Count stores.
-size_t countStores(const Function &fn)
-{
+size_t countStores(const Function &fn) {
     size_t count = 0;
     for (const auto &bb : fn.blocks)
         for (const auto &instr : bb.instructions)
@@ -119,8 +110,7 @@ size_t countStores(const Function &fn)
 //    alloca %0 -> store(%0, 42) -> call @rt_print_i64(%0) -> ret 0
 //    The alloca escapes via the call argument, so the store must be preserved.
 // ---------------------------------------------------------------------------
-TEST(DSESideEffects, StoreReadByCall)
-{
+TEST(DSESideEffects, StoreReadByCall) {
     Module module;
 
     Extern ext;
@@ -165,8 +155,7 @@ TEST(DSESideEffects, StoreReadByCall)
 //    alloca A (%0), alloca B (%1) -> store(B, A) -> store(A, 42) -> ret 0
 //    A's address escapes because it is stored into B. Store to A is preserved.
 // ---------------------------------------------------------------------------
-TEST(DSESideEffects, StoreToEscapedAlloca)
-{
+TEST(DSESideEffects, StoreToEscapedAlloca) {
     Module module;
     Function fn;
     fn.name = "store_escaped_alloca";
@@ -203,8 +192,7 @@ TEST(DSESideEffects, StoreToEscapedAlloca)
 //    alloca %0 -> store(%0, 10) -> load %1 from %0 -> store(%0, 20) -> ret %1
 //    First store PRESERVED because the load reads it before the overwrite.
 // ---------------------------------------------------------------------------
-TEST(DSESideEffects, StoreThenLoadThenStore)
-{
+TEST(DSESideEffects, StoreThenLoadThenStore) {
     Module module;
     Function fn;
     fn.name = "store_load_store";
@@ -240,8 +228,7 @@ TEST(DSESideEffects, StoreThenLoadThenStore)
 //    dataflow has a successor to visit (single-block functions have no
 //    successors, making `visited.size() > 0` false in the cross-block pass).
 // ---------------------------------------------------------------------------
-TEST(DSESideEffects, DeadStoreNonEscaping)
-{
+TEST(DSESideEffects, DeadStoreNonEscaping) {
     Module module;
     Function fn;
     fn.name = "dead_store_non_escaping";
@@ -279,8 +266,7 @@ TEST(DSESideEffects, DeadStoreNonEscaping)
 //    alloca %0 -> store(%0, 10) -> store(%0, 20) -> load %1 from %0 -> ret %1
 //    First store ELIMINATED (overwritten before read), second preserved.
 // ---------------------------------------------------------------------------
-TEST(DSESideEffects, TwoStoresSameAddr)
-{
+TEST(DSESideEffects, TwoStoresSameAddr) {
     Module module;
     Function fn;
     fn.name = "two_stores_same_addr";
@@ -316,8 +302,7 @@ TEST(DSESideEffects, TwoStoresSameAddr)
 //    Store PRESERVED because the load in the successor reads it.
 //    (Intra-block DSE won't see the cross-block load, so the store survives.)
 // ---------------------------------------------------------------------------
-TEST(DSESideEffects, CrossBlockRead)
-{
+TEST(DSESideEffects, CrossBlockRead) {
     Module module;
     Function fn;
     fn.name = "cross_block_read";
@@ -359,8 +344,7 @@ TEST(DSESideEffects, CrossBlockRead)
 //    Store to B ELIMINATED by cross-block DSE (never read, doesn't escape).
 //    Uses two blocks so the cross-block dataflow has a successor to visit.
 // ---------------------------------------------------------------------------
-TEST(DSESideEffects, StoreLoadDifferentAllocas)
-{
+TEST(DSESideEffects, StoreLoadDifferentAllocas) {
     Module module;
     Function fn;
     fn.name = "store_load_diff_allocas";
@@ -396,12 +380,9 @@ TEST(DSESideEffects, StoreLoadDifferentAllocas)
     EXPECT_EQ(countStores(module.functions.front()), 1U);
 
     // Verify the surviving store is to alloca A (%0)
-    for (const auto &bb : module.functions.front().blocks)
-    {
-        for (const auto &instr : bb.instructions)
-        {
-            if (instr.op == Opcode::Store)
-            {
+    for (const auto &bb : module.functions.front().blocks) {
+        for (const auto &instr : bb.instructions) {
+            if (instr.op == Opcode::Store) {
                 EXPECT_EQ(instr.operands[0].kind, Value::Kind::Temp);
                 EXPECT_EQ(instr.operands[0].id, 0U); // alloca A
             }
@@ -414,8 +395,7 @@ TEST(DSESideEffects, StoreLoadDifferentAllocas)
 //    alloca %0 -> store(%0, 10) -> load %1 -> store(%0, 20) -> load %2 -> ret %2
 //    Both stores PRESERVED because each is read by a subsequent load.
 // ---------------------------------------------------------------------------
-TEST(DSESideEffects, MultipleStoresWithInterleavedLoad)
-{
+TEST(DSESideEffects, MultipleStoresWithInterleavedLoad) {
     Module module;
     Function fn;
     fn.name = "multi_store_interleaved_load";
@@ -443,8 +423,7 @@ TEST(DSESideEffects, MultipleStoresWithInterleavedLoad)
     EXPECT_EQ(countStores(module.functions.front()), 2U);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

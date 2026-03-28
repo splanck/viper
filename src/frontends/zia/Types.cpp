@@ -40,11 +40,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
-namespace
-{
+namespace {
 using InterfaceSet = std::unordered_set<std::string>;
 std::unordered_map<std::string, InterfaceSet> g_interface_impls;
 // BUG-VL-007 fix: Track entity inheritance (child -> parent)
@@ -55,16 +53,14 @@ std::unordered_map<std::string, std::string> g_entity_parents;
 // ViperType Implementation
 //=============================================================================
 
-bool ViperType::equals(const ViperType &other) const
-{
+bool ViperType::equals(const ViperType &other) const {
     if (kind != other.kind)
         return false;
     if (name != other.name)
         return false;
     if (typeArgs.size() != other.typeArgs.size())
         return false;
-    for (size_t i = 0; i < typeArgs.size(); ++i)
-    {
+    for (size_t i = 0; i < typeArgs.size(); ++i) {
         if (!typeArgs[i] || !other.typeArgs[i])
             return typeArgs[i] == other.typeArgs[i];
         if (!typeArgs[i]->equals(*other.typeArgs[i]))
@@ -73,8 +69,7 @@ bool ViperType::equals(const ViperType &other) const
     return true;
 }
 
-bool ViperType::isAssignableFrom(const ViperType &source) const
-{
+bool ViperType::isAssignableFrom(const ViperType &source) const {
     // Exact match
     if (equals(source))
         return true;
@@ -99,14 +94,12 @@ bool ViperType::isAssignableFrom(const ViperType &source) const
         return true;
 
     // Optional accepts its inner type and null
-    if (kind == TypeKindSem::Optional)
-    {
+    if (kind == TypeKindSem::Optional) {
         if (source.kind == TypeKindSem::Unit) // null
             return true;
         if (typeArgs.empty())
             return false;
-        if (source.kind == TypeKindSem::Optional)
-        {
+        if (source.kind == TypeKindSem::Optional) {
             // Optional[T] from Optional[T]
             return typeArgs[0]->isAssignableFrom(*source.typeArgs[0]);
         }
@@ -141,17 +134,14 @@ bool ViperType::isAssignableFrom(const ViperType &source) const
     // This handles empty literal inference ([] can be assigned to List[Integer])
     if ((kind == TypeKindSem::List && source.kind == TypeKindSem::List) ||
         (kind == TypeKindSem::Set && source.kind == TypeKindSem::Set) ||
-        (kind == TypeKindSem::Map && source.kind == TypeKindSem::Map))
-    {
+        (kind == TypeKindSem::Map && source.kind == TypeKindSem::Map)) {
         // If source has Unknown type arguments, it can be assigned to any matching container
-        if (!source.typeArgs.empty() && source.typeArgs[0]->kind == TypeKindSem::Unknown)
-        {
+        if (!source.typeArgs.empty() && source.typeArgs[0]->kind == TypeKindSem::Unknown) {
             return true;
         }
         // For maps, also check the value type
         if (kind == TypeKindSem::Map && source.typeArgs.size() >= 2 &&
-            source.typeArgs[1]->kind == TypeKindSem::Unknown)
-        {
+            source.typeArgs[1]->kind == TypeKindSem::Unknown) {
             return true;
         }
     }
@@ -159,8 +149,7 @@ bool ViperType::isAssignableFrom(const ViperType &source) const
     return false;
 }
 
-bool ViperType::isConvertibleTo(const ViperType &target) const
-{
+bool ViperType::isConvertibleTo(const ViperType &target) const {
     // Assignment is conversion
     if (target.isAssignableFrom(*this))
         return true;
@@ -194,12 +183,10 @@ bool ViperType::isConvertibleTo(const ViperType &target) const
     return false;
 }
 
-std::string ViperType::toString() const
-{
+std::string ViperType::toString() const {
     std::ostringstream ss;
 
-    switch (kind)
-    {
+    switch (kind) {
         case TypeKindSem::Integer:
             return "Integer";
         case TypeKindSem::Number:
@@ -262,8 +249,7 @@ std::string ViperType::toString() const
 
         case TypeKindSem::Function:
             ss << "(";
-            for (size_t i = 0; i + 1 < typeArgs.size(); ++i)
-            {
+            for (size_t i = 0; i + 1 < typeArgs.size(); ++i) {
                 if (i > 0)
                     ss << ", ";
                 ss << typeArgs[i]->toString();
@@ -277,8 +263,7 @@ std::string ViperType::toString() const
 
         case TypeKindSem::Tuple:
             ss << "(";
-            for (size_t i = 0; i < typeArgs.size(); ++i)
-            {
+            for (size_t i = 0; i < typeArgs.size(); ++i) {
                 if (i > 0)
                     ss << ", ";
                 ss << typeArgs[i]->toString();
@@ -291,11 +276,9 @@ std::string ViperType::toString() const
         case TypeKindSem::Interface:
         case TypeKindSem::Enum:
             ss << name;
-            if (!typeArgs.empty())
-            {
+            if (!typeArgs.empty()) {
                 ss << "[";
-                for (size_t i = 0; i < typeArgs.size(); ++i)
-                {
+                for (size_t i = 0; i < typeArgs.size(); ++i) {
                     if (i > 0)
                         ss << ", ";
                     ss << typeArgs[i]->toString();
@@ -323,21 +306,18 @@ std::string ViperType::toString() const
 // Type Factory Implementation
 //=============================================================================
 
-namespace types
-{
+namespace types {
 
-void clearInterfaceImplementations()
-{
+void clearInterfaceImplementations() {
     g_interface_impls.clear();
 }
 
-void registerInterfaceImplementation(const std::string &typeName, const std::string &interfaceName)
-{
+void registerInterfaceImplementation(const std::string &typeName,
+                                     const std::string &interfaceName) {
     g_interface_impls[typeName].insert(interfaceName);
 }
 
-bool implementsInterface(const std::string &typeName, const std::string &interfaceName)
-{
+bool implementsInterface(const std::string &typeName, const std::string &interfaceName) {
     auto it = g_interface_impls.find(typeName);
     if (it == g_interface_impls.end())
         return false;
@@ -345,22 +325,18 @@ bool implementsInterface(const std::string &typeName, const std::string &interfa
 }
 
 // BUG-VL-007 fix: Entity inheritance tracking
-void clearEntityInheritance()
-{
+void clearEntityInheritance() {
     g_entity_parents.clear();
 }
 
-void registerEntityInheritance(const std::string &childName, const std::string &parentName)
-{
+void registerEntityInheritance(const std::string &childName, const std::string &parentName) {
     g_entity_parents[childName] = parentName;
 }
 
-bool isSubclassOf(const std::string &childName, const std::string &parentName)
-{
+bool isSubclassOf(const std::string &childName, const std::string &parentName) {
     // Walk up the inheritance chain
     std::string current = childName;
-    while (!current.empty())
-    {
+    while (!current.empty()) {
         auto it = g_entity_parents.find(current);
         if (it == g_entity_parents.end())
             return false; // No parent, not a subclass
@@ -371,11 +347,9 @@ bool isSubclassOf(const std::string &childName, const std::string &parentName)
     return false;
 }
 
-namespace
-{
+namespace {
 // Singleton cache for primitive types
-struct TypeCache
-{
+struct TypeCache {
     TypeRef integerType;
     TypeRef numberType;
     TypeRef booleanType;
@@ -389,15 +363,13 @@ struct TypeCache
     TypeRef neverType;
     TypeRef anyType;
 
-    static TypeCache &instance()
-    {
+    static TypeCache &instance() {
         static TypeCache cache;
         return cache;
     }
 
   private:
-    TypeCache()
-    {
+    TypeCache() {
         integerType = std::make_shared<ViperType>(TypeKindSem::Integer);
         numberType = std::make_shared<ViperType>(TypeKindSem::Number);
         booleanType = std::make_shared<ViperType>(TypeKindSem::Boolean);
@@ -414,83 +386,67 @@ struct TypeCache
 };
 } // anonymous namespace
 
-TypeRef integer()
-{
+TypeRef integer() {
     return TypeCache::instance().integerType;
 }
 
-TypeRef number()
-{
+TypeRef number() {
     return TypeCache::instance().numberType;
 }
 
-TypeRef boolean()
-{
+TypeRef boolean() {
     return TypeCache::instance().booleanType;
 }
 
-TypeRef string()
-{
+TypeRef string() {
     return TypeCache::instance().stringType;
 }
 
-TypeRef byte()
-{
+TypeRef byte() {
     return TypeCache::instance().byteType;
 }
 
-TypeRef unit()
-{
+TypeRef unit() {
     return TypeCache::instance().unitType;
 }
 
-TypeRef voidType()
-{
+TypeRef voidType() {
     return TypeCache::instance().voidType;
 }
 
-TypeRef error()
-{
+TypeRef error() {
     return TypeCache::instance().errorType;
 }
 
-TypeRef ptr()
-{
+TypeRef ptr() {
     return TypeCache::instance().ptrType;
 }
 
-TypeRef unknown()
-{
+TypeRef unknown() {
     return TypeCache::instance().unknownType;
 }
 
-TypeRef never()
-{
+TypeRef never() {
     return TypeCache::instance().neverType;
 }
 
-TypeRef any()
-{
+TypeRef any() {
     return TypeCache::instance().anyType;
 }
 
-TypeRef optional(TypeRef inner)
-{
+TypeRef optional(TypeRef inner) {
     return std::make_shared<ViperType>(TypeKindSem::Optional, std::vector<TypeRef>{inner});
 }
 
-TypeRef result(TypeRef successType)
-{
+TypeRef result(TypeRef successType) {
     return std::make_shared<ViperType>(TypeKindSem::Result, std::vector<TypeRef>{successType});
 }
 
-TypeRef list(TypeRef element)
-{
+TypeRef list(TypeRef element) {
     return std::make_shared<ViperType>(TypeKindSem::List, std::vector<TypeRef>{element});
 }
 
-TypeRef seqOf(TypeRef element)
-{
+TypeRef seqOf(TypeRef element) {
     // Represent a typed rt_seq as Ptr{name="Viper.Collections.Seq", typeArgs=[element]}.
     // This sentinel allows the lowerer to route to kSeqLen/kSeqGet rather than
     // kListCount/kListGet, since rt_seq and rt_list have incompatible layouts.
@@ -499,68 +455,56 @@ TypeRef seqOf(TypeRef element)
                                        std::vector<TypeRef>{std::move(element)});
 }
 
-TypeRef set(TypeRef element)
-{
+TypeRef set(TypeRef element) {
     return std::make_shared<ViperType>(TypeKindSem::Set, std::vector<TypeRef>{element});
 }
 
-TypeRef map(TypeRef key, TypeRef value)
-{
+TypeRef map(TypeRef key, TypeRef value) {
     return std::make_shared<ViperType>(TypeKindSem::Map, std::vector<TypeRef>{key, value});
 }
 
-TypeRef function(std::vector<TypeRef> params, TypeRef ret)
-{
+TypeRef function(std::vector<TypeRef> params, TypeRef ret) {
     params.push_back(ret); // Store return type at the end
     return std::make_shared<ViperType>(TypeKindSem::Function, std::move(params));
 }
 
-TypeRef tuple(std::vector<TypeRef> elements)
-{
+TypeRef tuple(std::vector<TypeRef> elements) {
     return std::make_shared<ViperType>(TypeKindSem::Tuple, std::move(elements));
 }
 
-TypeRef value(const std::string &name, std::vector<TypeRef> typeParams)
-{
+TypeRef value(const std::string &name, std::vector<TypeRef> typeParams) {
     return std::make_shared<ViperType>(TypeKindSem::Value, name, std::move(typeParams));
 }
 
-TypeRef entity(const std::string &name, std::vector<TypeRef> typeParams)
-{
+TypeRef entity(const std::string &name, std::vector<TypeRef> typeParams) {
     return std::make_shared<ViperType>(TypeKindSem::Entity, name, std::move(typeParams));
 }
 
-TypeRef interface(const std::string &name, std::vector<TypeRef> typeParams)
-{
+TypeRef interface(const std::string &name, std::vector<TypeRef> typeParams) {
     return std::make_shared<ViperType>(TypeKindSem::Interface, name, std::move(typeParams));
 }
 
-TypeRef enumType(const std::string &name)
-{
+TypeRef enumType(const std::string &name) {
     return std::make_shared<ViperType>(TypeKindSem::Enum, name);
 }
 
-TypeRef typeParam(const std::string &name)
-{
+TypeRef typeParam(const std::string &name) {
     return std::make_shared<ViperType>(TypeKindSem::TypeParam, name);
 }
 
-TypeRef runtimeClass(const std::string &name)
-{
+TypeRef runtimeClass(const std::string &name) {
     // Create a Ptr type with the runtime class name
     // This allows us to track the class name for method resolution
     return std::make_shared<ViperType>(TypeKindSem::Ptr, name);
 }
 
-TypeRef module(const std::string &name)
-{
+TypeRef module(const std::string &name) {
     // Create a Module type with the module name
     // This allows qualified access like moduleName.symbol
     return std::make_shared<ViperType>(TypeKindSem::Module, name);
 }
 
-TypeRef fixedArray(TypeRef elemType, size_t count)
-{
+TypeRef fixedArray(TypeRef elemType, size_t count) {
     return std::make_shared<ViperType>(TypeKindSem::FixedArray, std::move(elemType), count);
 }
 
@@ -570,10 +514,8 @@ TypeRef fixedArray(TypeRef elemType, size_t count)
 // IL Type Mapping
 //=============================================================================
 
-il::core::Type::Kind toILType(const ViperType &type)
-{
-    switch (type.kind)
-    {
+il::core::Type::Kind toILType(const ViperType &type) {
+    switch (type.kind) {
         case TypeKindSem::Integer:
         case TypeKindSem::Enum:
             return il::core::Type::Kind::I64;
@@ -613,10 +555,8 @@ il::core::Type::Kind toILType(const ViperType &type)
         // Optional reference types (String?, Entity?) use the inner type directly
         // at the IL level since they are already nullable pointers (null = none).
         // Optional value types (Integer?) need a flag+value wrapper → Ptr.
-        case TypeKindSem::Optional:
-        {
-            if (!type.typeArgs.empty())
-            {
+        case TypeKindSem::Optional: {
+            if (!type.typeArgs.empty()) {
                 auto innerKind = toILType(*type.typeArgs[0]);
                 // Ptr and Str are both nullable pointer types at the IL level,
                 // so Optional wrapping them is a no-op — just use the inner type.
@@ -663,10 +603,8 @@ il::core::Type::Kind toILType(const ViperType &type)
     return il::core::Type::Kind::Void;
 }
 
-size_t typeSize(const ViperType &type)
-{
-    switch (type.kind)
-    {
+size_t typeSize(const ViperType &type) {
+    switch (type.kind) {
         case TypeKindSem::Integer:
             return 8;
         case TypeKindSem::Number:
@@ -727,10 +665,8 @@ size_t typeSize(const ViperType &type)
     return 0;
 }
 
-size_t typeAlignment(const ViperType &type)
-{
-    switch (type.kind)
-    {
+size_t typeAlignment(const ViperType &type) {
+    switch (type.kind) {
         case TypeKindSem::Integer:
         case TypeKindSem::Number:
         case TypeKindSem::Boolean:
@@ -769,10 +705,8 @@ size_t typeAlignment(const ViperType &type)
     return 1;
 }
 
-const char *kindToString(TypeKindSem kind)
-{
-    switch (kind)
-    {
+const char *kindToString(TypeKindSem kind) {
+    switch (kind) {
         case TypeKindSem::Integer:
             return "Integer";
         case TypeKindSem::Number:

@@ -21,15 +21,13 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-static void sleep_ms(int ms)
-{
+static void sleep_ms(int ms) {
     Sleep((DWORD)ms);
 }
 #else
 #include <time.h>
 
-static void sleep_ms(int ms)
-{
+static void sleep_ms(int ms) {
     struct timespec req;
     req.tv_sec = ms / 1000;
     req.tv_nsec = (ms % 1000) * 1000000L;
@@ -38,21 +36,18 @@ static void sleep_ms(int ms)
 #endif
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
-static void rt_release_obj(void *p)
-{
+static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
 }
 
 /// @brief Test creating a new stopwatch.
-static void test_new()
-{
+static void test_new() {
     printf("Testing Stopwatch.New():\n");
 
     void *sw = rt_stopwatch_new();
@@ -66,8 +61,7 @@ static void test_new()
 }
 
 /// @brief Test StartNew() factory method.
-static void test_start_new()
-{
+static void test_start_new() {
     printf("Testing Stopwatch.StartNew():\n");
 
     void *sw = rt_stopwatch_start_new();
@@ -85,8 +79,7 @@ static void test_start_new()
 }
 
 /// @brief Test Start() and Stop() behavior.
-static void test_start_stop()
-{
+static void test_start_stop() {
     printf("Testing Start/Stop:\n");
 
     void *sw = rt_stopwatch_new();
@@ -116,8 +109,7 @@ static void test_start_stop()
 }
 
 /// @brief Test that Start() is idempotent when already running.
-static void test_start_idempotent()
-{
+static void test_start_idempotent() {
     printf("Testing Start() idempotent:\n");
 
     void *sw = rt_stopwatch_new();
@@ -142,8 +134,7 @@ static void test_start_idempotent()
 }
 
 /// @brief Test that Stop() is idempotent when already stopped.
-static void test_stop_idempotent()
-{
+static void test_stop_idempotent() {
     printf("Testing Stop() idempotent:\n");
 
     void *sw = rt_stopwatch_new();
@@ -164,8 +155,7 @@ static void test_stop_idempotent()
 }
 
 /// @brief Test Reset() behavior.
-static void test_reset()
-{
+static void test_reset() {
     printf("Testing Reset():\n");
 
     void *sw = rt_stopwatch_new();
@@ -183,8 +173,7 @@ static void test_reset()
 }
 
 /// @brief Test Restart() behavior.
-static void test_restart()
-{
+static void test_restart() {
     printf("Testing Restart():\n");
 
     void *sw = rt_stopwatch_new();
@@ -208,8 +197,7 @@ static void test_restart()
 }
 
 /// @brief Test accumulation across multiple start/stop cycles.
-static void test_accumulation()
-{
+static void test_accumulation() {
     printf("Testing accumulation:\n");
 
     void *sw = rt_stopwatch_new();
@@ -243,8 +231,7 @@ static void test_accumulation()
 }
 
 /// @brief Test reading elapsed while running vs stopped.
-static void test_elapsed_while_running()
-{
+static void test_elapsed_while_running() {
     printf("Testing elapsed while running:\n");
 
     void *sw = rt_stopwatch_new();
@@ -271,8 +258,7 @@ static void test_elapsed_while_running()
 }
 
 /// @brief Test different time units.
-static void test_time_units()
-{
+static void test_time_units() {
     printf("Testing time units:\n");
 
     void *sw = rt_stopwatch_new();
@@ -300,8 +286,7 @@ static void test_time_units()
 }
 
 /// @brief Entry point for Stopwatch tests.
-int main()
-{
+int main() {
     printf("=== RT Stopwatch Tests ===\n\n");
 
     test_new();

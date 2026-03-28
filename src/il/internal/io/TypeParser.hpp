@@ -19,8 +19,7 @@
 
 #include <string>
 
-namespace il::io
-{
+namespace il::io {
 
 /// @brief Parse a textual type token into its IL representation.
 /// @param token Lowercase token naming a primitive IL type.

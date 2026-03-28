@@ -31,14 +31,11 @@
 ///          spill reloads to preserve the semantics of the original parallel
 ///          copy bundles.
 
-namespace viper::codegen::x64::ra
-{
+namespace viper::codegen::x64::ra {
 
-namespace
-{
+namespace {
 
-struct ScratchRelease
-{
+struct ScratchRelease {
     PhysReg phys{PhysReg::RAX};
     RegClass cls{RegClass::GPR};
 };
@@ -51,8 +48,7 @@ struct ScratchRelease
 /// @param cls Register class describing the operand encoding.
 /// @param reg Physical register identifier being wrapped.
 /// @return Machine operand referencing @p reg.
-[[nodiscard]] Operand makePhysOperand(RegClass cls, PhysReg reg)
-{
+[[nodiscard]] Operand makePhysOperand(RegClass cls, PhysReg reg) {
     return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
 }
 
@@ -66,9 +62,7 @@ struct ScratchRelease
 /// @param allocator Linear-scan allocator supplying register state.
 /// @param spiller Spiller responsible for materialising loads and stores.
 Coalescer::Coalescer(LinearScanAllocator &allocator, Spiller &spiller)
-    : allocator_(allocator), spiller_(spiller)
-{
-}
+    : allocator_(allocator), spiller_(spiller) {}
 
 /// @brief Expand a @c PX_COPY pseudo into executable machine instructions.
 /// @details The algorithm proceeds in three phases:
@@ -84,21 +78,18 @@ Coalescer::Coalescer(LinearScanAllocator &allocator, Spiller &spiller)
 ///          it should execute.
 /// @param instr @c PX_COPY instruction to lower.
 /// @param out Vector receiving the lowered instruction sequence.
-void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out)
-{
+void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out) {
     std::vector<MInstr> prefix{};
     std::vector<ScratchRelease> scratch{};
     std::vector<CopyTask> tasks{};
 
-    for (std::size_t i = 0; i + 1 < instr.operands.size(); i += 2)
-    {
+    for (std::size_t i = 0; i + 1 < instr.operands.size(); i += 2) {
         const auto &dstOp = instr.operands[i];
         const auto &srcOp = instr.operands[i + 1];
 
         const auto *dstReg = std::get_if<OpReg>(&dstOp);
         const auto *srcReg = std::get_if<OpReg>(&srcOp);
-        if (!dstReg || !srcReg)
-        {
+        if (!dstReg || !srcReg) {
             continue; // Phase A: expect register pairs only.
         }
 
@@ -106,25 +97,18 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out)
         task.cls = dstReg->cls;
         task.destVReg.reset();
 
-        if (dstReg->isPhys)
-        {
+        if (dstReg->isPhys) {
             task.destKind = CopyTask::DestKind::Reg;
             task.destReg = static_cast<PhysReg>(dstReg->idOrPhys);
-        }
-        else
-        {
+        } else {
             auto &dstState = allocator_.stateFor(dstReg->cls, dstReg->idOrPhys);
             task.destVReg = dstReg->idOrPhys;
-            if (dstState.spill.needsSpill)
-            {
+            if (dstState.spill.needsSpill) {
                 spiller_.ensureSpillSlot(dstState.cls, dstState.spill);
                 task.destKind = CopyTask::DestKind::Mem;
                 task.destSlot = dstState.spill.slot;
-            }
-            else
-            {
-                if (!dstState.hasPhys)
-                {
+            } else {
+                if (!dstState.hasPhys) {
                     const PhysReg phys = allocator_.takeRegister(dstState.cls, prefix);
                     dstState.hasPhys = true;
                     dstState.phys = phys;
@@ -136,27 +120,20 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out)
             }
         }
 
-        if (srcReg->isPhys)
-        {
+        if (srcReg->isPhys) {
             task.src.kind = CopySource::Kind::Reg;
             task.src.reg = static_cast<PhysReg>(srcReg->idOrPhys);
-        }
-        else
-        {
+        } else {
             auto &srcState = allocator_.stateFor(srcReg->cls, srcReg->idOrPhys);
-            if (srcState.spill.needsSpill)
-            {
+            if (srcState.spill.needsSpill) {
                 spiller_.ensureSpillSlot(srcState.cls, srcState.spill);
                 const PhysReg scratchReg = allocator_.takeRegister(srcState.cls, prefix);
                 prefix.push_back(spiller_.makeLoad(srcState.cls, scratchReg, srcState.spill));
                 scratch.push_back(ScratchRelease{scratchReg, srcState.cls});
                 task.src.kind = CopySource::Kind::Reg;
                 task.src.reg = scratchReg;
-            }
-            else
-            {
-                if (!srcState.hasPhys)
-                {
+            } else {
+                if (!srcState.hasPhys) {
                     const PhysReg phys = allocator_.takeRegister(srcState.cls, prefix);
                     srcState.hasPhys = true;
                     srcState.phys = phys;
@@ -171,39 +148,29 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out)
         tasks.push_back(task);
     }
 
-    for (auto &pre : prefix)
-    {
+    for (auto &pre : prefix) {
         out.push_back(std::move(pre));
     }
 
     std::vector<MInstr> generated{};
     generated.reserve(tasks.size());
 
-    while (!tasks.empty())
-    {
+    while (!tasks.empty()) {
         bool progress = false;
-        for (std::size_t i = 0; i < tasks.size(); ++i)
-        {
+        for (std::size_t i = 0; i < tasks.size(); ++i) {
             const auto task = tasks[i];
             bool canEmit = false;
-            if (task.destKind == CopyTask::DestKind::Mem)
-            {
+            if (task.destKind == CopyTask::DestKind::Mem) {
                 canEmit = true;
-            }
-            else if (task.src.kind == CopySource::Kind::Mem)
-            {
+            } else if (task.src.kind == CopySource::Kind::Mem) {
                 canEmit = true;
-            }
-            else if (task.src.kind == CopySource::Kind::Reg)
-            {
+            } else if (task.src.kind == CopySource::Kind::Reg) {
                 // A move (dest←src) can be emitted when dest is NOT used as
                 // a source by any other pending move.  Writing to dest first
                 // would clobber the value another move still needs to read.
                 bool destIsSource = false;
-                for (const auto &other : tasks)
-                {
-                    if (other.src.kind == CopySource::Kind::Reg && other.src.reg == task.destReg)
-                    {
+                for (const auto &other : tasks) {
+                    if (other.src.kind == CopySource::Kind::Reg && other.src.reg == task.destReg) {
                         destIsSource = true;
                         break;
                     }
@@ -211,8 +178,7 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out)
                 canEmit = !destIsSource || task.destReg == task.src.reg;
             }
 
-            if (!canEmit)
-            {
+            if (!canEmit) {
                 continue;
             }
 
@@ -222,20 +188,14 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out)
             break;
         }
 
-        if (progress)
-        {
+        if (progress) {
             continue;
         }
 
-        auto it = std::find_if(tasks.begin(),
-                               tasks.end(),
-                               [](const CopyTask &t)
-                               {
-                                   return t.destKind == CopyTask::DestKind::Reg &&
-                                          t.src.kind == CopySource::Kind::Reg;
-                               });
-        if (it == tasks.end())
-        {
+        auto it = std::find_if(tasks.begin(), tasks.end(), [](const CopyTask &t) {
+            return t.destKind == CopyTask::DestKind::Reg && t.src.kind == CopySource::Kind::Reg;
+        });
+        if (it == tasks.end()) {
             break;
         }
 
@@ -244,28 +204,23 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out)
 
         std::vector<MInstr> tmpPrefix{};
         const PhysReg temp = allocator_.takeRegister(cycleTask.cls, tmpPrefix);
-        for (auto &pre : tmpPrefix)
-        {
+        for (auto &pre : tmpPrefix) {
             generated.push_back(std::move(pre));
         }
         generated.push_back(allocator_.makeMove(cycleTask.cls, temp, srcReg));
-        for (auto &pending : tasks)
-        {
-            if (pending.src.kind == CopySource::Kind::Reg && pending.src.reg == srcReg)
-            {
+        for (auto &pending : tasks) {
+            if (pending.src.kind == CopySource::Kind::Reg && pending.src.reg == srcReg) {
                 pending.src.reg = temp;
             }
         }
         scratch.push_back(ScratchRelease{temp, cycleTask.cls});
     }
 
-    for (auto &instrOut : generated)
-    {
+    for (auto &instrOut : generated) {
         out.push_back(std::move(instrOut));
     }
 
-    for (const auto &rel : scratch)
-    {
+    for (const auto &rel : scratch) {
         allocator_.releaseRegister(rel.phys, rel.cls);
     }
 }
@@ -280,21 +235,15 @@ void Coalescer::lower(const MInstr &instr, std::vector<MInstr> &out)
 ///          emitted.
 /// @param task Copy description built during @ref lower.
 /// @param generated Output buffer receiving the materialised instructions.
-void Coalescer::emitCopyTask(const CopyTask &task, std::vector<MInstr> &generated)
-{
-    if (task.destKind == CopyTask::DestKind::Mem)
-    {
-        if (task.src.kind == CopySource::Kind::Reg)
-        {
+void Coalescer::emitCopyTask(const CopyTask &task, std::vector<MInstr> &generated) {
+    if (task.destKind == CopyTask::DestKind::Mem) {
+        if (task.src.kind == CopySource::Kind::Reg) {
             generated.push_back(
                 spiller_.makeStore(task.cls, SpillPlan{true, task.destSlot}, task.src.reg));
-        }
-        else
-        {
+        } else {
             std::vector<MInstr> tmpPrefix{};
             const PhysReg tmp = allocator_.takeRegister(task.cls, tmpPrefix);
-            for (auto &pre : tmpPrefix)
-            {
+            for (auto &pre : tmpPrefix) {
                 generated.push_back(std::move(pre));
             }
             generated.push_back(spiller_.makeLoad(task.cls, tmp, SpillPlan{true, task.src.slot}));
@@ -304,12 +253,9 @@ void Coalescer::emitCopyTask(const CopyTask &task, std::vector<MInstr> &generate
         return;
     }
 
-    if (task.src.kind == CopySource::Kind::Reg)
-    {
+    if (task.src.kind == CopySource::Kind::Reg) {
         generated.push_back(allocator_.makeMove(task.cls, task.destReg, task.src.reg));
-    }
-    else
-    {
+    } else {
         generated.push_back(
             spiller_.makeLoad(task.cls, task.destReg, SpillPlan{true, task.src.slot}));
     }

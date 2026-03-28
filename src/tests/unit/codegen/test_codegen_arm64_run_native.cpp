@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-TEST(Arm64CLI, RunNativeRet42)
-{
+TEST(Arm64CLI, RunNativeRet42) {
     const std::string in = outPath("arm64_run_native_ret42.il");
     const std::string il = "il 0.1\n"
                            "func @main() -> i64 {\n"
@@ -52,8 +49,7 @@ TEST(Arm64CLI, RunNativeRet42)
     ASSERT_EQ(rc, 42);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

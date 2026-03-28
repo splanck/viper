@@ -16,8 +16,7 @@
 #include "rt.hpp"
 #include <cassert>
 
-int main()
-{
+int main() {
     rt_string lt = rt_str_ltrim(rt_const_cstr(" hi"));
     assert(rt_str_eq(lt, rt_const_cstr("hi")));
 

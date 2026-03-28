@@ -31,10 +31,8 @@
 #include <iostream>
 #include <memory>
 
-namespace
-{
-[[nodiscard]] il::core::Instr makeRetConst(long long value)
-{
+namespace {
+[[nodiscard]] il::core::Instr makeRetConst(long long value) {
     il::core::Instr instr;
     instr.op = il::core::Opcode::Ret;
     instr.type = il::core::Type(il::core::Type::Kind::Void);
@@ -42,8 +40,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] il::core::Module makeSimpleModule()
-{
+[[nodiscard]] il::core::Module makeSimpleModule() {
     il::core::Module module{};
 
     il::core::Function fn;
@@ -60,8 +57,7 @@ namespace
     return module;
 }
 
-[[nodiscard]] il::core::Module makeZeroModule()
-{
+[[nodiscard]] il::core::Module makeZeroModule() {
     il::core::Module module{};
 
     il::core::Function fn;
@@ -78,21 +74,18 @@ namespace
     return module;
 }
 
-[[nodiscard]] viper::codegen::x64::CodegenResult baselineAssembly()
-{
+[[nodiscard]] viper::codegen::x64::CodegenResult baselineAssembly() {
     viper::codegen::x64::passes::Module module{};
     module.il = makeSimpleModule();
     viper::codegen::x64::passes::Diagnostics diags{};
     viper::codegen::x64::passes::LoweringPass lowering{};
-    if (!lowering.run(module, diags))
-    {
+    if (!lowering.run(module, diags)) {
         return {};
     }
     return viper::codegen::x64::emitModuleToAssembly(*module.lowered, {});
 }
 
-[[nodiscard]] viper::codegen::x64::CodegenResult managedAssembly()
-{
+[[nodiscard]] viper::codegen::x64::CodegenResult managedAssembly() {
     viper::codegen::x64::passes::Module module{};
     module.il = makeSimpleModule();
     viper::codegen::x64::passes::Diagnostics diags{};
@@ -103,15 +96,13 @@ namespace
     manager.addPass(std::make_unique<viper::codegen::x64::passes::EmitPass>(
         viper::codegen::x64::CodegenOptions{}));
 
-    if (!manager.run(module, diags) || !module.codegenResult)
-    {
+    if (!manager.run(module, diags) || !module.codegenResult) {
         return {};
     }
     return *module.codegenResult;
 }
 
-[[nodiscard]] std::size_t managedBinarySize(int optimizeLevel)
-{
+[[nodiscard]] std::size_t managedBinarySize(int optimizeLevel) {
     viper::codegen::x64::passes::Module module{};
     module.il = makeZeroModule();
     viper::codegen::x64::passes::Diagnostics diags{};
@@ -123,8 +114,7 @@ namespace
     manager.addPass(std::make_unique<viper::codegen::x64::passes::RegAllocPass>());
     manager.addPass(std::make_unique<viper::codegen::x64::passes::BinaryEmitPass>(false, opts));
 
-    if (!manager.run(module, diags) || !module.binaryText)
-    {
+    if (!manager.run(module, diags) || !module.binaryText) {
         return 0;
     }
     return module.binaryText->bytes().size();
@@ -132,37 +122,31 @@ namespace
 
 } // namespace
 
-int main()
-{
+int main() {
     const auto baseline = baselineAssembly();
-    if (!baseline.errors.empty())
-    {
+    if (!baseline.errors.empty()) {
         std::cerr << baseline.errors;
         return EXIT_FAILURE;
     }
 
     const auto managed = managedAssembly();
-    if (!managed.errors.empty())
-    {
+    if (!managed.errors.empty()) {
         std::cerr << managed.errors;
         return EXIT_FAILURE;
     }
 
-    if (baseline.asmText != managed.asmText)
-    {
+    if (baseline.asmText != managed.asmText) {
         std::cerr << "Assembly mismatch\n";
         return EXIT_FAILURE;
     }
 
     const std::size_t o0Size = managedBinarySize(0);
     const std::size_t o1Size = managedBinarySize(1);
-    if (o0Size == 0 || o1Size == 0)
-    {
+    if (o0Size == 0 || o1Size == 0) {
         std::cerr << "Binary emission failed\n";
         return EXIT_FAILURE;
     }
-    if (o0Size == o1Size)
-    {
+    if (o0Size == o1Size) {
         std::cerr << "Expected native binary emission to reflect optimize level\n";
         return EXIT_FAILURE;
     }

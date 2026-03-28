@@ -25,12 +25,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that List.remove() compiles successfully.
-TEST(ZiaListMethods, RemoveMethod)
-{
+TEST(ZiaListMethods, RemoveMethod) {
     const std::string src = R"(
 module Test;
 
@@ -48,11 +46,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for RemoveMethod:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -62,15 +58,11 @@ func start() {
 
     // Verify the list remove function is called
     bool hasRemoveCall = false;
-    for (const auto &fn : result.module.functions)
-    {
-        for (const auto &bb : fn.blocks)
-        {
-            for (const auto &in : bb.instructions)
-            {
+    for (const auto &fn : result.module.functions) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &in : bb.instructions) {
                 if (in.op == il::core::Opcode::Call &&
-                    in.callee.find("Remove") != std::string::npos)
-                {
+                    in.callee.find("Remove") != std::string::npos) {
                     hasRemoveCall = true;
                 }
             }
@@ -80,8 +72,7 @@ func start() {
 }
 
 /// @brief Test that List.insert() compiles successfully.
-TEST(ZiaListMethods, InsertMethod)
-{
+TEST(ZiaListMethods, InsertMethod) {
     const std::string src = R"(
 module Test;
 
@@ -98,11 +89,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for InsertMethod:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -112,15 +101,11 @@ func start() {
 
     // Verify the list insert function is called
     bool hasInsertCall = false;
-    for (const auto &fn : result.module.functions)
-    {
-        for (const auto &bb : fn.blocks)
-        {
-            for (const auto &in : bb.instructions)
-            {
+    for (const auto &fn : result.module.functions) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &in : bb.instructions) {
                 if (in.op == il::core::Opcode::Call &&
-                    in.callee.find("Insert") != std::string::npos)
-                {
+                    in.callee.find("Insert") != std::string::npos) {
                     hasInsertCall = true;
                 }
             }
@@ -130,8 +115,7 @@ func start() {
 }
 
 /// @brief Test that List.find() compiles successfully.
-TEST(ZiaListMethods, FindMethod)
-{
+TEST(ZiaListMethods, FindMethod) {
     const std::string src = R"(
 module Test;
 
@@ -149,11 +133,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for FindMethod:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -163,14 +145,11 @@ func start() {
 
     // Verify the list find function is called
     bool hasFindCall = false;
-    for (const auto &fn : result.module.functions)
-    {
-        for (const auto &bb : fn.blocks)
-        {
-            for (const auto &in : bb.instructions)
-            {
-                if (in.op == il::core::Opcode::Call && in.callee.find("Find") != std::string::npos)
-                {
+    for (const auto &fn : result.module.functions) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &in : bb.instructions) {
+                if (in.op == il::core::Opcode::Call &&
+                    in.callee.find("Find") != std::string::npos) {
                     hasFindCall = true;
                 }
             }
@@ -180,8 +159,7 @@ func start() {
 }
 
 /// @brief Test that List.indexOf() (alias for find) compiles successfully.
-TEST(ZiaListMethods, IndexOfMethod)
-{
+TEST(ZiaListMethods, IndexOfMethod) {
     const std::string src = R"(
 module Test;
 
@@ -198,11 +176,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for IndexOfMethod:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -213,8 +189,7 @@ func start() {
 
 /// @brief Test that accessing entity field through List.get() compiles.
 /// This is the core of Bug #022.
-TEST(ZiaListMethods, GetEntityProperty)
-{
+TEST(ZiaListMethods, GetEntityProperty) {
     const std::string src = R"(
 module Test;
 
@@ -248,11 +223,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for GetEntityProperty:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -267,8 +240,7 @@ func start() {
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

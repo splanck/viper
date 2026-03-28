@@ -21,8 +21,7 @@
 #include "il/verify/DiagSink.hpp"
 #include "il/verify/TypeInference.hpp"
 
-namespace il::verify::checker
-{
+namespace il::verify::checker {
 
 using il::core::Type;
 using il::core::Value;
@@ -31,10 +30,8 @@ using il::support::Expected;
 /// @brief Translate a verifier type class into a concrete IL type kind.
 /// @param typeClass Abstract type class derived from opcode metadata.
 /// @return Matching IL type kind when available; otherwise empty optional.
-std::optional<Type::Kind> kindFromClass(TypeClass typeClass)
-{
-    switch (typeClass)
-    {
+std::optional<Type::Kind> kindFromClass(TypeClass typeClass) {
+    switch (typeClass) {
         case TypeClass::Void:
             return Type::Kind::Void;
         case TypeClass::I1:
@@ -65,8 +62,7 @@ std::optional<Type::Kind> kindFromClass(TypeClass typeClass)
 /// @brief Translate a type class into a full @ref Type when possible.
 /// @param typeClass Class to translate.
 /// @return Concrete type or empty optional for dynamic cases.
-std::optional<Type> typeFromClass(TypeClass typeClass)
-{
+std::optional<Type> typeFromClass(TypeClass typeClass) {
     if (typeClass == TypeClass::InstrType)
         return std::nullopt;
     if (auto kind = kindFromClass(typeClass))
@@ -79,10 +75,8 @@ std::optional<Type> typeFromClass(TypeClass typeClass)
 ///          mismatched type.
 /// @param ctx Verification context containing operands.
 /// @param kind Expected operand type kind.
-Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind)
-{
-    for (const auto &op : ctx.instr.operands)
-    {
+Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind) {
+    for (const auto &op : ctx.instr.operands) {
         if (ctx.types.valueType(op).kind != kind)
             return fail(ctx, "operand type mismatch");
     }
@@ -92,8 +86,7 @@ Expected<void> expectAllOperandType(const VerifyCtx &ctx, Type::Kind kind)
 /// @brief Verify a binary arithmetic instruction.
 /// @details Checks operand count, ensures both operands match @p operandKind,
 ///          and records the provided @p resultType on success.
-Expected<void> checkBinary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType)
-{
+Expected<void> checkBinary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType) {
     if (ctx.instr.operands.size() != 2)
         return fail(ctx, "invalid operand count");
 
@@ -110,8 +103,7 @@ Expected<void> checkBinary(const VerifyCtx &ctx, Type::Kind operandKind, Type re
 /// @brief Verify a unary arithmetic instruction.
 /// @details Requires exactly one operand of @p operandKind and records the
 ///          result type when validation passes.
-Expected<void> checkUnary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType)
-{
+Expected<void> checkUnary(const VerifyCtx &ctx, Type::Kind operandKind, Type resultType) {
     if (ctx.instr.operands.empty())
         return fail(ctx, "invalid operand count");
 
@@ -126,8 +118,7 @@ Expected<void> checkUnary(const VerifyCtx &ctx, Type::Kind operandKind, Type res
 /// @details Ensures operand counts and types are consistent (either all i16,
 ///          all i32, or all i64), validates constants for range, and records the
 ///          resulting integer type when the optional result annotation is present.
-Expected<void> checkIdxChk(const VerifyCtx &ctx)
-{
+Expected<void> checkIdxChk(const VerifyCtx &ctx) {
     if (ctx.instr.operands.size() != 3)
         return fail(ctx, "invalid operand count");
 
@@ -135,19 +126,15 @@ Expected<void> checkIdxChk(const VerifyCtx &ctx)
     if (detail::isSupportedIntegerWidth(ctx.instr.type.kind))
         expectedKind = ctx.instr.type.kind;
 
-    const auto classifyOperand = [&](const Value &value) -> Expected<Type::Kind>
-    {
-        if (value.kind == Value::Kind::Temp)
-        {
+    const auto classifyOperand = [&](const Value &value) -> Expected<Type::Kind> {
+        if (value.kind == Value::Kind::Temp) {
             const Type::Kind kind = ctx.types.valueType(value).kind;
             if (kind == Type::Kind::Void)
                 return failWith<Type::Kind>(ctx, "unknown temp in idx.chk");
             return kind;
         }
-        if (value.kind == Value::Kind::ConstInt)
-        {
-            if (expectedKind == Type::Kind::Void)
-            {
+        if (value.kind == Value::Kind::ConstInt) {
+            if (expectedKind == Type::Kind::Void) {
                 if (detail::fitsInIntegerKind(value.i64, Type::Kind::I16))
                     return Type::Kind::I16;
                 if (detail::fitsInIntegerKind(value.i64, Type::Kind::I32))
@@ -163,8 +150,7 @@ Expected<void> checkIdxChk(const VerifyCtx &ctx)
         return failWith<Type::Kind>(ctx, "operands must be i16, i32, or i64");
     };
 
-    for (const auto &operand : ctx.instr.operands)
-    {
+    for (const auto &operand : ctx.instr.operands) {
         auto kindResult = classifyOperand(operand);
         if (!kindResult)
             return Expected<void>(kindResult.error());
@@ -193,15 +179,11 @@ Expected<void> checkIdxChk(const VerifyCtx &ctx)
 /// @details On x86-64, shifts by >= 64 produce undefined results (the hardware
 ///          masks the count to 6 bits).  This emits a warning rather than an
 ///          error because the IL spec does not forbid it.
-Expected<void> checkShift(const VerifyCtx &ctx)
-{
-    if (ctx.instr.operands.size() >= 2)
-    {
+Expected<void> checkShift(const VerifyCtx &ctx) {
+    if (ctx.instr.operands.size() >= 2) {
         const auto &shiftAmt = ctx.instr.operands[1];
-        if (shiftAmt.kind == Value::Kind::ConstInt)
-        {
-            if (shiftAmt.i64 < 0 || shiftAmt.i64 >= 64)
-            {
+        if (shiftAmt.kind == Value::Kind::ConstInt) {
+            if (shiftAmt.i64 < 0 || shiftAmt.i64 >= 64) {
                 il::support::Diagnostic warning{};
                 warning.severity = il::support::Severity::Warning;
                 warning.message = formatDiag(ctx,
@@ -217,8 +199,7 @@ Expected<void> checkShift(const VerifyCtx &ctx)
 
 /// @brief Fallback verification path that simply records the instruction type.
 /// @details Used when no specialised checks are required.
-Expected<void> checkDefault(const VerifyCtx &)
-{
+Expected<void> checkDefault(const VerifyCtx &) {
     return {};
 }
 

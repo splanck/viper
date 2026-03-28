@@ -13,8 +13,7 @@
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 using il::core::Opcode;
@@ -25,39 +24,27 @@ using il::core::Value;
 // Helper Functions
 //=============================================================================
 
-Value Lowerer::wrapValueForOptionalField(Value val, TypeRef fieldType, TypeRef valueType)
-{
+Value Lowerer::wrapValueForOptionalField(Value val, TypeRef fieldType, TypeRef valueType) {
     if (!fieldType || fieldType->kind != TypeKindSem::Optional)
         return val;
 
     TypeRef innerType = fieldType->innerType();
-    if (valueType && valueType->kind == TypeKindSem::Optional)
-    {
+    if (valueType && valueType->kind == TypeKindSem::Optional) {
         return val; // Already optional
-    }
-    else if (valueType && valueType->kind == TypeKindSem::Unit)
-    {
+    } else if (valueType && valueType->kind == TypeKindSem::Unit) {
         return Value::null();
-    }
-    else if (innerType)
-    {
+    } else if (innerType) {
         return emitOptionalWrap(val, innerType);
     }
     return val;
 }
 
-Value Lowerer::extendOperandForComparison(Value val, Type type)
-{
-    if (val.kind == Value::Kind::NullPtr)
-    {
+Value Lowerer::extendOperandForComparison(Value val, Type type) {
+    if (val.kind == Value::Kind::NullPtr) {
         return Value::constInt(0);
-    }
-    else if (type.kind == Type::Kind::I1)
-    {
+    } else if (type.kind == Type::Kind::I1) {
         return emitUnary(Opcode::Zext1, Type(Type::Kind::I64), val);
-    }
-    else if (type.kind == Type::Kind::Ptr || type.kind == Type::Kind::Str)
-    {
+    } else if (type.kind == Type::Kind::Ptr || type.kind == Type::Kind::Str) {
         // Convert pointer/string to i64 via alloca/store/load
         unsigned slotId = nextTempId();
         il::core::Instr slotInstr;
@@ -78,17 +65,14 @@ Value Lowerer::extendOperandForComparison(Value val, Type type)
 // Binary Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
-{
+LowerResult Lowerer::lowerBinary(BinaryExpr *expr) {
     // Handle assignment specially
-    if (expr->op == BinaryOp::Assign)
-    {
+    if (expr->op == BinaryOp::Assign) {
         auto right = lowerExpr(expr->right.get());
         TypeRef rightType = sema_.typeOf(expr->right.get());
 
         // LHS must be an identifier, index, or field expression
-        if (auto *ident = dynamic_cast<IdentExpr *>(expr->left.get()))
-        {
+        if (auto *ident = dynamic_cast<IdentExpr *>(expr->left.get())) {
             TypeRef targetType = nullptr;
             auto typeIt = localTypes_.find(ident->name);
             if (typeIt != localTypes_.end())
@@ -103,11 +87,9 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
 
             // Unbox obj (Ptr) to primitive type when assigning a boxed value to a typed slot.
             // This handles e.g. `intField = list.Get(i)` where List.Get() returns Ptr.
-            if (right.type.kind == Type::Kind::Ptr && targetType)
-            {
+            if (right.type.kind == Type::Kind::Ptr && targetType) {
                 Type targetILType = mapType(targetType);
-                if (targetILType.kind != Type::Kind::Ptr)
-                {
+                if (targetILType.kind != Type::Kind::Ptr) {
                     assignValue = emitUnbox(assignValue, targetILType).value;
                     assignType = targetILType;
                 }
@@ -115,11 +97,9 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
 
             // Numeric coercion: emit conversion instructions to avoid raw bit
             // reinterpretation when assigning between Number and Integer types.
-            if (targetType && rightType)
-            {
+            if (targetType && rightType) {
                 if (targetType->kind == TypeKindSem::Integer &&
-                    rightType->kind == TypeKindSem::Number)
-                {
+                    rightType->kind == TypeKindSem::Number) {
                     unsigned convId = nextTempId();
                     il::core::Instr conv;
                     conv.result = convId;
@@ -130,10 +110,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     blockMgr_.currentBlock()->instructions.push_back(conv);
                     assignValue = Value::temp(convId);
                     assignType = conv.type;
-                }
-                else if (targetType->kind == TypeKindSem::Number &&
-                         rightType->kind == TypeKindSem::Integer)
-                {
+                } else if (targetType->kind == TypeKindSem::Number &&
+                           rightType->kind == TypeKindSem::Integer) {
                     unsigned convId = nextTempId();
                     il::core::Instr conv;
                     conv.result = convId;
@@ -148,19 +126,16 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             }
 
             // Handle value type copy semantics - deep copy on assignment
-            if (rightType && rightType->kind == TypeKindSem::Value)
-            {
+            if (rightType && rightType->kind == TypeKindSem::Value) {
                 const ValueTypeInfo *info = getOrCreateValueTypeInfo(rightType->name);
-                if (info)
-                {
+                if (info) {
                     assignValue = emitValueTypeCopy(*info, assignValue);
                 }
             }
 
             // Check if this is a slot-based variable
             auto slotIt = slots_.find(ident->name);
-            if (slotIt != slots_.end())
-            {
+            if (slotIt != slots_.end()) {
                 storeToSlot(ident->name, assignValue, assignType);
                 // The assigned value is consumed by the slot — don't release
                 consumeDeferred(assignValue);
@@ -168,29 +143,23 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             }
 
             // Check for implicit field assignment inside a value type method
-            if (currentValueType_)
-            {
+            if (currentValueType_) {
                 const FieldLayout *field = currentValueType_->findField(ident->name);
-                if (field)
-                {
+                if (field) {
                     Value selfPtr;
-                    if (getSelfPtr(selfPtr))
-                    {
+                    if (getSelfPtr(selfPtr)) {
                         Value fieldValue =
                             wrapValueForOptionalField(right.value, field->type, rightType);
                         // Unbox obj (Ptr) to the field's primitive IL type.
-                        if (right.type.kind == Type::Kind::Ptr && field->type)
-                        {
+                        if (right.type.kind == Type::Kind::Ptr && field->type) {
                             Type fieldILType = mapType(field->type);
                             if (fieldILType.kind != Type::Kind::Ptr)
                                 fieldValue = emitUnbox(fieldValue, fieldILType).value;
                         }
                         // Numeric coercion for field assignment
-                        if (field->type && rightType)
-                        {
+                        if (field->type && rightType) {
                             if (field->type->kind == TypeKindSem::Integer &&
-                                rightType->kind == TypeKindSem::Number)
-                            {
+                                rightType->kind == TypeKindSem::Number) {
                                 unsigned convId = nextTempId();
                                 il::core::Instr conv;
                                 conv.result = convId;
@@ -200,10 +169,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                                 conv.loc = curLoc_;
                                 blockMgr_.currentBlock()->instructions.push_back(conv);
                                 fieldValue = Value::temp(convId);
-                            }
-                            else if (field->type->kind == TypeKindSem::Number &&
-                                     rightType->kind == TypeKindSem::Integer)
-                            {
+                            } else if (field->type->kind == TypeKindSem::Number &&
+                                       rightType->kind == TypeKindSem::Integer) {
                                 unsigned convId = nextTempId();
                                 il::core::Instr conv;
                                 conv.result = convId;
@@ -222,29 +189,23 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             }
 
             // Check for implicit field assignment inside an entity method
-            if (currentEntityType_)
-            {
+            if (currentEntityType_) {
                 const FieldLayout *field = currentEntityType_->findField(ident->name);
-                if (field)
-                {
+                if (field) {
                     Value selfPtr;
-                    if (getSelfPtr(selfPtr))
-                    {
+                    if (getSelfPtr(selfPtr)) {
                         Value fieldValue =
                             wrapValueForOptionalField(right.value, field->type, rightType);
                         // Unbox obj (Ptr) to the field's primitive IL type.
-                        if (right.type.kind == Type::Kind::Ptr && field->type)
-                        {
+                        if (right.type.kind == Type::Kind::Ptr && field->type) {
                             Type fieldILType = mapType(field->type);
                             if (fieldILType.kind != Type::Kind::Ptr)
                                 fieldValue = emitUnbox(fieldValue, fieldILType).value;
                         }
                         // Numeric coercion for field assignment
-                        if (field->type && rightType)
-                        {
+                        if (field->type && rightType) {
                             if (field->type->kind == TypeKindSem::Integer &&
-                                rightType->kind == TypeKindSem::Number)
-                            {
+                                rightType->kind == TypeKindSem::Number) {
                                 unsigned convId = nextTempId();
                                 il::core::Instr conv;
                                 conv.result = convId;
@@ -254,10 +215,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                                 conv.loc = curLoc_;
                                 blockMgr_.currentBlock()->instructions.push_back(conv);
                                 fieldValue = Value::temp(convId);
-                            }
-                            else if (field->type->kind == TypeKindSem::Number &&
-                                     rightType->kind == TypeKindSem::Integer)
-                            {
+                            } else if (field->type->kind == TypeKindSem::Number &&
+                                       rightType->kind == TypeKindSem::Integer) {
                                 unsigned convId = nextTempId();
                                 il::core::Instr conv;
                                 conv.result = convId;
@@ -277,8 +236,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
 
             // Check for global variable assignment
             auto globalIt = globalVariables_.find(ident->name);
-            if (globalIt != globalVariables_.end())
-            {
+            if (globalIt != globalVariables_.end()) {
                 TypeRef globalType = globalIt->second;
                 Type ilType = mapType(globalType);
                 Value addr = getGlobalVarAddr(ident->name, globalType);
@@ -295,16 +253,14 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         }
 
         // Handle index assignment (arr[i] = value, list[i] = value, map[key] = value)
-        if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->left.get()))
-        {
+        if (auto *indexExpr = dynamic_cast<IndexExpr *>(expr->left.get())) {
             auto base = lowerExpr(indexExpr->base.get());
             auto index = lowerExpr(indexExpr->index.get());
             TypeRef baseType = sema_.typeOf(indexExpr->base.get());
             TypeRef indexRightType = sema_.typeOf(expr->right.get());
 
             // Fixed-size array: direct GEP + Store (no boxing, no runtime call)
-            if (baseType && baseType->kind == TypeKindSem::FixedArray)
-            {
+            if (baseType && baseType->kind == TypeKindSem::FixedArray) {
                 TypeRef elemType = baseType->elementType();
                 Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
                 size_t elemSize = getILTypeSize(ilElemType);
@@ -350,29 +306,24 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         }
 
         // Handle field assignment (obj.field = value)
-        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get()))
-        {
+        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
             auto base = lowerExpr(fieldExpr->base.get());
             TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
             TypeRef targetType = sema_.typeOf(fieldExpr);
 
             std::string setterName = sema_.resolvedFieldSetter(fieldExpr);
-            if (!setterName.empty())
-            {
+            if (!setterName.empty()) {
                 Value setterValue = wrapValueForOptionalField(right.value, targetType, rightType);
 
-                if (right.type.kind == Type::Kind::Ptr && targetType)
-                {
+                if (right.type.kind == Type::Kind::Ptr && targetType) {
                     Type targetILType = mapType(targetType);
                     if (targetILType.kind != Type::Kind::Ptr)
                         setterValue = emitUnbox(setterValue, targetILType).value;
                 }
 
-                if (targetType && rightType)
-                {
+                if (targetType && rightType) {
                     if (targetType->kind == TypeKindSem::Integer &&
-                        rightType->kind == TypeKindSem::Number)
-                    {
+                        rightType->kind == TypeKindSem::Number) {
                         unsigned convId = nextTempId();
                         il::core::Instr conv;
                         conv.result = convId;
@@ -382,10 +333,8 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                         conv.loc = curLoc_;
                         blockMgr_.currentBlock()->instructions.push_back(conv);
                         setterValue = Value::temp(convId);
-                    }
-                    else if (targetType->kind == TypeKindSem::Number &&
-                             rightType->kind == TypeKindSem::Integer)
-                    {
+                    } else if (targetType->kind == TypeKindSem::Number &&
+                               rightType->kind == TypeKindSem::Integer) {
                         unsigned convId = nextTempId();
                         il::core::Instr conv;
                         conv.result = convId;
@@ -409,27 +358,22 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             // Unwrap Optional types for field assignment
             // This handles variables assigned from optionals after null checks
             // (e.g., `var row = maybeRow;` where maybeRow is Row?)
-            if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
-            {
+            if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType()) {
                 baseType = baseType->innerType();
             }
 
-            if (baseType)
-            {
+            if (baseType) {
                 std::string typeName = baseType->name;
 
                 // Check value types
                 const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(typeName);
-                if (valueInfo)
-                {
+                if (valueInfo) {
                     const FieldLayout *field = valueInfo->findField(fieldExpr->field);
-                    if (field)
-                    {
+                    if (field) {
                         Value fieldValue =
                             wrapValueForOptionalField(right.value, field->type, rightType);
                         // Unbox obj (Ptr) to the field's primitive IL type.
-                        if (right.type.kind == Type::Kind::Ptr && field->type)
-                        {
+                        if (right.type.kind == Type::Kind::Ptr && field->type) {
                             Type fieldILType = mapType(field->type);
                             if (fieldILType.kind != Type::Kind::Ptr)
                                 fieldValue = emitUnbox(fieldValue, fieldILType).value;
@@ -441,16 +385,13 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
 
                 // Check entity types
                 const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(typeName);
-                if (entityInfoPtr)
-                {
+                if (entityInfoPtr) {
                     const FieldLayout *field = entityInfoPtr->findField(fieldExpr->field);
-                    if (field)
-                    {
+                    if (field) {
                         Value fieldValue =
                             wrapValueForOptionalField(right.value, field->type, rightType);
                         // Unbox obj (Ptr) to the field's primitive IL type.
-                        if (right.type.kind == Type::Kind::Ptr && field->type)
-                        {
+                        if (right.type.kind == Type::Kind::Ptr && field->type) {
                             Type fieldILType = mapType(field->type);
                             if (fieldILType.kind != Type::Kind::Ptr)
                                 fieldValue = emitUnbox(fieldValue, fieldILType).value;
@@ -468,8 +409,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
     // Non-assignment binary operations
 
     // Handle short-circuit evaluation for And/Or BEFORE evaluating right operand
-    if (expr->op == BinaryOp::And || expr->op == BinaryOp::Or)
-    {
+    if (expr->op == BinaryOp::And || expr->op == BinaryOp::Or) {
         return lowerShortCircuit(expr);
     }
 
@@ -484,8 +424,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
     bool isFloat = leftIsFloat || rightIsFloat;
 
     // Handle mixed-type arithmetic: promote integer operand to float
-    if (isFloat && !leftIsFloat && leftType && leftType->isIntegral())
-    {
+    if (isFloat && !leftIsFloat && leftType && leftType->isIntegral()) {
         unsigned convId = nextTempId();
         il::core::Instr convInstr;
         convInstr.result = convId;
@@ -496,9 +435,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
         blockMgr_.currentBlock()->instructions.push_back(convInstr);
         left.value = Value::temp(convId);
         left.type = Type(Type::Kind::F64);
-    }
-    else if (isFloat && !rightIsFloat && rightType && rightType->isIntegral())
-    {
+    } else if (isFloat && !rightIsFloat && rightType && rightType->isIntegral()) {
         unsigned convId = nextTempId();
         il::core::Instr convInstr;
         convInstr.result = convId;
@@ -514,19 +451,16 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
     Opcode op = Opcode::Add;
     Type resultType = isFloat ? Type(Type::Kind::F64) : left.type;
 
-    switch (expr->op)
-    {
+    switch (expr->op) {
         case BinaryOp::Add:
-            if (leftType && leftType->kind == TypeKindSem::String)
-            {
+            if (leftType && leftType->kind == TypeKindSem::String) {
                 // String concatenation
                 Value rightStr = right.value;
                 if (rightType && rightType->kind == TypeKindSem::Integer)
                     rightStr = emitCallRet(Type(Type::Kind::Str), kStringFromInt, {right.value});
                 else if (rightType && rightType->kind == TypeKindSem::Number)
                     rightStr = emitCallRet(Type(Type::Kind::Str), kStringFromNum, {right.value});
-                else if (rightType && rightType->kind == TypeKindSem::Boolean)
-                {
+                else if (rightType && rightType->kind == TypeKindSem::Boolean) {
                     // Use kFmtBool to convert boolean to "true"/"false" string
                     rightStr = emitCallRet(Type(Type::Kind::Str), kFmtBool, {right.value});
                 }
@@ -539,8 +473,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                 consumeDeferred(rightStr);
                 return {result, Type(Type::Kind::Str)};
             }
-            if (rightType && rightType->kind == TypeKindSem::String)
-            {
+            if (rightType && rightType->kind == TypeKindSem::String) {
                 // String concatenation: value + "text" (convert left to string)
                 Value leftStr = left.value;
                 if (leftType && leftType->kind == TypeKindSem::Integer)
@@ -577,20 +510,16 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             break;
 
         case BinaryOp::Eq:
-            if (leftType && leftType->kind == TypeKindSem::String)
-            {
+            if (leftType && leftType->kind == TypeKindSem::String) {
                 // String equality: rt_str_eq returns i1 (boolean) directly
                 Value result =
                     emitCallRet(Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
                 return {result, Type(Type::Kind::I1)};
             }
-            if (isFloat)
-            {
+            if (isFloat) {
                 op = Opcode::FCmpEQ;
                 resultType = Type(Type::Kind::I1);
-            }
-            else
-            {
+            } else {
                 Value lhsExt = extendOperandForComparison(left.value, left.type);
                 Value rhsExt = extendOperandForComparison(right.value, right.type);
                 Value result = emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), lhsExt, rhsExt);
@@ -599,8 +528,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             break;
 
         case BinaryOp::Ne:
-            if (leftType && leftType->kind == TypeKindSem::String)
-            {
+            if (leftType && leftType->kind == TypeKindSem::String) {
                 // String inequality: rt_str_eq returns i1, zext to i64 then invert
                 Value eqResult =
                     emitCallRet(Type(Type::Kind::I1), kStringEquals, {left.value, right.value});
@@ -609,13 +537,10 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
                     emitBinary(Opcode::ICmpEq, Type(Type::Kind::I1), eqI64, Value::constInt(0));
                 return {result, Type(Type::Kind::I1)};
             }
-            if (isFloat)
-            {
+            if (isFloat) {
                 op = Opcode::FCmpNE;
                 resultType = Type(Type::Kind::I1);
-            }
-            else
-            {
+            } else {
                 Value lhsExt = extendOperandForComparison(left.value, left.type);
                 Value rhsExt = extendOperandForComparison(right.value, right.type);
                 Value result = emitBinary(Opcode::ICmpNe, Type(Type::Kind::I1), lhsExt, rhsExt);
@@ -624,8 +549,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             break;
 
         case BinaryOp::Lt:
-            if (leftType && leftType->kind == TypeKindSem::String)
-            {
+            if (leftType && leftType->kind == TypeKindSem::String) {
                 // Bug #003 fix: Use runtime string comparison for <
                 Value result =
                     emitCallRet(Type(Type::Kind::I64), "rt_str_lt", {left.value, right.value});
@@ -638,8 +562,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             break;
 
         case BinaryOp::Le:
-            if (leftType && leftType->kind == TypeKindSem::String)
-            {
+            if (leftType && leftType->kind == TypeKindSem::String) {
                 // Bug #003 fix: Use runtime string comparison for <=
                 Value result =
                     emitCallRet(Type(Type::Kind::I64), "rt_str_le", {left.value, right.value});
@@ -652,8 +575,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             break;
 
         case BinaryOp::Gt:
-            if (leftType && leftType->kind == TypeKindSem::String)
-            {
+            if (leftType && leftType->kind == TypeKindSem::String) {
                 // Bug #003 fix: Use runtime string comparison for >
                 Value result =
                     emitCallRet(Type(Type::Kind::I64), "rt_str_gt", {left.value, right.value});
@@ -666,8 +588,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             break;
 
         case BinaryOp::Ge:
-            if (leftType && leftType->kind == TypeKindSem::String)
-            {
+            if (leftType && leftType->kind == TypeKindSem::String) {
                 // Bug #003 fix: Use runtime string comparison for >=
                 Value result =
                     emitCallRet(Type(Type::Kind::I64), "rt_str_ge", {left.value, right.value});
@@ -679,8 +600,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             resultType = Type(Type::Kind::I1);
             break;
 
-        case BinaryOp::And:
-        {
+        case BinaryOp::And: {
             Value lhsExt = (left.type.kind == Type::Kind::I1)
                                ? emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value)
                                : left.value;
@@ -692,8 +612,7 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
             return {truncResult, Type(Type::Kind::I1)};
         }
 
-        case BinaryOp::Or:
-        {
+        case BinaryOp::Or: {
             Value lhsExt = (left.type.kind == Type::Kind::I1)
                                ? emitUnary(Opcode::Zext1, Type(Type::Kind::I64), left.value)
                                : left.value;
@@ -730,32 +649,25 @@ LowerResult Lowerer::lowerBinary(BinaryExpr *expr)
 // Unary Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerUnary(UnaryExpr *expr)
-{
+LowerResult Lowerer::lowerUnary(UnaryExpr *expr) {
     auto operand = lowerExpr(expr->operand.get());
     TypeRef operandType = sema_.typeOf(expr->operand.get());
     bool isFloat = operandType && operandType->kind == TypeKindSem::Number;
 
-    switch (expr->op)
-    {
-        case UnaryOp::Neg:
-        {
-            if (isFloat)
-            {
+    switch (expr->op) {
+        case UnaryOp::Neg: {
+            if (isFloat) {
                 Value result =
                     emitBinary(Opcode::FSub, operand.type, Value::constFloat(0.0), operand.value);
                 return {result, operand.type};
-            }
-            else
-            {
+            } else {
                 Opcode subOp = options_.overflowChecks ? Opcode::ISubOvf : Opcode::Sub;
                 Value result = emitBinary(subOp, operand.type, Value::constInt(0), operand.value);
                 return {result, operand.type};
             }
         }
 
-        case UnaryOp::Not:
-        {
+        case UnaryOp::Not: {
             Value opVal = operand.value;
             if (operand.type.kind == Type::Kind::I1)
                 opVal = emitUnary(Opcode::Zext1, Type(Type::Kind::I64), operand.value);
@@ -764,20 +676,17 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr)
             return {result, Type(Type::Kind::I1)};
         }
 
-        case UnaryOp::BitNot:
-        {
+        case UnaryOp::BitNot: {
             Value result =
                 emitBinary(Opcode::Xor, operand.type, operand.value, Value::constInt(-1));
             return {result, operand.type};
         }
 
-        case UnaryOp::AddressOf:
-        {
+        case UnaryOp::AddressOf: {
             // Address-of operator for function references: &funcName
             // Returns a pointer to the function
             auto *ident = dynamic_cast<IdentExpr *>(expr->operand.get());
-            if (!ident)
-            {
+            if (!ident) {
                 // Should have been caught in semantic analysis
                 return {Value::constInt(0), Type(Type::Kind::Ptr)};
             }
@@ -794,8 +703,7 @@ LowerResult Lowerer::lowerUnary(UnaryExpr *expr)
 // Short-Circuit Evaluation for And/Or
 //=============================================================================
 
-LowerResult Lowerer::lowerShortCircuit(BinaryExpr *expr)
-{
+LowerResult Lowerer::lowerShortCircuit(BinaryExpr *expr) {
     // Short-circuit evaluation for 'and' and 'or' operators.
     //
     // For 'A and B':
@@ -840,12 +748,9 @@ LowerResult Lowerer::lowerShortCircuit(BinaryExpr *expr)
     // Branch based on left value
     // For 'and': if left is true, evaluate right; else short-circuit to merge
     // For 'or': if left is false, evaluate right; else short-circuit to merge
-    if (isAnd)
-    {
+    if (isAnd) {
         emitCBr(leftBool, evalRightIdx, mergeIdx);
-    }
-    else
-    {
+    } else {
         emitCBr(leftBool, mergeIdx, evalRightIdx);
     }
 

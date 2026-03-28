@@ -30,8 +30,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::common
-{
+namespace viper::codegen::common {
 
 /// @brief Template-based copy propagation for machine IR basic blocks.
 ///
@@ -88,8 +87,8 @@ namespace viper::codegen::common
 /// @tparam Traits Target-specific type providing the required interface.
 /// @param instrs  Mutable instruction vector to propagate copies through.
 /// @return Number of operand replacements performed.
-template <typename Traits> std::size_t propagateCopies(std::vector<typename Traits::MInstr> &instrs)
-{
+template <typename Traits>
+std::size_t propagateCopies(std::vector<typename Traits::MInstr> &instrs) {
     using MInstr = typename Traits::MInstr;
     using Operand = typename Traits::Operand;
     using RegKey = typename Traits::RegKey;
@@ -98,11 +97,9 @@ template <typename Traits> std::size_t propagateCopies(std::vector<typename Trai
     std::size_t propagated = 0;
 
     // Helper: invalidate all copies whose origin matches the given key.
-    auto invalidateDependents = [&copyOrigin](RegKey originKey)
-    {
+    auto invalidateDependents = [&copyOrigin](RegKey originKey) {
         std::vector<RegKey> toErase;
-        for (const auto &[key, origin] : copyOrigin)
-        {
+        for (const auto &[key, origin] : copyOrigin) {
             if (Traits::regKey(origin) == originKey)
                 toErase.push_back(key);
         }
@@ -112,8 +109,7 @@ template <typename Traits> std::size_t propagateCopies(std::vector<typename Trai
 
     // Helper: process a register-to-register move (GPR or FPR).
     // Returns true if the instruction was handled as a move.
-    auto handleMove = [&](MInstr &instr) -> bool
-    {
+    auto handleMove = [&](MInstr &instr) -> bool {
         auto &ops = Traits::getOps(instr);
         if (ops.size() != 2)
             return false;
@@ -131,21 +127,18 @@ template <typename Traits> std::size_t propagateCopies(std::vector<typename Trai
         // Follow the copy chain for the source, unless it is an ABI register.
         RegKey srcKey = Traits::regKey(src);
         Operand origin = src;
-        if (!Traits::isABIReg(src))
-        {
+        if (!Traits::isABIReg(src)) {
             auto it = copyOrigin.find(srcKey);
             if (it != copyOrigin.end())
                 origin = it->second;
         }
 
         // Record the copy relationship if dst differs from origin.
-        if (!Traits::samePhysReg(dst, origin))
-        {
+        if (!Traits::samePhysReg(dst, origin)) {
             copyOrigin[dstKey] = origin;
 
             // Shorten the move to point directly at the origin.
-            if (!Traits::samePhysReg(src, origin))
-            {
+            if (!Traits::samePhysReg(src, origin)) {
                 ops[1] = origin;
                 ++propagated;
             }
@@ -153,8 +146,7 @@ template <typename Traits> std::size_t propagateCopies(std::vector<typename Trai
         return true;
     };
 
-    for (auto &instr : instrs)
-    {
+    for (auto &instr : instrs) {
         // Skip or clear on branches/calls.
         auto [shouldSkip, shouldClear] = Traits::shouldSkipOrClear(instr);
         if (shouldClear)
@@ -163,15 +155,13 @@ template <typename Traits> std::size_t propagateCopies(std::vector<typename Trai
             continue;
 
         // Handle GPR moves.
-        if (Traits::isGPRMove(instr))
-        {
+        if (Traits::isGPRMove(instr)) {
             if (handleMove(instr))
                 continue;
         }
 
         // Handle FPR moves.
-        if (Traits::isFPRMove(instr))
-        {
+        if (Traits::isFPRMove(instr)) {
             if (handleMove(instr))
                 continue;
         }
@@ -181,19 +171,16 @@ template <typename Traits> std::size_t propagateCopies(std::vector<typename Trai
         auto &ops = Traits::getOps(instr);
 
         // First pass: replace uses with their origin.
-        for (std::size_t i = 0; i < ops.size(); ++i)
-        {
+        for (std::size_t i = 0; i < ops.size(); ++i) {
             auto &op = ops[i];
             if (!Traits::isPhysReg(op))
                 continue;
 
             auto [isUse, isDef] = Traits::classifyOperand(instr, i);
-            if (isUse && !isDef && !Traits::isABIReg(op))
-            {
+            if (isUse && !isDef && !Traits::isABIReg(op)) {
                 RegKey key = Traits::regKey(op);
                 auto it = copyOrigin.find(key);
-                if (it != copyOrigin.end() && !Traits::samePhysReg(op, it->second))
-                {
+                if (it != copyOrigin.end() && !Traits::samePhysReg(op, it->second)) {
                     op = it->second;
                     ++propagated;
                 }
@@ -201,15 +188,13 @@ template <typename Traits> std::size_t propagateCopies(std::vector<typename Trai
         }
 
         // Second pass: invalidate definitions.
-        for (std::size_t i = 0; i < ops.size(); ++i)
-        {
+        for (std::size_t i = 0; i < ops.size(); ++i) {
             const auto &op = ops[i];
             if (!Traits::isPhysReg(op))
                 continue;
 
             auto [isUse, isDef] = Traits::classifyOperand(instr, i);
-            if (isDef)
-            {
+            if (isDef) {
                 RegKey key = Traits::regKey(op);
                 invalidateDependents(key);
                 copyOrigin.erase(key);

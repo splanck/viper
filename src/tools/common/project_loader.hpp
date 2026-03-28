@@ -23,12 +23,10 @@
 #include <string>
 #include <vector>
 
-namespace il::tools::common
-{
+namespace il::tools::common {
 
 /// @brief Detected language for a project.
-enum class ProjectLang
-{
+enum class ProjectLang {
     Zia,
     Basic,
     Mixed ///< Both .zia and .bas files; requires IL linker.
@@ -37,8 +35,7 @@ enum class ProjectLang
 /// @brief Parsed project manifest or convention-inferred configuration.
 /// @invariant After successful resolution, entryFile is non-empty and points
 ///            to an existing source file.
-struct ProjectConfig
-{
+struct ProjectConfig {
     /// @brief Project name (from manifest or directory name).
     std::string name;
 

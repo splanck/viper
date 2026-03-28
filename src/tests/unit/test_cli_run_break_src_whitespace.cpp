@@ -22,19 +22,16 @@
 #include <string>
 #include <vector>
 
-namespace
-{
+namespace {
 
 int runWithArgs(const std::string &file,
                 const std::string &flag,
                 const std::string &spec,
-                std::string &stderrText)
-{
+                std::string &stderrText) {
     std::vector<std::string> argStorage = {file, flag, spec};
     std::vector<char *> argv;
     argv.reserve(argStorage.size());
-    for (auto &arg : argStorage)
-    {
+    for (auto &arg : argStorage) {
         argv.push_back(arg.data());
     }
 
@@ -52,8 +49,7 @@ int runWithArgs(const std::string &file,
 
 void usage() {}
 
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: cmdRunIL has Windows-specific path handling issues
     std::cout << "Test skipped: cmdRunIL path handling differs on Windows\n";

@@ -44,8 +44,7 @@
 #define HEAP_GROWTH_FACTOR 2
 
 /// @brief A single entry in the heap containing priority and value.
-typedef struct heap_entry
-{
+typedef struct heap_entry {
     int64_t priority; ///< Priority value (lower = higher priority for min-heap)
     void *value;      ///< The stored object
 } heap_entry;
@@ -71,8 +70,7 @@ typedef struct heap_entry
 /// Array: [(1,A), (3,B), (2,C), (5,D), (4,E)]
 ///         ^root
 /// ```
-typedef struct rt_pqueue_impl
-{
+typedef struct rt_pqueue_impl {
     int64_t len;       ///< Number of elements currently in the heap
     int64_t cap;       ///< Current capacity (allocated slots)
     int8_t is_max;     ///< 1 for max-heap, 0 for min-heap
@@ -80,8 +78,7 @@ typedef struct rt_pqueue_impl
 } rt_pqueue_impl;
 
 /// @brief Finalizer callback invoked when a Heap is garbage collected.
-static void rt_pqueue_finalize(void *obj)
-{
+static void rt_pqueue_finalize(void *obj) {
     if (!obj)
         return;
     rt_pqueue_impl *h = (rt_pqueue_impl *)obj;
@@ -92,20 +89,17 @@ static void rt_pqueue_finalize(void *obj)
 }
 
 /// @brief Grows the heap capacity.
-static void heap_grow(rt_pqueue_impl *h)
-{
+static void heap_grow(rt_pqueue_impl *h) {
     if (h->cap > INT64_MAX / HEAP_GROWTH_FACTOR)
         rt_trap("Heap: capacity overflow");
     int64_t new_cap = h->cap * HEAP_GROWTH_FACTOR;
     heap_entry *new_items = malloc((size_t)new_cap * sizeof(heap_entry));
 
-    if (!new_items)
-    {
+    if (!new_items) {
         rt_trap("Heap: memory allocation failed");
     }
 
-    if (h->len > 0)
-    {
+    if (h->len > 0) {
         memcpy(new_items, h->items, (size_t)h->len * sizeof(heap_entry));
     }
 
@@ -116,8 +110,7 @@ static void heap_grow(rt_pqueue_impl *h)
 
 /// @brief Compare two priorities based on heap type.
 /// Returns true if a should be higher in the heap than b.
-static inline int heap_compare(rt_pqueue_impl *h, int64_t a, int64_t b)
-{
+static inline int heap_compare(rt_pqueue_impl *h, int64_t a, int64_t b) {
     if (h->is_max)
         return a > b; // Max-heap: larger values go up
     else
@@ -125,18 +118,15 @@ static inline int heap_compare(rt_pqueue_impl *h, int64_t a, int64_t b)
 }
 
 /// @brief Swap two entries in the heap.
-static inline void heap_swap(heap_entry *items, int64_t i, int64_t j)
-{
+static inline void heap_swap(heap_entry *items, int64_t i, int64_t j) {
     heap_entry tmp = items[i];
     items[i] = items[j];
     items[j] = tmp;
 }
 
 /// @brief Restore heap property by moving an element up.
-static void heap_swim(rt_pqueue_impl *h, int64_t k)
-{
-    while (k > 0)
-    {
+static void heap_swim(rt_pqueue_impl *h, int64_t k) {
+    while (k > 0) {
         int64_t parent = (k - 1) / 2;
         if (!heap_compare(h, h->items[k].priority, h->items[parent].priority))
             break;
@@ -146,15 +136,12 @@ static void heap_swim(rt_pqueue_impl *h, int64_t k)
 }
 
 /// @brief Restore heap property by moving an element down.
-static void heap_sink(rt_pqueue_impl *h, int64_t k)
-{
-    while (2 * k + 1 < h->len)
-    {
+static void heap_sink(rt_pqueue_impl *h, int64_t k) {
+    while (2 * k + 1 < h->len) {
         int64_t child = 2 * k + 1; // Left child
         // Pick the child with higher priority
         if (child + 1 < h->len &&
-            heap_compare(h, h->items[child + 1].priority, h->items[child].priority))
-        {
+            heap_compare(h, h->items[child + 1].priority, h->items[child].priority)) {
             child++; // Right child has higher priority
         }
         // If parent already has higher priority, stop
@@ -165,16 +152,13 @@ static void heap_sink(rt_pqueue_impl *h, int64_t k)
     }
 }
 
-void *rt_pqueue_new(void)
-{
+void *rt_pqueue_new(void) {
     return rt_pqueue_new_max(0); // Default to min-heap
 }
 
-void *rt_pqueue_new_max(int8_t is_max)
-{
+void *rt_pqueue_new_max(int8_t is_max) {
     rt_pqueue_impl *h = (rt_pqueue_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_pqueue_impl));
-    if (!h)
-    {
+    if (!h) {
         rt_trap("Heap: memory allocation failed");
     }
 
@@ -184,8 +168,7 @@ void *rt_pqueue_new_max(int8_t is_max)
     h->items = malloc((size_t)HEAP_DEFAULT_CAP * sizeof(heap_entry));
     rt_obj_set_finalizer(h, rt_pqueue_finalize);
 
-    if (!h->items)
-    {
+    if (!h->items) {
         if (rt_obj_release_check0(h))
             rt_obj_free(h);
         rt_trap("Heap: memory allocation failed");
@@ -194,36 +177,31 @@ void *rt_pqueue_new_max(int8_t is_max)
     return h;
 }
 
-int64_t rt_pqueue_len(void *obj)
-{
+int64_t rt_pqueue_len(void *obj) {
     if (!obj)
         return 0;
     return ((rt_pqueue_impl *)obj)->len;
 }
 
-int8_t rt_pqueue_is_empty(void *obj)
-{
+int8_t rt_pqueue_is_empty(void *obj) {
     if (!obj)
         return 1;
     return ((rt_pqueue_impl *)obj)->len == 0 ? 1 : 0;
 }
 
-int8_t rt_pqueue_is_max(void *obj)
-{
+int8_t rt_pqueue_is_max(void *obj) {
     if (!obj)
         return 0;
     return ((rt_pqueue_impl *)obj)->is_max;
 }
 
-void rt_pqueue_push(void *obj, int64_t priority, void *val)
-{
+void rt_pqueue_push(void *obj, int64_t priority, void *val) {
     if (!obj)
         rt_trap("Heap.Push: null heap");
 
     rt_pqueue_impl *h = (rt_pqueue_impl *)obj;
 
-    if (h->len >= h->cap)
-    {
+    if (h->len >= h->cap) {
         heap_grow(h);
     }
 
@@ -236,15 +214,13 @@ void rt_pqueue_push(void *obj, int64_t priority, void *val)
     heap_swim(h, h->len - 1);
 }
 
-void *rt_pqueue_pop(void *obj)
-{
+void *rt_pqueue_pop(void *obj) {
     if (!obj)
         rt_trap("Heap.Pop: null heap");
 
     rt_pqueue_impl *h = (rt_pqueue_impl *)obj;
 
-    if (h->len == 0)
-    {
+    if (h->len == 0) {
         rt_trap("Heap.Pop: heap is empty");
     }
 
@@ -252,8 +228,7 @@ void *rt_pqueue_pop(void *obj)
 
     // Move last element to root and shrink
     h->len--;
-    if (h->len > 0)
-    {
+    if (h->len > 0) {
         h->items[0] = h->items[h->len];
         heap_sink(h, 0);
     }
@@ -261,23 +236,20 @@ void *rt_pqueue_pop(void *obj)
     return val;
 }
 
-void *rt_pqueue_peek(void *obj)
-{
+void *rt_pqueue_peek(void *obj) {
     if (!obj)
         rt_trap("Heap.Peek: null heap");
 
     rt_pqueue_impl *h = (rt_pqueue_impl *)obj;
 
-    if (h->len == 0)
-    {
+    if (h->len == 0) {
         rt_trap("Heap.Peek: heap is empty");
     }
 
     return h->items[0].value;
 }
 
-void *rt_pqueue_try_pop(void *obj)
-{
+void *rt_pqueue_try_pop(void *obj) {
     if (!obj)
         return NULL;
 
@@ -289,8 +261,7 @@ void *rt_pqueue_try_pop(void *obj)
     void *val = h->items[0].value;
 
     h->len--;
-    if (h->len > 0)
-    {
+    if (h->len > 0) {
         h->items[0] = h->items[h->len];
         heap_sink(h, 0);
     }
@@ -298,8 +269,7 @@ void *rt_pqueue_try_pop(void *obj)
     return val;
 }
 
-void *rt_pqueue_try_peek(void *obj)
-{
+void *rt_pqueue_try_peek(void *obj) {
     if (!obj)
         return NULL;
 
@@ -311,8 +281,7 @@ void *rt_pqueue_try_peek(void *obj)
     return h->items[0].value;
 }
 
-void rt_pqueue_clear(void *obj)
-{
+void rt_pqueue_clear(void *obj) {
     if (!obj)
         return;
 
@@ -320,8 +289,7 @@ void rt_pqueue_clear(void *obj)
     h->len = 0;
 }
 
-void *rt_pqueue_to_seq(void *obj)
-{
+void *rt_pqueue_to_seq(void *obj) {
     if (!obj)
         rt_trap("Heap.ToSeq: null heap");
 
@@ -335,14 +303,12 @@ void *rt_pqueue_to_seq(void *obj)
     rt_pqueue_impl *copy = (rt_pqueue_impl *)rt_pqueue_new_max(h->is_max);
 
     // Copy all entries
-    for (int64_t i = 0; i < h->len; i++)
-    {
+    for (int64_t i = 0; i < h->len; i++) {
         rt_pqueue_push(copy, h->items[i].priority, h->items[i].value);
     }
 
     // Pop from copy in priority order
-    while (copy->len > 0)
-    {
+    while (copy->len > 0) {
         void *val = rt_pqueue_pop(copy);
         rt_seq_push(seq, val);
     }

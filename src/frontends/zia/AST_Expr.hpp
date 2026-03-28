@@ -46,8 +46,7 @@
 #include <variant>
 #include <vector>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 //===----------------------------------------------------------------------===//
 /// @name Expression Nodes
 /// @brief AST nodes representing expressions that compute values.
@@ -65,8 +64,7 @@ namespace il::frontends::zia
 /// - Operations: computations with operators
 /// - Construction: creating new values/objects
 /// - Control flow: expressions with branching
-enum class ExprKind
-{
+enum class ExprKind {
     // =========================================================================
     /// @name Literal Expressions
     /// @brief Constant values embedded directly in source code.
@@ -266,8 +264,7 @@ enum class ExprKind
 /// - Control: IfExpr, MatchExpr, BlockExpr
 ///
 /// @invariant `kind` correctly identifies the concrete subclass type.
-struct Expr
-{
+struct Expr {
     /// @brief Identifies the concrete expression kind for downcasting.
     ExprKind kind;
 
@@ -292,8 +289,7 @@ struct Expr
 /// - `0xFF` - Hexadecimal (255 in decimal)
 /// - `0b1010` - Binary (10 in decimal)
 /// - `-123` - Negative integer (actually a unary minus on 123)
-struct IntLiteralExpr : Expr
-{
+struct IntLiteralExpr : Expr {
     /// @brief The integer value.
     int64_t value;
 
@@ -311,8 +307,7 @@ struct IntLiteralExpr : Expr
 /// - `3.14159` - Simple decimal
 /// - `1e10` - Scientific notation (1 × 10^10)
 /// - `2.5e-3` - Scientific with negative exponent (0.0025)
-struct NumberLiteralExpr : Expr
-{
+struct NumberLiteralExpr : Expr {
     /// @brief The floating-point value.
     double value;
 
@@ -331,8 +326,7 @@ struct NumberLiteralExpr : Expr
 /// Interpolated strings are desugared during parsing into a series of
 /// string concatenation operations. This node represents the final
 /// resolved string value after interpolation processing.
-struct StringLiteralExpr : Expr
-{
+struct StringLiteralExpr : Expr {
     /// @brief The string value with escapes processed.
     std::string value;
 
@@ -340,15 +334,12 @@ struct StringLiteralExpr : Expr
     /// @param l Source location.
     /// @param v The string value.
     StringLiteralExpr(SourceLoc l, std::string v)
-        : Expr(ExprKind::StringLiteral, l), value(std::move(v))
-    {
-    }
+        : Expr(ExprKind::StringLiteral, l), value(std::move(v)) {}
 };
 
 /// @brief Boolean literal: `true` or `false`.
 /// @details Represents the two boolean constant values.
-struct BoolLiteralExpr : Expr
-{
+struct BoolLiteralExpr : Expr {
     /// @brief The boolean value.
     bool value;
 
@@ -361,8 +352,7 @@ struct BoolLiteralExpr : Expr
 /// @brief Null literal: `null`.
 /// @details Represents the absence of a value for optional types.
 /// Only valid where an optional type is expected.
-struct NullLiteralExpr : Expr
-{
+struct NullLiteralExpr : Expr {
     /// @brief Construct a null literal.
     /// @param l Source location.
     NullLiteralExpr(SourceLoc l) : Expr(ExprKind::NullLiteral, l) {}
@@ -372,8 +362,7 @@ struct NullLiteralExpr : Expr
 /// @details Represents the singleton unit value, similar to void but
 /// with an actual value. Used with Result[Unit] for operations that
 /// succeed but return no meaningful data.
-struct UnitLiteralExpr : Expr
-{
+struct UnitLiteralExpr : Expr {
     /// @brief Construct a unit literal.
     /// @param l Source location.
     UnitLiteralExpr(SourceLoc l) : Expr(ExprKind::UnitLiteral, l) {}
@@ -382,8 +371,7 @@ struct UnitLiteralExpr : Expr
 /// @brief Identifier expression: `foo`, `myVariable`.
 /// @details References a named entity: variable, parameter, function, or type.
 /// The semantic analyzer resolves the name to its definition.
-struct IdentExpr : Expr
-{
+struct IdentExpr : Expr {
     /// @brief The identifier name.
     std::string name;
 
@@ -396,8 +384,7 @@ struct IdentExpr : Expr
 /// @brief Self reference within methods: `self`.
 /// @details References the current object instance within a method.
 /// Only valid inside method bodies of value or entity types.
-struct SelfExpr : Expr
-{
+struct SelfExpr : Expr {
     /// @brief Construct a self expression.
     /// @param l Source location.
     SelfExpr(SourceLoc l) : Expr(ExprKind::SelfExpr, l) {}
@@ -407,8 +394,7 @@ struct SelfExpr : Expr
 /// @details References the parent class for calling overridden methods
 /// or accessing inherited members. Only valid in entity types that
 /// extend another entity.
-struct SuperExprNode : Expr
-{
+struct SuperExprNode : Expr {
     /// @brief Construct a super expression.
     /// @param l Source location.
     SuperExprNode(SourceLoc l) : Expr(ExprKind::SuperExpr, l) {}
@@ -416,8 +402,7 @@ struct SuperExprNode : Expr
 
 /// @brief Binary operators for BinaryExpr.
 /// @details Organized by category: arithmetic, comparison, logical, bitwise.
-enum class BinaryOp
-{
+enum class BinaryOp {
     // Arithmetic operators
     Add, ///< Addition: `a + b`
     Sub, ///< Subtraction: `a - b`
@@ -463,8 +448,7 @@ enum class BinaryOp
 /// Logical AND and OR use short-circuit evaluation:
 /// - `a && b`: b is only evaluated if a is true
 /// - `a || b`: b is only evaluated if a is false
-struct BinaryExpr : Expr
-{
+struct BinaryExpr : Expr {
     /// @brief The binary operator.
     BinaryOp op;
 
@@ -480,14 +464,11 @@ struct BinaryExpr : Expr
     /// @param lhs Left operand.
     /// @param rhs Right operand.
     BinaryExpr(SourceLoc l, BinaryOp o, ExprPtr lhs, ExprPtr rhs)
-        : Expr(ExprKind::Binary, l), op(o), left(std::move(lhs)), right(std::move(rhs))
-    {
-    }
+        : Expr(ExprKind::Binary, l), op(o), left(std::move(lhs)), right(std::move(rhs)) {}
 };
 
 /// @brief Unary operators for UnaryExpr.
-enum class UnaryOp
-{
+enum class UnaryOp {
     Neg,       ///< Arithmetic negation: `-a`
     Not,       ///< Logical NOT: `!a`
     BitNot,    ///< Bitwise NOT: `~a`
@@ -496,8 +477,7 @@ enum class UnaryOp
 
 /// @brief Unary operation expression: `-a`, `!b`, `~c`.
 /// @details Represents operations with a single operand.
-struct UnaryExpr : Expr
-{
+struct UnaryExpr : Expr {
     /// @brief The unary operator.
     UnaryOp op;
 
@@ -509,16 +489,13 @@ struct UnaryExpr : Expr
     /// @param o The operator.
     /// @param e The operand.
     UnaryExpr(SourceLoc l, UnaryOp o, ExprPtr e)
-        : Expr(ExprKind::Unary, l), op(o), operand(std::move(e))
-    {
-    }
+        : Expr(ExprKind::Unary, l), op(o), operand(std::move(e)) {}
 };
 
 /// @brief Ternary conditional expression: `a ? b : c`.
 /// @details Evaluates condition, then returns thenExpr if true, elseExpr if false.
 /// Both branches must have compatible types.
-struct TernaryExpr : Expr
-{
+struct TernaryExpr : Expr {
     /// @brief The condition to test.
     ExprPtr condition;
 
@@ -535,9 +512,7 @@ struct TernaryExpr : Expr
     /// @param e Else branch.
     TernaryExpr(SourceLoc l, ExprPtr c, ExprPtr t, ExprPtr e)
         : Expr(ExprKind::Ternary, l), condition(std::move(c)), thenExpr(std::move(t)),
-          elseExpr(std::move(e))
-    {
-    }
+          elseExpr(std::move(e)) {}
 };
 
 /// @brief Named or positional argument in a function call.
@@ -548,8 +523,7 @@ struct TernaryExpr : Expr
 /// - `f(1, 2)` - Two positional arguments
 /// - `f(x: 1, y: 2)` - Two named arguments
 /// - `f(1, y: 2)` - Mixed positional and named
-struct CallArg
-{
+struct CallArg {
     /// @brief The argument name if using named syntax, nullopt for positional.
     std::optional<std::string> name;
 
@@ -563,8 +537,7 @@ struct CallArg
 /// - An identifier (function name)
 /// - A field expression (method call)
 /// - Any expression evaluating to a callable type (lambda)
-struct CallExpr : Expr
-{
+struct CallExpr : Expr {
     /// @brief The expression being called.
     ExprPtr callee;
 
@@ -576,16 +549,13 @@ struct CallExpr : Expr
     /// @param c The callee expression.
     /// @param a The argument list.
     CallExpr(SourceLoc l, ExprPtr c, std::vector<CallArg> a)
-        : Expr(ExprKind::Call, l), callee(std::move(c)), args(std::move(a))
-    {
-    }
+        : Expr(ExprKind::Call, l), callee(std::move(c)), args(std::move(a)) {}
 };
 
 /// @brief Array/collection indexing expression: `arr[i]`, `map[key]`.
 /// @details Accesses an element from a collection by index or key.
 /// Works with List (integer index), Map (key lookup), and String (character).
-struct IndexExpr : Expr
-{
+struct IndexExpr : Expr {
     /// @brief The collection being indexed.
     ExprPtr base;
 
@@ -597,16 +567,13 @@ struct IndexExpr : Expr
     /// @param b The base collection.
     /// @param i The index/key.
     IndexExpr(SourceLoc l, ExprPtr b, ExprPtr i)
-        : Expr(ExprKind::Index, l), base(std::move(b)), index(std::move(i))
-    {
-    }
+        : Expr(ExprKind::Index, l), base(std::move(b)), index(std::move(i)) {}
 };
 
 /// @brief Field access expression: `obj.field`.
 /// @details Accesses a field or property from a value or entity type.
 /// Also used for accessing static members and module-level items.
-struct FieldExpr : Expr
-{
+struct FieldExpr : Expr {
     /// @brief The object expression.
     ExprPtr base;
 
@@ -618,9 +585,7 @@ struct FieldExpr : Expr
     /// @param b The base object.
     /// @param f The field name.
     FieldExpr(SourceLoc l, ExprPtr b, std::string f)
-        : Expr(ExprKind::Field, l), base(std::move(b)), field(std::move(f))
-    {
-    }
+        : Expr(ExprKind::Field, l), base(std::move(b)), field(std::move(f)) {}
 };
 
 /// @brief Safe optional chain expression: `obj?.field`.
@@ -632,8 +597,7 @@ struct FieldExpr : Expr
 /// var user: User? = getUser();
 /// var name = user?.name;  // String? - null if user is null
 /// ```
-struct OptionalChainExpr : Expr
-{
+struct OptionalChainExpr : Expr {
     /// @brief The optional object expression.
     ExprPtr base;
 
@@ -645,9 +609,7 @@ struct OptionalChainExpr : Expr
     /// @param b The optional base.
     /// @param f The field name.
     OptionalChainExpr(SourceLoc l, ExprPtr b, std::string f)
-        : Expr(ExprKind::OptionalChain, l), base(std::move(b)), field(std::move(f))
-    {
-    }
+        : Expr(ExprKind::OptionalChain, l), base(std::move(b)), field(std::move(f)) {}
 };
 
 /// @brief Null coalescing expression: `a ?? b`.
@@ -658,8 +620,7 @@ struct OptionalChainExpr : Expr
 /// ```
 /// var name = user?.name ?? "Anonymous";
 /// ```
-struct CoalesceExpr : Expr
-{
+struct CoalesceExpr : Expr {
     /// @brief The primary value (may be null).
     ExprPtr left;
 
@@ -671,9 +632,7 @@ struct CoalesceExpr : Expr
     /// @param lhs Primary value.
     /// @param rhs Fallback value.
     CoalesceExpr(SourceLoc l, ExprPtr lhs, ExprPtr rhs)
-        : Expr(ExprKind::Coalesce, l), left(std::move(lhs)), right(std::move(rhs))
-    {
-    }
+        : Expr(ExprKind::Coalesce, l), left(std::move(lhs)), right(std::move(rhs)) {}
 };
 
 /// @brief Type check expression: `x is T`.
@@ -688,8 +647,7 @@ struct CoalesceExpr : Expr
 ///     dog.bark();
 /// }
 /// ```
-struct IsExpr : Expr
-{
+struct IsExpr : Expr {
     /// @brief The value to check.
     ExprPtr value;
 
@@ -701,9 +659,7 @@ struct IsExpr : Expr
     /// @param v The value to check.
     /// @param t The type to test.
     IsExpr(SourceLoc l, ExprPtr v, TypePtr t)
-        : Expr(ExprKind::Is, l), value(std::move(v)), type(std::move(t))
-    {
-    }
+        : Expr(ExprKind::Is, l), value(std::move(v)), type(std::move(t)) {}
 };
 
 /// @brief Type cast expression: `x as T`.
@@ -715,8 +671,7 @@ struct IsExpr : Expr
 /// ```
 /// var dog = animal as Dog;  // Throws if not a Dog
 /// ```
-struct AsExpr : Expr
-{
+struct AsExpr : Expr {
     /// @brief The value to cast.
     ExprPtr value;
 
@@ -728,9 +683,7 @@ struct AsExpr : Expr
     /// @param v The value to cast.
     /// @param t The target type.
     AsExpr(SourceLoc l, ExprPtr v, TypePtr t)
-        : Expr(ExprKind::As, l), value(std::move(v)), type(std::move(t))
-    {
-    }
+        : Expr(ExprKind::As, l), value(std::move(v)), type(std::move(t)) {}
 };
 
 /// @brief Range expression: `a..b` or `a..=b`.
@@ -744,8 +697,7 @@ struct AsExpr : Expr
 /// for (i in 0..10) { ... }     // 0 to 9
 /// for (i in 0..=10) { ... }    // 0 to 10
 /// ```
-struct RangeExpr : Expr
-{
+struct RangeExpr : Expr {
     /// @brief The start of the range.
     ExprPtr start;
 
@@ -761,9 +713,7 @@ struct RangeExpr : Expr
     /// @param e End of range.
     /// @param incl True if inclusive.
     RangeExpr(SourceLoc l, ExprPtr s, ExprPtr e, bool incl)
-        : Expr(ExprKind::Range, l), start(std::move(s)), end(std::move(e)), inclusive(incl)
-    {
-    }
+        : Expr(ExprKind::Range, l), start(std::move(s)), end(std::move(e)), inclusive(incl) {}
 };
 
 /// @brief Try/propagate expression: `expr?`.
@@ -778,8 +728,7 @@ struct RangeExpr : Expr
 ///     return user.name;
 /// }
 /// ```
-struct TryExpr : Expr
-{
+struct TryExpr : Expr {
     /// @brief The expression to try (must be Optional or Result type).
     ExprPtr operand;
 
@@ -798,17 +747,15 @@ struct TryExpr : Expr
 /// ```
 /// var page = pool.fetchPage(id)!;  // Traps if null
 /// ```
-struct ForceUnwrapExpr : Expr
-{
+struct ForceUnwrapExpr : Expr {
     /// @brief The expression to force-unwrap (must be Optional type).
     ExprPtr operand;
 
     /// @brief Construct a force-unwrap expression.
     /// @param l Source location.
     /// @param e The operand expression.
-    ForceUnwrapExpr(SourceLoc l, ExprPtr e) : Expr(ExprKind::ForceUnwrap, l), operand(std::move(e))
-    {
-    }
+    ForceUnwrapExpr(SourceLoc l, ExprPtr e)
+        : Expr(ExprKind::ForceUnwrap, l), operand(std::move(e)) {}
 };
 
 /// @brief Await expression: `await future`.
@@ -819,8 +766,7 @@ struct ForceUnwrapExpr : Expr
 /// ```
 /// let result = await Async.Run(fetchData, url)
 /// ```
-struct AwaitExpr : Expr
-{
+struct AwaitExpr : Expr {
     /// @brief The future expression to await.
     ExprPtr operand;
 
@@ -838,8 +784,7 @@ struct AwaitExpr : Expr
 /// ```
 /// var player = new Player("Alice", 100);
 /// ```
-struct NewExpr : Expr
-{
+struct NewExpr : Expr {
     /// @brief The type to instantiate.
     TypePtr type;
 
@@ -851,16 +796,13 @@ struct NewExpr : Expr
     /// @param t The type to create.
     /// @param a Constructor arguments.
     NewExpr(SourceLoc l, TypePtr t, std::vector<CallArg> a)
-        : Expr(ExprKind::New, l), type(std::move(t)), args(std::move(a))
-    {
-    }
+        : Expr(ExprKind::New, l), type(std::move(t)), args(std::move(a)) {}
 };
 
 /// @brief Lambda parameter specification.
 /// @details Represents one parameter of a lambda expression, with optional
 /// type annotation. If the type is omitted, it's inferred from context.
-struct LambdaParam
-{
+struct LambdaParam {
     /// @brief Parameter name.
     std::string name;
 
@@ -870,8 +812,7 @@ struct LambdaParam
 
 /// @brief Captured variable in a closure.
 /// @details Represents a variable captured from the enclosing scope.
-struct CapturedVar
-{
+struct CapturedVar {
     /// @brief Variable name.
     std::string name;
 };
@@ -885,8 +826,7 @@ struct CapturedVar
 /// - `(x: Integer) => x * 2` - Typed parameter
 /// - `(a, b) => a + b` - Multiple parameters
 /// - `() => 42` - No parameters
-struct LambdaExpr : Expr
-{
+struct LambdaExpr : Expr {
     /// @brief Lambda parameters.
     std::vector<LambdaParam> params;
 
@@ -906,16 +846,13 @@ struct LambdaExpr : Expr
     /// @param b Body expression.
     LambdaExpr(SourceLoc l, std::vector<LambdaParam> p, TypePtr ret, ExprPtr b)
         : Expr(ExprKind::Lambda, l), params(std::move(p)), returnType(std::move(ret)),
-          body(std::move(b))
-    {
-    }
+          body(std::move(b)) {}
 };
 
 /// @brief List literal expression: `[1, 2, 3]`.
 /// @details Creates a new List containing the given elements.
 /// Element type is inferred from the elements or context.
-struct ListLiteralExpr : Expr
-{
+struct ListLiteralExpr : Expr {
     /// @brief The list elements.
     std::vector<ExprPtr> elements;
 
@@ -923,14 +860,11 @@ struct ListLiteralExpr : Expr
     /// @param l Source location.
     /// @param e The elements.
     ListLiteralExpr(SourceLoc l, std::vector<ExprPtr> e)
-        : Expr(ExprKind::ListLiteral, l), elements(std::move(e))
-    {
-    }
+        : Expr(ExprKind::ListLiteral, l), elements(std::move(e)) {}
 };
 
 /// @brief Key-value entry in a map literal.
-struct MapEntry
-{
+struct MapEntry {
     /// @brief The key expression.
     ExprPtr key;
 
@@ -941,8 +875,7 @@ struct MapEntry
 /// @brief Map literal expression: `{"a": 1, "b": 2}`.
 /// @details Creates a new Map with the given key-value pairs.
 /// Key and value types are inferred from the entries or context.
-struct MapLiteralExpr : Expr
-{
+struct MapLiteralExpr : Expr {
     /// @brief The map entries.
     std::vector<MapEntry> entries;
 
@@ -950,16 +883,13 @@ struct MapLiteralExpr : Expr
     /// @param l Source location.
     /// @param e The entries.
     MapLiteralExpr(SourceLoc l, std::vector<MapEntry> e)
-        : Expr(ExprKind::MapLiteral, l), entries(std::move(e))
-    {
-    }
+        : Expr(ExprKind::MapLiteral, l), entries(std::move(e)) {}
 };
 
 /// @brief Set literal expression: `{1, 2, 3}`.
 /// @details Creates a new Set containing the given unique elements.
 /// Distinguished from map literals by lacking key-value pairs.
-struct SetLiteralExpr : Expr
-{
+struct SetLiteralExpr : Expr {
     /// @brief The set elements.
     std::vector<ExprPtr> elements;
 
@@ -967,9 +897,7 @@ struct SetLiteralExpr : Expr
     /// @param l Source location.
     /// @param e The elements.
     SetLiteralExpr(SourceLoc l, std::vector<ExprPtr> e)
-        : Expr(ExprKind::SetLiteral, l), elements(std::move(e))
-    {
-    }
+        : Expr(ExprKind::SetLiteral, l), elements(std::move(e)) {}
 };
 
 /// @brief Tuple literal expression: `(1, "hello", true)`.
@@ -980,8 +908,7 @@ struct SetLiteralExpr : Expr
 /// - `(1, 2)` - Pair of integers
 /// - `(x, "name", true)` - Mixed types
 /// - `(point.x, point.y)` - From field access
-struct TupleExpr : Expr
-{
+struct TupleExpr : Expr {
     /// @brief The tuple elements.
     std::vector<ExprPtr> elements;
 
@@ -989,9 +916,7 @@ struct TupleExpr : Expr
     /// @param l Source location.
     /// @param e The elements.
     TupleExpr(SourceLoc l, std::vector<ExprPtr> e)
-        : Expr(ExprKind::Tuple, l), elements(std::move(e))
-    {
-    }
+        : Expr(ExprKind::Tuple, l), elements(std::move(e)) {}
 };
 
 /// @brief Tuple element access expression: `tuple.0`, `tuple.1`.
@@ -1002,8 +927,7 @@ struct TupleExpr : Expr
 /// - `pair.0` - First element
 /// - `pair.1` - Second element
 /// - `triple.2` - Third element
-struct TupleIndexExpr : Expr
-{
+struct TupleIndexExpr : Expr {
     /// @brief The tuple being accessed.
     ExprPtr tuple;
 
@@ -1015,9 +939,7 @@ struct TupleIndexExpr : Expr
     /// @param t The tuple expression.
     /// @param i The element index.
     TupleIndexExpr(SourceLoc l, ExprPtr t, size_t i)
-        : Expr(ExprKind::TupleIndex, l), tuple(std::move(t)), index(i)
-    {
-    }
+        : Expr(ExprKind::TupleIndex, l), tuple(std::move(t)), index(i) {}
 };
 
 // Forward declare BlockExpr (defined after statements)
@@ -1031,8 +953,7 @@ struct BlockExpr;
 /// ```
 /// var max = if (a > b) a else b;
 /// ```
-struct IfExpr : Expr
-{
+struct IfExpr : Expr {
     /// @brief The condition to test.
     ExprPtr condition;
 
@@ -1049,19 +970,15 @@ struct IfExpr : Expr
     /// @param e Else branch.
     IfExpr(SourceLoc l, ExprPtr c, ExprPtr t, ExprPtr e)
         : Expr(ExprKind::If, l), condition(std::move(c)), thenBranch(std::move(t)),
-          elseBranch(std::move(e))
-    {
-    }
+          elseBranch(std::move(e)) {}
 };
 
 /// @brief Struct-literal initialization for value types.
 /// @details `Point { x = 3, y = 4 }` initializes a value type by field name.
 /// Each field may appear in any order; the lowerer reorders by declaration order.
-struct StructLiteralExpr : Expr
-{
+struct StructLiteralExpr : Expr {
     /// @brief One named-field initializer.
-    struct Field
-    {
+    struct Field {
         std::string name; ///< Field name as written in source.
         ExprPtr value;    ///< Initializer expression for this field.
         SourceLoc loc;    ///< Location of this field entry.
@@ -1074,22 +991,17 @@ struct StructLiteralExpr : Expr
     std::vector<Field> fields;
 
     StructLiteralExpr(SourceLoc l, std::string name, std::vector<Field> fs)
-        : Expr(ExprKind::StructLiteral, l), typeName(std::move(name)), fields(std::move(fs))
-    {
-    }
+        : Expr(ExprKind::StructLiteral, l), typeName(std::move(name)), fields(std::move(fs)) {}
 };
 
 /// @brief Pattern matching arm: `Pattern => Expr`.
 /// @details Represents one case in a match expression, with a pattern
 /// to match against and an expression to evaluate if matched.
-struct MatchArm
-{
+struct MatchArm {
     /// @brief Pattern to match against the scrutinee.
-    struct Pattern
-    {
+    struct Pattern {
         /// @brief The kinds of patterns supported.
-        enum class Kind
-        {
+        enum class Kind {
             /// @brief Wildcard pattern: `_` matches anything.
             Wildcard,
 
@@ -1150,8 +1062,7 @@ struct MatchArm
 ///     _ => "unknown";
 /// };
 /// ```
-struct MatchExpr : Expr
-{
+struct MatchExpr : Expr {
     /// @brief The value being matched against.
     ExprPtr scrutinee;
 
@@ -1163,9 +1074,7 @@ struct MatchExpr : Expr
     /// @param s The scrutinee.
     /// @param a The match arms.
     MatchExpr(SourceLoc l, ExprPtr s, std::vector<MatchArm> a)
-        : Expr(ExprKind::Match, l), scrutinee(std::move(s)), arms(std::move(a))
-    {
-    }
+        : Expr(ExprKind::Match, l), scrutinee(std::move(s)), arms(std::move(a)) {}
 };
 
 /// @}

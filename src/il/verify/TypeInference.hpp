@@ -43,13 +43,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace il::support
-{
+namespace il::support {
 template <class T> class Expected;
 }
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Render an instruction to a short single-line snippet for diagnostics.
 /// @param instr Instruction whose textual form is requested.
@@ -57,8 +55,7 @@ namespace il::verify
 std::string makeSnippet(const il::core::Instr &instr);
 
 /// @brief Helper providing operand type queries and definition tracking for verification.
-class TypeInference
-{
+class TypeInference {
   public:
     /// @brief Construct a type inference helper backed by caller storage.
     /// @param temps Mapping from temporary id to statically inferred type.

@@ -36,17 +36,13 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry)
-{
+void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry) {
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fn) { return il::transform::buildCFG(mod, fn); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fn)
-        {
+        "dominators", [](Module &mod, Function &fn) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
@@ -60,8 +56,7 @@ void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry)
         "basic-aa", [](Module &mod, Function &fn) { return viper::analysis::BasicAA(mod, fn); });
 }
 
-Param makeParam(const std::string &name, Type type, unsigned &nextId)
-{
+Param makeParam(const std::string &name, Type type, unsigned &nextId) {
     Param p;
     p.name = name;
     p.type = type;
@@ -72,8 +67,7 @@ Param makeParam(const std::string &name, Type type, unsigned &nextId)
 } // namespace
 
 // Test that a simple while-loop with pure condition header gets rotated.
-TEST(LoopRotate, RotatesSimpleWhileLoop)
-{
+TEST(LoopRotate, RotatesSimpleWhileLoop) {
     Module module;
     Function fn;
     fn.name = "while_loop";
@@ -184,8 +178,7 @@ TEST(LoopRotate, RotatesSimpleWhileLoop)
 }
 
 // Test that a function with no loops is not modified.
-TEST(LoopRotate, NoChangeWithoutLoop)
-{
+TEST(LoopRotate, NoChangeWithoutLoop) {
     Module module;
     Function fn;
     fn.name = "no_loop";
@@ -220,8 +213,7 @@ TEST(LoopRotate, NoChangeWithoutLoop)
     EXPECT_EQ(function.blocks.size(), blocksBefore);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

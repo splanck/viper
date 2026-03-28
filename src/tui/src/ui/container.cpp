@@ -18,8 +18,7 @@
 #include "tui/ui/container.hpp"
 #include "tui/render/screen.hpp"
 
-namespace viper::tui::ui
-{
+namespace viper::tui::ui {
 /// @brief Transfer ownership of a child widget into the container.
 ///
 /// @details Containers own their children outright so they can drive layout
@@ -27,8 +26,7 @@ namespace viper::tui::ui
 ///          the internal list, preserving insertion order for both layout and
 ///          paint traversals.  Passing @c nullptr is undefined and avoided by
 ///          callers.
-void Container::addChild(std::unique_ptr<Widget> child)
-{
+void Container::addChild(std::unique_ptr<Widget> child) {
     children_.push_back(std::move(child));
 }
 
@@ -40,8 +38,7 @@ void Container::addChild(std::unique_ptr<Widget> child)
 ///          Keeping the hook centralised ensures every container obeys the
 ///          parent-provided rectangle while leaving distribution logic to the
 ///          subclass.
-void Container::layout(const Rect &r)
-{
+void Container::layout(const Rect &r) {
     Widget::layout(r);
     layoutChildren();
 }
@@ -53,10 +50,8 @@ void Container::layout(const Rect &r)
 ///          shared @ref render::ScreenBuffer.  Iterating by reference avoids
 ///          copies and ensures that children paint using the rectangles computed
 ///          during layout.
-void Container::paint(render::ScreenBuffer &sb)
-{
-    for (auto &ch : children_)
-    {
+void Container::paint(render::ScreenBuffer &sb) {
+    for (auto &ch : children_) {
         ch->paint(sb);
     }
 }
@@ -68,18 +63,15 @@ void Container::paint(render::ScreenBuffer &sb)
 ///          the last child so the sum matches the parent rectangle exactly.
 ///          Children receive vertically stacked rectangles with full width and
 ///          contiguous y-coordinates, ensuring there are no gaps or overlaps.
-void VStack::layoutChildren()
-{
+void VStack::layoutChildren() {
     int count = static_cast<int>(children_.size());
-    if (count == 0)
-    {
+    if (count == 0) {
         return;
     }
     int base = rect_.h / count;
     int rem = rect_.h - base * count;
     int y = rect_.y;
-    for (int i = 0; i < count; ++i)
-    {
+    for (int i = 0; i < count; ++i) {
         int h = base + (i == count - 1 ? rem : 0);
         Rect cr{rect_.x, y, rect_.w, h};
         children_[i]->layout(cr);
@@ -94,18 +86,15 @@ void VStack::layoutChildren()
 ///          assigned to the final child, and each child receives the full height
 ///          of the parent rectangle.  The approach guarantees deterministic
 ///          layout regardless of integer division quirks.
-void HStack::layoutChildren()
-{
+void HStack::layoutChildren() {
     int count = static_cast<int>(children_.size());
-    if (count == 0)
-    {
+    if (count == 0) {
         return;
     }
     int base = rect_.w / count;
     int rem = rect_.w - base * count;
     int x = rect_.x;
-    for (int i = 0; i < count; ++i)
-    {
+    for (int i = 0; i < count; ++i) {
         int w = base + (i == count - 1 ? rem : 0);
         Rect cr{x, rect_.y, w, rect_.h};
         children_[i]->layout(cr);

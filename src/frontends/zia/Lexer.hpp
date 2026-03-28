@@ -97,8 +97,7 @@
 #include <optional>
 #include <string>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 /// @brief Lexical analyzer for Zia source code.
 ///
@@ -127,8 +126,7 @@ namespace il::frontends::zia
 /// @invariant pos_ <= source_.size()
 /// @invariant interpolationDepth_ >= 0
 /// @invariant braceDepth_.size() == interpolationDepth_
-class Lexer
-{
+class Lexer {
   public:
     /// @brief Create a lexer for the given source code.
     /// @param source Source code text to tokenize.

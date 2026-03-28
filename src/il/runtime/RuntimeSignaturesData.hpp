@@ -27,8 +27,7 @@
 #include <cstddef>
 #include <string_view>
 
-namespace il::runtime::data
-{
+namespace il::runtime::data {
 
 /// @brief Number of runtime signature entries.
 /// @details Mirrors the RtSig::Count enumerator to size the tables below.

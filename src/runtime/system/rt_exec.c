@@ -72,22 +72,18 @@ extern char **environ;
 static _Thread_local int64_t tl_last_exit_code = -1;
 
 /// @brief Read all output from a pipe into a dynamically allocated buffer.
-static char *read_pipe_output(FILE *fp, size_t *out_len)
-{
+static char *read_pipe_output(FILE *fp, size_t *out_len) {
     size_t cap = CAPTURE_INITIAL_SIZE;
     size_t len = 0;
     char *buf = (char *)malloc(cap);
-    if (!buf)
-    {
+    if (!buf) {
         *out_len = 0;
         return NULL;
     }
 
-    while (!feof(fp))
-    {
+    while (!feof(fp)) {
         size_t space = cap - len;
-        if (space < 256)
-        {
+        if (space < 256) {
             if (cap >= CAPTURE_MAX_SIZE)
                 break;
             size_t new_cap = cap * 2;
@@ -115,21 +111,18 @@ static char *read_pipe_output(FILE *fp, size_t *out_len)
 
 /// @brief Build argv array from program and Seq of arguments.
 /// Caller must free the returned array (but not individual strings).
-static char **build_argv(const char *program, void *args, int64_t *out_argc)
-{
+static char **build_argv(const char *program, void *args, int64_t *out_argc) {
     int64_t nargs = args ? rt_seq_len(args) : 0;
     int64_t total = 1 + nargs + 1; // program + args + NULL terminator
 
     char **argv = (char **)malloc((size_t)total * sizeof(char *));
-    if (!argv)
-    {
+    if (!argv) {
         *out_argc = 0;
         return NULL;
     }
 
     argv[0] = (char *)(uintptr_t)program;
-    for (int64_t i = 0; i < nargs; i++)
-    {
+    for (int64_t i = 0; i < nargs; i++) {
         rt_string arg_str = (rt_string)rt_seq_get(args, i);
         argv[1 + i] = (char *)(uintptr_t)rt_string_cstr(arg_str);
     }
@@ -140,12 +133,10 @@ static char **build_argv(const char *program, void *args, int64_t *out_argc)
 }
 
 /// @brief Execute program with arguments using posix_spawn.
-static int64_t exec_spawn(const char *program, void *args)
-{
+static int64_t exec_spawn(const char *program, void *args) {
     int64_t argc;
     char **argv = build_argv(program, args, &argc);
-    if (!argv)
-    {
+    if (!argv) {
         rt_trap("Exec: memory allocation failed");
         return -1;
     }
@@ -153,8 +144,7 @@ static int64_t exec_spawn(const char *program, void *args)
     pid_t pid;
     int status = posix_spawn(&pid, program, NULL, NULL, argv, environ);
 
-    if (status != 0)
-    {
+    if (status != 0) {
         free(argv);
         // Return -1 if spawn failed (program not found, etc.)
         return -1;
@@ -162,40 +152,33 @@ static int64_t exec_spawn(const char *program, void *args)
 
     // Wait for child to finish
     int exit_status;
-    if (waitpid(pid, &exit_status, 0) == -1)
-    {
+    if (waitpid(pid, &exit_status, 0) == -1) {
         free(argv);
         return -1;
     }
 
     free(argv);
 
-    if (WIFEXITED(exit_status))
-    {
+    if (WIFEXITED(exit_status)) {
         return WEXITSTATUS(exit_status);
-    }
-    else if (WIFSIGNALED(exit_status))
-    {
+    } else if (WIFSIGNALED(exit_status)) {
         return -WTERMSIG(exit_status);
     }
     return -1;
 }
 
 /// @brief Execute program with arguments and capture stdout using fork/exec.
-static rt_string exec_capture_spawn(const char *program, void *args)
-{
+static rt_string exec_capture_spawn(const char *program, void *args) {
     int64_t argc;
     char **argv = build_argv(program, args, &argc);
-    if (!argv)
-    {
+    if (!argv) {
         rt_trap("Exec: memory allocation failed");
         return rt_string_from_bytes("", 0);
     }
 
     // Create pipe for stdout
     int pipefd[2];
-    if (pipe(pipefd) == -1)
-    {
+    if (pipe(pipefd) == -1) {
         free(argv);
         rt_trap("Exec: pipe creation failed");
         return rt_string_from_bytes("", 0);
@@ -211,8 +194,7 @@ static rt_string exec_capture_spawn(const char *program, void *args)
     int status = posix_spawn(&pid, program, &actions, NULL, argv, environ);
     posix_spawn_file_actions_destroy(&actions);
 
-    if (status != 0)
-    {
+    if (status != 0) {
         close(pipefd[0]);
         close(pipefd[1]);
         free(argv);
@@ -224,8 +206,7 @@ static rt_string exec_capture_spawn(const char *program, void *args)
 
     // Read all output
     FILE *fp = fdopen(pipefd[0], "r");
-    if (!fp)
-    {
+    if (!fp) {
         close(pipefd[0]);
         waitpid(pid, NULL, 0);
         free(argv);
@@ -240,8 +221,7 @@ static rt_string exec_capture_spawn(const char *program, void *args)
     waitpid(pid, NULL, 0);
     free(argv);
 
-    if (!output)
-    {
+    if (!output) {
         return rt_string_from_bytes("", 0);
     }
 
@@ -256,23 +236,16 @@ static rt_string exec_capture_spawn(const char *program, void *args)
    - N backslashes followed by '"': emit 2N backslashes + '\"'
    - N backslashes at end of arg (before closing '"'): emit 2N backslashes
    - N backslashes followed by non-'"': emit N backslashes unchanged      */
-static size_t cmdline_quoted_len(const char *s)
-{
+static size_t cmdline_quoted_len(const char *s) {
     size_t n = 2; /* outer quotes */
     int bs = 0;
-    for (; *s; s++)
-    {
-        if (*s == '\\')
-        {
+    for (; *s; s++) {
+        if (*s == '\\') {
             bs++;
-        }
-        else if (*s == '"')
-        {
+        } else if (*s == '"') {
             n += (size_t)bs * 2 + 2; /* 2×bs + '\' + '"' */
             bs = 0;
-        }
-        else
-        {
+        } else {
             n += (size_t)bs + 1;
             bs = 0;
         }
@@ -281,27 +254,20 @@ static size_t cmdline_quoted_len(const char *s)
     return n;
 }
 
-static char *cmdline_append_quoted(char *p, const char *s)
-{
+static char *cmdline_append_quoted(char *p, const char *s) {
     *p++ = '"';
     int bs = 0;
-    for (; *s; s++)
-    {
-        if (*s == '\\')
-        {
+    for (; *s; s++) {
+        if (*s == '\\') {
             bs++;
-        }
-        else if (*s == '"')
-        {
+        } else if (*s == '"') {
             int i;
             for (i = 0; i < bs * 2; i++)
                 *p++ = '\\';
             *p++ = '\\';
             *p++ = '"';
             bs = 0;
-        }
-        else
-        {
+        } else {
             int i;
             for (i = 0; i < bs; i++)
                 *p++ = '\\';
@@ -317,14 +283,12 @@ static char *cmdline_append_quoted(char *p, const char *s)
 }
 
 /// @brief Build command line string for Windows CreateProcess.
-static char *build_cmdline(const char *program, void *args)
-{
+static char *build_cmdline(const char *program, void *args) {
     int64_t nargs = args ? rt_seq_len(args) : 0;
 
     /* Calculate worst-case length using proper quoting rules */
     size_t len = cmdline_quoted_len(program);
-    for (int64_t i = 0; i < nargs; i++)
-    {
+    for (int64_t i = 0; i < nargs; i++) {
         rt_string arg_str = (rt_string)rt_seq_get(args, i);
         len += 1 + cmdline_quoted_len(rt_string_cstr(arg_str)); /* space + quoted */
     }
@@ -336,8 +300,7 @@ static char *build_cmdline(const char *program, void *args)
     char *p = cmdline;
     p = cmdline_append_quoted(p, program);
 
-    for (int64_t i = 0; i < nargs; i++)
-    {
+    for (int64_t i = 0; i < nargs; i++) {
         rt_string arg_str = (rt_string)rt_seq_get(args, i);
         *p++ = ' ';
         p = cmdline_append_quoted(p, rt_string_cstr(arg_str));
@@ -348,11 +311,9 @@ static char *build_cmdline(const char *program, void *args)
 }
 
 /// @brief Execute program using CreateProcess on Windows.
-static int64_t exec_spawn(const char *program, void *args)
-{
+static int64_t exec_spawn(const char *program, void *args) {
     char *cmdline = build_cmdline(program, args);
-    if (!cmdline)
-    {
+    if (!cmdline) {
         rt_trap("Exec: memory allocation failed");
         return -1;
     }
@@ -367,8 +328,7 @@ static int64_t exec_spawn(const char *program, void *args)
 
     free(cmdline);
 
-    if (!success)
-    {
+    if (!success) {
         return -1;
     }
 
@@ -384,11 +344,9 @@ static int64_t exec_spawn(const char *program, void *args)
 }
 
 /// @brief Execute program and capture stdout on Windows.
-static rt_string exec_capture_spawn(const char *program, void *args)
-{
+static rt_string exec_capture_spawn(const char *program, void *args) {
     char *cmdline = build_cmdline(program, args);
-    if (!cmdline)
-    {
+    if (!cmdline) {
         rt_trap("Exec: memory allocation failed");
         return rt_string_from_bytes("", 0);
     }
@@ -400,8 +358,7 @@ static rt_string exec_capture_spawn(const char *program, void *args)
     sa.bInheritHandle = TRUE;
 
     HANDLE hReadPipe, hWritePipe;
-    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0))
-    {
+    if (!CreatePipe(&hReadPipe, &hWritePipe, &sa, 0)) {
         free(cmdline);
         return rt_string_from_bytes("", 0);
     }
@@ -433,8 +390,7 @@ static rt_string exec_capture_spawn(const char *program, void *args)
     free(cmdline);
     CloseHandle(hWritePipe);
 
-    if (!success)
-    {
+    if (!success) {
         CloseHandle(hReadPipe);
         return rt_string_from_bytes("", 0);
     }
@@ -444,21 +400,17 @@ static rt_string exec_capture_spawn(const char *program, void *args)
     size_t len = 0;
     char *buf = (char *)malloc(cap);
 
-    if (buf)
-    {
+    if (buf) {
         DWORD bytesRead;
         while (ReadFile(hReadPipe, buf + len, (DWORD)(cap - len), &bytesRead, NULL) &&
-               bytesRead > 0)
-        {
+               bytesRead > 0) {
             len += bytesRead;
-            if (cap - len < 256 && cap < CAPTURE_MAX_SIZE)
-            {
+            if (cap - len < 256 && cap < CAPTURE_MAX_SIZE) {
                 size_t new_cap = cap * 2;
                 if (new_cap > CAPTURE_MAX_SIZE)
                     new_cap = CAPTURE_MAX_SIZE;
                 char *new_buf = (char *)realloc(buf, new_cap);
-                if (new_buf)
-                {
+                if (new_buf) {
                     buf = new_buf;
                     cap = new_cap;
                 }
@@ -471,8 +423,7 @@ static rt_string exec_capture_spawn(const char *program, void *args)
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
 
-    if (!buf)
-    {
+    if (!buf) {
         return rt_string_from_bytes("", 0);
     }
 
@@ -523,17 +474,14 @@ static rt_string exec_capture_spawn(const char *program, void *args)
 /// @see rt_exec_run_args For running with arguments
 /// @see rt_exec_capture For capturing output
 /// @see rt_exec_shell For running shell commands
-int64_t rt_exec_run(rt_string program)
-{
-    if (!program)
-    {
+int64_t rt_exec_run(rt_string program) {
+    if (!program) {
         rt_trap("Exec.Run: null program");
         return -1;
     }
 
     const char *prog_str = rt_string_cstr(program);
-    if (!prog_str || rt_str_len(program) == 0)
-    {
+    if (!prog_str || rt_str_len(program) == 0) {
         rt_trap("Exec.Run: empty program");
         return -1;
     }
@@ -578,17 +526,14 @@ int64_t rt_exec_run(rt_string program)
 ///
 /// @see rt_exec_capture_args For running with arguments
 /// @see rt_exec_shell_capture For shell commands with capture
-rt_string rt_exec_capture(rt_string program)
-{
-    if (!program)
-    {
+rt_string rt_exec_capture(rt_string program) {
+    if (!program) {
         rt_trap("Exec.Capture: null program");
         return rt_string_from_bytes("", 0);
     }
 
     const char *prog_str = rt_string_cstr(program);
-    if (!prog_str || rt_str_len(program) == 0)
-    {
+    if (!prog_str || rt_str_len(program) == 0) {
         rt_trap("Exec.Capture: empty program");
         return rt_string_from_bytes("", 0);
     }
@@ -639,17 +584,14 @@ rt_string rt_exec_capture(rt_string program)
 ///
 /// @see rt_exec_run For running without arguments
 /// @see rt_exec_capture_args For capturing output with arguments
-int64_t rt_exec_run_args(rt_string program, void *args)
-{
-    if (!program)
-    {
+int64_t rt_exec_run_args(rt_string program, void *args) {
+    if (!program) {
         rt_trap("Exec.RunArgs: null program");
         return -1;
     }
 
     const char *prog_str = rt_string_cstr(program);
-    if (!prog_str || rt_str_len(program) == 0)
-    {
+    if (!prog_str || rt_str_len(program) == 0) {
         rt_trap("Exec.RunArgs: empty program");
         return -1;
     }
@@ -690,17 +632,14 @@ int64_t rt_exec_run_args(rt_string program, void *args)
 ///
 /// @see rt_exec_run_args For running without capture
 /// @see rt_exec_shell_capture For shell commands with capture
-rt_string rt_exec_capture_args(rt_string program, void *args)
-{
-    if (!program)
-    {
+rt_string rt_exec_capture_args(rt_string program, void *args) {
+    if (!program) {
         rt_trap("Exec.CaptureArgs: null program");
         return rt_string_from_bytes("", 0);
     }
 
     const char *prog_str = rt_string_cstr(program);
-    if (!prog_str || rt_str_len(program) == 0)
-    {
+    if (!prog_str || rt_str_len(program) == 0) {
         rt_trap("Exec.CaptureArgs: empty program");
         return rt_string_from_bytes("", 0);
     }
@@ -753,23 +692,19 @@ rt_string rt_exec_capture_args(rt_string program, void *args)
 ///
 /// @see rt_exec_run_args For safer execution with user input
 /// @see rt_exec_shell_capture For capturing shell output
-int64_t rt_exec_shell(rt_string command)
-{
-    if (!command)
-    {
+int64_t rt_exec_shell(rt_string command) {
+    if (!command) {
         rt_trap("Exec.Shell: null command");
         return -1;
     }
 
     const char *cmd_str = rt_string_cstr(command);
-    if (!cmd_str)
-    {
+    if (!cmd_str) {
         return -1;
     }
 
     // Empty command is valid (returns immediately)
-    if (rt_str_len(command) == 0)
-    {
+    if (rt_str_len(command) == 0) {
         return 0;
     }
 
@@ -780,12 +715,10 @@ int64_t rt_exec_shell(rt_string command)
 #else
     // On POSIX/ViperDOS, system() uses the shell
     int result = system(cmd_str);
-    if (result == -1)
-    {
+    if (result == -1) {
         return -1;
     }
-    if (WIFEXITED(result))
-    {
+    if (WIFEXITED(result)) {
         return WEXITSTATUS(result);
     }
     return -1;
@@ -835,29 +768,24 @@ int64_t rt_exec_shell(rt_string command)
 ///
 /// @see rt_exec_capture_args For safer capture with user input
 /// @see rt_exec_shell For shell without capture
-rt_string rt_exec_shell_capture(rt_string command)
-{
-    if (!command)
-    {
+rt_string rt_exec_shell_capture(rt_string command) {
+    if (!command) {
         rt_trap("Exec.ShellCapture: null command");
         return rt_string_from_bytes("", 0);
     }
 
     const char *cmd_str = rt_string_cstr(command);
-    if (!cmd_str)
-    {
+    if (!cmd_str) {
         return rt_string_from_bytes("", 0);
     }
 
     // Empty command returns empty string
-    if (rt_str_len(command) == 0)
-    {
+    if (rt_str_len(command) == 0) {
         return rt_string_from_bytes("", 0);
     }
 
     FILE *fp = popen(cmd_str, "r");
-    if (!fp)
-    {
+    if (!fp) {
         return rt_string_from_bytes("", 0);
     }
 
@@ -865,8 +793,7 @@ rt_string rt_exec_shell_capture(rt_string command)
     char *output = read_pipe_output(fp, &len);
     pclose(fp);
 
-    if (!output)
-    {
+    if (!output) {
         return rt_string_from_bytes("", 0);
     }
 
@@ -875,26 +802,22 @@ rt_string rt_exec_shell_capture(rt_string command)
     return result;
 }
 
-rt_string rt_exec_shell_full(rt_string command)
-{
-    if (!command)
-    {
+rt_string rt_exec_shell_full(rt_string command) {
+    if (!command) {
         rt_trap("Exec.ShellFull: null command");
         tl_last_exit_code = -1;
         return rt_string_from_bytes("", 0);
     }
 
     const char *cmd_str = rt_string_cstr(command);
-    if (!cmd_str || rt_str_len(command) == 0)
-    {
+    if (!cmd_str || rt_str_len(command) == 0) {
         tl_last_exit_code = 0;
         return rt_string_from_bytes("", 0);
     }
 
     FILE *fp = popen(cmd_str, "r");
 
-    if (!fp)
-    {
+    if (!fp) {
         tl_last_exit_code = -1;
         return rt_string_from_bytes("", 0);
     }
@@ -909,8 +832,7 @@ rt_string rt_exec_shell_full(rt_string command)
     tl_last_exit_code = WIFEXITED(status) ? (int64_t)WEXITSTATUS(status) : (int64_t)-1;
 #endif
 
-    if (!output)
-    {
+    if (!output) {
         return rt_string_from_bytes("", 0);
     }
 
@@ -919,7 +841,6 @@ rt_string rt_exec_shell_full(rt_string command)
     return full_result;
 }
 
-int64_t rt_exec_last_exit_code(void)
-{
+int64_t rt_exec_last_exit_code(void) {
     return tl_last_exit_code;
 }

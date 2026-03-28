@@ -16,15 +16,13 @@
 
 #include "frontends/basic/DiagnosticEmitter.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 using namespace il::core;
 
 using IlType = il::core::Type;
 using IlKind = IlType::Kind;
 
-namespace
-{
+namespace {
 /// @brief Provide a user-facing display name for logical operators.
 ///
 /// @details Converts the lowering-time enumeration into the BASIC keyword used
@@ -33,10 +31,8 @@ namespace
 ///
 /// @param op Logical operator enumeration from the AST.
 /// @return BASIC keyword string or `"<logical>"` for unrecognised values.
-std::string_view logicalOperatorDisplayName(BinaryExpr::Op op) noexcept
-{
-    switch (op)
-    {
+std::string_view logicalOperatorDisplayName(BinaryExpr::Op op) noexcept {
+    switch (op) {
         case BinaryExpr::Op::LogicalAndShort:
             return "ANDALSO";
         case BinaryExpr::Op::LogicalOrShort:
@@ -70,30 +66,27 @@ LogicalExprLowering::LogicalExprLowering(Lowerer &lowerer) noexcept : lowerer_(&
 ///
 /// @param expr Logical binary expression AST node.
 /// @return Resulting IL value paired with its logical word type.
-Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr)
-{
+Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr) {
     Lowerer &lowerer = *lowerer_;
     Lowerer::RVal lhs = lowerer.lowerExpr(*expr.lhs);
     lowerer.curLoc = expr.loc;
 
-    auto toBool = [&](Lowerer::RVal val)
-    { return lowerer.coerceToBool(std::move(val), expr.loc).value; };
+    auto toBool = [&](Lowerer::RVal val) {
+        return lowerer.coerceToBool(std::move(val), expr.loc).value;
+    };
 
-    if (expr.op == BinaryExpr::Op::LogicalAndShort)
-    {
+    if (expr.op == BinaryExpr::Op::LogicalAndShort) {
         Value cond = toBool(lhs);
         Lowerer::RVal andResult = lowerer.lowerBoolBranchExpr(
             cond,
             expr.loc,
-            [&](Value slot)
-            {
+            [&](Value slot) {
                 Lowerer::RVal rhs = lowerer.lowerExpr(*expr.rhs);
                 Value rhsBool = toBool(std::move(rhs));
                 lowerer.curLoc = expr.loc;
                 lowerer.emitStore(lowerer.ilBoolTy(), slot, rhsBool);
             },
-            [&](Value slot)
-            {
+            [&](Value slot) {
                 lowerer.curLoc = expr.loc;
                 lowerer.emitStore(lowerer.ilBoolTy(), slot, lowerer.emitBoolConst(false));
             },
@@ -106,19 +99,16 @@ Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr)
         return {logical, IlType(IlKind::I64)};
     }
 
-    if (expr.op == BinaryExpr::Op::LogicalOrShort)
-    {
+    if (expr.op == BinaryExpr::Op::LogicalOrShort) {
         Value cond = toBool(lhs);
         Lowerer::RVal orResult = lowerer.lowerBoolBranchExpr(
             cond,
             expr.loc,
-            [&](Value slot)
-            {
+            [&](Value slot) {
                 lowerer.curLoc = expr.loc;
                 lowerer.emitStore(lowerer.ilBoolTy(), slot, lowerer.emitBoolConst(true));
             },
-            [&](Value slot)
-            {
+            [&](Value slot) {
                 Lowerer::RVal rhs = lowerer.lowerExpr(*expr.rhs);
                 Value rhsBool = toBool(std::move(rhs));
                 lowerer.curLoc = expr.loc;
@@ -133,8 +123,7 @@ Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr)
         return {logical, IlType(IlKind::I64)};
     }
 
-    if (expr.op == BinaryExpr::Op::LogicalAnd)
-    {
+    if (expr.op == BinaryExpr::Op::LogicalAnd) {
         // Classic BASIC AND: bitwise AND on integers
         // Operands already i64 (from BoolExpr or numeric expressions)
         if (lhs.type.kind != IlKind::I64)
@@ -147,8 +136,7 @@ Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr)
         return {res, IlType(IlKind::I64)};
     }
 
-    if (expr.op == BinaryExpr::Op::LogicalOr)
-    {
+    if (expr.op == BinaryExpr::Op::LogicalOr) {
         // Classic BASIC OR: bitwise OR on integers
         if (lhs.type.kind != IlKind::I64)
             lhs = {lowerer.coerceToI64(std::move(lhs), expr.loc).value, IlType(IlKind::I64)};
@@ -160,14 +148,12 @@ Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr)
         return {res, IlType(IlKind::I64)};
     }
 
-    if (auto *emitter = lowerer.diagnosticEmitter())
-    {
+    if (auto *emitter = lowerer.diagnosticEmitter()) {
         std::string_view opText = logicalOperatorDisplayName(expr.op);
         std::string message = "unsupported logical operator '";
         message.append(opText);
         message.push_back('\'');
-        if (opText == std::string_view("<logical>"))
-        {
+        if (opText == std::string_view("<logical>")) {
             message.append(" (enum value ");
             message.append(std::to_string(static_cast<int>(expr.op)));
             message.push_back(')');
@@ -191,8 +177,7 @@ Lowerer::RVal LogicalExprLowering::lower(const BinaryExpr &expr)
 ///
 /// @param expr Logical binary expression to lower.
 /// @return Result of @ref lowerLogicalBinary.
-Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &expr)
-{
+Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &expr) {
     return ::il::frontends::basic::lowerLogicalBinary(*this, expr);
 }
 
@@ -201,8 +186,7 @@ Lowerer::RVal Lowerer::lowerLogicalBinary(const BinaryExpr &expr)
 /// @param lowerer Active lowering context receiving the emitted IL.
 /// @param expr Logical binary expression under translation.
 /// @return Lowered IL value representing the BASIC logical result.
-Lowerer::RVal lowerLogicalBinary(Lowerer &lowerer, const BinaryExpr &expr)
-{
+Lowerer::RVal lowerLogicalBinary(Lowerer &lowerer, const BinaryExpr &expr) {
     LogicalExprLowering lowering(lowerer);
     return lowering.lower(expr);
 }

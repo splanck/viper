@@ -31,17 +31,13 @@
 
 using namespace il::core;
 
-namespace
-{
-constexpr il::support::SourceLoc L(unsigned line)
-{
+namespace {
+constexpr il::support::SourceLoc L(unsigned line) {
     return {1, static_cast<uint32_t>(line), 0};
 }
 
-size_t sizeOfKind(Type::Kind k)
-{
-    switch (k)
-    {
+size_t sizeOfKind(Type::Kind k) {
+    switch (k) {
         case Type::Kind::I1:
             return sizeof(uint8_t);
         case Type::Kind::I16:
@@ -64,8 +60,7 @@ size_t sizeOfKind(Type::Kind k)
     return 0;
 }
 
-void test_scalar_store_load_integer(Type::Kind kind, long long value)
-{
+void test_scalar_store_load_integer(Type::Kind kind, long long value) {
     Module m;
     Function fn;
     fn.name = "main";
@@ -141,8 +136,7 @@ void test_scalar_store_load_integer(Type::Kind kind, long long value)
     assert(step().has_value());
 }
 
-void test_f64_store_load(double value)
-{
+void test_f64_store_load(double value) {
     Module m;
     Function fn;
     fn.name = "main";
@@ -201,8 +195,7 @@ void test_f64_store_load(double value)
     assert(exitCode == static_cast<int64_t>(value));
 }
 
-void test_ptr_store_load()
-{
+void test_ptr_store_load() {
     Module m;
     Function fn;
     fn.name = "main";
@@ -257,8 +250,7 @@ void test_ptr_store_load()
     assert(step().has_value()); // ret
 }
 
-void test_str_store_load()
-{
+void test_str_store_load() {
     Module m;
     Function fn;
     fn.name = "main";
@@ -334,8 +326,7 @@ void test_str_store_load()
     assert(step().has_value());
 }
 
-void test_hot_loop_i64_store_load()
-{
+void test_hot_loop_i64_store_load() {
     constexpr int kIters = 5000; // Keep runtime reasonable
     Module m;
     Function fn;
@@ -353,8 +344,7 @@ void test_hot_loop_i64_store_load()
     alloca.loc = L(1);
     bb.instructions.push_back(alloca);
 
-    for (int i = 0; i < kIters; ++i)
-    {
+    for (int i = 0; i < kIters; ++i) {
         Instr s;
         s.op = Opcode::Store;
         s.type = Type(Type::Kind::I64);
@@ -390,8 +380,7 @@ void test_hot_loop_i64_store_load()
 }
 } // namespace
 
-int main()
-{
+int main() {
     // Integer-like kinds
     test_scalar_store_load_integer(Type::Kind::I1, 1);
     test_scalar_store_load_integer(Type::Kind::I16, -12345);

@@ -23,20 +23,17 @@
 #include <ostream>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 class AstPrinter;
 } // namespace il::frontends::basic
 
-namespace il::frontends::basic::print_stmt
-{
+namespace il::frontends::basic::print_stmt {
 /// @brief Shared utilities that wire AstPrinter helpers together while emitting statements.
 /// @details The context bundles the owning @ref AstPrinter instance with a printer style and
 ///          dispatcher reference.  Helper routines use the aggregated references to format
 ///          subexpressions, delegate nested statements, and access the output stream without
 ///          copying heavy printing state.
-struct Context
-{
+struct Context {
     AstPrinter::Printer &printer;
     AstPrinter::PrintStyle &style;
     AstPrinter::StmtPrinter &dispatcher;
@@ -44,8 +41,7 @@ struct Context
     /// @brief Retrieve the underlying output stream that receives formatted BASIC text.
     /// @details Returns the stream stored on the owning @ref AstPrinter so helpers can
     ///          write output directly without re-threading references through each call.
-    std::ostream &stream() const
-    {
+    std::ostream &stream() const {
         return printer.os;
     }
 
@@ -79,10 +75,8 @@ struct Context
 /// @details Converts the enum value used by the printer into the uppercase token expected by
 ///          canonical BASIC output.  The helper provides a default branch so unexpected enum
 ///          values still produce a sensible fallback during debugging.
-inline const char *typeToString(Type ty)
-{
-    switch (ty)
-    {
+inline const char *typeToString(Type ty) {
+    switch (ty) {
         case Type::I64:
             return "I64";
         case Type::F64:
@@ -99,10 +93,8 @@ inline const char *typeToString(Type ty)
 /// @details Maps the strongly-typed mode enum to the uppercase keyword that appears in BASIC
 ///          source.  The helper uses a defensive default return so unhandled enumeration
 ///          values degrade gracefully when new modes are introduced.
-inline const char *openModeToString(OpenStmt::Mode mode)
-{
-    switch (mode)
-    {
+inline const char *openModeToString(OpenStmt::Mode mode) {
+    switch (mode) {
         case OpenStmt::Mode::Input:
             return "INPUT";
         case OpenStmt::Mode::Output:

@@ -43,23 +43,20 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::tui::text
-{
+namespace viper::tui::text {
 /// @brief High-level text buffer orchestrating piece table storage, line indexing,
 ///        and undo/redo history for the TUI text editor.
 /// @details Provides the primary editing API used by views and widgets. Edits are
 ///          recorded into transactions that can be undone and redone. The buffer
 ///          maintains a line index that is incrementally updated on each edit,
 ///          enabling efficient line-based access without scanning the entire text.
-class TextBuffer
-{
+class TextBuffer {
   public:
     /// @brief Lightweight, non-owning view over a single line in the piece table.
     /// @details Provides segment-based iteration for rendering without copying the
     ///          entire line into a contiguous string. This is critical for performance
     ///          when rendering large files where lines span multiple piece table pieces.
-    class LineView
-    {
+    class LineView {
       public:
         /// @brief Callback accepting contiguous line segments.
         using SegmentVisitor = tui::FunctionRef<bool(std::string_view)>;

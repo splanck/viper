@@ -40,16 +40,14 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::tui::term
-{
+namespace viper::tui::term {
 /// @brief Stateful terminal input decoder that converts raw byte streams into
 ///        structured keyboard, mouse, and paste events.
 /// @details Implements a state machine handling UTF-8 character decoding, ANSI
 ///          CSI escape sequences (for special keys, mouse, and mode changes),
 ///          SS3 legacy sequences, and bracketed paste mode. Bytes are fed
 ///          incrementally and decoded events accumulate in internal queues.
-class InputDecoder
-{
+class InputDecoder {
   public:
     /// @brief Create a decoder with empty output queues.
     InputDecoder();
@@ -74,16 +72,7 @@ class InputDecoder
     [[nodiscard]] std::vector<PasteEvent> drain_paste();
 
   private:
-    enum class State
-    {
-        Utf8,
-        Esc,
-        CSI,
-        SS3,
-        Paste,
-        PasteEsc,
-        PasteCSI
-    };
+    enum class State { Utf8, Esc, CSI, SS3, Paste, PasteEsc, PasteCSI };
 
     void emit(uint32_t cp);
     State handle_csi(char final, std::string_view params);

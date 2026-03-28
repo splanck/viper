@@ -50,8 +50,7 @@
 // Internal Structure
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
 #ifdef _WIN32
     CRITICAL_SECTION mutex;
     CONDITION_VARIABLE cond;
@@ -66,8 +65,7 @@ typedef struct
     void *future; // Cached future object
 } promise_impl;
 
-typedef struct
-{
+typedef struct {
     promise_impl *promise;
 } future_impl;
 
@@ -75,8 +73,7 @@ typedef struct
 // Promise Implementation
 //=============================================================================
 
-static void promise_finalizer(void *obj)
-{
+static void promise_finalizer(void *obj) {
     promise_impl *p = (promise_impl *)obj;
     if (!p)
         return;
@@ -90,8 +87,7 @@ static void promise_finalizer(void *obj)
         rt_str_release_maybe(p->error);
 }
 
-void *rt_promise_new(void)
-{
+void *rt_promise_new(void) {
     promise_impl *p = (promise_impl *)rt_obj_new_i64(0, (int64_t)sizeof(promise_impl));
     if (!p)
         rt_trap("Promise: memory allocation failed");
@@ -114,8 +110,7 @@ void *rt_promise_new(void)
     return p;
 }
 
-void *rt_promise_get_future(void *obj)
-{
+void *rt_promise_get_future(void *obj) {
     if (!obj)
         rt_trap("Promise: null object");
 
@@ -127,11 +122,9 @@ void *rt_promise_get_future(void *obj)
     pthread_mutex_lock(&p->mutex);
 #endif
 
-    if (!p->future)
-    {
+    if (!p->future) {
         future_impl *f = (future_impl *)rt_obj_new_i64(0, (int64_t)sizeof(future_impl));
-        if (!f)
-        {
+        if (!f) {
 #ifdef _WIN32
             LeaveCriticalSection(&p->mutex);
 #else
@@ -158,8 +151,7 @@ void *rt_promise_get_future(void *obj)
 /// @brief Perform promise set operation.
 /// @param obj
 /// @param value
-void rt_promise_set(void *obj, void *value)
-{
+void rt_promise_set(void *obj, void *value) {
     if (!obj)
         rt_trap("Promise: null object");
 
@@ -171,8 +163,7 @@ void rt_promise_set(void *obj, void *value)
     pthread_mutex_lock(&p->mutex);
 #endif
 
-    if (p->done)
-    {
+    if (p->done) {
 #ifdef _WIN32
         LeaveCriticalSection(&p->mutex);
 #else
@@ -197,8 +188,7 @@ void rt_promise_set(void *obj, void *value)
 /// @brief Perform promise set error operation.
 /// @param obj
 /// @param error
-void rt_promise_set_error(void *obj, rt_string error)
-{
+void rt_promise_set_error(void *obj, rt_string error) {
     if (!obj)
         rt_trap("Promise: null object");
 
@@ -210,8 +200,7 @@ void rt_promise_set_error(void *obj, rt_string error)
     pthread_mutex_lock(&p->mutex);
 #endif
 
-    if (p->done)
-    {
+    if (p->done) {
 #ifdef _WIN32
         LeaveCriticalSection(&p->mutex);
 #else
@@ -239,8 +228,7 @@ void rt_promise_set_error(void *obj, rt_string error)
 /// @brief Perform promise is done operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_promise_is_done(void *obj)
-{
+int8_t rt_promise_is_done(void *obj) {
     if (!obj)
         return 0;
 
@@ -263,8 +251,7 @@ int8_t rt_promise_is_done(void *obj)
 // Future Implementation
 //=============================================================================
 
-void *rt_future_get(void *obj)
-{
+void *rt_future_get(void *obj) {
     if (!obj)
         rt_trap("Future: null object");
 
@@ -273,22 +260,19 @@ void *rt_future_get(void *obj)
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    while (!p->done)
-    {
+    while (!p->done) {
         SleepConditionVariableCS(&p->cond, &p->mutex, INFINITE);
     }
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
-    while (!p->done)
-    {
+    while (!p->done) {
         pthread_cond_wait(&p->cond, &p->mutex);
     }
     pthread_mutex_unlock(&p->mutex);
 #endif
 
-    if (p->is_error)
-    {
+    if (p->is_error) {
         const char *err = rt_string_cstr(p->error);
         rt_trap(err ? err : "Future: resolved with error");
     }
@@ -301,8 +285,7 @@ void *rt_future_get(void *obj)
 /// @param ms
 /// @param out
 /// @return Result value.
-int8_t rt_future_get_for(void *obj, int64_t ms, void **out)
-{
+int8_t rt_future_get_for(void *obj, int64_t ms, void **out) {
     if (!obj)
         return 0;
 
@@ -311,35 +294,30 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out)
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    if (!p->done)
-    {
+    if (!p->done) {
         SleepConditionVariableCS(&p->cond, &p->mutex, (DWORD)ms);
     }
     int8_t success = p->done && !p->is_error;
-    if (success && out)
-    {
+    if (success && out) {
         *out = p->value;
     }
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
-    if (!p->done)
-    {
+    if (!p->done) {
         struct timespec ts;
         struct timeval tv;
         gettimeofday(&tv, NULL);
         ts.tv_sec = tv.tv_sec + ms / 1000;
         ts.tv_nsec = (tv.tv_usec + (ms % 1000) * 1000) * 1000;
-        if (ts.tv_nsec >= 1000000000)
-        {
+        if (ts.tv_nsec >= 1000000000) {
             ts.tv_sec++;
             ts.tv_nsec -= 1000000000;
         }
         pthread_cond_timedwait(&p->cond, &p->mutex, &ts);
     }
     int8_t success = p->done && !p->is_error;
-    if (success && out)
-    {
+    if (success && out) {
         *out = p->value;
     }
     pthread_mutex_unlock(&p->mutex);
@@ -351,8 +329,7 @@ int8_t rt_future_get_for(void *obj, int64_t ms, void **out)
 /// @brief Perform future is done operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_future_is_done(void *obj)
-{
+int8_t rt_future_is_done(void *obj) {
     if (!obj)
         return 0;
 
@@ -375,8 +352,7 @@ int8_t rt_future_is_done(void *obj)
 /// @brief Perform future is error operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_future_is_error(void *obj)
-{
+int8_t rt_future_is_error(void *obj) {
     if (!obj)
         return 0;
 
@@ -399,8 +375,7 @@ int8_t rt_future_is_error(void *obj)
 /// @brief Perform future get error operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_future_get_error(void *obj)
-{
+rt_string rt_future_get_error(void *obj) {
     if (!obj)
         return rt_const_cstr("");
 
@@ -424,8 +399,7 @@ rt_string rt_future_get_error(void *obj)
 /// @param obj
 /// @param out
 /// @return Result value.
-int8_t rt_future_try_get(void *obj, void **out)
-{
+int8_t rt_future_try_get(void *obj, void **out) {
     if (!obj)
         return 0;
 
@@ -435,16 +409,14 @@ int8_t rt_future_try_get(void *obj, void **out)
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
     int8_t success = p->done && !p->is_error;
-    if (success && out)
-    {
+    if (success && out) {
         *out = p->value;
     }
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
     int8_t success = p->done && !p->is_error;
-    if (success && out)
-    {
+    if (success && out) {
         *out = p->value;
     }
     pthread_mutex_unlock(&p->mutex);
@@ -453,8 +425,7 @@ int8_t rt_future_try_get(void *obj, void **out)
     return success;
 }
 
-void *rt_future_try_get_val(void *obj)
-{
+void *rt_future_try_get_val(void *obj) {
     if (!obj)
         return NULL;
 
@@ -477,8 +448,7 @@ void *rt_future_try_get_val(void *obj)
     return result;
 }
 
-void *rt_future_get_for_val(void *obj, int64_t ms)
-{
+void *rt_future_get_for_val(void *obj, int64_t ms) {
     if (!obj)
         return NULL;
 
@@ -488,8 +458,7 @@ void *rt_future_get_for_val(void *obj, int64_t ms)
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    if (!p->done)
-    {
+    if (!p->done) {
         SleepConditionVariableCS(&p->cond, &p->mutex, (DWORD)ms);
     }
     if (p->done && !p->is_error)
@@ -497,15 +466,13 @@ void *rt_future_get_for_val(void *obj, int64_t ms)
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
-    if (!p->done)
-    {
+    if (!p->done) {
         struct timespec ts;
         struct timeval tv;
         gettimeofday(&tv, NULL);
         ts.tv_sec = tv.tv_sec + ms / 1000;
         ts.tv_nsec = (tv.tv_usec + (ms % 1000) * 1000) * 1000;
-        if (ts.tv_nsec >= 1000000000)
-        {
+        if (ts.tv_nsec >= 1000000000) {
             ts.tv_sec++;
             ts.tv_nsec -= 1000000000;
         }
@@ -521,8 +488,7 @@ void *rt_future_get_for_val(void *obj, int64_t ms)
 
 /// @brief Perform future wait operation.
 /// @param obj
-void rt_future_wait(void *obj)
-{
+void rt_future_wait(void *obj) {
     if (!obj)
         return;
 
@@ -531,15 +497,13 @@ void rt_future_wait(void *obj)
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    while (!p->done)
-    {
+    while (!p->done) {
         SleepConditionVariableCS(&p->cond, &p->mutex, INFINITE);
     }
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
-    while (!p->done)
-    {
+    while (!p->done) {
         pthread_cond_wait(&p->cond, &p->mutex);
     }
     pthread_mutex_unlock(&p->mutex);
@@ -550,8 +514,7 @@ void rt_future_wait(void *obj)
 /// @param obj
 /// @param ms
 /// @return Result value.
-int8_t rt_future_wait_for(void *obj, int64_t ms)
-{
+int8_t rt_future_wait_for(void *obj, int64_t ms) {
     if (!obj)
         return 0;
 
@@ -560,23 +523,20 @@ int8_t rt_future_wait_for(void *obj, int64_t ms)
 
 #ifdef _WIN32
     EnterCriticalSection(&p->mutex);
-    if (!p->done)
-    {
+    if (!p->done) {
         SleepConditionVariableCS(&p->cond, &p->mutex, (DWORD)ms);
     }
     int8_t result = p->done;
     LeaveCriticalSection(&p->mutex);
 #else
     pthread_mutex_lock(&p->mutex);
-    if (!p->done)
-    {
+    if (!p->done) {
         struct timespec ts;
         struct timeval tv;
         gettimeofday(&tv, NULL);
         ts.tv_sec = tv.tv_sec + ms / 1000;
         ts.tv_nsec = (tv.tv_usec + (ms % 1000) * 1000) * 1000;
-        if (ts.tv_nsec >= 1000000000)
-        {
+        if (ts.tv_nsec >= 1000000000) {
             ts.tv_sec++;
             ts.tv_nsec -= 1000000000;
         }

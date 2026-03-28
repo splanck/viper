@@ -23,8 +23,7 @@
 #include <array>
 #include <string_view>
 
-namespace il::core
-{
+namespace il::core {
 
 /// @brief Construct a Type wrapper from the provided kind enumerator.
 ///
@@ -62,8 +61,7 @@ static constexpr std::array<std::string_view, 10> kTypeKindNames = {{
 ///
 /// @param k Enumeration tag to translate.
 /// @return Canonical string name for the provided type tag.
-std::string kindToString(Type::Kind k)
-{
+std::string kindToString(Type::Kind k) {
     const auto index = static_cast<std::size_t>(k);
     if (index < kTypeKindNames.size())
         return std::string(kTypeKindNames[index]);
@@ -76,8 +74,7 @@ std::string kindToString(Type::Kind k)
 /// single implementation.
 ///
 /// @return Canonical string representation of the stored type tag.
-std::string Type::toString() const
-{
+std::string Type::toString() const {
     return kindToString(kind);
 }
 

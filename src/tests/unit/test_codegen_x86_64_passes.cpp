@@ -31,11 +31,9 @@
 
 using namespace viper::codegen::x64::passes;
 
-namespace
-{
+namespace {
 
-il::core::Module makeRetConstModule(long long value)
-{
+il::core::Module makeRetConstModule(long long value) {
     il::core::Module module{};
 
     il::core::Function fn;
@@ -57,8 +55,7 @@ il::core::Module makeRetConstModule(long long value)
     return module;
 }
 
-std::size_t binarySizeForOptLevel(int optimizeLevel)
-{
+std::size_t binarySizeForOptLevel(int optimizeLevel) {
     Module module{};
     module.il = makeRetConstModule(0);
     Diagnostics diags{};
@@ -79,8 +76,7 @@ std::size_t binarySizeForOptLevel(int optimizeLevel)
 
 } // namespace
 
-TEST(LoweringPass, HandlesEmptyModule)
-{
+TEST(LoweringPass, HandlesEmptyModule) {
     Module module{};
     Diagnostics diags{};
     LoweringPass pass{};
@@ -90,8 +86,7 @@ TEST(LoweringPass, HandlesEmptyModule)
     EXPECT_FALSE(diags.hasErrors());
 }
 
-TEST(LegalizePass, FailsWhenLoweringMissing)
-{
+TEST(LegalizePass, FailsWhenLoweringMissing) {
     Module module{};
     Diagnostics diags{};
     LegalizePass pass{};
@@ -100,8 +95,7 @@ TEST(LegalizePass, FailsWhenLoweringMissing)
     EXPECT_FALSE(module.legalised);
 }
 
-TEST(LegalizePass, MarksModuleWhenLoweringReady)
-{
+TEST(LegalizePass, MarksModuleWhenLoweringReady) {
     Module module{};
     module.lowered.emplace();
     Diagnostics diags{};
@@ -111,8 +105,7 @@ TEST(LegalizePass, MarksModuleWhenLoweringReady)
     EXPECT_FALSE(diags.hasErrors());
 }
 
-TEST(RegAllocPass, RequiresLegalize)
-{
+TEST(RegAllocPass, RequiresLegalize) {
     Module module{};
     Diagnostics diags{};
     RegAllocPass pass{};
@@ -125,8 +118,7 @@ TEST(RegAllocPass, RequiresLegalize)
     EXPECT_TRUE(module.registersAllocated);
 }
 
-TEST(EmitPass, ProducesAssembly)
-{
+TEST(EmitPass, ProducesAssembly) {
     Module module{};
     module.lowered.emplace();
     module.legalised = true;
@@ -138,21 +130,18 @@ TEST(EmitPass, ProducesAssembly)
     EXPECT_FALSE(diags.hasErrors());
 }
 
-TEST(CodegenOptions, OptimizeLevelDefaultsToOne)
-{
+TEST(CodegenOptions, OptimizeLevelDefaultsToOne) {
     viper::codegen::x64::CodegenOptions opts{};
     EXPECT_EQ(opts.optimizeLevel, 1);
 }
 
-TEST(CodegenOptions, OptimizeLevelZeroIsValid)
-{
+TEST(CodegenOptions, OptimizeLevelZeroIsValid) {
     viper::codegen::x64::CodegenOptions opts{};
     opts.optimizeLevel = 0;
     EXPECT_EQ(opts.optimizeLevel, 0);
 }
 
-TEST(BinaryEmitPass, HonorsOptimizeLevel)
-{
+TEST(BinaryEmitPass, HonorsOptimizeLevel) {
     const std::size_t o0Size = binarySizeForOptLevel(0);
     const std::size_t o1Size = binarySizeForOptLevel(1);
     EXPECT_TRUE(o0Size > 0U);
@@ -160,8 +149,7 @@ TEST(BinaryEmitPass, HonorsOptimizeLevel)
     EXPECT_NE(o0Size, o1Size);
 }
 
-TEST(PassManager, ShortCircuitsOnFailure)
-{
+TEST(PassManager, ShortCircuitsOnFailure) {
     Module module{};
     Diagnostics diags{};
     PassManager pm{};
@@ -173,8 +161,7 @@ TEST(PassManager, ShortCircuitsOnFailure)
     EXPECT_FALSE(module.registersAllocated);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

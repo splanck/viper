@@ -20,8 +20,7 @@
 #include "frontends/zia/RuntimeNames.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 /// Closure struct layout: [funcPtr (8 bytes)] [envPtr (8 bytes)]
 static constexpr int kClosureEnvOffset = 8;
@@ -32,24 +31,17 @@ using namespace runtime;
 // Built-in Function Call Helper
 //=============================================================================
 
-std::optional<LowerResult> Lowerer::lowerBuiltinCall(const std::string &name, CallExpr *expr)
-{
-    if (name == "print" || name == "println")
-    {
-        if (!expr->args.empty())
-        {
+std::optional<LowerResult> Lowerer::lowerBuiltinCall(const std::string &name, CallExpr *expr) {
+    if (name == "print" || name == "println") {
+        if (!expr->args.empty()) {
             auto arg = lowerExpr(expr->args[0].value.get());
             TypeRef argType = sema_.typeOf(expr->args[0].value.get());
 
             Value strVal = arg.value;
-            if (argType && argType->kind != TypeKindSem::String)
-            {
-                if (argType->kind == TypeKindSem::Integer)
-                {
+            if (argType && argType->kind != TypeKindSem::String) {
+                if (argType->kind == TypeKindSem::Integer) {
                     strVal = emitCallRet(Type(Type::Kind::Str), kStringFromInt, {arg.value});
-                }
-                else if (argType->kind == TypeKindSem::Number)
-                {
+                } else if (argType->kind == TypeKindSem::Number) {
                     strVal = emitCallRet(Type(Type::Kind::Str), kStringFromNum, {arg.value});
                 }
             }
@@ -59,8 +51,7 @@ std::optional<LowerResult> Lowerer::lowerBuiltinCall(const std::string &name, Ca
         return LowerResult{Value::constInt(0), Type(Type::Kind::Void)};
     }
 
-    if (name == "toString")
-    {
+    if (name == "toString") {
         if (expr->args.empty())
             return LowerResult{Value::constInt(0), Type(Type::Kind::Str)};
 
@@ -68,24 +59,19 @@ std::optional<LowerResult> Lowerer::lowerBuiltinCall(const std::string &name, Ca
         auto arg = lowerExpr(argExpr);
         TypeRef argType = sema_.typeOf(argExpr);
 
-        if (argType)
-        {
-            switch (argType->kind)
-            {
+        if (argType) {
+            switch (argType->kind) {
                 case TypeKindSem::String:
                     return LowerResult{arg.value, Type(Type::Kind::Str)};
-                case TypeKindSem::Integer:
-                {
+                case TypeKindSem::Integer: {
                     Value strVal = emitCallRet(Type(Type::Kind::Str), kStringFromInt, {arg.value});
                     return LowerResult{strVal, Type(Type::Kind::Str)};
                 }
-                case TypeKindSem::Number:
-                {
+                case TypeKindSem::Number: {
                     Value strVal = emitCallRet(Type(Type::Kind::Str), kStringFromNum, {arg.value});
                     return LowerResult{strVal, Type(Type::Kind::Str)};
                 }
-                case TypeKindSem::Boolean:
-                {
+                case TypeKindSem::Boolean: {
                     Value strVal = emitCallRet(Type(Type::Kind::Str), kFmtBool, {arg.value});
                     return LowerResult{strVal, Type(Type::Kind::Str)};
                 }
@@ -94,8 +80,7 @@ std::optional<LowerResult> Lowerer::lowerBuiltinCall(const std::string &name, Ca
             }
         }
 
-        if (arg.type.kind == Type::Kind::Ptr)
-        {
+        if (arg.type.kind == Type::Kind::Ptr) {
             Value strVal = emitCallRet(Type(Type::Kind::Str), kObjectToString, {arg.value});
             return LowerResult{strVal, Type(Type::Kind::Str)};
         }
@@ -110,24 +95,19 @@ std::optional<LowerResult> Lowerer::lowerBuiltinCall(const std::string &name, Ca
 // Main Call Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerCall(CallExpr *expr)
-{
+LowerResult Lowerer::lowerCall(CallExpr *expr) {
     // Check for generic function call: identity[Integer](42)
     std::string genericCallee = sema_.genericFunctionCallee(expr);
-    if (!genericCallee.empty())
-    {
+    if (!genericCallee.empty()) {
         return lowerGenericFunctionCall(genericCallee, expr);
     }
 
-    if (MethodDecl *resolvedMethod = sema_.resolvedMethodDecl(expr))
-    {
+    if (MethodDecl *resolvedMethod = sema_.resolvedMethodDecl(expr)) {
         std::string ownerType = sema_.resolvedMethodOwnerType(expr);
         std::string slotKey = sema_.resolvedMethodSlotKey(expr);
 
-        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
-        {
-            if (fieldExpr->base->kind == ExprKind::SuperExpr)
-            {
+        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get())) {
+            if (fieldExpr->base->kind == ExprKind::SuperExpr) {
                 Value selfPtr;
                 if (getSelfPtr(selfPtr))
                     return lowerMethodCall(resolvedMethod, ownerType, selfPtr, expr);
@@ -138,8 +118,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             if (baseType && baseType->kind == TypeKindSem::Optional && baseType->innerType())
                 baseType = baseType->innerType();
 
-            if (baseType && baseType->kind == TypeKindSem::Interface)
-            {
+            if (baseType && baseType->kind == TypeKindSem::Interface) {
                 auto ifaceIt = interfaceTypes_.find(baseType->name);
                 if (ifaceIt != interfaceTypes_.end())
                     return lowerInterfaceMethodCall(ifaceIt->second,
@@ -150,11 +129,9 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                                                     expr);
             }
 
-            if (baseType && baseType->kind == TypeKindSem::Entity && !resolvedMethod->isStatic)
-            {
+            if (baseType && baseType->kind == TypeKindSem::Entity && !resolvedMethod->isStatic) {
                 const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(baseType->name);
-                if (entityInfoPtr)
-                {
+                if (entityInfoPtr) {
                     return lowerVirtualMethodCall(*entityInfoPtr,
                                                   slotKey,
                                                   ownerType.empty() ? baseType->name : ownerType,
@@ -171,8 +148,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         }
 
         Value selfPtr;
-        if (getSelfPtr(selfPtr))
-        {
+        if (getSelfPtr(selfPtr)) {
             if (currentEntityType_ && !resolvedMethod->isStatic)
                 return lowerVirtualMethodCall(*currentEntityType_,
                                               slotKey,
@@ -183,8 +159,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                                               expr);
 
             std::string implicitOwner = ownerType;
-            if (implicitOwner.empty())
-            {
+            if (implicitOwner.empty()) {
                 if (currentEntityType_)
                     implicitOwner = currentEntityType_->name;
                 else if (currentValueType_)
@@ -195,8 +170,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
     }
 
     std::string resolvedFunction = sema_.resolvedFunctionCallee(expr);
-    if (!resolvedFunction.empty())
-    {
+    if (!resolvedFunction.empty()) {
         TypeRef calleeType = sema_.typeOf(expr->callee.get());
         TypeRef returnType = calleeType ? calleeType->returnType() : nullptr;
         Type ilReturnType = returnType ? mapType(returnType) : Type(Type::Kind::Void);
@@ -207,25 +181,20 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
         std::vector<Value> args;
         args.reserve(expr->args.size());
-        for (size_t i = 0; i < expr->args.size(); ++i)
-        {
+        for (size_t i = 0; i < expr->args.size(); ++i) {
             auto result = lowerExpr(expr->args[i].value.get());
             Value argValue = result.value;
-            if (i < paramTypes.size())
-            {
+            if (i < paramTypes.size()) {
                 TypeRef paramType = paramTypes[i];
                 TypeRef argType = sema_.typeOf(expr->args[i].value.get());
-                if (paramType && paramType->kind == TypeKindSem::Optional)
-                {
+                if (paramType && paramType->kind == TypeKindSem::Optional) {
                     TypeRef innerType = paramType->innerType();
                     if (argType && argType->kind == TypeKindSem::Unit)
                         argValue = Value::null();
                     else if (argType && argType->kind != TypeKindSem::Optional && innerType)
                         argValue = emitOptionalWrap(result.value, innerType);
-                }
-                else if (paramType && paramType->kind == TypeKindSem::Number && argType &&
-                         argType->kind == TypeKindSem::Integer)
-                {
+                } else if (paramType && paramType->kind == TypeKindSem::Number && argType &&
+                           argType->kind == TypeKindSem::Integer) {
                     unsigned convId = nextTempId();
                     il::core::Instr convInstr;
                     convInstr.result = convId;
@@ -240,8 +209,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             args.push_back(argValue);
         }
 
-        if (resolvedFunction == kHeapRelease && args.size() == 1)
-        {
+        if (resolvedFunction == kHeapRelease && args.size() == 1) {
             TypeRef argType = sema_.typeOf(expr->args[0].value.get());
             bool isString = isStringType(argType);
             Value releaseCount = emitManagedReleaseRet(args[0], isString);
@@ -249,8 +217,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         }
 
         padDefaultArgs(resolvedFunction, args, expr);
-        if (ilReturnType.kind == Type::Kind::Void)
-        {
+        if (ilReturnType.kind == Type::Kind::Void) {
             emitCall(resolvedFunction, args);
             return {Value::constInt(0), Type(Type::Kind::Void)};
         }
@@ -261,25 +228,20 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
     // Handle generic function calls that weren't detected during semantic analysis
     // This happens for calls inside generic function bodies like: identity[T](x)
     // where T is a type parameter that needs to be substituted
-    if (expr->callee->kind == ExprKind::Index)
-    {
+    if (expr->callee->kind == ExprKind::Index) {
         auto *indexExpr = static_cast<IndexExpr *>(expr->callee.get());
-        if (indexExpr->base->kind == ExprKind::Ident)
-        {
+        if (indexExpr->base->kind == ExprKind::Ident) {
             auto *identExpr = static_cast<IdentExpr *>(indexExpr->base.get());
             // Check if this is a call to a generic function
-            if (sema_.isGenericFunction(identExpr->name))
-            {
+            if (sema_.isGenericFunction(identExpr->name)) {
                 // Get the type argument from the index expression
-                if (indexExpr->index->kind == ExprKind::Ident)
-                {
+                if (indexExpr->index->kind == ExprKind::Ident) {
                     auto *typeArgExpr = static_cast<IdentExpr *>(indexExpr->index.get());
                     std::string typeArgName = typeArgExpr->name;
 
                     // If the type arg is a type parameter, substitute it
                     TypeRef substType = sema_.lookupTypeParam(typeArgName);
-                    if (substType)
-                    {
+                    if (substType) {
                         // Use the type's name if it has one, otherwise use kindToString
                         typeArgName = substType->name.empty() ? kindToString(substType->kind)
                                                               : substType->name;
@@ -294,19 +256,15 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
     }
 
     // Check for method call on value or entity type: obj.method()
-    if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
-    {
+    if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get())) {
         // Check for super.method() call - dispatch to parent class method
-        if (fieldExpr->base->kind == ExprKind::SuperExpr)
-        {
+        if (fieldExpr->base->kind == ExprKind::SuperExpr) {
             Value selfPtr;
-            if (getSelfPtr(selfPtr) && currentEntityType_ && !currentEntityType_->baseClass.empty())
-            {
+            if (getSelfPtr(selfPtr) && currentEntityType_ &&
+                !currentEntityType_->baseClass.empty()) {
                 auto parentIt = entityTypes_.find(currentEntityType_->baseClass);
-                if (parentIt != entityTypes_.end())
-                {
-                    if (auto *method = parentIt->second.findMethod(fieldExpr->field))
-                    {
+                if (parentIt != entityTypes_.end()) {
+                    if (auto *method = parentIt->second.findMethod(fieldExpr->field)) {
                         return lowerMethodCall(
                             method, currentEntityType_->baseClass, selfPtr, expr);
                     }
@@ -316,14 +274,12 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
         // Get the type of the base expression
         TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
-        if (baseType)
-        {
+        if (baseType) {
             // Unwrap Optional types for method resolution
             // This handles the case where a variable was assigned from an optional
             // after a null check (e.g., `var table = maybeTable;` after `if maybeTable == null {
             // return; }`)
-            if (baseType->kind == TypeKindSem::Optional && baseType->innerType())
-            {
+            if (baseType->kind == TypeKindSem::Optional && baseType->innerType()) {
                 baseType = baseType->innerType();
             }
 
@@ -331,10 +287,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
             // Check value type methods
             const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(typeName);
-            if (valueInfo)
-            {
-                if (auto *method = valueInfo->findMethod(fieldExpr->field))
-                {
+            if (valueInfo) {
+                if (auto *method = valueInfo->findMethod(fieldExpr->field)) {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
                     return lowerMethodCall(method, typeName, baseResult.value, expr);
                 }
@@ -342,38 +296,32 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
             // Check entity type methods with virtual dispatch
             const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(typeName);
-            if (entityInfoPtr)
-            {
+            if (entityInfoPtr) {
                 const EntityTypeInfo &entityInfo = *entityInfoPtr;
                 MethodDecl *namedMethod = entityInfo.findMethod(fieldExpr->field);
 
-                if (namedMethod)
-                {
+                if (namedMethod) {
                     std::string slotKey = sema_.methodSlotKey(typeName, namedMethod);
                     size_t vtableSlot = entityInfo.findVtableSlot(slotKey);
-                    if (vtableSlot != SIZE_MAX)
-                    {
+                    if (vtableSlot != SIZE_MAX) {
                         auto baseResult = lowerExpr(fieldExpr->base.get());
                         return lowerVirtualMethodCall(
                             entityInfo, slotKey, typeName, namedMethod, baseResult.value, expr);
                     }
                 }
 
-                if (namedMethod)
-                {
+                if (namedMethod) {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
                     return lowerMethodCall(namedMethod, typeName, baseResult.value, expr);
                 }
 
                 // Check parent entity for inherited methods
                 std::string parentName = entityInfo.baseClass;
-                while (!parentName.empty())
-                {
+                while (!parentName.empty()) {
                     auto parentIt = entityTypes_.find(parentName);
                     if (parentIt == entityTypes_.end())
                         break;
-                    if (auto *method = parentIt->second.findMethod(fieldExpr->field))
-                    {
+                    if (auto *method = parentIt->second.findMethod(fieldExpr->field)) {
                         auto baseResult = lowerExpr(fieldExpr->base.get());
                         return lowerMethodCall(method, parentName, baseResult.value, expr);
                     }
@@ -390,14 +338,11 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             }
 
             // Handle interface method calls
-            if (baseType->kind == TypeKindSem::Interface)
-            {
+            if (baseType->kind == TypeKindSem::Interface) {
                 auto ifaceIt = interfaceTypes_.find(typeName);
-                if (ifaceIt != interfaceTypes_.end())
-                {
+                if (ifaceIt != interfaceTypes_.end()) {
                     auto methodIt = ifaceIt->second.methodMap.find(fieldExpr->field);
-                    if (methodIt != ifaceIt->second.methodMap.end())
-                    {
+                    if (methodIt != ifaceIt->second.methodMap.end()) {
                         auto baseResult = lowerExpr(fieldExpr->base.get());
                         std::string slotKey = sema_.methodSlotKey(typeName, methodIt->second);
                         return lowerInterfaceMethodCall(ifaceIt->second,
@@ -411,13 +356,11 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             }
 
             // Handle module-qualified function calls
-            if (baseType->kind == TypeKindSem::Module)
-            {
+            if (baseType->kind == TypeKindSem::Module) {
                 // Check if sema resolved a runtime callee name for this call
                 // (e.g., "ResultOk" for Viper.Result.Ok)
                 std::string funcName = sema_.runtimeCallee(expr);
-                if (funcName.empty())
-                {
+                if (funcName.empty()) {
                     // Try qualified name for runtime functions (e.g., Viper.Result.Ok)
                     std::string qualName = baseType->name + "." + fieldExpr->field;
                     if (il::runtime::findRuntimeDescriptor(qualName))
@@ -434,26 +377,21 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 if (rtDesc)
                     expectedParamTypes = &rtDesc->signature.paramTypes;
 
-                for (size_t i = 0; i < expr->args.size(); ++i)
-                {
+                for (size_t i = 0; i < expr->args.size(); ++i) {
                     auto result = lowerExpr(expr->args[i].value.get());
                     Value argValue = result.value;
                     if (result.type.kind == Type::Kind::I32)
                         argValue = widenByteToInteger(argValue);
 
                     // Auto-box primitives or coerce i64→f64 when expected by runtime
-                    if (expectedParamTypes && i < expectedParamTypes->size())
-                    {
+                    if (expectedParamTypes && i < expectedParamTypes->size()) {
                         Type expectedType = (*expectedParamTypes)[i];
                         if (expectedType.kind == Type::Kind::Ptr &&
                             result.type.kind != Type::Kind::Ptr &&
-                            result.type.kind != Type::Kind::Void)
-                        {
+                            result.type.kind != Type::Kind::Void) {
                             argValue = emitBox(argValue, result.type);
-                        }
-                        else if (expectedType.kind == Type::Kind::F64 &&
-                                 result.type.kind == Type::Kind::I64)
-                        {
+                        } else if (expectedType.kind == Type::Kind::F64 &&
+                                   result.type.kind == Type::Kind::I64) {
                             unsigned convId = nextTempId();
                             il::core::Instr convInstr;
                             convInstr.result = convId;
@@ -471,8 +409,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 TypeRef exprType = sema_.typeOf(expr);
                 Type ilReturnType = exprType ? mapType(exprType) : Type(Type::Kind::Void);
 
-                if (funcName == kHeapRelease && args.size() == 1)
-                {
+                if (funcName == kHeapRelease && args.size() == 1) {
                     TypeRef argType = sema_.typeOf(expr->args[0].value.get());
                     bool isString = isStringType(argType);
                     Value releaseCount = emitManagedReleaseRet(args[0], isString);
@@ -487,13 +424,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 if (rtDesc)
                     callReturnType = rtDesc->signature.retType;
 
-                if (ilReturnType.kind == Type::Kind::Void)
-                {
+                if (ilReturnType.kind == Type::Kind::Void) {
                     emitCall(funcName, args);
                     return {Value::constInt(0), Type(Type::Kind::Void)};
-                }
-                else
-                {
+                } else {
                     Value result = emitCallRet(callReturnType, funcName, args);
                     return {result, ilReturnType};
                 }
@@ -501,10 +435,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
             // Handle String method calls - Bug #018 fix
             // String.length() should be treated as a property access, not a method call
-            if (baseType->kind == TypeKindSem::String)
-            {
-                if (equalsIgnoreCase(fieldExpr->field, "length"))
-                {
+            if (baseType->kind == TypeKindSem::String) {
+                if (equalsIgnoreCase(fieldExpr->field, "length")) {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
                     Value result =
                         emitCallRet(Type(Type::Kind::I64), kStringLength, {baseResult.value});
@@ -514,10 +446,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
             // Handle Integer method calls - Bug #018 fix
             // Integer.toString() should convert to string
-            if (baseType->kind == TypeKindSem::Integer)
-            {
-                if (equalsIgnoreCase(fieldExpr->field, "toString"))
-                {
+            if (baseType->kind == TypeKindSem::Integer) {
+                if (equalsIgnoreCase(fieldExpr->field, "toString")) {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
                     Value result =
                         emitCallRet(Type(Type::Kind::Str), kStringFromInt, {baseResult.value});
@@ -527,10 +457,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
             // Handle Number method calls - Bug #018 fix
             // Number.toString() should convert to string
-            if (baseType->kind == TypeKindSem::Number)
-            {
-                if (equalsIgnoreCase(fieldExpr->field, "toString"))
-                {
+            if (baseType->kind == TypeKindSem::Number) {
+                if (equalsIgnoreCase(fieldExpr->field, "toString")) {
                     auto baseResult = lowerExpr(fieldExpr->base.get());
                     Value result =
                         emitCallRet(Type(Type::Kind::Str), kStringFromNum, {baseResult.value});
@@ -539,8 +467,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             }
 
             // Handle List method calls
-            if (baseType->kind == TypeKindSem::List)
-            {
+            if (baseType->kind == TypeKindSem::List) {
                 auto baseResult = lowerExpr(fieldExpr->base.get());
                 auto listResult =
                     lowerListMethodCall(baseResult.value, baseType, fieldExpr->field, expr);
@@ -549,8 +476,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             }
 
             // Handle Map method calls
-            if (baseType->kind == TypeKindSem::Map)
-            {
+            if (baseType->kind == TypeKindSem::Map) {
                 auto baseResult = lowerExpr(fieldExpr->base.get());
                 auto mapResult =
                     lowerMapMethodCall(baseResult.value, baseType, fieldExpr->field, expr);
@@ -559,8 +485,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             }
 
             // Handle Set method calls
-            if (baseType->kind == TypeKindSem::Set)
-            {
+            if (baseType->kind == TypeKindSem::Set) {
                 auto baseResult = lowerExpr(fieldExpr->base.get());
                 auto setResult =
                     lowerSetMethodCall(baseResult.value, baseType, fieldExpr->field, expr);
@@ -572,32 +497,26 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
     // Check if this is a resolved runtime call
     std::string runtimeCallee = sema_.runtimeCallee(expr);
-    if (!runtimeCallee.empty())
-    {
+    if (!runtimeCallee.empty()) {
         // Auto-dispatch Say/Print to typed variants based on argument type.
         // This allows Say(42), Say(3.14), Say(true) to work without requiring
         // explicit string conversion. The typed runtime functions (SayInt, SayNum,
         // SayBool, PrintInt, PrintNum, PrintBool) already exist — we just redirect.
-        if (expr->args.size() == 1)
-        {
+        if (expr->args.size() == 1) {
             auto *argExpr = expr->args[0].value.get();
             TypeRef argType = sema_.typeOf(argExpr);
 
-            if (argType && argType->kind != TypeKindSem::String)
-            {
+            if (argType && argType->kind != TypeKindSem::String) {
                 std::string typedCallee;
 
-                if (runtimeCallee == kTerminalSay)
-                {
+                if (runtimeCallee == kTerminalSay) {
                     if (argType->kind == TypeKindSem::Integer)
                         typedCallee = kTerminalSayInt;
                     else if (argType->kind == TypeKindSem::Number)
                         typedCallee = kTerminalSayNum;
                     else if (argType->kind == TypeKindSem::Boolean)
                         typedCallee = kTerminalSayBool;
-                }
-                else if (runtimeCallee == kTerminalPrint)
-                {
+                } else if (runtimeCallee == kTerminalPrint) {
                     if (argType->kind == TypeKindSem::Integer)
                         typedCallee = kTerminalPrintInt;
                     else if (argType->kind == TypeKindSem::Number)
@@ -606,8 +525,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                         typedCallee = kTerminalPrintBool;
                 }
 
-                if (!typedCallee.empty())
-                {
+                if (!typedCallee.empty()) {
                     auto arg = lowerExpr(argExpr);
                     Value argVal = arg.value;
                     if (arg.type.kind == Type::Kind::I32)
@@ -620,14 +538,12 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
         std::vector<Value> args;
 
-        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
-        {
+        if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get())) {
             TypeRef baseType = sema_.typeOf(fieldExpr->base.get());
             if (baseType &&
                 (baseType->name.find("Viper.") == 0 || baseType->kind == TypeKindSem::Set ||
                  baseType->kind == TypeKindSem::List || baseType->kind == TypeKindSem::Map ||
-                 baseType->kind == TypeKindSem::String))
-            {
+                 baseType->kind == TypeKindSem::String)) {
                 auto baseResult = lowerExpr(fieldExpr->base.get());
                 args.push_back(baseResult.value);
             }
@@ -636,36 +552,29 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         // BUG-008 fix: Look up runtime signature to auto-box primitives when expected type is ptr
         const auto *rtDesc = il::runtime::findRuntimeDescriptor(runtimeCallee);
         const std::vector<il::core::Type> *expectedParamTypes = nullptr;
-        if (rtDesc)
-        {
+        if (rtDesc) {
             expectedParamTypes = &rtDesc->signature.paramTypes;
         }
 
         args.reserve(args.size() + expr->args.size());
         size_t paramOffset = args.size(); // Account for implicit self parameter if present
-        for (size_t i = 0; i < expr->args.size(); ++i)
-        {
+        for (size_t i = 0; i < expr->args.size(); ++i) {
             auto result = lowerExpr(expr->args[i].value.get());
             Value argValue = result.value;
-            if (result.type.kind == Type::Kind::I32)
-            {
+            if (result.type.kind == Type::Kind::I32) {
                 argValue = widenByteToInteger(argValue);
             }
 
             // BUG-008 fix: Auto-box primitive if expected type is Ptr
             // BUG-013 fix: Implicit i64→f64 coercion when expected type is F64
-            if (expectedParamTypes && (paramOffset + i) < expectedParamTypes->size())
-            {
+            if (expectedParamTypes && (paramOffset + i) < expectedParamTypes->size()) {
                 Type expectedType = (*expectedParamTypes)[paramOffset + i];
                 if (expectedType.kind == Type::Kind::Ptr && result.type.kind != Type::Kind::Ptr &&
-                    result.type.kind != Type::Kind::Void)
-                {
+                    result.type.kind != Type::Kind::Void) {
                     // Primitive passed where object expected - auto-box
                     argValue = emitBox(argValue, result.type);
-                }
-                else if (expectedType.kind == Type::Kind::F64 &&
-                         result.type.kind == Type::Kind::I64)
-                {
+                } else if (expectedType.kind == Type::Kind::F64 &&
+                           result.type.kind == Type::Kind::I64) {
                     // Integer passed where f64 expected - emit sitofp
                     unsigned convId = nextTempId();
                     il::core::Instr convInstr;
@@ -685,8 +594,7 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         TypeRef exprType = sema_.functionReturnType(runtimeCallee);
         Type ilReturnType = exprType ? mapType(exprType) : Type(Type::Kind::Void);
 
-        if (runtimeCallee == kHeapRelease && args.size() == 1)
-        {
+        if (runtimeCallee == kHeapRelease && args.size() == 1) {
             TypeRef argType = sema_.typeOf(expr->args[0].value.get());
             bool isString = isStringType(argType);
             Value releaseCount = emitManagedReleaseRet(args[0], isString);
@@ -701,21 +609,17 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             callReturnType = rtDesc->signature.retType;
 
         // Handle void return types correctly - don't try to store void results
-        if (ilReturnType.kind == Type::Kind::Void)
-        {
+        if (ilReturnType.kind == Type::Kind::Void) {
             emitCall(runtimeCallee, args);
             return {Value::constInt(0), Type(Type::Kind::Void)};
-        }
-        else
-        {
+        } else {
             Value result = emitCallRet(callReturnType, runtimeCallee, args);
             return {result, ilReturnType};
         }
     }
 
     // Check for built-in functions and value type construction
-    if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get()))
-    {
+    if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get())) {
         // Check built-in functions
         auto builtinResult = lowerBuiltinCall(ident->name, expr);
         if (builtinResult)
@@ -740,27 +644,21 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
     TypeRef calleeType = sema_.typeOf(expr->callee.get());
     bool isLambdaClosure = calleeType && calleeType->isCallable();
 
-    if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get()))
-    {
+    if (auto *ident = dynamic_cast<IdentExpr *>(expr->callee.get())) {
         // Check for implicit method call
-        if (currentEntityType_)
-        {
-            if (auto *method = currentEntityType_->findMethod(ident->name))
-            {
+        if (currentEntityType_) {
+            if (auto *method = currentEntityType_->findMethod(ident->name)) {
                 Value selfPtr;
-                if (getSelfPtr(selfPtr))
-                {
+                if (getSelfPtr(selfPtr)) {
                     return lowerMethodCall(method, currentEntityType_->name, selfPtr, expr);
                 }
             }
         }
 
         // Check if this is a variable holding a function pointer
-        if (definedFunctions_.find(mangleFunctionName(ident->name)) == definedFunctions_.end())
-        {
+        if (definedFunctions_.find(mangleFunctionName(ident->name)) == definedFunctions_.end()) {
             auto slotIt = slots_.find(ident->name);
-            if (slotIt != slots_.end())
-            {
+            if (slotIt != slots_.end()) {
                 unsigned loadId = nextTempId();
                 il::core::Instr loadInstr;
                 loadInstr.result = loadId;
@@ -771,39 +669,29 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
                 blockMgr_.currentBlock()->instructions.push_back(loadInstr);
                 funcPtr = Value::temp(loadId);
                 isIndirectCall = true;
-            }
-            else
-            {
+            } else {
                 auto localIt = locals_.find(ident->name);
-                if (localIt != locals_.end())
-                {
+                if (localIt != locals_.end()) {
                     funcPtr = localIt->second;
                     isIndirectCall = true;
                 }
             }
         }
 
-        if (!isIndirectCall)
-        {
+        if (!isIndirectCall) {
             calleeName = mangleFunctionName(ident->name);
         }
-    }
-    else if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get()))
-    {
+    } else if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->callee.get())) {
         // Check if this is a namespace-qualified function call (e.g., Math.add or
         // Outer.Inner.getValue) Recursively build the qualified name from nested FieldExpr nodes
         std::string qualifiedName;
-        std::function<bool(Expr *)> buildQualifiedName = [&](Expr *e) -> bool
-        {
-            if (auto *ident = dynamic_cast<IdentExpr *>(e))
-            {
+        std::function<bool(Expr *)> buildQualifiedName = [&](Expr *e) -> bool {
+            if (auto *ident = dynamic_cast<IdentExpr *>(e)) {
                 qualifiedName = ident->name;
                 return true;
             }
-            if (auto *field = dynamic_cast<FieldExpr *>(e))
-            {
-                if (buildQualifiedName(field->base.get()))
-                {
+            if (auto *field = dynamic_cast<FieldExpr *>(e)) {
+                if (buildQualifiedName(field->base.get())) {
                     qualifiedName += "." + field->field;
                     return true;
                 }
@@ -815,37 +703,27 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         // Check if the qualified name is a defined function.
         // Try both mangled and unmangled names (mirrors line 596 which
         // correctly uses mangleFunctionName for ident-based calls).
-        if (!qualifiedName.empty())
-        {
+        if (!qualifiedName.empty()) {
             std::string mangledQN = mangleFunctionName(qualifiedName);
-            if (definedFunctions_.find(mangledQN) != definedFunctions_.end())
-            {
+            if (definedFunctions_.find(mangledQN) != definedFunctions_.end()) {
                 calleeName = mangledQN;
                 isIndirectCall = false;
-            }
-            else if (definedFunctions_.find(qualifiedName) != definedFunctions_.end())
-            {
+            } else if (definedFunctions_.find(qualifiedName) != definedFunctions_.end()) {
                 calleeName = qualifiedName;
                 isIndirectCall = false;
-            }
-            else
-            {
+            } else {
                 // Regular field access on a value - lower and use as indirect call
                 auto calleeResult = lowerExpr(expr->callee.get());
                 funcPtr = calleeResult.value;
                 isIndirectCall = true;
             }
-        }
-        else
-        {
+        } else {
             // Regular field access on a value - lower and use as indirect call
             auto calleeResult = lowerExpr(expr->callee.get());
             funcPtr = calleeResult.value;
             isIndirectCall = true;
         }
-    }
-    else
-    {
+    } else {
         auto calleeResult = lowerExpr(expr->callee.get());
         funcPtr = calleeResult.value;
         isIndirectCall = true;
@@ -862,36 +740,27 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
     std::vector<Value> args;
     args.reserve(expr->args.size());
-    for (size_t i = 0; i < expr->args.size(); ++i)
-    {
+    for (size_t i = 0; i < expr->args.size(); ++i) {
         auto &arg = expr->args[i];
         auto result = lowerExpr(arg.value.get());
         Value argValue = result.value;
 
-        if (i < paramTypes.size())
-        {
+        if (i < paramTypes.size()) {
             TypeRef paramType = paramTypes[i];
             TypeRef argType = sema_.typeOf(arg.value.get());
-            if (paramType && paramType->kind == TypeKindSem::Optional)
-            {
+            if (paramType && paramType->kind == TypeKindSem::Optional) {
                 TypeRef innerType = paramType->innerType();
-                if (argType && argType->kind == TypeKindSem::Optional)
-                {
+                if (argType && argType->kind == TypeKindSem::Optional) {
                     argValue = result.value;
-                }
-                else if (argType && argType->kind == TypeKindSem::Unit)
-                {
+                } else if (argType && argType->kind == TypeKindSem::Unit) {
                     argValue = Value::null();
-                }
-                else if (innerType)
-                {
+                } else if (innerType) {
                     argValue = emitOptionalWrap(result.value, innerType);
                 }
             }
             // Handle Integer -> Number implicit conversion for function parameters
             else if (paramType && paramType->kind == TypeKindSem::Number && argType &&
-                     argType->kind == TypeKindSem::Integer)
-            {
+                     argType->kind == TypeKindSem::Integer) {
                 // Emit sitofp to convert i64 -> f64
                 unsigned convId = nextTempId();
                 il::core::Instr convInstr;
@@ -905,12 +774,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             }
             // Handle type coercion when argument type is Unknown but param type is concrete
             // This happens when indexing into an empty list that was created with []
-            else if (argType && argType->kind == TypeKindSem::Unknown && paramType)
-            {
+            else if (argType && argType->kind == TypeKindSem::Unknown && paramType) {
                 Type ilParamType = mapType(paramType);
                 // If the IL types differ, we need to unbox with the correct target type
-                if (ilParamType.kind != result.type.kind && result.type.kind == Type::Kind::Ptr)
-                {
+                if (ilParamType.kind != result.type.kind && result.type.kind == Type::Kind::Ptr) {
                     // The value is boxed (Ptr) but we need the unboxed primitive type
                     argValue = emitUnbox(result.value, ilParamType).value;
                 }
@@ -920,10 +787,8 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
         args.push_back(argValue);
     }
 
-    if (isIndirectCall)
-    {
-        if (isLambdaClosure)
-        {
+    if (isIndirectCall) {
+        if (isLambdaClosure) {
             Value closurePtr = funcPtr;
             Value actualFuncPtr = emitLoad(closurePtr, Type(Type::Kind::Ptr));
             Value envFieldAddr = emitGEP(closurePtr, kClosureEnvOffset);
@@ -932,48 +797,34 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
             std::vector<Value> closureArgs;
             closureArgs.reserve(args.size() + 1);
             closureArgs.push_back(envPtr);
-            for (const auto &arg : args)
-            {
+            for (const auto &arg : args) {
                 closureArgs.push_back(arg);
             }
 
-            if (ilReturnType.kind == Type::Kind::Void)
-            {
+            if (ilReturnType.kind == Type::Kind::Void) {
                 emitCallIndirect(actualFuncPtr, closureArgs);
                 return {Value::constInt(0), Type(Type::Kind::Void)};
-            }
-            else
-            {
+            } else {
                 Value result = emitCallIndirectRet(ilReturnType, actualFuncPtr, closureArgs);
                 return {result, ilReturnType};
             }
-        }
-        else
-        {
-            if (ilReturnType.kind == Type::Kind::Void)
-            {
+        } else {
+            if (ilReturnType.kind == Type::Kind::Void) {
                 emitCallIndirect(funcPtr, args);
                 return {Value::constInt(0), Type(Type::Kind::Void)};
-            }
-            else
-            {
+            } else {
                 Value result = emitCallIndirectRet(ilReturnType, funcPtr, args);
                 return {result, ilReturnType};
             }
         }
-    }
-    else
-    {
+    } else {
         // Pad missing trailing arguments with default values from function declaration
         padDefaultArgs(calleeName, args, expr);
 
-        if (ilReturnType.kind == Type::Kind::Void)
-        {
+        if (ilReturnType.kind == Type::Kind::Void) {
             emitCall(calleeName, args);
             return {Value::constInt(0), Type(Type::Kind::Void)};
-        }
-        else
-        {
+        } else {
             Value result = emitCallRet(ilReturnType, calleeName, args);
             return {result, ilReturnType};
         }
@@ -986,12 +837,10 @@ LowerResult Lowerer::lowerCall(CallExpr *expr)
 
 void Lowerer::padDefaultArgs(const std::string &calleeName,
                              std::vector<Value> &args,
-                             CallExpr *callExpr)
-{
+                             CallExpr *callExpr) {
     FunctionDecl *funcDecl = sema_.getFunctionDecl(calleeName);
     // Fall back to original ident name (before mangling)
-    if (!funcDecl && callExpr->callee->kind == ExprKind::Ident)
-    {
+    if (!funcDecl && callExpr->callee->kind == ExprKind::Ident) {
         auto *ident = static_cast<IdentExpr *>(callExpr->callee.get());
         funcDecl = sema_.getFunctionDecl(ident->name);
     }
@@ -1004,8 +853,7 @@ void Lowerer::padDefaultArgs(const std::string &calleeName,
         return;
 
     // Pad missing trailing arguments with their default values
-    for (size_t i = numArgs; i < numParams; ++i)
-    {
+    for (size_t i = numArgs; i < numParams; ++i) {
         const auto &param = funcDecl->params[i];
         if (!param.defaultValue)
             break; // No default — shouldn't happen if sema validated
@@ -1019,68 +867,53 @@ void Lowerer::padDefaultArgs(const std::string &calleeName,
 // Generic Function Call Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerGenericFunctionCall(const std::string &mangledName, CallExpr *expr)
-{
+LowerResult Lowerer::lowerGenericFunctionCall(const std::string &mangledName, CallExpr *expr) {
     // Get the function type from Sema
     TypeRef funcType = sema_.typeOf(expr->callee.get());
-    if (!funcType || funcType->kind != TypeKindSem::Function)
-    {
+    if (!funcType || funcType->kind != TypeKindSem::Function) {
         // Fallback - compute return type from generic function declaration
         std::string baseName = mangledName.substr(0, mangledName.find('$'));
         std::string concreteTypeName = mangledName.substr(mangledName.find('$') + 1);
         FunctionDecl *genericDecl = sema_.getGenericFunction(baseName);
 
         Type ilReturnType = Type(Type::Kind::I64); // Default fallback
-        if (genericDecl)
-        {
+        if (genericDecl) {
             // Resolve return type from declaration and substitute type parameters
-            if (genericDecl->returnType)
-            {
+            if (genericDecl->returnType) {
                 TypeRef declReturnType = sema_.resolveType(genericDecl->returnType.get());
-                if (declReturnType && declReturnType->kind == TypeKindSem::TypeParam)
-                {
+                if (declReturnType && declReturnType->kind == TypeKindSem::TypeParam) {
                     // Return type is a type parameter - substitute with concrete type
                     TypeRef concreteType = sema_.resolveNamedType(concreteTypeName);
-                    if (concreteType)
-                    {
+                    if (concreteType) {
                         ilReturnType = mapType(concreteType);
                     }
-                }
-                else if (declReturnType)
-                {
+                } else if (declReturnType) {
                     ilReturnType = mapType(declReturnType);
                 }
-            }
-            else
-            {
+            } else {
                 ilReturnType = Type(Type::Kind::Void);
             }
         }
 
         // Lower arguments
         std::vector<Value> args;
-        for (auto &arg : expr->args)
-        {
+        for (auto &arg : expr->args) {
             auto result = lowerExpr(arg.value.get());
             args.push_back(result.value);
         }
 
         // Queue the instantiated generic function for later lowering
-        if (genericDecl && definedFunctions_.find(mangledName) == definedFunctions_.end())
-        {
+        if (genericDecl && definedFunctions_.find(mangledName) == definedFunctions_.end()) {
             // Mark as defined now to avoid re-queuing, but queue for actual lowering
             definedFunctions_.insert(mangledName);
             pendingFunctionInstantiations_.push_back({mangledName, genericDecl});
         }
 
         // Call the function
-        if (ilReturnType.kind == Type::Kind::Void)
-        {
+        if (ilReturnType.kind == Type::Kind::Void) {
             emitCall(mangledName, args);
             return {Value::constInt(0), Type(Type::Kind::Void)};
-        }
-        else
-        {
+        } else {
             Value result = emitCallRet(ilReturnType, mangledName, args);
             return {result, ilReturnType};
         }
@@ -1093,14 +926,12 @@ LowerResult Lowerer::lowerGenericFunctionCall(const std::string &mangledName, Ca
     // Lower arguments
     std::vector<Value> args;
     const auto &paramTypes = funcType->paramTypes();
-    for (size_t i = 0; i < expr->args.size(); ++i)
-    {
+    for (size_t i = 0; i < expr->args.size(); ++i) {
         auto result = lowerExpr(expr->args[i].value.get());
         Value argValue = result.value;
 
         // Widen bytes to integers
-        if (result.type.kind == Type::Kind::I32)
-        {
+        if (result.type.kind == Type::Kind::I32) {
             argValue = widenByteToInteger(argValue);
         }
 
@@ -1110,21 +941,17 @@ LowerResult Lowerer::lowerGenericFunctionCall(const std::string &mangledName, Ca
     // Queue the instantiated generic function for later lowering
     std::string baseName = mangledName.substr(0, mangledName.find('$'));
     FunctionDecl *genericDecl = sema_.getGenericFunction(baseName);
-    if (genericDecl && definedFunctions_.find(mangledName) == definedFunctions_.end())
-    {
+    if (genericDecl && definedFunctions_.find(mangledName) == definedFunctions_.end()) {
         // Mark as defined now to avoid re-queuing, but queue for actual lowering
         definedFunctions_.insert(mangledName);
         pendingFunctionInstantiations_.push_back({mangledName, genericDecl});
     }
 
     // Call the function
-    if (ilReturnType.kind == Type::Kind::Void)
-    {
+    if (ilReturnType.kind == Type::Kind::Void) {
         emitCall(mangledName, args);
         return {Value::constInt(0), Type(Type::Kind::Void)};
-    }
-    else
-    {
+    } else {
         Value result = emitCallRet(ilReturnType, mangledName, args);
         return {result, ilReturnType};
     }

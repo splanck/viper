@@ -58,8 +58,7 @@ extern void *rt_mat4_new(double m0,
                          double m14,
                          double m15);
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     double position[3];
     double rotation[4]; /* quaternion (x,y,z,w) */
@@ -68,15 +67,13 @@ typedef struct
     int8_t dirty;
 } rt_transform3d;
 
-static void transform3d_finalizer(void *obj)
-{
+static void transform3d_finalizer(void *obj) {
     (void)obj;
 }
 
 /// @brief Build TRS matrix from position, quaternion, scale.
 /// Mirrors rt_scene3d.c:build_trs_matrix exactly.
-static void build_trs(const double *pos, const double *quat, const double *scl, double *out)
-{
+static void build_trs(const double *pos, const double *quat, const double *scl, double *out) {
     double x = quat[0], y = quat[1], z = quat[2], w = quat[3];
     double x2 = x + x, y2 = y + y, z2 = z + z;
     double xx = x * x2, xy = x * y2, xz = x * z2;
@@ -106,19 +103,16 @@ static void build_trs(const double *pos, const double *quat, const double *scl, 
     out[15] = 1.0;
 }
 
-static void ensure_matrix(rt_transform3d *xf)
-{
+static void ensure_matrix(rt_transform3d *xf) {
     if (!xf->dirty)
         return;
     build_trs(xf->position, xf->rotation, xf->scale, xf->matrix);
     xf->dirty = 0;
 }
 
-void *rt_transform3d_new(void)
-{
+void *rt_transform3d_new(void) {
     rt_transform3d *xf = (rt_transform3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_transform3d));
-    if (!xf)
-    {
+    if (!xf) {
         rt_trap("Transform3D.New: allocation failed");
         return NULL;
     }
@@ -132,8 +126,7 @@ void *rt_transform3d_new(void)
     return xf;
 }
 
-void rt_transform3d_set_position(void *obj, double x, double y, double z)
-{
+void rt_transform3d_set_position(void *obj, double x, double y, double z) {
     if (!obj)
         return;
     rt_transform3d *xf = (rt_transform3d *)obj;
@@ -143,16 +136,14 @@ void rt_transform3d_set_position(void *obj, double x, double y, double z)
     xf->dirty = 1;
 }
 
-void *rt_transform3d_get_position(void *obj)
-{
+void *rt_transform3d_get_position(void *obj) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
     rt_transform3d *xf = (rt_transform3d *)obj;
     return rt_vec3_new(xf->position[0], xf->position[1], xf->position[2]);
 }
 
-void rt_transform3d_set_rotation(void *obj, void *quat)
-{
+void rt_transform3d_set_rotation(void *obj, void *quat) {
     if (!obj || !quat)
         return;
     rt_transform3d *xf = (rt_transform3d *)obj;
@@ -163,16 +154,14 @@ void rt_transform3d_set_rotation(void *obj, void *quat)
     xf->dirty = 1;
 }
 
-void *rt_transform3d_get_rotation(void *obj)
-{
+void *rt_transform3d_get_rotation(void *obj) {
     if (!obj)
         return rt_quat_new(0, 0, 0, 1);
     rt_transform3d *xf = (rt_transform3d *)obj;
     return rt_quat_new(xf->rotation[0], xf->rotation[1], xf->rotation[2], xf->rotation[3]);
 }
 
-void rt_transform3d_set_euler(void *obj, double pitch, double yaw, double roll)
-{
+void rt_transform3d_set_euler(void *obj, double pitch, double yaw, double roll) {
     if (!obj)
         return;
     rt_transform3d *xf = (rt_transform3d *)obj;
@@ -188,8 +177,7 @@ void rt_transform3d_set_euler(void *obj, double pitch, double yaw, double roll)
     xf->dirty = 1;
 }
 
-void rt_transform3d_set_scale(void *obj, double x, double y, double z)
-{
+void rt_transform3d_set_scale(void *obj, double x, double y, double z) {
     if (!obj)
         return;
     rt_transform3d *xf = (rt_transform3d *)obj;
@@ -199,16 +187,14 @@ void rt_transform3d_set_scale(void *obj, double x, double y, double z)
     xf->dirty = 1;
 }
 
-void *rt_transform3d_get_scale(void *obj)
-{
+void *rt_transform3d_get_scale(void *obj) {
     if (!obj)
         return rt_vec3_new(1, 1, 1);
     rt_transform3d *xf = (rt_transform3d *)obj;
     return rt_vec3_new(xf->scale[0], xf->scale[1], xf->scale[2]);
 }
 
-void *rt_transform3d_get_matrix(void *obj)
-{
+void *rt_transform3d_get_matrix(void *obj) {
     if (!obj)
         return rt_mat4_new(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1);
     rt_transform3d *xf = (rt_transform3d *)obj;
@@ -231,8 +217,7 @@ void *rt_transform3d_get_matrix(void *obj)
                        xf->matrix[15]);
 }
 
-void rt_transform3d_translate(void *obj, void *delta)
-{
+void rt_transform3d_translate(void *obj, void *delta) {
     if (!obj || !delta)
         return;
     rt_transform3d *xf = (rt_transform3d *)obj;
@@ -242,8 +227,7 @@ void rt_transform3d_translate(void *obj, void *delta)
     xf->dirty = 1;
 }
 
-void rt_transform3d_rotate(void *obj, void *axis, double angle)
-{
+void rt_transform3d_rotate(void *obj, void *axis, double angle) {
     if (!obj || !axis)
         return;
     rt_transform3d *xf = (rt_transform3d *)obj;
@@ -271,8 +255,7 @@ void rt_transform3d_rotate(void *obj, void *axis, double angle)
     xf->dirty = 1;
 }
 
-void rt_transform3d_look_at(void *obj, void *target, void *up_vec)
-{
+void rt_transform3d_look_at(void *obj, void *target, void *up_vec) {
     if (!obj || !target)
         return;
     rt_transform3d *xf = (rt_transform3d *)obj;
@@ -288,8 +271,7 @@ void rt_transform3d_look_at(void *obj, void *target, void *up_vec)
     tz /= flen;
 
     double ux = 0.0, uy = 1.0, uz = 0.0;
-    if (up_vec)
-    {
+    if (up_vec) {
         ux = rt_vec3_x(up_vec);
         uy = rt_vec3_y(up_vec);
         uz = rt_vec3_z(up_vec);
@@ -313,32 +295,25 @@ void rt_transform3d_look_at(void *obj, void *target, void *up_vec)
     double m10 = ry, m11 = tuy, m12 = ty;
     double m20 = rz, m21 = tuz, m22 = tz;
     double trace = m00 + m11 + m22;
-    if (trace > 0.0)
-    {
+    if (trace > 0.0) {
         double s = sqrt(trace + 1.0) * 2.0;
         xf->rotation[3] = 0.25 * s;
         xf->rotation[0] = (m21 - m12) / s;
         xf->rotation[1] = (m02 - m20) / s;
         xf->rotation[2] = (m10 - m01) / s;
-    }
-    else if (m00 > m11 && m00 > m22)
-    {
+    } else if (m00 > m11 && m00 > m22) {
         double s = sqrt(1.0 + m00 - m11 - m22) * 2.0;
         xf->rotation[3] = (m21 - m12) / s;
         xf->rotation[0] = 0.25 * s;
         xf->rotation[1] = (m01 + m10) / s;
         xf->rotation[2] = (m02 + m20) / s;
-    }
-    else if (m11 > m22)
-    {
+    } else if (m11 > m22) {
         double s = sqrt(1.0 + m11 - m00 - m22) * 2.0;
         xf->rotation[3] = (m02 - m20) / s;
         xf->rotation[0] = (m01 + m10) / s;
         xf->rotation[1] = 0.25 * s;
         xf->rotation[2] = (m12 + m21) / s;
-    }
-    else
-    {
+    } else {
         double s = sqrt(1.0 + m22 - m00 - m11) * 2.0;
         xf->rotation[3] = (m10 - m01) / s;
         xf->rotation[0] = (m02 + m20) / s;

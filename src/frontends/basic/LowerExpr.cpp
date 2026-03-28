@@ -31,8 +31,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Lower a BASIC variable reference into an IL value.
 /// @param v Variable expression that names the slot to read from.
@@ -45,14 +44,12 @@ namespace il::frontends::basic
 ///   required.
 /// - Side effects: Updates @ref curLoc so diagnostics and subsequent
 ///   instructions are tagged with @p v's source location.
-Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
-{
+Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v) {
     LocationScope loc(*this, v.loc);
 
     // BUG-CARDS-011 fix: Handle NOTHING keyword as a null pointer.
     // NOTHING is parsed as VarExpr{"NOTHING"} and should emit a null ptr.
-    if (v.name == "NOTHING")
-    {
+    if (v.name == "NOTHING") {
         return {Value::null(), Type(Type::Kind::Ptr)};
     }
 
@@ -74,8 +71,7 @@ Lowerer::RVal Lowerer::lowerVarExpr(const VarExpr &v)
 ///
 /// @param expr Array upper-bound expression.
 /// @return Pair containing the computed upper bound and its integer type.
-Lowerer::RVal Lowerer::lowerUBoundExpr(const UBoundExpr &expr)
-{
+Lowerer::RVal Lowerer::lowerUBoundExpr(const UBoundExpr &expr) {
     LocationScope loc(*this, expr.loc);
     const auto *sym = findSymbol(expr.name);
     assert(sym && sym->slotId && "UBOUND requires materialized array slot");
@@ -120,8 +116,7 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
                                            const std::function<void(Value)> &emitElse,
                                            std::string_view thenLabelBase,
                                            std::string_view elseLabelBase,
-                                           std::string_view joinLabelBase)
-{
+                                           std::string_view joinLabelBase) {
     LocationScope location(*this, loc);
     ProcedureContext &ctx = context();
     BasicBlock *origin = ctx.current();
@@ -136,13 +131,11 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
         joinLabelBase.empty() ? std::string_view("bool_join") : joinLabelBase;
 
     IlValue result = emitBoolFromBranches(
-        [&](Value slot)
-        {
+        [&](Value slot) {
             thenBlk = ctx.current();
             emitThen(slot);
         },
-        [&](Value slot)
-        {
+        [&](Value slot) {
             elseBlk = ctx.current();
             emitElse(slot);
         },
@@ -164,8 +157,7 @@ Lowerer::RVal Lowerer::lowerBoolBranchExpr(Value cond,
 ///
 /// @param v Literal integer to materialise.
 /// @return IL value representing the constant.
-Lowerer::Value Lowerer::emitConstI64(std::int64_t v)
-{
+Lowerer::Value Lowerer::emitConstI64(std::int64_t v) {
     return emitter().emitConstI64(v);
 }
 
@@ -173,8 +165,7 @@ Lowerer::Value Lowerer::emitConstI64(std::int64_t v)
 ///
 /// @param val Boolean value to extend.
 /// @return Result of invoking the emitter helper.
-Lowerer::Value Lowerer::emitZext1ToI64(Value val)
-{
+Lowerer::Value Lowerer::emitZext1ToI64(Value val) {
     return emitter().emitZext1ToI64(val);
 }
 
@@ -183,8 +174,7 @@ Lowerer::Value Lowerer::emitZext1ToI64(Value val)
 /// @param lhs Left operand.
 /// @param rhs Right operand.
 /// @return Difference computed by the emitter helper.
-Lowerer::Value Lowerer::emitISub(Value lhs, Value rhs)
-{
+Lowerer::Value Lowerer::emitISub(Value lhs, Value rhs) {
     return emitter().emitISub(lhs, rhs);
 }
 
@@ -192,8 +182,7 @@ Lowerer::Value Lowerer::emitISub(Value lhs, Value rhs)
 ///
 /// @param b1 Boolean value to normalise.
 /// @return 64-bit integer representing BASIC truthiness.
-Lowerer::Value Lowerer::emitBasicLogicalI64(Value b1)
-{
+Lowerer::Value Lowerer::emitBasicLogicalI64(Value b1) {
     return emitter().emitBasicLogicalI64(b1);
 }
 
@@ -209,12 +198,9 @@ Lowerer::Value Lowerer::emitBasicLogicalI64(Value b1)
 ///   @ref emitBoolConst.
 /// - Side effects: Updates @ref curLoc so generated instructions are annotated
 ///   with the operand's location.
-Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
-{
-    switch (u.op)
-    {
-        case UnaryExpr::Op::LogicalNot:
-        {
+Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u) {
+    switch (u.op) {
+        case UnaryExpr::Op::LogicalNot: {
             LocationScope loc(*this, u.loc);
             RVal val = lowerExpr(*u.expr);
             // Classic BASIC NOT: bitwise complement (XOR with all bits set)
@@ -228,28 +214,24 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
         }
         case UnaryExpr::Op::Plus:
             return lowerExpr(*u.expr);
-        case UnaryExpr::Op::Negate:
-        {
+        case UnaryExpr::Op::Negate: {
             LocationScope loc(*this, u.loc);
             RVal value = lowerExpr(*u.expr);
             if (value.type.kind == Type::Kind::I1)
                 value = coerceToI64(std::move(value), u.loc);
-            if (value.type.kind == Type::Kind::F64)
-            {
+            if (value.type.kind == Type::Kind::F64) {
                 Value neg = emitBinary(
                     Opcode::FSub, Type(Type::Kind::F64), Value::constFloat(0.0), value.value);
                 return {neg, Type(Type::Kind::F64)};
             }
             if (value.type.kind == Type::Kind::I16 || value.type.kind == Type::Kind::I32 ||
-                value.type.kind == Type::Kind::I64)
-            {
+                value.type.kind == Type::Kind::I64) {
                 Value neg = emitCheckedNeg(value.type, value.value);
                 return {neg, value.type};
             }
             value = coerceToI64(std::move(value), u.loc);
             if (value.type.kind == Type::Kind::I16 || value.type.kind == Type::Kind::I32 ||
-                value.type.kind == Type::Kind::I64)
-            {
+                value.type.kind == Type::Kind::I64) {
                 Value neg = emitCheckedNeg(value.type, value.value);
                 return {neg, value.type};
             }
@@ -283,8 +265,7 @@ Lowerer::RVal Lowerer::lowerUnaryExpr(const UnaryExpr &u)
 ///   merges to arithmetic instructions and runtime calls.
 /// - Side effects: May trigger recursive @ref lowerExpr invocations for both
 ///   operands and updates @ref curLoc through the delegated helpers.
-Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
-{
+Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b) {
     if (b.op == BinaryExpr::Op::LogicalAndShort || b.op == BinaryExpr::Op::LogicalOrShort ||
         b.op == BinaryExpr::Op::LogicalAnd || b.op == BinaryExpr::Op::LogicalOr)
         return lowerLogicalBinary(b);
@@ -299,21 +280,17 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
     // operand to be non-string and coerce it via STR$ semantics.
     if (b.op == BinaryExpr::Op::Add || b.op == BinaryExpr::Op::Eq || b.op == BinaryExpr::Op::Ne ||
         b.op == BinaryExpr::Op::Lt || b.op == BinaryExpr::Op::Le || b.op == BinaryExpr::Op::Gt ||
-        b.op == BinaryExpr::Op::Ge)
-    {
+        b.op == BinaryExpr::Op::Ge) {
         // If either side is string, coerce the other to string for '+'
         if (b.op == BinaryExpr::Op::Add &&
-            (lhs.type.kind == Type::Kind::Str || rhs.type.kind == Type::Kind::Str))
-        {
-            if (lhs.type.kind != Type::Kind::Str && b.lhs)
-            {
+            (lhs.type.kind == Type::Kind::Str || rhs.type.kind == Type::Kind::Str)) {
+            if (lhs.type.kind != Type::Kind::Str && b.lhs) {
                 PrintChArgString coerced = lowerPrintChArgToString(*b.lhs, lhs, false);
                 lhs = {coerced.text, Type(Type::Kind::Str)};
                 if (coerced.feature)
                     requestHelper(*coerced.feature);
             }
-            if (rhs.type.kind != Type::Kind::Str && b.rhs)
-            {
+            if (rhs.type.kind != Type::Kind::Str && b.rhs) {
                 PrintChArgString coerced = lowerPrintChArgToString(*b.rhs, rhs, false);
                 rhs = {coerced.text, Type(Type::Kind::Str)};
                 if (coerced.feature)
@@ -336,8 +313,7 @@ Lowerer::RVal Lowerer::lowerBinaryExpr(const BinaryExpr &b)
 /// @param v Value/type pair to normalize.
 /// @param loc Source location used for emitted conversions.
 /// @return Updated value guaranteed to have `i64` type when conversion occurs.
-Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
-{
+Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc) {
     return coercion().toI64(std::move(v), loc);
 }
 
@@ -345,8 +321,7 @@ Lowerer::RVal Lowerer::coerceToI64(RVal v, il::support::SourceLoc loc)
 /// @param v Value/type pair to normalize.
 /// @param loc Source location used for emitted conversions.
 /// @return Updated value guaranteed to have `f64` type when conversion occurs.
-Lowerer::RVal Lowerer::coerceToF64(RVal v, il::support::SourceLoc loc)
-{
+Lowerer::RVal Lowerer::coerceToF64(RVal v, il::support::SourceLoc loc) {
     return coercion().toF64(std::move(v), loc);
 }
 
@@ -354,8 +329,7 @@ Lowerer::RVal Lowerer::coerceToF64(RVal v, il::support::SourceLoc loc)
 /// @param v Value/type pair to normalize.
 /// @param loc Source location used for emitted conversions.
 /// @return Updated value guaranteed to have `i1` type when conversion occurs.
-Lowerer::RVal Lowerer::coerceToBool(RVal v, il::support::SourceLoc loc)
-{
+Lowerer::RVal Lowerer::coerceToBool(RVal v, il::support::SourceLoc loc) {
     return coercion().toBool(std::move(v), loc);
 }
 
@@ -363,8 +337,7 @@ Lowerer::RVal Lowerer::coerceToBool(RVal v, il::support::SourceLoc loc)
 /// @param v Value/type pair to normalize.
 /// @param loc Source location used for emitted conversions.
 /// @return Updated value guaranteed to have `i64` type.
-Lowerer::RVal Lowerer::ensureI64(RVal v, il::support::SourceLoc loc)
-{
+Lowerer::RVal Lowerer::ensureI64(RVal v, il::support::SourceLoc loc) {
     return coerceToI64(std::move(v), loc);
 }
 
@@ -372,8 +345,7 @@ Lowerer::RVal Lowerer::ensureI64(RVal v, il::support::SourceLoc loc)
 /// @param v Value/type pair to normalize.
 /// @param loc Source location used for emitted conversions.
 /// @return Updated value guaranteed to have `f64` type.
-Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc)
-{
+Lowerer::RVal Lowerer::ensureF64(RVal v, il::support::SourceLoc loc) {
     return coerceToF64(std::move(v), loc);
 }
 

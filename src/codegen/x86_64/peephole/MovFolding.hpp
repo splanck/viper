@@ -28,8 +28,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::x64::peephole
-{
+namespace viper::codegen::x64::peephole {
 
 /// @brief Try to fold consecutive moves: mov r1, r2; mov r3, r1 -> mov r3, r2.
 /// @return true if a fold was performed.

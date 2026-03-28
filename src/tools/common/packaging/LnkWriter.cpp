@@ -30,20 +30,16 @@
 
 #include <cstring>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
-namespace
-{
+namespace {
 
-void appendLE16(std::vector<uint8_t> &buf, uint16_t val)
-{
+void appendLE16(std::vector<uint8_t> &buf, uint16_t val) {
     buf.push_back(static_cast<uint8_t>(val & 0xFF));
     buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
 }
 
-void appendLE32(std::vector<uint8_t> &buf, uint32_t val)
-{
+void appendLE32(std::vector<uint8_t> &buf, uint32_t val) {
     buf.push_back(static_cast<uint8_t>(val & 0xFF));
     buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
     buf.push_back(static_cast<uint8_t>((val >> 16) & 0xFF));
@@ -52,12 +48,10 @@ void appendLE32(std::vector<uint8_t> &buf, uint32_t val)
 
 /// @brief Append a UTF-16LE StringData entry: charCount(2) + UTF-16LE chars.
 /// @note Simple ASCII-to-UTF-16LE conversion (sufficient for file paths).
-void appendStringData(std::vector<uint8_t> &buf, const std::string &str)
-{
+void appendStringData(std::vector<uint8_t> &buf, const std::string &str) {
     uint16_t charCount = static_cast<uint16_t>(str.size());
     appendLE16(buf, charCount);
-    for (char c : str)
-    {
+    for (char c : str) {
         buf.push_back(static_cast<uint8_t>(c));
         buf.push_back(0); // High byte = 0 for ASCII
     }
@@ -65,8 +59,7 @@ void appendStringData(std::vector<uint8_t> &buf, const std::string &str)
 
 } // namespace
 
-std::vector<uint8_t> generateLnk(const LnkParams &params)
-{
+std::vector<uint8_t> generateLnk(const LnkParams &params) {
     std::vector<uint8_t> buf;
     buf.reserve(512);
 

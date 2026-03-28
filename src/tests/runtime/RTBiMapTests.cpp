@@ -19,32 +19,27 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
 
-static void test_new_empty()
-{
+static void test_new_empty() {
     void *bm = rt_bimap_new();
     assert(bm != NULL);
     assert(rt_bimap_len(bm) == 0);
     assert(rt_bimap_is_empty(bm) == 1);
 }
 
-static void test_put_and_get()
-{
+static void test_put_and_get() {
     void *bm = rt_bimap_new();
     rt_string k = make_str("en");
     rt_string v = make_str("English");
@@ -65,8 +60,7 @@ static void test_put_and_get()
     rt_string_unref(v);
 }
 
-static void test_has_key_value()
-{
+static void test_has_key_value() {
     void *bm = rt_bimap_new();
     rt_string k = make_str("us");
     rt_string v = make_str("United States");
@@ -83,8 +77,7 @@ static void test_has_key_value()
     rt_string_unref(v);
 }
 
-static void test_overwrite_key()
-{
+static void test_overwrite_key() {
     void *bm = rt_bimap_new();
     rt_string k = make_str("a");
     rt_string v1 = make_str("alpha");
@@ -110,8 +103,7 @@ static void test_overwrite_key()
     rt_string_unref(v2);
 }
 
-static void test_overwrite_value()
-{
+static void test_overwrite_value() {
     void *bm = rt_bimap_new();
     rt_string k1 = make_str("k1");
     rt_string k2 = make_str("k2");
@@ -136,8 +128,7 @@ static void test_overwrite_value()
     rt_string_unref(v);
 }
 
-static void test_remove_by_key()
-{
+static void test_remove_by_key() {
     void *bm = rt_bimap_new();
     rt_string k = make_str("x");
     rt_string v = make_str("y");
@@ -155,8 +146,7 @@ static void test_remove_by_key()
     rt_string_unref(v);
 }
 
-static void test_remove_by_value()
-{
+static void test_remove_by_value() {
     void *bm = rt_bimap_new();
     rt_string k = make_str("x");
     rt_string v = make_str("y");
@@ -170,8 +160,7 @@ static void test_remove_by_value()
     rt_string_unref(v);
 }
 
-static void test_keys_values()
-{
+static void test_keys_values() {
     void *bm = rt_bimap_new();
     rt_string k1 = make_str("a");
     rt_string v1 = make_str("1");
@@ -193,8 +182,7 @@ static void test_keys_values()
     rt_string_unref(v2);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *bm = rt_bimap_new();
     rt_string k = make_str("a");
     rt_string v = make_str("b");
@@ -209,14 +197,12 @@ static void test_clear()
     rt_string_unref(v);
 }
 
-static void test_many_entries()
-{
+static void test_many_entries() {
     void *bm = rt_bimap_new();
 
     // Insert 100 entries to test resize
     char kbuf[16], vbuf[16];
-    for (int i = 0; i < 100; ++i)
-    {
+    for (int i = 0; i < 100; ++i) {
         snprintf(kbuf, sizeof(kbuf), "key%d", i);
         snprintf(vbuf, sizeof(vbuf), "val%d", i);
         rt_string k = rt_string_from_bytes(kbuf, strlen(kbuf));
@@ -244,8 +230,7 @@ static void test_many_entries()
     rt_string_unref(v50);
 }
 
-static void test_get_missing()
-{
+static void test_get_missing() {
     void *bm = rt_bimap_new();
     rt_string k = make_str("missing");
     rt_string got = rt_bimap_get_by_key(bm, k);
@@ -259,8 +244,7 @@ static void test_get_missing()
     rt_string_unref(k);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_bimap_len(NULL) == 0);
     assert(rt_bimap_is_empty(NULL) == 1);
     assert(rt_bimap_has_key(NULL, NULL) == 0);
@@ -269,8 +253,7 @@ static void test_null_safety()
     assert(rt_bimap_remove_by_value(NULL, NULL) == 0);
 }
 
-int main()
-{
+int main() {
     test_new_empty();
     test_put_and_get();
     test_has_key_value();

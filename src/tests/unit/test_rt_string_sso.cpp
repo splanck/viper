@@ -19,14 +19,12 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     fprintf(stderr, "TRAP: %s\n", msg);
     rt_abort(msg);
 }
 
-int main()
-{
+int main() {
     printf("Test 1: Create small string via rt_string_from_bytes\n");
     rt_string small = rt_string_from_bytes("hello", 5);
     assert(small != nullptr);

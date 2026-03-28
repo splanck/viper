@@ -23,30 +23,25 @@
 
 #include <string>
 
-struct PipelineResult
-{
+struct PipelineResult {
     int exit_code;           ///< Final exit status of the pipeline; zero indicates success.
     std::string stdout_text; ///< Aggregated standard output emitted by subprocesses.
     std::string stderr_text; ///< Aggregated diagnostics and error messages.
 };
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 /// \brief High-level orchestrator for the x86-64 code-generation flow.
-class CodegenPipeline
-{
+class CodegenPipeline {
   public:
     /// \brief Assembler mode selection.
-    enum class AssemblerMode
-    {
+    enum class AssemblerMode {
         System, ///< Use system assembler (cc -c) — fallback via --system-asm.
         Native  ///< Use native binary encoder + ObjectFileWriter (default).
     };
 
     /// \brief User-configurable options controlling pipeline behaviour.
-    struct Options
-    {
+    struct Options {
         std::string input_il_path;   ///< IL module to load and compile.
         std::string output_obj_path; ///< Destination path for executable/object output; when set
                                      ///< without @ref run_native the pipeline emits an object file.

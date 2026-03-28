@@ -22,8 +22,7 @@
 
 #include <utility>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Construct a builder that reports diagnostics through @p diagnose.
 /// @details Stores the callback so later conversions can surface range and type
@@ -31,9 +30,7 @@ namespace il::frontends::basic
 ///          maintains no additional state beyond the callback.
 /// @param diagnose Function invoked when semantic issues are detected.
 SelectModelBuilder::SelectModelBuilder(DiagnoseFn diagnose) noexcept
-    : diagnose_(std::move(diagnose))
-{
-}
+    : diagnose_(std::move(diagnose)) {}
 
 /// @brief Narrow a 64-bit literal to the 32-bit range allowed by SELECT CASE.
 /// @details Checks the bounds mandated by the BASIC specification and emits a
@@ -44,12 +41,9 @@ SelectModelBuilder::SelectModelBuilder(DiagnoseFn diagnose) noexcept
 /// @param loc Source location used when reporting diagnostics.
 /// @return Narrowed value on success; @c std::nullopt when out of range.
 std::optional<int32_t> SelectModelBuilder::narrowToI32(int64_t value,
-                                                       il::support::SourceLoc loc) const
-{
-    if (value < kCaseLabelMin || value > kCaseLabelMax)
-    {
-        if (diagnose_)
-        {
+                                                       il::support::SourceLoc loc) const {
+    if (value < kCaseLabelMin || value > kCaseLabelMax) {
+        if (diagnose_) {
             diagnose_(loc,
                       1,
                       makeSelectCaseLabelRangeMessage(value),
@@ -68,8 +62,7 @@ std::optional<int32_t> SelectModelBuilder::narrowToI32(int64_t value,
 ///          fidelity.
 /// @param stmt AST node describing the SELECT CASE statement.
 /// @return Structured model containing normalised case ranges and metadata.
-SelectModel SelectModelBuilder::build(const SelectCaseStmt &stmt)
-{
+SelectModel SelectModelBuilder::build(const SelectCaseStmt &stmt) {
     SelectModel model{};
     model.hasCaseElse = !stmt.elseBody.empty();
 
@@ -77,8 +70,7 @@ SelectModel SelectModelBuilder::build(const SelectCaseStmt &stmt)
     size_t labelCount = 0;
     size_t rangeCount = 0;
     size_t relCount = 0;
-    for (const auto &arm : stmt.arms)
-    {
+    for (const auto &arm : stmt.arms) {
         strCount += arm.str_labels.size();
         labelCount += arm.labels.size();
         rangeCount += arm.ranges.size();
@@ -90,26 +82,21 @@ SelectModel SelectModelBuilder::build(const SelectCaseStmt &stmt)
     model.numericRanges.reserve(rangeCount);
     model.numericRelations.reserve(relCount);
 
-    for (size_t index = 0; index < stmt.arms.size(); ++index)
-    {
+    for (size_t index = 0; index < stmt.arms.size(); ++index) {
         const CaseArm &arm = stmt.arms[index];
         const il::support::SourceLoc loc = arm.range.begin;
 
-        for (const auto &str : arm.str_labels)
-        {
+        for (const auto &str : arm.str_labels) {
             model.stringLabels.push_back({std::string_view(str), index, loc});
         }
 
-        for (int64_t rawLabel : arm.labels)
-        {
-            if (auto narrowed = narrowToI32(rawLabel, loc))
-            {
+        for (int64_t rawLabel : arm.labels) {
+            if (auto narrowed = narrowToI32(rawLabel, loc)) {
                 model.numericLabels.push_back({*narrowed, index, loc});
             }
         }
 
-        for (const auto &[rawLo, rawHi] : arm.ranges)
-        {
+        for (const auto &[rawLo, rawHi] : arm.ranges) {
             auto narrowedLo = narrowToI32(rawLo, loc);
             auto narrowedHi = narrowToI32(rawHi, loc);
             if (!narrowedLo || !narrowedHi)
@@ -119,16 +106,13 @@ SelectModel SelectModelBuilder::build(const SelectCaseStmt &stmt)
             model.hasNumericRanges = true;
         }
 
-        for (const auto &rel : arm.rels)
-        {
-            if (auto narrowed = narrowToI32(rel.rhs, loc))
-            {
+        for (const auto &rel : arm.rels) {
+            if (auto narrowed = narrowToI32(rel.rhs, loc)) {
                 SelectModel::NumericRelation entry{};
                 entry.armIndex = index;
                 entry.loc = loc;
                 entry.rhs = *narrowed;
-                switch (rel.op)
-                {
+                switch (rel.op) {
                     case CaseArm::CaseRel::Op::LT:
                         entry.op = SelectModel::NumericRelation::Op::LT;
                         break;

@@ -12,26 +12,21 @@
 #include <cassert>
 #include <unordered_set>
 
-namespace viper
-{
-namespace bytecode
-{
+namespace viper {
+namespace bytecode {
 
 /// @brief Compile.
-BytecodeModule BytecodeCompiler::compile(const il::core::Module &ilModule)
-{
+BytecodeModule BytecodeCompiler::compile(const il::core::Module &ilModule) {
     module_ = BytecodeModule();
     ilModule_ = &ilModule;
 
     // Pre-register all function names to support recursive and forward calls
-    for (size_t i = 0; i < ilModule.functions.size(); ++i)
-    {
+    for (size_t i = 0; i < ilModule.functions.size(); ++i) {
         module_.functionIndex[ilModule.functions[i].name] = static_cast<uint32_t>(i);
     }
 
     // Compile each function
-    for (const auto &fn : ilModule.functions)
-    {
+    for (const auto &fn : ilModule.functions) {
         compileFunction(fn);
     }
 
@@ -39,8 +34,7 @@ BytecodeModule BytecodeCompiler::compile(const il::core::Module &ilModule)
 }
 
 /// @brief Compile Function.
-void BytecodeCompiler::compileFunction(const il::core::Function &fn)
-{
+void BytecodeCompiler::compileFunction(const il::core::Function &fn) {
     // Create new bytecode function
     BytecodeFunction bcFunc;
     bcFunc.name = fn.name;
@@ -60,12 +54,9 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn)
 
     // Collect eh.push target labels so we can distinguish real handler blocks
     // (entered via dispatchTrap) from forwarding handler blocks (entered via CBr).
-    for (const auto &block : fn.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
-            if (instr.op == il::core::Opcode::EhPush && !instr.labels.empty())
-            {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == il::core::Opcode::EhPush && !instr.labels.empty()) {
                 ehPushTargets_.insert(instr.labels[0]);
             }
         }
@@ -79,8 +70,7 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn)
     auto blocks = linearizeBlocks(fn);
 
     // Compile each block
-    for (const auto *block : blocks)
-    {
+    for (const auto *block : blocks) {
         compileBlock(*block);
     }
 
@@ -96,36 +86,28 @@ void BytecodeCompiler::compileFunction(const il::core::Function &fn)
 }
 
 /// @brief Build SSA To Locals Map.
-void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn)
-{
+void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn) {
     nextLocal_ = 0;
 
     // Map parameters first (preserve order)
-    for (const auto &param : fn.params)
-    {
+    for (const auto &param : fn.params) {
         ssaToLocal_[param.id] = nextLocal_++;
     }
 
     // Map block parameters and track them by block label
     blockParamIds_.clear();
     bool isEntryBlock = true;
-    for (const auto &block : fn.blocks)
-    {
+    for (const auto &block : fn.blocks) {
         std::vector<uint32_t> paramIds;
-        for (size_t i = 0; i < block.params.size(); ++i)
-        {
+        for (size_t i = 0; i < block.params.size(); ++i) {
             const auto &param = block.params[i];
             paramIds.push_back(param.id);
-            if (ssaToLocal_.find(param.id) == ssaToLocal_.end())
-            {
+            if (ssaToLocal_.find(param.id) == ssaToLocal_.end()) {
                 // Entry block parameters correspond to function parameters
                 // They should share the same local slots
-                if (isEntryBlock && i < fn.params.size())
-                {
+                if (isEntryBlock && i < fn.params.size()) {
                     ssaToLocal_[param.id] = static_cast<uint32_t>(i);
-                }
-                else
-                {
+                } else {
                     ssaToLocal_[param.id] = nextLocal_++;
                 }
             }
@@ -135,14 +117,10 @@ void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn)
     }
 
     // Map instruction results
-    for (const auto &block : fn.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
-            if (instr.result)
-            {
-                if (ssaToLocal_.find(*instr.result) == ssaToLocal_.end())
-                {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.result) {
+                if (ssaToLocal_.find(*instr.result) == ssaToLocal_.end()) {
                     ssaToLocal_[*instr.result] = nextLocal_++;
                 }
             }
@@ -152,27 +130,23 @@ void BytecodeCompiler::buildSSAToLocalsMap(const il::core::Function &fn)
 
 /// @brief Linearize Blocks.
 std::vector<const il::core::BasicBlock *> BytecodeCompiler::linearizeBlocks(
-    const il::core::Function &fn)
-{
+    const il::core::Function &fn) {
     // Simple depth-first ordering
     std::vector<const il::core::BasicBlock *> result;
     std::unordered_set<const il::core::BasicBlock *> visited;
     std::unordered_map<std::string, const il::core::BasicBlock *> labelToBlock;
 
     // Build label -> block mapping
-    for (const auto &block : fn.blocks)
-    {
+    for (const auto &block : fn.blocks) {
         labelToBlock[block.label] = &block;
     }
 
     // DFS from entry block
-    if (!fn.blocks.empty())
-    {
+    if (!fn.blocks.empty()) {
         std::vector<const il::core::BasicBlock *> worklist;
         worklist.push_back(&fn.blocks.front());
 
-        while (!worklist.empty())
-        {
+        while (!worklist.empty()) {
             const auto *block = worklist.back();
             worklist.pop_back();
 
@@ -182,14 +156,11 @@ std::vector<const il::core::BasicBlock *> BytecodeCompiler::linearizeBlocks(
             result.push_back(block);
 
             // Add successor blocks (in reverse order for DFS)
-            if (!block->instructions.empty())
-            {
+            if (!block->instructions.empty()) {
                 const auto &terminator = block->instructions.back();
-                for (auto it = terminator.labels.rbegin(); it != terminator.labels.rend(); ++it)
-                {
+                for (auto it = terminator.labels.rbegin(); it != terminator.labels.rend(); ++it) {
                     auto found = labelToBlock.find(*it);
-                    if (found != labelToBlock.end() && !visited.count(found->second))
-                    {
+                    if (found != labelToBlock.end() && !visited.count(found->second)) {
                         worklist.push_back(found->second);
                     }
                 }
@@ -200,10 +171,8 @@ std::vector<const il::core::BasicBlock *> BytecodeCompiler::linearizeBlocks(
     // Include any unvisited blocks (e.g., exception handler blocks)
     // Handler blocks are not reached through normal control flow but are
     // referenced by eh.push instructions
-    for (const auto &block : fn.blocks)
-    {
-        if (!visited.count(&block))
-        {
+    for (const auto &block : fn.blocks) {
+        if (!visited.count(&block)) {
             result.push_back(&block);
         }
     }
@@ -212,8 +181,7 @@ std::vector<const il::core::BasicBlock *> BytecodeCompiler::linearizeBlocks(
 }
 
 /// @brief Compile Block.
-void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block)
-{
+void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block) {
     // Record block offset
     blockOffsets_[block.label] = static_cast<uint32_t>(currentFunc_->code.size());
 
@@ -225,26 +193,21 @@ void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block)
     // from dispatchTrap. Other blocks with eh.entry (e.g., typed-catch forwarding
     // blocks) receive their values via normal branch arguments stored to locals.
     bool isHandlerBlock = false;
-    if (!block.params.empty() && !block.instructions.empty())
-    {
+    if (!block.params.empty() && !block.instructions.empty()) {
         if (block.instructions[0].op == il::core::Opcode::EhEntry &&
-            ehPushTargets_.count(block.label))
-        {
+            ehPushTargets_.count(block.label)) {
             isHandlerBlock = true;
         }
     }
 
-    if (isHandlerBlock)
-    {
+    if (isHandlerBlock) {
         // Handler blocks receive values on the stack (error, resume_token)
         // pushed by dispatchTrap. Store them in reverse order (LIFO).
         auto it = blockParamIds_.find(block.label);
-        if (it != blockParamIds_.end())
-        {
+        if (it != blockParamIds_.end()) {
             const auto &paramIds = it->second;
             // Pop in reverse order since stack is LIFO
-            for (size_t i = paramIds.size(); i > 0; --i)
-            {
+            for (size_t i = paramIds.size(); i > 0; --i) {
                 uint32_t local = ssaToLocal_.at(paramIds[i - 1]);
                 emitStoreLocal(local);
                 popStack(1);
@@ -253,19 +216,16 @@ void BytecodeCompiler::compileBlock(const il::core::BasicBlock &block)
     }
 
     // Compile each instruction
-    for (const auto &instr : block.instructions)
-    {
+    for (const auto &instr : block.instructions) {
         compileInstr(instr);
     }
 }
 
 /// @brief Compile Instr.
-void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
-{
+void BytecodeCompiler::compileInstr(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
-    switch (instr.op)
-    {
+    switch (instr.op) {
         // Arithmetic
         case Opcode::Add:
         case Opcode::Sub:
@@ -380,8 +340,7 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
         case Opcode::EhPush:
             // Push exception handler - emit opcode with placeholder for handler PC
             emit(BCOpcode::EH_PUSH);
-            if (!instr.labels.empty())
-            {
+            if (!instr.labels.empty()) {
                 // Record fixup for handler label
                 uint32_t offsetPos = static_cast<uint32_t>(currentFunc_->code.size());
                 /// @brief Emit.
@@ -404,13 +363,11 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
 
         case Opcode::ErrGetKind:
             // Get trap kind from error object (on stack or in local)
-            if (!instr.operands.empty())
-            {
+            if (!instr.operands.empty()) {
                 pushValue(instr.operands[0]);
             }
             emit(BCOpcode::ERR_GET_KIND);
-            if (instr.operands.empty())
-            {
+            if (instr.operands.empty()) {
                 /// @brief Push Stack.
                 pushStack(); // Result pushed
             }
@@ -419,39 +376,33 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
             break;
 
         case Opcode::ErrGetCode:
-            if (!instr.operands.empty())
-            {
+            if (!instr.operands.empty()) {
                 pushValue(instr.operands[0]);
             }
             emit(BCOpcode::ERR_GET_CODE);
-            if (instr.operands.empty())
-            {
+            if (instr.operands.empty()) {
                 pushStack();
             }
             storeResult(instr);
             break;
 
         case Opcode::ErrGetIp:
-            if (!instr.operands.empty())
-            {
+            if (!instr.operands.empty()) {
                 pushValue(instr.operands[0]);
             }
             emit(BCOpcode::ERR_GET_IP);
-            if (instr.operands.empty())
-            {
+            if (instr.operands.empty()) {
                 pushStack();
             }
             storeResult(instr);
             break;
 
         case Opcode::ErrGetLine:
-            if (!instr.operands.empty())
-            {
+            if (!instr.operands.empty()) {
                 pushValue(instr.operands[0]);
             }
             emit(BCOpcode::ERR_GET_LINE);
-            if (instr.operands.empty())
-            {
+            if (instr.operands.empty()) {
                 pushStack();
             }
             storeResult(instr);
@@ -459,46 +410,39 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
 
         case Opcode::ResumeSame:
             // Resume at the faulting instruction
-            if (!instr.operands.empty())
-            {
+            if (!instr.operands.empty()) {
                 /// @brief Push Value.
                 pushValue(instr.operands[0]); // Push resume token
             }
             emit(BCOpcode::RESUME_SAME);
-            if (!instr.operands.empty())
-            {
+            if (!instr.operands.empty()) {
                 popStack();
             }
             break;
 
         case Opcode::ResumeNext:
             // Resume after the faulting instruction
-            if (!instr.operands.empty())
-            {
+            if (!instr.operands.empty()) {
                 pushValue(instr.operands[0]);
             }
             emit(BCOpcode::RESUME_NEXT);
-            if (!instr.operands.empty())
-            {
+            if (!instr.operands.empty()) {
                 popStack();
             }
             break;
 
         case Opcode::ResumeLabel:
             // Resume at a specific label
-            if (!instr.operands.empty())
-            {
+            if (!instr.operands.empty()) {
                 /// @brief Push Value.
                 pushValue(instr.operands[0]); // Push resume token
             }
             emit(BCOpcode::RESUME_LABEL);
-            if (!instr.operands.empty())
-            {
+            if (!instr.operands.empty()) {
                 popStack();
             }
             // Emit branch to the label
-            if (!instr.labels.empty())
-            {
+            if (!instr.labels.empty()) {
                 uint32_t offsetPos = static_cast<uint32_t>(currentFunc_->code.size());
                 /// @brief Emit.
                 emit(0u); // Placeholder
@@ -536,39 +480,26 @@ void BytecodeCompiler::compileInstr(const il::core::Instr &instr)
 }
 
 /// @brief Push Value.
-void BytecodeCompiler::pushValue(const il::core::Value &val)
-{
-    switch (val.kind)
-    {
-        case il::core::Value::Kind::Temp:
-        {
+void BytecodeCompiler::pushValue(const il::core::Value &val) {
+    switch (val.kind) {
+        case il::core::Value::Kind::Temp: {
             uint32_t local = getLocal(val.id);
             emitLoadLocal(local);
             pushStack();
             break;
         }
 
-        case il::core::Value::Kind::ConstInt:
-        {
+        case il::core::Value::Kind::ConstInt: {
             int64_t v = val.i64;
-            if (v == 0)
-            {
+            if (v == 0) {
                 emit(BCOpcode::LOAD_ZERO);
-            }
-            else if (v == 1)
-            {
+            } else if (v == 1) {
                 emit(BCOpcode::LOAD_ONE);
-            }
-            else if (v >= -128 && v <= 127)
-            {
+            } else if (v >= -128 && v <= 127) {
                 emitI8(BCOpcode::LOAD_I8, static_cast<int8_t>(v));
-            }
-            else if (v >= -32768 && v <= 32767)
-            {
+            } else if (v >= -32768 && v <= 32767) {
                 emitI16(BCOpcode::LOAD_I16, static_cast<int16_t>(v));
-            }
-            else
-            {
+            } else {
                 // Add to constant pool
                 uint32_t idx = module_.addI64(v);
                 emit16(BCOpcode::LOAD_I64, static_cast<uint16_t>(idx));
@@ -577,36 +508,30 @@ void BytecodeCompiler::pushValue(const il::core::Value &val)
             break;
         }
 
-        case il::core::Value::Kind::ConstFloat:
-        {
+        case il::core::Value::Kind::ConstFloat: {
             uint32_t idx = module_.addF64(val.f64);
             emit16(BCOpcode::LOAD_F64, static_cast<uint16_t>(idx));
             pushStack();
             break;
         }
 
-        case il::core::Value::Kind::ConstStr:
-        {
+        case il::core::Value::Kind::ConstStr: {
             uint32_t idx = module_.addString(val.str);
             emit16(BCOpcode::LOAD_STR, static_cast<uint16_t>(idx));
             pushStack();
             break;
         }
 
-        case il::core::Value::Kind::GlobalAddr:
-        {
+        case il::core::Value::Kind::GlobalAddr: {
             // Check if this is a function reference
             auto it = module_.functionIndex.find(val.str);
-            if (it != module_.functionIndex.end())
-            {
+            if (it != module_.functionIndex.end()) {
                 // Function pointer - encode as tagged pointer (high bit set)
                 // This allows call.indirect to identify function references
                 uint64_t taggedPtr = 0x8000000000000000ULL | it->second;
                 uint32_t idx = module_.addI64(static_cast<int64_t>(taggedPtr));
                 emit16(BCOpcode::LOAD_I64, static_cast<uint16_t>(idx));
-            }
-            else
-            {
+            } else {
                 // Non-function global address - emit null for now
                 emit(BCOpcode::LOAD_NULL);
             }
@@ -622,66 +547,54 @@ void BytecodeCompiler::pushValue(const il::core::Value &val)
 }
 
 /// @brief Store Result.
-void BytecodeCompiler::storeResult(const il::core::Instr &instr)
-{
-    if (instr.result)
-    {
+void BytecodeCompiler::storeResult(const il::core::Instr &instr) {
+    if (instr.result) {
         uint32_t local = getLocal(*instr.result);
         emitStoreLocal(local);
         popStack();
-    }
-    else
-    {
+    } else {
         // No result - pop value if stack isn't empty
         // (some operations like stores don't produce values)
     }
 }
 
 /// @brief Emit.
-void BytecodeCompiler::emit(uint32_t instr)
-{
+void BytecodeCompiler::emit(uint32_t instr) {
     currentFunc_->code.push_back(instr);
 }
 
 /// @brief Emit.
-void BytecodeCompiler::emit(BCOpcode op)
-{
+void BytecodeCompiler::emit(BCOpcode op) {
     emit(encodeOp(op));
 }
 
 /// @brief Emit8.
-void BytecodeCompiler::emit8(BCOpcode op, uint8_t arg)
-{
+void BytecodeCompiler::emit8(BCOpcode op, uint8_t arg) {
     emit(encodeOp8(op, arg));
 }
 
 /// @brief Emit I8.
-void BytecodeCompiler::emitI8(BCOpcode op, int8_t arg)
-{
+void BytecodeCompiler::emitI8(BCOpcode op, int8_t arg) {
     emit(encodeOpI8(op, arg));
 }
 
 /// @brief Emit16.
-void BytecodeCompiler::emit16(BCOpcode op, uint16_t arg)
-{
+void BytecodeCompiler::emit16(BCOpcode op, uint16_t arg) {
     emit(encodeOp16(op, arg));
 }
 
 /// @brief Emit I16.
-void BytecodeCompiler::emitI16(BCOpcode op, int16_t arg)
-{
+void BytecodeCompiler::emitI16(BCOpcode op, int16_t arg) {
     emit(encodeOpI16(op, arg));
 }
 
 /// @brief Emit88.
-void BytecodeCompiler::emit88(BCOpcode op, uint8_t arg0, uint8_t arg1)
-{
+void BytecodeCompiler::emit88(BCOpcode op, uint8_t arg0, uint8_t arg1) {
     emit(encodeOp88(op, arg0, arg1));
 }
 
 /// @brief Emit Branch.
-void BytecodeCompiler::emitBranch(BCOpcode op, const std::string &label)
-{
+void BytecodeCompiler::emitBranch(BCOpcode op, const std::string &label) {
     pendingBranches_.push_back({
         static_cast<uint32_t>(currentFunc_->code.size()),
         label,
@@ -693,8 +606,7 @@ void BytecodeCompiler::emitBranch(BCOpcode op, const std::string &label)
 }
 
 /// @brief Emit Branch Long.
-void BytecodeCompiler::emitBranchLong(BCOpcode op, const std::string &label)
-{
+void BytecodeCompiler::emitBranchLong(BCOpcode op, const std::string &label) {
     pendingBranches_.push_back({
         static_cast<uint32_t>(currentFunc_->code.size()),
         label,
@@ -706,13 +618,10 @@ void BytecodeCompiler::emitBranchLong(BCOpcode op, const std::string &label)
 }
 
 /// @brief Resolve Branches.
-void BytecodeCompiler::resolveBranches()
-{
-    for (const auto &fixup : pendingBranches_)
-    {
+void BytecodeCompiler::resolveBranches() {
+    for (const auto &fixup : pendingBranches_) {
         auto it = blockOffsets_.find(fixup.targetLabel);
-        if (it == blockOffsets_.end())
-        {
+        if (it == blockOffsets_.end()) {
             // Unknown target - should not happen
             continue;
         }
@@ -723,27 +632,20 @@ void BytecodeCompiler::resolveBranches()
         // pc - 1 points to the offset word, so: handlerPc = offset_pos + offset
         // Therefore for raw offsets: offset = target - offset_pos (no -1)
         int32_t offset = static_cast<int32_t>(it->second) - static_cast<int32_t>(fixup.codeOffset);
-        if (!fixup.isRaw)
-        {
+        if (!fixup.isRaw) {
             offset -= 1; // Regular branches need -1 adjustment
         }
 
-        if (fixup.isRaw)
-        {
+        if (fixup.isRaw) {
             // Raw offset: store offset directly in the word
             currentFunc_->code[fixup.codeOffset] = static_cast<uint32_t>(offset);
-        }
-        else
-        {
+        } else {
             uint32_t instr = currentFunc_->code[fixup.codeOffset];
             BCOpcode op = decodeOpcode(instr);
 
-            if (fixup.isLong)
-            {
+            if (fixup.isLong) {
                 currentFunc_->code[fixup.codeOffset] = encodeOpI24(op, offset);
-            }
-            else
-            {
+            } else {
                 currentFunc_->code[fixup.codeOffset] =
                     encodeOpI16(op, static_cast<int16_t>(offset));
             }
@@ -752,31 +654,25 @@ void BytecodeCompiler::resolveBranches()
 }
 
 /// @brief Push Stack.
-void BytecodeCompiler::pushStack(int32_t count)
-{
+void BytecodeCompiler::pushStack(int32_t count) {
     currentStackDepth_ += count;
-    if (currentStackDepth_ > maxStackDepth_)
-    {
+    if (currentStackDepth_ > maxStackDepth_) {
         maxStackDepth_ = currentStackDepth_;
     }
 }
 
 /// @brief Pop Stack.
-void BytecodeCompiler::popStack(int32_t count)
-{
+void BytecodeCompiler::popStack(int32_t count) {
     currentStackDepth_ -= count;
-    if (currentStackDepth_ < 0)
-    {
+    if (currentStackDepth_ < 0) {
         currentStackDepth_ = 0; // Shouldn't happen, but be safe
     }
 }
 
 /// @brief Get Local.
-uint32_t BytecodeCompiler::getLocal(uint32_t ssaId)
-{
+uint32_t BytecodeCompiler::getLocal(uint32_t ssaId) {
     auto it = ssaToLocal_.find(ssaId);
-    if (it != ssaToLocal_.end())
-    {
+    if (it != ssaToLocal_.end()) {
         return it->second;
     }
     // Allocate new local if not found
@@ -786,34 +682,25 @@ uint32_t BytecodeCompiler::getLocal(uint32_t ssaId)
 }
 
 /// @brief Emit Load Local.
-void BytecodeCompiler::emitLoadLocal(uint32_t local)
-{
-    if (local < 256)
-    {
+void BytecodeCompiler::emitLoadLocal(uint32_t local) {
+    if (local < 256) {
         emit8(BCOpcode::LOAD_LOCAL, static_cast<uint8_t>(local));
-    }
-    else
-    {
+    } else {
         emit16(BCOpcode::LOAD_LOCAL_W, static_cast<uint16_t>(local));
     }
 }
 
 /// @brief Emit Store Local.
-void BytecodeCompiler::emitStoreLocal(uint32_t local)
-{
-    if (local < 256)
-    {
+void BytecodeCompiler::emitStoreLocal(uint32_t local) {
+    if (local < 256) {
         emit8(BCOpcode::STORE_LOCAL, static_cast<uint8_t>(local));
-    }
-    else
-    {
+    } else {
         emit16(BCOpcode::STORE_LOCAL_W, static_cast<uint16_t>(local));
     }
 }
 
 /// @brief Compile Arithmetic.
-void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr)
-{
+void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
     // Push operands
@@ -823,8 +710,7 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr)
 
     // Emit operation
     BCOpcode bcOp;
-    switch (instr.op)
-    {
+    switch (instr.op) {
         case Opcode::Add:
             bcOp = BCOpcode::ADD_I64;
             break;
@@ -848,12 +734,10 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr)
             break;
         case Opcode::IAddOvf:
         case Opcode::ISubOvf:
-        case Opcode::IMulOvf:
-        {
+        case Opcode::IMulOvf: {
             // Encode target type: 0=I1, 1=I16, 2=I32, 3=I64
             uint8_t targetType = 3; // default to I64
-            switch (instr.type.kind)
-            {
+            switch (instr.type.kind) {
                 case il::core::Type::Kind::I1:
                     targetType = 0;
                     break;
@@ -912,8 +796,7 @@ void BytecodeCompiler::compileArithmetic(const il::core::Instr &instr)
 }
 
 /// @brief Compile Comparison.
-void BytecodeCompiler::compileComparison(const il::core::Instr &instr)
-{
+void BytecodeCompiler::compileComparison(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
     // Push operands
@@ -923,8 +806,7 @@ void BytecodeCompiler::compileComparison(const il::core::Instr &instr)
 
     // Emit comparison
     BCOpcode bcOp;
-    switch (instr.op)
-    {
+    switch (instr.op) {
         case Opcode::ICmpEq:
             bcOp = BCOpcode::CMP_EQ_I64;
             break;
@@ -984,8 +866,7 @@ void BytecodeCompiler::compileComparison(const il::core::Instr &instr)
 }
 
 /// @brief Compile Conversion.
-void BytecodeCompiler::compileConversion(const il::core::Instr &instr)
-{
+void BytecodeCompiler::compileConversion(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
     // Push operand
@@ -994,8 +875,7 @@ void BytecodeCompiler::compileConversion(const il::core::Instr &instr)
 
     // Emit conversion
     BCOpcode bcOp;
-    switch (instr.op)
-    {
+    switch (instr.op) {
         case Opcode::Sitofp:
         case Opcode::CastSiToFp:
             bcOp = BCOpcode::I64_TO_F64;
@@ -1013,12 +893,10 @@ void BytecodeCompiler::compileConversion(const il::core::Instr &instr)
             bcOp = BCOpcode::F64_TO_U64_CHK;
             break;
         case Opcode::CastSiNarrowChk:
-        case Opcode::CastUiNarrowChk:
-        {
+        case Opcode::CastUiNarrowChk: {
             // Encode target type: 0=I1, 1=I16, 2=I32, 3=I64
             uint8_t targetType = 3; // default to I64 (no-op)
-            switch (instr.type.kind)
-            {
+            switch (instr.type.kind) {
                 case il::core::Type::Kind::I1:
                     targetType = 0;
                     break;
@@ -1054,8 +932,7 @@ void BytecodeCompiler::compileConversion(const il::core::Instr &instr)
 }
 
 /// @brief Compile Bitwise.
-void BytecodeCompiler::compileBitwise(const il::core::Instr &instr)
-{
+void BytecodeCompiler::compileBitwise(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
     // Push operands
@@ -1065,8 +942,7 @@ void BytecodeCompiler::compileBitwise(const il::core::Instr &instr)
 
     // Emit operation
     BCOpcode bcOp;
-    switch (instr.op)
-    {
+    switch (instr.op) {
         case Opcode::And:
             bcOp = BCOpcode::AND_I64;
             break;
@@ -1096,12 +972,10 @@ void BytecodeCompiler::compileBitwise(const il::core::Instr &instr)
 }
 
 /// @brief Compile Memory.
-void BytecodeCompiler::compileMemory(const il::core::Instr &instr)
-{
+void BytecodeCompiler::compileMemory(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
-    switch (instr.op)
-    {
+    switch (instr.op) {
         case Opcode::ConstNull:
             emit(BCOpcode::LOAD_NULL);
             pushStack();
@@ -1110,27 +984,20 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr)
 
         case Opcode::ConstStr:
             // String literal - operand can be ConstStr or GlobalAddr
-            if (!instr.operands.empty())
-            {
+            if (!instr.operands.empty()) {
                 const auto &op = instr.operands[0];
                 std::string strValue;
                 bool found = false;
 
-                if (op.kind == il::core::Value::Kind::ConstStr)
-                {
+                if (op.kind == il::core::Value::Kind::ConstStr) {
                     // Direct string constant
                     strValue = op.str;
                     found = true;
-                }
-                else if (op.kind == il::core::Value::Kind::GlobalAddr)
-                {
+                } else if (op.kind == il::core::Value::Kind::GlobalAddr) {
                     // Reference to a global string constant - look it up
-                    if (ilModule_)
-                    {
-                        for (const auto &g : ilModule_->globals)
-                        {
-                            if (g.name == op.str)
-                            {
+                    if (ilModule_) {
+                        for (const auto &g : ilModule_->globals) {
+                            if (g.name == op.str) {
                                 strValue = g.init;
                                 found = true;
                                 break;
@@ -1139,18 +1006,13 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr)
                     }
                 }
 
-                if (found)
-                {
+                if (found) {
                     uint32_t idx = module_.addString(strValue);
                     emit16(BCOpcode::LOAD_STR, static_cast<uint16_t>(idx));
-                }
-                else
-                {
+                } else {
                     emit(BCOpcode::LOAD_NULL);
                 }
-            }
-            else
-            {
+            } else {
                 emit(BCOpcode::LOAD_NULL);
             }
             pushStack();
@@ -1180,8 +1042,7 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr)
             // load type, ptr -> operands[0] is ptr (type is in instr.type)
             pushValue(instr.operands[0]);
             // Emit appropriate load based on type
-            switch (instr.type.kind)
-            {
+            switch (instr.type.kind) {
                 case il::core::Type::Kind::I1:
                     emit(BCOpcode::LOAD_I8_MEM);
                     break;
@@ -1212,8 +1073,7 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr)
                                           /// @brief Push Value.
             pushValue(instr.operands[1]); // Value
             // Emit appropriate store based on type
-            switch (instr.type.kind)
-            {
+            switch (instr.type.kind) {
                 case il::core::Type::Kind::I1:
                     emit(BCOpcode::STORE_I8_MEM);
                     break;
@@ -1257,17 +1117,14 @@ void BytecodeCompiler::compileMemory(const il::core::Instr &instr)
 }
 
 /// @brief Compile Call.
-void BytecodeCompiler::compileCall(const il::core::Instr &instr)
-{
+void BytecodeCompiler::compileCall(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
     // Handle indirect calls separately
-    if (instr.op == Opcode::CallIndirect)
-    {
+    if (instr.op == Opcode::CallIndirect) {
         // For call.indirect: operands[0] is the callee (function pointer)
         // operands[1..n] are the arguments
-        if (instr.operands.empty())
-        {
+        if (instr.operands.empty()) {
             return; // Invalid indirect call
         }
 
@@ -1275,8 +1132,7 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr)
         pushValue(instr.operands[0]);
 
         // Push arguments (operands[1..])
-        for (size_t i = 1; i < instr.operands.size(); ++i)
-        {
+        for (size_t i = 1; i < instr.operands.size(); ++i) {
             pushValue(instr.operands[i]);
         }
 
@@ -1286,8 +1142,7 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr)
 
         // Pop callee + arguments, push result if any
         popStack(static_cast<int32_t>(instr.operands.size()));
-        if (instr.result)
-        {
+        if (instr.result) {
             pushStack();
             storeResult(instr);
         }
@@ -1295,19 +1150,15 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr)
     }
 
     // Regular direct call - push all arguments
-    for (const auto &arg : instr.operands)
-    {
+    for (const auto &arg : instr.operands) {
         pushValue(arg);
     }
 
     // Look up function index
     auto it = module_.functionIndex.find(instr.callee);
-    if (it != module_.functionIndex.end())
-    {
+    if (it != module_.functionIndex.end()) {
         emit16(BCOpcode::CALL, static_cast<uint16_t>(it->second));
-    }
-    else
-    {
+    } else {
         // External/native call
         uint32_t nativeIdx = module_.addNativeFunc(
             instr.callee, static_cast<uint32_t>(instr.operands.size()), instr.result.has_value());
@@ -1318,32 +1169,27 @@ void BytecodeCompiler::compileCall(const il::core::Instr &instr)
 
     // Pop arguments, push result if any
     popStack(static_cast<int32_t>(instr.operands.size()));
-    if (instr.result)
-    {
+    if (instr.result) {
         pushStack();
         storeResult(instr);
     }
 }
 
 /// @brief Compile Branch.
-void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
-{
+void BytecodeCompiler::compileBranch(const il::core::Instr &instr) {
     using Opcode = il::core::Opcode;
 
     // Helper to emit stores for branch arguments to block parameter locals
-    auto storeBranchArgs =
-        [this](const std::string &label, const std::vector<il::core::Value> &args)
-    {
+    auto storeBranchArgs = [this](const std::string &label,
+                                  const std::vector<il::core::Value> &args) {
         auto it = blockParamIds_.find(label);
-        if (it == blockParamIds_.end() || args.empty())
-        {
+        if (it == blockParamIds_.end() || args.empty()) {
             return;
         }
         const auto &paramIds = it->second;
         // Store arguments to corresponding block parameter locals
         // Store in reverse order since we pushed them in forward order
-        for (size_t i = 0; i < args.size() && i < paramIds.size(); ++i)
-        {
+        for (size_t i = 0; i < args.size() && i < paramIds.size(); ++i) {
             pushValue(args[i]);
             uint32_t local = getLocal(paramIds[i]);
             emitStoreLocal(local);
@@ -1351,22 +1197,18 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
         }
     };
 
-    switch (instr.op)
-    {
-        case Opcode::Br:
-        {
+    switch (instr.op) {
+        case Opcode::Br: {
             // Unconditional branch
             // Store branch arguments to target block's parameter locals
-            if (!instr.labels.empty() && !instr.brArgs.empty() && !instr.brArgs[0].empty())
-            {
+            if (!instr.labels.empty() && !instr.brArgs.empty() && !instr.brArgs[0].empty()) {
                 storeBranchArgs(instr.labels[0], instr.brArgs[0]);
             }
             emitBranch(BCOpcode::JUMP, instr.labels[0]);
             break;
         }
 
-        case Opcode::CBr:
-        {
+        case Opcode::CBr: {
             // Conditional branch: cbr %cond, thenLabel(args), elseLabel(args)
             // We need to handle both branches' arguments
             pushValue(instr.operands[0]); // Condition
@@ -1386,15 +1228,12 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
             bool hasThenArgs = instr.brArgs.size() > 0 && !instr.brArgs[0].empty();
             bool hasElseArgs = instr.brArgs.size() > 1 && !instr.brArgs[1].empty();
 
-            if (!hasThenArgs && !hasElseArgs)
-            {
+            if (!hasThenArgs && !hasElseArgs) {
                 // No arguments, simple branch
                 emitBranch(BCOpcode::JUMP_IF_FALSE, instr.labels[1]);
                 popStack();
                 emitBranch(BCOpcode::JUMP, instr.labels[0]);
-            }
-            else
-            {
+            } else {
                 // Complex case with branch arguments
                 // JUMP_IF_FALSE to else_args_label
                 // Store then args
@@ -1411,8 +1250,7 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
                 popStack();
 
                 // Then branch arguments
-                if (hasThenArgs)
-                {
+                if (hasThenArgs) {
                     storeBranchArgs(instr.labels[0], instr.brArgs[0]);
                 }
                 emitBranch(BCOpcode::JUMP, instr.labels[0]);
@@ -1421,8 +1259,7 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
                 blockOffsets_[elseArgsLabel] = static_cast<uint32_t>(currentFunc_->code.size());
 
                 // Else branch arguments
-                if (hasElseArgs)
-                {
+                if (hasElseArgs) {
                     storeBranchArgs(instr.labels[1], instr.brArgs[1]);
                 }
                 emitBranch(BCOpcode::JUMP, instr.labels[1]);
@@ -1430,8 +1267,7 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
             break;
         }
 
-        case Opcode::SwitchI32:
-        {
+        case Opcode::SwitchI32: {
             // Switch statement
             // Push the scrutinee value onto the stack
             pushValue(il::core::switchScrutinee(instr));
@@ -1453,12 +1289,10 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
 
             // Remember positions for case offsets
             std::vector<std::pair<int32_t, uint32_t>> casePositions; // (caseValue, offsetPos)
-            for (size_t i = 0; i < numCases; ++i)
-            {
+            for (size_t i = 0; i < numCases; ++i) {
                 const auto &caseVal = il::core::switchCaseValue(instr, i);
                 int32_t caseInt = 0;
-                if (caseVal.kind == il::core::Value::Kind::ConstInt)
-                {
+                if (caseVal.kind == il::core::Value::Kind::ConstInt) {
                     caseInt = static_cast<int32_t>(caseVal.i64);
                 }
                 /// @brief Emit.
@@ -1472,8 +1306,7 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
             // Mark these as branch targets for later patching (using raw offsets)
             pendingBranches_.push_back({defaultOffsetPos, defaultLabel, false, true});
 
-            for (size_t i = 0; i < numCases; ++i)
-            {
+            for (size_t i = 0; i < numCases; ++i) {
                 const std::string &caseLabel = il::core::switchCaseLabel(instr, i);
                 pendingBranches_.push_back({casePositions[i].second, caseLabel, false, true});
             }
@@ -1486,16 +1319,12 @@ void BytecodeCompiler::compileBranch(const il::core::Instr &instr)
 }
 
 /// @brief Compile Return.
-void BytecodeCompiler::compileReturn(const il::core::Instr &instr)
-{
-    if (!instr.operands.empty())
-    {
+void BytecodeCompiler::compileReturn(const il::core::Instr &instr) {
+    if (!instr.operands.empty()) {
         pushValue(instr.operands[0]);
         emit(BCOpcode::RETURN);
         popStack();
-    }
-    else
-    {
+    } else {
         emit(BCOpcode::RETURN_VOID);
     }
 }

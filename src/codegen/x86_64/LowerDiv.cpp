@@ -33,11 +33,9 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
-namespace
-{
+namespace {
 constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 
 /// @brief Produce a shallow copy of a Machine IR operand.
@@ -49,8 +47,7 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 ///
 /// @param operand Operand instance to duplicate.
 /// @return Copy of @p operand that can be reused in emitted instructions.
-[[nodiscard]] Operand cloneOperand(const Operand &operand)
-{
+[[nodiscard]] Operand cloneOperand(const Operand &operand) {
     return operand;
 }
 
@@ -63,12 +60,10 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 /// @param fn Function currently being rewritten.
 /// @param label Block label to search for.
 /// @return Index of the block or empty optional when no block matches.
-[[nodiscard]] std::optional<std::size_t> findBlockIndex(const MFunction &fn, std::string_view label)
-{
-    for (std::size_t idx = 0; idx < fn.blocks.size(); ++idx)
-    {
-        if (fn.blocks[idx].label == label)
-        {
+[[nodiscard]] std::optional<std::size_t> findBlockIndex(const MFunction &fn,
+                                                        std::string_view label) {
+    for (std::size_t idx = 0; idx < fn.blocks.size(); ++idx) {
+        if (fn.blocks[idx].label == label) {
             return idx;
         }
     }
@@ -88,19 +83,13 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 /// @return Deterministic label for the continuation block.
 [[nodiscard]] std::string makeContinuationLabel(const MFunction &fn,
                                                 const MBasicBlock &block,
-                                                unsigned sequence)
-{
+                                                unsigned sequence) {
     std::string base;
-    if (!block.label.empty())
-    {
+    if (!block.label.empty()) {
         base = block.label;
-    }
-    else if (!fn.name.empty())
-    {
+    } else if (!fn.name.empty()) {
         base = fn.name;
-    }
-    else
-    {
+    } else {
         base = ".Ldiv";
     }
     base += ".div.";
@@ -117,14 +106,12 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 ///
 /// @param reg Physical register enumerator.
 /// @return Operand representing @p reg.
-[[nodiscard]] Operand makePhysRegOperand(PhysReg reg)
-{
+[[nodiscard]] Operand makePhysRegOperand(PhysReg reg) {
     return x64::makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(reg));
 }
 
 /// @brief Return log2(v) if v is a positive power of 2, else -1.
-[[nodiscard]] int log2IfPowerOf2(int64_t v)
-{
+[[nodiscard]] int log2IfPowerOf2(int64_t v) {
     if (v <= 0 || (v & (v - 1)) != 0)
         return -1;
     int log = 0;
@@ -137,8 +124,7 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 /// @return The immediate value, or nullopt if not found.
 [[nodiscard]] std::optional<int64_t> findVRegConstant(const MBasicBlock &block,
                                                       std::size_t beforeIdx,
-                                                      const Operand &regOp)
-{
+                                                      const Operand &regOp) {
     if (!std::holds_alternative<OpReg>(regOp))
         return std::nullopt;
     const auto &target = std::get<OpReg>(regOp);
@@ -146,24 +132,19 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
     if (target.isPhys)
         return std::nullopt;
 
-    for (std::size_t i = beforeIdx; i > 0; --i)
-    {
+    for (std::size_t i = beforeIdx; i > 0; --i) {
         const auto &instr = block.instructions[i - 1];
-        if (instr.opcode == MOpcode::MOVri && instr.operands.size() >= 2)
-        {
-            if (std::holds_alternative<OpReg>(instr.operands[0]))
-            {
+        if (instr.opcode == MOpcode::MOVri && instr.operands.size() >= 2) {
+            if (std::holds_alternative<OpReg>(instr.operands[0])) {
                 const auto &dst = std::get<OpReg>(instr.operands[0]);
-                if (dst.cls == target.cls && dst.idOrPhys == target.idOrPhys && !dst.isPhys)
-                {
+                if (dst.cls == target.cls && dst.idOrPhys == target.idOrPhys && !dst.isPhys) {
                     if (std::holds_alternative<OpImm>(instr.operands[1]))
                         return std::get<OpImm>(instr.operands[1]).val;
                 }
             }
         }
         // If the vreg is redefined by another instruction, stop looking.
-        if (instr.operands.size() >= 1 && std::holds_alternative<OpReg>(instr.operands[0]))
-        {
+        if (instr.operands.size() >= 1 && std::holds_alternative<OpReg>(instr.operands[0])) {
             const auto &dst = std::get<OpReg>(instr.operands[0]);
             if (dst.cls == target.cls && dst.idOrPhys == target.idOrPhys && !dst.isPhys)
                 break;
@@ -188,30 +169,25 @@ constexpr std::string_view kTrapLabel{".Ltrap_div0"};
 ///          lazily and reused for every lowered pseudo within the function.
 ///
 /// @param fn Machine IR function being rewritten in place.
-void lowerSignedDivRem(MFunction &fn)
-{
+void lowerSignedDivRem(MFunction &fn) {
     // Make trap label unique per function to avoid conflicts when assembling
     const std::string trapLabel = ".Ltrap_div0_" + fn.name;
     std::optional<std::size_t> trapIndex{};
     unsigned sequenceId{0U};
 
-    auto ensureTrapBlock = [&]() -> std::size_t
-    {
-        if (trapIndex)
-        {
+    auto ensureTrapBlock = [&]() -> std::size_t {
+        if (trapIndex) {
             return *trapIndex;
         }
 
-        if (auto existing = findBlockIndex(fn, trapLabel))
-        {
+        if (auto existing = findBlockIndex(fn, trapLabel)) {
             trapIndex = *existing;
             auto &trapBlock = fn.blocks[*trapIndex];
             const bool hasCall =
                 std::any_of(trapBlock.instructions.begin(),
                             trapBlock.instructions.end(),
                             [](const MInstr &instr) { return instr.opcode == MOpcode::CALL; });
-            if (!hasCall)
-            {
+            if (!hasCall) {
                 trapBlock.append(MInstr::make(
                     MOpcode::CALL, std::vector<Operand>{makeLabelOperand("rt_trap_div0")}));
             }
@@ -227,28 +203,23 @@ void lowerSignedDivRem(MFunction &fn)
         return *trapIndex;
     };
 
-    for (std::size_t blockIdx = 0; blockIdx < fn.blocks.size(); ++blockIdx)
-    {
+    for (std::size_t blockIdx = 0; blockIdx < fn.blocks.size(); ++blockIdx) {
         auto &block = fn.blocks[blockIdx];
-        for (std::size_t instrIdx = 0; instrIdx < block.instructions.size(); ++instrIdx)
-        {
+        for (std::size_t instrIdx = 0; instrIdx < block.instructions.size(); ++instrIdx) {
             const MInstr &candidate = block.instructions[instrIdx];
             const bool isSignedDiv = candidate.opcode == MOpcode::DIVS64rr;
             const bool isSignedRem = candidate.opcode == MOpcode::REMS64rr;
             const bool isUnsignedDiv = candidate.opcode == MOpcode::DIVU64rr;
             const bool isUnsignedRem = candidate.opcode == MOpcode::REMU64rr;
-            if (!isSignedDiv && !isSignedRem && !isUnsignedDiv && !isUnsignedRem)
-            {
+            if (!isSignedDiv && !isSignedRem && !isUnsignedDiv && !isUnsignedRem) {
                 continue;
             }
 
-            if (candidate.operands.size() < 3U)
-            {
+            if (candidate.operands.size() < 3U) {
                 continue; // Phase A expectation: dest, dividend, divisor.
             }
 
-            if (!std::holds_alternative<OpReg>(candidate.operands[0]))
-            {
+            if (!std::holds_alternative<OpReg>(candidate.operands[0])) {
                 continue; // Destination must be a virtual register.
             }
 
@@ -257,13 +228,11 @@ void lowerSignedDivRem(MFunction &fn)
 
             const bool dividendSupported = std::holds_alternative<OpReg>(dividendOp) ||
                                            std::holds_alternative<OpImm>(dividendOp);
-            if (!dividendSupported)
-            {
+            if (!dividendSupported) {
                 continue; // Phase A: expect register or immediate dividend.
             }
 
-            if (!std::holds_alternative<OpReg>(divisorOp))
-            {
+            if (!std::holds_alternative<OpReg>(divisorOp)) {
                 continue; // Phase A: divisor must be a register operand.
             }
 
@@ -271,35 +240,28 @@ void lowerSignedDivRem(MFunction &fn)
             // Unsigned div by constant power-of-2: replace IDIV with SHR.
             // Unsigned rem by constant power-of-2: replace IDIV with AND mask.
             // This avoids the expensive IDIV (20-40 cycle latency).
-            if (isUnsignedDiv || isUnsignedRem)
-            {
+            if (isUnsignedDiv || isUnsignedRem) {
                 auto constVal = findVRegConstant(block, instrIdx, divisorOp);
-                if (constVal)
-                {
+                if (constVal) {
                     int log = log2IfPowerOf2(*constVal);
-                    if (log >= 0 && log <= 63)
-                    {
+                    if (log >= 0 && log <= 63) {
                         const Operand destClone = cloneOperand(candidate.operands[0]);
                         const Operand dividendClone = cloneOperand(dividendOp);
 
                         // Move dividend to dest first (SHR/AND are in-place).
-                        if (std::holds_alternative<OpImm>(dividendClone))
-                        {
+                        if (std::holds_alternative<OpImm>(dividendClone)) {
                             block.instructions[instrIdx] =
                                 MInstr::make(MOpcode::MOVri,
                                              std::vector<Operand>{cloneOperand(destClone),
                                                                   cloneOperand(dividendClone)});
-                        }
-                        else
-                        {
+                        } else {
                             block.instructions[instrIdx] =
                                 MInstr::make(MOpcode::MOVrr,
                                              std::vector<Operand>{cloneOperand(destClone),
                                                                   cloneOperand(dividendClone)});
                         }
 
-                        if (isUnsignedDiv)
-                        {
+                        if (isUnsignedDiv) {
                             // udiv x, 2^k  ->  shr x, k
                             block.instructions.insert(
                                 block.instructions.begin() +
@@ -307,9 +269,7 @@ void lowerSignedDivRem(MFunction &fn)
                                 MInstr::make(MOpcode::SHRri,
                                              std::vector<Operand>{cloneOperand(destClone),
                                                                   makeImmOperand(log)}));
-                        }
-                        else
-                        {
+                        } else {
                             // urem x, 2^k  ->  and x, (2^k - 1)
                             block.instructions.insert(
                                 block.instructions.begin() +
@@ -357,27 +317,21 @@ void lowerSignedDivRem(MFunction &fn)
             const Operand raxOp = makePhysRegOperand(PhysReg::RAX);
             const Operand rdxOp = makePhysRegOperand(PhysReg::RDX);
 
-            if (std::holds_alternative<OpImm>(dividendClone))
-            {
+            if (std::holds_alternative<OpImm>(dividendClone)) {
                 currentBlock.append(MInstr::make(
                     MOpcode::MOVri,
                     std::vector<Operand>{cloneOperand(raxOp), cloneOperand(dividendClone)}));
-            }
-            else
-            {
+            } else {
                 currentBlock.append(MInstr::make(
                     MOpcode::MOVrr,
                     std::vector<Operand>{cloneOperand(raxOp), cloneOperand(dividendClone)}));
             }
 
-            if (isSigned)
-            {
+            if (isSigned) {
                 currentBlock.append(MInstr::make(MOpcode::CQO, {}));
                 currentBlock.append(MInstr::make(MOpcode::IDIVrm,
                                                  std::vector<Operand>{cloneOperand(divisorClone)}));
-            }
-            else
-            {
+            } else {
                 currentBlock.append(
                     MInstr::make(MOpcode::XORrr32,
                                  std::vector<Operand>{cloneOperand(rdxOp), cloneOperand(rdxOp)}));

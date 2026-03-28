@@ -42,22 +42,18 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::pkg
-{
-namespace
-{
+namespace viper::pkg {
+namespace {
 
 /// @brief Track a data file for md5sums generation.
-struct DataFile
-{
+struct DataFile {
     std::string installPath; ///< e.g. "usr/bin/hello"
     std::vector<uint8_t> data;
 };
 
 } // namespace
 
-void buildDebPackage(const LinuxBuildParams &params)
-{
+void buildDebPackage(const LinuxBuildParams &params) {
     const auto &pkg = params.pkgConfig;
     std::string pkgName = normalizeDebName(params.projectName);
     std::string exeName = normalizeExecName(params.projectName);
@@ -71,8 +67,7 @@ void buildDebPackage(const LinuxBuildParams &params)
     dataFiles.push_back({"usr/bin/" + exeName, execData});
 
     // Assets
-    for (const auto &asset : pkg.assets)
-    {
+    for (const auto &asset : pkg.assets) {
         fs::path srcPath = fs::path(params.projectRoot) / asset.sourcePath;
         std::string targetDir = asset.targetPath;
         if (targetDir == ".")
@@ -82,37 +77,28 @@ void buildDebPackage(const LinuxBuildParams &params)
         if (!targetDir.empty())
             sharePrefix += targetDir + "/";
 
-        if (!fs::exists(srcPath))
-        {
+        if (!fs::exists(srcPath)) {
             std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
             continue;
         }
 
-        if (fs::is_directory(srcPath))
-        {
-            safeDirectoryIterate(srcPath,
-                                 params.projectRoot,
-                                 [&](const fs::directory_entry &entry)
-                                 {
-                                     if (entry.is_regular_file())
-                                     {
-                                         auto relPath =
-                                             fs::relative(entry.path(), srcPath).string();
-                                         auto fileData = readFile(entry.path().string());
-                                         dataFiles.push_back({sharePrefix + relPath, fileData});
-                                     }
-                                 });
-        }
-        else if (fs::is_regular_file(srcPath))
-        {
+        if (fs::is_directory(srcPath)) {
+            safeDirectoryIterate(
+                srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
+                    if (entry.is_regular_file()) {
+                        auto relPath = fs::relative(entry.path(), srcPath).string();
+                        auto fileData = readFile(entry.path().string());
+                        dataFiles.push_back({sharePrefix + relPath, fileData});
+                    }
+                });
+        } else if (fs::is_regular_file(srcPath)) {
             auto fileData = readFile(srcPath.string());
             dataFiles.push_back({sharePrefix + srcPath.filename().string(), fileData});
         }
     }
 
     // .desktop file
-    if (pkg.shortcutMenu || pkg.shortcutDesktop)
-    {
+    if (pkg.shortcutMenu || pkg.shortcutDesktop) {
         DesktopEntryParams dep;
         dep.name = displayName;
         dep.comment = pkg.description;
@@ -127,30 +113,24 @@ void buildDebPackage(const LinuxBuildParams &params)
     }
 
     // Icon PNGs at standard sizes (via IconGenerator)
-    if (!pkg.iconPath.empty())
-    {
+    if (!pkg.iconPath.empty()) {
         fs::path iconSrc = fs::path(params.projectRoot) / pkg.iconPath;
-        if (fs::exists(iconSrc))
-        {
+        if (fs::exists(iconSrc)) {
             auto srcImage = pngRead(iconSrc.string());
             auto pngs = generateMultiSizePngs(srcImage);
-            for (const auto &[sz, pngData] : pngs)
-            {
+            for (const auto &[sz, pngData] : pngs) {
                 std::string iconPath = "usr/share/icons/hicolor/" + std::to_string(sz) + "x" +
                                        std::to_string(sz) + "/apps/" + exeName + ".png";
                 dataFiles.push_back({iconPath, pngData});
             }
-        }
-        else
-        {
+        } else {
             std::cerr << "warning: package-icon '" << pkg.iconPath
                       << "' not found, skipping icon generation\n";
         }
     }
 
     // MIME type XML
-    if (!pkg.fileAssociations.empty())
-    {
+    if (!pkg.fileAssociations.empty()) {
         auto mimeXml = generateMimeTypeXml(pkgName, pkg.fileAssociations);
         std::vector<uint8_t> mdata(mimeXml.begin(), mimeXml.end());
         dataFiles.push_back({"usr/share/mime/packages/" + pkgName + ".xml", mdata});
@@ -162,26 +142,22 @@ void buildDebPackage(const LinuxBuildParams &params)
 
     // Collect unique directories
     std::vector<std::string> dirs;
-    auto ensureDir = [&](const std::string &dirPath)
-    {
+    auto ensureDir = [&](const std::string &dirPath) {
         std::string d = dirPath;
         if (!d.empty() && d.back() != '/')
             d.push_back('/');
-        for (const auto &existing : dirs)
-        {
+        for (const auto &existing : dirs) {
             if (existing == d)
                 return;
         }
         dirs.push_back(d);
     };
 
-    for (const auto &df : dataFiles)
-    {
+    for (const auto &df : dataFiles) {
         // Ensure all parent directories exist
         std::string path = df.installPath;
         size_t pos = 0;
-        while ((pos = path.find('/', pos)) != std::string::npos)
-        {
+        while ((pos = path.find('/', pos)) != std::string::npos) {
             ensureDir("./" + path.substr(0, pos));
             pos++;
         }
@@ -196,8 +172,7 @@ void buildDebPackage(const LinuxBuildParams &params)
         dataTar.addDirectory(d, 0755);
 
     // Add files
-    for (const auto &df : dataFiles)
-    {
+    for (const auto &df : dataFiles) {
         uint32_t mode = 0644;
         // Executables get 0755
         if (df.installPath.find("usr/bin/") == 0)
@@ -236,11 +211,9 @@ void buildDebPackage(const LinuxBuildParams &params)
         ctl << "Installed-Size: " << ((totalBytes + 1023) / 1024) << "\n";
 
         // Dependencies
-        if (!pkg.depends.empty())
-        {
+        if (!pkg.depends.empty()) {
             ctl << "Depends: ";
-            for (size_t i = 0; i < pkg.depends.size(); ++i)
-            {
+            for (size_t i = 0; i < pkg.depends.size(); ++i) {
                 if (i > 0)
                     ctl << ", ";
                 ctl << pkg.depends[i];
@@ -265,8 +238,7 @@ void buildDebPackage(const LinuxBuildParams &params)
     // md5sums file
     {
         std::ostringstream md5s;
-        for (const auto &df : dataFiles)
-        {
+        for (const auto &df : dataFiles) {
             auto hex = md5hex(df.data.data(), df.data.size());
             md5s << hex << "  " << df.installPath << "\n";
         }
@@ -276,8 +248,7 @@ void buildDebPackage(const LinuxBuildParams &params)
     // postinst script (update MIME database, desktop database, custom hooks)
     bool needPostinst =
         !pkg.fileAssociations.empty() || pkg.shortcutMenu || !pkg.postInstallScript.empty();
-    if (needPostinst)
-    {
+    if (needPostinst) {
         std::ostringstream pi;
         pi << "#!/bin/sh\n";
         pi << "set -e\n";
@@ -295,8 +266,7 @@ void buildDebPackage(const LinuxBuildParams &params)
     // prerm script (cleanup + custom hooks)
     bool needPrerm =
         !pkg.fileAssociations.empty() || pkg.shortcutMenu || !pkg.preUninstallScript.empty();
-    if (needPrerm)
-    {
+    if (needPrerm) {
         std::ostringstream pr;
         pr << "#!/bin/sh\n";
         pr << "set -e\n";
@@ -330,8 +300,7 @@ void buildDebPackage(const LinuxBuildParams &params)
     ar.finishToFile(params.outputPath);
 }
 
-void buildTarball(const LinuxBuildParams &params)
-{
+void buildTarball(const LinuxBuildParams &params) {
     const auto &pkg = params.pkgConfig;
     std::string pkgName = normalizeDebName(params.projectName);
     std::string exeName = normalizeExecName(params.projectName);
@@ -348,8 +317,7 @@ void buildTarball(const LinuxBuildParams &params)
     tar.addFile(topDir + exeName, execData.data(), execData.size(), 0755);
 
     // Assets
-    for (const auto &asset : pkg.assets)
-    {
+    for (const auto &asset : pkg.assets) {
         fs::path srcPath = fs::path(params.projectRoot) / asset.sourcePath;
         std::string targetDir = asset.targetPath;
         if (targetDir == ".")
@@ -359,34 +327,24 @@ void buildTarball(const LinuxBuildParams &params)
         if (!targetDir.empty())
             prefix += targetDir + "/";
 
-        if (!fs::exists(srcPath))
-        {
+        if (!fs::exists(srcPath)) {
             std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
             continue;
         }
 
-        if (fs::is_directory(srcPath))
-        {
+        if (fs::is_directory(srcPath)) {
             safeDirectoryIterate(
-                srcPath,
-                params.projectRoot,
-                [&](const fs::directory_entry &entry)
-                {
-                    if (entry.is_directory())
-                    {
+                srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
+                    if (entry.is_directory()) {
                         auto relPath = fs::relative(entry.path(), srcPath).string();
                         tar.addDirectory(prefix + relPath, 0755);
-                    }
-                    else if (entry.is_regular_file())
-                    {
+                    } else if (entry.is_regular_file()) {
                         auto relPath = fs::relative(entry.path(), srcPath).string();
                         auto fileData = readFile(entry.path().string());
                         tar.addFile(prefix + relPath, fileData.data(), fileData.size(), 0644);
                     }
                 });
-        }
-        else if (fs::is_regular_file(srcPath))
-        {
+        } else if (fs::is_regular_file(srcPath)) {
             auto fileData = readFile(srcPath.string());
             tar.addFile(
                 prefix + srcPath.filename().string(), fileData.data(), fileData.size(), 0644);

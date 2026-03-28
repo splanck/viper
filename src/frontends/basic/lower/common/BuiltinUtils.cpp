@@ -26,16 +26,12 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::basic::lower::common
-{
-namespace
-{
+namespace il::frontends::basic::lower::common {
+namespace {
 constexpr std::string_view kDiagMissingBuiltinEmitter = "B4004";
 
-void ensureBuiltinHandlers()
-{
-    static const bool initialized = []
-    {
+void ensureBuiltinHandlers() {
+    static const bool initialized = [] {
         builtins::registerDefaultBuiltins();
         builtins::registerStringBuiltins();
         builtins::registerConversionBuiltins();
@@ -58,16 +54,14 @@ void ensureBuiltinHandlers()
 /// @param lowerer Active lowering context used to emit IL.
 /// @param call AST node describing the builtin invocation.
 /// @return Lowered r-value or a zero substitute when no handler exists.
-Lowerer::RVal lowerBuiltinCall(Lowerer &lowerer, const BuiltinCallExpr &call)
-{
+Lowerer::RVal lowerBuiltinCall(Lowerer &lowerer, const BuiltinCallExpr &call) {
     ensureBuiltinHandlers();
 
     BuiltinLowerContext ctx(lowerer, call);
     if (BuiltinHandler handler = find_builtin(ctx.info().name))
         return handler(ctx);
 
-    if (auto *diag = lowerer.diagnosticEmitter())
-    {
+    if (auto *diag = lowerer.diagnosticEmitter()) {
         ctx.setCurrentLoc(call.loc);
         diag->emit(il::support::Severity::Error,
                    std::string(kDiagMissingBuiltinEmitter),
@@ -83,8 +77,7 @@ Lowerer::RVal lowerBuiltinCall(Lowerer &lowerer, const BuiltinCallExpr &call)
 /// @details Invokes @ref ensureBuiltinHandlers so tests can rely on the same
 ///          registration logic as production code without duplicating
 ///          boilerplate.
-void ensureBuiltinHandlersForTesting()
-{
+void ensureBuiltinHandlersForTesting() {
     ensureBuiltinHandlers();
 }
 

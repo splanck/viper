@@ -25,53 +25,52 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Create a new empty concurrent queue.
-    /// @return Pointer to queue object.
-    void *rt_concqueue_new(void);
+/// @brief Create a new empty concurrent queue.
+/// @return Pointer to queue object.
+void *rt_concqueue_new(void);
 
-    /// @brief Get approximate number of elements.
-    /// @param obj ConcurrentQueue pointer.
-    /// @return Element count (approximate under concurrency).
-    int64_t rt_concqueue_len(void *obj);
+/// @brief Get approximate number of elements.
+/// @param obj ConcurrentQueue pointer.
+/// @return Element count (approximate under concurrency).
+int64_t rt_concqueue_len(void *obj);
 
-    /// @brief Check if queue is approximately empty.
-    /// @param obj ConcurrentQueue pointer.
-    /// @return 1 if likely empty, 0 otherwise.
-    int8_t rt_concqueue_is_empty(void *obj);
+/// @brief Check if queue is approximately empty.
+/// @param obj ConcurrentQueue pointer.
+/// @return 1 if likely empty, 0 otherwise.
+int8_t rt_concqueue_is_empty(void *obj);
 
-    /// @brief Add item to back of queue (thread-safe).
-    /// @param obj ConcurrentQueue pointer.
-    /// @param item Value to enqueue (retained).
-    void rt_concqueue_enqueue(void *obj, void *item);
+/// @brief Add item to back of queue (thread-safe).
+/// @param obj ConcurrentQueue pointer.
+/// @param item Value to enqueue (retained).
+void rt_concqueue_enqueue(void *obj, void *item);
 
-    /// @brief Remove item from front of queue (non-blocking).
-    /// @param obj ConcurrentQueue pointer.
-    /// @return Item or NULL if empty.
-    void *rt_concqueue_try_dequeue(void *obj);
+/// @brief Remove item from front of queue (non-blocking).
+/// @param obj ConcurrentQueue pointer.
+/// @return Item or NULL if empty.
+void *rt_concqueue_try_dequeue(void *obj);
 
-    /// @brief Remove item from front of queue (blocking).
-    /// @param obj ConcurrentQueue pointer.
-    /// @return Item (waits until available).
-    void *rt_concqueue_dequeue(void *obj);
+/// @brief Remove item from front of queue (blocking).
+/// @param obj ConcurrentQueue pointer.
+/// @return Item (waits until available).
+void *rt_concqueue_dequeue(void *obj);
 
-    /// @brief Remove item with timeout.
-    /// @param obj ConcurrentQueue pointer.
-    /// @param timeout_ms Maximum time to wait in milliseconds.
-    /// @return Item or NULL if timeout expired.
-    void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms);
+/// @brief Remove item with timeout.
+/// @param obj ConcurrentQueue pointer.
+/// @param timeout_ms Maximum time to wait in milliseconds.
+/// @return Item or NULL if timeout expired.
+void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms);
 
-    /// @brief Peek at front item without removing (non-blocking).
-    /// @param obj ConcurrentQueue pointer.
-    /// @return Front item or NULL if empty.
-    void *rt_concqueue_peek(void *obj);
+/// @brief Peek at front item without removing (non-blocking).
+/// @param obj ConcurrentQueue pointer.
+/// @return Front item or NULL if empty.
+void *rt_concqueue_peek(void *obj);
 
-    /// @brief Remove all items from queue (thread-safe).
-    /// @param obj ConcurrentQueue pointer.
-    void rt_concqueue_clear(void *obj);
+/// @brief Remove all items from queue (thread-safe).
+/// @param obj ConcurrentQueue pointer.
+void rt_concqueue_clear(void *obj);
 
 #ifdef __cplusplus
 }

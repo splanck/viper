@@ -30,8 +30,7 @@
 /// What: Create a runtime string from a C string.
 /// Why:  Simplify tests by avoiding repetitive conversions.
 /// How:  Uses rt_string_from_bytes when non-null, otherwise returns rt_str_empty().
-static rt_string make_string(const char *s)
-{
+static rt_string make_string(const char *s) {
     return s ? rt_string_from_bytes(s, strlen(s)) : rt_str_empty();
 }
 
@@ -47,21 +46,16 @@ static int tests_failed = 0;
     tests_run++;
 
 #define TEST_END()                                                                                 \
-    if (test_passed)                                                                               \
-    {                                                                                              \
+    if (test_passed) {                                                                             \
         printf("✓\n");                                                                             \
-    }                                                                                              \
-    else                                                                                           \
-    {                                                                                              \
+    } else {                                                                                       \
         printf("✗\n");                                                                             \
         tests_failed++;                                                                            \
     }
 
 #define ASSERT_EQ(expected, actual)                                                                \
-    do                                                                                             \
-    {                                                                                              \
-        if ((expected) != (actual))                                                                \
-        {                                                                                          \
+    do {                                                                                           \
+        if ((expected) != (actual)) {                                                              \
             printf("\n    FAILED: Expected %lld, got %lld at line %d\n",                           \
                    (long long)(expected),                                                          \
                    (long long)(actual),                                                            \
@@ -71,10 +65,8 @@ static int tests_failed = 0;
     } while (0)
 
 #define ASSERT_STR_EQ(expected, actual)                                                            \
-    do                                                                                             \
-    {                                                                                              \
-        if (strcmp((expected), (actual)) != 0)                                                     \
-        {                                                                                          \
+    do {                                                                                           \
+        if (strcmp((expected), (actual)) != 0) {                                                   \
             printf("\n    FAILED: Expected '%s', got '%s' at line %d\n",                           \
                    (expected),                                                                     \
                    (actual),                                                                       \
@@ -84,18 +76,15 @@ static int tests_failed = 0;
     } while (0)
 
 #define ASSERT_TRUE(cond)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             printf("\n    FAILED: Condition false at line %d\n", __LINE__);                        \
             test_passed = false;                                                                   \
         }                                                                                          \
     } while (0)
 
 // Tests
-void test_new_and_initial_state(void)
-{
+void test_new_and_initial_state(void) {
     TEST_START("new and initial state");
 
     void *sb = rt_sb_new();
@@ -113,8 +102,7 @@ void test_new_and_initial_state(void)
     TEST_END();
 }
 
-void test_append_single(void)
-{
+void test_append_single(void) {
     TEST_START("append single string");
 
     void *sb = rt_sb_new();
@@ -131,8 +119,7 @@ void test_append_single(void)
     TEST_END();
 }
 
-void test_append_multiple(void)
-{
+void test_append_multiple(void) {
     TEST_START("append multiple strings");
 
     void *sb = rt_sb_new();
@@ -151,8 +138,7 @@ void test_append_multiple(void)
     TEST_END();
 }
 
-void test_append_line(void)
-{
+void test_append_line(void) {
     TEST_START("append line");
 
     void *sb = rt_sb_new();
@@ -171,8 +157,7 @@ void test_append_line(void)
     TEST_END();
 }
 
-void test_clear(void)
-{
+void test_clear(void) {
     TEST_START("clear operation");
 
     void *sb = rt_sb_new();
@@ -197,8 +182,7 @@ void test_clear(void)
     TEST_END();
 }
 
-void test_capacity_growth(void)
-{
+void test_capacity_growth(void) {
     TEST_START("capacity growth");
 
     void *sb = rt_sb_new();
@@ -220,8 +204,7 @@ void test_capacity_growth(void)
     TEST_END();
 }
 
-void test_empty_append(void)
-{
+void test_empty_append(void) {
     TEST_START("append empty string");
 
     void *sb = rt_sb_new();
@@ -238,8 +221,7 @@ void test_empty_append(void)
     TEST_END();
 }
 
-void test_method_chaining(void)
-{
+void test_method_chaining(void) {
     TEST_START("method chaining");
 
     void *sb = rt_sb_new();
@@ -258,8 +240,7 @@ void test_method_chaining(void)
     TEST_END();
 }
 
-void test_toString_preserves_state(void)
-{
+void test_toString_preserves_state(void) {
     TEST_START("ToString preserves builder state");
 
     void *sb = rt_sb_new();
@@ -281,8 +262,7 @@ void test_toString_preserves_state(void)
     TEST_END();
 }
 
-int main(void)
-{
+int main(void) {
     printf("\n=== StringBuilder Bridge Tests ===\n\n");
 
     // Run tests
@@ -302,13 +282,10 @@ int main(void)
     printf("Tests passed: %d\n", tests_run - tests_failed);
     printf("Tests failed: %d\n", tests_failed);
 
-    if (tests_failed == 0)
-    {
+    if (tests_failed == 0) {
         printf("\nAll tests PASSED! ✓\n");
         return 0;
-    }
-    else
-    {
+    } else {
         printf("\nSome tests FAILED! ✗\n");
         return 1;
     }

@@ -14,24 +14,20 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::runtime
-{
+namespace il::runtime {
 struct RuntimeClass; // fwd
 }
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-struct RuntimePropertyInfo
-{
+struct RuntimePropertyInfo {
     std::string type;     ///< IL scalar type string (e.g., "i64", "i1").
     std::string getter;   ///< Canonical extern target for getter.
     std::string setter;   ///< Canonical extern target for setter (empty if none).
     bool readonly{false}; ///< True if setter is empty.
 };
 
-class RuntimePropertyIndex
-{
+class RuntimePropertyIndex {
   public:
     void seed(const std::vector<il::runtime::RuntimeClass> &classes);
 

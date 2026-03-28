@@ -15,8 +15,7 @@
 #include <cassert>
 #include <cstdio>
 
-static void test_create_and_destroy()
-{
+static void test_create_and_destroy() {
     printf("  test_create_and_destroy...\n");
 
     rt_timer timer = rt_timer_new();
@@ -31,8 +30,7 @@ static void test_create_and_destroy()
     rt_timer_destroy(timer);
 }
 
-static void test_start_and_update()
-{
+static void test_start_and_update() {
     printf("  test_start_and_update...\n");
 
     rt_timer timer = rt_timer_new();
@@ -57,8 +55,7 @@ static void test_start_and_update()
     rt_timer_destroy(timer);
 }
 
-static void test_expiration()
-{
+static void test_expiration() {
     printf("  test_expiration...\n");
 
     rt_timer timer = rt_timer_new();
@@ -83,8 +80,7 @@ static void test_expiration()
     rt_timer_destroy(timer);
 }
 
-static void test_progress()
-{
+static void test_progress() {
     printf("  test_progress...\n");
 
     rt_timer timer = rt_timer_new();
@@ -95,22 +91,19 @@ static void test_progress()
     assert(rt_timer_progress(timer) == 0);
 
     // Update to 25%
-    for (int i = 0; i < 25; i++)
-    {
+    for (int i = 0; i < 25; i++) {
         rt_timer_update(timer);
     }
     assert(rt_timer_progress(timer) == 25);
 
     // Update to 50%
-    for (int i = 0; i < 25; i++)
-    {
+    for (int i = 0; i < 25; i++) {
         rt_timer_update(timer);
     }
     assert(rt_timer_progress(timer) == 50);
 
     // Update to 100%
-    for (int i = 0; i < 50; i++)
-    {
+    for (int i = 0; i < 50; i++) {
         rt_timer_update(timer);
     }
     assert(rt_timer_progress(timer) == 100);
@@ -118,8 +111,7 @@ static void test_progress()
     rt_timer_destroy(timer);
 }
 
-static void test_stop()
-{
+static void test_stop() {
     printf("  test_stop...\n");
 
     rt_timer timer = rt_timer_new();
@@ -143,16 +135,14 @@ static void test_stop()
     rt_timer_destroy(timer);
 }
 
-static void test_reset()
-{
+static void test_reset() {
     printf("  test_reset...\n");
 
     rt_timer timer = rt_timer_new();
     assert(timer != nullptr);
 
     rt_timer_start(timer, 100);
-    for (int i = 0; i < 50; i++)
-    {
+    for (int i = 0; i < 50; i++) {
         rt_timer_update(timer);
     }
 
@@ -167,8 +157,7 @@ static void test_reset()
     rt_timer_destroy(timer);
 }
 
-static void test_repeating_timer()
-{
+static void test_repeating_timer() {
     printf("  test_repeating_timer...\n");
 
     rt_timer timer = rt_timer_new();
@@ -200,8 +189,7 @@ static void test_repeating_timer()
     rt_timer_destroy(timer);
 }
 
-static void test_non_repeating_timer()
-{
+static void test_non_repeating_timer() {
     printf("  test_non_repeating_timer...\n");
 
     rt_timer timer = rt_timer_new();
@@ -211,8 +199,7 @@ static void test_non_repeating_timer()
     assert(rt_timer_is_repeating(timer) == 0);
 
     // Run to expiration
-    for (int i = 0; i < 5; i++)
-    {
+    for (int i = 0; i < 5; i++) {
         rt_timer_update(timer);
     }
 
@@ -223,8 +210,7 @@ static void test_non_repeating_timer()
     rt_timer_destroy(timer);
 }
 
-static void test_set_duration()
-{
+static void test_set_duration() {
     printf("  test_set_duration...\n");
 
     rt_timer timer = rt_timer_new();
@@ -245,8 +231,7 @@ static void test_set_duration()
     rt_timer_destroy(timer);
 }
 
-static void test_animation_use_case()
-{
+static void test_animation_use_case() {
     printf("  test_animation_use_case...\n");
 
     // Simulate a 60-frame animation (1 second at 60fps)
@@ -256,8 +241,7 @@ static void test_animation_use_case()
     rt_timer_start(timer, 60);
 
     int frame_count = 0;
-    while (rt_timer_is_running(timer))
-    {
+    while (rt_timer_is_running(timer)) {
         // Calculate animation progress (0-100)
         int64_t progress = rt_timer_progress(timer);
         assert(progress >= 0 && progress <= 100);
@@ -275,8 +259,7 @@ static void test_animation_use_case()
     rt_timer_destroy(timer);
 }
 
-static void test_ghost_mode_timer_use_case()
-{
+static void test_ghost_mode_timer_use_case() {
     printf("  test_ghost_mode_timer_use_case...\n");
 
     // Simulate ghost mode switching (frightened mode for 600 frames)
@@ -287,8 +270,7 @@ static void test_ghost_mode_timer_use_case()
     rt_timer_start(frightened_timer, 600);
 
     // Simulate 300 frames (halfway through)
-    for (int i = 0; i < 300; i++)
-    {
+    for (int i = 0; i < 300; i++) {
         assert(rt_timer_update(frightened_timer) == 0);
     }
 
@@ -297,10 +279,8 @@ static void test_ghost_mode_timer_use_case()
 
     // Simulate remaining 300 frames
     int expired = 0;
-    for (int i = 0; i < 300; i++)
-    {
-        if (rt_timer_update(frightened_timer))
-        {
+    for (int i = 0; i < 300; i++) {
+        if (rt_timer_update(frightened_timer)) {
             expired = 1;
         }
     }
@@ -311,8 +291,7 @@ static void test_ghost_mode_timer_use_case()
     rt_timer_destroy(frightened_timer);
 }
 
-int main()
-{
+int main() {
     printf("RTTimerTests:\n");
 
     test_create_and_destroy();

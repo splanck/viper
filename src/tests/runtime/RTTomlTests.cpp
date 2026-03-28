@@ -14,18 +14,15 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_parse_simple()
-{
+static void test_parse_simple() {
     rt_string src = make_str("title = \"TOML Test\"\nversion = \"1.0\"");
     void *root = rt_toml_parse(src);
     assert(root != NULL);
@@ -44,8 +41,7 @@ static void test_parse_simple()
     rt_string_unref(k2);
 }
 
-static void test_parse_section()
-{
+static void test_parse_section() {
     rt_string src = make_str("[server]\nhost = \"localhost\"\nport = 8080\n");
     void *root = rt_toml_parse(src);
     assert(root != NULL);
@@ -63,16 +59,14 @@ static void test_parse_section()
     rt_string_unref(hk);
 }
 
-static void test_parse_comments()
-{
+static void test_parse_comments() {
     rt_string src = make_str("# This is a comment\nkey = \"value\"\n# Another comment\n");
     void *root = rt_toml_parse(src);
     assert(root != NULL);
     assert(rt_map_len(root) == 1);
 }
 
-static void test_parse_quoted_values()
-{
+static void test_parse_quoted_values() {
     rt_string src = make_str("name = \"hello world\"\npath = 'C:\\Users\\test'\n");
     void *root = rt_toml_parse(src);
     assert(root != NULL);
@@ -84,8 +78,7 @@ static void test_parse_quoted_values()
     rt_string_unref(nk);
 }
 
-static void test_parse_bare_values()
-{
+static void test_parse_bare_values() {
     rt_string src = make_str("count = 42\nenabled = true\n");
     void *root = rt_toml_parse(src);
     assert(root != NULL);
@@ -102,14 +95,12 @@ static void test_parse_bare_values()
     rt_string_unref(ek);
 }
 
-static void test_is_valid()
-{
+static void test_is_valid() {
     rt_string valid = make_str("key = \"value\"\n");
     assert(rt_toml_is_valid(valid) == 1);
 }
 
-static void test_get_dotted()
-{
+static void test_get_dotted() {
     rt_string src = make_str("[database]\nhost = \"db.example.com\"\nport = 5432\n");
     void *root = rt_toml_parse(src);
 
@@ -121,30 +112,26 @@ static void test_get_dotted()
     rt_string_unref(path);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_toml_parse(NULL) == NULL);
     assert(rt_toml_is_valid(NULL) == 0);
     assert(rt_toml_get(NULL, NULL) == NULL);
 }
 
-static void test_empty()
-{
+static void test_empty() {
     rt_string src = make_str("");
     void *root = rt_toml_parse(src);
     assert(root != NULL);
     assert(rt_map_len(root) == 0);
 }
 
-static void test_depth_limit()
-{
+static void test_depth_limit() {
     // Build a TOML section name with 201 dot-separated parts (depth = 201 > TOML_MAX_DEPTH=200)
     // e.g. [a.a.a....a] with 201 'a's separated by dots
     char deep[512];
     int pos = 0;
     deep[pos++] = '[';
-    for (int i = 0; i < 201; i++)
-    {
+    for (int i = 0; i < 201; i++) {
         if (i > 0)
             deep[pos++] = '.';
         deep[pos++] = 'a';
@@ -161,8 +148,7 @@ static void test_depth_limit()
     char ok[512];
     pos = 0;
     ok[pos++] = '[';
-    for (int i = 0; i < 200; i++)
-    {
+    for (int i = 0; i < 200; i++) {
         if (i > 0)
             ok[pos++] = '.';
         ok[pos++] = 'b';
@@ -176,8 +162,7 @@ static void test_depth_limit()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_parse_simple();
     test_parse_section();
     test_parse_comments();

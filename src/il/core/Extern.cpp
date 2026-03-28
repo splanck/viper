@@ -26,8 +26,7 @@
 
 #include "il/core/Extern.hpp"
 
-namespace il::core
-{
+namespace il::core {
 
 // No out-of-line logic.
 } // namespace il::core

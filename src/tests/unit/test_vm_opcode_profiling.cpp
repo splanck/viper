@@ -27,10 +27,8 @@
 #if VIPER_VM_OPCOUNTS
 
 /// @brief Get opcode mnemonic name.
-static const char *opcodeName(il::core::Opcode op)
-{
-    switch (op)
-    {
+static const char *opcodeName(il::core::Opcode op) {
+    switch (op) {
 #define IL_OPCODE(NAME, MNEMONIC, ...)                                                             \
     case il::core::Opcode::NAME:                                                                   \
         return MNEMONIC;
@@ -41,8 +39,7 @@ static const char *opcodeName(il::core::Opcode op)
 }
 
 /// @brief Profile a realistic workload with loops and arithmetic.
-static void profileArithmeticLoop()
-{
+static void profileArithmeticLoop() {
     const char *il = R"(il 0.1
 func @main() -> i64 {
 entry:
@@ -82,16 +79,14 @@ loop_exit:
 
     std::cout << "\n=== Arithmetic Loop Profile (1000 iterations) ===\n";
     auto top = vm.topOpcodes(15);
-    for (const auto &[idx, count] : top)
-    {
+    for (const auto &[idx, count] : top) {
         std::cout << "  " << opcodeName(static_cast<il::core::Opcode>(idx)) << ": " << count
                   << "\n";
     }
 }
 
 /// @brief Profile a workload with function calls.
-static void profileFunctionCalls()
-{
+static void profileFunctionCalls() {
     const char *il = R"(il 0.1
 func @helper(i64 %x) -> i64 {
 entry(%x0: i64):
@@ -138,16 +133,14 @@ done:
 
     std::cout << "\n=== Function Call Profile (100 calls) ===\n";
     auto top = vm.topOpcodes(15);
-    for (const auto &[idx, count] : top)
-    {
+    for (const auto &[idx, count] : top) {
         std::cout << "  " << opcodeName(static_cast<il::core::Opcode>(idx)) << ": " << count
                   << "\n";
     }
 }
 
 /// @brief Profile memory-intensive workload.
-static void profileMemoryOps()
-{
+static void profileMemoryOps() {
     const char *il = R"(il 0.1
 func @main() -> i64 {
 entry:
@@ -205,15 +198,13 @@ done:
 
     std::cout << "\n=== Memory Operations Profile (200 load/store ops) ===\n";
     auto top = vm.topOpcodes(15);
-    for (const auto &[idx, count] : top)
-    {
+    for (const auto &[idx, count] : top) {
         std::cout << "  " << opcodeName(static_cast<il::core::Opcode>(idx)) << ": " << count
                   << "\n";
     }
 }
 
-int main()
-{
+int main() {
     std::cout << "VM Opcode Profiling Report\n";
     std::cout << "==========================\n";
 
@@ -229,8 +220,7 @@ int main()
 
 #else
 
-int main()
-{
+int main() {
     // When VIPER_VM_OPCOUNTS is disabled, just return success
     return 0;
 }

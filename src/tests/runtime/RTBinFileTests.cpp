@@ -19,25 +19,21 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
 static const char *test_file = "/tmp/viper_binfile_test.bin";
 
-static rt_string make_string(const char *s)
-{
+static rt_string make_string(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void cleanup_test_file()
-{
+static void cleanup_test_file() {
     remove(test_file);
 }
 
-static void test_open_write_close()
-{
+static void test_open_write_close() {
     cleanup_test_file();
 
     rt_string path = make_string(test_file);
@@ -54,8 +50,7 @@ static void test_open_write_close()
     cleanup_test_file();
 }
 
-static void test_write_and_read_bytes()
-{
+static void test_write_and_read_bytes() {
     cleanup_test_file();
 
     // Write some bytes
@@ -99,8 +94,7 @@ static void test_write_and_read_bytes()
     cleanup_test_file();
 }
 
-static void test_read_byte_write_byte()
-{
+static void test_read_byte_write_byte() {
     cleanup_test_file();
 
     // Write bytes one at a time
@@ -142,8 +136,7 @@ static void test_read_byte_write_byte()
     cleanup_test_file();
 }
 
-static void test_seek_and_pos()
-{
+static void test_seek_and_pos() {
     cleanup_test_file();
 
     // Create a file with some content
@@ -152,8 +145,7 @@ static void test_seek_and_pos()
         rt_string mode = make_string("w");
 
         void *bf = rt_binfile_open(path, mode);
-        for (int i = 0; i < 10; ++i)
-        {
+        for (int i = 0; i < 10; ++i) {
             rt_binfile_write_byte(bf, (int64_t)i);
         }
         rt_binfile_close(bf);
@@ -198,8 +190,7 @@ static void test_seek_and_pos()
     cleanup_test_file();
 }
 
-static void test_size()
-{
+static void test_size() {
     cleanup_test_file();
 
     // Create a file with 100 bytes
@@ -208,8 +199,7 @@ static void test_size()
         rt_string mode = make_string("w");
 
         void *bf = rt_binfile_open(path, mode);
-        for (int i = 0; i < 100; ++i)
-        {
+        for (int i = 0; i < 100; ++i) {
             rt_binfile_write_byte(bf, 0);
         }
         rt_binfile_close(bf);
@@ -230,8 +220,7 @@ static void test_size()
     cleanup_test_file();
 }
 
-static void test_eof()
-{
+static void test_eof() {
     cleanup_test_file();
 
     // Create a file with 3 bytes
@@ -279,8 +268,7 @@ static void test_eof()
     cleanup_test_file();
 }
 
-static void test_append_mode()
-{
+static void test_append_mode() {
     cleanup_test_file();
 
     // Create initial file
@@ -322,8 +310,7 @@ static void test_append_mode()
     cleanup_test_file();
 }
 
-static void test_read_write_mode()
-{
+static void test_read_write_mode() {
     cleanup_test_file();
 
     // Create file first
@@ -332,8 +319,7 @@ static void test_read_write_mode()
         rt_string mode = make_string("w");
 
         void *bf = rt_binfile_open(path, mode);
-        for (int i = 0; i < 10; ++i)
-        {
+        for (int i = 0; i < 10; ++i) {
             rt_binfile_write_byte(bf, (int64_t)i);
         }
         rt_binfile_close(bf);
@@ -363,8 +349,7 @@ static void test_read_write_mode()
     cleanup_test_file();
 }
 
-static void test_partial_read()
-{
+static void test_partial_read() {
     cleanup_test_file();
 
     // Create a file with 10 bytes
@@ -373,8 +358,7 @@ static void test_partial_read()
         rt_string mode = make_string("w");
 
         void *bf = rt_binfile_open(path, mode);
-        for (int i = 0; i < 10; ++i)
-        {
+        for (int i = 0; i < 10; ++i) {
             rt_binfile_write_byte(bf, (int64_t)(i + 1));
         }
         rt_binfile_close(bf);
@@ -393,8 +377,7 @@ static void test_partial_read()
         assert(read == 5);
 
         // First 10 bytes should be 0
-        for (int i = 0; i < 10; ++i)
-        {
+        for (int i = 0; i < 10; ++i) {
             assert(rt_bytes_get(bytes, i) == 0);
         }
 
@@ -411,8 +394,7 @@ static void test_partial_read()
     cleanup_test_file();
 }
 
-static void test_partial_write()
-{
+static void test_partial_write() {
     cleanup_test_file();
 
     // Write from middle of buffer
@@ -455,8 +437,7 @@ static void test_partial_write()
     cleanup_test_file();
 }
 
-static void test_flush()
-{
+static void test_flush() {
     cleanup_test_file();
 
     rt_string path = make_string(test_file);
@@ -482,8 +463,7 @@ static void test_flush()
     cleanup_test_file();
 }
 
-static void test_null_handling()
-{
+static void test_null_handling() {
     // Null file operations should return safe defaults
     assert(rt_binfile_pos(nullptr) == -1);
     assert(rt_binfile_size(nullptr) == -1);
@@ -494,8 +474,7 @@ static void test_null_handling()
     rt_binfile_flush(nullptr);
 }
 
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
     printf("Test skipped: POSIX temp paths not available on Windows\n");

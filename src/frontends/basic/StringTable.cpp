@@ -17,8 +17,7 @@
 
 #include "frontends/basic/StringTable.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Construct a string table with an emitter callback.
 /// @details Stores the provided callback and leaves the table empty; no globals
@@ -30,8 +29,7 @@ StringTable::StringTable(GlobalEmitter emitter) : emitter_(std::move(emitter)) {
 /// @details Updates the callback used for subsequent @ref intern calls. Existing
 ///          cached strings are not re-emitted when the emitter changes.
 /// @param emitter New callback for emitting string globals.
-void StringTable::setEmitter(GlobalEmitter emitter)
-{
+void StringTable::setEmitter(GlobalEmitter emitter) {
     emitter_ = std::move(emitter);
 }
 
@@ -45,8 +43,7 @@ void StringTable::setEmitter(GlobalEmitter emitter)
 ///          emitter callback if present, records the mapping, and returns it.
 /// @param content String literal content to intern.
 /// @return Deterministic label for the content.
-std::string StringTable::intern(const std::string &content)
-{
+std::string StringTable::intern(const std::string &content) {
     // Check if already interned
     auto it = stringToLabel_.find(content);
     if (it != stringToLabel_.end())
@@ -67,8 +64,7 @@ std::string StringTable::intern(const std::string &content)
 /// @brief Check whether a string literal has been interned.
 /// @param content String literal content to query.
 /// @return True if the table already contains a label for @p content.
-bool StringTable::contains(const std::string &content) const
-{
+bool StringTable::contains(const std::string &content) const {
     return stringToLabel_.find(content) != stringToLabel_.end();
 }
 
@@ -76,8 +72,7 @@ bool StringTable::contains(const std::string &content) const
 /// @details This does not call the emitter or allocate new labels.
 /// @param content String literal content to look up.
 /// @return Cached label, or an empty string if not interned.
-std::string StringTable::lookup(const std::string &content) const
-{
+std::string StringTable::lookup(const std::string &content) const {
     auto it = stringToLabel_.find(content);
     if (it != stringToLabel_.end())
         return it->second;
@@ -89,21 +84,18 @@ std::string StringTable::lookup(const std::string &content) const
 // =============================================================================
 
 /// @brief Return the number of unique strings in the table.
-std::size_t StringTable::size() const noexcept
-{
+std::size_t StringTable::size() const noexcept {
     return stringToLabel_.size();
 }
 
 /// @brief Check whether the table is empty.
-bool StringTable::empty() const noexcept
-{
+bool StringTable::empty() const noexcept {
     return stringToLabel_.empty();
 }
 
 /// @brief Report the next label id that would be assigned.
 /// @details Useful for debugging and deterministic output checks.
-std::size_t StringTable::nextId() const noexcept
-{
+std::size_t StringTable::nextId() const noexcept {
     return nextId_;
 }
 
@@ -114,8 +106,7 @@ std::size_t StringTable::nextId() const noexcept
 /// @brief Remove all cached literals and reset the label counter.
 /// @details This does not emit any diagnostics or callbacks; it simply clears
 ///          the local cache and returns the table to its initial state.
-void StringTable::clear()
-{
+void StringTable::clear() {
     stringToLabel_.clear();
     nextId_ = 0;
 }
@@ -123,8 +114,7 @@ void StringTable::clear()
 /// @brief Reset the label counter without clearing cached literals.
 /// @details Intended for specialized tooling; if existing entries remain, the
 ///          next generated label may collide with earlier labels.
-void StringTable::resetCounter()
-{
+void StringTable::resetCounter() {
     nextId_ = 0;
 }
 
@@ -136,8 +126,7 @@ void StringTable::resetCounter()
 /// @details Labels are emitted as ".L<id>" where @c id is a monotonically
 ///          increasing counter.
 /// @return Newly generated label string.
-std::string StringTable::generateLabel()
-{
+std::string StringTable::generateLabel() {
     return ".L" + std::to_string(nextId_++);
 }
 

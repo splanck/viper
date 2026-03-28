@@ -23,17 +23,13 @@ using viper::tui::style::Theme;
 using viper::tui::text::TextBuffer;
 using viper::tui::views::TextView;
 
-namespace
-{
-std::string makeLargeBuffer(std::size_t lines, std::size_t width)
-{
+namespace {
+std::string makeLargeBuffer(std::size_t lines, std::size_t width) {
     std::string text;
     text.reserve(lines * (width + 1));
-    for (std::size_t i = 0; i < lines; ++i)
-    {
+    for (std::size_t i = 0; i < lines; ++i) {
         text.append(width, static_cast<char>('a' + static_cast<char>(i % 26))); // ASCII payload
-        if (i + 1 < lines)
-        {
+        if (i + 1 < lines) {
             text.push_back('\n');
         }
     }
@@ -41,8 +37,7 @@ std::string makeLargeBuffer(std::size_t lines, std::size_t width)
 }
 } // namespace
 
-TEST(TUI, TextViewLargeBuffer)
-{
+TEST(TUI, TextViewLargeBuffer) {
     constexpr std::size_t kLines = 2048;
     constexpr std::size_t kWidth = 96;
 
@@ -86,8 +81,7 @@ TEST(TUI, TextViewLargeBuffer)
     ASSERT_EQ(view.cursorCol(), kWidth);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

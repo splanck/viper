@@ -20,8 +20,7 @@
 
 #include "MachineIR.hpp"
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 /// \brief Run conservative Machine IR peepholes for the x86-64 backend.
 /// \details Applies pattern-based local rewrites to the Machine IR, including

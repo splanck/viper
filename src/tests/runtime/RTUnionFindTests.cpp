@@ -10,28 +10,24 @@
 
 #include <cassert>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static void test_new()
-{
+static void test_new() {
     void *uf = rt_unionfind_new(10);
     assert(uf != NULL);
     assert(rt_unionfind_count(uf) == 10); // 10 disjoint sets
 }
 
-static void test_find()
-{
+static void test_find() {
     void *uf = rt_unionfind_new(5);
     // Each element is its own representative
     assert(rt_unionfind_find(uf, 0) == 0);
     assert(rt_unionfind_find(uf, 4) == 4);
 }
 
-static void test_union()
-{
+static void test_union() {
     void *uf = rt_unionfind_new(5);
 
     int64_t merged = rt_unionfind_union(uf, 0, 1);
@@ -42,8 +38,7 @@ static void test_union()
     assert(rt_unionfind_find(uf, 0) == rt_unionfind_find(uf, 1));
 }
 
-static void test_already_connected()
-{
+static void test_already_connected() {
     void *uf = rt_unionfind_new(5);
     rt_unionfind_union(uf, 0, 1);
 
@@ -52,8 +47,7 @@ static void test_already_connected()
     assert(rt_unionfind_count(uf) == 4);
 }
 
-static void test_connected()
-{
+static void test_connected() {
     void *uf = rt_unionfind_new(5);
     assert(rt_unionfind_connected(uf, 0, 1) == 0);
 
@@ -62,8 +56,7 @@ static void test_connected()
     assert(rt_unionfind_connected(uf, 0, 2) == 0);
 }
 
-static void test_transitive()
-{
+static void test_transitive() {
     void *uf = rt_unionfind_new(5);
     rt_unionfind_union(uf, 0, 1);
     rt_unionfind_union(uf, 1, 2);
@@ -73,8 +66,7 @@ static void test_transitive()
     assert(rt_unionfind_count(uf) == 3);
 }
 
-static void test_set_size()
-{
+static void test_set_size() {
     void *uf = rt_unionfind_new(5);
     assert(rt_unionfind_set_size(uf, 0) == 1);
 
@@ -86,8 +78,7 @@ static void test_set_size()
     assert(rt_unionfind_set_size(uf, 0) == 3);
 }
 
-static void test_reset()
-{
+static void test_reset() {
     void *uf = rt_unionfind_new(5);
     rt_unionfind_union(uf, 0, 1);
     rt_unionfind_union(uf, 2, 3);
@@ -98,8 +89,7 @@ static void test_reset()
     assert(rt_unionfind_connected(uf, 0, 1) == 0);
 }
 
-static void test_many_unions()
-{
+static void test_many_unions() {
     void *uf = rt_unionfind_new(100);
 
     // Connect all even numbers
@@ -118,16 +108,14 @@ static void test_many_unions()
     assert(rt_unionfind_connected(uf, 0, 1) == 0);
 }
 
-static void test_out_of_range()
-{
+static void test_out_of_range() {
     void *uf = rt_unionfind_new(5);
     assert(rt_unionfind_find(uf, -1) == -1);
     assert(rt_unionfind_find(uf, 5) == -1);
     assert(rt_unionfind_union(uf, 0, 10) == 0);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_unionfind_find(NULL, 0) == -1);
     assert(rt_unionfind_union(NULL, 0, 1) == 0);
     assert(rt_unionfind_connected(NULL, 0, 1) == 0);
@@ -136,8 +124,7 @@ static void test_null_safety()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_new();
     test_find();
     test_union();

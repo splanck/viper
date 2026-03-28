@@ -26,17 +26,14 @@
 #include <sstream>
 #include <string>
 
-namespace
-{
-struct InvalidCase
-{
+namespace {
+struct InvalidCase {
     const char *fileName;
     std::initializer_list<const char *> expectedSubstrings;
 };
 } // namespace
 
-TEST(IL, InvalidEhTests)
-{
+TEST(IL, InvalidEhTests) {
     using il::api::v2::parse_text_expected;
     using il::api::v2::verify_module_expected;
 
@@ -48,8 +45,7 @@ TEST(IL, InvalidEhTests)
          {"verify.eh.resume_label_target", "must postdominate block"}},
     }};
 
-    for (const auto &testCase : cases)
-    {
+    for (const auto &testCase : cases) {
         const std::string path = std::string(INVALID_EH_DIR) + "/" + testCase.fileName;
         std::ifstream in(path);
         ASSERT_TRUE(in);
@@ -66,15 +62,13 @@ TEST(IL, InvalidEhTests)
         const std::string diagText = diag.str();
         ASSERT_FALSE(diagText.empty());
 
-        for (const char *expected : testCase.expectedSubstrings)
-        {
+        for (const char *expected : testCase.expectedSubstrings) {
             ASSERT_TRUE(diagText.find(expected) != std::string::npos);
         }
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -25,16 +25,13 @@
 #include <optional>
 #include <string>
 
-namespace il::frontends::common::escape_sequences
-{
+namespace il::frontends::common::escape_sequences {
 
 /// @brief Map a simple escape character to its value.
 /// @param c The character after the backslash (e.g., 'n' for \n).
 /// @return The escaped character value, or nullopt for unrecognized escapes.
-[[nodiscard]] inline std::optional<char> processEscape(char c) noexcept
-{
-    switch (c)
-    {
+[[nodiscard]] inline std::optional<char> processEscape(char c) noexcept {
+    switch (c) {
         case 'n':
             return '\n';
         case 'r':
@@ -68,8 +65,7 @@ namespace il::frontends::common::escape_sequences
 /// @param high The first hex digit character.
 /// @param low The second hex digit character.
 /// @return The decoded byte, or nullopt if either character is not a valid hex digit.
-[[nodiscard]] inline std::optional<char> processHexEscape(char high, char low) noexcept
-{
+[[nodiscard]] inline std::optional<char> processHexEscape(char high, char low) noexcept {
     int h = char_utils::hexDigitValue(high);
     if (h < 0)
         return std::nullopt;
@@ -82,33 +78,23 @@ namespace il::frontends::common::escape_sequences
 /// @brief Convert a Unicode codepoint to its UTF-8 encoding.
 /// @param codepoint Unicode codepoint (U+0000 to U+10FFFF).
 /// @return The UTF-8 encoded string, or nullopt if the codepoint is out of range.
-[[nodiscard]] inline std::optional<std::string> codepointToUtf8(uint32_t codepoint)
-{
+[[nodiscard]] inline std::optional<std::string> codepointToUtf8(uint32_t codepoint) {
     std::string result;
-    if (codepoint <= 0x7F)
-    {
+    if (codepoint <= 0x7F) {
         result.push_back(static_cast<char>(codepoint));
-    }
-    else if (codepoint <= 0x7FF)
-    {
+    } else if (codepoint <= 0x7FF) {
         result.push_back(static_cast<char>(0xC0 | (codepoint >> 6)));
         result.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
-    }
-    else if (codepoint <= 0xFFFF)
-    {
+    } else if (codepoint <= 0xFFFF) {
         result.push_back(static_cast<char>(0xE0 | (codepoint >> 12)));
         result.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
         result.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
-    }
-    else if (codepoint <= 0x10FFFF)
-    {
+    } else if (codepoint <= 0x10FFFF) {
         result.push_back(static_cast<char>(0xF0 | (codepoint >> 18)));
         result.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3F)));
         result.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3F)));
         result.push_back(static_cast<char>(0x80 | (codepoint & 0x3F)));
-    }
-    else
-    {
+    } else {
         return std::nullopt; // Invalid codepoint
     }
     return result;
@@ -117,11 +103,9 @@ namespace il::frontends::common::escape_sequences
 /// @brief Parse 4 hex digit characters into a Unicode codepoint.
 /// @param digits Pointer to exactly 4 characters to parse.
 /// @return The codepoint value, or nullopt if any character is not a valid hex digit.
-[[nodiscard]] inline std::optional<uint32_t> parseUnicodeHexDigits(const char *digits) noexcept
-{
+[[nodiscard]] inline std::optional<uint32_t> parseUnicodeHexDigits(const char *digits) noexcept {
     uint32_t codepoint = 0;
-    for (int i = 0; i < 4; ++i)
-    {
+    for (int i = 0; i < 4; ++i) {
         int val = char_utils::hexDigitValue(digits[i]);
         if (val < 0)
             return std::nullopt;
@@ -136,8 +120,7 @@ namespace il::frontends::common::escape_sequences
 ///
 /// @details Parses the 4 hex digit characters and converts the resulting
 ///          codepoint to UTF-8. Supports the full BMP range (U+0000 to U+FFFF).
-[[nodiscard]] inline std::optional<std::string> processUnicodeEscape(const char *digits)
-{
+[[nodiscard]] inline std::optional<std::string> processUnicodeEscape(const char *digits) {
     auto cp = parseUnicodeHexDigits(digits);
     if (!cp)
         return std::nullopt;

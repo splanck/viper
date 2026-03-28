@@ -24,16 +24,14 @@
 
 #include "il/transform/PassRegistry.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Convert double self-recursion with associative combination into
 ///        single recursion with an accumulator loop.
 ///
 /// Detects patterns like `fib(n) = fib(n-1) + fib(n-2)` and transforms the
 /// second recursive call into a loop iteration, halving total function calls.
-class SiblingRecursion : public FunctionPass
-{
+class SiblingRecursion : public FunctionPass {
   public:
     std::string_view id() const override;
     PreservedAnalyses run(core::Function &function, AnalysisManager &analysis) override;

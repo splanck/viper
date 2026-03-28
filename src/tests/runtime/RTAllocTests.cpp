@@ -18,13 +18,11 @@
 #include <cassert>
 #include <string>
 
-static void call_alloc_negative()
-{
+static void call_alloc_negative() {
     rt_alloc(-1);
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

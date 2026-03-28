@@ -21,15 +21,13 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Helper to get seq element as string.
-static const char *seq_get_str(void *seq, int64_t idx)
-{
+static const char *seq_get_str(void *seq, int64_t idx) {
     rt_string s = (rt_string)rt_seq_get(seq, idx);
     return rt_string_cstr(s);
 }
@@ -38,8 +36,7 @@ static const char *seq_get_str(void *seq, int64_t idx)
 // IsMatch Tests
 //=============================================================================
 
-static void test_is_match()
-{
+static void test_is_match() {
     printf("Testing Pattern.IsMatch:\n");
 
     // Literal matching
@@ -149,8 +146,7 @@ static void test_is_match()
 // Find Tests
 //=============================================================================
 
-static void test_find()
-{
+static void test_find() {
     printf("Testing Pattern.Find:\n");
 
     // Basic find
@@ -177,8 +173,7 @@ static void test_find()
 // FindFrom Tests
 //=============================================================================
 
-static void test_find_from()
-{
+static void test_find_from() {
     printf("Testing Pattern.FindFrom:\n");
 
     rt_string text = rt_const_cstr("abc123def456ghi789");
@@ -211,8 +206,7 @@ static void test_find_from()
 // FindPos Tests
 //=============================================================================
 
-static void test_find_pos()
-{
+static void test_find_pos() {
     printf("Testing Pattern.FindPos:\n");
 
     // Find position of match
@@ -238,8 +232,7 @@ static void test_find_pos()
 // FindAll Tests
 //=============================================================================
 
-static void test_find_all()
-{
+static void test_find_all() {
     printf("Testing Pattern.FindAll:\n");
 
     // Find all numbers
@@ -267,8 +260,7 @@ static void test_find_all()
 // Replace Tests
 //=============================================================================
 
-static void test_replace()
-{
+static void test_replace() {
     printf("Testing Pattern.Replace:\n");
 
     // Replace all digits
@@ -302,8 +294,7 @@ static void test_replace()
 // ReplaceFirst Tests
 //=============================================================================
 
-static void test_replace_first()
-{
+static void test_replace_first() {
     printf("Testing Pattern.ReplaceFirst:\n");
 
     // Replace first digit sequence only
@@ -331,8 +322,7 @@ static void test_replace_first()
 // Split Tests
 //=============================================================================
 
-static void test_split()
-{
+static void test_split() {
     printf("Testing Pattern.Split:\n");
 
     // Split by comma
@@ -369,8 +359,7 @@ static void test_split()
 // Escape Tests
 //=============================================================================
 
-static void test_escape()
-{
+static void test_escape() {
     printf("Testing Pattern.Escape:\n");
 
     // Escape special characters
@@ -410,8 +399,7 @@ static void test_escape()
 // Non-Greedy Quantifier Tests
 //=============================================================================
 
-static void test_non_greedy()
-{
+static void test_non_greedy() {
     printf("Testing Non-Greedy Quantifiers:\n");
 
     // Greedy quantifier behavior with backtracking
@@ -441,8 +429,7 @@ static void test_non_greedy()
 // Edge Case Tests
 //=============================================================================
 
-static void test_edge_cases()
-{
+static void test_edge_cases() {
     printf("Testing Edge Cases:\n");
 
     // Empty pattern matches anywhere
@@ -486,8 +473,7 @@ static void test_edge_cases()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Pattern (Regex) Tests ===\n\n");
 
     test_is_match();

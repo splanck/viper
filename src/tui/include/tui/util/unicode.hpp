@@ -32,8 +32,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::tui::util
-{
+namespace viper::tui::util {
 /// @brief Determine the terminal display width of a Unicode code point.
 /// @details Returns the number of terminal columns the character occupies:
 ///          0 for combining marks and zero-width characters, 2 for wide CJK

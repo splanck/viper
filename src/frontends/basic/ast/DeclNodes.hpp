@@ -19,11 +19,9 @@
 
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 /// @brief Root node partitioning procedure declarations from main statements.
-struct Program
-{
+struct Program {
     /// FUNCTION/SUB declarations in order.
     std::vector<ProcDecl> procs;
 

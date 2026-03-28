@@ -25,22 +25,21 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Generate cryptographically secure random bytes.
-    /// @param count Number of bytes to generate (must be >= 1).
-    /// @return A Bytes object containing the random bytes.
-    /// @note Traps if count < 1.
-    void *rt_crypto_rand_bytes(int64_t count);
+/// @brief Generate cryptographically secure random bytes.
+/// @param count Number of bytes to generate (must be >= 1).
+/// @return A Bytes object containing the random bytes.
+/// @note Traps if count < 1.
+void *rt_crypto_rand_bytes(int64_t count);
 
-    /// @brief Generate a cryptographically secure random integer in range [min, max].
-    /// @param min Minimum value (inclusive).
-    /// @param max Maximum value (inclusive).
-    /// @return Random integer in the specified range.
-    /// @note Traps if min > max.
-    int64_t rt_crypto_rand_int(int64_t min, int64_t max);
+/// @brief Generate a cryptographically secure random integer in range [min, max].
+/// @param min Minimum value (inclusive).
+/// @param max Maximum value (inclusive).
+/// @return Random integer in the specified range.
+/// @note Traps if min > max.
+int64_t rt_crypto_rand_int(int64_t min, int64_t max);
 
 #ifdef __cplusplus
 }

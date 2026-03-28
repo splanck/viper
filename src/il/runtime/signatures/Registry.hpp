@@ -23,15 +23,12 @@
 #include <utility>
 #include <vector>
 
-namespace il::runtime::signatures
-{
+namespace il::runtime::signatures {
 
 /// @brief Describe a parameter or result using a coarse type bucket.
-struct SigParam
-{
+struct SigParam {
     /// @brief Enumerate supported coarse-grained type categories.
-    enum Kind
-    {
+    enum Kind {
         I1,  ///< Boolean value.
         I32, ///< 32-bit integral value.
         I64, ///< 64-bit integral value.
@@ -43,8 +40,7 @@ struct SigParam
 };
 
 /// @brief Capture the expected signature shape for a runtime helper.
-struct Signature
-{
+struct Signature {
     std::string name;             ///< Canonical runtime symbol name.
     std::vector<SigParam> params; ///< Parameter type sequence.
     std::vector<SigParam> rets;   ///< Result type sequence (empty for void).
@@ -71,8 +67,7 @@ inline Signature make_signature(std::string name,
                                 std::initializer_list<SigParam::Kind> returns = {},
                                 bool nothrow = false,
                                 bool readonly = false,
-                                bool pure = false)
-{
+                                bool pure = false) {
     Signature signature;
     signature.name = std::move(name);
     signature.params.reserve(params.size());

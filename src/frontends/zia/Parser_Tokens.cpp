@@ -12,11 +12,9 @@
 
 #include "frontends/zia/Parser.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
-Parser::Parser(Lexer &lexer, il::support::DiagnosticEngine &diag) : lexer_(lexer), diag_(diag)
-{
+Parser::Parser(Lexer &lexer, il::support::DiagnosticEngine &diag) : lexer_(lexer), diag_(diag) {
     tokens_.push_back(lexer_.next());
 }
 
@@ -25,52 +23,43 @@ Parser::Parser(Lexer &lexer, il::support::DiagnosticEngine &diag) : lexer_(lexer
 //===----------------------------------------------------------------------===//
 
 Parser::Speculation::Speculation(Parser &parser)
-    : parser_(parser), savedPos_(parser.tokenPos_), savedHasError_(parser.hasError_)
-{
+    : parser_(parser), savedPos_(parser.tokenPos_), savedHasError_(parser.hasError_) {
     ++parser_.suppressionDepth_;
 }
 
-Parser::Speculation::~Speculation()
-{
+Parser::Speculation::~Speculation() {
     --parser_.suppressionDepth_;
-    if (!committed_)
-    {
+    if (!committed_) {
         parser_.tokenPos_ = savedPos_;
         parser_.hasError_ = savedHasError_;
     }
 }
 
-const Token &Parser::peek(size_t offset)
-{
-    while (tokens_.size() <= tokenPos_ + offset)
-    {
+const Token &Parser::peek(size_t offset) {
+    while (tokens_.size() <= tokenPos_ + offset) {
         tokens_.push_back(lexer_.next());
     }
     return tokens_[tokenPos_ + offset];
 }
 
-Token Parser::advance()
-{
+Token Parser::advance() {
     Token cur = peek();
     ++tokenPos_;
     compactBufferedTokens();
     return cur;
 }
 
-bool Parser::check(TokenKind kind, size_t offset)
-{
+bool Parser::check(TokenKind kind, size_t offset) {
     return peek(offset).kind == kind;
 }
 
-bool Parser::checkIdentifierLike()
-{
+bool Parser::checkIdentifierLike() {
     // Allow identifiers and certain contextual keywords that can be used as names
     if (peek().kind == TokenKind::Identifier)
         return true;
 
     // These keywords can be used as identifiers in parameter/variable contexts
-    switch (peek().kind)
-    {
+    switch (peek().kind) {
         case TokenKind::KwValue: // Common parameter name (e.g., setValue(Integer value))
         case TokenKind::KwMatch: // Common variable name (e.g., var match = false)
             return true;
@@ -79,10 +68,8 @@ bool Parser::checkIdentifierLike()
     }
 }
 
-bool Parser::match(TokenKind kind, Token *out)
-{
-    if (check(kind))
-    {
+bool Parser::match(TokenKind kind, Token *out) {
+    if (check(kind)) {
         Token tok = advance();
         if (out)
             *out = tok;
@@ -91,10 +78,8 @@ bool Parser::match(TokenKind kind, Token *out)
     return false;
 }
 
-bool Parser::expect(TokenKind kind, const char *what, Token *out)
-{
-    if (check(kind))
-    {
+bool Parser::expect(TokenKind kind, const char *what, Token *out) {
+    if (check(kind)) {
         Token tok = advance();
         if (out)
             *out = tok;
@@ -104,8 +89,7 @@ bool Parser::expect(TokenKind kind, const char *what, Token *out)
     return false;
 }
 
-void Parser::compactBufferedTokens()
-{
+void Parser::compactBufferedTokens() {
     // Do not compact during speculative parsing; saved token positions are
     // relative to the current buffer.
     if (suppressionDepth_ > 0)
@@ -119,23 +103,19 @@ void Parser::compactBufferedTokens()
     tokenPos_ = 0;
 }
 
-void Parser::resyncAfterError()
-{
+void Parser::resyncAfterError() {
     // Bounded token consumption prevents compiler hang on pathological input
     // lacking statement boundaries.
     constexpr unsigned kMaxResyncTokens = 10000;
     unsigned consumed = 0;
 
-    while (!check(TokenKind::Eof) && consumed < kMaxResyncTokens)
-    {
-        if (check(TokenKind::Semicolon))
-        {
+    while (!check(TokenKind::Eof) && consumed < kMaxResyncTokens) {
+        if (check(TokenKind::Semicolon)) {
             advance();
             return;
         }
         if (check(TokenKind::RBrace) || check(TokenKind::KwFunc) || check(TokenKind::KwValue) ||
-            check(TokenKind::KwEntity) || check(TokenKind::KwInterface))
-        {
+            check(TokenKind::KwEntity) || check(TokenKind::KwInterface)) {
             return;
         }
         advance();
@@ -147,13 +127,11 @@ void Parser::resyncAfterError()
 // Error Handling
 //===----------------------------------------------------------------------===//
 
-void Parser::error(const std::string &message)
-{
+void Parser::error(const std::string &message) {
     errorAt(peek().loc, message);
 }
 
-void Parser::errorAt(SourceLoc loc, const std::string &message)
-{
+void Parser::errorAt(SourceLoc loc, const std::string &message) {
     if (suppressionDepth_ > 0)
         return;
     hasError_ = true;

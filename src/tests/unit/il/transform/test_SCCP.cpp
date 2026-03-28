@@ -30,22 +30,18 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-BasicBlock *findBlock(Function &function, const std::string &label)
-{
+BasicBlock *findBlock(Function &function, const std::string &label) {
     for (auto &block : function.blocks)
         if (block.label == label)
             return &block;
     return nullptr;
 }
 
-void runSimplifyCFG(Module &module, Function &function)
-{
+void runSimplifyCFG(Module &module, Function &function) {
     auto verified = il::verify::Verifier::verify(module);
-    if (!verified)
-    {
+    if (!verified) {
         il::support::printDiag(verified.error(), std::cerr);
     }
     ASSERT_TRUE(verified);
@@ -56,8 +52,7 @@ void runSimplifyCFG(Module &module, Function &function)
 }
 
 /// Build a two-way branch with a block-param join to test SCCP constant folding.
-Module buildConstBranchModule()
-{
+Module buildConstBranchModule() {
     Module module;
     Function fn;
     fn.name = "sccp_phi_branch";
@@ -165,8 +160,7 @@ Module buildConstBranchModule()
 }
 
 /// Build a module where the branch condition is a known trapping divide-by-zero.
-Module buildTrappingConditionModule()
-{
+Module buildTrappingConditionModule() {
     Module module;
     Function fn;
     fn.name = "sccp_trap_guard";
@@ -236,8 +230,7 @@ Module buildTrappingConditionModule()
 
 /// Build a switch with explicit branch arguments to ensure SCCP rewrites switch
 /// terminators conservatively and preserves argument forwarding.
-Module buildConstantSwitchModule()
-{
+Module buildConstantSwitchModule() {
     Module module;
     Function fn;
     fn.name = "sccp_switch";
@@ -295,8 +288,7 @@ Module buildConstantSwitchModule()
 
 } // namespace
 
-TEST(SCCP, FoldsConstantBranchAndPhi)
-{
+TEST(SCCP, FoldsConstantBranchAndPhi) {
     Module module = buildConstBranchModule();
     Function &function = module.functions.front();
 
@@ -307,10 +299,8 @@ TEST(SCCP, FoldsConstantBranchAndPhi)
     ASSERT_EQ(findBlock(function, "ret_false"), nullptr);
 
     bool foundConstRet = false;
-    for (auto &block : function.blocks)
-    {
-        for (auto &instr : block.instructions)
-        {
+    for (auto &block : function.blocks) {
+        for (auto &instr : block.instructions) {
             if (instr.op != Opcode::Ret || instr.operands.empty())
                 continue;
             const Value &retVal = instr.operands[0];
@@ -322,8 +312,7 @@ TEST(SCCP, FoldsConstantBranchAndPhi)
     ASSERT_TRUE(foundConstRet);
 }
 
-TEST(SCCP, DoesNotFoldTrappingDivision)
-{
+TEST(SCCP, DoesNotFoldTrappingDivision) {
     Module module = buildTrappingConditionModule();
     Function &function = module.functions.front();
 
@@ -346,8 +335,7 @@ TEST(SCCP, DoesNotFoldTrappingDivision)
     EXPECT_EQ(term.operands[0].kind, Value::Kind::Temp);
 }
 
-TEST(SCCP, RewritesSwitchOnConstant)
-{
+TEST(SCCP, RewritesSwitchOnConstant) {
     Module module = buildConstantSwitchModule();
     Function &function = module.functions.front();
 
@@ -358,8 +346,7 @@ TEST(SCCP, RewritesSwitchOnConstant)
     ASSERT_NE(entry, nullptr);
     ASSERT_EQ(entry->instructions.size(), 1U);
     Instr &ret = entry->instructions.back();
-    if (ret.op != Opcode::Ret)
-    {
+    if (ret.op != Opcode::Ret) {
         std::cerr << il::io::Serializer::toString(module, il::io::Serializer::Mode::Pretty);
     }
     ASSERT_EQ(ret.op, Opcode::Ret);
@@ -372,8 +359,7 @@ TEST(SCCP, RewritesSwitchOnConstant)
     EXPECT_EQ(findBlock(function, "hit"), nullptr);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

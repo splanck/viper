@@ -22,15 +22,13 @@
 
 #include "il/transform/PassRegistry.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Induction variable simplification and loop strength reduction pass.
 /// @details Normalises counted loops to canonical form (i < bound, positive step)
 ///          and rewrites linear expressions of induction variables into incremental
 ///          loop-carried updates, reducing computation within loop bodies.
-class IndVarSimplify : public FunctionPass
-{
+class IndVarSimplify : public FunctionPass {
   public:
     /// @brief Return the pass identifier string ("indvars").
     /// @return A string view identifying this pass in the registry.

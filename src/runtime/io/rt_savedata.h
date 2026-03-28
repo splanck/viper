@@ -30,50 +30,49 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Create a new SaveData instance for the given game name.
-    /// @param game_name Identifier used to compute the save file path.
-    /// @return Opaque SaveData handle.
-    void *rt_savedata_new(rt_string game_name);
+/// @brief Create a new SaveData instance for the given game name.
+/// @param game_name Identifier used to compute the save file path.
+/// @return Opaque SaveData handle.
+void *rt_savedata_new(rt_string game_name);
 
-    /// @brief Store an integer value.
-    void rt_savedata_set_int(void *sd, rt_string key, int64_t value);
+/// @brief Store an integer value.
+void rt_savedata_set_int(void *sd, rt_string key, int64_t value);
 
-    /// @brief Store a string value.
-    void rt_savedata_set_string(void *sd, rt_string key, rt_string value);
+/// @brief Store a string value.
+void rt_savedata_set_string(void *sd, rt_string key, rt_string value);
 
-    /// @brief Retrieve an integer value, or default if key not found.
-    int64_t rt_savedata_get_int(void *sd, rt_string key, int64_t default_val);
+/// @brief Retrieve an integer value, or default if key not found.
+int64_t rt_savedata_get_int(void *sd, rt_string key, int64_t default_val);
 
-    /// @brief Retrieve a string value, or default if key not found.
-    rt_string rt_savedata_get_string(void *sd, rt_string key, rt_string default_val);
+/// @brief Retrieve a string value, or default if key not found.
+rt_string rt_savedata_get_string(void *sd, rt_string key, rt_string default_val);
 
-    /// @brief Write all key-value pairs to the save file.
-    /// @return 1 on success, 0 on failure.
-    int8_t rt_savedata_save(void *sd);
+/// @brief Write all key-value pairs to the save file.
+/// @return 1 on success, 0 on failure.
+int8_t rt_savedata_save(void *sd);
 
-    /// @brief Load key-value pairs from the save file, merging into current data.
-    /// @return 1 on success, 0 if file not found or parse error.
-    int8_t rt_savedata_load(void *sd);
+/// @brief Load key-value pairs from the save file, merging into current data.
+/// @return 1 on success, 0 if file not found or parse error.
+int8_t rt_savedata_load(void *sd);
 
-    /// @brief Check if a key exists.
-    int8_t rt_savedata_has_key(void *sd, rt_string key);
+/// @brief Check if a key exists.
+int8_t rt_savedata_has_key(void *sd, rt_string key);
 
-    /// @brief Remove a key and its value.
-    /// @return 1 if removed, 0 if not found.
-    int8_t rt_savedata_remove(void *sd, rt_string key);
+/// @brief Remove a key and its value.
+/// @return 1 if removed, 0 if not found.
+int8_t rt_savedata_remove(void *sd, rt_string key);
 
-    /// @brief Remove all key-value pairs.
-    void rt_savedata_clear(void *sd);
+/// @brief Remove all key-value pairs.
+void rt_savedata_clear(void *sd);
 
-    /// @brief Get the number of stored key-value pairs.
-    int64_t rt_savedata_count(void *sd);
+/// @brief Get the number of stored key-value pairs.
+int64_t rt_savedata_count(void *sd);
 
-    /// @brief Get the computed save file path.
-    rt_string rt_savedata_get_path(void *sd);
+/// @brief Get the computed save file path.
+rt_string rt_savedata_get_path(void *sd);
 
 #ifdef __cplusplus
 }

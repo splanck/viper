@@ -19,8 +19,7 @@
 
 #include <string>
 
-namespace viper::tui::util
-{
+namespace viper::tui::util {
 
 /// @brief Parse a hex RGB color string into an RGBA struct.
 /// @details Accepts colors in the forms "#RRGGBB" or "RRGGBB" and stores the

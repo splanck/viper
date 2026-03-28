@@ -22,27 +22,23 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 // Helper to convert double to int64_t bit pattern for Value::constInt
-int64_t doubleBits(double d)
-{
+int64_t doubleBits(double d) {
     int64_t bits;
     std::memcpy(&bits, &d, sizeof(bits));
     return bits;
 }
 
 // Helper to convert int64_t back to double
-double bitsToDouble(int64_t bits)
-{
+double bitsToDouble(int64_t bits) {
     double d;
     std::memcpy(&d, &bits, sizeof(d));
     return d;
 }
 
 // Build function: int64 -> double (Sitofp)
-void buildSitofpFunction(Module &module, int64_t val)
-{
+void buildSitofpFunction(Module &module, int64_t val) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -67,8 +63,7 @@ void buildSitofpFunction(Module &module, int64_t val)
 }
 
 // Build function: double -> int64 (Fptosi)
-void buildFptosiFunction(Module &module, double val)
-{
+void buildFptosiFunction(Module &module, double val) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -100,16 +95,14 @@ void buildFptosiFunction(Module &module, double val)
     bb.instructions.push_back(ret);
 }
 
-double runSitofp(int64_t val)
-{
+double runSitofp(int64_t val) {
     Module module;
     buildSitofpFunction(module, val);
     viper::tests::VmFixture fixture;
     return bitsToDouble(fixture.run(module));
 }
 
-int64_t runFptosi(double val)
-{
+int64_t runFptosi(double val) {
     Module module;
     buildFptosiFunction(module, val);
     viper::tests::VmFixture fixture;
@@ -118,8 +111,7 @@ int64_t runFptosi(double val)
 
 } // namespace
 
-int main()
-{
+int main() {
     //=========================================================================
     // Sitofp tests (signed int to float)
     //=========================================================================

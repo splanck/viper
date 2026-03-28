@@ -60,11 +60,9 @@ using namespace viper::codegen::aarch64::passes;
 // Helpers
 // ---------------------------------------------------------------------------
 
-namespace
-{
+namespace {
 
-static il::core::Module parseIL(const std::string &src)
-{
+static il::core::Module parseIL(const std::string &src) {
     std::istringstream ss(src);
     il::core::Module mod;
     if (!il::io::Parser::parse(ss, mod))
@@ -73,8 +71,7 @@ static il::core::Module parseIL(const std::string &src)
 }
 
 /// Build a PassManager with the scheduler inserted between RA and Peephole.
-static PassManager buildScheduledPipeline()
-{
+static PassManager buildScheduledPipeline() {
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
     pm.addPass(std::make_unique<RegAllocPass>());
@@ -85,12 +82,10 @@ static PassManager buildScheduledPipeline()
 }
 
 /// Count occurrences of a literal substring in a string.
-static int countSubstr(const std::string &text, const std::string &needle)
-{
+static int countSubstr(const std::string &text, const std::string &needle) {
     int n = 0;
     std::size_t pos = 0;
-    while ((pos = text.find(needle, pos)) != std::string::npos)
-    {
+    while ((pos = text.find(needle, pos)) != std::string::npos) {
         ++n;
         pos += needle.size();
     }
@@ -106,8 +101,7 @@ static int countSubstr(const std::string &text, const std::string &needle)
 // Run a simple function through the full scheduled pipeline and verify
 // the assembly contains the expected instructions.
 //
-TEST(AArch64Scheduler, CorrectOutput)
-{
+TEST(AArch64Scheduler, CorrectOutput) {
     const std::string il = "il 0.1\n"
                            "func @sched_simple() -> i64 {\n"
                            "entry:\n"
@@ -145,8 +139,7 @@ TEST(AArch64Scheduler, CorrectOutput)
 // Compare instruction counts in the unscheduled vs. scheduled assembly.
 // They must be equal: the scheduler must not add or remove instructions.
 //
-TEST(AArch64Scheduler, InstructionCountStable)
-{
+TEST(AArch64Scheduler, InstructionCountStable) {
     const std::string il = "il 0.1\n"
                            "func @count_stable() -> i64 {\n"
                            "entry:\n"
@@ -188,13 +181,11 @@ TEST(AArch64Scheduler, InstructionCountStable)
 
     // Count total instruction lines (lines with leading whitespace).
     // We exclude labels (no leading space) and directives (.text, .globl).
-    auto countInstrs = [](const std::string &asm_)
-    {
+    auto countInstrs = [](const std::string &asm_) {
         int n = 0;
         std::istringstream ss(asm_);
         std::string line;
-        while (std::getline(ss, line))
-        {
+        while (std::getline(ss, line)) {
             if (!line.empty() && (line[0] == ' ' || line[0] == '\t'))
                 ++n;
         }
@@ -205,8 +196,7 @@ TEST(AArch64Scheduler, InstructionCountStable)
     const int schedCount = countInstrs(m2.assembly);
 
     // Scheduling must not add or remove instructions.
-    if (unschCount != schedCount)
-    {
+    if (unschCount != schedCount) {
         std::cerr << "Unscheduled: " << unschCount << " instructions\n"
                   << "Scheduled:   " << schedCount << " instructions\n"
                   << "Unscheduled assembly:\n"
@@ -241,8 +231,7 @@ TEST(AArch64Scheduler, InstructionCountStable)
 //        the load and its first use in the add).  Before scheduling this is 0
 //        or 1; after scheduling this should be >= 1 with the filler inserted.
 //
-TEST(AArch64Scheduler, LoadUseSeparation)
-{
+TEST(AArch64Scheduler, LoadUseSeparation) {
     // Note: IL does not have a direct "load" opcode for this pointer form.
     // We test load-use separation using a multi-multiply pattern that exercises
     // the scheduler's ability to interleave independent instruction streams.
@@ -291,8 +280,7 @@ TEST(AArch64Scheduler, LoadUseSeparation)
 // remain the last instruction in that block.  The scheduler must never move
 // a terminator before non-terminator instructions.
 //
-TEST(AArch64Scheduler, TerminatorLast)
-{
+TEST(AArch64Scheduler, TerminatorLast) {
     const std::string il = "il 0.1\n"
                            "func @loop_sched() -> i64 {\n"
                            "entry:\n"
@@ -329,22 +317,18 @@ TEST(AArch64Scheduler, TerminatorLast)
 
     // Every MIR block's last instruction must be a terminator.
     // This directly verifies the scheduler's invariant at the level it operates.
-    auto isMirTerminator = [](MOpcode opc) -> bool
-    {
+    auto isMirTerminator = [](MOpcode opc) -> bool {
         return opc == MOpcode::Ret || opc == MOpcode::Br || opc == MOpcode::BCond ||
                opc == MOpcode::Cbz || opc == MOpcode::Cbnz;
     };
 
     bool terminatorOk = true;
-    for (const auto &fn : m.mir)
-    {
-        for (const auto &bb : fn.blocks)
-        {
+    for (const auto &fn : m.mir) {
+        for (const auto &bb : fn.blocks) {
             if (bb.instrs.empty())
                 continue;
             const MOpcode lastOpc = bb.instrs.back().opc;
-            if (!isMirTerminator(lastOpc))
-            {
+            if (!isMirTerminator(lastOpc)) {
                 if (bb.name.rfind("L.Ltrap_ovf_", 0) == 0)
                     continue;
                 std::cerr << "Block '" << bb.name << "' does not end with a terminator.\n";
@@ -358,8 +342,7 @@ TEST(AArch64Scheduler, TerminatorLast)
 // ---------------------------------------------------------------------------
 // Test 5: SchedulerPass integrates cleanly into the full PassManager pipeline.
 // ---------------------------------------------------------------------------
-TEST(AArch64Scheduler, PipelineIntegration)
-{
+TEST(AArch64Scheduler, PipelineIntegration) {
     const std::string il = "il 0.1\n"
                            "func @pipeline_test() -> i64 {\n"
                            "entry:\n"
@@ -388,8 +371,7 @@ TEST(AArch64Scheduler, PipelineIntegration)
     EXPECT_NE(m.assembly.find("mul"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

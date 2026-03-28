@@ -38,18 +38,15 @@
 #include <string>
 #include <unordered_map>
 
-namespace il::core
-{
+namespace il::core {
 struct Module;
 struct Global;
 } // namespace il::core
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Ensures module global declarations obey uniqueness rules.
-class GlobalVerifier
-{
+class GlobalVerifier {
   public:
     using GlobalMap = std::unordered_map<std::string, const il::core::Global *>;
 

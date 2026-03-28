@@ -24,19 +24,16 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 /// \brief Options controlling backend emission behaviour.
-struct CodegenOptions
-{
+struct CodegenOptions {
     bool atandtSyntax{true}; ///< Emit AT&T syntax when true; Phase A only supports this form.
     int optimizeLevel{1};    ///< Optimization level: 0 = none, 1 = O1 (default), 2 = O2.
 };
 
 /// \brief Aggregated result of a backend emission request.
-struct CodegenResult
-{
+struct CodegenResult {
     std::string asmText{}; ///< Complete assembly text for the requested module/function.
     std::string errors{};  ///< Phase A diagnostics; empty when emission succeeds.
 };
@@ -49,8 +46,7 @@ struct CodegenResult
 [[nodiscard]] CodegenResult emitModuleToAssembly(const ILModule &mod, const CodegenOptions &opt);
 
 /// \brief Result of binary emission: machine code in CodeSections.
-struct BinaryEmitResult
-{
+struct BinaryEmitResult {
     objfile::CodeSection text{};   ///< Machine code bytes + relocations (merged).
     objfile::CodeSection rodata{}; ///< Read-only data (.rodata / __TEXT,__const).
     std::string errors{};          ///< Diagnostics; empty on success.

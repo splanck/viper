@@ -25,8 +25,7 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace il::frontends::common
-{
+namespace il::frontends::common {
 
 //===----------------------------------------------------------------------===//
 // OOP Name Mangling Functions
@@ -36,8 +35,7 @@ namespace il::frontends::common
 /// @param lhs Class portion of the identifier
 /// @param rhs Member portion (method, constructor, destructor name)
 /// @return Joined identifier string
-inline std::string mangleMethod(std::string_view className, std::string_view methodName)
-{
+inline std::string mangleMethod(std::string_view className, std::string_view methodName) {
     std::string result;
     result.reserve(className.size() + methodName.size() + 1);
     result.append(className);
@@ -49,22 +47,19 @@ inline std::string mangleMethod(std::string_view className, std::string_view met
 /// @brief Mangle a constructor name: "ClassName.CtorName"
 /// @details Languages may use explicit constructor names (e.g., Create),
 ///          while BASIC uses a fixed ".__ctor" suffix.
-inline std::string mangleConstructor(std::string_view className, std::string_view ctorName)
-{
+inline std::string mangleConstructor(std::string_view className, std::string_view ctorName) {
     return mangleMethod(className, ctorName);
 }
 
 /// @brief Mangle a destructor name: "ClassName.DtorName"
 /// @details Languages may use explicit destructor names (e.g., Destroy),
 ///          while BASIC uses a fixed ".__dtor" suffix.
-inline std::string mangleDestructor(std::string_view className, std::string_view dtorName)
-{
+inline std::string mangleDestructor(std::string_view className, std::string_view dtorName) {
     return mangleMethod(className, dtorName);
 }
 
 /// @brief Mangle a BASIC-style constructor: "ClassName.__ctor"
-inline std::string mangleClassCtor(std::string_view className)
-{
+inline std::string mangleClassCtor(std::string_view className) {
     std::string result;
     result.reserve(className.size() + 7);
     result.append(className);
@@ -73,8 +68,7 @@ inline std::string mangleClassCtor(std::string_view className)
 }
 
 /// @brief Mangle a BASIC-style destructor: "ClassName.__dtor"
-inline std::string mangleClassDtor(std::string_view className)
-{
+inline std::string mangleClassDtor(std::string_view className) {
     std::string result;
     result.reserve(className.size() + 7);
     result.append(className);
@@ -84,8 +78,7 @@ inline std::string mangleClassDtor(std::string_view className)
 
 /// @brief Sanitize dots in a qualified name by replacing with '$'
 /// @details Used for interface thunk naming where dots aren't allowed
-inline std::string sanitizeDots(std::string_view qualifiedName)
-{
+inline std::string sanitizeDots(std::string_view qualifiedName) {
     std::string out;
     out.reserve(qualifiedName.size());
     for (char c : qualifiedName)
@@ -95,8 +88,7 @@ inline std::string sanitizeDots(std::string_view qualifiedName)
 
 /// @brief Produce a stable name for an interface registration thunk.
 /// @details Example: __iface_reg$A$B$I for interface A.B.I
-inline std::string mangleIfaceRegThunk(std::string_view qualifiedIface)
-{
+inline std::string mangleIfaceRegThunk(std::string_view qualifiedIface) {
     std::string s = sanitizeDots(qualifiedIface);
     return std::string("__iface_reg$") + s;
 }
@@ -104,16 +96,14 @@ inline std::string mangleIfaceRegThunk(std::string_view qualifiedIface)
 /// @brief Produce a stable name for a class->interface bind thunk.
 /// @details Example: __iface_bind$A$C$A$B$I for class A.C binding A.B.I
 inline std::string mangleIfaceBindThunk(std::string_view qualifiedClass,
-                                        std::string_view qualifiedIface)
-{
+                                        std::string_view qualifiedIface) {
     std::string cs = sanitizeDots(qualifiedClass);
     std::string is = sanitizeDots(qualifiedIface);
     return std::string("__iface_bind$") + cs + "$" + is;
 }
 
 /// @brief Name for a BASIC-style OOP module initializer: "__mod_init$oop"
-inline std::string mangleOopModuleInit()
-{
+inline std::string mangleOopModuleInit() {
     return "__mod_init$oop";
 }
 
@@ -121,8 +111,7 @@ inline std::string mangleOopModuleInit()
 /// @details Used during AST-to-IL lowering to create unique names.
 /// @invariant Temp IDs increase sequentially; block names gain numeric suffixes on collision.
 /// @ownership Pure utility; no external ownership.
-class NameMangler
-{
+class NameMangler {
   public:
     /// @brief Construct a NameMangler with default temp prefix "%t".
     NameMangler() = default;
@@ -133,8 +122,7 @@ class NameMangler
 
     /// @brief Return next temporary name (e.g., "%t0", "%t1", ...).
     /// @return A unique temporary name using the configured prefix.
-    std::string nextTemp()
-    {
+    std::string nextTemp() {
         return tempPrefix_ + std::to_string(tempCounter_++);
     }
 
@@ -142,8 +130,7 @@ class NameMangler
     /// @details If the hint was used before, a numeric suffix is appended.
     /// @param hint The semantic hint for the block name.
     /// @return A unique block name, possibly with a numeric suffix.
-    std::string block(const std::string &hint)
-    {
+    std::string block(const std::string &hint) {
         auto &count = blockCounters_[hint];
         std::string name = hint;
         if (count > 0)
@@ -153,15 +140,13 @@ class NameMangler
     }
 
     /// @brief Reset all counters for a new compilation unit.
-    void reset()
-    {
+    void reset() {
         tempCounter_ = 0;
         blockCounters_.clear();
     }
 
     /// @brief Get the current temp counter value (for debugging/testing).
-    unsigned tempCount() const
-    {
+    unsigned tempCount() const {
         return tempCounter_;
     }
 

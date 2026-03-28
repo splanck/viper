@@ -13,8 +13,7 @@
 
 #include "frontends/zia/Sema.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //=============================================================================
 // Expression Analysis Dispatcher
@@ -25,15 +24,13 @@ namespace il::frontends::zia
 /// @return The resolved semantic type for the expression.
 /// @details Dispatches to specific analysis methods based on expression kind.
 ///          Caches the result in exprTypes_ for later retrieval.
-TypeRef Sema::analyzeExpr(Expr *expr)
-{
+TypeRef Sema::analyzeExpr(Expr *expr) {
     if (!expr)
         return types::unknown();
 
     TypeRef result;
 
-    switch (expr->kind)
-    {
+    switch (expr->kind) {
         case ExprKind::IntLiteral:
             result = analyzeIntLiteral(static_cast<IntLiteralExpr *>(expr));
             break;
@@ -127,8 +124,7 @@ TypeRef Sema::analyzeExpr(Expr *expr)
         case ExprKind::Block:
             result = analyzeBlockExpr(static_cast<BlockExpr *>(expr));
             break;
-        case ExprKind::Await:
-        {
+        case ExprKind::Await: {
             auto *awaitExpr = static_cast<AwaitExpr *>(expr);
             TypeRef operandType = analyzeExpr(awaitExpr->operand.get());
             TypeRef awaitedType = operandType;
@@ -139,28 +135,23 @@ TypeRef Sema::analyzeExpr(Expr *expr)
             if (awaitedType && awaitedType->kind != TypeKindSem::Any &&
                 awaitedType->kind != TypeKindSem::Unknown &&
                 !(awaitedType->kind == TypeKindSem::Ptr &&
-                  awaitedType->name == "Viper.Threads.Future"))
-            {
+                  awaitedType->name == "Viper.Threads.Future")) {
                 error(expr->loc, "`await` expects Viper.Threads.Future");
             }
 
             result = types::any();
-            if (auto *call = dynamic_cast<CallExpr *>(awaitExpr->operand.get()))
-            {
+            if (auto *call = dynamic_cast<CallExpr *>(awaitExpr->operand.get())) {
                 if (FunctionDecl *asyncDecl = resolvedFunctionDecl(call);
-                    asyncDecl && asyncDecl->isAsync)
-                {
+                    asyncDecl && asyncDecl->isAsync) {
                     result = asyncDecl->returnType ? resolveTypeNode(asyncDecl->returnType.get())
                                                    : types::voidType();
                     break;
                 }
 
-                auto findAsyncDecl = [&](const std::string &name) -> FunctionDecl *
-                {
+                auto findAsyncDecl = [&](const std::string &name) -> FunctionDecl * {
                     if (FunctionDecl *decl = getFunctionDecl(name); decl && decl->isAsync)
                         return decl;
-                    for (FunctionDecl *decl : getFunctionOverloads(name))
-                    {
+                    for (FunctionDecl *decl : getFunctionOverloads(name)) {
                         if (decl && decl->isAsync)
                             return decl;
                     }
@@ -170,15 +161,12 @@ TypeRef Sema::analyzeExpr(Expr *expr)
                 FunctionDecl *asyncDecl = nullptr;
 
                 std::string calleeName = resolvedFunctionCallee(call);
-                if (!calleeName.empty())
-                {
+                if (!calleeName.empty()) {
                     asyncDecl = findAsyncDecl(calleeName);
                 }
 
-                if (!asyncDecl)
-                {
-                    if (auto *ident = dynamic_cast<IdentExpr *>(call->callee.get()))
-                    {
+                if (!asyncDecl) {
+                    if (auto *ident = dynamic_cast<IdentExpr *>(call->callee.get())) {
                         if (Symbol *sym = lookupSymbol(ident->name);
                             sym && sym->kind == Symbol::Kind::Function && sym->decl)
                             asyncDecl = static_cast<FunctionDecl *>(sym->decl);
@@ -188,19 +176,14 @@ TypeRef Sema::analyzeExpr(Expr *expr)
 
                         if (!asyncDecl)
                             asyncDecl = findAsyncDecl(ident->name);
-                    }
-                    else if (auto *field = dynamic_cast<FieldExpr *>(call->callee.get()))
-                    {
+                    } else if (auto *field = dynamic_cast<FieldExpr *>(call->callee.get())) {
                         std::function<bool(Expr *, std::string &)> buildName =
-                            [&](Expr *node, std::string &out) -> bool
-                        {
-                            if (auto *name = dynamic_cast<IdentExpr *>(node))
-                            {
+                            [&](Expr *node, std::string &out) -> bool {
+                            if (auto *name = dynamic_cast<IdentExpr *>(node)) {
                                 out = name->name;
                                 return true;
                             }
-                            if (auto *nested = dynamic_cast<FieldExpr *>(node))
-                            {
+                            if (auto *nested = dynamic_cast<FieldExpr *>(node)) {
                                 if (!buildName(nested->base.get(), out))
                                     return false;
                                 out += ".";
@@ -211,8 +194,7 @@ TypeRef Sema::analyzeExpr(Expr *expr)
                         };
 
                         std::string dottedName;
-                        if (buildName(field, dottedName))
-                        {
+                        if (buildName(field, dottedName)) {
                             if (Symbol *sym = lookupSymbol(dottedName);
                                 sym && sym->kind == Symbol::Kind::Function && sym->decl)
                                 asyncDecl = static_cast<FunctionDecl *>(sym->decl);
@@ -231,8 +213,7 @@ TypeRef Sema::analyzeExpr(Expr *expr)
                                                    : types::voidType();
             }
             break;
-        }
-        break;
+        } break;
         default:
             result = types::unknown();
             break;
@@ -248,44 +229,38 @@ TypeRef Sema::analyzeExpr(Expr *expr)
 
 /// @brief Analyze an integer literal expression.
 /// @return The Integer type singleton.
-TypeRef Sema::analyzeIntLiteral(IntLiteralExpr * /*expr*/)
-{
+TypeRef Sema::analyzeIntLiteral(IntLiteralExpr * /*expr*/) {
     return types::integer();
 }
 
 /// @brief Analyze a floating-point number literal expression.
 /// @return The Number type singleton.
-TypeRef Sema::analyzeNumberLiteral(NumberLiteralExpr * /*expr*/)
-{
+TypeRef Sema::analyzeNumberLiteral(NumberLiteralExpr * /*expr*/) {
     return types::number();
 }
 
 /// @brief Analyze a string literal expression.
 /// @return The String type singleton.
-TypeRef Sema::analyzeStringLiteral(StringLiteralExpr * /*expr*/)
-{
+TypeRef Sema::analyzeStringLiteral(StringLiteralExpr * /*expr*/) {
     return types::string();
 }
 
 /// @brief Analyze a boolean literal expression (true/false).
 /// @return The Boolean type singleton.
-TypeRef Sema::analyzeBoolLiteral(BoolLiteralExpr * /*expr*/)
-{
+TypeRef Sema::analyzeBoolLiteral(BoolLiteralExpr * /*expr*/) {
     return types::boolean();
 }
 
 /// @brief Analyze a null literal expression.
 /// @return Optional[Unknown] type; actual type determined by context.
-TypeRef Sema::analyzeNullLiteral(NullLiteralExpr * /*expr*/)
-{
+TypeRef Sema::analyzeNullLiteral(NullLiteralExpr * /*expr*/) {
     // null is Optional[Unknown] - needs context to determine actual type
     return types::optional(types::unknown());
 }
 
 /// @brief Analyze a unit literal expression ().
 /// @return The Unit type singleton.
-TypeRef Sema::analyzeUnitLiteral(UnitLiteralExpr * /*expr*/)
-{
+TypeRef Sema::analyzeUnitLiteral(UnitLiteralExpr * /*expr*/) {
     return types::unit();
 }
 
@@ -294,21 +269,17 @@ TypeRef Sema::analyzeUnitLiteral(UnitLiteralExpr * /*expr*/)
 /// @return The type bound to the identifier, or Unknown if undefined.
 /// @details Looks up the identifier in the symbol table and imported symbols.
 ///          For imported runtime classes, returns a module-like type.
-TypeRef Sema::analyzeIdent(IdentExpr *expr)
-{
+TypeRef Sema::analyzeIdent(IdentExpr *expr) {
     Symbol *sym = lookupSymbol(expr->name);
-    if (sym && sym->kind == Symbol::Kind::Function && hasOverloadedFunctionName(expr->name))
-    {
+    if (sym && sym->kind == Symbol::Kind::Function && hasOverloadedFunctionName(expr->name)) {
         error(expr->loc,
               "Function '" + expr->name +
                   "' is overloaded and must be used in a call expression to resolve a specific "
                   "overload");
         return types::unknown();
     }
-    if (!sym)
-    {
-        if (hasOverloadedFunctionName(expr->name))
-        {
+    if (!sym) {
+        if (hasOverloadedFunctionName(expr->name)) {
             error(expr->loc,
                   "Function '" + expr->name +
                       "' is overloaded and must be used in a call expression to resolve a specific "
@@ -317,16 +288,13 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
         }
         // Check if this is an imported symbol from a bound namespace
         auto importIt = importedSymbols_.find(expr->name);
-        if (importIt != importedSymbols_.end())
-        {
+        if (importIt != importedSymbols_.end()) {
             const std::string &fullName = importIt->second;
-            if (fullName.rfind("Viper.", 0) == 0)
-            {
+            if (fullName.rfind("Viper.", 0) == 0) {
                 // Check if it's a zero-arg getter function (e.g., Viper.Math.get_Pi)
                 // If so, treat it as an auto-evaluated property
                 Symbol *fnSym = lookupSymbol(fullName);
-                if (fnSym && fnSym->kind == Symbol::Kind::Function && fnSym->isExtern)
-                {
+                if (fnSym && fnSym->kind == Symbol::Kind::Function && fnSym->isExtern) {
                     autoEvalGetters_[expr] = fullName;
                     return fnSym->type;
                 }
@@ -345,11 +313,9 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
 
     // For variables and parameters, respect flow-sensitive type narrowing
     // (e.g., after `if x != null`, x is narrowed from T? to T)
-    if (sym->kind == Symbol::Kind::Variable || sym->kind == Symbol::Kind::Parameter)
-    {
+    if (sym->kind == Symbol::Kind::Variable || sym->kind == Symbol::Kind::Parameter) {
         // Warn if variable used before initialization
-        if (sym->kind == Symbol::Kind::Variable && !isInitialized(expr->name))
-        {
+        if (sym->kind == Symbol::Kind::Variable && !isInitialized(expr->name)) {
             warn(WarningCode::W015_UninitializedVariable,
                  expr->loc,
                  "Variable '" + expr->name + "' may be used before initialization");
@@ -367,10 +333,8 @@ TypeRef Sema::analyzeIdent(IdentExpr *expr)
 /// @param expr The self expression node.
 /// @return The type of 'self' in the current method context.
 /// @details Emits error if used outside a method body.
-TypeRef Sema::analyzeSelf(SelfExpr *expr)
-{
-    if (!currentSelfType_)
-    {
+TypeRef Sema::analyzeSelf(SelfExpr *expr) {
+    if (!currentSelfType_) {
         error(expr->loc, "'self' can only be used inside a method");
         return types::unknown();
     }

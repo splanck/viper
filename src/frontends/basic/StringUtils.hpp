@@ -20,8 +20,7 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::basic::string_utils
-{
+namespace il::frontends::basic::string_utils {
 
 /// @brief Case-insensitive comparison of two strings.
 /// @details Performs character-by-character comparison ignoring case.
@@ -34,28 +33,21 @@ namespace il::frontends::basic::string_utils
 /// ```cpp
 /// if (iequals(tok.lexeme, "INTEGER")) { /* ... */ }
 /// ```
-[[nodiscard]] inline bool iequals(std::string_view a, std::string_view b) noexcept
-{
+[[nodiscard]] inline bool iequals(std::string_view a, std::string_view b) noexcept {
     if (a.size() != b.size())
         return false;
 
-    return std::equal(a.begin(),
-                      a.end(),
-                      b.begin(),
-                      b.end(),
-                      [](char ca, char cb)
-                      {
-                          return std::toupper(static_cast<unsigned char>(ca)) ==
-                                 std::toupper(static_cast<unsigned char>(cb));
-                      });
+    return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](char ca, char cb) {
+        return std::toupper(static_cast<unsigned char>(ca)) ==
+               std::toupper(static_cast<unsigned char>(cb));
+    });
 }
 
 /// @brief Check if a string starts with a prefix (case-insensitive).
 /// @param str String to check.
 /// @param prefix Prefix to look for.
 /// @return True if str starts with prefix, ignoring case.
-[[nodiscard]] inline bool istarts_with(std::string_view str, std::string_view prefix) noexcept
-{
+[[nodiscard]] inline bool istarts_with(std::string_view str, std::string_view prefix) noexcept {
     if (str.size() < prefix.size())
         return false;
 
@@ -66,8 +58,7 @@ namespace il::frontends::basic::string_utils
 /// @param str String to check.
 /// @param suffix Suffix to look for.
 /// @return True if str ends with suffix, ignoring case.
-[[nodiscard]] inline bool iends_with(std::string_view str, std::string_view suffix) noexcept
-{
+[[nodiscard]] inline bool iends_with(std::string_view str, std::string_view suffix) noexcept {
     if (str.size() < suffix.size())
         return false;
 
@@ -78,8 +69,7 @@ namespace il::frontends::basic::string_utils
 /// @param str String to convert.
 /// @return New string with all characters converted to uppercase.
 /// @note Use sparingly; prefer iequals() for comparisons to avoid allocation.
-[[nodiscard]] inline std::string to_upper(std::string_view str)
-{
+[[nodiscard]] inline std::string to_upper(std::string_view str) {
     std::string result;
     result.reserve(str.size());
     for (char c : str)
@@ -90,8 +80,7 @@ namespace il::frontends::basic::string_utils
 /// @brief Convert a string to lowercase (allocating version).
 /// @param str String to convert.
 /// @return New string with all characters converted to lowercase.
-[[nodiscard]] inline std::string to_lower(std::string_view str)
-{
+[[nodiscard]] inline std::string to_lower(std::string_view str) {
     std::string result;
     result.reserve(str.size());
     for (char c : str)
@@ -102,8 +91,7 @@ namespace il::frontends::basic::string_utils
 /// @brief Trim leading and trailing whitespace.
 /// @param str String to trim.
 /// @return String view with leading/trailing whitespace removed.
-[[nodiscard]] inline std::string_view trim(std::string_view str) noexcept
-{
+[[nodiscard]] inline std::string_view trim(std::string_view str) noexcept {
     auto start = str.begin();
     auto end = str.end();
 

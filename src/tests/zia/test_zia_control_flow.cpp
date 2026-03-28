@@ -18,12 +18,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that if statements compile correctly.
-TEST(ZiaControlFlow, IfStatement)
-{
+TEST(ZiaControlFlow, IfStatement) {
     SourceManager sm;
     // Use a runtime condition (not constant) so peephole doesn't optimize away the CBr
     const std::string source = R"(
@@ -47,16 +45,11 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool foundCBr = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
-                    if (instr.op == il::core::Opcode::CBr)
-                    {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
+                    if (instr.op == il::core::Opcode::CBr) {
                         foundCBr = true;
                         break;
                     }
@@ -68,8 +61,7 @@ func start() {
 }
 
 /// @brief Test that while loops compile correctly.
-TEST(ZiaControlFlow, WhileLoop)
-{
+TEST(ZiaControlFlow, WhileLoop) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -89,16 +81,11 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool foundCmp = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
-                    if (instr.op == il::core::Opcode::SCmpLT)
-                    {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
+                    if (instr.op == il::core::Opcode::SCmpLT) {
                         foundCmp = true;
                         break;
                     }
@@ -110,8 +97,7 @@ func start() {
 }
 
 /// @brief Test that for-in loops with ranges work correctly.
-TEST(ZiaControlFlow, ForInLoop)
-{
+TEST(ZiaControlFlow, ForInLoop) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -130,11 +116,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for ForInLoop:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -144,16 +128,12 @@ func start() {
 
     bool foundForInCond = false;
     bool foundAlloca = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
                 if (block.label.find("forin_cond") != std::string::npos)
                     foundForInCond = true;
-                for (const auto &instr : block.instructions)
-                {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Alloca)
                         foundAlloca = true;
                 }
@@ -165,8 +145,7 @@ func start() {
 }
 
 /// @brief Test that for-in loops over lists and maps compile.
-TEST(ZiaControlFlow, ForInCollections)
-{
+TEST(ZiaControlFlow, ForInCollections) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -193,11 +172,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for ForInCollections:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -207,12 +184,9 @@ func start() {
 
     bool foundListLoop = false;
     bool foundMapLoop = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
                 if (block.label.find("forin_list") != std::string::npos)
                     foundListLoop = true;
                 if (block.label.find("forin_map") != std::string::npos)
@@ -226,8 +200,7 @@ func start() {
 
 /// @brief Bug #28: Guard statement should work without parentheses.
 /// Swift-style guard syntax should be supported in entity methods.
-TEST(ZiaControlFlow, GuardStatementWithoutParens)
-{
+TEST(ZiaControlFlow, GuardStatementWithoutParens) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -258,11 +231,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for GuardStatementWithoutParens:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -273,7 +244,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

@@ -18,12 +18,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that value types parse correctly.
-TEST(ZiaTypes, ValueTypeDeclaration)
-{
+TEST(ZiaTypes, ValueTypeDeclaration) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -41,11 +39,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for ValueTypeDeclaration:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -55,8 +51,7 @@ func start() {
 }
 
 /// @brief Test that entity types with new keyword work correctly.
-TEST(ZiaTypes, EntityTypeWithNew)
-{
+TEST(ZiaTypes, EntityTypeWithNew) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -88,11 +83,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for EntityTypeWithNew:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -101,14 +94,10 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool foundRtObjNew = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call && instr.callee == "rt_obj_new_i64")
                         foundRtObjNew = true;
                 }
@@ -120,8 +109,7 @@ func start() {
 
 /// @brief Test Bug #16 fix: Entity type as function parameter compiles correctly.
 /// Previously caused an infinite loop in the parser.
-TEST(ZiaTypes, EntityAsParameter)
-{
+TEST(ZiaTypes, EntityAsParameter) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -145,11 +133,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for EntityAsParameter:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -159,10 +145,8 @@ func start() {
 
     // Check that the useFrog function exists and takes a parameter
     bool foundUseFrogFunc = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "Test.useFrog" || fn.name == "useFrog")
-        {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "Test.useFrog" || fn.name == "useFrog") {
             foundUseFrogFunc = true;
             EXPECT_EQ(fn.params.size(), 1u);
             break;
@@ -172,8 +156,7 @@ func start() {
 }
 
 /// @brief Bug #20: Parameter name 'value' should be allowed (contextual keyword).
-TEST(ZiaTypes, ValueAsParameterName)
-{
+TEST(ZiaTypes, ValueAsParameterName) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -207,8 +190,7 @@ func start() {
 
 /// @brief Bug #30: Boolean fields in entities should be properly aligned.
 /// Ensures Boolean fields don't cause misaligned store errors at runtime.
-TEST(ZiaTypes, BooleanFieldAlignment)
-{
+TEST(ZiaTypes, BooleanFieldAlignment) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -242,11 +224,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for BooleanFieldAlignment:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -257,7 +237,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

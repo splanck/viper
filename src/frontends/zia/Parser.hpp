@@ -108,8 +108,7 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 /// @brief Recursive descent parser for Zia.
 ///
@@ -138,8 +137,7 @@ namespace il::frontends::zia
 ///
 /// @invariant peek() is always valid (may be Eof token).
 /// @invariant Lexer and DiagnosticEngine outlive the parser.
-class Parser
-{
+class Parser {
   public:
     /// @brief Create a parser over the given lexer.
     /// @param lexer Token source for parsing.
@@ -181,8 +179,7 @@ class Parser
     ///
     /// @details Even if errors occurred, the parser may have produced
     /// a partial AST. Check this after parsing to determine success.
-    bool hasError() const
-    {
+    bool hasError() const {
         return hasError_;
     }
 
@@ -258,8 +255,7 @@ class Parser
     /// @brief RAII helper for bounded backtracking.
     /// @details Suppresses diagnostics while active. If not committed, restores
     ///          token position and error state when destroyed.
-    class Speculation
-    {
+    class Speculation {
       public:
         explicit Speculation(Parser &parser);
         ~Speculation();
@@ -267,8 +263,7 @@ class Parser
         Speculation(const Speculation &) = delete;
         Speculation &operator=(const Speculation &) = delete;
 
-        void commit()
-        {
+        void commit() {
             committed_ = true;
         }
 

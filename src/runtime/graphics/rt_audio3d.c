@@ -41,8 +41,7 @@ static double saved_max_dist = 50.0;
 /// @brief Perform audio3d set listener operation.
 /// @param position
 /// @param forward
-void rt_audio3d_set_listener(void *position, void *forward)
-{
+void rt_audio3d_set_listener(void *position, void *forward) {
     if (!position || !forward)
         return;
     listener_pos[0] = rt_vec3_x(position);
@@ -57,8 +56,7 @@ void rt_audio3d_set_listener(void *position, void *forward)
     double rx = -listener_fwd[2];
     double rz = listener_fwd[0];
     double rlen = sqrt(rx * rx + rz * rz);
-    if (rlen > 1e-8)
-    {
+    if (rlen > 1e-8) {
         rx /= rlen;
         rz /= rlen;
     }
@@ -68,8 +66,7 @@ void rt_audio3d_set_listener(void *position, void *forward)
 }
 
 static void compute_3d_params(
-    void *position, double max_dist, int64_t base_vol, int64_t *out_vol, int64_t *out_pan)
-{
+    void *position, double max_dist, int64_t base_vol, int64_t *out_vol, int64_t *out_pan) {
     double sx = rt_vec3_x(position), sy = rt_vec3_y(position), sz = rt_vec3_z(position);
     double dx = sx - listener_pos[0], dy = sy - listener_pos[1], dz = sz - listener_pos[2];
     double dist = sqrt(dx * dx + dy * dy + dz * dz);
@@ -81,14 +78,11 @@ static void compute_3d_params(
     *out_vol = (int64_t)(base_vol * atten);
 
     /* Pan from dot(direction_to_source, listener_right) */
-    if (dist > 1e-8)
-    {
+    if (dist > 1e-8) {
         double ndx = dx / dist, ndz = dz / dist;
         double dot_right = ndx * listener_right[0] + ndz * listener_right[2];
         *out_pan = (int64_t)(dot_right * 100.0);
-    }
-    else
-    {
+    } else {
         *out_pan = 0;
     }
 }
@@ -99,8 +93,7 @@ static void compute_3d_params(
 /// @param max_distance
 /// @param volume
 /// @return Result value.
-int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int64_t volume)
-{
+int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int64_t volume) {
     if (!sound || !position)
         return 0;
     saved_max_dist = max_distance;
@@ -114,8 +107,7 @@ int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int
 /// @param voice
 /// @param position
 /// @param max_distance
-void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance)
-{
+void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance) {
     if (!position || voice <= 0)
         return;
     if (max_distance <= 0.0)

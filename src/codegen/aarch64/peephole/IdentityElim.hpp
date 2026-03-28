@@ -28,8 +28,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::aarch64::peephole
-{
+namespace viper::codegen::aarch64::peephole {
 
 /// @brief Check if an instruction is an identity move (mov r, r).
 [[nodiscard]] bool isIdentityMovRR(const MInstr &instr) noexcept;

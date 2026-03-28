@@ -41,12 +41,10 @@
 #include <cstdint>
 #include <optional>
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Classification used by the verifier to describe operand/result kinds.
-enum class TypeClass : uint8_t
-{
+enum class TypeClass : uint8_t {
     None,      ///< No constraint or unused slot.
     Void,      ///< Void type constraint.
     I1,        ///< 1-bit integer type.
@@ -62,8 +60,7 @@ enum class TypeClass : uint8_t
 };
 
 /// @brief Verification properties describing a simple arithmetic opcode.
-struct OpProps
-{
+struct OpProps {
     uint8_t arity;      ///< Number of value operands required.
     TypeClass operands; ///< Shared operand type requirement.
     TypeClass result;   ///< Result type produced on success.
@@ -71,8 +68,7 @@ struct OpProps
 };
 
 /// @brief Specification of operand and result constraints for opcode verification.
-struct OpCheckSpec
-{
+struct OpCheckSpec {
     uint8_t numOperandsMin; ///< Minimum number of operands accepted.
     uint8_t numOperandsMax; ///< Maximum number of operands accepted; may be variadic.
     std::array<TypeClass, il::core::kMaxOperandCategories>
@@ -99,8 +95,7 @@ bool hasSideEffects(il::core::Opcode opcode);
 /// @brief Determine whether an opcode is pure (side-effect free).
 /// @param opcode Opcode to query.
 /// @return True when @p opcode has no side effects; false otherwise.
-inline bool isPure(il::core::Opcode opcode)
-{
+inline bool isPure(il::core::Opcode opcode) {
     return !hasSideEffects(opcode);
 }
 

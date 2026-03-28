@@ -22,21 +22,18 @@
 #endif
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Check if two doubles are approximately equal.
-static bool approx_eq(double a, double b, double eps = 1e-10)
-{
+static bool approx_eq(double a, double b, double eps = 1e-10) {
     return fabs(a - b) < eps;
 }
 
 /// @brief Test inverse trigonometric functions.
-static void test_inverse_trig()
-{
+static void test_inverse_trig() {
     printf("Testing inverse trig:\n");
 
     // atan2
@@ -58,8 +55,7 @@ static void test_inverse_trig()
 }
 
 /// @brief Test hyperbolic functions.
-static void test_hyperbolic()
-{
+static void test_hyperbolic() {
     printf("Testing hyperbolic:\n");
 
     test_result("sinh(0) = 0", approx_eq(rt_sinh(0.0), 0.0));
@@ -76,8 +72,7 @@ static void test_hyperbolic()
 }
 
 /// @brief Test rounding functions.
-static void test_rounding()
-{
+static void test_rounding() {
     printf("Testing rounding:\n");
 
     // round
@@ -94,8 +89,7 @@ static void test_rounding()
 }
 
 /// @brief Test logarithm functions.
-static void test_logarithms()
-{
+static void test_logarithms() {
     printf("Testing logarithms:\n");
 
     test_result("log10(10) = 1", approx_eq(rt_log10(10.0), 1.0));
@@ -107,8 +101,7 @@ static void test_logarithms()
 }
 
 /// @brief Test clamp functions.
-static void test_clamp()
-{
+static void test_clamp() {
     printf("Testing clamp:\n");
 
     // Float clamp
@@ -125,8 +118,7 @@ static void test_clamp()
 }
 
 /// @brief Test lerp function.
-static void test_lerp()
-{
+static void test_lerp() {
     printf("Testing lerp:\n");
 
     test_result("lerp(0, 10, 0) = 0", approx_eq(rt_lerp(0.0, 10.0, 0.0), 0.0));
@@ -138,8 +130,7 @@ static void test_lerp()
 }
 
 /// @brief Test wrap functions.
-static void test_wrap()
-{
+static void test_wrap() {
     printf("Testing wrap:\n");
 
     // Float wrap
@@ -157,8 +148,7 @@ static void test_wrap()
 }
 
 /// @brief Test mathematical constants.
-static void test_constants()
-{
+static void test_constants() {
     printf("Testing constants:\n");
 
     test_result("Pi approx 3.14159", approx_eq(rt_math_pi(), 3.14159265358979323846, 1e-14));
@@ -169,8 +159,7 @@ static void test_constants()
 }
 
 /// @brief Test angle conversion functions.
-static void test_angle_conversion()
-{
+static void test_angle_conversion() {
     printf("Testing angle conversion:\n");
 
     test_result("deg(pi) = 180", approx_eq(rt_deg(M_PI), 180.0));
@@ -185,8 +174,7 @@ static void test_angle_conversion()
 }
 
 /// @brief Test utility functions.
-static void test_utility()
-{
+static void test_utility() {
     printf("Testing utility:\n");
 
     // fmod
@@ -201,8 +189,7 @@ static void test_utility()
 }
 
 /// @brief Entry point for extended math tests.
-int main()
-{
+int main() {
     printf("=== RT Math Extension Tests ===\n\n");
 
     test_inverse_trig();

@@ -22,22 +22,21 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    void *rt_transform3d_new(void);
-    void rt_transform3d_set_position(void *xf, double x, double y, double z);
-    void *rt_transform3d_get_position(void *xf);
-    void rt_transform3d_set_rotation(void *xf, void *quat);
-    void *rt_transform3d_get_rotation(void *xf);
-    void rt_transform3d_set_euler(void *xf, double pitch, double yaw, double roll);
-    void rt_transform3d_set_scale(void *xf, double x, double y, double z);
-    void *rt_transform3d_get_scale(void *xf);
-    void *rt_transform3d_get_matrix(void *xf);
-    void rt_transform3d_translate(void *xf, void *delta);
-    void rt_transform3d_rotate(void *xf, void *axis, double angle);
-    void rt_transform3d_look_at(void *xf, void *target, void *up);
+void *rt_transform3d_new(void);
+void rt_transform3d_set_position(void *xf, double x, double y, double z);
+void *rt_transform3d_get_position(void *xf);
+void rt_transform3d_set_rotation(void *xf, void *quat);
+void *rt_transform3d_get_rotation(void *xf);
+void rt_transform3d_set_euler(void *xf, double pitch, double yaw, double roll);
+void rt_transform3d_set_scale(void *xf, double x, double y, double z);
+void *rt_transform3d_get_scale(void *xf);
+void *rt_transform3d_get_matrix(void *xf);
+void rt_transform3d_translate(void *xf, void *delta);
+void rt_transform3d_rotate(void *xf, void *axis, double angle);
+void rt_transform3d_look_at(void *xf, void *target, void *up);
 
 #ifdef __cplusplus
 }

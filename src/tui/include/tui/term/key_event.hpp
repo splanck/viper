@@ -36,17 +36,14 @@
 #include <cstdint>
 #include <string>
 
-namespace viper::tui::term
-{
+namespace viper::tui::term {
 /// @brief Represents a single keyboard input event from the terminal.
 /// @details Captures either a Unicode character (via codepoint) or a special
 ///          key (via Code enum), along with modifier flags (Shift, Alt, Ctrl).
 ///          Produced by the InputDecoder from raw terminal escape sequences.
-struct KeyEvent
-{
+struct KeyEvent {
     /// @brief Identifies special (non-character) keys on the keyboard.
-    enum class Code
-    {
+    enum class Code {
         Enter,
         Esc,
         Tab,
@@ -77,12 +74,7 @@ struct KeyEvent
     };
 
     /// @brief Modifier key flags that can be combined with bitwise OR.
-    enum Mods : unsigned
-    {
-        Shift = 1,
-        Alt = 2,
-        Ctrl = 4
-    };
+    enum Mods : unsigned { Shift = 1, Alt = 2, Ctrl = 4 };
 
     /// @brief Unicode scalar value for character input; 0 for special keys.
     uint32_t codepoint{0};
@@ -95,15 +87,8 @@ struct KeyEvent
 /// @brief Represents a mouse input event with screen coordinates and button state.
 /// @details Captures button presses, releases, movement, and scroll wheel actions.
 ///          Coordinates are 0-based terminal cell positions.
-struct MouseEvent
-{
-    enum class Type
-    {
-        Down,
-        Up,
-        Move,
-        Wheel
-    };
+struct MouseEvent {
+    enum class Type { Down, Up, Move, Wheel };
 
     Type type{Type::Move};
     int x{0};
@@ -116,8 +101,7 @@ struct MouseEvent
 /// @details The terminal sends bracketed paste sequences when the user pastes
 ///          text from the clipboard while bracketed paste mode is enabled.
 ///          The text field contains the raw pasted content.
-struct PasteEvent
-{
+struct PasteEvent {
     std::string text{};
 };
 

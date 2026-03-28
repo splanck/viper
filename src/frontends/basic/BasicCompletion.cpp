@@ -27,32 +27,27 @@
 #include <cctype>
 #include <unordered_set>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // --- Constructor / Destructor ---
 
-BasicCompletionEngine::BasicCompletionEngine() : sm_(std::make_unique<il::support::SourceManager>())
-{
-}
+BasicCompletionEngine::BasicCompletionEngine()
+    : sm_(std::make_unique<il::support::SourceManager>()) {}
 
 BasicCompletionEngine::~BasicCompletionEngine() = default;
 
 // --- Cache ---
 
-uint64_t BasicCompletionEngine::fnv1a(std::string_view data)
-{
+uint64_t BasicCompletionEngine::fnv1a(std::string_view data) {
     uint64_t hash = 0xcbf29ce484222325ULL;
-    for (char c : data)
-    {
+    for (char c : data) {
         hash ^= static_cast<uint64_t>(static_cast<unsigned char>(c));
         hash *= 0x100000001b3ULL;
     }
     return hash;
 }
 
-void BasicCompletionEngine::clearCache()
-{
+void BasicCompletionEngine::clearCache() {
     cache_ = {};
 }
 
@@ -60,17 +55,14 @@ void BasicCompletionEngine::clearCache()
 
 BasicCompletionEngine::Context BasicCompletionEngine::extractContext(std::string_view src,
                                                                      int line,
-                                                                     int col) const
-{
+                                                                     int col) const {
     Context ctx;
 
     // Find the line
     size_t lineStart = 0;
     int curLine = 1;
-    for (size_t i = 0; i < src.size() && curLine < line; ++i)
-    {
-        if (src[i] == '\n')
-        {
+    for (size_t i = 0; i < src.size() && curLine < line; ++i) {
+        if (src[i] == '\n') {
             ++curLine;
             lineStart = i + 1;
         }
@@ -88,8 +80,7 @@ BasicCompletionEngine::Context BasicCompletionEngine::extractContext(std::string
     // Scan backwards for identifier chars (prefix)
     size_t prefEnd = cursorOff;
     size_t prefStart = prefEnd;
-    while (prefStart > lineStart)
-    {
+    while (prefStart > lineStart) {
         char c = src[prefStart - 1];
         if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '$' || c == '%' ||
             c == '!' || c == '#' || c == '&')
@@ -101,19 +92,16 @@ BasicCompletionEngine::Context BasicCompletionEngine::extractContext(std::string
     ctx.prefix = std::string(src.substr(prefStart, prefEnd - prefStart));
 
     // Check for dot trigger
-    if (prefStart > lineStart && src[prefStart - 1] == '.')
-    {
+    if (prefStart > lineStart && src[prefStart - 1] == '.') {
         ctx.trigger = TriggerKind::MemberAccess;
         size_t dotPos = prefStart - 1;
 
         // Walk backwards through identifiers and dots for the trigger expression
         size_t exprStart = dotPos;
-        while (exprStart > lineStart)
-        {
+        while (exprStart > lineStart) {
             size_t p = exprStart - 1;
             char c = src[p];
-            if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '$')
-            {
+            if (std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '$') {
                 while (p > lineStart && (std::isalnum(static_cast<unsigned char>(src[p - 1])) ||
                                          src[p - 1] == '_' || src[p - 1] == '$'))
                     --p;
@@ -122,9 +110,7 @@ BasicCompletionEngine::Context BasicCompletionEngine::extractContext(std::string
                     exprStart = p - 1;
                 else
                     break;
-            }
-            else
-            {
+            } else {
                 break;
             }
         }
@@ -137,8 +123,7 @@ BasicCompletionEngine::Context BasicCompletionEngine::extractContext(std::string
 
 // --- Helpers ---
 
-static std::string toLowerStr(const std::string &s)
-{
+static std::string toLowerStr(const std::string &s) {
     std::string lower;
     lower.reserve(s.size());
     for (char c : s)
@@ -146,8 +131,7 @@ static std::string toLowerStr(const std::string &s)
     return lower;
 }
 
-static std::string toLowerStr(std::string_view s)
-{
+static std::string toLowerStr(std::string_view s) {
     std::string lower;
     lower.reserve(s.size());
     for (char c : s)
@@ -155,8 +139,7 @@ static std::string toLowerStr(std::string_view s)
     return lower;
 }
 
-static bool prefixMatch(const std::string &label, const std::string &prefix)
-{
+static bool prefixMatch(const std::string &label, const std::string &prefix) {
     if (prefix.empty())
         return true;
     std::string lLabel = toLowerStr(label);
@@ -166,8 +149,8 @@ static bool prefixMatch(const std::string &label, const std::string &prefix)
 
 // --- Providers ---
 
-std::vector<CompletionItem> BasicCompletionEngine::provideKeywords(const std::string &prefix) const
-{
+std::vector<CompletionItem> BasicCompletionEngine::provideKeywords(
+    const std::string &prefix) const {
     static const char *keywords[] = {
         "AND",    "AS",        "BOOLEAN", "CALL",      "CASE",      "CLASS",    "CLOSE",
         "CONST",  "DECLARE",   "DIM",     "DO",        "DOUBLE",    "EACH",     "ELSE",
@@ -183,22 +166,19 @@ std::vector<CompletionItem> BasicCompletionEngine::provideKeywords(const std::st
     };
 
     std::vector<CompletionItem> items;
-    for (const char *kw : keywords)
-    {
-        if (prefixMatch(kw, prefix))
-        {
+    for (const char *kw : keywords) {
+        if (prefixMatch(kw, prefix)) {
             items.push_back({kw, kw, CompletionKind::Keyword, "keyword", 200});
         }
     }
     return items;
 }
 
-std::vector<CompletionItem> BasicCompletionEngine::provideSnippets(const std::string &prefix) const
-{
+std::vector<CompletionItem> BasicCompletionEngine::provideSnippets(
+    const std::string &prefix) const {
     std::vector<CompletionItem> items;
 
-    struct Snippet
-    {
+    struct Snippet {
         const char *label;
         const char *insert;
         const char *detail;
@@ -223,20 +203,17 @@ std::vector<CompletionItem> BasicCompletionEngine::provideSnippets(const std::st
         {"CLASS...END CLASS", "CLASS ${1:Name}\n    ${0}\nEND CLASS", "CLASS definition"},
     };
 
-    for (const auto &s : snippets)
-    {
-        if (prefixMatch(s.label, prefix))
-        {
+    for (const auto &s : snippets) {
+        if (prefixMatch(s.label, prefix)) {
             items.push_back({s.label, s.insert, CompletionKind::Snippet, s.detail, 150});
         }
     }
     return items;
 }
 
-std::vector<CompletionItem> BasicCompletionEngine::provideBuiltins(const std::string &prefix) const
-{
-    static const struct
-    {
+std::vector<CompletionItem> BasicCompletionEngine::provideBuiltins(
+    const std::string &prefix) const {
+    static const struct {
         const char *name;
         const char *detail;
     } builtins[] = {
@@ -275,10 +252,8 @@ std::vector<CompletionItem> BasicCompletionEngine::provideBuiltins(const std::st
     };
 
     std::vector<CompletionItem> items;
-    for (const auto &b : builtins)
-    {
-        if (prefixMatch(b.name, prefix))
-        {
+    for (const auto &b : builtins) {
+        if (prefixMatch(b.name, prefix)) {
             items.push_back({b.name, b.name, CompletionKind::Function, b.detail, 80});
         }
     }
@@ -286,21 +261,16 @@ std::vector<CompletionItem> BasicCompletionEngine::provideBuiltins(const std::st
 }
 
 std::vector<CompletionItem> BasicCompletionEngine::provideScopeSymbols(
-    const SemanticAnalyzer &sema, const std::string &prefix) const
-{
+    const SemanticAnalyzer &sema, const std::string &prefix) const {
     std::vector<CompletionItem> items;
 
     // Variables
-    for (const auto &sym : sema.symbols())
-    {
-        if (prefixMatch(sym, prefix))
-        {
+    for (const auto &sym : sema.symbols()) {
+        if (prefixMatch(sym, prefix)) {
             std::string detail;
             auto ty = sema.lookupVarType(sym);
-            if (ty)
-            {
-                switch (*ty)
-                {
+            if (ty) {
+                switch (*ty) {
                     case SemanticAnalyzer::Type::Int:
                         detail = "INTEGER";
                         break;
@@ -319,8 +289,7 @@ std::vector<CompletionItem> BasicCompletionEngine::provideScopeSymbols(
                     case SemanticAnalyzer::Type::ArrayString:
                         detail = "STRING()";
                         break;
-                    case SemanticAnalyzer::Type::Object:
-                    {
+                    case SemanticAnalyzer::Type::Object: {
                         auto cls = sema.lookupObjectClassQName(sym);
                         detail = cls.value_or("Object");
                         break;
@@ -337,10 +306,8 @@ std::vector<CompletionItem> BasicCompletionEngine::provideScopeSymbols(
     }
 
     // Procedures (SUB/FUNCTION)
-    for (const auto &[name, sig] : sema.procs())
-    {
-        if (prefixMatch(name, prefix))
-        {
+    for (const auto &[name, sig] : sema.procs()) {
+        if (prefixMatch(name, prefix)) {
             std::string detail = sig.kind == ProcSignature::Kind::Function ? "FUNCTION" : "SUB";
             items.push_back({name, name, CompletionKind::Function, detail, 60});
         }
@@ -350,29 +317,22 @@ std::vector<CompletionItem> BasicCompletionEngine::provideScopeSymbols(
 }
 
 std::vector<CompletionItem> BasicCompletionEngine::provideMemberCompletions(
-    const SemanticAnalyzer &sema, const Context &ctx) const
-{
+    const SemanticAnalyzer &sema, const Context &ctx) const {
     std::vector<CompletionItem> items;
 
     // Try to resolve the trigger expression as a variable with an object type
     auto classQName = sema.lookupObjectClassQName(ctx.triggerExpr);
-    if (classQName)
-    {
+    if (classQName) {
         // Check OOP index for class fields/methods
         const auto *classInfo = sema.oopIndex().findClass(*classQName);
-        if (classInfo)
-        {
-            for (const auto &field : classInfo->fields)
-            {
-                if (prefixMatch(field.name, ctx.prefix))
-                {
+        if (classInfo) {
+            for (const auto &field : classInfo->fields) {
+                if (prefixMatch(field.name, ctx.prefix)) {
                     items.push_back({field.name, field.name, CompletionKind::Field, "", 30});
                 }
             }
-            for (const auto &[mName, mInfo] : classInfo->methods)
-            {
-                if (prefixMatch(mName, ctx.prefix))
-                {
+            for (const auto &[mName, mInfo] : classInfo->methods) {
+                if (prefixMatch(mName, ctx.prefix)) {
                     items.push_back({mName, mName, CompletionKind::Method, "", 30});
                 }
             }
@@ -393,8 +353,7 @@ std::vector<CompletionItem> BasicCompletionEngine::provideMemberCompletions(
 
     // Check if it resolves via USING imports
     auto imports = sema.getUsingImports();
-    for (const auto &ns : imports)
-    {
+    for (const auto &ns : imports) {
         std::string candidate = ns + "." + runtimeName;
         auto members = provideRuntimeMembers(candidate, ctx.prefix);
         if (!members.empty())
@@ -413,17 +372,14 @@ std::vector<CompletionItem> BasicCompletionEngine::provideMemberCompletions(
 }
 
 std::vector<CompletionItem> BasicCompletionEngine::provideRuntimeMembers(
-    const std::string &className, const std::string &prefix) const
-{
+    const std::string &className, const std::string &prefix) const {
     std::vector<CompletionItem> items;
     const auto *cls = il::runtime::findRuntimeClassByQName(className);
     if (!cls)
         return items;
 
-    for (const auto &method : cls->methods)
-    {
-        if (prefixMatch(method.name, prefix))
-        {
+    for (const auto &method : cls->methods) {
+        if (prefixMatch(method.name, prefix)) {
             items.push_back({method.name,
                              method.name,
                              CompletionKind::Method,
@@ -431,10 +387,8 @@ std::vector<CompletionItem> BasicCompletionEngine::provideRuntimeMembers(
                              30});
         }
     }
-    for (const auto &prop : cls->properties)
-    {
-        if (prefixMatch(prop.name, prefix))
-        {
+    for (const auto &prop : cls->properties) {
+        if (prefixMatch(prop.name, prefix)) {
             items.push_back(
                 {prop.name, prop.name, CompletionKind::Property, prop.type ? prop.type : "", 30});
         }
@@ -445,15 +399,13 @@ std::vector<CompletionItem> BasicCompletionEngine::provideRuntimeMembers(
 // --- Post-processing ---
 
 void BasicCompletionEngine::filterByPrefix(std::vector<CompletionItem> &items,
-                                           const std::string &prefix) const
-{
+                                           const std::string &prefix) const {
     if (prefix.empty())
         return;
     std::string lp = toLowerStr(prefix);
     items.erase(std::remove_if(items.begin(),
                                items.end(),
-                               [&lp](const CompletionItem &item)
-                               {
+                               [&lp](const CompletionItem &item) {
                                    std::string ll = toLowerStr(item.label);
                                    return ll.find(lp) == std::string::npos;
                                }),
@@ -461,14 +413,11 @@ void BasicCompletionEngine::filterByPrefix(std::vector<CompletionItem> &items,
 }
 
 void BasicCompletionEngine::rank(std::vector<CompletionItem> &items,
-                                 const std::string &prefix) const
-{
-    if (prefix.empty())
-    {
-        std::sort(items.begin(),
-                  items.end(),
-                  [](const CompletionItem &a, const CompletionItem &b)
-                  { return a.sortPriority < b.sortPriority; });
+                                 const std::string &prefix) const {
+    if (prefix.empty()) {
+        std::sort(items.begin(), items.end(), [](const CompletionItem &a, const CompletionItem &b) {
+            return a.sortPriority < b.sortPriority;
+        });
         return;
     }
 
@@ -482,26 +431,23 @@ void BasicCompletionEngine::rank(std::vector<CompletionItem> &items,
     for (size_t i = 0; i < order.size(); ++i)
         order[i] = i;
 
-    std::sort(order.begin(),
-              order.end(),
-              [&items, &lowerLabels, &lp](size_t ai, size_t bi)
-              {
-                  const auto &a = items[ai];
-                  const auto &b = items[bi];
-                  const auto &la = lowerLabels[ai];
-                  const auto &lb = lowerLabels[bi];
-                  bool aExact = (la == lp);
-                  bool bExact = (lb == lp);
-                  if (aExact != bExact)
-                      return aExact;
-                  bool aPrefix = (la.find(lp) == 0);
-                  bool bPrefix = (lb.find(lp) == 0);
-                  if (aPrefix != bPrefix)
-                      return aPrefix;
-                  if (a.sortPriority != b.sortPriority)
-                      return a.sortPriority < b.sortPriority;
-                  return la < lb;
-              });
+    std::sort(order.begin(), order.end(), [&items, &lowerLabels, &lp](size_t ai, size_t bi) {
+        const auto &a = items[ai];
+        const auto &b = items[bi];
+        const auto &la = lowerLabels[ai];
+        const auto &lb = lowerLabels[bi];
+        bool aExact = (la == lp);
+        bool bExact = (lb == lp);
+        if (aExact != bExact)
+            return aExact;
+        bool aPrefix = (la.find(lp) == 0);
+        bool bPrefix = (lb.find(lp) == 0);
+        if (aPrefix != bPrefix)
+            return aPrefix;
+        if (a.sortPriority != b.sortPriority)
+            return a.sortPriority < b.sortPriority;
+        return la < lb;
+    });
 
     std::vector<CompletionItem> ranked;
     ranked.reserve(items.size());
@@ -510,14 +456,12 @@ void BasicCompletionEngine::rank(std::vector<CompletionItem> &items,
     items = std::move(ranked);
 }
 
-void BasicCompletionEngine::deduplicate(std::vector<CompletionItem> &items) const
-{
+void BasicCompletionEngine::deduplicate(std::vector<CompletionItem> &items) const {
     std::unordered_set<std::string> seen;
     seen.reserve(items.size());
     std::vector<CompletionItem> unique;
     unique.reserve(items.size());
-    for (auto &item : items)
-    {
+    for (auto &item : items) {
         std::string key = item.label;
         key.push_back('\0');
         key += std::to_string(static_cast<unsigned>(item.kind));
@@ -530,12 +474,10 @@ void BasicCompletionEngine::deduplicate(std::vector<CompletionItem> &items) cons
 // --- Main entry point ---
 
 std::vector<CompletionItem> BasicCompletionEngine::complete(
-    std::string_view source, int line, int col, std::string_view filePath, int maxResults)
-{
+    std::string_view source, int line, int col, std::string_view filePath, int maxResults) {
     // Check cache
     uint64_t hash = fnv1a(source);
-    if (cache_.hash != hash || cache_.filePath != filePath || !cache_.result)
-    {
+    if (cache_.hash != hash || cache_.filePath != filePath || !cache_.result) {
         sm_ = std::make_unique<il::support::SourceManager>();
         BasicCompilerInput input{.source = source, .path = filePath};
         cache_.result = parseAndAnalyzeBasic(input, *sm_);
@@ -551,12 +493,9 @@ std::vector<CompletionItem> BasicCompletionEngine::complete(
 
     std::vector<CompletionItem> items;
 
-    if (ctx.trigger == TriggerKind::MemberAccess)
-    {
+    if (ctx.trigger == TriggerKind::MemberAccess) {
         items = provideMemberCompletions(*ar.sema, ctx);
-    }
-    else
-    {
+    } else {
         // General completion: keywords + builtins + scope symbols
         auto kw = provideKeywords(ctx.prefix);
         auto sn = provideSnippets(ctx.prefix);

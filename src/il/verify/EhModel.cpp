@@ -31,8 +31,7 @@
 
 using namespace il::core;
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Capture exception-handling structure for @p function.
 /// @details Builds label lookups for all basic blocks and records the entry
@@ -40,24 +39,20 @@ namespace il::verify
 ///          recomputing metadata.  The model stores raw pointers into the
 ///          original function and therefore must not outlive it.
 /// @param function Function whose EH layout should be modelled.
-EhModel::EhModel(const Function &function) : fn(&function)
-{
+EhModel::EhModel(const Function &function) : fn(&function) {
     if (!function.blocks.empty())
         entryBlock = &function.blocks.front();
 
     blocks.reserve(function.blocks.size());
-    for (const auto &block : function.blocks)
-    {
+    for (const auto &block : function.blocks) {
         // Use emplace with string_view key referencing block.label.
         // The Function must outlive this EhModel for the view to remain valid.
         blocks.emplace(std::string_view{block.label}, &block);
         if (hasEh)
             continue;
 
-        for (const auto &instr : block.instructions)
-        {
-            switch (instr.op)
-            {
+        for (const auto &instr : block.instructions) {
+            switch (instr.op) {
                 case Opcode::EhPush:
                 case Opcode::EhPop:
                 case Opcode::EhEntry:
@@ -84,8 +79,7 @@ EhModel::EhModel(const Function &function) : fn(&function)
 ///          pointers.
 /// @param label Name of the basic block to retrieve.
 /// @return Pointer to the block when present, otherwise nullptr.
-const BasicBlock *EhModel::findBlock(std::string_view label) const
-{
+const BasicBlock *EhModel::findBlock(std::string_view label) const {
     auto it = blocks.find(label);
     if (it == blocks.end())
         return nullptr;
@@ -100,29 +94,24 @@ const BasicBlock *EhModel::findBlock(std::string_view label) const
 ///          resilient to malformed modules.
 /// @param terminator Terminator instruction whose outgoing edges are requested.
 /// @return Vector containing zero or more successor block pointers.
-std::vector<const BasicBlock *> EhModel::gatherSuccessors(const Instr &terminator) const
-{
+std::vector<const BasicBlock *> EhModel::gatherSuccessors(const Instr &terminator) const {
     std::vector<const BasicBlock *> successors;
-    switch (terminator.op)
-    {
+    switch (terminator.op) {
         case Opcode::Br:
-            if (!terminator.labels.empty())
-            {
+            if (!terminator.labels.empty()) {
                 if (const BasicBlock *target = findBlock(terminator.labels[0]))
                     successors.push_back(target);
             }
             break;
         case Opcode::CBr:
         case Opcode::SwitchI32:
-            for (const std::string &label : terminator.labels)
-            {
+            for (const std::string &label : terminator.labels) {
                 if (const BasicBlock *target = findBlock(label))
                     successors.push_back(target);
             }
             break;
         case Opcode::ResumeLabel:
-            if (!terminator.labels.empty())
-            {
+            if (!terminator.labels.empty()) {
                 if (const BasicBlock *target = findBlock(terminator.labels[0]))
                     successors.push_back(target);
             }
@@ -140,10 +129,8 @@ std::vector<const BasicBlock *> EhModel::gatherSuccessors(const Instr &terminato
 ///          fallthrough and explicit control transfers.
 /// @param block Basic block whose terminator is requested.
 /// @return Pointer to the terminator instruction, or nullptr when absent.
-const Instr *EhModel::findTerminator(const BasicBlock &block) const
-{
-    for (const auto &instr : block.instructions)
-    {
+const Instr *EhModel::findTerminator(const BasicBlock &block) const {
+    for (const auto &instr : block.instructions) {
         if (isTerminator(instr.op))
             return &instr;
     }

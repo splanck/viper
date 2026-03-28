@@ -29,19 +29,15 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::codegen::aarch64::peephole
-{
+namespace viper::codegen::aarch64::peephole {
 
-std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
-{
+std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats) {
     std::unordered_map<uint32_t, MOperand> copyOrigin;
     std::size_t propagated = 0;
 
-    auto invalidateDependents = [&copyOrigin](uint32_t originKey)
-    {
+    auto invalidateDependents = [&copyOrigin](uint32_t originKey) {
         std::vector<uint32_t> toErase;
-        for (const auto &[key, origin] : copyOrigin)
-        {
+        for (const auto &[key, origin] : copyOrigin) {
             if (regKey(origin) == originKey)
                 toErase.push_back(key);
         }
@@ -49,19 +45,16 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
             copyOrigin.erase(key);
     };
 
-    for (auto &instr : instrs)
-    {
+    for (auto &instr : instrs) {
         if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond || instr.opc == MOpcode::Ret ||
-            instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr)
-        {
+            instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr) {
             if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr)
                 copyOrigin.clear();
             continue;
         }
 
         // Shared copy-tracking for MovRR and FMovRR (same-class).
-        auto trackCopy = [&](MInstr &mi) -> bool
-        {
+        auto trackCopy = [&](MInstr &mi) -> bool {
             const MOperand &dst = mi.ops[0];
             const MOperand &src = mi.ops[1];
             uint32_t dstKey = regKey(dst);
@@ -70,18 +63,15 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
             copyOrigin.erase(dstKey);
 
             MOperand origin = src;
-            if (!isABIReg(src))
-            {
+            if (!isABIReg(src)) {
                 auto it = copyOrigin.find(regKey(src));
                 if (it != copyOrigin.end())
                     origin = it->second;
             }
 
-            if (!samePhysReg(dst, origin))
-            {
+            if (!samePhysReg(dst, origin)) {
                 copyOrigin[dstKey] = origin;
-                if (!samePhysReg(src, origin))
-                {
+                if (!samePhysReg(src, origin)) {
                     mi.ops[1] = origin;
                     ++propagated;
                 }
@@ -91,34 +81,29 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
 
         // MovRR copy tracking
         if (instr.opc == MOpcode::MovRR && instr.ops.size() == 2 && isPhysReg(instr.ops[0]) &&
-            isPhysReg(instr.ops[1]))
-        {
+            isPhysReg(instr.ops[1])) {
             trackCopy(instr);
             continue;
         }
 
         // FMovRR copy tracking (same-class only)
         if (instr.opc == MOpcode::FMovRR && instr.ops.size() == 2 && isPhysReg(instr.ops[0]) &&
-            isPhysReg(instr.ops[1]) && instr.ops[0].reg.cls == instr.ops[1].reg.cls)
-        {
+            isPhysReg(instr.ops[1]) && instr.ops[0].reg.cls == instr.ops[1].reg.cls) {
             trackCopy(instr);
             continue;
         }
 
         // Propagate uses BEFORE invalidating defs
-        for (std::size_t i = 0; i < instr.ops.size(); ++i)
-        {
+        for (std::size_t i = 0; i < instr.ops.size(); ++i) {
             auto &op = instr.ops[i];
             if (!isPhysReg(op))
                 continue;
 
             auto [isUse, isDef] = classifyOperand(instr, i);
-            if (isUse && !isDef && !isABIReg(op))
-            {
+            if (isUse && !isDef && !isABIReg(op)) {
                 uint32_t key = regKey(op);
                 auto it = copyOrigin.find(key);
-                if (it != copyOrigin.end() && !samePhysReg(op, it->second))
-                {
+                if (it != copyOrigin.end() && !samePhysReg(op, it->second)) {
                     op = it->second;
                     ++propagated;
                 }
@@ -126,15 +111,13 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
         }
 
         // Invalidate definitions
-        for (std::size_t i = 0; i < instr.ops.size(); ++i)
-        {
+        for (std::size_t i = 0; i < instr.ops.size(); ++i) {
             const auto &op = instr.ops[i];
             if (!isPhysReg(op))
                 continue;
 
             auto [isUse, isDef] = classifyOperand(instr, i);
-            if (isDef)
-            {
+            if (isDef) {
                 uint32_t key = regKey(op);
                 invalidateDependents(key);
                 copyOrigin.erase(key);
@@ -146,47 +129,39 @@ std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats)
     return propagated;
 }
 
-std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &stats)
-{
+std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &stats) {
     if (instrs.empty())
         return 0;
 
     std::unordered_set<uint32_t> liveRegs;
 
     // Mark argument registers as live at block exit
-    for (int i = 0; i <= 7; ++i)
-    {
+    for (int i = 0; i <= 7; ++i) {
         liveRegs.insert((static_cast<uint32_t>(RegClass::GPR) << 16) |
                         static_cast<uint32_t>(PhysReg::X0) + i);
     }
-    for (int i = 0; i <= 7; ++i)
-    {
+    for (int i = 0; i <= 7; ++i) {
         liveRegs.insert((static_cast<uint32_t>(RegClass::FPR) << 16) |
                         static_cast<uint32_t>(PhysReg::V0) + i);
     }
 
     // Mark callee-saved GPRs (x19-x28) as live at block exit
     for (uint32_t r = static_cast<uint32_t>(PhysReg::X19); r <= static_cast<uint32_t>(PhysReg::X28);
-         ++r)
-    {
+         ++r) {
         liveRegs.insert((static_cast<uint32_t>(RegClass::GPR) << 16) | r);
     }
 
     std::vector<bool> toRemove(instrs.size(), false);
     std::size_t removed = 0;
 
-    for (std::size_t i = instrs.size(); i > 0; --i)
-    {
+    for (std::size_t i = instrs.size(); i > 0; --i) {
         const std::size_t idx = i - 1;
         const auto &instr = instrs[idx];
 
-        if (hasSideEffects(instr))
-        {
-            for (std::size_t j = 0; j < instr.ops.size(); ++j)
-            {
+        if (hasSideEffects(instr)) {
+            for (std::size_t j = 0; j < instr.ops.size(); ++j) {
                 const auto &op = instr.ops[j];
-                if (isPhysReg(op))
-                {
+                if (isPhysReg(op)) {
                     auto [isUse, isDef] = classifyOperand(instr, j);
                     if (isUse)
                         liveRegs.insert(regKey(op));
@@ -196,11 +171,9 @@ std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &s
         }
 
         auto defReg = getDefinedReg(instr);
-        if (defReg)
-        {
+        if (defReg) {
             uint32_t key = regKey(*defReg);
-            if (liveRegs.find(key) == liveRegs.end())
-            {
+            if (liveRegs.find(key) == liveRegs.end()) {
                 toRemove[idx] = true;
                 ++removed;
                 continue;
@@ -209,11 +182,9 @@ std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &s
             liveRegs.erase(key);
         }
 
-        for (std::size_t j = 0; j < instr.ops.size(); ++j)
-        {
+        for (std::size_t j = 0; j < instr.ops.size(); ++j) {
             const auto &op = instr.ops[j];
-            if (isPhysReg(op))
-            {
+            if (isPhysReg(op)) {
                 auto [isUse, isDef] = classifyOperand(instr, j);
                 if (isUse)
                     liveRegs.insert(regKey(op));
@@ -221,8 +192,7 @@ std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &s
         }
     }
 
-    if (removed > 0)
-    {
+    if (removed > 0) {
         removeMarkedInstructions(instrs, toRemove);
         stats.deadInstructionsRemoved += static_cast<int>(removed);
     }
@@ -230,23 +200,19 @@ std::size_t removeDeadInstructions(std::vector<MInstr> &instrs, PeepholeStats &s
     return removed;
 }
 
-std::size_t eliminateDeadFpStores(std::vector<MInstr> &instrs, PeepholeStats &stats)
-{
+std::size_t eliminateDeadFpStores(std::vector<MInstr> &instrs, PeepholeStats &stats) {
     std::unordered_map<int64_t, std::size_t> lastStore;
     std::vector<bool> toRemove(instrs.size(), false);
     std::size_t removed = 0;
 
-    for (std::size_t i = 0; i < instrs.size(); ++i)
-    {
+    for (std::size_t i = 0; i < instrs.size(); ++i) {
         const auto &instr = instrs[i];
 
         if ((instr.opc == MOpcode::StrRegFpImm || instr.opc == MOpcode::StrFprFpImm) &&
-            instr.ops.size() >= 2 && instr.ops[1].kind == MOperand::Kind::Imm)
-        {
+            instr.ops.size() >= 2 && instr.ops[1].kind == MOperand::Kind::Imm) {
             const int64_t offset = instr.ops[1].imm;
             auto it = lastStore.find(offset);
-            if (it != lastStore.end())
-            {
+            if (it != lastStore.end()) {
                 toRemove[it->second] = true;
                 ++removed;
             }
@@ -255,56 +221,47 @@ std::size_t eliminateDeadFpStores(std::vector<MInstr> &instrs, PeepholeStats &st
         }
 
         if ((instr.opc == MOpcode::LdrRegFpImm || instr.opc == MOpcode::LdrFprFpImm) &&
-            instr.ops.size() >= 2 && instr.ops[1].kind == MOperand::Kind::Imm)
-        {
+            instr.ops.size() >= 2 && instr.ops[1].kind == MOperand::Kind::Imm) {
             lastStore.erase(instr.ops[1].imm);
             continue;
         }
 
         if ((instr.opc == MOpcode::StpRegFpImm || instr.opc == MOpcode::StpFprFpImm) &&
-            instr.ops.size() >= 3 && instr.ops[2].kind == MOperand::Kind::Imm)
-        {
+            instr.ops.size() >= 3 && instr.ops[2].kind == MOperand::Kind::Imm) {
             const int64_t off = instr.ops[2].imm;
             lastStore.erase(off);
             lastStore.erase(off + 8);
             continue;
         }
         if ((instr.opc == MOpcode::LdpRegFpImm || instr.opc == MOpcode::LdpFprFpImm) &&
-            instr.ops.size() >= 3 && instr.ops[2].kind == MOperand::Kind::Imm)
-        {
+            instr.ops.size() >= 3 && instr.ops[2].kind == MOperand::Kind::Imm) {
             lastStore.erase(instr.ops[2].imm);
             lastStore.erase(instr.ops[2].imm + 8);
             continue;
         }
 
-        if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr)
-        {
+        if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr) {
             lastStore.clear();
             continue;
         }
 
         if (instr.opc == MOpcode::Br || instr.opc == MOpcode::BCond || instr.opc == MOpcode::Ret ||
-            instr.opc == MOpcode::Cbz || instr.opc == MOpcode::Cbnz)
-        {
+            instr.opc == MOpcode::Cbz || instr.opc == MOpcode::Cbnz) {
             lastStore.clear();
             continue;
         }
     }
 
-    if (removed > 0)
-    {
+    if (removed > 0) {
         removeMarkedInstructions(instrs, toRemove);
         stats.deadInstructionsRemoved += static_cast<int>(removed);
     }
     return removed;
 }
 
-std::size_t removeDeadFlagSetters(std::vector<MInstr> &instrs, PeepholeStats &stats)
-{
-    auto setsFlags = [](MOpcode opc) -> bool
-    {
-        switch (opc)
-        {
+std::size_t removeDeadFlagSetters(std::vector<MInstr> &instrs, PeepholeStats &stats) {
+    auto setsFlags = [](MOpcode opc) -> bool {
+        switch (opc) {
             case MOpcode::CmpRR:
             case MOpcode::CmpRI:
             case MOpcode::TstRR:
@@ -319,10 +276,8 @@ std::size_t removeDeadFlagSetters(std::vector<MInstr> &instrs, PeepholeStats &st
         }
     };
 
-    auto readsFlags = [](MOpcode opc) -> bool
-    {
-        switch (opc)
-        {
+    auto readsFlags = [](MOpcode opc) -> bool {
+        switch (opc) {
             case MOpcode::BCond:
             case MOpcode::Cset:
             case MOpcode::Csel:
@@ -335,47 +290,38 @@ std::size_t removeDeadFlagSetters(std::vector<MInstr> &instrs, PeepholeStats &st
     std::vector<bool> toRemove(instrs.size(), false);
     std::size_t removed = 0;
 
-    for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
-    {
+    for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
         if (!setsFlags(instrs[i].opc))
             continue;
 
         bool isDead = false;
-        for (std::size_t j = i + 1; j < instrs.size(); ++j)
-        {
+        for (std::size_t j = i + 1; j < instrs.size(); ++j) {
             if (readsFlags(instrs[j].opc))
                 break;
-            if (setsFlags(instrs[j].opc))
-            {
+            if (setsFlags(instrs[j].opc)) {
                 if (instrs[i].opc == MOpcode::CmpRI || instrs[i].opc == MOpcode::CmpRR ||
-                    instrs[i].opc == MOpcode::TstRR || instrs[i].opc == MOpcode::FCmpRR)
-                {
+                    instrs[i].opc == MOpcode::TstRR || instrs[i].opc == MOpcode::FCmpRR) {
                     isDead = true;
                 }
                 break;
             }
         }
-        if (isDead)
-        {
+        if (isDead) {
             toRemove[i] = true;
             ++removed;
         }
     }
 
-    if (removed > 0)
-    {
+    if (removed > 0) {
         removeMarkedInstructions(instrs, toRemove);
         stats.deadInstructionsRemoved += static_cast<int>(removed);
     }
     return removed;
 }
 
-std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &stats)
-{
-    auto isSimpleALU = [](MOpcode opc) -> bool
-    {
-        switch (opc)
-        {
+std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &stats) {
+    auto isSimpleALU = [](MOpcode opc) -> bool {
+        switch (opc) {
             case MOpcode::AddRRR:
             case MOpcode::SubRRR:
             case MOpcode::AddRI:
@@ -399,8 +345,7 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
     };
 
     std::size_t folded = 0;
-    for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
-    {
+    for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
         if (!isSimpleALU(instrs[i].opc))
             continue;
         if (instrs[i].ops.empty() || !isPhysReg(instrs[i].ops[0]))
@@ -426,10 +371,8 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
         const MOperand movDst = instrs[movIdx].ops[0];
 
         bool interveningUse = false;
-        for (std::size_t k = i + 1; k < movIdx; ++k)
-        {
-            if (usesReg(instrs[k], movDst))
-            {
+        for (std::size_t k = i + 1; k < movIdx; ++k) {
+            if (usesReg(instrs[k], movDst)) {
                 interveningUse = true;
                 break;
             }
@@ -438,10 +381,8 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
             continue;
 
         bool aluDstDead = true;
-        for (std::size_t j = movIdx + 1; j < instrs.size(); ++j)
-        {
-            if (usesReg(instrs[j], aluDst))
-            {
+        for (std::size_t j = movIdx + 1; j < instrs.size(); ++j) {
+            if (usesReg(instrs[j], aluDst)) {
                 aluDstDead = false;
                 break;
             }
@@ -462,22 +403,17 @@ std::size_t foldComputeIntoTarget(std::vector<MInstr> &instrs, PeepholeStats &st
     return folded;
 }
 
-std::size_t eliminateDeadFpStoresCrossBlock(MFunction &fn, PeepholeStats &stats)
-{
+std::size_t eliminateDeadFpStoresCrossBlock(MFunction &fn, PeepholeStats &stats) {
     // Step 1: Collect all FP offsets that are LOADED anywhere in the function.
     std::unordered_set<int64_t> loadedOffsets;
-    for (const auto &bb : fn.blocks)
-    {
-        for (const auto &mi : bb.instrs)
-        {
+    for (const auto &bb : fn.blocks) {
+        for (const auto &mi : bb.instrs) {
             if (mi.opc == MOpcode::LdrRegFpImm && mi.ops.size() >= 2 &&
-                mi.ops[1].kind == MOperand::Kind::Imm)
-            {
+                mi.ops[1].kind == MOperand::Kind::Imm) {
                 loadedOffsets.insert(mi.ops[1].imm);
             }
             if (mi.opc == MOpcode::LdpRegFpImm && mi.ops.size() >= 3 &&
-                mi.ops[2].kind == MOperand::Kind::Imm)
-            {
+                mi.ops[2].kind == MOperand::Kind::Imm) {
                 loadedOffsets.insert(mi.ops[2].imm);
                 loadedOffsets.insert(mi.ops[2].imm + 8);
             }
@@ -486,17 +422,14 @@ std::size_t eliminateDeadFpStoresCrossBlock(MFunction &fn, PeepholeStats &stats)
 
     // Step 2: Remove stores to offsets that are never loaded.
     std::size_t removed = 0;
-    for (auto &bb : fn.blocks)
-    {
+    for (auto &bb : fn.blocks) {
         bb.instrs.erase(std::remove_if(bb.instrs.begin(),
                                        bb.instrs.end(),
-                                       [&](const MInstr &mi)
-                                       {
+                                       [&](const MInstr &mi) {
                                            if (mi.opc == MOpcode::StrRegFpImm &&
                                                mi.ops.size() >= 2 &&
                                                mi.ops[1].kind == MOperand::Kind::Imm &&
-                                               !loadedOffsets.count(mi.ops[1].imm))
-                                           {
+                                               !loadedOffsets.count(mi.ops[1].imm)) {
                                                ++removed;
                                                return true;
                                            }

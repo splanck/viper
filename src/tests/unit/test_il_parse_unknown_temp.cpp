@@ -19,8 +19,7 @@
 #include <cassert>
 #include <sstream>
 
-int main()
-{
+int main() {
     const char *src = R"(il 0.2.0
 func @main() -> i64 {
 entry:
@@ -33,8 +32,7 @@ entry:
     il::core::Module m;
     std::ostringstream diag;
     auto parse = il::api::v2::parse_text_expected(in, m);
-    if (!parse)
-    {
+    if (!parse) {
         il::support::printDiag(parse.error(), diag);
     }
     assert(!parse);

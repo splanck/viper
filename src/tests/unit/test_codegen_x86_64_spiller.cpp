@@ -23,8 +23,7 @@
 using namespace viper::codegen::x64;
 using namespace viper::codegen::x64::ra;
 
-TEST(Spiller, AllocatesSlotsPerClass)
-{
+TEST(Spiller, AllocatesSlotsPerClass) {
     Spiller spiller{};
     SpillPlan plan{};
     spiller.ensureSpillSlot(RegClass::GPR, plan);
@@ -39,8 +38,7 @@ TEST(Spiller, AllocatesSlotsPerClass)
     EXPECT_EQ(spiller.xmmSlots(), 1);
 }
 
-TEST(Spiller, EmitsLoadStore)
-{
+TEST(Spiller, EmitsLoadStore) {
     Spiller spiller{};
     SpillPlan plan{true, 3};
     auto load = spiller.makeLoad(RegClass::GPR, PhysReg::RAX, plan);
@@ -60,8 +58,7 @@ TEST(Spiller, EmitsLoadStore)
     EXPECT_EQ(src->idOrPhys, static_cast<uint16_t>(PhysReg::RDI));
 }
 
-TEST(Spiller, SpillsActiveValue)
-{
+TEST(Spiller, SpillsActiveValue) {
     Spiller spiller{};
     VirtualAllocation alloc{};
     alloc.cls = RegClass::GPR;
@@ -84,8 +81,7 @@ TEST(Spiller, SpillsActiveValue)
     EXPECT_TRUE(result.vregToPhys.empty());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

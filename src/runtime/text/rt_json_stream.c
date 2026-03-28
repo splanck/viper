@@ -42,8 +42,7 @@
 
 #define MAX_DEPTH 256
 
-typedef struct
-{
+typedef struct {
     const char *input;
     size_t len;
     size_t pos;
@@ -60,11 +59,9 @@ typedef struct
     int8_t first_value[MAX_DEPTH];
 } rt_json_stream_impl;
 
-static void stream_finalizer(void *obj)
-{
+static void stream_finalizer(void *obj) {
     rt_json_stream_impl *s = (rt_json_stream_impl *)obj;
-    if (s)
-    {
+    if (s) {
         free(s->str_buf);
         s->str_buf = NULL;
         free(s->error_msg);
@@ -72,10 +69,8 @@ static void stream_finalizer(void *obj)
     }
 }
 
-static void skip_whitespace(rt_json_stream_impl *s)
-{
-    while (s->pos < s->len)
-    {
+static void skip_whitespace(rt_json_stream_impl *s) {
+    while (s->pos < s->len) {
         char c = s->input[s->pos];
         if (c == ' ' || c == '\t' || c == '\n' || c == '\r')
             s->pos++;
@@ -84,45 +79,37 @@ static void skip_whitespace(rt_json_stream_impl *s)
     }
 }
 
-static char peek(rt_json_stream_impl *s)
-{
+static char peek(rt_json_stream_impl *s) {
     skip_whitespace(s);
     if (s->pos >= s->len)
         return '\0';
     return s->input[s->pos];
 }
 
-static void set_error(rt_json_stream_impl *s, const char *msg)
-{
+static void set_error(rt_json_stream_impl *s, const char *msg) {
     s->current_type = RT_JSON_TOK_ERROR;
     free(s->error_msg);
     s->error_msg = NULL;
-    if (msg)
-    {
+    if (msg) {
         size_t len = strlen(msg);
         s->error_msg = (char *)malloc(len + 1);
-        if (s->error_msg)
-        {
+        if (s->error_msg) {
             memcpy(s->error_msg, msg, len + 1);
         }
     }
 }
 
-static void str_buf_clear(rt_json_stream_impl *s)
-{
+static void str_buf_clear(rt_json_stream_impl *s) {
     s->str_buf_len = 0;
 }
 
-static void str_buf_push(rt_json_stream_impl *s, char c)
-{
-    if (s->str_buf_len + 1 >= s->str_buf_cap)
-    {
+static void str_buf_push(rt_json_stream_impl *s, char c) {
+    if (s->str_buf_len + 1 >= s->str_buf_cap) {
         size_t new_cap = s->str_buf_cap * 2;
         if (new_cap < 64)
             new_cap = 64;
         char *new_buf = (char *)realloc(s->str_buf, new_cap);
-        if (!new_buf)
-        {
+        if (!new_buf) {
             set_error(s, "out of memory");
             return;
         }
@@ -133,11 +120,9 @@ static void str_buf_push(rt_json_stream_impl *s, char c)
     s->str_buf[s->str_buf_len] = '\0';
 }
 
-static int parse_hex4(rt_json_stream_impl *s, uint32_t *out)
-{
+static int parse_hex4(rt_json_stream_impl *s, uint32_t *out) {
     uint32_t val = 0;
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         if (s->pos >= s->len)
             return 0;
         char c = s->input[s->pos++];
@@ -155,25 +140,17 @@ static int parse_hex4(rt_json_stream_impl *s, uint32_t *out)
     return 1;
 }
 
-static void encode_utf8(rt_json_stream_impl *s, uint32_t cp)
-{
-    if (cp < 0x80)
-    {
+static void encode_utf8(rt_json_stream_impl *s, uint32_t cp) {
+    if (cp < 0x80) {
         str_buf_push(s, (char)cp);
-    }
-    else if (cp < 0x800)
-    {
+    } else if (cp < 0x800) {
         str_buf_push(s, (char)(0xC0 | (cp >> 6)));
         str_buf_push(s, (char)(0x80 | (cp & 0x3F)));
-    }
-    else if (cp < 0x10000)
-    {
+    } else if (cp < 0x10000) {
         str_buf_push(s, (char)(0xE0 | (cp >> 12)));
         str_buf_push(s, (char)(0x80 | ((cp >> 6) & 0x3F)));
         str_buf_push(s, (char)(0x80 | (cp & 0x3F)));
-    }
-    else
-    {
+    } else {
         str_buf_push(s, (char)(0xF0 | (cp >> 18)));
         str_buf_push(s, (char)(0x80 | ((cp >> 12) & 0x3F)));
         str_buf_push(s, (char)(0x80 | ((cp >> 6) & 0x3F)));
@@ -181,31 +158,25 @@ static void encode_utf8(rt_json_stream_impl *s, uint32_t cp)
     }
 }
 
-static int parse_string_content(rt_json_stream_impl *s)
-{
+static int parse_string_content(rt_json_stream_impl *s) {
     str_buf_clear(s);
-    if (s->pos >= s->len || s->input[s->pos] != '"')
-    {
+    if (s->pos >= s->len || s->input[s->pos] != '"') {
         set_error(s, "expected '\"'");
         return 0;
     }
     s->pos++; /* skip opening quote */
 
-    while (s->pos < s->len)
-    {
+    while (s->pos < s->len) {
         char c = s->input[s->pos++];
         if (c == '"')
             return 1;
-        if (c == '\\')
-        {
-            if (s->pos >= s->len)
-            {
+        if (c == '\\') {
+            if (s->pos >= s->len) {
                 set_error(s, "unterminated escape");
                 return 0;
             }
             char esc = s->input[s->pos++];
-            switch (esc)
-            {
+            switch (esc) {
                 case '"':
                     str_buf_push(s, '"');
                     break;
@@ -230,24 +201,19 @@ static int parse_string_content(rt_json_stream_impl *s)
                 case 't':
                     str_buf_push(s, '\t');
                     break;
-                case 'u':
-                {
+                case 'u': {
                     uint32_t cp = 0;
-                    if (!parse_hex4(s, &cp))
-                    {
+                    if (!parse_hex4(s, &cp)) {
                         set_error(s, "invalid unicode escape");
                         return 0;
                     }
                     /* Handle surrogate pairs */
-                    if (cp >= 0xD800 && cp <= 0xDBFF)
-                    {
+                    if (cp >= 0xD800 && cp <= 0xDBFF) {
                         if (s->pos + 1 < s->len && s->input[s->pos] == '\\' &&
-                            s->input[s->pos + 1] == 'u')
-                        {
+                            s->input[s->pos + 1] == 'u') {
                             s->pos += 2;
                             uint32_t lo = 0;
-                            if (!parse_hex4(s, &lo) || lo < 0xDC00 || lo > 0xDFFF)
-                            {
+                            if (!parse_hex4(s, &lo) || lo < 0xDC00 || lo > 0xDFFF) {
                                 set_error(s, "invalid surrogate pair");
                                 return 0;
                             }
@@ -261,9 +227,7 @@ static int parse_string_content(rt_json_stream_impl *s)
                     set_error(s, "invalid escape character");
                     return 0;
             }
-        }
-        else
-        {
+        } else {
             str_buf_push(s, c);
         }
     }
@@ -271,26 +235,22 @@ static int parse_string_content(rt_json_stream_impl *s)
     return 0;
 }
 
-static int parse_number(rt_json_stream_impl *s)
-{
+static int parse_number(rt_json_stream_impl *s) {
     size_t start = s->pos;
     if (s->pos < s->len && s->input[s->pos] == '-')
         s->pos++;
-    if (s->pos >= s->len || !isdigit((unsigned char)s->input[s->pos]))
-    {
+    if (s->pos >= s->len || !isdigit((unsigned char)s->input[s->pos])) {
         set_error(s, "invalid number");
         return 0;
     }
     while (s->pos < s->len && isdigit((unsigned char)s->input[s->pos]))
         s->pos++;
-    if (s->pos < s->len && s->input[s->pos] == '.')
-    {
+    if (s->pos < s->len && s->input[s->pos] == '.') {
         s->pos++;
         while (s->pos < s->len && isdigit((unsigned char)s->input[s->pos]))
             s->pos++;
     }
-    if (s->pos < s->len && (s->input[s->pos] == 'e' || s->input[s->pos] == 'E'))
-    {
+    if (s->pos < s->len && (s->input[s->pos] == 'e' || s->input[s->pos] == 'E')) {
         s->pos++;
         if (s->pos < s->len && (s->input[s->pos] == '+' || s->input[s->pos] == '-'))
             s->pos++;
@@ -309,8 +269,7 @@ static int parse_number(rt_json_stream_impl *s)
     return 1;
 }
 
-static int match_literal(rt_json_stream_impl *s, const char *lit, size_t len)
-{
+static int match_literal(rt_json_stream_impl *s, const char *lit, size_t len) {
     if (s->pos + len > s->len)
         return 0;
     if (memcmp(s->input + s->pos, lit, len) != 0)
@@ -323,12 +282,10 @@ static int match_literal(rt_json_stream_impl *s, const char *lit, size_t len)
 // Public API
 //=============================================================================
 
-void *rt_json_stream_new(rt_string json)
-{
+void *rt_json_stream_new(rt_string json) {
     rt_json_stream_impl *s =
         (rt_json_stream_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_json_stream_impl));
-    if (!s)
-    {
+    if (!s) {
         rt_trap("JsonStream: memory allocation failed");
         return NULL;
     }
@@ -355,8 +312,7 @@ void *rt_json_stream_new(rt_string json)
 /// @brief Perform stream next operation.
 /// @param parser
 /// @return Result value.
-int64_t rt_json_stream_next(void *parser)
-{
+int64_t rt_json_stream_next(void *parser) {
     if (!parser)
         return RT_JSON_TOK_ERROR;
 
@@ -367,30 +323,25 @@ int64_t rt_json_stream_next(void *parser)
     char c = peek(s);
 
     /* Handle comma separators */
-    if (c == ',')
-    {
+    if (c == ',') {
         s->pos++;
         c = peek(s);
     }
 
     /* Handle colon after key */
-    if (c == ':')
-    {
+    if (c == ':') {
         s->pos++;
         c = peek(s);
     }
 
-    if (c == '\0')
-    {
+    if (c == '\0') {
         s->current_type = RT_JSON_TOK_END;
         return RT_JSON_TOK_END;
     }
 
     /* After object start or comma in object, expect key */
-    if (s->depth > 0 && s->in_object[s->depth] && c == '"')
-    {
-        if (s->expect_key)
-        {
+    if (s->depth > 0 && s->in_object[s->depth] && c == '"') {
+        if (s->expect_key) {
             if (!parse_string_content(s))
                 return RT_JSON_TOK_ERROR;
             s->current_type = RT_JSON_TOK_KEY;
@@ -399,13 +350,11 @@ int64_t rt_json_stream_next(void *parser)
         }
     }
 
-    switch (c)
-    {
+    switch (c) {
         case '{':
             s->pos++;
             s->depth++;
-            if (s->depth < MAX_DEPTH)
-            {
+            if (s->depth < MAX_DEPTH) {
                 s->in_object[s->depth] = 1;
                 s->first_value[s->depth] = 1;
             }
@@ -415,8 +364,7 @@ int64_t rt_json_stream_next(void *parser)
 
         case '}':
             s->pos++;
-            if (s->depth > 0)
-            {
+            if (s->depth > 0) {
                 s->in_object[s->depth] = 0;
                 s->depth--;
             }
@@ -427,8 +375,7 @@ int64_t rt_json_stream_next(void *parser)
         case '[':
             s->pos++;
             s->depth++;
-            if (s->depth < MAX_DEPTH)
-            {
+            if (s->depth < MAX_DEPTH) {
                 s->in_object[s->depth] = 0;
                 s->first_value[s->depth] = 1;
             }
@@ -438,8 +385,7 @@ int64_t rt_json_stream_next(void *parser)
 
         case ']':
             s->pos++;
-            if (s->depth > 0)
-            {
+            if (s->depth > 0) {
                 s->in_object[s->depth] = 0;
                 s->depth--;
             }
@@ -455,8 +401,7 @@ int64_t rt_json_stream_next(void *parser)
             return RT_JSON_TOK_STRING;
 
         case 't':
-            if (match_literal(s, "true", 4))
-            {
+            if (match_literal(s, "true", 4)) {
                 s->bool_value = 1;
                 s->current_type = RT_JSON_TOK_BOOL;
                 s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
@@ -466,8 +411,7 @@ int64_t rt_json_stream_next(void *parser)
             return RT_JSON_TOK_ERROR;
 
         case 'f':
-            if (match_literal(s, "false", 5))
-            {
+            if (match_literal(s, "false", 5)) {
                 s->bool_value = 0;
                 s->current_type = RT_JSON_TOK_BOOL;
                 s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
@@ -477,8 +421,7 @@ int64_t rt_json_stream_next(void *parser)
             return RT_JSON_TOK_ERROR;
 
         case 'n':
-            if (match_literal(s, "null", 4))
-            {
+            if (match_literal(s, "null", 4)) {
                 s->current_type = RT_JSON_TOK_NULL;
                 s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
                 return RT_JSON_TOK_NULL;
@@ -487,10 +430,8 @@ int64_t rt_json_stream_next(void *parser)
             return RT_JSON_TOK_ERROR;
 
         default:
-            if (c == '-' || isdigit((unsigned char)c))
-            {
-                if (parse_number(s))
-                {
+            if (c == '-' || isdigit((unsigned char)c)) {
+                if (parse_number(s)) {
                     s->current_type = RT_JSON_TOK_NUMBER;
                     s->expect_key = (s->depth > 0 && s->in_object[s->depth]) ? 1 : 0;
                     return RT_JSON_TOK_NUMBER;
@@ -505,8 +446,7 @@ int64_t rt_json_stream_next(void *parser)
 /// @brief Perform stream token type operation.
 /// @param parser
 /// @return Result value.
-int64_t rt_json_stream_token_type(void *parser)
-{
+int64_t rt_json_stream_token_type(void *parser) {
     if (!parser)
         return RT_JSON_TOK_ERROR;
     return ((rt_json_stream_impl *)parser)->current_type;
@@ -515,8 +455,7 @@ int64_t rt_json_stream_token_type(void *parser)
 /// @brief Perform stream string value operation.
 /// @param parser
 /// @return Result value.
-rt_string rt_json_stream_string_value(void *parser)
-{
+rt_string rt_json_stream_string_value(void *parser) {
     if (!parser)
         return rt_const_cstr("");
     rt_json_stream_impl *s = (rt_json_stream_impl *)parser;
@@ -528,8 +467,7 @@ rt_string rt_json_stream_string_value(void *parser)
 /// @brief Perform stream number value operation.
 /// @param parser
 /// @return Result value.
-double rt_json_stream_number_value(void *parser)
-{
+double rt_json_stream_number_value(void *parser) {
     if (!parser)
         return 0.0;
     return ((rt_json_stream_impl *)parser)->num_value;
@@ -538,8 +476,7 @@ double rt_json_stream_number_value(void *parser)
 /// @brief Perform stream bool value operation.
 /// @param parser
 /// @return Result value.
-int8_t rt_json_stream_bool_value(void *parser)
-{
+int8_t rt_json_stream_bool_value(void *parser) {
     if (!parser)
         return 0;
     return ((rt_json_stream_impl *)parser)->bool_value;
@@ -548,8 +485,7 @@ int8_t rt_json_stream_bool_value(void *parser)
 /// @brief Perform stream depth operation.
 /// @param parser
 /// @return Result value.
-int64_t rt_json_stream_depth(void *parser)
-{
+int64_t rt_json_stream_depth(void *parser) {
     if (!parser)
         return 0;
     return ((rt_json_stream_impl *)parser)->depth;
@@ -557,18 +493,15 @@ int64_t rt_json_stream_depth(void *parser)
 
 /// @brief Perform stream skip operation.
 /// @param parser
-void rt_json_stream_skip(void *parser)
-{
+void rt_json_stream_skip(void *parser) {
     if (!parser)
         return;
     rt_json_stream_impl *s = (rt_json_stream_impl *)parser;
 
     /* If current token is a container start, skip until matching end */
-    if (s->current_type == RT_JSON_TOK_OBJECT_START || s->current_type == RT_JSON_TOK_ARRAY_START)
-    {
+    if (s->current_type == RT_JSON_TOK_OBJECT_START || s->current_type == RT_JSON_TOK_ARRAY_START) {
         int64_t target_depth = s->depth - 1;
-        while (s->current_type != RT_JSON_TOK_END && s->current_type != RT_JSON_TOK_ERROR)
-        {
+        while (s->current_type != RT_JSON_TOK_END && s->current_type != RT_JSON_TOK_ERROR) {
             rt_json_stream_next(parser);
             if ((s->current_type == RT_JSON_TOK_OBJECT_END ||
                  s->current_type == RT_JSON_TOK_ARRAY_END) &&
@@ -582,8 +515,7 @@ void rt_json_stream_skip(void *parser)
 /// @brief Perform stream has next operation.
 /// @param parser
 /// @return Result value.
-int8_t rt_json_stream_has_next(void *parser)
-{
+int8_t rt_json_stream_has_next(void *parser) {
     if (!parser)
         return 0;
     rt_json_stream_impl *s = (rt_json_stream_impl *)parser;
@@ -596,8 +528,7 @@ int8_t rt_json_stream_has_next(void *parser)
 /// @brief Perform stream error operation.
 /// @param parser
 /// @return Result value.
-rt_string rt_json_stream_error(void *parser)
-{
+rt_string rt_json_stream_error(void *parser) {
     if (!parser)
         return rt_const_cstr("");
     rt_json_stream_impl *s = (rt_json_stream_impl *)parser;

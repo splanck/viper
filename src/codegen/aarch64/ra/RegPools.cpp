@@ -23,11 +23,9 @@
 
 #include <stdexcept>
 
-namespace viper::codegen::aarch64::ra
-{
+namespace viper::codegen::aarch64::ra {
 
-void RegPools::build(const TargetInfo &ti)
-{
+void RegPools::build(const TargetInfo &ti) {
     gprFree.clear();
     fprFree.clear();
     calleeSavedGPRSet = {};
@@ -37,31 +35,26 @@ void RegPools::build(const TargetInfo &ti)
         calleeSavedGPRSet[static_cast<std::size_t>(r)] = true;
 
     // Prefer caller-saved first, exclude argument registers
-    for (auto r : ti.callerSavedGPR)
-    {
+    for (auto r : ti.callerSavedGPR) {
         if (isAllocatableGPR(r) && !isArgRegister(r, ti))
             gprFree.push_back(r);
     }
-    for (auto r : ti.calleeSavedGPR)
-    {
+    for (auto r : ti.calleeSavedGPR) {
         if (isAllocatableGPR(r))
             gprFree.push_back(r);
     }
 
     // FPR: also exclude argument registers V0-V7
-    for (auto r : ti.callerSavedFPR)
-    {
+    for (auto r : ti.callerSavedFPR) {
         if (!isArgRegister(r, ti))
             fprFree.push_back(r);
     }
-    for (auto r : ti.calleeSavedFPR)
-    {
+    for (auto r : ti.calleeSavedFPR) {
         fprFree.push_back(r);
     }
 }
 
-PhysReg RegPools::takeGPR()
-{
+PhysReg RegPools::takeGPR() {
     if (gprFree.empty())
         throw std::runtime_error("AArch64 register allocator: GPR pool exhausted — "
                                  "maybeSpillForPressure should have freed a register");
@@ -70,10 +63,8 @@ PhysReg RegPools::takeGPR()
     // Callee-saved registers (x19-x28) require save/restore in the function
     // prologue/epilogue for every call, so use them only when caller-saved
     // registers are exhausted.
-    for (auto it = gprFree.begin(); it != gprFree.end(); ++it)
-    {
-        if (!calleeSavedGPRSet[static_cast<std::size_t>(*it)])
-        {
+    for (auto it = gprFree.begin(); it != gprFree.end(); ++it) {
+        if (!calleeSavedGPRSet[static_cast<std::size_t>(*it)]) {
             PhysReg r = *it;
             gprFree.erase(it);
             return r;
@@ -86,17 +77,14 @@ PhysReg RegPools::takeGPR()
     return r;
 }
 
-PhysReg RegPools::takeGPRPreferCalleeSaved(const TargetInfo & /*ti*/)
-{
+PhysReg RegPools::takeGPRPreferCalleeSaved(const TargetInfo & /*ti*/) {
     if (gprFree.empty())
         throw std::runtime_error("AArch64 register allocator: GPR pool exhausted — "
                                  "maybeSpillForPressure should have freed a register");
 
     // Try to find a callee-saved register first using O(1) array lookup
-    for (auto it = gprFree.begin(); it != gprFree.end(); ++it)
-    {
-        if (calleeSavedGPRSet[static_cast<std::size_t>(*it)])
-        {
+    for (auto it = gprFree.begin(); it != gprFree.end(); ++it) {
+        if (calleeSavedGPRSet[static_cast<std::size_t>(*it)]) {
             PhysReg r = *it;
             gprFree.erase(it);
             return r;
@@ -109,14 +97,12 @@ PhysReg RegPools::takeGPRPreferCalleeSaved(const TargetInfo & /*ti*/)
     return r;
 }
 
-void RegPools::releaseGPR(PhysReg r, const TargetInfo & /*ti*/)
-{
+void RegPools::releaseGPR(PhysReg r, const TargetInfo & /*ti*/) {
     // Release register back to pool - push to back to maintain FIFO order
     gprFree.push_back(r);
 }
 
-PhysReg RegPools::takeFPR()
-{
+PhysReg RegPools::takeFPR() {
     if (fprFree.empty())
         return kScratchFPR; // Fallback to scratch register when pool exhausted
     auto r = fprFree.front();
@@ -124,8 +110,7 @@ PhysReg RegPools::takeFPR()
     return r;
 }
 
-void RegPools::releaseFPR(PhysReg r, const TargetInfo & /*ti*/)
-{
+void RegPools::releaseFPR(PhysReg r, const TargetInfo & /*ti*/) {
     // Release register back to pool - push to back to maintain FIFO order
     fprFree.push_back(r);
 }

@@ -13,21 +13,17 @@
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/ast/NodeFwd.hpp"
 
-namespace il::frontends::basic::sem
-{
+namespace il::frontends::basic::sem {
 
-namespace
-{
+namespace {
 // Map semantic Type to AST Type used in OOP signatures for comparison
 static inline bool isExactMatch(::il::frontends::basic::Type expect,
-                                ::il::frontends::basic::Type got) noexcept
-{
+                                ::il::frontends::basic::Type got) noexcept {
     return expect == got;
 }
 
 static inline bool isWideningAllowed(::il::frontends::basic::Type expect,
-                                     ::il::frontends::basic::Type got) noexcept
-{
+                                     ::il::frontends::basic::Type got) noexcept {
     // Only numeric widening: int->float64; integer to integer widening already canonicalized to
     // I64. For this frontend, INT maps to I64 and SINGLE/DOUBLE to F64; allow I64->F64.
     return (expect == ::il::frontends::basic::Type::F64 &&
@@ -36,21 +32,18 @@ static inline bool isWideningAllowed(::il::frontends::basic::Type expect,
 
 static inline std::string signatureText(std::string_view qclass,
                                         std::string_view name,
-                                        const ClassInfo::MethodInfo &mi)
-{
+                                        const ClassInfo::MethodInfo &mi) {
     std::string s;
     s.reserve(64);
     s += std::string(qclass);
     s += ".";
     s += std::string(name);
     s += "(";
-    for (size_t i = 0; i < mi.sig.paramTypes.size(); ++i)
-    {
+    for (size_t i = 0; i < mi.sig.paramTypes.size(); ++i) {
         if (i)
             s += ", ";
         auto t = mi.sig.paramTypes[i];
-        switch (t)
-        {
+        switch (t) {
             case Type::I64:
                 s += "INTEGER";
                 break;
@@ -77,8 +70,7 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
                                                     const std::vector<Type> &argTypes,
                                                     std::string_view currentClass,
                                                     DiagnosticEmitter *de,
-                                                    il::support::SourceLoc loc)
-{
+                                                    il::support::SourceLoc loc) {
     // Normalize class casing using index metadata
     const ClassInfo *ci = index.findClass(std::string(qualifiedClass));
     if (!ci)
@@ -86,8 +78,7 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
 
     // Build candidate list: methodName plus property accessors matching arity.
     // BUG-OOP-002/003 fix: Walk the inheritance hierarchy to find methods.
-    struct Cand
-    {
+    struct Cand {
         const ClassInfo::MethodInfo *mi;
         std::string name;
         std::string declaringClass; // Class where method is defined (for mangling)
@@ -96,19 +87,14 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
     std::vector<Cand> cands;
 
     // Helper to add candidates from a class
-    auto addFromClass = [&](const ClassInfo *classInfo)
-    {
-        auto addIf = [&](const std::string &name)
-        {
+    auto addFromClass = [&](const ClassInfo *classInfo) {
+        auto addIf = [&](const std::string &name) {
             auto it = classInfo->methods.find(name);
-            if (it != classInfo->methods.end())
-            {
+            if (it != classInfo->methods.end()) {
                 // Check if we already have a candidate with this name (shadowing)
                 bool alreadyHave = false;
-                for (const auto &c : cands)
-                {
-                    if (c.name == name)
-                    {
+                for (const auto &c : cands) {
+                    if (c.name == name) {
                         alreadyHave = true;
                         break;
                     }
@@ -127,8 +113,7 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
 
     // Walk inheritance hierarchy from most derived to base
     const ClassInfo *cur = ci;
-    while (cur)
-    {
+    while (cur) {
         addFromClass(cur);
         if (cur->baseQualified.empty())
             break;
@@ -138,8 +123,7 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
     // Filter: static/instance and access control
     std::vector<Cand> filtered;
     filtered.reserve(cands.size());
-    for (const auto &c : cands)
-    {
+    for (const auto &c : cands) {
         if (c.mi->isStatic != isStatic)
             continue;
         // Private methods can only be accessed from the declaring class
@@ -148,17 +132,13 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
         filtered.push_back(c);
     }
 
-    if (filtered.empty())
-    {
-        if (de)
-        {
+    if (filtered.empty()) {
+        if (de) {
             std::string msg = "no matching overload for '" + std::string(methodName) + "(";
-            for (size_t i = 0; i < argTypes.size(); ++i)
-            {
+            for (size_t i = 0; i < argTypes.size(); ++i) {
                 if (i)
                     msg += ", ";
-                switch (argTypes[i])
-                {
+                switch (argTypes[i]) {
                     case Type::I64:
                         msg += "INTEGER";
                         break;
@@ -186,22 +166,18 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
     // Rank: exact match wins; else allow widening numeric conversion (I64->F64) per param.
     int bestScore = -1;
     std::vector<size_t> bestIdx;
-    for (size_t i = 0; i < filtered.size(); ++i)
-    {
+    for (size_t i = 0; i < filtered.size(); ++i) {
         const auto &mi = *filtered[i].mi;
         if (mi.sig.paramTypes.size() != argTypes.size())
             continue;
         int score = 0;
         bool viable = true;
-        for (size_t p = 0; p < argTypes.size(); ++p)
-        {
-            if (isExactMatch(mi.sig.paramTypes[p], argTypes[p]))
-            {
+        for (size_t p = 0; p < argTypes.size(); ++p) {
+            if (isExactMatch(mi.sig.paramTypes[p], argTypes[p])) {
                 score += 2;
                 continue;
             }
-            if (isWideningAllowed(mi.sig.paramTypes[p], argTypes[p]))
-            {
+            if (isWideningAllowed(mi.sig.paramTypes[p], argTypes[p])) {
                 score += 1;
                 continue;
             }
@@ -210,22 +186,17 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
         }
         if (!viable)
             continue;
-        if (score > bestScore)
-        {
+        if (score > bestScore) {
             bestScore = score;
             bestIdx.clear();
             bestIdx.push_back(i);
-        }
-        else if (score == bestScore)
-        {
+        } else if (score == bestScore) {
             bestIdx.push_back(i);
         }
     }
 
-    if (bestIdx.empty())
-    {
-        if (de)
-        {
+    if (bestIdx.empty()) {
+        if (de) {
             std::string msg = "no viable overload for '" + std::string(methodName) + "'";
             de->emit(il::support::Severity::Error,
                      "E_OVERLOAD_NO_MATCH",
@@ -235,14 +206,11 @@ std::optional<ResolvedMethod> resolveMethodOverload(const OopIndex &index,
         }
         return std::nullopt;
     }
-    if (bestIdx.size() > 1)
-    {
-        if (de)
-        {
+    if (bestIdx.size() > 1) {
+        if (de) {
             std::string msg = "ambiguous call to '" + std::string(methodName) + "' among: ";
             bool first = true;
-            for (size_t i : bestIdx)
-            {
+            for (size_t i : bestIdx) {
                 if (!first)
                     msg += "; ";
                 first = false;

@@ -26,19 +26,15 @@
 #include "tests/TestHarness.hpp"
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Make registry.
-il::transform::AnalysisRegistry makeRegistry()
-{
+il::transform::AnalysisRegistry makeRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fn) { return il::transform::buildCFG(mod, fn); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fn)
-        {
+        "dominators", [](Module &mod, Function &fn) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
@@ -52,8 +48,7 @@ il::transform::AnalysisRegistry makeRegistry()
 
 } // namespace
 
-TEST(LICM, HoistsInvariantAdd)
-{
+TEST(LICM, HoistsInvariantAdd) {
     Module M;
     Function F;
     F.name = "licm";
@@ -141,8 +136,7 @@ TEST(LICM, HoistsInvariantAdd)
     EXPECT_TRUE(foundAdd || addInHeader);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

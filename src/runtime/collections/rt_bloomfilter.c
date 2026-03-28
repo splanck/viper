@@ -43,8 +43,7 @@
 // Internal structure
 // ---------------------------------------------------------------------------
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     uint8_t *bits;
     int64_t bit_count;  // Total number of bits
@@ -56,11 +55,9 @@ typedef struct
 // Hash functions (MurmurHash3-style with seed variation)
 // ---------------------------------------------------------------------------
 
-static uint64_t bloom_hash(const char *data, size_t len, uint64_t seed)
-{
+static uint64_t bloom_hash(const char *data, size_t len, uint64_t seed) {
     uint64_t h = seed ^ (len * 0x9E3779B97F4A7C15ULL);
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         h ^= (uint64_t)(unsigned char)data[i];
         h *= 0x9E3779B97F4A7C15ULL;
         h ^= h >> 27;
@@ -76,11 +73,9 @@ static uint64_t bloom_hash(const char *data, size_t len, uint64_t seed)
 // Finalizer
 // ---------------------------------------------------------------------------
 
-static void bloomfilter_finalizer(void *obj)
-{
+static void bloomfilter_finalizer(void *obj) {
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)obj;
-    if (bf->bits)
-    {
+    if (bf->bits) {
         free(bf->bits);
         bf->bits = NULL;
     }
@@ -90,8 +85,7 @@ static void bloomfilter_finalizer(void *obj)
 // Constructor
 // ---------------------------------------------------------------------------
 
-void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate)
-{
+void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate) {
     if (expected_items < 1)
         expected_items = 1;
     if (false_positive_rate <= 0.0)
@@ -118,8 +112,7 @@ void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate)
 
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)rt_obj_new_i64(0, sizeof(rt_bloomfilter_impl));
     bf->bits = (uint8_t *)calloc((size_t)byte_count, 1);
-    if (!bf->bits)
-    {
+    if (!bf->bits) {
         rt_trap("BloomFilter: memory allocation failed");
         return NULL;
     }
@@ -138,8 +131,7 @@ void *rt_bloomfilter_new(int64_t expected_items, double false_positive_rate)
 /// @brief Perform bloomfilter add operation.
 /// @param filter
 /// @param item
-void rt_bloomfilter_add(void *filter, rt_string item)
-{
+void rt_bloomfilter_add(void *filter, rt_string item) {
     if (!filter || !item)
         return;
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
@@ -149,8 +141,7 @@ void rt_bloomfilter_add(void *filter, rt_string item)
     if (!data)
         return;
 
-    for (int64_t i = 0; i < bf->hash_count; i++)
-    {
+    for (int64_t i = 0; i < bf->hash_count; i++) {
         uint64_t h = bloom_hash(data, len, (uint64_t)i);
         int64_t pos = (int64_t)(h % (uint64_t)bf->bit_count);
         bf->bits[pos / 8] |= (uint8_t)(1 << (pos % 8));
@@ -162,8 +153,7 @@ void rt_bloomfilter_add(void *filter, rt_string item)
 /// @param filter
 /// @param item
 /// @return Result value.
-int64_t rt_bloomfilter_might_contain(void *filter, rt_string item)
-{
+int64_t rt_bloomfilter_might_contain(void *filter, rt_string item) {
     if (!filter || !item)
         return 0;
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
@@ -173,8 +163,7 @@ int64_t rt_bloomfilter_might_contain(void *filter, rt_string item)
     if (!data)
         return 0;
 
-    for (int64_t i = 0; i < bf->hash_count; i++)
-    {
+    for (int64_t i = 0; i < bf->hash_count; i++) {
         uint64_t h = bloom_hash(data, len, (uint64_t)i);
         int64_t pos = (int64_t)(h % (uint64_t)bf->bit_count);
         if (!(bf->bits[pos / 8] & (1 << (pos % 8))))
@@ -190,8 +179,7 @@ int64_t rt_bloomfilter_might_contain(void *filter, rt_string item)
 /// @brief Perform bloomfilter count operation.
 /// @param filter
 /// @return Result value.
-int64_t rt_bloomfilter_count(void *filter)
-{
+int64_t rt_bloomfilter_count(void *filter) {
     if (!filter)
         return 0;
     return ((rt_bloomfilter_impl *)filter)->item_count;
@@ -200,8 +188,7 @@ int64_t rt_bloomfilter_count(void *filter)
 /// @brief Perform bloomfilter fpr operation.
 /// @param filter
 /// @return Result value.
-double rt_bloomfilter_fpr(void *filter)
-{
+double rt_bloomfilter_fpr(void *filter) {
     if (!filter)
         return 0.0;
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
@@ -218,8 +205,7 @@ double rt_bloomfilter_fpr(void *filter)
 
 /// @brief Perform bloomfilter clear operation.
 /// @param filter
-void rt_bloomfilter_clear(void *filter)
-{
+void rt_bloomfilter_clear(void *filter) {
     if (!filter)
         return;
     rt_bloomfilter_impl *bf = (rt_bloomfilter_impl *)filter;
@@ -232,8 +218,7 @@ void rt_bloomfilter_clear(void *filter)
 /// @param filter
 /// @param other
 /// @return Result value.
-int64_t rt_bloomfilter_merge(void *filter, void *other)
-{
+int64_t rt_bloomfilter_merge(void *filter, void *other) {
     if (!filter || !other)
         return 0;
     rt_bloomfilter_impl *a = (rt_bloomfilter_impl *)filter;

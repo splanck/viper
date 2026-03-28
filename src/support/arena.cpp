@@ -28,8 +28,7 @@
 #include <cstdint>
 #include <limits>
 
-namespace il::support
-{
+namespace il::support {
 /// @brief Construct an arena that manages a fixed-capacity backing buffer.
 ///
 /// @details The constructor initializes the internal byte vector with @p size
@@ -59,8 +58,7 @@ Arena::Arena(size_t size) : buffer_(size) {}
 /// @param size Number of bytes to allocate from the arena.
 /// @param align Alignment requirement in bytes; must be a non-zero power of two.
 /// @return Pointer to aligned memory on success, or nullptr on failure.
-void *Arena::allocate(size_t size, size_t align)
-{
+void *Arena::allocate(size_t size, size_t align) {
     // Reject zero or non power-of-two alignments.
     if (align == 0 || (align & (align - 1)) != 0)
         return nullptr;
@@ -106,8 +104,7 @@ void *Arena::allocate(size_t size, size_t align)
 ///          buffer.  Callers typically pair this with stack allocation of the
 ///          arena so reclamation happens deterministically at scope exit after a
 ///          full phase of compilation completes.
-void Arena::reset()
-{
+void Arena::reset() {
     offset_ = 0;
 }
 
@@ -115,8 +112,7 @@ void Arena::reset()
 // GrowingArena implementation
 // =============================================================================
 
-void *GrowingArena::Chunk::tryAllocate(size_t sz, size_t align)
-{
+void *GrowingArena::Chunk::tryAllocate(size_t sz, size_t align) {
     // Validate alignment (power of two, non-zero)
     if (align == 0 || (align & (align - 1)) != 0)
         return nullptr;
@@ -136,27 +132,21 @@ void *GrowingArena::Chunk::tryAllocate(size_t sz, size_t align)
 }
 
 GrowingArena::GrowingArena(size_t initialChunkSize, size_t growthChunkSize)
-    : growthChunkSize_(growthChunkSize)
-{
+    : growthChunkSize_(growthChunkSize) {
     chunks_.reserve(4); // Reserve space for a few chunks
     allocateChunk(initialChunkSize);
 }
 
-GrowingArena::~GrowingArena()
-{
+GrowingArena::~GrowingArena() {
     destroyObjects();
 }
 
 GrowingArena::GrowingArena(GrowingArena &&other) noexcept
     : chunks_(std::move(other.chunks_)), destructors_(std::move(other.destructors_)),
-      growthChunkSize_(other.growthChunkSize_)
-{
-}
+      growthChunkSize_(other.growthChunkSize_) {}
 
-GrowingArena &GrowingArena::operator=(GrowingArena &&other) noexcept
-{
-    if (this != &other)
-    {
+GrowingArena &GrowingArena::operator=(GrowingArena &&other) noexcept {
+    if (this != &other) {
         destroyObjects();
         chunks_ = std::move(other.chunks_);
         destructors_ = std::move(other.destructors_);
@@ -165,11 +155,9 @@ GrowingArena &GrowingArena::operator=(GrowingArena &&other) noexcept
     return *this;
 }
 
-void *GrowingArena::allocate(size_t size, size_t align)
-{
+void *GrowingArena::allocate(size_t size, size_t align) {
     // Try to allocate from the current chunk
-    if (!chunks_.empty())
-    {
+    if (!chunks_.empty()) {
         if (void *ptr = chunks_.back().tryAllocate(size, align))
             return ptr;
     }
@@ -185,35 +173,29 @@ void *GrowingArena::allocate(size_t size, size_t align)
     return ptr;
 }
 
-void GrowingArena::reset()
-{
+void GrowingArena::reset() {
     destroyObjects();
     // Keep the first chunk, clear the rest
-    if (!chunks_.empty())
-    {
+    if (!chunks_.empty()) {
         chunks_[0].offset = 0;
         chunks_.resize(1);
     }
 }
 
-size_t GrowingArena::totalAllocated() const noexcept
-{
+size_t GrowingArena::totalAllocated() const noexcept {
     size_t total = 0;
     for (const auto &chunk : chunks_)
         total += chunk.offset;
     return total;
 }
 
-void GrowingArena::allocateChunk(size_t minSize)
-{
+void GrowingArena::allocateChunk(size_t minSize) {
     chunks_.emplace_back(minSize);
 }
 
-void GrowingArena::destroyObjects()
-{
+void GrowingArena::destroyObjects() {
     // Destroy in reverse order (LIFO)
-    for (auto it = destructors_.rbegin(); it != destructors_.rend(); ++it)
-    {
+    for (auto it = destructors_.rbegin(); it != destructors_.rend(); ++it) {
         it->destroy(it->object);
     }
     destructors_.clear();

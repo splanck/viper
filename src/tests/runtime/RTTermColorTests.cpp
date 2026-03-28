@@ -20,8 +20,7 @@
 
 #ifdef _WIN32
 // This test requires PTY support which is not available on Windows
-int main()
-{
+int main() {
     printf("Test skipped: PTY not available on Windows\n");
     return 0;
 }
@@ -41,11 +40,9 @@ int main()
 #include <util.h>
 #endif
 
-namespace
-{
+namespace {
 
-std::string capture_sgr_once(int fg, int bg)
-{
+std::string capture_sgr_once(int fg, int bg) {
     int master = -1;
     int slave = -1;
     int rc = openpty(&master, &slave, nullptr, nullptr, nullptr);
@@ -60,8 +57,7 @@ std::string capture_sgr_once(int fg, int bg)
     pid_t pid = fork();
     assert(pid >= 0);
 
-    if (pid == 0)
-    {
+    if (pid == 0) {
         close(master);
         dup2(slave, STDOUT_FILENO);
         close(slave);
@@ -77,8 +73,7 @@ std::string capture_sgr_once(int fg, int bg)
     std::string result;
     char buf[64];
 
-    while (true)
-    {
+    while (true) {
         ssize_t n = read(master, buf, sizeof(buf));
         if (n <= 0)
             break; // EOF or error
@@ -94,10 +89,8 @@ std::string capture_sgr_once(int fg, int bg)
 }
 
 // PTY operations can be flaky on macOS - retry up to 3 times
-std::string capture_sgr(int fg, int bg)
-{
-    for (int attempt = 0; attempt < 3; ++attempt)
-    {
+std::string capture_sgr(int fg, int bg) {
+    for (int attempt = 0; attempt < 3; ++attempt) {
         std::string result = capture_sgr_once(fg, bg);
         // For empty expected output (fg=-1, bg=-1), empty is correct
         // For non-empty expected output, retry if we got nothing
@@ -112,14 +105,12 @@ std::string capture_sgr(int fg, int bg)
 
 } // namespace
 
-int main()
-{
+int main() {
     // Probe PTY availability; skip test gracefully when unavailable (e.g., sandboxed macOS).
 #if defined(__linux__) || defined(__APPLE__)
     {
         int m = -1, s = -1;
-        if (openpty(&m, &s, nullptr, nullptr, nullptr) != 0)
-        {
+        if (openpty(&m, &s, nullptr, nullptr, nullptr) != 0) {
             std::fprintf(stderr,
                          "Skipping RTTermColorTests: openpty unavailable in this environment\n");
             return 0; // mark as skipped/passed in constrained environments
@@ -132,8 +123,7 @@ int main()
     std::string no_change = capture_sgr(-1, -1);
     assert(no_change.empty());
 
-    for (int bg = 8; bg <= 15; ++bg)
-    {
+    for (int bg = 8; bg <= 15; ++bg) {
         std::string sgr = capture_sgr(-1, bg);
         std::string expected = "\x1b[" + std::to_string(100 + (bg - 8)) + "m";
         assert(sgr == expected);

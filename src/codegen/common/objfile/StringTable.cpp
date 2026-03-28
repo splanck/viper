@@ -18,18 +18,15 @@
 
 #include "codegen/common/objfile/StringTable.hpp"
 
-namespace viper::codegen::objfile
-{
+namespace viper::codegen::objfile {
 
-StringTable::StringTable()
-{
+StringTable::StringTable() {
     // ELF convention: offset 0 = empty string (single NUL byte).
     data_.push_back('\0');
     offsets_[""] = 0;
 }
 
-uint32_t StringTable::add(std::string_view str)
-{
+uint32_t StringTable::add(std::string_view str) {
     std::string key(str);
     auto it = offsets_.find(key);
     if (it != offsets_.end())
@@ -42,8 +39,7 @@ uint32_t StringTable::add(std::string_view str)
     return offset;
 }
 
-uint32_t StringTable::find(std::string_view str) const
-{
+uint32_t StringTable::find(std::string_view str) const {
     auto it = offsets_.find(std::string(str));
     if (it != offsets_.end())
         return it->second;

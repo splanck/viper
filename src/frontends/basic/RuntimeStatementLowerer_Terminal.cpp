@@ -21,8 +21,7 @@
 using namespace il::core;
 using il::runtime::RuntimeFeature;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Lower the BASIC @c BEEP statement to a runtime helper call.
 ///
@@ -30,8 +29,7 @@ namespace il::frontends::basic
 ///          The current source location is preserved for diagnostics.
 ///
 /// @param s AST node representing the @c BEEP statement.
-void RuntimeStatementLowerer::visit(const BeepStmt &s)
-{
+void RuntimeStatementLowerer::visit(const BeepStmt &s) {
     RuntimeCallBuilder(lowerer_).at(s.loc).callHelperVoid(RuntimeFeature::TermBell, "rt_bell");
 }
 
@@ -42,8 +40,7 @@ void RuntimeStatementLowerer::visit(const BeepStmt &s)
 ///          diagnostics and debug traces attribute the call correctly.
 ///
 /// @param s AST node representing the @c CLS statement.
-void RuntimeStatementLowerer::visit(const ClsStmt &s)
-{
+void RuntimeStatementLowerer::visit(const ClsStmt &s) {
     RuntimeCallBuilder(lowerer_).at(s.loc).callHelperVoid(RuntimeFeature::TermCls, "rt_term_cls");
 }
 
@@ -55,12 +52,10 @@ void RuntimeStatementLowerer::visit(const ClsStmt &s)
 ///          matching runtime semantics.
 ///
 /// @param s AST node describing the @c COLOR statement.
-void RuntimeStatementLowerer::visit(const ColorStmt &s)
-{
+void RuntimeStatementLowerer::visit(const ColorStmt &s) {
     auto fg = lowerer_.ensureI64(lowerer_.lowerExpr(*s.fg), s.loc);
     Value bgv = Value::constInt(-1);
-    if (s.bg)
-    {
+    if (s.bg) {
         auto bg = lowerer_.ensureI64(lowerer_.lowerExpr(*s.bg), s.loc);
         bgv = bg.value;
     }
@@ -77,12 +72,10 @@ void RuntimeStatementLowerer::visit(const ColorStmt &s)
 ///          the module when used.
 ///
 /// @param s AST node describing the @c LOCATE statement.
-void RuntimeStatementLowerer::visit(const LocateStmt &s)
-{
+void RuntimeStatementLowerer::visit(const LocateStmt &s) {
     auto row = lowerer_.ensureI64(lowerer_.lowerExpr(*s.row), s.loc);
     Value colv = Value::constInt(1);
-    if (s.col)
-    {
+    if (s.col) {
         auto col = lowerer_.ensureI64(lowerer_.lowerExpr(*s.col), s.loc);
         colv = col.value;
     }
@@ -98,8 +91,7 @@ void RuntimeStatementLowerer::visit(const LocateStmt &s)
 ///          flag.  The current source location is preserved for diagnostics.
 ///
 /// @param s AST node representing the @c CURSOR statement.
-void RuntimeStatementLowerer::visit(const CursorStmt &s)
-{
+void RuntimeStatementLowerer::visit(const CursorStmt &s) {
     RuntimeCallBuilder(lowerer_)
         .at(s.loc)
         .argNarrow32(Value::constInt(s.visible ? 1 : 0))
@@ -113,8 +105,7 @@ void RuntimeStatementLowerer::visit(const CursorStmt &s)
 ///          flag.  The current source location is preserved for diagnostics.
 ///
 /// @param s AST node representing the @c ALTSCREEN statement.
-void RuntimeStatementLowerer::visit(const AltScreenStmt &s)
-{
+void RuntimeStatementLowerer::visit(const AltScreenStmt &s) {
     RuntimeCallBuilder(lowerer_)
         .at(s.loc)
         .argNarrow32(Value::constInt(s.enable ? 1 : 0))
@@ -128,8 +119,7 @@ void RuntimeStatementLowerer::visit(const AltScreenStmt &s)
 ///          the runtime to zero. No runtime feature request is required.
 ///
 /// @param s AST node describing the SLEEP statement.
-void RuntimeStatementLowerer::visit(const SleepStmt &s)
-{
+void RuntimeStatementLowerer::visit(const SleepStmt &s) {
     auto ms = lowerer_.ensureI64(lowerer_.lowerExpr(*s.ms), s.loc);
 
     RuntimeCallBuilder(lowerer_)

@@ -20,8 +20,7 @@
 // Stub for rt_abort that's used by runtime
 extern "C" void rt_abort(const char *msg);
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -29,8 +28,7 @@ extern "C" void vm_trap(const char *msg)
 // SceneNode Creation Tests
 // ============================================================================
 
-static void test_scene_node_new()
-{
+static void test_scene_node_new() {
     void *node = rt_scene_node_new();
     assert(node != nullptr);
 
@@ -50,8 +48,7 @@ static void test_scene_node_new()
 // SceneNode Transform Tests
 // ============================================================================
 
-static void test_scene_node_position()
-{
+static void test_scene_node_position() {
     void *node = rt_scene_node_new();
 
     rt_scene_node_set_x(node, 100);
@@ -67,8 +64,7 @@ static void test_scene_node_position()
     printf("test_scene_node_position: PASSED\n");
 }
 
-static void test_scene_node_scale()
-{
+static void test_scene_node_scale() {
     void *node = rt_scene_node_new();
 
     rt_scene_node_set_scale_x(node, 200);
@@ -82,8 +78,7 @@ static void test_scene_node_scale()
     printf("test_scene_node_scale: PASSED\n");
 }
 
-static void test_scene_node_rotation()
-{
+static void test_scene_node_rotation() {
     void *node = rt_scene_node_new();
 
     rt_scene_node_set_rotation(node, 45);
@@ -97,8 +92,7 @@ static void test_scene_node_rotation()
 // SceneNode Hierarchy Tests
 // ============================================================================
 
-static void test_scene_node_hierarchy()
-{
+static void test_scene_node_hierarchy() {
     void *parent = rt_scene_node_new();
     void *child = rt_scene_node_new();
 
@@ -115,8 +109,7 @@ static void test_scene_node_hierarchy()
     printf("test_scene_node_hierarchy: PASSED\n");
 }
 
-static void test_scene_node_transform_inheritance()
-{
+static void test_scene_node_transform_inheritance() {
     void *parent = rt_scene_node_new();
     void *child = rt_scene_node_new();
 
@@ -137,8 +130,7 @@ static void test_scene_node_transform_inheritance()
     printf("test_scene_node_transform_inheritance: PASSED\n");
 }
 
-static void test_scene_node_scale_inheritance()
-{
+static void test_scene_node_scale_inheritance() {
     void *parent = rt_scene_node_new();
     void *child = rt_scene_node_new();
 
@@ -159,8 +151,7 @@ static void test_scene_node_scale_inheritance()
     printf("test_scene_node_scale_inheritance: PASSED\n");
 }
 
-static void test_scene_node_rotation_inheritance()
-{
+static void test_scene_node_rotation_inheritance() {
     void *parent = rt_scene_node_new();
     void *child = rt_scene_node_new();
 
@@ -179,8 +170,7 @@ static void test_scene_node_rotation_inheritance()
 // SceneNode Name/Find Tests
 // ============================================================================
 
-static void test_scene_node_name()
-{
+static void test_scene_node_name() {
     void *node = rt_scene_node_new();
     rt_string name = rt_const_cstr("player");
     rt_scene_node_set_name(node, name);
@@ -191,8 +181,7 @@ static void test_scene_node_name()
     printf("test_scene_node_name: PASSED\n");
 }
 
-static void test_scene_node_find()
-{
+static void test_scene_node_find() {
     void *root = rt_scene_node_new();
     void *child1 = rt_scene_node_new();
     void *child2 = rt_scene_node_new();
@@ -216,8 +205,7 @@ static void test_scene_node_find()
 // SceneNode Methods Tests
 // ============================================================================
 
-static void test_scene_node_move()
-{
+static void test_scene_node_move() {
     void *node = rt_scene_node_new();
     rt_scene_node_set_x(node, 10);
     rt_scene_node_set_y(node, 20);
@@ -230,8 +218,7 @@ static void test_scene_node_move()
     printf("test_scene_node_move: PASSED\n");
 }
 
-static void test_scene_node_set_position()
-{
+static void test_scene_node_set_position() {
     void *node = rt_scene_node_new();
 
     rt_scene_node_set_position(node, 100, 200);
@@ -242,8 +229,7 @@ static void test_scene_node_set_position()
     printf("test_scene_node_set_position: PASSED\n");
 }
 
-static void test_scene_node_set_scale()
-{
+static void test_scene_node_set_scale() {
     void *node = rt_scene_node_new();
 
     rt_scene_node_set_scale(node, 150);
@@ -254,8 +240,7 @@ static void test_scene_node_set_scale()
     printf("test_scene_node_set_scale: PASSED\n");
 }
 
-static void test_scene_node_detach()
-{
+static void test_scene_node_detach() {
     void *parent = rt_scene_node_new();
     void *child = rt_scene_node_new();
 
@@ -269,8 +254,7 @@ static void test_scene_node_detach()
     printf("test_scene_node_detach: PASSED\n");
 }
 
-static void test_scene_node_visibility()
-{
+static void test_scene_node_visibility() {
     void *node = rt_scene_node_new();
 
     assert(rt_scene_node_get_visible(node) == 1);
@@ -284,8 +268,7 @@ static void test_scene_node_visibility()
     printf("test_scene_node_visibility: PASSED\n");
 }
 
-static void test_scene_node_depth()
-{
+static void test_scene_node_depth() {
     void *node = rt_scene_node_new();
 
     rt_scene_node_set_depth(node, 5);
@@ -301,8 +284,7 @@ static void test_scene_node_depth()
 // Scene Tests
 // ============================================================================
 
-static void test_scene_new()
-{
+static void test_scene_new() {
     void *scene = rt_scene_new();
     assert(scene != nullptr);
 
@@ -312,8 +294,7 @@ static void test_scene_new()
     printf("test_scene_new: PASSED\n");
 }
 
-static void test_scene_add_remove()
-{
+static void test_scene_add_remove() {
     void *scene = rt_scene_new();
     void *node = rt_scene_node_new();
 
@@ -329,8 +310,7 @@ static void test_scene_add_remove()
     printf("test_scene_add_remove: PASSED\n");
 }
 
-static void test_scene_find()
-{
+static void test_scene_find() {
     void *scene = rt_scene_new();
     void *node = rt_scene_node_new();
     rt_scene_node_set_name(node, rt_const_cstr("hero"));
@@ -346,8 +326,7 @@ static void test_scene_find()
     printf("test_scene_find: PASSED\n");
 }
 
-static void test_scene_clear()
-{
+static void test_scene_clear() {
     void *scene = rt_scene_new();
 
     rt_scene_add(scene, rt_scene_node_new());
@@ -363,8 +342,7 @@ static void test_scene_clear()
     printf("test_scene_clear: PASSED\n");
 }
 
-static void test_scene_update()
-{
+static void test_scene_update() {
     void *scene = rt_scene_new();
     void *node = rt_scene_node_new();
     rt_scene_add(scene, node);
@@ -379,8 +357,7 @@ static void test_scene_update()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("Running Scene graph tests...\n\n");
 
     // SceneNode creation

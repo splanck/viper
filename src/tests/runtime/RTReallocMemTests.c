@@ -33,15 +33,13 @@
 // Helpers
 //=============================================================================
 
-static void check(const char *label, int ok)
-{
+static void check(const char *label, int ok) {
     printf("  %s: %s\n", label, ok ? "PASS" : "FAIL");
     assert(ok);
 }
 
 /// Release a bigint object returned by rt_bigint_* functions.
-static void bigint_release(void *bi)
-{
+static void bigint_release(void *bi) {
     if (bi && rt_obj_release_check0(bi))
         rt_obj_free(bi);
 }
@@ -52,8 +50,7 @@ static void bigint_release(void *bi)
 
 /// Insert more than the initial capacity (8) to force at least one realloc.
 /// All elements must be retrievable after growth.
-static void test_sortedset_realloc_growth(void)
-{
+static void test_sortedset_realloc_growth(void) {
     printf("Testing rt_sortedset: insert beyond initial capacity forces realloc\n");
 
     void *set = rt_sortedset_new();
@@ -66,8 +63,7 @@ static void test_sortedset_realloc_growth(void)
                                   "papa",    "quebec", "romeo",   "sierra",   "tango"};
     int n = (int)(sizeof(words) / sizeof(words[0]));
 
-    for (int i = 0; i < n; i++)
-    {
+    for (int i = 0; i < n; i++) {
         int8_t inserted = rt_sortedset_add(set, rt_const_cstr(words[i]));
         check(words[i], inserted == 1);
     }
@@ -92,8 +88,7 @@ static void test_sortedset_realloc_growth(void)
 
 /// Create and immediately destroy a set without inserting anything.
 /// This exercises the finalizer path when data == NULL.
-static void test_sortedset_empty_lifecycle(void)
-{
+static void test_sortedset_empty_lifecycle(void) {
     printf("Testing rt_sortedset: empty create/destroy cycle\n");
 
     void *set = rt_sortedset_new();
@@ -109,14 +104,12 @@ static void test_sortedset_empty_lifecycle(void)
 
 /// Insert items, clear, and insert again — exercises the path where set->data
 /// is non-NULL but len is 0, and realloc must not lose capacity state.
-static void test_sortedset_clear_and_reinsert(void)
-{
+static void test_sortedset_clear_and_reinsert(void) {
     printf("Testing rt_sortedset: clear then reinsert stays coherent\n");
 
     void *set = rt_sortedset_new();
 
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         char buf[16];
         snprintf(buf, sizeof(buf), "item%d", i);
         rt_sortedset_add(set, rt_const_cstr(buf));
@@ -126,8 +119,7 @@ static void test_sortedset_clear_and_reinsert(void)
     rt_sortedset_clear(set);
     check("length zero after clear", rt_sortedset_len(set) == 0);
 
-    for (int i = 0; i < 15; i++)
-    {
+    for (int i = 0; i < 15; i++) {
         char buf[16];
         snprintf(buf, sizeof(buf), "new%d", i);
         rt_sortedset_add(set, rt_const_cstr(buf));
@@ -144,12 +136,10 @@ static void test_sortedset_clear_and_reinsert(void)
 
 /// Verify that to_str_base produces correct decimal strings for a range of
 /// values including those requiring multi-limb storage.
-static void test_bigint_to_str_base_decimal(void)
-{
+static void test_bigint_to_str_base_decimal(void) {
     printf("Testing rt_bigint: to_str_base decimal\n");
 
-    struct
-    {
+    struct {
         int64_t val;
         const char *expected;
     } cases[] = {
@@ -162,8 +152,7 @@ static void test_bigint_to_str_base_decimal(void)
         {INT32_MIN + 1, "-2147483647"},
     };
 
-    for (int i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); i++)
-    {
+    for (int i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); i++) {
         void *bi = rt_bigint_from_i64(cases[i].val);
         rt_string s = rt_bigint_to_str_base(bi, 10);
         const char *got = rt_string_cstr(s);
@@ -178,8 +167,7 @@ static void test_bigint_to_str_base_decimal(void)
 /// R-24 fix: for base 8, the old formula could under-allocate for multi-limb
 /// numbers. Build a value that needs at least 11 octal digits per 32-bit limb
 /// and verify the output is correct.
-static void test_bigint_to_str_base_octal(void)
-{
+static void test_bigint_to_str_base_octal(void) {
     printf("Testing rt_bigint: to_str_base base 8 (R-24 buffer size)\n");
 
     // 2^32 - 1 = 4294967295 = 0o37777777777 (11 octal digits, 1 limb)
@@ -198,8 +186,7 @@ static void test_bigint_to_str_base_octal(void)
 }
 
 /// Verify binary and hex output for known values.
-static void test_bigint_to_str_base_binary_hex(void)
-{
+static void test_bigint_to_str_base_binary_hex(void) {
     printf("Testing rt_bigint: to_str_base base 2 and base 16\n");
 
     void *bi = rt_bigint_from_i64(255);
@@ -217,8 +204,7 @@ static void test_bigint_to_str_base_binary_hex(void)
 
 /// R-25 fix: AND of two negatives should be negative (two's complement).
 /// -1 & -1 == -1; -4 & -2 == -4 (in two's complement: ...11100 & ...11110 = ...11100)
-static void test_bigint_and_negative(void)
-{
+static void test_bigint_and_negative(void) {
     printf("Testing rt_bigint: and with negative operands (R-25)\n");
 
     // -1 & -1 = -1
@@ -272,8 +258,7 @@ static void test_bigint_and_negative(void)
 
 /// R-25 fix: OR of any negative operand should produce a negative result.
 /// -1 | x == -1 for any x; -4 | 3 = -1 in two's complement.
-static void test_bigint_or_negative(void)
-{
+static void test_bigint_or_negative(void) {
     printf("Testing rt_bigint: or with negative operands (R-25)\n");
 
     // -1 | 42 = -1
@@ -315,8 +300,7 @@ static void test_bigint_or_negative(void)
 
 /// R-25 fix: XOR with negatives uses two's-complement sign rules.
 /// -1 ^ 0 = -1; -1 ^ -1 = 0; -4 ^ 3 = -1.
-static void test_bigint_xor_negative(void)
-{
+static void test_bigint_xor_negative(void) {
     printf("Testing rt_bigint: xor with negative operands (R-25)\n");
 
     // -1 ^ 0 = -1
@@ -370,8 +354,7 @@ static void test_bigint_xor_negative(void)
 
 /// R-23 fix: exercise capacity growth by parsing a very large decimal string,
 /// which drives many calls to bigint_ensure_capacity internally.
-static void test_bigint_capacity_growth(void)
-{
+static void test_bigint_capacity_growth(void) {
     printf("Testing rt_bigint: capacity growth via large string parse\n");
 
     // A 40-digit number that requires at least 2 limbs.
@@ -389,8 +372,7 @@ static void test_bigint_capacity_growth(void)
 
 /// Confirm that the two's-complement bitwise ops are consistent with ordinary
 /// arithmetic (De Morgan / complement laws): ~x = -(x+1) for bigint NOT.
-static void test_bigint_bitwise_consistency(void)
-{
+static void test_bigint_bitwise_consistency(void) {
     printf("Testing rt_bigint: bitwise consistency with arithmetic\n");
 
     // For positive n: (n AND -1) == n   (AND with all-ones mask)
@@ -434,8 +416,7 @@ static void test_bigint_bitwise_consistency(void)
 // Entry point
 //=============================================================================
 
-int main(void)
-{
+int main(void) {
     // rt_sortedset tests (bugs R-11a, R-11b)
     test_sortedset_realloc_growth();
     test_sortedset_empty_lifecycle();

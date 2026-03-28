@@ -33,15 +33,12 @@
 
 using namespace il::core;
 
-static il::transform::AnalysisRegistry makeRegistry()
-{
+static il::transform::AnalysisRegistry makeRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fn) { return il::transform::buildCFG(mod, fn); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fn)
-        {
+        "dominators", [](Module &mod, Function &fn) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
@@ -52,8 +49,7 @@ static il::transform::AnalysisRegistry makeRegistry()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     Module M;
     Function F;
     F.name = "indvars_simple";
@@ -185,10 +181,8 @@ int main()
     assert(H->params.size() == 2);
     unsigned addrParamId = H->params[1].id;
     // The add instruction should be gone; terminator remains
-    for (const Instr &I : H->instructions)
-    {
-        if (I.result)
-        {
+    for (const Instr &I : H->instructions) {
+        if (I.result) {
             // No instruction produces the old add result
             assert(*I.result != (addrParamId - 2)); // heuristically old add id
         }

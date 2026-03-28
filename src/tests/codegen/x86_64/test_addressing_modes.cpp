@@ -20,19 +20,16 @@
 
 using namespace viper::codegen::x64;
 
-namespace
-{
+namespace {
 
-[[nodiscard]] static ILValue makeParam(int id, ILValue::Kind kind) noexcept
-{
+[[nodiscard]] static ILValue makeParam(int id, ILValue::Kind kind) noexcept {
     ILValue v{};
     v.kind = kind;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] static ILValue makeImmI64(long long val) noexcept
-{
+[[nodiscard]] static ILValue makeImmI64(long long val) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::I64;
     v.id = -1;
@@ -40,8 +37,7 @@ namespace
     return v;
 }
 
-[[nodiscard]] static ILValue makeValueRef(int id, ILValue::Kind kind) noexcept
-{
+[[nodiscard]] static ILValue makeValueRef(int id, ILValue::Kind kind) noexcept {
     ILValue v{};
     v.kind = kind;
     v.id = id;
@@ -49,8 +45,7 @@ namespace
 }
 
 // IL scaffold: v = load [p + (i << 3) + 16]
-[[nodiscard]] static std::string buildAsm()
-{
+[[nodiscard]] static std::string buildAsm() {
     ILValue p = makeParam(0, ILValue::Kind::PTR);
     ILValue i = makeParam(1, ILValue::Kind::I64);
 
@@ -95,24 +90,20 @@ namespace
 
 } // namespace
 
-int main()
-{
+int main() {
     const auto text = buildAsm();
     // Check for SIB addressing mode pattern: (base,index,scale)
     // The specific registers may vary based on register allocation
     const bool hasSib8 = text.find(",8)") != std::string::npos;
-    if (!hasSib8)
-    {
+    if (!hasSib8) {
         std::cerr << "Expected SIB addressing mode with scale 8:\n" << text;
         return 1;
     }
-    if (text.find("16(") == std::string::npos)
-    {
+    if (text.find("16(") == std::string::npos) {
         std::cerr << "Expected displacement +16:\n" << text;
         return 2;
     }
-    if (text.find("leaq") != std::string::npos)
-    {
+    if (text.find("leaq") != std::string::npos) {
         std::cerr << "Did not expect folded LEA:\n" << text;
         return 3;
     }

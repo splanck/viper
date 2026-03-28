@@ -12,8 +12,7 @@ static int tests_failed = 0;
 
 #define TEST(name) static void test_##name()
 #define RUN_TEST(name)                                                                             \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("  %s...", #name);                                                                  \
         test_##name();                                                                             \
         printf(" OK\n");                                                                           \
@@ -21,18 +20,15 @@ static int tests_failed = 0;
     } while (0)
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
             tests_failed++;                                                                        \
             return;                                                                                \
         }                                                                                          \
     } while (0)
 
-TEST(create_destroy)
-{
+TEST(create_destroy) {
     rt_screenfx fx = rt_screenfx_new();
     ASSERT(fx != NULL);
     ASSERT(rt_screenfx_is_active(fx) == 0);
@@ -42,8 +38,7 @@ TEST(create_destroy)
     rt_screenfx_destroy(fx);
 }
 
-TEST(shake)
-{
+TEST(shake) {
     rt_screenfx fx = rt_screenfx_new();
     /// @brief Rt_screenfx_shake.
     rt_screenfx_shake(fx, 10000, 100, 0); // 10 pixels, 100ms, no decay
@@ -55,23 +50,20 @@ TEST(shake)
     rt_screenfx_update(fx, 16);
     // Shake should produce non-zero offsets (though random)
     // After several updates, we expect some offset
-    for (int i = 0; i < 5; i++)
-    {
+    for (int i = 0; i < 5; i++) {
         rt_screenfx_update(fx, 16);
     }
 
     rt_screenfx_destroy(fx);
 }
 
-TEST(shake_decay)
-{
+TEST(shake_decay) {
     rt_screenfx fx = rt_screenfx_new();
     /// @brief Rt_screenfx_shake.
     rt_screenfx_shake(fx, 10000, 200, 500); // 50% decay
 
     // Run until completion
-    for (int i = 0; i < 20; i++)
-    {
+    for (int i = 0; i < 20; i++) {
         rt_screenfx_update(fx, 16);
     }
 
@@ -82,8 +74,7 @@ TEST(shake_decay)
     rt_screenfx_destroy(fx);
 }
 
-TEST(flash)
-{
+TEST(flash) {
     rt_screenfx fx = rt_screenfx_new();
     /// @brief Rt_screenfx_flash.
     rt_screenfx_flash(fx, 0xFF0000FF, 100); // Red with alpha 255
@@ -101,8 +92,7 @@ TEST(flash)
     rt_screenfx_destroy(fx);
 }
 
-TEST(fade_in)
-{
+TEST(fade_in) {
     rt_screenfx fx = rt_screenfx_new();
     /// @brief Rt_screenfx_fade_in.
     rt_screenfx_fade_in(fx, 0x000000FF, 100); // Black, alpha 255
@@ -119,8 +109,7 @@ TEST(fade_in)
     rt_screenfx_destroy(fx);
 }
 
-TEST(fade_out)
-{
+TEST(fade_out) {
     rt_screenfx fx = rt_screenfx_new();
     /// @brief Rt_screenfx_fade_out.
     rt_screenfx_fade_out(fx, 0x000000FF, 100); // Black, alpha 255
@@ -137,8 +126,7 @@ TEST(fade_out)
     rt_screenfx_destroy(fx);
 }
 
-TEST(cancel_all)
-{
+TEST(cancel_all) {
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_shake(fx, 5000, 500, 0);
     rt_screenfx_flash(fx, 0xFF0000FF, 500);
@@ -154,8 +142,7 @@ TEST(cancel_all)
     rt_screenfx_destroy(fx);
 }
 
-TEST(cancel_type)
-{
+TEST(cancel_type) {
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_shake(fx, 5000, 500, 0);
     rt_screenfx_flash(fx, 0xFF0000FF, 500);
@@ -168,8 +155,7 @@ TEST(cancel_type)
     rt_screenfx_destroy(fx);
 }
 
-TEST(shake_quadratic_decay)
-{
+TEST(shake_quadratic_decay) {
     rt_screenfx fx = rt_screenfx_new();
     // Large intensity, long duration, quadratic decay (decay >= 1500 triggers x^2 model).
     // At 99% progress (elapsed=9900 of 10000ms):
@@ -182,8 +168,7 @@ TEST(shake_quadratic_decay)
     rt_screenfx_destroy(fx);
 }
 
-TEST(multiple_effects)
-{
+TEST(multiple_effects) {
     rt_screenfx fx = rt_screenfx_new();
 
     // Can have shake and flash active simultaneously
@@ -199,8 +184,7 @@ TEST(multiple_effects)
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     printf("RTScreenFXTests:\n");
     RUN_TEST(create_destroy);
     RUN_TEST(shake);

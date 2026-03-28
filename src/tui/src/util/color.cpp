@@ -21,13 +21,10 @@
 
 #include <cctype>
 
-namespace viper::tui::util
-{
+namespace viper::tui::util {
 
-bool parseHexColor(const std::string &s, render::RGBA &out)
-{
-    if (s.empty())
-    {
+bool parseHexColor(const std::string &s, render::RGBA &out) {
+    if (s.empty()) {
         return false;
     }
 
@@ -35,36 +32,27 @@ bool parseHexColor(const std::string &s, render::RGBA &out)
     std::size_t start = (s[0] == '#') ? 1 : 0;
 
     // Must have exactly 6 hex digits after optional #
-    if (s.size() - start != 6)
-    {
+    if (s.size() - start != 6) {
         return false;
     }
 
     // Validate all characters are hex digits
-    for (std::size_t i = start; i < s.size(); ++i)
-    {
-        if (!std::isxdigit(static_cast<unsigned char>(s[i])))
-        {
+    for (std::size_t i = start; i < s.size(); ++i) {
+        if (!std::isxdigit(static_cast<unsigned char>(s[i]))) {
             return false;
         }
     }
 
     // Parse the hex value manually to avoid exceptions
     unsigned value = 0;
-    for (std::size_t i = start; i < s.size(); ++i)
-    {
+    for (std::size_t i = start; i < s.size(); ++i) {
         char c = s[i];
         unsigned digit = 0;
-        if (c >= '0' && c <= '9')
-        {
+        if (c >= '0' && c <= '9') {
             digit = static_cast<unsigned>(c - '0');
-        }
-        else if (c >= 'A' && c <= 'F')
-        {
+        } else if (c >= 'A' && c <= 'F') {
             digit = static_cast<unsigned>(c - 'A' + 10);
-        }
-        else if (c >= 'a' && c <= 'f')
-        {
+        } else if (c >= 'a' && c <= 'f') {
             digit = static_cast<unsigned>(c - 'a' + 10);
         }
         value = (value << 4) | digit;

@@ -38,8 +38,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 using pipeline_detail::coreTypeForAstType;
 
@@ -54,15 +53,13 @@ using pipeline_detail::coreTypeForAstType;
 ///          ensure diagnostics map back to the original source.
 /// @param s Statement whose virtual line number is requested.
 /// @return User-specified line or a generated synthetic value.
-int Lowerer::virtualLine(const Stmt &s)
-{
+int Lowerer::virtualLine(const Stmt &s) {
     auto it = stmtVirtualLines_.find(&s);
     if (it != stmtVirtualLines_.end())
         return it->second;
 
     const int userLine = s.line;
-    if (hasUserLine(userLine))
-    {
+    if (hasUserLine(userLine)) {
         stmtVirtualLines_[&s] = userLine;
         return userLine;
     }
@@ -86,8 +83,7 @@ int Lowerer::virtualLine(const Stmt &s)
 /// @param metadata Metadata previously gathered for the procedure body.
 void Lowerer::buildProcedureSkeleton(Function &f,
                                      const std::string &name,
-                                     const ProcedureMetadata &metadata)
-{
+                                     const ProcedureMetadata &metadata) {
     ProcedureContext &ctx = context();
     ctx.blockNames().setNamer(std::make_unique<BlockNamer>(name));
     BlockNamer *blockNamer = ctx.blockNames().namer();
@@ -102,8 +98,7 @@ void Lowerer::buildProcedureSkeleton(Function &f,
 #endif
 
     auto &lineBlocks = ctx.blockNames().lineBlocks();
-    for (const auto *stmt : metadata.bodyStmts)
-    {
+    for (const auto *stmt : metadata.bodyStmts) {
         int vLine = virtualLine(*stmt);
         if (lineBlocks.find(vLine) != lineBlocks.end())
             continue;
@@ -121,8 +116,7 @@ void Lowerer::buildProcedureSkeleton(Function &f,
 #ifdef DEBUG
     {
         std::unordered_set<int> seen;
-        for (int k : keys)
-        {
+        for (int k : keys) {
             assert(seen.insert(k).second &&
                    "Duplicate block key; unlabeled statements must have unique synthetic keys");
         }
@@ -155,8 +149,7 @@ void Lowerer::buildProcedureSkeleton(Function &f,
 /// @param paramNames Names of parameters for the current procedure.
 /// @param includeParams When true, allocate slots for parameters as well as locals.
 void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNames,
-                                 bool includeParams)
-{
+                                 bool includeParams) {
     // Pass 1: booleans
     allocateBooleanSlots(paramNames, includeParams);
 
@@ -172,8 +165,7 @@ void Lowerer::allocateLocalSlots(const std::unordered_set<std::string> &paramNam
 /// @param paramNames Parameter names to optionally skip.
 /// @param includeParams Whether to include parameters in allocation.
 void Lowerer::allocateBooleanSlots(const std::unordered_set<std::string> &paramNames,
-                                   bool includeParams)
-{
+                                   bool includeParams) {
     // Sort symbol names for deterministic allocation order across platforms.
     std::vector<std::string> sortedNames;
     sortedNames.reserve(symbols.size());
@@ -181,8 +173,7 @@ void Lowerer::allocateBooleanSlots(const std::unordered_set<std::string> &paramN
         sortedNames.push_back(name);
     std::sort(sortedNames.begin(), sortedNames.end());
 
-    for (const auto &name : sortedNames)
-    {
+    for (const auto &name : sortedNames) {
         auto &info = symbols.at(name);
         if (!shouldAllocateSlot(name, info, paramNames, includeParams))
             continue;
@@ -204,8 +195,7 @@ void Lowerer::allocateBooleanSlots(const std::unordered_set<std::string> &paramN
 /// @param paramNames Parameter names to optionally skip.
 /// @param includeParams Whether to include parameters in allocation.
 void Lowerer::allocateNonBooleanSlots(const std::unordered_set<std::string> &paramNames,
-                                      bool includeParams)
-{
+                                      bool includeParams) {
     // Sort symbol names for deterministic allocation order across platforms.
     std::vector<std::string> sortedNames;
     sortedNames.reserve(symbols.size());
@@ -213,8 +203,7 @@ void Lowerer::allocateNonBooleanSlots(const std::unordered_set<std::string> &par
         sortedNames.push_back(name);
     std::sort(sortedNames.begin(), sortedNames.end());
 
-    for (const auto &name : sortedNames)
-    {
+    for (const auto &name : sortedNames) {
         auto &info = symbols.at(name);
         if (!shouldAllocateSlot(name, info, paramNames, includeParams))
             continue;
@@ -223,23 +212,17 @@ void Lowerer::allocateNonBooleanSlots(const std::unordered_set<std::string> &par
 
         curLoc = {};
         SlotType slotInfo = getSlotType(name);
-        if (slotInfo.isArray)
-        {
+        if (slotInfo.isArray) {
             Value slot = emitAlloca(8);
             info.slotId = slot.id;
             emitStore(Type(Type::Kind::Ptr), slot, Value::null());
-        }
-        else if (!slotInfo.isBoolean)
-        {
+        } else if (!slotInfo.isBoolean) {
             Value slot = emitAlloca(8);
             info.slotId = slot.id;
-            if (slotInfo.type.kind == Type::Kind::Str)
-            {
+            if (slotInfo.type.kind == Type::Kind::Str) {
                 Value empty = emitCallRet(slotInfo.type, "rt_str_empty", {});
                 emitStore(slotInfo.type, slot, empty);
-            }
-            else if (slotInfo.isObject)
-            {
+            } else if (slotInfo.isObject) {
                 // Initialize object slots to null
                 emitStore(Type(Type::Kind::Ptr), slot, Value::null());
             }
@@ -251,8 +234,7 @@ void Lowerer::allocateNonBooleanSlots(const std::unordered_set<std::string> &par
 /// @param paramNames Parameter names to optionally skip.
 /// @param includeParams Whether to include parameters in allocation.
 void Lowerer::allocateArrayLengthSlots(const std::unordered_set<std::string> &paramNames,
-                                       bool includeParams)
-{
+                                       bool includeParams) {
     // Sort symbol names for deterministic allocation order across platforms.
     std::vector<std::string> sortedNames;
     sortedNames.reserve(symbols.size());
@@ -260,8 +242,7 @@ void Lowerer::allocateArrayLengthSlots(const std::unordered_set<std::string> &pa
         sortedNames.push_back(name);
     std::sort(sortedNames.begin(), sortedNames.end());
 
-    for (const auto &name : sortedNames)
-    {
+    for (const auto &name : sortedNames) {
         auto &info = symbols.at(name);
         if (!info.referenced || !info.isArray)
             continue;
@@ -289,8 +270,7 @@ void Lowerer::allocateArrayLengthSlots(const std::unordered_set<std::string> &pa
 bool Lowerer::shouldAllocateSlot(const std::string &name,
                                  const SymbolInfo &info,
                                  const std::unordered_set<std::string> &paramNames,
-                                 bool includeParams) const
-{
+                                 bool includeParams) const {
     if (!info.referenced)
         return false;
     if (info.isStatic)
@@ -318,8 +298,7 @@ bool Lowerer::shouldAllocateSlot(const std::string &name,
 ///          array if they have not yet been created.  The helper temporarily
 ///          switches the builder's insertion point to the function entry block
 ///          and restores both location and block afterwards.
-void Lowerer::ensureGosubStack()
-{
+void Lowerer::ensureGosubStack() {
     ProcedureContext &ctx = context();
     auto &state = ctx.gosub();
     if (state.hasPrologue())
@@ -341,8 +320,7 @@ void Lowerer::ensureGosubStack()
     // terminator so that the alloca/store prologue can be appended before it.
     Instr savedTerm;
     const bool wasTerminated = entry->terminated;
-    if (wasTerminated && !entry->instructions.empty())
-    {
+    if (wasTerminated && !entry->instructions.empty()) {
         savedTerm = std::move(entry->instructions.back());
         entry->instructions.pop_back();
         entry->terminated = false;
@@ -354,8 +332,7 @@ void Lowerer::ensureGosubStack()
     emitStore(Type(Type::Kind::I64), spSlot, Value::constInt(0));
     state.setPrologue(spSlot, stackSlot);
 
-    if (wasTerminated)
-    {
+    if (wasTerminated) {
         entry->instructions.push_back(std::move(savedTerm));
         entry->terminated = true;
     }

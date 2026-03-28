@@ -21,8 +21,7 @@
 #include <string>
 #include <string_view>
 
-namespace il::vm::diag
-{
+namespace il::vm::diag {
 
 /// @brief Format an error for unsupported type kind in marshalling.
 /// @param operation Description of the operation (e.g., "argument", "return", "assign").

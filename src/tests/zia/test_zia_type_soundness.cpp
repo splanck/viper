@@ -25,22 +25,18 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// Compile Zia source and return the result.
-CompilerResult compileSource(const std::string &source, SourceManager &sm)
-{
+CompilerResult compileSource(const std::string &source, SourceManager &sm) {
     CompilerInput input{.source = source, .path = "soundness.zia"};
     CompilerOptions opts{};
     return compile(input, opts, sm);
 }
 
 /// Check if any error diagnostic contains the given substring.
-bool hasErrorContaining(const CompilerResult &result, const std::string &needle)
-{
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
+bool hasErrorContaining(const CompilerResult &result, const std::string &needle) {
+    for (const auto &d : result.diagnostics.diagnostics()) {
         if (d.severity == Severity::Error && d.message.find(needle) != std::string::npos)
             return true;
     }
@@ -48,10 +44,8 @@ bool hasErrorContaining(const CompilerResult &result, const std::string &needle)
 }
 
 /// Check if any warning diagnostic contains the given substring.
-bool hasWarningContaining(const CompilerResult &result, const std::string &needle)
-{
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
+bool hasWarningContaining(const CompilerResult &result, const std::string &needle) {
+    for (const auto &d : result.diagnostics.diagnostics()) {
         if (d.severity == Severity::Warning && d.message.find(needle) != std::string::npos)
             return true;
     }
@@ -62,8 +56,7 @@ bool hasWarningContaining(const CompilerResult &result, const std::string &needl
 // Category 1: Incompatible Type Assignment
 //=============================================================================
 
-TEST(ZiaTypeSoundness, AssignStringToInteger)
-{
+TEST(ZiaTypeSoundness, AssignStringToInteger) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -76,8 +69,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, AssignBooleanToString)
-{
+TEST(ZiaTypeSoundness, AssignBooleanToString) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -90,8 +82,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, AssignIntegerToBoolean)
-{
+TEST(ZiaTypeSoundness, AssignIntegerToBoolean) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -104,8 +95,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, AssignNumberToInteger)
-{
+TEST(ZiaTypeSoundness, AssignNumberToInteger) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -118,8 +108,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, AssignWrongListType)
-{
+TEST(ZiaTypeSoundness, AssignWrongListType) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -132,8 +121,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, AssignUnrelatedEntities)
-{
+TEST(ZiaTypeSoundness, AssignUnrelatedEntities) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -148,8 +136,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, AssignEntityToValueType)
-{
+TEST(ZiaTypeSoundness, AssignEntityToValueType) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -168,8 +155,7 @@ func start() {
 // Category 2: Wrong Argument Types to Functions
 //=============================================================================
 
-TEST(ZiaTypeSoundness, GAP_WrongArgTypeStringForInt)
-{
+TEST(ZiaTypeSoundness, GAP_WrongArgTypeStringForInt) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -188,8 +174,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, GAP_WrongArgTypeIntForEntity)
-{
+TEST(ZiaTypeSoundness, GAP_WrongArgTypeIntForEntity) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -208,8 +193,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, GAP_TooManyArguments)
-{
+TEST(ZiaTypeSoundness, GAP_TooManyArguments) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -227,8 +211,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, GAP_TooFewArguments)
-{
+TEST(ZiaTypeSoundness, GAP_TooFewArguments) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -246,8 +229,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, GAP_MethodWrongArgType)
-{
+TEST(ZiaTypeSoundness, GAP_MethodWrongArgType) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -272,8 +254,7 @@ func start() {
 // Category 3: Non-Existent Fields
 //=============================================================================
 
-TEST(ZiaTypeSoundness, NonExistentFieldOnEntity)
-{
+TEST(ZiaTypeSoundness, NonExistentFieldOnEntity) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -290,8 +271,7 @@ func start() {
     EXPECT_TRUE(hasErrorContaining(result, "color") || hasErrorContaining(result, "member"));
 }
 
-TEST(ZiaTypeSoundness, PrivateFieldAccess)
-{
+TEST(ZiaTypeSoundness, PrivateFieldAccess) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -310,8 +290,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, FieldOnPrimitive)
-{
+TEST(ZiaTypeSoundness, FieldOnPrimitive) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -327,8 +306,7 @@ func start() {
     EXPECT_TRUE(hasErrorContaining(result, "member") || hasErrorContaining(result, "value"));
 }
 
-TEST(ZiaTypeSoundness, NonExistentFieldOnValue)
-{
+TEST(ZiaTypeSoundness, NonExistentFieldOnValue) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -349,8 +327,7 @@ func start() {
 // Category 4: Uninitialized Variables
 //=============================================================================
 
-TEST(ZiaTypeSoundness, GAP_UninitializedVariable)
-{
+TEST(ZiaTypeSoundness, GAP_UninitializedVariable) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -368,8 +345,7 @@ func start() {
     EXPECT_TRUE(hasWarningContaining(result, "initialization"));
 }
 
-TEST(ZiaTypeSoundness, GAP_ConditionalInit)
-{
+TEST(ZiaTypeSoundness, GAP_ConditionalInit) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -391,8 +367,7 @@ func start() {
     EXPECT_TRUE(hasWarningContaining(result, "initialization"));
 }
 
-TEST(ZiaTypeSoundness, UndefinedVariable)
-{
+TEST(ZiaTypeSoundness, UndefinedVariable) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -407,8 +382,7 @@ func start() {
     EXPECT_TRUE(hasErrorContaining(result, "undefined") || hasErrorContaining(result, "Undefined"));
 }
 
-TEST(ZiaTypeSoundness, UseVariableWithoutTypeOrInit)
-{
+TEST(ZiaTypeSoundness, UseVariableWithoutTypeOrInit) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -426,8 +400,7 @@ func start() {
 // Category 5: Integer-to-Pointer Coercions
 //=============================================================================
 
-TEST(ZiaTypeSoundness, AssignIntegerToEntity)
-{
+TEST(ZiaTypeSoundness, AssignIntegerToEntity) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -442,8 +415,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, GAP_UncheckedAsCastIntToEntity)
-{
+TEST(ZiaTypeSoundness, GAP_UncheckedAsCastIntToEntity) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -460,8 +432,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, GAP_AsCastEntityToInteger)
-{
+TEST(ZiaTypeSoundness, GAP_AsCastEntityToInteger) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -477,8 +448,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, AssignNullToNonOptional)
-{
+TEST(ZiaTypeSoundness, AssignNullToNonOptional) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -496,8 +466,7 @@ func start() {
 // Category 6: Implicit Narrowing Conversions
 //=============================================================================
 
-TEST(ZiaTypeSoundness, NumberVariableToByte)
-{
+TEST(ZiaTypeSoundness, NumberVariableToByte) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -512,8 +481,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, LargeIntLiteralToByte)
-{
+TEST(ZiaTypeSoundness, LargeIntLiteralToByte) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -527,8 +495,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, IntegerVariableToByte)
-{
+TEST(ZiaTypeSoundness, IntegerVariableToByte) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -543,8 +510,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, IntegerAsCondition)
-{
+TEST(ZiaTypeSoundness, IntegerAsCondition) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -562,8 +528,7 @@ func start() {
     EXPECT_TRUE(hasErrorContaining(result, "Boolean") || hasErrorContaining(result, "Condition"));
 }
 
-TEST(ZiaTypeSoundness, NumberReturnFromIntegerFunc)
-{
+TEST(ZiaTypeSoundness, NumberReturnFromIntegerFunc) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -588,8 +553,7 @@ func start() {
 // Category 7: Null/Nil Dereference Scenarios
 //=============================================================================
 
-TEST(ZiaTypeSoundness, GAP_NullOptionalFieldAccess)
-{
+TEST(ZiaTypeSoundness, GAP_NullOptionalFieldAccess) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -609,8 +573,7 @@ func start() {
     EXPECT_TRUE(hasWarningContaining(result, "Optional"));
 }
 
-TEST(ZiaTypeSoundness, GAP_NullOptionalMethodCall)
-{
+TEST(ZiaTypeSoundness, GAP_NullOptionalMethodCall) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -630,8 +593,7 @@ func start() {
     EXPECT_TRUE(hasWarningContaining(result, "Optional"));
 }
 
-TEST(ZiaTypeSoundness, ReturnNullFromNonOptionalFunc)
-{
+TEST(ZiaTypeSoundness, ReturnNullFromNonOptionalFunc) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -649,8 +611,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, GAP_PassOptionalToNonOptionalParam)
-{
+TEST(ZiaTypeSoundness, GAP_PassOptionalToNonOptionalParam) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -670,8 +631,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, OptionalAcceptsInnerType)
-{
+TEST(ZiaTypeSoundness, OptionalAcceptsInnerType) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -690,8 +650,7 @@ func start() {
 // Operator-Level Tests
 //=============================================================================
 
-TEST(ZiaTypeSoundness, LogicalAndWithIntegers)
-{
+TEST(ZiaTypeSoundness, LogicalAndWithIntegers) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -708,8 +667,7 @@ func start() {
     EXPECT_TRUE(hasErrorContaining(result, "Boolean") || hasErrorContaining(result, "Logical"));
 }
 
-TEST(ZiaTypeSoundness, BitwiseOrWithFloats)
-{
+TEST(ZiaTypeSoundness, BitwiseOrWithFloats) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -726,8 +684,7 @@ func start() {
     EXPECT_TRUE(hasErrorContaining(result, "integral") || hasErrorContaining(result, "Bitwise"));
 }
 
-TEST(ZiaTypeSoundness, NegateString)
-{
+TEST(ZiaTypeSoundness, NegateString) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -747,8 +704,7 @@ func start() {
 // Positive Correctness Tests (must compile)
 //=============================================================================
 
-TEST(ZiaTypeSoundness, IntegerToNumberWidening)
-{
+TEST(ZiaTypeSoundness, IntegerToNumberWidening) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -762,8 +718,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, ByteLiteralInRange)
-{
+TEST(ZiaTypeSoundness, ByteLiteralInRange) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -777,8 +732,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaTypeSoundness, EmptyListInference)
-{
+TEST(ZiaTypeSoundness, EmptyListInference) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -794,7 +748,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

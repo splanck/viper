@@ -21,8 +21,7 @@
 
 #include "frontends/basic/AstWalkerUtils.hpp"
 
-namespace il::frontends::basic::walker
-{
+namespace il::frontends::basic::walker {
 
 /// @brief Check whether a PRINT item carries an evaluated expression.
 ///
@@ -36,8 +35,7 @@ namespace il::frontends::basic::walker
 ///
 /// @param item PRINT item under inspection.
 /// @return True when the item represents an expression payload.
-bool printItemHasExpr(const PrintItem &item) noexcept
-{
+bool printItemHasExpr(const PrintItem &item) noexcept {
     return item.kind == PrintItem::Kind::Expr && item.expr != nullptr;
 }
 

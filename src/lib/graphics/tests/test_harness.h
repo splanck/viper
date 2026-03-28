@@ -26,27 +26,24 @@
 #include <string.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /* Global test tracking */
-    static int _test_total = 0;
-    static int _test_passed = 0;
-    static const char *_test_current = NULL;
+/* Global test tracking */
+static int _test_total = 0;
+static int _test_passed = 0;
+static const char *_test_current = NULL;
 
 /* Start a test case */
 #define TEST_BEGIN(name)                                                                           \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         _test_current = (name);                                                                    \
         printf("\n[ RUN      ] %s\n", _test_current);                                              \
     } while (0)
 
 /* End a test case */
 #define TEST_END()                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("[       OK ] %s\n", _test_current);                                                \
         _test_total++;                                                                             \
         _test_passed++;                                                                            \
@@ -55,8 +52,7 @@ extern "C"
 
 /* Assertion failure handler */
 #define TEST_FAIL(msg)                                                                             \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("[  FAILED  ] %s\n", _test_current);                                                \
         printf("  %s:%d: %s\n", __FILE__, __LINE__, (msg));                                        \
         _test_total++;                                                                             \
@@ -65,10 +61,8 @@ extern "C"
 
 /* Assertion macros */
 #define ASSERT_TRUE(cond)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             printf("  Assertion failed: %s\n", #cond);                                             \
             TEST_FAIL("Expected true, got false");                                                 \
             return;                                                                                \
@@ -76,10 +70,8 @@ extern "C"
     } while (0)
 
 #define ASSERT_FALSE(cond)                                                                         \
-    do                                                                                             \
-    {                                                                                              \
-        if (cond)                                                                                  \
-        {                                                                                          \
+    do {                                                                                           \
+        if (cond) {                                                                                \
             printf("  Assertion failed: !(%s)\n", #cond);                                          \
             TEST_FAIL("Expected false, got true");                                                 \
             return;                                                                                \
@@ -87,10 +79,8 @@ extern "C"
     } while (0)
 
 #define ASSERT_EQ(a, b)                                                                            \
-    do                                                                                             \
-    {                                                                                              \
-        if ((a) != (b))                                                                            \
-        {                                                                                          \
+    do {                                                                                           \
+        if ((a) != (b)) {                                                                          \
             printf("  Assertion failed: %s == %s\n", #a, #b);                                      \
             printf("  Expected: %d\n", (int)(b));                                                  \
             printf("  Actual:   %d\n", (int)(a));                                                  \
@@ -100,10 +90,8 @@ extern "C"
     } while (0)
 
 #define ASSERT_NE(a, b)                                                                            \
-    do                                                                                             \
-    {                                                                                              \
-        if ((a) == (b))                                                                            \
-        {                                                                                          \
+    do {                                                                                           \
+        if ((a) == (b)) {                                                                          \
             printf("  Assertion failed: %s != %s\n", #a, #b);                                      \
             printf("  Both values: %d\n", (int)(a));                                               \
             TEST_FAIL("Values are equal");                                                         \
@@ -112,10 +100,8 @@ extern "C"
     } while (0)
 
 #define ASSERT_NULL(ptr)                                                                           \
-    do                                                                                             \
-    {                                                                                              \
-        if ((ptr) != NULL)                                                                         \
-        {                                                                                          \
+    do {                                                                                           \
+        if ((ptr) != NULL) {                                                                       \
             printf("  Assertion failed: %s == NULL\n", #ptr);                                      \
             TEST_FAIL("Expected NULL pointer");                                                    \
             return;                                                                                \
@@ -123,10 +109,8 @@ extern "C"
     } while (0)
 
 #define ASSERT_NOT_NULL(ptr)                                                                       \
-    do                                                                                             \
-    {                                                                                              \
-        if ((ptr) == NULL)                                                                         \
-        {                                                                                          \
+    do {                                                                                           \
+        if ((ptr) == NULL) {                                                                       \
             printf("  Assertion failed: %s != NULL\n", #ptr);                                      \
             TEST_FAIL("Unexpected NULL pointer");                                                  \
             return;                                                                                \
@@ -134,10 +118,8 @@ extern "C"
     } while (0)
 
 #define ASSERT_STR_EQ(a, b)                                                                        \
-    do                                                                                             \
-    {                                                                                              \
-        if (strcmp((a), (b)) != 0)                                                                 \
-        {                                                                                          \
+    do {                                                                                           \
+        if (strcmp((a), (b)) != 0) {                                                               \
             printf("  Assertion failed: %s == %s\n", #a, #b);                                      \
             printf("  Expected: \"%s\"\n", (b));                                                   \
             printf("  Actual:   \"%s\"\n", (a));                                                   \
@@ -148,15 +130,11 @@ extern "C"
 
 /* Test runner summary */
 #define TEST_SUMMARY()                                                                             \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("\n========================================\n");                                    \
-        if (_test_passed == _test_total)                                                           \
-        {                                                                                          \
+        if (_test_passed == _test_total) {                                                         \
             printf("SUCCESS: All %d tests passed!\n", _test_total);                                \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             printf("FAILURE: %d/%d tests passed\n", _test_passed, _test_total);                    \
         }                                                                                          \
         printf("========================================\n");                                      \

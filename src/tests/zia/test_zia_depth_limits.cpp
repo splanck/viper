@@ -19,14 +19,11 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Check whether any diagnostic message contains @p needle.
-bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle)
-{
-    for (const auto &d : diag.diagnostics())
-    {
+bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle) {
+    for (const auto &d : diag.diagnostics()) {
         if (d.message.find(needle) != std::string::npos)
             return true;
     }
@@ -34,8 +31,7 @@ bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle)
 }
 
 /// @brief Compile Zia source and return the result.
-CompilerResult compileSource(const std::string &source)
-{
+CompilerResult compileSource(const std::string &source) {
     SourceManager sm;
     CompilerInput input{.source = source, .path = "depth_test.zia"};
     CompilerOptions opts{};
@@ -47,8 +43,7 @@ CompilerResult compileSource(const std::string &source)
 //===----------------------------------------------------------------------===//
 
 /// @brief 513 nested block statements must trigger the depth limit.
-TEST(ZiaDepthLimits, DeepBlocksExceedLimit)
-{
+TEST(ZiaDepthLimits, DeepBlocksExceedLimit) {
     std::string src = "module Test;\nfunc start() {\n";
     for (int i = 0; i < 513; i++)
         src += "{ ";
@@ -62,8 +57,7 @@ TEST(ZiaDepthLimits, DeepBlocksExceedLimit)
 }
 
 /// @brief 100 nested block statements must succeed (well below limit).
-TEST(ZiaDepthLimits, ModerateBlocksSucceed)
-{
+TEST(ZiaDepthLimits, ModerateBlocksSucceed) {
     std::string src = "module Test;\nfunc start() {\n";
     for (int i = 0; i < 100; i++)
         src += "{ ";
@@ -82,8 +76,7 @@ TEST(ZiaDepthLimits, ModerateBlocksSucceed)
 //===----------------------------------------------------------------------===//
 
 /// @brief 257 nested generic types must trigger the type depth limit.
-TEST(ZiaDepthLimits, DeepTypeExceedsLimit)
-{
+TEST(ZiaDepthLimits, DeepTypeExceedsLimit) {
     // Generate: var x: List[List[...[Integer]...]]
     std::string type;
     for (int i = 0; i < 257; i++)
@@ -100,8 +93,7 @@ TEST(ZiaDepthLimits, DeepTypeExceedsLimit)
 }
 
 /// @brief 50 nested generic types must succeed (well below limit).
-TEST(ZiaDepthLimits, ModerateTypeSucceeds)
-{
+TEST(ZiaDepthLimits, ModerateTypeSucceeds) {
     std::string type;
     for (int i = 0; i < 50; i++)
         type += "List[";
@@ -122,8 +114,7 @@ TEST(ZiaDepthLimits, ModerateTypeSucceeds)
 //===----------------------------------------------------------------------===//
 
 /// @brief 300 nested parenthesized expressions must trigger the expression depth limit.
-TEST(ZiaDepthLimits, DeepExpressionExceedsLimit)
-{
+TEST(ZiaDepthLimits, DeepExpressionExceedsLimit) {
     std::string expr;
     for (int i = 0; i < 300; i++)
         expr += "(";
@@ -139,8 +130,7 @@ TEST(ZiaDepthLimits, DeepExpressionExceedsLimit)
 }
 
 /// @brief 50 nested parenthesized expressions must succeed.
-TEST(ZiaDepthLimits, ModerateExpressionSucceeds)
-{
+TEST(ZiaDepthLimits, ModerateExpressionSucceeds) {
     std::string expr;
     for (int i = 0; i < 50; i++)
         expr += "(";
@@ -159,8 +149,7 @@ TEST(ZiaDepthLimits, ModerateExpressionSucceeds)
 //===----------------------------------------------------------------------===//
 
 /// @brief Depth counters reset between independent compilations.
-TEST(ZiaDepthLimits, CounterResetsAcrossCompilations)
-{
+TEST(ZiaDepthLimits, CounterResetsAcrossCompilations) {
     // First: compile something that hits the limit
     std::string deep = "module Test;\nfunc start() {\n";
     for (int i = 0; i < 513; i++)
@@ -179,8 +168,7 @@ TEST(ZiaDepthLimits, CounterResetsAcrossCompilations)
 }
 
 /// @brief Multiple sequential deep compilations each fail independently.
-TEST(ZiaDepthLimits, RepeatedDeepCompilationsFail)
-{
+TEST(ZiaDepthLimits, RepeatedDeepCompilationsFail) {
     std::string deep = "module Test;\nfunc start() {\n";
     for (int i = 0; i < 513; i++)
         deep += "{ ";
@@ -188,8 +176,7 @@ TEST(ZiaDepthLimits, RepeatedDeepCompilationsFail)
         deep += "} ";
     deep += "\n}\n";
 
-    for (int trial = 0; trial < 3; trial++)
-    {
+    for (int trial = 0; trial < 3; trial++) {
         auto result = compileSource(deep);
         EXPECT_FALSE(result.succeeded());
         EXPECT_TRUE(hasDiagContaining(result.diagnostics, "statement nesting too deep"));
@@ -201,8 +188,7 @@ TEST(ZiaDepthLimits, RepeatedDeepCompilationsFail)
 //===----------------------------------------------------------------------===//
 
 /// @brief Deeply nested namespaces must trigger the depth limit.
-TEST(ZiaDepthLimits, DeepNamespaceExceedsLimit)
-{
+TEST(ZiaDepthLimits, DeepNamespaceExceedsLimit) {
     std::string src = "module Test;\n";
     for (int i = 0; i < 513; i++)
         src += "namespace N" + std::to_string(i) + " { ";
@@ -218,7 +204,6 @@ TEST(ZiaDepthLimits, DeepNamespaceExceedsLimit)
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

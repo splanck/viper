@@ -38,12 +38,10 @@
 
 #include <string_view>
 
-namespace il::verify::detail
-{
+namespace il::verify::detail {
 
 /// @brief Ensures an instruction provides the expected number of operands.
-class OperandCountChecker
-{
+class OperandCountChecker {
   public:
     OperandCountChecker(const VerifyCtx &ctx, const InstructionSpec &spec);
 

@@ -22,12 +22,10 @@
 #include <string_view>
 #include <system_error>
 
-namespace il::frontends::common::number_parsing
-{
+namespace il::frontends::common::number_parsing {
 
 /// @brief Result of parsing a numeric literal.
-struct ParsedNumber
-{
+struct ParsedNumber {
     bool isFloat = false;    ///< True if number has decimal point or exponent
     int64_t intValue = 0;    ///< Integer value (valid when !isFloat)
     double floatValue = 0.0; ///< Float value (valid when isFloat)
@@ -42,12 +40,10 @@ struct ParsedNumber
 /// @param text The numeric literal text (digits, optional decimal, optional exponent)
 /// @return ParsedNumber with the parsed value
 /// @details Handles formats like: 123, 123.45, 1.23e10, 1E-5
-[[nodiscard]] inline ParsedNumber parseDecimalLiteral(std::string_view text)
-{
+[[nodiscard]] inline ParsedNumber parseDecimalLiteral(std::string_view text) {
     ParsedNumber result;
 
-    if (text.empty())
-    {
+    if (text.empty()) {
         result.valid = false;
         return result;
     }
@@ -59,54 +55,40 @@ struct ParsedNumber
 
     result.isFloat = hasDecimal || hasExponent;
 
-    if (result.isFloat)
-    {
+    if (result.isFloat) {
         // Parse as double using strtod for portability
         std::string textStr(text);
         char *endPtr = nullptr;
         result.floatValue = std::strtod(textStr.c_str(), &endPtr);
 
-        if (endPtr == textStr.c_str())
-        {
+        if (endPtr == textStr.c_str()) {
             result.valid = false;
         }
-    }
-    else
-    {
+    } else {
         // Parse as unsigned first to handle the INT64_MIN edge case.
         // The value 9223372036854775808 overflows int64_t but is exactly -INT64_MIN,
         // which is valid when negated (e.g., "-9223372036854775808").
         uint64_t unsignedValue = 0;
         auto parseResult = std::from_chars(text.data(), text.data() + text.size(), unsignedValue);
 
-        if (parseResult.ec == std::errc::result_out_of_range)
-        {
+        if (parseResult.ec == std::errc::result_out_of_range) {
             result.overflow = true;
             result.valid = false;
-        }
-        else if (parseResult.ec != std::errc{})
-        {
+        } else if (parseResult.ec != std::errc{}) {
             result.valid = false;
-        }
-        else
-        {
+        } else {
             // Check if value fits in signed int64_t
             constexpr uint64_t INT64_MAX_AS_UINT = static_cast<uint64_t>(INT64_MAX);
             constexpr uint64_t INT64_MIN_ABS = static_cast<uint64_t>(INT64_MAX) + 1;
 
-            if (unsignedValue <= INT64_MAX_AS_UINT)
-            {
+            if (unsignedValue <= INT64_MAX_AS_UINT) {
                 result.intValue = static_cast<int64_t>(unsignedValue);
-            }
-            else if (unsignedValue == INT64_MIN_ABS)
-            {
+            } else if (unsignedValue == INT64_MIN_ABS) {
                 // Special case: 9223372036854775808 requires negation to be valid
                 // Store as 0 for now, parser will handle the negation
                 result.intValue = 0;
                 result.requiresNegation = true;
-            }
-            else
-            {
+            } else {
                 result.overflow = true;
                 result.valid = false;
             }
@@ -121,13 +103,11 @@ struct ParsedNumber
 /// @return ParsedNumber with the parsed value (always integer)
 /// @details Expects text without prefix (e.g., "DEADBEEF" not "$DEADBEEF" or "0xDEADBEEF").
 ///          Hex literals are treated as bit patterns, so 0x8000000000000000 becomes INT64_MIN.
-[[nodiscard]] inline ParsedNumber parseHexLiteral(std::string_view text)
-{
+[[nodiscard]] inline ParsedNumber parseHexLiteral(std::string_view text) {
     ParsedNumber result;
     result.isFloat = false;
 
-    if (text.empty())
-    {
+    if (text.empty()) {
         result.valid = false;
         return result;
     }
@@ -138,17 +118,12 @@ struct ParsedNumber
     uint64_t unsignedValue = 0;
     auto parseResult = std::from_chars(text.data(), text.data() + text.size(), unsignedValue, 16);
 
-    if (parseResult.ec == std::errc::result_out_of_range)
-    {
+    if (parseResult.ec == std::errc::result_out_of_range) {
         result.overflow = true;
         result.valid = false;
-    }
-    else if (parseResult.ec != std::errc{})
-    {
+    } else if (parseResult.ec != std::errc{}) {
         result.valid = false;
-    }
-    else
-    {
+    } else {
         // Reinterpret unsigned bits as signed - this makes 0x8000000000000000 = INT64_MIN
         result.intValue = static_cast<int64_t>(unsignedValue);
     }
@@ -159,26 +134,21 @@ struct ParsedNumber
 /// @brief Parse a binary integer literal from text.
 /// @param text The binary literal text (0s and 1s only, no prefix)
 /// @return ParsedNumber with the parsed value (always integer)
-[[nodiscard]] inline ParsedNumber parseBinaryLiteral(std::string_view text)
-{
+[[nodiscard]] inline ParsedNumber parseBinaryLiteral(std::string_view text) {
     ParsedNumber result;
     result.isFloat = false;
 
-    if (text.empty())
-    {
+    if (text.empty()) {
         result.valid = false;
         return result;
     }
 
     auto parseResult = std::from_chars(text.data(), text.data() + text.size(), result.intValue, 2);
 
-    if (parseResult.ec == std::errc::result_out_of_range)
-    {
+    if (parseResult.ec == std::errc::result_out_of_range) {
         result.overflow = true;
         result.valid = false;
-    }
-    else if (parseResult.ec != std::errc{})
-    {
+    } else if (parseResult.ec != std::errc{}) {
         result.valid = false;
     }
 
@@ -188,26 +158,21 @@ struct ParsedNumber
 /// @brief Parse an octal integer literal from text.
 /// @param text The octal literal text (0-7 digits only, no prefix)
 /// @return ParsedNumber with the parsed value (always integer)
-[[nodiscard]] inline ParsedNumber parseOctalLiteral(std::string_view text)
-{
+[[nodiscard]] inline ParsedNumber parseOctalLiteral(std::string_view text) {
     ParsedNumber result;
     result.isFloat = false;
 
-    if (text.empty())
-    {
+    if (text.empty()) {
         result.valid = false;
         return result;
     }
 
     auto parseResult = std::from_chars(text.data(), text.data() + text.size(), result.intValue, 8);
 
-    if (parseResult.ec == std::errc::result_out_of_range)
-    {
+    if (parseResult.ec == std::errc::result_out_of_range) {
         result.overflow = true;
         result.valid = false;
-    }
-    else if (parseResult.ec != std::errc{})
-    {
+    } else if (parseResult.ec != std::errc{}) {
         result.valid = false;
     }
 
@@ -217,24 +182,21 @@ struct ParsedNumber
 /// @brief Check if a character could start a numeric literal.
 /// @param c The character to check
 /// @return True if c is a digit
-[[nodiscard]] constexpr bool isNumberStart(char c) noexcept
-{
+[[nodiscard]] constexpr bool isNumberStart(char c) noexcept {
     return c >= '0' && c <= '9';
 }
 
 /// @brief Check if a character is a valid exponent indicator.
 /// @param c The character to check
 /// @return True if c is 'e' or 'E'
-[[nodiscard]] constexpr bool isExponentChar(char c) noexcept
-{
+[[nodiscard]] constexpr bool isExponentChar(char c) noexcept {
     return c == 'e' || c == 'E';
 }
 
 /// @brief Check if a character is a sign for exponent.
 /// @param c The character to check
 /// @return True if c is '+' or '-'
-[[nodiscard]] constexpr bool isSignChar(char c) noexcept
-{
+[[nodiscard]] constexpr bool isSignChar(char c) noexcept {
     return c == '+' || c == '-';
 }
 

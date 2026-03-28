@@ -23,37 +23,39 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    typedef struct rt_lighting2d_impl *rt_lighting2d;
+typedef struct rt_lighting2d_impl *rt_lighting2d;
 
-    rt_lighting2d rt_lighting2d_new(int64_t max_lights);
-    void rt_lighting2d_destroy(rt_lighting2d lit);
+rt_lighting2d rt_lighting2d_new(int64_t max_lights);
+void rt_lighting2d_destroy(rt_lighting2d lit);
 
-    // Configuration
-    void rt_lighting2d_set_darkness(rt_lighting2d lit, int64_t alpha);
-    int64_t rt_lighting2d_get_darkness(rt_lighting2d lit);
-    void rt_lighting2d_set_tint_color(rt_lighting2d lit, int64_t color);
-    int64_t rt_lighting2d_get_tint_color(rt_lighting2d lit);
-    void rt_lighting2d_set_player_light(rt_lighting2d lit, int64_t radius, int64_t color);
+// Configuration
+void rt_lighting2d_set_darkness(rt_lighting2d lit, int64_t alpha);
+int64_t rt_lighting2d_get_darkness(rt_lighting2d lit);
+void rt_lighting2d_set_tint_color(rt_lighting2d lit, int64_t color);
+int64_t rt_lighting2d_get_tint_color(rt_lighting2d lit);
+void rt_lighting2d_set_player_light(rt_lighting2d lit, int64_t radius, int64_t color);
 
-    // Dynamic lights
-    void rt_lighting2d_add_light(rt_lighting2d lit, int64_t x, int64_t y,
-                                 int64_t radius, int64_t color, int64_t lifetime);
-    void rt_lighting2d_add_tile_light(rt_lighting2d lit, int64_t screen_x,
-                                      int64_t screen_y, int64_t radius, int64_t color);
-    void rt_lighting2d_clear_lights(rt_lighting2d lit);
+// Dynamic lights
+void rt_lighting2d_add_light(
+    rt_lighting2d lit, int64_t x, int64_t y, int64_t radius, int64_t color, int64_t lifetime);
+void rt_lighting2d_add_tile_light(
+    rt_lighting2d lit, int64_t screen_x, int64_t screen_y, int64_t radius, int64_t color);
+void rt_lighting2d_clear_lights(rt_lighting2d lit);
 
-    // Per-frame
-    void rt_lighting2d_update(rt_lighting2d lit);
-    void rt_lighting2d_draw(rt_lighting2d lit, void *canvas,
-                            int64_t cam_x, int64_t cam_y,
-                            int64_t player_sx, int64_t player_sy);
+// Per-frame
+void rt_lighting2d_update(rt_lighting2d lit);
+void rt_lighting2d_draw(rt_lighting2d lit,
+                        void *canvas,
+                        int64_t cam_x,
+                        int64_t cam_y,
+                        int64_t player_sx,
+                        int64_t player_sy);
 
-    // Queries
-    int64_t rt_lighting2d_get_light_count(rt_lighting2d lit);
+// Queries
+int64_t rt_lighting2d_get_light_count(rt_lighting2d lit);
 
 #ifdef __cplusplus
 }

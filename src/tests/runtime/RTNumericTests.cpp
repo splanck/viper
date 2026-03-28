@@ -17,8 +17,7 @@
 
 #include <cassert>
 
-int main()
-{
+int main() {
     assert(rt_round_even(2.5, 0) == 2.0);
     assert(rt_round_even(3.5, 0) == 4.0);
 

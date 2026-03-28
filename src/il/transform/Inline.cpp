@@ -36,18 +36,15 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
+namespace il::transform {
 
-namespace
-{
+namespace {
 constexpr unsigned kMaxCallSites = 8;
 constexpr char kDepthKeySep = '\0';
 
 using BlockDepthMap = std::unordered_map<std::string, unsigned>;
 
-struct InlineCost
-{
+struct InlineCost {
     unsigned instrCount = 0;
     unsigned blockCount = 0;
     unsigned callSites = 0;
@@ -61,15 +58,13 @@ struct InlineCost
     bool hasReturn = false;
 
     /// @brief Check if within basic structural constraints.
-    bool isInlinable() const
-    {
+    bool isInlinable() const {
         return !recursive && !hasEH && !hasAlloca && !hasNonScalarSignature && !unsupportedCFG &&
                hasReturn;
     }
 
     /// @brief Compute adjusted cost considering bonuses.
-    int adjustedCost(const InlineCostConfig &config, unsigned constArgCount) const
-    {
+    int adjustedCost(const InlineCostConfig &config, unsigned constArgCount) const {
         if (!isInlinable())
             return INT_MAX;
 
@@ -103,8 +98,7 @@ struct InlineCost
     /// @param config        Tuning parameters for the inliner.
     /// @param constArgCount Number of call arguments known to be constants.
     /// @return @c true when inlining is legal and within cost budget.
-    bool withinBudget(const InlineCostConfig &config, unsigned constArgCount) const
-    {
+    bool withinBudget(const InlineCostConfig &config, unsigned constArgCount) const {
         if (!isInlinable())
             return false;
         if (blockCount > config.blockBudget)
@@ -123,8 +117,7 @@ struct InlineCost
 /// @param fn Function name prefix.
 /// @param label Block label suffix.
 /// @return Composite key suitable for BlockDepthMap lookups.
-std::string depthKey(const std::string &fn, const std::string &label)
-{
+std::string depthKey(const std::string &fn, const std::string &label) {
     return fn + kDepthKeySep + label;
 }
 
@@ -133,8 +126,9 @@ std::string depthKey(const std::string &fn, const std::string &label)
 /// @param fn Owning function name.
 /// @param label Block label within the function.
 /// @return Recorded depth, or 0 if no entry exists.
-unsigned getBlockDepth(const BlockDepthMap &depths, const std::string &fn, const std::string &label)
-{
+unsigned getBlockDepth(const BlockDepthMap &depths,
+                       const std::string &fn,
+                       const std::string &label) {
     auto it = depths.find(depthKey(fn, label));
     if (it == depths.end())
         return 0;
@@ -149,26 +143,22 @@ unsigned getBlockDepth(const BlockDepthMap &depths, const std::string &fn, const
 void setBlockDepth(BlockDepthMap &depths,
                    const std::string &fn,
                    const std::string &label,
-                   unsigned depth)
-{
+                   unsigned depth) {
     depths[depthKey(fn, label)] = depth;
 }
 
 /// @brief Test whether an instruction is a direct (non-indirect) call.
 /// @param I Instruction to inspect.
 /// @return True when the opcode is Call and a callee name is present.
-bool isDirectCall(const Instr &I)
-{
+bool isDirectCall(const Instr &I) {
     return I.op == Opcode::Call && !I.callee.empty();
 }
 
 /// @brief Test whether an instruction is part of the exception-handling framework.
 /// @param I Instruction to inspect.
 /// @return True for EhPush, EhPop, EhEntry, ResumeSame, ResumeNext, ResumeLabel.
-bool isEHSensitive(const Instr &I)
-{
-    switch (I.op)
-    {
+bool isEHSensitive(const Instr &I) {
+    switch (I.op) {
         case Opcode::EhPush:
         case Opcode::EhPop:
         case Opcode::EhEntry:
@@ -185,8 +175,7 @@ bool isEHSensitive(const Instr &I)
 /// @details The inliner only handles Ret, Br, CBr, and SwitchI32 terminators.
 /// @param I Terminator instruction to check.
 /// @return True when the terminator cannot be inlined.
-bool hasUnsupportedTerminator(const Instr &I)
-{
+bool hasUnsupportedTerminator(const Instr &I) {
     return !(I.op == Opcode::Ret || I.op == Opcode::Br || I.op == Opcode::CBr ||
              I.op == Opcode::SwitchI32);
 }
@@ -194,8 +183,7 @@ bool hasUnsupportedTerminator(const Instr &I)
 /// @brief Count the total number of instructions across all blocks of a function.
 /// @param F Function to measure.
 /// @return Sum of instruction counts in every block.
-unsigned countInstructions(const Function &F)
-{
+unsigned countInstructions(const Function &F) {
     unsigned n = 0;
     for (const auto &B : F.blocks)
         n += static_cast<unsigned>(B.instructions.size());
@@ -207,8 +195,7 @@ unsigned countInstructions(const Function &F)
 /// @param id SSA value identifier.
 /// @param fallback String returned when no name is recorded for @p id.
 /// @return The stored name if present and non-empty; otherwise @p fallback.
-std::string lookupValueName(const Function &F, unsigned id, const std::string &fallback)
-{
+std::string lookupValueName(const Function &F, unsigned id, const std::string &fallback) {
     if (id < F.valueNames.size() && !F.valueNames[id].empty())
         return F.valueNames[id];
     return fallback;
@@ -218,8 +205,7 @@ std::string lookupValueName(const Function &F, unsigned id, const std::string &f
 /// @details The textual IL parser resolves temps by printed name, so any new
 ///          names introduced by the inliner must be unique within the whole
 ///          function, not just within the inlined region.
-std::unordered_set<std::string> collectUsedValueNames(const Function &F)
-{
+std::unordered_set<std::string> collectUsedValueNames(const Function &F) {
     std::unordered_set<std::string> names;
     names.reserve(F.params.size() + F.blocks.size() * 4 + F.valueNames.size());
 
@@ -243,20 +229,17 @@ std::unordered_set<std::string> collectUsedValueNames(const Function &F)
 /// @param usedNames Set of names already reserved in the function. Updated in place.
 /// @param base Desired name.
 /// @return A unique name derived from @p base.
-std::string reserveUniqueValueName(std::unordered_set<std::string> &usedNames, std::string base)
-{
+std::string reserveUniqueValueName(std::unordered_set<std::string> &usedNames, std::string base) {
     if (base.empty())
         base = "tmp";
-    if (!usedNames.contains(base))
-    {
+    if (!usedNames.contains(base)) {
         usedNames.insert(base);
         return base;
     }
 
     std::string candidate = base;
     unsigned suffix = 0;
-    do
-    {
+    do {
         candidate = base + "_" + std::to_string(++suffix);
     } while (usedNames.contains(candidate));
 
@@ -268,8 +251,7 @@ std::string reserveUniqueValueName(std::unordered_set<std::string> &usedNames, s
 /// @param F Function whose valueNames table is modified.
 /// @param id SSA value identifier.
 /// @param name Name to associate; empty names are silently ignored.
-void ensureValueName(Function &F, unsigned id, const std::string &name)
-{
+void ensureValueName(Function &F, unsigned id, const std::string &name) {
     if (name.empty())
         return;
     if (F.valueNames.size() <= id)
@@ -277,14 +259,12 @@ void ensureValueName(Function &F, unsigned id, const std::string &name)
     F.valueNames[id] = name;
 }
 
-InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGraph &cg)
-{
+InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGraph &cg) {
     InlineCost cost;
     cost.instrCount = countInstructions(fn);
     cost.blockCount = static_cast<unsigned>(fn.blocks.size());
 
-    auto isScalarType = [](const Type &type)
-    {
+    auto isScalarType = [](const Type &type) {
         return type.kind == Type::Kind::I64 || type.kind == Type::Kind::I1 ||
                type.kind == Type::Kind::F64 || type.kind == Type::Kind::Void;
     };
@@ -299,20 +279,16 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
         cost.callSites = callIt->second;
 
     auto edgeIt = cg.edges.find(fn.name);
-    if (edgeIt != cg.edges.end())
-    {
-        for (const auto &target : edgeIt->second)
-        {
-            if (target == fn.name)
-            {
+    if (edgeIt != cg.edges.end()) {
+        for (const auto &target : edgeIt->second) {
+            if (target == fn.name) {
                 cost.recursive = true;
                 break;
             }
         }
     }
 
-    if (fn.blocks.empty())
-    {
+    if (fn.blocks.empty()) {
         cost.unsupportedCFG = true;
         return cost;
     }
@@ -320,10 +296,8 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
     // Entry-block params are handled: we pass call arguments as branch args
     // when jumping to the cloned entry block (see inlineCallSite).
 
-    for (const auto &B : fn.blocks)
-    {
-        if (!B.terminated || B.instructions.empty())
-        {
+    for (const auto &B : fn.blocks) {
+        if (!B.terminated || B.instructions.empty()) {
             cost.unsupportedCFG = true;
             continue;
         }
@@ -332,8 +306,7 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
         if (hasUnsupportedTerminator(term))
             cost.unsupportedCFG = true;
 
-        if (term.op == Opcode::Ret)
-        {
+        if (term.op == Opcode::Ret) {
             cost.hasReturn = true;
             ++cost.returnCount;
             bool expectValue = fn.retType.kind != Type::Kind::Void;
@@ -342,8 +315,7 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
                 cost.unsupportedCFG = true;
         }
 
-        for (const auto &I : B.instructions)
-        {
+        for (const auto &I : B.instructions) {
             if (isEHSensitive(I))
                 cost.hasEH = true;
 
@@ -360,14 +332,11 @@ InlineCost evaluateInlineCost(const Function &fn, const viper::analysis::CallGra
 }
 
 /// @brief Count constant arguments in a call instruction.
-unsigned countConstantArgs(const Instr &callInstr)
-{
+unsigned countConstantArgs(const Instr &callInstr) {
     unsigned count = 0;
-    for (const auto &op : callInstr.operands)
-    {
+    for (const auto &op : callInstr.operands) {
         if (op.kind == Value::Kind::ConstInt || op.kind == Value::Kind::ConstFloat ||
-            op.kind == Value::Kind::NullPtr || op.kind == Value::Kind::ConstStr)
-        {
+            op.kind == Value::Kind::NullPtr || op.kind == Value::Kind::ConstStr) {
             ++count;
         }
     }
@@ -382,8 +351,7 @@ unsigned countConstantArgs(const Instr &callInstr)
 /// @param function Function whose blocks define the label namespace.
 /// @param base Desired label prefix; returned as-is when no collision occurs.
 /// @return A label guaranteed to be unique within @p function.
-std::string makeUniqueLabel(const Function &function, const std::string &base)
-{
+std::string makeUniqueLabel(const Function &function, const std::string &base) {
     std::unordered_set<std::string> existingLabels;
     existingLabels.reserve(function.blocks.size());
     for (const auto &block : function.blocks)
@@ -391,8 +359,7 @@ std::string makeUniqueLabel(const Function &function, const std::string &base)
 
     std::string candidate = base;
     unsigned suffix = 0;
-    while (existingLabels.count(candidate))
-    {
+    while (existingLabels.count(candidate)) {
         candidate = base + "." + std::to_string(++suffix);
     }
     return candidate;
@@ -403,8 +370,7 @@ std::string makeUniqueLabel(const Function &function, const std::string &base)
 /// @param map Mapping from old temporary IDs to replacement values.
 /// @return The replacement value if \p v is a temporary found in \p map,
 ///         otherwise \p v unchanged.
-Value remapValue(const Value &v, const std::unordered_map<unsigned, Value> &map)
-{
+Value remapValue(const Value &v, const std::unordered_map<unsigned, Value> &map) {
     if (v.kind != Value::Kind::Temp)
         return v;
     auto it = map.find(v.id);
@@ -419,20 +385,15 @@ Value remapValue(const Value &v, const std::unordered_map<unsigned, Value> &map)
 /// @param block The basic block to rewrite.
 /// @param from  The temporary ID to search for.
 /// @param replacement The value to substitute in place of the old temporary.
-void replaceUsesInBlock(BasicBlock &block, unsigned from, const Value &replacement)
-{
-    for (auto &instr : block.instructions)
-    {
-        for (auto &op : instr.operands)
-        {
+void replaceUsesInBlock(BasicBlock &block, unsigned from, const Value &replacement) {
+    for (auto &instr : block.instructions) {
+        for (auto &op : instr.operands) {
             if (op.kind == Value::Kind::Temp && op.id == from)
                 op = replacement;
         }
 
-        for (auto &argList : instr.brArgs)
-        {
-            for (auto &arg : argList)
-            {
+        for (auto &argList : instr.brArgs) {
+            for (auto &arg : argList) {
                 if (arg.kind == Value::Kind::Temp && arg.id == from)
                     arg = replacement;
             }
@@ -447,8 +408,7 @@ bool inlineCallSite(Function &caller,
                     unsigned callDepth,
                     unsigned maxDepth,
                     BlockDepthMap &depths,
-                    const std::unordered_map<std::string, const Function *> &functionLookup)
-{
+                    const std::unordered_map<std::string, const Function *> &functionLookup) {
     if (callDepth >= maxDepth)
         return false;
 
@@ -468,8 +428,7 @@ bool inlineCallSite(Function &caller,
         return false;
 
     // Skip inlining callees that were already modified by a prior inline.
-    for (const auto &B : callee.blocks)
-    {
+    for (const auto &B : callee.blocks) {
         if (B.label.find(".inline.") != std::string::npos)
             return false;
     }
@@ -479,15 +438,11 @@ bool inlineCallSite(Function &caller,
     // block may have loop-carried params or rewritten param IDs that don't
     // correspond to any function param. The inline pass can only provide call
     // operands (matching function params), not loop-internal values.
-    if (!callee.blocks.empty())
-    {
-        for (const auto &ep : callee.blocks.front().params)
-        {
+    if (!callee.blocks.empty()) {
+        for (const auto &ep : callee.blocks.front().params) {
             bool mapped = false;
-            for (const auto &fp : callee.params)
-            {
-                if (fp.id == ep.id)
-                {
+            for (const auto &fp : callee.params) {
+                if (fp.id == ep.id) {
                     mapped = true;
                     break;
                 }
@@ -522,8 +477,7 @@ bool inlineCallSite(Function &caller,
     // Build label map for cloned blocks.
     std::unordered_map<std::string, std::string> labelMap;
     labelMap.reserve(callee.blocks.size());
-    for (const auto &B : callee.blocks)
-    {
+    for (const auto &B : callee.blocks) {
         std::string base = callBlock.label + ".inline." + callee.name + "." + B.label;
         labelMap.emplace(B.label, makeUniqueLabel(caller, base));
     }
@@ -545,8 +499,7 @@ bool inlineCallSite(Function &caller,
 
     Param retParam;
     bool hasRetParam = returnsValue && callInstr.result;
-    if (hasRetParam)
-    {
+    if (hasRetParam) {
         retParam.name = reserveUniqueValueName(
             usedValueNames,
             lookupValueName(caller, *callInstr.result, "ret" + std::to_string(*callInstr.result)));
@@ -560,29 +513,23 @@ bool inlineCallSite(Function &caller,
     // but since escape analysis runs in Phase 1 (before replacement), we must exclude
     // the original call result from escapedIds to avoid creating a spurious escaped param.
     std::unordered_set<unsigned> contDefined;
-    if (hasRetParam)
-    {
+    if (hasRetParam) {
         contDefined.insert(retParam.id);
         contDefined.insert(*callInstr.result); // exclude original result from escape detection
     }
-    for (const auto &instr : continuation.instructions)
-    {
+    for (const auto &instr : continuation.instructions) {
         if (instr.result)
             contDefined.insert(*instr.result);
     }
 
     std::unordered_set<unsigned> contUsed;
-    for (const auto &instr : continuation.instructions)
-    {
-        for (const auto &op : instr.operands)
-        {
+    for (const auto &instr : continuation.instructions) {
+        for (const auto &op : instr.operands) {
             if (op.kind == Value::Kind::Temp)
                 contUsed.insert(op.id);
         }
-        for (const auto &argList : instr.brArgs)
-        {
-            for (const auto &v : argList)
-            {
+        for (const auto &argList : instr.brArgs) {
+            for (const auto &v : argList) {
                 if (v.kind == Value::Kind::Temp)
                     contUsed.insert(v.id);
             }
@@ -597,18 +544,15 @@ bool inlineCallSite(Function &caller,
     //      that DCE can orphan when it removes write-only allocas.
     //   3. The continuation can reference the alloca directly.
     std::unordered_set<unsigned> allocaIds;
-    for (const auto &bb : caller.blocks)
-    {
-        for (const auto &instr : bb.instructions)
-        {
+    for (const auto &bb : caller.blocks) {
+        for (const auto &instr : bb.instructions) {
             if (instr.op == Opcode::Alloca && instr.result)
                 allocaIds.insert(*instr.result);
         }
     }
 
     std::vector<unsigned> escapedIds;
-    for (unsigned id : contUsed)
-    {
+    for (unsigned id : contUsed) {
         if (contDefined.find(id) == contDefined.end() && allocaIds.find(id) == allocaIds.end())
             escapedIds.push_back(id);
     }
@@ -617,8 +561,7 @@ bool inlineCallSite(Function &caller,
     // Type inference for escaped values — runs on FULL (pre-truncated) caller.
     // This is the key advantage of Phase 1: we see ALL instructions including
     // those in the call block that will be truncated in Phase 2.
-    struct EscapedParamInfo
-    {
+    struct EscapedParamInfo {
         Param param;
         bool typeFound{false};
     };
@@ -626,8 +569,7 @@ bool inlineCallSite(Function &caller,
     std::vector<EscapedParamInfo> escapedParamInfos;
     escapedParamInfos.reserve(escapedIds.size());
 
-    for (unsigned origId : escapedIds)
-    {
+    for (unsigned origId : escapedIds) {
         EscapedParamInfo info;
         Param &p = info.param;
         p.name = reserveUniqueValueName(
@@ -636,33 +578,25 @@ bool inlineCallSite(Function &caller,
         p.type = Type(Type::Kind::I64); // fallback default
 
         // Search ALL caller blocks (including the FULL call block, not yet truncated).
-        for (const auto &bb : caller.blocks)
-        {
-            for (const auto &bp : bb.params)
-            {
-                if (bp.id == origId)
-                {
+        for (const auto &bb : caller.blocks) {
+            for (const auto &bp : bb.params) {
+                if (bp.id == origId) {
                     p.type = bp.type;
                     info.typeFound = true;
                 }
             }
-            for (const auto &ins : bb.instructions)
-            {
-                if (ins.result && *ins.result == origId)
-                {
+            for (const auto &ins : bb.instructions) {
+                if (ins.result && *ins.result == origId) {
                     // Call instruction types are canonically Void for non-F64
                     // returns (only F64 is recorded for register-class selection).
                     // Resolve the actual return type from the module's function
                     // lookup to avoid typing escaped Call results as Void.
-                    if (ins.op == Opcode::Call && ins.type.kind == Type::Kind::Void)
-                    {
+                    if (ins.op == Opcode::Call && ins.type.kind == Type::Kind::Void) {
                         auto calleeFnIt = functionLookup.find(ins.callee);
                         if (calleeFnIt != functionLookup.end())
                             p.type = calleeFnIt->second->retType;
                         // else: external/unresolved call — keep I64 fallback
-                    }
-                    else
-                    {
+                    } else {
                         p.type = ins.type;
                     }
                     info.typeFound = true;
@@ -670,21 +604,16 @@ bool inlineCallSite(Function &caller,
             }
         }
         // Also check function params.
-        for (const auto &fp : caller.params)
-        {
-            if (fp.id == origId)
-            {
+        for (const auto &fp : caller.params) {
+            if (fp.id == origId) {
                 p.type = fp.type;
                 info.typeFound = true;
             }
         }
         // Also check continuation instructions.
-        if (!info.typeFound)
-        {
-            for (const auto &ins : continuation.instructions)
-            {
-                if (ins.result && *ins.result == origId)
-                {
+        if (!info.typeFound) {
+            for (const auto &ins : continuation.instructions) {
+                if (ins.result && *ins.result == origId) {
                     p.type = ins.type;
                     info.typeFound = true;
                 }
@@ -708,8 +637,7 @@ bool inlineCallSite(Function &caller,
     callBlock.terminated = false;
 
     // Add return param to continuation.
-    if (hasRetParam)
-    {
+    if (hasRetParam) {
         continuation.params.push_back(retParam);
         ensureValueName(caller, retParam.id, retParam.name);
 
@@ -721,33 +649,25 @@ bool inlineCallSite(Function &caller,
 
     // Add escaped params to continuation and build the remap.
     std::unordered_map<unsigned, unsigned> escapedMap;
-    for (size_t i = 0; i < escapedIds.size(); ++i)
-    {
+    for (size_t i = 0; i < escapedIds.size(); ++i) {
         continuation.params.push_back(escapedParamInfos[i].param);
         ensureValueName(caller, escapedParamInfos[i].param.id, escapedParamInfos[i].param.name);
         escapedMap[escapedIds[i]] = escapedParamInfos[i].param.id;
     }
 
     // Remap continuation instructions to use the new params.
-    if (!escapedMap.empty())
-    {
-        for (auto &instr : continuation.instructions)
-        {
-            for (auto &op : instr.operands)
-            {
-                if (op.kind == Value::Kind::Temp)
-                {
+    if (!escapedMap.empty()) {
+        for (auto &instr : continuation.instructions) {
+            for (auto &op : instr.operands) {
+                if (op.kind == Value::Kind::Temp) {
                     auto it = escapedMap.find(op.id);
                     if (it != escapedMap.end())
                         op = Value::temp(it->second);
                 }
             }
-            for (auto &argList : instr.brArgs)
-            {
-                for (auto &v : argList)
-                {
-                    if (v.kind == Value::Kind::Temp)
-                    {
+            for (auto &argList : instr.brArgs) {
+                for (auto &v : argList) {
+                    if (v.kind == Value::Kind::Temp) {
                         auto it = escapedMap.find(v.id);
                         if (it != escapedMap.end())
                             v = Value::temp(it->second);
@@ -761,8 +681,7 @@ bool inlineCallSite(Function &caller,
     std::vector<BasicBlock> clonedBlocks;
     clonedBlocks.reserve(callee.blocks.size());
 
-    for (const auto &srcBlock : callee.blocks)
-    {
+    for (const auto &srcBlock : callee.blocks) {
         BasicBlock clone;
         clone.label = labelMap.at(srcBlock.label);
 
@@ -772,8 +691,7 @@ bool inlineCallSite(Function &caller,
         // callee has %t8:i64). Without uniquification, the IL verifier may
         // resolve a branch argument to the wrong definition in scope.
         clone.params.reserve(srcBlock.params.size());
-        for (const auto &param : srcBlock.params)
-        {
+        for (const auto &param : srcBlock.params) {
             Param p = param;
             p.id = nextId++;
             valueMap[param.id] = Value::temp(p.id);
@@ -784,27 +702,23 @@ bool inlineCallSite(Function &caller,
             ensureValueName(caller, p.id, uniqueName);
         }
 
-        for (size_t idx = 0; idx < srcBlock.instructions.size(); ++idx)
-        {
+        for (size_t idx = 0; idx < srcBlock.instructions.size(); ++idx) {
             const Instr &CI = srcBlock.instructions[idx];
 
-            if (idx + 1 == srcBlock.instructions.size() && CI.op == Opcode::Ret)
-            {
+            if (idx + 1 == srcBlock.instructions.size() && CI.op == Opcode::Ret) {
                 Instr bridge;
                 bridge.op = Opcode::Br;
                 bridge.type = Type(Type::Kind::Void);
                 bridge.labels.push_back(continuation.label);
 
-                if (!continuation.params.empty())
-                {
+                if (!continuation.params.empty()) {
                     bridge.brArgs.emplace_back();
                     auto &bridgeArgs = bridge.brArgs.back();
                     // Pass the return value as the continuation block's first parameter.
                     // Always emit a return value arg when the callee is non-void,
                     // even if this particular Ret has no operands (e.g., unreachable
                     // void-ret in a non-void function after optimization).
-                    if (returnsValue)
-                    {
+                    if (returnsValue) {
                         if (!CI.operands.empty())
                             bridgeArgs.push_back(remapValue(CI.operands.front(), valueMap));
                         else
@@ -834,8 +748,7 @@ bool inlineCallSite(Function &caller,
                 cloned.labels.push_back(labelMap.at(lab));
 
             cloned.brArgs.reserve(CI.brArgs.size());
-            for (const auto &argList : CI.brArgs)
-            {
+            for (const auto &argList : CI.brArgs) {
                 std::vector<Value> remapped;
                 remapped.reserve(argList.size());
                 for (const auto &arg : argList)
@@ -843,8 +756,7 @@ bool inlineCallSite(Function &caller,
                 cloned.brArgs.push_back(std::move(remapped));
             }
 
-            if (CI.result)
-            {
+            if (CI.result) {
                 cloned.result = nextId;
                 valueMap[*CI.result] = Value::temp(nextId);
                 std::string origName = lookupValueName(callee, *CI.result, "");
@@ -876,24 +788,19 @@ bool inlineCallSite(Function &caller,
     // The pre-mutation validation guarantees all entry block params can be
     // mapped to function params by ID. Map each to its call operand.
     const auto &origEntryParams = callee.blocks.front().params;
-    if (!origEntryParams.empty())
-    {
+    if (!origEntryParams.empty()) {
         std::vector<Value> args;
         args.reserve(origEntryParams.size());
-        for (const auto &ep : origEntryParams)
-        {
+        for (const auto &ep : origEntryParams) {
             bool found = false;
-            for (size_t k = 0; k < callee.params.size(); ++k)
-            {
-                if (callee.params[k].id == ep.id && k < callInstr.operands.size())
-                {
+            for (size_t k = 0; k < callee.params.size(); ++k) {
+                if (callee.params[k].id == ep.id && k < callInstr.operands.size()) {
                     args.push_back(callInstr.operands[k]);
                     found = true;
                     break;
                 }
             }
-            if (!found)
-            {
+            if (!found) {
                 // Entry block param has no matching function param — bail out.
                 // This can happen after SimplifyCFG/mem2reg rewrites params.
                 return false;
@@ -925,13 +832,11 @@ bool inlineCallSite(Function &caller,
 
 } // namespace
 
-std::string_view Inliner::id() const
-{
+std::string_view Inliner::id() const {
     return "inline";
 }
 
-PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
-{
+PreservedAnalyses Inliner::run(Module &module, AnalysisManager &) {
     viper::analysis::CallGraph cg = viper::analysis::buildCallGraph(module);
 
     std::unordered_map<std::string, const Function *> functionLookup;
@@ -940,8 +845,7 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
     functionLookup.reserve(module.functions.size());
     costCache.reserve(module.functions.size());
 
-    for (const auto &fn : module.functions)
-    {
+    for (const auto &fn : module.functions) {
         functionLookup.emplace(fn.name, &fn);
         costCache.emplace(fn.name, evaluateInlineCost(fn, cg));
     }
@@ -956,8 +860,7 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
     bool changed = false;
     std::unordered_set<std::string> changedFunctions;
 
-    for (size_t fnIdx = 0; fnIdx < module.functions.size(); ++fnIdx)
-    {
+    for (size_t fnIdx = 0; fnIdx < module.functions.size(); ++fnIdx) {
         Function &caller = module.functions[fnIdx];
 
         // Snapshot block count: only iterate ORIGINAL blocks, not ones added
@@ -965,28 +868,23 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
         // invocation. This prevents unbounded growth when inlined code contains
         // more calls.
         const size_t originalBlockCount = caller.blocks.size();
-        for (size_t blockIdx = 0; blockIdx < originalBlockCount; ++blockIdx)
-        {
+        for (size_t blockIdx = 0; blockIdx < originalBlockCount; ++blockIdx) {
             BasicBlock &block = caller.blocks[blockIdx];
             size_t instIdx = 0;
-            while (instIdx < block.instructions.size())
-            {
+            while (instIdx < block.instructions.size()) {
                 const Instr &I = block.instructions[instIdx];
-                if (!isDirectCall(I))
-                {
+                if (!isDirectCall(I)) {
                     ++instIdx;
                     continue;
                 }
 
                 auto calleeIt = functionLookup.find(I.callee);
-                if (calleeIt == functionLookup.end())
-                {
+                if (calleeIt == functionLookup.end()) {
                     ++instIdx;
                     continue;
                 }
                 const Function *callee = calleeIt->second;
-                if (callee->name == caller.name)
-                {
+                if (callee->name == caller.name) {
                     ++instIdx;
                     continue;
                 }
@@ -994,24 +892,21 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
                 auto edgeIt = cg.edges.find(callee->name);
                 if (edgeIt != cg.edges.end() &&
                     std::find(edgeIt->second.begin(), edgeIt->second.end(), caller.name) !=
-                        edgeIt->second.end())
-                {
+                        edgeIt->second.end()) {
                     ++instIdx;
                     continue;
                 }
 
                 // Check code growth budget
                 const InlineCost &cost = costCache.at(callee->name);
-                if (codeGrowth + cost.instrCount > config_.maxCodeGrowth)
-                {
+                if (codeGrowth + cost.instrCount > config_.maxCodeGrowth) {
                     ++instIdx;
                     continue;
                 }
 
                 // Use enhanced cost model with constant argument bonuses
                 unsigned constArgs = countConstantArgs(I);
-                if (!cost.withinBudget(config_, constArgs))
-                {
+                if (!cost.withinBudget(config_, constArgs)) {
                     ++instIdx;
                     continue;
                 }
@@ -1024,8 +919,7 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
                                     depth,
                                     config_.maxInlineDepth,
                                     depths,
-                                    functionLookup))
-                {
+                                    functionLookup)) {
                     ++instIdx;
                     continue;
                 }
@@ -1049,14 +943,11 @@ PreservedAnalyses Inliner::run(Module &module, AnalysisManager &)
     return preserved;
 }
 
-void registerInlinePass(PassRegistry &registry)
-{
-    registry.registerModulePass("inline",
-                                [](core::Module &module, AnalysisManager &analysis)
-                                {
-                                    Inliner inliner;
-                                    return inliner.run(module, analysis);
-                                });
+void registerInlinePass(PassRegistry &registry) {
+    registry.registerModulePass("inline", [](core::Module &module, AnalysisManager &analysis) {
+        Inliner inliner;
+        return inliner.run(module, analysis);
+    });
 }
 
 } // namespace il::transform

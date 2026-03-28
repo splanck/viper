@@ -34,16 +34,14 @@
 #include <string>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 
 /// @brief Attribute container for call-like instructions capturing semantic hints.
 /// @details Stored on every instruction but only meaningful when
 ///          @ref Instr::op equals @ref Opcode::Call. Future passes may use these
 ///          attributes to reason about exception safety and memory effects
 ///          without re-deriving metadata from callee analysis.
-struct CallAttrs
-{
+struct CallAttrs {
     /// @brief Call cannot throw an exception.
     bool nothrow = false;
 
@@ -55,8 +53,7 @@ struct CallAttrs
 };
 
 /// @brief Instruction within a basic block.
-struct Instr
-{
+struct Instr {
     /// Destination temporary id.
     /// Owned by the instruction.
     /// Non-negative; disengaged if the instruction has no result.

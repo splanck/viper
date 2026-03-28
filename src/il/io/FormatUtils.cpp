@@ -30,8 +30,7 @@
 #include <sstream>
 #include <string>
 
-namespace viper::il::io
-{
+namespace viper::il::io {
 
 /// @brief Convert a signed integer into its canonical string representation.
 /// @details Delegates to @c std::to_string because the helper already emits
@@ -41,8 +40,7 @@ namespace viper::il::io
 ///          concerns.
 /// @param value Integer value that should be rendered.
 /// @return Decimal string suitable for IL text emission.
-std::string format_integer(std::int64_t value)
-{
+std::string format_integer(std::int64_t value) {
     return std::to_string(value);
 }
 
@@ -57,8 +55,7 @@ std::string format_integer(std::int64_t value)
 ///          presentation consistent with runtime printing.
 /// @param value Double-precision value to format.
 /// @return Locale-independent string representing @p value.
-std::string format_float(double value)
-{
+std::string format_float(double value) {
     if (std::isnan(value))
         return "NaN";
     if (std::isinf(value))

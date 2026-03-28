@@ -25,8 +25,7 @@
 #error "PARSE_ROUNDTRIP_DIR must be defined"
 #endif
 
-int main()
-{
+int main() {
     const char *path = PARSE_ROUNDTRIP_DIR "/bad_param_prefix.il";
     std::ifstream in(path);
     std::stringstream buffer;

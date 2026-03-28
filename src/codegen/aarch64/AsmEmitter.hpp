@@ -44,15 +44,13 @@
 #include "codegen/aarch64/MachineIR.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Emits AArch64 assembly text from Machine IR.
 ///
 /// Converts MIR instructions to assembly text, handling function headers,
 /// prologue/epilogue generation, and instruction-level emission.
-class AsmEmitter
-{
+class AsmEmitter {
   public:
     /// @brief Construct an AsmEmitter with target-specific configuration.
     /// @param target Target information providing ABI and register details.
@@ -547,22 +545,17 @@ class AsmEmitter
     mutable bool skipFrame_{false}; ///< True for leaf functions with no frame.
 
     /// @brief Return the canonical assembly name for a physical register.
-    [[nodiscard]] static const char *rn(PhysReg r) noexcept
-    {
+    [[nodiscard]] static const char *rn(PhysReg r) noexcept {
         return regName(r);
     }
 
     /// @brief Print a floating-point register using the dN (64-bit scalar) notation.
-    static void printD(std::ostream &os, PhysReg r)
-    {
+    static void printD(std::ostream &os, PhysReg r) {
         // Map Vn -> dn
         const char *name = regName(r); // e.g., "v8"
-        if (name[0] == 'v')
-        {
+        if (name[0] == 'v') {
             os << 'd' << (name + 1);
-        }
-        else
-        {
+        } else {
             // Fallback: if mis-specified, still print name
             os << name;
         }

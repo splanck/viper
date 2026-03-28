@@ -38,11 +38,9 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
-namespace
-{
+namespace {
 
 /// @brief Generate the install.ini metadata file.
 ///
@@ -65,8 +63,7 @@ namespace
 std::string generateInstallIni(const std::string &displayName,
                                const std::string &version,
                                const std::string &executableName,
-                               const PackageConfig &pkg)
-{
+                               const PackageConfig &pkg) {
     std::ostringstream ini;
     ini << "[install]\n";
     ini << "name=" << displayName << "\n";
@@ -88,11 +85,9 @@ std::string generateInstallIni(const std::string &displayName,
     ini << "uninstall_exe=uninstall.exe\n";
 
     // File associations
-    if (!pkg.fileAssociations.empty())
-    {
+    if (!pkg.fileAssociations.empty()) {
         ini << "[associations]\n";
-        for (const auto &assoc : pkg.fileAssociations)
-        {
+        for (const auto &assoc : pkg.fileAssociations) {
             ini << assoc.extension << "=" << assoc.description;
             if (!assoc.mimeType.empty())
                 ini << "|" << assoc.mimeType;
@@ -105,8 +100,7 @@ std::string generateInstallIni(const std::string &displayName,
 
 } // namespace
 
-void buildWindowsPackage(const WindowsBuildParams &params)
-{
+void buildWindowsPackage(const WindowsBuildParams &params) {
     const auto &pkg = params.pkgConfig;
     std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
     std::string exec = normalizeExecName(params.projectName);
@@ -124,8 +118,7 @@ void buildWindowsPackage(const WindowsBuildParams &params)
     zip.addFile("app/" + exec + ".exe", execData.data(), execData.size(), 0100755);
 
     // Assets
-    for (const auto &asset : pkg.assets)
-    {
+    for (const auto &asset : pkg.assets) {
         fs::path srcPath = fs::path(params.projectRoot) / asset.sourcePath;
         std::string targetDir = asset.targetPath;
         if (targetDir == ".")
@@ -135,32 +128,23 @@ void buildWindowsPackage(const WindowsBuildParams &params)
         if (!targetDir.empty())
             prefix += targetDir + "/";
 
-        if (!fs::exists(srcPath))
-        {
+        if (!fs::exists(srcPath)) {
             std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
             continue;
         }
 
-        if (fs::is_directory(srcPath))
-        {
-            safeDirectoryIterate(srcPath,
-                                 params.projectRoot,
-                                 [&](const fs::directory_entry &entry)
-                                 {
-                                     auto relPath = fs::relative(entry.path(), srcPath).string();
-                                     if (entry.is_directory())
-                                     {
-                                         zip.addDirectory(prefix + relPath);
-                                     }
-                                     else if (entry.is_regular_file())
-                                     {
-                                         auto data = readFile(entry.path().string());
-                                         zip.addFile(prefix + relPath, data.data(), data.size());
-                                     }
-                                 });
-        }
-        else if (fs::is_regular_file(srcPath))
-        {
+        if (fs::is_directory(srcPath)) {
+            safeDirectoryIterate(
+                srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
+                    auto relPath = fs::relative(entry.path(), srcPath).string();
+                    if (entry.is_directory()) {
+                        zip.addDirectory(prefix + relPath);
+                    } else if (entry.is_regular_file()) {
+                        auto data = readFile(entry.path().string());
+                        zip.addFile(prefix + relPath, data.data(), data.size());
+                    }
+                });
+        } else if (fs::is_regular_file(srcPath)) {
             auto data = readFile(srcPath.string());
             zip.addFile(prefix + srcPath.filename().string(), data.data(), data.size());
         }
@@ -168,25 +152,20 @@ void buildWindowsPackage(const WindowsBuildParams &params)
 
     // Icon (ICO format) — also embedded as PE resource for Explorer
     std::vector<uint8_t> icoData;
-    if (!pkg.iconPath.empty())
-    {
+    if (!pkg.iconPath.empty()) {
         fs::path iconSrc = fs::path(params.projectRoot) / pkg.iconPath;
-        if (fs::exists(iconSrc))
-        {
+        if (fs::exists(iconSrc)) {
             auto srcImage = pngRead(iconSrc.string());
             icoData = generateIco(srcImage);
             zip.addFile("meta/icon.ico", icoData.data(), icoData.size());
-        }
-        else
-        {
+        } else {
             std::cerr << "warning: package-icon '" << pkg.iconPath
                       << "' not found, skipping icon generation\n";
         }
     }
 
     // Start Menu shortcut (.lnk)
-    if (pkg.shortcutMenu)
-    {
+    if (pkg.shortcutMenu) {
         LnkParams lnk;
         // Target path will be set by the installer — store template path
         lnk.targetPath = "C:\\Program Files\\" + displayName + "\\" + exec + ".exe";
@@ -200,8 +179,7 @@ void buildWindowsPackage(const WindowsBuildParams &params)
     }
 
     // Desktop shortcut (.lnk)
-    if (pkg.shortcutDesktop)
-    {
+    if (pkg.shortcutDesktop) {
         LnkParams lnk;
         lnk.targetPath = "C:\\Program Files\\" + displayName + "\\" + exec + ".exe";
         lnk.workingDir = "C:\\Program Files\\" + displayName;

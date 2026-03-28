@@ -52,14 +52,12 @@ static const size_t kClassSizes[RT_POOL_COUNT] = {64, 128, 256, 512};
 /// The `next` pointer MUST be accessed via atomic_load_next / atomic_store_next
 /// helpers because concurrent threads may read/write it through the lock-free
 /// freelist (push_to_freelist writes `next`, pop_from_freelist reads it).
-typedef struct rt_pool_block
-{
+typedef struct rt_pool_block {
     struct rt_pool_block *next;
 } rt_pool_block_t;
 
 /// @brief Atomically load a block's next pointer (acquire).
-static inline rt_pool_block_t *atomic_load_next(rt_pool_block_t *block)
-{
+static inline rt_pool_block_t *atomic_load_next(rt_pool_block_t *block) {
 #if RT_COMPILER_MSVC
     rt_pool_block_t *val = *(volatile rt_pool_block_t **)&block->next;
 #if defined(_M_ARM64)
@@ -74,8 +72,7 @@ static inline rt_pool_block_t *atomic_load_next(rt_pool_block_t *block)
 }
 
 /// @brief Atomically store a block's next pointer (release).
-static inline void atomic_store_next(rt_pool_block_t *block, rt_pool_block_t *next)
-{
+static inline void atomic_store_next(rt_pool_block_t *block, rt_pool_block_t *next) {
 #if RT_COMPILER_MSVC
 #if defined(_M_ARM64)
     __dmb(_ARM64_BARRIER_ISH);
@@ -89,8 +86,7 @@ static inline void atomic_store_next(rt_pool_block_t *block, rt_pool_block_t *ne
 }
 
 /// @brief Slab metadata - tracks a single large allocation subdivided into blocks.
-typedef struct rt_pool_slab
-{
+typedef struct rt_pool_slab {
     struct rt_pool_slab *next; ///< Next slab in the size class
     size_t block_size;         ///< Size of each block in this slab
     size_t block_count;        ///< Number of blocks in this slab
@@ -115,26 +111,22 @@ typedef struct rt_pool_slab
 //===----------------------------------------------------------------------===//
 
 /// @brief Pack a pointer and version into a tagged pointer.
-static inline uint64_t pack_tagged_ptr(void *ptr, uint16_t version)
-{
+static inline uint64_t pack_tagged_ptr(void *ptr, uint16_t version) {
     return ((uint64_t)version << 48) | ((uint64_t)(uintptr_t)ptr & 0x0000FFFFFFFFFFFFULL);
 }
 
 /// @brief Extract the pointer from a tagged pointer.
-static inline void *unpack_ptr(uint64_t tagged)
-{
+static inline void *unpack_ptr(uint64_t tagged) {
     return (void *)(uintptr_t)(tagged & 0x0000FFFFFFFFFFFFULL);
 }
 
 /// @brief Extract the version from a tagged pointer.
-static inline uint16_t unpack_version(uint64_t tagged)
-{
+static inline uint16_t unpack_version(uint64_t tagged) {
     return (uint16_t)(tagged >> 48);
 }
 
 /// @brief Atomic compare-exchange for 64-bit values.
-static inline int atomic_cas_u64(volatile uint64_t *ptr, uint64_t *expected, uint64_t desired)
-{
+static inline int atomic_cas_u64(volatile uint64_t *ptr, uint64_t *expected, uint64_t desired) {
 #if RT_COMPILER_MSVC
     uint64_t old = _InterlockedCompareExchange64(
         (volatile long long *)ptr, (long long)desired, (long long)*expected);
@@ -151,8 +143,7 @@ static inline int atomic_cas_u64(volatile uint64_t *ptr, uint64_t *expected, uin
 /// @brief Atomic load for 64-bit values.
 /// CONC-004 fix: ARM64 Windows uses __dmb for CPU barrier instead of
 /// compiler-only _ReadWriteBarrier() which is insufficient on weak memory models.
-static inline uint64_t atomic_load_u64(volatile uint64_t *ptr)
-{
+static inline uint64_t atomic_load_u64(volatile uint64_t *ptr) {
 #if RT_COMPILER_MSVC
 #if defined(_M_ARM64)
     uint64_t value = *ptr;
@@ -172,8 +163,7 @@ static inline uint64_t atomic_load_u64(volatile uint64_t *ptr)
 
 /// @brief Atomic store for 64-bit values.
 /// CONC-004 fix: ARM64 Windows uses __dmb for CPU barrier.
-static inline void atomic_store_u64(volatile uint64_t *ptr, uint64_t value)
-{
+static inline void atomic_store_u64(volatile uint64_t *ptr, uint64_t value) {
 #if RT_COMPILER_MSVC
 #if defined(_M_ARM64)
     __dmb(_ARM64_BARRIER_ISH); /* release: CPU store fence */
@@ -194,8 +184,7 @@ static inline void atomic_store_u64(volatile uint64_t *ptr, uint64_t value)
 /// @brief Per-size-class pool state.
 /// CONC-005 fix: volatile qualifiers removed — all accesses use __atomic_*
 /// builtins or CAS operations which provide their own compiler+CPU barriers.
-typedef struct rt_pool_state
-{
+typedef struct rt_pool_state {
     uint64_t freelist_tagged; ///< Lock-free freelist head (tagged pointer, via atomic CAS)
     rt_pool_slab_t *slabs;    ///< List of slabs (via atomic CAS for thread-safe insertion)
     size_t allocated;         ///< Count of blocks currently allocated (via __atomic_*)
@@ -208,8 +197,7 @@ static rt_pool_state_t g_pools[RT_POOL_COUNT];
 /// @brief Determine the size class for a given allocation size.
 /// @param size Requested allocation size.
 /// @return Size class index, or RT_POOL_COUNT if size exceeds max.
-static rt_pool_class_t size_to_class(size_t size)
-{
+static rt_pool_class_t size_to_class(size_t size) {
     if (size <= 64)
         return RT_POOL_64;
     if (size <= 128)
@@ -224,8 +212,7 @@ static rt_pool_class_t size_to_class(size_t size)
 /// @brief Allocate a new slab for the given size class.
 /// @param class_idx Size class index.
 /// @return New slab, or NULL on allocation failure.
-static rt_pool_slab_t *allocate_slab(rt_pool_class_t class_idx)
-{
+static rt_pool_slab_t *allocate_slab(rt_pool_class_t class_idx) {
     size_t block_size = kClassSizes[class_idx];
     size_t data_size = block_size * BLOCKS_PER_SLAB;
 
@@ -251,12 +238,10 @@ static rt_pool_slab_t *allocate_slab(rt_pool_class_t class_idx)
 /// @note Uses tagged pointers to prevent ABA problems. The version counter
 ///       in the upper 16 bits ensures that even if a block is recycled back
 ///       to the same address, the CAS will fail due to version mismatch.
-static rt_pool_block_t *pop_from_freelist(rt_pool_state_t *pool)
-{
+static rt_pool_block_t *pop_from_freelist(rt_pool_state_t *pool) {
     uint64_t old_tagged = atomic_load_u64(&pool->freelist_tagged);
 
-    while (1)
-    {
+    while (1) {
         rt_pool_block_t *head = (rt_pool_block_t *)unpack_ptr(old_tagged);
         if (!head)
             return NULL;
@@ -267,8 +252,7 @@ static rt_pool_block_t *pop_from_freelist(rt_pool_state_t *pool)
         // Pack the new tagged pointer with incremented version
         uint64_t new_tagged = pack_tagged_ptr(next, (uint16_t)(old_version + 1));
 
-        if (atomic_cas_u64(&pool->freelist_tagged, &old_tagged, new_tagged))
-        {
+        if (atomic_cas_u64(&pool->freelist_tagged, &old_tagged, new_tagged)) {
 #if RT_COMPILER_MSVC
             rt_atomic_fetch_sub_size(&pool->free_count, 1, __ATOMIC_RELAXED);
 #else
@@ -283,12 +267,10 @@ static rt_pool_block_t *pop_from_freelist(rt_pool_state_t *pool)
 /// @brief Push a block back onto the freelist.
 /// @param pool Pool state for the size class.
 /// @param block Block to return to the freelist.
-static void push_to_freelist(rt_pool_state_t *pool, rt_pool_block_t *block)
-{
+static void push_to_freelist(rt_pool_state_t *pool, rt_pool_block_t *block) {
     uint64_t old_tagged = atomic_load_u64(&pool->freelist_tagged);
     uint64_t new_tagged;
-    do
-    {
+    do {
         rt_pool_block_t *old_head = (rt_pool_block_t *)unpack_ptr(old_tagged);
         uint16_t old_version = unpack_version(old_tagged);
         atomic_store_next(block, old_head);
@@ -302,8 +284,7 @@ static void push_to_freelist(rt_pool_state_t *pool, rt_pool_block_t *block)
 #endif
 }
 
-void *rt_pool_alloc(size_t size)
-{
+void *rt_pool_alloc(size_t size) {
     if (size == 0)
         size = 1; // Minimum allocation
 
@@ -318,8 +299,7 @@ void *rt_pool_alloc(size_t size)
     // Try to pop from freelist
     rt_pool_block_t *block = pop_from_freelist(pool);
 
-    if (!block)
-    {
+    if (!block) {
         // Freelist empty - allocate a new slab
         rt_pool_slab_t *slab = allocate_slab(class_idx);
         if (!slab)
@@ -337,8 +317,7 @@ void *rt_pool_alloc(size_t size)
 #if RT_COMPILER_MSVC
         rt_pool_slab_t *expected = (rt_pool_slab_t *)rt_atomic_load_ptr(
             (void *const volatile *)&pool->slabs, __ATOMIC_RELAXED);
-        do
-        {
+        do {
             slab->next = expected;
         } while (!rt_atomic_compare_exchange_ptr((void *volatile *)&pool->slabs,
                                                  (void **)&expected,
@@ -347,31 +326,25 @@ void *rt_pool_alloc(size_t size)
                                                  __ATOMIC_RELAXED));
 #else
         rt_pool_slab_t *expected = __atomic_load_n(&pool->slabs, __ATOMIC_RELAXED);
-        do
-        {
+        do {
             slab->next = expected;
         } while (!__atomic_compare_exchange_n(
             &pool->slabs, &expected, slab, 1, __ATOMIC_RELEASE, __ATOMIC_RELAXED));
 #endif
 
         // Push remaining blocks (skip first, which is reserved) to freelist
-        if (slab->block_count > 1)
-        {
+        if (slab->block_count > 1) {
             rt_pool_block_t *first = NULL;
             rt_pool_block_t *last = NULL;
 
-            for (size_t i = 1; i < slab->block_count; i++)
-            {
+            for (size_t i = 1; i < slab->block_count; i++) {
                 rt_pool_block_t *b = (rt_pool_block_t *)(slab->data + i * slab->block_size);
                 b->next = NULL;
 
-                if (!first)
-                {
+                if (!first) {
                     first = b;
                     last = b;
-                }
-                else
-                {
+                } else {
                     last->next = b;
                     last = b;
                 }
@@ -380,8 +353,7 @@ void *rt_pool_alloc(size_t size)
             // Atomically prepend the chain to the freelist
             uint64_t old_tagged = atomic_load_u64(&pool->freelist_tagged);
             uint64_t new_tagged;
-            do
-            {
+            do {
                 rt_pool_block_t *old_head = (rt_pool_block_t *)unpack_ptr(old_tagged);
                 uint16_t old_version = unpack_version(old_tagged);
                 atomic_store_next(last, old_head);
@@ -408,16 +380,14 @@ void *rt_pool_alloc(size_t size)
     return block;
 }
 
-void rt_pool_free(void *ptr, size_t size)
-{
+void rt_pool_free(void *ptr, size_t size) {
     if (!ptr)
         return;
 
     rt_pool_class_t class_idx = size_to_class(size);
 
     // Large allocations were from malloc
-    if (class_idx >= RT_POOL_COUNT)
-    {
+    if (class_idx >= RT_POOL_COUNT) {
         free(ptr);
         return;
     }
@@ -437,10 +407,8 @@ void rt_pool_free(void *ptr, size_t size)
 #endif
 }
 
-void rt_pool_stats(rt_pool_class_t class_idx, size_t *out_allocated, size_t *out_free)
-{
-    if (class_idx >= RT_POOL_COUNT)
-    {
+void rt_pool_stats(rt_pool_class_t class_idx, size_t *out_allocated, size_t *out_free) {
+    if (class_idx >= RT_POOL_COUNT) {
         if (out_allocated)
             *out_allocated = 0;
         if (out_free)
@@ -463,16 +431,13 @@ void rt_pool_stats(rt_pool_class_t class_idx, size_t *out_allocated, size_t *out
 #endif
 }
 
-void rt_pool_shutdown(void)
-{
-    for (int i = 0; i < RT_POOL_COUNT; i++)
-    {
+void rt_pool_shutdown(void) {
+    for (int i = 0; i < RT_POOL_COUNT; i++) {
         rt_pool_state_t *pool = &g_pools[i];
 
         // Free all slabs
         rt_pool_slab_t *slab = pool->slabs;
-        while (slab)
-        {
+        while (slab) {
             rt_pool_slab_t *next = slab->next;
             free(slab);
             slab = next;

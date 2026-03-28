@@ -24,15 +24,13 @@
 #include <cstdlib>
 #include <cstring>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
@@ -40,12 +38,10 @@ extern "C" void vm_trap(const char *msg)
 }
 
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
         g_last_trap = nullptr;                                                                     \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             expr;                                                                                  \
             assert(false && "Expected trap did not occur");                                        \
         }                                                                                          \
@@ -66,15 +62,13 @@ extern "C" void vm_trap(const char *msg)
 #endif
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Get a unique temp directory path for testing.
-static const char *get_test_base()
-{
+static const char *get_test_base() {
 #ifdef _WIN32
     static char buf[256];
     const char *tmp = getenv("TEMP");
@@ -92,19 +86,16 @@ static const char *get_test_base()
 }
 
 /// @brief Helper to create a file.
-static void create_file(const char *path)
-{
+static void create_file(const char *path) {
     FILE *f = fopen(path, "w");
-    if (f)
-    {
+    if (f) {
         fprintf(f, "test\n");
         fclose(f);
     }
 }
 
 /// @brief Helper to remove a file.
-static void remove_file(const char *path)
-{
+static void remove_file(const char *path) {
 #ifdef _WIN32
     _unlink(path);
 #else
@@ -113,8 +104,7 @@ static void remove_file(const char *path)
 }
 
 /// @brief Test rt_dir_exists.
-static void test_exists()
-{
+static void test_exists() {
     printf("Testing rt_dir_exists:\n");
 
     const char *base = get_test_base();
@@ -135,8 +125,7 @@ static void test_exists()
 }
 
 /// @brief Test rt_dir_make and rt_dir_remove.
-static void test_make_remove()
-{
+static void test_make_remove() {
     printf("Testing rt_dir_make and rt_dir_remove:\n");
 
     const char *base = get_test_base();
@@ -154,8 +143,7 @@ static void test_make_remove()
 }
 
 /// @brief Test rt_dir_make_all.
-static void test_make_all()
-{
+static void test_make_all() {
     printf("Testing rt_dir_make_all:\n");
 
     const char *base = get_test_base();
@@ -185,8 +173,7 @@ static void test_make_all()
 }
 
 /// @brief Test rt_dir_remove_all.
-static void test_remove_all()
-{
+static void test_remove_all() {
     printf("Testing rt_dir_remove_all:\n");
 
     const char *base = get_test_base();
@@ -212,8 +199,7 @@ static void test_remove_all()
 }
 
 /// @brief Test rt_dir_list.
-static void test_list()
-{
+static void test_list() {
     printf("Testing rt_dir_list:\n");
 
     const char *base = get_test_base();
@@ -236,8 +222,7 @@ static void test_list()
     // Check entries exist (order may vary)
     bool found_subdir = false;
     bool found_file = false;
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         rt_string entry = (rt_string)rt_seq_get(list, i);
         if (rt_str_eq(entry, rt_const_cstr("subdir")))
             found_subdir = true;
@@ -256,8 +241,7 @@ static void test_list()
 }
 
 /// @brief Test rt_dir_entries_seq.
-static void test_entries()
-{
+static void test_entries() {
     printf("Testing rt_dir_entries_seq:\n");
 
     const char *base = get_test_base();
@@ -282,8 +266,7 @@ static void test_entries()
     bool found_subdir = false;
     bool found_file1 = false;
     bool found_file2 = false;
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         rt_string entry = (rt_string)rt_seq_get(entries, i);
         if (rt_str_eq(entry, rt_const_cstr("subdir")))
             found_subdir = true;
@@ -306,8 +289,7 @@ static void test_entries()
 }
 
 /// @brief Test rt_dir_files.
-static void test_files()
-{
+static void test_files() {
     printf("Testing rt_dir_files:\n");
 
     const char *base = get_test_base();
@@ -331,8 +313,7 @@ static void test_files()
 
     // Check that subdir is NOT in the list
     bool found_subdir = false;
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         rt_string entry = (rt_string)rt_seq_get(files, i);
         if (rt_str_eq(entry, rt_const_cstr("subdir")))
             found_subdir = true;
@@ -349,8 +330,7 @@ static void test_files()
 }
 
 /// @brief Test rt_dir_dirs.
-static void test_dirs()
-{
+static void test_dirs() {
     printf("Testing rt_dir_dirs:\n");
 
     const char *base = get_test_base();
@@ -374,8 +354,7 @@ static void test_dirs()
 
     // Check that file is NOT in the list
     bool found_file = false;
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         rt_string entry = (rt_string)rt_seq_get(dirs, i);
         if (rt_str_eq(entry, rt_const_cstr("file1.txt")))
             found_file = true;
@@ -392,8 +371,7 @@ static void test_dirs()
 }
 
 /// @brief Test Seq-returning wrappers for directory listing.
-static void test_list_seq_wrappers()
-{
+static void test_list_seq_wrappers() {
     printf("Testing rt_dir_*_seq wrappers:\n");
 
     const char *base = get_test_base();
@@ -417,8 +395,7 @@ static void test_list_seq_wrappers()
     bool found_subdir = false;
     bool found_file1 = false;
     bool found_file2 = false;
-    for (int64_t i = 0; i < list_count; i++)
-    {
+    for (int64_t i = 0; i < list_count; i++) {
         rt_string entry = (rt_string)rt_seq_get(list, i);
         if (rt_str_eq(entry, rt_const_cstr("subdir")))
             found_subdir = true;
@@ -436,8 +413,7 @@ static void test_list_seq_wrappers()
     test_result("files_seq has 2 entries", files_count == 2);
 
     bool files_has_subdir = false;
-    for (int64_t i = 0; i < files_count; i++)
-    {
+    for (int64_t i = 0; i < files_count; i++) {
         rt_string entry = (rt_string)rt_seq_get(files, i);
         if (rt_str_eq(entry, rt_const_cstr("subdir")))
             files_has_subdir = true;
@@ -449,8 +425,7 @@ static void test_list_seq_wrappers()
     test_result("dirs_seq has 1 entry", dirs_count == 1);
 
     bool dirs_has_file1 = false;
-    for (int64_t i = 0; i < dirs_count; i++)
-    {
+    for (int64_t i = 0; i < dirs_count; i++) {
         rt_string entry = (rt_string)rt_seq_get(dirs, i);
         if (rt_str_eq(entry, rt_const_cstr("file1.txt")))
             dirs_has_file1 = true;
@@ -467,8 +442,7 @@ static void test_list_seq_wrappers()
 }
 
 /// @brief Test rt_dir_current and rt_dir_set_current.
-static void test_current()
-{
+static void test_current() {
     printf("Testing rt_dir_current and rt_dir_set_current:\n");
 
     // Save current directory
@@ -502,8 +476,7 @@ static void test_current()
 }
 
 /// @brief Test rt_dir_move.
-static void test_move()
-{
+static void test_move() {
     printf("Testing rt_dir_move:\n");
 
     const char *base = get_test_base();
@@ -533,8 +506,7 @@ static void test_move()
 }
 
 /// @brief Test empty directory listing.
-static void test_empty_dir()
-{
+static void test_empty_dir() {
     printf("Testing empty directory:\n");
 
     const char *base = get_test_base();
@@ -560,8 +532,7 @@ static void test_empty_dir()
 }
 
 /// @brief Test non-existent directory listing.
-static void test_nonexistent_dir()
-{
+static void test_nonexistent_dir() {
     printf("Testing non-existent directory:\n");
 
     rt_string path = rt_const_cstr("/nonexistent_dir_12345");
@@ -579,8 +550,7 @@ static void test_nonexistent_dir()
 }
 
 /// @brief Test rt_dir_entries_seq traps on non-existent directory.
-static void test_entries_missing_dir_traps()
-{
+static void test_entries_missing_dir_traps() {
     printf("Testing missing directory traps:\n");
 
     const char *base = get_test_base();
@@ -598,8 +568,7 @@ static void test_entries_missing_dir_traps()
 }
 
 /// @brief Entry point for directory tests.
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
     printf("Test skipped: POSIX temp paths not available on Windows\n");

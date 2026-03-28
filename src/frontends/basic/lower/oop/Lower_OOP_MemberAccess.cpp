@@ -31,8 +31,7 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Lower the implicit @c ME expression to a pointer load.
 ///
@@ -43,8 +42,7 @@ namespace il::frontends::basic
 ///
 /// @param expr AST node representing the @c ME keyword.
 /// @return Runtime value describing the current object instance.
-Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr)
-{
+Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr) {
     curLoc = expr.loc;
     const auto *sym = findSymbol("ME");
     if (!sym || !sym->slotId)
@@ -64,8 +62,8 @@ Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr)
 ///
 /// @param expr AST node describing the member access.
 /// @return Runtime value of the selected field, or zero when unresolved.
-std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const MemberAccessExpr &expr)
-{
+std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(
+    const MemberAccessExpr &expr) {
     if (!expr.base)
         return std::nullopt;
 
@@ -83,19 +81,13 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const Memb
 
     RVal base = lowerExpr(*expr.base);
     // Access control for fields: Private may only be accessed within the declaring class.
-    if (!className.empty())
-    {
+    if (!className.empty()) {
         std::string qname = qualify(className);
-        if (const ClassInfo *cinfo = oopIndex_.findClass(qname))
-        {
-            for (const auto &f : cinfo->fields)
-            {
-                if (f.name == expr.member)
-                {
-                    if (f.access == Access::Private && currentClass() != cinfo->qualifiedName)
-                    {
-                        if (auto *em = diagnosticEmitter())
-                        {
+        if (const ClassInfo *cinfo = oopIndex_.findClass(qname)) {
+            for (const auto &f : cinfo->fields) {
+                if (f.name == expr.member) {
+                    if (f.access == Access::Private && currentClass() != cinfo->qualifiedName) {
+                        if (auto *em = diagnosticEmitter()) {
                             std::string msg = "cannot access private member '" + expr.member +
                                               "' of class '" + cinfo->qualifiedName + "'";
                             em->emit(il::support::Severity::Error,
@@ -103,9 +95,7 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const Memb
                                      expr.loc,
                                      static_cast<uint32_t>(expr.member.size()),
                                      std::move(msg));
-                        }
-                        else
-                        {
+                        } else {
                             std::fprintf(stderr,
                                          "B2021: cannot access private member '%s' of class '%s'\n",
                                          expr.member.c_str(),
@@ -142,9 +132,8 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const Memb
     return access;
 }
 
-std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(std::string_view name,
-                                                                        il::support::SourceLoc loc)
-{
+std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(
+    std::string_view name, il::support::SourceLoc loc) {
     const FieldScope *scope = activeFieldScope();
     if (!scope || !scope->layout)
         return std::nullopt;
@@ -174,32 +163,24 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(std::str
     return access;
 }
 
-Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
-{
+Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr) {
     // Check for enum variant access: Color.RED → ConstInt(I64, value)
-    if (expr.base && expr.base->kind() == Expr::Kind::Var)
-    {
+    if (expr.base && expr.base->kind() == Expr::Kind::Var) {
         const auto &varExpr = static_cast<const VarExpr &>(*expr.base);
         auto enumVal = oopIndex_.findEnumVariant(varExpr.name, expr.member);
-        if (enumVal.has_value())
-        {
+        if (enumVal.has_value()) {
             curLoc = expr.loc;
             return {Value::constInt(static_cast<long long>(*enumVal)), Type(Type::Kind::I64)};
         }
     }
 
     auto access = resolveMemberField(expr);
-    if (!access)
-    {
-        if (expr.base)
-        {
-            if (auto qClass = runtimeClassQNameFrom(*expr.base))
-            {
-                if (il::runtime::findRuntimeClassByQName(*qClass))
-                {
+    if (!access) {
+        if (expr.base) {
+            if (auto qClass = runtimeClassQNameFrom(*expr.base)) {
+                if (il::runtime::findRuntimeClassByQName(*qClass)) {
                     auto prop = runtimePropertyIndex().find(*qClass, expr.member);
-                    if (prop)
-                    {
+                    if (prop) {
                         Type retTy = type_conv::runtimeScalarToType(prop->type);
                         runtimeTracker.trackCalleeName(prop->getter);
                         curLoc = expr.loc;
@@ -213,8 +194,7 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
         }
 
         // Runtime class property (e.g., Viper.String) getter sugar via catalog
-        if (expr.base)
-        {
+        if (expr.base) {
             // Lower base to inspect IL kind and to pass as arg0
             RVal base = lowerExpr(*expr.base);
             // Detect STRING alias → Viper.String
@@ -229,11 +209,9 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
                 qClass = std::string(il::runtime::RTCLASS_STRING);
 
             // Only use runtime property catalog for known runtime classes
-            if (!qClass.empty() && il::runtime::findRuntimeClassByQName(qClass))
-            {
+            if (!qClass.empty() && il::runtime::findRuntimeClassByQName(qClass)) {
                 auto prop = runtimePropertyIndex().find(qClass, expr.member);
-                if (prop)
-                {
+                if (prop) {
                     // Map scalar token to IL type
                     Type retTy = type_conv::runtimeScalarToType(prop->type);
                     // Record the property getter spelling so extern declarations
@@ -244,9 +222,7 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
                     if (retTy.kind == Type::Kind::Str)
                         deferReleaseStr(result);
                     return {result, retTy};
-                }
-                else if (auto *em = diagnosticEmitter())
-                {
+                } else if (auto *em = diagnosticEmitter()) {
                     std::string msg = "no such property '" + expr.member + "' on '" + qClass + "'";
                     em->emit(il::support::Severity::Error,
                              "E_PROP_NO_SUCH_PROPERTY",
@@ -263,11 +239,9 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
         // 3) Static field access:           Class.field  -> load @Class::field
 
         // 1) Instance property sugar
-        if (expr.base)
-        {
+        if (expr.base) {
             std::string instClass = resolveObjectClass(*expr.base);
-            if (!instClass.empty())
-            {
+            if (!instClass.empty()) {
                 std::string qname = qualify(instClass);
                 std::string getter = std::string("get_") + expr.member;
                 // Overload resolution for property getter (0 user params)
@@ -279,12 +253,9 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
                                                                /*args*/ {},
                                                                curClass,
                                                                diagnosticEmitter(),
-                                                               expr.loc))
-                {
+                                                               expr.loc)) {
                     getter = resolved->methodName;
-                }
-                else if (diagnosticEmitter())
-                {
+                } else if (diagnosticEmitter()) {
                     return {Value::constInt(0), Type(Type::Kind::I64)};
                 }
                 std::string callee = mangleMethod(qname, getter);
@@ -301,19 +272,16 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
             }
 
             // 2/3) Static property or static field on a class name
-            if (const auto *v = as<const VarExpr>(*expr.base))
-            {
+            if (const auto *v = as<const VarExpr>(*expr.base)) {
                 // If a symbol with this name exists (local/param/global), it's not a static access
                 // Module-level symbols may not have a slot yet; presence in the symbol table is
                 // sufficient to classify this as an instance access.
-                if (const auto *sym = findSymbol(v->name); sym)
-                {
+                if (const auto *sym = findSymbol(v->name); sym) {
                     return {Value::null(), Type(Type::Kind::Ptr)};
                 }
                 // Attempt to resolve the class by current namespace context
                 std::string qname = resolveQualifiedClassCasing(qualify(v->name));
-                if (const ClassInfo *ci = oopIndex_.findClass(qname))
-                {
+                if (const ClassInfo *ci = oopIndex_.findClass(qname)) {
                     // Prefer property getter sugar when present (resolve overloads)
                     std::string getter = std::string("get_") + expr.member;
                     if (auto resolved = sem::resolveMethodOverload(oopIndex_,
@@ -328,8 +296,7 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
                     else if (diagnosticEmitter())
                         return {Value::constInt(0), Type(Type::Kind::I64)};
                     auto it = ci->methods.find(getter);
-                    if (it != ci->methods.end() && it->second.isStatic)
-                    {
+                    if (it != ci->methods.end() && it->second.isStatic) {
                         Type retTy = Type(Type::Kind::I64);
                         if (auto rt = findMethodReturnType(qname, getter))
                             retTy = type_conv::astToIlType(*rt);
@@ -341,10 +308,8 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
                     }
 
                     // Otherwise, try a static field load
-                    for (const auto &sf : ci->staticFields)
-                    {
-                        if (sf.name == expr.member)
-                        {
+                    for (const auto &sf : ci->staticFields) {
+                        if (sf.name == expr.member) {
                             Type ilTy = sf.objectClassName.empty() ? type_conv::astToIlType(sf.type)
                                                                    : Type(Type::Kind::Ptr);
                             curLoc = expr.loc;
@@ -371,19 +336,17 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr)
 // OopLoweringContext-aware implementations
 // -------------------------------------------------------------------------
 
-Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr, OopLoweringContext &ctx)
-{
+Lowerer::RVal Lowerer::lowerMeExpr(const MeExpr &expr, OopLoweringContext &ctx) {
     // ME resolution is simple slot lookup - no class caching benefits.
     (void)ctx;
     return lowerMeExpr(expr);
 }
 
-Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr, OopLoweringContext &ctx)
-{
+Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr,
+                                             OopLoweringContext &ctx) {
     // Pre-cache class info when base is a known object type.
     // This accelerates access control checks in resolveMemberField.
-    if (expr.base)
-    {
+    if (expr.base) {
         std::string cls = resolveObjectClass(*expr.base);
         if (!cls.empty())
             (void)ctx.findClassInfo(qualify(cls));
@@ -392,11 +355,9 @@ Lowerer::RVal Lowerer::lowerMemberAccessExpr(const MemberAccessExpr &expr, OopLo
 }
 
 std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const MemberAccessExpr &expr,
-                                                                      OopLoweringContext &ctx)
-{
+                                                                      OopLoweringContext &ctx) {
     // Pre-cache class info for access control checks.
-    if (expr.base)
-    {
+    if (expr.base) {
         std::string cls = resolveObjectClass(*expr.base);
         if (!cls.empty())
             (void)ctx.findClassInfo(qualify(cls));
@@ -406,8 +367,7 @@ std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveMemberField(const Memb
 
 std::optional<Lowerer::MemberFieldAccess> Lowerer::resolveImplicitField(std::string_view name,
                                                                         il::support::SourceLoc loc,
-                                                                        OopLoweringContext &ctx)
-{
+                                                                        OopLoweringContext &ctx) {
     // Implicit field resolution uses active field scope, not OOP index.
     (void)ctx;
     return resolveImplicitField(name, loc);

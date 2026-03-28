@@ -22,10 +22,8 @@
 #include <cassert>
 #include <vector>
 
-namespace il::frontends::basic::lower
-{
-namespace
-{
+namespace il::frontends::basic::lower {
+namespace {
 using IlType = il::core::Type;
 using IlKind = IlType::Kind;
 using Value = il::core::Value;
@@ -41,15 +39,13 @@ using Variant = BuiltinLoweringRule::Variant;
 ///          touched.
 /// @param ctx Context describing the builtin invocation to lower.
 /// @return Resulting value/type pair produced by the lowering process.
-Lowerer::RVal lowerConversionBuiltinImpl(BuiltinLowerContext &ctx)
-{
+Lowerer::RVal lowerConversionBuiltinImpl(BuiltinLowerContext &ctx) {
     const Variant *variant = ctx.selectVariant();
     if (!variant)
         return ctx.makeZeroResult();
 
     Lowerer::RVal result = ctx.makeZeroResult();
-    switch (ctx.call().builtin)
-    {
+    switch (ctx.call().builtin) {
         case BuiltinCallExpr::Builtin::Cint:
             result =
                 lowerNumericConversion(ctx, *variant, IlType(IlKind::I64), "cint_ok", "cint_trap");
@@ -91,8 +87,7 @@ Lowerer::RVal lowerNumericConversion(BuiltinLowerContext &ctx,
                                      const Variant &variant,
                                      IlType resultType,
                                      const char *contHint,
-                                     const char *trapHint)
-{
+                                     const char *trapHint) {
     assert(!variant.arguments.empty());
     const auto &argSpec = variant.arguments.front();
     Lowerer::RVal &argVal = ctx.applyTransforms(argSpec, argSpec.transforms);
@@ -121,10 +116,8 @@ Lowerer::RVal lowerNumericConversion(BuiltinLowerContext &ctx,
 
 } // namespace il::frontends::basic::lower
 
-namespace il::frontends::basic::lower::builtins
-{
-namespace
-{
+namespace il::frontends::basic::lower::builtins {
+namespace {
 using Builtin = BuiltinCallExpr::Builtin;
 
 /// @brief Defer math builtins to the generic rule-based lowering pipeline.
@@ -134,8 +127,7 @@ using Builtin = BuiltinCallExpr::Builtin;
 ///          customisations straightforward.
 /// @param ctx Call-specific lowering context.
 /// @return Lowered value/type pair obtained from the generic pipeline.
-Lowerer::RVal lowerMathBuiltin(BuiltinLowerContext &ctx)
-{
+Lowerer::RVal lowerMathBuiltin(BuiltinLowerContext &ctx) {
     return lowerGenericBuiltin(ctx);
 }
 
@@ -145,8 +137,7 @@ Lowerer::RVal lowerMathBuiltin(BuiltinLowerContext &ctx)
 ///          additional bookkeeping if conversion lowering ever needs to grow.
 /// @param ctx Call-specific lowering context.
 /// @return Lowered value/type pair for the conversion builtin.
-Lowerer::RVal lowerConversionBuiltin(BuiltinLowerContext &ctx)
-{
+Lowerer::RVal lowerConversionBuiltin(BuiltinLowerContext &ctx) {
     return lowerConversionBuiltinImpl(ctx);
 }
 
@@ -156,8 +147,7 @@ Lowerer::RVal lowerConversionBuiltin(BuiltinLowerContext &ctx)
 /// @details Associates each math builtin enumerator with
 ///          @ref lowerMathBuiltin, enabling the dispatcher to invoke the generic
 ///          lowering path when those builtins appear in the source program.
-void registerMathBuiltins()
-{
+void registerMathBuiltins() {
     register_builtin(getBuiltinInfo(Builtin::Cdbl).name, &lowerMathBuiltin);
     register_builtin(getBuiltinInfo(Builtin::Int).name, &lowerMathBuiltin);
     register_builtin(getBuiltinInfo(Builtin::Fix).name, &lowerMathBuiltin);
@@ -182,8 +172,7 @@ void registerMathBuiltins()
 /// @details Installs @ref lowerConversionBuiltin as the lowering hook for every
 ///          conversion builtin so the dispatcher can route calls that require
 ///          runtime guard handling.
-void registerConversionBuiltins()
-{
+void registerConversionBuiltins() {
     register_builtin(getBuiltinInfo(Builtin::Val).name, &lowerConversionBuiltin);
     register_builtin(getBuiltinInfo(Builtin::Cint).name, &lowerConversionBuiltin);
     register_builtin(getBuiltinInfo(Builtin::Clng).name, &lowerConversionBuiltin);

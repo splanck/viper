@@ -13,18 +13,15 @@
 #include <cstring>
 #include <ctime>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
@@ -33,8 +30,7 @@ static bool str_eq(rt_string s, const char *expected)
 // format_from tests (deterministic, no dependency on current time)
 // ---------------------------------------------------------------------------
 
-static void test_just_now()
-{
+static void test_just_now() {
     int64_t now = 1000000;
     rt_string r = rt_reltime_format_from(now + 3, now);
     assert(str_eq(r, "just now"));
@@ -45,16 +41,14 @@ static void test_just_now()
     rt_string_unref(r);
 }
 
-static void test_seconds_ago()
-{
+static void test_seconds_ago() {
     int64_t now = 1000000;
     rt_string r = rt_reltime_format_from(now - 30, now);
     assert(str_eq(r, "30 seconds ago"));
     rt_string_unref(r);
 }
 
-static void test_one_second_ago()
-{
+static void test_one_second_ago() {
     int64_t now = 1000000;
     // 10 seconds is the threshold for "just now"
     // test exactly at boundary
@@ -63,56 +57,49 @@ static void test_one_second_ago()
     rt_string_unref(r);
 }
 
-static void test_minutes_ago()
-{
+static void test_minutes_ago() {
     int64_t now = 1000000;
     rt_string r = rt_reltime_format_from(now - 120, now);
     assert(str_eq(r, "2 minutes ago"));
     rt_string_unref(r);
 }
 
-static void test_one_minute_ago()
-{
+static void test_one_minute_ago() {
     int64_t now = 1000000;
     rt_string r = rt_reltime_format_from(now - 60, now);
     assert(str_eq(r, "1 minute ago"));
     rt_string_unref(r);
 }
 
-static void test_hours_ago()
-{
+static void test_hours_ago() {
     int64_t now = 1000000;
     rt_string r = rt_reltime_format_from(now - 7200, now);
     assert(str_eq(r, "2 hours ago"));
     rt_string_unref(r);
 }
 
-static void test_days_ago()
-{
+static void test_days_ago() {
     int64_t now = 1000000;
     rt_string r = rt_reltime_format_from(now - 86400 * 5, now);
     assert(str_eq(r, "5 days ago"));
     rt_string_unref(r);
 }
 
-static void test_months_ago()
-{
+static void test_months_ago() {
     int64_t now = 1000000;
     rt_string r = rt_reltime_format_from(now - 86400 * 60, now);
     assert(str_eq(r, "2 months ago"));
     rt_string_unref(r);
 }
 
-static void test_years_ago()
-{
+static void test_years_ago() {
     int64_t now = 1000000000;
     rt_string r = rt_reltime_format_from(now - 86400 * 400, now);
     assert(str_eq(r, "1 year ago"));
     rt_string_unref(r);
 }
 
-static void test_in_future()
-{
+static void test_in_future() {
     int64_t now = 1000000;
     rt_string r = rt_reltime_format_from(now + 3600, now);
     assert(str_eq(r, "in 1 hour"));
@@ -127,43 +114,37 @@ static void test_in_future()
 // format_duration tests
 // ---------------------------------------------------------------------------
 
-static void test_duration_seconds()
-{
+static void test_duration_seconds() {
     rt_string r = rt_reltime_format_duration(5000);
     assert(str_eq(r, "5s"));
     rt_string_unref(r);
 }
 
-static void test_duration_minutes()
-{
+static void test_duration_minutes() {
     rt_string r = rt_reltime_format_duration(150000); // 2.5 minutes
     assert(str_eq(r, "2m 30s"));
     rt_string_unref(r);
 }
 
-static void test_duration_hours_minutes()
-{
+static void test_duration_hours_minutes() {
     rt_string r = rt_reltime_format_duration(9000000); // 2h 30m
     assert(str_eq(r, "2h 30m"));
     rt_string_unref(r);
 }
 
-static void test_duration_days()
-{
+static void test_duration_days() {
     rt_string r = rt_reltime_format_duration(104400000LL); // 1d 5h
     assert(str_eq(r, "1d 5h"));
     rt_string_unref(r);
 }
 
-static void test_duration_zero()
-{
+static void test_duration_zero() {
     rt_string r = rt_reltime_format_duration(0);
     assert(str_eq(r, "0s"));
     rt_string_unref(r);
 }
 
-static void test_duration_negative()
-{
+static void test_duration_negative() {
     rt_string r = rt_reltime_format_duration(-5000);
     assert(str_eq(r, "-5s"));
     rt_string_unref(r);
@@ -173,8 +154,7 @@ static void test_duration_negative()
 // format_short tests
 // ---------------------------------------------------------------------------
 
-static void test_short_format()
-{
+static void test_short_format() {
     // We test format_from instead to avoid time dependency
     // format_short uses current time internally, so we just verify it returns a valid string
     int64_t now = (int64_t)time(NULL);
@@ -187,8 +167,7 @@ static void test_short_format()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     // format_from (relative to reference)
     test_just_now();
     test_seconds_ago();

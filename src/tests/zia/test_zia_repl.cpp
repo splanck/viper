@@ -32,43 +32,37 @@
 
 using namespace viper::repl;
 
-namespace
-{
+namespace {
 
 // ---------------------------------------------------------------------------
 // Input classifier tests
 // ---------------------------------------------------------------------------
 
-TEST(ReplClassifier, EmptyInput)
-{
+TEST(ReplClassifier, EmptyInput) {
     EXPECT_EQ(ReplInputClassifier::classify(""), InputKind::Empty);
     EXPECT_EQ(ReplInputClassifier::classify("   "), InputKind::Empty);
     EXPECT_EQ(ReplInputClassifier::classify("\t\n"), InputKind::Empty);
 }
 
-TEST(ReplClassifier, MetaCommand)
-{
+TEST(ReplClassifier, MetaCommand) {
     EXPECT_EQ(ReplInputClassifier::classify(".help"), InputKind::MetaCommand);
     EXPECT_EQ(ReplInputClassifier::classify(".quit"), InputKind::MetaCommand);
     EXPECT_EQ(ReplInputClassifier::classify("  .type 42"), InputKind::MetaCommand);
 }
 
-TEST(ReplClassifier, CompleteInput)
-{
+TEST(ReplClassifier, CompleteInput) {
     EXPECT_EQ(ReplInputClassifier::classify("Say(\"hello\")"), InputKind::Complete);
     EXPECT_EQ(ReplInputClassifier::classify("var x = 42"), InputKind::Complete);
     EXPECT_EQ(ReplInputClassifier::classify("2 + 3"), InputKind::Complete);
 }
 
-TEST(ReplClassifier, IncompleteInput)
-{
+TEST(ReplClassifier, IncompleteInput) {
     EXPECT_EQ(ReplInputClassifier::classify("func foo() {"), InputKind::Incomplete);
     EXPECT_EQ(ReplInputClassifier::classify("Say("), InputKind::Incomplete);
     EXPECT_EQ(ReplInputClassifier::classify("var x = [1, 2,"), InputKind::Incomplete);
 }
 
-TEST(ReplClassifier, BracketsInStringsIgnored)
-{
+TEST(ReplClassifier, BracketsInStringsIgnored) {
     EXPECT_EQ(ReplInputClassifier::classify("Say(\"{not a block}\")"), InputKind::Complete);
     EXPECT_EQ(ReplInputClassifier::classify("var s = \"(\""), InputKind::Complete);
 }
@@ -77,8 +71,7 @@ TEST(ReplClassifier, BracketsInStringsIgnored)
 // Expression auto-print tests
 // ---------------------------------------------------------------------------
 
-TEST(ReplAutoPrint, IntegerExpression)
-{
+TEST(ReplAutoPrint, IntegerExpression) {
     ZiaReplAdapter adapter;
     auto result = adapter.eval("2 + 3");
     EXPECT_TRUE(result.success);
@@ -87,8 +80,7 @@ TEST(ReplAutoPrint, IntegerExpression)
     EXPECT_NE(result.output.find("5"), std::string::npos);
 }
 
-TEST(ReplAutoPrint, NumberExpression)
-{
+TEST(ReplAutoPrint, NumberExpression) {
     ZiaReplAdapter adapter;
     auto result = adapter.eval("3.14 * 2.0");
     EXPECT_TRUE(result.success);
@@ -96,8 +88,7 @@ TEST(ReplAutoPrint, NumberExpression)
     EXPECT_NE(result.output.find("6.28"), std::string::npos);
 }
 
-TEST(ReplAutoPrint, StringExpression)
-{
+TEST(ReplAutoPrint, StringExpression) {
     ZiaReplAdapter adapter;
     auto result = adapter.eval("\"hello\" + \" world\"");
     EXPECT_TRUE(result.success);
@@ -105,8 +96,7 @@ TEST(ReplAutoPrint, StringExpression)
     EXPECT_NE(result.output.find("hello world"), std::string::npos);
 }
 
-TEST(ReplAutoPrint, BooleanExpression)
-{
+TEST(ReplAutoPrint, BooleanExpression) {
     ZiaReplAdapter adapter;
     auto result = adapter.eval("true");
     EXPECT_TRUE(result.success);
@@ -114,8 +104,7 @@ TEST(ReplAutoPrint, BooleanExpression)
     EXPECT_NE(result.output.find("true"), std::string::npos);
 }
 
-TEST(ReplAutoPrint, ExplicitSayNotDoubled)
-{
+TEST(ReplAutoPrint, ExplicitSayNotDoubled) {
     ZiaReplAdapter adapter;
     auto result = adapter.eval("Say(\"hello\")");
     EXPECT_TRUE(result.success);
@@ -124,8 +113,7 @@ TEST(ReplAutoPrint, ExplicitSayNotDoubled)
     EXPECT_NE(result.output.find("hello"), std::string::npos);
 }
 
-TEST(ReplAutoPrint, FunctionCallResult)
-{
+TEST(ReplAutoPrint, FunctionCallResult) {
     ZiaReplAdapter adapter;
     adapter.eval("func square(x: Integer) -> Integer { return x * x; }");
     auto result = adapter.eval("square(7)");
@@ -138,8 +126,7 @@ TEST(ReplAutoPrint, FunctionCallResult)
 // Variable persistence tests
 // ---------------------------------------------------------------------------
 
-TEST(ReplVarPersist, BasicPersistence)
-{
+TEST(ReplVarPersist, BasicPersistence) {
     ZiaReplAdapter adapter;
     auto r1 = adapter.eval("var x = 42");
     EXPECT_TRUE(r1.success);
@@ -150,8 +137,7 @@ TEST(ReplVarPersist, BasicPersistence)
     EXPECT_NE(r2.output.find("42"), std::string::npos);
 }
 
-TEST(ReplVarPersist, DependentVariables)
-{
+TEST(ReplVarPersist, DependentVariables) {
     ZiaReplAdapter adapter;
     adapter.eval("var x = 10");
     adapter.eval("var y = x + 5");
@@ -161,8 +147,7 @@ TEST(ReplVarPersist, DependentVariables)
     EXPECT_NE(result.output.find("15"), std::string::npos);
 }
 
-TEST(ReplVarPersist, Assignment)
-{
+TEST(ReplVarPersist, Assignment) {
     ZiaReplAdapter adapter;
     adapter.eval("var x = 42");
     adapter.eval("x = 100");
@@ -172,8 +157,7 @@ TEST(ReplVarPersist, Assignment)
     EXPECT_NE(result.output.find("100"), std::string::npos);
 }
 
-TEST(ReplVarPersist, MultipleAssignments)
-{
+TEST(ReplVarPersist, MultipleAssignments) {
     ZiaReplAdapter adapter;
     adapter.eval("var x = 1");
     adapter.eval("x = 2");
@@ -184,8 +168,7 @@ TEST(ReplVarPersist, MultipleAssignments)
     EXPECT_NE(result.output.find("3"), std::string::npos);
 }
 
-TEST(ReplVarPersist, VarsCommand)
-{
+TEST(ReplVarPersist, VarsCommand) {
     ZiaReplAdapter adapter;
     adapter.eval("var x = 42");
     adapter.eval("var name = \"Alice\"");
@@ -198,8 +181,7 @@ TEST(ReplVarPersist, VarsCommand)
     EXPECT_EQ(vars[1].type, "String");
 }
 
-TEST(ReplVarPersist, SurvivesErrors)
-{
+TEST(ReplVarPersist, SurvivesErrors) {
     ZiaReplAdapter adapter;
     adapter.eval("var x = 42");
     auto errResult = adapter.eval("undefined_var");
@@ -215,8 +197,7 @@ TEST(ReplVarPersist, SurvivesErrors)
 // Function definition and redefinition
 // ---------------------------------------------------------------------------
 
-TEST(ReplFunctions, DefineAndCall)
-{
+TEST(ReplFunctions, DefineAndCall) {
     ZiaReplAdapter adapter;
     auto r1 = adapter.eval("func add(a: Integer, b: Integer) -> Integer { return a + b; }");
     EXPECT_TRUE(r1.success);
@@ -226,8 +207,7 @@ TEST(ReplFunctions, DefineAndCall)
     EXPECT_NE(r2.output.find("7"), std::string::npos);
 }
 
-TEST(ReplFunctions, Redefine)
-{
+TEST(ReplFunctions, Redefine) {
     ZiaReplAdapter adapter;
     adapter.eval("func greet(name: String) -> String { return \"Hello, \" + name; }");
     auto r1 = adapter.eval("greet(\"World\")");
@@ -240,8 +220,7 @@ TEST(ReplFunctions, Redefine)
     EXPECT_NE(r2.output.find("Hi, World"), std::string::npos);
 }
 
-TEST(ReplFunctions, FuncsCommand)
-{
+TEST(ReplFunctions, FuncsCommand) {
     ZiaReplAdapter adapter;
     adapter.eval("func square(x: Integer) -> Integer { return x * x; }");
 
@@ -254,8 +233,7 @@ TEST(ReplFunctions, FuncsCommand)
 // Bind persistence
 // ---------------------------------------------------------------------------
 
-TEST(ReplBinds, DefaultBinds)
-{
+TEST(ReplBinds, DefaultBinds) {
     ZiaReplAdapter adapter;
     auto binds = adapter.listBinds();
     EXPECT_EQ(binds.size(), 3u);
@@ -264,8 +242,7 @@ TEST(ReplBinds, DefaultBinds)
     EXPECT_EQ(binds[2], "bind Obj = Viper.Core.Object");
 }
 
-TEST(ReplBinds, AddBind)
-{
+TEST(ReplBinds, AddBind) {
     ZiaReplAdapter adapter;
     auto r = adapter.eval("bind Math = Viper.Math");
     EXPECT_TRUE(r.success);
@@ -274,8 +251,7 @@ TEST(ReplBinds, AddBind)
     EXPECT_EQ(binds.size(), 4u);
 }
 
-TEST(ReplBinds, DuplicateBindIgnored)
-{
+TEST(ReplBinds, DuplicateBindIgnored) {
     ZiaReplAdapter adapter;
     auto r = adapter.eval("bind Viper.Terminal");
     EXPECT_TRUE(r.success);
@@ -286,41 +262,35 @@ TEST(ReplBinds, DuplicateBindIgnored)
 // .type meta-command
 // ---------------------------------------------------------------------------
 
-TEST(ReplType, IntegerType)
-{
+TEST(ReplType, IntegerType) {
     ZiaReplAdapter adapter;
     EXPECT_EQ(adapter.getExprType("42"), "Integer");
     EXPECT_EQ(adapter.getExprType("2 + 3"), "Integer");
 }
 
-TEST(ReplType, NumberType)
-{
+TEST(ReplType, NumberType) {
     ZiaReplAdapter adapter;
     EXPECT_EQ(adapter.getExprType("3.14"), "Number");
 }
 
-TEST(ReplType, StringType)
-{
+TEST(ReplType, StringType) {
     ZiaReplAdapter adapter;
     EXPECT_EQ(adapter.getExprType("\"hello\""), "String");
 }
 
-TEST(ReplType, BooleanType)
-{
+TEST(ReplType, BooleanType) {
     ZiaReplAdapter adapter;
     EXPECT_EQ(adapter.getExprType("true"), "Boolean");
     EXPECT_EQ(adapter.getExprType("false"), "Boolean");
 }
 
-TEST(ReplType, VariableType)
-{
+TEST(ReplType, VariableType) {
     ZiaReplAdapter adapter;
     adapter.eval("var x = 42");
     EXPECT_EQ(adapter.getExprType("x"), "Integer");
 }
 
-TEST(ReplType, FunctionReturnType)
-{
+TEST(ReplType, FunctionReturnType) {
     ZiaReplAdapter adapter;
     adapter.eval("func double(n: Integer) -> Integer { return n * 2; }");
     EXPECT_EQ(adapter.getExprType("double(5)"), "Integer");
@@ -330,16 +300,14 @@ TEST(ReplType, FunctionReturnType)
 // Error recovery
 // ---------------------------------------------------------------------------
 
-TEST(ReplErrors, SyntaxError)
-{
+TEST(ReplErrors, SyntaxError) {
     ZiaReplAdapter adapter;
     auto r = adapter.eval("Say(");
     EXPECT_FALSE(r.success);
     EXPECT_FALSE(r.errorMessage.empty());
 }
 
-TEST(ReplErrors, TypeError)
-{
+TEST(ReplErrors, TypeError) {
     ZiaReplAdapter adapter;
     // Say(123) now succeeds due to auto-dispatch to SayInt.
     // Use a genuine type error instead.
@@ -347,8 +315,7 @@ TEST(ReplErrors, TypeError)
     EXPECT_FALSE(r.success);
 }
 
-TEST(ReplErrors, SessionIntactAfterError)
-{
+TEST(ReplErrors, SessionIntactAfterError) {
     ZiaReplAdapter adapter;
     adapter.eval("func add(a: Integer, b: Integer) -> Integer { return a + b; }");
     adapter.eval("var x = 10");
@@ -364,8 +331,7 @@ TEST(ReplErrors, SessionIntactAfterError)
 // Reset
 // ---------------------------------------------------------------------------
 
-TEST(ReplReset, ClearsState)
-{
+TEST(ReplReset, ClearsState) {
     ZiaReplAdapter adapter;
     adapter.eval("var x = 42");
     adapter.eval("func foo() -> Integer { return 1; }");
@@ -382,57 +348,49 @@ TEST(ReplReset, ClearsState)
 // Tab completion tests (Phase 3 — CompletionEngine integration)
 // ---------------------------------------------------------------------------
 
-TEST(ReplCompletion, KeywordCompletion)
-{
+TEST(ReplCompletion, KeywordCompletion) {
     ZiaReplAdapter adapter;
     auto completions = adapter.complete("whi", 3);
     // Should include "while" as a completion
     bool foundWhile = false;
-    for (const auto &c : completions)
-    {
+    for (const auto &c : completions) {
         if (c.find("while") != std::string::npos)
             foundWhile = true;
     }
     EXPECT_TRUE(foundWhile);
 }
 
-TEST(ReplCompletion, VariableCompletion)
-{
+TEST(ReplCompletion, VariableCompletion) {
     ZiaReplAdapter adapter;
     adapter.eval("var myCounter = 42");
     auto completions = adapter.complete("myCo", 4);
     bool foundVar = false;
-    for (const auto &c : completions)
-    {
+    for (const auto &c : completions) {
         if (c.find("myCounter") != std::string::npos)
             foundVar = true;
     }
     EXPECT_TRUE(foundVar);
 }
 
-TEST(ReplCompletion, FunctionCompletion)
-{
+TEST(ReplCompletion, FunctionCompletion) {
     ZiaReplAdapter adapter;
     adapter.eval("func calculateSum(a: Integer, b: Integer) -> Integer { return a + b; }");
     auto completions = adapter.complete("calc", 4);
     bool foundFunc = false;
-    for (const auto &c : completions)
-    {
+    for (const auto &c : completions) {
         if (c.find("calculateSum") != std::string::npos)
             foundFunc = true;
     }
     EXPECT_TRUE(foundFunc);
 }
 
-TEST(ReplCompletion, EmptyInput)
-{
+TEST(ReplCompletion, EmptyInput) {
     ZiaReplAdapter adapter;
     auto completions = adapter.complete("", 0);
     EXPECT_TRUE(completions.empty());
 }
 
-TEST(ReplCompletion, NoMatchReturnsEmpty)
-{
+TEST(ReplCompletion, NoMatchReturnsEmpty) {
     ZiaReplAdapter adapter;
     auto completions = adapter.complete("zzzzzzzzz", 9);
     EXPECT_TRUE(completions.empty());
@@ -442,8 +400,7 @@ TEST(ReplCompletion, NoMatchReturnsEmpty)
 // Multi-line eval tests (Phase 3)
 // ---------------------------------------------------------------------------
 
-TEST(ReplMultiLine, ClassifierDetectsIncomplete)
-{
+TEST(ReplMultiLine, ClassifierDetectsIncomplete) {
     // Unclosed brace
     EXPECT_EQ(ReplInputClassifier::classify("func foo() {"), InputKind::Incomplete);
     // Unclosed paren
@@ -452,16 +409,14 @@ TEST(ReplMultiLine, ClassifierDetectsIncomplete)
     EXPECT_EQ(ReplInputClassifier::classify("var arr = [1, 2"), InputKind::Incomplete);
 }
 
-TEST(ReplMultiLine, ClassifierDetectsComplete)
-{
+TEST(ReplMultiLine, ClassifierDetectsComplete) {
     // Closed brace after multi-line accumulation
     EXPECT_EQ(ReplInputClassifier::classify("func foo() {\n    return 1;\n}"), InputKind::Complete);
     // Complete expression
     EXPECT_EQ(ReplInputClassifier::classify("add(1, 2)"), InputKind::Complete);
 }
 
-TEST(ReplMultiLine, MultiLineFunctionDefAndCall)
-{
+TEST(ReplMultiLine, MultiLineFunctionDefAndCall) {
     ZiaReplAdapter adapter;
     // Simulate what the session does: accumulate then eval
     std::string multiLine = "func triple(n: Integer) -> Integer {\n    return n * 3;\n}";
@@ -473,8 +428,7 @@ TEST(ReplMultiLine, MultiLineFunctionDefAndCall)
     EXPECT_NE(r2.output.find("21"), std::string::npos);
 }
 
-TEST(ReplMultiLine, MultiLineEntityDef)
-{
+TEST(ReplMultiLine, MultiLineEntityDef) {
     ZiaReplAdapter adapter;
     std::string multiLine = "entity Point {\n    Integer x;\n    Integer y;\n"
                             "    func init(px: Integer, py: Integer) {\n"
@@ -488,8 +442,7 @@ TEST(ReplMultiLine, MultiLineEntityDef)
 // Entity / Object auto-print (Phase 5)
 // ---------------------------------------------------------------------------
 
-TEST(ReplAutoPrint, EntityAutoprint)
-{
+TEST(ReplAutoPrint, EntityAutoprint) {
     ZiaReplAdapter adapter;
     // Define a simple entity
     auto r1 =
@@ -507,8 +460,7 @@ TEST(ReplAutoPrint, EntityAutoprint)
     EXPECT_TRUE(r2.resultType == ResultType::String || r2.resultType == ResultType::Object);
 }
 
-TEST(ReplAutoPrint, ObjectToStringExplicit)
-{
+TEST(ReplAutoPrint, ObjectToStringExplicit) {
     ZiaReplAdapter adapter;
     // Obj.ToString works explicitly for objects
     adapter.eval("entity Cat {\n    String name;\n    func init(n: String) { name = n; }\n}");
@@ -523,8 +475,7 @@ TEST(ReplAutoPrint, ObjectToStringExplicit)
 // History persistence (Phase 5)
 // ---------------------------------------------------------------------------
 
-TEST(ReplHistory, SaveAndLoadRoundtrip)
-{
+TEST(ReplHistory, SaveAndLoadRoundtrip) {
     // Create a temp file path
     auto tmpDir = std::filesystem::temp_directory_path() / "viper_test_repl";
     std::filesystem::create_directories(tmpDir);
@@ -554,8 +505,7 @@ TEST(ReplHistory, SaveAndLoadRoundtrip)
     std::filesystem::remove_all(tmpDir);
 }
 
-TEST(ReplHistory, DuplicateSkipped)
-{
+TEST(ReplHistory, DuplicateSkipped) {
     ReplLineEditor editor;
     editor.addHistory("var x = 42");
     editor.addHistory("var x = 42"); // duplicate — should be skipped
@@ -567,8 +517,7 @@ TEST(ReplHistory, DuplicateSkipped)
     EXPECT_EQ(history[1], "var y = 10");
 }
 
-TEST(ReplHistory, EmptySkipped)
-{
+TEST(ReplHistory, EmptySkipped) {
     ReplLineEditor editor;
     editor.addHistory("");
     editor.addHistory("var x = 1");
@@ -579,8 +528,7 @@ TEST(ReplHistory, EmptySkipped)
     EXPECT_EQ(history[0], "var x = 1");
 }
 
-TEST(ReplHistory, LoadNonexistentFileReturnsZero)
-{
+TEST(ReplHistory, LoadNonexistentFileReturnsZero) {
     ReplLineEditor editor;
     size_t loaded = editor.loadHistory("/tmp/viper_test_nonexistent_file_xyz");
     EXPECT_EQ(loaded, 0u);
@@ -590,16 +538,14 @@ TEST(ReplHistory, LoadNonexistentFileReturnsZero)
 // .il meta-command tests (Phase 3)
 // ---------------------------------------------------------------------------
 
-TEST(ReplIL, IntegerExpression)
-{
+TEST(ReplIL, IntegerExpression) {
     ZiaReplAdapter adapter;
     std::string il = adapter.getIL("2 + 3");
     // Should contain IL instructions
     EXPECT_NE(il.find("iadd"), std::string::npos);
 }
 
-TEST(ReplIL, FunctionCall)
-{
+TEST(ReplIL, FunctionCall) {
     ZiaReplAdapter adapter;
     adapter.eval("func double(n: Integer) -> Integer { return n * 2; }");
     std::string il = adapter.getIL("double(5)");
@@ -607,16 +553,14 @@ TEST(ReplIL, FunctionCall)
     EXPECT_NE(il.find("call"), std::string::npos);
 }
 
-TEST(ReplIL, InvalidExpressionReturnsError)
-{
+TEST(ReplIL, InvalidExpressionReturnsError) {
     ZiaReplAdapter adapter;
     std::string il = adapter.getIL("undeclared_xyz");
     // Should contain an error message
     EXPECT_NE(il.find("error"), std::string::npos);
 }
 
-TEST(ReplIL, StringExpression)
-{
+TEST(ReplIL, StringExpression) {
     ZiaReplAdapter adapter;
     std::string il = adapter.getIL("\"hello\"");
     // Should contain string constant or Say call
@@ -625,7 +569,6 @@ TEST(ReplIL, StringExpression)
 
 } // anonymous namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

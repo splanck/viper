@@ -26,8 +26,7 @@
 
 using namespace il;
 
-namespace
-{
+namespace {
 const char *kProgram = R"(il 0.1
 func @main() -> i64 {
 entry:
@@ -55,8 +54,7 @@ entry:
 )";
 } // namespace
 
-core::Module parseModule()
-{
+core::Module parseModule() {
     core::Module module;
     std::istringstream input(kProgram);
     auto parsed = il::api::v2::parse_text_expected(input, module);
@@ -64,8 +62,7 @@ core::Module parseModule()
     return module;
 }
 
-core::Module parseParallelModule()
-{
+core::Module parseParallelModule() {
     core::Module module;
     std::istringstream input(kParallelProgram);
     auto parsed = il::api::v2::parse_text_expected(input, module);
@@ -73,8 +70,7 @@ core::Module parseParallelModule()
     return module;
 }
 
-int main()
-{
+int main() {
     core::Module module = parseModule();
 
     transform::PassManager pm;
@@ -85,21 +81,19 @@ int main()
 
     int functionAnalysisCount = 0;
     pm.registerFunctionAnalysis<int>("count",
-                                     [&functionAnalysisCount](core::Module &, core::Function &)
-                                     { return ++functionAnalysisCount; });
+                                     [&functionAnalysisCount](core::Module &, core::Function &) {
+                                         return ++functionAnalysisCount;
+                                     });
     int cfgAnalysisCount = 0;
     pm.registerFunctionAnalysis<il::transform::CFGInfo>(
-        "cfg",
-        [&cfgAnalysisCount](core::Module &moduleRef, core::Function &fnRef)
-        {
+        "cfg", [&cfgAnalysisCount](core::Module &moduleRef, core::Function &fnRef) {
             ++cfgAnalysisCount;
             return il::transform::buildCFG(moduleRef, fnRef);
         });
 
     bool seedRan = false;
     pm.registerFunctionPass("seed-analyses",
-                            [&seedRan](core::Function &fn, transform::AnalysisManager &analysis)
-                            {
+                            [&seedRan](core::Function &fn, transform::AnalysisManager &analysis) {
                                 int &count = analysis.getFunctionResult<int>("count", fn);
                                 analysis.getFunctionResult<il::transform::CFGInfo>("cfg", fn);
                                 (void)count;
@@ -111,8 +105,7 @@ int main()
                             });
 
     pm.registerFunctionPass("reuse-cached",
-                            [](core::Function &fn, transform::AnalysisManager &analysis)
-                            {
+                            [](core::Function &fn, transform::AnalysisManager &analysis) {
                                 int &count = analysis.getFunctionResult<int>("count", fn);
                                 analysis.getFunctionResult<il::transform::CFGInfo>("cfg", fn);
                                 assert(count == 1);
@@ -124,15 +117,13 @@ int main()
 
     bool moduleInvalidated = false;
     pm.registerModulePass("module-invalidate",
-                          [&moduleInvalidated](core::Module &, transform::AnalysisManager &)
-                          {
+                          [&moduleInvalidated](core::Module &, transform::AnalysisManager &) {
                               moduleInvalidated = true;
                               return transform::PreservedAnalyses::none();
                           });
 
     pm.registerFunctionPass("recompute",
-                            [](core::Function &fn, transform::AnalysisManager &analysis)
-                            {
+                            [](core::Function &fn, transform::AnalysisManager &analysis) {
                                 int &valueFirst = analysis.getFunctionResult<int>("count", fn);
                                 analysis.getFunctionResult<il::transform::CFGInfo>("cfg", fn);
                                 assert(valueFirst == 2);
@@ -150,12 +141,10 @@ int main()
     assert(functionAnalysisCount == 2);
     assert(cfgAnalysisCount == 2);
 
-    auto findPassLine = [&instrumentation](std::string_view id) -> std::string
-    {
+    auto findPassLine = [&instrumentation](std::string_view id) -> std::string {
         std::istringstream reader(instrumentation.str());
         std::string line;
-        while (std::getline(reader, line))
-        {
+        while (std::getline(reader, line)) {
             if (line.find(id) != std::string::npos)
                 return line;
         }
@@ -200,8 +189,7 @@ int main()
     std::atomic<int> parallelRuns{0};
     pm.registerFunctionPass(
         "count-fns",
-        [&parallelRuns](core::Function &, transform::AnalysisManager &)
-        {
+        [&parallelRuns](core::Function &, transform::AnalysisManager &) {
             ++parallelRuns;
             return transform::PreservedAnalyses::all();
         },
@@ -243,9 +231,7 @@ int main()
         int barCount = 0;
         transform::PassManager selectivePm;
         selectivePm.registerFunctionAnalysis<int>(
-            "per-fn",
-            [&fooCount, &barCount](core::Module &, core::Function &fn)
-            {
+            "per-fn", [&fooCount, &barCount](core::Module &, core::Function &fn) {
                 if (fn.name == "foo")
                     return ++fooCount;
                 if (fn.name == "bar")
@@ -253,9 +239,7 @@ int main()
                 return 0;
             });
         selectivePm.registerFunctionPass(
-            "seed-per-fn",
-            [](core::Function &fn, transform::AnalysisManager &analysis)
-            {
+            "seed-per-fn", [](core::Function &fn, transform::AnalysisManager &analysis) {
                 int &value = analysis.getFunctionResult<int>("per-fn", fn);
                 (void)value;
                 transform::PreservedAnalyses preserved;
@@ -263,16 +247,14 @@ int main()
                 return preserved;
             });
         selectivePm.registerModulePass("touch-foo-only",
-                                       [](core::Module &, transform::AnalysisManager &)
-                                       {
+                                       [](core::Module &, transform::AnalysisManager &) {
                                            transform::PreservedAnalyses preserved;
                                            preserved.markChangedFunction("foo");
                                            return preserved;
                                        });
         selectivePm.registerFunctionPass(
             "recheck-per-fn",
-            [&fooCount, &barCount](core::Function &fn, transform::AnalysisManager &analysis)
-            {
+            [&fooCount, &barCount](core::Function &fn, transform::AnalysisManager &analysis) {
                 int &value = analysis.getFunctionResult<int>("per-fn", fn);
                 if (fn.name == "foo")
                     assert(value == 2);

@@ -29,33 +29,28 @@
 #include <unordered_set>
 #include <vector>
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Describes an edge leaving a natural loop body.
 /// @details An exit edge connects a block inside the loop (@c from) to a block
 ///          outside the loop (@c to). Exit edges are identified during loop
 ///          discovery by checking whether successor blocks belong to the loop body.
-struct LoopExit
-{
+struct LoopExit {
     std::string from; ///< Block label inside the loop that branches out.
     std::string to;   ///< Block label outside the loop that receives control.
 };
 
 /// @brief Hash functor for heterogeneous string lookup (C++20).
-struct LoopStringHash
-{
+struct LoopStringHash {
     using is_transparent = void;
 
-    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept
-    {
+    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept {
         return std::hash<std::string_view>{}(std::string_view(key));
     }
 };
 
 /// \brief Summary of a single natural loop discovered in a function.
-struct Loop
-{
+struct Loop {
     /// Label identifying the loop header.
     std::string headerLabel;
     /// Labels of blocks that participate in the loop, including the header.
@@ -80,12 +75,10 @@ struct Loop
 };
 
 /// \brief Loop collection discovered for a function.
-class LoopInfo
-{
+class LoopInfo {
   public:
     /// \brief Access the detected loops.
-    [[nodiscard]] const std::vector<Loop> &loops() const
-    {
+    [[nodiscard]] const std::vector<Loop> &loops() const {
         return loops_;
     }
 

@@ -91,8 +91,7 @@
 #include "il/runtime/classes/RuntimeClasses.hpp"
 #include <vector>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //===----------------------------------------------------------------------===//
 /// @name Type Conversion Functions

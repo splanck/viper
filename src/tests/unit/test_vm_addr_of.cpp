@@ -21,8 +21,7 @@
 #include <sstream>
 #include <string>
 
-int main()
-{
+int main() {
     const char *il = "il 0.1\n"
                      "global const str @g = \"hi\"\n\n"
                      "func @main() -> i64 {\n"

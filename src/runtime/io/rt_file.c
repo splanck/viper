@@ -41,28 +41,23 @@
 #include <stdbool.h>
 #include <stdlib.h>
 
-typedef struct RtFileChannelEntry
-{
+typedef struct RtFileChannelEntry {
     int32_t channel;
     RtFile file;
     bool in_use;
     bool at_eof;
 } RtFileChannelEntry;
 
-void rt_file_state_cleanup(RtContext *ctx)
-{
+void rt_file_state_cleanup(RtContext *ctx) {
     if (!ctx)
         return;
 
     RtFileChannelEntry *entries = (RtFileChannelEntry *)ctx->file_state.entries;
     size_t count = ctx->file_state.count;
-    if (entries)
-    {
-        for (size_t i = 0; i < count; ++i)
-        {
+    if (entries) {
+        for (size_t i = 0; i < count; ++i) {
             RtFileChannelEntry *entry = &entries[i];
-            if (entry->in_use)
-            {
+            if (entry->in_use) {
                 RtError err = RT_ERROR_NONE;
                 (void)rt_file_close(&entry->file, &err);
                 entry->in_use = false;
@@ -78,34 +73,29 @@ void rt_file_state_cleanup(RtContext *ctx)
     ctx->file_state.capacity = 0;
 }
 
-static inline RtContext *rt_get_or_legacy(void)
-{
+static inline RtContext *rt_get_or_legacy(void) {
     RtContext *ctx = rt_get_current_context();
     if (!ctx)
         return rt_legacy_context();
     return ctx;
 }
 
-static inline RtFileChannelEntry *rtf_entries(void)
-{
+static inline RtFileChannelEntry *rtf_entries(void) {
     RtContext *ctx = rt_get_or_legacy();
     return (RtFileChannelEntry *)ctx->file_state.entries;
 }
 
-static inline size_t *rtf_count(void)
-{
+static inline size_t *rtf_count(void) {
     RtContext *ctx = rt_get_or_legacy();
     return &ctx->file_state.count;
 }
 
-static inline size_t *rtf_capacity(void)
-{
+static inline size_t *rtf_capacity(void) {
     RtContext *ctx = rt_get_or_legacy();
     return &ctx->file_state.capacity;
 }
 
-static inline void rtf_set_entries(RtFileChannelEntry *ptr)
-{
+static inline void rtf_set_entries(RtFileChannelEntry *ptr) {
     RtContext *ctx = rt_get_or_legacy();
     ctx->file_state.entries = ptr;
 }
@@ -116,14 +106,12 @@ static inline void rtf_set_entries(RtFileChannelEntry *ptr)
 ///          identifiers are rejected immediately.  Callers can reuse the result
 ///          to inspect channel state or decide whether a new slot must be
 ///          materialised.
-static RtFileChannelEntry *rt_file_find_channel(int32_t channel)
-{
+static RtFileChannelEntry *rt_file_find_channel(int32_t channel) {
     if (channel < 0)
         return NULL;
     RtFileChannelEntry *entries = rtf_entries();
     size_t count = entries ? *rtf_count() : 0;
-    for (size_t i = 0; i < count; ++i)
-    {
+    for (size_t i = 0; i < count; ++i) {
         if (entries[i].channel == channel)
             return &entries[i];
     }
@@ -140,8 +128,7 @@ static RtFileChannelEntry *rt_file_find_channel(int32_t channel)
 /// @details Prevents unbounded resource allocation from untrusted input.
 static const size_t kMaxOpenChannels = 1024;
 
-static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel)
-{
+static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel) {
     if (channel < 0)
         return NULL;
     RtFileChannelEntry *entry = rt_file_find_channel(channel);
@@ -155,15 +142,13 @@ static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel)
         return NULL;
     if (*pcount >= kMaxOpenChannels)
         return NULL;
-    if (*pcount == *pcap)
-    {
+    if (*pcount == *pcap) {
         size_t new_capacity = *pcap ? (*pcap) * 2 : 4;
         RtFileChannelEntry *new_entries =
             (RtFileChannelEntry *)realloc(entries, new_capacity * sizeof(*new_entries));
         if (!new_entries)
             return NULL;
-        for (size_t i = *pcap; i < new_capacity; ++i)
-        {
+        for (size_t i = *pcap; i < new_capacity; ++i) {
             new_entries[i].channel = 0;
             new_entries[i].in_use = false;
             new_entries[i].at_eof = false;
@@ -187,8 +172,7 @@ static RtFileChannelEntry *rt_file_prepare_channel(int32_t channel)
 ///          descriptor.  When successful the resolved entry is stored in
 ///          @p out_entry so callers can perform further operations without a
 ///          second lookup.
-static int32_t rt_file_resolve_channel(int32_t channel, RtFileChannelEntry **out_entry)
-{
+static int32_t rt_file_resolve_channel(int32_t channel, RtFileChannelEntry **out_entry) {
     if (out_entry)
         *out_entry = NULL;
     if (channel < 0)
@@ -207,8 +191,7 @@ static int32_t rt_file_resolve_channel(int32_t channel, RtFileChannelEntry **out
 /// @details Validates pointers, forwards the call to @ref rt_file_write, clears
 ///          the cached EOF state when the write succeeds, and translates any
 ///          failure into the corresponding Err_* value.
-static int32_t rt_file_write_entry(RtFileChannelEntry *entry, const uint8_t *data, size_t len)
-{
+static int32_t rt_file_write_entry(RtFileChannelEntry *entry, const uint8_t *data, size_t len) {
     if (!entry || len == 0)
         return 0;
     if (!data)
@@ -226,8 +209,7 @@ static int32_t rt_file_write_entry(RtFileChannelEntry *entry, const uint8_t *dat
 ///          channel entry, and invokes @ref rt_file_open.  When the open
 ///          succeeds the entry is flagged in-use and its EOF indicator cleared;
 ///          failures propagate the error kind from the lower layer.
-int32_t rt_open_err_vstr(ViperString *path, int32_t mode, int32_t channel)
-{
+int32_t rt_open_err_vstr(ViperString *path, int32_t mode, int32_t channel) {
     const char *mode_str = rt_file_mode_string(mode);
     const char *path_str = NULL;
     if (!mode_str || !rt_file_path_from_vstr(path, &path_str) || channel < 0)
@@ -241,8 +223,7 @@ int32_t rt_open_err_vstr(ViperString *path, int32_t mode, int32_t channel)
 
     rt_file_init(&entry->file);
     RtError err = RT_ERROR_NONE;
-    if (!rt_file_open(&entry->file, path_str, mode_str, mode, &err))
-    {
+    if (!rt_file_open(&entry->file, path_str, mode_str, mode, &err)) {
         entry->in_use = false;
         return (int32_t)err.kind;
     }
@@ -256,8 +237,7 @@ int32_t rt_open_err_vstr(ViperString *path, int32_t mode, int32_t channel)
 /// @details Validates that the channel exists and is open, closes the underlying
 ///          descriptor, and resets bookkeeping state.  Returns zero on success or
 ///          propagates the runtime error code raised by @ref rt_file_close.
-int32_t rt_close_err(int32_t channel)
-{
+int32_t rt_close_err(int32_t channel) {
     if (channel < 0)
         return (int32_t)Err_InvalidOperation;
     RtFileChannelEntry *entry = rt_file_find_channel(channel);
@@ -279,8 +259,7 @@ int32_t rt_close_err(int32_t channel)
 ///          @ref rt_file_string_view, and then calls
 ///          @ref rt_file_write_entry so EOF caching and error translation remain
 ///          centralised in one helper.
-int32_t rt_write_ch_err(int32_t channel, ViperString *s)
-{
+int32_t rt_write_ch_err(int32_t channel, ViperString *s) {
     RtFileChannelEntry *entry = NULL;
     int32_t status = rt_file_resolve_channel(channel, &entry);
     if (status != 0)
@@ -295,8 +274,7 @@ int32_t rt_write_ch_err(int32_t channel, ViperString *s)
 /// @details Resolves the channel, writes the provided bytes, and finally emits a
 ///          single newline so the behaviour matches PRINT without a trailing
 ///          semicolon in traditional BASIC.
-int32_t rt_println_ch_err(int32_t channel, ViperString *s)
-{
+int32_t rt_println_ch_err(int32_t channel, ViperString *s) {
     RtFileChannelEntry *entry = NULL;
     int32_t status = rt_file_resolve_channel(channel, &entry);
     if (status != 0)
@@ -317,8 +295,7 @@ int32_t rt_println_ch_err(int32_t channel, ViperString *s)
 ///          the blocking read, marks the cached EOF flag when the helper reports
 ///          end-of-file, and on success transfers ownership of the allocated
 ///          runtime string to @p out.
-int32_t rt_line_input_ch_err(int32_t channel, ViperString **out)
-{
+int32_t rt_line_input_ch_err(int32_t channel, ViperString **out) {
     if (!out)
         return (int32_t)Err_InvalidOperation;
     *out = NULL;
@@ -330,8 +307,7 @@ int32_t rt_line_input_ch_err(int32_t channel, ViperString **out)
 
     rt_string line = NULL;
     RtError err = RT_ERROR_NONE;
-    if (!rt_file_read_line(&entry->file, &line, &err))
-    {
+    if (!rt_file_read_line(&entry->file, &line, &err)) {
         if (err.kind == Err_EOF)
             entry->at_eof = true;
         return (int32_t)err.kind;
@@ -347,8 +323,7 @@ int32_t rt_line_input_ch_err(int32_t channel, ViperString **out)
 /// @details Resolves the channel and copies the descriptor into @p out_fd, if
 ///          provided, so embedders can integrate with poll/select loops using the
 ///          underlying OS handle.
-int32_t rt_file_channel_fd(int32_t channel, int *out_fd)
-{
+int32_t rt_file_channel_fd(int32_t channel, int *out_fd) {
     RtFileChannelEntry *entry = NULL;
     int32_t status = rt_file_resolve_channel(channel, &entry);
     if (status != 0)
@@ -361,8 +336,7 @@ int32_t rt_file_channel_fd(int32_t channel, int *out_fd)
 /// @brief Query whether @p channel is currently positioned at EOF.
 /// @details Resolves the channel and exposes the cached EOF flag maintained by
 ///          read helpers, mirroring the VM's "sticky" EOF semantics.
-int32_t rt_file_channel_get_eof(int32_t channel, int8_t *out_at_eof)
-{
+int32_t rt_file_channel_get_eof(int32_t channel, int8_t *out_at_eof) {
     RtFileChannelEntry *entry = NULL;
     int32_t status = rt_file_resolve_channel(channel, &entry);
     if (status != 0)
@@ -375,8 +349,7 @@ int32_t rt_file_channel_get_eof(int32_t channel, int8_t *out_at_eof)
 /// @brief Mutate the cached EOF state for @p channel.
 /// @details Resolves the channel and updates the cached flag, enabling seek
 ///          helpers to force EOF on or off without performing another read.
-int32_t rt_file_channel_set_eof(int32_t channel, int8_t at_eof)
-{
+int32_t rt_file_channel_set_eof(int32_t channel, int8_t at_eof) {
     RtFileChannelEntry *entry = NULL;
     int32_t status = rt_file_resolve_channel(channel, &entry);
     if (status != 0)

@@ -20,12 +20,9 @@
 #include <string>
 #include <string_view>
 
-namespace viper::codegen::x64
-{
-namespace
-{
-[[nodiscard]] ILModule makeStringLiteralModule()
-{
+namespace viper::codegen::x64 {
+namespace {
+[[nodiscard]] ILModule makeStringLiteralModule() {
     ILValue literal{};
     literal.kind = ILValue::Kind::STR;
     literal.str = "Hello, world!";
@@ -48,8 +45,7 @@ namespace
     return module;
 }
 
-[[nodiscard]] std::string_view lineContaining(const std::string &text, std::size_t pos) noexcept
-{
+[[nodiscard]] std::string_view lineContaining(const std::string &text, std::size_t pos) noexcept {
     const std::size_t lineStart = text.rfind('\n', pos);
     const std::size_t start = lineStart == std::string::npos ? 0 : lineStart + 1;
     const std::size_t lineEnd = text.find('\n', pos);
@@ -57,40 +53,33 @@ namespace
     return std::string_view{text}.substr(start, end - start);
 }
 
-[[nodiscard]] bool hasExpectedStringLiteralSequence(const std::string &asmText)
-{
+[[nodiscard]] bool hasExpectedStringLiteralSequence(const std::string &asmText) {
     const auto rodataPos = asmText.find(".section .rodata");
-    if (rodataPos == std::string::npos)
-    {
+    if (rodataPos == std::string::npos) {
         return false;
     }
 
     const auto labelPos = asmText.find(".LC_str_", rodataPos);
-    if (labelPos == std::string::npos)
-    {
+    if (labelPos == std::string::npos) {
         return false;
     }
 
     const std::string_view rodataLabelLine = lineContaining(asmText, labelPos);
-    if (rodataLabelLine.find(':') == std::string::npos)
-    {
+    if (rodataLabelLine.find(':') == std::string::npos) {
         return false;
     }
 
     bool hasLeaReference = false;
     std::size_t searchPos = 0;
-    while ((searchPos = asmText.find(".LC_str_", searchPos)) != std::string::npos)
-    {
+    while ((searchPos = asmText.find(".LC_str_", searchPos)) != std::string::npos) {
         const std::string_view line = lineContaining(asmText, searchPos);
-        if (line.find("lea") != std::string::npos)
-        {
+        if (line.find("lea") != std::string::npos) {
             hasLeaReference = true;
             break;
         }
         ++searchPos;
     }
-    if (!hasLeaReference)
-    {
+    if (!hasLeaReference) {
         return false;
     }
 
@@ -103,31 +92,26 @@ namespace
     const char *lenReg = "%rsi";
 #endif
     std::size_t regPos = asmText.find(lenReg);
-    while (regPos != std::string::npos)
-    {
+    while (regPos != std::string::npos) {
         const std::string_view line = lineContaining(asmText, regPos);
         if (line.find("mov") != std::string::npos &&
-            (line.find("$13") != std::string::npos || line.find("$0xd") != std::string::npos))
-        {
+            (line.find("$13") != std::string::npos || line.find("$0xd") != std::string::npos)) {
             hasLenMove = true;
             break;
         }
         regPos = asmText.find(lenReg, regPos + 4);
     }
-    if (!hasLenMove)
-    {
+    if (!hasLenMove) {
         return false;
     }
 
     const auto callPos = asmText.find("rt_str_from_lit");
-    if (callPos == std::string::npos)
-    {
+    if (callPos == std::string::npos) {
         return false;
     }
 
     const std::string_view callLine = lineContaining(asmText, callPos);
-    if (callLine.find("call") == std::string::npos)
-    {
+    if (callLine.find("call") == std::string::npos) {
         return false;
     }
 
@@ -137,15 +121,13 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makeStringLiteralModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
 
-    if (!result.errors.empty() || !hasExpectedStringLiteralSequence(result.asmText))
-    {
+    if (!result.errors.empty() || !hasExpectedStringLiteralSequence(result.asmText)) {
         std::cerr << "Unexpected assembly output:\n" << result.asmText;
         return EXIT_FAILURE;
     }

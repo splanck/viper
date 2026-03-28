@@ -36,14 +36,12 @@
 #include "tui/ui/widget.hpp"
 #include "tui/views/text_view.hpp"
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 /// @brief Interactive text search widget with incremental match highlighting.
 /// @details Provides a '/' prefixed query input that searches through a TextBuffer
 ///          and highlights matches in the associated TextView. Supports both literal
 ///          substring and regex search modes. Pressing Enter navigates to the next match.
-class SearchBar : public ui::Widget
-{
+class SearchBar : public ui::Widget {
   public:
     /// @brief Construct search bar bound to buffer and view.
     SearchBar(text::TextBuffer &buf, views::TextView &view, const style::Theme &theme);

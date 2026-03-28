@@ -46,8 +46,7 @@
 // Internal structure
 // ---------------------------------------------------------------------------
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     int64_t start; // Unix timestamp in seconds
     int64_t end;   // Unix timestamp in seconds
@@ -57,8 +56,7 @@ typedef struct
 // Constructor
 // ---------------------------------------------------------------------------
 
-void *rt_daterange_new(int64_t start, int64_t end)
-{
+void *rt_daterange_new(int64_t start, int64_t end) {
     // Ensure start <= end
     int64_t s = start <= end ? start : end;
     int64_t e = start <= end ? end : start;
@@ -76,8 +74,7 @@ void *rt_daterange_new(int64_t start, int64_t end)
 /// @brief Perform daterange start operation.
 /// @param range
 /// @return Result value.
-int64_t rt_daterange_start(void *range)
-{
+int64_t rt_daterange_start(void *range) {
     if (!range)
         return 0;
     return ((rt_daterange_impl *)range)->start;
@@ -86,8 +83,7 @@ int64_t rt_daterange_start(void *range)
 /// @brief Perform daterange end operation.
 /// @param range
 /// @return Result value.
-int64_t rt_daterange_end(void *range)
-{
+int64_t rt_daterange_end(void *range) {
     if (!range)
         return 0;
     return ((rt_daterange_impl *)range)->end;
@@ -101,8 +97,7 @@ int64_t rt_daterange_end(void *range)
 /// @param range
 /// @param timestamp
 /// @return Result value.
-int8_t rt_daterange_contains(void *range, int64_t timestamp)
-{
+int8_t rt_daterange_contains(void *range, int64_t timestamp) {
     if (!range)
         return false;
     rt_daterange_impl *r = (rt_daterange_impl *)range;
@@ -113,8 +108,7 @@ int8_t rt_daterange_contains(void *range, int64_t timestamp)
 /// @param range
 /// @param other
 /// @return Result value.
-int8_t rt_daterange_overlaps(void *range, void *other)
-{
+int8_t rt_daterange_overlaps(void *range, void *other) {
     if (!range || !other)
         return false;
     rt_daterange_impl *a = (rt_daterange_impl *)range;
@@ -126,8 +120,7 @@ int8_t rt_daterange_overlaps(void *range, void *other)
 // Set operations
 // ---------------------------------------------------------------------------
 
-void *rt_daterange_intersection(void *range, void *other)
-{
+void *rt_daterange_intersection(void *range, void *other) {
     if (!range || !other)
         return NULL;
     rt_daterange_impl *a = (rt_daterange_impl *)range;
@@ -141,8 +134,7 @@ void *rt_daterange_intersection(void *range, void *other)
     return rt_daterange_new(s, e);
 }
 
-void *rt_daterange_union_range(void *range, void *other)
-{
+void *rt_daterange_union_range(void *range, void *other) {
     if (!range || !other)
         return NULL;
     rt_daterange_impl *a = (rt_daterange_impl *)range;
@@ -164,8 +156,7 @@ void *rt_daterange_union_range(void *range, void *other)
 /// @brief Perform daterange days operation.
 /// @param range
 /// @return Result value.
-int64_t rt_daterange_days(void *range)
-{
+int64_t rt_daterange_days(void *range) {
     if (!range)
         return 0;
     rt_daterange_impl *r = (rt_daterange_impl *)range;
@@ -175,8 +166,7 @@ int64_t rt_daterange_days(void *range)
 /// @brief Perform daterange hours operation.
 /// @param range
 /// @return Result value.
-int64_t rt_daterange_hours(void *range)
-{
+int64_t rt_daterange_hours(void *range) {
     if (!range)
         return 0;
     rt_daterange_impl *r = (rt_daterange_impl *)range;
@@ -186,8 +176,7 @@ int64_t rt_daterange_hours(void *range)
 /// @brief Perform daterange duration operation.
 /// @param range
 /// @return Result value.
-int64_t rt_daterange_duration(void *range)
-{
+int64_t rt_daterange_duration(void *range) {
     if (!range)
         return 0;
     rt_daterange_impl *r = (rt_daterange_impl *)range;
@@ -201,8 +190,7 @@ int64_t rt_daterange_duration(void *range)
 /// @brief Perform daterange to string operation.
 /// @param range
 /// @return Result value.
-rt_string rt_daterange_to_string(void *range)
-{
+rt_string rt_daterange_to_string(void *range) {
     if (!range)
         return rt_string_from_bytes("", 0);
     rt_daterange_impl *r = (rt_daterange_impl *)range;

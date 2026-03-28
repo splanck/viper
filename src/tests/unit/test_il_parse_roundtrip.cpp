@@ -27,8 +27,7 @@
 #error "PARSE_ROUNDTRIP_DIR must be defined"
 #endif
 
-int main()
-{
+int main() {
     constexpr std::array<const char *, 9> files = {PARSE_ROUNDTRIP_DIR "/checked-arith.il",
                                                    PARSE_ROUNDTRIP_DIR "/checked-divrem.il",
                                                    PARSE_ROUNDTRIP_DIR "/cast-checks.il",
@@ -39,8 +38,7 @@ int main()
                                                    PARSE_ROUNDTRIP_DIR "/trap_newline.il",
                                                    SWITCH_GOLDEN};
 
-    for (const char *path : files)
-    {
+    for (const char *path : files) {
         const bool checkNewline = std::string(path).find("trap_newline.il") != std::string::npos;
 
         std::ifstream input(path);
@@ -53,8 +51,7 @@ int main()
         assert(parseFirst);
 
         std::string serialized = il::io::Serializer::toString(initial);
-        if (checkNewline)
-        {
+        if (checkNewline) {
             assert(serialized.find("\"\\n\"") != std::string::npos);
         }
         std::istringstream second(serialized);
@@ -63,8 +60,7 @@ int main()
         assert(parseSecond);
 
         std::string finalText = il::io::Serializer::toString(roundTripped);
-        if (checkNewline)
-        {
+        if (checkNewline) {
             assert(finalText.find("\"\\n\"") != std::string::npos);
         }
         if (!serialized.empty() && serialized.back() == '\n')

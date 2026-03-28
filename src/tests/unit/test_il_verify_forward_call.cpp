@@ -24,8 +24,7 @@
 #include <cassert>
 #include <string>
 
-int main()
-{
+int main() {
     using namespace il::core;
 
     {
@@ -77,8 +76,7 @@ int main()
     {
         Module module;
 
-        auto makeVoidFunction = [](const std::string &name)
-        {
+        auto makeVoidFunction = [](const std::string &name) {
             Function fn;
             fn.name = name;
             fn.retType = Type(Type::Kind::Void);

@@ -46,8 +46,7 @@
 #define WORDS_FOR_BITS(n) (((n) + BITS_PER_WORD - 1) / BITS_PER_WORD)
 
 /// @brief BitSet implementation structure.
-typedef struct rt_bitset_impl
-{
+typedef struct rt_bitset_impl {
     void **vptr;       ///< Vtable pointer placeholder.
     uint64_t *words;   ///< Array of 64-bit words storing the bits.
     size_t word_count; ///< Number of words allocated.
@@ -59,8 +58,7 @@ typedef struct rt_bitset_impl
 // ---------------------------------------------------------------------------
 
 /// Popcount for a 64-bit word.
-static int popcount64(uint64_t x)
-{
+static int popcount64(uint64_t x) {
 #if defined(__GNUC__) || defined(__clang__)
     return __builtin_popcountll(x);
 #else
@@ -73,11 +71,9 @@ static int popcount64(uint64_t x)
 }
 
 /// Grow the bitset to accommodate at least `min_bits` bits.
-static void bitset_grow(rt_bitset_impl *bs, size_t min_bits)
-{
+static void bitset_grow(rt_bitset_impl *bs, size_t min_bits) {
     size_t new_word_count = WORDS_FOR_BITS(min_bits);
-    if (new_word_count <= bs->word_count)
-    {
+    if (new_word_count <= bs->word_count) {
         if (min_bits > bs->bit_count)
             bs->bit_count = min_bits;
         return;
@@ -110,8 +106,7 @@ static void bitset_grow(rt_bitset_impl *bs, size_t min_bits)
 // Finalizer
 // ---------------------------------------------------------------------------
 
-static void rt_bitset_finalize(void *obj)
-{
+static void rt_bitset_finalize(void *obj) {
     if (!obj)
         return;
     rt_bitset_impl *bs = (rt_bitset_impl *)obj;
@@ -125,8 +120,7 @@ static void rt_bitset_finalize(void *obj)
 // Public API
 // ---------------------------------------------------------------------------
 
-void *rt_bitset_new(int64_t nbits)
-{
+void *rt_bitset_new(int64_t nbits) {
     if (nbits <= 0)
         nbits = 64; // Default to 64 bits
 
@@ -137,8 +131,7 @@ void *rt_bitset_new(int64_t nbits)
     bs->vptr = NULL;
     size_t wc = WORDS_FOR_BITS((size_t)nbits);
     bs->words = (uint64_t *)calloc(wc, sizeof(uint64_t));
-    if (!bs->words)
-    {
+    if (!bs->words) {
         bs->word_count = 0;
         bs->bit_count = 0;
         rt_obj_set_finalizer(bs, rt_bitset_finalize);
@@ -150,15 +143,13 @@ void *rt_bitset_new(int64_t nbits)
     return bs;
 }
 
-int64_t rt_bitset_len(void *obj)
-{
+int64_t rt_bitset_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_bitset_impl *)obj)->bit_count;
 }
 
-int64_t rt_bitset_count(void *obj)
-{
+int64_t rt_bitset_count(void *obj) {
     if (!obj)
         return 0;
     rt_bitset_impl *bs = (rt_bitset_impl *)obj;
@@ -168,13 +159,11 @@ int64_t rt_bitset_count(void *obj)
     return total;
 }
 
-int8_t rt_bitset_is_empty(void *obj)
-{
+int8_t rt_bitset_is_empty(void *obj) {
     return rt_bitset_count(obj) == 0;
 }
 
-int8_t rt_bitset_get(void *obj, int64_t idx)
-{
+int8_t rt_bitset_get(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return 0;
     rt_bitset_impl *bs = (rt_bitset_impl *)obj;
@@ -185,8 +174,7 @@ int8_t rt_bitset_get(void *obj, int64_t idx)
     return (bs->words[w] >> b) & 1;
 }
 
-void rt_bitset_set(void *obj, int64_t idx)
-{
+void rt_bitset_set(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return;
     rt_bitset_impl *bs = (rt_bitset_impl *)obj;
@@ -198,8 +186,7 @@ void rt_bitset_set(void *obj, int64_t idx)
         bs->words[w] |= (1ULL << b);
 }
 
-void rt_bitset_clear(void *obj, int64_t idx)
-{
+void rt_bitset_clear(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return;
     rt_bitset_impl *bs = (rt_bitset_impl *)obj;
@@ -210,8 +197,7 @@ void rt_bitset_clear(void *obj, int64_t idx)
     bs->words[w] &= ~(1ULL << b);
 }
 
-void rt_bitset_toggle(void *obj, int64_t idx)
-{
+void rt_bitset_toggle(void *obj, int64_t idx) {
     if (!obj || idx < 0)
         return;
     rt_bitset_impl *bs = (rt_bitset_impl *)obj;
@@ -223,8 +209,7 @@ void rt_bitset_toggle(void *obj, int64_t idx)
         bs->words[w] ^= (1ULL << b);
 }
 
-void rt_bitset_set_all(void *obj)
-{
+void rt_bitset_set_all(void *obj) {
     if (!obj)
         return;
     rt_bitset_impl *bs = (rt_bitset_impl *)obj;
@@ -237,8 +222,7 @@ void rt_bitset_set_all(void *obj)
         bs->words[bs->word_count - 1] &= (1ULL << extra) - 1;
 }
 
-void rt_bitset_clear_all(void *obj)
-{
+void rt_bitset_clear_all(void *obj) {
     if (!obj)
         return;
     rt_bitset_impl *bs = (rt_bitset_impl *)obj;
@@ -247,8 +231,7 @@ void rt_bitset_clear_all(void *obj)
     memset(bs->words, 0, bs->word_count * sizeof(uint64_t));
 }
 
-void *rt_bitset_and(void *a, void *b)
-{
+void *rt_bitset_and(void *a, void *b) {
     if (!a || !b)
         return rt_bitset_new(64);
 
@@ -269,8 +252,7 @@ void *rt_bitset_and(void *a, void *b)
     return result;
 }
 
-void *rt_bitset_or(void *a, void *b)
-{
+void *rt_bitset_or(void *a, void *b) {
     if (!a || !b)
         return rt_bitset_new(64);
 
@@ -295,8 +277,7 @@ void *rt_bitset_or(void *a, void *b)
     return result;
 }
 
-void *rt_bitset_xor(void *a, void *b)
-{
+void *rt_bitset_xor(void *a, void *b) {
     if (!a || !b)
         return rt_bitset_new(64);
 
@@ -321,8 +302,7 @@ void *rt_bitset_xor(void *a, void *b)
     return result;
 }
 
-void *rt_bitset_not(void *obj)
-{
+void *rt_bitset_not(void *obj) {
     if (!obj)
         return rt_bitset_new(64);
 
@@ -343,8 +323,7 @@ void *rt_bitset_not(void *obj)
     return result;
 }
 
-rt_string rt_bitset_to_string(void *obj)
-{
+rt_string rt_bitset_to_string(void *obj) {
     if (!obj)
         return rt_string_from_bytes("0", 1);
 
@@ -358,8 +337,7 @@ rt_string rt_bitset_to_string(void *obj)
     if (!buf)
         return rt_string_from_bytes("0", 1);
 
-    for (size_t i = 0; i < len; ++i)
-    {
+    for (size_t i = 0; i < len; ++i) {
         size_t bit_idx = len - 1 - i;
         size_t w = bit_idx / BITS_PER_WORD;
         size_t b = bit_idx % BITS_PER_WORD;

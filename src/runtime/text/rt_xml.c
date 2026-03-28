@@ -49,8 +49,7 @@
 //=============================================================================
 
 /// @brief Internal XML node structure.
-typedef struct xml_node
-{
+typedef struct xml_node {
     rt_xml_node_type_t type; ///< Node type
     rt_string tag;           ///< Tag name (elements only)
     rt_string content;       ///< Text content (text/comment/cdata)
@@ -76,14 +75,12 @@ static void *parse_document(const char *input, size_t len);
 
 extern void rt_trap(const char *msg);
 
-static void set_error(const char *msg)
-{
+static void set_error(const char *msg) {
     strncpy(xml_last_error, msg, sizeof(xml_last_error) - 1);
     xml_last_error[sizeof(xml_last_error) - 1] = '\0';
 }
 
-static void clear_error(void)
-{
+static void clear_error(void) {
     xml_last_error[0] = '\0';
 }
 
@@ -91,42 +88,35 @@ static void clear_error(void)
 // Node Management
 //=============================================================================
 
-static void xml_node_finalizer(void *obj)
-{
+static void xml_node_finalizer(void *obj) {
     xml_node *node = (xml_node *)obj;
     if (!node)
         return;
 
     // Release tag
-    if (node->tag)
-    {
+    if (node->tag) {
         if (rt_obj_release_check0((void *)node->tag))
             rt_obj_free((void *)node->tag);
     }
 
     // Release content
-    if (node->content)
-    {
+    if (node->content) {
         if (rt_obj_release_check0((void *)node->content))
             rt_obj_free((void *)node->content);
     }
 
     // Release attributes map
-    if (node->attributes)
-    {
+    if (node->attributes) {
         if (rt_obj_release_check0(node->attributes))
             rt_obj_free(node->attributes);
     }
 
     // Release children (parent owns each child — finalizer must release them)
-    if (node->children)
-    {
+    if (node->children) {
         int64_t count = rt_seq_len(node->children);
-        for (int64_t i = 0; i < count; i++)
-        {
+        for (int64_t i = 0; i < count; i++) {
             void *child = rt_seq_get(node->children, i);
-            if (child)
-            {
+            if (child) {
                 if (rt_obj_release_check0(child))
                     rt_obj_free(child);
             }
@@ -138,8 +128,7 @@ static void xml_node_finalizer(void *obj)
     // Note: parent is a weak reference, don't release
 }
 
-static void *xml_node_new(rt_xml_node_type_t type)
-{
+static void *xml_node_new(rt_xml_node_type_t type) {
     xml_node *node = (xml_node *)rt_obj_new_i64(0, sizeof(xml_node));
     if (!node)
         return NULL;
@@ -154,24 +143,19 @@ static void *xml_node_new(rt_xml_node_type_t type)
     node->parent = NULL;
 
     // Create children seq for elements and documents
-    if (type == XML_NODE_ELEMENT || type == XML_NODE_DOCUMENT)
-    {
+    if (type == XML_NODE_ELEMENT || type == XML_NODE_DOCUMENT) {
         node->children = rt_seq_new();
-        if (!node->children)
-        {
+        if (!node->children) {
             rt_obj_free(node);
             return NULL;
         }
     }
 
     // Create attributes map for elements
-    if (type == XML_NODE_ELEMENT)
-    {
+    if (type == XML_NODE_ELEMENT) {
         node->attributes = rt_map_new();
-        if (!node->attributes)
-        {
-            if (node->children)
-            {
+        if (!node->attributes) {
+            if (node->children) {
                 rt_obj_release_check0(node->children);
                 rt_obj_free(node->children);
             }
@@ -190,8 +174,7 @@ static void *xml_node_new(rt_xml_node_type_t type)
 /* S-17: Maximum element nesting depth */
 #define XML_MAX_DEPTH 200
 
-typedef struct
-{
+typedef struct {
     const char *input;
     size_t len;
     size_t pos;
@@ -200,8 +183,7 @@ typedef struct
     int depth; // Current element nesting depth
 } xml_parser;
 
-static void parser_init(xml_parser *p, const char *input, size_t len)
-{
+static void parser_init(xml_parser *p, const char *input, size_t len) {
     p->input = input;
     p->len = len;
     p->pos = 0;
@@ -210,43 +192,35 @@ static void parser_init(xml_parser *p, const char *input, size_t len)
     p->depth = 0;
 }
 
-static bool parser_eof(xml_parser *p)
-{
+static bool parser_eof(xml_parser *p) {
     return p->pos >= p->len;
 }
 
-static char parser_peek(xml_parser *p)
-{
+static char parser_peek(xml_parser *p) {
     if (p->pos >= p->len)
         return '\0';
     return p->input[p->pos];
 }
 
-static char parser_advance(xml_parser *p)
-{
+static char parser_advance(xml_parser *p) {
     if (p->pos >= p->len)
         return '\0';
     char c = p->input[p->pos++];
-    if (c == '\n')
-    {
+    if (c == '\n') {
         p->line++;
         p->col = 1;
-    }
-    else
-    {
+    } else {
         p->col++;
     }
     return c;
 }
 
-static void parser_skip_ws(xml_parser *p)
-{
+static void parser_skip_ws(xml_parser *p) {
     while (!parser_eof(p) && isspace((unsigned char)parser_peek(p)))
         parser_advance(p);
 }
 
-static bool parser_match(xml_parser *p, const char *str)
-{
+static bool parser_match(xml_parser *p, const char *str) {
     size_t len = strlen(str);
     if (p->pos + len > p->len)
         return false;
@@ -257,8 +231,7 @@ static bool parser_match(xml_parser *p, const char *str)
     return true;
 }
 
-static bool parser_lookahead(xml_parser *p, const char *str)
-{
+static bool parser_lookahead(xml_parser *p, const char *str) {
     size_t len = strlen(str);
     if (p->pos + len > p->len)
         return false;
@@ -269,19 +242,16 @@ static bool parser_lookahead(xml_parser *p, const char *str)
 // Parsing Helpers
 //=============================================================================
 
-static bool is_name_start_char(char c)
-{
+static bool is_name_start_char(char c) {
     return isalpha((unsigned char)c) || c == '_' || c == ':';
 }
 
-static bool is_name_char(char c)
-{
+static bool is_name_char(char c) {
     return isalnum((unsigned char)c) || c == '_' || c == ':' || c == '-' || c == '.';
 }
 
 /// @brief Parse an XML name (tag name, attribute name).
-static rt_string parse_name(xml_parser *p)
-{
+static rt_string parse_name(xml_parser *p) {
     size_t start = p->pos;
 
     if (parser_eof(p) || !is_name_start_char(parser_peek(p)))
@@ -295,8 +265,7 @@ static rt_string parse_name(xml_parser *p)
 }
 
 /// @brief Decode a single character reference or entity.
-static int decode_entity(const char *str, size_t len, char *out, size_t *consumed)
-{
+static int decode_entity(const char *str, size_t len, char *out, size_t *consumed) {
     if (len < 2 || str[0] != '&')
         return 0;
 
@@ -310,14 +279,11 @@ static int decode_entity(const char *str, size_t len, char *out, size_t *consume
     *consumed = end + 1;
 
     // Character reference
-    if (str[1] == '#')
-    {
+    if (str[1] == '#') {
         unsigned int codepoint = 0;
-        if (len > 2 && str[2] == 'x')
-        {
+        if (len > 2 && str[2] == 'x') {
             // Hex
-            for (size_t i = 3; i < end; i++)
-            {
+            for (size_t i = 3; i < end; i++) {
                 char c = str[i];
                 if (c >= '0' && c <= '9')
                     codepoint = codepoint * 16 + (c - '0');
@@ -328,12 +294,9 @@ static int decode_entity(const char *str, size_t len, char *out, size_t *consume
                 else
                     return 0;
             }
-        }
-        else
-        {
+        } else {
             // Decimal
-            for (size_t i = 2; i < end; i++)
-            {
+            for (size_t i = 2; i < end; i++) {
                 char c = str[i];
                 if (c >= '0' && c <= '9')
                     codepoint = codepoint * 10 + (c - '0');
@@ -343,26 +306,19 @@ static int decode_entity(const char *str, size_t len, char *out, size_t *consume
         }
 
         // Encode as UTF-8
-        if (codepoint < 0x80)
-        {
+        if (codepoint < 0x80) {
             out[0] = (char)codepoint;
             return 1;
-        }
-        else if (codepoint < 0x800)
-        {
+        } else if (codepoint < 0x800) {
             out[0] = (char)(0xC0 | (codepoint >> 6));
             out[1] = (char)(0x80 | (codepoint & 0x3F));
             return 2;
-        }
-        else if (codepoint < 0x10000)
-        {
+        } else if (codepoint < 0x10000) {
             out[0] = (char)(0xE0 | (codepoint >> 12));
             out[1] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
             out[2] = (char)(0x80 | (codepoint & 0x3F));
             return 3;
-        }
-        else if (codepoint < 0x110000)
-        {
+        } else if (codepoint < 0x110000) {
             out[0] = (char)(0xF0 | (codepoint >> 18));
             out[1] = (char)(0x80 | ((codepoint >> 12) & 0x3F));
             out[2] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
@@ -374,28 +330,23 @@ static int decode_entity(const char *str, size_t len, char *out, size_t *consume
 
     // Named entities
     size_t name_len = end - 1;
-    if (name_len == 2 && strncmp(str + 1, "lt", 2) == 0)
-    {
+    if (name_len == 2 && strncmp(str + 1, "lt", 2) == 0) {
         out[0] = '<';
         return 1;
     }
-    if (name_len == 2 && strncmp(str + 1, "gt", 2) == 0)
-    {
+    if (name_len == 2 && strncmp(str + 1, "gt", 2) == 0) {
         out[0] = '>';
         return 1;
     }
-    if (name_len == 3 && strncmp(str + 1, "amp", 3) == 0)
-    {
+    if (name_len == 3 && strncmp(str + 1, "amp", 3) == 0) {
         out[0] = '&';
         return 1;
     }
-    if (name_len == 4 && strncmp(str + 1, "quot", 4) == 0)
-    {
+    if (name_len == 4 && strncmp(str + 1, "quot", 4) == 0) {
         out[0] = '"';
         return 1;
     }
-    if (name_len == 4 && strncmp(str + 1, "apos", 4) == 0)
-    {
+    if (name_len == 4 && strncmp(str + 1, "apos", 4) == 0) {
         out[0] = '\'';
         return 1;
     }
@@ -404,8 +355,7 @@ static int decode_entity(const char *str, size_t len, char *out, size_t *consume
 }
 
 /// @brief Parse attribute value (quoted string with entity decoding).
-static rt_string parse_attr_value(xml_parser *p)
-{
+static rt_string parse_attr_value(xml_parser *p) {
     char quote = parser_peek(p);
     if (quote != '"' && quote != '\'')
         return NULL;
@@ -414,15 +364,12 @@ static rt_string parse_attr_value(xml_parser *p)
     // First pass: calculate decoded length
     size_t start = p->pos;
     size_t decoded_len = 0;
-    while (!parser_eof(p) && parser_peek(p) != quote)
-    {
-        if (parser_peek(p) == '&')
-        {
+    while (!parser_eof(p) && parser_peek(p) != quote) {
+        if (parser_peek(p) == '&') {
             char buf[4];
             size_t consumed;
             int n = decode_entity(p->input + p->pos, p->len - p->pos, buf, &consumed);
-            if (n > 0)
-            {
+            if (n > 0) {
                 decoded_len += n;
                 p->pos += consumed;
                 continue;
@@ -439,15 +386,12 @@ static rt_string parse_attr_value(xml_parser *p)
         return NULL;
 
     size_t out_pos = 0;
-    while (!parser_eof(p) && parser_peek(p) != quote)
-    {
-        if (parser_peek(p) == '&')
-        {
+    while (!parser_eof(p) && parser_peek(p) != quote) {
+        if (parser_peek(p) == '&') {
             char decoded[4];
             size_t consumed;
             int n = decode_entity(p->input + p->pos, p->len - p->pos, decoded, &consumed);
-            if (n > 0)
-            {
+            if (n > 0) {
                 memcpy(buf + out_pos, decoded, n);
                 out_pos += n;
                 p->pos += consumed;
@@ -468,21 +412,17 @@ static rt_string parse_attr_value(xml_parser *p)
 }
 
 /// @brief Parse text content with entity decoding.
-static rt_string parse_text_content(xml_parser *p)
-{
+static rt_string parse_text_content(xml_parser *p) {
     size_t start = p->pos;
 
     // First pass: find end and calculate decoded length
     size_t decoded_len = 0;
-    while (!parser_eof(p) && parser_peek(p) != '<')
-    {
-        if (parser_peek(p) == '&')
-        {
+    while (!parser_eof(p) && parser_peek(p) != '<') {
+        if (parser_peek(p) == '&') {
             char buf[4];
             size_t consumed;
             int n = decode_entity(p->input + p->pos, p->len - p->pos, buf, &consumed);
-            if (n > 0)
-            {
+            if (n > 0) {
                 decoded_len += n;
                 p->pos += consumed;
                 continue;
@@ -502,15 +442,12 @@ static rt_string parse_text_content(xml_parser *p)
         return NULL;
 
     size_t out_pos = 0;
-    while (!parser_eof(p) && parser_peek(p) != '<')
-    {
-        if (parser_peek(p) == '&')
-        {
+    while (!parser_eof(p) && parser_peek(p) != '<') {
+        if (parser_peek(p) == '&') {
             char decoded[4];
             size_t consumed;
             int n = decode_entity(p->input + p->pos, p->len - p->pos, decoded, &consumed);
-            if (n > 0)
-            {
+            if (n > 0) {
                 memcpy(buf + out_pos, decoded, n);
                 out_pos += n;
                 p->pos += consumed;
@@ -533,8 +470,7 @@ static rt_string parse_text_content(xml_parser *p)
 static void *parse_node(xml_parser *p);
 
 /// @brief Parse a comment: <!-- ... -->
-static void *parse_comment(xml_parser *p)
-{
+static void *parse_comment(xml_parser *p) {
     if (!parser_match(p, "<!--"))
         return NULL;
 
@@ -544,8 +480,7 @@ static void *parse_comment(xml_parser *p)
 
     size_t len = p->pos - start;
 
-    if (!parser_match(p, "-->"))
-    {
+    if (!parser_match(p, "-->")) {
         set_error("Unterminated comment");
         return NULL;
     }
@@ -560,8 +495,7 @@ static void *parse_comment(xml_parser *p)
 }
 
 /// @brief Parse a CDATA section: <![CDATA[ ... ]]>
-static void *parse_cdata(xml_parser *p)
-{
+static void *parse_cdata(xml_parser *p) {
     if (!parser_match(p, "<![CDATA["))
         return NULL;
 
@@ -571,8 +505,7 @@ static void *parse_cdata(xml_parser *p)
 
     size_t len = p->pos - start;
 
-    if (!parser_match(p, "]]>"))
-    {
+    if (!parser_match(p, "]]>")) {
         set_error("Unterminated CDATA section");
         return NULL;
     }
@@ -587,16 +520,14 @@ static void *parse_cdata(xml_parser *p)
 }
 
 /// @brief Parse processing instruction: <?target ... ?>
-static bool skip_processing_instruction(xml_parser *p)
-{
+static bool skip_processing_instruction(xml_parser *p) {
     if (!parser_match(p, "<?"))
         return false;
 
     while (!parser_eof(p) && !parser_lookahead(p, "?>"))
         parser_advance(p);
 
-    if (!parser_match(p, "?>"))
-    {
+    if (!parser_match(p, "?>")) {
         set_error("Unterminated processing instruction");
         return false;
     }
@@ -605,16 +536,14 @@ static bool skip_processing_instruction(xml_parser *p)
 }
 
 /// @brief Parse DOCTYPE declaration (skip it)
-static bool skip_doctype(xml_parser *p)
-{
+static bool skip_doctype(xml_parser *p) {
     if (!parser_lookahead(p, "<!DOCTYPE"))
         return false;
 
     parser_match(p, "<!DOCTYPE");
 
     int depth = 1;
-    while (!parser_eof(p) && depth > 0)
-    {
+    while (!parser_eof(p) && depth > 0) {
         char c = parser_peek(p);
         if (c == '<')
             depth++;
@@ -627,34 +556,29 @@ static bool skip_doctype(xml_parser *p)
 }
 
 /// @brief Parse an element: <tag attr="value">...</tag>
-static void *parse_element(xml_parser *p)
-{
+static void *parse_element(xml_parser *p) {
     /* S-17: Reject excessively nested documents */
-    if (p->depth >= XML_MAX_DEPTH)
-    {
+    if (p->depth >= XML_MAX_DEPTH) {
         set_error("element nesting depth limit exceeded");
         return NULL;
     }
     p->depth++;
 
-    if (!parser_match(p, "<"))
-    {
+    if (!parser_match(p, "<")) {
         p->depth--;
         return NULL;
     }
 
     // Parse tag name
     rt_string tag = parse_name(p);
-    if (!tag)
-    {
+    if (!tag) {
         p->depth--;
         set_error("Expected element name");
         return NULL;
     }
 
     void *node = xml_node_new(XML_NODE_ELEMENT);
-    if (!node)
-    {
+    if (!node) {
         p->depth--;
         if (rt_obj_release_check0((void *)tag))
             rt_obj_free((void *)tag);
@@ -665,27 +589,23 @@ static void *parse_element(xml_parser *p)
     elem->tag = tag;
 
     // Parse attributes
-    for (;;)
-    {
+    for (;;) {
         parser_skip_ws(p);
 
         // Check for end of opening tag
-        if (parser_lookahead(p, "/>"))
-        {
+        if (parser_lookahead(p, "/>")) {
             parser_match(p, "/>");
             p->depth--;
             return node; // Self-closing
         }
-        if (parser_lookahead(p, ">"))
-        {
+        if (parser_lookahead(p, ">")) {
             parser_match(p, ">");
             break; // Continue to content
         }
 
         // Parse attribute
         rt_string attr_name = parse_name(p);
-        if (!attr_name)
-        {
+        if (!attr_name) {
             p->depth--;
             set_error("Expected attribute name or tag end");
             if (rt_obj_release_check0(node))
@@ -694,8 +614,7 @@ static void *parse_element(xml_parser *p)
         }
 
         parser_skip_ws(p);
-        if (!parser_match(p, "="))
-        {
+        if (!parser_match(p, "=")) {
             p->depth--;
             set_error("Expected '=' in attribute");
             if (rt_obj_release_check0((void *)attr_name))
@@ -707,8 +626,7 @@ static void *parse_element(xml_parser *p)
         parser_skip_ws(p);
 
         rt_string attr_value = parse_attr_value(p);
-        if (!attr_value)
-        {
+        if (!attr_value) {
             p->depth--;
             set_error("Expected attribute value");
             if (rt_obj_release_check0((void *)attr_name))
@@ -728,11 +646,9 @@ static void *parse_element(xml_parser *p)
     }
 
     // Parse content
-    while (!parser_eof(p))
-    {
+    while (!parser_eof(p)) {
         // Check for end tag
-        if (parser_lookahead(p, "</"))
-        {
+        if (parser_lookahead(p, "</")) {
             parser_match(p, "</");
             rt_string end_tag = parse_name(p);
             parser_skip_ws(p);
@@ -741,8 +657,7 @@ static void *parse_element(xml_parser *p)
             // Verify tag match
             const char *start_tag_str = rt_string_cstr(elem->tag);
             const char *end_tag_str = rt_string_cstr(end_tag);
-            if (strcmp(start_tag_str, end_tag_str) != 0)
-            {
+            if (strcmp(start_tag_str, end_tag_str) != 0) {
                 char err[128];
                 snprintf(
                     err, sizeof(err), "Mismatched tags: <%s> vs </%s>", start_tag_str, end_tag_str);
@@ -762,15 +677,12 @@ static void *parse_element(xml_parser *p)
 
         // Parse child node
         void *child = parse_node(p);
-        if (child)
-        {
+        if (child) {
             xml_node *child_node = (xml_node *)child;
             child_node->parent = elem;
             rt_seq_push(elem->children, child);
             // Ownership transferred to elem; its finalizer will release child
-        }
-        else if (xml_last_error[0] != '\0')
-        {
+        } else if (xml_last_error[0] != '\0') {
             // Parse error occurred
             p->depth--;
             if (rt_obj_release_check0(node))
@@ -784,8 +696,7 @@ static void *parse_element(xml_parser *p)
 }
 
 /// @brief Parse any node type.
-static void *parse_node(xml_parser *p)
-{
+static void *parse_node(xml_parser *p) {
     parser_skip_ws(p);
 
     if (parser_eof(p))
@@ -800,15 +711,13 @@ static void *parse_node(xml_parser *p)
         return parse_cdata(p);
 
     // Processing instruction (skip)
-    if (parser_lookahead(p, "<?"))
-    {
+    if (parser_lookahead(p, "<?")) {
         skip_processing_instruction(p);
         return parse_node(p);
     }
 
     // DOCTYPE (skip)
-    if (parser_lookahead(p, "<!DOCTYPE"))
-    {
+    if (parser_lookahead(p, "<!DOCTYPE")) {
         skip_doctype(p);
         return parse_node(p);
     }
@@ -819,30 +728,25 @@ static void *parse_node(xml_parser *p)
 
     // Text content
     rt_string text = parse_text_content(p);
-    if (text)
-    {
+    if (text) {
         // Skip whitespace-only text nodes
         const char *s = rt_string_cstr(text);
         bool all_ws = true;
-        for (size_t i = 0; s[i]; i++)
-        {
-            if (!isspace((unsigned char)s[i]))
-            {
+        for (size_t i = 0; s[i]; i++) {
+            if (!isspace((unsigned char)s[i])) {
                 all_ws = false;
                 break;
             }
         }
 
-        if (all_ws)
-        {
+        if (all_ws) {
             if (rt_obj_release_check0((void *)text))
                 rt_obj_free((void *)text);
             return NULL;
         }
 
         void *node = xml_node_new(XML_NODE_TEXT);
-        if (!node)
-        {
+        if (!node) {
             if (rt_obj_release_check0((void *)text))
                 rt_obj_free((void *)text);
             return NULL;
@@ -856,8 +760,7 @@ static void *parse_node(xml_parser *p)
 }
 
 /// @brief Parse complete document.
-static void *parse_document(const char *input, size_t len)
-{
+static void *parse_document(const char *input, size_t len) {
     clear_error();
 
     xml_parser p;
@@ -870,22 +773,18 @@ static void *parse_document(const char *input, size_t len)
     xml_node *doc_node = (xml_node *)doc;
 
     // Parse all root-level nodes
-    while (!parser_eof(&p))
-    {
+    while (!parser_eof(&p)) {
         parser_skip_ws(&p);
         if (parser_eof(&p))
             break;
 
         void *node = parse_node(&p);
-        if (node)
-        {
+        if (node) {
             xml_node *n = (xml_node *)node;
             n->parent = doc_node;
             rt_seq_push(doc_node->children, node);
             // Ownership transferred to doc; its finalizer will release node
-        }
-        else if (xml_last_error[0] != '\0')
-        {
+        } else if (xml_last_error[0] != '\0') {
             // Parse error
             if (rt_obj_release_check0(doc))
                 rt_obj_free(doc);
@@ -900,10 +799,8 @@ static void *parse_document(const char *input, size_t len)
 // Public API - Parsing
 //=============================================================================
 
-void *rt_xml_parse(rt_string text)
-{
-    if (!text || rt_str_len(text) == 0)
-    {
+void *rt_xml_parse(rt_string text) {
+    if (!text || rt_str_len(text) == 0) {
         set_error("Empty XML input");
         return NULL;
     }
@@ -914,16 +811,13 @@ void *rt_xml_parse(rt_string text)
     return parse_document(cstr, (size_t)len);
 }
 
-rt_string rt_xml_error(void)
-{
+rt_string rt_xml_error(void) {
     return rt_string_from_bytes(xml_last_error, strlen(xml_last_error));
 }
 
-int8_t rt_xml_is_valid(rt_string text)
-{
+int8_t rt_xml_is_valid(rt_string text) {
     void *doc = rt_xml_parse(text);
-    if (doc)
-    {
+    if (doc) {
         if (rt_obj_release_check0(doc))
             rt_obj_free(doc);
         return 1;
@@ -935,8 +829,7 @@ int8_t rt_xml_is_valid(rt_string text)
 // Public API - Node Creation
 //=============================================================================
 
-void *rt_xml_element(rt_string tag)
-{
+void *rt_xml_element(rt_string tag) {
     if (!tag)
         return NULL;
 
@@ -950,8 +843,7 @@ void *rt_xml_element(rt_string tag)
     return node;
 }
 
-void *rt_xml_text(rt_string content)
-{
+void *rt_xml_text(rt_string content) {
     void *node = xml_node_new(XML_NODE_TEXT);
     if (!node)
         return NULL;
@@ -963,8 +855,7 @@ void *rt_xml_text(rt_string content)
     return node;
 }
 
-void *rt_xml_comment(rt_string content)
-{
+void *rt_xml_comment(rt_string content) {
     void *node = xml_node_new(XML_NODE_COMMENT);
     if (!node)
         return NULL;
@@ -976,8 +867,7 @@ void *rt_xml_comment(rt_string content)
     return node;
 }
 
-void *rt_xml_cdata(rt_string content)
-{
+void *rt_xml_cdata(rt_string content) {
     void *node = xml_node_new(XML_NODE_CDATA);
     if (!node)
         return NULL;
@@ -993,16 +883,14 @@ void *rt_xml_cdata(rt_string content)
 // Public API - Node Properties
 //=============================================================================
 
-int64_t rt_xml_node_type(void *node)
-{
+int64_t rt_xml_node_type(void *node) {
     if (!node)
         return 0;
     xml_node *n = (xml_node *)node;
     return (int64_t)n->type;
 }
 
-rt_string rt_xml_tag(void *node)
-{
+rt_string rt_xml_tag(void *node) {
     if (!node)
         return rt_str_empty();
     xml_node *n = (xml_node *)node;
@@ -1012,8 +900,7 @@ rt_string rt_xml_tag(void *node)
     return n->tag;
 }
 
-rt_string rt_xml_content(void *node)
-{
+rt_string rt_xml_content(void *node) {
     if (!node)
         return rt_str_empty();
     xml_node *n = (xml_node *)node;
@@ -1024,17 +911,14 @@ rt_string rt_xml_content(void *node)
 }
 
 /* O-04: Helper that appends all text content to a builder, avoiding O(n²) concat */
-static void collect_text_content(void *node, rt_string_builder *sb)
-{
+static void collect_text_content(void *node, rt_string_builder *sb) {
     if (!node)
         return;
 
     xml_node *n = (xml_node *)node;
 
-    if (n->type == XML_NODE_TEXT || n->type == XML_NODE_CDATA)
-    {
-        if (n->content)
-        {
+    if (n->type == XML_NODE_TEXT || n->type == XML_NODE_CDATA) {
+        if (n->content) {
             const char *cstr = rt_string_cstr(n->content);
             if (cstr)
                 rt_sb_append_cstr(sb, cstr);
@@ -1049,26 +933,22 @@ static void collect_text_content(void *node, rt_string_builder *sb)
         return;
 
     int64_t count = rt_seq_len(n->children);
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         void *child = rt_seq_get(n->children, i);
         collect_text_content(child, sb);
         // rt_seq_get returns a borrowed reference — do not release
     }
 }
 
-rt_string rt_xml_text_content(void *node)
-{
+rt_string rt_xml_text_content(void *node) {
     if (!node)
         return rt_str_empty();
 
     xml_node *n = (xml_node *)node;
 
     // For text/cdata nodes, return content directly
-    if (n->type == XML_NODE_TEXT || n->type == XML_NODE_CDATA)
-    {
-        if (n->content)
-        {
+    if (n->type == XML_NODE_TEXT || n->type == XML_NODE_CDATA) {
+        if (n->content) {
             rt_obj_retain_maybe((void *)n->content);
             return n->content;
         }
@@ -1094,8 +974,7 @@ rt_string rt_xml_text_content(void *node)
 // Public API - Attributes
 //=============================================================================
 
-rt_string rt_xml_attr(void *node, rt_string name)
-{
+rt_string rt_xml_attr(void *node, rt_string name) {
     if (!node || !name)
         return rt_str_empty();
 
@@ -1111,8 +990,7 @@ rt_string rt_xml_attr(void *node, rt_string name)
     return (rt_string)value;
 }
 
-int8_t rt_xml_has_attr(void *node, rt_string name)
-{
+int8_t rt_xml_has_attr(void *node, rt_string name) {
     if (!node || !name)
         return 0;
 
@@ -1123,8 +1001,7 @@ int8_t rt_xml_has_attr(void *node, rt_string name)
     return rt_map_has(n->attributes, name);
 }
 
-void rt_xml_set_attr(void *node, rt_string name, rt_string value)
-{
+void rt_xml_set_attr(void *node, rt_string name, rt_string value) {
     if (!node || !name)
         return;
 
@@ -1135,8 +1012,7 @@ void rt_xml_set_attr(void *node, rt_string name, rt_string value)
     rt_map_set(n->attributes, name, (void *)value);
 }
 
-int8_t rt_xml_remove_attr(void *node, rt_string name)
-{
+int8_t rt_xml_remove_attr(void *node, rt_string name) {
     if (!node || !name)
         return 0;
 
@@ -1147,8 +1023,7 @@ int8_t rt_xml_remove_attr(void *node, rt_string name)
     return rt_map_remove(n->attributes, name);
 }
 
-void *rt_xml_attr_names(void *node)
-{
+void *rt_xml_attr_names(void *node) {
     if (!node)
         return rt_seq_new();
 
@@ -1163,8 +1038,7 @@ void *rt_xml_attr_names(void *node)
 // Public API - Children
 //=============================================================================
 
-void *rt_xml_children(void *node)
-{
+void *rt_xml_children(void *node) {
     if (!node)
         return rt_seq_new();
 
@@ -1175,8 +1049,7 @@ void *rt_xml_children(void *node)
     // Return a copy of the children seq
     void *copy = rt_seq_new();
     int64_t count = rt_seq_len(n->children);
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         void *child = rt_seq_get(n->children, i);
         rt_seq_push(copy, child);
         // Borrowed reference — parent owns child, do not release
@@ -1184,8 +1057,7 @@ void *rt_xml_children(void *node)
     return copy;
 }
 
-int64_t rt_xml_child_count(void *node)
-{
+int64_t rt_xml_child_count(void *node) {
     if (!node)
         return 0;
 
@@ -1196,8 +1068,7 @@ int64_t rt_xml_child_count(void *node)
     return rt_seq_len(n->children);
 }
 
-void *rt_xml_child_at(void *node, int64_t index)
-{
+void *rt_xml_child_at(void *node, int64_t index) {
     if (!node || index < 0)
         return NULL;
 
@@ -1208,8 +1079,7 @@ void *rt_xml_child_at(void *node, int64_t index)
     return rt_seq_get(n->children, index);
 }
 
-void *rt_xml_child(void *node, rt_string tag)
-{
+void *rt_xml_child(void *node, rt_string tag) {
     if (!node || !tag)
         return NULL;
 
@@ -1220,13 +1090,11 @@ void *rt_xml_child(void *node, rt_string tag)
     const char *target = rt_string_cstr(tag);
     int64_t count = rt_seq_len(n->children);
 
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         void *child = rt_seq_get(n->children, i);
         xml_node *cn = (xml_node *)child;
 
-        if (cn->type == XML_NODE_ELEMENT && cn->tag)
-        {
+        if (cn->type == XML_NODE_ELEMENT && cn->tag) {
             const char *child_tag = rt_string_cstr(cn->tag);
             if (strcmp(child_tag, target) == 0)
                 return child; // Borrowed reference — caller must not release
@@ -1237,8 +1105,7 @@ void *rt_xml_child(void *node, rt_string tag)
     return NULL;
 }
 
-void *rt_xml_children_by_tag(void *node, rt_string tag)
-{
+void *rt_xml_children_by_tag(void *node, rt_string tag) {
     void *result = rt_seq_new();
     if (!node || !tag)
         return result;
@@ -1250,16 +1117,13 @@ void *rt_xml_children_by_tag(void *node, rt_string tag)
     const char *target = rt_string_cstr(tag);
     int64_t count = rt_seq_len(n->children);
 
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         void *child = rt_seq_get(n->children, i);
         xml_node *cn = (xml_node *)child;
 
-        if (cn->type == XML_NODE_ELEMENT && cn->tag)
-        {
+        if (cn->type == XML_NODE_ELEMENT && cn->tag) {
             const char *child_tag = rt_string_cstr(cn->tag);
-            if (strcmp(child_tag, target) == 0)
-            {
+            if (strcmp(child_tag, target) == 0) {
                 rt_seq_push(result, child);
             }
         }
@@ -1269,8 +1133,7 @@ void *rt_xml_children_by_tag(void *node, rt_string tag)
     return result;
 }
 
-void rt_xml_append(void *node, void *child)
-{
+void rt_xml_append(void *node, void *child) {
     if (!node || !child)
         return;
 
@@ -1284,8 +1147,7 @@ void rt_xml_append(void *node, void *child)
     rt_seq_push(n->children, child);
 }
 
-void rt_xml_insert(void *node, int64_t index, void *child)
-{
+void rt_xml_insert(void *node, int64_t index, void *child) {
     if (!node || !child || index < 0)
         return;
 
@@ -1302,8 +1164,7 @@ void rt_xml_insert(void *node, int64_t index, void *child)
     rt_seq_insert(n->children, index, child);
 }
 
-int8_t rt_xml_remove(void *node, void *child)
-{
+int8_t rt_xml_remove(void *node, void *child) {
     if (!node || !child)
         return 0;
 
@@ -1319,16 +1180,14 @@ int8_t rt_xml_remove(void *node, void *child)
     cn->parent = NULL;
 
     void *removed = rt_seq_remove(n->children, idx);
-    if (removed)
-    {
+    if (removed) {
         if (rt_obj_release_check0(removed))
             rt_obj_free(removed);
     }
     return 1;
 }
 
-void rt_xml_remove_at(void *node, int64_t index)
-{
+void rt_xml_remove_at(void *node, int64_t index) {
     if (!node || index < 0)
         return;
 
@@ -1337,24 +1196,21 @@ void rt_xml_remove_at(void *node, int64_t index)
         return;
 
     void *child = rt_seq_get(n->children, index);
-    if (child)
-    {
+    if (child) {
         xml_node *cn = (xml_node *)child;
         cn->parent = NULL;
         // Don't release here — ownership stays until seq_remove
     }
 
     void *removed = rt_seq_remove(n->children, index);
-    if (removed)
-    {
+    if (removed) {
         // Parent relinquishes ownership: release the child now
         if (rt_obj_release_check0(removed))
             rt_obj_free(removed);
     }
 }
 
-void rt_xml_set_text(void *node, rt_string text)
-{
+void rt_xml_set_text(void *node, rt_string text) {
     if (!node)
         return;
 
@@ -1363,13 +1219,10 @@ void rt_xml_set_text(void *node, rt_string text)
         return;
 
     // Clear existing children
-    if (n->children)
-    {
-        while (rt_seq_len(n->children) > 0)
-        {
+    if (n->children) {
+        while (rt_seq_len(n->children) > 0) {
             void *removed = rt_seq_remove(n->children, 0);
-            if (removed)
-            {
+            if (removed) {
                 if (rt_obj_release_check0(removed))
                     rt_obj_free(removed);
             }
@@ -1377,11 +1230,9 @@ void rt_xml_set_text(void *node, rt_string text)
     }
 
     // Add text node
-    if (text && rt_str_len(text) > 0)
-    {
+    if (text && rt_str_len(text) > 0) {
         void *text_node = rt_xml_text(text);
-        if (text_node)
-        {
+        if (text_node) {
             xml_node *tn = (xml_node *)text_node;
             tn->parent = n;
             rt_seq_push(n->children, text_node);
@@ -1394,8 +1245,7 @@ void rt_xml_set_text(void *node, rt_string text)
 // Public API - Navigation
 //=============================================================================
 
-void *rt_xml_parent(void *node)
-{
+void *rt_xml_parent(void *node) {
     if (!node)
         return NULL;
 
@@ -1407,8 +1257,7 @@ void *rt_xml_parent(void *node)
     return n->parent;
 }
 
-void *rt_xml_root(void *doc)
-{
+void *rt_xml_root(void *doc) {
     if (!doc)
         return NULL;
 
@@ -1418,8 +1267,7 @@ void *rt_xml_root(void *doc)
 
     // Find first element child
     int64_t count = rt_seq_len(n->children);
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         void *child = rt_seq_get(n->children, i);
         xml_node *cn = (xml_node *)child;
         if (cn->type == XML_NODE_ELEMENT)
@@ -1430,27 +1278,22 @@ void *rt_xml_root(void *doc)
     return NULL;
 }
 
-static void find_all_recursive(void *node, const char *tag, void *result)
-{
+static void find_all_recursive(void *node, const char *tag, void *result) {
     xml_node *n = (xml_node *)node;
 
     // Check this node
-    if (n->type == XML_NODE_ELEMENT && n->tag)
-    {
+    if (n->type == XML_NODE_ELEMENT && n->tag) {
         const char *node_tag = rt_string_cstr(n->tag);
-        if (strcmp(node_tag, tag) == 0)
-        {
+        if (strcmp(node_tag, tag) == 0) {
             rt_obj_retain_maybe(node);
             rt_seq_push(result, node);
         }
     }
 
     // Recurse into children
-    if (n->children)
-    {
+    if (n->children) {
         int64_t count = rt_seq_len(n->children);
-        for (int64_t i = 0; i < count; i++)
-        {
+        for (int64_t i = 0; i < count; i++) {
             void *child = rt_seq_get(n->children, i);
             find_all_recursive(child, tag, result);
             // Borrowed reference — parent owns child, do not release
@@ -1458,8 +1301,7 @@ static void find_all_recursive(void *node, const char *tag, void *result)
     }
 }
 
-void *rt_xml_find_all(void *node, rt_string tag)
-{
+void *rt_xml_find_all(void *node, rt_string tag) {
     void *result = rt_seq_new();
     if (!node || !tag)
         return result;
@@ -1469,27 +1311,22 @@ void *rt_xml_find_all(void *node, rt_string tag)
     return result;
 }
 
-static void *find_first_recursive(void *node, const char *tag)
-{
+static void *find_first_recursive(void *node, const char *tag) {
     xml_node *n = (xml_node *)node;
 
     // Check this node
-    if (n->type == XML_NODE_ELEMENT && n->tag)
-    {
+    if (n->type == XML_NODE_ELEMENT && n->tag) {
         const char *node_tag = rt_string_cstr(n->tag);
-        if (strcmp(node_tag, tag) == 0)
-        {
+        if (strcmp(node_tag, tag) == 0) {
             rt_obj_retain_maybe(node);
             return node;
         }
     }
 
     // Recurse into children
-    if (n->children)
-    {
+    if (n->children) {
         int64_t count = rt_seq_len(n->children);
-        for (int64_t i = 0; i < count; i++)
-        {
+        for (int64_t i = 0; i < count; i++) {
             void *child = rt_seq_get(n->children, i);
             void *found = find_first_recursive(child, tag);
             // Borrowed reference — parent owns child, do not release
@@ -1501,8 +1338,7 @@ static void *find_first_recursive(void *node, const char *tag)
     return NULL;
 }
 
-void *rt_xml_find(void *node, rt_string tag)
-{
+void *rt_xml_find(void *node, rt_string tag) {
     if (!node || !tag)
         return NULL;
 
@@ -1516,11 +1352,9 @@ void *rt_xml_find(void *node, rt_string tag)
 
 static void format_node(void *node, int indent, int level, char **buf, size_t *cap, size_t *len);
 
-static void buf_append(char **buf, size_t *cap, size_t *len, const char *str)
-{
+static void buf_append(char **buf, size_t *cap, size_t *len, const char *str) {
     size_t slen = strlen(str);
-    while (*len + slen + 1 > *cap)
-    {
+    while (*len + slen + 1 > *cap) {
         size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
         char *tmp = (char *)realloc(*buf, new_cap);
         if (!tmp)
@@ -1533,10 +1367,8 @@ static void buf_append(char **buf, size_t *cap, size_t *len, const char *str)
     (*buf)[*len] = '\0';
 }
 
-static void buf_append_char(char **buf, size_t *cap, size_t *len, char c)
-{
-    if (*len + 2 > *cap)
-    {
+static void buf_append_char(char **buf, size_t *cap, size_t *len, char c) {
+    if (*len + 2 > *cap) {
         size_t new_cap = (*cap == 0) ? 256 : (*cap * 2);
         char *tmp = (char *)realloc(*buf, new_cap);
         if (!tmp)
@@ -1549,18 +1381,15 @@ static void buf_append_char(char **buf, size_t *cap, size_t *len, char c)
     (*buf)[*len] = '\0';
 }
 
-static void buf_append_indent(char **buf, size_t *cap, size_t *len, int spaces)
-{
+static void buf_append_indent(char **buf, size_t *cap, size_t *len, int spaces) {
     for (int i = 0; i < spaces; i++)
         buf_append_char(buf, cap, len, ' ');
 }
 
-static void buf_append_escaped(char **buf, size_t *cap, size_t *len, const char *str, int for_attr)
-{
-    for (size_t i = 0; str[i]; i++)
-    {
-        switch (str[i])
-        {
+static void buf_append_escaped(
+    char **buf, size_t *cap, size_t *len, const char *str, int for_attr) {
+    for (size_t i = 0; str[i]; i++) {
+        switch (str[i]) {
             case '&':
                 buf_append(buf, cap, len, "&amp;");
                 break;
@@ -1590,8 +1419,7 @@ static void buf_append_escaped(char **buf, size_t *cap, size_t *len, const char 
 }
 
 static void format_element(
-    xml_node *elem, int indent, int level, char **buf, size_t *cap, size_t *len)
-{
+    xml_node *elem, int indent, int level, char **buf, size_t *cap, size_t *len) {
     // Indentation
     if (indent > 0 && level > 0)
         buf_append_indent(buf, cap, len, indent * level);
@@ -1601,12 +1429,10 @@ static void format_element(
     buf_append(buf, cap, len, rt_string_cstr(elem->tag));
 
     // Attributes
-    if (elem->attributes)
-    {
+    if (elem->attributes) {
         void *keys = rt_map_keys(elem->attributes);
         int64_t nkeys = rt_seq_len(keys);
-        for (int64_t i = 0; i < nkeys; i++)
-        {
+        for (int64_t i = 0; i < nkeys; i++) {
             void *key = rt_seq_get(keys, i);
             void *val = rt_map_get(elem->attributes, (rt_string)key);
 
@@ -1623,8 +1449,7 @@ static void format_element(
 
     // Check for children
     int64_t nchildren = elem->children ? rt_seq_len(elem->children) : 0;
-    if (nchildren == 0)
-    {
+    if (nchildren == 0) {
         buf_append(buf, cap, len, "/>");
         if (indent > 0)
             buf_append_char(buf, cap, len, '\n');
@@ -1635,8 +1460,7 @@ static void format_element(
 
     // Check if only text content
     bool text_only = true;
-    for (int64_t i = 0; i < nchildren; i++)
-    {
+    for (int64_t i = 0; i < nchildren; i++) {
         void *child = rt_seq_get(elem->children, i);
         xml_node *cn = (xml_node *)child;
         if (cn->type != XML_NODE_TEXT && cn->type != XML_NODE_CDATA)
@@ -1650,8 +1474,7 @@ static void format_element(
         buf_append_char(buf, cap, len, '\n');
 
     // Children
-    for (int64_t i = 0; i < nchildren; i++)
-    {
+    for (int64_t i = 0; i < nchildren; i++) {
         void *child = rt_seq_get(elem->children, i);
         format_node(child, text_only ? 0 : indent, level + 1, buf, cap, len);
         // Borrowed reference — parent owns child, do not release
@@ -1667,12 +1490,10 @@ static void format_element(
         buf_append_char(buf, cap, len, '\n');
 }
 
-static void format_node(void *node, int indent, int level, char **buf, size_t *cap, size_t *len)
-{
+static void format_node(void *node, int indent, int level, char **buf, size_t *cap, size_t *len) {
     xml_node *n = (xml_node *)node;
 
-    switch (n->type)
-    {
+    switch (n->type) {
         case XML_NODE_ELEMENT:
             format_element(n, indent, level, buf, cap, len);
             break;
@@ -1701,11 +1522,9 @@ static void format_node(void *node, int indent, int level, char **buf, size_t *c
             break;
 
         case XML_NODE_DOCUMENT:
-            if (n->children)
-            {
+            if (n->children) {
                 int64_t count = rt_seq_len(n->children);
-                for (int64_t i = 0; i < count; i++)
-                {
+                for (int64_t i = 0; i < count; i++) {
                     void *child = rt_seq_get(n->children, i);
                     format_node(child, indent, 0, buf, cap, len);
                     // Borrowed reference — parent owns child, do not release
@@ -1715,8 +1534,7 @@ static void format_node(void *node, int indent, int level, char **buf, size_t *c
     }
 }
 
-rt_string rt_xml_format(void *node)
-{
+rt_string rt_xml_format(void *node) {
     if (!node)
         return rt_str_empty();
 
@@ -1730,8 +1548,7 @@ rt_string rt_xml_format(void *node)
     return result;
 }
 
-rt_string rt_xml_format_pretty(void *node, int64_t indent)
-{
+rt_string rt_xml_format_pretty(void *node, int64_t indent) {
     if (!node)
         return rt_str_empty();
 
@@ -1758,8 +1575,7 @@ rt_string rt_xml_format_pretty(void *node, int64_t indent)
 // Public API - Utility
 //=============================================================================
 
-rt_string rt_xml_escape(rt_string text)
-{
+rt_string rt_xml_escape(rt_string text) {
     if (!text)
         return rt_str_empty();
 
@@ -1774,8 +1590,7 @@ rt_string rt_xml_escape(rt_string text)
     return result;
 }
 
-rt_string rt_xml_unescape(rt_string text)
-{
+rt_string rt_xml_unescape(rt_string text) {
     if (!text)
         return rt_str_empty();
 
@@ -1787,15 +1602,12 @@ rt_string rt_xml_unescape(rt_string text)
         return rt_str_empty();
 
     size_t out = 0;
-    for (size_t i = 0; i < src_len;)
-    {
-        if (src[i] == '&')
-        {
+    for (size_t i = 0; i < src_len;) {
+        if (src[i] == '&') {
             char decoded[4];
             size_t consumed;
             int n = decode_entity(src + i, src_len - i, decoded, &consumed);
-            if (n > 0)
-            {
+            if (n > 0) {
                 memcpy(buf + out, decoded, n);
                 out += n;
                 i += consumed;

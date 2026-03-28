@@ -17,8 +17,7 @@
 
 #include "frontends/common/StringTable.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Backward-compatible alias for the shared string interning table.
 /// @details The aliased type manages string literal deduplication and

@@ -21,11 +21,9 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-int64_t runCastUiNarrow(Type::Kind targetKind, uint64_t input)
-{
+int64_t runCastUiNarrow(Type::Kind targetKind, uint64_t input) {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(targetKind), {});
@@ -53,8 +51,7 @@ int64_t runCastUiNarrow(Type::Kind targetKind, uint64_t input)
 
 } // namespace
 
-int main()
-{
+int main() {
     const int64_t u16Value = runCastUiNarrow(Type::Kind::I16, UINT64_C(65535));
     assert(u16Value == static_cast<int64_t>(UINT16_C(65535)));
 

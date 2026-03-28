@@ -29,22 +29,18 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Compile Zia source and return the result.
-CompilerResult compileSource(const std::string &source, SourceManager &sm)
-{
+CompilerResult compileSource(const std::string &source, SourceManager &sm) {
     CompilerInput input{.source = source, .path = "sema_test.zia"};
     CompilerOptions opts{};
     return compile(input, opts, sm);
 }
 
 /// @brief Check if any error diagnostic contains the given substring.
-bool hasErrorContaining(const CompilerResult &result, const std::string &needle)
-{
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
+bool hasErrorContaining(const CompilerResult &result, const std::string &needle) {
+    for (const auto &d : result.diagnostics.diagnostics()) {
         if (d.severity == Severity::Error && d.message.find(needle) != std::string::npos)
             return true;
     }
@@ -52,10 +48,8 @@ bool hasErrorContaining(const CompilerResult &result, const std::string &needle)
 }
 
 /// @brief Dump diagnostics to stderr for debugging.
-static void dumpDiags(const CompilerResult &result)
-{
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
+static void dumpDiags(const CompilerResult &result) {
+    for (const auto &d : result.diagnostics.diagnostics()) {
         std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                   << d.message << "\n";
     }
@@ -66,8 +60,7 @@ static void dumpDiags(const CompilerResult &result)
 //===----------------------------------------------------------------------===//
 
 /// @brief var x = 42 should infer Integer type and compile successfully.
-TEST(ZiaSema, TypeInferenceInteger)
-{
+TEST(ZiaSema, TypeInferenceInteger) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -83,8 +76,7 @@ func start() {
 }
 
 /// @brief var s = "hello" should infer String; var b = true should infer Boolean.
-TEST(ZiaSema, TypeInferenceStringAndBoolean)
-{
+TEST(ZiaSema, TypeInferenceStringAndBoolean) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -106,8 +98,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief String.Length and List.count() should resolve correctly.
-TEST(ZiaSema, BuiltinMethodResolution)
-{
+TEST(ZiaSema, BuiltinMethodResolution) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -132,8 +123,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief List[Integer] generic type should compile and allow typed operations.
-TEST(ZiaSema, GenericListInteger)
-{
+TEST(ZiaSema, GenericListInteger) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -152,8 +142,7 @@ func start() {
 }
 
 /// @brief List[String] should work with string element operations.
-TEST(ZiaSema, GenericListString)
-{
+TEST(ZiaSema, GenericListString) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -175,8 +164,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Optional entity with coalesce operator should compile.
-TEST(ZiaSema, OptionalCoalesce)
-{
+TEST(ZiaSema, OptionalCoalesce) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -204,8 +192,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Assigning a String to an Integer variable should fail with a type error.
-TEST(ZiaSema, TypeMismatchStringToInteger)
-{
+TEST(ZiaSema, TypeMismatchStringToInteger) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -218,8 +205,7 @@ func start() {
 }
 
 /// @brief Assigning a Boolean to a String variable should fail.
-TEST(ZiaSema, TypeMismatchBooleanToString)
-{
+TEST(ZiaSema, TypeMismatchBooleanToString) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -232,8 +218,7 @@ func start() {
 }
 
 /// @brief Assigning an Integer to a Boolean variable should fail.
-TEST(ZiaSema, TypeMismatchIntegerToBoolean)
-{
+TEST(ZiaSema, TypeMismatchIntegerToBoolean) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -251,8 +236,7 @@ func start() {
 
 /// @brief Accessing exposed entity fields should compile. Accessing fields
 ///        through method returns should also work.
-TEST(ZiaSema, EntityFieldAccess)
-{
+TEST(ZiaSema, EntityFieldAccess) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -284,8 +268,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Entity methods with parameters and return values should resolve.
-TEST(ZiaSema, EntityMethodCalls)
-{
+TEST(ZiaSema, EntityMethodCalls) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -322,8 +305,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Entity implementing an interface should compile and dispatch correctly.
-TEST(ZiaSema, InterfaceImplementation)
-{
+TEST(ZiaSema, InterfaceImplementation) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -362,8 +344,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Integer to Number coercion should be allowed implicitly.
-TEST(ZiaSema, NumericCoercion)
-{
+TEST(ZiaSema, NumericCoercion) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -385,8 +366,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Compound boolean expressions with &&, ||, and ! should type-check.
-TEST(ZiaSema, BooleanExpressions)
-{
+TEST(ZiaSema, BooleanExpressions) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -411,8 +391,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief String + String concatenation should produce a String.
-TEST(ZiaSema, StringConcatenation)
-{
+TEST(ZiaSema, StringConcatenation) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -434,8 +413,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Variables declared in inner scopes should shadow outer variables.
-TEST(ZiaSema, NestedScopeShadowing)
-{
+TEST(ZiaSema, NestedScopeShadowing) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -460,8 +438,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Functions with explicit return types should enforce the return type.
-TEST(ZiaSema, FunctionReturnTypeValid)
-{
+TEST(ZiaSema, FunctionReturnTypeValid) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -495,8 +472,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief All return paths must return the declared type.
-TEST(ZiaSema, MultipleReturnPaths)
-{
+TEST(ZiaSema, MultipleReturnPaths) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -528,8 +504,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Recursive function calls should be type-checked correctly.
-TEST(ZiaSema, RecursiveFunctionTypeCheck)
-{
+TEST(ZiaSema, RecursiveFunctionTypeCheck) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -556,8 +531,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Entity fields using generic types should compile.
-TEST(ZiaSema, EntityWithGenericField)
-{
+TEST(ZiaSema, EntityWithGenericField) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -593,8 +567,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Referencing an undefined variable should produce a diagnostic error.
-TEST(ZiaSema, UndefinedVariableError)
-{
+TEST(ZiaSema, UndefinedVariableError) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -611,8 +584,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Derived entity should have access to base entity fields.
-TEST(ZiaSema, InheritanceFieldAccess)
-{
+TEST(ZiaSema, InheritanceFieldAccess) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -648,8 +620,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief for-in loop variable should be inferred from the collection element type.
-TEST(ZiaSema, ForInLoopTypeInference)
-{
+TEST(ZiaSema, ForInLoopTypeInference) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -671,8 +642,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Arithmetic operations on inferred integer types should work.
-TEST(ZiaSema, ArithmeticOnInferredTypes)
-{
+TEST(ZiaSema, ArithmeticOnInferredTypes) {
     SourceManager sm;
     auto result = compileSource(R"(
 module Test;
@@ -699,8 +669,7 @@ func start() {
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

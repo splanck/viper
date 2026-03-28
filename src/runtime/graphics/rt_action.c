@@ -53,8 +53,7 @@ extern int64_t rt_unbox_i64(void *box);
 //=========================================================================
 
 // Binding source types
-typedef enum
-{
+typedef enum {
     BIND_NONE = 0,
     BIND_KEY,             // Keyboard key
     BIND_MOUSE_BUTTON,    // Mouse button
@@ -72,8 +71,7 @@ typedef enum
 #define MAX_CHORD_KEYS 8
 
 // A single input binding
-typedef struct Binding
-{
+typedef struct Binding {
     BindingType type;
     int64_t code;      // Key/button/axis code
     int64_t pad_index; // Controller index (-1 for any)
@@ -85,8 +83,7 @@ typedef struct Binding
 } Binding;
 
 // An action (button or axis)
-typedef struct Action
-{
+typedef struct Action {
     char *name;
     int8_t is_axis;
     Binding *bindings;
@@ -106,13 +103,11 @@ static int8_t g_initialized = 0;
 // Internal Helpers
 //=========================================================================
 
-static Action *find_action(const char *name)
-{
+static Action *find_action(const char *name) {
     if (!name)
         return NULL;
     Action *a = g_actions;
-    while (a)
-    {
+    while (a) {
         if (strcmp(a->name, name) == 0)
             return a;
         a = a->next;
@@ -120,16 +115,14 @@ static Action *find_action(const char *name)
     return NULL;
 }
 
-static Action *find_action_str(rt_string name)
-{
+static Action *find_action_str(rt_string name) {
     if (!name)
         return NULL;
     int64_t name_len = rt_str_len(name);
     const char *name_data = name->data;
 
     Action *a = g_actions;
-    while (a)
-    {
+    while (a) {
         size_t a_len = strlen(a->name);
         if ((int64_t)a_len == name_len && memcmp(a->name, name_data, a_len) == 0)
             return a;
@@ -138,8 +131,7 @@ static Action *find_action_str(rt_string name)
     return NULL;
 }
 
-static char *strdup_rt_string(rt_string s)
-{
+static char *strdup_rt_string(rt_string s) {
     if (!s)
         return NULL;
     int64_t len = rt_str_len(s);
@@ -153,28 +145,23 @@ static char *strdup_rt_string(rt_string s)
     return result;
 }
 
-static void free_bindings(Binding *b)
-{
-    while (b)
-    {
+static void free_bindings(Binding *b) {
+    while (b) {
         Binding *next = b->next;
         free(b);
         b = next;
     }
 }
 
-static void free_action(Action *a)
-{
-    if (a)
-    {
+static void free_action(Action *a) {
+    if (a) {
         free(a->name);
         free_bindings(a->bindings);
         free(a);
     }
 }
 
-static Binding *create_binding(BindingType type, int64_t code, int64_t pad_index, double value)
-{
+static Binding *create_binding(BindingType type, int64_t code, int64_t pad_index, double value) {
     Binding *b = (Binding *)malloc(sizeof(Binding));
     if (!b)
         return NULL;
@@ -186,21 +173,17 @@ static Binding *create_binding(BindingType type, int64_t code, int64_t pad_index
     return b;
 }
 
-static void add_binding(Action *action, Binding *binding)
-{
+static void add_binding(Action *action, Binding *binding) {
     binding->next = action->bindings;
     action->bindings = binding;
 }
 
 // Remove a binding matching type/code/pad_index
-static int8_t remove_binding(Action *action, BindingType type, int64_t code, int64_t pad_index)
-{
+static int8_t remove_binding(Action *action, BindingType type, int64_t code, int64_t pad_index) {
     Binding **pp = &action->bindings;
-    while (*pp)
-    {
+    while (*pp) {
         Binding *b = *pp;
-        if (b->type == type && b->code == code && b->pad_index == pad_index)
-        {
+        if (b->type == type && b->code == code && b->pad_index == pad_index) {
             *pp = b->next;
             free(b);
             return 1;
@@ -211,45 +194,36 @@ static int8_t remove_binding(Action *action, BindingType type, int64_t code, int
 }
 
 // Check if a key is down this frame
-static int8_t key_held(int64_t key)
-{
+static int8_t key_held(int64_t key) {
     return rt_keyboard_is_down(key);
 }
 
-static int8_t key_pressed(int64_t key)
-{
+static int8_t key_pressed(int64_t key) {
     return rt_keyboard_was_pressed(key);
 }
 
-static int8_t key_released(int64_t key)
-{
+static int8_t key_released(int64_t key) {
     return rt_keyboard_was_released(key);
 }
 
 // Check if a mouse button is down
-static int8_t mouse_held(int64_t button)
-{
+static int8_t mouse_held(int64_t button) {
     return rt_mouse_is_down(button);
 }
 
-static int8_t mouse_pressed(int64_t button)
-{
+static int8_t mouse_pressed(int64_t button) {
     return rt_mouse_was_pressed(button);
 }
 
-static int8_t mouse_released(int64_t button)
-{
+static int8_t mouse_released(int64_t button) {
     return rt_mouse_was_released(button);
 }
 
 // Check if a pad button is down
-static int8_t pad_held(int64_t pad_index, int64_t button)
-{
-    if (pad_index < 0)
-    {
+static int8_t pad_held(int64_t pad_index, int64_t button) {
+    if (pad_index < 0) {
         // Any controller
-        for (int64_t i = 0; i < 4; i++)
-        {
+        for (int64_t i = 0; i < 4; i++) {
             if (rt_pad_is_connected(i) && rt_pad_is_down(i, button))
                 return 1;
         }
@@ -258,12 +232,9 @@ static int8_t pad_held(int64_t pad_index, int64_t button)
     return rt_pad_is_down(pad_index, button);
 }
 
-static int8_t pad_pressed(int64_t pad_index, int64_t button)
-{
-    if (pad_index < 0)
-    {
-        for (int64_t i = 0; i < 4; i++)
-        {
+static int8_t pad_pressed(int64_t pad_index, int64_t button) {
+    if (pad_index < 0) {
+        for (int64_t i = 0; i < 4; i++) {
             if (rt_pad_is_connected(i) && rt_pad_was_pressed(i, button))
                 return 1;
         }
@@ -272,12 +243,9 @@ static int8_t pad_pressed(int64_t pad_index, int64_t button)
     return rt_pad_was_pressed(pad_index, button);
 }
 
-static int8_t pad_released(int64_t pad_index, int64_t button)
-{
-    if (pad_index < 0)
-    {
-        for (int64_t i = 0; i < 4; i++)
-        {
+static int8_t pad_released(int64_t pad_index, int64_t button) {
+    if (pad_index < 0) {
+        for (int64_t i = 0; i < 4; i++) {
             if (rt_pad_is_connected(i) && rt_pad_was_released(i, button))
                 return 1;
         }
@@ -287,18 +255,14 @@ static int8_t pad_released(int64_t pad_index, int64_t button)
 }
 
 // Get gamepad axis value
-static double pad_axis_value(int64_t pad_index, int64_t axis)
-{
-    if (pad_index < 0)
-    {
+static double pad_axis_value(int64_t pad_index, int64_t axis) {
+    if (pad_index < 0) {
         // Return value from first connected controller with non-zero input
-        for (int64_t i = 0; i < 4; i++)
-        {
+        for (int64_t i = 0; i < 4; i++) {
             if (!rt_pad_is_connected(i))
                 continue;
             double v = 0.0;
-            switch (axis)
-            {
+            switch (axis) {
                 case VIPER_AXIS_LEFT_X:
                     v = rt_pad_left_x(i);
                     break;
@@ -327,8 +291,7 @@ static double pad_axis_value(int64_t pad_index, int64_t axis)
     if (!rt_pad_is_connected(pad_index))
         return 0.0;
 
-    switch (axis)
-    {
+    switch (axis) {
         case VIPER_AXIS_LEFT_X:
             return rt_pad_left_x(pad_index);
         case VIPER_AXIS_LEFT_Y:
@@ -347,8 +310,7 @@ static double pad_axis_value(int64_t pad_index, int64_t axis)
 }
 
 // Clamp value to -1.0 to 1.0
-static double clamp_axis(double value)
-{
+static double clamp_axis(double value) {
     if (value < -1.0)
         return -1.0;
     if (value > 1.0)
@@ -363,8 +325,7 @@ static double clamp_axis(double value)
 /// @brief Initialize the global action mapping system.
 /// @details Must be called once before any action operations. Clears all state.
 ///   Called automatically by the Viper runtime startup.
-void rt_action_init(void)
-{
+void rt_action_init(void) {
     RT_ASSERT_MAIN_THREAD();
     if (g_initialized)
         return;
@@ -372,8 +333,7 @@ void rt_action_init(void)
     g_initialized = 1;
 }
 
-void rt_action_shutdown(void)
-{
+void rt_action_shutdown(void) {
     RT_ASSERT_MAIN_THREAD();
     rt_action_clear();
     g_initialized = 0;
@@ -385,33 +345,26 @@ void rt_action_shutdown(void)
 ///   and axis values. Must be called exactly once per frame, AFTER rt_canvas_poll()
 ///   has processed input events. Action.Pressed(), Action.Held(), and Action.Axis()
 ///   return values computed by this function.
-void rt_action_update(void)
-{
+void rt_action_update(void) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_initialized)
         return;
 
     Action *a = g_actions;
-    while (a)
-    {
+    while (a) {
         a->pressed = 0;
         a->released = 0;
         a->held = 0;
         a->axis_value = 0.0;
 
         Binding *b = a->bindings;
-        while (b)
-        {
-            switch (b->type)
-            {
+        while (b) {
+            switch (b->type) {
                 case BIND_KEY:
-                    if (a->is_axis)
-                    {
+                    if (a->is_axis) {
                         if (key_held(b->code))
                             a->axis_value += b->value;
-                    }
-                    else
-                    {
+                    } else {
                         if (key_pressed(b->code))
                             a->pressed = 1;
                         if (key_released(b->code))
@@ -422,8 +375,7 @@ void rt_action_update(void)
                     break;
 
                 case BIND_MOUSE_BUTTON:
-                    if (!a->is_axis)
-                    {
+                    if (!a->is_axis) {
                         if (mouse_pressed(b->code))
                             a->pressed = 1;
                         if (mouse_released(b->code))
@@ -454,8 +406,7 @@ void rt_action_update(void)
                     break;
 
                 case BIND_PAD_BUTTON:
-                    if (!a->is_axis)
-                    {
+                    if (!a->is_axis) {
                         if (pad_pressed(b->pad_index, b->code))
                             a->pressed = 1;
                         if (pad_released(b->pad_index, b->code))
@@ -471,32 +422,27 @@ void rt_action_update(void)
                     break;
 
                 case BIND_PAD_BUTTON_AXIS:
-                    if (a->is_axis)
-                    {
+                    if (a->is_axis) {
                         if (pad_held(b->pad_index, b->code))
                             a->axis_value += b->value;
                     }
                     break;
 
                 case BIND_CHORD:
-                    if (!a->is_axis && b->chord_len > 0)
-                    {
+                    if (!a->is_axis && b->chord_len > 0) {
                         // All chord keys must be held
                         int8_t all_held = 1;
                         int8_t any_pressed = 0;
                         int32_t i;
-                        for (i = 0; i < b->chord_len; i++)
-                        {
-                            if (!key_held(b->chord_keys[i]))
-                            {
+                        for (i = 0; i < b->chord_len; i++) {
+                            if (!key_held(b->chord_keys[i])) {
                                 all_held = 0;
                                 break;
                             }
                             if (key_pressed(b->chord_keys[i]))
                                 any_pressed = 1;
                         }
-                        if (all_held)
-                        {
+                        if (all_held) {
                             a->held = 1;
                             // Chord is "pressed" when all keys held and at least one
                             // was newly pressed this frame
@@ -516,12 +462,10 @@ void rt_action_update(void)
     }
 }
 
-void rt_action_clear(void)
-{
+void rt_action_clear(void) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = g_actions;
-    while (a)
-    {
+    while (a) {
         Action *next = a->next;
         free_action(a);
         a = next;
@@ -538,8 +482,7 @@ void rt_action_clear(void)
 ///   be unique. After defining, bind physical inputs with BindKey(), BindMouse(), etc.
 /// @param name Action name string (e.g., "jump", "fire"). Max 63 characters.
 /// @return 1 on success, 0 if name is empty, already exists, or allocation fails.
-int8_t rt_action_define(rt_string name)
-{
+int8_t rt_action_define(rt_string name) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_initialized)
         rt_action_init();
@@ -555,8 +498,7 @@ int8_t rt_action_define(rt_string name)
         return 0;
 
     a->name = strdup_rt_string(name);
-    if (!a->name)
-    {
+    if (!a->name) {
         free(a);
         return 0;
     }
@@ -571,8 +513,7 @@ int8_t rt_action_define(rt_string name)
     return 1;
 }
 
-int8_t rt_action_define_axis(rt_string name)
-{
+int8_t rt_action_define_axis(rt_string name) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_initialized)
         rt_action_init();
@@ -588,8 +529,7 @@ int8_t rt_action_define_axis(rt_string name)
         return 0;
 
     a->name = strdup_rt_string(name);
-    if (!a->name)
-    {
+    if (!a->name) {
         free(a);
         return 0;
     }
@@ -604,21 +544,18 @@ int8_t rt_action_define_axis(rt_string name)
     return 1;
 }
 
-int8_t rt_action_exists(rt_string name)
-{
+int8_t rt_action_exists(rt_string name) {
     RT_ASSERT_MAIN_THREAD();
     return find_action_str(name) != NULL;
 }
 
-int8_t rt_action_is_axis(rt_string name)
-{
+int8_t rt_action_is_axis(rt_string name) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(name);
     return a ? a->is_axis : 0;
 }
 
-int8_t rt_action_remove(rt_string name)
-{
+int8_t rt_action_remove(rt_string name) {
     RT_ASSERT_MAIN_THREAD();
     if (!name)
         return 0;
@@ -627,12 +564,10 @@ int8_t rt_action_remove(rt_string name)
     const char *name_data = name->data;
 
     Action **pp = &g_actions;
-    while (*pp)
-    {
+    while (*pp) {
         Action *a = *pp;
         size_t a_len = strlen(a->name);
-        if ((int64_t)a_len == name_len && memcmp(a->name, name_data, a_len) == 0)
-        {
+        if ((int64_t)a_len == name_len && memcmp(a->name, name_data, a_len) == 0) {
             *pp = a->next;
             free_action(a);
             return 1;
@@ -646,8 +581,7 @@ int8_t rt_action_remove(rt_string name)
 // Keyboard Bindings
 //=========================================================================
 
-int8_t rt_action_bind_key(rt_string action, int64_t key)
-{
+int8_t rt_action_bind_key(rt_string action, int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || a->is_axis)
@@ -659,8 +593,7 @@ int8_t rt_action_bind_key(rt_string action, int64_t key)
     return 1;
 }
 
-int8_t rt_action_bind_key_axis(rt_string action, int64_t key, double value)
-{
+int8_t rt_action_bind_key_axis(rt_string action, int64_t key, double value) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
@@ -672,8 +605,7 @@ int8_t rt_action_bind_key_axis(rt_string action, int64_t key, double value)
     return 1;
 }
 
-int8_t rt_action_unbind_key(rt_string action, int64_t key)
-{
+int8_t rt_action_unbind_key(rt_string action, int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
@@ -685,8 +617,7 @@ int8_t rt_action_unbind_key(rt_string action, int64_t key)
 // Key Chord/Combo Bindings
 //=========================================================================
 
-int8_t rt_action_bind_chord(rt_string action, void *keys)
-{
+int8_t rt_action_bind_chord(rt_string action, void *keys) {
     RT_ASSERT_MAIN_THREAD();
     int64_t len, i;
     Binding *b;
@@ -712,8 +643,7 @@ int8_t rt_action_bind_chord(rt_string action, void *keys)
     return 1;
 }
 
-int8_t rt_action_unbind_chord(rt_string action, void *keys)
-{
+int8_t rt_action_unbind_chord(rt_string action, void *keys) {
     RT_ASSERT_MAIN_THREAD();
     int64_t len, i;
     Binding **pp;
@@ -726,22 +656,17 @@ int8_t rt_action_unbind_chord(rt_string action, void *keys)
         return 0;
 
     pp = &a->bindings;
-    while (*pp)
-    {
+    while (*pp) {
         Binding *b = *pp;
-        if (b->type == BIND_CHORD && b->chord_len == (int32_t)len)
-        {
+        if (b->type == BIND_CHORD && b->chord_len == (int32_t)len) {
             int8_t match = 1;
-            for (i = 0; i < len; i++)
-            {
-                if (b->chord_keys[i] != rt_unbox_i64(rt_seq_get(keys, i)))
-                {
+            for (i = 0; i < len; i++) {
+                if (b->chord_keys[i] != rt_unbox_i64(rt_seq_get(keys, i))) {
                     match = 0;
                     break;
                 }
             }
-            if (match)
-            {
+            if (match) {
                 *pp = b->next;
                 free(b);
                 return 1;
@@ -752,8 +677,7 @@ int8_t rt_action_unbind_chord(rt_string action, void *keys)
     return 0;
 }
 
-int64_t rt_action_chord_count(rt_string action)
-{
+int64_t rt_action_chord_count(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     int64_t count = 0;
     Binding *b;
@@ -762,8 +686,7 @@ int64_t rt_action_chord_count(rt_string action)
         return 0;
 
     b = a->bindings;
-    while (b)
-    {
+    while (b) {
         if (b->type == BIND_CHORD)
             count++;
         b = b->next;
@@ -775,8 +698,7 @@ int64_t rt_action_chord_count(rt_string action)
 // Mouse Bindings
 //=========================================================================
 
-int8_t rt_action_bind_mouse(rt_string action, int64_t button)
-{
+int8_t rt_action_bind_mouse(rt_string action, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || a->is_axis)
@@ -788,8 +710,7 @@ int8_t rt_action_bind_mouse(rt_string action, int64_t button)
     return 1;
 }
 
-int8_t rt_action_unbind_mouse(rt_string action, int64_t button)
-{
+int8_t rt_action_unbind_mouse(rt_string action, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
@@ -797,8 +718,7 @@ int8_t rt_action_unbind_mouse(rt_string action, int64_t button)
     return remove_binding(a, BIND_MOUSE_BUTTON, button, 0);
 }
 
-int8_t rt_action_bind_mouse_x(rt_string action, double sensitivity)
-{
+int8_t rt_action_bind_mouse_x(rt_string action, double sensitivity) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
@@ -810,8 +730,7 @@ int8_t rt_action_bind_mouse_x(rt_string action, double sensitivity)
     return 1;
 }
 
-int8_t rt_action_bind_mouse_y(rt_string action, double sensitivity)
-{
+int8_t rt_action_bind_mouse_y(rt_string action, double sensitivity) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
@@ -823,8 +742,7 @@ int8_t rt_action_bind_mouse_y(rt_string action, double sensitivity)
     return 1;
 }
 
-int8_t rt_action_bind_scroll_x(rt_string action, double sensitivity)
-{
+int8_t rt_action_bind_scroll_x(rt_string action, double sensitivity) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
@@ -836,8 +754,7 @@ int8_t rt_action_bind_scroll_x(rt_string action, double sensitivity)
     return 1;
 }
 
-int8_t rt_action_bind_scroll_y(rt_string action, double sensitivity)
-{
+int8_t rt_action_bind_scroll_y(rt_string action, double sensitivity) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
@@ -853,8 +770,7 @@ int8_t rt_action_bind_scroll_y(rt_string action, double sensitivity)
 // Gamepad Bindings
 //=========================================================================
 
-int8_t rt_action_bind_pad_button(rt_string action, int64_t pad_index, int64_t button)
-{
+int8_t rt_action_bind_pad_button(rt_string action, int64_t pad_index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || a->is_axis)
@@ -866,8 +782,7 @@ int8_t rt_action_bind_pad_button(rt_string action, int64_t pad_index, int64_t bu
     return 1;
 }
 
-int8_t rt_action_unbind_pad_button(rt_string action, int64_t pad_index, int64_t button)
-{
+int8_t rt_action_unbind_pad_button(rt_string action, int64_t pad_index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
@@ -875,8 +790,7 @@ int8_t rt_action_unbind_pad_button(rt_string action, int64_t pad_index, int64_t 
     return remove_binding(a, BIND_PAD_BUTTON, button, pad_index);
 }
 
-int8_t rt_action_bind_pad_axis(rt_string action, int64_t pad_index, int64_t axis, double scale)
-{
+int8_t rt_action_bind_pad_axis(rt_string action, int64_t pad_index, int64_t axis, double scale) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
@@ -888,8 +802,7 @@ int8_t rt_action_bind_pad_axis(rt_string action, int64_t pad_index, int64_t axis
     return 1;
 }
 
-int8_t rt_action_unbind_pad_axis(rt_string action, int64_t pad_index, int64_t axis)
-{
+int8_t rt_action_unbind_pad_axis(rt_string action, int64_t pad_index, int64_t axis) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
@@ -900,8 +813,7 @@ int8_t rt_action_unbind_pad_axis(rt_string action, int64_t pad_index, int64_t ax
 int8_t rt_action_bind_pad_button_axis(rt_string action,
                                       int64_t pad_index,
                                       int64_t button,
-                                      double value)
-{
+                                      double value) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a || !a->is_axis)
@@ -923,8 +835,7 @@ int8_t rt_action_bind_pad_button_axis(rt_string action,
 ///   that should trigger once per press, not continuously.
 /// @param action Name of the action (e.g., "jump"). Must be defined first.
 /// @return 1 if pressed this frame, 0 otherwise.
-int8_t rt_action_pressed(rt_string action)
-{
+int8_t rt_action_pressed(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     return a ? a->pressed : 0;
@@ -935,8 +846,7 @@ int8_t rt_action_pressed(rt_string action)
 ///   from held to not-held. Use for "on key up" behaviors.
 /// @param action Action name.
 /// @return 1 if released this frame, 0 otherwise.
-int8_t rt_action_released(rt_string action)
-{
+int8_t rt_action_released(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     return a ? a->released : 0;
@@ -947,8 +857,7 @@ int8_t rt_action_released(rt_string action)
 ///   charging, or any continuous action.
 /// @param action Action name.
 /// @return 1 if held, 0 if not.
-int8_t rt_action_held(rt_string action)
-{
+int8_t rt_action_held(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     return a ? a->held : 0;
@@ -959,8 +868,7 @@ int8_t rt_action_held(rt_string action)
 ///   when released. For analog inputs (gamepad triggers), returns the axis value.
 /// @param action Action name.
 /// @return Strength value in [0.0, 1.0].
-double rt_action_strength(rt_string action)
-{
+double rt_action_strength(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     return a && a->held ? 1.0 : 0.0;
@@ -976,8 +884,7 @@ double rt_action_strength(rt_string action)
 ///   (typically ±1.0). The result is clamped to [-1.0, 1.0].
 /// @param action Action name (must be defined as axis with DefineAxis).
 /// @return Axis value clamped to [-1.0, 1.0], or 0.0 if action not found.
-double rt_action_axis(rt_string action)
-{
+double rt_action_axis(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     return a ? clamp_axis(a->axis_value) : 0.0;
@@ -988,8 +895,7 @@ double rt_action_axis(rt_string action)
 ///   [-1.0, 1.0] when multiple bindings contribute simultaneously.
 /// @param action Action name.
 /// @return Raw accumulated axis value, or 0.0 if not found.
-double rt_action_axis_raw(rt_string action)
-{
+double rt_action_axis_raw(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     return a ? a->axis_value : 0.0;
@@ -999,13 +905,11 @@ double rt_action_axis_raw(rt_string action)
 // Binding Introspection
 //=========================================================================
 
-void *rt_action_list(void)
-{
+void *rt_action_list(void) {
     RT_ASSERT_MAIN_THREAD();
     void *seq = rt_seq_new();
     Action *a = g_actions;
-    while (a)
-    {
+    while (a) {
         rt_string name = rt_string_from_bytes(a->name, strlen(a->name));
         rt_seq_push(seq, (void *)name);
         a = a->next;
@@ -1013,8 +917,7 @@ void *rt_action_list(void)
     return seq;
 }
 
-rt_string rt_action_bindings_str(rt_string action)
-{
+rt_string rt_action_bindings_str(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
@@ -1027,10 +930,8 @@ rt_string rt_action_bindings_str(rt_string action)
     int first = 1;
 
     Binding *b = a->bindings;
-    while (b && pos < 1000)
-    {
-        if (!first && pos < 998)
-        {
+    while (b && pos < 1000) {
+        if (!first && pos < 998) {
             buffer[pos++] = ',';
             buffer[pos++] = ' ';
         }
@@ -1039,27 +940,21 @@ rt_string rt_action_bindings_str(rt_string action)
         const char *desc = "";
         char temp[64];
 
-        switch (b->type)
-        {
-            case BIND_KEY:
-            {
+        switch (b->type) {
+            case BIND_KEY: {
                 rt_string key_name = rt_keyboard_key_name(b->code);
                 int64_t key_len = rt_str_len(key_name);
-                if (key_len > 0 && key_len < 60)
-                {
+                if (key_len > 0 && key_len < 60) {
                     memcpy(temp, key_name->data, (size_t)key_len);
                     temp[key_len] = '\0';
                     desc = temp;
-                }
-                else
-                {
+                } else {
                     desc = "Key";
                 }
                 break;
             }
             case BIND_MOUSE_BUTTON:
-                switch (b->code)
-                {
+                switch (b->code) {
                     case VIPER_MOUSE_BUTTON_LEFT:
                         desc = "Mouse Left";
                         break;
@@ -1088,8 +983,7 @@ rt_string rt_action_bindings_str(rt_string action)
                 break;
             case BIND_PAD_BUTTON:
             case BIND_PAD_BUTTON_AXIS:
-                switch (b->code)
-                {
+                switch (b->code) {
                     case VIPER_PAD_A:
                         desc = "Pad A";
                         break;
@@ -1132,8 +1026,7 @@ rt_string rt_action_bindings_str(rt_string action)
                 }
                 break;
             case BIND_PAD_AXIS:
-                switch (b->code)
-                {
+                switch (b->code) {
                     case VIPER_AXIS_LEFT_X:
                         desc = "Left Stick X";
                         break;
@@ -1157,20 +1050,17 @@ rt_string rt_action_bindings_str(rt_string action)
                         break;
                 }
                 break;
-            case BIND_CHORD:
-            {
+            case BIND_CHORD: {
                 // Build "Key1+Key2+Key3" style description
                 int ci;
                 int tpos = 0;
                 temp[0] = '\0';
-                for (ci = 0; ci < b->chord_len && tpos < 58; ci++)
-                {
+                for (ci = 0; ci < b->chord_len && tpos < 58; ci++) {
                     if (ci > 0 && tpos < 57)
                         temp[tpos++] = '+';
                     rt_string kn = rt_keyboard_key_name(b->chord_keys[ci]);
                     int64_t kl = rt_str_len(kn);
-                    if (kl > 0 && tpos + kl < 60)
-                    {
+                    if (kl > 0 && tpos + kl < 60) {
                         memcpy(temp + tpos, kn->data, (size_t)kl);
                         tpos += (int)kl;
                     }
@@ -1185,8 +1075,7 @@ rt_string rt_action_bindings_str(rt_string action)
         }
 
         size_t len = strlen(desc);
-        if (pos + (int)len < 1000)
-        {
+        if (pos + (int)len < 1000) {
             memcpy(buffer + pos, desc, len);
             pos += (int)len;
         }
@@ -1198,8 +1087,7 @@ rt_string rt_action_bindings_str(rt_string action)
     return rt_string_from_bytes(buffer, (size_t)pos);
 }
 
-int64_t rt_action_binding_count(rt_string action)
-{
+int64_t rt_action_binding_count(rt_string action) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = find_action_str(action);
     if (!a)
@@ -1207,8 +1095,7 @@ int64_t rt_action_binding_count(rt_string action)
 
     int64_t count = 0;
     Binding *b = a->bindings;
-    while (b)
-    {
+    while (b) {
         count++;
         b = b->next;
     }
@@ -1219,15 +1106,12 @@ int64_t rt_action_binding_count(rt_string action)
 // Conflict Detection
 //=========================================================================
 
-rt_string rt_action_key_bound_to(int64_t key)
-{
+rt_string rt_action_key_bound_to(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = g_actions;
-    while (a)
-    {
+    while (a) {
         Binding *b = a->bindings;
-        while (b)
-        {
+        while (b) {
             if (b->type == BIND_KEY && b->code == key)
                 return rt_string_from_bytes(a->name, strlen(a->name));
             b = b->next;
@@ -1237,15 +1121,12 @@ rt_string rt_action_key_bound_to(int64_t key)
     return rt_str_empty();
 }
 
-rt_string rt_action_mouse_bound_to(int64_t button)
-{
+rt_string rt_action_mouse_bound_to(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = g_actions;
-    while (a)
-    {
+    while (a) {
         Binding *b = a->bindings;
-        while (b)
-        {
+        while (b) {
             if (b->type == BIND_MOUSE_BUTTON && b->code == button)
                 return rt_string_from_bytes(a->name, strlen(a->name));
             b = b->next;
@@ -1255,15 +1136,12 @@ rt_string rt_action_mouse_bound_to(int64_t button)
     return rt_str_empty();
 }
 
-rt_string rt_action_pad_button_bound_to(int64_t pad_index, int64_t button)
-{
+rt_string rt_action_pad_button_bound_to(int64_t pad_index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     Action *a = g_actions;
-    while (a)
-    {
+    while (a) {
         Binding *b = a->bindings;
-        while (b)
-        {
+        while (b) {
             if ((b->type == BIND_PAD_BUTTON || b->type == BIND_PAD_BUTTON_AXIS) &&
                 b->code == button && (b->pad_index == pad_index || b->pad_index == -1))
                 return rt_string_from_bytes(a->name, strlen(a->name));
@@ -1278,16 +1156,14 @@ rt_string rt_action_pad_button_bound_to(int64_t pad_index, int64_t button)
 // Preset Helpers (internal — work with C strings, no rt_string allocation)
 //=========================================================================
 
-static Action *define_action_cstr(const char *name, int8_t is_axis)
-{
+static Action *define_action_cstr(const char *name, int8_t is_axis) {
     if (find_action(name))
         return NULL; /* Already exists — skip silently */
     Action *a = (Action *)malloc(sizeof(Action));
     if (!a)
         return NULL;
     a->name = strdup(name);
-    if (!a->name)
-    {
+    if (!a->name) {
         free(a);
         return NULL;
     }
@@ -1302,8 +1178,7 @@ static Action *define_action_cstr(const char *name, int8_t is_axis)
     return a;
 }
 
-static void bind_key_to(const char *name, int64_t key)
-{
+static void bind_key_to(const char *name, int64_t key) {
     Action *a = find_action(name);
     if (!a || a->is_axis)
         return;
@@ -1312,8 +1187,7 @@ static void bind_key_to(const char *name, int64_t key)
         add_binding(a, b);
 }
 
-static void bind_key_axis_to(const char *name, int64_t key, double value)
-{
+static void bind_key_axis_to(const char *name, int64_t key, double value) {
     Action *a = find_action(name);
     if (!a || !a->is_axis)
         return;
@@ -1322,8 +1196,7 @@ static void bind_key_axis_to(const char *name, int64_t key, double value)
         add_binding(a, b);
 }
 
-static void bind_pad_to(const char *name, int64_t button)
-{
+static void bind_pad_to(const char *name, int64_t button) {
     Action *a = find_action(name);
     if (!a || a->is_axis)
         return;
@@ -1332,8 +1205,7 @@ static void bind_pad_to(const char *name, int64_t button)
         add_binding(a, b);
 }
 
-static void bind_pad_axis_to(const char *name, int64_t axis, double scale)
-{
+static void bind_pad_axis_to(const char *name, int64_t axis, double scale) {
     Action *a = find_action(name);
     if (!a || !a->is_axis)
         return;
@@ -1342,8 +1214,7 @@ static void bind_pad_axis_to(const char *name, int64_t axis, double scale)
         add_binding(a, b);
 }
 
-static void bind_pad_button_axis_to(const char *name, int64_t button, double value)
-{
+static void bind_pad_button_axis_to(const char *name, int64_t button, double value) {
     Action *a = find_action(name);
     if (!a || !a->is_axis)
         return;
@@ -1359,8 +1230,7 @@ static void bind_pad_button_axis_to(const char *name, int64_t button, double val
 //   Keys:   WASD + arrows    Pad: D-pad + left stick
 //=========================================================================
 
-static void load_preset_standard_movement(void)
-{
+static void load_preset_standard_movement(void) {
     /* Button actions */
     define_action_cstr("move_up", 0);
     define_action_cstr("move_down", 0);
@@ -1416,8 +1286,7 @@ static void load_preset_standard_movement(void)
 //   Keys:   arrows+WASD, Enter+Space, Escape    Pad: D-pad, A, B
 //=========================================================================
 
-static void load_preset_menu_navigation(void)
-{
+static void load_preset_menu_navigation(void) {
     define_action_cstr("menu_up", 0);
     define_action_cstr("menu_down", 0);
     define_action_cstr("menu_left", 0);
@@ -1461,8 +1330,7 @@ static void load_preset_menu_navigation(void)
 //   Pad:    D-pad, A, X, Start + left stick
 //=========================================================================
 
-static void load_preset_platformer(void)
-{
+static void load_preset_platformer(void) {
     define_action_cstr("move_left", 0);
     define_action_cstr("move_right", 0);
     define_action_cstr("jump", 0);
@@ -1507,8 +1375,7 @@ static void load_preset_platformer(void)
 //   Pad:    D-pad + left stick, A, Start
 //=========================================================================
 
-static void load_preset_topdown(void)
-{
+static void load_preset_topdown(void) {
     define_action_cstr("move_up", 0);
     define_action_cstr("move_down", 0);
     define_action_cstr("move_left", 0);
@@ -1578,8 +1445,7 @@ static void load_preset_topdown(void)
 ///   Presets auto-initialize the action system if not already done.
 /// @param preset_name One of: "standard_movement", "menu_navigation", "platformer", "topdown".
 /// @return 1 if preset loaded successfully, 0 if name not recognized.
-int8_t rt_action_load_preset(rt_string preset_name)
-{
+int8_t rt_action_load_preset(rt_string preset_name) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_initialized)
         rt_action_init();
@@ -1590,23 +1456,19 @@ int8_t rt_action_load_preset(rt_string preset_name)
     int64_t len = rt_str_len(preset_name);
     const char *data = preset_name->data;
 
-    if (len == 17 && memcmp(data, "standard_movement", 17) == 0)
-    {
+    if (len == 17 && memcmp(data, "standard_movement", 17) == 0) {
         load_preset_standard_movement();
         return 1;
     }
-    if (len == 15 && memcmp(data, "menu_navigation", 15) == 0)
-    {
+    if (len == 15 && memcmp(data, "menu_navigation", 15) == 0) {
         load_preset_menu_navigation();
         return 1;
     }
-    if (len == 10 && memcmp(data, "platformer", 10) == 0)
-    {
+    if (len == 10 && memcmp(data, "platformer", 10) == 0) {
         load_preset_platformer();
         return 1;
     }
-    if (len == 7 && memcmp(data, "topdown", 7) == 0)
-    {
+    if (len == 7 && memcmp(data, "topdown", 7) == 0) {
         load_preset_topdown();
         return 1;
     }
@@ -1618,33 +1480,27 @@ int8_t rt_action_load_preset(rt_string preset_name)
 // Axis Constant Getters
 //=========================================================================
 
-int64_t rt_action_axis_left_x(void)
-{
+int64_t rt_action_axis_left_x(void) {
     return VIPER_AXIS_LEFT_X;
 }
 
-int64_t rt_action_axis_left_y(void)
-{
+int64_t rt_action_axis_left_y(void) {
     return VIPER_AXIS_LEFT_Y;
 }
 
-int64_t rt_action_axis_right_x(void)
-{
+int64_t rt_action_axis_right_x(void) {
     return VIPER_AXIS_RIGHT_X;
 }
 
-int64_t rt_action_axis_right_y(void)
-{
+int64_t rt_action_axis_right_y(void) {
     return VIPER_AXIS_RIGHT_Y;
 }
 
-int64_t rt_action_axis_left_trigger(void)
-{
+int64_t rt_action_axis_left_trigger(void) {
     return VIPER_AXIS_LEFT_TRIGGER;
 }
 
-int64_t rt_action_axis_right_trigger(void)
-{
+int64_t rt_action_axis_right_trigger(void) {
     return VIPER_AXIS_RIGHT_TRIGGER;
 }
 
@@ -1652,10 +1508,8 @@ int64_t rt_action_axis_right_trigger(void)
 // Persistence (Save/Load)
 //=========================================================================
 
-static const char *binding_type_name(BindingType type)
-{
-    switch (type)
-    {
+static const char *binding_type_name(BindingType type) {
+    switch (type) {
         case BIND_KEY:
             return "key";
         case BIND_MOUSE_BUTTON:
@@ -1681,8 +1535,7 @@ static const char *binding_type_name(BindingType type)
     }
 }
 
-static BindingType binding_type_from_name(const char *name)
-{
+static BindingType binding_type_from_name(const char *name) {
     if (strcmp(name, "key") == 0)
         return BIND_KEY;
     if (strcmp(name, "mouse") == 0)
@@ -1706,14 +1559,11 @@ static BindingType binding_type_from_name(const char *name)
     return BIND_NONE;
 }
 
-static void sb_append_json_string(rt_string_builder *sb, const char *str)
-{
+static void sb_append_json_string(rt_string_builder *sb, const char *str) {
     rt_sb_append_cstr(sb, "\"");
-    while (*str)
-    {
+    while (*str) {
         char c = *str++;
-        switch (c)
-        {
+        switch (c) {
             case '"':
                 rt_sb_append_cstr(sb, "\\\"");
                 break;
@@ -1737,8 +1587,7 @@ static void sb_append_json_string(rt_string_builder *sb, const char *str)
     rt_sb_append_cstr(sb, "\"");
 }
 
-rt_string rt_action_save(void)
-{
+rt_string rt_action_save(void) {
     RT_ASSERT_MAIN_THREAD();
     rt_string_builder sb;
     int8_t first_action;
@@ -1749,8 +1598,7 @@ rt_string rt_action_save(void)
     first_action = 1;
     {
         Action *a = g_actions;
-        while (a)
-        {
+        while (a) {
             int8_t first_binding;
             if (!first_action)
                 rt_sb_append_cstr(&sb, ",");
@@ -1765,8 +1613,7 @@ rt_string rt_action_save(void)
             first_binding = 1;
             {
                 Binding *b = a->bindings;
-                while (b)
-                {
+                while (b) {
                     if (!first_binding)
                         rt_sb_append_cstr(&sb, ",");
                     first_binding = 0;
@@ -1779,12 +1626,10 @@ rt_string rt_action_save(void)
                     rt_sb_append_int(&sb, b->pad_index);
                     rt_sb_append_cstr(&sb, ",\"value\":");
                     rt_sb_append_double(&sb, b->value);
-                    if (b->type == BIND_CHORD && b->chord_len > 0)
-                    {
+                    if (b->type == BIND_CHORD && b->chord_len > 0) {
                         int32_t ci;
                         rt_sb_append_cstr(&sb, ",\"keys\":[");
-                        for (ci = 0; ci < b->chord_len; ci++)
-                        {
+                        for (ci = 0; ci < b->chord_len; ci++) {
                             if (ci > 0)
                                 rt_sb_append_cstr(&sb, ",");
                             rt_sb_append_int(&sb, b->chord_keys[ci]);
@@ -1810,8 +1655,7 @@ rt_string rt_action_save(void)
     }
 }
 
-int8_t rt_action_load(rt_string json)
-{
+int8_t rt_action_load(rt_string json) {
     RT_ASSERT_MAIN_THREAD();
     void *parser;
     int64_t tok;
@@ -1845,24 +1689,20 @@ int8_t rt_action_load(rt_string json)
 
     /* Parse each action object */
     tok = rt_json_stream_next(parser);
-    while (tok == RT_JSON_TOK_OBJECT_START)
-    {
+    while (tok == RT_JSON_TOK_OBJECT_START) {
         char action_name[256];
         int8_t is_axis = 0;
         action_name[0] = '\0';
 
         /* Parse action fields */
         tok = rt_json_stream_next(parser);
-        while (tok == RT_JSON_TOK_KEY)
-        {
+        while (tok == RT_JSON_TOK_KEY) {
             rt_string key = rt_json_stream_string_value(parser);
             const char *key_cstr = rt_string_cstr(key);
 
-            if (strcmp(key_cstr, "name") == 0)
-            {
+            if (strcmp(key_cstr, "name") == 0) {
                 tok = rt_json_stream_next(parser);
-                if (tok == RT_JSON_TOK_STRING)
-                {
+                if (tok == RT_JSON_TOK_STRING) {
                     rt_string val = rt_json_stream_string_value(parser);
                     const char *val_cstr = rt_string_cstr(val);
                     size_t len = strlen(val_cstr);
@@ -1871,21 +1711,15 @@ int8_t rt_action_load(rt_string json)
                     memcpy(action_name, val_cstr, len);
                     action_name[len] = '\0';
                 }
-            }
-            else if (strcmp(key_cstr, "type") == 0)
-            {
+            } else if (strcmp(key_cstr, "type") == 0) {
                 tok = rt_json_stream_next(parser);
-                if (tok == RT_JSON_TOK_STRING)
-                {
+                if (tok == RT_JSON_TOK_STRING) {
                     rt_string val = rt_json_stream_string_value(parser);
                     is_axis = (strcmp(rt_string_cstr(val), "axis") == 0) ? 1 : 0;
                 }
-            }
-            else if (strcmp(key_cstr, "bindings") == 0)
-            {
+            } else if (strcmp(key_cstr, "bindings") == 0) {
                 /* Define the action first */
-                if (action_name[0] != '\0')
-                {
+                if (action_name[0] != '\0') {
                     rt_string name_str = rt_const_cstr(action_name);
                     if (is_axis)
                         rt_action_define_axis(name_str);
@@ -1899,8 +1733,7 @@ int8_t rt_action_load(rt_string json)
                     return 0;
 
                 tok = rt_json_stream_next(parser);
-                while (tok == RT_JSON_TOK_OBJECT_START)
-                {
+                while (tok == RT_JSON_TOK_OBJECT_START) {
                     BindingType btype = BIND_NONE;
                     int64_t code = 0;
                     int64_t pad = 0;
@@ -1910,36 +1743,26 @@ int8_t rt_action_load(rt_string json)
 
                     /* Parse binding fields */
                     tok = rt_json_stream_next(parser);
-                    while (tok == RT_JSON_TOK_KEY)
-                    {
+                    while (tok == RT_JSON_TOK_KEY) {
                         rt_string bkey = rt_json_stream_string_value(parser);
                         const char *bkey_cstr = rt_string_cstr(bkey);
 
                         tok = rt_json_stream_next(parser);
-                        if (strcmp(bkey_cstr, "type") == 0 && tok == RT_JSON_TOK_STRING)
-                        {
+                        if (strcmp(bkey_cstr, "type") == 0 && tok == RT_JSON_TOK_STRING) {
                             rt_string bval = rt_json_stream_string_value(parser);
                             btype = binding_type_from_name(rt_string_cstr(bval));
-                        }
-                        else if (strcmp(bkey_cstr, "code") == 0 && tok == RT_JSON_TOK_NUMBER)
-                        {
+                        } else if (strcmp(bkey_cstr, "code") == 0 && tok == RT_JSON_TOK_NUMBER) {
                             code = (int64_t)rt_json_stream_number_value(parser);
-                        }
-                        else if (strcmp(bkey_cstr, "pad") == 0 && tok == RT_JSON_TOK_NUMBER)
-                        {
+                        } else if (strcmp(bkey_cstr, "pad") == 0 && tok == RT_JSON_TOK_NUMBER) {
                             pad = (int64_t)rt_json_stream_number_value(parser);
-                        }
-                        else if (strcmp(bkey_cstr, "value") == 0 && tok == RT_JSON_TOK_NUMBER)
-                        {
+                        } else if (strcmp(bkey_cstr, "value") == 0 && tok == RT_JSON_TOK_NUMBER) {
                             value = rt_json_stream_number_value(parser);
-                        }
-                        else if (strcmp(bkey_cstr, "keys") == 0 && tok == RT_JSON_TOK_ARRAY_START)
-                        {
+                        } else if (strcmp(bkey_cstr, "keys") == 0 &&
+                                   tok == RT_JSON_TOK_ARRAY_START) {
                             /* Parse chord keys array */
                             chord_len = 0;
                             tok = rt_json_stream_next(parser);
-                            while (tok == RT_JSON_TOK_NUMBER && chord_len < MAX_CHORD_KEYS)
-                            {
+                            while (tok == RT_JSON_TOK_NUMBER && chord_len < MAX_CHORD_KEYS) {
                                 chord_keys[chord_len++] =
                                     (int64_t)rt_json_stream_number_value(parser);
                                 tok = rt_json_stream_next(parser);
@@ -1953,16 +1776,12 @@ int8_t rt_action_load(rt_string json)
                     /* tok should be OBJECT_END for the binding */
 
                     /* Add binding to action */
-                    if (btype != BIND_NONE && action_name[0] != '\0')
-                    {
+                    if (btype != BIND_NONE && action_name[0] != '\0') {
                         Action *a = find_action(action_name);
-                        if (a)
-                        {
+                        if (a) {
                             Binding *b = create_binding(btype, code, pad, value);
-                            if (b)
-                            {
-                                if (btype == BIND_CHORD)
-                                {
+                            if (b) {
+                                if (btype == BIND_CHORD) {
                                     int32_t ci;
                                     b->chord_len = chord_len;
                                     for (ci = 0; ci < chord_len; ci++)
@@ -1976,9 +1795,7 @@ int8_t rt_action_load(rt_string json)
                     tok = rt_json_stream_next(parser);
                 }
                 /* tok should be ARRAY_END for bindings */
-            }
-            else
-            {
+            } else {
                 /* Skip unknown field value — handles nested objects/arrays */
                 rt_json_stream_next(parser);
                 rt_json_stream_skip(parser);

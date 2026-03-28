@@ -74,8 +74,7 @@
 /// **Element ownership:**
 /// Elements stored in the List are managed by the underlying rt_arr_obj,
 /// which handles reference counting automatically.
-typedef struct rt_list_impl
-{
+typedef struct rt_list_impl {
     void **vptr; ///< Vtable pointer placeholder (for OOP compatibility).
     void **arr;  ///< Pointer to the underlying object array (rt_arr_obj).
 } rt_list_impl;
@@ -92,13 +91,11 @@ typedef struct rt_list_impl
 /// @note This function is idempotent - safe to call on already-finalized lists.
 ///
 /// @see rt_list_clear For removing elements without finalization
-static void rt_list_finalize(void *obj)
-{
+static void rt_list_finalize(void *obj) {
     if (!obj)
         return;
     rt_list_impl *L = (rt_list_impl *)obj;
-    if (L->arr)
-    {
+    if (L->arr) {
         rt_arr_obj_release(L->arr);
         L->arr = NULL;
     }
@@ -133,8 +130,7 @@ static void rt_list_finalize(void *obj)
 /// @see rt_list_push For adding elements
 /// @see rt_list_get For accessing elements
 /// @see rt_list_finalize For cleanup behavior
-void *rt_list_new(void)
-{
+void *rt_list_new(void) {
     // Allocate object payload with header via object allocator to match object lifetime rules
     rt_list_impl *list = (rt_list_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_list_impl));
     if (!list)
@@ -148,8 +144,7 @@ void *rt_list_new(void)
 /// @brief Helper to cast a void pointer to a List implementation pointer.
 /// @param p Raw pointer to cast.
 /// @return Pointer cast to rt_list_impl*.
-static inline rt_list_impl *as_list(void *p)
-{
+static inline rt_list_impl *as_list(void *p) {
     return (rt_list_impl *)p;
 }
 
@@ -166,8 +161,7 @@ static inline rt_list_impl *as_list(void *p)
 ///
 /// @see rt_list_push For operations that increase the count
 /// @see rt_list_remove_at For operations that decrease the count
-int64_t rt_list_len(void *list)
-{
+int64_t rt_list_len(void *list) {
     if (!list)
         return 0;
     rt_list_impl *L = as_list(list);
@@ -201,13 +195,11 @@ int64_t rt_list_len(void *list)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_list_finalize For complete cleanup during garbage collection
-void rt_list_clear(void *list)
-{
+void rt_list_clear(void *list) {
     if (!list)
         return;
     rt_list_impl *L = as_list(list);
-    if (L->arr)
-    {
+    if (L->arr) {
         rt_arr_obj_release(L->arr);
         L->arr = NULL;
     }
@@ -242,8 +234,7 @@ void rt_list_clear(void *list)
 ///
 /// @see rt_list_insert For inserting at arbitrary positions
 /// @see rt_list_remove_at For removing elements
-void rt_list_push(void *list, void *elem)
-{
+void rt_list_push(void *list, void *elem) {
     if (!list)
         return;
     rt_list_impl *L = as_list(list);
@@ -284,8 +275,7 @@ void rt_list_push(void *list, void *elem)
 ///
 /// @see rt_list_set For modifying an element
 /// @see rt_list_len For getting the valid index range
-void *rt_list_get(void *list, int64_t index)
-{
+void *rt_list_get(void *list, int64_t index) {
     if (!list)
         rt_trap("rt_list_get: null list");
     if (index < 0)
@@ -326,8 +316,7 @@ void *rt_list_get(void *list, int64_t index)
 ///
 /// @see rt_list_get For reading an element
 /// @see rt_list_push For adding new elements
-void rt_list_set(void *list, int64_t index, void *elem)
-{
+void rt_list_set(void *list, int64_t index, void *elem) {
     if (!list)
         rt_trap("rt_list_set: null list");
     if (index < 0)
@@ -374,8 +363,7 @@ void rt_list_set(void *list, int64_t index, void *elem)
 ///
 /// @see rt_list_remove For removing by element value
 /// @see rt_list_push For adding elements
-void rt_list_remove_at(void *list, int64_t index)
-{
+void rt_list_remove_at(void *list, int64_t index) {
     if (!list)
         rt_trap("rt_list_remove_at: null list");
     if (index < 0)
@@ -385,13 +373,11 @@ void rt_list_remove_at(void *list, int64_t index)
     if ((uint64_t)index >= (uint64_t)len)
         rt_trap("rt_list_remove_at: index out of bounds");
     // Shift elements left from index
-    if (len > 0)
-    {
+    if (len > 0) {
         // Shift elements left. Direct array read (L->arr[i+1]) is intentional:
         // rt_arr_obj_put handles retain/release for the destination slot, while
         // the source is just a raw read (no extra retain needed for shifting).
-        for (size_t i = (size_t)index; i + 1 < len; ++i)
-        {
+        for (size_t i = (size_t)index; i + 1 < len; ++i) {
             void *next = L->arr[i + 1];
             rt_arr_obj_put(L->arr, i, next);
         }
@@ -433,16 +419,14 @@ void rt_list_remove_at(void *list, int64_t index)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_list_has For boolean membership check
-int64_t rt_list_find(void *list, void *elem)
-{
+int64_t rt_list_find(void *list, void *elem) {
     if (!list)
         return -1;
 
     rt_list_impl *L = as_list(list);
     size_t len = rt_arr_obj_len(L->arr);
 
-    for (size_t i = 0; i < len; ++i)
-    {
+    for (size_t i = 0; i < len; ++i) {
         if (rt_box_equal(L->arr[i], elem))
             return (int64_t)i;
     }
@@ -474,8 +458,7 @@ int64_t rt_list_find(void *list, void *elem)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_list_find For getting the index of the element
-int8_t rt_list_has(void *list, void *elem)
-{
+int8_t rt_list_has(void *list, void *elem) {
     return rt_list_find(list, elem) >= 0 ? 1 : 0;
 }
 
@@ -518,8 +501,7 @@ int8_t rt_list_has(void *list, void *elem)
 ///
 /// @see rt_list_push For appending to the end (O(1))
 /// @see rt_list_remove_at For removing at an index
-void rt_list_insert(void *list, int64_t index, void *elem)
-{
+void rt_list_insert(void *list, int64_t index, void *elem) {
     if (!list)
         rt_trap("List.Insert: null list");
     if (index < 0)
@@ -536,8 +518,7 @@ void rt_list_insert(void *list, int64_t index, void *elem)
     L->arr = arr2;
 
     // Shift elements right from the end to index.
-    for (size_t i = len; i > (size_t)index; --i)
-    {
+    for (size_t i = len; i > (size_t)index; --i) {
         void *prev = L->arr[i - 1];
         rt_arr_obj_put(L->arr, i, prev);
     }
@@ -572,8 +553,7 @@ void rt_list_insert(void *list, int64_t index, void *elem)
 ///
 /// @see rt_list_remove_at For removing by index
 /// @see rt_list_find For finding without removing
-int8_t rt_list_remove(void *list, void *elem)
-{
+int8_t rt_list_remove(void *list, void *elem) {
     int64_t idx = rt_list_find(list, elem);
     if (idx < 0)
         return 0;
@@ -605,8 +585,7 @@ int8_t rt_list_remove(void *list, void *elem)
 ///
 /// @note O(k) time where k = end - start.
 /// @note Thread safety: Not thread-safe.
-void *rt_list_slice(void *list, int64_t start, int64_t end)
-{
+void *rt_list_slice(void *list, int64_t start, int64_t end) {
     void *result = rt_list_new();
     if (!result)
         return NULL;
@@ -630,8 +609,7 @@ void *rt_list_slice(void *list, int64_t start, int64_t end)
         return result;
 
     // Copy elements
-    for (int64_t i = start; i < end; i++)
-    {
+    for (int64_t i = start; i < end; i++) {
         void *elem = rt_arr_obj_get(L->arr, (size_t)i);
         rt_list_push(result, elem);
     }
@@ -658,8 +636,7 @@ void *rt_list_slice(void *list, int64_t start, int64_t end)
 ///
 /// @note O(n) time complexity.
 /// @note Thread safety: Not thread-safe.
-void rt_list_reverse(void *list)
-{
+void rt_list_reverse(void *list) {
     if (!list)
         return;
 
@@ -669,8 +646,7 @@ void rt_list_reverse(void *list)
         return;
 
     // Swap elements from both ends toward center
-    for (size_t i = 0; i < len / 2; i++)
-    {
+    for (size_t i = 0; i < len / 2; i++) {
         size_t j = len - 1 - i;
         void *a = L->arr[i];
         void *b = L->arr[j];
@@ -696,8 +672,7 @@ void rt_list_reverse(void *list)
 ///
 /// @note O(1) time complexity.
 /// @note Thread safety: Not thread-safe.
-void *rt_list_first(void *list)
-{
+void *rt_list_first(void *list) {
     if (!list)
         return NULL;
 
@@ -725,8 +700,7 @@ void *rt_list_first(void *list)
 ///
 /// @note O(1) time complexity.
 /// @note Thread safety: Not thread-safe.
-void *rt_list_last(void *list)
-{
+void *rt_list_last(void *list) {
     if (!list)
         return NULL;
 
@@ -738,15 +712,13 @@ void *rt_list_last(void *list)
     return rt_arr_obj_get(L->arr, len - 1);
 }
 
-int8_t rt_list_is_empty(void *list)
-{
+int8_t rt_list_is_empty(void *list) {
     if (!list)
         return 1;
     return rt_list_len(list) == 0 ? 1 : 0;
 }
 
-void *rt_list_pop(void *list)
-{
+void *rt_list_pop(void *list) {
     if (!list)
         rt_trap("List.Pop: null list");
 
@@ -769,8 +741,7 @@ void *rt_list_pop(void *list)
 /// @details List elements may be raw rt_string handles or boxed strings
 ///          (RT_BOX_STR). This helper returns the underlying rt_string
 ///          for either representation, or NULL if the element is not a string.
-static rt_string list_extract_str(void *p)
-{
+static rt_string list_extract_str(void *p) {
     if (rt_string_is_handle(p))
         return (rt_string)p;
     if (rt_box_type(p) == RT_BOX_STR)
@@ -781,10 +752,8 @@ static rt_string list_extract_str(void *p)
 /// @brief Extract a comparable integer from a list element.
 /// @details Returns the unboxed i64 value if the element is a boxed integer,
 ///          otherwise returns 0 and sets *ok to 0.
-static int64_t list_extract_i64(void *p, int *ok)
-{
-    if (rt_box_type(p) == RT_BOX_I64)
-    {
+static int64_t list_extract_i64(void *p, int *ok) {
+    if (rt_box_type(p) == RT_BOX_I64) {
         *ok = 1;
         return rt_unbox_i64(p);
     }
@@ -796,8 +765,7 @@ static int64_t list_extract_i64(void *p, int *ok)
 /// @details Handles boxed strings (RT_BOX_STR), raw string handles, and
 ///          boxed integers (RT_BOX_I64). Falls back to pointer comparison
 ///          for other element types.
-static int64_t list_default_compare(void *a, void *b)
-{
+static int64_t list_default_compare(void *a, void *b) {
     if (!a && !b)
         return 0;
     if (!a)
@@ -815,8 +783,7 @@ static int64_t list_default_compare(void *a, void *b)
     int ok_a = 0, ok_b = 0;
     int64_t ia = list_extract_i64(a, &ok_a);
     int64_t ib = list_extract_i64(b, &ok_b);
-    if (ok_a && ok_b)
-    {
+    if (ok_a && ok_b) {
         if (ia < ib)
             return -1;
         if (ia > ib)
@@ -838,12 +805,10 @@ static void list_merge(void **items,
                        size_t left,
                        size_t mid,
                        size_t right,
-                       int64_t (*cmp)(void *, void *))
-{
+                       int64_t (*cmp)(void *, void *)) {
     size_t i = left, j = mid + 1, k = left;
 
-    while (i <= mid && j <= right)
-    {
+    while (i <= mid && j <= right) {
         if (cmp(items[i], items[j]) <= 0)
             temp[k++] = items[i++];
         else
@@ -860,8 +825,7 @@ static void list_merge(void **items,
 
 /// @brief Recursive merge sort.
 static void list_merge_sort(
-    void **items, void **temp, size_t left, size_t right, int64_t (*cmp)(void *, void *))
-{
+    void **items, void **temp, size_t left, size_t right, int64_t (*cmp)(void *, void *)) {
     if (left >= right)
         return;
     size_t mid = left + (right - left) / 2;
@@ -873,8 +837,7 @@ static void list_merge_sort(
 /// @brief Sort a list in-place using a comparison function.
 /// @details Sorts the backing array directly (like Seq.Sort) to avoid ref
 ///          counting side effects from rt_arr_obj_get/put during rearrangement.
-static void list_sort_impl(void *list, int64_t (*cmp)(void *, void *))
-{
+static void list_sort_impl(void *list, int64_t (*cmp)(void *, void *)) {
     if (!list)
         return;
 
@@ -887,8 +850,7 @@ static void list_sort_impl(void *list, int64_t (*cmp)(void *, void *))
     if (len > SIZE_MAX / sizeof(void *))
         return; // Overflow — cannot allocate
     void **temp = (void **)malloc(len * sizeof(void *));
-    if (!temp)
-    {
+    if (!temp) {
         rt_trap("List.Sort: memory allocation failed");
         return;
     }
@@ -899,24 +861,20 @@ static void list_sort_impl(void *list, int64_t (*cmp)(void *, void *))
     free(temp);
 }
 
-void rt_list_sort(void *list)
-{
+void rt_list_sort(void *list) {
     list_sort_impl(list, list_default_compare);
 }
 
 /// @brief Descending comparison wrapper.
-static int64_t list_compare_desc(void *a, void *b)
-{
+static int64_t list_compare_desc(void *a, void *b) {
     return -list_default_compare(a, b);
 }
 
-void rt_list_sort_desc(void *list)
-{
+void rt_list_sort_desc(void *list) {
     list_sort_impl(list, list_compare_desc);
 }
 
-void rt_list_shuffle(void *list)
-{
+void rt_list_shuffle(void *list) {
     if (!list)
         return;
 
@@ -927,16 +885,14 @@ void rt_list_shuffle(void *list)
 
     // Fisher-Yates shuffle using thread-safe local PRNG
     uint64_t rng_state = (uint64_t)time(NULL) ^ (uint64_t)(uintptr_t)&L;
-    for (int w = 0; w < 5; w++)
-    {
+    for (int w = 0; w < 5; w++) {
         rng_state ^= rng_state >> 12;
         rng_state ^= rng_state << 25;
         rng_state ^= rng_state >> 27;
         rng_state *= 0x2545F4914F6CDD1DULL;
     }
 
-    for (size_t i = len - 1; i > 0; --i)
-    {
+    for (size_t i = len - 1; i > 0; --i) {
         rng_state ^= rng_state >> 12;
         rng_state ^= rng_state << 25;
         rng_state ^= rng_state >> 27;
@@ -949,8 +905,7 @@ void rt_list_shuffle(void *list)
     }
 }
 
-void *rt_list_clone(void *list)
-{
+void *rt_list_clone(void *list) {
     void *result = rt_list_new();
     if (!result || !list)
         return result;
@@ -958,8 +913,7 @@ void *rt_list_clone(void *list)
     rt_list_impl *L = as_list(list);
     size_t len = L->arr ? rt_arr_obj_len(L->arr) : 0;
 
-    for (size_t i = 0; i < len; ++i)
-    {
+    for (size_t i = 0; i < len; ++i) {
         rt_list_push(result, rt_arr_obj_get(L->arr, i));
     }
 

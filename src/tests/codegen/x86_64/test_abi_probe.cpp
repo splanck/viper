@@ -21,28 +21,23 @@
 #include <string>
 #include <string_view>
 
-namespace viper::codegen::x64
-{
-namespace
-{
-[[nodiscard]] ILValue makeParam(int id, ILValue::Kind kind) noexcept
-{
+namespace viper::codegen::x64 {
+namespace {
+[[nodiscard]] ILValue makeParam(int id, ILValue::Kind kind) noexcept {
     ILValue value{};
     value.kind = kind;
     value.id = id;
     return value;
 }
 
-[[nodiscard]] ILValue makeLabel(std::string name)
-{
+[[nodiscard]] ILValue makeLabel(std::string name) {
     ILValue value{};
     value.kind = ILValue::Kind::LABEL;
     value.label = std::move(name);
     return value;
 }
 
-[[nodiscard]] ILModule makeProbeModule()
-{
+[[nodiscard]] ILModule makeProbeModule() {
     ILModule module{};
 
     ILFunction func{};
@@ -51,13 +46,11 @@ namespace
     ILBlock entry{};
     entry.name = func.name;
 
-    for (int i = 0; i < 6; ++i)
-    {
+    for (int i = 0; i < 6; ++i) {
         entry.paramIds.push_back(i);
         entry.paramKinds.push_back(ILValue::Kind::I64);
     }
-    for (int i = 0; i < 6; ++i)
-    {
+    for (int i = 0; i < 6; ++i) {
         entry.paramIds.push_back(6 + i);
         entry.paramKinds.push_back(ILValue::Kind::F64);
     }
@@ -66,12 +59,10 @@ namespace
     callInstr.opcode = "call";
     callInstr.ops.push_back(makeLabel("rt_probe_echo"));
 
-    for (int i = 0; i < 6; ++i)
-    {
+    for (int i = 0; i < 6; ++i) {
         callInstr.ops.push_back(makeParam(i, ILValue::Kind::I64));
     }
-    for (int i = 0; i < 6; ++i)
-    {
+    for (int i = 0; i < 6; ++i) {
         callInstr.ops.push_back(makeParam(6 + i, ILValue::Kind::F64));
     }
 
@@ -88,20 +79,16 @@ namespace
 
 template <std::size_t N>
 [[nodiscard]] bool containsAll(const std::string &asmText,
-                               const std::array<std::string_view, N> &patterns)
-{
-    for (const std::string_view pattern : patterns)
-    {
-        if (asmText.find(pattern) == std::string::npos)
-        {
+                               const std::array<std::string_view, N> &patterns) {
+    for (const std::string_view pattern : patterns) {
+        if (asmText.find(pattern) == std::string::npos) {
             return false;
         }
     }
     return true;
 }
 
-[[nodiscard]] bool verifyProbeAssembly(const std::string &asmText)
-{
+[[nodiscard]] bool verifyProbeAssembly(const std::string &asmText) {
 #ifdef _WIN32
     // Windows x64 ABI: first 4 integer args in RCX, RDX, R8, R9
     // first 4 float args in XMM0-XMM3, rest on stack
@@ -130,15 +117,13 @@ template <std::size_t N>
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makeProbeModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
 
-    if (!result.errors.empty() || !verifyProbeAssembly(result.asmText))
-    {
+    if (!result.errors.empty() || !verifyProbeAssembly(result.asmText)) {
         std::cerr << "Assembly verification failed:\n" << result.asmText;
         return EXIT_FAILURE;
     }

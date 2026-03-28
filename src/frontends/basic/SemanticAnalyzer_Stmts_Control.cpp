@@ -19,8 +19,7 @@
 #include "frontends/basic/sem/Check_Common.hpp"
 #include "frontends/basic/sem/Check_SelectDetail.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Type-check and normalise a condition expression.
 ///
@@ -29,8 +28,7 @@ namespace il::frontends::basic
 ///          diagnostic machinery.
 ///
 /// @param expr Condition expression to validate.
-void SemanticAnalyzer::checkConditionExpr(Expr &expr)
-{
+void SemanticAnalyzer::checkConditionExpr(Expr &expr) {
     sem::checkConditionExpr(*this, expr);
 }
 
@@ -41,8 +39,7 @@ void SemanticAnalyzer::checkConditionExpr(Expr &expr)
 ///          and expression typing for conditional blocks.
 ///
 /// @param stmt IF statement to analyse.
-void SemanticAnalyzer::analyzeIf(const IfStmt &stmt)
-{
+void SemanticAnalyzer::analyzeIf(const IfStmt &stmt) {
     sem::analyzeIf(*this, stmt);
 }
 
@@ -53,8 +50,7 @@ void SemanticAnalyzer::analyzeIf(const IfStmt &stmt)
 ///          provides a stable entry point for the rest of the analyzer.
 ///
 /// @param stmt SELECT CASE statement node.
-void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
-{
+void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt) {
     sem::analyzeSelectCase(*this, stmt);
 }
 
@@ -65,8 +61,7 @@ void SemanticAnalyzer::analyzeSelectCase(const SelectCaseStmt &stmt)
 ///          nested control structures obey BASIC rules.
 ///
 /// @param body Statements forming the SELECT CASE body.
-void SemanticAnalyzer::analyzeSelectCaseBody(const std::vector<StmtPtr> &body)
-{
+void SemanticAnalyzer::analyzeSelectCaseBody(const std::vector<StmtPtr> &body) {
     sem::analyzeSelectCaseBody(*this, body);
 }
 
@@ -80,8 +75,7 @@ SemanticAnalyzer::SelectCaseSelectorInfo
 ///
 /// @param stmt SELECT CASE statement whose selector should be classified.
 /// @return Descriptor describing selector type and comparison mode.
-SemanticAnalyzer::classifySelectCaseSelector(const SelectCaseStmt &stmt)
-{
+SemanticAnalyzer::classifySelectCaseSelector(const SelectCaseStmt &stmt) {
     sem::ControlCheckContext context(*this);
     return sem::detail::classifySelectCaseSelector(context, stmt);
 }
@@ -95,8 +89,7 @@ SemanticAnalyzer::classifySelectCaseSelector(const SelectCaseStmt &stmt)
 /// @param arm Case arm under inspection.
 /// @param ctx Working context describing selector metadata.
 /// @return True when the arm satisfies general constraints.
-bool SemanticAnalyzer::validateSelectCaseArm(const CaseArm &arm, SelectCaseArmContext &ctx)
-{
+bool SemanticAnalyzer::validateSelectCaseArm(const CaseArm &arm, SelectCaseArmContext &ctx) {
     return sem::detail::validateSelectCaseArm(arm, ctx);
 }
 
@@ -108,8 +101,7 @@ bool SemanticAnalyzer::validateSelectCaseArm(const CaseArm &arm, SelectCaseArmCo
 /// @param arm String case arm to validate.
 /// @param ctx Selector context describing the enclosing SELECT CASE.
 /// @return True when the arm adheres to string rules.
-bool SemanticAnalyzer::validateSelectCaseStringArm(const CaseArm &arm, SelectCaseArmContext &ctx)
-{
+bool SemanticAnalyzer::validateSelectCaseStringArm(const CaseArm &arm, SelectCaseArmContext &ctx) {
     return sem::detail::validateSelectCaseStringArm(arm, ctx);
 }
 
@@ -121,8 +113,7 @@ bool SemanticAnalyzer::validateSelectCaseStringArm(const CaseArm &arm, SelectCas
 /// @param arm Numeric case arm to validate.
 /// @param ctx Selector context describing the active statement.
 /// @return True when numeric constraints are satisfied.
-bool SemanticAnalyzer::validateSelectCaseNumericArm(const CaseArm &arm, SelectCaseArmContext &ctx)
-{
+bool SemanticAnalyzer::validateSelectCaseNumericArm(const CaseArm &arm, SelectCaseArmContext &ctx) {
     return sem::detail::validateSelectCaseNumericArm(arm, ctx);
 }
 
@@ -135,16 +126,14 @@ bool SemanticAnalyzer::validateSelectCaseNumericArm(const CaseArm &arm, SelectCa
 /// - Issues a warning if both TRY and CATCH bodies are empty.
 /// - Duplicate declaration of the catch variable within the same (catch) scope
 ///   is forbidden and reported consistently with local duplication rules.
-void SemanticAnalyzer::visit(const TryCatchStmt &stmt)
-{
+void SemanticAnalyzer::visit(const TryCatchStmt &stmt) {
     // Analyze TRY body under the existing scope.
     for (const auto &st : stmt.tryBody)
         if (st)
             visitStmt(*st);
 
     // Warn on no-op TRY/CATCH if both bodies are empty (policy: allow with warning).
-    if (stmt.tryBody.empty() && stmt.catchBody.empty())
-    {
+    if (stmt.tryBody.empty() && stmt.catchBody.empty()) {
         de.emit(il::support::Severity::Warning,
                 "B3203",
                 stmt.header.begin,
@@ -155,22 +144,18 @@ void SemanticAnalyzer::visit(const TryCatchStmt &stmt)
     // Begin a new scope for the CATCH body; the optional catch variable is local to it.
     ScopeTracker::ScopedScope catchScope(scopes_);
 
-    if (stmt.catchVar && !stmt.catchVar->empty())
-    {
+    if (stmt.catchVar && !stmt.catchVar->empty()) {
         const std::string &name = *stmt.catchVar;
 
         // Forbid duplicate declaration in the same (catch) scope.
-        if (scopes_.isDeclaredInCurrentScope(name))
-        {
+        if (scopes_.isDeclaredInCurrentScope(name)) {
             std::string msg = "duplicate local '" + name + "'";
             de.emit(il::support::Severity::Error,
                     "B1006",
                     stmt.header.end.isValid() ? stmt.header.end : stmt.header.begin,
                     static_cast<uint32_t>(name.size()),
                     std::move(msg));
-        }
-        else
-        {
+        } else {
             // Declare a local binding for the catch variable in this scope.
             std::string unique = scopes_.declareLocal(name);
 
@@ -180,8 +165,7 @@ void SemanticAnalyzer::visit(const TryCatchStmt &stmt)
                 activeProcScope_->noteSymbolInserted(unique);
 
             auto itType = varTypes_.find(unique);
-            if (activeProcScope_)
-            {
+            if (activeProcScope_) {
                 std::optional<Type> previous;
                 if (itType != varTypes_.end())
                     previous = itType->second;
@@ -208,27 +192,22 @@ void SemanticAnalyzer::visit(const TryCatchStmt &stmt)
 /// - Duplicate declaration is forbidden and reported consistently.
 ///
 /// @param stmt USING statement to analyze.
-void SemanticAnalyzer::visit(const UsingStmt &stmt)
-{
+void SemanticAnalyzer::visit(const UsingStmt &stmt) {
     // Begin a new scope for the USING body; the resource variable is local to it.
     ScopeTracker::ScopedScope usingScope(scopes_);
 
-    if (!stmt.varName.empty())
-    {
+    if (!stmt.varName.empty()) {
         const std::string &name = stmt.varName;
 
         // Forbid duplicate declaration in the same scope.
-        if (scopes_.isDeclaredInCurrentScope(name))
-        {
+        if (scopes_.isDeclaredInCurrentScope(name)) {
             std::string msg = "duplicate local '" + name + "'";
             de.emit(il::support::Severity::Error,
                     "B1006",
                     stmt.loc,
                     static_cast<uint32_t>(name.size()),
                     std::move(msg));
-        }
-        else
-        {
+        } else {
             // Declare a local binding for the resource variable in this scope.
             std::string unique = scopes_.declareLocal(name);
 
@@ -238,8 +217,7 @@ void SemanticAnalyzer::visit(const UsingStmt &stmt)
                 activeProcScope_->noteSymbolInserted(unique);
 
             auto itType = varTypes_.find(unique);
-            if (activeProcScope_)
-            {
+            if (activeProcScope_) {
                 std::optional<Type> previous;
                 if (itType != varTypes_.end())
                     previous = itType->second;
@@ -262,88 +240,77 @@ void SemanticAnalyzer::visit(const UsingStmt &stmt)
 /// @brief Perform semantic checks for WHILE loops.
 ///
 /// @param stmt WHILE statement to analyse.
-void SemanticAnalyzer::analyzeWhile(const WhileStmt &stmt)
-{
+void SemanticAnalyzer::analyzeWhile(const WhileStmt &stmt) {
     sem::analyzeWhile(*this, stmt);
 }
 
 /// @brief Analyse DO/LOOP constructs, including UNTIL/WHILE variants.
 ///
 /// @param stmt DO statement node.
-void SemanticAnalyzer::analyzeDo(const DoStmt &stmt)
-{
+void SemanticAnalyzer::analyzeDo(const DoStmt &stmt) {
     sem::analyzeDo(*this, stmt);
 }
 
 /// @brief Analyse FOR/NEXT loop semantics and iterator binding.
 ///
 /// @param stmt FOR statement being analysed.
-void SemanticAnalyzer::analyzeFor(ForStmt &stmt)
-{
+void SemanticAnalyzer::analyzeFor(ForStmt &stmt) {
     sem::analyzeFor(*this, stmt);
 }
 
 /// @brief Analyse FOR EACH array iteration semantics.
 ///
 /// @param stmt FOR EACH statement being analysed.
-void SemanticAnalyzer::analyzeForEach(ForEachStmt &stmt)
-{
+void SemanticAnalyzer::analyzeForEach(ForEachStmt &stmt) {
     sem::analyzeForEach(*this, stmt);
 }
 
 /// @brief Resolve the target of a GOTO statement and validate reachability.
 ///
 /// @param stmt GOTO statement node.
-void SemanticAnalyzer::analyzeGoto(const GotoStmt &stmt)
-{
+void SemanticAnalyzer::analyzeGoto(const GotoStmt &stmt) {
     sem::analyzeGoto(*this, stmt);
 }
 
 /// @brief Analyse a GOSUB invocation, recording return expectations.
 ///
 /// @param stmt GOSUB statement node.
-void SemanticAnalyzer::analyzeGosub(const GosubStmt &stmt)
-{
+void SemanticAnalyzer::analyzeGosub(const GosubStmt &stmt) {
     sem::analyzeGosub(*this, stmt);
 }
 
 /// @brief Process an ON ERROR GOTO statement.
 ///
 /// @param stmt ON ERROR GOTO statement to analyse.
-void SemanticAnalyzer::analyzeOnErrorGoto(const OnErrorGoto &stmt)
-{
+void SemanticAnalyzer::analyzeOnErrorGoto(const OnErrorGoto &stmt) {
     sem::analyzeOnErrorGoto(*this, stmt);
 }
 
 /// @brief Analyse a NEXT statement, pairing it with its FOR ancestor.
 ///
 /// @param stmt NEXT statement to process.
-void SemanticAnalyzer::analyzeNext(const NextStmt &stmt)
-{
+void SemanticAnalyzer::analyzeNext(const NextStmt &stmt) {
     sem::analyzeNext(*this, stmt);
 }
 
 /// @brief Validate EXIT statements (EXIT FOR/DO/SUB, etc.).
 ///
 /// @param stmt EXIT statement to validate.
-void SemanticAnalyzer::analyzeExit(const ExitStmt &stmt)
-{
+void SemanticAnalyzer::analyzeExit(const ExitStmt &stmt) {
     sem::analyzeExit(*this, stmt);
 }
 
 /// @brief Analyse RESUME statements for error-handling flows.
 ///
 /// @param stmt RESUME statement node.
-void SemanticAnalyzer::analyzeResume(const Resume &stmt)
-{
+void SemanticAnalyzer::analyzeResume(const Resume &stmt) {
     sem::analyzeResume(*this, stmt);
 }
 
 /// @brief Validate RETURN statements from procedures and functions.
 ///
 /// @param stmt RETURN statement subject to analysis.
-void SemanticAnalyzer::analyzeReturn(ReturnStmt &stmt)
-{
+void SemanticAnalyzer::analyzeReturn(ReturnStmt &stmt) {
     sem::analyzeReturn(*this, stmt);
 
     if (!stmt.value)
@@ -367,8 +334,7 @@ void SemanticAnalyzer::analyzeReturn(ReturnStmt &stmt)
     const bool valueIsString = valueType == Type::String;
     const bool valueIsNumeric = semantic_analyzer_detail::isNumericSemanticType(valueType);
 
-    if ((expectString && valueIsNumeric) || (expectNumeric && valueIsString))
-    {
+    if ((expectString && valueIsNumeric) || (expectNumeric && valueIsString)) {
         std::string msg = "RETURN expression type ";
         msg += semantic_analyzer_detail::semanticTypeName(valueType);
         msg += " does not match declared AS ";
@@ -380,23 +346,20 @@ void SemanticAnalyzer::analyzeReturn(ReturnStmt &stmt)
 /// @brief Handle END statements that terminate program execution.
 ///
 /// @param EndStmt Unused parameter naming suppressed intentionally.
-void SemanticAnalyzer::analyzeEnd(const EndStmt &)
-{
+void SemanticAnalyzer::analyzeEnd(const EndStmt &) {
     // nothing
 }
 
 /// @brief Activate an error handler targeting the supplied label.
 ///
 /// @param label Numeric line label associated with the handler entry point.
-void SemanticAnalyzer::installErrorHandler(int label)
-{
+void SemanticAnalyzer::installErrorHandler(int label) {
     errorHandlerActive_ = true;
     errorHandlerTarget_ = label;
 }
 
 /// @brief Clear the currently installed error handler state.
-void SemanticAnalyzer::clearErrorHandler()
-{
+void SemanticAnalyzer::clearErrorHandler() {
     errorHandlerActive_ = false;
     errorHandlerTarget_.reset();
 }
@@ -405,8 +368,7 @@ void SemanticAnalyzer::clearErrorHandler()
 ///
 /// @return True when @ref installErrorHandler has been called without a matching
 ///         @ref clearErrorHandler.
-bool SemanticAnalyzer::hasActiveErrorHandler() const noexcept
-{
+bool SemanticAnalyzer::hasActiveErrorHandler() const noexcept {
     return errorHandlerActive_;
 }
 

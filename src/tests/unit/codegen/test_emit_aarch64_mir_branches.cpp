@@ -21,8 +21,7 @@
 
 using namespace viper::codegen::aarch64;
 
-TEST(AArch64MIR, Branches)
-{
+TEST(AArch64MIR, Branches) {
     auto &ti = darwinTarget();
     AsmEmitter emit{ti};
 
@@ -48,8 +47,7 @@ TEST(AArch64MIR, Branches)
     EXPECT_NE(text.find("b entry"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

@@ -20,12 +20,10 @@
 #include <string>
 #include <vector>
 
-namespace il::tools::common
-{
+namespace il::tools::common {
 
 /// @brief Configuration for bytecode VM execution.
-struct VMExecutorConfig
-{
+struct VMExecutorConfig {
     /// @brief Program arguments to pass to the runtime via rt_args.
     std::vector<std::string> programArgs;
 
@@ -37,8 +35,7 @@ struct VMExecutorConfig
 };
 
 /// @brief Result of bytecode VM execution.
-struct VMExecutorResult
-{
+struct VMExecutorResult {
     /// @brief Exit code from the program (0 = success, 1 = trapped).
     int exitCode{0};
 

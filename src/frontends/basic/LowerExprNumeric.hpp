@@ -21,15 +21,13 @@
 
 #include <optional>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Helper for lowering BASIC numeric binary expressions.
 /// @details Encapsulates the logic for numeric operator handling, including
 ///          operand normalization, opcode selection, and specialised patterns
 ///          (such as exponentiation or string concatenation).
-struct NumericExprLowering
-{
+struct NumericExprLowering {
     /// @brief Bind the numeric lowering helper to a lowerer instance.
     /// @param lowerer Active lowering engine used to emit IL.
     explicit NumericExprLowering(Lowerer &lowerer) noexcept;
@@ -80,8 +78,7 @@ struct NumericExprLowering
     /// @brief Normalized operand configuration for numeric operators.
     /// @details Captures whether the operation is floating-point and which
     ///          IL type should be used for arithmetic and result values.
-    struct NumericOpConfig
-    {
+    struct NumericOpConfig {
         bool isFloat{false};             ///< True when operands are treated as float.
         il::core::Type arithmeticType{}; ///< IL type used for arithmetic operations.
         il::core::Type resultType{};     ///< IL type of the final result.
@@ -90,8 +87,7 @@ struct NumericExprLowering
     /// @brief Selected opcode and result metadata for numeric operations.
     /// @details Records the IL opcode to emit and any post-processing needs,
     ///          such as promoting boolean results to BASIC logical words.
-    struct OpcodeSelection
-    {
+    struct OpcodeSelection {
         il::core::Opcode opcode{il::core::Opcode::IAddOvf}; ///< IL opcode to emit.
         il::core::Type resultType{};                        ///< Resulting IL type.
         bool promoteBoolToI64{false};                       ///< Whether to widen booleans.

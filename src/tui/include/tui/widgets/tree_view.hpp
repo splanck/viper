@@ -34,15 +34,13 @@
 #include "tui/style/theme.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 
 /// @brief Node in a hierarchical tree structure with label, children, and expansion state.
 /// @details Each node contains a display label, a vector of child nodes owned via
 ///          unique_ptr, a non-owning parent pointer for traversal, and a flag indicating
 ///          whether the node's children are visible (expanded).
-struct TreeNode
-{
+struct TreeNode {
     std::string label{};
     std::vector<std::unique_ptr<TreeNode>> children{};
     TreeNode *parent{nullptr};
@@ -57,8 +55,7 @@ struct TreeNode
 /// @details Renders a tree of labeled nodes with indentation proportional to depth.
 ///          Supports Up/Down arrow navigation, Enter to toggle node expansion, and
 ///          Left/Right arrows to collapse/expand. Only expanded subtrees are visible.
-class TreeView : public ui::Widget
-{
+class TreeView : public ui::Widget {
   public:
     /// @brief Construct with root nodes and theme.
     TreeView(std::vector<std::unique_ptr<TreeNode>> roots, const style::Theme &theme);

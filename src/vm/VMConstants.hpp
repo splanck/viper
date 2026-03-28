@@ -18,8 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace il::vm
-{
+namespace il::vm {
 
 /// @brief Maximum recursion depth for interpreter.
 /// @details Prevents stack overflow from unbounded recursion.

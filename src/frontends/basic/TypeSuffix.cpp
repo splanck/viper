@@ -22,8 +22,7 @@
 
 #include "frontends/basic/TypeSuffix.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Deduce the BASIC scalar type represented by an identifier suffix.
 ///
@@ -37,12 +36,9 @@ namespace il::frontends::basic
 /// @param name Identifier to inspect; the view is not stored.
 /// @return The inferred type based on the final character, or `Type::I64` when
 ///         no suffix is present.
-std::optional<Type> inferAstTypeFromSuffix(std::string_view name)
-{
-    if (!name.empty())
-    {
-        switch (name.back())
-        {
+std::optional<Type> inferAstTypeFromSuffix(std::string_view name) {
+    if (!name.empty()) {
+        switch (name.back()) {
             case '$':
                 return Type::Str;
             case '#':
@@ -58,8 +54,7 @@ std::optional<Type> inferAstTypeFromSuffix(std::string_view name)
     return std::nullopt;
 }
 
-Type inferAstTypeFromName(std::string_view name)
-{
+Type inferAstTypeFromName(std::string_view name) {
     if (auto suffixType = inferAstTypeFromSuffix(name))
         return *suffixType;
     return Type::I64;

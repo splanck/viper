@@ -30,13 +30,10 @@ static int g_forced_strlen_used = 0;
 // the overflow test on that platform. On other compilers, we override strlen
 // to simulate an overflow condition.
 #ifndef _MSC_VER
-size_t strlen(const char *s)
-{
-    if (g_overflow_target)
-    {
+size_t strlen(const char *s) {
+    if (g_overflow_target) {
         const rt_string_builder *sb = g_overflow_target;
-        if (s == sb->data + sb->len)
-        {
+        if (s == sb->data + sb->len) {
             g_forced_strlen_used = 1;
             return sb->len + g_forced_strlen_extra;
         }
@@ -49,8 +46,7 @@ size_t strlen(const char *s)
 }
 #endif
 
-static void test_init_empty(void)
-{
+static void test_init_empty(void) {
     rt_string_builder sb;
     rt_sb_init(&sb);
     assert(sb.len == 0);
@@ -60,8 +56,7 @@ static void test_init_empty(void)
     rt_sb_free(&sb);
 }
 
-static void test_tiny_append(void)
-{
+static void test_tiny_append(void) {
     rt_string_builder sb;
     rt_sb_init(&sb);
     assert(rt_sb_append_cstr(&sb, "hi") == RT_SB_OK);
@@ -71,8 +66,7 @@ static void test_tiny_append(void)
     rt_sb_free(&sb);
 }
 
-static void test_large_append(void)
-{
+static void test_large_append(void) {
     char buffer[512];
     memset(buffer, 'a', sizeof(buffer));
     buffer[sizeof(buffer) - 1] = '\0';
@@ -87,13 +81,11 @@ static void test_large_append(void)
     rt_sb_free(&sb);
 }
 
-static void test_printf_growth(void)
-{
+static void test_printf_growth(void) {
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-    for (int i = 0; i < 64; ++i)
-    {
+    for (int i = 0; i < 64; ++i) {
         rt_sb_status_t status = rt_sb_printf(&sb, "line:%d;", i);
         assert(status == RT_SB_OK);
     }
@@ -103,8 +95,7 @@ static void test_printf_growth(void)
     rt_sb_free(&sb);
 }
 
-static void test_numeric_helpers(void)
-{
+static void test_numeric_helpers(void) {
     rt_string_builder sb;
     rt_sb_init(&sb);
 
@@ -121,8 +112,7 @@ static void test_numeric_helpers(void)
 // On MSVC, strlen is an intrinsic that cannot be overridden, so the overflow
 // simulation test is only available on other compilers.
 #ifndef _MSC_VER
-static void test_append_double_overflow_preserves_state(void)
-{
+static void test_append_double_overflow_preserves_state(void) {
     rt_string_builder sb;
     rt_sb_init(&sb);
 
@@ -150,8 +140,7 @@ static void test_append_double_overflow_preserves_state(void)
 #endif
 
 /// @brief Aggregate all rt_string_builder test cases.
-int main(void)
-{
+int main(void) {
     test_init_empty();
     test_tiny_append();
     test_large_append();

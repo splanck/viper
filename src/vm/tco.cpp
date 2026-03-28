@@ -42,8 +42,7 @@
 #include <optional>
 #include <string>
 
-namespace il::vm
-{
+namespace il::vm {
 
 /// @brief Attempt to perform a tail call by reusing the current frame.
 /// @details When enabled, this function rewrites the active execution state to
@@ -55,8 +54,7 @@ namespace il::vm
 /// @param callee Function to tail-call (must be non-NULL).
 /// @param args Arguments to seed into the callee's entry parameters.
 /// @return True if the tail call was performed; false if not eligible.
-bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot> args)
-{
+bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot> args) {
 #if !defined(VIPER_VM_TAILCALL) || !VIPER_VM_TAILCALL
     (void)vm;
     (void)callee;
@@ -104,22 +102,19 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
     // Seed entry parameters from args, retaining strings
     // Use entry block parameters for arity and seeding
     const auto &params = entry->params;
-    if (args.size() != params.size())
-    {
+    if (args.size() != params.size()) {
         // Arity mismatch: skip TCO
         return false;
     }
 
-    for (size_t i = 0; i < params.size(); ++i)
-    {
+    for (size_t i = 0; i < params.size(); ++i) {
         const auto id = params[i].id;
         // Parameter ID must fit in the pre-sized register file
         assert(id < fr.params.size() && "TCO: parameter ID exceeds params vector size");
         if (id >= fr.params.size())
             return false;
         const bool isStr = params[i].type.kind == il::core::Type::Kind::Str;
-        if (isStr)
-        {
+        if (isStr) {
             // Retain new value before releasing old to prevent dangling pointer
             // when args[i] aliases fr.params[id] (self-assignment during tail call).
             Slot retained = args[i];
@@ -128,9 +123,7 @@ bool tryTailCall(VM &vm, const il::core::Function *callee, std::span<const Slot>
                 rt_str_release_maybe(fr.params[id].str);
             fr.params[id] = retained;
             fr.paramsSet[id] = 1;
-        }
-        else
-        {
+        } else {
             fr.params[id] = args[i];
             fr.paramsSet[id] = 1;
         }

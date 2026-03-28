@@ -13,30 +13,25 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
 
-static bool starts_with(rt_string s, char prefix)
-{
+static bool starts_with(rt_string s, char prefix) {
     const char *cstr = rt_string_cstr(s);
     return cstr && cstr[0] == prefix;
 }
 
-static void test_identical()
-{
+static void test_identical() {
     rt_string a = make_str("hello\nworld");
     rt_string b = make_str("hello\nworld");
     void *diff = rt_diff_lines(a, b);
@@ -51,8 +46,7 @@ static void test_identical()
     rt_string_unref(b);
 }
 
-static void test_addition()
-{
+static void test_addition() {
     rt_string a = make_str("line1\nline2");
     rt_string b = make_str("line1\nline2\nline3");
     void *diff = rt_diff_lines(a, b);
@@ -67,16 +61,14 @@ static void test_addition()
     rt_string_unref(b);
 }
 
-static void test_removal()
-{
+static void test_removal() {
     rt_string a = make_str("line1\nline2\nline3");
     rt_string b = make_str("line1\nline3");
     void *diff = rt_diff_lines(a, b);
 
     // Should have removal of line2
     int changes = 0;
-    for (int64_t i = 0; i < rt_seq_len(diff); i++)
-    {
+    for (int64_t i = 0; i < rt_seq_len(diff); i++) {
         if (starts_with((rt_string)rt_seq_get(diff, i), '-'))
             changes++;
     }
@@ -86,8 +78,7 @@ static void test_removal()
     rt_string_unref(b);
 }
 
-static void test_count_changes()
-{
+static void test_count_changes() {
     rt_string a = make_str("line1\nline2\nline3");
     rt_string b = make_str("line1\nchanged\nline3");
 
@@ -98,8 +89,7 @@ static void test_count_changes()
     rt_string_unref(b);
 }
 
-static void test_patch()
-{
+static void test_patch() {
     rt_string a = make_str("hello\nworld");
     rt_string b = make_str("hello\nbeautiful\nworld");
     void *diff = rt_diff_lines(a, b);
@@ -112,8 +102,7 @@ static void test_patch()
     rt_string_unref(b);
 }
 
-static void test_unified()
-{
+static void test_unified() {
     rt_string a = make_str("line1\nline2");
     rt_string b = make_str("line1\nline3");
 
@@ -129,8 +118,7 @@ static void test_unified()
     rt_string_unref(b);
 }
 
-static void test_empty_inputs()
-{
+static void test_empty_inputs() {
     rt_string empty = make_str("");
     rt_string text = make_str("hello");
 
@@ -145,8 +133,7 @@ static void test_empty_inputs()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_identical();
     test_addition();
     test_removal();

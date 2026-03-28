@@ -20,20 +20,16 @@
 #include <string>
 #include <string_view>
 
-namespace viper::codegen::x64
-{
-namespace
-{
-[[nodiscard]] ILValue makeParam(int id) noexcept
-{
+namespace viper::codegen::x64 {
+namespace {
+[[nodiscard]] ILValue makeParam(int id) noexcept {
     ILValue value{};
     value.kind = ILValue::Kind::I64;
     value.id = id;
     return value;
 }
 
-[[nodiscard]] ILModule makeAddModule()
-{
+[[nodiscard]] ILModule makeAddModule() {
     ILValue paramA = makeParam(0);
     ILValue paramB = makeParam(1);
 
@@ -65,8 +61,7 @@ namespace
     return module;
 }
 
-[[nodiscard]] bool containsExpectedInstructions(const std::string &asmText)
-{
+[[nodiscard]] bool containsExpectedInstructions(const std::string &asmText) {
     // Check for required patterns that verify correct codegen:
     // 1. Function is exported with correct name
     // 2. An add instruction exists (the actual register allocation may vary)
@@ -74,10 +69,8 @@ namespace
     // 4. Function returns
     constexpr std::string_view kPatterns[] = {".globl add", "addq", ", %rax", "ret"};
 
-    for (const std::string_view pattern : kPatterns)
-    {
-        if (asmText.find(pattern) == std::string::npos)
-        {
+    for (const std::string_view pattern : kPatterns) {
+        if (asmText.find(pattern) == std::string::npos) {
             return false;
         }
     }
@@ -87,15 +80,13 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makeAddModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
 
-    if (!result.errors.empty() || !containsExpectedInstructions(result.asmText))
-    {
+    if (!result.errors.empty() || !containsExpectedInstructions(result.asmText)) {
         std::cerr << "Unexpected assembly output:\n" << result.asmText;
         return EXIT_FAILURE;
     }

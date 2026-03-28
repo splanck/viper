@@ -17,8 +17,7 @@
 
 using namespace viper::codegen::aarch64;
 
-TEST(AArch64Target, RegNamesAndABI)
-{
+TEST(AArch64Target, RegNamesAndABI) {
     auto &ti = darwinTarget();
 
     // Basic name sanity
@@ -47,8 +46,7 @@ TEST(AArch64Target, RegNamesAndABI)
     EXPECT_FALSE(isFPR(PhysReg::SP));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

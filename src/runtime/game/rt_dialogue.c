@@ -39,15 +39,13 @@
 #define DLG_CHAR_WIDTH 8
 #define DLG_LINE_HEIGHT 10
 
-typedef struct
-{
+typedef struct {
     char speaker[64];
     char text[DLG_MAX_TEXT_LEN];
     int32_t text_len;
 } dlg_line;
 
-typedef struct
-{
+typedef struct {
     // Geometry
     int32_t x, y, width, height;
     int32_t padding;
@@ -84,8 +82,7 @@ typedef struct
 // Construction
 //=============================================================================
 
-void *rt_dialogue_new(int64_t x, int64_t y, int64_t width, int64_t height)
-{
+void *rt_dialogue_new(int64_t x, int64_t y, int64_t width, int64_t height) {
     rt_dialogue_impl *d = (rt_dialogue_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_dialogue_impl));
     if (!d)
         return NULL;
@@ -122,8 +119,7 @@ void *rt_dialogue_new(int64_t x, int64_t y, int64_t width, int64_t height)
 /// @brief Perform dialogue set speed operation.
 /// @param dlg
 /// @param cps
-void rt_dialogue_set_speed(void *dlg, int64_t cps)
-{
+void rt_dialogue_set_speed(void *dlg, int64_t cps) {
     if (!dlg)
         return;
     rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
@@ -133,8 +129,7 @@ void rt_dialogue_set_speed(void *dlg, int64_t cps)
 /// @brief Perform dialogue set font operation.
 /// @param dlg
 /// @param font
-void rt_dialogue_set_font(void *dlg, void *font)
-{
+void rt_dialogue_set_font(void *dlg, void *font) {
     if (!dlg)
         return;
     rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
@@ -149,8 +144,7 @@ void rt_dialogue_set_font(void *dlg, void *font)
 /// @brief Perform dialogue set text color operation.
 /// @param dlg
 /// @param color
-void rt_dialogue_set_text_color(void *dlg, int64_t color)
-{
+void rt_dialogue_set_text_color(void *dlg, int64_t color) {
     if (!dlg)
         return;
     ((rt_dialogue_impl *)dlg)->text_color = (int32_t)color;
@@ -159,8 +153,7 @@ void rt_dialogue_set_text_color(void *dlg, int64_t color)
 /// @brief Perform dialogue set speaker color operation.
 /// @param dlg
 /// @param color
-void rt_dialogue_set_speaker_color(void *dlg, int64_t color)
-{
+void rt_dialogue_set_speaker_color(void *dlg, int64_t color) {
     if (!dlg)
         return;
     ((rt_dialogue_impl *)dlg)->speaker_color = (int32_t)color;
@@ -170,8 +163,7 @@ void rt_dialogue_set_speaker_color(void *dlg, int64_t color)
 /// @param dlg
 /// @param color
 /// @param alpha
-void rt_dialogue_set_bg_color(void *dlg, int64_t color, int64_t alpha)
-{
+void rt_dialogue_set_bg_color(void *dlg, int64_t color, int64_t alpha) {
     if (!dlg)
         return;
     rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
@@ -182,8 +174,7 @@ void rt_dialogue_set_bg_color(void *dlg, int64_t color, int64_t alpha)
 /// @brief Perform dialogue set border color operation.
 /// @param dlg
 /// @param color
-void rt_dialogue_set_border_color(void *dlg, int64_t color)
-{
+void rt_dialogue_set_border_color(void *dlg, int64_t color) {
     if (!dlg)
         return;
     ((rt_dialogue_impl *)dlg)->border_color = (int32_t)color;
@@ -192,8 +183,7 @@ void rt_dialogue_set_border_color(void *dlg, int64_t color)
 /// @brief Perform dialogue set padding operation.
 /// @param dlg
 /// @param padding
-void rt_dialogue_set_padding(void *dlg, int64_t padding)
-{
+void rt_dialogue_set_padding(void *dlg, int64_t padding) {
     if (!dlg)
         return;
     ((rt_dialogue_impl *)dlg)->padding = (int32_t)padding;
@@ -202,8 +192,7 @@ void rt_dialogue_set_padding(void *dlg, int64_t padding)
 /// @brief Perform dialogue set text scale operation.
 /// @param dlg
 /// @param scale
-void rt_dialogue_set_text_scale(void *dlg, int64_t scale)
-{
+void rt_dialogue_set_text_scale(void *dlg, int64_t scale) {
     if (!dlg)
         return;
     if (scale < 1)
@@ -215,8 +204,7 @@ void rt_dialogue_set_text_scale(void *dlg, int64_t scale)
 /// @param dlg
 /// @param x
 /// @param y
-void rt_dialogue_set_pos(void *dlg, int64_t x, int64_t y)
-{
+void rt_dialogue_set_pos(void *dlg, int64_t x, int64_t y) {
     if (!dlg)
         return;
     rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
@@ -228,8 +216,7 @@ void rt_dialogue_set_pos(void *dlg, int64_t x, int64_t y)
 /// @param dlg
 /// @param w
 /// @param h
-void rt_dialogue_set_size(void *dlg, int64_t w, int64_t h)
-{
+void rt_dialogue_set_size(void *dlg, int64_t w, int64_t h) {
     if (!dlg)
         return;
     rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
@@ -245,14 +232,12 @@ void rt_dialogue_set_size(void *dlg, int64_t w, int64_t h)
 /// @param dlg
 /// @param speaker
 /// @param text
-void rt_dialogue_say(void *dlg, rt_string speaker, rt_string text)
-{
+void rt_dialogue_say(void *dlg, rt_string speaker, rt_string text) {
     if (!dlg)
         return;
     rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
 
-    if (d->line_count >= DLG_MAX_LINES)
-    {
+    if (d->line_count >= DLG_MAX_LINES) {
         // Shift lines down, drop oldest
         for (int i = 0; i < DLG_MAX_LINES - 1; i++)
             d->lines[i] = d->lines[i + 1];
@@ -264,11 +249,9 @@ void rt_dialogue_say(void *dlg, rt_string speaker, rt_string text)
     dlg_line *line = &d->lines[d->line_count];
     memset(line, 0, sizeof(dlg_line));
 
-    if (speaker)
-    {
+    if (speaker) {
         const char *sp = rt_string_cstr(speaker);
-        if (sp)
-        {
+        if (sp) {
             size_t len = strlen(sp);
             if (len > 63)
                 len = 63;
@@ -276,11 +259,9 @@ void rt_dialogue_say(void *dlg, rt_string speaker, rt_string text)
         }
     }
 
-    if (text)
-    {
+    if (text) {
         const char *tx = rt_string_cstr(text);
-        if (tx)
-        {
+        if (tx) {
             size_t len = strlen(tx);
             if (len > DLG_MAX_TEXT_LEN - 1)
                 len = DLG_MAX_TEXT_LEN - 1;
@@ -290,8 +271,7 @@ void rt_dialogue_say(void *dlg, rt_string speaker, rt_string text)
     }
 
     d->line_count++;
-    if (!d->active)
-    {
+    if (!d->active) {
         d->active = 1;
         d->finished = 0;
         d->current_line = 0;
@@ -305,15 +285,13 @@ void rt_dialogue_say(void *dlg, rt_string speaker, rt_string text)
 /// @brief Perform dialogue say text operation.
 /// @param dlg
 /// @param text
-void rt_dialogue_say_text(void *dlg, rt_string text)
-{
+void rt_dialogue_say_text(void *dlg, rt_string text) {
     rt_dialogue_say(dlg, NULL, text);
 }
 
 /// @brief Perform dialogue clear operation.
 /// @param dlg
-void rt_dialogue_clear(void *dlg)
-{
+void rt_dialogue_clear(void *dlg) {
     if (!dlg)
         return;
     rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
@@ -334,8 +312,7 @@ void rt_dialogue_clear(void *dlg)
 /// @brief Perform dialogue update operation.
 /// @param dlg
 /// @param dt_ms
-void rt_dialogue_update(void *dlg, int64_t dt_ms)
-{
+void rt_dialogue_update(void *dlg, int64_t dt_ms) {
     if (!dlg)
         return;
     rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
@@ -347,8 +324,7 @@ void rt_dialogue_update(void *dlg, int64_t dt_ms)
     dlg_line *line = &d->lines[d->current_line];
 
     // Speed == 0 means instant reveal
-    if (d->chars_per_second == 0)
-    {
+    if (d->chars_per_second == 0) {
         d->revealed_chars = line->text_len;
         d->line_complete = 1;
         d->waiting_for_input = 1;
@@ -365,8 +341,7 @@ void rt_dialogue_update(void *dlg, int64_t dt_ms)
     d->accumulator_us %= us_per_char;
     d->revealed_chars += chars_to_add;
 
-    if (d->revealed_chars >= line->text_len)
-    {
+    if (d->revealed_chars >= line->text_len) {
         d->revealed_chars = line->text_len;
         d->line_complete = 1;
         d->waiting_for_input = 1;
@@ -375,35 +350,27 @@ void rt_dialogue_update(void *dlg, int64_t dt_ms)
 
 /// @brief Perform dialogue advance operation.
 /// @param dlg
-void rt_dialogue_advance(void *dlg)
-{
+void rt_dialogue_advance(void *dlg) {
     if (!dlg)
         return;
     rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
     if (!d->active)
         return;
 
-    if (!d->line_complete)
-    {
+    if (!d->line_complete) {
         // Skip to end of current line
-        if (d->current_line < d->line_count)
-        {
+        if (d->current_line < d->line_count) {
             d->revealed_chars = d->lines[d->current_line].text_len;
             d->line_complete = 1;
             d->waiting_for_input = 1;
         }
-    }
-    else
-    {
+    } else {
         // Move to next line
         d->current_line++;
-        if (d->current_line >= d->line_count)
-        {
+        if (d->current_line >= d->line_count) {
             d->active = 0;
             d->finished = 1;
-        }
-        else
-        {
+        } else {
             d->revealed_chars = 0;
             d->accumulator_us = 0;
             d->line_complete = 0;
@@ -414,8 +381,7 @@ void rt_dialogue_advance(void *dlg)
 
 /// @brief Perform dialogue skip operation.
 /// @param dlg
-void rt_dialogue_skip(void *dlg)
-{
+void rt_dialogue_skip(void *dlg) {
     if (!dlg)
         return;
     rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
@@ -433,8 +399,7 @@ void rt_dialogue_skip(void *dlg)
 /// @brief Perform dialogue is active operation.
 /// @param dlg
 /// @return Result value.
-int8_t rt_dialogue_is_active(void *dlg)
-{
+int8_t rt_dialogue_is_active(void *dlg) {
     if (!dlg)
         return 0;
     return ((rt_dialogue_impl *)dlg)->active;
@@ -443,8 +408,7 @@ int8_t rt_dialogue_is_active(void *dlg)
 /// @brief Perform dialogue is line complete operation.
 /// @param dlg
 /// @return Result value.
-int8_t rt_dialogue_is_line_complete(void *dlg)
-{
+int8_t rt_dialogue_is_line_complete(void *dlg) {
     if (!dlg)
         return 0;
     return ((rt_dialogue_impl *)dlg)->line_complete;
@@ -453,8 +417,7 @@ int8_t rt_dialogue_is_line_complete(void *dlg)
 /// @brief Perform dialogue is finished operation.
 /// @param dlg
 /// @return Result value.
-int8_t rt_dialogue_is_finished(void *dlg)
-{
+int8_t rt_dialogue_is_finished(void *dlg) {
     if (!dlg)
         return 0;
     return ((rt_dialogue_impl *)dlg)->finished;
@@ -463,8 +426,7 @@ int8_t rt_dialogue_is_finished(void *dlg)
 /// @brief Perform dialogue is waiting operation.
 /// @param dlg
 /// @return Result value.
-int8_t rt_dialogue_is_waiting(void *dlg)
-{
+int8_t rt_dialogue_is_waiting(void *dlg) {
     if (!dlg)
         return 0;
     return ((rt_dialogue_impl *)dlg)->waiting_for_input;
@@ -473,8 +435,7 @@ int8_t rt_dialogue_is_waiting(void *dlg)
 /// @brief Perform dialogue get line count operation.
 /// @param dlg
 /// @return Result value.
-int64_t rt_dialogue_get_line_count(void *dlg)
-{
+int64_t rt_dialogue_get_line_count(void *dlg) {
     if (!dlg)
         return 0;
     return ((rt_dialogue_impl *)dlg)->line_count;
@@ -483,8 +444,7 @@ int64_t rt_dialogue_get_line_count(void *dlg)
 /// @brief Perform dialogue get current line operation.
 /// @param dlg
 /// @return Result value.
-int64_t rt_dialogue_get_current_line(void *dlg)
-{
+int64_t rt_dialogue_get_current_line(void *dlg) {
     if (!dlg)
         return 0;
     return ((rt_dialogue_impl *)dlg)->current_line;
@@ -493,8 +453,7 @@ int64_t rt_dialogue_get_current_line(void *dlg)
 /// @brief Perform dialogue get speaker operation.
 /// @param dlg
 /// @return Result value.
-rt_string rt_dialogue_get_speaker(void *dlg)
-{
+rt_string rt_dialogue_get_speaker(void *dlg) {
     if (!dlg)
         return rt_const_cstr("");
     rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
@@ -510,8 +469,7 @@ rt_string rt_dialogue_get_speaker(void *dlg)
 /// @brief Perform dialogue draw operation.
 /// @param dlg
 /// @param canvas
-void rt_dialogue_draw(void *dlg, void *canvas)
-{
+void rt_dialogue_draw(void *dlg, void *canvas) {
     if (!dlg || !canvas)
         return;
     rt_dialogue_impl *d = (rt_dialogue_impl *)dlg;
@@ -531,8 +489,7 @@ void rt_dialogue_draw(void *dlg, void *canvas)
     int32_t text_y = d->y + pad;
 
     // Draw speaker name
-    if (line->speaker[0] != '\0')
-    {
+    if (line->speaker[0] != '\0') {
         rt_string sp = rt_const_cstr(line->speaker);
         rt_canvas_text_scaled(canvas, text_x, text_y, sp, scale, d->speaker_color);
         text_y += lh + 2;
@@ -554,17 +511,14 @@ void rt_dialogue_draw(void *dlg, void *canvas)
     buf[shown] = '\0';
 
     // Simple word-wrapping character draw using single-char strings
-    for (int32_t i = 0; i < shown; i++)
-    {
+    for (int32_t i = 0; i < shown; i++) {
         // Check word wrap at word boundaries
-        if (buf[i] == ' ' && cx > text_x)
-        {
+        if (buf[i] == ' ' && cx > text_x) {
             // Look ahead to measure next word
             int32_t wlen = 0;
             for (int32_t j = i + 1; j < shown && buf[j] != ' '; j++)
                 wlen++;
-            if (cx + (wlen + 1) * cw > max_x)
-            {
+            if (cx + (wlen + 1) * cw > max_x) {
                 cx = text_x;
                 cy += lh;
                 if (cy + lh > max_y)
@@ -573,8 +527,7 @@ void rt_dialogue_draw(void *dlg, void *canvas)
             }
         }
 
-        if (buf[i] == '\n')
-        {
+        if (buf[i] == '\n') {
             cx = text_x;
             cy += lh;
             if (cy + lh > max_y)
@@ -592,16 +545,14 @@ void rt_dialogue_draw(void *dlg, void *canvas)
         rt_str_release_maybe(ch);
         cx += cw;
 
-        if (cx >= max_x)
-        {
+        if (cx >= max_x) {
             cx = text_x;
             cy += lh;
         }
     }
 
     // Draw "..." indicator when waiting
-    if (d->waiting_for_input)
-    {
+    if (d->waiting_for_input) {
         rt_string indicator = rt_const_cstr("...");
         int32_t ind_x = d->x + d->width - pad - 3 * cw;
         int32_t ind_y = d->y + d->height - pad - lh;

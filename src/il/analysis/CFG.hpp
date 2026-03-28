@@ -28,16 +28,14 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 struct Module;
 struct Function;
 struct BasicBlock;
 using Block = BasicBlock;
 } // namespace il::core
 
-namespace viper::analysis
-{
+namespace viper::analysis {
 
 /// @brief Lightweight context bundling module information for CFG queries.
 ///
@@ -46,8 +44,7 @@ namespace viper::analysis
 /// computed eagerly so subsequent CFG utilities reuse cached edge data without
 /// rescanning block terminators. The caller is responsible for rebuilding the
 /// context if the module's function/block layout changes.
-struct CFGContext
-{
+struct CFGContext {
     explicit CFGContext(il::core::Module &module);
 
     il::core::Module *module{nullptr};

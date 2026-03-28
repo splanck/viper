@@ -51,8 +51,7 @@
 #define MAX_SPRITE_FRAMES 64
 
 /// @brief Sprite implementation structure.
-typedef struct rt_sprite_impl
-{
+typedef struct rt_sprite_impl {
     int64_t x;                       ///< X position
     int64_t y;                       ///< Y position
     int64_t scale_x;                 ///< Horizontal scale (100 = 100%)
@@ -73,19 +72,16 @@ typedef struct rt_sprite_impl
 // Forward declaration for time function
 extern int64_t rt_timer_ms(void);
 
-static void sprite_finalize(void *obj)
-{
+static void sprite_finalize(void *obj) {
     rt_sprite_impl *sprite = (rt_sprite_impl *)obj;
-    for (int i = 0; i < MAX_SPRITE_FRAMES; i++)
-    {
+    for (int i = 0; i < MAX_SPRITE_FRAMES; i++) {
         if (sprite->frames[i])
             rt_heap_release(sprite->frames[i]);
     }
 }
 
 /// @brief Allocate a new sprite.
-static rt_sprite_impl *sprite_alloc(void)
-{
+static rt_sprite_impl *sprite_alloc(void) {
     rt_sprite_impl *sprite = (rt_sprite_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sprite_impl));
     if (!sprite)
         return NULL;
@@ -116,10 +112,8 @@ static rt_sprite_impl *sprite_alloc(void)
 // Sprite Creation
 //=============================================================================
 
-void *rt_sprite_new(void *pixels)
-{
-    if (!pixels)
-    {
+void *rt_sprite_new(void *pixels) {
+    if (!pixels) {
         rt_trap("Sprite.New: null pixels");
         return NULL;
     }
@@ -130,8 +124,7 @@ void *rt_sprite_new(void *pixels)
 
     // Clone the pixels and store as first frame
     void *cloned = rt_pixels_clone(pixels);
-    if (cloned)
-    {
+    if (cloned) {
         sprite->frames[0] = cloned;
         sprite->frame_count = 1;
         rt_heap_retain(cloned);
@@ -140,8 +133,7 @@ void *rt_sprite_new(void *pixels)
     return sprite;
 }
 
-void *rt_sprite_from_file(void *path)
-{
+void *rt_sprite_from_file(void *path) {
     if (!path)
         return NULL;
 
@@ -164,50 +156,40 @@ void *rt_sprite_from_file(void *path)
 // Sprite Properties
 //=============================================================================
 
-int64_t rt_sprite_get_x(void *sprite_ptr)
-{
-    if (!sprite_ptr)
-    {
+int64_t rt_sprite_get_x(void *sprite_ptr) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.X: null sprite");
         return 0;
     }
     return ((rt_sprite_impl *)sprite_ptr)->x;
 }
 
-void rt_sprite_set_x(void *sprite_ptr, int64_t x)
-{
-    if (!sprite_ptr)
-    {
+void rt_sprite_set_x(void *sprite_ptr, int64_t x) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.X: null sprite");
         return;
     }
     ((rt_sprite_impl *)sprite_ptr)->x = x;
 }
 
-int64_t rt_sprite_get_y(void *sprite_ptr)
-{
-    if (!sprite_ptr)
-    {
+int64_t rt_sprite_get_y(void *sprite_ptr) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.Y: null sprite");
         return 0;
     }
     return ((rt_sprite_impl *)sprite_ptr)->y;
 }
 
-void rt_sprite_set_y(void *sprite_ptr, int64_t y)
-{
-    if (!sprite_ptr)
-    {
+void rt_sprite_set_y(void *sprite_ptr, int64_t y) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.Y: null sprite");
         return;
     }
     ((rt_sprite_impl *)sprite_ptr)->y = y;
 }
 
-int64_t rt_sprite_get_width(void *sprite_ptr)
-{
-    if (!sprite_ptr)
-    {
+int64_t rt_sprite_get_width(void *sprite_ptr) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.Width: null sprite");
         return 0;
     }
@@ -217,10 +199,8 @@ int64_t rt_sprite_get_width(void *sprite_ptr)
     return rt_pixels_width(sprite->frames[sprite->current_frame]);
 }
 
-int64_t rt_sprite_get_height(void *sprite_ptr)
-{
-    if (!sprite_ptr)
-    {
+int64_t rt_sprite_get_height(void *sprite_ptr) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.Height: null sprite");
         return 0;
     }
@@ -230,155 +210,124 @@ int64_t rt_sprite_get_height(void *sprite_ptr)
     return rt_pixels_height(sprite->frames[sprite->current_frame]);
 }
 
-int64_t rt_sprite_get_scale_x(void *sprite_ptr)
-{
-    if (!sprite_ptr)
-    {
+int64_t rt_sprite_get_scale_x(void *sprite_ptr) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.ScaleX: null sprite");
         return 100;
     }
     return ((rt_sprite_impl *)sprite_ptr)->scale_x;
 }
 
-void rt_sprite_set_scale_x(void *sprite_ptr, int64_t scale)
-{
-    if (!sprite_ptr)
-    {
+void rt_sprite_set_scale_x(void *sprite_ptr, int64_t scale) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.ScaleX: null sprite");
         return;
     }
     ((rt_sprite_impl *)sprite_ptr)->scale_x = scale;
 }
 
-int64_t rt_sprite_get_scale_y(void *sprite_ptr)
-{
-    if (!sprite_ptr)
-    {
+int64_t rt_sprite_get_scale_y(void *sprite_ptr) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.ScaleY: null sprite");
         return 100;
     }
     return ((rt_sprite_impl *)sprite_ptr)->scale_y;
 }
 
-void rt_sprite_set_scale_y(void *sprite_ptr, int64_t scale)
-{
-    if (!sprite_ptr)
-    {
+void rt_sprite_set_scale_y(void *sprite_ptr, int64_t scale) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.ScaleY: null sprite");
         return;
     }
     ((rt_sprite_impl *)sprite_ptr)->scale_y = scale;
 }
 
-int64_t rt_sprite_get_rotation(void *sprite_ptr)
-{
-    if (!sprite_ptr)
-    {
+int64_t rt_sprite_get_rotation(void *sprite_ptr) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.Rotation: null sprite");
         return 0;
     }
     return ((rt_sprite_impl *)sprite_ptr)->rotation;
 }
 
-void rt_sprite_set_rotation(void *sprite_ptr, int64_t degrees)
-{
-    if (!sprite_ptr)
-    {
+void rt_sprite_set_rotation(void *sprite_ptr, int64_t degrees) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.Rotation: null sprite");
         return;
     }
     ((rt_sprite_impl *)sprite_ptr)->rotation = degrees;
 }
 
-int64_t rt_sprite_get_visible(void *sprite_ptr)
-{
-    if (!sprite_ptr)
-    {
+int64_t rt_sprite_get_visible(void *sprite_ptr) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.Visible: null sprite");
         return 0;
     }
     return ((rt_sprite_impl *)sprite_ptr)->visible;
 }
 
-void rt_sprite_set_visible(void *sprite_ptr, int64_t visible)
-{
-    if (!sprite_ptr)
-    {
+void rt_sprite_set_visible(void *sprite_ptr, int64_t visible) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.Visible: null sprite");
         return;
     }
     ((rt_sprite_impl *)sprite_ptr)->visible = visible ? 1 : 0;
 }
 
-int64_t rt_sprite_get_frame(void *sprite_ptr)
-{
-    if (!sprite_ptr)
-    {
+int64_t rt_sprite_get_frame(void *sprite_ptr) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.Frame: null sprite");
         return 0;
     }
     return ((rt_sprite_impl *)sprite_ptr)->current_frame;
 }
 
-void rt_sprite_set_frame(void *sprite_ptr, int64_t frame)
-{
-    if (!sprite_ptr)
-    {
+void rt_sprite_set_frame(void *sprite_ptr, int64_t frame) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.Frame: null sprite");
         return;
     }
     rt_sprite_impl *sprite = (rt_sprite_impl *)sprite_ptr;
-    if (frame >= 0 && frame < sprite->frame_count)
-    {
+    if (frame >= 0 && frame < sprite->frame_count) {
         sprite->current_frame = frame;
         sprite->last_frame_time = 0; // Reset timer so animation resumes cleanly
     }
 }
 
-int64_t rt_sprite_get_frame_count(void *sprite_ptr)
-{
-    if (!sprite_ptr)
-    {
+int64_t rt_sprite_get_frame_count(void *sprite_ptr) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.FrameCount: null sprite");
         return 0;
     }
     return ((rt_sprite_impl *)sprite_ptr)->frame_count;
 }
 
-int64_t rt_sprite_get_flip_x(void *sprite_ptr)
-{
-    if (!sprite_ptr)
-    {
+int64_t rt_sprite_get_flip_x(void *sprite_ptr) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.FlipX: null sprite");
         return 0;
     }
     return ((rt_sprite_impl *)sprite_ptr)->flip_x;
 }
 
-void rt_sprite_set_flip_x(void *sprite_ptr, int64_t flip)
-{
-    if (!sprite_ptr)
-    {
+void rt_sprite_set_flip_x(void *sprite_ptr, int64_t flip) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.FlipX: null sprite");
         return;
     }
     ((rt_sprite_impl *)sprite_ptr)->flip_x = flip ? 1 : 0;
 }
 
-int64_t rt_sprite_get_flip_y(void *sprite_ptr)
-{
-    if (!sprite_ptr)
-    {
+int64_t rt_sprite_get_flip_y(void *sprite_ptr) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.FlipY: null sprite");
         return 0;
     }
     return ((rt_sprite_impl *)sprite_ptr)->flip_y;
 }
 
-void rt_sprite_set_flip_y(void *sprite_ptr, int64_t flip)
-{
-    if (!sprite_ptr)
-    {
+void rt_sprite_set_flip_y(void *sprite_ptr, int64_t flip) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.FlipY: null sprite");
         return;
     }
@@ -389,8 +338,7 @@ void rt_sprite_set_flip_y(void *sprite_ptr, int64_t flip)
 // Sprite Methods
 //=============================================================================
 
-void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
-{
+void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr) {
     if (!sprite_ptr || !canvas_ptr)
         return;
 
@@ -412,8 +360,7 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
 
     // If no transform at all, use simple blit
     if (sprite->scale_x == 100 && sprite->scale_y == 100 && sprite->rotation == 0 &&
-        !sprite->flip_x && !sprite->flip_y)
-    {
+        !sprite->flip_x && !sprite->flip_y) {
         rt_canvas_blit_alpha(canvas_ptr, sprite->x, sprite->y, frame);
         return;
     }
@@ -426,22 +373,19 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
     void *transformed = frame;
 
     // Flip on a clone (flip_h/v operate in-place; don't corrupt source frame)
-    if (sprite->flip_x)
-    {
+    if (sprite->flip_x) {
         transformed = rt_pixels_clone(transformed);
         if (transformed)
             rt_pixels_flip_h(transformed);
     }
-    if (sprite->flip_y)
-    {
+    if (sprite->flip_y) {
         if (transformed == frame)
             transformed = rt_pixels_clone(transformed);
         if (transformed)
             rt_pixels_flip_v(transformed);
     }
 
-    if (sprite->scale_x != 100 || sprite->scale_y != 100)
-    {
+    if (sprite->scale_x != 100 || sprite->scale_y != 100) {
         int64_t new_w = w * sprite->scale_x / 100;
         int64_t new_h = h * sprite->scale_y / 100;
         if (new_w < 1)
@@ -454,8 +398,7 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
     }
 
     // Rotate the (scaled) frame if needed
-    if (sprite->rotation != 0)
-    {
+    if (sprite->rotation != 0) {
         void *rotated = rt_pixels_rotate(transformed, (double)sprite->rotation);
         if (rotated)
             transformed = rotated;
@@ -471,8 +414,7 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
     int64_t blit_y = sprite->y - th / 2;
 
     // If origin is set, place origin point at (x, y) instead of centering
-    if (sprite->origin_x != 0 || sprite->origin_y != 0)
-    {
+    if (sprite->origin_x != 0 || sprite->origin_y != 0) {
         blit_x = sprite->x - sprite->origin_x;
         blit_y = sprite->y - sprite->origin_y;
     }
@@ -482,10 +424,8 @@ void rt_sprite_draw(void *sprite_ptr, void *canvas_ptr)
     // Note: transformed pixels will be GC'd
 }
 
-void rt_sprite_set_origin(void *sprite_ptr, int64_t x, int64_t y)
-{
-    if (!sprite_ptr)
-    {
+void rt_sprite_set_origin(void *sprite_ptr, int64_t x, int64_t y) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.SetOrigin: null sprite");
         return;
     }
@@ -494,10 +434,8 @@ void rt_sprite_set_origin(void *sprite_ptr, int64_t x, int64_t y)
     sprite->origin_y = y;
 }
 
-void rt_sprite_add_frame(void *sprite_ptr, void *pixels)
-{
-    if (!sprite_ptr || !pixels)
-    {
+void rt_sprite_add_frame(void *sprite_ptr, void *pixels) {
+    if (!sprite_ptr || !pixels) {
         rt_trap("Sprite.AddFrame: null argument");
         return;
     }
@@ -507,18 +445,15 @@ void rt_sprite_add_frame(void *sprite_ptr, void *pixels)
         return;
 
     void *cloned = rt_pixels_clone(pixels);
-    if (cloned)
-    {
+    if (cloned) {
         sprite->frames[sprite->frame_count] = cloned;
         sprite->frame_count++;
         rt_heap_retain(cloned);
     }
 }
 
-void rt_sprite_set_frame_delay(void *sprite_ptr, int64_t ms)
-{
-    if (!sprite_ptr)
-    {
+void rt_sprite_set_frame_delay(void *sprite_ptr, int64_t ms) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.SetFrameDelay: null sprite");
         return;
     }
@@ -527,8 +462,7 @@ void rt_sprite_set_frame_delay(void *sprite_ptr, int64_t ms)
     ((rt_sprite_impl *)sprite_ptr)->frame_delay_ms = ms;
 }
 
-void rt_sprite_update(void *sprite_ptr)
-{
+void rt_sprite_update(void *sprite_ptr) {
     if (!sprite_ptr)
         return;
 
@@ -540,15 +474,13 @@ void rt_sprite_update(void *sprite_ptr)
     if (sprite->last_frame_time == 0)
         sprite->last_frame_time = now;
 
-    if (now - sprite->last_frame_time >= sprite->frame_delay_ms)
-    {
+    if (now - sprite->last_frame_time >= sprite->frame_delay_ms) {
         sprite->current_frame = (sprite->current_frame + 1) % sprite->frame_count;
         sprite->last_frame_time = now;
     }
 }
 
-int8_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr)
-{
+int8_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr) {
     if (!sprite_ptr || !other_ptr)
         return false;
 
@@ -573,8 +505,7 @@ int8_t rt_sprite_overlaps(void *sprite_ptr, void *other_ptr)
     return (x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2);
 }
 
-int8_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py)
-{
+int8_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py) {
     if (!sprite_ptr)
         return false;
 
@@ -590,10 +521,8 @@ int8_t rt_sprite_contains(void *sprite_ptr, int64_t px, int64_t py)
     return (px >= x && px < x + w && py >= y && py < y + h);
 }
 
-void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy)
-{
-    if (!sprite_ptr)
-    {
+void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy) {
+    if (!sprite_ptr) {
         rt_trap("Sprite.Move: null sprite");
         return;
     }
@@ -606,8 +535,7 @@ void rt_sprite_move(void *sprite_ptr, int64_t dx, int64_t dy)
 // Sprite Animator — Named Animation Clip State Machine
 //=============================================================================
 
-rt_sprite_animator_t *rt_sprite_animator_new(void)
-{
+rt_sprite_animator_t *rt_sprite_animator_new(void) {
     rt_sprite_animator_t *anim = calloc(1, sizeof(rt_sprite_animator_t));
     if (!anim)
         return NULL;
@@ -616,8 +544,7 @@ rt_sprite_animator_t *rt_sprite_animator_new(void)
     return anim;
 }
 
-void rt_sprite_animator_destroy(rt_sprite_animator_t *animator)
-{
+void rt_sprite_animator_destroy(rt_sprite_animator_t *animator) {
     free(animator);
 }
 
@@ -626,8 +553,7 @@ int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
                                 int64_t start_frame,
                                 int64_t frame_count,
                                 int64_t frame_delay_ms,
-                                int loop)
-{
+                                int loop) {
     if (!animator || !name)
         return 0;
     if (animator->clip_count >= RT_ANIM_MAX_CLIPS)
@@ -636,8 +562,7 @@ int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
     rt_anim_clip_t *clip = &animator->clips[animator->clip_count++];
     /* Safe string copy: name field is char[64], guarantee NUL termination */
     int i = 0;
-    while (name[i] && i < 63)
-    {
+    while (name[i] && i < 63) {
         clip->name[i] = name[i];
         i++;
     }
@@ -649,32 +574,26 @@ int rt_sprite_animator_add_clip(rt_sprite_animator_t *animator,
     return 1;
 }
 
-int8_t rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name)
-{
+int8_t rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name) {
     if (!animator || !name)
         return 0;
 
-    for (int i = 0; i < animator->clip_count; i++)
-    {
+    for (int i = 0; i < animator->clip_count; i++) {
         /* Simple string comparison (no strncmp dependency on all platforms) */
         const char *a = animator->clips[i].name;
         const char *b = name;
         int match = 1;
-        while (*a || *b)
-        {
-            if (*a != *b)
-            {
+        while (*a || *b) {
+            if (*a != *b) {
                 match = 0;
                 break;
             }
             a++;
             b++;
         }
-        if (match)
-        {
+        if (match) {
             /* Start the clip only if it differs from the currently playing one */
-            if (animator->current_clip != i || !animator->playing)
-            {
+            if (animator->current_clip != i || !animator->playing) {
                 animator->current_clip = i;
                 animator->clip_frame = 0;
                 animator->last_update_ms = 0; /* reset on next update */
@@ -686,15 +605,13 @@ int8_t rt_sprite_animator_play(rt_sprite_animator_t *animator, const char *name)
     return 0; /* clip not found */
 }
 
-void rt_sprite_animator_stop(rt_sprite_animator_t *animator)
-{
+void rt_sprite_animator_stop(rt_sprite_animator_t *animator) {
     if (!animator)
         return;
     animator->playing = 0;
 }
 
-void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr)
-{
+void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr) {
     if (!animator || !animator->playing || animator->current_clip < 0 || !sprite_ptr)
         return;
 
@@ -705,21 +622,16 @@ void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr)
         animator->last_update_ms = now;
 
     int64_t elapsed = now - animator->last_update_ms;
-    if (elapsed >= clip->frame_delay_ms)
-    {
+    if (elapsed >= clip->frame_delay_ms) {
         /* Advance one frame (may be multiple if behind) */
         int64_t steps = elapsed / clip->frame_delay_ms;
         animator->clip_frame += steps;
         animator->last_update_ms += steps * clip->frame_delay_ms;
 
-        if (animator->clip_frame >= clip->frame_count)
-        {
-            if (clip->loop)
-            {
+        if (animator->clip_frame >= clip->frame_count) {
+            if (clip->loop) {
                 animator->clip_frame = animator->clip_frame % clip->frame_count;
-            }
-            else
-            {
+            } else {
                 /* Play-once: hold on last frame */
                 animator->clip_frame = clip->frame_count - 1;
                 animator->playing = 0;
@@ -732,13 +644,11 @@ void rt_sprite_animator_update(rt_sprite_animator_t *animator, void *sprite_ptr)
     rt_sprite_set_frame(sprite_ptr, abs_frame);
 }
 
-int8_t rt_sprite_animator_is_playing(rt_sprite_animator_t *animator)
-{
+int8_t rt_sprite_animator_is_playing(rt_sprite_animator_t *animator) {
     return (animator && animator->playing) ? 1 : 0;
 }
 
-const char *rt_sprite_animator_get_current(rt_sprite_animator_t *animator)
-{
+const char *rt_sprite_animator_get_current(rt_sprite_animator_t *animator) {
     if (!animator || !animator->playing || animator->current_clip < 0)
         return NULL;
     return animator->clips[animator->current_clip].name;

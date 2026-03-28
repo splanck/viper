@@ -53,14 +53,12 @@ static vg_widget_vtable_t g_toolbar_vtable = {.destroy = toolbar_destroy,
 // Helper Functions
 //=============================================================================
 
-static bool ensure_item_capacity(vg_toolbar_t *tb, size_t needed)
-{
+static bool ensure_item_capacity(vg_toolbar_t *tb, size_t needed) {
     if (needed <= tb->item_capacity)
         return true;
 
     size_t new_capacity = tb->item_capacity == 0 ? INITIAL_ITEM_CAPACITY : tb->item_capacity * 2;
-    while (new_capacity < needed)
-    {
+    while (new_capacity < needed) {
         new_capacity *= 2;
     }
 
@@ -73,8 +71,7 @@ static bool ensure_item_capacity(vg_toolbar_t *tb, size_t needed)
     return true;
 }
 
-static void free_item(vg_toolbar_item_t *item)
-{
+static void free_item(vg_toolbar_item_t *item) {
     if (!item)
         return;
     if (item->id)
@@ -87,8 +84,7 @@ static void free_item(vg_toolbar_item_t *item)
     free(item);
 }
 
-static vg_toolbar_item_t *create_item(vg_toolbar_item_type_t type, const char *id)
-{
+static vg_toolbar_item_t *create_item(vg_toolbar_item_type_t type, const char *id) {
     vg_toolbar_item_t *item = calloc(1, sizeof(vg_toolbar_item_t));
     if (!item)
         return NULL;
@@ -110,10 +106,8 @@ static vg_toolbar_item_t *create_item(vg_toolbar_item_type_t type, const char *i
     return item;
 }
 
-static uint32_t get_icon_pixels(vg_toolbar_icon_size_t size)
-{
-    switch (size)
-    {
+static uint32_t get_icon_pixels(vg_toolbar_icon_size_t size) {
+    switch (size) {
         case VG_TOOLBAR_ICONS_SMALL:
             return ICON_SIZE_SMALL;
         case VG_TOOLBAR_ICONS_MEDIUM:
@@ -125,13 +119,11 @@ static uint32_t get_icon_pixels(vg_toolbar_icon_size_t size)
     }
 }
 
-static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item)
-{
+static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
     uint32_t icon_px = get_icon_pixels(tb->icon_size);
     float padding = (float)tb->item_padding;
 
-    switch (item->type)
-    {
+    switch (item->type) {
         case VG_TOOLBAR_ITEM_SEPARATOR:
             return 1.0f + tb->item_spacing * 2;
 
@@ -140,25 +132,21 @@ static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item)
 
         case VG_TOOLBAR_ITEM_BUTTON:
         case VG_TOOLBAR_ITEM_TOGGLE:
-        case VG_TOOLBAR_ITEM_DROPDOWN:
-        {
+        case VG_TOOLBAR_ITEM_DROPDOWN: {
             float width = (float)icon_px + padding * 2;
-            if (item->show_label && item->label && tb->font)
-            {
+            if (item->show_label && item->label && tb->font) {
                 vg_text_metrics_t metrics;
                 vg_font_measure_text(tb->font, tb->font_size, item->label, &metrics);
                 width += metrics.width + padding;
             }
-            if (item->type == VG_TOOLBAR_ITEM_DROPDOWN)
-            {
+            if (item->type == VG_TOOLBAR_ITEM_DROPDOWN) {
                 width += 12; // Arrow indicator
             }
             return width;
         }
 
         case VG_TOOLBAR_ITEM_WIDGET:
-            if (item->custom_widget)
-            {
+            if (item->custom_widget) {
                 return item->custom_widget->measured_width + padding * 2;
             }
             return 0;
@@ -168,13 +156,11 @@ static float get_item_width(vg_toolbar_t *tb, vg_toolbar_item_t *item)
     }
 }
 
-static float get_item_height(vg_toolbar_t *tb, vg_toolbar_item_t *item)
-{
+static float get_item_height(vg_toolbar_t *tb, vg_toolbar_item_t *item) {
     uint32_t icon_px = get_icon_pixels(tb->icon_size);
     float padding = (float)tb->item_padding;
 
-    switch (item->type)
-    {
+    switch (item->type) {
         case VG_TOOLBAR_ITEM_SEPARATOR:
             return (float)icon_px + padding * 2;
 
@@ -187,8 +173,7 @@ static float get_item_height(vg_toolbar_t *tb, vg_toolbar_item_t *item)
             return (float)icon_px + padding * 2;
 
         case VG_TOOLBAR_ITEM_WIDGET:
-            if (item->custom_widget)
-            {
+            if (item->custom_widget) {
                 return item->custom_widget->measured_height + padding * 2;
             }
             return 0;
@@ -202,8 +187,7 @@ static float get_item_height(vg_toolbar_t *tb, vg_toolbar_item_t *item)
 // Toolbar Implementation
 //=============================================================================
 
-vg_toolbar_t *vg_toolbar_create(vg_widget_t *parent, vg_toolbar_orientation_t orientation)
-{
+vg_toolbar_t *vg_toolbar_create(vg_widget_t *parent, vg_toolbar_orientation_t orientation) {
     vg_toolbar_t *tb = calloc(1, sizeof(vg_toolbar_t));
     if (!tb)
         return NULL;
@@ -245,27 +229,23 @@ vg_toolbar_t *vg_toolbar_create(vg_widget_t *parent, vg_toolbar_orientation_t or
     tb->overflow_start_index = -1;
 
     // Add to parent
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &tb->base);
     }
 
     return tb;
 }
 
-static void toolbar_destroy(vg_widget_t *widget)
-{
+static void toolbar_destroy(vg_widget_t *widget) {
     vg_toolbar_t *tb = (vg_toolbar_t *)widget;
 
-    for (size_t i = 0; i < tb->item_count; i++)
-    {
+    for (size_t i = 0; i < tb->item_count; i++) {
         free_item(tb->items[i]);
     }
     free(tb->items);
 }
 
-static void toolbar_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void toolbar_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_toolbar_t *tb = (vg_toolbar_t *)widget;
 
     // Scale icon_px by the current ui_scale so the bar fills the correct visual
@@ -276,30 +256,23 @@ static void toolbar_measure(vg_widget_t *widget, float available_width, float av
     uint32_t icon_px = (uint32_t)((float)get_icon_pixels(tb->icon_size) * _ms);
     float bar_thickness = (float)icon_px + (float)tb->item_padding * 2 + 4.0f * _ms;
 
-    if (tb->orientation == VG_TOOLBAR_HORIZONTAL)
-    {
+    if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
         // Calculate total width of items
         float total_width = 0;
-        for (size_t i = 0; i < tb->item_count; i++)
-        {
+        for (size_t i = 0; i < tb->item_count; i++) {
             float item_width = get_item_width(tb, tb->items[i]);
-            if (item_width > 0)
-            {
+            if (item_width > 0) {
                 total_width += item_width + tb->item_spacing;
             }
         }
         widget->measured_width = total_width > 0 ? total_width - tb->item_spacing : available_width;
         widget->measured_height = bar_thickness;
-    }
-    else
-    {
+    } else {
         // Vertical orientation
         float total_height = 0;
-        for (size_t i = 0; i < tb->item_count; i++)
-        {
+        for (size_t i = 0; i < tb->item_count; i++) {
             float item_height = get_item_height(tb, tb->items[i]);
-            if (item_height > 0)
-            {
+            if (item_height > 0) {
                 total_height += item_height + tb->item_spacing;
             }
         }
@@ -309,8 +282,7 @@ static void toolbar_measure(vg_widget_t *widget, float available_width, float av
     }
 }
 
-static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, float height)
-{
+static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     vg_toolbar_t *tb = (vg_toolbar_t *)widget;
 
     widget->x = x;
@@ -323,24 +295,19 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
 
     // Arrange custom widgets within toolbar items
     float pos = 0;
-    for (size_t i = 0; i < tb->item_count; i++)
-    {
+    for (size_t i = 0; i < tb->item_count; i++) {
         vg_toolbar_item_t *item = tb->items[i];
 
-        if (tb->orientation == VG_TOOLBAR_HORIZONTAL)
-        {
+        if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
             float item_width = get_item_width(tb, item);
-            if (pos + item_width > width && tb->overflow_menu)
-            {
+            if (pos + item_width > width && tb->overflow_menu) {
                 // This item overflows
-                if (tb->overflow_start_index < 0)
-                {
+                if (tb->overflow_start_index < 0) {
                     tb->overflow_start_index = (int)i;
                 }
             }
 
-            if (item->type == VG_TOOLBAR_ITEM_WIDGET && item->custom_widget)
-            {
+            if (item->type == VG_TOOLBAR_ITEM_WIDGET && item->custom_widget) {
                 float iw = item->custom_widget->measured_width;
                 float ih = item->custom_widget->measured_height;
                 float ix = x + pos + (item_width - iw) / 2;
@@ -349,20 +316,15 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
             }
 
             pos += item_width + tb->item_spacing;
-        }
-        else
-        {
+        } else {
             float item_height = get_item_height(tb, item);
-            if (pos + item_height > height && tb->overflow_menu)
-            {
-                if (tb->overflow_start_index < 0)
-                {
+            if (pos + item_height > height && tb->overflow_menu) {
+                if (tb->overflow_start_index < 0) {
                     tb->overflow_start_index = (int)i;
                 }
             }
 
-            if (item->type == VG_TOOLBAR_ITEM_WIDGET && item->custom_widget)
-            {
+            if (item->type == VG_TOOLBAR_ITEM_WIDGET && item->custom_widget) {
                 float iw = item->custom_widget->measured_width;
                 float ih = item->custom_widget->measured_height;
                 float ix = x + (width - iw) / 2;
@@ -375,8 +337,7 @@ static void toolbar_arrange(vg_widget_t *widget, float x, float y, float width, 
     }
 }
 
-static void toolbar_paint(vg_widget_t *widget, void *canvas)
-{
+static void toolbar_paint(vg_widget_t *widget, void *canvas) {
     vg_toolbar_t *tb = (vg_toolbar_t *)widget;
     vgfx_window_t win = (vgfx_window_t)canvas;
 
@@ -399,44 +360,35 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
     float pos = 0;
     int max_index = tb->overflow_start_index >= 0 ? tb->overflow_start_index : (int)tb->item_count;
 
-    for (int i = 0; i < max_index; i++)
-    {
+    for (int i = 0; i < max_index; i++) {
         vg_toolbar_item_t *item = tb->items[i];
 
         float item_width, item_height;
         float item_x, item_y;
 
-        if (tb->orientation == VG_TOOLBAR_HORIZONTAL)
-        {
+        if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
             item_width = get_item_width(tb, item);
             item_height = widget->height - 4;
             item_x = widget->x + pos;
             item_y = widget->y + 2;
-        }
-        else
-        {
+        } else {
             item_width = widget->width - 4;
             item_height = get_item_height(tb, item);
             item_x = widget->x + 2;
             item_y = widget->y + pos;
         }
 
-        switch (item->type)
-        {
-            case VG_TOOLBAR_ITEM_SEPARATOR:
-            {
+        switch (item->type) {
+            case VG_TOOLBAR_ITEM_SEPARATOR: {
                 // Draw vertical or horizontal line
                 vg_theme_t *theme = vg_theme_get_current();
                 uint32_t sep_color = theme->colors.border_primary;
-                if (tb->orientation == VG_TOOLBAR_HORIZONTAL)
-                {
+                if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
                     int32_t sep_x = (int32_t)(item_x + item_width / 2);
                     int32_t sep_y1 = (int32_t)(widget->y + 4);
                     int32_t sep_y2 = (int32_t)(widget->y + widget->height - 4);
                     vgfx_fill_rect(win, sep_x, sep_y1, 1, sep_y2 - sep_y1, sep_color);
-                }
-                else
-                {
+                } else {
                     int32_t sep_x1 = (int32_t)(widget->x + 4);
                     int32_t sep_x2 = (int32_t)(widget->x + widget->width - 4);
                     int32_t sep_y = (int32_t)(item_y + item_height / 2);
@@ -451,25 +403,18 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
 
             case VG_TOOLBAR_ITEM_BUTTON:
             case VG_TOOLBAR_ITEM_TOGGLE:
-            case VG_TOOLBAR_ITEM_DROPDOWN:
-            {
+            case VG_TOOLBAR_ITEM_DROPDOWN: {
                 // Draw button background based on state
                 uint32_t btn_bg = 0; // No background by default
-                if (item == tb->pressed_item)
-                {
+                if (item == tb->pressed_item) {
                     btn_bg = tb->active_color;
-                }
-                else if (item == tb->hovered_item)
-                {
+                } else if (item == tb->hovered_item) {
                     btn_bg = tb->hover_color;
-                }
-                else if (item->type == VG_TOOLBAR_ITEM_TOGGLE && item->checked)
-                {
+                } else if (item->type == VG_TOOLBAR_ITEM_TOGGLE && item->checked) {
                     btn_bg = tb->active_color;
                 }
 
-                if (btn_bg != 0)
-                {
+                if (btn_bg != 0) {
                     vgfx_fill_rect(win,
                                    (int32_t)item_x,
                                    (int32_t)item_y,
@@ -485,38 +430,28 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
                 float icon_x = item_x + (item_width - icon_px) / 2;
                 float icon_y = item_y + (item_height - icon_px) / 2;
 
-                if (item->show_label && item->label)
-                {
+                if (item->show_label && item->label) {
                     // Icon on left, label on right
                     icon_x = item_x + tb->item_padding;
                 }
 
-                switch (item->icon.type)
-                {
+                switch (item->icon.type) {
                     case VG_ICON_GLYPH:
                         // Draw glyph using font
-                        if (tb->font)
-                        {
+                        if (tb->font) {
                             char buf[8] = {0};
                             // UTF-8 encode the glyph
                             uint32_t cp = item->icon.data.glyph;
-                            if (cp < 0x80)
-                            {
+                            if (cp < 0x80) {
                                 buf[0] = (char)cp;
-                            }
-                            else if (cp < 0x800)
-                            {
+                            } else if (cp < 0x800) {
                                 buf[0] = (char)(0xC0 | (cp >> 6));
                                 buf[1] = (char)(0x80 | (cp & 0x3F));
-                            }
-                            else if (cp < 0x10000)
-                            {
+                            } else if (cp < 0x10000) {
                                 buf[0] = (char)(0xE0 | (cp >> 12));
                                 buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
                                 buf[2] = (char)(0x80 | (cp & 0x3F));
-                            }
-                            else
-                            {
+                            } else {
                                 buf[0] = (char)(0xF0 | (cp >> 18));
                                 buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
                                 buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
@@ -541,8 +476,7 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
                 }
 
                 // Draw label if shown
-                if (item->show_label && item->label && tb->font)
-                {
+                if (item->show_label && item->label && tb->font) {
                     float label_x = (item->icon.type == VG_ICON_NONE)
                                         ? item_x + tb->item_padding
                                         : icon_x + icon_px + tb->item_padding;
@@ -552,8 +486,7 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
                 }
 
                 // Draw dropdown arrow
-                if (item->type == VG_TOOLBAR_ITEM_DROPDOWN)
-                {
+                if (item->type == VG_TOOLBAR_ITEM_DROPDOWN) {
                     // Draw small triangle at right edge
                     float arrow_x = item_x + item_width - 8;
                     float arrow_y = item_y + item_height / 2;
@@ -567,26 +500,21 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
 
             case VG_TOOLBAR_ITEM_WIDGET:
                 // Custom widget draws itself
-                if (item->custom_widget)
-                {
+                if (item->custom_widget) {
                     vg_widget_paint(item->custom_widget, canvas);
                 }
                 break;
         }
 
-        if (tb->orientation == VG_TOOLBAR_HORIZONTAL)
-        {
+        if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
             pos += item_width + tb->item_spacing;
-        }
-        else
-        {
+        } else {
             pos += item_height + tb->item_spacing;
         }
     }
 
     // Draw overflow button if needed
-    if (tb->overflow_start_index >= 0)
-    {
+    if (tb->overflow_start_index >= 0) {
         // Draw "..." indicator at end
         float ov_x = widget->x + widget->width - 20;
         float ov_y = widget->y + widget->height / 2;
@@ -596,47 +524,37 @@ static void toolbar_paint(vg_widget_t *widget, void *canvas)
     }
 }
 
-static vg_toolbar_item_t *find_item_at(vg_toolbar_t *tb, float px, float py)
-{
+static vg_toolbar_item_t *find_item_at(vg_toolbar_t *tb, float px, float py) {
     float pos = 0;
     int max_index = tb->overflow_start_index >= 0 ? tb->overflow_start_index : (int)tb->item_count;
 
-    for (int i = 0; i < max_index; i++)
-    {
+    for (int i = 0; i < max_index; i++) {
         vg_toolbar_item_t *item = tb->items[i];
 
         float item_width, item_height;
         float item_x, item_y;
 
-        if (tb->orientation == VG_TOOLBAR_HORIZONTAL)
-        {
+        if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
             item_width = get_item_width(tb, item);
             item_height = tb->base.height;
             item_x = tb->base.x + pos;
             item_y = tb->base.y;
-        }
-        else
-        {
+        } else {
             item_width = tb->base.width;
             item_height = get_item_height(tb, item);
             item_x = tb->base.x;
             item_y = tb->base.y + pos;
         }
 
-        if (px >= item_x && px < item_x + item_width && py >= item_y && py < item_y + item_height)
-        {
-            if (item->type != VG_TOOLBAR_ITEM_SEPARATOR && item->type != VG_TOOLBAR_ITEM_SPACER)
-            {
+        if (px >= item_x && px < item_x + item_width && py >= item_y && py < item_y + item_height) {
+            if (item->type != VG_TOOLBAR_ITEM_SEPARATOR && item->type != VG_TOOLBAR_ITEM_SPACER) {
                 return item;
             }
         }
 
-        if (tb->orientation == VG_TOOLBAR_HORIZONTAL)
-        {
+        if (tb->orientation == VG_TOOLBAR_HORIZONTAL) {
             pos += item_width + tb->item_spacing;
-        }
-        else
-        {
+        } else {
             pos += item_height + tb->item_spacing;
         }
     }
@@ -644,17 +562,13 @@ static vg_toolbar_item_t *find_item_at(vg_toolbar_t *tb, float px, float py)
     return NULL;
 }
 
-static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_toolbar_t *tb = (vg_toolbar_t *)widget;
 
-    switch (event->type)
-    {
-        case VG_EVENT_MOUSE_MOVE:
-        {
+    switch (event->type) {
+        case VG_EVENT_MOUSE_MOVE: {
             vg_toolbar_item_t *item = find_item_at(tb, event->mouse.x, event->mouse.y);
-            if (item != tb->hovered_item)
-            {
+            if (item != tb->hovered_item) {
                 tb->hovered_item = item;
                 widget->needs_paint = true;
             }
@@ -662,23 +576,19 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event)
         }
 
         case VG_EVENT_MOUSE_LEAVE:
-            if (tb->hovered_item)
-            {
+            if (tb->hovered_item) {
                 tb->hovered_item = NULL;
                 widget->needs_paint = true;
             }
-            if (tb->pressed_item)
-            {
+            if (tb->pressed_item) {
                 tb->pressed_item = NULL;
                 widget->needs_paint = true;
             }
             return false;
 
-        case VG_EVENT_MOUSE_DOWN:
-        {
+        case VG_EVENT_MOUSE_DOWN: {
             vg_toolbar_item_t *item = find_item_at(tb, event->mouse.x, event->mouse.y);
-            if (item && item->enabled)
-            {
+            if (item && item->enabled) {
                 tb->pressed_item = item;
                 widget->needs_paint = true;
                 return true;
@@ -686,28 +596,23 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event)
             return false;
         }
 
-        case VG_EVENT_MOUSE_UP:
-        {
+        case VG_EVENT_MOUSE_UP: {
             vg_toolbar_item_t *item = find_item_at(tb, event->mouse.x, event->mouse.y);
-            if (item && item == tb->pressed_item && item->enabled)
-            {
+            if (item && item == tb->pressed_item && item->enabled) {
                 // Set polling flag for runtime API
                 item->was_clicked = true;
 
                 // Trigger action
-                switch (item->type)
-                {
+                switch (item->type) {
                     case VG_TOOLBAR_ITEM_BUTTON:
-                        if (item->on_click)
-                        {
+                        if (item->on_click) {
                             item->on_click(item, item->user_data);
                         }
                         break;
 
                     case VG_TOOLBAR_ITEM_TOGGLE:
                         item->checked = !item->checked;
-                        if (item->on_toggle)
-                        {
+                        if (item->on_toggle) {
                             item->on_toggle(item, item->checked, item->user_data);
                         }
                         break;
@@ -715,8 +620,7 @@ static bool toolbar_handle_event(vg_widget_t *widget, vg_event_t *event)
                     case VG_TOOLBAR_ITEM_DROPDOWN:
                         // Show dropdown menu
                         // (placeholder - needs menu integration)
-                        if (item->on_click)
-                        {
+                        if (item->on_click) {
                             item->on_click(item, item->user_data);
                         }
                         break;
@@ -744,8 +648,7 @@ vg_toolbar_item_t *vg_toolbar_add_button(vg_toolbar_t *tb,
                                          const char *label,
                                          vg_icon_t icon,
                                          void (*on_click)(vg_toolbar_item_t *, void *),
-                                         void *user_data)
-{
+                                         void *user_data) {
     if (!tb)
         return NULL;
     if (!ensure_item_capacity(tb, tb->item_count + 1))
@@ -772,8 +675,7 @@ vg_toolbar_item_t *vg_toolbar_add_toggle(vg_toolbar_t *tb,
                                          vg_icon_t icon,
                                          bool initial_checked,
                                          void (*on_toggle)(vg_toolbar_item_t *, bool, void *),
-                                         void *user_data)
-{
+                                         void *user_data) {
     if (!tb)
         return NULL;
     if (!ensure_item_capacity(tb, tb->item_count + 1))
@@ -796,8 +698,7 @@ vg_toolbar_item_t *vg_toolbar_add_toggle(vg_toolbar_t *tb,
 }
 
 vg_toolbar_item_t *vg_toolbar_add_dropdown(
-    vg_toolbar_t *tb, const char *id, const char *label, vg_icon_t icon, struct vg_menu *menu)
-{
+    vg_toolbar_t *tb, const char *id, const char *label, vg_icon_t icon, struct vg_menu *menu) {
     if (!tb)
         return NULL;
     if (!ensure_item_capacity(tb, tb->item_count + 1))
@@ -817,8 +718,7 @@ vg_toolbar_item_t *vg_toolbar_add_dropdown(
     return item;
 }
 
-vg_toolbar_item_t *vg_toolbar_add_separator(vg_toolbar_t *tb)
-{
+vg_toolbar_item_t *vg_toolbar_add_separator(vg_toolbar_t *tb) {
     if (!tb)
         return NULL;
     if (!ensure_item_capacity(tb, tb->item_count + 1))
@@ -833,8 +733,7 @@ vg_toolbar_item_t *vg_toolbar_add_separator(vg_toolbar_t *tb)
     return item;
 }
 
-vg_toolbar_item_t *vg_toolbar_add_spacer(vg_toolbar_t *tb)
-{
+vg_toolbar_item_t *vg_toolbar_add_spacer(vg_toolbar_t *tb) {
     if (!tb)
         return NULL;
     if (!ensure_item_capacity(tb, tb->item_count + 1))
@@ -849,8 +748,7 @@ vg_toolbar_item_t *vg_toolbar_add_spacer(vg_toolbar_t *tb)
     return item;
 }
 
-vg_toolbar_item_t *vg_toolbar_add_widget(vg_toolbar_t *tb, const char *id, vg_widget_t *widget)
-{
+vg_toolbar_item_t *vg_toolbar_add_widget(vg_toolbar_t *tb, const char *id, vg_widget_t *widget) {
     if (!tb)
         return NULL;
     if (!ensure_item_capacity(tb, tb->item_count + 1))
@@ -868,15 +766,12 @@ vg_toolbar_item_t *vg_toolbar_add_widget(vg_toolbar_t *tb, const char *id, vg_wi
 }
 
 /// @brief Toolbar remove item.
-void vg_toolbar_remove_item(vg_toolbar_t *tb, const char *id)
-{
+void vg_toolbar_remove_item(vg_toolbar_t *tb, const char *id) {
     if (!tb || !id)
         return;
 
-    for (size_t i = 0; i < tb->item_count; i++)
-    {
-        if (tb->items[i]->id && strcmp(tb->items[i]->id, id) == 0)
-        {
+    for (size_t i = 0; i < tb->item_count; i++) {
+        if (tb->items[i]->id && strcmp(tb->items[i]->id, id) == 0) {
             free_item(tb->items[i]);
             memmove(&tb->items[i],
                     &tb->items[i + 1],
@@ -888,15 +783,12 @@ void vg_toolbar_remove_item(vg_toolbar_t *tb, const char *id)
     }
 }
 
-vg_toolbar_item_t *vg_toolbar_get_item(vg_toolbar_t *tb, const char *id)
-{
+vg_toolbar_item_t *vg_toolbar_get_item(vg_toolbar_t *tb, const char *id) {
     if (!tb || !id)
         return NULL;
 
-    for (size_t i = 0; i < tb->item_count; i++)
-    {
-        if (tb->items[i]->id && strcmp(tb->items[i]->id, id) == 0)
-        {
+    for (size_t i = 0; i < tb->item_count; i++) {
+        if (tb->items[i]->id && strcmp(tb->items[i]->id, id) == 0) {
             return tb->items[i];
         }
     }
@@ -904,24 +796,21 @@ vg_toolbar_item_t *vg_toolbar_get_item(vg_toolbar_t *tb, const char *id)
 }
 
 /// @brief Toolbar item set enabled.
-void vg_toolbar_item_set_enabled(vg_toolbar_item_t *item, bool enabled)
-{
+void vg_toolbar_item_set_enabled(vg_toolbar_item_t *item, bool enabled) {
     if (!item)
         return;
     item->enabled = enabled;
 }
 
 /// @brief Toolbar item set checked.
-void vg_toolbar_item_set_checked(vg_toolbar_item_t *item, bool checked)
-{
+void vg_toolbar_item_set_checked(vg_toolbar_item_t *item, bool checked) {
     if (!item)
         return;
     item->checked = checked;
 }
 
 /// @brief Toolbar item set tooltip.
-void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip)
-{
+void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip) {
     if (!item)
         return;
     if (item->tooltip)
@@ -930,8 +819,7 @@ void vg_toolbar_item_set_tooltip(vg_toolbar_item_t *item, const char *tooltip)
 }
 
 /// @brief Toolbar item set icon.
-void vg_toolbar_item_set_icon(vg_toolbar_item_t *item, vg_icon_t icon)
-{
+void vg_toolbar_item_set_icon(vg_toolbar_item_t *item, vg_icon_t icon) {
     if (!item)
         return;
     vg_icon_destroy(&item->icon);
@@ -939,8 +827,7 @@ void vg_toolbar_item_set_icon(vg_toolbar_item_t *item, vg_icon_t icon)
 }
 
 /// @brief Toolbar set icon size.
-void vg_toolbar_set_icon_size(vg_toolbar_t *tb, vg_toolbar_icon_size_t size)
-{
+void vg_toolbar_set_icon_size(vg_toolbar_t *tb, vg_toolbar_icon_size_t size) {
     if (!tb)
         return;
     tb->icon_size = size;
@@ -948,21 +835,18 @@ void vg_toolbar_set_icon_size(vg_toolbar_t *tb, vg_toolbar_icon_size_t size)
 }
 
 /// @brief Toolbar set show labels.
-void vg_toolbar_set_show_labels(vg_toolbar_t *tb, bool show)
-{
+void vg_toolbar_set_show_labels(vg_toolbar_t *tb, bool show) {
     if (!tb)
         return;
     tb->show_labels = show;
-    for (size_t i = 0; i < tb->item_count; i++)
-    {
+    for (size_t i = 0; i < tb->item_count; i++) {
         tb->items[i]->show_label = show;
     }
     tb->base.needs_layout = true;
 }
 
 /// @brief Toolbar set font.
-void vg_toolbar_set_font(vg_toolbar_t *tb, vg_font_t *font, float size)
-{
+void vg_toolbar_set_font(vg_toolbar_t *tb, vg_font_t *font, float size) {
     if (!tb)
         return;
     tb->font = font;
@@ -974,16 +858,14 @@ void vg_toolbar_set_font(vg_toolbar_t *tb, vg_font_t *font, float size)
 // Icon Helpers
 //=============================================================================
 
-vg_icon_t vg_icon_from_glyph(uint32_t codepoint)
-{
+vg_icon_t vg_icon_from_glyph(uint32_t codepoint) {
     vg_icon_t icon = {0};
     icon.type = VG_ICON_GLYPH;
     icon.data.glyph = codepoint;
     return icon;
 }
 
-vg_icon_t vg_icon_from_pixels(uint8_t *rgba, uint32_t w, uint32_t h)
-{
+vg_icon_t vg_icon_from_pixels(uint8_t *rgba, uint32_t w, uint32_t h) {
     vg_icon_t icon = {0};
     if (!rgba || w == 0 || h == 0)
         return icon;
@@ -991,42 +873,35 @@ vg_icon_t vg_icon_from_pixels(uint8_t *rgba, uint32_t w, uint32_t h)
     icon.type = VG_ICON_IMAGE;
     size_t size = w * h * 4;
     icon.data.image.pixels = malloc(size);
-    if (icon.data.image.pixels)
-    {
+    if (icon.data.image.pixels) {
         memcpy(icon.data.image.pixels, rgba, size);
         icon.data.image.width = w;
         icon.data.image.height = h;
-    }
-    else
-    {
+    } else {
         icon.type = VG_ICON_NONE;
     }
     return icon;
 }
 
-vg_icon_t vg_icon_from_file(const char *path)
-{
+vg_icon_t vg_icon_from_file(const char *path) {
     vg_icon_t icon = {0};
     if (!path)
         return icon;
 
     icon.type = VG_ICON_PATH;
     icon.data.path = strdup(path);
-    if (!icon.data.path)
-    {
+    if (!icon.data.path) {
         icon.type = VG_ICON_NONE;
     }
     return icon;
 }
 
 /// @brief Icon destroy.
-void vg_icon_destroy(vg_icon_t *icon)
-{
+void vg_icon_destroy(vg_icon_t *icon) {
     if (!icon)
         return;
 
-    switch (icon->type)
-    {
+    switch (icon->type) {
         case VG_ICON_IMAGE:
             free(icon->data.image.pixels);
             break;

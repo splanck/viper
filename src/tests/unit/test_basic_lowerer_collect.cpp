@@ -22,27 +22,21 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-bool entryHasAlloca(const il::core::Function &fn)
-{
+bool entryHasAlloca(const il::core::Function &fn) {
     if (fn.blocks.empty())
         return false;
-    for (const auto &instr : fn.blocks.front().instructions)
-    {
+    for (const auto &instr : fn.blocks.front().instructions) {
         if (instr.op == il::core::Opcode::Alloca)
             return true;
     }
     return false;
 }
 
-bool tempsHaveNames(const il::core::Function &fn)
-{
-    for (const auto &bb : fn.blocks)
-    {
-        for (const auto &instr : bb.instructions)
-        {
+bool tempsHaveNames(const il::core::Function &fn) {
+    for (const auto &bb : fn.blocks) {
+        for (const auto &instr : bb.instructions) {
             if (!instr.result)
                 continue;
             unsigned id = *instr.result;
@@ -57,8 +51,7 @@ bool tempsHaveNames(const il::core::Function &fn)
 
 } // namespace
 
-int main()
-{
+int main() {
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
     std::string src = "10 FUNCTION F()\n"
@@ -77,8 +70,7 @@ int main()
 
     const il::core::Function *mainFn = nullptr;
     const il::core::Function *funcF = nullptr;
-    for (const auto &fn : module.functions)
-    {
+    for (const auto &fn : module.functions) {
         if (fn.name == "main")
             mainFn = &fn;
         else if (fn.name == "F")

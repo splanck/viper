@@ -18,8 +18,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -28,8 +27,7 @@ static void test_result(const char *name, bool passed)
 // CRC32 Tests
 //=============================================================================
 
-static void test_crc32()
-{
+static void test_crc32() {
     printf("Testing Hash.CRC32:\n");
 
     // Empty string
@@ -61,8 +59,7 @@ static void test_crc32()
 // MD5 Tests (RFC 1321 test vectors)
 //=============================================================================
 
-static void test_md5()
-{
+static void test_md5() {
     printf("Testing Hash.MD5:\n");
 
     // Empty string: d41d8cd98f00b204e9800998ecf8427e
@@ -101,8 +98,7 @@ static void test_md5()
 // SHA1 Tests (RFC 3174 test vectors)
 //=============================================================================
 
-static void test_sha1()
-{
+static void test_sha1() {
     printf("Testing Hash.SHA1:\n");
 
     // Empty string: da39a3ee5e6b4b0d3255bfef95601890afd80709
@@ -139,8 +135,7 @@ static void test_sha1()
 // SHA256 Tests (RFC 6234 test vectors)
 //=============================================================================
 
-static void test_sha256()
-{
+static void test_sha256() {
     printf("Testing Hash.SHA256:\n");
 
     // Empty string: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
@@ -179,8 +174,7 @@ static void test_sha256()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Hash Tests ===\n\n");
 
     test_crc32();

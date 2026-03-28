@@ -35,11 +35,9 @@
 ///          - vbasic script.bas           -> runs the program
 ///          - vbasic script.bas --emit-il -> shows generated IL
 ///          - vbasic script.bas -o file   -> saves IL to file
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     // Zero-arg: launch the interactive BASIC REPL
-    if (argc < 2)
-    {
+    if (argc < 2) {
         auto adapter = std::make_unique<viper::repl::BasicReplAdapter>();
         viper::repl::ReplSession session(std::move(adapter));
         return session.run();

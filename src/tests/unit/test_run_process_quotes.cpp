@@ -23,22 +23,17 @@
 #include <system_error>
 #include <vector>
 
-namespace
-{
-std::string trim_trailing_newlines(std::string text)
-{
-    while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
-    {
+namespace {
+std::string trim_trailing_newlines(std::string text) {
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) {
         text.pop_back();
     }
     return text;
 }
 } // namespace
 
-namespace viper::test_support
-{
-struct ScopedEnvironmentAssignmentMoveResult
-{
+namespace viper::test_support {
+struct ScopedEnvironmentAssignmentMoveResult {
     bool value_visible_after_move_ctor;
     bool value_visible_after_move_assign;
     bool restored;
@@ -49,8 +44,7 @@ ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserv
     const std::string &name, const std::string &source_value, const std::string &receiver_value);
 } // namespace viper::test_support
 
-TEST(RunProcess, PreservesQuotesAndBackslashes)
-{
+TEST(RunProcess, PreservesQuotesAndBackslashes) {
     const std::string trickyArg = "value \"with quotes\" and backslash \\\\ tail";
 
     const RunResult result = run_process({"cmake", "-E", "echo", trickyArg});
@@ -60,8 +54,7 @@ TEST(RunProcess, PreservesQuotesAndBackslashes)
 }
 
 #ifndef _WIN32
-TEST(RunProcess, EscapesPosixShellExpansions)
-{
+TEST(RunProcess, EscapesPosixShellExpansions) {
     const std::string trickyArg = "literal $PATH and `uname` markers";
 
     const RunResult result = run_process({"cmake", "-E", "echo", trickyArg});
@@ -71,8 +64,7 @@ TEST(RunProcess, EscapesPosixShellExpansions)
 }
 #endif
 
-TEST(RunProcess, ForwardsEnvironmentVariables)
-{
+TEST(RunProcess, ForwardsEnvironmentVariables) {
     const std::string varName = "VIPER_RUN_PROCESS_TEST_VAR";
     const std::string varValue = "viper-test-value";
     const RunResult result =
@@ -83,8 +75,7 @@ TEST(RunProcess, ForwardsEnvironmentVariables)
     EXPECT_NE(std::string::npos, result.out.find(expectedLine));
 }
 
-TEST(RunProcess, ScopedEnvironmentAssignmentSurvivesMove)
-{
+TEST(RunProcess, ScopedEnvironmentAssignmentSurvivesMove) {
     const std::string varName = "VIPER_SCOPED_ENV_MOVE_TEST";
     const std::string varValue = "scoped-env-move-value";
 
@@ -96,8 +87,7 @@ TEST(RunProcess, ScopedEnvironmentAssignmentSurvivesMove)
     EXPECT_TRUE(result.restored);
 }
 
-TEST(RunProcess, ScopedEnvironmentAssignmentMoveAssignmentPrefersSourceValue)
-{
+TEST(RunProcess, ScopedEnvironmentAssignmentMoveAssignmentPrefersSourceValue) {
     const std::string varName = "VIPER_SCOPED_ENV_MOVE_ASSIGN_TEST";
     const std::string sourceValue = "scoped-env-source-value";
     const std::string receiverValue = "scoped-env-receiver-value";
@@ -112,8 +102,7 @@ TEST(RunProcess, ScopedEnvironmentAssignmentMoveAssignmentPrefersSourceValue)
     EXPECT_TRUE(result.restored);
 }
 
-TEST(RunProcess, AppliesWorkingDirectory)
-{
+TEST(RunProcess, AppliesWorkingDirectory) {
     const std::filesystem::path tempRoot = std::filesystem::temp_directory_path();
     const auto uniqueSuffix = std::chrono::steady_clock::now().time_since_epoch().count();
     const std::filesystem::path tempDir =
@@ -134,15 +123,13 @@ TEST(RunProcess, AppliesWorkingDirectory)
 }
 
 #ifndef _WIN32
-TEST(RunProcess, ReportsPosixExitStatus)
-{
+TEST(RunProcess, ReportsPosixExitStatus) {
     const RunResult result = run_process({"sh", "-c", "exit 42"});
 
     EXPECT_EQ(42, result.exit_code);
 }
 #else
-TEST(RunProcess, CapturesWindowsStderr)
-{
+TEST(RunProcess, CapturesWindowsStderr) {
     const RunResult result = run_process({"cmd", "/C", "echo viper-stderr-sample 1>&2"});
 
     EXPECT_NE(-1, result.exit_code);
@@ -151,8 +138,7 @@ TEST(RunProcess, CapturesWindowsStderr)
 }
 #endif
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

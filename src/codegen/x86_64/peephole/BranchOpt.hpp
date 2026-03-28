@@ -29,8 +29,7 @@
 
 #include <cstddef>
 
-namespace viper::codegen::x64::peephole
-{
+namespace viper::codegen::x64::peephole {
 
 /// @brief Greedy trace block layout — follow JMP targets to maximize fall-through.
 void traceBlockLayout(MFunction &fn, PeepholeStats &stats);

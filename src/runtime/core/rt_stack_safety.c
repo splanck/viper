@@ -51,10 +51,8 @@
 static int g_stack_safety_initialized = 0;
 
 /// @brief Vectored exception handler for stack overflow detection.
-static LONG WINAPI stack_overflow_handler(EXCEPTION_POINTERS *ep)
-{
-    if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_STACK_OVERFLOW)
-    {
+static LONG WINAPI stack_overflow_handler(EXCEPTION_POINTERS *ep) {
+    if (ep->ExceptionRecord->ExceptionCode == EXCEPTION_STACK_OVERFLOW) {
         // Cannot safely use fprintf here as we're out of stack space.
         // Use WriteFile to stderr directly.
         HANDLE hStderr = GetStdHandle(STD_ERROR_HANDLE);
@@ -70,8 +68,7 @@ static LONG WINAPI stack_overflow_handler(EXCEPTION_POINTERS *ep)
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
-void rt_init_stack_safety(void)
-{
+void rt_init_stack_safety(void) {
     if (__atomic_load_n(&g_stack_safety_initialized, __ATOMIC_ACQUIRE))
         return;
 
@@ -81,8 +78,7 @@ void rt_init_stack_safety(void)
     __atomic_store_n(&g_stack_safety_initialized, 1, __ATOMIC_RELEASE);
 }
 
-void rt_trap_stack_overflow(void)
-{
+void rt_trap_stack_overflow(void) {
     // Use WriteFile for safety in low-stack conditions
     HANDLE hStderr = GetStdHandle(STD_ERROR_HANDLE);
     const char *msg = "Viper runtime trap: stack overflow\n";
@@ -101,13 +97,11 @@ static char g_alt_stack[SIGSTKSZ];
 static int g_stack_safety_initialized = 0;
 
 /// @brief Signal handler for SIGSEGV (stack overflow detection).
-static void sigsegv_handler(int sig, siginfo_t *info, void *context)
-{
+static void sigsegv_handler(int sig, siginfo_t *info, void *context) {
     (void)info;
     (void)context;
 
-    if (sig == SIGSEGV || sig == SIGBUS)
-    {
+    if (sig == SIGSEGV || sig == SIGBUS) {
         // Write directly to stderr using write() syscall
         // (safe to use in signal handlers)
         const char *msg = "Viper runtime error: stack overflow (or segmentation fault)\n"
@@ -118,8 +112,7 @@ static void sigsegv_handler(int sig, siginfo_t *info, void *context)
     }
 }
 
-void rt_init_stack_safety(void)
-{
+void rt_init_stack_safety(void) {
     if (__atomic_load_n(&g_stack_safety_initialized, __ATOMIC_ACQUIRE))
         return;
 
@@ -128,8 +121,7 @@ void rt_init_stack_safety(void)
     ss.ss_sp = g_alt_stack;
     ss.ss_size = SIGSTKSZ;
     ss.ss_flags = 0;
-    if (sigaltstack(&ss, NULL) == -1)
-    {
+    if (sigaltstack(&ss, NULL) == -1) {
         // Failed to set up alternate stack - continue without it
         return;
     }
@@ -148,8 +140,7 @@ void rt_init_stack_safety(void)
     __atomic_store_n(&g_stack_safety_initialized, 1, __ATOMIC_RELEASE);
 }
 
-void rt_trap_stack_overflow(void)
-{
+void rt_trap_stack_overflow(void) {
     const char *msg = "Viper runtime trap: stack overflow\n";
     write(STDERR_FILENO, msg, strlen(msg));
     _exit(1);
@@ -161,13 +152,11 @@ void rt_trap_stack_overflow(void)
 // Signal-based guard pages require ViperDOS signal handler trampoline.
 // For now, init is a no-op; overflow traps explicitly.
 
-void rt_init_stack_safety(void)
-{
+void rt_init_stack_safety(void) {
     // No-op until ViperDOS signal handler trampoline is available.
 }
 
-void rt_trap_stack_overflow(void)
-{
+void rt_trap_stack_overflow(void) {
     // Use fprintf for simplicity; could use write() if available
     fprintf(stderr, "Viper runtime trap: stack overflow\n");
     fflush(stderr);
@@ -176,13 +165,11 @@ void rt_trap_stack_overflow(void)
 
 #else
 // Fallback for other platforms - no-op implementation
-void rt_init_stack_safety(void)
-{
+void rt_init_stack_safety(void) {
     // No-op on unsupported platforms
 }
 
-void rt_trap_stack_overflow(void)
-{
+void rt_trap_stack_overflow(void) {
     fprintf(stderr, "Viper runtime trap: stack overflow\n");
     fflush(stderr);
     exit(1);

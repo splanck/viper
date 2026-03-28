@@ -27,20 +27,16 @@
 #include <stdio.h>
 #endif
 
-namespace viper::repl
-{
+namespace viper::repl {
 
 /// @brief ANSI color scheme for the REPL.
 /// @details All methods return empty strings when stdout is not a terminal.
-namespace colors
-{
+namespace colors {
 
 /// @brief Check whether ANSI color output is supported and enabled.
 /// @return True if stdout is connected to a terminal.
-inline bool isColorEnabled()
-{
-    static const bool enabled = []
-    {
+inline bool isColorEnabled() {
+    static const bool enabled = [] {
 #if defined(__unix__) || defined(__APPLE__)
         return isatty(STDOUT_FILENO) != 0;
 #elif defined(_WIN32)
@@ -53,81 +49,66 @@ inline bool isColorEnabled()
 }
 
 // --- Reset ---
-inline const char *reset()
-{
+inline const char *reset() {
     return isColorEnabled() ? "\033[0m" : "";
 }
 
-inline const char *bold()
-{
+inline const char *bold() {
     return isColorEnabled() ? "\033[1m" : "";
 }
 
-inline const char *dim()
-{
+inline const char *dim() {
     return isColorEnabled() ? "\033[2m" : "";
 }
 
 // --- Prompt ---
-inline const char *prompt()
-{
+inline const char *prompt() {
     return isColorEnabled() ? "\033[1;36m" : "";
 }
 
-inline const char *contPrompt()
-{
+inline const char *contPrompt() {
     return isColorEnabled() ? "\033[36m" : "";
 }
 
 // --- Output types ---
-inline const char *result()
-{
+inline const char *result() {
     return isColorEnabled() ? "\033[1;32m" : "";
 }
 
-inline const char *string()
-{
+inline const char *string() {
     return isColorEnabled() ? "\033[33m" : "";
 }
 
-inline const char *number()
-{
+inline const char *number() {
     return isColorEnabled() ? "\033[34m" : "";
 }
 
-inline const char *boolean()
-{
+inline const char *boolean() {
     return isColorEnabled() ? "\033[35m" : "";
 }
 
-inline const char *null()
-{
+inline const char *null() {
     return isColorEnabled() ? "\033[2;37m" : "";
 }
 
-inline const char *type()
-{
+inline const char *type() {
     return isColorEnabled() ? "\033[36m" : "";
 }
 
 // --- Diagnostics ---
-inline const char *error()
-{
+inline const char *error() {
     return isColorEnabled() ? "\033[1;31m" : "";
 }
 
-inline const char *warning()
-{
+inline const char *warning() {
     return isColorEnabled() ? "\033[1;33m" : "";
 }
 
-inline const char *note()
-{
+inline const char *note() {
     return isColorEnabled() ? "\033[1;34m" : "";
 }
 
-inline const char *success()
-{
+inline const char *success() {
     return isColorEnabled() ? "\033[1;32m" : "";
 }
 

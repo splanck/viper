@@ -27,25 +27,24 @@
 #include "rt_string.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Pluralize an English noun.
-    /// @param word Singular noun.
-    /// @return Plural form (e.g., "cat" -> "cats", "child" -> "children").
-    rt_string rt_pluralize(rt_string word);
+/// @brief Pluralize an English noun.
+/// @param word Singular noun.
+/// @return Plural form (e.g., "cat" -> "cats", "child" -> "children").
+rt_string rt_pluralize(rt_string word);
 
-    /// @brief Singularize an English noun.
-    /// @param word Plural noun.
-    /// @return Singular form (e.g., "cats" -> "cat", "children" -> "child").
-    rt_string rt_singularize(rt_string word);
+/// @brief Singularize an English noun.
+/// @param word Plural noun.
+/// @return Singular form (e.g., "cats" -> "cat", "children" -> "child").
+rt_string rt_singularize(rt_string word);
 
-    /// @brief Format a count with the correct singular/plural noun.
-    /// @param count Number of items.
-    /// @param word Singular noun.
-    /// @return Formatted string (e.g., "1 item", "5 items", "0 items").
-    rt_string rt_pluralize_count(int64_t count, rt_string word);
+/// @brief Format a count with the correct singular/plural noun.
+/// @param count Number of items.
+/// @param word Singular noun.
+/// @return Formatted string (e.g., "1 item", "5 items", "0 items").
+rt_string rt_pluralize_count(int64_t count, rt_string word);
 
 #ifdef __cplusplus
 }

@@ -26,11 +26,9 @@
 
 #include "codegen/aarch64/TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64::ra
-{
+namespace viper::codegen::aarch64::ra {
 
-struct RegPools
-{
+struct RegPools {
     std::deque<PhysReg> gprFree{};
     std::deque<PhysReg> fprFree{};
 

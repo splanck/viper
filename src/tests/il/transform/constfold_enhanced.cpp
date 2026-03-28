@@ -25,14 +25,11 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-static void verifyOrDie(const Module &module)
-{
+static void verifyOrDie(const Module &module) {
     auto verifyResult = il::verify::Verifier::verify(module);
-    if (!verifyResult)
-    {
+    if (!verifyResult) {
         il::support::printDiag(verifyResult.error(), std::cerr);
         ASSERT_TRUE(false && "Module verification failed");
     }
@@ -43,8 +40,7 @@ void emitBinOp(BasicBlock &bb,
                Value lhs,
                Value rhs,
                unsigned resultId,
-               Type ty = Type(Type::Kind::I64))
-{
+               Type ty = Type(Type::Kind::I64)) {
     Instr instr;
     instr.op = op;
     instr.result = resultId;
@@ -56,8 +52,7 @@ void emitBinOp(BasicBlock &bb,
 
 } // namespace
 
-TEST(IL, testIntegerComparisonFold)
-{
+TEST(IL, testIntegerComparisonFold) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -92,8 +87,7 @@ TEST(IL, testIntegerComparisonFold)
     ASSERT_EQ(result.i64, 1);
 }
 
-TEST(IL, testUnsignedComparisonFold)
-{
+TEST(IL, testUnsignedComparisonFold) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -124,8 +118,7 @@ TEST(IL, testUnsignedComparisonFold)
     ASSERT_EQ(ret.operands[0].i64, 1);
 }
 
-TEST(IL, testShiftFold)
-{
+TEST(IL, testShiftFold) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -150,8 +143,7 @@ TEST(IL, testShiftFold)
     ASSERT_EQ(ret.operands[0].i64, 16);
 }
 
-TEST(IL, testLShrFold)
-{
+TEST(IL, testLShrFold) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -176,8 +168,7 @@ TEST(IL, testLShrFold)
     ASSERT_EQ(ret.operands[0].i64, 16);
 }
 
-TEST(IL, testFloatComparisonFold)
-{
+TEST(IL, testFloatComparisonFold) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -208,8 +199,7 @@ TEST(IL, testFloatComparisonFold)
     ASSERT_EQ(ret.operands[0].i64, 1);
 }
 
-TEST(IL, testEqualityFold)
-{
+TEST(IL, testEqualityFold) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -240,8 +230,7 @@ TEST(IL, testEqualityFold)
     ASSERT_EQ(ret.operands[0].i64, 1);
 }
 
-TEST(IL, testInequalityFold)
-{
+TEST(IL, testInequalityFold) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -268,8 +257,7 @@ TEST(IL, testInequalityFold)
     ASSERT_EQ(ret.operands[0].i64, 1);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

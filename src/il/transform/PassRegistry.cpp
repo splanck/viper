@@ -34,16 +34,14 @@
 
 #include <utility>
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Describe a summary where every registered analysis remains valid.
 /// @details Returns an instance that marks both module and function analyses as
 ///          fully preserved, allowing the pipeline executor to skip invalidation
 ///          entirely because no cached data has to be recomputed.
 /// @return Preservation summary retaining all analyses.
-PreservedAnalyses PreservedAnalyses::all()
-{
+PreservedAnalyses PreservedAnalyses::all() {
     PreservedAnalyses p;
     p.preserveAllModules_ = true;
     p.preserveAllFunctions_ = true;
@@ -55,8 +53,7 @@ PreservedAnalyses PreservedAnalyses::all()
 ///          preserved sets empty so the executor will purge all cached analyses
 ///          on the next invalidation pass.
 /// @return Preservation summary invalidating every analysis.
-PreservedAnalyses PreservedAnalyses::none()
-{
+PreservedAnalyses PreservedAnalyses::none() {
     return PreservedAnalyses{};
 }
 
@@ -66,8 +63,7 @@ PreservedAnalyses PreservedAnalyses::none()
 ///          finishes executing.
 /// @param id Identifier of the module analysis to keep.
 /// @return Reference to @c *this for fluent chaining.
-PreservedAnalyses &PreservedAnalyses::preserveModule(const std::string &id)
-{
+PreservedAnalyses &PreservedAnalyses::preserveModule(const std::string &id) {
     moduleAnalyses_.insert(id);
     return *this;
 }
@@ -78,8 +74,7 @@ PreservedAnalyses &PreservedAnalyses::preserveModule(const std::string &id)
 ///          become stale.
 /// @param id Identifier of the function analysis to keep.
 /// @return Reference to @c *this for fluent chaining.
-PreservedAnalyses &PreservedAnalyses::preserveFunction(const std::string &id)
-{
+PreservedAnalyses &PreservedAnalyses::preserveFunction(const std::string &id) {
     functionAnalyses_.insert(id);
     return *this;
 }
@@ -89,8 +84,7 @@ PreservedAnalyses &PreservedAnalyses::preserveFunction(const std::string &id)
 ///          individual module analysis entries, providing an efficient escape
 ///          hatch for passes that leave the entire module analysis cache intact.
 /// @return Reference to @c *this for fluent chaining.
-PreservedAnalyses &PreservedAnalyses::preserveAllModules()
-{
+PreservedAnalyses &PreservedAnalyses::preserveAllModules() {
     preserveAllModules_ = true;
     return *this;
 }
@@ -100,8 +94,7 @@ PreservedAnalyses &PreservedAnalyses::preserveAllModules()
 ///          invalidator can skip per-analysis checks for function-scoped
 ///          results.
 /// @return Reference to @c *this for fluent chaining.
-PreservedAnalyses &PreservedAnalyses::preserveAllFunctions()
-{
+PreservedAnalyses &PreservedAnalyses::preserveAllFunctions() {
     preserveAllFunctions_ = true;
     return *this;
 }
@@ -111,8 +104,7 @@ PreservedAnalyses &PreservedAnalyses::preserveAllFunctions()
 ///          @ref preserveAllModules() is active, allowing callers to avoid set
 ///          lookups when the entire cache remains valid.
 /// @return @c true when @ref PreservedAnalyses::preserveAllModules was invoked.
-bool PreservedAnalyses::preservesAllModuleAnalyses() const
-{
+bool PreservedAnalyses::preservesAllModuleAnalyses() const {
     return preserveAllModules_;
 }
 
@@ -120,8 +112,7 @@ bool PreservedAnalyses::preservesAllModuleAnalyses() const
 /// @details Reports whether the fast-path flag set by
 ///          @ref preserveAllFunctions() is active.
 /// @return @c true when @ref PreservedAnalyses::preserveAllFunctions was invoked.
-bool PreservedAnalyses::preservesAllFunctionAnalyses() const
-{
+bool PreservedAnalyses::preservesAllFunctionAnalyses() const {
     return preserveAllFunctions_;
 }
 
@@ -131,8 +122,7 @@ bool PreservedAnalyses::preservesAllFunctionAnalyses() const
 /// @param id Analysis identifier to query.
 /// @return @c true when the analysis was explicitly preserved or the summary
 ///         preserves all module analyses.
-bool PreservedAnalyses::isModulePreserved(const std::string &id) const
-{
+bool PreservedAnalyses::isModulePreserved(const std::string &id) const {
     return preserveAllModules_ || moduleAnalyses_.contains(id);
 }
 
@@ -142,8 +132,7 @@ bool PreservedAnalyses::isModulePreserved(const std::string &id) const
 /// @param id Analysis identifier to query.
 /// @return @c true when the analysis was explicitly preserved or the summary
 ///         preserves all function analyses.
-bool PreservedAnalyses::isFunctionPreserved(const std::string &id) const
-{
+bool PreservedAnalyses::isFunctionPreserved(const std::string &id) const {
     return preserveAllFunctions_ || functionAnalyses_.contains(id);
 }
 
@@ -151,8 +140,7 @@ bool PreservedAnalyses::isFunctionPreserved(const std::string &id) const
 /// @details Allows callers to distinguish between "preserve everything" and
 ///          "preserve only these identifiers" cases when invalidating caches.
 /// @return @c true when the module preservation set is non-empty.
-bool PreservedAnalyses::hasModulePreservations() const
-{
+bool PreservedAnalyses::hasModulePreservations() const {
     return !moduleAnalyses_.empty();
 }
 
@@ -160,56 +148,45 @@ bool PreservedAnalyses::hasModulePreservations() const
 /// @details Companion to @ref hasModulePreservations for the function-level
 ///          cache.
 /// @return @c true when the function preservation set is non-empty.
-bool PreservedAnalyses::hasFunctionPreservations() const
-{
+bool PreservedAnalyses::hasFunctionPreservations() const {
     return !functionAnalyses_.empty();
 }
 
-PreservedAnalyses &PreservedAnalyses::preserveCFG()
-{
+PreservedAnalyses &PreservedAnalyses::preserveCFG() {
     return preserveFunction(kAnalysisCFG);
 }
 
-PreservedAnalyses &PreservedAnalyses::preserveDominators()
-{
+PreservedAnalyses &PreservedAnalyses::preserveDominators() {
     return preserveFunction(kAnalysisDominators);
 }
 
-PreservedAnalyses &PreservedAnalyses::preserveLoopInfo()
-{
+PreservedAnalyses &PreservedAnalyses::preserveLoopInfo() {
     return preserveFunction(kAnalysisLoopInfo);
 }
 
-PreservedAnalyses &PreservedAnalyses::preserveLiveness()
-{
+PreservedAnalyses &PreservedAnalyses::preserveLiveness() {
     return preserveFunction(kAnalysisLiveness);
 }
 
-PreservedAnalyses &PreservedAnalyses::preserveBasicAA()
-{
+PreservedAnalyses &PreservedAnalyses::preserveBasicAA() {
     return preserveFunction(kAnalysisBasicAA);
 }
 
-PreservedAnalyses &PreservedAnalyses::markChangedFunction(const std::string &name)
-{
+PreservedAnalyses &PreservedAnalyses::markChangedFunction(const std::string &name) {
     changedFunctions_.insert(name);
     return *this;
 }
 
-bool PreservedAnalyses::hasChangedFunctions() const
-{
+bool PreservedAnalyses::hasChangedFunctions() const {
     return !changedFunctions_.empty();
 }
 
-bool PreservedAnalyses::isChangedFunction(const std::string &name) const
-{
+bool PreservedAnalyses::isChangedFunction(const std::string &name) const {
     return changedFunctions_.contains(name);
 }
 
-namespace
-{
-class LambdaModulePass : public ModulePass
-{
+namespace {
+class LambdaModulePass : public ModulePass {
   public:
     /// @brief Wrap a module-pass callback with the @ref ModulePass interface.
     /// @details Stores the identifier for reporting and the callback used to
@@ -219,16 +196,13 @@ class LambdaModulePass : public ModulePass
     /// @param id Identifier supplied during registration.
     /// @param cb Callback invoked when the pass executes.
     LambdaModulePass(std::string id, PassRegistry::ModulePassCallback cb)
-        : id_(std::move(id)), callback_(std::move(cb))
-    {
-    }
+        : id_(std::move(id)), callback_(std::move(cb)) {}
 
     /// @brief Expose the identifier under which the pass was registered.
     /// @details Allows the executor to report which pass is currently running
     ///          during diagnostics or verification steps.
     /// @return String view referencing the stored identifier.
-    std::string_view id() const override
-    {
+    std::string_view id() const override {
         return id_;
     }
 
@@ -238,8 +212,7 @@ class LambdaModulePass : public ModulePass
     /// @param module Module being transformed.
     /// @param analysis Analysis manager providing cached queries.
     /// @return Preservation summary reported by the callback.
-    PreservedAnalyses run(core::Module &module, AnalysisManager &analysis) override
-    {
+    PreservedAnalyses run(core::Module &module, AnalysisManager &analysis) override {
         return callback_(module, analysis);
     }
 
@@ -248,8 +221,7 @@ class LambdaModulePass : public ModulePass
     PassRegistry::ModulePassCallback callback_;
 };
 
-class LambdaFunctionPass : public FunctionPass
-{
+class LambdaFunctionPass : public FunctionPass {
   public:
     /// @brief Wrap a function-pass callback with the @ref FunctionPass interface.
     /// @details Stores the identifier and callback so lookups yield full
@@ -257,15 +229,12 @@ class LambdaFunctionPass : public FunctionPass
     /// @param id Identifier supplied during registration.
     /// @param cb Callback invoked when the pass executes.
     LambdaFunctionPass(std::string id, PassRegistry::FunctionPassCallback cb)
-        : id_(std::move(id)), callback_(std::move(cb))
-    {
-    }
+        : id_(std::move(id)), callback_(std::move(cb)) {}
 
     /// @brief Expose the identifier under which the pass was registered.
     /// @details Mirrors the module variant for diagnostic reporting.
     /// @return String view referencing the stored identifier.
-    std::string_view id() const override
-    {
+    std::string_view id() const override {
         return id_;
     }
 
@@ -275,8 +244,7 @@ class LambdaFunctionPass : public FunctionPass
     /// @param function Function being transformed.
     /// @param analysis Analysis manager providing cached queries.
     /// @return Preservation summary reported by the callback.
-    PreservedAnalyses run(core::Function &function, AnalysisManager &analysis) override
-    {
+    PreservedAnalyses run(core::Function &function, AnalysisManager &analysis) override {
         return callback_(function, analysis);
     }
 
@@ -295,8 +263,7 @@ class LambdaFunctionPass : public FunctionPass
 /// @param factory Callable producing unique @ref ModulePass instances.
 void PassRegistry::registerModulePass(const std::string &id,
                                       ModulePassFactory factory,
-                                      bool parallelSafe)
-{
+                                      bool parallelSafe) {
     registry_[id] =
         detail::PassFactory{detail::PassKind::Module, std::move(factory), {}, parallelSafe};
 }
@@ -309,14 +276,13 @@ void PassRegistry::registerModulePass(const std::string &id,
 /// @param callback Callback implementing the pass behaviour.
 void PassRegistry::registerModulePass(const std::string &id,
                                       ModulePassCallback callback,
-                                      bool parallelSafe)
-{
+                                      bool parallelSafe) {
     auto cb = ModulePassCallback(callback);
-    registry_[id] = detail::PassFactory{detail::PassKind::Module,
-                                        [passId = std::string(id), cb]()
-                                        { return std::make_unique<LambdaModulePass>(passId, cb); },
-                                        {},
-                                        parallelSafe};
+    registry_[id] = detail::PassFactory{
+        detail::PassKind::Module,
+        [passId = std::string(id), cb]() { return std::make_unique<LambdaModulePass>(passId, cb); },
+        {},
+        parallelSafe};
 }
 
 /// @brief Register a void callback as a module pass.
@@ -327,12 +293,10 @@ void PassRegistry::registerModulePass(const std::string &id,
 /// @param fn Callback executed when the pass runs.
 void PassRegistry::registerModulePass(const std::string &id,
                                       const std::function<void(core::Module &)> &fn,
-                                      bool parallelSafe)
-{
+                                      bool parallelSafe) {
     registerModulePass(
         id,
-        [fn](core::Module &module, AnalysisManager &)
-        {
+        [fn](core::Module &module, AnalysisManager &) {
             fn(module);
             return PreservedAnalyses::none();
         },
@@ -347,8 +311,7 @@ void PassRegistry::registerModulePass(const std::string &id,
 /// @param factory Callable producing unique @ref FunctionPass instances.
 void PassRegistry::registerFunctionPass(const std::string &id,
                                         FunctionPassFactory factory,
-                                        bool parallelSafe)
-{
+                                        bool parallelSafe) {
     registry_[id] =
         detail::PassFactory{detail::PassKind::Function, {}, std::move(factory), parallelSafe};
 }
@@ -361,15 +324,14 @@ void PassRegistry::registerFunctionPass(const std::string &id,
 /// @param callback Callback implementing the pass behaviour.
 void PassRegistry::registerFunctionPass(const std::string &id,
                                         FunctionPassCallback callback,
-                                        bool parallelSafe)
-{
+                                        bool parallelSafe) {
     auto cb = FunctionPassCallback(callback);
-    registry_[id] =
-        detail::PassFactory{detail::PassKind::Function,
-                            {},
-                            [passId = std::string(id), cb]()
-                            { return std::make_unique<LambdaFunctionPass>(passId, cb); },
-                            parallelSafe};
+    registry_[id] = detail::PassFactory{detail::PassKind::Function,
+                                        {},
+                                        [passId = std::string(id), cb]() {
+                                            return std::make_unique<LambdaFunctionPass>(passId, cb);
+                                        },
+                                        parallelSafe};
 }
 
 /// @brief Register a void callback as a function pass.
@@ -380,12 +342,10 @@ void PassRegistry::registerFunctionPass(const std::string &id,
 /// @param fn Callback executed when the pass runs.
 void PassRegistry::registerFunctionPass(const std::string &id,
                                         const std::function<void(core::Function &)> &fn,
-                                        bool parallelSafe)
-{
+                                        bool parallelSafe) {
     registerFunctionPass(
         id,
-        [fn](core::Function &function, AnalysisManager &)
-        {
+        [fn](core::Function &function, AnalysisManager &) {
             fn(function);
             return PreservedAnalyses::none();
         },
@@ -399,135 +359,104 @@ void PassRegistry::registerFunctionPass(const std::string &id,
 /// @param id Identifier previously supplied to a registration call.
 /// @return Pointer to the stored factory or @c nullptr when the identifier is
 ///         unknown.
-const detail::PassFactory *PassRegistry::lookup(std::string_view id) const
-{
+const detail::PassFactory *PassRegistry::lookup(std::string_view id) const {
     auto it = registry_.find(std::string(id));
     if (it == registry_.end())
         return nullptr;
     return &it->second;
 }
 
-void registerLoopSimplifyPass(PassRegistry &registry)
-{
+void registerLoopSimplifyPass(PassRegistry &registry) {
     registry.registerFunctionPass("loop-simplify",
                                   []() { return std::make_unique<LoopSimplify>(); });
 }
 
-void registerLICMPass(PassRegistry &registry)
-{
+void registerLICMPass(PassRegistry &registry) {
     registry.registerFunctionPass("licm", []() { return std::make_unique<LICM>(); });
 }
 
-void registerSCCPPass(PassRegistry &registry)
-{
-    registry.registerModulePass("sccp",
-                                [](core::Module &module, AnalysisManager &)
-                                {
-                                    sccp(module);
-                                    return PreservedAnalyses::none();
-                                });
+void registerSCCPPass(PassRegistry &registry) {
+    registry.registerModulePass("sccp", [](core::Module &module, AnalysisManager &) {
+        sccp(module);
+        return PreservedAnalyses::none();
+    });
 }
 
-void registerConstFoldPass(PassRegistry &registry)
-{
-    registry.registerModulePass("constfold",
-                                [](core::Module &module, AnalysisManager &)
-                                {
-                                    constFold(module);
-                                    return PreservedAnalyses::none();
-                                });
+void registerConstFoldPass(PassRegistry &registry) {
+    registry.registerModulePass("constfold", [](core::Module &module, AnalysisManager &) {
+        constFold(module);
+        return PreservedAnalyses::none();
+    });
 }
 
-void registerPeepholePass(PassRegistry &registry)
-{
-    registry.registerModulePass("peephole",
-                                [](core::Module &module, AnalysisManager &)
-                                {
-                                    peephole(module);
-                                    return PreservedAnalyses::none();
-                                });
+void registerPeepholePass(PassRegistry &registry) {
+    registry.registerModulePass("peephole", [](core::Module &module, AnalysisManager &) {
+        peephole(module);
+        return PreservedAnalyses::none();
+    });
 }
 
-void registerDCEPass(PassRegistry &registry)
-{
-    registry.registerModulePass("dce",
-                                [](core::Module &module, AnalysisManager &)
-                                {
-                                    dce(module);
-                                    return PreservedAnalyses::none();
-                                });
+void registerDCEPass(PassRegistry &registry) {
+    registry.registerModulePass("dce", [](core::Module &module, AnalysisManager &) {
+        dce(module);
+        return PreservedAnalyses::none();
+    });
 }
 
-void registerMem2RegPass(PassRegistry &registry)
-{
-    registry.registerModulePass("mem2reg",
-                                [](core::Module &module, AnalysisManager &)
-                                {
-                                    viper::passes::mem2reg(module, nullptr);
-                                    return PreservedAnalyses::none();
-                                });
+void registerMem2RegPass(PassRegistry &registry) {
+    registry.registerModulePass("mem2reg", [](core::Module &module, AnalysisManager &) {
+        viper::passes::mem2reg(module, nullptr);
+        return PreservedAnalyses::none();
+    });
 }
 
-void registerDSEPass(PassRegistry &registry)
-{
-    registry.registerFunctionPass("dse",
-                                  [](core::Function &fn, AnalysisManager &am)
-                                  {
-                                      bool changed = runDSE(fn, am);
-                                      // MemorySSA-based cross-block DSE: catches stores that
-                                      // runDSE's conservative call-barrier logic would miss for
-                                      // non-escaping allocas.
-                                      changed |= runMemorySSADSE(fn, am);
-                                      if (!changed)
-                                          return PreservedAnalyses::all();
-                                      PreservedAnalyses p;
-                                      p.preserveAllModules();
-                                      p.preserveCFG();
-                                      p.preserveDominators();
-                                      p.preserveLoopInfo();
-                                      return p;
-                                  });
+void registerDSEPass(PassRegistry &registry) {
+    registry.registerFunctionPass("dse", [](core::Function &fn, AnalysisManager &am) {
+        bool changed = runDSE(fn, am);
+        // MemorySSA-based cross-block DSE: catches stores that
+        // runDSE's conservative call-barrier logic would miss for
+        // non-escaping allocas.
+        changed |= runMemorySSADSE(fn, am);
+        if (!changed)
+            return PreservedAnalyses::all();
+        PreservedAnalyses p;
+        p.preserveAllModules();
+        p.preserveCFG();
+        p.preserveDominators();
+        p.preserveLoopInfo();
+        return p;
+    });
 }
 
-void registerEarlyCSEPass(PassRegistry &registry)
-{
-    registry.registerFunctionPass("earlycse",
-                                  [](core::Function &fn, AnalysisManager &am)
-                                  {
-                                      bool changed = runEarlyCSE(am.module(), fn);
-                                      if (!changed)
-                                          return PreservedAnalyses::all();
-                                      PreservedAnalyses p;
-                                      p.preserveAllModules();
-                                      p.preserveCFG();
-                                      p.preserveDominators();
-                                      p.preserveLoopInfo();
-                                      return p;
-                                  });
+void registerEarlyCSEPass(PassRegistry &registry) {
+    registry.registerFunctionPass("earlycse", [](core::Function &fn, AnalysisManager &am) {
+        bool changed = runEarlyCSE(am.module(), fn);
+        if (!changed)
+            return PreservedAnalyses::all();
+        PreservedAnalyses p;
+        p.preserveAllModules();
+        p.preserveCFG();
+        p.preserveDominators();
+        p.preserveLoopInfo();
+        return p;
+    });
 }
 
-void registerReassociatePass(PassRegistry &registry)
-{
-    registry.registerModulePass("reassociate",
-                                [](core::Module &module, AnalysisManager &)
-                                {
-                                    reassociate(module);
-                                    return PreservedAnalyses::none();
-                                });
+void registerReassociatePass(PassRegistry &registry) {
+    registry.registerModulePass("reassociate", [](core::Module &module, AnalysisManager &) {
+        reassociate(module);
+        return PreservedAnalyses::none();
+    });
 }
 
-void registerEHOptPass(PassRegistry &registry)
-{
-    registry.registerModulePass("eh-opt",
-                                [](core::Module &module, AnalysisManager &)
-                                {
-                                    ehOpt(module);
-                                    return PreservedAnalyses::none();
-                                });
+void registerEHOptPass(PassRegistry &registry) {
+    registry.registerModulePass("eh-opt", [](core::Module &module, AnalysisManager &) {
+        ehOpt(module);
+        return PreservedAnalyses::none();
+    });
 }
 
-void registerLoopRotatePass(PassRegistry &registry)
-{
+void registerLoopRotatePass(PassRegistry &registry) {
     registry.registerFunctionPass("loop-rotate", []() { return std::make_unique<LoopRotate>(); });
 }
 

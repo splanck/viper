@@ -22,13 +22,11 @@
 #include <memory>
 #include <vector>
 
-namespace viper::codegen::common
-{
+namespace viper::codegen::common {
 
 /// @brief Abstract interface implemented by individual pipeline passes.
 /// @tparam ModuleT The backend-specific module state type.
-template <typename ModuleT> class Pass
-{
+template <typename ModuleT> class Pass {
   public:
     virtual ~Pass() = default;
     /// @brief Execute the pass over @p module, emitting diagnostics to @p diags.
@@ -40,13 +38,11 @@ template <typename ModuleT> class Pass
 
 /// @brief Container sequencing registered passes for execution.
 /// @tparam ModuleT The backend-specific module state type.
-template <typename ModuleT> class PassManager
-{
+template <typename ModuleT> class PassManager {
   public:
     /// @brief Add a pass to the manager; ownership is transferred.
     /// @param pass The pass to register; the manager takes unique ownership.
-    void addPass(std::unique_ptr<Pass<ModuleT>> pass)
-    {
+    void addPass(std::unique_ptr<Pass<ModuleT>> pass) {
         passes_.push_back(std::move(pass));
     }
 
@@ -54,18 +50,14 @@ template <typename ModuleT> class PassManager
     /// @param module The backend-specific module state to transform.
     /// @param diags  Diagnostic sink checked after each pass for errors.
     /// @return False when a pass signals failure or diagnostics contain errors.
-    bool run(ModuleT &module, Diagnostics &diags) const
-    {
-        for (const auto &pass : passes_)
-        {
-            if (!pass->run(module, diags))
-            {
+    bool run(ModuleT &module, Diagnostics &diags) const {
+        for (const auto &pass : passes_) {
+            if (!pass->run(module, diags)) {
                 return false;
             }
             // A pass may report errors via Diagnostics but still return true.
             // Catch that case to avoid silent miscompilation.
-            if (diags.hasErrors())
-            {
+            if (diags.hasErrors()) {
                 return false;
             }
         }

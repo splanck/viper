@@ -18,8 +18,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -28,8 +27,7 @@ static void test_result(const char *name, bool passed)
 // DateOnly Tests
 //=============================================================================
 
-static void test_dateonly_creation()
-{
+static void test_dateonly_creation() {
     printf("Testing DateOnly Creation:\n");
 
     // Test 1: Create valid date
@@ -75,8 +73,7 @@ static void test_dateonly_creation()
     printf("\n");
 }
 
-static void test_dateonly_parsing()
-{
+static void test_dateonly_parsing() {
     printf("Testing DateOnly Parsing:\n");
 
     // Test 1: Parse valid ISO date
@@ -97,8 +94,7 @@ static void test_dateonly_parsing()
     printf("\n");
 }
 
-static void test_dateonly_components()
-{
+static void test_dateonly_components() {
     printf("Testing DateOnly Components:\n");
 
     void *d = rt_dateonly_create(2024, 7, 4); // July 4, 2024 (Thursday)
@@ -126,8 +122,7 @@ static void test_dateonly_components()
     printf("\n");
 }
 
-static void test_dateonly_arithmetic()
-{
+static void test_dateonly_arithmetic() {
     printf("Testing DateOnly Arithmetic:\n");
 
     void *d = rt_dateonly_create(2024, 1, 15);
@@ -181,8 +176,7 @@ static void test_dateonly_arithmetic()
     printf("\n");
 }
 
-static void test_dateonly_queries()
-{
+static void test_dateonly_queries() {
     printf("Testing DateOnly Queries:\n");
 
     // Test 1: Leap year
@@ -226,8 +220,7 @@ static void test_dateonly_queries()
     printf("\n");
 }
 
-static void test_dateonly_comparison()
-{
+static void test_dateonly_comparison() {
     printf("Testing DateOnly Comparison:\n");
 
     void *d1 = rt_dateonly_create(2024, 1, 15);
@@ -243,8 +236,7 @@ static void test_dateonly_comparison()
     printf("\n");
 }
 
-static void test_dateonly_formatting()
-{
+static void test_dateonly_formatting() {
     printf("Testing DateOnly Formatting:\n");
 
     void *d = rt_dateonly_create(2024, 7, 4);
@@ -280,8 +272,7 @@ static void test_dateonly_formatting()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT DateOnly Tests ===\n\n");
 
     test_dateonly_creation();

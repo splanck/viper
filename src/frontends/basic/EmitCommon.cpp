@@ -24,8 +24,7 @@
 #include <cstdint>
 #include <cstdlib>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Construct an Emit helper that forwards to the provided Lowerer.
 /// @details Stores a pointer to the lowering façade so subsequent helper calls
@@ -41,8 +40,7 @@ Emit::Emit(Lowerer &lowerer) noexcept : lowerer_(&lowerer) {}
 ///          delegating.  The helper returns @c *this to allow fluent chaining.
 /// @param loc Source location to apply.
 /// @return Reference to the helper for fluent chaining.
-Emit &Emit::at(il::support::SourceLoc loc) noexcept
-{
+Emit &Emit::at(il::support::SourceLoc loc) noexcept {
     loc_ = loc;
     return *this;
 }
@@ -56,14 +54,11 @@ Emit &Emit::at(il::support::SourceLoc loc) noexcept
 /// @param fromBits Source integer width in bits.
 /// @param signedness Indicates how widening should treat the incoming value.
 /// @return Converted value with the requested width.
-Emit::Value Emit::to_iN(Value value, int bits, int fromBits, Signedness signedness) const
-{
-    if (bits == fromBits)
-    {
+Emit::Value Emit::to_iN(Value value, int bits, int fromBits, Signedness signedness) const {
+    if (bits == fromBits) {
         return value;
     }
-    if (bits > fromBits)
-    {
+    if (bits > fromBits) {
         return widen_to(value, fromBits, bits, signedness);
     }
     return narrow_to(value, fromBits, bits);
@@ -79,22 +74,17 @@ Emit::Value Emit::to_iN(Value value, int bits, int fromBits, Signedness signedne
 /// @param toBits Destination width in bits (currently only 64).
 /// @param signedness Determines whether sign extension should be applied.
 /// @return Widened value ready for insertion into the IR.
-Emit::Value Emit::widen_to(Value value, int fromBits, int toBits, Signedness signedness) const
-{
+Emit::Value Emit::widen_to(Value value, int fromBits, int toBits, Signedness signedness) const {
     assert(toBits == 64 && "widen_to currently supports widening to i64");
-    if (fromBits == toBits)
-    {
+    if (fromBits == toBits) {
         return value;
     }
-    if (fromBits == 1)
-    {
+    if (fromBits == 1) {
         return emitUnary(il::core::Opcode::Zext1, intType(toBits), value);
     }
-    if (fromBits == 16 || fromBits == 32)
-    {
+    if (fromBits == 16 || fromBits == 32) {
         const std::int64_t mask = (fromBits == 16) ? 0xFFFFll : 0xFFFFFFFFll;
-        if (signedness == Signedness::Unsigned)
-        {
+        if (signedness == Signedness::Unsigned) {
             return emitBinary(
                 il::core::Opcode::And, intType(toBits), value, il::core::Value::constInt(mask));
         }
@@ -120,14 +110,11 @@ Emit::Value Emit::widen_to(Value value, int fromBits, int toBits, Signedness sig
 /// @param fromBits Source width in bits.
 /// @param toBits Destination width in bits.
 /// @return Narrowed value conforming to the requested width.
-Emit::Value Emit::narrow_to(Value value, int fromBits, int toBits) const
-{
-    if (fromBits == toBits)
-    {
+Emit::Value Emit::narrow_to(Value value, int fromBits, int toBits) const {
+    if (fromBits == toBits) {
         return value;
     }
-    if (toBits == 1)
-    {
+    if (toBits == 1) {
         return emitUnary(il::core::Opcode::Trunc1, intType(toBits), value);
     }
     return emitUnary(il::core::Opcode::CastSiNarrowChk, intType(toBits), value);
@@ -143,8 +130,7 @@ Emit::Value Emit::narrow_to(Value value, int fromBits, int toBits) const
 /// @param policy Overflow handling strategy.
 /// @param bits Bit width of the result.
 /// @return Result value representing the addition.
-Emit::Value Emit::add_checked(Value lhs, Value rhs, OverflowPolicy policy, int bits) const
-{
+Emit::Value Emit::add_checked(Value lhs, Value rhs, OverflowPolicy policy, int bits) const {
     const il::core::Opcode op =
         (policy == OverflowPolicy::Checked) ? il::core::Opcode::IAddOvf : il::core::Opcode::Add;
     return emitBinary(op, intType(bits), lhs, rhs);
@@ -157,8 +143,7 @@ Emit::Value Emit::add_checked(Value lhs, Value rhs, OverflowPolicy policy, int b
 /// @param rhs Right operand.
 /// @param bits Bit width of the result.
 /// @return Value representing the AND operation.
-Emit::Value Emit::logical_and(Value lhs, Value rhs, int bits) const
-{
+Emit::Value Emit::logical_and(Value lhs, Value rhs, int bits) const {
     return emitBinary(il::core::Opcode::And, intType(bits), lhs, rhs);
 }
 
@@ -169,8 +154,7 @@ Emit::Value Emit::logical_and(Value lhs, Value rhs, int bits) const
 /// @param rhs Right operand.
 /// @param bits Bit width of the result.
 /// @return Value representing the OR operation.
-Emit::Value Emit::logical_or(Value lhs, Value rhs, int bits) const
-{
+Emit::Value Emit::logical_or(Value lhs, Value rhs, int bits) const {
     return emitBinary(il::core::Opcode::Or, intType(bits), lhs, rhs);
 }
 
@@ -181,8 +165,7 @@ Emit::Value Emit::logical_or(Value lhs, Value rhs, int bits) const
 /// @param rhs Right operand.
 /// @param bits Bit width of the result.
 /// @return Value representing the XOR operation.
-Emit::Value Emit::logical_xor(Value lhs, Value rhs, int bits) const
-{
+Emit::Value Emit::logical_xor(Value lhs, Value rhs, int bits) const {
     return emitBinary(il::core::Opcode::Xor, intType(bits), lhs, rhs);
 }
 
@@ -192,10 +175,8 @@ Emit::Value Emit::logical_xor(Value lhs, Value rhs, int bits) const
 ///          helper centralises the mapping so call sites remain concise.
 /// @param bits Desired integer width.
 /// @return Type descriptor matching the width.
-Emit::Type Emit::intType(int bits) const
-{
-    switch (bits)
-    {
+Emit::Type Emit::intType(int bits) const {
+    switch (bits) {
         case 1:
             return Type(Type::Kind::I1);
         case 16:
@@ -216,10 +197,8 @@ Emit::Type Emit::intType(int bits) const
 ///          been staged via @ref at. This eliminates the need for Emit to be a
 ///          friend of Lowerer. Called automatically by emission helpers to keep
 ///          diagnostics in sync with the original AST nodes.
-void Emit::applyLoc() const
-{
-    if (loc_)
-    {
+void Emit::applyLoc() const {
+    if (loc_) {
         lowerer_->setSourceLocation(*loc_);
     }
 }
@@ -231,8 +210,7 @@ void Emit::applyLoc() const
 /// @param ty Resulting type of the operation.
 /// @param val Operand consumed by the unary instruction.
 /// @return Value produced by the emitted instruction.
-Emit::Value Emit::emitUnary(Opcode op, Type ty, Value val) const
-{
+Emit::Value Emit::emitUnary(Opcode op, Type ty, Value val) const {
     applyLoc();
     return lowerer_->emitUnary(op, ty, val);
 }
@@ -245,8 +223,7 @@ Emit::Value Emit::emitUnary(Opcode op, Type ty, Value val) const
 /// @param lhs Left operand.
 /// @param rhs Right operand.
 /// @return Value produced by the emitted instruction.
-Emit::Value Emit::emitBinary(Opcode op, Type ty, Value lhs, Value rhs) const
-{
+Emit::Value Emit::emitBinary(Opcode op, Type ty, Value lhs, Value rhs) const {
     applyLoc();
     return lowerer_->emitBinary(op, ty, lhs, rhs);
 }

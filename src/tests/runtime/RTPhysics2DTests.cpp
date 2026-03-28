@@ -11,8 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-extern "C"
-{
+extern "C" {
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_physics2d.h"
@@ -22,14 +21,12 @@ extern "C"
 // Trap infrastructure (same pattern as RTBinaryBufferTests)
 //=============================================================================
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
     fprintf(stderr, "TRAP: %s\n", msg);
@@ -37,17 +34,13 @@ extern "C" void vm_trap(const char *msg)
 }
 
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             (void)(expr);                                                                          \
             fprintf(stderr, "FAIL [%s:%d]: Expected trap did not fire\n", __FILE__, __LINE__);     \
             tests_run++;                                                                           \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_run++;                                                                           \
             tests_passed++;                                                                        \
         }                                                                                          \
@@ -60,15 +53,11 @@ static int tests_passed = 0;
 static const double EPSILON = 1e-6;
 
 #define ASSERT(cond, msg)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+        if (!(cond)) {                                                                             \
             fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, msg);                        \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
@@ -79,16 +68,14 @@ static const double EPSILON = 1e-6;
 // World tests
 //=============================================================================
 
-static void test_world_new()
-{
+static void test_world_new() {
     void *world = rt_physics2d_world_new(0.0, 9.8);
     ASSERT(world != NULL, "world_new returns non-null");
     ASSERT(rt_physics2d_world_body_count(world) == 0, "new world has 0 bodies");
     rt_obj_release_check0(world);
 }
 
-static void test_world_add_remove()
-{
+static void test_world_add_remove() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *body = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
 
@@ -102,8 +89,7 @@ static void test_world_add_remove()
     rt_obj_release_check0(world);
 }
 
-static void test_world_add_multiple()
-{
+static void test_world_add_multiple() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *b1 = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     void *b2 = rt_physics2d_body_new(50, 0, 10, 10, 1.0);
@@ -124,8 +110,7 @@ static void test_world_add_multiple()
 // Body tests
 //=============================================================================
 
-static void test_body_new()
-{
+static void test_body_new() {
     void *body = rt_physics2d_body_new(10.0, 20.0, 30.0, 40.0, 5.0);
     ASSERT(body != NULL, "body_new returns non-null");
     ASSERT_NEAR(rt_physics2d_body_x(body), 10.0, "x = 10");
@@ -139,16 +124,14 @@ static void test_body_new()
     rt_obj_release_check0(body);
 }
 
-static void test_body_static()
-{
+static void test_body_static() {
     void *body = rt_physics2d_body_new(0, 0, 100, 10, 0.0);
     ASSERT(rt_physics2d_body_is_static(body) == 1, "mass=0 is static");
     ASSERT_NEAR(rt_physics2d_body_mass(body), 0.0, "mass = 0");
     rt_obj_release_check0(body);
 }
 
-static void test_body_set_pos()
-{
+static void test_body_set_pos() {
     void *body = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     rt_physics2d_body_set_pos(body, 42.0, 99.0);
     ASSERT_NEAR(rt_physics2d_body_x(body), 42.0, "x after set_pos");
@@ -156,8 +139,7 @@ static void test_body_set_pos()
     rt_obj_release_check0(body);
 }
 
-static void test_body_set_vel()
-{
+static void test_body_set_vel() {
     void *body = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     rt_physics2d_body_set_vel(body, 5.0, -3.0);
     ASSERT_NEAR(rt_physics2d_body_vx(body), 5.0, "vx after set_vel");
@@ -165,8 +147,7 @@ static void test_body_set_vel()
     rt_obj_release_check0(body);
 }
 
-static void test_body_restitution_friction()
-{
+static void test_body_restitution_friction() {
     void *body = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     // Defaults
     ASSERT_NEAR(rt_physics2d_body_restitution(body), 0.5, "default restitution = 0.5");
@@ -183,8 +164,7 @@ static void test_body_restitution_friction()
 // Integration tests
 //=============================================================================
 
-static void test_gravity_integration()
-{
+static void test_gravity_integration() {
     void *world = rt_physics2d_world_new(0.0, 10.0);
     void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
     rt_physics2d_world_add(world, body);
@@ -201,8 +181,7 @@ static void test_gravity_integration()
     rt_obj_release_check0(world);
 }
 
-static void test_velocity_integration()
-{
+static void test_velocity_integration() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
     rt_physics2d_body_set_vel(body, 100.0, 50.0);
@@ -217,8 +196,7 @@ static void test_velocity_integration()
     rt_obj_release_check0(world);
 }
 
-static void test_static_body_no_gravity()
-{
+static void test_static_body_no_gravity() {
     void *world = rt_physics2d_world_new(0.0, 100.0);
     void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 0.0); // static
     rt_physics2d_world_add(world, body);
@@ -233,8 +211,7 @@ static void test_static_body_no_gravity()
     rt_obj_release_check0(world);
 }
 
-static void test_force_application()
-{
+static void test_force_application() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 2.0);
     rt_physics2d_world_add(world, body);
@@ -254,8 +231,7 @@ static void test_force_application()
     rt_obj_release_check0(world);
 }
 
-static void test_impulse_application()
-{
+static void test_impulse_application() {
     void *body = rt_physics2d_body_new(0, 0, 10, 10, 2.0);
 
     // Impulse of 10 on mass-2 body => dv = impulse * inv_mass = 10 * 0.5 = 5
@@ -275,8 +251,7 @@ static void test_impulse_application()
 // Collision tests
 //=============================================================================
 
-static void test_collision_detection()
-{
+static void test_collision_detection() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
 
     // Two overlapping bodies: overlap of 5 units on x-axis
@@ -308,8 +283,7 @@ static void test_collision_detection()
     rt_obj_release_check0(world);
 }
 
-static void test_no_collision_separated()
-{
+static void test_no_collision_separated() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
 
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
@@ -332,8 +306,7 @@ static void test_no_collision_separated()
     rt_obj_release_check0(world);
 }
 
-static void test_collision_with_static()
-{
+static void test_collision_with_static() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
 
     // Dynamic body overlapping static body
@@ -358,8 +331,7 @@ static void test_collision_with_static()
     rt_obj_release_check0(world);
 }
 
-static void test_set_gravity()
-{
+static void test_set_gravity() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
     void *body = rt_physics2d_body_new(0.0, 0.0, 10.0, 10.0, 1.0);
     rt_physics2d_world_add(world, body);
@@ -381,8 +353,7 @@ static void test_set_gravity()
 // Null safety
 //=============================================================================
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     // World functions
     ASSERT(rt_physics2d_world_body_count(NULL) == 0, "null world count = 0");
     /// @brief Rt_physics2d_world_step.
@@ -413,8 +384,7 @@ static void test_null_safety()
     tests_passed++; // If we get here, null safety passed
 }
 
-static void test_zero_dt()
-{
+static void test_zero_dt() {
     void *world = rt_physics2d_world_new(0.0, 10.0);
     void *body = rt_physics2d_body_new(5.0, 5.0, 10.0, 10.0, 1.0);
     rt_physics2d_world_add(world, body);
@@ -436,8 +406,7 @@ static void test_zero_dt()
 // GAME-H-6: collision_mask default should include bit 31 (0xFFFFFFFF)
 //=============================================================================
 
-static void test_collision_mask_default_full()
-{
+static void test_collision_mask_default_full() {
     // Default mask must be 0xFFFFFFFF so layer 31 is reachable.
     // Before fix: default was 0x7FFFFFFF (bit 31 excluded) and layer-31 bodies
     // would never collide with default-masked bodies.
@@ -448,8 +417,7 @@ static void test_collision_mask_default_full()
     rt_obj_release_check0(body);
 }
 
-static void test_collision_layer31_collides_with_default_mask()
-{
+static void test_collision_layer31_collides_with_default_mask() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
 
     // Body A on layer 31 — before fix it was excluded from the default mask
@@ -479,8 +447,7 @@ static void test_collision_layer31_collides_with_default_mask()
     rt_obj_release_check0(world);
 }
 
-static void test_collision_mask_filtering_works()
-{
+static void test_collision_mask_filtering_works() {
     // Bodies on incompatible layers should NOT collide
     void *world = rt_physics2d_world_new(0.0, 0.0);
 
@@ -514,13 +481,11 @@ static void test_collision_mask_filtering_works()
 // GAME-C-4: PH_MAX_BODIES exceeded should trap
 //=============================================================================
 
-static void test_body_limit_traps()
-{
+static void test_body_limit_traps() {
     void *world = rt_physics2d_world_new(0.0, 0.0);
 
     // Fill to the limit (256 bodies)
-    for (int i = 0; i < 256; i++)
-    {
+    for (int i = 0; i < 256; i++) {
         void *body = rt_physics2d_body_new((double)i, 0, 1, 1, 1.0);
         rt_physics2d_world_add(world, body);
         rt_obj_release_check0(body);
@@ -536,8 +501,7 @@ static void test_body_limit_traps()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     // World tests
     test_world_new();
     test_world_add_remove();

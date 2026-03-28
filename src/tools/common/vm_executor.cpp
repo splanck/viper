@@ -15,11 +15,9 @@
 #include <cstdio>
 #include <iostream>
 
-namespace il::tools::common
-{
+namespace il::tools::common {
 
-VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecutorConfig &config)
-{
+VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecutorConfig &config) {
     VMExecutorResult result;
 
     // Compile IL to bytecode
@@ -27,11 +25,9 @@ VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecu
     viper::bytecode::BytecodeModule bcModule = bcCompiler.compile(module);
 
     // Set up program arguments for the runtime
-    if (!config.programArgs.empty())
-    {
+    if (!config.programArgs.empty()) {
         rt_args_clear();
-        for (const auto &s : config.programArgs)
-        {
+        for (const auto &s : config.programArgs) {
             rt_string tmp = rt_string_from_bytes(s.data(), s.size());
             rt_args_push(tmp);
             rt_string_unref(tmp);
@@ -47,24 +43,19 @@ VMExecutorResult executeBytecodeVM(const il::core::Module &module, const VMExecu
     viper::bytecode::BCSlot bcResult = bcVm.exec("main", {});
 
     // Handle results
-    if (bcVm.state() == viper::bytecode::VMState::Trapped)
-    {
+    if (bcVm.state() == viper::bytecode::VMState::Trapped) {
         result.trapped = true;
         result.trapMessage = bcVm.trapMessage();
         result.exitCode = 1;
 
-        if (config.outputTrapMessage)
-        {
+        if (config.outputTrapMessage) {
             std::cerr << result.trapMessage << "\n";
         }
-    }
-    else
-    {
+    } else {
         result.exitCode = 0;
     }
 
-    if (config.flushStdout)
-    {
+    if (config.flushStdout) {
         std::fflush(stdout);
     }
 

@@ -60,8 +60,7 @@ extern void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color);
  * Deferred draw command (for transparency sorting)
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     vgfx3d_draw_cmd_t cmd;
     vgfx3d_light_params_t lights[VGFX3D_MAX_LIGHTS];
     int32_t light_count;
@@ -71,16 +70,14 @@ typedef struct
     float sort_key; /* squared distance from camera (for transparent sorting) */
 } deferred_draw_t;
 
-static int ensure_deferred_capacity(void **buf, int32_t *capacity, int32_t needed)
-{
+static int ensure_deferred_capacity(void **buf, int32_t *capacity, int32_t needed) {
     if (!buf || !capacity || needed <= 0)
         return 0;
     if (*capacity >= needed)
         return 1;
 
     int32_t new_cap = *capacity > 0 ? *capacity : 32;
-    while (new_cap < needed)
-    {
+    while (new_cap < needed) {
         if (new_cap > INT32_MAX / 2)
             new_cap = needed;
         else
@@ -96,16 +93,13 @@ static int ensure_deferred_capacity(void **buf, int32_t *capacity, int32_t neede
     return 1;
 }
 
-static int ensure_text_capacity(rt_canvas3d *c, int32_t vertex_count, int32_t index_count)
-{
+static int ensure_text_capacity(rt_canvas3d *c, int32_t vertex_count, int32_t index_count) {
     if (!c || vertex_count < 0 || index_count < 0)
         return 0;
 
-    if (vertex_count > c->text_vertex_capacity)
-    {
+    if (vertex_count > c->text_vertex_capacity) {
         int32_t new_cap = c->text_vertex_capacity > 0 ? c->text_vertex_capacity : 256;
-        while (new_cap < vertex_count)
-        {
+        while (new_cap < vertex_count) {
             if (new_cap > INT32_MAX / 2)
                 new_cap = vertex_count;
             else
@@ -119,11 +113,9 @@ static int ensure_text_capacity(rt_canvas3d *c, int32_t vertex_count, int32_t in
         c->text_vertex_capacity = new_cap;
     }
 
-    if (index_count > c->text_index_capacity)
-    {
+    if (index_count > c->text_index_capacity) {
         int32_t new_cap = c->text_index_capacity > 0 ? c->text_index_capacity : 384;
-        while (new_cap < index_count)
-        {
+        while (new_cap < index_count) {
             if (new_cap > INT32_MAX / 2)
                 new_cap = index_count;
             else
@@ -141,8 +133,7 @@ static int ensure_text_capacity(rt_canvas3d *c, int32_t vertex_count, int32_t in
 }
 
 /* Comparison for qsort: back-to-front (descending sort_key) */
-static int cmp_back_to_front(const void *a, const void *b)
-{
+static int cmp_back_to_front(const void *a, const void *b) {
     float ka = ((const deferred_draw_t *)a)->sort_key;
     float kb = ((const deferred_draw_t *)b)->sort_key;
     if (ka > kb)
@@ -156,18 +147,15 @@ static int cmp_back_to_front(const void *a, const void *b)
  * Helpers
  *=========================================================================*/
 
-static void mat4_d2f(const double *src, float *dst)
-{
+static void mat4_d2f(const double *src, float *dst) {
     for (int i = 0; i < 16; i++)
         dst[i] = (float)src[i];
 }
 
 /* Build light params array from canvas light pointers */
-static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max)
-{
+static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *out, int32_t max) {
     int32_t count = 0;
-    for (int i = 0; i < VGFX3D_MAX_LIGHTS && count < max; i++)
-    {
+    for (int i = 0; i < VGFX3D_MAX_LIGHTS && count < max; i++) {
         const rt_light3d *l = c->lights[i];
         if (!l)
             continue;
@@ -192,12 +180,10 @@ static int32_t build_light_params(const rt_canvas3d *c, vgfx3d_light_params_t *o
  * Canvas3D lifecycle
  *=========================================================================*/
 
-static void rt_canvas3d_finalize(void *obj)
-{
+static void rt_canvas3d_finalize(void *obj) {
     rt_canvas3d *c = (rt_canvas3d *)obj;
     /* Destroy the backend context */
-    if (c->backend && c->backend_ctx)
-    {
+    if (c->backend && c->backend_ctx) {
         c->backend->destroy_ctx(c->backend_ctx);
         c->backend_ctx = NULL;
     }
@@ -222,32 +208,27 @@ static void rt_canvas3d_finalize(void *obj)
     c->text_index_capacity = 0;
 
     /* Free shadow render target if allocated */
-    if (c->shadow_rt)
-    {
+    if (c->shadow_rt) {
         free(c->shadow_rt->color_buf);
         free(c->shadow_rt->depth_buf);
         free(c->shadow_rt);
         c->shadow_rt = NULL;
     }
 
-    if (c->gfx_win)
-    {
+    if (c->gfx_win) {
         vgfx_destroy_window(c->gfx_win);
         c->gfx_win = NULL;
     }
 }
 
-void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h)
-{
-    if (w <= 0 || h <= 0 || w > 8192 || h > 8192)
-    {
+void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
+    if (w <= 0 || h <= 0 || w > 8192 || h > 8192) {
         rt_trap("Canvas3D.New: dimensions must be 1-8192");
         return NULL;
     }
 
     rt_canvas3d *c = (rt_canvas3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_canvas3d));
-    if (!c)
-    {
+    if (!c) {
         rt_trap("Canvas3D.New: memory allocation failed");
         return NULL;
     }
@@ -262,8 +243,7 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h)
         params.title = rt_string_cstr(title);
 
     c->gfx_win = vgfx_create_window(&params);
-    if (!c->gfx_win)
-    {
+    if (!c->gfx_win) {
         if (rt_obj_release_check0(c))
             rt_obj_free(c);
         rt_trap("Canvas3D.New: failed to create window (display server unavailable?)");
@@ -276,13 +256,11 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h)
     /* Select and initialize backend (GPU first, software fallback) */
     c->backend = vgfx3d_select_backend();
     c->backend_ctx = c->backend->create_ctx(c->gfx_win, (int32_t)w, (int32_t)h);
-    if (!c->backend_ctx)
-    {
+    if (!c->backend_ctx) {
         /* GPU backend failed — fall back to software */
         c->backend = &vgfx3d_software_backend;
         c->backend_ctx = c->backend->create_ctx(c->gfx_win, (int32_t)w, (int32_t)h);
-        if (!c->backend_ctx)
-        {
+        if (!c->backend_ctx) {
             rt_trap("Canvas3D.New: backend initialization failed");
             return NULL;
         }
@@ -317,8 +295,7 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h)
  * Rendering — dispatches through backend vtable
  *=========================================================================*/
 
-void rt_canvas3d_clear(void *obj, double r, double g, double b)
-{
+void rt_canvas3d_clear(void *obj, double r, double g, double b) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -328,17 +305,14 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b)
 
     /* Also clear the software framebuffer so skybox/vgfx_update has
      * correct background content regardless of active backend. */
-    if (c->backend != &vgfx3d_software_backend && !c->render_target)
-    {
+    if (c->backend != &vgfx3d_software_backend && !c->render_target) {
         vgfx_framebuffer_t fb;
-        if (vgfx_get_framebuffer(c->gfx_win, &fb))
-        {
+        if (vgfx_get_framebuffer(c->gfx_win, &fb)) {
             uint8_t cr = (uint8_t)((float)r * 255.0f);
             uint8_t cg = (uint8_t)((float)g * 255.0f);
             uint8_t cb = (uint8_t)((float)b * 255.0f);
             for (int32_t y = 0; y < fb.height; y++)
-                for (int32_t x = 0; x < fb.width; x++)
-                {
+                for (int32_t x = 0; x < fb.width; x++) {
                     uint8_t *px = &fb.pixels[y * fb.stride + x * 4];
                     px[0] = cr;
                     px[1] = cg;
@@ -349,8 +323,7 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b)
     }
 }
 
-void rt_canvas3d_begin_2d(void *obj)
-{
+void rt_canvas3d_begin_2d(void *obj) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -396,8 +369,8 @@ void rt_canvas3d_begin_2d(void *obj)
 
 /// @brief Draw a filled rectangle through the 3D pipeline (screen-space coords).
 /// Must be called between Begin2D/End or Begin/End.
-void rt_canvas3d_draw_rect_3d(void *obj, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
-{
+void rt_canvas3d_draw_rect_3d(
+    void *obj, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -472,8 +445,7 @@ void rt_canvas3d_draw_rect_3d(void *obj, int64_t x, int64_t y, int64_t w, int64_
 
 /// @brief Draw text through the 3D pipeline using the 5×7 bitmap font.
 /// Each character's "on" pixels are rendered as 2×2 quads batched into one mesh.
-void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color)
-{
+void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color) {
     if (!obj || !text)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -543,8 +515,7 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
 
     /* Count "on" pixels to size the reusable scratch mesh exactly. */
     int32_t quad_count = 0;
-    for (const char *p = str; *p; p++)
-    {
+    for (const char *p = str; *p; p++) {
         int ch = *p;
         if (ch < 32 || ch > 126)
             ch = 32;
@@ -567,27 +538,22 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
     float cx = (float)x;
     int32_t quad_idx = 0;
 
-    for (const char *p = str; *p; p++)
-    {
+    for (const char *p = str; *p; p++) {
         int ch = *p;
         if (ch < 32 || ch > 126)
             ch = 32;
         const uint8_t *glyph = font5x7[ch - 32];
 
-        for (int row = 0; row < 7; row++)
-        {
-            for (int col = 0; col < 5; col++)
-            {
-                if (glyph[row] & (1 << (4 - col)))
-                {
+        for (int row = 0; row < 7; row++) {
+            for (int col = 0; col < 5; col++) {
+                if (glyph[row] & (1 << (4 - col))) {
                     float px = cx + col * scale;
                     float py = (float)y + row * scale;
                     int32_t vi = quad_idx * 4;
                     int32_t ii = quad_idx * 6;
 
                     /* 4 vertices for this pixel quad */
-                    for (int v = 0; v < 4; v++)
-                    {
+                    for (int v = 0; v < 4; v++) {
                         memset(&c->text_vertices[vi + v], 0, sizeof(vgfx3d_vertex_t));
                         c->text_vertices[vi + v].normal[2] = 1.0f;
                         c->text_vertices[vi + v].color[0] = r;
@@ -633,8 +599,7 @@ void rt_canvas3d_draw_text_3d(void *obj, int64_t x, int64_t y, rt_string text, i
     c->backend->submit_draw(c->backend_ctx, c->gfx_win, &cmd, NULL, 0, c->ambient, 0, 0);
 }
 
-void rt_canvas3d_begin(void *obj, void *camera)
-{
+void rt_canvas3d_begin(void *obj, void *camera) {
     if (!obj || !camera)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -687,8 +652,7 @@ void rt_canvas3d_begin(void *obj, void *camera)
 void rt_canvas3d_draw_mesh_matrix(void *obj,
                                   void *mesh_obj,
                                   const double *model_matrix,
-                                  void *material_obj)
-{
+                                  void *material_obj) {
     if (!obj || !mesh_obj || !model_matrix || !material_obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -751,30 +715,26 @@ void rt_canvas3d_draw_mesh_matrix(void *obj,
     }
 }
 
-void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void *material_obj)
-{
+void rt_canvas3d_draw_mesh(void *obj, void *mesh_obj, void *transform_obj, void *material_obj) {
     if (!transform_obj)
         return;
     rt_canvas3d_draw_mesh_matrix(obj, mesh_obj, ((mat4_impl *)transform_obj)->m, material_obj);
 }
 
-void rt_canvas3d_end(void *obj)
-{
+void rt_canvas3d_end(void *obj) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     if (!c->in_frame)
         return; /* End() without Begin() — nothing to do */
-    if (!c->backend)
-    {
+    if (!c->backend) {
         c->in_frame = 0;
         return;
     }
 
     /* Skybox pass: render cube map as background BEFORE any scene geometry.
      * Renders regardless of draw_count (skybox-only scenes are valid). */
-    if (c->skybox)
-    {
+    if (c->skybox) {
         extern void rt_cubemap_sample(const rt_cubemap3d *cm,
                                       float dx,
                                       float dy,
@@ -787,18 +747,14 @@ void rt_canvas3d_end(void *obj)
         uint8_t *out_pixels = NULL;
         int32_t out_w = 0, out_h = 0, out_stride = 0;
 
-        if (c->render_target)
-        {
+        if (c->render_target) {
             out_pixels = c->render_target->color_buf;
             out_w = c->render_target->width;
             out_h = c->render_target->height;
             out_stride = c->render_target->stride;
-        }
-        else
-        {
+        } else {
             vgfx_framebuffer_t fb;
-            if (c->gfx_win && vgfx_get_framebuffer(c->gfx_win, &fb))
-            {
+            if (c->gfx_win && vgfx_get_framebuffer(c->gfx_win, &fb)) {
                 out_pixels = fb.pixels;
                 out_w = fb.width;
                 out_h = fb.height;
@@ -806,19 +762,16 @@ void rt_canvas3d_end(void *obj)
             }
         }
 
-        if (out_pixels)
-        {
+        if (out_pixels) {
             float vp_rot[16];
             memcpy(vp_rot, c->cached_vp, sizeof(float) * 16);
             vp_rot[3] = 0.0f;
             vp_rot[7] = 0.0f;
             vp_rot[11] = 0.0f;
 
-            for (int32_t y = 0; y < out_h; y++)
-            {
+            for (int32_t y = 0; y < out_h; y++) {
                 float ndc_y = 1.0f - 2.0f * ((float)y + 0.5f) / (float)out_h;
-                for (int32_t x = 0; x < out_w; x++)
-                {
+                for (int32_t x = 0; x < out_w; x++) {
                     float ndc_x = 2.0f * ((float)x + 0.5f) / (float)out_w - 1.0f;
 
                     float dx = vp_rot[0] * ndc_x + vp_rot[4] * ndc_y + vp_rot[8];
@@ -839,8 +792,7 @@ void rt_canvas3d_end(void *obj)
     }
 
     /* Early exit if no geometry to draw (skybox already rendered above) */
-    if (c->draw_count == 0)
-    {
+    if (c->draw_count == 0) {
         c->backend->end_frame(c->backend_ctx);
         c->in_frame = 0;
         return;
@@ -849,10 +801,8 @@ void rt_canvas3d_end(void *obj)
     deferred_draw_t *cmds = (deferred_draw_t *)c->draw_cmds;
 
     /* Pass 1: submit all opaque draws (alpha >= 1.0) immediately */
-    for (int32_t i = 0; i < c->draw_count; i++)
-    {
-        if (cmds[i].cmd.alpha >= 1.0f)
-        {
+    for (int32_t i = 0; i < c->draw_count; i++) {
+        if (cmds[i].cmd.alpha >= 1.0f) {
             c->backend->submit_draw(c->backend_ctx,
                                     c->gfx_win,
                                     &cmds[i].cmd,
@@ -871,10 +821,8 @@ void rt_canvas3d_end(void *obj)
             if (cmds[i].cmd.alpha < 1.0f)
                 trans_count++;
 
-        if (trans_count > 0)
-        {
-            if (ensure_deferred_capacity(&c->trans_cmds, &c->trans_capacity, trans_count))
-            {
+        if (trans_count > 0) {
+            if (ensure_deferred_capacity(&c->trans_cmds, &c->trans_capacity, trans_count)) {
                 deferred_draw_t *trans = (deferred_draw_t *)c->trans_cmds;
                 int32_t ti = 0;
                 for (int32_t i = 0; i < c->draw_count; i++)
@@ -885,8 +833,7 @@ void rt_canvas3d_end(void *obj)
                 qsort(trans, (size_t)trans_count, sizeof(deferred_draw_t), cmp_back_to_front);
 
                 /* Submit sorted transparent draws */
-                for (int32_t i = 0; i < trans_count; i++)
-                {
+                for (int32_t i = 0; i < trans_count; i++) {
                     c->backend->submit_draw(c->backend_ctx,
                                             c->gfx_win,
                                             &trans[i].cmd,
@@ -914,8 +861,7 @@ void rt_canvas3d_end(void *obj)
  * Window lifecycle — same as before, no backend involvement
  *=========================================================================*/
 
-void rt_canvas3d_flip(void *obj)
-{
+void rt_canvas3d_flip(void *obj) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -944,25 +890,21 @@ void rt_canvas3d_flip(void *obj)
         c->in_frame = 0;
 
     int64_t now_us = rt_clock_ticks_us();
-    if (c->last_flip_us > 0)
-    {
+    if (c->last_flip_us > 0) {
         int64_t delta_us = now_us - c->last_flip_us;
         c->delta_time_ms = delta_us > 0 ? delta_us / 1000 : 0;
-    }
-    else
+    } else
         c->delta_time_ms = 0;
     c->last_flip_us = now_us;
 
-    if (vgfx_close_requested(c->gfx_win))
-    {
+    if (vgfx_close_requested(c->gfx_win)) {
         vgfx_destroy_window(c->gfx_win);
         c->gfx_win = NULL;
         c->should_close = 1;
     }
 }
 
-int64_t rt_canvas3d_poll(void *obj)
-{
+int64_t rt_canvas3d_poll(void *obj) {
     if (!obj)
         return 0;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -990,47 +932,38 @@ int64_t rt_canvas3d_poll(void *obj)
 
     /* For captured (FPS) mode: compute delta as offset from window center.
      * This avoids issues with warp timing, stale events, and OS mouse tracking. */
-    if (captured)
-    {
+    if (captured) {
         int32_t cw, ch;
         vgfx_get_size(c->gfx_win, &cw, &ch);
         int32_t cx = cw / 2, cy = ch / 2;
         int64_t dx = (int64_t)mx - (int64_t)cx;
         int64_t dy = (int64_t)my - (int64_t)cy;
         rt_mouse_force_delta(dx, dy);
-    }
-    else
-    {
+    } else {
         rt_mouse_update_pos((int64_t)mx, (int64_t)my);
     }
 
     /* Process events (keyboard + mouse buttons only — mouse moves handled above) */
     vgfx_event_t evt;
-    while (vgfx_poll_event(c->gfx_win, &evt))
-    {
+    while (vgfx_poll_event(c->gfx_win, &evt)) {
         if (evt.type == VGFX_EVENT_KEY_DOWN)
             rt_keyboard_on_key_down((int64_t)evt.data.key.key);
         else if (evt.type == VGFX_EVENT_KEY_UP)
             rt_keyboard_on_key_up((int64_t)evt.data.key.key);
-        else if (!captured && evt.type == VGFX_EVENT_MOUSE_MOVE)
-        {
+        else if (!captured && evt.type == VGFX_EVENT_MOUSE_MOVE) {
             float cs = vgfx_window_get_scale(c->gfx_win);
             if (cs < 0.001f)
                 cs = 1.0f;
             rt_mouse_update_pos((int64_t)(evt.data.mouse_move.x / cs),
                                 (int64_t)(evt.data.mouse_move.y / cs));
-        }
-        else if (evt.type == VGFX_EVENT_MOUSE_DOWN)
-        {
+        } else if (evt.type == VGFX_EVENT_MOUSE_DOWN) {
             float cs = vgfx_window_get_scale(c->gfx_win);
             if (cs < 0.001f)
                 cs = 1.0f;
             rt_mouse_update_pos((int64_t)(evt.data.mouse_button.x / cs),
                                 (int64_t)(evt.data.mouse_button.y / cs));
             rt_mouse_button_down((int64_t)evt.data.mouse_button.button);
-        }
-        else if (evt.type == VGFX_EVENT_MOUSE_UP)
-        {
+        } else if (evt.type == VGFX_EVENT_MOUSE_UP) {
             float cs = vgfx_window_get_scale(c->gfx_win);
             if (cs < 0.001f)
                 cs = 1.0f;
@@ -1040,15 +973,13 @@ int64_t rt_canvas3d_poll(void *obj)
         }
     }
 
-    if (!captured)
-    {
+    if (!captured) {
         vgfx_mouse_pos(c->gfx_win, &mx, &my);
         rt_mouse_update_pos((int64_t)mx, (int64_t)my);
     }
 
     /* Warp cursor to center for next frame (only when captured) */
-    if (captured)
-    {
+    if (captured) {
         int32_t cw, ch;
         vgfx_get_size(c->gfx_win, &cw, &ch);
         vgfx_warp_cursor(c->gfx_win, cw / 2, ch / 2);
@@ -1057,34 +988,28 @@ int64_t rt_canvas3d_poll(void *obj)
     return 0;
 }
 
-int8_t rt_canvas3d_should_close(void *obj)
-{
+int8_t rt_canvas3d_should_close(void *obj) {
     return obj ? ((rt_canvas3d *)obj)->should_close : 0;
 }
 
-void rt_canvas3d_set_wireframe(void *obj, int8_t enabled)
-{
+void rt_canvas3d_set_wireframe(void *obj, int8_t enabled) {
     if (obj)
         ((rt_canvas3d *)obj)->wireframe = enabled;
 }
 
-void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled)
-{
+void rt_canvas3d_set_backface_cull(void *obj, int8_t enabled) {
     if (obj)
         ((rt_canvas3d *)obj)->backface_cull = enabled;
 }
 
-void rt_canvas3d_add_temp_buffer(void *obj, void *buffer)
-{
+void rt_canvas3d_add_temp_buffer(void *obj, void *buffer) {
     if (!obj || !buffer)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
-    if (c->temp_buf_count >= c->temp_buf_capacity)
-    {
+    if (c->temp_buf_count >= c->temp_buf_capacity) {
         int32_t new_cap = c->temp_buf_capacity == 0 ? 8 : c->temp_buf_capacity * 2;
         void **nb = (void **)realloc(c->temp_buffers, (size_t)new_cap * sizeof(void *));
-        if (!nb)
-        {
+        if (!nb) {
             free(buffer);
             return;
         }
@@ -1094,32 +1019,27 @@ void rt_canvas3d_add_temp_buffer(void *obj, void *buffer)
     c->temp_buffers[c->temp_buf_count++] = buffer;
 }
 
-int64_t rt_canvas3d_get_width(void *obj)
-{
+int64_t rt_canvas3d_get_width(void *obj) {
     return obj ? ((rt_canvas3d *)obj)->width : 0;
 }
 
-int64_t rt_canvas3d_get_height(void *obj)
-{
+int64_t rt_canvas3d_get_height(void *obj) {
     return obj ? ((rt_canvas3d *)obj)->height : 0;
 }
 
-int64_t rt_canvas3d_get_fps(void *obj)
-{
+int64_t rt_canvas3d_get_fps(void *obj) {
     if (!obj)
         return 0;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     return c->delta_time_ms > 0 ? 1000 / c->delta_time_ms : 0;
 }
 
-int64_t rt_canvas3d_get_delta_time(void *obj)
-{
+int64_t rt_canvas3d_get_delta_time(void *obj) {
     if (!obj)
         return 0;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     int64_t dt = c->delta_time_ms;
-    if (c->dt_max_ms > 0)
-    {
+    if (c->dt_max_ms > 0) {
         if (dt < 1)
             dt = 1;
         if (dt > c->dt_max_ms)
@@ -1128,21 +1048,18 @@ int64_t rt_canvas3d_get_delta_time(void *obj)
     return dt;
 }
 
-void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms)
-{
+void rt_canvas3d_set_dt_max(void *obj, int64_t max_ms) {
     if (obj)
         ((rt_canvas3d *)obj)->dt_max_ms = max_ms;
 }
 
-void rt_canvas3d_set_light(void *obj, int64_t index, void *light)
-{
+void rt_canvas3d_set_light(void *obj, int64_t index, void *light) {
     if (!obj || index < 0 || index >= VGFX3D_MAX_LIGHTS)
         return;
     ((rt_canvas3d *)obj)->lights[index] = (rt_light3d *)light;
 }
 
-void rt_canvas3d_set_ambient(void *obj, double r, double g, double b)
-{
+void rt_canvas3d_set_ambient(void *obj, double r, double g, double b) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -1158,8 +1075,7 @@ void rt_canvas3d_set_ambient(void *obj, double r, double g, double b)
 /* Helper: project 3D point to screen using the cached VP matrix.
  * Uses c->cached_vp set in begin_frame (backend-agnostic). */
 static int world_to_screen(
-    const rt_canvas3d *c, const float *wp, float *sx, float *sy, int32_t fb_w, int32_t fb_h)
-{
+    const rt_canvas3d *c, const float *wp, float *sx, float *sy, int32_t fb_w, int32_t fb_h) {
     const float *vp = c->cached_vp;
     float pos4[4] = {wp[0], wp[1], wp[2], 1.0f};
     float clip[4];
@@ -1185,15 +1101,12 @@ static void draw_line_px(uint8_t *pixels,
                          int y1,
                          uint8_t r,
                          uint8_t g,
-                         uint8_t b)
-{
+                         uint8_t b) {
     int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
-    for (;;)
-    {
-        if (x0 >= 0 && x0 < fb_w && y0 >= 0 && y0 < fb_h)
-        {
+    for (;;) {
+        if (x0 >= 0 && x0 < fb_w && y0 >= 0 && y0 < fb_h) {
             uint8_t *dst = &pixels[y0 * stride + x0 * 4];
             dst[0] = r;
             dst[1] = g;
@@ -1203,21 +1116,18 @@ static void draw_line_px(uint8_t *pixels,
         if (x0 == x1 && y0 == y1)
             break;
         int e2 = 2 * err;
-        if (e2 >= dy)
-        {
+        if (e2 >= dy) {
             err += dy;
             x0 += sx;
         }
-        if (e2 <= dx)
-        {
+        if (e2 <= dx) {
             err += dx;
             y0 += sy;
         }
     }
 }
 
-void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color)
-{
+void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color) {
     if (!obj || !from || !to)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -1248,8 +1158,7 @@ void rt_canvas3d_draw_line3d(void *obj, void *from, void *to, int64_t color)
                  (uint8_t)(color & 0xFF));
 }
 
-void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size)
-{
+void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size) {
     if (!obj || !pos)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -1269,11 +1178,9 @@ void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size)
     uint8_t b = (uint8_t)(color & 0xFF);
     int half = (int)(size / 2), cx = (int)sx, cy = (int)sy;
     for (int dy = -half; dy <= half; dy++)
-        for (int dx = -half; dx <= half; dx++)
-        {
+        for (int dx = -half; dx <= half; dx++) {
             int px = cx + dx, py = cy + dy;
-            if (px >= 0 && px < fb.width && py >= 0 && py < fb.height)
-            {
+            if (px >= 0 && px < fb.width && py >= 0 && py < fb.height) {
                 uint8_t *dst = &fb.pixels[py * fb.stride + px * 4];
                 dst[0] = r;
                 dst[1] = g;
@@ -1287,8 +1194,7 @@ void rt_canvas3d_draw_point3d(void *obj, void *pos, int64_t color, int64_t size)
  * Screen-space HUD overlay (drawn directly to framebuffer, no 3D transform)
  *=========================================================================*/
 
-void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
-{
+void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -1303,10 +1209,8 @@ void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t
     uint8_t cb = (uint8_t)(color & 0xFF);
 
     for (int64_t py = y; py < y + h; py++)
-        for (int64_t px = x; px < x + w; px++)
-        {
-            if (px >= 0 && px < fb.width && py >= 0 && py < fb.height)
-            {
+        for (int64_t px = x; px < x + w; px++) {
+            if (px >= 0 && px < fb.width && py >= 0 && py < fb.height) {
                 uint8_t *dst = &fb.pixels[py * fb.stride + px * 4];
                 dst[0] = cr;
                 dst[1] = cg;
@@ -1316,8 +1220,7 @@ void rt_canvas3d_draw_rect2d(void *obj, int64_t x, int64_t y, int64_t w, int64_t
         }
 }
 
-void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size)
-{
+void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -1334,11 +1237,9 @@ void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size)
     uint8_t cb = (uint8_t)(color & 0xFF);
 
     /* Horizontal line */
-    for (int32_t dx = -half; dx <= half; dx++)
-    {
+    for (int32_t dx = -half; dx <= half; dx++) {
         int32_t px = cx + dx;
-        if (px >= 0 && px < fb.width && cy >= 0 && cy < fb.height)
-        {
+        if (px >= 0 && px < fb.width && cy >= 0 && cy < fb.height) {
             uint8_t *dst = &fb.pixels[cy * fb.stride + px * 4];
             dst[0] = cr;
             dst[1] = cg;
@@ -1347,11 +1248,9 @@ void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size)
         }
     }
     /* Vertical line */
-    for (int32_t dy = -half; dy <= half; dy++)
-    {
+    for (int32_t dy = -half; dy <= half; dy++) {
         int32_t py = cy + dy;
-        if (cx >= 0 && cx < fb.width && py >= 0 && py < fb.height)
-        {
+        if (cx >= 0 && cx < fb.width && py >= 0 && py < fb.height) {
             uint8_t *dst = &fb.pixels[py * fb.stride + cx * 4];
             dst[0] = cr;
             dst[1] = cg;
@@ -1361,8 +1260,7 @@ void rt_canvas3d_draw_crosshair(void *obj, int64_t color, int64_t size)
     }
 }
 
-void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color)
-{
+void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y, rt_string text, int64_t color) {
     if (!obj || !text)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -1480,25 +1378,19 @@ void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y, rt_string text, in
     };
 
     int64_t cx = x;
-    for (const char *p = str; *p; p++)
-    {
+    for (const char *p = str; *p; p++) {
         int ch = (int)(unsigned char)*p;
-        if (ch < 32 || ch > 126)
-        {
+        if (ch < 32 || ch > 126) {
             cx += 6;
             continue;
         }
         const uint8_t *glyph = font5x7[ch - 32];
 
-        for (int row = 0; row < 7; row++)
-        {
-            for (int col = 0; col < 5; col++)
-            {
-                if (glyph[row] & (1 << (4 - col)))
-                {
+        for (int row = 0; row < 7; row++) {
+            for (int col = 0; col < 5; col++) {
+                if (glyph[row] & (1 << (4 - col))) {
                     int64_t px = cx + col, py = y + row;
-                    if (px >= 0 && px < fb.width && py >= 0 && py < fb.height)
-                    {
+                    if (px >= 0 && px < fb.width && py >= 0 && py < fb.height) {
                         uint8_t *dst = &fb.pixels[py * fb.stride + px * 4];
                         dst[0] = cr;
                         dst[1] = cg;
@@ -1512,16 +1404,14 @@ void rt_canvas3d_draw_text2d(void *obj, int64_t x, int64_t y, rt_string text, in
     }
 }
 
-rt_string rt_canvas3d_get_backend(void *obj)
-{
+rt_string rt_canvas3d_get_backend(void *obj) {
     if (!obj)
         return rt_const_cstr("unknown");
     rt_canvas3d *c = (rt_canvas3d *)obj;
     return rt_const_cstr(c->backend ? c->backend->name : "unknown");
 }
 
-void *rt_canvas3d_screenshot(void *obj)
-{
+void *rt_canvas3d_screenshot(void *obj) {
     if (!obj)
         return NULL;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -1537,8 +1427,7 @@ void *rt_canvas3d_screenshot(void *obj)
         return NULL;
 
     for (int32_t y = 0; y < fb.height; y++)
-        for (int32_t x = 0; x < fb.width; x++)
-        {
+        for (int32_t x = 0; x < fb.width; x++) {
             const uint8_t *src = &fb.pixels[y * fb.stride + x * 4];
             int64_t color = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
                             ((uint32_t)src[2] << 8) | (uint32_t)src[3];
@@ -1551,8 +1440,7 @@ void *rt_canvas3d_screenshot(void *obj)
  * Debug Gizmos — wireframe AABB, sphere, ray, axis
  *=========================================================================*/
 
-void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t color)
-{
+void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t color) {
     if (!obj || !min_v || !max_v)
         return;
     double mn[3] = {rt_vec3_x(min_v), rt_vec3_y(min_v), rt_vec3_z(min_v)};
@@ -1581,8 +1469,7 @@ void rt_canvas3d_draw_aabb_wire(void *obj, void *min_v, void *max_v, int64_t col
         rt_canvas3d_draw_line3d(obj, c[edges[e][0]], c[edges[e][1]], color);
 }
 
-void rt_canvas3d_draw_sphere_wire(void *obj, void *center, double radius, int64_t color)
-{
+void rt_canvas3d_draw_sphere_wire(void *obj, void *center, double radius, int64_t color) {
     if (!obj || !center)
         return;
     double cx = rt_vec3_x(center), cy = rt_vec3_y(center), cz = rt_vec3_z(center);
@@ -1590,8 +1477,7 @@ void rt_canvas3d_draw_sphere_wire(void *obj, void *center, double radius, int64_
     int segs = 24;
     double step = 2.0 * 3.14159265358979323846 / segs;
 
-    for (int i = 0; i < segs; i++)
-    {
+    for (int i = 0; i < segs; i++) {
         double a0 = i * step, a1 = (i + 1) * step;
         double c0 = cos(a0), s0 = sin(a0), c1 = cos(a1), s1 = sin(a1);
 
@@ -1613,8 +1499,7 @@ void rt_canvas3d_draw_sphere_wire(void *obj, void *center, double radius, int64_
     }
 }
 
-void rt_canvas3d_draw_debug_ray(void *obj, void *origin, void *dir, double length, int64_t color)
-{
+void rt_canvas3d_draw_debug_ray(void *obj, void *origin, void *dir, double length, int64_t color) {
     if (!obj || !origin || !dir)
         return;
     double ex = rt_vec3_x(origin) + rt_vec3_x(dir) * length;
@@ -1623,8 +1508,7 @@ void rt_canvas3d_draw_debug_ray(void *obj, void *origin, void *dir, double lengt
     rt_canvas3d_draw_line3d(obj, origin, rt_vec3_new(ex, ey, ez), color);
 }
 
-void rt_canvas3d_draw_axis(void *obj, void *origin, double scale)
-{
+void rt_canvas3d_draw_axis(void *obj, void *origin, double scale) {
     if (!obj || !origin)
         return;
     double ox = rt_vec3_x(origin), oy = rt_vec3_y(origin), oz = rt_vec3_z(origin);
@@ -1637,8 +1521,8 @@ void rt_canvas3d_draw_axis(void *obj, void *origin, double scale)
  * Fog — linear distance fog
  *=========================================================================*/
 
-void rt_canvas3d_set_fog(void *obj, double near_dist, double far_dist, double r, double g, double b)
-{
+void rt_canvas3d_set_fog(
+    void *obj, double near_dist, double far_dist, double r, double g, double b) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -1650,8 +1534,7 @@ void rt_canvas3d_set_fog(void *obj, double near_dist, double far_dist, double r,
     c->fog_color[2] = (float)b;
 }
 
-void rt_canvas3d_clear_fog(void *obj)
-{
+void rt_canvas3d_clear_fog(void *obj) {
     if (!obj)
         return;
     ((rt_canvas3d *)obj)->fog_enabled = 0;
@@ -1661,8 +1544,7 @@ void rt_canvas3d_clear_fog(void *obj)
  * Shadow Mapping
  *=========================================================================*/
 
-void rt_canvas3d_enable_shadows(void *obj, int64_t resolution)
-{
+void rt_canvas3d_enable_shadows(void *obj, int64_t resolution) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
@@ -1675,17 +1557,14 @@ void rt_canvas3d_enable_shadows(void *obj, int64_t resolution)
     c->shadow_resolution = res;
 
     /* Allocate shadow render target if needed */
-    if (!c->shadow_rt || c->shadow_rt->width != res)
-    {
-        if (c->shadow_rt)
-        {
+    if (!c->shadow_rt || c->shadow_rt->width != res) {
+        if (c->shadow_rt) {
             free(c->shadow_rt->color_buf);
             free(c->shadow_rt->depth_buf);
             free(c->shadow_rt);
         }
         c->shadow_rt = (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
-        if (c->shadow_rt)
-        {
+        if (c->shadow_rt) {
             c->shadow_rt->width = res;
             c->shadow_rt->height = res;
             c->shadow_rt->stride = res * 4;
@@ -1695,14 +1574,12 @@ void rt_canvas3d_enable_shadows(void *obj, int64_t resolution)
     }
 }
 
-void rt_canvas3d_disable_shadows(void *obj)
-{
+void rt_canvas3d_disable_shadows(void *obj) {
     if (!obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)obj;
     c->shadows_enabled = 0;
-    if (c->shadow_rt)
-    {
+    if (c->shadow_rt) {
         free(c->shadow_rt->color_buf);
         free(c->shadow_rt->depth_buf);
         free(c->shadow_rt);
@@ -1710,15 +1587,13 @@ void rt_canvas3d_disable_shadows(void *obj)
     }
 }
 
-void rt_canvas3d_set_shadow_bias(void *obj, double bias)
-{
+void rt_canvas3d_set_shadow_bias(void *obj, double bias) {
     if (!obj)
         return;
     ((rt_canvas3d *)obj)->shadow_bias = (float)bias;
 }
 
-void rt_canvas3d_set_occlusion_culling(void *obj, int8_t enabled)
-{
+void rt_canvas3d_set_occlusion_culling(void *obj, int8_t enabled) {
     if (!obj)
         return;
     ((rt_canvas3d *)obj)->occlusion_culling = enabled;

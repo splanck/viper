@@ -56,15 +56,9 @@ extern void rt_trap(const char *msg);
 #define DEFAULT_CAPACITY 256
 #define GROWTH_FACTOR 2
 
-typedef enum
-{
-    BATCH_ITEM_SPRITE,
-    BATCH_ITEM_PIXELS,
-    BATCH_ITEM_REGION
-} batch_item_type;
+typedef enum { BATCH_ITEM_SPRITE, BATCH_ITEM_PIXELS, BATCH_ITEM_REGION } batch_item_type;
 
-typedef struct
-{
+typedef struct {
     batch_item_type type;
     void *source;     // Sprite or Pixels object
     int64_t x;        // Destination X
@@ -80,8 +74,7 @@ typedef struct
     int64_t src_h;
 } batch_item;
 
-typedef struct
-{
+typedef struct {
     batch_item *items;
     int64_t count;
     int64_t capacity;
@@ -91,8 +84,7 @@ typedef struct
     int64_t alpha;
 } spritebatch_impl;
 
-typedef struct
-{
+typedef struct {
     int64_t width;
     int64_t height;
     uint32_t *data;
@@ -102,8 +94,7 @@ typedef struct
 // Helper Functions
 //=============================================================================
 
-static int compare_depth(const void *a, const void *b)
-{
+static int compare_depth(const void *a, const void *b) {
     const batch_item *ia = (const batch_item *)a;
     const batch_item *ib = (const batch_item *)b;
     if (ia->depth < ib->depth)
@@ -113,8 +104,7 @@ static int compare_depth(const void *a, const void *b)
     return 0;
 }
 
-static void ensure_capacity(spritebatch_impl *batch, int64_t needed)
-{
+static void ensure_capacity(spritebatch_impl *batch, int64_t needed) {
     if (batch->count + needed <= batch->capacity)
         return;
 
@@ -124,8 +114,7 @@ static void ensure_capacity(spritebatch_impl *batch, int64_t needed)
 
     batch_item *new_items =
         (batch_item *)realloc(batch->items, (size_t)new_capacity * sizeof(batch_item));
-    if (!new_items)
-    {
+    if (!new_items) {
         rt_trap("SpriteBatch: memory allocation failed");
         return;
     }
@@ -133,41 +122,34 @@ static void ensure_capacity(spritebatch_impl *batch, int64_t needed)
     batch->capacity = new_capacity;
 }
 
-static void add_item(spritebatch_impl *batch, batch_item *item)
-{
+static void add_item(spritebatch_impl *batch, batch_item *item) {
     ensure_capacity(batch, 1);
     batch->items[batch->count] = *item;
     batch->count++;
 }
 
-static void *apply_batch_color(void *pixels, int64_t tint_color, int64_t alpha)
-{
+static void *apply_batch_color(void *pixels, int64_t tint_color, int64_t alpha) {
     if (!pixels || (tint_color == 0 && alpha >= 255))
         return pixels;
 
     void *result = pixels;
-    if (tint_color != 0)
-    {
+    if (tint_color != 0) {
         void *tinted = rt_pixels_tint(result, tint_color);
         if (tinted)
             result = tinted;
     }
 
-    if (alpha < 255)
-    {
-        if (result == pixels)
-        {
+    if (alpha < 255) {
+        if (result == pixels) {
             void *cloned = rt_pixels_clone(result);
             if (cloned)
                 result = cloned;
         }
 
         spritebatch_pixels_view *impl = (spritebatch_pixels_view *)result;
-        if (impl && impl->data)
-        {
+        if (impl && impl->data) {
             int64_t pixel_count = impl->width * impl->height;
-            for (int64_t i = 0; i < pixel_count; ++i)
-            {
+            for (int64_t i = 0; i < pixel_count; ++i) {
                 uint32_t rgba = impl->data[i];
                 uint32_t a = rgba & 0xFFu;
                 a = (a * (uint32_t)alpha + 127u) / 255u;
@@ -179,8 +161,7 @@ static void *apply_batch_color(void *pixels, int64_t tint_color, int64_t alpha)
     return result;
 }
 
-static void *extract_region_pixels(void *pixels, int64_t sx, int64_t sy, int64_t sw, int64_t sh)
-{
+static void *extract_region_pixels(void *pixels, int64_t sx, int64_t sy, int64_t sw, int64_t sh) {
     if (!pixels || sw <= 0 || sh <= 0)
         return NULL;
 
@@ -192,15 +173,13 @@ static void *extract_region_pixels(void *pixels, int64_t sx, int64_t sy, int64_t
     return region;
 }
 
-static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_item *item)
-{
+static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_item *item) {
     if (!item->source)
         return;
 
     const bool needsTransform = item->scale_x != 100 || item->scale_y != 100 || item->rotation != 0;
     const bool needsColor = batch->tint_color != 0 || batch->alpha < 255;
-    if (!needsTransform && !needsColor)
-    {
+    if (!needsTransform && !needsColor) {
         rt_canvas_blit_region(canvas,
                               item->x,
                               item->y,
@@ -217,8 +196,7 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
     if (!transformed)
         return;
 
-    if (item->scale_x != 100 || item->scale_y != 100)
-    {
+    if (item->scale_x != 100 || item->scale_y != 100) {
         int64_t new_w = item->src_w * item->scale_x / 100;
         int64_t new_h = item->src_h * item->scale_y / 100;
         if (new_w < 1)
@@ -230,8 +208,7 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
             transformed = scaled;
     }
 
-    if (item->rotation != 0)
-    {
+    if (item->rotation != 0) {
         void *rotated = rt_pixels_rotate(transformed, (double)item->rotation);
         if (rotated)
             transformed = rotated;
@@ -241,8 +218,7 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
 
     int64_t blit_x = item->x;
     int64_t blit_y = item->y;
-    if (needsTransform)
-    {
+    if (needsTransform) {
         blit_x = item->x - rt_pixels_width(transformed) / 2;
         blit_y = item->y - rt_pixels_height(transformed) / 2;
     }
@@ -254,15 +230,13 @@ static void draw_region_item(spritebatch_impl *batch, void *canvas, const batch_
 // SpriteBatch Creation
 //=============================================================================
 
-static void spritebatch_finalize(void *obj)
-{
+static void spritebatch_finalize(void *obj) {
     spritebatch_impl *batch = (spritebatch_impl *)obj;
     free(batch->items);
     batch->items = NULL;
 }
 
-void *rt_spritebatch_new(int64_t capacity)
-{
+void *rt_spritebatch_new(int64_t capacity) {
     spritebatch_impl *batch =
         (spritebatch_impl *)rt_obj_new_i64(0, (int64_t)sizeof(spritebatch_impl));
     memset(batch, 0, sizeof(spritebatch_impl));
@@ -271,8 +245,7 @@ void *rt_spritebatch_new(int64_t capacity)
         capacity = DEFAULT_CAPACITY;
 
     batch->items = (batch_item *)malloc((size_t)capacity * sizeof(batch_item));
-    if (!batch->items)
-    {
+    if (!batch->items) {
         rt_trap("SpriteBatch: memory allocation failed");
     }
 
@@ -293,8 +266,7 @@ void *rt_spritebatch_new(int64_t capacity)
 
 /// @brief Perform spritebatch begin operation.
 /// @param batch_ptr
-void rt_spritebatch_begin(void *batch_ptr)
-{
+void rt_spritebatch_begin(void *batch_ptr) {
     if (!batch_ptr)
         return;
 
@@ -306,8 +278,7 @@ void rt_spritebatch_begin(void *batch_ptr)
 /// @brief Perform spritebatch end operation.
 /// @param batch_ptr
 /// @param canvas
-void rt_spritebatch_end(void *batch_ptr, void *canvas)
-{
+void rt_spritebatch_end(void *batch_ptr, void *canvas) {
     if (!batch_ptr || !canvas)
         return;
 
@@ -316,21 +287,17 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas)
         return;
 
     // Sort by depth if enabled
-    if (batch->sort_by_depth && batch->count > 1)
-    {
+    if (batch->sort_by_depth && batch->count > 1) {
         qsort(batch->items, (size_t)batch->count, sizeof(batch_item), compare_depth);
     }
 
     // Render all items
-    for (int64_t i = 0; i < batch->count; i++)
-    {
+    for (int64_t i = 0; i < batch->count; i++) {
         batch_item *item = &batch->items[i];
 
-        switch (item->type)
-        {
+        switch (item->type) {
             case BATCH_ITEM_SPRITE:
-                if (item->source)
-                {
+                if (item->source) {
                     // Save original sprite state
                     int64_t old_x = rt_sprite_get_x(item->source);
                     int64_t old_y = rt_sprite_get_y(item->source);
@@ -358,16 +325,12 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas)
                 break;
 
             case BATCH_ITEM_PIXELS:
-                if (item->source)
-                {
+                if (item->source) {
                     void *draw_src =
                         apply_batch_color(item->source, batch->tint_color, batch->alpha);
-                    if (batch->alpha < 255 || batch->tint_color != 0)
-                    {
+                    if (batch->alpha < 255 || batch->tint_color != 0) {
                         rt_canvas_blit_alpha(canvas, item->x, item->y, draw_src);
-                    }
-                    else
-                    {
+                    } else {
                         rt_canvas_blit(canvas, item->x, item->y, draw_src);
                     }
                 }
@@ -387,8 +350,7 @@ void rt_spritebatch_end(void *batch_ptr, void *canvas)
 /// @param sprite
 /// @param x
 /// @param y
-void rt_spritebatch_draw(void *batch_ptr, void *sprite, int64_t x, int64_t y)
-{
+void rt_spritebatch_draw(void *batch_ptr, void *sprite, int64_t x, int64_t y) {
     rt_spritebatch_draw_ex(batch_ptr, sprite, x, y, 100, 100, 0);
 }
 
@@ -398,8 +360,8 @@ void rt_spritebatch_draw(void *batch_ptr, void *sprite, int64_t x, int64_t y)
 /// @param x
 /// @param y
 /// @param scale
-void rt_spritebatch_draw_scaled(void *batch_ptr, void *sprite, int64_t x, int64_t y, int64_t scale)
-{
+void rt_spritebatch_draw_scaled(
+    void *batch_ptr, void *sprite, int64_t x, int64_t y, int64_t scale) {
     rt_spritebatch_draw_ex(batch_ptr, sprite, x, y, scale, scale, 0);
 }
 
@@ -409,8 +371,7 @@ void rt_spritebatch_draw_ex(void *batch_ptr,
                             int64_t y,
                             int64_t scale_x,
                             int64_t scale_y,
-                            int64_t rotation)
-{
+                            int64_t rotation) {
     if (!batch_ptr || !sprite)
         return;
 
@@ -436,8 +397,7 @@ void rt_spritebatch_draw_ex(void *batch_ptr,
 /// @param pixels
 /// @param x
 /// @param y
-void rt_spritebatch_draw_pixels(void *batch_ptr, void *pixels, int64_t x, int64_t y)
-{
+void rt_spritebatch_draw_pixels(void *batch_ptr, void *pixels, int64_t x, int64_t y) {
     if (!batch_ptr || !pixels)
         return;
 
@@ -465,8 +425,7 @@ void rt_spritebatch_draw_region(void *batch_ptr,
                                 int64_t sx,
                                 int64_t sy,
                                 int64_t sw,
-                                int64_t sh)
-{
+                                int64_t sh) {
     rt_spritebatch_draw_region_ex(batch_ptr, pixels, dx, dy, sx, sy, sw, sh, 100, 100, 0, 0);
 }
 
@@ -481,8 +440,7 @@ void rt_spritebatch_draw_region_ex(void *batch_ptr,
                                    int64_t scale_x,
                                    int64_t scale_y,
                                    int64_t rotation,
-                                   int64_t depth)
-{
+                                   int64_t depth) {
     if (!batch_ptr || !pixels)
         return;
 
@@ -514,8 +472,7 @@ void rt_spritebatch_draw_region_ex(void *batch_ptr,
 /// @brief Perform spritebatch count operation.
 /// @param batch_ptr
 /// @return Result value.
-int64_t rt_spritebatch_count(void *batch_ptr)
-{
+int64_t rt_spritebatch_count(void *batch_ptr) {
     if (!batch_ptr)
         return 0;
     return ((spritebatch_impl *)batch_ptr)->count;
@@ -524,8 +481,7 @@ int64_t rt_spritebatch_count(void *batch_ptr)
 /// @brief Perform spritebatch capacity operation.
 /// @param batch_ptr
 /// @return Result value.
-int64_t rt_spritebatch_capacity(void *batch_ptr)
-{
+int64_t rt_spritebatch_capacity(void *batch_ptr) {
     if (!batch_ptr)
         return 0;
     return ((spritebatch_impl *)batch_ptr)->capacity;
@@ -534,8 +490,7 @@ int64_t rt_spritebatch_capacity(void *batch_ptr)
 /// @brief Perform spritebatch is active operation.
 /// @param batch_ptr
 /// @return Result value.
-int8_t rt_spritebatch_is_active(void *batch_ptr)
-{
+int8_t rt_spritebatch_is_active(void *batch_ptr) {
     if (!batch_ptr)
         return 0;
     return ((spritebatch_impl *)batch_ptr)->active;
@@ -548,8 +503,7 @@ int8_t rt_spritebatch_is_active(void *batch_ptr)
 /// @brief Perform spritebatch set sort by depth operation.
 /// @param batch_ptr
 /// @param enabled
-void rt_spritebatch_set_sort_by_depth(void *batch_ptr, int8_t enabled)
-{
+void rt_spritebatch_set_sort_by_depth(void *batch_ptr, int8_t enabled) {
     if (!batch_ptr)
         return;
     ((spritebatch_impl *)batch_ptr)->sort_by_depth = enabled ? 1 : 0;
@@ -558,8 +512,7 @@ void rt_spritebatch_set_sort_by_depth(void *batch_ptr, int8_t enabled)
 /// @brief Perform spritebatch set tint operation.
 /// @param batch_ptr
 /// @param color
-void rt_spritebatch_set_tint(void *batch_ptr, int64_t color)
-{
+void rt_spritebatch_set_tint(void *batch_ptr, int64_t color) {
     if (!batch_ptr)
         return;
     ((spritebatch_impl *)batch_ptr)->tint_color = color;
@@ -568,8 +521,7 @@ void rt_spritebatch_set_tint(void *batch_ptr, int64_t color)
 /// @brief Perform spritebatch set alpha operation.
 /// @param batch_ptr
 /// @param alpha
-void rt_spritebatch_set_alpha(void *batch_ptr, int64_t alpha)
-{
+void rt_spritebatch_set_alpha(void *batch_ptr, int64_t alpha) {
     if (!batch_ptr)
         return;
     if (alpha < 0)
@@ -581,8 +533,7 @@ void rt_spritebatch_set_alpha(void *batch_ptr, int64_t alpha)
 
 /// @brief Perform spritebatch reset settings operation.
 /// @param batch_ptr
-void rt_spritebatch_reset_settings(void *batch_ptr)
-{
+void rt_spritebatch_reset_settings(void *batch_ptr) {
     if (!batch_ptr)
         return;
     spritebatch_impl *batch = (spritebatch_impl *)batch_ptr;

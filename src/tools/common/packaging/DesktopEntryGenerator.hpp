@@ -25,12 +25,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Parameters for .desktop file generation.
-struct DesktopEntryParams
-{
+struct DesktopEntryParams {
     std::string name;       ///< Display name (e.g. "ViperIDE")
     std::string comment;    ///< Short description
     std::string execPath;   ///< Path to executable (e.g. "/usr/bin/viperide")

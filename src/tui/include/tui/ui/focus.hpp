@@ -32,16 +32,14 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::tui::ui
-{
+namespace viper::tui::ui {
 class Widget;
 
 /// @brief Manages a circular ring of focusable widgets for keyboard navigation.
 /// @details Maintains a list of registered focusable widgets and tracks the
 ///          current focus position. Supports forward and backward traversal
 ///          for Tab/Shift+Tab focus cycling.
-class FocusManager
-{
+class FocusManager {
   public:
     /// @brief Register a widget if it wants focus.
     /// @details Only adds the widget to the ring if widget->wantsFocus()

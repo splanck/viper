@@ -17,12 +17,10 @@
 
 #include "codegen/x86_64/passes/PassManager.hpp"
 
-namespace viper::codegen::x64::passes
-{
+namespace viper::codegen::x64::passes {
 
 /// \brief Placeholder legalisation pass that validates lowering prerequisites.
-class LegalizePass final : public Pass
-{
+class LegalizePass final : public Pass {
   public:
     /// @brief Run the legalization pass: validate and normalize MIR for x86-64 constraints.
     /// @param module The codegen module containing MIR functions to legalize.

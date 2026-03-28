@@ -22,8 +22,7 @@
 
 #include "il/core/fwd.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// \brief Fold trivial constant computations in @p m.
 void constFold(core::Module &m);

@@ -58,8 +58,7 @@
 ///          without duplicating pointer comparisons.
 /// @param sb Builder to inspect; may be @c NULL.
 /// @return Non-zero when the builder uses its inline buffer; zero otherwise.
-static bool rt_sb_is_inline(const rt_string_builder *sb)
-{
+static bool rt_sb_is_inline(const rt_string_builder *sb) {
     return sb && sb->data == sb->inline_buffer;
 }
 
@@ -77,13 +76,11 @@ static bool rt_sb_is_inline(const rt_string_builder *sb)
 static void rt_sb_restore_on_overflow(rt_string_builder *sb,
                                       size_t original_len,
                                       size_t original_cap,
-                                      bool was_inline)
-{
+                                      bool was_inline) {
     if (!sb)
         return;
 
-    if (was_inline)
-    {
+    if (was_inline) {
         if (!rt_sb_is_inline(sb) && sb->data)
             free(sb->data);
         sb->data = sb->inline_buffer;
@@ -100,8 +97,7 @@ static void rt_sb_restore_on_overflow(rt_string_builder *sb,
 ///          null pointer is tolerated as a no-op so callers can unconditionally
 ///          initialise arrays of builders.
 /// @param sb Builder instance to prepare.
-void rt_sb_init(rt_string_builder *sb)
-{
+void rt_sb_init(rt_string_builder *sb) {
     if (!sb)
         return;
     sb->data = sb->inline_buffer;
@@ -116,8 +112,7 @@ void rt_sb_init(rt_string_builder *sb)
 ///          active storage.  After the call the builder is indistinguishable from
 ///          a freshly initialised instance.
 /// @param sb Builder instance to tear down; null pointers are ignored.
-void rt_sb_free(rt_string_builder *sb)
-{
+void rt_sb_free(rt_string_builder *sb) {
     if (!sb)
         return;
     if (!rt_sb_is_inline(sb) && sb->data)
@@ -137,8 +132,7 @@ void rt_sb_free(rt_string_builder *sb)
 /// @param sb Builder to grow.
 /// @param new_cap Desired capacity including space for the terminator.
 /// @return Status code describing the outcome of the operation.
-static rt_sb_status_t rt_sb_grow(rt_string_builder *sb, size_t new_cap)
-{
+static rt_sb_status_t rt_sb_grow(rt_string_builder *sb, size_t new_cap) {
     if (!sb)
         return RT_SB_ERROR_INVALID;
     if (new_cap <= sb->cap)
@@ -150,15 +144,12 @@ static rt_sb_status_t rt_sb_grow(rt_string_builder *sb, size_t new_cap)
         return RT_SB_ERROR_OVERFLOW;
 
     char *new_data = NULL;
-    if (rt_sb_is_inline(sb))
-    {
+    if (rt_sb_is_inline(sb)) {
         new_data = (char *)malloc(new_cap);
         if (!new_data)
             return RT_SB_ERROR_ALLOC;
         memcpy(new_data, sb->inline_buffer, sb->len + 1);
-    }
-    else
-    {
+    } else {
         new_data = (char *)realloc(sb->data, new_cap);
         if (!new_data)
             return RT_SB_ERROR_ALLOC;
@@ -178,8 +169,7 @@ static rt_sb_status_t rt_sb_grow(rt_string_builder *sb, size_t new_cap)
 /// @param required Minimum number of bytes required (excluding the implicit
 ///        null terminator).
 /// @return Status describing success, allocation failure, or overflow.
-rt_sb_status_t rt_sb_reserve(rt_string_builder *sb, size_t required)
-{
+rt_sb_status_t rt_sb_reserve(rt_string_builder *sb, size_t required) {
     if (!sb)
         return RT_SB_ERROR_INVALID;
     if (required <= sb->len + 1)
@@ -191,10 +181,8 @@ rt_sb_status_t rt_sb_reserve(rt_string_builder *sb, size_t required)
     if (new_cap == 0)
         new_cap = RT_SB_INLINE_CAPACITY;
 
-    while (new_cap < required)
-    {
-        if (new_cap > SIZE_MAX / 2)
-        {
+    while (new_cap < required) {
+        if (new_cap > SIZE_MAX / 2) {
             new_cap = required;
             break;
         }
@@ -216,8 +204,7 @@ rt_sb_status_t rt_sb_reserve(rt_string_builder *sb, size_t required)
 /// @param text Pointer to the bytes to append; may be null when @p len is zero.
 /// @param len Number of bytes to copy from @p text.
 /// @return Status code describing success, allocation failure, or invalid input.
-rt_sb_status_t rt_sb_append_bytes(rt_string_builder *sb, const char *text, size_t len)
-{
+rt_sb_status_t rt_sb_append_bytes(rt_string_builder *sb, const char *text, size_t len) {
     if (!sb || (!text && len > 0))
         return RT_SB_ERROR_INVALID;
     if (len == 0)
@@ -244,8 +231,7 @@ rt_sb_status_t rt_sb_append_bytes(rt_string_builder *sb, const char *text, size_
 /// @param sb Destination builder.
 /// @param text Null-terminated UTF-8 string to append.
 /// @return Status code indicating success or the error that occurred.
-rt_sb_status_t rt_sb_append_cstr(rt_string_builder *sb, const char *text)
-{
+rt_sb_status_t rt_sb_append_cstr(rt_string_builder *sb, const char *text) {
     if (!text)
         return RT_SB_ERROR_INVALID;
     return rt_sb_append_bytes(sb, text, strlen(text));
@@ -260,8 +246,7 @@ rt_sb_status_t rt_sb_append_cstr(rt_string_builder *sb, const char *text)
 /// @param sb Destination builder.
 /// @param value Integer to append in base 10.
 /// @return Status describing whether the append succeeded.
-rt_sb_status_t rt_sb_append_int(rt_string_builder *sb, int64_t value)
-{
+rt_sb_status_t rt_sb_append_int(rt_string_builder *sb, int64_t value) {
     if (!sb)
         return RT_SB_ERROR_INVALID;
 
@@ -294,8 +279,7 @@ rt_sb_status_t rt_sb_append_int(rt_string_builder *sb, int64_t value)
 /// @param sb Destination builder.
 /// @param value Floating-point value to append.
 /// @return Status describing whether the append succeeded.
-rt_sb_status_t rt_sb_append_double(rt_string_builder *sb, double value)
-{
+rt_sb_status_t rt_sb_append_double(rt_string_builder *sb, double value) {
     if (!sb)
         return RT_SB_ERROR_INVALID;
 
@@ -315,15 +299,13 @@ rt_sb_status_t rt_sb_append_double(rt_string_builder *sb, double value)
     rt_format_f64(value, sb->data + sb->len, avail);
     size_t appended = strlen(sb->data + sb->len);
 
-    if (appended + 1 > avail)
-    {
+    if (appended + 1 > avail) {
         rt_sb_restore_on_overflow(sb, original_len, original_cap, was_inline);
         return RT_SB_ERROR_OVERFLOW;
     }
 
     sb->len += appended;
-    if (sb->len >= sb->cap)
-    {
+    if (sb->len >= sb->cap) {
         rt_sb_restore_on_overflow(sb, original_len, original_cap, was_inline);
         return RT_SB_ERROR_OVERFLOW;
     }
@@ -341,17 +323,14 @@ rt_sb_status_t rt_sb_append_double(rt_string_builder *sb, double value)
 /// @param fmt printf-style format string.
 /// @param args Variadic argument list to render.
 /// @return Status describing whether the formatted append succeeded.
-static rt_sb_status_t rt_sb_vprintf_internal(rt_string_builder *sb, const char *fmt, va_list args)
-{
+static rt_sb_status_t rt_sb_vprintf_internal(rt_string_builder *sb, const char *fmt, va_list args) {
     if (!sb || !fmt)
         return RT_SB_ERROR_INVALID;
 
     va_list copy;
-    while (1)
-    {
+    while (1) {
         size_t avail = (sb->cap > sb->len) ? (sb->cap - sb->len) : 0;
-        if (avail < 2)
-        {
+        if (avail < 2) {
             size_t target = sb->cap ? sb->cap * 2 : RT_SB_INLINE_CAPACITY;
             if (sb->cap > SIZE_MAX / 2)
                 target = SIZE_MAX;
@@ -375,8 +354,7 @@ static rt_sb_status_t rt_sb_vprintf_internal(rt_string_builder *sb, const char *
         if (written < 0)
             return RT_SB_ERROR_FORMAT;
 
-        if ((size_t)written + 1 > avail)
-        {
+        if ((size_t)written + 1 > avail) {
             size_t needed = sb->len + (size_t)written + 1;
             if (needed < sb->len)
                 return RT_SB_ERROR_OVERFLOW;
@@ -400,8 +378,7 @@ static rt_sb_status_t rt_sb_vprintf_internal(rt_string_builder *sb, const char *
 /// @param fmt printf-style format string.
 /// @param ... Variadic arguments consumed by @p fmt.
 /// @return Status from the underlying formatting routine.
-rt_sb_status_t rt_sb_printf(rt_string_builder *sb, const char *fmt, ...)
-{
+rt_sb_status_t rt_sb_printf(rt_string_builder *sb, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
     rt_sb_status_t status = rt_sb_vprintf_internal(sb, fmt, args);
@@ -418,17 +395,14 @@ rt_sb_status_t rt_sb_printf(rt_string_builder *sb, const char *fmt, ...)
 #include <assert.h>
 
 // StringBuilder object layout (must match rt_sb_bridge.c)
-typedef struct
-{
+typedef struct {
     void *vptr;                // vtable pointer (8 bytes)
     rt_string_builder builder; // embedded builder state
 } StringBuilder;
 
 // Helper to validate and get the embedded builder
-static rt_string_builder *get_builder(void *sb)
-{
-    if (!sb)
-    {
+static rt_string_builder *get_builder(void *sb) {
+    if (!sb) {
         // Fail loudly on null StringBuilder
         assert(0 && "rt_text_sb_* called with null StringBuilder object");
         return NULL;
@@ -439,8 +413,7 @@ static rt_string_builder *get_builder(void *sb)
     return &obj->builder;
 }
 
-int64_t rt_text_sb_get_length(void *sb)
-{
+int64_t rt_text_sb_get_length(void *sb) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
         return 0;
@@ -450,8 +423,7 @@ int64_t rt_text_sb_get_length(void *sb)
     return (int64_t)builder->len;
 }
 
-int64_t rt_text_sb_get_capacity(void *sb)
-{
+int64_t rt_text_sb_get_capacity(void *sb) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
         return 0;
@@ -460,8 +432,7 @@ int64_t rt_text_sb_get_capacity(void *sb)
     return (int64_t)builder->cap;
 }
 
-void *rt_text_sb_append(void *sb, rt_string s)
-{
+void *rt_text_sb_append(void *sb, rt_string s) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
         return sb;
@@ -470,23 +441,19 @@ void *rt_text_sb_append(void *sb, rt_string s)
     const char *str_data = s ? s->data : NULL;
     size_t str_len = s ? rt_str_len(s) : 0;
 
-    if (str_data && str_len > 0)
-    {
+    if (str_data && str_len > 0) {
         // Need to append the string data - we'll have to make a null-terminated copy
         // or add each character. Since we have the data and length, let's reserve
         // space and copy directly.
 
         // First, ensure we have enough space
         rt_sb_status_t status = rt_sb_reserve(builder, builder->len + str_len + 1);
-        if (status == RT_SB_OK)
-        {
+        if (status == RT_SB_OK) {
             // Copy the string data directly
             memcpy(builder->data + builder->len, str_data, str_len);
             builder->len += str_len;
             builder->data[builder->len] = '\0';
-        }
-        else if (status != RT_SB_ERROR_ALLOC)
-        {
+        } else if (status != RT_SB_ERROR_ALLOC) {
             // For errors other than allocation failure, fail loudly
             assert(0 && "rt_text_sb_append failed with unexpected error");
         }
@@ -501,8 +468,7 @@ void *rt_text_sb_append(void *sb, rt_string s)
 /// @details Treats a NULL @p s as empty, but still appends the newline. Uses a single LF byte
 ///          regardless of platform (no CRLF translation). Returns the receiver for fluent
 ///          chaining.
-void *rt_text_sb_append_line(void *sb, rt_string s)
-{
+void *rt_text_sb_append_line(void *sb, rt_string s) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
         return sb;
@@ -512,34 +478,28 @@ void *rt_text_sb_append_line(void *sb, rt_string s)
 
     // Reserve enough space for string bytes + '\n' + NUL terminator.
     size_t required = builder->len + str_len + 2;
-    if (required < builder->len)
-    {
+    if (required < builder->len) {
         assert(0 && "rt_text_sb_append_line: size overflow");
         return sb;
     }
 
     rt_sb_status_t status = rt_sb_reserve(builder, required);
-    if (status == RT_SB_OK)
-    {
-        if (str_data && str_len > 0)
-        {
+    if (status == RT_SB_OK) {
+        if (str_data && str_len > 0) {
             memcpy(builder->data + builder->len, str_data, str_len);
             builder->len += str_len;
         }
 
         builder->data[builder->len++] = '\n';
         builder->data[builder->len] = '\0';
-    }
-    else if (status != RT_SB_ERROR_ALLOC)
-    {
+    } else if (status != RT_SB_ERROR_ALLOC) {
         assert(0 && "rt_text_sb_append_line failed with unexpected error");
     }
 
     return sb;
 }
 
-rt_string rt_text_sb_to_string(void *sb)
-{
+rt_string rt_text_sb_to_string(void *sb) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
         return rt_str_empty();
@@ -553,8 +513,7 @@ rt_string rt_text_sb_to_string(void *sb)
     return rt_string_from_bytes(builder->data, builder->len);
 }
 
-void rt_text_sb_clear(void *sb)
-{
+void rt_text_sb_clear(void *sb) {
     rt_string_builder *builder = get_builder(sb);
     if (!builder)
         return;

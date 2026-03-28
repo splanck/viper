@@ -26,12 +26,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Parameters for Info.plist generation.
-struct PlistParams
-{
+struct PlistParams {
     std::string executableName;              ///< Binary filename in Contents/MacOS/
     std::string bundleId;                    ///< CFBundleIdentifier (reverse DNS)
     std::string bundleName;                  ///< CFBundleName (display name)

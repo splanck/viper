@@ -21,16 +21,14 @@
 #if defined(__GLIBC__)
 extern "C" void *__libc_malloc(size_t size);
 
-extern "C" void *malloc(size_t size)
-{
+extern "C" void *malloc(size_t size) {
     if (size == 0)
         return NULL;
     return __libc_malloc(size);
 }
 #endif
 
-int main()
-{
+int main() {
     void *ptr = rt_alloc(0);
     assert(ptr != NULL);
     free(ptr);

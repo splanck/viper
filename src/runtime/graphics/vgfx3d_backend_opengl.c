@@ -171,8 +171,7 @@ typedef void (*PFNGLDEPTHMASKPROC)(GLboolean);
 // Loaded GL function pointers
 //=============================================================================
 
-static struct
-{
+static struct {
     void *lib;
     PFNGLCLEARPROC Clear;
     PFNGLCLEARCOLORPROC ClearColor;
@@ -234,8 +233,7 @@ typedef void (*PFNGLXDESTROYCONTEXTPROC)(Display *, GLXContext);
 /// @brief   Glxextfuncptr operation.
 typedef __GLXextFuncPtr (*PFNGLXGETPROCADDRESSPROC)(const unsigned char *);
 
-static struct
-{
+static struct {
     PFNGLXCHOOSEFBCONFIGPROC ChooseFBConfig;
     PFNGLXCREATENEWCONTEXTPROC CreateNewContext;
     PFNGLXSWAPBUFFERSPROC SwapBuffers;
@@ -258,8 +256,7 @@ static struct
 
 static int gl_loaded = 0;
 
-static int load_gl(void)
-{
+static int load_gl(void) {
     if (gl_loaded)
         return 0;
     gl.lib = dlopen("libGL.so.1", RTLD_LAZY);
@@ -421,8 +418,7 @@ static const char *glsl_fragment_src =
 // OpenGL context
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     Display *display;
     Window window;
     GLXContext glxCtx;
@@ -444,15 +440,13 @@ typedef struct
 // Shader compilation helper
 //=============================================================================
 
-static GLuint compile_shader(GLenum type, const char *src)
-{
+static GLuint compile_shader(GLenum type, const char *src) {
     GLuint s = gl.CreateShader(type);
     gl.ShaderSource(s, 1, &src, NULL);
     gl.CompileShader(s);
     GLint ok;
     gl.GetShaderiv(s, GL_COMPILE_STATUS, &ok);
-    if (!ok)
-    {
+    if (!ok) {
         char log[512];
         gl.GetShaderInfoLog(s, 512, NULL, log);
         fprintf(stderr, "[OpenGL] Shader error: %s\n", log);
@@ -462,8 +456,7 @@ static GLuint compile_shader(GLenum type, const char *src)
     return s;
 }
 
-static void mat4f_mul_gl(const float *a, const float *b, float *out)
-{
+static void mat4f_mul_gl(const float *a, const float *b, float *out) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
             out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
@@ -474,8 +467,7 @@ static void mat4f_mul_gl(const float *a, const float *b, float *out)
 // Backend vtable
 //=============================================================================
 
-static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
-{
+static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     if (load_gl() != 0)
         return NULL;
 
@@ -510,24 +502,21 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
                         0};
     int fb_count = 0;
     GLXFBConfig *configs = glx.ChooseFBConfig(dpy, DefaultScreen(dpy), fb_attribs, &fb_count);
-    if (!configs || fb_count == 0)
-    { /* dpy owned by vgfx */
+    if (!configs || fb_count == 0) { /* dpy owned by vgfx */
         return NULL;
     }
 
     /* Create GLX context */
     GLXContext glxCtx = glx.CreateNewContext(dpy, configs[0], GLX_RGBA_TYPE, NULL, 1);
     XFree(configs);
-    if (!glxCtx)
-    { /* dpy owned by vgfx */
+    if (!glxCtx) { /* dpy owned by vgfx */
         return NULL;
     }
 
     glx.MakeCurrent(dpy, xwin, glxCtx);
 
     gl_context_t *ctx = (gl_context_t *)calloc(1, sizeof(gl_context_t));
-    if (!ctx)
-    {
+    if (!ctx) {
         glx.DestroyContext(dpy, glxCtx); /* dpy owned by vgfx */
         return NULL;
     }
@@ -540,8 +529,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
     /* Compile shaders */
     GLuint vs = compile_shader(GL_VERTEX_SHADER, glsl_vertex_src);
     GLuint fs = compile_shader(GL_FRAGMENT_SHADER, glsl_fragment_src);
-    if (!vs || !fs)
-    {
+    if (!vs || !fs) {
         free(ctx);
         glx.DestroyContext(dpy, glxCtx); /* dpy owned by vgfx */
         return NULL;
@@ -556,8 +544,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
 
     GLint linked;
     gl.GetProgramiv(ctx->program, GL_LINK_STATUS, &linked);
-    if (!linked)
-    {
+    if (!linked) {
         free(ctx);
         glx.DestroyContext(dpy, glxCtx); /* dpy owned by vgfx */
         return NULL;
@@ -575,8 +562,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
     ctx->uAlpha = gl.GetUniformLocation(ctx->program, "uAlpha");
     ctx->uUnlit = gl.GetUniformLocation(ctx->program, "uUnlit");
     ctx->uLightCount = gl.GetUniformLocation(ctx->program, "uLightCount");
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         char name[64];
         snprintf(name, sizeof(name), "uLightType[%d]", i);
         ctx->uLightType[i] = gl.GetUniformLocation(ctx->program, name);
@@ -607,8 +593,7 @@ static void *gl_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
     return ctx;
 }
 
-static void gl_destroy_ctx(void *ctx_ptr)
-{
+static void gl_destroy_ctx(void *ctx_ptr) {
     if (!ctx_ptr)
         return;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
@@ -622,8 +607,7 @@ static void gl_destroy_ctx(void *ctx_ptr)
     free(ctx);
 }
 
-static void gl_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b)
-{
+static void gl_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b) {
     (void)win;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     ctx->clearR = r;
@@ -631,8 +615,7 @@ static void gl_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b
     ctx->clearB = b;
 }
 
-static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
-{
+static void gl_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     mat4f_mul_gl(cam->projection, cam->view, ctx->vp);
     memcpy(ctx->cam_pos, cam->position, sizeof(float) * 3);
@@ -654,8 +637,7 @@ static void gl_submit_draw(void *ctx_ptr,
                            int32_t light_count,
                            const float *ambient,
                            int8_t wireframe,
-                           int8_t backface_cull)
-{
+                           int8_t backface_cull) {
     (void)win;
     (void)wireframe;
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
@@ -694,8 +676,7 @@ static void gl_submit_draw(void *ctx_ptr,
     gl.Uniform1i(ctx->uLightCount, light_count);
 
     /* Light uniforms */
-    for (int32_t i = 0; i < light_count && i < 8; i++)
-    {
+    for (int32_t i = 0; i < light_count && i < 8; i++) {
         gl.Uniform1i(ctx->uLightType[i], lights[i].type);
         gl.Uniform3f(ctx->uLightDir[i],
                      lights[i].direction[0],
@@ -751,22 +732,19 @@ static void gl_submit_draw(void *ctx_ptr,
     gl.DeleteBuffers(1, &ibo);
 }
 
-static void gl_end_frame(void *ctx_ptr)
-{
+static void gl_end_frame(void *ctx_ptr) {
     (void)ctx_ptr;
     /* GPU work is flushed implicitly by OpenGL.
      * Buffer swap moved to gl_present() so only the LAST
      * Begin/End pair's content is shown per frame. */
 }
 
-static void gl_present(void *ctx_ptr)
-{
+static void gl_present(void *ctx_ptr) {
     gl_context_t *ctx = (gl_context_t *)ctx_ptr;
     glx.SwapBuffers(ctx->display, ctx->window);
 }
 
-static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
-{
+static void gl_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     (void)ctx_ptr;
     (void)rt;
 }

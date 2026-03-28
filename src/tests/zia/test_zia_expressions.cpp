@@ -18,12 +18,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test arithmetic expressions.
-TEST(ZiaExpressions, Arithmetic)
-{
+TEST(ZiaExpressions, Arithmetic) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -42,14 +40,10 @@ func start() {
 
     bool foundMul = false;
     bool foundAdd = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Mul || instr.op == il::core::Opcode::IMulOvf)
                         foundMul = true;
                     if (instr.op == il::core::Opcode::Add || instr.op == il::core::Opcode::IAddOvf)
@@ -63,8 +57,7 @@ func start() {
 }
 
 /// @brief Test module-level constants are resolved correctly (Bug #23, #25).
-TEST(ZiaExpressions, ModuleLevelConstants)
-{
+TEST(ZiaExpressions, ModuleLevelConstants) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -89,18 +82,12 @@ func start() {
     // Verify that the constants 70 and 35 appear in the generated IL
     bool found70 = false;
     bool found35 = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
-                    for (const auto &op : instr.operands)
-                    {
-                        if (op.kind == il::core::Value::Kind::ConstInt)
-                        {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
+                    for (const auto &op : instr.operands) {
+                        if (op.kind == il::core::Value::Kind::ConstInt) {
                             if (op.i64 == 70)
                                 found70 = true;
                             if (op.i64 == 35)
@@ -117,8 +104,7 @@ func start() {
 
 /// @brief Test boolean AND/OR with comparison operands (Bug #24).
 /// Boolean operators should zero-extend I1 to I64, perform op, truncate back.
-TEST(ZiaExpressions, BooleanAndOrWithComparisons)
-{
+TEST(ZiaExpressions, BooleanAndOrWithComparisons) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -147,15 +133,11 @@ func start() {
     bool foundZext1 = false;
     bool foundCBr = false;
     size_t blockCount = 0;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
             blockCount = fn.blocks.size();
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Zext1)
                         foundZext1 = true;
                     if (instr.op == il::core::Opcode::CBr)
@@ -171,8 +153,7 @@ func start() {
 }
 
 /// @brief Test ternary conditional expressions lower into branch blocks.
-TEST(ZiaExpressions, TernaryExpression)
-{
+TEST(ZiaExpressions, TernaryExpression) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -193,12 +174,9 @@ func start() {
     bool foundThen = false;
     bool foundElse = false;
     bool foundMerge = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
                 if (block.label.find("ternary_then") != std::string::npos)
                     foundThen = true;
                 if (block.label.find("ternary_else") != std::string::npos)
@@ -215,8 +193,7 @@ func start() {
 
 /// @brief Bug #29: String comparison with empty string.
 /// Empty string literals should be compared using Viper.String.Equals.
-TEST(ZiaExpressions, StringComparisonWithEmptyString)
-{
+TEST(ZiaExpressions, StringComparisonWithEmptyString) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -239,11 +216,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for StringComparisonWithEmptyString:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -253,16 +228,12 @@ func start() {
 
     // Verify that we're calling Viper.String.Equals for both functions
     bool foundEqualsCall = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "checkEmpty" || fn.name == "checkNotEmpty")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
-                    if (instr.op == il::core::Opcode::Call && instr.callee == "Viper.String.Equals")
-                    {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "checkEmpty" || fn.name == "checkNotEmpty") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
+                    if (instr.op == il::core::Opcode::Call &&
+                        instr.callee == "Viper.String.Equals") {
                         foundEqualsCall = true;
                     }
                 }
@@ -274,8 +245,7 @@ func start() {
 
 /// @brief Bug #32: String constants should be dereferenced when used.
 /// Global string constants should emit const_str instructions when accessed.
-TEST(ZiaExpressions, StringConstantsDereferenced)
-{
+TEST(ZiaExpressions, StringConstantsDereferenced) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -295,11 +265,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for StringConstantsDereferenced:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -309,16 +277,11 @@ func start() {
 
     // Verify that const_str is used to load the constant
     bool foundConstStr = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "checkKey")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
-                    if (instr.op == il::core::Opcode::ConstStr)
-                    {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "checkKey") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
+                    if (instr.op == il::core::Opcode::ConstStr) {
                         foundConstStr = true;
                     }
                 }
@@ -330,7 +293,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

@@ -33,8 +33,7 @@
 #include <string>
 #include <utility>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Parse a BASIC `CLASS` declaration from the current token stream.
 /// @details The parser consumes the opening keyword, captures the class name,
@@ -48,8 +47,7 @@ namespace il::frontends::basic
 ///          to the general procedure parser so control-flow, locals, and
 ///          recovery all remain consistent with non-OOP procedures.
 /// @return Newly allocated @ref ClassDecl describing the parsed declaration.
-StmtPtr Parser::parseClassDecl()
-{
+StmtPtr Parser::parseClassDecl() {
     auto loc = peek().loc;
     consume(); // CLASS
 
@@ -64,15 +62,12 @@ StmtPtr Parser::parseClassDecl()
     currentClass_ = decl.get();
 
     // Optional single inheritance: CLASS B : A or CLASS B:A or CLASS B : Namespace.Base
-    if (at(TokenKind::Colon))
-    {
+    if (at(TokenKind::Colon)) {
         consume();
-        if (peek().kind == TokenKind::Identifier)
-        {
+        if (peek().kind == TokenKind::Identifier) {
             std::string base = peek().lexeme;
             consume();
-            while (at(TokenKind::Dot))
-            {
+            while (at(TokenKind::Dot)) {
                 consume();
                 Token seg = expect(TokenKind::Identifier);
                 if (seg.kind != TokenKind::Identifier)
@@ -81,30 +76,24 @@ StmtPtr Parser::parseClassDecl()
                 base.append(seg.lexeme);
             }
             decl->baseName = std::move(base);
-        }
-        else
-        {
+        } else {
             expect(TokenKind::Identifier);
         }
     }
 
     // Optional IMPLEMENTS clause: CLASS C : B IMPLEMENTS I1, I2, ...
-    if (at(TokenKind::KeywordImplements))
-    {
+    if (at(TokenKind::KeywordImplements)) {
         consume();
         // Parse comma-separated list of qualified interface names
-        do
-        {
+        do {
             if (at(TokenKind::Comma))
                 consume();
 
             std::vector<std::string> ifaceNameParts;
-            if (at(TokenKind::Identifier))
-            {
+            if (at(TokenKind::Identifier)) {
                 ifaceNameParts.push_back(peek().lexeme);
                 consume();
-                while (at(TokenKind::Dot))
-                {
+                while (at(TokenKind::Dot)) {
                     consume();
                     Token seg = expect(TokenKind::Identifier);
                     if (seg.kind == TokenKind::Identifier)
@@ -113,9 +102,7 @@ StmtPtr Parser::parseClassDecl()
                         break;
                 }
                 decl->implementsQualifiedNames.push_back(std::move(ifaceNameParts));
-            }
-            else
-            {
+            } else {
                 expect(TokenKind::Identifier);
                 break;
             }
@@ -128,15 +115,12 @@ StmtPtr Parser::parseClassDecl()
         consume();
 
     // Helper to optionally consume PUBLIC/PRIVATE and return it.
-    auto parseAccessPrefix = [&]() -> std::optional<Access>
-    {
-        if (at(TokenKind::KeywordPublic))
-        {
+    auto parseAccessPrefix = [&]() -> std::optional<Access> {
+        if (at(TokenKind::KeywordPublic)) {
             consume();
             return Access::Public;
         }
-        if (at(TokenKind::KeywordPrivate))
-        {
+        if (at(TokenKind::KeywordPrivate)) {
             consume();
             return Access::Private;
         }
@@ -146,8 +130,7 @@ StmtPtr Parser::parseClassDecl()
     std::optional<Access> curAccess;
     bool pendingStaticField = false; // single-use STATIC modifier for next field
 
-    while (!at(TokenKind::EndOfFile))
-    {
+    while (!at(TokenKind::EndOfFile)) {
         while (at(TokenKind::EndOfLine) || at(TokenKind::Colon))
             consume();
 
@@ -155,26 +138,22 @@ StmtPtr Parser::parseClassDecl()
             break;
 
         // Single-use PUBLIC/PRIVATE prefix for next member/field.
-        if (auto acc = parseAccessPrefix())
-        {
+        if (auto acc = parseAccessPrefix()) {
             curAccess = acc;
             // Continue so the following token sequence forms the actual field.
             continue;
         }
 
         // Single-use STATIC prefix for next field
-        if (at(TokenKind::KeywordStatic))
-        {
+        if (at(TokenKind::KeywordStatic)) {
             consume();
             pendingStaticField = true;
             continue;
         }
 
-        if (at(TokenKind::Number))
-        {
+        if (at(TokenKind::Number)) {
             TokenKind nextKind = peek(1).kind;
-            if (nextKind == TokenKind::Identifier && peek(2).kind == TokenKind::KeywordAs)
-            {
+            if (nextKind == TokenKind::Identifier && peek(2).kind == TokenKind::KeywordAs) {
                 consume();
                 continue;
             }
@@ -199,12 +178,9 @@ StmtPtr Parser::parseClassDecl()
 
         // BUG-OOP-042 fix: Accept soft keywords (like BASE, FLOOR) as field names.
         Token fieldNameTok;
-        if (isSoftIdentToken(peek().kind))
-        {
+        if (isSoftIdentToken(peek().kind)) {
             fieldNameTok = consume();
-        }
-        else
-        {
+        } else {
             fieldNameTok = expect(TokenKind::Identifier);
             if (fieldNameTok.kind != TokenKind::Identifier)
                 break;
@@ -213,13 +189,11 @@ StmtPtr Parser::parseClassDecl()
         // Parse array dimensions if present (BUG-056 fix)
         std::vector<long long> extents;
         bool isArray = false;
-        if (at(TokenKind::LParen))
-        {
+        if (at(TokenKind::LParen)) {
             consume(); // (
             isArray = true;
 
-            while (!at(TokenKind::RParen) && !at(TokenKind::EndOfFile))
-            {
+            while (!at(TokenKind::RParen) && !at(TokenKind::EndOfFile)) {
                 // BUG-BASIC-001 fix: Parse dimension size as expression, then constant-fold.
                 // This allows CONST values and expressions like MAX_SIZE or 10+5.
                 auto dimExpr = parseExpression();
@@ -227,45 +201,36 @@ StmtPtr Parser::parseClassDecl()
                 bool gotSize = false;
 
                 // Try to get the integer value from the expression
-                if (dimExpr)
-                {
+                if (dimExpr) {
                     // Check if it's already an integer literal
-                    if (auto *ie = as<IntExpr>(*dimExpr))
-                    {
+                    if (auto *ie = as<IntExpr>(*dimExpr)) {
                         size = ie->value;
                         gotSize = true;
                     }
                     // Try constant folding for expressions
-                    else if (auto folded = constfold::fold_expr(*dimExpr))
-                    {
-                        if (auto *ie2 = as<IntExpr>(**folded))
-                        {
+                    else if (auto folded = constfold::fold_expr(*dimExpr)) {
+                        if (auto *ie2 = as<IntExpr>(**folded)) {
                             size = ie2->value;
                             gotSize = true;
                         }
                     }
                     // Check if it's a known CONST identifier
-                    else if (auto *ve = as<VarExpr>(*dimExpr))
-                    {
+                    else if (auto *ve = as<VarExpr>(*dimExpr)) {
                         std::string canon = CanonicalizeIdent(ve->name);
                         auto it = knownConstInts_.find(canon);
-                        if (it != knownConstInts_.end())
-                        {
+                        if (it != knownConstInts_.end()) {
                             size = it->second;
                             gotSize = true;
                         }
                     }
                 }
 
-                if (gotSize)
-                {
+                if (gotSize) {
                     // BUG-094 fix: Store the declared extent as-is (e.g., 7 for DIM a(7)).
                     // The +1 conversion to length happens in the lowerer when computing
                     // allocation sizes and flat indices, not during parsing.
                     extents.push_back(size);
-                }
-                else
-                {
+                } else {
                     emitError(
                         "B0001", fieldNameTok, "array dimension must be a constant expression");
                 }
@@ -284,10 +249,8 @@ StmtPtr Parser::parseClassDecl()
 
         Type fieldType = Type::I64;
         std::string typeName; // BUG-082 fix: capture type name for object fields
-        if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
-        {
-            if (at(TokenKind::Identifier))
-            {
+        if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier)) {
+            if (at(TokenKind::Identifier)) {
                 // BUG-OOP-039 fix: Parse qualified type names (e.g., Viper.Text.StringBuilder)
                 typeName = peek().lexeme;
                 // Check if it's a primitive type first
@@ -296,18 +259,14 @@ StmtPtr Parser::parseClassDecl()
                     ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
                 if (upper == "INTEGER" || upper == "INT" || upper == "LONG" || upper == "DOUBLE" ||
                     upper == "FLOAT" || upper == "SINGLE" || upper == "STRING" ||
-                    upper == "BOOLEAN")
-                {
+                    upper == "BOOLEAN") {
                     // It's a primitive - use parseTypeKeyword
                     fieldType = parseTypeKeyword();
                     typeName.clear(); // Not an object type
-                }
-                else
-                {
+                } else {
                     // It's a class name - consume it and parse dotted path if present
                     consume();
-                    while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier)
-                    {
+                    while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier) {
                         typeName += ".";
                         consume(); // dot
                         typeName += peek().lexeme;
@@ -315,14 +274,10 @@ StmtPtr Parser::parseClassDecl()
                     }
                     fieldType = Type::I64; // Objects stored as pointers, default type
                 }
-            }
-            else
-            {
+            } else {
                 fieldType = parseTypeKeyword();
             }
-        }
-        else
-        {
+        } else {
             expect(TokenKind::Identifier);
         }
 
@@ -334,8 +289,7 @@ StmtPtr Parser::parseClassDecl()
         field.isArray = isArray;
         field.arrayExtents = std::move(extents);
         // BUG-082/BUG-OOP-039 fix: Set object class name if not a primitive
-        if (!typeName.empty())
-        {
+        if (!typeName.empty()) {
             field.objectClassName = typeName;
         }
         curAccess.reset();
@@ -346,37 +300,31 @@ StmtPtr Parser::parseClassDecl()
             consume();
     }
 
-    while (!at(TokenKind::EndOfFile))
-    {
+    while (!at(TokenKind::EndOfFile)) {
         while (at(TokenKind::EndOfLine) || at(TokenKind::Colon))
             consume();
 
         if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordClass)
             break;
 
-        if (at(TokenKind::Number))
-        {
+        if (at(TokenKind::Number)) {
             TokenKind nextKind = peek(1).kind;
             if (nextKind == TokenKind::KeywordSub || nextKind == TokenKind::KeywordFunction ||
                 nextKind == TokenKind::KeywordDestructor ||
                 nextKind == TokenKind::KeywordProperty ||
-                (nextKind == TokenKind::KeywordEnd && peek(2).kind == TokenKind::KeywordClass))
-            {
+                (nextKind == TokenKind::KeywordEnd && peek(2).kind == TokenKind::KeywordClass)) {
                 consume();
                 continue;
             }
         }
 
         // Parse optional access and method modifiers prefix.
-        auto parseAccessPrefix2 = [&]() -> std::optional<Access>
-        {
-            if (at(TokenKind::KeywordPublic))
-            {
+        auto parseAccessPrefix2 = [&]() -> std::optional<Access> {
+            if (at(TokenKind::KeywordPublic)) {
                 consume();
                 return Access::Public;
             }
-            if (at(TokenKind::KeywordPrivate))
-            {
+            if (at(TokenKind::KeywordPrivate)) {
                 consume();
                 return Access::Private;
             }
@@ -388,31 +336,26 @@ StmtPtr Parser::parseClassDecl()
 
         // Optional single-use STATIC modifier for the next member (method/property/ctor)
         bool pendingStaticMember = false;
-        if (at(TokenKind::KeywordStatic))
-        {
+        if (at(TokenKind::KeywordStatic)) {
             consume();
             pendingStaticMember = true;
         }
 
-        struct Modifiers
-        {
+        struct Modifiers {
             bool virt = false;
             bool over = false;
             bool abstr = false;
             bool fin = false;
         } mods;
 
-        auto seenAnyModifier = [&]()
-        {
+        auto seenAnyModifier = [&]() {
             return at(TokenKind::KeywordVirtual) || at(TokenKind::KeywordOverride) ||
                    at(TokenKind::KeywordAbstract) || at(TokenKind::KeywordFinal);
         };
 
-        while (seenAnyModifier())
-        {
+        while (seenAnyModifier()) {
             auto tok = peek();
-            switch (tok.kind)
-            {
+            switch (tok.kind) {
                 case TokenKind::KeywordVirtual:
                     consume();
                     if (mods.virt)
@@ -443,8 +386,7 @@ StmtPtr Parser::parseClassDecl()
         }
 
         // PROPERTY declaration
-        if (at(TokenKind::KeywordProperty))
-        {
+        if (at(TokenKind::KeywordProperty)) {
             auto propLoc = peek().loc;
             consume();
             Token propNameTok = expect(TokenKind::Identifier);
@@ -472,21 +414,17 @@ StmtPtr Parser::parseClassDecl()
             bool seenGet = false;
             bool seenSet = false;
 
-            auto isIdentEq = [&](const Token &t, std::string_view s)
-            {
-                if (t.kind == TokenKind::Identifier)
-                {
+            auto isIdentEq = [&](const Token &t, std::string_view s) {
+                if (t.kind == TokenKind::Identifier) {
                     return string_utils::iequals(t.lexeme, s);
                 }
                 return false;
             };
 
-            while (!at(TokenKind::EndOfFile))
-            {
+            while (!at(TokenKind::EndOfFile)) {
                 while (at(TokenKind::EndOfLine) || at(TokenKind::Colon))
                     consume();
-                if (at(TokenKind::Number))
-                {
+                if (at(TokenKind::Number)) {
                     TokenKind nk = peek(1).kind;
                     if (nk == TokenKind::Identifier || nk == TokenKind::KeywordPublic ||
                         nk == TokenKind::KeywordPrivate || nk == TokenKind::KeywordEnd)
@@ -494,9 +432,8 @@ StmtPtr Parser::parseClassDecl()
                 }
 
                 // END PROPERTY
-                if (at(TokenKind::KeywordEnd) &&
-                    (peek(1).kind == TokenKind::KeywordProperty || isIdentEq(peek(1), "PROPERTY")))
-                {
+                if (at(TokenKind::KeywordEnd) && (peek(1).kind == TokenKind::KeywordProperty ||
+                                                  isIdentEq(peek(1), "PROPERTY"))) {
                     consume();
                     consume();
                     break;
@@ -506,21 +443,18 @@ StmtPtr Parser::parseClassDecl()
                 std::optional<Access> acc = parseAccessPrefix2();
 
                 // GET
-                if (at(TokenKind::KeywordGet) || isIdentEq(peek(), "GET"))
-                {
+                if (at(TokenKind::KeywordGet) || isIdentEq(peek(), "GET")) {
                     consume();
                     prop->get.present = true;
                     prop->get.access = acc.value_or(prop->access);
                     auto ctx = statementSequencer();
                     ctx.collectStatements(
-                        [&](int, il::support::SourceLoc)
-                        {
+                        [&](int, il::support::SourceLoc) {
                             return at(TokenKind::KeywordEnd) &&
                                    (peek(1).kind == TokenKind::KeywordGet ||
                                     isIdentEq(peek(1), "GET"));
                         },
-                        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
-                        {
+                        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
                             consume();
                             consume();
                         },
@@ -530,18 +464,15 @@ StmtPtr Parser::parseClassDecl()
                 }
 
                 // SET
-                if (at(TokenKind::KeywordSet) || isIdentEq(peek(), "SET"))
-                {
+                if (at(TokenKind::KeywordSet) || isIdentEq(peek(), "SET")) {
                     consume();
                     prop->set.present = true;
                     prop->set.access = acc.value_or(prop->access);
-                    if (at(TokenKind::LParen))
-                    {
+                    if (at(TokenKind::LParen)) {
                         consume();
                         std::string paramName;
                         Type paramTy = propTy;
-                        if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordAs)
-                        {
+                        if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordAs) {
                             paramName = peek().lexeme;
                             consume();
                             consume(); // AS
@@ -549,9 +480,7 @@ StmtPtr Parser::parseClassDecl()
                                 paramTy = parseTypeKeyword();
                             else
                                 expect(TokenKind::Identifier);
-                        }
-                        else
-                        {
+                        } else {
                             if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
                                 paramTy = parseTypeKeyword();
                             else
@@ -566,14 +495,12 @@ StmtPtr Parser::parseClassDecl()
                     }
                     auto ctx = statementSequencer();
                     ctx.collectStatements(
-                        [&](int, il::support::SourceLoc)
-                        {
+                        [&](int, il::support::SourceLoc) {
                             return at(TokenKind::KeywordEnd) &&
                                    (peek(1).kind == TokenKind::KeywordSet ||
                                     isIdentEq(peek(1), "SET"));
                         },
-                        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
-                        {
+                        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
                             consume();
                             consume();
                         },
@@ -599,43 +526,35 @@ StmtPtr Parser::parseClassDecl()
             continue;
         }
 
-        if (at(TokenKind::KeywordSub))
-        {
+        if (at(TokenKind::KeywordSub)) {
             auto subLoc = peek().loc;
             consume(); // SUB
             Token subNameTok;
-            if (peek().kind == TokenKind::KeywordNew)
-            {
+            if (peek().kind == TokenKind::KeywordNew) {
                 subNameTok = peek();
                 consume();
                 subNameTok.kind = TokenKind::Identifier;
-            }
-            else
-            {
+            } else {
                 subNameTok = expect(TokenKind::Identifier);
                 if (subNameTok.kind != TokenKind::Identifier)
                     break;
             }
 
-            if (string_utils::iequals(subNameTok.lexeme, "NEW"))
-            {
+            if (string_utils::iequals(subNameTok.lexeme, "NEW")) {
                 auto ctor = std::make_unique<ConstructorDecl>();
                 ctor->loc = subLoc;
                 ctor->access = curAccess.value_or(Access::Public);
                 ctor->isStatic = pendingStaticMember;
                 // Modifiers not allowed on constructors.
-                if (mods.virt || mods.over || mods.abstr || mods.fin)
-                {
+                if (mods.virt || mods.over || mods.abstr || mods.fin) {
                     emitError("B3002", subLoc, "modifiers not allowed on constructors");
                 }
                 ctor->params = parseParamList();
 
                 // BUG-086 fix: Register array parameters for constructor body parsing.
                 std::vector<std::string> arrayParams;
-                for (const auto &param : ctor->params)
-                {
-                    if (param.is_array)
-                    {
+                for (const auto &param : ctor->params) {
+                    if (param.is_array) {
                         arrays_.insert(param.name);
                         arrayParams.push_back(param.name);
                     }
@@ -644,8 +563,7 @@ StmtPtr Parser::parseClassDecl()
                 parseProcedureBody(TokenKind::KeywordSub, ctor->body);
 
                 // BUG-086 fix: Remove array parameters from global set after parsing.
-                for (const auto &name : arrayParams)
-                {
+                for (const auto &name : arrayParams) {
                     arrays_.erase(name);
                 }
 
@@ -667,31 +585,24 @@ StmtPtr Parser::parseClassDecl()
 
             // BUG-086 fix: Register array parameters for method body parsing.
             std::vector<std::string> arrayParams;
-            for (const auto &param : method->params)
-            {
-                if (param.is_array)
-                {
+            for (const auto &param : method->params) {
+                if (param.is_array) {
                     arrays_.insert(param.name);
                     arrayParams.push_back(param.name);
                 }
             }
 
-            if (method->isAbstract)
-            {
-                if (!at(TokenKind::EndOfLine))
-                {
+            if (method->isAbstract) {
+                if (!at(TokenKind::EndOfLine)) {
                     emitError("B3001", subLoc, "ABSTRACT method must not have a body");
                     parseProcedureBody(TokenKind::KeywordSub, method->body);
                 }
-            }
-            else
-            {
+            } else {
                 parseProcedureBody(TokenKind::KeywordSub, method->body);
             }
 
             // BUG-086 fix: Remove array parameters from global set after parsing.
-            for (const auto &name : arrayParams)
-            {
+            for (const auto &name : arrayParams) {
                 arrays_.erase(name);
             }
 
@@ -701,8 +612,7 @@ StmtPtr Parser::parseClassDecl()
             continue;
         }
 
-        if (at(TokenKind::KeywordFunction))
-        {
+        if (at(TokenKind::KeywordFunction)) {
             auto fnLoc = peek().loc;
             consume(); // FUNCTION
             Token fnNameTok = expect(TokenKind::Identifier);
@@ -716,22 +626,17 @@ StmtPtr Parser::parseClassDecl()
             method->access = curAccess.value_or(Access::Public);
             method->isStatic = pendingStaticMember;
             method->params = parseParamList();
-            if (at(TokenKind::KeywordAs))
-            {
+            if (at(TokenKind::KeywordAs)) {
                 consume();
                 // Try parsing as a primitive type keyword first
-                if (at(TokenKind::KeywordBoolean))
-                {
+                if (at(TokenKind::KeywordBoolean)) {
                     method->ret = parseTypeKeyword();
-                }
-                else if (at(TokenKind::Identifier))
-                {
+                } else if (at(TokenKind::Identifier)) {
                     // Check if it's a primitive type name before consuming
                     std::string identName = peek().lexeme;
                     std::string upperName;
                     upperName.reserve(identName.size());
-                    for (char ch : identName)
-                    {
+                    for (char ch : identName) {
                         upperName.push_back(
                             static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
                     }
@@ -741,12 +646,9 @@ StmtPtr Parser::parseClassDecl()
                          upperName == "DOUBLE" || upperName == "FLOAT" || upperName == "SINGLE" ||
                          upperName == "STRING");
 
-                    if (isPrimitive)
-                    {
+                    if (isPrimitive) {
                         method->ret = parseTypeKeyword();
-                    }
-                    else
-                    {
+                    } else {
                         // It's a class name - parse as qualified name
                         // BUG-099 fix: Store original class name for correct method mangling
                         std::vector<std::string> segs;
@@ -754,8 +656,7 @@ StmtPtr Parser::parseClassDecl()
                         consume();
 
                         // Parse dotted path if present: Class.SubClass
-                        while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier)
-                        {
+                        while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier) {
                             consume(); // dot
                             segs.push_back(peek().lexeme);
                             consume();
@@ -764,9 +665,7 @@ StmtPtr Parser::parseClassDecl()
                         if (!segs.empty())
                             method->explicitClassRetQname = std::move(segs);
                     }
-                }
-                else
-                {
+                } else {
                     expect(TokenKind::Identifier);
                 }
             }
@@ -777,31 +676,24 @@ StmtPtr Parser::parseClassDecl()
 
             // BUG-086 fix: Register array parameters for method body parsing.
             std::vector<std::string> arrayParams;
-            for (const auto &param : method->params)
-            {
-                if (param.is_array)
-                {
+            for (const auto &param : method->params) {
+                if (param.is_array) {
                     arrays_.insert(param.name);
                     arrayParams.push_back(param.name);
                 }
             }
 
-            if (method->isAbstract)
-            {
-                if (!at(TokenKind::EndOfLine))
-                {
+            if (method->isAbstract) {
+                if (!at(TokenKind::EndOfLine)) {
                     emitError("B3001", fnLoc, "ABSTRACT method must not have a body");
                     parseProcedureBody(TokenKind::KeywordFunction, method->body);
                 }
-            }
-            else
-            {
+            } else {
                 parseProcedureBody(TokenKind::KeywordFunction, method->body);
             }
 
             // BUG-086 fix: Remove array parameters from global set after parsing.
-            for (const auto &name : arrayParams)
-            {
+            for (const auto &name : arrayParams) {
                 arrays_.erase(name);
             }
 
@@ -811,8 +703,7 @@ StmtPtr Parser::parseClassDecl()
             continue;
         }
 
-        if (at(TokenKind::KeywordDestructor))
-        {
+        if (at(TokenKind::KeywordDestructor)) {
             auto dtorLoc = peek().loc;
             consume(); // DESTRUCTOR
             auto dtor = std::make_unique<DestructorDecl>();
@@ -831,8 +722,7 @@ StmtPtr Parser::parseClassDecl()
         consume();
 
     if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordEnd &&
-        peek(2).kind == TokenKind::KeywordClass)
-    {
+        peek(2).kind == TokenKind::KeywordClass) {
         consume();
     }
 
@@ -855,8 +745,7 @@ StmtPtr Parser::parseClassDecl()
 ///          trivia is skipped before the closing `END TYPE` pair is enforced to
 ///          guarantee deterministic error recovery locations.
 /// @return Newly allocated @ref TypeDecl describing the record type.
-StmtPtr Parser::parseTypeDecl()
-{
+StmtPtr Parser::parseTypeDecl() {
     auto loc = peek().loc;
     consume();
 
@@ -872,8 +761,7 @@ StmtPtr Parser::parseTypeDecl()
 
     std::optional<Access> curAccess;
 
-    while (!at(TokenKind::EndOfFile))
-    {
+    while (!at(TokenKind::EndOfFile)) {
         while (at(TokenKind::EndOfLine))
             consume();
 
@@ -882,17 +770,14 @@ StmtPtr Parser::parseTypeDecl()
 
         // Access prefixes are not applied to TYPE fields; ignore if present.
         // (Future ADR may define semantics for TYPE.)
-        if (at(TokenKind::KeywordPublic) || at(TokenKind::KeywordPrivate))
-        {
+        if (at(TokenKind::KeywordPublic) || at(TokenKind::KeywordPrivate)) {
             consume();
         }
 
-        if (at(TokenKind::Number))
-        {
+        if (at(TokenKind::Number)) {
             TokenKind nextKind = peek(1).kind;
             if (nextKind == TokenKind::Identifier ||
-                (nextKind == TokenKind::KeywordEnd && peek(2).kind == TokenKind::KeywordType))
-            {
+                (nextKind == TokenKind::KeywordEnd && peek(2).kind == TokenKind::KeywordType)) {
                 consume();
                 continue;
             }
@@ -907,12 +792,9 @@ StmtPtr Parser::parseTypeDecl()
             continue;
 
         Type fieldType = Type::I64;
-        if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
-        {
+        if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier)) {
             fieldType = parseTypeKeyword();
-        }
-        else
-        {
+        } else {
             expect(TokenKind::Identifier);
         }
 
@@ -929,8 +811,7 @@ StmtPtr Parser::parseTypeDecl()
         consume();
 
     if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordEnd &&
-        peek(2).kind == TokenKind::KeywordType)
-    {
+        peek(2).kind == TokenKind::KeywordType) {
         consume();
     }
 
@@ -947,8 +828,7 @@ StmtPtr Parser::parseTypeDecl()
 ///          lexeme begins with an alphabetic character — this covers both
 ///          identifiers and keyword tokens while excluding operators and
 ///          punctuation.
-static bool canBeUsedAsName(const Token &tok)
-{
+static bool canBeUsedAsName(const Token &tok) {
     if (tok.kind == TokenKind::Identifier)
         return true;
     return !tok.lexeme.empty() && std::isalpha(static_cast<unsigned char>(tok.lexeme[0]));
@@ -959,19 +839,15 @@ static bool canBeUsedAsName(const Token &tok)
 ///          explicit integer values. Members without explicit values auto-increment
 ///          from the previous value (starting at 0).
 /// @return Newly allocated @ref EnumDecl representing the parsed declaration.
-StmtPtr Parser::parseEnumDecl()
-{
+StmtPtr Parser::parseEnumDecl() {
     auto loc = peek().loc;
     consume(); // ENUM
 
     // Accept identifiers or keywords as enum name (e.g., COLOR is a keyword in BASIC)
     Token nameTok = peek();
-    if (canBeUsedAsName(nameTok))
-    {
+    if (canBeUsedAsName(nameTok)) {
         consume();
-    }
-    else
-    {
+    } else {
         nameTok = expect(TokenKind::Identifier);
     }
 
@@ -982,8 +858,7 @@ StmtPtr Parser::parseEnumDecl()
     if (at(TokenKind::EndOfLine))
         consume();
 
-    while (!at(TokenKind::EndOfFile))
-    {
+    while (!at(TokenKind::EndOfFile)) {
         while (at(TokenKind::EndOfLine))
             consume();
 
@@ -991,11 +866,9 @@ StmtPtr Parser::parseEnumDecl()
             break;
 
         // Skip line numbers if present
-        if (at(TokenKind::Number))
-        {
+        if (at(TokenKind::Number)) {
             if (canBeUsedAsName(peek(1)) ||
-                (peek(1).kind == TokenKind::KeywordEnd && peek(2).kind == TokenKind::KeywordEnum))
-            {
+                (peek(1).kind == TokenKind::KeywordEnd && peek(2).kind == TokenKind::KeywordEnum)) {
                 consume();
                 continue;
             }
@@ -1003,12 +876,9 @@ StmtPtr Parser::parseEnumDecl()
 
         // Accept identifiers or keywords as member names
         Token memberNameTok = peek();
-        if (canBeUsedAsName(memberNameTok))
-        {
+        if (canBeUsedAsName(memberNameTok)) {
             consume();
-        }
-        else
-        {
+        } else {
             memberNameTok = expect(TokenKind::Identifier);
             if (memberNameTok.kind != TokenKind::Identifier)
                 break;
@@ -1018,18 +888,15 @@ StmtPtr Parser::parseEnumDecl()
         member.name = memberNameTok.lexeme;
 
         // Optional explicit value: = <integer>
-        if (at(TokenKind::Equal))
-        {
+        if (at(TokenKind::Equal)) {
             consume(); // =
             bool negative = false;
-            if (at(TokenKind::Minus))
-            {
+            if (at(TokenKind::Minus)) {
                 negative = true;
                 consume();
             }
             Token valTok = expect(TokenKind::Number);
-            if (valTok.kind == TokenKind::Number)
-            {
+            if (valTok.kind == TokenKind::Number) {
                 long long val = std::stoll(valTok.lexeme);
                 member.value = negative ? -val : val;
             }
@@ -1045,8 +912,7 @@ StmtPtr Parser::parseEnumDecl()
         consume();
 
     if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordEnd &&
-        peek(2).kind == TokenKind::KeywordEnum)
-    {
+        peek(2).kind == TokenKind::KeywordEnum) {
         consume();
     }
 
@@ -1061,8 +927,7 @@ StmtPtr Parser::parseEnumDecl()
 ///          signatures (SUB/FUNCTION declarations without bodies). Interface methods
 ///          are implicitly abstract and don't have implementation bodies.
 /// @return Newly allocated @ref InterfaceDecl representing the parsed declaration.
-StmtPtr Parser::parseInterfaceDecl()
-{
+StmtPtr Parser::parseInterfaceDecl() {
     auto loc = peek().loc;
     consume(); // INTERFACE
 
@@ -1070,12 +935,10 @@ StmtPtr Parser::parseInterfaceDecl()
     decl->loc = loc;
 
     // Parse qualified interface name: INTERFACE Namespace.SubNs.IName
-    if (at(TokenKind::Identifier))
-    {
+    if (at(TokenKind::Identifier)) {
         decl->qualifiedName.push_back(peek().lexeme);
         consume();
-        while (at(TokenKind::Dot))
-        {
+        while (at(TokenKind::Dot)) {
             consume();
             Token seg = expect(TokenKind::Identifier);
             if (seg.kind == TokenKind::Identifier)
@@ -1083,9 +946,7 @@ StmtPtr Parser::parseInterfaceDecl()
             else
                 break;
         }
-    }
-    else
-    {
+    } else {
         expect(TokenKind::Identifier);
     }
 
@@ -1096,8 +957,7 @@ StmtPtr Parser::parseInterfaceDecl()
         consume();
 
     // Parse interface members (abstract method signatures only)
-    while (!at(TokenKind::EndOfFile))
-    {
+    while (!at(TokenKind::EndOfFile)) {
         while (at(TokenKind::EndOfLine) || at(TokenKind::Colon))
             consume();
 
@@ -1106,8 +966,7 @@ StmtPtr Parser::parseInterfaceDecl()
             break;
 
         // Parse SUB or FUNCTION signatures (no body allowed in interface)
-        if (at(TokenKind::KeywordSub) || at(TokenKind::KeywordFunction))
-        {
+        if (at(TokenKind::KeywordSub) || at(TokenKind::KeywordFunction)) {
             bool isSub = at(TokenKind::KeywordSub);
             auto methodLoc = peek().loc;
             consume();
@@ -1118,11 +977,9 @@ StmtPtr Parser::parseInterfaceDecl()
 
             // Parse parameter list
             std::vector<Param> params;
-            if (at(TokenKind::LParen))
-            {
+            if (at(TokenKind::LParen)) {
                 consume();
-                while (!at(TokenKind::RParen) && !at(TokenKind::EndOfFile))
-                {
+                while (!at(TokenKind::RParen) && !at(TokenKind::EndOfFile)) {
                     if (at(TokenKind::Comma))
                         consume();
 
@@ -1130,13 +987,10 @@ StmtPtr Parser::parseInterfaceDecl()
                     param.isByRef = false;
 
                     // Optional BYVAL/BYREF
-                    if (at(TokenKind::KeywordByVal))
-                    {
+                    if (at(TokenKind::KeywordByVal)) {
                         consume();
                         param.isByRef = false;
-                    }
-                    else if (at(TokenKind::KeywordByRef))
-                    {
+                    } else if (at(TokenKind::KeywordByRef)) {
                         consume();
                         param.isByRef = true;
                     }
@@ -1147,16 +1001,13 @@ StmtPtr Parser::parseInterfaceDecl()
                         param.name = pnameTok.lexeme;
 
                     // AS Type
-                    if (at(TokenKind::KeywordAs))
-                    {
+                    if (at(TokenKind::KeywordAs)) {
                         consume();
                         if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
                             param.type = parseTypeKeyword();
                         else
                             param.type = Type::I64;
-                    }
-                    else
-                    {
+                    } else {
                         param.type = Type::I64;
                     }
 
@@ -1170,25 +1021,21 @@ StmtPtr Parser::parseInterfaceDecl()
             }
 
             // Create abstract method declaration (no body)
-            if (isSub)
-            {
+            if (isSub) {
                 auto methodDecl = std::make_unique<SubDecl>();
                 methodDecl->loc = methodLoc;
                 methodDecl->name = methodName;
                 methodDecl->params = std::move(params);
                 // Interface methods are implicitly abstract - no body
                 decl->members.push_back(std::move(methodDecl));
-            }
-            else
-            {
+            } else {
                 auto methodDecl = std::make_unique<FunctionDecl>();
                 methodDecl->loc = methodLoc;
                 methodDecl->name = methodName;
                 methodDecl->params = std::move(params);
 
                 // Return type for FUNCTION
-                if (at(TokenKind::KeywordAs))
-                {
+                if (at(TokenKind::KeywordAs)) {
                     consume();
                     if (at(TokenKind::KeywordBoolean) || at(TokenKind::Identifier))
                         methodDecl->ret = parseTypeKeyword();
@@ -1198,9 +1045,7 @@ StmtPtr Parser::parseInterfaceDecl()
                 // Interface methods are implicitly abstract - no body
                 decl->members.push_back(std::move(methodDecl));
             }
-        }
-        else if (!at(TokenKind::EndOfFile))
-        {
+        } else if (!at(TokenKind::EndOfFile)) {
             // Skip unexpected tokens to recover
             consume();
         }
@@ -1223,8 +1068,7 @@ StmtPtr Parser::parseInterfaceDecl()
 ///          analysis so the parser can remain error-tolerant and avoid
 ///          duplicating type logic.
 /// @return Newly allocated @ref DeleteStmt representing the statement.
-StmtPtr Parser::parseDeleteStatement()
-{
+StmtPtr Parser::parseDeleteStatement() {
     auto loc = peek().loc;
     consume();
 

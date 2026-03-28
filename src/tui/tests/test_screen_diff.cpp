@@ -21,8 +21,7 @@
 using viper::tui::render::ScreenBuffer;
 using viper::tui::render::Style;
 
-TEST(TUI, ScreenDiff)
-{
+TEST(TUI, ScreenDiff) {
     ScreenBuffer sb;
     sb.resize(2, 5);
     Style style{};
@@ -31,8 +30,7 @@ TEST(TUI, ScreenDiff)
 
     const char *line0 = "hello";
     const char *line1 = "world";
-    for (int i = 0; i < 5; ++i)
-    {
+    for (int i = 0; i < 5; ++i) {
         sb.at(0, i).ch = static_cast<char32_t>(line0[i]);
         sb.at(1, i).ch = static_cast<char32_t>(line1[i]);
     }
@@ -59,8 +57,7 @@ TEST(TUI, ScreenDiff)
     ASSERT_TRUE(spans[2].row == 1 && spans[2].x0 == 3 && spans[2].x1 == 4);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

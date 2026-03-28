@@ -23,13 +23,11 @@
 #include <string>
 #include <unordered_map>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Apply the Darwin/Mach-O underscore convention to a symbol name.
 /// Local labels (starting with 'L' or '.') and empty names are returned as-is.
-inline std::string machoMangle(const std::string &name)
-{
+inline std::string machoMangle(const std::string &name) {
     if (name.empty())
         return name;
     if (name[0] == 'L' || name[0] == '.')
@@ -42,8 +40,7 @@ inline std::string machoMangle(const std::string &name)
 /// Returns the iterator to the found entry, or map.end() if neither exists.
 template <typename V>
 typename std::unordered_map<std::string, V>::const_iterator findWithMachoFallback(
-    const std::unordered_map<std::string, V> &map, const std::string &name)
-{
+    const std::unordered_map<std::string, V> &map, const std::string &name) {
     auto it = map.find(name);
     if (it != map.end())
         return it;

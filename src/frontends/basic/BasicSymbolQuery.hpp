@@ -23,8 +23,7 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 class Lowerer;
 class SemanticAnalyzer;
@@ -49,8 +48,7 @@ class OopIndex;
 ///   if (query.isModuleLevelGlobal(name)) { ... }
 ///   if (auto cls = query.getObjectClassForSymbol(name)) { ... }
 /// @endcode
-class BasicSymbolQuery
-{
+class BasicSymbolQuery {
   public:
     /// @brief Construct a query facade from a lowerer.
     /// @param lowerer Lowering context providing symbol tables and OOP index.

@@ -96,10 +96,8 @@
 // instead of silently continuing.  These checks run only on trap paths,
 // not in hot loops, so the performance cost is negligible.
 #define VIPER_TRAP_ASSERT(condition, message)                                                      \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(condition))                                                                          \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(condition)) {                                                                        \
             std::fprintf(stderr, "TRAP INVARIANT VIOLATED: %s\n", (message));                      \
             std::abort();                                                                          \
         }                                                                                          \
@@ -119,8 +117,7 @@
                       "Stale trap token exists; call vm_clear_trap_token() first")
 #endif
 
-namespace il::vm
-{
+namespace il::vm {
 
 // Forward declarations
 class VM;
@@ -131,8 +128,7 @@ const VmError *vm_current_trap_token();
 
 /// @brief Check if a trap token is currently pending.
 /// @return true if vm_current_trap_token() would return non-null.
-inline bool hasPendingTrapToken()
-{
+inline bool hasPendingTrapToken() {
     return vm_current_trap_token() != nullptr;
 }
 

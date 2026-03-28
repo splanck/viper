@@ -33,8 +33,7 @@
 
 #pragma once
 
-namespace il::transform
-{
+namespace il::transform {
 
 //===----------------------------------------------------------------------===//
 // Function-level analysis identifiers

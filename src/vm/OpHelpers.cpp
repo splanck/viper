@@ -23,8 +23,7 @@
 
 #include <string>
 
-namespace il::vm::internal::detail
-{
+namespace il::vm::internal::detail {
 /// @brief Forward a VM trap to the runtime diagnostics bridge with context.
 /// @details Collects the current function and basic block names—when available—
 ///          and invokes @ref RuntimeBridge::trap so the host runtime emits a
@@ -41,8 +40,7 @@ void trapWithMessage(TrapKind kind,
                      const char *message,
                      const il::core::Instr &instr,
                      Frame &frame,
-                     const il::core::BasicBlock *block)
-{
+                     const il::core::BasicBlock *block) {
     const std::string functionName = frame.func ? frame.func->name : std::string();
     const std::string blockLabel = block ? block->label : std::string();
     RuntimeBridge::trap(kind, message, instr.loc, functionName, blockLabel);

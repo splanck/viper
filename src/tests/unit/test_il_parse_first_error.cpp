@@ -19,8 +19,7 @@
 #include <cassert>
 #include <sstream>
 
-int main()
-{
+int main() {
     const char *src = R"(il 0.2.0
 func @main() -> i64 {
 entry:

@@ -12,19 +12,17 @@
 #include <cstring>
 #include <thread>
 
-extern "C"
-{
+extern "C" {
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_threadpool.h"
 #include "rt_threads.h"
 
-    /// @brief Vm_trap.
-    void vm_trap(const char *msg)
-    {
-        fprintf(stderr, "TRAP: %s\n", msg);
-        rt_abort(msg);
-    }
+/// @brief Vm_trap.
+void vm_trap(const char *msg) {
+    fprintf(stderr, "TRAP: %s\n", msg);
+    rt_abort(msg);
+}
 }
 
 //=============================================================================
@@ -33,33 +31,28 @@ extern "C"
 
 static std::atomic<int64_t> g_counter{0};
 
-static void init_counter()
-{
+static void init_counter() {
     g_counter.store(0);
 }
 
-extern "C"
-{
-    static void increment_task(void *arg)
-    {
-        (void)arg;
-        g_counter.fetch_add(1);
-    }
+extern "C" {
+static void increment_task(void *arg) {
+    (void)arg;
+    g_counter.fetch_add(1);
+}
 
-    static void slow_task(void *arg)
-    {
-        (void)arg;
-        rt_thread_sleep(50);
-        g_counter.fetch_add(1);
-    }
+static void slow_task(void *arg) {
+    (void)arg;
+    rt_thread_sleep(50);
+    g_counter.fetch_add(1);
+}
 }
 
 //=============================================================================
 // Creation and properties
 //=============================================================================
 
-static void test_new()
-{
+static void test_new() {
     void *pool = rt_threadpool_new(4);
     assert(pool != NULL);
     assert(rt_threadpool_get_size(pool) == 4);
@@ -68,16 +61,14 @@ static void test_new()
     rt_threadpool_shutdown(pool);
 }
 
-static void test_new_clamp_min()
-{
+static void test_new_clamp_min() {
     void *pool = rt_threadpool_new(0);
     assert(pool != NULL);
     assert(rt_threadpool_get_size(pool) == 1); // Clamped to 1
     rt_threadpool_shutdown(pool);
 }
 
-static void test_new_clamp_negative()
-{
+static void test_new_clamp_negative() {
     void *pool = rt_threadpool_new(-5);
     assert(pool != NULL);
     assert(rt_threadpool_get_size(pool) == 1); // Clamped to 1
@@ -88,14 +79,12 @@ static void test_new_clamp_negative()
 // Task submission and execution
 //=============================================================================
 
-static void test_submit_and_wait()
-{
+static void test_submit_and_wait() {
     init_counter();
     void *pool = rt_threadpool_new(2);
 
     int i;
-    for (i = 0; i < 10; i++)
-    {
+    for (i = 0; i < 10; i++) {
         int8_t ok = rt_threadpool_submit(pool, (void *)increment_task, NULL);
         assert(ok == 1);
     }
@@ -106,8 +95,7 @@ static void test_submit_and_wait()
     rt_threadpool_shutdown(pool);
 }
 
-static void test_submit_after_shutdown()
-{
+static void test_submit_after_shutdown() {
     void *pool = rt_threadpool_new(2);
     rt_threadpool_shutdown(pool);
 
@@ -115,8 +103,7 @@ static void test_submit_after_shutdown()
     assert(rt_threadpool_submit(pool, (void *)increment_task, NULL) == 0);
 }
 
-static void test_submit_null_callback()
-{
+static void test_submit_null_callback() {
     void *pool = rt_threadpool_new(2);
     assert(rt_threadpool_submit(pool, NULL, NULL) == 0);
     rt_threadpool_shutdown(pool);
@@ -126,8 +113,7 @@ static void test_submit_null_callback()
 // Wait with timeout
 //=============================================================================
 
-static void test_wait_for_success()
-{
+static void test_wait_for_success() {
     init_counter();
     void *pool = rt_threadpool_new(2);
 
@@ -142,8 +128,7 @@ static void test_wait_for_success()
     rt_threadpool_shutdown(pool);
 }
 
-static void test_wait_for_immediate_check()
-{
+static void test_wait_for_immediate_check() {
     void *pool = rt_threadpool_new(2);
 
     // No tasks submitted -> immediately done
@@ -157,8 +142,7 @@ static void test_wait_for_immediate_check()
 // Shutdown modes
 //=============================================================================
 
-static void test_graceful_shutdown()
-{
+static void test_graceful_shutdown() {
     init_counter();
     void *pool = rt_threadpool_new(2);
 
@@ -172,8 +156,7 @@ static void test_graceful_shutdown()
     assert(g_counter.load() == 5);
 }
 
-static void test_shutdown_now()
-{
+static void test_shutdown_now() {
     init_counter();
     void *pool = rt_threadpool_new(1); // 1 worker
 
@@ -193,8 +176,7 @@ static void test_shutdown_now()
 // Null safety
 //=============================================================================
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_threadpool_get_size(NULL) == 0);
     assert(rt_threadpool_get_pending(NULL) == 0);
     assert(rt_threadpool_get_active(NULL) == 0);
@@ -214,8 +196,7 @@ static void test_null_safety()
 // Concurrent stress test
 //=============================================================================
 
-static void test_concurrent_submitters()
-{
+static void test_concurrent_submitters() {
     init_counter();
     void *pool = rt_threadpool_new(4);
     const int TASKS_PER_THREAD = 25;
@@ -223,14 +204,11 @@ static void test_concurrent_submitters()
 
     std::thread threads[NUM_THREADS];
     int i;
-    for (i = 0; i < NUM_THREADS; i++)
-    {
-        threads[i] = std::thread(
-            [pool]()
-            {
-                for (int j = 0; j < TASKS_PER_THREAD; j++)
-                    rt_threadpool_submit(pool, (void *)increment_task, NULL);
-            });
+    for (i = 0; i < NUM_THREADS; i++) {
+        threads[i] = std::thread([pool]() {
+            for (int j = 0; j < TASKS_PER_THREAD; j++)
+                rt_threadpool_submit(pool, (void *)increment_task, NULL);
+        });
     }
 
     for (i = 0; i < NUM_THREADS; i++)
@@ -243,8 +221,7 @@ static void test_concurrent_submitters()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_new();
     test_new_clamp_min();
     test_new_clamp_negative();

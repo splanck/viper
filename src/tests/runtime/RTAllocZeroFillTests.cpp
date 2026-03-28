@@ -23,8 +23,7 @@
 #if defined(__GLIBC__)
 extern "C" void *__libc_malloc(size_t size);
 
-extern "C" void *malloc(size_t size)
-{
+extern "C" void *malloc(size_t size) {
     void *ptr = __libc_malloc(size);
     if (ptr)
         memset(ptr, 0xAB, size);
@@ -32,8 +31,7 @@ extern "C" void *malloc(size_t size)
 }
 #endif
 
-int main()
-{
+int main() {
     const size_t size = 64;
     uint8_t *bytes = (uint8_t *)rt_alloc((int64_t)size);
     assert(bytes != NULL);

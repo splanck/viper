@@ -33,15 +33,13 @@
 #include "il/runtime/classes/RuntimeClasses.hpp"
 #include <unordered_set>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 // ---------------------------------------------------------------------------
 // getGlobalSymbols
 // ---------------------------------------------------------------------------
 
-std::vector<Symbol> Sema::getGlobalSymbols() const
-{
+std::vector<Symbol> Sema::getGlobalSymbols() const {
     std::vector<Symbol> result;
     if (scopes_.empty())
         return result;
@@ -50,8 +48,7 @@ std::vector<Symbol> Sema::getGlobalSymbols() const
     // It contains: top-level funcs, entity/value/interface ctors, bound runtime
     // identifiers, and global variables.  Local variables inside function bodies
     // were popped off the scope stack when their blocks were analyzed.
-    for (const auto &[name, sym] : scopes_[0]->getSymbols())
-    {
+    for (const auto &[name, sym] : scopes_[0]->getSymbols()) {
         result.push_back(sym);
     }
     return result;
@@ -61,23 +58,20 @@ std::vector<Symbol> Sema::getGlobalSymbols() const
 // getMembersOf
 // ---------------------------------------------------------------------------
 
-std::vector<Symbol> Sema::getMembersOf(const TypeRef &type) const
-{
+std::vector<Symbol> Sema::getMembersOf(const TypeRef &type) const {
     std::vector<Symbol> result;
     if (!type)
         return result;
 
     // For runtime class pointer types, delegate to getRuntimeMembers().
-    if (type->kind == TypeKindSem::Ptr && !type->name.empty())
-    {
+    if (type->kind == TypeKindSem::Ptr && !type->name.empty()) {
         return getRuntimeMembers(type->name);
     }
 
     // For user-defined types, look up in fieldTypes_ and methodTypes_ using
     // "TypeName.memberName" key format (established by Sema_Decl.cpp).
     if (type->kind != TypeKindSem::Entity && type->kind != TypeKindSem::Value &&
-        type->kind != TypeKindSem::Interface)
-    {
+        type->kind != TypeKindSem::Interface) {
         return result;
     }
 
@@ -87,10 +81,8 @@ std::vector<Symbol> Sema::getMembersOf(const TypeRef &type) const
 
     const std::string prefix = typeName + ".";
 
-    for (const auto &[key, fieldType] : fieldTypes_)
-    {
-        if (key.rfind(prefix, 0) == 0)
-        {
+    for (const auto &[key, fieldType] : fieldTypes_) {
+        if (key.rfind(prefix, 0) == 0) {
             std::string memberName = key.substr(prefix.size());
             Symbol sym;
             sym.kind = Symbol::Kind::Field;
@@ -100,10 +92,8 @@ std::vector<Symbol> Sema::getMembersOf(const TypeRef &type) const
         }
     }
 
-    for (const auto &[key, methodType] : methodTypes_)
-    {
-        if (key.rfind(prefix, 0) == 0)
-        {
+    for (const auto &[key, methodType] : methodTypes_) {
+        if (key.rfind(prefix, 0) == 0) {
             std::string memberName = key.substr(prefix.size());
             Symbol sym;
             sym.kind = Symbol::Kind::Method;
@@ -120,16 +110,13 @@ std::vector<Symbol> Sema::getMembersOf(const TypeRef &type) const
 // getRuntimeMembers
 // ---------------------------------------------------------------------------
 
-std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const
-{
+std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const {
     std::vector<Symbol> result;
     const auto &catalog = il::runtime::RuntimeRegistry::instance().rawCatalog();
 
     const il::runtime::RuntimeClass *rtClass = nullptr;
-    for (const auto &cls : catalog)
-    {
-        if (cls.qname && cls.qname == className)
-        {
+    for (const auto &cls : catalog) {
+        if (cls.qname && cls.qname == className) {
             rtClass = &cls;
             break;
         }
@@ -139,8 +126,7 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const
         return result;
 
     // Methods — parse the signature to build a function TypeRef.
-    for (const auto &method : rtClass->methods)
-    {
+    for (const auto &method : rtClass->methods) {
         if (!method.name)
             continue;
 
@@ -148,10 +134,8 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const
         TypeRef retType = sig.isValid() ? toZiaReturnType(sig) : types::unknown();
 
         std::vector<TypeRef> paramTypes;
-        if (sig.isValid())
-        {
-            for (auto ilType : sig.params)
-            {
+        if (sig.isValid()) {
+            for (auto ilType : sig.params) {
                 paramTypes.push_back(toZiaType(ilType));
             }
         }
@@ -165,8 +149,7 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const
     }
 
     // Properties — represent as Field symbols with the property's value type.
-    for (const auto &prop : rtClass->properties)
-    {
+    for (const auto &prop : rtClass->properties) {
         if (!prop.name)
             continue;
 
@@ -189,8 +172,7 @@ std::vector<Symbol> Sema::getRuntimeMembers(const std::string &className) const
 // getTypeNames
 // ---------------------------------------------------------------------------
 
-std::vector<std::string> Sema::getTypeNames() const
-{
+std::vector<std::string> Sema::getTypeNames() const {
     std::vector<std::string> names;
     names.reserve(entityDecls_.size() + valueDecls_.size() + interfaceDecls_.size());
 
@@ -208,14 +190,12 @@ std::vector<std::string> Sema::getTypeNames() const
 // getBoundModuleNames
 // ---------------------------------------------------------------------------
 
-std::vector<std::string> Sema::getBoundModuleNames() const
-{
+std::vector<std::string> Sema::getBoundModuleNames() const {
     std::vector<std::string> names;
     // aliasToNamespace_ maps short alias → full namespace path.
     // The keys are the prefixes users can type before '.'.
     names.reserve(aliasToNamespace_.size());
-    for (const auto &[alias, _] : aliasToNamespace_)
-    {
+    for (const auto &[alias, _] : aliasToNamespace_) {
         names.push_back(alias);
     }
     return names;
@@ -225,16 +205,14 @@ std::vector<std::string> Sema::getBoundModuleNames() const
 // getModuleExports
 // ---------------------------------------------------------------------------
 
-std::vector<Symbol> Sema::getModuleExports(const std::string &moduleName) const
-{
+std::vector<Symbol> Sema::getModuleExports(const std::string &moduleName) const {
     std::vector<Symbol> result;
     auto it = moduleExports_.find(moduleName);
     if (it == moduleExports_.end())
         return result;
 
     result.reserve(it->second.size());
-    for (const auto &[name, sym] : it->second)
-    {
+    for (const auto &[name, sym] : it->second) {
         result.push_back(sym);
     }
     return result;
@@ -244,8 +222,7 @@ std::vector<Symbol> Sema::getModuleExports(const std::string &moduleName) const
 // resolveModuleAlias
 // ---------------------------------------------------------------------------
 
-std::string Sema::resolveModuleAlias(const std::string &alias) const
-{
+std::string Sema::resolveModuleAlias(const std::string &alias) const {
     auto it = aliasToNamespace_.find(alias);
     if (it == aliasToNamespace_.end())
         return {};
@@ -256,15 +233,13 @@ std::string Sema::resolveModuleAlias(const std::string &alias) const
 // getNamespaceClasses
 // ---------------------------------------------------------------------------
 
-std::vector<std::string> Sema::getNamespaceClasses(const std::string &nsPrefix) const
-{
+std::vector<std::string> Sema::getNamespaceClasses(const std::string &nsPrefix) const {
     std::vector<std::string> result;
     const std::string nsWithDot = nsPrefix + ".";
     const auto &catalog = il::runtime::RuntimeRegistry::instance().rawCatalog();
 
     std::unordered_set<std::string> seen;
-    for (const auto &cls : catalog)
-    {
+    for (const auto &cls : catalog) {
         if (!cls.qname)
             continue;
         std::string_view qname = cls.qname;

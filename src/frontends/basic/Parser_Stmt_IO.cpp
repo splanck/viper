@@ -24,16 +24,14 @@
 
 #include <cstdlib>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Register parsing functions for IO-related statement keywords.
 /// @details Populates the provided registry so the generic parser dispatch can
 ///          map BASIC keywords (PRINT, OPEN, etc.) to their specialised handler
 ///          methods on @ref Parser.
 /// @param registry Dispatcher that maps tokens to member function pointers.
-void Parser::registerIoParsers(StatementParserRegistry &registry)
-{
+void Parser::registerIoParsers(StatementParserRegistry &registry) {
     registry.registerHandler(TokenKind::KeywordPrint, &Parser::parsePrintStatement);
     registry.registerHandler(TokenKind::KeywordWrite, &Parser::parseWriteStatement);
     registry.registerHandler(TokenKind::KeywordOpen, &Parser::parseOpenStatement);
@@ -48,12 +46,10 @@ void Parser::registerIoParsers(StatementParserRegistry &registry)
 ///          semicolons are appended to the resulting AST node until a statement
 ///          terminator is encountered.
 /// @return Newly allocated AST node representing the parsed statement.
-StmtPtr Parser::parsePrintStatement()
-{
+StmtPtr Parser::parsePrintStatement() {
     auto loc = peek().loc;
     consume(); // PRINT
-    if (at(TokenKind::Hash))
-    {
+    if (at(TokenKind::Hash)) {
         consume();
         auto stmt = std::make_unique<PrintChStmt>();
         stmt->loc = loc;
@@ -61,11 +57,9 @@ StmtPtr Parser::parsePrintStatement()
         stmt->channelExpr = parseExpression();
         stmt->trailingNewline = true;
         bool lastWasSemicolon = false;
-        if (at(TokenKind::Comma))
-        {
+        if (at(TokenKind::Comma)) {
             consume();
-            while (true)
-            {
+            while (true) {
                 if (at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile) || at(TokenKind::Colon))
                     break;
                 // BUG-OOP-021: Allow soft keywords as expressions in PRINT#.
@@ -73,16 +67,14 @@ StmtPtr Parser::parsePrintStatement()
                     isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier;
                 if (isStatementStart(peek().kind) && !isSoftKw)
                     break;
-                if (at(TokenKind::Semicolon))
-                {
+                if (at(TokenKind::Semicolon)) {
                     consume();
                     lastWasSemicolon = true;
                     continue;
                 }
                 lastWasSemicolon = false;
                 stmt->args.push_back(parseExpression());
-                if (at(TokenKind::Semicolon))
-                {
+                if (at(TokenKind::Semicolon)) {
                     consume();
                     lastWasSemicolon = true;
                     continue;
@@ -98,22 +90,19 @@ StmtPtr Parser::parsePrintStatement()
     }
     auto stmt = std::make_unique<PrintStmt>();
     stmt->loc = loc;
-    while (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile) && !at(TokenKind::Colon))
-    {
+    while (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile) && !at(TokenKind::Colon)) {
         TokenKind k = peek().kind;
         // BUG-OOP-021: Allow soft keywords (COLOR, FLOOR, etc.) as expressions in PRINT.
         // This enables: PRINT color   (where 'color' is a variable)
         bool isSoftKw = isSoftIdentToken(k) && k != TokenKind::Identifier;
         if (isStatementStart(k) && !isSoftKw)
             break;
-        if (at(TokenKind::Comma))
-        {
+        if (at(TokenKind::Comma)) {
             consume();
             stmt->items.push_back(PrintItem{PrintItem::Kind::Comma, nullptr});
             continue;
         }
-        if (at(TokenKind::Semicolon))
-        {
+        if (at(TokenKind::Semicolon)) {
             consume();
             stmt->items.push_back(PrintItem{PrintItem::Kind::Semicolon, nullptr});
             continue;
@@ -129,8 +118,7 @@ StmtPtr Parser::parsePrintStatement()
 ///          permit null items, so expressions are parsed greedily until no more
 ///          commas remain.
 /// @return AST node representing the WRITE# statement.
-StmtPtr Parser::parseWriteStatement()
-{
+StmtPtr Parser::parseWriteStatement() {
     auto loc = peek().loc;
     consume(); // WRITE
     expect(TokenKind::Hash);
@@ -140,8 +128,7 @@ StmtPtr Parser::parseWriteStatement()
     stmt->trailingNewline = true;
     stmt->channelExpr = parseExpression();
     expect(TokenKind::Comma);
-    while (true)
-    {
+    while (true) {
         stmt->args.push_back(parseExpression());
         if (!at(TokenKind::Comma))
             break;
@@ -156,44 +143,31 @@ StmtPtr Parser::parseWriteStatement()
 ///          channel expressions. Diagnostic hooks fire when unexpected tokens
 ///          are encountered.
 /// @return AST node describing the OPEN statement.
-StmtPtr Parser::parseOpenStatement()
-{
+StmtPtr Parser::parseOpenStatement() {
     auto loc = peek().loc;
     consume(); // OPEN
     auto stmt = std::make_unique<OpenStmt>();
     stmt->loc = loc;
     stmt->pathExpr = parseExpression();
     expect(TokenKind::KeywordFor);
-    if (at(TokenKind::KeywordInput))
-    {
+    if (at(TokenKind::KeywordInput)) {
         consume();
         stmt->mode = OpenStmt::Mode::Input;
-    }
-    else if (at(TokenKind::KeywordOutput))
-    {
+    } else if (at(TokenKind::KeywordOutput)) {
         consume();
         stmt->mode = OpenStmt::Mode::Output;
-    }
-    else if (at(TokenKind::KeywordAppend))
-    {
+    } else if (at(TokenKind::KeywordAppend)) {
         consume();
         stmt->mode = OpenStmt::Mode::Append;
-    }
-    else if (at(TokenKind::KeywordBinary))
-    {
+    } else if (at(TokenKind::KeywordBinary)) {
         consume();
         stmt->mode = OpenStmt::Mode::Binary;
-    }
-    else if (at(TokenKind::KeywordRandom))
-    {
+    } else if (at(TokenKind::KeywordRandom)) {
         consume();
         stmt->mode = OpenStmt::Mode::Random;
-    }
-    else
-    {
+    } else {
         Token unexpected = consume();
-        if (emitter_)
-        {
+        if (emitter_) {
             emitter_->emitExpected(unexpected.kind, TokenKind::KeywordInput, unexpected.loc);
         }
     }
@@ -207,8 +181,7 @@ StmtPtr Parser::parseOpenStatement()
 /// @details Requires `CLOSE #` followed by an expression naming the channel to
 ///          close.
 /// @return AST node describing the CLOSE statement.
-StmtPtr Parser::parseCloseStatement()
-{
+StmtPtr Parser::parseCloseStatement() {
     auto loc = peek().loc;
     consume(); // CLOSE
     auto stmt = std::make_unique<CloseStmt>();
@@ -223,8 +196,7 @@ StmtPtr Parser::parseCloseStatement()
 ///          separating the position expression. Both operands are parsed as
 ///          general expressions.
 /// @return AST node describing the SEEK statement.
-StmtPtr Parser::parseSeekStatement()
-{
+StmtPtr Parser::parseSeekStatement() {
     auto loc = peek().loc;
     consume(); // SEEK
     auto stmt = std::make_unique<SeekStmt>();
@@ -242,12 +214,10 @@ StmtPtr Parser::parseSeekStatement()
 ///          when unsupported multi-target channel input is encountered and
 ///          consumes trailing tokens to recover.
 /// @return AST node for the parsed INPUT statement.
-StmtPtr Parser::parseInputStatement()
-{
+StmtPtr Parser::parseInputStatement() {
     auto loc = peek().loc;
     consume(); // INPUT
-    if (at(TokenKind::Hash))
-    {
+    if (at(TokenKind::Hash)) {
         consume();
         Token channelTok = expect(TokenKind::Number);
         int channel = std::atoi(channelTok.lexeme.c_str());
@@ -256,8 +226,7 @@ StmtPtr Parser::parseInputStatement()
         stmt->loc = loc;
         stmt->channel = channel;
         // Parse one or more comma-separated identifier targets
-        while (true)
-        {
+        while (true) {
             Token targetTok = expect(TokenKind::Identifier);
             NameRef ref;
             ref.name = targetTok.lexeme;
@@ -270,8 +239,7 @@ StmtPtr Parser::parseInputStatement()
         return stmt;
     }
     ExprPtr prompt;
-    if (at(TokenKind::String))
-    {
+    if (at(TokenKind::String)) {
         prompt = makeStrExpr(peek().lexeme, peek().loc);
         consume();
         expect(TokenKind::Comma);
@@ -283,8 +251,7 @@ StmtPtr Parser::parseInputStatement()
     Token nameTok = expect(TokenKind::Identifier);
     stmt->vars.push_back(nameTok.lexeme);
 
-    while (at(TokenKind::Comma))
-    {
+    while (at(TokenKind::Comma)) {
         consume();
         Token nextTok = expect(TokenKind::Identifier);
         stmt->vars.push_back(nextTok.lexeme);
@@ -299,8 +266,7 @@ StmtPtr Parser::parseInputStatement()
 ///          invalid target is provided, diagnostics are emitted and a fallback
 ///          placeholder variable is inserted so compilation can proceed.
 /// @return AST node describing the LINE INPUT statement.
-StmtPtr Parser::parseLineInputStatement()
-{
+StmtPtr Parser::parseLineInputStatement() {
     auto loc = peek().loc;
     consume(); // LINE
     expect(TokenKind::KeywordInput);
@@ -311,16 +277,13 @@ StmtPtr Parser::parseLineInputStatement()
     expect(TokenKind::Comma);
     auto target = parseArrayOrVar();
     Expr *rawTarget = target.get();
-    if (rawTarget && !is<VarExpr>(*rawTarget) && !is<ArrayExpr>(*rawTarget))
-    {
+    if (rawTarget && !is<VarExpr>(*rawTarget) && !is<ArrayExpr>(*rawTarget)) {
         il::support::SourceLoc diagLoc = rawTarget->loc.hasLine() ? rawTarget->loc : loc;
         emitError("B0001", diagLoc, "expected variable");
         auto fallback = std::make_unique<VarExpr>();
         fallback->loc = diagLoc;
         stmt->targetVar = std::move(fallback);
-    }
-    else
-    {
+    } else {
         stmt->targetVar = std::move(target);
     }
     return stmt;

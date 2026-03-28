@@ -21,13 +21,11 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 namespace fs = std::filesystem;
 
-fs::path writeFile(const fs::path &dir, const std::string &name, const std::string &contents)
-{
+fs::path writeFile(const fs::path &dir, const std::string &name, const std::string &contents) {
     fs::create_directories(dir);
     fs::path path = dir / name;
     std::ofstream out(path);
@@ -36,8 +34,7 @@ fs::path writeFile(const fs::path &dir, const std::string &name, const std::stri
     return path;
 }
 
-TEST(ZiaBinds, BindStringLiteralWithExtension)
-{
+TEST(ZiaBinds, BindStringLiteralWithExtension) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
     const fs::path dir = tempRoot / "bind_ok";
@@ -68,11 +65,9 @@ func start() {
     CompilerOptions opts{};
 
     auto result = compile(input, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for BindStringLiteralWithExtension:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -81,8 +76,7 @@ func start() {
 
     bool hasMain = false;
     bool hasGreet = false;
-    for (const auto &fn : result.module.functions)
-    {
+    for (const auto &fn : result.module.functions) {
         if (fn.name == "main")
             hasMain = true;
         if (fn.name == "greet")
@@ -94,8 +88,7 @@ func start() {
     (void)libPath;
 }
 
-TEST(ZiaBinds, MissingBindReportsAtBindSite)
-{
+TEST(ZiaBinds, MissingBindReportsAtBindSite) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
     const fs::path dir = tempRoot / "missing_bind";
@@ -118,8 +111,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 
     bool foundError = false;
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
+    for (const auto &d : result.diagnostics.diagnostics()) {
         if (d.message.find("Failed to open imported file") == std::string::npos)
             continue;
         foundError = true;
@@ -129,8 +121,7 @@ func start() {
     EXPECT_TRUE(foundError);
 }
 
-TEST(ZiaBinds, CircularBindAllowed)
-{
+TEST(ZiaBinds, CircularBindAllowed) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
     const fs::path dir = tempRoot / "cycle";
@@ -173,8 +164,7 @@ func b() {
     (void)aPath;
 }
 
-TEST(ZiaBinds, CircularBindCrossReference)
-{
+TEST(ZiaBinds, CircularBindCrossReference) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
     const fs::path dir = tempRoot / "cycle_cross";
@@ -226,11 +216,9 @@ func useBar() -> Integer {
     CompilerOptions opts{};
 
     auto result = compile(input, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for CircularBindCrossReference:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -242,8 +230,7 @@ func useBar() -> Integer {
     bool hasBarInit = false;
     bool hasUseFoo = false;
     bool hasUseBar = false;
-    for (const auto &fn : result.module.functions)
-    {
+    for (const auto &fn : result.module.functions) {
         if (fn.name == "Foo.init")
             hasFooInit = true;
         if (fn.name == "Bar.init")
@@ -261,8 +248,7 @@ func useBar() -> Integer {
     (void)aPath;
 }
 
-TEST(ZiaBinds, CircularBindSelfImport)
-{
+TEST(ZiaBinds, CircularBindSelfImport) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
     const fs::path dir = tempRoot / "self_import";
@@ -284,11 +270,9 @@ func start() {
     CompilerOptions opts{};
 
     auto result = compile(input, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for CircularBindSelfImport:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -296,8 +280,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool hasMain = false;
-    for (const auto &fn : result.module.functions)
-    {
+    for (const auto &fn : result.module.functions) {
         if (fn.name == "main")
             hasMain = true;
     }
@@ -309,8 +292,7 @@ func start() {
 /// @brief Test that transitive binds maintain correct declaration order (Bug #26).
 /// When main binds both inner and outer, where outer also binds inner,
 /// the entities must be lowered in dependency order (Inner before Outer).
-TEST(ZiaBinds, TransitiveBindDeclarationOrder)
-{
+TEST(ZiaBinds, TransitiveBindDeclarationOrder) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_bind_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
     const fs::path dir = tempRoot / "transitive_order";
@@ -370,11 +352,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for TransitiveBindDeclarationOrder:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -384,20 +364,14 @@ func start() {
     // Verify Outer.test calls Inner.getValue directly (not via lambda/closure)
     bool foundOuterTest = false;
     bool foundDirectCall = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "Outer.test")
-        {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "Outer.test") {
             foundOuterTest = true;
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
-                    if (instr.op == il::core::Opcode::Call)
-                    {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
+                    if (instr.op == il::core::Opcode::Call) {
                         // Check if callee is Inner.getValue (direct call)
-                        if (instr.callee == "Inner.getValue")
-                        {
+                        if (instr.callee == "Inner.getValue") {
                             foundDirectCall = true;
                         }
                     }
@@ -414,7 +388,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

@@ -27,16 +27,13 @@
 #include <cstring>
 
 // rt_crc32 has no GC dependency — link directly
-extern "C"
-{
-    uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
+extern "C" {
+uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
 }
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
-std::vector<uint8_t> gzip(const uint8_t *data, size_t len, int level)
-{
+std::vector<uint8_t> gzip(const uint8_t *data, size_t len, int level) {
     // Compress with raw DEFLATE
     auto deflated = deflate(data, len, level);
 

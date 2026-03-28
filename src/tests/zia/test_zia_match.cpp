@@ -18,12 +18,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that match statement works correctly.
-TEST(ZiaMatch, MatchStatement)
-{
+TEST(ZiaMatch, MatchStatement) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -41,11 +39,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for MatchStatement:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -54,12 +50,9 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool foundMatchBlock = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
                 if (block.label.find("match_arm") != std::string::npos)
                     foundMatchBlock = true;
             }
@@ -69,8 +62,7 @@ func start() {
 }
 
 /// @brief Test that match expression (used as value) compiles.
-TEST(ZiaMatch, MatchExpression)
-{
+TEST(ZiaMatch, MatchExpression) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -90,11 +82,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for MatchExpression:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -103,12 +93,9 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool foundMatchBlock = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
                 if (block.label.find("match_arm") != std::string::npos)
                     foundMatchBlock = true;
             }
@@ -119,8 +106,7 @@ func start() {
 
 /// @brief Test that match expression with boolean subject and expression patterns works.
 /// This tests the guard-style matching: match (true) { cond => value, ... }
-TEST(ZiaMatch, MatchExpressionWithBooleanSubject)
-{
+TEST(ZiaMatch, MatchExpressionWithBooleanSubject) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -148,11 +134,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for MatchExpressionWithBooleanSubject:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -162,12 +146,9 @@ func start() {
 
     // Verify clamp function has match blocks
     bool foundClampMatchArm = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "clamp")
-        {
-            for (const auto &block : fn.blocks)
-            {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "clamp") {
+            for (const auto &block : fn.blocks) {
                 if (block.label.find("match_arm") != std::string::npos)
                     foundClampMatchArm = true;
             }
@@ -178,14 +159,10 @@ func start() {
     // Verify comparison instruction is generated for expression patterns
     bool foundScmpLt = false;
     bool foundScmpGt = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "clamp")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "clamp") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::SCmpLT)
                         foundScmpLt = true;
                     if (instr.op == il::core::Opcode::SCmpGT)
@@ -199,8 +176,7 @@ func start() {
 }
 
 /// @brief Test constructor, tuple, and optional patterns with guards.
-TEST(ZiaMatch, MatchPatterns)
-{
+TEST(ZiaMatch, MatchPatterns) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -240,11 +216,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for MatchPatterns:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -253,12 +227,9 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool foundMatchArm = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
                 if (block.label.find("match_arm") != std::string::npos)
                     foundMatchArm = true;
             }
@@ -269,7 +240,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

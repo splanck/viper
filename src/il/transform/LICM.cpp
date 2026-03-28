@@ -46,15 +46,12 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
-namespace
-{
+namespace il::transform {
+namespace {
 /// @brief Track a store within a loop for alias-checking load hoisting.
 /// @details Captures the pointer operand and its byte size (when known) so
 ///          load instructions can be compared against loop stores safely.
-struct StoreSite
-{
+struct StoreSite {
     Value ptr;                    ///< Pointer operand written by a store.
     std::optional<unsigned> size; ///< Size in bytes of the store, if known.
 };
@@ -64,15 +61,13 @@ struct StoreSite
 ///          or inferred by alias analysis.  Pure calls have no memory effects;
 ///          readonly calls only read memory (safe to hoist if no aliasing
 ///          stores exist in the loop, same logic as Load hoisting).
-enum class CallHoistKind
-{
+enum class CallHoistKind {
     NotHoistable, ///< Call may write memory or has other side effects.
     Pure,         ///< Call has no memory effects (pure math, etc.).
     ReadOnly,     ///< Call only reads memory (safe if no aliasing stores).
 };
 
-CallHoistKind classifyCallForHoist(const Instr &instr)
-{
+CallHoistKind classifyCallForHoist(const Instr &instr) {
     if (instr.op != Opcode::Call)
         return CallHoistKind::NotHoistable;
 
@@ -101,8 +96,7 @@ CallHoistKind classifyCallForHoist(const Instr &instr)
 /// @param callHoist Output: set to the call hoisting classification when the
 ///                  instruction is a call.
 /// @return True if the instruction is safe to move to the preheader.
-bool isSafeToHoist(const Instr &instr, bool allowLoadHoist, CallHoistKind &callHoist)
-{
+bool isSafeToHoist(const Instr &instr, bool allowLoadHoist, CallHoistKind &callHoist) {
     callHoist = CallHoistKind::NotHoistable;
 
     const auto &info = getOpcodeInfo(instr.op);
@@ -111,21 +105,18 @@ bool isSafeToHoist(const Instr &instr, bool allowLoadHoist, CallHoistKind &callH
     if (!instr.labels.empty() || !instr.brArgs.empty())
         return false;
 
-    if (auto spec = verify::lookupSpec(instr.op))
-    {
+    if (auto spec = verify::lookupSpec(instr.op)) {
         if (spec->hasSideEffects)
             return false;
     }
 
-    if (auto props = verify::lookup(instr.op))
-    {
+    if (auto props = verify::lookup(instr.op)) {
         if (props->canTrap)
             return false;
     }
 
     // Check for hoistable calls (pure or readonly).
-    if (instr.op == Opcode::Call)
-    {
+    if (instr.op == Opcode::Call) {
         callHoist = classifyCallForHoist(instr);
         if (callHoist == CallHoistKind::Pure)
             return true;
@@ -151,13 +142,13 @@ bool isSafeToHoist(const Instr &instr, bool allowLoadHoist, CallHoistKind &callH
 /// @param loop Loop being analyzed.
 /// @param function Function containing the loop.
 /// @param invariants Output set of invariant temporary ids to populate.
-void seedInvariants(const Loop &loop, Function &function, std::unordered_set<unsigned> &invariants)
-{
+void seedInvariants(const Loop &loop,
+                    Function &function,
+                    std::unordered_set<unsigned> &invariants) {
     for (const auto &param : function.params)
         invariants.insert(param.id);
 
-    for (auto &block : function.blocks)
-    {
+    for (auto &block : function.blocks) {
         if (loop.contains(block.label))
             continue;
         for (const auto &param : block.params)
@@ -176,17 +167,14 @@ void seedInvariants(const Loop &loop, Function &function, std::unordered_set<uns
 /// @param instr Instruction whose operands should be validated.
 /// @param invariants Set of invariant temporary ids.
 /// @return True if every operand and branch argument is invariant.
-bool operandsInvariant(const Instr &instr, const std::unordered_set<unsigned> &invariants)
-{
-    auto isInvariantValue = [&invariants](const Value &value)
-    {
+bool operandsInvariant(const Instr &instr, const std::unordered_set<unsigned> &invariants) {
+    auto isInvariantValue = [&invariants](const Value &value) {
         if (value.kind != Value::Kind::Temp)
             return true;
         return invariants.contains(value.id);
     };
 
-    for (const auto &operand : instr.operands)
-    {
+    for (const auto &operand : instr.operands) {
         if (!isInvariantValue(operand))
             return false;
     }
@@ -210,8 +198,7 @@ bool operandsInvariant(const Instr &instr, const std::unordered_set<unsigned> &i
 void collectDominanceOrder(BasicBlock *block,
                            const Loop &loop,
                            const viper::analysis::DomTree &domTree,
-                           std::vector<BasicBlock *> &order)
-{
+                           std::vector<BasicBlock *> &order) {
     if (!block)
         return;
 
@@ -221,8 +208,7 @@ void collectDominanceOrder(BasicBlock *block,
     if (it == domTree.children.end())
         return;
 
-    for (auto *child : it->second)
-    {
+    for (auto *child : it->second) {
         if (!loop.contains(child->label))
             continue;
         collectDominanceOrder(child, loop, domTree, order);
@@ -238,8 +224,7 @@ void collectDominanceOrder(BasicBlock *block,
 /// @param label Label to look up.
 /// @return Pointer to the block, or nullptr if not found.
 BasicBlock *lookupBlock(const std::unordered_map<std::string, BasicBlock *> &blocks,
-                        const std::string &label)
-{
+                        const std::string &label) {
     auto it = blocks.find(label);
     return it == blocks.end() ? nullptr : it->second;
 }
@@ -257,14 +242,12 @@ BasicBlock *lookupBlock(const std::unordered_map<std::string, BasicBlock *> &blo
 BasicBlock *findPreheader(const Loop &loop,
                           BasicBlock &header,
                           const CFGInfo &cfg,
-                          const std::unordered_map<std::string, BasicBlock *> &blocks)
-{
+                          const std::unordered_map<std::string, BasicBlock *> &blocks) {
     auto predsIt = cfg.predecessors.find(&header);
     if (predsIt == cfg.predecessors.end())
         return nullptr;
     BasicBlock *preheader = nullptr;
-    for (const auto *pred : predsIt->second)
-    {
+    for (const auto *pred : predsIt->second) {
         if (!pred || loop.contains(pred->label))
             continue;
         auto *mutablePred = lookupBlock(blocks, pred->label);
@@ -280,8 +263,7 @@ BasicBlock *findPreheader(const Loop &loop,
 /// @brief Return the unique identifier for this pass.
 /// @details Used when registering and invoking LICM via the pass registry.
 /// @return The canonical pass id string "licm".
-std::string_view LICM::id() const
-{
+std::string_view LICM::id() const {
     return "licm";
 }
 
@@ -295,8 +277,7 @@ std::string_view LICM::id() const
 /// @param function Function to optimize.
 /// @param analysis Analysis manager providing CFG, dominators, loop info, and AA.
 /// @return Preserved analysis set describing which analyses remain valid.
-PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
-{
+PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis) {
     auto &domTree =
         analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
@@ -310,8 +291,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
 
     bool changed = false;
 
-    for (const Loop &loop : loopInfo.loops())
-    {
+    for (const Loop &loop : loopInfo.loops()) {
         BasicBlock *header = lookupBlock(blockLookup, loop.headerLabel);
         if (!header)
             continue;
@@ -326,33 +306,27 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
 
         bool loopHasMod = false;
         std::vector<StoreSite> loopStores;
-        for (const auto &label : loop.blockLabels)
-        {
+        for (const auto &label : loop.blockLabels) {
             BasicBlock *blk = lookupBlock(blockLookup, label);
             if (!blk)
                 continue;
-            for (const auto &ins : blk->instructions)
-            {
-                if (ins.op == Opcode::Store && !ins.operands.empty())
-                {
+            for (const auto &ins : blk->instructions) {
+                if (ins.op == Opcode::Store && !ins.operands.empty()) {
                     loopStores.push_back(
                         {ins.operands[0], viper::analysis::BasicAA::typeSizeBytes(ins.type)});
                     continue;
                 }
 
-                if (ins.op == Opcode::Call || ins.op == Opcode::CallIndirect)
-                {
+                if (ins.op == Opcode::Call || ins.op == Opcode::CallIndirect) {
                     auto mr = aa.modRef(ins);
                     if (mr == viper::analysis::ModRefResult::Mod ||
-                        mr == viper::analysis::ModRefResult::ModRef)
-                    {
+                        mr == viper::analysis::ModRefResult::ModRef) {
                         loopHasMod = true;
                     }
                 }
                 auto me = memoryEffects(ins.op);
                 if (me == MemoryEffects::Write || me == MemoryEffects::ReadWrite ||
-                    me == MemoryEffects::Unknown)
-                {
+                    me == MemoryEffects::Unknown) {
                     loopHasMod = true;
                 }
             }
@@ -362,32 +336,25 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
         blockOrder.reserve(loop.blockLabels.size());
         collectDominanceOrder(header, loop, domTree, blockOrder);
 
-        for (BasicBlock *block : blockOrder)
-        {
-            for (std::size_t idx = 0; idx < block->instructions.size();)
-            {
+        for (BasicBlock *block : blockOrder) {
+            for (std::size_t idx = 0; idx < block->instructions.size();) {
                 Instr &instr = block->instructions[idx];
                 bool allowLoads = true;
-                if (instr.op == Opcode::Load)
-                {
+                if (instr.op == Opcode::Load) {
                     // When the loop contains memory-modifying calls, loads from
                     // non-escaping allocas are still safe: the call cannot
                     // observe or modify stack memory whose address never left
                     // the function.
-                    if (loopHasMod)
-                    {
+                    if (loopHasMod) {
                         allowLoads = !instr.operands.empty() &&
                                      instr.operands[0].kind == Value::Kind::Temp &&
                                      aa.isNonEscapingAlloca(instr.operands[0].id);
                     }
-                    if (allowLoads && !instr.operands.empty())
-                    {
+                    if (allowLoads && !instr.operands.empty()) {
                         auto loadSize = viper::analysis::BasicAA::typeSizeBytes(instr.type);
-                        for (const auto &store : loopStores)
-                        {
+                        for (const auto &store : loopStores) {
                             if (aa.alias(instr.operands[0], store.ptr, loadSize, store.size) !=
-                                viper::analysis::AliasResult::NoAlias)
-                            {
+                                viper::analysis::AliasResult::NoAlias) {
                                 allowLoads = false;
                                 break;
                             }
@@ -397,8 +364,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
 
                 CallHoistKind callHoist = CallHoistKind::NotHoistable;
                 if (!isSafeToHoist(instr, allowLoads, callHoist) ||
-                    !operandsInvariant(instr, invariants))
-                {
+                    !operandsInvariant(instr, invariants)) {
                     ++idx;
                     continue;
                 }
@@ -407,8 +373,7 @@ PreservedAnalyses LICM::run(Function &function, AnalysisManager &analysis)
                 // mutating calls inside the loop can also change the memory the
                 // readonly call observes, even when there are no explicit Store
                 // instructions in the loop body.
-                if (callHoist == CallHoistKind::ReadOnly && (loopHasMod || !loopStores.empty()))
-                {
+                if (callHoist == CallHoistKind::ReadOnly && (loopHasMod || !loopStores.empty())) {
                     // Conservative: readonly calls may read any memory, and we
                     // cannot know the precise address set. Only hoist when the
                     // loop has no mutating memory operations at all.

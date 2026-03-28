@@ -22,10 +22,8 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
-std::string dumpProgram(const std::string &src)
-{
+namespace {
+std::string dumpProgram(const std::string &src) {
     SourceManager sm;
     uint32_t fid = sm.addFile("onerror.bas");
     Parser parser(src, fid);
@@ -36,8 +34,7 @@ std::string dumpProgram(const std::string &src)
 }
 } // namespace
 
-int main()
-{
+int main() {
     {
         std::string dump = dumpProgram("10 ON ERROR GOTO 200\n20 END\n");
         assert(dump == "10: (ON-ERROR GOTO 200)\n20: (END)\n");

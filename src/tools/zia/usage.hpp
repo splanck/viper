@@ -12,8 +12,7 @@
 
 #pragma once
 
-namespace zia
-{
+namespace zia {
 
 /// @brief Print usage information for the Zia CLI.
 /// @details Writes the supported invocation forms, option descriptions, and

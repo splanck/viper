@@ -13,10 +13,8 @@
 
 #include "frontends/basic/Lowerer.hpp"
 
-namespace il::frontends::basic
-{
-namespace lower
-{
+namespace il::frontends::basic {
+namespace lower {
 Lowerer::ExprType scanExprTypes(Lowerer &lowerer, const Expr &expr);
 Lowerer::ExprType scanBuiltinExprTypes(Lowerer &lowerer, const BuiltinCallExpr &expr);
 void scanStmtRuntimeNeeds(Lowerer &lowerer, const Stmt &stmt);
@@ -32,8 +30,7 @@ void scanProgramRuntimeNeeds(Lowerer &lowerer, const Program &prog);
 ///
 /// @param expr BASIC expression to analyse.
 /// @return Inferred IL type classification for the expression.
-Lowerer::ExprType Lowerer::scanExpr(const Expr &expr)
-{
+Lowerer::ExprType Lowerer::scanExpr(const Expr &expr) {
     return lower::scanExprTypes(*this, expr);
 }
 
@@ -46,8 +43,7 @@ Lowerer::ExprType Lowerer::scanExpr(const Expr &expr)
 ///
 /// @param expr Builtin call expression subject to type classification.
 /// @return Resulting IL type emitted by the intrinsic.
-Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &expr)
-{
+Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &expr) {
     return lower::scanBuiltinExprTypes(*this, expr);
 }
 
@@ -59,8 +55,7 @@ Lowerer::ExprType Lowerer::scanBuiltinCallExpr(const BuiltinCallExpr &expr)
 ///          `lower::scanStmtRuntimeNeeds` implementation.
 ///
 /// @param stmt Statement to analyse for runtime dependencies.
-void Lowerer::scanStmt(const Stmt &stmt)
-{
+void Lowerer::scanStmt(const Stmt &stmt) {
     lower::scanStmtRuntimeNeeds(*this, stmt);
 }
 
@@ -72,8 +67,7 @@ void Lowerer::scanStmt(const Stmt &stmt)
 ///          translation unit focused on API wiring.
 ///
 /// @param prog Parsed BASIC program.
-void Lowerer::scanProgram(const Program &prog)
-{
+void Lowerer::scanProgram(const Program &prog) {
     lower::scanProgramRuntimeNeeds(*this, prog);
 }
 

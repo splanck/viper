@@ -23,10 +23,8 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
-Token nextToken(std::string_view text)
-{
+namespace {
+Token nextToken(std::string_view text) {
     SourceManager sm;
     uint32_t fid = sm.addFile("lexer_file_io.bas");
     Lexer lexer(text, fid);
@@ -34,8 +32,7 @@ Token nextToken(std::string_view text)
 }
 } // namespace
 
-int main()
-{
+int main() {
     {
         Token tok = nextToken("OPEN");
         assert(tok.kind == TokenKind::KeywordOpen);

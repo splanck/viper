@@ -21,10 +21,8 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::tests
-{
-struct CodegenExecutionResult
-{
+namespace viper::tests {
+struct CodegenExecutionResult {
     int exitCode = -1;
     std::string stdoutText;
     std::string commandLine;
@@ -32,30 +30,26 @@ struct CodegenExecutionResult
     bool stdoutReadFailed = false;
 };
 
-struct CodegenComparisonOptions
-{
+struct CodegenComparisonOptions {
     bool trimWhitespace = false;
     std::optional<double> numericTolerance;
 };
 
-struct CodegenComparisonResult
-{
+struct CodegenComparisonResult {
     bool success = false;
     std::string message;
     CodegenExecutionResult vm;
     CodegenExecutionResult native;
 };
 
-struct CodegenRunConfig
-{
+struct CodegenRunConfig {
     std::string ilSource;
     std::string ilFileName = "program.il";
     std::vector<std::string> vmArgs;
     std::vector<std::string> nativeArgs;
 };
 
-class CodegenFixture
-{
+class CodegenFixture {
   public:
     CodegenFixture();
     CodegenFixture(const CodegenFixture &) = delete;
@@ -64,18 +58,15 @@ class CodegenFixture
     CodegenFixture &operator=(CodegenFixture &&) = delete;
     ~CodegenFixture();
 
-    [[nodiscard]] bool isReady() const noexcept
-    {
+    [[nodiscard]] bool isReady() const noexcept {
         return setupError_.empty();
     }
 
-    [[nodiscard]] const std::string &setupError() const noexcept
-    {
+    [[nodiscard]] const std::string &setupError() const noexcept {
         return setupError_;
     }
 
-    [[nodiscard]] const std::filesystem::path &tempDirectory() const noexcept
-    {
+    [[nodiscard]] const std::filesystem::path &tempDirectory() const noexcept {
         return tempDir_;
     }
 

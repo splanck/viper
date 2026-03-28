@@ -28,121 +28,99 @@
 #include <string>
 #include <unordered_map>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
-class LowererTypeLayout
-{
+class LowererTypeLayout {
   public:
     using Type = il::core::Type;
     LowererTypeLayout() = default;
 
-    ValueTypeInfo *findValueType(const std::string &name)
-    {
+    ValueTypeInfo *findValueType(const std::string &name) {
         auto it = valueTypes_.find(name);
         return it != valueTypes_.end() ? &it->second : nullptr;
     }
 
-    const ValueTypeInfo *findValueType(const std::string &name) const
-    {
+    const ValueTypeInfo *findValueType(const std::string &name) const {
         auto it = valueTypes_.find(name);
         return it != valueTypes_.end() ? &it->second : nullptr;
     }
 
-    bool hasValueType(const std::string &name) const
-    {
+    bool hasValueType(const std::string &name) const {
         return valueTypes_.count(name) > 0;
     }
 
     void registerValueType(const std::string &name, ValueTypeInfo info);
 
-    std::unordered_map<std::string, ValueTypeInfo> &valueTypes()
-    {
+    std::unordered_map<std::string, ValueTypeInfo> &valueTypes() {
         return valueTypes_;
     }
 
-    const std::unordered_map<std::string, ValueTypeInfo> &valueTypes() const
-    {
+    const std::unordered_map<std::string, ValueTypeInfo> &valueTypes() const {
         return valueTypes_;
     }
 
-    EntityTypeInfo *findEntityType(const std::string &name)
-    {
+    EntityTypeInfo *findEntityType(const std::string &name) {
         auto it = entityTypes_.find(name);
         return it != entityTypes_.end() ? &it->second : nullptr;
     }
 
-    const EntityTypeInfo *findEntityType(const std::string &name) const
-    {
+    const EntityTypeInfo *findEntityType(const std::string &name) const {
         auto it = entityTypes_.find(name);
         return it != entityTypes_.end() ? &it->second : nullptr;
     }
 
-    bool hasEntityType(const std::string &name) const
-    {
+    bool hasEntityType(const std::string &name) const {
         return entityTypes_.count(name) > 0;
     }
 
     void registerEntityType(const std::string &name, EntityTypeInfo info);
 
-    std::unordered_map<std::string, EntityTypeInfo> &entityTypes()
-    {
+    std::unordered_map<std::string, EntityTypeInfo> &entityTypes() {
         return entityTypes_;
     }
 
-    const std::unordered_map<std::string, EntityTypeInfo> &entityTypes() const
-    {
+    const std::unordered_map<std::string, EntityTypeInfo> &entityTypes() const {
         return entityTypes_;
     }
 
-    InterfaceTypeInfo *findInterfaceType(const std::string &name)
-    {
+    InterfaceTypeInfo *findInterfaceType(const std::string &name) {
         auto it = interfaceTypes_.find(name);
         return it != interfaceTypes_.end() ? &it->second : nullptr;
     }
 
-    const InterfaceTypeInfo *findInterfaceType(const std::string &name) const
-    {
+    const InterfaceTypeInfo *findInterfaceType(const std::string &name) const {
         auto it = interfaceTypes_.find(name);
         return it != interfaceTypes_.end() ? &it->second : nullptr;
     }
 
     void registerInterfaceType(const std::string &name, InterfaceTypeInfo info);
 
-    std::unordered_map<std::string, InterfaceTypeInfo> &interfaceTypes()
-    {
+    std::unordered_map<std::string, InterfaceTypeInfo> &interfaceTypes() {
         return interfaceTypes_;
     }
 
-    const std::unordered_map<std::string, InterfaceTypeInfo> &interfaceTypes() const
-    {
+    const std::unordered_map<std::string, InterfaceTypeInfo> &interfaceTypes() const {
         return interfaceTypes_;
     }
 
-    int nextClassId()
-    {
+    int nextClassId() {
         return nextClassId_++;
     }
 
-    int peekNextClassId() const
-    {
+    int peekNextClassId() const {
         return nextClassId_;
     }
 
-    int nextIfaceId()
-    {
+    int nextIfaceId() {
         return nextIfaceId_++;
     }
 
-    int peekNextIfaceId() const
-    {
+    int peekNextIfaceId() const {
         return nextIfaceId_;
     }
 
-    static size_t getILTypeSize(Type type)
-    {
-        switch (type.kind)
-        {
+    static size_t getILTypeSize(Type type) {
+        switch (type.kind) {
             case Type::Kind::I64:
             case Type::Kind::F64:
             case Type::Kind::Ptr:
@@ -159,10 +137,8 @@ class LowererTypeLayout
         }
     }
 
-    static size_t getILTypeAlignment(Type type)
-    {
-        switch (type.kind)
-        {
+    static size_t getILTypeAlignment(Type type) {
+        switch (type.kind) {
             case Type::Kind::I64:
             case Type::Kind::F64:
             case Type::Kind::Ptr:
@@ -179,8 +155,7 @@ class LowererTypeLayout
         }
     }
 
-    static size_t alignTo(size_t offset, size_t alignment)
-    {
+    static size_t alignTo(size_t offset, size_t alignment) {
         return il::support::alignUp(offset, alignment);
     }
 

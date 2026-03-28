@@ -17,8 +17,7 @@
 #include <cstdio>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -27,8 +26,7 @@ static void test_result(const char *name, bool passed)
 // Range Tests
 //=============================================================================
 
-static void test_lazyseq_range()
-{
+static void test_lazyseq_range() {
     printf("Testing LazySeq Range:\n");
 
     // Test 1: Basic range
@@ -40,8 +38,7 @@ static void test_lazyseq_range()
         int64_t sum = 0;
         int64_t count = 0;
 
-        while (1)
-        {
+        while (1) {
             void *val = rt_lazyseq_next(seq, &has_more);
             if (!has_more)
                 break;
@@ -62,8 +59,7 @@ static void test_lazyseq_range()
         int8_t has_more;
         int64_t count = 0;
 
-        while (1)
-        {
+        while (1) {
             rt_lazyseq_next(seq, &has_more);
             if (!has_more)
                 break;
@@ -93,8 +89,7 @@ static void test_lazyseq_range()
 // Repeat Tests
 //=============================================================================
 
-static void test_lazyseq_repeat()
-{
+static void test_lazyseq_repeat() {
     printf("Testing LazySeq Repeat:\n");
 
     // Test: Finite repeat
@@ -105,8 +100,7 @@ static void test_lazyseq_repeat()
         int8_t has_more;
         int64_t count = 0;
 
-        while (1)
-        {
+        while (1) {
             void *val = rt_lazyseq_next(seq, &has_more);
             if (!has_more)
                 break;
@@ -125,15 +119,13 @@ static void test_lazyseq_repeat()
 // Iterate Tests
 //=============================================================================
 
-static void *double_fn(void *x)
-{
+static void *double_fn(void *x) {
     static int64_t result;
     result = *(int64_t *)x * 2;
     return &result;
 }
 
-static void test_lazyseq_iterate()
-{
+static void test_lazyseq_iterate() {
     printf("Testing LazySeq Iterate:\n");
 
     // Test: Powers of 2
@@ -144,8 +136,7 @@ static void test_lazyseq_iterate()
         int8_t has_more;
         int64_t vals[5];
 
-        for (int i = 0; i < 5; i++)
-        {
+        for (int i = 0; i < 5; i++) {
             void *val = rt_lazyseq_next(seq, &has_more);
             vals[i] = *(int64_t *)val;
         }
@@ -166,20 +157,17 @@ static void test_lazyseq_iterate()
 // Transformation Tests
 //=============================================================================
 
-static void *triple_fn(void *x)
-{
+static void *triple_fn(void *x) {
     static int64_t result;
     result = *(int64_t *)x * 3;
     return &result;
 }
 
-static int8_t is_even(void *x)
-{
+static int8_t is_even(void *x) {
     return (*(int64_t *)x % 2) == 0 ? 1 : 0;
 }
 
-static void test_lazyseq_transform()
-{
+static void test_lazyseq_transform() {
     printf("Testing LazySeq Transformations:\n");
 
     // Test 1: Map
@@ -210,8 +198,7 @@ static void test_lazyseq_transform()
         int8_t has_more;
         int64_t count = 0;
 
-        while (1)
-        {
+        while (1) {
             void *val = rt_lazyseq_next(filtered, &has_more);
             if (!has_more)
                 break;
@@ -253,8 +240,7 @@ static void test_lazyseq_transform()
 // Collector Tests
 //=============================================================================
 
-static void test_lazyseq_collectors()
-{
+static void test_lazyseq_collectors() {
     printf("Testing LazySeq Collectors:\n");
 
     // Test 1: ToSeq
@@ -300,8 +286,7 @@ static void test_lazyseq_collectors()
 // Peek and Index Tests
 //=============================================================================
 
-static void test_lazyseq_peek()
-{
+static void test_lazyseq_peek() {
     printf("Testing LazySeq Peek/Index:\n");
 
     // Test: Peek doesn't consume
@@ -327,8 +312,7 @@ static void test_lazyseq_peek()
 // Concat Tests
 //=============================================================================
 
-static void test_lazyseq_concat()
-{
+static void test_lazyseq_concat() {
     printf("Testing LazySeq Concat:\n");
 
     {
@@ -349,8 +333,7 @@ static void test_lazyseq_concat()
 // NULL Handling Tests
 //=============================================================================
 
-static void test_lazyseq_null_handling()
-{
+static void test_lazyseq_null_handling() {
     printf("Testing LazySeq NULL handling:\n");
 
     int8_t has_more;
@@ -365,8 +348,7 @@ static void test_lazyseq_null_handling()
 // IL Wrapper Tests
 //=============================================================================
 
-static void test_lazyseq_il_wrappers()
-{
+static void test_lazyseq_il_wrappers() {
     printf("Testing LazySeq IL wrappers:\n");
 
     // Test: Range wrapper returns valid sequence
@@ -416,8 +398,7 @@ static void test_lazyseq_il_wrappers()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT LazySeq Tests ===\n\n");
 
     test_lazyseq_range();

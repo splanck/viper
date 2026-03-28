@@ -24,10 +24,8 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::tools::ilc
-{
-namespace
-{
+namespace viper::tools::ilc {
+namespace {
 
 using viper::tools::ArgvView;
 
@@ -38,17 +36,14 @@ constexpr std::string_view kUsage =
 
 using Pipeline = viper::codegen::aarch64::CodegenPipeline;
 
-struct ParseOutcome
-{
+struct ParseOutcome {
     std::optional<Pipeline::Options> opts{};
     std::string diagnostics{};
 };
 
-ParseOutcome parseArgs(const ArgvView &args)
-{
+ParseOutcome parseArgs(const ArgvView &args) {
     ParseOutcome outcome{};
-    if (args.empty())
-    {
+    if (args.empty()) {
         outcome.diagnostics = std::string{kUsage};
         return outcome;
     }
@@ -57,13 +52,10 @@ ParseOutcome parseArgs(const ArgvView &args)
     opts.input_il_path = std::string(args.front());
 
     std::ostringstream diag;
-    for (int i = 1; i < args.argc; ++i)
-    {
+    for (int i = 1; i < args.argc; ++i) {
         const std::string_view tok = args.at(i);
-        if (tok == "-S")
-        {
-            if (i + 1 >= args.argc)
-            {
+        if (tok == "-S") {
+            if (i + 1 >= args.argc) {
                 diag << "error: -S requires an output path\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;
@@ -72,10 +64,8 @@ ParseOutcome parseArgs(const ArgvView &args)
             opts.output_asm_path = std::string(args.at(++i));
             continue;
         }
-        if (tok == "-o")
-        {
-            if (i + 1 >= args.argc)
-            {
+        if (tok == "-o") {
+            if (i + 1 >= args.argc) {
                 diag << "error: -o requires an output path\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;
@@ -83,31 +73,25 @@ ParseOutcome parseArgs(const ArgvView &args)
             opts.output_obj_path = std::string(args.at(++i));
             continue;
         }
-        if (tok == "-run-native")
-        {
+        if (tok == "-run-native") {
             opts.run_native = true;
             continue;
         }
-        if (tok == "--dump-mir-before-ra")
-        {
+        if (tok == "--dump-mir-before-ra") {
             opts.dump_mir_before_ra = true;
             continue;
         }
-        if (tok == "--dump-mir-after-ra")
-        {
+        if (tok == "--dump-mir-after-ra") {
             opts.dump_mir_after_ra = true;
             continue;
         }
-        if (tok == "--dump-mir-full")
-        {
+        if (tok == "--dump-mir-full") {
             opts.dump_mir_before_ra = true;
             opts.dump_mir_after_ra = true;
             continue;
         }
-        if (tok == "-O" || tok == "--optimize")
-        {
-            if (i + 1 >= args.argc)
-            {
+        if (tok == "-O" || tok == "--optimize") {
+            if (i + 1 >= args.argc) {
                 diag << "error: -O requires a level (0, 1, or 2)\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;
@@ -115,28 +99,23 @@ ParseOutcome parseArgs(const ArgvView &args)
             opts.optimize = std::atoi(std::string(args.at(++i)).c_str());
             continue;
         }
-        if (tok.size() == 3 && tok[0] == '-' && tok[1] == 'O' && tok[2] >= '0' && tok[2] <= '2')
-        {
+        if (tok.size() == 3 && tok[0] == '-' && tok[1] == 'O' && tok[2] >= '0' && tok[2] <= '2') {
             opts.optimize = tok[2] - '0';
             continue;
         }
-        if (tok == "--native-asm")
-        {
+        if (tok == "--native-asm") {
             opts.assembler_mode = Pipeline::AssemblerMode::Native;
             continue;
         }
-        if (tok == "--system-asm")
-        {
+        if (tok == "--system-asm") {
             opts.assembler_mode = Pipeline::AssemblerMode::System;
             continue;
         }
-        if (tok == "--native-link")
-        {
+        if (tok == "--native-link") {
             opts.link_mode = Pipeline::LinkMode::Native;
             continue;
         }
-        if (tok == "--system-link")
-        {
+        if (tok == "--system-link") {
             opts.link_mode = Pipeline::LinkMode::System;
             continue;
         }
@@ -152,19 +131,16 @@ ParseOutcome parseArgs(const ArgvView &args)
 
 } // namespace
 
-int cmd_codegen_arm64(int argc, char **argv)
-{
+int cmd_codegen_arm64(int argc, char **argv) {
     const ArgvView args{argc, argv};
     const ParseOutcome parsed = parseArgs(args);
-    if (!parsed.opts.has_value())
-    {
+    if (!parsed.opts.has_value()) {
         if (!parsed.diagnostics.empty())
             std::cerr << parsed.diagnostics;
         return 1;
     }
 
-    try
-    {
+    try {
         Pipeline pipeline(*parsed.opts);
         const viper::codegen::aarch64::PipelineResult result = pipeline.run();
         if (!result.stdout_text.empty())
@@ -172,9 +148,7 @@ int cmd_codegen_arm64(int argc, char **argv)
         if (!result.stderr_text.empty())
             std::cerr << result.stderr_text;
         return result.exit_code;
-    }
-    catch (const std::exception &e)
-    {
+    } catch (const std::exception &e) {
         std::cerr << "error: " << e.what() << '\n';
         return 2;
     }

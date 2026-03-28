@@ -101,27 +101,22 @@
 #include <unordered_set>
 #include <vector>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 // Symbol, ScopedSymbol, and Scope types are defined in
 // frontends/zia/sema/SemaTypes.hpp, included above.
 
-struct MethodInstanceKey
-{
+struct MethodInstanceKey {
     std::string ownerType;
     const MethodDecl *decl = nullptr;
 
-    bool operator==(const MethodInstanceKey &other) const
-    {
+    bool operator==(const MethodInstanceKey &other) const {
         return ownerType == other.ownerType && decl == other.decl;
     }
 };
 
-struct MethodInstanceKeyHash
-{
-    size_t operator()(const MethodInstanceKey &key) const
-    {
+struct MethodInstanceKeyHash {
+    size_t operator()(const MethodInstanceKey &key) const {
         size_t h1 = std::hash<std::string>{}(key.ownerType);
         size_t h2 = std::hash<const MethodDecl *>{}(key.decl);
         return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6U) + (h1 >> 2U));
@@ -166,8 +161,7 @@ struct MethodInstanceKeyHash
 ///
 /// @invariant Scope stack is balanced (pushScope/popScope pairs).
 /// @invariant Expression type map is populated after analyze().
-class Sema
-{
+class Sema {
   public:
     /// @brief Create a semantic analyzer with the given diagnostic engine.
     /// @param diag Diagnostic engine for error reporting.
@@ -219,15 +213,13 @@ class Sema
 
     /// @brief Check if analysis produced errors.
     /// @return True if at least one error was reported.
-    bool hasError() const
-    {
+    bool hasError() const {
         return hasError_;
     }
 
     /// @brief Get the current module being analyzed.
     /// @return The module, or nullptr if not in analyze().
-    ModuleDecl *currentModule() const
-    {
+    ModuleDecl *currentModule() const {
         return currentModule_;
     }
 
@@ -238,15 +230,13 @@ class Sema
     /// @details After analysis, call expressions that invoke runtime library
     /// functions have their resolved names stored. This is used during
     /// lowering to generate the correct runtime calls.
-    std::string runtimeCallee(const CallExpr *expr) const
-    {
+    std::string runtimeCallee(const CallExpr *expr) const {
         auto it = runtimeCallees_.find(expr);
         return it != runtimeCallees_.end() ? it->second : "";
     }
 
     /// @brief Get the auto-eval getter name for an identifier expression.
-    std::string autoEvalGetter(const Expr *expr) const
-    {
+    std::string autoEvalGetter(const Expr *expr) const {
         auto it = autoEvalGetters_.find(expr);
         return it != autoEvalGetters_.end() ? it->second : "";
     }
@@ -257,8 +247,7 @@ class Sema
     ///
     /// @details For generic function calls like `identity[Integer](100)`, this
     /// returns the mangled function name that the lowerer should use.
-    std::string genericFunctionCallee(const CallExpr *expr) const
-    {
+    std::string genericFunctionCallee(const CallExpr *expr) const {
         auto it = genericFunctionCallees_.find(expr);
         if (it == genericFunctionCallees_.end())
             return "";
@@ -267,19 +256,16 @@ class Sema
 
         // If we're in a generic context, substitute type parameters in the mangled name
         // e.g., "identity$T" becomes "identity$Integer" when T=Integer
-        if (!typeParamStack_.empty())
-        {
+        if (!typeParamStack_.empty()) {
             // Find the type argument part (after $)
             size_t dollarPos = mangledName.find('$');
-            if (dollarPos != std::string::npos)
-            {
+            if (dollarPos != std::string::npos) {
                 std::string baseName = mangledName.substr(0, dollarPos);
                 std::string typeArgPart = mangledName.substr(dollarPos + 1);
 
                 // Check if the type argument is a type parameter that should be substituted
                 TypeRef substType = lookupTypeParam(typeArgPart);
-                if (substType && !substType->name.empty())
-                {
+                if (substType && !substType->name.empty()) {
                     mangledName = baseName + "$" + substType->name;
                 }
             }
@@ -295,63 +281,54 @@ class Sema
     ///
     /// @details For field expressions that resolve to runtime or user-defined property
     /// getters, this returns the lowered getter function name.
-    std::string resolvedFieldGetter(const FieldExpr *expr) const
-    {
+    std::string resolvedFieldGetter(const FieldExpr *expr) const {
         auto it = resolvedFieldGetters_.find(expr);
         return it != resolvedFieldGetters_.end() ? it->second : "";
     }
 
     /// @brief Get the resolved setter function name for a field assignment.
-    std::string resolvedFieldSetter(const FieldExpr *expr) const
-    {
+    std::string resolvedFieldSetter(const FieldExpr *expr) const {
         auto it = resolvedFieldSetters_.find(expr);
         return it != resolvedFieldSetters_.end() ? it->second : "";
     }
 
     /// @brief Get the resolved direct-call target for a user-defined function call.
-    std::string resolvedFunctionCallee(const CallExpr *expr) const
-    {
+    std::string resolvedFunctionCallee(const CallExpr *expr) const {
         auto it = resolvedFunctionCallees_.find(expr);
         return it != resolvedFunctionCallees_.end() ? it->second : "";
     }
 
-    FunctionDecl *resolvedFunctionDecl(const CallExpr *expr) const
-    {
+    FunctionDecl *resolvedFunctionDecl(const CallExpr *expr) const {
         auto it = resolvedFunctionDecls_.find(expr);
         return it != resolvedFunctionDecls_.end() ? it->second : nullptr;
     }
 
     /// @brief Get the resolved method declaration for a call site.
-    MethodDecl *resolvedMethodDecl(const CallExpr *expr) const
-    {
+    MethodDecl *resolvedMethodDecl(const CallExpr *expr) const {
         auto it = resolvedMethodDecls_.find(expr);
         return it != resolvedMethodDecls_.end() ? it->second : nullptr;
     }
 
     /// @brief Get the owner type of a resolved method call.
-    std::string resolvedMethodOwnerType(const CallExpr *expr) const
-    {
+    std::string resolvedMethodOwnerType(const CallExpr *expr) const {
         auto it = resolvedMethodOwnerTypes_.find(expr);
         return it != resolvedMethodOwnerTypes_.end() ? it->second : "";
     }
 
     /// @brief Get the dispatch slot key of a resolved method call.
-    std::string resolvedMethodSlotKey(const CallExpr *expr) const
-    {
+    std::string resolvedMethodSlotKey(const CallExpr *expr) const {
         auto it = resolvedMethodSlotKeys_.find(expr);
         return it != resolvedMethodSlotKeys_.end() ? it->second : "";
     }
 
     /// @brief Get the lowered symbol name for a method declaration.
-    std::string loweredMethodName(const MethodDecl *decl) const
-    {
+    std::string loweredMethodName(const MethodDecl *decl) const {
         auto it = loweredMethodNames_.find(decl);
         return it != loweredMethodNames_.end() ? it->second : "";
     }
 
     /// @brief Get the lowered symbol name for a method declaration in a specific owner type.
-    std::string loweredMethodName(const std::string &ownerType, const MethodDecl *decl) const
-    {
+    std::string loweredMethodName(const std::string &ownerType, const MethodDecl *decl) const {
         auto it = ownerLoweredMethodNames_.find(MethodInstanceKey{ownerType, decl});
         if (it != ownerLoweredMethodNames_.end())
             return it->second;
@@ -359,15 +336,13 @@ class Sema
     }
 
     /// @brief Get the dispatch slot key for a method declaration.
-    std::string methodSlotKey(const MethodDecl *decl) const
-    {
+    std::string methodSlotKey(const MethodDecl *decl) const {
         auto it = methodDispatchKeys_.find(decl);
         return it != methodDispatchKeys_.end() ? it->second : "";
     }
 
     /// @brief Get the dispatch slot key for a method declaration in a specific owner type.
-    std::string methodSlotKey(const std::string &ownerType, const MethodDecl *decl) const
-    {
+    std::string methodSlotKey(const std::string &ownerType, const MethodDecl *decl) const {
         auto it = ownerMethodDispatchKeys_.find(MethodInstanceKey{ownerType, decl});
         if (it != ownerMethodDispatchKeys_.end())
             return it->second;
@@ -375,8 +350,7 @@ class Sema
     }
 
     /// @brief Get the exact signature key for a method declaration in a specific owner type.
-    std::string methodSignatureKey(const std::string &ownerType, const MethodDecl *decl) const
-    {
+    std::string methodSignatureKey(const std::string &ownerType, const MethodDecl *decl) const {
         auto it = ownerMethodSignatureKeys_.find(MethodInstanceKey{ownerType, decl});
         if (it != ownerMethodSignatureKeys_.end())
             return it->second;
@@ -385,15 +359,13 @@ class Sema
     }
 
     /// @brief Get the lowered symbol name for a function declaration.
-    std::string loweredFunctionName(const FunctionDecl *decl) const
-    {
+    std::string loweredFunctionName(const FunctionDecl *decl) const {
         auto it = loweredFunctionNames_.find(decl);
         return it != loweredFunctionNames_.end() ? it->second : "";
     }
 
     /// @brief Get the resolved init overload for a new-expression.
-    MethodDecl *resolvedInitDecl(const NewExpr *expr) const
-    {
+    MethodDecl *resolvedInitDecl(const NewExpr *expr) const {
         auto it = resolvedInitDecls_.find(expr);
         return it != resolvedInitDecls_.end() ? it->second : nullptr;
     }
@@ -403,8 +375,7 @@ class Sema
     /// @return The return type, or nullptr if not found.
     ///
     /// @details Works for both runtime (extern) functions and user-defined functions.
-    TypeRef functionReturnType(const std::string &name)
-    {
+    TypeRef functionReturnType(const std::string &name) {
         Symbol *sym = lookupSymbol(name);
         if (!sym || sym->kind != Symbol::Kind::Function)
             return nullptr;
@@ -422,8 +393,7 @@ class Sema
     /// @return The symbol if found and is extern, nullptr otherwise.
     ///
     /// @details Used by the lowerer to resolve runtime property getters.
-    Symbol *findExternFunction(const std::string &name)
-    {
+    Symbol *findExternFunction(const std::string &name) {
         Symbol *sym = lookupSymbol(name);
         return (sym && sym->isExtern) ? sym : nullptr;
     }
@@ -437,8 +407,7 @@ class Sema
     /// @param typeName The fully qualified type name (may be mangled for generics).
     /// @param fieldName The field name.
     /// @return The field's type, or nullptr if not found.
-    TypeRef getFieldType(const std::string &typeName, const std::string &fieldName) const
-    {
+    TypeRef getFieldType(const std::string &typeName, const std::string &fieldName) const {
         std::string key = typeName + "." + fieldName;
         auto it = fieldTypes_.find(key);
         return it != fieldTypes_.end() ? it->second : nullptr;
@@ -448,23 +417,20 @@ class Sema
     /// @param typeName The fully qualified type name (may be mangled for generics).
     /// @param methodName The method name.
     /// @return The method's function type, or nullptr if not found.
-    TypeRef getMethodType(const std::string &typeName, const std::string &methodName) const
-    {
+    TypeRef getMethodType(const std::string &typeName, const std::string &methodName) const {
         std::string key = typeName + "." + methodName;
         auto it = methodTypes_.find(key);
         return it != methodTypes_.end() ? it->second : nullptr;
     }
 
     /// @brief Look up a method type by declaration.
-    TypeRef getMethodType(const MethodDecl *decl) const
-    {
+    TypeRef getMethodType(const MethodDecl *decl) const {
         auto it = methodDeclTypes_.find(decl);
         return it != methodDeclTypes_.end() ? it->second : nullptr;
     }
 
     /// @brief Look up a method type for a specific owner type and declaration.
-    TypeRef getMethodType(const std::string &ownerType, const MethodDecl *decl) const
-    {
+    TypeRef getMethodType(const std::string &ownerType, const MethodDecl *decl) const {
         auto it = ownerMethodTypes_.find(MethodInstanceKey{ownerType, decl});
         if (it != ownerMethodTypes_.end())
             return it->second;
@@ -472,8 +438,7 @@ class Sema
     }
 
     /// @brief Look up a function type by declaration.
-    TypeRef getFunctionType(const FunctionDecl *decl) const
-    {
+    TypeRef getFunctionType(const FunctionDecl *decl) const {
         auto it = functionDeclTypes_.find(decl);
         return it != functionDeclTypes_.end() ? it->second : nullptr;
     }
@@ -481,8 +446,7 @@ class Sema
     /// @brief Get the original generic declaration for an instantiated type.
     /// @param mangledName The mangled type name (e.g., "Box$Integer").
     /// @return The original declaration, or nullptr if not a generic instantiation.
-    Decl *getGenericDeclForInstantiation(const std::string &mangledName) const
-    {
+    Decl *getGenericDeclForInstantiation(const std::string &mangledName) const {
         // Extract base name from mangled name (before '$')
         size_t dollarPos = mangledName.find('$');
         if (dollarPos == std::string::npos)
@@ -495,8 +459,7 @@ class Sema
     /// @brief Check if a type name is an instantiated generic.
     /// @param typeName The type name to check.
     /// @return True if this is an instantiated generic type.
-    bool isInstantiatedGeneric(const std::string &typeName) const
-    {
+    bool isInstantiatedGeneric(const std::string &typeName) const {
         return typeName.find('$') != std::string::npos;
     }
 
@@ -802,8 +765,7 @@ class Sema
     void analyzeMatchStmt(MatchStmt *stmt);
 
     /// @brief Track coverage details for match exhaustiveness checks.
-    struct MatchCoverage
-    {
+    struct MatchCoverage {
         bool hasIrrefutable = false;
         bool coversNull = false;
         bool coversSome = false;
@@ -1092,8 +1054,7 @@ class Sema
 
     /// @brief Check if currently inside a generic context.
     /// @return True if there are active type parameter substitutions.
-    bool inGenericContext() const
-    {
+    bool inGenericContext() const {
         return !typeParamStack_.empty();
     }
 
@@ -1338,8 +1299,7 @@ class Sema
 
   public:
     /// @brief Mutable access for compiler-side import scanning.
-    WarningSuppressions &warningSuppressions()
-    {
+    WarningSuppressions &warningSuppressions() {
         return suppressions_;
     }
 
@@ -1387,8 +1347,7 @@ class Sema
     /// @details Populated by defineSymbol(). Persists after scopes are popped.
     std::vector<ScopedSymbol> scopedSymbols_;
 
-    struct ScopeSnapshot
-    {
+    struct ScopeSnapshot {
         uint32_t id{0};
         uint32_t parentId{0};
         size_t depth{0};

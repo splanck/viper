@@ -17,21 +17,17 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Compile ok.
-bool compileOk(const std::string &source)
-{
+bool compileOk(const std::string &source) {
     SourceManager sm;
     CompilerInput input{.source = source, .path = "<test>"};
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Compilation failed:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -40,8 +36,7 @@ bool compileOk(const std::string &source)
 }
 
 // A-002: bind Viper.Core.Box — standalone functions now importable
-TEST(ZiaBindFns, BoxFunctions)
-{
+TEST(ZiaBindFns, BoxFunctions) {
     EXPECT_TRUE(compileOk(R"(
 module TestBox;
 bind Viper.Core.Box;
@@ -54,8 +49,7 @@ func start() {
 }
 
 // A-003: bind Viper.Core.Parse — standalone functions now importable
-TEST(ZiaBindFns, ParseFunctions)
-{
+TEST(ZiaBindFns, ParseFunctions) {
     EXPECT_TRUE(compileOk(R"(
 module TestParse;
 bind Viper.Core.Parse;
@@ -68,8 +62,7 @@ func start() {
 }
 
 // A-004: bind Viper.Math.Random — standalone functions now importable
-TEST(ZiaBindFns, RandomFunctions)
-{
+TEST(ZiaBindFns, RandomFunctions) {
     EXPECT_TRUE(compileOk(R"(
 module TestRandom;
 bind Viper.Math.Random;
@@ -81,8 +74,7 @@ func start() {
 }
 
 // A-005: bind Viper.String — Capitalize/Title/Slug etc. now importable
-TEST(ZiaBindFns, StringFunctions)
-{
+TEST(ZiaBindFns, StringFunctions) {
     EXPECT_TRUE(compileOk(R"(
 module TestString;
 bind Viper.String;
@@ -100,7 +92,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

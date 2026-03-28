@@ -30,8 +30,7 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// Build:
 ///   fn cross_block(a: i64, b: i64) -> i64:
@@ -43,8 +42,7 @@ namespace
 ///       ret t3
 ///
 /// After EarlyCSE, t3 must be eliminated and ret must use t2.
-Module buildCrossBlockCSE()
-{
+Module buildCrossBlockCSE() {
     Module M;
     Function F;
     F.name = "cross_block";
@@ -104,8 +102,7 @@ Module buildCrossBlockCSE()
 }
 
 /// Count instructions with a given opcode across all blocks of a function.
-unsigned countOpcode(const Function &fn, Opcode op)
-{
+unsigned countOpcode(const Function &fn, Opcode op) {
     unsigned n = 0;
     for (const auto &B : fn.blocks)
         for (const auto &I : B.instructions)
@@ -128,8 +125,7 @@ unsigned countOpcode(const Function &fn, Opcode op)
 ///       ret x
 ///
 /// EarlyCSE must NOT remove t3 because "then" does not dominate "els".
-Module buildSiblingBranchCSE()
-{
+Module buildSiblingBranchCSE() {
     Module M;
     Function F;
     F.name = "siblings";
@@ -226,8 +222,7 @@ Module buildSiblingBranchCSE()
 
 // An Add in the entry block dominates its successor — the commuted duplicate
 // in the successor must be eliminated by the dominator-tree CSE.
-TEST(EarlyCSEDomTree, CrossBlockCSEEliminatesDuplicateInDominatedBlock)
-{
+TEST(EarlyCSEDomTree, CrossBlockCSEEliminatesDuplicateInDominatedBlock) {
     Module M = buildCrossBlockCSE();
     ASSERT_EQ(M.functions.size(), 1u);
     Function &fn = M.functions.front();
@@ -256,8 +251,7 @@ TEST(EarlyCSEDomTree, CrossBlockCSEEliminatesDuplicateInDominatedBlock)
 
 // Sibling branches (then / els) do not dominate each other. The same Add in
 // both siblings must NOT be eliminated by EarlyCSE.
-TEST(EarlyCSEDomTree, SiblingBranchExpressionsAreNotEliminated)
-{
+TEST(EarlyCSEDomTree, SiblingBranchExpressionsAreNotEliminated) {
     Module M = buildSiblingBranchCSE();
     ASSERT_EQ(M.functions.size(), 1u);
     Function &fn = M.functions.front();
@@ -273,8 +267,7 @@ TEST(EarlyCSEDomTree, SiblingBranchExpressionsAreNotEliminated)
 }
 
 /// @brief Main.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -22,15 +22,13 @@
 #include <algorithm>
 #include <map>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 bool mergeSections(const std::vector<ObjFile> &objects,
                    LinkPlatform platform,
                    LinkArch arch,
                    LinkLayout &layout,
-                   std::ostream & /*err*/)
-{
+                   std::ostream & /*err*/) {
     // Determine page size.
     if (platform == LinkPlatform::macOS && arch == LinkArch::AArch64)
         layout.pageSize = 0x4000; // 16KB
@@ -38,8 +36,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         layout.pageSize = 0x1000; // 4KB
 
     // Collect input sections by class.
-    struct PendingChunk
-    {
+    struct PendingChunk {
         size_t objIdx;
         size_t secIdx;
         SectionClass cls;
@@ -48,11 +45,9 @@ bool mergeSections(const std::vector<ObjFile> &objects,
 
     std::vector<PendingChunk> pending;
 
-    for (size_t oi = 0; oi < objects.size(); ++oi)
-    {
+    for (size_t oi = 0; oi < objects.size(); ++oi) {
         const auto &obj = objects[oi];
-        for (size_t si = 1; si < obj.sections.size(); ++si)
-        {
+        for (size_t si = 1; si < obj.sections.size(); ++si) {
             const auto &sec = obj.sections[si];
             if (!sec.alloc)
                 continue;
@@ -66,19 +61,16 @@ bool mergeSections(const std::vector<ObjFile> &objects,
 
     // Sort chunks by alignment descending within each class to minimize padding.
     // Higher-alignment chunks placed first reduce wasted inter-chunk padding.
-    std::stable_sort(pending.begin(),
-                     pending.end(),
-                     [](const PendingChunk &a, const PendingChunk &b)
-                     {
-                         if (a.cls != b.cls)
-                             return false; // Preserve inter-class ordering.
-                         return a.alignment > b.alignment;
-                     });
+    std::stable_sort(
+        pending.begin(), pending.end(), [](const PendingChunk &a, const PendingChunk &b) {
+            if (a.cls != b.cls)
+                return false; // Preserve inter-class ordering.
+            return a.alignment > b.alignment;
+        });
 
     // Create output sections in order.
-    auto addOutputSection =
-        [&](SectionClass cls, const char *name, bool exec, bool write, bool tls) -> OutputSection &
-    {
+    auto addOutputSection = [&](SectionClass cls, const char *name, bool exec, bool write, bool tls)
+        -> OutputSection & {
         layout.sections.push_back({});
         auto &out = layout.sections.back();
         out.name = name;
@@ -89,10 +81,8 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     };
 
     // Merge chunks into output sections.
-    auto mergeClass = [&](SectionClass cls, OutputSection &out)
-    {
-        for (const auto &pc : pending)
-        {
+    auto mergeClass = [&](SectionClass cls, OutputSection &out) {
+        for (const auto &pc : pending) {
             if (pc.cls != cls)
                 continue;
 
@@ -120,13 +110,11 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // Text section.
     bool hasText = false;
     for (const auto &p : pending)
-        if (p.cls == SectionClass::Text)
-        {
+        if (p.cls == SectionClass::Text) {
             hasText = true;
             break;
         }
-    if (hasText)
-    {
+    if (hasText) {
         auto &text = addOutputSection(SectionClass::Text, ".text", true, false, false);
         mergeClass(SectionClass::Text, text);
     }
@@ -134,13 +122,11 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // Rodata section.
     bool hasRodata = false;
     for (const auto &p : pending)
-        if (p.cls == SectionClass::Rodata)
-        {
+        if (p.cls == SectionClass::Rodata) {
             hasRodata = true;
             break;
         }
-    if (hasRodata)
-    {
+    if (hasRodata) {
         auto &rodata = addOutputSection(SectionClass::Rodata, ".rodata", false, false, false);
         mergeClass(SectionClass::Rodata, rodata);
     }
@@ -148,13 +134,11 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // Data section.
     bool hasData = false;
     for (const auto &p : pending)
-        if (p.cls == SectionClass::Data)
-        {
+        if (p.cls == SectionClass::Data) {
             hasData = true;
             break;
         }
-    if (hasData)
-    {
+    if (hasData) {
         auto &data = addOutputSection(SectionClass::Data, ".data", false, true, false);
         mergeClass(SectionClass::Data, data);
     }
@@ -164,13 +148,11 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // within the __DATA segment for correct TLS template discovery.
     bool hasBss = false;
     for (const auto &p : pending)
-        if (p.cls == SectionClass::Bss)
-        {
+        if (p.cls == SectionClass::Bss) {
             hasBss = true;
             break;
         }
-    if (hasBss)
-    {
+    if (hasBss) {
         auto &bss = addOutputSection(SectionClass::Bss, ".bss", false, true, false);
         mergeClass(SectionClass::Bss, bss);
     }
@@ -183,8 +165,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     {
         bool hasTlvDescriptors = false;
         bool hasTlvTemplateData = false;
-        for (const auto &p : pending)
-        {
+        for (const auto &p : pending) {
             if (p.cls != SectionClass::TlsData)
                 continue;
             const auto &sec = objects[p.objIdx].sections[p.secIdx];
@@ -195,11 +176,9 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         }
 
         // TLV descriptors → .tdata (mapped to __thread_vars in MachOExeWriter).
-        if (hasTlvDescriptors)
-        {
+        if (hasTlvDescriptors) {
             auto &tdata = addOutputSection(SectionClass::TlsData, ".tdata", false, true, true);
-            for (const auto &pc : pending)
-            {
+            for (const auto &pc : pending) {
                 if (pc.cls != SectionClass::TlsData)
                     continue;
                 const auto &sec = objects[pc.objIdx].sections[pc.secIdx];
@@ -226,12 +205,10 @@ bool mergeSections(const std::vector<ObjFile> &objects,
         // TLS template data → .tdata_template (mapped to __thread_data in
         // MachOExeWriter). On ELF/PE, all TLS data is template data (no TLV
         // descriptors), so this path handles those platforms correctly.
-        if (hasTlvTemplateData)
-        {
+        if (hasTlvTemplateData) {
             auto &tmpl =
                 addOutputSection(SectionClass::TlsData, ".tdata_template", false, true, true);
-            for (const auto &pc : pending)
-            {
+            for (const auto &pc : pending) {
                 if (pc.cls != SectionClass::TlsData)
                     continue;
                 const auto &sec = objects[pc.objIdx].sections[pc.secIdx];
@@ -259,13 +236,11 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // TLS BSS (zero-initialized thread-local data).
     bool hasTlsBss = false;
     for (const auto &p : pending)
-        if (p.cls == SectionClass::TlsBss)
-        {
+        if (p.cls == SectionClass::TlsBss) {
             hasTlsBss = true;
             break;
         }
-    if (hasTlsBss)
-    {
+    if (hasTlsBss) {
         auto &tbss = addOutputSection(SectionClass::TlsBss, ".tbss", false, true, true);
         mergeClass(SectionClass::TlsBss, tbss);
     }
@@ -276,15 +251,13 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // would make the ObjC runtime unable to discover registered classes.
     {
         std::map<std::string, std::vector<size_t>> objcGroups;
-        for (size_t pi = 0; pi < pending.size(); ++pi)
-        {
+        for (size_t pi = 0; pi < pending.size(); ++pi) {
             if (pending[pi].cls != SectionClass::ObjC)
                 continue;
             const auto &sec = objects[pending[pi].objIdx].sections[pending[pi].secIdx];
             objcGroups[sec.name].push_back(pi);
         }
-        for (auto &[name, indices] : objcGroups)
-        {
+        for (auto &[name, indices] : objcGroups) {
             const auto &firstPc = pending[indices[0]];
             const auto &firstSec = objects[firstPc.objIdx].sections[firstPc.secIdx];
 
@@ -295,8 +268,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
             out.writable = firstSec.writable;
             out.tls = false;
 
-            for (size_t pi : indices)
-            {
+            for (size_t pi : indices) {
                 const auto &pc = pending[pi];
                 const auto &sec = objects[pc.objIdx].sections[pc.secIdx];
                 size_t align = std::max(pc.alignment, 1u);
@@ -322,11 +294,9 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // Debuggers read them directly from the file.
     {
         std::map<std::string, std::vector<std::pair<size_t, size_t>>> debugGroups;
-        for (size_t oi = 0; oi < objects.size(); ++oi)
-        {
+        for (size_t oi = 0; oi < objects.size(); ++oi) {
             const auto &obj = objects[oi];
-            for (size_t si = 1; si < obj.sections.size(); ++si)
-            {
+            for (size_t si = 1; si < obj.sections.size(); ++si) {
                 const auto &sec = obj.sections[si];
                 if (sec.alloc)
                     continue;
@@ -335,15 +305,13 @@ bool mergeSections(const std::vector<ObjFile> &objects,
                 debugGroups[sec.name].push_back({oi, si});
             }
         }
-        for (auto &[name, pairs] : debugGroups)
-        {
+        for (auto &[name, pairs] : debugGroups) {
             layout.sections.push_back({});
             auto &out = layout.sections.back();
             out.name = name;
             out.alloc = false;
 
-            for (auto [oi, si] : pairs)
-            {
+            for (auto [oi, si] : pairs) {
                 const auto &sec = objects[oi].sections[si];
                 size_t align = std::max(sec.alignment, 1u);
                 if (align > out.alignment)
@@ -365,8 +333,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
 
     // Assign virtual addresses.
     uint64_t baseAddr;
-    switch (platform)
-    {
+    switch (platform) {
         case LinkPlatform::macOS:
             baseAddr = 0x100000000ULL;
             break;
@@ -386,8 +353,7 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // Permission class: only page-align when switching between segments
     // (executable → readonly → writable → TLS). Within a segment, sections
     // pack tightly with only their natural alignment respected.
-    auto permClass = [](const OutputSection &s) -> int
-    {
+    auto permClass = [](const OutputSection &s) -> int {
         if (!s.alloc)
             return 4; // Non-alloc sections (debug) sort last.
         if (s.executable)
@@ -408,17 +374,16 @@ bool mergeSections(const std::vector<ObjFile> &objects,
     // the Mach-O executable (SIGKILL on macOS ARM64).
     std::stable_sort(layout.sections.begin(),
                      layout.sections.end(),
-                     [&permClass](const OutputSection &a, const OutputSection &b)
-                     { return permClass(a) < permClass(b); });
+                     [&permClass](const OutputSection &a, const OutputSection &b) {
+                         return permClass(a) < permClass(b);
+                     });
 
     int prevClass = -1;
-    for (auto &sec : layout.sections)
-    {
+    for (auto &sec : layout.sections) {
         if (!sec.alloc)
             continue; // Non-alloc sections (debug) have no VA.
         int cls = permClass(sec);
-        if (cls != prevClass)
-        {
+        if (cls != prevClass) {
             // Segment boundary — page-align.
             currentAddr = alignUp(currentAddr, layout.pageSize);
             prevClass = cls;

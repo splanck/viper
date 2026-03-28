@@ -36,8 +36,7 @@
 ///          crashes immediately afterwards.  The function is intentionally tiny
 ///          to keep runtime dependencies minimal.
 /// @param value Value to emit for diagnostic output.
-void rt_println_i32(int32_t value)
-{
+void rt_println_i32(int32_t value) {
     printf("%d\n", value);
     fflush(stdout);
 }
@@ -48,8 +47,7 @@ void rt_println_i32(int32_t value)
 ///          Output is flushed immediately to keep debugger tooling responsive
 ///          and deterministic.
 /// @param text Null-terminated string to print (may be null).
-void rt_println_str(const char *text)
-{
+void rt_println_str(const char *text) {
     if (!text)
         text = "";
     printf("%s\n", text);

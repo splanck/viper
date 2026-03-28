@@ -33,8 +33,7 @@
 #include <sstream>
 #include <utility>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 /// @brief Construct a parser for the given source.
 /// @details Instantiates the lexer, stores the diagnostic emitter pointer, and
 ///          seeds the token buffer with the first lookahead token.  The eager
@@ -50,12 +49,10 @@ Parser::Parser(std::string_view src,
                std::vector<std::string> *includeStack,
                bool suppressUndefinedLabelCheck)
     : lexer_(src, file_id), emitter_(emitter), sm_(sm), includeStack_(includeStack),
-      suppressUndefinedNamedLabelCheck_(suppressUndefinedLabelCheck)
-{
+      suppressUndefinedNamedLabelCheck_(suppressUndefinedLabelCheck) {
     tokens_.push_back(lexer_.next());
 
-    if (il::frontends::basic::FrontendOptions::enableRuntimeNamespaces())
-    {
+    if (il::frontends::basic::FrontendOptions::enableRuntimeNamespaces()) {
         knownNamespaces_.insert("Viper");
     }
 
@@ -64,25 +61,19 @@ Parser::Parser(std::string_view src,
     prescanProcedureNames(src, file_id);
 }
 
-void Parser::prescanProcedureNames(std::string_view src, uint32_t file_id)
-{
+void Parser::prescanProcedureNames(std::string_view src, uint32_t file_id) {
     Lexer scanner(src, file_id);
     Token tok = scanner.next();
-    while (tok.kind != TokenKind::EndOfFile)
-    {
+    while (tok.kind != TokenKind::EndOfFile) {
         // Look for SUB <ident> or FUNCTION <ident>
-        if (tok.kind == TokenKind::KeywordSub || tok.kind == TokenKind::KeywordFunction)
-        {
+        if (tok.kind == TokenKind::KeywordSub || tok.kind == TokenKind::KeywordFunction) {
             Token next = scanner.next();
-            if (next.kind == TokenKind::Identifier)
-            {
+            if (next.kind == TokenKind::Identifier) {
                 // Register the procedure name for parenthesis-free call detection.
                 knownProcedures_.insert(next.lexeme);
             }
             tok = next;
-        }
-        else
-        {
+        } else {
             tok = scanner.next();
         }
     }
@@ -94,8 +85,7 @@ void Parser::prescanProcedureNames(std::string_view src, uint32_t file_id)
 ///          Exposing the sequencer by value keeps the API ergonomic while still
 ///          encapsulating token-buffer access.
 /// @return Sequencer that shares access to the parser's token stream.
-StatementSequencer Parser::statementSequencer()
-{
+StatementSequencer Parser::statementSequencer() {
     return StatementSequencer(*this);
 }
 
@@ -104,8 +94,7 @@ StatementSequencer Parser::statementSequencer()
 ///          ensuring no collision with user-defined numeric labels.  Used during
 ///          parsing to generate internal labels for unlabeled BASIC statements.
 /// @return Newly allocated label number guaranteed not to conflict with any used labels.
-int Parser::allocateSyntheticLabelNumber()
-{
+int Parser::allocateSyntheticLabelNumber() {
     while (usedLabelNumbers_.contains(nextSyntheticLabel_))
         ++nextSyntheticLabel_;
     return nextSyntheticLabel_++;
@@ -118,8 +107,7 @@ int Parser::allocateSyntheticLabelNumber()
 ///          to labels that haven't been defined yet.
 /// @param name Label identifier from BASIC source.
 /// @return The label number (existing or newly allocated).
-int Parser::ensureLabelNumber(const std::string &name)
-{
+int Parser::ensureLabelNumber(const std::string &name) {
     auto it = namedLabels_.find(name);
     if (it != namedLabels_.end())
         return it->second.number;
@@ -138,8 +126,7 @@ int Parser::ensureLabelNumber(const std::string &name)
 ///          reference), false otherwise.
 /// @param name Label identifier to query.
 /// @return True if the label has been registered; false if unknown.
-bool Parser::hasLabelName(const std::string &name) const
-{
+bool Parser::hasLabelName(const std::string &name) const {
     return namedLabels_.find(name) != namedLabels_.end();
 }
 
@@ -149,8 +136,7 @@ bool Parser::hasLabelName(const std::string &name) const
 ///          callers to distinguish between undefined labels and valid entries.
 /// @param name Label identifier to look up.
 /// @return Label number if the label exists, std::nullopt otherwise.
-std::optional<int> Parser::lookupLabelNumber(const std::string &name) const
-{
+std::optional<int> Parser::lookupLabelNumber(const std::string &name) const {
     auto it = namedLabels_.find(name);
     if (it == namedLabels_.end())
         return std::nullopt;
@@ -163,12 +149,10 @@ std::optional<int> Parser::lookupLabelNumber(const std::string &name) const
 ///          diagnostic error.  This enables detection of duplicate label definitions.
 /// @param tok Token containing the label name and source location.
 /// @param labelNumber The numeric label number associated with this named label.
-void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
-{
+void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber) {
     usedLabelNumbers_.insert(labelNumber);
     auto it = namedLabels_.find(tok.lexeme);
-    if (it == namedLabels_.end())
-    {
+    if (it == namedLabels_.end()) {
         NamedLabelEntry entry{};
         entry.number = labelNumber;
         entry.defined = true;
@@ -177,8 +161,7 @@ void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
         return;
     }
 
-    if (!it->second.defined)
-    {
+    if (!it->second.defined) {
         it->second.defined = true;
         it->second.definitionLoc = tok.loc;
         return;
@@ -196,12 +179,10 @@ void Parser::noteNamedLabelDefinition(const Token &tok, int labelNumber)
 ///          GOTO/GOSUB appears before the label definition.
 /// @param tok Token containing the label name and reference location.
 /// @param labelNumber The numeric label number associated with this named label.
-void Parser::noteNamedLabelReference(const Token &tok, int labelNumber)
-{
+void Parser::noteNamedLabelReference(const Token &tok, int labelNumber) {
     usedLabelNumbers_.insert(labelNumber);
     auto it = namedLabels_.find(tok.lexeme);
-    if (it == namedLabels_.end())
-    {
+    if (it == namedLabels_.end()) {
         NamedLabelEntry entry{};
         entry.number = labelNumber;
         entry.referenced = true;
@@ -221,8 +202,7 @@ void Parser::noteNamedLabelReference(const Token &tok, int labelNumber)
 ///          label allocation from colliding with user-defined numeric labels.  This
 ///          is called for both label definitions and GOTO/GOSUB targets.
 /// @param labelNumber The numeric label being marked as used.
-void Parser::noteNumericLabelUsage(int labelNumber)
-{
+void Parser::noteNumericLabelUsage(int labelNumber) {
     usedLabelNumbers_.insert(labelNumber);
 }
 
@@ -231,8 +211,7 @@ void Parser::noteNumericLabelUsage(int labelNumber)
 ///          control-flow, runtime, and I/O).  The registry is returned by value
 ///          so callers can store it in static storage without exposing
 ///          construction details.
-Parser::StatementParserRegistry Parser::buildStatementRegistry()
-{
+Parser::StatementParserRegistry Parser::buildStatementRegistry() {
     StatementParserRegistry registry;
     registerCoreParsers(registry);
     registerControlFlowParsers(registry);
@@ -253,12 +232,10 @@ Parser::StatementParserRegistry Parser::buildStatementRegistry()
 ///          necessary.
 ///
 /// @return Parsed BASIC return type or @ref BasicType::Unknown when unrecognised.
-BasicType Parser::parseBasicType()
-{
+BasicType Parser::parseBasicType() {
     const Token &tok = peek();
 
-    if (tok.kind == TokenKind::KeywordBoolean)
-    {
+    if (tok.kind == TokenKind::KeywordBoolean) {
         consume();
         return BasicType::Bool;
     }
@@ -267,23 +244,19 @@ BasicType Parser::parseBasicType()
         return BasicType::Unknown;
 
     std::string upper = string_utils::to_upper(tok.lexeme);
-    if (upper == "INTEGER" || upper == "LONG" || upper == "INT")
-    {
+    if (upper == "INTEGER" || upper == "LONG" || upper == "INT") {
         consume();
         return BasicType::Int;
     }
-    if (upper == "DOUBLE" || upper == "FLOAT" || upper == "SINGLE")
-    {
+    if (upper == "DOUBLE" || upper == "FLOAT" || upper == "SINGLE") {
         consume();
         return BasicType::Float;
     }
-    if (upper == "STRING")
-    {
+    if (upper == "STRING") {
         consume();
         return BasicType::String;
     }
-    if (upper == "BOOLEAN" || upper == "BOOL")
-    {
+    if (upper == "BOOLEAN" || upper == "BOOL") {
         consume();
         return BasicType::Bool;
     }
@@ -294,8 +267,7 @@ BasicType Parser::parseBasicType()
 /// @details Initialises the registry on first use by delegating to
 ///          @ref buildStatementRegistry.  Subsequent calls reuse the static
 ///          instance, ensuring parser construction remains inexpensive.
-const Parser::StatementParserRegistry &Parser::statementRegistry()
-{
+const Parser::StatementParserRegistry &Parser::statementRegistry() {
     static StatementParserRegistry registry = buildStatementRegistry();
     return registry;
 }
@@ -304,16 +276,14 @@ const Parser::StatementParserRegistry &Parser::statementRegistry()
 /// @details Stores the callback in the registry entry associated with @p kind.
 ///          The registry distinguishes between handlers that consume prefixed
 ///          line numbers and those that do not.
-void Parser::StatementParserRegistry::registerHandler(TokenKind kind, NoArgHandler handler)
-{
+void Parser::StatementParserRegistry::registerHandler(TokenKind kind, NoArgHandler handler) {
     entries_[static_cast<std::size_t>(kind)].first = handler;
 }
 
 /// @brief Install a statement handler that receives the parsed line number.
 /// @details Complements the no-argument registration to support statements that
 ///          require awareness of their source line during parsing.
-void Parser::StatementParserRegistry::registerHandler(TokenKind kind, WithLineHandler handler)
-{
+void Parser::StatementParserRegistry::registerHandler(TokenKind kind, WithLineHandler handler) {
     entries_[static_cast<std::size_t>(kind)].second = handler;
 }
 
@@ -324,8 +294,7 @@ std::pair<Parser::StatementParserRegistry::NoArgHandler,
 ///          `{nullptr, nullptr}` when the registry lacks an entry.  The helper
 ///          performs bounds checking to keep invalid token kinds from indexing
 ///          past the table.
-Parser::StatementParserRegistry::lookup(TokenKind kind) const
-{
+Parser::StatementParserRegistry::lookup(TokenKind kind) const {
     const auto index = static_cast<std::size_t>(kind);
     if (index >= entries_.size())
         return {nullptr, nullptr};
@@ -335,8 +304,7 @@ Parser::StatementParserRegistry::lookup(TokenKind kind) const
 /// @brief Test whether any handler exists for the token kind.
 /// @details Uses @ref lookup to fetch the callback pair and reports true when at
 ///          least one handler is registered.
-bool Parser::StatementParserRegistry::contains(TokenKind kind) const
-{
+bool Parser::StatementParserRegistry::contains(TokenKind kind) const {
     const auto [noArg, withLine] = lookup(kind);
     return noArg != nullptr || withLine != nullptr;
 }
@@ -349,25 +317,20 @@ bool Parser::StatementParserRegistry::contains(TokenKind kind) const
 ///          program node inherits its source location from the first token to
 ///          aid diagnostics.
 /// @return Root program node with separated procedure and main sections.
-std::unique_ptr<Program> Parser::parseProgram()
-{
+std::unique_ptr<Program> Parser::parseProgram() {
     auto prog = std::make_unique<Program>();
     prog->loc = peek().loc;
     auto seq = statementSequencer();
-    while (!at(TokenKind::EndOfFile))
-    {
+    while (!at(TokenKind::EndOfFile)) {
         seq.skipLineBreaks();
         if (at(TokenKind::EndOfFile))
             break;
-        if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordAddfile)
-        {
+        if (at(TokenKind::Number) && peek(1).kind == TokenKind::KeywordAddfile) {
             Token numberTok = consume();
             noteNumericLabelUsage(std::atoi(numberTok.lexeme.c_str()));
         }
-        if (at(TokenKind::KeywordAddfile))
-        {
-            if (handleTopLevelAddFile(*prog))
-            {
+        if (at(TokenKind::KeywordAddfile)) {
+            if (handleTopLevelAddFile(*prog)) {
                 // Either handled or diagnosed; continue to next line.
                 continue;
             }
@@ -375,20 +338,15 @@ std::unique_ptr<Program> Parser::parseProgram()
         auto root = seq.parseStatementLine();
         if (!root)
             continue;
-        if (is<FunctionDecl>(*root) || is<SubDecl>(*root))
-        {
+        if (is<FunctionDecl>(*root) || is<SubDecl>(*root)) {
             prog->procs.push_back(std::move(root));
-        }
-        else
-        {
+        } else {
             prog->main.push_back(std::move(root));
         }
     }
-    if (!suppressUndefinedNamedLabelCheck_)
-    {
+    if (!suppressUndefinedNamedLabelCheck_) {
         bool hasUndefinedNamedLabel = false;
-        for (const auto &[name, entry] : namedLabels_)
-        {
+        for (const auto &[name, entry] : namedLabels_) {
             if (!entry.referenced || entry.defined)
                 continue;
             hasUndefinedNamedLabel = true;
@@ -406,8 +364,7 @@ std::unique_ptr<Program> Parser::parseProgram()
 // ADDFILE handling
 // -----------------------------------------------------------------------------
 
-Parser::AddFileResult Parser::processAddFileInclude(const Token &kw)
-{
+Parser::AddFileResult Parser::processAddFileInclude(const Token &kw) {
     AddFileResult result;
 
     Token pathTok = expect(TokenKind::String);
@@ -430,17 +387,13 @@ Parser::AddFileResult Parser::processAddFileInclude(const Token &kw)
     const std::string canonStr = ec ? resolved.lexically_normal().string() : canon.string();
 
     // Check include depth and cycles.
-    if (includeStack_)
-    {
-        if (includeStack_->size() >= static_cast<size_t>(maxIncludeDepth_))
-        {
+    if (includeStack_) {
+        if (includeStack_->size() >= static_cast<size_t>(maxIncludeDepth_)) {
             emitError("B0001", kw.loc, "ADDFILE depth limit exceeded");
             return result;
         }
-        for (const auto &p : *includeStack_)
-        {
-            if (p == canonStr)
-            {
+        for (const auto &p : *includeStack_) {
+            if (p == canonStr) {
                 emitError("B0001", kw.loc, "cyclic ADDFILE detected: " + canonStr);
                 return result;
             }
@@ -450,8 +403,7 @@ Parser::AddFileResult Parser::processAddFileInclude(const Token &kw)
 
     // Read file contents.
     std::ifstream in(canonStr);
-    if (!in)
-    {
+    if (!in) {
         emitError("B0001", kw.loc, "unable to open: " + canonStr);
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
@@ -462,8 +414,7 @@ Parser::AddFileResult Parser::processAddFileInclude(const Token &kw)
     std::string contents = ss.str();
 
     uint32_t newFileId = sm_->addFile(canonStr);
-    if (newFileId == 0)
-    {
+    if (newFileId == 0) {
         emitError("B0005", kw.loc, std::string{il::support::kSourceManagerFileIdOverflowMessage});
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
@@ -480,8 +431,7 @@ Parser::AddFileResult Parser::processAddFileInclude(const Token &kw)
 
     // Parse the included file.
     auto subprog = child.parseProgram();
-    if (!subprog)
-    {
+    if (!subprog) {
         if (includeStack_ && !includeStack_->empty())
             includeStack_->pop_back();
         return result;
@@ -499,15 +449,13 @@ Parser::AddFileResult Parser::processAddFileInclude(const Token &kw)
     return result;
 }
 
-bool Parser::handleTopLevelAddFile(Program &prog)
-{
+bool Parser::handleTopLevelAddFile(Program &prog) {
     if (!at(TokenKind::KeywordAddfile))
         return false;
 
     Token kw = consume(); // ADDFILE
 
-    if (!sm_ || !emitter_)
-    {
+    if (!sm_ || !emitter_) {
         emitError("B0001", kw.loc, "ADDFILE is not supported in this parsing context");
         syncToStmtBoundary();
         if (at(TokenKind::EndOfLine))
@@ -536,15 +484,13 @@ bool Parser::handleTopLevelAddFile(Program &prog)
     return true;
 }
 
-bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst)
-{
+bool Parser::handleAddFileInto(std::vector<StmtPtr> &dst) {
     if (!at(TokenKind::KeywordAddfile))
         return false;
 
     Token kw = consume(); // ADDFILE
 
-    if (!sm_ || !emitter_)
-    {
+    if (!sm_ || !emitter_) {
         emitError("B0001", kw.loc, "ADDFILE is not supported in this parsing context");
         syncToStmtBoundary();
         if (at(TokenKind::EndOfLine))
@@ -579,21 +525,16 @@ void Parser::emitDiagnostic(il::support::Severity sev,
                             std::string_view code,
                             il::support::SourceLoc loc,
                             uint32_t len,
-                            std::string message)
-{
-    if (emitter_)
-    {
+                            std::string message) {
+    if (emitter_) {
         emitter_->emit(sev, std::string(code), loc, len, std::move(message));
-    }
-    else
-    {
+    } else {
         const char *prefix = (sev == il::support::Severity::Warning) ? "Warning" : "Error";
         std::fprintf(stderr, "%s: %s\n", prefix, message.c_str());
     }
 }
 
-void Parser::emitError(std::string_view code, const Token &tok, std::string message)
-{
+void Parser::emitError(std::string_view code, const Token &tok, std::string message) {
     emitDiagnostic(il::support::Severity::Error,
                    code,
                    tok.loc,
@@ -601,13 +542,11 @@ void Parser::emitError(std::string_view code, const Token &tok, std::string mess
                    std::move(message));
 }
 
-void Parser::emitError(std::string_view code, il::support::SourceLoc loc, std::string message)
-{
+void Parser::emitError(std::string_view code, il::support::SourceLoc loc, std::string message) {
     emitDiagnostic(il::support::Severity::Error, code, loc, 0, std::move(message));
 }
 
-void Parser::emitWarning(std::string_view code, const Token &tok, std::string message)
-{
+void Parser::emitWarning(std::string_view code, const Token &tok, std::string message) {
     emitDiagnostic(il::support::Severity::Warning,
                    code,
                    tok.loc,

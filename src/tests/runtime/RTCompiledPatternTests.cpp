@@ -18,10 +18,8 @@
 #include <cstdio>
 #include <cstring>
 
-static void test_result(bool cond, const char *name)
-{
-    if (!cond)
-    {
+static void test_result(bool cond, const char *name) {
+    if (!cond) {
         fprintf(stderr, "FAIL: %s\n", name);
         assert(false);
     }
@@ -31,8 +29,7 @@ static void test_result(bool cond, const char *name)
 // Basic Matching Tests
 //=============================================================================
 
-static void test_basic_match()
-{
+static void test_basic_match() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("hello"));
 
     test_result(rt_compiled_pattern_is_match(pattern, rt_const_cstr("hello world")),
@@ -45,8 +42,7 @@ static void test_basic_match()
                 "basic_match: should match anywhere");
 }
 
-static void test_regex_match()
-{
+static void test_regex_match() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
 
     test_result(rt_compiled_pattern_is_match(pattern, rt_const_cstr("abc123def")),
@@ -56,8 +52,7 @@ static void test_regex_match()
                 "regex_match: should not match without digits");
 }
 
-static void test_get_pattern()
-{
+static void test_get_pattern() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("test\\d+"));
     rt_string pat = rt_compiled_pattern_get_pattern(pattern);
     test_result(strcmp(rt_string_cstr(pat), "test\\d+") == 0,
@@ -68,8 +63,7 @@ static void test_get_pattern()
 // Find Tests
 //=============================================================================
 
-static void test_find()
-{
+static void test_find() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
 
     rt_string result = rt_compiled_pattern_find(pattern, rt_const_cstr("abc123def456"));
@@ -79,16 +73,14 @@ static void test_find()
     test_result(strlen(rt_string_cstr(result)) == 0, "find: should return empty on no match");
 }
 
-static void test_find_from()
-{
+static void test_find_from() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
 
     rt_string result = rt_compiled_pattern_find_from(pattern, rt_const_cstr("abc123def456"), 6);
     test_result(strcmp(rt_string_cstr(result), "456") == 0, "find_from: should find from position");
 }
 
-static void test_find_pos()
-{
+static void test_find_pos() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("world"));
 
     int64_t pos = rt_compiled_pattern_find_pos(pattern, rt_const_cstr("hello world"));
@@ -98,8 +90,7 @@ static void test_find_pos()
     test_result(pos == -1, "find_pos: should return -1 on no match");
 }
 
-static void test_find_all()
-{
+static void test_find_all() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
 
     void *results = rt_compiled_pattern_find_all(pattern, rt_const_cstr("a1b22c333d"));
@@ -118,8 +109,7 @@ static void test_find_all()
 // Capture Group Tests
 //=============================================================================
 
-static void test_captures_basic()
-{
+static void test_captures_basic() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("(\\d+)-(\\d+)"));
 
     void *groups = rt_compiled_pattern_captures(pattern, rt_const_cstr("test 123-456 end"));
@@ -134,16 +124,14 @@ static void test_captures_basic()
     test_result(strcmp(rt_string_cstr(g2), "456") == 0, "captures: group 2");
 }
 
-static void test_captures_no_match()
-{
+static void test_captures_no_match() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("(\\d+)"));
 
     void *groups = rt_compiled_pattern_captures(pattern, rt_const_cstr("no digits"));
     test_result(rt_seq_len(groups) == 0, "captures: should be empty on no match");
 }
 
-static void test_captures_nested()
-{
+static void test_captures_nested() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("((\\w+)@(\\w+))"));
 
     void *groups = rt_compiled_pattern_captures(pattern, rt_const_cstr("email: user@host.com"));
@@ -155,8 +143,7 @@ static void test_captures_nested()
 // Replace Tests
 //=============================================================================
 
-static void test_replace()
-{
+static void test_replace() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
 
     rt_string result =
@@ -165,8 +152,7 @@ static void test_replace()
                 "replace: should replace all matches");
 }
 
-static void test_replace_first()
-{
+static void test_replace_first() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
 
     rt_string result =
@@ -175,8 +161,7 @@ static void test_replace_first()
                 "replace_first: should replace only first match");
 }
 
-static void test_replace_no_match()
-{
+static void test_replace_no_match() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\d+"));
 
     rt_string result =
@@ -189,8 +174,7 @@ static void test_replace_no_match()
 // Split Tests
 //=============================================================================
 
-static void test_split()
-{
+static void test_split() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr(","));
 
     void *parts = rt_compiled_pattern_split(pattern, rt_const_cstr("a,b,c"));
@@ -201,16 +185,14 @@ static void test_split()
     test_result(strcmp(rt_string_cstr((rt_string)rt_seq_get(parts, 2)), "c") == 0, "split: part 2");
 }
 
-static void test_split_regex()
-{
+static void test_split_regex() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("\\s+"));
 
     void *parts = rt_compiled_pattern_split(pattern, rt_const_cstr("one   two\tthree"));
     test_result(rt_seq_len(parts) == 3, "split_regex: should split by whitespace");
 }
 
-static void test_split_limit()
-{
+static void test_split_limit() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr(","));
 
     void *parts = rt_compiled_pattern_split_n(pattern, rt_const_cstr("a,b,c,d,e"), 3);
@@ -228,8 +210,7 @@ static void test_split_limit()
 // Edge Cases
 //=============================================================================
 
-static void test_empty_pattern()
-{
+static void test_empty_pattern() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr(""));
 
     // Empty pattern matches at every position
@@ -237,8 +218,7 @@ static void test_empty_pattern()
                 "empty_pattern: should match");
 }
 
-static void test_empty_text()
-{
+static void test_empty_text() {
     void *pattern = rt_compiled_pattern_new(rt_const_cstr("a"));
 
     test_result(!rt_compiled_pattern_is_match(pattern, rt_const_cstr("")),
@@ -249,8 +229,7 @@ static void test_empty_text()
                 "empty_text: empty pattern should match");
 }
 
-static void test_anchors()
-{
+static void test_anchors() {
     void *start_pattern = rt_compiled_pattern_new(rt_const_cstr("^hello"));
     void *end_pattern = rt_compiled_pattern_new(rt_const_cstr("world$"));
 
@@ -265,8 +244,7 @@ static void test_anchors()
                 "anchors: $ should not match in middle");
 }
 
-static void test_character_classes()
-{
+static void test_character_classes() {
     void *digit = rt_compiled_pattern_new(rt_const_cstr("[0-9]+"));
     void *word = rt_compiled_pattern_new(rt_const_cstr("[a-zA-Z]+"));
     void *not_digit = rt_compiled_pattern_new(rt_const_cstr("[^0-9]+"));
@@ -279,8 +257,7 @@ static void test_character_classes()
                 "char_class: [^0-9] should match non-digits");
 }
 
-static void test_quantifiers()
-{
+static void test_quantifiers() {
     void *star = rt_compiled_pattern_new(rt_const_cstr("ab*c"));
     void *plus = rt_compiled_pattern_new(rt_const_cstr("ab+c"));
     void *quest = rt_compiled_pattern_new(rt_const_cstr("ab?c"));
@@ -312,8 +289,7 @@ static void test_quantifiers()
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     // Basic matching
     test_basic_match();
     test_regex_match();

@@ -39,8 +39,7 @@
 // Internal Structure
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     rt_string source;
     const char *data;
     int64_t len;
@@ -51,8 +50,7 @@ typedef struct
 // Scanner Creation
 //=============================================================================
 
-void *rt_scanner_new(rt_string source)
-{
+void *rt_scanner_new(rt_string source) {
     Scanner *s = (Scanner *)rt_obj_new_i64(0, (int64_t)sizeof(Scanner));
 
     s->source = source;
@@ -69,8 +67,7 @@ void *rt_scanner_new(rt_string source)
 /// @brief Perform scanner pos operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_scanner_pos(void *obj)
-{
+int64_t rt_scanner_pos(void *obj) {
     if (!obj)
         return 0;
     Scanner *s = (Scanner *)obj;
@@ -80,8 +77,7 @@ int64_t rt_scanner_pos(void *obj)
 /// @brief Perform scanner set pos operation.
 /// @param obj
 /// @param pos
-void rt_scanner_set_pos(void *obj, int64_t pos)
-{
+void rt_scanner_set_pos(void *obj, int64_t pos) {
     if (!obj)
         return;
     Scanner *s = (Scanner *)obj;
@@ -95,8 +91,7 @@ void rt_scanner_set_pos(void *obj, int64_t pos)
 /// @brief Perform scanner is end operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_scanner_is_end(void *obj)
-{
+int8_t rt_scanner_is_end(void *obj) {
     if (!obj)
         return 1;
     Scanner *s = (Scanner *)obj;
@@ -106,8 +101,7 @@ int8_t rt_scanner_is_end(void *obj)
 /// @brief Perform scanner remaining operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_scanner_remaining(void *obj)
-{
+int64_t rt_scanner_remaining(void *obj) {
     if (!obj)
         return 0;
     Scanner *s = (Scanner *)obj;
@@ -117,8 +111,7 @@ int64_t rt_scanner_remaining(void *obj)
 /// @brief Perform scanner len operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_scanner_len(void *obj)
-{
+int64_t rt_scanner_len(void *obj) {
     if (!obj)
         return 0;
     Scanner *s = (Scanner *)obj;
@@ -127,8 +120,7 @@ int64_t rt_scanner_len(void *obj)
 
 /// @brief Perform scanner reset operation.
 /// @param obj
-void rt_scanner_reset(void *obj)
-{
+void rt_scanner_reset(void *obj) {
     if (!obj)
         return;
     Scanner *s = (Scanner *)obj;
@@ -142,8 +134,7 @@ void rt_scanner_reset(void *obj)
 /// @brief Perform scanner peek operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_scanner_peek(void *obj)
-{
+int64_t rt_scanner_peek(void *obj) {
     if (!obj)
         return -1;
     Scanner *s = (Scanner *)obj;
@@ -156,8 +147,7 @@ int64_t rt_scanner_peek(void *obj)
 /// @param obj
 /// @param offset
 /// @return Result value.
-int64_t rt_scanner_peek_at(void *obj, int64_t offset)
-{
+int64_t rt_scanner_peek_at(void *obj, int64_t offset) {
     if (!obj)
         return -1;
     Scanner *s = (Scanner *)obj;
@@ -171,8 +161,7 @@ int64_t rt_scanner_peek_at(void *obj, int64_t offset)
 /// @param obj
 /// @param n
 /// @return Result value.
-rt_string rt_scanner_peek_str(void *obj, int64_t n)
-{
+rt_string rt_scanner_peek_str(void *obj, int64_t n) {
     if (!obj || n <= 0)
         return rt_const_cstr("");
     Scanner *s = (Scanner *)obj;
@@ -193,8 +182,7 @@ rt_string rt_scanner_peek_str(void *obj, int64_t n)
 /// @brief Perform scanner read operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_scanner_read(void *obj)
-{
+int64_t rt_scanner_read(void *obj) {
     if (!obj)
         return -1;
     Scanner *s = (Scanner *)obj;
@@ -207,8 +195,7 @@ int64_t rt_scanner_read(void *obj)
 /// @param obj
 /// @param n
 /// @return Result value.
-rt_string rt_scanner_read_str(void *obj, int64_t n)
-{
+rt_string rt_scanner_read_str(void *obj, int64_t n) {
     if (!obj || n <= 0)
         return rt_const_cstr("");
     Scanner *s = (Scanner *)obj;
@@ -228,15 +215,13 @@ rt_string rt_scanner_read_str(void *obj, int64_t n)
 /// @param obj
 /// @param delim
 /// @return Result value.
-rt_string rt_scanner_read_until(void *obj, int64_t delim)
-{
+rt_string rt_scanner_read_until(void *obj, int64_t delim) {
     if (!obj)
         return rt_const_cstr("");
     Scanner *s = (Scanner *)obj;
 
     int64_t start = s->pos;
-    while (s->pos < s->len && (unsigned char)s->data[s->pos] != (unsigned char)delim)
-    {
+    while (s->pos < s->len && (unsigned char)s->data[s->pos] != (unsigned char)delim) {
         s->pos++;
     }
 
@@ -249,8 +234,7 @@ rt_string rt_scanner_read_until(void *obj, int64_t delim)
 /// @param obj
 /// @param delims
 /// @return Result value.
-rt_string rt_scanner_read_until_any(void *obj, rt_string delims)
-{
+rt_string rt_scanner_read_until_any(void *obj, rt_string delims) {
     if (!obj)
         return rt_const_cstr("");
     Scanner *s = (Scanner *)obj;
@@ -259,14 +243,11 @@ rt_string rt_scanner_read_until_any(void *obj, rt_string delims)
     int64_t delim_len = rt_str_len(delims);
 
     int64_t start = s->pos;
-    while (s->pos < s->len)
-    {
+    while (s->pos < s->len) {
         char c = s->data[s->pos];
         int found = 0;
-        for (int64_t i = 0; i < delim_len; i++)
-        {
-            if (c == delim_str[i])
-            {
+        for (int64_t i = 0; i < delim_len; i++) {
+            if (c == delim_str[i]) {
                 found = 1;
                 break;
             }
@@ -285,15 +266,13 @@ rt_string rt_scanner_read_until_any(void *obj, rt_string delims)
 /// @param obj
 /// @param (*pred
 /// @return Result value.
-rt_string rt_scanner_read_while(void *obj, int8_t (*pred)(int64_t))
-{
+rt_string rt_scanner_read_while(void *obj, int8_t (*pred)(int64_t)) {
     if (!obj || !pred)
         return rt_const_cstr("");
     Scanner *s = (Scanner *)obj;
 
     int64_t start = s->pos;
-    while (s->pos < s->len && pred((unsigned char)s->data[s->pos]))
-    {
+    while (s->pos < s->len && pred((unsigned char)s->data[s->pos])) {
         s->pos++;
     }
 
@@ -310,8 +289,7 @@ rt_string rt_scanner_read_while(void *obj, int8_t (*pred)(int64_t))
 /// @param obj
 /// @param c
 /// @return Result value.
-int8_t rt_scanner_match(void *obj, int64_t c)
-{
+int8_t rt_scanner_match(void *obj, int64_t c) {
     if (!obj)
         return 0;
     Scanner *s = (Scanner *)obj;
@@ -324,8 +302,7 @@ int8_t rt_scanner_match(void *obj, int64_t c)
 /// @param obj
 /// @param str
 /// @return Result value.
-int8_t rt_scanner_match_str(void *obj, rt_string str)
-{
+int8_t rt_scanner_match_str(void *obj, rt_string str) {
     if (!obj)
         return 0;
     Scanner *s = (Scanner *)obj;
@@ -343,8 +320,7 @@ int8_t rt_scanner_match_str(void *obj, rt_string str)
 /// @param obj
 /// @param c
 /// @return Result value.
-int8_t rt_scanner_accept(void *obj, int64_t c)
-{
+int8_t rt_scanner_accept(void *obj, int64_t c) {
     if (!rt_scanner_match(obj, c))
         return 0;
     Scanner *s = (Scanner *)obj;
@@ -356,8 +332,7 @@ int8_t rt_scanner_accept(void *obj, int64_t c)
 /// @param obj
 /// @param str
 /// @return Result value.
-int8_t rt_scanner_accept_str(void *obj, rt_string str)
-{
+int8_t rt_scanner_accept_str(void *obj, rt_string str) {
     if (!rt_scanner_match_str(obj, str))
         return 0;
     Scanner *s = (Scanner *)obj;
@@ -369,8 +344,7 @@ int8_t rt_scanner_accept_str(void *obj, rt_string str)
 /// @param obj
 /// @param chars
 /// @return Result value.
-int8_t rt_scanner_accept_any(void *obj, rt_string chars)
-{
+int8_t rt_scanner_accept_any(void *obj, rt_string chars) {
     if (!obj)
         return 0;
     Scanner *s = (Scanner *)obj;
@@ -381,10 +355,8 @@ int8_t rt_scanner_accept_any(void *obj, rt_string chars)
     int64_t char_len = rt_str_len(chars);
     char c = s->data[s->pos];
 
-    for (int64_t i = 0; i < char_len; i++)
-    {
-        if (c == char_str[i])
-        {
+    for (int64_t i = 0; i < char_len; i++) {
+        if (c == char_str[i]) {
             s->pos++;
             return 1;
         }
@@ -399,8 +371,7 @@ int8_t rt_scanner_accept_any(void *obj, rt_string chars)
 /// @brief Perform scanner skip operation.
 /// @param obj
 /// @param n
-void rt_scanner_skip(void *obj, int64_t n)
-{
+void rt_scanner_skip(void *obj, int64_t n) {
     if (!obj || n <= 0)
         return;
     Scanner *s = (Scanner *)obj;
@@ -412,15 +383,13 @@ void rt_scanner_skip(void *obj, int64_t n)
 /// @brief Perform scanner skip whitespace operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_scanner_skip_whitespace(void *obj)
-{
+int64_t rt_scanner_skip_whitespace(void *obj) {
     if (!obj)
         return 0;
     Scanner *s = (Scanner *)obj;
 
     int64_t start = s->pos;
-    while (s->pos < s->len)
-    {
+    while (s->pos < s->len) {
         char c = s->data[s->pos];
         if (c == ' ' || c == '\t' || c == '\n' || c == '\r')
             s->pos++;
@@ -434,15 +403,13 @@ int64_t rt_scanner_skip_whitespace(void *obj)
 /// @param obj
 /// @param (*pred
 /// @return Result value.
-int64_t rt_scanner_skip_while(void *obj, int8_t (*pred)(int64_t))
-{
+int64_t rt_scanner_skip_while(void *obj, int8_t (*pred)(int64_t)) {
     if (!obj || !pred)
         return 0;
     Scanner *s = (Scanner *)obj;
 
     int64_t start = s->pos;
-    while (s->pos < s->len && pred((unsigned char)s->data[s->pos]))
-    {
+    while (s->pos < s->len && pred((unsigned char)s->data[s->pos])) {
         s->pos++;
     }
     return s->pos - start;
@@ -455,8 +422,7 @@ int64_t rt_scanner_skip_while(void *obj, int8_t (*pred)(int64_t))
 /// @brief Perform scanner read ident operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_scanner_read_ident(void *obj)
-{
+rt_string rt_scanner_read_ident(void *obj) {
     if (!obj)
         return rt_const_cstr("");
     Scanner *s = (Scanner *)obj;
@@ -472,8 +438,7 @@ rt_string rt_scanner_read_ident(void *obj)
     int64_t start = s->pos;
     s->pos++;
 
-    while (s->pos < s->len)
-    {
+    while (s->pos < s->len) {
         c = s->data[s->pos];
         if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_')
             s->pos++;
@@ -487,8 +452,7 @@ rt_string rt_scanner_read_ident(void *obj)
 /// @brief Perform scanner read int operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_scanner_read_int(void *obj)
-{
+rt_string rt_scanner_read_int(void *obj) {
     if (!obj)
         return rt_const_cstr("");
     Scanner *s = (Scanner *)obj;
@@ -499,25 +463,21 @@ rt_string rt_scanner_read_int(void *obj)
     int64_t start = s->pos;
 
     // Optional sign
-    if (s->data[s->pos] == '+' || s->data[s->pos] == '-')
-    {
+    if (s->data[s->pos] == '+' || s->data[s->pos] == '-') {
         s->pos++;
-        if (s->pos >= s->len || !(s->data[s->pos] >= '0' && s->data[s->pos] <= '9'))
-        {
+        if (s->pos >= s->len || !(s->data[s->pos] >= '0' && s->data[s->pos] <= '9')) {
             s->pos = start;
             return rt_const_cstr("");
         }
     }
 
     // Must have at least one digit
-    if (!(s->data[s->pos] >= '0' && s->data[s->pos] <= '9'))
-    {
+    if (!(s->data[s->pos] >= '0' && s->data[s->pos] <= '9')) {
         s->pos = start;
         return rt_const_cstr("");
     }
 
-    while (s->pos < s->len && s->data[s->pos] >= '0' && s->data[s->pos] <= '9')
-    {
+    while (s->pos < s->len && s->data[s->pos] >= '0' && s->data[s->pos] <= '9') {
         s->pos++;
     }
 
@@ -527,8 +487,7 @@ rt_string rt_scanner_read_int(void *obj)
 /// @brief Perform scanner read number operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_scanner_read_number(void *obj)
-{
+rt_string rt_scanner_read_number(void *obj) {
     if (!obj)
         return rt_const_cstr("");
     Scanner *s = (Scanner *)obj;
@@ -539,54 +498,44 @@ rt_string rt_scanner_read_number(void *obj)
     int64_t start = s->pos;
 
     // Optional sign
-    if (s->data[s->pos] == '+' || s->data[s->pos] == '-')
-    {
+    if (s->data[s->pos] == '+' || s->data[s->pos] == '-') {
         s->pos++;
     }
 
     // Integer part
     int has_digits = 0;
-    while (s->pos < s->len && s->data[s->pos] >= '0' && s->data[s->pos] <= '9')
-    {
+    while (s->pos < s->len && s->data[s->pos] >= '0' && s->data[s->pos] <= '9') {
         s->pos++;
         has_digits = 1;
     }
 
     // Decimal point and fraction
-    if (s->pos < s->len && s->data[s->pos] == '.')
-    {
+    if (s->pos < s->len && s->data[s->pos] == '.') {
         s->pos++;
-        while (s->pos < s->len && s->data[s->pos] >= '0' && s->data[s->pos] <= '9')
-        {
+        while (s->pos < s->len && s->data[s->pos] >= '0' && s->data[s->pos] <= '9') {
             s->pos++;
             has_digits = 1;
         }
     }
 
     // Exponent - only consume if there are digits after e/E and optional sign
-    if (s->pos < s->len && (s->data[s->pos] == 'e' || s->data[s->pos] == 'E'))
-    {
+    if (s->pos < s->len && (s->data[s->pos] == 'e' || s->data[s->pos] == 'E')) {
         int64_t exp_start = s->pos;
         s->pos++;
         if (s->pos < s->len && (s->data[s->pos] == '+' || s->data[s->pos] == '-'))
             s->pos++;
         // Must have at least one digit after exponent
-        if (s->pos < s->len && s->data[s->pos] >= '0' && s->data[s->pos] <= '9')
-        {
-            while (s->pos < s->len && s->data[s->pos] >= '0' && s->data[s->pos] <= '9')
-            {
+        if (s->pos < s->len && s->data[s->pos] >= '0' && s->data[s->pos] <= '9') {
+            while (s->pos < s->len && s->data[s->pos] >= '0' && s->data[s->pos] <= '9') {
                 s->pos++;
             }
-        }
-        else
-        {
+        } else {
             // No digits after exponent, rollback
             s->pos = exp_start;
         }
     }
 
-    if (!has_digits)
-    {
+    if (!has_digits) {
         s->pos = start;
         return rt_const_cstr("");
     }
@@ -598,8 +547,7 @@ rt_string rt_scanner_read_number(void *obj)
 /// @param obj
 /// @param quote
 /// @return Result value.
-rt_string rt_scanner_read_quoted(void *obj, int64_t quote)
-{
+rt_string rt_scanner_read_quoted(void *obj, int64_t quote) {
     if (!obj)
         return rt_const_cstr("");
     Scanner *s = (Scanner *)obj;
@@ -613,15 +561,12 @@ rt_string rt_scanner_read_quoted(void *obj, int64_t quote)
     char buf[4096];
     int64_t buf_pos = 0;
 
-    while (s->pos < s->len && s->data[s->pos] != (char)quote)
-    {
-        if (s->data[s->pos] == '\\' && s->pos + 1 < s->len)
-        {
+    while (s->pos < s->len && s->data[s->pos] != (char)quote) {
+        if (s->data[s->pos] == '\\' && s->pos + 1 < s->len) {
             s->pos++;
             char esc = s->data[s->pos++];
             char actual;
-            switch (esc)
-            {
+            switch (esc) {
                 case 'n':
                     actual = '\n';
                     break;
@@ -646,9 +591,7 @@ rt_string rt_scanner_read_quoted(void *obj, int64_t quote)
             }
             if (buf_pos < 4095)
                 buf[buf_pos++] = actual;
-        }
-        else
-        {
+        } else {
             if (buf_pos < 4095)
                 buf[buf_pos++] = s->data[s->pos];
             s->pos++;
@@ -666,15 +609,13 @@ rt_string rt_scanner_read_quoted(void *obj, int64_t quote)
 /// @brief Perform scanner read line operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_scanner_read_line(void *obj)
-{
+rt_string rt_scanner_read_line(void *obj) {
     if (!obj)
         return rt_const_cstr("");
     Scanner *s = (Scanner *)obj;
 
     int64_t start = s->pos;
-    while (s->pos < s->len && s->data[s->pos] != '\n' && s->data[s->pos] != '\r')
-    {
+    while (s->pos < s->len && s->data[s->pos] != '\n' && s->data[s->pos] != '\r') {
         s->pos++;
     }
 
@@ -696,31 +637,27 @@ rt_string rt_scanner_read_line(void *obj)
 /// @brief Perform scanner is digit operation.
 /// @param c
 /// @return Result value.
-int8_t rt_scanner_is_digit(int64_t c)
-{
+int8_t rt_scanner_is_digit(int64_t c) {
     return (c >= '0' && c <= '9') ? 1 : 0;
 }
 
 /// @brief Perform scanner is alpha operation.
 /// @param c
 /// @return Result value.
-int8_t rt_scanner_is_alpha(int64_t c)
-{
+int8_t rt_scanner_is_alpha(int64_t c) {
     return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) ? 1 : 0;
 }
 
 /// @brief Perform scanner is alnum operation.
 /// @param c
 /// @return Result value.
-int8_t rt_scanner_is_alnum(int64_t c)
-{
+int8_t rt_scanner_is_alnum(int64_t c) {
     return ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) ? 1 : 0;
 }
 
 /// @brief Perform scanner is space operation.
 /// @param c
 /// @return Result value.
-int8_t rt_scanner_is_space(int64_t c)
-{
+int8_t rt_scanner_is_space(int64_t c) {
     return (c == ' ' || c == '\t' || c == '\n' || c == '\r') ? 1 : 0;
 }

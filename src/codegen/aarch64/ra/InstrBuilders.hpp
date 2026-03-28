@@ -20,21 +20,17 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 
-namespace viper::codegen::aarch64::ra
-{
+namespace viper::codegen::aarch64::ra {
 
-inline MInstr makeMovRR(PhysReg dst, PhysReg src)
-{
+inline MInstr makeMovRR(PhysReg dst, PhysReg src) {
     return MInstr{MOpcode::MovRR, {MOperand::regOp(dst), MOperand::regOp(src)}};
 }
 
-inline MInstr makeLdrFp(PhysReg dst, int offset)
-{
+inline MInstr makeLdrFp(PhysReg dst, int offset) {
     return MInstr{MOpcode::LdrRegFpImm, {MOperand::regOp(dst), MOperand::immOp(offset)}};
 }
 
-inline MInstr makeStrFp(PhysReg src, int offset)
-{
+inline MInstr makeStrFp(PhysReg src, int offset) {
     return MInstr{MOpcode::StrRegFpImm, {MOperand::regOp(src), MOperand::immOp(offset)}};
 }
 

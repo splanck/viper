@@ -20,10 +20,8 @@
 #include <cstring>
 #include <limits>
 
-int main()
-{
-    struct FormatCase
-    {
+int main() {
+    struct FormatCase {
         double value;
         const char *expected;
     };
@@ -39,8 +37,7 @@ int main()
                                                {std::numeric_limits<double>::infinity(), "Inf"},
                                                {-std::numeric_limits<double>::infinity(), "-Inf"}}};
 
-    for (const auto &test : cases)
-    {
+    for (const auto &test : cases) {
         char buffer[64] = {};
         rt_format_f64(test.value, buffer, sizeof(buffer));
         assert(std::strcmp(buffer, test.expected) == 0);

@@ -28,8 +28,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Lower control-flow terminators for all blocks in a function.
 /// @details This must be called AFTER all other instructions have been lowered,

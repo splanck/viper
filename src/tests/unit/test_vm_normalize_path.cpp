@@ -17,8 +17,7 @@
 #include <cassert>
 #include <string>
 
-int main()
-{
+int main() {
     using il::vm::DebugCtrl;
     assert(DebugCtrl::normalizePath(R"(a\b\c)") == "a/b/c");
 #ifdef _WIN32

@@ -40,14 +40,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef enum
-{
-    MV_I64,
-    MV_F64,
-    MV_I1,
-    MV_PTR,
-    MV_STR
-} mv_kind_t;
+typedef enum { MV_I64, MV_F64, MV_I1, MV_PTR, MV_STR } mv_kind_t;
 
 /// @brief Allocate zero-initialized storage for a module variable.
 ///
@@ -56,8 +49,7 @@ typedef enum
 ///          backing storage of a module-level variable of @p size bytes.
 /// @param size Size in bytes of the requested storage.
 /// @return Pointer to zeroed storage; never NULL (traps on failure).
-static void *mv_alloc(size_t size)
-{
+static void *mv_alloc(size_t size) {
     void *p = rt_alloc((int64_t)size);
     if (!p)
         rt_trap("rt_modvar: alloc failed");
@@ -79,20 +71,17 @@ static void *mv_alloc(size_t size)
 static RtModvarEntry *mv_find_or_create(RtContext *ctx,
                                         const char *key,
                                         mv_kind_t kind,
-                                        size_t size)
-{
+                                        size_t size) {
     assert(ctx && "mv_find_or_create called without active RtContext");
 
     // linear search
-    for (size_t i = 0; i < ctx->modvar_count; ++i)
-    {
+    for (size_t i = 0; i < ctx->modvar_count; ++i) {
         RtModvarEntry *e = &ctx->modvar_entries[i];
         if (e->kind == (int)kind && strcmp(e->name, key) == 0)
             return e;
     }
     // grow table
-    if (ctx->modvar_count == ctx->modvar_capacity)
-    {
+    if (ctx->modvar_count == ctx->modvar_capacity) {
         size_t oldCap = ctx->modvar_capacity;
         if (oldCap > (SIZE_MAX / 2))
             rt_trap("rt_modvar: table capacity overflow");
@@ -103,8 +92,7 @@ static RtModvarEntry *mv_find_or_create(RtContext *ctx,
             (RtModvarEntry *)realloc(ctx->modvar_entries, newCap * sizeof(RtModvarEntry));
         if (!np)
             rt_trap("rt_modvar: table alloc failed");
-        if (newCap > oldCap)
-        {
+        if (newCap > oldCap) {
             memset(np + oldCap, 0, (newCap - oldCap) * sizeof(RtModvarEntry));
         }
         ctx->modvar_entries = np;
@@ -132,8 +120,7 @@ static RtModvarEntry *mv_find_or_create(RtContext *ctx,
 /// @param kind Module variable kind tag (I64/F64/I1/PTR/STR).
 /// @param size Size of the storage to allocate for new entries.
 /// @return Stable pointer to the variable’s storage.
-static void *mv_addr(rt_string name, mv_kind_t kind, size_t size)
-{
+static void *mv_addr(rt_string name, mv_kind_t kind, size_t size) {
     RtContext *ctx = rt_get_current_context();
     if (!ctx)
         ctx = rt_legacy_context();
@@ -146,39 +133,33 @@ static void *mv_addr(rt_string name, mv_kind_t kind, size_t size)
 }
 
 /// @brief Address of a 64-bit integer module variable.
-void *rt_modvar_addr_i64(rt_string name)
-{
+void *rt_modvar_addr_i64(rt_string name) {
     return mv_addr(name, MV_I64, 8);
 }
 
 /// @brief Address of a 64-bit floating module variable.
-void *rt_modvar_addr_f64(rt_string name)
-{
+void *rt_modvar_addr_f64(rt_string name) {
     return mv_addr(name, MV_F64, 8);
 }
 
 /// @brief Address of a boolean (i1) module variable.
-void *rt_modvar_addr_i1(rt_string name)
-{
+void *rt_modvar_addr_i1(rt_string name) {
     return mv_addr(name, MV_I1, 1);
 }
 
 /// @brief Address of a pointer module variable.
-void *rt_modvar_addr_ptr(rt_string name)
-{
+void *rt_modvar_addr_ptr(rt_string name) {
     return mv_addr(name, MV_PTR, 8);
 }
 
 /// @brief Address of a string module variable (stores rt_string handle).
-void *rt_modvar_addr_str(rt_string name)
-{
+void *rt_modvar_addr_str(rt_string name) {
     return mv_addr(name, MV_STR, sizeof(void *));
 }
 
 /// @brief Address of a module variable block with arbitrary size.
 /// @details Used for arrays and records that need more than 8 bytes.
-void *rt_modvar_addr_block(rt_string name, int64_t size)
-{
+void *rt_modvar_addr_block(rt_string name, int64_t size) {
     // Use MV_PTR kind for block storage - the size is what matters
     return mv_addr(name, MV_PTR, (size_t)size);
 }

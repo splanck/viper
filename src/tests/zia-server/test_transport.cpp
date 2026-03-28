@@ -30,8 +30,7 @@ using namespace viper::server;
 
 // --- Helper: create a FILE* from a string for reading ---
 
-static FILE *memRead(const std::string &data)
-{
+static FILE *memRead(const std::string &data) {
     FILE *f = std::tmpfile();
     if (!f)
         return nullptr;
@@ -42,13 +41,11 @@ static FILE *memRead(const std::string &data)
 
 // --- Helper: read all content from a FILE* ---
 
-static std::string memReadAll(FILE *f)
-{
+static std::string memReadAll(FILE *f) {
     std::rewind(f);
     std::string result;
     char buf[256];
-    while (true)
-    {
+    while (true) {
         size_t n = std::fread(buf, 1, sizeof(buf), f);
         if (n == 0)
             break;
@@ -59,8 +56,7 @@ static std::string memReadAll(FILE *f)
 
 // ===== MCP Transport =====
 
-TEST(McpTransport, ReadSingleMessage)
-{
+TEST(McpTransport, ReadSingleMessage) {
     FILE *in = memRead("{\"jsonrpc\":\"2.0\"}\n");
     ASSERT_TRUE(in != nullptr);
     FILE *out = std::tmpfile();
@@ -74,8 +70,7 @@ TEST(McpTransport, ReadSingleMessage)
     std::fclose(out);
 }
 
-TEST(McpTransport, ReadMultipleMessages)
-{
+TEST(McpTransport, ReadMultipleMessages) {
     FILE *in = memRead("{\"a\":1}\n{\"b\":2}\n");
     ASSERT_TRUE(in != nullptr);
     FILE *out = std::tmpfile();
@@ -95,8 +90,7 @@ TEST(McpTransport, ReadMultipleMessages)
     std::fclose(out);
 }
 
-TEST(McpTransport, ReadCRLF)
-{
+TEST(McpTransport, ReadCRLF) {
     FILE *in = memRead("{\"x\":1}\r\n");
     ASSERT_TRUE(in != nullptr);
     FILE *out = std::tmpfile();
@@ -110,8 +104,7 @@ TEST(McpTransport, ReadCRLF)
     std::fclose(out);
 }
 
-TEST(McpTransport, SkipsEmptyLines)
-{
+TEST(McpTransport, SkipsEmptyLines) {
     FILE *in = memRead("\n\n{\"x\":1}\n\n");
     ASSERT_TRUE(in != nullptr);
     FILE *out = std::tmpfile();
@@ -125,8 +118,7 @@ TEST(McpTransport, SkipsEmptyLines)
     std::fclose(out);
 }
 
-TEST(McpTransport, WriteMessage)
-{
+TEST(McpTransport, WriteMessage) {
     FILE *in = memRead("");
     FILE *out = std::tmpfile();
     ASSERT_TRUE(out != nullptr);
@@ -141,8 +133,7 @@ TEST(McpTransport, WriteMessage)
     std::fclose(out);
 }
 
-TEST(McpTransport, EndOfFile)
-{
+TEST(McpTransport, EndOfFile) {
     FILE *in = memRead("");
     FILE *out = std::tmpfile();
 
@@ -156,8 +147,7 @@ TEST(McpTransport, EndOfFile)
 
 // ===== LSP Transport =====
 
-TEST(LspTransport, ReadSingleMessage)
-{
+TEST(LspTransport, ReadSingleMessage) {
     std::string data = "Content-Length: 18\r\n\r\n{\"jsonrpc\":\"2.0\"}";
     // Note: the JSON is 17 chars, but let's use exact length
     std::string json = "{\"jsonrpc\":\"2.0\"}";
@@ -176,8 +166,7 @@ TEST(LspTransport, ReadSingleMessage)
     std::fclose(out);
 }
 
-TEST(LspTransport, ReadMultipleMessages)
-{
+TEST(LspTransport, ReadMultipleMessages) {
     std::string json1 = "{\"a\":1}";
     std::string json2 = "{\"b\":2}";
     std::string frame = "Content-Length: " + std::to_string(json1.size()) + "\r\n\r\n" + json1 +
@@ -200,8 +189,7 @@ TEST(LspTransport, ReadMultipleMessages)
     std::fclose(out);
 }
 
-TEST(LspTransport, WriteMessage)
-{
+TEST(LspTransport, WriteMessage) {
     FILE *in = memRead("");
     FILE *out = std::tmpfile();
     ASSERT_TRUE(out != nullptr);
@@ -216,8 +204,7 @@ TEST(LspTransport, WriteMessage)
     std::fclose(out);
 }
 
-TEST(LspTransport, IgnoresOtherHeaders)
-{
+TEST(LspTransport, IgnoresOtherHeaders) {
     std::string json = "{\"x\":1}";
     std::string frame =
         "Content-Type: application/json\r\nContent-Length: " + std::to_string(json.size()) +
@@ -238,8 +225,7 @@ TEST(LspTransport, IgnoresOtherHeaders)
 
 // ===== JSON-RPC =====
 
-TEST(JsonRpc, ParseRequest)
-{
+TEST(JsonRpc, ParseRequest) {
     auto msg = JsonValue::parse(
         "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"x\":1}}");
     JsonRpcRequest req;
@@ -250,8 +236,7 @@ TEST(JsonRpc, ParseRequest)
     EXPECT_FALSE(req.isNotification());
 }
 
-TEST(JsonRpc, ParseNotification)
-{
+TEST(JsonRpc, ParseNotification) {
     auto msg = JsonValue::parse("{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"}");
     JsonRpcRequest req;
     EXPECT_TRUE(parseRequest(msg, req));
@@ -259,23 +244,20 @@ TEST(JsonRpc, ParseNotification)
     EXPECT_TRUE(req.isNotification());
 }
 
-TEST(JsonRpc, ParseRequestStringId)
-{
+TEST(JsonRpc, ParseRequestStringId) {
     auto msg = JsonValue::parse("{\"jsonrpc\":\"2.0\",\"id\":\"abc\",\"method\":\"test\"}");
     JsonRpcRequest req;
     EXPECT_TRUE(parseRequest(msg, req));
     EXPECT_EQ(req.id.asString(), "abc");
 }
 
-TEST(JsonRpc, ParseInvalidNoMethod)
-{
+TEST(JsonRpc, ParseInvalidNoMethod) {
     auto msg = JsonValue::parse("{\"jsonrpc\":\"2.0\",\"id\":1}");
     JsonRpcRequest req;
     EXPECT_FALSE(parseRequest(msg, req));
 }
 
-TEST(JsonRpc, BuildResponse)
-{
+TEST(JsonRpc, BuildResponse) {
     auto json = buildResponse(JsonValue(1), JsonValue("ok"));
     auto parsed = JsonValue::parse(json);
     EXPECT_EQ(parsed["jsonrpc"].asString(), "2.0");
@@ -283,8 +265,7 @@ TEST(JsonRpc, BuildResponse)
     EXPECT_EQ(parsed["result"].asString(), "ok");
 }
 
-TEST(JsonRpc, BuildError)
-{
+TEST(JsonRpc, BuildError) {
     auto json = buildError(JsonValue(1), kMethodNotFound, "no such method");
     auto parsed = JsonValue::parse(json);
     EXPECT_EQ(parsed["jsonrpc"].asString(), "2.0");
@@ -293,15 +274,13 @@ TEST(JsonRpc, BuildError)
     EXPECT_EQ(parsed["error"]["message"].asString(), "no such method");
 }
 
-TEST(JsonRpc, BuildErrorWithData)
-{
+TEST(JsonRpc, BuildErrorWithData) {
     auto json = buildError(JsonValue(1), kInternalError, "oops", JsonValue("details"));
     auto parsed = JsonValue::parse(json);
     EXPECT_EQ(parsed["error"]["data"].asString(), "details");
 }
 
-TEST(JsonRpc, BuildNotification)
-{
+TEST(JsonRpc, BuildNotification) {
     auto json = buildNotification("textDocument/publishDiagnostics",
                                   JsonValue::object({{"uri", JsonValue("file:///test.zia")}}));
     auto parsed = JsonValue::parse(json);
@@ -311,8 +290,7 @@ TEST(JsonRpc, BuildNotification)
     EXPECT_TRUE(parsed.get("id") == nullptr);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

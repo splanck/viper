@@ -20,13 +20,11 @@
 
 static const char *g_msg = nullptr;
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_msg = msg;
 }
 
-int main()
-{
+int main() {
     (void)rt_abs_i64(LLONG_MIN);
     assert(g_msg && std::strcmp(g_msg, "rt_abs_i64: overflow") == 0);
     return 0;

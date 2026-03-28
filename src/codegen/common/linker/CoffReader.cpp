@@ -20,11 +20,9 @@
 
 #include <cstring>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
-namespace coff
-{
+namespace coff {
 static constexpr uint16_t IMAGE_FILE_MACHINE_AMD64 = 0x8664;
 static constexpr uint16_t IMAGE_FILE_MACHINE_ARM64 = 0xAA64;
 
@@ -41,8 +39,7 @@ static constexpr uint32_t IMAGE_SCN_MEM_WRITE = 0x80000000;
 
 #pragma pack(push, 1)
 
-struct CoffHeader
-{
+struct CoffHeader {
     uint16_t Machine;
     uint16_t NumberOfSections;
     uint32_t TimeDateStamp;
@@ -52,8 +49,7 @@ struct CoffHeader
     uint16_t Characteristics;
 };
 
-struct SectionHeader
-{
+struct SectionHeader {
     char Name[8];
     uint32_t VirtualSize;
     uint32_t VirtualAddress;
@@ -66,21 +62,17 @@ struct SectionHeader
     uint32_t Characteristics;
 };
 
-struct CoffReloc
-{
+struct CoffReloc {
     uint32_t VirtualAddress;
     uint32_t SymbolTableIndex;
     uint16_t Type;
 };
 
-struct CoffSymbol
-{
-    union
-    {
+struct CoffSymbol {
+    union {
         char ShortName[8];
 
-        struct
-        {
+        struct {
             uint32_t Zeros;
             uint32_t Offset;
         } LongName;
@@ -96,29 +88,24 @@ struct CoffSymbol
 #pragma pack(pop)
 } // namespace coff
 
-static uint32_t readLE32(const uint8_t *p)
-{
+static uint32_t readLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
-static uint16_t readLE16(const uint8_t *p)
-{
+static uint16_t readLE16(const uint8_t *p) {
     return static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8);
 }
 
-template <typename T> static const T *coffAt(const uint8_t *data, size_t size, size_t offset)
-{
+template <typename T> static const T *coffAt(const uint8_t *data, size_t size, size_t offset) {
     if (offset + sizeof(T) > size)
         return nullptr;
     return reinterpret_cast<const T *>(data + offset);
 }
 
 bool readCoffObj(
-    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err)
-{
-    if (size < sizeof(coff::CoffHeader))
-    {
+    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err) {
+    if (size < sizeof(coff::CoffHeader)) {
         err << "error: " << name << ": too small for COFF header\n";
         return false;
     }
@@ -140,10 +127,8 @@ bool readCoffObj(
     if (strTabOff + 4 <= size)
         strTabSize = readLE32(data + strTabOff);
 
-    auto readSymName = [&](const coff::CoffSymbol *sym) -> std::string
-    {
-        if (sym->Name.LongName.Zeros == 0)
-        {
+    auto readSymName = [&](const coff::CoffSymbol *sym) -> std::string {
+        if (sym->Name.LongName.Zeros == 0) {
             // Long name: offset into string table.
             size_t off = strTabOff + sym->Name.LongName.Offset;
             if (off < size)
@@ -162,8 +147,7 @@ bool readCoffObj(
     obj.sections[0].name = "";
 
     const size_t secOff = sizeof(coff::CoffHeader) + hdr->SizeOfOptionalHeader;
-    for (uint16_t i = 0; i < hdr->NumberOfSections; ++i)
-    {
+    for (uint16_t i = 0; i < hdr->NumberOfSections; ++i) {
         const auto *sh =
             coffAt<coff::SectionHeader>(data, size, secOff + i * sizeof(coff::SectionHeader));
         if (!sh)
@@ -172,17 +156,14 @@ bool readCoffObj(
         ObjSection sec;
 
         // Parse section name (may reference string table if starts with '/').
-        if (sh->Name[0] == '/')
-        {
+        if (sh->Name[0] == '/') {
             size_t off = 0;
             for (int c = 1; c < 8 && sh->Name[c] >= '0' && sh->Name[c] <= '9'; ++c)
                 off = off * 10 + (sh->Name[c] - '0');
             size_t pos = strTabOff + off;
             if (pos < size)
                 sec.name = reinterpret_cast<const char *>(data + pos);
-        }
-        else
-        {
+        } else {
             size_t len = 0;
             while (len < 8 && sh->Name[len] != '\0')
                 ++len;
@@ -200,19 +181,15 @@ bool readCoffObj(
         sec.alignment = (alignBits > 0) ? (1u << (alignBits - 1)) : 1;
 
         // Read section data.
-        if (sh->SizeOfRawData > 0 && sh->PointerToRawData + sh->SizeOfRawData <= size)
-        {
+        if (sh->SizeOfRawData > 0 && sh->PointerToRawData + sh->SizeOfRawData <= size) {
             sec.data.assign(data + sh->PointerToRawData,
                             data + sh->PointerToRawData + sh->SizeOfRawData);
-        }
-        else if (sh->Characteristics & coff::IMAGE_SCN_CNT_UNINITIALIZED_DATA)
-        {
+        } else if (sh->Characteristics & coff::IMAGE_SCN_CNT_UNINITIALIZED_DATA) {
             sec.data.resize(sh->VirtualSize, 0);
         }
 
         // Read relocations.
-        for (uint16_t r = 0; r < sh->NumberOfRelocations; ++r)
-        {
+        for (uint16_t r = 0; r < sh->NumberOfRelocations; ++r) {
             const auto *cr = coffAt<coff::CoffReloc>(
                 data, size, sh->PointerToRelocations + r * sizeof(coff::CoffReloc));
             if (!cr)
@@ -224,14 +201,11 @@ bool readCoffObj(
             rel.symIndex = cr->SymbolTableIndex + 1; // +1 because ObjFile has null sym at 0.
 
             // Extract addend from instruction bytes.
-            if (rel.offset + 4 <= sec.data.size())
-            {
+            if (rel.offset + 4 <= sec.data.size()) {
                 int32_t val;
                 std::memcpy(&val, sec.data.data() + rel.offset, 4);
                 rel.addend = val;
-            }
-            else
-            {
+            } else {
                 rel.addend = 0;
             }
 
@@ -242,16 +216,14 @@ bool readCoffObj(
     }
 
     // Parse symbols.
-    if (hdr->NumberOfSymbols > kMaxObjSymbols)
-    {
+    if (hdr->NumberOfSymbols > kMaxObjSymbols) {
         err << "error: " << name << ": symbol count " << hdr->NumberOfSymbols << " exceeds limit\n";
         return false;
     }
     obj.symbols.resize(1); // Null symbol at index 0.
     obj.symbols[0] = ObjSymbol{};
 
-    for (uint32_t i = 0; i < hdr->NumberOfSymbols;)
-    {
+    for (uint32_t i = 0; i < hdr->NumberOfSymbols;) {
         const auto *sym = coffAt<coff::CoffSymbol>(
             data, size, hdr->PointerToSymbolTable + i * sizeof(coff::CoffSymbol));
         if (!sym)
@@ -260,22 +232,15 @@ bool readCoffObj(
         ObjSymbol os;
         os.name = readSymName(sym);
 
-        if (sym->SectionNumber <= 0)
-        {
+        if (sym->SectionNumber <= 0) {
             os.binding = ObjSymbol::Undefined;
             if (sym->StorageClass == coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL)
                 os.binding = ObjSymbol::Weak;
-        }
-        else if (sym->StorageClass == coff::IMAGE_SYM_CLASS_EXTERNAL)
-        {
+        } else if (sym->StorageClass == coff::IMAGE_SYM_CLASS_EXTERNAL) {
             os.binding = ObjSymbol::Global;
-        }
-        else if (sym->StorageClass == coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL)
-        {
+        } else if (sym->StorageClass == coff::IMAGE_SYM_CLASS_WEAK_EXTERNAL) {
             os.binding = ObjSymbol::Weak;
-        }
-        else
-        {
+        } else {
             os.binding = ObjSymbol::Local;
         }
 

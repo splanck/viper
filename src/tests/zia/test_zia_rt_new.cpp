@@ -18,21 +18,17 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// Helper: compile a Zia source string and return whether it succeeded.
-bool compileOk(const std::string &source)
-{
+bool compileOk(const std::string &source) {
     SourceManager sm;
     CompilerInput input{.source = source, .path = "<test>"};
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Compilation failed:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -41,8 +37,7 @@ bool compileOk(const std::string &source)
 }
 
 // A-028: FrozenSet 'new' was rejected because ctor is FromSeq, not New
-TEST(ZiaRtNew, FrozenSetNew)
-{
+TEST(ZiaRtNew, FrozenSetNew) {
     EXPECT_TRUE(compileOk(R"(
 module TestFS;
 bind Viper.Collections;
@@ -55,8 +50,7 @@ func start() {
 }
 
 // A-029: FrozenMap 'new' was rejected because ctor is FromSeqs, not New
-TEST(ZiaRtNew, FrozenMapNew)
-{
+TEST(ZiaRtNew, FrozenMapNew) {
     EXPECT_TRUE(compileOk(R"(
 module TestFM;
 bind Viper.Collections;
@@ -70,8 +64,7 @@ func start() {
 }
 
 // A-031: Version 'new' was rejected because ctor is Parse, not New
-TEST(ZiaRtNew, VersionNew)
-{
+TEST(ZiaRtNew, VersionNew) {
     EXPECT_TRUE(compileOk(R"(
 module TestVer;
 bind Viper.Text;
@@ -83,8 +76,7 @@ func start() {
 }
 
 // A-032: CompiledPattern 'new' — ctor RT_FUNC was missing entirely
-TEST(ZiaRtNew, CompiledPatternNew)
-{
+TEST(ZiaRtNew, CompiledPatternNew) {
     EXPECT_TRUE(compileOk(R"(
 module TestCP;
 bind Viper.Text;
@@ -96,8 +88,7 @@ func start() {
 }
 
 // A-033: Scanner 'new' — ctor RT_FUNC was missing entirely
-TEST(ZiaRtNew, ScannerNew)
-{
+TEST(ZiaRtNew, ScannerNew) {
     EXPECT_TRUE(compileOk(R"(
 module TestScanner;
 bind Viper.Text;
@@ -109,8 +100,7 @@ func start() {
 }
 
 // A-042: DateOnly 'new' — ctor is Today (0-arg factory)
-TEST(ZiaRtNew, DateOnlyNew)
-{
+TEST(ZiaRtNew, DateOnlyNew) {
     EXPECT_TRUE(compileOk(R"(
 module TestDate;
 bind Viper.Time;
@@ -122,8 +112,7 @@ func start() {
 }
 
 // A-050: BinFile 'new' — ctor is Open, not New
-TEST(ZiaRtNew, BinFileNew)
-{
+TEST(ZiaRtNew, BinFileNew) {
     EXPECT_TRUE(compileOk(R"(
 module TestBF;
 bind Viper.IO;
@@ -135,8 +124,7 @@ func start() {
 }
 
 // A-050: LineReader 'new' — ctor is Open, not New
-TEST(ZiaRtNew, LineReaderNew)
-{
+TEST(ZiaRtNew, LineReaderNew) {
     EXPECT_TRUE(compileOk(R"(
 module TestLR;
 bind Viper.IO;
@@ -148,8 +136,7 @@ func start() {
 }
 
 // A-050: LineWriter 'new' — ctor is Open, not New
-TEST(ZiaRtNew, LineWriterNew)
-{
+TEST(ZiaRtNew, LineWriterNew) {
     EXPECT_TRUE(compileOk(R"(
 module TestLW;
 bind Viper.IO;
@@ -162,7 +149,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

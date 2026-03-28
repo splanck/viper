@@ -55,8 +55,7 @@ extern void rt_trap(const char *msg);
 //=============================================================================
 
 /// @brief Get current time in milliseconds from a monotonic clock.
-static int64_t current_time_ms(void)
-{
+static int64_t current_time_ms(void) {
 #if defined(_WIN32)
     static LARGE_INTEGER freq = {0};
     LARGE_INTEGER counter;
@@ -81,29 +80,25 @@ static int64_t current_time_ms(void)
 //=============================================================================
 
 /// @brief A single scheduled task entry.
-typedef struct sched_entry
-{
+typedef struct sched_entry {
     rt_string name;           ///< Retained task name string.
     int64_t due_time_ms;      ///< Absolute time when this task is due.
     struct sched_entry *next; ///< Next entry in linked list.
 } sched_entry;
 
 /// @brief Internal scheduler data.
-typedef struct
-{
+typedef struct {
     sched_entry *head; ///< Head of the linked list of entries.
     int64_t count;     ///< Number of entries in the list.
 } rt_scheduler_data;
 
 /// @brief Finalizer for scheduler objects. Frees all entries.
-static void scheduler_finalizer(void *obj)
-{
+static void scheduler_finalizer(void *obj) {
     if (!obj)
         return;
     rt_scheduler_data *data = (rt_scheduler_data *)obj;
     sched_entry *e = data->head;
-    while (e)
-    {
+    while (e) {
         sched_entry *next = e->next;
         if (e->name)
             rt_string_unref(e->name);
@@ -123,12 +118,10 @@ static void scheduler_finalizer(void *obj)
 /// Allocates and initializes a Scheduler object with no pending tasks.
 ///
 /// @return A new Scheduler object. Traps on allocation failure.
-void *rt_scheduler_new(void)
-{
+void *rt_scheduler_new(void) {
     rt_scheduler_data *data =
         (rt_scheduler_data *)rt_obj_new_i64(0, (int64_t)sizeof(rt_scheduler_data));
-    if (!data)
-    {
+    if (!data) {
         rt_trap("Scheduler: memory allocation failed");
         return NULL;
     }
@@ -146,8 +139,7 @@ void *rt_scheduler_new(void)
 /// @param sched Scheduler pointer.
 /// @param name Task name string. Ignored if NULL.
 /// @param delay_ms Delay in milliseconds from now. Negative values treated as 0.
-void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms)
-{
+void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms) {
     if (!sched || !name)
         return;
     rt_scheduler_data *data = (rt_scheduler_data *)sched;
@@ -160,10 +152,8 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms)
 
     // Check for existing entry with the same name and update it
     sched_entry *e = data->head;
-    while (e)
-    {
-        if (strcmp(rt_string_cstr(e->name), name_cstr) == 0)
-        {
+    while (e) {
+        if (strcmp(rt_string_cstr(e->name), name_cstr) == 0) {
             e->due_time_ms = due;
             return;
         }
@@ -172,8 +162,7 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms)
 
     // Create new entry
     sched_entry *entry = (sched_entry *)malloc(sizeof(sched_entry));
-    if (!entry)
-    {
+    if (!entry) {
         rt_trap("Scheduler.Schedule: memory allocation failed");
         return;
     }
@@ -191,18 +180,15 @@ void rt_scheduler_schedule(void *sched, rt_string name, int64_t delay_ms)
 /// @param sched Scheduler pointer.
 /// @param name Task name to cancel.
 /// @return 1 if a task was found and cancelled, 0 if not found.
-int8_t rt_scheduler_cancel(void *sched, rt_string name)
-{
+int8_t rt_scheduler_cancel(void *sched, rt_string name) {
     if (!sched || !name)
         return 0;
     rt_scheduler_data *data = (rt_scheduler_data *)sched;
     const char *name_cstr = rt_string_cstr(name);
 
     sched_entry **pp = &data->head;
-    while (*pp)
-    {
-        if (strcmp(rt_string_cstr((*pp)->name), name_cstr) == 0)
-        {
+    while (*pp) {
+        if (strcmp(rt_string_cstr((*pp)->name), name_cstr) == 0) {
             sched_entry *e = *pp;
             *pp = e->next;
             rt_string_unref(e->name);
@@ -222,8 +208,7 @@ int8_t rt_scheduler_cancel(void *sched, rt_string name)
 /// @param sched Scheduler pointer.
 /// @param name Task name to check.
 /// @return 1 if due, 0 if not due or not found.
-int8_t rt_scheduler_is_due(void *sched, rt_string name)
-{
+int8_t rt_scheduler_is_due(void *sched, rt_string name) {
     if (!sched || !name)
         return 0;
     rt_scheduler_data *data = (rt_scheduler_data *)sched;
@@ -231,8 +216,7 @@ int8_t rt_scheduler_is_due(void *sched, rt_string name)
     int64_t now = current_time_ms();
 
     sched_entry *e = data->head;
-    while (e)
-    {
+    while (e) {
         if (strcmp(rt_string_cstr(e->name), name_cstr) == 0)
             return now >= e->due_time_ms ? 1 : 0;
         e = e->next;
@@ -247,8 +231,7 @@ int8_t rt_scheduler_is_due(void *sched, rt_string name)
 ///
 /// @param sched Scheduler pointer.
 /// @return Seq of due task name strings. Empty seq if none due.
-void *rt_scheduler_poll(void *sched)
-{
+void *rt_scheduler_poll(void *sched) {
     void *result = rt_seq_new();
     if (!sched)
         return result;
@@ -256,19 +239,15 @@ void *rt_scheduler_poll(void *sched)
     int64_t now = current_time_ms();
 
     sched_entry **pp = &data->head;
-    while (*pp)
-    {
-        if (now >= (*pp)->due_time_ms)
-        {
+    while (*pp) {
+        if (now >= (*pp)->due_time_ms) {
             sched_entry *e = *pp;
             *pp = e->next;
             // Transfer name ownership to the result seq
             rt_seq_push(result, (void *)e->name);
             free(e);
             data->count--;
-        }
-        else
-        {
+        } else {
             pp = &(*pp)->next;
         }
     }
@@ -279,8 +258,7 @@ void *rt_scheduler_poll(void *sched)
 ///
 /// @param sched Scheduler pointer.
 /// @return Count of tasks in the scheduler (both due and not-yet-due).
-int64_t rt_scheduler_pending(void *sched)
-{
+int64_t rt_scheduler_pending(void *sched) {
     if (!sched)
         return 0;
     return ((rt_scheduler_data *)sched)->count;
@@ -291,14 +269,12 @@ int64_t rt_scheduler_pending(void *sched)
 /// Removes all tasks from the scheduler, freeing associated memory.
 ///
 /// @param sched Scheduler pointer.
-void rt_scheduler_clear(void *sched)
-{
+void rt_scheduler_clear(void *sched) {
     if (!sched)
         return;
     rt_scheduler_data *data = (rt_scheduler_data *)sched;
     sched_entry *e = data->head;
-    while (e)
-    {
+    while (e) {
         sched_entry *next = e->next;
         rt_string_unref(e->name);
         free(e);

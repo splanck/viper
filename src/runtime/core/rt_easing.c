@@ -41,48 +41,42 @@
 /// @brief Perform ease linear operation.
 /// @param t
 /// @return Result value.
-double rt_ease_linear(double t)
-{
+double rt_ease_linear(double t) {
     return t;
 }
 
 /// @brief Perform ease in quad operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_quad(double t)
-{
+double rt_ease_in_quad(double t) {
     return t * t;
 }
 
 /// @brief Perform ease out quad operation.
 /// @param t
 /// @return Result value.
-double rt_ease_out_quad(double t)
-{
+double rt_ease_out_quad(double t) {
     return t * (2.0 - t);
 }
 
 /// @brief Perform ease in out quad operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_out_quad(double t)
-{
+double rt_ease_in_out_quad(double t) {
     return t < 0.5 ? 2.0 * t * t : -1.0 + (4.0 - 2.0 * t) * t;
 }
 
 /// @brief Perform ease in cubic operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_cubic(double t)
-{
+double rt_ease_in_cubic(double t) {
     return t * t * t;
 }
 
 /// @brief Perform ease out cubic operation.
 /// @param t
 /// @return Result value.
-double rt_ease_out_cubic(double t)
-{
+double rt_ease_out_cubic(double t) {
     double u = t - 1.0;
     return u * u * u + 1.0;
 }
@@ -90,24 +84,21 @@ double rt_ease_out_cubic(double t)
 /// @brief Perform ease in out cubic operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_out_cubic(double t)
-{
+double rt_ease_in_out_cubic(double t) {
     return t < 0.5 ? 4.0 * t * t * t : (t - 1.0) * (2.0 * t - 2.0) * (2.0 * t - 2.0) + 1.0;
 }
 
 /// @brief Perform ease in quart operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_quart(double t)
-{
+double rt_ease_in_quart(double t) {
     return t * t * t * t;
 }
 
 /// @brief Perform ease out quart operation.
 /// @param t
 /// @return Result value.
-double rt_ease_out_quart(double t)
-{
+double rt_ease_out_quart(double t) {
     double u = t - 1.0;
     return 1.0 - u * u * u * u;
 }
@@ -115,8 +106,7 @@ double rt_ease_out_quart(double t)
 /// @brief Perform ease in out quart operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_out_quart(double t)
-{
+double rt_ease_in_out_quart(double t) {
     double u = t - 1.0;
     return t < 0.5 ? 8.0 * t * t * t * t : 1.0 - 8.0 * u * u * u * u;
 }
@@ -124,48 +114,42 @@ double rt_ease_in_out_quart(double t)
 /// @brief Perform ease in sine operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_sine(double t)
-{
+double rt_ease_in_sine(double t) {
     return 1.0 - cos(t * M_PI / 2.0);
 }
 
 /// @brief Perform ease out sine operation.
 /// @param t
 /// @return Result value.
-double rt_ease_out_sine(double t)
-{
+double rt_ease_out_sine(double t) {
     return sin(t * M_PI / 2.0);
 }
 
 /// @brief Perform ease in out sine operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_out_sine(double t)
-{
+double rt_ease_in_out_sine(double t) {
     return 0.5 * (1.0 - cos(M_PI * t));
 }
 
 /// @brief Perform ease in expo operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_expo(double t)
-{
+double rt_ease_in_expo(double t) {
     return t <= 0.0 ? 0.0 : pow(2.0, 10.0 * (t - 1.0));
 }
 
 /// @brief Perform ease out expo operation.
 /// @param t
 /// @return Result value.
-double rt_ease_out_expo(double t)
-{
+double rt_ease_out_expo(double t) {
     return t >= 1.0 ? 1.0 : 1.0 - pow(2.0, -10.0 * t);
 }
 
 /// @brief Perform ease in out expo operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_out_expo(double t)
-{
+double rt_ease_in_out_expo(double t) {
     if (t <= 0.0)
         return 0.0;
     if (t >= 1.0)
@@ -176,16 +160,14 @@ double rt_ease_in_out_expo(double t)
 /// @brief Perform ease in circ operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_circ(double t)
-{
+double rt_ease_in_circ(double t) {
     return 1.0 - sqrt(1.0 - t * t);
 }
 
 /// @brief Perform ease out circ operation.
 /// @param t
 /// @return Result value.
-double rt_ease_out_circ(double t)
-{
+double rt_ease_out_circ(double t) {
     double u = t - 1.0;
     return sqrt(1.0 - u * u);
 }
@@ -193,8 +175,7 @@ double rt_ease_out_circ(double t)
 /// @brief Perform ease in out circ operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_out_circ(double t)
-{
+double rt_ease_in_out_circ(double t) {
     if (t < 0.5)
         return 0.5 * (1.0 - sqrt(1.0 - 4.0 * t * t));
     double u = 2.0 * t - 2.0;
@@ -208,16 +189,14 @@ double rt_ease_in_out_circ(double t)
 /// @brief Perform ease in back operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_back(double t)
-{
+double rt_ease_in_back(double t) {
     return BACK_C3 * t * t * t - BACK_C1 * t * t;
 }
 
 /// @brief Perform ease out back operation.
 /// @param t
 /// @return Result value.
-double rt_ease_out_back(double t)
-{
+double rt_ease_out_back(double t) {
     double u = t - 1.0;
     return 1.0 + BACK_C3 * u * u * u + BACK_C1 * u * u;
 }
@@ -225,10 +204,8 @@ double rt_ease_out_back(double t)
 /// @brief Perform ease in out back operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_out_back(double t)
-{
-    if (t < 0.5)
-    {
+double rt_ease_in_out_back(double t) {
+    if (t < 0.5) {
         double s = 2.0 * t;
         return 0.5 * (s * s * ((BACK_C2 + 1.0) * s - BACK_C2));
     }
@@ -242,8 +219,7 @@ double rt_ease_in_out_back(double t)
 /// @brief Perform ease in elastic operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_elastic(double t)
-{
+double rt_ease_in_elastic(double t) {
     if (t <= 0.0)
         return 0.0;
     if (t >= 1.0)
@@ -254,8 +230,7 @@ double rt_ease_in_elastic(double t)
 /// @brief Perform ease out elastic operation.
 /// @param t
 /// @return Result value.
-double rt_ease_out_elastic(double t)
-{
+double rt_ease_out_elastic(double t) {
     if (t <= 0.0)
         return 0.0;
     if (t >= 1.0)
@@ -266,8 +241,7 @@ double rt_ease_out_elastic(double t)
 /// @brief Perform ease in out elastic operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_out_elastic(double t)
-{
+double rt_ease_in_out_elastic(double t) {
     if (t <= 0.0)
         return 0.0;
     if (t >= 1.0)
@@ -280,19 +254,16 @@ double rt_ease_in_out_elastic(double t)
 /// @brief Perform ease out bounce operation.
 /// @param t
 /// @return Result value.
-double rt_ease_out_bounce(double t)
-{
+double rt_ease_out_bounce(double t) {
     const double n1 = 7.5625;
     const double d1 = 2.75;
     if (t < 1.0 / d1)
         return n1 * t * t;
-    if (t < 2.0 / d1)
-    {
+    if (t < 2.0 / d1) {
         t -= 1.5 / d1;
         return n1 * t * t + 0.75;
     }
-    if (t < 2.5 / d1)
-    {
+    if (t < 2.5 / d1) {
         t -= 2.25 / d1;
         return n1 * t * t + 0.9375;
     }
@@ -303,16 +274,14 @@ double rt_ease_out_bounce(double t)
 /// @brief Perform ease in bounce operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_bounce(double t)
-{
+double rt_ease_in_bounce(double t) {
     return 1.0 - rt_ease_out_bounce(1.0 - t);
 }
 
 /// @brief Perform ease in out bounce operation.
 /// @param t
 /// @return Result value.
-double rt_ease_in_out_bounce(double t)
-{
+double rt_ease_in_out_bounce(double t) {
     return t < 0.5 ? 0.5 * (1.0 - rt_ease_out_bounce(1.0 - 2.0 * t))
                    : 0.5 * (1.0 + rt_ease_out_bounce(2.0 * t - 1.0));
 }

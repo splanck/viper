@@ -19,19 +19,15 @@
 #include "codegen/aarch64/Coalescer.hpp"
 #include "codegen/aarch64/RegAllocLinear.hpp"
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
-bool RegAllocPass::run(AArch64Module &module, Diagnostics &diags)
-{
-    if (!module.ti)
-    {
+bool RegAllocPass::run(AArch64Module &module, Diagnostics &diags) {
+    if (!module.ti) {
         diags.error("RegAllocPass: ti must be non-null");
         return false;
     }
 
-    for (auto &fn : module.mir)
-    {
+    for (auto &fn : module.mir) {
         // Coalesce MovRR/FMovRR between virtual registers before register
         // allocation to reduce register pressure and eliminate redundant copies.
         coalesce(fn);

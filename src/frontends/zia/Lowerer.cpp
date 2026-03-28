@@ -57,8 +57,7 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include <cctype>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
@@ -66,17 +65,14 @@ using namespace runtime;
 /// @param sema The semantic analyzer providing type and symbol resolution.
 /// @param options Compiler options controlling code generation behaviour.
 Lowerer::Lowerer(Sema &sema, il::support::DiagnosticEngine &diag, CompilerOptions options)
-    : sema_(sema), diag_(diag), options_(options)
-{
-}
+    : sema_(sema), diag_(diag), options_(options) {}
 
 /// @brief Lower a complete Zia module AST to IL.
 /// @details Initializes the IL module, lowers all declarations, processes pending generic
 ///          instantiations, emits string constants, and declares used external functions.
 /// @param module The analyzed module AST to lower.
 /// @return The generated IL module.
-Lowerer::Module Lowerer::lower(ModuleDecl &module)
-{
+Lowerer::Module Lowerer::lower(ModuleDecl &module) {
     // Initialize state
     module_ = std::make_unique<Module>();
     builder_ = std::make_unique<il::build::IRBuilder>(*module_);
@@ -88,8 +84,9 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
     pendingFunctionInstantiations_.clear();
 
     // Setup string table emitter
-    stringTable_.setEmitter([this](const std::string &label, const std::string &content)
-                            { builder_->addGlobalStr(label, content); });
+    stringTable_.setEmitter([this](const std::string &label, const std::string &content) {
+        builder_->addGlobalStr(label, content);
+    });
 
     // Pre-pass 1: register all `final` constants so that entity/function
     // method bodies can reference constants defined later in the same file.
@@ -102,16 +99,14 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
     registerAllTypeLayouts(module.declarations);
 
     // Lower all declarations
-    for (auto &decl : module.declarations)
-    {
+    for (auto &decl : module.declarations) {
         lowerDecl(decl.get());
     }
 
     // Process pending generic entity instantiations
     // These were deferred during expression lowering because we couldn't
     // lower methods while inside another function's body
-    while (!pendingEntityInstantiations_.empty())
-    {
+    while (!pendingEntityInstantiations_.empty()) {
         std::string typeName = pendingEntityInstantiations_.back();
         pendingEntityInstantiations_.pop_back();
 
@@ -125,27 +120,23 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
         bool pushedContext = sema_.pushSubstitutionContext(typeName);
 
         // Lower all methods for this instantiated generic entity
-        for (auto *method : info.methods)
-        {
+        for (auto *method : info.methods) {
             lowerMethodDecl(*method, typeName, true);
         }
 
         // Emit vtable
-        if (!info.vtable.empty())
-        {
+        if (!info.vtable.empty()) {
             emitVtable(info);
         }
 
         // Pop substitution context if we pushed one
-        if (pushedContext)
-        {
+        if (pushedContext) {
             sema_.popTypeParams();
         }
     }
 
     // Process pending generic value type instantiations
-    while (!pendingValueInstantiations_.empty())
-    {
+    while (!pendingValueInstantiations_.empty()) {
         std::string typeName = pendingValueInstantiations_.back();
         pendingValueInstantiations_.pop_back();
 
@@ -159,21 +150,18 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
         bool pushedContext = sema_.pushSubstitutionContext(typeName);
 
         // Lower all methods for this instantiated generic value type
-        for (auto *method : info.methods)
-        {
+        for (auto *method : info.methods) {
             lowerMethodDecl(*method, typeName, false);
         }
 
         // Pop substitution context if we pushed one
-        if (pushedContext)
-        {
+        if (pushedContext) {
             sema_.popTypeParams();
         }
     }
 
     // Process pending generic function instantiations
-    while (!pendingFunctionInstantiations_.empty())
-    {
+    while (!pendingFunctionInstantiations_.empty()) {
         auto [mangledName, decl] = pendingFunctionInstantiations_.back();
         pendingFunctionInstantiations_.pop_back();
 
@@ -188,8 +176,7 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
     emitItableInit();
 
     // Add extern declarations for used runtime functions
-    for (const auto &externName : usedExterns_)
-    {
+    for (const auto &externName : usedExterns_) {
         // Skip functions defined in this module
         if (definedFunctions_.count(externName) > 0)
             continue;
@@ -197,12 +184,10 @@ Lowerer::Module Lowerer::lower(ModuleDecl &module)
         // Skip methods defined in this module (value type and entity type methods)
         bool isLocalMethod = false;
         auto dotPos = externName.find('.');
-        if (dotPos != std::string::npos)
-        {
+        if (dotPos != std::string::npos) {
             std::string typeName = externName.substr(0, dotPos);
             if (getOrCreateValueTypeInfo(typeName) ||
-                entityTypes_.find(typeName) != entityTypes_.end())
-            {
+                entityTypes_.find(typeName) != entityTypes_.end()) {
                 isLocalMethod = true;
             }
         }

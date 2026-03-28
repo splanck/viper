@@ -29,10 +29,8 @@
 
 #include <sstream>
 
-namespace il::frontends::basic::sem
-{
-namespace
-{
+namespace il::frontends::basic::sem {
+namespace {
 using Type = SemanticAnalyzer::Type;
 
 /// @brief Check if the provided semantic type is treated as numeric.
@@ -45,8 +43,7 @@ using Type = SemanticAnalyzer::Type;
 ///
 /// @param type Semantic type associated with the operand expression.
 /// @return True when @p type is integer, float, or unknown.
-constexpr bool isNumericType(Type type) noexcept
-{
+constexpr bool isNumericType(Type type) noexcept {
     return type == Type::Int || type == Type::Float || type == Type::Unknown;
 }
 } // namespace
@@ -73,20 +70,17 @@ constexpr bool isNumericType(Type type) noexcept
 /// @param expr Unary expression AST node being checked.
 /// @return Type category of the expression, or Unknown when diagnostics prevent
 ///         classification.
-SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryExpr &expr)
-{
+SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryExpr &expr) {
     ExprCheckContext context(analyzer);
     Type operandType = Type::Unknown;
     if (expr.expr)
         operandType = context.evaluate(*expr.expr);
 
-    switch (expr.op)
-    {
+    switch (expr.op) {
         case UnaryExpr::Op::LogicalNot:
             // NOT accepts BOOLEAN or INTEGER
             if (operandType != Type::Unknown && operandType != Type::Bool &&
-                operandType != Type::Int)
-            {
+                operandType != Type::Int) {
                 std::ostringstream oss;
                 oss << "NOT requires a BOOLEAN operand, got "
                     << semantic_analyzer_detail::semanticTypeName(operandType) << '.';
@@ -101,8 +95,7 @@ SemanticAnalyzer::Type analyzeUnaryExpr(SemanticAnalyzer &analyzer, const UnaryE
 
         case UnaryExpr::Op::Plus:
         case UnaryExpr::Op::Negate:
-            if (operandType != Type::Unknown && !isNumericType(operandType))
-            {
+            if (operandType != Type::Unknown && !isNumericType(operandType)) {
                 std::ostringstream oss;
                 const char opChar = (expr.op == UnaryExpr::Op::Negate) ? '-' : '+';
                 oss << "unary " << opChar << " requires a NUMERIC operand, got "

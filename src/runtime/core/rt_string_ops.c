@@ -64,8 +64,7 @@ static const size_t kImmortalRefcnt = SIZE_MAX - 1;
 ///          or capacities without duplicating validation logic.
 /// @param s Runtime string handle.
 /// @return Heap header describing the allocation, or `NULL` for literals/embedded.
-static rt_heap_hdr_t *rt_string_header(rt_string s)
-{
+static rt_heap_hdr_t *rt_string_header(rt_string s) {
     if (!s || !s->heap || s->heap == RT_SSO_SENTINEL)
         return NULL;
     assert(s->heap->kind == RT_HEAP_STRING);
@@ -79,8 +78,7 @@ static rt_heap_hdr_t *rt_string_header(rt_string s)
 ///          Null handles yield zero, allowing callers to treat them as empty.
 /// @param s Runtime string handle.
 /// @return Number of bytes in the string, excluding the terminator.
-static size_t rt_string_len_bytes(rt_string s)
-{
+static size_t rt_string_len_bytes(rt_string s) {
     if (!s)
         return 0;
     // Literal strings (heap == NULL) and embedded strings (heap == RT_SSO_SENTINEL)
@@ -96,8 +94,7 @@ static size_t rt_string_len_bytes(rt_string s)
 ///          shared globally without participating in retain/release bookkeeping.
 /// @param hdr Heap header describing the string allocation.
 /// @return Non-zero when the header marks an immortal allocation.
-static int rt_string_is_immortal_hdr(const rt_heap_hdr_t *hdr)
-{
+static int rt_string_is_immortal_hdr(const rt_heap_hdr_t *hdr) {
     if (!hdr)
         return 0;
     return __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) >= kImmortalRefcnt;
@@ -112,8 +109,7 @@ static int rt_string_is_immortal_hdr(const rt_heap_hdr_t *hdr)
 /// @param s Runtime string handle.
 /// @param required_len Total length required (including null terminator capacity).
 /// @return Non-zero if in-place append is possible.
-static int rt_string_can_append_inplace(rt_string s, size_t required_len)
-{
+static int rt_string_can_append_inplace(rt_string s, size_t required_len) {
     rt_heap_hdr_t *hdr = rt_string_header(s);
     if (!hdr)
         return 0; // Not heap-backed
@@ -135,14 +131,12 @@ static int rt_string_can_append_inplace(rt_string s, size_t required_len)
 ///          to the traditional two-allocation approach.
 /// @param len Number of bytes in the string (must be <= RT_SSO_MAX_LEN).
 /// @return Newly allocated embedded string, or NULL on failure.
-static rt_string rt_string_alloc_embedded(size_t len)
-{
+static rt_string rt_string_alloc_embedded(size_t len) {
     assert(len <= RT_SSO_MAX_LEN);
     // Allocate struct + string data + null terminator in one block
     size_t total = sizeof(struct rt_string_impl) + len + 1;
     rt_string s = (rt_string)rt_alloc((int64_t)total);
-    if (!s)
-    {
+    if (!s) {
         rt_trap("rt_string_alloc_embedded: alloc");
         return NULL;
     }
@@ -162,16 +156,14 @@ static rt_string rt_string_alloc_embedded(size_t len)
 ///          produced by @ref rt_heap_alloc.
 /// @param payload Heap-allocated, null-terminated character buffer.
 /// @return Runtime string handle owning the payload, or `NULL` on error.
-static rt_string rt_string_wrap(char *payload)
-{
+static rt_string rt_string_wrap(char *payload) {
     if (!payload)
         return NULL;
     rt_heap_hdr_t *hdr = rt_heap_hdr(payload);
     assert(hdr);
     assert(hdr->kind == RT_HEAP_STRING);
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
-    if (!s)
-    {
+    if (!s) {
         rt_trap("rt_string_wrap: alloc");
         return NULL;
     }
@@ -192,24 +184,20 @@ static rt_string rt_string_wrap(char *payload)
 /// @param len Number of bytes initially considered part of the string.
 /// @param cap Requested capacity (bytes) excluding the implicit terminator.
 /// @return Newly allocated runtime string handle, or `NULL` on failure.
-static rt_string rt_string_alloc(size_t len, size_t cap)
-{
-    if (len >= SIZE_MAX)
-    {
+static rt_string rt_string_alloc(size_t len, size_t cap) {
+    if (len >= SIZE_MAX) {
         rt_trap("rt_string_alloc: length overflow");
         return NULL;
     }
     // Use embedded allocation for small strings
-    if (len <= RT_SSO_MAX_LEN && cap <= RT_SSO_MAX_LEN + 1)
-    {
+    if (len <= RT_SSO_MAX_LEN && cap <= RT_SSO_MAX_LEN + 1) {
         return rt_string_alloc_embedded(len);
     }
     size_t required = len + 1;
     if (cap < required)
         cap = required;
     char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, len, cap);
-    if (!payload)
-    {
+    if (!payload) {
         rt_trap("out of memory");
         return NULL;
     }
@@ -222,8 +210,7 @@ static rt_string rt_string_alloc(size_t len, size_t cap)
 ///          receives the same handle.  The immortal reference count avoids
 ///          ref-count churn and allows the handle to be cached globally.
 /// @return Runtime string handle that points at an empty immutable string.
-static rt_string rt_empty_string(void)
-{
+static rt_string rt_empty_string(void) {
     static rt_string empty = NULL;
 #if RT_COMPILER_MSVC
     rt_string cached =
@@ -245,8 +232,7 @@ static rt_string rt_empty_string(void)
     __atomic_store_n(&hdr->refcnt, kImmortalRefcnt, __ATOMIC_RELAXED);
 
     rt_string candidate = (rt_string)rt_alloc(sizeof(*candidate));
-    if (!candidate)
-    {
+    if (!candidate) {
         rt_trap("rt_empty_string: alloc");
         return NULL;
     }
@@ -283,8 +269,7 @@ static rt_string rt_empty_string(void)
 /// @param bytes Pointer to the source data.
 /// @param len Number of bytes to copy.
 /// @return Newly allocated runtime string containing the copied bytes.
-rt_string rt_string_from_bytes(const char *bytes, size_t len)
-{
+rt_string rt_string_from_bytes(const char *bytes, size_t len) {
     rt_string s = rt_string_alloc(len, len + 1);
     if (!s)
         return NULL;
@@ -299,13 +284,11 @@ rt_string rt_string_from_bytes(const char *bytes, size_t len)
 /// @param bytes Pointer to the literal data.
 /// @param len Number of bytes in the literal.
 /// @return Runtime string containing the literal data.
-rt_string rt_str_from_lit(const char *bytes, size_t len)
-{
+rt_string rt_str_from_lit(const char *bytes, size_t len) {
     return rt_string_from_bytes(bytes, len);
 }
 
-int8_t rt_string_is_handle(void *p)
-{
+int8_t rt_string_is_handle(void *p) {
     if (!p)
         return 0;
     const rt_string s = (const rt_string)p;
@@ -319,13 +302,11 @@ int8_t rt_string_is_handle(void *p)
 ///          Uses atomic operations for thread-safe reference counting (RACE-003 fix).
 /// @param s Runtime string handle.
 /// @return The same handle for chaining.
-rt_string rt_string_ref(rt_string s)
-{
+rt_string rt_string_ref(rt_string s) {
     if (!s)
         return NULL;
     rt_heap_hdr_t *hdr = rt_string_header(s);
-    if (!hdr)
-    {
+    if (!hdr) {
         // Atomic increment for thread-safe reference counting
         // Skip immortal literals (SIZE_MAX indicates immortal)
 #if RT_COMPILER_MSVC
@@ -352,13 +333,11 @@ rt_string rt_string_ref(rt_string s)
 ///          embedded (SSO) strings, this frees the combined handle+data allocation.
 ///          Uses atomic operations for thread-safe reference counting (RACE-003 fix).
 /// @param s Runtime string handle to release.
-void rt_string_unref(rt_string s)
-{
+void rt_string_unref(rt_string s) {
     if (!s)
         return;
     rt_heap_hdr_t *hdr = rt_string_header(s);
-    if (!hdr)
-    {
+    if (!hdr) {
         // Atomic decrement for thread-safe reference counting
         // Skip immortal literals (SIZE_MAX indicates immortal) and already-zero refs
 #if RT_COMPILER_MSVC
@@ -367,8 +346,7 @@ void rt_string_unref(rt_string s)
             return;
         // Use fetch_sub which returns old value; if old was 1, we decremented to 0
         size_t prev = rt_atomic_fetch_sub_size(&s->literal_refs, 1, __ATOMIC_RELEASE);
-        if (prev == 1)
-        {
+        if (prev == 1) {
             // We held the last reference - ensure all writes are visible before free
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
             free(s);
@@ -379,8 +357,7 @@ void rt_string_unref(rt_string s)
             return;
         // Use fetch_sub which returns old value; if old was 1, we decremented to 0
         size_t prev = __atomic_fetch_sub(&s->literal_refs, 1, __ATOMIC_RELEASE);
-        if (prev == 1)
-        {
+        if (prev == 1) {
             // We held the last reference - ensure all writes are visible before free
             __atomic_thread_fence(__ATOMIC_ACQUIRE);
             free(s);
@@ -399,8 +376,7 @@ void rt_string_unref(rt_string s)
 /// @details Present to match historical runtime entry points.  Delegates to
 ///          @ref rt_string_unref.
 /// @param s Runtime string handle.
-void rt_str_release_maybe(rt_string s)
-{
+void rt_str_release_maybe(rt_string s) {
     rt_string_unref(s);
 }
 
@@ -408,8 +384,7 @@ void rt_str_release_maybe(rt_string s)
 /// @details Provides parity with `rt_str_release_maybe` and ignores null
 ///          handles while preserving the return value from @ref rt_string_ref.
 /// @param s Runtime string handle.
-void rt_str_retain_maybe(rt_string s)
-{
+void rt_str_retain_maybe(rt_string s) {
     (void)rt_string_ref(s);
 }
 
@@ -417,8 +392,7 @@ void rt_str_retain_maybe(rt_string s)
 /// @details Calls @ref rt_empty_string to lazily construct and cache the
 ///          immortal empty string instance.
 /// @return Runtime string handle representing "".
-rt_string rt_str_empty(void)
-{
+rt_string rt_str_empty(void) {
     return rt_empty_string();
 }
 
@@ -427,8 +401,7 @@ rt_string rt_str_empty(void)
 ///          64-bit integer to match the runtime ABI.
 /// @param s Runtime string handle.
 /// @return Length in characters (bytes).
-int64_t rt_str_len(rt_string s)
-{
+int64_t rt_str_len(rt_string s) {
     size_t len = rt_string_len_bytes(s);
     if (len > (size_t)INT64_MAX)
         return INT64_MAX;
@@ -439,8 +412,7 @@ int64_t rt_str_len(rt_string s)
 /// @details Null handles are treated as empty to match rt_str_len semantics.
 /// @param s Runtime string handle.
 /// @return 1 if empty; 0 otherwise.
-int64_t rt_str_is_empty(rt_string s)
-{
+int64_t rt_str_is_empty(rt_string s) {
     return rt_str_len(s) == 0 ? 1 : 0;
 }
 
@@ -449,8 +421,7 @@ int64_t rt_str_is_empty(rt_string s)
 ///          handle unchanged. Callers manage ownership according to IL/VM rules.
 /// @param s Runtime string handle.
 /// @return The same handle.
-rt_string rt_str_clone(rt_string s)
-{
+rt_string rt_str_clone(rt_string s) {
     return s;
 }
 
@@ -467,25 +438,21 @@ rt_string rt_str_clone(rt_string s)
 /// @param a First operand; released after concatenation when non-null.
 /// @param b Second operand; released after concatenation when non-null.
 /// @return Newly allocated string containing `a + b`, or `a` reused in-place.
-rt_string rt_str_concat(rt_string a, rt_string b)
-{
+rt_string rt_str_concat(rt_string a, rt_string b) {
     size_t len_a = rt_string_len_bytes(a);
     size_t len_b = rt_string_len_bytes(b);
-    if (len_a > SIZE_MAX - len_b)
-    {
+    if (len_a > SIZE_MAX - len_b) {
         rt_trap("rt_str_concat: length overflow");
         return NULL;
     }
     size_t total = len_a + len_b;
-    if (total == SIZE_MAX)
-    {
+    if (total == SIZE_MAX) {
         rt_trap("rt_str_concat: length overflow");
         return NULL;
     }
 
     // Optimization: append in-place when `a` is uniquely owned with enough capacity
-    if (rt_string_can_append_inplace(a, total + 1))
-    {
+    if (rt_string_can_append_inplace(a, total + 1)) {
         // Append `b` directly into `a`'s buffer
         if (b && b->data && len_b > 0)
             memcpy(a->data + len_a, b->data, len_b);
@@ -527,8 +494,7 @@ rt_string rt_str_concat(rt_string a, rt_string b)
 /// @param start Zero-based starting index (negative values treated as zero).
 /// @param len Requested length (negative values treated as zero).
 /// @return Newly allocated substring or shared handles for empty/full slices.
-rt_string rt_str_substr(rt_string s, int64_t start, int64_t len)
-{
+rt_string rt_str_substr(rt_string s, int64_t start, int64_t len) {
     if (!s)
         rt_trap("rt_str_substr: null");
     if (start < 0)
@@ -558,12 +524,10 @@ rt_string rt_str_substr(rt_string s, int64_t start, int64_t len)
 /// @param s Source string handle.
 /// @param n Number of characters to take from the left.
 /// @return Resulting string.
-rt_string rt_str_left(rt_string s, int64_t n)
-{
+rt_string rt_str_left(rt_string s, int64_t n) {
     if (!s)
         rt_trap("LEFT$: null string");
-    if (n < 0)
-    {
+    if (n < 0) {
         char buf[64];
         char numbuf[32];
         rt_i64_to_cstr(n, numbuf, sizeof(numbuf));
@@ -588,12 +552,10 @@ rt_string rt_str_left(rt_string s, int64_t n)
 /// @param s Source string handle.
 /// @param n Number of characters to take from the right.
 /// @return Resulting string.
-rt_string rt_str_right(rt_string s, int64_t n)
-{
+rt_string rt_str_right(rt_string s, int64_t n) {
     if (!s)
         rt_trap("RIGHT$: null string");
-    if (n < 0)
-    {
+    if (n < 0) {
         char buf[64];
         char numbuf[32];
         rt_i64_to_cstr(n, numbuf, sizeof(numbuf));
@@ -624,12 +586,10 @@ static size_t utf8_char_to_byte_offset(const char *data, size_t byte_len, int64_
 /// @param s Source string handle.
 /// @param start One-based codepoint position.
 /// @return Resulting substring.
-rt_string rt_str_mid(rt_string s, int64_t start)
-{
+rt_string rt_str_mid(rt_string s, int64_t start) {
     if (!s)
         rt_trap("MID$: null string");
-    if (start < 1)
-    {
+    if (start < 1) {
         char buf[64];
         char numbuf[32];
         rt_i64_to_cstr(start, numbuf, sizeof(numbuf));
@@ -655,20 +615,17 @@ rt_string rt_str_mid(rt_string s, int64_t start)
 /// @param start One-based starting position.
 /// @param len Requested substring length.
 /// @return Resulting substring.
-rt_string rt_str_mid_len(rt_string s, int64_t start, int64_t len)
-{
+rt_string rt_str_mid_len(rt_string s, int64_t start, int64_t len) {
     if (!s)
         rt_trap("MID$: null string");
-    if (start < 1)
-    {
+    if (start < 1) {
         char buf[64];
         char numbuf[32];
         rt_i64_to_cstr(start, numbuf, sizeof(numbuf));
         snprintf(buf, sizeof(buf), "MID$: start must be >= 1 (got %s)", numbuf);
         rt_trap(buf);
     }
-    if (len < 0)
-    {
+    if (len < 0) {
         char buf[64];
         char numbuf[32];
         rt_i64_to_cstr(len, numbuf, sizeof(numbuf));
@@ -698,8 +655,7 @@ rt_string rt_str_mid_len(rt_string s, int64_t start, int64_t len)
 /// @param start Zero-based starting offset.
 /// @param needle Needle string to locate.
 /// @return One-based index of the first match, or zero when absent.
-static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)
-{
+static int64_t rt_find(rt_string hay, int64_t start, rt_string needle) {
     if (!hay || !needle)
         return 0;
     if (start < 0)
@@ -720,8 +676,7 @@ static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)
     const char *pos = hay->data + start_idx;
     const char *end = hay->data + hay_len - needle_len + 1;
 
-    while (pos < end)
-    {
+    while (pos < end) {
         pos = memchr(pos, first, (size_t)(end - pos));
         if (!pos)
             return 0;
@@ -738,8 +693,7 @@ static int64_t rt_find(rt_string hay, int64_t start, rt_string needle)
 /// @param hay Haystack string.
 /// @param needle Needle string.
 /// @return One-based index of the first match, or zero when absent.
-int64_t rt_str_index_of(rt_string hay, rt_string needle)
-{
+int64_t rt_str_index_of(rt_string hay, rt_string needle) {
     if (!hay || !needle)
         return 0;
     size_t needle_len = rt_string_len_bytes(needle);
@@ -756,8 +710,7 @@ int64_t rt_str_index_of(rt_string hay, rt_string needle)
 /// @param hay Haystack string.
 /// @param needle Needle string.
 /// @return One-based index of the first match at or after @p start, or zero when absent.
-int64_t rt_str_instr3(int64_t start, rt_string hay, rt_string needle)
-{
+int64_t rt_str_instr3(int64_t start, rt_string hay, rt_string needle) {
     if (!hay || !needle)
         return 0;
     size_t len = rt_string_len_bytes(hay);
@@ -770,13 +723,11 @@ int64_t rt_str_instr3(int64_t start, rt_string hay, rt_string needle)
     return rt_find(hay, pos, needle);
 }
 
-int64_t rt_str_index_of_from(rt_string hay, int64_t start, rt_string needle)
-{
+int64_t rt_str_index_of_from(rt_string hay, int64_t start, rt_string needle) {
     return rt_str_instr3(start, hay, needle);
 }
 
-static int is_trim_ws(char c)
-{
+static int is_trim_ws(char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
 }
 
@@ -785,8 +736,7 @@ static int is_trim_ws(char c)
 ///          materialise the trimmed view.
 /// @param s Source string.
 /// @return Trimmed string handle.
-rt_string rt_str_ltrim(rt_string s)
-{
+rt_string rt_str_ltrim(rt_string s) {
     if (!s)
         rt_trap("rt_str_ltrim: null");
     size_t slen = rt_string_len_bytes(s);
@@ -801,8 +751,7 @@ rt_string rt_str_ltrim(rt_string s)
 ///          the retained prefix.
 /// @param s Source string.
 /// @return Trimmed string handle.
-rt_string rt_str_rtrim(rt_string s)
-{
+rt_string rt_str_rtrim(rt_string s) {
     if (!s)
         rt_trap("rt_str_rtrim: null");
     size_t end = rt_string_len_bytes(s);
@@ -816,8 +765,7 @@ rt_string rt_str_rtrim(rt_string s)
 ///          @ref rt_str_substr to allocate the final result.
 /// @param s Source string.
 /// @return Trimmed string handle.
-rt_string rt_str_trim(rt_string s)
-{
+rt_string rt_str_trim(rt_string s) {
     if (!s)
         rt_trap("rt_str_trim: null");
     size_t slen = rt_string_len_bytes(s);
@@ -835,8 +783,7 @@ rt_string rt_str_trim(rt_string s)
 ///          Non-letter bytes and other Unicode characters pass through unchanged.
 /// @param c Input byte.
 /// @return Uppercase equivalent or original byte.
-static unsigned char to_upper_latin1(unsigned char c)
-{
+static unsigned char to_upper_latin1(unsigned char c) {
     // ASCII lowercase a-z
     if (c >= 'a' && c <= 'z')
         return (unsigned char)(c - 'a' + 'A');
@@ -857,18 +804,15 @@ static unsigned char to_upper_latin1(unsigned char c)
 ///          passed through unchanged - full Unicode case mapping requires ICU.
 /// @param s Source string.
 /// @return Newly allocated uppercase string.
-rt_string rt_str_ucase(rt_string s)
-{
+rt_string rt_str_ucase(rt_string s) {
     if (!s)
         rt_trap("rt_str_ucase: null");
     size_t len = rt_string_len_bytes(s);
     rt_string r = rt_string_alloc(len, len + 1);
-    for (size_t i = 0; i < len; ++i)
-    {
+    for (size_t i = 0; i < len; ++i) {
         unsigned char c = (unsigned char)s->data[i];
         // Skip UTF-8 continuation bytes (10xxxxxx) and multi-byte lead bytes
-        if ((c & 0x80) == 0)
-        {
+        if ((c & 0x80) == 0) {
             // ASCII byte - apply case conversion
             c = to_upper_latin1(c);
         }
@@ -884,8 +828,7 @@ rt_string rt_str_ucase(rt_string s)
 ///          Non-letter bytes and other Unicode characters pass through unchanged.
 /// @param c Input byte.
 /// @return Lowercase equivalent or original byte.
-static unsigned char to_lower_latin1(unsigned char c)
-{
+static unsigned char to_lower_latin1(unsigned char c) {
     // ASCII uppercase A-Z
     if (c >= 'A' && c <= 'Z')
         return (unsigned char)(c - 'A' + 'a');
@@ -905,18 +848,15 @@ static unsigned char to_lower_latin1(unsigned char c)
 ///          passed through unchanged - full Unicode case mapping requires ICU.
 /// @param s Source string.
 /// @return Newly allocated lowercase string.
-rt_string rt_str_lcase(rt_string s)
-{
+rt_string rt_str_lcase(rt_string s) {
     if (!s)
         rt_trap("rt_str_lcase: null");
     size_t len = rt_string_len_bytes(s);
     rt_string r = rt_string_alloc(len, len + 1);
-    for (size_t i = 0; i < len; ++i)
-    {
+    for (size_t i = 0; i < len; ++i) {
         unsigned char c = (unsigned char)s->data[i];
         // Skip UTF-8 multi-byte sequences
-        if ((c & 0x80) == 0)
-        {
+        if ((c & 0x80) == 0) {
             // ASCII byte - apply case conversion
             c = to_lower_latin1(c);
         }
@@ -933,8 +873,7 @@ rt_string rt_str_lcase(rt_string s)
 /// @param a First operand.
 /// @param b Second operand.
 /// @return 1 when equal, otherwise 0.
-int8_t rt_str_eq(rt_string a, rt_string b)
-{
+int8_t rt_str_eq(rt_string a, rt_string b) {
     if (!a || !b)
         return 0;
     if (a == b)
@@ -946,8 +885,7 @@ int8_t rt_str_eq(rt_string a, rt_string b)
     return memcmp(a->data, b->data, alen) == 0;
 }
 
-int64_t rt_str_lt(rt_string a, rt_string b)
-{
+int64_t rt_str_lt(rt_string a, rt_string b) {
     if (!a || !b)
         return 0;
     if (a == b)
@@ -961,8 +899,7 @@ int64_t rt_str_lt(rt_string a, rt_string b)
     return alen < blen;
 }
 
-int64_t rt_str_le(rt_string a, rt_string b)
-{
+int64_t rt_str_le(rt_string a, rt_string b) {
     if (!a || !b)
         return a == b;
     if (a == b)
@@ -976,8 +913,7 @@ int64_t rt_str_le(rt_string a, rt_string b)
     return alen <= blen;
 }
 
-int64_t rt_str_gt(rt_string a, rt_string b)
-{
+int64_t rt_str_gt(rt_string a, rt_string b) {
     if (!a || !b)
         return 0;
     if (a == b)
@@ -991,8 +927,7 @@ int64_t rt_str_gt(rt_string a, rt_string b)
     return alen > blen;
 }
 
-int64_t rt_str_ge(rt_string a, rt_string b)
-{
+int64_t rt_str_ge(rt_string a, rt_string b) {
     if (!a || !b)
         return a == b;
     if (a == b)
@@ -1015,8 +950,7 @@ int64_t rt_str_ge(rt_string a, rt_string b)
 /// @param needle String to find.
 /// @param replacement String to substitute.
 /// @return Newly allocated string with replacements.
-rt_string rt_str_replace(rt_string haystack, rt_string needle, rt_string replacement)
-{
+rt_string rt_str_replace(rt_string haystack, rt_string needle, rt_string replacement) {
     if (!haystack)
         return rt_empty_string();
     if (!needle || !replacement)
@@ -1043,33 +977,27 @@ rt_string rt_str_replace(rt_string haystack, rt_string needle, rt_string replace
     int found_any = 0;
 
     // Use memchr for fast first-character scanning (SIMD-optimized)
-    while (p <= end - needle_len)
-    {
+    while (p <= end - needle_len) {
         // Fast scan for first character of needle
         const char *match = memchr(p, first, (size_t)(end - needle_len - p + 1));
         if (!match)
             break;
 
         p = match;
-        if (memcmp(p, needle->data, needle_len) == 0)
-        {
+        if (memcmp(p, needle->data, needle_len) == 0) {
             found_any = 1;
             // Append chunk before match
             size_t chunk = (size_t)(p - prev);
-            if (chunk > 0)
-            {
-                if (rt_sb_append_bytes(&sb, prev, chunk) != RT_SB_OK)
-                {
+            if (chunk > 0) {
+                if (rt_sb_append_bytes(&sb, prev, chunk) != RT_SB_OK) {
                     rt_sb_free(&sb);
                     rt_trap("rt_str_replace: allocation failed");
                     return NULL;
                 }
             }
             // Append replacement
-            if (repl_len > 0)
-            {
-                if (rt_sb_append_bytes(&sb, replacement->data, repl_len) != RT_SB_OK)
-                {
+            if (repl_len > 0) {
+                if (rt_sb_append_bytes(&sb, replacement->data, repl_len) != RT_SB_OK) {
                     rt_sb_free(&sb);
                     rt_trap("rt_str_replace: allocation failed");
                     return NULL;
@@ -1077,26 +1005,21 @@ rt_string rt_str_replace(rt_string haystack, rt_string needle, rt_string replace
             }
             p += needle_len;
             prev = p;
-        }
-        else
-        {
+        } else {
             p++;
         }
     }
 
     // No matches found - return original string (avoid allocation)
-    if (!found_any)
-    {
+    if (!found_any) {
         rt_sb_free(&sb);
         return rt_string_ref(haystack);
     }
 
     // Append remainder after last match
     size_t remainder = (size_t)(end - prev);
-    if (remainder > 0)
-    {
-        if (rt_sb_append_bytes(&sb, prev, remainder) != RT_SB_OK)
-        {
+    if (remainder > 0) {
+        if (rt_sb_append_bytes(&sb, prev, remainder) != RT_SB_OK) {
             rt_sb_free(&sb);
             rt_trap("rt_str_replace: allocation failed");
             return NULL;
@@ -1114,8 +1037,7 @@ rt_string rt_str_replace(rt_string haystack, rt_string needle, rt_string replace
 /// @param str Source string.
 /// @param prefix Prefix to check.
 /// @return 1 if str starts with prefix, 0 otherwise.
-int64_t rt_str_starts_with(rt_string str, rt_string prefix)
-{
+int64_t rt_str_starts_with(rt_string str, rt_string prefix) {
     if (!str || !prefix)
         return 0;
 
@@ -1134,8 +1056,7 @@ int64_t rt_str_starts_with(rt_string str, rt_string prefix)
 /// @param str Source string.
 /// @param suffix Suffix to check.
 /// @return 1 if str ends with suffix, 0 otherwise.
-int64_t rt_str_ends_with(rt_string str, rt_string suffix)
-{
+int64_t rt_str_ends_with(rt_string str, rt_string suffix) {
     if (!str || !suffix)
         return 0;
 
@@ -1154,8 +1075,7 @@ int64_t rt_str_ends_with(rt_string str, rt_string suffix)
 /// @param str Source string.
 /// @param needle Substring to find.
 /// @return 1 if str contains needle, 0 otherwise.
-int64_t rt_str_has(rt_string str, rt_string needle)
-{
+int64_t rt_str_has(rt_string str, rt_string needle) {
     if (!str || !needle)
         return 0;
 
@@ -1168,8 +1088,7 @@ int64_t rt_str_has(rt_string str, rt_string needle)
         return 0;
 
     // Simple substring search
-    for (size_t i = 0; i + needle_len <= str_len; i++)
-    {
+    for (size_t i = 0; i + needle_len <= str_len; i++) {
         if (memcmp(str->data + i, needle->data, needle_len) == 0)
             return 1;
     }
@@ -1180,8 +1099,7 @@ int64_t rt_str_has(rt_string str, rt_string needle)
 /// @param str Source string.
 /// @param needle Substring to count.
 /// @return Number of non-overlapping occurrences.
-int64_t rt_str_count(rt_string str, rt_string needle)
-{
+int64_t rt_str_count(rt_string str, rt_string needle) {
     if (!str || !needle)
         return 0;
 
@@ -1197,15 +1115,11 @@ int64_t rt_str_count(rt_string str, rt_string needle)
     const char *p = str->data;
     const char *end = p + str_len;
 
-    while (p <= end - needle_len)
-    {
-        if (memcmp(p, needle->data, needle_len) == 0)
-        {
+    while (p <= end - needle_len) {
+        if (memcmp(p, needle->data, needle_len) == 0) {
             count++;
             p += needle_len; // Non-overlapping
-        }
-        else
-        {
+        } else {
             p++;
         }
     }
@@ -1218,8 +1132,7 @@ int64_t rt_str_count(rt_string str, rt_string needle)
 /// @param width Target width.
 /// @param pad_str Padding character (first char used).
 /// @return Newly allocated padded string.
-rt_string rt_str_pad_left(rt_string str, int64_t width, rt_string pad_str)
-{
+rt_string rt_str_pad_left(rt_string str, int64_t width, rt_string pad_str) {
     if (!str)
         return rt_empty_string();
 
@@ -1248,8 +1161,7 @@ rt_string rt_str_pad_left(rt_string str, int64_t width, rt_string pad_str)
 /// @param width Target width.
 /// @param pad_str Padding character (first char used).
 /// @return Newly allocated padded string.
-rt_string rt_str_pad_right(rt_string str, int64_t width, rt_string pad_str)
-{
+rt_string rt_str_pad_right(rt_string str, int64_t width, rt_string pad_str) {
     if (!str)
         return rt_empty_string();
 
@@ -1277,10 +1189,8 @@ rt_string rt_str_pad_right(rt_string str, int64_t width, rt_string pad_str)
 /// @param str Source string.
 /// @param delim Delimiter string.
 /// @return Seq containing string parts.
-void *rt_str_split(rt_string str, rt_string delim)
-{
-    if (!str)
-    {
+void *rt_str_split(rt_string str, rt_string delim) {
+    if (!str) {
         // Push empty string for null input
         void *result = rt_seq_with_capacity(1);
         rt_seq_push(result, (void *)rt_empty_string());
@@ -1291,8 +1201,7 @@ void *rt_str_split(rt_string str, rt_string delim)
     size_t delim_len = delim ? rt_string_len_bytes(delim) : 0;
 
     // Empty delimiter: return single element with original string
-    if (delim_len == 0)
-    {
+    if (delim_len == 0) {
         void *result = rt_seq_with_capacity(1);
         rt_seq_push(result, (void *)rt_string_ref(str));
         return result;
@@ -1305,20 +1214,16 @@ void *rt_str_split(rt_string str, rt_string delim)
     const char first = delim->data[0];
     size_t count = 1; // At least one segment
 
-    while (p <= end - delim_len)
-    {
+    while (p <= end - delim_len) {
         const char *match = memchr(p, first, (size_t)(end - delim_len - p + 1));
         if (!match)
             break;
 
         p = match;
-        if (memcmp(p, delim->data, delim_len) == 0)
-        {
+        if (memcmp(p, delim->data, delim_len) == 0) {
             count++;
             p += delim_len;
-        }
-        else
-        {
+        } else {
             p++;
         }
     }
@@ -1330,23 +1235,19 @@ void *rt_str_split(rt_string str, rt_string delim)
     const char *start = str->data;
     p = str->data;
 
-    while (p <= end - delim_len)
-    {
+    while (p <= end - delim_len) {
         const char *match = memchr(p, first, (size_t)(end - delim_len - p + 1));
         if (!match)
             break;
 
         p = match;
-        if (memcmp(p, delim->data, delim_len) == 0)
-        {
+        if (memcmp(p, delim->data, delim_len) == 0) {
             size_t chunk_len = (size_t)(p - start);
             rt_string chunk = rt_string_from_bytes(start, chunk_len);
             rt_seq_push(result, (void *)chunk);
             p += delim_len;
             start = p;
-        }
-        else
-        {
+        } else {
             p++;
         }
     }
@@ -1363,8 +1264,7 @@ void *rt_str_split(rt_string str, rt_string delim)
 /// @param sep Separator string.
 /// @param seq Sequence of strings to join.
 /// @return Newly allocated joined string.
-rt_string rt_str_join(rt_string sep, void *seq)
-{
+rt_string rt_str_join(rt_string sep, void *seq) {
     if (!seq)
         return rt_empty_string();
 
@@ -1376,20 +1276,16 @@ rt_string rt_str_join(rt_string sep, void *seq)
 
     // Calculate total length
     size_t total = 0;
-    for (int64_t i = 0; i < len; i++)
-    {
+    for (int64_t i = 0; i < len; i++) {
         rt_string item = (rt_string)rt_seq_get(seq, i);
         size_t item_len = item ? rt_string_len_bytes(item) : 0;
-        if (total > SIZE_MAX - item_len)
-        {
+        if (total > SIZE_MAX - item_len) {
             rt_trap("rt_str_join: length overflow");
             return NULL;
         }
         total += item_len;
-        if (i < len - 1 && sep_len > 0)
-        {
-            if (total > SIZE_MAX - sep_len)
-            {
+        if (i < len - 1 && sep_len > 0) {
+            if (total > SIZE_MAX - sep_len) {
                 rt_trap("rt_str_join: length overflow");
                 return NULL;
             }
@@ -1402,18 +1298,15 @@ rt_string rt_str_join(rt_string sep, void *seq)
         return NULL;
 
     char *dst = result->data;
-    for (int64_t i = 0; i < len; i++)
-    {
+    for (int64_t i = 0; i < len; i++) {
         rt_string item = (rt_string)rt_seq_get(seq, i);
         size_t item_len = item ? rt_string_len_bytes(item) : 0;
-        if (item_len > 0)
-        {
+        if (item_len > 0) {
             memcpy(dst, item->data, item_len);
             dst += item_len;
         }
 
-        if (i < len - 1 && sep_len > 0)
-        {
+        if (i < len - 1 && sep_len > 0) {
             memcpy(dst, sep->data, sep_len);
             dst += sep_len;
         }
@@ -1427,8 +1320,7 @@ rt_string rt_str_join(rt_string sep, void *seq)
 /// @param str Source string.
 /// @param count Number of repetitions.
 /// @return Newly allocated repeated string.
-rt_string rt_str_repeat(rt_string str, int64_t count)
-{
+rt_string rt_str_repeat(rt_string str, int64_t count) {
     if (!str || count <= 0)
         return rt_empty_string();
 
@@ -1437,8 +1329,7 @@ rt_string rt_str_repeat(rt_string str, int64_t count)
         return rt_empty_string();
 
     // Check for overflow
-    if ((size_t)count > SIZE_MAX / str_len)
-    {
+    if ((size_t)count > SIZE_MAX / str_len) {
         rt_trap("rt_str_repeat: length overflow");
         return NULL;
     }
@@ -1449,8 +1340,7 @@ rt_string rt_str_repeat(rt_string str, int64_t count)
         return NULL;
 
     char *dst = result->data;
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         memcpy(dst, str->data, str_len);
         dst += str_len;
     }
@@ -1465,12 +1355,10 @@ rt_string rt_str_repeat(rt_string str, int64_t count)
 /// @param char_pos 1-based codepoint position (1 = first character).
 /// @return Byte offset corresponding to the start of the codepoint, or byte_len
 ///         if char_pos is past the end.
-static size_t utf8_char_to_byte_offset(const char *data, size_t byte_len, int64_t char_pos)
-{
+static size_t utf8_char_to_byte_offset(const char *data, size_t byte_len, int64_t char_pos) {
     size_t byte_off = 0;
     int64_t cp = 1;
-    while (byte_off < byte_len && cp < char_pos)
-    {
+    while (byte_off < byte_len && cp < char_pos) {
         unsigned char c = (unsigned char)data[byte_off];
         size_t clen = 1;
         if ((c & 0x80) == 0)
@@ -1492,8 +1380,7 @@ static size_t utf8_char_to_byte_offset(const char *data, size_t byte_len, int64_
 /// @brief Get UTF-8 character byte length from leading byte.
 /// @param c First byte of UTF-8 sequence.
 /// @return Number of bytes in the character (1-4), or 1 for invalid.
-static size_t utf8_char_len(unsigned char c)
-{
+static size_t utf8_char_len(unsigned char c) {
     if ((c & 0x80) == 0)
         return 1; // ASCII: 0xxxxxxx
     if ((c & 0xE0) == 0xC0)
@@ -1512,8 +1399,7 @@ static size_t utf8_char_len(unsigned char c)
 ///          character integrity (e.g., "Hello, 世界!" becomes "!界世 ,olleH").
 /// @param str Source string.
 /// @return Newly allocated reversed string.
-rt_string rt_str_flip(rt_string str)
-{
+rt_string rt_str_flip(rt_string str) {
     if (!str)
         return rt_empty_string();
 
@@ -1525,8 +1411,7 @@ rt_string rt_str_flip(rt_string str)
 
     // First pass: count characters and find their start positions
     size_t char_count = 0;
-    for (size_t i = 0; i < len;)
-    {
+    for (size_t i = 0; i < len;) {
         size_t clen = utf8_char_len((unsigned char)data[i]);
         if (i + clen > len)
             clen = len - i; // Handle truncated sequences
@@ -1541,8 +1426,7 @@ rt_string rt_str_flip(rt_string str)
 
     // Second pass: record character positions
     size_t idx = 0;
-    for (size_t i = 0; i < len;)
-    {
+    for (size_t i = 0; i < len;) {
         positions[idx++] = i;
         size_t clen = utf8_char_len((unsigned char)data[i]);
         if (i + clen > len)
@@ -1553,16 +1437,14 @@ rt_string rt_str_flip(rt_string str)
 
     // Allocate result buffer
     rt_string result = rt_string_alloc(len, len + 1);
-    if (!result)
-    {
+    if (!result) {
         free(positions);
         return NULL;
     }
 
     // Build reversed string by copying characters in reverse order
     size_t dest = 0;
-    for (size_t i = char_count; i > 0; i--)
-    {
+    for (size_t i = char_count; i > 0; i--) {
         size_t start = positions[i - 1];
         size_t end = positions[i];
         size_t clen = end - start;
@@ -1579,8 +1461,7 @@ rt_string rt_str_flip(rt_string str)
 /// @param a First string.
 /// @param b Second string.
 /// @return -1 if a < b, 0 if a == b, 1 if a > b.
-int64_t rt_str_cmp(rt_string a, rt_string b)
-{
+int64_t rt_str_cmp(rt_string a, rt_string b) {
     if (!a && !b)
         return 0;
     if (!a)
@@ -1607,8 +1488,7 @@ int64_t rt_str_cmp(rt_string a, rt_string b)
 /// @param a First string.
 /// @param b Second string.
 /// @return -1 if a < b, 0 if a == b, 1 if a > b (case-insensitive).
-int64_t rt_str_cmp_nocase(rt_string a, rt_string b)
-{
+int64_t rt_str_cmp_nocase(rt_string a, rt_string b) {
     if (!a && !b)
         return 0;
     if (!a)
@@ -1620,8 +1500,7 @@ int64_t rt_str_cmp_nocase(rt_string a, rt_string b)
     size_t blen = rt_string_len_bytes(b);
     size_t minlen = alen < blen ? alen : blen;
 
-    for (size_t i = 0; i < minlen; i++)
-    {
+    for (size_t i = 0; i < minlen; i++) {
         unsigned char ca = (unsigned char)tolower((unsigned char)a->data[i]);
         unsigned char cb = (unsigned char)tolower((unsigned char)b->data[i]);
         if (ca < cb)
@@ -1641,8 +1520,7 @@ int64_t rt_str_cmp_nocase(rt_string a, rt_string b)
 // Extended String Utilities
 //=============================================================================
 
-rt_string rt_str_capitalize(rt_string str)
-{
+rt_string rt_str_capitalize(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
     size_t len = rt_string_len_bytes(str);
@@ -1658,8 +1536,7 @@ rt_string rt_str_capitalize(rt_string str)
     return result;
 }
 
-rt_string rt_str_title(rt_string str)
-{
+rt_string rt_str_title(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
     size_t len = rt_string_len_bytes(str);
@@ -1673,15 +1550,11 @@ rt_string rt_str_title(rt_string str)
     result->data[len] = '\0';
 
     int capitalize_next = 1;
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)result->data[i];
-        if (isspace(c))
-        {
+        if (isspace(c)) {
             capitalize_next = 1;
-        }
-        else if (capitalize_next)
-        {
+        } else if (capitalize_next) {
             result->data[i] = (char)toupper(c);
             capitalize_next = 0;
         }
@@ -1689,8 +1562,7 @@ rt_string rt_str_title(rt_string str)
     return result;
 }
 
-rt_string rt_str_remove_prefix(rt_string str, rt_string prefix)
-{
+rt_string rt_str_remove_prefix(rt_string str, rt_string prefix) {
     if (!str)
         return rt_string_from_bytes("", 0);
     size_t slen = rt_string_len_bytes(str);
@@ -1707,8 +1579,7 @@ rt_string rt_str_remove_prefix(rt_string str, rt_string prefix)
     return rt_string_from_bytes(str->data, slen);
 }
 
-rt_string rt_str_remove_suffix(rt_string str, rt_string suffix)
-{
+rt_string rt_str_remove_suffix(rt_string str, rt_string suffix) {
     if (!str)
         return rt_string_from_bytes("", 0);
     size_t slen = rt_string_len_bytes(str);
@@ -1725,8 +1596,7 @@ rt_string rt_str_remove_suffix(rt_string str, rt_string suffix)
     return rt_string_from_bytes(str->data, slen);
 }
 
-int64_t rt_str_last_index_of(rt_string haystack, rt_string needle)
-{
+int64_t rt_str_last_index_of(rt_string haystack, rt_string needle) {
     if (!haystack || !needle)
         return 0;
     size_t hlen = rt_string_len_bytes(haystack);
@@ -1734,16 +1604,14 @@ int64_t rt_str_last_index_of(rt_string haystack, rt_string needle)
     if (nlen == 0 || nlen > hlen)
         return 0;
 
-    for (size_t i = hlen - nlen + 1; i > 0; i--)
-    {
+    for (size_t i = hlen - nlen + 1; i > 0; i--) {
         if (memcmp(haystack->data + i - 1, needle->data, nlen) == 0)
             return (int64_t)i; // 1-based
     }
     return 0;
 }
 
-rt_string rt_str_trim_char(rt_string str, rt_string ch)
-{
+rt_string rt_str_trim_char(rt_string str, rt_string ch) {
     if (!str)
         return rt_string_from_bytes("", 0);
     size_t len = rt_string_len_bytes(str);
@@ -1767,8 +1635,7 @@ rt_string rt_str_trim_char(rt_string str, rt_string ch)
     return rt_string_from_bytes(str->data + start, end - start);
 }
 
-rt_string rt_str_slug(rt_string str)
-{
+rt_string rt_str_slug(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
     size_t len = rt_string_len_bytes(str);
@@ -1781,16 +1648,12 @@ rt_string rt_str_slug(rt_string str)
 
     size_t out = 0;
     int last_was_sep = 1;
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)str->data[i];
-        if (isalnum(c))
-        {
+        if (isalnum(c)) {
             buf[out++] = (char)tolower(c);
             last_was_sep = 0;
-        }
-        else if (!last_was_sep)
-        {
+        } else if (!last_was_sep) {
             buf[out++] = '-';
             last_was_sep = 1;
         }
@@ -1807,8 +1670,7 @@ rt_string rt_str_slug(rt_string str)
 // String Similarity / Distance
 // ---------------------------------------------------------------------------
 
-int64_t rt_str_levenshtein(rt_string a, rt_string b)
-{
+int64_t rt_str_levenshtein(rt_string a, rt_string b) {
     if (!a && !b)
         return 0;
     size_t alen = a ? rt_string_len_bytes(a) : 0;
@@ -1823,8 +1685,7 @@ int64_t rt_str_levenshtein(rt_string a, rt_string b)
 
     // Use single-row DP to save memory: O(min(m,n)) space
     // Ensure blen is the smaller dimension
-    if (alen < blen)
-    {
+    if (alen < blen) {
         const char *tmp_s = sa;
         sa = sb;
         sb = tmp_s;
@@ -1840,12 +1701,10 @@ int64_t rt_str_levenshtein(rt_string a, rt_string b)
     for (size_t j = 0; j <= blen; ++j)
         row[j] = j;
 
-    for (size_t i = 1; i <= alen; ++i)
-    {
+    for (size_t i = 1; i <= alen; ++i) {
         size_t prev = row[0];
         row[0] = i;
-        for (size_t j = 1; j <= blen; ++j)
-        {
+        for (size_t j = 1; j <= blen; ++j) {
             size_t cost = (sa[i - 1] == sb[j - 1]) ? 0 : 1;
             size_t del = row[j] + 1;
             size_t ins = row[j - 1] + 1;
@@ -1865,8 +1724,7 @@ int64_t rt_str_levenshtein(rt_string a, rt_string b)
     return result;
 }
 
-double rt_str_jaro(rt_string a, rt_string b)
-{
+double rt_str_jaro(rt_string a, rt_string b) {
     if (!a && !b)
         return 1.0;
     size_t alen = a ? rt_string_len_bytes(a) : 0;
@@ -1884,8 +1742,7 @@ double rt_str_jaro(rt_string a, rt_string b)
 
     int8_t *a_matched = (int8_t *)calloc(alen, sizeof(int8_t));
     int8_t *b_matched = (int8_t *)calloc(blen, sizeof(int8_t));
-    if (!a_matched || !b_matched)
-    {
+    if (!a_matched || !b_matched) {
         free(a_matched);
         free(b_matched);
         return 0.0;
@@ -1894,15 +1751,13 @@ double rt_str_jaro(rt_string a, rt_string b)
     double matches = 0;
     double transpositions = 0;
 
-    for (size_t i = 0; i < alen; ++i)
-    {
+    for (size_t i = 0; i < alen; ++i) {
         size_t start = (i > match_dist) ? i - match_dist : 0;
         size_t end = i + match_dist + 1;
         if (end > blen)
             end = blen;
 
-        for (size_t j = start; j < end; ++j)
-        {
+        for (size_t j = start; j < end; ++j) {
             if (b_matched[j] || sa[i] != sb[j])
                 continue;
             a_matched[i] = 1;
@@ -1912,8 +1767,7 @@ double rt_str_jaro(rt_string a, rt_string b)
         }
     }
 
-    if (matches == 0.0)
-    {
+    if (matches == 0.0) {
         free(a_matched);
         free(b_matched);
         return 0.0;
@@ -1921,8 +1775,7 @@ double rt_str_jaro(rt_string a, rt_string b)
 
     // Count transpositions
     size_t k = 0;
-    for (size_t i = 0; i < alen; ++i)
-    {
+    for (size_t i = 0; i < alen; ++i) {
         if (!a_matched[i])
             continue;
         while (!b_matched[k])
@@ -1940,8 +1793,7 @@ double rt_str_jaro(rt_string a, rt_string b)
            3.0;
 }
 
-double rt_str_jaro_winkler(rt_string a, rt_string b)
-{
+double rt_str_jaro_winkler(rt_string a, rt_string b) {
     double jaro = rt_str_jaro(a, b);
 
     // Compute common prefix length (up to 4)
@@ -1957,8 +1809,7 @@ double rt_str_jaro_winkler(rt_string a, rt_string b)
     const char *sb = b ? rt_string_cstr(b) : "";
 
     size_t prefix = 0;
-    for (size_t i = 0; i < max_prefix; ++i)
-    {
+    for (size_t i = 0; i < max_prefix; ++i) {
         if (sa[i] == sb[i])
             prefix++;
         else
@@ -1969,8 +1820,7 @@ double rt_str_jaro_winkler(rt_string a, rt_string b)
     return jaro + (double)prefix * p * (1.0 - jaro);
 }
 
-int64_t rt_str_hamming(rt_string a, rt_string b)
-{
+int64_t rt_str_hamming(rt_string a, rt_string b) {
     size_t alen = a ? rt_string_len_bytes(a) : 0;
     size_t blen = b ? rt_string_len_bytes(b) : 0;
     if (alen != blen)
@@ -1981,8 +1831,7 @@ int64_t rt_str_hamming(rt_string a, rt_string b)
     const char *sa = rt_string_cstr(a);
     const char *sb = rt_string_cstr(b);
     int64_t dist = 0;
-    for (size_t i = 0; i < alen; ++i)
-    {
+    for (size_t i = 0; i < alen; ++i) {
         if (sa[i] != sb[i])
             dist++;
     }
@@ -1994,8 +1843,7 @@ int64_t rt_str_hamming(rt_string a, rt_string b)
 // ---------------------------------------------------------------------------
 
 // Helper: check if char is a word separator
-static int is_separator(char c)
-{
+static int is_separator(char c) {
     return c == ' ' || c == '_' || c == '-' || c == '\t';
 }
 
@@ -2003,14 +1851,12 @@ static int is_separator(char c)
 // Writes words into a flat buffer with null terminators, returns word count.
 // words[] points into buf.
 static int split_words(
-    const char *src, size_t len, char *buf, size_t buf_cap, const char **words, int max_words)
-{
+    const char *src, size_t len, char *buf, size_t buf_cap, const char **words, int max_words) {
     int wcount = 0;
     size_t bpos = 0;
 
     size_t i = 0;
-    while (i < len && wcount < max_words)
-    {
+    while (i < len && wcount < max_words) {
         // Skip separators
         while (i < len && is_separator(src[i]))
             ++i;
@@ -2021,11 +1867,10 @@ static int split_words(
         words[wcount] = buf + bpos;
 
         // Collect word characters
-        while (i < len && !is_separator(src[i]))
-        {
+        while (i < len && !is_separator(src[i])) {
             // Detect camelCase boundary: lowercase followed by uppercase
-            if (i + 1 < len && islower((unsigned char)src[i]) && isupper((unsigned char)src[i + 1]))
-            {
+            if (i + 1 < len && islower((unsigned char)src[i]) &&
+                isupper((unsigned char)src[i + 1])) {
                 if (bpos < buf_cap)
                     buf[bpos++] = src[i];
                 ++i;
@@ -2033,8 +1878,7 @@ static int split_words(
             }
             // Detect ACRONYM boundary: multiple uppercase followed by lowercase
             if (i + 2 < len && isupper((unsigned char)src[i]) &&
-                isupper((unsigned char)src[i + 1]) && islower((unsigned char)src[i + 2]))
-            {
+                isupper((unsigned char)src[i + 1]) && islower((unsigned char)src[i + 2])) {
                 if (bpos < buf_cap)
                     buf[bpos++] = src[i];
                 ++i;
@@ -2052,8 +1896,7 @@ static int split_words(
     return wcount;
 }
 
-rt_string rt_str_camel_case(rt_string str)
-{
+rt_string rt_str_camel_case(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
     size_t len = rt_string_len_bytes(str);
@@ -2070,8 +1913,7 @@ rt_string rt_str_camel_case(rt_string str)
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-    for (int w = 0; w < wc; ++w)
-    {
+    for (int w = 0; w < wc; ++w) {
         const char *word = words[w];
         size_t wlen = strlen(word);
         if (wlen == 0)
@@ -2080,8 +1922,7 @@ rt_string rt_str_camel_case(rt_string str)
         char first = (w == 0) ? (char)tolower((unsigned char)word[0])
                               : (char)toupper((unsigned char)word[0]);
         rt_sb_append_bytes(&sb, &first, 1);
-        for (size_t j = 1; j < wlen; ++j)
-        {
+        for (size_t j = 1; j < wlen; ++j) {
             char c = (char)tolower((unsigned char)word[j]);
             rt_sb_append_bytes(&sb, &c, 1);
         }
@@ -2093,8 +1934,7 @@ rt_string rt_str_camel_case(rt_string str)
     return result;
 }
 
-rt_string rt_str_pascal_case(rt_string str)
-{
+rt_string rt_str_pascal_case(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
     size_t len = rt_string_len_bytes(str);
@@ -2111,8 +1951,7 @@ rt_string rt_str_pascal_case(rt_string str)
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-    for (int w = 0; w < wc; ++w)
-    {
+    for (int w = 0; w < wc; ++w) {
         const char *word = words[w];
         size_t wlen = strlen(word);
         if (wlen == 0)
@@ -2120,8 +1959,7 @@ rt_string rt_str_pascal_case(rt_string str)
 
         char first = (char)toupper((unsigned char)word[0]);
         rt_sb_append_bytes(&sb, &first, 1);
-        for (size_t j = 1; j < wlen; ++j)
-        {
+        for (size_t j = 1; j < wlen; ++j) {
             char c = (char)tolower((unsigned char)word[j]);
             rt_sb_append_bytes(&sb, &c, 1);
         }
@@ -2133,8 +1971,7 @@ rt_string rt_str_pascal_case(rt_string str)
     return result;
 }
 
-rt_string rt_str_snake_case(rt_string str)
-{
+rt_string rt_str_snake_case(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
     size_t len = rt_string_len_bytes(str);
@@ -2151,14 +1988,12 @@ rt_string rt_str_snake_case(rt_string str)
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-    for (int w = 0; w < wc; ++w)
-    {
+    for (int w = 0; w < wc; ++w) {
         if (w > 0)
             rt_sb_append_bytes(&sb, "_", 1);
         const char *word = words[w];
         size_t wlen = strlen(word);
-        for (size_t j = 0; j < wlen; ++j)
-        {
+        for (size_t j = 0; j < wlen; ++j) {
             char c = (char)tolower((unsigned char)word[j]);
             rt_sb_append_bytes(&sb, &c, 1);
         }
@@ -2170,8 +2005,7 @@ rt_string rt_str_snake_case(rt_string str)
     return result;
 }
 
-rt_string rt_str_kebab_case(rt_string str)
-{
+rt_string rt_str_kebab_case(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
     size_t len = rt_string_len_bytes(str);
@@ -2188,14 +2022,12 @@ rt_string rt_str_kebab_case(rt_string str)
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-    for (int w = 0; w < wc; ++w)
-    {
+    for (int w = 0; w < wc; ++w) {
         if (w > 0)
             rt_sb_append_bytes(&sb, "-", 1);
         const char *word = words[w];
         size_t wlen = strlen(word);
-        for (size_t j = 0; j < wlen; ++j)
-        {
+        for (size_t j = 0; j < wlen; ++j) {
             char c = (char)tolower((unsigned char)word[j]);
             rt_sb_append_bytes(&sb, &c, 1);
         }
@@ -2207,8 +2039,7 @@ rt_string rt_str_kebab_case(rt_string str)
     return result;
 }
 
-rt_string rt_str_screaming_snake(rt_string str)
-{
+rt_string rt_str_screaming_snake(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
     size_t len = rt_string_len_bytes(str);
@@ -2225,14 +2056,12 @@ rt_string rt_str_screaming_snake(rt_string str)
     rt_string_builder sb;
     rt_sb_init(&sb);
 
-    for (int w = 0; w < wc; ++w)
-    {
+    for (int w = 0; w < wc; ++w) {
         if (w > 0)
             rt_sb_append_bytes(&sb, "_", 1);
         const char *word = words[w];
         size_t wlen = strlen(word);
-        for (size_t j = 0; j < wlen; ++j)
-        {
+        for (size_t j = 0; j < wlen; ++j) {
             char c = (char)toupper((unsigned char)word[j]);
             rt_sb_append_bytes(&sb, &c, 1);
         }
@@ -2255,15 +2084,12 @@ rt_string rt_str_screaming_snake(rt_string str)
 /// @param plen Pattern length.
 /// @return 1 if matched, 0 otherwise.
 static int8_t like_match(
-    const char *text, size_t tlen, const char *pat, size_t plen, int case_insensitive)
-{
+    const char *text, size_t tlen, const char *pat, size_t plen, int case_insensitive) {
     size_t ti = 0, pi = 0;
     size_t star_pi = (size_t)-1, star_ti = 0;
 
-    while (ti < tlen)
-    {
-        if (pi < plen && pat[pi] == '%')
-        {
+    while (ti < tlen) {
+        if (pi < plen && pat[pi] == '%') {
             // Wildcard: remember this position for backtracking
             star_pi = pi;
             star_ti = ti;
@@ -2271,42 +2097,33 @@ static int8_t like_match(
             continue;
         }
 
-        if (pi < plen && pat[pi] == '\\' && pi + 1 < plen)
-        {
+        if (pi < plen && pat[pi] == '\\' && pi + 1 < plen) {
             // Escaped character — match literally
             pi++;
             char tc = text[ti];
             char pc = pat[pi];
-            if (case_insensitive)
-            {
+            if (case_insensitive) {
                 tc = (char)tolower((unsigned char)tc);
                 pc = (char)tolower((unsigned char)pc);
             }
-            if (tc == pc)
-            {
+            if (tc == pc) {
                 ti++;
                 pi++;
                 continue;
             }
-        }
-        else if (pi < plen && pat[pi] == '_')
-        {
+        } else if (pi < plen && pat[pi] == '_') {
             // Single character wildcard
             ti++;
             pi++;
             continue;
-        }
-        else if (pi < plen)
-        {
+        } else if (pi < plen) {
             char tc = text[ti];
             char pc = pat[pi];
-            if (case_insensitive)
-            {
+            if (case_insensitive) {
                 tc = (char)tolower((unsigned char)tc);
                 pc = (char)tolower((unsigned char)pc);
             }
-            if (tc == pc)
-            {
+            if (tc == pc) {
                 ti++;
                 pi++;
                 continue;
@@ -2314,8 +2131,7 @@ static int8_t like_match(
         }
 
         // No match — backtrack to last %
-        if (star_pi != (size_t)-1)
-        {
+        if (star_pi != (size_t)-1) {
             pi = star_pi + 1;
             star_ti++;
             ti = star_ti;
@@ -2332,8 +2148,7 @@ static int8_t like_match(
     return pi == plen ? 1 : 0;
 }
 
-int8_t rt_str_like(rt_string text, rt_string pattern)
-{
+int8_t rt_str_like(rt_string text, rt_string pattern) {
     size_t tlen = rt_string_len_bytes(text);
     size_t plen = rt_string_len_bytes(pattern);
     const char *t = tlen ? text->data : "";
@@ -2341,8 +2156,7 @@ int8_t rt_str_like(rt_string text, rt_string pattern)
     return like_match(t, tlen, p, plen, 0);
 }
 
-int8_t rt_str_like_ci(rt_string text, rt_string pattern)
-{
+int8_t rt_str_like_ci(rt_string text, rt_string pattern) {
     size_t tlen = rt_string_len_bytes(text);
     size_t plen = rt_string_len_bytes(pattern);
     const char *t = tlen ? text->data : "";

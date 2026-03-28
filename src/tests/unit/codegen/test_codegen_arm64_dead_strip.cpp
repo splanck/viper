@@ -14,23 +14,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-TEST(Arm64CLI, DeadStripsUnusedRuntimeSymbols)
-{
+TEST(Arm64CLI, DeadStripsUnusedRuntimeSymbols) {
     namespace fs = std::filesystem;
     const std::string in = outPath("arm64_dead_strip.il");
     const std::string exeOut = outPath("arm64_dead_strip_exe");
@@ -55,8 +52,7 @@ TEST(Arm64CLI, DeadStripsUnusedRuntimeSymbols)
     EXPECT_EQ(nm.out.find("rt_input_line"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

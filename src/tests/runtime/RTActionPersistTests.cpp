@@ -19,13 +19,11 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
@@ -33,8 +31,7 @@ static rt_string make_str(const char *s)
 // Basic save/load roundtrip
 // ============================================================================
 
-static void test_save_empty()
-{
+static void test_save_empty() {
     rt_action_init();
     rt_action_clear();
 
@@ -48,8 +45,7 @@ static void test_save_empty()
     printf("test_save_empty: PASSED\n");
 }
 
-static void test_save_load_button_action()
-{
+static void test_save_load_button_action() {
     rt_action_init();
     rt_action_clear();
 
@@ -77,8 +73,7 @@ static void test_save_load_button_action()
     printf("test_save_load_button_action: PASSED\n");
 }
 
-static void test_save_load_axis_action()
-{
+static void test_save_load_axis_action() {
     rt_action_init();
     rt_action_clear();
 
@@ -102,8 +97,7 @@ static void test_save_load_axis_action()
     printf("test_save_load_axis_action: PASSED\n");
 }
 
-static void test_save_load_multiple_actions()
-{
+static void test_save_load_multiple_actions() {
     rt_action_init();
     rt_action_clear();
 
@@ -135,8 +129,7 @@ static void test_save_load_multiple_actions()
     printf("test_save_load_multiple_actions: PASSED\n");
 }
 
-static void test_save_load_pad_bindings()
-{
+static void test_save_load_pad_bindings() {
     rt_action_init();
     rt_action_clear();
 
@@ -164,8 +157,7 @@ static void test_save_load_pad_bindings()
 // Edge cases
 // ============================================================================
 
-static void test_load_clears_existing()
-{
+static void test_load_clears_existing() {
     rt_action_init();
     rt_action_clear();
 
@@ -188,16 +180,14 @@ static void test_load_clears_existing()
     printf("test_load_clears_existing: PASSED\n");
 }
 
-static void test_load_null_returns_zero()
-{
+static void test_load_null_returns_zero() {
     int8_t ok = rt_action_load(NULL);
     assert(ok == 0);
 
     printf("test_load_null_returns_zero: PASSED\n");
 }
 
-static void test_save_json_is_valid()
-{
+static void test_save_json_is_valid() {
     rt_action_init();
     rt_action_clear();
 
@@ -219,8 +209,7 @@ static void test_save_json_is_valid()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Action Persistence Tests ===\n\n");
 
     test_save_empty();

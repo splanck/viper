@@ -21,16 +21,13 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 
-namespace viper::codegen::aarch64::ra
-{
+namespace viper::codegen::aarch64::ra {
 
 /// @brief Check if an opcode is a three-operand ALU operation (dst = src1 op src2).
 /// @param opc The machine opcode to check.
 /// @return True for three-operand ALU operations where operand 0 is def-only.
-inline bool isThreeAddrRRR(MOpcode opc)
-{
-    switch (opc)
-    {
+inline bool isThreeAddrRRR(MOpcode opc) {
+    switch (opc) {
         case MOpcode::AddRRR:
         case MOpcode::SubRRR:
         case MOpcode::MulRRR:
@@ -57,10 +54,8 @@ inline bool isThreeAddrRRR(MOpcode opc)
 /// @brief Check if an opcode uses a use-def-immediate register pattern.
 /// @param opc The machine opcode to check.
 /// @return True for two-operand ALU operations with immediate (dst = src op imm).
-inline bool isUseDefImmLike(MOpcode opc)
-{
-    switch (opc)
-    {
+inline bool isUseDefImmLike(MOpcode opc) {
+    switch (opc) {
         case MOpcode::AddRI:
         case MOpcode::SubRI:
         case MOpcode::LslRI:
@@ -82,8 +77,7 @@ inline bool isUseDefImmLike(MOpcode opc)
 /// @brief Check if an opcode adjusts the stack pointer.
 /// @param opc The machine opcode to check.
 /// @return True for SubSpImm or AddSpImm opcodes.
-inline bool isSpAdj(MOpcode opc)
-{
+inline bool isSpAdj(MOpcode opc) {
     return opc == MOpcode::SubSpImm || opc == MOpcode::AddSpImm;
 }
 
@@ -91,72 +85,63 @@ inline bool isSpAdj(MOpcode opc)
 /// @param opc The machine opcode to check.
 /// @return True for Br or BCond opcodes.
 /// @note Cbz is not included since it has a register operand needing allocation.
-inline bool isBranch(MOpcode opc)
-{
+inline bool isBranch(MOpcode opc) {
     return opc == MOpcode::Br || opc == MOpcode::BCond;
 }
 
 /// @brief Check if an opcode is a function call.
 /// @param opc The machine opcode to check.
 /// @return True for Bl (branch-and-link) or Blr (branch-link-register) opcode.
-inline bool isCall(MOpcode opc)
-{
+inline bool isCall(MOpcode opc) {
     return opc == MOpcode::Bl || opc == MOpcode::Blr;
 }
 
 /// @brief Check if an opcode is a register-register comparison.
 /// @param opc The machine opcode to check.
 /// @return True for CmpRR opcode.
-inline bool isCmpRR(MOpcode opc)
-{
+inline bool isCmpRR(MOpcode opc) {
     return opc == MOpcode::CmpRR;
 }
 
 /// @brief Check if an opcode is a register-immediate comparison.
 /// @param opc The machine opcode to check.
 /// @return True for CmpRI opcode.
-inline bool isCmpRI(MOpcode opc)
-{
+inline bool isCmpRI(MOpcode opc) {
     return opc == MOpcode::CmpRI;
 }
 
 /// @brief Check if an opcode is a conditional set.
 /// @param opc The machine opcode to check.
 /// @return True for Cset opcode.
-inline bool isCset(MOpcode opc)
-{
+inline bool isCset(MOpcode opc) {
     return opc == MOpcode::Cset;
 }
 
 /// @brief Check if an opcode is a return instruction.
 /// @param opc The machine opcode to check.
 /// @return True for Ret opcode.
-inline bool isRet(MOpcode opc)
-{
+inline bool isRet(MOpcode opc) {
     return opc == MOpcode::Ret;
 }
 
 /// @brief Check if an opcode is a basic block terminator.
 /// @param opc The machine opcode to check.
 /// @return True for branches and returns.
-inline bool isTerminator(MOpcode opc)
-{
+inline bool isTerminator(MOpcode opc) {
     return isBranch(opc) || isRet(opc);
 }
 
 /// @brief Check if an opcode is a memory load instruction.
 /// @param opc The machine opcode to check.
 /// @return True for LdrRegFpImm or LdrRegBaseImm opcodes.
-inline bool isMemLd(MOpcode opc)
-{
+inline bool isMemLd(MOpcode opc) {
     return opc == MOpcode::LdrRegFpImm || opc == MOpcode::LdrRegBaseImm;
 }
 
 /// @brief Check if an opcode is a memory store instruction.
 /// @param opc The machine opcode to check.
 /// @return True for StrRegFpImm, StrRegBaseImm, or StrRegSpImm opcodes.
-inline bool isMemSt(MOpcode opc)
-{
+inline bool isMemSt(MOpcode opc) {
     return opc == MOpcode::StrRegFpImm || opc == MOpcode::StrRegBaseImm ||
            opc == MOpcode::StrRegSpImm;
 }

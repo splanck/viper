@@ -27,8 +27,7 @@
 // Demo State
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     vgfx_window_t window;
     vg_font_t *font;
     bool running;
@@ -80,8 +79,7 @@ static showcase_state_t g_state;
 //=============================================================================
 
 // Calculate cursor position from x-coordinate relative to text input
-static size_t calc_cursor_from_x(vg_textinput_t *input, float rel_x)
-{
+static size_t calc_cursor_from_x(vg_textinput_t *input, float rel_x) {
     if (!input || !input->text || input->text_len == 0)
         return 0;
 
@@ -105,8 +103,7 @@ static size_t calc_cursor_from_x(vg_textinput_t *input, float rel_x)
 // Callbacks
 //=============================================================================
 
-static void on_volume_change(vg_widget_t *slider, float value, void *data)
-{
+static void on_volume_change(vg_widget_t *slider, float value, void *data) {
     (void)slider;
     (void)data;
     char buf[32];
@@ -114,8 +111,7 @@ static void on_volume_change(vg_widget_t *slider, float value, void *data)
     vg_label_set_text(g_state.volume_label, buf);
 }
 
-static void on_brightness_change(vg_widget_t *slider, float value, void *data)
-{
+static void on_brightness_change(vg_widget_t *slider, float value, void *data) {
     (void)slider;
     (void)data;
     char buf[32];
@@ -123,8 +119,7 @@ static void on_brightness_change(vg_widget_t *slider, float value, void *data)
     vg_label_set_text(g_state.brightness_label, buf);
 }
 
-static void on_country_change(vg_widget_t *dropdown, int index, const char *text, void *data)
-{
+static void on_country_change(vg_widget_t *dropdown, int index, const char *text, void *data) {
     (void)dropdown;
     (void)index;
     (void)data;
@@ -133,8 +128,7 @@ static void on_country_change(vg_widget_t *dropdown, int index, const char *text
     vg_label_set_text(g_state.status_label, buf);
 }
 
-static void on_start_download(vg_widget_t *btn, void *data)
-{
+static void on_start_download(vg_widget_t *btn, void *data) {
     (void)btn;
     (void)data;
     g_state.downloading = true;
@@ -142,8 +136,7 @@ static void on_start_download(vg_widget_t *btn, void *data)
     vg_label_set_text(g_state.status_label, "Download started...");
 }
 
-static void on_cancel_download(vg_widget_t *btn, void *data)
-{
+static void on_cancel_download(vg_widget_t *btn, void *data) {
     (void)btn;
     (void)data;
     g_state.downloading = false;
@@ -152,8 +145,7 @@ static void on_cancel_download(vg_widget_t *btn, void *data)
     vg_label_set_text(g_state.status_label, "Download cancelled");
 }
 
-static void on_submit(vg_widget_t *btn, void *data)
-{
+static void on_submit(vg_widget_t *btn, void *data) {
     (void)btn;
     (void)data;
     const char *name = vg_textinput_get_text(g_state.name_input);
@@ -167,8 +159,7 @@ static void on_submit(vg_widget_t *btn, void *data)
     vg_label_set_text(g_state.status_label, buf);
 }
 
-static void on_newsletter_toggle(vg_widget_t *cb, bool checked, void *data)
-{
+static void on_newsletter_toggle(vg_widget_t *cb, bool checked, void *data) {
     (void)cb;
     (void)data;
     vg_label_set_text(g_state.status_label,
@@ -179,35 +170,30 @@ static void on_newsletter_toggle(vg_widget_t *cb, bool checked, void *data)
 // Widget Rendering Helpers
 //=============================================================================
 
-static void draw_rect(vgfx_window_t window, int x, int y, int w, int h, uint32_t color)
-{
+static void draw_rect(vgfx_window_t window, int x, int y, int w, int h, uint32_t color) {
     vgfx_fill_rect(window, x, y, w, h, color & 0x00FFFFFF);
 }
 
-static void draw_rect_outline(vgfx_window_t window, int x, int y, int w, int h, uint32_t color)
-{
+static void draw_rect_outline(vgfx_window_t window, int x, int y, int w, int h, uint32_t color) {
     vgfx_rect(window, x, y, w, h, color & 0x00FFFFFF);
 }
 
 // Label rendering
-static void render_label(vgfx_window_t window, vg_label_t *label)
-{
+static void render_label(vgfx_window_t window, vg_label_t *label) {
     if (!label || !label->base.visible)
         return;
     float sx, sy;
     vg_widget_get_screen_bounds(&label->base, &sx, &sy, NULL, NULL);
     vg_theme_t *theme = vg_theme_get_current();
     uint32_t color = label->text_color ? label->text_color : theme->colors.fg_primary;
-    if (label->font && label->text)
-    {
+    if (label->font && label->text) {
         vg_font_draw_text(
             window, label->font, label->font_size, sx, sy + label->font_size, label->text, color);
     }
 }
 
 // Button rendering
-static void render_button(vgfx_window_t window, vg_button_t *button)
-{
+static void render_button(vgfx_window_t window, vg_button_t *button) {
     if (!button || !button->base.visible)
         return;
     float sx, sy, sw, sh;
@@ -216,13 +202,10 @@ static void render_button(vgfx_window_t window, vg_button_t *button)
 
     uint32_t bg = theme->colors.bg_secondary;
     uint32_t fg = theme->colors.fg_primary;
-    if (button->style == VG_BUTTON_STYLE_PRIMARY)
-    {
+    if (button->style == VG_BUTTON_STYLE_PRIMARY) {
         bg = theme->colors.accent_primary;
         fg = 0xFFFFFFFF;
-    }
-    else if (button->style == VG_BUTTON_STYLE_DANGER)
-    {
+    } else if (button->style == VG_BUTTON_STYLE_DANGER) {
         bg = 0xFFCC3333;
         fg = 0xFFFFFFFF;
     }
@@ -234,8 +217,7 @@ static void render_button(vgfx_window_t window, vg_button_t *button)
     draw_rect(window, (int)sx, (int)sy, (int)sw, (int)sh, bg);
     draw_rect_outline(window, (int)sx, (int)sy, (int)sw, (int)sh, theme->colors.border_primary);
 
-    if (button->font && button->text)
-    {
+    if (button->font && button->text) {
         vg_text_metrics_t m;
         vg_font_measure_text(button->font, button->font_size, button->text, &m);
         float tx = sx + (sw - m.width) / 2;
@@ -245,8 +227,7 @@ static void render_button(vgfx_window_t window, vg_button_t *button)
 }
 
 // TextInput rendering
-static void render_textinput(vgfx_window_t window, vg_textinput_t *input)
-{
+static void render_textinput(vgfx_window_t window, vg_textinput_t *input) {
     if (!input || !input->base.visible)
         return;
     float sx, sy, sw, sh;
@@ -261,15 +242,13 @@ static void render_textinput(vgfx_window_t window, vg_textinput_t *input)
     const char *text = input->text;
     uint32_t color = theme->colors.fg_primary;
     bool is_placeholder = false;
-    if ((!text || text[0] == '\0') && input->placeholder)
-    {
+    if ((!text || text[0] == '\0') && input->placeholder) {
         text = input->placeholder;
         color = theme->colors.fg_placeholder;
         is_placeholder = true;
     }
     // Show dots for password
-    if (input->password_mode && input->text && input->text[0])
-    {
+    if (input->password_mode && input->text && input->text[0]) {
         static char dots[256];
         int len = (int)strlen(input->text);
         if (len > 255)
@@ -286,8 +265,7 @@ static void render_textinput(vgfx_window_t window, vg_textinput_t *input)
 
     // Draw selection highlight if focused and has selection
     if ((input->base.state & VG_STATE_FOCUSED) && !is_placeholder &&
-        input->selection_start != input->selection_end)
-    {
+        input->selection_start != input->selection_end) {
         size_t sel_start = input->selection_start < input->selection_end ? input->selection_start
                                                                          : input->selection_end;
         size_t sel_end = input->selection_start < input->selection_end ? input->selection_end
@@ -304,20 +282,17 @@ static void render_textinput(vgfx_window_t window, vg_textinput_t *input)
     }
 
     // Draw text
-    if (input->font && text)
-    {
+    if (input->font && text) {
         vg_font_draw_text(window, input->font, input->font_size, sx + padding, ty, text, color);
     }
 
     // Draw cursor if focused
-    if ((input->base.state & VG_STATE_FOCUSED) && !is_placeholder)
-    {
+    if ((input->base.state & VG_STATE_FOCUSED) && !is_placeholder) {
         // Blink cursor using frame counter (~30fps, blink every 15 frames)
         static int frame_counter = 0;
         frame_counter++;
         bool show_cursor = (frame_counter / 15) % 2 == 0;
-        if (show_cursor)
-        {
+        if (show_cursor) {
             float cursor_x = sx + padding + input->cursor_pos * char_width;
             float cursor_y = ty - input->font_size + 2;
             vgfx_line(window,
@@ -331,8 +306,7 @@ static void render_textinput(vgfx_window_t window, vg_textinput_t *input)
 }
 
 // Checkbox rendering
-static void render_checkbox(vgfx_window_t window, vg_checkbox_t *cb)
-{
+static void render_checkbox(vgfx_window_t window, vg_checkbox_t *cb) {
     if (!cb || !cb->base.visible)
         return;
     float sx, sy, sw, sh;
@@ -350,15 +324,13 @@ static void render_checkbox(vgfx_window_t window, vg_checkbox_t *cb)
                       (cb->base.state & VG_STATE_HOVERED) ? theme->colors.border_focus
                                                           : theme->colors.border_primary);
 
-    if (cb->checked)
-    {
+    if (cb->checked) {
         int cx = (int)(sx + box / 2), cy = (int)(by + box / 2);
         uint32_t chk = theme->colors.accent_primary & 0x00FFFFFF;
         vgfx_line(window, cx - 4, cy - 4, cx + 4, cy + 4, chk);
         vgfx_line(window, cx + 4, cy - 4, cx - 4, cy + 4, chk);
     }
-    if (cb->font && cb->text)
-    {
+    if (cb->font && cb->text) {
         float tx = sx + box + (cb->gap > 0 ? cb->gap : 8);
         float ty = sy + (sh + cb->font_size) / 2 - 2;
         vg_font_draw_text(
@@ -367,8 +339,7 @@ static void render_checkbox(vgfx_window_t window, vg_checkbox_t *cb)
 }
 
 // RadioButton rendering
-static void render_radio(vgfx_window_t window, vg_radiobutton_t *rb)
-{
+static void render_radio(vgfx_window_t window, vg_radiobutton_t *rb) {
     if (!rb || !rb->base.visible)
         return;
     float sx, sy, sw, sh;
@@ -386,12 +357,10 @@ static void render_radio(vgfx_window_t window, vg_radiobutton_t *rb)
                 radius,
                 (rb->base.state & VG_STATE_HOVERED) ? theme->colors.border_focus & 0x00FFFFFF
                                                     : theme->colors.border_primary & 0x00FFFFFF);
-    if (rb->selected)
-    {
+    if (rb->selected) {
         vgfx_fill_circle(window, cx, cy, radius - 4, theme->colors.accent_primary & 0x00FFFFFF);
     }
-    if (rb->font && rb->text)
-    {
+    if (rb->font && rb->text) {
         float tx = sx + r + (rb->gap > 0 ? rb->gap : 8);
         float ty = sy + (sh + rb->font_size) / 2 - 2;
         vg_font_draw_text(
@@ -400,8 +369,7 @@ static void render_radio(vgfx_window_t window, vg_radiobutton_t *rb)
 }
 
 // Slider rendering
-static void render_slider(vgfx_window_t window, vg_slider_t *sl)
-{
+static void render_slider(vgfx_window_t window, vg_slider_t *sl) {
     if (!sl || !sl->base.visible)
         return;
     float sx, sy, sw, sh;
@@ -427,8 +395,7 @@ static void render_slider(vgfx_window_t window, vg_slider_t *sl)
 }
 
 // ProgressBar rendering
-static void render_progressbar(vgfx_window_t window, vg_progressbar_t *pb)
-{
+static void render_progressbar(vgfx_window_t window, vg_progressbar_t *pb) {
     if (!pb || !pb->base.visible)
         return;
     float sx, sy, sw, sh;
@@ -439,8 +406,7 @@ static void render_progressbar(vgfx_window_t window, vg_progressbar_t *pb)
     draw_rect(window, (int)sx, (int)sy, (int)fill_w, (int)sh, pb->fill_color);
     draw_rect_outline(window, (int)sx, (int)sy, (int)sw, (int)sh, 0xFF5A5A5A);
 
-    if (pb->show_percentage && pb->font)
-    {
+    if (pb->show_percentage && pb->font) {
         char buf[16];
         snprintf(buf, sizeof(buf), "%.0f%%", pb->value * 100);
         vg_text_metrics_t m;
@@ -452,8 +418,7 @@ static void render_progressbar(vgfx_window_t window, vg_progressbar_t *pb)
 }
 
 // Dropdown rendering
-static void render_dropdown(vgfx_window_t window, vg_dropdown_t *dd)
-{
+static void render_dropdown(vgfx_window_t window, vg_dropdown_t *dd) {
     if (!dd || !dd->base.visible)
         return;
     float sx, sy, sw, sh;
@@ -473,15 +438,13 @@ static void render_dropdown(vgfx_window_t window, vg_dropdown_t *dd)
     const char *text = vg_dropdown_get_selected_text(dd);
     if (!text)
         text = dd->placeholder ? dd->placeholder : "Select...";
-    if (dd->font)
-    {
+    if (dd->font) {
         float ty = sy + (sh + dd->font_size) / 2 - 2;
         vg_font_draw_text(window, dd->font, dd->font_size, sx + 8, ty, text, dd->text_color);
     }
 
     // Draw open dropdown list
-    if (dd->open)
-    {
+    if (dd->open) {
         float list_y = sy + sh;
         float item_h = 28;
         float list_h = dd->item_count * item_h;
@@ -491,15 +454,12 @@ static void render_dropdown(vgfx_window_t window, vg_dropdown_t *dd)
         draw_rect(window, (int)sx, (int)list_y, (int)sw, (int)list_h, dd->dropdown_bg);
         draw_rect_outline(window, (int)sx, (int)list_y, (int)sw, (int)list_h, dd->border_color);
 
-        for (int i = 0; i < dd->item_count && i * item_h < list_h; i++)
-        {
+        for (int i = 0; i < dd->item_count && i * item_h < list_h; i++) {
             float iy = list_y + i * item_h;
-            if (i == dd->hovered_index)
-            {
+            if (i == dd->hovered_index) {
                 draw_rect(window, (int)sx + 1, (int)iy, (int)sw - 2, (int)item_h, dd->hover_bg);
             }
-            if (dd->font && dd->items[i])
-            {
+            if (dd->font && dd->items[i]) {
                 float ty = iy + (item_h + dd->font_size) / 2 - 2;
                 vg_font_draw_text(
                     window, dd->font, dd->font_size, sx + 8, ty, dd->items[i], dd->text_color);
@@ -509,8 +469,7 @@ static void render_dropdown(vgfx_window_t window, vg_dropdown_t *dd)
 }
 
 // ListBox rendering
-static void render_listbox(vgfx_window_t window, vg_listbox_t *lb)
-{
+static void render_listbox(vgfx_window_t window, vg_listbox_t *lb) {
     if (!lb || !lb->base.visible)
         return;
     float sx, sy, sw, sh;
@@ -520,20 +479,15 @@ static void render_listbox(vgfx_window_t window, vg_listbox_t *lb)
     draw_rect_outline(window, (int)sx, (int)sy, (int)sw, (int)sh, lb->border_color);
 
     float iy = sy + 2;
-    for (vg_listbox_item_t *item = lb->first_item; item && iy < sy + sh - 2; item = item->next)
-    {
-        if (item == lb->selected)
-        {
+    for (vg_listbox_item_t *item = lb->first_item; item && iy < sy + sh - 2; item = item->next) {
+        if (item == lb->selected) {
             draw_rect(
                 window, (int)sx + 1, (int)iy, (int)sw - 2, (int)lb->item_height, lb->selected_bg);
-        }
-        else if (item == lb->hovered)
-        {
+        } else if (item == lb->hovered) {
             draw_rect(
                 window, (int)sx + 1, (int)iy, (int)sw - 2, (int)lb->item_height, lb->hover_bg);
         }
-        if (lb->font && item->text)
-        {
+        if (lb->font && item->text) {
             float ty = iy + (lb->item_height + lb->font_size) / 2 - 2;
             vg_font_draw_text(
                 window, lb->font, lb->font_size, sx + 8, ty, item->text, lb->text_color);
@@ -543,8 +497,7 @@ static void render_listbox(vgfx_window_t window, vg_listbox_t *lb)
 }
 
 // Spinner rendering
-static void render_spinner(vgfx_window_t window, vg_spinner_t *sp)
-{
+static void render_spinner(vgfx_window_t window, vg_spinner_t *sp) {
     if (!sp || !sp->base.visible)
         return;
     float sx, sy, sw, sh;
@@ -584,8 +537,7 @@ static void render_spinner(vgfx_window_t window, vg_spinner_t *sp)
         window, acx, (int)(sy + 3 * sh / 4 + 2), acx + 4, (int)(sy + 3 * sh / 4 - 2), 0xCCCCCC);
 
     // Value text
-    if (sp->font && sp->text_buffer)
-    {
+    if (sp->font && sp->text_buffer) {
         vg_text_metrics_t m;
         vg_font_measure_text(sp->font, sp->font_size, sp->text_buffer, &m);
         float tx = sx + (tw - m.width) / 2;
@@ -599,13 +551,11 @@ static void render_spinner(vgfx_window_t window, vg_spinner_t *sp)
 //=============================================================================
 
 static void draw_section(
-    vgfx_window_t window, vg_font_t *font, const char *title, int x, int y, int w, int h)
-{
+    vgfx_window_t window, vg_font_t *font, const char *title, int x, int y, int w, int h) {
     vg_theme_t *theme = vg_theme_get_current();
     draw_rect(window, x, y, w, h, 0xFF252526);
     draw_rect_outline(window, x, y, w, h, theme->colors.border_primary);
-    if (font && title)
-    {
+    if (font && title) {
         vg_font_draw_text(window, font, 14, x + 10, y + 18, title, theme->colors.accent_primary);
     }
     // Separator line under title
@@ -616,16 +566,14 @@ static void draw_section(
 // Main Render
 //=============================================================================
 
-static void render_showcase(showcase_state_t *state)
-{
+static void render_showcase(showcase_state_t *state) {
     vgfx_window_t window = state->window;
     vg_theme_t *theme = vg_theme_get_current();
 
     vgfx_cls(window, theme->colors.bg_primary & 0x00FFFFFF);
 
     // Title
-    if (state->font)
-    {
+    if (state->font) {
         vg_font_draw_text(
             window, state->font, 28, 20, 40, "ViperGUI Widget Showcase", theme->colors.fg_primary);
     }
@@ -711,8 +659,7 @@ static void render_showcase(showcase_state_t *state)
     render_label(window, state->status_label);
 
     // Credits
-    if (state->font)
-    {
+    if (state->font) {
         vg_font_draw_text(window,
                           state->font,
                           11,
@@ -727,19 +674,15 @@ static void render_showcase(showcase_state_t *state)
 // Event Handling
 //=============================================================================
 
-static void handle_events(showcase_state_t *state)
-{
+static void handle_events(showcase_state_t *state) {
     vgfx_event_t pe;
 
-    while (vgfx_poll_event(state->window, &pe))
-    {
-        if (pe.type == VGFX_EVENT_CLOSE)
-        {
+    while (vgfx_poll_event(state->window, &pe)) {
+        if (pe.type == VGFX_EVENT_CLOSE) {
             state->running = false;
             return;
         }
-        if (pe.type == VGFX_EVENT_KEY_DOWN && pe.data.key.key == VGFX_KEY_ESCAPE)
-        {
+        if (pe.type == VGFX_EVENT_KEY_DOWN && pe.data.key.key == VGFX_KEY_ESCAPE) {
             state->running = false;
             return;
         }
@@ -749,8 +692,7 @@ static void handle_events(showcase_state_t *state)
 
 // Simple hover detection helper
 #define CHECK_HOVER(widget)                                                                        \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         float bx, by, bw, bh;                                                                      \
         vg_widget_get_screen_bounds(&(widget)->base, &bx, &by, &bw, &bh);                          \
         if (mx >= bx && mx < bx + bw && my >= by && my < by + bh)                                  \
@@ -760,8 +702,7 @@ static void handle_events(showcase_state_t *state)
     } while (0)
 
         // Update hover states
-        if (pe.type == VGFX_EVENT_MOUSE_MOVE)
-        {
+        if (pe.type == VGFX_EVENT_MOUSE_MOVE) {
             CHECK_HOVER(state->start_btn);
             CHECK_HOVER(state->cancel_btn);
             CHECK_HOVER(state->submit_btn);
@@ -789,17 +730,14 @@ static void handle_events(showcase_state_t *state)
                 (mx >= thumb_x - 10 && mx <= thumb_x + 10 && my >= sy && my <= sy + sh);
 
             // Dropdown hover
-            if (state->country_dropdown->open)
-            {
+            if (state->country_dropdown->open) {
                 float ddx, ddy, ddw, ddh;
                 vg_widget_get_screen_bounds(&state->country_dropdown->base, &ddx, &ddy, &ddw, &ddh);
                 float list_y = ddy + ddh;
                 state->country_dropdown->hovered_index = -1;
-                if (mx >= ddx && mx < ddx + ddw && my >= list_y)
-                {
+                if (mx >= ddx && mx < ddx + ddw && my >= list_y) {
                     int idx = (int)((my - list_y) / 28);
-                    if (idx >= 0 && idx < state->country_dropdown->item_count)
-                    {
+                    if (idx >= 0 && idx < state->country_dropdown->item_count) {
                         state->country_dropdown->hovered_index = idx;
                     }
                 }
@@ -809,8 +747,7 @@ static void handle_events(showcase_state_t *state)
             float lbx, lby, lbw, lbh;
             vg_widget_get_screen_bounds(&state->languages_list->base, &lbx, &lby, &lbw, &lbh);
             state->languages_list->hovered = NULL;
-            if (mx >= lbx && mx < lbx + lbw && my >= lby && my < lby + lbh)
-            {
+            if (mx >= lbx && mx < lbx + lbw && my >= lby && my < lby + lbh) {
                 int idx = (int)((my - lby - 2) / state->languages_list->item_height);
                 vg_listbox_item_t *item = state->languages_list->first_item;
                 for (int i = 0; item && i < idx; i++)
@@ -820,58 +757,45 @@ static void handle_events(showcase_state_t *state)
         }
 
         // Handle clicks
-        if (pe.type == VGFX_EVENT_MOUSE_DOWN)
-        {
+        if (pe.type == VGFX_EVENT_MOUSE_DOWN) {
             // Buttons
-            if (state->start_btn->base.state & VG_STATE_HOVERED)
-            {
+            if (state->start_btn->base.state & VG_STATE_HOVERED) {
                 on_start_download(&state->start_btn->base, NULL);
             }
-            if (state->cancel_btn->base.state & VG_STATE_HOVERED)
-            {
+            if (state->cancel_btn->base.state & VG_STATE_HOVERED) {
                 on_cancel_download(&state->cancel_btn->base, NULL);
             }
-            if (state->submit_btn->base.state & VG_STATE_HOVERED)
-            {
+            if (state->submit_btn->base.state & VG_STATE_HOVERED) {
                 on_submit(&state->submit_btn->base, NULL);
             }
 
             // Checkboxes
-            if (state->newsletter_check->base.state & VG_STATE_HOVERED)
-            {
+            if (state->newsletter_check->base.state & VG_STATE_HOVERED) {
                 vg_checkbox_toggle(state->newsletter_check);
                 on_newsletter_toggle(
                     &state->newsletter_check->base, state->newsletter_check->checked, NULL);
             }
-            if (state->terms_check->base.state & VG_STATE_HOVERED)
-            {
+            if (state->terms_check->base.state & VG_STATE_HOVERED) {
                 vg_checkbox_toggle(state->terms_check);
             }
 
             // Radio buttons
-            if (state->radio_male->base.state & VG_STATE_HOVERED)
-            {
+            if (state->radio_male->base.state & VG_STATE_HOVERED) {
                 vg_radiobutton_set_selected(state->radio_male, true);
             }
-            if (state->radio_female->base.state & VG_STATE_HOVERED)
-            {
+            if (state->radio_female->base.state & VG_STATE_HOVERED) {
                 vg_radiobutton_set_selected(state->radio_female, true);
             }
-            if (state->radio_other->base.state & VG_STATE_HOVERED)
-            {
+            if (state->radio_other->base.state & VG_STATE_HOVERED) {
                 vg_radiobutton_set_selected(state->radio_other, true);
             }
 
             // Dropdown toggle
-            if (state->country_dropdown->base.state & VG_STATE_HOVERED)
-            {
+            if (state->country_dropdown->base.state & VG_STATE_HOVERED) {
                 state->country_dropdown->open = !state->country_dropdown->open;
-            }
-            else if (state->country_dropdown->open)
-            {
+            } else if (state->country_dropdown->open) {
                 // Check if clicking on list item
-                if (state->country_dropdown->hovered_index >= 0)
-                {
+                if (state->country_dropdown->hovered_index >= 0) {
                     vg_dropdown_set_selected(state->country_dropdown,
                                              state->country_dropdown->hovered_index);
                     on_country_change(&state->country_dropdown->base,
@@ -883,18 +807,15 @@ static void handle_events(showcase_state_t *state)
             }
 
             // ListBox selection
-            if (state->languages_list->hovered)
-            {
+            if (state->languages_list->hovered) {
                 vg_listbox_select(state->languages_list, state->languages_list->hovered);
             }
 
             // Slider dragging
-            if (state->volume_slider->thumb_hovered)
-            {
+            if (state->volume_slider->thumb_hovered) {
                 state->volume_slider->dragging = true;
             }
-            if (state->brightness_slider->thumb_hovered)
-            {
+            if (state->brightness_slider->thumb_hovered) {
                 state->brightness_slider->dragging = true;
             }
 
@@ -907,11 +828,9 @@ static void handle_events(showcase_state_t *state)
 
             vg_textinput_t *inputs[] = {
                 state->name_input, state->email_input, state->password_input};
-            for (int i = 0; i < 3; i++)
-            {
+            for (int i = 0; i < 3; i++) {
                 vg_widget_get_screen_bounds(&inputs[i]->base, &bx, &by, &bw, &bh);
-                if (mx >= bx && mx < bx + bw && my >= by && my < by + bh)
-                {
+                if (mx >= bx && mx < bx + bw && my >= by && my < by + bh) {
                     inputs[i]->base.state |= VG_STATE_FOCUSED;
                     // Calculate and set cursor position
                     float rel_x = mx - bx;
@@ -927,18 +846,15 @@ static void handle_events(showcase_state_t *state)
             }
         }
 
-        if (pe.type == VGFX_EVENT_MOUSE_UP)
-        {
+        if (pe.type == VGFX_EVENT_MOUSE_UP) {
             state->volume_slider->dragging = false;
             state->brightness_slider->dragging = false;
             state->selecting_input = NULL;
         }
 
         // Slider dragging and text selection
-        if (pe.type == VGFX_EVENT_MOUSE_MOVE)
-        {
-            if (state->volume_slider->dragging)
-            {
+        if (pe.type == VGFX_EVENT_MOUSE_MOVE) {
+            if (state->volume_slider->dragging) {
                 float sx, sy, sw, sh;
                 vg_widget_get_screen_bounds(&state->volume_slider->base, &sx, &sy, &sw, &sh);
                 float pct = (mx - sx) / sw;
@@ -951,8 +867,7 @@ static void handle_events(showcase_state_t *state)
                     pct * (state->volume_slider->max_value - state->volume_slider->min_value);
                 vg_slider_set_value(state->volume_slider, val);
             }
-            if (state->brightness_slider->dragging)
-            {
+            if (state->brightness_slider->dragging) {
                 float sx, sy, sw, sh;
                 vg_widget_get_screen_bounds(&state->brightness_slider->base, &sx, &sy, &sw, &sh);
                 float pct = (mx - sx) / sw;
@@ -966,21 +881,17 @@ static void handle_events(showcase_state_t *state)
                 vg_slider_set_value(state->brightness_slider, val);
             }
             // Text selection drag
-            if (state->selecting_input)
-            {
+            if (state->selecting_input) {
                 float bx, by, bw, bh;
                 vg_widget_get_screen_bounds(&state->selecting_input->base, &bx, &by, &bw, &bh);
                 float rel_x = mx - bx;
                 size_t pos = calc_cursor_from_x(state->selecting_input, rel_x);
                 state->selecting_input->cursor_pos = pos;
                 // Update selection range
-                if (pos < state->selection_anchor)
-                {
+                if (pos < state->selection_anchor) {
                     state->selecting_input->selection_start = pos;
                     state->selecting_input->selection_end = state->selection_anchor;
-                }
-                else
-                {
+                } else {
                     state->selecting_input->selection_start = state->selection_anchor;
                     state->selecting_input->selection_end = pos;
                 }
@@ -988,8 +899,7 @@ static void handle_events(showcase_state_t *state)
         }
 
         // Text input handling
-        if (pe.type == VGFX_EVENT_KEY_DOWN)
-        {
+        if (pe.type == VGFX_EVENT_KEY_DOWN) {
             vg_textinput_t *focused = NULL;
             if (state->name_input->base.state & VG_STATE_FOCUSED)
                 focused = state->name_input;
@@ -998,56 +908,39 @@ static void handle_events(showcase_state_t *state)
             else if (state->password_input->base.state & VG_STATE_FOCUSED)
                 focused = state->password_input;
 
-            if (focused)
-            {
+            if (focused) {
                 vgfx_key_t key = pe.data.key.key;
                 // Handle backspace and delete keys
-                if (key == VGFX_KEY_BACKSPACE)
-                {
-                    if (focused->cursor_pos > 0 && focused->text_len > 0)
-                    {
+                if (key == VGFX_KEY_BACKSPACE) {
+                    if (focused->cursor_pos > 0 && focused->text_len > 0) {
                         memmove(focused->text + focused->cursor_pos - 1,
                                 focused->text + focused->cursor_pos,
                                 focused->text_len - focused->cursor_pos + 1);
                         focused->cursor_pos--;
                         focused->text_len--;
                     }
-                }
-                else if (key == VGFX_KEY_DELETE)
-                {
+                } else if (key == VGFX_KEY_DELETE) {
                     // Forward delete - delete character at cursor
-                    if (focused->cursor_pos < focused->text_len)
-                    {
+                    if (focused->cursor_pos < focused->text_len) {
                         memmove(focused->text + focused->cursor_pos,
                                 focused->text + focused->cursor_pos + 1,
                                 focused->text_len - focused->cursor_pos);
                         focused->text_len--;
                     }
-                }
-                else if (key == VGFX_KEY_LEFT)
-                {
+                } else if (key == VGFX_KEY_LEFT) {
                     if (focused->cursor_pos > 0)
                         focused->cursor_pos--;
-                }
-                else if (key == VGFX_KEY_RIGHT)
-                {
+                } else if (key == VGFX_KEY_RIGHT) {
                     if (focused->cursor_pos < focused->text_len)
                         focused->cursor_pos++;
-                }
-                else if (key == VGFX_KEY_HOME)
-                {
+                } else if (key == VGFX_KEY_HOME) {
                     focused->cursor_pos = 0;
-                }
-                else if (key == VGFX_KEY_END)
-                {
+                } else if (key == VGFX_KEY_END) {
                     focused->cursor_pos = focused->text_len;
-                }
-                else if (key >= 32 && key <= 126)
-                {
+                } else if (key >= 32 && key <= 126) {
                     char ch = (char)key;
                     // Simple lowercase conversion (vgfx reports uppercase)
-                    if (key >= 'A' && key <= 'Z')
-                    {
+                    if (key >= 'A' && key <= 'Z') {
                         ch = ch - 'A' + 'a';
                     }
                     vg_textinput_insert(focused, (char[]){ch, '\0'});
@@ -1057,15 +950,11 @@ static void handle_events(showcase_state_t *state)
             // Spinner up/down with arrow keys
             float sbx, sby, sbw, sbh;
             vg_widget_get_screen_bounds(&state->age_spinner->base, &sbx, &sby, &sbw, &sbh);
-            if (mx >= sbx && mx < sbx + sbw && my >= sby && my < sby + sbh)
-            {
-                if (pe.data.key.key == VGFX_KEY_UP)
-                {
+            if (mx >= sbx && mx < sbx + sbw && my >= sby && my < sby + sbh) {
+                if (pe.data.key.key == VGFX_KEY_UP) {
                     vg_spinner_set_value(state->age_spinner,
                                          state->age_spinner->value + state->age_spinner->step);
-                }
-                else if (pe.data.key.key == VGFX_KEY_DOWN)
-                {
+                } else if (pe.data.key.key == VGFX_KEY_DOWN) {
                     vg_spinner_set_value(state->age_spinner,
                                          state->age_spinner->value - state->age_spinner->step);
                 }
@@ -1078,13 +967,10 @@ static void handle_events(showcase_state_t *state)
 // Animation Update
 //=============================================================================
 
-static void update_animation(showcase_state_t *state)
-{
-    if (state->downloading)
-    {
+static void update_animation(showcase_state_t *state) {
+    if (state->downloading) {
         state->progress_value += 0.005f;
-        if (state->progress_value >= 1.0f)
-        {
+        if (state->progress_value >= 1.0f) {
             state->progress_value = 1.0f;
             state->downloading = false;
             vg_label_set_text(state->status_label, "Download complete!");
@@ -1097,8 +983,7 @@ static void update_animation(showcase_state_t *state)
 // Initialization
 //=============================================================================
 
-static bool init_showcase(showcase_state_t *state)
-{
+static bool init_showcase(showcase_state_t *state) {
     vgfx_window_params_t params = vgfx_window_params_default();
     params.width = 800;
     params.height = 580;
@@ -1107,8 +992,7 @@ static bool init_showcase(showcase_state_t *state)
     params.fps = 60;
 
     state->window = vgfx_create_window(&params);
-    if (!state->window)
-    {
+    if (!state->window) {
         fprintf(stderr, "Failed to create window\n");
         return false;
     }
@@ -1119,8 +1003,7 @@ static bool init_showcase(showcase_state_t *state)
                                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                                 "C:\\Windows\\Fonts\\arial.ttf",
                                 NULL};
-    for (int i = 0; font_paths[i]; i++)
-    {
+    for (int i = 0; font_paths[i]; i++) {
         state->font = vg_font_load_file(font_paths[i]);
         if (state->font)
             break;
@@ -1316,8 +1199,7 @@ static bool init_showcase(showcase_state_t *state)
 // Main
 //=============================================================================
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
@@ -1327,13 +1209,11 @@ int main(int argc, char *argv[])
 
     memset(&g_state, 0, sizeof(g_state));
 
-    if (!init_showcase(&g_state))
-    {
+    if (!init_showcase(&g_state)) {
         return 1;
     }
 
-    while (g_state.running)
-    {
+    while (g_state.running) {
         handle_events(&g_state);
         update_animation(&g_state);
         render_showcase(&g_state);

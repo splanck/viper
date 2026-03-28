@@ -26,8 +26,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 class Lowerer;
 
@@ -36,8 +35,7 @@ class Lowerer;
 ///          across emitClassConstructor, emitClassMethod, emitClassMethodWithBody,
 ///          and interface binding thunks. Centralizing these patterns reduces
 ///          code duplication and ensures consistent handling of BUG fixes.
-class OopEmitHelper
-{
+class OopEmitHelper {
   public:
     /// @brief Construct a helper bound to the lowering context.
     /// @param lowerer Owning lowering driver.

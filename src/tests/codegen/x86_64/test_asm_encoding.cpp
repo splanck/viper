@@ -37,36 +37,30 @@ using namespace viper::codegen::x64;
 // Helpers
 // ---------------------------------------------------------------------------
 
-namespace
-{
+namespace {
 
 /// Shorthand for a physical GPR operand.
-[[nodiscard]] Operand gpr(PhysReg r)
-{
+[[nodiscard]] Operand gpr(PhysReg r) {
     return makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(r));
 }
 
 /// Shorthand for a physical XMM operand.
-[[nodiscard]] Operand xmm(PhysReg r)
-{
+[[nodiscard]] Operand xmm(PhysReg r) {
     return makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(r));
 }
 
 /// Shorthand for an immediate operand.
-[[nodiscard]] Operand imm(int64_t v)
-{
+[[nodiscard]] Operand imm(int64_t v) {
     return makeImmOperand(v);
 }
 
 /// Shorthand for a base+disp memory operand.
-[[nodiscard]] Operand mem(PhysReg base, int32_t disp)
-{
+[[nodiscard]] Operand mem(PhysReg base, int32_t disp) {
     return makeMemOperand(makePhysReg(RegClass::GPR, static_cast<uint16_t>(base)), disp);
 }
 
 /// Shorthand for a base+index*scale+disp memory operand.
-[[nodiscard]] Operand idxmem(PhysReg base, PhysReg idx, uint8_t scale, int32_t disp)
-{
+[[nodiscard]] Operand idxmem(PhysReg base, PhysReg idx, uint8_t scale, int32_t disp) {
     return makeMemOperand(makePhysReg(RegClass::GPR, static_cast<uint16_t>(base)),
                           makePhysReg(RegClass::GPR, static_cast<uint16_t>(idx)),
                           scale,
@@ -74,21 +68,18 @@ namespace
 }
 
 /// Shorthand for a label operand.
-[[nodiscard]] Operand lab(const std::string &name)
-{
+[[nodiscard]] Operand lab(const std::string &name) {
     return makeLabelOperand(name);
 }
 
 /// Shorthand for a RIP-relative label operand.
-[[nodiscard]] Operand rip(const std::string &name)
-{
+[[nodiscard]] Operand rip(const std::string &name) {
     return makeRipLabelOperand(name);
 }
 
 /// Emit a single instruction by wrapping it in an MFunction with one block.
 /// Returns the emitted assembly text (including .text/.globl boilerplate).
-[[nodiscard]] std::string emitSingle(MInstr instr)
-{
+[[nodiscard]] std::string emitSingle(MInstr instr) {
     MBasicBlock block;
     block.label = "test_func";
     block.instructions.push_back(std::move(instr));
@@ -106,38 +97,31 @@ namespace
 }
 
 // Test bookkeeping
-struct CategoryStats
-{
+struct CategoryStats {
     const char *name;
     int total{0};
     int pass{0};
     int fail{0};
 };
 
-struct TestContext
-{
+struct TestContext {
     std::vector<CategoryStats> categories;
     int currentCat{-1};
     int globalFail{0};
 
-    void beginCategory(const char *name)
-    {
+    void beginCategory(const char *name) {
         categories.push_back({name, 0, 0, 0});
         currentCat = static_cast<int>(categories.size()) - 1;
     }
 
-    void check(const char *caseName, const MInstr &instr, const std::string &expected)
-    {
+    void check(const char *caseName, const MInstr &instr, const std::string &expected) {
         auto &cat = categories[static_cast<std::size_t>(currentCat)];
         ++cat.total;
 
         const std::string text = emitSingle(MInstr{instr});
-        if (text.find(expected) != std::string::npos)
-        {
+        if (text.find(expected) != std::string::npos) {
             ++cat.pass;
-        }
-        else
-        {
+        } else {
             ++cat.fail;
             ++globalFail;
             std::cerr << "FAIL [" << cat.name << "] " << caseName << "\n"
@@ -148,18 +132,14 @@ struct TestContext
     }
 
     /// Check that find_encoding returns nullptr for a pseudo-op.
-    void checkNoEncoding(const char *caseName, MOpcode opc, std::vector<Operand> ops = {})
-    {
+    void checkNoEncoding(const char *caseName, MOpcode opc, std::vector<Operand> ops = {}) {
         auto &cat = categories[static_cast<std::size_t>(currentCat)];
         ++cat.total;
 
         const auto *row = find_encoding(opc, std::span<const Operand>{ops});
-        if (row == nullptr)
-        {
+        if (row == nullptr) {
             ++cat.pass;
-        }
-        else
-        {
+        } else {
             ++cat.fail;
             ++globalFail;
             std::cerr << "FAIL [" << cat.name << "] " << caseName
@@ -167,13 +147,11 @@ struct TestContext
         }
     }
 
-    void printSummary() const
-    {
+    void printSummary() const {
         std::cout << "\n=== x86-64 Assembly Encoding Test Matrix ===\n";
         std::cout << "Category             Total  Pass  Fail\n";
         int totalAll = 0, passAll = 0, failAll = 0;
-        for (const auto &cat : categories)
-        {
+        for (const auto &cat : categories) {
             // Right-pad name to 20 chars
             std::string padded = cat.name;
             while (padded.size() < 20)
@@ -196,8 +174,7 @@ struct TestContext
 // Test categories
 // ---------------------------------------------------------------------------
 
-static void testMovFamily(TestContext &ctx)
-{
+static void testMovFamily(TestContext &ctx) {
     ctx.beginCategory("MOV family");
 
     // MOVrr — low-low
@@ -291,8 +268,7 @@ static void testMovFamily(TestContext &ctx)
               "cmovneq %r15, %r8");
 }
 
-static void testLea(TestContext &ctx)
-{
+static void testLea(TestContext &ctx) {
     ctx.beginCategory("LEA");
 
     // LEA — memory operand
@@ -322,8 +298,7 @@ static void testLea(TestContext &ctx)
         "leaq 32(%r13,%r14,8), %r12");
 }
 
-static void testIntegerAlu(TestContext &ctx)
-{
+static void testIntegerAlu(TestContext &ctx) {
     ctx.beginCategory("Integer ALU");
 
     ctx.check("ADDrr",
@@ -376,8 +351,7 @@ static void testIntegerAlu(TestContext &ctx)
               "imulq %r14, %r13");
 }
 
-static void testShifts(TestContext &ctx)
-{
+static void testShifts(TestContext &ctx) {
     ctx.beginCategory("Shifts");
 
     ctx.check(
@@ -405,8 +379,7 @@ static void testShifts(TestContext &ctx)
               "sarq %cl, %r15");
 }
 
-static void testDivision(TestContext &ctx)
-{
+static void testDivision(TestContext &ctx) {
     ctx.beginCategory("Division");
 
     ctx.check("CQO", MInstr::make(MOpcode::CQO), "cqto");
@@ -431,8 +404,7 @@ static void testDivision(TestContext &ctx)
               "xorl %r8d, %r8d");
 }
 
-static void testCmpTestSet(TestContext &ctx)
-{
+static void testCmpTestSet(TestContext &ctx) {
     ctx.beginCategory("Cmp/Test/Set");
 
     ctx.check("CMPrr",
@@ -458,8 +430,7 @@ static void testCmpTestSet(TestContext &ctx)
 
     // SETcc — all 14 condition codes
     // SETcc takes {imm(condCode), gpr(dest)} — operand order is imm first, reg second
-    struct SetccCase
-    {
+    struct SetccCase {
         int code;
         const char *suffix;
         PhysReg reg;
@@ -483,8 +454,7 @@ static void testCmpTestSet(TestContext &ctx)
         {13, "setno", PhysReg::R15, "%r15b"},
     };
 
-    for (const auto &sc : setccCases)
-    {
+    for (const auto &sc : setccCases) {
         std::string caseName = std::string{"SETcc_"} + sc.suffix;
         std::string expected = std::string{sc.suffix} + " " + sc.reg8;
         ctx.check(
@@ -492,8 +462,7 @@ static void testCmpTestSet(TestContext &ctx)
     }
 }
 
-static void testControlFlow(TestContext &ctx)
-{
+static void testControlFlow(TestContext &ctx) {
     ctx.beginCategory("Control flow");
 
     // JMP — label
@@ -521,8 +490,7 @@ static void testControlFlow(TestContext &ctx)
     ctx.check("RET", MInstr::make(MOpcode::RET), "ret");
 
     // JCC — all 14 condition codes
-    struct JccCase
-    {
+    struct JccCase {
         int code;
         const char *suffix;
     };
@@ -544,8 +512,7 @@ static void testControlFlow(TestContext &ctx)
         {13, "jno"},
     };
 
-    for (const auto &jc : jccCases)
-    {
+    for (const auto &jc : jccCases) {
         std::string caseName = std::string{"JCC_"} + jc.suffix;
         std::string expected = std::string{jc.suffix} + " tgt";
         ctx.check(
@@ -553,8 +520,7 @@ static void testControlFlow(TestContext &ctx)
     }
 }
 
-static void testFpAlu(TestContext &ctx)
-{
+static void testFpAlu(TestContext &ctx) {
     ctx.beginCategory("FP ALU");
 
     ctx.check("FADD",
@@ -598,8 +564,7 @@ static void testFpAlu(TestContext &ctx)
               "cvttsd2siq %xmm8, %r15");
 }
 
-static void testFpDataMove(TestContext &ctx)
-{
+static void testFpDataMove(TestContext &ctx) {
     ctx.beginCategory("FP data move");
 
     ctx.check("MOVQrx",
@@ -639,8 +604,7 @@ static void testFpDataMove(TestContext &ctx)
               "movups %xmm15, 16(%rsp)");
 }
 
-static void testPseudoOps(TestContext &ctx)
-{
+static void testPseudoOps(TestContext &ctx) {
     ctx.beginCategory("Pseudo-ops");
 
     // LABEL
@@ -684,8 +648,7 @@ static void testPseudoOps(TestContext &ctx)
                         {gpr(PhysReg::RAX), gpr(PhysReg::RCX), gpr(PhysReg::RDX)});
 }
 
-static void testAddressingModes(TestContext &ctx)
-{
+static void testAddressingModes(TestContext &ctx) {
     ctx.beginCategory("Addr modes");
 
     // Base only (zero displacement)
@@ -743,8 +706,7 @@ static void testAddressingModes(TestContext &ctx)
 // Main
 // ---------------------------------------------------------------------------
 
-int main()
-{
+int main() {
     TestContext ctx;
 
     testMovFamily(ctx);
@@ -761,8 +723,7 @@ int main()
 
     ctx.printSummary();
 
-    if (ctx.globalFail != 0)
-    {
+    if (ctx.globalFail != 0) {
         std::cerr << ctx.globalFail << " test(s) FAILED\n";
         return EXIT_FAILURE;
     }

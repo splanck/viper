@@ -25,21 +25,18 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 struct Function;
 struct BasicBlock;
 using Block = BasicBlock;
 } // namespace il::core
 
-namespace viper::analysis
-{
+namespace viper::analysis {
 struct CFGContext;
 
 /// @brief Dominator tree for a function.
 /// Stores immediate dominator relationships and tree children for each block.
-struct DomTree
-{
+struct DomTree {
     std::unordered_map<il::core::Block *, il::core::Block *>
         idom; ///< Maps each block to its immediate dominator
     std::unordered_map<il::core::Block *, std::vector<il::core::Block *>>
@@ -74,8 +71,7 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F);
 /// Queries are analogous to forward dominator queries:
 ///   - @ref postDominates(A, B) — true iff A is an ancestor of B in the tree.
 ///   - @ref immediatePostDominator(B) — immediate parent of B in the tree.
-struct PostDomTree
-{
+struct PostDomTree {
     std::unordered_map<il::core::Block *, il::core::Block *>
         ipostdom; ///< Maps each block to its immediate post-dominator
     std::unordered_map<il::core::Block *, std::vector<il::core::Block *>>

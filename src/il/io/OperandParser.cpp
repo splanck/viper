@@ -39,8 +39,7 @@
 #include <string>
 #include <utility>
 
-namespace il::io::detail
-{
+namespace il::io::detail {
 
 using il::core::Instr;
 using il::core::Type;
@@ -48,8 +47,7 @@ using il::core::Value;
 using il::support::Expected;
 using il::support::makeError;
 
-namespace
-{
+namespace {
 using il::io::formatLineDiag;
 
 using Operand = Value;
@@ -58,8 +56,7 @@ using Operand = Value;
 /// @details When scanning IL text that may contain string literals, delimiters and
 ///          special characters inside quoted regions must be ignored. This class
 ///          encapsulates the `inString` and `escape` state tracking logic.
-class StringStateTracker
-{
+class StringStateTracker {
     bool inString_ = false;
     bool escape_ = false;
 
@@ -70,17 +67,13 @@ class StringStateTracker
     ///          quotes) and should be treated as literal content.
     /// @param c The current character.
     /// @return True if the character is part of a string literal.
-    bool processChar(char c)
-    {
-        if (inString_)
-        {
-            if (escape_)
-            {
+    bool processChar(char c) {
+        if (inString_) {
+            if (escape_) {
                 escape_ = false;
                 return true;
             }
-            if (c == '\\')
-            {
+            if (c == '\\') {
                 escape_ = true;
                 return true;
             }
@@ -88,8 +81,7 @@ class StringStateTracker
                 inString_ = false;
             return true;
         }
-        if (c == '"')
-        {
+        if (c == '"') {
             inString_ = true;
             return true;
         }
@@ -98,8 +90,7 @@ class StringStateTracker
 
     /// @brief Check if an unfinished string or escape sequence remains.
     /// @return True if the string state is incomplete at end of input.
-    [[nodiscard]] bool hasUnfinishedString() const
-    {
+    [[nodiscard]] bool hasUnfinishedString() const {
         return escape_ || inString_;
     }
 };
@@ -109,43 +100,34 @@ static Expected<std::pair<size_t, size_t>> findTopLevelParenRange(ParserState &s
                                                                   const Instr &instr,
                                                                   const std::string &text,
                                                                   size_t startIndex,
-                                                                  const char *context)
-{
+                                                                  const char *context) {
     size_t lp = std::string::npos;
     size_t rp = std::string::npos;
     size_t depth = 0;
     StringStateTracker stringState;
 
-    for (size_t index = startIndex; index < text.size(); ++index)
-    {
+    for (size_t index = startIndex; index < text.size(); ++index) {
         char c = text[index];
         if (stringState.processChar(c))
             continue;
 
-        if (c == '(')
-        {
-            if (lp == std::string::npos)
-            {
+        if (c == '(') {
+            if (lp == std::string::npos) {
                 lp = index;
                 depth = 1;
-            }
-            else
-            {
+            } else {
                 ++depth;
             }
             continue;
         }
 
-        if (c == ')')
-        {
-            if (lp == std::string::npos || depth == 0)
-            {
+        if (c == ')') {
+            if (lp == std::string::npos || depth == 0) {
                 return Expected<std::pair<size_t, size_t>>{
                     il::io::makeLineErrorDiag(instr.loc, state.lineNo, "mismatched ')'")};
             }
             --depth;
-            if (depth == 0)
-            {
+            if (depth == 0) {
                 rp = index;
                 break;
             }
@@ -153,8 +135,7 @@ static Expected<std::pair<size_t, size_t>> findTopLevelParenRange(ParserState &s
         }
     }
 
-    if (lp == std::string::npos || rp == std::string::npos || depth != 0)
-    {
+    if (lp == std::string::npos || rp == std::string::npos || depth != 0) {
         std::ostringstream oss;
         oss << "malformed " << context;
         return Expected<std::pair<size_t, size_t>>{makeError(instr.loc, oss.str())};
@@ -167,8 +148,7 @@ static Expected<std::vector<std::string>> splitTopLevel(ParserState &state,
                                                         const Instr &instr,
                                                         const std::string &text,
                                                         char delim,
-                                                        const char *context)
-{
+                                                        const char *context) {
     std::vector<std::string> tokens;
     std::string current;
     StringStateTracker stringState;
@@ -176,24 +156,19 @@ static Expected<std::vector<std::string>> splitTopLevel(ParserState &state,
 
     const bool whitespaceOnly = trim(text).empty();
 
-    for (char c : text)
-    {
-        if (stringState.processChar(c))
-        {
+    for (char c : text) {
+        if (stringState.processChar(c)) {
             current.push_back(c);
             continue;
         }
 
-        if (c == '(')
-        {
+        if (c == '(') {
             current.push_back(c);
             ++depth;
             continue;
         }
-        if (c == ')')
-        {
-            if (depth == 0)
-            {
+        if (c == ')') {
+            if (depth == 0) {
                 return Expected<std::vector<std::string>>{
                     il::io::makeLineErrorDiag(instr.loc, state.lineNo, "mismatched ')'")};
             }
@@ -201,11 +176,9 @@ static Expected<std::vector<std::string>> splitTopLevel(ParserState &state,
             --depth;
             continue;
         }
-        if (c == delim && depth == 0)
-        {
+        if (c == delim && depth == 0) {
             std::string trimmed = trim(current);
-            if (trimmed.empty() && !whitespaceOnly)
-            {
+            if (trimmed.empty() && !whitespaceOnly) {
                 std::ostringstream msg;
                 msg << "malformed " << context;
                 return Expected<std::vector<std::string>>{
@@ -220,15 +193,13 @@ static Expected<std::vector<std::string>> splitTopLevel(ParserState &state,
         current.push_back(c);
     }
 
-    if (stringState.hasUnfinishedString())
-    {
+    if (stringState.hasUnfinishedString()) {
         std::ostringstream msg;
         msg << "malformed " << context;
         return Expected<std::vector<std::string>>{
             il::io::makeLineErrorDiag(instr.loc, state.lineNo, msg.str())};
     }
-    if (depth != 0)
-    {
+    if (depth != 0) {
         return Expected<std::vector<std::string>>{
             il::io::makeLineErrorDiag(instr.loc, state.lineNo, "mismatched ')'")};
     }
@@ -240,8 +211,7 @@ static Expected<std::vector<std::string>> splitTopLevel(ParserState &state,
     return Expected<std::vector<std::string>>{std::move(tokens)};
 }
 
-template <typename T> Expected<T> makeSyntaxError(ParserState &state, std::string message)
-{
+template <typename T> Expected<T> makeSyntaxError(ParserState &state, std::string message) {
     return Expected<T>{il::io::makeLineErrorDiag(state.curLoc, state.lineNo, std::move(message))};
 }
 
@@ -259,8 +229,7 @@ OperandParser::OperandParser(ParserState &state, Instr &instr) : state_(state), 
 ///
 /// @param tok Token extracted from the operand text.
 /// @return Parsed value or an error diagnostic.
-Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
-{
+Expected<Value> OperandParser::parseValueToken(const std::string &tok) const {
     viper::parse::Cursor cursor{tok, viper::parse::SourcePos{state_.lineNo, 0}};
     viper::il::io::Context ctx{state_, const_cast<Instr &>(instr_)};
     auto parsed = viper::il::io::parseValueOperand(cursor, ctx);
@@ -281,8 +250,7 @@ Expected<Value> OperandParser::parseValueToken(const std::string &tok) const
 /// @param context Human-readable description for error messages.
 /// @return Vector of trimmed tokens or an error diagnostic.
 Expected<std::vector<std::string>> OperandParser::splitCommaSeparated(const std::string &text,
-                                                                      const char *context) const
-{
+                                                                      const char *context) const {
     return splitTopLevel(state_, instr_, text, ',', context);
 }
 
@@ -295,11 +263,9 @@ Expected<std::vector<std::string>> OperandParser::splitCommaSeparated(const std:
 ///
 /// @param text Operand substring following the mnemonic.
 /// @return Success or an error diagnostic.
-Expected<void> OperandParser::parseCallOperands(const std::string &text)
-{
+Expected<void> OperandParser::parseCallOperands(const std::string &text) {
     const size_t at = text.find('@');
-    if (at == std::string::npos)
-    {
+    if (at == std::string::npos) {
         return Expected<void>{
             makeError(instr_.loc, formatLineDiag(state_.lineNo, "malformed call"))};
     }
@@ -310,8 +276,7 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
     const size_t lp = parens.value().first;
     const size_t rp = parens.value().second;
 
-    if (!trim(text.substr(rp + 1)).empty())
-    {
+    if (!trim(text.substr(rp + 1)).empty()) {
         return Expected<void>{
             il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "malformed call")};
     }
@@ -323,20 +288,15 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
         return Expected<void>{tokens.error()};
     // Lookup expected parameter types from externs/functions for type-aware coercion.
     std::vector<il::core::Type> expectedParams;
-    for (const auto &ext : state_.m.externs)
-    {
-        if (ext.name == instr_.callee)
-        {
+    for (const auto &ext : state_.m.externs) {
+        if (ext.name == instr_.callee) {
             expectedParams = ext.params;
             break;
         }
     }
-    if (expectedParams.empty())
-    {
-        for (const auto &fn : state_.m.functions)
-        {
-            if (fn.name == instr_.callee)
-            {
+    if (expectedParams.empty()) {
+        for (const auto &fn : state_.m.functions) {
+            if (fn.name == instr_.callee) {
                 expectedParams.clear();
                 for (const auto &p : fn.params)
                     expectedParams.push_back(p.type);
@@ -344,20 +304,17 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
             }
         }
     }
-    for (const auto &token : tokens.value())
-    {
+    for (const auto &token : tokens.value()) {
         auto argVal = parseValueToken(token);
         if (!argVal)
             return Expected<void>{argVal.error()};
         il::core::Value val = std::move(argVal.value());
         const std::size_t idx = instr_.operands.size();
-        if (idx < expectedParams.size())
-        {
+        if (idx < expectedParams.size()) {
             const auto &expTy = expectedParams[idx];
             // Coerce integer literals to floating when callee expects f64.
             if (expTy.kind == il::core::Type::Kind::F64 &&
-                val.kind == il::core::Value::Kind::ConstInt)
-            {
+                val.kind == il::core::Value::Kind::ConstInt) {
                 val = il::core::Value::constFloat(static_cast<double>(val.i64));
             }
         }
@@ -367,24 +324,18 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
     // but record f64 when the callee returns a floating result so backends can
     // select the correct return register (v0 vs x0) without a module lookup.
     instr_.type = il::core::Type(il::core::Type::Kind::Void);
-    if (instr_.result)
-    {
+    if (instr_.result) {
         // Look up externs first
-        for (const auto &ext : state_.m.externs)
-        {
-            if (ext.name == instr_.callee && ext.retType.kind == il::core::Type::Kind::F64)
-            {
+        for (const auto &ext : state_.m.externs) {
+            if (ext.name == instr_.callee && ext.retType.kind == il::core::Type::Kind::F64) {
                 instr_.type = ext.retType;
                 break;
             }
         }
         // Also check internal functions
-        if (instr_.type.kind == il::core::Type::Kind::Void)
-        {
-            for (const auto &fn : state_.m.functions)
-            {
-                if (fn.name == instr_.callee && fn.retType.kind == il::core::Type::Kind::F64)
-                {
+        if (instr_.type.kind == il::core::Type::Kind::Void) {
+            for (const auto &fn : state_.m.functions) {
+                if (fn.name == instr_.callee && fn.retType.kind == il::core::Type::Kind::F64) {
                     instr_.type = fn.retType;
                     break;
                 }
@@ -396,16 +347,13 @@ Expected<void> OperandParser::parseCallOperands(const std::string &text)
 
 /// @brief Parse call.indirect operands: %fnPtr(%arg1, %arg2, ...).
 /// @details First operand is function pointer, remaining are arguments in parens.
-Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text)
-{
+Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text) {
     // Find the opening paren separating fnPtr from args
     const size_t lp = text.find('(');
-    if (lp == std::string::npos)
-    {
+    if (lp == std::string::npos) {
         // No parens — just a function pointer with no args
         std::string fnTok = trim(text);
-        if (!fnTok.empty())
-        {
+        if (!fnTok.empty()) {
             auto fnVal = parseValueToken(fnTok);
             if (!fnVal)
                 return Expected<void>{fnVal.error()};
@@ -416,8 +364,7 @@ Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text)
 
     // Parse function pointer before the paren
     std::string fnTok = trim(text.substr(0, lp));
-    if (!fnTok.empty())
-    {
+    if (!fnTok.empty()) {
         auto fnVal = parseValueToken(fnTok);
         if (!fnVal)
             return Expected<void>{fnVal.error()};
@@ -426,8 +373,7 @@ Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text)
 
     // Find matching closing paren
     const size_t rp = text.rfind(')');
-    if (rp == std::string::npos || rp <= lp)
-    {
+    if (rp == std::string::npos || rp <= lp) {
         return Expected<void>{
             makeError(instr_.loc, formatLineDiag(state_.lineNo, "malformed call.indirect"))};
     }
@@ -437,8 +383,7 @@ Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text)
     auto tokens = splitCommaSeparated(argsText, "call.indirect");
     if (!tokens)
         return Expected<void>{tokens.error()};
-    for (const auto &tok : tokens.value())
-    {
+    for (const auto &tok : tokens.value()) {
         auto argVal = parseValueToken(tok);
         if (!argVal)
             return Expected<void>{argVal.error()};
@@ -461,27 +406,23 @@ Expected<void> OperandParser::parseCallIndirectOperands(const std::string &text)
 /// @return Success or an error diagnostic describing the malformed segment.
 Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
                                                 std::string &label,
-                                                std::vector<Value> &args) const
-{
+                                                std::vector<Value> &args) const {
     std::string text = trim(segment);
     const char *mnemonic = il::core::getOpcodeInfo(instr_.op).name;
     viper::il::io::Context ctx{state_, const_cast<Instr &>(instr_)};
     size_t lp = std::string::npos;
     StringStateTracker stringState;
-    for (size_t pos = 0; pos < text.size(); ++pos)
-    {
+    for (size_t pos = 0; pos < text.size(); ++pos) {
         char c = text[pos];
         if (stringState.processChar(c))
             continue;
-        if (c == '(')
-        {
+        if (c == '(') {
             lp = pos;
             break;
         }
     }
 
-    if (lp == std::string::npos)
-    {
+    if (lp == std::string::npos) {
         viper::parse::Cursor cursor{text, viper::parse::SourcePos{state_.lineNo, 0}};
         auto parsedLabel = viper::il::io::parseLabelOperand(cursor, ctx);
         if (!parsedLabel.ok())
@@ -497,8 +438,7 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
         return Expected<void>{parenRange.error()};
     size_t rp = parenRange.value().second;
 
-    if (!trim(text.substr(rp + 1)).empty())
-    {
+    if (!trim(text.substr(rp + 1)).empty()) {
         std::ostringstream oss;
         oss << "malformed " << mnemonic;
         return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, oss.str())};
@@ -516,8 +456,7 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
     auto tokens = splitCommaSeparated(argsStr, mnemonic);
     if (!tokens)
         return Expected<void>{tokens.error()};
-    for (const auto &token : tokens.value())
-    {
+    for (const auto &token : tokens.value()) {
         auto val = parseValueToken(token);
         if (!val)
             return Expected<void>{val.error()};
@@ -534,22 +473,17 @@ Expected<void> OperandParser::parseBranchTarget(const std::string &segment,
 /// @param label Target label being checked.
 /// @param argCount Number of arguments supplied with the branch.
 /// @return Success or an error diagnostic when a mismatch is detected.
-Expected<void> OperandParser::checkBranchArgCount(const std::string &label, size_t argCount) const
-{
+Expected<void> OperandParser::checkBranchArgCount(const std::string &label, size_t argCount) const {
     if (instr_.op == il::core::Opcode::EhPush)
         return {};
     auto it = state_.blockParamCount.find(label);
-    if (it != state_.blockParamCount.end())
-    {
-        if (it->second != argCount)
-        {
+    if (it != state_.blockParamCount.end()) {
+        if (it->second != argCount) {
             std::ostringstream oss;
             oss << "bad arg count";
             return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, oss.str())};
         }
-    }
-    else
-    {
+    } else {
         state_.pendingBrs.push_back({label, argCount, state_.lineNo});
     }
     return {};
@@ -563,8 +497,7 @@ Expected<void> OperandParser::checkBranchArgCount(const std::string &label, size
 /// @param text Textual representation of the branch operand list.
 /// @param expectedTargets Number of targets required by the opcode.
 /// @return Success or an error diagnostic describing the malformed operand list.
-Expected<void> OperandParser::parseBranchTargets(const std::string &text, size_t expectedTargets)
-{
+Expected<void> OperandParser::parseBranchTargets(const std::string &text, size_t expectedTargets) {
     std::string remaining = trim(text);
     const char *mnemonic = il::core::getOpcodeInfo(instr_.op).name;
     auto segments = splitCommaSeparated(remaining, mnemonic);
@@ -572,15 +505,13 @@ Expected<void> OperandParser::parseBranchTargets(const std::string &text, size_t
         return Expected<void>{segments.error()};
 
     const auto &segmentList = segments.value();
-    if (segmentList.size() != expectedTargets)
-    {
+    if (segmentList.size() != expectedTargets) {
         std::ostringstream oss;
         oss << "malformed " << mnemonic;
         return Expected<void>{il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, oss.str())};
     }
 
-    for (const auto &segment : segmentList)
-    {
+    for (const auto &segment : segmentList) {
         std::vector<Value> args;
         std::string label;
         auto parsed = parseBranchTarget(segment, label, args);
@@ -604,12 +535,10 @@ Expected<void> OperandParser::parseBranchTargets(const std::string &text, size_t
 ///
 /// @param text Raw operand text following the switch mnemonic.
 /// @return Success or an error diagnostic.
-Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
-{
+Expected<void> OperandParser::parseSwitchTargets(const std::string &text) {
     std::string remaining = trim(text);
     const char *mnemonic = il::core::getOpcodeInfo(instr_.op).name;
-    auto malformedSwitch = [&]()
-    {
+    auto malformedSwitch = [&]() {
         std::ostringstream oss;
         oss << "line " << state_.lineNo << ": malformed " << mnemonic;
         return Expected<void>{makeError(instr_.loc, oss.str())};
@@ -619,30 +548,24 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
         return malformedSwitch();
 
     bool parsingDefault = true;
-    while (!remaining.empty())
-    {
+    while (!remaining.empty()) {
         size_t split = remaining.size();
         size_t depth = 0;
         StringStateTracker stringState;
-        for (size_t pos = 0; pos < remaining.size(); ++pos)
-        {
+        for (size_t pos = 0; pos < remaining.size(); ++pos) {
             char c = remaining[pos];
             if (stringState.processChar(c))
                 continue;
 
             if (c == '(')
                 ++depth;
-            else if (c == ')')
-            {
-                if (depth == 0)
-                {
+            else if (c == ')') {
+                if (depth == 0) {
                     return Expected<void>{
                         il::io::makeLineErrorDiag(instr_.loc, state_.lineNo, "mismatched ')'")};
                 }
                 --depth;
-            }
-            else if (c == ',' && depth == 0)
-            {
+            } else if (c == ',' && depth == 0) {
                 split = pos;
                 break;
             }
@@ -652,20 +575,16 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
             return malformedSwitch();
 
         std::string segment = trim(remaining.substr(0, split));
-        if (segment.empty())
-        {
+        if (segment.empty()) {
             return malformedSwitch();
         }
 
-        if (parsingDefault)
-        {
+        if (parsingDefault) {
             auto parsed = parseDefaultTarget(segment);
             if (!parsed)
                 return parsed;
             parsingDefault = false;
-        }
-        else
-        {
+        } else {
             auto parsed = parseCaseSegment(segment, mnemonic);
             if (!parsed)
                 return parsed;
@@ -677,8 +596,7 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
             break;
     }
 
-    if (parsingDefault)
-    {
+    if (parsingDefault) {
         return malformedSwitch();
     }
 
@@ -690,8 +608,7 @@ Expected<void> OperandParser::parseSwitchTargets(const std::string &text)
 ///
 /// @param segment Text describing the default destination.
 /// @return Success or an error diagnostic when the target is malformed.
-Expected<void> OperandParser::parseDefaultTarget(const std::string &segment)
-{
+Expected<void> OperandParser::parseDefaultTarget(const std::string &segment) {
     std::vector<Value> args;
     std::string label;
     auto parsed = parseBranchTarget(segment, label, args);
@@ -705,11 +622,9 @@ Expected<void> OperandParser::parseDefaultTarget(const std::string &segment)
 /// @param segment Text describing the case value and destination.
 /// @param mnemonic Name of the opcode for diagnostic messages.
 /// @return Success or an error diagnostic when the case is malformed.
-Expected<void> OperandParser::parseCaseSegment(const std::string &segment, const char *mnemonic)
-{
+Expected<void> OperandParser::parseCaseSegment(const std::string &segment, const char *mnemonic) {
     const size_t arrow = segment.find("->");
-    if (arrow == std::string::npos)
-    {
+    if (arrow == std::string::npos) {
         std::ostringstream oss;
         oss << "malformed " << mnemonic;
         return Expected<void>{makeError(instr_.loc, formatLineDiag(state_.lineNo, oss.str()))};
@@ -717,8 +632,7 @@ Expected<void> OperandParser::parseCaseSegment(const std::string &segment, const
 
     std::string valueText = trim(segment.substr(0, arrow));
     std::string targetText = trim(segment.substr(arrow + 2));
-    if (valueText.empty() || targetText.empty())
-    {
+    if (valueText.empty() || targetText.empty()) {
         std::ostringstream oss;
         oss << "malformed " << mnemonic;
         return Expected<void>{makeError(instr_.loc, formatLineDiag(state_.lineNo, oss.str()))};
@@ -743,8 +657,7 @@ Expected<void> OperandParser::parseCaseSegment(const std::string &segment, const
 /// @param label Destination block label stripped of decorations.
 /// @param args Branch arguments associated with the destination.
 /// @return Success or an error diagnostic indicating an argument mismatch.
-Expected<void> OperandParser::validateCaseArity(std::string label, std::vector<Value> args)
-{
+Expected<void> OperandParser::validateCaseArity(std::string label, std::vector<Value> args) {
     const size_t argCount = args.size();
     instr_.labels.push_back(std::move(label));
     instr_.brArgs.push_back(std::move(args));

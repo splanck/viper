@@ -34,8 +34,7 @@ static rt_class_info mock_class = {
 // Mock object
 static rt_object mock_obj = {.vptr = mock_vtable};
 
-int main()
-{
+int main() {
     // Register the class so the runtime knows about it
     rt_register_class(&mock_class);
 

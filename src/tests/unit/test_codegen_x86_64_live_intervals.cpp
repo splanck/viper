@@ -19,25 +19,21 @@
 using namespace viper::codegen::x64;
 using namespace viper::codegen::x64::ra;
 
-namespace
-{
+namespace {
 
-[[nodiscard]] MInstr makeMovImm(uint16_t id, int64_t value)
-{
+[[nodiscard]] MInstr makeMovImm(uint16_t id, int64_t value) {
     return MInstr::make(MOpcode::MOVri,
                         {makeVRegOperand(RegClass::GPR, id), makeImmOperand(value)});
 }
 
-[[nodiscard]] MInstr makeAdd(uint16_t lhs, uint16_t rhs)
-{
+[[nodiscard]] MInstr makeAdd(uint16_t lhs, uint16_t rhs) {
     return MInstr::make(MOpcode::ADDrr,
                         {makeVRegOperand(RegClass::GPR, lhs), makeVRegOperand(RegClass::GPR, rhs)});
 }
 
 } // namespace
 
-TEST(LiveIntervals, ComputesLocalRanges)
-{
+TEST(LiveIntervals, ComputesLocalRanges) {
     MFunction func{};
     MBasicBlock block{};
     block.label = "entry";
@@ -60,8 +56,7 @@ TEST(LiveIntervals, ComputesLocalRanges)
     EXPECT_EQ(interval2->end, 3U);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

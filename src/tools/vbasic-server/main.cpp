@@ -39,8 +39,7 @@ static const ServerConfig kBasicConfig{
     "Viper BASIC",   // langLabel
 };
 
-static void printUsage()
-{
+static void printUsage() {
     std::fprintf(stderr,
                  "Usage: vbasic-server [--mcp | --lsp | --help | --version]\n"
                  "\n"
@@ -52,40 +51,32 @@ static void printUsage()
                  "Default: auto-detect protocol from first input byte.\n");
 }
 
-static void printVersion()
-{
+static void printVersion() {
     std::fprintf(stderr, "vbasic-server 0.1.0\n");
 }
 
-enum class Mode
-{
+enum class Mode {
     Mcp,
     Lsp,
     AutoDetect,
 };
 
 /// @brief Main event loop for MCP protocol.
-static int runMcpServer(Transport &transport, BasicCompilerBridge &bridge)
-{
+static int runMcpServer(Transport &transport, BasicCompilerBridge &bridge) {
     McpHandler handler(bridge, kBasicConfig);
     RawMessage msg;
 
-    while (transport.readMessage(msg))
-    {
+    while (transport.readMessage(msg)) {
         JsonValue json;
-        try
-        {
+        try {
             json = JsonValue::parse(msg.content);
-        }
-        catch (const std::exception &)
-        {
+        } catch (const std::exception &) {
             transport.writeMessage(buildError(JsonValue(), kParseError, "Parse error"));
             continue;
         }
 
         JsonRpcRequest req;
-        if (!parseRequest(json, req))
-        {
+        if (!parseRequest(json, req)) {
             transport.writeMessage(buildError(JsonValue(), kInvalidRequest, "Invalid Request"));
             continue;
         }
@@ -98,26 +89,21 @@ static int runMcpServer(Transport &transport, BasicCompilerBridge &bridge)
 }
 
 /// @brief Main event loop for LSP protocol.
-static int runLspServer(Transport &transport, BasicCompilerBridge &bridge)
-{
+static int runLspServer(Transport &transport, BasicCompilerBridge &bridge) {
     LspHandler handler(bridge, transport, kBasicConfig);
     RawMessage msg;
 
     std::fprintf(stderr, "[vbasic-server] LSP server started\n");
     std::fflush(stderr);
 
-    while (transport.readMessage(msg))
-    {
+    while (transport.readMessage(msg)) {
         std::fprintf(stderr, "[vbasic-server] recv %zu bytes\n", msg.content.size());
         std::fflush(stderr);
 
         JsonValue json;
-        try
-        {
+        try {
             json = JsonValue::parse(msg.content);
-        }
-        catch (const std::exception &e)
-        {
+        } catch (const std::exception &e) {
             std::fprintf(stderr, "[vbasic-server] parse error: %s\n", e.what());
             std::fflush(stderr);
             transport.writeMessage(buildError(JsonValue(), kParseError, "Parse error"));
@@ -125,8 +111,7 @@ static int runLspServer(Transport &transport, BasicCompilerBridge &bridge)
         }
 
         JsonRpcRequest req;
-        if (!parseRequest(json, req))
-        {
+        if (!parseRequest(json, req)) {
             std::fprintf(stderr, "[vbasic-server] invalid request\n");
             std::fflush(stderr);
             transport.writeMessage(buildError(JsonValue(), kInvalidRequest, "Invalid Request"));
@@ -143,14 +128,11 @@ static int runLspServer(Transport &transport, BasicCompilerBridge &bridge)
             break;
 
         std::string response = handler.handleRequest(req);
-        if (!response.empty())
-        {
+        if (!response.empty()) {
             std::fprintf(stderr, "[vbasic-server] resp %zu bytes\n", response.size());
             std::fflush(stderr);
             transport.writeMessage(response);
-        }
-        else
-        {
+        } else {
             std::fprintf(stderr, "[vbasic-server] (no response — notification handled)\n");
             std::fflush(stderr);
         }
@@ -161,30 +143,23 @@ static int runLspServer(Transport &transport, BasicCompilerBridge &bridge)
     return 0;
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     platformInitStdio();
 
     Mode mode = Mode::AutoDetect;
 
-    for (int i = 1; i < argc; ++i)
-    {
+    for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--mcp") == 0)
             mode = Mode::Mcp;
         else if (std::strcmp(argv[i], "--lsp") == 0)
             mode = Mode::Lsp;
-        else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0)
-        {
+        else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
             printUsage();
             return 0;
-        }
-        else if (std::strcmp(argv[i], "--version") == 0)
-        {
+        } else if (std::strcmp(argv[i], "--version") == 0) {
             printVersion();
             return 0;
-        }
-        else
-        {
+        } else {
             std::fprintf(stderr, "Unknown option: %s\n", argv[i]);
             printUsage();
             return 1;
@@ -192,8 +167,7 @@ int main(int argc, char **argv)
     }
 
     // Auto-detect: peek at first byte
-    if (mode == Mode::AutoDetect)
-    {
+    if (mode == Mode::AutoDetect) {
         int c = std::fgetc(stdin);
         if (c == EOF)
             return 0;
@@ -208,13 +182,10 @@ int main(int argc, char **argv)
     BasicCompilerBridge bridge;
 
     std::unique_ptr<Transport> transport;
-    if (mode == Mode::Lsp)
-    {
+    if (mode == Mode::Lsp) {
         transport = std::make_unique<LspTransport>(stdin, stdout);
         return runLspServer(*transport, bridge);
-    }
-    else
-    {
+    } else {
         transport = std::make_unique<McpTransport>(stdin, stdout);
         return runMcpServer(*transport, bridge);
     }

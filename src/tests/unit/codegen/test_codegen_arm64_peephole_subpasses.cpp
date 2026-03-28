@@ -29,8 +29,7 @@ using namespace viper::codegen::aarch64;
 
 // ─── StrengthReduce: mul by power of 2 → shift ──────────────────────────────
 
-TEST(AArch64PeepholeSubpasses, MulByPowerOf2ToShift)
-{
+TEST(AArch64PeepholeSubpasses, MulByPowerOf2ToShift) {
     // When one operand of MulRRR is a known power-of-2 constant loaded via MovRI,
     // strength reduction should convert it to a shift.
     MFunction fn{};
@@ -53,8 +52,7 @@ TEST(AArch64PeepholeSubpasses, MulByPowerOf2ToShift)
 
 // ─── StrengthReduce: add #0 identity ────────────────────────────────────────
 
-TEST(AArch64PeepholeSubpasses, AddFpImmZeroIdentity)
-{
+TEST(AArch64PeepholeSubpasses, AddFpImmZeroIdentity) {
     // fadd d0, d0, #0.0 should be eliminated as identity
     MFunction fn{};
     fn.name = "fadd_zero";
@@ -76,8 +74,7 @@ TEST(AArch64PeepholeSubpasses, AddFpImmZeroIdentity)
 
 // ─── BranchOpt: unconditional branch to next block ──────────────────────────
 
-TEST(AArch64PeepholeSubpasses, RemoveRedundantBranchToFallthrough)
-{
+TEST(AArch64PeepholeSubpasses, RemoveRedundantBranchToFallthrough) {
     MFunction fn{};
     fn.name = "branch_fallthrough";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -93,8 +90,7 @@ TEST(AArch64PeepholeSubpasses, RemoveRedundantBranchToFallthrough)
 
     // Branch to next block should be removed
     bool hasBranch = false;
-    for (const auto &i : fn.blocks[0].instrs)
-    {
+    for (const auto &i : fn.blocks[0].instrs) {
         if (i.opc == MOpcode::Br)
             hasBranch = true;
     }
@@ -106,8 +102,7 @@ TEST(AArch64PeepholeSubpasses, RemoveRedundantBranchToFallthrough)
 
 // ─── CopyPropDCE: dead mov after last use ───────────────────────────────────
 
-TEST(AArch64PeepholeSubpasses, DeadMovRemovedAfterLastUse)
-{
+TEST(AArch64PeepholeSubpasses, DeadMovRemovedAfterLastUse) {
     MFunction fn{};
     fn.name = "dead_mov";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -131,8 +126,7 @@ TEST(AArch64PeepholeSubpasses, DeadMovRemovedAfterLastUse)
 
 // ─── ImmThenMove folding ────────────────────────────────────────────────────
 
-TEST(AArch64PeepholeSubpasses, ImmThenMoveFolding)
-{
+TEST(AArch64PeepholeSubpasses, ImmThenMoveFolding) {
     // mov x1, #42; mov x2, x1 → mov x1, x1; mov x2, #42  (when x1 dead after)
     MFunction fn{};
     fn.name = "imm_then_move";
@@ -152,8 +146,7 @@ TEST(AArch64PeepholeSubpasses, ImmThenMoveFolding)
 
 // ─── Multiple sub-passes interact correctly ─────────────────────────────────
 
-TEST(AArch64PeepholeSubpasses, MultiplePassesInteract)
-{
+TEST(AArch64PeepholeSubpasses, MultiplePassesInteract) {
     MFunction fn{};
     fn.name = "multi_pass";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -180,8 +173,7 @@ TEST(AArch64PeepholeSubpasses, MultiplePassesInteract)
     EXPECT_GT(stats.branchesToNextRemoved, 0);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -29,10 +29,8 @@ using namespace viper::codegen::linker;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -49,8 +47,7 @@ static ObjFile makeTextObj(const std::string &name,
                            const std::string &func,
                            const std::vector<uint8_t> &code,
                            const std::vector<ObjReloc> &relocs = {},
-                           const std::vector<ObjSymbol> &extraSyms = {})
-{
+                           const std::vector<ObjSymbol> &extraSyms = {}) {
     ObjFile obj;
     obj.name = name;
     obj.format = ObjFileFormat::ELF;
@@ -91,8 +88,7 @@ static ObjFile makeTextObj(const std::string &name,
 static void registerGlobal(std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                            const std::string &name,
                            size_t objIdx,
-                           uint32_t secIdx)
-{
+                           uint32_t secIdx) {
     GlobalSymEntry e;
     e.name = name;
     e.binding = GlobalSymEntry::Global;
@@ -102,8 +98,7 @@ static void registerGlobal(std::unordered_map<std::string, GlobalSymEntry> &glob
     globalSyms[name] = e;
 }
 
-int main()
-{
+int main() {
     // --- Test 1: Identical functions are folded ---
     {
         // Two functions with identical bytes and no relocations.
@@ -331,8 +326,7 @@ int main()
     }
 
     // --- Result ---
-    if (gFail == 0)
-    {
+    if (gFail == 0) {
         std::cout << "All ICF tests passed.\n";
         return EXIT_SUCCESS;
     }

@@ -21,8 +21,7 @@
 #include <optional>
 #include <string>
 
-TEST(IL, SimplifyCFGShrinkParams)
-{
+TEST(IL, SimplifyCFGShrinkParams) {
     using namespace il::core;
 
     Module module;
@@ -75,10 +74,8 @@ TEST(IL, SimplifyCFGShrinkParams)
     ASSERT_EQ(stats.paramsShrunk, 1);
 
     const auto findBlock = [](const Function &function,
-                              const std::string &label) -> const BasicBlock *
-    {
-        for (const auto &block : function.blocks)
-        {
+                              const std::string &label) -> const BasicBlock * {
+        for (const auto &block : function.blocks) {
             if (block.label == label)
                 return &block;
         }
@@ -114,8 +111,7 @@ TEST(IL, SimplifyCFGShrinkParams)
     ASSERT_TRUE(falseArg.kind == Value::Kind::ConstInt && falseArg.i64 == 2);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

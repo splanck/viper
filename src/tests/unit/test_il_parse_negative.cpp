@@ -19,8 +19,7 @@
 #include <fstream>
 #include <sstream>
 
-int main()
-{
+int main() {
     const char *files[] = {BAD_DIR "/mismatched_paren.il",
                            BAD_DIR "/bad_arg_count.il",
                            BAD_DIR "/unknown_param_type.il",
@@ -34,8 +33,7 @@ int main()
                            BAD_DIR "/switch_trailing_token.il",
                            BAD_DIR "/global_missing_name.il",
                            BAD_DIR "/duplicate_extern.il"};
-    for (const char *path : files)
-    {
+    for (const char *path : files) {
         std::ifstream in(path);
         std::stringstream buf;
         buf << in.rdbuf();

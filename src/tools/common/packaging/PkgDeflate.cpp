@@ -30,8 +30,7 @@
 #include <memory>
 #include <mutex>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 //=============================================================================
 // Constants
@@ -59,16 +58,14 @@ static constexpr int kFixedDistCodes = 32;
 // Bit Stream Reader (for decompression)
 //=============================================================================
 
-struct BitReader
-{
+struct BitReader {
     const uint8_t *data;
     size_t len;
     size_t pos;
     uint32_t buffer;
     int bitsInBuf;
 
-    void init(const uint8_t *d, size_t l)
-    {
+    void init(const uint8_t *d, size_t l) {
         data = d;
         len = l;
         pos = 0;
@@ -76,14 +73,10 @@ struct BitReader
         bitsInBuf = 0;
     }
 
-    bool fill(int n)
-    {
-        while (bitsInBuf < n)
-        {
-            if (pos >= len)
-            {
-                if (bitsInBuf > 0)
-                {
+    bool fill(int n) {
+        while (bitsInBuf < n) {
+            if (pos >= len) {
+                if (bitsInBuf > 0) {
                     bitsInBuf = n;
                     return true;
                 }
@@ -95,8 +88,7 @@ struct BitReader
         return true;
     }
 
-    uint32_t read(int n)
-    {
+    uint32_t read(int n) {
         if (!fill(n))
             return 0;
         uint32_t val = buffer & ((1U << n) - 1);
@@ -105,26 +97,22 @@ struct BitReader
         return val;
     }
 
-    uint32_t peek(int n)
-    {
+    uint32_t peek(int n) {
         fill(n);
         return buffer & ((1U << n) - 1);
     }
 
-    void consume(int n)
-    {
+    void consume(int n) {
         buffer >>= n;
         bitsInBuf -= n;
     }
 
-    void align()
-    {
+    void align() {
         buffer = 0;
         bitsInBuf = 0;
     }
 
-    bool hasData() const
-    {
+    bool hasData() const {
         return pos < len || bitsInBuf > 0;
     }
 };
@@ -133,21 +121,18 @@ struct BitReader
 // Bit Stream Writer (for compression)
 //=============================================================================
 
-struct BitWriter
-{
+struct BitWriter {
     uint8_t *data = nullptr;
     size_t capacity = 0;
     size_t len = 0;
     uint32_t buffer = 0;
     int bitsInBuf = 0;
 
-    ~BitWriter()
-    {
+    ~BitWriter() {
         std::free(data);
     }
 
-    void init(size_t initialCap)
-    {
+    void init(size_t initialCap) {
         capacity = initialCap > 256 ? initialCap : 256;
         data = static_cast<uint8_t *>(std::malloc(capacity));
         if (!data)
@@ -157,10 +142,8 @@ struct BitWriter
         bitsInBuf = 0;
     }
 
-    void ensure(size_t need)
-    {
-        if (len + need > capacity)
-        {
+    void ensure(size_t need) {
+        if (len + need > capacity) {
             size_t newCap = capacity * 2;
             if (newCap < len + need)
                 newCap = len + need + 256;
@@ -172,12 +155,10 @@ struct BitWriter
         }
     }
 
-    void write(uint32_t val, int n)
-    {
+    void write(uint32_t val, int n) {
         buffer |= val << bitsInBuf;
         bitsInBuf += n;
-        while (bitsInBuf >= 8)
-        {
+        while (bitsInBuf >= 8) {
             ensure(1);
             data[len++] = buffer & 0xFF;
             buffer >>= 8;
@@ -185,10 +166,8 @@ struct BitWriter
         }
     }
 
-    void flush()
-    {
-        if (bitsInBuf > 0)
-        {
+    void flush() {
+        if (bitsInBuf > 0) {
             ensure(1);
             data[len++] = buffer & 0xFF;
             buffer = 0;
@@ -196,15 +175,13 @@ struct BitWriter
         }
     }
 
-    void writeBytes(const uint8_t *src, size_t srcLen)
-    {
+    void writeBytes(const uint8_t *src, size_t srcLen) {
         ensure(srcLen);
         std::memcpy(data + len, src, srcLen);
         len += srcLen;
     }
 
-    void free()
-    {
+    void free() {
         std::free(data);
         data = nullptr;
         capacity = 0;
@@ -212,8 +189,7 @@ struct BitWriter
     }
 
     /// @brief Move contents to vector and free internal buffer.
-    std::vector<uint8_t> toVector()
-    {
+    std::vector<uint8_t> toVector() {
         std::vector<uint8_t> result(data, data + len);
         free();
         return result;
@@ -224,8 +200,7 @@ struct BitWriter
 // Huffman Tree
 //=============================================================================
 
-struct HuffmanTree
-{
+struct HuffmanTree {
     int maxCode;
     uint16_t *symbols;
     int tableBits;
@@ -233,19 +208,16 @@ struct HuffmanTree
 
     HuffmanTree() : maxCode(0), symbols(nullptr), tableBits(0), tableSize(0) {}
 
-    ~HuffmanTree()
-    {
+    ~HuffmanTree() {
         std::free(symbols);
     }
 
     HuffmanTree(const HuffmanTree &) = delete;
     HuffmanTree &operator=(const HuffmanTree &) = delete;
 
-    bool build(const uint8_t *lengths, int numCodes)
-    {
+    bool build(const uint8_t *lengths, int numCodes) {
         int blCount[kMaxBits + 1] = {};
-        for (int i = 0; i < numCodes; i++)
-        {
+        for (int i = 0; i < numCodes; i++) {
             if (lengths[i] > kMaxBits)
                 return false;
             blCount[lengths[i]]++;
@@ -254,15 +226,13 @@ struct HuffmanTree
 
         uint16_t nextCode[kMaxBits + 1];
         uint16_t code = 0;
-        for (int bits = 1; bits <= kMaxBits; bits++)
-        {
+        for (int bits = 1; bits <= kMaxBits; bits++) {
             code = (code + blCount[bits - 1]) << 1;
             nextCode[bits] = code;
         }
 
         int maxLen = 0;
-        for (int i = 0; i < numCodes; i++)
-        {
+        for (int i = 0; i < numCodes; i++) {
             if (lengths[i] > maxLen)
                 maxLen = lengths[i];
         }
@@ -277,25 +247,21 @@ struct HuffmanTree
         if (!symbols)
             return false;
 
-        for (int i = 0; i < numCodes; i++)
-        {
+        for (int i = 0; i < numCodes; i++) {
             if (lengths[i] == 0)
                 continue;
 
             uint16_t symCode = nextCode[lengths[i]]++;
             int len = lengths[i];
 
-            if (len <= tableBits)
-            {
+            if (len <= tableBits) {
                 uint16_t revCode = 0;
-                for (int b = 0; b < len; b++)
-                {
+                for (int b = 0; b < len; b++) {
                     if (symCode & (1 << b))
                         revCode |= 1 << (len - 1 - b);
                 }
                 int fill = 1 << (tableBits - len);
-                for (int j = 0; j < fill; j++)
-                {
+                for (int j = 0; j < fill; j++) {
                     int idx = revCode | (j << len);
                     symbols[idx] = static_cast<uint16_t>((len << 12) | i);
                 }
@@ -304,8 +270,7 @@ struct HuffmanTree
         return true;
     }
 
-    int decode(BitReader &br) const
-    {
+    int decode(BitReader &br) const {
         if (!br.fill(tableBits))
             return -1;
         uint32_t bits = br.peek(tableBits);
@@ -349,34 +314,31 @@ static HuffmanTree *sFixedLitTree = nullptr;
 static HuffmanTree *sFixedDistTree = nullptr;
 static std::once_flag sFixedTreesFlag;
 
-static void initFixedTrees()
-{
-    std::call_once(sFixedTreesFlag,
-                   []()
-                   {
-                       // Literal/length code lengths (RFC 1951 section 3.2.6)
-                       auto lit = std::make_unique<HuffmanTree>();
-                       uint8_t litLengths[kFixedLitCodes];
-                       for (int i = 0; i <= 143; i++)
-                           litLengths[i] = 8;
-                       for (int i = 144; i <= 255; i++)
-                           litLengths[i] = 9;
-                       for (int i = 256; i <= 279; i++)
-                           litLengths[i] = 7;
-                       for (int i = 280; i <= 287; i++)
-                           litLengths[i] = 8;
-                       lit->build(litLengths, kFixedLitCodes);
+static void initFixedTrees() {
+    std::call_once(sFixedTreesFlag, []() {
+        // Literal/length code lengths (RFC 1951 section 3.2.6)
+        auto lit = std::make_unique<HuffmanTree>();
+        uint8_t litLengths[kFixedLitCodes];
+        for (int i = 0; i <= 143; i++)
+            litLengths[i] = 8;
+        for (int i = 144; i <= 255; i++)
+            litLengths[i] = 9;
+        for (int i = 256; i <= 279; i++)
+            litLengths[i] = 7;
+        for (int i = 280; i <= 287; i++)
+            litLengths[i] = 8;
+        lit->build(litLengths, kFixedLitCodes);
 
-                       // Distance code lengths (all 5 bits)
-                       auto dist = std::make_unique<HuffmanTree>();
-                       uint8_t distLengths[kFixedDistCodes];
-                       for (int i = 0; i < kFixedDistCodes; i++)
-                           distLengths[i] = 5;
-                       dist->build(distLengths, kFixedDistCodes);
+        // Distance code lengths (all 5 bits)
+        auto dist = std::make_unique<HuffmanTree>();
+        uint8_t distLengths[kFixedDistCodes];
+        for (int i = 0; i < kFixedDistCodes; i++)
+            distLengths[i] = 5;
+        dist->build(distLengths, kFixedDistCodes);
 
-                       sFixedLitTree = lit.release();
-                       sFixedDistTree = dist.release();
-                   });
+        sFixedLitTree = lit.release();
+        sFixedDistTree = dist.release();
+    });
 }
 
 //=============================================================================
@@ -385,14 +347,12 @@ static void initFixedTrees()
 
 static constexpr size_t kInflateMaxOutput = 256u * 1024u * 1024u;
 
-struct OutputBuffer
-{
+struct OutputBuffer {
     uint8_t *data;
     size_t len;
     size_t capacity;
 
-    void init(size_t initialCap)
-    {
+    void init(size_t initialCap) {
         capacity = initialCap > 256 ? initialCap : 256;
         data = static_cast<uint8_t *>(std::malloc(capacity));
         if (!data)
@@ -400,12 +360,10 @@ struct OutputBuffer
         len = 0;
     }
 
-    void ensure(size_t need)
-    {
+    void ensure(size_t need) {
         if (len + need > kInflateMaxOutput)
             throw DeflateError("inflate: output exceeds 256 MB limit");
-        if (len + need > capacity)
-        {
+        if (len + need > capacity) {
             size_t newCap = capacity * 2;
             if (newCap < len + need)
                 newCap = len + need + 256;
@@ -419,30 +377,26 @@ struct OutputBuffer
         }
     }
 
-    void putByte(uint8_t b)
-    {
+    void putByte(uint8_t b) {
         ensure(1);
         data[len++] = b;
     }
 
-    void copyBack(int distance, int length)
-    {
+    void copyBack(int distance, int length) {
         ensure(length);
         size_t src = len - distance;
         for (int i = 0; i < length; i++)
             data[len++] = data[src++];
     }
 
-    std::vector<uint8_t> toVector()
-    {
+    std::vector<uint8_t> toVector() {
         std::vector<uint8_t> result(data, data + len);
         std::free(data);
         data = nullptr;
         return result;
     }
 
-    void free()
-    {
+    void free() {
         std::free(data);
         data = nullptr;
     }
@@ -452,8 +406,7 @@ struct OutputBuffer
 // DEFLATE Decompression
 //=============================================================================
 
-static bool inflateStored(BitReader &br, OutputBuffer &out)
-{
+static bool inflateStored(BitReader &br, OutputBuffer &out) {
     br.align();
     if (br.pos + 4 > br.len)
         return false;
@@ -477,24 +430,17 @@ static bool inflateStored(BitReader &br, OutputBuffer &out)
 static bool inflateHuffman(BitReader &br,
                            OutputBuffer &out,
                            const HuffmanTree &litTree,
-                           const HuffmanTree &distTree)
-{
-    while (true)
-    {
+                           const HuffmanTree &distTree) {
+    while (true) {
         int sym = litTree.decode(br);
         if (sym < 0)
             return false;
 
-        if (sym < 256)
-        {
+        if (sym < 256) {
             out.putByte(static_cast<uint8_t>(sym));
-        }
-        else if (sym == 256)
-        {
+        } else if (sym == 256) {
             return true;
-        }
-        else if (sym <= 285)
-        {
+        } else if (sym <= 285) {
             int lenIdx = sym - 257;
             int length = kLengthBase[lenIdx];
             int extra = kLengthExtraBits[lenIdx];
@@ -514,16 +460,13 @@ static bool inflateHuffman(BitReader &br,
                 return false;
 
             out.copyBack(distance, length);
-        }
-        else
-        {
+        } else {
             return false;
         }
     }
 }
 
-static bool inflateDynamic(BitReader &br, OutputBuffer &out)
-{
+static bool inflateDynamic(BitReader &br, OutputBuffer &out) {
     int hlit = br.read(5) + 257;
     int hdist = br.read(5) + 1;
     int hclen = br.read(4) + 4;
@@ -543,39 +486,29 @@ static bool inflateDynamic(BitReader &br, OutputBuffer &out)
     int totalCodes = hlit + hdist;
     int i = 0;
 
-    while (i < totalCodes)
-    {
+    while (i < totalCodes) {
         int sym = clTree.decode(br);
         if (sym < 0)
             return false;
 
-        if (sym < 16)
-        {
+        if (sym < 16) {
             lengths[i++] = sym;
-        }
-        else if (sym == 16)
-        {
+        } else if (sym == 16) {
             if (i == 0)
                 return false;
             int repeat = br.read(2) + 3;
             uint8_t prev = lengths[i - 1];
             while (repeat-- > 0 && i < totalCodes)
                 lengths[i++] = prev;
-        }
-        else if (sym == 17)
-        {
+        } else if (sym == 17) {
             int repeat = br.read(3) + 3;
             while (repeat-- > 0 && i < totalCodes)
                 lengths[i++] = 0;
-        }
-        else if (sym == 18)
-        {
+        } else if (sym == 18) {
             int repeat = br.read(7) + 11;
             while (repeat-- > 0 && i < totalCodes)
                 lengths[i++] = 0;
-        }
-        else
-        {
+        } else {
             return false;
         }
     }
@@ -589,8 +522,7 @@ static bool inflateDynamic(BitReader &br, OutputBuffer &out)
     return inflateHuffman(br, out, litTree, distTree);
 }
 
-static std::vector<uint8_t> inflateData(const uint8_t *data, size_t len)
-{
+static std::vector<uint8_t> inflateData(const uint8_t *data, size_t len) {
     initFixedTrees();
 
     BitReader br;
@@ -600,10 +532,8 @@ static std::vector<uint8_t> inflateData(const uint8_t *data, size_t len)
     out.init(len * 4);
 
     bool lastBlock = false;
-    while (!lastBlock)
-    {
-        if (!br.hasData())
-        {
+    while (!lastBlock) {
+        if (!br.hasData()) {
             out.free();
             throw DeflateError("inflate: unexpected end of data");
         }
@@ -612,8 +542,7 @@ static std::vector<uint8_t> inflateData(const uint8_t *data, size_t len)
         int blockType = br.read(2);
 
         bool ok = false;
-        switch (blockType)
-        {
+        switch (blockType) {
             case 0:
                 ok = inflateStored(br, out);
                 break;
@@ -628,8 +557,7 @@ static std::vector<uint8_t> inflateData(const uint8_t *data, size_t len)
                 throw DeflateError("inflate: invalid block type");
         }
 
-        if (!ok)
-        {
+        if (!ok) {
             out.free();
             throw DeflateError("inflate: invalid compressed data");
         }
@@ -643,13 +571,11 @@ static std::vector<uint8_t> inflateData(const uint8_t *data, size_t len)
 //=============================================================================
 
 // LZ77 hash table
-struct LZ77State
-{
+struct LZ77State {
     int *head = nullptr;
     int *prev = nullptr;
 
-    ~LZ77State()
-    {
+    ~LZ77State() {
         std::free(head);
         std::free(prev);
     }
@@ -659,8 +585,7 @@ struct LZ77State
     static constexpr int kHashMask = kHashSize - 1;
     static constexpr int kNil = -1;
 
-    void init()
-    {
+    void init() {
         head = static_cast<int *>(std::malloc(kHashSize * sizeof(int)));
         prev = static_cast<int *>(std::malloc(kWindowSize * sizeof(int)));
         for (int i = 0; i < kHashSize; i++)
@@ -669,19 +594,16 @@ struct LZ77State
             prev[i] = kNil;
     }
 
-    void free()
-    {
+    void free() {
         std::free(head);
         std::free(prev);
     }
 
-    static int computeHash(const uint8_t *d)
-    {
+    static int computeHash(const uint8_t *d) {
         return ((d[0] << 10) ^ (d[1] << 5) ^ d[2]) & kHashMask;
     }
 
-    int findMatch(const uint8_t *data, size_t pos, size_t len, int maxChain, int *matchDist) const
-    {
+    int findMatch(const uint8_t *data, size_t pos, size_t len, int maxChain, int *matchDist) const {
         if (pos + kMinMatchLen > len)
             return 0;
 
@@ -694,23 +616,20 @@ struct LZ77State
         if (limit < 0)
             limit = 0;
 
-        while (chainPos >= limit && maxChain-- > 0)
-        {
+        while (chainPos >= limit && maxChain-- > 0) {
             int matchLen = 0;
             size_t a = pos, b = chainPos;
             size_t maxLen = len - pos;
             if (maxLen > kMaxMatchLen)
                 maxLen = kMaxMatchLen;
 
-            while (matchLen < static_cast<int>(maxLen) && data[a] == data[b])
-            {
+            while (matchLen < static_cast<int>(maxLen) && data[a] == data[b]) {
                 matchLen++;
                 a++;
                 b++;
             }
 
-            if (matchLen > bestLen)
-            {
+            if (matchLen > bestLen) {
                 bestLen = matchLen;
                 bestDist = static_cast<int>(pos - chainPos);
                 if (bestLen >= kMaxMatchLen)
@@ -724,18 +643,15 @@ struct LZ77State
         return bestLen >= kMinMatchLen ? bestLen : 0;
     }
 
-    void updateHash(const uint8_t *data, size_t pos)
-    {
+    void updateHash(const uint8_t *data, size_t pos) {
         int hash = computeHash(data + pos);
         prev[pos & kWindowMask] = head[hash];
         head[hash] = static_cast<int>(pos);
     }
 };
 
-static int getLengthCode(int length)
-{
-    for (int i = 0; i < 29; i++)
-    {
+static int getLengthCode(int length) {
+    for (int i = 0; i < 29; i++) {
         if (i == 28)
             return 285;
         if (length < kLengthBase[i + 1])
@@ -744,10 +660,8 @@ static int getLengthCode(int length)
     return 285;
 }
 
-static int getDistCode(int dist)
-{
-    for (int i = 0; i < 30; i++)
-    {
+static int getDistCode(int dist) {
+    for (int i = 0; i < 30; i++) {
         if (i == 29 || dist < kDistBase[i + 1])
             return i;
     }
@@ -755,11 +669,9 @@ static int getDistCode(int dist)
 }
 
 /// @brief Write bits in reverse order (LSB first as required by DEFLATE)
-static void writeCode(BitWriter &bw, uint16_t code, int len)
-{
+static void writeCode(BitWriter &bw, uint16_t code, int len) {
     uint16_t rev = 0;
-    for (int i = 0; i < len; i++)
-    {
+    for (int i = 0; i < len; i++) {
         if (code & (1 << i))
             rev |= 1 << (len - 1 - i);
     }
@@ -767,10 +679,8 @@ static void writeCode(BitWriter &bw, uint16_t code, int len)
 }
 
 /// @brief Compress using stored blocks (no compression)
-static void deflateStored(BitWriter &bw, const uint8_t *data, size_t len)
-{
-    if (len == 0)
-    {
+static void deflateStored(BitWriter &bw, const uint8_t *data, size_t len) {
+    if (len == 0) {
         bw.write(1, 1); // BFINAL = 1
         bw.write(0, 2); // BTYPE = stored
         bw.flush();
@@ -782,8 +692,7 @@ static void deflateStored(BitWriter &bw, const uint8_t *data, size_t len)
     }
 
     size_t pos = 0;
-    while (pos < len)
-    {
+    while (pos < len) {
         size_t blockLen = len - pos;
         if (blockLen > 65535)
             blockLen = 65535;
@@ -806,8 +715,7 @@ static void deflateStored(BitWriter &bw, const uint8_t *data, size_t len)
 }
 
 /// @brief Compress using fixed Huffman codes with LZ77
-static void deflateFixed(BitWriter &bw, const uint8_t *data, size_t len, int level)
-{
+static void deflateFixed(BitWriter &bw, const uint8_t *data, size_t len, int level) {
     initFixedTrees();
 
     LZ77State lz;
@@ -819,16 +727,14 @@ static void deflateFixed(BitWriter &bw, const uint8_t *data, size_t len, int lev
     bw.write(1, 2); // BTYPE = fixed Huffman
 
     size_t pos = 0;
-    while (pos < len)
-    {
+    while (pos < len) {
         int matchDist = 0;
         int matchLen = 0;
 
         if (pos + kMinMatchLen <= len)
             matchLen = lz.findMatch(data, pos, len, maxChain, &matchDist);
 
-        if (matchLen >= kMinMatchLen)
-        {
+        if (matchLen >= kMinMatchLen) {
             int lenCode = getLengthCode(matchLen);
             int lenIdx = lenCode - 257;
 
@@ -846,15 +752,12 @@ static void deflateFixed(BitWriter &bw, const uint8_t *data, size_t len, int lev
             if (kDistExtraBits[distCode] > 0)
                 bw.write(matchDist - kDistBase[distCode], kDistExtraBits[distCode]);
 
-            for (int i = 0; i < matchLen; i++)
-            {
+            for (int i = 0; i < matchLen; i++) {
                 if (pos + i + kMinMatchLen <= len)
                     lz.updateHash(data, pos + i);
             }
             pos += matchLen;
-        }
-        else
-        {
+        } else {
             uint8_t lit = data[pos];
             if (lit <= 143)
                 writeCode(bw, 0x30 + lit, 8);
@@ -874,8 +777,7 @@ static void deflateFixed(BitWriter &bw, const uint8_t *data, size_t len, int lev
     // (that causes a double-free since the destructor also frees head/prev).
 }
 
-static std::vector<uint8_t> deflateData(const uint8_t *data, size_t len, int level)
-{
+static std::vector<uint8_t> deflateData(const uint8_t *data, size_t len, int level) {
     if (level < kMinLevel)
         level = kMinLevel;
     if (level > kMaxLevel)
@@ -897,13 +799,11 @@ static std::vector<uint8_t> deflateData(const uint8_t *data, size_t len, int lev
 // Public API
 //=============================================================================
 
-std::vector<uint8_t> deflate(const uint8_t *data, size_t len, int level)
-{
+std::vector<uint8_t> deflate(const uint8_t *data, size_t len, int level) {
     return deflateData(data, len, level);
 }
 
-std::vector<uint8_t> inflate(const uint8_t *data, size_t len)
-{
+std::vector<uint8_t> inflate(const uint8_t *data, size_t len) {
     return inflateData(data, len);
 }
 

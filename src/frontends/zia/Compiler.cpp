@@ -58,22 +58,18 @@
 #include <iostream>
 #include <sstream>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
-namespace
-{
+namespace {
 /// @brief Print every token from the source to stderr.
 /// @details Creates a fresh lexer and iterates until EOF, printing each token
 ///          with its location, kind, text, and literal values.
 void dumpTokenStream(const std::string &source,
                      uint32_t fileId,
-                     il::support::DiagnosticEngine &diag)
-{
+                     il::support::DiagnosticEngine &diag) {
     Lexer lexer(source, fileId, diag);
     std::cerr << "=== Zia Token Stream ===\n";
-    for (;;)
-    {
+    for (;;) {
         Token tok = lexer.next();
         std::cerr << tok.loc.line << ':' << tok.loc.column << '\t' << tokenKindToString(tok.kind);
         if (!tok.text.empty())
@@ -90,38 +86,31 @@ void dumpTokenStream(const std::string &source,
 }
 } // namespace
 
-bool CompilerResult::succeeded() const
-{
+bool CompilerResult::succeeded() const {
     return diagnostics.errorCount() == 0;
 }
 
 CompilerResult compile(const CompilerInput &input,
                        const CompilerOptions &options,
-                       il::support::SourceManager &sm)
-{
+                       il::support::SourceManager &sm) {
     CompilerResult result{};
 
     // Register source file if not already registered
-    if (input.fileId.has_value())
-    {
+    if (input.fileId.has_value()) {
         result.fileId = *input.fileId;
-    }
-    else
-    {
+    } else {
         result.fileId = sm.addFile(std::string(input.path));
     }
 
     // Debug timing
-    auto debugTime = [](const char *phase)
-    {
+    auto debugTime = [](const char *phase) {
         if (const char *env = std::getenv("ZIA_DEBUG_COMPILE"))
             std::cerr << "[zia] " << phase << std::endl;
     };
 
     // Phase 0 (optional): Token stream dump — uses a separate lexer so parsing
     // still works from the original one.
-    if (options.dumpTokens)
-    {
+    if (options.dumpTokens) {
         dumpTokenStream(std::string(input.source), result.fileId, result.diagnostics);
     }
 
@@ -134,15 +123,13 @@ CompilerResult compile(const CompilerInput &input,
     Parser parser(lexer, result.diagnostics);
     auto module = parser.parseModule();
 
-    if (!module || parser.hasError())
-    {
+    if (!module || parser.hasError()) {
         // Parse failed, return with diagnostics
         return result;
     }
 
     // Dump AST after parsing (before sema).
-    if (options.dumpAst)
-    {
+    if (options.dumpAst) {
         ZiaAstPrinter printer;
         std::cerr << "=== AST after parsing ===\n" << printer.dump(*module) << "=== End AST ===\n";
     }
@@ -153,11 +140,9 @@ CompilerResult compile(const CompilerInput &input,
 
     debugTime("Phase 2.5: Import resolution");
     // Phase 2.5: Process binds (load and merge bound files)
-    if (!module->binds.empty())
-    {
+    if (!module->binds.empty()) {
         ImportResolver resolver(result.diagnostics, sm, &sema.warningSuppressions());
-        if (!resolver.resolve(*module, std::string(input.path)))
-        {
+        if (!resolver.resolve(*module, std::string(input.path))) {
             // Import processing failed
             return result;
         }
@@ -168,15 +153,13 @@ CompilerResult compile(const CompilerInput &input,
     bool semanticOk = sema.analyze(*module);
 
     // Dump AST after semantic analysis.
-    if (options.dumpSemaAst)
-    {
+    if (options.dumpSemaAst) {
         ZiaAstPrinter printer;
         std::cerr << "=== AST after semantic analysis ===\n"
                   << printer.dump(*module) << "=== End AST ===\n";
     }
 
-    if (!semanticOk)
-    {
+    if (!semanticOk) {
         // Semantic analysis failed, return with diagnostics
         return result;
     }
@@ -188,8 +171,7 @@ CompilerResult compile(const CompilerInput &input,
     debugTime("Phase 4: Done");
 
     // Dump IL after lowering, before optimization.
-    if (options.dumpIL)
-    {
+    if (options.dumpIL) {
         std::cerr << "=== IL after lowering ===\n";
         io::Serializer::write(result.module, std::cerr);
         std::cerr << "=== End IL ===\n";
@@ -198,14 +180,12 @@ CompilerResult compile(const CompilerInput &input,
     // Phase 5: IL Optimization — use the canonical registered pipelines.
     // O1 and O2 pipelines are defined in PassManager's constructor and include
     // the full sequence of passes (SCCP, LICM, loop transforms, inlining, etc.).
-    if (options.optLevel != OptLevel::O0)
-    {
+    if (options.optLevel != OptLevel::O0) {
         il::transform::PassManager pm;
         pm.setVerifyBetweenPasses(false);
 
         // Enable per-pass IL dumps when requested.
-        if (options.dumpILPasses)
-        {
+        if (options.dumpILPasses) {
             pm.setPrintBeforeEach(true);
             pm.setPrintAfterEach(true);
             pm.setInstrumentationStream(std::cerr);
@@ -216,8 +196,7 @@ CompilerResult compile(const CompilerInput &input,
     }
 
     // Dump IL after the full optimization pipeline.
-    if (options.dumpILOpt)
-    {
+    if (options.dumpILOpt) {
         const char *level = (options.optLevel == OptLevel::O2)   ? "O2"
                             : (options.optLevel == OptLevel::O1) ? "O1"
                                                                  : "O0";
@@ -231,12 +210,10 @@ CompilerResult compile(const CompilerInput &input,
 
 CompilerResult compileFile(const std::string &path,
                            const CompilerOptions &options,
-                           il::support::SourceManager &sm)
-{
+                           il::support::SourceManager &sm) {
     // Read file contents
     std::ifstream file(path);
-    if (!file)
-    {
+    if (!file) {
         CompilerResult result{};
         result.diagnostics.report({il::support::Severity::Error,
                                    "Failed to open file: " + path,
@@ -258,8 +235,7 @@ CompilerResult compileFile(const std::string &path,
 
 std::unique_ptr<AnalysisResult> parseAndAnalyze(const CompilerInput &input,
                                                 const CompilerOptions &options,
-                                                il::support::SourceManager &sm)
-{
+                                                il::support::SourceManager &sm) {
     // Heap-allocate the result so DiagnosticEngine has a stable address.
     // Sema holds a reference to it; moving a unique_ptr never relocates the
     // pointed-to object, so the reference remains valid for the object's lifetime.
@@ -278,8 +254,7 @@ std::unique_ptr<AnalysisResult> parseAndAnalyze(const CompilerInput &input,
     Parser parser(lexer, result->diagnostics);
     auto module = parser.parseModule();
 
-    if (!module)
-    {
+    if (!module) {
         // Complete parse failure — no AST to analyze.
         return result;
     }
@@ -294,8 +269,7 @@ std::unique_ptr<AnalysisResult> parseAndAnalyze(const CompilerInput &input,
 
     // Phase 2.5: Import resolution (best-effort).
     // Failures are accumulated in diagnostics but do not abort analysis.
-    if (!result->ast->binds.empty())
-    {
+    if (!result->ast->binds.empty()) {
         ImportResolver resolver(result->diagnostics, sm, &result->sema->warningSuppressions());
         resolver.resolve(*result->ast, std::string(input.path));
     }

@@ -20,8 +20,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 
-namespace il::frontends::basic::lower::common
-{
+namespace il::frontends::basic::lower::common {
 /// @brief Lower a BASIC builtin call by dispatching through the handler registry.
 /// @details Looks up the builtin identifier captured on @p call, ensures the corresponding
 ///          handler has been registered, and invokes it using the provided @p lowerer.  The

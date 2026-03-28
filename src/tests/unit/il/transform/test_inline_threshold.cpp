@@ -34,12 +34,10 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Count calls in module.
-unsigned countCallsInModule(const Module &module)
-{
+unsigned countCallsInModule(const Module &module) {
     unsigned count = 0;
     for (const auto &fn : module.functions)
         for (const auto &bb : fn.blocks)
@@ -50,8 +48,7 @@ unsigned countCallsInModule(const Module &module)
 }
 
 /// @brief Count instructions in function.
-unsigned countInstructionsInFunction(const Function &fn)
-{
+unsigned countInstructionsInFunction(const Function &fn) {
     unsigned count = 0;
     for (const auto &bb : fn.blocks)
         count += bb.instructions.size();
@@ -72,8 +69,7 @@ unsigned countInstructionsInFunction(const Function &fn)
 ///     entry:
 ///       t0 = call callee(42)
 ///       ret t0
-Module buildCalleeWithNInstrs(unsigned instrCount)
-{
+Module buildCalleeWithNInstrs(unsigned instrCount) {
     Module module;
 
     // Build callee
@@ -93,8 +89,7 @@ Module buildCalleeWithNInstrs(unsigned instrCount)
     entry.label = "entry";
 
     Value prev = Value::temp(0); // start from param
-    for (unsigned i = 0; i < instrCount; ++i)
-    {
+    for (unsigned i = 0; i < instrCount; ++i) {
         Instr add;
         add.result = nextId++;
         add.op = Opcode::Add;
@@ -151,8 +146,7 @@ Module buildCalleeWithNInstrs(unsigned instrCount)
 } // namespace
 
 // Default InlineCostConfig thresholds must match the new values.
-TEST(InlinerThreshold, DefaultThresholdsAreUpdated)
-{
+TEST(InlinerThreshold, DefaultThresholdsAreUpdated) {
     il::transform::InlineCostConfig cfg;
     EXPECT_EQ(cfg.instrThreshold, 80u);
     EXPECT_EQ(cfg.blockBudget, 1u);
@@ -161,8 +155,7 @@ TEST(InlinerThreshold, DefaultThresholdsAreUpdated)
 
 // A 50-instruction callee must be inlined with the new threshold (80).
 // It would have been rejected at the old threshold (32).
-TEST(InlinerThreshold, Inlines50InstrCallee)
-{
+TEST(InlinerThreshold, Inlines50InstrCallee) {
     Module module = buildCalleeWithNInstrs(50);
     ASSERT_EQ(module.functions.size(), 2u); // callee + caller
 
@@ -182,8 +175,7 @@ TEST(InlinerThreshold, Inlines50InstrCallee)
 // A callee with > 80 instructions must NOT be inlined (exceeds new threshold).
 // Even with singleUseBonus(10) + constArgBonus(4) = 14, a 100-Add callee has
 // instrCount=101; adjustedCost = 101 - 14 = 87 > 80, so it stays un-inlined.
-TEST(InlinerThreshold, DoesNotInlineOversizedCallee)
-{
+TEST(InlinerThreshold, DoesNotInlineOversizedCallee) {
     Module module = buildCalleeWithNInstrs(100); // 101 instrs; adj cost 87 > 80
     ASSERT_EQ(module.functions.size(), 2u);
 
@@ -200,8 +192,7 @@ TEST(InlinerThreshold, DoesNotInlineOversizedCallee)
     EXPECT_EQ(callsAfter, 1u);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

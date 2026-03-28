@@ -20,8 +20,7 @@
 #include <cstring>
 #include <string>
 
-static rt_string read_line(const std::string &data)
-{
+static rt_string read_line(const std::string &data) {
     int fds[2];
     assert(pipe(fds) == 0);
     if (!data.empty())
@@ -69,8 +68,7 @@ static rt_string read_line(const std::string &data)
     return result;
 }
 
-static void feed_and_check(size_t len, bool with_newline)
-{
+static void feed_and_check(size_t len, bool with_newline) {
     std::string input(len, 'x');
     std::string data = with_newline ? input + "\n" : input;
     rt_string s = read_line(data);
@@ -79,8 +77,7 @@ static void feed_and_check(size_t len, bool with_newline)
     assert(std::memcmp(s->data, input.data(), input.size()) == 0);
 }
 
-static void feed_crlf_and_check(size_t len)
-{
+static void feed_crlf_and_check(size_t len) {
     std::string input(len, 'x');
     std::string data = input + "\r\n";
     rt_string s = read_line(data);
@@ -90,16 +87,14 @@ static void feed_crlf_and_check(size_t len)
     assert(std::memchr(s->data, '\r', input.size()) == nullptr);
 }
 
-static void feed_empty_newline_returns_empty_string()
-{
+static void feed_empty_newline_returns_empty_string() {
     rt_string s = read_line("\n");
     assert(s);
     assert(rt_str_len(s) == 0);
     assert(s->data[0] == '\0');
 }
 
-int main()
-{
+int main() {
 #ifdef _WIN32
     // On Windows, dup2() redirection of stdin doesn't synchronize properly with
     // the C runtime's FILE* stdin stream, making pipe-based stdin tests unreliable.

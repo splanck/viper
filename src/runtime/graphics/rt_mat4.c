@@ -50,10 +50,8 @@
 static _Thread_local void *mat4_pool_buf_[MAT4_POOL_CAPACITY];
 static _Thread_local int mat4_pool_top_ = 0;
 
-static void mat4_pool_return(void *p)
-{
-    if (mat4_pool_top_ < MAT4_POOL_CAPACITY)
-    {
+static void mat4_pool_return(void *p) {
+    if (mat4_pool_top_ < MAT4_POOL_CAPACITY) {
         rt_obj_resurrect(p);
         rt_obj_set_finalizer(p, mat4_pool_return);
         mat4_pool_buf_[mat4_pool_top_++] = p;
@@ -65,23 +63,18 @@ static void mat4_pool_return(void *p)
 //=============================================================================
 
 /// @brief 4x4 matrix stored in row-major order.
-typedef struct mat4_impl
-{
+typedef struct mat4_impl {
     double m[16]; ///< Elements in row-major order
 } mat4_impl;
 
 #define M(mat, r, c) ((mat)->m[(r) * 4 + (c)])
 
 /// @brief Allocate a Mat4 from pool or heap.
-static mat4_impl *mat4_alloc(void)
-{
+static mat4_impl *mat4_alloc(void) {
     mat4_impl *mat;
-    if (mat4_pool_top_ > 0)
-    {
+    if (mat4_pool_top_ > 0) {
         mat = (mat4_impl *)mat4_pool_buf_[--mat4_pool_top_];
-    }
-    else
-    {
+    } else {
         mat = (mat4_impl *)rt_obj_new_i64(0, sizeof(mat4_impl));
         if (!mat)
             return NULL;
@@ -109,8 +102,7 @@ void *rt_mat4_new(double m00,
                   double m30,
                   double m31,
                   double m32,
-                  double m33)
-{
+                  double m33) {
     mat4_impl *mat = mat4_alloc();
     if (!mat)
         return NULL;
@@ -135,14 +127,12 @@ void *rt_mat4_new(double m00,
     return mat;
 }
 
-void *rt_mat4_identity(void)
-{
+void *rt_mat4_identity(void) {
     return rt_mat4_new(
         1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
-void *rt_mat4_zero(void)
-{
+void *rt_mat4_zero(void) {
     return rt_mat4_new(
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 }
@@ -151,44 +141,37 @@ void *rt_mat4_zero(void)
 // 3D Transformation Factories
 //=============================================================================
 
-void *rt_mat4_translate(double tx, double ty, double tz)
-{
+void *rt_mat4_translate(double tx, double ty, double tz) {
     return rt_mat4_new(1.0, 0.0, 0.0, tx, 0.0, 1.0, 0.0, ty, 0.0, 0.0, 1.0, tz, 0.0, 0.0, 0.0, 1.0);
 }
 
-void *rt_mat4_scale(double sx, double sy, double sz)
-{
+void *rt_mat4_scale(double sx, double sy, double sz) {
     return rt_mat4_new(sx, 0.0, 0.0, 0.0, 0.0, sy, 0.0, 0.0, 0.0, 0.0, sz, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
-void *rt_mat4_scale_uniform(double s)
-{
+void *rt_mat4_scale_uniform(double s) {
     return rt_mat4_scale(s, s, s);
 }
 
-void *rt_mat4_rotate_x(double angle)
-{
+void *rt_mat4_rotate_x(double angle) {
     double c = cos(angle);
     double s = sin(angle);
     return rt_mat4_new(1.0, 0.0, 0.0, 0.0, 0.0, c, -s, 0.0, 0.0, s, c, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
-void *rt_mat4_rotate_y(double angle)
-{
+void *rt_mat4_rotate_y(double angle) {
     double c = cos(angle);
     double s = sin(angle);
     return rt_mat4_new(c, 0.0, s, 0.0, 0.0, 1.0, 0.0, 0.0, -s, 0.0, c, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
-void *rt_mat4_rotate_z(double angle)
-{
+void *rt_mat4_rotate_z(double angle) {
     double c = cos(angle);
     double s = sin(angle);
     return rt_mat4_new(c, -s, 0.0, 0.0, s, c, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0);
 }
 
-void *rt_mat4_rotate_axis(void *axis, double angle)
-{
+void *rt_mat4_rotate_axis(void *axis, double angle) {
     if (!axis)
         return rt_mat4_identity();
 
@@ -230,8 +213,7 @@ void *rt_mat4_rotate_axis(void *axis, double angle)
 // Projection Matrices
 //=============================================================================
 
-void *rt_mat4_perspective(double fov, double aspect, double near, double far)
-{
+void *rt_mat4_perspective(double fov, double aspect, double near, double far) {
     if (fov <= 0.0 || aspect <= 0.0 || near >= far)
         return rt_mat4_identity();
 
@@ -257,8 +239,7 @@ void *rt_mat4_perspective(double fov, double aspect, double near, double far)
                        0.0);
 }
 
-void *rt_mat4_ortho(double left, double right, double bottom, double top, double near, double far)
-{
+void *rt_mat4_ortho(double left, double right, double bottom, double top, double near, double far) {
     if (right == left || top == bottom || far == near)
         return rt_mat4_identity();
 
@@ -284,8 +265,7 @@ void *rt_mat4_ortho(double left, double right, double bottom, double top, double
                        1.0);
 }
 
-void *rt_mat4_look_at(void *eye, void *target, void *up)
-{
+void *rt_mat4_look_at(void *eye, void *target, void *up) {
     if (!eye || !target || !up)
         return rt_mat4_identity();
 
@@ -350,8 +330,7 @@ void *rt_mat4_look_at(void *eye, void *target, void *up)
 // Element Access
 //=============================================================================
 
-double rt_mat4_get(void *m, int64_t row, int64_t col)
-{
+double rt_mat4_get(void *m, int64_t row, int64_t col) {
     if (!m || row < 0 || row > 3 || col < 0 || col > 3)
         return 0.0;
 
@@ -363,8 +342,7 @@ double rt_mat4_get(void *m, int64_t row, int64_t col)
 // Arithmetic
 //=============================================================================
 
-void *rt_mat4_add(void *a, void *b)
-{
+void *rt_mat4_add(void *a, void *b) {
     if (!a || !b)
         return rt_mat4_zero();
 
@@ -393,8 +371,7 @@ void *rt_mat4_add(void *a, void *b)
                        r[15]);
 }
 
-void *rt_mat4_sub(void *a, void *b)
-{
+void *rt_mat4_sub(void *a, void *b) {
     if (!a || !b)
         return rt_mat4_zero();
 
@@ -423,8 +400,7 @@ void *rt_mat4_sub(void *a, void *b)
                        r[15]);
 }
 
-void *rt_mat4_mul(void *a, void *b)
-{
+void *rt_mat4_mul(void *a, void *b) {
     if (!a || !b)
         return rt_mat4_identity();
 
@@ -432,10 +408,8 @@ void *rt_mat4_mul(void *a, void *b)
     mat4_impl *mb = (mat4_impl *)b;
 
     double r[16];
-    for (int i = 0; i < 4; i++)
-    {
-        for (int j = 0; j < 4; j++)
-        {
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
             r[i * 4 + j] =
                 ma->m[i * 4 + 0] * mb->m[0 * 4 + j] + ma->m[i * 4 + 1] * mb->m[1 * 4 + j] +
                 ma->m[i * 4 + 2] * mb->m[2 * 4 + j] + ma->m[i * 4 + 3] * mb->m[3 * 4 + j];
@@ -460,8 +434,7 @@ void *rt_mat4_mul(void *a, void *b)
                        r[15]);
 }
 
-void *rt_mat4_mul_scalar(void *m, double s)
-{
+void *rt_mat4_mul_scalar(void *m, double s) {
     if (!m)
         return rt_mat4_zero();
 
@@ -489,8 +462,7 @@ void *rt_mat4_mul_scalar(void *m, double s)
                        r[15]);
 }
 
-void *rt_mat4_transform_point(void *m, void *v)
-{
+void *rt_mat4_transform_point(void *m, void *v) {
     if (!m || !v)
         return rt_vec3_zero();
 
@@ -506,8 +478,7 @@ void *rt_mat4_transform_point(void *m, void *v)
     double rw = mat->m[12] * x + mat->m[13] * y + mat->m[14] * z + mat->m[15];
 
     // Perspective divide
-    if (fabs(rw) > 1e-15 && fabs(rw - 1.0) > 1e-15)
-    {
+    if (fabs(rw) > 1e-15 && fabs(rw - 1.0) > 1e-15) {
         rx /= rw;
         ry /= rw;
         rz /= rw;
@@ -516,8 +487,7 @@ void *rt_mat4_transform_point(void *m, void *v)
     return rt_vec3_new(rx, ry, rz);
 }
 
-void *rt_mat4_transform_vec(void *m, void *v)
-{
+void *rt_mat4_transform_vec(void *m, void *v) {
     if (!m || !v)
         return rt_vec3_zero();
 
@@ -538,8 +508,7 @@ void *rt_mat4_transform_vec(void *m, void *v)
 // Matrix Operations
 //=============================================================================
 
-void *rt_mat4_transpose(void *m)
-{
+void *rt_mat4_transpose(void *m) {
     if (!m)
         return rt_mat4_identity();
 
@@ -563,8 +532,7 @@ void *rt_mat4_transpose(void *m)
                        mat->m[15]);
 }
 
-double rt_mat4_det(void *m)
-{
+double rt_mat4_det(void *m) {
     if (!m)
         return 0.0;
 
@@ -589,8 +557,7 @@ double rt_mat4_det(void *m)
     return s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0;
 }
 
-void *rt_mat4_inverse(void *m)
-{
+void *rt_mat4_inverse(void *m) {
     if (!m)
         return rt_mat4_identity();
 
@@ -659,8 +626,7 @@ void *rt_mat4_inverse(void *m)
                        r[15]);
 }
 
-void *rt_mat4_neg(void *m)
-{
+void *rt_mat4_neg(void *m) {
     if (!m)
         return rt_mat4_zero();
 
@@ -692,8 +658,7 @@ void *rt_mat4_neg(void *m)
 // Comparison
 //=============================================================================
 
-int8_t rt_mat4_eq(void *a, void *b, double epsilon)
-{
+int8_t rt_mat4_eq(void *a, void *b, double epsilon) {
     if (!a || !b)
         return (!a && !b) ? 1 : 0;
 
@@ -703,8 +668,7 @@ int8_t rt_mat4_eq(void *a, void *b, double epsilon)
     mat4_impl *ma = (mat4_impl *)a;
     mat4_impl *mb = (mat4_impl *)b;
 
-    for (int i = 0; i < 16; i++)
-    {
+    for (int i = 0; i < 16; i++) {
         if (fabs(ma->m[i] - mb->m[i]) > epsilon)
             return 0;
     }

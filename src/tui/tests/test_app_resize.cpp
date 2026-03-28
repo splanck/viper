@@ -26,27 +26,22 @@ using viper::tui::render::ScreenBuffer;
 using viper::tui::term::StringTermIO;
 using viper::tui::ui::Widget;
 
-struct CharWidget : Widget
-{
+struct CharWidget : Widget {
     char ch;
 
     explicit CharWidget(char c) : ch(c) {}
 
-    void paint(ScreenBuffer &sb) override
-    {
+    void paint(ScreenBuffer &sb) override {
         auto r = rect();
-        for (int y = r.y; y < r.y + r.h; ++y)
-        {
-            for (int x = r.x; x < r.x + r.w; ++x)
-            {
+        for (int y = r.y; y < r.y + r.h; ++y) {
+            for (int x = r.x; x < r.x + r.w; ++x) {
                 sb.at(y, x).ch = ch;
             }
         }
     }
 };
 
-TEST(TUI, AppResize)
-{
+TEST(TUI, AppResize) {
     auto root = std::make_unique<CharWidget>('X');
     CharWidget *wp = root.get();
     StringTermIO tio;
@@ -60,8 +55,7 @@ TEST(TUI, AppResize)
     ASSERT_EQ(wp->rect().w, 3);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -28,16 +28,13 @@
 #error "OPERAND_WS_DIR must be defined"
 #endif
 
-namespace
-{
-std::vector<std::string> readTokens(const char *path)
-{
+namespace {
+std::vector<std::string> readTokens(const char *path) {
     std::ifstream stream(path);
     assert(stream && "failed to open operand fixture");
     std::vector<std::string> tokens;
     std::string line;
-    while (std::getline(stream, line))
-    {
+    while (std::getline(stream, line)) {
         if (!line.empty())
             tokens.push_back(line);
     }
@@ -45,8 +42,7 @@ std::vector<std::string> readTokens(const char *path)
 }
 } // namespace
 
-int main()
-{
+int main() {
     using il::core::Instr;
     using il::core::Module;
     using il::core::Opcode;
@@ -84,8 +80,7 @@ int main()
     const auto negativeTokens = readTokens(OPERAND_WS_DIR "/operand_leading_space_negative.il");
     assert(!negativeTokens.empty() && "expected negative operand samples");
 
-    for (const auto &token : negativeTokens)
-    {
+    for (const auto &token : negativeTokens) {
         ++state.lineNo;
         auto parsed = parser.parseValueToken(token);
         assert(!parsed && "missing symbol name must still be rejected");

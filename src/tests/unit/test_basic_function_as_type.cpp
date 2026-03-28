@@ -26,8 +26,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     SourceManager sm;
     uint32_t fid = sm.addFile("t.bas");
     // String function case:
@@ -45,10 +44,8 @@ int main()
         Lowerer lw(/*boundsChecks*/ false);
         auto mod = lw.lower(*prog);
         bool saw = false;
-        for (auto &fn : mod.functions)
-        {
-            if (fn.name == "EXCL" || fn.name == "EXCL$")
-            {
+        for (auto &fn : mod.functions) {
+            if (fn.name == "EXCL" || fn.name == "EXCL$") {
                 assert(fn.retType.kind == il::core::Type::Kind::Str);
                 saw = true;
             }
@@ -70,10 +67,8 @@ int main()
         Lowerer lw(false);
         auto mod = lw.lower(*prog);
         bool saw = false;
-        for (auto &fn : mod.functions)
-        {
-            if (fn.name == "F")
-            {
+        for (auto &fn : mod.functions) {
+            if (fn.name == "F") {
                 assert(fn.retType.kind == il::core::Type::Kind::F64);
                 saw = true;
             }

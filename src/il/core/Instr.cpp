@@ -21,15 +21,12 @@
 
 #include <cassert>
 
-namespace il::core
-{
-namespace
-{
+namespace il::core {
+namespace {
 /// @brief Verifies that a helper is operating on a switch instruction.
 /// @param instr Instruction subjected to the helper.
 /// @pre instr.op must be Opcode::SwitchI32.
-void requireSwitch(const Instr &instr)
-{
+void requireSwitch(const Instr &instr) {
     assert(instr.op == Opcode::SwitchI32 && "expected switch instruction");
 }
 
@@ -40,8 +37,7 @@ void requireSwitch(const Instr &instr)
 /// @pre instr must satisfy requireSwitch().
 /// @pre index must be less than instr.labels.size() and instr.brArgs.size().
 /// @post The returned reference remains valid for the lifetime of @p instr.
-const std::vector<Value> &argsOrEmpty(const Instr &instr, size_t index)
-{
+const std::vector<Value> &argsOrEmpty(const Instr &instr, size_t index) {
     requireSwitch(instr);
     assert(index < instr.labels.size());
     assert(index < instr.brArgs.size());
@@ -54,8 +50,7 @@ const std::vector<Value> &argsOrEmpty(const Instr &instr, size_t index)
 /// @return Reference to the scrutinee value.
 /// @pre instr must satisfy requireSwitch().
 /// @pre instr.operands must contain at least one entry representing the scrutinee.
-const Value &switchScrutinee(const Instr &instr)
-{
+const Value &switchScrutinee(const Instr &instr) {
     requireSwitch(instr);
     assert(!instr.operands.empty());
     return instr.operands.front();
@@ -66,8 +61,7 @@ const Value &switchScrutinee(const Instr &instr)
 /// @return Reference to the default branch label string.
 /// @pre instr must satisfy requireSwitch().
 /// @pre instr.labels must contain at least one entry representing the default label.
-const std::string &switchDefaultLabel(const Instr &instr)
-{
+const std::string &switchDefaultLabel(const Instr &instr) {
     requireSwitch(instr);
     assert(!instr.labels.empty());
     return instr.labels.front();
@@ -77,8 +71,7 @@ const std::string &switchDefaultLabel(const Instr &instr)
 /// @param instr Switch instruction containing branch arguments.
 /// @return Reference to the default branch argument list (possibly empty).
 /// @pre instr must satisfy requireSwitch().
-const std::vector<Value> &switchDefaultArgs(const Instr &instr)
-{
+const std::vector<Value> &switchDefaultArgs(const Instr &instr) {
     return argsOrEmpty(instr, 0);
 }
 
@@ -86,8 +79,7 @@ const std::vector<Value> &switchDefaultArgs(const Instr &instr)
 /// @param instr Switch instruction to inspect.
 /// @return Number of explicit case labels in the instruction.
 /// @pre instr must satisfy requireSwitch().
-size_t switchCaseCount(const Instr &instr)
-{
+size_t switchCaseCount(const Instr &instr) {
     requireSwitch(instr);
     if (instr.labels.empty())
         return 0;
@@ -101,8 +93,7 @@ size_t switchCaseCount(const Instr &instr)
 /// @pre instr must satisfy requireSwitch().
 /// @pre index must be less than switchCaseCount(instr).
 /// @pre instr.operands must contain the scrutinee followed by case values.
-const Value &switchCaseValue(const Instr &instr, size_t index)
-{
+const Value &switchCaseValue(const Instr &instr, size_t index) {
     requireSwitch(instr);
     assert(index < switchCaseCount(instr));
     assert(instr.operands.size() > index + 1);
@@ -115,8 +106,7 @@ const Value &switchCaseValue(const Instr &instr, size_t index)
 /// @return Reference to the label string associated with the case.
 /// @pre instr must satisfy requireSwitch().
 /// @pre index must be less than switchCaseCount(instr).
-const std::string &switchCaseLabel(const Instr &instr, size_t index)
-{
+const std::string &switchCaseLabel(const Instr &instr, size_t index) {
     requireSwitch(instr);
     assert(index < switchCaseCount(instr));
     return instr.labels[index + 1];
@@ -128,8 +118,7 @@ const std::string &switchCaseLabel(const Instr &instr, size_t index)
 /// @return Reference to the argument list for the selected case (possibly empty).
 /// @pre instr must satisfy requireSwitch().
 /// @pre index must be less than switchCaseCount(instr).
-const std::vector<Value> &switchCaseArgs(const Instr &instr, size_t index)
-{
+const std::vector<Value> &switchCaseArgs(const Instr &instr, size_t index) {
     return argsOrEmpty(instr, index + 1);
 }
 

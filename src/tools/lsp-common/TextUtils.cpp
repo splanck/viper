@@ -20,25 +20,20 @@
 
 #include <cctype>
 
-namespace viper::server
-{
+namespace viper::server {
 
-bool isIdentChar(char c)
-{
+bool isIdentChar(char c) {
     return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
 }
 
-HoverContext extractIdentifierAtCursor(const std::string &source, int line, int col)
-{
+HoverContext extractIdentifierAtCursor(const std::string &source, int line, int col) {
     HoverContext ctx;
 
     // Find the start of the requested line (1-based).
     size_t lineStart = 0;
     int curLine = 1;
-    for (size_t i = 0; i < source.size() && curLine < line; ++i)
-    {
-        if (source[i] == '\n')
-        {
+    for (size_t i = 0; i < source.size() && curLine < line; ++i) {
+        if (source[i] == '\n') {
             ++curLine;
             lineStart = i + 1;
         }
@@ -71,16 +66,13 @@ HoverContext extractIdentifierAtCursor(const std::string &source, int line, int 
     ctx.valid = true;
 
     // Scan left past dots to capture dot-chain prefix (e.g., "shell.app").
-    if (idStart > lineStart && source[idStart - 1] == '.')
-    {
+    if (idStart > lineStart && source[idStart - 1] == '.') {
         size_t prefixEnd = idStart - 1; // position of the '.'
         size_t prefixStart = prefixEnd;
         // Walk backwards through identifiers and dots.
-        while (prefixStart > lineStart)
-        {
+        while (prefixStart > lineStart) {
             size_t p = prefixStart - 1;
-            if (isIdentChar(source[p]))
-            {
+            if (isIdentChar(source[p])) {
                 while (p > lineStart && isIdentChar(source[p - 1]))
                     --p;
                 prefixStart = p;
@@ -88,9 +80,7 @@ HoverContext extractIdentifierAtCursor(const std::string &source, int line, int 
                     prefixStart = p - 1;
                 else
                     break;
-            }
-            else
-            {
+            } else {
                 break;
             }
         }

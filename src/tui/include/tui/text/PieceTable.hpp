@@ -42,8 +42,7 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::tui::text
-{
+namespace viper::tui::text {
 /// @brief Piece table implementation providing efficient insert/erase operations
 ///        for text editing in the TUI editor.
 /// @details Uses an original buffer (set at load time, never modified) and an
@@ -51,15 +50,13 @@ namespace viper::tui::text
 ///          of pieces, each referencing a contiguous span in one of the two buffers.
 ///          This structure provides O(n) insert/erase where n is the number of pieces,
 ///          which remains small for typical editing sessions.
-class PieceTable
-{
+class PieceTable {
   public:
     /// @brief Captures the metadata of a single piece table mutation for undo/redo.
     /// @details Records both the inserted and erased spans (position + text) from a
     ///          single insert or erase operation. The EditHistory stores these changes
     ///          and replays them in reverse for undo or forward for redo.
-    struct Change
-    {
+    struct Change {
         /// @brief Callback signature receiving span position and text view.
         using Callback = std::function<void(std::size_t pos, std::string_view text)>;
 
@@ -94,8 +91,7 @@ class PieceTable
         [[nodiscard]] std::string_view erasedText() const;
 
       private:
-        struct Span
-        {
+        struct Span {
             std::size_t pos{};
             std::string text{};
         };
@@ -153,14 +149,9 @@ class PieceTable
     Change eraseInternal(std::size_t pos, std::size_t len);
 
   private:
-    enum class BufferKind
-    {
-        Original,
-        Add
-    };
+    enum class BufferKind { Original, Add };
 
-    struct Piece
-    {
+    struct Piece {
         BufferKind buf{};
         std::size_t start{};
         std::size_t length{};
@@ -177,13 +168,10 @@ class PieceTable
 } // namespace viper::tui::text
 
 template <typename Fn>
-void viper::tui::text::PieceTable::forEachSegment(std::size_t pos, std::size_t len, Fn &&fn) const
-{
+void viper::tui::text::PieceTable::forEachSegment(std::size_t pos, std::size_t len, Fn &&fn) const {
     std::size_t idx = 0;
-    for (auto it = pieces_.cbegin(); it != pieces_.cend() && len > 0; ++it)
-    {
-        if (pos >= idx + it->length)
-        {
+    for (auto it = pieces_.cbegin(); it != pieces_.cend() && len > 0; ++it) {
+        if (pos >= idx + it->length) {
             idx += it->length;
             continue;
         }
@@ -192,8 +180,7 @@ void viper::tui::text::PieceTable::forEachSegment(std::size_t pos, std::size_t l
         std::size_t take = (std::min)(it->length - start_in_piece, len);
         const std::string &buf = it->buf == BufferKind::Add ? add_ : original_;
         std::string_view view(buf.data() + it->start + start_in_piece, take);
-        if (!std::invoke(std::forward<Fn>(fn), view))
-        {
+        if (!std::invoke(std::forward<Fn>(fn), view)) {
             break;
         }
 

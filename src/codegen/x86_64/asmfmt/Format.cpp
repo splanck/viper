@@ -21,15 +21,12 @@
 #include <cstddef>
 #include <string>
 
-namespace asmfmt
-{
-namespace
-{
+namespace asmfmt {
+namespace {
 /// @brief Determine whether a byte is printable ASCII.
 /// @param ch Byte to inspect.
 /// @return True when the byte falls within the standard printable ASCII range.
-[[nodiscard]] bool is_printable(unsigned char ch) noexcept
-{
+[[nodiscard]] bool is_printable(unsigned char ch) noexcept {
     return ch >= 0x20U && ch <= 0x7EU;
 }
 } // namespace
@@ -39,14 +36,11 @@ namespace
 ///          backslash so the result can be embedded in `.ascii` directives.
 /// @param bytes Input character sequence to escape.
 /// @return Escaped string suitable for assembly output.
-std::string escape_ascii(std::string_view bytes)
-{
+std::string escape_ascii(std::string_view bytes) {
     std::string out{};
     out.reserve(bytes.size());
-    for (const unsigned char ch : bytes)
-    {
-        if (ch == static_cast<unsigned char>('\\') || ch == static_cast<unsigned char>('"'))
-        {
+    for (const unsigned char ch : bytes) {
+        if (ch == static_cast<unsigned char>('\\') || ch == static_cast<unsigned char>('"')) {
             out.push_back('\\');
         }
         out.push_back(static_cast<char>(ch));
@@ -57,24 +51,21 @@ std::string escape_ascii(std::string_view bytes)
 /// @brief Format an immediate value using AT&T syntax.
 /// @param v Integer value to print.
 /// @return String containing the `$`-prefixed decimal literal.
-std::string format_imm(std::int64_t v)
-{
+std::string format_imm(std::int64_t v) {
     return std::string{"$"} + std::to_string(v);
 }
 
 /// @brief Convert a label name into an assembly operand.
 /// @param name Label identifier to emit.
 /// @return Sanitized copy of @p name as a standard symbol reference.
-std::string format_label(std::string_view name)
-{
+std::string format_label(std::string_view name) {
     return viper::codegen::common::sanitizeLabel(name);
 }
 
 /// @brief Emit a RIP-relative reference to a label.
 /// @param name Label identifier appearing in the operand.
 /// @return Formatted string using the `symbol(%rip)` syntax.
-std::string format_rip_label(std::string_view name)
-{
+std::string format_rip_label(std::string_view name) {
     std::string result = viper::codegen::common::sanitizeLabel(name);
     result += "(%rip)";
     return result;
@@ -86,10 +77,8 @@ std::string format_rip_label(std::string_view name)
 ///          mnemonics of the form `%vN`.
 /// @param reg Encoded register identifier (physical or virtual).
 /// @return Textual register representation for assembly output.
-std::string fmt_reg(int reg)
-{
-    if (reg >= 0)
-    {
+std::string fmt_reg(int reg) {
+    if (reg >= 0) {
         const auto phys =
             viper::codegen::x64::regName(static_cast<viper::codegen::x64::PhysReg>(reg));
         return std::string{phys != nullptr ? phys : "%r?"};
@@ -109,20 +98,17 @@ std::string fmt_reg(int reg)
 ///          redundant commas.  Uses pre-sized string buffer for efficiency.
 /// @param a Structured memory operand describing the address.
 /// @return Assembly string representing the effective address.
-std::string format_mem(const MemAddr &a)
-{
+std::string format_mem(const MemAddr &a) {
     std::string result;
     result.reserve(64); // Pre-size for typical memory operand
 
-    if (a.disp != 0)
-    {
+    if (a.disp != 0) {
         result += std::to_string(a.disp);
     }
 
     result += '(';
     result += fmt_reg(a.base);
-    if (a.has_index)
-    {
+    if (a.has_index) {
         result += ',';
         result += fmt_reg(a.index);
         result += ',';
@@ -138,27 +124,22 @@ std::string format_mem(const MemAddr &a)
 ///          Uses pre-sized string buffer for efficiency.
 /// @param bytes Raw data blob to render.
 /// @return Multi-line assembly listing representing the data section.
-std::string format_rodata_bytes(std::string_view bytes)
-{
+std::string format_rodata_bytes(std::string_view bytes) {
     std::string result;
     // Reserve approximately 3x the input size to accommodate formatting overhead
     result.reserve(bytes.size() * 3 + 32);
 
-    if (bytes.empty())
-    {
+    if (bytes.empty()) {
         result += "  # empty literal\n";
         return result;
     }
 
     std::size_t index = 0;
-    while (index < bytes.size())
-    {
+    while (index < bytes.size()) {
         const unsigned char current = static_cast<unsigned char>(bytes[index]);
-        if (is_printable(current))
-        {
+        if (is_printable(current)) {
             const std::size_t begin = index;
-            while (index < bytes.size() && is_printable(static_cast<unsigned char>(bytes[index])))
-            {
+            while (index < bytes.size() && is_printable(static_cast<unsigned char>(bytes[index]))) {
                 ++index;
             }
             const std::string_view run{bytes.data() + begin, index - begin};
@@ -170,15 +151,12 @@ std::string format_rodata_bytes(std::string_view bytes)
 
         result += "  .byte ";
         std::size_t emitted = 0;
-        while (index < bytes.size() && emitted < 16U)
-        {
+        while (index < bytes.size() && emitted < 16U) {
             const unsigned char byte_val = static_cast<unsigned char>(bytes[index]);
-            if (is_printable(byte_val))
-            {
+            if (is_printable(byte_val)) {
                 break;
             }
-            if (emitted != 0)
-            {
+            if (emitted != 0) {
                 result += ", ";
             }
             result += std::to_string(static_cast<unsigned>(byte_val));

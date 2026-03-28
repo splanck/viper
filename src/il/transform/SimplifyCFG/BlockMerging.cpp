@@ -33,14 +33,11 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::transform::simplify_cfg
-{
-namespace
-{
+namespace il::transform::simplify_cfg {
+namespace {
 
 /// @brief Predecessor edge information precomputed for O(1) lookup.
-struct PredInfo
-{
+struct PredInfo {
     size_t edgeCount = 0;                 ///< Total predecessor edge count (including self-loops).
     il::core::BasicBlock *pred = nullptr; ///< First non-self predecessor block (if any).
     il::core::Instr *predTerm = nullptr;  ///< Terminator of that predecessor.
@@ -51,24 +48,20 @@ struct PredInfo
 ///          the total edge count and first non-self predecessor.  Self-loop
 ///          edges are counted so that loop headers (which have a self-loop)
 ///          correctly show edgeCount > 1 and are never merged.
-std::unordered_map<std::string, PredInfo> buildPredMap(il::core::Function &F)
-{
+std::unordered_map<std::string, PredInfo> buildPredMap(il::core::Function &F) {
     std::unordered_map<std::string, PredInfo> predMap;
     predMap.reserve(F.blocks.size());
 
-    for (auto &candidate : F.blocks)
-    {
+    for (auto &candidate : F.blocks) {
         il::core::Instr *term = findTerminator(candidate);
         if (!term)
             continue;
 
-        for (const auto &label : term->labels)
-        {
+        for (const auto &label : term->labels) {
             auto &info = predMap[label];
             ++info.edgeCount;
             // Record first non-self predecessor as the merge candidate.
-            if (info.edgeCount == 1 && label != candidate.label)
-            {
+            if (info.edgeCount == 1 && label != candidate.label) {
                 info.pred = &candidate;
                 info.predTerm = term;
             }
@@ -95,14 +88,13 @@ std::unordered_map<std::string, PredInfo> buildPredMap(il::core::Function &F)
 /// @returns True when the block was merged into its predecessor.
 bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx,
                      il::core::BasicBlock &block,
-                     const std::unordered_map<std::string, PredInfo> &predMap)
-{
+                     const std::unordered_map<std::string, PredInfo> &predMap) {
     il::core::Function &F = ctx.function;
 
     auto blockIt =
-        std::find_if(F.blocks.begin(),
-                     F.blocks.end(),
-                     [&](il::core::BasicBlock &candidate) { return &candidate == &block; });
+        std::find_if(F.blocks.begin(), F.blocks.end(), [&](il::core::BasicBlock &candidate) {
+            return &candidate == &block;
+        });
     if (blockIt == F.blocks.end())
         return false;
 
@@ -138,8 +130,7 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx,
         return false;
 
     std::vector<il::core::Value> incomingArgs;
-    if (!predTerm->brArgs.empty())
-    {
+    if (!predTerm->brArgs.empty()) {
         if (predTerm->brArgs.size() != 1)
             return false;
         incomingArgs = predTerm->brArgs.front();
@@ -154,17 +145,13 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx,
     for (size_t idx = 0; idx < block.params.size(); ++idx)
         substitution.emplace(block.params[idx].id, incomingArgs[idx]);
 
-    if (!substitution.empty())
-    {
-        for (auto &bb : F.blocks)
-        {
-            for (auto &instr : bb.instructions)
-            {
+    if (!substitution.empty()) {
+        for (auto &bb : F.blocks) {
+            for (auto &instr : bb.instructions) {
                 for (auto &operand : instr.operands)
                     operand = substituteValue(operand, substitution);
 
-                for (auto &argList : instr.brArgs)
-                {
+                for (auto &argList : instr.brArgs) {
                     for (auto &value : argList)
                         value = substituteValue(value, substitution);
                 }
@@ -188,16 +175,14 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx,
 
     std::vector<il::core::Instr> movedInstrs;
     movedInstrs.reserve(blockInstrs.size() > 0 ? blockInstrs.size() - 1 : 0);
-    for (auto it = blockInstrs.begin(); it != blockInstrs.end(); ++it)
-    {
+    for (auto it = blockInstrs.begin(); it != blockInstrs.end(); ++it) {
         if (it == blockTermIt)
             continue;
         movedInstrs.push_back(std::move(*it));
     }
 
     il::core::Instr newTerm = std::move(*blockTermIt);
-    for (auto &label : newTerm.labels)
-    {
+    for (auto &label : newTerm.labels) {
         if (label == block.label)
             label = predBlock->label;
     }
@@ -229,8 +214,7 @@ bool mergeSinglePred(SimplifyCFG::SimplifyCFGPassContext &ctx,
 ///
 /// @param ctx SimplifyCFG context owning the function under transformation.
 /// @returns True if any block was merged.
-bool mergeSinglePredBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
-{
+bool mergeSinglePredBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx) {
     il::core::Function &F = ctx.function;
     bool changed = false;
 
@@ -241,19 +225,16 @@ bool mergeSinglePredBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
     auto predMap = buildPredMap(F);
 
     size_t blockIndex = 0;
-    while (blockIndex < F.blocks.size())
-    {
+    while (blockIndex < F.blocks.size()) {
         const bool debugEnabled = ctx.isDebugLoggingEnabled();
         std::string mergedLabel;
         if (debugEnabled)
             mergedLabel = F.blocks[blockIndex].label;
 
-        if (mergeSinglePred(ctx, F.blocks[blockIndex], predMap))
-        {
+        if (mergeSinglePred(ctx, F.blocks[blockIndex], predMap)) {
             changed = true;
             ++ctx.stats.blocksMerged;
-            if (debugEnabled)
-            {
+            if (debugEnabled) {
                 std::string message = "merged block '" + mergedLabel + "' into its predecessor";
                 ctx.logDebug(message);
             }

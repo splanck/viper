@@ -24,11 +24,9 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-std::unordered_set<std::string> collectExternNames(const il::core::Module &module)
-{
+std::unordered_set<std::string> collectExternNames(const il::core::Module &module) {
     std::unordered_set<std::string> names;
     for (const auto &ext : module.externs)
         names.insert(ext.name);
@@ -37,8 +35,7 @@ std::unordered_set<std::string> collectExternNames(const il::core::Module &modul
 
 } // namespace
 
-int main()
-{
+int main() {
     const std::string src = "10 LET S$ = \"HELLO\"\n"
                             "20 LET S$ = \"WORLD\"\n";
 
@@ -56,10 +53,8 @@ int main()
     assert(externs.count("rt_str_retain_maybe") == 1);
 
     const il::core::Function *mainFn = nullptr;
-    for (const auto &fn : module.functions)
-    {
-        if (fn.name == "main")
-        {
+    for (const auto &fn : module.functions) {
+        if (fn.name == "main") {
             mainFn = &fn;
             break;
         }
@@ -70,20 +65,15 @@ int main()
     std::unordered_map<int, int> retainCounts;
     std::unordered_set<int> assignmentLines;
 
-    for (const auto &block : mainFn->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : mainFn->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op != il::core::Opcode::Call)
                 continue;
             const int line = instr.loc.line;
-            if (instr.callee == "rt_str_release_maybe")
-            {
+            if (instr.callee == "rt_str_release_maybe") {
                 ++releaseCounts[line];
                 assignmentLines.insert(line);
-            }
-            else if (instr.callee == "rt_str_retain_maybe")
-            {
+            } else if (instr.callee == "rt_str_retain_maybe") {
                 assert(releaseCounts[line] > 0);
                 ++retainCounts[line];
                 assignmentLines.insert(line);
@@ -92,8 +82,7 @@ int main()
     }
 
     assert(assignmentLines.size() == 2);
-    for (int line : assignmentLines)
-    {
+    for (int line : assignmentLines) {
         assert(releaseCounts[line] == 1);
         assert(retainCounts[line] == 1);
     }

@@ -19,16 +19,14 @@
 
 #include "frontends/basic/Lowerer.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Lowering helper for BASIC builtin calls.
 /// @details Encapsulates the dispatcher used to translate builtin calls into IL
 ///          and runtime helper invocations. The helper keeps the lowering logic
 ///          modular while still relying on the parent @ref Lowerer for emission,
 ///          diagnostics, and runtime feature requests.
-struct BuiltinExprLowering
-{
+struct BuiltinExprLowering {
     /// @brief Bind the builtin lowering helper to a lowerer instance.
     /// @param lowerer Active lowering engine used to emit IL.
     explicit BuiltinExprLowering(Lowerer &lowerer) noexcept;

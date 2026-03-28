@@ -19,8 +19,7 @@
 
 using viper::codegen::aarch64::RodataPool;
 
-TEST(AArch64Rodata, DedupAndEmit)
-{
+TEST(AArch64Rodata, DedupAndEmit) {
     il::core::Module m;
     m.globals.push_back({"@.L0", il::core::Type(il::core::Type::Kind::Str), std::string("Hello")});
     m.globals.push_back({"@.L1", il::core::Type(il::core::Type::Kind::Str), std::string("Hello")});
@@ -47,8 +46,7 @@ TEST(AArch64Rodata, DedupAndEmit)
     EXPECT_NE(text.find("  .asciz \"World\\n\"\n"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

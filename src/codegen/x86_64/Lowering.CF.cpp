@@ -29,8 +29,7 @@
 
 #include <string>
 
-namespace viper::codegen::x64::lowering
-{
+namespace viper::codegen::x64::lowering {
 
 /// @brief Lower a SELECT IL instruction into Machine IR.
 /// @details Delegates to @ref EmitCommon::emitSelect so the helper can implement
@@ -38,8 +37,7 @@ namespace viper::codegen::x64::lowering
 ///          values.
 /// @param instr IL select instruction.
 /// @param builder Machine IR builder receiving the emitted code.
-void emitSelect(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitSelect(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitSelect(instr);
 }
 
@@ -48,8 +46,7 @@ void emitSelect(const ILInstr &instr, MIRBuilder &builder)
 ///          label extracted from the IL operand list.
 /// @param instr IL branch instruction.
 /// @param builder Machine IR builder receiving the emitted code.
-void emitBranch(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitBranch(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitBranch(instr);
 }
 
@@ -58,8 +55,7 @@ void emitBranch(const ILInstr &instr, MIRBuilder &builder)
 ///          sequence that mirrors IL conditional control flow.
 /// @param instr IL conditional branch instruction.
 /// @param builder Machine IR builder receiving the emitted code.
-void emitCondBranch(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitCondBranch(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitCondBranch(instr);
 }
 
@@ -68,8 +64,7 @@ void emitCondBranch(const ILInstr &instr, MIRBuilder &builder)
 ///          conventions and optional return values are handled uniformly.
 /// @param instr IL return instruction.
 /// @param builder Machine IR builder receiving the emitted code.
-void emitReturn(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitReturn(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitReturn(instr);
 }
 
@@ -80,10 +75,8 @@ void emitReturn(const ILInstr &instr, MIRBuilder &builder)
 ///          The result is the index value passed through if the check succeeds.
 /// @param instr IL idx_chk instruction: ops[0]=index, ops[1]=lower, ops[2]=upper.
 /// @param builder Machine IR builder receiving the emitted code.
-void emitIdxChk(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.resultId < 0 || instr.ops.size() < 3)
-    {
+void emitIdxChk(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.resultId < 0 || instr.ops.size() < 3) {
         phaseAUnsupported("idx_chk: missing operands");
     }
 
@@ -104,12 +97,9 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder)
 
     // Check upper bound: if index < upper (unsigned below), skip trap
     Operand upper = builder.makeOperandForValue(instr.ops[2], RegClass::GPR);
-    if (const auto *imm = std::get_if<OpImm>(&upper); imm && fitsImm32(imm->val))
-    {
+    if (const auto *imm = std::get_if<OpImm>(&upper); imm && fitsImm32(imm->val)) {
         builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{index, upper}));
-    }
-    else
-    {
+    } else {
         upper = emit.materialiseGpr(std::move(upper));
         builder.append(MInstr::make(MOpcode::CMPrr, std::vector<Operand>{index, upper}));
     }
@@ -122,12 +112,9 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder)
 
     // Check lower bound: if index >= lower (unsigned above or equal), skip trap
     Operand lower = builder.makeOperandForValue(instr.ops[1], RegClass::GPR);
-    if (const auto *imm = std::get_if<OpImm>(&lower); imm && fitsImm32(imm->val))
-    {
+    if (const auto *imm = std::get_if<OpImm>(&lower); imm && fitsImm32(imm->val)) {
         builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{index, lower}));
-    }
-    else
-    {
+    } else {
         lower = emit.materialiseGpr(std::move(lower));
         builder.append(MInstr::make(MOpcode::CMPrr, std::vector<Operand>{index, lower}));
     }
@@ -145,10 +132,8 @@ void emitIdxChk(const ILInstr &instr, MIRBuilder &builder)
 ///          then an optional default label as the final operand.
 /// @param instr IL switch_i32 instruction with variable-length operands.
 /// @param builder Machine IR builder receiving the emitted code.
-void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.ops.empty())
-    {
+void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.ops.empty()) {
         phaseAUnsupported("switch: missing scrutinee");
     }
 
@@ -158,11 +143,9 @@ void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder)
 
     // Process case (value, label) pairs starting at ops[1]
     std::size_t idx = 1;
-    while (idx + 1 < instr.ops.size())
-    {
+    while (idx + 1 < instr.ops.size()) {
         // If this operand is a label, it's the default — stop processing cases
-        if (instr.ops[idx].kind == ILValue::Kind::LABEL)
-        {
+        if (instr.ops[idx].kind == ILValue::Kind::LABEL) {
             break;
         }
 
@@ -172,12 +155,9 @@ void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder)
         const Operand caseLabel = builder.makeLabelOperand(instr.ops[idx + 1]);
 
         // CMP scrutinee, case_value
-        if (const auto *imm = std::get_if<OpImm>(&caseVal); imm && fitsImm32(imm->val))
-        {
+        if (const auto *imm = std::get_if<OpImm>(&caseVal); imm && fitsImm32(imm->val)) {
             builder.append(MInstr::make(MOpcode::CMPri, std::vector<Operand>{scrutinee, caseVal}));
-        }
-        else
-        {
+        } else {
             caseVal = emit.materialiseGpr(std::move(caseVal));
             builder.append(MInstr::make(MOpcode::CMPrr, std::vector<Operand>{scrutinee, caseVal}));
         }
@@ -190,8 +170,7 @@ void emitSwitchI32(const ILInstr &instr, MIRBuilder &builder)
     }
 
     // Default label (the remaining operand)
-    if (idx < instr.ops.size())
-    {
+    if (idx < instr.ops.size()) {
         const Operand defLabel = builder.makeLabelOperand(instr.ops[idx]);
         builder.append(MInstr::make(MOpcode::JMP, std::vector<Operand>{defLabel}));
     }

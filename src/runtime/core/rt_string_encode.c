@@ -49,10 +49,8 @@
 ///          string containing the encoded character.
 /// @param code Integer code point representing the desired byte.
 /// @return Newly allocated runtime string containing the encoded byte.
-rt_string rt_str_chr(int64_t code)
-{
-    if (code < 0 || code > 255)
-    {
+rt_string rt_str_chr(int64_t code) {
+    if (code < 0 || code > 255) {
         char buf[64];
         char numbuf[32];
         rt_i64_to_cstr(code, numbuf, sizeof(numbuf));
@@ -69,8 +67,7 @@ rt_string rt_str_chr(int64_t code)
 ///          produce zero, matching the legacy BASIC semantics.
 /// @param s Runtime string handle to inspect.
 /// @return Integer value of the first byte, or zero when the string is empty.
-int64_t rt_str_asc(rt_string s)
-{
+int64_t rt_str_asc(rt_string s) {
     if (!s)
         rt_trap("rt_str_asc: null");
     size_t len = (size_t)rt_str_len(s);
@@ -86,15 +83,12 @@ int64_t rt_str_asc(rt_string s)
 ///          mutate or free it.
 /// @param s Runtime string handle to view.
 /// @return Pointer to the underlying character array.
-const char *rt_string_cstr(rt_string s)
-{
-    if (!s)
-    {
+const char *rt_string_cstr(rt_string s) {
+    if (!s) {
         rt_trap("rt_string_cstr: null string");
         return "";
     }
-    if (!s->data)
-    {
+    if (!s->data) {
         rt_trap("rt_string_cstr: null data");
         return "";
     }
@@ -108,13 +102,11 @@ const char *rt_string_cstr(rt_string s)
 ///          during retain/release transitions.
 /// @param c Null-terminated string owned by the caller.
 /// @return Runtime string handle borrowing @p c, or @c NULL when @p c is null.
-rt_string rt_const_cstr(const char *c)
-{
+rt_string rt_const_cstr(const char *c) {
     if (!c)
         return NULL;
     rt_string s = (rt_string)rt_alloc(sizeof(*s));
-    if (!s)
-    {
+    if (!s) {
         rt_trap("rt_const_cstr: alloc");
         return NULL;
     }

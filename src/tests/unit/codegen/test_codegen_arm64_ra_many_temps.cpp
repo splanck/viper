@@ -19,31 +19,27 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
     return ss.str();
 }
 
-TEST(Arm64CLI, RA_ManyTemps_ProducesSpills)
-{
+TEST(Arm64CLI, RA_ManyTemps_ProducesSpills) {
     const std::string in = "arm64_ra_many.il";
     const std::string out = "arm64_ra_many.s";
     // Create many independent temporaries then sum some to produce a return value.
@@ -77,8 +73,7 @@ TEST(Arm64CLI, RA_ManyTemps_ProducesSpills)
     EXPECT_NE(asmText.find("ret"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -26,16 +26,14 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that method call arguments are lowered only once.
 ///
 /// Bug #021: When a method parameter expects a type different from the argument,
 /// the lowerer was calling lowerExpr twice - once to get the value and again
 /// for coercion. This caused side effects (function calls) to execute twice.
-TEST(BasicMethodCallArgEval, FunctionArgEvaluatedOnce)
-{
+TEST(BasicMethodCallArgEval, FunctionArgEvaluatedOnce) {
     // This test verifies that when passing a function call as an argument
     // to a method, the function is only called once even when type coercion
     // is required.
@@ -72,10 +70,8 @@ TEST(BasicMethodCallArgEval, FunctionArgEvaluatedOnce)
 
     // Count how many times IncrementAndReturn is called in main
     const il::core::Function *mainFn = nullptr;
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == "main" || fn.name == "MAIN")
-        {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == "main" || fn.name == "MAIN") {
             mainFn = &fn;
             break;
         }
@@ -83,17 +79,13 @@ TEST(BasicMethodCallArgEval, FunctionArgEvaluatedOnce)
     ASSERT_NE(mainFn, nullptr);
 
     int callCount = 0;
-    for (const auto &bb : mainFn->blocks)
-    {
-        for (const auto &in : bb.instructions)
-        {
-            if (in.op == il::core::Opcode::Call)
-            {
+    for (const auto &bb : mainFn->blocks) {
+        for (const auto &in : bb.instructions) {
+            if (in.op == il::core::Opcode::Call) {
                 // Check if callee is IncrementAndReturn (case-insensitive)
                 std::string callee = in.callee;
                 std::transform(callee.begin(), callee.end(), callee.begin(), ::tolower);
-                if (callee.find("incrementandreturn") != std::string::npos)
-                {
+                if (callee.find("incrementandreturn") != std::string::npos) {
                     callCount++;
                 }
             }
@@ -106,8 +98,7 @@ TEST(BasicMethodCallArgEval, FunctionArgEvaluatedOnce)
 }
 
 /// @brief Test that method call arguments with integer-to-double coercion work.
-TEST(BasicMethodCallArgEval, IntToDoubleCoercion)
-{
+TEST(BasicMethodCallArgEval, IntToDoubleCoercion) {
     const std::string src = R"(
 10 DIM callCount AS INTEGER
 20 callCount = 0
@@ -140,10 +131,8 @@ TEST(BasicMethodCallArgEval, IntToDoubleCoercion)
     const il::core::Module &mod = result.module;
 
     const il::core::Function *mainFn = nullptr;
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == "main" || fn.name == "MAIN")
-        {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == "main" || fn.name == "MAIN") {
             mainFn = &fn;
             break;
         }
@@ -151,16 +140,12 @@ TEST(BasicMethodCallArgEval, IntToDoubleCoercion)
     ASSERT_NE(mainFn, nullptr);
 
     int callCount = 0;
-    for (const auto &bb : mainFn->blocks)
-    {
-        for (const auto &in : bb.instructions)
-        {
-            if (in.op == il::core::Opcode::Call)
-            {
+    for (const auto &bb : mainFn->blocks) {
+        for (const auto &in : bb.instructions) {
+            if (in.op == il::core::Opcode::Call) {
                 std::string callee = in.callee;
                 std::transform(callee.begin(), callee.end(), callee.begin(), ::tolower);
-                if (callee.find("getvalue") != std::string::npos)
-                {
+                if (callee.find("getvalue") != std::string::npos) {
                     callCount++;
                 }
             }
@@ -171,8 +156,7 @@ TEST(BasicMethodCallArgEval, IntToDoubleCoercion)
 }
 
 /// @brief Test multiple arguments with coercion.
-TEST(BasicMethodCallArgEval, MultipleArgsWithCoercion)
-{
+TEST(BasicMethodCallArgEval, MultipleArgsWithCoercion) {
     const std::string src = R"(
 10 DIM callA AS INTEGER
 20 DIM callB AS INTEGER
@@ -212,10 +196,8 @@ TEST(BasicMethodCallArgEval, MultipleArgsWithCoercion)
     const il::core::Module &mod = result.module;
 
     const il::core::Function *mainFn = nullptr;
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == "main" || fn.name == "MAIN")
-        {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == "main" || fn.name == "MAIN") {
             mainFn = &fn;
             break;
         }
@@ -224,12 +206,9 @@ TEST(BasicMethodCallArgEval, MultipleArgsWithCoercion)
 
     int callCountA = 0;
     int callCountB = 0;
-    for (const auto &bb : mainFn->blocks)
-    {
-        for (const auto &in : bb.instructions)
-        {
-            if (in.op == il::core::Opcode::Call)
-            {
+    for (const auto &bb : mainFn->blocks) {
+        for (const auto &in : bb.instructions) {
+            if (in.op == il::core::Opcode::Call) {
                 std::string callee = in.callee;
                 std::transform(callee.begin(), callee.end(), callee.begin(), ::tolower);
                 if (callee.find("geta") != std::string::npos)
@@ -246,8 +225,7 @@ TEST(BasicMethodCallArgEval, MultipleArgsWithCoercion)
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

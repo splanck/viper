@@ -48,8 +48,7 @@
 #endif
 
 /// @brief LineWriter implementation structure.
-typedef struct rt_linewriter_impl
-{
+typedef struct rt_linewriter_impl {
     FILE *fp;          ///< File pointer.
     int8_t closed;     ///< Closed flag.
     rt_string newline; ///< Newline string.
@@ -76,19 +75,16 @@ typedef struct rt_linewriter_impl
 ///
 /// @see rt_linewriter_close For explicit file closure
 /// @see rt_linewriter_flush For flushing without closing
-static void rt_linewriter_finalize(void *obj)
-{
+static void rt_linewriter_finalize(void *obj) {
     if (!obj)
         return;
     rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
-    if (lw->fp && !lw->closed)
-    {
+    if (lw->fp && !lw->closed) {
         fclose(lw->fp);
         lw->fp = NULL;
         lw->closed = 1;
     }
-    if (lw->newline)
-    {
+    if (lw->newline) {
         rt_string_unref(lw->newline);
         lw->newline = NULL;
     }
@@ -110,24 +106,20 @@ static void rt_linewriter_finalize(void *obj)
 ///         after trapping with an error message.
 ///
 /// @note This is an internal function, not part of the public API.
-static void *rt_linewriter_open_mode(rt_string path, const char *mode)
-{
-    if (!path)
-    {
+static void *rt_linewriter_open_mode(rt_string path, const char *mode) {
+    if (!path) {
         rt_trap("LineWriter: null path");
         return NULL;
     }
 
     const char *path_str = rt_string_cstr(path);
-    if (!path_str)
-    {
+    if (!path_str) {
         rt_trap("LineWriter: invalid path");
         return NULL;
     }
 
     FILE *fp = fopen(path_str, mode);
-    if (!fp)
-    {
+    if (!fp) {
         // IO-H-7: include filename and OS error for actionable diagnostics
         char msg[512];
         snprintf(
@@ -138,8 +130,7 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode)
 
     rt_linewriter_impl *lw =
         (rt_linewriter_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_linewriter_impl));
-    if (!lw)
-    {
+    if (!lw) {
         fclose(fp);
         rt_trap("LineWriter: memory allocation failed");
         return NULL;
@@ -191,8 +182,7 @@ static void *rt_linewriter_open_mode(rt_string path, const char *mode)
 /// @see rt_linewriter_append For opening without truncating
 /// @see rt_linewriter_close For closing the writer
 /// @see rt_linewriter_write_ln For writing lines
-void *rt_linewriter_open(rt_string path)
-{
+void *rt_linewriter_open(rt_string path) {
     return rt_linewriter_open_mode(path, "w");
 }
 
@@ -228,8 +218,7 @@ void *rt_linewriter_open(rt_string path)
 ///
 /// @see rt_linewriter_open For creating/truncating files
 /// @see rt_linewriter_close For closing the writer
-void *rt_linewriter_append(rt_string path)
-{
+void *rt_linewriter_append(rt_string path) {
     return rt_linewriter_open_mode(path, "a");
 }
 
@@ -255,14 +244,12 @@ void *rt_linewriter_append(rt_string path)
 ///
 /// @see rt_linewriter_open For opening files
 /// @see rt_linewriter_flush For flushing without closing
-void rt_linewriter_close(void *obj)
-{
+void rt_linewriter_close(void *obj) {
     if (!obj)
         return;
 
     rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
-    if (lw->fp && !lw->closed)
-    {
+    if (lw->fp && !lw->closed) {
         fclose(lw->fp);
         lw->fp = NULL;
         lw->closed = 1;
@@ -295,17 +282,14 @@ void rt_linewriter_close(void *obj)
 /// @see rt_linewriter_write_ln For writing with a newline
 /// @see rt_linewriter_write_char For writing single characters
 /// @see rt_linewriter_flush For flushing buffered data
-void rt_linewriter_write(void *obj, rt_string text)
-{
-    if (!obj)
-    {
+void rt_linewriter_write(void *obj, rt_string text) {
+    if (!obj) {
         rt_trap("LineWriter.Write: null writer");
         return;
     }
 
     rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
-    if (!lw->fp || lw->closed)
-    {
+    if (!lw->fp || lw->closed) {
         rt_trap("LineWriter.Write: writer is closed");
         return;
     }
@@ -315,8 +299,7 @@ void rt_linewriter_write(void *obj, rt_string text)
 
     const char *data = rt_string_cstr(text);
     int64_t len = rt_str_len(text);
-    if (data && len > 0)
-    {
+    if (data && len > 0) {
         // IO-C-4: check fwrite return to detect disk-full / I/O errors
         size_t written = fwrite(data, 1, (size_t)len, lw->fp);
         if (written != (size_t)len)
@@ -359,28 +342,23 @@ void rt_linewriter_write(void *obj, rt_string text)
 ///
 /// @see rt_linewriter_write For writing without a newline
 /// @see rt_linewriter_set_newline For changing the newline string
-void rt_linewriter_write_ln(void *obj, rt_string text)
-{
-    if (!obj)
-    {
+void rt_linewriter_write_ln(void *obj, rt_string text) {
+    if (!obj) {
         rt_trap("LineWriter.WriteLn: null writer");
         return;
     }
 
     rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
-    if (!lw->fp || lw->closed)
-    {
+    if (!lw->fp || lw->closed) {
         rt_trap("LineWriter.WriteLn: writer is closed");
         return;
     }
 
     // Write text if provided
-    if (text)
-    {
+    if (text) {
         const char *data = rt_string_cstr(text);
         int64_t len = rt_str_len(text);
-        if (data && len > 0)
-        {
+        if (data && len > 0) {
             // IO-C-4: check fwrite return to detect disk-full / I/O errors
             size_t written = fwrite(data, 1, (size_t)len, lw->fp);
             if (written != (size_t)len)
@@ -389,12 +367,10 @@ void rt_linewriter_write_ln(void *obj, rt_string text)
     }
 
     // Write newline
-    if (lw->newline)
-    {
+    if (lw->newline) {
         const char *nl = rt_string_cstr(lw->newline);
         int64_t nl_len = rt_str_len(lw->newline);
-        if (nl && nl_len > 0)
-        {
+        if (nl && nl_len > 0) {
             // IO-C-4: check fwrite return for newline write too
             size_t written = fwrite(nl, 1, (size_t)nl_len, lw->fp);
             if (written != (size_t)nl_len)
@@ -432,25 +408,20 @@ void rt_linewriter_write_ln(void *obj, rt_string text)
 ///
 /// @see rt_linewriter_write For writing strings
 /// @see rt_linewriter_write_ln For writing lines
-void rt_linewriter_write_char(void *obj, int64_t ch)
-{
-    if (!obj)
-    {
+void rt_linewriter_write_char(void *obj, int64_t ch) {
+    if (!obj) {
         rt_trap("LineWriter.WriteChar: null writer");
         return;
     }
 
     rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
-    if (!lw->fp || lw->closed)
-    {
+    if (!lw->fp || lw->closed) {
         rt_trap("LineWriter.WriteChar: writer is closed");
         return;
     }
 
-    if (ch >= 0 && ch <= 255)
-    {
-        if (fputc((int)ch, lw->fp) == EOF)
-        {
+    if (ch >= 0 && ch <= 255) {
+        if (fputc((int)ch, lw->fp) == EOF) {
             rt_trap("LineWriter.WriteChar: write failed (disk full or I/O error)");
             return;
         }
@@ -486,16 +457,13 @@ void rt_linewriter_write_char(void *obj, int64_t ch)
 /// @note Thread safety: Not thread-safe for the same LineWriter object.
 ///
 /// @see rt_linewriter_close For closing and flushing the file
-void rt_linewriter_flush(void *obj)
-{
+void rt_linewriter_flush(void *obj) {
     if (!obj)
         return;
 
     rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
-    if (lw->fp && !lw->closed)
-    {
-        if (fflush(lw->fp) != 0)
-        {
+    if (lw->fp && !lw->closed) {
+        if (fflush(lw->fp) != 0) {
             rt_trap("LineWriter.Flush: flush failed (disk full or I/O error)");
             return;
         }
@@ -519,16 +487,13 @@ void rt_linewriter_flush(void *obj)
 ///
 /// @see rt_linewriter_set_newline For changing the newline string
 /// @see rt_linewriter_write_ln For writing with the newline
-rt_string rt_linewriter_newline(void *obj)
-{
-    if (!obj)
-    {
+rt_string rt_linewriter_newline(void *obj) {
+    if (!obj) {
         return rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
     }
 
     rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
-    if (lw->newline)
-    {
+    if (lw->newline) {
         return rt_string_ref(lw->newline);
     }
     return rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
@@ -568,10 +533,8 @@ rt_string rt_linewriter_newline(void *obj)
 ///
 /// @see rt_linewriter_newline For getting the current newline string
 /// @see rt_linewriter_write_ln For writing with the newline
-void rt_linewriter_set_newline(void *obj, rt_string nl)
-{
-    if (!obj)
-    {
+void rt_linewriter_set_newline(void *obj, rt_string nl) {
+    if (!obj) {
         rt_trap("LineWriter.set_NewLine: null writer");
         return;
     }
@@ -579,18 +542,14 @@ void rt_linewriter_set_newline(void *obj, rt_string nl)
     rt_linewriter_impl *lw = (rt_linewriter_impl *)obj;
 
     // Release old newline
-    if (lw->newline)
-    {
+    if (lw->newline) {
         rt_string_unref(lw->newline);
     }
 
     // Set new newline (take reference)
-    if (nl)
-    {
+    if (nl) {
         lw->newline = rt_string_ref(nl);
-    }
-    else
-    {
+    } else {
         lw->newline = rt_string_from_bytes(RT_DEFAULT_NEWLINE, strlen(RT_DEFAULT_NEWLINE));
     }
 }

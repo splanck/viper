@@ -23,8 +23,7 @@
 #include "MachineIR.hpp"
 #include "il/core/Instr.hpp"
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 //===----------------------------------------------------------------------===//
 // Value Materialization
@@ -66,8 +65,7 @@ inline bool materializeValueToVReg(const il::core::Value &v,
                                    LoweringContext &ctx,
                                    MBasicBlock &out,
                                    uint16_t &outVReg,
-                                   RegClass &outCls)
-{
+                                   RegClass &outCls) {
     return materializeValueToVReg(v,
                                   bb,
                                   ctx.ti,

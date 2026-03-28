@@ -21,8 +21,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     const char *src = "10 DIM s AS Viper.String\n"
                       "20 LET s = \"abcd\"\n"
                       "30 s.Length = 5\n"

@@ -19,10 +19,8 @@
 #include <cstddef>
 #include <string>
 
-namespace il::frontends::basic::diag
-{
-namespace
-{
+namespace il::frontends::basic::diag {
+namespace {
 constexpr std::array<BasicDiagInfo, 22> kDiagTable = {
     {{"BASIC_UNKNOWN_VARIABLE",
       "B1001",
@@ -108,45 +106,37 @@ constexpr std::array<BasicDiagInfo, 22> kDiagTable = {
       "User code may not declare symbols under the reserved root 'Viper'."}}};
 }
 
-const BasicDiagInfo &getInfo(BasicDiag diag)
-{
+const BasicDiagInfo &getInfo(BasicDiag diag) {
     const auto index = static_cast<std::size_t>(diag);
     return kDiagTable.at(index);
 }
 
-std::string_view getId(BasicDiag diag)
-{
+std::string_view getId(BasicDiag diag) {
     return getInfo(diag).id;
 }
 
-std::string_view getCode(BasicDiag diag)
-{
+std::string_view getCode(BasicDiag diag) {
     return getInfo(diag).code;
 }
 
-il::support::Severity getSeverity(BasicDiag diag)
-{
+il::support::Severity getSeverity(BasicDiag diag) {
     return getInfo(diag).severity;
 }
 
-std::string_view getFormat(BasicDiag diag)
-{
+std::string_view getFormat(BasicDiag diag) {
     return getInfo(diag).format;
 }
 
-std::string formatMessage(BasicDiag diag, std::initializer_list<Replacement> replacements)
-{
+std::string formatMessage(BasicDiag diag, std::initializer_list<Replacement> replacements) {
     std::string message(getFormat(diag));
-    for (const auto &repl : replacements)
-    {
+    for (const auto &repl : replacements) {
         std::string placeholder;
         placeholder.reserve(repl.key.size() + 2);
         placeholder.push_back('{');
         placeholder.append(repl.key.begin(), repl.key.end());
         placeholder.push_back('}');
         std::size_t pos = 0;
-        while ((pos = message.find(placeholder, pos)) != std::string::npos)
-        {
+        while ((pos = message.find(placeholder, pos)) != std::string::npos) {
             message.replace(pos, placeholder.size(), repl.value);
             pos += repl.value.size();
         }

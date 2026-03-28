@@ -53,8 +53,7 @@ const int8_t rt_adpcm_index_table[16] = {-1, -1, -1, -1, 2, 4, 6, 8, -1, -1, -1,
 //=============================================================================
 
 /// Clamp step index to valid range [0, 88]
-static int32_t clamp_index(int32_t idx)
-{
+static int32_t clamp_index(int32_t idx) {
     if (idx < 0)
         return 0;
     if (idx > 88)
@@ -63,8 +62,7 @@ static int32_t clamp_index(int32_t idx)
 }
 
 /// Clamp sample to int16 range
-static int16_t clamp_sample(int32_t s)
-{
+static int16_t clamp_sample(int32_t s) {
     if (s > 32767)
         return 32767;
     if (s < -32768)
@@ -75,8 +73,7 @@ static int16_t clamp_sample(int32_t s)
 int64_t rt_adpcm_encode_block(const int16_t *pcm,
                               int64_t sample_count,
                               uint8_t *output,
-                              int64_t output_capacity)
-{
+                              int64_t output_capacity) {
     if (!pcm || !output || sample_count <= 0)
         return 0;
 
@@ -95,30 +92,25 @@ int64_t rt_adpcm_encode_block(const int16_t *pcm,
     int64_t out_pos = 4;
     int8_t nibble_hi = 0; // 0 = writing low nibble, 1 = high nibble
 
-    for (int64_t i = 1; i < sample_count; i++)
-    {
+    for (int64_t i = 1; i < sample_count; i++) {
         int32_t step = rt_adpcm_step_table[step_index];
         int32_t diff = pcm[i] - predictor;
         uint8_t nibble = 0;
 
-        if (diff < 0)
-        {
+        if (diff < 0) {
             nibble = 8; // sign bit
             diff = -diff;
         }
 
-        if (diff >= step)
-        {
+        if (diff >= step) {
             nibble |= 4;
             diff -= step;
         }
-        if (diff >= (step >> 1))
-        {
+        if (diff >= (step >> 1)) {
             nibble |= 2;
             diff -= (step >> 1);
         }
-        if (diff >= (step >> 2))
-        {
+        if (diff >= (step >> 2)) {
             nibble |= 1;
         }
 
@@ -139,15 +131,12 @@ int64_t rt_adpcm_encode_block(const int16_t *pcm,
         step_index = clamp_index(step_index + rt_adpcm_index_table[nibble]);
 
         // Pack nibbles
-        if (!nibble_hi)
-        {
+        if (!nibble_hi) {
             if (out_pos >= output_capacity)
                 break;
             output[out_pos] = nibble;
             nibble_hi = 1;
-        }
-        else
-        {
+        } else {
             output[out_pos] |= (uint8_t)(nibble << 4);
             nibble_hi = 0;
             out_pos++;
@@ -164,8 +153,7 @@ int64_t rt_adpcm_encode_block(const int16_t *pcm,
 int64_t rt_adpcm_decode_block(const uint8_t *adpcm,
                               int64_t block_bytes,
                               int16_t *output,
-                              int64_t output_capacity)
-{
+                              int64_t output_capacity) {
     if (!adpcm || !output || block_bytes < 4 || output_capacity <= 0)
         return 0;
 
@@ -176,8 +164,7 @@ int64_t rt_adpcm_decode_block(const uint8_t *adpcm,
     output[0] = (int16_t)predictor;
     int64_t out_pos = 1;
 
-    for (int64_t i = 4; i < block_bytes && out_pos < output_capacity; i++)
-    {
+    for (int64_t i = 4; i < block_bytes && out_pos < output_capacity; i++) {
         // Low nibble
         uint8_t nibble = adpcm[i] & 0x0F;
         int32_t step = rt_adpcm_step_table[step_index];
@@ -230,8 +217,7 @@ int64_t rt_adpcm_decode_block(const uint8_t *adpcm,
 #ifdef _MSC_VER
 #pragma pack(push, 1)
 #endif
-typedef struct
-{
+typedef struct {
     uint32_t magic;
     uint16_t channels;
     uint32_t sample_rate;
@@ -250,8 +236,7 @@ vaf_header;
 /// @brief Check if vaf.
 /// @param path
 /// @return Result value.
-int8_t rt_audio_is_vaf(const char *path)
-{
+int8_t rt_audio_is_vaf(const char *path) {
     if (!path)
         return 0;
     FILE *f = fopen(path, "rb");
@@ -266,8 +251,7 @@ int8_t rt_audio_is_vaf(const char *path)
 int16_t *rt_audio_decode_vaf(const char *path,
                              int32_t *out_channels,
                              int32_t *out_sample_rate,
-                             int64_t *out_sample_count)
-{
+                             int64_t *out_sample_count) {
     if (!path)
         return NULL;
 
@@ -276,21 +260,18 @@ int16_t *rt_audio_decode_vaf(const char *path,
         return NULL;
 
     vaf_header hdr;
-    if (fread(&hdr, 1, sizeof(hdr), f) != sizeof(hdr) || hdr.magic != VAF_MAGIC)
-    {
+    if (fread(&hdr, 1, sizeof(hdr), f) != sizeof(hdr) || hdr.magic != VAF_MAGIC) {
         fclose(f);
         return NULL;
     }
 
     // Validate header fields from untrusted file
-    if (hdr.channels == 0 || hdr.channels > 2)
-    {
+    if (hdr.channels == 0 || hdr.channels > 2) {
         fclose(f);
         return NULL;
     }
     // Cap at ~2 hours of stereo 48kHz audio (345M samples)
-    if ((uint64_t)hdr.total_samples > 48000ULL * 3600 * 2)
-    {
+    if ((uint64_t)hdr.total_samples > 48000ULL * 3600 * 2) {
         fclose(f);
         return NULL;
     }
@@ -303,8 +284,7 @@ int16_t *rt_audio_decode_vaf(const char *path,
         *out_sample_count = (int64_t)hdr.total_samples;
 
     int64_t total = (int64_t)hdr.total_samples * hdr.channels;
-    if (total <= 0)
-    {
+    if (total <= 0) {
         fclose(f);
         int16_t *empty = (int16_t *)malloc(sizeof(int16_t));
         if (empty)
@@ -313,24 +293,21 @@ int16_t *rt_audio_decode_vaf(const char *path,
     }
 
     int16_t *pcm = (int16_t *)malloc((size_t)total * sizeof(int16_t));
-    if (!pcm)
-    {
+    if (!pcm) {
         fclose(f);
         return NULL;
     }
 
     // Read and decode ADPCM blocks
     uint8_t *block_buf = (uint8_t *)malloc(hdr.block_size);
-    if (!block_buf)
-    {
+    if (!block_buf) {
         free(pcm);
         fclose(f);
         return NULL;
     }
 
     int64_t samples_decoded = 0;
-    while (samples_decoded < total)
-    {
+    while (samples_decoded < total) {
         size_t read = fread(block_buf, 1, hdr.block_size, f);
         if (read == 0)
             break;
@@ -357,16 +334,14 @@ int16_t *rt_audio_decode_vaf(const char *path,
 // WAV Parsing (minimal, for encode)
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     int16_t *samples;
     int32_t channels;
     int32_t sample_rate;
     int64_t sample_count; // per channel
 } wav_data;
 
-static wav_data parse_wav(const char *path)
-{
+static wav_data parse_wav(const char *path) {
     wav_data result = {NULL, 0, 0, 0};
     FILE *f = fopen(path, "rb");
     if (!f)
@@ -376,15 +351,13 @@ static wav_data parse_wav(const char *path)
     // NOTE: Does not handle WAV files with extra chunks (LIST, INFO, fact)
     // between fmt and data. A full implementation would scan chunk-by-chunk.
     uint8_t header[44];
-    if (fread(header, 1, 44, f) != 44)
-    {
+    if (fread(header, 1, 44, f) != 44) {
         fclose(f);
         return result;
     }
 
     // Verify RIFF/WAVE
-    if (memcmp(header, "RIFF", 4) != 0 || memcmp(header + 8, "WAVE", 4) != 0)
-    {
+    if (memcmp(header, "RIFF", 4) != 0 || memcmp(header + 8, "WAVE", 4) != 0) {
         fclose(f);
         return result;
     }
@@ -398,16 +371,14 @@ static wav_data parse_wav(const char *path)
     }
 
     result.channels = (int32_t)(header[22] | (header[23] << 8));
-    if (result.channels == 0)
-    {
+    if (result.channels == 0) {
         fclose(f);
         return result;
     }
     result.sample_rate =
         (int32_t)(header[24] | (header[25] << 8) | (header[26] << 16) | (header[27] << 24));
     uint16_t bits_per_sample = (uint16_t)(header[34] | (header[35] << 8));
-    if (bits_per_sample != 16)
-    {
+    if (bits_per_sample != 16) {
         fclose(f);
         return result;
     }
@@ -419,8 +390,7 @@ static wav_data parse_wav(const char *path)
     result.sample_count = total_samples / result.channels;
 
     result.samples = (int16_t *)malloc(data_size);
-    if (!result.samples)
-    {
+    if (!result.samples) {
         fclose(f);
         result.sample_count = 0;
         return result;
@@ -443,8 +413,7 @@ static wav_data parse_wav(const char *path)
 /// @param input_wav_path
 /// @param output_vaf_path
 /// @return Result value.
-int8_t rt_audio_encode_vaf(rt_string input_wav_path, rt_string output_vaf_path)
-{
+int8_t rt_audio_encode_vaf(rt_string input_wav_path, rt_string output_vaf_path) {
     if (!input_wav_path || !output_vaf_path)
         return 0;
 
@@ -458,8 +427,7 @@ int8_t rt_audio_encode_vaf(rt_string input_wav_path, rt_string output_vaf_path)
         return 0;
 
     FILE *f = fopen(out_path, "wb");
-    if (!f)
-    {
+    if (!f) {
         free(wav.samples);
         return 0;
     }
@@ -480,11 +448,9 @@ int8_t rt_audio_encode_vaf(rt_string input_wav_path, rt_string output_vaf_path)
     int64_t samples_per_block = (int64_t)(block_size - 4) * 2 + 1; // 2 samples per byte + preamble
     uint8_t *block_buf = (uint8_t *)malloc(block_size);
 
-    if (block_buf)
-    {
+    if (block_buf) {
         int64_t pos = 0;
-        while (pos < total)
-        {
+        while (pos < total) {
             int64_t remaining = total - pos;
             int64_t chunk = remaining < samples_per_block ? remaining : samples_per_block;
             int64_t written =
@@ -505,7 +471,6 @@ int8_t rt_audio_encode_vaf(rt_string input_wav_path, rt_string output_vaf_path)
 /// @param input_path
 /// @param output_path
 /// @return Result value.
-int8_t rt_audio_encode(rt_string input_path, rt_string output_path)
-{
+int8_t rt_audio_encode(rt_string input_path, rt_string output_path) {
     return rt_audio_encode_vaf(input_path, output_path);
 }

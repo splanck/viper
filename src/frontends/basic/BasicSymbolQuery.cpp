@@ -19,8 +19,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Construct a query facade bound to a lowerer.
 /// @details Stores a reference to the lowerer, which is used for all subsequent
@@ -37,8 +36,7 @@ BasicSymbolQuery::BasicSymbolQuery(const Lowerer &lowerer) noexcept : lowerer_(l
 ///          if semantic analysis is not attached.
 /// @param name Symbol name to query.
 /// @return True if the symbol is module-level.
-bool BasicSymbolQuery::isModuleLevelGlobal(std::string_view name) const
-{
+bool BasicSymbolQuery::isModuleLevelGlobal(std::string_view name) const {
     const auto *sema = lowerer_.semanticAnalyzer();
     if (!sema)
         return false;
@@ -50,8 +48,7 @@ bool BasicSymbolQuery::isModuleLevelGlobal(std::string_view name) const
 ///          semantic analyzer.
 /// @param name Symbol name to query.
 /// @return True if the symbol is a cross-procedure global.
-bool BasicSymbolQuery::isCrossProcGlobal(std::string_view name) const
-{
+bool BasicSymbolQuery::isCrossProcGlobal(std::string_view name) const {
     return lowerer_.isCrossProcGlobal(std::string(name));
 }
 
@@ -63,8 +60,7 @@ bool BasicSymbolQuery::isCrossProcGlobal(std::string_view name) const
 /// @details Looks up the symbol in the lowerer's table and returns the array flag.
 /// @param name Symbol name to query.
 /// @return True when the symbol is an array.
-bool BasicSymbolQuery::isSymbolArray(std::string_view name) const
-{
+bool BasicSymbolQuery::isSymbolArray(std::string_view name) const {
     const auto *info = lowerer_.findSymbol(name);
     return info && info->isArray;
 }
@@ -73,8 +69,7 @@ bool BasicSymbolQuery::isSymbolArray(std::string_view name) const
 /// @details Looks up the symbol in the lowerer's table and returns the object flag.
 /// @param name Symbol name to query.
 /// @return True when the symbol is an object.
-bool BasicSymbolQuery::isSymbolObject(std::string_view name) const
-{
+bool BasicSymbolQuery::isSymbolObject(std::string_view name) const {
     const auto *info = lowerer_.findSymbol(name);
     return info && info->isObject;
 }
@@ -83,8 +78,7 @@ bool BasicSymbolQuery::isSymbolObject(std::string_view name) const
 /// @details Returns true only when the symbol exists and carries an explicit type.
 /// @param name Symbol name to query.
 /// @return True when an explicit type is recorded.
-bool BasicSymbolQuery::hasExplicitType(std::string_view name) const
-{
+bool BasicSymbolQuery::hasExplicitType(std::string_view name) const {
     const auto *info = lowerer_.findSymbol(name);
     return info && info->hasType;
 }
@@ -94,8 +88,7 @@ bool BasicSymbolQuery::hasExplicitType(std::string_view name) const
 ///          `std::nullopt` when the symbol is unknown.
 /// @param name Symbol name to query.
 /// @return Optional BASIC type for the symbol.
-std::optional<Type> BasicSymbolQuery::getSymbolType(std::string_view name) const
-{
+std::optional<Type> BasicSymbolQuery::getSymbolType(std::string_view name) const {
     const auto *info = lowerer_.findSymbol(name);
     if (!info)
         return std::nullopt;
@@ -107,8 +100,7 @@ std::optional<Type> BasicSymbolQuery::getSymbolType(std::string_view name) const
 ///          array; otherwise returns `std::nullopt`.
 /// @param name Array symbol name to query.
 /// @return Optional BASIC type for the array elements.
-std::optional<Type> BasicSymbolQuery::getArrayElementType(std::string_view name) const
-{
+std::optional<Type> BasicSymbolQuery::getArrayElementType(std::string_view name) const {
     const auto *info = lowerer_.findSymbol(name);
     if (!info || !info->isArray)
         return std::nullopt;
@@ -124,8 +116,7 @@ std::optional<Type> BasicSymbolQuery::getArrayElementType(std::string_view name)
 ///          array element cache as a fallback.
 /// @param name Symbol name to query.
 /// @return Class name or empty string if none is known.
-std::string BasicSymbolQuery::getObjectClassForSymbol(std::string_view name) const
-{
+std::string BasicSymbolQuery::getObjectClassForSymbol(std::string_view name) const {
     // Check symbol lookup first
     const auto *info = lowerer_.findSymbol(name);
     if (info && info->isObject && !info->objectClass.empty())
@@ -143,8 +134,7 @@ std::string BasicSymbolQuery::getObjectClassForSymbol(std::string_view name) con
 /// @details Delegates to the lowerer's module array element class lookup.
 /// @param name Array symbol name to query.
 /// @return Class name or empty string if none is known.
-std::string BasicSymbolQuery::getObjectArrayElementClass(std::string_view name) const
-{
+std::string BasicSymbolQuery::getObjectArrayElementClass(std::string_view name) const {
     return lowerer_.lookupModuleArrayElemClass(name);
 }
 
@@ -156,8 +146,7 @@ std::string BasicSymbolQuery::getObjectArrayElementClass(std::string_view name) 
 /// @details Delegates to the lowerer's active field-scope tracking.
 /// @param name Field name to query.
 /// @return True when a field of that name is in scope.
-bool BasicSymbolQuery::isFieldInScope(std::string_view name) const
-{
+bool BasicSymbolQuery::isFieldInScope(std::string_view name) const {
     return lowerer_.isFieldInScope(name);
 }
 
@@ -170,8 +159,7 @@ bool BasicSymbolQuery::isFieldInScope(std::string_view name) const
 ///          maps it to the BASIC AST type enum used by lowering.
 /// @param name Symbol name to query.
 /// @return Optional BASIC type based on semantic inference.
-std::optional<Type> BasicSymbolQuery::lookupInferredType(std::string_view name) const
-{
+std::optional<Type> BasicSymbolQuery::lookupInferredType(std::string_view name) const {
     const auto *sema = lowerer_.semanticAnalyzer();
     if (!sema)
         return std::nullopt;
@@ -182,8 +170,7 @@ std::optional<Type> BasicSymbolQuery::lookupInferredType(std::string_view name) 
 
     // Convert SemanticAnalyzer::Type to AST Type
     using SemaType = SemanticAnalyzer::Type;
-    switch (*semaType)
-    {
+    switch (*semaType) {
         case SemaType::Int:
             return Type::I64;
         case SemaType::Float:

@@ -19,8 +19,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -29,8 +28,7 @@ static void test_result(const char *name, bool passed)
 // Basic Tests
 //=============================================================================
 
-static void test_sortedset_new()
-{
+static void test_sortedset_new() {
     printf("Testing SortedSet New:\n");
 
     void *set = rt_sortedset_new();
@@ -41,8 +39,7 @@ static void test_sortedset_new()
     printf("\n");
 }
 
-static void test_sortedset_add_has()
-{
+static void test_sortedset_add_has() {
     printf("Testing SortedSet Add/Has:\n");
 
     void *set = rt_sortedset_new();
@@ -69,8 +66,7 @@ static void test_sortedset_add_has()
     printf("\n");
 }
 
-static void test_sortedset_order()
-{
+static void test_sortedset_order() {
     printf("Testing SortedSet Order:\n");
 
     void *set = rt_sortedset_new();
@@ -95,8 +91,7 @@ static void test_sortedset_order()
     printf("\n");
 }
 
-static void test_sortedset_drop()
-{
+static void test_sortedset_drop() {
     printf("Testing SortedSet Drop:\n");
 
     void *set = rt_sortedset_new();
@@ -118,8 +113,7 @@ static void test_sortedset_drop()
 // Ordered Access Tests
 //=============================================================================
 
-static void test_sortedset_floor_ceil()
-{
+static void test_sortedset_floor_ceil() {
     printf("Testing SortedSet Floor/Ceil:\n");
 
     void *set = rt_sortedset_new();
@@ -146,8 +140,7 @@ static void test_sortedset_floor_ceil()
     printf("\n");
 }
 
-static void test_sortedset_lower_higher()
-{
+static void test_sortedset_lower_higher() {
     printf("Testing SortedSet Lower/Higher:\n");
 
     void *set = rt_sortedset_new();
@@ -178,8 +171,7 @@ static void test_sortedset_lower_higher()
 // Range Operations Tests
 //=============================================================================
 
-static void test_sortedset_items()
-{
+static void test_sortedset_items() {
     printf("Testing SortedSet Items:\n");
 
     void *set = rt_sortedset_new();
@@ -207,8 +199,7 @@ static void test_sortedset_items()
 // Set Operations Tests
 //=============================================================================
 
-static void test_sortedset_union()
-{
+static void test_sortedset_union() {
     printf("Testing SortedSet Union:\n");
 
     void *set1 = rt_sortedset_new();
@@ -228,8 +219,7 @@ static void test_sortedset_union()
     printf("\n");
 }
 
-static void test_sortedset_intersect()
-{
+static void test_sortedset_intersect() {
     printf("Testing SortedSet Intersect:\n");
 
     void *set1 = rt_sortedset_new();
@@ -251,8 +241,7 @@ static void test_sortedset_intersect()
     printf("\n");
 }
 
-static void test_sortedset_diff()
-{
+static void test_sortedset_diff() {
     printf("Testing SortedSet Diff:\n");
 
     void *set1 = rt_sortedset_new();
@@ -272,8 +261,7 @@ static void test_sortedset_diff()
     printf("\n");
 }
 
-static void test_sortedset_is_subset()
-{
+static void test_sortedset_is_subset() {
     printf("Testing SortedSet IsSubset:\n");
 
     void *set1 = rt_sortedset_new();
@@ -301,8 +289,7 @@ static void test_sortedset_is_subset()
 // NULL Handling Tests
 //=============================================================================
 
-static void test_sortedset_null_handling()
-{
+static void test_sortedset_null_handling() {
     printf("Testing SortedSet NULL handling:\n");
 
     test_result("Len(NULL) returns 0", rt_sortedset_len(NULL) == 0);
@@ -317,8 +304,7 @@ static void test_sortedset_null_handling()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT SortedSet Tests ===\n\n");
 
     test_sortedset_new();

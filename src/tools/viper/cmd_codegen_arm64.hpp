@@ -32,8 +32,7 @@
 
 #pragma once
 
-namespace viper::tools::ilc
-{
+namespace viper::tools::ilc {
 
 /// @brief Execute the `ilc codegen arm64` subcommand.
 /// @details Parses the command-line arguments for the arm64 backend, then

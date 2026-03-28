@@ -28,8 +28,7 @@
 #include "tests/common/WaitCompat.hpp"
 #endif
 
-namespace
-{
+namespace {
 
 #if defined(VIPER_ILC_PATH)
 constexpr const char kIlcExecutable[] = VIPER_ILC_PATH;
@@ -37,8 +36,7 @@ constexpr const char kIlcExecutable[] = VIPER_ILC_PATH;
 constexpr const char kIlcExecutable[] = "ilc";
 #endif
 
-[[nodiscard]] std::string quoteForShell(const std::filesystem::path &path)
-{
+[[nodiscard]] std::string quoteForShell(const std::filesystem::path &path) {
 #if defined(_WIN32)
     // On Windows, use native backslash separators
     std::filesystem::path native = path;
@@ -47,26 +45,21 @@ constexpr const char kIlcExecutable[] = "ilc";
 
     // Only quote if the path contains spaces or special characters
     bool needsQuoting = false;
-    for (const char ch : pathStr)
-    {
+    for (const char ch : pathStr) {
         if (ch == ' ' || ch == '\t' || ch == '&' || ch == '|' || ch == '<' || ch == '>' ||
-            ch == '^' || ch == '(' || ch == ')' || ch == '"')
-        {
+            ch == '^' || ch == '(' || ch == ')' || ch == '"') {
             needsQuoting = true;
             break;
         }
     }
 
-    if (!needsQuoting)
-    {
+    if (!needsQuoting) {
         return pathStr;
     }
 
     std::string quoted = "\"";
-    for (const char ch : pathStr)
-    {
-        if (ch == '"')
-        {
+    for (const char ch : pathStr) {
+        if (ch == '"') {
             quoted.push_back('\\');
         }
         quoted.push_back(ch);
@@ -76,10 +69,8 @@ constexpr const char kIlcExecutable[] = "ilc";
 #else
     // On Unix, always quote and escape backslashes and double quotes
     std::string quoted = "\"";
-    for (const char ch : path.string())
-    {
-        if (ch == '\\' || ch == '"')
-        {
+    for (const char ch : path.string()) {
+        if (ch == '\\' || ch == '"') {
             quoted.push_back('\\');
         }
         quoted.push_back(ch);
@@ -89,32 +80,26 @@ constexpr const char kIlcExecutable[] = "ilc";
 #endif
 }
 
-[[nodiscard]] int decodeExitCode(int rawStatus)
-{
+[[nodiscard]] int decodeExitCode(int rawStatus) {
 #if defined(_WIN32)
     return rawStatus;
 #else
-    if (rawStatus == -1)
-    {
+    if (rawStatus == -1) {
         return -1;
     }
-    if (WIFEXITED(rawStatus))
-    {
+    if (WIFEXITED(rawStatus)) {
         return WEXITSTATUS(rawStatus);
     }
-    if (WIFSIGNALED(rawStatus))
-    {
+    if (WIFSIGNALED(rawStatus)) {
         return 128 + WTERMSIG(rawStatus);
     }
     return rawStatus;
 #endif
 }
 
-class TempDirGuard
-{
+class TempDirGuard {
   public:
-    TempDirGuard()
-    {
+    TempDirGuard() {
         const auto timestamp = std::chrono::high_resolution_clock::now().time_since_epoch().count();
         std::ostringstream builder;
         builder << "viper_object_only-" << timestamp;
@@ -122,8 +107,7 @@ class TempDirGuard
 
         std::error_code ec;
         std::filesystem::create_directories(candidate, ec);
-        if (!ec)
-        {
+        if (!ec) {
             path_ = std::move(candidate);
         }
     }
@@ -133,18 +117,15 @@ class TempDirGuard
     TempDirGuard(TempDirGuard &&) = delete;
     TempDirGuard &operator=(TempDirGuard &&) = delete;
 
-    ~TempDirGuard()
-    {
-        if (path_.empty())
-        {
+    ~TempDirGuard() {
+        if (path_.empty()) {
             return;
         }
         std::error_code ec;
         std::filesystem::remove_all(path_, ec);
     }
 
-    [[nodiscard]] const std::filesystem::path &path() const noexcept
-    {
+    [[nodiscard]] const std::filesystem::path &path() const noexcept {
         return path_;
     }
 
@@ -152,29 +133,24 @@ class TempDirGuard
     std::filesystem::path path_{};
 };
 
-[[nodiscard]] bool writeTextFile(const std::filesystem::path &path, std::string_view contents)
-{
+[[nodiscard]] bool writeTextFile(const std::filesystem::path &path, std::string_view contents) {
     std::ofstream file(path, std::ios::binary);
-    if (!file.is_open())
-    {
+    if (!file.is_open()) {
         return false;
     }
     file << contents;
     return file.good();
 }
 
-struct ObjectOnlyResult
-{
+struct ObjectOnlyResult {
     bool success = false;
     std::string message;
 };
 
-ObjectOnlyResult runObjectOnlyCompileTest()
-{
+ObjectOnlyResult runObjectOnlyCompileTest() {
     ObjectOnlyResult result{};
     TempDirGuard tempDir;
-    if (tempDir.path().empty())
-    {
+    if (tempDir.path().empty()) {
         result.message = "failed to create temporary directory";
         return result;
     }
@@ -189,8 +165,7 @@ entry:
 }
 )";
 
-    if (!writeTextFile(ilPath, ilSource))
-    {
+    if (!writeTextFile(ilPath, ilSource)) {
         result.message = "failed to write IL source";
         return result;
     }
@@ -200,36 +175,31 @@ entry:
             << quoteForShell(ilPath) << " -o " << quoteForShell(objPath);
     const std::string commandLine = command.str();
     const int rawStatus = std::system(commandLine.c_str());
-    if (rawStatus == -1)
-    {
+    if (rawStatus == -1) {
         result.message = "system() failed while running: " + commandLine;
         return result;
     }
 
     const int exitCode = decodeExitCode(rawStatus);
-    if (exitCode != 0)
-    {
+    if (exitCode != 0) {
         std::ostringstream error;
         error << "ilc exited with status " << exitCode;
         result.message = error.str();
         return result;
     }
 
-    if (!std::filesystem::exists(objPath))
-    {
+    if (!std::filesystem::exists(objPath)) {
         result.message = "object file was not produced";
         return result;
     }
 
     std::error_code sizeEc;
     const std::uintmax_t size = std::filesystem::file_size(objPath, sizeEc);
-    if (sizeEc)
-    {
+    if (sizeEc) {
         result.message = "failed to query object file size";
         return result;
     }
-    if (size == 0)
-    {
+    if (size == 0) {
         result.message = "object file is empty";
         return result;
     }
@@ -241,8 +211,7 @@ entry:
 } // namespace
 
 /// @brief Check whether clang is available on the system PATH.
-[[nodiscard]] bool hasClangOnPath()
-{
+[[nodiscard]] bool hasClangOnPath() {
 #if defined(_WIN32)
     const int rc = std::system("where clang >NUL 2>NUL");
 #else
@@ -251,16 +220,13 @@ entry:
     return rc == 0;
 }
 
-int main()
-{
-    if (!hasClangOnPath())
-    {
+int main() {
+    if (!hasClangOnPath()) {
         std::cerr << "SKIP: clang not found on PATH\n";
         return EXIT_SUCCESS; // Graceful skip — not a failure.
     }
     const ObjectOnlyResult result = runObjectOnlyCompileTest();
-    if (!result.success)
-    {
+    if (!result.success) {
         std::cerr << result.message;
         return EXIT_FAILURE;
     }

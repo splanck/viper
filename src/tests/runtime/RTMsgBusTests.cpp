@@ -13,25 +13,21 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_new()
-{
+static void test_new() {
     void *bus = rt_msgbus_new();
     assert(bus != NULL);
     assert(rt_msgbus_total_subscriptions(bus) == 0);
 }
 
-static void test_subscribe()
-{
+static void test_subscribe() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("click");
     // Use a dummy callback pointer (not invoked in tests)
@@ -43,8 +39,7 @@ static void test_subscribe()
     assert(rt_msgbus_subscriber_count(bus, topic) == 1);
 }
 
-static void test_multiple_subscribers()
-{
+static void test_multiple_subscribers() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("event");
 
@@ -56,8 +51,7 @@ static void test_multiple_subscribers()
     assert(rt_msgbus_total_subscriptions(bus) == 3);
 }
 
-static void test_multiple_topics()
-{
+static void test_multiple_topics() {
     void *bus = rt_msgbus_new();
     rt_string t1 = make_str("topic1");
     rt_string t2 = make_str("topic2");
@@ -70,8 +64,7 @@ static void test_multiple_topics()
     assert(rt_msgbus_total_subscriptions(bus) == 2);
 }
 
-static void test_unsubscribe()
-{
+static void test_unsubscribe() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("test");
 
@@ -84,8 +77,7 @@ static void test_unsubscribe()
     assert(rt_msgbus_unsubscribe(bus, id) == 0);
 }
 
-static void test_publish()
-{
+static void test_publish() {
     void *bus = rt_msgbus_new();
     rt_string topic = make_str("signal");
 
@@ -103,8 +95,7 @@ static void test_publish()
     rt_string_unref(missing);
 }
 
-static void test_topics()
-{
+static void test_topics() {
     void *bus = rt_msgbus_new();
     rt_msgbus_subscribe(bus, make_str("alpha"), make_str("cb"));
     rt_msgbus_subscribe(bus, make_str("beta"), make_str("cb"));
@@ -113,8 +104,7 @@ static void test_topics()
     assert(rt_seq_len(topics) == 2);
 }
 
-static void test_clear_topic()
-{
+static void test_clear_topic() {
     void *bus = rt_msgbus_new();
     rt_string t = make_str("temp");
     rt_msgbus_subscribe(bus, t, make_str("cb1"));
@@ -128,8 +118,7 @@ static void test_clear_topic()
     rt_string_unref(t2);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *bus = rt_msgbus_new();
     rt_msgbus_subscribe(bus, make_str("a"), make_str("cb"));
     rt_msgbus_subscribe(bus, make_str("b"), make_str("cb"));
@@ -139,8 +128,7 @@ static void test_clear()
     assert(rt_msgbus_total_subscriptions(bus) == 0);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_msgbus_total_subscriptions(NULL) == 0);
     assert(rt_msgbus_subscriber_count(NULL, NULL) == 0);
     assert(rt_msgbus_publish(NULL, NULL, NULL) == 0);
@@ -149,8 +137,7 @@ static void test_null_safety()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_new();
     test_subscribe();
     test_multiple_subscribers();

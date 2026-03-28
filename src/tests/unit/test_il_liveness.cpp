@@ -26,8 +26,7 @@
 
 using namespace il;
 
-namespace
-{
+namespace {
 const char *kProgram = R"(il 0.2.0
 
 func @complex(%flag:i1) -> i64 {
@@ -47,10 +46,8 @@ join(%x:i64, %y:i64):
 }
 )";
 
-unsigned findValueId(const core::Function &fn, std::string_view name)
-{
-    for (std::size_t idx = fn.valueNames.size(); idx-- > 0;)
-    {
+unsigned findValueId(const core::Function &fn, std::string_view name) {
+    for (std::size_t idx = fn.valueNames.size(); idx-- > 0;) {
         if (fn.valueNames[idx] == name)
             return static_cast<unsigned>(idx);
     }
@@ -58,10 +55,8 @@ unsigned findValueId(const core::Function &fn, std::string_view name)
     std::abort(); // Unreachable in correct test
 }
 
-const core::BasicBlock *findBlock(const core::Function &fn, std::string_view label)
-{
-    for (const auto &block : fn.blocks)
-    {
+const core::BasicBlock *findBlock(const core::Function &fn, std::string_view label) {
+    for (const auto &block : fn.blocks) {
         if (block.label == label)
             return &block;
     }
@@ -70,13 +65,11 @@ const core::BasicBlock *findBlock(const core::Function &fn, std::string_view lab
 }
 } // namespace
 
-int main()
-{
+int main() {
     core::Module module;
     std::istringstream input(kProgram);
     auto parsed = il::api::v2::parse_text_expected(input, module);
-    if (!parsed)
-    {
+    if (!parsed) {
         il::support::printDiag(parsed.error(), std::cerr);
         return 1;
     }

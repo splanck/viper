@@ -24,8 +24,7 @@
 #include <ostream>
 #include <string>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Write an ELF executable.
 /// @param path    Output file path.

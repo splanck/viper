@@ -41,8 +41,7 @@ static int g_failed = 0;
 
 #define TEST(name) static void test_##name(void)
 #define RUN(name)                                                                                  \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("  %-60s", #name "...");                                                            \
         fflush(stdout);                                                                            \
         test_##name();                                                                             \
@@ -52,10 +51,8 @@ static int g_failed = 0;
     } while (0)
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             printf("FAIL\n  (%s:%d: %s)\n", __FILE__, __LINE__, #cond);                            \
             g_failed++;                                                                            \
             return;                                                                                \
@@ -69,14 +66,12 @@ static int g_failed = 0;
 #define ASSERT_TRUE(cond) ASSERT(cond)
 #define ASSERT_FALSE(cond) ASSERT(!(cond))
 
-typedef struct
-{
+typedef struct {
     vg_widget_t base;
     int handled_count;
 } test_bubble_widget_t;
 
-static bool test_bubble_handle(vg_widget_t *widget, vg_event_t *event)
-{
+static bool test_bubble_handle(vg_widget_t *widget, vg_event_t *event) {
     (void)event;
     ((test_bubble_widget_t *)widget)->handled_count++;
     return true;
@@ -97,16 +92,14 @@ static const vg_widget_vtable_t g_bubble_vtable = {
 // BINDING-003: GuiWidget field accessors
 //=============================================================================
 
-TEST(widget_is_visible_default_true)
-{
+TEST(widget_is_visible_default_true) {
     vg_label_t *label = vg_label_create(NULL, "hello");
     ASSERT_NOT_NULL(label);
     ASSERT_TRUE(((vg_widget_t *)label)->visible);
     vg_widget_destroy((vg_widget_t *)label);
 }
 
-TEST(widget_is_visible_after_hide)
-{
+TEST(widget_is_visible_after_hide) {
     vg_label_t *label = vg_label_create(NULL, "hi");
     ASSERT_NOT_NULL(label);
     vg_widget_set_visible((vg_widget_t *)label, false);
@@ -114,16 +107,14 @@ TEST(widget_is_visible_after_hide)
     vg_widget_destroy((vg_widget_t *)label);
 }
 
-TEST(widget_is_enabled_default_true)
-{
+TEST(widget_is_enabled_default_true) {
     vg_button_t *btn = vg_button_create(NULL, "ok");
     ASSERT_NOT_NULL(btn);
     ASSERT_TRUE(((vg_widget_t *)btn)->enabled);
     vg_widget_destroy((vg_widget_t *)btn);
 }
 
-TEST(widget_is_enabled_after_disable)
-{
+TEST(widget_is_enabled_after_disable) {
     vg_button_t *btn = vg_button_create(NULL, "ok");
     ASSERT_NOT_NULL(btn);
     vg_widget_set_enabled((vg_widget_t *)btn, false);
@@ -131,16 +122,14 @@ TEST(widget_is_enabled_after_disable)
     vg_widget_destroy((vg_widget_t *)btn);
 }
 
-TEST(widget_flex_default_zero)
-{
+TEST(widget_flex_default_zero) {
     vg_label_t *label = vg_label_create(NULL, "x");
     ASSERT_NOT_NULL(label);
     ASSERT_EQ((int)((vg_widget_t *)label)->layout.flex, 0);
     vg_widget_destroy((vg_widget_t *)label);
 }
 
-TEST(widget_flex_after_set)
-{
+TEST(widget_flex_after_set) {
     vg_label_t *label = vg_label_create(NULL, "x");
     ASSERT_NOT_NULL(label);
     vg_widget_set_flex((vg_widget_t *)label, 2.0f);
@@ -149,8 +138,7 @@ TEST(widget_flex_after_set)
     vg_widget_destroy((vg_widget_t *)label);
 }
 
-TEST(widget_constraints_after_fixed_size)
-{
+TEST(widget_constraints_after_fixed_size) {
     vg_label_t *label = vg_label_create(NULL, "x");
     ASSERT_NOT_NULL(label);
     vg_widget_set_fixed_size((vg_widget_t *)label, 120.0f, 40.0f);
@@ -165,8 +153,7 @@ TEST(widget_constraints_after_fixed_size)
 // API-005: SetMargin wires to layout params
 //=============================================================================
 
-TEST(widget_set_margin_uniform)
-{
+TEST(widget_set_margin_uniform) {
     vg_label_t *label = vg_label_create(NULL, "x");
     ASSERT_NOT_NULL(label);
     vg_widget_set_margin((vg_widget_t *)label, 8.0f);
@@ -178,8 +165,7 @@ TEST(widget_set_margin_uniform)
     vg_widget_destroy((vg_widget_t *)label);
 }
 
-TEST(widget_set_margin_zero)
-{
+TEST(widget_set_margin_zero) {
     vg_label_t *label = vg_label_create(NULL, "x");
     ASSERT_NOT_NULL(label);
     vg_widget_set_margin((vg_widget_t *)label, 0.0f);
@@ -193,8 +179,7 @@ TEST(widget_set_margin_zero)
 // BINDING-004: ScrollView GetScrollX / GetScrollY
 //=============================================================================
 
-TEST(scrollview_scroll_defaults_zero)
-{
+TEST(scrollview_scroll_defaults_zero) {
     vg_scrollview_t *sv = vg_scrollview_create(NULL);
     ASSERT_NOT_NULL(sv);
     float x = -1.0f, y = -1.0f;
@@ -204,8 +189,7 @@ TEST(scrollview_scroll_defaults_zero)
     vg_widget_destroy((vg_widget_t *)sv);
 }
 
-TEST(scrollview_scroll_after_set)
-{
+TEST(scrollview_scroll_after_set) {
     vg_scrollview_t *sv = vg_scrollview_create(NULL);
     ASSERT_NOT_NULL(sv);
     // Give the widget a viewport and content so clamp_scroll allows non-zero scrolling
@@ -220,8 +204,7 @@ TEST(scrollview_scroll_after_set)
     vg_widget_destroy((vg_widget_t *)sv);
 }
 
-TEST(scrollview_scroll_partial_null_out)
-{
+TEST(scrollview_scroll_partial_null_out) {
     // vg_scrollview_get_scroll must accept NULL pointers for either output
     vg_scrollview_t *sv = vg_scrollview_create(NULL);
     ASSERT_NOT_NULL(sv);
@@ -239,8 +222,7 @@ TEST(scrollview_scroll_partial_null_out)
 // BINDING-006: SplitPane GetPosition
 //=============================================================================
 
-TEST(splitpane_get_position_default_in_range)
-{
+TEST(splitpane_get_position_default_in_range) {
     vg_splitpane_t *sp = vg_splitpane_create(NULL, VG_SPLIT_HORIZONTAL);
     ASSERT_NOT_NULL(sp);
     float pos = vg_splitpane_get_position(sp);
@@ -248,8 +230,7 @@ TEST(splitpane_get_position_default_in_range)
     vg_widget_destroy((vg_widget_t *)sp);
 }
 
-TEST(splitpane_get_position_after_set)
-{
+TEST(splitpane_get_position_after_set) {
     vg_splitpane_t *sp = vg_splitpane_create(NULL, VG_SPLIT_VERTICAL);
     ASSERT_NOT_NULL(sp);
     vg_splitpane_set_position(sp, 0.3f);
@@ -267,8 +248,7 @@ TEST(splitpane_get_position_after_set)
 // iterates over them (for i < editor->gutter_icon_count / highlight_span_count).
 //=============================================================================
 
-TEST(codeeditor_gutter_icon_count_zero_on_create)
-{
+TEST(codeeditor_gutter_icon_count_zero_on_create) {
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(editor);
     ASSERT_EQ(editor->gutter_icon_count, 0);
@@ -276,8 +256,7 @@ TEST(codeeditor_gutter_icon_count_zero_on_create)
     vg_widget_destroy((vg_widget_t *)editor);
 }
 
-TEST(codeeditor_highlight_span_count_zero_on_create)
-{
+TEST(codeeditor_highlight_span_count_zero_on_create) {
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(editor);
     ASSERT_EQ(editor->highlight_span_count, 0);
@@ -289,8 +268,7 @@ TEST(codeeditor_highlight_span_count_zero_on_create)
 // PARTIAL-007: GetSelectedText binding uses vg_codeeditor_get_selection
 //=============================================================================
 
-TEST(codeeditor_get_selection_without_selection_is_null)
-{
+TEST(codeeditor_get_selection_without_selection_is_null) {
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(editor);
     vg_codeeditor_set_text(editor, "hello world");
@@ -300,8 +278,7 @@ TEST(codeeditor_get_selection_without_selection_is_null)
     vg_widget_destroy((vg_widget_t *)editor);
 }
 
-TEST(codeeditor_get_selection_with_selection_returns_text)
-{
+TEST(codeeditor_get_selection_with_selection_returns_text) {
     vg_codeeditor_t *editor = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(editor);
     vg_codeeditor_set_text(editor, "hello world");
@@ -314,8 +291,7 @@ TEST(codeeditor_get_selection_with_selection_returns_text)
     vg_widget_destroy((vg_widget_t *)editor);
 }
 
-TEST(widget_destroy_child_detaches_from_parent)
-{
+TEST(widget_destroy_child_detaches_from_parent) {
     vg_widget_t *parent = vg_widget_create(VG_WIDGET_CONTAINER);
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
     ASSERT_NOT_NULL(parent);
@@ -333,8 +309,7 @@ TEST(widget_destroy_child_detaches_from_parent)
     vg_widget_destroy(parent);
 }
 
-TEST(widget_add_child_rejects_cycles)
-{
+TEST(widget_add_child_rejects_cycles) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     vg_widget_t *child = vg_widget_create(VG_WIDGET_CONTAINER);
     ASSERT_NOT_NULL(root);
@@ -351,8 +326,7 @@ TEST(widget_add_child_rejects_cycles)
     vg_widget_destroy(root);
 }
 
-TEST(event_bubble_honors_parent_return_value)
-{
+TEST(event_bubble_honors_parent_return_value) {
     test_bubble_widget_t *parent = calloc(1, sizeof(test_bubble_widget_t));
     test_bubble_widget_t *child = calloc(1, sizeof(test_bubble_widget_t));
     ASSERT_NOT_NULL(parent);
@@ -374,8 +348,7 @@ TEST(event_bubble_honors_parent_return_value)
     vg_widget_destroy(&parent->base);
 }
 
-TEST(floatingpanel_destroy_no_double_free)
-{
+TEST(floatingpanel_destroy_no_double_free) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     ASSERT_NOT_NULL(root);
 
@@ -392,8 +365,7 @@ TEST(floatingpanel_destroy_no_double_free)
 // Main
 //=============================================================================
 
-int main(void)
-{
+int main(void) {
     printf("=== test_vg_tier2_fixes ===\n");
 
     // BINDING-003: Widget field accessors

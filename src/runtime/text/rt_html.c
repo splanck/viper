@@ -49,10 +49,8 @@ extern void rt_trap(const char *msg);
 //=============================================================================
 
 /// @brief Case-insensitive prefix match.
-static int starts_with_ci(const char *s, const char *prefix)
-{
-    while (*prefix)
-    {
+static int starts_with_ci(const char *s, const char *prefix) {
+    while (*prefix) {
         if (tolower((unsigned char)*s) != tolower((unsigned char)*prefix))
             return 0;
         s++;
@@ -62,8 +60,7 @@ static int starts_with_ci(const char *s, const char *prefix)
 }
 
 /// @brief Create a new HTML node as a map with tag, text, attrs, children.
-static void *make_node(const char *tag, size_t tag_len, const char *text, size_t text_len)
-{
+static void *make_node(const char *tag, size_t tag_len, const char *text, size_t text_len) {
     void *node = rt_map_new();
 
     rt_string tag_key = rt_const_cstr("tag");
@@ -85,8 +82,7 @@ static void *make_node(const char *tag, size_t tag_len, const char *text, size_t
 }
 
 /// @brief Known self-closing HTML tags.
-static int is_self_closing_tag(const char *tag, size_t len)
-{
+static int is_self_closing_tag(const char *tag, size_t len) {
     // Common self-closing tags
     static const char *self_closing[] = {"br",
                                          "hr",
@@ -104,8 +100,7 @@ static int is_self_closing_tag(const char *tag, size_t len)
                                          "wbr",
                                          NULL};
 
-    for (int i = 0; self_closing[i]; i++)
-    {
+    for (int i = 0; self_closing[i]; i++) {
         if (len == strlen(self_closing[i]) && starts_with_ci(tag, self_closing[i]))
             return 1;
     }
@@ -113,11 +108,9 @@ static int is_self_closing_tag(const char *tag, size_t len)
 }
 
 /// @brief Parse attributes from a tag body like: key="value" key2='value2'.
-static void parse_attrs(void *attrs_map, const char *start, const char *end)
-{
+static void parse_attrs(void *attrs_map, const char *start, const char *end) {
     const char *p = start;
-    while (p < end)
-    {
+    while (p < end) {
         // Skip whitespace
         while (p < end && (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r'))
             p++;
@@ -129,8 +122,7 @@ static void parse_attrs(void *attrs_map, const char *start, const char *end)
         while (p < end && *p != '=' && *p != ' ' && *p != '\t' && *p != '>' && *p != '/')
             p++;
         size_t name_len = (size_t)(p - name_start);
-        if (name_len == 0)
-        {
+        if (name_len == 0) {
             p++;
             continue;
         }
@@ -139,8 +131,7 @@ static void parse_attrs(void *attrs_map, const char *start, const char *end)
         while (p < end && (*p == ' ' || *p == '\t'))
             p++;
 
-        if (p < end && *p == '=')
-        {
+        if (p < end && *p == '=') {
             p++; // skip '='
             while (p < end && (*p == ' ' || *p == '\t'))
                 p++;
@@ -148,8 +139,7 @@ static void parse_attrs(void *attrs_map, const char *start, const char *end)
             const char *val_start;
             size_t val_len;
 
-            if (p < end && (*p == '"' || *p == '\''))
-            {
+            if (p < end && (*p == '"' || *p == '\'')) {
                 char quote = *p;
                 p++;
                 val_start = p;
@@ -158,9 +148,7 @@ static void parse_attrs(void *attrs_map, const char *start, const char *end)
                 val_len = (size_t)(p - val_start);
                 if (p < end)
                     p++; // skip closing quote
-            }
-            else
-            {
+            } else {
                 val_start = p;
                 while (p < end && *p != ' ' && *p != '\t' && *p != '>' && *p != '/')
                     p++;
@@ -170,9 +158,7 @@ static void parse_attrs(void *attrs_map, const char *start, const char *end)
             rt_string key = rt_string_from_bytes(name_start, name_len);
             rt_string val = rt_string_from_bytes(val_start, val_len);
             rt_map_set(attrs_map, key, (void *)val);
-        }
-        else
-        {
+        } else {
             // Boolean attribute (no value)
             rt_string key = rt_string_from_bytes(name_start, name_len);
             rt_string val = rt_string_from_bytes("", 0);
@@ -193,8 +179,7 @@ static void parse_attrs(void *attrs_map, const char *start, const char *end)
 ///
 /// @param str HTML text to parse.
 /// @return Root map node. Returns an empty root node for NULL/empty input.
-void *rt_html_parse(rt_string str)
-{
+void *rt_html_parse(rt_string str) {
     void *root = make_node("", 0, "", 0);
     if (!str)
         return root;
@@ -212,13 +197,10 @@ void *rt_html_parse(rt_string str)
     int depth = 0;
     stack[0] = root;
 
-    while (p < end)
-    {
-        if (*p == '<')
-        {
+    while (p < end) {
+        if (*p == '<') {
             // Check for closing tag
-            if (p + 1 < end && p[1] == '/')
-            {
+            if (p + 1 < end && p[1] == '/') {
                 const char *close_start = p + 2;
                 const char *close_end = strchr(close_start, '>');
                 if (!close_end)
@@ -233,8 +215,7 @@ void *rt_html_parse(rt_string str)
             }
 
             // Check for comment
-            if (p + 3 < end && p[1] == '!' && p[2] == '-' && p[3] == '-')
-            {
+            if (p + 3 < end && p[1] == '!' && p[2] == '-' && p[3] == '-') {
                 const char *comment_end = strstr(p + 4, "-->");
                 if (comment_end)
                     p = comment_end + 3;
@@ -244,8 +225,7 @@ void *rt_html_parse(rt_string str)
             }
 
             // Check for doctype / processing instruction
-            if (p + 1 < end && (p[1] == '!' || p[1] == '?'))
-            {
+            if (p + 1 < end && (p[1] == '!' || p[1] == '?')) {
                 const char *tag_close = strchr(p, '>');
                 p = tag_close ? tag_close + 1 : end;
                 continue;
@@ -264,8 +244,7 @@ void *rt_html_parse(rt_string str)
                 name_end++;
 
             size_t tag_name_len = (size_t)(name_end - tag_start);
-            if (tag_name_len == 0)
-            {
+            if (tag_name_len == 0) {
                 p = tag_close + 1;
                 continue;
             }
@@ -274,8 +253,7 @@ void *rt_html_parse(rt_string str)
             void *node = make_node(tag_start, tag_name_len, "", 0);
 
             // Parse attributes
-            if (name_end < tag_close)
-            {
+            if (name_end < tag_close) {
                 const char *attr_end = tag_close;
                 if (tag_close > tag_start && tag_close[-1] == '/')
                     attr_end = tag_close - 1;
@@ -296,16 +274,13 @@ void *rt_html_parse(rt_string str)
             int self_close = (tag_close > tag_start && tag_close[-1] == '/') ||
                              is_self_closing_tag(tag_start, tag_name_len);
 
-            if (!self_close && depth < 255)
-            {
+            if (!self_close && depth < 255) {
                 depth++;
                 stack[depth] = node;
             }
 
             p = tag_close + 1;
-        }
-        else
-        {
+        } else {
             // Text content
             const char *text_start = p;
             while (p < end && *p != '<')
@@ -315,18 +290,15 @@ void *rt_html_parse(rt_string str)
 
             // Skip whitespace-only text nodes
             int all_ws = 1;
-            for (size_t i = 0; i < text_len; i++)
-            {
+            for (size_t i = 0; i < text_len; i++) {
                 if (text_start[i] != ' ' && text_start[i] != '\t' && text_start[i] != '\n' &&
-                    text_start[i] != '\r')
-                {
+                    text_start[i] != '\r') {
                     all_ws = 0;
                     break;
                 }
             }
 
-            if (!all_ws && text_len > 0)
-            {
+            if (!all_ws && text_len > 0) {
                 void *text_node = make_node("", 0, text_start, text_len);
 
                 void *parent = stack[depth];
@@ -346,8 +318,7 @@ void *rt_html_parse(rt_string str)
 ///
 /// @param str HTML text.
 /// @return Plain text string.
-rt_string rt_html_to_text(rt_string str)
-{
+rt_string rt_html_to_text(rt_string str) {
     rt_string stripped = rt_html_strip_tags(str);
     rt_string result = rt_html_unescape(stripped);
     return result;
@@ -359,8 +330,7 @@ rt_string rt_html_to_text(rt_string str)
 ///
 /// @param str Text to escape.
 /// @return Escaped HTML-safe string. Returns empty string for NULL input.
-rt_string rt_html_escape(rt_string str)
-{
+rt_string rt_html_escape(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
 
@@ -372,10 +342,8 @@ rt_string rt_html_escape(rt_string str)
 
     // Calculate output size
     size_t out_len = 0;
-    for (size_t i = 0; i < src_len; i++)
-    {
-        switch (src[i])
-        {
+    for (size_t i = 0; i < src_len; i++) {
+        switch (src[i]) {
             case '<':
             case '>':
                 out_len += 4;
@@ -396,17 +364,14 @@ rt_string rt_html_escape(rt_string str)
     }
 
     char *out = (char *)malloc(out_len + 1);
-    if (!out)
-    {
+    if (!out) {
         rt_trap("Html.Escape: memory allocation failed");
         return rt_string_from_bytes("", 0);
     }
 
     size_t pos = 0;
-    for (size_t i = 0; i < src_len; i++)
-    {
-        switch (src[i])
-        {
+    for (size_t i = 0; i < src_len; i++) {
+        switch (src[i]) {
             case '<':
                 memcpy(out + pos, "&lt;", 4);
                 pos += 4;
@@ -446,8 +411,7 @@ rt_string rt_html_escape(rt_string str)
 ///
 /// @param str String with HTML entities.
 /// @return Unescaped string. Returns empty string for NULL input.
-rt_string rt_html_unescape(rt_string str)
-{
+rt_string rt_html_unescape(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
 
@@ -458,8 +422,7 @@ rt_string rt_html_unescape(rt_string str)
     size_t src_len = strlen(src);
 
     char *out = (char *)malloc(src_len + 1);
-    if (!out)
-    {
+    if (!out) {
         rt_trap("Html.Unescape: memory allocation failed");
         return rt_string_from_bytes("", 0);
     }
@@ -467,76 +430,51 @@ rt_string rt_html_unescape(rt_string str)
     size_t pos = 0;
     const char *p = src;
 
-    while (*p)
-    {
-        if (*p == '&')
-        {
-            if (starts_with_ci(p, "&lt;"))
-            {
+    while (*p) {
+        if (*p == '&') {
+            if (starts_with_ci(p, "&lt;")) {
                 out[pos++] = '<';
                 p += 4;
-            }
-            else if (starts_with_ci(p, "&gt;"))
-            {
+            } else if (starts_with_ci(p, "&gt;")) {
                 out[pos++] = '>';
                 p += 4;
-            }
-            else if (starts_with_ci(p, "&amp;"))
-            {
+            } else if (starts_with_ci(p, "&amp;")) {
                 out[pos++] = '&';
                 p += 5;
-            }
-            else if (starts_with_ci(p, "&quot;"))
-            {
+            } else if (starts_with_ci(p, "&quot;")) {
                 out[pos++] = '"';
                 p += 6;
-            }
-            else if (starts_with_ci(p, "&#39;"))
-            {
+            } else if (starts_with_ci(p, "&#39;")) {
                 out[pos++] = '\'';
                 p += 5;
-            }
-            else if (starts_with_ci(p, "&apos;"))
-            {
+            } else if (starts_with_ci(p, "&apos;")) {
                 out[pos++] = '\'';
                 p += 6;
-            }
-            else if (starts_with_ci(p, "&nbsp;"))
-            {
+            } else if (starts_with_ci(p, "&nbsp;")) {
                 out[pos++] = ' ';
                 p += 6;
-            }
-            else if (p[1] == '#')
-            {
+            } else if (p[1] == '#') {
                 // Numeric character reference
                 const char *start = p + 2;
                 int base = 10;
-                if (*start == 'x' || *start == 'X')
-                {
+                if (*start == 'x' || *start == 'X') {
                     base = 16;
                     start++;
                 }
                 char *num_end;
                 long code = strtol(start, &num_end, base);
-                if (*num_end == ';' && code > 0 && code < 128)
-                {
+                if (*num_end == ';' && code > 0 && code < 128) {
                     out[pos++] = (char)code;
                     p = num_end + 1;
-                }
-                else
-                {
+                } else {
                     out[pos++] = *p;
                     p++;
                 }
-            }
-            else
-            {
+            } else {
                 out[pos++] = *p;
                 p++;
             }
-        }
-        else
-        {
+        } else {
             out[pos++] = *p;
             p++;
         }
@@ -555,8 +493,7 @@ rt_string rt_html_unescape(rt_string str)
 ///
 /// @param str HTML text.
 /// @return String with tags stripped. Returns empty string for NULL input.
-rt_string rt_html_strip_tags(rt_string str)
-{
+rt_string rt_html_strip_tags(rt_string str) {
     if (!str)
         return rt_string_from_bytes("", 0);
 
@@ -567,8 +504,7 @@ rt_string rt_html_strip_tags(rt_string str)
     size_t src_len = strlen(src);
 
     char *out = (char *)malloc(src_len + 1);
-    if (!out)
-    {
+    if (!out) {
         rt_trap("Html.StripTags: memory allocation failed");
         return rt_string_from_bytes("", 0);
     }
@@ -577,22 +513,16 @@ rt_string rt_html_strip_tags(rt_string str)
     int in_tag = 0;
     const char *p = src;
 
-    while (*p)
-    {
-        if (*p == '<')
-        {
+    while (*p) {
+        if (*p == '<') {
             in_tag = 1;
-        }
-        else if (*p == '>')
-        {
+        } else if (*p == '>') {
             in_tag = 0;
             // Insert space separator between stripped tags so block elements
             // don't merge their text content (e.g., "<p>a</p><p>b</p>" → "a b")
             if (pos > 0 && out[pos - 1] != ' ')
                 out[pos++] = ' ';
-        }
-        else if (!in_tag)
-        {
+        } else if (!in_tag) {
             out[pos++] = *p;
         }
         p++;
@@ -614,8 +544,7 @@ rt_string rt_html_strip_tags(rt_string str)
 ///
 /// @param str HTML text.
 /// @return Seq of href value strings. Empty seq for NULL input.
-void *rt_html_extract_links(rt_string str)
-{
+void *rt_html_extract_links(rt_string str) {
     void *seq = rt_seq_new();
     if (!str)
         return seq;
@@ -626,41 +555,33 @@ void *rt_html_extract_links(rt_string str)
 
     const char *p = src;
 
-    while (*p)
-    {
+    while (*p) {
         if (*p == '<' && (p[1] == 'a' || p[1] == 'A') &&
-            (p[2] == ' ' || p[2] == '\t' || p[2] == '\n'))
-        {
+            (p[2] == ' ' || p[2] == '\t' || p[2] == '\n')) {
             const char *tag_end = strchr(p, '>');
             if (!tag_end)
                 break;
 
             // Search for href= within the tag
             const char *href = p + 2;
-            while (href < tag_end)
-            {
-                if (starts_with_ci(href, "href="))
-                {
+            while (href < tag_end) {
+                if (starts_with_ci(href, "href=")) {
                     href += 5;
                     // Skip whitespace
                     while (href < tag_end && (*href == ' ' || *href == '\t'))
                         href++;
 
                     char quote = 0;
-                    if (href < tag_end && (*href == '"' || *href == '\''))
-                    {
+                    if (href < tag_end && (*href == '"' || *href == '\'')) {
                         quote = *href;
                         href++;
                     }
 
                     const char *url_start = href;
-                    if (quote)
-                    {
+                    if (quote) {
                         while (href < tag_end && *href != quote)
                             href++;
-                    }
-                    else
-                    {
+                    } else {
                         while (href < tag_end && *href != ' ' && *href != '>')
                             href++;
                     }
@@ -673,9 +594,7 @@ void *rt_html_extract_links(rt_string str)
                 href++;
             }
             p = tag_end + 1;
-        }
-        else
-        {
+        } else {
             p++;
         }
     }
@@ -690,8 +609,7 @@ void *rt_html_extract_links(rt_string str)
 /// @param str HTML text.
 /// @param tag Tag name to match (case-insensitive).
 /// @return Seq of text content strings. Empty seq for NULL input.
-void *rt_html_extract_text(rt_string str, rt_string tag)
-{
+void *rt_html_extract_text(rt_string str, rt_string tag) {
     void *seq = rt_seq_new();
     if (!str || !tag)
         return seq;
@@ -704,22 +622,18 @@ void *rt_html_extract_text(rt_string str, rt_string tag)
     size_t tag_len = strlen(tag_name);
     const char *p = src;
 
-    while (*p)
-    {
-        if (*p == '<')
-        {
+    while (*p) {
+        if (*p == '<') {
             const char *start = p + 1;
             if (starts_with_ci(start, tag_name) &&
                 (start[tag_len] == '>' || start[tag_len] == ' ' || start[tag_len] == '\t' ||
-                 start[tag_len] == '/'))
-            {
+                 start[tag_len] == '/')) {
                 const char *tag_end = strchr(p, '>');
                 if (!tag_end)
                     break;
 
                 // Skip self-closing tags
-                if (tag_end > p && tag_end[-1] == '/')
-                {
+                if (tag_end > p && tag_end[-1] == '/') {
                     p = tag_end + 1;
                     continue;
                 }
@@ -735,34 +649,26 @@ void *rt_html_extract_text(rt_string str, rt_string tag)
 
                 // Find closing tag
                 const char *close = content_start;
-                while (*close)
-                {
+                while (*close) {
                     if (*close == '<' && starts_with_ci(close + 1, close_pat))
                         break;
                     close++;
                 }
 
-                if (*close)
-                {
+                if (*close) {
                     size_t inner_len = (size_t)(close - content_start);
                     rt_string inner = rt_string_from_bytes(content_start, inner_len);
                     rt_string text = rt_html_strip_tags(inner);
                     rt_seq_push(seq, (void *)text);
                     const char *close_end = strchr(close, '>');
                     p = close_end ? close_end + 1 : close;
-                }
-                else
-                {
+                } else {
                     p = tag_end + 1;
                 }
-            }
-            else
-            {
+            } else {
                 p++;
             }
-        }
-        else
-        {
+        } else {
             p++;
         }
     }

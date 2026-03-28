@@ -18,8 +18,7 @@
 #include <cassert>
 #include <sstream>
 
-int main()
-{
+int main() {
     const char *src = R"(il 0.2.0
 extern @foo(i128) -> i64
 )";
@@ -27,8 +26,7 @@ extern @foo(i128) -> i64
     il::core::Module m;
     std::ostringstream diag;
     auto pe = il::api::v2::parse_text_expected(in, m);
-    if (!pe)
-    {
+    if (!pe) {
         il::support::printDiag(pe.error(), diag);
     }
     assert(!pe);

@@ -56,8 +56,7 @@
 /// Each entry owns a copy of the key string and retains a reference to
 /// the value. Entries are stored in an array sorted by key to enable
 /// binary search lookup.
-typedef struct
-{
+typedef struct {
     char *key;     ///< Owned copy of key string (heap-allocated, null-terminated).
     size_t keylen; ///< Length of key in bytes (excluding null terminator).
     void *value;   ///< Retained value pointer (reference count incremented).
@@ -74,8 +73,7 @@ typedef struct
 /// - count <= capacity
 /// - All keys are non-NULL and null-terminated
 /// - All values have their reference counts incremented
-typedef struct
-{
+typedef struct {
     void **vptr;            ///< Vtable pointer placeholder (for OOP compatibility).
     treemap_entry *entries; ///< Sorted array of entries (NULL if capacity == 0).
     size_t capacity;        ///< Allocated size of entries array.
@@ -91,11 +89,9 @@ typedef struct
 /// @param out_len Output parameter that receives the key length in bytes.
 ///
 /// @return Pointer to the key's character data, or "" if key is NULL.
-static const char *get_key_data(rt_string key, size_t *out_len)
-{
+static const char *get_key_data(rt_string key, size_t *out_len) {
     const char *cstr = rt_string_cstr(key);
-    if (!cstr)
-    {
+    if (!cstr) {
         *out_len = 0;
         return "";
     }
@@ -115,8 +111,7 @@ static const char *get_key_data(rt_string key, size_t *out_len)
 /// @param len2 Length of second key.
 ///
 /// @return Negative if k1 < k2, zero if k1 == k2, positive if k1 > k2.
-static int key_compare(const char *k1, size_t len1, const char *k2, size_t len2)
-{
+static int key_compare(const char *k1, size_t len1, const char *k2, size_t len2) {
     size_t minlen = len1 < len2 ? len1 : len2;
     int cmp = memcmp(k1, k2, minlen);
     if (cmp != 0)
@@ -144,8 +139,7 @@ static int key_compare(const char *k1, size_t len1, const char *k2, size_t len2)
 /// @return The index of the key if found, or the insertion point if not found.
 ///         The insertion point is the index where the key would be inserted
 ///         to maintain sorted order.
-static size_t binary_search(treemap_impl *tm, const char *key, size_t keylen, bool *found)
-{
+static size_t binary_search(treemap_impl *tm, const char *key, size_t keylen, bool *found) {
     *found = false;
     if (tm->count == 0)
         return 0;
@@ -153,21 +147,15 @@ static size_t binary_search(treemap_impl *tm, const char *key, size_t keylen, bo
     size_t lo = 0;
     size_t hi = tm->count;
 
-    while (lo < hi)
-    {
+    while (lo < hi) {
         size_t mid = lo + (hi - lo) / 2;
         treemap_entry *e = &tm->entries[mid];
         int cmp = key_compare(key, keylen, e->key, e->keylen);
-        if (cmp < 0)
-        {
+        if (cmp < 0) {
             hi = mid;
-        }
-        else if (cmp > 0)
-        {
+        } else if (cmp > 0) {
             lo = mid + 1;
-        }
-        else
-        {
+        } else {
             *found = true;
             return mid;
         }
@@ -184,8 +172,7 @@ static size_t binary_search(treemap_impl *tm, const char *key, size_t keylen, bo
 /// @param tm The TreeMap to grow if needed.
 ///
 /// @note Traps with "TreeMap: memory allocation failed" if realloc fails.
-static void ensure_capacity(treemap_impl *tm)
-{
+static void ensure_capacity(treemap_impl *tm) {
     if (tm->count < tm->capacity)
         return;
 
@@ -194,8 +181,7 @@ static void ensure_capacity(treemap_impl *tm)
     size_t new_cap = tm->capacity == 0 ? TREEMAP_INITIAL_CAPACITY : tm->capacity * 2;
     treemap_entry *new_entries =
         (treemap_entry *)realloc(tm->entries, new_cap * sizeof(treemap_entry));
-    if (!new_entries)
-    {
+    if (!new_entries) {
         rt_trap("TreeMap: memory allocation failed");
         return;
     }
@@ -211,8 +197,7 @@ static void ensure_capacity(treemap_impl *tm)
 /// reference).
 ///
 /// @param e The entry to clean up.
-static void free_entry_contents(treemap_entry *e)
-{
+static void free_entry_contents(treemap_entry *e) {
     free(e->key);
     if (e->value && rt_obj_release_check0(e->value))
         rt_obj_free(e->value);
@@ -244,13 +229,11 @@ static void free_entry_contents(treemap_entry *e)
 /// @see rt_treemap_set For adding key-value pairs
 /// @see rt_treemap_keys For retrieving keys in sorted order
 
-static void treemap_finalizer(void *obj)
-{
+static void treemap_finalizer(void *obj) {
     treemap_impl *tm = (treemap_impl *)obj;
     if (!tm)
         return;
-    if (tm->entries)
-    {
+    if (tm->entries) {
         for (size_t i = 0; i < tm->count; i++)
             free_entry_contents(&tm->entries[i]);
         free(tm->entries);
@@ -260,11 +243,9 @@ static void treemap_finalizer(void *obj)
     tm->capacity = 0;
 }
 
-void *rt_treemap_new(void)
-{
+void *rt_treemap_new(void) {
     treemap_impl *tm = (treemap_impl *)rt_obj_new_i64(0, (int64_t)sizeof(treemap_impl));
-    if (!tm)
-    {
+    if (!tm) {
         rt_trap("TreeMap: memory allocation failed");
         return NULL;
     }
@@ -285,8 +266,7 @@ void *rt_treemap_new(void)
 /// @return The number of entries in the map.
 ///
 /// @note O(1) time complexity.
-int64_t rt_treemap_len(void *obj)
-{
+int64_t rt_treemap_len(void *obj) {
     if (!obj)
         return 0;
     treemap_impl *tm = (treemap_impl *)obj;
@@ -300,8 +280,7 @@ int64_t rt_treemap_len(void *obj)
 /// @return 1 (true) if the TreeMap is empty, 0 (false) otherwise.
 ///
 /// @note O(1) time complexity.
-int8_t rt_treemap_is_empty(void *obj)
-{
+int8_t rt_treemap_is_empty(void *obj) {
     if (!obj)
         return 1;
     treemap_impl *tm = (treemap_impl *)obj;
@@ -330,8 +309,7 @@ int8_t rt_treemap_is_empty(void *obj)
 /// @note Traps if memory allocation fails.
 ///
 /// @see rt_treemap_get For retrieving values by key
-void rt_treemap_set(void *obj, rt_string key, void *value)
-{
+void rt_treemap_set(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
     treemap_impl *tm = (treemap_impl *)obj;
@@ -342,8 +320,7 @@ void rt_treemap_set(void *obj, rt_string key, void *value)
     bool found;
     size_t idx = binary_search(tm, keydata, keylen, &found);
 
-    if (found)
-    {
+    if (found) {
         // Update existing entry
         treemap_entry *e = &tm->entries[idx];
         // Release old value
@@ -352,15 +329,12 @@ void rt_treemap_set(void *obj, rt_string key, void *value)
         // Retain new value
         rt_obj_retain_maybe(value);
         e->value = value;
-    }
-    else
-    {
+    } else {
         // Insert new entry
         ensure_capacity(tm);
 
         // Make room by shifting entries
-        if (idx < tm->count)
-        {
+        if (idx < tm->count) {
             memmove(&tm->entries[idx + 1],
                     &tm->entries[idx],
                     (tm->count - idx) * sizeof(treemap_entry));
@@ -369,8 +343,7 @@ void rt_treemap_set(void *obj, rt_string key, void *value)
         // Create new entry
         treemap_entry *e = &tm->entries[idx];
         e->key = (char *)malloc(keylen + 1);
-        if (!e->key)
-        {
+        if (!e->key) {
             rt_trap("TreeMap: memory allocation failed");
             return;
         }
@@ -399,8 +372,7 @@ void rt_treemap_set(void *obj, rt_string key, void *value)
 ///
 /// @see rt_treemap_has For checking if a key exists
 /// @see rt_treemap_set For storing key-value pairs
-void *rt_treemap_get(void *obj, rt_string key)
-{
+void *rt_treemap_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
     treemap_impl *tm = (treemap_impl *)obj;
@@ -424,8 +396,7 @@ void *rt_treemap_get(void *obj, rt_string key)
 /// @return 1 (true) if the key exists, 0 (false) otherwise.
 ///
 /// @note O(log n) time complexity (binary search).
-int8_t rt_treemap_has(void *obj, rt_string key)
-{
+int8_t rt_treemap_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
     treemap_impl *tm = (treemap_impl *)obj;
@@ -450,8 +421,7 @@ int8_t rt_treemap_has(void *obj, rt_string key)
 /// @return 1 (true) if the key was found and removed, 0 (false) if not found.
 ///
 /// @note O(log n) for lookup + O(n) for removal (array shifting).
-int8_t rt_treemap_remove(void *obj, rt_string key)
-{
+int8_t rt_treemap_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
     treemap_impl *tm = (treemap_impl *)obj;
@@ -469,8 +439,7 @@ int8_t rt_treemap_remove(void *obj, rt_string key)
     free_entry_contents(&tm->entries[idx]);
 
     // Shift remaining entries
-    if (idx < tm->count - 1)
-    {
+    if (idx < tm->count - 1) {
         memmove(&tm->entries[idx],
                 &tm->entries[idx + 1],
                 (tm->count - idx - 1) * sizeof(treemap_entry));
@@ -488,14 +457,12 @@ int8_t rt_treemap_remove(void *obj, rt_string key)
 /// @param obj Pointer to a TreeMap object.
 ///
 /// @note O(n) time complexity where n is the number of entries.
-void rt_treemap_clear(void *obj)
-{
+void rt_treemap_clear(void *obj) {
     if (!obj)
         return;
     treemap_impl *tm = (treemap_impl *)obj;
 
-    for (size_t i = 0; i < tm->count; i++)
-    {
+    for (size_t i = 0; i < tm->count; i++) {
         free_entry_contents(&tm->entries[i]);
     }
 
@@ -524,16 +491,14 @@ void rt_treemap_clear(void *obj)
 /// @note O(n) time complexity where n is the number of entries.
 ///
 /// @see rt_treemap_values For retrieving values
-void *rt_treemap_keys(void *obj)
-{
+void *rt_treemap_keys(void *obj) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     treemap_impl *tm = (treemap_impl *)obj;
 
-    for (size_t i = 0; i < tm->count; i++)
-    {
+    for (size_t i = 0; i < tm->count; i++) {
         rt_string str = rt_string_from_bytes(tm->entries[i].key, tm->entries[i].keylen);
         rt_seq_push(seq, (void *)str);
         rt_str_release_maybe(str);
@@ -554,15 +519,13 @@ void *rt_treemap_keys(void *obj)
 /// @note O(n) time complexity where n is the number of entries.
 ///
 /// @see rt_treemap_keys For retrieving keys
-void *rt_treemap_values(void *obj)
-{
+void *rt_treemap_values(void *obj) {
     void *seq = rt_seq_new();
     if (!obj)
         return seq;
     treemap_impl *tm = (treemap_impl *)obj;
 
-    for (size_t i = 0; i < tm->count; i++)
-    {
+    for (size_t i = 0; i < tm->count; i++) {
         rt_seq_push(seq, tm->entries[i].value);
     }
 
@@ -590,8 +553,7 @@ void *rt_treemap_values(void *obj)
 /// @note O(1) time complexity.
 ///
 /// @see rt_treemap_last For the largest key
-rt_string rt_treemap_first(void *obj)
-{
+rt_string rt_treemap_first(void *obj) {
     if (!obj)
         return rt_const_cstr("");
     treemap_impl *tm = (treemap_impl *)obj;
@@ -623,8 +585,7 @@ rt_string rt_treemap_first(void *obj)
 /// @note O(1) time complexity.
 ///
 /// @see rt_treemap_first For the smallest key
-rt_string rt_treemap_last(void *obj)
-{
+rt_string rt_treemap_last(void *obj) {
     if (!obj)
         return rt_const_cstr("");
     treemap_impl *tm = (treemap_impl *)obj;
@@ -661,8 +622,7 @@ rt_string rt_treemap_last(void *obj)
 /// @note O(log n) time complexity (binary search).
 ///
 /// @see rt_treemap_ceil For finding the smallest key >= a given key
-rt_string rt_treemap_floor(void *obj, rt_string key)
-{
+rt_string rt_treemap_floor(void *obj, rt_string key) {
     if (!obj)
         return rt_const_cstr("");
     treemap_impl *tm = (treemap_impl *)obj;
@@ -676,8 +636,7 @@ rt_string rt_treemap_floor(void *obj, rt_string key)
     bool found;
     size_t idx = binary_search(tm, keydata, keylen, &found);
 
-    if (found)
-    {
+    if (found) {
         // Exact match
         return rt_string_from_bytes(tm->entries[idx].key, tm->entries[idx].keylen);
     }
@@ -714,8 +673,7 @@ rt_string rt_treemap_floor(void *obj, rt_string key)
 /// @note O(log n) time complexity (binary search).
 ///
 /// @see rt_treemap_floor For finding the largest key <= a given key
-rt_string rt_treemap_ceil(void *obj, rt_string key)
-{
+rt_string rt_treemap_ceil(void *obj, rt_string key) {
     if (!obj)
         return rt_const_cstr("");
     treemap_impl *tm = (treemap_impl *)obj;
@@ -729,8 +687,7 @@ rt_string rt_treemap_ceil(void *obj, rt_string key)
     bool found;
     size_t idx = binary_search(tm, keydata, keylen, &found);
 
-    if (found)
-    {
+    if (found) {
         // Exact match
         return rt_string_from_bytes(tm->entries[idx].key, tm->entries[idx].keylen);
     }

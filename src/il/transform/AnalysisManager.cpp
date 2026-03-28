@@ -21,10 +21,8 @@
 #include <cassert>
 #include <utility>
 
-namespace il::transform
-{
-class AnalysisCacheInvalidator
-{
+namespace il::transform {
+class AnalysisCacheInvalidator {
   public:
     /// @brief Prepare an invalidator for the given manager/preservation pair.
     /// @details Stores references to the owning AnalysisManager and the
@@ -33,17 +31,14 @@ class AnalysisCacheInvalidator
     /// @param manager Manager whose caches will be pruned.
     /// @param preserved Summary describing which analyses remain valid.
     AnalysisCacheInvalidator(AnalysisManager &manager, const PreservedAnalyses &preserved)
-        : manager_(manager), preserved_(preserved)
-    {
-    }
+        : manager_(manager), preserved_(preserved) {}
 
     /// @brief Invalidate module-scoped analyses according to preservation data.
     /// @details Skips work when no module analyses were registered or when the
     ///          summary preserved everything.  Otherwise the routine either
     ///          clears the entire cache or erases only those entries not listed in
     ///          the summary, balancing correctness with minimal churn.
-    void afterModulePass()
-    {
+    void afterModulePass() {
         assertWellFormed();
         invalidateModuleCache();
         invalidateFunctionCacheForModulePass();
@@ -55,17 +50,14 @@ class AnalysisCacheInvalidator
     ///          walks each cache entry and removes the stale data for @p fn.  Empty analysis maps
     ///          are pruned to keep the cache compact.
     /// @param fn Function whose cached analyses should be reviewed.
-    void afterFunctionPass(core::Function &fn)
-    {
+    void afterFunctionPass(core::Function &fn) {
         assertWellFormed();
         if (!manager_.functionAnalyses_)
             return;
         if (preserved_.preservesAllFunctionAnalyses())
             return;
-        if (!preserved_.hasFunctionPreservations())
-        {
-            for (auto it = manager_.functionCache_.begin(); it != manager_.functionCache_.end();)
-            {
+        if (!preserved_.hasFunctionPreservations()) {
+            for (auto it = manager_.functionCache_.begin(); it != manager_.functionCache_.end();) {
                 it->second.erase(&fn);
                 if (it->second.empty())
                     it = manager_.functionCache_.erase(it);
@@ -79,10 +71,8 @@ class AnalysisCacheInvalidator
             return;
         }
 
-        for (auto it = manager_.functionCache_.begin(); it != manager_.functionCache_.end();)
-        {
-            if (preserved_.isFunctionPreserved(it->first))
-            {
+        for (auto it = manager_.functionCache_.begin(); it != manager_.functionCache_.end();) {
+            if (preserved_.isFunctionPreserved(it->first)) {
                 ++it;
                 continue;
             }
@@ -99,22 +89,18 @@ class AnalysisCacheInvalidator
     /// @details Short-circuits when no module analyses are registered, when the
     ///          pass preserves everything, or when nothing is preserved (full
     ///          clear).  Otherwise removes only the stale entries.
-    void invalidateModuleCache()
-    {
+    void invalidateModuleCache() {
         if (!manager_.moduleAnalyses_)
             return;
         if (preserved_.preservesAllModuleAnalyses())
             return;
-        if (!preserved_.hasModulePreservations())
-        {
+        if (!preserved_.hasModulePreservations()) {
             manager_.moduleCache_.clear();
             return;
         }
 
-        for (auto it = manager_.moduleCache_.begin(); it != manager_.moduleCache_.end();)
-        {
-            if (preserved_.isModulePreserved(it->first))
-            {
+        for (auto it = manager_.moduleCache_.begin(); it != manager_.moduleCache_.end();) {
+            if (preserved_.isModulePreserved(it->first)) {
                 ++it;
                 continue;
             }
@@ -126,30 +112,24 @@ class AnalysisCacheInvalidator
     /// @details A module pass potentially affects all functions, so the entire
     ///          function cache is cleared when nothing is preserved.  If some
     ///          analyses are preserved, only the stale per-analysis entries are removed.
-    void invalidateFunctionCacheForModulePass()
-    {
+    void invalidateFunctionCacheForModulePass() {
         if (!manager_.functionAnalyses_)
             return;
         if (preserved_.preservesAllFunctionAnalyses())
             return;
         auto eraseChangedFunctions =
-            [this](std::unordered_map<const core::Function *, std::any> &cacheForAnalysis)
-        {
-            for (auto it = cacheForAnalysis.begin(); it != cacheForAnalysis.end();)
-            {
-                if (it->first && preserved_.isChangedFunction(it->first->name))
-                    it = cacheForAnalysis.erase(it);
-                else
-                    ++it;
-            }
-        };
-        if (!preserved_.hasFunctionPreservations())
-        {
-            if (preserved_.hasChangedFunctions())
-            {
+            [this](std::unordered_map<const core::Function *, std::any> &cacheForAnalysis) {
+                for (auto it = cacheForAnalysis.begin(); it != cacheForAnalysis.end();) {
+                    if (it->first && preserved_.isChangedFunction(it->first->name))
+                        it = cacheForAnalysis.erase(it);
+                    else
+                        ++it;
+                }
+            };
+        if (!preserved_.hasFunctionPreservations()) {
+            if (preserved_.hasChangedFunctions()) {
                 for (auto it = manager_.functionCache_.begin();
-                     it != manager_.functionCache_.end();)
-                {
+                     it != manager_.functionCache_.end();) {
                     eraseChangedFunctions(it->second);
                     if (it->second.empty())
                         it = manager_.functionCache_.erase(it);
@@ -162,15 +142,12 @@ class AnalysisCacheInvalidator
             return;
         }
 
-        for (auto it = manager_.functionCache_.begin(); it != manager_.functionCache_.end();)
-        {
-            if (preserved_.isFunctionPreserved(it->first))
-            {
+        for (auto it = manager_.functionCache_.begin(); it != manager_.functionCache_.end();) {
+            if (preserved_.isFunctionPreserved(it->first)) {
                 ++it;
                 continue;
             }
-            if (preserved_.hasChangedFunctions())
-            {
+            if (preserved_.hasChangedFunctions()) {
                 eraseChangedFunctions(it->second);
                 if (it->second.empty())
                     it = manager_.functionCache_.erase(it);
@@ -186,21 +163,16 @@ class AnalysisCacheInvalidator
     /// @details Debug-mode guard only; verifies the module and function caches are
     ///          consistent with the registry so stale or orphaned cache entries are
     ///          caught early.
-    void assertWellFormed() const
-    {
+    void assertWellFormed() const {
 #ifndef NDEBUG
-        if (manager_.moduleAnalyses_)
-        {
-            for (const auto &entry : manager_.moduleCache_)
-            {
+        if (manager_.moduleAnalyses_) {
+            for (const auto &entry : manager_.moduleCache_) {
                 assert(manager_.moduleAnalyses_->count(entry.first) &&
                        "module cache entry without registration");
             }
         }
-        if (manager_.functionAnalyses_)
-        {
-            for (const auto &entry : manager_.functionCache_)
-            {
+        if (manager_.functionAnalyses_) {
+            for (const auto &entry : manager_.functionCache_) {
                 assert(manager_.functionAnalyses_->count(entry.first) &&
                        "function cache entry without registration");
             }
@@ -219,8 +191,7 @@ class AnalysisCacheInvalidator
 /// @param module Module undergoing transformation.
 /// @param registry Registry describing the available analyses.
 AnalysisManager::AnalysisManager(core::Module &module, const AnalysisRegistry &registry)
-    : module_(module)
-{
+    : module_(module) {
     moduleAnalyses_ = &registry.moduleAnalyses();
     functionAnalyses_ = &registry.functionAnalyses();
 }
@@ -229,8 +200,7 @@ AnalysisManager::AnalysisManager(core::Module &module, const AnalysisRegistry &r
 /// @details Wraps the helper class so callers can simply forward the
 ///          preservation summary returned by the pass.
 /// @param preserved Summary of analyses that remain valid.
-void AnalysisManager::invalidateAfterModulePass(const PreservedAnalyses &preserved)
-{
+void AnalysisManager::invalidateAfterModulePass(const PreservedAnalyses &preserved) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
     AnalysisCacheInvalidator(*this, preserved).afterModulePass();
 }
@@ -241,8 +211,7 @@ void AnalysisManager::invalidateAfterModulePass(const PreservedAnalyses &preserv
 /// @param preserved Summary of analyses that remain valid.
 /// @param fn Function whose cached analyses should be pruned.
 void AnalysisManager::invalidateAfterFunctionPass(const PreservedAnalyses &preserved,
-                                                  core::Function &fn)
-{
+                                                  core::Function &fn) {
     std::unique_lock<std::shared_mutex> lock(mutex_);
     AnalysisCacheInvalidator(*this, preserved).afterFunctionPass(fn);
 }

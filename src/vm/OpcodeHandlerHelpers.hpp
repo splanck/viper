@@ -25,15 +25,13 @@
 #include <string>
 #include <string_view>
 
-namespace il::vm::detail
-{
+namespace il::vm::detail {
 
 /// @brief Mark common unused control-flow parameters in opcode handlers.
 /// @details Many arithmetic and comparison handlers don't use blocks, bb, or ip
 ///          parameters. This macro provides a consistent way to suppress warnings.
 #define VM_HANDLER_UNUSED_CONTROL_PARAMS(blocks, bb, ip)                                           \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         (void)(blocks);                                                                            \
         (void)(bb);                                                                                \
         (void)(ip);                                                                                \
@@ -51,8 +49,7 @@ namespace il::vm::detail
 /// @return Formatted error string suitable for trap reporting.
 /// @details Uses string_view to avoid unnecessary string copies when called
 ///          with string literals or existing strings.
-inline std::string formatArgumentCountError(std::string_view name, size_t expected, size_t actual)
-{
+inline std::string formatArgumentCountError(std::string_view name, size_t expected, size_t actual) {
     std::string result;
     result.reserve(name.size() + 64); // Pre-allocate reasonable buffer
     result.append(name);
@@ -75,8 +72,7 @@ inline std::string formatArgumentCountError(std::string_view name, size_t expect
 inline std::string formatRegisterRangeError(size_t tempId,
                                             size_t regCount,
                                             std::string_view functionName,
-                                            std::string_view blockLabel)
-{
+                                            std::string_view blockLabel) {
     std::string result;
     result.reserve(functionName.size() + blockLabel.size() + 80);
     result.append("temp %");
@@ -85,8 +81,7 @@ inline std::string formatRegisterRangeError(size_t tempId,
     result.append(std::to_string(regCount));
     result.append(") in function ");
     result.append(functionName);
-    if (!blockLabel.empty())
-    {
+    if (!blockLabel.empty()) {
         result.append(", block ");
         result.append(blockLabel);
     }

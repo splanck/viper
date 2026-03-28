@@ -30,20 +30,17 @@
 
 #include "frontends/zia/Warnings.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 /// @brief Optimization level for IL transformations.
-enum class OptLevel
-{
+enum class OptLevel {
     O0 = 0, ///< Minimal optimization (simplify-cfg, dce only).
     O1 = 1, ///< Standard optimization (scalar cleanup plus conservative inline).
     O2 = 2  ///< Aggressive optimization (loop opts, inline, gvn, dse).
 };
 
 /// @brief Options controlling Zia compilation behavior.
-struct CompilerOptions
-{
+struct CompilerOptions {
     /// @brief Enable runtime bounds checks for arrays/collections.
     bool boundsChecks{true};
 

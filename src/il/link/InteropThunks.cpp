@@ -28,8 +28,7 @@
 #include <string>
 #include <vector>
 
-namespace il::link
-{
+namespace il::link {
 
 using il::core::BasicBlock;
 using il::core::Function;
@@ -41,21 +40,17 @@ using il::core::Param;
 using il::core::Type;
 using il::core::Value;
 
-namespace
-{
+namespace {
 
 /// @brief Check if two types differ only in boolean representation (i1 vs i64).
-bool isBooleanMismatch(Type::Kind a, Type::Kind b)
-{
+bool isBooleanMismatch(Type::Kind a, Type::Kind b) {
     return (a == Type::Kind::I1 && b == Type::Kind::I64) ||
            (a == Type::Kind::I64 && b == Type::Kind::I1);
 }
 
 /// @brief Find an Export function by name in a module.
-const Function *findExport(const Module &mod, const std::string &name)
-{
-    for (const auto &fn : mod.functions)
-    {
+const Function *findExport(const Module &mod, const std::string &name) {
+    for (const auto &fn : mod.functions) {
         if (fn.name == name && fn.linkage == Linkage::Export)
             return &fn;
     }
@@ -63,10 +58,8 @@ const Function *findExport(const Module &mod, const std::string &name)
 }
 
 /// @brief Find an Import function by name in a module.
-const Function *findImport(const Module &mod, const std::string &name)
-{
-    for (const auto &fn : mod.functions)
-    {
+const Function *findImport(const Module &mod, const std::string &name) {
+    for (const auto &fn : mod.functions) {
         if (fn.name == name && fn.linkage == Linkage::Import)
             return &fn;
     }
@@ -83,8 +76,7 @@ const Function *findImport(const Module &mod, const std::string &name)
 /// @param thunkName Name for the generated thunk function.
 Function generateThunk(const Function &importDecl,
                        const Function &exportDef,
-                       const std::string &thunkName)
-{
+                       const std::string &thunkName) {
     Function thunk;
     thunk.name = thunkName;
     thunk.retType = importDecl.retType; // Match what the caller expects.
@@ -92,8 +84,7 @@ Function generateThunk(const Function &importDecl,
 
     // Build parameter list matching the import declaration.
     unsigned nextTemp = 0;
-    for (size_t i = 0; i < importDecl.params.size(); ++i)
-    {
+    for (size_t i = 0; i < importDecl.params.size(); ++i) {
         Param p;
         p.name = "p" + std::to_string(i);
         p.type = importDecl.params[i].type;
@@ -106,13 +97,11 @@ Function generateThunk(const Function &importDecl,
 
     // Build call arguments, converting booleans as needed.
     std::vector<Value> callArgs;
-    for (size_t i = 0; i < importDecl.params.size(); ++i)
-    {
+    for (size_t i = 0; i < importDecl.params.size(); ++i) {
         Type::Kind importKind = importDecl.params[i].type.kind;
         Type::Kind exportKind = exportDef.params[i].type.kind;
 
-        if (importKind == Type::Kind::I64 && exportKind == Type::Kind::I1)
-        {
+        if (importKind == Type::Kind::I64 && exportKind == Type::Kind::I1) {
             // Caller passes i64, callee expects i1: insert ICmpNe vs 0.
             // %conv = icmp_ne i64 %param, 0
             Instr cmp;
@@ -124,9 +113,7 @@ Function generateThunk(const Function &importDecl,
             entry.instructions.push_back(std::move(cmp));
             callArgs.push_back(Value::temp(nextTemp));
             nextTemp++;
-        }
-        else if (importKind == Type::Kind::I1 && exportKind == Type::Kind::I64)
-        {
+        } else if (importKind == Type::Kind::I1 && exportKind == Type::Kind::I64) {
             // Caller passes i1, callee expects i64: insert Zext1.
             // %conv = zext1 i1 %param
             Instr zext;
@@ -137,9 +124,7 @@ Function generateThunk(const Function &importDecl,
             entry.instructions.push_back(std::move(zext));
             callArgs.push_back(Value::temp(nextTemp));
             nextTemp++;
-        }
-        else
-        {
+        } else {
             // No conversion needed — pass through.
             callArgs.push_back(Value::temp(thunk.params[i].id));
         }
@@ -154,18 +139,15 @@ Function generateThunk(const Function &importDecl,
     call.type = exportDef.retType; // Call with the export's return type.
     call.operands = std::move(callArgs);
 
-    if (exportDef.retType.kind != Type::Kind::Void)
-    {
+    if (exportDef.retType.kind != Type::Kind::Void) {
         call.result = nextTemp;
         entry.instructions.push_back(std::move(call));
         unsigned callResult = nextTemp;
         nextTemp++;
 
-        if (needsRetConv)
-        {
+        if (needsRetConv) {
             if (exportDef.retType.kind == Type::Kind::I1 &&
-                importDecl.retType.kind == Type::Kind::I64)
-            {
+                importDecl.retType.kind == Type::Kind::I64) {
                 // Export returns i1, caller expects i64: zext.
                 Instr zext;
                 zext.op = Opcode::Zext1;
@@ -180,10 +162,8 @@ Function generateThunk(const Function &importDecl,
                 ret.operands.push_back(Value::temp(nextTemp));
                 entry.instructions.push_back(std::move(ret));
                 nextTemp++;
-            }
-            else if (exportDef.retType.kind == Type::Kind::I64 &&
-                     importDecl.retType.kind == Type::Kind::I1)
-            {
+            } else if (exportDef.retType.kind == Type::Kind::I64 &&
+                       importDecl.retType.kind == Type::Kind::I1) {
                 // Export returns i64, caller expects i1: icmp ne 0.
                 Instr cmp;
                 cmp.op = Opcode::ICmpNe;
@@ -200,9 +180,7 @@ Function generateThunk(const Function &importDecl,
                 entry.instructions.push_back(std::move(ret));
                 nextTemp++;
             }
-        }
-        else
-        {
+        } else {
             // No return conversion — just return the call result.
             Instr ret;
             ret.op = Opcode::Ret;
@@ -210,9 +188,7 @@ Function generateThunk(const Function &importDecl,
             ret.operands.push_back(Value::temp(callResult));
             entry.instructions.push_back(std::move(ret));
         }
-    }
-    else
-    {
+    } else {
         entry.instructions.push_back(std::move(call));
         Instr ret;
         ret.op = Opcode::Ret;
@@ -230,12 +206,11 @@ Function generateThunk(const Function &importDecl,
 
 } // namespace
 
-std::vector<ThunkInfo> generateBooleanThunks(const Module &importModule, const Module &exportModule)
-{
+std::vector<ThunkInfo> generateBooleanThunks(const Module &importModule,
+                                             const Module &exportModule) {
     std::vector<ThunkInfo> thunks;
 
-    for (const auto &fn : importModule.functions)
-    {
+    for (const auto &fn : importModule.functions) {
         if (fn.linkage != Linkage::Import)
             continue;
 
@@ -245,12 +220,9 @@ std::vector<ThunkInfo> generateBooleanThunks(const Module &importModule, const M
 
         // Check for boolean mismatches in return type or parameters.
         bool hasMismatch = isBooleanMismatch(fn.retType.kind, exportFn->retType.kind);
-        if (!hasMismatch && fn.params.size() == exportFn->params.size())
-        {
-            for (size_t i = 0; i < fn.params.size(); ++i)
-            {
-                if (isBooleanMismatch(fn.params[i].type.kind, exportFn->params[i].type.kind))
-                {
+        if (!hasMismatch && fn.params.size() == exportFn->params.size()) {
+            for (size_t i = 0; i < fn.params.size(); ++i) {
+                if (isBooleanMismatch(fn.params[i].type.kind, exportFn->params[i].type.kind)) {
                     hasMismatch = true;
                     break;
                 }

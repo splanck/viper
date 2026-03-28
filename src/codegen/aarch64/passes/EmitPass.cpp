@@ -21,13 +21,10 @@
 
 #include <sstream>
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
-bool EmitPass::run(AArch64Module &module, Diagnostics &diags)
-{
-    if (!module.ti)
-    {
+bool EmitPass::run(AArch64Module &module, Diagnostics &diags) {
+    if (!module.ti) {
         diags.error("EmitPass: ti must be non-null");
         return false;
     }
@@ -42,8 +39,7 @@ bool EmitPass::run(AArch64Module &module, Diagnostics &diags)
     module.rodataPool.emit(os);
 
     AsmEmitter emitter{*module.ti};
-    for (const auto &fn : module.mir)
-    {
+    for (const auto &fn : module.mir) {
         emitter.emitFunction(os, fn);
         os << "\n";
     }

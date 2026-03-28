@@ -44,14 +44,12 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 // Import sub-pass functions into local scope for concise call sites.
 namespace ph = peephole;
 
-PeepholeStats runPeephole(MFunction &fn)
-{
+PeepholeStats runPeephole(MFunction &fn) {
     PeepholeStats stats;
 
     // Pass 0: Reorder blocks for better code layout
@@ -67,8 +65,7 @@ PeepholeStats runPeephole(MFunction &fn)
 
     // (Pass 0.6 - loop phi spill elimination - runs after Pass 4.8 below)
 
-    for (auto &block : fn.blocks)
-    {
+    for (auto &block : fn.blocks) {
         auto &instrs = block.instrs;
         if (instrs.empty())
             continue;
@@ -83,10 +80,8 @@ PeepholeStats runPeephole(MFunction &fn)
                 ph::updateKnownConsts(instrs[i], divConsts);
 
             // First pass: try remainder fusion (UDIV/SDIV + MSUB -> AND/shift sequence)
-            for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
-            {
-                if (ph::tryRemainderFusion(instrs, i, divConsts, stats))
-                {
+            for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
+                if (ph::tryRemainderFusion(instrs, i, divConsts, stats)) {
                     // Rebuild constant map after modification
                     divConsts.clear();
                     for (std::size_t j = 0; j < instrs.size(); ++j)
@@ -102,12 +97,9 @@ PeepholeStats runPeephole(MFunction &fn)
             for (std::size_t i = 0; i < instrs.size(); ++i)
                 ph::updateKnownConsts(instrs[i], divConsts);
 
-            for (std::size_t i = 0; i < instrs.size(); ++i)
-            {
-                if (instrs[i].opc == MOpcode::SDivRRR)
-                {
-                    if (ph::trySDivStrengthReduction(instrs, i, divConsts, stats))
-                    {
+            for (std::size_t i = 0; i < instrs.size(); ++i) {
+                if (instrs[i].opc == MOpcode::SDivRRR) {
+                    if (ph::trySDivStrengthReduction(instrs, i, divConsts, stats)) {
                         // Rebuild constant map after modification
                         divConsts.clear();
                         for (std::size_t j = 0; j < instrs.size(); ++j)
@@ -122,8 +114,7 @@ PeepholeStats runPeephole(MFunction &fn)
 
         // Pass 1: Build register constant map and apply rewrites
         ph::RegConstMap knownConsts;
-        for (auto &instr : instrs)
-        {
+        for (auto &instr : instrs) {
             // Track constants loaded via MovRI
             ph::updateKnownConsts(instr, knownConsts);
 
@@ -147,40 +138,32 @@ PeepholeStats runPeephole(MFunction &fn)
         ph::propagateCopies(instrs, stats);
 
         // Pass 1.6: CBZ/CBNZ fusion (cmp #0 + b.eq/ne -> cbz/cbnz)
-        for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
-        {
-            if (ph::tryCbzCbnzFusion(instrs, i, stats))
-            {
+        for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
+            if (ph::tryCbzCbnzFusion(instrs, i, stats)) {
                 if (i > 0)
                     --i;
             }
         }
 
         // Pass 1.65: Cset+cbnz/cbz -> b.cond fusion
-        for (std::size_t i = 0; i < instrs.size(); ++i)
-        {
-            if (ph::tryCsetBranchFusion(instrs, i, stats))
-            {
+        for (std::size_t i = 0; i < instrs.size(); ++i) {
+            if (ph::tryCsetBranchFusion(instrs, i, stats)) {
                 if (i > 0)
                     --i;
             }
         }
 
         // Pass 1.7: MADD fusion (mul + add -> madd)
-        for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
-        {
-            if (ph::tryMaddFusion(instrs, i, stats))
-            {
+        for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
+            if (ph::tryMaddFusion(instrs, i, stats)) {
                 if (i > 0)
                     --i;
             }
         }
 
         // Pass 1.8: LDP/STP merging (consecutive ldr/str with adjacent offsets)
-        for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
-        {
-            if (ph::tryLdpStpMerge(instrs, i, stats))
-            {
+        for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
+            if (ph::tryLdpStpMerge(instrs, i, stats)) {
                 if (i > 0)
                     --i;
             }
@@ -196,8 +179,7 @@ PeepholeStats runPeephole(MFunction &fn)
         ph::foldComputeIntoTarget(instrs, stats);
 
         // Pass 2: Try to fold consecutive moves (including imm-then-move)
-        for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
-        {
+        for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
             if (!ph::tryFoldImmThenMove(instrs, i, stats))
                 (void)ph::tryFoldConsecutiveMoves(instrs, i, stats);
         }
@@ -205,23 +187,18 @@ PeepholeStats runPeephole(MFunction &fn)
         // Pass 3: Mark identity moves for removal
         std::vector<bool> toRemove(instrs.size(), false);
 
-        for (std::size_t i = 0; i < instrs.size(); ++i)
-        {
-            if (ph::isIdentityMovRR(instrs[i]))
-            {
+        for (std::size_t i = 0; i < instrs.size(); ++i) {
+            if (ph::isIdentityMovRR(instrs[i])) {
                 toRemove[i] = true;
                 ++stats.identityMovesRemoved;
-            }
-            else if (ph::isIdentityFMovRR(instrs[i]))
-            {
+            } else if (ph::isIdentityFMovRR(instrs[i])) {
                 toRemove[i] = true;
                 ++stats.identityFMovesRemoved;
             }
         }
 
         // Pass 4: Remove marked instructions
-        if (std::any_of(toRemove.begin(), toRemove.end(), [](bool v) { return v; }))
-        {
+        if (std::any_of(toRemove.begin(), toRemove.end(), [](bool v) { return v; })) {
             ph::removeMarkedInstructions(instrs, toRemove);
         }
 
@@ -246,10 +223,8 @@ PeepholeStats runPeephole(MFunction &fn)
     {
         // Build predecessor count for each block from branch targets.
         std::unordered_map<std::string, std::size_t> predCount;
-        for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi)
-        {
-            for (const auto &mi : fn.blocks[bi].instrs)
-            {
+        for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
+            for (const auto &mi : fn.blocks[bi].instrs) {
                 if (mi.opc == MOpcode::Br && !mi.ops.empty() &&
                     mi.ops[0].kind == MOperand::Kind::Label)
                     ++predCount[mi.ops[0].label];
@@ -262,8 +237,7 @@ PeepholeStats runPeephole(MFunction &fn)
             }
         }
 
-        for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
-        {
+        for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
             auto &predInstrs = fn.blocks[bi].instrs;
             auto &succBlock = fn.blocks[bi + 1];
             auto &succInstrs = succBlock.instrs;
@@ -281,13 +255,11 @@ PeepholeStats runPeephole(MFunction &fn)
             // it does NOT fall through to the layout successor.
             {
                 bool reachesSucc = false;
-                for (const auto &mi : predInstrs)
-                {
+                for (const auto &mi : predInstrs) {
                     // Unconditional branch to successor
                     if (mi.opc == MOpcode::Br && !mi.ops.empty() &&
                         mi.ops[0].kind == MOperand::Kind::Label &&
-                        mi.ops[0].label == succBlock.name)
-                    {
+                        mi.ops[0].label == succBlock.name) {
                         reachesSucc = true;
                         break;
                     }
@@ -295,16 +267,14 @@ PeepholeStats runPeephole(MFunction &fn)
                     if ((mi.opc == MOpcode::BCond || mi.opc == MOpcode::Cbz ||
                          mi.opc == MOpcode::Cbnz) &&
                         mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label &&
-                        mi.ops[1].label == succBlock.name)
-                    {
+                        mi.ops[1].label == succBlock.name) {
                         reachesSucc = true;
                         break;
                     }
                 }
                 // Also check fallthrough: if last instruction is NOT an
                 // unconditional branch or ret, execution falls through.
-                if (!reachesSucc && !predInstrs.empty())
-                {
+                if (!reachesSucc && !predInstrs.empty()) {
                     const auto &last = predInstrs.back();
                     if (last.opc != MOpcode::Br && last.opc != MOpcode::Ret)
                         reachesSucc = true;
@@ -314,16 +284,14 @@ PeepholeStats runPeephole(MFunction &fn)
             }
 
             // Collect stores at the end of the predecessor block.
-            struct StoreInfo
-            {
+            struct StoreInfo {
                 std::size_t idx;
                 MOperand srcReg;
             };
 
             std::unordered_map<int64_t, StoreInfo> endStores;
 
-            for (std::size_t i = predInstrs.size(); i-- > 0;)
-            {
+            for (std::size_t i = predInstrs.size(); i-- > 0;) {
                 const auto &instr = predInstrs[i];
 
                 // Skip terminators
@@ -334,8 +302,7 @@ PeepholeStats runPeephole(MFunction &fn)
 
                 // Record FP-relative stores
                 if (instr.opc == MOpcode::StrRegFpImm && instr.ops.size() >= 2 &&
-                    ph::isPhysReg(instr.ops[0]) && instr.ops[1].kind == MOperand::Kind::Imm)
-                {
+                    ph::isPhysReg(instr.ops[0]) && instr.ops[1].kind == MOperand::Kind::Imm) {
                     const int64_t off = instr.ops[1].imm;
                     if (endStores.find(off) == endStores.end())
                         endStores[off] = {i, instr.ops[0]};
@@ -350,8 +317,7 @@ PeepholeStats runPeephole(MFunction &fn)
                 continue;
 
             // Forward to loads at the start of the successor block.
-            for (std::size_t j = 0; j < succInstrs.size(); ++j)
-            {
+            for (std::size_t j = 0; j < succInstrs.size(); ++j) {
                 const auto &instr = succInstrs[j];
 
                 if (instr.opc != MOpcode::LdrRegFpImm)
@@ -386,8 +352,7 @@ PeepholeStats runPeephole(MFunction &fn)
 
     // Pass 5: Branch inversion and branch-to-next removal.
     // This must be done after per-block passes since it looks at adjacent blocks.
-    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi)
-    {
+    for (std::size_t bi = 0; bi + 1 < fn.blocks.size(); ++bi) {
         auto &block = fn.blocks[bi];
         const auto &nextBlock = fn.blocks[bi + 1];
 
@@ -396,21 +361,17 @@ PeepholeStats runPeephole(MFunction &fn)
 
         // Branch inversion: b.cond .Ltarget; b .Lfallthrough
         // when .Ltarget == next block -> b.!cond .Lfallthrough (remove b .Lfallthrough)
-        if (block.instrs.size() >= 2)
-        {
+        if (block.instrs.size() >= 2) {
             auto &secondLast = block.instrs[block.instrs.size() - 2];
             auto &last = block.instrs[block.instrs.size() - 1];
 
             if (secondLast.opc == MOpcode::BCond && secondLast.ops.size() == 2 &&
                 secondLast.ops[0].kind == MOperand::Kind::Cond &&
                 secondLast.ops[1].kind == MOperand::Kind::Label && last.opc == MOpcode::Br &&
-                last.ops.size() == 1 && last.ops[0].kind == MOperand::Kind::Label)
-            {
-                if (secondLast.ops[1].label == nextBlock.name)
-                {
+                last.ops.size() == 1 && last.ops[0].kind == MOperand::Kind::Label) {
+                if (secondLast.ops[1].label == nextBlock.name) {
                     const char *inv = ph::invertCondition(secondLast.ops[0].cond);
-                    if (inv)
-                    {
+                    if (inv) {
                         secondLast.ops[0] = MOperand::condOp(inv);
                         secondLast.ops[1] = last.ops[0];
                         block.instrs.pop_back();
@@ -423,8 +384,7 @@ PeepholeStats runPeephole(MFunction &fn)
 
         // Remove branches to the immediately following block
         auto &lastInstr = block.instrs.back();
-        if (ph::isBranchTo(lastInstr, nextBlock.name))
-        {
+        if (ph::isBranchTo(lastInstr, nextBlock.name)) {
             block.instrs.pop_back();
             ++stats.branchesToNextRemoved;
         }
@@ -433,16 +393,12 @@ PeepholeStats runPeephole(MFunction &fn)
     return stats;
 }
 
-void pruneUnusedCalleeSaved(MFunction &fn)
-{
+void pruneUnusedCalleeSaved(MFunction &fn) {
     // Build a set of all physical registers actually referenced in the MIR.
     std::unordered_set<uint16_t> usedRegs;
-    for (const auto &bb : fn.blocks)
-    {
-        for (const auto &mi : bb.instrs)
-        {
-            for (const auto &op : mi.ops)
-            {
+    for (const auto &bb : fn.blocks) {
+        for (const auto &mi : bb.instrs) {
+            for (const auto &op : mi.ops) {
                 if (op.kind == MOperand::Kind::Reg && op.reg.isPhys)
                     usedRegs.insert(op.reg.idOrPhys);
             }
@@ -450,20 +406,22 @@ void pruneUnusedCalleeSaved(MFunction &fn)
     }
 
     // Prune savedGPRs: remove any callee-saved register not referenced.
-    fn.savedGPRs.erase(
-        std::remove_if(fn.savedGPRs.begin(),
-                       fn.savedGPRs.end(),
-                       [&](PhysReg r)
-                       { return usedRegs.find(static_cast<uint16_t>(r)) == usedRegs.end(); }),
-        fn.savedGPRs.end());
+    fn.savedGPRs.erase(std::remove_if(fn.savedGPRs.begin(),
+                                      fn.savedGPRs.end(),
+                                      [&](PhysReg r) {
+                                          return usedRegs.find(static_cast<uint16_t>(r)) ==
+                                                 usedRegs.end();
+                                      }),
+                       fn.savedGPRs.end());
 
     // Prune savedFPRs: same logic.
-    fn.savedFPRs.erase(
-        std::remove_if(fn.savedFPRs.begin(),
-                       fn.savedFPRs.end(),
-                       [&](PhysReg r)
-                       { return usedRegs.find(static_cast<uint16_t>(r)) == usedRegs.end(); }),
-        fn.savedFPRs.end());
+    fn.savedFPRs.erase(std::remove_if(fn.savedFPRs.begin(),
+                                      fn.savedFPRs.end(),
+                                      [&](PhysReg r) {
+                                          return usedRegs.find(static_cast<uint16_t>(r)) ==
+                                                 usedRegs.end();
+                                      }),
+                       fn.savedFPRs.end());
 }
 
 } // namespace viper::codegen::aarch64

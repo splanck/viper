@@ -32,30 +32,21 @@
 /// @param argc Argument count (after "repl" is stripped).
 /// @param argv Argument vector.
 /// @return Exit code from the REPL session.
-int cmdRepl(int argc, char **argv)
-{
+int cmdRepl(int argc, char **argv) {
     std::string lang = "zia"; // Default language
 
     // Parse optional language argument
-    for (int i = 0; i < argc; ++i)
-    {
-        if (std::strcmp(argv[i], "zia") == 0)
-        {
+    for (int i = 0; i < argc; ++i) {
+        if (std::strcmp(argv[i], "zia") == 0) {
             lang = "zia";
-        }
-        else if (std::strcmp(argv[i], "basic") == 0)
-        {
+        } else if (std::strcmp(argv[i], "basic") == 0) {
             lang = "basic";
-        }
-        else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0)
-        {
+        } else if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
             std::cout << "Usage: viper repl [zia|basic]\n"
                       << "  Launch an interactive REPL session.\n"
                       << "  Default language: zia\n";
             return 0;
-        }
-        else
-        {
+        } else {
             std::cerr << "Unknown argument: " << argv[i] << "\n";
             std::cerr << "Usage: viper repl [zia|basic]\n";
             return 1;
@@ -64,12 +55,9 @@ int cmdRepl(int argc, char **argv)
 
     std::unique_ptr<viper::repl::ReplAdapter> adapter;
 
-    if (lang == "basic")
-    {
+    if (lang == "basic") {
         adapter = std::make_unique<viper::repl::BasicReplAdapter>();
-    }
-    else
-    {
+    } else {
         adapter = std::make_unique<viper::repl::ZiaReplAdapter>();
     }
 

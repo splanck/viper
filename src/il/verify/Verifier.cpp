@@ -33,10 +33,8 @@
 
 using namespace il::core;
 
-namespace il::verify
-{
-namespace
-{
+namespace il::verify {
+namespace {
 using il::support::Diag;
 using il::support::Expected;
 
@@ -51,8 +49,7 @@ using il::support::Expected;
 /// @param failure Verification result that already represents an error.
 /// @param sink Diagnostic sink containing any emitted warnings.
 /// @return Updated failure result with warnings appended to the error message.
-Expected<void> appendWarnings(Expected<void> failure, const CollectingDiagSink &sink)
-{
+Expected<void> appendWarnings(Expected<void> failure, const CollectingDiagSink &sink) {
     if (sink.diagnostics().empty())
         return failure;
 
@@ -77,8 +74,7 @@ Expected<void> appendWarnings(Expected<void> failure, const CollectingDiagSink &
 ///
 /// @param m Module to verify.
 /// @return @c Expected success on clean modules; otherwise an aggregated error diagnostic.
-Expected<void> Verifier::verify(const Module &m)
-{
+Expected<void> Verifier::verify(const Module &m) {
     CollectingDiagSink sink;
 
     ExternVerifier externVerifier;

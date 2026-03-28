@@ -10,34 +10,28 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C"
-{
+extern "C" {
 #include "rt_gc.h"
 #include "rt_internal.h"
 #include "rt_object.h"
 #include "rt_seq.h"
 
-    /// @brief Vm_trap.
-    void vm_trap(const char *msg)
-    {
-        fprintf(stderr, "TRAP: %s\n", msg);
-        rt_abort(msg);
-    }
+/// @brief Vm_trap.
+void vm_trap(const char *msg) {
+    fprintf(stderr, "TRAP: %s\n", msg);
+    rt_abort(msg);
+}
 }
 
 static int tests_run = 0;
 static int tests_passed = 0;
 
 #define ASSERT(cond, msg)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+        if (!(cond)) {                                                                             \
             fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, msg);                        \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
@@ -47,24 +41,20 @@ static int tests_passed = 0;
 //=============================================================================
 
 /// Simple test object: holds a pointer to another test object (child).
-struct test_node
-{
+struct test_node {
     void *child; // Strong reference to another node (or NULL).
 };
 
 /// Traverse function for test_node: visits the child pointer.
-extern "C"
-{
-    static void test_node_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx)
-    {
-        struct test_node *node = (struct test_node *)obj;
-        if (node->child)
-            visitor(node->child, ctx);
-    }
+extern "C" {
+static void test_node_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
+    struct test_node *node = (struct test_node *)obj;
+    if (node->child)
+        visitor(node->child, ctx);
+}
 }
 
-static void *make_node()
-{
+static void *make_node() {
     void *obj = rt_obj_new_i64(0, (int64_t)sizeof(struct test_node));
     struct test_node *n = (struct test_node *)obj;
     n->child = NULL;
@@ -75,8 +65,7 @@ static void *make_node()
 // GC Tracking Tests
 //=============================================================================
 
-static void test_track_untrack()
-{
+static void test_track_untrack() {
     void *obj = make_node();
 
     ASSERT(rt_gc_is_tracked(obj) == 0, "not tracked initially");
@@ -92,16 +81,14 @@ static void test_track_untrack()
         rt_obj_free(obj);
 }
 
-static void test_track_null_safety()
-{
+static void test_track_null_safety() {
     rt_gc_track(NULL, test_node_traverse);
     rt_gc_track(make_node(), NULL);
     rt_gc_untrack(NULL);
     ASSERT(rt_gc_is_tracked(NULL) == 0, "null is not tracked");
 }
 
-static void test_tracked_count()
-{
+static void test_tracked_count() {
     int64_t base = rt_gc_tracked_count();
 
     void *a = make_node();
@@ -123,8 +110,7 @@ static void test_tracked_count()
         rt_obj_free(b);
 }
 
-static void test_double_track()
-{
+static void test_double_track() {
     void *obj = make_node();
     int64_t base = rt_gc_tracked_count();
 
@@ -143,8 +129,7 @@ static void test_double_track()
 // Weak Reference Tests
 //=============================================================================
 
-static void test_weakref_basic()
-{
+static void test_weakref_basic() {
     void *obj = make_node();
     rt_weakref *ref = rt_weakref_new(obj);
 
@@ -157,8 +142,7 @@ static void test_weakref_basic()
         rt_obj_free(obj);
 }
 
-static void test_weakref_null_target()
-{
+static void test_weakref_null_target() {
     rt_weakref *ref = rt_weakref_new(NULL);
     ASSERT(ref != NULL, "weakref with null target created");
     ASSERT(rt_weakref_get(ref) == NULL, "weakref to null returns null");
@@ -166,8 +150,7 @@ static void test_weakref_null_target()
     rt_weakref_free(ref);
 }
 
-static void test_weakref_null_ref()
-{
+static void test_weakref_null_ref() {
     ASSERT(rt_weakref_get(NULL) == NULL, "get(null) = null");
     ASSERT(rt_weakref_alive(NULL) == 0, "alive(null) = 0");
     /// @brief Rt_weakref_free.
@@ -175,8 +158,7 @@ static void test_weakref_null_ref()
     ASSERT(1, "free(null) no crash");
 }
 
-static void test_weakref_clear_on_free()
-{
+static void test_weakref_clear_on_free() {
     void *obj = make_node();
     rt_weakref *ref1 = rt_weakref_new(obj);
     rt_weakref *ref2 = rt_weakref_new(obj);
@@ -198,8 +180,7 @@ static void test_weakref_clear_on_free()
         rt_obj_free(obj);
 }
 
-static void test_weakref_free_unregisters()
-{
+static void test_weakref_free_unregisters() {
     void *obj = make_node();
     rt_weakref *ref = rt_weakref_new(obj);
 
@@ -218,8 +199,7 @@ static void test_weakref_free_unregisters()
 // Cycle Collection Tests
 //=============================================================================
 
-static void test_collect_empty()
-{
+static void test_collect_empty() {
     int64_t base_count = rt_gc_tracked_count();
     // Make sure no tracked objects exist beyond the base
     int64_t freed = rt_gc_collect();
@@ -228,8 +208,7 @@ static void test_collect_empty()
     ASSERT(rt_gc_pass_count() > 0, "pass count incremented");
 }
 
-static void test_collect_no_cycle()
-{
+static void test_collect_no_cycle() {
     // Linear chain: a -> b -> c (no cycle)
     void *a = make_node();
     void *b = make_node();
@@ -265,8 +244,7 @@ static void test_collect_no_cycle()
         rt_obj_free(a);
 }
 
-static void test_collect_simple_cycle()
-{
+static void test_collect_simple_cycle() {
     // a -> b -> a (cycle, no external references)
     void *a = make_node();
     void *b = make_node();
@@ -289,8 +267,7 @@ static void test_collect_simple_cycle()
     ASSERT(rt_gc_is_tracked(b) == 0, "b untracked after collection");
 }
 
-static void test_collect_self_cycle()
-{
+static void test_collect_self_cycle() {
     // a -> a (self-referencing)
     void *a = make_node();
     struct test_node *na = (struct test_node *)a;
@@ -303,8 +280,7 @@ static void test_collect_self_cycle()
     ASSERT(freed == 1, "self-cycle freed");
 }
 
-static void test_collect_preserves_reachable()
-{
+static void test_collect_preserves_reachable() {
     // a -> b -> c -> b (b-c cycle, but a has external ref via trial_rc=1)
     void *a = make_node();
     void *b = make_node();
@@ -341,8 +317,7 @@ static void test_collect_preserves_reachable()
         rt_obj_free(a);
 }
 
-static void test_weakref_cleared_by_collect()
-{
+static void test_weakref_cleared_by_collect() {
     // Create a cycle and weak ref to one of the nodes
     void *a = make_node();
     void *b = make_node();
@@ -377,8 +352,7 @@ static void test_weakref_cleared_by_collect()
 // Statistics Tests
 //=============================================================================
 
-static void test_statistics()
-{
+static void test_statistics() {
     int64_t initial_collected = rt_gc_total_collected();
     int64_t initial_passes = rt_gc_pass_count();
 
@@ -393,8 +367,7 @@ static void test_statistics()
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     // Tracking
     test_track_untrack();
     test_track_null_safety();

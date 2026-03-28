@@ -45,21 +45,18 @@
 #include "tui/ui/widget.hpp"
 #include "tui/util/unicode.hpp"
 
-namespace viper::tui::syntax
-{
+namespace viper::tui::syntax {
 class SyntaxRuleSet;
 }
 
-namespace viper::tui::views
-{
+namespace viper::tui::views {
 
 /// @brief Interactive text editing view bound to a TextBuffer.
 /// @details Renders buffer content with optional line numbers, syntax
 ///          highlighting, and match highlighting. Handles keyboard navigation,
 ///          selection, and scrolling. Designed to be embedded in containers
 ///          and managed by the App's focus system.
-class TextView : public ui::Widget
-{
+class TextView : public ui::Widget {
   public:
     /// @brief Construct a TextView bound to a text buffer and theme.
     /// @param buf Text buffer to display and edit. Must outlive the view.

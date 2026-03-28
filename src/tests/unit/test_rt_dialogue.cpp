@@ -28,8 +28,7 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -37,25 +36,21 @@ static int tests_passed = 0;
 static int tests_total = 0;
 
 #define TEST(name)                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_total++;                                                                             \
         printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 #define PASS()                                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_passed++;                                                                            \
         printf("ok\n");                                                                            \
     } while (0)
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_creation(void)
-{
+static void test_creation(void) {
     TEST("Dialogue creation");
     void *d = rt_dialogue_new(10, 200, 300, 80);
     assert(d != NULL);
@@ -65,8 +60,7 @@ static void test_creation(void)
     PASS();
 }
 
-static void test_say_activates(void)
-{
+static void test_say_activates(void) {
     TEST("Say activates dialogue");
     void *d = rt_dialogue_new(0, 0, 200, 80);
     rt_dialogue_say(d, make_str("NPC"), make_str("Hello world"));
@@ -76,8 +70,7 @@ static void test_say_activates(void)
     PASS();
 }
 
-static void test_typewriter_progression(void)
-{
+static void test_typewriter_progression(void) {
     TEST("Typewriter reveals chars over time");
     void *d = rt_dialogue_new(0, 0, 200, 80);
     rt_dialogue_set_speed(d, 10); // 10 chars/sec
@@ -94,8 +87,7 @@ static void test_typewriter_progression(void)
     PASS();
 }
 
-static void test_advance_skips_then_progresses(void)
-{
+static void test_advance_skips_then_progresses(void) {
     TEST("Advance skips then moves to next line");
     void *d = rt_dialogue_new(0, 0, 200, 80);
     rt_dialogue_set_speed(d, 10);
@@ -123,8 +115,7 @@ static void test_advance_skips_then_progresses(void)
     PASS();
 }
 
-static void test_finished_state(void)
-{
+static void test_finished_state(void) {
     TEST("Finished after all lines acknowledged");
     void *d = rt_dialogue_new(0, 0, 200, 80);
     rt_dialogue_say_text(d, make_str("Only line"));
@@ -139,8 +130,7 @@ static void test_finished_state(void)
     PASS();
 }
 
-static void test_clear(void)
-{
+static void test_clear(void) {
     TEST("Clear resets dialogue");
     void *d = rt_dialogue_new(0, 0, 200, 80);
     rt_dialogue_say_text(d, make_str("Test"));
@@ -152,8 +142,7 @@ static void test_clear(void)
     PASS();
 }
 
-static void test_skip(void)
-{
+static void test_skip(void) {
     TEST("Skip instantly completes current line");
     void *d = rt_dialogue_new(0, 0, 200, 80);
     rt_dialogue_set_speed(d, 1);
@@ -167,8 +156,7 @@ static void test_skip(void)
     PASS();
 }
 
-static void test_empty_text(void)
-{
+static void test_empty_text(void) {
     TEST("Empty text immediately completes");
     void *d = rt_dialogue_new(0, 0, 200, 80);
     rt_dialogue_say_text(d, make_str(""));
@@ -178,8 +166,7 @@ static void test_empty_text(void)
     PASS();
 }
 
-static void test_null_safety(void)
-{
+static void test_null_safety(void) {
     TEST("NULL safety");
     assert(rt_dialogue_is_active(NULL) == 0);
     assert(rt_dialogue_is_finished(NULL) == 0);
@@ -192,8 +179,7 @@ static void test_null_safety(void)
     PASS();
 }
 
-int main()
-{
+int main() {
     printf("test_rt_dialogue:\n");
     test_creation();
     test_say_activates();

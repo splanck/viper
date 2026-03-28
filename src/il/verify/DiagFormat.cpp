@@ -28,8 +28,7 @@
 
 #include <sstream>
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Format a diagnostic string scoped to a basic block.
 ///
@@ -42,8 +41,7 @@ namespace il::verify
 /// @return Human-readable diagnostic prefix.
 std::string formatBlockDiag(const core::Function &fn,
                             const core::BasicBlock &bb,
-                            std::string_view message)
-{
+                            std::string_view message) {
     std::ostringstream oss;
     oss << fn.name << ":" << bb.label;
     if (!message.empty())
@@ -64,8 +62,7 @@ std::string formatBlockDiag(const core::Function &fn,
 std::string formatInstrDiag(const core::Function &fn,
                             const core::BasicBlock &bb,
                             const core::Instr &instr,
-                            std::string_view message)
-{
+                            std::string_view message) {
     std::ostringstream oss;
     oss << fn.name << ":" << bb.label << ": " << makeSnippet(instr);
     if (!message.empty())

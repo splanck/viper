@@ -19,16 +19,14 @@
 #include <cmath>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
 static const double EPSILON = 1e-6;
 static const double PI = 3.14159265358979323846;
 
-static bool approx_eq(double a, double b)
-{
+static bool approx_eq(double a, double b) {
     return fabs(a - b) < EPSILON;
 }
 
@@ -36,8 +34,7 @@ static bool approx_eq(double a, double b)
 // Constructors
 // ============================================================================
 
-static void test_new()
-{
+static void test_new() {
     void *q = rt_quat_new(1.0, 2.0, 3.0, 4.0);
     assert(q != nullptr);
     assert(approx_eq(rt_quat_x(q), 1.0));
@@ -47,8 +44,7 @@ static void test_new()
     printf("test_new: PASSED\n");
 }
 
-static void test_identity()
-{
+static void test_identity() {
     void *q = rt_quat_identity();
     assert(q != nullptr);
     assert(approx_eq(rt_quat_x(q), 0.0));
@@ -58,8 +54,7 @@ static void test_identity()
     printf("test_identity: PASSED\n");
 }
 
-static void test_from_axis_angle()
-{
+static void test_from_axis_angle() {
     /* 90 degrees around Z axis */
     void *axis = rt_vec3_new(0.0, 0.0, 1.0);
     void *q = rt_quat_from_axis_angle(axis, PI / 2.0);
@@ -72,8 +67,7 @@ static void test_from_axis_angle()
     printf("test_from_axis_angle: PASSED\n");
 }
 
-static void test_from_axis_angle_zero()
-{
+static void test_from_axis_angle_zero() {
     /* Zero-length axis returns identity */
     void *axis = rt_vec3_new(0.0, 0.0, 0.0);
     void *q = rt_quat_from_axis_angle(axis, PI);
@@ -81,8 +75,7 @@ static void test_from_axis_angle_zero()
     printf("test_from_axis_angle_zero: PASSED\n");
 }
 
-static void test_from_euler()
-{
+static void test_from_euler() {
     /* Identity rotation */
     void *q = rt_quat_from_euler(0.0, 0.0, 0.0);
     assert(approx_eq(rt_quat_len(q), 1.0));
@@ -94,8 +87,7 @@ static void test_from_euler()
 // Operations
 // ============================================================================
 
-static void test_mul_identity()
-{
+static void test_mul_identity() {
     void *q = rt_quat_from_axis_angle(rt_vec3_new(1.0, 0.0, 0.0), PI / 3.0);
     void *id = rt_quat_identity();
     void *r = rt_quat_mul(q, id);
@@ -106,8 +98,7 @@ static void test_mul_identity()
     printf("test_mul_identity: PASSED\n");
 }
 
-static void test_mul_inverse()
-{
+static void test_mul_inverse() {
     /* q * q^-1 = identity */
     void *q = rt_quat_from_axis_angle(rt_vec3_new(1.0, 0.0, 0.0), PI / 4.0);
     void *qi = rt_quat_inverse(q);
@@ -119,8 +110,7 @@ static void test_mul_inverse()
     printf("test_mul_inverse: PASSED\n");
 }
 
-static void test_conjugate()
-{
+static void test_conjugate() {
     void *q = rt_quat_new(1.0, 2.0, 3.0, 4.0);
     void *c = rt_quat_conjugate(q);
     assert(approx_eq(rt_quat_x(c), -1.0));
@@ -130,16 +120,14 @@ static void test_conjugate()
     printf("test_conjugate: PASSED\n");
 }
 
-static void test_norm()
-{
+static void test_norm() {
     void *q = rt_quat_new(1.0, 2.0, 3.0, 4.0);
     void *n = rt_quat_norm(q);
     assert(approx_eq(rt_quat_len(n), 1.0));
     printf("test_norm: PASSED\n");
 }
 
-static void test_len()
-{
+static void test_len() {
     void *q = rt_quat_new(1.0, 0.0, 0.0, 0.0);
     assert(approx_eq(rt_quat_len(q), 1.0));
 
@@ -149,15 +137,13 @@ static void test_len()
     printf("test_len: PASSED\n");
 }
 
-static void test_len_sq()
-{
+static void test_len_sq() {
     void *q = rt_quat_new(1.0, 2.0, 3.0, 4.0);
     assert(approx_eq(rt_quat_len_sq(q), 30.0));
     printf("test_len_sq: PASSED\n");
 }
 
-static void test_dot()
-{
+static void test_dot() {
     void *a = rt_quat_new(1.0, 0.0, 0.0, 0.0);
     void *b = rt_quat_new(0.0, 1.0, 0.0, 0.0);
     assert(approx_eq(rt_quat_dot(a, b), 0.0));
@@ -173,8 +159,7 @@ static void test_dot()
 // Interpolation
 // ============================================================================
 
-static void test_slerp_endpoints()
-{
+static void test_slerp_endpoints() {
     void *a = rt_quat_identity();
     void *b = rt_quat_from_axis_angle(rt_vec3_new(0.0, 0.0, 1.0), PI / 2.0);
 
@@ -195,8 +180,7 @@ static void test_slerp_endpoints()
     printf("test_slerp_endpoints: PASSED\n");
 }
 
-static void test_slerp_midpoint()
-{
+static void test_slerp_midpoint() {
     void *a = rt_quat_identity();
     void *b = rt_quat_from_axis_angle(rt_vec3_new(0.0, 0.0, 1.0), PI / 2.0);
 
@@ -210,8 +194,7 @@ static void test_slerp_midpoint()
     printf("test_slerp_midpoint: PASSED\n");
 }
 
-static void test_lerp()
-{
+static void test_lerp() {
     void *a = rt_quat_identity();
     void *b = rt_quat_from_axis_angle(rt_vec3_new(0.0, 0.0, 1.0), PI / 4.0);
 
@@ -225,8 +208,7 @@ static void test_lerp()
 // Rotation
 // ============================================================================
 
-static void test_rotate_vec3()
-{
+static void test_rotate_vec3() {
     /* 90 degrees around Z should rotate (1,0,0) to (0,1,0) */
     void *q = rt_quat_from_axis_angle(rt_vec3_new(0.0, 0.0, 1.0), PI / 2.0);
     void *v = rt_vec3_new(1.0, 0.0, 0.0);
@@ -237,8 +219,7 @@ static void test_rotate_vec3()
     printf("test_rotate_vec3: PASSED\n");
 }
 
-static void test_rotate_vec3_180()
-{
+static void test_rotate_vec3_180() {
     /* 180 degrees around Y should rotate (1,0,0) to (-1,0,0) */
     void *q = rt_quat_from_axis_angle(rt_vec3_new(0.0, 1.0, 0.0), PI);
     void *v = rt_vec3_new(1.0, 0.0, 0.0);
@@ -249,8 +230,7 @@ static void test_rotate_vec3_180()
     printf("test_rotate_vec3_180: PASSED\n");
 }
 
-static void test_rotate_identity()
-{
+static void test_rotate_identity() {
     /* Identity rotation should not change the vector */
     void *q = rt_quat_identity();
     void *v = rt_vec3_new(3.0, 4.0, 5.0);
@@ -265,8 +245,7 @@ static void test_rotate_identity()
 // Axis/Angle extraction
 // ============================================================================
 
-static void test_axis_angle_roundtrip()
-{
+static void test_axis_angle_roundtrip() {
     void *axis = rt_vec3_new(0.0, 1.0, 0.0);
     double angle = PI / 3.0;
     void *q = rt_quat_from_axis_angle(axis, angle);
@@ -285,8 +264,7 @@ static void test_axis_angle_roundtrip()
 // ToMat4
 // ============================================================================
 
-static void test_to_mat4_identity()
-{
+static void test_to_mat4_identity() {
     void *q = rt_quat_identity();
     void *m = rt_quat_to_mat4(q);
     assert(m != nullptr);
@@ -304,8 +282,7 @@ static void test_to_mat4_identity()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Viper.Quat Tests ===\n\n");
 
     /* Constructors */

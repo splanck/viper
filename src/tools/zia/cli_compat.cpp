@@ -15,7 +15,6 @@
 /// @brief Usage hook for viper CLI compatibility.
 /// @details Calls @ref zia::printUsage so shared code paths can
 ///          emit the Zia-specific help text.
-void usage()
-{
+void usage() {
     zia::printUsage();
 }

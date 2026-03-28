@@ -20,22 +20,18 @@
 #include <cassert>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
 /// Helper: create a Seq of boxed key codes from a C array.
-static void *make_key_seq(const int64_t *keys, int count)
-{
+static void *make_key_seq(const int64_t *keys, int count) {
     void *seq = rt_seq_new();
-    for (int i = 0; i < count; i++)
-    {
+    for (int i = 0; i < count; i++) {
         rt_seq_push(seq, rt_box_i64(keys[i]));
     }
     return seq;
@@ -43,16 +39,13 @@ static void *make_key_seq(const int64_t *keys, int count)
 
 /// Helper: simulate one frame with given key press/release events.
 /// press_keys/release_keys are arrays of key codes, -1 terminated.
-static void sim_frame(const int64_t *press_keys, const int64_t *release_keys)
-{
+static void sim_frame(const int64_t *press_keys, const int64_t *release_keys) {
     rt_keyboard_begin_frame();
-    if (press_keys)
-    {
+    if (press_keys) {
         for (int i = 0; press_keys[i] >= 0; i++)
             rt_keyboard_on_key_down(press_keys[i]);
     }
-    if (release_keys)
-    {
+    if (release_keys) {
         for (int i = 0; release_keys[i] >= 0; i++)
             rt_keyboard_on_key_up(release_keys[i]);
     }
@@ -62,8 +55,7 @@ static void sim_frame(const int64_t *press_keys, const int64_t *release_keys)
 // Chord tests
 // ============================================================================
 
-static void test_chord_basic()
-{
+static void test_chord_basic() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
@@ -104,8 +96,7 @@ static void test_chord_basic()
     printf("test_chord_basic: PASSED\n");
 }
 
-static void test_chord_three_keys()
-{
+static void test_chord_three_keys() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
@@ -138,8 +129,7 @@ static void test_chord_three_keys()
     printf("test_chord_three_keys: PASSED\n");
 }
 
-static void test_chord_not_triggered_without_all_keys()
-{
+static void test_chord_not_triggered_without_all_keys() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
@@ -170,8 +160,7 @@ static void test_chord_not_triggered_without_all_keys()
 // Combo tests
 // ============================================================================
 
-static void test_combo_basic()
-{
+static void test_combo_basic() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
@@ -210,8 +199,7 @@ static void test_combo_basic()
     printf("test_combo_basic: PASSED\n");
 }
 
-static void test_combo_timeout()
-{
+static void test_combo_timeout() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
@@ -251,8 +239,7 @@ static void test_combo_timeout()
     printf("test_combo_timeout: PASSED\n");
 }
 
-static void test_combo_wrong_key_does_not_advance()
-{
+static void test_combo_wrong_key_does_not_advance() {
     rt_keyboard_init();
     void *kc = rt_keychord_new();
 
@@ -291,8 +278,7 @@ static void test_combo_wrong_key_does_not_advance()
 // Management tests
 // ============================================================================
 
-static void test_count_and_clear()
-{
+static void test_count_and_clear() {
     void *kc = rt_keychord_new();
     assert(rt_keychord_count(kc) == 0);
 
@@ -308,8 +294,7 @@ static void test_count_and_clear()
     printf("test_count_and_clear: PASSED\n");
 }
 
-static void test_remove()
-{
+static void test_remove() {
     void *kc = rt_keychord_new();
 
     int64_t keys[] = {VIPER_KEY_A, VIPER_KEY_B};
@@ -326,8 +311,7 @@ static void test_remove()
     printf("test_remove: PASSED\n");
 }
 
-static void test_redefine_overwrites()
-{
+static void test_redefine_overwrites() {
     void *kc = rt_keychord_new();
 
     int64_t keys1[] = {VIPER_KEY_A, VIPER_KEY_B};
@@ -346,8 +330,7 @@ static void test_redefine_overwrites()
 // NULL safety
 // ============================================================================
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_keychord_active(NULL, make_str("x")) == 0);
     assert(rt_keychord_triggered(NULL, make_str("x")) == 0);
     assert(rt_keychord_progress(NULL, make_str("x")) == 0);
@@ -359,8 +342,7 @@ static void test_null_safety()
     printf("test_null_safety: PASSED\n");
 }
 
-static void test_unknown_name()
-{
+static void test_unknown_name() {
     void *kc = rt_keychord_new();
     assert(rt_keychord_active(kc, make_str("nonexistent")) == 0);
     assert(rt_keychord_triggered(kc, make_str("nonexistent")) == 0);
@@ -373,8 +355,7 @@ static void test_unknown_name()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== KeyChord Tests ===\n\n");
 
     /* Chords */

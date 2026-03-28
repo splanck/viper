@@ -31,19 +31,16 @@
 
 #include "tui/ui/event.hpp"
 
-namespace viper::tui::render
-{
+namespace viper::tui::render {
 class ScreenBuffer;
 }
 
-namespace viper::tui::ui
-{
+namespace viper::tui::ui {
 /// @brief Axis-aligned rectangle used for widget layout and hit testing.
 /// @details Stores position (x, y) and dimensions (w, h) in terminal cell
 ///          coordinates. Used by the layout system to assign screen regions
 ///          to widgets.
-struct Rect
-{
+struct Rect {
     int x{0};
     int y{0};
     int w{0};
@@ -56,8 +53,7 @@ struct Rect
 ///          specific visual behaviors (buttons, text views, containers, etc.).
 ///          Widgets are organized in a tree hierarchy and rendered in depth-first
 ///          order by the App's render loop.
-class Widget
-{
+class Widget {
   public:
     virtual ~Widget() = default;
 

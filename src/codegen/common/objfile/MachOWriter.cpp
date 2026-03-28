@@ -33,8 +33,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::objfile
-{
+namespace viper::codegen::objfile {
 
 // =============================================================================
 // Mach-O Constants
@@ -94,8 +93,7 @@ static constexpr uint32_t kSAttrDebug = 0x02000000;
 // Helpers: appendLE16/32/64, alignUp, padTo are provided by ObjFileWriterUtil.hpp.
 
 /// Mangle a symbol name for Darwin: prepend '_' unless it's a local label.
-static std::string mangleName(const std::string &name)
-{
+static std::string mangleName(const std::string &name) {
     if (name.empty())
         return name;
     if (name[0] == 'L' || name[0] == '.')
@@ -106,8 +104,7 @@ static std::string mangleName(const std::string &name)
 /// Pack a Mach-O relocation info field (little-endian bit-field layout).
 /// Layout: symbolnum[23:0] | pcrel[24] | length[26:25] | extern[27] | type[31:28]
 static uint32_t packRelocInfo(
-    uint32_t symbolnum, uint8_t pcrel, uint8_t length, uint8_t ext, uint8_t type)
-{
+    uint32_t symbolnum, uint8_t pcrel, uint8_t length, uint8_t ext, uint8_t type) {
     return (symbolnum & 0x00FFFFFF) | (static_cast<uint32_t>(pcrel & 1) << 24) |
            (static_cast<uint32_t>(length & 3) << 25) | (static_cast<uint32_t>(ext & 1) << 27) |
            (static_cast<uint32_t>(type & 0xF) << 28);
@@ -123,8 +120,7 @@ static void writeMachOHeader(std::vector<uint8_t> &out,
                              uint32_t cpusubtype,
                              uint32_t ncmds,
                              uint32_t sizeofcmds,
-                             uint32_t flags)
-{
+                             uint32_t flags) {
     appendLE32(out, kMhMagic64);
     appendLE32(out, cputype);
     appendLE32(out, cpusubtype);
@@ -141,8 +137,7 @@ static void writeSegmentCmd(std::vector<uint8_t> &out,
                             uint64_t vmsize,
                             uint64_t fileoff,
                             uint64_t filesize,
-                            uint32_t nsects)
-{
+                            uint32_t nsects) {
     appendLE32(out, kLcSegment64);
     appendLE32(out, cmdsize);
     // segname: 16 zero bytes (unnamed for .o files)
@@ -168,8 +163,7 @@ static void writeSectionHdr(std::vector<uint8_t> &out,
                             uint32_t align,
                             uint32_t reloff,
                             uint32_t nreloc,
-                            uint32_t flags)
-{
+                            uint32_t flags) {
     // sectname: 16 bytes, zero-padded
     char buf[16] = {};
     std::strncpy(buf, sectname, 16);
@@ -191,8 +185,7 @@ static void writeSectionHdr(std::vector<uint8_t> &out,
 }
 
 /// Write LC_BUILD_VERSION (24 bytes).
-static void writeBuildVersionCmd(std::vector<uint8_t> &out)
-{
+static void writeBuildVersionCmd(std::vector<uint8_t> &out) {
     appendLE32(out, kLcBuildVersion);
     appendLE32(out, kBuildVerCmdSize);
     appendLE32(out, 1);          // platform = PLATFORM_MACOS
@@ -203,8 +196,7 @@ static void writeBuildVersionCmd(std::vector<uint8_t> &out)
 
 /// Write LC_SYMTAB (24 bytes).
 static void writeSymtabCmd(
-    std::vector<uint8_t> &out, uint32_t symoff, uint32_t nsyms, uint32_t stroff, uint32_t strsize)
-{
+    std::vector<uint8_t> &out, uint32_t symoff, uint32_t nsyms, uint32_t stroff, uint32_t strsize) {
     appendLE32(out, kLcSymtab);
     appendLE32(out, kSymtabCmdSize);
     appendLE32(out, symoff);
@@ -220,8 +212,7 @@ static void writeDysymtabCmd(std::vector<uint8_t> &out,
                              uint32_t iextdef,
                              uint32_t nextdef,
                              uint32_t iundef,
-                             uint32_t nundef)
-{
+                             uint32_t nundef) {
     appendLE32(out, kLcDysymtab);
     appendLE32(out, kDysymtabCmdSize);
     appendLE32(out, ilocal);
@@ -241,8 +232,7 @@ static void writeNlist(std::vector<uint8_t> &out,
                        uint8_t type,
                        uint8_t sect,
                        uint16_t desc,
-                       uint64_t value)
-{
+                       uint64_t value) {
     appendLE32(out, strx);
     out.push_back(type);
     out.push_back(sect);
@@ -251,8 +241,7 @@ static void writeNlist(std::vector<uint8_t> &out,
 }
 
 /// Write one relocation_info entry (8 bytes).
-static void writeMachoReloc(std::vector<uint8_t> &out, uint32_t address, uint32_t packed)
-{
+static void writeMachoReloc(std::vector<uint8_t> &out, uint32_t address, uint32_t packed) {
     appendLE32(out, address);
     appendLE32(out, packed);
 }
@@ -261,18 +250,15 @@ static void writeMachoReloc(std::vector<uint8_t> &out, uint32_t address, uint32_
 // Relocation Mapping
 // =============================================================================
 
-struct MachoRelocAttrs
-{
+struct MachoRelocAttrs {
     uint8_t type;
     uint8_t pcrel;
     uint8_t length;
     bool skip; // true if this reloc kind has no Mach-O equivalent
 };
 
-static MachoRelocAttrs machoRelocAttrs(RelocKind kind)
-{
-    switch (kind)
-    {
+static MachoRelocAttrs machoRelocAttrs(RelocKind kind) {
+    switch (kind) {
         // x86_64
         case RelocKind::PCRel32:
             return {static_cast<uint8_t>(kX86_64RelocSigned), 1, 2, false};
@@ -304,19 +290,15 @@ static MachoRelocAttrs machoRelocAttrs(RelocKind kind)
 bool MachOWriter::write(const std::string &path,
                         const CodeSection &text,
                         const CodeSection &rodata,
-                        std::ostream &err)
-{
+                        std::ostream &err) {
     // --- Architecture-specific parameters ---
     uint32_t cputype, cpusubtype;
     uint32_t textAlignLog2;
-    if (arch_ == ObjArch::X86_64)
-    {
+    if (arch_ == ObjArch::X86_64) {
         cputype = kCpuTypeX86_64;
         cpusubtype = kCpuSubtypeX86_64All;
         textAlignLog2 = 4; // 2^4 = 16
-    }
-    else
-    {
+    } else {
         cputype = kCpuTypeArm64;
         cpusubtype = kCpuSubtypeArm64All;
         textAlignLog2 = 2; // 2^2 = 4
@@ -330,8 +312,7 @@ bool MachOWriter::write(const std::string &path,
     strtab.add(" "); // Mach-O convention: space at offset 1
 
     // --- 2. Collect and categorize symbols ---
-    struct PendingSym
-    {
+    struct PendingSym {
         uint32_t encoderIdx;
         bool fromText;
         uint32_t strx;
@@ -350,10 +331,8 @@ bool MachOWriter::write(const std::string &path,
     std::unordered_map<uint32_t, uint32_t> textSymMap;
     std::unordered_map<uint32_t, uint32_t> rodataSymMap;
 
-    auto processSymbols = [&](const CodeSection &sec, bool isText)
-    {
-        for (uint32_t i = 1; i < sec.symbols().count(); ++i)
-        {
+    auto processSymbols = [&](const CodeSection &sec, bool isText) {
+        for (uint32_t i = 1; i < sec.symbols().count(); ++i) {
             const Symbol &s = sec.symbols().at(i);
             std::string mangled = mangleName(s.name);
             uint32_t strOff = strtab.add(mangled);
@@ -365,21 +344,16 @@ bool MachOWriter::write(const std::string &path,
             ps.value = 0;
             ps.mangledName = mangled;
 
-            if (s.binding == SymbolBinding::External)
-            {
+            if (s.binding == SymbolBinding::External) {
                 ps.type = kNUndf | kNExt;
                 ps.sect = kNoSect;
                 pendingUndef.push_back(ps);
-            }
-            else if (s.binding == SymbolBinding::Local)
-            {
+            } else if (s.binding == SymbolBinding::Local) {
                 ps.type = kNSect;
                 ps.sect = isText ? kSectText : kSectConst;
                 ps.value = s.offset;
                 pendingLocals.push_back(ps);
-            }
-            else
-            {
+            } else {
                 // Global defined.
                 ps.type = kNSect | kNExt;
                 ps.sect = isText ? kSectText : kSectConst;
@@ -396,13 +370,10 @@ bool MachOWriter::write(const std::string &path,
     // Order: locals → external defined → undefined.
     uint32_t machoIdx = 0;
 
-    auto assignIndices = [&](std::vector<PendingSym> &syms)
-    {
-        for (auto &ps : syms)
-        {
+    auto assignIndices = [&](std::vector<PendingSym> &syms) {
+        for (auto &ps : syms) {
             auto it = nameToMachoIdx.find(ps.mangledName);
-            if (it != nameToMachoIdx.end())
-            {
+            if (it != nameToMachoIdx.end()) {
                 // Duplicate name — reuse existing Mach-O index.
                 if (ps.fromText)
                     textSymMap[ps.encoderIdx] = it->second;
@@ -434,8 +405,7 @@ bool MachOWriter::write(const std::string &path,
     uint32_t nsyms = machoIdx;
 
     // Build the final symbol list (deduplicated, in order).
-    struct FinalSym
-    {
+    struct FinalSym {
         uint32_t strx;
         uint8_t type;
         uint8_t sect;
@@ -443,10 +413,8 @@ bool MachOWriter::write(const std::string &path,
     };
 
     std::vector<FinalSym> allSyms(nsyms);
-    auto emitSyms = [&](const std::vector<PendingSym> &syms, bool skipIfDefined)
-    {
-        for (const auto &ps : syms)
-        {
+    auto emitSyms = [&](const std::vector<PendingSym> &syms, bool skipIfDefined) {
+        for (const auto &ps : syms) {
             uint32_t idx = (ps.fromText) ? textSymMap[ps.encoderIdx] : rodataSymMap[ps.encoderIdx];
             // When an undefined symbol in text duplicates a defined symbol in
             // rodata, the defined version must win (they share the same Mach-O
@@ -462,16 +430,14 @@ bool MachOWriter::write(const std::string &path,
     emitSyms(pendingUndef, true);
 
     // --- 4. Build relocation entries for __text ---
-    struct MachoReloc
-    {
+    struct MachoReloc {
         uint32_t address;
         uint32_t packed;
     };
 
     std::vector<MachoReloc> textRelocs;
 
-    for (const auto &rel : text.relocations())
-    {
+    for (const auto &rel : text.relocations()) {
         auto attrs = machoRelocAttrs(rel.kind);
         if (attrs.skip)
             continue;
@@ -481,8 +447,7 @@ bool MachOWriter::write(const std::string &path,
         auto it = textSymMap.find(rel.symbolIndex);
         if (it != textSymMap.end())
             symIdx = it->second;
-        else
-        {
+        else {
             auto rit = rodataSymMap.find(rel.symbolIndex);
             if (rit != rodataSymMap.end())
                 symIdx = rit->second;
@@ -494,9 +459,9 @@ bool MachOWriter::write(const std::string &path,
     }
 
     // Sort relocations by address descending (Mach-O convention).
-    std::sort(textRelocs.begin(),
-              textRelocs.end(),
-              [](const MachoReloc &a, const MachoReloc &b) { return a.address > b.address; });
+    std::sort(textRelocs.begin(), textRelocs.end(), [](const MachoReloc &a, const MachoReloc &b) {
+        return a.address > b.address;
+    });
 
     // --- 4b. Build compact unwind section data (AArch64 only) ---
     // Collect unwind entries from the text section and generate __compact_unwind
@@ -505,11 +470,9 @@ bool MachOWriter::write(const std::string &path,
     std::vector<MachoReloc> unwindRelocs;
     const bool hasUnwind = arch_ == ObjArch::AArch64 && !text.unwindEntries().empty();
 
-    if (hasUnwind)
-    {
+    if (hasUnwind) {
         unwindData.reserve(text.unwindEntries().size() * 32);
-        for (const auto &entry : text.unwindEntries())
-        {
+        for (const auto &entry : text.unwindEntries()) {
             const size_t entryOffset = unwindData.size();
 
             // functionStart (8 bytes) — filled with 0, relocation points to symbol
@@ -618,8 +581,7 @@ bool MachOWriter::write(const std::string &path,
                     0);
 
     // __compact_unwind section header
-    if (hasUnwind)
-    {
+    if (hasUnwind) {
         writeSectionHdr(file,
                         "__compact_unwind",
                         "__LD",
@@ -633,8 +595,7 @@ bool MachOWriter::write(const std::string &path,
     }
 
     // __debug_line section header (in __DWARF segment)
-    if (hasDebugLine)
-    {
+    if (hasDebugLine) {
         writeSectionHdr(file,
                         "__debug_line",
                         "__DWARF",
@@ -667,8 +628,7 @@ bool MachOWriter::write(const std::string &path,
     file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
 
     // __compact_unwind
-    if (hasUnwind)
-    {
+    if (hasUnwind) {
         padTo(file, unwindFileOff);
         file.insert(file.end(), unwindData.begin(), unwindData.end());
     }
@@ -678,15 +638,11 @@ bool MachOWriter::write(const std::string &path,
         file.insert(file.end(), debugLineData_.begin(), debugLineData_.end());
 
     // --- Patch addends into instruction bytes (Mach-O REL convention) ---
-    if (arch_ == ObjArch::X86_64)
-    {
-        for (const auto &rel : text.relocations())
-        {
-            if (rel.kind == RelocKind::PCRel32 || rel.kind == RelocKind::Branch32)
-            {
+    if (arch_ == ObjArch::X86_64) {
+        for (const auto &rel : text.relocations()) {
+            if (rel.kind == RelocKind::PCRel32 || rel.kind == RelocKind::Branch32) {
                 size_t patchOff = textFileOff + rel.offset;
-                if (patchOff + 4 > file.size())
-                {
+                if (patchOff + 4 > file.size()) {
                     err << "error: addend patch at offset " << patchOff
                         << " out of bounds (file size=" << file.size() << ")\n";
                     return false;
@@ -696,12 +652,9 @@ bool MachOWriter::write(const std::string &path,
                 file[patchOff + 1] = static_cast<uint8_t>(addend >> 8);
                 file[patchOff + 2] = static_cast<uint8_t>(addend >> 16);
                 file[patchOff + 3] = static_cast<uint8_t>(addend >> 24);
-            }
-            else if (rel.kind == RelocKind::Abs64 && rel.addend != 0)
-            {
+            } else if (rel.kind == RelocKind::Abs64 && rel.addend != 0) {
                 size_t patchOff = textFileOff + rel.offset;
-                if (patchOff + 8 > file.size())
-                {
+                if (patchOff + 8 > file.size()) {
                     err << "error: addend patch at offset " << patchOff
                         << " out of bounds (file size=" << file.size() << ")\n";
                     return false;
@@ -722,8 +675,7 @@ bool MachOWriter::write(const std::string &path,
         writeMachoReloc(file, r.address, r.packed);
 
     // --- Symbol table ---
-    for (const auto &sym : allSyms)
-    {
+    for (const auto &sym : allSyms) {
         uint64_t value = sym.value;
         // Rodata symbols store offsets within the __const section. Mach-O nlist
         // values are segment-relative, so add the __const section's base address.
@@ -740,15 +692,13 @@ bool MachOWriter::write(const std::string &path,
 
     // --- 7. Write to disk ---
     std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
-    if (!ofs)
-    {
+    if (!ofs) {
         err << "MachOWriter: cannot open " << path << " for writing\n";
         return false;
     }
     ofs.write(reinterpret_cast<const char *>(file.data()),
               static_cast<std::streamsize>(file.size()));
-    if (!ofs)
-    {
+    if (!ofs) {
         err << "MachOWriter: write failed for " << path << "\n";
         return false;
     }

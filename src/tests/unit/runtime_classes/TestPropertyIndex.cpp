@@ -17,8 +17,7 @@
 
 using il::frontends::basic::runtimePropertyIndex;
 
-TEST(RuntimePropertyIndexBasic, StringLengthGetter)
-{
+TEST(RuntimePropertyIndexBasic, StringLengthGetter) {
     // Seed from catalog explicitly to avoid test-order coupling
     const auto &cat = il::runtime::runtimeClassCatalog();
     runtimePropertyIndex().seed(cat);
@@ -28,8 +27,7 @@ TEST(RuntimePropertyIndexBasic, StringLengthGetter)
     EXPECT_EQ(info->getter, std::string("Viper.String.get_Length"));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

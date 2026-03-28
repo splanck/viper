@@ -25,8 +25,7 @@
 #include <string>
 #include <string_view>
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Format a diagnostic string describing a basic block.
 /// @param fn Function owning the block used to provide context.

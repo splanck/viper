@@ -29,12 +29,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief x86-64 register identifiers.
-enum class X64Reg : uint8_t
-{
+enum class X64Reg : uint8_t {
     RAX = 0,
     RCX = 1,
     RDX = 2,
@@ -57,8 +55,7 @@ enum class X64Reg : uint8_t
 ///
 /// Generates position-independent code that calls Win32 APIs through
 /// IAT slots using RIP-relative `call [rip+disp32]` instructions.
-class InstallerStubGen
-{
+class InstallerStubGen {
   public:
     // ─── Label Management ─────────────────────────────────────────────
 
@@ -158,14 +155,12 @@ class InstallerStubGen
                                     uint32_t dataBaseRVA) const;
 
     /// @brief Get the embedded data bytes (for .rdata or appended to existing .rdata).
-    const std::vector<uint8_t> &dataSection() const
-    {
+    const std::vector<uint8_t> &dataSection() const {
         return data_;
     }
 
     /// @brief Current code size (before finalization).
-    size_t codeSize() const
-    {
+    size_t codeSize() const {
         return code_.size();
     }
 
@@ -173,8 +168,7 @@ class InstallerStubGen
     std::vector<uint8_t> code_;
     std::vector<uint8_t> data_;
 
-    struct LabelInfo
-    {
+    struct LabelInfo {
         uint32_t codeOffset; ///< Offset in code_ where label is bound (0 if unbound).
         bool bound;
     };
@@ -182,15 +176,13 @@ class InstallerStubGen
     std::vector<LabelInfo> labels_;
 
     /// @brief Types of fixups that need resolution at finish time.
-    enum class FixupKind : uint8_t
-    {
+    enum class FixupKind : uint8_t {
         Rel32,        ///< 32-bit relative jump/call (code → code label)
         IATSlotIndex, ///< IAT slot by flat function index (resolved to RIP-relative)
         DataRel32,    ///< RIP-relative to embedded data (code → .rdata data section)
     };
 
-    struct Fixup
-    {
+    struct Fixup {
         uint32_t codeOffset; ///< Offset in code_ of the 4-byte displacement field.
         uint32_t target;     ///< Label ID / flat IAT index / data offset, depending on kind.
         FixupKind kind;
@@ -205,13 +197,11 @@ class InstallerStubGen
     void emitModRM(uint8_t mod, uint8_t reg, uint8_t rm);
     void emitModRMDisp32(uint8_t reg, X64Reg base, int32_t disp);
 
-    bool needsREX_B(X64Reg r) const
-    {
+    bool needsREX_B(X64Reg r) const {
         return static_cast<uint8_t>(r) >= 8;
     }
 
-    uint8_t regBits(X64Reg r) const
-    {
+    uint8_t regBits(X64Reg r) const {
         return static_cast<uint8_t>(r) & 7;
     }
 };

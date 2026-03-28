@@ -18,10 +18,8 @@
 #include <cstdio>
 #include <cstring>
 
-static void test_result(bool cond, const char *name)
-{
-    if (!cond)
-    {
+static void test_result(bool cond, const char *name) {
+    if (!cond) {
         fprintf(stderr, "FAIL: %s\n", name);
         assert(false);
     }
@@ -31,16 +29,14 @@ static void test_result(bool cond, const char *name)
 // Default Workers Tests
 //=============================================================================
 
-static void test_default_workers()
-{
+static void test_default_workers() {
     int64_t workers = rt_parallel_default_workers();
     test_result(workers >= 1, "default_workers: should be at least 1");
     test_result(workers <= 1024, "default_workers: should be reasonable");
     printf("  Detected %lld CPU cores\n", (long long)workers);
 }
 
-static void test_default_pool()
-{
+static void test_default_pool() {
     void *pool = rt_parallel_default_pool();
     test_result(pool != NULL, "default_pool: should return a pool");
 
@@ -55,18 +51,15 @@ static void test_default_pool()
 
 static std::atomic<int64_t> g_foreach_counter{0};
 
-static void foreach_increment(void *item)
-{
+static void foreach_increment(void *item) {
     (void)item;
     g_foreach_counter++;
 }
 
-static void test_foreach_basic()
-{
+static void test_foreach_basic() {
     // Create a sequence with 10 items
     void *seq = rt_seq_new();
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         rt_seq_push(seq, (void *)(intptr_t)i);
     }
 
@@ -76,8 +69,7 @@ static void test_foreach_basic()
     test_result(g_foreach_counter == 10, "foreach_basic: should process all items");
 }
 
-static void test_foreach_empty()
-{
+static void test_foreach_empty() {
     void *seq = rt_seq_new();
 
     g_foreach_counter = 0;
@@ -86,8 +78,7 @@ static void test_foreach_empty()
     test_result(g_foreach_counter == 0, "foreach_empty: should handle empty seq");
 }
 
-static void test_foreach_null()
-{
+static void test_foreach_null() {
     // Should not crash on NULL
     rt_parallel_foreach(NULL, (void *)foreach_increment);
     rt_parallel_foreach(rt_seq_new(), NULL);
@@ -99,14 +90,12 @@ static void test_foreach_null()
 // Parallel Map Tests
 //=============================================================================
 
-static void *map_double(void *item)
-{
+static void *map_double(void *item) {
     intptr_t val = (intptr_t)item;
     return (void *)(val * 2);
 }
 
-static void test_map_basic()
-{
+static void test_map_basic() {
     // Create sequence [1, 2, 3]
     void *seq = rt_seq_new();
     rt_seq_push(seq, (void *)1);
@@ -123,20 +112,17 @@ static void test_map_basic()
     test_result((intptr_t)rt_seq_get(result, 2) == 6, "map_basic: third value");
 }
 
-static void test_map_empty()
-{
+static void test_map_empty() {
     void *seq = rt_seq_new();
     void *result = rt_parallel_map(seq, (void *)map_double);
 
     test_result(rt_seq_len(result) == 0, "map_empty: should return empty seq");
 }
 
-static void test_map_order_preserved()
-{
+static void test_map_order_preserved() {
     // Create larger sequence to test order preservation
     void *seq = rt_seq_new();
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         rt_seq_push(seq, (void *)(intptr_t)i);
     }
 
@@ -145,12 +131,10 @@ static void test_map_order_preserved()
     test_result(rt_seq_len(result) == 100, "map_order: should have same length");
 
     // Verify order is preserved
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         intptr_t expected = i * 2;
         intptr_t actual = (intptr_t)rt_seq_get(result, i);
-        if (actual != expected)
-        {
+        if (actual != expected) {
             printf("  Order mismatch at index %d: expected %ld, got %ld\n",
                    i,
                    (long)expected,
@@ -167,13 +151,11 @@ static void test_map_order_preserved()
 
 static std::atomic<int64_t> g_for_sum{0};
 
-static void for_accumulate(int64_t index)
-{
+static void for_accumulate(int64_t index) {
     g_for_sum += index;
 }
 
-static void test_for_basic()
-{
+static void test_for_basic() {
     // Sum 0 + 1 + 2 + ... + 9 = 45
     g_for_sum = 0;
     rt_parallel_for(0, 10, (void *)for_accumulate);
@@ -181,8 +163,7 @@ static void test_for_basic()
     test_result(g_for_sum == 45, "for_basic: should sum correctly");
 }
 
-static void test_for_empty_range()
-{
+static void test_for_empty_range() {
     g_for_sum = 0;
     /// @brief Rt_parallel_for.
     rt_parallel_for(5, 5, (void *)for_accumulate); // Empty range
@@ -190,8 +171,7 @@ static void test_for_empty_range()
     test_result(g_for_sum == 0, "for_empty_range: should do nothing");
 }
 
-static void test_for_single()
-{
+static void test_for_single() {
     g_for_sum = 0;
     /// @brief Rt_parallel_for.
     rt_parallel_for(7, 8, (void *)for_accumulate); // Single iteration
@@ -207,23 +187,19 @@ static std::atomic<int> g_invoke_a{0};
 static std::atomic<int> g_invoke_b{0};
 static std::atomic<int> g_invoke_c{0};
 
-static void invoke_set_a()
-{
+static void invoke_set_a() {
     g_invoke_a = 1;
 }
 
-static void invoke_set_b()
-{
+static void invoke_set_b() {
     g_invoke_b = 1;
 }
 
-static void invoke_set_c()
-{
+static void invoke_set_c() {
     g_invoke_c = 1;
 }
 
-static void test_invoke_basic()
-{
+static void test_invoke_basic() {
     g_invoke_a = 0;
     g_invoke_b = 0;
     g_invoke_c = 0;
@@ -240,8 +216,7 @@ static void test_invoke_basic()
     test_result(g_invoke_c == 1, "invoke_basic: c should be set");
 }
 
-static void test_invoke_empty()
-{
+static void test_invoke_empty() {
     void *funcs = rt_seq_new();
     /// @brief Rt_parallel_invoke.
     rt_parallel_invoke(funcs); // Should not crash
@@ -253,8 +228,7 @@ static void test_invoke_empty()
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     // Default workers/pool tests
     test_default_workers();
     test_default_pool();

@@ -18,29 +18,25 @@
 #include <cmath>
 #include <csetjmp>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
 
-static void rt_release_obj(void *p)
-{
+static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
 }
 
-static bool approx(double a, double b, double eps = 1e-9)
-{
+static bool approx(double a, double b, double eps = 1e-9) {
     return fabs(a - b) < eps;
 }
 
@@ -48,15 +44,13 @@ static bool approx(double a, double b, double eps = 1e-9)
 // Tests
 // ---------------------------------------------------------------------------
 
-static void test_new_returns_nonnull()
-{
+static void test_new_returns_nonnull() {
     void *p = rt_perlin_new(42);
     assert(p != nullptr);
     rt_release_obj(p);
 }
 
-static void test_deterministic_seed()
-{
+static void test_deterministic_seed() {
     void *p1 = rt_perlin_new(42);
     void *p2 = rt_perlin_new(42);
     double v1 = rt_perlin_noise2d(p1, 1.5, 2.5);
@@ -66,20 +60,17 @@ static void test_deterministic_seed()
     rt_release_obj(p2);
 }
 
-static void test_different_seeds_differ()
-{
+static void test_different_seeds_differ() {
     void *p1 = rt_perlin_new(1);
     void *p2 = rt_perlin_new(12345);
     // Check multiple points — at least one should differ
     bool found_diff = false;
-    for (int i = 0; i < 10; ++i)
-    {
+    for (int i = 0; i < 10; ++i) {
         double x = 0.5 + (double)i * 1.7;
         double y = 0.5 + (double)i * 2.3;
         double v1 = rt_perlin_noise2d(p1, x, y);
         double v2 = rt_perlin_noise2d(p2, x, y);
-        if (v1 != v2)
-        {
+        if (v1 != v2) {
             found_diff = true;
             break;
         }
@@ -89,12 +80,10 @@ static void test_different_seeds_differ()
     rt_release_obj(p2);
 }
 
-static void test_noise2d_range()
-{
+static void test_noise2d_range() {
     void *p = rt_perlin_new(123);
     // Sample many points and verify output is in [-1, 1]
-    for (int i = 0; i < 100; ++i)
-    {
+    for (int i = 0; i < 100; ++i) {
         double x = (double)i * 0.37;
         double y = (double)i * 0.53;
         double v = rt_perlin_noise2d(p, x, y);
@@ -103,11 +92,9 @@ static void test_noise2d_range()
     rt_release_obj(p);
 }
 
-static void test_noise3d_range()
-{
+static void test_noise3d_range() {
     void *p = rt_perlin_new(456);
-    for (int i = 0; i < 100; ++i)
-    {
+    for (int i = 0; i < 100; ++i) {
         double x = (double)i * 0.29;
         double y = (double)i * 0.41;
         double z = (double)i * 0.67;
@@ -117,8 +104,7 @@ static void test_noise3d_range()
     rt_release_obj(p);
 }
 
-static void test_noise2d_continuity()
-{
+static void test_noise2d_continuity() {
     void *p = rt_perlin_new(789);
     // Nearby points should produce similar values (continuity)
     double v1 = rt_perlin_noise2d(p, 5.0, 5.0);
@@ -127,8 +113,7 @@ static void test_noise2d_continuity()
     rt_release_obj(p);
 }
 
-static void test_noise3d_deterministic()
-{
+static void test_noise3d_deterministic() {
     void *p = rt_perlin_new(42);
     double v1 = rt_perlin_noise3d(p, 1.0, 2.0, 3.0);
     double v2 = rt_perlin_noise3d(p, 1.0, 2.0, 3.0);
@@ -136,8 +121,7 @@ static void test_noise3d_deterministic()
     rt_release_obj(p);
 }
 
-static void test_octave2d_basic()
-{
+static void test_octave2d_basic() {
     void *p = rt_perlin_new(42);
     double v = rt_perlin_octave2d(p, 1.5, 2.5, 4, 0.5);
     // Octave noise should still be in a reasonable range
@@ -145,16 +129,14 @@ static void test_octave2d_basic()
     rt_release_obj(p);
 }
 
-static void test_octave3d_basic()
-{
+static void test_octave3d_basic() {
     void *p = rt_perlin_new(42);
     double v = rt_perlin_octave3d(p, 1.0, 2.0, 3.0, 4, 0.5);
     assert(v >= -2.0 && v <= 2.0);
     rt_release_obj(p);
 }
 
-static void test_octave_single_equals_noise()
-{
+static void test_octave_single_equals_noise() {
     void *p = rt_perlin_new(42);
     double noise = rt_perlin_noise2d(p, 3.0, 4.0);
     double octave = rt_perlin_octave2d(p, 3.0, 4.0, 1, 0.5);
@@ -163,24 +145,21 @@ static void test_octave_single_equals_noise()
     rt_release_obj(p);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_perlin_noise2d(nullptr, 0.0, 0.0) == 0.0);
     assert(rt_perlin_noise3d(nullptr, 0.0, 0.0, 0.0) == 0.0);
     assert(rt_perlin_octave2d(nullptr, 0.0, 0.0, 4, 0.5) == 0.0);
     assert(rt_perlin_octave3d(nullptr, 0.0, 0.0, 0.0, 4, 0.5) == 0.0);
 }
 
-static void test_octave_zero_returns_zero()
-{
+static void test_octave_zero_returns_zero() {
     void *p = rt_perlin_new(42);
     assert(rt_perlin_octave2d(p, 1.0, 2.0, 0, 0.5) == 0.0);
     assert(rt_perlin_octave3d(p, 1.0, 2.0, 3.0, 0, 0.5) == 0.0);
     rt_release_obj(p);
 }
 
-static void test_integer_coordinates()
-{
+static void test_integer_coordinates() {
     void *p = rt_perlin_new(42);
     // At integer coordinates, gradient contributions cancel -> should be 0 or near 0
     double v = rt_perlin_noise2d(p, 0.0, 0.0);
@@ -188,8 +167,7 @@ static void test_integer_coordinates()
     rt_release_obj(p);
 }
 
-int main()
-{
+int main() {
     test_new_returns_nonnull();
     test_deterministic_seed();
     test_different_seeds_differ();

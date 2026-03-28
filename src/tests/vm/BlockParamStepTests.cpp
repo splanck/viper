@@ -19,10 +19,8 @@
 #include <iostream>
 #include <string>
 
-int main(int argc, char **argv)
-{
-    if (argc != 4)
-    {
+int main(int argc, char **argv) {
+    if (argc != 4) {
         std::cerr << "usage: BlockParamStepTests <ilc> <il file> <script>\n";
         return 1;
     }
@@ -48,17 +46,14 @@ int main(int argc, char **argv)
     std::ifstream err(errFile);
     std::string line;
     bool sawStep = false;
-    while (std::getline(err, line))
-    {
-        if (line.rfind("[BREAK]", 0) == 0 && line.find("reason=step") != std::string::npos)
-        {
+    while (std::getline(err, line)) {
+        if (line.rfind("[BREAK]", 0) == 0 && line.find("reason=step") != std::string::npos) {
             sawStep = true;
             break;
         }
     }
     std::remove(errFile.c_str());
-    if (!sawStep)
-    {
+    if (!sawStep) {
         std::cerr << "missing step break output\n";
         return 1;
     }

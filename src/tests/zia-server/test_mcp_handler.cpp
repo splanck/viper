@@ -30,22 +30,19 @@ using namespace viper::server;
 /// Helper: build a JsonRpcRequest from method, params, and id.
 static JsonRpcRequest makeReq(const std::string &method,
                               JsonValue params = JsonValue::object({}),
-                              JsonValue id = JsonValue(1))
-{
+                              JsonValue id = JsonValue(1)) {
     return {method, std::move(params), std::move(id)};
 }
 
 /// Helper: parse a JSON-RPC response string and return the parsed JSON.
-static JsonValue parseResponse(const std::string &resp)
-{
+static JsonValue parseResponse(const std::string &resp) {
     EXPECT_TRUE(!resp.empty());
     return JsonValue::parse(resp);
 }
 
 // ===== Lifecycle =====
 
-TEST(McpHandler, Initialize)
-{
+TEST(McpHandler, Initialize) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -59,8 +56,7 @@ TEST(McpHandler, Initialize)
     EXPECT_TRUE(result["capabilities"].has("tools"));
 }
 
-TEST(McpHandler, InitializedNotification)
-{
+TEST(McpHandler, InitializedNotification) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -70,8 +66,7 @@ TEST(McpHandler, InitializedNotification)
     EXPECT_TRUE(resp.empty());
 }
 
-TEST(McpHandler, Ping)
-{
+TEST(McpHandler, Ping) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -80,8 +75,7 @@ TEST(McpHandler, Ping)
     EXPECT_TRUE(resp.has("result"));
 }
 
-TEST(McpHandler, UnknownMethod)
-{
+TEST(McpHandler, UnknownMethod) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -90,8 +84,7 @@ TEST(McpHandler, UnknownMethod)
     EXPECT_EQ(resp["error"]["code"].asInt(), kMethodNotFound);
 }
 
-TEST(McpHandler, UnknownNotificationSilent)
-{
+TEST(McpHandler, UnknownNotificationSilent) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -102,8 +95,7 @@ TEST(McpHandler, UnknownNotificationSilent)
 
 // ===== tools/list =====
 
-TEST(McpHandler, ToolsListReturnsTools)
-{
+TEST(McpHandler, ToolsListReturnsTools) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -113,8 +105,7 @@ TEST(McpHandler, ToolsListReturnsTools)
     EXPECT_EQ(tools.size(), 11u);
 }
 
-TEST(McpHandler, ToolsListContainsCheck)
-{
+TEST(McpHandler, ToolsListContainsCheck) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -122,10 +113,8 @@ TEST(McpHandler, ToolsListContainsCheck)
     auto tools = resp["result"]["tools"].asArray();
 
     bool foundCheck = false;
-    for (const auto &tool : tools)
-    {
-        if (tool["name"].asString() == "zia/check")
-        {
+    for (const auto &tool : tools) {
+        if (tool["name"].asString() == "zia/check") {
             foundCheck = true;
             // Should have an inputSchema
             EXPECT_TRUE(tool.has("inputSchema"));
@@ -135,8 +124,7 @@ TEST(McpHandler, ToolsListContainsCheck)
     EXPECT_TRUE(foundCheck);
 }
 
-TEST(McpHandler, ToolsListHasAllTools)
-{
+TEST(McpHandler, ToolsListHasAllTools) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -157,11 +145,9 @@ TEST(McpHandler, ToolsListHasAllTools)
         "zia/runtime-search",
     };
 
-    for (const auto &name : expected)
-    {
+    for (const auto &name : expected) {
         bool found = false;
-        for (const auto &tool : tools)
-        {
+        for (const auto &tool : tools) {
             if (tool["name"].asString() == name)
                 found = true;
         }
@@ -171,8 +157,7 @@ TEST(McpHandler, ToolsListHasAllTools)
 
 // ===== tools/call =====
 
-TEST(McpHandler, ToolsCallCheck)
-{
+TEST(McpHandler, ToolsCallCheck) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -192,8 +177,7 @@ TEST(McpHandler, ToolsCallCheck)
     EXPECT_EQ(content.at(0)["type"].asString(), "text");
 }
 
-TEST(McpHandler, ToolsCallCompile)
-{
+TEST(McpHandler, ToolsCallCompile) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -212,8 +196,7 @@ TEST(McpHandler, ToolsCallCompile)
     EXPECT_TRUE(parsed["succeeded"].asBool());
 }
 
-TEST(McpHandler, ToolsCallCompletions)
-{
+TEST(McpHandler, ToolsCallCompletions) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -234,8 +217,7 @@ TEST(McpHandler, ToolsCallCompletions)
     (void)parsed;
 }
 
-TEST(McpHandler, ToolsCallSymbols)
-{
+TEST(McpHandler, ToolsCallSymbols) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -253,16 +235,14 @@ TEST(McpHandler, ToolsCallSymbols)
     auto parsed = JsonValue::parse(text);
     // Should contain at least "start"
     bool foundStart = false;
-    for (size_t i = 0; i < parsed.size(); ++i)
-    {
+    for (size_t i = 0; i < parsed.size(); ++i) {
         if (parsed.at(i)["name"].asString() == "start")
             foundStart = true;
     }
     EXPECT_TRUE(foundStart);
 }
 
-TEST(McpHandler, ToolsCallDumpTokens)
-{
+TEST(McpHandler, ToolsCallDumpTokens) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -278,8 +258,7 @@ TEST(McpHandler, ToolsCallDumpTokens)
     EXPECT_TRUE(text.find("module") != std::string::npos);
 }
 
-TEST(McpHandler, ToolsCallHoverLocalVar)
-{
+TEST(McpHandler, ToolsCallHoverLocalVar) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -299,8 +278,7 @@ TEST(McpHandler, ToolsCallHoverLocalVar)
     EXPECT_TRUE(text.find("Integer") != std::string::npos);
 }
 
-TEST(McpHandler, ToolsCallHoverFunction)
-{
+TEST(McpHandler, ToolsCallHoverFunction) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -319,8 +297,7 @@ TEST(McpHandler, ToolsCallHoverFunction)
     EXPECT_TRUE(text.find("func start") != std::string::npos);
 }
 
-TEST(McpHandler, ToolsCallHoverWhitespace)
-{
+TEST(McpHandler, ToolsCallHoverWhitespace) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -339,8 +316,7 @@ TEST(McpHandler, ToolsCallHoverWhitespace)
     EXPECT_EQ(text, "(no type information)");
 }
 
-TEST(McpHandler, ToolsCallRuntimeClasses)
-{
+TEST(McpHandler, ToolsCallRuntimeClasses) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -354,8 +330,7 @@ TEST(McpHandler, ToolsCallRuntimeClasses)
     EXPECT_TRUE(parsed.size() > 0u);
 }
 
-TEST(McpHandler, ToolsCallRuntimeMethods)
-{
+TEST(McpHandler, ToolsCallRuntimeMethods) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -369,8 +344,7 @@ TEST(McpHandler, ToolsCallRuntimeMethods)
     EXPECT_TRUE(parsed.size() > 0u);
 }
 
-TEST(McpHandler, ToolsCallRuntimeSearch)
-{
+TEST(McpHandler, ToolsCallRuntimeSearch) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -384,8 +358,7 @@ TEST(McpHandler, ToolsCallRuntimeSearch)
     EXPECT_TRUE(parsed.size() > 0u);
 }
 
-TEST(McpHandler, ToolsCallUnknownTool)
-{
+TEST(McpHandler, ToolsCallUnknownTool) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -397,8 +370,7 @@ TEST(McpHandler, ToolsCallUnknownTool)
     EXPECT_TRUE(resp.has("error"));
 }
 
-TEST(McpHandler, ToolsCallMissingName)
-{
+TEST(McpHandler, ToolsCallMissingName) {
     CompilerBridge bridge;
     McpHandler handler(bridge, {"zia-server", "0.1.0", "zia", "zia", ".zia", "Zia"});
 
@@ -407,8 +379,7 @@ TEST(McpHandler, ToolsCallMissingName)
     EXPECT_EQ(resp["error"]["code"].asInt(), kInvalidParams);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

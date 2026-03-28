@@ -41,8 +41,7 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 class Lowerer;
 
@@ -51,10 +50,8 @@ class Lowerer;
 ///          types are expressed as BasicType enums rather than AST types.
 /// @param t BasicType value from RuntimeMethodIndex.
 /// @return Corresponding IL Type::Kind.
-inline il::core::Type::Kind basicTypeToILKind(BasicType t)
-{
-    switch (t)
-    {
+inline il::core::Type::Kind basicTypeToILKind(BasicType t) {
+    switch (t) {
         case BasicType::String:
             return il::core::Type::Kind::Str;
         case BasicType::Float:
@@ -96,14 +93,11 @@ inline il::core::Type::Kind basicTypeToILKind(BasicType t)
 ///   - Returns target function names for direct calls
 ///   - Returns slot indices for indirect calls (vtable/itable)
 ///   - Does not emit instructions directly
-class MethodDispatchResolver
-{
+class MethodDispatchResolver {
   public:
     /// @brief Resolution result for a method call.
-    struct Resolution
-    {
-        enum class Kind
-        {
+    struct Resolution {
+        enum class Kind {
             Direct,         ///< Direct call to a known function
             Virtual,        ///< Virtual dispatch via vtable slot
             Interface,      ///< Interface dispatch via itable slot
@@ -215,8 +209,7 @@ class MethodDispatchResolver
 ///   - Creates conditional branch blocks (ok/oob paths)
 ///   - Emits rt_arr_oob_panic call on out-of-bounds path
 ///   - Emits trap instruction after panic
-class BoundsCheckEmitter
-{
+class BoundsCheckEmitter {
   public:
     /// @brief Construct a bounds check emitter using Lowerer context.
     /// @param lowerer Lowerer providing emit helpers and context.

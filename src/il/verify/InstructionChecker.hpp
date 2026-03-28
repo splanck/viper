@@ -38,13 +38,11 @@
 #include <ostream>
 #include <unordered_map>
 
-namespace il::core
-{
+namespace il::core {
 struct Extern;
 }
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Validate a single IL instruction that is not control-flow specific.
 /// @param fn Enclosing function for diagnostics.

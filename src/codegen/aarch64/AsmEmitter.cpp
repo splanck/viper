@@ -114,34 +114,29 @@
 // These are file-local helpers; the public method signatures are unchanged.
 // ---------------------------------------------------------------------------
 
-namespace
-{
+namespace {
 
 using viper::codegen::aarch64::PhysReg;
 using viper::codegen::aarch64::regName;
 
 /// Print a floating-point register as dN (64-bit scalar).
-inline void printDReg(std::ostream &os, PhysReg r)
-{
+inline void printDReg(std::ostream &os, PhysReg r) {
     const char *name = regName(r);
     os << (name[0] == 'v' ? 'd' : name[0]) << (name + 1);
 }
 
 /// Emit a 3-register GPR instruction: "  mnem xd, xn, xm\n"
-inline void emit3R(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, PhysReg b)
-{
+inline void emit3R(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, PhysReg b) {
     os << "  " << mnem << " " << regName(d) << ", " << regName(a) << ", " << regName(b) << "\n";
 }
 
 /// Emit a 2-register + immediate GPR instruction: "  mnem xd, xn, #imm\n"
-inline void emit2RI(std::ostream &os, const char *mnem, PhysReg d, PhysReg s, long long imm)
-{
+inline void emit2RI(std::ostream &os, const char *mnem, PhysReg d, PhysReg s, long long imm) {
     os << "  " << mnem << " " << regName(d) << ", " << regName(s) << ", #" << imm << "\n";
 }
 
 /// Emit a 3-register FPR instruction: "  mnem dd, dn, dm\n"
-inline void emit3D(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, PhysReg b)
-{
+inline void emit3D(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, PhysReg b) {
     os << "  " << mnem << " ";
     printDReg(os, d);
     os << ", ";
@@ -156,14 +151,12 @@ inline void emit3D(std::ostream &os, const char *mnem, PhysReg d, PhysReg a, Phy
 #include <cstring>
 #include <iomanip>
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Map IL extern names to C runtime symbol names.
 /// The IL uses namespaced names like "Viper.Console.PrintI64" but the runtime
 /// exports C-style names like "rt_print_i64".
-static std::string mapRuntimeSymbol(const std::string &name)
-{
+static std::string mapRuntimeSymbol(const std::string &name) {
     if (auto mapped = il::runtime::mapCanonicalRuntimeName(name))
         return std::string(*mapped);
     // Not a known runtime symbol, return as-is.
@@ -174,10 +167,8 @@ static std::string mapRuntimeSymbol(const std::string &name)
 /// On Darwin (macOS), C symbols require an underscore prefix.
 /// Local labels (starting with L or .) are not mangled.
 /// On Linux ELF, no prefix is applied.
-static std::string mangleSymbolImpl(const std::string &name, bool isDarwin)
-{
-    if (isDarwin)
-    {
+static std::string mangleSymbolImpl(const std::string &name, bool isDarwin) {
+    if (isDarwin) {
         // Don't mangle local labels (L* or .L*)
         if (!name.empty() && (name[0] == 'L' || name[0] == '.'))
             return name;
@@ -188,8 +179,7 @@ static std::string mangleSymbolImpl(const std::string &name, bool isDarwin)
 
 /// @brief Mangle a call target symbol for emission.
 /// This first maps IL runtime names to C runtime names, then applies platform mangling.
-static std::string mangleCallTargetImpl(const std::string &name, bool isDarwin)
-{
+static std::string mangleCallTargetImpl(const std::string &name, bool isDarwin) {
     return mangleSymbolImpl(mapRuntimeSymbol(name), isDarwin);
 }
 
@@ -198,13 +188,11 @@ static std::string mangleCallTargetImpl(const std::string &name, bool isDarwin)
 ///          with underscores and handles other illegal assembly characters.
 /// @param name Original label identifier.
 /// @return Sanitized copy suitable for assembly.
-static std::string sanitizeLabel(const std::string &name)
-{
+static std::string sanitizeLabel(const std::string &name) {
     return viper::codegen::common::sanitizeLabel(name);
 }
 
-void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) const
-{
+void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) const {
     const bool darwin = !target_->isLinux() && !target_->isWindows();
     os << ".text\n";
     os << ".align 2\n";
@@ -214,43 +202,34 @@ void AsmEmitter::emitFunctionHeader(std::ostream &os, const std::string &name) c
     // Darwin:  skip .globl for L*/_L*-prefixed local labels.
     // Linux:   always emit .globl + .type (ELF function metadata).
     // Windows: emit .globl only; PE/COFF has no .type/.size directives.
-    if (darwin)
-    {
+    if (darwin) {
         if (!(sym.size() >= 1 &&
-              (sym[0] == 'L' || (sym.size() >= 2 && sym[0] == '_' && sym[1] == 'L'))))
-        {
+              (sym[0] == 'L' || (sym.size() >= 2 && sym[0] == '_' && sym[1] == 'L')))) {
             os << ".globl " << sym << "\n";
         }
-    }
-    else if (target_->isLinux())
-    {
+    } else if (target_->isLinux()) {
         os << ".globl " << sym << "\n";
         os << ".type " << sym << ", @function\n";
-    }
-    else
-    {
+    } else {
         // Windows ARM64 (PE/COFF): .globl only, no ELF-specific directives.
         os << ".globl " << sym << "\n";
     }
     os << sym << ":\n";
 }
 
-void AsmEmitter::emitPrologue(std::ostream &os) const
-{
+void AsmEmitter::emitPrologue(std::ostream &os) const {
     // stp x29, x30, [sp, #-16]!; mov x29, sp
     os << "  stp x29, x30, [sp, #-16]!\n";
     os << "  mov x29, sp\n";
 }
 
-void AsmEmitter::emitEpilogue(std::ostream &os) const
-{
+void AsmEmitter::emitEpilogue(std::ostream &os) const {
     // ldp x29, x30, [sp], #16; ret
     os << "  ldp x29, x30, [sp], #16\n";
     os << "  ret\n";
 }
 
-void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const
-{
+void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const {
     emitPrologue(os);
     if (plan.localFrameSize > 0)
         emitSubSp(os, plan.localFrameSize);
@@ -258,44 +237,40 @@ void AsmEmitter::emitPrologue(std::ostream &os, const FramePlan &plan) const
     // Save callee-saved GPRs in pairs (shared iteration logic).
     forEachSaveReg(
         plan.saveGPRs,
-        [&](PhysReg r0, PhysReg r1)
-        { os << "  stp " << rn(r0) << ", " << rn(r1) << ", [sp, #-16]!\n"; },
+        [&](PhysReg r0, PhysReg r1) {
+            os << "  stp " << rn(r0) << ", " << rn(r1) << ", [sp, #-16]!\n";
+        },
         [&](PhysReg r0) { os << "  str " << rn(r0) << ", [sp, #-16]!\n"; });
 
     // Save callee-saved FPRs in pairs.
     forEachSaveReg(
         plan.saveFPRs,
-        [&](PhysReg r0, PhysReg r1)
-        {
+        [&](PhysReg r0, PhysReg r1) {
             os << "  stp ";
             printD(os, r0);
             os << ", ";
             printD(os, r1);
             os << ", [sp, #-16]!\n";
         },
-        [&](PhysReg r0)
-        {
+        [&](PhysReg r0) {
             os << "  str ";
             printD(os, r0);
             os << ", [sp, #-16]!\n";
         });
 }
 
-void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const
-{
+void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const {
     // Restore FPRs in reverse order (last saved = first restored).
     forEachRestoreReg(
         plan.saveFPRs,
-        [&](PhysReg r0, PhysReg r1)
-        {
+        [&](PhysReg r0, PhysReg r1) {
             os << "  ldp ";
             printD(os, r0);
             os << ", ";
             printD(os, r1);
             os << ", [sp], #16\n";
         },
-        [&](PhysReg r0)
-        {
+        [&](PhysReg r0) {
             os << "  ldr ";
             printD(os, r0);
             os << ", [sp], #16\n";
@@ -304,8 +279,9 @@ void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const
     // Restore GPRs in reverse order.
     forEachRestoreReg(
         plan.saveGPRs,
-        [&](PhysReg r0, PhysReg r1)
-        { os << "  ldp " << rn(r0) << ", " << rn(r1) << ", [sp], #16\n"; },
+        [&](PhysReg r0, PhysReg r1) {
+            os << "  ldp " << rn(r0) << ", " << rn(r1) << ", [sp], #16\n";
+        },
         [&](PhysReg r0) { os << "  ldr " << rn(r0) << ", [sp], #16\n"; });
 
     if (plan.localFrameSize > 0)
@@ -313,218 +289,174 @@ void AsmEmitter::emitEpilogue(std::ostream &os, const FramePlan &plan) const
     emitEpilogue(os);
 }
 
-void AsmEmitter::emitMovRR(std::ostream &os, PhysReg dst, PhysReg src) const
-{
+void AsmEmitter::emitMovRR(std::ostream &os, PhysReg dst, PhysReg src) const {
     os << "  mov " << rn(dst) << ", " << rn(src) << "\n";
 }
 
-void AsmEmitter::emitMovRI(std::ostream &os, PhysReg dst, long long imm) const
-{
+void AsmEmitter::emitMovRI(std::ostream &os, PhysReg dst, long long imm) const {
     // Use movz/movk sequence for wide immediates that can't be encoded directly
-    if (needsWideImmSequence(imm))
-    {
+    if (needsWideImmSequence(imm)) {
         emitMovImm64(os, dst, static_cast<unsigned long long>(imm));
-    }
-    else
-    {
+    } else {
         os << "  mov " << rn(dst) << ", #" << imm << "\n";
     }
 }
 
-void AsmEmitter::emitAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "add", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "sub", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "mul", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitSmulhRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitSmulhRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "smulh", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitSDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitSDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "sdiv", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitUDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitUDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "udiv", dst, lhs, rhs);
 }
 
 void AsmEmitter::emitMSubRRRR(
-    std::ostream &os, PhysReg dst, PhysReg mul1, PhysReg mul2, PhysReg sub) const
-{
+    std::ostream &os, PhysReg dst, PhysReg mul1, PhysReg mul2, PhysReg sub) const {
     // AArch64 multiply-subtract: msub xd, xn, xm, xa => xd = xa - xn*xm
     // Used for remainder: rem = dividend - (dividend/divisor)*divisor
     os << "  msub " << rn(dst) << ", " << rn(mul1) << ", " << rn(mul2) << ", " << rn(sub) << "\n";
 }
 
-void AsmEmitter::emitCbz(std::ostream &os, PhysReg reg, const std::string &label) const
-{
+void AsmEmitter::emitCbz(std::ostream &os, PhysReg reg, const std::string &label) const {
     // AArch64 compare and branch if zero: cbz xn, label
     os << "  cbz " << rn(reg) << ", " << label << "\n";
 }
 
-void AsmEmitter::emitAddRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const
-{
+void AsmEmitter::emitAddRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const {
     emit2RI(os, "add", dst, lhs, imm);
 }
 
-void AsmEmitter::emitSubRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const
-{
+void AsmEmitter::emitSubRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long imm) const {
     emit2RI(os, "sub", dst, lhs, imm);
 }
 
-void AsmEmitter::emitAndRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitAndRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "and", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitOrrRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitOrrRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "orr", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitEorRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitEorRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "eor", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitAndRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const
-{
+void AsmEmitter::emitAndRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const {
     emit2RI(os, "and", dst, src, imm);
 }
 
-void AsmEmitter::emitOrrRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const
-{
+void AsmEmitter::emitOrrRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const {
     emit2RI(os, "orr", dst, src, imm);
 }
 
-void AsmEmitter::emitEorRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const
-{
+void AsmEmitter::emitEorRI(std::ostream &os, PhysReg dst, PhysReg src, long long imm) const {
     emit2RI(os, "eor", dst, src, imm);
 }
 
-void AsmEmitter::emitLslRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
-{
+void AsmEmitter::emitLslRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const {
     emit2RI(os, "lsl", dst, lhs, sh);
 }
 
-void AsmEmitter::emitLsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
-{
+void AsmEmitter::emitLsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const {
     emit2RI(os, "lsr", dst, lhs, sh);
 }
 
-void AsmEmitter::emitAsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const
-{
+void AsmEmitter::emitAsrRI(std::ostream &os, PhysReg dst, PhysReg lhs, long long sh) const {
     emit2RI(os, "asr", dst, lhs, sh);
 }
 
-void AsmEmitter::emitLslvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitLslvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "lslv", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitLsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitLsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "lsrv", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitAsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitAsrvRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3R(os, "asrv", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const {
     os << "  cmp " << rn(lhs) << ", " << rn(rhs) << "\n";
 }
 
-void AsmEmitter::emitCmpRI(std::ostream &os, PhysReg lhs, long long imm) const
-{
+void AsmEmitter::emitCmpRI(std::ostream &os, PhysReg lhs, long long imm) const {
     // ARM64 cmp immediate range: 0-4095 (12-bit unsigned)
     // ARM64 cmn immediate range: 0-4095 (equivalent to cmp with negated value)
     // The assembler accepts "cmp xn, #-imm" and translates to "cmn xn, #imm"
-    if (imm >= 0 && imm <= 4095)
-    {
+    if (imm >= 0 && imm <= 4095) {
         os << "  cmp " << rn(lhs) << ", #" << imm << "\n";
-    }
-    else if (imm >= -4095 && imm < 0)
-    {
+    } else if (imm >= -4095 && imm < 0) {
         // Negative immediates in cmn range - emit directly, assembler handles it
         os << "  cmp " << rn(lhs) << ", #" << imm << "\n";
-    }
-    else
-    {
+    } else {
         // Use x16 (IP0) as scratch register - it's caller-saved and not used for args
         emitMovImm64(os, PhysReg::X16, imm);
         os << "  cmp " << rn(lhs) << ", " << rn(PhysReg::X16) << "\n";
     }
 }
 
-void AsmEmitter::emitTstRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitTstRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const {
     os << "  tst " << rn(lhs) << ", " << rn(rhs) << "\n";
 }
 
-void AsmEmitter::emitCset(std::ostream &os, PhysReg dst, const char *cond) const
-{
+void AsmEmitter::emitCset(std::ostream &os, PhysReg dst, const char *cond) const {
     os << "  cset " << rn(dst) << ", " << cond << "\n";
 }
 
-void AsmEmitter::emitSubSp(std::ostream &os, long long bytes) const
-{
+void AsmEmitter::emitSubSp(std::ostream &os, long long bytes) const {
     // ARM64 add/sub immediate supports 12-bit unsigned values (0-4095).
     // For larger frames, we need to break it into multiple instructions.
     // Use 4080 (not 4095) to maintain 16-byte SP alignment between steps —
     // AArch64 requires SP to be 16-byte aligned when accessed via SP-relative
     // addressing, and a signal/interrupt between steps would see misaligned SP.
     constexpr long long kMaxImm = 4080;
-    while (bytes > kMaxImm)
-    {
+    while (bytes > kMaxImm) {
         os << "  sub sp, sp, #" << kMaxImm << "\n";
         bytes -= kMaxImm;
     }
-    if (bytes > 0)
-    {
+    if (bytes > 0) {
         os << "  sub sp, sp, #" << bytes << "\n";
     }
 }
 
-void AsmEmitter::emitAddSp(std::ostream &os, long long bytes) const
-{
+void AsmEmitter::emitAddSp(std::ostream &os, long long bytes) const {
     // ARM64 add/sub immediate supports 12-bit unsigned values (0-4095).
     // For larger frames, we need to break it into multiple instructions.
     // Use 4080 (not 4095) to maintain 16-byte SP alignment — see emitSubSp.
     constexpr long long kMaxImm = 4080;
-    while (bytes > kMaxImm)
-    {
+    while (bytes > kMaxImm) {
         os << "  add sp, sp, #" << kMaxImm << "\n";
         bytes -= kMaxImm;
     }
-    if (bytes > 0)
-    {
+    if (bytes > 0) {
         os << "  add sp, sp, #" << bytes << "\n";
     }
 }
 
-void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) const
-{
+void AsmEmitter::emitStrToSp(std::ostream &os, PhysReg src, long long offset) const {
     os << "  str " << rn(src) << ", [sp, #" << offset << "]\n";
 }
 
-void AsmEmitter::emitStrFprToSp(std::ostream &os, PhysReg src, long long offset) const
-{
+void AsmEmitter::emitStrFprToSp(std::ostream &os, PhysReg src, long long offset) const {
     os << "  str ";
     printD(os, src);
     os << ", [sp, #" << offset << "]\n";
@@ -532,19 +464,14 @@ void AsmEmitter::emitStrFprToSp(std::ostream &os, PhysReg src, long long offset)
 
 /// @brief Check if offset is in ARM64 signed immediate range for str/ldr instructions.
 /// The signed unscaled immediate for str/ldr is [-256, 255].
-static bool isInSignedImmRange(long long offset)
-{
+static bool isInSignedImmRange(long long offset) {
     return offset >= -256 && offset <= 255;
 }
 
-void AsmEmitter::emitLdrFromFp(std::ostream &os, PhysReg dst, long long offset) const
-{
-    if (isInSignedImmRange(offset))
-    {
+void AsmEmitter::emitLdrFromFp(std::ostream &os, PhysReg dst, long long offset) const {
+    if (isInSignedImmRange(offset)) {
         os << "  ldr " << rn(dst) << ", [x29, #" << offset << "]\n";
-    }
-    else
-    {
+    } else {
         // Large offset: use scratch register x9 to compute address
         // mov x9, #offset
         // add x9, x29, x9
@@ -555,14 +482,10 @@ void AsmEmitter::emitLdrFromFp(std::ostream &os, PhysReg dst, long long offset) 
     }
 }
 
-void AsmEmitter::emitStrToFp(std::ostream &os, PhysReg src, long long offset) const
-{
-    if (isInSignedImmRange(offset))
-    {
+void AsmEmitter::emitStrToFp(std::ostream &os, PhysReg src, long long offset) const {
+    if (isInSignedImmRange(offset)) {
         os << "  str " << rn(src) << ", [x29, #" << offset << "]\n";
-    }
-    else
-    {
+    } else {
         // Large offset: use scratch register x9 to compute address
         // mov x9, #offset
         // add x9, x29, x9
@@ -573,16 +496,12 @@ void AsmEmitter::emitStrToFp(std::ostream &os, PhysReg src, long long offset) co
     }
 }
 
-void AsmEmitter::emitLdrFprFromFp(std::ostream &os, PhysReg dst, long long offset) const
-{
-    if (isInSignedImmRange(offset))
-    {
+void AsmEmitter::emitLdrFprFromFp(std::ostream &os, PhysReg dst, long long offset) const {
+    if (isInSignedImmRange(offset)) {
         os << "  ldr ";
         printD(os, dst);
         os << ", [x29, #" << offset << "]\n";
-    }
-    else
-    {
+    } else {
         // Large offset: use scratch register x9 to compute address
         emitMovRI(os, kScratchGPR, offset);
         os << "  add " << rn(kScratchGPR) << ", x29, " << rn(kScratchGPR) << "\n";
@@ -592,16 +511,12 @@ void AsmEmitter::emitLdrFprFromFp(std::ostream &os, PhysReg dst, long long offse
     }
 }
 
-void AsmEmitter::emitStrFprToFp(std::ostream &os, PhysReg src, long long offset) const
-{
-    if (isInSignedImmRange(offset))
-    {
+void AsmEmitter::emitStrFprToFp(std::ostream &os, PhysReg src, long long offset) const {
+    if (isInSignedImmRange(offset)) {
         os << "  str ";
         printD(os, src);
         os << ", [x29, #" << offset << "]\n";
-    }
-    else
-    {
+    } else {
         // Large offset: use scratch register x9 to compute address
         emitMovRI(os, kScratchGPR, offset);
         os << "  add " << rn(kScratchGPR) << ", x29, " << rn(kScratchGPR) << "\n";
@@ -611,21 +526,15 @@ void AsmEmitter::emitStrFprToFp(std::ostream &os, PhysReg src, long long offset)
     }
 }
 
-void AsmEmitter::emitAddFpImm(std::ostream &os, PhysReg dst, long long offset) const
-{
+void AsmEmitter::emitAddFpImm(std::ostream &os, PhysReg dst, long long offset) const {
     // Compute dst = x29 + offset (where offset is typically negative for locals)
     // ARM64 add/sub immediate can only handle 12-bit unsigned values,
     // so we use sub for negative offsets
-    if (offset >= 0 && offset <= 4095)
-    {
+    if (offset >= 0 && offset <= 4095) {
         os << "  add " << rn(dst) << ", x29, #" << offset << "\n";
-    }
-    else if (offset < 0 && -offset <= 4095)
-    {
+    } else if (offset < 0 && -offset <= 4095) {
         os << "  sub " << rn(dst) << ", x29, #" << -offset << "\n";
-    }
-    else
-    {
+    } else {
         // Large offset: use scratch register to load offset, then add
         emitMovRI(os, kScratchGPR, offset);
         os << "  add " << rn(dst) << ", x29, " << rn(kScratchGPR) << "\n";
@@ -646,10 +555,8 @@ void AsmEmitter::emitAddFpImm(std::ostream &os, PhysReg dst, long long offset) c
 PhysReg AsmEmitter::resolveBaseOffset(std::ostream &os,
                                       PhysReg base,
                                       long long offset,
-                                      long long &resolvedOffset) const
-{
-    if (isInSignedImmRange(offset))
-    {
+                                      long long &resolvedOffset) const {
+    if (isInSignedImmRange(offset)) {
         resolvedOffset = offset;
         return base;
     }
@@ -664,16 +571,17 @@ PhysReg AsmEmitter::resolveBaseOffset(std::ostream &os,
 void AsmEmitter::emitLdrFromBase(std::ostream &os,
                                  PhysReg dst,
                                  PhysReg base,
-                                 long long offset) const
-{
+                                 long long offset) const {
     long long resolved;
     PhysReg b = resolveBaseOffset(os, base, offset, resolved);
     os << "  ldr " << rn(dst) << ", [" << rn(b) << ", #" << resolved << "]\n";
 }
 
 /// @brief Store a GPR to [base + offset], using a scratch register for large offsets.
-void AsmEmitter::emitStrToBase(std::ostream &os, PhysReg src, PhysReg base, long long offset) const
-{
+void AsmEmitter::emitStrToBase(std::ostream &os,
+                               PhysReg src,
+                               PhysReg base,
+                               long long offset) const {
     long long resolved;
     PhysReg b = resolveBaseOffset(os, base, offset, resolved);
     os << "  str " << rn(src) << ", [" << rn(b) << ", #" << resolved << "]\n";
@@ -683,8 +591,7 @@ void AsmEmitter::emitStrToBase(std::ostream &os, PhysReg src, PhysReg base, long
 void AsmEmitter::emitLdrFprFromBase(std::ostream &os,
                                     PhysReg dst,
                                     PhysReg base,
-                                    long long offset) const
-{
+                                    long long offset) const {
     long long resolved;
     PhysReg b = resolveBaseOffset(os, base, offset, resolved);
     os << "  ldr ";
@@ -696,8 +603,7 @@ void AsmEmitter::emitLdrFprFromBase(std::ostream &os,
 void AsmEmitter::emitStrFprToBase(std::ostream &os,
                                   PhysReg src,
                                   PhysReg base,
-                                  long long offset) const
-{
+                                  long long offset) const {
     long long resolved;
     PhysReg b = resolveBaseOffset(os, base, offset, resolved);
     os << "  str ";
@@ -710,8 +616,7 @@ void AsmEmitter::emitStrFprToBase(std::ostream &os,
 /// @param dst Destination GPR.
 /// @param imm16 16-bit immediate value.
 /// @param lsl Left-shift amount (0, 16, 32, or 48).
-void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
-{
+void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const {
     os << "  movz " << rn(dst) << ", #" << imm16;
     if (lsl)
         os << ", lsl #" << lsl;
@@ -723,8 +628,7 @@ void AsmEmitter::emitMovZ(std::ostream &os, PhysReg dst, unsigned imm16, unsigne
 /// @param dst Destination GPR (other bits preserved).
 /// @param imm16 16-bit immediate value to insert.
 /// @param lsl Lane position (0, 16, 32, or 48).
-void AsmEmitter::emitMovK(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const
-{
+void AsmEmitter::emitMovK(std::ostream &os, PhysReg dst, unsigned imm16, unsigned lsl) const {
     os << "  movk " << rn(dst) << ", #" << imm16;
     if (lsl)
         os << ", lsl #" << lsl;
@@ -735,8 +639,7 @@ void AsmEmitter::emitMovK(std::ostream &os, PhysReg dst, unsigned imm16, unsigne
 /// @param os Output stream for assembly text.
 /// @param dst Destination GPR.
 /// @param value 64-bit immediate to materialise.
-void AsmEmitter::emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long value) const
-{
+void AsmEmitter::emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long value) const {
     unsigned chunks[4] = {
         static_cast<unsigned>(value & 0xFFFFULL),
         static_cast<unsigned>((value >> 16) & 0xFFFFULL),
@@ -752,13 +655,11 @@ void AsmEmitter::emitMovImm64(std::ostream &os, PhysReg dst, unsigned long long 
         emitMovK(os, dst, chunks[3], 48);
 }
 
-void AsmEmitter::emitRet(std::ostream &os) const
-{
+void AsmEmitter::emitRet(std::ostream &os) const {
     os << "  ret\n";
 }
 
-void AsmEmitter::emitFMovRR(std::ostream &os, PhysReg dst, PhysReg src) const
-{
+void AsmEmitter::emitFMovRR(std::ostream &os, PhysReg dst, PhysReg src) const {
     os << "  fmov ";
     printD(os, dst);
     os << ", ";
@@ -766,8 +667,7 @@ void AsmEmitter::emitFMovRR(std::ostream &os, PhysReg dst, PhysReg src) const
     os << "\n";
 }
 
-void AsmEmitter::emitFMovRI(std::ostream &os, PhysReg dst, double imm) const
-{
+void AsmEmitter::emitFMovRI(std::ostream &os, PhysReg dst, double imm) const {
     const auto savedFlags = os.flags();
     os << std::fixed;
     os << "  fmov ";
@@ -776,36 +676,30 @@ void AsmEmitter::emitFMovRI(std::ostream &os, PhysReg dst, double imm) const
     os.flags(savedFlags);
 }
 
-void AsmEmitter::emitFMovGR(std::ostream &os, PhysReg dst, PhysReg src) const
-{
+void AsmEmitter::emitFMovGR(std::ostream &os, PhysReg dst, PhysReg src) const {
     // fmov dN, xM - transfer bits from GPR to FPR without conversion
     os << "  fmov ";
     printD(os, dst);
     os << ", " << rn(src) << "\n";
 }
 
-void AsmEmitter::emitFAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitFAddRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3D(os, "fadd", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitFSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitFSubRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3D(os, "fsub", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitFMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitFMulRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3D(os, "fmul", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitFDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitFDivRRR(std::ostream &os, PhysReg dst, PhysReg lhs, PhysReg rhs) const {
     emit3D(os, "fdiv", dst, lhs, rhs);
 }
 
-void AsmEmitter::emitFCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
-{
+void AsmEmitter::emitFCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const {
     os << "  fcmp ";
     printD(os, lhs);
     os << ", ";
@@ -813,36 +707,31 @@ void AsmEmitter::emitFCmpRR(std::ostream &os, PhysReg lhs, PhysReg rhs) const
     os << "\n";
 }
 
-void AsmEmitter::emitSCvtF(std::ostream &os, PhysReg dstFPR, PhysReg srcGPR) const
-{
+void AsmEmitter::emitSCvtF(std::ostream &os, PhysReg dstFPR, PhysReg srcGPR) const {
     os << "  scvtf ";
     printD(os, dstFPR);
     os << ", " << rn(srcGPR) << "\n";
 }
 
-void AsmEmitter::emitFCvtZS(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) const
-{
+void AsmEmitter::emitFCvtZS(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) const {
     os << "  fcvtzs " << rn(dstGPR) << ", ";
     printD(os, srcFPR);
     os << "\n";
 }
 
-void AsmEmitter::emitUCvtF(std::ostream &os, PhysReg dstFPR, PhysReg srcGPR) const
-{
+void AsmEmitter::emitUCvtF(std::ostream &os, PhysReg dstFPR, PhysReg srcGPR) const {
     os << "  ucvtf ";
     printD(os, dstFPR);
     os << ", " << rn(srcGPR) << "\n";
 }
 
-void AsmEmitter::emitFCvtZU(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) const
-{
+void AsmEmitter::emitFCvtZU(std::ostream &os, PhysReg dstGPR, PhysReg srcFPR) const {
     os << "  fcvtzu " << rn(dstGPR) << ", ";
     printD(os, srcFPR);
     os << "\n";
 }
 
-void AsmEmitter::emitFRintN(std::ostream &os, PhysReg dstFPR, PhysReg srcFPR) const
-{
+void AsmEmitter::emitFRintN(std::ostream &os, PhysReg dstFPR, PhysReg srcFPR) const {
     os << "  frintn ";
     printD(os, dstFPR);
     os << ", ";
@@ -850,8 +739,7 @@ void AsmEmitter::emitFRintN(std::ostream &os, PhysReg dstFPR, PhysReg srcFPR) co
     os << "\n";
 }
 
-void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
-{
+void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const {
     emitFunctionHeader(os, fn.name);
 
     // Leaf function optimization: skip frame setup entirely when the function
@@ -863,14 +751,12 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
 
     const bool usePlan = !fn.savedGPRs.empty() || fn.localFrameSize > 0;
     FramePlan plan;
-    if (usePlan)
-    {
+    if (usePlan) {
         plan.saveGPRs = fn.savedGPRs;
         plan.saveFPRs = fn.savedFPRs;
         plan.localFrameSize = fn.localFrameSize;
     }
-    if (!skipFrame)
-    {
+    if (!skipFrame) {
         if (usePlan)
             emitPrologue(os, plan);
         else
@@ -880,8 +766,7 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
     // For the main function, initialize the runtime context before executing user code.
     // This is required because runtime functions expect an active RtContext.
     const bool darwin = !target_->isLinux() && !target_->isWindows();
-    if (fn.name == "main")
-    {
+    if (fn.name == "main") {
         os << "  ; Initialize runtime context for native execution\n";
         os << "  bl " << mangleCallTargetImpl("rt_legacy_context", darwin) << "\n";
         os << "  bl " << mangleCallTargetImpl("rt_set_current_context", darwin) << "\n";
@@ -902,42 +787,38 @@ void AsmEmitter::emitFunction(std::ostream &os, const MFunction &fn) const
     // On Linux ELF, emit .size after the function body so the linker and
     // profilers can determine the function's byte extent.
     // Windows PE/COFF does not use .size directives.
-    if (target_->isLinux())
-    {
+    if (target_->isLinux()) {
         const std::string sym = mangleSymbolImpl(fn.name, /*isDarwin=*/false);
         os << ".size " << sym << ", .-" << sym << "\n";
     }
     // Note: epilogue is emitted by each Ret instruction, not here
 }
 
-void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &bb) const
-{
+void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &bb) const {
     if (!bb.name.empty())
         os << sanitizeLabel(bb.name) << ":\n";
     for (const auto &mi : bb.instrs)
         emitInstruction(os, mi);
 }
 
-void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
-{
+void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const {
     // Provide single-argument wrappers used by the generated OpcodeDispatch.inc,
     // which was generated without knowledge of the isDarwin parameter.
     // These lambdas shadow the free-function names within this scope.
     const bool kDarwin_ = !target_->isLinux() && !target_->isWindows();
-    [[maybe_unused]] auto mangleSymbol = [kDarwin_](const std::string &n) -> std::string
-    { return mangleSymbolImpl(n, kDarwin_); };
-    [[maybe_unused]] auto mangleCallTarget = [kDarwin_](const std::string &n) -> std::string
-    { return mangleCallTargetImpl(n, kDarwin_); };
+    [[maybe_unused]] auto mangleSymbol = [kDarwin_](const std::string &n) -> std::string {
+        return mangleSymbolImpl(n, kDarwin_);
+    };
+    [[maybe_unused]] auto mangleCallTarget = [kDarwin_](const std::string &n) -> std::string {
+        return mangleCallTargetImpl(n, kDarwin_);
+    };
 
     // Handle Ret specially since it needs the epilogue
-    if (mi.opc == MOpcode::Ret)
-    {
-        if (skipFrame_)
-        {
+    if (mi.opc == MOpcode::Ret) {
+        if (skipFrame_) {
             // Leaf function with no frame: just emit ret, no epilogue needed.
             os << "  ret\n";
-        }
-        else if (currentPlanValid_ && currentPlan_)
+        } else if (currentPlanValid_ && currentPlan_)
             emitEpilogue(os, *currentPlan_);
         else
             emitEpilogue(os);
@@ -947,8 +828,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
     // Fallback handling for opcodes that may be missing from the generated
     // dispatch table due to generator drift. Keep these early and return to
     // avoid duplicate emission when present in the generated switch.
-    auto getReg = [](const MOperand &op) -> PhysReg
-    {
+    auto getReg = [](const MOperand &op) -> PhysReg {
         if (op.kind != MOperand::Kind::Reg)
             VIPER_ICE("expected register operand in AArch64 asm emitter");
         if (!op.reg.isPhys)
@@ -956,13 +836,11 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
                       " reached AArch64 asm emitter (register allocation bug)");
         return static_cast<PhysReg>(op.reg.idOrPhys);
     };
-    auto getImm = [](const MOperand &op) -> long long
-    {
+    auto getImm = [](const MOperand &op) -> long long {
         assert(op.kind == MOperand::Kind::Imm && "expected imm operand");
         return op.imm;
     };
-    switch (mi.opc)
-    {
+    switch (mi.opc) {
         case MOpcode::SDivRRR:
             emitSDivRRR(os, getReg(mi.ops[0]), getReg(mi.ops[1]), getReg(mi.ops[2]));
             return;
@@ -1060,8 +938,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
             os << "  stp " << rn(getReg(mi.ops[0])) << ", " << rn(getReg(mi.ops[1])) << ", [x29, #"
                << getImm(mi.ops[2]) << "]\n";
             return;
-        case MOpcode::LdpFprFpImm:
-        {
+        case MOpcode::LdpFprFpImm: {
             os << "  ldp ";
             printD(os, getReg(mi.ops[0]));
             os << ", ";
@@ -1069,8 +946,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &mi) const
             os << ", [x29, #" << getImm(mi.ops[2]) << "]\n";
             return;
         }
-        case MOpcode::StpFprFpImm:
-        {
+        case MOpcode::StpFprFpImm: {
             os << "  stp ";
             printD(os, getReg(mi.ops[0]));
             os << ", ";

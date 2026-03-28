@@ -20,28 +20,23 @@
 #include <sstream>
 #include <string>
 
-namespace viper::codegen::x64
-{
-namespace
-{
-[[nodiscard]] ILValue makeI64Param(int id) noexcept
-{
+namespace viper::codegen::x64 {
+namespace {
+[[nodiscard]] ILValue makeI64Param(int id) noexcept {
     ILValue value{};
     value.kind = ILValue::Kind::I64;
     value.id = id;
     return value;
 }
 
-[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept
-{
+[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept {
     ILValue ref{};
     ref.kind = kind;
     ref.id = id;
     return ref;
 }
 
-[[nodiscard]] ILModule makeUnsignedDivRemModule()
-{
+[[nodiscard]] ILModule makeUnsignedDivRemModule() {
     ILValue dividend = makeI64Param(0);
     ILValue divisor = makeI64Param(1);
 
@@ -83,57 +78,46 @@ namespace
     return module;
 }
 
-[[nodiscard]] bool hasEdxZeroExtend(const std::string &asmText)
-{
+[[nodiscard]] bool hasEdxZeroExtend(const std::string &asmText) {
     std::istringstream stream{asmText};
     std::string line{};
-    while (std::getline(stream, line))
-    {
-        if (line.find("xor") == std::string::npos)
-        {
+    while (std::getline(stream, line)) {
+        if (line.find("xor") == std::string::npos) {
             continue;
         }
 
         const auto edxFirst = line.find("%edx");
-        if (edxFirst != std::string::npos)
-        {
-            if (line.find("%edx", edxFirst + 4) != std::string::npos)
-            {
+        if (edxFirst != std::string::npos) {
+            if (line.find("%edx", edxFirst + 4) != std::string::npos) {
                 return true;
             }
         }
 
         const auto rdxFirst = line.find("%rdx");
-        if (rdxFirst != std::string::npos && line.find("%rdx", rdxFirst + 4) != std::string::npos)
-        {
+        if (rdxFirst != std::string::npos && line.find("%rdx", rdxFirst + 4) != std::string::npos) {
             return true;
         }
     }
     return false;
 }
 
-[[nodiscard]] bool hasDivqInstruction(const std::string &asmText)
-{
+[[nodiscard]] bool hasDivqInstruction(const std::string &asmText) {
     return asmText.find("divq") != std::string::npos;
 }
 
-[[nodiscard]] bool hasTrapGuard(const std::string &asmText)
-{
+[[nodiscard]] bool hasTrapGuard(const std::string &asmText) {
     bool hasTest = false;
     bool hasJeTrap = false;
     bool hasTrapCall = asmText.find("rt_trap_div0") != std::string::npos;
 
     std::istringstream stream{asmText};
     std::string line{};
-    while (std::getline(stream, line))
-    {
-        if (!hasTest && line.find("test") != std::string::npos)
-        {
+    while (std::getline(stream, line)) {
+        if (!hasTest && line.find("test") != std::string::npos) {
             hasTest = true;
         }
         if (!hasJeTrap && line.find("je") != std::string::npos &&
-            line.find(".Ltrap_div0") != std::string::npos)
-        {
+            line.find(".Ltrap_div0") != std::string::npos) {
             hasJeTrap = true;
         }
     }
@@ -144,22 +128,19 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makeUnsignedDivRemModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
 
-    if (!result.errors.empty())
-    {
+    if (!result.errors.empty()) {
         std::cerr << result.errors;
         return EXIT_FAILURE;
     }
 
     if (!hasEdxZeroExtend(result.asmText) || !hasDivqInstruction(result.asmText) ||
-        !hasTrapGuard(result.asmText))
-    {
+        !hasTrapGuard(result.asmText)) {
         std::cerr << "Unsigned division lowering missing expected pattern:\n" << result.asmText;
         return EXIT_FAILURE;
     }

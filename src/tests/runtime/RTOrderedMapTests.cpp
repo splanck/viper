@@ -14,34 +14,29 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     if (!s)
         return false;
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
 
-static void test_new_empty()
-{
+static void test_new_empty() {
     void *m = rt_orderedmap_new();
     assert(m != NULL);
     assert(rt_orderedmap_len(m) == 0);
     assert(rt_orderedmap_is_empty(m) == 1);
 }
 
-static void test_set_and_get()
-{
+static void test_set_and_get() {
     void *m = rt_orderedmap_new();
     rt_string k = make_str("key1");
     rt_string v = make_str("value1");
@@ -56,8 +51,7 @@ static void test_set_and_get()
     rt_string_unref(k);
 }
 
-static void test_overwrite()
-{
+static void test_overwrite() {
     void *m = rt_orderedmap_new();
     rt_string k = make_str("key");
     rt_string v1 = make_str("first");
@@ -72,8 +66,7 @@ static void test_overwrite()
     rt_string_unref(k);
 }
 
-static void test_has()
-{
+static void test_has() {
     void *m = rt_orderedmap_new();
     rt_string k1 = make_str("exists");
     rt_string k2 = make_str("missing");
@@ -87,8 +80,7 @@ static void test_has()
     rt_string_unref(k2);
 }
 
-static void test_remove()
-{
+static void test_remove() {
     void *m = rt_orderedmap_new();
     rt_string k = make_str("key");
     rt_string v = make_str("val");
@@ -103,8 +95,7 @@ static void test_remove()
     rt_string_unref(k);
 }
 
-static void test_insertion_order()
-{
+static void test_insertion_order() {
     void *m = rt_orderedmap_new();
     rt_string ka = make_str("alpha");
     rt_string kb = make_str("beta");
@@ -129,8 +120,7 @@ static void test_insertion_order()
     rt_string_unref(kc);
 }
 
-static void test_key_at()
-{
+static void test_key_at() {
     void *m = rt_orderedmap_new();
     rt_string k1 = make_str("first");
     rt_string k2 = make_str("second");
@@ -158,8 +148,7 @@ static void test_key_at()
     rt_string_unref(k3);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *m = rt_orderedmap_new();
     rt_string k = make_str("key");
     rt_string v = make_str("val");
@@ -173,13 +162,11 @@ static void test_clear()
     rt_string_unref(k);
 }
 
-static void test_many_entries()
-{
+static void test_many_entries() {
     void *m = rt_orderedmap_new();
     char buf[32];
 
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         snprintf(buf, sizeof(buf), "key_%03d", i);
         rt_string k = make_str(buf);
         rt_string v = make_str(buf);
@@ -198,8 +185,7 @@ static void test_many_entries()
     rt_string_unref(last);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_orderedmap_len(NULL) == 0);
     assert(rt_orderedmap_is_empty(NULL) == 1);
     assert(rt_orderedmap_get(NULL, NULL) == NULL);
@@ -209,8 +195,7 @@ static void test_null_safety()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_new_empty();
     test_set_and_get();
     test_overwrite();

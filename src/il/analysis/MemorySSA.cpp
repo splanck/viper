@@ -60,15 +60,13 @@
 
 using namespace il::core;
 
-namespace viper::analysis
-{
+namespace viper::analysis {
 
 // -------------------------------------------------------------------------
 // MemorySSA query implementation
 // -------------------------------------------------------------------------
 
-bool MemorySSA::isDeadStore(const Block *block, size_t instrIdx) const
-{
+bool MemorySSA::isDeadStore(const Block *block, size_t instrIdx) const {
     auto bit = instrToAccess_.find(block);
     if (bit == instrToAccess_.end())
         return false;
@@ -78,8 +76,7 @@ bool MemorySSA::isDeadStore(const Block *block, size_t instrIdx) const
     return deadStoreIds_.count(iit->second) != 0;
 }
 
-const MemoryAccess *MemorySSA::accessFor(const Block *block, size_t instrIdx) const
-{
+const MemoryAccess *MemorySSA::accessFor(const Block *block, size_t instrIdx) const {
     auto bit = instrToAccess_.find(block);
     if (bit == instrToAccess_.end())
         return nullptr;
@@ -96,16 +93,13 @@ const MemoryAccess *MemorySSA::accessFor(const Block *block, size_t instrIdx) co
 // computeMemorySSA
 // -------------------------------------------------------------------------
 
-namespace
-{
+namespace {
 
 /// True if the instruction defines new memory (store or modifying call).
-inline bool isDef(const Instr &I, viper::analysis::BasicAA &AA)
-{
+inline bool isDef(const Instr &I, viper::analysis::BasicAA &AA) {
     if (I.op == Opcode::Store)
         return true;
-    if (I.op == Opcode::Call || I.op == Opcode::CallIndirect)
-    {
+    if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
         auto mr = AA.modRef(I);
         return mr == ModRefResult::Mod || mr == ModRefResult::ModRef;
     }
@@ -113,12 +107,10 @@ inline bool isDef(const Instr &I, viper::analysis::BasicAA &AA)
 }
 
 /// True if the instruction reads memory (load or reading call).
-inline bool isUse(const Instr &I, viper::analysis::BasicAA &AA)
-{
+inline bool isUse(const Instr &I, viper::analysis::BasicAA &AA) {
     if (I.op == Opcode::Load)
         return true;
-    if (I.op == Opcode::Call || I.op == Opcode::CallIndirect)
-    {
+    if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
         auto mr = AA.modRef(I);
         return mr == ModRefResult::Ref || mr == ModRefResult::ModRef;
     }
@@ -126,22 +118,16 @@ inline bool isUse(const Instr &I, viper::analysis::BasicAA &AA)
 }
 
 /// True if this alloca's address is passed to a call or stored elsewhere.
-bool allocaEscapes(const Function &F, unsigned allocaId)
-{
-    for (const auto &B : F.blocks)
-    {
-        for (const auto &I : B.instructions)
-        {
-            if (I.op == Opcode::Call || I.op == Opcode::CallIndirect)
-            {
-                for (const auto &op : I.operands)
-                {
+bool allocaEscapes(const Function &F, unsigned allocaId) {
+    for (const auto &B : F.blocks) {
+        for (const auto &I : B.instructions) {
+            if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
+                for (const auto &op : I.operands) {
                     if (op.kind == Value::Kind::Temp && op.id == allocaId)
                         return true;
                 }
             }
-            if (I.op == Opcode::Store && I.operands.size() >= 2)
-            {
+            if (I.op == Opcode::Store && I.operands.size() >= 2) {
                 const auto &val = I.operands[1];
                 if (val.kind == Value::Kind::Temp && val.id == allocaId)
                     return true;
@@ -152,15 +138,11 @@ bool allocaEscapes(const Function &F, unsigned allocaId)
 }
 
 /// Compute the set of non-escaping alloca ids in @p F.
-std::unordered_set<unsigned> nonEscapingAllocas(const Function &F)
-{
+std::unordered_set<unsigned> nonEscapingAllocas(const Function &F) {
     std::unordered_set<unsigned> result;
-    for (const auto &B : F.blocks)
-    {
-        for (const auto &I : B.instructions)
-        {
-            if (I.op == Opcode::Alloca && I.result)
-            {
+    for (const auto &B : F.blocks) {
+        for (const auto &I : B.instructions) {
+            if (I.op == Opcode::Alloca && I.result) {
                 if (!allocaEscapes(F, *I.result))
                     result.insert(*I.result);
             }
@@ -170,15 +152,13 @@ std::unordered_set<unsigned> nonEscapingAllocas(const Function &F)
 }
 
 /// True if @p ptr refers directly to a non-escaping alloca.
-inline bool isNonEscapingAlloca(const Value &ptr, const std::unordered_set<unsigned> &nonEsc)
-{
+inline bool isNonEscapingAlloca(const Value &ptr, const std::unordered_set<unsigned> &nonEsc) {
     return ptr.kind == Value::Kind::Temp && nonEsc.count(ptr.id) != 0;
 }
 
 } // namespace
 
-MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
-{
+MemorySSA computeMemorySSA(Function &F, BasicAA &AA) {
     MemorySSA mssa;
 
     if (F.blocks.empty())
@@ -190,8 +170,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
     auto nextId = [&]() -> uint32_t { return static_cast<uint32_t>(mssa.accesses_.size()); };
 
     auto makeAccess =
-        [&](MemAccessKind kind, Block *block, int instrIdx, uint32_t definingAccess) -> uint32_t
-    {
+        [&](MemAccessKind kind, Block *block, int instrIdx, uint32_t definingAccess) -> uint32_t {
         uint32_t id = nextId();
         mssa.accesses_.push_back(MemoryAccess{kind, id, block, instrIdx, definingAccess, {}, {}});
         mssa.instrToAccess_[block][static_cast<size_t>(instrIdx)] = id;
@@ -209,19 +188,14 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
         // Simple RPO via DFS.
         std::unordered_set<Block *> visited;
         std::vector<Block *> postOrder;
-        std::function<void(Block *)> dfs = [&](Block *b)
-        {
+        std::function<void(Block *)> dfs = [&](Block *b) {
             if (!visited.insert(b).second)
                 return;
             // Visit successors (follow terminator labels).
-            if (!b->instructions.empty())
-            {
-                for (const auto &label : b->instructions.back().labels)
-                {
-                    for (auto &succ : F.blocks)
-                    {
-                        if (succ.label == label)
-                        {
+            if (!b->instructions.empty()) {
+                for (const auto &label : b->instructions.back().labels) {
+                    for (auto &succ : F.blocks) {
+                        if (succ.label == label) {
                             dfs(&succ);
                             break;
                         }
@@ -241,12 +215,9 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
 
     // Build predecessor map for join-point phi insertion.
     std::unordered_map<Block *, std::vector<Block *>> preds;
-    for (auto &B : F.blocks)
-    {
-        if (!B.instructions.empty())
-        {
-            for (const auto &label : B.instructions.back().labels)
-            {
+    for (auto &B : F.blocks) {
+        if (!B.instructions.empty()) {
+            for (const auto &label : B.instructions.back().labels) {
                 auto it = labelToBlock.find(label);
                 if (it != labelToBlock.end())
                     preds[it->second].push_back(&B);
@@ -276,49 +247,39 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
     // Run up to |blocks|+1 iterations.
     const size_t maxIter = F.blocks.size() + 1;
 
-    for (size_t iter = 0; iter < maxIter; ++iter)
-    {
+    for (size_t iter = 0; iter < maxIter; ++iter) {
         bool changed = false;
 
-        for (Block *B : rpo)
-        {
+        for (Block *B : rpo) {
             // Determine the incoming def at the start of B.
             uint32_t inDef = 0; // LiveOnEntry default
 
             const auto &predList = preds[B];
-            if (!predList.empty())
-            {
+            if (!predList.empty()) {
                 // Collect outDefs from all predecessors.
                 uint32_t first = outDef[predList[0]];
                 bool allSame = true;
-                for (size_t pi = 1; pi < predList.size(); ++pi)
-                {
-                    if (outDef[predList[pi]] != first)
-                    {
+                for (size_t pi = 1; pi < predList.size(); ++pi) {
+                    if (outDef[predList[pi]] != first) {
                         allSame = false;
                         break;
                     }
                 }
 
-                if (allSame)
-                {
+                if (allSame) {
                     inDef = first;
-                }
-                else
-                {
+                } else {
                     // Need a Phi. Look for an existing Phi at the start of B.
                     uint32_t phiId = 0;
                     auto bit = mssa.instrToAccess_.find(B);
-                    if (bit != mssa.instrToAccess_.end())
-                    {
+                    if (bit != mssa.instrToAccess_.end()) {
                         // Phi is stored at instrIdx = -1 (represented as SIZE_MAX).
                         auto pit = bit->second.find(static_cast<size_t>(-1));
                         if (pit != bit->second.end())
                             phiId = pit->second;
                     }
 
-                    if (phiId == 0)
-                    {
+                    if (phiId == 0) {
                         // Create new Phi.
                         phiId = nextId();
                         std::vector<uint32_t> incoming;
@@ -329,21 +290,15 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
                             MemAccessKind::Phi, phiId, B, -1, 0, std::move(incoming), {}});
                         mssa.instrToAccess_[B][static_cast<size_t>(-1)] = phiId;
                         changed = true;
-                    }
-                    else
-                    {
+                    } else {
                         // Update existing Phi's incoming arms.
                         MemoryAccess &phi = mssa.accesses_[phiId];
-                        for (size_t pi = 0; pi < predList.size(); ++pi)
-                        {
+                        for (size_t pi = 0; pi < predList.size(); ++pi) {
                             uint32_t newArm = outDef[predList[pi]];
-                            if (pi >= phi.incoming.size())
-                            {
+                            if (pi >= phi.incoming.size()) {
                                 phi.incoming.push_back(newArm);
                                 changed = true;
-                            }
-                            else if (phi.incoming[pi] != newArm)
-                            {
+                            } else if (phi.incoming[pi] != newArm) {
                                 phi.incoming[pi] = newArm;
                                 changed = true;
                             }
@@ -356,15 +311,13 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
             // Walk instructions in B, updating inDef as we encounter defs/uses.
             uint32_t curDef = inDef;
 
-            for (size_t i = 0; i < B->instructions.size(); ++i)
-            {
+            for (size_t i = 0; i < B->instructions.size(); ++i) {
                 const Instr &I = B->instructions[i];
 
                 // Check if this instruction already has an access (from a prior iter).
                 uint32_t existingId = 0;
                 auto bit = mssa.instrToAccess_.find(B);
-                if (bit != mssa.instrToAccess_.end())
-                {
+                if (bit != mssa.instrToAccess_.end()) {
                     auto iit = bit->second.find(i);
                     if (iit != bit->second.end())
                         existingId = iit->second;
@@ -373,18 +326,15 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
                 // For calls touching non-escaping allocas: transparent (skip).
                 // We check this at the Use/Def determination step.
 
-                if (I.op == Opcode::Store)
-                {
+                if (I.op == Opcode::Store) {
                     const Value &ptr = I.operands.empty() ? Value{} : I.operands[0];
                     bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc);
 
                     // Create or update MemoryDef.
-                    if (existingId == 0)
-                    {
+                    if (existingId == 0) {
                         uint32_t defId = makeAccess(MemAccessKind::Def, B, (int)i, curDef);
                         // Link curDef's users to include this new def.
-                        if (curDef < mssa.accesses_.size())
-                        {
+                        if (curDef < mssa.accesses_.size()) {
                             // Only link if the store potentially reads curDef
                             // (i.e., reading first then writing). For stores we only
                             // link as Def; use consumers are separate.
@@ -392,61 +342,47 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
                         }
                         curDef = defId;
                         changed = true;
-                    }
-                    else
-                    {
+                    } else {
                         // Update definingAccess if it changed.
                         MemoryAccess &acc = mssa.accesses_[existingId];
-                        if (acc.definingAccess != curDef)
-                        {
+                        if (acc.definingAccess != curDef) {
                             acc.definingAccess = curDef;
                             changed = true;
                         }
                         curDef = existingId;
                     }
-                }
-                else if (I.op == Opcode::Load)
-                {
+                } else if (I.op == Opcode::Load) {
                     const Value &ptr = I.operands.empty() ? Value{} : I.operands[0];
                     bool nonEscaping = isNonEscapingAlloca(ptr, nonEsc);
                     (void)nonEscaping;
 
                     // Create or update MemoryUse.
-                    if (existingId == 0)
-                    {
+                    if (existingId == 0) {
                         makeAccess(MemAccessKind::Use, B, (int)i, curDef);
                         // Register this use in the def's users list.
-                        if (curDef < mssa.accesses_.size())
-                        {
+                        if (curDef < mssa.accesses_.size()) {
                             mssa.accesses_[curDef].users.push_back(mssa.instrToAccess_[B][i]);
                         }
                         changed = true;
-                    }
-                    else
-                    {
+                    } else {
                         MemoryAccess &acc = mssa.accesses_[existingId];
-                        if (acc.definingAccess != curDef)
-                        {
+                        if (acc.definingAccess != curDef) {
                             // Remove from old def's users, add to new.
                             uint32_t oldDef = acc.definingAccess;
-                            if (oldDef < mssa.accesses_.size())
-                            {
+                            if (oldDef < mssa.accesses_.size()) {
                                 auto &users = mssa.accesses_[oldDef].users;
                                 users.erase(std::remove(users.begin(), users.end(), existingId),
                                             users.end());
                             }
                             acc.definingAccess = curDef;
-                            if (curDef < mssa.accesses_.size())
-                            {
+                            if (curDef < mssa.accesses_.size()) {
                                 mssa.accesses_[curDef].users.push_back(existingId);
                             }
                             changed = true;
                         }
                         // curDef unchanged by loads.
                     }
-                }
-                else if (I.op == Opcode::Call || I.op == Opcode::CallIndirect)
-                {
+                } else if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
                     // Calls are transparent for non-escaping allocas.
                     // For the global memory state they may Def or Use.
                     // We model them as global Defs if they Mod, and Uses if they Ref.
@@ -456,19 +392,14 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
                         continue;
 
                     // Def: call modifies global memory.
-                    if (mr == ModRefResult::Mod || mr == ModRefResult::ModRef)
-                    {
-                        if (existingId == 0)
-                        {
+                    if (mr == ModRefResult::Mod || mr == ModRefResult::ModRef) {
+                        if (existingId == 0) {
                             uint32_t defId = makeAccess(MemAccessKind::Def, B, (int)i, curDef);
                             curDef = defId;
                             changed = true;
-                        }
-                        else
-                        {
+                        } else {
                             MemoryAccess &acc = mssa.accesses_[existingId];
-                            if (acc.definingAccess != curDef)
-                            {
+                            if (acc.definingAccess != curDef) {
                                 acc.definingAccess = curDef;
                                 changed = true;
                             }
@@ -476,8 +407,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
                         }
                     }
                     // Use: call reads global memory (register use of curDef).
-                    if (mr == ModRefResult::Ref || mr == ModRefResult::ModRef)
-                    {
+                    if (mr == ModRefResult::Ref || mr == ModRefResult::ModRef) {
                         // Register the call as a user of curDef.
                         // For ModRef: the Def we just created reads the prior curDef.
                         // We don't create a separate Use node; the Def implicitly reads.
@@ -486,8 +416,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
             }
 
             uint32_t newOutDef = curDef;
-            if (outDef[B] != newOutDef)
-            {
+            if (outDef[B] != newOutDef) {
                 outDef[B] = newOutDef;
                 changed = true;
             }
@@ -513,10 +442,8 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
     // Rebuild label→Block* (for successor traversal).
     // (labelToBlock already exists in this scope.)
 
-    for (auto &B : F.blocks)
-    {
-        for (size_t i = 0; i < B.instructions.size(); ++i)
-        {
+    for (auto &B : F.blocks) {
+        for (size_t i = 0; i < B.instructions.size(); ++i) {
             const Instr &I = B.instructions[i];
             if (I.op != Opcode::Store || I.operands.empty())
                 continue;
@@ -533,26 +460,21 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
             bool isDead = true;
 
             // Intra-block check: scan instructions AFTER the store in same block.
-            for (size_t j = i + 1; j < B.instructions.size(); ++j)
-            {
+            for (size_t j = i + 1; j < B.instructions.size(); ++j) {
                 const Instr &next = B.instructions[j];
 
-                if (next.op == Opcode::Load && !next.operands.empty())
-                {
+                if (next.op == Opcode::Load && !next.operands.empty()) {
                     auto loadSize = BasicAA::typeSizeBytes(next.type);
                     if (AA.alias(next.operands[0], ptr, loadSize, storeSize) !=
-                        AliasResult::NoAlias)
-                    {
+                        AliasResult::NoAlias) {
                         isDead = false;
                         break;
                     }
                 }
-                if (next.op == Opcode::Store && !next.operands.empty())
-                {
+                if (next.op == Opcode::Store && !next.operands.empty()) {
                     auto nextSize = BasicAA::typeSizeBytes(next.type);
                     if (AA.alias(next.operands[0], ptr, nextSize, storeSize) ==
-                        AliasResult::MustAlias)
-                    {
+                        AliasResult::MustAlias) {
                         // Killed by a later store in same block — not dead from here
                         // (the intra-block DSE would have already removed the earlier one).
                         isDead = false;
@@ -570,16 +492,14 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
             // Cross-block BFS — same precision improvement for successor blocks.
             std::unordered_set<std::string> visited;
             std::vector<std::string> worklist;
-            if (!B.instructions.empty())
-            {
+            if (!B.instructions.empty()) {
                 for (const auto &label : B.instructions.back().labels)
                     worklist.push_back(label);
             }
 
             bool allPathsKillOrExit = true;
 
-            while (!worklist.empty() && allPathsKillOrExit)
-            {
+            while (!worklist.empty() && allPathsKillOrExit) {
                 std::string label = std::move(worklist.back());
                 worklist.pop_back();
 
@@ -588,8 +508,7 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
                 visited.insert(label);
 
                 auto it = labelToBlock.find(label);
-                if (it == labelToBlock.end())
-                {
+                if (it == labelToBlock.end()) {
                     allPathsKillOrExit = false;
                     continue;
                 }
@@ -597,25 +516,20 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
 
                 bool pathKilled = false;
 
-                for (const auto &next : succ->instructions)
-                {
-                    if (next.op == Opcode::Load && !next.operands.empty())
-                    {
+                for (const auto &next : succ->instructions) {
+                    if (next.op == Opcode::Load && !next.operands.empty()) {
                         auto loadSize = BasicAA::typeSizeBytes(next.type);
                         if (AA.alias(next.operands[0], ptr, loadSize, storeSize) !=
-                            AliasResult::NoAlias)
-                        {
+                            AliasResult::NoAlias) {
                             // A load reads this alloca — NOT dead.
                             allPathsKillOrExit = false;
                             goto nextSuccessor;
                         }
                     }
-                    if (next.op == Opcode::Store && !next.operands.empty())
-                    {
+                    if (next.op == Opcode::Store && !next.operands.empty()) {
                         auto nextSize = BasicAA::typeSizeBytes(next.type);
                         if (AA.alias(next.operands[0], ptr, nextSize, storeSize) ==
-                            AliasResult::MustAlias)
-                        {
+                            AliasResult::MustAlias) {
                             // A later store kills this path — don't explore further.
                             pathKilled = true;
                             break;
@@ -632,10 +546,8 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
                     continue; // Path exits without reading — OK.
 
                 // Enqueue successors.
-                if (!succ->instructions.empty())
-                {
-                    for (const auto &succLabel : succ->instructions.back().labels)
-                    {
+                if (!succ->instructions.empty()) {
+                    for (const auto &succLabel : succ->instructions.back().labels) {
                         if (!visited.count(succLabel))
                             worklist.push_back(succLabel);
                     }
@@ -644,12 +556,10 @@ MemorySSA computeMemorySSA(Function &F, BasicAA &AA)
             nextSuccessor:;
             }
 
-            if (allPathsKillOrExit && !visited.empty())
-            {
+            if (allPathsKillOrExit && !visited.empty()) {
                 // Look up the MemoryAccess id for this store.
                 auto bit = mssa.instrToAccess_.find(&B);
-                if (bit != mssa.instrToAccess_.end())
-                {
+                if (bit != mssa.instrToAccess_.end()) {
                     auto iit = bit->second.find(i);
                     if (iit != bit->second.end())
                         mssa.deadStoreIds_.insert(iit->second);

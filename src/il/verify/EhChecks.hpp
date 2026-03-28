@@ -41,8 +41,7 @@
 
 #include "support/diag_expected.hpp"
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Validate that eh.push/eh.pop instructions remain balanced.
 /// @param model Canonical EH model describing the function.

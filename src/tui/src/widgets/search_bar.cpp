@@ -32,8 +32,7 @@
 #include "tui/widgets/search_bar.hpp"
 #include "tui/render/screen.hpp"
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 using viper::tui::term::KeyEvent;
 
 /// @brief Construct a search bar bound to a text buffer and view.
@@ -41,15 +40,12 @@ using viper::tui::term::KeyEvent;
 ///          is performed until the first key event arrives, keeping construction
 ///          cheap so the widget can be instantiated eagerly.
 SearchBar::SearchBar(text::TextBuffer &buf, views::TextView &view, const style::Theme &theme)
-    : buf_(buf), view_(view), theme_(theme)
-{
-}
+    : buf_(buf), view_(view), theme_(theme) {}
 
 /// @brief Return the number of matches currently highlighted within the buffer.
 /// @details Useful for status indicators showing how many results were located.
 /// @return Count of active match ranges.
-std::size_t SearchBar::matchCount() const
-{
+std::size_t SearchBar::matchCount() const {
     return matches_.size();
 }
 
@@ -57,8 +53,7 @@ std::size_t SearchBar::matchCount() const
 /// @details Switching modes triggers a full rescan of the buffer so the match
 ///          list reflects the new semantics immediately.
 /// @param regex True to interpret the query as a regular expression.
-void SearchBar::setRegex(bool regex)
-{
+void SearchBar::setRegex(bool regex) {
     regex_ = regex;
     updateMatches();
 }
@@ -68,19 +63,16 @@ void SearchBar::setRegex(bool regex)
 ///          simple pair list consumed by the text view, and resets the active
 ///          match index.  When matches exist the cursor is moved to the first
 ///          occurrence so the user immediately sees the result.
-void SearchBar::updateMatches()
-{
+void SearchBar::updateMatches() {
     matches_ = text::findAll(buf_, query_, regex_);
     std::vector<std::pair<std::size_t, std::size_t>> ranges;
     ranges.reserve(matches_.size());
-    for (const auto &m : matches_)
-    {
+    for (const auto &m : matches_) {
         ranges.emplace_back(m.start, m.length);
     }
     view_.setHighlights(std::move(ranges));
     current_ = 0;
-    if (!matches_.empty())
-    {
+    if (!matches_.empty()) {
         gotoMatch(0);
     }
 }
@@ -90,10 +82,8 @@ void SearchBar::updateMatches()
 ///          start of the requested match.  Out-of-range requests are ignored so
 ///          callers can pass unchecked values when cycling through matches.
 /// @param idx Match to focus within the cached results.
-void SearchBar::gotoMatch(std::size_t idx)
-{
-    if (idx >= matches_.size())
-    {
+void SearchBar::gotoMatch(std::size_t idx) {
+    if (idx >= matches_.size()) {
         return;
     }
     view_.moveCursorToOffset(matches_[idx].start);
@@ -107,29 +97,23 @@ void SearchBar::gotoMatch(std::size_t idx)
 ///          updateMatches() so the highlights stay current.
 /// @param ev UI event containing the key input.
 /// @return True when the event was consumed by the search bar.
-bool SearchBar::onEvent(const ui::Event &ev)
-{
+bool SearchBar::onEvent(const ui::Event &ev) {
     using Code = KeyEvent::Code;
-    if (ev.key.code == Code::Backspace)
-    {
-        if (!query_.empty())
-        {
+    if (ev.key.code == Code::Backspace) {
+        if (!query_.empty()) {
             query_.pop_back();
             updateMatches();
         }
         return true;
     }
-    if (ev.key.code == Code::Enter || ev.key.code == Code::F3)
-    {
-        if (!matches_.empty())
-        {
+    if (ev.key.code == Code::Enter || ev.key.code == Code::F3) {
+        if (!matches_.empty()) {
             current_ = (current_ + 1) % matches_.size();
             gotoMatch(current_);
         }
         return true;
     }
-    if (ev.key.code == Code::Unknown && ev.key.codepoint >= 32 && ev.key.codepoint <= 126)
-    {
+    if (ev.key.code == Code::Unknown && ev.key.codepoint >= 32 && ev.key.codepoint <= 126) {
         query_.push_back(static_cast<char>(ev.key.codepoint));
         updateMatches();
         return true;
@@ -143,19 +127,14 @@ bool SearchBar::onEvent(const ui::Event &ev)
 ///          normal theme role.  Painting only affects a single row aligned with
 ///          the widget rectangle.
 /// @param sb Screen buffer receiving the rendered characters.
-void SearchBar::paint(render::ScreenBuffer &sb)
-{
+void SearchBar::paint(render::ScreenBuffer &sb) {
     const auto &st = theme_.style(style::Role::Normal);
     std::string text = "/" + query_;
-    for (int i = 0; i < rect_.w; ++i)
-    {
+    for (int i = 0; i < rect_.w; ++i) {
         auto &cell = sb.at(rect_.y, rect_.x + i);
-        if (i < static_cast<int>(text.size()))
-        {
+        if (i < static_cast<int>(text.size())) {
             cell.ch = static_cast<char32_t>(text[i]);
-        }
-        else
-        {
+        } else {
             cell.ch = U' ';
         }
         cell.style = st;

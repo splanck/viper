@@ -22,15 +22,13 @@
 #include <functional>
 #include <set>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //=============================================================================
 // Type Resolution
 //=============================================================================
 
-TypeRef Sema::resolveNamedType(const std::string &name) const
-{
+TypeRef Sema::resolveNamedType(const std::string &name) const {
     // Built-in types (accept both PascalCase and lowercase variants)
     if (name == "Integer" || name == "integer" || name == "Int" || name == "int")
         return types::integer();
@@ -68,8 +66,7 @@ TypeRef Sema::resolveNamedType(const std::string &name) const
     // Check if this is an imported type from a bound namespace
     // e.g., "Canvas" imported from "Viper.Graphics"
     auto importIt = importedSymbols_.find(name);
-    if (importIt != importedSymbols_.end())
-    {
+    if (importIt != importedSymbols_.end()) {
         const std::string &fullName = importIt->second;
 
         // Check if the imported type is a built-in collection type
@@ -87,8 +84,7 @@ TypeRef Sema::resolveNamedType(const std::string &name) const
 
         // For runtime classes (e.g., Viper.Graphics.Canvas), return a runtime class type
         // with the full qualified name so the lowerer can generate correct calls
-        if (fullName.rfind("Viper.", 0) == 0)
-        {
+        if (fullName.rfind("Viper.", 0) == 0) {
             return types::runtimeClass(fullName);
         }
     }
@@ -97,15 +93,13 @@ TypeRef Sema::resolveNamedType(const std::string &name) const
     // The ImportResolver merges imported declarations, so we just need
     // to strip the module prefix and look up the base type name.
     auto dotPos = name.find('.');
-    if (dotPos != std::string::npos)
-    {
+    if (dotPos != std::string::npos) {
         std::string prefix = name.substr(0, dotPos);
         std::string suffix = name.substr(dotPos + 1);
 
         // Check if prefix is a namespace alias (e.g., GUI -> Viper.GUI)
         auto prefixIt = importedSymbols_.find(prefix);
-        if (prefixIt != importedSymbols_.end())
-        {
+        if (prefixIt != importedSymbols_.end()) {
             std::string fullName = prefixIt->second + "." + suffix;
             it = typeRegistry_.find(fullName);
             if (it != typeRegistry_.end())
@@ -123,32 +117,26 @@ TypeRef Sema::resolveNamedType(const std::string &name) const
     return nullptr;
 }
 
-TypeRef Sema::resolveTypeNode(const TypeNode *node)
-{
+TypeRef Sema::resolveTypeNode(const TypeNode *node) {
     if (!node)
         return types::unknown();
 
-    if (++typeResolveDepth_ > kMaxTypeResolveDepth)
-    {
+    if (++typeResolveDepth_ > kMaxTypeResolveDepth) {
         --typeResolveDepth_;
         error(node->loc, "type nesting too deep during resolution (limit: 256)");
         return types::unknown();
     }
 
-    struct DepthGuard
-    {
+    struct DepthGuard {
         unsigned &d;
 
-        ~DepthGuard()
-        {
+        ~DepthGuard() {
             --d;
         }
     } typeGuard_{typeResolveDepth_};
 
-    switch (node->kind)
-    {
-        case TypeKind::Named:
-        {
+    switch (node->kind) {
+        case TypeKind::Named: {
             auto *named = static_cast<const NamedType *>(node);
 
             // Check if this is a type parameter in current generic context
@@ -156,58 +144,48 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node)
                 return substituted;
 
             TypeRef resolved = resolveNamedType(named->name);
-            if (!resolved)
-            {
+            if (!resolved) {
                 error(node->loc, "Unknown type: " + named->name);
                 return types::unknown();
             }
             return resolved;
         }
 
-        case TypeKind::Generic:
-        {
+        case TypeKind::Generic: {
             auto *generic = static_cast<const GenericType *>(node);
             std::vector<TypeRef> args;
-            for (const auto &arg : generic->args)
-            {
+            for (const auto &arg : generic->args) {
                 args.push_back(resolveTypeNode(arg.get()));
             }
 
             // Built-in generic types
-            if (generic->name == "List")
-            {
+            if (generic->name == "List") {
                 return types::list(args.empty() ? types::unknown() : args[0]);
             }
-            if (generic->name == "Set")
-            {
+            if (generic->name == "Set") {
                 return types::set(args.empty() ? types::unknown() : args[0]);
             }
-            if (generic->name == "Map")
-            {
+            if (generic->name == "Map") {
                 TypeRef keyType = args.size() > 0 ? args[0] : types::unknown();
                 TypeRef valueType = args.size() > 1 ? args[1] : types::unknown();
                 if (keyType && keyType->kind != TypeKindSem::Unknown &&
-                    keyType->kind != TypeKindSem::String)
-                {
+                    keyType->kind != TypeKindSem::String) {
                     error(node->loc, "Map keys must be String");
                 }
                 return types::map(keyType, valueType);
             }
-            if (generic->name == "Result")
-            {
+            if (generic->name == "Result") {
                 return types::result(args.empty() ? types::unit() : args[0]);
             }
 
             // User-defined generic type - check if registered for instantiation
-            if (genericTypeDecls_.count(generic->name))
-            {
+            if (genericTypeDecls_.count(generic->name)) {
                 return instantiateGenericType(generic->name, args, node->loc);
             }
 
             // Fallback: resolve as named type with type arguments
             TypeRef baseType = resolveNamedType(generic->name);
-            if (!baseType)
-            {
+            if (!baseType) {
                 error(node->loc, "Unknown type: " + generic->name);
                 return types::unknown();
             }
@@ -216,19 +194,16 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node)
             return std::make_shared<ViperType>(baseType->kind, baseType->name, args);
         }
 
-        case TypeKind::Optional:
-        {
+        case TypeKind::Optional: {
             auto *opt = static_cast<const OptionalType *>(node);
             TypeRef inner = resolveTypeNode(opt->inner.get());
             return types::optional(inner);
         }
 
-        case TypeKind::Function:
-        {
+        case TypeKind::Function: {
             auto *func = static_cast<const FunctionType *>(node);
             std::vector<TypeRef> params;
-            for (const auto &param : func->params)
-            {
+            for (const auto &param : func->params) {
                 params.push_back(resolveTypeNode(param.get()));
             }
             TypeRef ret =
@@ -236,19 +211,16 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node)
             return types::function(params, ret);
         }
 
-        case TypeKind::Tuple:
-        {
+        case TypeKind::Tuple: {
             const auto *tupleType = static_cast<const TupleType *>(node);
             std::vector<TypeRef> elementTypes;
-            for (const auto &elem : tupleType->elements)
-            {
+            for (const auto &elem : tupleType->elements) {
                 elementTypes.push_back(resolveType(elem.get()));
             }
             return types::tuple(std::move(elementTypes));
         }
 
-        case TypeKind::FixedArray:
-        {
+        case TypeKind::FixedArray: {
             const auto *arr = static_cast<const FixedArrayType *>(node);
             TypeRef elemType = resolveTypeNode(arr->elementType.get());
             return types::fixedArray(elemType, arr->count);
@@ -264,18 +236,14 @@ TypeRef Sema::resolveTypeNode(const TypeNode *node)
 
 void Sema::defineExternFunction(const std::string &name,
                                 TypeRef returnType,
-                                const std::vector<TypeRef> &paramTypes)
-{
+                                const std::vector<TypeRef> &paramTypes) {
     Symbol sym;
     sym.kind = Symbol::Kind::Function;
     sym.name = name;
     // Create full function type if param types provided, otherwise just return type
-    if (paramTypes.empty())
-    {
+    if (paramTypes.empty()) {
         sym.type = returnType;
-    }
-    else
-    {
+    } else {
         sym.type = types::function(paramTypes, returnType);
     }
     sym.isExtern = true;
@@ -289,33 +257,26 @@ void Sema::defineExternFunction(const std::string &name,
 
 void Sema::collectCaptures(const Expr *expr,
                            const std::set<std::string> &lambdaLocals,
-                           std::vector<CapturedVar> &captures)
-{
+                           std::vector<CapturedVar> &captures) {
     if (!expr)
         return;
 
     std::set<std::string> captured;
 
     // Helper to recursively collect identifiers
-    std::function<void(const Expr *)> collect = [&](const Expr *e)
-    {
+    std::function<void(const Expr *)> collect = [&](const Expr *e) {
         if (!e)
             return;
 
-        switch (e->kind)
-        {
-            case ExprKind::Ident:
-            {
+        switch (e->kind) {
+            case ExprKind::Ident: {
                 auto *ident = static_cast<const IdentExpr *>(e);
                 // Check if this is a local variable (not a lambda param, not a function)
-                if (lambdaLocals.find(ident->name) == lambdaLocals.end())
-                {
+                if (lambdaLocals.find(ident->name) == lambdaLocals.end()) {
                     Symbol *sym = lookupSymbol(ident->name);
                     if (sym && (sym->kind == Symbol::Kind::Variable ||
-                                sym->kind == Symbol::Kind::Parameter))
-                    {
-                        if (captured.find(ident->name) == captured.end())
-                        {
+                                sym->kind == Symbol::Kind::Parameter)) {
+                        if (captured.find(ident->name) == captured.end()) {
                             captured.insert(ident->name);
                             CapturedVar cv;
                             cv.name = ident->name;
@@ -325,48 +286,41 @@ void Sema::collectCaptures(const Expr *expr,
                 }
                 break;
             }
-            case ExprKind::Binary:
-            {
+            case ExprKind::Binary: {
                 auto *bin = static_cast<const BinaryExpr *>(e);
                 collect(bin->left.get());
                 collect(bin->right.get());
                 break;
             }
-            case ExprKind::Unary:
-            {
+            case ExprKind::Unary: {
                 auto *unary = static_cast<const UnaryExpr *>(e);
                 collect(unary->operand.get());
                 break;
             }
-            case ExprKind::Call:
-            {
+            case ExprKind::Call: {
                 auto *call = static_cast<const CallExpr *>(e);
                 collect(call->callee.get());
                 for (const auto &arg : call->args)
                     collect(arg.value.get());
                 break;
             }
-            case ExprKind::Field:
-            {
+            case ExprKind::Field: {
                 auto *field = static_cast<const FieldExpr *>(e);
                 collect(field->base.get());
                 break;
             }
-            case ExprKind::Index:
-            {
+            case ExprKind::Index: {
                 auto *idx = static_cast<const IndexExpr *>(e);
                 collect(idx->base.get());
                 collect(idx->index.get());
                 break;
             }
-            case ExprKind::Block:
-            {
+            case ExprKind::Block: {
                 auto *block = static_cast<const BlockExpr *>(e);
                 // Would need to handle statements - skip for now
                 break;
             }
-            case ExprKind::If:
-            {
+            case ExprKind::If: {
                 auto *ifExpr = static_cast<const IfExpr *>(e);
                 collect(ifExpr->condition.get());
                 collect(ifExpr->thenBranch.get());
@@ -374,36 +328,31 @@ void Sema::collectCaptures(const Expr *expr,
                     collect(ifExpr->elseBranch.get());
                 break;
             }
-            case ExprKind::Match:
-            {
+            case ExprKind::Match: {
                 auto *match = static_cast<const MatchExpr *>(e);
                 collect(match->scrutinee.get());
                 for (const auto &arm : match->arms)
                     collect(arm.body.get());
                 break;
             }
-            case ExprKind::Tuple:
-            {
+            case ExprKind::Tuple: {
                 auto *tuple = static_cast<const TupleExpr *>(e);
                 for (const auto &elem : tuple->elements)
                     collect(elem.get());
                 break;
             }
-            case ExprKind::TupleIndex:
-            {
+            case ExprKind::TupleIndex: {
                 auto *ti = static_cast<const TupleIndexExpr *>(e);
                 collect(ti->tuple.get());
                 break;
             }
-            case ExprKind::ListLiteral:
-            {
+            case ExprKind::ListLiteral: {
                 auto *list = static_cast<const ListLiteralExpr *>(e);
                 for (const auto &elem : list->elements)
                     collect(elem.get());
                 break;
             }
-            case ExprKind::Lambda:
-            {
+            case ExprKind::Lambda: {
                 // Nested lambda - don't descend, it will handle its own captures
                 break;
             }

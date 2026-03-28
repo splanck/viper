@@ -26,14 +26,12 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     (void)msg;
 }
 
 /// @brief Helper: create rt_string from C literal.
-static rt_string S(const char *s)
-{
+static rt_string S(const char *s) {
     return rt_const_cstr(s);
 }
 
@@ -41,8 +39,7 @@ static rt_string S(const char *s)
 // Null Safety
 // ============================================================================
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     // All operations on NULL should not crash
     rt_debugoverlay_enable(NULL);
     rt_debugoverlay_disable(NULL);
@@ -62,16 +59,14 @@ static void test_null_safety()
 // Enable / Disable / Toggle
 // ============================================================================
 
-static void test_disabled_by_default()
-{
+static void test_disabled_by_default() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
     assert(dbg != NULL);
     assert(rt_debugoverlay_is_enabled(dbg) == 0);
     printf("  test_disabled_by_default: PASSED\n");
 }
 
-static void test_enable_disable()
-{
+static void test_enable_disable() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     rt_debugoverlay_enable(dbg);
@@ -83,8 +78,7 @@ static void test_enable_disable()
     printf("  test_enable_disable: PASSED\n");
 }
 
-static void test_toggle()
-{
+static void test_toggle() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     assert(rt_debugoverlay_is_enabled(dbg) == 0);
@@ -100,16 +94,14 @@ static void test_toggle()
 // FPS Calculation
 // ============================================================================
 
-static void test_fps_zero_frames()
-{
+static void test_fps_zero_frames() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
     // No frames recorded → FPS = 0
     assert(rt_debugoverlay_get_fps(dbg) == 0);
     printf("  test_fps_zero_frames: PASSED\n");
 }
 
-static void test_fps_steady_60()
-{
+static void test_fps_steady_60() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     // Feed 16 frames at 16ms each → ~62 FPS (1000*16/256 = 62)
@@ -122,8 +114,7 @@ static void test_fps_steady_60()
     printf("  test_fps_steady_60: PASSED\n");
 }
 
-static void test_fps_steady_30()
-{
+static void test_fps_steady_30() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     // Feed 16 frames at 33ms each → ~30 FPS (1000*16/528 = 30)
@@ -136,8 +127,7 @@ static void test_fps_steady_30()
     printf("  test_fps_steady_30: PASSED\n");
 }
 
-static void test_fps_rolling_average()
-{
+static void test_fps_rolling_average() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     // Fill with 16ms frames
@@ -155,8 +145,7 @@ static void test_fps_rolling_average()
     printf("  test_fps_rolling_average: PASSED\n");
 }
 
-static void test_fps_partial_fill()
-{
+static void test_fps_partial_fill() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     // Only 4 frames at 10ms each → 1000*4/40 = 100 FPS
@@ -168,8 +157,7 @@ static void test_fps_partial_fill()
     printf("  test_fps_partial_fill: PASSED\n");
 }
 
-static void test_fps_zero_dt()
-{
+static void test_fps_zero_dt() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     // dt=0 for all frames → sum=0 → FPS=0 (avoid division by zero)
@@ -185,8 +173,7 @@ static void test_fps_zero_dt()
 // Watch Variables
 // ============================================================================
 
-static void test_watch_add()
-{
+static void test_watch_add() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     rt_debugoverlay_watch(dbg, S("Score"), 42000);
@@ -200,8 +187,7 @@ static void test_watch_add()
     printf("  test_watch_add: PASSED\n");
 }
 
-static void test_watch_update()
-{
+static void test_watch_update() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     rt_debugoverlay_watch(dbg, S("Score"), 100);
@@ -214,8 +200,7 @@ static void test_watch_update()
     printf("  test_watch_update: PASSED\n");
 }
 
-static void test_watch_clear()
-{
+static void test_watch_clear() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     rt_debugoverlay_watch(dbg, S("A"), 1);
@@ -231,14 +216,12 @@ static void test_watch_clear()
     printf("  test_watch_clear: PASSED\n");
 }
 
-static void test_watch_max_capacity()
-{
+static void test_watch_max_capacity() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     // Fill all 16 slots
     char name[8];
-    for (int i = 0; i < RT_DEBUG_MAX_WATCHES; i++)
-    {
+    for (int i = 0; i < RT_DEBUG_MAX_WATCHES; i++) {
         name[0] = 'A' + (char)(i % 26);
         name[1] = '0' + (char)(i / 26);
         name[2] = '\0';
@@ -257,8 +240,7 @@ static void test_watch_max_capacity()
     printf("  test_watch_max_capacity: PASSED\n");
 }
 
-static void test_watch_null_name()
-{
+static void test_watch_null_name() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     // NULL name should not crash
@@ -268,8 +250,7 @@ static void test_watch_null_name()
     printf("  test_watch_null_name: PASSED\n");
 }
 
-static void test_watch_reuse_slot()
-{
+static void test_watch_reuse_slot() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
 
     rt_debugoverlay_watch(dbg, S("X"), 1);
@@ -286,8 +267,7 @@ static void test_watch_reuse_slot()
 // Draw null safety
 // ============================================================================
 
-static void test_draw_null_canvas()
-{
+static void test_draw_null_canvas() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
     rt_debugoverlay_enable(dbg);
 
@@ -297,8 +277,7 @@ static void test_draw_null_canvas()
     printf("  test_draw_null_canvas: PASSED\n");
 }
 
-static void test_draw_disabled_noop()
-{
+static void test_draw_disabled_noop() {
     rt_debugoverlay dbg = rt_debugoverlay_new();
     // Disabled by default — draw with non-null canvas should be a no-op
     // (We can't provide a real canvas, but the function checks enabled first)
@@ -311,8 +290,7 @@ static void test_draw_disabled_noop()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== RTDebugOverlayTests ===\n\n");
 
     printf("--- Null Safety ---\n");

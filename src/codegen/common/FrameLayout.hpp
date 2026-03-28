@@ -27,8 +27,7 @@
 
 #include <cstdint>
 
-namespace viper::codegen::common
-{
+namespace viper::codegen::common {
 
 /// @brief Abstract interface for stack frame layout management.
 ///
@@ -43,8 +42,7 @@ namespace viper::codegen::common
 ///
 ///          The shared interface enables future shared register allocator code
 ///          to manage spill slots without knowing which backend is active.
-class FrameLayout
-{
+class FrameLayout {
   public:
     virtual ~FrameLayout() = default;
 

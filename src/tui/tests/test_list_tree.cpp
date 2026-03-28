@@ -38,8 +38,7 @@ using viper::tui::widgets::ListView;
 using viper::tui::widgets::TreeNode;
 using viper::tui::widgets::TreeView;
 
-TEST(TUI, ListTree)
-{
+TEST(TUI, ListTree) {
     Theme theme;
     ScreenBuffer sb;
     StringTermIO tio;
@@ -66,16 +65,13 @@ TEST(TUI, ListTree)
     ASSERT_TRUE(sel.size() == 2 && sel[0] == 1 && sel[1] == 2);
 
     // Custom renderer outputs uppercase without prefix
-    lv.setRenderer(
-        [](ScreenBuffer &sb, int row, const std::string &it, bool, const Theme &theme)
-        {
-            for (int i = 0; i < static_cast<int>(it.size()); ++i)
-            {
-                auto &c = sb.at(row, i);
-                c.ch = static_cast<char32_t>(std::toupper(it[i]));
-                c.style = theme.style(Role::Normal);
-            }
-        });
+    lv.setRenderer([](ScreenBuffer &sb, int row, const std::string &it, bool, const Theme &theme) {
+        for (int i = 0; i < static_cast<int>(it.size()); ++i) {
+            auto &c = sb.at(row, i);
+            c.ch = static_cast<char32_t>(std::toupper(it[i]));
+            c.style = theme.style(Role::Normal);
+        }
+    });
     sb.clear(theme.style(Role::Normal));
     lv.paint(sb);
     tio.clear();
@@ -130,8 +126,7 @@ TEST(TUI, ListTree)
     ASSERT_EQ(tio.buffer().find("grand"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

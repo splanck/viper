@@ -20,14 +20,12 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::common
-{
+namespace viper::codegen::common {
 
 /// @brief Diagnostic sink used by passes to surface errors and warnings.
 /// @details Errors are fatal and cause the pass manager to short-circuit.
 ///          Warnings are advisory and do not stop the pipeline.
-class Diagnostics
-{
+class Diagnostics {
   public:
     /// @brief Record an error message and mark the diagnostic stream as failed.
     void error(std::string message);

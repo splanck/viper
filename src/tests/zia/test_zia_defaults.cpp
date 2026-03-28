@@ -18,8 +18,7 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 // ============================================================================
 // Helper: check if a function calls a specific callee
@@ -27,16 +26,11 @@ namespace
 
 static bool hasCallee(const il::core::Module &mod,
                       const std::string &fnName,
-                      const std::string &callee)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+                      const std::string &callee) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call && instr.callee == callee)
                         return true;
                 }
@@ -49,16 +43,11 @@ static bool hasCallee(const il::core::Module &mod,
 /// @brief Count the number of operands in the first call to a specific callee.
 static int countCallOperands(const il::core::Module &mod,
                              const std::string &fnName,
-                             const std::string &callee)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+                             const std::string &callee) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call && instr.callee == callee)
                         return static_cast<int>(instr.operands.size());
                 }
@@ -73,8 +62,7 @@ static int countCallOperands(const il::core::Module &mod,
 // ============================================================================
 
 /// @brief Test calling a function with one default parameter omitted.
-TEST(ZiaDefaults, SingleDefaultOmitted)
-{
+TEST(ZiaDefaults, SingleDefaultOmitted) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -100,8 +88,7 @@ func start() {
 }
 
 /// @brief Test calling a function with all arguments provided (no defaults used).
-TEST(ZiaDefaults, AllArgsProvided)
-{
+TEST(ZiaDefaults, AllArgsProvided) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -127,8 +114,7 @@ func start() {
 }
 
 /// @brief Test calling a function with multiple default parameters, some omitted.
-TEST(ZiaDefaults, MultipleDefaults)
-{
+TEST(ZiaDefaults, MultipleDefaults) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -153,8 +139,7 @@ func start() {
 }
 
 /// @brief Test that too few arguments without defaults produces an error.
-TEST(ZiaDefaults, TooFewWithoutDefault)
-{
+TEST(ZiaDefaults, TooFewWithoutDefault) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -177,8 +162,7 @@ func start() {
 }
 
 /// @brief Test default parameter with integer literal.
-TEST(ZiaDefaults, IntegerDefault)
-{
+TEST(ZiaDefaults, IntegerDefault) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -203,7 +187,6 @@ func start() {
 
 } // anonymous namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

@@ -42,8 +42,7 @@ static vg_widget_vtable_t g_splitpane_vtable = {.destroy = splitpane_destroy,
 // SplitPane Implementation
 //=============================================================================
 
-vg_splitpane_t *vg_splitpane_create(vg_widget_t *parent, vg_split_direction_t direction)
-{
+vg_splitpane_t *vg_splitpane_create(vg_widget_t *parent, vg_split_direction_t direction) {
     vg_splitpane_t *split = calloc(1, sizeof(vg_splitpane_t));
     if (!split)
         return NULL;
@@ -80,47 +79,39 @@ vg_splitpane_t *vg_splitpane_create(vg_widget_t *parent, vg_split_direction_t di
         vg_widget_add_child(&split->base, second);
 
     // Add to parent
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &split->base);
     }
 
     return split;
 }
 
-static void splitpane_destroy(vg_widget_t *widget)
-{
+static void splitpane_destroy(vg_widget_t *widget) {
     // Children are destroyed by base widget cleanup
     (void)widget;
 }
 
-static void splitpane_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void splitpane_measure(vg_widget_t *widget, float available_width, float available_height) {
     // SplitPane fills available space
     widget->measured_width = available_width > 0 ? available_width : 400;
     widget->measured_height = available_height > 0 ? available_height : 300;
 
     // Apply constraints
-    if (widget->constraints.preferred_width > 0)
-    {
+    if (widget->constraints.preferred_width > 0) {
         widget->measured_width = widget->constraints.preferred_width;
     }
-    if (widget->constraints.preferred_height > 0)
-    {
+    if (widget->constraints.preferred_height > 0) {
         widget->measured_height = widget->constraints.preferred_height;
     }
-    if (widget->measured_width < widget->constraints.min_width)
-    {
+    if (widget->measured_width < widget->constraints.min_width) {
         widget->measured_width = widget->constraints.min_width;
     }
-    if (widget->measured_height < widget->constraints.min_height)
-    {
+    if (widget->measured_height < widget->constraints.min_height) {
         widget->measured_height = widget->constraints.min_height;
     }
 }
 
-static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width, float height)
-{
+static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     vg_splitpane_t *split = (vg_splitpane_t *)widget;
 
     widget->x = x;
@@ -135,31 +126,25 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
     if (!first || !second)
         return;
 
-    if (split->direction == VG_SPLIT_HORIZONTAL)
-    {
+    if (split->direction == VG_SPLIT_HORIZONTAL) {
         // Left/Right split
         float available = width - split->splitter_size;
         float first_width = available * split->split_position;
 
         // Clamp to minimum sizes
-        if (first_width < split->min_first_size)
-        {
+        if (first_width < split->min_first_size) {
             first_width = split->min_first_size;
         }
-        if (available - first_width < split->min_second_size)
-        {
+        if (available - first_width < split->min_second_size) {
             first_width = available - split->min_second_size;
         }
 
         float second_width = available - first_width;
 
         // Arrange first pane
-        if (first->vtable && first->vtable->arrange)
-        {
+        if (first->vtable && first->vtable->arrange) {
             first->vtable->arrange(first, 0, 0, first_width, height);
-        }
-        else
-        {
+        } else {
             first->x = 0;
             first->y = 0;
             first->width = first_width;
@@ -167,44 +152,34 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
         }
 
         // Arrange second pane
-        if (second->vtable && second->vtable->arrange)
-        {
+        if (second->vtable && second->vtable->arrange) {
             second->vtable->arrange(
                 second, first_width + split->splitter_size, 0, second_width, height);
-        }
-        else
-        {
+        } else {
             second->x = first_width + split->splitter_size;
             second->y = 0;
             second->width = second_width;
             second->height = height;
         }
-    }
-    else
-    {
+    } else {
         // Top/Bottom split
         float available = height - split->splitter_size;
         float first_height = available * split->split_position;
 
         // Clamp to minimum sizes
-        if (first_height < split->min_first_size)
-        {
+        if (first_height < split->min_first_size) {
             first_height = split->min_first_size;
         }
-        if (available - first_height < split->min_second_size)
-        {
+        if (available - first_height < split->min_second_size) {
             first_height = available - split->min_second_size;
         }
 
         float second_height = available - first_height;
 
         // Arrange first pane
-        if (first->vtable && first->vtable->arrange)
-        {
+        if (first->vtable && first->vtable->arrange) {
             first->vtable->arrange(first, 0, 0, width, first_height);
-        }
-        else
-        {
+        } else {
             first->x = 0;
             first->y = 0;
             first->width = width;
@@ -212,13 +187,10 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
         }
 
         // Arrange second pane
-        if (second->vtable && second->vtable->arrange)
-        {
+        if (second->vtable && second->vtable->arrange) {
             second->vtable->arrange(
                 second, 0, first_height + split->splitter_size, width, second_height);
-        }
-        else
-        {
+        } else {
             second->x = 0;
             second->y = first_height + split->splitter_size;
             second->width = width;
@@ -227,15 +199,12 @@ static void splitpane_arrange(vg_widget_t *widget, float x, float y, float width
     }
 }
 
-static void splitpane_paint(vg_widget_t *widget, void *canvas)
-{
+static void splitpane_paint(vg_widget_t *widget, void *canvas) {
     vg_splitpane_t *split = (vg_splitpane_t *)widget;
 
     // Paint children first
-    for (vg_widget_t *child = widget->first_child; child; child = child->next_sibling)
-    {
-        if (child->visible && child->vtable && child->vtable->paint)
-        {
+    for (vg_widget_t *child = widget->first_child; child; child = child->next_sibling) {
+        if (child->visible && child->vtable && child->vtable->paint) {
             child->vtable->paint(child, canvas);
         }
     }
@@ -250,15 +219,12 @@ static void splitpane_paint(vg_widget_t *widget, void *canvas)
 
     float splitter_x, splitter_y, splitter_w, splitter_h;
 
-    if (split->direction == VG_SPLIT_HORIZONTAL)
-    {
+    if (split->direction == VG_SPLIT_HORIZONTAL) {
         splitter_x = widget->x + first->width;
         splitter_y = widget->y;
         splitter_w = split->splitter_size;
         splitter_h = widget->height;
-    }
-    else
-    {
+    } else {
         splitter_x = widget->x;
         splitter_y = widget->y + first->height;
         splitter_w = widget->width;
@@ -274,33 +240,26 @@ static void splitpane_paint(vg_widget_t *widget, void *canvas)
                    color);
 }
 
-static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_splitpane_t *split = (vg_splitpane_t *)widget;
 
     vg_widget_t *first = widget->first_child;
     if (!first)
         return false;
 
-    switch (event->type)
-    {
-        case VG_EVENT_MOUSE_MOVE:
-        {
+    switch (event->type) {
+        case VG_EVENT_MOUSE_MOVE: {
             float local_x = event->mouse.x;
             float local_y = event->mouse.y;
 
-            if (split->dragging)
-            {
+            if (split->dragging) {
                 // Calculate new split position
                 float pos;
-                if (split->direction == VG_SPLIT_HORIZONTAL)
-                {
+                if (split->direction == VG_SPLIT_HORIZONTAL) {
                     float available = widget->width - split->splitter_size;
                     pos = (local_x - split->drag_start + split->drag_start_split * available) /
                           available;
-                }
-                else
-                {
+                } else {
                     float available = widget->height - split->splitter_size;
                     pos = (local_y - split->drag_start + split->drag_start_split * available) /
                           available;
@@ -320,19 +279,15 @@ static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event)
 
             // Check if over splitter
             bool was_hovered = split->splitter_hovered;
-            if (split->direction == VG_SPLIT_HORIZONTAL)
-            {
+            if (split->direction == VG_SPLIT_HORIZONTAL) {
                 split->splitter_hovered =
                     local_x >= first->width && local_x < first->width + split->splitter_size;
-            }
-            else
-            {
+            } else {
                 split->splitter_hovered =
                     local_y >= first->height && local_y < first->height + split->splitter_size;
             }
 
-            if (was_hovered != split->splitter_hovered)
-            {
+            if (was_hovered != split->splitter_hovered) {
                 widget->needs_paint = true;
             }
 
@@ -340,24 +295,19 @@ static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event)
         }
 
         case VG_EVENT_MOUSE_LEAVE:
-            if (split->splitter_hovered)
-            {
+            if (split->splitter_hovered) {
                 split->splitter_hovered = false;
                 widget->needs_paint = true;
             }
             return false;
 
         case VG_EVENT_MOUSE_DOWN:
-            if (split->splitter_hovered)
-            {
+            if (split->splitter_hovered) {
                 split->dragging = true;
                 split->drag_start_split = split->split_position;
-                if (split->direction == VG_SPLIT_HORIZONTAL)
-                {
+                if (split->direction == VG_SPLIT_HORIZONTAL) {
                     split->drag_start = event->mouse.x;
-                }
-                else
-                {
+                } else {
                     split->drag_start = event->mouse.y;
                 }
                 return true;
@@ -365,8 +315,7 @@ static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event)
             return false;
 
         case VG_EVENT_MOUSE_UP:
-            if (split->dragging)
-            {
+            if (split->dragging) {
                 split->dragging = false;
                 return true;
             }
@@ -383,8 +332,7 @@ static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event)
 // SplitPane API
 //=============================================================================
 
-void vg_splitpane_set_position(vg_splitpane_t *split, float position)
-{
+void vg_splitpane_set_position(vg_splitpane_t *split, float position) {
     if (!split)
         return;
 
@@ -399,14 +347,12 @@ void vg_splitpane_set_position(vg_splitpane_t *split, float position)
 }
 
 /// @brief Splitpane get position.
-float vg_splitpane_get_position(vg_splitpane_t *split)
-{
+float vg_splitpane_get_position(vg_splitpane_t *split) {
     return split ? split->split_position : 0.5f;
 }
 
 /// @brief Splitpane set min sizes.
-void vg_splitpane_set_min_sizes(vg_splitpane_t *split, float min_first, float min_second)
-{
+void vg_splitpane_set_min_sizes(vg_splitpane_t *split, float min_first, float min_second) {
     if (!split)
         return;
 
@@ -415,13 +361,11 @@ void vg_splitpane_set_min_sizes(vg_splitpane_t *split, float min_first, float mi
     split->base.needs_layout = true;
 }
 
-vg_widget_t *vg_splitpane_get_first(vg_splitpane_t *split)
-{
+vg_widget_t *vg_splitpane_get_first(vg_splitpane_t *split) {
     return split ? split->base.first_child : NULL;
 }
 
-vg_widget_t *vg_splitpane_get_second(vg_splitpane_t *split)
-{
+vg_widget_t *vg_splitpane_get_second(vg_splitpane_t *split) {
     vg_widget_t *first = split ? split->base.first_child : NULL;
     return first ? first->next_sibling : NULL;
 }

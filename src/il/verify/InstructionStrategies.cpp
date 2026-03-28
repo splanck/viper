@@ -26,8 +26,7 @@
 
 using namespace il::core;
 
-namespace il::verify
-{
+namespace il::verify {
 using il::support::Expected;
 
 /// @brief Verify a non-control-flow instruction using the default checker.
@@ -35,8 +34,7 @@ using il::support::Expected;
 /// @return Success on validity; otherwise a diagnostic error.
 Expected<void> verifyInstruction_E(const VerifyCtx &ctx);
 
-namespace
-{
+namespace {
 
 /// @brief Strategy that handles control-flow instructions with dedicated checks.
 ///
@@ -44,14 +42,12 @@ namespace
 ///          arguments and condition semantics.  This strategy dispatches to the
 ///          appropriate helper functions and ignores maps that are irrelevant
 ///          for these opcodes.
-class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
-{
+class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy {
   public:
     /// @brief Identify whether the strategy should verify the given instruction.
     /// @param instr Instruction under inspection.
     /// @return @c true when @p instr is a control-flow opcode.
-    bool matches(const Instr &instr) const override
-    {
+    bool matches(const Instr &instr) const override {
         return instr.op == Opcode::Br || instr.op == Opcode::CBr || instr.op == Opcode::SwitchI32 ||
                instr.op == Opcode::Ret;
     }
@@ -75,13 +71,11 @@ class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
                           const std::unordered_map<std::string, const Extern *> &externs,
                           const std::unordered_map<std::string, const Function *> &funcs,
                           TypeInference &types,
-                          DiagSink &sink) const override
-    {
+                          DiagSink &sink) const override {
         (void)externs;
         (void)funcs;
         (void)sink;
-        switch (instr.op)
-        {
+        switch (instr.op) {
             case Opcode::Br:
                 return verifyBr_E(fn, bb, instr, blockMap, types);
             case Opcode::CBr:
@@ -102,13 +96,11 @@ class ControlFlowStrategy final : public FunctionVerifier::InstructionStrategy
 /// @details Acts as the fallback for all opcodes not claimed by specialised
 ///          strategies.  Verification is forwarded to the shared instruction
 ///          checker that enforces operand/result typing rules.
-class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStrategy
-{
+class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStrategy {
   public:
     /// @brief Always claim responsibility for verification when no other strategy applies.
     /// @return Always returns @c true.
-    bool matches(const Instr &) const override
-    {
+    bool matches(const Instr &) const override {
         return true;
     }
 
@@ -131,8 +123,7 @@ class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStr
                           const std::unordered_map<std::string, const Extern *> &externs,
                           const std::unordered_map<std::string, const Function *> &funcs,
                           TypeInference &types,
-                          DiagSink &sink) const override
-    {
+                          DiagSink &sink) const override {
         (void)blockMap;
         VerifyCtx ctx{sink, types, externs, funcs, fn, bb, instr};
         return verifyInstruction_E(ctx);
@@ -149,8 +140,7 @@ class DefaultInstructionStrategy final : public FunctionVerifier::InstructionStr
 ///
 /// @return Vector containing control-flow and generic verification strategies.
 std::vector<std::unique_ptr<FunctionVerifier::InstructionStrategy>>
-makeDefaultInstructionStrategies()
-{
+makeDefaultInstructionStrategies() {
     std::vector<std::unique_ptr<FunctionVerifier::InstructionStrategy>> strategies;
     strategies.push_back(std::make_unique<ControlFlowStrategy>());
     strategies.push_back(std::make_unique<DefaultInstructionStrategy>());

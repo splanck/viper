@@ -61,23 +61,19 @@
 #include <unordered_set>
 #include <vector>
 
-namespace il::build
-{
+namespace il::build {
 class IRBuilder;
 } // namespace il::build
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-namespace lower
-{
+namespace lower {
 class Emitter;
 } // namespace lower
 
 class Lowerer;
 
-namespace pipeline_detail
-{
+namespace pipeline_detail {
 /// @brief Translate a BASIC AST scalar type into the IL core representation.
 /// @param ty BASIC semantic type sourced from the front-end AST.
 /// @return Corresponding IL type used for stack slots and temporaries.
@@ -94,8 +90,7 @@ il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty);
 Type inferVariableTypeForLowering(const Lowerer &lowerer, std::string_view name);
 
 /// @brief Coordinates program-level lowering by seeding module state and driving emission.
-struct ProgramLowering
-{
+struct ProgramLowering {
     explicit ProgramLowering(Lowerer &lowerer);
 
     /// @brief Lower the full program @p prog into @p module.
@@ -106,10 +101,8 @@ struct ProgramLowering
 };
 
 /// @brief Handles procedure signature caching, variable collection, and body emission.
-struct ProcedureLowering
-{
-    struct LoweringContext
-    {
+struct ProcedureLowering {
+    struct LoweringContext {
         LoweringContext(Lowerer &lowerer,
                         SymbolTable::SymbolMap &symbols,
                         il::build::IRBuilder &builder,
@@ -175,8 +168,7 @@ struct ProcedureLowering
 };
 
 /// @brief Emits control flow for sequential statement lowering within a procedure.
-struct StatementLowering
-{
+struct StatementLowering {
     explicit StatementLowering(Lowerer &lowerer);
 
     /// @brief Lower a sequence of statements, branching between numbered blocks.

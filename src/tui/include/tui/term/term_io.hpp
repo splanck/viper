@@ -28,15 +28,13 @@
 #include <string>
 #include <string_view>
 
-namespace viper::tui::term
-{
+namespace viper::tui::term {
 
 /// @brief Abstract interface for terminal output used by the TUI renderer.
 /// @details Provides a write/flush contract that abstracts the output sink,
 ///          enabling both real terminal output and in-memory capture for testing.
 ///          The Renderer writes ANSI escape sequences through this interface.
-class TermIO
-{
+class TermIO {
   public:
     virtual ~TermIO() = default;
     /// @brief Write a string of bytes to the terminal output.
@@ -49,8 +47,7 @@ class TermIO
 /// @brief Terminal output implementation that writes directly to stdout.
 /// @details Uses POSIX write() to emit bytes to file descriptor 1 (stdout).
 ///          Flush performs an fsync/fdatasync to ensure bytes are delivered.
-class RealTermIO : public TermIO
-{
+class RealTermIO : public TermIO {
   public:
     void write(std::string_view s) override;
     void flush() override;
@@ -60,8 +57,7 @@ class RealTermIO : public TermIO
 /// @details Captures all written bytes into an internal string buffer that
 ///          can be inspected by tests. Useful for verifying renderer output
 ///          without a real terminal.
-class StringTermIO : public TermIO
-{
+class StringTermIO : public TermIO {
   public:
     void write(std::string_view s) override;
 

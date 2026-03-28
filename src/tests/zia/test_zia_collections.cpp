@@ -18,12 +18,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that Map collections compile correctly.
-TEST(ZiaCollections, MapCollection)
-{
+TEST(ZiaCollections, MapCollection) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -43,11 +41,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for MapCollection:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -58,16 +54,11 @@ func start() {
     bool foundMapNew = false;
     bool foundMapSet = false;
     bool foundMapGet = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
-                    if (instr.op == il::core::Opcode::Call)
-                    {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
+                    if (instr.op == il::core::Opcode::Call) {
                         if (instr.callee == "Viper.Collections.Map.New")
                             foundMapNew = true;
                         if (instr.callee == "Viper.Collections.Map.Set")
@@ -85,8 +76,7 @@ func start() {
 }
 
 /// @brief Test that Map index access and assignment work correctly.
-TEST(ZiaCollections, MapIndexAccess)
-{
+TEST(ZiaCollections, MapIndexAccess) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -104,11 +94,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for MapIndexAccess:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -118,16 +106,11 @@ func start() {
 
     bool foundMapSet = false;
     bool foundMapGet = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
-                    if (instr.op == il::core::Opcode::Call)
-                    {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
+                    if (instr.op == il::core::Opcode::Call) {
                         if (instr.callee == "Viper.Collections.Map.Set")
                             foundMapSet = true;
                         if (instr.callee == "Viper.Collections.Map.Get")
@@ -142,8 +125,7 @@ func start() {
 }
 
 /// @brief Test that Map helpers like getOr and setIfMissing lower correctly.
-TEST(ZiaCollections, MapHelpers)
-{
+TEST(ZiaCollections, MapHelpers) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -163,11 +145,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for MapHelpers:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -178,16 +158,11 @@ func start() {
     bool foundGetOr = false;
     bool foundSetIfMissing = false;
     bool foundHas = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
-                    if (instr.op == il::core::Opcode::Call)
-                    {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
+                    if (instr.op == il::core::Opcode::Call) {
                         if (instr.callee == "Viper.Collections.Map.GetOr")
                             foundGetOr = true;
                         if (instr.callee == "Viper.Collections.Map.SetIfMissing")
@@ -205,8 +180,7 @@ func start() {
 }
 
 /// @brief Test that Map key types are enforced as String.
-TEST(ZiaCollections, MapKeyTypeEnforced)
-{
+TEST(ZiaCollections, MapKeyTypeEnforced) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -223,8 +197,7 @@ func start() {
 
     EXPECT_FALSE(result.succeeded());
     bool foundKeyError = false;
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
+    for (const auto &d : result.diagnostics.diagnostics()) {
         if (d.message.find("Map keys must be String") != std::string::npos)
             foundKeyError = true;
     }
@@ -232,8 +205,7 @@ func start() {
 }
 
 /// @brief Test that empty list type inference works.
-TEST(ZiaCollections, EmptyListTypeInference)
-{
+TEST(ZiaCollections, EmptyListTypeInference) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -250,11 +222,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for EmptyListTypeInference:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -265,8 +235,7 @@ func start() {
 
 /// @brief Test Bug #17 fix: List[Entity] compiles correctly.
 /// Previously caused a runtime assertion failure when adding entities to lists.
-TEST(ZiaCollections, ListOfEntities)
-{
+TEST(ZiaCollections, ListOfEntities) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -289,11 +258,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for ListOfEntities:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -304,14 +271,10 @@ func start() {
     // Check that rt_obj_new_i64 is used for entity allocation (not rt_alloc)
     // This ensures entities have proper heap headers for reference counting
     bool foundRtObjNew = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call && instr.callee == "rt_obj_new_i64")
                         foundRtObjNew = true;
                 }
@@ -323,7 +286,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

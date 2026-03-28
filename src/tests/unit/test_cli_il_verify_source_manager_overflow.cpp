@@ -27,25 +27,20 @@
 #include <string>
 #include <vector>
 
-namespace il::support
-{
-struct SourceManagerTestAccess
-{
-    static void setNextFileId(SourceManager &sm, uint64_t next)
-    {
+namespace il::support {
+struct SourceManagerTestAccess {
+    static void setNextFileId(SourceManager &sm, uint64_t next) {
         sm.next_file_id_ = next;
     }
 };
 } // namespace il::support
 
-namespace il::tools::verify
-{
+namespace il::tools::verify {
 int runCLI(
     int argc, char **argv, std::ostream &out, std::ostream &err, il::support::SourceManager &sm);
 } // namespace il::tools::verify
 
-int main()
-{
+int main() {
     namespace fs = std::filesystem;
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();

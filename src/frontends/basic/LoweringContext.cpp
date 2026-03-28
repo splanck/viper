@@ -25,8 +25,7 @@
 #include "viper/il/IRBuilder.hpp"
 #include "viper/il/Module.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Construct a lowering context for a BASIC function.
 /// @details The context stores references to the builder and destination
@@ -36,9 +35,7 @@ namespace il::frontends::basic
 /// @param builder IR builder used to create blocks and instructions.
 /// @param func Function that will receive lowered IR.
 LoweringContext::LoweringContext(build::IRBuilder &builder, core::Function &func)
-    : builder(builder), function(func)
-{
-}
+    : builder(builder), function(func) {}
 
 /// @brief Retrieve a stack slot name for BASIC variable @p name, creating one if needed.
 /// @details Lowers variables into `alloca`-style stack slots.  Previously issued
@@ -47,8 +44,7 @@ LoweringContext::LoweringContext(build::IRBuilder &builder, core::Function &func
 ///          with "%" and appends `_slot` to keep generated IR descriptive.
 /// @param name BASIC variable identifier.
 /// @return Unique slot label for the variable.
-std::string LoweringContext::getOrCreateSlot(const std::string &name)
-{
+std::string LoweringContext::getOrCreateSlot(const std::string &name) {
     auto it = varSlots.find(name);
     if (it != varSlots.end())
         return it->second;
@@ -66,8 +62,7 @@ std::string LoweringContext::getOrCreateSlot(const std::string &name)
 /// one global per unique literal, avoiding redundant data in the output module.
 /// @param value BASIC string literal to intern.
 /// @return Stable label bound to the string literal.
-std::string LoweringContext::getOrAddString(const std::string &value)
-{
+std::string LoweringContext::getOrAddString(const std::string &value) {
     auto it = strings.find(value);
     if (it != strings.end())
         return it->second;

@@ -29,8 +29,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Lower an @c ON @c ERROR directive to push or clear runtime handlers.
 ///
@@ -39,8 +38,7 @@ namespace il::frontends::basic
 ///          encountered.  The helper ensures the procedure context records the
 ///          active handler index and line for use by subsequent statements.
 /// @param stmt AST node describing the ON ERROR directive.
-void Lowerer::lowerOnErrorGoto(const OnErrorGoto &stmt)
-{
+void Lowerer::lowerOnErrorGoto(const OnErrorGoto &stmt) {
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     BasicBlock *current = ctx.current();
@@ -51,8 +49,7 @@ void Lowerer::lowerOnErrorGoto(const OnErrorGoto &stmt)
 
     // NOTE: No-op here; curIdx tracking belongs in lowerTryCatch.
 
-    if (stmt.toZero)
-    {
+    if (stmt.toZero) {
         clearActiveErrorHandler();
         return;
     }
@@ -75,8 +72,7 @@ void Lowerer::lowerOnErrorGoto(const OnErrorGoto &stmt)
 ///          the matching opcode to the handler block.  The helper bails out if no
 ///          live handler exists or if the block already terminated.
 /// @param stmt AST node describing the RESUME statement.
-void Lowerer::lowerResume(const Resume &stmt)
-{
+void Lowerer::lowerResume(const Resume &stmt) {
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     if (!func)
@@ -85,12 +81,9 @@ void Lowerer::lowerResume(const Resume &stmt)
     std::optional<size_t> handlerIndex;
 
     auto &handlersByLine = ctx.errorHandlers().blocks();
-    if (auto it = handlersByLine.find(stmt.target); it != handlersByLine.end())
-    {
+    if (auto it = handlersByLine.find(stmt.target); it != handlersByLine.end()) {
         handlerIndex = it->second;
-    }
-    else if (auto active = ctx.errorHandlers().activeIndex())
-    {
+    } else if (auto active = ctx.errorHandlers().activeIndex()) {
         handlerIndex = *active;
     }
 
@@ -113,16 +106,14 @@ void Lowerer::lowerResume(const Resume &stmt)
     instr.loc = curLoc;
     instr.operands.push_back(resumeTok);
 
-    switch (stmt.mode)
-    {
+    switch (stmt.mode) {
         case Resume::Mode::Same:
             instr.op = Opcode::ResumeSame;
             break;
         case Resume::Mode::Next:
             instr.op = Opcode::ResumeNext;
             break;
-        case Resume::Mode::Label:
-        {
+        case Resume::Mode::Label: {
             instr.op = Opcode::ResumeLabel;
             auto &lineBlocks = ctx.blockNames().lineBlocks();
             auto targetIt = lineBlocks.find(stmt.target);
@@ -170,8 +161,7 @@ void Lowerer::lowerResume(const Resume &stmt)
 /// Note: The finally code is duplicated between the normal path and exception path
 /// because `resume.label` must be the terminator of the handler block, and we cannot
 /// branch to a shared finally block and then return to emit the resume.
-void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
-{
+void Lowerer::lowerTryCatch(const TryCatchStmt &stmt) {
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     BasicBlock *current = ctx.current();
@@ -202,8 +192,7 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
     // Create the finally_normal block if we have finally code.
     // This is where the normal (non-exception) path runs the finally code.
     size_t finallyNormalIdx = 0;
-    if (hasFinally)
-    {
+    if (hasFinally) {
         func = ctx.function();
         finallyNormalIdx = func->blocks.size();
         std::string finallyLbl =
@@ -215,12 +204,9 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
     // Determine a stable handler key. Prefer the first statement inside TRY so
     // the handler is associated with that line; fall back to the TRY node.
     int handlerKey = virtualLine(stmt);
-    if (!stmt.tryBody.empty())
-    {
-        for (const auto &sp : stmt.tryBody)
-        {
-            if (sp)
-            {
+    if (!stmt.tryBody.empty()) {
+        for (const auto &sp : stmt.tryBody) {
+            if (sp) {
                 handlerKey = virtualLine(*sp);
                 break;
             }
@@ -258,8 +244,7 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
         if (block)
             block->instructions.push_back(std::move(in));
     }
-    for (const auto &st : stmt.tryBody)
-    {
+    for (const auto &st : stmt.tryBody) {
         if (!st)
             continue;
         lowerStmt(*st);
@@ -270,32 +255,26 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
 
     // On the normal path, pop the handler and branch to continuation.
     // If we have finally, branch to finally_normal; otherwise branch to after_try.
-    if (ctx.current() && !ctx.current()->terminated)
-    {
+    if (ctx.current() && !ctx.current()->terminated) {
         func = ctx.function();
         afterTry = &func->blocks[afterIdx];
         emitEhPop();
 
-        if (hasFinally)
-        {
+        if (hasFinally) {
             BasicBlock *finallyNormal = &func->blocks[finallyNormalIdx];
             emitBr(finallyNormal);
-        }
-        else
-        {
+        } else {
             emitBr(afterTry);
         }
     }
 
     // Lower finally_normal block: finally statements then branch to after_try.
-    if (hasFinally)
-    {
+    if (hasFinally) {
         func = ctx.function();
         BasicBlock *finallyNormal = &func->blocks[finallyNormalIdx];
         ctx.setCurrent(finallyNormal);
 
-        for (const auto &st : stmt.finallyBody)
-        {
+        for (const auto &st : stmt.finallyBody) {
             if (!st)
                 continue;
             lowerStmt(*st);
@@ -305,8 +284,7 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
         }
 
         // Branch to after_try if not already terminated.
-        if (ctx.current() && !ctx.current()->terminated)
-        {
+        if (ctx.current() && !ctx.current()->terminated) {
             func = ctx.function();
             afterTry = &func->blocks[afterIdx];
             emitBr(afterTry);
@@ -319,8 +297,7 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
     ctx.setCurrent(handlerBlock);
 
     // Lower the catch body statements (if any).
-    for (const auto &st : stmt.catchBody)
-    {
+    for (const auto &st : stmt.catchBody) {
         if (!st)
             continue;
         lowerStmt(*st);
@@ -331,10 +308,8 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
 
     // Lower the finally body in the handler path (duplicated from normal path).
     // This ensures finally runs even when an exception was caught.
-    if (hasFinally && ctx.current() && !ctx.current()->terminated)
-    {
-        for (const auto &st : stmt.finallyBody)
-        {
+    if (hasFinally && ctx.current() && !ctx.current()->terminated) {
+        for (const auto &st : stmt.finallyBody) {
             if (!st)
                 continue;
             lowerStmt(*st);
@@ -346,13 +321,11 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
 
     // Terminate handler with resume.label to after_try if not already terminated.
     handlerBlock = ctx.current();
-    if (handlerBlock && !handlerBlock->terminated)
-    {
+    if (handlerBlock && !handlerBlock->terminated) {
         // Find the original handler block to get the %tok parameter.
         func = ctx.function();
         BasicBlock *origHandler = ensureErrorHandlerBlock(handlerKey);
-        if (origHandler && origHandler->params.size() >= 2)
-        {
+        if (origHandler && origHandler->params.size() >= 2) {
             // Refresh after_try pointer before emitting the terminator.
             afterTry = &func->blocks[afterIdx];
             builder->setInsertPoint(*handlerBlock);
@@ -387,8 +360,7 @@ void Lowerer::lowerTryCatch(const TryCatchStmt &stmt)
 /// - Initializes the variable with the NEW expression
 /// - Lowers the body statements
 /// - At scope exit, releases the object (calling destructor if present)
-void Lowerer::lowerUsingStmt(const UsingStmt &stmt)
-{
+void Lowerer::lowerUsingStmt(const UsingStmt &stmt) {
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     BasicBlock *current = ctx.current();
@@ -399,8 +371,7 @@ void Lowerer::lowerUsingStmt(const UsingStmt &stmt)
 
     // Step 1: Build the class name from qualified type
     std::string className;
-    for (size_t i = 0; i < stmt.typeQualified.size(); ++i)
-    {
+    for (size_t i = 0; i < stmt.typeQualified.size(); ++i) {
         if (i > 0)
             className += ".";
         className += stmt.typeQualified[i];
@@ -409,20 +380,16 @@ void Lowerer::lowerUsingStmt(const UsingStmt &stmt)
     // Step 2: Lower the initialization expression and store in the variable
     // The variable storage should already be allocated by semantic analysis
     auto storage = resolveVariableStorage(stmt.varName, stmt.loc);
-    if (!storage)
-    {
+    if (!storage) {
         // Variable not found - bail out
         return;
     }
 
     Value objPtr;
-    if (stmt.initExpr)
-    {
+    if (stmt.initExpr) {
         RVal initVal = lowerExpr(*stmt.initExpr);
         objPtr = initVal.value;
-    }
-    else
-    {
+    } else {
         // No initializer - use null pointer
         objPtr = Value::null();
     }
@@ -431,8 +398,7 @@ void Lowerer::lowerUsingStmt(const UsingStmt &stmt)
     emitStore(Type(Type::Kind::Ptr), storage->pointer, objPtr);
 
     // Step 3: Lower body statements
-    for (const auto &st : stmt.body)
-    {
+    for (const auto &st : stmt.body) {
         if (!st)
             continue;
         lowerStmt(*st);
@@ -442,8 +408,7 @@ void Lowerer::lowerUsingStmt(const UsingStmt &stmt)
     }
 
     // Step 4: Cleanup - emit DELETE-like destruction
-    if (ctx.current() && !ctx.current()->terminated)
-    {
+    if (ctx.current() && !ctx.current()->terminated) {
         // Load the object pointer
         Value loadedObj = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
 
@@ -477,23 +442,20 @@ void Lowerer::lowerUsingStmt(const UsingStmt &stmt)
         ctx.setCurrent(destroyBlk);
         curLoc = stmt.loc;
 
-        if (!className.empty())
-        {
+        if (!className.empty()) {
             OopLoweringContext oopCtx(*this, oopIndex_);
             // Qualify the class name for lookup
             std::string qualifiedName = oopCtx.qualify(className);
             // Check if class has a SUB DESTROY() method (not same as DESTRUCTOR keyword)
             // The DESTRUCTOR keyword's code is folded into __dtor, but SUB DESTROY() is separate
-            if (oopIndex_.findMethod(qualifiedName, "DESTROY") != nullptr)
-            {
+            if (oopIndex_.findMethod(qualifiedName, "DESTROY") != nullptr) {
                 // Call the user's DESTROY method
                 std::string destroyName = oopCtx.getMethodName(qualifiedName, "DESTROY");
                 emitCall(destroyName, {loadedObj});
             }
             // Always call __dtor for field cleanup and DESTRUCTOR keyword code
             std::string dtorName = oopCtx.getDestructorName(qualifiedName);
-            if (!dtorName.empty())
-            {
+            if (!dtorName.empty()) {
                 emitCall(dtorName, {loadedObj});
             }
         }

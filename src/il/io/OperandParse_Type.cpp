@@ -32,8 +32,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::il::io
-{
+namespace viper::il::io {
 
 /// @brief Parse a type literal operand and attach it to the active instruction.
 /// @details Consumes the next non-whitespace token, normalises trailing commas
@@ -45,8 +44,7 @@ namespace viper::il::io
 /// @param cur Cursor positioned at the start of the type token.
 /// @param ctx Parser context providing access to instruction state and diagnostics.
 /// @return Parse result signalling success or failure.
-ParseResult parseTypeOperand(viper::parse::Cursor &cur, Context &ctx)
-{
+ParseResult parseTypeOperand(viper::parse::Cursor &cur, Context &ctx) {
     cur.skipWs();
     const std::size_t beginOffset = cur.offset();
     const std::string_view rawToken =
@@ -65,8 +63,7 @@ ParseResult parseTypeOperand(viper::parse::Cursor &cur, Context &ctx)
 
     bool ok = false;
     ::il::core::Type type = ::il::io::parseType(token, &ok);
-    if (!ok)
-    {
+    if (!ok) {
         std::ostringstream oss;
         oss << "unknown type '" << token << "'";
         return syntaxError(ctx, oss.str());

@@ -20,10 +20,8 @@
 
 #include <array>
 
-namespace il::frontends::basic::intrinsics
-{
-namespace
-{
+namespace il::frontends::basic::intrinsics {
+namespace {
 // Common parameter descriptors.
 /// Signature: (string)
 constexpr Param strParam[] = {{Type::String, false}};
@@ -82,8 +80,7 @@ constexpr Intrinsic table[] = {
 /// @param name BASIC intrinsic name such as "LEFT$".
 /// @return Pointer to the matching descriptor, or nullptr if @p name is
 ///         unsupported.
-const Intrinsic *lookup(std::string_view name)
-{
+const Intrinsic *lookup(std::string_view name) {
     for (const auto &intr : table)
         if (intr.name == name)
             return &intr;
@@ -97,10 +94,8 @@ const Intrinsic *lookup(std::string_view name)
 /// trailing whitespace by only inserting separators between entries.
 ///
 /// @param os Output stream receiving the formatted list.
-void dumpNames(std::ostream &os)
-{
-    for (std::size_t i = 0; i < std::size(table); ++i)
-    {
+void dumpNames(std::ostream &os) {
+    for (std::size_t i = 0; i < std::size(table); ++i) {
         os << table[i].name;
         if (i + 1 < std::size(table))
             os << ' ';

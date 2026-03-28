@@ -22,8 +22,7 @@
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
@@ -31,20 +30,13 @@ using namespace runtime;
 // Type Layout Pre-Registration (BUG-FE-006 fix)
 //=============================================================================
 
-void Lowerer::registerAllTypeLayouts(std::vector<DeclPtr> &declarations)
-{
-    for (auto &decl : declarations)
-    {
-        if (decl->kind == DeclKind::Entity)
-        {
+void Lowerer::registerAllTypeLayouts(std::vector<DeclPtr> &declarations) {
+    for (auto &decl : declarations) {
+        if (decl->kind == DeclKind::Entity) {
             registerEntityLayout(*static_cast<EntityDecl *>(decl.get()));
-        }
-        else if (decl->kind == DeclKind::Value)
-        {
+        } else if (decl->kind == DeclKind::Value) {
             registerValueLayout(*static_cast<ValueDecl *>(decl.get()));
-        }
-        else if (decl->kind == DeclKind::Namespace)
-        {
+        } else if (decl->kind == DeclKind::Namespace) {
             auto *ns = static_cast<NamespaceDecl *>(decl.get());
             std::string savedPrefix = namespacePrefix_;
             if (namespacePrefix_.empty())
@@ -59,8 +51,7 @@ void Lowerer::registerAllTypeLayouts(std::vector<DeclPtr> &declarations)
     }
 }
 
-void Lowerer::registerEntityLayout(EntityDecl &decl)
-{
+void Lowerer::registerEntityLayout(EntityDecl &decl) {
     // Skip uninstantiated generic types
     if (!decl.genericParams.empty())
         return;
@@ -78,17 +69,14 @@ void Lowerer::registerEntityLayout(EntityDecl &decl)
     info.classId = nextClassId_++;
     info.vtableName = "__vtable_" + qualifiedName;
 
-    for (const auto &iface : decl.interfaces)
-    {
+    for (const auto &iface : decl.interfaces) {
         info.implementedInterfaces.insert(iface);
     }
 
     // Copy inherited fields from parent entity
-    if (!decl.baseClass.empty())
-    {
+    if (!decl.baseClass.empty()) {
         auto parentIt = entityTypes_.find(decl.baseClass);
-        if (parentIt != entityTypes_.end())
-        {
+        if (parentIt != entityTypes_.end()) {
             inheritEntityMembers(info, parentIt->second);
         }
     }
@@ -102,11 +90,9 @@ void Lowerer::registerEntityLayout(EntityDecl &decl)
 
 void Lowerer::computeEntityFieldLayout(EntityDecl &decl,
                                        EntityTypeInfo &info,
-                                       const std::string &qualifiedName)
-{
+                                       const std::string &qualifiedName) {
     (void)qualifiedName; // used implicitly via caller context
-    for (auto &member : decl.members)
-    {
+    for (auto &member : decl.members) {
         if (member->kind != DeclKind::Field)
             continue;
 
@@ -120,16 +106,13 @@ void Lowerer::computeEntityFieldLayout(EntityDecl &decl,
 
         // Compute size and alignment; fixed-size arrays are stored inline.
         size_t fieldLayoutSize, fieldLayoutAlignment;
-        if (fieldType && fieldType->kind == TypeKindSem::FixedArray)
-        {
+        if (fieldType && fieldType->kind == TypeKindSem::FixedArray) {
             TypeRef elemType = fieldType->elementType();
             Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
             size_t elemSize = getILTypeSize(ilElemType);
             fieldLayoutSize = elemSize * fieldType->elementCount;
             fieldLayoutAlignment = elemSize;
-        }
-        else
-        {
+        } else {
             Type ilFieldType = mapType(fieldType);
             fieldLayoutSize = getILTypeSize(ilFieldType);
             fieldLayoutAlignment = getILTypeAlignment(ilFieldType);
@@ -149,37 +132,28 @@ void Lowerer::computeEntityFieldLayout(EntityDecl &decl,
 
 void Lowerer::buildEntityVtable(EntityDecl &decl,
                                 EntityTypeInfo &info,
-                                const std::string &qualifiedName)
-{
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Method)
-        {
+                                const std::string &qualifiedName) {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
             info.methodMap[method->name] = method;
             info.methods.push_back(method);
 
             // Build vtable (static methods don't go in vtable)
-            if (!method->isStatic)
-            {
+            if (!method->isStatic) {
                 std::string slotKey = sema_.methodSlotKey(qualifiedName, method);
                 std::string methodQualName = sema_.loweredMethodName(qualifiedName, method);
                 if (methodQualName.empty())
                     methodQualName = qualifiedName + "." + method->name;
                 auto vtableIt = info.vtableIndex.find(slotKey);
-                if (vtableIt != info.vtableIndex.end())
-                {
+                if (vtableIt != info.vtableIndex.end()) {
                     info.vtable[vtableIt->second] = methodQualName;
-                }
-                else
-                {
+                } else {
                     info.vtableIndex[slotKey] = info.vtable.size();
                     info.vtable.push_back(methodQualName);
                 }
             }
-        }
-        else if (member->kind == DeclKind::Property)
-        {
+        } else if (member->kind == DeclKind::Property) {
             // Properties are synthesized into get_X/set_X methods during lowering
             auto *prop = static_cast<PropertyDecl *>(member.get());
 
@@ -188,8 +162,7 @@ void Lowerer::buildEntityVtable(EntityDecl &decl,
             info.propertyGetters.insert(getterName);
 
             // Register setter if present
-            if (prop->setterBody)
-            {
+            if (prop->setterBody) {
                 std::string setterName = "set_" + prop->name;
                 info.propertySetters.insert(setterName);
             }
@@ -197,10 +170,8 @@ void Lowerer::buildEntityVtable(EntityDecl &decl,
     }
 }
 
-void Lowerer::inheritEntityMembers(EntityTypeInfo &info, const EntityTypeInfo &parent)
-{
-    for (const auto &parentField : parent.fields)
-    {
+void Lowerer::inheritEntityMembers(EntityTypeInfo &info, const EntityTypeInfo &parent) {
+    for (const auto &parentField : parent.fields) {
         info.fieldIndex[parentField.name] = info.fields.size();
         info.fields.push_back(parentField);
     }
@@ -209,8 +180,7 @@ void Lowerer::inheritEntityMembers(EntityTypeInfo &info, const EntityTypeInfo &p
     info.vtableIndex = parent.vtableIndex;
 }
 
-void Lowerer::registerValueLayout(ValueDecl &decl)
-{
+void Lowerer::registerValueLayout(ValueDecl &decl) {
     // Skip uninstantiated generic types
     if (!decl.genericParams.empty())
         return;
@@ -225,26 +195,21 @@ void Lowerer::registerValueLayout(ValueDecl &decl)
     info.name = qualifiedName;
     info.totalSize = 0;
 
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Field)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Field) {
             auto *field = static_cast<FieldDecl *>(member.get());
             TypeRef fieldType =
                 field->type ? sema_.resolveType(field->type.get()) : types::unknown();
 
             // Compute size and alignment; fixed-size arrays are stored inline.
             size_t fieldLayoutSize, fieldLayoutAlignment;
-            if (fieldType && fieldType->kind == TypeKindSem::FixedArray)
-            {
+            if (fieldType && fieldType->kind == TypeKindSem::FixedArray) {
                 TypeRef elemType = fieldType->elementType();
                 Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
                 size_t elemSize = getILTypeSize(ilElemType);
                 fieldLayoutSize = elemSize * fieldType->elementCount;
                 fieldLayoutAlignment = elemSize;
-            }
-            else
-            {
+            } else {
                 Type ilFieldType = mapType(fieldType);
                 fieldLayoutSize = getILTypeSize(ilFieldType);
                 fieldLayoutAlignment = getILTypeAlignment(ilFieldType);
@@ -259,9 +224,7 @@ void Lowerer::registerValueLayout(ValueDecl &decl)
             info.fieldIndex[field->name] = info.fields.size();
             info.fields.push_back(layout);
             info.totalSize = layout.offset + layout.size;
-        }
-        else if (member->kind == DeclKind::Method)
-        {
+        } else if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
             info.methodMap[method->name] = method;
             info.methods.push_back(method);
@@ -271,8 +234,7 @@ void Lowerer::registerValueLayout(ValueDecl &decl)
     valueTypes_[qualifiedName] = std::move(info);
 }
 
-void Lowerer::emitVtable(const EntityTypeInfo & /*info*/)
-{
+void Lowerer::emitVtable(const EntityTypeInfo & /*info*/) {
     // BUG-VL-011: Virtual dispatch is now handled via class_id-based dispatch
     // instead of vtable pointers. The vtable info is used at compile time
     // to generate dispatch code, not runtime vtable lookup.
@@ -283,8 +245,7 @@ void Lowerer::emitVtable(const EntityTypeInfo & /*info*/)
 // Interface Registration and ITable Binding
 //=============================================================================
 
-void Lowerer::emitItableInit()
-{
+void Lowerer::emitItableInit() {
     // Skip if no interfaces are defined (no call was emitted in start())
     if (interfaceTypes_.empty())
         return;
@@ -309,8 +270,7 @@ void Lowerer::emitItableInit()
     setBlock(fn.blocks.size() - 1);
 
     // Phase 1: Register each interface
-    for (const auto &[ifaceName, ifaceInfo] : interfaceTypes_)
-    {
+    for (const auto &[ifaceName, ifaceInfo] : interfaceTypes_) {
         // rt_register_interface_direct(ifaceId, qname, slotCount)
         Value qnameStr = emitConstStr(stringTable_.intern(ifaceName));
         emitCall("rt_register_interface_direct",
@@ -320,10 +280,8 @@ void Lowerer::emitItableInit()
     }
 
     // Phase 2: For each entity implementing an interface, build and bind itable
-    for (const auto &[entityName, entityInfo] : entityTypes_)
-    {
-        for (const auto &ifaceName : entityInfo.implementedInterfaces)
-        {
+    for (const auto &[entityName, entityInfo] : entityTypes_) {
+        for (const auto &ifaceName : entityInfo.implementedInterfaces) {
             auto ifaceIt = interfaceTypes_.find(ifaceName);
             if (ifaceIt == interfaceTypes_.end())
                 continue;
@@ -338,8 +296,7 @@ void Lowerer::emitItableInit()
                 emitCallRet(Type(Type::Kind::Ptr), "rt_alloc", {Value::constInt(bytes)});
 
             // Populate each slot with a function pointer
-            for (size_t s = 0; s < slotCount; ++s)
-            {
+            for (size_t s = 0; s < slotCount; ++s) {
                 const std::string &methodName = ifaceInfo.methods[s]->name;
                 const std::string slotKey =
                     sema_.methodSlotKey(ifaceInfo.name, ifaceInfo.methods[s]);
@@ -350,27 +307,22 @@ void Lowerer::emitItableInit()
                 // Find the implementing method in the entity (or its bases)
                 std::string implName;
                 std::string searchEntity = entityName;
-                while (!searchEntity.empty())
-                {
+                while (!searchEntity.empty()) {
                     auto entIt = entityTypes_.find(searchEntity);
                     if (entIt == entityTypes_.end())
                         break;
                     auto vtIt = entIt->second.vtableIndex.find(slotKey);
-                    if (vtIt != entIt->second.vtableIndex.end())
-                    {
+                    if (vtIt != entIt->second.vtableIndex.end()) {
                         implName = entIt->second.vtable[vtIt->second];
                         break;
                     }
                     searchEntity = entIt->second.baseClass;
                 }
 
-                if (implName.empty())
-                {
+                if (implName.empty()) {
                     // No implementation found -- store null
                     emitStore(slotPtr, Value::null(), Type(Type::Kind::Ptr));
-                }
-                else
-                {
+                } else {
                     // Store function pointer
                     emitStore(slotPtr, Value::global(implName), Type(Type::Kind::Ptr));
                 }
@@ -397,25 +349,21 @@ void Lowerer::emitItableInit()
 // On-Demand Generic Type Instantiation
 //=============================================================================
 
-const ValueTypeInfo *Lowerer::getOrCreateValueTypeInfo(const std::string &typeName)
-{
+const ValueTypeInfo *Lowerer::getOrCreateValueTypeInfo(const std::string &typeName) {
     // Check existing cache
     auto it = valueTypes_.find(typeName);
-    if (it != valueTypes_.end())
-    {
+    if (it != valueTypes_.end()) {
         return &it->second;
     }
 
     // Check if this is an instantiated generic
-    if (!sema_.isInstantiatedGeneric(typeName))
-    {
+    if (!sema_.isInstantiatedGeneric(typeName)) {
         return nullptr;
     }
 
     // Get the original generic declaration
     Decl *genericDecl = sema_.getGenericDeclForInstantiation(typeName);
-    if (!genericDecl || genericDecl->kind != DeclKind::Value)
-    {
+    if (!genericDecl || genericDecl->kind != DeclKind::Value) {
         return nullptr;
     }
 
@@ -426,10 +374,8 @@ const ValueTypeInfo *Lowerer::getOrCreateValueTypeInfo(const std::string &typeNa
     info.name = typeName;
     info.totalSize = 0;
 
-    for (auto &member : valueDecl->members)
-    {
-        if (member->kind == DeclKind::Field)
-        {
+    for (auto &member : valueDecl->members) {
+        if (member->kind == DeclKind::Field) {
             auto *field = static_cast<FieldDecl *>(member.get());
             // Get the substituted field type from Sema
             TypeRef fieldType = sema_.getFieldType(typeName, field->name);
@@ -438,16 +384,13 @@ const ValueTypeInfo *Lowerer::getOrCreateValueTypeInfo(const std::string &typeNa
 
             // Compute size and alignment; fixed-size arrays are stored inline.
             size_t fieldLayoutSize, fieldLayoutAlignment;
-            if (fieldType && fieldType->kind == TypeKindSem::FixedArray)
-            {
+            if (fieldType && fieldType->kind == TypeKindSem::FixedArray) {
                 TypeRef elemType = fieldType->elementType();
                 Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
                 size_t elemSize = getILTypeSize(ilElemType);
                 fieldLayoutSize = elemSize * fieldType->elementCount;
                 fieldLayoutAlignment = elemSize;
-            }
-            else
-            {
+            } else {
                 Type ilFieldType = mapType(fieldType);
                 fieldLayoutSize = getILTypeSize(ilFieldType);
                 fieldLayoutAlignment = getILTypeAlignment(ilFieldType);
@@ -462,9 +405,7 @@ const ValueTypeInfo *Lowerer::getOrCreateValueTypeInfo(const std::string &typeNa
             info.fieldIndex[field->name] = info.fields.size();
             info.fields.push_back(layout);
             info.totalSize = layout.offset + layout.size;
-        }
-        else if (member->kind == DeclKind::Method)
-        {
+        } else if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
             info.methodMap[method->name] = method;
             info.methods.push_back(method);
@@ -481,25 +422,21 @@ const ValueTypeInfo *Lowerer::getOrCreateValueTypeInfo(const std::string &typeNa
     return &valueTypes_[typeName];
 }
 
-const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &typeName)
-{
+const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &typeName) {
     // Check existing cache
     auto it = entityTypes_.find(typeName);
-    if (it != entityTypes_.end())
-    {
+    if (it != entityTypes_.end()) {
         return &it->second;
     }
 
     // Check if this is an instantiated generic
-    if (!sema_.isInstantiatedGeneric(typeName))
-    {
+    if (!sema_.isInstantiatedGeneric(typeName)) {
         return nullptr;
     }
 
     // Get the original generic declaration
     Decl *genericDecl = sema_.getGenericDeclForInstantiation(typeName);
-    if (!genericDecl || genericDecl->kind != DeclKind::Entity)
-    {
+    if (!genericDecl || genericDecl->kind != DeclKind::Entity) {
         return nullptr;
     }
 
@@ -514,26 +451,21 @@ const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &type
     info.vtableName = "__vtable_" + typeName;
 
     // Store implemented interfaces
-    for (const auto &iface : entityDecl->interfaces)
-    {
+    for (const auto &iface : entityDecl->interfaces) {
         info.implementedInterfaces.insert(iface);
     }
 
     // Handle inheritance (if base class exists, copy its fields)
-    if (!entityDecl->baseClass.empty())
-    {
+    if (!entityDecl->baseClass.empty()) {
         auto parentIt = entityTypes_.find(entityDecl->baseClass);
-        if (parentIt != entityTypes_.end())
-        {
+        if (parentIt != entityTypes_.end()) {
             inheritEntityMembers(info, parentIt->second);
         }
     }
 
     // Process members
-    for (auto &member : entityDecl->members)
-    {
-        if (member->kind == DeclKind::Field)
-        {
+    for (auto &member : entityDecl->members) {
+        if (member->kind == DeclKind::Field) {
             auto *field = static_cast<FieldDecl *>(member.get());
             // Get the substituted field type from Sema
             TypeRef fieldType = sema_.getFieldType(typeName, field->name);
@@ -542,16 +474,13 @@ const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &type
 
             // Compute size and alignment; fixed-size arrays are stored inline.
             size_t fieldLayoutSize, fieldLayoutAlignment;
-            if (fieldType && fieldType->kind == TypeKindSem::FixedArray)
-            {
+            if (fieldType && fieldType->kind == TypeKindSem::FixedArray) {
                 TypeRef elemType = fieldType->elementType();
                 Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
                 size_t elemSize = getILTypeSize(ilElemType);
                 fieldLayoutSize = elemSize * fieldType->elementCount;
                 fieldLayoutAlignment = elemSize;
-            }
-            else
-            {
+            } else {
                 Type ilFieldType = mapType(fieldType);
                 fieldLayoutSize = getILTypeSize(ilFieldType);
                 fieldLayoutAlignment = getILTypeAlignment(ilFieldType);
@@ -566,9 +495,7 @@ const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &type
             info.fieldIndex[field->name] = info.fields.size();
             info.fields.push_back(layout);
             info.totalSize = layout.offset + layout.size;
-        }
-        else if (member->kind == DeclKind::Method)
-        {
+        } else if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
             info.methodMap[method->name] = method;
             info.methods.push_back(method);
@@ -579,12 +506,9 @@ const EntityTypeInfo *Lowerer::getOrCreateEntityTypeInfo(const std::string &type
             if (methodQualName.empty())
                 methodQualName = typeName + "." + method->name;
             auto vtableIt = info.vtableIndex.find(slotKey);
-            if (vtableIt != info.vtableIndex.end())
-            {
+            if (vtableIt != info.vtableIndex.end()) {
                 info.vtable[vtableIt->second] = methodQualName;
-            }
-            else
-            {
+            } else {
                 info.vtableIndex[slotKey] = info.vtable.size();
                 info.vtable.push_back(methodQualName);
             }

@@ -37,25 +37,20 @@
 #include <sstream>
 #include <string_view>
 
-namespace viper::tui::config
-{
+namespace viper::tui::config {
 
-namespace
-{
+namespace {
 /// @brief Remove leading and trailing ASCII whitespace from a string view.
 /// @details The helper walks the bounds of the provided view without copying
 ///          intermediate substrings and then returns an owning @c std::string
 ///          containing the trimmed characters.
 /// @param sv Source view to trim.
 /// @return A new @c std::string with surrounding whitespace stripped.
-std::string trim(std::string_view sv)
-{
-    while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.front())))
-    {
+std::string trim(std::string_view sv) {
+    while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.front()))) {
         sv.remove_prefix(1);
     }
-    while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.back())))
-    {
+    while (!sv.empty() && std::isspace(static_cast<unsigned char>(sv.back()))) {
         sv.remove_suffix(1);
     }
     return std::string(sv);
@@ -67,8 +62,7 @@ std::string trim(std::string_view sv)
 ///          unrecognized name maps to @c Code::Unknown.
 /// @param name Case-insensitive key name token.
 /// @return The corresponding @ref term::KeyEvent::Code enumerator.
-term::KeyEvent::Code parse_code(const std::string &name)
-{
+term::KeyEvent::Code parse_code(const std::string &name) {
     using Code = term::KeyEvent::Code;
     if (name == "enter")
         return Code::Enter;
@@ -98,11 +92,9 @@ term::KeyEvent::Code parse_code(const std::string &name)
         return Code::Insert;
     if (name == "delete")
         return Code::Delete;
-    if (name.size() > 1 && name[0] == 'f')
-    {
+    if (name.size() > 1 && name[0] == 'f') {
         int num = std::stoi(name.substr(1));
-        switch (num)
-        {
+        switch (num) {
             case 1:
                 return Code::F1;
             case 2:
@@ -141,36 +133,28 @@ term::KeyEvent::Code parse_code(const std::string &name)
 ///          default-initialised modifiers.
 /// @param str User-supplied chord string.
 /// @return Normalised key chord ready for configuration binding.
-input::KeyChord parse_chord(const std::string &str)
-{
+input::KeyChord parse_chord(const std::string &str) {
     input::KeyChord kc{};
     std::stringstream ss(str);
     std::string token;
-    while (std::getline(ss, token, '+'))
-    {
+    while (std::getline(ss, token, '+')) {
         token = trim(token);
         std::string lower = util::toLower(token);
-        if (lower == "ctrl")
-        {
+        if (lower == "ctrl") {
             kc.mods |= term::KeyEvent::Ctrl;
             continue;
         }
-        if (lower == "alt")
-        {
+        if (lower == "alt") {
             kc.mods |= term::KeyEvent::Alt;
             continue;
         }
-        if (lower == "shift")
-        {
+        if (lower == "shift") {
             kc.mods |= term::KeyEvent::Shift;
             continue;
         }
-        if (token.size() == 1)
-        {
+        if (token.size() == 1) {
             kc.codepoint = static_cast<uint32_t>(token[0]);
-        }
-        else
-        {
+        } else {
             kc.code = parse_code(lower);
         }
     }
@@ -182,8 +166,7 @@ input::KeyChord parse_chord(const std::string &str)
 ///          treats all other strings as false.
 /// @param s Raw value token to normalise.
 /// @return @c true when @p s represents a truthy value.
-bool parse_bool(const std::string &s)
-{
+bool parse_bool(const std::string &s) {
     std::string lower = util::toLower(s);
     return lower == "1" || lower == "true" || lower == "yes";
 }
@@ -199,42 +182,34 @@ bool parse_bool(const std::string &s)
 /// @param path Filesystem path to read.
 /// @param out Destination configuration populated with parsed values.
 /// @return @c true when the file was opened and processed.
-bool loadFromFile(const std::string &path, Config &out)
-{
+bool loadFromFile(const std::string &path, Config &out) {
     std::ifstream in(path);
-    if (!in)
-    {
+    if (!in) {
         return false;
     }
     std::string line;
     std::string section;
-    while (std::getline(in, line))
-    {
+    while (std::getline(in, line)) {
         std::string trimmed = trim(line);
-        if (trimmed.empty() || trimmed[0] == '#' || trimmed[0] == ';')
-        {
+        if (trimmed.empty() || trimmed[0] == '#' || trimmed[0] == ';') {
             continue;
         }
-        if (trimmed.front() == '[' && trimmed.back() == ']')
-        {
+        if (trimmed.front() == '[' && trimmed.back() == ']') {
             section = trimmed.substr(1, trimmed.size() - 2);
             util::toLowerInPlace(section);
             continue;
         }
         auto eq = trimmed.find('=');
-        if (eq == std::string::npos)
-        {
+        if (eq == std::string::npos) {
             continue;
         }
         std::string key = trim(trimmed.substr(0, eq));
         std::string value = trim(trimmed.substr(eq + 1));
         std::string lower_key = util::toLower(key);
 
-        if (section == "theme")
-        {
+        if (section == "theme") {
             render::RGBA col;
-            if (!util::parseHexColor(value, col))
-            {
+            if (!util::parseHexColor(value, col)) {
                 continue;
             }
             if (lower_key == "normal_fg")
@@ -253,38 +228,27 @@ bool loadFromFile(const std::string &path, Config &out)
                 out.theme.selection.fg = col;
             else if (lower_key == "selection_bg")
                 out.theme.selection.bg = col;
-        }
-        else if (section == "keymap.global")
-        {
+        } else if (section == "keymap.global") {
             Binding b{};
             b.chord = parse_chord(key);
             b.command = value;
             out.keymap_global.push_back(b);
-        }
-        else if (section == "editor")
-        {
-            if (lower_key == "tab_width")
-            {
-                try
-                {
+        } else if (section == "editor") {
+            if (lower_key == "tab_width") {
+                try {
                     std::size_t consumed = 0;
                     const unsigned long parsed = std::stoul(value, &consumed);
-                    if (consumed != value.size() || parsed == 0)
-                    {
+                    if (consumed != value.size() || parsed == 0) {
                         continue;
                     }
                     const unsigned max_width = std::numeric_limits<unsigned>::max();
                     const unsigned clamped =
                         parsed > max_width ? max_width : static_cast<unsigned>(parsed);
                     out.editor.tab_width = clamped;
-                }
-                catch (const std::exception &)
-                {
+                } catch (const std::exception &) {
                     // Ignore malformed values and keep defaults.
                 }
-            }
-            else if (lower_key == "soft_wrap")
-            {
+            } else if (lower_key == "soft_wrap") {
                 out.editor.soft_wrap = parse_bool(value);
             }
         }

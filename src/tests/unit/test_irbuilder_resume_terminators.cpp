@@ -21,8 +21,7 @@
 
 #include <cassert>
 
-int main()
-{
+int main() {
     using namespace il::core;
 
     Module module;
@@ -40,14 +39,12 @@ int main()
     BasicBlock &nextBlock = function.blocks[2];
     BasicBlock &labelBlock = function.blocks[3];
 
-    auto makeToken = [&]()
-    {
+    auto makeToken = [&]() {
         unsigned id = builder.reserveTempId();
         return Value::temp(id);
     };
 
-    auto verifyTerminated = [&](BasicBlock &block, auto emit)
-    {
+    auto verifyTerminated = [&](BasicBlock &block, auto emit) {
         builder.setInsertPoint(block);
         Value token = makeToken();
         emit(token);
@@ -58,15 +55,13 @@ int main()
 
     verifyTerminated(nextBlock, [&](Value token) { builder.emitResumeNext(token, {}); });
 
-    verifyTerminated(labelBlock,
-                     [&](Value token)
-                     {
-                         builder.emitResumeLabel(token, labelTarget, {});
-                         assert(!labelBlock.instructions.empty());
-                         const Instr &instr = labelBlock.instructions.back();
-                         assert(instr.labels.size() == 1);
-                         assert(instr.labels[0] == labelTarget.label);
-                     });
+    verifyTerminated(labelBlock, [&](Value token) {
+        builder.emitResumeLabel(token, labelTarget, {});
+        assert(!labelBlock.instructions.empty());
+        const Instr &instr = labelBlock.instructions.back();
+        assert(instr.labels.size() == 1);
+        assert(instr.labels[0] == labelTarget.label);
+    });
 
     return 0;
 }

@@ -45,16 +45,14 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 using encoding::writeLE32;
 using encoding::writeLE64;
 using encoding::writePad;
 using encoding::writeStr;
 
-namespace
-{
+namespace {
 
 // Mach-O constants.
 static constexpr uint32_t MH_MAGIC_64 = 0xFEEDFACF;
@@ -98,8 +96,7 @@ bool writeMachOExe(const std::string &path,
                    const std::vector<DylibImport> &dylibs,
                    const std::unordered_set<std::string> &dynSyms,
                    const std::unordered_map<std::string, uint32_t> &symOrdinals,
-                   std::ostream &err)
-{
+                   std::ostream &err) {
     const size_t pageSize = layout.pageSize;
     const bool isArm64 = (arch == LinkArch::AArch64);
     const uint32_t cpuType = isArm64 ? CPU_TYPE_ARM64 : CPU_TYPE_X86_64;
@@ -113,8 +110,7 @@ bool writeMachOExe(const std::string &path,
 
     // Collect non-alloc debug sections.
     std::vector<size_t> debugSections;
-    for (size_t i = 0; i < layout.sections.size(); ++i)
-    {
+    for (size_t i = 0; i < layout.sections.size(); ++i) {
         if (!layout.sections[i].alloc && !layout.sections[i].data.empty())
             debugSections.push_back(i);
     }
@@ -167,16 +163,14 @@ bool writeMachOExe(const std::string &path,
     sizeofcmds += 72 + textSecCount * 80; // __TEXT
 
     const uint32_t dataSecCount = static_cast<uint32_t>(dataSections.size());
-    if (!dataSections.empty())
-    {
+    if (!dataSections.empty()) {
         ncmds++;
         sizeofcmds += 72 + dataSecCount * 80; // __DATA
     }
 
     const uint32_t debugSecCount = static_cast<uint32_t>(debugSections.size());
     const bool hasDwarf = !debugSections.empty();
-    if (hasDwarf)
-    {
+    if (hasDwarf) {
         ncmds++;
         sizeofcmds += 72 + debugSecCount * 80; // __DWARF
     }
@@ -193,8 +187,7 @@ bool writeMachOExe(const std::string &path,
     sizeofcmds += 24; // LC_MAIN
 
     std::vector<size_t> dylibCmdSizes;
-    for (const auto &dl : dylibs)
-    {
+    for (const auto &dl : dylibs) {
         size_t cmdSize = alignUp(24 + dl.path.size() + 1, 8);
         dylibCmdSizes.push_back(cmdSize);
         ncmds++;
@@ -206,8 +199,7 @@ bool writeMachOExe(const std::string &path,
     ncmds++;
     sizeofcmds += 80; // LC_DYSYMTAB
 
-    if (hasDynamic)
-    {
+    if (hasDynamic) {
         ncmds++;
         sizeofcmds += 48; // LC_DYLD_INFO_ONLY
     }
@@ -217,8 +209,7 @@ bool writeMachOExe(const std::string &path,
 
     // LC_CODE_SIGNATURE (arm64 macOS requires ad-hoc code signing).
     const bool needsCodeSign = isArm64;
-    if (needsCodeSign)
-    {
+    if (needsCodeSign) {
         ncmds++;
         sizeofcmds += 16; // LC_CODE_SIGNATURE
     }
@@ -240,8 +231,7 @@ bool writeMachOExe(const std::string &path,
     // __TEXT segment vmaddr = 0x100000000.
     // __TEXT segment vmsize must cover from vmaddr to end of text data.
     uint64_t textLastVA = textSegVmAddr;
-    for (size_t idx : textSections)
-    {
+    for (size_t idx : textSections) {
         uint64_t end = layout.sections[idx].virtualAddr + layout.sections[idx].data.size();
         if (end > textLastVA)
             textLastVA = end;
@@ -253,12 +243,10 @@ bool writeMachOExe(const std::string &path,
     const size_t dataFileSize = dataSections.empty() ? 0 : alignUp(dataDataSize, pageSize);
     uint64_t dataSegVmAddr = 0;
     uint64_t dataSegVmSize = 0;
-    if (!dataSections.empty())
-    {
+    if (!dataSections.empty()) {
         dataSegVmAddr = layout.sections[dataSections[0]].virtualAddr;
         uint64_t dataLastVA = dataSegVmAddr;
-        for (size_t idx : dataSections)
-        {
+        for (size_t idx : dataSections) {
             uint64_t end = layout.sections[idx].virtualAddr + layout.sections[idx].data.size();
             if (end > dataLastVA)
                 dataLastVA = end;
@@ -285,17 +273,14 @@ bool writeMachOExe(const std::string &path,
     const size_t dwarfFileOff = dataFileOff + dataFileSize;
     size_t dwarfTotalSize = 0;
 
-    struct DwarfSecInfo
-    {
+    struct DwarfSecInfo {
         size_t layoutIdx;
         size_t offset; // Offset within __DWARF segment.
     };
 
     std::vector<DwarfSecInfo> dwarfSecInfos;
-    if (hasDwarf)
-    {
-        for (size_t idx : debugSections)
-        {
+    if (hasDwarf) {
+        for (size_t idx : debugSections) {
             const auto &sec = layout.sections[idx];
             size_t padded = alignUp(dwarfTotalSize, sec.alignment);
             dwarfSecInfos.push_back({idx, padded});
@@ -312,8 +297,7 @@ bool writeMachOExe(const std::string &path,
     const std::string codeSignIdent = std::filesystem::path(path).stem().string();
     size_t codeSignOff = 0;
     size_t codeSignSize = 0;
-    if (needsCodeSign)
-    {
+    if (needsCodeSign) {
         codeSignOff = alignUp(linkeditFileOff + linkeditDataSize, 16);
         const uint32_t nSlots = static_cast<uint32_t>((codeSignOff + 4095) / 4096);
         const size_t identLen = codeSignIdent.size() + 1;
@@ -343,8 +327,7 @@ bool writeMachOExe(const std::string &path,
         auto it = layout.globalSyms.find("main");
         if (it == layout.globalSyms.end())
             it = layout.globalSyms.find("_main");
-        if (it != layout.globalSyms.end() && !textSections.empty())
-        {
+        if (it != layout.globalSyms.end() && !textSections.empty()) {
             // Find which text section main is in and compute file offset.
             uint64_t mainVA = it->second.resolvedAddr;
             uint64_t firstTextSecVA = layout.sections[textSections[0]].virtualAddr;
@@ -405,22 +388,18 @@ bool writeMachOExe(const std::string &path,
     // Section headers — file offsets mirror VA offsets from segment base.
     // Since __TEXT fileoff=0 and vmaddr=textSegVmAddr, each section's
     // file offset is simply: sec.virtualAddr - textSegVmAddr.
-    for (size_t idx : textSections)
-    {
+    for (size_t idx : textSections) {
         const auto &sec = layout.sections[idx];
 
         // Determine Mach-O section name.
         // ObjC metadata sections (e.g., __DATA,__objc_methname) keep their name.
         // Regular sections use __text or __const.
         std::string machoSecName;
-        if (isObjCSection(sec.name))
-        {
+        if (isObjCSection(sec.name)) {
             // Name format from MachOReader: "__SEGMENT,__section"
             auto comma = sec.name.find(',');
             machoSecName = (comma != std::string::npos) ? sec.name.substr(comma + 1) : sec.name;
-        }
-        else
-        {
+        } else {
             machoSecName = sec.executable ? "__text" : "__const";
         }
 
@@ -441,8 +420,7 @@ bool writeMachOExe(const std::string &path,
     }
 
     // --- __DATA ---
-    if (!dataSections.empty())
-    {
+    if (!dataSections.empty()) {
         writeLE32(file, LC_SEGMENT_64);
         writeLE32(file, 72 + dataSecCount * 80);
         writeStr(file, "__DATA", 16);
@@ -455,8 +433,7 @@ bool writeMachOExe(const std::string &path,
         writeLE32(file, dataSecCount);
         writeLE32(file, 0);
 
-        for (size_t idx : dataSections)
-        {
+        for (size_t idx : dataSections) {
             const auto &sec = layout.sections[idx];
             uint32_t secFileOff =
                 static_cast<uint32_t>(dataFileOff + (sec.virtualAddr - dataSegVmAddr));
@@ -465,30 +442,22 @@ bool writeMachOExe(const std::string &path,
             std::string machoSecName = "__data";
             uint32_t secFlags = 0;
             bool isZerofill = false;
-            if (isObjCSection(sec.name))
-            {
+            if (isObjCSection(sec.name)) {
                 // ObjC metadata: preserve original section name (e.g., __objc_classlist).
                 auto comma = sec.name.find(',');
                 machoSecName = (comma != std::string::npos) ? sec.name.substr(comma + 1) : sec.name;
-            }
-            else if (sec.tls)
-            {
-                if (sec.name == ".tdata")
-                {
+            } else if (sec.tls) {
+                if (sec.name == ".tdata") {
                     machoSecName = "__thread_vars";
                     secFlags = S_THREAD_LOCAL_VARIABLES;
-                }
-                else
-                {
+                } else {
                     // Use __thread_data (S_THREAD_LOCAL_REGULAR) for TLS template
                     // data, even for zero-initialized data. This avoids the zerofill
                     // offset=0 requirement and ensures dyld finds the TLS template.
                     machoSecName = "__thread_data";
                     secFlags = S_THREAD_LOCAL_REGULAR;
                 }
-            }
-            else if (sec.name == ".bss")
-            {
+            } else if (sec.name == ".bss") {
                 // Emit BSS as regular data (S_REGULAR) with file backing.
                 // Using S_ZEROFILL is more correct but complicates file layout
                 // (zerofill sections must be last, offset=0, separate filesize calc).
@@ -513,8 +482,7 @@ bool writeMachOExe(const std::string &path,
     }
 
     // --- __DWARF (non-alloc debug sections) ---
-    if (hasDwarf)
-    {
+    if (hasDwarf) {
         writeLE32(file, LC_SEGMENT_64);
         writeLE32(file, 72 + debugSecCount * 80);
         writeStr(file, "__DWARF", 16);
@@ -527,8 +495,7 @@ bool writeMachOExe(const std::string &path,
         writeLE32(file, debugSecCount);
         writeLE32(file, 0);
 
-        for (const auto &dsi : dwarfSecInfos)
-        {
+        for (const auto &dsi : dwarfSecInfos) {
             const auto &sec = layout.sections[dsi.layoutIdx];
             // Mach-O debug section names: __debug_line, __debug_info, etc.
             // Strip the leading dot from ELF-style names (.debug_line → __debug_line).
@@ -583,8 +550,7 @@ bool writeMachOExe(const std::string &path,
     writeLE64(file, 0);
 
     // --- LC_LOAD_DYLIB ---
-    for (size_t di = 0; di < dylibs.size(); ++di)
-    {
+    for (size_t di = 0; di < dylibs.size(); ++di) {
         const auto &dl = dylibs[di];
         const uint32_t cmdSize = static_cast<uint32_t>(dylibCmdSizes[di]);
         writeLE32(file, LC_LOAD_DYLIB);
@@ -622,8 +588,7 @@ bool writeMachOExe(const std::string &path,
         writeLE32(file, 0); // remaining fields (toc, modtab, extref, indirect, extrel, locrel)
 
     // --- LC_DYLD_INFO_ONLY ---
-    if (hasDynamic)
-    {
+    if (hasDynamic) {
         writeLE32(file, LC_DYLD_INFO_ONLY);
         writeLE32(file, 48);
         writeLE32(file, rebaseData.empty() ? 0 : rebaseOff);
@@ -647,8 +612,7 @@ bool writeMachOExe(const std::string &path,
     writeLE32(file, 0);
 
     // --- LC_CODE_SIGNATURE ---
-    if (needsCodeSign)
-    {
+    if (needsCodeSign) {
         writeLE32(file, LC_CODE_SIGNATURE);
         writeLE32(file, 16);
         writeLE32(file, static_cast<uint32_t>(codeSignOff));
@@ -661,8 +625,7 @@ bool writeMachOExe(const std::string &path,
 
     // Write text sections at their VA-relative file positions.
     // Since __TEXT fileoff=0, each section's file position = sec.VA - textSegVmAddr.
-    for (size_t idx : textSections)
-    {
+    for (size_t idx : textSections) {
         const auto &sec = layout.sections[idx];
         size_t targetOff = static_cast<size_t>(sec.virtualAddr - textSegVmAddr);
         if (file.size() < targetOff)
@@ -671,10 +634,8 @@ bool writeMachOExe(const std::string &path,
     }
 
     // Write data sections at their VA-relative file positions within __DATA.
-    if (!dataSections.empty())
-    {
-        for (size_t idx : dataSections)
-        {
+    if (!dataSections.empty()) {
+        for (size_t idx : dataSections) {
             const auto &sec = layout.sections[idx];
             size_t targetOff = dataFileOff + static_cast<size_t>(sec.virtualAddr - dataSegVmAddr);
             if (file.size() < targetOff)
@@ -684,10 +645,8 @@ bool writeMachOExe(const std::string &path,
     }
 
     // Write __DWARF segment data.
-    if (hasDwarf)
-    {
-        for (const auto &dsi : dwarfSecInfos)
-        {
+    if (hasDwarf) {
+        for (const auto &dsi : dwarfSecInfos) {
             const auto &sec = layout.sections[dsi.layoutIdx];
             size_t targetOff = dwarfFileOff + dsi.offset;
             if (file.size() < targetOff)
@@ -707,8 +666,7 @@ bool writeMachOExe(const std::string &path,
     file.insert(file.end(), bindData.begin(), bindData.end());
 
     // Append native code signature (arm64) or just pad to final page.
-    if (needsCodeSign)
-    {
+    if (needsCodeSign) {
         // Pad to code signature offset (16-byte aligned within __LINKEDIT).
         if (file.size() < codeSignOff)
             writePad(file, codeSignOff - file.size());
@@ -728,15 +686,13 @@ bool writeMachOExe(const std::string &path,
     // Phase 6: Write to disk + make executable.
     // =======================================================================
     std::ofstream f_out(path, std::ios::binary);
-    if (!f_out)
-    {
+    if (!f_out) {
         err << "error: cannot open '" << path << "' for writing\n";
         return false;
     }
     f_out.write(reinterpret_cast<const char *>(file.data()),
                 static_cast<std::streamsize>(file.size()));
-    if (!f_out)
-    {
+    if (!f_out) {
         err << "error: write failed to '" << path << "'\n";
         return false;
     }

@@ -51,8 +51,7 @@
 /// @param text Null-terminated string to write.
 /// @param buffer Destination buffer supplied by the caller.
 /// @param capacity Size of the destination buffer in bytes.
-static void rt_format_write(const char *text, char *buffer, size_t capacity)
-{
+static void rt_format_write(const char *text, char *buffer, size_t capacity) {
     if (!buffer || capacity == 0)
         rt_trap("rt_format_f64: invalid buffer");
     size_t len = strlen(text);
@@ -68,8 +67,7 @@ static void rt_format_write(const char *text, char *buffer, size_t capacity)
 ///          '.' by shifting the trailing substring.
 /// @param buffer Mutable buffer containing the formatted number.
 /// @param decimal_point Locale-specific decimal separator string.
-static void rt_format_normalize_decimal(char *buffer, const char *decimal_point)
-{
+static void rt_format_normalize_decimal(char *buffer, const char *decimal_point) {
     if (!buffer || !decimal_point)
         return;
     if (decimal_point[0] == '\0' || (decimal_point[0] == '.' && decimal_point[1] == '\0'))
@@ -83,8 +81,7 @@ static void rt_format_normalize_decimal(char *buffer, const char *decimal_point)
         return;
 
     pos[0] = '.';
-    if (dp_len > 1)
-    {
+    if (dp_len > 1) {
         char *src = pos + dp_len;
         memmove(pos + 1, src, strlen(src) + 1);
     }
@@ -98,18 +95,15 @@ static void rt_format_normalize_decimal(char *buffer, const char *decimal_point)
 /// @param value Floating-point value to format.
 /// @param buffer Destination buffer supplied by the caller.
 /// @param capacity Size of the destination buffer in bytes.
-void rt_format_f64(double value, char *buffer, size_t capacity)
-{
+void rt_format_f64(double value, char *buffer, size_t capacity) {
     if (!buffer || capacity == 0)
         rt_trap("rt_format_f64: invalid buffer");
 
-    if (isnan(value))
-    {
+    if (isnan(value)) {
         rt_format_write("NaN", buffer, capacity);
         return;
     }
-    if (isinf(value))
-    {
+    if (isinf(value)) {
         if (signbit(value))
             rt_format_write("-Inf", buffer, capacity);
         else
@@ -136,19 +130,16 @@ void rt_format_f64(double value, char *buffer, size_t capacity)
 ///          on allocation failure to match runtime expectations.
 /// @param value Runtime string handle to quote. May be null for an empty string.
 /// @return A newly allocated runtime string containing the CSV-safe text.
-rt_string rt_csv_quote_alloc(rt_string value)
-{
+rt_string rt_csv_quote_alloc(rt_string value) {
     const char *data = "";
     size_t len = 0;
-    if (value)
-    {
+    if (value) {
         data = rt_string_cstr(value);
         len = (size_t)rt_str_len(value);
     }
 
     size_t extra = 0;
-    for (size_t i = 0; i < len; ++i)
-    {
+    for (size_t i = 0; i < len; ++i) {
         if (data[i] == '"')
             ++extra;
     }
@@ -160,12 +151,10 @@ rt_string rt_csv_quote_alloc(rt_string value)
 
     size_t pos = 0;
     buffer[pos++] = '"';
-    for (size_t i = 0; i < len; ++i)
-    {
+    for (size_t i = 0; i < len; ++i) {
         char ch = data[i];
         buffer[pos++] = ch;
-        if (ch == '"')
-        {
+        if (ch == '"') {
             buffer[pos++] = '"';
         }
     }

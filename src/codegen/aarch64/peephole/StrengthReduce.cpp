@@ -34,14 +34,11 @@
 
 #include <cstdint>
 
-namespace viper::codegen::aarch64::peephole
-{
-namespace
-{
+namespace viper::codegen::aarch64::peephole {
+namespace {
 
 /// @brief Check if a power of 2 and return the log2, or -1 if not.
-[[nodiscard]] int log2IfPowerOf2(long long value) noexcept
-{
+[[nodiscard]] int log2IfPowerOf2(long long value) noexcept {
     if (value <= 0)
         return -1;
     if ((value & (value - 1)) != 0)
@@ -60,8 +57,7 @@ namespace
 /// The SMULH instruction computes the upper 64 bits of x * M, giving us
 /// floor(x * M / 2^64). Combined with a post-shift of S, this yields the
 /// quotient.
-struct MagicNumber
-{
+struct MagicNumber {
     long long multiplier{0}; ///< Magic multiplier M (signed 64-bit).
     int shift{0};            ///< Post-shift amount S (arithmetic shift right).
     bool needsAdd{false};    ///< True if we need to add the dividend after SMULH
@@ -76,8 +72,7 @@ struct MagicNumber
 ///
 /// @param d The divisor (must be >= 2).
 /// @return Magic number parameters, or empty if d is not suitable.
-[[nodiscard]] MagicNumber computeSignedMagic(long long d) noexcept
-{
+[[nodiscard]] MagicNumber computeSignedMagic(long long d) noexcept {
     MagicNumber result{};
 
     if (d < 2)
@@ -100,22 +95,19 @@ struct MagicNumber
     uint64_t r2 = twoP63 - q2 * ud; // remainder of 2^p / d
 
     // Iterate to find the right p
-    for (;;)
-    {
+    for (;;) {
         ++p;
         // Update q1, r1 for 2^p / nc
         q1 = 2 * q1;
         r1 = 2 * r1;
-        if (r1 >= nc)
-        {
+        if (r1 >= nc) {
             q1 += 1;
             r1 -= nc;
         }
         // Update q2, r2 for 2^p / d
         q2 = 2 * q2;
         r2 = 2 * r2;
-        if (r2 >= ud)
-        {
+        if (r2 >= ud) {
             q2 += 1;
             r2 -= ud;
         }
@@ -133,8 +125,7 @@ struct MagicNumber
     // If the multiplier would overflow signed 64-bit (i.e., q2+1 >= 2^63),
     // we need to subtract 2^64 from the multiplier and add the dividend
     // after SMULH to compensate.
-    if (static_cast<uint64_t>(result.multiplier) >= twoP63)
-    {
+    if (static_cast<uint64_t>(result.multiplier) >= twoP63) {
         // Encode as a negative multiplier and set needsAdd flag.
         // smulh(x, M-2^64) + x == smulh(x, M) since smulh adds the "lost" 2^64*x.
         result.needsAdd = true;
@@ -145,8 +136,7 @@ struct MagicNumber
 
 } // namespace
 
-bool tryCmpZeroToTst(MInstr &instr, PeepholeStats &stats)
-{
+bool tryCmpZeroToTst(MInstr &instr, PeepholeStats &stats) {
     if (instr.opc != MOpcode::CmpRI)
         return false;
     if (instr.ops.size() != 2)
@@ -160,14 +150,11 @@ bool tryCmpZeroToTst(MInstr &instr, PeepholeStats &stats)
     return true;
 }
 
-bool tryArithmeticIdentity(MInstr &instr, PeepholeStats &stats)
-{
-    switch (instr.opc)
-    {
+bool tryArithmeticIdentity(MInstr &instr, PeepholeStats &stats) {
+    switch (instr.opc) {
         case MOpcode::AddRI:
         case MOpcode::SubRI:
-            if (instr.ops.size() == 3 && isImmValue(instr.ops[2], 0))
-            {
+            if (instr.ops.size() == 3 && isImmValue(instr.ops[2], 0)) {
                 instr.opc = MOpcode::MovRR;
                 instr.ops.pop_back();
                 ++stats.arithmeticIdentities;
@@ -178,8 +165,7 @@ bool tryArithmeticIdentity(MInstr &instr, PeepholeStats &stats)
         case MOpcode::LslRI:
         case MOpcode::LsrRI:
         case MOpcode::AsrRI:
-            if (instr.ops.size() == 3 && isImmValue(instr.ops[2], 0))
-            {
+            if (instr.ops.size() == 3 && isImmValue(instr.ops[2], 0)) {
                 instr.opc = MOpcode::MovRR;
                 instr.ops.pop_back();
                 ++stats.arithmeticIdentities;
@@ -193,8 +179,7 @@ bool tryArithmeticIdentity(MInstr &instr, PeepholeStats &stats)
     return false;
 }
 
-bool tryStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats)
-{
+bool tryStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats) {
     if (instr.opc != MOpcode::MulRRR)
         return false;
     if (instr.ops.size() != 3)
@@ -206,20 +191,16 @@ bool tryStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, Peephol
     int shiftAmount = -1;
     MOperand otherOperand;
 
-    if (lhsConst)
-    {
+    if (lhsConst) {
         int log = log2IfPowerOf2(*lhsConst);
-        if (log >= 0 && log <= 63)
-        {
+        if (log >= 0 && log <= 63) {
             shiftAmount = log;
             otherOperand = instr.ops[2];
         }
     }
-    if (shiftAmount < 0 && rhsConst)
-    {
+    if (shiftAmount < 0 && rhsConst) {
         int log = log2IfPowerOf2(*rhsConst);
-        if (log >= 0 && log <= 63)
-        {
+        if (log >= 0 && log <= 63) {
             shiftAmount = log;
             otherOperand = instr.ops[1];
         }
@@ -235,8 +216,7 @@ bool tryStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, Peephol
     return true;
 }
 
-bool tryDivStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats)
-{
+bool tryDivStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats) {
     if (instr.opc != MOpcode::UDivRRR)
         return false;
     if (instr.ops.size() != 3)
@@ -256,14 +236,12 @@ bool tryDivStrengthReduction(MInstr &instr, const RegConstMap &knownConsts, Peep
     return true;
 }
 
-bool tryImmediateFolding(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats)
-{
+bool tryImmediateFolding(MInstr &instr, const RegConstMap &knownConsts, PeepholeStats &stats) {
     if (instr.ops.size() != 3)
         return false;
 
     MOpcode riOpc;
-    switch (instr.opc)
-    {
+    switch (instr.opc) {
         case MOpcode::AddRRR:
             riOpc = MOpcode::AddRI;
             break;
@@ -288,16 +266,15 @@ bool tryImmediateFolding(MInstr &instr, const RegConstMap &knownConsts, Peephole
     return true;
 }
 
-bool tryFPArithmeticIdentity([[maybe_unused]] MInstr &instr, [[maybe_unused]] PeepholeStats &stats)
-{
+bool tryFPArithmeticIdentity([[maybe_unused]] MInstr &instr,
+                             [[maybe_unused]] PeepholeStats &stats) {
     return false;
 }
 
 bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
                               std::size_t idx,
                               const RegConstMap &knownConsts,
-                              PeepholeStats &stats)
-{
+                              PeepholeStats &stats) {
     if (idx >= instrs.size())
         return false;
 
@@ -320,10 +297,8 @@ bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
         return false;
 
     bool rhsLiveAfter = false;
-    for (std::size_t i = idx + 1; i < instrs.size(); ++i)
-    {
-        if (usesReg(instrs[i], rhsReg))
-        {
+    for (std::size_t i = idx + 1; i < instrs.size(); ++i) {
+        if (usesReg(instrs[i], rhsReg)) {
             rhsLiveAfter = true;
             break;
         }
@@ -339,8 +314,7 @@ bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
 
     const int log = log2IfPowerOf2(divisor);
 
-    if (log >= 1 && log <= 63)
-    {
+    if (log >= 1 && log <= 63) {
         // SDIV by power-of-2: Replace with sign-corrected arithmetic shift.
         //
         // For x / 2^k (signed), the standard sequence is:
@@ -405,14 +379,12 @@ bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
     expansion.push_back(MInstr{MOpcode::SmulhRRR, {rhsReg, lhs, rhsReg}});
 
     // If needsAdd: add tmp, tmp, lhs
-    if (magic.needsAdd)
-    {
+    if (magic.needsAdd) {
         expansion.push_back(MInstr{MOpcode::AddRRR, {rhsReg, rhsReg, lhs}});
     }
 
     // asr tmp, tmp, #S (if S > 0)
-    if (magic.shift > 0)
-    {
+    if (magic.shift > 0) {
         expansion.push_back(MInstr{MOpcode::AsrRI, {rhsReg, rhsReg, MOperand::immOp(magic.shift)}});
     }
 
@@ -434,8 +406,7 @@ bool trySDivStrengthReduction(std::vector<MInstr> &instrs,
 bool tryRemainderFusion(std::vector<MInstr> &instrs,
                         std::size_t idx,
                         const RegConstMap &knownConsts,
-                        PeepholeStats &stats)
-{
+                        PeepholeStats &stats) {
     // Match the pattern: [SU]DivRRR tmp, lhs, rhs; MSubRRRR dst, tmp, rhs, lhs
     // where rhs is a known power-of-2 constant.
     //
@@ -503,16 +474,14 @@ bool tryRemainderFusion(std::vector<MInstr> &instrs,
     const long long mask = divisor - 1; // e.g., 8-1 = 7 = 0b111
 
     // Verify the div result register is not used after the msub
-    for (std::size_t i = idx + 2; i < instrs.size(); ++i)
-    {
+    for (std::size_t i = idx + 2; i < instrs.size(); ++i) {
         if (usesReg(instrs[i], divDst))
             return false;
         if (definesReg(instrs[i], divDst))
             break;
     }
 
-    if (isUnsigned)
-    {
+    if (isUnsigned) {
         // UREM by power-of-2: x % N == x & (N-1)
         // Verify mask is a valid AArch64 logical immediate
         if (!isLogicalImmediate(static_cast<uint64_t>(mask)))

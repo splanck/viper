@@ -36,14 +36,12 @@
 #include "tui/input/keymap.hpp"
 #include "tui/render/screen.hpp"
 
-namespace viper::tui::config
-{
+namespace viper::tui::config {
 
 /// @brief Color palette configuration mapping semantic roles to render styles.
 /// @details Configurable via the [theme] section of the configuration file.
 ///          Each field corresponds to a semantic role used by widgets.
-struct Theme
-{
+struct Theme {
     render::Style normal{};
     render::Style accent{};
     render::Style disabled{};
@@ -53,8 +51,7 @@ struct Theme
 /// @brief Editor behavior configuration settings.
 /// @details Configurable via the [editor] section of the configuration file.
 ///          Controls text display properties like tab width and word wrapping.
-struct Editor
-{
+struct Editor {
     unsigned tab_width{4};
     bool soft_wrap{false};
 };
@@ -62,8 +59,7 @@ struct Editor
 /// @brief Associates a key chord with a command identifier for key binding configuration.
 /// @details Loaded from the [keymap] section of the configuration file. Each binding
 ///          maps a keyboard shortcut to a registered command name.
-struct Binding
-{
+struct Binding {
     input::KeyChord chord{};
     input::CommandId command{};
 };
@@ -72,8 +68,7 @@ struct Binding
 /// @details Combines theme, key binding, and editor settings into a single struct
 ///          that can be loaded from a configuration file. Default values provide
 ///          a functional dark-theme setup with standard key bindings.
-struct Config
-{
+struct Config {
     Theme theme{};
     std::vector<Binding> keymap_global{};
     Editor editor{};

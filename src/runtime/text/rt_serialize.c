@@ -52,15 +52,13 @@ extern void rt_trap(const char *msg);
 /// Thread-local error message.
 static _Thread_local rt_string g_last_error = NULL;
 
-static void set_error(const char *msg)
-{
+static void set_error(const char *msg) {
     if (g_last_error)
         rt_string_unref(g_last_error);
     g_last_error = rt_string_from_bytes(msg, strlen(msg));
 }
 
-static void clear_error(void)
-{
+static void clear_error(void) {
     if (g_last_error)
         rt_string_unref(g_last_error);
     g_last_error = NULL;
@@ -70,25 +68,20 @@ static void clear_error(void)
 // Unified Parse
 //=============================================================================
 
-void *rt_serialize_parse(rt_string text, int64_t format)
-{
+void *rt_serialize_parse(rt_string text, int64_t format) {
     clear_error();
-    if (!text)
-    {
+    if (!text) {
         set_error("parse: nil input");
         return NULL;
     }
 
-    switch ((rt_format_t)format)
-    {
+    switch ((rt_format_t)format) {
         case RT_FORMAT_JSON:
             return rt_json_parse(text);
 
-        case RT_FORMAT_XML:
-        {
+        case RT_FORMAT_XML: {
             void *result = rt_xml_parse(text);
-            if (!result)
-            {
+            if (!result) {
                 rt_string err = rt_xml_error();
                 if (err && rt_str_len(err) > 0)
                     g_last_error = err;
@@ -121,12 +114,10 @@ void *rt_serialize_parse(rt_string text, int64_t format)
 /// @param obj
 /// @param format
 /// @return Result value.
-rt_string rt_serialize_format(void *obj, int64_t format)
-{
+rt_string rt_serialize_format(void *obj, int64_t format) {
     clear_error();
 
-    switch ((rt_format_t)format)
-    {
+    switch ((rt_format_t)format) {
         case RT_FORMAT_JSON:
             return rt_json_format(obj);
 
@@ -153,15 +144,13 @@ rt_string rt_serialize_format(void *obj, int64_t format)
 /// @param format
 /// @param indent
 /// @return Result value.
-rt_string rt_serialize_format_pretty(void *obj, int64_t format, int64_t indent)
-{
+rt_string rt_serialize_format_pretty(void *obj, int64_t format, int64_t indent) {
     clear_error();
 
     if (indent < 1)
         indent = 2;
 
-    switch ((rt_format_t)format)
-    {
+    switch ((rt_format_t)format) {
         case RT_FORMAT_JSON:
             return rt_json_format_pretty(obj, indent);
 
@@ -191,13 +180,11 @@ rt_string rt_serialize_format_pretty(void *obj, int64_t format, int64_t indent)
 /// @param text
 /// @param format
 /// @return Result value.
-int8_t rt_serialize_is_valid(rt_string text, int64_t format)
-{
+int8_t rt_serialize_is_valid(rt_string text, int64_t format) {
     if (!text)
         return 0;
 
-    switch ((rt_format_t)format)
-    {
+    switch ((rt_format_t)format) {
         case RT_FORMAT_JSON:
             return rt_json_is_valid(text);
 
@@ -224,8 +211,7 @@ int8_t rt_serialize_is_valid(rt_string text, int64_t format)
 //=============================================================================
 
 /// Skip leading whitespace and return pointer to first non-space char.
-static const char *skip_ws(const char *s)
-{
+static const char *skip_ws(const char *s) {
     while (*s && ((unsigned char)*s <= ' '))
         s++;
     return s;
@@ -234,8 +220,7 @@ static const char *skip_ws(const char *s)
 /// @brief Perform serialize detect operation.
 /// @param text
 /// @return Result value.
-int64_t rt_serialize_detect(rt_string text)
-{
+int64_t rt_serialize_detect(rt_string text) {
     const char *s;
     const char *line;
 
@@ -262,8 +247,7 @@ int64_t rt_serialize_detect(rt_string text)
 
     /* TOML: look for [section] or key = value on first line */
     line = s;
-    if (*line == '[' && line[1] != '\0')
-    {
+    if (*line == '[' && line[1] != '\0') {
         /* Could be TOML section or JSON array - check for ] before newline */
         const char *p = line + 1;
         while (*p && *p != '\n' && *p != ']')
@@ -294,15 +278,13 @@ int64_t rt_serialize_detect(rt_string text)
     return RT_FORMAT_CSV;
 }
 
-void *rt_serialize_auto_parse(rt_string text)
-{
+void *rt_serialize_auto_parse(rt_string text) {
     int64_t format;
     if (!text)
         return NULL;
 
     format = rt_serialize_detect(text);
-    if (format < 0)
-    {
+    if (format < 0) {
         set_error("auto_parse: cannot detect format");
         return NULL;
     }
@@ -319,13 +301,11 @@ void *rt_serialize_auto_parse(rt_string text)
 /// @param from_format
 /// @param to_format
 /// @return Result value.
-rt_string rt_serialize_convert(rt_string text, int64_t from_format, int64_t to_format)
-{
+rt_string rt_serialize_convert(rt_string text, int64_t from_format, int64_t to_format) {
     void *parsed;
 
     clear_error();
-    if (!text)
-    {
+    if (!text) {
         set_error("convert: nil input");
         return rt_string_from_bytes("", 0);
     }
@@ -344,10 +324,8 @@ rt_string rt_serialize_convert(rt_string text, int64_t from_format, int64_t to_f
 /// @brief Perform serialize format name operation.
 /// @param format
 /// @return Result value.
-rt_string rt_serialize_format_name(int64_t format)
-{
-    switch ((rt_format_t)format)
-    {
+rt_string rt_serialize_format_name(int64_t format) {
+    switch ((rt_format_t)format) {
         case RT_FORMAT_JSON:
             return rt_string_from_bytes("json", 4);
         case RT_FORMAT_XML:
@@ -366,10 +344,8 @@ rt_string rt_serialize_format_name(int64_t format)
 /// @brief Perform serialize mime type operation.
 /// @param format
 /// @return Result value.
-rt_string rt_serialize_mime_type(int64_t format)
-{
-    switch ((rt_format_t)format)
-    {
+rt_string rt_serialize_mime_type(int64_t format) {
+    switch ((rt_format_t)format) {
         case RT_FORMAT_JSON:
             return rt_string_from_bytes("application/json", 16);
         case RT_FORMAT_XML:
@@ -388,8 +364,7 @@ rt_string rt_serialize_mime_type(int64_t format)
 /// @brief Perform serialize format from name operation.
 /// @param name
 /// @return Result value.
-int64_t rt_serialize_format_from_name(rt_string name)
-{
+int64_t rt_serialize_format_from_name(rt_string name) {
     const char *s;
     if (!name)
         return -1;
@@ -421,8 +396,7 @@ int64_t rt_serialize_format_from_name(rt_string name)
 
 /// @brief Perform serialize error operation.
 /// @return Result value.
-rt_string rt_serialize_error(void)
-{
+rt_string rt_serialize_error(void) {
     if (g_last_error)
         return g_last_error;
     return rt_string_from_bytes("", 0);

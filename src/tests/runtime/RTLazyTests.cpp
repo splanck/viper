@@ -18,8 +18,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -28,8 +27,7 @@ static void test_result(const char *name, bool passed)
 static int supplier_call_count = 0;
 
 // Test supplier function
-static void *test_supplier(void)
-{
+static void *test_supplier(void) {
     supplier_call_count++;
     static int value = 42;
     return &value;
@@ -39,8 +37,7 @@ static void *test_supplier(void)
 // Lazy Tests
 //=============================================================================
 
-static void test_lazy_of()
-{
+static void test_lazy_of() {
     printf("Testing Lazy Of:\n");
 
     // Test 1: Create with value
@@ -71,8 +68,7 @@ static void test_lazy_of()
     printf("\n");
 }
 
-static void test_lazy_new()
-{
+static void test_lazy_new() {
     printf("Testing Lazy New:\n");
 
     // Test 1: Create with supplier (not yet evaluated)
@@ -108,8 +104,7 @@ static void test_lazy_new()
     printf("\n");
 }
 
-static void test_lazy_force()
-{
+static void test_lazy_force() {
     printf("Testing Lazy Force:\n");
 
     // Test: Force evaluates without returning
@@ -127,15 +122,13 @@ static void test_lazy_force()
 }
 
 // Helper for map test
-static void *map_double_value(void *v)
-{
+static void *map_double_value(void *v) {
     static int result;
     result = *(int *)v * 2;
     return &result;
 }
 
-static void test_lazy_map()
-{
+static void test_lazy_map() {
     printf("Testing Lazy Map:\n");
 
     // Test: Map already evaluated lazy
@@ -152,8 +145,7 @@ static void test_lazy_map()
     printf("\n");
 }
 
-static void test_lazy_null_handling()
-{
+static void test_lazy_null_handling() {
     printf("Testing Lazy NULL handling:\n");
 
     test_result("Get NULL returns NULL", rt_lazy_get(NULL) == NULL);
@@ -169,8 +161,7 @@ static void test_lazy_null_handling()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Lazy Tests ===\n\n");
 
     test_lazy_of();

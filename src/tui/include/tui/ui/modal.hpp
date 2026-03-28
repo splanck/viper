@@ -36,16 +36,14 @@
 #include <memory>
 #include <vector>
 
-namespace viper::tui::ui
-{
+namespace viper::tui::ui {
 class Popup;
 
 /// @brief Widget host managing a root widget and a stack of modal overlays.
 /// @details Renders the root widget first, then any active modals on top.
 ///          Input events are routed to the topmost modal when present,
 ///          preventing interaction with the root widget underneath.
-class ModalHost : public Widget
-{
+class ModalHost : public Widget {
   public:
     /// @brief Construct a modal host wrapping a root widget.
     /// @param root The primary widget displayed beneath any modals. Must not be null.
@@ -89,8 +87,7 @@ class ModalHost : public Widget
 /// @brief Simple popup widget with a bordered rectangle and dismiss callback.
 /// @details Draws a centered bordered box within the parent's area. Handles
 ///          the Escape key to invoke the dismiss callback.
-class Popup : public Widget
-{
+class Popup : public Widget {
   public:
     /// @brief Construct a popup with specified dimensions.
     /// @param w Width of the popup box in columns.

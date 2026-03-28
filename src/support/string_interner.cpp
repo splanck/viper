@@ -20,8 +20,7 @@
 
 #include "string_interner.hpp"
 
-namespace il::support
-{
+namespace il::support {
 
 /// @brief Construct an interner that caps the number of distinct symbols.
 /// @param maxSymbols Maximum number of unique strings that may be interned.
@@ -35,8 +34,7 @@ StringInterner::StringInterner(uint32_t maxSymbols) noexcept : maxSymbols_(maxSy
 ///          lookup table.  The map is rebuilt rather than copied directly to
 ///          keep string_view keys pointing at the newly owned storage.
 StringInterner::StringInterner(const StringInterner &other)
-    : map_{}, storage_(other.storage_), maxSymbols_(other.maxSymbols_)
-{
+    : map_{}, storage_(other.storage_), maxSymbols_(other.maxSymbols_) {
     rebuildMap();
 }
 
@@ -46,8 +44,7 @@ StringInterner::StringInterner(const StringInterner &other)
 /// @details Self-assignment is handled explicitly; otherwise the string storage
 ///          and cap are copied before @ref rebuildMap refreshes the lookup map to
 ///          reference the new owned storage.
-StringInterner &StringInterner::operator=(const StringInterner &other)
-{
+StringInterner &StringInterner::operator=(const StringInterner &other) {
     if (this == &other)
         return *this;
     storage_ = other.storage_;
@@ -68,8 +65,7 @@ StringInterner &StringInterner::operator=(const StringInterner &other)
 ///
 /// @param str String view to intern; copied when not already stored.
 /// @return Stable Symbol handle identifying the string.
-Symbol StringInterner::intern(std::string_view str)
-{
+Symbol StringInterner::intern(std::string_view str) {
     auto it = map_.find(str);
     if (it != map_.end())
         return it->second;
@@ -92,8 +88,7 @@ Symbol StringInterner::intern(std::string_view str)
 ///
 /// @param sym Symbol handle to resolve.
 /// @return View of the stored string, or empty view for invalid handles.
-std::string_view StringInterner::lookup(Symbol sym) const
-{
+std::string_view StringInterner::lookup(Symbol sym) const {
     if (sym.id == 0 || sym.id > storage_.size())
         return {};
     return storage_[sym.id - 1];
@@ -104,13 +99,11 @@ std::string_view StringInterner::lookup(Symbol sym) const
 ///          strings, and re-inserts each value with a @ref Symbol whose id is the
 ///          1-based index into @ref storage_.  The method is used after copying
 ///          to ensure string_view keys reference the correct storage buffer.
-void StringInterner::rebuildMap()
-{
+void StringInterner::rebuildMap() {
     map_.clear();
     map_.reserve(storage_.size());
     uint32_t id = 1;
-    for (const std::string &value : storage_)
-    {
+    for (const std::string &value : storage_) {
         map_.emplace(std::string_view{value}, Symbol{id++});
     }
 }

@@ -30,15 +30,11 @@
 #include <thread>
 #include <utility>
 
-namespace il::transform
-{
-namespace
-{
-PipelineExecutor::PassMetrics::IRSize computeIRSize(const core::Module &module)
-{
+namespace il::transform {
+namespace {
+PipelineExecutor::PassMetrics::IRSize computeIRSize(const core::Module &module) {
     PipelineExecutor::PassMetrics::IRSize size{};
-    for (const auto &fn : module.functions)
-    {
+    for (const auto &fn : module.functions) {
         size.blocks += fn.blocks.size();
         for (const auto &block : fn.blocks)
             size.instructions += block.instructions.size();
@@ -61,9 +57,8 @@ PipelineExecutor::PipelineExecutor(const PassRegistry &registry,
                                    Instrumentation instrumentation,
                                    bool parallelFunctionPasses)
     : registry_(registry), analysisRegistry_(analysisRegistry),
-      instrumentation_(std::move(instrumentation)), parallelFunctionPasses_(parallelFunctionPasses)
-{
-}
+      instrumentation_(std::move(instrumentation)),
+      parallelFunctionPasses_(parallelFunctionPasses) {}
 
 /// @brief Execute the supplied pipeline against the module.
 /// @details Creates an @ref AnalysisManager, materialises each pass via the
@@ -73,8 +68,7 @@ PipelineExecutor::PipelineExecutor(const PassRegistry &registry,
 ///          the IL verifier between passes when @p verifyBetweenPasses was set.
 /// @param module Module undergoing transformation.
 /// @param pipeline Ordered list of pass identifiers.
-bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> &pipeline) const
-{
+bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> &pipeline) const {
     AnalysisManager analysis(module, analysisRegistry_);
     const bool collectMetrics = static_cast<bool>(instrumentation_.passMetrics);
 
@@ -86,121 +80,103 @@ bool PipelineExecutor::run(core::Module &module, const std::vector<std::string> 
     if (instrumentation_.verifyEach)
         driver.setVerifyEachHook(instrumentation_.verifyEach);
 
-    for (const auto &passId : pipeline)
-    {
-        driver.registerPass(
-            passId,
-            [this, &module, &analysis, passId, collectMetrics]() -> bool
-            {
-                PassMetrics metrics{};
-                AnalysisCounts countsBefore{};
-                std::chrono::steady_clock::time_point startTime{};
-                if (collectMetrics)
-                {
-                    metrics.before = computeIRSize(module);
-                    countsBefore = analysis.counts();
-                    startTime = std::chrono::steady_clock::now();
+    for (const auto &passId : pipeline) {
+        driver.registerPass(passId, [this, &module, &analysis, passId, collectMetrics]() -> bool {
+            PassMetrics metrics{};
+            AnalysisCounts countsBefore{};
+            std::chrono::steady_clock::time_point startTime{};
+            if (collectMetrics) {
+                metrics.before = computeIRSize(module);
+                countsBefore = analysis.counts();
+                startTime = std::chrono::steady_clock::now();
+            }
+
+            const detail::PassFactory *factory = registry_.lookup(passId);
+            if (!factory)
+                return false;
+
+            bool executed = false;
+            switch (factory->kind) {
+                case detail::PassKind::Module: {
+                    if (!factory->makeModule)
+                        return false;
+                    auto pass = factory->makeModule();
+                    if (!pass)
+                        return false;
+                    PreservedAnalyses preserved = pass->run(module, analysis);
+                    analysis.invalidateAfterModulePass(preserved);
+                    executed = true;
+                    break;
                 }
+                case detail::PassKind::Function: {
+                    if (!factory->makeFunction)
+                        return false;
 
-                const detail::PassFactory *factory = registry_.lookup(passId);
-                if (!factory)
-                    return false;
-
-                bool executed = false;
-                switch (factory->kind)
-                {
-                    case detail::PassKind::Module:
-                    {
-                        if (!factory->makeModule)
-                            return false;
-                        auto pass = factory->makeModule();
+                    auto runFunctionPass = [&](core::Function &fn) -> bool {
+                        auto pass = factory->makeFunction();
                         if (!pass)
                             return false;
-                        PreservedAnalyses preserved = pass->run(module, analysis);
-                        analysis.invalidateAfterModulePass(preserved);
-                        executed = true;
-                        break;
-                    }
-                    case detail::PassKind::Function:
-                    {
-                        if (!factory->makeFunction)
-                            return false;
+                        PreservedAnalyses preserved = pass->run(fn, analysis);
+                        analysis.invalidateAfterFunctionPass(preserved, fn);
+                        return true;
+                    };
 
-                        auto runFunctionPass = [&](core::Function &fn) -> bool
-                        {
-                            auto pass = factory->makeFunction();
-                            if (!pass)
-                                return false;
-                            PreservedAnalyses preserved = pass->run(fn, analysis);
-                            analysis.invalidateAfterFunctionPass(preserved, fn);
-                            return true;
-                        };
-
-                        bool executedAll = true;
-                        // Parallel execution is reserved for function passes
-                        // that were explicitly audited and registered as safe.
-                        if (parallelFunctionPasses_ && factory->parallelSafe &&
-                            module.functions.size() > 1)
-                        {
-                            const std::size_t workerCount = std::min<std::size_t>(
-                                module.functions.size(),
-                                std::max<std::size_t>(1, std::thread::hardware_concurrency()));
-                            std::atomic_size_t nextIndex{0};
-                            std::atomic_bool allOk{true};
-                            std::vector<std::thread> workers;
-                            workers.reserve(workerCount);
-                            for (std::size_t w = 0; w < workerCount; ++w)
-                            {
-                                workers.emplace_back(
-                                    [&]()
-                                    {
-                                        for (;;)
-                                        {
-                                            std::size_t idx = nextIndex.fetch_add(1);
-                                            if (idx >= module.functions.size())
-                                                break;
-                                            if (!runFunctionPass(module.functions[idx]))
-                                                allOk.store(false, std::memory_order_relaxed);
-                                        }
-                                    });
-                            }
-                            for (auto &worker : workers)
-                                worker.join();
-                            executedAll = allOk.load(std::memory_order_relaxed);
+                    bool executedAll = true;
+                    // Parallel execution is reserved for function passes
+                    // that were explicitly audited and registered as safe.
+                    if (parallelFunctionPasses_ && factory->parallelSafe &&
+                        module.functions.size() > 1) {
+                        const std::size_t workerCount = std::min<std::size_t>(
+                            module.functions.size(),
+                            std::max<std::size_t>(1, std::thread::hardware_concurrency()));
+                        std::atomic_size_t nextIndex{0};
+                        std::atomic_bool allOk{true};
+                        std::vector<std::thread> workers;
+                        workers.reserve(workerCount);
+                        for (std::size_t w = 0; w < workerCount; ++w) {
+                            workers.emplace_back([&]() {
+                                for (;;) {
+                                    std::size_t idx = nextIndex.fetch_add(1);
+                                    if (idx >= module.functions.size())
+                                        break;
+                                    if (!runFunctionPass(module.functions[idx]))
+                                        allOk.store(false, std::memory_order_relaxed);
+                                }
+                            });
                         }
-                        else
-                        {
-                            for (auto &fn : module.functions)
-                                executedAll &= runFunctionPass(fn);
-                        }
-
-                        executed = executedAll;
-                        break;
+                        for (auto &worker : workers)
+                            worker.join();
+                        executedAll = allOk.load(std::memory_order_relaxed);
+                    } else {
+                        for (auto &fn : module.functions)
+                            executedAll &= runFunctionPass(fn);
                     }
+
+                    executed = executedAll;
+                    break;
                 }
+            }
 
-                if (!executed)
-                    return false;
+            if (!executed)
+                return false;
 
-                if (collectMetrics && instrumentation_.passMetrics)
-                {
-                    metrics.after = computeIRSize(module);
-                    AnalysisCounts countsAfter = analysis.counts();
-                    metrics.analysesComputed.moduleComputations =
-                        countsAfter.moduleComputations - countsBefore.moduleComputations;
-                    metrics.analysesComputed.functionComputations =
-                        countsAfter.functionComputations - countsBefore.functionComputations;
-                    metrics.duration = std::chrono::steady_clock::now() - startTime;
-                    instrumentation_.passMetrics(passId, metrics);
-                }
+            if (collectMetrics && instrumentation_.passMetrics) {
+                metrics.after = computeIRSize(module);
+                AnalysisCounts countsAfter = analysis.counts();
+                metrics.analysesComputed.moduleComputations =
+                    countsAfter.moduleComputations - countsBefore.moduleComputations;
+                metrics.analysesComputed.functionComputations =
+                    countsAfter.functionComputations - countsBefore.functionComputations;
+                metrics.duration = std::chrono::steady_clock::now() - startTime;
+                instrumentation_.passMetrics(passId, metrics);
+            }
 
-                return true;
-            });
+            return true;
+        });
     }
 
     bool ok = driver.runPipeline(pipeline);
-    if (!ok)
-    {
+    if (!ok) {
         std::cerr << "warning: pass pipeline execution failed\n";
     }
     return ok;

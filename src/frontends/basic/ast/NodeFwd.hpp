@@ -19,8 +19,7 @@
 #include <memory>
 #include <string>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 struct Expr;
 struct IntExpr;
@@ -110,8 +109,7 @@ struct SubDecl;
 struct Program;
 
 /// @brief BASIC primitive types mirrored by the AST.
-enum class Type : std::uint8_t
-{
+enum class Type : std::uint8_t {
     I64,
     F64,
     Str,

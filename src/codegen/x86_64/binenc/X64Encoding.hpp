@@ -26,12 +26,10 @@
 #include <cassert>
 #include <cstdint>
 
-namespace viper::codegen::x64::binenc
-{
+namespace viper::codegen::x64::binenc {
 
 /// Hardware register encoding: 3-bit number + REX extension bit.
-struct HwReg
-{
+struct HwReg {
     uint8_t bits3;  ///< Low 3 bits of register number (0-7).
     uint8_t rexBit; ///< 1 if register requires REX.R/B/X extension, 0 otherwise.
 };
@@ -40,8 +38,7 @@ struct HwReg
 ///
 /// The PhysReg enum order (RAX=0, RBX=1, RCX=2, ...) does NOT match
 /// hardware (RAX=0, RCX=1, RDX=2, RBX=3, ...). This table bridges the gap.
-inline constexpr HwReg hwEncode(PhysReg reg)
-{
+inline constexpr HwReg hwEncode(PhysReg reg) {
     // Index: static_cast<int>(PhysReg)
     // Layout: {bits3, rexBit}
     constexpr HwReg kTable[] = {
@@ -92,8 +89,7 @@ inline constexpr HwReg hwEncode(PhysReg reg)
 ///   Viper 4 (gt)  -> x86 F (G)     Viper 11 (np)-> x86 B (NP/PO)
 ///   Viper 5 (ge)  -> x86 D (GE)    Viper 12 (o) -> x86 0 (O)
 ///   Viper 6 (a)   -> x86 7 (A/NBE) Viper 13 (no)-> x86 1 (NO)
-inline constexpr uint8_t x86CC(int viperCC)
-{
+inline constexpr uint8_t x86CC(int viperCC) {
     constexpr uint8_t kTable[] = {
         0x4, // 0: eq  -> E
         0x5, // 1: ne  -> NE
@@ -117,23 +113,19 @@ inline constexpr uint8_t x86CC(int viperCC)
 // === ModR/M + SIB construction helpers ===
 
 /// Build a ModR/M byte: mod(2) | reg(3) | rm(3).
-inline constexpr uint8_t makeModRM(uint8_t mod, uint8_t reg3, uint8_t rm3)
-{
+inline constexpr uint8_t makeModRM(uint8_t mod, uint8_t reg3, uint8_t rm3) {
     return static_cast<uint8_t>((mod << 6) | ((reg3 & 7) << 3) | (rm3 & 7));
 }
 
 /// Build a SIB byte: scale(2) | index(3) | base(3).
-inline constexpr uint8_t makeSIB(uint8_t scale, uint8_t index3, uint8_t base3)
-{
+inline constexpr uint8_t makeSIB(uint8_t scale, uint8_t index3, uint8_t base3) {
     return static_cast<uint8_t>((scale << 6) | ((index3 & 7) << 3) | (base3 & 7));
 }
 
 /// Compute the SIB scale encoding from an integer scale factor.
 ///   1 -> 0, 2 -> 1, 4 -> 2, 8 -> 3.
-inline constexpr uint8_t scaleLog2(uint8_t scale)
-{
-    switch (scale)
-    {
+inline constexpr uint8_t scaleLog2(uint8_t scale) {
+    switch (scale) {
         case 1:
             return 0;
         case 2:
@@ -150,8 +142,7 @@ inline constexpr uint8_t scaleLog2(uint8_t scale)
 
 /// Compute a REX prefix byte (0x40 | W<<3 | R<<2 | X<<1 | B).
 /// Returns 0 if no REX byte is needed.
-inline constexpr uint8_t computeRex(bool w, bool r, bool x, bool b)
-{
+inline constexpr uint8_t computeRex(bool w, bool r, bool x, bool b) {
     uint8_t rex = 0x40;
     if (w)
         rex |= 0x08;
@@ -165,8 +156,7 @@ inline constexpr uint8_t computeRex(bool w, bool r, bool x, bool b)
 }
 
 /// Whether a REX prefix is needed given the WRXB flags.
-inline constexpr bool needsRex(bool w, bool r, bool x, bool b)
-{
+inline constexpr bool needsRex(bool w, bool r, bool x, bool b) {
     return w || r || x || b;
 }
 
@@ -175,18 +165,15 @@ inline constexpr bool needsRex(bool w, bool r, bool x, bool b)
 /// Primary opcode byte for reg-reg ALU instructions.
 /// Indexed by MOpcode enum value for the subset of RegReg instructions.
 /// Returns 0 for opcodes that don't use this simple pattern.
-struct RegRegOp
-{
+struct RegRegOp {
     uint8_t primary;   ///< Primary opcode byte (or 0x0F escape prefix).
     uint8_t secondary; ///< Secondary byte after 0F (0 if single-byte opcode).
     bool regIsDst;     ///< True if ModR/M reg field is the destination.
 };
 
 /// Lookup the opcode bytes for a reg-reg GPR instruction.
-inline constexpr RegRegOp regRegOpcode(MOpcode op)
-{
-    switch (op)
-    {
+inline constexpr RegRegOp regRegOpcode(MOpcode op) {
+    switch (op) {
         case MOpcode::MOVrr:
             return {0x89, 0, false}; // reg=src, r/m=dst
         case MOpcode::ADDrr:
@@ -216,10 +203,8 @@ inline constexpr RegRegOp regRegOpcode(MOpcode op)
 }
 
 /// /ext field in ModR/M reg bits for reg-imm ALU (opcode 81/83).
-inline constexpr uint8_t regImmExt(MOpcode op)
-{
-    switch (op)
-    {
+inline constexpr uint8_t regImmExt(MOpcode op) {
+    switch (op) {
         case MOpcode::ADDri:
             return 0; // /0
         case MOpcode::ORri:
@@ -237,10 +222,8 @@ inline constexpr uint8_t regImmExt(MOpcode op)
 }
 
 /// /ext field in ModR/M reg bits for shift instructions (opcode C1/D3).
-inline constexpr uint8_t shiftExt(MOpcode op)
-{
-    switch (op)
-    {
+inline constexpr uint8_t shiftExt(MOpcode op) {
+    switch (op) {
         case MOpcode::SHLri:
         case MOpcode::SHLrc:
             return 4; // /4
@@ -257,18 +240,15 @@ inline constexpr uint8_t shiftExt(MOpcode op)
 }
 
 /// SSE instruction descriptor for scalar double operations.
-struct SseOp
-{
+struct SseOp {
     uint8_t prefix; ///< Mandatory prefix: 0xF2, 0x66, or 0 (none for MOVUPS).
     uint8_t opcode; ///< Opcode byte after 0F.
     bool regIsDst;  ///< True if ModR/M reg field is the destination.
     bool needsRexW; ///< True if REX.W is needed (CVTSI2SD, CVTTSD2SI, MOVQrx).
 };
 
-inline constexpr SseOp sseOpcode(MOpcode op)
-{
-    switch (op)
-    {
+inline constexpr SseOp sseOpcode(MOpcode op) {
+    switch (op) {
         case MOpcode::FADD:
             return {0xF2, 0x58, true, false};
         case MOpcode::FSUB:

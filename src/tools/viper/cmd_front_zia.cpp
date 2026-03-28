@@ -34,14 +34,12 @@ using namespace il;
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Parsed configuration for the Zia frontend subcommand.
 /// @details Captures whether the user requested IL emission or execution, plus
 ///          shared CLI options and any extra program arguments.
-struct FrontZiaConfig
-{
+struct FrontZiaConfig {
     bool emitIl{false};                   ///< True when `-emit-il` is requested.
     bool run{false};                      ///< True when `-run` is requested.
     bool debugVm{false};                  ///< True to use standard VM for debugging.
@@ -59,48 +57,33 @@ struct FrontZiaConfig
 /// @param argc Number of arguments in @p argv.
 /// @param argv Argument vector for the subcommand (excluding `ilc` itself).
 /// @return Expected configuration on success; diagnostic on failure.
-il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv)
-{
+il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv) {
     FrontZiaConfig config{};
 
-    for (int i = 0; i < argc; ++i)
-    {
+    for (int i = 0; i < argc; ++i) {
         std::string_view arg = argv[i];
 
-        if (arg == "-emit-il")
-        {
+        if (arg == "-emit-il") {
             config.emitIl = true;
-        }
-        else if (arg == "-run")
-        {
+        } else if (arg == "-run") {
             config.run = true;
-        }
-        else if (arg == "--debug-vm")
-        {
+        } else if (arg == "--debug-vm") {
             config.debugVm = true;
-        }
-        else if (arg == "--")
-        {
+        } else if (arg == "--") {
             for (int j = i + 1; j < argc; ++j)
                 config.programArgs.emplace_back(argv[j]);
             break;
-        }
-        else
-        {
-            switch (ilc::parseSharedOption(i, argc, argv, config.shared))
-            {
+        } else {
+            switch (ilc::parseSharedOption(i, argc, argv, config.shared)) {
                 case ilc::SharedOptionParseResult::Parsed:
                     continue;
                 case ilc::SharedOptionParseResult::Error:
                     return il::support::Expected<FrontZiaConfig>(il::support::Diagnostic{
                         il::support::Severity::Error, "failed to parse shared option", {}, {}});
                 case ilc::SharedOptionParseResult::NotMatched:
-                    if (!arg.empty() && arg[0] != '-')
-                    {
+                    if (!arg.empty() && arg[0] != '-') {
                         config.sourcePath = arg;
-                    }
-                    else
-                    {
+                    } else {
                         return il::support::Expected<FrontZiaConfig>(il::support::Diagnostic{
                             il::support::Severity::Error,
                             std::string("unknown flag: ") + std::string(arg),
@@ -112,8 +95,7 @@ il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv)
         }
     }
 
-    if ((config.emitIl == config.run) || config.sourcePath.empty())
-    {
+    if ((config.emitIl == config.run) || config.sourcePath.empty()) {
         return il::support::Expected<FrontZiaConfig>(il::support::Diagnostic{
             il::support::Severity::Error,
             "specify exactly one of -emit-il or -run, followed by source file",
@@ -136,8 +118,7 @@ il::support::Expected<FrontZiaConfig> parseFrontZiaArgs(int argc, char **argv)
 /// @return Zero on success; non-zero on compile, verify, IO, or runtime errors.
 int runFrontZia(const FrontZiaConfig &config,
                 const std::string &source,
-                il::support::SourceManager &sm)
-{
+                il::support::SourceManager &sm) {
     CompilerInput compilerInput{source, config.sourcePath};
     CompilerOptions compilerOpts{};
     compilerOpts.boundsChecks = config.shared.boundsChecks;
@@ -151,39 +132,33 @@ int runFrontZia(const FrontZiaConfig &config,
     // Warning policy from CLI flags
     compilerOpts.warningPolicy.enableAll = config.shared.wall;
     compilerOpts.warningPolicy.warningsAsErrors = config.shared.werror;
-    for (const auto &w : config.shared.disabledWarnings)
-    {
+    for (const auto &w : config.shared.disabledWarnings) {
         if (auto code = parseWarningCode(w))
             compilerOpts.warningPolicy.disabled.insert(*code);
     }
 
     auto result = compile(compilerInput, compilerOpts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         result.diagnostics.printAll(std::cerr, &sm);
         return 1;
     }
 
     core::Module module = std::move(result.module);
 
-    if (config.emitIl)
-    {
+    if (config.emitIl) {
         io::Serializer::write(module, std::cout);
         return 0;
     }
 
     auto verification = il::verify::Verifier::verify(module);
-    if (!verification)
-    {
+    if (!verification) {
         il::support::printDiag(verification.error(), std::cerr, &sm);
         return 1;
     }
 
-    if (!config.shared.stdinPath.empty())
-    {
-        if (!freopen(config.shared.stdinPath.c_str(), "r", stdin))
-        {
+    if (!config.shared.stdinPath.empty()) {
+        if (!freopen(config.shared.stdinPath.c_str(), "r", stdin)) {
             std::cerr << "unable to open stdin file\n";
             return 1;
         }
@@ -192,8 +167,7 @@ int runFrontZia(const FrontZiaConfig &config,
     // Use standard VM for debugging (when --debug-vm or --trace is specified)
     bool useStandardVm = config.debugVm || config.shared.trace.enabled();
 
-    if (useStandardVm)
-    {
+    if (useStandardVm) {
         vm::TraceConfig traceCfg = config.shared.trace;
         traceCfg.sm = &sm;
 
@@ -206,10 +180,8 @@ int runFrontZia(const FrontZiaConfig &config,
         int rc = static_cast<int>(runner.run());
 
         const auto trapMessage = runner.lastTrapMessage();
-        if (trapMessage)
-        {
-            if (config.shared.dumpTrap && !trapMessage->empty())
-            {
+        if (trapMessage) {
+            if (config.shared.dumpTrap && !trapMessage->empty()) {
                 std::cerr << *trapMessage;
                 if (trapMessage->back() != '\n')
                     std::cerr << '\n';
@@ -238,13 +210,11 @@ int runFrontZia(const FrontZiaConfig &config,
 /// @param argc Number of arguments in @p argv.
 /// @param argv Argument vector for the subcommand.
 /// @return Zero on success; non-zero on parsing, IO, or runtime failure.
-int cmdFrontZia(int argc, char **argv)
-{
+int cmdFrontZia(int argc, char **argv) {
     SourceManager sm;
 
     auto parsed = parseFrontZiaArgs(argc, argv);
-    if (!parsed)
-    {
+    if (!parsed) {
         const auto &diag = parsed.error();
         il::support::printDiag(diag, std::cerr, &sm);
         usage();
@@ -254,8 +224,7 @@ int cmdFrontZia(int argc, char **argv)
     FrontZiaConfig config = std::move(parsed.value());
 
     auto source = il::tools::common::loadSourceBuffer(config.sourcePath, sm);
-    if (!source)
-    {
+    if (!source) {
         const auto &diag = source.error();
         il::support::printDiag(diag, std::cerr, &sm);
         return 1;

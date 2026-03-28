@@ -28,8 +28,7 @@
 // ── RTSpriteBatchTests.cpp ──
 extern "C" void rt_abort(const char *msg);
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -37,8 +36,7 @@ extern "C" void vm_trap(const char *msg)
 // SpriteBatch Creation Tests
 // ============================================================================
 
-TEST(RTSprite, SpritebatchNewDefault)
-{
+TEST(RTSprite, SpritebatchNewDefault) {
     void *batch = rt_spritebatch_new(0);
     ASSERT_TRUE(batch != nullptr);
 
@@ -49,8 +47,7 @@ TEST(RTSprite, SpritebatchNewDefault)
     printf("test_spritebatch_new_default: PASSED\n");
 }
 
-TEST(RTSprite, SpritebatchNewCapacity)
-{
+TEST(RTSprite, SpritebatchNewCapacity) {
     void *batch = rt_spritebatch_new(512);
     ASSERT_TRUE(batch != nullptr);
     ASSERT_TRUE(rt_spritebatch_capacity(batch) >= 512);
@@ -62,8 +59,7 @@ TEST(RTSprite, SpritebatchNewCapacity)
 // SpriteBatch Begin/End Tests
 // ============================================================================
 
-TEST(RTSprite, SpritebatchBegin)
-{
+TEST(RTSprite, SpritebatchBegin) {
     void *batch = rt_spritebatch_new(0);
 
     ASSERT_TRUE(rt_spritebatch_is_active(batch) == 0);
@@ -74,8 +70,7 @@ TEST(RTSprite, SpritebatchBegin)
     printf("test_spritebatch_begin: PASSED\n");
 }
 
-TEST(RTSprite, SpritebatchBeginClearsCount)
-{
+TEST(RTSprite, SpritebatchBeginClearsCount) {
     void *batch = rt_spritebatch_new(0);
 
     // First batch
@@ -96,8 +91,7 @@ TEST(RTSprite, SpritebatchBeginClearsCount)
 // SpriteBatch Draw Tests
 // ============================================================================
 
-TEST(RTSprite, SpritebatchDrawIncrementsCount)
-{
+TEST(RTSprite, SpritebatchDrawIncrementsCount) {
     void *batch = rt_spritebatch_new(0);
 
     rt_spritebatch_begin(batch);
@@ -115,8 +109,7 @@ TEST(RTSprite, SpritebatchDrawIncrementsCount)
     printf("test_spritebatch_draw_increments_count: PASSED\n");
 }
 
-TEST(RTSprite, SpritebatchDrawNotActive)
-{
+TEST(RTSprite, SpritebatchDrawNotActive) {
     void *batch = rt_spritebatch_new(0);
 
     // Without begin, draw should not add
@@ -126,8 +119,7 @@ TEST(RTSprite, SpritebatchDrawNotActive)
     printf("test_spritebatch_draw_not_active: PASSED\n");
 }
 
-TEST(RTSprite, SpritebatchDrawNull)
-{
+TEST(RTSprite, SpritebatchDrawNull) {
     void *batch = rt_spritebatch_new(0);
 
     rt_spritebatch_begin(batch);
@@ -143,8 +135,7 @@ TEST(RTSprite, SpritebatchDrawNull)
 // SpriteBatch Settings Tests
 // ============================================================================
 
-TEST(RTSprite, SpritebatchSettings)
-{
+TEST(RTSprite, SpritebatchSettings) {
     void *batch = rt_spritebatch_new(0);
 
     // Test sort by depth
@@ -163,8 +154,7 @@ TEST(RTSprite, SpritebatchSettings)
     printf("test_spritebatch_settings: PASSED\n");
 }
 
-TEST(RTSprite, SpritebatchAlphaClamp)
-{
+TEST(RTSprite, SpritebatchAlphaClamp) {
     void *batch = rt_spritebatch_new(0);
 
     // Test alpha clamping (no direct getter, but should not crash)
@@ -180,15 +170,13 @@ TEST(RTSprite, SpritebatchAlphaClamp)
 // SpriteBatch Capacity Tests
 // ============================================================================
 
-TEST(RTSprite, SpritebatchGrow)
-{
+TEST(RTSprite, SpritebatchGrow) {
     void *batch = rt_spritebatch_new(4);
 
     rt_spritebatch_begin(batch);
 
     // Add more than initial capacity
-    for (int i = 0; i < 20; i++)
-    {
+    for (int i = 0; i < 20; i++) {
         rt_spritebatch_draw_pixels(batch, (void *)(intptr_t)(i + 1), i * 10, i * 10);
     }
 
@@ -202,8 +190,7 @@ TEST(RTSprite, SpritebatchGrow)
 // SpriteBatch Region Draw Tests
 // ============================================================================
 
-TEST(RTSprite, SpritebatchDrawRegion)
-{
+TEST(RTSprite, SpritebatchDrawRegion) {
     void *batch = rt_spritebatch_new(0);
 
     rt_spritebatch_begin(batch);
@@ -213,8 +200,7 @@ TEST(RTSprite, SpritebatchDrawRegion)
     printf("test_spritebatch_draw_region: PASSED\n");
 }
 
-TEST(RTSprite, TextureAtlasAddAndLookup)
-{
+TEST(RTSprite, TextureAtlasAddAndLookup) {
     void *pixels = rt_pixels_new(32, 32);
     ASSERT_TRUE(pixels != nullptr);
 
@@ -237,8 +223,7 @@ TEST(RTSprite, TextureAtlasAddAndLookup)
     rt_obj_release_check0(pixels);
 }
 
-TEST(RTSprite, TextureAtlasLoadGrid)
-{
+TEST(RTSprite, TextureAtlasLoadGrid) {
     void *pixels = rt_pixels_new(32, 16);
     ASSERT_TRUE(pixels != nullptr);
 
@@ -261,8 +246,7 @@ TEST(RTSprite, TextureAtlasLoadGrid)
     rt_obj_release_check0(pixels);
 }
 
-TEST(RTSprite, SpritebatchDrawAtlasVariantsIncrementCount)
-{
+TEST(RTSprite, SpritebatchDrawAtlasVariantsIncrementCount) {
     void *pixels = rt_pixels_new(32, 32);
     ASSERT_TRUE(pixels != nullptr);
 
@@ -301,28 +285,21 @@ static int tests_run = 0;
 static int tests_passed = 0;
 
 #define ASSERT(cond, msg)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+        if (!(cond)) {                                                                             \
             fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, msg);                        \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
 
 // Helper: create a test atlas with known pixel values
-static void *make_test_atlas(int64_t w, int64_t h)
-{
+static void *make_test_atlas(int64_t w, int64_t h) {
     void *px = rt_pixels_new(w, h);
     int64_t x, y;
-    for (y = 0; y < h; y++)
-    {
-        for (x = 0; x < w; x++)
-        {
+    for (y = 0; y < h; y++) {
+        for (x = 0; x < w; x++) {
             // Encode position into color: ARGB with R=x, G=y
             int64_t color = (int64_t)0xFF000000 | ((x & 0xFF) << 16) | ((y & 0xFF) << 8);
             rt_pixels_set(px, x, y, color);
@@ -331,8 +308,7 @@ static void *make_test_atlas(int64_t w, int64_t h)
     return px;
 }
 
-TEST(RTSprite, NewBasic)
-{
+TEST(RTSprite, NewBasic) {
     void *atlas = make_test_atlas(64, 64);
     void *sheet = rt_spritesheet_new(atlas);
     ASSERT(sheet != NULL, "spritesheet_new should return non-null");
@@ -343,14 +319,12 @@ TEST(RTSprite, NewBasic)
     rt_obj_release_check0(atlas);
 }
 
-TEST(RTSprite, NewNullAtlas)
-{
+TEST(RTSprite, NewNullAtlas) {
     void *sheet = rt_spritesheet_new(NULL);
     ASSERT(sheet == NULL, "null atlas returns null sheet");
 }
 
-TEST(RTSprite, SetAndGetRegion)
-{
+TEST(RTSprite, SetAndGetRegion) {
     void *atlas = make_test_atlas(64, 64);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -372,8 +346,7 @@ TEST(RTSprite, SetAndGetRegion)
     rt_obj_release_check0(atlas);
 }
 
-TEST(RTSprite, RegionOffset)
-{
+TEST(RTSprite, RegionOffset) {
     void *atlas = make_test_atlas(64, 64);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -393,8 +366,7 @@ TEST(RTSprite, RegionOffset)
     rt_obj_release_check0(atlas);
 }
 
-TEST(RTSprite, HasRegionFalse)
-{
+TEST(RTSprite, HasRegionFalse) {
     void *atlas = make_test_atlas(32, 32);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -406,8 +378,7 @@ TEST(RTSprite, HasRegionFalse)
     rt_obj_release_check0(atlas);
 }
 
-TEST(RTSprite, UpdateExistingRegion)
-{
+TEST(RTSprite, UpdateExistingRegion) {
     void *atlas = make_test_atlas(64, 64);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -432,8 +403,7 @@ TEST(RTSprite, UpdateExistingRegion)
     rt_obj_release_check0(atlas);
 }
 
-TEST(RTSprite, RemoveRegion)
-{
+TEST(RTSprite, RemoveRegion) {
     void *atlas = make_test_atlas(32, 32);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -454,8 +424,7 @@ TEST(RTSprite, RemoveRegion)
     rt_obj_release_check0(atlas);
 }
 
-TEST(RTSprite, MultipleRegions)
-{
+TEST(RTSprite, MultipleRegions) {
     void *atlas = make_test_atlas(64, 64);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -476,8 +445,7 @@ TEST(RTSprite, MultipleRegions)
     rt_obj_release_check0(atlas);
 }
 
-TEST(RTSprite, FromGrid)
-{
+TEST(RTSprite, FromGrid) {
     void *atlas = make_test_atlas(64, 32);
     void *sheet = rt_spritesheet_from_grid(atlas, 32, 32);
     ASSERT(sheet != NULL, "from_grid returns non-null");
@@ -502,8 +470,7 @@ TEST(RTSprite, FromGrid)
     rt_obj_release_check0(atlas);
 }
 
-TEST(RTSprite, FromGridInvalid)
-{
+TEST(RTSprite, FromGridInvalid) {
     void *atlas = make_test_atlas(32, 32);
     ASSERT(rt_spritesheet_from_grid(NULL, 16, 16) == NULL, "null atlas returns null");
     ASSERT(rt_spritesheet_from_grid(atlas, 0, 16) == NULL, "zero frame_w returns null");
@@ -511,8 +478,7 @@ TEST(RTSprite, FromGridInvalid)
     rt_obj_release_check0(atlas);
 }
 
-TEST(RTSprite, RegionNames)
-{
+TEST(RTSprite, RegionNames) {
     void *atlas = make_test_atlas(32, 32);
     void *sheet = rt_spritesheet_new(atlas);
 
@@ -530,8 +496,7 @@ TEST(RTSprite, RegionNames)
     rt_obj_release_check0(atlas);
 }
 
-TEST(RTSprite, NullSafety)
-{
+TEST(RTSprite, NullSafety) {
     rt_string name = rt_const_cstr("test");
     // All functions should handle NULL gracefully
     ASSERT(rt_spritesheet_region_count(NULL) == 0, "null count = 0");
@@ -543,8 +508,7 @@ TEST(RTSprite, NullSafety)
 }
 
 /// @brief Main.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -34,15 +34,12 @@ extern int64_t rt_pixels_width(void *pixels);
 extern int64_t rt_pixels_height(void *pixels);
 extern int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y);
 
-void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz)
-{
+void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz) {
     void *faces[6] = {px, nx, py, ny, pz, nz};
 
     /* Validate: all faces must be non-null */
-    for (int i = 0; i < 6; i++)
-    {
-        if (!faces[i])
-        {
+    for (int i = 0; i < 6; i++) {
+        if (!faces[i]) {
             rt_trap("CubeMap3D.New: all 6 faces must be non-null");
             return NULL;
         }
@@ -50,24 +47,20 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
 
     /* Validate: all faces must be square and same dimensions */
     int64_t size = rt_pixels_width(faces[0]);
-    if (size <= 0 || rt_pixels_height(faces[0]) != size)
-    {
+    if (size <= 0 || rt_pixels_height(faces[0]) != size) {
         rt_trap("CubeMap3D.New: faces must be square");
         return NULL;
     }
 
-    for (int i = 1; i < 6; i++)
-    {
-        if (rt_pixels_width(faces[i]) != size || rt_pixels_height(faces[i]) != size)
-        {
+    for (int i = 1; i < 6; i++) {
+        if (rt_pixels_width(faces[i]) != size || rt_pixels_height(faces[i]) != size) {
             rt_trap("CubeMap3D.New: all faces must have same dimensions");
             return NULL;
         }
     }
 
     rt_cubemap3d *cm = (rt_cubemap3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_cubemap3d));
-    if (!cm)
-    {
+    if (!cm) {
         rt_trap("CubeMap3D.New: memory allocation failed");
         return NULL;
     }
@@ -85,18 +78,20 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
 
 /* Sample a cube map given a 3D direction vector.
  * Returns color as floats [0.0, 1.0]. */
-void rt_cubemap_sample(
-    const rt_cubemap3d *cm, float dx, float dy, float dz, float *out_r, float *out_g, float *out_b)
-{
-    if (!cm)
-    {
+void rt_cubemap_sample(const rt_cubemap3d *cm,
+                       float dx,
+                       float dy,
+                       float dz,
+                       float *out_r,
+                       float *out_g,
+                       float *out_b) {
+    if (!cm) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }
 
     /* Guard against zero-length direction (undefined ray) */
-    if (fabsf(dx) < 1e-10f && fabsf(dy) < 1e-10f && fabsf(dz) < 1e-10f)
-    {
+    if (fabsf(dx) < 1e-10f && fabsf(dy) < 1e-10f && fabsf(dz) < 1e-10f) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }
@@ -105,49 +100,35 @@ void rt_cubemap_sample(
     int face;
     float u, v, ma;
 
-    if (ax >= ay && ax >= az)
-    {
+    if (ax >= ay && ax >= az) {
         ma = ax;
-        if (dx > 0)
-        {
+        if (dx > 0) {
             face = 0; /* +X */
             u = -dz;
             v = -dy;
-        }
-        else
-        {
+        } else {
             face = 1; /* -X */
             u = dz;
             v = -dy;
         }
-    }
-    else if (ay >= ax && ay >= az)
-    {
+    } else if (ay >= ax && ay >= az) {
         ma = ay;
-        if (dy > 0)
-        {
+        if (dy > 0) {
             face = 2; /* +Y */
             u = dx;
             v = dz;
-        }
-        else
-        {
+        } else {
             face = 3; /* -Y */
             u = dx;
             v = -dz;
         }
-    }
-    else
-    {
+    } else {
         ma = az;
-        if (dz > 0)
-        {
+        if (dz > 0) {
             face = 4; /* +Z */
             u = dx;
             v = -dy;
-        }
-        else
-        {
+        } else {
             face = 5; /* -Z */
             u = -dx;
             v = -dy;
@@ -162,8 +143,7 @@ void rt_cubemap_sample(
 
     /* Sample face texture using public API */
     void *face_pixels = cm->faces[face];
-    if (!face_pixels)
-    {
+    if (!face_pixels) {
         *out_r = *out_g = *out_b = 0.0f;
         return;
     }
@@ -194,8 +174,7 @@ void rt_cubemap_sample(
 /// @brief Perform canvas3d set skybox operation.
 /// @param canvas
 /// @param cubemap
-void rt_canvas3d_set_skybox(void *canvas, void *cubemap)
-{
+void rt_canvas3d_set_skybox(void *canvas, void *cubemap) {
     if (!canvas)
         return;
     ((rt_canvas3d *)canvas)->skybox = (rt_cubemap3d *)cubemap;
@@ -203,8 +182,7 @@ void rt_canvas3d_set_skybox(void *canvas, void *cubemap)
 
 /// @brief Perform canvas3d clear skybox operation.
 /// @param canvas
-void rt_canvas3d_clear_skybox(void *canvas)
-{
+void rt_canvas3d_clear_skybox(void *canvas) {
     if (!canvas)
         return;
     ((rt_canvas3d *)canvas)->skybox = NULL;
@@ -217,8 +195,7 @@ void rt_canvas3d_clear_skybox(void *canvas)
 /// @brief Perform material3d set env map operation.
 /// @param obj
 /// @param cubemap
-void rt_material3d_set_env_map(void *obj, void *cubemap)
-{
+void rt_material3d_set_env_map(void *obj, void *cubemap) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->env_map = cubemap;
@@ -227,8 +204,7 @@ void rt_material3d_set_env_map(void *obj, void *cubemap)
 /// @brief Perform material3d set reflectivity operation.
 /// @param obj
 /// @param r
-void rt_material3d_set_reflectivity(void *obj, double r)
-{
+void rt_material3d_set_reflectivity(void *obj, double r) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->reflectivity = r;
@@ -237,8 +213,7 @@ void rt_material3d_set_reflectivity(void *obj, double r)
 /// @brief Perform material3d get reflectivity operation.
 /// @param obj
 /// @return Result value.
-double rt_material3d_get_reflectivity(void *obj)
-{
+double rt_material3d_get_reflectivity(void *obj) {
     if (!obj)
         return 0.0;
     return ((rt_material3d *)obj)->reflectivity;

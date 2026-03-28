@@ -24,8 +24,7 @@
 
 #include "il/transform/PassRegistry.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Loop rotation pass converting while-loops to do-while form.
 /// @details For loops where the header only tests a condition and branches,
@@ -33,8 +32,7 @@ namespace il::transform
 ///          the loop body to execute without an initial branch. A guard
 ///          check is inserted before the loop to skip it entirely when the
 ///          condition is initially false.
-class LoopRotate : public FunctionPass
-{
+class LoopRotate : public FunctionPass {
   public:
     std::string_view id() const override;
     PreservedAnalyses run(core::Function &function, AnalysisManager &analysis) override;

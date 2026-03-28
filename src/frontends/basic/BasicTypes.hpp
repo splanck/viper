@@ -45,12 +45,10 @@
 
 #include <cstdint>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Enumerates the BASIC-level types that can annotate function returns.
-enum class BasicType
-{
+enum class BasicType {
     Unknown,
     Int,
     Float,
@@ -63,10 +61,8 @@ enum class BasicType
 /// @brief Converts a BasicType to its lowercase BASIC surface spelling.
 /// @param t The BASIC type to convert.
 /// @return Null-terminated string literal naming the type.
-inline const char *toString(BasicType t)
-{
-    switch (t)
-    {
+inline const char *toString(BasicType t) {
+    switch (t) {
         case BasicType::Unknown:
             return "unknown";
         case BasicType::Int:
@@ -87,13 +83,11 @@ inline const char *toString(BasicType t)
 
 } // namespace il::frontends::basic
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Access control for declarations (default Public).
 /// @notes Applies to CLASS/TYPE fields and class members.
-enum class Access : std::uint8_t
-{
+enum class Access : std::uint8_t {
     Public = 0,
     Private = 1,
 };

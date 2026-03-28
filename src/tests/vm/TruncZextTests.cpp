@@ -20,11 +20,9 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 // Build function for Trunc1: truncate i64 to i1 (boolean)
-void buildTrunc1Function(Module &module, int64_t val)
-{
+void buildTrunc1Function(Module &module, int64_t val) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -56,8 +54,7 @@ void buildTrunc1Function(Module &module, int64_t val)
 }
 
 // Build function for Zext1 directly from boolean constant
-void buildZext1DirectFunction(Module &module, int64_t boolVal)
-{
+void buildZext1DirectFunction(Module &module, int64_t boolVal) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -90,16 +87,14 @@ void buildZext1DirectFunction(Module &module, int64_t boolVal)
     bb.instructions.push_back(ret);
 }
 
-int64_t runTrunc1(int64_t val)
-{
+int64_t runTrunc1(int64_t val) {
     Module module;
     buildTrunc1Function(module, val);
     viper::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
-int64_t runZext1Direct(int64_t boolVal)
-{
+int64_t runZext1Direct(int64_t boolVal) {
     Module module;
     buildZext1DirectFunction(module, boolVal);
     viper::tests::VmFixture fixture;
@@ -108,8 +103,7 @@ int64_t runZext1Direct(int64_t boolVal)
 
 } // namespace
 
-int main()
-{
+int main() {
     //=========================================================================
     // Trunc1 tests (truncate to i1, keeping only LSB)
     //=========================================================================

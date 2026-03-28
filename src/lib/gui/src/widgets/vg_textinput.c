@@ -55,14 +55,12 @@ static vg_widget_vtable_t g_textinput_vtable = {.destroy = textinput_destroy,
 // Helper Functions
 //=============================================================================
 
-static bool ensure_capacity(vg_textinput_t *input, size_t needed)
-{
+static bool ensure_capacity(vg_textinput_t *input, size_t needed) {
     if (needed <= input->text_capacity)
         return true;
 
     size_t new_capacity = input->text_capacity;
-    while (new_capacity < needed)
-    {
+    while (new_capacity < needed) {
         new_capacity *= TEXTINPUT_GROWTH_FACTOR;
     }
 
@@ -75,48 +73,41 @@ static bool ensure_capacity(vg_textinput_t *input, size_t needed)
     return true;
 }
 
-static size_t textinput_char_count(const vg_textinput_t *input)
-{
+static size_t textinput_char_count(const vg_textinput_t *input) {
     return input && input->text ? (size_t)vg_utf8_strlen(input->text) : 0;
 }
 
-static size_t textinput_clamp_char_pos(const vg_textinput_t *input, size_t pos)
-{
+static size_t textinput_clamp_char_pos(const vg_textinput_t *input, size_t pos) {
     size_t chars = textinput_char_count(input);
     return pos > chars ? chars : pos;
 }
 
-static size_t textinput_byte_offset(const vg_textinput_t *input, size_t char_pos)
-{
+static size_t textinput_byte_offset(const vg_textinput_t *input, size_t char_pos) {
     return (size_t)vg_utf8_offset(input->text, (int)textinput_clamp_char_pos(input, char_pos));
 }
 
-static size_t textinput_char_index_from_byte_offset(const char *text, size_t byte_offset)
-{
+static size_t textinput_char_index_from_byte_offset(const char *text, size_t byte_offset) {
     if (!text)
         return 0;
 
     const char *cursor = text;
     const char *target = text + byte_offset;
     size_t chars = 0;
-    while (*cursor && cursor < target)
-    {
+    while (*cursor && cursor < target) {
         vg_utf8_decode(&cursor);
         chars++;
     }
     return chars;
 }
 
-static size_t textinput_codepoint_count_in_prefix(const char *text, size_t byte_len)
-{
+static size_t textinput_codepoint_count_in_prefix(const char *text, size_t byte_len) {
     if (!text)
         return 0;
 
     const char *cursor = text;
     const char *end = text + byte_len;
     size_t chars = 0;
-    while (*cursor && cursor < end)
-    {
+    while (*cursor && cursor < end) {
         const char *prev = cursor;
         vg_utf8_decode(&cursor);
         if (cursor > end)
@@ -128,15 +119,13 @@ static size_t textinput_codepoint_count_in_prefix(const char *text, size_t byte_
     return chars;
 }
 
-static size_t textinput_valid_utf8_prefix(const char *text, size_t max_bytes)
-{
+static size_t textinput_valid_utf8_prefix(const char *text, size_t max_bytes) {
     if (!text)
         return 0;
 
     const char *cursor = text;
     const char *limit = text + max_bytes;
-    while (*cursor && cursor < limit)
-    {
+    while (*cursor && cursor < limit) {
         const char *prev = cursor;
         vg_utf8_decode(&cursor);
         if (cursor > limit)
@@ -147,8 +136,7 @@ static size_t textinput_valid_utf8_prefix(const char *text, size_t max_bytes)
     return (size_t)(cursor - text);
 }
 
-static void textinput_set_cursor_internal(vg_textinput_t *input, size_t pos)
-{
+static void textinput_set_cursor_internal(vg_textinput_t *input, size_t pos) {
     size_t clamped = textinput_clamp_char_pos(input, pos);
     input->cursor_pos = clamped;
     input->selection_start = clamped;
@@ -159,8 +147,7 @@ static void textinput_set_cursor_internal(vg_textinput_t *input, size_t pos)
 // TextInput Implementation
 //=============================================================================
 
-vg_textinput_t *vg_textinput_create(vg_widget_t *parent)
-{
+vg_textinput_t *vg_textinput_create(vg_widget_t *parent) {
     vg_textinput_t *input = calloc(1, sizeof(vg_textinput_t));
     if (!input)
         return NULL;
@@ -173,8 +160,7 @@ vg_textinput_t *vg_textinput_create(vg_widget_t *parent)
 
     // Allocate initial text buffer
     input->text = malloc(TEXTINPUT_INITIAL_CAPACITY);
-    if (!input->text)
-    {
+    if (!input->text) {
         free(input);
         return NULL;
     }
@@ -227,39 +213,33 @@ vg_textinput_t *vg_textinput_create(vg_widget_t *parent)
     input->base.constraints.min_width = 100.0f;
 
     // Add to parent
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &input->base);
     }
 
     return input;
 }
 
-static void textinput_destroy(vg_widget_t *widget)
-{
+static void textinput_destroy(vg_widget_t *widget) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
 
-    if (input->text)
-    {
+    if (input->text) {
         free(input->text);
         input->text = NULL;
     }
-    if (input->placeholder)
-    {
+    if (input->placeholder) {
         free((void *)input->placeholder);
         input->placeholder = NULL;
     }
 
     // Free undo ring-buffer snapshots
-    for (int i = 0; i < TEXTINPUT_UNDO_CAPACITY; i++)
-    {
+    for (int i = 0; i < TEXTINPUT_UNDO_CAPACITY; i++) {
         free(input->undo_stack[i]);
         input->undo_stack[i] = NULL;
     }
 }
 
-static void textinput_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void textinput_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
     (void)available_height;
@@ -270,14 +250,12 @@ static void textinput_measure(vg_widget_t *widget, float available_width, float 
     // Width uses available or minimum
     float width = available_width > 0 ? available_width : widget->constraints.min_width;
 
-    if (widget->constraints.preferred_width > 0)
-    {
+    if (widget->constraints.preferred_width > 0) {
         width = widget->constraints.preferred_width;
     }
 
     // Apply multiline height
-    if (input->multiline && input->font)
-    {
+    if (input->multiline && input->font) {
         vg_font_metrics_t font_metrics;
         vg_font_get_metrics(input->font, input->font_size, &font_metrics);
         // Use at least 3 lines for multiline
@@ -288,26 +266,22 @@ static void textinput_measure(vg_widget_t *widget, float available_width, float 
     widget->measured_height = height;
 
     // Apply constraints
-    if (widget->measured_width < widget->constraints.min_width)
-    {
+    if (widget->measured_width < widget->constraints.min_width) {
         widget->measured_width = widget->constraints.min_width;
     }
-    if (widget->measured_height < widget->constraints.min_height)
-    {
+    if (widget->measured_height < widget->constraints.min_height) {
         widget->measured_height = widget->constraints.min_height;
     }
 }
 
-static void textinput_paint(vg_widget_t *widget, void *canvas)
-{
+static void textinput_paint(vg_widget_t *widget, void *canvas) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
 
     // Determine colors based on state
     uint32_t text_color = input->text_color;
 
-    if (widget->state & VG_STATE_DISABLED)
-    {
+    if (widget->state & VG_STATE_DISABLED) {
         text_color = theme->colors.fg_disabled;
     }
 
@@ -343,15 +317,13 @@ static void textinput_paint(vg_widget_t *widget, void *canvas)
     const char *display_text = input->text;
     uint32_t display_color = text_color;
 
-    if (input->text_len == 0 && input->placeholder)
-    {
+    if (input->text_len == 0 && input->placeholder) {
         display_text = input->placeholder;
         display_color = input->placeholder_color;
     }
 
     // Draw selection highlight if focused
-    if ((widget->state & VG_STATE_FOCUSED) && input->selection_start != input->selection_end)
-    {
+    if ((widget->state & VG_STATE_FOCUSED) && input->selection_start != input->selection_end) {
         // Get positions for selection
         size_t sel_start = input->selection_start < input->selection_end ? input->selection_start
                                                                          : input->selection_end;
@@ -376,8 +348,7 @@ static void textinput_paint(vg_widget_t *widget, void *canvas)
     }
 
     // Draw text (with password masking if needed)
-    if (input->password_mode && input->text_len > 0)
-    {
+    if (input->password_mode && input->text_len > 0) {
         // Mask text with asterisks
         char masked[1024];
         size_t char_count = textinput_char_count(input);
@@ -387,16 +358,13 @@ static void textinput_paint(vg_widget_t *widget, void *canvas)
         masked[n] = '\0';
         vg_font_draw_text(
             canvas, input->font, input->font_size, text_x, text_y, masked, display_color);
-    }
-    else
-    {
+    } else {
         vg_font_draw_text(
             canvas, input->font, input->font_size, text_x, text_y, display_text, display_color);
     }
 
     // Draw cursor if focused and visible (blinking)
-    if ((widget->state & VG_STATE_FOCUSED) && input->cursor_visible && !input->read_only)
-    {
+    if ((widget->state & VG_STATE_FOCUSED) && input->cursor_visible && !input->read_only) {
         float cursor_x =
             text_x + vg_font_get_cursor_x(
                          input->font, input->font_size, input->text, (int)input->cursor_pos);
@@ -425,14 +393,12 @@ static void textinput_paint(vg_widget_t *widget, void *canvas)
 // Undo: undo_pos-- and restore undo_stack[undo_pos].
 // Redo: undo_pos++ and restore undo_stack[undo_pos].
 // New edit while redos are available: truncate entries above undo_pos, then push.
-static void textinput_push_undo(vg_textinput_t *input)
-{
+static void textinput_push_undo(vg_textinput_t *input) {
     if (!input)
         return;
 
     // Truncate redo future: free entries above the current position
-    while (input->undo_count > input->undo_pos + 1)
-    {
+    while (input->undo_count > input->undo_pos + 1) {
         input->undo_count--;
         free(input->undo_stack[input->undo_count]);
         input->undo_stack[input->undo_count] = NULL;
@@ -447,8 +413,7 @@ static void textinput_push_undo(vg_textinput_t *input)
     input->undo_pos++;
 
     // Ring overflow: evict the oldest entry by shifting everything down by one
-    if (input->undo_pos >= TEXTINPUT_UNDO_CAPACITY)
-    {
+    if (input->undo_pos >= TEXTINPUT_UNDO_CAPACITY) {
         free(input->undo_stack[0]);
         memmove(input->undo_stack,
                 input->undo_stack + 1,
@@ -459,9 +424,7 @@ static void textinput_push_undo(vg_textinput_t *input)
         input->undo_stack[TEXTINPUT_UNDO_CAPACITY - 1] = NULL;
         input->undo_pos = TEXTINPUT_UNDO_CAPACITY - 1;
         input->undo_count = TEXTINPUT_UNDO_CAPACITY;
-    }
-    else
-    {
+    } else {
         input->undo_count = input->undo_pos + 1;
     }
 
@@ -469,8 +432,7 @@ static void textinput_push_undo(vg_textinput_t *input)
     input->undo_cursors[input->undo_pos] = input->cursor_pos;
 }
 
-static void textinput_undo(vg_textinput_t *input)
-{
+static void textinput_undo(vg_textinput_t *input) {
     if (!input || input->undo_pos <= 0)
         return; // Already at the oldest snapshot
 
@@ -491,8 +453,7 @@ static void textinput_undo(vg_textinput_t *input)
     input->base.needs_paint = true;
 }
 
-static void textinput_redo(vg_textinput_t *input)
-{
+static void textinput_redo(vg_textinput_t *input) {
     if (!input || input->undo_pos >= input->undo_count - 1)
         return; // Already at the newest snapshot
 
@@ -513,31 +474,24 @@ static void textinput_redo(vg_textinput_t *input)
     input->base.needs_paint = true;
 }
 
-static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
 
-    if (widget->state & VG_STATE_DISABLED)
-    {
+    if (widget->state & VG_STATE_DISABLED) {
         return false;
     }
 
-    switch (event->type)
-    {
+    switch (event->type) {
         case VG_EVENT_MOUSE_DOWN:
             // Set focus and cursor position
-            if (input->font)
-            {
+            if (input->font) {
                 float padding = vg_theme_get_current()->input.padding_h;
                 float local_x = event->mouse.x - padding + input->scroll_x;
                 int char_index =
                     vg_font_hit_test(input->font, input->font_size, input->text, local_x);
-                if (char_index >= 0)
-                {
+                if (char_index >= 0) {
                     input->cursor_pos = (size_t)char_index;
-                }
-                else
-                {
+                } else {
                     input->cursor_pos = textinput_char_count(input);
                 }
                 input->selection_start = input->cursor_pos;
@@ -545,23 +499,18 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
             }
             return true;
 
-        case VG_EVENT_KEY_DOWN:
-        {
+        case VG_EVENT_KEY_DOWN: {
             // Check for modifier key shortcuts
             uint32_t mods = event->modifiers;
             bool has_ctrl = (mods & VG_MOD_CTRL) != 0 || (mods & VG_MOD_SUPER) != 0;
 
             // Clipboard shortcuts (work in read-only mode for copy)
-            if (has_ctrl)
-            {
-                switch (event->key.key)
-                {
+            if (has_ctrl) {
+                switch (event->key.key) {
                     case VG_KEY_C: // Copy
-                        if (input->selection_start != input->selection_end)
-                        {
+                        if (input->selection_start != input->selection_end) {
                             char *selection = vg_textinput_get_selection(input);
-                            if (selection)
-                            {
+                            if (selection) {
                                 vgfx_clipboard_set_text(selection);
                                 free(selection);
                             }
@@ -570,11 +519,9 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                         return true;
 
                     case VG_KEY_X: // Cut
-                        if (!input->read_only && input->selection_start != input->selection_end)
-                        {
+                        if (!input->read_only && input->selection_start != input->selection_end) {
                             char *selection = vg_textinput_get_selection(input);
-                            if (selection)
-                            {
+                            if (selection) {
                                 vgfx_clipboard_set_text(selection);
                                 free(selection);
                                 vg_textinput_delete_selection(input);
@@ -585,13 +532,10 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                         return true;
 
                     case VG_KEY_V: // Paste
-                        if (!input->read_only)
-                        {
+                        if (!input->read_only) {
                             char *text = vgfx_clipboard_get_text();
-                            if (text)
-                            {
-                                if (input->selection_start != input->selection_end)
-                                {
+                            if (text) {
+                                if (input->selection_start != input->selection_end) {
                                     vg_textinput_delete_selection(input);
                                 }
                                 vg_textinput_insert(input, text);
@@ -628,12 +572,10 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
 
             bool has_shift = (mods & VG_MOD_SHIFT) != 0;
 
-            if (input->read_only)
-            {
+            if (input->read_only) {
                 size_t char_count = textinput_char_count(input);
                 // Only allow navigation in read-only mode
-                switch (event->key.key)
-                {
+                switch (event->key.key) {
                     case VG_KEY_LEFT:
                         if (input->cursor_pos > 0)
                             input->cursor_pos--;
@@ -656,12 +598,9 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
             }
 
             /* Ctrl+Left/Right: jump to next word boundary */
-            if (has_ctrl)
-            {
-                switch (event->key.key)
-                {
-                    case VG_KEY_LEFT:
-                    {
+            if (has_ctrl) {
+                switch (event->key.key) {
+                    case VG_KEY_LEFT: {
                         size_t pos = input->cursor_pos;
                         size_t byte_pos = textinput_byte_offset(input, pos);
                         /* Skip leading spaces */
@@ -671,21 +610,17 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                         while (byte_pos > 0 && input->text[byte_pos - 1] != ' ')
                             byte_pos--;
                         pos = textinput_char_index_from_byte_offset(input->text, byte_pos);
-                        if (has_shift)
-                        {
+                        if (has_shift) {
                             /* Extend / shrink selection toward cursor */
                             input->selection_end = pos;
-                        }
-                        else
-                        {
+                        } else {
                             input->selection_start = input->selection_end = pos;
                         }
                         input->cursor_pos = pos;
                         widget->needs_paint = true;
                         return true;
                     }
-                    case VG_KEY_RIGHT:
-                    {
+                    case VG_KEY_RIGHT: {
                         size_t pos = input->cursor_pos;
                         size_t byte_pos = textinput_byte_offset(input, pos);
                         /* Skip word characters */
@@ -695,12 +630,9 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                         while (byte_pos < input->text_len && input->text[byte_pos] == ' ')
                             byte_pos++;
                         pos = textinput_char_index_from_byte_offset(input->text, byte_pos);
-                        if (has_shift)
-                        {
+                        if (has_shift) {
                             input->selection_end = pos;
-                        }
-                        else
-                        {
+                        } else {
                             input->selection_start = input->selection_end = pos;
                         }
                         input->cursor_pos = pos;
@@ -713,59 +645,47 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
             }
 
             // Handle editing keys
-            switch (event->key.key)
-            {
+            switch (event->key.key) {
                 case VG_KEY_BACKSPACE:
-                    if (input->selection_start != input->selection_end)
-                    {
+                    if (input->selection_start != input->selection_end) {
                         vg_textinput_delete_selection(input);
                         textinput_push_undo(input);
-                    }
-                    else if (input->cursor_pos > 0)
-                    {
+                    } else if (input->cursor_pos > 0) {
                         size_t end = textinput_byte_offset(input, input->cursor_pos);
                         size_t start = textinput_byte_offset(input, input->cursor_pos - 1);
                         memmove(input->text + start, input->text + end, input->text_len - end + 1);
                         input->cursor_pos--;
                         input->text_len -= (end - start);
                         textinput_push_undo(input);
-                        if (input->on_change)
-                        {
+                        if (input->on_change) {
                             input->on_change(widget, input->text, input->on_change_data);
                         }
                     }
                     break;
 
                 case VG_KEY_DELETE:
-                    if (input->selection_start != input->selection_end)
-                    {
+                    if (input->selection_start != input->selection_end) {
                         vg_textinput_delete_selection(input);
                         textinput_push_undo(input);
-                    }
-                    else if (input->cursor_pos < textinput_char_count(input))
-                    {
+                    } else if (input->cursor_pos < textinput_char_count(input)) {
                         size_t start = textinput_byte_offset(input, input->cursor_pos);
                         size_t end = textinput_byte_offset(input, input->cursor_pos + 1);
                         memmove(input->text + start, input->text + end, input->text_len - end + 1);
                         input->text_len -= (end - start);
                         textinput_push_undo(input);
-                        if (input->on_change)
-                        {
+                        if (input->on_change) {
                             input->on_change(widget, input->text, input->on_change_data);
                         }
                     }
                     break;
 
                 case VG_KEY_LEFT:
-                    if (has_shift)
-                    {
+                    if (has_shift) {
                         /* Extend selection: anchor is kept, end moves */
                         if (input->cursor_pos > 0)
                             input->cursor_pos--;
                         input->selection_end = input->cursor_pos;
-                    }
-                    else
-                    {
+                    } else {
                         /* Plain Left: collapse selection or move */
                         if (input->selection_start != input->selection_end)
                             input->cursor_pos = input->selection_start;
@@ -776,14 +696,11 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     break;
 
                 case VG_KEY_RIGHT:
-                    if (has_shift)
-                    {
+                    if (has_shift) {
                         if (input->cursor_pos < textinput_char_count(input))
                             input->cursor_pos++;
                         input->selection_end = input->cursor_pos;
-                    }
-                    else
-                    {
+                    } else {
                         if (input->selection_start != input->selection_end)
                             input->cursor_pos = input->selection_end;
                         else if (input->cursor_pos < textinput_char_count(input))
@@ -793,26 +710,20 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
                     break;
 
                 case VG_KEY_HOME:
-                    if (has_shift)
-                    {
+                    if (has_shift) {
                         input->cursor_pos = 0;
                         input->selection_end = 0;
-                    }
-                    else
-                    {
+                    } else {
                         input->cursor_pos = 0;
                         input->selection_start = input->selection_end = 0;
                     }
                     break;
 
                 case VG_KEY_END:
-                    if (has_shift)
-                    {
+                    if (has_shift) {
                         input->cursor_pos = textinput_char_count(input);
                         input->selection_end = input->cursor_pos;
-                    }
-                    else
-                    {
+                    } else {
                         input->cursor_pos = textinput_char_count(input);
                         input->selection_start = input->selection_end = input->cursor_pos;
                     }
@@ -831,29 +742,21 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
         }
 
         case VG_EVENT_KEY_CHAR:
-            if (!input->read_only)
-            {
+            if (!input->read_only) {
                 // Insert typed character
                 char utf8[5] = {0};
                 // Convert codepoint to UTF-8
                 uint32_t cp = event->key.codepoint;
-                if (cp < 0x80)
-                {
+                if (cp < 0x80) {
                     utf8[0] = (char)cp;
-                }
-                else if (cp < 0x800)
-                {
+                } else if (cp < 0x800) {
                     utf8[0] = (char)(0xC0 | (cp >> 6));
                     utf8[1] = (char)(0x80 | (cp & 0x3F));
-                }
-                else if (cp < 0x10000)
-                {
+                } else if (cp < 0x10000) {
                     utf8[0] = (char)(0xE0 | (cp >> 12));
                     utf8[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
                     utf8[2] = (char)(0x80 | (cp & 0x3F));
-                }
-                else
-                {
+                } else {
                     utf8[0] = (char)(0xF0 | (cp >> 18));
                     utf8[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
                     utf8[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
@@ -871,17 +774,14 @@ static bool textinput_handle_event(vg_widget_t *widget, vg_event_t *event)
     return false;
 }
 
-static bool textinput_can_focus(vg_widget_t *widget)
-{
+static bool textinput_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
-static void textinput_on_focus(vg_widget_t *widget, bool gained)
-{
+static void textinput_on_focus(vg_widget_t *widget, bool gained) {
     vg_textinput_t *input = (vg_textinput_t *)widget;
 
-    if (gained)
-    {
+    if (gained) {
         // Reset cursor blink
         input->cursor_blink_time = 0;
         input->cursor_visible = true;
@@ -892,8 +792,7 @@ static void textinput_on_focus(vg_widget_t *widget, bool gained)
 // TextInput API
 //=============================================================================
 
-void vg_textinput_set_text(vg_textinput_t *input, const char *text)
-{
+void vg_textinput_set_text(vg_textinput_t *input, const char *text) {
     if (!input)
         return;
 
@@ -902,12 +801,9 @@ void vg_textinput_set_text(vg_textinput_t *input, const char *text)
     if (!ensure_capacity(input, len + 1))
         return;
 
-    if (text)
-    {
+    if (text) {
         memcpy(input->text, text, len + 1);
-    }
-    else
-    {
+    } else {
         input->text[0] = '\0';
     }
     input->text_len = len;
@@ -915,25 +811,21 @@ void vg_textinput_set_text(vg_textinput_t *input, const char *text)
 
     input->base.needs_paint = true;
 
-    if (input->on_change)
-    {
+    if (input->on_change) {
         input->on_change(&input->base, input->text, input->on_change_data);
     }
 }
 
-const char *vg_textinput_get_text(vg_textinput_t *input)
-{
+const char *vg_textinput_get_text(vg_textinput_t *input) {
     return input ? input->text : NULL;
 }
 
 /// @brief Textinput set placeholder.
-void vg_textinput_set_placeholder(vg_textinput_t *input, const char *placeholder)
-{
+void vg_textinput_set_placeholder(vg_textinput_t *input, const char *placeholder) {
     if (!input)
         return;
 
-    if (input->placeholder)
-    {
+    if (input->placeholder) {
         free((void *)input->placeholder);
     }
     input->placeholder = placeholder ? strdup(placeholder) : NULL;
@@ -943,8 +835,7 @@ void vg_textinput_set_placeholder(vg_textinput_t *input, const char *placeholder
 /// @brief Textinput set on change.
 void vg_textinput_set_on_change(vg_textinput_t *input,
                                 vg_text_change_callback_t callback,
-                                void *user_data)
-{
+                                void *user_data) {
     if (!input)
         return;
 
@@ -955,8 +846,7 @@ void vg_textinput_set_on_change(vg_textinput_t *input,
 /// @brief Textinput set on commit.
 void vg_textinput_set_on_commit(vg_textinput_t *input,
                                 vg_text_change_callback_t callback,
-                                void *user_data)
-{
+                                void *user_data) {
     if (!input)
         return;
 
@@ -965,8 +855,7 @@ void vg_textinput_set_on_commit(vg_textinput_t *input,
 }
 
 /// @brief Textinput set cursor.
-void vg_textinput_set_cursor(vg_textinput_t *input, size_t pos)
-{
+void vg_textinput_set_cursor(vg_textinput_t *input, size_t pos) {
     if (!input)
         return;
 
@@ -975,8 +864,7 @@ void vg_textinput_set_cursor(vg_textinput_t *input, size_t pos)
 }
 
 /// @brief Textinput select.
-void vg_textinput_select(vg_textinput_t *input, size_t start, size_t end)
-{
+void vg_textinput_select(vg_textinput_t *input, size_t start, size_t end) {
     if (!input)
         return;
 
@@ -987,8 +875,7 @@ void vg_textinput_select(vg_textinput_t *input, size_t start, size_t end)
 }
 
 /// @brief Textinput select all.
-void vg_textinput_select_all(vg_textinput_t *input)
-{
+void vg_textinput_select_all(vg_textinput_t *input) {
     if (!input)
         return;
 
@@ -999,14 +886,12 @@ void vg_textinput_select_all(vg_textinput_t *input)
 }
 
 /// @brief Textinput insert.
-void vg_textinput_insert(vg_textinput_t *input, const char *text)
-{
+void vg_textinput_insert(vg_textinput_t *input, const char *text) {
     if (!input || !text || input->read_only)
         return;
 
     // Delete selection first
-    if (input->selection_start != input->selection_end)
-    {
+    if (input->selection_start != input->selection_end) {
         vg_textinput_delete_selection(input);
     }
 
@@ -1014,8 +899,7 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text)
     size_t new_len = input->text_len + insert_len;
 
     // Check max length
-    if (input->max_length > 0 && new_len > (size_t)input->max_length)
-    {
+    if (input->max_length > 0 && new_len > (size_t)input->max_length) {
         insert_len = (size_t)input->max_length - input->text_len;
         insert_len = textinput_valid_utf8_prefix(text, insert_len);
         if (insert_len == 0)
@@ -1041,15 +925,13 @@ void vg_textinput_insert(vg_textinput_t *input, const char *text)
 
     input->base.needs_paint = true;
 
-    if (input->on_change)
-    {
+    if (input->on_change) {
         input->on_change(&input->base, input->text, input->on_change_data);
     }
 }
 
 /// @brief Textinput delete selection.
-void vg_textinput_delete_selection(vg_textinput_t *input)
-{
+void vg_textinput_delete_selection(vg_textinput_t *input) {
     if (!input || input->read_only)
         return;
     if (input->selection_start == input->selection_end)
@@ -1071,15 +953,13 @@ void vg_textinput_delete_selection(vg_textinput_t *input)
 
     input->base.needs_paint = true;
 
-    if (input->on_change)
-    {
+    if (input->on_change) {
         input->on_change(&input->base, input->text, input->on_change_data);
     }
 }
 
 /// @brief Textinput get selection.
-char *vg_textinput_get_selection(vg_textinput_t *input)
-{
+char *vg_textinput_get_selection(vg_textinput_t *input) {
     if (!input)
         return NULL;
     if (input->selection_start == input->selection_end)
@@ -1104,8 +984,7 @@ char *vg_textinput_get_selection(vg_textinput_t *input)
 }
 
 /// @brief Textinput set font.
-void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size)
-{
+void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size) {
     if (!input)
         return;
 
@@ -1116,14 +995,12 @@ void vg_textinput_set_font(vg_textinput_t *input, vg_font_t *font, float size)
 }
 
 /// @brief Textinput tick.
-void vg_textinput_tick(vg_textinput_t *input, float dt)
-{
+void vg_textinput_tick(vg_textinput_t *input, float dt) {
     if (!input || !(input->base.state & VG_STATE_FOCUSED))
         return;
 
     input->cursor_blink_time += dt;
-    if (input->cursor_blink_time >= CURSOR_BLINK_RATE)
-    {
+    if (input->cursor_blink_time >= CURSOR_BLINK_RATE) {
         input->cursor_blink_time -= CURSOR_BLINK_RATE;
         input->cursor_visible = !input->cursor_visible;
         input->base.needs_paint = true;

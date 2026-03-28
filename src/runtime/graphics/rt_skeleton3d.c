@@ -72,16 +72,14 @@ extern void rt_canvas3d_draw_mesh(void *obj, void *mesh, void *transform, void *
  * Skeleton3D
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     char name[64];
     int32_t parent_index;
     float bind_pose_local[16]; /* row-major local bind pose */
     float inverse_bind[16];    /* row-major inverse of global bind pose */
 } vgfx3d_bone_t;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     vgfx3d_bone_t *bones;
     int32_t bone_count;
@@ -91,24 +89,21 @@ typedef struct
  * Animation3D
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     float time;
     float position[3];
     float rotation[4]; /* quaternion (x, y, z, w) */
     float scale_xyz[3];
 } vgfx3d_keyframe_t;
 
-typedef struct
-{
+typedef struct {
     int32_t bone_index;
     vgfx3d_keyframe_t *keyframes;
     int32_t keyframe_count;
     int32_t keyframe_capacity;
 } vgfx3d_anim_channel_t;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     char name[64];
     vgfx3d_anim_channel_t *channels;
@@ -122,8 +117,7 @@ typedef struct
  * AnimPlayer3D
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     rt_skeleton3d *skeleton;
     rt_animation3d *current;
@@ -143,23 +137,20 @@ typedef struct
  * Matrix math helpers (float, row-major)
  *=========================================================================*/
 
-static void mat4f_mul_local(const float *a, const float *b, float *out)
-{
+static void mat4f_mul_local(const float *a, const float *b, float *out) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
             out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
                              a[r * 4 + 2] * b[2 * 4 + c] + a[r * 4 + 3] * b[3 * 4 + c];
 }
 
-static void mat4f_identity(float *m)
-{
+static void mat4f_identity(float *m) {
     memset(m, 0, 16 * sizeof(float));
     m[0] = m[5] = m[10] = m[15] = 1.0f;
 }
 
 /// @brief Invert a 4x4 float matrix. Returns 0 on success, -1 if singular.
-static int mat4f_invert(const float *m, float *out)
-{
+static int mat4f_invert(const float *m, float *out) {
     float inv[16];
     inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
              m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
@@ -204,8 +195,7 @@ static int mat4f_invert(const float *m, float *out)
 }
 
 /// @brief Build TRS matrix from float arrays (row-major).
-static void build_trs_float(const float *pos, const float *quat, const float *scl, float *out)
-{
+static void build_trs_float(const float *pos, const float *quat, const float *scl, float *out) {
     float x = quat[0], y = quat[1], z = quat[2], w = quat[3];
     float x2 = x + x, y2 = y + y, z2 = z + z;
     float xx = x * x2, xy = x * y2, xz = x * z2;
@@ -231,26 +221,21 @@ static void build_trs_float(const float *pos, const float *quat, const float *sc
 }
 
 /// @brief SLERP between two quaternions (float arrays, x,y,z,w).
-static void quat_slerp_float(const float *a, const float *b, float t, float *out)
-{
+static void quat_slerp_float(const float *a, const float *b, float t, float *out) {
     float dot = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3];
     float nb[4] = {b[0], b[1], b[2], b[3]};
-    if (dot < 0.0f)
-    {
+    if (dot < 0.0f) {
         dot = -dot;
         nb[0] = -nb[0];
         nb[1] = -nb[1];
         nb[2] = -nb[2];
         nb[3] = -nb[3];
     }
-    if (dot > 0.9995f)
-    {
+    if (dot > 0.9995f) {
         /* Nearly identical: linear interpolation + normalize */
         for (int i = 0; i < 4; i++)
             out[i] = a[i] + t * (nb[i] - a[i]);
-    }
-    else
-    {
+    } else {
         float theta = acosf(dot);
         float sin_theta = sinf(theta);
         float wa = sinf((1.0f - t) * theta) / sin_theta;
@@ -269,18 +254,15 @@ static void quat_slerp_float(const float *a, const float *b, float t, float *out
  * Skeleton3D implementation
  *=========================================================================*/
 
-static void rt_skeleton3d_finalize(void *obj)
-{
+static void rt_skeleton3d_finalize(void *obj) {
     rt_skeleton3d *s = (rt_skeleton3d *)obj;
     free(s->bones);
     s->bones = NULL;
 }
 
-void *rt_skeleton3d_new(void)
-{
+void *rt_skeleton3d_new(void) {
     rt_skeleton3d *s = (rt_skeleton3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_skeleton3d));
-    if (!s)
-    {
+    if (!s) {
         rt_trap("Skeleton3D.New: memory allocation failed");
         return NULL;
     }
@@ -291,18 +273,15 @@ void *rt_skeleton3d_new(void)
     return s;
 }
 
-int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, void *bind_mat4)
-{
+int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, void *bind_mat4) {
     if (!obj)
         return -1;
     rt_skeleton3d *s = (rt_skeleton3d *)obj;
-    if (s->bone_count >= VGFX3D_MAX_BONES)
-    {
+    if (s->bone_count >= VGFX3D_MAX_BONES) {
         rt_trap("Skeleton3D.AddBone: max 128 bones exceeded");
         return -1;
     }
-    if (parent_index >= s->bone_count)
-    {
+    if (parent_index >= s->bone_count) {
         rt_trap("Skeleton3D.AddBone: parent_index must be less than bone count");
         return -1;
     }
@@ -318,11 +297,9 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
     memset(bone, 0, sizeof(vgfx3d_bone_t));
 
     /* Copy name */
-    if (name)
-    {
+    if (name) {
         const char *cstr = rt_string_cstr(name);
-        if (cstr)
-        {
+        if (cstr) {
             size_t len = strlen(cstr);
             if (len > 63)
                 len = 63;
@@ -334,14 +311,11 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
     bone->parent_index = (int32_t)parent_index;
 
     /* Copy bind pose from Mat4 (double → float) */
-    if (bind_mat4)
-    {
+    if (bind_mat4) {
         for (int r = 0; r < 4; r++)
             for (int c = 0; c < 4; c++)
                 bone->bind_pose_local[r * 4 + c] = (float)rt_mat4_get(bind_mat4, r, c);
-    }
-    else
-    {
+    } else {
         mat4f_identity(bone->bind_pose_local);
     }
     mat4f_identity(bone->inverse_bind);
@@ -351,8 +325,7 @@ int64_t rt_skeleton3d_add_bone(void *obj, rt_string name, int64_t parent_index, 
     return idx;
 }
 
-void rt_skeleton3d_compute_inverse_bind(void *obj)
-{
+void rt_skeleton3d_compute_inverse_bind(void *obj) {
     if (!obj)
         return;
     rt_skeleton3d *s = (rt_skeleton3d *)obj;
@@ -362,16 +335,12 @@ void rt_skeleton3d_compute_inverse_bind(void *obj)
     if (!globals)
         return;
 
-    for (int32_t i = 0; i < s->bone_count; i++)
-    {
-        if (s->bones[i].parent_index >= 0)
-        {
+    for (int32_t i = 0; i < s->bone_count; i++) {
+        if (s->bones[i].parent_index >= 0) {
             mat4f_mul_local(&globals[s->bones[i].parent_index * 16],
                             s->bones[i].bind_pose_local,
                             &globals[i * 16]);
-        }
-        else
-        {
+        } else {
             memcpy(&globals[i * 16], s->bones[i].bind_pose_local, 16 * sizeof(float));
         }
         mat4f_invert(&globals[i * 16], s->bones[i].inverse_bind);
@@ -380,13 +349,11 @@ void rt_skeleton3d_compute_inverse_bind(void *obj)
     free(globals);
 }
 
-int64_t rt_skeleton3d_get_bone_count(void *obj)
-{
+int64_t rt_skeleton3d_get_bone_count(void *obj) {
     return obj ? ((rt_skeleton3d *)obj)->bone_count : 0;
 }
 
-int64_t rt_skeleton3d_find_bone(void *obj, rt_string name)
-{
+int64_t rt_skeleton3d_find_bone(void *obj, rt_string name) {
     if (!obj || !name)
         return -1;
     rt_skeleton3d *s = (rt_skeleton3d *)obj;
@@ -399,8 +366,7 @@ int64_t rt_skeleton3d_find_bone(void *obj, rt_string name)
     return -1;
 }
 
-rt_string rt_skeleton3d_get_bone_name(void *obj, int64_t index)
-{
+rt_string rt_skeleton3d_get_bone_name(void *obj, int64_t index) {
     if (!obj)
         return rt_const_cstr("");
     rt_skeleton3d *s = (rt_skeleton3d *)obj;
@@ -409,8 +375,7 @@ rt_string rt_skeleton3d_get_bone_name(void *obj, int64_t index)
     return rt_const_cstr(s->bones[index].name);
 }
 
-void *rt_skeleton3d_get_bone_bind_pose(void *obj, int64_t index)
-{
+void *rt_skeleton3d_get_bone_bind_pose(void *obj, int64_t index) {
     if (!obj)
         return NULL;
     rt_skeleton3d *s = (rt_skeleton3d *)obj;
@@ -439,8 +404,7 @@ void *rt_skeleton3d_get_bone_bind_pose(void *obj, int64_t index)
  * Animation3D implementation
  *=========================================================================*/
 
-static void rt_animation3d_finalize(void *obj)
-{
+static void rt_animation3d_finalize(void *obj) {
     rt_animation3d *a = (rt_animation3d *)obj;
     for (int32_t i = 0; i < a->channel_count; i++)
         free(a->channels[i].keyframes);
@@ -448,21 +412,17 @@ static void rt_animation3d_finalize(void *obj)
     a->channels = NULL;
 }
 
-void *rt_animation3d_new(rt_string name, double duration)
-{
+void *rt_animation3d_new(rt_string name, double duration) {
     rt_animation3d *a = (rt_animation3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_animation3d));
-    if (!a)
-    {
+    if (!a) {
         rt_trap("Animation3D.New: memory allocation failed");
         return NULL;
     }
     a->vptr = NULL;
     memset(a->name, 0, 64);
-    if (name)
-    {
+    if (name) {
         const char *cstr = rt_string_cstr(name);
-        if (cstr)
-        {
+        if (cstr) {
             size_t len = strlen(cstr);
             if (len > 63)
                 len = 63;
@@ -479,8 +439,7 @@ void *rt_animation3d_new(rt_string name, double duration)
 }
 
 void rt_animation3d_add_keyframe(
-    void *obj, int64_t bone_index, double time, void *position, void *rotation, void *scale)
-{
+    void *obj, int64_t bone_index, double time, void *position, void *rotation, void *scale) {
     if (!obj)
         return;
     rt_animation3d *a = (rt_animation3d *)obj;
@@ -488,16 +447,13 @@ void rt_animation3d_add_keyframe(
     /* Find or create channel for this bone */
     vgfx3d_anim_channel_t *ch = NULL;
     for (int32_t i = 0; i < a->channel_count; i++)
-        if (a->channels[i].bone_index == (int32_t)bone_index)
-        {
+        if (a->channels[i].bone_index == (int32_t)bone_index) {
             ch = &a->channels[i];
             break;
         }
 
-    if (!ch)
-    {
-        if (a->channel_count >= a->channel_capacity)
-        {
+    if (!ch) {
+        if (a->channel_count >= a->channel_capacity) {
             int32_t new_cap = a->channel_capacity == 0 ? 8 : a->channel_capacity * 2;
             vgfx3d_anim_channel_t *nc = (vgfx3d_anim_channel_t *)realloc(
                 a->channels, (size_t)new_cap * sizeof(vgfx3d_anim_channel_t));
@@ -512,8 +468,7 @@ void rt_animation3d_add_keyframe(
     }
 
     /* Add keyframe */
-    if (ch->keyframe_count >= ch->keyframe_capacity)
-    {
+    if (ch->keyframe_count >= ch->keyframe_capacity) {
         int32_t new_cap = ch->keyframe_capacity == 0 ? 16 : ch->keyframe_capacity * 2;
         vgfx3d_keyframe_t *nk = (vgfx3d_keyframe_t *)realloc(
             ch->keyframes, (size_t)new_cap * sizeof(vgfx3d_keyframe_t));
@@ -537,24 +492,20 @@ void rt_animation3d_add_keyframe(
     kf->scale_xyz[2] = scale ? (float)rt_vec3_z(scale) : 1.0f;
 }
 
-void rt_animation3d_set_looping(void *obj, int8_t loop)
-{
+void rt_animation3d_set_looping(void *obj, int8_t loop) {
     if (obj)
         ((rt_animation3d *)obj)->looping = loop;
 }
 
-int8_t rt_animation3d_get_looping(void *obj)
-{
+int8_t rt_animation3d_get_looping(void *obj) {
     return obj ? ((rt_animation3d *)obj)->looping : 0;
 }
 
-double rt_animation3d_get_duration(void *obj)
-{
+double rt_animation3d_get_duration(void *obj) {
     return obj ? ((rt_animation3d *)obj)->duration : 0.0;
 }
 
-rt_string rt_animation3d_get_name(void *obj)
-{
+rt_string rt_animation3d_get_name(void *obj) {
     return obj ? rt_const_cstr(((rt_animation3d *)obj)->name) : rt_const_cstr("");
 }
 
@@ -563,15 +514,12 @@ rt_string rt_animation3d_get_name(void *obj)
  *=========================================================================*/
 
 /// @brief Sample a channel at time t, producing a local TRS matrix.
-static void sample_channel(const vgfx3d_anim_channel_t *ch, float t, float *out_local)
-{
-    if (ch->keyframe_count == 0)
-    {
+static void sample_channel(const vgfx3d_anim_channel_t *ch, float t, float *out_local) {
+    if (ch->keyframe_count == 0) {
         mat4f_identity(out_local);
         return;
     }
-    if (ch->keyframe_count == 1)
-    {
+    if (ch->keyframe_count == 1) {
         build_trs_float(ch->keyframes[0].position,
                         ch->keyframes[0].rotation,
                         ch->keyframes[0].scale_xyz,
@@ -581,10 +529,8 @@ static void sample_channel(const vgfx3d_anim_channel_t *ch, float t, float *out_
 
     /* Find bracketing keyframes */
     int k0 = 0, k1 = 1;
-    for (int i = 0; i < ch->keyframe_count - 1; i++)
-    {
-        if (ch->keyframes[i + 1].time >= t)
-        {
+    for (int i = 0; i < ch->keyframe_count - 1; i++) {
+        if (ch->keyframes[i + 1].time >= t) {
             k0 = i;
             k1 = i + 1;
             break;
@@ -625,8 +571,7 @@ static void sample_channel(const vgfx3d_anim_channel_t *ch, float t, float *out_
  * AnimPlayer3D implementation
  *=========================================================================*/
 
-static void rt_anim_player3d_finalize(void *obj)
-{
+static void rt_anim_player3d_finalize(void *obj) {
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
     free(p->bone_palette);
     p->bone_palette = NULL;
@@ -636,18 +581,15 @@ static void rt_anim_player3d_finalize(void *obj)
     p->globals_buf = NULL;
 }
 
-void *rt_anim_player3d_new(void *skeleton)
-{
-    if (!skeleton)
-    {
+void *rt_anim_player3d_new(void *skeleton) {
+    if (!skeleton) {
         rt_trap("AnimPlayer3D.New: null skeleton");
         return NULL;
     }
     rt_skeleton3d *skel = (rt_skeleton3d *)skeleton;
 
     rt_anim_player3d *p = (rt_anim_player3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_anim_player3d));
-    if (!p)
-    {
+    if (!p) {
         rt_trap("AnimPlayer3D.New: memory allocation failed");
         return NULL;
     }
@@ -674,8 +616,7 @@ void *rt_anim_player3d_new(void *skeleton)
     return p;
 }
 
-void rt_anim_player3d_play(void *obj, void *animation)
-{
+void rt_anim_player3d_play(void *obj, void *animation) {
     if (!obj)
         return;
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
@@ -685,8 +626,7 @@ void rt_anim_player3d_play(void *obj, void *animation)
     p->crossfade_from = NULL;
 }
 
-void rt_anim_player3d_crossfade(void *obj, void *animation, double duration)
-{
+void rt_anim_player3d_crossfade(void *obj, void *animation, double duration) {
     if (!obj || !animation)
         return;
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
@@ -699,8 +639,7 @@ void rt_anim_player3d_crossfade(void *obj, void *animation, double duration)
     p->playing = 1;
 }
 
-void rt_anim_player3d_stop(void *obj)
-{
+void rt_anim_player3d_stop(void *obj) {
     if (!obj)
         return;
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
@@ -708,8 +647,7 @@ void rt_anim_player3d_stop(void *obj)
 }
 
 /// @brief Compute the bone palette from the current animation state.
-static void compute_bone_palette(rt_anim_player3d *p)
-{
+static void compute_bone_palette(rt_anim_player3d *p) {
     rt_skeleton3d *skel = p->skeleton;
     if (!skel || skel->bone_count == 0)
         return;
@@ -719,10 +657,8 @@ static void compute_bone_palette(rt_anim_player3d *p)
         memcpy(&p->local_transforms[i * 16], skel->bones[i].bind_pose_local, 16 * sizeof(float));
 
     /* Override with animated transforms from current animation */
-    if (p->current)
-    {
-        for (int32_t c = 0; c < p->current->channel_count; c++)
-        {
+    if (p->current) {
+        for (int32_t c = 0; c < p->current->channel_count; c++) {
             int32_t bone = p->current->channels[c].bone_index;
             if (bone >= 0 && bone < skel->bone_count)
                 sample_channel(
@@ -731,15 +667,13 @@ static void compute_bone_palette(rt_anim_player3d *p)
     }
 
     /* Crossfade: blend with previous animation */
-    if (p->crossfade_from && p->crossfade_duration > 0.0f)
-    {
+    if (p->crossfade_from && p->crossfade_duration > 0.0f) {
         float factor = p->crossfade_time / p->crossfade_duration;
         if (factor > 1.0f)
             factor = 1.0f;
 
         float from_local[16];
-        for (int32_t c = 0; c < p->crossfade_from->channel_count; c++)
-        {
+        for (int32_t c = 0; c < p->crossfade_from->channel_count; c++) {
             int32_t bone = p->crossfade_from->channels[c].bone_index;
             if (bone < 0 || bone >= skel->bone_count)
                 continue;
@@ -756,8 +690,7 @@ static void compute_bone_palette(rt_anim_player3d *p)
      * Using bone_palette as scratch for globals would be wrong because
      * palette entries include inverse_bind, which would corrupt children. */
     /* Reuse globals workspace across frames to avoid per-frame malloc */
-    if (!p->globals_buf)
-    {
+    if (!p->globals_buf) {
         p->globals_buf = (float *)malloc((size_t)skel->bone_count * 16 * sizeof(float));
         if (!p->globals_buf)
             return;
@@ -765,16 +698,12 @@ static void compute_bone_palette(rt_anim_player3d *p)
     float *globals = p->globals_buf;
 
     /* Phase 1: compute global transforms (parent_global * local) */
-    for (int32_t i = 0; i < skel->bone_count; i++)
-    {
-        if (skel->bones[i].parent_index >= 0)
-        {
+    for (int32_t i = 0; i < skel->bone_count; i++) {
+        if (skel->bones[i].parent_index >= 0) {
             mat4f_mul_local(&globals[skel->bones[i].parent_index * 16],
                             &p->local_transforms[i * 16],
                             &globals[i * 16]);
-        }
-        else
-        {
+        } else {
             memcpy(&globals[i * 16], &p->local_transforms[i * 16], 16 * sizeof(float));
         }
     }
@@ -784,8 +713,7 @@ static void compute_bone_palette(rt_anim_player3d *p)
         mat4f_mul_local(&globals[i * 16], skel->bones[i].inverse_bind, &p->bone_palette[i * 16]);
 }
 
-void rt_anim_player3d_update(void *obj, double delta_time)
-{
+void rt_anim_player3d_update(void *obj, double delta_time) {
     if (!obj)
         return;
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
@@ -795,23 +723,18 @@ void rt_anim_player3d_update(void *obj, double delta_time)
     p->current_time += (float)(delta_time * p->speed);
 
     /* Handle looping / end */
-    if (p->current->looping)
-    {
+    if (p->current->looping) {
         if (p->current->duration > 0.0f)
             p->current_time = fmodf(p->current_time, p->current->duration);
-    }
-    else
-    {
-        if (p->current_time >= p->current->duration)
-        {
+    } else {
+        if (p->current_time >= p->current->duration) {
             p->current_time = p->current->duration;
             p->playing = 0;
         }
     }
 
     /* Update crossfade */
-    if (p->crossfade_from)
-    {
+    if (p->crossfade_from) {
         p->crossfade_time += (float)delta_time;
         p->crossfade_from_time += (float)(delta_time * p->speed);
         if (p->crossfade_time >= p->crossfade_duration)
@@ -821,35 +744,29 @@ void rt_anim_player3d_update(void *obj, double delta_time)
     compute_bone_palette(p);
 }
 
-void rt_anim_player3d_set_speed(void *obj, double speed)
-{
+void rt_anim_player3d_set_speed(void *obj, double speed) {
     if (obj)
         ((rt_anim_player3d *)obj)->speed = (float)speed;
 }
 
-double rt_anim_player3d_get_speed(void *obj)
-{
+double rt_anim_player3d_get_speed(void *obj) {
     return obj ? ((rt_anim_player3d *)obj)->speed : 1.0;
 }
 
-int8_t rt_anim_player3d_is_playing(void *obj)
-{
+int8_t rt_anim_player3d_is_playing(void *obj) {
     return obj ? ((rt_anim_player3d *)obj)->playing : 0;
 }
 
-double rt_anim_player3d_get_time(void *obj)
-{
+double rt_anim_player3d_get_time(void *obj) {
     return obj ? ((rt_anim_player3d *)obj)->current_time : 0.0;
 }
 
-void rt_anim_player3d_set_time(void *obj, double time)
-{
+void rt_anim_player3d_set_time(void *obj, double time) {
     if (obj)
         ((rt_anim_player3d *)obj)->current_time = (float)time;
 }
 
-void *rt_anim_player3d_get_bone_matrix(void *obj, int64_t bone_index)
-{
+void *rt_anim_player3d_get_bone_matrix(void *obj, int64_t bone_index) {
     if (!obj)
         return NULL;
     rt_anim_player3d *p = (rt_anim_player3d *)obj;
@@ -878,8 +795,7 @@ void *rt_anim_player3d_get_bone_matrix(void *obj, int64_t bone_index)
  * Mesh3D extensions
  *=========================================================================*/
 
-void rt_mesh3d_set_skeleton(void *mesh, void *skeleton)
-{
+void rt_mesh3d_set_skeleton(void *mesh, void *skeleton) {
     (void)mesh;
     (void)skeleton;
     /* Skeleton reference is stored conceptually but not needed for CPU skinning —
@@ -895,8 +811,7 @@ void rt_mesh3d_set_bone_weights(void *obj,
                                 int64_t b2,
                                 double w2,
                                 int64_t b3,
-                                double w3)
-{
+                                double w3) {
     if (!obj)
         return;
     rt_mesh3d *m = (rt_mesh3d *)obj;
@@ -919,8 +834,7 @@ void rt_mesh3d_set_bone_weights(void *obj,
  *=========================================================================*/
 
 void rt_canvas3d_draw_mesh_skinned(
-    void *canvas, void *mesh, void *transform, void *material, void *anim_player)
-{
+    void *canvas, void *mesh, void *transform, void *material, void *anim_player) {
     if (!canvas || !mesh || !transform || !material || !anim_player)
         return;
 
@@ -960,8 +874,7 @@ void rt_canvas3d_draw_mesh_skinned(
 
 #define MAX_BLEND_STATES 8
 
-typedef struct
-{
+typedef struct {
     char name[64];
     rt_animation3d *animation;
     float weight;
@@ -970,8 +883,7 @@ typedef struct
     int8_t looping;
 } anim_blend_state_t;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     rt_skeleton3d *skeleton;
     anim_blend_state_t states[MAX_BLEND_STATES];
@@ -981,8 +893,7 @@ typedef struct
     float *temp_state_local;
 } rt_anim_blend3d;
 
-static void anim_blend3d_finalizer(void *obj)
-{
+static void anim_blend3d_finalizer(void *obj) {
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     free(b->bone_palette);
     free(b->local_transforms);
@@ -990,14 +901,12 @@ static void anim_blend3d_finalizer(void *obj)
     b->bone_palette = b->local_transforms = b->temp_state_local = NULL;
 }
 
-void *rt_anim_blend3d_new(void *skel_obj)
-{
+void *rt_anim_blend3d_new(void *skel_obj) {
     if (!skel_obj)
         return NULL;
     rt_skeleton3d *skel = (rt_skeleton3d *)skel_obj;
     rt_anim_blend3d *b = (rt_anim_blend3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_anim_blend3d));
-    if (!b)
-    {
+    if (!b) {
         rt_trap("AnimBlend3D.New: allocation failed");
         return NULL;
     }
@@ -1019,8 +928,7 @@ void *rt_anim_blend3d_new(void *skel_obj)
     return b;
 }
 
-int64_t rt_anim_blend3d_add_state(void *obj, rt_string name, void *anim_obj)
-{
+int64_t rt_anim_blend3d_add_state(void *obj, rt_string name, void *anim_obj) {
     if (!obj || !anim_obj)
         return -1;
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
@@ -1029,11 +937,9 @@ int64_t rt_anim_blend3d_add_state(void *obj, rt_string name, void *anim_obj)
 
     anim_blend_state_t *st = &b->states[b->state_count];
     memset(st, 0, sizeof(anim_blend_state_t));
-    if (name)
-    {
+    if (name) {
         const char *cstr = rt_string_cstr(name);
-        if (cstr)
-        {
+        if (cstr) {
             size_t len = strlen(cstr);
             if (len > 63)
                 len = 63;
@@ -1049,8 +955,7 @@ int64_t rt_anim_blend3d_add_state(void *obj, rt_string name, void *anim_obj)
     return b->state_count++;
 }
 
-void rt_anim_blend3d_set_weight(void *obj, int64_t state, double weight)
-{
+void rt_anim_blend3d_set_weight(void *obj, int64_t state, double weight) {
     if (!obj)
         return;
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
@@ -1059,26 +964,22 @@ void rt_anim_blend3d_set_weight(void *obj, int64_t state, double weight)
     b->states[state].weight = (float)weight;
 }
 
-void rt_anim_blend3d_set_weight_by_name(void *obj, rt_string name, double weight)
-{
+void rt_anim_blend3d_set_weight_by_name(void *obj, rt_string name, double weight) {
     if (!obj || !name)
         return;
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
     const char *target = rt_string_cstr(name);
     if (!target)
         return;
-    for (int32_t i = 0; i < b->state_count; i++)
-    {
-        if (strcmp(b->states[i].name, target) == 0)
-        {
+    for (int32_t i = 0; i < b->state_count; i++) {
+        if (strcmp(b->states[i].name, target) == 0) {
             b->states[i].weight = (float)weight;
             return;
         }
     }
 }
 
-double rt_anim_blend3d_get_weight(void *obj, int64_t state)
-{
+double rt_anim_blend3d_get_weight(void *obj, int64_t state) {
     if (!obj)
         return 0.0;
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
@@ -1087,8 +988,7 @@ double rt_anim_blend3d_get_weight(void *obj, int64_t state)
     return (double)b->states[state].weight;
 }
 
-void rt_anim_blend3d_set_speed(void *obj, int64_t state, double speed)
-{
+void rt_anim_blend3d_set_speed(void *obj, int64_t state, double speed) {
     if (!obj)
         return;
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
@@ -1097,8 +997,7 @@ void rt_anim_blend3d_set_speed(void *obj, int64_t state, double speed)
     b->states[state].speed = (float)speed;
 }
 
-void rt_anim_blend3d_update(void *obj, double dt)
-{
+void rt_anim_blend3d_update(void *obj, double dt) {
     if (!obj || dt <= 0)
         return;
     rt_anim_blend3d *b = (rt_anim_blend3d *)obj;
@@ -1108,8 +1007,7 @@ void rt_anim_blend3d_update(void *obj, double dt)
     int32_t bc = skel->bone_count;
 
     /* Advance all state timers */
-    for (int32_t s = 0; s < b->state_count; s++)
-    {
+    for (int32_t s = 0; s < b->state_count; s++) {
         anim_blend_state_t *st = &b->states[s];
         if (!st->animation || st->weight < 1e-6f)
             continue;
@@ -1126,8 +1024,7 @@ void rt_anim_blend3d_update(void *obj, double dt)
 
     /* Blend active states */
     float total_weight = 0.0f;
-    for (int32_t s = 0; s < b->state_count; s++)
-    {
+    for (int32_t s = 0; s < b->state_count; s++) {
         anim_blend_state_t *st = &b->states[s];
         if (!st->animation || st->weight < 1e-6f)
             continue;
@@ -1137,8 +1034,7 @@ void rt_anim_blend3d_update(void *obj, double dt)
             memcpy(
                 &b->temp_state_local[i * 16], skel->bones[i].bind_pose_local, 16 * sizeof(float));
 
-        for (int32_t c = 0; c < st->animation->channel_count; c++)
-        {
+        for (int32_t c = 0; c < st->animation->channel_count; c++) {
             int32_t bone = st->animation->channels[c].bone_index;
             if (bone < 0 || bone >= bc)
                 continue;
@@ -1159,8 +1055,7 @@ void rt_anim_blend3d_update(void *obj, double dt)
     float *globals = (float *)malloc((size_t)bc * 16 * sizeof(float));
     if (!globals)
         return;
-    for (int32_t i = 0; i < bc; i++)
-    {
+    for (int32_t i = 0; i < bc; i++) {
         if (skel->bones[i].parent_index >= 0)
             mat4f_mul_local(&globals[skel->bones[i].parent_index * 16],
                             &b->local_transforms[i * 16],
@@ -1173,14 +1068,12 @@ void rt_anim_blend3d_update(void *obj, double dt)
     free(globals);
 }
 
-int64_t rt_anim_blend3d_state_count(void *obj)
-{
+int64_t rt_anim_blend3d_state_count(void *obj) {
     return obj ? ((rt_anim_blend3d *)obj)->state_count : 0;
 }
 
 void rt_canvas3d_draw_mesh_blended(
-    void *canvas, void *mesh_obj, void *transform, void *material, void *blend_obj)
-{
+    void *canvas, void *mesh_obj, void *transform, void *material, void *blend_obj) {
     if (!canvas || !mesh_obj || !transform || !material || !blend_obj)
         return;
     rt_anim_blend3d *b = (rt_anim_blend3d *)blend_obj;

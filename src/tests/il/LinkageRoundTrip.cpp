@@ -40,8 +40,7 @@ using namespace il::core;
 // ---------------------------------------------------------------------------
 
 /// Build a minimal module with one function of the given linkage.
-static Module makeModuleWithFunc(const std::string &name, Linkage linkage)
-{
+static Module makeModuleWithFunc(const std::string &name, Linkage linkage) {
     Module m;
     Function fn;
     fn.name = name;
@@ -49,8 +48,7 @@ static Module makeModuleWithFunc(const std::string &name, Linkage linkage)
     fn.params.push_back(Param{"x", Type(Type::Kind::I64), 0});
     fn.linkage = linkage;
 
-    if (linkage != Linkage::Import)
-    {
+    if (linkage != Linkage::Import) {
         // Give the function a trivial body so it's valid IL.
         BasicBlock entry;
         entry.label = "entry";
@@ -69,16 +67,14 @@ static Module makeModuleWithFunc(const std::string &name, Linkage linkage)
 }
 
 /// Serialize a module to its textual IL representation.
-static std::string serialize(const Module &m)
-{
+static std::string serialize(const Module &m) {
     std::ostringstream oss;
     il::io::Serializer::write(m, oss);
     return oss.str();
 }
 
 /// Parse a textual IL module, returning success/failure.
-static bool parseIL(const std::string &text, Module &out)
-{
+static bool parseIL(const std::string &text, Module &out) {
     std::istringstream iss(text);
     auto result = il::io::Parser::parse(iss, out);
     return result.hasValue();
@@ -88,8 +84,7 @@ static bool parseIL(const std::string &text, Module &out)
 // Tests
 // ---------------------------------------------------------------------------
 
-TEST(LinkageRoundTrip, InternalLinkageIsDefault)
-{
+TEST(LinkageRoundTrip, InternalLinkageIsDefault) {
     Module m = makeModuleWithFunc("myFunc", Linkage::Internal);
     std::string text = serialize(m);
 
@@ -105,8 +100,7 @@ TEST(LinkageRoundTrip, InternalLinkageIsDefault)
     EXPECT_EQ(static_cast<int>(parsed.functions[0].linkage), static_cast<int>(Linkage::Internal));
 }
 
-TEST(LinkageRoundTrip, ExportLinkageSurvivesRoundTrip)
-{
+TEST(LinkageRoundTrip, ExportLinkageSurvivesRoundTrip) {
     Module m = makeModuleWithFunc("calcScore", Linkage::Export);
     std::string text = serialize(m);
 
@@ -121,8 +115,7 @@ TEST(LinkageRoundTrip, ExportLinkageSurvivesRoundTrip)
     EXPECT_EQ(parsed.functions[0].name, "calcScore");
 }
 
-TEST(LinkageRoundTrip, ImportLinkageHasNoBody)
-{
+TEST(LinkageRoundTrip, ImportLinkageHasNoBody) {
     Module m = makeModuleWithFunc("foreignHelper", Linkage::Import);
     std::string text = serialize(m);
 
@@ -140,8 +133,7 @@ TEST(LinkageRoundTrip, ImportLinkageHasNoBody)
     EXPECT_TRUE(parsed.functions[0].blocks.empty());
 }
 
-TEST(LinkageRoundTrip, MixedLinkagesInOneModule)
-{
+TEST(LinkageRoundTrip, MixedLinkagesInOneModule) {
     Module m;
 
     // Internal function
@@ -208,8 +200,7 @@ TEST(LinkageRoundTrip, MixedLinkagesInOneModule)
     EXPECT_FALSE(parsed.functions[1].blocks.empty());
 }
 
-TEST(LinkageRoundTrip, GlobalLinkageRoundTrips)
-{
+TEST(LinkageRoundTrip, GlobalLinkageRoundTrips) {
     Module m;
     m.globals.push_back({"str0", Type(Type::Kind::Str), "hello", Linkage::Internal});
     m.globals.push_back({"str1", Type(Type::Kind::Str), "world", Linkage::Export});
@@ -225,7 +216,6 @@ TEST(LinkageRoundTrip, GlobalLinkageRoundTrips)
     EXPECT_EQ(static_cast<int>(parsed.globals[1].linkage), static_cast<int>(Linkage::Export));
 }
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

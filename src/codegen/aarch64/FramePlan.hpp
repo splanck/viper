@@ -20,8 +20,7 @@
 #include "codegen/aarch64/TargetAArch64.hpp"
 
 /// @brief AArch64 code generation components for the Viper compiler.
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Describes the stack frame layout and callee-saved register plan for a function.
 ///
@@ -67,8 +66,7 @@ namespace viper::codegen::aarch64
 ///
 /// @see PrologueEpiloguePass for prologue/epilogue code generation
 /// @see RegAllocLinear for determining which callee-saved registers are used
-struct FramePlan
-{
+struct FramePlan {
     /// @brief List of general-purpose registers that must be saved in the prologue.
     ///
     /// Contains only those X19-X28 registers that are actually used by the function.

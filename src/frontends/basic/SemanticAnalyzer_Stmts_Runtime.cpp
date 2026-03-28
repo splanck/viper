@@ -30,20 +30,17 @@
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/ast/ExprNodes.hpp"
 
-namespace il::frontends::basic::semantic_analyzer_detail
-{
+namespace il::frontends::basic::semantic_analyzer_detail {
 
 /// @brief Bind runtime statement helpers to the active semantic analyzer state.
 ///
 /// @param analyzer Analyzer that supplies shared context such as loop tracking.
-RuntimeStmtContext::RuntimeStmtContext(SemanticAnalyzer &analyzer) noexcept : StmtShared(analyzer)
-{
-}
+RuntimeStmtContext::RuntimeStmtContext(SemanticAnalyzer &analyzer) noexcept
+    : StmtShared(analyzer) {}
 
 } // namespace il::frontends::basic::semantic_analyzer_detail
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 using semantic_analyzer_detail::astToSemanticType;
 using semantic_analyzer_detail::RuntimeStmtContext;
@@ -52,21 +49,18 @@ using semantic_analyzer_detail::semanticTypeName;
 /// @brief Validate a CALL statement against registered procedure signatures.
 ///
 /// @param stmt Statement node describing the call.
-void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
-{
+void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt) {
     if (!stmt.call)
         return;
 
-    if (auto *ce = as<CallExpr>(*stmt.call))
-    {
+    if (auto *ce = as<CallExpr>(*stmt.call)) {
         // Statement calls must target SUBs (not FUNCTIONs)
         const ProcSignature *sig = resolveCallee(*ce, ProcSignature::Kind::Sub);
         checkCallArgs(*ce, sig);
         return;
     }
 
-    if (auto *me = as<MethodCallExpr>(*stmt.call))
-    {
+    if (auto *me = as<MethodCallExpr>(*stmt.call)) {
         // Best-effort analysis: visit receiver and args to trigger diagnostics.
         // BUG-037 fix: Detect undefined variables in method calls and suggest qualified call
         // syntax. BUG-120 fix: Only emit error for unknown base if the base variable looks like a
@@ -74,15 +68,12 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
         // has already determined this is NOT a namespace-qualified call. Procedure-local object
         // variables may not be in symbols_ yet during semantic analysis but will be handled
         // correctly by the lowerer.
-        if (me->base)
-        {
-            if (auto *varExpr = as<VarExpr>(*me->base))
-            {
+        if (me->base) {
+            if (auto *varExpr = as<VarExpr>(*me->base)) {
                 // Check if the base variable exists; if not, this might be a qualified call.
                 // However, only emit the error if the name is a known namespace. Otherwise,
                 // it's likely a local object variable that will be resolved during lowering.
-                if (symbols_.find(std::string{varExpr->name}) == symbols_.end())
-                {
+                if (symbols_.find(std::string{varExpr->name}) == symbols_.end()) {
                     // BUG-OOP-032 fix: Also check if the variable can be resolved via scopes_.
                     // Local variables inside SUB/FUNCTION are mangled (e.g., "player" becomes
                     // "player_42") and stored in symbols_ with the mangled name. The scope
@@ -94,8 +85,7 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
                     // let the lowerer handle it - it might be an object instance.
                     bool looksLikeNamespace =
                         !isLocalVariable && oopIndex_.findClass(varExpr->name) != nullptr;
-                    if (looksLikeNamespace)
-                    {
+                    if (looksLikeNamespace) {
                         std::vector<std::string> segments;
                         segments.push_back(std::string{varExpr->name});
                         segments.push_back(me->method);
@@ -124,21 +114,18 @@ void SemanticAnalyzer::analyzeCallStmt(CallStmt &stmt)
 ///
 /// @param v Variable expression receiving the assignment.
 /// @param l LET statement providing the assigned expression and location.
-void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
-{
+void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l) {
     RuntimeStmtContext ctx(*this);
 
     // Check if trying to assign to a constant
-    if (constants_.find(v.name) != constants_.end())
-    {
+    if (constants_.find(v.name) != constants_.end()) {
         std::string msg = "cannot assign to constant '" + v.name + "'";
         de.emit(il::support::Severity::Error, "B2020", l.loc, 1, std::move(msg));
         return;
     }
 
     // BUG-003: Check if this is an assignment to the function name (VB-style implicit return)
-    if (activeFunction_ && string_utils::iequals(v.name, activeFunction_->name))
-    {
+    if (activeFunction_ && string_utils::iequals(v.name, activeFunction_->name)) {
         activeFunctionNameAssigned_ = true;
     }
 
@@ -156,8 +143,7 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 
     // If new variable with no suffix and RHS is String, Bool, or Float, pre-set the type
     if (isNewVariable && hasNoSuffix &&
-        (exprTy == Type::String || exprTy == Type::Bool || exprTy == Type::Float))
-    {
+        (exprTy == Type::String || exprTy == Type::Bool || exprTy == Type::Float)) {
         varTypes_[v.name] = exprTy;
     }
 
@@ -169,10 +155,8 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
     if (auto itType = varTypes_.find(v.name); itType != varTypes_.end())
         varTy = itType->second;
 
-    if (varTy == Type::ArrayInt)
-    {
-        if (exprTy != Type::Unknown && exprTy != Type::ArrayInt)
-        {
+    if (varTy == Type::ArrayInt) {
+        if (exprTy != Type::Unknown && exprTy != Type::ArrayInt) {
             std::string msg = "cannot assign scalar to array variable";
             de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
         }
@@ -182,22 +166,16 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
     if (!l.expr)
         return;
 
-    if (exprTy == Type::ArrayInt)
-    {
+    if (exprTy == Type::ArrayInt) {
         std::string msg = "cannot assign array value to scalar variable";
         de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
-    }
-    else if (varTy == Type::Int && exprTy == Type::Float)
-    {
+    } else if (varTy == Type::Int && exprTy == Type::Float) {
         bool allowFloatPromotion = false;
-        if (l.expr)
-        {
-            if (const auto *bin = as<const BinaryExpr>(*l.expr))
-            {
+        if (l.expr) {
+            if (const auto *bin = as<const BinaryExpr>(*l.expr)) {
                 const bool hasExplicitIntSuffix =
                     !v.name.empty() && (v.name.back() == '%' || v.name.back() == '&');
-                switch (bin->op)
-                {
+                switch (bin->op) {
                     case BinaryExpr::Op::Div:
                     case BinaryExpr::Op::Add:
                     case BinaryExpr::Op::Sub:
@@ -210,29 +188,21 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
             }
         }
 
-        if (allowFloatPromotion)
-        {
-            if (activeProcScope_)
-            {
+        if (allowFloatPromotion) {
+            if (activeProcScope_) {
                 std::optional<Type> previous = varTy;
                 activeProcScope_->noteVarTypeMutation(v.name, previous);
             }
             varTypes_[v.name] = Type::Float;
-        }
-        else
-        {
+        } else {
             markImplicitConversion(*l.expr, Type::Int);
             std::string msg = "narrowing conversion from FLOAT to INT in assignment";
             de.emit(il::support::Severity::Warning, "B2002", l.loc, 1, std::move(msg));
         }
-    }
-    else if (varTy == Type::String && exprTy != Type::Unknown && exprTy != Type::String)
-    {
+    } else if (varTy == Type::String && exprTy != Type::Unknown && exprTy != Type::String) {
         std::string msg = "operand type mismatch";
         de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
-    }
-    else if (varTy == Type::Bool && exprTy != Type::Unknown && exprTy != Type::Bool)
-    {
+    } else if (varTy == Type::Bool && exprTy != Type::Unknown && exprTy != Type::Bool) {
         std::string msg = "operand type mismatch";
         de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
     }
@@ -242,17 +212,14 @@ void SemanticAnalyzer::analyzeVarAssignment(VarExpr &v, const LetStmt &l)
 ///
 /// @param a Array expression identifying the element being written.
 /// @param l LET statement describing the overall assignment.
-void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
-{
+void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l) {
     // BUG-056 fix: Check if this is an array field access (e.g., "B.CELLS")
     // If the name contains a dot, it's accessing an array field on an object
     bool isArrayField = a.name.find('.') != std::string::npos;
 
-    if (!isArrayField)
-    {
+    if (!isArrayField) {
         resolveAndTrackSymbol(a.name, SymbolKind::Reference);
-        if (!arrays_.contains(a.name))
-        {
+        if (!arrays_.contains(a.name)) {
             de.emit(diag::BasicDiag::UnknownArray,
                     a.loc,
                     static_cast<uint32_t>(a.name.size()),
@@ -260,8 +227,7 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
         }
         if (auto itType = varTypes_.find(a.name); itType != varTypes_.end() &&
                                                   itType->second != Type::ArrayInt &&
-                                                  itType->second != Type::ArrayString)
-        {
+                                                  itType->second != Type::ArrayString) {
             de.emit(diag::BasicDiag::NotAnArray,
                     a.loc,
                     static_cast<uint32_t>(a.name.size()),
@@ -272,54 +238,38 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
 
     // Validate each index expression (supports multi-dimensional arrays)
     // For backward compatibility: use 'index' for single-dim, 'indices' for multi-dim
-    if (a.index)
-    {
+    if (a.index) {
         // Single-dimensional array (backward compatible path)
         auto indexTy = visitExpr(*a.index);
-        if (indexTy == Type::Float)
-        {
-            if (auto *floatLiteral = as<FloatExpr>(*a.index))
-            {
+        if (indexTy == Type::Float) {
+            if (auto *floatLiteral = as<FloatExpr>(*a.index)) {
                 insertImplicitCast(*a.index, Type::Int);
                 std::string msg = "narrowing conversion from FLOAT to INT in array index";
                 de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
-            }
-            else
-            {
+            } else {
                 std::string msg = "index type mismatch";
                 de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
             }
-        }
-        else if (indexTy != Type::Unknown && indexTy != Type::Int)
-        {
+        } else if (indexTy != Type::Unknown && indexTy != Type::Int) {
             std::string msg = "index type mismatch";
             de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
         }
-    }
-    else
-    {
+    } else {
         // Multi-dimensional array (new path)
-        for (auto &indexPtr : a.indices)
-        {
+        for (auto &indexPtr : a.indices) {
             if (!indexPtr)
                 continue;
             auto indexTy = visitExpr(*indexPtr);
-            if (indexTy == Type::Float)
-            {
-                if (auto *floatLiteral = as<FloatExpr>(*indexPtr))
-                {
+            if (indexTy == Type::Float) {
+                if (auto *floatLiteral = as<FloatExpr>(*indexPtr)) {
                     insertImplicitCast(*indexPtr, Type::Int);
                     std::string msg = "narrowing conversion from FLOAT to INT in array index";
                     de.emit(il::support::Severity::Warning, "B2002", a.loc, 1, std::move(msg));
-                }
-                else
-                {
+                } else {
                     std::string msg = "index type mismatch";
                     de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
                 }
-            }
-            else if (indexTy != Type::Unknown && indexTy != Type::Int)
-            {
+            } else if (indexTy != Type::Unknown && indexTy != Type::Int) {
                 std::string msg = "index type mismatch";
                 de.emit(il::support::Severity::Error, "B2001", a.loc, 1, std::move(msg));
             }
@@ -327,40 +277,32 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     }
 
     Type valueTy = Type::Unknown;
-    if (l.expr)
-    {
+    if (l.expr) {
         valueTy = visitExpr(*l.expr);
 
         // Determine expected element type based on array type
         Type expectedElementType = Type::Int; // default for integer arrays
-        if (auto itType = varTypes_.find(a.name); itType != varTypes_.end())
-        {
+        if (auto itType = varTypes_.find(a.name); itType != varTypes_.end()) {
             if (itType->second == Type::ArrayString)
                 expectedElementType = Type::String;
         }
 
-        if (expectedElementType == Type::Int)
-        {
+        if (expectedElementType == Type::Int) {
             // Integer array: allow Int, Float (with warning), or Object (for object arrays)
             // Note: Object arrays are tracked as ArrayInt for now, so we allow Object values
-            if (valueTy == Type::Float)
-            {
+            if (valueTy == Type::Float) {
                 markImplicitConversion(*l.expr, Type::Int);
                 std::string msg = "narrowing conversion from FLOAT to INT in array assignment";
                 de.emit(il::support::Severity::Warning, "B2002", l.loc, 1, std::move(msg));
-            }
-            else if (valueTy != Type::Unknown && valueTy != Type::Int && valueTy != Type::Object)
-            {
+            } else if (valueTy != Type::Unknown && valueTy != Type::Int &&
+                       valueTy != Type::Object) {
                 std::string msg = "array element type mismatch: expected INT, got ";
                 msg += semanticTypeName(valueTy);
                 de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
             }
-        }
-        else if (expectedElementType == Type::String)
-        {
+        } else if (expectedElementType == Type::String) {
             // String array: require String type
-            if (valueTy != Type::Unknown && valueTy != Type::String)
-            {
+            if (valueTy != Type::Unknown && valueTy != Type::String) {
                 std::string msg = "array element type mismatch: expected STRING, got ";
                 msg += semanticTypeName(valueTy);
                 de.emit(il::support::Severity::Error, "B2001", l.loc, 1, std::move(msg));
@@ -369,16 +311,12 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     }
     auto it = arrays_.find(a.name);
     if (it != arrays_.end() && !it->second.extents.empty() && it->second.extents.size() == 1 &&
-        a.index)
-    {
+        a.index) {
         // Bounds check for single-dimensional arrays
         long long arraySize = it->second.extents[0];
-        if (arraySize >= 0)
-        {
-            if (auto *ci = as<const IntExpr>(*a.index))
-            {
-                if (ci->value < 0 || ci->value >= arraySize)
-                {
+        if (arraySize >= 0) {
+            if (auto *ci = as<const IntExpr>(*a.index)) {
+                if (ci->value < 0 || ci->value >= arraySize) {
                     std::string msg = "index out of bounds";
                     de.emit(il::support::Severity::Warning, "B3001", a.loc, 1, std::move(msg));
                 }
@@ -390,14 +328,12 @@ void SemanticAnalyzer::analyzeArrayAssignment(ArrayExpr &a, const LetStmt &l)
     // even after procedure scope cleanup erases ArrayMetadata from the semantic analyzer.
     // Re-lookup in case the earlier lookup was skipped (multi-dimensional arrays).
     auto metaIt = arrays_.find(a.name);
-    if (metaIt != arrays_.end() && !metaIt->second.extents.empty())
-    {
+    if (metaIt != arrays_.end() && !metaIt->second.extents.empty()) {
         a.resolvedExtents = metaIt->second.extents;
     }
 }
 
-void SemanticAnalyzer::analyzeMemberAssignment(MemberAccessExpr &m, const LetStmt &l)
-{
+void SemanticAnalyzer::analyzeMemberAssignment(MemberAccessExpr &m, const LetStmt &l) {
     if (m.base)
         visitExpr(*m.base);
     if (l.expr)
@@ -407,8 +343,7 @@ void SemanticAnalyzer::analyzeMemberAssignment(MemberAccessExpr &m, const LetStm
 /// @brief Emit diagnostics when the left-hand side of a LET is not assignable.
 ///
 /// @param l LET statement with a non-variable target.
-void SemanticAnalyzer::analyzeConstExpr(const LetStmt &l)
-{
+void SemanticAnalyzer::analyzeConstExpr(const LetStmt &l) {
     if (l.target)
         visitExpr(*l.target);
     if (l.expr)
@@ -420,46 +355,33 @@ void SemanticAnalyzer::analyzeConstExpr(const LetStmt &l)
 /// @brief Dispatch LET statement analysis based on target form.
 ///
 /// @param l LET statement being validated.
-void SemanticAnalyzer::analyzeLet(LetStmt &l)
-{
+void SemanticAnalyzer::analyzeLet(LetStmt &l) {
     if (!l.target)
         return;
-    if (auto *v = as<VarExpr>(*l.target))
-    {
+    if (auto *v = as<VarExpr>(*l.target)) {
         analyzeVarAssignment(*v, l);
-    }
-    else if (auto *a = as<ArrayExpr>(*l.target))
-    {
+    } else if (auto *a = as<ArrayExpr>(*l.target)) {
         analyzeArrayAssignment(*a, l);
-    }
-    else if (auto *mc = as<MethodCallExpr>(*l.target))
-    {
+    } else if (auto *mc = as<MethodCallExpr>(*l.target)) {
         // BUG-056: Treat method-like syntax on LHS (obj.field(...)) as array-field assignment.
         // Perform basic index type validation and RHS checks similar to arrays.
         if (mc->base)
             visitExpr(*mc->base);
         // Validate indices: all args must be INT (allow float literals with narrowing warning)
-        for (auto &arg : mc->args)
-        {
+        for (auto &arg : mc->args) {
             if (!arg)
                 continue;
             Type ty = visitExpr(*arg);
-            if (ty == Type::Float)
-            {
-                if (auto *fl = as<FloatExpr>(*arg))
-                {
+            if (ty == Type::Float) {
+                if (auto *fl = as<FloatExpr>(*arg)) {
                     insertImplicitCast(*arg, Type::Int);
                     std::string msg = "narrowing conversion from FLOAT to INT in array index";
                     de.emit(il::support::Severity::Warning, "B2002", mc->loc, 1, std::move(msg));
-                }
-                else
-                {
+                } else {
                     std::string msg = "index type mismatch";
                     de.emit(il::support::Severity::Error, "B2001", mc->loc, 1, std::move(msg));
                 }
-            }
-            else if (ty != Type::Unknown && ty != Type::Int)
-            {
+            } else if (ty != Type::Unknown && ty != Type::Int) {
                 std::string msg = "index type mismatch";
                 de.emit(il::support::Severity::Error, "B2001", mc->loc, 1, std::move(msg));
             }
@@ -467,13 +389,9 @@ void SemanticAnalyzer::analyzeLet(LetStmt &l)
         // Analyze RHS to surface type errors; element type will be validated during lowering
         if (l.expr)
             visitExpr(*l.expr);
-    }
-    else if (auto *m = as<MemberAccessExpr>(*l.target))
-    {
+    } else if (auto *m = as<MemberAccessExpr>(*l.target)) {
         analyzeMemberAssignment(*m, l);
-    }
-    else
-    {
+    } else {
         analyzeConstExpr(l);
     }
 }
@@ -481,13 +399,10 @@ void SemanticAnalyzer::analyzeLet(LetStmt &l)
 /// @brief Validate RANDOMIZE statements and seed expressions.
 ///
 /// @param r RANDOMIZE statement node.
-void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
-{
-    if (r.seed)
-    {
+void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r) {
+    if (r.seed) {
         auto ty = visitExpr(*r.seed);
-        if (ty != Type::Unknown && ty != Type::Int && ty != Type::Float)
-        {
+        if (ty != Type::Unknown && ty != Type::Int && ty != Type::Float) {
             std::string msg = "seed type mismatch";
             de.emit(il::support::Severity::Error, "B2001", r.loc, 1, std::move(msg));
         }
@@ -497,22 +412,16 @@ void SemanticAnalyzer::analyzeRandomize(const RandomizeStmt &r)
 /// @brief Validate DIM statements and update analyzer state.
 ///
 /// @param d DIM statement describing variable or array declarations.
-void SemanticAnalyzer::analyzeDim(DimStmt &d)
-{
+void SemanticAnalyzer::analyzeDim(DimStmt &d) {
     ArrayMetadata metadata;
 
-    if (d.isArray)
-    {
+    if (d.isArray) {
         // Collect dimension expressions: check 'size' first (backward compat), then 'dimensions'
         std::vector<const ExprPtr *> dimExprs;
-        if (d.size)
-        {
+        if (d.size) {
             dimExprs.push_back(&d.size);
-        }
-        else if (!d.dimensions.empty())
-        {
-            for (const auto &dimExpr : d.dimensions)
-            {
+        } else if (!d.dimensions.empty()) {
+            for (const auto &dimExpr : d.dimensions) {
                 if (dimExpr)
                     dimExprs.push_back(&dimExpr);
             }
@@ -522,52 +431,38 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
         std::vector<long long> extents;
         bool allConstant = true;
 
-        for (const ExprPtr *dimExprPtr : dimExprs)
-        {
+        for (const ExprPtr *dimExprPtr : dimExprs) {
             const ExprPtr &dimExpr = *dimExprPtr;
             FloatExpr *floatLiteral = nullptr;
             auto ty = visitExpr(*dimExpr);
 
             // Type checking
-            if (ty == Type::Float)
-            {
+            if (ty == Type::Float) {
                 floatLiteral = as<FloatExpr>(*dimExpr);
-                if (floatLiteral != nullptr)
-                {
+                if (floatLiteral != nullptr) {
                     insertImplicitCast(*dimExpr, Type::Int);
                     std::string msg = "narrowing conversion from FLOAT to INT in array size";
                     de.emit(il::support::Severity::Warning, "B2002", d.loc, 1, std::move(msg));
-                }
-                else
-                {
+                } else {
                     std::string msg = "size type mismatch";
                     de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
                 }
-            }
-            else if (ty != Type::Unknown && ty != Type::Int)
-            {
+            } else if (ty != Type::Unknown && ty != Type::Int) {
                 std::string msg = "size type mismatch";
                 de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
             }
 
             // Extract constant extent value
-            if (floatLiteral)
-            {
-                if (floatLiteral->value < 0.0)
-                {
+            if (floatLiteral) {
+                if (floatLiteral->value < 0.0) {
                     std::string msg = "array extent must be non-negative";
                     de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
-                }
-                else
-                {
+                } else {
                     extents.push_back(static_cast<long long>(floatLiteral->value));
                 }
-            }
-            else if (auto *ci = as<const IntExpr>(*dimExpr))
-            {
+            } else if (auto *ci = as<const IntExpr>(*dimExpr)) {
                 long long extent = ci->value;
-                if (extent < 0)
-                {
+                if (extent < 0) {
                     std::string msg = "array extent must be non-negative";
                     de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
                 }
@@ -575,62 +470,47 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
             }
             // BUG-010 fix: Handle VarExpr that references a CONST.
             // When DIM uses a CONST (e.g., DIM arr(MAX_ROWS, MAX_COLS)), look up the value.
-            else if (auto *varRef = as<const VarExpr>(*dimExpr))
-            {
+            else if (auto *varRef = as<const VarExpr>(*dimExpr)) {
                 auto constIt = constantValues_.find(varRef->name);
-                if (constIt != constantValues_.end())
-                {
+                if (constIt != constantValues_.end()) {
                     long long extent = constIt->second;
-                    if (extent < 0)
-                    {
+                    if (extent < 0) {
                         std::string msg = "array extent must be non-negative";
                         de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
                     }
                     extents.push_back(extent);
-                }
-                else
-                {
+                } else {
                     // Variable is not a known CONST - runtime-computed extent
                     allConstant = false;
                 }
-            }
-            else
-            {
+            } else {
                 // Runtime-computed extent
                 allConstant = false;
             }
         }
 
         // Compute total size if all extents are constant
-        if (allConstant && !extents.empty())
-        {
+        if (allConstant && !extents.empty()) {
             long long totalSize = 1;
             bool overflow = false;
 
-            for (long long extent : extents)
-            {
+            for (long long extent : extents) {
                 // Check for overflow: totalSize * extent > LLONG_MAX
-                if (extent > 0 && totalSize > LLONG_MAX / extent)
-                {
+                if (extent > 0 && totalSize > LLONG_MAX / extent) {
                     overflow = true;
                     break;
                 }
                 totalSize *= extent;
             }
 
-            if (overflow)
-            {
+            if (overflow) {
                 std::string msg = "array size computation overflows";
                 de.emit(il::support::Severity::Error, "B2004", d.loc, 1, std::move(msg));
                 metadata = ArrayMetadata(); // dynamic/unknown
-            }
-            else
-            {
+            } else {
                 metadata = ArrayMetadata(std::move(extents), totalSize);
             }
-        }
-        else if (!extents.empty())
-        {
+        } else if (!extents.empty()) {
             // Partial constant extents - store what we know but mark total as dynamic
             metadata.extents = std::move(extents);
             metadata.totalSize = -1;
@@ -638,38 +518,30 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
         // else: all dynamic, leave metadata as default (empty extents, totalSize=-1)
     }
 
-    if (scopes_.hasScope())
-    {
-        if (scopes_.isDeclaredInCurrentScope(d.name))
-        {
+    if (scopes_.hasScope()) {
+        if (scopes_.isDeclaredInCurrentScope(d.name)) {
             std::string msg = "duplicate local '" + d.name + "'";
             de.emit(il::support::Severity::Error,
                     "B1006",
                     d.loc,
                     static_cast<uint32_t>(d.name.size()),
                     std::move(msg));
-        }
-        else
-        {
+        } else {
             std::string unique = scopes_.declareLocal(d.name);
             d.name = unique;
             auto insertResult = symbols_.insert(unique);
             if (insertResult.second && activeProcScope_)
                 activeProcScope_->noteSymbolInserted(unique);
         }
-    }
-    else
-    {
+    } else {
         auto insertResult = symbols_.insert(d.name);
         if (insertResult.second && activeProcScope_)
             activeProcScope_->noteSymbolInserted(d.name);
     }
 
-    if (d.isArray)
-    {
+    if (d.isArray) {
         auto itArray = arrays_.find(d.name);
-        if (activeProcScope_)
-        {
+        if (activeProcScope_) {
             std::optional<ArrayMetadata> previous;
             if (itArray != arrays_.end())
                 previous = itArray->second;
@@ -680,14 +552,12 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
         // BUG-010 fix: Store resolved extents in AST node so the lowerer can compute
         // correct array size even when dimensions reference CONSTs (which would otherwise
         // need runtime lookup after procedure scope cleanup erases semantic metadata).
-        if (!metadata.extents.empty())
-        {
+        if (!metadata.extents.empty()) {
             d.resolvedExtents = metadata.extents;
         }
 
         auto itType = varTypes_.find(d.name);
-        if (activeProcScope_)
-        {
+        if (activeProcScope_) {
             std::optional<Type> previous;
             if (itType != varTypes_.end())
                 previous = itType->second;
@@ -695,34 +565,25 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
         }
         // Determine array element type preferring explicit AS clause over name suffix.
         // Object arrays are tracked separately; here we only distinguish STRING vs numeric.
-        if (!d.explicitClassQname.empty())
-        {
+        if (!d.explicitClassQname.empty()) {
             // Treat object arrays as numeric for analyzer typing; element checks occur elsewhere.
             varTypes_[d.name] = Type::ArrayInt;
-        }
-        else if (d.type == ::il::frontends::basic::Type::Str ||
-                 (!d.name.empty() && d.name.back() == '$'))
-        {
+        } else if (d.type == ::il::frontends::basic::Type::Str ||
+                   (!d.name.empty() && d.name.back() == '$')) {
             varTypes_[d.name] = Type::ArrayString;
-        }
-        else
-        {
+        } else {
             varTypes_[d.name] = Type::ArrayInt;
         }
 
         // Arrays do not participate in object class resolution for member access.
-        if (auto itClass = objectClassTypes_.find(d.name); itClass != objectClassTypes_.end())
-        {
+        if (auto itClass = objectClassTypes_.find(d.name); itClass != objectClassTypes_.end()) {
             if (activeProcScope_)
                 activeProcScope_->noteObjectClassMutation(d.name, itClass->second);
             objectClassTypes_.erase(d.name);
         }
-    }
-    else
-    {
+    } else {
         auto itType = varTypes_.find(d.name);
-        if (activeProcScope_)
-        {
+        if (activeProcScope_) {
             std::optional<Type> previous;
             if (itType != varTypes_.end())
                 previous = itType->second;
@@ -731,16 +592,12 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
         // Check for explicit class type Viper.System.String -> treat as String
         // All other object/class types -> treat as Object
         Type dimType = astToSemanticType(d.type);
-        if (!d.explicitClassQname.empty())
-        {
+        if (!d.explicitClassQname.empty()) {
             std::string qname = JoinDots(d.explicitClassQname);
             if (string_utils::iequals(qname, "viper.system.string") ||
-                string_utils::iequals(qname, "viper.string"))
-            {
+                string_utils::iequals(qname, "viper.string")) {
                 dimType = Type::String;
-            }
-            else
-            {
+            } else {
                 // Any other class/interface type is an object
                 dimType = Type::Object;
             }
@@ -750,19 +607,15 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
         // Track explicit object class names for runtime member typing.
         {
             auto itClass = objectClassTypes_.find(d.name);
-            if (activeProcScope_)
-            {
+            if (activeProcScope_) {
                 std::optional<std::string> previous;
                 if (itClass != objectClassTypes_.end())
                     previous = itClass->second;
                 activeProcScope_->noteObjectClassMutation(d.name, previous);
             }
-            if (!d.explicitClassQname.empty())
-            {
+            if (!d.explicitClassQname.empty()) {
                 objectClassTypes_[d.name] = JoinDots(d.explicitClassQname);
-            }
-            else if (itClass != objectClassTypes_.end())
-            {
+            } else if (itClass != objectClassTypes_.end()) {
                 objectClassTypes_.erase(d.name);
             }
         }
@@ -772,12 +625,10 @@ void SemanticAnalyzer::analyzeDim(DimStmt &d)
 /// @brief Validate CONST statements and track constant names.
 ///
 /// @param c CONST statement declaring a constant.
-void SemanticAnalyzer::analyzeConst(ConstStmt &c)
-{
+void SemanticAnalyzer::analyzeConst(ConstStmt &c) {
     // Evaluate the initializer expression to determine its type
     Type initializerTy = Type::Unknown;
-    if (c.initializer)
-    {
+    if (c.initializer) {
         initializerTy = visitExpr(*c.initializer);
     }
 
@@ -786,14 +637,10 @@ void SemanticAnalyzer::analyzeConst(ConstStmt &c)
 
     // BUG-010 fix: Store the constant's integer value for use in array dimension expressions.
     // When DIM uses a CONST name (e.g., DIM arr(MAX_ROWS)), we need to retrieve its value.
-    if (c.initializer)
-    {
-        if (auto *intLit = as<IntExpr>(*c.initializer))
-        {
+    if (c.initializer) {
+        if (auto *intLit = as<IntExpr>(*c.initializer)) {
             constantValues_[c.name] = intLit->value;
-        }
-        else if (auto *floatLit = as<FloatExpr>(*c.initializer))
-        {
+        } else if (auto *floatLit = as<FloatExpr>(*c.initializer)) {
             constantValues_[c.name] = static_cast<long long>(floatLit->value);
         }
     }
@@ -810,15 +657,14 @@ void SemanticAnalyzer::analyzeConst(ConstStmt &c)
     Type finalType = astToSemanticType(c.type);
 
     // If no suffix and initializer is Float, infer Float type (BUG-019 fix)
-    if (hasNoSuffix && c.type == ::il::frontends::basic::Type::I64 && initializerTy == Type::Float)
-    {
+    if (hasNoSuffix && c.type == ::il::frontends::basic::Type::I64 &&
+        initializerTy == Type::Float) {
         finalType = Type::Float;
     }
 
     // Track the type
     auto itType = varTypes_.find(c.name);
-    if (activeProcScope_)
-    {
+    if (activeProcScope_) {
         std::optional<Type> previous;
         if (itType != varTypes_.end())
             previous = itType->second;
@@ -831,30 +677,23 @@ void SemanticAnalyzer::analyzeConst(ConstStmt &c)
 /// @details STATIC variables are procedure-scoped like DIM, but their storage persists
 ///          between calls. This analyzer registers the variable name in the current scope.
 /// @param s STATIC statement to validate and register.
-void SemanticAnalyzer::analyzeStatic(StaticStmt &s)
-{
-    if (scopes_.hasScope())
-    {
-        if (scopes_.isDeclaredInCurrentScope(s.name))
-        {
+void SemanticAnalyzer::analyzeStatic(StaticStmt &s) {
+    if (scopes_.hasScope()) {
+        if (scopes_.isDeclaredInCurrentScope(s.name)) {
             std::string msg = "duplicate local '" + s.name + "'";
             de.emit(il::support::Severity::Error,
                     "B1006",
                     s.loc,
                     static_cast<uint32_t>(s.name.size()),
                     std::move(msg));
-        }
-        else
-        {
+        } else {
             std::string unique = scopes_.declareLocal(s.name);
             s.name = unique;
             auto insertResult = symbols_.insert(unique);
             if (insertResult.second && activeProcScope_)
                 activeProcScope_->noteSymbolInserted(unique);
         }
-    }
-    else
-    {
+    } else {
         auto insertResult = symbols_.insert(s.name);
         if (insertResult.second && activeProcScope_)
             activeProcScope_->noteSymbolInserted(s.name);
@@ -866,10 +705,8 @@ void SemanticAnalyzer::analyzeStatic(StaticStmt &s)
 ///          This handler resolves each name to ensure diagnostics include the correct symbol,
 ///          and records a reference so later passes materialize storage as needed.
 /// @param s SHARED statement being analyzed.
-void SemanticAnalyzer::analyzeShared(SharedStmt &s)
-{
-    for (auto &name : s.names)
-    {
+void SemanticAnalyzer::analyzeShared(SharedStmt &s) {
+    for (auto &name : s.names) {
         resolveAndTrackSymbol(name, SymbolKind::Reference);
         // Record as a known symbol; do not allocate local storage here.
         auto insertResult = symbols_.insert(name);
@@ -881,46 +718,33 @@ void SemanticAnalyzer::analyzeShared(SharedStmt &s)
 /// @brief Validate REDIM statements for previously declared arrays.
 ///
 /// @param d REDIM statement describing the new array bounds.
-void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
-{
+void SemanticAnalyzer::analyzeReDim(ReDimStmt &d) {
     long long sz = -1;
-    if (d.size)
-    {
+    if (d.size) {
         FloatExpr *floatLiteral = nullptr;
         auto ty = visitExpr(*d.size);
-        if (ty == Type::Float)
-        {
+        if (ty == Type::Float) {
             floatLiteral = as<FloatExpr>(*d.size);
-            if (floatLiteral != nullptr)
-            {
+            if (floatLiteral != nullptr) {
                 insertImplicitCast(*d.size, Type::Int);
                 std::string msg = "narrowing conversion from FLOAT to INT in array size";
                 de.emit(il::support::Severity::Warning, "B2002", d.loc, 1, std::move(msg));
-            }
-            else
-            {
+            } else {
                 std::string msg = "size type mismatch";
                 de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
             }
-        }
-        else if (ty != Type::Unknown && ty != Type::Int)
-        {
+        } else if (ty != Type::Unknown && ty != Type::Int) {
             std::string msg = "size type mismatch";
             de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
         }
-        if (floatLiteral)
-        {
-            if (floatLiteral->value < 0.0)
-            {
+        if (floatLiteral) {
+            if (floatLiteral->value < 0.0) {
                 std::string msg = "array size must be non-negative";
                 de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
             }
-        }
-        else if (auto *ci = as<const IntExpr>(*d.size))
-        {
+        } else if (auto *ci = as<const IntExpr>(*d.size)) {
             sz = ci->value;
-            if (sz < 0)
-            {
+            if (sz < 0) {
                 std::string msg = "array size must be non-negative";
                 de.emit(il::support::Severity::Error, "B2003", d.loc, 1, std::move(msg));
             }
@@ -930,8 +754,7 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
     resolveAndTrackSymbol(d.name, SymbolKind::Reference);
 
     auto itArray = arrays_.find(d.name);
-    if (itArray == arrays_.end())
-    {
+    if (itArray == arrays_.end()) {
         de.emit(diag::BasicDiag::UnknownArray,
                 d.loc,
                 static_cast<uint32_t>(d.name.size()),
@@ -940,15 +763,13 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
     }
 
     if (auto itType = varTypes_.find(d.name);
-        itType != varTypes_.end() && itType->second != Type::ArrayInt)
-    {
+        itType != varTypes_.end() && itType->second != Type::ArrayInt) {
         std::string msg = "REDIM target must be an array";
         de.emit(il::support::Severity::Error, "B2001", d.loc, 1, std::move(msg));
         return;
     }
 
-    if (activeProcScope_)
-    {
+    if (activeProcScope_) {
         activeProcScope_->noteArrayMutation(d.name, itArray->second);
     }
     // REDIM changes size - update metadata with new single-dimension size
@@ -958,14 +779,11 @@ void SemanticAnalyzer::analyzeReDim(ReDimStmt &d)
 /// @brief Validate SWAP statements for compatible types.
 ///
 /// @param s SWAP statement describing the two lvalues to exchange.
-void SemanticAnalyzer::analyzeSwap(SwapStmt &s)
-{
-    if (s.lhs)
-    {
+void SemanticAnalyzer::analyzeSwap(SwapStmt &s) {
+    if (s.lhs) {
         visitExpr(*s.lhs);
     }
-    if (s.rhs)
-    {
+    if (s.rhs) {
         visitExpr(*s.rhs);
     }
 }

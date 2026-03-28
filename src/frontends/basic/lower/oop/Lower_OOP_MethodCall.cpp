@@ -30,8 +30,7 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Lower an instance method call, dispatching through the mangled name.
 ///
@@ -43,25 +42,19 @@ namespace il::frontends::basic
 /// @param expr AST node representing the method invocation.
 /// @return Result value placeholder; currently the runtime returns @c void so
 ///         a zero integer is used to preserve SSA expectations.
-Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
-{
+Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr) {
     if (!expr.base)
         return {Value::constInt(0), Type(Type::Kind::I64)};
 
     // Static method calls: Class.Method(...)
-    if (const auto *vb = as<const VarExpr>(*expr.base))
-    {
+    if (const auto *vb = as<const VarExpr>(*expr.base)) {
         // If a symbol with this name exists (local/param/global), treat as instance, not static.
         // Module-level variables do not have slots; rely on symbol presence alone.
-        if (const auto *sym = findSymbol(vb->name); sym)
-        {
+        if (const auto *sym = findSymbol(vb->name); sym) {
             // fall through to instance path below
-        }
-        else
-        {
+        } else {
             std::string qname = resolveQualifiedClassCasing(qualify(vb->name));
-            if (const ClassInfo *ci = oopIndex_.findClass(qname))
-            {
+            if (const ClassInfo *ci = oopIndex_.findClass(qname)) {
                 // Overload resolution for static call
                 std::vector<::il::frontends::basic::Type> argAstTypes;
                 argAstTypes.reserve(expr.args.size());
@@ -83,8 +76,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                                                                argAstTypes,
                                                                currentClass(),
                                                                diagnosticEmitter(),
-                                                               expr.loc))
-                {
+                                                               expr.loc)) {
                     selected = resolved->methodName;
                 }
                 std::vector<::il::frontends::basic::Type> expectParamAst;
@@ -93,11 +85,9 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
                 std::vector<Value> args;
                 args.reserve(expr.args.size());
-                for (std::size_t i = 0; i < expr.args.size(); ++i)
-                {
+                for (std::size_t i = 0; i < expr.args.size(); ++i) {
                     RVal lowered = lowerExpr(*expr.args[i]);
-                    if (i < expectParamAst.size())
-                    {
+                    if (i < expectParamAst.size()) {
                         auto astTy = expectParamAst[i];
                         if (astTy == ::il::frontends::basic::Type::Bool)
                             lowered = coerceToBool(std::move(lowered), expr.loc);
@@ -112,16 +102,14 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 std::string callee = mangleMethod(ci->qualifiedName, selected);
                 // BUG-CARDS-010 fix: Check for object-returning methods first
                 std::string retClassName = findMethodReturnClassName(qname, selected);
-                if (!retClassName.empty())
-                {
+                if (!retClassName.empty()) {
                     // Method returns a custom class type - use ptr
                     Type ilRetTy(Type::Kind::Ptr);
                     Value result = emitCallRet(ilRetTy, callee, args);
                     deferReleaseObj(result, retClassName);
                     return {result, ilRetTy};
                 }
-                if (auto retType = findMethodReturnType(qname, selected))
-                {
+                if (auto retType = findMethodReturnType(qname, selected)) {
                     Type ilRetTy = type_conv::astToIlType(*retType);
                     Value result = emitCallRet(ilRetTy, callee, args);
                     if (ilRetTy.kind == Type::Kind::Str)
@@ -132,26 +120,19 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 }
                 emitCall(callee, args);
                 return {Value::constInt(0), Type(Type::Kind::I64)};
-            }
-            else
-            {
+            } else {
                 // Static call on a runtime class from the catalog (no receiver)
-                if (il::runtime::findRuntimeClassByQName(qname))
-                {
+                if (il::runtime::findRuntimeClassByQName(qname)) {
                     auto &midx = runtimeMethodIndex();
                     auto info = midx.find(qname, expr.method, expr.args.size());
-                    if (!info)
-                    {
-                        if (auto *em = diagnosticEmitter())
-                        {
+                    if (!info) {
+                        if (auto *em = diagnosticEmitter()) {
                             auto cands = midx.candidates(qname, expr.method);
                             std::string msg =
                                 "no such method '" + expr.method + "' on '" + qname + "'";
-                            if (!cands.empty())
-                            {
+                            if (!cands.empty()) {
                                 msg += "; candidates: ";
-                                for (size_t i = 0; i < cands.size(); ++i)
-                                {
+                                for (size_t i = 0; i < cands.size(); ++i) {
                                     if (i)
                                         msg += ", ";
                                     msg += cands[i];
@@ -167,8 +148,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                     }
                     std::vector<Value> args;
                     args.reserve(expr.args.size());
-                    for (const auto &a : expr.args)
-                    {
+                    for (const auto &a : expr.args) {
                         RVal av = lowerExpr(*a);
                         args.push_back(av.value);
                     }
@@ -197,28 +177,22 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             if (!cls.empty())
                 qClass = qualify(cls);
         }
-        if (qClass.empty())
-        {
+        if (qClass.empty()) {
             RVal baseProbe = lowerExpr(*expr.base);
             if (baseProbe.type.kind == Type::Kind::Str)
                 qClass = std::string(il::runtime::RTCLASS_STRING);
         }
         // Only consult the runtime method catalog for true runtime classes
-        if (!qClass.empty() && il::runtime::findRuntimeClassByQName(qClass))
-        {
+        if (!qClass.empty() && il::runtime::findRuntimeClassByQName(qClass)) {
             auto &midx = runtimeMethodIndex();
             auto info = midx.find(qClass, expr.method, expr.args.size());
-            if (!info)
-            {
-                if (auto *em = diagnosticEmitter())
-                {
+            if (!info) {
+                if (auto *em = diagnosticEmitter()) {
                     auto cands = midx.candidates(qClass, expr.method);
                     std::string msg = "no such method '" + expr.method + "' on '" + qClass + "'";
-                    if (!cands.empty())
-                    {
+                    if (!cands.empty()) {
                         msg += "; candidates: ";
-                        for (size_t i = 0; i < cands.size(); ++i)
-                        {
+                        for (size_t i = 0; i < cands.size(); ++i) {
                             if (i)
                                 msg += ", ";
                             msg += cands[i];
@@ -239,8 +213,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             args.push_back(base.value);
 
             // Coerce each user arg to expected BasicType
-            for (size_t i = 0; i < expr.args.size(); ++i)
-            {
+            for (size_t i = 0; i < expr.args.size(); ++i) {
                 RVal av = lowerExpr(*expr.args[i]);
                 BasicType expect = (i < info->args.size()) ? info->args[i] : BasicType::Int;
                 if (expect == BasicType::Bool)
@@ -282,8 +255,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             // First check if the user-defined class has this method - if so, skip the
             // Viper.Object fallback and let the user-defined method handling below take over.
             bool userClassHasMethod = false;
-            if (!qClass.empty())
-            {
+            if (!qClass.empty()) {
                 if (oopIndex_.findMethodInHierarchy(qClass, expr.method))
                     userClassHasMethod = true;
             }
@@ -291,15 +263,13 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             auto &midx = runtimeMethodIndex();
             auto info =
                 midx.find(std::string(il::runtime::RTCLASS_OBJECT), expr.method, expr.args.size());
-            if (info && !userClassHasMethod)
-            {
+            if (info && !userClassHasMethod) {
                 // Lower base and build (receiver, args...)
                 RVal base = lowerExpr(*expr.base);
                 std::vector<Value> args;
                 args.reserve(1 + expr.args.size());
                 args.push_back(base.value);
-                for (size_t i = 0; i < expr.args.size(); ++i)
-                {
+                for (size_t i = 0; i < expr.args.size(); ++i) {
                     RVal av = lowerExpr(*expr.args[i]);
                     args.push_back(av.value);
                 }
@@ -319,8 +289,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
             // As a last resort, special-case common Object methods to canonical targets
             // (only if user class doesn't override)
             if (!userClassHasMethod && string_utils::iequals(expr.method, "ToString") &&
-                expr.args.size() == 0)
-            {
+                expr.args.size() == 0) {
                 curLoc = expr.loc;
                 RVal base = lowerExpr(*expr.base);
                 runtimeTracker.trackCalleeName("Viper.Object.ToString");
@@ -330,8 +299,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                 return {result, Type(Type::Kind::Str)};
             }
             if (!userClassHasMethod && string_utils::iequals(expr.method, "Equals") &&
-                expr.args.size() == 1)
-            {
+                expr.args.size() == 1) {
                 curLoc = expr.loc;
                 RVal base = lowerExpr(*expr.base);
                 RVal rhs = lowerExpr(*expr.args[0]);
@@ -346,36 +314,26 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     std::string className = resolveObjectClass(*expr.base);
     // Compute the instance (self) argument. For BASE-qualified calls, use ME.
     Value selfArg;
-    if (const auto *v = as<const VarExpr>(*expr.base); v && v->name == "BASE")
-    {
+    if (const auto *v = as<const VarExpr>(*expr.base); v && v->name == "BASE") {
         const auto *sym = findSymbol("ME");
-        if (sym && sym->slotId)
-        {
+        if (sym && sym->slotId) {
             curLoc = expr.loc;
             selfArg = emitLoad(Type(Type::Kind::Ptr), Value::temp(*sym->slotId));
-        }
-        else
-        {
+        } else {
             selfArg = Value::null();
         }
-    }
-    else
-    {
+    } else {
         RVal base = lowerExpr(*expr.base);
         selfArg = base.value;
     }
     // Access control for methods: Private may only be called within the declaring class.
-    if (!className.empty())
-    {
+    if (!className.empty()) {
         std::string qname = qualify(className);
-        if (const ClassInfo *cinfo = oopIndex_.findClass(qname))
-        {
+        if (const ClassInfo *cinfo = oopIndex_.findClass(qname)) {
             auto it = cinfo->methods.find(expr.method);
             if (it != cinfo->methods.end() && it->second.sig.access == Access::Private &&
-                currentClass() != cinfo->qualifiedName)
-            {
-                if (auto *em = diagnosticEmitter())
-                {
+                currentClass() != cinfo->qualifiedName) {
+                if (auto *em = diagnosticEmitter()) {
                     std::string msg = "cannot access private member '" + expr.method +
                                       "' of class '" + cinfo->qualifiedName + "'";
                     em->emit(il::support::Severity::Error,
@@ -383,9 +341,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                              expr.loc,
                              static_cast<uint32_t>(expr.method.size()),
                              std::move(msg));
-                }
-                else
-                {
+                } else {
                     std::fprintf(stderr,
                                  "B2021: cannot access private member '%s' of class '%s'\n",
                                  expr.method.c_str(),
@@ -401,10 +357,8 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
     // Get expected parameter types for type coercion
     std::vector<::il::frontends::basic::Type> expectParamAst;
-    if (!qname.empty() && !expr.args.empty())
-    {
-        if (const ClassInfo *ci = oopIndex_.findClass(qname))
-        {
+    if (!qname.empty() && !expr.args.empty()) {
+        if (const ClassInfo *ci = oopIndex_.findClass(qname)) {
             auto it = ci->methods.find(expr.method);
             if (it != ci->methods.end())
                 expectParamAst = it->second.sig.paramTypes;
@@ -417,16 +371,14 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     std::vector<Value> args;
     args.reserve(expr.args.size() + 1);
     args.push_back(selfArg);
-    for (std::size_t i = 0; i < expr.args.size(); ++i)
-    {
+    for (std::size_t i = 0; i < expr.args.size(); ++i) {
         const auto &arg = expr.args[i];
         if (!arg)
             continue;
         RVal lowered = lowerExpr(*arg);
 
         // Apply type coercion if parameter type is known
-        if (i < expectParamAst.size())
-        {
+        if (i < expectParamAst.size()) {
             auto astTy = expectParamAst[i];
             if (astTy == ::il::frontends::basic::Type::Bool)
                 lowered = coerceToBool(std::move(lowered), expr.loc);
@@ -451,13 +403,10 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     // Determine the target class for direct dispatch. For BASE-qualified calls,
     // we must resolve to the immediate base of the current lowering class.
     std::string directQClass = qname;
-    if (baseQualified)
-    {
+    if (baseQualified) {
         const std::string cur = currentClass();
-        if (!cur.empty())
-        {
-            if (const ClassInfo *ci = oopIndex_.findClass(cur))
-            {
+        if (!cur.empty()) {
+            if (const ClassInfo *ci = oopIndex_.findClass(cur)) {
                 if (!ci->baseQualified.empty())
                     directQClass = ci->baseQualified;
             }
@@ -483,8 +432,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     std::string selectedName = expr.method;
     // BUG-OOP-002/003 fix: Track declaring class for inherited methods
     std::string declaringClass = qc;
-    if (!qc.empty())
-    {
+    if (!qc.empty()) {
         if (auto resolved = sem::resolveMethodOverload(oopIndex_,
                                                        qc,
                                                        expr.method,
@@ -492,20 +440,16 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
                                                        argAstTypes,
                                                        curClass,
                                                        diagnosticEmitter(),
-                                                       expr.loc))
-        {
+                                                       expr.loc)) {
             selectedName = resolved->methodName;
             declaringClass = resolved->qualifiedClass; // Use declaring class for dispatch
-        }
-        else if (diagnosticEmitter())
-        {
+        } else if (diagnosticEmitter()) {
             return {Value::constInt(0), Type(Type::Kind::I64)};
         }
     }
     // BUG-OOP-002/003 fix: Use declaring class for mangling, not receiver class
     std::string emitClassName = declaringClass;
-    if (!declaringClass.empty())
-    {
+    if (!declaringClass.empty()) {
         if (const ClassInfo *ci = oopIndex_.findClass(declaringClass))
             emitClassName = ci->qualifiedName;
     }
@@ -514,24 +458,20 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
     // If virtual and not BASE-qualified, emit call.indirect; otherwise direct call or interface
     // dispatch. Interface dispatch via (expr AS IFACE).Method: detect AS with interface target.
-    auto tryInterfaceDispatch = [&]() -> std::optional<RVal>
-    {
+    auto tryInterfaceDispatch = [&]() -> std::optional<RVal> {
         const AsExpr *asBase = as<const AsExpr>(*expr.base);
         if (!asBase)
             return std::nullopt;
         // Build dotted name for interface and locate InterfaceInfo
         std::string dotted;
-        for (size_t i = 0; i < asBase->typeName.size(); ++i)
-        {
+        for (size_t i = 0; i < asBase->typeName.size(); ++i) {
             if (i)
                 dotted.push_back('.');
             dotted += asBase->typeName[i];
         }
         const InterfaceInfo *iface = nullptr;
-        for (const auto &p : oopIndex_.interfacesByQname())
-        {
-            if (p.first == dotted)
-            {
+        for (const auto &p : oopIndex_.interfacesByQname()) {
+            if (p.first == dotted) {
                 iface = &p.second;
                 break;
             }
@@ -541,13 +481,11 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         // Recover slot index by name match (and simple arity check when possible)
         int slotIndex = -1;
         std::size_t userArity = expr.args.size();
-        for (std::size_t idx = 0; idx < iface->slots.size(); ++idx)
-        {
+        for (std::size_t idx = 0; idx < iface->slots.size(); ++idx) {
             const auto &sig = iface->slots[idx];
             if (sig.name != expr.method)
                 continue;
-            if (sig.paramTypes.size() == userArity)
-            {
+            if (sig.paramTypes.size() == userArity) {
                 slotIndex = static_cast<int>(idx);
                 break;
             }
@@ -560,8 +498,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
         // Lookup itable, load function pointer at slot, and call.indirect
         // Ensure runtime extern is declared for itable lookup
-        if (builder)
-        {
+        if (builder) {
             if (const auto *desc = il::runtime::findRuntimeDescriptor("rt_itable_lookup"))
                 builder->addExtern(
                     std::string(desc->name), desc->signature.retType, desc->signature.paramTypes);
@@ -579,17 +516,14 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 
         // Determine return type from interface signature when available.
         Type retTy = Type(Type::Kind::Void);
-        if (slotIndex >= 0 && static_cast<std::size_t>(slotIndex) < iface->slots.size())
-        {
-            if (iface->slots[static_cast<std::size_t>(slotIndex)].returnType)
-            {
+        if (slotIndex >= 0 && static_cast<std::size_t>(slotIndex) < iface->slots.size()) {
+            if (iface->slots[static_cast<std::size_t>(slotIndex)].returnType) {
                 retTy = type_conv::astToIlType(
                     *iface->slots[static_cast<std::size_t>(slotIndex)].returnType);
             }
         }
 
-        if (retTy.kind != Type(Type::Kind::Void).kind)
-        {
+        if (retTy.kind != Type(Type::Kind::Void).kind) {
             Value result = emitCallIndirectRet(retTy, fnPtr, args);
             if (retTy.kind == Type::Kind::Str)
                 deferReleaseStr(result);
@@ -610,8 +544,7 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     // loading the function address at 'slot' from a contiguous array starting at the
     // indirect callee pointer. This preserves correct behaviour for projects that populate
     // per-class tables in module init.
-    if (slot >= 0 && !baseQualified)
-    {
+    if (slot >= 0 && !baseQualified) {
         // Pointer-based table lookup: treat operand 0 as a pointer to the table base, then GEP.
         // Load the callee-table pointer from the object (projects may store a table pointer
         // at offset 0). If unavailable, this yields null and the indirect call path below
@@ -625,15 +558,13 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
         // BUG-OOP-003 fix: Use declaring class for return type lookup in virtual dispatch
         // BUG-CARDS-010 fix: Check for object-returning methods first
         std::string retClassName = findMethodReturnClassName(declaringClass, selectedName);
-        if (!retClassName.empty())
-        {
+        if (!retClassName.empty()) {
             Type ilRetTy(Type::Kind::Ptr);
             Value result = emitCallIndirectRet(ilRetTy, fnPtr, args);
             deferReleaseObj(result, retClassName);
             return {result, ilRetTy};
         }
-        if (auto retType = findMethodReturnType(declaringClass, selectedName))
-        {
+        if (auto retType = findMethodReturnType(declaringClass, selectedName)) {
             Type ilRetTy = type_conv::astToIlType(*retType);
             Value result = emitCallIndirectRet(ilRetTy, fnPtr, args);
             if (ilRetTy.kind == Type::Kind::Str)
@@ -652,15 +583,13 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
     const std::string retClassLookup = baseQualified ? directQClass : declaringClass;
     // BUG-CARDS-010 fix: Check for object-returning methods first
     std::string retClassName = findMethodReturnClassName(retClassLookup, selectedName);
-    if (!retClassName.empty())
-    {
+    if (!retClassName.empty()) {
         Type ilRetTy(Type::Kind::Ptr);
         Value result = emitCallRet(ilRetTy, directCallee, args);
         deferReleaseObj(result, retClassName);
         return {result, ilRetTy};
     }
-    if (auto retType = findMethodReturnType(retClassLookup, selectedName))
-    {
+    if (auto retType = findMethodReturnType(retClassLookup, selectedName)) {
         Type ilRetTy = type_conv::astToIlType(*retType);
         Value result = emitCallRet(ilRetTy, directCallee, args);
         if (ilRetTy.kind == Type::Kind::Str)
@@ -677,12 +606,10 @@ Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr)
 // OopLoweringContext-aware implementations
 // -------------------------------------------------------------------------
 
-Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr, OopLoweringContext &ctx)
-{
+Lowerer::RVal Lowerer::lowerMethodCallExpr(const MethodCallExpr &expr, OopLoweringContext &ctx) {
     // Pre-cache class info for method dispatch target.
     // This accelerates access control and overload resolution.
-    if (expr.base)
-    {
+    if (expr.base) {
         std::string cls = resolveObjectClass(*expr.base);
         if (!cls.empty())
             (void)ctx.findClassInfo(qualify(cls));

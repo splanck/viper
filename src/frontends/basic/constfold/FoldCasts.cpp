@@ -24,8 +24,7 @@
 
 #include "frontends/basic/constfold/Dispatch.hpp"
 
-namespace il::frontends::basic::constfold
-{
+namespace il::frontends::basic::constfold {
 
 /// @brief Placeholder hook for cast constant folding.
 /// @details Returns @c std::nullopt for all invocations, signalling that cast
@@ -35,8 +34,9 @@ namespace il::frontends::basic::constfold
 /// @param lhs Left-hand operand supplied by the dispatcher (unused).
 /// @param rhs Right-hand operand supplied by the dispatcher (unused).
 /// @return Always @c std::nullopt.
-std::optional<Constant> fold_cast(AST::BinaryExpr::Op op, const Constant &lhs, const Constant &rhs)
-{
+std::optional<Constant> fold_cast(AST::BinaryExpr::Op op,
+                                  const Constant &lhs,
+                                  const Constant &rhs) {
     (void)op;
     (void)lhs;
     (void)rhs;

@@ -63,14 +63,12 @@ extern void rt_trap(const char *msg);
 //=============================================================================
 
 /// @brief Get current time in seconds from a monotonic clock (as double).
-static double current_time_sec(void)
-{
+static double current_time_sec(void) {
 #if defined(_WIN32)
     // Benign race: QPC frequency is constant; duplicate init is harmless.
     static LARGE_INTEGER freq = {0};
     LARGE_INTEGER counter;
-    if (freq.QuadPart == 0)
-    {
+    if (freq.QuadPart == 0) {
         // RC-10: check return value — fall back to GetTickCount64 if QPC is unavailable
         if (!QueryPerformanceFrequency(&freq) || freq.QuadPart == 0)
             return (double)GetTickCount64() / 1000.0;
@@ -94,8 +92,7 @@ static double current_time_sec(void)
 //=============================================================================
 
 /// @brief Internal rate limiter data.
-typedef struct
-{
+typedef struct {
     double tokens;           ///< Current available tokens (fractional).
     double max_tokens;       ///< Maximum token capacity.
     double refill_per_sec;   ///< Tokens refilled per second.
@@ -103,12 +100,10 @@ typedef struct
 } rt_ratelimit_data;
 
 /// @brief Refill tokens based on elapsed time since last refill.
-static void refill_tokens(rt_ratelimit_data *data)
-{
+static void refill_tokens(rt_ratelimit_data *data) {
     double now = current_time_sec();
     double elapsed = now - data->last_refill_time;
-    if (elapsed > 0.0)
-    {
+    if (elapsed > 0.0) {
         data->tokens += elapsed * data->refill_per_sec;
         if (data->tokens > data->max_tokens)
             data->tokens = data->max_tokens;
@@ -127,12 +122,10 @@ static void refill_tokens(rt_ratelimit_data *data)
 /// @param max_tokens Maximum token capacity. Values <= 0 default to 1.
 /// @param refill_per_sec Tokens refilled per second. Values <= 0 default to 1.0.
 /// @return A new rate limiter object. Traps on allocation failure.
-void *rt_ratelimit_new(int64_t max_tokens, double refill_per_sec)
-{
+void *rt_ratelimit_new(int64_t max_tokens, double refill_per_sec) {
     rt_ratelimit_data *data =
         (rt_ratelimit_data *)rt_obj_new_i64(0, (int64_t)sizeof(rt_ratelimit_data));
-    if (!data)
-    {
+    if (!data) {
         rt_trap("RateLimiter: memory allocation failed");
         return NULL;
     }
@@ -149,8 +142,7 @@ void *rt_ratelimit_new(int64_t max_tokens, double refill_per_sec)
 ///
 /// @param limiter Rate limiter pointer.
 /// @return 1 if a token was consumed, 0 if no tokens available.
-int8_t rt_ratelimit_try_acquire(void *limiter)
-{
+int8_t rt_ratelimit_try_acquire(void *limiter) {
     return rt_ratelimit_try_acquire_n(limiter, 1);
 }
 
@@ -162,14 +154,12 @@ int8_t rt_ratelimit_try_acquire(void *limiter)
 /// @param limiter Rate limiter pointer.
 /// @param n Number of tokens to consume. Values <= 0 return 0.
 /// @return 1 if tokens were consumed, 0 if insufficient tokens.
-int8_t rt_ratelimit_try_acquire_n(void *limiter, int64_t n)
-{
+int8_t rt_ratelimit_try_acquire_n(void *limiter, int64_t n) {
     if (!limiter || n <= 0)
         return 0;
     rt_ratelimit_data *data = (rt_ratelimit_data *)limiter;
     refill_tokens(data);
-    if (data->tokens >= (double)n)
-    {
+    if (data->tokens >= (double)n) {
         data->tokens -= (double)n;
         // RC-9: clamp to 0 to guard against floating-point precision underflow
         if (data->tokens < 0.0)
@@ -185,8 +175,7 @@ int8_t rt_ratelimit_try_acquire_n(void *limiter, int64_t n)
 ///
 /// @param limiter Rate limiter pointer.
 /// @return Number of available tokens (truncated to integer).
-int64_t rt_ratelimit_available(void *limiter)
-{
+int64_t rt_ratelimit_available(void *limiter) {
     if (!limiter)
         return 0;
     rt_ratelimit_data *data = (rt_ratelimit_data *)limiter;
@@ -199,8 +188,7 @@ int64_t rt_ratelimit_available(void *limiter)
 /// Sets tokens to max and updates the refill timestamp.
 ///
 /// @param limiter Rate limiter pointer.
-void rt_ratelimit_reset(void *limiter)
-{
+void rt_ratelimit_reset(void *limiter) {
     if (!limiter)
         return;
     rt_ratelimit_data *data = (rt_ratelimit_data *)limiter;
@@ -212,8 +200,7 @@ void rt_ratelimit_reset(void *limiter)
 ///
 /// @param limiter Rate limiter pointer.
 /// @return Maximum number of tokens.
-int64_t rt_ratelimit_get_max(void *limiter)
-{
+int64_t rt_ratelimit_get_max(void *limiter) {
     if (!limiter)
         return 0;
     return (int64_t)((rt_ratelimit_data *)limiter)->max_tokens;
@@ -223,8 +210,7 @@ int64_t rt_ratelimit_get_max(void *limiter)
 ///
 /// @param limiter Rate limiter pointer.
 /// @return Refill rate (tokens/second).
-double rt_ratelimit_get_rate(void *limiter)
-{
+double rt_ratelimit_get_rate(void *limiter) {
     if (!limiter)
         return 0.0;
     return ((rt_ratelimit_data *)limiter)->refill_per_sec;

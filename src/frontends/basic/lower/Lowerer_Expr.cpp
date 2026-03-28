@@ -32,8 +32,7 @@
 #include <utility>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 using IlType = il::core::Type;
 using IlValue = il::core::Value;
@@ -44,8 +43,7 @@ using IlValue = il::core::Value;
 ///          @ref Lowerer. The instance carries a reference to the current
 ///          lowering context so it can update source locations, perform type
 ///          coercions, and capture the produced IL value for the caller.
-class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
-{
+class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor {
   public:
     /// @brief Construct a visitor that records results into @p lowerer.
     /// @details The visitor only borrows the lowering context; ownership of the
@@ -58,8 +56,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     ///          @ref Expr::accept, allowing dynamic dispatch over the concrete
     ///          expression type.
     /// @param expr Expression node that should be lowered into IL form.
-    void visitExpr(const Expr &expr) override
-    {
+    void visitExpr(const Expr &expr) override {
         expr.accept(*this);
     }
 
@@ -72,8 +69,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @details Captures the literal value as a 64-bit IL constant and records
     ///          the associated source location in the lowering context.
     /// @param expr Integer literal node from the BASIC AST.
-    void visit(const IntExpr &expr) override
-    {
+    void visit(const IntExpr &expr) override {
         lowerer_.curLoc = expr.loc;
         result_ = Lowerer::RVal{IlValue::constInt(expr.value), IlType(IlType::Kind::I64)};
     }
@@ -82,8 +78,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @details Emits an IL constant containing the literal value and tags it
     ///          with the 64-bit floating-point type descriptor.
     /// @param expr Floating-point literal node from the BASIC AST.
-    void visit(const FloatExpr &expr) override
-    {
+    void visit(const FloatExpr &expr) override {
         lowerer_.curLoc = expr.loc;
         result_ = Lowerer::RVal{IlValue::constFloat(expr.value), IlType(IlType::Kind::F64)};
     }
@@ -93,8 +88,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     ///          of the retained runtime string handle, and records the result
     ///          with the IL string type.
     /// @param expr String literal node from the BASIC AST.
-    void visit(const StringExpr &expr) override
-    {
+    void visit(const StringExpr &expr) override {
         lowerer_.curLoc = expr.loc;
         std::string lbl = lowerer_.getStringLabel(expr.value);
         IlValue tmp = lowerer_.emitConstStr(lbl);
@@ -107,8 +101,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     ///          `i64` type. Downstream call sites perform i64→i1 coercion when
     ///          targeting boolean parameters to satisfy verifier expectations.
     /// @param expr Boolean literal node from the BASIC AST.
-    void visit(const BoolExpr &expr) override
-    {
+    void visit(const BoolExpr &expr) override {
         lowerer_.curLoc = expr.loc;
         IlValue intVal = IlValue::constInt(expr.value ? -1 : 0);
         result_ = Lowerer::RVal{intVal, IlType(IlType::Kind::I64)};
@@ -119,8 +112,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     ///          logic (such as locals versus fields) is centralised in the
     ///          lowering helpers.
     /// @param expr Variable reference node from the BASIC AST.
-    void visit(const VarExpr &expr) override
-    {
+    void visit(const VarExpr &expr) override {
         result_ = lowerer_.lowerVarExpr(expr);
     }
 
@@ -131,8 +123,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     ///          rt_arr_i32_get for integer arrays. The result type is determined
     ///          by the array element type.
     /// @param expr Array access node from the BASIC AST.
-    void visit(const ArrayExpr &expr) override
-    {
+    void visit(const ArrayExpr &expr) override {
         Lowerer::ArrayAccess access =
             lowerer_.lowerArrayAccess(expr, Lowerer::ArrayAccessKind::Load);
         lowerer_.curLoc = expr.loc;
@@ -145,8 +136,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         // BUG-097 fix: Check module-level cache if symbol exists but isn't marked as object,
         // or if symbol doesn't exist at all (procedure-local symbol tables lose module info)
         std::string moduleObjectClass;
-        if (!info || (info && !info->isObject))
-        {
+        if (!info || (info && !info->isObject)) {
             moduleObjectClass = lowerer_.lookupModuleArrayElemClass(expr.name);
         }
 
@@ -156,32 +146,26 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         // BUG-OOP-011 fix: Also check module-level string array cache
         if ((info && info->type == ::il::frontends::basic::Type::Str) ||
             (fieldInfo.isField && fieldInfo.elementAstType == ::il::frontends::basic::Type::Str) ||
-            isModuleStrArray)
-        {
+            isModuleStrArray) {
             // String array: use rt_arr_str_get (returns retained handle)
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::Str), "rt_arr_str_get", {access.base, access.index});
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Str)};
-        }
-        else if ((info && info->isObject) || fieldInfo.isObjectArray || !moduleObjectClass.empty())
-        {
+        } else if ((info && info->isObject) || fieldInfo.isObjectArray ||
+                   !moduleObjectClass.empty()) {
             // BUG-089/BUG-097 fix: Object array (member, non-member, or module-level)
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::Ptr), "rt_arr_obj_get", {access.base, access.index});
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::Ptr)};
-        }
-        else if ((info && info->type == ::il::frontends::basic::Type::F64) ||
-                 (fieldInfo.isField &&
-                  fieldInfo.elementAstType == ::il::frontends::basic::Type::F64))
-        {
+        } else if ((info && info->type == ::il::frontends::basic::Type::F64) ||
+                   (fieldInfo.isField &&
+                    fieldInfo.elementAstType == ::il::frontends::basic::Type::F64)) {
             // Float array (SINGLE/DOUBLE): use rt_arr_f64_get
             lowerer_.requireArrayF64Get();
             IlValue val = lowerer_.emitCallRet(
                 IlType(IlType::Kind::F64), "rt_arr_f64_get", {access.base, access.index});
             result_ = Lowerer::RVal{val, IlType(IlType::Kind::F64)};
-        }
-        else
-        {
+        } else {
             // Integer/numeric array: use rt_arr_i64_get (all Viper integers are 64-bit)
             lowerer_.requireArrayI64Get();
             IlValue val = lowerer_.emitCallRet(
@@ -194,8 +178,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @details Delegates to the shared helper that understands the full matrix
     ///          of BASIC unary operators.
     /// @param expr Unary operator node from the BASIC AST.
-    void visit(const UnaryExpr &expr) override
-    {
+    void visit(const UnaryExpr &expr) override {
         result_ = lowerer_.lowerUnaryExpr(expr);
     }
 
@@ -203,8 +186,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @details Forwards to @ref Lowerer::lowerBinaryExpr which handles operand
     ///          coercion and emits the correct IL opcode for the operator.
     /// @param expr Binary operator node from the BASIC AST.
-    void visit(const BinaryExpr &expr) override
-    {
+    void visit(const BinaryExpr &expr) override {
         result_ = lowerer_.lowerBinaryExpr(expr);
     }
 
@@ -212,8 +194,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @details Delegates to @ref lowerBuiltinCall so builtin-specific lowering
     ///          stays concentrated in the helper module.
     /// @param expr Builtin invocation node from the BASIC AST.
-    void visit(const BuiltinCallExpr &expr) override
-    {
+    void visit(const BuiltinCallExpr &expr) override {
         result_ = lowerBuiltinCall(lowerer_, expr);
     }
 
@@ -221,8 +202,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @details Emits the constant zero because BASIC arrays are zero based in
     ///          the current runtime configuration.
     /// @param expr LBOUND invocation node from the BASIC AST.
-    void visit(const LBoundExpr &expr) override
-    {
+    void visit(const LBoundExpr &expr) override {
         lowerer_.curLoc = expr.loc;
         result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
     }
@@ -231,8 +211,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @details Delegates to the helper that computes the appropriate runtime
     ///          query for the array upper bound.
     /// @param expr UBOUND invocation node from the BASIC AST.
-    void visit(const UBoundExpr &expr) override
-    {
+    void visit(const UBoundExpr &expr) override {
         result_ = lowerer_.lowerUBoundExpr(expr);
     }
 
@@ -243,16 +222,13 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     ///          records the call result; otherwise it fabricates a dummy integer
     ///          to keep the return type consistent for expression contexts.
     /// @param expr Call expression node from the BASIC AST.
-    void visit(const CallExpr &expr) override
-    {
+    void visit(const CallExpr &expr) override {
         // BUG-059 fix: Check if this is actually a field array access
         // In class methods, name(index) might be a field array, not a function call
         std::string className = lowerer_.currentClass();
-        if (!className.empty() && expr.calleeQualified.empty())
-        {
+        if (!className.empty() && expr.calleeQualified.empty()) {
             std::string fieldName = CanonicalizeIdent(expr.callee);
-            if (lowerer_.isFieldArray(className, fieldName))
-            {
+            if (lowerer_.isFieldArray(className, fieldName)) {
                 // This is a field array access, not a function call
                 // Construct a temporary ArrayExpr with ME.fieldname
                 std::string dottedName = "ME." + expr.callee;
@@ -261,15 +237,13 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                 tempExpr.loc = expr.loc;
                 // Temporarily move unique_ptrs from expr.args to tempExpr.indices
                 // We'll move them back after lowering
-                for (auto &arg : const_cast<std::vector<ExprPtr> &>(expr.args))
-                {
+                for (auto &arg : const_cast<std::vector<ExprPtr> &>(expr.args)) {
                     tempExpr.indices.push_back(std::move(arg));
                 }
                 // Now call the visitor as if this were an ArrayExpr
                 visit(tempExpr);
                 // Move the indices back to expr.args to restore ownership
-                for (size_t i = 0; i < tempExpr.indices.size(); ++i)
-                {
+                for (size_t i = 0; i < tempExpr.indices.size(); ++i) {
                     const_cast<std::vector<ExprPtr> &>(expr.args)[i] =
                         std::move(tempExpr.indices[i]);
                 }
@@ -283,21 +257,18 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         // BUG-OOP-031 fix: Only treat as method call if the method actually
         // exists in the current class or its base classes. Otherwise fall
         // through to global procedure resolution.
-        if (lowerer_.currentClass().size() > 0 && expr.calleeQualified.empty())
-        {
+        if (lowerer_.currentClass().size() > 0 && expr.calleeQualified.empty()) {
             // Check if this is actually a method of the current class
             const auto *methodInfo =
                 lowerer_.oopIndex_.findMethodInHierarchy(lowerer_.currentClass(), expr.callee);
-            if (!methodInfo)
-            {
+            if (!methodInfo) {
                 // Not a method of this class - fall through to global resolution
                 goto global_resolution;
             }
 
             // Load ME pointer as implicit receiver
             const auto *meSym = lowerer_.findSymbol("ME");
-            if (meSym && meSym->slotId)
-            {
+            if (meSym && meSym->slotId) {
                 lowerer_.curLoc = expr.loc;
                 IlValue selfArg =
                     lowerer_.emitLoad(IlType(IlType::Kind::Ptr), IlValue::temp(*meSym->slotId));
@@ -306,8 +277,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                 std::vector<IlValue> args;
                 args.reserve(expr.args.size() + 1);
                 args.push_back(selfArg);
-                for (const auto &a : expr.args)
-                {
+                for (const auto &a : expr.args) {
                     if (!a)
                         continue;
                     Lowerer::RVal v = lowerer_.lowerExpr(*a);
@@ -317,10 +287,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                 // Determine return IL type when available; otherwise emit void call
                 IlType retIl = IlType(IlType::Kind::Void);
                 if (auto retAst =
-                        lowerer_.findMethodReturnType(lowerer_.currentClass(), expr.callee))
-                {
-                    switch (*retAst)
-                    {
+                        lowerer_.findMethodReturnType(lowerer_.currentClass(), expr.callee)) {
+                    switch (*retAst) {
                         case ::il::frontends::basic::Type::I64:
                             retIl = IlType(IlType::Kind::I64);
                             break;
@@ -339,13 +307,10 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                 // Mangle and emit call
                 const std::string callee = mangleMethod(lowerer_.currentClass(), expr.callee);
                 lowerer_.curLoc = expr.loc;
-                if (retIl.kind != IlType::Kind::Void)
-                {
+                if (retIl.kind != IlType::Kind::Void) {
                     IlValue res = lowerer_.emitCallRet(retIl, callee, args);
                     result_ = Lowerer::RVal{res, retIl};
-                }
-                else
-                {
+                } else {
                     lowerer_.emitCall(callee, args);
                     result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
                 }
@@ -357,12 +322,9 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         // Resolve callee (supports qualified call syntax). Canonicalize to
         // maintain case-insensitive semantics for lookups.
         std::string calleeResolved;
-        if (!expr.calleeQualified.empty())
-        {
+        if (!expr.calleeQualified.empty()) {
             calleeResolved = CanonicalizeQualified(expr.calleeQualified);
-        }
-        else
-        {
+        } else {
             calleeResolved = CanonicalizeIdent(expr.callee);
         }
         const std::string &calleeKey = calleeResolved.empty() ? expr.callee : calleeResolved;
@@ -373,29 +335,21 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         // If not found and the call is unqualified, try resolving against USING imports.
         // This mirrors semantic resolution where USING imports allow unqualified
         // calls like SetPosition to bind to Viper.Terminal.SetPosition.
-        if (!rtSig && calleeKey.find('.') == std::string::npos && !expr.callee.empty())
-        {
+        if (!rtSig && calleeKey.find('.') == std::string::npos && !expr.callee.empty()) {
             // Helper to convert canonical namespace to title-case for runtime lookup
-            auto titleCaseNs = [](const std::string &ns) -> std::string
-            {
+            auto titleCaseNs = [](const std::string &ns) -> std::string {
                 std::string out;
                 out.reserve(ns.size());
                 bool start = true;
-                for (char ch : ns)
-                {
-                    if (ch == '.')
-                    {
+                for (char ch : ns) {
+                    if (ch == '.') {
                         out.push_back('.');
                         start = true;
-                    }
-                    else if (start)
-                    {
+                    } else if (start) {
                         out.push_back(
                             static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
                         start = false;
-                    }
-                    else
-                    {
+                    } else {
                         out.push_back(ch);
                     }
                 }
@@ -404,16 +358,13 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
 
             // Try USING imports from semantic analyzer first
             const SemanticAnalyzer *sema = lowerer_.semanticAnalyzer();
-            if (sema)
-            {
+            if (sema) {
                 std::vector<std::string> imports = sema->getUsingImports();
-                for (const auto &ns : imports)
-                {
+                for (const auto &ns : imports) {
                     // Build qualified name: namespace.callee (title-cased for runtime lookup)
                     std::string qualifiedNs = titleCaseNs(ns);
                     std::string candidate = qualifiedNs + "." + expr.callee;
-                    if (const auto *sig = il::runtime::findRuntimeSignature(candidate))
-                    {
+                    if (const auto *sig = il::runtime::findRuntimeSignature(candidate)) {
                         rtSig = sig;
                         calleeResolved = std::move(candidate);
                         break;
@@ -421,24 +372,20 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                     // Also try case-insensitive lookup in runtime signatures
                     const auto &rts = il::runtime::runtimeSignatures();
                     std::string candidateLower = ns + "." + calleeKey;
-                    for (const auto &kv : rts)
-                    {
+                    for (const auto &kv : rts) {
                         const std::string_view name = kv.first;
                         if (name.size() != candidateLower.size())
                             continue;
                         bool eq = true;
-                        for (size_t i = 0; i < name.size(); ++i)
-                        {
+                        for (size_t i = 0; i < name.size(); ++i) {
                             unsigned char a = static_cast<unsigned char>(name[i]);
                             unsigned char b = static_cast<unsigned char>(candidateLower[i]);
-                            if (std::tolower(a) != std::tolower(b))
-                            {
+                            if (std::tolower(a) != std::tolower(b)) {
                                 eq = false;
                                 break;
                             }
                         }
-                        if (eq)
-                        {
+                        if (eq) {
                             rtSig = &kv.second;
                             calleeResolved = std::string(name);
                             break;
@@ -449,14 +396,11 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                 }
             }
             // Fallback: try common Viper.* namespaces even without explicit USING
-            if (!rtSig)
-            {
+            if (!rtSig) {
                 static const char *defaultNamespaces[] = {"Viper.Terminal", "Viper.Time"};
-                for (const char *ns : defaultNamespaces)
-                {
+                for (const char *ns : defaultNamespaces) {
                     std::string candidate = std::string(ns) + "." + expr.callee;
-                    if (const auto *sig = il::runtime::findRuntimeSignature(candidate))
-                    {
+                    if (const auto *sig = il::runtime::findRuntimeSignature(candidate)) {
                         rtSig = sig;
                         calleeResolved = std::move(candidate);
                         break;
@@ -465,28 +409,23 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             }
         }
         // Fallback: case-insensitive match against runtime symbols when dotted and canonicalized.
-        if (!rtSig && calleeKey.find('.') != std::string::npos)
-        {
+        if (!rtSig && calleeKey.find('.') != std::string::npos) {
             const auto &rts = il::runtime::runtimeSignatures();
-            for (const auto &kv : rts)
-            {
+            for (const auto &kv : rts) {
                 // Case-insensitive compare
                 const std::string_view name = kv.first;
                 if (name.size() != calleeKey.size())
                     continue;
                 bool eq = true;
-                for (size_t i = 0; i < name.size(); ++i)
-                {
+                for (size_t i = 0; i < name.size(); ++i) {
                     unsigned char a = static_cast<unsigned char>(name[i]);
                     unsigned char b = static_cast<unsigned char>(calleeKey[i]);
-                    if (std::tolower(a) != std::tolower(b))
-                    {
+                    if (std::tolower(a) != std::tolower(b)) {
                         eq = false;
                         break;
                     }
                 }
-                if (eq)
-                {
+                if (eq) {
                     // Bind to exact-cased runtime name/signature
                     rtSig = &kv.second;
                     // Replace calleeResolved with the canonical runtime symbol spelling
@@ -498,14 +437,11 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         const auto *signature = rtSig ? nullptr : lowerer_.findProcSignature(calleeKey);
         std::vector<IlValue> args;
         args.reserve(expr.args.size());
-        if (rtSig)
-        {
+        if (rtSig) {
             // Coerce arguments according to the runtime signature parameter IL types.
-            for (size_t i = 0; i < expr.args.size(); ++i)
-            {
+            for (size_t i = 0; i < expr.args.size(); ++i) {
                 Lowerer::RVal arg = lowerer_.lowerExpr(*expr.args[i]);
-                if (i < rtSig->paramTypes.size())
-                {
+                if (i < rtSig->paramTypes.size()) {
                     IlType paramTy = rtSig->paramTypes[i];
                     if (paramTy.kind == IlType::Kind::F64)
                         arg = lowerer_.coerceToF64(std::move(arg), expr.loc);
@@ -513,8 +449,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                         arg = lowerer_.coerceToI64(std::move(arg), expr.loc);
                     else if (paramTy.kind == IlType::Kind::I1)
                         arg = lowerer_.coerceToBool(std::move(arg), expr.loc);
-                    else if (paramTy.kind == IlType::Kind::I32)
-                    {
+                    else if (paramTy.kind == IlType::Kind::I32) {
                         arg = lowerer_.ensureI64(std::move(arg), expr.loc);
                         arg.value = lowerer_.emitCommon(expr.loc).narrow_to(arg.value, 64, 32);
                     }
@@ -523,32 +458,23 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             }
             lowerer_.curLoc = expr.loc;
             // Emit direct call to the canonical runtime extern (e.g., @Viper.Terminal.PrintI64).
-            if (rtSig->retType.kind != IlType::Kind::Void)
-            {
+            if (rtSig->retType.kind != IlType::Kind::Void) {
                 const std::string &target = calleeResolved.empty() ? calleeKey : calleeResolved;
                 IlValue res = lowerer_.emitCallRet(rtSig->retType, target, args);
                 result_ = Lowerer::RVal{res, rtSig->retType};
-            }
-            else
-            {
+            } else {
                 const std::string &target = calleeResolved.empty() ? calleeKey : calleeResolved;
                 lowerer_.emitCall(target, args);
                 result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
             }
-        }
-        else
-        {
-            for (size_t i = 0; i < expr.args.size(); ++i)
-            {
+        } else {
+            for (size_t i = 0; i < expr.args.size(); ++i) {
                 // BYREF support: when the signature marks parameter i as BYREF, pass address-of
                 // the variable storage when possible.
-                if (signature && i < signature->byRefFlags.size() && signature->byRefFlags[i])
-                {
+                if (signature && i < signature->byRefFlags.size() && signature->byRefFlags[i]) {
                     const ExprPtr &argExpr = expr.args[i];
-                    if (auto *v = dynamic_cast<const VarExpr *>(argExpr.get()))
-                    {
-                        if (auto storage = lowerer_.resolveVariableStorage(v->name, expr.loc))
-                        {
+                    if (auto *v = dynamic_cast<const VarExpr *>(argExpr.get())) {
+                        if (auto storage = lowerer_.resolveVariableStorage(v->name, expr.loc)) {
                             args.push_back(storage->pointer);
                             continue;
                         }
@@ -558,8 +484,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                 }
 
                 Lowerer::RVal arg = lowerer_.lowerExpr(*expr.args[i]);
-                if (signature && i < signature->paramTypes.size())
-                {
+                if (signature && i < signature->paramTypes.size()) {
                     IlType paramTy = signature->paramTypes[i];
                     if (paramTy.kind == IlType::Kind::F64)
                         arg = lowerer_.coerceToF64(std::move(arg), expr.loc);
@@ -572,13 +497,10 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
             }
             lowerer_.curLoc = expr.loc;
             const std::string calleeName = lowerer_.resolveCalleeName(calleeKey);
-            if (signature && signature->retType.kind != IlType::Kind::Void)
-            {
+            if (signature && signature->retType.kind != IlType::Kind::Void) {
                 IlValue res = lowerer_.emitCallRet(signature->retType, calleeName, args);
                 result_ = Lowerer::RVal{res, signature->retType};
-            }
-            else
-            {
+            } else {
                 lowerer_.emitCall(calleeName, args);
                 result_ = Lowerer::RVal{IlValue::constInt(0), IlType(IlType::Kind::I64)};
             }
@@ -589,8 +511,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @details Defers to @ref Lowerer::lowerNewExpr so object layout specifics
     ///          reside in the dedicated helper.
     /// @param expr Object construction node from the BASIC AST.
-    void visit(const NewExpr &expr) override
-    {
+    void visit(const NewExpr &expr) override {
         result_ = lowerer_.lowerNewExpr(expr);
     }
 
@@ -598,8 +519,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @details Hands control to @ref Lowerer::lowerMeExpr which implements the
     ///          details around retrieving the current instance reference.
     /// @param expr ME expression node from the BASIC AST.
-    void visit(const MeExpr &expr) override
-    {
+    void visit(const MeExpr &expr) override {
         result_ = lowerer_.lowerMeExpr(expr);
     }
 
@@ -607,8 +527,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @details Uses @ref Lowerer::lowerMemberAccessExpr to resolve the field or
     ///          property lookup and produce the corresponding IL value.
     /// @param expr Member access node from the BASIC AST.
-    void visit(const MemberAccessExpr &expr) override
-    {
+    void visit(const MemberAccessExpr &expr) override {
         result_ = lowerer_.lowerMemberAccessExpr(expr);
     }
 
@@ -616,21 +535,16 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @details Delegates to @ref Lowerer::lowerMethodCallExpr which handles the
     ///          implicit receiver and method dispatch semantics.
     /// @param expr Method call node from the BASIC AST.
-    void visit(const MethodCallExpr &expr) override
-    {
+    void visit(const MethodCallExpr &expr) override {
         // BUG-056: If method-like syntax targets a field name with indices, treat as
         // array-field element access rather than a real method call.
         std::string cls = expr.base ? lowerer_.resolveObjectClass(*expr.base) : std::string{};
-        if (!cls.empty())
-        {
-            if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(cls))
-            {
-                if (const Lowerer::ClassLayout::Field *fld = layout->findField(expr.method))
-                {
+        if (!cls.empty()) {
+            if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(cls)) {
+                if (const Lowerer::ClassLayout::Field *fld = layout->findField(expr.method)) {
                     // Only treat as array-field access when the field is actually an array.
                     // Otherwise, fall back to lowering a real method call (BUG-106).
-                    if (!fld->isArray)
-                    {
+                    if (!fld->isArray) {
                         result_ = lowerer_.lowerMethodCallExpr(expr);
                         return;
                     }
@@ -650,10 +564,8 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                     // multi-dimensional arrays
                     std::vector<Lowerer::Value> indices;
                     indices.reserve(expr.args.size());
-                    for (const auto &arg : expr.args)
-                    {
-                        if (arg)
-                        {
+                    for (const auto &arg : expr.args) {
+                        if (arg) {
                             Lowerer::RVal idx = lowerer_.lowerExpr(*arg);
                             idx = lowerer_.coerceToI64(std::move(idx), expr.loc);
                             indices.push_back(idx.value);
@@ -662,15 +574,11 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
 
                     // Compute flattened index for multi-dimensional arrays
                     Lowerer::Value indexVal = Lowerer::Value::constInt(0);
-                    if (!indices.empty())
-                    {
-                        if (indices.size() == 1)
-                        {
+                    if (!indices.empty()) {
+                        if (indices.size() == 1) {
                             indexVal = indices[0];
-                        }
-                        else if (fld->isArray && !fld->arrayExtents.empty() &&
-                                 fld->arrayExtents.size() == indices.size())
-                        {
+                        } else if (fld->isArray && !fld->arrayExtents.empty() &&
+                                   fld->arrayExtents.size() == indices.size()) {
                             // Multi-dimensional: compute row-major flattened index
                             // For extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ...,
                             // i_{N-1}]: flat = i0*L1*L2*...*L_{N-1} + i1*L2*...*L_{N-1} + ... +
@@ -689,8 +597,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                                                            indices[0],
                                                            Lowerer::Value::constInt(stride));
 
-                            for (size_t k = 1; k < indices.size(); ++k)
-                            {
+                            for (size_t k = 1; k < indices.size(); ++k) {
                                 stride = 1;
                                 for (size_t i = k + 1; i < lengths.size(); ++i)
                                     stride *= lengths[i];
@@ -707,17 +614,14 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                                                         indexVal,
                                                         term);
                             }
-                        }
-                        else
-                        {
+                        } else {
                             // Fallback: use first index only
                             indexVal = indices[0];
                         }
                     }
 
                     // Select getter and result type based on field element type
-                    if (fld->type == ::il::frontends::basic::Type::Str)
-                    {
+                    if (fld->type == ::il::frontends::basic::Type::Str) {
                         lowerer_.requireArrayStrGet();
                         // BUG-071 fix: Don't defer release - consuming code handles lifetime
                         Lowerer::IlValue val =
@@ -727,9 +631,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                         // Removed: lowerer_.deferReleaseStr(val);
                         result_ = Lowerer::RVal{val, Lowerer::IlType(Lowerer::IlType::Kind::Str)};
                         return;
-                    }
-                    else if (!fld->objectClassName.empty())
-                    {
+                    } else if (!fld->objectClassName.empty()) {
                         // BUG-096/BUG-098 fix: Handle object arrays
                         lowerer_.requireArrayObjGet();
                         Lowerer::IlValue val =
@@ -738,9 +640,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                                                  {arrHandle, indexVal});
                         result_ = Lowerer::RVal{val, Lowerer::IlType(Lowerer::IlType::Kind::Ptr)};
                         return;
-                    }
-                    else if (fld->type == ::il::frontends::basic::Type::F64)
-                    {
+                    } else if (fld->type == ::il::frontends::basic::Type::F64) {
                         // Float array (SINGLE/DOUBLE): use rt_arr_f64_get
                         lowerer_.requireArrayF64Get();
                         Lowerer::IlValue val =
@@ -749,9 +649,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
                                                  {arrHandle, indexVal});
                         result_ = Lowerer::RVal{val, Lowerer::IlType(Lowerer::IlType::Kind::F64)};
                         return;
-                    }
-                    else
-                    {
+                    } else {
                         lowerer_.requireArrayI64Get();
                         Lowerer::IlValue val =
                             lowerer_.emitCallRet(Lowerer::IlType(Lowerer::IlType::Kind::I64),
@@ -768,15 +666,13 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     }
 
     /// @brief Lower IS expression via RTTI helpers.
-    void visit(const IsExpr &expr) override
-    {
+    void visit(const IsExpr &expr) override {
         lowerer_.curLoc = expr.loc;
         // Lower left value to an object pointer
         Lowerer::RVal lhs = lowerer_.lowerExpr(*expr.value);
         // Build type/interface key from dotted name
         std::string dotted;
-        for (size_t i = 0; i < expr.typeName.size(); ++i)
-        {
+        for (size_t i = 0; i < expr.typeName.size(); ++i) {
             if (i)
                 dotted.push_back('.');
             dotted += expr.typeName[i];
@@ -785,17 +681,14 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
         bool isIface = false;
         int targetId = -1;
         // Interface lookup via OOP index
-        for (const auto &p : lowerer_.oopIndex_.interfacesByQname())
-        {
-            if (p.first == dotted)
-            {
+        for (const auto &p : lowerer_.oopIndex_.interfacesByQname()) {
+            if (p.first == dotted) {
                 isIface = true;
                 targetId = p.second.ifaceId;
                 break;
             }
         }
-        if (!isIface)
-        {
+        if (!isIface) {
             // Use last segment as class key for layout map
             std::string cls = expr.typeName.empty() ? std::string{} : expr.typeName.back();
             if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(cls))
@@ -820,8 +713,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     /// @brief Lower ADDRESSOF expression to obtain a function pointer.
     /// @details Emits IL that produces the address of the named SUB or FUNCTION.
     ///          The result is an opaque pointer suitable for passing to threading APIs.
-    void visit(const AddressOfExpr &expr) override
-    {
+    void visit(const AddressOfExpr &expr) override {
         lowerer_.curLoc = expr.loc;
         // Emit a global address reference to the function.
         // The function name will be resolved by the linker/VM.
@@ -835,31 +727,26 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     }
 
     /// @brief Lower AS expression via RTTI helpers.
-    void visit(const AsExpr &expr) override
-    {
+    void visit(const AsExpr &expr) override {
         lowerer_.curLoc = expr.loc;
         Lowerer::RVal lhs = lowerer_.lowerExpr(*expr.value);
         // Dotted type name
         std::string dotted;
-        for (size_t i = 0; i < expr.typeName.size(); ++i)
-        {
+        for (size_t i = 0; i < expr.typeName.size(); ++i) {
             if (i)
                 dotted.push_back('.');
             dotted += expr.typeName[i];
         }
         bool isIface = false;
         int targetId = -1;
-        for (const auto &p : lowerer_.oopIndex_.interfacesByQname())
-        {
-            if (p.first == dotted)
-            {
+        for (const auto &p : lowerer_.oopIndex_.interfacesByQname()) {
+            if (p.first == dotted) {
                 isIface = true;
                 targetId = p.second.ifaceId;
                 break;
             }
         }
-        if (!isIface)
-        {
+        if (!isIface) {
             std::string cls = expr.typeName.empty() ? std::string{} : expr.typeName.back();
             if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(cls))
                 targetId = static_cast<int>(layout->classId);
@@ -879,8 +766,7 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
     ///          every visit call; this accessor exposes the cached value to the
     ///          caller.
     /// @return Pair containing the IL value and its static type.
-    [[nodiscard]] Lowerer::RVal result() const noexcept
-    {
+    [[nodiscard]] Lowerer::RVal result() const noexcept {
         return result_;
     }
 
@@ -896,21 +782,17 @@ class LowererExprVisitor final : public lower::AstVisitor, public ExprVisitor
 ///          node.
 /// @param expr Expression node to lower.
 /// @return Resulting IL value and type.
-Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
-{
-    if (++exprLowerDepth_ > kMaxLowerDepth)
-    {
+Lowerer::RVal Lowerer::lowerExpr(const Expr &expr) {
+    if (++exprLowerDepth_ > kMaxLowerDepth) {
         --exprLowerDepth_;
         // Return a dummy value to avoid cascading errors
         return RVal{Value::constInt(0), Type(Type::Kind::I64)};
     }
 
-    struct DepthGuard
-    {
+    struct DepthGuard {
         unsigned &d;
 
-        ~DepthGuard()
-        {
+        ~DepthGuard() {
             --d;
         }
     } exprGuard_{exprLowerDepth_};
@@ -928,8 +810,7 @@ Lowerer::RVal Lowerer::lowerExpr(const Expr &expr)
 ///          emitted during coercion.
 /// @param expr Expression node expected to resolve to a scalar.
 /// @return Coerced IL value and its scalar type.
-Lowerer::RVal Lowerer::lowerScalarExpr(const Expr &expr)
-{
+Lowerer::RVal Lowerer::lowerScalarExpr(const Expr &expr) {
     return lowerScalarExpr(lowerExpr(expr), expr.loc);
 }
 
@@ -941,10 +822,8 @@ Lowerer::RVal Lowerer::lowerScalarExpr(const Expr &expr)
 /// @param value Result previously returned by @ref lowerExpr.
 /// @param loc Source location used for diagnostics during coercion.
 /// @return IL value adjusted for scalar contexts.
-Lowerer::RVal Lowerer::lowerScalarExpr(RVal value, il::support::SourceLoc loc)
-{
-    switch (value.type.kind)
-    {
+Lowerer::RVal Lowerer::lowerScalarExpr(RVal value, il::support::SourceLoc loc) {
+    switch (value.type.kind) {
         case Type::Kind::I1:
         case Type::Kind::I16:
         case Type::Kind::I32:

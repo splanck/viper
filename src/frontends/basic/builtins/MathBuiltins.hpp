@@ -19,8 +19,7 @@
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 
-namespace il::frontends::basic::builtins
-{
+namespace il::frontends::basic::builtins {
 
 /// @brief Populate builtin metadata for math helpers (INT/FIX/ABS/etc.).
 /// @param infos Dense table indexed by BuiltinCallExpr::Builtin.

@@ -23,22 +23,16 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Check if a function contains a Call to a specific callee.
 static bool hasCall(const il::core::Module &mod,
                     const std::string &fnName,
-                    const std::string &callee)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+                    const std::string &callee) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call && instr.callee == callee)
                         return true;
                 }
@@ -49,16 +43,11 @@ static bool hasCall(const il::core::Module &mod,
 }
 
 /// @brief Check if a function contains a specific opcode.
-static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == op)
                         return true;
                 }
@@ -69,10 +58,8 @@ static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il
 }
 
 /// @brief Check if a named function exists in the module.
-static bool hasFunction(const il::core::Module &mod, const std::string &fnName)
-{
-    for (const auto &fn : mod.functions)
-    {
+static bool hasFunction(const il::core::Module &mod, const std::string &fnName) {
+    for (const auto &fn : mod.functions) {
         if (fn.name == fnName)
             return true;
     }
@@ -80,10 +67,8 @@ static bool hasFunction(const il::core::Module &mod, const std::string &fnName)
 }
 
 /// @brief Helper to dump diagnostics for debugging.
-static void dumpDiags(const CompilerResult &result)
-{
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
+static void dumpDiags(const CompilerResult &result) {
+    for (const auto &d : result.diagnostics.diagnostics()) {
         fprintf(stderr, "  [%s] %s\n", d.code.c_str(), d.message.c_str());
     }
 }
@@ -94,8 +79,7 @@ static void dumpDiags(const CompilerResult &result)
 
 /// @brief Basic interface dispatch: verify __zia_iface_init is emitted and
 ///        start() calls it.
-TEST(ZiaIfaceDispatch, EmitsItableInit)
-{
+TEST(ZiaIfaceDispatch, EmitsItableInit) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -134,8 +118,7 @@ func start() {
 }
 
 /// @brief Verify that interface method calls emit rt_get_interface_impl + call.indirect.
-TEST(ZiaIfaceDispatch, ItableLookupAndCallIndirect)
-{
+TEST(ZiaIfaceDispatch, ItableLookupAndCallIndirect) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -172,8 +155,7 @@ func start() {
 }
 
 /// @brief Multiple implementors of the same interface all get itable entries.
-TEST(ZiaIfaceDispatch, MultipleImplementors)
-{
+TEST(ZiaIfaceDispatch, MultipleImplementors) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -217,8 +199,7 @@ func start() {
 }
 
 /// @brief Interface with multiple methods — verify slot-based dispatch.
-TEST(ZiaIfaceDispatch, MultipleSlots)
-{
+TEST(ZiaIfaceDispatch, MultipleSlots) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -262,8 +243,7 @@ func start() {
 }
 
 /// @brief No interfaces defined — no __zia_iface_init emitted.
-TEST(ZiaIfaceDispatch, NoInterfacesNoInit)
-{
+TEST(ZiaIfaceDispatch, NoInterfacesNoInit) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -289,7 +269,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

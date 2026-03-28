@@ -57,16 +57,14 @@
 // Internal types
 //=============================================================================
 
-typedef struct cm_entry
-{
+typedef struct cm_entry {
     char *key;
     size_t key_len;
     void *value;
     struct cm_entry *next;
 } cm_entry;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     cm_entry **buckets;
     size_t capacity;
@@ -94,11 +92,9 @@ typedef struct
 // Internal helpers
 //=============================================================================
 
-static const char *get_key_data(rt_string key, size_t *out_len)
-{
+static const char *get_key_data(rt_string key, size_t *out_len) {
     const char *cstr = rt_string_cstr(key);
-    if (!cstr)
-    {
+    if (!cstr) {
         *out_len = 0;
         return "";
     }
@@ -106,11 +102,9 @@ static const char *get_key_data(rt_string key, size_t *out_len)
     return cstr;
 }
 
-static cm_entry *find_entry(cm_entry *head, const char *key, size_t key_len)
-{
+static cm_entry *find_entry(cm_entry *head, const char *key, size_t key_len) {
     cm_entry *e = head;
-    while (e)
-    {
+    while (e) {
         if (e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
             return e;
         e = e->next;
@@ -118,10 +112,8 @@ static cm_entry *find_entry(cm_entry *head, const char *key, size_t key_len)
     return NULL;
 }
 
-static void free_entry(cm_entry *e)
-{
-    if (e)
-    {
+static void free_entry(cm_entry *e) {
+    if (e) {
         free(e->key);
         if (rt_obj_release_check0(e->value))
             rt_obj_free(e->value);
@@ -129,18 +121,15 @@ static void free_entry(cm_entry *e)
     }
 }
 
-static void cm_resize(rt_concmap_impl *cm)
-{
+static void cm_resize(rt_concmap_impl *cm) {
     size_t new_cap = cm->capacity * 2;
     cm_entry **new_buckets = (cm_entry **)calloc(new_cap, sizeof(cm_entry *));
     if (!new_buckets)
         return;
 
-    for (size_t i = 0; i < cm->capacity; i++)
-    {
+    for (size_t i = 0; i < cm->capacity; i++) {
         cm_entry *e = cm->buckets[i];
-        while (e)
-        {
+        while (e) {
             cm_entry *next = e->next;
             uint64_t h = rt_fnv1a(e->key, e->key_len);
             size_t idx = (size_t)(h % new_cap);
@@ -154,21 +143,16 @@ static void cm_resize(rt_concmap_impl *cm)
     cm->capacity = new_cap;
 }
 
-static void maybe_resize(rt_concmap_impl *cm)
-{
-    if (cm->count * CM_LOAD_FACTOR_DEN > cm->capacity * CM_LOAD_FACTOR_NUM)
-    {
+static void maybe_resize(rt_concmap_impl *cm) {
+    if (cm->count * CM_LOAD_FACTOR_DEN > cm->capacity * CM_LOAD_FACTOR_NUM) {
         cm_resize(cm);
     }
 }
 
-static void cm_clear_unlocked(rt_concmap_impl *cm)
-{
-    for (size_t i = 0; i < cm->capacity; i++)
-    {
+static void cm_clear_unlocked(rt_concmap_impl *cm) {
+    for (size_t i = 0; i < cm->capacity; i++) {
         cm_entry *e = cm->buckets[i];
-        while (e)
-        {
+        while (e) {
             cm_entry *next = e->next;
             free_entry(e);
             e = next;
@@ -178,8 +162,7 @@ static void cm_clear_unlocked(rt_concmap_impl *cm)
     cm->count = 0;
 }
 
-static void cm_finalizer(void *obj)
-{
+static void cm_finalizer(void *obj) {
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
     CM_LOCK(cm);
     cm_clear_unlocked(cm);
@@ -198,11 +181,9 @@ static void cm_finalizer(void *obj)
 // Public API
 //=============================================================================
 
-void *rt_concmap_new(void)
-{
+void *rt_concmap_new(void) {
     rt_concmap_impl *cm = (rt_concmap_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_concmap_impl));
-    if (!cm)
-    {
+    if (!cm) {
         rt_trap("ConcurrentMap: memory allocation failed");
         return NULL;
     }
@@ -210,8 +191,7 @@ void *rt_concmap_new(void)
     cm->capacity = CM_INITIAL_CAPACITY;
     cm->count = 0;
     cm->buckets = (cm_entry **)calloc(CM_INITIAL_CAPACITY, sizeof(cm_entry *));
-    if (!cm->buckets)
-    {
+    if (!cm->buckets) {
         rt_trap("ConcurrentMap: memory allocation failed");
         return NULL;
     }
@@ -229,8 +209,7 @@ void *rt_concmap_new(void)
 /// @brief Perform concmap len operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_concmap_len(void *obj)
-{
+int64_t rt_concmap_len(void *obj) {
     if (!obj)
         return 0;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
@@ -243,8 +222,7 @@ int64_t rt_concmap_len(void *obj)
 /// @brief Perform concmap is empty operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_concmap_is_empty(void *obj)
-{
+int8_t rt_concmap_is_empty(void *obj) {
     return rt_concmap_len(obj) == 0 ? 1 : 0;
 }
 
@@ -252,8 +230,7 @@ int8_t rt_concmap_is_empty(void *obj)
 /// @param obj
 /// @param key
 /// @param value
-void rt_concmap_set(void *obj, rt_string key, void *value)
-{
+void rt_concmap_set(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
@@ -266,8 +243,7 @@ void rt_concmap_set(void *obj, rt_string key, void *value)
     size_t idx = (size_t)(h % cm->capacity);
     cm_entry *existing = find_entry(cm->buckets[idx], key_data, key_len);
 
-    if (existing)
-    {
+    if (existing) {
         /* Update existing entry. */
         rt_obj_retain_maybe(value);
         if (rt_obj_release_check0(existing->value))
@@ -279,15 +255,13 @@ void rt_concmap_set(void *obj, rt_string key, void *value)
 
     /* Insert new entry. */
     cm_entry *e = (cm_entry *)malloc(sizeof(cm_entry));
-    if (!e)
-    {
+    if (!e) {
         CM_UNLOCK(cm);
         rt_trap("ConcurrentMap.Set: memory allocation failed");
         return;
     }
     e->key = (char *)malloc(key_len + 1);
-    if (!e->key)
-    {
+    if (!e->key) {
         free(e);
         CM_UNLOCK(cm);
         rt_trap("ConcurrentMap.Set: memory allocation failed");
@@ -306,8 +280,7 @@ void rt_concmap_set(void *obj, rt_string key, void *value)
     CM_UNLOCK(cm);
 }
 
-void *rt_concmap_get(void *obj, rt_string key)
-{
+void *rt_concmap_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
@@ -323,8 +296,7 @@ void *rt_concmap_get(void *obj, rt_string key)
     return result;
 }
 
-void *rt_concmap_get_or(void *obj, rt_string key, void *default_value)
-{
+void *rt_concmap_get_or(void *obj, rt_string key, void *default_value) {
     if (!obj)
         return default_value;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
@@ -344,8 +316,7 @@ void *rt_concmap_get_or(void *obj, rt_string key, void *default_value)
 /// @param obj
 /// @param key
 /// @return Result value.
-int8_t rt_concmap_has(void *obj, rt_string key)
-{
+int8_t rt_concmap_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
@@ -366,8 +337,7 @@ int8_t rt_concmap_has(void *obj, rt_string key)
 /// @param key
 /// @param value
 /// @return Result value.
-int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value)
-{
+int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value) {
     if (!obj)
         return 0;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
@@ -379,22 +349,19 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value)
 
     size_t idx = (size_t)(h % cm->capacity);
     cm_entry *existing = find_entry(cm->buckets[idx], key_data, key_len);
-    if (existing)
-    {
+    if (existing) {
         CM_UNLOCK(cm);
         return 0;
     }
 
     cm_entry *e = (cm_entry *)malloc(sizeof(cm_entry));
-    if (!e)
-    {
+    if (!e) {
         CM_UNLOCK(cm);
         rt_trap("ConcurrentMap.SetIfMissing: memory allocation failed");
         return 0;
     }
     e->key = (char *)malloc(key_len + 1);
-    if (!e->key)
-    {
+    if (!e->key) {
         free(e);
         CM_UNLOCK(cm);
         rt_trap("ConcurrentMap.SetIfMissing: memory allocation failed");
@@ -418,8 +385,7 @@ int8_t rt_concmap_set_if_missing(void *obj, rt_string key, void *value)
 /// @param obj
 /// @param key
 /// @return Result value.
-int8_t rt_concmap_remove(void *obj, rt_string key)
-{
+int8_t rt_concmap_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
@@ -432,10 +398,8 @@ int8_t rt_concmap_remove(void *obj, rt_string key)
     cm_entry **prev = &cm->buckets[idx];
     cm_entry *e = cm->buckets[idx];
 
-    while (e)
-    {
-        if (e->key_len == key_len && memcmp(e->key, key_data, key_len) == 0)
-        {
+    while (e) {
+        if (e->key_len == key_len && memcmp(e->key, key_data, key_len) == 0) {
             *prev = e->next;
             free_entry(e);
             cm->count--;
@@ -452,8 +416,7 @@ int8_t rt_concmap_remove(void *obj, rt_string key)
 
 /// @brief Perform concmap clear operation.
 /// @param obj
-void rt_concmap_clear(void *obj)
-{
+void rt_concmap_clear(void *obj) {
     if (!obj)
         return;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
@@ -462,19 +425,16 @@ void rt_concmap_clear(void *obj)
     CM_UNLOCK(cm);
 }
 
-void *rt_concmap_keys(void *obj)
-{
+void *rt_concmap_keys(void *obj) {
     void *seq = rt_seq_new();
     if (!obj)
         return seq;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
 
     CM_LOCK(cm);
-    for (size_t i = 0; i < cm->capacity; i++)
-    {
+    for (size_t i = 0; i < cm->capacity; i++) {
         cm_entry *e = cm->buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_string s = rt_string_from_bytes(e->key, e->key_len);
             rt_seq_push(seq, (void *)s);
             e = e->next;
@@ -484,19 +444,16 @@ void *rt_concmap_keys(void *obj)
     return seq;
 }
 
-void *rt_concmap_values(void *obj)
-{
+void *rt_concmap_values(void *obj) {
     void *seq = rt_seq_new();
     if (!obj)
         return seq;
     rt_concmap_impl *cm = (rt_concmap_impl *)obj;
 
     CM_LOCK(cm);
-    for (size_t i = 0; i < cm->capacity; i++)
-    {
+    for (size_t i = 0; i < cm->capacity; i++) {
         cm_entry *e = cm->buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_seq_push(seq, e->value);
             e = e->next;
         }

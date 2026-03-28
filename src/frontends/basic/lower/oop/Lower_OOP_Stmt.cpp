@@ -34,8 +34,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Lower a BASIC @c DELETE statement into runtime helper calls.
 /// @details Lowering proceeds through four steps:
@@ -55,8 +54,7 @@ namespace il::frontends::basic
 ///          building updates are scoped to the current @ref ProcedureContext so
 ///          nested lowerings can interleave safely.
 /// @param stmt AST node describing the @c DELETE statement to lower.
-void Lowerer::lowerDelete(const DeleteStmt &stmt)
-{
+void Lowerer::lowerDelete(const DeleteStmt &stmt) {
     // Create a temporary OopLoweringContext for backward compatibility.
     // Callers that already have a context should use the overload below.
     OopLoweringContext oopCtx(*this, oopIndex_);
@@ -68,8 +66,7 @@ void Lowerer::lowerDelete(const DeleteStmt &stmt)
 ///          name resolution, enabling caching across multiple OOP operations.
 /// @param stmt AST node describing the @c DELETE statement to lower.
 /// @param oopCtx OOP lowering context for metadata lookups and caching.
-void Lowerer::lowerDelete(const DeleteStmt &stmt, OopLoweringContext &oopCtx)
-{
+void Lowerer::lowerDelete(const DeleteStmt &stmt, OopLoweringContext &oopCtx) {
     if (!stmt.target)
         return;
 
@@ -112,8 +109,7 @@ void Lowerer::lowerDelete(const DeleteStmt &stmt, OopLoweringContext &oopCtx)
 
     // Use OopLoweringContext for class resolution and destructor name mangling
     std::string className = oopCtx.resolveObjectClass(*stmt.target);
-    if (!className.empty())
-    {
+    if (!className.empty()) {
         std::string dtorName = oopCtx.getDestructorName(className);
         emitCall(dtorName, {target.value});
     }

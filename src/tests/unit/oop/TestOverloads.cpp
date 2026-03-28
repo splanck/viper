@@ -17,8 +17,7 @@
 
 using namespace il::frontends::basic;
 
-TEST(OOP_Overloads, AmbiguousMethodVsPropertyGetter)
-{
+TEST(OOP_Overloads, AmbiguousMethodVsPropertyGetter) {
     // Define both a parameterless method Foo and a PROPERTY Foo with GET.
     // Access `o.Foo` should be ambiguous for resolver.
     const char *src = R"BAS(
@@ -44,8 +43,7 @@ TEST(OOP_Overloads, AmbiguousMethodVsPropertyGetter)
     EXPECT_FALSE(res.succeeded());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

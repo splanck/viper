@@ -24,18 +24,14 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
-namespace
-{
+namespace {
 /// @brief Map a Machine IR opcode to a descriptive string for diagnostics.
 /// @param opc Opcode enumerator to translate.
 /// @return Null-terminated string naming the opcode.
-[[nodiscard]] const char *opcodeName(MOpcode opc) noexcept
-{
-    switch (opc)
-    {
+[[nodiscard]] const char *opcodeName(MOpcode opc) noexcept {
+    switch (opc) {
         case MOpcode::MOVrr:
             return "MOVrr";
         case MOpcode::MOVri:
@@ -159,10 +155,8 @@ namespace
 /// @brief Map a register class to the textual suffix used in debug output.
 /// @param cls Register class enumerator to translate.
 /// @return Short suffix identifying the class (e.g., "gpr").
-[[nodiscard]] std::string_view regClassSuffix(RegClass cls) noexcept
-{
-    switch (cls)
-    {
+[[nodiscard]] std::string_view regClassSuffix(RegClass cls) noexcept {
+    switch (cls) {
         case RegClass::GPR:
             return "gpr";
         case RegClass::XMM:
@@ -178,8 +172,7 @@ namespace
 /// @param opc Opcode describing the instruction semantics.
 /// @param ops Operand vector consumed by the instruction.
 /// @return Newly constructed Machine IR instruction.
-MInstr MInstr::make(MOpcode opc, std::vector<Operand> ops)
-{
+MInstr MInstr::make(MOpcode opc, std::vector<Operand> ops) {
     return MInstr{opc, std::move(ops)};
 }
 
@@ -187,8 +180,7 @@ MInstr MInstr::make(MOpcode opc, std::vector<Operand> ops)
 /// @param opc Opcode describing the instruction semantics.
 /// @param ops Operand initializer list copied into the instruction.
 /// @return Newly constructed Machine IR instruction.
-MInstr MInstr::make(MOpcode opc, std::initializer_list<Operand> ops)
-{
+MInstr MInstr::make(MOpcode opc, std::initializer_list<Operand> ops) {
     return MInstr{opc, std::vector<Operand>{ops}};
 }
 
@@ -197,8 +189,7 @@ MInstr MInstr::make(MOpcode opc, std::initializer_list<Operand> ops)
 ///          the instruction's operand array.
 /// @param op Operand to append.
 /// @return Reference to the mutated instruction for chaining.
-MInstr &MInstr::addOperand(Operand op)
-{
+MInstr &MInstr::addOperand(Operand op) {
     operands.push_back(std::move(op));
     return *this;
 }
@@ -208,8 +199,7 @@ MInstr &MInstr::addOperand(Operand op)
 ///          to the stored instance is returned for immediate population.
 /// @param block Basic block to append.
 /// @return Reference to the inserted block.
-MBasicBlock &MFunction::addBlock(MBasicBlock block)
-{
+MBasicBlock &MFunction::addBlock(MBasicBlock block) {
     blocks.push_back(std::move(block));
     return blocks.back();
 }
@@ -217,8 +207,7 @@ MBasicBlock &MFunction::addBlock(MBasicBlock block)
 /// @brief Generate a unique label local to this function using the given prefix.
 /// @param prefix Prefix to prepend to the generated label.
 /// @return New label string guaranteed unique within the function.
-std::string MFunction::makeLocalLabel(std::string_view prefix)
-{
+std::string MFunction::makeLocalLabel(std::string_view prefix) {
     std::string label;
     label.reserve(prefix.size() + 12); // prefix + counter digits + null terminator
     label = prefix;
@@ -229,8 +218,7 @@ std::string MFunction::makeLocalLabel(std::string_view prefix)
 /// @brief Append an instruction to the basic block.
 /// @param instr Instruction to append.
 /// @return Reference to the stored instruction for further mutation.
-MInstr &MBasicBlock::append(MInstr instr)
-{
+MInstr &MBasicBlock::append(MInstr instr) {
     instructions.push_back(std::move(instr));
     return instructions.back();
 }
@@ -239,8 +227,7 @@ MInstr &MBasicBlock::append(MInstr instr)
 /// @param cls Register class of the virtual register.
 /// @param id Dense identifier assigned to the virtual register.
 /// @return Register descriptor marking the operand as virtual.
-OpReg makeVReg(RegClass cls, uint16_t id) noexcept
-{
+OpReg makeVReg(RegClass cls, uint16_t id) noexcept {
     OpReg result{};
     result.isPhys = false;
     result.cls = cls;
@@ -252,8 +239,7 @@ OpReg makeVReg(RegClass cls, uint16_t id) noexcept
 /// @param cls Register class of the physical register.
 /// @param phys Architecture-defined register number.
 /// @return Register descriptor marking the operand as physical.
-OpReg makePhysReg(RegClass cls, uint16_t phys) noexcept
-{
+OpReg makePhysReg(RegClass cls, uint16_t phys) noexcept {
     OpReg result{};
     result.isPhys = true;
     result.cls = cls;
@@ -265,8 +251,7 @@ OpReg makePhysReg(RegClass cls, uint16_t phys) noexcept
 /// @param cls Register class of the virtual register.
 /// @param id Dense identifier assigned to the virtual register.
 /// @return Operand variant representing the register.
-Operand makeVRegOperand(RegClass cls, uint16_t id)
-{
+Operand makeVRegOperand(RegClass cls, uint16_t id) {
     return Operand{makeVReg(cls, id)};
 }
 
@@ -274,16 +259,14 @@ Operand makeVRegOperand(RegClass cls, uint16_t id)
 /// @param cls Register class of the physical register.
 /// @param phys Architecture-defined register number.
 /// @return Operand variant representing the register.
-Operand makePhysRegOperand(RegClass cls, uint16_t phys)
-{
+Operand makePhysRegOperand(RegClass cls, uint16_t phys) {
     return Operand{makePhysReg(cls, phys)};
 }
 
 /// @brief Construct an immediate operand variant.
 /// @param value Immediate constant carried by the operand.
 /// @return Operand variant storing the constant.
-Operand makeImmOperand(int64_t value)
-{
+Operand makeImmOperand(int64_t value) {
     return Operand{OpImm{value}};
 }
 
@@ -291,8 +274,7 @@ Operand makeImmOperand(int64_t value)
 /// @param base Base register used to form the address.
 /// @param disp Signed displacement added to the base register.
 /// @return Operand variant describing the memory access.
-Operand makeMemOperand(OpReg base, int32_t disp)
-{
+Operand makeMemOperand(OpReg base, int32_t disp) {
     assert(base.cls == RegClass::GPR && "Phase A expects GPR base registers");
     OpMem m{};
     m.base = std::move(base);
@@ -300,8 +282,7 @@ Operand makeMemOperand(OpReg base, int32_t disp)
     return Operand{m};
 }
 
-Operand makeMemOperand(OpReg base, OpReg index, uint8_t scale, int32_t disp)
-{
+Operand makeMemOperand(OpReg base, OpReg index, uint8_t scale, int32_t disp) {
     OpMem m{};
     m.base = base;
     m.index = index;
@@ -314,16 +295,14 @@ Operand makeMemOperand(OpReg base, OpReg index, uint8_t scale, int32_t disp)
 /// @brief Construct a label operand variant.
 /// @param name Name of the label referenced by the operand.
 /// @return Operand variant storing the label metadata.
-Operand makeLabelOperand(std::string name)
-{
+Operand makeLabelOperand(std::string name) {
     return Operand{OpLabel{std::move(name)}};
 }
 
 /// @brief Construct a RIP-relative label operand variant.
 /// @param name Name of the label referenced by the operand.
 /// @return Operand variant storing the RIP-relative label metadata.
-Operand makeRipLabelOperand(std::string name)
-{
+Operand makeRipLabelOperand(std::string name) {
     return Operand{OpRipLabel{std::move(name)}};
 }
 
@@ -332,16 +311,12 @@ Operand makeRipLabelOperand(std::string name)
 ///          `%v` to aid debugging dumps.
 /// @param op Register operand to print.
 /// @return Textual representation of the register operand.
-std::string toString(const OpReg &op)
-{
+std::string toString(const OpReg &op) {
     std::ostringstream os;
-    if (op.isPhys)
-    {
+    if (op.isPhys) {
         const auto phys = static_cast<PhysReg>(op.idOrPhys);
         os << '@' << regName(phys);
-    }
-    else
-    {
+    } else {
         os << "%v" << static_cast<unsigned>(op.idOrPhys);
     }
     os << ':' << regClassSuffix(op.cls);
@@ -351,8 +326,7 @@ std::string toString(const OpReg &op)
 /// @brief Render an immediate operand as human-readable text.
 /// @param op Immediate operand to print.
 /// @return Textual representation prefixed with '#'.
-std::string toString(const OpImm &op)
-{
+std::string toString(const OpImm &op) {
     std::ostringstream os;
     os << '#' << op.val;
     return os.str();
@@ -362,20 +336,16 @@ std::string toString(const OpImm &op)
 /// @details Produces the canonical `[base +/- disp]` representation.
 /// @param op Memory operand to print.
 /// @return Textual representation of the memory operand.
-std::string toString(const OpMem &op)
-{
+std::string toString(const OpMem &op) {
     std::ostringstream os;
     os << '[' << toString(op.base);
-    if (op.hasIndex)
-    {
+    if (op.hasIndex) {
         os << " + " << toString(op.index);
-        if (op.scale != 1)
-        {
+        if (op.scale != 1) {
             os << " * " << static_cast<int>(op.scale);
         }
     }
-    if (op.disp != 0)
-    {
+    if (op.disp != 0) {
         if (op.disp > 0)
             os << " + " << op.disp;
         else
@@ -388,16 +358,14 @@ std::string toString(const OpMem &op)
 /// @brief Render a label operand as human-readable text.
 /// @param op Label operand to print.
 /// @return Underlying label name.
-std::string toString(const OpLabel &op)
-{
+std::string toString(const OpLabel &op) {
     return op.name;
 }
 
 /// @brief Render a RIP-relative label operand as human-readable text.
 /// @param op RIP-relative label operand to print.
 /// @return Label name followed by the (%rip) suffix.
-std::string toString(const OpRipLabel &op)
-{
+std::string toString(const OpRipLabel &op) {
     std::string result = op.name;
     result += "(%rip)";
     return result;
@@ -406,28 +374,22 @@ std::string toString(const OpRipLabel &op)
 /// @brief Render a generic operand by visiting the active variant.
 /// @param operand Operand variant to print.
 /// @return Textual representation selected by the active operand kind.
-std::string toString(const Operand &operand)
-{
+std::string toString(const Operand &operand) {
     return std::visit([](const auto &value) { return toString(value); }, operand);
 }
 
 /// @brief Render an instruction, including mnemonic and operands.
 /// @param instr Instruction to print.
 /// @return Multi-operand textual representation suitable for dumps.
-std::string toString(const MInstr &instr)
-{
+std::string toString(const MInstr &instr) {
     std::ostringstream os;
     os << opcodeName(instr.opcode);
     bool first = true;
-    for (const auto &operand : instr.operands)
-    {
-        if (first)
-        {
+    for (const auto &operand : instr.operands) {
+        if (first) {
             os << ' ' << toString(operand);
             first = false;
-        }
-        else
-        {
+        } else {
             os << ", " << toString(operand);
         }
     }
@@ -437,12 +399,10 @@ std::string toString(const MInstr &instr)
 /// @brief Render a basic block and its instructions as human-readable text.
 /// @param block Basic block to print.
 /// @return String containing the label and formatted instruction lines.
-std::string toString(const MBasicBlock &block)
-{
+std::string toString(const MBasicBlock &block) {
     std::ostringstream os;
     os << block.label << ":\n";
-    for (const auto &inst : block.instructions)
-    {
+    for (const auto &inst : block.instructions) {
         os << "  " << toString(inst) << '\n';
     }
     return os.str();
@@ -453,17 +413,14 @@ std::string toString(const MBasicBlock &block)
 ///          order using @ref toString(const MBasicBlock &).
 /// @param func Function to print.
 /// @return String containing the formatted function.
-std::string toString(const MFunction &func)
-{
+std::string toString(const MFunction &func) {
     std::ostringstream os;
     os << "function " << func.name;
-    if (func.metadata.isVarArg)
-    {
+    if (func.metadata.isVarArg) {
         os << " (vararg)";
     }
     os << "\n";
-    for (const auto &block : func.blocks)
-    {
+    for (const auto &block : func.blocks) {
         os << toString(block);
     }
     return os.str();

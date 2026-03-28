@@ -24,8 +24,7 @@
 #include <cstdlib>
 #include <stdexcept>
 
-namespace viper::server
-{
+namespace viper::server {
 
 // Static members
 const std::string JsonValue::kEmptyString;
@@ -57,27 +56,23 @@ JsonValue::JsonValue(ObjectType obj) : storage_(std::move(obj)) {}
 
 // --- Type inspection ---
 
-JsonType JsonValue::type() const
-{
+JsonType JsonValue::type() const {
     return static_cast<JsonType>(storage_.index());
 }
 
-bool JsonValue::isNull() const
-{
+bool JsonValue::isNull() const {
     return storage_.index() == 0;
 }
 
 // --- Accessors ---
 
-bool JsonValue::asBool(bool def) const
-{
+bool JsonValue::asBool(bool def) const {
     if (auto *p = std::get_if<bool>(&storage_))
         return *p;
     return def;
 }
 
-int64_t JsonValue::asInt(int64_t def) const
-{
+int64_t JsonValue::asInt(int64_t def) const {
     if (auto *p = std::get_if<int64_t>(&storage_))
         return *p;
     if (auto *p = std::get_if<double>(&storage_))
@@ -85,8 +80,7 @@ int64_t JsonValue::asInt(int64_t def) const
     return def;
 }
 
-double JsonValue::asDouble(double def) const
-{
+double JsonValue::asDouble(double def) const {
     if (auto *p = std::get_if<double>(&storage_))
         return *p;
     if (auto *p = std::get_if<int64_t>(&storage_))
@@ -94,22 +88,19 @@ double JsonValue::asDouble(double def) const
     return def;
 }
 
-const std::string &JsonValue::asString() const
-{
+const std::string &JsonValue::asString() const {
     if (auto *p = std::get_if<std::string>(&storage_))
         return *p;
     return kEmptyString;
 }
 
-const JsonValue::ArrayType &JsonValue::asArray() const
-{
+const JsonValue::ArrayType &JsonValue::asArray() const {
     if (auto *p = std::get_if<ArrayType>(&storage_))
         return *p;
     return kEmptyArray;
 }
 
-const JsonValue::ObjectType &JsonValue::asObject() const
-{
+const JsonValue::ObjectType &JsonValue::asObject() const {
     if (auto *p = std::get_if<ObjectType>(&storage_))
         return *p;
     return kEmptyObject;
@@ -117,12 +108,9 @@ const JsonValue::ObjectType &JsonValue::asObject() const
 
 // --- Object access ---
 
-const JsonValue *JsonValue::get(const std::string &key) const
-{
-    if (auto *obj = std::get_if<ObjectType>(&storage_))
-    {
-        for (const auto &[k, v] : *obj)
-        {
+const JsonValue *JsonValue::get(const std::string &key) const {
+    if (auto *obj = std::get_if<ObjectType>(&storage_)) {
+        for (const auto &[k, v] : *obj) {
             if (k == key)
                 return &v;
         }
@@ -130,22 +118,19 @@ const JsonValue *JsonValue::get(const std::string &key) const
     return nullptr;
 }
 
-const JsonValue &JsonValue::operator[](const std::string &key) const
-{
+const JsonValue &JsonValue::operator[](const std::string &key) const {
     if (const auto *v = get(key))
         return *v;
     return kNull;
 }
 
-bool JsonValue::has(const std::string &key) const
-{
+bool JsonValue::has(const std::string &key) const {
     return get(key) != nullptr;
 }
 
 // --- Array access ---
 
-size_t JsonValue::size() const
-{
+size_t JsonValue::size() const {
     if (auto *arr = std::get_if<ArrayType>(&storage_))
         return arr->size();
     if (auto *obj = std::get_if<ObjectType>(&storage_))
@@ -153,10 +138,8 @@ size_t JsonValue::size() const
     return 0;
 }
 
-const JsonValue &JsonValue::at(size_t index) const
-{
-    if (auto *arr = std::get_if<ArrayType>(&storage_))
-    {
+const JsonValue &JsonValue::at(size_t index) const {
+    if (auto *arr = std::get_if<ArrayType>(&storage_)) {
         if (index < arr->size())
             return (*arr)[index];
     }
@@ -165,47 +148,38 @@ const JsonValue &JsonValue::at(size_t index) const
 
 // --- Builders ---
 
-JsonValue JsonValue::object(std::initializer_list<std::pair<std::string, JsonValue>> members)
-{
+JsonValue JsonValue::object(std::initializer_list<std::pair<std::string, JsonValue>> members) {
     return JsonValue(ObjectType(members.begin(), members.end()));
 }
 
-JsonValue JsonValue::array(std::initializer_list<JsonValue> elems)
-{
+JsonValue JsonValue::array(std::initializer_list<JsonValue> elems) {
     return JsonValue(ArrayType(elems.begin(), elems.end()));
 }
 
-JsonValue JsonValue::object(ObjectType members)
-{
+JsonValue JsonValue::object(ObjectType members) {
     return JsonValue(std::move(members));
 }
 
-JsonValue JsonValue::array(ArrayType elems)
-{
+JsonValue JsonValue::array(ArrayType elems) {
     return JsonValue(std::move(elems));
 }
 
 // --- Comparison ---
 
-bool JsonValue::operator==(const JsonValue &other) const
-{
+bool JsonValue::operator==(const JsonValue &other) const {
     return storage_ == other.storage_;
 }
 
-bool JsonValue::operator!=(const JsonValue &other) const
-{
+bool JsonValue::operator!=(const JsonValue &other) const {
     return storage_ != other.storage_;
 }
 
 // --- Emitter ---
 
-static void emitString(std::string &out, const std::string &s)
-{
+static void emitString(std::string &out, const std::string &s) {
     out += '"';
-    for (char c : s)
-    {
-        switch (c)
-        {
+    for (char c : s) {
+        switch (c) {
             case '"':
                 out += "\\\"";
                 break;
@@ -228,15 +202,12 @@ static void emitString(std::string &out, const std::string &s)
                 out += "\\t";
                 break;
             default:
-                if (static_cast<unsigned char>(c) < 0x20)
-                {
+                if (static_cast<unsigned char>(c) < 0x20) {
                     // Control characters as \u00XX
                     char buf[8];
                     std::snprintf(buf, sizeof(buf), "\\u%04x", static_cast<unsigned char>(c));
                     out += buf;
-                }
-                else
-                {
+                } else {
                     out += c;
                 }
                 break;
@@ -245,32 +216,25 @@ static void emitString(std::string &out, const std::string &s)
     out += '"';
 }
 
-void JsonValue::emitTo(std::string &out) const
-{
-    switch (type())
-    {
+void JsonValue::emitTo(std::string &out) const {
+    switch (type()) {
         case JsonType::Null:
             out += "null";
             break;
         case JsonType::Bool:
             out += asBool() ? "true" : "false";
             break;
-        case JsonType::Int:
-        {
+        case JsonType::Int: {
             char buf[32];
             std::snprintf(buf, sizeof(buf), "%lld", static_cast<long long>(asInt()));
             out += buf;
             break;
         }
-        case JsonType::Double:
-        {
+        case JsonType::Double: {
             double d = asDouble();
-            if (std::isnan(d) || std::isinf(d))
-            {
+            if (std::isnan(d) || std::isinf(d)) {
                 out += "null"; // JSON has no NaN/Inf
-            }
-            else
-            {
+            } else {
                 char buf[64];
                 std::snprintf(buf, sizeof(buf), "%.17g", d);
                 out += buf;
@@ -283,12 +247,10 @@ void JsonValue::emitTo(std::string &out) const
         case JsonType::String:
             emitString(out, asString());
             break;
-        case JsonType::Array:
-        {
+        case JsonType::Array: {
             out += '[';
             const auto &arr = asArray();
-            for (size_t i = 0; i < arr.size(); ++i)
-            {
+            for (size_t i = 0; i < arr.size(); ++i) {
                 if (i > 0)
                     out += ',';
                 arr[i].emitTo(out);
@@ -296,12 +258,10 @@ void JsonValue::emitTo(std::string &out) const
             out += ']';
             break;
         }
-        case JsonType::Object:
-        {
+        case JsonType::Object: {
             out += '{';
             const auto &obj = asObject();
-            for (size_t i = 0; i < obj.size(); ++i)
-            {
+            for (size_t i = 0; i < obj.size(); ++i) {
                 if (i > 0)
                     out += ',';
                 emitString(out, obj[i].first);
@@ -314,8 +274,7 @@ void JsonValue::emitTo(std::string &out) const
     }
 }
 
-std::string JsonValue::toCompactString() const
-{
+std::string JsonValue::toCompactString() const {
     std::string out;
     out.reserve(128);
     emitTo(out);
@@ -326,16 +285,13 @@ std::string JsonValue::toCompactString() const
 // JSON Parser — recursive descent
 // ==========================================================================
 
-namespace
-{
+namespace {
 
-class JsonParser
-{
+class JsonParser {
   public:
     explicit JsonParser(std::string_view input) : src_(input), pos_(0) {}
 
-    JsonValue parse()
-    {
+    JsonValue parse() {
         skipWhitespace();
         auto val = parseValue();
         skipWhitespace();
@@ -348,8 +304,7 @@ class JsonParser
     std::string_view src_;
     size_t pos_;
 
-    [[noreturn]] void error(const char *msg) const
-    {
+    [[noreturn]] void error(const char *msg) const {
         std::string err = "JSON parse error at position ";
         err += std::to_string(pos_);
         err += ": ";
@@ -357,25 +312,21 @@ class JsonParser
         throw std::runtime_error(err);
     }
 
-    char peek() const
-    {
+    char peek() const {
         if (pos_ >= src_.size())
             return '\0';
         return src_[pos_];
     }
 
-    char advance()
-    {
+    char advance() {
         if (pos_ >= src_.size())
             error("unexpected end of input");
         return src_[pos_++];
     }
 
-    void expect(char c)
-    {
+    void expect(char c) {
         char got = advance();
-        if (got != c)
-        {
+        if (got != c) {
             std::string msg = "expected '";
             msg += c;
             msg += "', got '";
@@ -385,10 +336,8 @@ class JsonParser
         }
     }
 
-    void skipWhitespace()
-    {
-        while (pos_ < src_.size())
-        {
+    void skipWhitespace() {
+        while (pos_ < src_.size()) {
             char c = src_[pos_];
             if (c == ' ' || c == '\t' || c == '\n' || c == '\r')
                 ++pos_;
@@ -397,25 +346,21 @@ class JsonParser
         }
     }
 
-    bool tryConsume(std::string_view literal)
-    {
-        if (src_.substr(pos_).substr(0, literal.size()) == literal)
-        {
+    bool tryConsume(std::string_view literal) {
+        if (src_.substr(pos_).substr(0, literal.size()) == literal) {
             pos_ += literal.size();
             return true;
         }
         return false;
     }
 
-    JsonValue parseValue()
-    {
+    JsonValue parseValue() {
         skipWhitespace();
         char c = peek();
         if (c == '\0')
             error("unexpected end of input");
 
-        switch (c)
-        {
+        switch (c) {
             case 'n':
                 if (tryConsume("null"))
                     return JsonValue();
@@ -442,24 +387,20 @@ class JsonParser
         return JsonValue(); // unreachable
     }
 
-    std::string parseString()
-    {
+    std::string parseString() {
         expect('"');
         std::string result;
-        while (true)
-        {
+        while (true) {
             if (pos_ >= src_.size())
                 error("unterminated string");
             char c = src_[pos_++];
             if (c == '"')
                 return result;
-            if (c == '\\')
-            {
+            if (c == '\\') {
                 if (pos_ >= src_.size())
                     error("unterminated escape");
                 char esc = src_[pos_++];
-                switch (esc)
-                {
+                switch (esc) {
                     case '"':
                         result += '"';
                         break;
@@ -484,24 +425,19 @@ class JsonParser
                     case 't':
                         result += '\t';
                         break;
-                    case 'u':
-                    {
+                    case 'u': {
                         uint32_t cp = parseHex4();
                         // Handle surrogate pairs
-                        if (cp >= 0xD800 && cp <= 0xDBFF)
-                        {
+                        if (cp >= 0xD800 && cp <= 0xDBFF) {
                             if (pos_ + 1 < src_.size() && src_[pos_] == '\\' &&
-                                src_[pos_ + 1] == 'u')
-                            {
+                                src_[pos_ + 1] == 'u') {
                                 pos_ += 2;
                                 uint32_t lo = parseHex4();
                                 if (lo >= 0xDC00 && lo <= 0xDFFF)
                                     cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
                                 else
                                     error("invalid surrogate pair");
-                            }
-                            else
-                            {
+                            } else {
                                 error("missing low surrogate");
                             }
                         }
@@ -511,21 +447,17 @@ class JsonParser
                     default:
                         error("invalid escape sequence");
                 }
-            }
-            else
-            {
+            } else {
                 result += c;
             }
         }
     }
 
-    uint32_t parseHex4()
-    {
+    uint32_t parseHex4() {
         if (pos_ + 4 > src_.size())
             error("incomplete \\u escape");
         uint32_t val = 0;
-        for (int i = 0; i < 4; ++i)
-        {
+        for (int i = 0; i < 4; ++i) {
             char c = src_[pos_++];
             val <<= 4;
             if (c >= '0' && c <= '9')
@@ -540,25 +472,17 @@ class JsonParser
         return val;
     }
 
-    static void encodeUtf8(std::string &out, uint32_t cp)
-    {
-        if (cp < 0x80)
-        {
+    static void encodeUtf8(std::string &out, uint32_t cp) {
+        if (cp < 0x80) {
             out += static_cast<char>(cp);
-        }
-        else if (cp < 0x800)
-        {
+        } else if (cp < 0x800) {
             out += static_cast<char>(0xC0 | (cp >> 6));
             out += static_cast<char>(0x80 | (cp & 0x3F));
-        }
-        else if (cp < 0x10000)
-        {
+        } else if (cp < 0x10000) {
             out += static_cast<char>(0xE0 | (cp >> 12));
             out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
             out += static_cast<char>(0x80 | (cp & 0x3F));
-        }
-        else if (cp < 0x110000)
-        {
+        } else if (cp < 0x110000) {
             out += static_cast<char>(0xF0 | (cp >> 18));
             out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
             out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
@@ -566,30 +490,23 @@ class JsonParser
         }
     }
 
-    JsonValue parseNumber()
-    {
+    JsonValue parseNumber() {
         size_t start = pos_;
         bool isFloat = false;
 
         if (peek() == '-')
             ++pos_;
 
-        if (peek() == '0')
-        {
+        if (peek() == '0') {
             ++pos_;
-        }
-        else if (peek() >= '1' && peek() <= '9')
-        {
+        } else if (peek() >= '1' && peek() <= '9') {
             while (pos_ < src_.size() && src_[pos_] >= '0' && src_[pos_] <= '9')
                 ++pos_;
-        }
-        else
-        {
+        } else {
             error("invalid number");
         }
 
-        if (pos_ < src_.size() && src_[pos_] == '.')
-        {
+        if (pos_ < src_.size() && src_[pos_] == '.') {
             isFloat = true;
             ++pos_;
             if (pos_ >= src_.size() || src_[pos_] < '0' || src_[pos_] > '9')
@@ -598,8 +515,7 @@ class JsonParser
                 ++pos_;
         }
 
-        if (pos_ < src_.size() && (src_[pos_] == 'e' || src_[pos_] == 'E'))
-        {
+        if (pos_ < src_.size() && (src_[pos_] == 'e' || src_[pos_] == 'E')) {
             isFloat = true;
             ++pos_;
             if (pos_ < src_.size() && (src_[pos_] == '+' || src_[pos_] == '-'))
@@ -612,16 +528,13 @@ class JsonParser
 
         std::string numStr(src_.substr(start, pos_ - start));
 
-        if (isFloat)
-        {
+        if (isFloat) {
             char *end = nullptr;
             double d = std::strtod(numStr.c_str(), &end);
             if (end != numStr.c_str() + numStr.size())
                 error("invalid number");
             return JsonValue(d);
-        }
-        else
-        {
+        } else {
             char *end = nullptr;
             long long ll = std::strtoll(numStr.c_str(), &end, 10);
             if (end != numStr.c_str() + numStr.size())
@@ -630,22 +543,18 @@ class JsonParser
         }
     }
 
-    JsonValue parseArray()
-    {
+    JsonValue parseArray() {
         expect('[');
         skipWhitespace();
         JsonValue::ArrayType arr;
-        if (peek() == ']')
-        {
+        if (peek() == ']') {
             ++pos_;
             return JsonValue(std::move(arr));
         }
-        while (true)
-        {
+        while (true) {
             arr.push_back(parseValue());
             skipWhitespace();
-            if (peek() == ']')
-            {
+            if (peek() == ']') {
                 ++pos_;
                 return JsonValue(std::move(arr));
             }
@@ -653,18 +562,15 @@ class JsonParser
         }
     }
 
-    JsonValue parseObject()
-    {
+    JsonValue parseObject() {
         expect('{');
         skipWhitespace();
         JsonValue::ObjectType obj;
-        if (peek() == '}')
-        {
+        if (peek() == '}') {
             ++pos_;
             return JsonValue(std::move(obj));
         }
-        while (true)
-        {
+        while (true) {
             skipWhitespace();
             if (peek() != '"')
                 error("expected string key");
@@ -674,8 +580,7 @@ class JsonParser
             auto val = parseValue();
             obj.emplace_back(std::move(key), std::move(val));
             skipWhitespace();
-            if (peek() == '}')
-            {
+            if (peek() == '}') {
                 ++pos_;
                 return JsonValue(std::move(obj));
             }
@@ -686,8 +591,7 @@ class JsonParser
 
 } // anonymous namespace
 
-JsonValue JsonValue::parse(std::string_view input)
-{
+JsonValue JsonValue::parse(std::string_view input) {
     JsonParser parser(input);
     return parser.parse();
 }

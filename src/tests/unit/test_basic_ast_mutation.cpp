@@ -25,39 +25,33 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
-ExprPtr makeInt(long long value)
-{
+namespace {
+ExprPtr makeInt(long long value) {
     auto expr = std::make_unique<IntExpr>();
     expr->value = value;
     return expr;
 }
 
-ExprPtr makeBool(bool value)
-{
+ExprPtr makeBool(bool value) {
     auto expr = std::make_unique<BoolExpr>();
     expr->value = value;
     return expr;
 }
 
-ExprPtr makeVar(std::string name)
-{
+ExprPtr makeVar(std::string name) {
     auto expr = std::make_unique<VarExpr>();
     expr->name = std::move(name);
     return expr;
 }
 
-ExprPtr makeString(std::string value)
-{
+ExprPtr makeString(std::string value) {
     auto expr = std::make_unique<StringExpr>();
     expr->value = std::move(value);
     return expr;
 }
 } // namespace
 
-int main()
-{
+int main() {
     // ConstFolder short-circuits logical AND without mutating the RHS.
     {
         Program prog;

@@ -66,14 +66,9 @@ extern double rt_json_stream_number_value(void *parser);
 // Internal Data Structures
 //=========================================================================
 
-typedef enum
-{
-    SAVE_INT = 0,
-    SAVE_STR = 1
-} SaveEntryType;
+typedef enum { SAVE_INT = 0, SAVE_STR = 1 } SaveEntryType;
 
-typedef struct SaveEntry
-{
+typedef struct SaveEntry {
     char *key;
     SaveEntryType type;
     int64_t int_val;
@@ -81,8 +76,7 @@ typedef struct SaveEntry
     struct SaveEntry *next;
 } SaveEntry;
 
-typedef struct
-{
+typedef struct {
     char *game_name;
     char *file_path;
     SaveEntry *entries;
@@ -92,11 +86,9 @@ typedef struct
 // Internal Helpers
 //=========================================================================
 
-static SaveEntry *find_entry(rt_savedata_impl *sd, const char *key, size_t key_len)
-{
+static SaveEntry *find_entry(rt_savedata_impl *sd, const char *key, size_t key_len) {
     SaveEntry *e = sd->entries;
-    while (e)
-    {
+    while (e) {
         if (strlen(e->key) == key_len && memcmp(e->key, key, key_len) == 0)
             return e;
         e = e->next;
@@ -104,21 +96,17 @@ static SaveEntry *find_entry(rt_savedata_impl *sd, const char *key, size_t key_l
     return NULL;
 }
 
-static void free_entry(SaveEntry *e)
-{
-    if (e)
-    {
+static void free_entry(SaveEntry *e) {
+    if (e) {
         free(e->key);
         free(e->str_val);
         free(e);
     }
 }
 
-static void free_all_entries(rt_savedata_impl *sd)
-{
+static void free_all_entries(rt_savedata_impl *sd) {
     SaveEntry *e = sd->entries;
-    while (e)
-    {
+    while (e) {
         SaveEntry *next = e->next;
         free_entry(e);
         e = next;
@@ -126,16 +114,14 @@ static void free_all_entries(rt_savedata_impl *sd)
     sd->entries = NULL;
 }
 
-static char *get_home_dir(void)
-{
+static char *get_home_dir(void) {
 #ifdef _WIN32
     const char *home = getenv("USERPROFILE");
     if (home)
         return strdup(home);
     const char *drive = getenv("HOMEDRIVE");
     const char *path = getenv("HOMEPATH");
-    if (drive && path)
-    {
+    if (drive && path) {
         size_t len = strlen(drive) + strlen(path) + 1;
         char *buf = (char *)malloc(len);
         if (buf)
@@ -156,12 +142,10 @@ static char *get_home_dir(void)
 
 /// @brief Validate game_name contains only safe characters for use in file paths.
 /// Rejects path traversal (.. / \) and non-alphanumeric characters except - and _.
-static int is_safe_game_name(const char *name)
-{
+static int is_safe_game_name(const char *name) {
     if (!name || !name[0] || strlen(name) > 64)
         return 0;
-    for (const char *p = name; *p; p++)
-    {
+    for (const char *p = name; *p; p++) {
         char c = *p;
         if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
               c == '_' || c == '-'))
@@ -170,10 +154,8 @@ static int is_safe_game_name(const char *name)
     return 1;
 }
 
-static char *compute_save_path(const char *game_name)
-{
-    if (!is_safe_game_name(game_name))
-    {
+static char *compute_save_path(const char *game_name) {
+    if (!is_safe_game_name(game_name)) {
         rt_trap("SaveData: invalid game name (must be alphanumeric, dash, or underscore, max 64 "
                 "chars)");
         return NULL;
@@ -201,8 +183,7 @@ static char *compute_save_path(const char *game_name)
     return strdup(path);
 }
 
-static void ensure_parent_dir(const char *file_path)
-{
+static void ensure_parent_dir(const char *file_path) {
     /* Extract directory portion */
     char *dir = strdup(file_path);
     if (!dir)
@@ -210,13 +191,11 @@ static void ensure_parent_dir(const char *file_path)
 
     /* Find last separator */
     char *last_sep = NULL;
-    for (char *p = dir; *p; p++)
-    {
+    for (char *p = dir; *p; p++) {
         if (*p == '/' || *p == '\\')
             last_sep = p;
     }
-    if (last_sep)
-    {
+    if (last_sep) {
         *last_sep = '\0';
         rt_string dir_str = rt_string_from_bytes(dir, strlen(dir));
         rt_dir_make_all(dir_str);
@@ -228,13 +207,10 @@ static void ensure_parent_dir(const char *file_path)
 /* Escape a string for JSON output (handles \, ", \n, \t, \r).
    NOTE: Other ASCII control characters (0x00-0x1F) are passed through unescaped.
    Full JSON compliance would require \uXXXX encoding for those. */
-static void json_escape_append(rt_string_builder *sb, const char *str, size_t len)
-{
-    for (size_t i = 0; i < len; i++)
-    {
+static void json_escape_append(rt_string_builder *sb, const char *str, size_t len) {
+    for (size_t i = 0; i < len; i++) {
         char c = str[i];
-        switch (c)
-        {
+        switch (c) {
             case '"':
                 rt_sb_append_cstr(sb, "\\\"");
                 break;
@@ -261,8 +237,7 @@ static void json_escape_append(rt_string_builder *sb, const char *str, size_t le
 // Finalizer
 //=========================================================================
 
-static void savedata_finalizer(void *obj)
-{
+static void savedata_finalizer(void *obj) {
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
     free_all_entries(sd);
     free(sd->game_name);
@@ -275,10 +250,8 @@ static void savedata_finalizer(void *obj)
 // Public API
 //=========================================================================
 
-void *rt_savedata_new(rt_string game_name)
-{
-    if (!game_name || rt_str_len(game_name) == 0)
-    {
+void *rt_savedata_new(rt_string game_name) {
+    if (!game_name || rt_str_len(game_name) == 0) {
         rt_trap("SaveData.New: game name must not be empty");
         return NULL;
     }
@@ -288,8 +261,7 @@ void *rt_savedata_new(rt_string game_name)
         return NULL;
 
     const char *name_cstr = rt_string_cstr(game_name);
-    if (!name_cstr)
-    {
+    if (!name_cstr) {
         rt_obj_free(sd);
         return NULL;
     }
@@ -303,8 +275,7 @@ void *rt_savedata_new(rt_string game_name)
     return sd;
 }
 
-void rt_savedata_set_int(void *obj, rt_string key, int64_t value)
-{
+void rt_savedata_set_int(void *obj, rt_string key, int64_t value) {
     if (!obj || !key)
         return;
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
@@ -314,8 +285,7 @@ void rt_savedata_set_int(void *obj, rt_string key, int64_t value)
     size_t klen = strlen(kcstr);
 
     SaveEntry *e = find_entry(sd, kcstr, klen);
-    if (e)
-    {
+    if (e) {
         free(e->str_val);
         e->str_val = NULL;
         e->type = SAVE_INT;
@@ -327,8 +297,7 @@ void rt_savedata_set_int(void *obj, rt_string key, int64_t value)
     if (!e)
         return;
     e->key = strdup(kcstr);
-    if (!e->key)
-    {
+    if (!e->key) {
         free(e);
         return;
     }
@@ -339,8 +308,7 @@ void rt_savedata_set_int(void *obj, rt_string key, int64_t value)
     sd->entries = e;
 }
 
-void rt_savedata_set_string(void *obj, rt_string key, rt_string value)
-{
+void rt_savedata_set_string(void *obj, rt_string key, rt_string value) {
     if (!obj || !key)
         return;
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
@@ -355,8 +323,7 @@ void rt_savedata_set_string(void *obj, rt_string key, rt_string value)
         return;
 
     SaveEntry *e = find_entry(sd, kcstr, klen);
-    if (e)
-    {
+    if (e) {
         free(e->str_val);
         e->type = SAVE_STR;
         e->str_val = val_copy;
@@ -365,14 +332,12 @@ void rt_savedata_set_string(void *obj, rt_string key, rt_string value)
     }
 
     e = (SaveEntry *)malloc(sizeof(SaveEntry));
-    if (!e)
-    {
+    if (!e) {
         free(val_copy);
         return;
     }
     e->key = strdup(kcstr);
-    if (!e->key)
-    {
+    if (!e->key) {
         free(val_copy);
         free(e);
         return;
@@ -384,8 +349,7 @@ void rt_savedata_set_string(void *obj, rt_string key, rt_string value)
     sd->entries = e;
 }
 
-int64_t rt_savedata_get_int(void *obj, rt_string key, int64_t default_val)
-{
+int64_t rt_savedata_get_int(void *obj, rt_string key, int64_t default_val) {
     if (!obj || !key)
         return default_val;
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
@@ -398,8 +362,7 @@ int64_t rt_savedata_get_int(void *obj, rt_string key, int64_t default_val)
     return e->int_val;
 }
 
-rt_string rt_savedata_get_string(void *obj, rt_string key, rt_string default_val)
-{
+rt_string rt_savedata_get_string(void *obj, rt_string key, rt_string default_val) {
     if (!obj || !key)
         return default_val ? default_val : rt_str_empty();
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
@@ -412,8 +375,7 @@ rt_string rt_savedata_get_string(void *obj, rt_string key, rt_string default_val
     return rt_string_from_bytes(e->str_val, strlen(e->str_val));
 }
 
-int8_t rt_savedata_save(void *obj)
-{
+int8_t rt_savedata_save(void *obj) {
     if (!obj)
         return 0;
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
@@ -435,8 +397,7 @@ int8_t rt_savedata_save(void *obj)
 
     int first = 1;
     SaveEntry *e = sd->entries;
-    while (e)
-    {
+    while (e) {
         if (!first)
             rt_sb_append_cstr(&sb, ",\n");
         first = 0;
@@ -445,12 +406,9 @@ int8_t rt_savedata_save(void *obj)
         json_escape_append(&sb, e->key, strlen(e->key));
         rt_sb_append_cstr(&sb, "\": ");
 
-        if (e->type == SAVE_INT)
-        {
+        if (e->type == SAVE_INT) {
             rt_sb_append_int(&sb, e->int_val);
-        }
-        else
-        {
+        } else {
             rt_sb_append_cstr(&sb, "\"");
             if (e->str_val)
                 json_escape_append(&sb, e->str_val, strlen(e->str_val));
@@ -470,8 +428,7 @@ int8_t rt_savedata_save(void *obj)
     return (written == total) ? 1 : 0;
 }
 
-int8_t rt_savedata_load(void *obj)
-{
+int8_t rt_savedata_load(void *obj) {
     if (!obj)
         return 0;
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
@@ -487,15 +444,13 @@ int8_t rt_savedata_load(void *obj)
     long file_size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
 
-    if (file_size <= 0)
-    {
+    if (file_size <= 0) {
         fclose(fp);
         return 0;
     }
 
     char *buf = (char *)malloc((size_t)file_size + 1);
-    if (!buf)
-    {
+    if (!buf) {
         fclose(fp);
         return 0;
     }
@@ -519,18 +474,14 @@ int8_t rt_savedata_load(void *obj)
         return 0;
 
     tok = rt_json_stream_next(parser);
-    while (tok == TOK_KEY)
-    {
+    while (tok == TOK_KEY) {
         rt_string key_str = rt_json_stream_string_value(parser);
 
         tok = rt_json_stream_next(parser);
-        if (tok == TOK_NUMBER)
-        {
+        if (tok == TOK_NUMBER) {
             double val = rt_json_stream_number_value(parser);
             rt_savedata_set_int(obj, key_str, (int64_t)val);
-        }
-        else if (tok == TOK_STRING)
-        {
+        } else if (tok == TOK_STRING) {
             rt_string val_str = rt_json_stream_string_value(parser);
             rt_savedata_set_string(obj, key_str, val_str);
         }
@@ -541,8 +492,7 @@ int8_t rt_savedata_load(void *obj)
     return 1;
 }
 
-int8_t rt_savedata_has_key(void *obj, rt_string key)
-{
+int8_t rt_savedata_has_key(void *obj, rt_string key) {
     if (!obj || !key)
         return 0;
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
@@ -552,8 +502,7 @@ int8_t rt_savedata_has_key(void *obj, rt_string key)
     return find_entry(sd, kcstr, strlen(kcstr)) != NULL;
 }
 
-int8_t rt_savedata_remove(void *obj, rt_string key)
-{
+int8_t rt_savedata_remove(void *obj, rt_string key) {
     if (!obj || !key)
         return 0;
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
@@ -563,11 +512,9 @@ int8_t rt_savedata_remove(void *obj, rt_string key)
     size_t klen = strlen(kcstr);
 
     SaveEntry **pp = &sd->entries;
-    while (*pp)
-    {
+    while (*pp) {
         SaveEntry *e = *pp;
-        if (strlen(e->key) == klen && memcmp(e->key, kcstr, klen) == 0)
-        {
+        if (strlen(e->key) == klen && memcmp(e->key, kcstr, klen) == 0) {
             *pp = e->next;
             free_entry(e);
             return 1;
@@ -577,30 +524,26 @@ int8_t rt_savedata_remove(void *obj, rt_string key)
     return 0;
 }
 
-void rt_savedata_clear(void *obj)
-{
+void rt_savedata_clear(void *obj) {
     if (!obj)
         return;
     free_all_entries((rt_savedata_impl *)obj);
 }
 
-int64_t rt_savedata_count(void *obj)
-{
+int64_t rt_savedata_count(void *obj) {
     if (!obj)
         return 0;
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;
     int64_t count = 0;
     SaveEntry *e = sd->entries;
-    while (e)
-    {
+    while (e) {
         count++;
         e = e->next;
     }
     return count;
 }
 
-rt_string rt_savedata_get_path(void *obj)
-{
+rt_string rt_savedata_get_path(void *obj) {
     if (!obj)
         return rt_str_empty();
     rt_savedata_impl *sd = (rt_savedata_impl *)obj;

@@ -24,20 +24,14 @@
 #include <optional>
 #include <vector>
 
-namespace viper::codegen::x64::ra
-{
+namespace viper::codegen::x64::ra {
 
 class LinearScanAllocator;
 class Spiller;
 
 /// @brief Describes the source of a parallel copy operand.
-struct CopySource
-{
-    enum class Kind
-    {
-        Reg,
-        Mem
-    };
+struct CopySource {
+    enum class Kind { Reg, Mem };
 
     Kind kind{Kind::Reg};
     PhysReg reg{PhysReg::RAX};
@@ -45,13 +39,8 @@ struct CopySource
 };
 
 /// @brief Represents a single PX_COPY transfer lowered by the coalescer.
-struct CopyTask
-{
-    enum class DestKind
-    {
-        Reg,
-        Mem
-    };
+struct CopyTask {
+    enum class DestKind { Reg, Mem };
 
     DestKind destKind{DestKind::Reg};
     RegClass cls{RegClass::GPR};
@@ -62,8 +51,7 @@ struct CopyTask
 };
 
 /// @brief Handles lowering of PX_COPY instructions using allocator facilities.
-class Coalescer
-{
+class Coalescer {
   public:
     /// @brief Construct a coalescer using the given allocator and spiller.
     /// @param allocator The linear scan allocator providing register assignment state.

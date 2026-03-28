@@ -13,59 +13,49 @@
 
 #include "frontends/zia/Sema.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 /// @brief Analyze a binary expression (e.g., a + b, x == y).
 /// @param expr The binary expression node.
 /// @return The result type of the operation.
 /// @details Handles arithmetic, comparison, logical, bitwise, and assignment operators.
 ///          Performs type checking and widening for numeric operations.
-TypeRef Sema::analyzeBinary(BinaryExpr *expr)
-{
+TypeRef Sema::analyzeBinary(BinaryExpr *expr) {
     TypeRef leftType = analyzeExpr(expr->left.get());
     TypeRef rightType = analyzeExpr(expr->right.get());
 
-    switch (expr->op)
-    {
+    switch (expr->op) {
         case BinaryOp::Add:
         case BinaryOp::Sub:
         case BinaryOp::Mul:
         case BinaryOp::Div:
         case BinaryOp::Mod:
             // Numeric operations
-            if (leftType->kind == TypeKindSem::String && expr->op == BinaryOp::Add)
-            {
+            if (leftType->kind == TypeKindSem::String && expr->op == BinaryOp::Add) {
                 // String concatenation: "text" + value
                 return types::string();
             }
 
-            if (rightType->kind == TypeKindSem::String && expr->op == BinaryOp::Add)
-            {
+            if (rightType->kind == TypeKindSem::String && expr->op == BinaryOp::Add) {
                 // String concatenation: value + "text"
                 return types::string();
             }
 
             // W010: Division by zero — check for literal zero divisor
             if ((expr->op == BinaryOp::Div || expr->op == BinaryOp::Mod) && leftType->isNumeric() &&
-                rightType->isNumeric())
-            {
-                if (expr->right->kind == ExprKind::IntLiteral)
-                {
+                rightType->isNumeric()) {
+                if (expr->right->kind == ExprKind::IntLiteral) {
                     auto *lit = static_cast<IntLiteralExpr *>(expr->right.get());
                     if (lit->value == 0)
                         warn(WarningCode::W010_DivisionByZero, expr->loc, "Division by zero");
-                }
-                else if (expr->right->kind == ExprKind::NumberLiteral)
-                {
+                } else if (expr->right->kind == ExprKind::NumberLiteral) {
                     auto *lit = static_cast<NumberLiteralExpr *>(expr->right.get());
                     if (lit->value == 0.0)
                         warn(WarningCode::W010_DivisionByZero, expr->loc, "Division by zero");
                 }
             }
 
-            if (leftType->isNumeric() && rightType->isNumeric())
-            {
+            if (leftType->isNumeric() && rightType->isNumeric()) {
                 // Return wider type
                 if (leftType->kind == TypeKindSem::Number || rightType->kind == TypeKindSem::Number)
                     return types::number();
@@ -82,8 +72,7 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
         case BinaryOp::Ge:
             // W005: Float equality — comparing floats with == or != is unreliable
             if ((expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne) &&
-                leftType->kind == TypeKindSem::Number && rightType->kind == TypeKindSem::Number)
-            {
+                leftType->kind == TypeKindSem::Number && rightType->kind == TypeKindSem::Number) {
                 warn(WarningCode::W005_FloatEquality,
                      expr->loc,
                      "Comparing floating-point values with " +
@@ -93,12 +82,11 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
 
             // W011: Redundant bool comparison (e.g., `flag == true`, `b != false`)
             if ((expr->op == BinaryOp::Eq || expr->op == BinaryOp::Ne) &&
-                (leftType->kind == TypeKindSem::Boolean || rightType->kind == TypeKindSem::Boolean))
-            {
+                (leftType->kind == TypeKindSem::Boolean ||
+                 rightType->kind == TypeKindSem::Boolean)) {
                 bool leftIsBoolLit = (expr->left->kind == ExprKind::BoolLiteral);
                 bool rightIsBoolLit = (expr->right->kind == ExprKind::BoolLiteral);
-                if (leftIsBoolLit || rightIsBoolLit)
-                {
+                if (leftIsBoolLit || rightIsBoolLit) {
                     warn(WarningCode::W011_RedundantBoolComparison,
                          expr->loc,
                          "Redundant comparison with Boolean literal; use the expression directly");
@@ -111,8 +99,7 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
         case BinaryOp::And:
         case BinaryOp::Or:
             // Logical operations
-            if (leftType->kind != TypeKindSem::Boolean || rightType->kind != TypeKindSem::Boolean)
-            {
+            if (leftType->kind != TypeKindSem::Boolean || rightType->kind != TypeKindSem::Boolean) {
                 error(expr->loc, "Logical operators require Boolean operands");
             }
             return types::boolean();
@@ -121,34 +108,29 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
         case BinaryOp::BitOr:
         case BinaryOp::BitXor:
             // W017: ^ is bitwise XOR, not exponentiation
-            if (expr->op == BinaryOp::BitXor)
-            {
+            if (expr->op == BinaryOp::BitXor) {
                 warn(WarningCode::W017_XorConfusion,
                      expr->loc,
                      "'^' is bitwise XOR in Zia; use Math.Pow() for exponentiation");
             }
             // W018: & is bitwise AND, not string concatenation
-            if (expr->op == BinaryOp::BitAnd)
-            {
+            if (expr->op == BinaryOp::BitAnd) {
                 warn(WarningCode::W018_BitwiseAndConfusion,
                      expr->loc,
                      "'&' is bitwise AND in Zia; use '+' for string concatenation");
             }
             // Bitwise operations
-            if (!leftType->isIntegral() || !rightType->isIntegral())
-            {
+            if (!leftType->isIntegral() || !rightType->isIntegral()) {
                 error(expr->loc, "Bitwise operators require integral operands");
             }
             return types::integer();
 
         case BinaryOp::Assign:
             // W009: Self-assignment (e.g., `x = x`)
-            if (expr->left->kind == ExprKind::Ident && expr->right->kind == ExprKind::Ident)
-            {
+            if (expr->left->kind == ExprKind::Ident && expr->right->kind == ExprKind::Ident) {
                 auto *lhs = static_cast<IdentExpr *>(expr->left.get());
                 auto *rhs = static_cast<IdentExpr *>(expr->right.get());
-                if (lhs->name == rhs->name)
-                {
+                if (lhs->name == rhs->name) {
                     warn(WarningCode::W009_SelfAssignment,
                          expr->loc,
                          "Self-assignment of '" + lhs->name + "' has no effect");
@@ -161,27 +143,21 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
             // (e.g., Page? narrowed to Page), but reassignment should still accept
             // the original type.
             {
-                if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get()))
-                {
+                if (auto *fieldExpr = dynamic_cast<FieldExpr *>(expr->left.get())) {
                     TypeRef baseType = typeOf(fieldExpr->base.get());
                     if (baseType && baseType->kind == TypeKindSem::Optional &&
                         baseType->innerType())
                         baseType = baseType->innerType();
 
                     if (baseType && (baseType->kind == TypeKindSem::Entity ||
-                                     baseType->kind == TypeKindSem::Value))
-                    {
+                                     baseType->kind == TypeKindSem::Value)) {
                         if (const PropertyDecl *prop =
-                                findPropertyDecl(baseType->name, fieldExpr->field))
-                        {
-                            if (!prop->setterBody)
-                            {
+                                findPropertyDecl(baseType->name, fieldExpr->field)) {
+                            if (!prop->setterBody) {
                                 error(expr->loc,
                                       "Property '" + fieldExpr->field + "' of type '" +
                                           baseType->name + "' is read-only");
-                            }
-                            else
-                            {
+                            } else {
                                 resolvedFieldSetters_[fieldExpr] =
                                     baseType->name + ".set_" + prop->name;
                             }
@@ -191,26 +167,21 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
                     // Resolve runtime class property setters (e.g., ctrl.VY = value).
                     // Getters are resolved in Sema_Expr_Advanced; setters need the same
                     // symbol-table lookup here on the assignment path.
-                    if (baseType && resolvedFieldSetters_.find(fieldExpr) == resolvedFieldSetters_.end())
-                    {
+                    if (baseType &&
+                        resolvedFieldSetters_.find(fieldExpr) == resolvedFieldSetters_.end()) {
                         std::string setterName = baseType->name + ".set_" + fieldExpr->field;
                         Symbol *setter = lookupSymbol(setterName);
-                        if (setter && setter->kind == Symbol::Kind::Function)
-                        {
+                        if (setter && setter->kind == Symbol::Kind::Function) {
                             resolvedFieldSetters_[fieldExpr] = setterName;
                             // For write-only properties (no getter), register the
                             // property type from the setter's value parameter so
                             // the lowerer can insert Number↔Integer conversions.
-                            if (setter->type && setter->type->kind == TypeKindSem::Function)
-                            {
+                            if (setter->type && setter->type->kind == TypeKindSem::Function) {
                                 auto params = setter->type->paramTypes();
                                 // Setter signature: (self, value) — value type is params[1]
-                                if (params.size() >= 2 && params[1])
-                                {
+                                if (params.size() >= 2 && params[1]) {
                                     exprTypes_[fieldExpr] = params[1];
-                                }
-                                else if (params.size() == 1 && params[0])
-                                {
+                                } else if (params.size() == 1 && params[0]) {
                                     // Static setter: (value) — no self
                                     exprTypes_[fieldExpr] = params[0];
                                 }
@@ -220,28 +191,24 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
                 }
 
                 TypeRef assignTarget = leftType;
-                if (expr->left->kind == ExprKind::Ident)
-                {
+                if (expr->left->kind == ExprKind::Ident) {
                     auto *lhsIdent = static_cast<IdentExpr *>(expr->left.get());
                     Symbol *sym = currentScope_->lookup(lhsIdent->name);
                     if (sym && sym->type)
                         assignTarget = sym->type;
                 }
-                if (!rightType->isConvertibleTo(*assignTarget))
-                {
+                if (!rightType->isConvertibleTo(*assignTarget)) {
                     errorTypeMismatch(expr->loc, assignTarget, rightType);
                 }
             }
             // Track initialization for definite-assignment analysis.
             // Also clear any narrowing on the variable since the new value
             // may have a different type (e.g., re-assigning Page? to a narrowed Page var).
-            if (expr->left->kind == ExprKind::Ident)
-            {
+            if (expr->left->kind == ExprKind::Ident) {
                 auto *ident = static_cast<IdentExpr *>(expr->left.get());
                 markInitialized(ident->name);
                 // Clear narrowing — the variable now has the RHS type
-                if (!narrowedTypes_.empty())
-                {
+                if (!narrowedTypes_.empty()) {
                     for (auto &scope : narrowedTypes_)
                         scope.erase(ident->name);
                 }
@@ -257,53 +224,44 @@ TypeRef Sema::analyzeBinary(BinaryExpr *expr)
 /// @param expr The unary expression node.
 /// @return The result type of the operation.
 /// @details Handles negation, logical not, bitwise not, and address-of operators.
-TypeRef Sema::analyzeUnary(UnaryExpr *expr)
-{
+TypeRef Sema::analyzeUnary(UnaryExpr *expr) {
     TypeRef operandType = analyzeExpr(expr->operand.get());
 
-    switch (expr->op)
-    {
+    switch (expr->op) {
         case UnaryOp::Neg:
-            if (!operandType->isNumeric())
-            {
+            if (!operandType->isNumeric()) {
                 error(expr->loc, "Negation requires numeric operand");
             }
             return operandType;
 
         case UnaryOp::Not:
-            if (operandType->kind != TypeKindSem::Boolean)
-            {
+            if (operandType->kind != TypeKindSem::Boolean) {
                 error(expr->loc, "Logical not requires Boolean operand");
             }
             return types::boolean();
 
         case UnaryOp::BitNot:
-            if (!operandType->isIntegral())
-            {
+            if (!operandType->isIntegral()) {
                 error(expr->loc, "Bitwise not requires integral operand");
             }
             return types::integer();
 
-        case UnaryOp::AddressOf:
-        {
+        case UnaryOp::AddressOf: {
             // Address-of operator for function references: &funcName
             // The operand must be an identifier referring to a function
             auto *ident = dynamic_cast<IdentExpr *>(expr->operand.get());
-            if (!ident)
-            {
+            if (!ident) {
                 error(expr->loc, "Address-of operator requires a function name");
                 return types::unknown();
             }
 
             Symbol *sym = lookupSymbol(ident->name);
-            if (!sym)
-            {
+            if (!sym) {
                 error(expr->loc, "Unknown identifier '" + ident->name + "'");
                 return types::unknown();
             }
 
-            if (sym->kind != Symbol::Kind::Function && sym->kind != Symbol::Kind::Method)
-            {
+            if (sym->kind != Symbol::Kind::Function && sym->kind != Symbol::Kind::Method) {
                 error(expr->loc, "Address-of operator requires a function name");
                 return types::unknown();
             }
@@ -321,11 +279,9 @@ TypeRef Sema::analyzeUnary(UnaryExpr *expr)
 /// @param expr The ternary expression node.
 /// @return The common type of the then and else branches.
 /// @details Validates condition is Boolean and finds common type of branches.
-TypeRef Sema::analyzeTernary(TernaryExpr *expr)
-{
+TypeRef Sema::analyzeTernary(TernaryExpr *expr) {
     TypeRef condType = analyzeExpr(expr->condition.get());
-    if (condType->kind != TypeKindSem::Boolean)
-    {
+    if (condType->kind != TypeKindSem::Boolean) {
         error(expr->condition->loc, "Condition must be Boolean");
     }
 
@@ -343,12 +299,10 @@ TypeRef Sema::analyzeTernary(TernaryExpr *expr)
 /// @brief Analyze an if-expression (`if cond { thenExpr } else { elseExpr }`).
 /// @param expr The if-expression AST node.
 /// @return The common type of the then and else branches.
-TypeRef Sema::analyzeIfExpr(IfExpr *expr)
-{
+TypeRef Sema::analyzeIfExpr(IfExpr *expr) {
     TypeRef condType = analyzeExpr(expr->condition.get());
     if (condType && condType->kind != TypeKindSem::Boolean &&
-        condType->kind != TypeKindSem::Unknown)
-    {
+        condType->kind != TypeKindSem::Unknown) {
         error(expr->condition->loc, "Condition must be Boolean");
     }
 
@@ -374,8 +328,7 @@ TypeRef Sema::analyzeIfExpr(IfExpr *expr)
 /// @param rhs The second type.
 /// @return The most general type compatible with both, or Unknown if incompatible.
 /// @details Handles numeric widening, optional lifting, and subtype relationships.
-TypeRef Sema::commonType(TypeRef lhs, TypeRef rhs)
-{
+TypeRef Sema::commonType(TypeRef lhs, TypeRef rhs) {
     if (!lhs && !rhs)
         return types::unknown();
     if (!lhs)
@@ -387,16 +340,14 @@ TypeRef Sema::commonType(TypeRef lhs, TypeRef rhs)
     if (rhs->kind == TypeKindSem::Unknown)
         return lhs;
 
-    if (lhs->kind == TypeKindSem::Optional || rhs->kind == TypeKindSem::Optional)
-    {
+    if (lhs->kind == TypeKindSem::Optional || rhs->kind == TypeKindSem::Optional) {
         TypeRef innerL = lhs->kind == TypeKindSem::Optional ? lhs->innerType() : lhs;
         TypeRef innerR = rhs->kind == TypeKindSem::Optional ? rhs->innerType() : rhs;
         TypeRef inner = commonType(innerL, innerR);
         return types::optional(inner ? inner : types::unknown());
     }
 
-    if (lhs->isNumeric() && rhs->isNumeric())
-    {
+    if (lhs->isNumeric() && rhs->isNumeric()) {
         if (lhs->kind == TypeKindSem::Number || rhs->kind == TypeKindSem::Number)
             return types::number();
         if (lhs->kind == TypeKindSem::Integer || rhs->kind == TypeKindSem::Integer)

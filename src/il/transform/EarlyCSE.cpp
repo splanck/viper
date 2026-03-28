@@ -41,11 +41,9 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
+namespace il::transform {
 
-namespace
-{
+namespace {
 
 using CSETable = std::unordered_map<ValueKey, Value, ValueKeyHash>;
 
@@ -59,26 +57,21 @@ using CSETable = std::unordered_map<ValueKey, Value, ValueKeyHash>;
 ///                  current scope. May be modified (entries appended to back).
 /// @param useInfo   Use-def information for O(uses) replacement.
 /// @return True if any instruction was removed from @p B.
-bool processBlock(BasicBlock &B, std::vector<CSETable> &scopes, viper::il::UseDefInfo &useInfo)
-{
+bool processBlock(BasicBlock &B, std::vector<CSETable> &scopes, viper::il::UseDefInfo &useInfo) {
     bool changed = false;
-    for (std::size_t idx = 0; idx < B.instructions.size();)
-    {
+    for (std::size_t idx = 0; idx < B.instructions.size();) {
         Instr &I = B.instructions[idx];
         auto key = makeValueKey(I);
-        if (!key)
-        {
+        if (!key) {
             ++idx;
             continue;
         }
 
         // Search scopes from innermost (back) to outermost (front).
         bool found = false;
-        for (auto it = scopes.rbegin(); it != scopes.rend(); ++it)
-        {
+        for (auto it = scopes.rbegin(); it != scopes.rend(); ++it) {
             auto hit = it->find(*key);
-            if (hit != it->end())
-            {
+            if (hit != it->end()) {
                 useInfo.replaceAllUses(*I.result, hit->second);
                 B.instructions.erase(B.instructions.begin() + static_cast<long>(idx));
                 changed = true;
@@ -86,8 +79,7 @@ bool processBlock(BasicBlock &B, std::vector<CSETable> &scopes, viper::il::UseDe
                 break;
             }
         }
-        if (!found)
-        {
+        if (!found) {
             scopes.back().emplace(std::move(*key), Value::temp(*I.result));
             ++idx;
         }
@@ -107,16 +99,14 @@ bool processBlock(BasicBlock &B, std::vector<CSETable> &scopes, viper::il::UseDe
 /// @param M Module containing \p F (needed to construct a CFGContext).
 /// @param F Function to optimize in place.
 /// @return True if any redundant instruction was removed; false otherwise.
-bool runEarlyCSE(Module &M, Function &F)
-{
+bool runEarlyCSE(Module &M, Function &F) {
     if (F.blocks.empty())
         return false;
 
     bool changedAny = false;
 
     // Iterate to fixed point (bounded to avoid pathological cases).
-    for (int iter = 0; iter < 4; ++iter)
-    {
+    for (int iter = 0; iter < 4; ++iter) {
         viper::analysis::CFGContext cfg(M);
         viper::analysis::DomTree domTree = viper::analysis::computeDominatorTree(cfg, F);
 
@@ -127,8 +117,7 @@ bool runEarlyCSE(Module &M, Function &F)
         // Each worklist entry is either "enter B" (push scope, process B, then
         // schedule children) or "leave" (pop scope).  We encode "leave" as
         // nullptr in the block slot.
-        struct WorkItem
-        {
+        struct WorkItem {
             BasicBlock *block; // nullptr → pop scope
         };
 
@@ -141,13 +130,11 @@ bool runEarlyCSE(Module &M, Function &F)
         worklist.reserve(F.blocks.size() * 2);
         worklist.push_back({&F.blocks.front()});
 
-        while (!worklist.empty())
-        {
+        while (!worklist.empty()) {
             WorkItem item = worklist.back();
             worklist.pop_back();
 
-            if (!item.block)
-            {
+            if (!item.block) {
                 // Pop the scope we pushed when we entered the corresponding block.
                 scopes.pop_back();
                 continue;
@@ -162,8 +149,7 @@ bool runEarlyCSE(Module &M, Function &F)
 
             // Schedule dominated children (order doesn't matter for correctness).
             auto childIt = domTree.children.find(item.block);
-            if (childIt != domTree.children.end())
-            {
+            if (childIt != domTree.children.end()) {
                 for (BasicBlock *child : childIt->second)
                     worklist.push_back({child});
             }

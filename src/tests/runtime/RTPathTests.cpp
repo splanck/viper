@@ -20,15 +20,13 @@
 #include <cstdio>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Test rt_path_join.
-static void test_join()
-{
+static void test_join() {
     printf("Testing rt_path_join:\n");
 
     // Basic join
@@ -70,8 +68,7 @@ static void test_join()
 }
 
 /// @brief Test rt_path_dir.
-static void test_dir()
-{
+static void test_dir() {
     printf("Testing rt_path_dir:\n");
 
     rt_string p = rt_const_cstr("/foo/bar/baz.txt");
@@ -98,8 +95,7 @@ static void test_dir()
 }
 
 /// @brief Test rt_path_name.
-static void test_name()
-{
+static void test_name() {
     printf("Testing rt_path_name:\n");
 
     rt_string p = rt_const_cstr("/foo/bar/baz.txt");
@@ -126,8 +122,7 @@ static void test_name()
 }
 
 /// @brief Test rt_path_stem.
-static void test_stem()
-{
+static void test_stem() {
     printf("Testing rt_path_stem:\n");
 
     rt_string p = rt_const_cstr("/foo/bar/baz.txt");
@@ -154,8 +149,7 @@ static void test_stem()
 }
 
 /// @brief Test rt_path_ext.
-static void test_ext()
-{
+static void test_ext() {
     printf("Testing rt_path_ext:\n");
 
     rt_string p = rt_const_cstr("/foo/bar/baz.txt");
@@ -182,8 +176,7 @@ static void test_ext()
 }
 
 /// @brief Test rt_path_with_ext.
-static void test_with_ext()
-{
+static void test_with_ext() {
     printf("Testing rt_path_with_ext:\n");
 
     rt_string p = rt_const_cstr("/foo/bar.txt");
@@ -213,8 +206,7 @@ static void test_with_ext()
 }
 
 /// @brief Test rt_path_is_abs.
-static void test_is_abs()
-{
+static void test_is_abs() {
     printf("Testing rt_path_is_abs:\n");
 
     rt_string p = rt_const_cstr("/foo/bar");
@@ -230,8 +222,7 @@ static void test_is_abs()
 }
 
 /// @brief Test rt_path_norm.
-static void test_norm()
-{
+static void test_norm() {
     printf("Testing rt_path_norm:\n");
 
     rt_string p = rt_const_cstr("/foo//bar");
@@ -273,8 +264,7 @@ static void test_norm()
 }
 
 /// @brief Test rt_path_sep.
-static void test_sep()
-{
+static void test_sep() {
     printf("Testing rt_path_sep:\n");
 
     rt_string r = rt_path_sep();
@@ -289,8 +279,7 @@ static void test_sep()
 }
 
 /// @brief Entry point for path tests.
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: tests use Unix-style paths (/foo/bar) that have different
     // semantics on Windows (not considered absolute paths)

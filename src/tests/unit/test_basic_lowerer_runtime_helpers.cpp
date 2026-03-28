@@ -23,11 +23,9 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-std::unordered_set<std::string> collectExternNames(const il::core::Module &module)
-{
+std::unordered_set<std::string> collectExternNames(const il::core::Module &module) {
     std::unordered_set<std::string> names;
     for (const auto &ext : module.externs)
         names.insert(ext.name);
@@ -36,8 +34,7 @@ std::unordered_set<std::string> collectExternNames(const il::core::Module &modul
 
 } // namespace
 
-int main()
-{
+int main() {
     SourceManager sm;
     uint32_t fid = sm.addFile("runtime_walk.bas");
     const std::string src = "10 DIM A(3)\n"

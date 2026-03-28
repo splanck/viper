@@ -25,15 +25,13 @@
 // Trap infrastructure
 //=============================================================================
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
@@ -41,12 +39,10 @@ extern "C" void vm_trap(const char *msg)
 }
 
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
         g_last_trap = nullptr;                                                                     \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             (void)(expr);                                                                          \
             assert(false && "Expected trap did not occur");                                        \
         }                                                                                          \
@@ -57,32 +53,28 @@ extern "C" void vm_trap(const char *msg)
 // Construction
 //=============================================================================
 
-static void test_new_default()
-{
+static void test_new_default() {
     void *bb = rt_binbuf_new();
     assert(bb != nullptr);
     assert(rt_binbuf_get_len(bb) == 0);
     assert(rt_binbuf_get_position(bb) == 0);
 }
 
-static void test_new_cap()
-{
+static void test_new_cap() {
     void *bb = rt_binbuf_new_cap(1024);
     assert(bb != nullptr);
     assert(rt_binbuf_get_len(bb) == 0);
     assert(rt_binbuf_get_position(bb) == 0);
 }
 
-static void test_new_cap_clamped()
-{
+static void test_new_cap_clamped() {
     // Negative capacity is clamped to 1
     void *bb = rt_binbuf_new_cap(-5);
     assert(bb != nullptr);
     assert(rt_binbuf_get_len(bb) == 0);
 }
 
-static void test_from_bytes()
-{
+static void test_from_bytes() {
     // Build a bytes object [10, 20, 30]
     void *src = rt_bytes_new(3);
     rt_bytes_set(src, 0, 10);
@@ -100,8 +92,7 @@ static void test_from_bytes()
     assert(rt_binbuf_read_byte(bb) == 30);
 }
 
-static void test_from_bytes_null()
-{
+static void test_from_bytes_null() {
     // NULL input → empty buffer
     void *bb = rt_binbuf_from_bytes(nullptr);
     assert(bb != nullptr);
@@ -112,8 +103,7 @@ static void test_from_bytes_null()
 // Write / Read Round-Trips
 //=============================================================================
 
-static void test_write_read_byte()
-{
+static void test_write_read_byte() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_byte(bb, 0xAB);
     assert(rt_binbuf_get_len(bb) == 1);
@@ -122,56 +112,49 @@ static void test_write_read_byte()
     assert(rt_binbuf_read_byte(bb) == 0xAB);
 }
 
-static void test_write_read_i16le()
-{
+static void test_write_read_i16le() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_i16le(bb, 0x1234);
     rt_binbuf_set_position(bb, 0);
     assert(rt_binbuf_read_i16le(bb) == 0x1234);
 }
 
-static void test_write_read_i16be()
-{
+static void test_write_read_i16be() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_i16be(bb, 0x5678);
     rt_binbuf_set_position(bb, 0);
     assert(rt_binbuf_read_i16be(bb) == 0x5678);
 }
 
-static void test_write_read_i32le()
-{
+static void test_write_read_i32le() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_i32le(bb, 0x12345678);
     rt_binbuf_set_position(bb, 0);
     assert(rt_binbuf_read_i32le(bb) == 0x12345678);
 }
 
-static void test_write_read_i32be()
-{
+static void test_write_read_i32be() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_i32be(bb, 0xDEADBEEF);
     rt_binbuf_set_position(bb, 0);
     assert(rt_binbuf_read_i32be(bb) == (int64_t)0xDEADBEEF);
 }
 
-static void test_write_read_i64le()
-{
+static void test_write_read_i64le() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_i64le(bb, 0x0123456789ABCDEFLL);
     rt_binbuf_set_position(bb, 0);
     assert(rt_binbuf_read_i64le(bb) == 0x0123456789ABCDEFLL);
 }
 
-static void test_write_read_i64be()
-{
+static void test_write_read_i64be() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_i64be(bb, 0xFEDCBA9876543210LL);
     rt_binbuf_set_position(bb, 0);
     assert(rt_binbuf_read_i64be(bb) == (int64_t)0xFEDCBA9876543210LL);
 }
 
-static void test_endian_byte_order_i16()
-{
+static void test_endian_byte_order_i16() {
     // Verify LE places low byte first, BE places high byte first
     void *le = rt_binbuf_new();
     rt_binbuf_write_i16le(le, 0x0102);
@@ -186,8 +169,7 @@ static void test_endian_byte_order_i16()
     assert(rt_binbuf_read_byte(be) == 0x02); // low byte second
 }
 
-static void test_write_read_str()
-{
+static void test_write_read_str() {
     void *bb = rt_binbuf_new();
     rt_string s = rt_const_cstr("hello");
     rt_binbuf_write_str(bb, s);
@@ -201,8 +183,7 @@ static void test_write_read_str()
     assert(strcmp(rt_string_cstr(out), "hello") == 0);
 }
 
-static void test_write_read_bytes()
-{
+static void test_write_read_bytes() {
     void *src = rt_bytes_new(4);
     rt_bytes_set(src, 0, 0xDE);
     rt_bytes_set(src, 1, 0xAD);
@@ -229,8 +210,7 @@ static void test_write_read_bytes()
 // Cursor / Position Semantics
 //=============================================================================
 
-static void test_position_advances_on_write()
-{
+static void test_position_advances_on_write() {
     void *bb = rt_binbuf_new();
     assert(rt_binbuf_get_position(bb) == 0);
     rt_binbuf_write_byte(bb, 1);
@@ -239,8 +219,7 @@ static void test_position_advances_on_write()
     assert(rt_binbuf_get_position(bb) == 5);
 }
 
-static void test_position_advances_on_read()
-{
+static void test_position_advances_on_read() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_byte(bb, 42);
     rt_binbuf_write_byte(bb, 99);
@@ -250,8 +229,7 @@ static void test_position_advances_on_read()
     assert(rt_binbuf_get_position(bb) == 1);
 }
 
-static void test_set_position_clamps_to_len()
-{
+static void test_set_position_clamps_to_len() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_byte(bb, 1);
     rt_binbuf_write_byte(bb, 2);
@@ -263,8 +241,7 @@ static void test_set_position_clamps_to_len()
     assert(rt_binbuf_get_position(bb) == 0); // clamped to 0
 }
 
-static void test_read_past_end_traps()
-{
+static void test_read_past_end_traps() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_byte(bb, 0xFF);
     rt_binbuf_set_position(bb, 0);
@@ -277,8 +254,7 @@ static void test_read_past_end_traps()
 // to_bytes / from_bytes Round-Trip
 //=============================================================================
 
-static void test_to_bytes_round_trip()
-{
+static void test_to_bytes_round_trip() {
     void *bb = rt_binbuf_new();
     for (int i = 0; i < 8; i++)
         rt_binbuf_write_byte(bb, (int64_t)(i * 10));
@@ -290,8 +266,7 @@ static void test_to_bytes_round_trip()
         assert(rt_bytes_get(bytes, i) == (int64_t)(i * 10));
 }
 
-static void test_from_bytes_to_bytes_identity()
-{
+static void test_from_bytes_to_bytes_identity() {
     // Build source bytes
     void *src = rt_bytes_new(5);
     for (int i = 0; i < 5; i++)
@@ -310,8 +285,7 @@ static void test_from_bytes_to_bytes_identity()
 // Reset
 //=============================================================================
 
-static void test_reset()
-{
+static void test_reset() {
     void *bb = rt_binbuf_new();
     rt_binbuf_write_byte(bb, 1);
     rt_binbuf_write_byte(bb, 2);
@@ -333,8 +307,7 @@ static void test_reset()
 // Capacity Growth (exercises IO-H-3 overflow guard in binbuf_ensure)
 //=============================================================================
 
-static void test_capacity_growth()
-{
+static void test_capacity_growth() {
     // Start with a tiny buffer and write enough to force several doublings
     void *bb = rt_binbuf_new_cap(1);
 
@@ -350,8 +323,7 @@ static void test_capacity_growth()
         assert(rt_binbuf_read_byte(bb) == (int64_t)(i & 0xFF));
 }
 
-static void test_large_single_write_grows_capacity()
-{
+static void test_large_single_write_grows_capacity() {
     // A single write of 4 MB must grow the buffer past default capacity (256)
     const int64_t SIZE = 4 * 1024 * 1024;
     void *bb = rt_binbuf_new();
@@ -371,8 +343,7 @@ static void test_large_single_write_grows_capacity()
 // Multiple Values — Structured Protocol Simulation
 //=============================================================================
 
-static void test_structured_protocol_encode_decode()
-{
+static void test_structured_protocol_encode_decode() {
     // Simulate a minimal binary frame: [version:byte][count:i32le][value:i64le]
     void *bb = rt_binbuf_new();
     rt_binbuf_write_byte(bb, 1);             // version
@@ -391,8 +362,7 @@ static void test_structured_protocol_encode_decode()
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     // Construction
     test_new_default();
     test_new_cap();

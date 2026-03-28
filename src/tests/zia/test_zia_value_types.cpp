@@ -18,16 +18,14 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 //===----------------------------------------------------------------------===//
 // Basic Value Types
 //===----------------------------------------------------------------------===//
 
 /// @brief Test basic value type with fields.
-TEST(ZiaValueTypes, BasicFields)
-{
+TEST(ZiaValueTypes, BasicFields) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -54,8 +52,7 @@ func start() {
 }
 
 /// @brief Test value type with methods.
-TEST(ZiaValueTypes, Methods)
-{
+TEST(ZiaValueTypes, Methods) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -92,8 +89,7 @@ func start() {
 }
 
 /// @brief Test value type with default values.
-TEST(ZiaValueTypes, DefaultValues)
-{
+TEST(ZiaValueTypes, DefaultValues) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -124,8 +120,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test value type copying.
-TEST(ZiaValueTypes, Copying)
-{
+TEST(ZiaValueTypes, Copying) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -157,8 +152,7 @@ func start() {
 }
 
 /// @brief Test value type as function parameter.
-TEST(ZiaValueTypes, Parameter)
-{
+TEST(ZiaValueTypes, Parameter) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -189,8 +183,7 @@ func start() {
 }
 
 /// @brief Test value type as return value.
-TEST(ZiaValueTypes, Return)
-{
+TEST(ZiaValueTypes, Return) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -226,8 +219,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test value type containing another value type.
-TEST(ZiaValueTypes, Nested)
-{
+TEST(ZiaValueTypes, Nested) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -274,8 +266,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test value type containing list field.
-TEST(ZiaValueTypes, WithList)
-{
+TEST(ZiaValueTypes, WithList) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -316,8 +307,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test both value and entity types together.
-TEST(ZiaValueTypes, MixedWithEntity)
-{
+TEST(ZiaValueTypes, MixedWithEntity) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -373,8 +363,7 @@ func start() {
 /// they were read. The fix reads all fields into IL temporaries BEFORE calling
 /// rt_box_value_type, so the temporaries survive the call in callee-save
 /// registers or the current function's spill slots.
-TEST(ZiaValueTypes, ReturnedValueTypeBoxedIntoList)
-{
+TEST(ZiaValueTypes, ReturnedValueTypeBoxedIntoList) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -434,7 +423,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

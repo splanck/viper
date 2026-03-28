@@ -24,24 +24,14 @@
 
 #include <string>
 
-namespace il::core
-{
+namespace il::core {
 
 /// @brief Tagged value used as operands and results in IL.
 /// @details Uses a union for i64/f64/id to save 8+ bytes per Value since only
 ///          one payload is active at a time based on the kind discriminant.
-struct Value
-{
+struct Value {
     /// @brief Enumerates the different value forms.
-    enum class Kind
-    {
-        Temp,
-        ConstInt,
-        ConstFloat,
-        ConstStr,
-        GlobalAddr,
-        NullPtr
-    };
+    enum class Kind { Temp, ConstInt, ConstFloat, ConstStr, GlobalAddr, NullPtr };
     /// Discriminant selecting which payload is active.
     Kind kind{Kind::NullPtr};
 
@@ -49,8 +39,7 @@ struct Value
     /// @details Saves 8+ bytes per Value vs separate fields. Access the member
     ///          matching the current kind: i64 for ConstInt, f64 for ConstFloat,
     ///          id for Temp. Other kinds use the str field instead.
-    union
-    {
+    union {
         /// Integer payload used when kind == Kind::ConstInt.
         long long i64;
         /// Floating-point payload used when kind == Kind::ConstFloat.

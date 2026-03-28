@@ -18,21 +18,17 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// Helper: compile a Zia source string and return whether it succeeded.
-bool compileOk(const std::string &source)
-{
+bool compileOk(const std::string &source) {
     SourceManager sm;
     CompilerInput input{.source = source, .path = "<test>"};
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Compilation failed:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -43,8 +39,7 @@ bool compileOk(const std::string &source)
 } // namespace
 
 // A-019: Result static calls
-TEST(ZiaStaticCalls, ResultOkI64)
-{
+TEST(ZiaStaticCalls, ResultOkI64) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
@@ -56,8 +51,7 @@ func start() {
 }
 
 // A-019: Result with bind
-TEST(ZiaStaticCalls, ResultWithBind)
-{
+TEST(ZiaStaticCalls, ResultWithBind) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 bind Viper.Terminal;
@@ -70,8 +64,7 @@ func start() {
 }
 
 // A-034: Uuid static calls via bind
-TEST(ZiaStaticCalls, UuidNew)
-{
+TEST(ZiaStaticCalls, UuidNew) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 bind Viper.Terminal;
@@ -84,8 +77,7 @@ func start() {
 }
 
 // A-043: Password static calls via bind
-TEST(ZiaStaticCalls, PasswordHash)
-{
+TEST(ZiaStaticCalls, PasswordHash) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 bind Viper.Terminal;
@@ -99,8 +91,7 @@ func start() {
 }
 
 // A-043: Option static calls
-TEST(ZiaStaticCalls, OptionSomeI64)
-{
+TEST(ZiaStaticCalls, OptionSomeI64) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
@@ -112,8 +103,7 @@ func start() {
 }
 
 // A-014: Easing static calls via bind
-TEST(ZiaStaticCalls, EasingLinear)
-{
+TEST(ZiaStaticCalls, EasingLinear) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 bind Viper.Math;
@@ -125,8 +115,7 @@ func start() {
 }
 
 // A-052: Lazy static calls
-TEST(ZiaStaticCalls, LazyOfI64)
-{
+TEST(ZiaStaticCalls, LazyOfI64) {
     ASSERT_TRUE(compileOk(R"(
 module Test;
 /// @brief Start.
@@ -137,7 +126,6 @@ func start() {
 )"));
 }
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

@@ -25,12 +25,10 @@
 
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
-namespace viper::codegen::objfile
-{
+namespace viper::codegen::objfile {
 
 /// COFF object file writer for Windows (x86_64 and AArch64).
-class CoffWriter : public ObjectFileWriter
-{
+class CoffWriter : public ObjectFileWriter {
   public:
     explicit CoffWriter(ObjArch arch) : arch_(arch) {}
 

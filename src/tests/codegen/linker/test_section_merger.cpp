@@ -30,10 +30,8 @@ using namespace viper::codegen::linker;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -44,8 +42,7 @@ static void check(bool cond, const char *msg, int line)
 /// Helper: create an ObjFile with given sections.
 static ObjFile makeObj(const std::string &name,
                        ObjFileFormat fmt,
-                       const std::vector<ObjSection> &secs)
-{
+                       const std::vector<ObjSection> &secs) {
     ObjFile obj;
     obj.name = name;
     obj.format = fmt;
@@ -61,8 +58,7 @@ static ObjSection makeSection(const std::string &name,
                               bool exec,
                               bool write,
                               bool tls = false,
-                              uint32_t align = 1)
-{
+                              uint32_t align = 1) {
     ObjSection sec;
     sec.name = name;
     sec.data.resize(size, 0xCC);
@@ -74,8 +70,7 @@ static ObjSection makeSection(const std::string &name,
     return sec;
 }
 
-int main()
-{
+int main() {
     // --- Basic section ordering: text before rodata before data ---
     {
         auto obj = makeObj("test.o",
@@ -232,8 +227,7 @@ int main()
     }
 
     // --- Result ---
-    if (gFail == 0)
-    {
+    if (gFail == 0) {
         std::cout << "All SectionMerger tests passed.\n";
         return EXIT_SUCCESS;
     }

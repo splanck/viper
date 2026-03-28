@@ -42,14 +42,12 @@ extern void rt_trap(const char *msg);
 // Line splitting helper
 // ---------------------------------------------------------------------------
 
-typedef struct
-{
+typedef struct {
     char **lines;
     int count;
 } line_array;
 
-static line_array split_lines(const char *text)
-{
+static line_array split_lines(const char *text) {
     line_array la = {NULL, 0};
     if (!text || !*text)
         return la;
@@ -66,10 +64,8 @@ static line_array split_lines(const char *text)
     la.count = 0;
 
     const char *start = text;
-    for (const char *p = text;; p++)
-    {
-        if (*p == '\n' || *p == '\0')
-        {
+    for (const char *p = text;; p++) {
+        if (*p == '\n' || *p == '\0') {
             size_t len = (size_t)(p - start);
             la.lines[la.count] = (char *)malloc(len + 1);
             if (!la.lines[la.count])
@@ -85,8 +81,7 @@ static line_array split_lines(const char *text)
     return la;
 }
 
-static void free_lines(line_array *la)
-{
+static void free_lines(line_array *la) {
     for (int i = 0; i < la->count; i++)
         free(la->lines[i]);
     free(la->lines);
@@ -98,15 +93,12 @@ static void free_lines(line_array *la)
 // Simple LCS-based diff (O(nm) space - sufficient for typical text)
 // ---------------------------------------------------------------------------
 
-static void compute_lcs_table(line_array *a, line_array *b, int **table)
-{
+static void compute_lcs_table(line_array *a, line_array *b, int **table) {
     int m = a->count;
     int n = b->count;
 
-    for (int i = m; i >= 0; i--)
-    {
-        for (int j = n; j >= 0; j--)
-        {
+    for (int i = m; i >= 0; i--) {
+        for (int j = n; j >= 0; j--) {
             if (i == m || j == n)
                 table[i][j] = 0;
             else if (strcmp(a->lines[i], b->lines[j]) == 0)
@@ -121,8 +113,7 @@ static void compute_lcs_table(line_array *a, line_array *b, int **table)
 // rt_diff_lines
 // ---------------------------------------------------------------------------
 
-void *rt_diff_lines(rt_string a, rt_string b)
-{
+void *rt_diff_lines(rt_string a, rt_string b) {
     void *result = rt_seq_new();
 
     const char *astr = a ? rt_string_cstr(a) : "";
@@ -136,17 +127,14 @@ void *rt_diff_lines(rt_string a, rt_string b)
 
     // Build LCS table
     int **table = (int **)malloc((size_t)(m + 1) * sizeof(int *));
-    if (!table)
-    {
+    if (!table) {
         free_lines(&la);
         free_lines(&lb);
         return result;
     }
-    for (int i = 0; i <= m; i++)
-    {
+    for (int i = 0; i <= m; i++) {
         table[i] = (int *)calloc((size_t)(n + 1), sizeof(int));
-        if (!table[i])
-        {
+        if (!table[i]) {
             for (int k = 0; k < i; k++)
                 free(table[k]);
             free(table);
@@ -160,26 +148,20 @@ void *rt_diff_lines(rt_string a, rt_string b)
 
     // Trace back to produce diff
     int i = 0, j = 0;
-    while (i < m || j < n)
-    {
+    while (i < m || j < n) {
         rt_string_builder sb;
         rt_sb_init(&sb);
 
-        if (i < m && j < n && strcmp(la.lines[i], lb.lines[j]) == 0)
-        {
+        if (i < m && j < n && strcmp(la.lines[i], lb.lines[j]) == 0) {
             rt_sb_append_cstr(&sb, " ");
             rt_sb_append_cstr(&sb, la.lines[i]);
             i++;
             j++;
-        }
-        else if (j < n && (i >= m || table[i][j + 1] >= table[i + 1][j]))
-        {
+        } else if (j < n && (i >= m || table[i][j + 1] >= table[i + 1][j])) {
             rt_sb_append_cstr(&sb, "+");
             rt_sb_append_cstr(&sb, lb.lines[j]);
             j++;
-        }
-        else
-        {
+        } else {
             rt_sb_append_cstr(&sb, "-");
             rt_sb_append_cstr(&sb, la.lines[i]);
             i++;
@@ -209,8 +191,7 @@ void *rt_diff_lines(rt_string a, rt_string b)
 /// @param b
 /// @param context
 /// @return Result value.
-rt_string rt_diff_unified(rt_string a, rt_string b, int64_t context)
-{
+rt_string rt_diff_unified(rt_string a, rt_string b, int64_t context) {
     if (context < 0)
         context = 3;
 
@@ -224,12 +205,10 @@ rt_string rt_diff_unified(rt_string a, rt_string b, int64_t context)
     rt_sb_append_cstr(&sb, "--- a\n");
     rt_sb_append_cstr(&sb, "+++ b\n");
 
-    for (int64_t i = 0; i < len; i++)
-    {
+    for (int64_t i = 0; i < len; i++) {
         rt_string line = (rt_string)rt_seq_get(diff, i);
         const char *cstr = rt_string_cstr(line);
-        if (cstr)
-        {
+        if (cstr) {
             rt_sb_append_cstr(&sb, cstr);
             rt_sb_append_cstr(&sb, "\n");
         }
@@ -248,14 +227,12 @@ rt_string rt_diff_unified(rt_string a, rt_string b, int64_t context)
 /// @param a
 /// @param b
 /// @return Result value.
-int64_t rt_diff_count_changes(rt_string a, rt_string b)
-{
+int64_t rt_diff_count_changes(rt_string a, rt_string b) {
     void *diff = rt_diff_lines(a, b);
     int64_t len = rt_seq_len(diff);
     int64_t changes = 0;
 
-    for (int64_t i = 0; i < len; i++)
-    {
+    for (int64_t i = 0; i < len; i++) {
         rt_string line = (rt_string)rt_seq_get(diff, i);
         const char *cstr = rt_string_cstr(line);
         if (cstr && (cstr[0] == '+' || cstr[0] == '-'))
@@ -273,8 +250,7 @@ int64_t rt_diff_count_changes(rt_string a, rt_string b)
 /// @param original
 /// @param diff
 /// @return Result value.
-rt_string rt_diff_patch(rt_string original, void *diff)
-{
+rt_string rt_diff_patch(rt_string original, void *diff) {
     (void)original;
     if (!diff)
         return rt_string_from_bytes("", 0);
@@ -285,16 +261,14 @@ rt_string rt_diff_patch(rt_string original, void *diff)
     int64_t len = rt_seq_len(diff);
     int first = 1;
 
-    for (int64_t i = 0; i < len; i++)
-    {
+    for (int64_t i = 0; i < len; i++) {
         rt_string line = (rt_string)rt_seq_get(diff, i);
         const char *cstr = rt_string_cstr(line);
         if (!cstr)
             continue;
 
         // Include lines that are same (' ') or added ('+')
-        if (cstr[0] == ' ' || cstr[0] == '+')
-        {
+        if (cstr[0] == ' ' || cstr[0] == '+') {
             if (!first)
                 rt_sb_append_cstr(&sb, "\n");
             rt_sb_append_cstr(&sb, cstr + 1); // Skip prefix

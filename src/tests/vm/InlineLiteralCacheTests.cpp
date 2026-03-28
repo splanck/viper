@@ -33,10 +33,8 @@
 
 using namespace il::core;
 
-namespace
-{
-Module buildLoopModule(const std::string &literal, int64_t iterations)
-{
+namespace {
+Module buildLoopModule(const std::string &literal, int64_t iterations) {
     Module module;
 
     Function fn;
@@ -111,8 +109,7 @@ Module buildLoopModule(const std::string &literal, int64_t iterations)
     return module;
 }
 
-void runLiteralCacheScenario(const std::string &literal, int64_t iterations)
-{
+void runLiteralCacheScenario(const std::string &literal, int64_t iterations) {
     Module module = buildLoopModule(literal, iterations);
     il::vm::VM vm(module);
 
@@ -129,8 +126,7 @@ void runLiteralCacheScenario(const std::string &literal, int64_t iterations)
     assert(std::memcmp(data, literal.data(), literal.size()) == 0);
 
     rt_string cachedHandle = prePopulated;
-    for (int run = 0; run < 3; ++run)
-    {
+    for (int run = 0; run < 3; ++run) {
         int64_t result = vm.run();
         assert(result == iterations);
 
@@ -146,8 +142,7 @@ void runLiteralCacheScenario(const std::string &literal, int64_t iterations)
 }
 } // namespace
 
-int main()
-{
+int main() {
     constexpr int64_t iterations = 32;
 
     const std::string literal = std::string("cache\0literal", 13);

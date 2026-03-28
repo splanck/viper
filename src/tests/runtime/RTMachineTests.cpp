@@ -19,13 +19,11 @@
 #include <cstdlib>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static void test_os()
-{
+static void test_os() {
     rt_string os = rt_machine_os();
     assert(os != nullptr);
 
@@ -41,8 +39,7 @@ static void test_os()
     printf("OS: %s\n", os_str);
 }
 
-static void test_os_ver()
-{
+static void test_os_ver() {
     rt_string ver = rt_machine_os_ver();
     assert(ver != nullptr);
 
@@ -54,8 +51,7 @@ static void test_os_ver()
     printf("OS Version: %s\n", ver_str);
 }
 
-static void test_host()
-{
+static void test_host() {
     rt_string host = rt_machine_host();
     assert(host != nullptr);
 
@@ -65,8 +61,7 @@ static void test_host()
     printf("Host: %s\n", host_str);
 }
 
-static void test_user()
-{
+static void test_user() {
     rt_string user = rt_machine_user();
     assert(user != nullptr);
 
@@ -76,8 +71,7 @@ static void test_user()
     printf("User: %s\n", user_str);
 }
 
-static void test_home()
-{
+static void test_home() {
     rt_string home = rt_machine_home();
     assert(home != nullptr);
 
@@ -87,8 +81,7 @@ static void test_home()
     printf("Home: %s\n", home_str);
 }
 
-static void test_temp()
-{
+static void test_temp() {
     rt_string temp = rt_machine_temp();
     assert(temp != nullptr);
 
@@ -100,8 +93,7 @@ static void test_temp()
     printf("Temp: %s\n", temp_str);
 }
 
-static void test_cores()
-{
+static void test_cores() {
     int64_t cores = rt_machine_cores();
     // Should be at least 1 core
     assert(cores >= 1);
@@ -109,8 +101,7 @@ static void test_cores()
     printf("Cores: %lld\n", (long long)cores);
 }
 
-static void test_mem_total()
-{
+static void test_mem_total() {
     int64_t mem = rt_machine_mem_total();
     // Total memory should be positive (at least some MB)
     assert(mem > 1024 * 1024);
@@ -120,8 +111,7 @@ static void test_mem_total()
            (double)mem / (1024.0 * 1024.0 * 1024.0));
 }
 
-static void test_mem_free()
-{
+static void test_mem_free() {
     int64_t mem = rt_machine_mem_free();
     // Free memory should be non-negative
     assert(mem >= 0);
@@ -131,8 +121,7 @@ static void test_mem_free()
            (double)mem / (1024.0 * 1024.0 * 1024.0));
 }
 
-static void test_endian()
-{
+static void test_endian() {
     rt_string endian = rt_machine_endian();
     assert(endian != nullptr);
 
@@ -146,8 +135,7 @@ static void test_endian()
     printf("Endian: %s\n", endian_str);
 }
 
-static void test_consistency()
-{
+static void test_consistency() {
     // Call each function multiple times to ensure consistency
     rt_string os1 = rt_machine_os();
     rt_string os2 = rt_machine_os();
@@ -162,8 +150,7 @@ static void test_consistency()
     assert(strcmp(rt_string_cstr(endian1), rt_string_cstr(endian2)) == 0);
 }
 
-static void test_mem_relationship()
-{
+static void test_mem_relationship() {
     int64_t total = rt_machine_mem_total();
     int64_t free_mem = rt_machine_mem_free();
 
@@ -171,8 +158,7 @@ static void test_mem_relationship()
     assert(free_mem <= total);
 }
 
-int main()
-{
+int main() {
     printf("=== Viper.Machine Tests ===\n\n");
 
     test_os();

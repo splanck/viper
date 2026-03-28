@@ -28,14 +28,11 @@
 #include <algorithm>
 #include <cstring>
 
-namespace viper::codegen::aarch64::peephole
-{
-namespace
-{
+namespace viper::codegen::aarch64::peephole {
+namespace {
 
 /// @brief Check if a block is a cold block (trap handler, error block).
-[[nodiscard]] bool isColdBlock(const MBasicBlock &block) noexcept
-{
+[[nodiscard]] bool isColdBlock(const MBasicBlock &block) noexcept {
     if (block.name.find("trap") != std::string::npos)
         return true;
     if (block.name.find("error") != std::string::npos)
@@ -43,13 +40,10 @@ namespace
     if (block.name.find("panic") != std::string::npos)
         return true;
 
-    if (block.instrs.size() == 1)
-    {
+    if (block.instrs.size() == 1) {
         const auto &instr = block.instrs[0];
-        if (instr.opc == MOpcode::Bl)
-        {
-            if (!instr.ops.empty() && instr.ops[0].kind == MOperand::Kind::Label)
-            {
+        if (instr.opc == MOpcode::Bl) {
+            if (!instr.ops.empty() && instr.ops[0].kind == MOperand::Kind::Label) {
                 const auto &label = instr.ops[0].label;
                 if (label.find("trap") != std::string::npos ||
                     label.find("panic") != std::string::npos)
@@ -62,8 +56,7 @@ namespace
 
 } // namespace
 
-const char *invertCondition(const char *cond) noexcept
-{
+const char *invertCondition(const char *cond) noexcept {
     if (!cond)
         return nullptr;
     if (std::strcmp(cond, "eq") == 0)
@@ -97,8 +90,7 @@ const char *invertCondition(const char *cond) noexcept
     return nullptr;
 }
 
-bool isBranchTo(const MInstr &instr, const std::string &label) noexcept
-{
+bool isBranchTo(const MInstr &instr, const std::string &label) noexcept {
     if (instr.opc != MOpcode::Br)
         return false;
     if (instr.ops.empty() || instr.ops[0].kind != MOperand::Kind::Label)
@@ -106,8 +98,7 @@ bool isBranchTo(const MInstr &instr, const std::string &label) noexcept
     return instr.ops[0].label == label;
 }
 
-bool tryCbzCbnzFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
-{
+bool tryCbzCbnzFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx + 1 >= instrs.size())
         return false;
 
@@ -118,14 +109,11 @@ bool tryCbzCbnzFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStat
     MOperand regOp;
 
     if (cmpInstr.opc == MOpcode::CmpRI && cmpInstr.ops.size() == 2 && isPhysReg(cmpInstr.ops[0]) &&
-        isImmValue(cmpInstr.ops[1], 0))
-    {
+        isImmValue(cmpInstr.ops[1], 0)) {
         isCmpZero = true;
         regOp = cmpInstr.ops[0];
-    }
-    else if (cmpInstr.opc == MOpcode::TstRR && cmpInstr.ops.size() == 2 &&
-             isPhysReg(cmpInstr.ops[0]) && samePhysReg(cmpInstr.ops[0], cmpInstr.ops[1]))
-    {
+    } else if (cmpInstr.opc == MOpcode::TstRR && cmpInstr.ops.size() == 2 &&
+               isPhysReg(cmpInstr.ops[0]) && samePhysReg(cmpInstr.ops[0], cmpInstr.ops[1])) {
         isCmpZero = true;
         regOp = cmpInstr.ops[0];
     }
@@ -163,8 +151,7 @@ bool tryCbzCbnzFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStat
     return true;
 }
 
-bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
-{
+bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx >= instrs.size())
         return false;
 
@@ -180,38 +167,31 @@ bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeS
     if (!cond)
         return false;
 
-    for (std::size_t j = idx + 1; j < instrs.size(); ++j)
-    {
+    for (std::size_t j = idx + 1; j < instrs.size(); ++j) {
         const auto &next = instrs[j];
 
         if ((next.opc == MOpcode::Cbnz || next.opc == MOpcode::Cbz) && next.ops.size() == 2 &&
             isPhysReg(next.ops[0]) && samePhysReg(next.ops[0], csetReg) &&
-            next.ops[1].kind == MOperand::Kind::Label)
-        {
+            next.ops[1].kind == MOperand::Kind::Label) {
             const char *brCond = cond;
-            if (next.opc == MOpcode::Cbz)
-            {
+            if (next.opc == MOpcode::Cbz) {
                 brCond = invertCondition(cond);
                 if (!brCond)
                     return false;
             }
 
             bool regDead = true;
-            for (std::size_t k = j + 1; k < instrs.size(); ++k)
-            {
+            for (std::size_t k = j + 1; k < instrs.size(); ++k) {
                 const auto &later = instrs[k];
                 if (later.opc == MOpcode::Br || later.opc == MOpcode::BCond ||
                     later.opc == MOpcode::Ret || later.opc == MOpcode::Cbz ||
                     later.opc == MOpcode::Cbnz)
                     break;
-                for (std::size_t oi = 0; oi < later.ops.size(); ++oi)
-                {
-                    if (oi == 0 && definesReg(later, csetReg))
-                    {
+                for (std::size_t oi = 0; oi < later.ops.size(); ++oi) {
+                    if (oi == 0 && definesReg(later, csetReg)) {
                         break;
                     }
-                    if (isPhysReg(later.ops[oi]) && samePhysReg(later.ops[oi], csetReg))
-                    {
+                    if (isPhysReg(later.ops[oi]) && samePhysReg(later.ops[oi], csetReg)) {
                         regDead = false;
                         break;
                     }
@@ -228,8 +208,7 @@ bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeS
             return true;
         }
 
-        switch (next.opc)
-        {
+        switch (next.opc) {
             case MOpcode::CmpRR:
             case MOpcode::CmpRI:
             case MOpcode::TstRR:
@@ -244,8 +223,7 @@ bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeS
                 break;
         }
 
-        for (const auto &op : next.ops)
-        {
+        for (const auto &op : next.ops) {
             if (isPhysReg(op) && samePhysReg(op, csetReg))
                 return false;
         }
@@ -256,14 +234,12 @@ bool tryCsetBranchFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeS
     return false;
 }
 
-std::size_t reorderBlocks(MFunction &fn)
-{
+std::size_t reorderBlocks(MFunction &fn) {
     if (fn.blocks.size() <= 2)
         return 0;
 
     std::vector<std::size_t> coldIndices;
-    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
-    {
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
         if (isColdBlock(fn.blocks[i]))
             coldIndices.push_back(i);
     }
@@ -274,8 +250,7 @@ std::size_t reorderBlocks(MFunction &fn)
     std::vector<MBasicBlock> reordered;
     reordered.reserve(fn.blocks.size());
 
-    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
-    {
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
         bool cold = std::find(coldIndices.begin(), coldIndices.end(), i) != coldIndices.end();
         if (!cold)
             reordered.push_back(std::move(fn.blocks[i]));

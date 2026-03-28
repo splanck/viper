@@ -34,15 +34,13 @@
 #include "tui/style/theme.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 
 /// @brief Vertical scrollable list widget with keyboard navigation and selection.
 /// @details Displays a list of string items with cursor-based navigation (Up/Down),
 ///          single selection (Enter), and range selection (Shift+arrows). Supports
 ///          custom item rendering via an installable ItemRenderer callback.
-class ListView : public ui::Widget
-{
+class ListView : public ui::Widget {
   public:
     using ItemRenderer = std::function<void(render::ScreenBuffer &,
                                             int row,

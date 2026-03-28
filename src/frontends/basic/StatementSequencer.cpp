@@ -26,8 +26,7 @@
 ///          statement shapes.  The sequencer also exposes utilities for parsing
 ///          lists of statements that terminate on custom predicates.
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 /// @brief Construct a sequencer bound to a parser instance.
 /// @details Stores a reference to the owning parser so token queries and
 ///          sub-parses can be delegated while this helper focuses on separator
@@ -42,35 +41,25 @@ StatementSequencer::StatementSequencer(Parser &parser) : parser_(parser) {}
 ///          the cached separator kind to reflect the most recent token
 ///          consumed.  Callers can then determine whether the next statement was
 ///          preceded by a newline or a colon separator.
-void StatementSequencer::skipLeadingSeparator()
-{
+void StatementSequencer::skipLeadingSeparator() {
     bool consumedColon = false;
     bool consumedLineBreak = false;
 
-    while (parser_.at(TokenKind::Colon) || parser_.at(TokenKind::EndOfLine))
-    {
-        if (parser_.at(TokenKind::Colon))
-        {
+    while (parser_.at(TokenKind::Colon) || parser_.at(TokenKind::EndOfLine)) {
+        if (parser_.at(TokenKind::Colon)) {
             parser_.consume();
             consumedColon = true;
-        }
-        else
-        {
+        } else {
             parser_.consume();
             consumedLineBreak = true;
         }
     }
 
-    if (consumedLineBreak)
-    {
+    if (consumedLineBreak) {
         lastSeparator_ = SeparatorKind::LineBreak;
-    }
-    else if (consumedColon)
-    {
+    } else if (consumedColon) {
         lastSeparator_ = SeparatorKind::Colon;
-    }
-    else
-    {
+    } else {
         lastSeparator_ = SeparatorKind::None;
     }
 }
@@ -81,11 +70,9 @@ void StatementSequencer::skipLeadingSeparator()
 ///          whenever any tokens are consumed.
 ///
 /// @return True when at least one end-of-line token was removed.
-bool StatementSequencer::skipLineBreaks()
-{
+bool StatementSequencer::skipLineBreaks() {
     bool consumed = false;
-    while (parser_.at(TokenKind::EndOfLine))
-    {
+    while (parser_.at(TokenKind::EndOfLine)) {
         parser_.consume();
         consumed = true;
     }
@@ -99,35 +86,25 @@ bool StatementSequencer::skipLineBreaks()
 ///          statement has already been parsed.  The cached separator kind is
 ///          updated so later logic knows how the last pair of statements were
 ///          separated.
-void StatementSequencer::skipStatementSeparator()
-{
+void StatementSequencer::skipStatementSeparator() {
     bool consumedColon = false;
     bool consumedLineBreak = false;
 
-    while (parser_.at(TokenKind::Colon) || parser_.at(TokenKind::EndOfLine))
-    {
-        if (parser_.at(TokenKind::Colon))
-        {
+    while (parser_.at(TokenKind::Colon) || parser_.at(TokenKind::EndOfLine)) {
+        if (parser_.at(TokenKind::Colon)) {
             parser_.consume();
             consumedColon = true;
-        }
-        else
-        {
+        } else {
             parser_.consume();
             consumedLineBreak = true;
         }
     }
 
-    if (consumedLineBreak)
-    {
+    if (consumedLineBreak) {
         lastSeparator_ = SeparatorKind::LineBreak;
-    }
-    else if (consumedColon)
-    {
+    } else if (consumedColon) {
         lastSeparator_ = SeparatorKind::Colon;
-    }
-    else
-    {
+    } else {
         lastSeparator_ = SeparatorKind::None;
     }
 }
@@ -144,13 +121,11 @@ void StatementSequencer::skipStatementSeparator()
 /// @param fn Callback invoked with the discovered line number (or zero when
 ///           absent) and its source location.
 void StatementSequencer::withOptionalLineNumber(
-    const std::function<void(int, il::support::SourceLoc)> &fn, bool allowIdentifierLabel)
-{
+    const std::function<void(int, il::support::SourceLoc)> &fn, bool allowIdentifierLabel) {
     int line = 0;
     il::support::SourceLoc loc{};
     deferredLineOnly_ = false;
-    if (pendingLine_ >= 0)
-    {
+    if (pendingLine_ >= 0) {
         line = pendingLine_;
         loc = pendingLineLoc_;
         pendingLine_ = -1;
@@ -158,10 +133,8 @@ void StatementSequencer::withOptionalLineNumber(
 
         if (parser_.at(TokenKind::Number))
             deferredLineOnly_ = true;
-    }
-    else if (allowIdentifierLabel && parser_.at(TokenKind::Identifier) &&
-             parser_.peek(1).kind == TokenKind::Colon)
-    {
+    } else if (allowIdentifierLabel && parser_.at(TokenKind::Identifier) &&
+               parser_.peek(1).kind == TokenKind::Colon) {
         const Token &tok = parser_.peek();
         int labelNumber = parser_.ensureLabelNumber(tok.lexeme);
         parser_.noteNamedLabelDefinition(tok, labelNumber);
@@ -169,9 +142,7 @@ void StatementSequencer::withOptionalLineNumber(
         parser_.consume();
         line = labelNumber;
         loc = tok.loc;
-    }
-    else if (parser_.at(TokenKind::Number))
-    {
+    } else if (parser_.at(TokenKind::Number)) {
         const Token &tok = parser_.peek();
         line = std::atoi(tok.lexeme.c_str());
         loc = tok.loc;
@@ -189,8 +160,7 @@ void StatementSequencer::withOptionalLineNumber(
 ///
 /// @param line Parsed line number to replay later.
 /// @param loc Source location associated with the numeric token.
-void StatementSequencer::stashPendingLine(int line, il::support::SourceLoc loc)
-{
+void StatementSequencer::stashPendingLine(int line, il::support::SourceLoc loc) {
     pendingLine_ = line;
     pendingLineLoc_ = loc;
 }
@@ -201,8 +171,7 @@ void StatementSequencer::stashPendingLine(int line, il::support::SourceLoc loc)
 ///          such as multi-line IF statements.
 ///
 /// @return Enum describing the last observed separator.
-StatementSequencer::SeparatorKind StatementSequencer::lastSeparator() const
-{
+StatementSequencer::SeparatorKind StatementSequencer::lastSeparator() const {
     return lastSeparator_;
 }
 
@@ -224,20 +193,16 @@ StatementSequencer::LineAction StatementSequencer::evaluateLineAction(
     il::support::SourceLoc lineLoc,
     const TerminatorPredicate &isTerminator,
     const TerminatorConsumer &onTerminator,
-    CollectionState &state)
-{
-    if (isTerminator(line, lineLoc))
-    {
+    CollectionState &state) {
+    if (isTerminator(line, lineLoc)) {
         state.info.line = line;
         state.info.loc = parser_.peek().loc;
         onTerminator(line, lineLoc, state.info);
         return LineAction::Terminate;
     }
 
-    if (deferredLineOnly_)
-    {
-        if (parser_.at(TokenKind::Number))
-        {
+    if (deferredLineOnly_) {
+        if (parser_.at(TokenKind::Number)) {
             const Token &next = parser_.peek();
             int nextLine = std::atoi(next.lexeme.c_str());
             stashPendingLine(nextLine, next.loc);
@@ -267,12 +232,10 @@ StatementSequencer::LineAction StatementSequencer::evaluateLineAction(
 StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
     const TerminatorPredicate &isTerminator,
     const TerminatorConsumer &onTerminator,
-    std::vector<StmtPtr> &dst)
-{
+    std::vector<StmtPtr> &dst) {
     CollectionState state;
     skipLeadingSeparator();
-    while (!parser_.at(TokenKind::EndOfFile))
-    {
+    while (!parser_.at(TokenKind::EndOfFile)) {
         skipLineBreaks();
         if (parser_.at(TokenKind::EndOfFile))
             break;
@@ -285,8 +248,7 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
         bool allowIdentifierLabel =
             (state.separatorBefore != SeparatorKind::Colon) && !state.hadPendingLine;
         withOptionalLineNumber(
-            [&line, &lineLoc](int currentLine, il::support::SourceLoc currentLoc)
-            {
+            [&line, &lineLoc](int currentLine, il::support::SourceLoc currentLoc) {
                 line = currentLine;
                 lineLoc = currentLoc;
             },
@@ -297,17 +259,13 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
             break;
 
         TokenKind lookaheadKind = parser_.peek().kind;
-        if (lookaheadKind == TokenKind::KeywordAddfile)
-        {
+        if (lookaheadKind == TokenKind::KeywordAddfile) {
             // Handle ADDFILE directive by splicing included content into dst.
             parser_.handleAddFileInto(dst);
-        }
-        else if (lookaheadKind != TokenKind::EndOfLine && lookaheadKind != TokenKind::EndOfFile &&
-                 lookaheadKind != TokenKind::Colon)
-        {
+        } else if (lookaheadKind != TokenKind::EndOfLine && lookaheadKind != TokenKind::EndOfFile &&
+                   lookaheadKind != TokenKind::Colon) {
             auto stmt = parser_.parseStatement(line);
-            if (stmt)
-            {
+            if (stmt) {
                 stmt->line = line;
                 dst.push_back(std::move(stmt));
             }
@@ -326,9 +284,8 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
 /// @param terminator Token kind to treat as the terminator.
 /// @param dst Destination vector for parsed statements.
 /// @return Terminator metadata populated by the underlying collection routine.
-StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(TokenKind terminator,
-                                                                         std::vector<StmtPtr> &dst)
-{
+StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(
+    TokenKind terminator, std::vector<StmtPtr> &dst) {
     auto predicate = [&](int, il::support::SourceLoc) { return parser_.at(terminator); };
     auto consumer = [&](int, il::support::SourceLoc, TerminatorInfo &) { parser_.consume(); };
     return collectStatements(predicate, consumer, dst);
@@ -343,45 +300,38 @@ StatementSequencer::TerminatorInfo StatementSequencer::collectStatements(TokenKi
 ///
 /// @return A statement node representing the parsed line. For empty lines a
 ///         placeholder list or label is emitted to keep numbering consistent.
-StmtPtr StatementSequencer::parseStatementLine()
-{
+StmtPtr StatementSequencer::parseStatementLine() {
     std::vector<StmtPtr> stmts;
     int lineNumber = 0;
     bool haveLine = false;
     il::support::SourceLoc lineLoc{};
-    auto predicate = [&](int line, il::support::SourceLoc loc)
-    {
-        if (!haveLine)
-        {
+    auto predicate = [&](int line, il::support::SourceLoc loc) {
+        if (!haveLine) {
             haveLine = true;
             lineNumber = line;
             lineLoc = loc;
             return false;
         }
 
-        if (lastSeparator() == SeparatorKind::LineBreak)
-        {
+        if (lastSeparator() == SeparatorKind::LineBreak) {
             if (hasUserLine(line))
                 stashPendingLine(line, loc);
             return true;
         }
 
-        if (lastSeparator() != SeparatorKind::Colon)
-        {
+        if (lastSeparator() != SeparatorKind::Colon) {
             if (hasUserLine(line))
                 stashPendingLine(line, loc);
             return true;
         }
 
-        if (hasUserLine(line) && line != lineNumber)
-        {
+        if (hasUserLine(line) && line != lineNumber) {
             stashPendingLine(line, loc);
             return true;
         }
         return false;
     };
-    auto consumer = [&](int line, il::support::SourceLoc loc, TerminatorInfo &)
-    {
+    auto consumer = [&](int line, il::support::SourceLoc loc, TerminatorInfo &) {
         if (hasUserLine(line))
             stashPendingLine(line, loc);
     };
@@ -389,19 +339,16 @@ StmtPtr StatementSequencer::parseStatementLine()
     collectStatements(predicate, consumer, stmts);
 
     il::support::SourceLoc stmtLineLoc = lineLoc;
-    if (!stmtLineLoc.isValid() || !stmtLineLoc.hasLine())
-    {
+    if (!stmtLineLoc.isValid() || !stmtLineLoc.hasLine()) {
         stmtLineLoc = parser_.peek().loc;
     }
 
-    if (stmts.empty() && haveLine && hasUserLine(lineNumber))
-    {
+    if (stmts.empty() && haveLine && hasUserLine(lineNumber)) {
         auto label = std::make_unique<LabelStmt>();
         label->line = lineNumber;
         label->loc = stmtLineLoc;
 
-        if (pendingLine_ == lineNumber)
-        {
+        if (pendingLine_ == lineNumber) {
             pendingLine_ = -1;
             pendingLineLoc_ = {};
         }
@@ -409,8 +356,7 @@ StmtPtr StatementSequencer::parseStatementLine()
         return label;
     }
 
-    if (stmts.empty())
-    {
+    if (stmts.empty()) {
         auto list = std::make_unique<StmtList>();
         list->line = lineNumber;
         list->loc = stmtLineLoc;
@@ -421,10 +367,8 @@ StmtPtr StatementSequencer::parseStatementLine()
     if (!haveLine && !stmts.empty())
         lineNumber = stmts.front()->line;
 
-    if (!isUnlabeledLine(lineNumber))
-    {
-        for (auto &stmt : stmts)
-        {
+    if (!isUnlabeledLine(lineNumber)) {
+        for (auto &stmt : stmts) {
             if (stmt)
                 stmt->line = lineNumber;
         }
@@ -437,16 +381,13 @@ StmtPtr StatementSequencer::parseStatementLine()
     list->line = lineNumber;
 
     il::support::SourceLoc firstLoc{};
-    for (const auto &stmt : stmts)
-    {
-        if (stmt && stmt->loc.hasFile() && stmt->loc.hasLine())
-        {
+    for (const auto &stmt : stmts) {
+        if (stmt && stmt->loc.hasFile() && stmt->loc.hasLine()) {
             firstLoc = stmt->loc;
             break;
         }
     }
-    if (!firstLoc.hasLine())
-    {
+    if (!firstLoc.hasLine()) {
         firstLoc = stmtLineLoc;
     }
 

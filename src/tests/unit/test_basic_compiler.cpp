@@ -21,12 +21,9 @@
 #include <sstream>
 #include <string>
 
-namespace il::support
-{
-struct SourceManagerTestAccess
-{
-    static void setNextFileId(SourceManager &sm, uint64_t next)
-    {
+namespace il::support {
+struct SourceManagerTestAccess {
+    static void setNextFileId(SourceManager &sm, uint64_t next) {
         sm.next_file_id_ = next;
     }
 };
@@ -35,8 +32,7 @@ struct SourceManagerTestAccess
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     std::string source = "10 PRINT 1\n20 END\n";
     SourceManager sm;
     BasicCompilerOptions options{};

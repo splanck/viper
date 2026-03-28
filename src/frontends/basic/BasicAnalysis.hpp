@@ -25,8 +25,7 @@
 
 #include <memory>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // Forward declarations
 struct Program;
@@ -39,8 +38,7 @@ struct Program;
 ///
 /// Heap-allocated to ensure stable DiagnosticEngine address (SemanticAnalyzer
 /// holds a reference to the emitter which references diagnostics).
-struct BasicAnalysisResult
-{
+struct BasicAnalysisResult {
     /// @brief Diagnostics accumulated during parsing and semantic analysis.
     /// @note Declared first so it is destroyed last.
     il::support::DiagnosticEngine diagnostics{};
@@ -60,8 +58,7 @@ struct BasicAnalysisResult
     uint32_t fileId{0};
 
     /// @brief True if any errors were reported.
-    [[nodiscard]] bool hasErrors() const
-    {
+    [[nodiscard]] bool hasErrors() const {
         return diagnostics.errorCount() > 0;
     }
 };

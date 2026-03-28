@@ -47,8 +47,7 @@ extern const char *rt_string_cstr(rt_string s);
 #define MESH_INIT_VERTS 64
 #define MESH_INIT_IDXS 128
 
-static void rt_mesh3d_finalize(void *obj)
-{
+static void rt_mesh3d_finalize(void *obj) {
     rt_mesh3d *m = (rt_mesh3d *)obj;
     free(m->vertices);
     m->vertices = NULL;
@@ -56,11 +55,9 @@ static void rt_mesh3d_finalize(void *obj)
     m->indices = NULL;
 }
 
-void *rt_mesh3d_new(void)
-{
+void *rt_mesh3d_new(void) {
     rt_mesh3d *m = (rt_mesh3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_mesh3d));
-    if (!m)
-    {
+    if (!m) {
         rt_trap("Mesh3D.New: memory allocation failed");
         return NULL;
     }
@@ -71,8 +68,7 @@ void *rt_mesh3d_new(void)
     m->indices = (uint32_t *)calloc(MESH_INIT_IDXS, sizeof(uint32_t));
     m->index_count = 0;
     m->index_capacity = MESH_INIT_IDXS;
-    if (!m->vertices || !m->indices)
-    {
+    if (!m->vertices || !m->indices) {
         free(m->vertices);
         free(m->indices);
         m->vertices = NULL;
@@ -87,14 +83,12 @@ void *rt_mesh3d_new(void)
 }
 
 void rt_mesh3d_add_vertex(
-    void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v)
-{
+    void *obj, double x, double y, double z, double nx, double ny, double nz, double u, double v) {
     if (!obj)
         return;
     rt_mesh3d *m = (rt_mesh3d *)obj;
 
-    if (m->vertex_count >= m->vertex_capacity)
-    {
+    if (m->vertex_count >= m->vertex_capacity) {
         uint32_t new_cap = m->vertex_capacity * 2;
         vgfx3d_vertex_t *nv =
             (vgfx3d_vertex_t *)realloc(m->vertices, new_cap * sizeof(vgfx3d_vertex_t));
@@ -125,8 +119,7 @@ void rt_mesh3d_add_vertex(
 /// @param v0
 /// @param v1
 /// @param v2
-void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2)
-{
+void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2) {
     if (!obj)
         return;
     rt_mesh3d *m = (rt_mesh3d *)obj;
@@ -137,8 +130,7 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2)
         (uint64_t)v2 >= m->vertex_count)
         return;
 
-    if (m->index_count + 3 > m->index_capacity)
-    {
+    if (m->index_count + 3 > m->index_capacity) {
         uint32_t new_cap = m->index_capacity * 2;
         uint32_t *ni = (uint32_t *)realloc(m->indices, new_cap * sizeof(uint32_t));
         if (!ni)
@@ -155,8 +147,7 @@ void rt_mesh3d_add_triangle(void *obj, int64_t v0, int64_t v1, int64_t v2)
 /// @brief Perform mesh3d get vertex count operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_mesh3d_get_vertex_count(void *obj)
-{
+int64_t rt_mesh3d_get_vertex_count(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_mesh3d *)obj)->vertex_count;
@@ -165,8 +156,7 @@ int64_t rt_mesh3d_get_vertex_count(void *obj)
 /// @brief Perform mesh3d get triangle count operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_mesh3d_get_triangle_count(void *obj)
-{
+int64_t rt_mesh3d_get_triangle_count(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)(((rt_mesh3d *)obj)->index_count / 3);
@@ -174,23 +164,20 @@ int64_t rt_mesh3d_get_triangle_count(void *obj)
 
 /// @brief Perform mesh3d recalc normals operation.
 /// @param obj
-void rt_mesh3d_recalc_normals(void *obj)
-{
+void rt_mesh3d_recalc_normals(void *obj) {
     if (!obj)
         return;
     rt_mesh3d *m = (rt_mesh3d *)obj;
 
     /* Zero all normals */
-    for (uint32_t i = 0; i < m->vertex_count; i++)
-    {
+    for (uint32_t i = 0; i < m->vertex_count; i++) {
         m->vertices[i].normal[0] = 0.0f;
         m->vertices[i].normal[1] = 0.0f;
         m->vertices[i].normal[2] = 0.0f;
     }
 
     /* Accumulate face normals */
-    for (uint32_t i = 0; i + 2 < m->index_count; i += 3)
-    {
+    for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
         uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
         if (i0 >= m->vertex_count || i1 >= m->vertex_count || i2 >= m->vertex_count)
             continue;
@@ -219,12 +206,10 @@ void rt_mesh3d_recalc_normals(void *obj)
     }
 
     /* Normalize */
-    for (uint32_t i = 0; i < m->vertex_count; i++)
-    {
+    for (uint32_t i = 0; i < m->vertex_count; i++) {
         float *n = m->vertices[i].normal;
         float len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-        if (len > 1e-8f)
-        {
+        if (len > 1e-8f) {
             n[0] /= len;
             n[1] /= len;
             n[2] /= len;
@@ -232,8 +217,7 @@ void rt_mesh3d_recalc_normals(void *obj)
     }
 }
 
-void *rt_mesh3d_clone(void *obj)
-{
+void *rt_mesh3d_clone(void *obj) {
     if (!obj)
         return NULL;
     rt_mesh3d *src = (rt_mesh3d *)obj;
@@ -249,8 +233,7 @@ void *rt_mesh3d_clone(void *obj)
     dst->index_capacity = src->index_count > 0 ? src->index_count : 1;
     dst->indices = (uint32_t *)malloc(dst->index_capacity * sizeof(uint32_t));
 
-    if (!dst->vertices || !dst->indices)
-    {
+    if (!dst->vertices || !dst->indices) {
         free(dst->vertices);
         dst->vertices = NULL;
         free(dst->indices);
@@ -274,15 +257,13 @@ void *rt_mesh3d_clone(void *obj)
 /// @brief Perform mesh3d transform operation.
 /// @param obj
 /// @param mat4_obj
-void rt_mesh3d_transform(void *obj, void *mat4_obj)
-{
+void rt_mesh3d_transform(void *obj, void *mat4_obj) {
     if (!obj || !mat4_obj)
         return;
     rt_mesh3d *m = (rt_mesh3d *)obj;
     mat4_impl *xform = (mat4_impl *)mat4_obj;
 
-    for (uint32_t i = 0; i < m->vertex_count; i++)
-    {
+    for (uint32_t i = 0; i < m->vertex_count; i++) {
         float *p = m->vertices[i].pos;
         double x = p[0], y = p[1], z = p[2];
         p[0] = (float)(xform->m[0] * x + xform->m[1] * y + xform->m[2] * z + xform->m[3]);
@@ -296,8 +277,7 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj)
         n[1] = (float)(xform->m[4] * nx + xform->m[5] * ny + xform->m[6] * nz);
         n[2] = (float)(xform->m[8] * nx + xform->m[9] * ny + xform->m[10] * nz);
         float len = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
-        if (len > 1e-8f)
-        {
+        if (len > 1e-8f) {
             n[0] /= len;
             n[1] /= len;
             n[2] /= len;
@@ -306,8 +286,7 @@ void rt_mesh3d_transform(void *obj, void *mat4_obj)
 }
 
 /* Procedural generators — NewBox, NewSphere, NewPlane, NewCylinder */
-void *rt_mesh3d_new_box(double sx, double sy, double sz)
-{
+void *rt_mesh3d_new_box(double sx, double sy, double sz) {
     void *m = rt_mesh3d_new();
     if (!m)
         return NULL;
@@ -366,8 +345,7 @@ void *rt_mesh3d_new_box(double sx, double sy, double sz)
     return m;
 }
 
-void *rt_mesh3d_new_sphere(double radius, int64_t segments)
-{
+void *rt_mesh3d_new_sphere(double radius, int64_t segments) {
     void *m = rt_mesh3d_new();
     if (!m)
         return NULL;
@@ -379,13 +357,11 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments)
     float r = (float)radius;
 
     /* Generate vertices */
-    for (int64_t ring = 0; ring <= rings; ring++)
-    {
+    for (int64_t ring = 0; ring <= rings; ring++) {
         float phi = (float)M_PI * (float)ring / (float)rings;
         float sp = sinf(phi), cp = cosf(phi);
 
-        for (int64_t slice = 0; slice <= slices; slice++)
-        {
+        for (int64_t slice = 0; slice <= slices; slice++) {
             float theta = 2.0f * (float)M_PI * (float)slice / (float)slices;
             float st = sinf(theta), ct = cosf(theta);
 
@@ -397,10 +373,8 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments)
     }
 
     /* Generate indices (CCW) */
-    for (int64_t ring = 0; ring < rings; ring++)
-    {
-        for (int64_t slice = 0; slice < slices; slice++)
-        {
+    for (int64_t ring = 0; ring < rings; ring++) {
+        for (int64_t slice = 0; slice < slices; slice++) {
             int64_t a = ring * (slices + 1) + slice;
             int64_t b = a + slices + 1;
             rt_mesh3d_add_triangle(m, a, b, a + 1);
@@ -411,8 +385,7 @@ void *rt_mesh3d_new_sphere(double radius, int64_t segments)
     return m;
 }
 
-void *rt_mesh3d_new_plane(double sx, double sz)
-{
+void *rt_mesh3d_new_plane(double sx, double sz) {
     void *m = rt_mesh3d_new();
     if (!m)
         return NULL;
@@ -433,8 +406,7 @@ void *rt_mesh3d_new_plane(double sx, double sz)
     return m;
 }
 
-void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments)
-{
+void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments) {
     void *m = rt_mesh3d_new();
     if (!m)
         return NULL;
@@ -445,8 +417,7 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments)
     float hy = (float)(height * 0.5);
 
     /* Side vertices */
-    for (int64_t i = 0; i <= segments; i++)
-    {
+    for (int64_t i = 0; i <= segments; i++) {
         float theta = 2.0f * (float)M_PI * (float)i / (float)segments;
         float ct = cosf(theta), st = sinf(theta);
         float u = (float)i / (float)segments;
@@ -456,8 +427,7 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments)
     }
 
     /* Side triangles */
-    for (int64_t i = 0; i < segments; i++)
-    {
+    for (int64_t i = 0; i < segments; i++) {
         int64_t b = i * 2;
         rt_mesh3d_add_triangle(m, b, b + 2, b + 1);
         rt_mesh3d_add_triangle(m, b + 1, b + 2, b + 3);
@@ -466,14 +436,12 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments)
     /* Top cap center */
     int64_t tc = (int64_t)((rt_mesh3d *)m)->vertex_count;
     rt_mesh3d_add_vertex(m, 0, hy, 0, 0, 1, 0, 0.5, 0.5);
-    for (int64_t i = 0; i < segments; i++)
-    {
+    for (int64_t i = 0; i < segments; i++) {
         float theta = 2.0f * (float)M_PI * (float)i / (float)segments;
         float ct = cosf(theta), st = sinf(theta);
         rt_mesh3d_add_vertex(m, r * ct, hy, r * st, 0, 1, 0, ct * 0.5 + 0.5, st * 0.5 + 0.5);
     }
-    for (int64_t i = 0; i < segments; i++)
-    {
+    for (int64_t i = 0; i < segments; i++) {
         int64_t next = (i + 1) % segments;
         rt_mesh3d_add_triangle(m, tc, tc + 1 + i, tc + 1 + next);
     }
@@ -481,14 +449,12 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments)
     /* Bottom cap center */
     int64_t bc = (int64_t)((rt_mesh3d *)m)->vertex_count;
     rt_mesh3d_add_vertex(m, 0, -hy, 0, 0, -1, 0, 0.5, 0.5);
-    for (int64_t i = 0; i < segments; i++)
-    {
+    for (int64_t i = 0; i < segments; i++) {
         float theta = 2.0f * (float)M_PI * (float)i / (float)segments;
         float ct = cosf(theta), st = sinf(theta);
         rt_mesh3d_add_vertex(m, r * ct, -hy, r * st, 0, -1, 0, ct * 0.5 + 0.5, st * 0.5 + 0.5);
     }
-    for (int64_t i = 0; i < segments; i++)
-    {
+    for (int64_t i = 0; i < segments; i++) {
         int64_t next = (i + 1) % segments;
         rt_mesh3d_add_triangle(m, bc, bc + 1 + next, bc + 1 + i);
     }
@@ -506,19 +472,16 @@ void *rt_mesh3d_new_cylinder(double radius, double height, int64_t segments)
 
 /* Parse one integer from a face index string, advancing *p past it.
  * Returns 0 if no integer found (empty between slashes). */
-static int64_t obj_parse_int(const char **p)
-{
+static int64_t obj_parse_int(const char **p) {
     if (!**p || **p == '/' || **p == ' ' || **p == '\n' || **p == '\r')
         return 0;
     int64_t sign = 1;
-    if (**p == '-')
-    {
+    if (**p == '-') {
         sign = -1;
         (*p)++;
     }
     int64_t val = 0;
-    while (**p >= '0' && **p <= '9')
-    {
+    while (**p >= '0' && **p <= '9') {
         val = val * 10 + (**p - '0');
         (*p)++;
     }
@@ -527,25 +490,21 @@ static int64_t obj_parse_int(const char **p)
 
 /* Parse a face vertex index: v[/vt[/vn]] or v//vn
  * Sets vi, ti, ni to 1-based indices (0 = not present) */
-static void obj_parse_face_vert(const char **p, int64_t *vi, int64_t *ti, int64_t *ni)
-{
+static void obj_parse_face_vert(const char **p, int64_t *vi, int64_t *ti, int64_t *ni) {
     *vi = obj_parse_int(p);
     *ti = 0;
     *ni = 0;
-    if (**p == '/')
-    {
+    if (**p == '/') {
         (*p)++;
         *ti = obj_parse_int(p);
-        if (**p == '/')
-        {
+        if (**p == '/') {
             (*p)++;
             *ni = obj_parse_int(p);
         }
     }
 }
 
-static double obj_parse_double(const char **p)
-{
+static double obj_parse_double(const char **p) {
     while (**p == ' ' || **p == '\t')
         (*p)++;
     char *end;
@@ -556,8 +515,7 @@ static double obj_parse_double(const char **p)
 
 /// @brief Perform mesh3d calc tangents operation.
 /// @param obj
-void rt_mesh3d_calc_tangents(void *obj)
-{
+void rt_mesh3d_calc_tangents(void *obj) {
     if (!obj)
         return;
     rt_mesh3d *m = (rt_mesh3d *)obj;
@@ -565,16 +523,14 @@ void rt_mesh3d_calc_tangents(void *obj)
         return;
 
     /* Zero all tangents */
-    for (uint32_t i = 0; i < m->vertex_count; i++)
-    {
+    for (uint32_t i = 0; i < m->vertex_count; i++) {
         m->vertices[i].tangent[0] = 0.0f;
         m->vertices[i].tangent[1] = 0.0f;
         m->vertices[i].tangent[2] = 0.0f;
     }
 
     /* Accumulate tangents per triangle (Lengyel's method) */
-    for (uint32_t i = 0; i + 2 < m->index_count; i += 3)
-    {
+    for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
         uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
         if (i0 >= m->vertex_count || i1 >= m->vertex_count || i2 >= m->vertex_count)
             continue;
@@ -612,8 +568,7 @@ void rt_mesh3d_calc_tangents(void *obj)
     }
 
     /* Normalize and Gram-Schmidt orthogonalize against normal */
-    for (uint32_t i = 0; i < m->vertex_count; i++)
-    {
+    for (uint32_t i = 0; i < m->vertex_count; i++) {
         float *t = m->vertices[i].tangent;
         float *n = m->vertices[i].normal;
 
@@ -625,14 +580,11 @@ void rt_mesh3d_calc_tangents(void *obj)
 
         /* Normalize */
         float len = sqrtf(t[0] * t[0] + t[1] * t[1] + t[2] * t[2]);
-        if (len > 1e-8f)
-        {
+        if (len > 1e-8f) {
             t[0] /= len;
             t[1] /= len;
             t[2] /= len;
-        }
-        else
-        {
+        } else {
             /* Default tangent for degenerate UVs */
             t[0] = 1.0f;
             t[1] = 0.0f;
@@ -641,10 +593,8 @@ void rt_mesh3d_calc_tangents(void *obj)
     }
 }
 
-void *rt_mesh3d_from_obj(rt_string path)
-{
-    if (!path)
-    {
+void *rt_mesh3d_from_obj(rt_string path) {
+    if (!path) {
         rt_trap("Mesh3D.FromOBJ: path must not be null");
         return NULL;
     }
@@ -653,8 +603,7 @@ void *rt_mesh3d_from_obj(rt_string path)
         return NULL;
 
     FILE *f = fopen(filepath, "r");
-    if (!f)
-    {
+    if (!f) {
         rt_trap("Mesh3D.FromOBJ: failed to open file");
         return NULL;
     }
@@ -667,8 +616,7 @@ void *rt_mesh3d_from_obj(rt_string path)
     float *texcoords = (float *)malloc((size_t)cap_t * 2 * sizeof(float));
 
     void *mesh = rt_mesh3d_new();
-    if (!mesh || !positions || !normals || !texcoords)
-    {
+    if (!mesh || !positions || !normals || !texcoords) {
         fclose(f);
         free(positions);
         free(normals);
@@ -677,8 +625,7 @@ void *rt_mesh3d_from_obj(rt_string path)
     }
 
     char line[4096];
-    while (fgets(line, sizeof(line), f))
-    {
+    while (fgets(line, sizeof(line), f)) {
         const char *p = line;
         while (*p == ' ' || *p == '\t')
             p++;
@@ -686,12 +633,10 @@ void *rt_mesh3d_from_obj(rt_string path)
         if (*p == '#' || *p == '\n' || *p == '\r' || *p == '\0')
             continue;
 
-        if (p[0] == 'v' && p[1] == ' ')
-        {
+        if (p[0] == 'v' && p[1] == ' ') {
             /* Vertex position: v x y z */
             p += 2;
-            if (cnt_p >= cap_p)
-            {
+            if (cnt_p >= cap_p) {
                 cap_p *= 2;
                 float *tmp = (float *)realloc(positions, (size_t)cap_p * 3 * sizeof(float));
                 if (!tmp)
@@ -702,13 +647,10 @@ void *rt_mesh3d_from_obj(rt_string path)
             positions[cnt_p * 3 + 1] = (float)obj_parse_double(&p);
             positions[cnt_p * 3 + 2] = (float)obj_parse_double(&p);
             cnt_p++;
-        }
-        else if (p[0] == 'v' && p[1] == 'n' && p[2] == ' ')
-        {
+        } else if (p[0] == 'v' && p[1] == 'n' && p[2] == ' ') {
             /* Vertex normal: vn x y z */
             p += 3;
-            if (cnt_n >= cap_n)
-            {
+            if (cnt_n >= cap_n) {
                 cap_n *= 2;
                 float *tmp = (float *)realloc(normals, (size_t)cap_n * 3 * sizeof(float));
                 if (!tmp)
@@ -719,13 +661,10 @@ void *rt_mesh3d_from_obj(rt_string path)
             normals[cnt_n * 3 + 1] = (float)obj_parse_double(&p);
             normals[cnt_n * 3 + 2] = (float)obj_parse_double(&p);
             cnt_n++;
-        }
-        else if (p[0] == 'v' && p[1] == 't' && p[2] == ' ')
-        {
+        } else if (p[0] == 'v' && p[1] == 't' && p[2] == ' ') {
             /* Texture coordinate: vt u v */
             p += 3;
-            if (cnt_t >= cap_t)
-            {
+            if (cnt_t >= cap_t) {
                 cap_t *= 2;
                 float *tmp = (float *)realloc(texcoords, (size_t)cap_t * 2 * sizeof(float));
                 if (!tmp)
@@ -735,16 +674,13 @@ void *rt_mesh3d_from_obj(rt_string path)
             texcoords[cnt_t * 2 + 0] = (float)obj_parse_double(&p);
             texcoords[cnt_t * 2 + 1] = (float)obj_parse_double(&p);
             cnt_t++;
-        }
-        else if (p[0] == 'f' && p[1] == ' ')
-        {
+        } else if (p[0] == 'f' && p[1] == ' ') {
             /* Face: f v1[/vt1[/vn1]] v2[/vt2[/vn2]] ... */
             p += 2;
             int64_t face_vi[16], face_ti[16], face_ni[16];
             int face_count = 0;
 
-            while (*p && *p != '\n' && *p != '\r' && face_count < 16)
-            {
+            while (*p && *p != '\n' && *p != '\r' && face_count < 16) {
                 while (*p == ' ' || *p == '\t')
                     p++;
                 if (!*p || *p == '\n' || *p == '\r')
@@ -760,8 +696,7 @@ void *rt_mesh3d_from_obj(rt_string path)
 
             /* Resolve indices and emit vertices */
             int64_t mesh_indices[16];
-            for (int fi = 0; fi < face_count; fi++)
-            {
+            for (int fi = 0; fi < face_count; fi++) {
                 int64_t vi = face_vi[fi];
                 int64_t ti = face_ti[fi];
                 int64_t ni = face_ni[fi];
@@ -776,24 +711,21 @@ void *rt_mesh3d_from_obj(rt_string path)
 
                 /* OBJ indices are 1-based */
                 float px = 0, py = 0, pz = 0;
-                if (vi >= 1 && vi <= cnt_p)
-                {
+                if (vi >= 1 && vi <= cnt_p) {
                     px = positions[(vi - 1) * 3 + 0];
                     py = positions[(vi - 1) * 3 + 1];
                     pz = positions[(vi - 1) * 3 + 2];
                 }
 
                 float nx = 0, ny = 0, nz = 0;
-                if (ni >= 1 && ni <= cnt_n)
-                {
+                if (ni >= 1 && ni <= cnt_n) {
                     nx = normals[(ni - 1) * 3 + 0];
                     ny = normals[(ni - 1) * 3 + 1];
                     nz = normals[(ni - 1) * 3 + 2];
                 }
 
                 float tu = 0, tv = 0;
-                if (ti >= 1 && ti <= cnt_t)
-                {
+                if (ti >= 1 && ti <= cnt_t) {
                     tu = texcoords[(ti - 1) * 2 + 0];
                     tv = texcoords[(ti - 1) * 2 + 1];
                 }
@@ -803,8 +735,7 @@ void *rt_mesh3d_from_obj(rt_string path)
             }
 
             /* Fan triangulation: (0,1,2), (0,2,3), (0,3,4), ... */
-            for (int fi = 1; fi < face_count - 1; fi++)
-            {
+            for (int fi = 1; fi < face_count - 1; fi++) {
                 rt_mesh3d_add_triangle(
                     mesh, mesh_indices[0], mesh_indices[fi], mesh_indices[fi + 1]);
             }

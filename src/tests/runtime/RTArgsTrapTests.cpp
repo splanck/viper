@@ -19,20 +19,17 @@
 #include <cassert>
 #include <string>
 
-namespace
-{
+namespace {
 int g_trap_count = 0;
 std::string g_last_trap;
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_trap_count++;
     g_last_trap = msg ? msg : "";
 }
 } // namespace
 
-int main()
-{
+int main() {
     rt_args_clear();
 
     g_trap_count = 0;

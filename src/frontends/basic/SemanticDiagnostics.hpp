@@ -48,11 +48,9 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-class SemanticDiagnostics
-{
+class SemanticDiagnostics {
   public:
     explicit SemanticDiagnostics(DiagnosticEmitter &emitter);
 

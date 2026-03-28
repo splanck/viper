@@ -29,22 +29,19 @@ using namespace il::frontends::basic;
 
 // ===== Keyword completions =====
 
-TEST(BasicCompletion, KeywordPrefixMatch)
-{
+TEST(BasicCompletion, KeywordPrefixMatch) {
     BasicCompletionEngine engine;
     // "PRI" should match PRINT and PRIVATE
     auto items = engine.complete("PRI\n", 1, 4, "test.bas");
     bool foundPrint = false;
-    for (const auto &item : items)
-    {
+    for (const auto &item : items) {
         if (item.label == "PRINT")
             foundPrint = true;
     }
     EXPECT_TRUE(foundPrint);
 }
 
-TEST(BasicCompletion, KeywordFullList)
-{
+TEST(BasicCompletion, KeywordFullList) {
     BasicCompletionEngine engine;
     // Empty prefix at start of line should return many completions
     auto items = engine.complete("\n", 1, 1, "test.bas");
@@ -54,14 +51,12 @@ TEST(BasicCompletion, KeywordFullList)
 
 // ===== Builtin function completions =====
 
-TEST(BasicCompletion, BuiltinFunctions)
-{
+TEST(BasicCompletion, BuiltinFunctions) {
     BasicCompletionEngine engine;
     // "LE" prefix should match LEFT$, LEN, etc.
     auto items = engine.complete("LE\n", 1, 3, "test.bas");
     bool foundLen = false;
-    for (const auto &item : items)
-    {
+    for (const auto &item : items) {
         if (item.label == "LEN")
             foundLen = true;
     }
@@ -70,30 +65,26 @@ TEST(BasicCompletion, BuiltinFunctions)
 
 // ===== Scope symbol completions =====
 
-TEST(BasicCompletion, ScopeVariables)
-{
+TEST(BasicCompletion, ScopeVariables) {
     BasicCompletionEngine engine;
     // BASIC lexer uppercases: "myVariable" → "MYVARIABLE"
     std::string source = "DIM myVariable AS INTEGER\nm\n";
     auto items = engine.complete(source, 2, 2, "test.bas");
     bool foundMyVar = false;
-    for (const auto &item : items)
-    {
+    for (const auto &item : items) {
         if (item.label == "MYVARIABLE")
             foundMyVar = true;
     }
     EXPECT_TRUE(foundMyVar);
 }
 
-TEST(BasicCompletion, ScopeProcedures)
-{
+TEST(BasicCompletion, ScopeProcedures) {
     BasicCompletionEngine engine;
     // BASIC lexer uppercases: "MyProc" → "MYPROC"
     std::string source = "SUB MyProc()\nEND SUB\nM\n";
     auto items = engine.complete(source, 3, 2, "test.bas");
     bool foundProc = false;
-    for (const auto &item : items)
-    {
+    for (const auto &item : items) {
         if (item.label == "MYPROC" || item.label == "MyProc")
             foundProc = true;
     }
@@ -102,24 +93,21 @@ TEST(BasicCompletion, ScopeProcedures)
 
 // ===== No-crash edge cases =====
 
-TEST(BasicCompletion, EmptySource)
-{
+TEST(BasicCompletion, EmptySource) {
     BasicCompletionEngine engine;
     auto items = engine.complete("", 1, 1, "test.bas");
     // Should not crash; may return keywords
     (void)items;
 }
 
-TEST(BasicCompletion, CursorBeyondSource)
-{
+TEST(BasicCompletion, CursorBeyondSource) {
     BasicCompletionEngine engine;
     auto items = engine.complete("PRINT 42\n", 100, 100, "test.bas");
     // Should not crash
     (void)items;
 }
 
-TEST(BasicCompletion, ClearCache)
-{
+TEST(BasicCompletion, ClearCache) {
     BasicCompletionEngine engine;
     // Should not crash
     engine.clearCache();
@@ -127,8 +115,7 @@ TEST(BasicCompletion, ClearCache)
     (void)items;
 }
 
-TEST(BasicCompletion, CacheKeyIncludesFilePath)
-{
+TEST(BasicCompletion, CacheKeyIncludesFilePath) {
     namespace fs = std::filesystem;
 
     const fs::path tempRoot = fs::temp_directory_path() / "basic_completion_cache_paths";
@@ -151,8 +138,7 @@ TEST(BasicCompletion, CacheKeyIncludesFilePath)
 
     bool foundAppleA = false;
     bool foundApricotA = false;
-    for (const auto &item : itemsA)
-    {
+    for (const auto &item : itemsA) {
         if (item.label == "APPLE")
             foundAppleA = true;
         if (item.label == "APRICOT")
@@ -160,8 +146,7 @@ TEST(BasicCompletion, CacheKeyIncludesFilePath)
     }
 
     bool foundApricotB = false;
-    for (const auto &item : itemsB)
-    {
+    for (const auto &item : itemsB) {
         if (item.label == "APRICOT")
             foundApricotB = true;
     }
@@ -173,8 +158,7 @@ TEST(BasicCompletion, CacheKeyIncludesFilePath)
     fs::remove_all(tempRoot);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

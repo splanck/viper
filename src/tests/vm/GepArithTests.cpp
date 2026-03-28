@@ -19,11 +19,9 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 // Build a module that allocates an array on stack and uses GEP to access elements
-void buildGepModule(Module &module, int64_t index)
-{
+void buildGepModule(Module &module, int64_t index) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -85,8 +83,7 @@ void buildGepModule(Module &module, int64_t index)
 }
 
 // Build module that tests negative GEP offset
-void buildNegativeGepModule(Module &module)
-{
+void buildNegativeGepModule(Module &module) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -155,16 +152,14 @@ void buildNegativeGepModule(Module &module)
     bb.instructions.push_back(ret);
 }
 
-int64_t runGep(int64_t index)
-{
+int64_t runGep(int64_t index) {
     Module module;
     buildGepModule(module, index);
     viper::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
-int64_t runNegativeGep()
-{
+int64_t runNegativeGep() {
     Module module;
     buildNegativeGepModule(module);
     viper::tests::VmFixture fixture;
@@ -173,8 +168,7 @@ int64_t runNegativeGep()
 
 } // namespace
 
-int main()
-{
+int main() {
     //=========================================================================
     // Basic GEP tests
     //=========================================================================

@@ -19,8 +19,7 @@ static int tests_failed = 0;
 static jmp_buf g_trap_jmp;
 static bool g_trap_expected = false;
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
     fprintf(stderr, "TRAP: %s\n", msg);
@@ -30,11 +29,9 @@ extern "C" void vm_trap(const char *msg)
 /// Assert that evaluating @p expr causes a trap. Increments tests_failed and
 /// returns early from the current test function if no trap fires.
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             (void)(expr);                                                                          \
             printf(" FAILED at line %d: expected trap did not fire\n", __LINE__);                  \
             tests_failed++;                                                                        \
@@ -46,8 +43,7 @@ extern "C" void vm_trap(const char *msg)
 
 #define TEST(name) static void test_##name()
 #define RUN_TEST(name)                                                                             \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("  %s...", #name);                                                                  \
         test_##name();                                                                             \
         printf(" OK\n");                                                                           \
@@ -55,18 +51,15 @@ extern "C" void vm_trap(const char *msg)
     } while (0)
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
             tests_failed++;                                                                        \
             return;                                                                                \
         }                                                                                          \
     } while (0)
 
-TEST(create_destroy)
-{
+TEST(create_destroy) {
     rt_buttongroup bg = rt_buttongroup_new();
     ASSERT(bg != NULL);
     ASSERT(rt_buttongroup_count(bg) == 0);
@@ -75,8 +68,7 @@ TEST(create_destroy)
     rt_buttongroup_destroy(bg);
 }
 
-TEST(add_buttons)
-{
+TEST(add_buttons) {
     rt_buttongroup bg = rt_buttongroup_new();
     ASSERT(rt_buttongroup_add(bg, 1) == 1);
     ASSERT(rt_buttongroup_add(bg, 2) == 1);
@@ -91,8 +83,7 @@ TEST(add_buttons)
     rt_buttongroup_destroy(bg);
 }
 
-TEST(select)
-{
+TEST(select) {
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 1);
     rt_buttongroup_add(bg, 2);
@@ -114,8 +105,7 @@ TEST(select)
     rt_buttongroup_destroy(bg);
 }
 
-TEST(clear_selection)
-{
+TEST(clear_selection) {
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 1);
     rt_buttongroup_add(bg, 2);
@@ -127,8 +117,7 @@ TEST(clear_selection)
     rt_buttongroup_destroy(bg);
 }
 
-TEST(select_next_prev)
-{
+TEST(select_next_prev) {
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 10);
     rt_buttongroup_add(bg, 20);
@@ -152,8 +141,7 @@ TEST(select_next_prev)
     rt_buttongroup_destroy(bg);
 }
 
-TEST(remove)
-{
+TEST(remove) {
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 1);
     rt_buttongroup_add(bg, 2);
@@ -167,8 +155,7 @@ TEST(remove)
     rt_buttongroup_destroy(bg);
 }
 
-TEST(add_overflow_traps)
-{
+TEST(add_overflow_traps) {
     rt_buttongroup bg = rt_buttongroup_new();
     // Fill the group to the maximum capacity
     for (int64_t i = 0; i < RT_BUTTONGROUP_MAX; i++)
@@ -179,8 +166,7 @@ TEST(add_overflow_traps)
     rt_buttongroup_destroy(bg);
 }
 
-TEST(get_at)
-{
+TEST(get_at) {
     rt_buttongroup bg = rt_buttongroup_new();
     rt_buttongroup_add(bg, 100);
     rt_buttongroup_add(bg, 200);
@@ -194,8 +180,7 @@ TEST(get_at)
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     printf("RTButtonGroupTests:\n");
     RUN_TEST(create_destroy);
     RUN_TEST(add_buttons);

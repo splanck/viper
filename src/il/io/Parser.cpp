@@ -28,15 +28,13 @@
 #include <sstream>
 #include <string>
 
-namespace il::io::detail
-{
+namespace il::io::detail {
 il::support::Expected<void> parseModuleHeader_E(std::istream &is,
                                                 std::string &line,
                                                 ParserState &st);
 }
 
-namespace il::io
-{
+namespace il::io {
 
 /// @brief Parse a textual IL module from a stream.
 /// @details Creates a @ref ParserState bound to the destination module, then
@@ -49,15 +47,12 @@ namespace il::io
 /// @param m Module populated with parsed definitions.
 /// @return Empty Expected when parsing succeeds or the diagnostic describing the
 ///         first encountered error.
-il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m)
-{
+il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m) {
     detail::ParserState st{m};
     std::string line;
-    while (std::getline(is, line))
-    {
+    while (std::getline(is, line)) {
         ++st.lineNo;
-        if (st.lineNo == 1 && line.compare(0, 3, "\xEF\xBB\xBF") == 0)
-        {
+        if (st.lineNo == 1 && line.compare(0, 3, "\xEF\xBB\xBF") == 0) {
             line.erase(0, 3);
         }
         line = trim(line);
@@ -66,8 +61,7 @@ il::support::Expected<void> Parser::parse(std::istream &is, il::core::Module &m)
         if (auto result = detail::parseModuleHeader_E(is, line, st); !result)
             return result;
     }
-    if (!st.sawVersion)
-    {
+    if (!st.sawVersion) {
         std::ostringstream oss;
         oss << "line " << st.lineNo << ": missing 'il' version directive";
         return il::support::Expected<void>{il::support::makeError({}, oss.str())};

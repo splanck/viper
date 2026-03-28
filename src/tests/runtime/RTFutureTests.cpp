@@ -19,10 +19,8 @@
 #include <cstring>
 #include <thread>
 
-static void test_result(bool cond, const char *name)
-{
-    if (!cond)
-    {
+static void test_result(bool cond, const char *name) {
+    if (!cond) {
         fprintf(stderr, "FAIL: %s\n", name);
         assert(false);
     }
@@ -32,15 +30,13 @@ static void test_result(bool cond, const char *name)
 // Basic Promise Tests
 //=============================================================================
 
-static void test_promise_new()
-{
+static void test_promise_new() {
     void *promise = rt_promise_new();
     test_result(promise != NULL, "promise_new: should create promise");
     test_result(!rt_promise_is_done(promise), "promise_new: should not be done initially");
 }
 
-static void test_promise_get_future()
-{
+static void test_promise_get_future() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
@@ -51,8 +47,7 @@ static void test_promise_get_future()
     test_result(future == future2, "get_future: should return same future");
 }
 
-static void test_promise_set()
-{
+static void test_promise_set() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
@@ -64,8 +59,7 @@ static void test_promise_set()
     test_result(!rt_future_is_error(future), "promise_set: should not be error");
 }
 
-static void test_promise_set_error()
-{
+static void test_promise_set_error() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
@@ -84,16 +78,14 @@ static void test_promise_set_error()
 // Basic Future Tests
 //=============================================================================
 
-static void test_future_is_done_false()
-{
+static void test_future_is_done_false() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
     test_result(!rt_future_is_done(future), "future_is_done: should be false initially");
 }
 
-static void test_future_try_get_empty()
-{
+static void test_future_try_get_empty() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
@@ -103,8 +95,7 @@ static void test_future_try_get_empty()
     test_result(result == 0, "try_get_empty: should return 0 when not done");
 }
 
-static void test_future_try_get_value()
-{
+static void test_future_try_get_value() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
@@ -118,8 +109,7 @@ static void test_future_try_get_value()
     test_result(out == &value, "try_get_value: should return correct value");
 }
 
-static void test_future_get_immediate()
-{
+static void test_future_get_immediate() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
@@ -134,8 +124,7 @@ static void test_future_get_immediate()
 // Wait Tests
 //=============================================================================
 
-static void test_future_wait_for_timeout()
-{
+static void test_future_wait_for_timeout() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
@@ -149,8 +138,7 @@ static void test_future_wait_for_timeout()
     test_result(elapsed >= 40, "wait_for_timeout: should wait approximately 50ms");
 }
 
-static void test_future_wait_for_resolved()
-{
+static void test_future_wait_for_resolved() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
@@ -165,20 +153,17 @@ static void test_future_wait_for_resolved()
 // Threading Tests
 //=============================================================================
 
-static void test_async_resolution()
-{
+static void test_async_resolution() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
     int value = 999;
 
     // Start a thread that will resolve the promise after a delay
-    std::thread resolver(
-        [promise, &value]()
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            rt_promise_set(promise, &value);
-        });
+    std::thread resolver([promise, &value]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        rt_promise_set(promise, &value);
+    });
 
     // Wait for the future
     int8_t result = rt_future_wait_for(future, 5000);
@@ -190,18 +175,15 @@ static void test_async_resolution()
     resolver.join();
 }
 
-static void test_async_error()
-{
+static void test_async_error() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
     // Start a thread that will fail the promise
-    std::thread resolver(
-        [promise]()
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            rt_promise_set_error(promise, rt_const_cstr("Async error"));
-        });
+    std::thread resolver([promise]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        rt_promise_set_error(promise, rt_const_cstr("Async error"));
+    });
 
     int8_t result = rt_future_wait_for(future, 5000);
     test_result(result == 1, "async_error: should resolve");
@@ -218,8 +200,7 @@ static void test_async_error()
 // Edge Cases
 //=============================================================================
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     // These should not crash
     test_result(!rt_promise_is_done(NULL), "null_safety: promise_is_done on NULL");
     test_result(!rt_future_is_done(NULL), "null_safety: future_is_done on NULL");
@@ -230,8 +211,7 @@ static void test_null_safety()
     test_result(!rt_future_wait_for(NULL, 10), "null_safety: future_wait_for on NULL");
 }
 
-static void test_future_get_for_timeout()
-{
+static void test_future_get_for_timeout() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
@@ -241,8 +221,7 @@ static void test_future_get_for_timeout()
     test_result(result == 0, "get_for_timeout: should return 0 on timeout");
 }
 
-static void test_future_get_for_success()
-{
+static void test_future_get_for_success() {
     void *promise = rt_promise_new();
     void *future = rt_promise_get_future(promise);
 
@@ -260,8 +239,7 @@ static void test_future_get_for_success()
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     // Basic promise tests
     test_promise_new();
     test_promise_get_future();

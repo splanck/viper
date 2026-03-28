@@ -21,8 +21,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     {
         std::string src = "10 FOR I = 1 TO 3\n20 PRINT I\n30 NEXT I\n40 END\n";
         SourceManager sm;

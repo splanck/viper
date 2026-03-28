@@ -203,52 +203,40 @@ static vg_theme_t g_light_theme = {
 // Theme API
 //=============================================================================
 
-vg_theme_t *vg_theme_get_current(void)
-{
-    if (!g_current_theme)
-    {
+vg_theme_t *vg_theme_get_current(void) {
+    if (!g_current_theme) {
         g_current_theme = &g_dark_theme;
     }
     return g_current_theme;
 }
 
 /// @brief Theme set current.
-void vg_theme_set_current(vg_theme_t *theme)
-{
+void vg_theme_set_current(vg_theme_t *theme) {
     g_current_theme = theme ? theme : &g_dark_theme;
 }
 
-vg_theme_t *vg_theme_dark(void)
-{
+vg_theme_t *vg_theme_dark(void) {
     return &g_dark_theme;
 }
 
-vg_theme_t *vg_theme_light(void)
-{
+vg_theme_t *vg_theme_light(void) {
     return &g_light_theme;
 }
 
-vg_theme_t *vg_theme_create(const char *name, vg_theme_t *base)
-{
+vg_theme_t *vg_theme_create(const char *name, vg_theme_t *base) {
     vg_theme_t *theme = malloc(sizeof(vg_theme_t));
     if (!theme)
         return NULL;
 
-    if (base)
-    {
+    if (base) {
         *theme = *base;
-    }
-    else
-    {
+    } else {
         *theme = g_dark_theme;
     }
 
-    if (name)
-    {
+    if (name) {
         theme->name = strdup(name);
-    }
-    else
-    {
+    } else {
         theme->name = strdup("Custom");
     }
 
@@ -256,8 +244,7 @@ vg_theme_t *vg_theme_create(const char *name, vg_theme_t *base)
 }
 
 /// @brief Theme destroy.
-void vg_theme_destroy(vg_theme_t *theme)
-{
+void vg_theme_destroy(vg_theme_t *theme) {
     if (!theme)
         return;
 
@@ -265,8 +252,7 @@ void vg_theme_destroy(vg_theme_t *theme)
     if (theme == &g_dark_theme || theme == &g_light_theme)
         return;
 
-    if (theme->name)
-    {
+    if (theme->name) {
         free((void *)theme->name);
     }
 
@@ -277,8 +263,7 @@ void vg_theme_destroy(vg_theme_t *theme)
 // Color Helpers
 //=============================================================================
 
-uint32_t vg_color_blend(uint32_t c1, uint32_t c2, float t)
-{
+uint32_t vg_color_blend(uint32_t c1, uint32_t c2, float t) {
     if (t <= 0.0f)
         return c1;
     if (t >= 1.0f)
@@ -296,12 +281,10 @@ uint32_t vg_color_blend(uint32_t c1, uint32_t c2, float t)
     return vg_rgba(r, g, b, a);
 }
 
-uint32_t vg_color_lighten(uint32_t color, float amount)
-{
+uint32_t vg_color_lighten(uint32_t color, float amount) {
     return vg_color_blend(color, 0xFFFFFFFF, amount);
 }
 
-uint32_t vg_color_darken(uint32_t color, float amount)
-{
+uint32_t vg_color_darken(uint32_t color, float amount) {
     return vg_color_blend(color, 0xFF000000, amount);
 }

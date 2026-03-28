@@ -21,8 +21,7 @@
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
@@ -30,8 +29,7 @@ using namespace runtime;
 // Coalesce Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
-{
+LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr) {
     // Get the type to determine how to handle the coalesce
     TypeRef leftType = sema_.typeOf(expr->left.get());
     TypeRef resultType = sema_.typeOf(expr);
@@ -104,8 +102,7 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
     setBlock(hasValueIdx);
     {
         Value unwrapped = left.value;
-        if (innerType)
-        {
+        if (innerType) {
             auto innerVal = emitOptionalUnwrap(left.value, innerType);
             unwrapped = innerVal.value;
         }
@@ -149,12 +146,10 @@ LowerResult Lowerer::lowerCoalesce(CoalesceExpr *expr)
 // Optional Chain Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
-{
+LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr) {
     auto base = lowerExpr(expr->base.get());
     TypeRef baseType = sema_.typeOf(expr->base.get());
-    if (!baseType || baseType->kind != TypeKindSem::Optional)
-    {
+    if (!baseType || baseType->kind != TypeKindSem::Optional) {
         return {Value::null(), Type(Type::Kind::Ptr)};
     }
 
@@ -220,59 +215,41 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
     // Has value block
     setBlock(hasValueIdx);
     Value fieldValue = Value::null();
-    if (innerType)
-    {
-        if (innerType->kind == TypeKindSem::Value || innerType->kind == TypeKindSem::Entity)
-        {
+    if (innerType) {
+        if (innerType->kind == TypeKindSem::Value || innerType->kind == TypeKindSem::Entity) {
             const std::unordered_map<std::string, ValueTypeInfo> &valueTypes = valueTypes_;
             const std::unordered_map<std::string, EntityTypeInfo> &entityTypes = entityTypes_;
-            if (innerType->kind == TypeKindSem::Value)
-            {
+            if (innerType->kind == TypeKindSem::Value) {
                 auto it = valueTypes.find(innerType->name);
-                if (it != valueTypes.end())
-                {
+                if (it != valueTypes.end()) {
                     const FieldLayout *field = it->second.findField(expr->field);
-                    if (field)
-                    {
+                    if (field) {
                         fieldType = field->type;
                         fieldValue = emitFieldLoad(field, base.value);
                     }
                 }
-            }
-            else
-            {
+            } else {
                 auto it = entityTypes.find(innerType->name);
-                if (it != entityTypes.end())
-                {
+                if (it != entityTypes.end()) {
                     const FieldLayout *field = it->second.findField(expr->field);
-                    if (field)
-                    {
+                    if (field) {
                         fieldType = field->type;
                         fieldValue = emitFieldLoad(field, base.value);
                     }
                 }
             }
-        }
-        else if (innerType->kind == TypeKindSem::List)
-        {
-            if (expr->field == "count" || expr->field == "size" || expr->field == "length")
-            {
+        } else if (innerType->kind == TypeKindSem::List) {
+            if (expr->field == "count" || expr->field == "size" || expr->field == "length") {
                 fieldType = types::integer();
                 fieldValue = emitCallRet(Type(Type::Kind::I64), kListCount, {base.value});
             }
-        }
-        else if (innerType->kind == TypeKindSem::Map)
-        {
-            if (expr->field == "count" || expr->field == "size" || expr->field == "length")
-            {
+        } else if (innerType->kind == TypeKindSem::Map) {
+            if (expr->field == "count" || expr->field == "size" || expr->field == "length") {
                 fieldType = types::integer();
                 fieldValue = emitCallRet(Type(Type::Kind::I64), kMapCount, {base.value});
             }
-        }
-        else if (innerType->kind == TypeKindSem::Set)
-        {
-            if (expr->field == "count" || expr->field == "size" || expr->field == "length")
-            {
+        } else if (innerType->kind == TypeKindSem::Set) {
+            if (expr->field == "count" || expr->field == "size" || expr->field == "length") {
                 fieldType = types::integer();
                 fieldValue = emitCallRet(Type(Type::Kind::I64), kSetCount, {base.value});
             }
@@ -280,12 +257,9 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
     }
 
     Value optionalValue = Value::null();
-    if (fieldType && fieldType->kind == TypeKindSem::Optional)
-    {
+    if (fieldType && fieldType->kind == TypeKindSem::Optional) {
         optionalValue = fieldValue;
-    }
-    else if (fieldType && fieldType->kind != TypeKindSem::Unknown)
-    {
+    } else if (fieldType && fieldType->kind != TypeKindSem::Unknown) {
         optionalValue = emitOptionalWrap(fieldValue, fieldType);
     }
 
@@ -314,8 +288,7 @@ LowerResult Lowerer::lowerOptionalChain(OptionalChainExpr *expr)
 // Try Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerTry(TryExpr *expr)
-{
+LowerResult Lowerer::lowerTry(TryExpr *expr) {
     // The ? operator propagates null/error by returning early from the function
     // For now, we implement this for optional types (null propagation)
 
@@ -362,12 +335,9 @@ LowerResult Lowerer::lowerTry(TryExpr *expr)
     setBlock(returnNullIdx);
     // For functions returning optional types, return null (0 as pointer)
     // For void functions, we just return void
-    if (currentFunc_->retType.kind == Type::Kind::Void)
-    {
+    if (currentFunc_->retType.kind == Type::Kind::Void) {
         emitRetVoid();
-    }
-    else
-    {
+    } else {
         // Return null for optional/pointer return types
         emitRet(Value::constInt(0));
     }
@@ -377,8 +347,7 @@ LowerResult Lowerer::lowerTry(TryExpr *expr)
 
     // Return the operand value (unwrap optionals when needed)
     TypeRef operandType = sema_.typeOf(expr->operand.get());
-    if (operandType && operandType->kind == TypeKindSem::Optional)
-    {
+    if (operandType && operandType->kind == TypeKindSem::Optional) {
         TypeRef innerTypeRef = operandType->innerType();
         if (innerTypeRef)
             return emitOptionalUnwrap(operand.value, innerTypeRef);
@@ -390,13 +359,11 @@ LowerResult Lowerer::lowerTry(TryExpr *expr)
 // Force-Unwrap Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerForceUnwrap(ForceUnwrapExpr *expr)
-{
+LowerResult Lowerer::lowerForceUnwrap(ForceUnwrapExpr *expr) {
     auto operand = lowerExpr(expr->operand.get());
 
     TypeRef operandType = sema_.typeOf(expr->operand.get());
-    if (!operandType || operandType->kind != TypeKindSem::Optional)
-    {
+    if (!operandType || operandType->kind != TypeKindSem::Optional) {
         // Sema should have caught this; fall through as identity
         return operand;
     }
@@ -457,8 +424,7 @@ LowerResult Lowerer::lowerForceUnwrap(ForceUnwrapExpr *expr)
 // Await Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerAwait(AwaitExpr *expr)
-{
+LowerResult Lowerer::lowerAwait(AwaitExpr *expr) {
     // Lower the future-producing operand expression.
     auto futureResult = lowerExpr(expr->operand.get());
 

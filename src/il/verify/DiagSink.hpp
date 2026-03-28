@@ -29,12 +29,10 @@
 #include <string_view>
 #include <vector>
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Identifier for structured verifier diagnostics.
-enum class VerifyDiagCode
-{
+enum class VerifyDiagCode {
     Unknown = 0,                ///< Unclassified diagnostic.
     EhStackUnderflow,           ///< Encountered eh.pop with an empty handler stack.
     EhStackLeak,                ///< Execution left a function with handlers still active.
@@ -70,8 +68,7 @@ il::support::Diag makeVerifierError(VerifyDiagCode code,
                                     std::string message);
 
 /// @brief Interface for verifier components to report diagnostics without coupling to storage.
-class DiagSink
-{
+class DiagSink {
   public:
     virtual ~DiagSink() = default;
 
@@ -81,8 +78,7 @@ class DiagSink
 };
 
 /// @brief Concrete sink that stores diagnostics in-memory for later inspection.
-class CollectingDiagSink : public DiagSink
-{
+class CollectingDiagSink : public DiagSink {
   public:
     /// @brief Append @p diag to the collection.
     /// @param diag Diagnostic to store.

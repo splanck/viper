@@ -17,12 +17,10 @@
 
 #include "codegen/x86_64/passes/PassManager.hpp"
 
-namespace viper::codegen::x64::passes
-{
+namespace viper::codegen::x64::passes {
 
 /// \brief Emit assembly text for a lowered module using the backend facade.
-class EmitPass final : public Pass
-{
+class EmitPass final : public Pass {
   public:
     /// @brief Construct the emission pass with the given codegen configuration.
     /// @param options Backend options controlling output format, debug info, etc.

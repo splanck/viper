@@ -40,8 +40,7 @@
 //===----------------------------------------------------------------------===//
 
 /// @brief Linux ALSA platform data.
-typedef struct
-{
+typedef struct {
     snd_pcm_t *pcm;              ///< ALSA PCM device handle
     pthread_t thread;            ///< Audio thread
     int running;                 ///< Thread running flag
@@ -57,26 +56,22 @@ typedef struct
 /// @brief Audio thread function - continuously mixes and outputs audio.
 /// @param arg Pointer to our audio context.
 /// @return NULL (never returns until shutdown).
-static void *audio_thread_func(void *arg)
-{
+static void *audio_thread_func(void *arg) {
     vaud_context_t ctx = (vaud_context_t)arg;
     vaud_linux_data *plat = (vaud_linux_data *)ctx->platform_data;
 
     /* Allocate buffer for mixing */
     int16_t *buffer = (int16_t *)malloc(VAUD_BUFFER_FRAMES * VAUD_CHANNELS * sizeof(int16_t));
-    if (!buffer)
-    {
+    if (!buffer) {
         /* H-5: signal that the thread failed so callers don't assume audio is active */
         plat->running = 0;
         return NULL;
     }
 
-    while (plat->running)
-    {
+    while (plat->running) {
         /* Check for pause state */
         pthread_mutex_lock(&plat->pause_mutex);
-        while (plat->paused && plat->running)
-        {
+        while (plat->paused && plat->running) {
             pthread_cond_wait(&plat->pause_cond, &plat->pause_mutex);
         }
         pthread_mutex_unlock(&plat->pause_mutex);
@@ -90,23 +85,17 @@ static void *audio_thread_func(void *arg)
         /* Write to ALSA device */
         snd_pcm_sframes_t frames_written = snd_pcm_writei(plat->pcm, buffer, VAUD_BUFFER_FRAMES);
 
-        if (frames_written < 0)
-        {
+        if (frames_written < 0) {
             /* Handle underrun or other errors */
-            if (frames_written == -EPIPE || frames_written == -ESTRPIPE)
-            {
+            if (frames_written == -EPIPE || frames_written == -ESTRPIPE) {
                 /* Underrun/suspend — recover and retry the write so the frames aren't
                  * silently dropped (H-6: previous code fell through to next iteration) */
                 snd_pcm_recover(plat->pcm, (int)frames_written, 0);
                 snd_pcm_writei(plat->pcm, buffer, VAUD_BUFFER_FRAMES);
-            }
-            else if (frames_written == -EAGAIN)
-            {
+            } else if (frames_written == -EAGAIN) {
                 /* Try again */
                 continue;
-            }
-            else
-            {
+            } else {
                 /* Other error - try to recover */
                 snd_pcm_recover(plat->pcm, (int)frames_written, 0);
             }
@@ -121,15 +110,13 @@ static void *audio_thread_func(void *arg)
 // Platform Interface Implementation
 //===----------------------------------------------------------------------===//
 
-int vaud_platform_init(vaud_context_t ctx)
-{
+int vaud_platform_init(vaud_context_t ctx) {
     if (!ctx)
         return 0;
 
     /* Allocate platform data */
     vaud_linux_data *plat = (vaud_linux_data *)calloc(1, sizeof(vaud_linux_data));
-    if (!plat)
-    {
+    if (!plat) {
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate Linux audio data");
         return 0;
     }
@@ -144,8 +131,7 @@ int vaud_platform_init(vaud_context_t ctx)
 
     /* Open the default PCM device */
     int err = snd_pcm_open(&plat->pcm, "default", SND_PCM_STREAM_PLAYBACK, 0);
-    if (err < 0)
-    {
+    if (err < 0) {
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
         free(plat);
@@ -164,8 +150,7 @@ int vaud_platform_init(vaud_context_t ctx)
                              50000                          /* Latency: 50ms in microseconds */
     );
 
-    if (err < 0)
-    {
+    if (err < 0) {
         snd_pcm_close(plat->pcm);
         pthread_mutex_destroy(&plat->pause_mutex);
         pthread_cond_destroy(&plat->pause_cond);
@@ -178,8 +163,7 @@ int vaud_platform_init(vaud_context_t ctx)
     /* Start the audio thread */
     plat->running = 1;
     err = pthread_create(&plat->thread, NULL, audio_thread_func, ctx);
-    if (err != 0)
-    {
+    if (err != 0) {
         plat->running = 0;
         snd_pcm_close(plat->pcm);
         pthread_mutex_destroy(&plat->pause_mutex);
@@ -193,8 +177,7 @@ int vaud_platform_init(vaud_context_t ctx)
     return 1;
 }
 
-void vaud_platform_shutdown(vaud_context_t ctx)
-{
+void vaud_platform_shutdown(vaud_context_t ctx) {
     if (!ctx || !ctx->platform_data)
         return;
 
@@ -222,8 +205,7 @@ void vaud_platform_shutdown(vaud_context_t ctx)
     ctx->platform_data = NULL;
 }
 
-void vaud_platform_pause(vaud_context_t ctx)
-{
+void vaud_platform_pause(vaud_context_t ctx) {
     if (!ctx || !ctx->platform_data)
         return;
 
@@ -237,8 +219,7 @@ void vaud_platform_pause(vaud_context_t ctx)
     snd_pcm_pause(plat->pcm, 1);
 }
 
-void vaud_platform_resume(vaud_context_t ctx)
-{
+void vaud_platform_resume(vaud_context_t ctx) {
     if (!ctx || !ctx->platform_data)
         return;
 
@@ -257,8 +238,7 @@ void vaud_platform_resume(vaud_context_t ctx)
 // Timing
 //===----------------------------------------------------------------------===//
 
-int64_t vaud_platform_now_ms(void)
-{
+int64_t vaud_platform_now_ms(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);

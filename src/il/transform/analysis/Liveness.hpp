@@ -27,24 +27,20 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Cached control-flow information for a function.
-struct CFGInfo
-{
+struct CFGInfo {
     std::unordered_map<const core::BasicBlock *, std::vector<const core::BasicBlock *>> successors;
     std::unordered_map<const core::BasicBlock *, std::vector<const core::BasicBlock *>>
         predecessors;
 };
 
 /// @brief Cached liveness sets (live-in/live-out) for each block.
-class LivenessInfo
-{
+class LivenessInfo {
   public:
     /// @brief Lightweight view over the live value bitset for a block edge.
-    class SetView
-    {
+    class SetView {
       public:
         SetView() = default;
 
@@ -53,12 +49,10 @@ class LivenessInfo
         /// @return True when live; false otherwise.
         bool contains(unsigned valueId) const;
 
-        template <typename Fn> void forEach(Fn &&fn) const
-        {
+        template <typename Fn> void forEach(Fn &&fn) const {
             if (!bits_)
                 return;
-            for (unsigned id = 0; id < bits_->size(); ++id)
-            {
+            for (unsigned id = 0; id < bits_->size(); ++id) {
                 if ((*bits_)[id])
                     fn(id);
             }

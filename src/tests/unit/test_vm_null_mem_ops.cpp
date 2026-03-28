@@ -26,11 +26,9 @@
 #include <cassert>
 #include <string>
 
-namespace
-{
+namespace {
 
-il::core::Module makeLoadModule()
-{
+il::core::Module makeLoadModule() {
     using namespace il::core;
 
     Module m;
@@ -54,8 +52,7 @@ il::core::Module makeLoadModule()
     return m;
 }
 
-il::core::Module makeStoreModule()
-{
+il::core::Module makeStoreModule() {
     using namespace il::core;
 
     Module m;
@@ -79,8 +76,7 @@ il::core::Module makeStoreModule()
     return m;
 }
 
-il::core::Module makeMisalignedLoadModule(il::core::Type::Kind kind)
-{
+il::core::Module makeMisalignedLoadModule(il::core::Type::Kind kind) {
     using namespace il::core;
 
     Module m;
@@ -130,14 +126,11 @@ il::core::Module makeMisalignedLoadModule(il::core::Type::Kind kind)
     return m;
 }
 
-il::core::Module makeMisalignedStoreModule(il::core::Type::Kind kind)
-{
+il::core::Module makeMisalignedStoreModule(il::core::Type::Kind kind) {
     using namespace il::core;
 
-    auto storeValueFor = [](Type::Kind k)
-    {
-        switch (k)
-        {
+    auto storeValueFor = [](Type::Kind k) {
+        switch (k) {
             case Type::Kind::I16:
             case Type::Kind::I32:
             case Type::Kind::I64:
@@ -205,8 +198,7 @@ il::core::Module makeMisalignedStoreModule(il::core::Type::Kind kind)
 
 } // namespace
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
@@ -239,8 +231,7 @@ int main(int argc, char *argv[])
                                                     il::core::Type::Kind::Error,
                                                     il::core::Type::Kind::ResumeTok};
 
-    for (il::core::Type::Kind kind : misalignedKinds)
-    {
+    for (il::core::Type::Kind kind : misalignedKinds) {
         auto m = makeMisalignedLoadModule(kind);
         auto result = viper::tests::runModuleIsolated(m);
         assert(result.trapped());
@@ -249,8 +240,7 @@ int main(int argc, char *argv[])
         assert(trapped);
     }
 
-    for (il::core::Type::Kind kind : misalignedKinds)
-    {
+    for (il::core::Type::Kind kind : misalignedKinds) {
         auto m = makeMisalignedStoreModule(kind);
         auto result = viper::tests::runModuleIsolated(m);
         assert(result.trapped());

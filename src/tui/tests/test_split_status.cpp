@@ -31,13 +31,11 @@ using viper::tui::widgets::HSplitter;
 using viper::tui::widgets::StatusBar;
 using viper::tui::widgets::VSplitter;
 
-struct Dummy : Widget
-{
+struct Dummy : Widget {
     void paint(ScreenBuffer &) override {}
 };
 
-TEST(TUI, SplitStatus)
-{
+TEST(TUI, SplitStatus) {
     Theme theme;
 
     // HSplitter layout
@@ -75,8 +73,7 @@ TEST(TUI, SplitStatus)
     ASSERT_EQ(sb.at(y, 9).ch, U'T');
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

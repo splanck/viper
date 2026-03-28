@@ -23,8 +23,7 @@
 
 #include "il/core/fwd.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// \brief Propagate constants through the IL using sparse conditional evaluation.
 ///

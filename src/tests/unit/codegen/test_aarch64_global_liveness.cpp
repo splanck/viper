@@ -68,26 +68,22 @@ using namespace viper::tools::ilc;
 // Helpers
 // ---------------------------------------------------------------------------
 
-namespace
-{
+namespace {
 
-static std::string testOut(const std::string &name)
-{
+static std::string testOut(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -95,12 +91,10 @@ static std::string readFile(const std::string &path)
 }
 
 /// Count occurrences of a literal substring in a string.
-static int countSubstr(const std::string &text, const std::string &needle)
-{
+static int countSubstr(const std::string &text, const std::string &needle) {
     int n = 0;
     std::size_t pos = 0;
-    while ((pos = text.find(needle, pos)) != std::string::npos)
-    {
+    while ((pos = text.find(needle, pos)) != std::string::npos) {
         ++n;
         pos += needle.size();
     }
@@ -122,8 +116,7 @@ static int countSubstr(const std::string &text, const std::string &needle)
 //
 // Bound: <= 2 (fails with 5 before fix, passes with 1 after fix).
 //
-TEST(AArch64GlobalLiveness, SinglePhiLoopMinimalSpills)
-{
+TEST(AArch64GlobalLiveness, SinglePhiLoopMinimalSpills) {
     const std::string in = testOut("global_liveness_single.il");
     const std::string out = testOut("global_liveness_single.s");
 
@@ -148,8 +141,7 @@ TEST(AArch64GlobalLiveness, SinglePhiLoopMinimalSpills)
 
     // Before fix: 5 str x (1 entry phi + 4 block-end spills).
     // After fix:  <= 2 str x (only entry phi store; loop block-end = empty).
-    if (strCount > 2)
-    {
+    if (strCount > 2) {
         std::cerr << "Expected at most 2 'str x' (global liveness); got " << strCount
                   << "\nAssembly:\n"
                   << asmText << "\n";
@@ -170,8 +162,7 @@ TEST(AArch64GlobalLiveness, SinglePhiLoopMinimalSpills)
 //
 // Bound: <= 6 (fails with 11 before fix, passes with ~5 after fix).
 //
-TEST(AArch64GlobalLiveness, TwoPhiLoopMinimalSpills)
-{
+TEST(AArch64GlobalLiveness, TwoPhiLoopMinimalSpills) {
     const std::string in = testOut("global_liveness_two.il");
     const std::string out = testOut("global_liveness_two.s");
 
@@ -197,8 +188,7 @@ TEST(AArch64GlobalLiveness, TwoPhiLoopMinimalSpills)
 
     // Before fix: 11 str x (5 spurious block-end spills + 6 phi/entry stores).
     // After fix:  <= 6 str x (block-end spills eliminated; entry + phi stores remain).
-    if (strCount > 6)
-    {
+    if (strCount > 6) {
         std::cerr << "Expected at most 6 'str x' (global liveness two phi); got " << strCount
                   << "\nAssembly:\n"
                   << asmText << "\n";
@@ -224,8 +214,7 @@ TEST(AArch64GlobalLiveness, TwoPhiLoopMinimalSpills)
 //
 // Bound: <= 5 (fails with ~8 before fix, passes with ~3-4 after fix).
 //
-TEST(AArch64GlobalLiveness, IntermediateTempNotSpilled)
-{
+TEST(AArch64GlobalLiveness, IntermediateTempNotSpilled) {
     const std::string in = testOut("global_liveness_sq.il");
     const std::string out = testOut("global_liveness_sq.s");
 
@@ -254,8 +243,7 @@ TEST(AArch64GlobalLiveness, IntermediateTempNotSpilled)
     // After fix: only phi-stores, entry initializers, and callee-saved push
     // remain (no %sq spill).  The callee-saved push (str x20) adds 1 str x
     // that the original bound of 5 didn't account for.
-    if (strCount > 6)
-    {
+    if (strCount > 6) {
         std::cerr << "Expected at most 6 'str x' (intermediate temp not spilled); got " << strCount
                   << "\nAssembly:\n"
                   << asmText << "\n";
@@ -283,8 +271,7 @@ TEST(AArch64GlobalLiveness, IntermediateTempNotSpilled)
 //
 // Bound: <= 3 (fails with ~5 before fix, passes with ~1-2 after fix).
 //
-TEST(AArch64GlobalLiveness, ConstantMaterNotSpilled)
-{
+TEST(AArch64GlobalLiveness, ConstantMaterNotSpilled) {
     const std::string in = testOut("global_liveness_const.il");
     const std::string out = testOut("global_liveness_const.s");
 
@@ -314,8 +301,7 @@ TEST(AArch64GlobalLiveness, ConstantMaterNotSpilled)
 
     // Before fix: %limit, %done, phi_i are all block-end spilled → ~5 str x.
     // After fix:  liveOut[loop] = ∅ → no block-end spills → <= 3 str x.
-    if (strCount > 3)
-    {
+    if (strCount > 3) {
         std::cerr << "Expected at most 3 'str x' (constant not block-end spilled); got " << strCount
                   << "\nAssembly:\n"
                   << asmText << "\n";
@@ -323,8 +309,7 @@ TEST(AArch64GlobalLiveness, ConstantMaterNotSpilled)
     EXPECT_TRUE(strCount <= 3);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

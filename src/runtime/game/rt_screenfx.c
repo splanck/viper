@@ -50,15 +50,13 @@
 #include <string.h>
 
 /// Per-instance LCG state for shake offset — avoids global state thread hazard.
-static int64_t screenfx_rand(int64_t *state)
-{
+static int64_t screenfx_rand(int64_t *state) {
     *state = (*state) * 1103515245 + 12345;
     return ((*state) >> 16) & 0x7FFF;
 }
 
 /// Internal effect structure.
-struct screenfx_effect
-{
+struct screenfx_effect {
     rt_screenfx_type_t type; ///< Effect type.
     int64_t color;           ///< Color (RGBA for old effects, RGB for transitions).
     int64_t intensity;       ///< Intensity (shake) / direction (wipe) / max_block (pixelate).
@@ -69,8 +67,7 @@ struct screenfx_effect
 };
 
 /// Internal manager structure.
-struct rt_screenfx_impl
-{
+struct rt_screenfx_impl {
     struct screenfx_effect effects[RT_SCREENFX_MAX_EFFECTS];
     int64_t shake_x;       ///< Current shake offset X.
     int64_t shake_y;       ///< Current shake offset Y.
@@ -79,8 +76,7 @@ struct rt_screenfx_impl
     int64_t rand_state;    ///< Per-instance LCG state for shake RNG (thread-safe).
 };
 
-rt_screenfx rt_screenfx_new(void)
-{
+rt_screenfx rt_screenfx_new(void) {
     struct rt_screenfx_impl *fx =
         (struct rt_screenfx_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_screenfx_impl));
     if (!fx)
@@ -91,17 +87,14 @@ rt_screenfx rt_screenfx_new(void)
     return fx;
 }
 
-void rt_screenfx_destroy(rt_screenfx fx)
-{
+void rt_screenfx_destroy(rt_screenfx fx) {
     if (fx && rt_obj_release_check0(fx))
         rt_obj_free(fx);
 }
 
 /// Finds a free effect slot.
-static int find_free_slot(rt_screenfx fx)
-{
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
-    {
+static int find_free_slot(rt_screenfx fx) {
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
         if (fx->effects[i].type == RT_SCREENFX_NONE)
             return i;
     }
@@ -109,18 +102,15 @@ static int find_free_slot(rt_screenfx fx)
 }
 
 /// Finds an existing effect of given type (to replace).
-static int find_effect_of_type(rt_screenfx fx, rt_screenfx_type_t type)
-{
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
-    {
+static int find_effect_of_type(rt_screenfx fx, rt_screenfx_type_t type) {
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
         if (fx->effects[i].type == type)
             return i;
     }
     return -1;
 }
 
-void rt_screenfx_update(rt_screenfx fx, int64_t dt)
-{
+void rt_screenfx_update(rt_screenfx fx, int64_t dt) {
     if (!fx)
         return;
 
@@ -133,8 +123,7 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt)
     int64_t max_shake_intensity = 0;
     int64_t max_overlay_alpha = 0;
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
-    {
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
         struct screenfx_effect *e = &fx->effects[i];
         if (e->type == RT_SCREENFX_NONE)
             continue;
@@ -142,8 +131,7 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt)
         e->elapsed += dt;
 
         // Check if effect has finished
-        if (e->elapsed >= e->duration)
-        {
+        if (e->elapsed >= e->duration) {
             e->type = RT_SCREENFX_NONE;
             continue;
         }
@@ -151,22 +139,17 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt)
         // Calculate progress (0-1000)
         int64_t progress = (e->elapsed * 1000) / e->duration;
 
-        switch (e->type)
-        {
-            case RT_SCREENFX_SHAKE:
-            {
+        switch (e->type) {
+            case RT_SCREENFX_SHAKE: {
                 // Exponential decay: intensity falls as (1 - progress/1000)^decay_exp
                 // where decay_exp is controlled by e->decay (higher = faster decay).
                 // When decay == 0 → no decay (constant intensity).
                 // When decay == 1000 → approximately linear decay.
                 // When decay == 2000 → quadratic (trauma model: natural feel).
                 int64_t current_intensity;
-                if (e->decay <= 0)
-                {
+                if (e->decay <= 0) {
                     current_intensity = e->intensity;
-                }
-                else
-                {
+                } else {
                     // Use integer approximation of (1 - t)^2 for decay==2000 default
                     // General form: factor = (1000 - progress)^(decay/1000) / 1000
                     int64_t remaining = 1000 - progress; // 0..1000
@@ -190,13 +173,11 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt)
                 break;
             }
 
-            case RT_SCREENFX_FLASH:
-            {
+            case RT_SCREENFX_FLASH: {
                 // Flash starts bright and fades
                 // Color format: 0xRRGGBBAA — alpha in low byte
                 int64_t alpha = ((e->color & 0xFF) * (1000 - progress)) / 1000;
-                if (alpha > max_overlay_alpha)
-                {
+                if (alpha > max_overlay_alpha) {
                     max_overlay_alpha = alpha;
                     fx->overlay_color = e->color & 0xFFFFFF00;
                     fx->overlay_alpha = alpha;
@@ -204,13 +185,11 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt)
                 break;
             }
 
-            case RT_SCREENFX_FADE_IN:
-            {
+            case RT_SCREENFX_FADE_IN: {
                 // Fade from color to clear
                 int64_t base_alpha = e->color & 0xFF;
                 int64_t alpha = (base_alpha * (1000 - progress)) / 1000;
-                if (alpha > max_overlay_alpha)
-                {
+                if (alpha > max_overlay_alpha) {
                     max_overlay_alpha = alpha;
                     fx->overlay_color = e->color & 0xFFFFFF00;
                     fx->overlay_alpha = alpha;
@@ -218,13 +197,11 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt)
                 break;
             }
 
-            case RT_SCREENFX_FADE_OUT:
-            {
+            case RT_SCREENFX_FADE_OUT: {
                 // Fade from clear to color
                 int64_t base_alpha = e->color & 0xFF;
                 int64_t alpha = (base_alpha * progress) / 1000;
-                if (alpha > max_overlay_alpha)
-                {
+                if (alpha > max_overlay_alpha) {
                     max_overlay_alpha = alpha;
                     fx->overlay_color = e->color & 0xFFFFFF00;
                     fx->overlay_alpha = alpha;
@@ -246,8 +223,7 @@ void rt_screenfx_update(rt_screenfx fx, int64_t dt)
     }
 }
 
-void rt_screenfx_shake(rt_screenfx fx, int64_t intensity, int64_t duration, int64_t decay)
-{
+void rt_screenfx_shake(rt_screenfx fx, int64_t intensity, int64_t duration, int64_t decay) {
     if (!fx || duration <= 0)
         return;
 
@@ -267,8 +243,7 @@ void rt_screenfx_shake(rt_screenfx fx, int64_t intensity, int64_t duration, int6
     e->color = 0;
 }
 
-void rt_screenfx_flash(rt_screenfx fx, int64_t color, int64_t duration)
-{
+void rt_screenfx_flash(rt_screenfx fx, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
 
@@ -285,8 +260,7 @@ void rt_screenfx_flash(rt_screenfx fx, int64_t color, int64_t duration)
     e->decay = 0;
 }
 
-void rt_screenfx_fade_in(rt_screenfx fx, int64_t color, int64_t duration)
-{
+void rt_screenfx_fade_in(rt_screenfx fx, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
 
@@ -307,8 +281,7 @@ void rt_screenfx_fade_in(rt_screenfx fx, int64_t color, int64_t duration)
     e->decay = 0;
 }
 
-void rt_screenfx_fade_out(rt_screenfx fx, int64_t color, int64_t duration)
-{
+void rt_screenfx_fade_out(rt_screenfx fx, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
 
@@ -329,8 +302,7 @@ void rt_screenfx_fade_out(rt_screenfx fx, int64_t color, int64_t duration)
     e->decay = 0;
 }
 
-void rt_screenfx_cancel_all(rt_screenfx fx)
-{
+void rt_screenfx_cancel_all(rt_screenfx fx) {
     if (!fx)
         return;
 
@@ -343,61 +315,51 @@ void rt_screenfx_cancel_all(rt_screenfx fx)
     fx->overlay_alpha = 0;
 }
 
-void rt_screenfx_cancel_type(rt_screenfx fx, int64_t type)
-{
+void rt_screenfx_cancel_type(rt_screenfx fx, int64_t type) {
     if (!fx)
         return;
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
-    {
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
         if (fx->effects[i].type == (rt_screenfx_type_t)type)
             fx->effects[i].type = RT_SCREENFX_NONE;
     }
 }
 
-int8_t rt_screenfx_is_active(rt_screenfx fx)
-{
+int8_t rt_screenfx_is_active(rt_screenfx fx) {
     if (!fx)
         return 0;
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
-    {
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
         if (fx->effects[i].type != RT_SCREENFX_NONE)
             return 1;
     }
     return 0;
 }
 
-int8_t rt_screenfx_is_type_active(rt_screenfx fx, int64_t type)
-{
+int8_t rt_screenfx_is_type_active(rt_screenfx fx, int64_t type) {
     if (!fx)
         return 0;
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
-    {
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
         if (fx->effects[i].type == (rt_screenfx_type_t)type)
             return 1;
     }
     return 0;
 }
 
-int64_t rt_screenfx_get_shake_x(rt_screenfx fx)
-{
+int64_t rt_screenfx_get_shake_x(rt_screenfx fx) {
     return fx ? fx->shake_x : 0;
 }
 
-int64_t rt_screenfx_get_shake_y(rt_screenfx fx)
-{
+int64_t rt_screenfx_get_shake_y(rt_screenfx fx) {
     return fx ? fx->shake_y : 0;
 }
 
-int64_t rt_screenfx_get_overlay_color(rt_screenfx fx)
-{
+int64_t rt_screenfx_get_overlay_color(rt_screenfx fx) {
     return fx ? fx->overlay_color : 0;
 }
 
-int64_t rt_screenfx_get_overlay_alpha(rt_screenfx fx)
-{
+int64_t rt_screenfx_get_overlay_alpha(rt_screenfx fx) {
     return fx ? fx->overlay_alpha : 0;
 }
 
@@ -405,8 +367,7 @@ int64_t rt_screenfx_get_overlay_alpha(rt_screenfx fx)
 // Transition Effects
 //=============================================================================
 
-void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t duration)
-{
+void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
     if (direction < 0 || direction > 3)
@@ -426,8 +387,8 @@ void rt_screenfx_wipe(rt_screenfx fx, int64_t direction, int64_t color, int64_t 
     e->extra = 0;
 }
 
-void rt_screenfx_circle_in(rt_screenfx fx, int64_t cx, int64_t cy, int64_t color, int64_t duration)
-{
+void rt_screenfx_circle_in(
+    rt_screenfx fx, int64_t cx, int64_t cy, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
 
@@ -445,8 +406,8 @@ void rt_screenfx_circle_in(rt_screenfx fx, int64_t cx, int64_t cy, int64_t color
     e->extra = cy;
 }
 
-void rt_screenfx_circle_out(rt_screenfx fx, int64_t cx, int64_t cy, int64_t color, int64_t duration)
-{
+void rt_screenfx_circle_out(
+    rt_screenfx fx, int64_t cx, int64_t cy, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
 
@@ -464,8 +425,7 @@ void rt_screenfx_circle_out(rt_screenfx fx, int64_t cx, int64_t cy, int64_t colo
     e->extra = cy;
 }
 
-void rt_screenfx_dissolve(rt_screenfx fx, int64_t color, int64_t duration)
-{
+void rt_screenfx_dissolve(rt_screenfx fx, int64_t color, int64_t duration) {
     if (!fx || duration <= 0)
         return;
 
@@ -483,8 +443,7 @@ void rt_screenfx_dissolve(rt_screenfx fx, int64_t color, int64_t duration)
     e->extra = 0;
 }
 
-void rt_screenfx_pixelate(rt_screenfx fx, int64_t max_block_size, int64_t duration)
-{
+void rt_screenfx_pixelate(rt_screenfx fx, int64_t max_block_size, int64_t duration) {
     if (!fx || duration <= 0)
         return;
     if (max_block_size < 2)
@@ -504,30 +463,25 @@ void rt_screenfx_pixelate(rt_screenfx fx, int64_t max_block_size, int64_t durati
     e->extra = 0;
 }
 
-int8_t rt_screenfx_is_finished(rt_screenfx fx)
-{
+int8_t rt_screenfx_is_finished(rt_screenfx fx) {
     if (!fx)
         return 1;
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
-    {
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
         if (fx->effects[i].type != RT_SCREENFX_NONE)
             return 0;
     }
     return 1;
 }
 
-int64_t rt_screenfx_get_transition_progress(rt_screenfx fx)
-{
+int64_t rt_screenfx_get_transition_progress(rt_screenfx fx) {
     if (!fx)
         return 0;
 
     // Find the first active transition effect and return its progress
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
-    {
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
         struct screenfx_effect *e = &fx->effects[i];
-        if (e->type >= RT_SCREENFX_WIPE && e->type <= RT_SCREENFX_PIXELATE)
-        {
+        if (e->type >= RT_SCREENFX_WIPE && e->type <= RT_SCREENFX_PIXELATE) {
             if (e->duration <= 0)
                 return 1000;
             int64_t p = (e->elapsed * 1000) / e->duration;
@@ -553,20 +507,17 @@ static const uint8_t bayer4x4[4][4] = {
     {240, 112, 208, 80},
 };
 
-void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t screen_h)
-{
+void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t screen_h) {
     if (!fx || !canvas || screen_w <= 0 || screen_h <= 0)
         return;
 
     // Also draw overlay for existing fade/flash effects
-    if (fx->overlay_alpha > 0)
-    {
+    if (fx->overlay_alpha > 0) {
         rt_canvas_box_alpha(
             canvas, 0, 0, screen_w, screen_h, fx->overlay_color >> 8, fx->overlay_alpha);
     }
 
-    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++)
-    {
+    for (int i = 0; i < RT_SCREENFX_MAX_EFFECTS; i++) {
         struct screenfx_effect *e = &fx->effects[i];
         if (e->type == RT_SCREENFX_NONE)
             continue;
@@ -577,29 +528,23 @@ void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t sc
         if (progress > 1000)
             progress = 1000;
 
-        switch (e->type)
-        {
-            case RT_SCREENFX_WIPE:
-            {
+        switch (e->type) {
+            case RT_SCREENFX_WIPE: {
                 int64_t dir = e->intensity;
                 int64_t color = e->color;
 
-                switch (dir)
-                {
-                    case RT_DIR_RIGHT:
-                    {
+                switch (dir) {
+                    case RT_DIR_RIGHT: {
                         int64_t w = screen_w * progress / 1000;
                         rt_canvas_box(canvas, screen_w - w, 0, w, screen_h, color);
                         break;
                     }
-                    case RT_DIR_UP:
-                    {
+                    case RT_DIR_UP: {
                         int64_t h = screen_h * progress / 1000;
                         rt_canvas_box(canvas, 0, 0, screen_w, h, color);
                         break;
                     }
-                    case RT_DIR_DOWN:
-                    {
+                    case RT_DIR_DOWN: {
                         int64_t h = screen_h * progress / 1000;
                         rt_canvas_box(canvas, 0, screen_h - h, screen_w, h, color);
                         break;
@@ -614,8 +559,7 @@ void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t sc
                 break;
             }
 
-            case RT_SCREENFX_CIRCLE_IN:
-            {
+            case RT_SCREENFX_CIRCLE_IN: {
                 // Circle closes: starts at max radius, shrinks to 0.
                 // We draw the color everywhere EXCEPT inside the circle.
                 // Approximate with 4 rectangles forming a frame around the shrinking circle.
@@ -651,8 +595,7 @@ void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t sc
                 break;
             }
 
-            case RT_SCREENFX_CIRCLE_OUT:
-            {
+            case RT_SCREENFX_CIRCLE_OUT: {
                 // Circle opens: starts at 0 radius, expands to reveal.
                 // We draw color everywhere EXCEPT inside the growing circle.
                 int64_t cx = e->decay;
@@ -681,24 +624,18 @@ void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t sc
                 break;
             }
 
-            case RT_SCREENFX_DISSOLVE:
-            {
+            case RT_SCREENFX_DISSOLVE: {
                 // Bayer dithering: threshold increases with progress.
                 // Pixels where bayer[x%4][y%4] < threshold get the overlay color.
                 int64_t threshold = progress * 256 / 1000; // 0-255
                 int64_t color = e->color;
 
                 // Draw in 4×4 tile blocks for efficiency
-                for (int64_t ty = 0; ty < screen_h; ty += 4)
-                {
-                    for (int64_t tx = 0; tx < screen_w; tx += 4)
-                    {
-                        for (int by = 0; by < 4 && ty + by < screen_h; by++)
-                        {
-                            for (int bx = 0; bx < 4 && tx + bx < screen_w; bx++)
-                            {
-                                if (bayer4x4[by][bx] < (uint8_t)threshold)
-                                {
+                for (int64_t ty = 0; ty < screen_h; ty += 4) {
+                    for (int64_t tx = 0; tx < screen_w; tx += 4) {
+                        for (int by = 0; by < 4 && ty + by < screen_h; by++) {
+                            for (int bx = 0; bx < 4 && tx + bx < screen_w; bx++) {
+                                if (bayer4x4[by][bx] < (uint8_t)threshold) {
                                     rt_canvas_plot(canvas, tx + bx, ty + by, color);
                                 }
                             }
@@ -708,8 +645,7 @@ void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t sc
                 break;
             }
 
-            case RT_SCREENFX_PIXELATE:
-            {
+            case RT_SCREENFX_PIXELATE: {
                 // Block size grows from 1 to max_block_size over duration.
                 // We render colored blocks at increasing sizes.
                 // Note: true pixelation requires reading back pixels — we approximate
@@ -726,12 +662,10 @@ void rt_screenfx_draw(rt_screenfx fx, void *canvas, int64_t screen_w, int64_t sc
                 if (alpha > 128)
                     alpha = 128;
 
-                for (int64_t gy = 0; gy < screen_h; gy += block)
-                {
+                for (int64_t gy = 0; gy < screen_h; gy += block) {
                     rt_canvas_box_alpha(canvas, 0, gy, screen_w, 1, 0x000000, alpha);
                 }
-                for (int64_t gx = 0; gx < screen_w; gx += block)
-                {
+                for (int64_t gx = 0; gx < screen_w; gx += block) {
                     rt_canvas_box_alpha(canvas, gx, 0, 1, screen_h, 0x000000, alpha);
                 }
                 break;

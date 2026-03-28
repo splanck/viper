@@ -19,23 +19,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -43,8 +40,7 @@ static std::string readFile(const std::string &path)
 }
 
 // Test: load from base[idx] where element size is 8
-TEST(Arm64CLI, ArrayAccess_LoadIndex)
-{
+TEST(Arm64CLI, ArrayAccess_LoadIndex) {
     const std::string in = outPath("arm64_array_load_idx.il");
     const std::string out = outPath("arm64_array_load_idx.s");
     const std::string il = "il 0.1\n"
@@ -67,8 +63,7 @@ TEST(Arm64CLI, ArrayAccess_LoadIndex)
 }
 
 // Test: store to base[idx] where element size is 8
-TEST(Arm64CLI, ArrayAccess_StoreIndex)
-{
+TEST(Arm64CLI, ArrayAccess_StoreIndex) {
     const std::string in = outPath("arm64_array_store_idx.il");
     const std::string out = outPath("arm64_array_store_idx.s");
     const std::string il = "il 0.1\n"
@@ -91,8 +86,7 @@ TEST(Arm64CLI, ArrayAccess_StoreIndex)
 }
 
 // Test: load from base with constant offset (field access)
-TEST(Arm64CLI, ArrayAccess_ConstOffset)
-{
+TEST(Arm64CLI, ArrayAccess_ConstOffset) {
     const std::string in = outPath("arm64_const_offset.il");
     const std::string out = outPath("arm64_const_offset.s");
     const std::string il = "il 0.1\n"
@@ -116,8 +110,7 @@ TEST(Arm64CLI, ArrayAccess_ConstOffset)
 }
 
 // Test: combined array element plus field offset (struct in array)
-TEST(Arm64CLI, ArrayAccess_StructInArray)
-{
+TEST(Arm64CLI, ArrayAccess_StructInArray) {
     const std::string in = outPath("arm64_struct_in_array.il");
     const std::string out = outPath("arm64_struct_in_array.s");
     // base[idx].field where struct size=24, field offset=8
@@ -142,8 +135,7 @@ TEST(Arm64CLI, ArrayAccess_StructInArray)
     EXPECT_NE(asmText.find("ldr x"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

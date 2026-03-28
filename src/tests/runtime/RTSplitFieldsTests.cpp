@@ -18,8 +18,7 @@
 #include <assert.h>
 #include <string.h>
 
-int main()
-{
+int main() {
     const char *raw = "12, \"hi\" , \" spaced \"";
     rt_string line = rt_string_from_bytes(raw, (int64_t)strlen(raw));
 

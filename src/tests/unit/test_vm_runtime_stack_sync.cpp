@@ -34,15 +34,12 @@
 
 using namespace il::core;
 
-namespace
-{
-constexpr il::support::SourceLoc kLoc(unsigned line)
-{
+namespace {
+constexpr il::support::SourceLoc kLoc(unsigned line) {
     return {1, static_cast<uint32_t>(line), 0};
 }
 
-std::filesystem::path makeTempFile()
-{
+std::filesystem::path makeTempFile() {
     namespace fs = std::filesystem;
     const auto unique = std::chrono::steady_clock::now().time_since_epoch().count();
     fs::path path = fs::temp_directory_path();
@@ -51,8 +48,7 @@ std::filesystem::path makeTempFile()
 }
 } // namespace
 
-int main()
-{
+int main() {
     namespace fs = std::filesystem;
 
     const int32_t channel = 47;
@@ -72,8 +68,7 @@ int main()
         return 1;
 
     const int32_t openStatus = rt_open_err_vstr(pathHandle, RT_F_INPUT, channel);
-    if (openStatus != 0)
-    {
+    if (openStatus != 0) {
         rt_string_unref(pathHandle);
         fs::remove(tempPath);
         return 1;
@@ -125,96 +120,83 @@ int main()
     auto &mainFn = module.functions.front();
     auto state = il::vm::VMTestHook::prepare(vm, mainFn);
 
-    auto step = [&]() -> std::optional<il::vm::Slot>
-    { return il::vm::VMTestHook::step(vm, state); };
+    auto step = [&]() -> std::optional<il::vm::Slot> {
+        return il::vm::VMTestHook::step(vm, state);
+    };
 
-    if (step())
-    {
+    if (step()) {
         std::fprintf(stderr, "alloca returned unexpectedly\n");
         return 1;
     }
 
     auto *slotAddress = reinterpret_cast<rt_string *>(state.fr.regs[slotId].ptr);
-    if (!slotAddress)
-    {
+    if (!slotAddress) {
         std::fprintf(stderr, "alloca slot pointer missing\n");
         return 1;
     }
 
-    if (step())
-    {
+    if (step()) {
         std::fprintf(stderr, "call returned unexpectedly\n");
         return 1;
     }
 
     const int32_t callStatus = static_cast<int32_t>(state.fr.regs[statusId].i64);
-    if (callStatus != 0)
-    {
+    if (callStatus != 0) {
         std::fprintf(stderr, "runtime status %d\n", callStatus);
         return 1;
     }
 
     rt_string captured = *slotAddress;
-    if (!captured)
-    {
+    if (!captured) {
         std::fprintf(stderr, "stack slot unchanged\n");
         return 1;
     }
 
     const char *capturedData = rt_string_cstr(captured);
-    if (!capturedData)
-    {
+    if (!capturedData) {
         std::fprintf(stderr, "captured string view missing\n");
         return 1;
     }
 
-    if (std::string_view(capturedData) != payload)
-    {
+    if (std::string_view(capturedData) != payload) {
         std::fprintf(stderr, "unexpected payload '%s'\n", capturedData);
         return 1;
     }
 
     auto *capturedImpl = reinterpret_cast<rt_string_impl *>(captured);
-    if (!capturedImpl)
-    {
+    if (!capturedImpl) {
         std::fprintf(stderr, "missing captured impl\n");
         return 1;
     }
 
-    if (!capturedImpl->heap)
-    {
+    if (!capturedImpl->heap) {
         std::fprintf(stderr, "captured string is not heap backed\n");
         return 1;
     }
 
     const size_t preCallRefs = capturedImpl->heap->refcnt;
-    if (preCallRefs != 1)
-    {
+    if (preCallRefs != 1) {
         std::fprintf(stderr, "unexpected retained refs: %zu\n", preCallRefs);
         return 1;
     }
 
-    if (step())
-    {
+    if (step()) {
         std::fprintf(stderr, "load returned unexpectedly\n");
         return 1;
     }
 
-    if (step())
-    {
+    if (step()) {
         std::fprintf(stderr, "len call returned unexpectedly\n");
         return 1;
     }
 
-    if (step())
-    {
+    if (step()) {
         std::fprintf(stderr, "release returned unexpectedly\n");
         return 1;
     }
 
     std::optional<il::vm::Slot> result = step();
-    if (!result)
-    {
+    if (!result) {
         std::fprintf(stderr, "missing return value\n");
         return 1;
     }
@@ -223,20 +205,17 @@ int main()
     rt_string_unref(pathHandle);
     fs::remove(tempPath);
 
-    if (openStatus != 0)
-    {
+    if (openStatus != 0) {
         std::fprintf(stderr, "open failed: %d\n", openStatus);
         return 1;
     }
 
-    if (closeStatus != 0)
-    {
+    if (closeStatus != 0) {
         std::fprintf(stderr, "close failed: %d\n", closeStatus);
         return 1;
     }
 
-    if (result->i64 != static_cast<int64_t>(payload.size()))
-    {
+    if (result->i64 != static_cast<int64_t>(payload.size())) {
         std::fprintf(stderr, "length mismatch: %lld\n", static_cast<long long>(result->i64));
         return 1;
     }

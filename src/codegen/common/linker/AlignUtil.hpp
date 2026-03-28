@@ -22,13 +22,11 @@
 #include <cassert>
 #include <cstddef>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Round \p val up to the next multiple of \p align.
 /// \p align must be 0 (no-op) or a power of two.
-inline size_t alignUp(size_t val, size_t align)
-{
+inline size_t alignUp(size_t val, size_t align) {
     if (align == 0)
         return val;
     assert((align & (align - 1)) == 0 && "alignUp: alignment must be a power of two");

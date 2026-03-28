@@ -40,8 +40,7 @@
 #include <string_view>
 
 #ifdef _WIN32
-inline int setenv(const char *name, const char *value, int)
-{
+inline int setenv(const char *name, const char *value, int) {
     return _putenv_s(name, value);
 }
 #endif
@@ -50,17 +49,11 @@ using namespace il;
 using namespace il::support;
 using namespace il::tools::common;
 
-namespace
-{
+namespace {
 
-enum class RunMode
-{
-    Run,
-    Build
-};
+enum class RunMode { Run, Build };
 
-struct RunBuildConfig
-{
+struct RunBuildConfig {
     RunMode mode{RunMode::Run};
     std::string target{"."};
     std::string outputPath;
@@ -74,53 +67,37 @@ struct RunBuildConfig
     std::optional<viper::tools::TargetArch> archOverride;
 };
 
-il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, char **argv)
-{
+il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, char **argv) {
     RunBuildConfig config;
     config.mode = mode;
 
     bool hasTarget = false;
 
-    for (int i = 0; i < argc; ++i)
-    {
+    for (int i = 0; i < argc; ++i) {
         std::string_view arg = argv[i];
 
-        if (arg == "--")
-        {
+        if (arg == "--") {
             for (int j = i + 1; j < argc; ++j)
                 config.programArgs.emplace_back(argv[j]);
             break;
-        }
-        else if (arg == "-o")
-        {
-            if (mode != RunMode::Build)
-            {
+        } else if (arg == "-o") {
+            if (mode != RunMode::Build) {
                 return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
                     il::support::Severity::Error, "-o is only valid with 'build'", {}, {}});
             }
-            if (i + 1 >= argc)
-            {
+            if (i + 1 >= argc) {
                 return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
                     il::support::Severity::Error, "missing output path after -o", {}, {}});
             }
             config.outputPath = argv[++i];
-        }
-        else if (arg == "-O0" || arg == "-O1" || arg == "-O2")
-        {
+        } else if (arg == "-O0" || arg == "-O1" || arg == "-O2") {
             config.optimizeLevelOverride = std::string(arg.substr(1));
-        }
-        else if (arg == "--debug-vm")
-        {
+        } else if (arg == "--debug-vm") {
             config.debugVm = true;
-        }
-        else if (arg == "--no-runtime-namespaces")
-        {
+        } else if (arg == "--no-runtime-namespaces") {
             config.noRuntimeNamespaces = true;
-        }
-        else if (arg == "--arch")
-        {
-            if (i + 1 >= argc)
-            {
+        } else if (arg == "--arch") {
+            if (i + 1 >= argc) {
                 return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
                     il::support::Severity::Error, "--arch requires arm64 or x64", {}, {}});
             }
@@ -129,29 +106,22 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                 config.archOverride = viper::tools::TargetArch::ARM64;
             else if (val == "x64")
                 config.archOverride = viper::tools::TargetArch::X64;
-            else
-            {
+            else {
                 return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
                     il::support::Severity::Error, "--arch must be 'arm64' or 'x64'", {}, {}});
             }
-        }
-        else
-        {
-            switch (ilc::parseSharedOption(i, argc, argv, config.shared))
-            {
+        } else {
+            switch (ilc::parseSharedOption(i, argc, argv, config.shared)) {
                 case ilc::SharedOptionParseResult::Parsed:
                     continue;
                 case ilc::SharedOptionParseResult::Error:
                     return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
                         il::support::Severity::Error, "failed to parse shared option", {}, {}});
                 case ilc::SharedOptionParseResult::NotMatched:
-                    if (!arg.empty() && arg[0] != '-' && !hasTarget)
-                    {
+                    if (!arg.empty() && arg[0] != '-' && !hasTarget) {
                         config.target = std::string(arg);
                         hasTarget = true;
-                    }
-                    else
-                    {
+                    } else {
                         return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
                             il::support::Severity::Error,
                             std::string("unknown flag: ") + std::string(arg),
@@ -171,19 +141,15 @@ int verifyAndExecute(il::core::Module &module,
                      const ilc::SharedCliOptions &shared,
                      const std::vector<std::string> &programArgs,
                      bool debugVm,
-                     il::support::SourceManager &sm)
-{
+                     il::support::SourceManager &sm) {
     auto verification = il::verify::Verifier::verify(module);
-    if (!verification)
-    {
+    if (!verification) {
         il::support::printDiag(verification.error(), std::cerr, &sm);
         return 1;
     }
 
-    if (!shared.stdinPath.empty())
-    {
-        if (!freopen(shared.stdinPath.c_str(), "r", stdin))
-        {
+    if (!shared.stdinPath.empty()) {
+        if (!freopen(shared.stdinPath.c_str(), "r", stdin)) {
             std::cerr << "unable to open stdin file\n";
             return 1;
         }
@@ -191,8 +157,7 @@ int verifyAndExecute(il::core::Module &module,
 
     bool useStandardVm = debugVm || shared.trace.enabled();
 
-    if (useStandardVm || shared.profile)
-    {
+    if (useStandardVm || shared.profile) {
         vm::TraceConfig traceCfg = shared.trace;
         traceCfg.sm = &sm;
 
@@ -214,10 +179,8 @@ int verifyAndExecute(il::core::Module &module,
             endTime = std::chrono::steady_clock::now();
 
         const auto trapMessage = runner.lastTrapMessage();
-        if (trapMessage)
-        {
-            if (shared.dumpTrap && !trapMessage->empty())
-            {
+        if (trapMessage) {
+            if (shared.dumpTrap && !trapMessage->empty()) {
                 std::cerr << *trapMessage;
                 if (trapMessage->back() != '\n')
                     std::cerr << '\n';
@@ -226,8 +189,7 @@ int verifyAndExecute(il::core::Module &module,
                 rc = 1;
         }
 
-        if (shared.profile)
-        {
+        if (shared.profile) {
             double ms = std::chrono::duration<double, std::milli>(endTime - startTime).count();
             std::cerr << "[SUMMARY] instr=" << runner.instructionCount() << " time_ms=" << ms
                       << "\n";
@@ -248,8 +210,7 @@ int verifyAndExecute(il::core::Module &module,
 /// @brief Compile a Zia project and return the module.
 il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &project,
                                                           const ilc::SharedCliOptions &shared,
-                                                          il::support::SourceManager &sm)
-{
+                                                          il::support::SourceManager &sm) {
     il::frontends::zia::CompilerOptions opts;
     opts.boundsChecks = project.boundsChecks;
     opts.overflowChecks = project.overflowChecks;
@@ -264,8 +225,7 @@ il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &p
     // Warning policy from CLI flags
     opts.warningPolicy.enableAll = shared.wall;
     opts.warningPolicy.warningsAsErrors = shared.werror;
-    for (const auto &w : shared.disabledWarnings)
-    {
+    for (const auto &w : shared.disabledWarnings) {
         if (auto code = il::frontends::zia::parseWarningCode(w))
             opts.warningPolicy.disabled.insert(*code);
     }
@@ -278,8 +238,7 @@ il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &p
         opts.optLevel = il::frontends::zia::OptLevel::O2;
 
     auto result = il::frontends::zia::compileFile(project.entryFile, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         result.diagnostics.printAll(std::cerr, &sm);
         return il::support::Expected<il::core::Module>(
             il::support::Diagnostic{il::support::Severity::Error, "compilation failed", {}, {}});
@@ -292,11 +251,9 @@ il::support::Expected<il::core::Module> compileZiaProject(const ProjectConfig &p
 il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig &project,
                                                             bool noRuntimeNamespaces,
                                                             const ilc::SharedCliOptions &shared,
-                                                            il::support::SourceManager &sm)
-{
+                                                            il::support::SourceManager &sm) {
     auto source = loadSourceBuffer(project.entryFile, sm);
-    if (!source)
-    {
+    if (!source) {
         il::support::printDiag(source.error(), std::cerr, &sm);
         return il::support::Expected<il::core::Module>(
             il::support::Diagnostic{il::support::Severity::Error, "failed to load source", {}, {}});
@@ -317,8 +274,7 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
     input.fileId = source.value().fileId;
 
     auto result = il::frontends::basic::compileBasic(input, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         if (result.emitter)
             result.emitter->printAll(std::cerr);
         return il::support::Expected<il::core::Module>(
@@ -331,8 +287,7 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
         pm.setVerifyBetweenPasses(false);
 
         // Enable per-pass IL dumps when requested.
-        if (shared.dumpILPasses)
-        {
+        if (shared.dumpILPasses) {
             pm.setPrintBeforeEach(true);
             pm.setPrintAfterEach(true);
             pm.setInstrumentationStream(std::cerr);
@@ -346,8 +301,7 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
             pm.runPipeline(result.module, "O0");
 
         // Dump IL after the full optimization pipeline.
-        if (shared.dumpILOpt)
-        {
+        if (shared.dumpILOpt) {
             std::cerr << "=== IL after optimization (" << project.optimizeLevel << ") ===\n";
             io::Serializer::write(result.module, std::cerr);
             std::cerr << "=== End IL ===\n";
@@ -361,8 +315,7 @@ il::support::Expected<il::core::Module> compileBasicProject(const ProjectConfig 
 il::support::Expected<il::core::Module> compileMixedProject(const ProjectConfig &project,
                                                             bool noRuntimeNamespaces,
                                                             const ilc::SharedCliOptions &shared,
-                                                            il::support::SourceManager &sm)
-{
+                                                            il::support::SourceManager &sm) {
     // Determine entry language from file extension.
     std::string entryExt;
     if (project.entryFile.size() >= 4)
@@ -410,8 +363,7 @@ il::support::Expected<il::core::Module> compileMixedProject(const ProjectConfig 
     modules.push_back(std::move(libResult.value()));
 
     auto linkResult = il::link::linkModules(std::move(modules));
-    if (!linkResult.succeeded())
-    {
+    if (!linkResult.succeeded()) {
         std::string errMsg = "link errors:";
         for (const auto &e : linkResult.errors)
             errMsg += "\n  " + e;
@@ -423,11 +375,9 @@ il::support::Expected<il::core::Module> compileMixedProject(const ProjectConfig 
 }
 
 /// @brief Common implementation for both run and build commands.
-int runOrBuild(RunMode mode, int argc, char **argv)
-{
+int runOrBuild(RunMode mode, int argc, char **argv) {
     auto parsed = parseRunBuildArgs(mode, argc, argv);
-    if (!parsed)
-    {
+    if (!parsed) {
         const auto &diag = parsed.error();
         SourceManager sm;
         il::support::printDiag(diag, std::cerr, &sm);
@@ -439,8 +389,7 @@ int runOrBuild(RunMode mode, int argc, char **argv)
 
     // Resolve the project
     auto project = resolveProject(config.target);
-    if (!project)
-    {
+    if (!project) {
         SourceManager sm;
         il::support::printDiag(project.error(), std::cerr, &sm);
         return 1;
@@ -469,35 +418,29 @@ int runOrBuild(RunMode mode, int argc, char **argv)
     il::core::Module module = std::move(moduleResult.value());
 
     // Build mode: emit IL or compile to native binary
-    if (mode == RunMode::Build)
-    {
+    if (mode == RunMode::Build) {
         // Verify before emitting
         auto verification = il::verify::Verifier::verify(module);
-        if (!verification)
-        {
+        if (!verification) {
             il::support::printDiag(verification.error(), std::cerr, &sm);
             return 1;
         }
 
         // No -o: emit IL to stdout (backwards compat)
-        if (config.outputPath.empty())
-        {
+        if (config.outputPath.empty()) {
             io::Serializer::write(module, std::cout);
             return 0;
         }
 
         // -o path ends in .il: emit IL text (backwards compat)
-        if (!viper::tools::isNativeOutputPath(config.outputPath))
-        {
+        if (!viper::tools::isNativeOutputPath(config.outputPath)) {
             std::ofstream outFile(config.outputPath);
-            if (!outFile.is_open())
-            {
+            if (!outFile.is_open()) {
                 std::cerr << "error: cannot open output file: " << config.outputPath << "\n";
                 return 1;
             }
             io::Serializer::write(module, outFile);
-            if (!outFile)
-            {
+            if (!outFile) {
                 std::cerr << "error: failed to write IL to " << config.outputPath << "\n";
                 return 1;
             }
@@ -509,14 +452,12 @@ int runOrBuild(RunMode mode, int argc, char **argv)
         std::string tempIlPath = viper::tools::generateTempIlPath();
         {
             std::ofstream tempFile(tempIlPath);
-            if (!tempFile.is_open())
-            {
+            if (!tempFile.is_open()) {
                 std::cerr << "error: cannot create temporary file for IL serialization\n";
                 return 1;
             }
             io::Serializer::write(module, tempFile);
-            if (!tempFile)
-            {
+            if (!tempFile) {
                 std::cerr << "error: failed to write IL to temporary file\n";
                 return 1;
             }
@@ -533,12 +474,10 @@ int runOrBuild(RunMode mode, int argc, char **argv)
 
 } // namespace
 
-int cmdRun(int argc, char **argv)
-{
+int cmdRun(int argc, char **argv) {
     return runOrBuild(RunMode::Run, argc, argv);
 }
 
-int cmdBuild(int argc, char **argv)
-{
+int cmdBuild(int argc, char **argv) {
     return runOrBuild(RunMode::Build, argc, argv);
 }

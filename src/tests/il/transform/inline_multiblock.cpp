@@ -33,12 +33,10 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Make abs helper.
-Function makeAbsHelper()
-{
+Function makeAbsHelper() {
     Function f;
     f.name = "abs_helper";
     f.retType = Type(Type::Kind::I64);
@@ -111,8 +109,7 @@ Function makeAbsHelper()
 }
 
 /// @brief Make inline caller.
-Function makeInlineCaller()
-{
+Function makeInlineCaller() {
     Function f;
     f.name = "main";
     f.retType = Type(Type::Kind::I64);
@@ -143,8 +140,7 @@ Function makeInlineCaller()
 }
 
 /// @brief Make large helper.
-Function makeLargeHelper()
-{
+Function makeLargeHelper() {
     Function f;
     f.name = "large_helper";
     f.retType = Type(Type::Kind::I64);
@@ -154,22 +150,21 @@ Function makeLargeHelper()
     f.params.push_back(x);
 
     auto makeForwardBlock =
-        [&](const std::string &from, const std::string &to, std::optional<unsigned> argId)
-    {
-        BasicBlock block;
-        block.label = from;
-        Instr br;
-        br.op = Opcode::Br;
-        br.type = Type(Type::Kind::Void);
-        br.labels.push_back(to);
-        if (argId)
-            br.brArgs.push_back({Value::temp(*argId)});
-        else
-            br.brArgs.emplace_back();
-        block.instructions.push_back(br);
-        block.terminated = true;
-        return block;
-    };
+        [&](const std::string &from, const std::string &to, std::optional<unsigned> argId) {
+            BasicBlock block;
+            block.label = from;
+            Instr br;
+            br.op = Opcode::Br;
+            br.type = Type(Type::Kind::Void);
+            br.labels.push_back(to);
+            if (argId)
+                br.brArgs.push_back({Value::temp(*argId)});
+            else
+                br.brArgs.emplace_back();
+            block.instructions.push_back(br);
+            block.terminated = true;
+            return block;
+        };
 
     // 9 forwarding blocks (b0..b7 + exit) exceeds blockBudget=8, so this
     // function will not be inlined regardless of instruction count.
@@ -202,8 +197,7 @@ Function makeLargeHelper()
 }
 
 /// @brief Make large caller.
-Function makeLargeCaller()
-{
+Function makeLargeCaller() {
     Function f;
     f.name = "large_caller";
     f.retType = Type(Type::Kind::I64);
@@ -233,8 +227,7 @@ Function makeLargeCaller()
 }
 
 /// @brief Make recursive helper.
-Function makeRecursiveHelper()
-{
+Function makeRecursiveHelper() {
     Function f;
     f.name = "self";
     f.retType = Type(Type::Kind::I64);
@@ -264,8 +257,7 @@ Function makeRecursiveHelper()
 }
 
 /// @brief Make inline tail helper.
-Function makeInlineTailHelper()
-{
+Function makeInlineTailHelper() {
     Function f;
     f.name = "tail_helper";
     f.retType = Type(Type::Kind::I64);
@@ -290,8 +282,7 @@ Function makeInlineTailHelper()
 }
 
 /// @brief Make inline tail caller.
-Function makeInlineTailCaller()
-{
+Function makeInlineTailCaller() {
     Function f;
     f.name = "tail_caller";
     f.retType = Type(Type::Kind::I64);
@@ -367,8 +358,7 @@ Function makeInlineTailCaller()
 }
 
 /// @brief Has call.
-bool hasCall(const Function &fn)
-{
+bool hasCall(const Function &fn) {
     for (const auto &B : fn.blocks)
         for (const auto &I : B.instructions)
             if (I.op == Opcode::Call)
@@ -378,8 +368,7 @@ bool hasCall(const Function &fn)
 
 } // namespace
 
-TEST(IL, test_inline_multiblock)
-{
+TEST(IL, test_inline_multiblock) {
     Module M;
     M.functions.push_back(makeAbsHelper());
     M.functions.push_back(makeInlineCaller());
@@ -395,8 +384,7 @@ TEST(IL, test_inline_multiblock)
     ASSERT_TRUE(hasCall(caller));
 }
 
-TEST(IL, test_no_inline_large)
-{
+TEST(IL, test_no_inline_large) {
     Module M;
     M.functions.push_back(makeLargeHelper());
     M.functions.push_back(makeLargeCaller());
@@ -410,8 +398,7 @@ TEST(IL, test_no_inline_large)
     ASSERT_TRUE(hasCall(caller));
 }
 
-TEST(IL, test_no_inline_recursive)
-{
+TEST(IL, test_no_inline_recursive) {
     Module M;
     M.functions.push_back(makeRecursiveHelper());
 
@@ -424,8 +411,7 @@ TEST(IL, test_no_inline_recursive)
     ASSERT_TRUE(hasCall(self));
 }
 
-TEST(IL, test_inline_roundtrip_preserves_continuation_defs_before_uses)
-{
+TEST(IL, test_inline_roundtrip_preserves_continuation_defs_before_uses) {
     Module M;
     M.functions.push_back(makeInlineTailHelper());
     M.functions.push_back(makeInlineTailCaller());
@@ -443,8 +429,7 @@ TEST(IL, test_inline_roundtrip_preserves_continuation_defs_before_uses)
     ASSERT_TRUE(parsed && "round-trip parse should succeed");
 }
 
-TEST(IL, test_o2_pipeline_runs)
-{
+TEST(IL, test_o2_pipeline_runs) {
     Module M;
     M.functions.push_back(makeAbsHelper());
     M.functions.push_back(makeInlineCaller());
@@ -459,8 +444,7 @@ TEST(IL, test_o2_pipeline_runs)
     ASSERT_TRUE(hasCall(caller));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

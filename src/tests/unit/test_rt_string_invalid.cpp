@@ -15,8 +15,7 @@
 
 #include "rt.hpp"
 
-int main()
-{
+int main() {
     rt_string abcde = rt_const_cstr("ABCDE");
     rt_str_mid(abcde, -1);
     return 0;

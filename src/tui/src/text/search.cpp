@@ -23,10 +23,8 @@
 
 #include <regex>
 
-namespace viper::tui::text
-{
-namespace
-{
+namespace viper::tui::text {
+namespace {
 /// @brief Maximum number of characters a search considers before truncating.
 /// @details Keeps regex operations bounded so pathological patterns cannot freeze
 ///          the UI.  One megabyte is large enough for typical buffers yet small
@@ -44,41 +42,32 @@ constexpr size_t kMaxSearchSize = 1 << 20; // 1MB cap
 ///             so malformed expressions simply yield no matches.
 ///          In both cases the buffer is truncated to @ref kMaxSearchSize bytes to
 ///          prevent unbounded work when the user searches enormous files.
-std::vector<Match> findAll(const TextBuffer &buf, std::string_view query, bool useRegex)
-{
+std::vector<Match> findAll(const TextBuffer &buf, std::string_view query, bool useRegex) {
     std::vector<Match> hits;
-    if (query.empty())
-    {
+    if (query.empty()) {
         return hits;
     }
     std::string hay = buf.str();
-    if (hay.size() > kMaxSearchSize)
-    {
+    if (hay.size() > kMaxSearchSize) {
         hay.resize(kMaxSearchSize);
     }
-    if (!useRegex)
-    {
+    if (!useRegex) {
         size_t pos = 0;
-        while ((pos = hay.find(query, pos)) != std::string::npos)
-        {
+        while ((pos = hay.find(query, pos)) != std::string::npos) {
             hits.push_back(Match{pos, query.size()});
             pos += query.size() > 0 ? query.size() : 1;
         }
         return hits;
     }
-    try
-    {
+    try {
         std::regex re{std::string(query)};
         auto begin = std::sregex_iterator(hay.begin(), hay.end(), re);
         auto end = std::sregex_iterator();
-        for (auto it = begin; it != end; ++it)
-        {
+        for (auto it = begin; it != end; ++it) {
             hits.push_back(
                 Match{static_cast<size_t>(it->position()), static_cast<size_t>(it->length())});
         }
-    }
-    catch (const std::regex_error &)
-    {
+    } catch (const std::regex_error &) {
         return {};
     }
     return hits;
@@ -94,39 +83,30 @@ std::vector<Match> findAll(const TextBuffer &buf, std::string_view query, bool u
 std::optional<Match> findNext(const TextBuffer &buf,
                               std::string_view query,
                               size_t from,
-                              bool useRegex)
-{
-    if (query.empty())
-    {
+                              bool useRegex) {
+    if (query.empty()) {
         return std::nullopt;
     }
     std::string hay = buf.str();
-    if (hay.size() > kMaxSearchSize)
-    {
+    if (hay.size() > kMaxSearchSize) {
         hay.resize(kMaxSearchSize);
     }
-    if (!useRegex)
-    {
+    if (!useRegex) {
         size_t pos = hay.find(query, from);
-        if (pos != std::string::npos)
-        {
+        if (pos != std::string::npos) {
             return Match{pos, query.size()};
         }
         return std::nullopt;
     }
-    try
-    {
+    try {
         std::regex re{std::string(query)};
         std::cmatch m;
         const char *start = hay.c_str() + std::min(from, hay.size());
-        if (std::regex_search(start, hay.c_str() + hay.size(), m, re))
-        {
+        if (std::regex_search(start, hay.c_str() + hay.size(), m, re)) {
             return Match{static_cast<size_t>(m.position()) + std::min(from, hay.size()),
                          static_cast<size_t>(m.length())};
         }
-    }
-    catch (const std::regex_error &)
-    {
+    } catch (const std::regex_error &) {
         return std::nullopt;
     }
     return std::nullopt;

@@ -147,8 +147,7 @@ static const char *hlsl_shader_source =
 // D3D11 context
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     ID3D11Device *device;
     ID3D11DeviceContext *ctx;
     IDXGISwapChain *swapChain;
@@ -175,23 +174,20 @@ typedef struct
 // Uniform buffer structs (match HLSL cbuffers)
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     float m[16];
     float vp[16];
     float nm[16];
 } d3d_per_object_t;
 
-typedef struct
-{
+typedef struct {
     float cp[4];
     float ac[4];
     int32_t lc;
     int32_t _p[3];
 } d3d_per_scene_t;
 
-typedef struct
-{
+typedef struct {
     int32_t type;
     float _p0, _p1, _p2;
     float dir[4];
@@ -201,8 +197,7 @@ typedef struct
     float _p3[2];
 } d3d_light_t;
 
-typedef struct
-{
+typedef struct {
     float dc[4];
     float sc[4];
     float ec[4];
@@ -216,8 +211,7 @@ typedef struct
 // Matrix helper
 //=============================================================================
 
-static void mat4f_mul_d3d(const float *a, const float *b, float *out)
-{
+static void mat4f_mul_d3d(const float *a, const float *b, float *out) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
             out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
@@ -228,8 +222,7 @@ static void mat4f_mul_d3d(const float *a, const float *b, float *out)
 // Backend vtable implementation
 //=============================================================================
 
-static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
-{
+static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h) {
     HWND hwnd = (HWND)vgfx_get_native_view(win);
     if (!hwnd)
         return NULL;
@@ -266,8 +259,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
                                                &ctx->device,
                                                NULL,
                                                &ctx->ctx);
-    if (FAILED(hr))
-    {
+    if (FAILED(hr)) {
         free(ctx);
         return NULL;
     }
@@ -345,8 +337,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
                     0,
                     &vsBlob,
                     &errBlob);
-    if (FAILED(hr))
-    {
+    if (FAILED(hr)) {
         if (errBlob)
             ID3D10Blob_Release(errBlob);
         d3d11_destroy_ctx(ctx);
@@ -364,8 +355,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
                     0,
                     &psBlob,
                     &errBlob);
-    if (FAILED(hr))
-    {
+    if (FAILED(hr)) {
         ID3D10Blob_Release(vsBlob);
         if (errBlob)
             ID3D10Blob_Release(errBlob);
@@ -423,8 +413,7 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t w, int32_t h)
     return ctx;
 }
 
-static void d3d11_destroy_ctx(void *ctx_ptr)
-{
+static void d3d11_destroy_ctx(void *ctx_ptr) {
     if (!ctx_ptr)
         return;
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
@@ -463,8 +452,7 @@ static void d3d11_destroy_ctx(void *ctx_ptr)
     free(ctx);
 }
 
-static void d3d11_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b)
-{
+static void d3d11_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, float b) {
     (void)win;
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     ctx->clearR = r;
@@ -472,8 +460,7 @@ static void d3d11_clear(void *ctx_ptr, vgfx_window_t win, float r, float g, floa
     ctx->clearB = b;
 }
 
-static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam)
-{
+static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     mat4f_mul_d3d(cam->projection, cam->view, ctx->vp);
     memcpy(ctx->cam_pos, cam->position, sizeof(float) * 3);
@@ -505,8 +492,7 @@ static void d3d11_submit_draw(void *ctx_ptr,
                               int32_t light_count,
                               const float *ambient,
                               int8_t wireframe,
-                              int8_t backface_cull)
-{
+                              int8_t backface_cull) {
     (void)win;
     (void)wireframe;
     (void)backface_cull;
@@ -589,8 +575,7 @@ static void d3d11_submit_draw(void *ctx_ptr,
         ctx->ctx, (ID3D11Resource *)ctx->cbPerLights, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
     d3d_light_t *dl = (d3d_light_t *)mapped.pData;
     memset(dl, 0, sizeof(d3d_light_t) * 8);
-    for (int32_t i = 0; i < light_count && i < 8; i++)
-    {
+    for (int32_t i = 0; i < light_count && i < 8; i++) {
         dl[i].type = lights[i].type;
         dl[i].dir[0] = lights[i].direction[0];
         dl[i].dir[1] = lights[i].direction[1];
@@ -613,22 +598,19 @@ static void d3d11_submit_draw(void *ctx_ptr,
     ID3D11Buffer_Release(ib);
 }
 
-static void d3d11_end_frame(void *ctx_ptr)
-{
+static void d3d11_end_frame(void *ctx_ptr) {
     (void)ctx_ptr;
     /* GPU work is committed implicitly by D3D11 command list.
      * Presentation moved to d3d11_present() so only the LAST
      * Begin/End pair's content is shown per frame. */
 }
 
-static void d3d11_present(void *ctx_ptr)
-{
+static void d3d11_present(void *ctx_ptr) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     IDXGISwapChain_Present(ctx->swapChain, 1, 0); /* VSync on */
 }
 
-static void d3d11_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt)
-{
+static void d3d11_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
     (void)ctx_ptr;
     (void)rt;
 }

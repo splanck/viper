@@ -15,46 +15,36 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/lower/detail/LowererDetail.hpp"
 
-namespace il::frontends::basic::lower::detail
-{
+namespace il::frontends::basic::lower::detail {
 
 RuntimeLoweringHelper::RuntimeLoweringHelper(Lowerer::DetailAccess access) noexcept
-    : access_(access)
-{
-}
+    : access_(access) {}
 
-void RuntimeLoweringHelper::lowerLet(const LetStmt &stmt)
-{
+void RuntimeLoweringHelper::lowerLet(const LetStmt &stmt) {
     access_.lowerLet(stmt);
 }
 
-void RuntimeLoweringHelper::lowerConst(const ConstStmt &stmt)
-{
+void RuntimeLoweringHelper::lowerConst(const ConstStmt &stmt) {
     access_.lowerConst(stmt);
 }
 
-void RuntimeLoweringHelper::lowerStatic(const StaticStmt &stmt)
-{
+void RuntimeLoweringHelper::lowerStatic(const StaticStmt &stmt) {
     access_.lowerStatic(stmt);
 }
 
-void RuntimeLoweringHelper::lowerDim(const DimStmt &stmt)
-{
+void RuntimeLoweringHelper::lowerDim(const DimStmt &stmt) {
     access_.lowerDim(stmt);
 }
 
-void RuntimeLoweringHelper::lowerReDim(const ReDimStmt &stmt)
-{
+void RuntimeLoweringHelper::lowerReDim(const ReDimStmt &stmt) {
     access_.lowerReDim(stmt);
 }
 
-void RuntimeLoweringHelper::lowerRandomize(const RandomizeStmt &stmt)
-{
+void RuntimeLoweringHelper::lowerRandomize(const RandomizeStmt &stmt) {
     access_.lowerRandomize(stmt);
 }
 
-void RuntimeLoweringHelper::lowerSwap(const SwapStmt &stmt)
-{
+void RuntimeLoweringHelper::lowerSwap(const SwapStmt &stmt) {
     access_.lowerSwap(stmt);
 }
 

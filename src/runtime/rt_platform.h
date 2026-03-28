@@ -116,8 +116,7 @@
 
 // Atomic load (32-bit)
 // CONC-004 fix: ARM64 needs CPU fence, not just compiler barrier.
-static inline int rt_atomic_load_i32(const volatile int *ptr, int order)
-{
+static inline int rt_atomic_load_i32(const volatile int *ptr, int order) {
     (void)order;
     int value = *ptr;
 #if defined(_M_ARM64)
@@ -129,8 +128,7 @@ static inline int rt_atomic_load_i32(const volatile int *ptr, int order)
 }
 
 // Atomic store (32-bit)
-static inline void rt_atomic_store_i32(volatile int *ptr, int value, int order)
-{
+static inline void rt_atomic_store_i32(volatile int *ptr, int value, int order) {
     (void)order;
 #if defined(_M_ARM64)
     __dmb(_ARM64_BARRIER_ISH);
@@ -146,21 +144,18 @@ static inline void rt_atomic_store_i32(volatile int *ptr, int value, int order)
 }
 
 // Atomic exchange (32-bit)
-static inline int rt_atomic_exchange_i32(volatile int *ptr, int value, int order)
-{
+static inline int rt_atomic_exchange_i32(volatile int *ptr, int value, int order) {
     (void)order;
     return _InterlockedExchange((volatile long *)ptr, value);
 }
 
 // Atomic compare-exchange (32-bit)
 static inline int rt_atomic_compare_exchange_i32(
-    volatile int *ptr, int *expected, int desired, int success_order, int fail_order)
-{
+    volatile int *ptr, int *expected, int desired, int success_order, int fail_order) {
     (void)success_order;
     (void)fail_order;
     int old = _InterlockedCompareExchange((volatile long *)ptr, desired, *expected);
-    if (old == *expected)
-    {
+    if (old == *expected) {
         return 1;
     }
     *expected = old;
@@ -168,22 +163,19 @@ static inline int rt_atomic_compare_exchange_i32(
 }
 
 // Atomic fetch-add (32-bit)
-static inline int rt_atomic_fetch_add_i32(volatile int *ptr, int value, int order)
-{
+static inline int rt_atomic_fetch_add_i32(volatile int *ptr, int value, int order) {
     (void)order;
     return _InterlockedExchangeAdd((volatile long *)ptr, value);
 }
 
 // Atomic fetch-sub (32-bit)
-static inline int rt_atomic_fetch_sub_i32(volatile int *ptr, int value, int order)
-{
+static inline int rt_atomic_fetch_sub_i32(volatile int *ptr, int value, int order) {
     (void)order;
     return _InterlockedExchangeAdd((volatile long *)ptr, -value);
 }
 
 // Atomic load (64-bit)
-static inline int64_t rt_atomic_load_i64(const volatile int64_t *ptr, int order)
-{
+static inline int64_t rt_atomic_load_i64(const volatile int64_t *ptr, int order) {
     (void)order;
 #if defined(_M_ARM64)
     int64_t value = *ptr;
@@ -200,8 +192,7 @@ static inline int64_t rt_atomic_load_i64(const volatile int64_t *ptr, int order)
 }
 
 // Atomic store (64-bit)
-static inline void rt_atomic_store_i64(volatile int64_t *ptr, int64_t value, int order)
-{
+static inline void rt_atomic_store_i64(volatile int64_t *ptr, int64_t value, int order) {
     (void)order;
 #if defined(_M_ARM64)
     __dmb(_ARM64_BARRIER_ISH);
@@ -217,22 +208,19 @@ static inline void rt_atomic_store_i64(volatile int64_t *ptr, int64_t value, int
 }
 
 // Atomic fetch-add (64-bit)
-static inline int64_t rt_atomic_fetch_add_i64(volatile int64_t *ptr, int64_t value, int order)
-{
+static inline int64_t rt_atomic_fetch_add_i64(volatile int64_t *ptr, int64_t value, int order) {
     (void)order;
     return _InterlockedExchangeAdd64((volatile long long *)ptr, value);
 }
 
 // Atomic fetch-sub (64-bit)
-static inline int64_t rt_atomic_fetch_sub_i64(volatile int64_t *ptr, int64_t value, int order)
-{
+static inline int64_t rt_atomic_fetch_sub_i64(volatile int64_t *ptr, int64_t value, int order) {
     (void)order;
     return _InterlockedExchangeAdd64((volatile long long *)ptr, -value);
 }
 
 // Atomic load (size_t) - needed because size_t is unsigned and may differ from int64_t
-static inline size_t rt_atomic_load_size(const volatile size_t *ptr, int order)
-{
+static inline size_t rt_atomic_load_size(const volatile size_t *ptr, int order) {
     (void)order;
 #if defined(_M_ARM64)
     size_t value = *ptr;
@@ -248,8 +236,7 @@ static inline size_t rt_atomic_load_size(const volatile size_t *ptr, int order)
 }
 
 // Atomic store (size_t)
-static inline void rt_atomic_store_size(volatile size_t *ptr, size_t value, int order)
-{
+static inline void rt_atomic_store_size(volatile size_t *ptr, size_t value, int order) {
     (void)order;
 #if defined(_M_ARM64)
     __dmb(_ARM64_BARRIER_ISH);
@@ -265,22 +252,19 @@ static inline void rt_atomic_store_size(volatile size_t *ptr, size_t value, int 
 }
 
 // Atomic fetch-add (size_t)
-static inline size_t rt_atomic_fetch_add_size(volatile size_t *ptr, size_t value, int order)
-{
+static inline size_t rt_atomic_fetch_add_size(volatile size_t *ptr, size_t value, int order) {
     (void)order;
     return (size_t)_InterlockedExchangeAdd64((volatile long long *)ptr, (long long)value);
 }
 
 // Atomic fetch-sub (size_t)
-static inline size_t rt_atomic_fetch_sub_size(volatile size_t *ptr, size_t value, int order)
-{
+static inline size_t rt_atomic_fetch_sub_size(volatile size_t *ptr, size_t value, int order) {
     (void)order;
     return (size_t)_InterlockedExchangeAdd64((volatile long long *)ptr, -(long long)value);
 }
 
 // Atomic load (pointer)
-static inline void *rt_atomic_load_ptr(void *const volatile *ptr, int order)
-{
+static inline void *rt_atomic_load_ptr(void *const volatile *ptr, int order) {
     (void)order;
     void *value = *ptr;
 #if defined(_M_ARM64)
@@ -292,8 +276,7 @@ static inline void *rt_atomic_load_ptr(void *const volatile *ptr, int order)
 }
 
 // Atomic store (pointer)
-static inline void rt_atomic_store_ptr(void *volatile *ptr, void *value, int order)
-{
+static inline void rt_atomic_store_ptr(void *volatile *ptr, void *value, int order) {
     (void)order;
 #if defined(_M_ARM64)
     __dmb(_ARM64_BARRIER_ISH);
@@ -309,8 +292,7 @@ static inline void rt_atomic_store_ptr(void *volatile *ptr, void *value, int ord
 }
 
 // Atomic exchange (pointer)
-static inline void *rt_atomic_exchange_ptr(void *volatile *ptr, void *value, int order)
-{
+static inline void *rt_atomic_exchange_ptr(void *volatile *ptr, void *value, int order) {
     (void)order;
 #if defined(_M_X64) || defined(_M_ARM64)
     return _InterlockedExchangePointer(ptr, value);
@@ -321,8 +303,7 @@ static inline void *rt_atomic_exchange_ptr(void *volatile *ptr, void *value, int
 
 // Atomic compare-exchange (pointer)
 static inline int rt_atomic_compare_exchange_ptr(
-    void *volatile *ptr, void **expected, void *desired, int success_order, int fail_order)
-{
+    void *volatile *ptr, void **expected, void *desired, int success_order, int fail_order) {
     (void)success_order;
     (void)fail_order;
 #if defined(_M_X64) || defined(_M_ARM64)
@@ -331,8 +312,7 @@ static inline int rt_atomic_compare_exchange_ptr(
     void *old =
         (void *)_InterlockedCompareExchange((volatile long *)ptr, (long)desired, (long)*expected);
 #endif
-    if (old == *expected)
-    {
+    if (old == *expected) {
         return 1;
     }
     *expected = old;
@@ -389,15 +369,13 @@ static inline int rt_atomic_compare_exchange_ptr(
         size_t *: rt_atomic_fetch_sub_size)((ptr), (val), (order))
 
 // Atomic test-and-set (spinlock primitive)
-static inline int rt_atomic_test_and_set(volatile int *ptr, int order)
-{
+static inline int rt_atomic_test_and_set(volatile int *ptr, int order) {
     (void)order;
     return _InterlockedExchange((volatile long *)ptr, 1) != 0;
 }
 
 // Atomic clear (spinlock release)
-static inline void rt_atomic_clear(volatile int *ptr, int order)
-{
+static inline void rt_atomic_clear(volatile int *ptr, int order) {
     (void)order;
 #if defined(_M_ARM64)
     __dmb(_ARM64_BARRIER_ISH);
@@ -416,8 +394,7 @@ static inline void rt_atomic_clear(volatile int *ptr, int order)
 #define __atomic_clear(ptr, order) rt_atomic_clear((volatile int *)(ptr), (order))
 
 // Atomic thread fence
-static inline void rt_atomic_thread_fence(int order)
-{
+static inline void rt_atomic_thread_fence(int order) {
     (void)order;
     // Use _mm_mfence for full memory barrier on x86/x64
     // This is more portable than MemoryBarrier() which requires windows.h
@@ -522,8 +499,7 @@ typedef long long ssize_t;
 #define RT_PATH_SEPARATOR_STR "\\"
 
 // High-resolution time for Windows
-static inline int64_t rt_windows_time_ms(void)
-{
+static inline int64_t rt_windows_time_ms(void) {
     FILETIME ft;
     GetSystemTimeAsFileTime(&ft);
     // Convert 100-nanosecond intervals since 1601 to milliseconds since Unix epoch
@@ -533,8 +509,7 @@ static inline int64_t rt_windows_time_ms(void)
     return (int64_t)(time / 10000);
 }
 
-static inline int64_t rt_windows_time_us(void)
-{
+static inline int64_t rt_windows_time_us(void) {
     FILETIME ft;
     GetSystemTimeAsFileTime(&ft);
     uint64_t time = ((uint64_t)ft.dwHighDateTime << 32) | ft.dwLowDateTime;
@@ -542,8 +517,7 @@ static inline int64_t rt_windows_time_us(void)
     return (int64_t)(time / 10);
 }
 
-static inline void rt_windows_sleep_ms(int64_t ms)
-{
+static inline void rt_windows_sleep_ms(int64_t ms) {
     if (ms > 0)
         Sleep((DWORD)ms);
 }
@@ -578,8 +552,7 @@ static inline void rt_windows_sleep_ms(int64_t ms)
 /// @param timer Pointer to time_t value to convert.
 /// @param result Pointer to struct tm to store the result.
 /// @return Pointer to result on success, NULL on failure.
-static inline struct tm *rt_localtime_r(const time_t *timer, struct tm *result)
-{
+static inline struct tm *rt_localtime_r(const time_t *timer, struct tm *result) {
 #if RT_PLATFORM_WINDOWS
     // Windows localtime_s has reversed parameter order and returns errno_t
     if (localtime_s(result, timer) == 0)
@@ -594,8 +567,7 @@ static inline struct tm *rt_localtime_r(const time_t *timer, struct tm *result)
 /// @param timer Pointer to time_t value to convert.
 /// @param result Pointer to struct tm to store the result.
 /// @return Pointer to result on success, NULL on failure.
-static inline struct tm *rt_gmtime_r(const time_t *timer, struct tm *result)
-{
+static inline struct tm *rt_gmtime_r(const time_t *timer, struct tm *result) {
 #if RT_PLATFORM_WINDOWS
     // Windows gmtime_s has reversed parameter order and returns errno_t
     if (gmtime_s(result, timer) == 0)
@@ -612,8 +584,7 @@ static inline struct tm *rt_gmtime_r(const time_t *timer, struct tm *result)
 /// @param delim Delimiter characters.
 /// @param saveptr Caller-provided pointer used to store tokenizer state.
 /// @return Pointer to next token, or NULL when no more tokens remain.
-static inline char *rt_strtok_r(char *str, const char *delim, char **saveptr)
-{
+static inline char *rt_strtok_r(char *str, const char *delim, char **saveptr) {
 #if RT_PLATFORM_WINDOWS
     return strtok_s(str, delim, saveptr);
 #else
@@ -626,23 +597,22 @@ static inline char *rt_strtok_r(char *str, const char *delim, char **saveptr)
 //===----------------------------------------------------------------------===//
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Record the current thread as the "main" thread.
-    ///
-    /// Must be called once during runtime initialization, before any worker threads
-    /// are spawned. GUI and input globals are only safe to access from this thread.
-    void rt_set_main_thread(void);
+/// @brief Record the current thread as the "main" thread.
+///
+/// Must be called once during runtime initialization, before any worker threads
+/// are spawned. GUI and input globals are only safe to access from this thread.
+void rt_set_main_thread(void);
 
-    /// @brief Check whether the calling thread is the main thread.
-    /// @return Non-zero if called from the main thread, zero otherwise.
-    int8_t rt_is_main_thread(void);
+/// @brief Check whether the calling thread is the main thread.
+/// @return Non-zero if called from the main thread, zero otherwise.
+int8_t rt_is_main_thread(void);
 
-    /// @brief Internal assertion helper — do not call directly.
-    /// @see RT_ASSERT_MAIN_THREAD
-    void rt_assert_main_thread_(const char *file, int line);
+/// @brief Internal assertion helper — do not call directly.
+/// @see RT_ASSERT_MAIN_THREAD
+void rt_assert_main_thread_(const char *file, int line);
 
 #ifdef __cplusplus
 }

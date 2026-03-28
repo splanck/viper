@@ -22,8 +22,7 @@
 using namespace il::core;
 using namespace viper::analysis;
 
-static void checkOrders(const CFGContext &ctx, Function &fn)
-{
+static void checkOrders(const CFGContext &ctx, Function &fn) {
     auto po = postOrder(ctx, fn);
     auto rpo = reversePostOrder(ctx, fn);
 
@@ -39,8 +38,7 @@ static void checkOrders(const CFGContext &ctx, Function &fn)
     assert(rpo.front() == &fn.blocks.front());
 }
 
-int main()
-{
+int main() {
     Module m;
     il::build::IRBuilder b(m);
 

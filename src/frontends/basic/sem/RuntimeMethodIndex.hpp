@@ -81,8 +81,7 @@
 #include <string_view>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 //===----------------------------------------------------------------------===//
 /// @name Type Conversion
@@ -154,8 +153,7 @@ BasicType toBasicType(il::runtime::ILScalarType t);
 /// }
 /// ```
 ///
-struct RuntimeMethodInfo
-{
+struct RuntimeMethodInfo {
     /// @brief Return type of the method.
     BasicType ret{BasicType::Unknown};
 
@@ -210,8 +208,7 @@ struct RuntimeMethodInfo
 /// // Returns ["Substring/1", "Substring/2"] if both arities exist
 /// ```
 ///
-class RuntimeMethodIndex
-{
+class RuntimeMethodIndex {
   public:
     /// @brief Initializes the method index (currently a no-op).
     ///

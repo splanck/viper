@@ -35,8 +35,7 @@
 
 #include <optional>
 
-namespace il::verify::detail
-{
+namespace il::verify::detail {
 
 /// @brief Checks whether an integer literal fits within the specified kind.
 /// @param value Literal value to test.
@@ -54,8 +53,7 @@ std::optional<il::core::Type::Kind> kindFromCategory(il::core::TypeCategory cate
 ///          used with arithmetic instructions, index operations, and integer casts.
 /// @param kind Type kind to check.
 /// @return True when @p kind is one of I16, I32, or I64.
-inline bool isSupportedIntegerWidth(il::core::Type::Kind kind)
-{
+inline bool isSupportedIntegerWidth(il::core::Type::Kind kind) {
     return kind == il::core::Type::Kind::I16 || kind == il::core::Type::Kind::I32 ||
            kind == il::core::Type::Kind::I64;
 }
@@ -66,8 +64,7 @@ inline bool isSupportedIntegerWidth(il::core::Type::Kind kind)
 ///          be a narrowing target (it's the widest integer type).
 /// @param kind Type kind to check.
 /// @return True when @p kind is one of I16 or I32.
-inline bool isNarrowingTargetWidth(il::core::Type::Kind kind)
-{
+inline bool isNarrowingTargetWidth(il::core::Type::Kind kind) {
     return kind == il::core::Type::Kind::I16 || kind == il::core::Type::Kind::I32;
 }
 

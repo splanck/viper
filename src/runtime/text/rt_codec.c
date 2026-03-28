@@ -43,8 +43,7 @@ static const char b64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstu
 
 /// @brief Convert Base64 character to value (0-63).
 /// @return Value 0-63, -2 for '=', or -1 if invalid.
-static int b64_digit_value(char c)
-{
+static int b64_digit_value(char c) {
     if (c >= 'A' && c <= 'Z')
         return c - 'A';
     if (c >= 'a' && c <= 'z')
@@ -62,8 +61,7 @@ static int b64_digit_value(char c)
 
 /// @brief Check if character is unreserved in URL encoding.
 /// @details Unreserved: A-Z a-z 0-9 - _ . ~
-static int is_url_unreserved(unsigned char c)
-{
+static int is_url_unreserved(unsigned char c) {
     return isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~';
 }
 
@@ -106,8 +104,7 @@ static int is_url_unreserved(unsigned char c)
 /// @note UTF-8 strings have each byte encoded separately.
 ///
 /// @see rt_codec_url_decode For decoding URL-encoded strings
-rt_string rt_codec_url_encode(rt_string str)
-{
+rt_string rt_codec_url_encode(rt_string str) {
     const char *input = rt_string_cstr(str);
     if (!input)
         return rt_string_from_bytes("", 0);
@@ -118,8 +115,7 @@ rt_string rt_codec_url_encode(rt_string str)
 
     // Calculate output length (worst case: every char needs encoding)
     size_t out_len = 0;
-    for (size_t i = 0; i < input_len; i++)
-    {
+    for (size_t i = 0; i < input_len; i++) {
         unsigned char c = (unsigned char)input[i];
         if (is_url_unreserved(c))
             out_len++;
@@ -132,15 +128,11 @@ rt_string rt_codec_url_encode(rt_string str)
         rt_trap("Codec.UrlEncode: memory allocation failed");
 
     size_t o = 0;
-    for (size_t i = 0; i < input_len; i++)
-    {
+    for (size_t i = 0; i < input_len; i++) {
         unsigned char c = (unsigned char)input[i];
-        if (is_url_unreserved(c))
-        {
+        if (is_url_unreserved(c)) {
             out[o++] = (char)c;
-        }
-        else
-        {
+        } else {
             out[o++] = '%';
             out[o++] = rt_hex_chars[(c >> 4) & 0xF];
             out[o++] = rt_hex_chars[c & 0xF];
@@ -186,8 +178,7 @@ rt_string rt_codec_url_encode(rt_string str)
 /// @note Forgiving: invalid sequences pass through unchanged.
 ///
 /// @see rt_codec_url_encode For encoding strings for URLs
-rt_string rt_codec_url_decode(rt_string str)
-{
+rt_string rt_codec_url_decode(rt_string str) {
     const char *input = rt_string_cstr(str);
     if (!input)
         return rt_string_from_bytes("", 0);
@@ -202,22 +193,17 @@ rt_string rt_codec_url_decode(rt_string str)
         rt_trap("Codec.UrlDecode: memory allocation failed");
 
     size_t o = 0;
-    for (size_t i = 0; i < input_len; i++)
-    {
+    for (size_t i = 0; i < input_len; i++) {
         char c = input[i];
-        if (c == '%' && i + 2 < input_len)
-        {
+        if (c == '%' && i + 2 < input_len) {
             int hi = rt_hex_digit_value(input[i + 1]);
             int lo = rt_hex_digit_value(input[i + 2]);
-            if (hi >= 0 && lo >= 0)
-            {
+            if (hi >= 0 && lo >= 0) {
                 out[o++] = (char)((hi << 4) | lo);
                 i += 2;
                 continue;
             }
-        }
-        else if (c == '+')
-        {
+        } else if (c == '+') {
             // Treat + as space (form encoding convention)
             out[o++] = ' ';
             continue;
@@ -275,8 +261,7 @@ rt_string rt_codec_url_decode(rt_string str)
 /// @note Output length is ceil(n/3)*4 (33% expansion plus padding).
 ///
 /// @see rt_codec_base64_dec For decoding Base64 strings
-rt_string rt_codec_base64_enc(rt_string str)
-{
+rt_string rt_codec_base64_enc(rt_string str) {
     const char *input = rt_string_cstr(str);
     if (!input)
         return rt_string_from_bytes("", 0);
@@ -296,8 +281,7 @@ rt_string rt_codec_base64_enc(rt_string str)
     size_t o = 0;
 
     // Process 3-byte groups
-    while (i + 3 <= input_len)
-    {
+    while (i + 3 <= input_len) {
         uint32_t triple = ((uint32_t)data[i] << 16) | ((uint32_t)data[i + 1] << 8) | data[i + 2];
         out[o++] = b64_chars[(triple >> 18) & 0x3F];
         out[o++] = b64_chars[(triple >> 12) & 0x3F];
@@ -307,25 +291,20 @@ rt_string rt_codec_base64_enc(rt_string str)
     }
 
     // Handle remaining bytes
-    if (i < input_len)
-    {
+    if (i < input_len) {
         uint32_t triple = (uint32_t)data[i] << 16;
         int two = 0;
-        if (i + 1 < input_len)
-        {
+        if (i + 1 < input_len) {
             triple |= (uint32_t)data[i + 1] << 8;
             two = 1;
         }
 
         out[o++] = b64_chars[(triple >> 18) & 0x3F];
         out[o++] = b64_chars[(triple >> 12) & 0x3F];
-        if (two)
-        {
+        if (two) {
             out[o++] = b64_chars[(triple >> 6) & 0x3F];
             out[o++] = '=';
-        }
-        else
-        {
+        } else {
             out[o++] = '=';
             out[o++] = '=';
         }
@@ -370,8 +349,7 @@ rt_string rt_codec_base64_enc(rt_string str)
 /// @note Traps on invalid Base64 format (not forgiving like URL decode).
 ///
 /// @see rt_codec_base64_enc For encoding strings to Base64
-rt_string rt_codec_base64_dec(rt_string str)
-{
+rt_string rt_codec_base64_dec(rt_string str) {
     const char *input = rt_string_cstr(str);
     if (!input)
         return rt_string_from_bytes("", 0);
@@ -384,16 +362,14 @@ rt_string rt_codec_base64_dec(rt_string str)
         rt_trap("Codec.Base64Dec: base64 length must be a multiple of 4");
 
     size_t padding = 0;
-    if (b64_len >= 1 && input[b64_len - 1] == '=')
-    {
+    if (b64_len >= 1 && input[b64_len - 1] == '=') {
         padding = 1;
         if (b64_len >= 2 && input[b64_len - 2] == '=')
             padding = 2;
     }
 
     // Check for invalid padding position
-    for (size_t i = 0; i < b64_len - padding; ++i)
-    {
+    for (size_t i = 0; i < b64_len - padding; ++i) {
         if (input[i] == '=')
             rt_trap("Codec.Base64Dec: invalid padding");
     }
@@ -407,8 +383,7 @@ rt_string rt_codec_base64_dec(rt_string str)
         rt_trap("Codec.Base64Dec: memory allocation failed");
 
     size_t out_pos = 0;
-    for (size_t i = 0; i < b64_len; i += 4)
-    {
+    for (size_t i = 0; i < b64_len; i += 4) {
         char c0 = input[i];
         char c1 = input[i + 1];
         char c2 = input[i + 2];
@@ -419,29 +394,24 @@ rt_string rt_codec_base64_dec(rt_string str)
         int v2 = b64_digit_value(c2);
         int v3 = b64_digit_value(c3);
 
-        if (v0 < 0 || v1 < 0)
-        {
+        if (v0 < 0 || v1 < 0) {
             free(out);
             if (v0 == -2 || v1 == -2)
                 rt_trap("Codec.Base64Dec: invalid padding");
             rt_trap("Codec.Base64Dec: invalid base64 character");
         }
 
-        if (v2 == -1 || v3 == -1)
-        {
+        if (v2 == -1 || v3 == -1) {
             free(out);
             rt_trap("Codec.Base64Dec: invalid base64 character");
         }
 
-        if (v2 == -2)
-        {
-            if (v3 != -2 || i + 4 != b64_len)
-            {
+        if (v2 == -2) {
+            if (v3 != -2 || i + 4 != b64_len) {
                 free(out);
                 rt_trap("Codec.Base64Dec: invalid padding");
             }
-            if ((v1 & 0x0F) != 0)
-            {
+            if ((v1 & 0x0F) != 0) {
                 free(out);
                 rt_trap("Codec.Base64Dec: invalid padding");
             }
@@ -451,15 +421,12 @@ rt_string rt_codec_base64_dec(rt_string str)
             break;
         }
 
-        if (v3 == -2)
-        {
-            if (i + 4 != b64_len)
-            {
+        if (v3 == -2) {
+            if (i + 4 != b64_len) {
                 free(out);
                 rt_trap("Codec.Base64Dec: invalid padding");
             }
-            if ((v2 & 0x03) != 0)
-            {
+            if ((v2 & 0x03) != 0) {
                 free(out);
                 rt_trap("Codec.Base64Dec: invalid padding");
             }
@@ -477,8 +444,7 @@ rt_string rt_codec_base64_dec(rt_string str)
         out[out_pos++] = (char)(triple & 0xFF);
     }
 
-    if (out_pos != out_len)
-    {
+    if (out_pos != out_len) {
         free(out);
         rt_trap("Codec.Base64Dec: invalid padding");
     }
@@ -536,8 +502,7 @@ rt_string rt_codec_base64_dec(rt_string str)
 ///
 /// @see rt_codec_hex_dec For decoding hex strings
 /// @see rt_hash_md5 For hashing to hex output
-rt_string rt_codec_hex_enc(rt_string str)
-{
+rt_string rt_codec_hex_enc(rt_string str) {
     const char *input = rt_string_cstr(str);
     if (!input)
         return rt_string_from_bytes("", 0);
@@ -552,8 +517,7 @@ rt_string rt_codec_hex_enc(rt_string str)
         rt_trap("Codec.HexEnc: memory allocation failed");
 
     const uint8_t *data = (const uint8_t *)input;
-    for (size_t i = 0; i < input_len; i++)
-    {
+    for (size_t i = 0; i < input_len; i++) {
         out[i * 2] = rt_hex_chars[(data[i] >> 4) & 0xF];
         out[i * 2 + 1] = rt_hex_chars[data[i] & 0xF];
     }
@@ -572,8 +536,7 @@ rt_string rt_codec_hex_enc(rt_string str)
 /// @param data Pointer to byte data to encode.
 /// @param len Length of data in bytes.
 /// @return Newly allocated lowercase hex string. Traps on allocation failure.
-rt_string rt_codec_hex_enc_bytes(const uint8_t *data, size_t len)
-{
+rt_string rt_codec_hex_enc_bytes(const uint8_t *data, size_t len) {
     if (!data || len == 0)
         return rt_string_from_bytes("", 0);
 
@@ -582,8 +545,7 @@ rt_string rt_codec_hex_enc_bytes(const uint8_t *data, size_t len)
     if (!out)
         rt_trap("Codec.HexEncBytes: memory allocation failed");
 
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         out[i * 2] = rt_hex_chars[(data[i] >> 4) & 0xF];
         out[i * 2 + 1] = rt_hex_chars[data[i] & 0xF];
     }
@@ -630,8 +592,7 @@ rt_string rt_codec_hex_enc_bytes(const uint8_t *data, size_t len)
 /// @note Accepts both uppercase and lowercase hex digits.
 ///
 /// @see rt_codec_hex_enc For encoding strings to hex
-rt_string rt_codec_hex_dec(rt_string str)
-{
+rt_string rt_codec_hex_dec(rt_string str) {
     const char *input = rt_string_cstr(str);
     if (!input)
         return rt_string_from_bytes("", 0);
@@ -648,13 +609,11 @@ rt_string rt_codec_hex_dec(rt_string str)
     if (!out)
         rt_trap("Codec.HexDec: memory allocation failed");
 
-    for (size_t i = 0; i < out_len; i++)
-    {
+    for (size_t i = 0; i < out_len; i++) {
         int hi = rt_hex_digit_value(input[i * 2]);
         int lo = rt_hex_digit_value(input[i * 2 + 1]);
 
-        if (hi < 0 || lo < 0)
-        {
+        if (hi < 0 || lo < 0) {
             free(out);
             rt_trap("Codec.HexDec: invalid hex character");
         }

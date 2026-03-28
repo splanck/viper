@@ -29,17 +29,14 @@
 
 using namespace il::runtime;
 
-TEST(RuntimeNameMap, CanonicalAndRuntimeNamesUnique)
-{
+TEST(RuntimeNameMap, CanonicalAndRuntimeNamesUnique) {
     std::unordered_set<std::string_view> canonical;
-    for (const auto &alias : kRuntimeNameAliases)
-    {
+    for (const auto &alias : kRuntimeNameAliases) {
         EXPECT_TRUE(canonical.insert(alias.canonical).second);
     }
 }
 
-TEST(RuntimeNameMap, AliasesResolveToRegisteredDescriptors)
-{
+TEST(RuntimeNameMap, AliasesResolveToRegisteredDescriptors) {
     // This test verifies that functions WITH descriptors can be resolved.
     // Not all runtime functions need descriptors - many are native-only
     // (called via C ABI from generated code, not via VM).
@@ -47,8 +44,7 @@ TEST(RuntimeNameMap, AliasesResolveToRegisteredDescriptors)
     std::size_t withDescriptor = 0;
     std::size_t withoutDescriptor = 0;
 
-    for (const auto &alias : kRuntimeNameAliases)
-    {
+    for (const auto &alias : kRuntimeNameAliases) {
         const auto *canon = findRuntimeDescriptor(alias.canonical);
         if (canon)
             ++withDescriptor;
@@ -65,8 +61,7 @@ TEST(RuntimeNameMap, AliasesResolveToRegisteredDescriptors)
               << "\n";
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

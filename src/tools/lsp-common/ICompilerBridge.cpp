@@ -23,11 +23,9 @@
 #include <algorithm>
 #include <cctype>
 
-namespace viper::server
-{
+namespace viper::server {
 
-static std::string toLowerStr(const std::string &s)
-{
+static std::string toLowerStr(const std::string &s) {
     std::string lower;
     lower.reserve(s.size());
     for (char c : s)
@@ -35,13 +33,11 @@ static std::string toLowerStr(const std::string &s)
     return lower;
 }
 
-std::vector<RuntimeClassSummary> ICompilerBridge::runtimeClasses()
-{
+std::vector<RuntimeClassSummary> ICompilerBridge::runtimeClasses() {
     const auto &catalog = il::runtime::runtimeClassCatalog();
     std::vector<RuntimeClassSummary> result;
     result.reserve(catalog.size());
-    for (const auto &cls : catalog)
-    {
+    for (const auto &cls : catalog) {
         result.push_back({cls.qname,
                           static_cast<int>(cls.properties.size()),
                           static_cast<int>(cls.methods.size())});
@@ -49,8 +45,7 @@ std::vector<RuntimeClassSummary> ICompilerBridge::runtimeClasses()
     return result;
 }
 
-std::vector<RuntimeMemberInfo> ICompilerBridge::runtimeMembers(const std::string &className)
-{
+std::vector<RuntimeMemberInfo> ICompilerBridge::runtimeMembers(const std::string &className) {
     const auto *cls = il::runtime::findRuntimeClassByQName(className);
     if (!cls)
         return {};
@@ -63,34 +58,28 @@ std::vector<RuntimeMemberInfo> ICompilerBridge::runtimeMembers(const std::string
     return result;
 }
 
-std::vector<RuntimeMemberInfo> ICompilerBridge::runtimeSearch(const std::string &keyword)
-{
+std::vector<RuntimeMemberInfo> ICompilerBridge::runtimeSearch(const std::string &keyword) {
     std::string lowerKw = toLowerStr(keyword);
     const auto &catalog = il::runtime::runtimeClassCatalog();
     std::vector<RuntimeMemberInfo> result;
 
-    for (const auto &cls : catalog)
-    {
+    for (const auto &cls : catalog) {
         std::string lowerName = toLowerStr(cls.qname);
         if (lowerName.find(lowerKw) != std::string::npos)
             result.push_back({cls.qname, "class", ""});
 
-        for (const auto &method : cls.methods)
-        {
+        for (const auto &method : cls.methods) {
             std::string lowerMethod = toLowerStr(method.name);
-            if (lowerMethod.find(lowerKw) != std::string::npos)
-            {
+            if (lowerMethod.find(lowerKw) != std::string::npos) {
                 result.push_back({std::string(cls.qname) + "." + method.name,
                                   "method",
                                   method.signature ? method.signature : ""});
             }
         }
 
-        for (const auto &prop : cls.properties)
-        {
+        for (const auto &prop : cls.properties) {
             std::string lowerProp = toLowerStr(prop.name);
-            if (lowerProp.find(lowerKw) != std::string::npos)
-            {
+            if (lowerProp.find(lowerKw) != std::string::npos) {
                 result.push_back({std::string(cls.qname) + "." + prop.name,
                                   "property",
                                   prop.type ? prop.type : ""});

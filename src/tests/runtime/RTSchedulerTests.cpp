@@ -14,20 +14,17 @@
 #include <cstring>
 #include <thread>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static void test_new_scheduler()
-{
+static void test_new_scheduler() {
     void *s = rt_scheduler_new();
     assert(s != NULL);
     assert(rt_scheduler_pending(s) == 0);
 }
 
-static void test_schedule_and_pending()
-{
+static void test_schedule_and_pending() {
     void *s = rt_scheduler_new();
     rt_string t1 = rt_string_from_bytes("task1", 5);
     rt_string t2 = rt_string_from_bytes("task2", 5);
@@ -40,8 +37,7 @@ static void test_schedule_and_pending()
     assert(rt_scheduler_pending(s) == 2);
 }
 
-static void test_cancel()
-{
+static void test_cancel() {
     void *s = rt_scheduler_new();
     rt_string t1 = rt_string_from_bytes("task1", 5);
 
@@ -57,8 +53,7 @@ static void test_cancel()
     assert(cancelled == 0);
 }
 
-static void test_is_due_not_ready()
-{
+static void test_is_due_not_ready() {
     void *s = rt_scheduler_new();
     rt_string t1 = rt_string_from_bytes("task1", 5);
 
@@ -71,8 +66,7 @@ static void test_is_due_not_ready()
     assert(rt_scheduler_is_due(s, missing) == 0);
 }
 
-static void test_immediate_due()
-{
+static void test_immediate_due() {
     void *s = rt_scheduler_new();
     rt_string t1 = rt_string_from_bytes("now", 3);
 
@@ -83,8 +77,7 @@ static void test_immediate_due()
     assert(rt_scheduler_is_due(s, t1) == 1);
 }
 
-static void test_poll_returns_due()
-{
+static void test_poll_returns_due() {
     void *s = rt_scheduler_new();
     rt_string t1 = rt_string_from_bytes("fast", 4);
     rt_string t2 = rt_string_from_bytes("slow", 4);
@@ -110,8 +103,7 @@ static void test_poll_returns_due()
     assert(rt_scheduler_pending(s) == 1);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *s = rt_scheduler_new();
     rt_string t1 = rt_string_from_bytes("a", 1);
     rt_string t2 = rt_string_from_bytes("b", 1);
@@ -124,8 +116,7 @@ static void test_clear()
     assert(rt_scheduler_pending(s) == 0);
 }
 
-static void test_duplicate_name_replaces()
-{
+static void test_duplicate_name_replaces() {
     void *s = rt_scheduler_new();
     rt_string t1 = rt_string_from_bytes("task", 4);
 
@@ -137,16 +128,14 @@ static void test_duplicate_name_replaces()
     assert(rt_scheduler_pending(s) == 1);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_scheduler_pending(NULL) == 0);
     /// @brief Rt_scheduler_clear.
     rt_scheduler_clear(NULL); // should not crash
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_new_scheduler();
     test_schedule_and_pending();
     test_cancel();

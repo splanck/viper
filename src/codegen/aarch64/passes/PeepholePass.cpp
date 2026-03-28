@@ -18,13 +18,10 @@
 
 #include "codegen/aarch64/Peephole.hpp"
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
-bool PeepholePass::run(AArch64Module &module, Diagnostics & /*diags*/)
-{
-    for (auto &fn : module.mir)
-    {
+bool PeepholePass::run(AArch64Module &module, Diagnostics & /*diags*/) {
+    for (auto &fn : module.mir) {
         [[maybe_unused]] auto stats = runPeephole(fn);
         pruneUnusedCalleeSaved(fn);
     }

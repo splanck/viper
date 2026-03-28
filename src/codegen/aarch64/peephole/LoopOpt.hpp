@@ -26,8 +26,7 @@
 
 #include <cstddef>
 
-namespace viper::codegen::aarch64::peephole
-{
+namespace viper::codegen::aarch64::peephole {
 
 /// @brief Hoist loop-invariant MovRI instructions from loop bodies to preheaders.
 std::size_t hoistLoopConstants(MFunction &fn);

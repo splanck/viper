@@ -24,8 +24,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     {
         std::string src = "PRINT 123\nEND\n";
         SourceManager sm;

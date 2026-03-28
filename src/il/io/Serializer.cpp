@@ -37,27 +37,23 @@
 #include <sstream>
 #include <string>
 
-namespace il::io
-{
+namespace il::io {
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Context for serialization, carrying function-scoped metadata.
 /// @details Allows value printing to resolve temp IDs to their declared names,
 ///          ensuring IL round-trips correctly through serialize/parse cycles.
-struct SerializeContext
-{
+struct SerializeContext {
     /// @brief Value name table from the current function (may be null for global context).
     const std::vector<std::string> *valueNames = nullptr;
 
     /// @brief Look up a name for the given temp ID.
     /// @param id Temp ID to resolve.
     /// @return The declared name if available and non-empty, empty string otherwise.
-    [[nodiscard]] std::string_view nameForTemp(unsigned id) const
-    {
+    [[nodiscard]] std::string_view nameForTemp(unsigned id) const {
         if (!valueNames || id >= valueNames->size())
             return {};
         return (*valueNames)[id];
@@ -69,8 +65,7 @@ using Formatter = void (*)(const Instr &, std::ostream &, const SerializeContext
 /// @brief Convert an opcode enumerator into an array index.
 /// @param op Opcode value to convert.
 /// @return Zero-based index suitable for array lookups.
-constexpr size_t toIndex(Opcode op)
-{
+constexpr size_t toIndex(Opcode op) {
     return static_cast<size_t>(op);
 }
 
@@ -81,19 +76,15 @@ constexpr size_t toIndex(Opcode op)
 /// @param os    Stream receiving the textual value.
 /// @param value Operand to serialise.
 /// @param ctx   Serialization context with value name mappings.
-void printValue(std::ostream &os, const Value &value, const SerializeContext &ctx)
-{
-    if (value.kind == Value::Kind::ConstStr)
-    {
+void printValue(std::ostream &os, const Value &value, const SerializeContext &ctx) {
+    if (value.kind == Value::Kind::ConstStr) {
         os << '"' << encodeEscapedString(value.str) << '"';
         return;
     }
     // For temp values, try to resolve to declared name for correct round-tripping
-    if (value.kind == Value::Kind::Temp)
-    {
+    if (value.kind == Value::Kind::Temp) {
         auto name = ctx.nameForTemp(value.id);
-        if (!name.empty() && name[0] != '%')
-        {
+        if (!name.empty() && name[0] != '%') {
             // Use the declared name (e.g., "X" for parameter)
             os << '%' << name;
             return;
@@ -106,10 +97,10 @@ void printValue(std::ostream &os, const Value &value, const SerializeContext &ct
 /// @param os Stream receiving the textual operands.
 /// @param values Sequence of operands to print.
 /// @param ctx Serialization context with value name mappings.
-void printValueList(std::ostream &os, const std::vector<Value> &values, const SerializeContext &ctx)
-{
-    for (size_t i = 0; i < values.size(); ++i)
-    {
+void printValueList(std::ostream &os,
+                    const std::vector<Value> &values,
+                    const SerializeContext &ctx) {
+    for (size_t i = 0; i < values.size(); ++i) {
         if (i)
             os << ", ";
         printValue(os, values[i], ctx);
@@ -120,8 +111,7 @@ void printValueList(std::ostream &os, const std::vector<Value> &values, const Se
 /// @param instr Instruction providing operands.
 /// @param os Stream receiving the serialized operands.
 /// @param ctx Serialization context with value name mappings.
-void printDefaultOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-{
+void printDefaultOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     if (instr.operands.empty())
         return;
     os << ' ';
@@ -132,15 +122,12 @@ void printDefaultOperands(const Instr &instr, std::ostream &os, const SerializeC
 /// @param instr Instruction containing the operand.
 /// @param os Stream receiving the textual operand.
 /// @param ctx Serialization context with value name mappings.
-void printTrapKindOperand(const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-{
+void printTrapKindOperand(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     if (instr.operands.empty())
         return;
     const auto &operand = instr.operands.front();
-    if (operand.kind == Value::Kind::ConstInt)
-    {
-        if (auto token = trapKindTokenFromValue(operand.i64))
-        {
+    if (operand.kind == Value::Kind::ConstInt) {
+        if (auto token = trapKindTokenFromValue(operand.i64)) {
             os << ' ' << *token;
             return;
         }
@@ -153,11 +140,9 @@ void printTrapKindOperand(const Instr &instr, std::ostream &os, const SerializeC
 /// @param instr Instruction containing the type and optional operand.
 /// @param os Stream receiving serialized operands.
 /// @param ctx Serialization context with value name mappings.
-void printTrapFromErrOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-{
+void printTrapFromErrOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     os << ' ' << instr.type.toString();
-    if (!instr.operands.empty())
-    {
+    if (!instr.operands.empty()) {
         os << ' ';
         printValue(os, instr.operands.front(), ctx);
     }
@@ -167,8 +152,7 @@ void printTrapFromErrOperands(const Instr &instr, std::ostream &os, const Serial
 /// @param instr Instruction referencing the callee and operands.
 /// @param os Stream receiving serialized operands.
 /// @param ctx Serialization context with value name mappings.
-void printCallOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-{
+void printCallOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     os << " @" << instr.callee << "(";
     printValueList(os, instr.operands, ctx);
     os << ')';
@@ -177,17 +161,14 @@ void printCallOperands(const Instr &instr, std::ostream &os, const SerializeCont
 /// @brief Emit operand list for call.indirect instructions.
 /// @details Format: call.indirect %fnPtr(%arg1, %arg2, ...)
 ///          First operand is the function pointer, remaining are arguments.
-void printCallIndirectOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-{
+void printCallIndirectOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     if (instr.operands.empty())
         return;
     os << ' ';
     printValue(os, instr.operands[0], ctx);
     os << '(';
-    if (instr.operands.size() > 1)
-    {
-        for (size_t i = 1; i < instr.operands.size(); ++i)
-        {
+    if (instr.operands.size() > 1) {
+        for (size_t i = 1; i < instr.operands.size(); ++i) {
             if (i > 1)
                 os << ", ";
             printValue(os, instr.operands[i], ctx);
@@ -200,8 +181,7 @@ void printCallIndirectOperands(const Instr &instr, std::ostream &os, const Seria
 /// @param instr Return instruction to serialise.
 /// @param os Stream receiving serialized operand.
 /// @param ctx Serialization context with value name mappings.
-void printRetOperand(const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-{
+void printRetOperand(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     if (instr.operands.empty())
         return;
     os << ' ';
@@ -212,11 +192,9 @@ void printRetOperand(const Instr &instr, std::ostream &os, const SerializeContex
 /// @param instr Instruction providing the operands.
 /// @param os Stream receiving serialized operands.
 /// @param ctx Serialization context with value name mappings.
-void printLoadOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-{
+void printLoadOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     os << ' ' << instr.type.toString();
-    if (!instr.operands.empty())
-    {
+    if (!instr.operands.empty()) {
         os << ", ";
         printValue(os, instr.operands[0], ctx);
     }
@@ -226,15 +204,12 @@ void printLoadOperands(const Instr &instr, std::ostream &os, const SerializeCont
 /// @param instr Instruction providing the destination and value.
 /// @param os Stream receiving serialized operands.
 /// @param ctx Serialization context with value name mappings.
-void printStoreOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-{
+void printStoreOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     os << ' ' << instr.type.toString();
-    if (!instr.operands.empty())
-    {
+    if (!instr.operands.empty()) {
         os << ", ";
         printValue(os, instr.operands[0], ctx);
-        if (instr.operands.size() > 1)
-        {
+        if (instr.operands.size() > 1) {
             os << ", ";
             printValue(os, instr.operands[1], ctx);
         }
@@ -249,13 +224,11 @@ void printStoreOperands(const Instr &instr, std::ostream &os, const SerializeCon
 void printBranchTarget(const Instr &instr,
                        size_t index,
                        std::ostream &os,
-                       const SerializeContext &ctx)
-{
+                       const SerializeContext &ctx) {
     if (index >= instr.labels.size())
         return;
     os << instr.labels[index];
-    if (index < instr.brArgs.size() && !instr.brArgs[index].empty())
-    {
+    if (index < instr.brArgs.size() && !instr.brArgs[index].empty()) {
         os << '(';
         printValueList(os, instr.brArgs[index], ctx);
         os << ')';
@@ -270,13 +243,11 @@ void printBranchTarget(const Instr &instr,
 void printCaretBranchTarget(const Instr &instr,
                             size_t index,
                             std::ostream &os,
-                            const SerializeContext &ctx)
-{
+                            const SerializeContext &ctx) {
     if (index >= instr.labels.size())
         return;
     os << '^' << instr.labels[index];
-    if (index < instr.brArgs.size() && !instr.brArgs[index].empty())
-    {
+    if (index < instr.brArgs.size() && !instr.brArgs[index].empty()) {
         os << '(';
         printValueList(os, instr.brArgs[index], ctx);
         os << ')';
@@ -287,8 +258,7 @@ void printCaretBranchTarget(const Instr &instr,
 /// @param instr Branch instruction to serialise.
 /// @param os Stream receiving serialized output.
 /// @param ctx Serialization context with value name mappings.
-void printBrOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-{
+void printBrOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     if (instr.labels.empty())
         return;
     os << ' ';
@@ -299,10 +269,8 @@ void printBrOperands(const Instr &instr, std::ostream &os, const SerializeContex
 /// @param instr Branch instruction to serialise.
 /// @param os Stream receiving serialized output.
 /// @param ctx Serialization context with value name mappings.
-void printCBrOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-{
-    if (instr.operands.empty())
-    {
+void printCBrOperands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
+    if (instr.operands.empty()) {
         os << " ; missing label";
         return;
     }
@@ -310,8 +278,7 @@ void printCBrOperands(const Instr &instr, std::ostream &os, const SerializeConte
     os << ' ';
     printValue(os, instr.operands[0], ctx);
 
-    if (instr.labels.empty())
-    {
+    if (instr.labels.empty()) {
         os << " ; missing label";
         return;
     }
@@ -319,13 +286,10 @@ void printCBrOperands(const Instr &instr, std::ostream &os, const SerializeConte
     os << ", ";
     printBranchTarget(instr, 0, os, ctx);
 
-    if (instr.labels.size() >= 2)
-    {
+    if (instr.labels.size() >= 2) {
         os << ", ";
         printBranchTarget(instr, 1, os, ctx);
-    }
-    else
-    {
+    } else {
         os << " ; missing label";
     }
 }
@@ -334,8 +298,7 @@ void printCBrOperands(const Instr &instr, std::ostream &os, const SerializeConte
 /// @param instr Switch instruction providing the scrutinee and cases.
 /// @param os Stream receiving serialized output.
 /// @param ctx Serialization context with value name mappings.
-void printSwitchI32Operands(const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-{
+void printSwitchI32Operands(const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
     if (instr.operands.empty() || instr.labels.empty())
         return;
 
@@ -345,8 +308,7 @@ void printSwitchI32Operands(const Instr &instr, std::ostream &os, const Serializ
     printCaretBranchTarget(instr, 0, os, ctx);
 
     const size_t caseCount = switchCaseCount(instr);
-    for (size_t idx = 0; idx < caseCount; ++idx)
-    {
+    for (size_t idx = 0; idx < caseCount; ++idx) {
         os << ", ";
         printValue(os, switchCaseValue(instr, idx), ctx);
         os << " -> ";
@@ -357,10 +319,8 @@ void printSwitchI32Operands(const Instr &instr, std::ostream &os, const Serializ
 /// @brief Retrieve the formatter function for a given opcode.
 /// @param op Opcode to format.
 /// @return Function object responsible for serialising operands of @p op.
-const Formatter &formatterFor(Opcode op)
-{
-    static const auto formatters = []
-    {
+const Formatter &formatterFor(Opcode op) {
+    static const auto formatters = [] {
         std::array<Formatter, kNumOpcodes> table;
         table.fill(&printDefaultOperands);
         table[toIndex(Opcode::Call)] = &printCallOperands;
@@ -374,28 +334,23 @@ const Formatter &formatterFor(Opcode op)
         table[toIndex(Opcode::TrapKind)] = &printTrapKindOperand;
         table[toIndex(Opcode::TrapFromErr)] = &printTrapFromErrOperands;
         table[toIndex(Opcode::EhPush)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        {
-            if (!instr.labels.empty())
-            {
-                os << ' ';
-                printCaretBranchTarget(instr, 0, os, ctx);
-            }
-        };
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
+                if (!instr.labels.empty()) {
+                    os << ' ';
+                    printCaretBranchTarget(instr, 0, os, ctx);
+                }
+            };
         table[toIndex(Opcode::ResumeLabel)] =
-            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx)
-        {
-            if (!instr.operands.empty())
-            {
-                os << ' ';
-                printValue(os, instr.operands[0], ctx);
-            }
-            if (!instr.labels.empty())
-            {
-                os << ", ";
-                printCaretBranchTarget(instr, 0, os, ctx);
-            }
-        };
+            [](const Instr &instr, std::ostream &os, const SerializeContext &ctx) {
+                if (!instr.operands.empty()) {
+                    os << ' ';
+                    printValue(os, instr.operands[0], ctx);
+                }
+                if (!instr.labels.empty()) {
+                    os << ", ";
+                    printCaretBranchTarget(instr, 0, os, ctx);
+                }
+            };
         return table;
     }();
     return formatters[toIndex(op)];
@@ -404,11 +359,9 @@ const Formatter &formatterFor(Opcode op)
 /// @brief Emit a single extern declaration following canonical IL syntax.
 /// @param e Imported function descriptor to serialise; not owned.
 /// @param os Stream that receives the textual representation; not owned.
-void printExtern(const Extern &e, std::ostream &os)
-{
+void printExtern(const Extern &e, std::ostream &os) {
     os << "extern @" << e.name << "(";
-    for (size_t i = 0; i < e.params.size(); ++i)
-    {
+    for (size_t i = 0; i < e.params.size(); ++i) {
         if (i)
             os << ", ";
         os << e.params[i].toString();
@@ -419,11 +372,9 @@ void printExtern(const Extern &e, std::ostream &os)
 /// @brief Determine the default result type kind for an opcode.
 /// @param info Opcode metadata describing result categories.
 /// @return Matching kind when the opcode produces a fixed result type; empty optional otherwise.
-std::optional<Type::Kind> defaultResultKind(const OpcodeInfo &info)
-{
+std::optional<Type::Kind> defaultResultKind(const OpcodeInfo &info) {
     using Kind = Type::Kind;
-    switch (info.resultType)
-    {
+    switch (info.resultType) {
         case TypeCategory::I1:
             return Kind::I1;
         case TypeCategory::I32:
@@ -449,8 +400,7 @@ std::optional<Type::Kind> defaultResultKind(const OpcodeInfo &info)
 /// @brief Identify whether a basic block models an exception handler entry.
 /// @param bb Block to inspect.
 /// @return @c true when @p bb begins with `eh.entry` and carries error/resume parameters.
-bool isHandlerBlock(const BasicBlock &bb)
-{
+bool isHandlerBlock(const BasicBlock &bb) {
     if (bb.instructions.empty())
         return false;
     if (bb.instructions.front().op != Opcode::EhEntry)
@@ -476,27 +426,22 @@ bool isHandlerBlock(const BasicBlock &bb)
 ///              its opcode (e.g., `Call` has `callee` and operands, `Br`
 ///              provides at most one label, `CBr` provides two). The function
 ///              assumes `os` remains valid for the duration of the call.
-void printInstr(const Instr &in, std::ostream &os, const SerializeContext &ctx)
-{
+void printInstr(const Instr &in, std::ostream &os, const SerializeContext &ctx) {
     if (in.loc.isValid())
         os << "  .loc " << in.loc.file_id << ' ' << in.loc.line << ' ' << in.loc.column << "\n";
     os << "  ";
     const auto &info = getOpcodeInfo(in.op);
-    if (in.result)
-    {
+    if (in.result) {
         // Use named result if available for readability
         auto name = ctx.nameForTemp(*in.result);
         if (!name.empty() && name[0] != '%')
             os << '%' << name;
         else
             os << "%t" << *in.result;
-        if (auto def = defaultResultKind(info))
-        {
+        if (auto def = defaultResultKind(info)) {
             if (in.type.kind != *def)
                 os << ':' << in.type.toString();
-        }
-        else if (info.resultType == TypeCategory::Dynamic && in.type.kind != Type::Kind::Void)
-        {
+        } else if (info.resultType == TypeCategory::Dynamic && in.type.kind != Type::Kind::Void) {
             os << ':' << in.type.toString();
         }
         os << " = ";
@@ -517,27 +462,22 @@ void printInstr(const Instr &in, std::ostream &os, const SerializeContext &ctx)
 /// then globals and functions by walking their basic blocks and delegating instruction
 /// formatting to @c printInstr.
 /// @returns Nothing; the serialized form is written directly to @p os.
-void Serializer::write(const Module &m, std::ostream &os, Mode mode)
-{
+void Serializer::write(const Module &m, std::ostream &os, Mode mode) {
     os << "il " << m.version << "\n";
     if (m.target)
         os << "target \"" << *m.target << "\"\n";
-    if (mode == Mode::Canonical)
-    {
+    if (mode == Mode::Canonical) {
         std::vector<Extern> ex(m.externs.begin(), m.externs.end());
         std::sort(
             ex.begin(), ex.end(), [](const Extern &a, const Extern &b) { return a.name < b.name; });
         for (const auto &e : ex)
             printExtern(e, os);
-    }
-    else
-    {
+    } else {
         for (const auto &e : m.externs)
             printExtern(e, os);
     }
 
-    for (const auto &g : m.globals)
-    {
+    for (const auto &g : m.globals) {
         os << "global ";
         if (g.linkage == Linkage::Export)
             os << "export ";
@@ -547,8 +487,7 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
            << encodeEscapedString(g.init) << "\"\n";
     }
 
-    for (const auto &f : m.functions)
-    {
+    for (const auto &f : m.functions) {
         // Create serialization context with this function's value names
         SerializeContext ctx;
         ctx.valueNames = &f.valueNames;
@@ -559,8 +498,7 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
         else if (f.linkage == Linkage::Import)
             os << "import ";
         os << "@" << f.name << "(";
-        for (size_t i = 0; i < f.params.size(); ++i)
-        {
+        for (size_t i = 0; i < f.params.size(); ++i) {
             if (i)
                 os << ", ";
             os << f.params[i].type.toString() << " %" << f.params[i].name;
@@ -568,39 +506,32 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
         os << ") -> " << f.retType.toString();
 
         // Import-linkage functions have no body (declaration only)
-        if (f.linkage == Linkage::Import)
-        {
+        if (f.linkage == Linkage::Import) {
             os << "\n";
             continue;
         }
 
         os << " {\n";
-        for (const auto &bb : f.blocks)
-        {
+        for (const auto &bb : f.blocks) {
             const bool handler = isHandlerBlock(bb);
             if (handler)
                 os << "handler ^" << bb.label;
             else
                 os << bb.label;
-            if (!bb.params.empty())
-            {
+            if (!bb.params.empty()) {
                 os << '(';
-                for (size_t i = 0; i < bb.params.size(); ++i)
-                {
+                for (size_t i = 0; i < bb.params.size(); ++i) {
                     if (i)
                         os << ", ";
                     os << '%' << bb.params[i].name << ':';
-                    if (handler)
-                    {
+                    if (handler) {
                         if (bb.params[i].type.kind == Type::Kind::Error)
                             os << "Error";
                         else if (bb.params[i].type.kind == Type::Kind::ResumeTok)
                             os << "ResumeTok";
                         else
                             os << bb.params[i].type.toString();
-                    }
-                    else
-                    {
+                    } else {
                         os << bb.params[i].type.toString();
                     }
                 }
@@ -620,8 +551,7 @@ void Serializer::write(const Module &m, std::ostream &os, Mode mode)
 /// Workflow: accumulate output in an @c ostringstream by delegating to @c write
 /// with the requested @p mode and return the resulting buffer.
 /// @returns Canonical or declared-order IL text depending on @p mode.
-std::string Serializer::toString(const Module &m, Mode mode)
-{
+std::string Serializer::toString(const Module &m, Mode mode) {
     std::ostringstream oss;
     write(m, oss, mode);
     return oss.str();

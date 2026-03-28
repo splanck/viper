@@ -23,14 +23,12 @@
 #include <string>
 
 // ── vm_trap override ────────────────────────────────────────────────────────
-namespace
-{
+namespace {
 int g_trap_count = 0;
 std::string g_last_trap;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_trap_count++;
     g_last_trap = msg ? msg : "";
 }
@@ -41,15 +39,13 @@ extern "C" void vm_trap(const char *msg)
 /// On a real-graphics build where the display is unavailable, it must trap
 /// with "display server unavailable". If the display IS available (dev
 /// machine), the test skips — no failure, no trap expected.
-static void test_canvas_new_traps_or_skips()
-{
+static void test_canvas_new_traps_or_skips() {
     g_trap_count = 0;
     g_last_trap.clear();
 
     void *canvas = rt_canvas_new(NULL, 640, 480);
 
-    if (g_trap_count > 0)
-    {
+    if (g_trap_count > 0) {
         // Either the stub fired ("not compiled in") or the real
         // implementation failed ("display server unavailable").
         assert(canvas == NULL);
@@ -57,9 +53,7 @@ static void test_canvas_new_traps_or_skips()
                g_last_trap.find("canvas") != std::string::npos ||
                g_last_trap.find("graphics") != std::string::npos);
         printf("  PASS: rt_canvas_new → trap '%s'\n", g_last_trap.c_str());
-    }
-    else
-    {
+    } else {
         // Real graphics build, display available → window created.
         // Clean up and skip — there's nothing to test in this scenario.
         if (canvas)
@@ -68,8 +62,7 @@ static void test_canvas_new_traps_or_skips()
     }
 }
 
-int main()
-{
+int main() {
     test_canvas_new_traps_or_skips();
 
     printf("All canvas-unavailable tests passed.\n");

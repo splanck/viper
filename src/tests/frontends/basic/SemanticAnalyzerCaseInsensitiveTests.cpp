@@ -26,18 +26,15 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-struct AnalysisResult
-{
+struct AnalysisResult {
     size_t errors;
     size_t warnings;
     std::string output;
 };
 
-AnalysisResult analyzeSnippet(const std::string &src)
-{
+AnalysisResult analyzeSnippet(const std::string &src) {
     SourceManager sm;
     uint32_t fid = sm.addFile("snippet.bas");
     Parser parser(src, fid);
@@ -60,8 +57,7 @@ AnalysisResult analyzeSnippet(const std::string &src)
 
 } // namespace
 
-int main()
-{
+int main() {
     // Decl uppercase, call lowercase, qualified
     {
         const std::string src = "10 NAMESPACE A.B\n"

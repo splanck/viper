@@ -34,10 +34,8 @@ using namespace viper::codegen::linker;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -45,8 +43,7 @@ static void check(bool cond, const char *msg, int line)
 
 #define CHECK(cond) check((cond), #cond, __LINE__)
 
-static uint32_t readLE32(const uint8_t *p)
-{
+static uint32_t readLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
@@ -56,8 +53,7 @@ static ObjFile makeCodeObj(const std::string &name,
                            const std::string &func,
                            const std::vector<uint8_t> &code,
                            const std::vector<ObjReloc> &relocs = {},
-                           const std::vector<ObjSymbol> &extraSyms = {})
-{
+                           const std::vector<ObjSymbol> &extraSyms = {}) {
     ObjFile obj;
     obj.name = name;
     obj.format = ObjFileFormat::ELF;
@@ -95,8 +91,7 @@ static bool runPipeline(std::vector<ObjFile> &objs,
                         LinkLayout &layout,
                         LinkArch arch,
                         LinkPlatform platform,
-                        std::ostream &err)
-{
+                        std::ostream &err) {
     layout.globalSyms = std::move(globalSyms);
     if (!mergeSections(objs, platform, arch, layout, err))
         return false;
@@ -105,8 +100,7 @@ static bool runPipeline(std::vector<ObjFile> &objs,
     return true;
 }
 
-int main()
-{
+int main() {
     // --- Test 1: In-range Branch26 — no trampolines generated ---
     {
         ObjSymbol targetSym;
@@ -262,8 +256,7 @@ int main()
             runPipeline(objs, globalSyms, layout, LinkArch::AArch64, LinkPlatform::Linux, err);
 
         CHECK(ok);
-        if (ok && !layout.sections.empty())
-        {
+        if (ok && !layout.sections.empty()) {
             // .text base: funcB(4) + padding(140MB) + funcA(4) = base.
             // Should grow by 12 bytes (one trampoline).
             const size_t baseSize = 4 + 140 * 1024 * 1024 + 4;
@@ -398,8 +391,7 @@ int main()
             runPipeline(objs, globalSyms, layout, LinkArch::AArch64, LinkPlatform::Linux, err);
         CHECK(ok);
 
-        if (ok && !layout.sections.empty())
-        {
+        if (ok && !layout.sections.empty()) {
             // Both calls to funcB should share ONE 12-byte trampoline.
             const size_t baseSize =
                 4 + 140 * 1024 * 1024 + 4 + 4; // funcB + padding + funcA + funcC
@@ -514,10 +506,8 @@ int main()
 
         // Verify .text grew (trampoline inserted) and rodata VA doesn't overlap.
         uint64_t textVA = 0, textEnd = 0, rodataVA = 0;
-        for (const auto &sec : layout.sections)
-        {
-            if (sec.executable)
-            {
+        for (const auto &sec : layout.sections) {
+            if (sec.executable) {
                 textVA = sec.virtualAddr;
                 textEnd = sec.virtualAddr + sec.data.size();
             }
@@ -539,8 +529,7 @@ int main()
     // (Skipped in CI — would require allocating >256MB. Tested conceptually.)
 
     // --- Result ---
-    if (gFail == 0)
-    {
+    if (gFail == 0) {
         std::cout << "All BranchTrampoline tests passed.\n";
         return EXIT_SUCCESS;
     }

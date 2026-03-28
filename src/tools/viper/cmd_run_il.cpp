@@ -45,13 +45,10 @@
 
 using namespace il;
 
-namespace
-{
+namespace {
 
-struct RunILConfig
-{
-    struct SourceBreak
-    {
+struct RunILConfig {
+    struct SourceBreak {
         std::string file;
         uint32_t line = 0;
     };
@@ -81,16 +78,13 @@ struct RunILConfig
 ///          logic.
 /// @param text Candidate string containing surrounding padding.
 /// @return Copy of @p text with outer whitespace removed.
-std::string trimWhitespace(std::string text)
-{
+std::string trimWhitespace(std::string text) {
     auto begin = std::find_if_not(
         text.begin(), text.end(), [](unsigned char ch) { return std::isspace(ch) != 0; });
-    auto end = std::find_if_not(text.rbegin(),
-                                text.rend(),
-                                [](unsigned char ch) { return std::isspace(ch) != 0; })
-                   .base();
-    if (begin >= end)
-    {
+    auto end = std::find_if_not(text.rbegin(), text.rend(), [](unsigned char ch) {
+                   return std::isspace(ch) != 0;
+               }).base();
+    if (begin >= end) {
         return std::string();
     }
     return std::string(begin, end);
@@ -107,27 +101,21 @@ std::string trimWhitespace(std::string text)
 ///        breakpoint spec.
 /// @param line Output slot populated with the parsed value on success.
 /// @return True when @p token encodes a positive decimal integer.
-bool tryParseLineNumber(const std::string &token, uint32_t &line)
-{
-    if (token.empty())
-    {
+bool tryParseLineNumber(const std::string &token, uint32_t &line) {
+    if (token.empty()) {
         return false;
     }
     uint64_t value = 0;
-    for (char ch : token)
-    {
-        if (!std::isdigit(static_cast<unsigned char>(ch)))
-        {
+    for (char ch : token) {
+        if (!std::isdigit(static_cast<unsigned char>(ch))) {
             return false;
         }
         value = value * 10 + static_cast<unsigned>(ch - '0');
-        if (value > std::numeric_limits<uint32_t>::max())
-        {
+        if (value > std::numeric_limits<uint32_t>::max()) {
             return false;
         }
     }
-    if (value == 0)
-    {
+    if (value == 0) {
         return false;
     }
     line = static_cast<uint32_t>(value);
@@ -144,11 +132,9 @@ bool tryParseLineNumber(const std::string &token, uint32_t &line)
 /// @param flag Flag name responsible for the argument, such as "--break".
 void reportInvalidLineNumber(const std::string &lineToken,
                              const std::string &spec,
-                             const char *flag)
-{
+                             const char *flag) {
     std::cerr << "invalid line number '" << lineToken << "' for " << flag;
-    if (!spec.empty())
-    {
+    if (!spec.empty()) {
         std::cerr << " argument \"" << spec << "\"";
     }
     std::cerr << "\n";
@@ -165,162 +151,115 @@ void reportInvalidLineNumber(const std::string &lineToken,
 /// @param argv Argument array (first element is the IL file path).
 /// @param config Configuration structure populated with parsed state.
 /// @return True on success; false after emitting usage information.
-bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
-{
-    if (argc < 1)
-    {
+bool parseRunILArgs(int argc, char **argv, RunILConfig &config) {
+    if (argc < 1) {
         usage();
         return false;
     }
 
     config.ilFile = argv[0];
 
-    for (int i = 1; i < argc; ++i)
-    {
+    for (int i = 1; i < argc; ++i) {
         std::string_view arg = argv[i];
-        if (arg == "--break")
-        {
-            if (i + 1 >= argc)
-            {
+        if (arg == "--break") {
+            if (i + 1 >= argc) {
                 usage();
                 return false;
             }
             std::string spec = argv[++i];
-            if (ilc::isSrcBreakSpec(spec))
-            {
+            if (ilc::isSrcBreakSpec(spec)) {
                 auto pos = spec.rfind(':');
                 std::string file = trimWhitespace(spec.substr(0, pos));
                 const std::string lineToken = trimWhitespace(spec.substr(pos + 1));
                 uint32_t line = 0;
-                if (!tryParseLineNumber(lineToken, line))
-                {
+                if (!tryParseLineNumber(lineToken, line)) {
                     reportInvalidLineNumber(lineToken, spec, "--break");
                     return false;
                 }
                 config.breakSrcLines.push_back({std::move(file), line});
-            }
-            else
-            {
+            } else {
                 std::string trimmedSpec = trimWhitespace(spec);
                 bool parsedAsSrcBreak = false;
                 auto pos = trimmedSpec.rfind(':');
-                if (pos != std::string::npos)
-                {
+                if (pos != std::string::npos) {
                     std::string file = trimWhitespace(trimmedSpec.substr(0, pos));
                     const std::string lineToken = trimWhitespace(trimmedSpec.substr(pos + 1));
-                    if (!lineToken.empty())
-                    {
+                    if (!lineToken.empty()) {
                         uint32_t line = 0;
-                        if (!tryParseLineNumber(lineToken, line))
-                        {
+                        if (!tryParseLineNumber(lineToken, line)) {
                             // Fall through to label handling when the suffix is not a
                             // valid line number.
-                        }
-                        else if (file.empty())
-                        {
+                        } else if (file.empty()) {
                             reportInvalidLineNumber(lineToken, spec, "--break");
                             return false;
-                        }
-                        else
-                        {
+                        } else {
                             config.breakSrcLines.push_back({std::move(file), line});
                             parsedAsSrcBreak = true;
                         }
                     }
                 }
 
-                if (parsedAsSrcBreak)
-                {
+                if (parsedAsSrcBreak) {
                     continue;
                 }
 
                 std::string label = std::move(trimmedSpec);
-                while (!label.empty() && label.back() == ':')
-                {
+                while (!label.empty() && label.back() == ':') {
                     label.pop_back();
                 }
                 config.breakLabels.push_back(std::move(label));
             }
-        }
-        else if (arg == "--break-src")
-        {
-            if (i + 1 >= argc)
-            {
+        } else if (arg == "--break-src") {
+            if (i + 1 >= argc) {
                 usage();
                 return false;
             }
             std::string spec = argv[++i];
             auto pos = spec.rfind(':');
-            if (pos != std::string::npos)
-            {
+            if (pos != std::string::npos) {
                 std::string file = trimWhitespace(spec.substr(0, pos));
                 const std::string lineToken = trimWhitespace(spec.substr(pos + 1));
-                if (file.empty())
-                {
+                if (file.empty()) {
                     reportInvalidLineNumber(lineToken, spec, "--break-src");
                     return false;
                 }
                 uint32_t line = 0;
-                if (!tryParseLineNumber(lineToken, line))
-                {
+                if (!tryParseLineNumber(lineToken, line)) {
                     reportInvalidLineNumber(lineToken, spec, "--break-src");
                     return false;
                 }
                 config.breakSrcLines.push_back({std::move(file), line});
-            }
-            else
-            {
+            } else {
                 reportInvalidLineNumber("", spec, "--break-src");
                 return false;
             }
-        }
-        else if (arg == "--debug-cmds")
-        {
-            if (i + 1 >= argc)
-            {
+        } else if (arg == "--debug-cmds") {
+            if (i + 1 >= argc) {
                 usage();
                 return false;
             }
             config.debugScriptPath = argv[++i];
-        }
-        else if (arg == "--step")
-        {
+        } else if (arg == "--step") {
             config.stepFlag = true;
-        }
-        else if (arg == "--continue")
-        {
+        } else if (arg == "--continue") {
             config.continueFlag = true;
-        }
-        else if (arg == "--watch")
-        {
-            if (i + 1 >= argc)
-            {
+        } else if (arg == "--watch") {
+            if (i + 1 >= argc) {
                 usage();
                 return false;
             }
             config.watchSymbols.emplace_back(argv[++i]);
-        }
-        else if (arg == "--count")
-        {
+        } else if (arg == "--count") {
             config.countFlag = true;
-        }
-        else if (arg == "--time")
-        {
+        } else if (arg == "--time") {
             config.timeFlag = true;
-        }
-        else if (arg == "--bytecode")
-        {
+        } else if (arg == "--bytecode") {
             config.useBytecode = true;
-        }
-        else if (arg == "--bc-threaded")
-        {
+        } else if (arg == "--bc-threaded") {
             config.useBytecode = true;
             config.useBytecodeThreaded = true;
-        }
-        else
-        {
-            switch (ilc::parseSharedOption(i, argc, argv, config.sharedOpts))
-            {
+        } else {
+            switch (ilc::parseSharedOption(i, argc, argv, config.sharedOpts)) {
                 case ilc::SharedOptionParseResult::Parsed:
                     continue;
                 case ilc::SharedOptionParseResult::Error:
@@ -333,16 +272,14 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
         }
     }
 
-    if (config.continueFlag)
-    {
+    if (config.continueFlag) {
         config.stepFlag = false;
     }
 
     config.boundsChecksRequested = config.sharedOpts.boundsChecks;
 
     // --profile enables both instruction counting and wall-clock timing.
-    if (config.sharedOpts.profile)
-    {
+    if (config.sharedOpts.profile) {
         config.countFlag = true;
         config.timeFlag = true;
     }
@@ -362,37 +299,29 @@ bool parseRunILArgs(int argc, char **argv, RunILConfig &config)
 ///        cleared depending on CLI flags.
 void configureDebugger(const RunILConfig &config,
                        vm::DebugCtrl &dbg,
-                       std::unique_ptr<vm::DebugScript> &script)
-{
-    if (config.continueFlag)
-    {
+                       std::unique_ptr<vm::DebugScript> &script) {
+    if (config.continueFlag) {
         dbg = vm::DebugCtrl();
         script.reset();
         return;
     }
 
-    for (const auto &label : config.breakLabels)
-    {
+    for (const auto &label : config.breakLabels) {
         auto sym = dbg.internLabel(label.c_str());
         dbg.addBreak(sym);
     }
-    for (const auto &src : config.breakSrcLines)
-    {
+    for (const auto &src : config.breakSrcLines) {
         dbg.addBreakSrcLine(src.file, src.line);
     }
-    for (const auto &watch : config.watchSymbols)
-    {
+    for (const auto &watch : config.watchSymbols) {
         dbg.addWatch(watch);
     }
 
-    if (!config.debugScriptPath.empty())
-    {
+    if (!config.debugScriptPath.empty()) {
         script = std::make_unique<vm::DebugScript>(config.debugScriptPath);
     }
-    if (config.stepFlag)
-    {
-        if (!script)
-        {
+    if (config.stepFlag) {
+        if (!script) {
             script = std::make_unique<vm::DebugScript>();
         }
         script->addStep(1);
@@ -407,18 +336,15 @@ void configureDebugger(const RunILConfig &config,
 ///          stderr.  Returns a non-zero status when any phase fails.
 /// @param config Fully populated configuration for the run.
 /// @return Process-style exit status; zero indicates success.
-int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
-{
-    if (config.boundsChecksRequested)
-    {
+int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm) {
+    if (config.boundsChecksRequested) {
         std::cerr << "error: --bounds-checks is not supported when running existing IL modules;";
         std::cerr << " recompile the source with bounds checks enabled and rerun.\n";
         return 1;
     }
 
     const uint32_t fileId = sm.addFile(config.ilFile);
-    if (fileId == 0)
-    {
+    if (fileId == 0) {
         return 1;
     }
 
@@ -430,40 +356,33 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
 
     core::Module m;
     auto load = il::tools::common::loadModuleFromFile(config.ilFile, m, std::cerr);
-    if (!load.succeeded())
-    {
+    if (!load.succeeded()) {
         return 1;
     }
 
-    if (!il::tools::common::verifyModule(m, std::cerr, &sm))
-    {
+    if (!il::tools::common::verifyModule(m, std::cerr, &sm)) {
         return 1;
     }
 
-    if (!config.sharedOpts.stdinPath.empty())
-    {
-        if (!freopen(config.sharedOpts.stdinPath.c_str(), "r", stdin))
-        {
+    if (!config.sharedOpts.stdinPath.empty()) {
+        if (!freopen(config.sharedOpts.stdinPath.c_str(), "r", stdin)) {
             std::cerr << "unable to open stdin file\n";
             return 1;
         }
     }
 
-    if (config.stepFlag)
-    {
-        auto it = std::find_if(m.functions.begin(),
-                               m.functions.end(),
-                               [](const core::Function &f) { return f.name == "main"; });
-        if (it != m.functions.end() && !it->blocks.empty())
-        {
+    if (config.stepFlag) {
+        auto it = std::find_if(m.functions.begin(), m.functions.end(), [](const core::Function &f) {
+            return f.name == "main";
+        });
+        if (it != m.functions.end() && !it->blocks.empty()) {
             auto sym = dbg.internLabel(it->blocks.front().label);
             dbg.addBreak(sym);
         }
     }
 
     // Use bytecode VM if requested
-    if (config.useBytecode)
-    {
+    if (config.useBytecode) {
         // Compile IL to bytecode
         viper::bytecode::BytecodeCompiler compiler;
         viper::bytecode::BytecodeModule bcModule = compiler.compile(m);
@@ -475,8 +394,7 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
         vm.load(&bcModule);
 
         std::chrono::steady_clock::time_point start;
-        if (config.timeFlag)
-        {
+        if (config.timeFlag) {
             start = std::chrono::steady_clock::now();
         }
 
@@ -484,34 +402,26 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
         viper::bytecode::BCSlot result = vm.exec("main", {});
 
         std::chrono::steady_clock::time_point end;
-        if (config.timeFlag)
-        {
+        if (config.timeFlag) {
             end = std::chrono::steady_clock::now();
         }
 
         int rc = 0;
-        if (vm.state() == viper::bytecode::VMState::Trapped)
-        {
-            if (config.sharedOpts.dumpTrap)
-            {
+        if (vm.state() == viper::bytecode::VMState::Trapped) {
+            if (config.sharedOpts.dumpTrap) {
                 std::cerr << vm.trapMessage() << "\n";
             }
             rc = 1;
-        }
-        else
-        {
+        } else {
             rc = static_cast<int>(result.i64);
         }
 
-        if (config.countFlag || config.timeFlag)
-        {
+        if (config.countFlag || config.timeFlag) {
             std::cerr << "[SUMMARY]";
-            if (config.countFlag)
-            {
+            if (config.countFlag) {
                 std::cerr << " instr=" << vm.instrCount();
             }
-            if (config.timeFlag)
-            {
+            if (config.timeFlag) {
                 double ms = std::chrono::duration<double, std::milli>(end - start).count();
                 std::cerr << " time_ms=" << ms;
             }
@@ -531,55 +441,43 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
     vm::Runner runner(m, std::move(runCfg));
 
     std::chrono::steady_clock::time_point start;
-    if (config.timeFlag)
-    {
+    if (config.timeFlag) {
         start = std::chrono::steady_clock::now();
     }
     const int64_t runResult = runner.run();
     int rc = 0;
     const auto intMin = std::numeric_limits<int>::min();
     const auto intMax = std::numeric_limits<int>::max();
-    if (runResult < intMin || runResult > intMax)
-    {
+    if (runResult < intMin || runResult > intMax) {
         std::cerr << "ilc run: program return value " << runResult << " outside host int range ["
                   << intMin << ", " << intMax << "]\n";
         rc = 1;
-    }
-    else
-    {
+    } else {
         rc = static_cast<int>(runResult);
     }
     const auto trapMessage = runner.lastTrapMessage();
-    if (trapMessage)
-    {
-        if (config.sharedOpts.dumpTrap && !trapMessage->empty())
-        {
+    if (trapMessage) {
+        if (config.sharedOpts.dumpTrap && !trapMessage->empty()) {
             std::cerr << *trapMessage;
-            if (trapMessage->back() != '\n')
-            {
+            if (trapMessage->back() != '\n') {
                 std::cerr << '\n';
             }
         }
-        if (rc == 0)
-        {
+        if (rc == 0) {
             rc = 1;
         }
     }
     std::chrono::steady_clock::time_point end;
-    if (config.timeFlag)
-    {
+    if (config.timeFlag) {
         end = std::chrono::steady_clock::now();
     }
 
-    if (config.countFlag || config.timeFlag)
-    {
+    if (config.countFlag || config.timeFlag) {
         std::cerr << "[SUMMARY]";
-        if (config.countFlag)
-        {
+        if (config.countFlag) {
             std::cerr << " instr=" << runner.instructionCount();
         }
-        if (config.timeFlag)
-        {
+        if (config.timeFlag) {
             double ms = std::chrono::duration<double, std::milli>(end - start).count();
             std::cerr << " time_ms=" << ms;
         }
@@ -599,11 +497,9 @@ int executeRunIL(const RunILConfig &config, il::support::SourceManager &sm)
 /// @param argv Argument vector beginning with the IL file path.
 /// @param sm Source manager instance prepared by the caller.
 /// @return Zero on success; non-zero when parsing or execution fails.
-int cmdRunILWithSourceManager(int argc, char **argv, il::support::SourceManager &sm)
-{
+int cmdRunILWithSourceManager(int argc, char **argv, il::support::SourceManager &sm) {
     RunILConfig config;
-    if (!parseRunILArgs(argc, argv, config))
-    {
+    if (!parseRunILArgs(argc, argv, config)) {
         return 1;
     }
 
@@ -618,8 +514,7 @@ int cmdRunILWithSourceManager(int argc, char **argv, il::support::SourceManager 
 /// @param argc Number of subcommand arguments (excluding the subcommand).
 /// @param argv Argument vector beginning with the IL file path.
 /// @return Zero on success; non-zero when parsing or execution fails.
-int cmdRunIL(int argc, char **argv)
-{
+int cmdRunIL(int argc, char **argv) {
     il::support::SourceManager sm;
     return cmdRunILWithSourceManager(argc, argv, sm);
 }

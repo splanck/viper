@@ -20,8 +20,7 @@
 #include <cstdint>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -29,8 +28,7 @@ extern "C" void vm_trap(const char *msg)
 // Helper
 // ============================================================================
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
@@ -38,8 +36,7 @@ static rt_string make_str(const char *s)
 // TryInt Tests
 // ============================================================================
 
-static void test_try_int_valid()
-{
+static void test_try_int_valid() {
     int64_t result = 0;
     assert(rt_parse_try_int(make_str("42"), &result) == 1);
     assert(result == 42);
@@ -56,8 +53,7 @@ static void test_try_int_valid()
     printf("test_try_int_valid: PASSED\n");
 }
 
-static void test_try_int_invalid()
-{
+static void test_try_int_invalid() {
     int64_t result = 999;
     assert(rt_parse_try_int(make_str(""), &result) == 0);
     assert(rt_parse_try_int(make_str("abc"), &result) == 0);
@@ -72,8 +68,7 @@ static void test_try_int_invalid()
 // TryNum Tests
 // ============================================================================
 
-static void test_try_num_valid()
-{
+static void test_try_num_valid() {
     double result = 0.0;
     assert(rt_parse_try_num(make_str("3.14"), &result) == 1);
     assert(fabs(result - 3.14) < 0.001);
@@ -93,8 +88,7 @@ static void test_try_num_valid()
     printf("test_try_num_valid: PASSED\n");
 }
 
-static void test_try_num_invalid()
-{
+static void test_try_num_invalid() {
     double result = 999.0;
     assert(rt_parse_try_num(make_str(""), &result) == 0);
     assert(rt_parse_try_num(make_str("abc"), &result) == 0);
@@ -108,8 +102,7 @@ static void test_try_num_invalid()
 // TryBool Tests
 // ============================================================================
 
-static void test_try_bool_true_values()
-{
+static void test_try_bool_true_values() {
     int8_t result = 0;
     assert(rt_parse_try_bool(make_str("true"), &result) == 1);
     assert(result == 1);
@@ -135,8 +128,7 @@ static void test_try_bool_true_values()
     printf("test_try_bool_true_values: PASSED\n");
 }
 
-static void test_try_bool_false_values()
-{
+static void test_try_bool_false_values() {
     int8_t result = 1;
     assert(rt_parse_try_bool(make_str("false"), &result) == 1);
     assert(result == 0);
@@ -159,8 +151,7 @@ static void test_try_bool_false_values()
     printf("test_try_bool_false_values: PASSED\n");
 }
 
-static void test_try_bool_invalid()
-{
+static void test_try_bool_invalid() {
     int8_t result = 1;
     assert(rt_parse_try_bool(make_str(""), &result) == 0);
     assert(rt_parse_try_bool(make_str("abc"), &result) == 0);
@@ -175,8 +166,7 @@ static void test_try_bool_invalid()
 // IntOr Tests
 // ============================================================================
 
-static void test_int_or()
-{
+static void test_int_or() {
     assert(rt_parse_int_or(make_str("42"), -1) == 42);
     assert(rt_parse_int_or(make_str("-100"), 0) == -100);
     assert(rt_parse_int_or(make_str("abc"), -1) == -1);
@@ -190,8 +180,7 @@ static void test_int_or()
 // NumOr Tests
 // ============================================================================
 
-static void test_num_or()
-{
+static void test_num_or() {
     assert(fabs(rt_parse_num_or(make_str("3.14"), -1.0) - 3.14) < 0.001);
     assert(fabs(rt_parse_num_or(make_str("-2.5"), 0.0) - (-2.5)) < 0.001);
     assert(fabs(rt_parse_num_or(make_str("abc"), -1.0) - (-1.0)) < 0.001);
@@ -204,8 +193,7 @@ static void test_num_or()
 // BoolOr Tests
 // ============================================================================
 
-static void test_bool_or()
-{
+static void test_bool_or() {
     assert(rt_parse_bool_or(make_str("true"), 0) == 1);
     assert(rt_parse_bool_or(make_str("false"), 1) == 0);
     assert(rt_parse_bool_or(make_str("abc"), 1) == 1);
@@ -220,8 +208,7 @@ static void test_bool_or()
 // IsInt Tests
 // ============================================================================
 
-static void test_is_int()
-{
+static void test_is_int() {
     assert(rt_parse_is_int(make_str("42")) == 1);
     assert(rt_parse_is_int(make_str("-123")) == 1);
     assert(rt_parse_is_int(make_str("  100  ")) == 1);
@@ -237,8 +224,7 @@ static void test_is_int()
 // IsNum Tests
 // ============================================================================
 
-static void test_is_num()
-{
+static void test_is_num() {
     assert(rt_parse_is_num(make_str("3.14")) == 1);
     assert(rt_parse_is_num(make_str("-2.5")) == 1);
     assert(rt_parse_is_num(make_str("42")) == 1);
@@ -253,8 +239,7 @@ static void test_is_num()
 // IntRadix Tests
 // ============================================================================
 
-static void test_int_radix()
-{
+static void test_int_radix() {
     // Binary
     assert(rt_parse_int_radix(make_str("1010"), 2, -1) == 10);
     assert(rt_parse_int_radix(make_str("11111111"), 2, -1) == 255);
@@ -291,8 +276,7 @@ static void test_int_radix()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Viper.Parse Tests ===\n\n");
 
     // TryInt

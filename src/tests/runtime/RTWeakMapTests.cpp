@@ -14,18 +14,15 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_basic()
-{
+static void test_basic() {
     void *m = rt_weakmap_new();
     assert(rt_weakmap_len(m) == 0);
     assert(rt_weakmap_is_empty(m) == 1);
@@ -43,8 +40,7 @@ static void test_basic()
     rt_string_unref(k);
 }
 
-static void test_has()
-{
+static void test_has() {
     void *m = rt_weakmap_new();
     rt_string k1 = make_str("a");
     rt_string k2 = make_str("b");
@@ -57,8 +53,7 @@ static void test_has()
     rt_string_unref(k2);
 }
 
-static void test_remove()
-{
+static void test_remove() {
     void *m = rt_weakmap_new();
     rt_string k = make_str("key");
     rt_weakmap_set(m, k, make_str("val"));
@@ -74,8 +69,7 @@ static void test_remove()
     rt_string_unref(k);
 }
 
-static void test_update()
-{
+static void test_update() {
     void *m = rt_weakmap_new();
     rt_string k = make_str("key");
     rt_string v1 = make_str("first");
@@ -91,8 +85,7 @@ static void test_update()
     rt_string_unref(k);
 }
 
-static void test_keys()
-{
+static void test_keys() {
     void *m = rt_weakmap_new();
     rt_weakmap_set(m, make_str("x"), make_str("1"));
     rt_weakmap_set(m, make_str("y"), make_str("2"));
@@ -101,8 +94,7 @@ static void test_keys()
     assert(rt_seq_len(keys) == 2);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *m = rt_weakmap_new();
     rt_weakmap_set(m, make_str("a"), make_str("1"));
     rt_weakmap_set(m, make_str("b"), make_str("2"));
@@ -112,8 +104,7 @@ static void test_clear()
     assert(rt_weakmap_len(m) == 0);
 }
 
-static void test_compact()
-{
+static void test_compact() {
     void *m = rt_weakmap_new();
     rt_string k1 = make_str("alive");
     rt_string k2 = make_str("dead");
@@ -131,11 +122,9 @@ static void test_compact()
     rt_string_unref(k2);
 }
 
-static void test_many_entries()
-{
+static void test_many_entries() {
     void *m = rt_weakmap_new();
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         char buf[16];
         snprintf(buf, sizeof(buf), "key_%d", i);
         rt_weakmap_set(m, make_str(buf), make_str(buf));
@@ -143,8 +132,7 @@ static void test_many_entries()
     assert(rt_weakmap_len(m) == 100);
 
     // Verify all retrievable
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         char buf[16];
         snprintf(buf, sizeof(buf), "key_%d", i);
         rt_string k = make_str(buf);
@@ -153,8 +141,7 @@ static void test_many_entries()
     }
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_weakmap_len(NULL) == 0);
     assert(rt_weakmap_is_empty(NULL) == 1);
     assert(rt_weakmap_get(NULL, NULL) == NULL);
@@ -166,8 +153,7 @@ static void test_null_safety()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_basic();
     test_has();
     test_remove();

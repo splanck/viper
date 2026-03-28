@@ -26,16 +26,14 @@
 
 #include <string>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Consolidated result of member array field resolution.
 /// @details Captures whether a variable name refers to a class field, whether
 ///          that field is an array, whether the array elements are object-typed,
 ///          and the element class name when applicable. Produced by
 ///          Lowerer::resolveMemberArrayField().
-struct MemberArrayInfo
-{
+struct MemberArrayInfo {
     bool isField = false;            ///< Name resolves to a class field.
     bool isArray = false;            ///< The field is an array type.
     bool isObjectArray = false;      ///< The array elements are object-typed.

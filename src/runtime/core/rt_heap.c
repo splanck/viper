@@ -76,8 +76,7 @@ extern void rt_legacy_context_shutdown(void);
 ///          4. Interned strings (may free pool-allocated memory)
 ///          5. GC tables (tracking array, weak ref buckets)
 ///          6. Pool slabs (must be last — other cleanup may touch pool memory)
-static void rt_global_shutdown(void)
-{
+static void rt_global_shutdown(void) {
     rt_gc_run_all_finalizers();
     rt_audio_shutdown();
     rt_legacy_context_shutdown();
@@ -93,8 +92,7 @@ static void rt_global_shutdown(void)
 ///          early during development builds.
 /// @param payload Pointer returned by @ref rt_heap_alloc or `NULL`.
 /// @return Header describing the allocation, or `NULL` for null payloads.
-static rt_heap_hdr_t *payload_to_hdr(void *payload)
-{
+static rt_heap_hdr_t *payload_to_hdr(void *payload) {
     if (!payload)
         return NULL;
     uint8_t *raw = (uint8_t *)payload;
@@ -112,13 +110,11 @@ static rt_heap_hdr_t *payload_to_hdr(void *payload)
 ///          memory corruptions or misuse of the allocator.
 /// @param hdr Header pointer returned by @ref payload_to_hdr.
 #ifndef NDEBUG
-static void rt_heap_validate_header(const rt_heap_hdr_t *hdr)
-{
+static void rt_heap_validate_header(const rt_heap_hdr_t *hdr) {
     assert(hdr);
     assert(hdr->magic == RT_MAGIC);
     assert(__atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) != (size_t)-1);
-    switch ((rt_heap_kind_t)hdr->kind)
-    {
+    switch ((rt_heap_kind_t)hdr->kind) {
         case RT_HEAP_STRING:
         case RT_HEAP_ARRAY:
         case RT_HEAP_OBJECT:
@@ -152,8 +148,7 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
                     rt_elem_kind_t elem_kind,
                     size_t elem_size,
                     size_t init_len,
-                    size_t init_cap)
-{
+                    size_t init_cap) {
     size_t cap = init_cap;
     if (cap < init_len)
         cap = init_len;
@@ -161,8 +156,7 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
         return NULL;
 
     size_t payload_bytes = 0;
-    if (cap > 0)
-    {
+    if (cap > 0) {
         if (elem_size && cap > (SIZE_MAX - sizeof(rt_heap_hdr_t)) / elem_size)
             return NULL;
         payload_bytes = cap * elem_size;
@@ -175,12 +169,9 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
     // Objects are excluded for similar reasons (potential resize/realloc).
     rt_heap_hdr_t *hdr;
     int from_pool = (kind == RT_HEAP_STRING && total_bytes <= RT_POOL_MAX_SIZE);
-    if (from_pool)
-    {
+    if (from_pool) {
         hdr = (rt_heap_hdr_t *)rt_pool_alloc(total_bytes);
-    }
-    else
-    {
+    } else {
         hdr = (rt_heap_hdr_t *)malloc(total_bytes);
         if (hdr)
             memset(hdr, 0, total_bytes);
@@ -202,16 +193,14 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
     /* Register the global shutdown handler once on first allocation.
        Use atomic CAS to ensure exactly-once registration even under
        concurrent first-allocation from multiple threads. */
-    if (!__atomic_load_n(&g_shutdown_registered, __ATOMIC_ACQUIRE))
-    {
+    if (!__atomic_load_n(&g_shutdown_registered, __ATOMIC_ACQUIRE)) {
         int expected = 0;
         if (__atomic_compare_exchange_n(&g_shutdown_registered,
                                         &expected,
                                         1,
                                         /*weak=*/0,
                                         __ATOMIC_ACQ_REL,
-                                        __ATOMIC_ACQUIRE))
-        {
+                                        __ATOMIC_ACQUIRE)) {
             atexit(rt_global_shutdown);
         }
     }
@@ -227,8 +216,7 @@ void *rt_heap_alloc(rt_heap_kind_t kind,
 ///          then increments the reference count.  Debug builds log the new count
 ///          when @c VIPER_RC_DEBUG is enabled, aiding leak investigations.
 /// @param payload Shared payload pointer; `NULL` pointers are ignored.
-void rt_heap_retain(void *payload)
-{
+void rt_heap_retain(void *payload) {
     // Fast path: inline NULL check and header lookup
     if (!payload)
         return;
@@ -242,8 +230,7 @@ void rt_heap_retain(void *payload)
     assert(old > 0);
     // Overflow guard: enabled in all builds for safety.
     // Best-effort check (cannot be made perfect without a CAS loop).
-    if (old >= SIZE_MAX - 1)
-    {
+    if (old >= SIZE_MAX - 1) {
         rt_trap("refcount overflow");
         return;
     }
@@ -266,8 +253,7 @@ void rt_heap_retain(void *payload)
 ///        zero.
 /// @return Updated reference count after the decrement, or zero when the block
 ///         was deallocated.
-static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_when_zero)
-{
+static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_when_zero) {
     if (!hdr)
         return 0;
     RT_HEAP_VALIDATE(hdr);
@@ -279,8 +265,7 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
 #ifdef VIPER_RC_DEBUG
     fprintf(stderr, "rt_heap_release(%p) => %zu\n", payload, next);
 #endif
-    if (next == 0 && free_when_zero)
-    {
+    if (next == 0 && free_when_zero) {
         // Acquire fence pairs with releasing decrements from other threads.
         __atomic_thread_fence(__ATOMIC_ACQUIRE);
 
@@ -290,12 +275,9 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
 
         memset(hdr, 0, sizeof(*hdr));
 
-        if (from_pool)
-        {
+        if (from_pool) {
             rt_pool_free(hdr, alloc_size);
-        }
-        else
-        {
+        } else {
             free(hdr);
         }
         return 0;
@@ -311,8 +293,7 @@ static size_t rt_heap_release_impl(rt_heap_hdr_t *hdr, void *payload, int free_w
 /// @param payload Shared payload pointer; `NULL` pointers are ignored.
 /// @return Reference count after the decrement, or zero when the block was
 ///         deallocated.
-size_t rt_heap_release(void *payload)
-{
+size_t rt_heap_release(void *payload) {
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
     return rt_heap_release_impl(hdr, payload, /*free_when_zero=*/1);
 }
@@ -325,8 +306,7 @@ size_t rt_heap_release(void *payload)
 ///          deallocation.
 /// @param payload Shared payload pointer; `NULL` pointers are ignored.
 /// @return Reference count after the decrement.
-size_t rt_heap_release_deferred(void *payload)
-{
+size_t rt_heap_release_deferred(void *payload) {
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
     return rt_heap_release_impl(hdr, payload, /*free_when_zero=*/0);
 }
@@ -338,8 +318,7 @@ size_t rt_heap_release_deferred(void *payload)
 ///          custom cleanup logic.  Uses the pool allocator for blocks that were
 ///          originally allocated from the pool.
 /// @param payload Shared payload pointer; `NULL` pointers are ignored.
-void rt_heap_free_zero_ref(void *payload)
-{
+void rt_heap_free_zero_ref(void *payload) {
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
     if (!hdr)
         return;
@@ -353,12 +332,9 @@ void rt_heap_free_zero_ref(void *payload)
 
     memset(hdr, 0, sizeof(*hdr));
 
-    if (from_pool)
-    {
+    if (from_pool) {
         rt_pool_free(hdr, alloc_size);
-    }
-    else
-    {
+    } else {
         free(hdr);
     }
 }
@@ -368,8 +344,7 @@ void rt_heap_free_zero_ref(void *payload)
 ///          symmetry with @ref rt_heap_hdr_c.
 /// @param payload Payload pointer produced by @ref rt_heap_alloc.
 /// @return Mutable header pointer, or `NULL` when @p payload is `NULL`.
-rt_heap_hdr_t *rt_heap_hdr(void *payload)
-{
+rt_heap_hdr_t *rt_heap_hdr(void *payload) {
     return payload_to_hdr(payload);
 }
 
@@ -379,8 +354,7 @@ rt_heap_hdr_t *rt_heap_hdr(void *payload)
 ///          allocation owned by the header and should not be freed directly.
 /// @param h Header describing the allocation.
 /// @return Pointer to the payload region, or `NULL` when @p h is `NULL`.
-void *rt_heap_data(rt_heap_hdr_t *h)
-{
+void *rt_heap_data(rt_heap_hdr_t *h) {
     if (!h)
         return NULL;
     RT_HEAP_VALIDATE(h);
@@ -393,8 +367,7 @@ void *rt_heap_data(rt_heap_hdr_t *h)
 ///          runtime.
 /// @param payload Payload pointer or `NULL`.
 /// @return Logical element count tracked in the header.
-size_t rt_heap_len(void *payload)
-{
+size_t rt_heap_len(void *payload) {
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
     if (!hdr)
         return 0;
@@ -406,8 +379,7 @@ size_t rt_heap_len(void *payload)
 ///          of elements for which space is reserved.
 /// @param payload Payload pointer or `NULL`.
 /// @return Capacity value stored in the header.
-size_t rt_heap_cap(void *payload)
-{
+size_t rt_heap_cap(void *payload) {
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
     if (!hdr)
         return 0;
@@ -421,8 +393,7 @@ size_t rt_heap_cap(void *payload)
 ///          defensive conditionals.
 /// @param payload Payload pointer whose header should be updated.
 /// @param new_len New logical length to store.
-void rt_heap_set_len(void *payload, size_t new_len)
-{
+void rt_heap_set_len(void *payload, size_t new_len) {
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
     if (!hdr)
         return;
@@ -433,8 +404,7 @@ void rt_heap_set_len(void *payload, size_t new_len)
 /// @param ptr Pointer to the 32-bit field.
 /// @param value Value to OR into the field.
 /// @return The previous value of the field before the OR operation.
-static inline uint32_t atomic_fetch_or_u32(volatile uint32_t *ptr, uint32_t value)
-{
+static inline uint32_t atomic_fetch_or_u32(volatile uint32_t *ptr, uint32_t value) {
 #if RT_COMPILER_MSVC
     return (uint32_t)_InterlockedOr((volatile long *)ptr, (long)value);
 #else
@@ -442,8 +412,7 @@ static inline uint32_t atomic_fetch_or_u32(volatile uint32_t *ptr, uint32_t valu
 #endif
 }
 
-int32_t rt_heap_mark_disposed(void *payload)
-{
+int32_t rt_heap_mark_disposed(void *payload) {
     rt_heap_hdr_t *hdr = payload_to_hdr(payload);
     if (!hdr)
         return 0;

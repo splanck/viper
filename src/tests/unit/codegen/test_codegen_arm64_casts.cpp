@@ -22,31 +22,27 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
     return ss.str();
 }
 
-TEST(Arm64Casts, Zext1AndTrunc1)
-{
+TEST(Arm64Casts, Zext1AndTrunc1) {
     const std::string in = outPath("arm64_cast_bool.il");
     const std::string out = outPath("arm64_cast_bool.s");
     const std::string il = "il 0.1\n"
@@ -66,8 +62,7 @@ TEST(Arm64Casts, Zext1AndTrunc1)
     EXPECT_NE(asmText.find("and x"), std::string::npos);
 }
 
-TEST(Arm64Casts, SiNarrowChk)
-{
+TEST(Arm64Casts, SiNarrowChk) {
     const std::string in = outPath("arm64_cast_narrow.il");
     const std::string out = outPath("arm64_cast_narrow.s");
     const std::string il = "il 0.1\n"
@@ -89,8 +84,7 @@ TEST(Arm64Casts, SiNarrowChk)
     EXPECT_NE(asmText.find("bl rt_trap"), std::string::npos);
 }
 
-TEST(Arm64Casts, FpToSiRteChk)
-{
+TEST(Arm64Casts, FpToSiRteChk) {
     const std::string in = outPath("arm64_cast_fp2si.il");
     const std::string out = outPath("arm64_cast_fp2si.s");
     const std::string il = "il 0.1\n"
@@ -111,8 +105,7 @@ TEST(Arm64Casts, FpToSiRteChk)
 
 // Keep this file minimal and focused on the core cast patterns.
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

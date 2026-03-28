@@ -24,8 +24,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     const std::string src = "10 SUB CHECK(B() AS BOOLEAN)\n20 END SUB\n";
 
     SourceManager sm;

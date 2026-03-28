@@ -19,17 +19,13 @@
 
 #include "support/diagnostics.hpp"
 
-namespace viper::server
-{
+namespace viper::server {
 
-std::vector<DiagnosticInfo> extractDiagnostics(const il::support::DiagnosticEngine &diag)
-{
+std::vector<DiagnosticInfo> extractDiagnostics(const il::support::DiagnosticEngine &diag) {
     std::vector<DiagnosticInfo> result;
-    for (const auto &d : diag.diagnostics())
-    {
+    for (const auto &d : diag.diagnostics()) {
         DiagnosticInfo info;
-        switch (d.severity)
-        {
+        switch (d.severity) {
             case il::support::Severity::Note:
                 info.severity = 0;
                 break;

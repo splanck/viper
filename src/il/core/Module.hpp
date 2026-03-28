@@ -31,12 +31,10 @@
 #include <string>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 
 /// @brief IL module aggregating externs, globals, and functions.
-struct Module
-{
+struct Module {
     /// @brief Module format version string.
     ///
     /// Defaults to configured IL spec version for newly constructed modules and

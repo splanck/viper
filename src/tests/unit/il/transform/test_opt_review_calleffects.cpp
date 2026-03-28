@@ -20,12 +20,10 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Make call.
-Instr makeCall(std::string callee)
-{
+Instr makeCall(std::string callee) {
     Instr instr;
     instr.op = Opcode::Call;
     instr.callee = std::move(callee);
@@ -35,8 +33,7 @@ Instr makeCall(std::string callee)
 } // namespace
 
 // Test that instruction-level pure attribute is detected
-TEST(CallEffects, InstrPureAttribute)
-{
+TEST(CallEffects, InstrPureAttribute) {
     Instr call = makeCall("unknown_fn");
     call.CallAttr.pure = true;
 
@@ -46,8 +43,7 @@ TEST(CallEffects, InstrPureAttribute)
 }
 
 // Test that instruction-level readonly attribute is detected
-TEST(CallEffects, InstrReadonlyAttribute)
-{
+TEST(CallEffects, InstrReadonlyAttribute) {
     Instr call = makeCall("unknown_fn");
     call.CallAttr.readonly = true;
 
@@ -57,8 +53,7 @@ TEST(CallEffects, InstrReadonlyAttribute)
 }
 
 // Test that non-call instructions get conservative classification
-TEST(CallEffects, NonCallIsConservative)
-{
+TEST(CallEffects, NonCallIsConservative) {
     Instr load;
     load.op = Opcode::Load;
     load.type = Type(Type::Kind::I64);
@@ -72,8 +67,7 @@ TEST(CallEffects, NonCallIsConservative)
 }
 
 // Test that pure + readonly = canReorderWithMemory
-TEST(CallEffects, PureImpliesCanReorder)
-{
+TEST(CallEffects, PureImpliesCanReorder) {
     Instr call = makeCall("some_fn");
     call.CallAttr.pure = true;
 
@@ -83,8 +77,7 @@ TEST(CallEffects, PureImpliesCanReorder)
 }
 
 // Test classifyCalleeEffects by name (string-based lookup)
-TEST(CallEffects, ClassifyCalleeByName)
-{
+TEST(CallEffects, ClassifyCalleeByName) {
     // Unknown callee should return conservative classification
     auto effects = il::transform::classifyCalleeEffects("totally_unknown_function_xyz");
     // Unknown functions are not pure/readonly by default
@@ -92,8 +85,7 @@ TEST(CallEffects, ClassifyCalleeByName)
     EXPECT_FALSE(effects.readonly);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

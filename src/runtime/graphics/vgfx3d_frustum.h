@@ -26,8 +26,7 @@
 
 /// @brief Six frustum planes in Ax+By+Cz+D=0 form (normalized).
 /// Order: 0=left, 1=right, 2=bottom, 3=top, 4=near, 5=far.
-typedef struct
-{
+typedef struct {
     float planes[6][4]; /* [A, B, C, D] per plane */
 } vgfx3d_frustum_t;
 

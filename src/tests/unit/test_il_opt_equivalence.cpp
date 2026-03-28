@@ -46,13 +46,11 @@ using il::core::Type;
 using il::core::Value;
 using il::support::SourceLoc;
 
-namespace
-{
+namespace {
 
 constexpr SourceLoc kLoc{1, 1, 1};
 
-struct ProgramConfig
-{
+struct ProgramConfig {
     std::size_t minOpsPerBlock = 2;
     std::size_t maxOpsPerBlock = 5;
     std::size_t maxSwitchCases = 2;
@@ -62,33 +60,27 @@ struct ProgramConfig
     double maxFloatConst = 6.0;
 };
 
-struct GeneratedProgram
-{
+struct GeneratedProgram {
     il::core::Module module;
     std::uint64_t seed = 0;
     std::string ilText;
 };
 
 /// @brief Execution result when running a module on the VM.
-struct ExecResult
-{
+struct ExecResult {
     bool trapped = false;
     int exitCode = 0;
     std::int64_t value = 0;
     std::string stderrText;
 };
 
-class RandomProgramGenerator
-{
+class RandomProgramGenerator {
   public:
     RandomProgramGenerator(std::uint64_t seed, ProgramConfig cfg)
         : seed_(seed), cfg_(cfg), rng_(seed), intDist_(cfg.minIntConst, cfg.maxIntConst),
-          floatDist_(cfg.minFloatConst, cfg.maxFloatConst)
-    {
-    }
+          floatDist_(cfg.minFloatConst, cfg.maxFloatConst) {}
 
-    GeneratedProgram generate()
-    {
+    GeneratedProgram generate() {
         GeneratedProgram out{};
         out.seed = seed_;
 
@@ -110,8 +102,7 @@ class RandomProgramGenerator
         retIdx.reserve(cfg_.maxSwitchCases + 1);
         retIdx.push_back(fn.blocks.size());
         builder.createBlock(fn, "ret_default", {il::core::Param{"v", Type(Type::Kind::I64), 0}});
-        for (std::size_t i = 0; i < cfg_.maxSwitchCases; ++i)
-        {
+        for (std::size_t i = 0; i < cfg_.maxSwitchCases; ++i) {
             const std::string label = "ret_case" + std::to_string(i);
             retIdx.push_back(fn.blocks.size());
             builder.createBlock(fn, label, {il::core::Param{"v", Type(Type::Kind::I64), 0}});
@@ -123,8 +114,7 @@ class RandomProgramGenerator
         BasicBlock &mergeBB = fn.blocks[mergeIdx];
         std::vector<BasicBlock *> retCases;
         retCases.reserve(retIdx.size());
-        for (std::size_t idx : retIdx)
-        {
+        for (std::size_t idx : retIdx) {
             retCases.push_back(&fn.blocks[idx]);
         }
 
@@ -136,8 +126,7 @@ class RandomProgramGenerator
         auto entryFloats =
             std::vector<Value>{Value::constFloat(randomFloat()), Value::constFloat(randomFloat())};
 
-        auto appendIntOp = [&](Opcode op, Value lhs, Value rhs)
-        {
+        auto appendIntOp = [&](Opcode op, Value lhs, Value rhs) {
             Instr instr;
             instr.result = builder.reserveTempId();
             instr.op = op;
@@ -150,14 +139,12 @@ class RandomProgramGenerator
             return v;
         };
 
-        if (entryInts.size() >= 2)
-        {
+        if (entryInts.size() >= 2) {
             appendIntOp(Opcode::IAddOvf, entryInts[0], entryInts[1]);
             appendIntOp(Opcode::IMulOvf, entryInts.back(), Value::constInt(2));
         }
 
-        auto appendFloatOp = [&](Opcode op, Value lhs, Value rhs)
-        {
+        auto appendFloatOp = [&](Opcode op, Value lhs, Value rhs) {
             Instr instr;
             instr.result = builder.reserveTempId();
             instr.op = op;
@@ -170,20 +157,16 @@ class RandomProgramGenerator
             return v;
         };
 
-        if (entryFloats.size() >= 2)
-        {
+        if (entryFloats.size() >= 2) {
             appendFloatOp(Opcode::FAdd, entryFloats[0], entryFloats[1]);
             appendFloatOp(Opcode::FMul, entryFloats.back(), Value::constFloat(1.5));
         }
 
         Value cond{};
-        if (coinFlip())
-        {
+        if (coinFlip()) {
             cond = appendCmp(
                 entry, builder, Opcode::SCmpGT, entryInts.back(), Value::constInt(randomInt()));
-        }
-        else
-        {
+        } else {
             cond = appendFloatCmp(entry,
                                   builder,
                                   Opcode::FCmpLT,
@@ -226,12 +209,10 @@ class RandomProgramGenerator
         Value switchKey = Value::temp(*mergeBB.instructions.back().result);
 
         std::vector<int32_t> caseValues;
-        while (caseValues.size() < caseCount)
-        {
+        while (caseValues.size() < caseCount) {
             int32_t candidate = static_cast<int32_t>(std::abs(randomInt()) % (hi + 1));
             if (candidate != idxConst &&
-                std::find(caseValues.begin(), caseValues.end(), candidate) == caseValues.end())
-            {
+                std::find(caseValues.begin(), caseValues.end(), candidate) == caseValues.end()) {
                 caseValues.push_back(candidate);
             }
         }
@@ -244,8 +225,7 @@ class RandomProgramGenerator
         switchInstr.labels.push_back(retCases[0]->label);
         switchInstr.brArgs.push_back({lifted});
 
-        for (std::size_t i = 0; i < caseValues.size(); ++i)
-        {
+        for (std::size_t i = 0; i < caseValues.size(); ++i) {
             const int32_t value = caseValues[i];
             Value branchVal =
                 appendInt(mergeBB, builder, Opcode::ISubOvf, lifted, Value::constInt(value));
@@ -258,8 +238,7 @@ class RandomProgramGenerator
         mergeBB.terminated = true;
 
         // Return blocks.
-        for (BasicBlock *retBB : retCases)
-        {
+        for (BasicBlock *retBB : retCases) {
             builder.setInsertPoint(*retBB);
             builder.emitRet({builder.blockParam(*retBB, 0)}, kLoc);
         }
@@ -270,30 +249,26 @@ class RandomProgramGenerator
     }
 
   private:
-    std::size_t randomCaseCount()
-    {
+    std::size_t randomCaseCount() {
         std::uniform_int_distribution<std::size_t> dist(1, cfg_.maxSwitchCases);
         return dist(rng_);
     }
 
-    std::int64_t randomInt()
-    {
+    std::int64_t randomInt() {
         return intDist_(rng_);
     }
 
-    double randomFloat()
-    {
+    double randomFloat() {
         return floatDist_(rng_);
     }
 
-    bool coinFlip()
-    {
+    bool coinFlip() {
         std::uniform_int_distribution<int> dist(0, 1);
         return dist(rng_) == 1;
     }
 
-    Value appendCmp(BasicBlock &bb, il::build::IRBuilder &builder, Opcode op, Value lhs, Value rhs)
-    {
+    Value appendCmp(
+        BasicBlock &bb, il::build::IRBuilder &builder, Opcode op, Value lhs, Value rhs) {
         Instr instr;
         instr.result = builder.reserveTempId();
         instr.op = op;
@@ -305,13 +280,12 @@ class RandomProgramGenerator
     }
 
     Value appendFloatCmp(
-        BasicBlock &bb, il::build::IRBuilder &builder, Opcode op, Value lhs, Value rhs)
-    {
+        BasicBlock &bb, il::build::IRBuilder &builder, Opcode op, Value lhs, Value rhs) {
         return appendCmp(bb, builder, op, lhs, rhs);
     }
 
-    Value appendInt(BasicBlock &bb, il::build::IRBuilder &builder, Opcode op, Value lhs, Value rhs)
-    {
+    Value appendInt(
+        BasicBlock &bb, il::build::IRBuilder &builder, Opcode op, Value lhs, Value rhs) {
         Instr instr;
         instr.result = builder.reserveTempId();
         instr.op = op;
@@ -322,14 +296,12 @@ class RandomProgramGenerator
         return Value::temp(*bb.instructions.back().result);
     }
 
-    Value emitPathValue(BasicBlock &bb, il::build::IRBuilder &builder)
-    {
+    Value emitPathValue(BasicBlock &bb, il::build::IRBuilder &builder) {
         std::uniform_int_distribution<std::size_t> count(cfg_.minOpsPerBlock, cfg_.maxOpsPerBlock);
         const std::size_t ops = count(rng_);
         std::vector<Value> ints{Value::constInt(randomInt()), Value::constInt(randomInt())};
 
-        for (std::size_t i = 0; i < ops; ++i)
-        {
+        for (std::size_t i = 0; i < ops; ++i) {
             Value lhs = ints[rng_() % ints.size()];
             Value rhs = ints[rng_() % ints.size()];
             Value res = appendInt(bb, builder, pickIntOpcode(), lhs, rhs);
@@ -339,8 +311,7 @@ class RandomProgramGenerator
         return ints.back();
     }
 
-    Opcode pickIntOpcode()
-    {
+    Opcode pickIntOpcode() {
         constexpr Opcode kOps[] = {
             Opcode::IAddOvf, Opcode::ISubOvf, Opcode::IMulOvf, Opcode::And, Opcode::Or};
         std::uniform_int_distribution<std::size_t> dist(0, std::size(kOps) - 1);
@@ -354,8 +325,7 @@ class RandomProgramGenerator
     std::uniform_real_distribution<double> floatDist_;
 };
 
-std::string describeFailure(std::string_view pipeline, const GeneratedProgram &program)
-{
+std::string describeFailure(std::string_view pipeline, const GeneratedProgram &program) {
     std::ostringstream oss;
     oss << "Pipeline " << pipeline << " changed behaviour\n"
         << "Seed: " << program.seed << "\n"
@@ -367,40 +337,31 @@ std::string describeFailure(std::string_view pipeline, const GeneratedProgram &p
 /// Marker prefix written by the child to encode the return value in stderr.
 static constexpr const char *kValuePrefix = "VIPER_OPT_EQ_VALUE=";
 
-ExecResult runModuleIsolated(const il::core::Module &module)
-{
+ExecResult runModuleIsolated(const il::core::Module &module) {
     ExecResult result{};
 
-    auto childResult = viper::tests::runIsolated(
-        [&]()
-        {
-            viper::tests::VmFixture fixture;
-            il::core::Module copy = module;
-            const std::int64_t value = fixture.run(copy);
-            // Encode the return value in stderr so the parent can parse it.
-            fprintf(stderr, "%s%" PRId64 "\n", kValuePrefix, value);
-        });
+    auto childResult = viper::tests::runIsolated([&]() {
+        viper::tests::VmFixture fixture;
+        il::core::Module copy = module;
+        const std::int64_t value = fixture.run(copy);
+        // Encode the return value in stderr so the parent can parse it.
+        fprintf(stderr, "%s%" PRId64 "\n", kValuePrefix, value);
+    });
 
     result.stderrText = childResult.stderrText;
     result.exitCode = childResult.exitCode;
 
-    if (childResult.trapped())
-    {
+    if (childResult.trapped()) {
         result.trapped = true;
-    }
-    else
-    {
+    } else {
         // Parse the value from stderr
         auto pos = result.stderrText.find(kValuePrefix);
-        if (pos != std::string::npos)
-        {
+        if (pos != std::string::npos) {
             pos += std::strlen(kValuePrefix);
             char *end = nullptr;
             result.value = std::strtoll(result.stderrText.c_str() + pos, &end, 10);
             result.trapped = false;
-        }
-        else
-        {
+        } else {
             // No value found - treat as trapped
             result.trapped = true;
         }
@@ -409,11 +370,9 @@ ExecResult runModuleIsolated(const il::core::Module &module)
     return result;
 }
 
-bool verifyModule(il::core::Module &module, std::string &diagOut)
-{
+bool verifyModule(il::core::Module &module, std::string &diagOut) {
     auto verified = il::verify::Verifier::verify(module);
-    if (!verified)
-    {
+    if (!verified) {
         std::ostringstream oss;
         il::support::printDiag(verified.error(), oss);
         diagOut = oss.str();
@@ -422,35 +381,28 @@ bool verifyModule(il::core::Module &module, std::string &diagOut)
     return true;
 }
 
-bool runPipeline(il::core::Module &module, const std::string &pipelineId, std::string &diagOut)
-{
+bool runPipeline(il::core::Module &module, const std::string &pipelineId, std::string &diagOut) {
     il::transform::PassManager pm;
     pm.addSimplifyCFG();
     const auto *pipeline = pm.getPipeline(pipelineId);
-    if (!pipeline)
-    {
+    if (!pipeline) {
         diagOut = "unknown pipeline " + pipelineId;
         return false;
     }
 
     il::transform::AnalysisManager analysis(module, pm.analyses());
 
-    for (const auto &passId : *pipeline)
-    {
+    for (const auto &passId : *pipeline) {
         const auto *factory = pm.passes().lookup(passId);
-        if (!factory)
-        {
+        if (!factory) {
             diagOut = "missing pass " + passId;
             return false;
         }
 
-        switch (factory->kind)
-        {
-            case il::transform::detail::PassKind::Module:
-            {
+        switch (factory->kind) {
+            case il::transform::detail::PassKind::Module: {
                 auto pass = factory->makeModule ? factory->makeModule() : nullptr;
-                if (!pass)
-                {
+                if (!pass) {
                     diagOut = "failed to create module pass " + passId;
                     return false;
                 }
@@ -458,16 +410,13 @@ bool runPipeline(il::core::Module &module, const std::string &pipelineId, std::s
                 analysis.invalidateAfterModulePass(preserved);
                 break;
             }
-            case il::transform::detail::PassKind::Function:
-            {
+            case il::transform::detail::PassKind::Function: {
                 auto pass = factory->makeFunction ? factory->makeFunction() : nullptr;
-                if (!pass)
-                {
+                if (!pass) {
                     diagOut = "failed to create function pass " + passId;
                     return false;
                 }
-                for (auto &fn : module.functions)
-                {
+                for (auto &fn : module.functions) {
                     il::transform::PreservedAnalyses preserved = pass->run(fn, analysis);
                     analysis.invalidateAfterFunctionPass(preserved, fn);
                 }
@@ -479,10 +428,8 @@ bool runPipeline(il::core::Module &module, const std::string &pipelineId, std::s
     return verifyModule(module, diagOut);
 }
 
-std::uint64_t baseSeed()
-{
-    if (const char *env = std::getenv("VIPER_OPT_EQ_SEED"))
-    {
+std::uint64_t baseSeed() {
+    if (const char *env = std::getenv("VIPER_OPT_EQ_SEED")) {
         char *end = nullptr;
         const auto value = std::strtoull(env, &end, 10);
         if (end != env)
@@ -493,22 +440,19 @@ std::uint64_t baseSeed()
 
 } // namespace
 
-TEST(OptimizerDifferential, PipelinesPreserveVmSemantics)
-{
+TEST(OptimizerDifferential, PipelinesPreserveVmSemantics) {
     constexpr std::size_t kIterations = 12;
     ProgramConfig cfg{};
     const std::uint64_t seed0 = baseSeed();
 
-    for (std::size_t i = 0; i < kIterations; ++i)
-    {
+    for (std::size_t i = 0; i < kIterations; ++i) {
         const std::uint64_t seed = seed0 + i;
         RandomProgramGenerator generator(seed, cfg);
         GeneratedProgram program = generator.generate();
 
         std::string diag;
         const bool verified = verifyModule(program.module, diag);
-        if (!verified)
-        {
+        if (!verified) {
             std::cerr << "Verifier rejected generated module\n"
                       << diag << "\nSeed: " << seed << "\nIL:\n"
                       << program.ilText << std::endl;
@@ -549,8 +493,7 @@ TEST(OptimizerDifferential, PipelinesPreserveVmSemantics)
         ASSERT_EQ(baseline.trapped, resO1.trapped);
         ASSERT_EQ(baseline.trapped, resO2.trapped);
 
-        if (!baseline.trapped)
-        {
+        if (!baseline.trapped) {
             if (baseline.value != resO0.value)
                 std::cerr << describeFailure("O0", program) << std::endl;
             if (baseline.value != resO1.value)
@@ -560,9 +503,7 @@ TEST(OptimizerDifferential, PipelinesPreserveVmSemantics)
             EXPECT_EQ(baseline.value, resO0.value);
             EXPECT_EQ(baseline.value, resO1.value);
             EXPECT_EQ(baseline.value, resO2.value);
-        }
-        else
-        {
+        } else {
             if (baseline.exitCode != resO0.exitCode)
                 std::cerr << describeFailure("O0", program) << std::endl;
             if (baseline.exitCode != resO1.exitCode)
@@ -576,8 +517,7 @@ TEST(OptimizerDifferential, PipelinesPreserveVmSemantics)
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
     viper_test::init(&argc, argv);

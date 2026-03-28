@@ -74,8 +74,7 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 using common::char_utils::isAlphanumeric;
 using common::char_utils::isDigit;
@@ -87,8 +86,7 @@ using common::keyword_table::isKeywordTableSorted;
 using common::keyword_table::KeywordEntry;
 using common::keyword_table::lookupKeywordBinary;
 
-namespace
-{
+namespace {
 
 constexpr std::array<KeywordEntry<TokenKind>, 108> kKeywordTable{{
     {"ABS", TokenKind::KeywordAbs},
@@ -212,11 +210,9 @@ static_assert(isKeywordTableSorted(kKeywordTable),
 ///          Special-cases "ME" keyword for case-insensitive matching.
 /// @param lexeme Uppercased identifier text to classify.
 /// @return Keyword kind when recognised; @ref TokenKind::Identifier otherwise.
-TokenKind lookupKeyword(std::string_view lexeme)
-{
+TokenKind lookupKeyword(std::string_view lexeme) {
     // Special case: "ME" keyword (case-insensitive)
-    if (lexeme.size() == 2)
-    {
+    if (lexeme.size() == 2) {
         if (toUpper(lexeme[0]) == 'M' && toUpper(lexeme[1]) == 'E')
             lexeme = "ME";
     }
@@ -244,17 +240,12 @@ Lexer::Lexer(std::string_view src, uint32_t file_id) : Base(file_id), src_(src) 
 ///          newline boundaries that influence statement grouping.  This helper
 ///          advances the cursor past horizontal whitespace while keeping
 ///          newlines in the stream for later tokenisation.
-void Lexer::skipWhitespaceExceptNewline()
-{
-    while (!eof())
-    {
+void Lexer::skipWhitespaceExceptNewline() {
+    while (!eof()) {
         char c = peek();
-        if (c == ' ' || c == '\t' || c == '\r')
-        {
+        if (c == ' ' || c == '\t' || c == '\r') {
             get();
-        }
-        else
-        {
+        } else {
             break;
         }
     }
@@ -267,26 +258,21 @@ void Lexer::skipWhitespaceExceptNewline()
 ///          comment bodies so the next significant token begins at the current
 ///          cursor.  The newline terminating a comment is preserved so callers
 ///          can emit @ref TokenKind::EndOfLine.
-void Lexer::skipWhitespaceAndComments()
-{
-    while (true)
-    {
+void Lexer::skipWhitespaceAndComments() {
+    while (true) {
         skipWhitespaceExceptNewline();
 
-        if (peek() == '\'')
-        {
+        if (peek() == '\'') {
             while (!eof() && peek() != '\n')
                 get();
             continue;
         }
 
         if (toUpper(peek()) == 'R' && pos_ + 2 < src_.size() && toUpper(src_[pos_ + 1]) == 'E' &&
-            toUpper(src_[pos_ + 2]) == 'M')
-        {
+            toUpper(src_[pos_ + 2]) == 'M') {
             char after = (pos_ + 3 < src_.size()) ? src_[pos_ + 3] : '\0';
             if (!isAlphanumeric(after) && after != '$' && after != '#' && after != '!' &&
-                after != '%' && after != '&')
-            {
+                after != '%' && after != '&') {
                 get();
                 get();
                 get();
@@ -309,50 +295,43 @@ void Lexer::skipWhitespaceAndComments()
 ///          numeric semantics.  Location data is captured prior to any
 ///          consumption for accurate diagnostics.
 /// @return Token of kind Number representing the characters consumed.
-Token Lexer::lexNumber()
-{
+Token Lexer::lexNumber() {
     il::support::SourceLoc loc{fileId_, line_, column_};
     std::string s;
     bool seenDot = false;
     bool seenExp = false;
     char suffix = '\0';
     constexpr size_t kMaxNumLen = 1024;
-    if (peek() == '.')
-    {
+    if (peek() == '.') {
         seenDot = true;
         s.push_back(get());
     }
     while (isDigit(peek()) && s.size() < kMaxNumLen)
         s.push_back(get());
-    if (s.size() >= kMaxNumLen)
-    {
+    if (s.size() >= kMaxNumLen) {
         while (isDigit(peek()))
             get();
         return {TokenKind::Number, s, loc};
     }
-    if (!seenDot && peek() == '.')
-    {
+    if (!seenDot && peek() == '.') {
         seenDot = true;
         s.push_back(get());
         while (isDigit(peek()) && s.size() < kMaxNumLen)
             s.push_back(get());
-        if (s.size() >= kMaxNumLen)
-        {
+        if (s.size() >= kMaxNumLen) {
             while (isDigit(peek()))
                 get();
             return {TokenKind::Number, s, loc};
         }
     }
-    if ((peek() == 'e' || peek() == 'E'))
-    {
+    if ((peek() == 'e' || peek() == 'E')) {
         seenExp = true;
         s.push_back(get());
         if (peek() == '+' || peek() == '-')
             s.push_back(get());
         while (isDigit(peek()) && s.size() < kMaxNumLen)
             s.push_back(get());
-        if (s.size() >= kMaxNumLen)
-        {
+        if (s.size() >= kMaxNumLen) {
             while (isDigit(peek()))
                 get();
             return {TokenKind::Number, s, loc};
@@ -375,15 +354,12 @@ Token Lexer::lexNumber()
 ///          inference rules applied later in the pipeline.
 /// @return Identifier or keyword token; identifiers are uppercased for keyword
 ///         comparison.
-Token Lexer::lexIdentifierOrKeyword()
-{
+Token Lexer::lexIdentifierOrKeyword() {
     il::support::SourceLoc loc{fileId_, line_, column_};
     std::string s;
     constexpr size_t kMaxIdentLen = 1024;
-    while (isAlphanumeric(peek()) || peek() == '_')
-    {
-        if (s.size() >= kMaxIdentLen)
-        {
+    while (isAlphanumeric(peek()) || peek() == '_') {
+        if (s.size() >= kMaxIdentLen) {
             // Skip remaining identifier characters to avoid OOM
             while (isAlphanumeric(peek()) || peek() == '_')
                 get();
@@ -405,16 +381,13 @@ Token Lexer::lexIdentifierOrKeyword()
 ///          stream terminates before a closing quote the unterminated literal is
 ///          returned to the parser, which is responsible for issuing an error.
 /// @return String token containing characters between quotes.
-Token Lexer::lexString()
-{
+Token Lexer::lexString() {
     il::support::SourceLoc loc{fileId_, line_, column_};
     std::string s;
     constexpr size_t kMaxStringLen = 16 * 1024 * 1024; // 16MB
     get();                                             // consume opening quote
-    while (!eof())
-    {
-        if (s.size() >= kMaxStringLen)
-        {
+    while (!eof()) {
+        if (s.size() >= kMaxStringLen) {
             // Skip to closing quote or EOF to avoid OOM
             while (!eof() && peek() != '"')
                 get();
@@ -422,22 +395,16 @@ Token Lexer::lexString()
                 get(); // consume closing quote
             return {TokenKind::String, s, loc};
         }
-        if (peek() == '"')
-        {
+        if (peek() == '"') {
             get(); // consume the quote
             // Check for "" (double-quote escape convention in BASIC)
-            if (peek() == '"')
-            {
+            if (peek() == '"') {
                 s.push_back('"');
                 get(); // consume the second quote
-            }
-            else
-            {
+            } else {
                 break; // closing quote
             }
-        }
-        else
-        {
+        } else {
             // In BASIC, backslash has no special meaning - it's just a regular character.
             s.push_back(get());
         }
@@ -453,10 +420,8 @@ Token Lexer::lexString()
 ///          keep hot paths branch-friendly.  Location metadata is captured for
 ///          every token so diagnostics can point back to the source program.
 /// @return The next token, which may be EndOfLine or EndOfFile.
-Token Lexer::next()
-{
-    for (;;)
-    {
+Token Lexer::next() {
+    for (;;) {
         skipWhitespaceAndComments();
 
         if (eof())
@@ -464,8 +429,7 @@ Token Lexer::next()
 
         char c = peek();
 
-        if (c == '\n')
-        {
+        if (c == '\n') {
             il::support::SourceLoc loc{fileId_, line_, column_};
             get();
             return {TokenKind::EndOfLine, "\n", loc};
@@ -480,8 +444,7 @@ Token Lexer::next()
 
         il::support::SourceLoc loc{fileId_, line_, column_};
         get();
-        switch (c)
-        {
+        switch (c) {
             case '+':
                 return {TokenKind::Plus, "+", loc};
             case '-':
@@ -499,20 +462,17 @@ Token Lexer::next()
             case '=':
                 return {TokenKind::Equal, "=", loc};
             case '<':
-                if (peek() == '>')
-                {
+                if (peek() == '>') {
                     get();
                     return {TokenKind::NotEqual, "<>", loc};
                 }
-                if (peek() == '=')
-                {
+                if (peek() == '=') {
                     get();
                     return {TokenKind::LessEqual, "<=", loc};
                 }
                 return {TokenKind::Less, "<", loc};
             case '>':
-                if (peek() == '=')
-                {
+                if (peek() == '=') {
                     get();
                     return {TokenKind::GreaterEqual, ">=", loc};
                 }
@@ -529,22 +489,18 @@ Token Lexer::next()
                 return {TokenKind::Colon, ":", loc};
             case '#':
                 return {TokenKind::Hash, "#", loc};
-            case '.':
-            {
+            case '.': {
                 // If previous and next chars are digits, this is part of a numeric literal;
                 // fallthrough to number logic. Otherwise, return TokenKind::Dot.
                 bool prevIsDigit = false;
-                if (pos_ >= 2)
-                {
+                if (pos_ >= 2) {
                     prevIsDigit = isDigit(src_[pos_ - 2]);
                 }
                 bool nextIsDigit = false;
-                if (pos_ < src_.size())
-                {
+                if (pos_ < src_.size()) {
                     nextIsDigit = isDigit(src_[pos_]);
                 }
-                if (prevIsDigit && nextIsDigit)
-                {
+                if (prevIsDigit && nextIsDigit) {
                     if (column_ > 1)
                         --column_;
                     --pos_;
@@ -552,16 +508,14 @@ Token Lexer::next()
                 }
                 return {TokenKind::Dot, ".", loc};
             }
-            case '_':
-            {
+            case '_': {
                 // Line continuation: _ followed by optional whitespace and newline
                 // Skip horizontal whitespace after _
                 while (!eof() && (peek() == ' ' || peek() == '\t' || peek() == '\r'))
                     get();
 
                 // Check if followed by newline
-                if (!eof() && peek() == '\n')
-                {
+                if (!eof() && peek() == '\n') {
                     get(); // consume the newline
                     // Restart token dispatch (iterative, avoids stack overflow)
                     continue;

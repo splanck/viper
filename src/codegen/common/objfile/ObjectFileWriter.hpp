@@ -28,34 +28,29 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::objfile
-{
+namespace viper::codegen::objfile {
 
 /// Target architecture for the object file.
-enum class ObjArch : uint8_t
-{
+enum class ObjArch : uint8_t {
     X86_64,
     AArch64,
 };
 
 /// Target object file format.
-enum class ObjFormat : uint8_t
-{
+enum class ObjFormat : uint8_t {
     ELF,   ///< Linux.
     MachO, ///< macOS.
     COFF,  ///< Windows.
 };
 
 /// Abstract base for object file writers.
-class ObjectFileWriter
-{
+class ObjectFileWriter {
   public:
     virtual ~ObjectFileWriter() = default;
 
     /// Set pre-encoded DWARF .debug_line section data.
     /// If non-empty, concrete writers will emit a .debug_line section.
-    void setDebugLineData(std::vector<uint8_t> data)
-    {
+    void setDebugLineData(std::vector<uint8_t> data) {
         debugLineData_ = std::move(data);
     }
 
@@ -84,8 +79,7 @@ class ObjectFileWriter
 };
 
 /// Detect the host object file format at compile time.
-constexpr ObjFormat detectHostFormat()
-{
+constexpr ObjFormat detectHostFormat() {
 #if defined(__APPLE__)
     return ObjFormat::MachO;
 #elif defined(_WIN32)
@@ -96,8 +90,7 @@ constexpr ObjFormat detectHostFormat()
 }
 
 /// Detect the host architecture at compile time.
-constexpr ObjArch detectHostArch()
-{
+constexpr ObjArch detectHostArch() {
 #if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
     return ObjArch::AArch64;
 #else
@@ -109,8 +102,7 @@ constexpr ObjArch detectHostArch()
 std::unique_ptr<ObjectFileWriter> createObjectFileWriter(ObjFormat format, ObjArch arch);
 
 /// Factory: create a writer for the host platform.
-inline std::unique_ptr<ObjectFileWriter> createHostObjectFileWriter()
-{
+inline std::unique_ptr<ObjectFileWriter> createHostObjectFileWriter() {
     return createObjectFileWriter(detectHostFormat(), detectHostArch());
 }
 

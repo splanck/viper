@@ -46,8 +46,7 @@
 // Font Functions
 //=============================================================================
 
-void *rt_font_load(rt_string path)
-{
+void *rt_font_load(rt_string path) {
     RT_ASSERT_MAIN_THREAD();
     char *cpath = rt_string_to_cstr(path);
     if (!cpath)
@@ -60,11 +59,9 @@ void *rt_font_load(rt_string path)
 
 /// @brief Perform font destroy operation.
 /// @param font
-void rt_font_destroy(void *font)
-{
+void rt_font_destroy(void *font) {
     RT_ASSERT_MAIN_THREAD();
-    if (font)
-    {
+    if (font) {
         vg_font_destroy((vg_font_t *)font);
     }
 }
@@ -75,11 +72,9 @@ void rt_font_destroy(void *font)
 
 /// @brief Perform widget destroy operation.
 /// @param widget
-void rt_widget_destroy(void *widget)
-{
+void rt_widget_destroy(void *widget) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget)
-    {
+    if (widget) {
         vg_widget_destroy((vg_widget_t *)widget);
     }
 }
@@ -87,11 +82,9 @@ void rt_widget_destroy(void *widget)
 /// @brief Perform widget set visible operation.
 /// @param widget
 /// @param visible
-void rt_widget_set_visible(void *widget, int64_t visible)
-{
+void rt_widget_set_visible(void *widget, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget)
-    {
+    if (widget) {
         vg_widget_set_visible((vg_widget_t *)widget, visible != 0);
     }
 }
@@ -99,11 +92,9 @@ void rt_widget_set_visible(void *widget, int64_t visible)
 /// @brief Perform widget set enabled operation.
 /// @param widget
 /// @param enabled
-void rt_widget_set_enabled(void *widget, int64_t enabled)
-{
+void rt_widget_set_enabled(void *widget, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget)
-    {
+    if (widget) {
         vg_widget_set_enabled((vg_widget_t *)widget, enabled != 0);
     }
 }
@@ -112,11 +103,9 @@ void rt_widget_set_enabled(void *widget, int64_t enabled)
 /// @param widget
 /// @param width
 /// @param height
-void rt_widget_set_size(void *widget, int64_t width, int64_t height)
-{
+void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget)
-    {
+    if (widget) {
         vg_widget_set_fixed_size((vg_widget_t *)widget, (float)width, (float)height);
     }
 }
@@ -124,11 +113,9 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height)
 /// @brief Perform widget set flex operation.
 /// @param widget
 /// @param flex
-void rt_widget_set_flex(void *widget, double flex)
-{
+void rt_widget_set_flex(void *widget, double flex) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget)
-    {
+    if (widget) {
         vg_widget_set_flex((vg_widget_t *)widget, (float)flex);
     }
 }
@@ -136,11 +123,9 @@ void rt_widget_set_flex(void *widget, double flex)
 /// @brief Perform widget add child operation.
 /// @param parent
 /// @param child
-void rt_widget_add_child(void *parent, void *child)
-{
+void rt_widget_add_child(void *parent, void *child) {
     RT_ASSERT_MAIN_THREAD();
-    if (parent && child)
-    {
+    if (parent && child) {
         vg_widget_add_child((vg_widget_t *)parent, (vg_widget_t *)child);
     }
 }
@@ -149,8 +134,7 @@ void rt_widget_add_child(void *parent, void *child)
 /// @brief Perform widget set margin operation.
 /// @param widget
 /// @param margin
-void rt_widget_set_margin(void *widget, int64_t margin)
-{
+void rt_widget_set_margin(void *widget, int64_t margin) {
     RT_ASSERT_MAIN_THREAD();
     if (widget)
         vg_widget_set_margin((vg_widget_t *)widget, (float)margin);
@@ -159,8 +143,7 @@ void rt_widget_set_margin(void *widget, int64_t margin)
 /// @brief Perform widget set tab index operation.
 /// @param widget
 /// @param idx
-void rt_widget_set_tab_index(void *widget, int64_t idx)
-{
+void rt_widget_set_tab_index(void *widget, int64_t idx) {
     RT_ASSERT_MAIN_THREAD();
     if (widget)
         vg_widget_set_tab_index((vg_widget_t *)widget, (int)idx);
@@ -170,8 +153,7 @@ void rt_widget_set_tab_index(void *widget, int64_t idx)
 /// @brief Perform widget is visible operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_is_visible(void *widget)
-{
+int64_t rt_widget_is_visible(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
@@ -181,8 +163,7 @@ int64_t rt_widget_is_visible(void *widget)
 /// @brief Perform widget is enabled operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_is_enabled(void *widget)
-{
+int64_t rt_widget_is_enabled(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
@@ -192,8 +173,7 @@ int64_t rt_widget_is_enabled(void *widget)
 /// @brief Perform widget get width operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_get_width(void *widget)
-{
+int64_t rt_widget_get_width(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
@@ -203,8 +183,7 @@ int64_t rt_widget_get_width(void *widget)
 /// @brief Perform widget get height operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_get_height(void *widget)
-{
+int64_t rt_widget_get_height(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
@@ -214,8 +193,7 @@ int64_t rt_widget_get_height(void *widget)
 /// @brief Perform widget get x operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_get_x(void *widget)
-{
+int64_t rt_widget_get_x(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
@@ -225,8 +203,7 @@ int64_t rt_widget_get_x(void *widget)
 /// @brief Perform widget get y operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_get_y(void *widget)
-{
+int64_t rt_widget_get_y(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
@@ -236,8 +213,7 @@ int64_t rt_widget_get_y(void *widget)
 /// @brief Perform widget get flex operation.
 /// @param widget
 /// @return Result value.
-double rt_widget_get_flex(void *widget)
-{
+double rt_widget_get_flex(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0.0;
@@ -248,8 +224,7 @@ double rt_widget_get_flex(void *widget)
 // Label Widget
 //=============================================================================
 
-void *rt_label_new(void *parent, rt_string text)
-{
+void *rt_label_new(void *parent, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
     vg_label_t *label = vg_label_create((vg_widget_t *)parent, ctext ? ctext : "");
@@ -260,8 +235,7 @@ void *rt_label_new(void *parent, rt_string text)
 /// @brief Perform label set text operation.
 /// @param label
 /// @param text
-void rt_label_set_text(void *label, rt_string text)
-{
+void rt_label_set_text(void *label, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!label)
         return;
@@ -274,11 +248,9 @@ void rt_label_set_text(void *label, rt_string text)
 /// @param label
 /// @param font
 /// @param size
-void rt_label_set_font(void *label, void *font, double size)
-{
+void rt_label_set_font(void *label, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (label)
-    {
+    if (label) {
         vg_label_set_font((vg_label_t *)label, (vg_font_t *)font, (float)size);
     }
 }
@@ -286,11 +258,9 @@ void rt_label_set_font(void *label, void *font, double size)
 /// @brief Perform label set color operation.
 /// @param label
 /// @param color
-void rt_label_set_color(void *label, int64_t color)
-{
+void rt_label_set_color(void *label, int64_t color) {
     RT_ASSERT_MAIN_THREAD();
-    if (label)
-    {
+    if (label) {
         vg_label_set_color((vg_label_t *)label, (uint32_t)color);
     }
 }
@@ -299,8 +269,7 @@ void rt_label_set_color(void *label, int64_t color)
 // Button Widget
 //=============================================================================
 
-void *rt_button_new(void *parent, rt_string text)
-{
+void *rt_button_new(void *parent, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
     vg_button_t *button = vg_button_create((vg_widget_t *)parent, ctext);
@@ -311,8 +280,7 @@ void *rt_button_new(void *parent, rt_string text)
 /// @brief Perform button set text operation.
 /// @param button
 /// @param text
-void rt_button_set_text(void *button, rt_string text)
-{
+void rt_button_set_text(void *button, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!button)
         return;
@@ -325,11 +293,9 @@ void rt_button_set_text(void *button, rt_string text)
 /// @param button
 /// @param font
 /// @param size
-void rt_button_set_font(void *button, void *font, double size)
-{
+void rt_button_set_font(void *button, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (button)
-    {
+    if (button) {
         vg_button_set_font((vg_button_t *)button, (vg_font_t *)font, (float)size);
     }
 }
@@ -337,11 +303,9 @@ void rt_button_set_font(void *button, void *font, double size)
 /// @brief Perform button set style operation.
 /// @param button
 /// @param style
-void rt_button_set_style(void *button, int64_t style)
-{
+void rt_button_set_style(void *button, int64_t style) {
     RT_ASSERT_MAIN_THREAD();
-    if (button)
-    {
+    if (button) {
         vg_button_set_style((vg_button_t *)button, (vg_button_style_t)style);
     }
 }
@@ -349,8 +313,7 @@ void rt_button_set_style(void *button, int64_t style)
 /// @brief Perform button set icon operation.
 /// @param button
 /// @param icon
-void rt_button_set_icon(void *button, rt_string icon)
-{
+void rt_button_set_icon(void *button, rt_string icon) {
     RT_ASSERT_MAIN_THREAD();
     if (!button)
         return;
@@ -362,8 +325,7 @@ void rt_button_set_icon(void *button, rt_string icon)
 /// @brief Perform button set icon pos operation.
 /// @param button
 /// @param pos
-void rt_button_set_icon_pos(void *button, int64_t pos)
-{
+void rt_button_set_icon_pos(void *button, int64_t pos) {
     RT_ASSERT_MAIN_THREAD();
     if (button)
         vg_button_set_icon_position((vg_button_t *)button, (int)pos);
@@ -373,8 +335,7 @@ void rt_button_set_icon_pos(void *button, int64_t pos)
 // TextInput Widget
 //=============================================================================
 
-void *rt_textinput_new(void *parent)
-{
+void *rt_textinput_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     return vg_textinput_create((vg_widget_t *)parent);
 }
@@ -382,8 +343,7 @@ void *rt_textinput_new(void *parent)
 /// @brief Perform textinput set text operation.
 /// @param input
 /// @param text
-void rt_textinput_set_text(void *input, rt_string text)
-{
+void rt_textinput_set_text(void *input, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!input)
         return;
@@ -395,8 +355,7 @@ void rt_textinput_set_text(void *input, rt_string text)
 /// @brief Perform textinput get text operation.
 /// @param input
 /// @return Result value.
-rt_string rt_textinput_get_text(void *input)
-{
+rt_string rt_textinput_get_text(void *input) {
     RT_ASSERT_MAIN_THREAD();
     if (!input)
         return rt_str_empty();
@@ -409,8 +368,7 @@ rt_string rt_textinput_get_text(void *input)
 /// @brief Perform textinput set placeholder operation.
 /// @param input
 /// @param placeholder
-void rt_textinput_set_placeholder(void *input, rt_string placeholder)
-{
+void rt_textinput_set_placeholder(void *input, rt_string placeholder) {
     RT_ASSERT_MAIN_THREAD();
     if (!input)
         return;
@@ -423,11 +381,9 @@ void rt_textinput_set_placeholder(void *input, rt_string placeholder)
 /// @param input
 /// @param font
 /// @param size
-void rt_textinput_set_font(void *input, void *font, double size)
-{
+void rt_textinput_set_font(void *input, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (input)
-    {
+    if (input) {
         vg_textinput_set_font((vg_textinput_t *)input, (vg_font_t *)font, (float)size);
     }
 }
@@ -436,8 +392,7 @@ void rt_textinput_set_font(void *input, void *font, double size)
 // Checkbox Widget
 //=============================================================================
 
-void *rt_checkbox_new(void *parent, rt_string text)
-{
+void *rt_checkbox_new(void *parent, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
     vg_checkbox_t *checkbox = vg_checkbox_create((vg_widget_t *)parent, ctext);
@@ -448,11 +403,9 @@ void *rt_checkbox_new(void *parent, rt_string text)
 /// @brief Check checkbox set checked.
 /// @param checkbox
 /// @param checked
-void rt_checkbox_set_checked(void *checkbox, int64_t checked)
-{
+void rt_checkbox_set_checked(void *checkbox, int64_t checked) {
     RT_ASSERT_MAIN_THREAD();
-    if (checkbox)
-    {
+    if (checkbox) {
         vg_checkbox_set_checked((vg_checkbox_t *)checkbox, checked != 0);
     }
 }
@@ -460,8 +413,7 @@ void rt_checkbox_set_checked(void *checkbox, int64_t checked)
 /// @brief Check checkbox is checked.
 /// @param checkbox
 /// @return Result value.
-int64_t rt_checkbox_is_checked(void *checkbox)
-{
+int64_t rt_checkbox_is_checked(void *checkbox) {
     RT_ASSERT_MAIN_THREAD();
     if (!checkbox)
         return 0;
@@ -471,8 +423,7 @@ int64_t rt_checkbox_is_checked(void *checkbox)
 /// @brief Check checkbox set text.
 /// @param checkbox
 /// @param text
-void rt_checkbox_set_text(void *checkbox, rt_string text)
-{
+void rt_checkbox_set_text(void *checkbox, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!checkbox)
         return;
@@ -485,8 +436,7 @@ void rt_checkbox_set_text(void *checkbox, rt_string text)
 // ScrollView Widget
 //=============================================================================
 
-void *rt_scrollview_new(void *parent)
-{
+void *rt_scrollview_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     return vg_scrollview_create((vg_widget_t *)parent);
 }
@@ -495,11 +445,9 @@ void *rt_scrollview_new(void *parent)
 /// @param scroll
 /// @param x
 /// @param y
-void rt_scrollview_set_scroll(void *scroll, double x, double y)
-{
+void rt_scrollview_set_scroll(void *scroll, double x, double y) {
     RT_ASSERT_MAIN_THREAD();
-    if (scroll)
-    {
+    if (scroll) {
         vg_scrollview_set_scroll((vg_scrollview_t *)scroll, (float)x, (float)y);
     }
 }
@@ -508,11 +456,9 @@ void rt_scrollview_set_scroll(void *scroll, double x, double y)
 /// @param scroll
 /// @param width
 /// @param height
-void rt_scrollview_set_content_size(void *scroll, double width, double height)
-{
+void rt_scrollview_set_content_size(void *scroll, double width, double height) {
     RT_ASSERT_MAIN_THREAD();
-    if (scroll)
-    {
+    if (scroll) {
         vg_scrollview_set_content_size((vg_scrollview_t *)scroll, (float)width, (float)height);
     }
 }
@@ -521,8 +467,7 @@ void rt_scrollview_set_content_size(void *scroll, double width, double height)
 /// @brief Perform scrollview get scroll x operation.
 /// @param scroll
 /// @return Result value.
-double rt_scrollview_get_scroll_x(void *scroll)
-{
+double rt_scrollview_get_scroll_x(void *scroll) {
     RT_ASSERT_MAIN_THREAD();
     if (!scroll)
         return 0.0;
@@ -534,8 +479,7 @@ double rt_scrollview_get_scroll_x(void *scroll)
 /// @brief Perform scrollview get scroll y operation.
 /// @param scroll
 /// @return Result value.
-double rt_scrollview_get_scroll_y(void *scroll)
-{
+double rt_scrollview_get_scroll_y(void *scroll) {
     RT_ASSERT_MAIN_THREAD();
     if (!scroll)
         return 0.0;
@@ -548,12 +492,10 @@ double rt_scrollview_get_scroll_y(void *scroll)
 // TreeView Widget
 //=============================================================================
 
-void *rt_treeview_new(void *parent)
-{
+void *rt_treeview_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     vg_treeview_t *tv = vg_treeview_create((vg_widget_t *)parent);
-    if (tv)
-    {
+    if (tv) {
         rt_gui_ensure_default_font();
         if (s_current_app && s_current_app->default_font)
             vg_treeview_set_font(tv, s_current_app->default_font, s_current_app->default_font_size);
@@ -561,8 +503,7 @@ void *rt_treeview_new(void *parent)
     return tv;
 }
 
-void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text)
-{
+void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!tree)
         return NULL;
@@ -576,22 +517,18 @@ void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text)
 /// @brief Perform treeview remove node operation.
 /// @param tree
 /// @param node
-void rt_treeview_remove_node(void *tree, void *node)
-{
+void rt_treeview_remove_node(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
-    if (tree && node)
-    {
+    if (tree && node) {
         vg_treeview_remove_node((vg_treeview_t *)tree, (vg_tree_node_t *)node);
     }
 }
 
 /// @brief Perform treeview clear operation.
 /// @param tree
-void rt_treeview_clear(void *tree)
-{
+void rt_treeview_clear(void *tree) {
     RT_ASSERT_MAIN_THREAD();
-    if (tree)
-    {
+    if (tree) {
         vg_treeview_clear((vg_treeview_t *)tree);
     }
 }
@@ -599,11 +536,9 @@ void rt_treeview_clear(void *tree)
 /// @brief Perform treeview expand operation.
 /// @param tree
 /// @param node
-void rt_treeview_expand(void *tree, void *node)
-{
+void rt_treeview_expand(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
-    if (tree && node)
-    {
+    if (tree && node) {
         vg_treeview_expand((vg_treeview_t *)tree, (vg_tree_node_t *)node);
     }
 }
@@ -611,11 +546,9 @@ void rt_treeview_expand(void *tree, void *node)
 /// @brief Perform treeview collapse operation.
 /// @param tree
 /// @param node
-void rt_treeview_collapse(void *tree, void *node)
-{
+void rt_treeview_collapse(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
-    if (tree && node)
-    {
+    if (tree && node) {
         vg_treeview_collapse((vg_treeview_t *)tree, (vg_tree_node_t *)node);
     }
 }
@@ -623,11 +556,9 @@ void rt_treeview_collapse(void *tree, void *node)
 /// @brief Perform treeview select operation.
 /// @param tree
 /// @param node
-void rt_treeview_select(void *tree, void *node)
-{
+void rt_treeview_select(void *tree, void *node) {
     RT_ASSERT_MAIN_THREAD();
-    if (tree)
-    {
+    if (tree) {
         vg_treeview_select((vg_treeview_t *)tree, (vg_tree_node_t *)node);
     }
 }
@@ -636,17 +567,14 @@ void rt_treeview_select(void *tree, void *node)
 /// @param tree
 /// @param font
 /// @param size
-void rt_treeview_set_font(void *tree, void *font, double size)
-{
+void rt_treeview_set_font(void *tree, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (tree)
-    {
+    if (tree) {
         vg_treeview_set_font((vg_treeview_t *)tree, (vg_font_t *)font, (float)size);
     }
 }
 
-void *rt_treeview_get_selected(void *tree)
-{
+void *rt_treeview_get_selected(void *tree) {
     RT_ASSERT_MAIN_THREAD();
     if (!tree)
         return NULL;
@@ -657,8 +585,7 @@ void *rt_treeview_get_selected(void *tree)
 /// @brief Perform treeview was selection changed operation.
 /// @param tree
 /// @return Result value.
-int64_t rt_treeview_was_selection_changed(void *tree)
-{
+int64_t rt_treeview_was_selection_changed(void *tree) {
     RT_ASSERT_MAIN_THREAD();
     if (!tree)
         return 0;
@@ -666,8 +593,7 @@ int64_t rt_treeview_was_selection_changed(void *tree)
 
     // Per-instance selection tracking using prev_selected field
     // (matches the pattern used by rt_tabbar_was_changed / prev_active_tab).
-    if (tv->selected != tv->prev_selected)
-    {
+    if (tv->selected != tv->prev_selected) {
         tv->prev_selected = tv->selected;
         return 1;
     }
@@ -677,8 +603,7 @@ int64_t rt_treeview_was_selection_changed(void *tree)
 /// @brief Perform treeview node get text operation.
 /// @param node
 /// @return Result value.
-rt_string rt_treeview_node_get_text(void *node)
-{
+rt_string rt_treeview_node_get_text(void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (!node)
         return rt_str_empty();
@@ -691,8 +616,7 @@ rt_string rt_treeview_node_get_text(void *node)
 /// @brief Perform treeview node set data operation.
 /// @param node
 /// @param data
-void rt_treeview_node_set_data(void *node, rt_string data)
-{
+void rt_treeview_node_set_data(void *node, rt_string data) {
     RT_ASSERT_MAIN_THREAD();
     if (!node)
         return;
@@ -708,8 +632,7 @@ void rt_treeview_node_set_data(void *node, rt_string data)
 /// @brief Perform treeview node get data operation.
 /// @param node
 /// @return Result value.
-rt_string rt_treeview_node_get_data(void *node)
-{
+rt_string rt_treeview_node_get_data(void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (!node)
         return rt_str_empty();
@@ -723,8 +646,7 @@ rt_string rt_treeview_node_get_data(void *node)
 /// @brief Perform treeview node is expanded operation.
 /// @param node
 /// @return Result value.
-int64_t rt_treeview_node_is_expanded(void *node)
-{
+int64_t rt_treeview_node_is_expanded(void *node) {
     RT_ASSERT_MAIN_THREAD();
     if (!node)
         return 0;
@@ -734,31 +656,27 @@ int64_t rt_treeview_node_is_expanded(void *node)
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
-void *rt_font_load(rt_string path)
-{
+void *rt_font_load(rt_string path) {
     (void)path;
     return NULL;
 }
 
 /// @brief Perform font destroy operation.
 /// @param font
-void rt_font_destroy(void *font)
-{
+void rt_font_destroy(void *font) {
     (void)font;
 }
 
 /// @brief Perform widget destroy operation.
 /// @param widget
-void rt_widget_destroy(void *widget)
-{
+void rt_widget_destroy(void *widget) {
     (void)widget;
 }
 
 /// @brief Perform widget set visible operation.
 /// @param widget
 /// @param visible
-void rt_widget_set_visible(void *widget, int64_t visible)
-{
+void rt_widget_set_visible(void *widget, int64_t visible) {
     (void)widget;
     (void)visible;
 }
@@ -766,8 +684,7 @@ void rt_widget_set_visible(void *widget, int64_t visible)
 /// @brief Perform widget set enabled operation.
 /// @param widget
 /// @param enabled
-void rt_widget_set_enabled(void *widget, int64_t enabled)
-{
+void rt_widget_set_enabled(void *widget, int64_t enabled) {
     (void)widget;
     (void)enabled;
 }
@@ -776,8 +693,7 @@ void rt_widget_set_enabled(void *widget, int64_t enabled)
 /// @param widget
 /// @param width
 /// @param height
-void rt_widget_set_size(void *widget, int64_t width, int64_t height)
-{
+void rt_widget_set_size(void *widget, int64_t width, int64_t height) {
     (void)widget;
     (void)width;
     (void)height;
@@ -786,8 +702,7 @@ void rt_widget_set_size(void *widget, int64_t width, int64_t height)
 /// @brief Perform widget set flex operation.
 /// @param widget
 /// @param flex
-void rt_widget_set_flex(void *widget, double flex)
-{
+void rt_widget_set_flex(void *widget, double flex) {
     (void)widget;
     (void)flex;
 }
@@ -795,8 +710,7 @@ void rt_widget_set_flex(void *widget, double flex)
 /// @brief Perform widget add child operation.
 /// @param parent
 /// @param child
-void rt_widget_add_child(void *parent, void *child)
-{
+void rt_widget_add_child(void *parent, void *child) {
     (void)parent;
     (void)child;
 }
@@ -804,8 +718,7 @@ void rt_widget_add_child(void *parent, void *child)
 /// @brief Perform widget set margin operation.
 /// @param widget
 /// @param margin
-void rt_widget_set_margin(void *widget, int64_t margin)
-{
+void rt_widget_set_margin(void *widget, int64_t margin) {
     (void)widget;
     (void)margin;
 }
@@ -813,8 +726,7 @@ void rt_widget_set_margin(void *widget, int64_t margin)
 /// @brief Perform widget set tab index operation.
 /// @param widget
 /// @param idx
-void rt_widget_set_tab_index(void *widget, int64_t idx)
-{
+void rt_widget_set_tab_index(void *widget, int64_t idx) {
     (void)widget;
     (void)idx;
 }
@@ -822,8 +734,7 @@ void rt_widget_set_tab_index(void *widget, int64_t idx)
 /// @brief Perform widget is visible operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_is_visible(void *widget)
-{
+int64_t rt_widget_is_visible(void *widget) {
     (void)widget;
     return 0;
 }
@@ -831,8 +742,7 @@ int64_t rt_widget_is_visible(void *widget)
 /// @brief Perform widget is enabled operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_is_enabled(void *widget)
-{
+int64_t rt_widget_is_enabled(void *widget) {
     (void)widget;
     return 0;
 }
@@ -840,8 +750,7 @@ int64_t rt_widget_is_enabled(void *widget)
 /// @brief Perform widget get width operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_get_width(void *widget)
-{
+int64_t rt_widget_get_width(void *widget) {
     (void)widget;
     return 0;
 }
@@ -849,8 +758,7 @@ int64_t rt_widget_get_width(void *widget)
 /// @brief Perform widget get height operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_get_height(void *widget)
-{
+int64_t rt_widget_get_height(void *widget) {
     (void)widget;
     return 0;
 }
@@ -858,8 +766,7 @@ int64_t rt_widget_get_height(void *widget)
 /// @brief Perform widget get x operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_get_x(void *widget)
-{
+int64_t rt_widget_get_x(void *widget) {
     (void)widget;
     return 0;
 }
@@ -867,8 +774,7 @@ int64_t rt_widget_get_x(void *widget)
 /// @brief Perform widget get y operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_get_y(void *widget)
-{
+int64_t rt_widget_get_y(void *widget) {
     (void)widget;
     return 0;
 }
@@ -876,14 +782,12 @@ int64_t rt_widget_get_y(void *widget)
 /// @brief Perform widget get flex operation.
 /// @param widget
 /// @return Result value.
-double rt_widget_get_flex(void *widget)
-{
+double rt_widget_get_flex(void *widget) {
     (void)widget;
     return 0.0;
 }
 
-void *rt_label_new(void *parent, rt_string text)
-{
+void *rt_label_new(void *parent, rt_string text) {
     (void)parent;
     (void)text;
     return NULL;
@@ -892,8 +796,7 @@ void *rt_label_new(void *parent, rt_string text)
 /// @brief Perform label set text operation.
 /// @param label
 /// @param text
-void rt_label_set_text(void *label, rt_string text)
-{
+void rt_label_set_text(void *label, rt_string text) {
     (void)label;
     (void)text;
 }
@@ -902,8 +805,7 @@ void rt_label_set_text(void *label, rt_string text)
 /// @param label
 /// @param font
 /// @param size
-void rt_label_set_font(void *label, void *font, double size)
-{
+void rt_label_set_font(void *label, void *font, double size) {
     (void)label;
     (void)font;
     (void)size;
@@ -912,14 +814,12 @@ void rt_label_set_font(void *label, void *font, double size)
 /// @brief Perform label set color operation.
 /// @param label
 /// @param color
-void rt_label_set_color(void *label, int64_t color)
-{
+void rt_label_set_color(void *label, int64_t color) {
     (void)label;
     (void)color;
 }
 
-void *rt_button_new(void *parent, rt_string text)
-{
+void *rt_button_new(void *parent, rt_string text) {
     (void)parent;
     (void)text;
     return NULL;
@@ -928,8 +828,7 @@ void *rt_button_new(void *parent, rt_string text)
 /// @brief Perform button set text operation.
 /// @param button
 /// @param text
-void rt_button_set_text(void *button, rt_string text)
-{
+void rt_button_set_text(void *button, rt_string text) {
     (void)button;
     (void)text;
 }
@@ -938,8 +837,7 @@ void rt_button_set_text(void *button, rt_string text)
 /// @param button
 /// @param font
 /// @param size
-void rt_button_set_font(void *button, void *font, double size)
-{
+void rt_button_set_font(void *button, void *font, double size) {
     (void)button;
     (void)font;
     (void)size;
@@ -948,8 +846,7 @@ void rt_button_set_font(void *button, void *font, double size)
 /// @brief Perform button set style operation.
 /// @param button
 /// @param style
-void rt_button_set_style(void *button, int64_t style)
-{
+void rt_button_set_style(void *button, int64_t style) {
     (void)button;
     (void)style;
 }
@@ -957,8 +854,7 @@ void rt_button_set_style(void *button, int64_t style)
 /// @brief Perform button set icon operation.
 /// @param button
 /// @param icon
-void rt_button_set_icon(void *button, rt_string icon)
-{
+void rt_button_set_icon(void *button, rt_string icon) {
     (void)button;
     (void)icon;
 }
@@ -966,14 +862,12 @@ void rt_button_set_icon(void *button, rt_string icon)
 /// @brief Perform button set icon pos operation.
 /// @param button
 /// @param pos
-void rt_button_set_icon_pos(void *button, int64_t pos)
-{
+void rt_button_set_icon_pos(void *button, int64_t pos) {
     (void)button;
     (void)pos;
 }
 
-void *rt_textinput_new(void *parent)
-{
+void *rt_textinput_new(void *parent) {
     (void)parent;
     return NULL;
 }
@@ -981,8 +875,7 @@ void *rt_textinput_new(void *parent)
 /// @brief Perform textinput set text operation.
 /// @param input
 /// @param text
-void rt_textinput_set_text(void *input, rt_string text)
-{
+void rt_textinput_set_text(void *input, rt_string text) {
     (void)input;
     (void)text;
 }
@@ -990,8 +883,7 @@ void rt_textinput_set_text(void *input, rt_string text)
 /// @brief Perform textinput get text operation.
 /// @param input
 /// @return Result value.
-rt_string rt_textinput_get_text(void *input)
-{
+rt_string rt_textinput_get_text(void *input) {
     (void)input;
     return rt_str_empty();
 }
@@ -999,8 +891,7 @@ rt_string rt_textinput_get_text(void *input)
 /// @brief Perform textinput set placeholder operation.
 /// @param input
 /// @param placeholder
-void rt_textinput_set_placeholder(void *input, rt_string placeholder)
-{
+void rt_textinput_set_placeholder(void *input, rt_string placeholder) {
     (void)input;
     (void)placeholder;
 }
@@ -1009,15 +900,13 @@ void rt_textinput_set_placeholder(void *input, rt_string placeholder)
 /// @param input
 /// @param font
 /// @param size
-void rt_textinput_set_font(void *input, void *font, double size)
-{
+void rt_textinput_set_font(void *input, void *font, double size) {
     (void)input;
     (void)font;
     (void)size;
 }
 
-void *rt_checkbox_new(void *parent, rt_string text)
-{
+void *rt_checkbox_new(void *parent, rt_string text) {
     (void)parent;
     (void)text;
     return NULL;
@@ -1026,8 +915,7 @@ void *rt_checkbox_new(void *parent, rt_string text)
 /// @brief Check checkbox set checked.
 /// @param checkbox
 /// @param checked
-void rt_checkbox_set_checked(void *checkbox, int64_t checked)
-{
+void rt_checkbox_set_checked(void *checkbox, int64_t checked) {
     (void)checkbox;
     (void)checked;
 }
@@ -1035,8 +923,7 @@ void rt_checkbox_set_checked(void *checkbox, int64_t checked)
 /// @brief Check checkbox is checked.
 /// @param checkbox
 /// @return Result value.
-int64_t rt_checkbox_is_checked(void *checkbox)
-{
+int64_t rt_checkbox_is_checked(void *checkbox) {
     (void)checkbox;
     return 0;
 }
@@ -1044,14 +931,12 @@ int64_t rt_checkbox_is_checked(void *checkbox)
 /// @brief Check checkbox set text.
 /// @param checkbox
 /// @param text
-void rt_checkbox_set_text(void *checkbox, rt_string text)
-{
+void rt_checkbox_set_text(void *checkbox, rt_string text) {
     (void)checkbox;
     (void)text;
 }
 
-void *rt_scrollview_new(void *parent)
-{
+void *rt_scrollview_new(void *parent) {
     (void)parent;
     return NULL;
 }
@@ -1060,8 +945,7 @@ void *rt_scrollview_new(void *parent)
 /// @param scroll
 /// @param x
 /// @param y
-void rt_scrollview_set_scroll(void *scroll, double x, double y)
-{
+void rt_scrollview_set_scroll(void *scroll, double x, double y) {
     (void)scroll;
     (void)x;
     (void)y;
@@ -1071,8 +955,7 @@ void rt_scrollview_set_scroll(void *scroll, double x, double y)
 /// @param scroll
 /// @param width
 /// @param height
-void rt_scrollview_set_content_size(void *scroll, double width, double height)
-{
+void rt_scrollview_set_content_size(void *scroll, double width, double height) {
     (void)scroll;
     (void)width;
     (void)height;
@@ -1081,8 +964,7 @@ void rt_scrollview_set_content_size(void *scroll, double width, double height)
 /// @brief Perform scrollview get scroll x operation.
 /// @param scroll
 /// @return Result value.
-double rt_scrollview_get_scroll_x(void *scroll)
-{
+double rt_scrollview_get_scroll_x(void *scroll) {
     (void)scroll;
     return 0.0;
 }
@@ -1090,20 +972,17 @@ double rt_scrollview_get_scroll_x(void *scroll)
 /// @brief Perform scrollview get scroll y operation.
 /// @param scroll
 /// @return Result value.
-double rt_scrollview_get_scroll_y(void *scroll)
-{
+double rt_scrollview_get_scroll_y(void *scroll) {
     (void)scroll;
     return 0.0;
 }
 
-void *rt_treeview_new(void *parent)
-{
+void *rt_treeview_new(void *parent) {
     (void)parent;
     return NULL;
 }
 
-void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text)
-{
+void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text) {
     (void)tree;
     (void)parent_node;
     (void)text;
@@ -1113,24 +992,21 @@ void *rt_treeview_add_node(void *tree, void *parent_node, rt_string text)
 /// @brief Perform treeview remove node operation.
 /// @param tree
 /// @param node
-void rt_treeview_remove_node(void *tree, void *node)
-{
+void rt_treeview_remove_node(void *tree, void *node) {
     (void)tree;
     (void)node;
 }
 
 /// @brief Perform treeview clear operation.
 /// @param tree
-void rt_treeview_clear(void *tree)
-{
+void rt_treeview_clear(void *tree) {
     (void)tree;
 }
 
 /// @brief Perform treeview expand operation.
 /// @param tree
 /// @param node
-void rt_treeview_expand(void *tree, void *node)
-{
+void rt_treeview_expand(void *tree, void *node) {
     (void)tree;
     (void)node;
 }
@@ -1138,8 +1014,7 @@ void rt_treeview_expand(void *tree, void *node)
 /// @brief Perform treeview collapse operation.
 /// @param tree
 /// @param node
-void rt_treeview_collapse(void *tree, void *node)
-{
+void rt_treeview_collapse(void *tree, void *node) {
     (void)tree;
     (void)node;
 }
@@ -1147,8 +1022,7 @@ void rt_treeview_collapse(void *tree, void *node)
 /// @brief Perform treeview select operation.
 /// @param tree
 /// @param node
-void rt_treeview_select(void *tree, void *node)
-{
+void rt_treeview_select(void *tree, void *node) {
     (void)tree;
     (void)node;
 }
@@ -1157,15 +1031,13 @@ void rt_treeview_select(void *tree, void *node)
 /// @param tree
 /// @param font
 /// @param size
-void rt_treeview_set_font(void *tree, void *font, double size)
-{
+void rt_treeview_set_font(void *tree, void *font, double size) {
     (void)tree;
     (void)font;
     (void)size;
 }
 
-void *rt_treeview_get_selected(void *tree)
-{
+void *rt_treeview_get_selected(void *tree) {
     (void)tree;
     return NULL;
 }
@@ -1173,8 +1045,7 @@ void *rt_treeview_get_selected(void *tree)
 /// @brief Perform treeview was selection changed operation.
 /// @param tree
 /// @return Result value.
-int64_t rt_treeview_was_selection_changed(void *tree)
-{
+int64_t rt_treeview_was_selection_changed(void *tree) {
     (void)tree;
     return 0;
 }
@@ -1182,8 +1053,7 @@ int64_t rt_treeview_was_selection_changed(void *tree)
 /// @brief Perform treeview node get text operation.
 /// @param node
 /// @return Result value.
-rt_string rt_treeview_node_get_text(void *node)
-{
+rt_string rt_treeview_node_get_text(void *node) {
     (void)node;
     return rt_str_empty();
 }
@@ -1191,8 +1061,7 @@ rt_string rt_treeview_node_get_text(void *node)
 /// @brief Perform treeview node set data operation.
 /// @param node
 /// @param data
-void rt_treeview_node_set_data(void *node, rt_string data)
-{
+void rt_treeview_node_set_data(void *node, rt_string data) {
     (void)node;
     (void)data;
 }
@@ -1200,8 +1069,7 @@ void rt_treeview_node_set_data(void *node, rt_string data)
 /// @brief Perform treeview node get data operation.
 /// @param node
 /// @return Result value.
-rt_string rt_treeview_node_get_data(void *node)
-{
+rt_string rt_treeview_node_get_data(void *node) {
     (void)node;
     return rt_str_empty();
 }
@@ -1209,8 +1077,7 @@ rt_string rt_treeview_node_get_data(void *node)
 /// @brief Perform treeview node is expanded operation.
 /// @param node
 /// @return Result value.
-int64_t rt_treeview_node_is_expanded(void *node)
-{
+int64_t rt_treeview_node_is_expanded(void *node) {
     (void)node;
     return 0;
 }

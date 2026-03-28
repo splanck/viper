@@ -63,8 +63,7 @@
 //=============================================================================
 
 /// @brief 3x3 matrix stored in row-major order.
-typedef struct mat3_impl
-{
+typedef struct mat3_impl {
     double m[9]; ///< Elements in row-major order: [row0][row1][row2]
 } mat3_impl;
 
@@ -82,8 +81,7 @@ void *rt_mat3_new(double m00,
                   double m12,
                   double m20,
                   double m21,
-                  double m22)
-{
+                  double m22) {
     mat3_impl *mat = (mat3_impl *)rt_obj_new_i64(0, sizeof(mat3_impl));
     if (!mat)
         return NULL;
@@ -101,13 +99,11 @@ void *rt_mat3_new(double m00,
     return mat;
 }
 
-void *rt_mat3_identity(void)
-{
+void *rt_mat3_identity(void) {
     return rt_mat3_new(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0);
 }
 
-void *rt_mat3_zero(void)
-{
+void *rt_mat3_zero(void) {
     return rt_mat3_new(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 }
 
@@ -115,30 +111,25 @@ void *rt_mat3_zero(void)
 // 2D Transformation Factories
 //=============================================================================
 
-void *rt_mat3_translate(double tx, double ty)
-{
+void *rt_mat3_translate(double tx, double ty) {
     return rt_mat3_new(1.0, 0.0, tx, 0.0, 1.0, ty, 0.0, 0.0, 1.0);
 }
 
-void *rt_mat3_scale(double sx, double sy)
-{
+void *rt_mat3_scale(double sx, double sy) {
     return rt_mat3_new(sx, 0.0, 0.0, 0.0, sy, 0.0, 0.0, 0.0, 1.0);
 }
 
-void *rt_mat3_scale_uniform(double s)
-{
+void *rt_mat3_scale_uniform(double s) {
     return rt_mat3_scale(s, s);
 }
 
-void *rt_mat3_rotate(double angle)
-{
+void *rt_mat3_rotate(double angle) {
     double c = cos(angle);
     double s = sin(angle);
     return rt_mat3_new(c, -s, 0.0, s, c, 0.0, 0.0, 0.0, 1.0);
 }
 
-void *rt_mat3_shear(double sx, double sy)
-{
+void *rt_mat3_shear(double sx, double sy) {
     return rt_mat3_new(1.0, sx, 0.0, sy, 1.0, 0.0, 0.0, 0.0, 1.0);
 }
 
@@ -146,8 +137,7 @@ void *rt_mat3_shear(double sx, double sy)
 // Element Access
 //=============================================================================
 
-double rt_mat3_get(void *m, int64_t row, int64_t col)
-{
+double rt_mat3_get(void *m, int64_t row, int64_t col) {
     if (!m || row < 0 || row > 2 || col < 0 || col > 2)
         return 0.0;
 
@@ -155,8 +145,7 @@ double rt_mat3_get(void *m, int64_t row, int64_t col)
     return M(mat, row, col);
 }
 
-void *rt_mat3_row(void *m, int64_t row)
-{
+void *rt_mat3_row(void *m, int64_t row) {
     if (!m || row < 0 || row > 2)
         return rt_vec3_zero();
 
@@ -164,8 +153,7 @@ void *rt_mat3_row(void *m, int64_t row)
     return rt_vec3_new(M(mat, row, 0), M(mat, row, 1), M(mat, row, 2));
 }
 
-void *rt_mat3_col(void *m, int64_t col)
-{
+void *rt_mat3_col(void *m, int64_t col) {
     if (!m || col < 0 || col > 2)
         return rt_vec3_zero();
 
@@ -177,8 +165,7 @@ void *rt_mat3_col(void *m, int64_t col)
 // Arithmetic
 //=============================================================================
 
-void *rt_mat3_add(void *a, void *b)
-{
+void *rt_mat3_add(void *a, void *b) {
     if (!a || !b)
         return rt_mat3_zero();
 
@@ -196,8 +183,7 @@ void *rt_mat3_add(void *a, void *b)
                        ma->m[8] + mb->m[8]);
 }
 
-void *rt_mat3_sub(void *a, void *b)
-{
+void *rt_mat3_sub(void *a, void *b) {
     if (!a || !b)
         return rt_mat3_zero();
 
@@ -215,8 +201,7 @@ void *rt_mat3_sub(void *a, void *b)
                        ma->m[8] - mb->m[8]);
 }
 
-void *rt_mat3_mul(void *a, void *b)
-{
+void *rt_mat3_mul(void *a, void *b) {
     if (!a || !b)
         return rt_mat3_identity();
 
@@ -224,10 +209,8 @@ void *rt_mat3_mul(void *a, void *b)
     mat3_impl *mb = (mat3_impl *)b;
 
     double r[9];
-    for (int i = 0; i < 3; i++)
-    {
-        for (int j = 0; j < 3; j++)
-        {
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
             r[i * 3 + j] = ma->m[i * 3 + 0] * mb->m[0 * 3 + j] +
                            ma->m[i * 3 + 1] * mb->m[1 * 3 + j] +
                            ma->m[i * 3 + 2] * mb->m[2 * 3 + j];
@@ -237,8 +220,7 @@ void *rt_mat3_mul(void *a, void *b)
     return rt_mat3_new(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8]);
 }
 
-void *rt_mat3_mul_scalar(void *m, double s)
-{
+void *rt_mat3_mul_scalar(void *m, double s) {
     if (!m)
         return rt_mat3_zero();
 
@@ -255,8 +237,7 @@ void *rt_mat3_mul_scalar(void *m, double s)
                        mat->m[8] * s);
 }
 
-void *rt_mat3_transform_point(void *m, void *v)
-{
+void *rt_mat3_transform_point(void *m, void *v) {
     if (!m || !v)
         return rt_vec2_zero();
 
@@ -271,8 +252,7 @@ void *rt_mat3_transform_point(void *m, void *v)
     return rt_vec2_new(rx, ry);
 }
 
-void *rt_mat3_transform_vec(void *m, void *v)
-{
+void *rt_mat3_transform_vec(void *m, void *v) {
     if (!m || !v)
         return rt_vec2_zero();
 
@@ -291,8 +271,7 @@ void *rt_mat3_transform_vec(void *m, void *v)
 // Matrix Operations
 //=============================================================================
 
-void *rt_mat3_transpose(void *m)
-{
+void *rt_mat3_transpose(void *m) {
     if (!m)
         return rt_mat3_identity();
 
@@ -309,8 +288,7 @@ void *rt_mat3_transpose(void *m)
                        mat->m[8]);
 }
 
-double rt_mat3_det(void *m)
-{
+double rt_mat3_det(void *m) {
     if (!m)
         return 0.0;
 
@@ -322,8 +300,7 @@ double rt_mat3_det(void *m)
            mat->m[2] * (mat->m[3] * mat->m[7] - mat->m[4] * mat->m[6]);
 }
 
-void *rt_mat3_inverse(void *m)
-{
+void *rt_mat3_inverse(void *m) {
     if (!m)
         return rt_mat3_identity();
 
@@ -359,8 +336,7 @@ void *rt_mat3_inverse(void *m)
                        c22 * invDet);
 }
 
-void *rt_mat3_neg(void *m)
-{
+void *rt_mat3_neg(void *m) {
     if (!m)
         return rt_mat3_zero();
 
@@ -381,8 +357,7 @@ void *rt_mat3_neg(void *m)
 // Comparison
 //=============================================================================
 
-int8_t rt_mat3_eq(void *a, void *b, double epsilon)
-{
+int8_t rt_mat3_eq(void *a, void *b, double epsilon) {
     if (!a || !b)
         return (!a && !b) ? 1 : 0;
 
@@ -392,8 +367,7 @@ int8_t rt_mat3_eq(void *a, void *b, double epsilon)
     mat3_impl *ma = (mat3_impl *)a;
     mat3_impl *mb = (mat3_impl *)b;
 
-    for (int i = 0; i < 9; i++)
-    {
+    for (int i = 0; i < 9; i++) {
         if (fabs(ma->m[i] - mb->m[i]) > epsilon)
             return 0;
     }

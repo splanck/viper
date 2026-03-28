@@ -23,18 +23,14 @@
 #include "tests/TestHarness.hpp"
 using namespace il::core;
 
-namespace
-{
+namespace {
 /// @brief Make registry.
-il::transform::AnalysisRegistry makeRegistry()
-{
+il::transform::AnalysisRegistry makeRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fn) { return il::transform::buildCFG(mod, fn); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fn)
-        {
+        "dominators", [](Module &mod, Function &fn) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
@@ -45,8 +41,7 @@ il::transform::AnalysisRegistry makeRegistry()
 }
 } // namespace
 
-TEST(CheckOpt, EliminatesRedundantInNestedLoops)
-{
+TEST(CheckOpt, EliminatesRedundantInNestedLoops) {
     Module M;
     Function F;
     F.name = "nested";
@@ -123,8 +118,7 @@ TEST(CheckOpt, EliminatesRedundantInNestedLoops)
     EXPECT_EQ(chkCount, 0U);
 }
 
-TEST(CheckOpt, DoesNotEliminateAcrossSiblingBlocks)
-{
+TEST(CheckOpt, DoesNotEliminateAcrossSiblingBlocks) {
     // Uses a function-parameter temp as the divisor so that constant-operand
     // elimination does not fire.  This tests the dominance-based redundancy
     // rule: neither sibling block dominates the other, so both checks survive.
@@ -205,8 +199,7 @@ TEST(CheckOpt, DoesNotEliminateAcrossSiblingBlocks)
     EXPECT_EQ(checkCount, 2U);
 }
 
-TEST(CheckOpt, EliminatesIdxChkWithConstantOperandsInBounds)
-{
+TEST(CheckOpt, EliminatesIdxChkWithConstantOperandsInBounds) {
     // After SCCP runs rewriteConstants(), operands that were proven constant
     // appear as ConstInt literals.  CheckOpt should fold idx.chk(5, 0, 10)
     // at compile time since 0 <= 5 < 10 is trivially true.
@@ -246,8 +239,7 @@ TEST(CheckOpt, EliminatesIdxChkWithConstantOperandsInBounds)
     EXPECT_EQ(chkCount, 0U);
 }
 
-TEST(CheckOpt, PreservesSDivChk0WithNonZeroConstDivisor)
-{
+TEST(CheckOpt, PreservesSDivChk0WithNonZeroConstDivisor) {
     // Even with a non-zero constant divisor, sdiv.chk0 still produces the
     // division result. CheckOpt must not erase or rewrite it to the divisor.
     Module M;
@@ -279,16 +271,14 @@ TEST(CheckOpt, PreservesSDivChk0WithNonZeroConstDivisor)
     pass.run(Fn, manager);
 
     size_t chkCount = 0;
-    for (const auto &I : Fn.blocks[0].instructions)
-    {
+    for (const auto &I : Fn.blocks[0].instructions) {
         if (I.op == Opcode::SDivChk0)
             ++chkCount;
     }
     EXPECT_EQ(chkCount, 1U);
 }
 
-TEST(CheckOpt, PreservesCheckedDivResultWhenDivisorIsConstNonZero)
-{
+TEST(CheckOpt, PreservesCheckedDivResultWhenDivisorIsConstNonZero) {
     Module M;
     Function F;
     F.name = "checked_div_result";
@@ -343,8 +333,7 @@ TEST(CheckOpt, PreservesCheckedDivResultWhenDivisorIsConstNonZero)
     EXPECT_EQ(addInstr.operands[1].id, 1U);
 }
 
-TEST(CheckOpt, PreservesIdxChkWhenOutOfBounds)
-{
+TEST(CheckOpt, PreservesIdxChkWhenOutOfBounds) {
     // idx.chk(15, 0, 10) — 15 is NOT in [0, 10) — check must be preserved.
     Module M;
     Function F;
@@ -381,8 +370,7 @@ TEST(CheckOpt, PreservesIdxChkWhenOutOfBounds)
     EXPECT_EQ(chkCount, 1U); // must remain — would trap at runtime
 }
 
-TEST(CheckOpt, PreservesTrapBehaviourWhenDominanceMissing)
-{
+TEST(CheckOpt, PreservesTrapBehaviourWhenDominanceMissing) {
     Module M;
     Function F;
     F.name = "trap_paths";
@@ -440,8 +428,7 @@ TEST(CheckOpt, PreservesTrapBehaviourWhenDominanceMissing)
     EXPECT_TRUE(found);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -24,8 +24,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/SelectCaseLowering.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Lower a SELECT CASE statement using the SelectCaseLowering utility.
 ///
@@ -35,8 +34,7 @@ namespace il::frontends::basic
 ///          block in sync so subsequent lowering steps see the correct CFG.
 /// @param stmt AST node describing the SELECT CASE statement.
 /// @return Control-flow state capturing the block and fallthrough outcome.
-Lowerer::CtrlState Lowerer::emitSelect(const SelectCaseStmt &stmt)
-{
+Lowerer::CtrlState Lowerer::emitSelect(const SelectCaseStmt &stmt) {
     CtrlState state{};
     SelectCaseLowering lowering(*this);
     lowering.lower(stmt);

@@ -38,39 +38,34 @@
 
 using namespace viper::codegen::x64;
 
-namespace
-{
+namespace {
 
 // ===----------------------------------------------------------------------===
 // Helper functions (adapted from test_regalloc_stress.cpp)
 // ===----------------------------------------------------------------------===
 
-[[nodiscard]] ILValue val(int id) noexcept
-{
+[[nodiscard]] ILValue val(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::I64;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue valF(int id) noexcept
-{
+[[nodiscard]] ILValue valF(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::F64;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue valB(int id) noexcept
-{
+[[nodiscard]] ILValue valB(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::I1;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue imm(int64_t v) noexcept
-{
+[[nodiscard]] ILValue imm(int64_t v) noexcept {
     ILValue c{};
     c.kind = ILValue::Kind::I64;
     c.id = -1;
@@ -78,8 +73,7 @@ namespace
     return c;
 }
 
-[[nodiscard]] ILValue immF(double v) noexcept
-{
+[[nodiscard]] ILValue immF(double v) noexcept {
     ILValue c{};
     c.kind = ILValue::Kind::F64;
     c.id = -1;
@@ -87,8 +81,7 @@ namespace
     return c;
 }
 
-[[nodiscard]] ILValue lab(const char *name) noexcept
-{
+[[nodiscard]] ILValue lab(const char *name) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::LABEL;
     v.id = -1;
@@ -99,8 +92,7 @@ namespace
 [[nodiscard]] ILInstr makeOp(const char *opc,
                              std::vector<ILValue> ops,
                              int res,
-                             ILValue::Kind k = ILValue::Kind::I64)
-{
+                             ILValue::Kind k = ILValue::Kind::I64) {
     ILInstr instr{};
     instr.opcode = opc;
     instr.ops = std::move(ops);
@@ -109,8 +101,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeRet(int id, ILValue::Kind k = ILValue::Kind::I64)
-{
+[[nodiscard]] ILInstr makeRet(int id, ILValue::Kind k = ILValue::Kind::I64) {
     ILInstr instr{};
     instr.opcode = "ret";
     ILValue ref{};
@@ -120,8 +111,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeConstF64(double v, int resultId)
-{
+[[nodiscard]] ILInstr makeConstF64(double v, int resultId) {
     ILInstr instr{};
     instr.opcode = "const_f64";
     instr.ops = {immF(v)};
@@ -130,8 +120,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeFCmp(const char *cmpOp, int lhsId, int rhsId, int resultId)
-{
+[[nodiscard]] ILInstr makeFCmp(const char *cmpOp, int lhsId, int rhsId, int resultId) {
     ILInstr instr{};
     instr.opcode = cmpOp;
     instr.ops = {valF(lhsId), valF(rhsId)};
@@ -140,36 +129,31 @@ namespace
     return instr;
 }
 
-[[nodiscard]] std::size_t countOccurrences(const std::string &text, const std::string &pattern)
-{
+[[nodiscard]] std::size_t countOccurrences(const std::string &text, const std::string &pattern) {
     std::size_t count = 0;
     std::size_t pos = 0;
-    while ((pos = text.find(pattern, pos)) != std::string::npos)
-    {
+    while ((pos = text.find(pattern, pos)) != std::string::npos) {
         ++count;
         pos += pattern.size();
     }
     return count;
 }
 
-[[nodiscard]] std::size_t countXmmSpillStores(const std::string &text)
-{
+[[nodiscard]] std::size_t countXmmSpillStores(const std::string &text) {
     const std::regex pattern(R"(movsd\s+%xmm\d+,\s*-\d+\(%rbp\))");
     auto begin = std::sregex_iterator(text.begin(), text.end(), pattern);
     auto end = std::sregex_iterator();
     return static_cast<std::size_t>(std::distance(begin, end));
 }
 
-[[nodiscard]] std::size_t countXmmSpillLoads(const std::string &text)
-{
+[[nodiscard]] std::size_t countXmmSpillLoads(const std::string &text) {
     const std::regex pattern(R"(movsd\s+-\d+\(%rbp\),\s*%xmm\d+)");
     auto begin = std::sregex_iterator(text.begin(), text.end(), pattern);
     auto end = std::sregex_iterator();
     return static_cast<std::size_t>(std::distance(begin, end));
 }
 
-[[nodiscard]] bool rodataContainsHex(const std::string &text, std::uint64_t bits)
-{
+[[nodiscard]] bool rodataContainsHex(const std::string &text, std::uint64_t bits) {
     std::ostringstream oss;
     oss << ".quad 0x" << std::hex << std::setw(16) << std::setfill('0') << bits;
     return text.find(oss.str()) != std::string::npos;
@@ -179,16 +163,10 @@ namespace
 // Test result tracking
 // ===----------------------------------------------------------------------===
 
-struct TestResult
-{
+struct TestResult {
     const char *name{};
 
-    enum Status
-    {
-        PASS,
-        FAIL,
-        BUG
-    } status{FAIL};
+    enum Status { PASS, FAIL, BUG } status{FAIL};
 
     std::string notes{};
     std::string failReason{};
@@ -199,8 +177,7 @@ struct TestResult
 // Test 1: FP Arithmetic Encoding
 // ===----------------------------------------------------------------------===
 
-TestResult testFpArithEncoding()
-{
+TestResult testFpArithEncoding() {
     TestResult r{"1. FP arithmetic encoding"};
 
     ILBlock entry{};
@@ -221,8 +198,7 @@ TestResult testFpArithEncoding()
     mod.funcs = {func};
 
     const auto cg = emitModuleToAssembly(mod, {});
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         r.failReason = "Codegen error: " + cg.errors;
         return r;
     }
@@ -232,8 +208,7 @@ TestResult testFpArithEncoding()
     const bool hasMulsd = cg.asmText.find("mulsd") != std::string::npos;
     const bool hasDivsd = cg.asmText.find("divsd") != std::string::npos;
 
-    if (!hasAddsd || !hasSubsd || !hasMulsd || !hasDivsd)
-    {
+    if (!hasAddsd || !hasSubsd || !hasMulsd || !hasDivsd) {
         r.failReason = "Missing FP instruction:";
         if (!hasAddsd)
             r.failReason += " addsd";
@@ -255,8 +230,7 @@ TestResult testFpArithEncoding()
 // Test 2: FP Constant Special Values
 // ===----------------------------------------------------------------------===
 
-TestResult testFpConstSpecialVals()
-{
+TestResult testFpConstSpecialVals() {
     TestResult r{"2. FP constant special vals"};
 
     const double nan = std::numeric_limits<double>::quiet_NaN();
@@ -294,22 +268,19 @@ TestResult testFpConstSpecialVals()
     mod.funcs = {func};
 
     const auto cg = emitModuleToAssembly(mod, {});
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         r.failReason = "Codegen error: " + cg.errors;
         return r;
     }
 
     // Verify .rodata section exists
-    if (cg.asmText.find(".section .rodata") == std::string::npos)
-    {
+    if (cg.asmText.find(".section .rodata") == std::string::npos) {
         r.failReason = "No .rodata section found";
         return r;
     }
 
     // Verify special value bit patterns
-    struct
-    {
+    struct {
         const char *name;
         std::uint64_t bits;
     } checks[] = {
@@ -321,18 +292,15 @@ TestResult testFpConstSpecialVals()
     };
 
     std::string missing{};
-    for (const auto &chk : checks)
-    {
-        if (!rodataContainsHex(cg.asmText, chk.bits))
-        {
+    for (const auto &chk : checks) {
+        if (!rodataContainsHex(cg.asmText, chk.bits)) {
             if (!missing.empty())
                 missing += ", ";
             missing += chk.name;
         }
     }
 
-    if (!missing.empty())
-    {
+    if (!missing.empty()) {
         r.failReason = "Missing .rodata patterns: " + missing;
         return r;
     }
@@ -347,8 +315,7 @@ TestResult testFpConstSpecialVals()
 // Test 3: FP Comparisons — Correct Cases (fcmp_gt, ge, ord, uno)
 // ===----------------------------------------------------------------------===
 
-TestResult testFpCmpCorrectCodes()
-{
+TestResult testFpCmpCorrectCodes() {
     TestResult r{"3. FP cmp correct codes"};
 
     ILBlock entry{};
@@ -377,8 +344,7 @@ TestResult testFpCmpCorrectCodes()
     mod.funcs = {func};
 
     const auto cg = emitModuleToAssembly(mod, {});
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         r.failReason = "Codegen error: " + cg.errors;
         return r;
     }
@@ -389,14 +355,12 @@ TestResult testFpCmpCorrectCodes()
     const bool hasSetnp = cg.asmText.find("setnp ") != std::string::npos;
     const bool hasSetp = cg.asmText.find("setp ") != std::string::npos;
 
-    if (ucomiCount < 4)
-    {
+    if (ucomiCount < 4) {
         r.failReason = "Expected >= 4 ucomisd, found " + std::to_string(ucomiCount);
         return r;
     }
 
-    if (!hasSeta || !hasSetae || !hasSetnp || !hasSetp)
-    {
+    if (!hasSeta || !hasSetae || !hasSetnp || !hasSetp) {
         r.failReason = "Missing condition code:";
         if (!hasSeta)
             r.failReason += " seta(gt)";
@@ -418,8 +382,7 @@ TestResult testFpCmpCorrectCodes()
 // Test 4: FP Comparisons — NaN Bug Detection (fcmp_eq, ne, lt, le)
 // ===----------------------------------------------------------------------===
 
-TestResult testFpCmpNanBugs()
-{
+TestResult testFpCmpNanBugs() {
     TestResult r{"4. FP cmp NaN safety"};
 
     ILBlock entry{};
@@ -448,8 +411,7 @@ TestResult testFpCmpNanBugs()
     mod.funcs = {func};
 
     const auto cg = emitModuleToAssembly(mod, {});
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         r.failReason = "Codegen error: " + cg.errors;
         return r;
     }
@@ -492,26 +454,22 @@ TestResult testFpCmpNanBugs()
 
     // fcmp_lt: must NOT use setb (old NaN-buggy pattern), should use seta (swapped)
     const bool hasBuggySetB = cg.asmText.find("setb ") != std::string::npos;
-    if (hasBuggySetB)
-    {
+    if (hasBuggySetB) {
         r.bugs.push_back("fcmp_lt still uses SETB — NaN-incorrect (CF=1 → true)");
     }
 
     // fcmp_le: must NOT use setbe (old NaN-buggy pattern), should use setae (swapped)
     const bool hasBuggySetBE = cg.asmText.find("setbe ") != std::string::npos;
-    if (hasBuggySetBE)
-    {
+    if (hasBuggySetBE) {
         r.bugs.push_back("fcmp_le still uses SETBE — NaN-incorrect (CF=1|ZF=1 → true)");
     }
 
-    if (!missing.empty())
-    {
+    if (!missing.empty()) {
         r.failReason = "Missing NaN-safe patterns:" + missing;
         return r;
     }
 
-    if (!r.bugs.empty())
-    {
+    if (!r.bugs.empty()) {
         r.status = TestResult::BUG;
         r.notes = std::to_string(r.bugs.size()) + " remaining NaN comparison issues";
         return r;
@@ -526,8 +484,7 @@ TestResult testFpCmpNanBugs()
 // Test 5: FP Conversions
 // ===----------------------------------------------------------------------===
 
-TestResult testFpConversions()
-{
+TestResult testFpConversions() {
     TestResult r{"5. FP conversions"};
 
     // Test sitofp + fptosi (signed path)
@@ -573,8 +530,7 @@ TestResult testFpConversions()
     mod.funcs = {signedFunc, uiFunc, fuiFunc};
 
     const auto cg = emitModuleToAssembly(mod, {});
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         r.failReason = "Codegen error: " + cg.errors;
         return r;
     }
@@ -583,8 +539,7 @@ TestResult testFpConversions()
     const bool hasCvtsi2sd = cg.asmText.find("cvtsi2sd") != std::string::npos;
     const bool hasCvttsd2si = cg.asmText.find("cvttsd2si") != std::string::npos;
 
-    if (!hasCvtsi2sd || !hasCvttsd2si)
-    {
+    if (!hasCvtsi2sd || !hasCvttsd2si) {
         r.failReason = "Missing signed conversion:";
         if (!hasCvtsi2sd)
             r.failReason += " cvtsi2sd";
@@ -602,8 +557,7 @@ TestResult testFpConversions()
     const bool hasShrq = uitofpAsm.find("shrq") != std::string::npos;
     const bool hasAddsd = uitofpAsm.find("addsd") != std::string::npos;
 
-    if (!hasTestq || !hasShrq || !hasAddsd)
-    {
+    if (!hasTestq || !hasShrq || !hasAddsd) {
         r.failReason = "uitofp missing full-range handling:";
         if (!hasTestq)
             r.failReason += " testq(sign-check)";
@@ -622,8 +576,7 @@ TestResult testFpConversions()
     const bool hasUd2 = fptouiAsm.find("ud2") != std::string::npos;
     const bool hasTrapLabel = fptouiAsm.find(".Lfptoui_trap_") != std::string::npos;
 
-    if (!hasUcomisd || !hasUd2 || !hasTrapLabel)
-    {
+    if (!hasUcomisd || !hasUd2 || !hasTrapLabel) {
         r.failReason = "fptoui missing checked conversion:";
         if (!hasUcomisd)
             r.failReason += " ucomisd(NaN-check)";
@@ -643,8 +596,7 @@ TestResult testFpConversions()
 // Test 6: FP Register Pressure
 // ===----------------------------------------------------------------------===
 
-TestResult testFpRegisterPressure()
-{
+TestResult testFpRegisterPressure() {
     TestResult r{"6. FP register pressure"};
 
     ILBlock entry{};
@@ -658,8 +610,7 @@ TestResult testFpRegisterPressure()
                         ILValue::Kind::I64};
 
     // Convert 6 I64 params to F64
-    for (int i = 0; i < 6; ++i)
-    {
+    for (int i = 0; i < 6; ++i) {
         entry.instrs.push_back(makeOp("sitofp", {val(i)}, 6 + i, ILValue::Kind::F64));
     }
     // Cross-product arithmetic: 6 more F64 values (12 total live)
@@ -685,8 +636,7 @@ TestResult testFpRegisterPressure()
     mod.funcs = {func};
 
     const auto cg = emitModuleToAssembly(mod, {});
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         r.failReason = "Codegen error: " + cg.errors;
         return r;
     }
@@ -703,8 +653,7 @@ TestResult testFpRegisterPressure()
 // Test 7: FP Across Calls
 // ===----------------------------------------------------------------------===
 
-TestResult testFpAcrossCalls()
-{
+TestResult testFpAcrossCalls() {
     TestResult r{"7. FP across calls"};
 
     // identity function: i64 → i64
@@ -747,8 +696,7 @@ TestResult testFpAcrossCalls()
     mod.funcs = {identFunc, mainFunc};
 
     const auto cg = emitModuleToAssembly(mod, {});
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         r.failReason = "Codegen error: " + cg.errors;
         return r;
     }
@@ -762,8 +710,7 @@ TestResult testFpAcrossCalls()
     const auto xmmLoads = countXmmSpillLoads(funcAsm);
     const bool hasCall = funcAsm.find("callq") != std::string::npos;
 
-    if (!hasCall)
-    {
+    if (!hasCall) {
         r.failReason = "No callq found in fp_across_calls";
         return r;
     }
@@ -778,8 +725,7 @@ TestResult testFpAcrossCalls()
 // Test 8: NaN Propagation Through Arithmetic
 // ===----------------------------------------------------------------------===
 
-TestResult testNanPropagation()
-{
+TestResult testNanPropagation() {
     TestResult r{"8. NaN propagation"};
 
     ILBlock entry{};
@@ -807,15 +753,13 @@ TestResult testNanPropagation()
     mod.funcs = {func};
 
     const auto cg = emitModuleToAssembly(mod, {});
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         r.failReason = "Codegen error: " + cg.errors;
         return r;
     }
 
     // Verify NaN bit pattern in .rodata
-    if (!rodataContainsHex(cg.asmText, 0x7FF8000000000000ULL))
-    {
+    if (!rodataContainsHex(cg.asmText, 0x7FF8000000000000ULL)) {
         r.failReason = "NaN bit pattern not found in .rodata";
         return r;
     }
@@ -825,8 +769,7 @@ TestResult testNanPropagation()
                         cg.asmText.find("subsd") != std::string::npos &&
                         cg.asmText.find("mulsd") != std::string::npos &&
                         cg.asmText.find("divsd") != std::string::npos;
-    if (!hasAll)
-    {
+    if (!hasAll) {
         r.failReason = "NaN arithmetic optimized away — missing addsd/subsd/mulsd/divsd";
         return r;
     }
@@ -840,8 +783,7 @@ TestResult testNanPropagation()
 // Test 9: Negative Zero Handling
 // ===----------------------------------------------------------------------===
 
-TestResult testNegativeZero()
-{
+TestResult testNegativeZero() {
     TestResult r{"9. Negative zero"};
 
     ILBlock entry{};
@@ -862,8 +804,7 @@ TestResult testNegativeZero()
     mod.funcs = {func};
 
     const auto cg = emitModuleToAssembly(mod, {});
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         r.failReason = "Codegen error: " + cg.errors;
         return r;
     }
@@ -872,13 +813,11 @@ TestResult testNegativeZero()
     const bool hasNegZero = rodataContainsHex(cg.asmText, 0x8000000000000000ULL);
     const bool hasPosZero = rodataContainsHex(cg.asmText, 0x0000000000000000ULL);
 
-    if (!hasNegZero)
-    {
+    if (!hasNegZero) {
         r.failReason = "-0.0 bit pattern (0x8000000000000000) not in .rodata";
         return r;
     }
-    if (!hasPosZero)
-    {
+    if (!hasPosZero) {
         r.failReason = "+0.0 bit pattern (0x0000000000000000) not in .rodata";
         return r;
     }
@@ -897,8 +836,7 @@ TestResult testNegativeZero()
 // Test 10: Precision Boundary (2^53 + 1)
 // ===----------------------------------------------------------------------===
 
-TestResult testPrecisionBoundary()
-{
+TestResult testPrecisionBoundary() {
     TestResult r{"10. Precision boundary"};
 
     ILBlock entry{};
@@ -918,8 +856,7 @@ TestResult testPrecisionBoundary()
     mod.funcs = {func};
 
     const auto cg = emitModuleToAssembly(mod, {});
-    if (!cg.errors.empty())
-    {
+    if (!cg.errors.empty()) {
         r.failReason = "Codegen error: " + cg.errors;
         return r;
     }
@@ -927,8 +864,7 @@ TestResult testPrecisionBoundary()
     const bool hasCvtsi2sd = cg.asmText.find("cvtsi2sd") != std::string::npos;
     const bool hasCvttsd2si = cg.asmText.find("cvttsd2si") != std::string::npos;
 
-    if (!hasCvtsi2sd || !hasCvttsd2si)
-    {
+    if (!hasCvtsi2sd || !hasCvttsd2si) {
         r.failReason = "Missing conversion instructions for round-trip";
         return r;
     }
@@ -942,15 +878,13 @@ TestResult testPrecisionBoundary()
 // Summary printer
 // ===----------------------------------------------------------------------===
 
-void printSummary(const std::vector<TestResult> &results)
-{
+void printSummary(const std::vector<TestResult> &results) {
     std::cout << "\n=== FP/SIMD Stress Tests ===" << std::endl;
     std::cout << std::left << std::setw(32) << "Test" << std::setw(8) << "Status"
               << "Notes" << std::endl;
     std::cout << std::string(66, '-') << std::endl;
 
-    for (const auto &r : results)
-    {
+    for (const auto &r : results) {
         const char *statusStr =
             r.status == TestResult::PASS ? "PASS" : (r.status == TestResult::BUG ? "BUG" : "FAIL");
         std::cout << std::left << std::setw(32) << r.name << std::setw(8) << statusStr << r.notes
@@ -959,18 +893,14 @@ void printSummary(const std::vector<TestResult> &results)
 
     // Bug summary
     std::size_t totalBugs = 0;
-    for (const auto &r : results)
-    {
+    for (const auto &r : results) {
         totalBugs += r.bugs.size();
     }
-    if (totalBugs > 0)
-    {
+    if (totalBugs > 0) {
         std::cout << "\nBugs Found: " << totalBugs << std::endl;
         int bugNum = 1;
-        for (const auto &r : results)
-        {
-            for (const auto &bug : r.bugs)
-            {
+        for (const auto &r : results) {
+            for (const auto &bug : r.bugs) {
                 std::cout << "  BUG-" << bugNum++ << ": " << bug << std::endl;
             }
         }
@@ -982,8 +912,7 @@ void printSummary(const std::vector<TestResult> &results)
 
 } // namespace
 
-int main()
-{
+int main() {
     std::vector<TestResult> results{};
     results.push_back(testFpArithEncoding());
     results.push_back(testFpConstSpecialVals());
@@ -999,10 +928,8 @@ int main()
     printSummary(results);
 
     bool anyFail = false;
-    for (const auto &r : results)
-    {
-        if (r.status == TestResult::FAIL)
-        {
+    for (const auto &r : results) {
+        if (r.status == TestResult::FAIL) {
             anyFail = true;
             std::cerr << "\nFAILED: " << r.name << "\n  Reason: " << r.failReason << std::endl;
         }

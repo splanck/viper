@@ -21,8 +21,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-void test_simple_using()
-{
+void test_simple_using() {
     std::string src = "USING Foo.Bar\n";
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
@@ -38,8 +37,7 @@ void test_simple_using()
     assert(u->alias.empty());
 }
 
-void test_using_with_alias()
-{
+void test_using_with_alias() {
     std::string src = "USING FB = Foo.Bar.Baz\n";
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
@@ -56,8 +54,7 @@ void test_using_with_alias()
     assert(u->alias == "FB");
 }
 
-void test_multiple_usings()
-{
+void test_multiple_usings() {
     std::string src = "USING System\n"
                       "USING FB = Foo.Bar\n"
                       "USING A.B.C.D\n";
@@ -91,8 +88,7 @@ void test_multiple_usings()
     assert(u3->alias.empty());
 }
 
-void test_using_trailing_dot_recovers()
-{
+void test_using_trailing_dot_recovers() {
     // Malformed: trailing dot; parser should recover and build a node.
     std::string src = "USING Foo.Bar.\n";
     SourceManager sm;
@@ -109,8 +105,7 @@ void test_using_trailing_dot_recovers()
     assert(u->namespacePath[1] == "BAR");
 }
 
-void test_using_with_statement()
-{
+void test_using_with_statement() {
     // USING followed by other statements.
     std::string src = "USING Foo\n"
                       "PRINT 42\n";
@@ -126,8 +121,7 @@ void test_using_with_statement()
     assert(u->namespacePath[0] == "FOO");
 }
 
-void test_single_segment_namespace()
-{
+void test_single_segment_namespace() {
     std::string src = "USING System\n";
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
@@ -142,8 +136,7 @@ void test_single_segment_namespace()
     assert(u->alias.empty());
 }
 
-int main()
-{
+int main() {
     test_simple_using();
     test_using_with_alias();
     test_multiple_usings();

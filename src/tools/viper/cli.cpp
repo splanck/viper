@@ -23,8 +23,7 @@
 #include <string_view>
 #include <system_error>
 
-namespace ilc
-{
+namespace ilc {
 
 /// @brief Parse a viper global option and update the shared options structure.
 ///
@@ -45,32 +44,28 @@ namespace ilc
 /// @param opts Structure receiving parsed option values.
 /// @return Result indicating whether the option was handled, not matched, or
 ///         produced a parsing error.
-SharedOptionParseResult parseSharedOption(int &index, int argc, char **argv, SharedCliOptions &opts)
-{
+SharedOptionParseResult parseSharedOption(int &index,
+                                          int argc,
+                                          char **argv,
+                                          SharedCliOptions &opts) {
     const std::string_view arg = argv[index];
-    if (arg == "--trace" || arg == "--trace=il")
-    {
+    if (arg == "--trace" || arg == "--trace=il") {
         opts.trace.mode = il::vm::TraceConfig::IL;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "--trace=src")
-    {
+    if (arg == "--trace=src") {
         opts.trace.mode = il::vm::TraceConfig::SRC;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "--stdin-from")
-    {
-        if (index + 1 >= argc)
-        {
+    if (arg == "--stdin-from") {
+        if (index + 1 >= argc) {
             return SharedOptionParseResult::Error;
         }
         opts.stdinPath = argv[++index];
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "--max-steps")
-    {
-        if (index + 1 >= argc)
-        {
+    if (arg == "--max-steps") {
+        if (index + 1 >= argc) {
             return SharedOptionParseResult::Error;
         }
         std::string_view value(argv[index + 1]);
@@ -78,71 +73,58 @@ SharedOptionParseResult parseSharedOption(int &index, int argc, char **argv, Sha
         const char *const begin = value.data();
         const char *const end = begin + value.size();
         const auto fc = std::from_chars(begin, end, parsed);
-        if (fc.ec != std::errc() || fc.ptr != end)
-        {
+        if (fc.ec != std::errc() || fc.ptr != end) {
             return SharedOptionParseResult::Error;
         }
         ++index;
         opts.maxSteps = parsed;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "--bounds-checks")
-    {
+    if (arg == "--bounds-checks") {
         opts.boundsChecks = true;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "--dump-trap")
-    {
+    if (arg == "--dump-trap") {
         opts.dumpTrap = true;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "--dump-tokens")
-    {
+    if (arg == "--dump-tokens") {
         opts.dumpTokens = true;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "--dump-ast")
-    {
+    if (arg == "--dump-ast") {
         opts.dumpAst = true;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "--dump-sema-ast")
-    {
+    if (arg == "--dump-sema-ast") {
         opts.dumpSemaAst = true;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "--dump-il")
-    {
+    if (arg == "--dump-il") {
         opts.dumpIL = true;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "--dump-il-opt")
-    {
+    if (arg == "--dump-il-opt") {
         opts.dumpILOpt = true;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "--dump-il-passes")
-    {
+    if (arg == "--dump-il-passes") {
         opts.dumpILPasses = true;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "-Wall")
-    {
+    if (arg == "-Wall") {
         opts.wall = true;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "-Werror")
-    {
+    if (arg == "-Werror") {
         opts.werror = true;
         return SharedOptionParseResult::Parsed;
     }
-    if (arg.substr(0, 5) == "-Wno-" && arg.size() > 5)
-    {
+    if (arg.substr(0, 5) == "-Wno-" && arg.size() > 5) {
         opts.disabledWarnings.emplace_back(arg.substr(5));
         return SharedOptionParseResult::Parsed;
     }
-    if (arg == "--profile")
-    {
+    if (arg == "--profile") {
         opts.profile = true;
         return SharedOptionParseResult::Parsed;
     }

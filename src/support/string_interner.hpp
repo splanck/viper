@@ -23,14 +23,12 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace il::support
-{
+namespace il::support {
 
 /// @brief Interns strings to provide stable Symbol identifiers.
 /// @invariant Symbol 0 is reserved for invalid.
 /// @ownership Stores copies of strings internally.
-class StringInterner
-{
+class StringInterner {
   public:
     /// Constructs an interner optionally bounded by @p maxSymbols.
     ///
@@ -82,42 +80,34 @@ class StringInterner
     StringInterner &operator=(StringInterner &&) noexcept = default;
 
   private:
-    struct TransparentHash
-    {
+    struct TransparentHash {
         using is_transparent = void;
 
-        size_t operator()(std::string_view sv) const noexcept
-        {
+        size_t operator()(std::string_view sv) const noexcept {
             return std::hash<std::string_view>{}(sv);
         }
 
-        size_t operator()(const std::string &s) const noexcept
-        {
+        size_t operator()(const std::string &s) const noexcept {
             return (*this)(std::string_view{s});
         }
     };
 
-    struct TransparentEqual
-    {
+    struct TransparentEqual {
         using is_transparent = void;
 
-        bool operator()(std::string_view lhs, std::string_view rhs) const noexcept
-        {
+        bool operator()(std::string_view lhs, std::string_view rhs) const noexcept {
             return lhs == rhs;
         }
 
-        bool operator()(const std::string &lhs, const std::string &rhs) const noexcept
-        {
+        bool operator()(const std::string &lhs, const std::string &rhs) const noexcept {
             return lhs == rhs;
         }
 
-        bool operator()(const std::string &lhs, std::string_view rhs) const noexcept
-        {
+        bool operator()(const std::string &lhs, std::string_view rhs) const noexcept {
             return lhs == rhs;
         }
 
-        bool operator()(std::string_view lhs, const std::string &rhs) const noexcept
-        {
+        bool operator()(std::string_view lhs, const std::string &rhs) const noexcept {
             return lhs == rhs;
         }
     };

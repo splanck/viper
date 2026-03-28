@@ -18,31 +18,24 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-static bool hasFunction(const il::core::Module &mod, const std::string &fnName)
-{
-    for (const auto &fn : mod.functions)
-    {
+static bool hasFunction(const il::core::Module &mod, const std::string &fnName) {
+    for (const auto &fn : mod.functions) {
         if (fn.name == fnName)
             return true;
     }
     return false;
 }
 
-static bool hasSelfParam(const il::core::Module &mod, const std::string &fnName)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &param : fn.params)
-            {
+static bool hasSelfParam(const il::core::Module &mod, const std::string &fnName) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &param : fn.params) {
                 if (param.name == "self")
                     return true;
             }
@@ -53,10 +46,8 @@ static bool hasSelfParam(const il::core::Module &mod, const std::string &fnName)
 }
 
 /// @brief Check if a function returns void.
-static bool returnsVoid(const il::core::Module &mod, const std::string &fnName)
-{
-    for (const auto &fn : mod.functions)
-    {
+static bool returnsVoid(const il::core::Module &mod, const std::string &fnName) {
+    for (const auto &fn : mod.functions) {
         if (fn.name == fnName)
             return fn.retType.kind == il::core::Type::Kind::Void;
     }
@@ -66,16 +57,11 @@ static bool returnsVoid(const il::core::Module &mod, const std::string &fnName)
 /// @brief Check if a function calls a specific callee.
 static bool hasCallee(const il::core::Module &mod,
                       const std::string &fnName,
-                      const std::string &callee)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+                      const std::string &callee) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call && instr.callee == callee)
                         return true;
                 }
@@ -90,8 +76,7 @@ static bool hasCallee(const il::core::Module &mod,
 // ============================================================================
 
 /// @brief Test that a basic deinit block compiles and produces __dtor function.
-TEST(ZiaDestructors, BasicDeinit)
-{
+TEST(ZiaDestructors, BasicDeinit) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -113,10 +98,8 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -133,8 +116,7 @@ func start() {
 }
 
 /// @brief Test that destructor emits field release calls for String fields.
-TEST(ZiaDestructors, ReleasesStringFields)
-{
+TEST(ZiaDestructors, ReleasesStringFields) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -164,8 +146,7 @@ func start() {
 }
 
 /// @brief Test that entity without deinit does NOT produce __dtor function.
-TEST(ZiaDestructors, NoDeinitNoDtor)
-{
+TEST(ZiaDestructors, NoDeinitNoDtor) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -190,8 +171,7 @@ func start() {
 }
 
 /// @brief Test destructor with user code that accesses self fields.
-TEST(ZiaDestructors, DeinitAccessesSelf)
-{
+TEST(ZiaDestructors, DeinitAccessesSelf) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -213,10 +193,8 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -228,8 +206,7 @@ func start() {
 }
 
 /// @brief Test that destructor coexists with constructor and methods.
-TEST(ZiaDestructors, DeinitWithCtorAndMethods)
-{
+TEST(ZiaDestructors, DeinitWithCtorAndMethods) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -262,8 +239,7 @@ func start() {
 }
 
 /// @brief Test that managed releases route through the shared destructor dispatcher.
-TEST(ZiaDestructors, ExplicitReleaseInvokesDispatcher)
-{
+TEST(ZiaDestructors, ExplicitReleaseInvokesDispatcher) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -297,7 +273,6 @@ func start() {
 
 } // anonymous namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

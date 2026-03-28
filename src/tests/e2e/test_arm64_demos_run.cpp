@@ -14,19 +14,16 @@
 #include <string>
 #include <vector>
 
-struct RunResult
-{
+struct RunResult {
     int exit_code;
     std::string out;
     std::string err;
 };
 
-static RunResult run_process(const std::vector<std::string> &args)
-{
+static RunResult run_process(const std::vector<std::string> &args) {
     RunResult result;
     std::string cmd;
-    for (const auto &arg : args)
-    {
+    for (const auto &arg : args) {
         if (!cmd.empty())
             cmd += " ";
         if (arg.find(' ') != std::string::npos)
@@ -52,8 +49,7 @@ static RunResult run_process(const std::vector<std::string> &args)
     return result;
 }
 
-static bool onMacArm64()
-{
+static bool onMacArm64() {
 #if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
     return true;
 #else
@@ -61,18 +57,15 @@ static bool onMacArm64()
 #endif
 }
 
-static bool optInRun()
-{
+static bool optInRun() {
     return std::getenv("ARM64_RUN_DEMOS") != nullptr;
 }
 
-static bool exists(const std::string &p)
-{
+static bool exists(const std::string &p) {
     return std::filesystem::exists(p);
 }
 
-TEST(ARM64E2E, Frogger_RunNative_OptIn)
-{
+TEST(ARM64E2E, Frogger_RunNative_OptIn) {
     if (!onMacArm64() || !optInRun())
         return; // opt-in only
     const std::string buildDir = ".";
@@ -89,8 +82,7 @@ TEST(ARM64E2E, Frogger_RunNative_OptIn)
     EXPECT_NE(rr.exit_code, -1);
 }
 
-TEST(ARM64E2E, Vtris_RunNative_OptIn)
-{
+TEST(ARM64E2E, Vtris_RunNative_OptIn) {
     if (!onMacArm64() || !optInRun())
         return; // opt-in only
     const std::string buildDir = ".";
@@ -106,8 +98,7 @@ TEST(ARM64E2E, Vtris_RunNative_OptIn)
     EXPECT_NE(rr.exit_code, -1);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

@@ -29,19 +29,15 @@
 // Stub usage() required by cmd_run_il.cpp when embedded in the test binary.
 void usage() {}
 
-namespace il::support
-{
-struct SourceManagerTestAccess
-{
-    static void setNextFileId(SourceManager &sm, uint64_t next)
-    {
+namespace il::support {
+struct SourceManagerTestAccess {
+    static void setNextFileId(SourceManager &sm, uint64_t next) {
         sm.next_file_id_ = next;
     }
 };
 } // namespace il::support
 
-int main()
-{
+int main() {
     namespace fs = std::filesystem;
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();

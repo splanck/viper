@@ -45,8 +45,7 @@
 
 #include "il/runtime/RuntimeNames.hpp"
 
-namespace il::frontends::zia::runtime
-{
+namespace il::frontends::zia::runtime {
 
 /// @brief Import all canonical runtime names into the zia::runtime namespace.
 using namespace il::runtime::names;

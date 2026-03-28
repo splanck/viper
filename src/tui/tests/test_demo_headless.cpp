@@ -17,8 +17,7 @@
 #include <cstdlib>
 #include <string>
 
-static void set_no_tty_env()
-{
+static void set_no_tty_env() {
 #if defined(_WIN32)
     _putenv_s("VIPERTUI_NO_TTY", "1");
 #else
@@ -26,8 +25,7 @@ static void set_no_tty_env()
 #endif
 }
 
-TEST(TUI, DemoHeadless)
-{
+TEST(TUI, DemoHeadless) {
     set_no_tty_env();
 #if defined(_WIN32)
     const std::string cmd = "..\\apps\\tui_demo.exe";
@@ -38,8 +36,7 @@ TEST(TUI, DemoHeadless)
     ASSERT_EQ(rc, 0);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

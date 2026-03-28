@@ -26,15 +26,13 @@
 #include <cstring>
 #include <thread>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
@@ -42,12 +40,10 @@ extern "C" void vm_trap(const char *msg)
 }
 
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
         g_last_trap = nullptr;                                                                     \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             expr;                                                                                  \
             assert(false && "Expected trap did not occur");                                        \
         }                                                                                          \
@@ -68,15 +64,13 @@ extern "C" void vm_trap(const char *msg)
 #endif
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Get a unique temp directory path for testing.
-static const char *get_test_base()
-{
+static const char *get_test_base() {
 #ifdef _WIN32
     static char buf[256];
     const char *tmp = getenv("TEMP");
@@ -94,42 +88,35 @@ static const char *get_test_base()
 }
 
 /// @brief Helper to create a file.
-static void create_file(const char *path)
-{
+static void create_file(const char *path) {
     FILE *f = fopen(path, "w");
-    if (f)
-    {
+    if (f) {
         fprintf(f, "test\n");
         fclose(f);
     }
 }
 
 /// @brief Helper to modify a file.
-static void modify_file(const char *path)
-{
+static void modify_file(const char *path) {
     FILE *f = fopen(path, "a");
-    if (f)
-    {
+    if (f) {
         fprintf(f, "modified\n");
         fclose(f);
     }
 }
 
 /// @brief Helper to remove a file.
-static void remove_file(const char *path)
-{
+static void remove_file(const char *path) {
     remove(path);
 }
 
 /// @brief Helper to wait a bit for filesystem events to propagate.
-static void wait_for_event()
-{
+static void wait_for_event() {
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 }
 
 /// @brief Test watcher creation and basic properties.
-static void test_watcher_new()
-{
+static void test_watcher_new() {
     printf("Testing Watcher.New...\n");
 
     const char *base = get_test_base();
@@ -154,8 +141,7 @@ static void test_watcher_new()
 }
 
 /// @brief Test watcher start/stop.
-static void test_watcher_start_stop()
-{
+static void test_watcher_start_stop() {
     printf("Testing Watcher.Start/Stop...\n");
 
     const char *base = get_test_base();
@@ -179,8 +165,7 @@ static void test_watcher_start_stop()
 }
 
 /// @brief Test event type constants.
-static void test_event_constants()
-{
+static void test_event_constants() {
     printf("Testing event constants...\n");
 
     assert(rt_watcher_event_none(NULL) == 0);
@@ -193,8 +178,7 @@ static void test_event_constants()
 }
 
 /// @brief Test polling with no events returns none.
-static void test_poll_no_events()
-{
+static void test_poll_no_events() {
     printf("Testing Poll with no events...\n");
 
     const char *base = get_test_base();
@@ -216,8 +200,7 @@ static void test_poll_no_events()
 }
 
 /// @brief Test watcher traps on null path.
-static void test_null_path_trap()
-{
+static void test_null_path_trap() {
     printf("Testing null path trap...\n");
 
     EXPECT_TRAP(rt_watcher_new(nullptr));
@@ -226,8 +209,7 @@ static void test_null_path_trap()
 }
 
 /// @brief Test watcher traps on non-existent path.
-static void test_nonexistent_path_trap()
-{
+static void test_nonexistent_path_trap() {
     printf("Testing non-existent path trap...\n");
 
     rt_string path = rt_string_from_bytes("/nonexistent/path/12345", 24);
@@ -236,8 +218,7 @@ static void test_nonexistent_path_trap()
     test_result("Non-existent path trap", true);
 }
 
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
     printf("Test skipped: POSIX temp paths not available on Windows\n");

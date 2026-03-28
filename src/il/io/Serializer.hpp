@@ -25,19 +25,13 @@
 #include <ostream>
 #include <string>
 
-namespace il::io
-{
+namespace il::io {
 
 /// @brief Serializes IL modules to their textual form.
-class Serializer
-{
+class Serializer {
   public:
     /// @brief Controls output formatting style.
-    enum class Mode
-    {
-        Pretty,
-        Canonical
-    };
+    enum class Mode { Pretty, Canonical };
 
     /// @brief Write module @p m to output stream @p os.
     /// @param m Module to serialize.

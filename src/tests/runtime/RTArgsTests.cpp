@@ -21,13 +21,11 @@
 #include <cassert>
 #include <cstring>
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, std::strlen(s));
 }
 
-int main()
-{
+int main() {
     // Start clean
     rt_args_clear();
     assert(rt_args_count() == 0);

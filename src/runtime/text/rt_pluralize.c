@@ -41,8 +41,7 @@
 extern void rt_trap(const char *msg);
 
 // Irregular plural forms (singular -> plural)
-typedef struct
-{
+typedef struct {
     const char *singular;
     const char *plural;
 } irregular_t;
@@ -93,18 +92,15 @@ static const char *uncountables[] = {
     "luggage", "traffic",     "music",     "software", "hardware", "knowledge",
     "weather", "research",    "evidence",  "homework", NULL};
 
-static int str_ends_with(const char *str, size_t len, const char *suffix)
-{
+static int str_ends_with(const char *str, size_t len, const char *suffix) {
     size_t slen = strlen(suffix);
     if (slen > len)
         return 0;
     return memcmp(str + len - slen, suffix, slen) == 0;
 }
 
-static int str_eq_nocase(const char *a, const char *b)
-{
-    while (*a && *b)
-    {
+static int str_eq_nocase(const char *a, const char *b) {
+    while (*a && *b) {
         if (tolower((unsigned char)*a) != tolower((unsigned char)*b))
             return 0;
         a++;
@@ -113,10 +109,8 @@ static int str_eq_nocase(const char *a, const char *b)
     return *a == *b;
 }
 
-static int is_uncountable(const char *word)
-{
-    for (int i = 0; uncountables[i]; ++i)
-    {
+static int is_uncountable(const char *word) {
+    for (int i = 0; uncountables[i]; ++i) {
         if (str_eq_nocase(word, uncountables[i]))
             return 1;
     }
@@ -126,8 +120,7 @@ static int is_uncountable(const char *word)
 /// @brief Perform pluralize operation.
 /// @param word
 /// @return Result value.
-rt_string rt_pluralize(rt_string word)
-{
+rt_string rt_pluralize(rt_string word) {
     if (!word)
         return rt_string_from_bytes("", 0);
     const char *src = rt_string_cstr(word);
@@ -142,8 +135,7 @@ rt_string rt_pluralize(rt_string word)
         return rt_string_from_bytes(src, len);
 
     // Check irregulars
-    for (int i = 0; irregulars[i].singular; ++i)
-    {
+    for (int i = 0; irregulars[i].singular; ++i) {
         if (str_eq_nocase(src, irregulars[i].singular))
             return rt_string_from_bytes(irregulars[i].plural, strlen(irregulars[i].plural));
     }
@@ -152,8 +144,7 @@ rt_string rt_pluralize(rt_string word)
     // -s, -x, -z, -ch, -sh -> +es
     if (str_ends_with(src, len, "s") || str_ends_with(src, len, "x") ||
         str_ends_with(src, len, "z") || str_ends_with(src, len, "ch") ||
-        str_ends_with(src, len, "sh"))
-    {
+        str_ends_with(src, len, "sh")) {
         size_t blen = len + 2; // + "es"
         char *buf = (char *)malloc(blen + 1);
         if (!buf)
@@ -165,11 +156,9 @@ rt_string rt_pluralize(rt_string word)
     }
 
     // consonant + y -> ies
-    if (len >= 2 && src[len - 1] == 'y')
-    {
+    if (len >= 2 && src[len - 1] == 'y') {
         char prev = (char)tolower((unsigned char)src[len - 2]);
-        if (prev != 'a' && prev != 'e' && prev != 'i' && prev != 'o' && prev != 'u')
-        {
+        if (prev != 'a' && prev != 'e' && prev != 'i' && prev != 'o' && prev != 'u') {
             size_t blen = len + 2; // (len-1) + "ies"
             char *buf = (char *)malloc(blen + 1);
             if (!buf)
@@ -184,8 +173,7 @@ rt_string rt_pluralize(rt_string word)
     }
 
     // -f -> -ves (but not already covered by irregulars)
-    if (len >= 2 && src[len - 1] == 'f' && src[len - 2] != 'f')
-    {
+    if (len >= 2 && src[len - 1] == 'f' && src[len - 2] != 'f') {
         size_t blen = len + 2; // (len-1) + "ves"
         char *buf = (char *)malloc(blen + 1);
         if (!buf)
@@ -199,8 +187,7 @@ rt_string rt_pluralize(rt_string word)
     }
 
     // -fe -> -ves
-    if (str_ends_with(src, len, "fe"))
-    {
+    if (str_ends_with(src, len, "fe")) {
         size_t blen = len + 1; // (len-2) + "ves"
         char *buf = (char *)malloc(blen + 1);
         if (!buf)
@@ -214,11 +201,9 @@ rt_string rt_pluralize(rt_string word)
     }
 
     // -o -> -oes for certain words (simplified: consonant + o -> oes)
-    if (len >= 2 && src[len - 1] == 'o')
-    {
+    if (len >= 2 && src[len - 1] == 'o') {
         char prev = (char)tolower((unsigned char)src[len - 2]);
-        if (prev != 'a' && prev != 'e' && prev != 'i' && prev != 'o' && prev != 'u')
-        {
+        if (prev != 'a' && prev != 'e' && prev != 'i' && prev != 'o' && prev != 'u') {
             size_t blen = len + 2; // + "es"
             char *buf = (char *)malloc(blen + 1);
             if (!buf)
@@ -246,8 +231,7 @@ rt_string rt_pluralize(rt_string word)
 /// @brief Perform singularize operation.
 /// @param word
 /// @return Result value.
-rt_string rt_singularize(rt_string word)
-{
+rt_string rt_singularize(rt_string word) {
     if (!word)
         return rt_string_from_bytes("", 0);
     const char *src = rt_string_cstr(word);
@@ -262,15 +246,13 @@ rt_string rt_singularize(rt_string word)
         return rt_string_from_bytes(src, len);
 
     // Check irregulars (reverse lookup)
-    for (int i = 0; irregulars[i].singular; ++i)
-    {
+    for (int i = 0; irregulars[i].singular; ++i) {
         if (str_eq_nocase(src, irregulars[i].plural))
             return rt_string_from_bytes(irregulars[i].singular, strlen(irregulars[i].singular));
     }
 
     // -ves -> -f or -fe
-    if (str_ends_with(src, len, "ves") && len > 3)
-    {
+    if (str_ends_with(src, len, "ves") && len > 3) {
         // Try -f first (e.g., "wolves" -> "wolf")
         size_t blen = len - 2; // (len-3) chars + 'f' + null
         char *buf = (char *)malloc(blen + 1);
@@ -285,8 +267,7 @@ rt_string rt_singularize(rt_string word)
     }
 
     // -ies -> -y
-    if (str_ends_with(src, len, "ies") && len > 3)
-    {
+    if (str_ends_with(src, len, "ies") && len > 3) {
         size_t blen = len - 2; // (len-3) chars + 'y'
         char *buf = (char *)malloc(blen + 1);
         if (!buf)
@@ -300,25 +281,21 @@ rt_string rt_singularize(rt_string word)
     }
 
     // -ses, -xes, -zes, -ches, -shes -> remove -es
-    if (str_ends_with(src, len, "shes") || str_ends_with(src, len, "ches"))
-    {
+    if (str_ends_with(src, len, "shes") || str_ends_with(src, len, "ches")) {
         return rt_string_from_bytes(src, len - 2);
     }
     if (str_ends_with(src, len, "ses") || str_ends_with(src, len, "xes") ||
-        str_ends_with(src, len, "zes"))
-    {
+        str_ends_with(src, len, "zes")) {
         return rt_string_from_bytes(src, len - 2);
     }
 
     // -oes -> -o
-    if (str_ends_with(src, len, "oes") && len > 3)
-    {
+    if (str_ends_with(src, len, "oes") && len > 3) {
         return rt_string_from_bytes(src, len - 2);
     }
 
     // -s (but not -ss) -> remove -s
-    if (len > 1 && src[len - 1] == 's' && src[len - 2] != 's')
-    {
+    if (len > 1 && src[len - 1] == 's' && src[len - 2] != 's') {
         return rt_string_from_bytes(src, len - 1);
     }
 
@@ -330,8 +307,7 @@ rt_string rt_singularize(rt_string word)
 /// @param count
 /// @param word
 /// @return Result value.
-rt_string rt_pluralize_count(int64_t count, rt_string word)
-{
+rt_string rt_pluralize_count(int64_t count, rt_string word) {
     if (!word)
         return rt_string_from_bytes("", 0);
 
@@ -343,8 +319,7 @@ rt_string rt_pluralize_count(int64_t count, rt_string word)
     // 21 = max chars for int64 (sign + 19 digits) + 1 space + word + null
     size_t blen = 21 + strlen(nstr);
     char *buf = (char *)malloc(blen + 1);
-    if (!buf)
-    {
+    if (!buf) {
         rt_string_unref(noun);
         rt_trap("Pluralize: memory allocation failed");
     }

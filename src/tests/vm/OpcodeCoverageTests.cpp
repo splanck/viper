@@ -22,27 +22,23 @@
 
 using il::core::Opcode;
 
-namespace
-{
+namespace {
 /// @brief Opcodes intentionally lacking VM handlers.
 /// @details Empty by default; populate when the VM is expected not to execute
 /// specific opcodes (e.g., pseudo ops used only during lowering).
 constexpr std::array<Opcode, 0> kWhitelistedOpcodes{};
 
-bool isWhitelisted(Opcode opcode)
-{
+bool isWhitelisted(Opcode opcode) {
     return std::find(kWhitelistedOpcodes.begin(), kWhitelistedOpcodes.end(), opcode) !=
            kWhitelistedOpcodes.end();
 }
 } // namespace
 
-int main()
-{
+int main() {
     const auto &handlers = il::vm::VM::getOpcodeHandlers();
     const auto opcodes = il::core::all_opcodes();
 
-    for (const auto opcode : opcodes)
-    {
+    for (const auto opcode : opcodes) {
         if (isWhitelisted(opcode))
             continue;
 

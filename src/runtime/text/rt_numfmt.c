@@ -45,8 +45,7 @@
 /// @param n
 /// @param decimals
 /// @return Result value.
-rt_string rt_numfmt_decimals(double n, int64_t decimals)
-{
+rt_string rt_numfmt_decimals(double n, int64_t decimals) {
     if (decimals < 0)
         decimals = 0;
     if (decimals > 20)
@@ -69,8 +68,7 @@ rt_string rt_numfmt_decimals(double n, int64_t decimals)
 /// @param n
 /// @param sep
 /// @return Result value.
-rt_string rt_numfmt_thousands(int64_t n, rt_string sep)
-{
+rt_string rt_numfmt_thousands(int64_t n, rt_string sep) {
     const char *sep_cstr = sep ? rt_string_cstr(sep) : ",";
     if (!sep_cstr || *sep_cstr == '\0')
         sep_cstr = ",";
@@ -105,8 +103,7 @@ rt_string rt_numfmt_thousands(int64_t n, rt_string sep)
     rt_sb_append_bytes(&sb, digits, (size_t)first_group);
     int pos = first_group;
 
-    while (pos < dlen)
-    {
+    while (pos < dlen) {
         rt_sb_append_bytes(&sb, sep_cstr, sep_len);
         rt_sb_append_bytes(&sb, digits + pos, 3);
         pos += 3;
@@ -126,8 +123,7 @@ rt_string rt_numfmt_thousands(int64_t n, rt_string sep)
 /// @param n
 /// @param symbol
 /// @return Result value.
-rt_string rt_numfmt_currency(double n, rt_string symbol)
-{
+rt_string rt_numfmt_currency(double n, rt_string symbol) {
     const char *sym = symbol ? rt_string_cstr(symbol) : "$";
     if (!sym)
         sym = "$";
@@ -162,16 +158,14 @@ rt_string rt_numfmt_currency(double n, rt_string symbol)
     rt_sb_append_bytes(&sb, amount, (size_t)first_group);
     int pos = first_group;
 
-    while (pos < int_len)
-    {
+    while (pos < int_len) {
         rt_sb_append_cstr(&sb, ",");
         rt_sb_append_bytes(&sb, amount + pos, 3);
         pos += 3;
     }
 
     // Add decimal part
-    if (dot)
-    {
+    if (dot) {
         rt_sb_append_cstr(&sb, dot);
     }
 
@@ -187,8 +181,7 @@ rt_string rt_numfmt_currency(double n, rt_string symbol)
 /// @brief Perform numfmt percent operation.
 /// @param n
 /// @return Result value.
-rt_string rt_numfmt_percent(double n)
-{
+rt_string rt_numfmt_percent(double n) {
     double pct = n * 100.0;
     char buf[64];
 
@@ -216,8 +209,7 @@ rt_string rt_numfmt_percent(double n)
 /// @brief Perform numfmt ordinal operation.
 /// @param n
 /// @return Result value.
-rt_string rt_numfmt_ordinal(int64_t n)
-{
+rt_string rt_numfmt_ordinal(int64_t n) {
     const char *suffix;
     int64_t abs_n = (n == INT64_MIN) ? INT64_MAX : (n < 0 ? -n : n);
     int64_t mod100 = abs_n % 100;
@@ -255,16 +247,14 @@ static const char *const ones[] = {"",        "one",     "two",       "three",  
 static const char *const tens[] = {
     "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"};
 
-static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev)
-{
+static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev) {
     if (n == 0)
         return;
 
     if (*has_prev)
         rt_sb_append_cstr(sb, " ");
 
-    if (n >= 100)
-    {
+    if (n >= 100) {
         rt_sb_append_cstr(sb, ones[n / 100]);
         rt_sb_append_cstr(sb, " hundred");
         n %= 100;
@@ -272,18 +262,14 @@ static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev)
             rt_sb_append_cstr(sb, " ");
     }
 
-    if (n >= 20)
-    {
+    if (n >= 20) {
         rt_sb_append_cstr(sb, tens[n / 10]);
         n %= 10;
-        if (n > 0)
-        {
+        if (n > 0) {
             rt_sb_append_cstr(sb, "-");
             rt_sb_append_cstr(sb, ones[n]);
         }
-    }
-    else if (n > 0)
-    {
+    } else if (n > 0) {
         rt_sb_append_cstr(sb, ones[n]);
     }
 
@@ -293,8 +279,7 @@ static void append_chunk(rt_string_builder *sb, int64_t n, int *has_prev)
 /// @brief Perform numfmt to words operation.
 /// @param n
 /// @return Result value.
-rt_string rt_numfmt_to_words(int64_t n)
-{
+rt_string rt_numfmt_to_words(int64_t n) {
     if (n == 0)
         return rt_string_from_bytes("zero", 4);
 
@@ -318,20 +303,17 @@ rt_string rt_numfmt_to_words(int64_t n)
     int num_groups = 0;
 
     uint64_t temp = abs_n;
-    while (temp > 0 && num_groups < 7)
-    {
+    while (temp > 0 && num_groups < 7) {
         groups[num_groups++] = (int)(temp % 1000);
         temp /= 1000;
     }
 
     int has_prev = 0;
-    for (int i = num_groups - 1; i >= 0; i--)
-    {
+    for (int i = num_groups - 1; i >= 0; i--) {
         if (groups[i] == 0)
             continue;
         append_chunk(&sb, groups[i], &has_prev);
-        if (i > 0 && scale[i][0] != '\0')
-        {
+        if (i > 0 && scale[i][0] != '\0') {
             rt_sb_append_cstr(&sb, " ");
             rt_sb_append_cstr(&sb, scale[i]);
         }
@@ -349,14 +331,12 @@ rt_string rt_numfmt_to_words(int64_t n)
 /// @brief Perform numfmt bytes operation.
 /// @param bytes
 /// @return Result value.
-rt_string rt_numfmt_bytes(int64_t bytes)
-{
+rt_string rt_numfmt_bytes(int64_t bytes) {
     static const char *const units[] = {"B", "KB", "MB", "GB", "TB", "PB", "EB"};
     double val = (double)(bytes < 0 ? -bytes : bytes);
     int unit_idx = 0;
 
-    while (val >= 1024.0 && unit_idx < 6)
-    {
+    while (val >= 1024.0 && unit_idx < 6) {
         val /= 1024.0;
         unit_idx++;
     }
@@ -364,17 +344,14 @@ rt_string rt_numfmt_bytes(int64_t bytes)
     char buf[64];
     int len;
 
-    if (unit_idx == 0)
-    {
+    if (unit_idx == 0) {
         len = snprintf(buf,
                        sizeof(buf),
                        "%s%lld %s",
                        bytes < 0 ? "-" : "",
                        (long long)(bytes < 0 ? -bytes : bytes),
                        units[0]);
-    }
-    else
-    {
+    } else {
         if (bytes < 0)
             val = -val;
         // Use 1 decimal place for values >= 10, 2 for smaller
@@ -399,8 +376,7 @@ rt_string rt_numfmt_bytes(int64_t bytes)
 /// @param n
 /// @param width
 /// @return Result value.
-rt_string rt_numfmt_pad(int64_t n, int64_t width)
-{
+rt_string rt_numfmt_pad(int64_t n, int64_t width) {
     if (width < 1)
         width = 1;
     if (width > 64)

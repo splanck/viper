@@ -12,8 +12,7 @@
 
 #include "frontends/zia/Lowerer.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using il::core::Opcode;
 using il::core::Type;
@@ -31,8 +30,7 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
                                             const std::string &ownerType,
                                             MethodDecl *method,
                                             Value selfValue,
-                                            CallExpr *expr)
-{
+                                            CallExpr *expr) {
     TypeRef methodType = sema_.getMethodType(ownerType, method);
     TypeRef returnType = methodType && methodType->kind == TypeKindSem::Function
                              ? methodType->returnType()
@@ -48,23 +46,19 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
 
     // Build dispatch table
     std::vector<DispatchEntry> dispatchTable;
-    auto addEntry = [&](const EntityTypeInfo &info)
-    {
+    auto addEntry = [&](const EntityTypeInfo &info) {
         auto vtIt = info.vtableIndex.find(slotKey);
         if (vtIt != info.vtableIndex.end())
             dispatchTable.emplace_back(info.classId, info.vtable[vtIt->second]);
     };
 
     addEntry(entityInfo);
-    for (const auto &[name, info] : entityTypes_)
-    {
+    for (const auto &[name, info] : entityTypes_) {
         if (name == entityInfo.name)
             continue;
         std::string parent = info.baseClass;
-        while (!parent.empty())
-        {
-            if (parent == entityInfo.name)
-            {
+        while (!parent.empty()) {
+            if (parent == entityInfo.name) {
                 addEntry(info);
                 break;
             }
@@ -79,18 +73,14 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
     Value classIdVal = emitCallRet(Type(Type::Kind::I64), "rt_obj_class_id", {selfValue});
 
     // Single implementation - direct call
-    if (dispatchTable.size() <= 1)
-    {
+    if (dispatchTable.size() <= 1) {
         std::string target = dispatchTable.empty() ? sema_.loweredMethodName(ownerType, method)
                                                    : dispatchTable[0].second;
         // Handle void return types correctly
-        if (ilReturnType.kind == Type::Kind::Void)
-        {
+        if (ilReturnType.kind == Type::Kind::Void) {
             emitCall(target, args);
             return {Value::constInt(0), Type(Type::Kind::Void)};
-        }
-        else
-        {
+        } else {
             Value result = emitCallRet(ilReturnType, target, args);
             return {result, ilReturnType};
         }
@@ -105,8 +95,7 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
 
     size_t endBlock = createBlock("vdispatch_end");
     Value resultSlot;
-    if (ilReturnType.kind != Type::Kind::Void)
-    {
+    if (ilReturnType.kind != Type::Kind::Void) {
         unsigned id = nextTempId();
         il::core::Instr instr{
             id, Opcode::Alloca, Type(Type::Kind::Ptr), {Value::constInt(8)}, {}, {}, {}, {}, {}};
@@ -134,8 +123,7 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
         sw.brArgs.push_back({});
 
         // One case per dispatch entry.
-        for (size_t i = 0; i < dispatchTable.size(); ++i)
-        {
+        for (size_t i = 0; i < dispatchTable.size(); ++i) {
             sw.operands.push_back(Value::constInt(static_cast<int64_t>(dispatchTable[i].first)));
             sw.labels.push_back(currentFunc_->blocks[callBlocks[i]].label);
             sw.brArgs.push_back({});
@@ -147,8 +135,7 @@ LowerResult Lowerer::lowerVirtualMethodCall(const EntityTypeInfo &entityInfo,
     }
 
     // Emit each call block: call the target method, store result, branch to end.
-    for (size_t i = 0; i < dispatchTable.size(); ++i)
-    {
+    for (size_t i = 0; i < dispatchTable.size(); ++i) {
         const auto &[classId, targetMethod] = dispatchTable[i];
         setBlock(callBlocks[i]);
         if (ilReturnType.kind == Type::Kind::Void)
@@ -173,8 +160,7 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo
                                               const std::string &ownerType,
                                               MethodDecl *method,
                                               Value selfValue,
-                                              CallExpr *expr)
-{
+                                              CallExpr *expr) {
     TypeRef methodType = sema_.getMethodType(ownerType, method);
     TypeRef returnType = methodType && methodType->kind == TypeKindSem::Function
                              ? methodType->returnType()
@@ -190,8 +176,7 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo
 
     // Look up the method's slot index in the interface
     size_t slotIdx = ifaceInfo.findSlot(slotKey);
-    if (slotIdx == SIZE_MAX)
-    {
+    if (slotIdx == SIZE_MAX) {
         // Fallback: method not in interface slot map (shouldn't happen)
         return {Value::constInt(0), ilReturnType};
     }
@@ -211,8 +196,7 @@ LowerResult Lowerer::lowerInterfaceMethodCall(const InterfaceTypeInfo &ifaceInfo
     Value fnPtr = emitLoad(entryPtr, Type(Type::Kind::Ptr));
 
     // Emit indirect call through function pointer
-    if (ilReturnType.kind == Type::Kind::Void)
-    {
+    if (ilReturnType.kind == Type::Kind::Void) {
         emitCallIndirect(fnPtr, args);
         return {Value::constInt(0), Type(Type::Kind::Void)};
     }

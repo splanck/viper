@@ -25,21 +25,18 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Create a heap-allocated string (for use as map value).
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
 /// @brief Helper to compare strings.
-static bool str_eq(rt_string a, const char *b)
-{
+static bool str_eq(rt_string a, const char *b) {
     const char *a_str = rt_string_cstr(a);
     if (!a_str)
         a_str = "";
@@ -47,8 +44,7 @@ static bool str_eq(rt_string a, const char *b)
 }
 
 /// @brief Helper to check if bag contains string.
-static bool bag_contains(void *bag, const char *str)
-{
+static bool bag_contains(void *bag, const char *str) {
     return rt_bag_has(bag, rt_const_cstr(str)) != 0;
 }
 
@@ -56,8 +52,7 @@ static bool bag_contains(void *bag, const char *str)
 // Render Tests (Map-based)
 //=============================================================================
 
-static void test_render()
-{
+static void test_render() {
     printf("Testing Template.Render:\n");
 
     // Basic substitution
@@ -126,8 +121,7 @@ static void test_render()
 // RenderSeq Tests (Positional)
 //=============================================================================
 
-static void test_render_seq()
-{
+static void test_render_seq() {
     printf("Testing Template.RenderSeq:\n");
 
     void *values = rt_seq_new();
@@ -167,8 +161,7 @@ static void test_render_seq()
 // RenderWith Tests (Custom Delimiters)
 //=============================================================================
 
-static void test_render_with()
-{
+static void test_render_with() {
     printf("Testing Template.RenderWith:\n");
 
     void *values = rt_map_new();
@@ -203,8 +196,7 @@ static void test_render_with()
 // Has Tests
 //=============================================================================
 
-static void test_has()
-{
+static void test_has() {
     printf("Testing Template.Has:\n");
 
     rt_string tmpl = rt_const_cstr("Hello {{name}}, you have {{count}} messages.");
@@ -232,8 +224,7 @@ static void test_has()
 // Keys Tests
 //=============================================================================
 
-static void test_keys()
-{
+static void test_keys() {
     printf("Testing Template.Keys:\n");
 
     // Multiple unique keys
@@ -274,8 +265,7 @@ static void test_keys()
 // Escape Tests
 //=============================================================================
 
-static void test_escape()
-{
+static void test_escape() {
     printf("Testing Template.Escape:\n");
 
     // Escape opening braces
@@ -320,8 +310,7 @@ static void test_escape()
 // Edge Cases
 //=============================================================================
 
-static void test_edge_cases()
-{
+static void test_edge_cases() {
     printf("Testing Edge Cases:\n");
 
     void *values = rt_map_new();
@@ -347,8 +336,7 @@ static void test_edge_cases()
     // Long template
     rt_string_builder sb;
     rt_sb_init(&sb);
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         rt_sb_append_cstr(&sb, "{{x}}");
     }
     rt_string long_tmpl = rt_string_from_bytes(sb.data, sb.len);
@@ -357,8 +345,7 @@ static void test_edge_cases()
     // Should be 100 X's
     const char *res_str = rt_string_cstr(result);
     bool all_x = (strlen(res_str) == 100);
-    for (size_t i = 0; i < 100 && all_x; i++)
-    {
+    for (size_t i = 0; i < 100 && all_x; i++) {
         if (res_str[i] != 'X')
             all_x = false;
     }
@@ -371,8 +358,7 @@ static void test_edge_cases()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Template Tests ===\n\n");
 
     test_render();

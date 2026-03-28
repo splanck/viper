@@ -26,27 +26,19 @@
 
 #include "tui/render/screen.hpp"
 
-namespace viper::tui::style
-{
+namespace viper::tui::style {
 
 /// @brief Semantic roles used by widgets to look up theme-appropriate styles.
 /// @details Widgets query the theme using roles rather than hard-coded colors,
 ///          enabling consistent appearance and easy palette customization.
-enum class Role
-{
-    Normal,
-    Accent,
-    Disabled,
-    Selection
-};
+enum class Role { Normal, Accent, Disabled, Selection };
 
 /// @brief Maps semantic roles to concrete render styles for consistent widget theming.
 /// @details Provides a centralized color palette for the TUI. Widgets query the theme
 ///          using Role values to obtain foreground/background colors and text attributes.
 ///          The default constructor initializes a dark-theme palette suitable for most
 ///          terminal emulators.
-class Theme
-{
+class Theme {
   public:
     /// @brief Construct theme with default color palette.
     Theme();

@@ -31,26 +31,21 @@
 #include <string_view>
 #include <utility>
 
-namespace il::frontends::basic::constfold
-{
+namespace il::frontends::basic::constfold {
 
-namespace detail
-{
+namespace detail {
 
-struct ParsedNumber
-{
+struct ParsedNumber {
     bool ok = false;
     bool isFloat = false;
     long long i = 0;
     double d = 0.0;
 };
 
-inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
-{
+inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept {
     ParsedNumber result{};
 
-    auto trim = [](std::string_view &view) noexcept
-    {
+    auto trim = [](std::string_view &view) noexcept {
         auto is_space = [](unsigned char ch) { return std::isspace(ch) != 0; };
         while (!view.empty() && is_space(static_cast<unsigned char>(view.front())))
             view.remove_prefix(1);
@@ -64,8 +59,7 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
 
     bool forceFloat = false;
     bool forceInt = false;
-    switch (sv.back())
-    {
+    switch (sv.back()) {
         case '!':
         case '#':
             forceFloat = true;
@@ -86,11 +80,9 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
 
     bool hasFloatMarkers = sv.find_first_of(".eEpP") != std::string_view::npos;
 
-    if (sv.find_first_of("dD") != std::string_view::npos)
-    {
+    if (sv.find_first_of("dD") != std::string_view::npos) {
         std::string normalised(sv.begin(), sv.end());
-        for (char &ch : normalised)
-        {
+        for (char &ch : normalised) {
             if (ch == 'd' || ch == 'D')
                 ch = 'e';
         }
@@ -100,8 +92,7 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
 
     const bool tryFloatFirst = forceFloat || (!forceInt && hasFloatMarkers);
 
-    auto parseFloat = [&](std::string_view view) -> bool
-    {
+    auto parseFloat = [&](std::string_view view) -> bool {
         // Use strtod instead of from_chars since Apple Clang doesn't support
         // from_chars for floating-point in C++20
         std::string temp(view.data(), view.size());
@@ -110,20 +101,16 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
         double value = std::strtod(temp.c_str(), &end);
 
         // Check if entire string was consumed and no error occurred
-        if (end == temp.c_str() + temp.size() && errno == 0)
-        {
+        if (end == temp.c_str() + temp.size() && errno == 0) {
             if (!std::isfinite(value))
                 return false;
             result.ok = true;
             result.isFloat = true;
             result.d = value;
             if (value >= static_cast<double>(std::numeric_limits<long long>::min()) &&
-                value <= static_cast<double>(std::numeric_limits<long long>::max()))
-            {
+                value <= static_cast<double>(std::numeric_limits<long long>::max())) {
                 result.i = static_cast<long long>(value);
-            }
-            else
-            {
+            } else {
                 result.i = value < 0 ? std::numeric_limits<long long>::min()
                                      : std::numeric_limits<long long>::max();
             }
@@ -132,16 +119,14 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
         return false;
     };
 
-    if (tryFloatFirst)
-    {
+    if (tryFloatFirst) {
         if (parseFloat(sv))
             return result;
     }
 
     long long intValue = 0;
     auto ic = std::from_chars(sv.data(), sv.data() + sv.size(), intValue, 10);
-    if (ic.ec == std::errc{} && ic.ptr == sv.data() + sv.size())
-    {
+    if (ic.ec == std::errc{} && ic.ptr == sv.data() + sv.size()) {
         result.ok = true;
         result.isFloat = false;
         result.i = intValue;
@@ -151,8 +136,7 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
     if (ic.ec == std::errc::result_out_of_range)
         return result;
 
-    if (!tryFloatFirst && !forceInt)
-    {
+    if (!tryFloatFirst && !forceInt) {
         if (parseFloat(sv))
             return result;
     }
@@ -163,66 +147,56 @@ inline ParsedNumber parseNumericLiteral(std::string_view sv) noexcept
 } // namespace detail
 
 /// @brief Kind tags understood by the constant-folding helpers.
-enum class ValueKind
-{
+enum class ValueKind {
     Int,
     Float,
 };
 
 /// @brief Lightweight tagged scalar used by arithmetic and comparison folders.
-struct Value
-{
+struct Value {
     ValueKind kind = ValueKind::Int; ///< Representation tag of the payload.
     double f = 0.0;                  ///< Floating payload (always finite).
     long long i = 0;                 ///< Integer payload using two's-complement.
     bool valid = false;              ///< Indicates whether the value is usable.
 
     /// @brief Factory for invalid values used to signal folding failures.
-    static constexpr Value invalid() noexcept
-    {
+    static constexpr Value invalid() noexcept {
         return Value{ValueKind::Int, 0.0, 0, false};
     }
 
     /// @brief Construct an integer literal.
-    static constexpr Value fromInt(long long v) noexcept
-    {
+    static constexpr Value fromInt(long long v) noexcept {
         return Value{ValueKind::Int, static_cast<double>(v), v, true};
     }
 
     /// @brief Construct a floating-point literal.
-    static constexpr Value fromFloat(double v) noexcept
-    {
+    static constexpr Value fromFloat(double v) noexcept {
         return Value{ValueKind::Float, v, static_cast<long long>(v), true};
     }
 
     /// @brief Query whether the payload models a float.
-    [[nodiscard]] constexpr bool isFloat() const noexcept
-    {
+    [[nodiscard]] constexpr bool isFloat() const noexcept {
         return valid && kind == ValueKind::Float;
     }
 
     /// @brief Query whether the payload models an integer.
-    [[nodiscard]] constexpr bool isInt() const noexcept
-    {
+    [[nodiscard]] constexpr bool isInt() const noexcept {
         return valid && kind == ValueKind::Int;
     }
 
     /// @brief Obtain the value as a double regardless of representation.
-    [[nodiscard]] constexpr double asDouble() const noexcept
-    {
+    [[nodiscard]] constexpr double asDouble() const noexcept {
         return kind == ValueKind::Float ? f : static_cast<double>(i);
     }
 };
 
 /// @brief Convert @p numeric into a folding value.
-[[nodiscard]] inline Value makeValue(const NumericValue &numeric) noexcept
-{
+[[nodiscard]] inline Value makeValue(const NumericValue &numeric) noexcept {
     return numeric.isFloat ? Value::fromFloat(numeric.f) : Value::fromInt(numeric.i);
 }
 
 /// @brief Convert @p value back into the dispatcher representation.
-[[nodiscard]] inline NumericValue toNumericValue(const Value &value) noexcept
-{
+[[nodiscard]] inline NumericValue toNumericValue(const Value &value) noexcept {
     NumericValue numeric;
     numeric.isFloat = value.isFloat();
     numeric.f = value.isFloat() ? value.f : static_cast<double>(value.i);
@@ -231,12 +205,10 @@ struct Value
 }
 
 /// @brief Promote @p lhs and @p rhs following BASIC's suffix rules.
-[[nodiscard]] inline std::pair<Value, Value> promote(Value lhs, Value rhs) noexcept
-{
+[[nodiscard]] inline std::pair<Value, Value> promote(Value lhs, Value rhs) noexcept {
     if (!lhs.valid || !rhs.valid)
         return {Value::invalid(), Value::invalid()};
-    if (lhs.isFloat() || rhs.isFloat())
-    {
+    if (lhs.isFloat() || rhs.isFloat()) {
         if (!lhs.isFloat())
             lhs = Value::fromFloat(static_cast<double>(lhs.i));
         if (!rhs.isFloat())

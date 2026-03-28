@@ -50,8 +50,7 @@
 #endif
 
 /// @brief LineReader implementation structure.
-typedef struct rt_linereader_impl
-{
+typedef struct rt_linereader_impl {
     FILE *fp;       ///< File pointer.
     int8_t eof;     ///< EOF flag.
     int8_t closed;  ///< Closed flag.
@@ -77,13 +76,11 @@ typedef struct rt_linereader_impl
 ///
 /// @see rt_linereader_close For explicit closure
 /// @see rt_obj_set_finalizer For how finalizers are registered
-static void rt_linereader_finalize(void *obj)
-{
+static void rt_linereader_finalize(void *obj) {
     if (!obj)
         return;
     rt_linereader_impl *lr = (rt_linereader_impl *)obj;
-    if (lr->fp && !lr->closed)
-    {
+    if (lr->fp && !lr->closed) {
         fclose(lr->fp);
         lr->fp = NULL;
         lr->closed = 1;
@@ -135,32 +132,27 @@ static void rt_linereader_finalize(void *obj)
 /// @see rt_linereader_close For closing the reader
 /// @see rt_linereader_read For reading lines
 /// @see rt_linereader_read_all For reading the entire file
-void *rt_linereader_open(rt_string path)
-{
-    if (!path)
-    {
+void *rt_linereader_open(rt_string path) {
+    if (!path) {
         rt_trap("LineReader.Open: null path");
         return NULL;
     }
 
     const char *path_str = rt_string_cstr(path);
-    if (!path_str)
-    {
+    if (!path_str) {
         rt_trap("LineReader.Open: invalid path");
         return NULL;
     }
 
     FILE *fp = fopen(path_str, "r");
-    if (!fp)
-    {
+    if (!fp) {
         rt_trap("LineReader.Open: failed to open file");
         return NULL;
     }
 
     rt_linereader_impl *lr =
         (rt_linereader_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_linereader_impl));
-    if (!lr)
-    {
+    if (!lr) {
         fclose(fp);
         rt_trap("LineReader.Open: memory allocation failed");
         return NULL;
@@ -197,14 +189,12 @@ void *rt_linereader_open(rt_string path)
 ///       thread is using it.
 ///
 /// @see rt_linereader_open For opening files
-void rt_linereader_close(void *obj)
-{
+void rt_linereader_close(void *obj) {
     if (!obj)
         return;
 
     rt_linereader_impl *lr = (rt_linereader_impl *)obj;
-    if (lr->fp && !lr->closed)
-    {
+    if (lr->fp && !lr->closed) {
         fclose(lr->fp);
         lr->fp = NULL;
         lr->closed = 1;
@@ -223,10 +213,8 @@ void rt_linereader_close(void *obj)
 /// @return The next character (0-255), or EOF if end of file is reached.
 ///
 /// @note This is an internal function, not part of the public API.
-static int lr_getc(rt_linereader_impl *lr)
-{
-    if (lr->has_peeked)
-    {
+static int lr_getc(rt_linereader_impl *lr) {
+    if (lr->has_peeked) {
         lr->has_peeked = 0;
         return lr->peeked;
     }
@@ -278,17 +266,14 @@ static int lr_getc(rt_linereader_impl *lr)
 /// @see rt_linereader_read_char For character-by-character reading
 /// @see rt_linereader_read_all For reading the entire remaining file
 /// @see rt_linereader_eof For checking end-of-file status
-rt_string rt_linereader_read(void *obj)
-{
-    if (!obj)
-    {
+rt_string rt_linereader_read(void *obj) {
+    if (!obj) {
         rt_trap("LineReader.Read: null reader");
         return rt_string_from_bytes("", 0);
     }
 
     rt_linereader_impl *lr = (rt_linereader_impl *)obj;
-    if (!lr->fp || lr->closed)
-    {
+    if (!lr->fp || lr->closed) {
         rt_trap("LineReader.Read: reader is closed");
         return rt_string_from_bytes("", 0);
     }
@@ -297,50 +282,39 @@ rt_string rt_linereader_read(void *obj)
     size_t cap = 256;
     size_t len = 0;
     char *buf = (char *)malloc(cap);
-    if (!buf)
-    {
+    if (!buf) {
         rt_trap("LineReader.Read: memory allocation failed");
         return rt_string_from_bytes("", 0);
     }
 
     int c;
-    while ((c = lr_getc(lr)) != EOF)
-    {
-        if (c == '\n')
-        {
+    while ((c = lr_getc(lr)) != EOF) {
+        if (c == '\n') {
             // LF or end of CRLF - line complete
             break;
-        }
-        else if (c == '\r')
-        {
+        } else if (c == '\r') {
             // CR - check for CRLF
             int next = fgetc(lr->fp);
-            if (next != '\n' && next != EOF)
-            {
+            if (next != '\n' && next != EOF) {
                 // Standalone CR, put back the next char
                 lr->peeked = next;
                 lr->has_peeked = 1;
             }
             // Either way, line is complete
             break;
-        }
-        else
-        {
+        } else {
             // Regular character - add to buffer
-            if (len >= cap - 1)
-            {
+            if (len >= cap - 1) {
                 // Guard against unbounded growth from files with no newlines.
 #define RT_LINEREADER_MAX_LINE (256 * 1024 * 1024)
-                if (cap >= RT_LINEREADER_MAX_LINE)
-                {
+                if (cap >= RT_LINEREADER_MAX_LINE) {
                     free(buf);
                     rt_trap("LineReader.Read: line length exceeds maximum (256 MiB)");
                     return rt_string_from_bytes("", 0);
                 }
                 cap *= 2;
                 char *new_buf = (char *)realloc(buf, cap);
-                if (!new_buf)
-                {
+                if (!new_buf) {
                     free(buf);
                     rt_trap("LineReader.Read: memory allocation failed");
                     return rt_string_from_bytes("", 0);
@@ -351,16 +325,14 @@ rt_string rt_linereader_read(void *obj)
         }
     }
 
-    if (c == EOF && len == 0)
-    {
+    if (c == EOF && len == 0) {
         // EOF with no content - set EOF flag
         lr->eof = 1;
         free(buf);
         return rt_string_from_bytes("", 0);
     }
 
-    if (c == EOF)
-    {
+    if (c == EOF) {
         // Got content but hit EOF
         lr->eof = 1;
     }
@@ -390,24 +362,20 @@ rt_string rt_linereader_read(void *obj)
 ///
 /// @see rt_linereader_peek_char For reading without consuming
 /// @see rt_linereader_read For line-oriented reading
-int64_t rt_linereader_read_char(void *obj)
-{
-    if (!obj)
-    {
+int64_t rt_linereader_read_char(void *obj) {
+    if (!obj) {
         rt_trap("LineReader.ReadChar: null reader");
         return -1;
     }
 
     rt_linereader_impl *lr = (rt_linereader_impl *)obj;
-    if (!lr->fp || lr->closed)
-    {
+    if (!lr->fp || lr->closed) {
         rt_trap("LineReader.ReadChar: reader is closed");
         return -1;
     }
 
     int c = lr_getc(lr);
-    if (c == EOF)
-    {
+    if (c == EOF) {
         lr->eof = 1;
         return -1;
     }
@@ -449,29 +417,24 @@ int64_t rt_linereader_read_char(void *obj)
 /// @note Thread safety: Not thread-safe for the same LineReader object.
 ///
 /// @see rt_linereader_read_char For reading and consuming a character
-int64_t rt_linereader_peek_char(void *obj)
-{
-    if (!obj)
-    {
+int64_t rt_linereader_peek_char(void *obj) {
+    if (!obj) {
         rt_trap("LineReader.PeekChar: null reader");
         return -1;
     }
 
     rt_linereader_impl *lr = (rt_linereader_impl *)obj;
-    if (!lr->fp || lr->closed)
-    {
+    if (!lr->fp || lr->closed) {
         rt_trap("LineReader.PeekChar: reader is closed");
         return -1;
     }
 
-    if (lr->has_peeked)
-    {
+    if (lr->has_peeked) {
         return (int64_t)lr->peeked;
     }
 
     int c = fgetc(lr->fp);
-    if (c == EOF)
-    {
+    if (c == EOF) {
         lr->eof = 1;
         return -1;
     }
@@ -518,17 +481,14 @@ int64_t rt_linereader_peek_char(void *obj)
 ///
 /// @see rt_linereader_read For line-by-line reading
 /// @see rt_linereader_eof For checking end-of-file status
-rt_string rt_linereader_read_all(void *obj)
-{
-    if (!obj)
-    {
+rt_string rt_linereader_read_all(void *obj) {
+    if (!obj) {
         rt_trap("LineReader.ReadAll: null reader");
         return rt_string_from_bytes("", 0);
     }
 
     rt_linereader_impl *lr = (rt_linereader_impl *)obj;
-    if (!lr->fp || lr->closed)
-    {
+    if (!lr->fp || lr->closed) {
         rt_trap("LineReader.ReadAll: reader is closed");
         return rt_string_from_bytes("", 0);
     }
@@ -548,15 +508,13 @@ rt_string rt_linereader_read_all(void *obj)
     size_t extra = lr->has_peeked ? 1 : 0;
     size_t total = remaining + extra;
 
-    if (total == 0)
-    {
+    if (total == 0) {
         lr->eof = 1;
         return rt_string_from_bytes("", 0);
     }
 
     char *buf = (char *)malloc(total);
-    if (!buf)
-    {
+    if (!buf) {
         rt_trap("LineReader.ReadAll: memory allocation failed");
         return rt_string_from_bytes("", 0);
     }
@@ -564,8 +522,7 @@ rt_string rt_linereader_read_all(void *obj)
     size_t offset = 0;
 
     // Add peeked character first
-    if (lr->has_peeked)
-    {
+    if (lr->has_peeked) {
         buf[offset++] = (char)lr->peeked;
         lr->has_peeked = 0;
     }
@@ -608,8 +565,7 @@ rt_string rt_linereader_read_all(void *obj)
 /// @note Thread safety: Not thread-safe for the same LineReader object.
 ///
 /// @see rt_linereader_read For operations that set the EOF flag
-int8_t rt_linereader_eof(void *obj)
-{
+int8_t rt_linereader_eof(void *obj) {
     if (!obj)
         return 1;
 

@@ -32,10 +32,8 @@
 #include <bit>
 #include <cassert>
 
-namespace il::vm
-{
-namespace
-{
+namespace il::vm {
+namespace {
 
 /// @brief Convert one IL value to its compact @c ResolvedOp representation.
 /// @details The three hot-path kinds (Temp → Reg, ConstInt → ImmI64,
@@ -44,11 +42,9 @@ namespace
 ///          @c VM::eval() with the original @c Value.
 /// @param v Source IL value.
 /// @return Compact resolved operand.
-ResolvedOp resolveValue(const il::core::Value &v) noexcept
-{
+ResolvedOp resolveValue(const il::core::Value &v) noexcept {
     ResolvedOp op{};
-    switch (v.kind)
-    {
+    switch (v.kind) {
         case il::core::Value::Kind::Temp:
             op.kind = ResolvedOp::Kind::Reg;
             op.regId = v.id;
@@ -76,13 +72,11 @@ ResolvedOp resolveValue(const il::core::Value &v) noexcept
 ///          operands in @c instrOpOffset.
 /// @param block Source basic block (IL, immutable after construction).
 /// @return Populated @c BlockExecCache.
-BlockExecCache buildBlockExecCacheFor(const il::core::BasicBlock &block)
-{
+BlockExecCache buildBlockExecCacheFor(const il::core::BasicBlock &block) {
     BlockExecCache bc;
     bc.instrOpOffset.reserve(block.instructions.size());
     uint32_t offset = 0;
-    for (const auto &instr : block.instructions)
-    {
+    for (const auto &instr : block.instructions) {
         bc.instrOpOffset.push_back(offset);
         for (const auto &op : instr.operands)
             bc.resolvedOps.push_back(resolveValue(op));
@@ -103,14 +97,12 @@ BlockExecCache buildBlockExecCacheFor(const il::core::BasicBlock &block)
 /// @return Pointer to the immutable @c BlockExecCache, or @c nullptr when
 ///         either argument is null.
 const BlockExecCache *VM::getOrBuildBlockCache(const il::core::Function *fn,
-                                               const il::core::BasicBlock *bb)
-{
+                                               const il::core::BasicBlock *bb) {
     if (!fn || !bb)
         return nullptr;
 
     auto &blockMap = fnExecCache_[fn];
-    if (blockMap.empty())
-    {
+    if (blockMap.empty()) {
         // Build entries for every block in the function in one pass.
         blockMap.reserve(fn->blocks.size());
         for (const auto &block : fn->blocks)

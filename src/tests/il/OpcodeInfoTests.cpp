@@ -17,8 +17,7 @@
 
 #include "tests/TestHarness.hpp"
 
-TEST(IL, OpcodeInfoTests)
-{
+TEST(IL, OpcodeInfoTests) {
     using namespace il::core;
 
     const auto ops = all_opcodes();
@@ -27,8 +26,7 @@ TEST(IL, OpcodeInfoTests)
     const auto again = all_opcodes();
     ASSERT_EQ(ops, again);
 
-    for (size_t index = 0; index < ops.size(); ++index)
-    {
+    for (size_t index = 0; index < ops.size(); ++index) {
         const Opcode op = ops[index];
         ASSERT_EQ(static_cast<size_t>(op), index);
 
@@ -38,8 +36,7 @@ TEST(IL, OpcodeInfoTests)
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

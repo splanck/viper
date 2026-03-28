@@ -58,8 +58,7 @@
 // ============================================================================
 
 /// @brief Initialize the per-registry reader-writer lock.
-static void tr_rwlock_init(RtTypeRegistryState *st)
-{
+static void tr_rwlock_init(RtTypeRegistryState *st) {
     st->sealed = 0;
 #ifdef _WIN32
     SRWLOCK *lock = (SRWLOCK *)malloc(sizeof(SRWLOCK));
@@ -77,8 +76,7 @@ static void tr_rwlock_init(RtTypeRegistryState *st)
 }
 
 /// @brief Destroy and free the per-registry reader-writer lock.
-static void tr_rwlock_destroy(RtTypeRegistryState *st)
-{
+static void tr_rwlock_destroy(RtTypeRegistryState *st) {
     if (!st->rw_lock)
         return;
 #if !defined(_WIN32) && !defined(__viperdos__)
@@ -89,8 +87,7 @@ static void tr_rwlock_destroy(RtTypeRegistryState *st)
 }
 
 /// @brief Acquire shared (read) lock. No-op if registry is sealed or no lock.
-static void tr_rdlock(RtTypeRegistryState *st)
-{
+static void tr_rdlock(RtTypeRegistryState *st) {
     if (__atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
         return;
     if (!st->rw_lock)
@@ -103,8 +100,7 @@ static void tr_rdlock(RtTypeRegistryState *st)
 }
 
 /// @brief Release shared (read) lock. No-op if registry is sealed or no lock.
-static void tr_rdunlock(RtTypeRegistryState *st)
-{
+static void tr_rdunlock(RtTypeRegistryState *st) {
     if (__atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
         return;
     if (!st->rw_lock)
@@ -117,8 +113,7 @@ static void tr_rdunlock(RtTypeRegistryState *st)
 }
 
 /// @brief Acquire exclusive (write) lock. No-op if no lock.
-static void tr_wrlock(RtTypeRegistryState *st)
-{
+static void tr_wrlock(RtTypeRegistryState *st) {
     if (!st->rw_lock)
         return;
 #ifdef _WIN32
@@ -129,8 +124,7 @@ static void tr_wrlock(RtTypeRegistryState *st)
 }
 
 /// @brief Release exclusive (write) lock. No-op if no lock.
-static void tr_wrunlock(RtTypeRegistryState *st)
-{
+static void tr_wrunlock(RtTypeRegistryState *st) {
     if (!st->rw_lock)
         return;
 #ifdef _WIN32
@@ -151,8 +145,7 @@ static void tr_wrunlock(RtTypeRegistryState *st)
 ///
 /// @note owned_ci indicates whether ci was allocated by the registry and
 ///       must be freed during cleanup (vs. static metadata from codegen).
-typedef struct
-{
+typedef struct {
     int type_id;             ///< Unique class identifier.
     const rt_class_info *ci; ///< Class metadata (vtable, name, base).
     int base_type_id;        ///< Base class ID, or -1 for root classes.
@@ -163,8 +156,7 @@ typedef struct
 ///
 /// Stores the interface's unique ID and its registration metadata including
 /// the qualified name and slot count.
-typedef struct
-{
+typedef struct {
     int iface_id;     ///< Unique interface identifier.
     rt_iface_reg reg; ///< Interface registration info (name, slot count).
 } iface_entry;
@@ -180,8 +172,7 @@ typedef struct
 /// Class Dog implements IComparable
 ///   → binding_entry { type_id=Dog, iface_id=IComparable, itable=... }
 /// ```
-typedef struct
-{
+typedef struct {
     int type_id;   ///< Class implementing the interface.
     int iface_id;  ///< Interface being implemented.
     void **itable; ///< Array of function pointers for interface methods.
@@ -197,16 +188,14 @@ typedef struct
 /// the legacy fallback context. This enables per-VM type isolation.
 ///
 /// @return Pointer to the current context's type registry state.
-static inline RtTypeRegistryState *rt_tr_state(void)
-{
+static inline RtTypeRegistryState *rt_tr_state(void) {
     RtContext *ctx = rt_get_current_context();
     if (!ctx)
         ctx = rt_legacy_context();
     return &ctx->type_registry;
 }
 
-static inline class_entry *get_classes(size_t **plen, size_t **pcap)
-{
+static inline class_entry *get_classes(size_t **plen, size_t **pcap) {
     RtTypeRegistryState *st = rt_tr_state();
     if (!st)
         return NULL;
@@ -217,15 +206,13 @@ static inline class_entry *get_classes(size_t **plen, size_t **pcap)
     return (class_entry *)st->classes;
 }
 
-static inline void set_classes(class_entry *p)
-{
+static inline void set_classes(class_entry *p) {
     RtTypeRegistryState *st = rt_tr_state();
     if (st)
         st->classes = p;
 }
 
-static inline iface_entry *get_ifaces(size_t **plen, size_t **pcap)
-{
+static inline iface_entry *get_ifaces(size_t **plen, size_t **pcap) {
     RtTypeRegistryState *st = rt_tr_state();
     if (!st)
         return NULL;
@@ -236,15 +223,13 @@ static inline iface_entry *get_ifaces(size_t **plen, size_t **pcap)
     return (iface_entry *)st->ifaces;
 }
 
-static inline void set_ifaces(iface_entry *p)
-{
+static inline void set_ifaces(iface_entry *p) {
     RtTypeRegistryState *st = rt_tr_state();
     if (st)
         st->ifaces = p;
 }
 
-static inline binding_entry *get_bindings(size_t **plen, size_t **pcap)
-{
+static inline binding_entry *get_bindings(size_t **plen, size_t **pcap) {
     RtTypeRegistryState *st = rt_tr_state();
     if (!st)
         return NULL;
@@ -255,21 +240,17 @@ static inline binding_entry *get_bindings(size_t **plen, size_t **pcap)
     return (binding_entry *)st->bindings;
 }
 
-static inline void set_bindings(binding_entry *p)
-{
+static inline void set_bindings(binding_entry *p) {
     RtTypeRegistryState *st = rt_tr_state();
     if (st)
         st->bindings = p;
 }
 
-static void ensure_cap(void **buf, size_t *cap, size_t elem_size)
-{
-    if (*cap == 0)
-    {
+static void ensure_cap(void **buf, size_t *cap, size_t elem_size) {
+    if (*cap == 0) {
         *cap = 16;
         void *tmp = malloc((*cap) * elem_size);
-        if (!tmp)
-        {
+        if (!tmp) {
             rt_trap("rt_type_registry: alloc failed");
             return;
         }
@@ -278,20 +259,17 @@ static void ensure_cap(void **buf, size_t *cap, size_t elem_size)
     }
 
     // Exponential growth with overflow guards
-    if (*cap > (SIZE_MAX / 2))
-    {
+    if (*cap > (SIZE_MAX / 2)) {
         rt_trap("rt_type_registry: capacity overflow");
         return;
     }
     size_t new_cap = (*cap) * 2;
-    if (elem_size != 0 && new_cap > (SIZE_MAX / elem_size))
-    {
+    if (elem_size != 0 && new_cap > (SIZE_MAX / elem_size)) {
         rt_trap("rt_type_registry: size overflow");
         return;
     }
     void *new_buf = realloc(*buf, new_cap * elem_size);
-    if (!new_buf)
-    {
+    if (!new_buf) {
         // Preserve existing buffer to avoid pointer loss on realloc failure
         rt_trap("rt_type_registry: realloc failed");
         return;
@@ -300,8 +278,7 @@ static void ensure_cap(void **buf, size_t *cap, size_t elem_size)
     *cap = new_cap;
 }
 
-static const class_entry *find_class_by_type(int type_id)
-{
+static const class_entry *find_class_by_type(int type_id) {
     size_t *plen = NULL;
     class_entry *arr = get_classes(&plen, NULL);
     size_t len = arr && plen ? *plen : 0;
@@ -311,8 +288,7 @@ static const class_entry *find_class_by_type(int type_id)
     return NULL;
 }
 
-static const class_entry *find_class_by_vptr(void **vptr)
-{
+static const class_entry *find_class_by_vptr(void **vptr) {
     // Heuristic: vtable pointer equals ci->vtable
     size_t *plen = NULL;
     class_entry *arr = get_classes(&plen, NULL);
@@ -323,8 +299,7 @@ static const class_entry *find_class_by_vptr(void **vptr)
     return NULL;
 }
 
-static const iface_entry *find_iface(int iface_id)
-{
+static const iface_entry *find_iface(int iface_id) {
     size_t *plen = NULL;
     iface_entry *arr = get_ifaces(&plen, NULL);
     size_t len = arr && plen ? *plen : 0;
@@ -334,8 +309,7 @@ static const iface_entry *find_iface(int iface_id)
     return NULL;
 }
 
-static void **find_binding(int type_id, int iface_id)
-{
+static void **find_binding(int type_id, int iface_id) {
     size_t *plen = NULL;
     binding_entry *arr = get_bindings(&plen, NULL);
     size_t len = arr && plen ? *plen : 0;
@@ -345,16 +319,14 @@ static void **find_binding(int type_id, int iface_id)
     return NULL;
 }
 
-static void rt_register_class_entry(const rt_class_info *ci, int owned_ci)
-{
+static void rt_register_class_entry(const rt_class_info *ci, int owned_ci) {
     if (!ci)
         return;
     size_t *plen = NULL, *pcap = NULL;
     class_entry *arr = get_classes(&plen, &pcap);
     if (!plen || !pcap)
         return;
-    if (*plen == *pcap)
-    {
+    if (*plen == *pcap) {
         ensure_cap((void **)&arr, pcap, sizeof(class_entry));
         set_classes(arr);
     }
@@ -370,11 +342,9 @@ static void rt_register_class_entry(const rt_class_info *ci, int owned_ci)
 ///          needed. The descriptor's @c base pointer is not modified here; use
 ///          @ref rt_register_class_with_base to wire base classes by id.
 /// @param ci Pointer to a constant @ref rt_class_info describing the class.
-void rt_register_class(const rt_class_info *ci)
-{
+void rt_register_class(const rt_class_info *ci) {
     RtTypeRegistryState *st = rt_tr_state();
-    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
-    {
+    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE)) {
         rt_trap("rt_type_registry: cannot register after registry is sealed");
         return;
     }
@@ -387,13 +357,11 @@ void rt_register_class(const rt_class_info *ci)
 
 /// @brief Register an interface descriptor with the active VM registry.
 /// @param iface Interface registration record (id, name, slot count).
-void rt_register_interface(const rt_iface_reg *iface)
-{
+void rt_register_interface(const rt_iface_reg *iface) {
     if (!iface)
         return;
     RtTypeRegistryState *st = rt_tr_state();
-    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
-    {
+    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE)) {
         rt_trap("rt_type_registry: cannot register after registry is sealed");
         return;
     }
@@ -401,14 +369,12 @@ void rt_register_interface(const rt_iface_reg *iface)
         tr_wrlock(st);
     size_t *plen = NULL, *pcap = NULL;
     iface_entry *arr = get_ifaces(&plen, &pcap);
-    if (!arr && (!plen || !pcap))
-    {
+    if (!arr && (!plen || !pcap)) {
         if (st)
             tr_wrunlock(st);
         return;
     }
-    if (*plen == *pcap)
-    {
+    if (*plen == *pcap) {
         ensure_cap((void **)&arr, pcap, sizeof(iface_entry));
         set_ifaces(arr);
     }
@@ -424,13 +390,11 @@ void rt_register_interface(const rt_iface_reg *iface)
 /// @param type_id     Concrete class type id.
 /// @param iface_id    Interface id to bind.
 /// @param itable_slots Pointer to array of function pointers (length = slot_count).
-void rt_bind_interface(int type_id, int iface_id, void **itable_slots)
-{
+void rt_bind_interface(int type_id, int iface_id, void **itable_slots) {
     if (!itable_slots)
         return;
     RtTypeRegistryState *st = rt_tr_state();
-    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
-    {
+    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE)) {
         rt_trap("rt_type_registry: cannot register after registry is sealed");
         return;
     }
@@ -439,14 +403,12 @@ void rt_bind_interface(int type_id, int iface_id, void **itable_slots)
     (void)find_iface; // suppress unused if not queried
     size_t *plen = NULL, *pcap = NULL;
     binding_entry *arr = get_bindings(&plen, &pcap);
-    if (!arr && (!plen || !pcap))
-    {
+    if (!arr && (!plen || !pcap)) {
         if (st)
             tr_wrunlock(st);
         return;
     }
-    if (*plen == *pcap)
-    {
+    if (*plen == *pcap) {
         ensure_cap((void **)&arr, pcap, sizeof(binding_entry));
         set_bindings(arr);
     }
@@ -458,8 +420,7 @@ void rt_bind_interface(int type_id, int iface_id, void **itable_slots)
 /// @brief Return the runtime type id for an object instance.
 /// @param obj Object pointer (may be NULL).
 /// @return Type id when known, -1 otherwise.
-int rt_typeid_of(void *obj)
-{
+int rt_typeid_of(void *obj) {
     if (!obj)
         return -1;
     rt_object *o = (rt_object *)obj;
@@ -477,8 +438,7 @@ int rt_typeid_of(void *obj)
 
 /// @brief Check class inheritance (is-a) by type id.
 /// @return 1 when @p type_id equals or derives from @p test_type_id; 0 otherwise.
-int8_t rt_type_is_a(int type_id, int test_type_id)
-{
+int8_t rt_type_is_a(int type_id, int test_type_id) {
     if (type_id == test_type_id)
         return 1;
     RtTypeRegistryState *st = rt_tr_state();
@@ -486,10 +446,8 @@ int8_t rt_type_is_a(int type_id, int test_type_id)
         tr_rdlock(st);
     const class_entry *ce = find_class_by_type(type_id);
     int8_t result = 0;
-    while (ce && ce->base_type_id >= 0)
-    {
-        if (ce->base_type_id == test_type_id)
-        {
+    while (ce && ce->base_type_id >= 0) {
+        if (ce->base_type_id == test_type_id) {
             result = 1;
             break;
         }
@@ -502,8 +460,7 @@ int8_t rt_type_is_a(int type_id, int test_type_id)
 
 /// @brief Check whether a class implements an interface by id.
 /// @return 1 if implemented by the class or any ancestor; 0 otherwise.
-int8_t rt_type_implements(int type_id, int iface_id)
-{
+int8_t rt_type_implements(int type_id, int iface_id) {
     RtTypeRegistryState *st = rt_tr_state();
     if (st)
         tr_rdlock(st);
@@ -511,18 +468,13 @@ int8_t rt_type_implements(int type_id, int iface_id)
     int8_t result = 0;
 
     // Check the exact type first.
-    if (find_binding(type_id, iface_id) != NULL)
-    {
+    if (find_binding(type_id, iface_id) != NULL) {
         result = 1;
-    }
-    else
-    {
+    } else {
         // Walk the base class chain to see if any ancestor implements the interface.
         const class_entry *ce = find_class_by_type(type_id);
-        while (ce && ce->base_type_id >= 0)
-        {
-            if (find_binding(ce->base_type_id, iface_id) != NULL)
-            {
+        while (ce && ce->base_type_id >= 0) {
+            if (find_binding(ce->base_type_id, iface_id) != NULL) {
                 result = 1;
                 break;
             }
@@ -537,8 +489,7 @@ int8_t rt_type_implements(int type_id, int iface_id)
 
 /// @brief Safe-cast an object to an interface by id.
 /// @return @p obj when compatible; NULL otherwise.
-void *rt_cast_as_iface(void *obj, int iface_id)
-{
+void *rt_cast_as_iface(void *obj, int iface_id) {
     if (!obj)
         return NULL;
     rt_object *o = (rt_object *)obj;
@@ -551,20 +502,14 @@ void *rt_cast_as_iface(void *obj, int iface_id)
 
     void *result = NULL;
     const class_entry *ce = find_class_by_vptr(o->vptr);
-    if (ce)
-    {
+    if (ce) {
         int tid = ce->type_id;
-        if (find_binding(tid, iface_id) != NULL)
-        {
+        if (find_binding(tid, iface_id) != NULL) {
             result = obj;
-        }
-        else
-        {
+        } else {
             const class_entry *base = find_class_by_type(tid);
-            while (base && base->base_type_id >= 0)
-            {
-                if (find_binding(base->base_type_id, iface_id) != NULL)
-                {
+            while (base && base->base_type_id >= 0) {
+                if (find_binding(base->base_type_id, iface_id) != NULL) {
                     result = obj;
                     break;
                 }
@@ -580,8 +525,7 @@ void *rt_cast_as_iface(void *obj, int iface_id)
 
 /// @brief Safe-cast an object to a target class by id.
 /// @return @p obj when compatible; NULL otherwise.
-void *rt_cast_as(void *obj, int target_type_id)
-{
+void *rt_cast_as(void *obj, int target_type_id) {
     if (!obj)
         return NULL;
     rt_object *o = (rt_object *)obj;
@@ -594,20 +538,14 @@ void *rt_cast_as(void *obj, int target_type_id)
 
     void *result = NULL;
     const class_entry *ce = find_class_by_vptr(o->vptr);
-    if (ce)
-    {
+    if (ce) {
         int tid = ce->type_id;
-        if (tid == target_type_id)
-        {
+        if (tid == target_type_id) {
             result = obj;
-        }
-        else
-        {
+        } else {
             const class_entry *cur = find_class_by_type(tid);
-            while (cur && cur->base_type_id >= 0)
-            {
-                if (cur->base_type_id == target_type_id)
-                {
+            while (cur && cur->base_type_id >= 0) {
+                if (cur->base_type_id == target_type_id) {
                     result = obj;
                     break;
                 }
@@ -625,8 +563,7 @@ void *rt_cast_as(void *obj, int target_type_id)
 /// @param obj      Object to query.
 /// @param iface_id Interface id to search.
 /// @return Pointer to the itable when found; NULL otherwise.
-void **rt_itable_lookup(void *obj, int iface_id)
-{
+void **rt_itable_lookup(void *obj, int iface_id) {
     if (!obj)
         return NULL;
     rt_object *o = (rt_object *)obj;
@@ -639,15 +576,12 @@ void **rt_itable_lookup(void *obj, int iface_id)
 
     void **result = NULL;
     const class_entry *ce = find_class_by_vptr(o->vptr);
-    if (ce)
-    {
+    if (ce) {
         int tid = ce->type_id;
         result = find_binding(tid, iface_id);
-        if (!result)
-        {
+        if (!result) {
             const class_entry *cur = find_class_by_type(tid);
-            while (cur && cur->base_type_id >= 0)
-            {
+            while (cur && cur->base_type_id >= 0) {
                 result = find_binding(cur->base_type_id, iface_id);
                 if (result)
                     break;
@@ -662,8 +596,7 @@ void **rt_itable_lookup(void *obj, int iface_id)
 }
 
 /// @brief Convenience wrapper to register an interface using C strings.
-void rt_register_interface_direct(int iface_id, const char *qname, int slot_count)
-{
+void rt_register_interface_direct(int iface_id, const char *qname, int slot_count) {
     (void)qname;
     (void)slot_count; // stored in reg; currently unused by runtime
     rt_iface_reg r = {iface_id, qname, slot_count};
@@ -671,16 +604,14 @@ void rt_register_interface_direct(int iface_id, const char *qname, int slot_coun
 }
 
 /// @brief Runtime-string bridge for @ref rt_register_interface_direct.
-void rt_register_interface_direct_rs(int64_t iface_id, rt_string qname, int64_t slot_count)
-{
+void rt_register_interface_direct_rs(int64_t iface_id, rt_string qname, int64_t slot_count) {
     const char *name = qname ? rt_string_cstr(qname) : NULL;
     rt_register_interface_direct((int)iface_id, name, (int)slot_count);
 }
 
 /// @brief Resolve a class descriptor from a vtable pointer.
 /// @return Class info when registered; NULL otherwise.
-const rt_class_info *rt_get_class_info_from_vptr(void **vptr)
-{
+const rt_class_info *rt_get_class_info_from_vptr(void **vptr) {
     if (!vptr)
         return NULL;
     RtTypeRegistryState *st = rt_tr_state();
@@ -700,19 +631,16 @@ const rt_class_info *rt_get_class_info_from_vptr(void **vptr)
 /// @param vslot_count  Number of entries in the vtable.
 /// @param base_type_id Base class id or -1 when none.
 void rt_register_class_with_base(
-    int type_id, void **vtable, const char *qname, int vslot_count, int base_type_id)
-{
+    int type_id, void **vtable, const char *qname, int vslot_count, int base_type_id) {
     if (!vtable)
         return;
     RtTypeRegistryState *st = rt_tr_state();
-    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE))
-    {
+    if (st && __atomic_load_n(&st->sealed, __ATOMIC_ACQUIRE)) {
         rt_trap("rt_type_registry: cannot register after registry is sealed");
         return;
     }
     rt_class_info *ci = (rt_class_info *)malloc(sizeof(rt_class_info));
-    if (!ci)
-    {
+    if (!ci) {
         rt_trap("rt_type_registry: class meta alloc failed");
         return;
     }
@@ -727,8 +655,7 @@ void rt_register_class_with_base(
     // Wire base class pointer by looking up base_type_id in the registry.
     // The base class must be registered before derived classes for this to work.
     ci->base = NULL;
-    if (base_type_id >= 0)
-    {
+    if (base_type_id >= 0) {
         const class_entry *base_entry = find_class_by_type(base_type_id);
         if (base_entry && base_entry->ci)
             ci->base = base_entry->ci;
@@ -741,16 +668,14 @@ void rt_register_class_with_base(
 }
 
 /// @brief Convenience wrapper to register a root class (no base).
-void rt_register_class_direct(int type_id, void **vtable, const char *qname, int vslot_count)
-{
+void rt_register_class_direct(int type_id, void **vtable, const char *qname, int vslot_count) {
     // Delegate to the base-aware version with no base class.
     rt_register_class_with_base(type_id, vtable, qname, vslot_count, -1);
 }
 
 /// @brief Fetch the vtable pointer array for a registered class id.
 /// @return Vtable pointer array or NULL when unknown.
-void **rt_get_class_vtable(int type_id)
-{
+void **rt_get_class_vtable(int type_id) {
     RtTypeRegistryState *st = rt_tr_state();
     if (st)
         tr_rdlock(st);
@@ -763,8 +688,7 @@ void **rt_get_class_vtable(int type_id)
 
 // Runtime bridge wrapper: accept runtime string for qname
 /// @brief Runtime-string bridge for @ref rt_register_class_direct.
-void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, int64_t vslot_count)
-{
+void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, int64_t vslot_count) {
     // strdup the name to avoid dangling pointer if the rt_string is freed
     const char *name = qname ? strdup(rt_string_cstr(qname)) : NULL;
     rt_register_class_direct(type_id, vtable, name, (int)vslot_count);
@@ -773,8 +697,7 @@ void rt_register_class_direct_rs(int type_id, void **vtable, rt_string qname, in
 // Runtime bridge wrapper: accept runtime string for qname with base class
 /// @brief Runtime-string bridge for @ref rt_register_class_with_base.
 void rt_register_class_with_base_rs(
-    int type_id, void **vtable, rt_string qname, int64_t vslot_count, int64_t base_type_id)
-{
+    int type_id, void **vtable, rt_string qname, int64_t vslot_count, int64_t base_type_id) {
     // strdup the name to avoid dangling pointer if the rt_string is freed
     const char *name = qname ? strdup(rt_string_cstr(qname)) : NULL;
     rt_register_class_with_base(type_id, vtable, name, (int)vslot_count, (int)base_type_id);
@@ -784,8 +707,7 @@ void rt_register_class_with_base_rs(
 /// @param type_id   Class type id.
 /// @param iface_id  Interface id.
 /// @param itable    Interface method table.
-void rt_register_interface_impl(int64_t type_id, int64_t iface_id, void **itable)
-{
+void rt_register_interface_impl(int64_t type_id, int64_t iface_id, void **itable) {
     rt_bind_interface((int)type_id, (int)iface_id, itable);
 }
 
@@ -793,8 +715,7 @@ void rt_register_interface_impl(int64_t type_id, int64_t iface_id, void **itable
 /// @param type_id  Class type id.
 /// @param iface_id Interface id.
 /// @return Interface method table or NULL.
-void **rt_get_interface_impl(int64_t type_id, int64_t iface_id)
-{
+void **rt_get_interface_impl(int64_t type_id, int64_t iface_id) {
     int tid = (int)type_id;
     int iid = (int)iface_id;
 
@@ -803,11 +724,9 @@ void **rt_get_interface_impl(int64_t type_id, int64_t iface_id)
         tr_rdlock(st);
 
     void **result = find_binding(tid, iid);
-    if (!result)
-    {
+    if (!result) {
         const class_entry *ce = find_class_by_type(tid);
-        while (ce && ce->base_type_id >= 0)
-        {
+        while (ce && ce->base_type_id >= 0) {
             result = find_binding(ce->base_type_id, iid);
             if (result)
                 break;
@@ -831,8 +750,7 @@ void **rt_get_interface_impl(int64_t type_id, int64_t iface_id)
 /// registration or lookup operations.
 ///
 /// @param ctx Context whose type registry should be initialized.
-void rt_type_registry_init(RtContext *ctx)
-{
+void rt_type_registry_init(RtContext *ctx) {
     if (!ctx)
         return;
     tr_rwlock_init(&ctx->type_registry);
@@ -846,8 +764,7 @@ void rt_type_registry_init(RtContext *ctx)
 /// - Write operations (registration) will trap with an error.
 ///
 /// @thread-safety Safe to call from any thread; uses atomic release store.
-void rt_type_registry_seal(void)
-{
+void rt_type_registry_seal(void) {
     RtTypeRegistryState *st = rt_tr_state();
     if (!st)
         return;
@@ -869,8 +786,7 @@ void rt_type_registry_seal(void)
 ///
 /// @note Safe to call with NULL or on an already-cleaned context.
 /// @note Owned class info structures are freed; static ones are left alone.
-void rt_type_registry_cleanup(RtContext *ctx)
-{
+void rt_type_registry_cleanup(RtContext *ctx) {
     if (!ctx)
         return;
 
@@ -878,10 +794,8 @@ void rt_type_registry_cleanup(RtContext *ctx)
 
     class_entry *classes = (class_entry *)ctx->type_registry.classes;
     size_t len = ctx->type_registry.classes_len;
-    if (classes)
-    {
-        for (size_t i = 0; i < len; ++i)
-        {
+    if (classes) {
+        for (size_t i = 0; i < len; ++i) {
             if (classes[i].owned_ci && classes[i].ci)
                 free((void *)(uintptr_t)classes[i].ci);
             classes[i].ci = NULL;

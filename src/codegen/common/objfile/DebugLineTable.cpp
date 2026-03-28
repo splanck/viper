@@ -23,19 +23,16 @@
 #include <algorithm>
 #include <cstring>
 
-namespace viper::codegen
-{
+namespace viper::codegen {
 
 using linker::encoding::writeLE16;
 using linker::encoding::writeLE32;
 using linker::encoding::writeSLEB128;
 using linker::encoding::writeULEB128;
 
-uint32_t DebugLineTable::addFile(const std::string &path)
-{
+uint32_t DebugLineTable::addFile(const std::string &path) {
     // Check if already registered.
-    for (size_t i = 0; i < files_.size(); ++i)
-    {
+    for (size_t i = 0; i < files_.size(); ++i) {
         if (files_[i] == path)
             return static_cast<uint32_t>(i + 1); // 1-based
     }
@@ -43,8 +40,10 @@ uint32_t DebugLineTable::addFile(const std::string &path)
     return static_cast<uint32_t>(files_.size()); // 1-based
 }
 
-void DebugLineTable::addEntry(uint64_t address, uint32_t fileIndex, uint32_t line, uint32_t column)
-{
+void DebugLineTable::addEntry(uint64_t address,
+                              uint32_t fileIndex,
+                              uint32_t line,
+                              uint32_t column) {
     entries_.push_back({address, fileIndex, line, column});
 }
 
@@ -83,22 +82,19 @@ static constexpr uint8_t DW_FORM_string = 8; // Inline NUL-terminated string.
 // Helpers.
 static void writeExtendedOpcode(std::vector<uint8_t> &buf,
                                 uint8_t opcode,
-                                const std::vector<uint8_t> &data)
-{
+                                const std::vector<uint8_t> &data) {
     buf.push_back(0);                                          // Extended opcode escape.
     writeULEB128(buf, static_cast<uint64_t>(1 + data.size())); // length
     buf.push_back(opcode);
     buf.insert(buf.end(), data.begin(), data.end());
 }
 
-static void writeNullTermString(std::vector<uint8_t> &buf, const std::string &s)
-{
+static void writeNullTermString(std::vector<uint8_t> &buf, const std::string &s) {
     buf.insert(buf.end(), s.begin(), s.end());
     buf.push_back(0);
 }
 
-std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const
-{
+std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const {
     std::vector<uint8_t> out;
 
     // We build the header and program body separately, then fix up the unit_length field.
@@ -170,19 +166,14 @@ std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const
     uint32_t curColumn = 0;
     bool firstEntry = true;
 
-    for (const auto &entry : entries_)
-    {
+    for (const auto &entry : entries_) {
         // Set address for the first entry (or when address decreases, which shouldn't happen).
-        if (firstEntry)
-        {
+        if (firstEntry) {
             std::vector<uint8_t> addrData;
-            if (addressSize == 8)
-            {
+            if (addressSize == 8) {
                 for (int i = 0; i < 8; ++i)
                     addrData.push_back(static_cast<uint8_t>(entry.address >> (i * 8)));
-            }
-            else
-            {
+            } else {
                 for (int i = 0; i < 4; ++i)
                     addrData.push_back(static_cast<uint8_t>(entry.address >> (i * 8)));
             }
@@ -196,16 +187,14 @@ std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const
         const int64_t lineDelta = static_cast<int64_t>(entry.line) - static_cast<int64_t>(curLine);
 
         // Set file if changed.
-        if (entry.fileIndex != curFile)
-        {
+        if (entry.fileIndex != curFile) {
             out.push_back(DW_LNS_set_file);
             writeULEB128(out, entry.fileIndex);
             curFile = entry.fileIndex;
         }
 
         // Set column if changed.
-        if (entry.column != curColumn)
-        {
+        if (entry.column != curColumn) {
             out.push_back(DW_LNS_set_column);
             writeULEB128(out, entry.column);
             curColumn = entry.column;
@@ -214,12 +203,10 @@ std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const
         // Try special opcode encoding: opcode = (line_delta - line_base) + (line_range *
         // addr_delta) + opcode_base Valid when: line_delta in [line_base, line_base + line_range -
         // 1] and the opcode fits in [opcode_base, 255].
-        if (lineDelta >= kLineBase && lineDelta < kLineBase + kLineRange)
-        {
+        if (lineDelta >= kLineBase && lineDelta < kLineBase + kLineRange) {
             const uint64_t specialOp = static_cast<uint64_t>(lineDelta - kLineBase) +
                                        (kLineRange * addrDelta) + kOpcodeBase;
-            if (specialOp <= 255)
-            {
+            if (specialOp <= 255) {
                 out.push_back(static_cast<uint8_t>(specialOp));
                 curAddr = entry.address;
                 curLine = entry.line;
@@ -228,23 +215,18 @@ std::vector<uint8_t> DebugLineTable::encodeDwarf5(uint8_t addressSize) const
         }
 
         // Fall back to standard opcodes.
-        if (addrDelta > 0)
-        {
+        if (addrDelta > 0) {
             // Try const_add_pc first (advances by (255 - opcode_base) / line_range).
             const uint64_t constAddPcDelta = (255 - kOpcodeBase) / kLineRange;
-            if (addrDelta == constAddPcDelta)
-            {
+            if (addrDelta == constAddPcDelta) {
                 out.push_back(DW_LNS_const_add_pc);
-            }
-            else
-            {
+            } else {
                 out.push_back(DW_LNS_advance_pc);
                 writeULEB128(out, addrDelta);
             }
         }
 
-        if (lineDelta != 0)
-        {
+        if (lineDelta != 0) {
             out.push_back(DW_LNS_advance_line);
             writeSLEB128(out, lineDelta);
         }

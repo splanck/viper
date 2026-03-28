@@ -22,8 +22,7 @@
 using il::vm::RunConfig;
 using il::vm::Runner;
 
-static il::core::Module makeTrivialModule()
-{
+static il::core::Module makeTrivialModule() {
     using namespace il::core;
     Module m;
     il::build::IRBuilder b(m);
@@ -49,8 +48,7 @@ static il::core::Module makeTrivialModule()
     return m;
 }
 
-int main()
-{
+int main() {
     // Case 1: Default config -> runs to completion.
     {
         auto module = makeTrivialModule();
@@ -65,8 +63,7 @@ int main()
         RunConfig cfg{};
         cfg.interruptEveryN = 1;
         int calls = 0;
-        cfg.pollCallback = [&calls](il::vm::VM &)
-        {
+        cfg.pollCallback = [&calls](il::vm::VM &) {
             std::cerr << "poll #" << (calls + 1) << "\n";
             ++calls;
             return false; // request pause

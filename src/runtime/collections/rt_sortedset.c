@@ -41,8 +41,7 @@
 extern void rt_trap(const char *msg);
 
 /// Internal structure for SortedSet.
-struct rt_sortedset_impl
-{
+struct rt_sortedset_impl {
     rt_string *data; // Sorted array of strings
     int64_t len;     // Number of elements
     int64_t cap;     // Capacity
@@ -55,16 +54,14 @@ typedef struct rt_sortedset_impl *rt_sortedset;
 //=============================================================================
 
 /// Copy an rt_string by creating a new string from its bytes.
-static rt_string copy_string(rt_string s)
-{
+static rt_string copy_string(rt_string s) {
     if (!s)
         return rt_const_cstr("");
     const char *cstr = rt_string_cstr(s);
     return rt_string_from_bytes(cstr, strlen(cstr));
 }
 
-static int compare_strings(rt_string a, rt_string b)
-{
+static int compare_strings(rt_string a, rt_string b) {
     const char *sa = a ? rt_string_cstr(a) : "";
     const char *sb = b ? rt_string_cstr(b) : "";
     return strcmp(sa, sb);
@@ -72,10 +69,8 @@ static int compare_strings(rt_string a, rt_string b)
 
 /// Binary search for insertion point or element.
 /// Returns index where element is or should be inserted.
-static int64_t binary_search(rt_sortedset set, rt_string str, int8_t *found)
-{
-    if (!set || set->len == 0)
-    {
+static int64_t binary_search(rt_sortedset set, rt_string str, int8_t *found) {
+    if (!set || set->len == 0) {
         if (found)
             *found = 0;
         return 0;
@@ -84,23 +79,17 @@ static int64_t binary_search(rt_sortedset set, rt_string str, int8_t *found)
     int64_t lo = 0;
     int64_t hi = set->len - 1;
 
-    while (lo <= hi)
-    {
+    while (lo <= hi) {
         int64_t mid = lo + (hi - lo) / 2;
         int cmp = compare_strings(str, set->data[mid]);
 
-        if (cmp == 0)
-        {
+        if (cmp == 0) {
             if (found)
                 *found = 1;
             return mid;
-        }
-        else if (cmp < 0)
-        {
+        } else if (cmp < 0) {
             hi = mid - 1;
-        }
-        else
-        {
+        } else {
             lo = mid + 1;
         }
     }
@@ -110,14 +99,12 @@ static int64_t binary_search(rt_sortedset set, rt_string str, int8_t *found)
     return lo;
 }
 
-static void ensure_capacity(rt_sortedset set, int64_t needed)
-{
+static void ensure_capacity(rt_sortedset set, int64_t needed) {
     if (set->cap >= needed)
         return;
 
     int64_t new_cap = set->cap == 0 ? 8 : set->cap * 2;
-    while (new_cap < needed)
-    {
+    while (new_cap < needed) {
         if (new_cap > INT64_MAX / 2)
             rt_trap("SortedSet: capacity overflow");
         new_cap *= 2;
@@ -134,8 +121,7 @@ static void ensure_capacity(rt_sortedset set, int64_t needed)
 // Creation and Lifecycle
 //=============================================================================
 
-static void sortedset_finalizer(void *obj)
-{
+static void sortedset_finalizer(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
         return;
@@ -147,8 +133,7 @@ static void sortedset_finalizer(void *obj)
     set->cap = 0;
 }
 
-void *rt_sortedset_new(void)
-{
+void *rt_sortedset_new(void) {
     rt_sortedset set = (rt_sortedset)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_sortedset_impl));
     if (set)
         rt_obj_set_finalizer(set, sortedset_finalizer);
@@ -158,8 +143,7 @@ void *rt_sortedset_new(void)
 /// @brief Perform sortedset len operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_sortedset_len(void *obj)
-{
+int64_t rt_sortedset_len(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     return set ? set->len : 0;
 }
@@ -167,8 +151,7 @@ int64_t rt_sortedset_len(void *obj)
 /// @brief Perform sortedset is empty operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_sortedset_is_empty(void *obj)
-{
+int8_t rt_sortedset_is_empty(void *obj) {
     return rt_sortedset_len(obj) == 0 ? 1 : 0;
 }
 
@@ -180,8 +163,7 @@ int8_t rt_sortedset_is_empty(void *obj)
 /// @param obj
 /// @param str
 /// @return Result value.
-int8_t rt_sortedset_add(void *obj, rt_string str)
-{
+int8_t rt_sortedset_add(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
         return 0;
@@ -195,8 +177,7 @@ int8_t rt_sortedset_add(void *obj, rt_string str)
     ensure_capacity(set, set->len + 1);
 
     // Shift elements to make room
-    for (int64_t i = set->len; i > idx; i--)
-    {
+    for (int64_t i = set->len; i > idx; i--) {
         set->data[i] = set->data[i - 1];
     }
 
@@ -210,8 +191,7 @@ int8_t rt_sortedset_add(void *obj, rt_string str)
 /// @param obj
 /// @param str
 /// @return Result value.
-int8_t rt_sortedset_remove(void *obj, rt_string str)
-{
+int8_t rt_sortedset_remove(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
         return 0;
@@ -226,8 +206,7 @@ int8_t rt_sortedset_remove(void *obj, rt_string str)
     rt_str_release_maybe(set->data[idx]);
 
     // Shift elements down
-    for (int64_t i = idx; i < set->len - 1; i++)
-    {
+    for (int64_t i = idx; i < set->len - 1; i++) {
         set->data[i] = set->data[i + 1];
     }
 
@@ -239,8 +218,7 @@ int8_t rt_sortedset_remove(void *obj, rt_string str)
 /// @param obj
 /// @param str
 /// @return Result value.
-int8_t rt_sortedset_has(void *obj, rt_string str)
-{
+int8_t rt_sortedset_has(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
         return 0;
@@ -252,14 +230,12 @@ int8_t rt_sortedset_has(void *obj, rt_string str)
 
 /// @brief Perform sortedset clear operation.
 /// @param obj
-void rt_sortedset_clear(void *obj)
-{
+void rt_sortedset_clear(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
         return;
 
-    for (int64_t i = 0; i < set->len; i++)
-    {
+    for (int64_t i = 0; i < set->len; i++) {
         rt_str_release_maybe(set->data[i]);
     }
     set->len = 0;
@@ -272,8 +248,7 @@ void rt_sortedset_clear(void *obj)
 /// @brief Perform sortedset first operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_sortedset_first(void *obj)
-{
+rt_string rt_sortedset_first(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
         return rt_const_cstr("");
@@ -283,8 +258,7 @@ rt_string rt_sortedset_first(void *obj)
 /// @brief Perform sortedset last operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_sortedset_last(void *obj)
-{
+rt_string rt_sortedset_last(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
         return rt_const_cstr("");
@@ -295,8 +269,7 @@ rt_string rt_sortedset_last(void *obj)
 /// @param obj
 /// @param str
 /// @return Result value.
-rt_string rt_sortedset_floor(void *obj, rt_string str)
-{
+rt_string rt_sortedset_floor(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
         return rt_const_cstr("");
@@ -315,8 +288,7 @@ rt_string rt_sortedset_floor(void *obj, rt_string str)
 /// @param obj
 /// @param str
 /// @return Result value.
-rt_string rt_sortedset_ceil(void *obj, rt_string str)
-{
+rt_string rt_sortedset_ceil(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
         return rt_const_cstr("");
@@ -335,8 +307,7 @@ rt_string rt_sortedset_ceil(void *obj, rt_string str)
 /// @param obj
 /// @param str
 /// @return Result value.
-rt_string rt_sortedset_lower(void *obj, rt_string str)
-{
+rt_string rt_sortedset_lower(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
         return rt_const_cstr("");
@@ -359,8 +330,7 @@ rt_string rt_sortedset_lower(void *obj, rt_string str)
 /// @param obj
 /// @param str
 /// @return Result value.
-rt_string rt_sortedset_higher(void *obj, rt_string str)
-{
+rt_string rt_sortedset_higher(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || set->len == 0)
         return rt_const_cstr("");
@@ -381,8 +351,7 @@ rt_string rt_sortedset_higher(void *obj, rt_string str)
 /// @param obj
 /// @param index
 /// @return Result value.
-rt_string rt_sortedset_at(void *obj, int64_t index)
-{
+rt_string rt_sortedset_at(void *obj, int64_t index) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set || index < 0 || index >= set->len)
         return rt_const_cstr("");
@@ -393,8 +362,7 @@ rt_string rt_sortedset_at(void *obj, int64_t index)
 /// @param obj
 /// @param str
 /// @return Result value.
-int64_t rt_sortedset_index_of(void *obj, rt_string str)
-{
+int64_t rt_sortedset_index_of(void *obj, rt_string str) {
     rt_sortedset set = (rt_sortedset)obj;
     if (!set)
         return -1;
@@ -408,8 +376,7 @@ int64_t rt_sortedset_index_of(void *obj, rt_string str)
 // Range Operations
 //=============================================================================
 
-void *rt_sortedset_range(void *obj, rt_string from, rt_string to)
-{
+void *rt_sortedset_range(void *obj, rt_string from, rt_string to) {
     rt_sortedset set = (rt_sortedset)obj;
     void *seq = rt_seq_new();
     if (!set)
@@ -418,8 +385,7 @@ void *rt_sortedset_range(void *obj, rt_string from, rt_string to)
     int8_t found;
     int64_t start = binary_search(set, from, &found);
 
-    for (int64_t i = start; i < set->len; i++)
-    {
+    for (int64_t i = start; i < set->len; i++) {
         if (compare_strings(set->data[i], to) >= 0)
             break;
         rt_seq_push(seq, set->data[i]);
@@ -428,47 +394,41 @@ void *rt_sortedset_range(void *obj, rt_string from, rt_string to)
     return seq;
 }
 
-void *rt_sortedset_items(void *obj)
-{
+void *rt_sortedset_items(void *obj) {
     rt_sortedset set = (rt_sortedset)obj;
     void *seq = rt_seq_new();
     if (!set)
         return seq;
 
-    for (int64_t i = 0; i < set->len; i++)
-    {
+    for (int64_t i = 0; i < set->len; i++) {
         rt_seq_push(seq, set->data[i]);
     }
 
     return seq;
 }
 
-void *rt_sortedset_take(void *obj, int64_t n)
-{
+void *rt_sortedset_take(void *obj, int64_t n) {
     rt_sortedset set = (rt_sortedset)obj;
     void *seq = rt_seq_new();
     if (!set || n <= 0)
         return seq;
 
     int64_t count = n < set->len ? n : set->len;
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         rt_seq_push(seq, set->data[i]);
     }
 
     return seq;
 }
 
-void *rt_sortedset_skip(void *obj, int64_t n)
-{
+void *rt_sortedset_skip(void *obj, int64_t n) {
     rt_sortedset set = (rt_sortedset)obj;
     void *seq = rt_seq_new();
     if (!set || n >= set->len)
         return seq;
 
     int64_t start = n < 0 ? 0 : n;
-    for (int64_t i = start; i < set->len; i++)
-    {
+    for (int64_t i = start; i < set->len; i++) {
         rt_seq_push(seq, set->data[i]);
     }
 
@@ -479,24 +439,19 @@ void *rt_sortedset_skip(void *obj, int64_t n)
 // Set Operations
 //=============================================================================
 
-void *rt_sortedset_union(void *obj, void *other)
-{
+void *rt_sortedset_union(void *obj, void *other) {
     void *result = rt_sortedset_new();
     rt_sortedset a = (rt_sortedset)obj;
     rt_sortedset b = (rt_sortedset)other;
 
-    if (a)
-    {
-        for (int64_t i = 0; i < a->len; i++)
-        {
+    if (a) {
+        for (int64_t i = 0; i < a->len; i++) {
             rt_sortedset_add(result, a->data[i]);
         }
     }
 
-    if (b)
-    {
-        for (int64_t i = 0; i < b->len; i++)
-        {
+    if (b) {
+        for (int64_t i = 0; i < b->len; i++) {
             rt_sortedset_add(result, b->data[i]);
         }
     }
@@ -504,8 +459,7 @@ void *rt_sortedset_union(void *obj, void *other)
     return result;
 }
 
-void *rt_sortedset_intersect(void *obj, void *other)
-{
+void *rt_sortedset_intersect(void *obj, void *other) {
     void *result = rt_sortedset_new();
     rt_sortedset a = (rt_sortedset)obj;
     rt_sortedset b = (rt_sortedset)other;
@@ -515,21 +469,15 @@ void *rt_sortedset_intersect(void *obj, void *other)
 
     // Use merge-style intersection for sorted sets
     int64_t i = 0, j = 0;
-    while (i < a->len && j < b->len)
-    {
+    while (i < a->len && j < b->len) {
         int cmp = compare_strings(a->data[i], b->data[j]);
-        if (cmp == 0)
-        {
+        if (cmp == 0) {
             rt_sortedset_add(result, a->data[i]);
             i++;
             j++;
-        }
-        else if (cmp < 0)
-        {
+        } else if (cmp < 0) {
             i++;
-        }
-        else
-        {
+        } else {
             j++;
         }
     }
@@ -537,19 +485,16 @@ void *rt_sortedset_intersect(void *obj, void *other)
     return result;
 }
 
-void *rt_sortedset_diff(void *obj, void *other)
-{
+void *rt_sortedset_diff(void *obj, void *other) {
     void *result = rt_sortedset_new();
     rt_sortedset a = (rt_sortedset)obj;
     rt_sortedset b = (rt_sortedset)other;
 
     if (!a)
         return result;
-    if (!b)
-    {
+    if (!b) {
         // All elements in a
-        for (int64_t i = 0; i < a->len; i++)
-        {
+        for (int64_t i = 0; i < a->len; i++) {
             rt_sortedset_add(result, a->data[i]);
         }
         return result;
@@ -557,27 +502,18 @@ void *rt_sortedset_diff(void *obj, void *other)
 
     // Use merge-style difference for sorted sets
     int64_t i = 0, j = 0;
-    while (i < a->len)
-    {
-        if (j >= b->len)
-        {
+    while (i < a->len) {
+        if (j >= b->len) {
             rt_sortedset_add(result, a->data[i]);
             i++;
-        }
-        else
-        {
+        } else {
             int cmp = compare_strings(a->data[i], b->data[j]);
-            if (cmp < 0)
-            {
+            if (cmp < 0) {
                 rt_sortedset_add(result, a->data[i]);
                 i++;
-            }
-            else if (cmp > 0)
-            {
+            } else if (cmp > 0) {
                 j++;
-            }
-            else
-            {
+            } else {
                 i++;
                 j++;
             }
@@ -591,8 +527,7 @@ void *rt_sortedset_diff(void *obj, void *other)
 /// @param obj
 /// @param other
 /// @return Result value.
-int8_t rt_sortedset_is_subset(void *obj, void *other)
-{
+int8_t rt_sortedset_is_subset(void *obj, void *other) {
     rt_sortedset a = (rt_sortedset)obj;
     rt_sortedset b = (rt_sortedset)other;
 
@@ -603,15 +538,12 @@ int8_t rt_sortedset_is_subset(void *obj, void *other)
 
     // Check all elements of a are in b
     int64_t j = 0;
-    for (int64_t i = 0; i < a->len; i++)
-    {
+    for (int64_t i = 0; i < a->len; i++) {
         // Find a->data[i] in b
-        while (j < b->len && compare_strings(b->data[j], a->data[i]) < 0)
-        {
+        while (j < b->len && compare_strings(b->data[j], a->data[i]) < 0) {
             j++;
         }
-        if (j >= b->len || compare_strings(b->data[j], a->data[i]) != 0)
-        {
+        if (j >= b->len || compare_strings(b->data[j], a->data[i]) != 0) {
             return 0; // Not found
         }
     }

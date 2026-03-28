@@ -36,8 +36,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 
 //=============================================================================
 // HSplitter Implementation
@@ -51,8 +50,7 @@ namespace viper::tui::widgets
 HSplitter::HSplitter(std::unique_ptr<ui::Widget> left,
                      std::unique_ptr<ui::Widget> right,
                      float ratio)
-    : first_(std::move(left)), second_(std::move(right))
-{
+    : first_(std::move(left)), second_(std::move(right)) {
     ratio_ = ratio;
 }
 
@@ -62,8 +60,7 @@ HSplitter::HSplitter(std::unique_ptr<ui::Widget> left,
 ///          rectangles before forwarding the layout call to each present child.
 ///          Using the parent's rectangle ensures resize events keep the layout
 ///          consistent with the geometry used for painting.
-void HSplitter::layout(const ui::Rect &r)
-{
+void HSplitter::layout(const ui::Rect &r) {
     Widget::layout(r);
     int leftW = static_cast<int>(static_cast<float>(r.w) * ratio_);
     leftW = std::clamp(leftW, 0, r.w);
@@ -83,20 +80,17 @@ void HSplitter::layout(const ui::Rect &r)
 ///          child handling continue to work as normal.
 /// @param ev Key event describing the user input.
 /// @return True when the ratio changed and a relayout occurred.
-bool HSplitter::onKeyEvent(const viper::tui::term::KeyEvent &ev)
-{
+bool HSplitter::onKeyEvent(const viper::tui::term::KeyEvent &ev) {
     using viper::tui::term::KeyEvent;
     if ((ev.mods & KeyEvent::Ctrl) == 0)
         return false;
 
     bool changed = false;
-    if (ev.code == KeyEvent::Code::Left)
-    {
+    if (ev.code == KeyEvent::Code::Left) {
         ratio_ = detail::clampRatio(ratio_ - 0.05F);
         changed = true;
     }
-    if (ev.code == KeyEvent::Code::Right)
-    {
+    if (ev.code == KeyEvent::Code::Right) {
         ratio_ = detail::clampRatio(ratio_ + 0.05F);
         changed = true;
     }
@@ -118,8 +112,7 @@ bool HSplitter::onKeyEvent(const viper::tui::term::KeyEvent &ev)
 VSplitter::VSplitter(std::unique_ptr<ui::Widget> top,
                      std::unique_ptr<ui::Widget> bottom,
                      float ratio)
-    : first_(std::move(top)), second_(std::move(bottom))
-{
+    : first_(std::move(top)), second_(std::move(bottom)) {
     ratio_ = ratio;
 }
 
@@ -127,8 +120,7 @@ VSplitter::VSplitter(std::unique_ptr<ui::Widget> top,
 /// @details Calculates the pixel height for the top child from the ratio,
 ///          clamps it within bounds, and assigns the remainder to the bottom
 ///          child before invoking their respective @ref layout() methods.
-void VSplitter::layout(const ui::Rect &r)
-{
+void VSplitter::layout(const ui::Rect &r) {
     Widget::layout(r);
     int topH = static_cast<int>(static_cast<float>(r.h) * ratio_);
     topH = std::clamp(topH, 0, r.h);
@@ -147,20 +139,17 @@ void VSplitter::layout(const ui::Rect &r)
 ///          painting reflects the new heights immediately.
 /// @param ev Key event describing the user input.
 /// @return True when the ratio changed and children were relaid out.
-bool VSplitter::onKeyEvent(const viper::tui::term::KeyEvent &ev)
-{
+bool VSplitter::onKeyEvent(const viper::tui::term::KeyEvent &ev) {
     using viper::tui::term::KeyEvent;
     if ((ev.mods & KeyEvent::Ctrl) == 0)
         return false;
 
     bool changed = false;
-    if (ev.code == KeyEvent::Code::Up)
-    {
+    if (ev.code == KeyEvent::Code::Up) {
         ratio_ = detail::clampRatio(ratio_ - 0.05F);
         changed = true;
     }
-    if (ev.code == KeyEvent::Code::Down)
-    {
+    if (ev.code == KeyEvent::Code::Down) {
         ratio_ = detail::clampRatio(ratio_ + 0.05F);
         changed = true;
     }

@@ -31,14 +31,11 @@
 #include <limits>
 #include <sstream>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
-namespace
-{
+namespace {
 
-int compareLoc(const SourceLoc &a, const SourceLoc &b)
-{
+int compareLoc(const SourceLoc &a, const SourceLoc &b) {
     if (a.file_id != b.file_id)
         return (a.file_id < b.file_id) ? -1 : 1;
     if (a.line != b.line)
@@ -48,12 +45,10 @@ int compareLoc(const SourceLoc &a, const SourceLoc &b)
     return 0;
 }
 
-std::string sanitizeForSymbol(std::string_view input)
-{
+std::string sanitizeForSymbol(std::string_view input) {
     std::string out;
     out.reserve(input.size());
-    for (char ch : input)
-    {
+    for (char ch : input) {
         unsigned char uch = static_cast<unsigned char>(ch);
         if (std::isalnum(uch) || ch == '_' || ch == '.')
             out.push_back(ch);
@@ -63,12 +58,10 @@ std::string sanitizeForSymbol(std::string_view input)
     return out;
 }
 
-std::string joinTypeKeys(const std::vector<TypeRef> &types)
-{
+std::string joinTypeKeys(const std::vector<TypeRef> &types) {
     std::string result;
     bool first = true;
-    for (const auto &type : types)
-    {
+    for (const auto &type : types) {
         if (!first)
             result += "__";
         first = false;
@@ -79,11 +72,9 @@ std::string joinTypeKeys(const std::vector<TypeRef> &types)
     return result;
 }
 
-size_t requiredParamCount(const std::vector<Param> &params)
-{
+size_t requiredParamCount(const std::vector<Param> &params) {
     size_t required = 0;
-    for (const auto &param : params)
-    {
+    for (const auto &param : params) {
         if (param.defaultValue)
             break;
         ++required;
@@ -91,14 +82,12 @@ size_t requiredParamCount(const std::vector<Param> &params)
     return required;
 }
 
-int conversionCost(TypeRef paramType, TypeRef argType)
-{
+int conversionCost(TypeRef paramType, TypeRef argType) {
     if (!paramType || !argType)
         return 1000;
     if (paramType->equals(*argType))
         return 0;
-    if (paramType->kind == TypeKindSem::Optional)
-    {
+    if (paramType->kind == TypeKindSem::Optional) {
         if (argType->kind == TypeKindSem::Unit)
             return 1;
         if (argType->kind == TypeKindSem::Optional)
@@ -129,16 +118,14 @@ int conversionCost(TypeRef paramType, TypeRef argType)
 /// @brief Define a symbol in the current scope.
 /// @param name The symbol name to register.
 /// @param symbol The symbol metadata to associate with the name.
-void Scope::define(const std::string &name, Symbol symbol)
-{
+void Scope::define(const std::string &name, Symbol symbol) {
     symbols_[name] = std::move(symbol);
 }
 
 /// @brief Look up a symbol by name, walking parent scopes.
 /// @param name The symbol name to search for.
 /// @return Pointer to the symbol if found, nullptr otherwise.
-Symbol *Scope::lookup(const std::string &name)
-{
+Symbol *Scope::lookup(const std::string &name) {
     auto it = symbols_.find(name);
     if (it != symbols_.end())
         return &it->second;
@@ -150,8 +137,7 @@ Symbol *Scope::lookup(const std::string &name)
 /// @brief Look up a symbol only in the current scope (no parent walk).
 /// @param name The symbol name to search for.
 /// @return Pointer to the symbol if found in this scope, nullptr otherwise.
-Symbol *Scope::lookupLocal(const std::string &name)
-{
+Symbol *Scope::lookupLocal(const std::string &name) {
     auto it = symbols_.find(name);
     return it != symbols_.end() ? &it->second : nullptr;
 }
@@ -160,8 +146,7 @@ Symbol *Scope::lookupLocal(const std::string &name)
 // Sema Implementation
 //=============================================================================
 
-Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag)
-{
+Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag) {
     scopes_.push_back(std::make_unique<Scope>(nullptr, nextScopeId_, 0));
     currentScope_ = scopes_.back().get();
     scopeSnapshots_[nextScopeId_] = ScopeSnapshot{nextScopeId_, 0, 0, {}, {}};
@@ -170,8 +155,7 @@ Sema::Sema(il::support::DiagnosticEngine &diag) : diag_(diag)
     registerBuiltins();
 }
 
-TypeRef Sema::functionTypeForDecl(const FunctionDecl &decl) const
-{
+TypeRef Sema::functionTypeForDecl(const FunctionDecl &decl) const {
     TypeRef returnType =
         decl.isAsync ? types::runtimeClass("Viper.Threads.Future")
                      : (decl.returnType ? resolveType(decl.returnType.get()) : types::voidType());
@@ -182,8 +166,7 @@ TypeRef Sema::functionTypeForDecl(const FunctionDecl &decl) const
     return types::function(paramTypes, returnType);
 }
 
-TypeRef Sema::methodTypeForDecl(const MethodDecl &decl) const
-{
+TypeRef Sema::methodTypeForDecl(const MethodDecl &decl) const {
     TypeRef returnType = decl.returnType ? resolveType(decl.returnType.get()) : types::voidType();
     std::vector<TypeRef> paramTypes;
     paramTypes.reserve(decl.params.size());
@@ -192,48 +175,40 @@ TypeRef Sema::methodTypeForDecl(const MethodDecl &decl) const
     return types::function(paramTypes, returnType);
 }
 
-std::string Sema::functionSignatureKey(const FunctionDecl &decl) const
-{
+std::string Sema::functionSignatureKey(const FunctionDecl &decl) const {
     TypeRef funcType = functionTypeForDecl(decl);
     return decl.name + "#" + joinTypeKeys(funcType->paramTypes());
 }
 
-std::string Sema::methodSignatureKey(const MethodDecl &decl) const
-{
+std::string Sema::methodSignatureKey(const MethodDecl &decl) const {
     TypeRef methodType = methodTypeForDecl(decl);
     return methodSignatureKey(decl, methodType);
 }
 
-std::string Sema::methodSignatureKey(const MethodDecl &decl, TypeRef methodType) const
-{
+std::string Sema::methodSignatureKey(const MethodDecl &decl, TypeRef methodType) const {
     const auto paramTypes = methodType && methodType->kind == TypeKindSem::Function
                                 ? methodType->paramTypes()
                                 : std::vector<TypeRef>{};
     return decl.name + "#" + (decl.isStatic ? "static#" : "inst#") + joinTypeKeys(paramTypes);
 }
 
-std::string Sema::methodDispatchKey(const MethodDecl &decl) const
-{
+std::string Sema::methodDispatchKey(const MethodDecl &decl) const {
     TypeRef methodType = methodTypeForDecl(decl);
     return methodDispatchKey(decl, methodType);
 }
 
-std::string Sema::methodDispatchKey(const MethodDecl &decl, TypeRef methodType) const
-{
+std::string Sema::methodDispatchKey(const MethodDecl &decl, TypeRef methodType) const {
     return methodSignatureKey(decl, methodType);
 }
 
 bool Sema::registerFunctionOverload(const std::string &name,
                                     FunctionDecl *decl,
                                     TypeRef funcType,
-                                    SourceLoc loc)
-{
+                                    SourceLoc loc) {
     auto &family = functionOverloads_[name];
     const std::string sigKey = functionSignatureKey(*decl);
-    for (auto *existing : family)
-    {
-        if (functionSignatureKey(*existing) == sigKey)
-        {
+    for (auto *existing : family) {
+        if (functionSignatureKey(*existing) == sigKey) {
             error(loc, "Duplicate definition of '" + name + "' with the same signature");
             return false;
         }
@@ -243,18 +218,13 @@ bool Sema::registerFunctionOverload(const std::string &name,
     functionDeclTypes_[decl] = funcType;
 
     const bool overloaded = family.size() > 1;
-    if (name == "start")
-    {
+    if (name == "start") {
         loweredFunctionNames_[decl] = "main";
-    }
-    else if (overloaded)
-    {
+    } else if (overloaded) {
         loweredFunctionNames_[decl] = name + "__ov__" +
                                       std::to_string(funcType->paramTypes().size()) + "__" +
                                       joinTypeKeys(funcType->paramTypes());
-    }
-    else
-    {
+    } else {
         loweredFunctionNames_[decl] = name;
     }
     functionDecls_[loweredFunctionNames_[decl]] = decl;
@@ -266,16 +236,13 @@ bool Sema::registerFunctionOverload(const std::string &name,
 bool Sema::registerMethodOverload(const std::string &ownerType,
                                   MethodDecl *decl,
                                   TypeRef methodType,
-                                  SourceLoc loc)
-{
+                                  SourceLoc loc) {
     const std::string familyKey = ownerType + "." + decl->name;
     auto &family = methodOverloads_[familyKey];
     const MethodInstanceKey instanceKey{ownerType, decl};
     const std::string sigKey = methodSignatureKey(*decl, methodType);
-    for (auto *existing : family)
-    {
-        if (methodSignatureKey(ownerType, existing) == sigKey)
-        {
+    for (auto *existing : family) {
+        if (methodSignatureKey(ownerType, existing) == sigKey) {
             error(loc,
                   "Duplicate definition of '" + decl->name + "' in type '" + ownerType +
                       "' with the same signature");
@@ -292,14 +259,11 @@ bool Sema::registerMethodOverload(const std::string &ownerType,
     methodSignatureKeys_.try_emplace(decl, sigKey);
     methodDispatchKeys_.try_emplace(decl, methodDispatchKey(*decl, methodType));
 
-    if (family.size() > 1)
-    {
+    if (family.size() > 1) {
         ownerLoweredMethodNames_[instanceKey] = ownerType + "." + decl->name + "__ov__" +
                                                 std::to_string(methodType->paramTypes().size()) +
                                                 "__" + joinTypeKeys(methodType->paramTypes());
-    }
-    else
-    {
+    } else {
         ownerLoweredMethodNames_[instanceKey] = ownerType + "." + decl->name;
     }
     loweredMethodNames_.try_emplace(decl, ownerLoweredMethodNames_[instanceKey]);
@@ -308,18 +272,15 @@ bool Sema::registerMethodOverload(const std::string &ownerType,
 
 std::vector<MethodDecl *> Sema::collectMethodOverloads(const std::string &typeName,
                                                        const std::string &methodName,
-                                                       bool includeInherited) const
-{
+                                                       bool includeInherited) const {
     std::vector<MethodDecl *> result;
     std::unordered_set<std::string> seenSignatures;
 
-    auto addFamily = [&](const std::string &owner)
-    {
+    auto addFamily = [&](const std::string &owner) {
         auto it = methodOverloads_.find(owner + "." + methodName);
         if (it == methodOverloads_.end())
             return;
-        for (auto *method : it->second)
-        {
+        for (auto *method : it->second) {
             std::string sigKey = methodSignatureKey(owner, method);
             if (sigKey.empty())
                 sigKey = methodSignatureKey(*method);
@@ -333,8 +294,7 @@ std::vector<MethodDecl *> Sema::collectMethodOverloads(const std::string &typeNa
         return result;
 
     auto entityIt = lookupEntityDeclForType(typeName);
-    while (entityIt && !entityIt->baseClass.empty())
-    {
+    while (entityIt && !entityIt->baseClass.empty()) {
         const std::string &parentName = entityIt->baseClass;
         addFamily(parentName);
         entityIt = lookupEntityDeclForType(parentName);
@@ -346,8 +306,7 @@ std::vector<MethodDecl *> Sema::collectMethodOverloads(const std::string &typeNa
 FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
                                             const std::vector<TypeRef> &argTypes,
                                             SourceLoc loc,
-                                            std::string *loweredName)
-{
+                                            std::string *loweredName) {
     auto it = functionOverloads_.find(name);
     if (it == functionOverloads_.end())
         return nullptr;
@@ -357,8 +316,7 @@ FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
     bool ambiguous = false;
     std::vector<std::string> candidateSigs;
 
-    for (auto *decl : it->second)
-    {
+    for (auto *decl : it->second) {
         TypeRef funcType = functionDeclTypes_[decl];
         const auto &params = decl->params;
         const size_t required = requiredParamCount(params);
@@ -368,11 +326,9 @@ FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
 
         int score = 0;
         bool viable = true;
-        for (size_t i = 0; i < argTypes.size(); ++i)
-        {
+        for (size_t i = 0; i < argTypes.size(); ++i) {
             int cost = conversionCost(funcType->paramTypes()[i], argTypes[i]);
-            if (cost >= 1000)
-            {
+            if (cost >= 1000) {
                 viable = false;
                 break;
             }
@@ -383,22 +339,18 @@ FunctionDecl *Sema::resolveFunctionOverload(const std::string &name,
         score += static_cast<int>(total - argTypes.size()) * 3;
         candidateSigs.push_back(loweredFunctionNames_[decl]);
 
-        if (score < bestScore)
-        {
+        if (score < bestScore) {
             best = decl;
             bestScore = score;
             ambiguous = false;
-        }
-        else if (score == bestScore)
-        {
+        } else if (score == bestScore) {
             ambiguous = true;
         }
     }
 
     if (!best)
         return nullptr;
-    if (ambiguous)
-    {
+    if (ambiguous) {
         error(loc, "Ambiguous call to '" + name + "': " + formatOverloadCandidates(candidateSigs));
         return nullptr;
     }
@@ -412,8 +364,7 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
                                         const std::vector<TypeRef> &argTypes,
                                         SourceLoc loc,
                                         std::string *resolvedOwnerType,
-                                        bool includeInherited)
-{
+                                        bool includeInherited) {
     MethodDecl *best = nullptr;
     std::string bestOwner;
     int bestScore = std::numeric_limits<int>::max();
@@ -421,13 +372,11 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
     std::vector<std::string> candidates;
     std::unordered_set<std::string> seenSignatures;
 
-    auto considerOwner = [&](const std::string &candidateOwner)
-    {
+    auto considerOwner = [&](const std::string &candidateOwner) {
         auto it = methodOverloads_.find(candidateOwner + "." + methodName);
         if (it == methodOverloads_.end())
             return;
-        for (auto *decl : it->second)
-        {
+        for (auto *decl : it->second) {
             std::string sigKey = methodSignatureKey(candidateOwner, decl);
             if (sigKey.empty())
                 sigKey = methodSignatureKey(*decl);
@@ -443,11 +392,9 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
                 continue;
             int score = 0;
             bool viable = true;
-            for (size_t i = 0; i < argTypes.size(); ++i)
-            {
+            for (size_t i = 0; i < argTypes.size(); ++i) {
                 int cost = conversionCost(methodType->paramTypes()[i], argTypes[i]);
-                if (cost >= 1000)
-                {
+                if (cost >= 1000) {
                     viable = false;
                     break;
                 }
@@ -458,26 +405,21 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
             score += static_cast<int>(total - argTypes.size()) * 3;
             std::string lowered = loweredMethodName(candidateOwner, decl);
             candidates.push_back(lowered.empty() ? (candidateOwner + "." + decl->name) : lowered);
-            if (score < bestScore)
-            {
+            if (score < bestScore) {
                 best = decl;
                 bestOwner = candidateOwner;
                 bestScore = score;
                 ambiguous = false;
-            }
-            else if (score == bestScore)
-            {
+            } else if (score == bestScore) {
                 ambiguous = true;
             }
         }
     };
 
     considerOwner(ownerType);
-    if (includeInherited)
-    {
+    if (includeInherited) {
         auto entityIt = lookupEntityDeclForType(ownerType);
-        while (entityIt && !entityIt->baseClass.empty())
-        {
+        while (entityIt && !entityIt->baseClass.empty()) {
             considerOwner(entityIt->baseClass);
             entityIt = lookupEntityDeclForType(entityIt->baseClass);
         }
@@ -485,8 +427,7 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
 
     if (!best)
         return nullptr;
-    if (ambiguous)
-    {
+    if (ambiguous) {
         error(loc,
               "Ambiguous call to method '" + methodName +
                   "': " + formatOverloadCandidates(candidates));
@@ -498,20 +439,16 @@ MethodDecl *Sema::resolveMethodOverload(const std::string &ownerType,
 }
 
 MethodDecl *Sema::findInheritedExactMethod(const std::string &ownerType,
-                                           const MethodDecl &decl) const
-{
+                                           const MethodDecl &decl) const {
     auto entityIt = lookupEntityDeclForType(ownerType);
     if (!entityIt)
         return nullptr;
     const std::string wanted = methodSignatureKey(ownerType, &decl);
     std::string parentName = entityIt->baseClass;
-    while (!parentName.empty())
-    {
+    while (!parentName.empty()) {
         auto famIt = methodOverloads_.find(parentName + "." + decl.name);
-        if (famIt != methodOverloads_.end())
-        {
-            for (auto *candidate : famIt->second)
-            {
+        if (famIt != methodOverloads_.end()) {
+            for (auto *candidate : famIt->second) {
                 std::string candidateKey = methodSignatureKey(parentName, candidate);
                 if (candidateKey.empty())
                     candidateKey = methodSignatureKey(*candidate);
@@ -527,43 +464,36 @@ MethodDecl *Sema::findInheritedExactMethod(const std::string &ownerType,
     return nullptr;
 }
 
-EntityDecl *Sema::lookupEntityDeclForType(const std::string &typeName) const
-{
+EntityDecl *Sema::lookupEntityDeclForType(const std::string &typeName) const {
     auto it = entityDecls_.find(typeName);
     if (it != entityDecls_.end())
         return it->second;
-    if (Decl *genericDecl = getGenericDeclForInstantiation(typeName))
-    {
+    if (Decl *genericDecl = getGenericDeclForInstantiation(typeName)) {
         if (genericDecl->kind == DeclKind::Entity)
             return static_cast<EntityDecl *>(genericDecl);
     }
     return nullptr;
 }
 
-ValueDecl *Sema::lookupValueDeclForType(const std::string &typeName) const
-{
+ValueDecl *Sema::lookupValueDeclForType(const std::string &typeName) const {
     auto it = valueDecls_.find(typeName);
     if (it != valueDecls_.end())
         return it->second;
-    if (Decl *genericDecl = getGenericDeclForInstantiation(typeName))
-    {
+    if (Decl *genericDecl = getGenericDeclForInstantiation(typeName)) {
         if (genericDecl->kind == DeclKind::Value)
             return static_cast<ValueDecl *>(genericDecl);
     }
     return nullptr;
 }
 
-bool Sema::hasOverloadedFunctionName(const std::string &name) const
-{
+bool Sema::hasOverloadedFunctionName(const std::string &name) const {
     auto it = functionOverloads_.find(name);
     return it != functionOverloads_.end() && it->second.size() > 1;
 }
 
-std::string Sema::formatOverloadCandidates(const std::vector<std::string> &candidates) const
-{
+std::string Sema::formatOverloadCandidates(const std::vector<std::string> &candidates) const {
     std::string result;
-    for (size_t i = 0; i < candidates.size(); ++i)
-    {
+    for (size_t i = 0; i < candidates.size(); ++i) {
         if (i != 0)
             result += ", ";
         result += candidates[i];
@@ -571,14 +501,12 @@ std::string Sema::formatOverloadCandidates(const std::vector<std::string> &candi
     return result;
 }
 
-void Sema::initWarnings(const WarningPolicy &policy)
-{
+void Sema::initWarnings(const WarningPolicy &policy) {
     warningPolicy_ = &policy;
     suppressions_.clear();
 }
 
-void Sema::addWarningSuppressions(uint32_t fileId, std::string_view source)
-{
+void Sema::addWarningSuppressions(uint32_t fileId, std::string_view source) {
     suppressions_.scan(fileId, source);
 }
 
@@ -589,34 +517,27 @@ void Sema::addWarningSuppressions(uint32_t fileId, std::string_view source)
 ///          Pass 3: Analyze declaration bodies (function bodies, method bodies, initializers).
 /// @param module The module AST to analyze.
 /// @return True if analysis succeeded without errors, false otherwise.
-bool Sema::analyze(ModuleDecl &module)
-{
+bool Sema::analyze(ModuleDecl &module) {
     currentModule_ = &module;
 
-    for (auto &bind : module.binds)
-    {
+    for (auto &bind : module.binds) {
         analyzeBind(bind);
     }
 
     // First pass: register all top-level declarations
-    for (auto &decl : module.declarations)
-    {
-        switch (decl->kind)
-        {
-            case DeclKind::Function:
-            {
+    for (auto &decl : module.declarations) {
+        switch (decl->kind) {
+            case DeclKind::Function: {
                 auto *func = static_cast<FunctionDecl *>(decl.get());
 
-                if (!func->genericParams.empty())
-                {
+                if (!func->genericParams.empty()) {
                     // Generic function: register for later instantiation
                     registerGenericFunction(func->name, func);
 
                     // Create a placeholder type with type parameters as param types
                     // The actual function type will be created when instantiated
                     std::vector<TypeRef> paramTypes;
-                    for (const auto &param : func->genericParams)
-                    {
+                    for (const auto &param : func->genericParams) {
                         paramTypes.push_back(types::typeParam(param));
                     }
                     auto placeholderType = types::function(paramTypes, types::unknown());
@@ -628,9 +549,7 @@ bool Sema::analyze(ModuleDecl &module)
                     sym.decl = func;
                     if (!currentScope_->lookupLocal(func->name))
                         defineSymbol(func->name, sym);
-                }
-                else
-                {
+                } else {
                     auto funcType = functionTypeForDecl(*func);
 
                     Symbol sym;
@@ -639,38 +558,30 @@ bool Sema::analyze(ModuleDecl &module)
                     sym.type = funcType;
                     sym.decl = func;
                     Symbol *existing = currentScope_->lookupLocal(func->name);
-                    if (!existing)
-                    {
+                    if (!existing) {
                         defineSymbol(func->name, sym);
-                    }
-                    else if (existing->kind != Symbol::Kind::Function)
-                    {
+                    } else if (existing->kind != Symbol::Kind::Function) {
                         reportDuplicateDefinition(func->name, func->loc);
                     }
                     registerFunctionOverload(func->name, func, funcType, func->loc);
                 }
                 break;
             }
-            case DeclKind::Value:
-            {
+            case DeclKind::Value: {
                 auto *value = static_cast<ValueDecl *>(decl.get());
 
                 TypeRef valueType;
-                if (!value->genericParams.empty())
-                {
+                if (!value->genericParams.empty()) {
                     // Generic type: register for later instantiation
                     registerGenericType(value->name, value);
                     // Create uninstantiated type placeholder with type parameters
                     std::vector<TypeRef> paramTypes;
-                    for (const auto &param : value->genericParams)
-                    {
+                    for (const auto &param : value->genericParams) {
                         paramTypes.push_back(types::typeParam(param));
                     }
                     valueType =
                         std::make_shared<ViperType>(TypeKindSem::Value, value->name, paramTypes);
-                }
-                else
-                {
+                } else {
                     valueType = types::value(value->name);
                 }
                 Symbol sym;
@@ -678,33 +589,27 @@ bool Sema::analyze(ModuleDecl &module)
                 sym.name = value->name;
                 sym.type = valueType;
                 sym.decl = value;
-                if (defineSymbol(value->name, sym))
-                {
+                if (defineSymbol(value->name, sym)) {
                     valueDecls_[value->name] = value;
                     typeRegistry_[value->name] = valueType;
                 }
                 break;
             }
-            case DeclKind::Entity:
-            {
+            case DeclKind::Entity: {
                 auto *entity = static_cast<EntityDecl *>(decl.get());
 
                 TypeRef entityType;
-                if (!entity->genericParams.empty())
-                {
+                if (!entity->genericParams.empty()) {
                     // Generic type: register for later instantiation
                     registerGenericType(entity->name, entity);
                     // Create uninstantiated type placeholder with type parameters
                     std::vector<TypeRef> paramTypes;
-                    for (const auto &param : entity->genericParams)
-                    {
+                    for (const auto &param : entity->genericParams) {
                         paramTypes.push_back(types::typeParam(param));
                     }
                     entityType =
                         std::make_shared<ViperType>(TypeKindSem::Entity, entity->name, paramTypes);
-                }
-                else
-                {
+                } else {
                     entityType = types::entity(entity->name);
                 }
                 Symbol sym;
@@ -712,15 +617,13 @@ bool Sema::analyze(ModuleDecl &module)
                 sym.name = entity->name;
                 sym.type = entityType;
                 sym.decl = entity;
-                if (defineSymbol(entity->name, sym))
-                {
+                if (defineSymbol(entity->name, sym)) {
                     entityDecls_[entity->name] = entity;
                     typeRegistry_[entity->name] = entityType;
                 }
                 break;
             }
-            case DeclKind::Interface:
-            {
+            case DeclKind::Interface: {
                 auto *iface = static_cast<InterfaceDecl *>(decl.get());
                 auto ifaceType = types::interface(iface->name);
 
@@ -729,15 +632,13 @@ bool Sema::analyze(ModuleDecl &module)
                 sym.name = iface->name;
                 sym.type = ifaceType;
                 sym.decl = iface;
-                if (defineSymbol(iface->name, sym))
-                {
+                if (defineSymbol(iface->name, sym)) {
                     interfaceDecls_[iface->name] = iface;
                     typeRegistry_[iface->name] = ifaceType;
                 }
                 break;
             }
-            case DeclKind::Enum:
-            {
+            case DeclKind::Enum: {
                 auto *enumDecl = static_cast<EnumDecl *>(decl.get());
                 auto enumT = types::enumType(enumDecl->name);
 
@@ -750,22 +651,16 @@ bool Sema::analyze(ModuleDecl &module)
                     typeRegistry_[enumDecl->name] = enumT;
                 break;
             }
-            case DeclKind::GlobalVar:
-            {
+            case DeclKind::GlobalVar: {
                 auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
                 // Determine the variable type
                 TypeRef varType;
-                if (gvar->type)
-                {
+                if (gvar->type) {
                     varType = resolveTypeNode(gvar->type.get());
-                }
-                else if (gvar->initializer)
-                {
+                } else if (gvar->initializer) {
                     // Type inference from initializer - defer to second pass
                     varType = types::unknown();
-                }
-                else
-                {
+                } else {
                     varType = types::unknown();
                 }
 
@@ -775,16 +670,14 @@ bool Sema::analyze(ModuleDecl &module)
                 sym.type = varType;
                 sym.isFinal = gvar->isFinal;
                 sym.decl = gvar;
-                if (defineSymbol(gvar->name, sym))
-                {
+                if (defineSymbol(gvar->name, sym)) {
                     // Global variables are always considered initialized
                     // (either explicitly or default-initialized)
                     markInitialized(gvar->name);
                 }
                 break;
             }
-            case DeclKind::Namespace:
-            {
+            case DeclKind::Namespace: {
                 // Namespaces are processed in a separate pass to handle their
                 // nested declarations properly
                 break;
@@ -795,10 +688,8 @@ bool Sema::analyze(ModuleDecl &module)
     }
 
     // Process namespace declarations (they handle their own multi-pass analysis)
-    for (auto &decl : module.declarations)
-    {
-        if (decl->kind == DeclKind::Namespace)
-        {
+    for (auto &decl : module.declarations) {
+        if (decl->kind == DeclKind::Namespace) {
             analyzeNamespaceDecl(*static_cast<NamespaceDecl *>(decl.get()));
         }
     }
@@ -822,8 +713,7 @@ bool Sema::analyze(ModuleDecl &module)
 ///          substitution if currently in a generic context.
 /// @param expr The expression to query.
 /// @return The resolved type, or unknown() if the expression has not been analyzed.
-TypeRef Sema::typeOf(const Expr *expr) const
-{
+TypeRef Sema::typeOf(const Expr *expr) const {
     auto it = exprTypes_.find(expr);
     if (it == exprTypes_.end())
         return types::unknown();
@@ -834,8 +724,7 @@ TypeRef Sema::typeOf(const Expr *expr) const
 /// @brief Resolve a type AST node to a semantic type reference.
 /// @param node The type node to resolve.
 /// @return The resolved semantic type.
-TypeRef Sema::resolveType(const TypeNode *node) const
-{
+TypeRef Sema::resolveType(const TypeNode *node) const {
     return const_cast<Sema *>(this)->resolveTypeNode(node);
 }
 
@@ -844,8 +733,7 @@ TypeRef Sema::resolveType(const TypeNode *node) const
 //=============================================================================
 
 /// @brief Push a new child scope onto the scope stack.
-void Sema::pushScope(SourceLoc startLoc)
-{
+void Sema::pushScope(SourceLoc startLoc) {
     const uint32_t scopeId = nextScopeId_++;
     const size_t depth = currentScope_ ? currentScope_->depth() + 1 : 0;
     const uint32_t parentId = currentScope_ ? currentScope_->id() : 0;
@@ -857,8 +745,7 @@ void Sema::pushScope(SourceLoc startLoc)
 /// @brief Pop the current scope, restoring its parent as the active scope.
 /// @pre There must be more than the global scope remaining.
 /// @details Checks for unused variables (W001) in the scope before popping.
-void Sema::popScope(SourceLoc endLoc)
-{
+void Sema::popScope(SourceLoc endLoc) {
     assert(scopes_.size() > 1 && "cannot pop global scope");
 
     // W001: Check for unused variables/parameters in the scope being popped
@@ -877,14 +764,11 @@ void Sema::popScope(SourceLoc endLoc)
 /// @param name The symbol name to register.
 /// @param symbol The symbol metadata to associate with the name.
 /// @param locOverride Optional source location for symbols without decl (locals, params).
-bool Sema::defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOverride)
-{
+bool Sema::defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOverride) {
     SourceLoc defLoc =
         locOverride.isValid() ? locOverride : (symbol.decl ? symbol.decl->loc : SourceLoc{});
-    if (Symbol *existing = currentScope_->lookupLocal(name))
-    {
-        if (existing->decl == nullptr && symbol.decl == nullptr)
-        {
+    if (Symbol *existing = currentScope_->lookupLocal(name)) {
+        if (existing->decl == nullptr && symbol.decl == nullptr) {
             symbol.loc = defLoc;
             currentScope_->define(name, std::move(symbol));
             return true;
@@ -898,8 +782,7 @@ bool Sema::defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOve
 
     // Capture a snapshot for position-based hover queries.
     Symbol *defined = currentScope_->lookupLocal(name);
-    if (defined)
-    {
+    if (defined) {
         ScopedSymbol ss;
         ss.symbol = *defined;
         ss.loc = defLoc;
@@ -914,12 +797,10 @@ bool Sema::defineSymbol(const std::string &name, Symbol symbol, SourceLoc locOve
 const ScopedSymbol *Sema::findSymbolAtPosition(const std::string &name,
                                                uint32_t fileId,
                                                uint32_t line,
-                                               uint32_t col) const
-{
+                                               uint32_t col) const {
     const ScopedSymbol *best = nullptr;
     const SourceLoc cursor{fileId, line, col};
-    for (const auto &ss : scopedSymbols_)
-    {
+    for (const auto &ss : scopedSymbols_) {
         if (ss.symbol.name != name)
             continue;
         if (!ss.loc.isValid())
@@ -931,8 +812,7 @@ const ScopedSymbol *Sema::findSymbolAtPosition(const std::string &name,
             continue;
 
         auto scopeIt = scopeSnapshots_.find(ss.scopeId);
-        if (scopeIt != scopeSnapshots_.end())
-        {
+        if (scopeIt != scopeSnapshots_.end()) {
             const auto &scope = scopeIt->second;
             if (fileId != 0 && scope.startLoc.hasFile() && scope.startLoc.file_id != fileId)
                 continue;
@@ -943,8 +823,7 @@ const ScopedSymbol *Sema::findSymbolAtPosition(const std::string &name,
                 continue;
         }
 
-        if (!best)
-        {
+        if (!best) {
             best = &ss;
             continue;
         }
@@ -953,8 +832,8 @@ const ScopedSymbol *Sema::findSymbolAtPosition(const std::string &name,
         const size_t bestDepth =
             bestScopeIt != scopeSnapshots_.end() ? bestScopeIt->second.depth : 0;
         const size_t thisDepth = scopeIt != scopeSnapshots_.end() ? scopeIt->second.depth : 0;
-        if (thisDepth > bestDepth || (thisDepth == bestDepth && compareLoc(ss.loc, best->loc) > 0))
-        {
+        if (thisDepth > bestDepth ||
+            (thisDepth == bestDepth && compareLoc(ss.loc, best->loc) > 0)) {
             best = &ss;
         }
     }
@@ -964,8 +843,7 @@ const ScopedSymbol *Sema::findSymbolAtPosition(const std::string &name,
 /// @brief Look up a symbol by name in the current scope chain.
 /// @param name The symbol name to search for.
 /// @return Pointer to the symbol if found, nullptr otherwise.
-Symbol *Sema::lookupSymbol(const std::string &name)
-{
+Symbol *Sema::lookupSymbol(const std::string &name) {
     return currentScope_->lookup(name);
 }
 
@@ -974,22 +852,18 @@ Symbol *Sema::lookupSymbol(const std::string &name)
 ///          to the declared type in scope.
 /// @param name The variable name to look up.
 /// @return The narrowed or declared type, or nullptr if not found.
-TypeRef Sema::lookupVarType(const std::string &name)
-{
+TypeRef Sema::lookupVarType(const std::string &name) {
     // Check narrowed types first (for flow-sensitive type analysis)
-    for (auto it = narrowedTypes_.rbegin(); it != narrowedTypes_.rend(); ++it)
-    {
+    for (auto it = narrowedTypes_.rbegin(); it != narrowedTypes_.rend(); ++it) {
         auto found = it->find(name);
-        if (found != it->end())
-        {
+        if (found != it->end()) {
             return found->second;
         }
     }
 
     // Fall back to declared type
     Symbol *sym = currentScope_->lookup(name);
-    if (sym && (sym->kind == Symbol::Kind::Variable || sym->kind == Symbol::Kind::Parameter))
-    {
+    if (sym && (sym->kind == Symbol::Kind::Variable || sym->kind == Symbol::Kind::Parameter)) {
         return sym->type;
     }
     return nullptr;
@@ -1000,16 +874,13 @@ TypeRef Sema::lookupVarType(const std::string &name)
 //=============================================================================
 
 /// @brief Push a new type narrowing scope for flow-sensitive analysis.
-void Sema::pushNarrowingScope()
-{
+void Sema::pushNarrowingScope() {
     narrowedTypes_.push_back({});
 }
 
 /// @brief Pop the current type narrowing scope.
-void Sema::popNarrowingScope()
-{
-    if (!narrowedTypes_.empty())
-    {
+void Sema::popNarrowingScope() {
+    if (!narrowedTypes_.empty()) {
         narrowedTypes_.pop_back();
     }
 }
@@ -1017,40 +888,33 @@ void Sema::popNarrowingScope()
 /// @brief Narrow the type of a variable in the current narrowing scope.
 /// @param name The variable whose type is being narrowed.
 /// @param narrowedType The narrowed type to record.
-void Sema::narrowType(const std::string &name, TypeRef narrowedType)
-{
-    if (!narrowedTypes_.empty())
-    {
+void Sema::narrowType(const std::string &name, TypeRef narrowedType) {
+    if (!narrowedTypes_.empty()) {
         narrowedTypes_.back()[name] = narrowedType;
     }
 }
 
 /// @brief Mark a variable as definitely initialized.
-void Sema::markInitialized(const std::string &name)
-{
+void Sema::markInitialized(const std::string &name) {
     initializedVars_.insert(name);
 }
 
 /// @brief Check if a variable has been definitely initialized.
-bool Sema::isInitialized(const std::string &name) const
-{
+bool Sema::isInitialized(const std::string &name) const {
     return initializedVars_.count(name) > 0;
 }
 
 /// @brief Save the current initialization state for branching analysis.
-std::unordered_set<std::string> Sema::saveInitState() const
-{
+std::unordered_set<std::string> Sema::saveInitState() const {
     return initializedVars_;
 }
 
 /// @brief Intersect two branch initialization states.
 /// Only variables initialized in BOTH branches remain initialized.
 void Sema::intersectInitState(const std::unordered_set<std::string> &branchA,
-                              const std::unordered_set<std::string> &branchB)
-{
+                              const std::unordered_set<std::string> &branchB) {
     std::unordered_set<std::string> result;
-    for (const auto &name : branchA)
-    {
+    for (const auto &name : branchA) {
         if (branchB.count(name) > 0)
             result.insert(name);
     }
@@ -1063,8 +927,7 @@ void Sema::intersectInitState(const std::unordered_set<std::string> &branchA,
 /// @param[out] varName The variable name being null-checked.
 /// @param[out] isNotNull True if the pattern is != null, false if == null.
 /// @return True if a null-check pattern was recognized.
-bool Sema::tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull)
-{
+bool Sema::tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull) {
     // Pattern: x != null or x == null
     if (cond->kind != ExprKind::Binary)
         return false;
@@ -1076,15 +939,13 @@ bool Sema::tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull
     isNotNull = (binary->op == BinaryOp::Ne);
 
     // Check for "x != null" pattern
-    if (binary->left->kind == ExprKind::Ident && binary->right->kind == ExprKind::NullLiteral)
-    {
+    if (binary->left->kind == ExprKind::Ident && binary->right->kind == ExprKind::NullLiteral) {
         varName = static_cast<IdentExpr *>(binary->left.get())->name;
         return true;
     }
 
     // Check for "null != x" pattern
-    if (binary->left->kind == ExprKind::NullLiteral && binary->right->kind == ExprKind::Ident)
-    {
+    if (binary->left->kind == ExprKind::NullLiteral && binary->right->kind == ExprKind::Ident) {
         varName = static_cast<IdentExpr *>(binary->right.get())->name;
         return true;
     }
@@ -1097,22 +958,17 @@ bool Sema::tryExtractNullCheck(Expr *cond, std::string &varName, bool &isNotNull
 //=============================================================================
 
 /// @brief Report a semantic warning at a source location (legacy).
-void Sema::warning(SourceLoc loc, const std::string &message)
-{
+void Sema::warning(SourceLoc loc, const std::string &message) {
     diag_.report({il::support::Severity::Warning, message, loc, "V3001"});
 }
 
 /// @brief Report a coded warning with policy and suppression checks.
-void Sema::warn(WarningCode code, SourceLoc loc, const std::string &message)
-{
+void Sema::warn(WarningCode code, SourceLoc loc, const std::string &message) {
     // Check policy: is this warning enabled?
-    if (warningPolicy_)
-    {
+    if (warningPolicy_) {
         if (!warningPolicy_->isEnabled(code))
             return;
-    }
-    else
-    {
+    } else {
         // No policy set — use default conservative set
         if (WarningPolicy::defaultEnabled().count(code) == 0)
             return;
@@ -1134,10 +990,8 @@ void Sema::warn(WarningCode code, SourceLoc loc, const std::string &message)
 }
 
 /// @brief Check for unused variables in a scope and emit W001 warnings.
-void Sema::checkUnusedVariables(const Scope &scope)
-{
-    for (const auto &[name, sym] : scope.getSymbols())
-    {
+void Sema::checkUnusedVariables(const Scope &scope) {
+    for (const auto &[name, sym] : scope.getSymbols()) {
         // Only check variables and parameters
         if (sym.kind != Symbol::Kind::Variable && sym.kind != Symbol::Kind::Parameter)
             continue;
@@ -1150,8 +1004,7 @@ void Sema::checkUnusedVariables(const Scope &scope)
         if (sym.isExtern)
             continue;
 
-        if (!sym.used)
-        {
+        if (!sym.used) {
             std::string what = (sym.kind == Symbol::Kind::Parameter) ? "Parameter" : "Variable";
             SourceLoc loc = sym.loc.isValid() ? sym.loc : (sym.decl ? sym.decl->loc : SourceLoc{});
             warn(WarningCode::W001_UnusedVariable,
@@ -1162,14 +1015,12 @@ void Sema::checkUnusedVariables(const Scope &scope)
 }
 
 /// @brief Report a semantic error at a source location.
-void Sema::error(SourceLoc loc, const std::string &message)
-{
+void Sema::error(SourceLoc loc, const std::string &message) {
     hasError_ = true;
     diag_.report({il::support::Severity::Error, message, loc, "V3000"});
 }
 
-bool Sema::reportDuplicateDefinition(const std::string &name, SourceLoc loc)
-{
+bool Sema::reportDuplicateDefinition(const std::string &name, SourceLoc loc) {
     if (!currentScope_)
         return true;
 
@@ -1180,12 +1031,9 @@ bool Sema::reportDuplicateDefinition(const std::string &name, SourceLoc loc)
     SourceLoc existingLoc = existing->loc.isValid()
                                 ? existing->loc
                                 : (existing->decl ? existing->decl->loc : SourceLoc{});
-    if (!existingLoc.isValid())
-    {
-        for (auto it = scopedSymbols_.rbegin(); it != scopedSymbols_.rend(); ++it)
-        {
-            if (it->scopeId == currentScope_->id() && it->symbol.name == name)
-            {
+    if (!existingLoc.isValid()) {
+        for (auto it = scopedSymbols_.rbegin(); it != scopedSymbols_.rend(); ++it) {
+            if (it->scopeId == currentScope_->id() && it->symbol.name == name) {
                 existingLoc = it->loc;
                 break;
             }
@@ -1193,8 +1041,7 @@ bool Sema::reportDuplicateDefinition(const std::string &name, SourceLoc loc)
     }
 
     std::string message = "Duplicate definition of '" + name + "'";
-    if (existingLoc.isValid())
-    {
+    if (existingLoc.isValid()) {
         message += " (previous definition at line " + std::to_string(existingLoc.line) +
                    ", column " + std::to_string(existingLoc.column) + ")";
     }
@@ -1202,26 +1049,21 @@ bool Sema::reportDuplicateDefinition(const std::string &name, SourceLoc loc)
     return false;
 }
 
-SourceLoc Sema::scopeEndForStmt(const Stmt *stmt)
-{
+SourceLoc Sema::scopeEndForStmt(const Stmt *stmt) {
     if (!stmt)
         return {};
 
-    switch (stmt->kind)
-    {
-        case StmtKind::Block:
-        {
+    switch (stmt->kind) {
+        case StmtKind::Block: {
             auto *block = static_cast<const BlockStmt *>(stmt);
             if (block->statements.empty())
                 return stmt->loc;
             return scopeEndForStmt(block->statements.back().get());
         }
-        case StmtKind::If:
-        {
+        case StmtKind::If: {
             auto *ifStmt = static_cast<const IfStmt *>(stmt);
             SourceLoc end = scopeEndForStmt(ifStmt->thenBranch.get());
-            if (ifStmt->elseBranch)
-            {
+            if (ifStmt->elseBranch) {
                 SourceLoc elseEnd = scopeEndForStmt(ifStmt->elseBranch.get());
                 if (!end.isValid() || (elseEnd.isValid() && compareLoc(elseEnd, end) > 0))
                     end = elseEnd;
@@ -1234,18 +1076,15 @@ SourceLoc Sema::scopeEndForStmt(const Stmt *stmt)
             return scopeEndForStmt(static_cast<const ForStmt *>(stmt)->body.get());
         case StmtKind::ForIn:
             return scopeEndForStmt(static_cast<const ForInStmt *>(stmt)->body.get());
-        case StmtKind::Try:
-        {
+        case StmtKind::Try: {
             auto *tryStmt = static_cast<const TryStmt *>(stmt);
             SourceLoc end = scopeEndForStmt(tryStmt->tryBody.get());
-            if (tryStmt->catchBody)
-            {
+            if (tryStmt->catchBody) {
                 SourceLoc catchEnd = scopeEndForStmt(tryStmt->catchBody.get());
                 if (!end.isValid() || (catchEnd.isValid() && compareLoc(catchEnd, end) > 0))
                     end = catchEnd;
             }
-            if (tryStmt->finallyBody)
-            {
+            if (tryStmt->finallyBody) {
                 SourceLoc finallyEnd = scopeEndForStmt(tryStmt->finallyBody.get());
                 if (!end.isValid() || (finallyEnd.isValid() && compareLoc(finallyEnd, end) > 0))
                     end = finallyEnd;
@@ -1258,14 +1097,12 @@ SourceLoc Sema::scopeEndForStmt(const Stmt *stmt)
 }
 
 /// @brief Report an "undefined identifier" error for the given name.
-void Sema::errorUndefined(SourceLoc loc, const std::string &name)
-{
+void Sema::errorUndefined(SourceLoc loc, const std::string &name) {
     error(loc, "Undefined identifier: " + name);
 }
 
 /// @brief Report a type mismatch error showing expected vs actual types.
-void Sema::errorTypeMismatch(SourceLoc loc, TypeRef expected, TypeRef actual)
-{
+void Sema::errorTypeMismatch(SourceLoc loc, TypeRef expected, TypeRef actual) {
     error(loc, "Type mismatch: expected " + expected->toString() + ", got " + actual->toString());
 }
 
@@ -1276,8 +1113,7 @@ void Sema::errorTypeMismatch(SourceLoc loc, TypeRef expected, TypeRef actual)
 /// @brief Register built-in functions and runtime library functions.
 /// @details Registers print, println, input, toString as built-in symbols,
 ///          then loads all Viper.* runtime functions from runtime.def.
-void Sema::registerBuiltins()
-{
+void Sema::registerBuiltins() {
     // print(String) -> Void
     {
         auto printType = types::function({types::string()}, types::voidType());
@@ -1330,8 +1166,7 @@ void Sema::registerBuiltins()
 /// @brief Qualify a name with the current namespace prefix.
 /// @param name The unqualified name.
 /// @return The qualified name (prefix.name), or the original name if no namespace is active.
-std::string Sema::qualifyName(const std::string &name) const
-{
+std::string Sema::qualifyName(const std::string &name) const {
     if (namespacePrefix_.empty())
         return name;
     return namespacePrefix_ + "." + name;
@@ -1339,12 +1174,9 @@ std::string Sema::qualifyName(const std::string &name) const
 
 /// @brief Pass 2: Register member signatures (fields, methods) for type declarations.
 /// @param declarations The declaration list to process.
-void Sema::registerMemberSignatures(std::vector<DeclPtr> &declarations)
-{
-    for (auto &decl : declarations)
-    {
-        switch (decl->kind)
-        {
+void Sema::registerMemberSignatures(std::vector<DeclPtr> &declarations) {
+    for (auto &decl : declarations) {
+        switch (decl->kind) {
             case DeclKind::Value:
                 registerValueMembers(*static_cast<ValueDecl *>(decl.get()));
                 break;
@@ -1368,12 +1200,9 @@ void Sema::registerMemberSignatures(std::vector<DeclPtr> &declarations)
 ///          the registered symbol type from unknown() to the concrete literal type.
 ///          This allows forward references to final constants in entity/function bodies.
 /// @param declarations The declaration list to process.
-void Sema::registerFinalConstantTypes(std::vector<DeclPtr> &declarations)
-{
-    for (auto &decl : declarations)
-    {
-        if (decl->kind == DeclKind::GlobalVar)
-        {
+void Sema::registerFinalConstantTypes(std::vector<DeclPtr> &declarations) {
+    for (auto &decl : declarations) {
+        if (decl->kind == DeclKind::GlobalVar) {
             auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
             if (!gvar->isFinal || !gvar->initializer)
                 continue;
@@ -1395,11 +1224,9 @@ void Sema::registerFinalConstantTypes(std::vector<DeclPtr> &declarations)
                 inferredType = types::boolean();
             else if (dynamic_cast<StringLiteralExpr *>(init))
                 inferredType = types::string();
-            else if (auto *unary = dynamic_cast<UnaryExpr *>(init))
-            {
+            else if (auto *unary = dynamic_cast<UnaryExpr *>(init)) {
                 // Handle negated literals: final X = -42
-                if (unary->op == UnaryOp::Neg)
-                {
+                if (unary->op == UnaryOp::Neg) {
                     if (dynamic_cast<IntLiteralExpr *>(unary->operand.get()))
                         inferredType = types::integer();
                     else if (dynamic_cast<NumberLiteralExpr *>(unary->operand.get()))
@@ -1409,9 +1236,7 @@ void Sema::registerFinalConstantTypes(std::vector<DeclPtr> &declarations)
 
             if (inferredType)
                 sym->type = inferredType;
-        }
-        else if (decl->kind == DeclKind::Namespace)
-        {
+        } else if (decl->kind == DeclKind::Namespace) {
             // Recurse into namespace declarations
             auto *ns = static_cast<NamespaceDecl *>(decl.get());
             std::string savedPrefix = namespacePrefix_;
@@ -1429,12 +1254,9 @@ void Sema::registerFinalConstantTypes(std::vector<DeclPtr> &declarations)
 
 /// @brief Pass 3: Analyze declaration bodies (functions, types, globals).
 /// @param declarations The declaration list to process.
-void Sema::analyzeDeclarationBodies(std::vector<DeclPtr> &declarations)
-{
-    for (auto &decl : declarations)
-    {
-        switch (decl->kind)
-        {
+void Sema::analyzeDeclarationBodies(std::vector<DeclPtr> &declarations) {
+    for (auto &decl : declarations) {
+        switch (decl->kind) {
             case DeclKind::Function:
                 analyzeFunctionDecl(*static_cast<FunctionDecl *>(decl.get()));
                 break;
@@ -1461,8 +1283,7 @@ void Sema::analyzeDeclarationBodies(std::vector<DeclPtr> &declarations)
 ///          then runs the same three-pass strategy (register, member sigs, bodies)
 ///          on the namespace's nested declarations. Handles nested namespaces recursively.
 /// @param decl The namespace declaration to analyze.
-void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
-{
+void Sema::analyzeNamespaceDecl(NamespaceDecl &decl) {
     // Save current namespace prefix
     std::string savedPrefix = namespacePrefix_;
 
@@ -1474,12 +1295,9 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
 
     // Process declarations inside this namespace
     // First pass: register declarations
-    for (auto &innerDecl : decl.declarations)
-    {
-        switch (innerDecl->kind)
-        {
-            case DeclKind::Function:
-            {
+    for (auto &innerDecl : decl.declarations) {
+        switch (innerDecl->kind) {
+            case DeclKind::Function: {
                 auto *func = static_cast<FunctionDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(func->name);
                 auto funcType = functionTypeForDecl(*func);
@@ -1490,19 +1308,15 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
                 sym.type = funcType;
                 sym.decl = func;
                 Symbol *existing = currentScope_->lookupLocal(qualifiedName);
-                if (!existing)
-                {
+                if (!existing) {
                     defineSymbol(qualifiedName, sym);
-                }
-                else if (existing->kind != Symbol::Kind::Function)
-                {
+                } else if (existing->kind != Symbol::Kind::Function) {
                     reportDuplicateDefinition(qualifiedName, func->loc);
                 }
                 registerFunctionOverload(qualifiedName, func, funcType, func->loc);
                 break;
             }
-            case DeclKind::Value:
-            {
+            case DeclKind::Value: {
                 auto *value = static_cast<ValueDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(value->name);
                 auto valueType = types::value(qualifiedName);
@@ -1512,15 +1326,13 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
                 sym.name = qualifiedName;
                 sym.type = valueType;
                 sym.decl = value;
-                if (defineSymbol(qualifiedName, sym))
-                {
+                if (defineSymbol(qualifiedName, sym)) {
                     valueDecls_[qualifiedName] = value;
                     typeRegistry_[qualifiedName] = valueType;
                 }
                 break;
             }
-            case DeclKind::Entity:
-            {
+            case DeclKind::Entity: {
                 auto *entity = static_cast<EntityDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(entity->name);
                 auto entityType = types::entity(qualifiedName);
@@ -1530,15 +1342,13 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
                 sym.name = qualifiedName;
                 sym.type = entityType;
                 sym.decl = entity;
-                if (defineSymbol(qualifiedName, sym))
-                {
+                if (defineSymbol(qualifiedName, sym)) {
                     entityDecls_[qualifiedName] = entity;
                     typeRegistry_[qualifiedName] = entityType;
                 }
                 break;
             }
-            case DeclKind::Interface:
-            {
+            case DeclKind::Interface: {
                 auto *iface = static_cast<InterfaceDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(iface->name);
                 auto ifaceType = types::interface(qualifiedName);
@@ -1548,15 +1358,13 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
                 sym.name = qualifiedName;
                 sym.type = ifaceType;
                 sym.decl = iface;
-                if (defineSymbol(qualifiedName, sym))
-                {
+                if (defineSymbol(qualifiedName, sym)) {
                     interfaceDecls_[qualifiedName] = iface;
                     typeRegistry_[qualifiedName] = ifaceType;
                 }
                 break;
             }
-            case DeclKind::GlobalVar:
-            {
+            case DeclKind::GlobalVar: {
                 auto *gvar = static_cast<GlobalVarDecl *>(innerDecl.get());
                 std::string qualifiedName = qualifyName(gvar->name);
 
@@ -1575,8 +1383,7 @@ void Sema::analyzeNamespaceDecl(NamespaceDecl &decl)
                 defineSymbol(qualifiedName, sym);
                 break;
             }
-            case DeclKind::Namespace:
-            {
+            case DeclKind::Namespace: {
                 // Nested namespace - recursively process
                 analyzeNamespaceDecl(*static_cast<NamespaceDecl *>(innerDecl.get()));
                 break;

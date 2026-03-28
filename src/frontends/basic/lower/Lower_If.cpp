@@ -32,8 +32,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Allocate the block layout required for an IF/ELSEIF/ELSE chain.
 ///
@@ -43,8 +42,7 @@ namespace il::frontends::basic
 ///          phi arguments.
 /// @param conds Number of condition arms (including the initial IF).
 /// @return Structure containing indices for all generated blocks.
-Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds)
-{
+Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds) {
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     assert(func && ctx.current());
@@ -52,8 +50,7 @@ Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds)
     size_t curIdx = static_cast<size_t>(ctx.current() - &func->blocks[0]);
     size_t start = func->blocks.size();
     unsigned firstId = 0;
-    for (size_t i = 0; i < conds; ++i)
-    {
+    for (size_t i = 0; i < conds; ++i) {
         unsigned id = blockNamer ? blockNamer->nextIf() : static_cast<unsigned>(i);
         if (i == 0)
             firstId = id;
@@ -71,8 +68,7 @@ Lowerer::IfBlocks Lowerer::emitIfBlocks(size_t conds)
     ctx.setCurrent(&func->blocks[curIdx]);
     std::vector<size_t> testIdx(conds);
     std::vector<size_t> thenIdx(conds);
-    for (size_t i = 0; i < conds; ++i)
-    {
+    for (size_t i = 0; i < conds; ++i) {
         testIdx[i] = start + 2 * i;
         thenIdx[i] = start + 2 * i + 1;
     }
@@ -96,8 +92,7 @@ void Lowerer::lowerIfCondition(const Expr &cond,
                                BasicBlock *testBlk,
                                BasicBlock *thenBlk,
                                BasicBlock *falseBlk,
-                               il::support::SourceLoc loc)
-{
+                               il::support::SourceLoc loc) {
     context().setCurrent(testBlk);
     lowerCondBranch(cond, thenBlk, falseBlk, loc);
 }
@@ -118,14 +113,12 @@ void Lowerer::lowerIfCondition(const Expr &cond,
 bool Lowerer::lowerIfBranch(const Stmt *stmt,
                             BasicBlock *thenBlk,
                             size_t exitIdx,
-                            il::support::SourceLoc loc)
-{
+                            il::support::SourceLoc loc) {
     context().setCurrent(thenBlk);
     if (stmt)
         lowerStmt(*stmt);
     BasicBlock *current = context().current();
-    if (current && !current->terminated)
-    {
+    if (current && !current->terminated) {
         curLoc = loc;
         // Resolve exit block pointer AFTER lowering statements to avoid stale pointers
         // from vector reallocation when nested statements add new blocks
@@ -145,8 +138,7 @@ bool Lowerer::lowerIfBranch(const Stmt *stmt,
 ///          that should remain current once lowering finishes.
 /// @param stmt AST node representing the entire IF statement.
 /// @return Control-flow state describing the resulting CFG configuration.
-Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt)
-{
+Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt) {
     CtrlState state{};
     auto &ctx = context();
     auto *func = ctx.function();
@@ -163,8 +155,7 @@ Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt)
     thenStmts.reserve(conds);
     condExprs.push_back(stmt.cond.get());
     thenStmts.push_back(stmt.then_branch.get());
-    for (const auto &e : stmt.elseifs)
-    {
+    for (const auto &e : stmt.elseifs) {
         condExprs.push_back(e.cond.get());
         thenStmts.push_back(e.then_branch.get());
     }
@@ -174,8 +165,7 @@ Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt)
     emitBr(&func->blocks[blocks.tests[0]]);
 
     bool fallthrough = false;
-    for (size_t i = 0; i < conds; ++i)
-    {
+    for (size_t i = 0; i < conds; ++i) {
         func = ctx.function();
         auto *testBlk = &func->blocks[blocks.tests[i]];
         auto *thenBlk = &func->blocks[blocks.thens[i]];
@@ -195,8 +185,7 @@ Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt)
     fallthrough =
         lowerIfBranch(stmt.else_branch.get(), elseBlk, blocks.exitIdx, stmt.loc) || fallthrough;
 
-    if (!fallthrough)
-    {
+    if (!fallthrough) {
         // BUG-119 fix: Erase the exit block by index instead of pop_back().
         // When lowerCondBranch handles And/Or expressions, it adds intermediate
         // blocks (e.g., and_rhs) after the exit block. pop_back() would remove
@@ -222,8 +211,7 @@ Lowerer::CtrlState Lowerer::emitIf(const IfStmt &stmt)
 /// @details Invokes @ref emitIf to build the CFG and then updates the lowering
 ///          context to the block reported in the returned @ref CtrlState.
 /// @param stmt AST node representing the IF construct.
-void Lowerer::lowerIf(const IfStmt &stmt)
-{
+void Lowerer::lowerIf(const IfStmt &stmt) {
     CtrlState state = emitIf(stmt);
     if (state.cur)
         context().setCurrent(state.cur);

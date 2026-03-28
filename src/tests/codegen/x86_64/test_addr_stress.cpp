@@ -44,44 +44,36 @@ using namespace viper::codegen::x64;
 // Part A helpers: MIR-level (from test_asm_encoding.cpp pattern)
 // ===----------------------------------------------------------------------===
 
-namespace
-{
+namespace {
 
-[[nodiscard]] Operand gpr(PhysReg r)
-{
+[[nodiscard]] Operand gpr(PhysReg r) {
     return makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(r));
 }
 
-[[nodiscard]] Operand xmm(PhysReg r)
-{
+[[nodiscard]] Operand xmm(PhysReg r) {
     return makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(r));
 }
 
-[[nodiscard]] Operand mirImm(int64_t v)
-{
+[[nodiscard]] Operand mirImm(int64_t v) {
     return makeImmOperand(v);
 }
 
-[[nodiscard]] Operand mem(PhysReg base, int32_t disp)
-{
+[[nodiscard]] Operand mem(PhysReg base, int32_t disp) {
     return makeMemOperand(makePhysReg(RegClass::GPR, static_cast<uint16_t>(base)), disp);
 }
 
-[[nodiscard]] Operand idxmem(PhysReg base, PhysReg idx, uint8_t scale, int32_t disp)
-{
+[[nodiscard]] Operand idxmem(PhysReg base, PhysReg idx, uint8_t scale, int32_t disp) {
     return makeMemOperand(makePhysReg(RegClass::GPR, static_cast<uint16_t>(base)),
                           makePhysReg(RegClass::GPR, static_cast<uint16_t>(idx)),
                           scale,
                           disp);
 }
 
-[[nodiscard]] Operand rip(const std::string &name)
-{
+[[nodiscard]] Operand rip(const std::string &name) {
     return makeRipLabelOperand(name);
 }
 
-[[nodiscard]] std::string emitSingle(MInstr instr)
-{
+[[nodiscard]] std::string emitSingle(MInstr instr) {
     MBasicBlock block;
     block.label = "test_func";
     block.instructions.push_back(std::move(instr));
@@ -98,38 +90,31 @@ namespace
     return os.str();
 }
 
-struct CategoryStats
-{
+struct CategoryStats {
     const char *name;
     int total{0};
     int pass{0};
     int fail{0};
 };
 
-struct TestContext
-{
+struct TestContext {
     std::vector<CategoryStats> categories;
     int currentCat{-1};
     int globalFail{0};
 
-    void beginCategory(const char *name)
-    {
+    void beginCategory(const char *name) {
         categories.push_back({name, 0, 0, 0});
         currentCat = static_cast<int>(categories.size()) - 1;
     }
 
-    void check(const char *caseName, const MInstr &instr, const std::string &expected)
-    {
+    void check(const char *caseName, const MInstr &instr, const std::string &expected) {
         auto &cat = categories[static_cast<std::size_t>(currentCat)];
         ++cat.total;
 
         const std::string text = emitSingle(MInstr{instr});
-        if (text.find(expected) != std::string::npos)
-        {
+        if (text.find(expected) != std::string::npos) {
             ++cat.pass;
-        }
-        else
-        {
+        } else {
             ++cat.fail;
             ++globalFail;
             std::cerr << "FAIL [" << cat.name << "] " << caseName << "\n"
@@ -140,17 +125,13 @@ struct TestContext
     }
 
     /// Verify an assembly string (from IL pipeline) contains the expected pattern.
-    void checkAsm(const char *caseName, const std::string &asmText, const std::string &expected)
-    {
+    void checkAsm(const char *caseName, const std::string &asmText, const std::string &expected) {
         auto &cat = categories[static_cast<std::size_t>(currentCat)];
         ++cat.total;
 
-        if (asmText.find(expected) != std::string::npos)
-        {
+        if (asmText.find(expected) != std::string::npos) {
             ++cat.pass;
-        }
-        else
-        {
+        } else {
             ++cat.fail;
             ++globalFail;
             std::cerr << "FAIL [" << cat.name << "] " << caseName << "\n"
@@ -160,13 +141,11 @@ struct TestContext
         }
     }
 
-    void printSummary() const
-    {
+    void printSummary() const {
         std::cout << "\n=== x86-64 Addressing Mode Stress Test ===\n";
         std::cout << "Category                  Total  Pass  Fail\n";
         int totalAll = 0, passAll = 0, failAll = 0;
-        for (const auto &cat : categories)
-        {
+        for (const auto &cat : categories) {
             std::string padded = cat.name;
             while (padded.size() < 26)
                 padded.push_back(' ');
@@ -187,12 +166,10 @@ struct TestContext
 // ===----------------------------------------------------------------------===
 
 /// Category 1: Every GPR as base with zero displacement.
-void testEveryGprBase(TestContext &ctx)
-{
+void testEveryGprBase(TestContext &ctx) {
     ctx.beginCategory("GPR base (zero disp)");
 
-    struct Case
-    {
+    struct Case {
         PhysReg reg;
         const char *name;
         const char *expected;
@@ -217,20 +194,17 @@ void testEveryGprBase(TestContext &ctx)
         {PhysReg::RSP, "RSP", "(%rsp)"},
     };
 
-    for (const auto &c : cases)
-    {
+    for (const auto &c : cases) {
         ctx.check(
             c.name, MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(c.reg, 0)}), c.expected);
     }
 }
 
 /// Category 2: Displacement ranges with a normal base register.
-void testDisplacementRanges(TestContext &ctx)
-{
+void testDisplacementRanges(TestContext &ctx) {
     ctx.beginCategory("Displacement ranges");
 
-    struct Case
-    {
+    struct Case {
         int32_t disp;
         const char *name;
         const char *expected;
@@ -249,8 +223,7 @@ void testDisplacementRanges(TestContext &ctx)
         {-2147483647 - 1, "imm32_min", "-2147483648(%rdi)"},
     };
 
-    for (const auto &c : cases)
-    {
+    for (const auto &c : cases) {
         ctx.check(c.name,
                   MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(PhysReg::RDI, c.disp)}),
                   c.expected);
@@ -258,12 +231,10 @@ void testDisplacementRanges(TestContext &ctx)
 }
 
 /// Category 3: Special base registers (RSP, RBP, R12, R13) with various displacements.
-void testSpecialBases(TestContext &ctx)
-{
+void testSpecialBases(TestContext &ctx) {
     ctx.beginCategory("Special base regs");
 
-    struct Case
-    {
+    struct Case {
         PhysReg base;
         int32_t disp;
         const char *name;
@@ -291,8 +262,7 @@ void testSpecialBases(TestContext &ctx)
         {PhysReg::R13, 256, "R13_disp256", "256(%r13)"},
     };
 
-    for (const auto &c : cases)
-    {
+    for (const auto &c : cases) {
         ctx.check(c.name,
                   MInstr::make(MOpcode::MOVmr, {gpr(PhysReg::RAX), mem(c.base, c.disp)}),
                   c.expected);
@@ -300,12 +270,10 @@ void testSpecialBases(TestContext &ctx)
 }
 
 /// Category 4: All scale factors with index register.
-void testScaleFactors(TestContext &ctx)
-{
+void testScaleFactors(TestContext &ctx) {
     ctx.beginCategory("Scale factors");
 
-    struct Case
-    {
+    struct Case {
         uint8_t scale;
         const char *name;
         const char *expected;
@@ -318,8 +286,7 @@ void testScaleFactors(TestContext &ctx)
         {8, "scale8", "(%rdi,%rsi,8)"},
     };
 
-    for (const auto &c : cases)
-    {
+    for (const auto &c : cases) {
         ctx.check(c.name,
                   MInstr::make(MOpcode::MOVmr,
                                {gpr(PhysReg::RAX), idxmem(PhysReg::RDI, PhysReg::RSI, c.scale, 0)}),
@@ -328,12 +295,10 @@ void testScaleFactors(TestContext &ctx)
 }
 
 /// Category 5: SIB with various displacements.
-void testSibDisp(TestContext &ctx)
-{
+void testSibDisp(TestContext &ctx) {
     ctx.beginCategory("SIB + displacement");
 
-    struct Case
-    {
+    struct Case {
         int32_t disp;
         const char *name;
         const char *expected;
@@ -348,8 +313,7 @@ void testSibDisp(TestContext &ctx)
         {2147483647, "sib_disp_max", "2147483647(%rdi,%rsi,4)"},
     };
 
-    for (const auto &c : cases)
-    {
+    for (const auto &c : cases) {
         ctx.check(c.name,
                   MInstr::make(MOpcode::MOVmr,
                                {gpr(PhysReg::RAX), idxmem(PhysReg::RDI, PhysReg::RSI, 4, c.disp)}),
@@ -358,8 +322,7 @@ void testSibDisp(TestContext &ctx)
 }
 
 /// Category 6: High register combinations in SIB.
-void testHighRegSib(TestContext &ctx)
-{
+void testHighRegSib(TestContext &ctx) {
     ctx.beginCategory("High-reg SIB");
 
     // R12 base + R13 index
@@ -416,8 +379,7 @@ void testHighRegSib(TestContext &ctx)
 }
 
 /// Category 7: RIP-relative addressing.
-void testRipRelative(TestContext &ctx)
-{
+void testRipRelative(TestContext &ctx) {
     ctx.beginCategory("RIP-relative");
 
     ctx.check(
@@ -437,8 +399,7 @@ void testRipRelative(TestContext &ctx)
 }
 
 /// Category 8: Cross-opcode addressing — same memory operand across different instructions.
-void testCrossOpcode(TestContext &ctx)
-{
+void testCrossOpcode(TestContext &ctx) {
     ctx.beginCategory("Cross-opcode addr");
 
     const auto m = mem(PhysReg::RBP, -24);
@@ -485,16 +446,14 @@ void testCrossOpcode(TestContext &ctx)
 // Part B helpers: IL-level integration (from test_addressing_modes.cpp pattern)
 // ===----------------------------------------------------------------------===
 
-[[nodiscard]] ILValue makeParam(int id, ILValue::Kind kind) noexcept
-{
+[[nodiscard]] ILValue makeParam(int id, ILValue::Kind kind) noexcept {
     ILValue v{};
     v.kind = kind;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue makeImmI64(long long val) noexcept
-{
+[[nodiscard]] ILValue makeImmI64(long long val) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::I64;
     v.id = -1;
@@ -502,16 +461,14 @@ void testCrossOpcode(TestContext &ctx)
     return v;
 }
 
-[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept
-{
+[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept {
     ILValue v{};
     v.kind = kind;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue makeImmF64(double fval) noexcept
-{
+[[nodiscard]] ILValue makeImmF64(double fval) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::F64;
     v.id = -1;
@@ -520,8 +477,7 @@ void testCrossOpcode(TestContext &ctx)
 }
 
 /// Compile an IL module and return assembly text.
-[[nodiscard]] std::string compileToAsm(ILModule &m)
-{
+[[nodiscard]] std::string compileToAsm(ILModule &m) {
     const CodegenResult res = emitModuleToAssembly(m, {});
     return res.asmText;
 }
@@ -531,8 +487,7 @@ void testCrossOpcode(TestContext &ctx)
 // ===----------------------------------------------------------------------===
 
 /// Test 1: Simple pointer dereference — load(ptr) with zero offset.
-void testILSimpleDeref(TestContext &ctx)
-{
+void testILSimpleDeref(TestContext &ctx) {
     ctx.beginCategory("IL: simple deref");
 
     ILValue p = makeParam(0, ILValue::Kind::PTR);
@@ -569,8 +524,7 @@ void testILSimpleDeref(TestContext &ctx)
 }
 
 /// Test 2: Load with small offset — struct field at offset 8.
-void testILSmallOffset(TestContext &ctx)
-{
+void testILSmallOffset(TestContext &ctx) {
     ctx.beginCategory("IL: small offset");
 
     ILValue p = makeParam(0, ILValue::Kind::PTR);
@@ -603,8 +557,7 @@ void testILSmallOffset(TestContext &ctx)
 }
 
 /// Test 3: Load with large offset — deep struct field at offset 256.
-void testILLargeOffset(TestContext &ctx)
-{
+void testILLargeOffset(TestContext &ctx) {
     ctx.beginCategory("IL: large offset");
 
     ILValue p = makeParam(0, ILValue::Kind::PTR);
@@ -638,8 +591,7 @@ void testILLargeOffset(TestContext &ctx)
 
 /// Test 4: Array indexing with scale — shl(idx,3) + add(ptr,shifted) + load.
 /// Tests tryMakeIndexedMem folding into SIB addressing.
-void testILArrayScale(TestContext &ctx)
-{
+void testILArrayScale(TestContext &ctx) {
     ctx.beginCategory("IL: array scale");
 
     ILValue p = makeParam(0, ILValue::Kind::PTR);
@@ -687,8 +639,7 @@ void testILArrayScale(TestContext &ctx)
 
 /// Test 5: Array indexing with scale + displacement.
 /// shl(idx,3) + add(ptr,shifted) + load(sum, 16).
-void testILArrayScaleDisp(TestContext &ctx)
-{
+void testILArrayScaleDisp(TestContext &ctx) {
     ctx.beginCategory("IL: array+disp");
 
     ILValue p = makeParam(0, ILValue::Kind::PTR);
@@ -737,8 +688,7 @@ void testILArrayScaleDisp(TestContext &ctx)
 
 /// Test 6: Stack locals via alloca + store + load.
 /// Exercises RSP/RBP-based addressing from the frame lowering.
-void testILStackLocals(TestContext &ctx)
-{
+void testILStackLocals(TestContext &ctx) {
     ctx.beginCategory("IL: stack locals");
 
     ILValue p = makeParam(0, ILValue::Kind::I64);
@@ -815,8 +765,7 @@ void testILStackLocals(TestContext &ctx)
 }
 
 /// Test 7: FP constant via RIP-relative — const_f64 uses .rodata pool.
-void testILFpConstRip(TestContext &ctx)
-{
+void testILFpConstRip(TestContext &ctx) {
     ctx.beginCategory("IL: FP const RIP");
 
     // const_f64(3.14159) → %0
@@ -866,8 +815,7 @@ void testILFpConstRip(TestContext &ctx)
 }
 
 /// Test 8: Store + load round-trip via alloca.
-void testILStoreLoadRoundtrip(TestContext &ctx)
-{
+void testILStoreLoadRoundtrip(TestContext &ctx) {
     ctx.beginCategory("IL: store/load RT");
 
     ILValue p = makeParam(0, ILValue::Kind::I64);
@@ -922,8 +870,7 @@ void testILStoreLoadRoundtrip(TestContext &ctx)
 // Main
 // ===----------------------------------------------------------------------===
 
-int main()
-{
+int main() {
     TestContext ctx;
 
     // Part A: MIR-level encoding matrix
@@ -948,8 +895,7 @@ int main()
 
     ctx.printSummary();
 
-    if (ctx.globalFail != 0)
-    {
+    if (ctx.globalFail != 0) {
         std::cerr << ctx.globalFail << " test(s) FAILED\n";
         return EXIT_FAILURE;
     }

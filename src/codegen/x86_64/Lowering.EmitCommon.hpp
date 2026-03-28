@@ -30,19 +30,16 @@
 #include <optional>
 #include <string_view>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 /// @brief Test whether a 64-bit signed value fits in a sign-extended imm32 encoding.
-[[nodiscard]] inline bool fitsImm32(int64_t value) noexcept
-{
+[[nodiscard]] inline bool fitsImm32(int64_t value) noexcept {
     return value >= static_cast<int64_t>(std::numeric_limits<int32_t>::min()) &&
            value <= static_cast<int64_t>(std::numeric_limits<int32_t>::max());
 }
 
 /// @brief Shared helper façade that consolidates common lowering utilities.
-class EmitCommon
-{
+class EmitCommon {
   public:
     /// @brief Construct the helper façade bound to a concrete MIR builder.
     /// @details Stores the provided @p builder pointer so subsequent emission helpers can append

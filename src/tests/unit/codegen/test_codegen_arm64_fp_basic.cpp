@@ -22,31 +22,27 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
     return ss.str();
 }
 
-TEST(Arm64FP, FAddTwoParams)
-{
+TEST(Arm64FP, FAddTwoParams) {
     const std::string in = outPath("arm64_fp_add2.il");
     const std::string out = outPath("arm64_fp_add2.s");
     const std::string il = "il 0.1\n"
@@ -63,8 +59,7 @@ TEST(Arm64FP, FAddTwoParams)
     EXPECT_NE(asmText.find("fadd d0, d0, d1"), std::string::npos);
 }
 
-TEST(Arm64FP, CallTwoDoubles)
-{
+TEST(Arm64FP, CallTwoDoubles) {
     const std::string in = outPath("arm64_fp_call.il");
     const std::string out = outPath("arm64_fp_call.s");
     const std::string il = "il 0.1\n"
@@ -84,8 +79,7 @@ TEST(Arm64FP, CallTwoDoubles)
     EXPECT_NE(asmText.find("bl h"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

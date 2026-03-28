@@ -43,8 +43,7 @@
 #include <stdlib.h>
 
 /// Internal structure for SpriteAnimation.
-struct rt_spriteanim_impl
-{
+struct rt_spriteanim_impl {
     int64_t start_frame;    ///< First frame index.
     int64_t end_frame;      ///< Last frame index (inclusive).
     int64_t current_frame;  ///< Current frame index.
@@ -65,8 +64,7 @@ struct rt_spriteanim_impl
 
 /// @brief Perform spriteanim new operation.
 /// @return Result value.
-rt_spriteanim rt_spriteanim_new(void)
-{
+rt_spriteanim rt_spriteanim_new(void) {
     struct rt_spriteanim_impl *anim =
         (struct rt_spriteanim_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_spriteanim_impl));
 
@@ -92,16 +90,14 @@ rt_spriteanim rt_spriteanim_new(void)
 
 /// @brief Perform spriteanim destroy operation.
 /// @param anim
-void rt_spriteanim_destroy(rt_spriteanim anim)
-{
+void rt_spriteanim_destroy(rt_spriteanim anim) {
     (void)anim;
 }
 
 void rt_spriteanim_setup(rt_spriteanim anim,
                          int64_t start_frame,
                          int64_t end_frame,
-                         int64_t frame_duration)
-{
+                         int64_t frame_duration) {
     if (!anim)
         return;
 
@@ -124,8 +120,7 @@ void rt_spriteanim_setup(rt_spriteanim anim,
 /// @brief Perform spriteanim set loop operation.
 /// @param anim
 /// @param loop
-void rt_spriteanim_set_loop(rt_spriteanim anim, int8_t loop)
-{
+void rt_spriteanim_set_loop(rt_spriteanim anim, int8_t loop) {
     if (!anim)
         return;
     anim->loop = loop ? 1 : 0;
@@ -134,8 +129,7 @@ void rt_spriteanim_set_loop(rt_spriteanim anim, int8_t loop)
 /// @brief Perform spriteanim set pingpong operation.
 /// @param anim
 /// @param pingpong
-void rt_spriteanim_set_pingpong(rt_spriteanim anim, int8_t pingpong)
-{
+void rt_spriteanim_set_pingpong(rt_spriteanim anim, int8_t pingpong) {
     if (!anim)
         return;
     anim->pingpong = pingpong ? 1 : 0;
@@ -144,23 +138,20 @@ void rt_spriteanim_set_pingpong(rt_spriteanim anim, int8_t pingpong)
 /// @brief Perform spriteanim loop operation.
 /// @param anim
 /// @return Result value.
-int8_t rt_spriteanim_loop(rt_spriteanim anim)
-{
+int8_t rt_spriteanim_loop(rt_spriteanim anim) {
     return anim ? anim->loop : 0;
 }
 
 /// @brief Perform spriteanim pingpong operation.
 /// @param anim
 /// @return Result value.
-int8_t rt_spriteanim_pingpong(rt_spriteanim anim)
-{
+int8_t rt_spriteanim_pingpong(rt_spriteanim anim) {
     return anim ? anim->pingpong : 0;
 }
 
 /// @brief Perform spriteanim play operation.
 /// @param anim
-void rt_spriteanim_play(rt_spriteanim anim)
-{
+void rt_spriteanim_play(rt_spriteanim anim) {
     if (!anim)
         return;
     anim->current_frame = anim->start_frame;
@@ -174,8 +165,7 @@ void rt_spriteanim_play(rt_spriteanim anim)
 
 /// @brief Perform spriteanim stop operation.
 /// @param anim
-void rt_spriteanim_stop(rt_spriteanim anim)
-{
+void rt_spriteanim_stop(rt_spriteanim anim) {
     if (!anim)
         return;
     anim->playing = 0;
@@ -184,8 +174,7 @@ void rt_spriteanim_stop(rt_spriteanim anim)
 
 /// @brief Perform spriteanim pause operation.
 /// @param anim
-void rt_spriteanim_pause(rt_spriteanim anim)
-{
+void rt_spriteanim_pause(rt_spriteanim anim) {
     if (!anim)
         return;
     if (anim->playing)
@@ -194,8 +183,7 @@ void rt_spriteanim_pause(rt_spriteanim anim)
 
 /// @brief Perform spriteanim resume operation.
 /// @param anim
-void rt_spriteanim_resume(rt_spriteanim anim)
-{
+void rt_spriteanim_resume(rt_spriteanim anim) {
     if (!anim)
         return;
     anim->paused = 0;
@@ -203,8 +191,7 @@ void rt_spriteanim_resume(rt_spriteanim anim)
 
 /// @brief Perform spriteanim reset operation.
 /// @param anim
-void rt_spriteanim_reset(rt_spriteanim anim)
-{
+void rt_spriteanim_reset(rt_spriteanim anim) {
     if (!anim)
         return;
     anim->current_frame = anim->start_frame;
@@ -217,8 +204,7 @@ void rt_spriteanim_reset(rt_spriteanim anim)
 /// @brief Perform spriteanim update operation.
 /// @param anim
 /// @return Result value.
-int8_t rt_spriteanim_update(rt_spriteanim anim)
-{
+int8_t rt_spriteanim_update(rt_spriteanim anim) {
     if (!anim)
         return 0;
 
@@ -229,15 +215,13 @@ int8_t rt_spriteanim_update(rt_spriteanim anim)
 
     // Apply speed multiplier
     anim->speed_accum += anim->speed;
-    while (anim->speed_accum >= 1.0)
-    {
+    while (anim->speed_accum >= 1.0) {
         anim->speed_accum -= 1.0;
         anim->frame_counter++;
     }
 
     // Check if it's time to advance the frame
-    if (anim->frame_counter >= anim->frame_duration)
-    {
+    if (anim->frame_counter >= anim->frame_duration) {
         anim->frame_counter = 0;
         anim->frame_changed = 1;
 
@@ -245,44 +229,31 @@ int8_t rt_spriteanim_update(rt_spriteanim anim)
         anim->current_frame += anim->direction;
 
         // Check bounds
-        if (anim->pingpong)
-        {
-            if (anim->direction == 1 && anim->current_frame > anim->end_frame)
-            {
+        if (anim->pingpong) {
+            if (anim->direction == 1 && anim->current_frame > anim->end_frame) {
                 anim->direction = -1;
                 anim->current_frame = anim->end_frame - 1;
                 if (anim->current_frame < anim->start_frame)
                     anim->current_frame = anim->start_frame;
-            }
-            else if (anim->direction == -1 && anim->current_frame < anim->start_frame)
-            {
-                if (anim->loop)
-                {
+            } else if (anim->direction == -1 && anim->current_frame < anim->start_frame) {
+                if (anim->loop) {
                     anim->direction = 1;
                     anim->current_frame = anim->start_frame + 1;
                     if (anim->current_frame > anim->end_frame)
                         anim->current_frame = anim->start_frame;
-                }
-                else
-                {
+                } else {
                     anim->current_frame = anim->start_frame;
                     anim->finished = 1;
                     anim->playing = 0;
                     return 1;
                 }
             }
-        }
-        else
-        {
+        } else {
             // Normal forward animation
-            if (anim->current_frame > anim->end_frame)
-            {
-                if (anim->loop)
-                {
+            if (anim->current_frame > anim->end_frame) {
+                if (anim->loop) {
                     anim->current_frame = anim->start_frame;
-                }
-                else
-                {
+                } else {
                     anim->current_frame = anim->end_frame;
                     anim->finished = 1;
                     anim->playing = 0;
@@ -298,8 +269,7 @@ int8_t rt_spriteanim_update(rt_spriteanim anim)
 /// @brief Perform spriteanim frame operation.
 /// @param anim
 /// @return Result value.
-int64_t rt_spriteanim_frame(rt_spriteanim anim)
-{
+int64_t rt_spriteanim_frame(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->current_frame;
@@ -308,8 +278,7 @@ int64_t rt_spriteanim_frame(rt_spriteanim anim)
 /// @brief Perform spriteanim set frame operation.
 /// @param anim
 /// @param frame
-void rt_spriteanim_set_frame(rt_spriteanim anim, int64_t frame)
-{
+void rt_spriteanim_set_frame(rt_spriteanim anim, int64_t frame) {
     if (!anim)
         return;
     if (frame < anim->start_frame)
@@ -323,8 +292,7 @@ void rt_spriteanim_set_frame(rt_spriteanim anim, int64_t frame)
 /// @brief Perform spriteanim frame duration operation.
 /// @param anim
 /// @return Result value.
-int64_t rt_spriteanim_frame_duration(rt_spriteanim anim)
-{
+int64_t rt_spriteanim_frame_duration(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->frame_duration;
@@ -333,8 +301,7 @@ int64_t rt_spriteanim_frame_duration(rt_spriteanim anim)
 /// @brief Perform spriteanim set frame duration operation.
 /// @param anim
 /// @param duration
-void rt_spriteanim_set_frame_duration(rt_spriteanim anim, int64_t duration)
-{
+void rt_spriteanim_set_frame_duration(rt_spriteanim anim, int64_t duration) {
     if (!anim)
         return;
     if (duration < 1)
@@ -345,8 +312,7 @@ void rt_spriteanim_set_frame_duration(rt_spriteanim anim, int64_t duration)
 /// @brief Perform spriteanim frame count operation.
 /// @param anim
 /// @return Result value.
-int64_t rt_spriteanim_frame_count(rt_spriteanim anim)
-{
+int64_t rt_spriteanim_frame_count(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->end_frame - anim->start_frame + 1;
@@ -355,8 +321,7 @@ int64_t rt_spriteanim_frame_count(rt_spriteanim anim)
 /// @brief Perform spriteanim is playing operation.
 /// @param anim
 /// @return Result value.
-int8_t rt_spriteanim_is_playing(rt_spriteanim anim)
-{
+int8_t rt_spriteanim_is_playing(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->playing && !anim->paused;
@@ -365,8 +330,7 @@ int8_t rt_spriteanim_is_playing(rt_spriteanim anim)
 /// @brief Perform spriteanim is paused operation.
 /// @param anim
 /// @return Result value.
-int8_t rt_spriteanim_is_paused(rt_spriteanim anim)
-{
+int8_t rt_spriteanim_is_paused(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->paused;
@@ -375,8 +339,7 @@ int8_t rt_spriteanim_is_paused(rt_spriteanim anim)
 /// @brief Perform spriteanim is finished operation.
 /// @param anim
 /// @return Result value.
-int8_t rt_spriteanim_is_finished(rt_spriteanim anim)
-{
+int8_t rt_spriteanim_is_finished(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->finished;
@@ -385,8 +348,7 @@ int8_t rt_spriteanim_is_finished(rt_spriteanim anim)
 /// @brief Perform spriteanim progress operation.
 /// @param anim
 /// @return Result value.
-int64_t rt_spriteanim_progress(rt_spriteanim anim)
-{
+int64_t rt_spriteanim_progress(rt_spriteanim anim) {
     if (!anim)
         return 0;
     int64_t total = anim->end_frame - anim->start_frame;
@@ -399,8 +361,7 @@ int64_t rt_spriteanim_progress(rt_spriteanim anim)
 /// @brief Perform spriteanim set speed operation.
 /// @param anim
 /// @param speed
-void rt_spriteanim_set_speed(rt_spriteanim anim, double speed)
-{
+void rt_spriteanim_set_speed(rt_spriteanim anim, double speed) {
     if (!anim)
         return;
     if (speed < 0.0)
@@ -413,8 +374,7 @@ void rt_spriteanim_set_speed(rt_spriteanim anim, double speed)
 /// @brief Perform spriteanim speed operation.
 /// @param anim
 /// @return Result value.
-double rt_spriteanim_speed(rt_spriteanim anim)
-{
+double rt_spriteanim_speed(rt_spriteanim anim) {
     if (!anim)
         return 1.0;
     return anim->speed;
@@ -423,8 +383,7 @@ double rt_spriteanim_speed(rt_spriteanim anim)
 /// @brief Perform spriteanim frame changed operation.
 /// @param anim
 /// @return Result value.
-int8_t rt_spriteanim_frame_changed(rt_spriteanim anim)
-{
+int8_t rt_spriteanim_frame_changed(rt_spriteanim anim) {
     if (!anim)
         return 0;
     return anim->frame_changed;

@@ -30,12 +30,10 @@
 #include "MachineIR.hpp"
 #include "TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Results from register allocation.
-struct AllocationResult
-{
+struct AllocationResult {
     int gprSpillSlots{0}; ///< Number of GPR spill slots allocated.
 };
 

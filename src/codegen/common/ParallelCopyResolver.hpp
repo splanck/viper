@@ -20,13 +20,11 @@
 #include <cstdint>
 #include <vector>
 
-namespace viper::codegen::common
-{
+namespace viper::codegen::common {
 
 /// @brief A single parallel copy assignment from source to destination.
 /// @tparam RegClassT The backend-specific register class enum type.
-template <typename RegClassT> struct CopyPair
-{
+template <typename RegClassT> struct CopyPair {
     std::uint16_t srcV; ///< Source virtual register number.
     std::uint16_t dstV; ///< Destination virtual register number.
     RegClassT cls;      ///< Register class (GPR, FP, etc.) for this copy.
@@ -37,8 +35,7 @@ template <typename RegClassT> struct CopyPair
 ///          moves into concrete MIR instructions. The resolver calls these
 ///          methods in the order that preserves the parallel-copy semantics.
 /// @tparam RegClassT The backend-specific register class enum type.
-template <typename RegClassT> struct CopyEmitter
-{
+template <typename RegClassT> struct CopyEmitter {
     /// @brief Emit a register-to-register move.
     /// @param cls Register class for both source and destination.
     /// @param src Source virtual register number.
@@ -58,27 +55,22 @@ template <typename RegClassT> struct CopyEmitter
     virtual ~CopyEmitter() = default;
 };
 
-namespace detail
-{
+namespace detail {
 
 /// @brief Find the largest virtual register number across all copy pairs.
 /// @tparam RegClassT The backend-specific register class enum type.
 /// @param pairs The vector of copy pairs to scan.
 /// @return The maximum srcV or dstV value found, or 0 if @p pairs is empty.
 template <typename RegClassT>
-inline std::uint32_t findMaxVirtualRegister(const std::vector<CopyPair<RegClassT>> &pairs)
-{
+inline std::uint32_t findMaxVirtualRegister(const std::vector<CopyPair<RegClassT>> &pairs) {
     std::uint32_t maxValue = 0U;
     const auto total = static_cast<std::uint32_t>(pairs.size());
-    for (std::uint32_t index = 0U; index < total; ++index)
-    {
+    for (std::uint32_t index = 0U; index < total; ++index) {
         const auto &pair = pairs[index];
-        if (pair.srcV > maxValue)
-        {
+        if (pair.srcV > maxValue) {
             maxValue = pair.srcV;
         }
-        if (pair.dstV > maxValue)
-        {
+        if (pair.dstV > maxValue) {
             maxValue = pair.dstV;
         }
     }
@@ -94,25 +86,21 @@ inline std::uint32_t findMaxVirtualRegister(const std::vector<CopyPair<RegClassT
 /// @param emitter Backend-specific emitter receiving the resolved move sequence.
 template <typename RegClassT>
 inline void resolveClassCopies(std::vector<CopyPair<RegClassT>> pairs,
-                               CopyEmitter<RegClassT> &emitter)
-{
+                               CopyEmitter<RegClassT> &emitter) {
     using Pair = CopyPair<RegClassT>;
 
     // Phase 0: Filter out self-copies (src == dst) as they require no action.
     std::vector<Pair> workList;
     workList.reserve(pairs.size());
     const auto inputCount = static_cast<std::uint32_t>(pairs.size());
-    for (std::uint32_t index = 0U; index < inputCount; ++index)
-    {
+    for (std::uint32_t index = 0U; index < inputCount; ++index) {
         const auto &pair = pairs[index];
-        if (pair.srcV != pair.dstV)
-        {
+        if (pair.srcV != pair.dstV) {
             workList.push_back(pair);
         }
     }
 
-    if (workList.empty())
-    {
+    if (workList.empty()) {
         return;
     }
 
@@ -121,8 +109,7 @@ inline void resolveClassCopies(std::vector<CopyPair<RegClassT>> pairs,
     std::vector<std::vector<std::uint32_t>> bySrc(maxReg + 1U);
     std::vector<std::uint32_t> indegree(maxReg + 1U, 0U);
     const auto total = static_cast<std::uint32_t>(workList.size());
-    for (std::uint32_t index = 0U; index < total; ++index)
-    {
+    for (std::uint32_t index = 0U; index < total; ++index) {
         const auto &pair = workList[index];
         ++indegree[pair.dstV];
         bySrc[pair.srcV].push_back(index);
@@ -132,21 +119,17 @@ inline void resolveClassCopies(std::vector<CopyPair<RegClassT>> pairs,
     ready.reserve(total);
     std::vector<char> processed(total, 0);
 
-    for (std::uint32_t index = 0U; index < total; ++index)
-    {
-        if (indegree[workList[index].srcV] == 0U)
-        {
+    for (std::uint32_t index = 0U; index < total; ++index) {
+        if (indegree[workList[index].srcV] == 0U) {
             ready.push_back(index);
         }
     }
 
     // Phase 1: Topological sort — emit acyclic copies in dependency order.
-    while (!ready.empty())
-    {
+    while (!ready.empty()) {
         const std::uint32_t index = ready.back();
         ready.pop_back();
-        if (processed[index] != 0)
-        {
+        if (processed[index] != 0) {
             continue;
         }
 
@@ -155,18 +138,14 @@ inline void resolveClassCopies(std::vector<CopyPair<RegClassT>> pairs,
         processed[index] = 1;
 
         const std::uint32_t dst = pair.dstV;
-        if (indegree[dst] > 0U)
-        {
+        if (indegree[dst] > 0U) {
             --indegree[dst];
-            if (indegree[dst] == 0U)
-            {
+            if (indegree[dst] == 0U) {
                 const auto &dependents = bySrc[dst];
                 const auto dependentCount = static_cast<std::uint32_t>(dependents.size());
-                for (std::uint32_t dep = 0U; dep < dependentCount; ++dep)
-                {
+                for (std::uint32_t dep = 0U; dep < dependentCount; ++dep) {
                     const std::uint32_t dependentIndex = dependents[dep];
-                    if (processed[dependentIndex] == 0)
-                    {
+                    if (processed[dependentIndex] == 0) {
                         ready.push_back(dependentIndex);
                     }
                 }
@@ -175,10 +154,8 @@ inline void resolveClassCopies(std::vector<CopyPair<RegClassT>> pairs,
     }
 
     // Phase 2: Cycle breaking.
-    for (std::uint32_t index = 0U; index < total; ++index)
-    {
-        if (processed[index] != 0)
-        {
+    for (std::uint32_t index = 0U; index < total; ++index) {
+        if (processed[index] != 0) {
             continue;
         }
 
@@ -190,23 +167,19 @@ inline void resolveClassCopies(std::vector<CopyPair<RegClassT>> pairs,
         const std::uint16_t startDst = startPair.dstV;
         std::uint16_t current = startDst;
 
-        while (current != startSrc)
-        {
+        while (current != startSrc) {
             const auto &candidates = bySrc[current];
             const auto candidateCount = static_cast<std::uint32_t>(candidates.size());
             std::uint32_t nextIndex = total;
-            for (std::uint32_t c = 0U; c < candidateCount; ++c)
-            {
+            for (std::uint32_t c = 0U; c < candidateCount; ++c) {
                 const std::uint32_t candidate = candidates[c];
-                if (processed[candidate] == 0)
-                {
+                if (processed[candidate] == 0) {
                     nextIndex = candidate;
                     break;
                 }
             }
 
-            if (nextIndex == total)
-            {
+            if (nextIndex == total) {
                 break;
             }
 
@@ -233,44 +206,36 @@ inline void resolveClassCopies(std::vector<CopyPair<RegClassT>> pairs,
 /// @param pairs The full set of parallel copy pairs (may span multiple classes).
 /// @param E     Backend-specific emitter receiving the resolved move sequence.
 template <typename RegClassT>
-inline void resolveParallelCopies(std::vector<CopyPair<RegClassT>> pairs, CopyEmitter<RegClassT> &E)
-{
+inline void resolveParallelCopies(std::vector<CopyPair<RegClassT>> pairs,
+                                  CopyEmitter<RegClassT> &E) {
     const auto total = static_cast<std::uint32_t>(pairs.size());
-    if (total == 0U)
-    {
+    if (total == 0U) {
         return;
     }
 
     std::vector<RegClassT> classes;
     classes.reserve(total);
-    for (std::uint32_t index = 0U; index < total; ++index)
-    {
+    for (std::uint32_t index = 0U; index < total; ++index) {
         const RegClassT cls = pairs[index].cls;
         bool seen = false;
         const auto seenCount = static_cast<std::uint32_t>(classes.size());
-        for (std::uint32_t c = 0U; c < seenCount; ++c)
-        {
-            if (classes[c] == cls)
-            {
+        for (std::uint32_t c = 0U; c < seenCount; ++c) {
+            if (classes[c] == cls) {
                 seen = true;
                 break;
             }
         }
-        if (!seen)
-        {
+        if (!seen) {
             classes.push_back(cls);
         }
     }
 
     const auto classCount = static_cast<std::uint32_t>(classes.size());
-    for (std::uint32_t c = 0U; c < classCount; ++c)
-    {
+    for (std::uint32_t c = 0U; c < classCount; ++c) {
         const RegClassT cls = classes[c];
         std::vector<CopyPair<RegClassT>> perClass;
-        for (std::uint32_t index = 0U; index < total; ++index)
-        {
-            if (pairs[index].cls == cls)
-            {
+        for (std::uint32_t index = 0U; index < total; ++index) {
+            if (pairs[index].cls == cls) {
                 perClass.push_back(pairs[index]);
             }
         }

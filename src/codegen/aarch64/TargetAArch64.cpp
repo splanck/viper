@@ -94,12 +94,9 @@
 
 #include "TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64
-{
-namespace
-{
-TargetInfo makeDarwinTarget()
-{
+namespace viper::codegen::aarch64 {
+namespace {
+TargetInfo makeDarwinTarget() {
     TargetInfo info{};
     // Caller-saved GPRs (AArch64 AAPCS64 / macOS): x0-x17 are call-clobbered; x18 is reserved;
     // x19-x28 callee-saved.
@@ -181,8 +178,7 @@ TargetInfo makeDarwinTarget()
 /// @brief Build the Linux AArch64 target.
 /// Same AAPCS64 register convention as Darwin; only the assembly output
 /// format differs (no underscore prefix, ELF .type/.size directives).
-static TargetInfo makeLinuxTarget()
-{
+static TargetInfo makeLinuxTarget() {
     TargetInfo info = makeDarwinTarget();
     info.abiFormat = ABIFormat::Linux;
     return info;
@@ -191,8 +187,7 @@ static TargetInfo makeLinuxTarget()
 /// @brief Build the Windows ARM64 target.
 /// Identical AAPCS64 register convention to Linux; PE/COFF assembly format
 /// (no underscore symbol prefix, no ELF .type/.size directives).
-static TargetInfo makeWindowsTarget()
-{
+static TargetInfo makeWindowsTarget() {
     TargetInfo info = makeDarwinTarget();
     info.abiFormat = ABIFormat::Windows;
     return info;
@@ -206,33 +201,28 @@ TargetInfo windowsTargetInstance = makeWindowsTarget();
 
 /// @brief Get the singleton TargetInfo instance for Darwin/macOS AArch64.
 /// @return Reference to the pre-configured Darwin target information.
-const TargetInfo &darwinTarget() noexcept
-{
+const TargetInfo &darwinTarget() noexcept {
     return darwinTargetInstance;
 }
 
 /// @brief Get the singleton TargetInfo instance for Linux AArch64 (ELF).
 /// @return Reference to the pre-configured Linux target information.
-const TargetInfo &linuxTarget() noexcept
-{
+const TargetInfo &linuxTarget() noexcept {
     return linuxTargetInstance;
 }
 
 /// @brief Get the singleton TargetInfo instance for Windows ARM64 (PE/COFF).
 /// Identical AAPCS64 register convention to Linux; only assembly syntax differs.
 /// @return Reference to the pre-configured Windows ARM64 target information.
-const TargetInfo &windowsTarget() noexcept
-{
+const TargetInfo &windowsTarget() noexcept {
     return windowsTargetInstance;
 }
 
 /// @brief Check if a physical register is a general-purpose register (GPR).
 /// @param reg The physical register to check.
 /// @return True if the register is X0-X30 or SP, false otherwise.
-bool isGPR(PhysReg reg) noexcept
-{
-    switch (reg)
-    {
+bool isGPR(PhysReg reg) noexcept {
+    switch (reg) {
         case PhysReg::X0:
         case PhysReg::X1:
         case PhysReg::X2:
@@ -274,10 +264,8 @@ bool isGPR(PhysReg reg) noexcept
 /// @brief Check if a physical register is a floating-point/SIMD register (FPR).
 /// @param reg The physical register to check.
 /// @return True if the register is V0-V31, false otherwise.
-bool isFPR(PhysReg reg) noexcept
-{
-    switch (reg)
-    {
+bool isFPR(PhysReg reg) noexcept {
+    switch (reg) {
         case PhysReg::V0:
         case PhysReg::V1:
         case PhysReg::V2:
@@ -319,10 +307,8 @@ bool isFPR(PhysReg reg) noexcept
 /// @brief Get the assembly name for a physical register.
 /// @param reg The physical register to get the name for.
 /// @return The lowercase assembly name string (e.g., "x0", "sp", "v0").
-const char *regName(PhysReg reg) noexcept
-{
-    switch (reg)
-    {
+const char *regName(PhysReg reg) noexcept {
+    switch (reg) {
         case PhysReg::X0:
             return "x0";
         case PhysReg::X1:

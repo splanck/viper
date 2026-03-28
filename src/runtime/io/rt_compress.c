@@ -48,8 +48,7 @@
 //=============================================================================
 
 /// DEFLATE block types (RFC 1951 §3.2.3).
-typedef enum
-{
+typedef enum {
     RT_HUFFMAN_STORED = 0,  ///< No compression (stored block).
     RT_HUFFMAN_FIXED = 1,   ///< Fixed Huffman codes.
     RT_HUFFMAN_DYNAMIC = 2, ///< Dynamic Huffman codes.
@@ -79,23 +78,20 @@ typedef enum
 //=============================================================================
 
 /// @brief Internal structure matching rt_bytes_impl
-typedef struct
-{
+typedef struct {
     int64_t len;
     uint8_t *data;
 } bytes_impl;
 
 /// @brief Get raw pointer to bytes data
-static inline uint8_t *bytes_data(void *obj)
-{
+static inline uint8_t *bytes_data(void *obj) {
     if (!obj)
         return NULL;
     return ((bytes_impl *)obj)->data;
 }
 
 /// @brief Get bytes length
-static inline int64_t bytes_len(void *obj)
-{
+static inline int64_t bytes_len(void *obj) {
     if (!obj)
         return 0;
     return ((bytes_impl *)obj)->len;
@@ -105,8 +101,7 @@ static inline int64_t bytes_len(void *obj)
 // Bit Stream Reader (for decompression)
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     const uint8_t *data;
     size_t len;
     size_t pos;      // Current byte position
@@ -115,8 +110,7 @@ typedef struct
     int bits_in_buf; // Bits available in buffer
 } bit_reader_t;
 
-static void br_init(bit_reader_t *br, const uint8_t *data, size_t len)
-{
+static void br_init(bit_reader_t *br, const uint8_t *data, size_t len) {
     br->data = data;
     br->len = len;
     br->pos = 0;
@@ -128,12 +122,9 @@ static void br_init(bit_reader_t *br, const uint8_t *data, size_t len)
 /// @brief Ensure at least n bits in buffer
 /// @note At end-of-stream, zero-fills remaining bits if some data exists (valid
 ///       since DEFLATE padding is zeros). Fails if no bits available at all.
-static bool br_fill(bit_reader_t *br, int n)
-{
-    while (br->bits_in_buf < n)
-    {
-        if (br->pos >= br->len)
-        {
+static bool br_fill(bit_reader_t *br, int n) {
+    while (br->bits_in_buf < n) {
+        if (br->pos >= br->len) {
             // At end of stream — return what we have without fabricating bits.
             // DEFLATE streams are zero-padded to byte boundary, so remaining
             // bits in the buffer are valid. Don't inflate bits_in_buf beyond
@@ -147,8 +138,7 @@ static bool br_fill(bit_reader_t *br, int n)
 }
 
 /// @brief Read n bits (LSB first)
-static uint32_t br_read(bit_reader_t *br, int n)
-{
+static uint32_t br_read(bit_reader_t *br, int n) {
     if (!br_fill(br, n))
         return 0;
     uint32_t val = br->buffer & ((1U << n) - 1);
@@ -158,29 +148,25 @@ static uint32_t br_read(bit_reader_t *br, int n)
 }
 
 /// @brief Peek n bits without consuming
-static uint32_t br_peek(bit_reader_t *br, int n)
-{
+static uint32_t br_peek(bit_reader_t *br, int n) {
     br_fill(br, n);
     return br->buffer & ((1U << n) - 1);
 }
 
 /// @brief Consume n bits
-static void br_consume(bit_reader_t *br, int n)
-{
+static void br_consume(bit_reader_t *br, int n) {
     br->buffer >>= n;
     br->bits_in_buf -= n;
 }
 
 /// @brief Align to byte boundary
-static void br_align(bit_reader_t *br)
-{
+static void br_align(bit_reader_t *br) {
     br->buffer = 0;
     br->bits_in_buf = 0;
 }
 
 /// @brief Check if more data available
-static bool br_has_data(bit_reader_t *br)
-{
+static bool br_has_data(bit_reader_t *br) {
     return br->pos < br->len || br->bits_in_buf > 0;
 }
 
@@ -188,8 +174,7 @@ static bool br_has_data(bit_reader_t *br)
 // Bit Stream Writer (for compression)
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     uint8_t *data;
     size_t capacity;
     size_t len;
@@ -197,8 +182,7 @@ typedef struct
     int bits_in_buf;
 } bit_writer_t;
 
-static void bw_init(bit_writer_t *bw, size_t initial_cap)
-{
+static void bw_init(bit_writer_t *bw, size_t initial_cap) {
     bw->capacity = initial_cap > 256 ? initial_cap : 256;
     bw->data = (uint8_t *)malloc(bw->capacity);
     if (!bw->data)
@@ -208,10 +192,8 @@ static void bw_init(bit_writer_t *bw, size_t initial_cap)
     bw->bits_in_buf = 0;
 }
 
-static void bw_ensure(bit_writer_t *bw, size_t need)
-{
-    if (bw->len + need > bw->capacity)
-    {
+static void bw_ensure(bit_writer_t *bw, size_t need) {
+    if (bw->len + need > bw->capacity) {
         size_t new_cap = (bw->capacity <= SIZE_MAX / 2) ? bw->capacity * 2 : SIZE_MAX;
         if (new_cap < bw->len + need)
             new_cap = bw->len + need + 256;
@@ -224,12 +206,10 @@ static void bw_ensure(bit_writer_t *bw, size_t need)
 }
 
 /// @brief Write n bits (LSB first)
-static void bw_write(bit_writer_t *bw, uint32_t val, int n)
-{
+static void bw_write(bit_writer_t *bw, uint32_t val, int n) {
     bw->buffer |= val << bw->bits_in_buf;
     bw->bits_in_buf += n;
-    while (bw->bits_in_buf >= 8)
-    {
+    while (bw->bits_in_buf >= 8) {
         bw_ensure(bw, 1);
         bw->data[bw->len++] = bw->buffer & 0xFF;
         bw->buffer >>= 8;
@@ -238,10 +218,8 @@ static void bw_write(bit_writer_t *bw, uint32_t val, int n)
 }
 
 /// @brief Flush remaining bits (pad with zeros)
-static void bw_flush(bit_writer_t *bw)
-{
-    if (bw->bits_in_buf > 0)
-    {
+static void bw_flush(bit_writer_t *bw) {
+    if (bw->bits_in_buf > 0) {
         bw_ensure(bw, 1);
         bw->data[bw->len++] = bw->buffer & 0xFF;
         bw->buffer = 0;
@@ -250,15 +228,13 @@ static void bw_flush(bit_writer_t *bw)
 }
 
 /// @brief Write raw bytes (must be byte-aligned)
-static void bw_write_bytes(bit_writer_t *bw, const uint8_t *data, size_t len)
-{
+static void bw_write_bytes(bit_writer_t *bw, const uint8_t *data, size_t len) {
     bw_ensure(bw, len);
     memcpy(bw->data + bw->len, data, len);
     bw->len += len;
 }
 
-static void bw_free(bit_writer_t *bw)
-{
+static void bw_free(bit_writer_t *bw) {
     free(bw->data);
     bw->data = NULL;
     bw->capacity = 0;
@@ -269,15 +245,13 @@ static void bw_free(bit_writer_t *bw)
 // Huffman Tree
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     uint16_t symbol; // Symbol value
     uint16_t code;   // Huffman code
     uint8_t len;     // Code length in bits
 } huffman_code_t;
 
-typedef struct
-{
+typedef struct {
     int max_code;      // Maximum code index
     uint16_t *symbols; // Symbol lookup by code
     int table_bits;    // Bits for direct lookup
@@ -285,12 +259,10 @@ typedef struct
 } huffman_tree_t;
 
 /// @brief Build Huffman tree from code lengths
-static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int num_codes)
-{
+static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int num_codes) {
     // Count code lengths
     int bl_count[MAX_BITS + 1] = {0};
-    for (int i = 0; i < num_codes; i++)
-    {
+    for (int i = 0; i < num_codes; i++) {
         if (lengths[i] > MAX_BITS)
             return false;
         bl_count[lengths[i]]++;
@@ -300,16 +272,14 @@ static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int
     // Calculate next code for each length
     uint16_t next_code[MAX_BITS + 1];
     uint16_t code = 0;
-    for (int bits = 1; bits <= MAX_BITS; bits++)
-    {
+    for (int bits = 1; bits <= MAX_BITS; bits++) {
         code = (uint16_t)((code + bl_count[bits - 1]) << 1);
         next_code[bits] = code;
     }
 
     // Determine table size
     int max_len = 0;
-    for (int i = 0; i < num_codes; i++)
-    {
+    for (int i = 0; i < num_codes; i++) {
         if (lengths[i] > max_len)
             max_len = lengths[i];
     }
@@ -326,29 +296,25 @@ static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int
         return false;
 
     // Build direct lookup table for short codes
-    for (int i = 0; i < num_codes; i++)
-    {
+    for (int i = 0; i < num_codes; i++) {
         if (lengths[i] == 0)
             continue;
 
         uint16_t sym_code = next_code[lengths[i]]++;
         int len = lengths[i];
 
-        if (len <= tree->table_bits)
-        {
+        if (len <= tree->table_bits) {
             // Direct table entry
             // Reverse the code bits for LSB-first reading
             uint16_t rev_code = 0;
-            for (int b = 0; b < len; b++)
-            {
+            for (int b = 0; b < len; b++) {
                 if (sym_code & (1 << b))
                     rev_code |= 1 << (len - 1 - b);
             }
 
             // Fill in all entries that match this prefix
             int fill = 1 << (tree->table_bits - len);
-            for (int j = 0; j < fill; j++)
-            {
+            for (int j = 0; j < fill; j++) {
                 int idx = rev_code | (j << len);
                 // Pack length and symbol: high bits = length, low bits = symbol
                 tree->symbols[idx] = (uint16_t)((len << 12) | i);
@@ -360,8 +326,7 @@ static bool build_huffman_tree(huffman_tree_t *tree, const uint8_t *lengths, int
 }
 
 /// @brief Decode one symbol using Huffman tree
-static int decode_symbol(huffman_tree_t *tree, bit_reader_t *br)
-{
+static int decode_symbol(huffman_tree_t *tree, bit_reader_t *br) {
     if (!br_fill(br, tree->table_bits))
         return -1;
 
@@ -381,8 +346,7 @@ static int decode_symbol(huffman_tree_t *tree, bit_reader_t *br)
     return symbol;
 }
 
-static void free_huffman_tree(huffman_tree_t *tree)
-{
+static void free_huffman_tree(huffman_tree_t *tree) {
     free(tree->symbols);
     tree->symbols = NULL;
 }
@@ -395,8 +359,7 @@ static huffman_tree_t fixed_lit_tree;
 static huffman_tree_t fixed_dist_tree;
 static int fixed_trees_init = 0;
 
-static void init_fixed_trees(void)
-{
+static void init_fixed_trees(void) {
     if (fixed_trees_init)
         return;
 
@@ -452,15 +415,13 @@ static const int code_length_order[MAX_CODE_LEN_CODES] = {
 // Decompression Output Buffer
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     uint8_t *data;
     size_t len;
     size_t capacity;
 } output_buffer_t;
 
-static void out_init(output_buffer_t *out, size_t initial_cap)
-{
+static void out_init(output_buffer_t *out, size_t initial_cap) {
     out->capacity = initial_cap > 256 ? initial_cap : 256;
     out->data = (uint8_t *)malloc(out->capacity);
     if (!out->data)
@@ -471,13 +432,11 @@ static void out_init(output_buffer_t *out, size_t initial_cap)
 /* S-20: Maximum decompressed output size (256 MB) to prevent decompression bombs */
 #define INFLATE_MAX_OUTPUT (256u * 1024u * 1024u)
 
-static void out_ensure(output_buffer_t *out, size_t need)
-{
+static void out_ensure(output_buffer_t *out, size_t need) {
     if (out->len + need > INFLATE_MAX_OUTPUT)
         rt_trap("Inflate: decompressed output exceeds 256 MB limit");
 
-    if (out->len + need > out->capacity)
-    {
+    if (out->len + need > out->capacity) {
         size_t new_cap = out->capacity * 2;
         if (new_cap < out->len + need)
             new_cap = out->len + need + 256;
@@ -491,24 +450,20 @@ static void out_ensure(output_buffer_t *out, size_t need)
     }
 }
 
-static void out_byte(output_buffer_t *out, uint8_t b)
-{
+static void out_byte(output_buffer_t *out, uint8_t b) {
     out_ensure(out, 1);
     out->data[out->len++] = b;
 }
 
-static void out_copy(output_buffer_t *out, int distance, int length)
-{
+static void out_copy(output_buffer_t *out, int distance, int length) {
     out_ensure(out, length);
     size_t src = out->len - distance;
-    for (int i = 0; i < length; i++)
-    {
+    for (int i = 0; i < length; i++) {
         out->data[out->len++] = out->data[src++];
     }
 }
 
-static void out_free(output_buffer_t *out)
-{
+static void out_free(output_buffer_t *out) {
     free(out->data);
     out->data = NULL;
     out->capacity = 0;
@@ -520,8 +475,7 @@ static void out_free(output_buffer_t *out)
 //=============================================================================
 
 /// @brief Inflate a stored block (no compression)
-static bool inflate_stored(bit_reader_t *br, output_buffer_t *out)
-{
+static bool inflate_stored(bit_reader_t *br, output_buffer_t *out) {
     // Align to byte boundary
     br_align(br);
 
@@ -553,26 +507,19 @@ static bool inflate_stored(bit_reader_t *br, output_buffer_t *out)
 static bool inflate_huffman(bit_reader_t *br,
                             output_buffer_t *out,
                             huffman_tree_t *lit_tree,
-                            huffman_tree_t *dist_tree)
-{
-    while (true)
-    {
+                            huffman_tree_t *dist_tree) {
+    while (true) {
         int sym = decode_symbol(lit_tree, br);
         if (sym < 0)
             return false;
 
-        if (sym < 256)
-        {
+        if (sym < 256) {
             // Literal byte
             out_byte(out, (uint8_t)sym);
-        }
-        else if (sym == 256)
-        {
+        } else if (sym == 256) {
             // End of block
             return true;
-        }
-        else if (sym <= 285)
-        {
+        } else if (sym <= 285) {
             // Length code
             int len_idx = sym - 257;
             int length = length_base[len_idx];
@@ -596,17 +543,14 @@ static bool inflate_huffman(bit_reader_t *br,
 
             // Copy from output buffer
             out_copy(out, distance, length);
-        }
-        else
-        {
+        } else {
             return false; // Invalid symbol
         }
     }
 }
 
 /// @brief Inflate a dynamic Huffman block
-static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out)
-{
+static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out) {
     // Read header
     int hlit = br_read(br, 5) + 257; // Number of literal/length codes
     int hdist = br_read(br, 5) + 1;  // Number of distance codes
@@ -617,8 +561,7 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out)
 
     // Read code length code lengths
     uint8_t cl_lengths[MAX_CODE_LEN_CODES] = {0};
-    for (int i = 0; i < hclen; i++)
-    {
+    for (int i = 0; i < hclen; i++) {
         cl_lengths[code_length_order[i]] = (uint8_t)br_read(br, 3);
     }
 
@@ -632,25 +575,19 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out)
     int total_codes = hlit + hdist;
     int i = 0;
 
-    while (i < total_codes)
-    {
+    while (i < total_codes) {
         int sym = decode_symbol(&cl_tree, br);
-        if (sym < 0)
-        {
+        if (sym < 0) {
             free_huffman_tree(&cl_tree);
             return false;
         }
 
-        if (sym < 16)
-        {
+        if (sym < 16) {
             // Literal length
             lengths[i++] = (uint8_t)sym;
-        }
-        else if (sym == 16)
-        {
+        } else if (sym == 16) {
             // Repeat previous
-            if (i == 0)
-            {
+            if (i == 0) {
                 free_huffman_tree(&cl_tree);
                 return false;
             }
@@ -658,23 +595,17 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out)
             uint8_t prev = lengths[i - 1];
             while (repeat-- > 0 && i < total_codes)
                 lengths[i++] = prev;
-        }
-        else if (sym == 17)
-        {
+        } else if (sym == 17) {
             // Repeat 0, 3-10 times
             int repeat = br_read(br, 3) + 3;
             while (repeat-- > 0 && i < total_codes)
                 lengths[i++] = 0;
-        }
-        else if (sym == 18)
-        {
+        } else if (sym == 18) {
             // Repeat 0, 11-138 times
             int repeat = br_read(br, 7) + 11;
             while (repeat-- > 0 && i < total_codes)
                 lengths[i++] = 0;
-        }
-        else
-        {
+        } else {
             free_huffman_tree(&cl_tree);
             return false;
         }
@@ -688,8 +619,7 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out)
     if (!build_huffman_tree(&lit_tree, lengths, hlit))
         return false;
 
-    if (!build_huffman_tree(&dist_tree, lengths + hlit, hdist))
-    {
+    if (!build_huffman_tree(&dist_tree, lengths + hlit, hdist)) {
         free_huffman_tree(&lit_tree);
         return false;
     }
@@ -704,8 +634,7 @@ static bool inflate_dynamic(bit_reader_t *br, output_buffer_t *out)
 }
 
 /// @brief Main DEFLATE decompression function
-static void *inflate_data(const uint8_t *data, size_t len)
-{
+static void *inflate_data(const uint8_t *data, size_t len) {
     init_fixed_trees();
 
     bit_reader_t br;
@@ -716,10 +645,8 @@ static void *inflate_data(const uint8_t *data, size_t len)
 
     bool last_block = false;
 
-    while (!last_block)
-    {
-        if (!br_has_data(&br))
-        {
+    while (!last_block) {
+        if (!br_has_data(&br)) {
             out_free(&out);
             rt_trap("Inflate: unexpected end of data");
         }
@@ -729,8 +656,7 @@ static void *inflate_data(const uint8_t *data, size_t len)
         int block_type = br_read(&br, 2);
 
         bool ok = false;
-        switch (block_type)
-        {
+        switch (block_type) {
             case RT_HUFFMAN_STORED:
                 ok = inflate_stored(&br, &out);
                 break;
@@ -745,8 +671,7 @@ static void *inflate_data(const uint8_t *data, size_t len)
                 rt_trap("Inflate: invalid block type");
         }
 
-        if (!ok)
-        {
+        if (!ok) {
             out_free(&out);
             rt_trap("Inflate: invalid compressed data");
         }
@@ -765,8 +690,7 @@ static void *inflate_data(const uint8_t *data, size_t len)
 //=============================================================================
 
 // Hash table for LZ77 matching
-typedef struct
-{
+typedef struct {
     int *head;      // Hash -> position
     int *prev;      // Chain for same hash
     int window_pos; // Current position in window
@@ -778,14 +702,12 @@ typedef struct
 #define NIL (-1)
 
 /// @brief Compute hash for 3 bytes
-static inline int compute_hash(const uint8_t *data)
-{
+static inline int compute_hash(const uint8_t *data) {
     return ((data[0] << 10) ^ (data[1] << 5) ^ data[2]) & HASH_MASK;
 }
 
 /// @brief Initialize LZ77 state
-static void lz77_init(lz77_state_t *lz)
-{
+static void lz77_init(lz77_state_t *lz) {
     lz->head = (int *)malloc(HASH_SIZE * sizeof(int));
     lz->prev = (int *)malloc(WINDOW_SIZE * sizeof(int));
     for (int i = 0; i < HASH_SIZE; i++)
@@ -795,16 +717,14 @@ static void lz77_init(lz77_state_t *lz)
     lz->window_pos = 0;
 }
 
-static void lz77_free(lz77_state_t *lz)
-{
+static void lz77_free(lz77_state_t *lz) {
     free(lz->head);
     free(lz->prev);
 }
 
 /// @brief Find best match at current position
 static int find_match(
-    lz77_state_t *lz, const uint8_t *data, size_t pos, size_t len, int max_chain, int *match_dist)
-{
+    lz77_state_t *lz, const uint8_t *data, size_t pos, size_t len, int max_chain, int *match_dist) {
     if (pos + MIN_MATCH_LEN > len)
         return 0;
 
@@ -817,8 +737,7 @@ static int find_match(
     if (limit < 0)
         limit = 0;
 
-    while (chain_pos >= limit && max_chain-- > 0)
-    {
+    while (chain_pos >= limit && max_chain-- > 0) {
         // Check match
         int match_len = 0;
         size_t a = pos, b = chain_pos;
@@ -826,15 +745,13 @@ static int find_match(
         if (max_len > MAX_MATCH_LEN)
             max_len = MAX_MATCH_LEN;
 
-        while (match_len < (int)max_len && data[a] == data[b])
-        {
+        while (match_len < (int)max_len && data[a] == data[b]) {
             match_len++;
             a++;
             b++;
         }
 
-        if (match_len > best_len)
-        {
+        if (match_len > best_len) {
             best_len = match_len;
             best_dist = (int)(pos - chain_pos);
             if (best_len >= MAX_MATCH_LEN)
@@ -849,18 +766,15 @@ static int find_match(
 }
 
 /// @brief Update hash chain
-static void update_hash(lz77_state_t *lz, const uint8_t *data, size_t pos)
-{
+static void update_hash(lz77_state_t *lz, const uint8_t *data, size_t pos) {
     int hash = compute_hash(data + pos);
     lz->prev[pos & WINDOW_MASK] = lz->head[hash];
     lz->head[hash] = (int)pos;
 }
 
 /// @brief Get length code for a match length
-static int get_length_code(int length)
-{
-    for (int i = 0; i < 29; i++)
-    {
+static int get_length_code(int length) {
+    for (int i = 0; i < 29; i++) {
         if (i == 28)
             return 285;
         if (length < length_base[i + 1])
@@ -870,10 +784,8 @@ static int get_length_code(int length)
 }
 
 /// @brief Get distance code for a distance
-static int get_dist_code(int dist)
-{
-    for (int i = 0; i < 30; i++)
-    {
+static int get_dist_code(int dist) {
+    for (int i = 0; i < 30; i++) {
         if (i == 29 || dist < dist_base[i + 1])
             return i;
     }
@@ -881,12 +793,10 @@ static int get_dist_code(int dist)
 }
 
 /// @brief Write bits in reverse order (LSB first as required by DEFLATE)
-static void write_code(bit_writer_t *bw, uint16_t code, int len)
-{
+static void write_code(bit_writer_t *bw, uint16_t code, int len) {
     // Reverse the code bits
     uint16_t rev = 0;
-    for (int i = 0; i < len; i++)
-    {
+    for (int i = 0; i < len; i++) {
         if (code & (1 << i))
             rev |= 1 << (len - 1 - i);
     }
@@ -894,11 +804,9 @@ static void write_code(bit_writer_t *bw, uint16_t code, int len)
 }
 
 /// @brief Compress data using DEFLATE with stored blocks (simplest approach)
-static void deflate_stored(bit_writer_t *bw, const uint8_t *data, size_t len)
-{
+static void deflate_stored(bit_writer_t *bw, const uint8_t *data, size_t len) {
     // Handle empty data - still need a final block
-    if (len == 0)
-    {
+    if (len == 0) {
         // Block header
         bw_write(bw, 1, 1); // BFINAL = 1
         bw_write(bw, 0, 2); // BTYPE = stored
@@ -915,8 +823,7 @@ static void deflate_stored(bit_writer_t *bw, const uint8_t *data, size_t len)
     }
 
     size_t pos = 0;
-    while (pos < len)
-    {
+    while (pos < len) {
         size_t block_len = len - pos;
         if (block_len > 65535)
             block_len = 65535;
@@ -946,8 +853,7 @@ static void deflate_stored(bit_writer_t *bw, const uint8_t *data, size_t len)
 }
 
 /// @brief Compress data using fixed Huffman codes
-static void deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int level)
-{
+static void deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int level) {
     init_fixed_trees();
 
     lz77_state_t lz;
@@ -963,37 +869,30 @@ static void deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int
     // 0-143: 8 bits, 144-255: 9 bits, 256-279: 7 bits, 280-287: 8 bits
 
     size_t pos = 0;
-    while (pos < len)
-    {
+    while (pos < len) {
         int match_dist = 0;
         int match_len = 0;
 
-        if (pos + MIN_MATCH_LEN <= len)
-        {
+        if (pos + MIN_MATCH_LEN <= len) {
             match_len = find_match(&lz, data, pos, len, max_chain, &match_dist);
         }
 
-        if (match_len >= MIN_MATCH_LEN)
-        {
+        if (match_len >= MIN_MATCH_LEN) {
             // Write length code
             int len_code = get_length_code(match_len);
             int len_idx = len_code - 257;
 
             // Encode length code with fixed Huffman
-            if (len_code <= 279)
-            {
+            if (len_code <= 279) {
                 // 7 bits: codes 256-279 map to 0000000-0010111
                 write_code(bw, (uint16_t)(len_code - 256), 7);
-            }
-            else
-            {
+            } else {
                 // 8 bits: codes 280-287 map to 11000000-11000111
                 write_code(bw, (uint16_t)(0xC0 + (len_code - 280)), 8);
             }
 
             // Extra length bits
-            if (length_extra_bits[len_idx] > 0)
-            {
+            if (length_extra_bits[len_idx] > 0) {
                 bw_write(bw, match_len - length_base[len_idx], length_extra_bits[len_idx]);
             }
 
@@ -1002,30 +901,23 @@ static void deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int
             write_code(bw, (uint16_t)dist_code, 5);
 
             // Extra distance bits
-            if (dist_extra_bits[dist_code] > 0)
-            {
+            if (dist_extra_bits[dist_code] > 0) {
                 bw_write(bw, match_dist - dist_base[dist_code], dist_extra_bits[dist_code]);
             }
 
             // Update hash for all matched bytes
-            for (int i = 0; i < match_len; i++)
-            {
+            for (int i = 0; i < match_len; i++) {
                 if (pos + i + MIN_MATCH_LEN <= len)
                     update_hash(&lz, data, pos + i);
             }
             pos += match_len;
-        }
-        else
-        {
+        } else {
             // Literal byte
             uint8_t lit = data[pos];
-            if (lit <= 143)
-            {
+            if (lit <= 143) {
                 // 8 bits: 00110000-10111111
                 write_code(bw, 0x30 + lit, 8);
-            }
-            else
-            {
+            } else {
                 // 9 bits: 110010000-111111111
                 write_code(bw, 0x190 + (lit - 144), 9);
             }
@@ -1043,8 +935,7 @@ static void deflate_fixed(bit_writer_t *bw, const uint8_t *data, size_t len, int
 }
 
 /// @brief Main DEFLATE compression function
-static void *deflate_data(const uint8_t *data, size_t len, int level)
-{
+static void *deflate_data(const uint8_t *data, size_t len, int level) {
     if (level < DEFLATE_MIN_LEVEL)
         level = DEFLATE_MIN_LEVEL;
     if (level > DEFLATE_MAX_LEVEL)
@@ -1055,12 +946,9 @@ static void *deflate_data(const uint8_t *data, size_t len, int level)
 
     // For small data or level 1, use stored blocks
     // For larger data, use fixed Huffman
-    if (len <= 64 || level == 1)
-    {
+    if (len <= 64 || level == 1) {
         deflate_stored(&bw, data, len);
-    }
-    else
-    {
+    } else {
         deflate_fixed(&bw, data, len, level);
     }
 
@@ -1079,8 +967,7 @@ static void *deflate_data(const uint8_t *data, size_t len, int level)
 //=============================================================================
 
 /// @brief Compress data with GZIP wrapper
-static void *gzip_data(const uint8_t *data, size_t len, int level)
-{
+static void *gzip_data(const uint8_t *data, size_t len, int level) {
     // First compress with DEFLATE
     void *deflated = deflate_data(data, len, level);
     size_t deflated_len = bytes_len(deflated);
@@ -1124,8 +1011,7 @@ static void *gzip_data(const uint8_t *data, size_t len, int level)
 }
 
 /// @brief Decompress GZIP data
-static void *gunzip_data(const uint8_t *data, size_t len)
-{
+static void *gunzip_data(const uint8_t *data, size_t len) {
     if (len < 18)
         rt_trap("Gunzip: data too short");
 
@@ -1143,8 +1029,7 @@ static void *gunzip_data(const uint8_t *data, size_t len)
     size_t pos = 10;
 
     // Skip FEXTRA
-    if (flags & 0x04)
-    {
+    if (flags & 0x04) {
         if (pos + 2 > len)
             rt_trap("Gunzip: truncated header");
         size_t xlen = data[pos] | (data[pos + 1] << 8);
@@ -1152,24 +1037,21 @@ static void *gunzip_data(const uint8_t *data, size_t len)
     }
 
     // Skip FNAME
-    if (flags & 0x08)
-    {
+    if (flags & 0x08) {
         while (pos < len && data[pos] != 0)
             pos++;
         pos++; // Skip null terminator
     }
 
     // Skip FCOMMENT
-    if (flags & 0x10)
-    {
+    if (flags & 0x10) {
         while (pos < len && data[pos] != 0)
             pos++;
         pos++;
     }
 
     // Skip FHCRC
-    if (flags & 0x02)
-    {
+    if (flags & 0x02) {
         pos += 2;
     }
 
@@ -1203,15 +1085,13 @@ static void *gunzip_data(const uint8_t *data, size_t len)
 // Public API
 //=============================================================================
 
-void *rt_compress_deflate(void *data)
-{
+void *rt_compress_deflate(void *data) {
     if (!data)
         rt_trap("Compress.Deflate: data is null");
     return deflate_data(bytes_data(data), bytes_len(data), DEFLATE_DEFAULT_LEVEL);
 }
 
-void *rt_compress_deflate_lvl(void *data, int64_t level)
-{
+void *rt_compress_deflate_lvl(void *data, int64_t level) {
     if (!data)
         rt_trap("Compress.DeflateLvl: data is null");
     if (level < DEFLATE_MIN_LEVEL || level > DEFLATE_MAX_LEVEL)
@@ -1219,22 +1099,19 @@ void *rt_compress_deflate_lvl(void *data, int64_t level)
     return deflate_data(bytes_data(data), bytes_len(data), (int)level);
 }
 
-void *rt_compress_inflate(void *data)
-{
+void *rt_compress_inflate(void *data) {
     if (!data)
         rt_trap("Compress.Inflate: data is null");
     return inflate_data(bytes_data(data), bytes_len(data));
 }
 
-void *rt_compress_gzip(void *data)
-{
+void *rt_compress_gzip(void *data) {
     if (!data)
         rt_trap("Compress.Gzip: data is null");
     return gzip_data(bytes_data(data), bytes_len(data), DEFLATE_DEFAULT_LEVEL);
 }
 
-void *rt_compress_gzip_lvl(void *data, int64_t level)
-{
+void *rt_compress_gzip_lvl(void *data, int64_t level) {
     if (!data)
         rt_trap("Compress.GzipLvl: data is null");
     if (level < DEFLATE_MIN_LEVEL || level > DEFLATE_MAX_LEVEL)
@@ -1242,15 +1119,13 @@ void *rt_compress_gzip_lvl(void *data, int64_t level)
     return gzip_data(bytes_data(data), bytes_len(data), (int)level);
 }
 
-void *rt_compress_gunzip(void *data)
-{
+void *rt_compress_gunzip(void *data) {
     if (!data)
         rt_trap("Compress.Gunzip: data is null");
     return gunzip_data(bytes_data(data), bytes_len(data));
 }
 
-void *rt_compress_deflate_str(rt_string text)
-{
+void *rt_compress_deflate_str(rt_string text) {
     if (!text)
         rt_trap("Compress.DeflateStr: text is null");
     void *bytes = rt_bytes_from_str(text);
@@ -1258,8 +1133,7 @@ void *rt_compress_deflate_str(rt_string text)
     return result;
 }
 
-rt_string rt_compress_inflate_str(void *data)
-{
+rt_string rt_compress_inflate_str(void *data) {
     if (!data)
         rt_trap("Compress.InflateStr: data is null");
     void *result = inflate_data(bytes_data(data), bytes_len(data));
@@ -1267,8 +1141,7 @@ rt_string rt_compress_inflate_str(void *data)
     return str;
 }
 
-void *rt_compress_gzip_str(rt_string text)
-{
+void *rt_compress_gzip_str(rt_string text) {
     if (!text)
         rt_trap("Compress.GzipStr: text is null");
     void *bytes = rt_bytes_from_str(text);
@@ -1276,8 +1149,7 @@ void *rt_compress_gzip_str(rt_string text)
     return result;
 }
 
-rt_string rt_compress_gunzip_str(void *data)
-{
+rt_string rt_compress_gunzip_str(void *data) {
     if (!data)
         rt_trap("Compress.GunzipStr: data is null");
     void *result = gunzip_data(bytes_data(data), bytes_len(data));

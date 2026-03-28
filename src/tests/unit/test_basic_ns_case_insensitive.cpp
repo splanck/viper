@@ -24,8 +24,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     DiagnosticEngine de;
     SourceManager sm;
     DiagnosticEmitter emitter(de, sm);

@@ -48,19 +48,15 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
-namespace
-{
+namespace il::transform {
+namespace {
 
 /// Find the maximum temp ID used anywhere in a function.
-unsigned findMaxTempId(const Function &fn)
-{
+unsigned findMaxTempId(const Function &fn) {
     unsigned maxId = 0;
     for (const auto &p : fn.params)
         maxId = std::max(maxId, p.id);
-    for (const auto &bb : fn.blocks)
-    {
+    for (const auto &bb : fn.blocks) {
         for (const auto &p : bb.params)
             maxId = std::max(maxId, p.id);
         for (const auto &instr : bb.instructions)
@@ -71,21 +67,18 @@ unsigned findMaxTempId(const Function &fn)
 }
 
 /// Check if an opcode is an associative commutative integer add.
-bool isAssocAdd(Opcode op)
-{
+bool isAssocAdd(Opcode op) {
     return op == Opcode::IAddOvf || op == Opcode::Add;
 }
 
 /// Check if an opcode is a signed comparison suitable for base case detection.
-bool isSignedCmp(Opcode op)
-{
+bool isSignedCmp(Opcode op) {
     return op == Opcode::SCmpLE || op == Opcode::SCmpLT || op == Opcode::SCmpGE ||
            op == Opcode::SCmpGT;
 }
 
 /// Matched pattern information for the sibling recursion transformation.
-struct SiblingPattern
-{
+struct SiblingPattern {
     size_t blockIdx; // Index of the recurse block in fn.blocks
     size_t call1Idx; // Instruction index of first self-call
     size_t call2Idx; // Instruction index of second self-call
@@ -107,20 +100,17 @@ struct SiblingPattern
 ///   4. The combined result is immediately returned.
 ///   5. Instructions between calls don't use the first call's result.
 ///   6. A predecessor block has a signed comparison + CBr to the recurse block.
-std::optional<SiblingPattern> matchPattern(const Function &fn)
-{
+std::optional<SiblingPattern> matchPattern(const Function &fn) {
     // For now, require single-argument functions.
     if (fn.params.size() != 1)
         return std::nullopt;
 
-    for (size_t bi = 0; bi < fn.blocks.size(); ++bi)
-    {
+    for (size_t bi = 0; bi < fn.blocks.size(); ++bi) {
         const auto &bb = fn.blocks[bi];
 
         // Find self-recursive calls.
         std::vector<size_t> selfCallIndices;
-        for (size_t i = 0; i < bb.instructions.size(); ++i)
-        {
+        for (size_t i = 0; i < bb.instructions.size(); ++i) {
             const auto &instr = bb.instructions[i];
             if (instr.op == Opcode::Call && instr.callee == fn.name)
                 selfCallIndices.push_back(i);
@@ -145,12 +135,9 @@ std::optional<SiblingPattern> matchPattern(const Function &fn)
 
         // Safety: instructions between calls must not use first call result.
         bool r1UsedBetweenCalls = false;
-        for (size_t i = call1Idx + 1; i < call2Idx; ++i)
-        {
-            for (const auto &op : bb.instructions[i].operands)
-            {
-                if (op.kind == Value::Kind::Temp && op.id == r1)
-                {
+        for (size_t i = call1Idx + 1; i < call2Idx; ++i) {
+            for (const auto &op : bb.instructions[i].operands) {
+                if (op.kind == Value::Kind::Temp && op.id == r1) {
                     r1UsedBetweenCalls = true;
                     break;
                 }
@@ -163,21 +150,17 @@ std::optional<SiblingPattern> matchPattern(const Function &fn)
 
         // Find the add combining both results (after second call).
         size_t addIdx = SIZE_MAX;
-        for (size_t i = call2Idx + 1; i < bb.instructions.size(); ++i)
-        {
+        for (size_t i = call2Idx + 1; i < bb.instructions.size(); ++i) {
             const auto &instr = bb.instructions[i];
-            if (isAssocAdd(instr.op) && instr.operands.size() == 2)
-            {
+            if (isAssocAdd(instr.op) && instr.operands.size() == 2) {
                 bool hasR1 = false, hasR2 = false;
-                for (const auto &op : instr.operands)
-                {
+                for (const auto &op : instr.operands) {
                     if (op.kind == Value::Kind::Temp && op.id == r1)
                         hasR1 = true;
                     if (op.kind == Value::Kind::Temp && op.id == r2)
                         hasR2 = true;
                 }
-                if (hasR1 && hasR2)
-                {
+                if (hasR1 && hasR2) {
                     addIdx = i;
                     break;
                 }
@@ -193,14 +176,11 @@ std::optional<SiblingPattern> matchPattern(const Function &fn)
 
         // The add result must be immediately returned.
         size_t retIdx = SIZE_MAX;
-        for (size_t i = addIdx + 1; i < bb.instructions.size(); ++i)
-        {
-            if (bb.instructions[i].op == Opcode::Ret)
-            {
+        for (size_t i = addIdx + 1; i < bb.instructions.size(); ++i) {
+            if (bb.instructions[i].op == Opcode::Ret) {
                 const auto &retOp = bb.instructions[i];
                 if (!retOp.operands.empty() && retOp.operands[0].kind == Value::Kind::Temp &&
-                    retOp.operands[0].id == sumId)
-                {
+                    retOp.operands[0].id == sumId) {
                     retIdx = i;
                 }
                 break;
@@ -218,8 +198,7 @@ std::optional<SiblingPattern> matchPattern(const Function &fn)
         pat.addOp = addInstr.op;
 
         bool foundEntry = false;
-        for (size_t ei = 0; ei < fn.blocks.size(); ++ei)
-        {
+        for (size_t ei = 0; ei < fn.blocks.size(); ++ei) {
             if (ei == bi)
                 continue;
             const auto &entryBB = fn.blocks[ei];
@@ -232,8 +211,7 @@ std::optional<SiblingPattern> matchPattern(const Function &fn)
 
             // Check if one branch target is our recurse block.
             int recurseTargetIdx = -1;
-            for (size_t li = 0; li < term.labels.size(); ++li)
-            {
+            for (size_t li = 0; li < term.labels.size(); ++li) {
                 if (term.labels[li] == bb.label)
                     recurseTargetIdx = static_cast<int>(li);
             }
@@ -245,10 +223,8 @@ std::optional<SiblingPattern> matchPattern(const Function &fn)
                 continue;
             const unsigned cmpId = term.operands[0].id;
 
-            for (const auto &instr : entryBB.instructions)
-            {
-                if (instr.result && *instr.result == cmpId && isSignedCmp(instr.op))
-                {
+            for (const auto &instr : entryBB.instructions) {
+                if (instr.result && *instr.result == cmpId && isSignedCmp(instr.op)) {
                     if (instr.operands.size() < 2)
                         break;
 
@@ -279,13 +255,11 @@ std::optional<SiblingPattern> matchPattern(const Function &fn)
 
 } // anonymous namespace
 
-std::string_view SiblingRecursion::id() const
-{
+std::string_view SiblingRecursion::id() const {
     return "sibling-recursion";
 }
 
-PreservedAnalyses SiblingRecursion::run(Function &fn, AnalysisManager &)
-{
+PreservedAnalyses SiblingRecursion::run(Function &fn, AnalysisManager &) {
     auto patOpt = matchPattern(fn);
     if (!patOpt)
         return PreservedAnalyses::all();
@@ -311,17 +285,14 @@ PreservedAnalyses SiblingRecursion::run(Function &fn, AnalysisManager &)
 
     // --- Step 1: Update all predecessor edges to pass initial accumulator (0) ---
     // This must happen BEFORE modifying the recurse block.
-    for (size_t bi = 0; bi < fn.blocks.size(); ++bi)
-    {
+    for (size_t bi = 0; bi < fn.blocks.size(); ++bi) {
         if (bi == pat.blockIdx)
             continue;
-        for (auto &instr : fn.blocks[bi].instructions)
-        {
+        for (auto &instr : fn.blocks[bi].instructions) {
             if (instr.op != Opcode::Br && instr.op != Opcode::CBr && instr.op != Opcode::SwitchI32)
                 continue;
 
-            for (size_t li = 0; li < instr.labels.size(); ++li)
-            {
+            for (size_t li = 0; li < instr.labels.size(); ++li) {
                 if (instr.labels[li] == recurseLabel)
                     instr.brArgs[li].push_back(Value::constInt(0));
             }
@@ -381,15 +352,12 @@ PreservedAnalyses SiblingRecursion::run(Function &fn, AnalysisManager &)
         std::vector<Value> loopArgs = {secondCallArg, Value::temp(accNewId)};
         std::vector<Value> doneArgs; // No args — done block uses temps directly.
 
-        if (pat.baseCaseIsTrue)
-        {
+        if (pat.baseCaseIsTrue) {
             cbrInstr.labels.push_back(doneLabel);
             cbrInstr.labels.push_back(recurseLabel);
             cbrInstr.brArgs.push_back(std::move(doneArgs));
             cbrInstr.brArgs.push_back(std::move(loopArgs));
-        }
-        else
-        {
+        } else {
             cbrInstr.labels.push_back(recurseLabel);
             cbrInstr.labels.push_back(doneLabel);
             cbrInstr.brArgs.push_back(std::move(loopArgs));
@@ -444,8 +412,7 @@ PreservedAnalyses SiblingRecursion::run(Function &fn, AnalysisManager &)
 }
 
 /// @brief Register sibling recursion pass.
-void registerSiblingRecursionPass(PassRegistry &registry)
-{
+void registerSiblingRecursionPass(PassRegistry &registry) {
     registry.registerFunctionPass("sibling-recursion",
                                   []() { return std::make_unique<SiblingRecursion>(); });
 }

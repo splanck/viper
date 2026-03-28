@@ -20,8 +20,7 @@
 using viper::tui::term::InputDecoder;
 using viper::tui::term::KeyEvent;
 
-TEST(TUI, InputUtf8)
-{
+TEST(TUI, InputUtf8) {
     InputDecoder d;
 
     d.feed("A");
@@ -76,8 +75,7 @@ TEST(TUI, InputUtf8)
     ASSERT_EQ(ev[0].codepoint, 'C');
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

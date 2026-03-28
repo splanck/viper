@@ -34,31 +34,25 @@
 #include <unordered_set>
 #include <variant>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
-namespace
-{
+namespace {
 
 /// @brief Composite key describing a spill slot's register class and index.
-struct SlotKey
-{
+struct SlotKey {
     RegClass cls{RegClass::GPR};
     int index{0};
 
     /// @brief Equality comparison required by the unordered_map cache.
-    bool operator==(const SlotKey &other) const noexcept
-    {
+    bool operator==(const SlotKey &other) const noexcept {
         return cls == other.cls && index == other.index;
     }
 };
 
 /// @brief Hash functor for @ref SlotKey enabling unordered maps.
-struct SlotKeyHash
-{
+struct SlotKeyHash {
     /// @brief Combine the register class and index into a small hash code.
-    std::size_t operator()(const SlotKey &key) const noexcept
-    {
+    std::size_t operator()(const SlotKey &key) const noexcept {
         const auto clsVal = static_cast<std::size_t>(key.cls);
         const auto idxVal = static_cast<std::size_t>(key.index);
         return (idxVal << 1) ^ clsVal;
@@ -70,8 +64,7 @@ struct SlotKeyHash
 ///          into an unordered_set for efficient membership testing.
 /// @param target Target description providing ABI details.
 /// @return Set containing all callee-saved physical registers.
-[[nodiscard]] std::unordered_set<PhysReg> buildCalleeSavedSet(const TargetInfo &target)
-{
+[[nodiscard]] std::unordered_set<PhysReg> buildCalleeSavedSet(const TargetInfo &target) {
     std::unordered_set<PhysReg> result{};
     result.reserve(target.calleeSavedGPR.size() + target.calleeSavedFPR.size());
     result.insert(target.calleeSavedGPR.begin(), target.calleeSavedGPR.end());
@@ -84,8 +77,7 @@ struct SlotKeyHash
 /// @param calleeSavedSet Pre-computed set of callee-saved registers.
 /// @param reg Physical register being queried.
 /// @return True when the register must be preserved across calls.
-[[nodiscard]] bool isCalleeSaved(const std::unordered_set<PhysReg> &calleeSavedSet, PhysReg reg)
-{
+[[nodiscard]] bool isCalleeSaved(const std::unordered_set<PhysReg> &calleeSavedSet, PhysReg reg) {
     return calleeSavedSet.count(reg) > 0;
 }
 
@@ -97,27 +89,20 @@ struct SlotKeyHash
 /// @param instr Machine instruction containing the operand.
 /// @param memIndex Index of the memory operand within the instruction.
 /// @return Register class used to model the memory payload.
-[[nodiscard]] RegClass deduceMemClass(const MInstr &instr, std::size_t memIndex)
-{
-    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx)
-    {
-        if (idx == memIndex)
-        {
+[[nodiscard]] RegClass deduceMemClass(const MInstr &instr, std::size_t memIndex) {
+    for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
+        if (idx == memIndex) {
             continue;
         }
-        if (const auto *reg = std::get_if<OpReg>(&instr.operands[idx]))
-        {
-            if (!reg->isPhys)
-            {
+        if (const auto *reg = std::get_if<OpReg>(&instr.operands[idx])) {
+            if (!reg->isPhys) {
                 continue;
             }
             const auto phys = static_cast<PhysReg>(reg->idOrPhys);
-            if (isXMM(phys))
-            {
+            if (isXMM(phys)) {
                 return RegClass::XMM;
             }
-            if (isGPR(phys))
-            {
+            if (isGPR(phys)) {
                 return RegClass::GPR;
             }
         }
@@ -128,8 +113,7 @@ struct SlotKeyHash
 /// @brief Byte size needed to spill one callee-saved register.
 /// @details GPR registers need 8 bytes; XMM registers need 16 bytes to
 ///          preserve the full 128-bit value (using MOVUPS).
-[[nodiscard]] int calleeSaveSlotSize(PhysReg reg)
-{
+[[nodiscard]] int calleeSaveSlotSize(PhysReg reg) {
     return isXMM(reg) ? 16 : kSlotSizeBytes;
 }
 
@@ -138,13 +122,11 @@ struct SlotKeyHash
 ///          cumulative, all negative, relative to %rbp.
 /// @param regs Ordered list of callee-saved registers.
 /// @return Vector of byte offsets (all negative) relative to %rbp.
-[[nodiscard]] std::vector<int> calleeSavedOffsets(const std::vector<PhysReg> &regs)
-{
+[[nodiscard]] std::vector<int> calleeSavedOffsets(const std::vector<PhysReg> &regs) {
     std::vector<int> offsets;
     offsets.reserve(regs.size());
     int running = 0;
-    for (auto reg : regs)
-    {
+    for (auto reg : regs) {
         running += calleeSaveSlotSize(reg);
         offsets.push_back(-running);
     }
@@ -152,11 +134,9 @@ struct SlotKeyHash
 }
 
 /// @brief Compute total bytes occupied by callee-saved register slots.
-[[nodiscard]] int totalCalleeSavedBytes(const std::vector<PhysReg> &regs)
-{
+[[nodiscard]] int totalCalleeSavedBytes(const std::vector<PhysReg> &regs) {
     int total = 0;
-    for (auto reg : regs)
-    {
+    for (auto reg : regs) {
         total += calleeSaveSlotSize(reg);
     }
     return total;
@@ -175,8 +155,7 @@ struct SlotKeyHash
 /// @param target Target ABI description (callee-saved sets, etc.).
 /// @param frame Frame metadata that will be populated with spill sizes and
 ///              outgoing argument requirements.
-void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &frame)
-{
+void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &frame) {
     // Pre-compute callee-saved set for O(1) lookup instead of O(n) linear search.
     const auto calleeSavedSet = buildCalleeSavedSet(target);
 
@@ -188,38 +167,29 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     // Alloca slots use indices 0..N; spill slots use kSpillSlotOffset+0, kSpillSlotOffset+1, ...
     // (kSpillSlotOffset is defined in TargetX64.hpp)
 
-    for (auto &block : func.blocks)
-    {
-        for (auto &instr : block.instructions)
-        {
-            for (std::size_t idx = 0; idx < instr.operands.size(); ++idx)
-            {
+    for (auto &block : func.blocks) {
+        for (auto &instr : block.instructions) {
+            for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
                 auto &operand = instr.operands[idx];
-                if (auto *reg = std::get_if<OpReg>(&operand); reg && reg->isPhys)
-                {
+                if (auto *reg = std::get_if<OpReg>(&operand); reg && reg->isPhys) {
                     const auto phys = static_cast<PhysReg>(reg->idOrPhys);
                     if (phys != PhysReg::RBP && phys != PhysReg::RSP &&
-                        isCalleeSaved(calleeSavedSet, phys))
-                    {
+                        isCalleeSaved(calleeSavedSet, phys)) {
                         usedCalleeSaved.insert(phys);
                     }
                 }
                 auto *mem = std::get_if<OpMem>(&operand);
-                if (!mem)
-                {
+                if (!mem) {
                     continue;
                 }
-                if (!mem->base.isPhys)
-                {
+                if (!mem->base.isPhys) {
                     continue;
                 }
                 const auto basePhys = static_cast<PhysReg>(mem->base.idOrPhys);
-                if (basePhys != PhysReg::RBP)
-                {
+                if (basePhys != PhysReg::RBP) {
                     continue;
                 }
-                if (mem->disp >= 0)
-                {
+                if (mem->disp >= 0) {
                     continue;
                 }
                 const int placeholder = -mem->disp;
@@ -228,21 +198,15 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
                 const int slotIndex = placeholder / kSlotSizeBytes - 1;
 
                 // Distinguish between alloca slots (< 1000) and spill slots (>= 1000)
-                if (slotIndex >= kSpillSlotOffset)
-                {
+                if (slotIndex >= kSpillSlotOffset) {
                     // This is a spill slot - collect for remapping
                     const RegClass cls = deduceMemClass(instr, idx);
-                    if (cls == RegClass::XMM)
-                    {
+                    if (cls == RegClass::XMM) {
                         xmmSpillSlots.insert(slotIndex);
-                    }
-                    else
-                    {
+                    } else {
                         gprSpillSlots.insert(slotIndex);
                     }
-                }
-                else
-                {
+                } else {
                     // This is an alloca slot - track the max for frame layout
                     // Alloca slots also need remapping to come after callee-saved area
                     maxAllocaSlotIndex = std::max(maxAllocaSlotIndex, slotIndex);
@@ -257,21 +221,16 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
         (maxAllocaSlotIndex >= 0) ? (maxAllocaSlotIndex + 1) * kSlotSizeBytes : 0;
 
     frame.usedCalleeSaved.clear();
-    for (auto reg : target.calleeSavedGPR)
-    {
-        if (reg == PhysReg::RBP)
-        {
+    for (auto reg : target.calleeSavedGPR) {
+        if (reg == PhysReg::RBP) {
             continue; // %rbp handled separately by the standard prologue/epilogue.
         }
-        if (usedCalleeSaved.contains(reg))
-        {
+        if (usedCalleeSaved.contains(reg)) {
             frame.usedCalleeSaved.push_back(reg);
         }
     }
-    for (auto reg : target.calleeSavedFPR)
-    {
-        if (usedCalleeSaved.contains(reg))
-        {
+    for (auto reg : target.calleeSavedFPR) {
+        if (usedCalleeSaved.contains(reg)) {
             frame.usedCalleeSaved.push_back(reg);
         }
     }
@@ -282,8 +241,7 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
 
     // Remap alloca slots to come AFTER the callee-saved area
     // Alloca slot N (with placeholder offset -(N+1)*8) maps to -(calleeSavedBytes + (N+1)*8)
-    for (int slot = 0; slot <= maxAllocaSlotIndex; ++slot)
-    {
+    for (int slot = 0; slot <= maxAllocaSlotIndex; ++slot) {
         const int newOffset = -(calleeSavedBytes + (slot + 1) * kSlotSizeBytes);
         slotOffsets.emplace(SlotKey{RegClass::GPR, slot}, newOffset);
     }
@@ -291,13 +249,11 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     // Start spill slots AFTER the callee-saved area AND the alloca area
     int runningOffset = calleeSavedBytes + allocaAreaBytes;
 
-    for (int slot : gprSpillSlots)
-    {
+    for (int slot : gprSpillSlots) {
         runningOffset += kSlotSizeBytes;
         slotOffsets.emplace(SlotKey{RegClass::GPR, slot}, -runningOffset);
     }
-    for (int slot : xmmSpillSlots)
-    {
+    for (int slot : xmmSpillSlots) {
         runningOffset += kSlotSizeBytes;
         slotOffsets.emplace(SlotKey{RegClass::XMM, slot}, -runningOffset);
     }
@@ -305,8 +261,7 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     frame.spillAreaGPR = static_cast<int>(gprSpillSlots.size()) * kSlotSizeBytes;
     frame.spillAreaXMM = static_cast<int>(xmmSpillSlots.size()) * kSlotSizeBytes;
 
-    if (frame.outgoingArgArea < 0)
-    {
+    if (frame.outgoingArgArea < 0) {
         frame.outgoingArgArea = 0;
     }
     frame.outgoingArgArea = roundUp(frame.outgoingArgArea, kStackAlignment);
@@ -314,41 +269,32 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
     const int rawFrameSize = runningOffset + frame.outgoingArgArea;
     frame.frameSize = roundUp(rawFrameSize, kStackAlignment);
 
-    for (auto &block : func.blocks)
-    {
-        for (auto &instr : block.instructions)
-        {
-            for (std::size_t idx = 0; idx < instr.operands.size(); ++idx)
-            {
+    for (auto &block : func.blocks) {
+        for (auto &instr : block.instructions) {
+            for (std::size_t idx = 0; idx < instr.operands.size(); ++idx) {
                 auto *mem = std::get_if<OpMem>(&instr.operands[idx]);
-                if (!mem)
-                {
+                if (!mem) {
                     continue;
                 }
-                if (!mem->base.isPhys)
-                {
+                if (!mem->base.isPhys) {
                     continue;
                 }
                 const auto basePhys = static_cast<PhysReg>(mem->base.idOrPhys);
-                if (basePhys != PhysReg::RBP)
-                {
+                if (basePhys != PhysReg::RBP) {
                     continue;
                 }
-                if (mem->disp >= 0)
-                {
+                if (mem->disp >= 0) {
                     continue;
                 }
                 const int placeholder = -mem->disp;
-                if (placeholder % kSlotSizeBytes != 0 || placeholder <= 0)
-                {
+                if (placeholder % kSlotSizeBytes != 0 || placeholder <= 0) {
                     continue;
                 }
                 const int slotIndex = placeholder / kSlotSizeBytes - 1;
                 const RegClass cls = deduceMemClass(instr, idx);
                 const SlotKey key{cls, slotIndex};
                 auto it = slotOffsets.find(key);
-                if (it != slotOffsets.end())
-                {
+                if (it != slotOffsets.end()) {
                     mem->disp = it->second;
                 }
             }
@@ -367,10 +313,8 @@ void assignSpillSlots(MFunction &func, const TargetInfo &target, FrameInfo &fram
 /// @param target Target ABI description (currently unused but kept for
 ///               symmetry with future extensions).
 /// @param frame Frame metadata produced by @ref assignSpillSlots.
-void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const FrameInfo &frame)
-{
-    if (func.blocks.empty())
-    {
+void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const FrameInfo &frame) {
+    if (func.blocks.empty()) {
         return;
     }
 
@@ -381,12 +325,9 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     // no frame allocation. This saves 3-5 instructions per leaf function.
     {
         bool hasCall = false;
-        for (const auto &block : func.blocks)
-        {
-            for (const auto &instr : block.instructions)
-            {
-                if (instr.opcode == MOpcode::CALL)
-                {
+        for (const auto &block : func.blocks) {
+            for (const auto &instr : block.instructions) {
+                if (instr.opcode == MOpcode::CALL) {
                     hasCall = true;
                     break;
                 }
@@ -416,16 +357,14 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     prologue.push_back(MInstr::make(MOpcode::MOVrm, {makeMemOperand(rspBase, 0), rbpOperand}));
     prologue.push_back(MInstr::make(MOpcode::MOVrr, {rbpOperand, rspOperand}));
 
-    if (frame.frameSize > 0)
-    {
+    if (frame.frameSize > 0) {
         // For large frames (> page size), we need to probe the stack to ensure
         // the guard page is touched. This prevents jumping over the guard page
         // and crashing without a proper stack overflow exception.
         // On Windows, we call __chkstk which probes and adjusts RSP.
         // On other platforms, we emit inline probing code.
 #if defined(_WIN32)
-        if (frame.frameSize > kPageSize)
-        {
+        if (frame.frameSize > kPageSize) {
             // Windows: __chkstk expects allocation size in RAX
             // It probes each page and subtracts from RSP
             const auto raxOperand = makePhysOperand(RegClass::GPR, PhysReg::RAX);
@@ -442,9 +381,7 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
             prologue.pop_back(); // Remove the incorrect MOVrr
             prologue.push_back(
                 MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
-        }
-        else
-        {
+        } else {
             prologue.push_back(
                 MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
         }
@@ -452,16 +389,14 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
         // Unix/macOS: emit inline stack probing for large frames.
         // Touch each page from RSP downward so the OS can grow the stack and detect
         // overflows via the guard page rather than jumping past it.
-        if (frame.frameSize > kPageSize)
-        {
+        if (frame.frameSize > kPageSize) {
             const auto raxOperand = makePhysOperand(RegClass::GPR, PhysReg::RAX);
             // Iterative probe: subtract kPageSize at a time and touch, then set
             // RSP to the final target.  Since MIR has no loop construct, we unroll
             // the probe sequence (bounded by frame.frameSize / kPageSize which is
             // capped by real-world stack sizes, typically < 256 iterations for 1MB).
             const int pages = (frame.frameSize + kPageSize - 1) / kPageSize;
-            for (int p = 0; p < pages; ++p)
-            {
+            for (int p = 0; p < pages; ++p) {
                 prologue.push_back(
                     MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-kPageSize)}));
                 // Touch the page via: mov (%rsp), %rax  (load to clobber-safe register)
@@ -472,9 +407,7 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
             prologue.push_back(MInstr::make(MOpcode::MOVrr, {rspOperand, rbpOperand}));
             prologue.push_back(
                 MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
-        }
-        else
-        {
+        } else {
             prologue.push_back(
                 MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(-frame.frameSize)}));
         }
@@ -482,18 +415,14 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     }
 
     const auto csOffsets = calleeSavedOffsets(frame.usedCalleeSaved);
-    for (std::size_t idx = 0; idx < frame.usedCalleeSaved.size(); ++idx)
-    {
+    for (std::size_t idx = 0; idx < frame.usedCalleeSaved.size(); ++idx) {
         const auto reg = frame.usedCalleeSaved[idx];
         const int offset = csOffsets[idx];
-        if (isGPR(reg))
-        {
+        if (isGPR(reg)) {
             prologue.push_back(MInstr::make(
                 MOpcode::MOVrm,
                 {makeMemOperand(rbpBase, offset), makePhysOperand(RegClass::GPR, reg)}));
-        }
-        else
-        {
+        } else {
             // XMM callee-saved register: use MOVUPS to save full 128-bit value
             prologue.push_back(MInstr::make(
                 MOpcode::MOVUPSrm,
@@ -504,8 +433,7 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     // For the main function, inject rt_init_stack_safety() call to set up
     // exception handlers for graceful stack overflow detection.
     const bool isMain = (func.name == "main" || func.name == "@main");
-    if (isMain)
-    {
+    if (isMain) {
         prologue.push_back(MInstr::make(MOpcode::CALL, {makeLabelOperand("rt_init_stack_safety")}));
     }
 
@@ -524,18 +452,14 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     std::vector<MInstr> epilogue{};
     epilogue.reserve(3 + frame.usedCalleeSaved.size());
 
-    for (std::size_t idx = frame.usedCalleeSaved.size(); idx > 0; --idx)
-    {
+    for (std::size_t idx = frame.usedCalleeSaved.size(); idx > 0; --idx) {
         const auto reg = frame.usedCalleeSaved[idx - 1];
         const int offset = csOffsets[idx - 1];
-        if (isGPR(reg))
-        {
+        if (isGPR(reg)) {
             epilogue.push_back(MInstr::make(
                 MOpcode::MOVmr,
                 {makePhysOperand(RegClass::GPR, reg), makeMemOperand(rbpBase, offset)}));
-        }
-        else
-        {
+        } else {
             // XMM callee-saved register: use MOVUPS to restore full 128-bit value
             epilogue.push_back(MInstr::make(
                 MOpcode::MOVUPSmr,
@@ -547,12 +471,9 @@ void insertPrologueEpilogue(MFunction &func, const TargetInfo &target, const Fra
     epilogue.push_back(MInstr::make(MOpcode::MOVmr, {rbpOperand, makeMemOperand(rspBase, 0)}));
     epilogue.push_back(MInstr::make(MOpcode::ADDri, {rspOperand, makeImmOperand(kSlotSizeBytes)}));
 
-    for (auto &block : func.blocks)
-    {
-        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
-        {
-            if (block.instructions[idx].opcode == MOpcode::RET)
-            {
+    for (auto &block : func.blocks) {
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
+            if (block.instructions[idx].opcode == MOpcode::RET) {
                 block.instructions.insert(block.instructions.begin() +
                                               static_cast<std::ptrdiff_t>(idx),
                                           epilogue.begin(),

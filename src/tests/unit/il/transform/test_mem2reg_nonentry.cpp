@@ -29,12 +29,10 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Count opcode in function.
-unsigned countOpcodeInFunction(const Function &fn, Opcode op)
-{
+unsigned countOpcodeInFunction(const Function &fn, Opcode op) {
     unsigned count = 0;
     for (const auto &bb : fn.blocks)
         for (const auto &instr : bb.instructions)
@@ -53,8 +51,7 @@ unsigned countOpcodeInFunction(const Function &fn, Opcode op)
 ///       store i64 42, t0
 ///       t1 = load i64, t0    ; use in same block -> singleBlock=true
 ///       ret t1
-Module buildSingleBlockNonEntryAlloca()
-{
+Module buildSingleBlockNonEntryAlloca() {
     Module module;
     Function fn;
     fn.name = "single_block_nonentry";
@@ -134,8 +131,7 @@ Module buildSingleBlockNonEntryAlloca()
 ///
 /// The alloca is in "then" which dominates only the then→merge path — but all
 /// uses of t0 are in "then", so singleBlock=true → promoted.
-Module buildDominatingNonEntryAlloca()
-{
+Module buildDominatingNonEntryAlloca() {
     Module module;
     Function fn;
     fn.name = "dominating_nonentry";
@@ -240,8 +236,7 @@ Module buildDominatingNonEntryAlloca()
 
 // A single-block alloca in a non-entry block must be promoted.
 // Previously this would be silently skipped (entry-block-only restriction).
-TEST(Mem2RegNonEntry, SingleBlockNonEntryAllocaIsPromoted)
-{
+TEST(Mem2RegNonEntry, SingleBlockNonEntryAllocaIsPromoted) {
     Module module = buildSingleBlockNonEntryAlloca();
     ASSERT_FALSE(module.functions.empty());
 
@@ -261,8 +256,7 @@ TEST(Mem2RegNonEntry, SingleBlockNonEntryAllocaIsPromoted)
 
 // A non-entry-block alloca where all uses are in the same block (singleBlock=true)
 // and the module has a conditional branch — must be promoted.
-TEST(Mem2RegNonEntry, DominatingNonEntryAllocaIsPromoted)
-{
+TEST(Mem2RegNonEntry, DominatingNonEntryAllocaIsPromoted) {
     Module module = buildDominatingNonEntryAlloca();
     ASSERT_FALSE(module.functions.empty());
 
@@ -279,8 +273,7 @@ TEST(Mem2RegNonEntry, DominatingNonEntryAllocaIsPromoted)
     EXPECT_EQ(loadsAfter, 0u);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -37,15 +37,13 @@
 #endif
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Get a unique temp directory path for testing.
-static const char *get_test_base()
-{
+static const char *get_test_base() {
 #ifdef _WIN32
     static char buf[256];
     const char *tmp = getenv("TEMP");
@@ -63,32 +61,27 @@ static const char *get_test_base()
 }
 
 /// @brief Helper to create a test file with content.
-static void create_test_file(const char *path, const char *content)
-{
+static void create_test_file(const char *path, const char *content) {
     FILE *f = fopen(path, "w");
-    if (f)
-    {
+    if (f) {
         fprintf(f, "%s", content);
         fclose(f);
     }
 }
 
 /// @brief Helper to create a test file with raw bytes (no newline translation).
-static void create_test_file_bin(const char *path, const void *data, size_t len)
-{
+static void create_test_file_bin(const char *path, const void *data, size_t len) {
     FILE *f = fopen(path, "wb");
     if (!f)
         return;
-    if (len > 0 && data)
-    {
+    if (len > 0 && data) {
         (void)fwrite(data, 1, len, f);
     }
     fclose(f);
 }
 
 /// @brief Helper to remove a file.
-static void remove_file(const char *path)
-{
+static void remove_file(const char *path) {
 #ifdef _WIN32
     _unlink(path);
 #else
@@ -97,8 +90,7 @@ static void remove_file(const char *path)
 }
 
 /// @brief Test rt_io_file_exists.
-static void test_exists()
-{
+static void test_exists() {
     printf("Testing rt_io_file_exists:\n");
 
     const char *base = get_test_base();
@@ -122,8 +114,7 @@ static void test_exists()
 }
 
 /// @brief Test rt_file_copy.
-static void test_copy()
-{
+static void test_copy() {
     printf("Testing rt_file_copy:\n");
 
     const char *base = get_test_base();
@@ -158,8 +149,7 @@ static void test_copy()
 }
 
 /// @brief Test rt_file_move.
-static void test_move()
-{
+static void test_move() {
     printf("Testing rt_file_move:\n");
 
     const char *base = get_test_base();
@@ -192,8 +182,7 @@ static void test_move()
 }
 
 /// @brief Test rt_file_size.
-static void test_size()
-{
+static void test_size() {
     printf("Testing rt_file_size:\n");
 
     const char *base = get_test_base();
@@ -219,8 +208,7 @@ static void test_size()
 }
 
 /// @brief Test rt_file_read_bytes and rt_file_write_bytes.
-static void test_read_write_bytes()
-{
+static void test_read_write_bytes() {
     printf("Testing rt_file_read_bytes and rt_file_write_bytes:\n");
 
     const char *base = get_test_base();
@@ -257,8 +245,7 @@ static void test_read_write_bytes()
 }
 
 /// @brief Test rt_file_read_lines and rt_file_write_lines.
-static void test_read_write_lines()
-{
+static void test_read_write_lines() {
     printf("Testing rt_file_read_lines and rt_file_write_lines:\n");
 
     const char *base = get_test_base();
@@ -300,8 +287,7 @@ static void test_read_write_lines()
 }
 
 /// @brief Test rt_file_append.
-static void test_append()
-{
+static void test_append() {
     printf("Testing rt_file_append:\n");
 
     const char *base = get_test_base();
@@ -332,8 +318,7 @@ static void test_append()
 }
 
 /// @brief Test rt_io_file_append_line.
-static void test_append_line()
-{
+static void test_append_line() {
     printf("Testing rt_io_file_append_line:\n");
 
     const char *base = get_test_base();
@@ -356,8 +341,7 @@ static void test_append_line()
 }
 
 /// @brief Test rt_io_file_read_all_bytes / rt_io_file_write_all_bytes.
-static void test_read_write_all_bytes()
-{
+static void test_read_write_all_bytes() {
     printf("Testing rt_io_file_read_all_bytes/rt_io_file_write_all_bytes:\n");
 
     const char *base = get_test_base();
@@ -388,8 +372,7 @@ static void test_read_write_all_bytes()
 }
 
 /// @brief Test rt_io_file_read_all_lines.
-static void test_read_all_lines()
-{
+static void test_read_all_lines() {
     printf("Testing rt_io_file_read_all_lines:\n");
 
     const char *base = get_test_base();
@@ -419,8 +402,7 @@ static void test_read_all_lines()
 }
 
 /// @brief Test rt_file_modified.
-static void test_modified()
-{
+static void test_modified() {
     printf("Testing rt_file_modified:\n");
 
     const char *base = get_test_base();
@@ -449,8 +431,7 @@ static void test_modified()
 }
 
 /// @brief Test rt_file_touch.
-static void test_touch()
-{
+static void test_touch() {
     printf("Testing rt_file_touch:\n");
 
     const char *base = get_test_base();
@@ -488,8 +469,7 @@ static void test_touch()
 }
 
 /// @brief Test empty file handling.
-static void test_empty_file()
-{
+static void test_empty_file() {
     printf("Testing empty file handling:\n");
 
     const char *base = get_test_base();
@@ -521,8 +501,7 @@ static void test_empty_file()
 }
 
 /// @brief Test non-existent file operations.
-static void test_nonexistent()
-{
+static void test_nonexistent() {
     printf("Testing non-existent file operations:\n");
 
     rt_string path = rt_const_cstr("/nonexistent_file_12345_xyz.txt");
@@ -544,8 +523,7 @@ static void test_nonexistent()
 }
 
 /// @brief Entry point for file extension tests.
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
     printf("Test skipped: POSIX temp paths not available on Windows\n");

@@ -22,8 +22,7 @@
 
 #include "il/internal/io/ParserState.hpp"
 
-namespace il::io::detail
-{
+namespace il::io::detail {
 /// @brief Bind the parser state to a concrete module instance.
 ///
 /// The parser operates over mutable IR, so the constructor captures the module

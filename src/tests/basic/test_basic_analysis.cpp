@@ -30,8 +30,7 @@ using namespace il::frontends::basic;
 
 // ===== Valid source =====
 
-TEST(BasicAnalysis, ValidSourceProducesAst)
-{
+TEST(BasicAnalysis, ValidSourceProducesAst) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = "PRINT 42\nEND\n", .path = "test.bas"};
     auto result = parseAndAnalyzeBasic(input, sm);
@@ -40,8 +39,7 @@ TEST(BasicAnalysis, ValidSourceProducesAst)
     EXPECT_TRUE(result->ast != nullptr);
 }
 
-TEST(BasicAnalysis, ValidSourceProducesSema)
-{
+TEST(BasicAnalysis, ValidSourceProducesSema) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = "DIM x AS INTEGER\nPRINT x\nEND\n", .path = "test.bas"};
     auto result = parseAndAnalyzeBasic(input, sm);
@@ -50,8 +48,7 @@ TEST(BasicAnalysis, ValidSourceProducesSema)
     EXPECT_TRUE(result->sema != nullptr);
 }
 
-TEST(BasicAnalysis, ValidSourceHasNoErrors)
-{
+TEST(BasicAnalysis, ValidSourceHasNoErrors) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = "PRINT 42\nEND\n", .path = "test.bas"};
     auto result = parseAndAnalyzeBasic(input, sm);
@@ -60,8 +57,7 @@ TEST(BasicAnalysis, ValidSourceHasNoErrors)
     EXPECT_FALSE(result->hasErrors());
 }
 
-TEST(BasicAnalysis, SemaPopulatesSymbols)
-{
+TEST(BasicAnalysis, SemaPopulatesSymbols) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = "DIM x AS INTEGER\nDIM y AS STRING\nPRINT x\nEND\n",
                              .path = "test.bas"};
@@ -75,8 +71,7 @@ TEST(BasicAnalysis, SemaPopulatesSymbols)
     EXPECT_TRUE(syms.size() >= 2u);
 }
 
-TEST(BasicAnalysis, SemaPopulatesProcs)
-{
+TEST(BasicAnalysis, SemaPopulatesProcs) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = "SUB Hello()\n  PRINT \"hi\"\nEND SUB\nHello\nEND\n",
                              .path = "test.bas"};
@@ -88,8 +83,7 @@ TEST(BasicAnalysis, SemaPopulatesProcs)
     auto &procs = result->sema->procs();
     // BASIC lexer uppercases all identifiers: "Hello" → "HELLO"
     bool foundHello = false;
-    for (const auto &[name, sig] : procs)
-    {
+    for (const auto &[name, sig] : procs) {
         if (name == "HELLO" || name == "Hello")
             foundHello = true;
     }
@@ -98,8 +92,7 @@ TEST(BasicAnalysis, SemaPopulatesProcs)
 
 // ===== Invalid source =====
 
-TEST(BasicAnalysis, InvalidSourceStillReturnsResult)
-{
+TEST(BasicAnalysis, InvalidSourceStillReturnsResult) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = "PRINT x +\nEND\n", .path = "test.bas"};
     auto result = parseAndAnalyzeBasic(input, sm);
@@ -109,8 +102,7 @@ TEST(BasicAnalysis, InvalidSourceStillReturnsResult)
     EXPECT_TRUE(result->hasErrors());
 }
 
-TEST(BasicAnalysis, EmptySourceProducesResult)
-{
+TEST(BasicAnalysis, EmptySourceProducesResult) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = "", .path = "test.bas"};
     auto result = parseAndAnalyzeBasic(input, sm);
@@ -119,8 +111,7 @@ TEST(BasicAnalysis, EmptySourceProducesResult)
     EXPECT_TRUE(result != nullptr);
 }
 
-TEST(BasicAnalysis, FileIdIsAssigned)
-{
+TEST(BasicAnalysis, FileIdIsAssigned) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = "PRINT 42\nEND\n", .path = "test.bas"};
     auto result = parseAndAnalyzeBasic(input, sm);
@@ -132,8 +123,7 @@ TEST(BasicAnalysis, FileIdIsAssigned)
     (void)result->fileId;
 }
 
-TEST(BasicAnalysis, DoesNotMutateFrontendOptions)
-{
+TEST(BasicAnalysis, DoesNotMutateFrontendOptions) {
     il::support::SourceManager sm;
     const bool prior = FrontendOptions::enableRuntimeNamespaces();
     FrontendOptions::setEnableRuntimeNamespaces(false);
@@ -147,8 +137,7 @@ TEST(BasicAnalysis, DoesNotMutateFrontendOptions)
     FrontendOptions::setEnableRuntimeNamespaces(prior);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

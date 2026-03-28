@@ -31,10 +31,8 @@ using namespace viper::codegen::linker;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -50,8 +48,7 @@ static ObjFile makeObj(const std::string &name,
                        const std::string &symName,
                        uint32_t relocType,
                        size_t relocOff,
-                       int64_t addend)
-{
+                       int64_t addend) {
     ObjFile obj;
     obj.name = name;
     obj.format = fmt;
@@ -90,8 +87,7 @@ static ObjFile makeObj(const std::string &name,
 
 /// Helper: set up a LinkLayout with one .text output section at a given VA,
 /// containing the object's section data.
-static LinkLayout makeLayout(const std::vector<ObjFile> &objects, uint64_t textVA)
-{
+static LinkLayout makeLayout(const std::vector<ObjFile> &objects, uint64_t textVA) {
     LinkLayout layout;
     layout.pageSize = 0x1000;
 
@@ -100,10 +96,8 @@ static LinkLayout makeLayout(const std::vector<ObjFile> &objects, uint64_t textV
     out.executable = true;
     out.virtualAddr = textVA;
 
-    for (size_t oi = 0; oi < objects.size(); ++oi)
-    {
-        for (size_t si = 1; si < objects[oi].sections.size(); ++si)
-        {
+    for (size_t oi = 0; oi < objects.size(); ++oi) {
+        for (size_t si = 1; si < objects[oi].sections.size(); ++si) {
             InputChunk chunk;
             chunk.inputObjIndex = oi;
             chunk.inputSecIndex = si;
@@ -120,22 +114,19 @@ static LinkLayout makeLayout(const std::vector<ObjFile> &objects, uint64_t textV
     return layout;
 }
 
-static uint32_t readLE32(const uint8_t *p)
-{
+static uint32_t readLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
-static uint64_t readLE64(const uint8_t *p)
-{
+static uint64_t readLE64(const uint8_t *p) {
     uint64_t v = 0;
     for (int i = 0; i < 8; ++i)
         v |= static_cast<uint64_t>(p[i]) << (i * 8);
     return v;
 }
 
-int main()
-{
+int main() {
     // --- PCRel32 (ELF x86_64: R_X86_64_PC32 = type 2) ---
     {
         // Object 0: caller with relocation referencing "target_func".
@@ -395,8 +386,7 @@ int main()
     }
 
     // --- Result ---
-    if (gFail == 0)
-    {
+    if (gFail == 0) {
         std::cout << "All RelocApplier tests passed.\n";
         return EXIT_SUCCESS;
     }

@@ -23,23 +23,20 @@
 #include <string>
 #include <string_view>
 
-namespace
-{
+namespace {
 constexpr std::string_view kSrc = R"BASIC(
 10 SLEEP 100
 )BASIC";
 
-[[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name)
-{
+[[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name) {
     const auto &externs = module.externs;
-    return std::any_of(externs.begin(),
-                       externs.end(),
-                       [&](const il::core::Extern &ext) { return ext.name == name; });
+    return std::any_of(externs.begin(), externs.end(), [&](const il::core::Extern &ext) {
+        return ext.name == name;
+    });
 }
 } // namespace
 
-TEST(BasicSleepLowering, DeclaresSleepExtern)
-{
+TEST(BasicSleepLowering, DeclaresSleepExtern) {
     il::support::SourceManager sourceManager;
     il::frontends::basic::BasicCompilerInput input{kSrc, "sleep.bas"};
     il::frontends::basic::BasicCompilerOptions options{};
@@ -54,8 +51,7 @@ TEST(BasicSleepLowering, DeclaresSleepExtern)
     EXPECT_NE(ilText.find("extern @rt_sleep_ms"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

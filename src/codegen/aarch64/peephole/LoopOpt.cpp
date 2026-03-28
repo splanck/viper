@@ -28,22 +28,18 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::codegen::aarch64::peephole
-{
-namespace
-{
+namespace viper::codegen::aarch64::peephole {
+namespace {
 
 /// @brief Check whether a physical register is callee-saved (x19-x28).
-[[nodiscard]] bool isCalleeSavedGPR(uint32_t phys) noexcept
-{
+[[nodiscard]] bool isCalleeSavedGPR(uint32_t phys) noexcept {
     return phys >= static_cast<uint32_t>(PhysReg::X19) &&
            phys <= static_cast<uint32_t>(PhysReg::X28);
 }
 
 } // namespace
 
-std::size_t hoistLoopConstants(MFunction &fn)
-{
+std::size_t hoistLoopConstants(MFunction &fn) {
     if (fn.blocks.size() < 3)
         return 0;
 
@@ -52,8 +48,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
     for (std::size_t i = 0; i < fn.blocks.size(); ++i)
         nameToIdx[fn.blocks[i].name] = i;
 
-    auto getBranchTarget = [](const MInstr &mi) -> std::string
-    {
+    auto getBranchTarget = [](const MInstr &mi) -> std::string {
         if (mi.opc == MOpcode::Br && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
             return mi.ops[0].label;
         if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
@@ -65,8 +60,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
         return {};
     };
 
-    auto isNonDefOpc = [](MOpcode opc) -> bool
-    {
+    auto isNonDefOpc = [](MOpcode opc) -> bool {
         return opc == MOpcode::StrRegFpImm || opc == MOpcode::StrRegBaseImm ||
                opc == MOpcode::StrRegSpImm || opc == MOpcode::StrFprFpImm ||
                opc == MOpcode::StrFprBaseImm || opc == MOpcode::StrFprSpImm ||
@@ -81,18 +75,15 @@ std::size_t hoistLoopConstants(MFunction &fn)
 
     // Build predecessor map from CFG edges (branch targets + fallthroughs).
     std::unordered_map<std::size_t, std::vector<std::size_t>> preds;
-    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
-    {
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
         const auto &instrs = fn.blocks[i].instrs;
         if (instrs.empty())
             continue;
 
         // Explicit branch targets.
-        for (const auto &mi : instrs)
-        {
+        for (const auto &mi : instrs) {
             std::string target = getBranchTarget(mi);
-            if (!target.empty())
-            {
+            if (!target.empty()) {
                 auto it = nameToIdx.find(target);
                 if (it != nameToIdx.end())
                     preds[it->second].push_back(i);
@@ -101,8 +92,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
 
         // Fallthrough edge: if last instr is not unconditional branch or ret,
         // execution falls through to the next block.
-        if (i + 1 < fn.blocks.size())
-        {
+        if (i + 1 < fn.blocks.size()) {
             const auto &last = instrs.back();
             if (last.opc != MOpcode::Br && last.opc != MOpcode::Ret)
                 preds[i + 1].push_back(i);
@@ -114,8 +104,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
     // walk predecessors until reaching the header to find all blocks on paths
     // from header to latch.
     auto computeLoopBody = [&preds](std::size_t header,
-                                    std::size_t latch) -> std::unordered_set<std::size_t>
-    {
+                                    std::size_t latch) -> std::unordered_set<std::size_t> {
         std::unordered_set<std::size_t> body;
         body.insert(header);
         if (body.count(latch))
@@ -125,21 +114,18 @@ std::size_t hoistLoopConstants(MFunction &fn)
         worklist.push_back(latch);
         body.insert(latch);
 
-        while (!worklist.empty())
-        {
+        while (!worklist.empty()) {
             std::size_t b = worklist.back();
             worklist.pop_back();
             auto pit = preds.find(b);
             if (pit == preds.end())
                 continue;
-            for (std::size_t pred : pit->second)
-            {
+            for (std::size_t pred : pit->second) {
                 // Only include predecessors at or after the header in layout.
                 // This prevents the BFS from crawling backwards past the header
                 // (e.g. for BASIC two-header for-loops where for_head_neg's BFS
                 // would otherwise traverse through for_head_pos and beyond).
-                if (pred >= header && !body.count(pred))
-                {
+                if (pred >= header && !body.count(pred)) {
                     body.insert(pred);
                     worklist.push_back(pred);
                 }
@@ -148,8 +134,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
         return body;
     };
 
-    struct LoopInfo
-    {
+    struct LoopInfo {
         std::size_t header;
         std::size_t latch;
         std::unordered_set<std::size_t> body;
@@ -158,18 +143,15 @@ std::size_t hoistLoopConstants(MFunction &fn)
     std::vector<LoopInfo> loops;
     std::unordered_set<std::size_t> seenHeaders;
 
-    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
-    {
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
         const auto &instrs = fn.blocks[i].instrs;
-        for (const auto &mi : instrs)
-        {
+        for (const auto &mi : instrs) {
             std::string target = getBranchTarget(mi);
             if (target.empty())
                 continue;
 
             auto it = nameToIdx.find(target);
-            if (it != nameToIdx.end() && it->second < i)
-            {
+            if (it != nameToIdx.end() && it->second < i) {
                 if (seenHeaders.insert(it->second).second)
                     loops.push_back({it->second, i, computeLoopBody(it->second, i)});
             }
@@ -183,8 +165,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
 
     std::size_t hoisted = 0;
 
-    for (const auto &loop : loops)
-    {
+    for (const auto &loop : loops) {
         if (loop.header == 0)
             continue;
 
@@ -193,12 +174,9 @@ std::size_t hoistLoopConstants(MFunction &fn)
         // Back-edges to such blocks are exit paths, not iteration edges.
         {
             bool headerHasRet = false;
-            if (loop.header < fn.blocks.size())
-            {
-                for (const auto &mi : fn.blocks[loop.header].instrs)
-                {
-                    if (mi.opc == MOpcode::Ret)
-                    {
+            if (loop.header < fn.blocks.size()) {
+                for (const auto &mi : fn.blocks[loop.header].instrs) {
+                    if (mi.opc == MOpcode::Ret) {
                         headerHasRet = true;
                         break;
                     }
@@ -214,11 +192,9 @@ std::size_t hoistLoopConstants(MFunction &fn)
         // preheader) plus one back-edge from within the loop (the latch).
         {
             auto pit = preds.find(loop.header);
-            if (pit != preds.end())
-            {
+            if (pit != preds.end()) {
                 int outsidePreds = 0;
-                for (std::size_t p : pit->second)
-                {
+                for (std::size_t p : pit->second) {
                     if (!loop.body.count(p))
                         ++outsidePreds;
                 }
@@ -230,12 +206,10 @@ std::size_t hoistLoopConstants(MFunction &fn)
         const std::size_t preIdx = loop.header - 1;
 
         bool preInLoop = false;
-        for (const auto &other : loops)
-        {
+        for (const auto &other : loops) {
             if (&other == &loop)
                 continue;
-            if (other.body.count(preIdx))
-            {
+            if (other.body.count(preIdx)) {
                 preInLoop = true;
                 break;
             }
@@ -255,14 +229,11 @@ std::size_t hoistLoopConstants(MFunction &fn)
             const auto &lastInstr = preBlock.instrs.back();
             std::string lastTarget = getBranchTarget(lastInstr);
 
-            if (lastTarget.empty() && lastInstr.opc != MOpcode::Ret)
-            {
+            if (lastTarget.empty() && lastInstr.opc != MOpcode::Ret) {
                 // Block falls through to the next block (the loop header).
                 // Ret does NOT fall through — it exits the function.
                 reachesHeader = true;
-            }
-            else
-            {
+            } else {
                 auto tgtIt = nameToIdx.find(lastTarget);
                 if (tgtIt != nameToIdx.end() && tgtIt->second == loop.header)
                     reachesHeader = true;
@@ -275,8 +246,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
                 continue;
         }
 
-        struct RegInfo
-        {
+        struct RegInfo {
             std::size_t movriCount{0};
             std::size_t otherDefCount{0};
             std::size_t useWithoutDefBlocks{0}; // blocks that USE but don't DEFINE
@@ -285,8 +255,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
 
         std::unordered_map<uint32_t, RegInfo> regDefs;
 
-        for (std::size_t bi : loop.body)
-        {
+        for (std::size_t bi : loop.body) {
             if (bi >= fn.blocks.size())
                 continue;
             const auto &instrs = fn.blocks[bi].instrs;
@@ -294,15 +263,13 @@ std::size_t hoistLoopConstants(MFunction &fn)
             // Per-block: track which callee-saved GPRs are defined vs used
             std::unordered_set<uint32_t> definedInBlock;
             std::unordered_set<uint32_t> usedInBlock;
-            for (const auto &mi : instrs)
-            {
+            for (const auto &mi : instrs) {
                 if (mi.opc == MOpcode::MovRI && mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
                     mi.ops[0].reg.cls == RegClass::GPR && isCalleeSavedGPR(mi.ops[0].reg.idOrPhys))
                     definedInBlock.insert(mi.ops[0].reg.idOrPhys);
                 // Check uses (non-def operands)
                 std::size_t startOp = isNonDefOpc(mi.opc) ? 0 : 1;
-                for (std::size_t oi = startOp; oi < mi.ops.size(); ++oi)
-                {
+                for (std::size_t oi = startOp; oi < mi.ops.size(); ++oi) {
                     if (mi.ops[oi].kind == MOperand::Kind::Reg && mi.ops[oi].reg.isPhys &&
                         mi.ops[oi].reg.cls == RegClass::GPR &&
                         isCalleeSavedGPR(mi.ops[oi].reg.idOrPhys))
@@ -310,18 +277,15 @@ std::size_t hoistLoopConstants(MFunction &fn)
                 }
             }
             // Count blocks that USE a register without defining it in the same block
-            for (uint32_t r : usedInBlock)
-            {
+            for (uint32_t r : usedInBlock) {
                 if (!definedInBlock.count(r))
                     regDefs[r].useWithoutDefBlocks++;
             }
 
-            for (std::size_t ii = 0; ii < instrs.size(); ++ii)
-            {
+            for (std::size_t ii = 0; ii < instrs.size(); ++ii) {
                 const auto &mi = instrs[ii];
                 if (mi.opc == MOpcode::MovRI && mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
-                    mi.ops[0].reg.cls == RegClass::GPR && mi.ops[1].kind == MOperand::Kind::Imm)
-                {
+                    mi.ops[0].reg.cls == RegClass::GPR && mi.ops[1].kind == MOperand::Kind::Imm) {
                     const uint32_t phys = mi.ops[0].reg.idOrPhys;
                     auto &info = regDefs[phys];
                     if (info.movriCount == 0)
@@ -329,16 +293,12 @@ std::size_t hoistLoopConstants(MFunction &fn)
                     else if (mi.ops[1].imm != info.immValue)
                         ++info.otherDefCount;
                     ++info.movriCount;
-                }
-                else
-                {
+                } else {
                     if (!mi.ops.empty() && isPhysReg(mi.ops[0]) &&
-                        mi.ops[0].reg.cls == RegClass::GPR && !isNonDefOpc(mi.opc))
-                    {
+                        mi.ops[0].reg.cls == RegClass::GPR && !isNonDefOpc(mi.opc)) {
                         ++regDefs[mi.ops[0].reg.idOrPhys].otherDefCount;
                     }
-                    if (mi.opc == MOpcode::Bl || mi.opc == MOpcode::Blr)
-                    {
+                    if (mi.opc == MOpcode::Bl || mi.opc == MOpcode::Blr) {
                         for (uint32_t r = static_cast<uint32_t>(PhysReg::X0);
                              r <= static_cast<uint32_t>(PhysReg::X17);
                              ++r)
@@ -350,8 +310,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
 
         auto &preInstrs = preBlock.instrs;
         std::size_t insertIdx = preInstrs.size();
-        while (insertIdx > 0)
-        {
+        while (insertIdx > 0) {
             const auto opc = preInstrs[insertIdx - 1].opc;
             if (opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Cbz ||
                 opc == MOpcode::Cbnz || opc == MOpcode::Ret)
@@ -360,8 +319,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
                 break;
         }
 
-        for (auto &[phys, info] : regDefs)
-        {
+        for (auto &[phys, info] : regDefs) {
             if (info.movriCount == 0 || info.otherDefCount > 0)
                 continue;
             if (!isCalleeSavedGPR(phys))
@@ -378,13 +336,11 @@ std::size_t hoistLoopConstants(MFunction &fn)
                 continue;
 
             bool safeInAllBlocks = true;
-            for (std::size_t bi : loop.body)
-            {
+            for (std::size_t bi : loop.body) {
                 if (bi >= fn.blocks.size())
                     continue;
                 const auto &instrs = fn.blocks[bi].instrs;
-                for (std::size_t ii = 0; ii < instrs.size(); ++ii)
-                {
+                for (std::size_t ii = 0; ii < instrs.size(); ++ii) {
                     const auto &mi = instrs[ii];
 
                     if (mi.opc == MOpcode::MovRI && mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
@@ -393,11 +349,10 @@ std::size_t hoistLoopConstants(MFunction &fn)
                         break;
 
                     std::size_t startOp = isNonDefOpc(mi.opc) ? 0 : 1;
-                    for (std::size_t oi = startOp; oi < mi.ops.size(); ++oi)
-                    {
+                    for (std::size_t oi = startOp; oi < mi.ops.size(); ++oi) {
                         if (mi.ops[oi].kind == MOperand::Kind::Reg && mi.ops[oi].reg.isPhys &&
-                            mi.ops[oi].reg.cls == RegClass::GPR && mi.ops[oi].reg.idOrPhys == phys)
-                        {
+                            mi.ops[oi].reg.cls == RegClass::GPR &&
+                            mi.ops[oi].reg.idOrPhys == phys) {
                             safeInAllBlocks = false;
                             break;
                         }
@@ -420,8 +375,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
                              hoistedMov);
             ++insertIdx;
 
-            for (std::size_t bi : loop.body)
-            {
+            for (std::size_t bi : loop.body) {
                 if (bi >= fn.blocks.size())
                     continue;
 
@@ -431,13 +385,10 @@ std::size_t hoistLoopConstants(MFunction &fn)
                 // local MovRI would leave the register undefined on those paths.
                 {
                     auto pit = preds.find(bi);
-                    if (pit != preds.end())
-                    {
+                    if (pit != preds.end()) {
                         bool hasOutsidePred = false;
-                        for (std::size_t p : pit->second)
-                        {
-                            if (!loop.body.count(p) && p != preIdx)
-                            {
+                        for (std::size_t p : pit->second) {
+                            if (!loop.body.count(p) && p != preIdx) {
                                 hasOutsidePred = true;
                                 break;
                             }
@@ -451,8 +402,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
                 auto beforeSize = instrs.size();
                 instrs.erase(std::remove_if(instrs.begin(),
                                             instrs.end(),
-                                            [phys, &info](const MInstr &mi)
-                                            {
+                                            [phys, &info](const MInstr &mi) {
                                                 return mi.opc == MOpcode::MovRI &&
                                                        mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
                                                        mi.ops[0].reg.cls == RegClass::GPR &&
@@ -476,8 +426,7 @@ std::size_t hoistLoopConstants(MFunction &fn)
     return hoisted;
 }
 
-std::size_t eliminateLoopPhiSpills(MFunction &fn)
-{
+std::size_t eliminateLoopPhiSpills(MFunction &fn) {
     if (fn.blocks.size() < 2)
         return 0;
 
@@ -487,8 +436,7 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
         nameToIdx[fn.blocks[i].name] = i;
 
     // Helper: get branch target label from an instruction.
-    auto getBranchTarget = [](const MInstr &mi) -> std::string
-    {
+    auto getBranchTarget = [](const MInstr &mi) -> std::string {
         if (mi.opc == MOpcode::Br && !mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
             return mi.ops[0].label;
         if (mi.opc == MOpcode::BCond && mi.ops.size() >= 2 &&
@@ -501,25 +449,21 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
     };
 
     // Helper: check if instruction is a branch or terminator.
-    auto isTerminator = [](MOpcode opc) -> bool
-    {
+    auto isTerminator = [](MOpcode opc) -> bool {
         return opc == MOpcode::Br || opc == MOpcode::BCond || opc == MOpcode::Cbz ||
                opc == MOpcode::Cbnz || opc == MOpcode::Ret;
     };
 
     // Find back-edges: block i branches to block j where j <= i.
-    struct BackEdge
-    {
+    struct BackEdge {
         std::size_t latchIdx;
         std::size_t headerIdx;
     };
 
     std::vector<BackEdge> backEdges;
 
-    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
-    {
-        for (const auto &mi : fn.blocks[i].instrs)
-        {
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
+        for (const auto &mi : fn.blocks[i].instrs) {
             std::string target = getBranchTarget(mi);
             if (target.empty())
                 continue;
@@ -536,15 +480,13 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
 
     // Process each back-edge. We process at most one per pass to avoid
     // invalidating indices after block insertion.
-    for (const auto &edge : backEdges)
-    {
+    for (const auto &edge : backEdges) {
         auto &header = fn.blocks[edge.headerIdx];
         auto &latch = fn.blocks[edge.latchIdx];
 
         // Step 1: Identify phi loads at the start of the header.
         // These are LdrRegFpImm instructions at the very beginning.
-        struct PhiLoad
-        {
+        struct PhiLoad {
             std::size_t instrIdx;
             int64_t fpOffset;
             MOperand dstReg; // Physical register loaded into.
@@ -552,8 +494,7 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
 
         std::vector<PhiLoad> phiLoads;
 
-        for (std::size_t i = 0; i < header.instrs.size(); ++i)
-        {
+        for (std::size_t i = 0; i < header.instrs.size(); ++i) {
             const auto &mi = header.instrs[i];
             if (mi.opc != MOpcode::LdrRegFpImm)
                 break; // Phi loads must be at the very start.
@@ -572,8 +513,7 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
         // These are StrRegFpImm instructions that store to the same offsets
         // as the header's phi loads. They may not be strictly at the end
         // (other instructions like cmp can be interspersed).
-        struct PhiStore
-        {
+        struct PhiStore {
             std::size_t instrIdx;
             int64_t fpOffset;
             MOperand srcReg; // Physical register stored from.
@@ -586,12 +526,10 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
 
         // Scan the entire latch block for stores to phi slot offsets.
         std::vector<PhiStore> phiStores;
-        for (std::size_t i = 0; i < latch.instrs.size(); ++i)
-        {
+        for (std::size_t i = 0; i < latch.instrs.size(); ++i) {
             const auto &mi = latch.instrs[i];
             if (mi.opc == MOpcode::StrRegFpImm && mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
-                mi.ops[1].kind == MOperand::Kind::Imm && phiLoadOffsets.count(mi.ops[1].imm))
-            {
+                mi.ops[1].kind == MOperand::Kind::Imm && phiLoadOffsets.count(mi.ops[1].imm)) {
                 phiStores.push_back({i, mi.ops[1].imm, mi.ops[0]});
             }
         }
@@ -600,20 +538,16 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
             continue;
 
         // Step 3: Match phi loads with phi stores by FP offset.
-        struct PhiPair
-        {
+        struct PhiPair {
             PhiLoad load;
             PhiStore store;
         };
 
         std::vector<PhiPair> pairs;
 
-        for (const auto &load : phiLoads)
-        {
-            for (const auto &store : phiStores)
-            {
-                if (load.fpOffset == store.fpOffset)
-                {
+        for (const auto &load : phiLoads) {
+            for (const auto &store : phiStores) {
+                if (load.fpOffset == store.fpOffset) {
                     pairs.push_back({load, store});
                     break;
                 }
@@ -639,11 +573,9 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
 
             // Collect ALL unique FP store offsets in the latch block.
             std::unordered_set<int64_t> allStoreOffsets;
-            for (const auto &mi : latch.instrs)
-            {
+            for (const auto &mi : latch.instrs) {
                 if ((mi.opc == MOpcode::StrRegFpImm || mi.opc == MOpcode::PhiStoreGPR) &&
-                    mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm)
-                {
+                    mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Imm) {
                     allStoreOffsets.insert(mi.ops[1].imm);
                 }
             }
@@ -652,8 +584,7 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
             // Offsets that are stored but not loaded indicate loop-carried
             // values transferred via register moves, not stack loads.
             bool hasUnmatchedStores = false;
-            for (int64_t off : allStoreOffsets)
-            {
+            for (int64_t off : allStoreOffsets) {
                 // Skip stores to offsets that are NOT phi slots (e.g., exit-path values).
                 // Only flag stores that correspond to a phi slot used at block entry.
                 // We detect phi slots by checking if the offset was stored FROM the entry
@@ -662,17 +593,14 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
                 // (within the first few instructions, not just the phi loads).
                 // Actually, just check: is this offset loaded ANYWHERE in the header block?
                 bool loadedInHeader = false;
-                for (const auto &hmi : header.instrs)
-                {
+                for (const auto &hmi : header.instrs) {
                     if (hmi.opc == MOpcode::LdrRegFpImm && hmi.ops.size() >= 2 &&
-                        hmi.ops[1].kind == MOperand::Kind::Imm && hmi.ops[1].imm == off)
-                    {
+                        hmi.ops[1].kind == MOperand::Kind::Imm && hmi.ops[1].imm == off) {
                         loadedInHeader = true;
                         break;
                     }
                 }
-                if (loadedInHeader && !matchedOffsets.count(off))
-                {
+                if (loadedInHeader && !matchedOffsets.count(off)) {
                     hasUnmatchedStores = true;
                     break;
                 }
@@ -689,26 +617,21 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
             phiOffsets.insert(p.load.fpOffset);
 
         bool safeToEliminate = true;
-        for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi)
-        {
+        for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
             if (bi == edge.headerIdx)
                 continue; // Skip header (its loads are the ones we're eliminating).
-            for (const auto &mi : fn.blocks[bi].instrs)
-            {
+            for (const auto &mi : fn.blocks[bi].instrs) {
                 if (mi.opc == MOpcode::LdrRegFpImm && mi.ops.size() >= 2 &&
-                    mi.ops[1].kind == MOperand::Kind::Imm && phiOffsets.count(mi.ops[1].imm))
-                {
+                    mi.ops[1].kind == MOperand::Kind::Imm && phiOffsets.count(mi.ops[1].imm)) {
                     safeToEliminate = false;
                     break;
                 }
                 // Also check LDP loads.
                 if (mi.opc == MOpcode::LdpRegFpImm && mi.ops.size() >= 3 &&
-                    mi.ops[2].kind == MOperand::Kind::Imm)
-                {
+                    mi.ops[2].kind == MOperand::Kind::Imm) {
                     int64_t off1 = mi.ops[2].imm;
                     int64_t off2 = off1 + 8;
-                    if (phiOffsets.count(off1) || phiOffsets.count(off2))
-                    {
+                    if (phiOffsets.count(off1) || phiOffsets.count(off2)) {
                         safeToEliminate = false;
                         break;
                     }
@@ -741,12 +664,10 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
         // (they were moved from the header during the split). Scan the entire
         // body block for stores to phi slot offsets.
         std::vector<PhiStore> bodyPhiStores;
-        for (std::size_t i = 0; i < bodyBlock.instrs.size(); ++i)
-        {
+        for (std::size_t i = 0; i < bodyBlock.instrs.size(); ++i) {
             const auto &mi = bodyBlock.instrs[i];
             if (mi.opc == MOpcode::StrRegFpImm && mi.ops.size() >= 2 && isPhysReg(mi.ops[0]) &&
-                mi.ops[1].kind == MOperand::Kind::Imm && phiLoadOffsets.count(mi.ops[1].imm))
-            {
+                mi.ops[1].kind == MOperand::Kind::Imm && phiLoadOffsets.count(mi.ops[1].imm)) {
                 bodyPhiStores.push_back({i, mi.ops[1].imm, mi.ops[0]});
             }
         }
@@ -755,15 +676,11 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
         std::unordered_set<std::size_t> storeIndicesToRemove;
         std::vector<MInstr> movs;
 
-        for (const auto &load : phiLoads)
-        {
-            for (const auto &store : bodyPhiStores)
-            {
-                if (load.fpOffset == store.fpOffset)
-                {
+        for (const auto &load : phiLoads) {
+            for (const auto &store : bodyPhiStores) {
+                if (load.fpOffset == store.fpOffset) {
                     storeIndicesToRemove.insert(store.instrIdx);
-                    if (store.srcReg.reg.idOrPhys != load.dstReg.reg.idOrPhys)
-                    {
+                    if (store.srcReg.reg.idOrPhys != load.dstReg.reg.idOrPhys) {
                         movs.push_back(MInstr{MOpcode::MovRR, {load.dstReg, store.srcReg}});
                     }
                     ++eliminated;
@@ -776,8 +693,7 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
         {
             std::vector<MInstr> newInstrs;
             newInstrs.reserve(bodyBlock.instrs.size());
-            for (std::size_t i = 0; i < bodyBlock.instrs.size(); ++i)
-            {
+            for (std::size_t i = 0; i < bodyBlock.instrs.size(); ++i) {
                 if (storeIndicesToRemove.count(i))
                     continue;
                 newInstrs.push_back(std::move(bodyBlock.instrs[i]));
@@ -786,18 +702,15 @@ std::size_t eliminateLoopPhiSpills(MFunction &fn)
         }
 
         // Redirect back-edge branch targets from header to body (self-loop fix).
-        for (auto &mi : bodyBlock.instrs)
-        {
-            for (auto &op : mi.ops)
-            {
+        for (auto &mi : bodyBlock.instrs) {
+            for (auto &op : mi.ops) {
                 if (op.kind == MOperand::Kind::Label && op.label == headerName)
                     op.label = bodyName;
             }
         }
 
         // Insert movs before the last terminator in the body block.
-        if (!movs.empty())
-        {
+        if (!movs.empty()) {
             std::size_t insertPos = bodyBlock.instrs.size();
             while (insertPos > 0 && isTerminator(bodyBlock.instrs[insertPos - 1].opc))
                 --insertPos;

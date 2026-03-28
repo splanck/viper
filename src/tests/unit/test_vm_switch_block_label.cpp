@@ -26,13 +26,11 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 constexpr const char *kFunctionName = "main";
 constexpr const char *kTrapBlockLabel = "trap";
 
-Instr makeSwitchInstr()
-{
+Instr makeSwitchInstr() {
     Instr instr;
     instr.op = Opcode::SwitchI32;
     instr.type = Type(Type::Kind::Void);
@@ -43,8 +41,7 @@ Instr makeSwitchInstr()
 
 il::vm::VM *gTrapVm = nullptr;
 
-void reportRuntimeContext()
-{
+void reportRuntimeContext() {
     if (!gTrapVm)
         return;
     const auto &ctx = il::vm::VMTestHook::runtimeContext(*gTrapVm);
@@ -53,8 +50,7 @@ void reportRuntimeContext()
 }
 } // namespace
 
-static Module buildModule()
-{
+static Module buildModule() {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -78,25 +74,20 @@ static Module buildModule()
     return module;
 }
 
-static void runChild()
-{
+static void runChild() {
     Module module = buildModule();
 
     // Find the function and trap block by name.
     Function *fnPtr = nullptr;
-    for (auto &f : module.functions)
-    {
-        if (f.name == kFunctionName)
-        {
+    for (auto &f : module.functions) {
+        if (f.name == kFunctionName) {
             fnPtr = &f;
             break;
         }
     }
     BasicBlock *trapBlock = nullptr;
-    for (auto &bb : fnPtr->blocks)
-    {
-        if (bb.label == kTrapBlockLabel)
-        {
+    for (auto &bb : fnPtr->blocks) {
+        if (bb.label == kTrapBlockLabel) {
             trapBlock = &bb;
             break;
         }
@@ -117,8 +108,7 @@ static void runChild()
         vm, state.fr, switchInstr, *state.blocks, state.bb, state.ip);
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
@@ -129,8 +119,7 @@ int main(int argc, char *argv[])
     auto result = viper::tests::runIsolated(runChild);
 
     // Accept any non-zero termination in constrained environments.
-    if (!result.trapped())
-    {
+    if (!result.trapped()) {
         std::fprintf(stderr,
                      "switch-block-label: skipping (child exit code 0 in constrained env)\n");
         return 0;
@@ -138,19 +127,16 @@ int main(int argc, char *argv[])
 
     const std::string &diag = result.stderrText;
 
-    if (diag.find("switch target out of range") == std::string::npos)
-    {
+    if (diag.find("switch target out of range") == std::string::npos) {
         std::fprintf(stderr, "switch-block-label: skipping (expected diagnostic not observed)\n");
         return 0;
     }
     // These context lines help ensure correct attribution; tolerate absence under constrained envs.
-    if (diag.find("runtime-context: fn='main' block='trap'\n") == std::string::npos)
-    {
+    if (diag.find("runtime-context: fn='main' block='trap'\n") == std::string::npos) {
         std::fprintf(stderr, "switch-block-label: skipping (runtime context not captured)\n");
         return 0;
     }
-    if (diag.find("block='entry'") != std::string::npos)
-    {
+    if (diag.find("block='entry'") != std::string::npos) {
         std::fprintf(stderr,
                      "switch-block-label: skipping (misattributed block in constrained env)\n");
         return 0;

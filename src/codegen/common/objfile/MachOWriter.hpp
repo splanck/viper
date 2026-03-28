@@ -26,12 +26,10 @@
 
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
-namespace viper::codegen::objfile
-{
+namespace viper::codegen::objfile {
 
 /// Mach-O object file writer for macOS (x86_64 and AArch64).
-class MachOWriter : public ObjectFileWriter
-{
+class MachOWriter : public ObjectFileWriter {
   public:
     explicit MachOWriter(ObjArch arch) : arch_(arch) {}
 

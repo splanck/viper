@@ -13,8 +13,7 @@ static int tests_failed = 0;
 
 #define TEST(name) static void test_##name()
 #define RUN_TEST(name)                                                                             \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("  %s...", #name);                                                                  \
         test_##name();                                                                             \
         printf(" OK\n");                                                                           \
@@ -22,18 +21,15 @@ static int tests_failed = 0;
     } while (0)
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
             tests_failed++;                                                                        \
             return;                                                                                \
         }                                                                                          \
     } while (0)
 
-TEST(create)
-{
+TEST(create) {
     void *cam = rt_camera_new(800, 600);
     ASSERT(cam != NULL);
     ASSERT(rt_camera_get_x(cam) == 0);
@@ -44,8 +40,7 @@ TEST(create)
     ASSERT(rt_camera_is_dirty(cam) == 1); // newly created camera is always dirty
 }
 
-TEST(is_visible_inside)
-{
+TEST(is_visible_inside) {
     void *cam = rt_camera_new(800, 600);
     // Camera at (0,0), zoom 100 → viewport covers world [0,0,800,600].
     // An object fully inside the viewport must be visible.
@@ -56,8 +51,7 @@ TEST(is_visible_inside)
     ASSERT(rt_camera_is_visible(cam, 0, 0, 1, 1) == 1);
 }
 
-TEST(is_visible_outside)
-{
+TEST(is_visible_outside) {
     void *cam = rt_camera_new(800, 600);
     // Viewport covers world [0,0,800,600].
     // Objects entirely off each edge must be invisible.
@@ -67,8 +61,7 @@ TEST(is_visible_outside)
     ASSERT(rt_camera_is_visible(cam, 0, -100, 50, 50) == 0); // off top
 }
 
-TEST(is_visible_partial_overlap)
-{
+TEST(is_visible_partial_overlap) {
     void *cam = rt_camera_new(800, 600);
     // Object partially hanging off the right edge — should still be visible.
     ASSERT(rt_camera_is_visible(cam, 780, 100, 100, 100) == 1); // right edge: 780+100=880 > 800
@@ -78,15 +71,13 @@ TEST(is_visible_partial_overlap)
     ASSERT(rt_camera_is_visible(cam, 799, 0, 10, 10) == 1);
 }
 
-TEST(is_visible_null_camera)
-{
+TEST(is_visible_null_camera) {
     // NULL camera must conservatively return 1 (visible).
     ASSERT(rt_camera_is_visible(NULL, 0, 0, 9999, 9999) == 1);
     ASSERT(rt_camera_is_visible(NULL, -1000, -1000, 1, 1) == 1);
 }
 
-TEST(is_visible_zoom_in)
-{
+TEST(is_visible_zoom_in) {
     void *cam = rt_camera_new(800, 600);
     // Zoom in to 200%: world-space viewport = [0, 0, 400, 300].
     rt_camera_set_zoom(cam, 200);
@@ -96,8 +87,7 @@ TEST(is_visible_zoom_in)
     ASSERT(rt_camera_is_visible(cam, 100, 100, 50, 50) == 1);
 }
 
-TEST(is_visible_zoom_out)
-{
+TEST(is_visible_zoom_out) {
     void *cam = rt_camera_new(800, 600);
     // Zoom out to 50%: world-space viewport = [0, 0, 1600, 1200].
     rt_camera_set_zoom(cam, 50);
@@ -107,8 +97,7 @@ TEST(is_visible_zoom_out)
     ASSERT(rt_camera_is_visible(cam, 1601, 0, 50, 50) == 0);
 }
 
-TEST(is_visible_with_camera_offset)
-{
+TEST(is_visible_with_camera_offset) {
     void *cam = rt_camera_new(800, 600);
     // Move camera to world pos (1000, 500) → viewport covers [1000,500,1800,1100].
     rt_camera_set_x(cam, 1000);
@@ -121,8 +110,7 @@ TEST(is_visible_with_camera_offset)
     ASSERT(rt_camera_is_visible(cam, 900, 500, 99, 100) == 0); // x+w=999 <= cam_x=1000
 }
 
-TEST(dirty_flag)
-{
+TEST(dirty_flag) {
     void *cam = rt_camera_new(800, 600);
     ASSERT(rt_camera_is_dirty(cam) == 1); // starts dirty
     rt_camera_clear_dirty(cam);
@@ -137,8 +125,7 @@ TEST(dirty_flag)
     ASSERT(rt_camera_is_dirty(cam) == 1);
 }
 
-TEST(parallax_add_remove)
-{
+TEST(parallax_add_remove) {
     void *cam = rt_camera_new(800, 600);
     ASSERT(rt_camera_parallax_count(cam) == 0);
 
@@ -163,13 +150,11 @@ TEST(parallax_add_remove)
     ASSERT(rt_camera_parallax_count(cam) == 0);
 }
 
-TEST(parallax_max_layers)
-{
+TEST(parallax_max_layers) {
     void *cam = rt_camera_new(800, 600);
 
     // Fill all 8 slots
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         int64_t idx = rt_camera_add_parallax(cam, (void *)(intptr_t)(0x1000 + i), 50, 50);
         ASSERT(idx == i);
     }
@@ -181,8 +166,7 @@ TEST(parallax_max_layers)
     ASSERT(rt_camera_parallax_count(cam) == 8);
 }
 
-TEST(parallax_null_safety)
-{
+TEST(parallax_null_safety) {
     // NULL camera should not crash, returns safe defaults
     ASSERT(rt_camera_parallax_count(NULL) == 0);
     ASSERT(rt_camera_add_parallax(NULL, (void *)0x1000, 50, 50) == -1);
@@ -202,8 +186,7 @@ TEST(parallax_null_safety)
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     printf("RTCameraTests:\n");
     RUN_TEST(create);
     RUN_TEST(is_visible_inside);

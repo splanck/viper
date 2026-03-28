@@ -21,8 +21,7 @@
 #include <sstream>
 #include <string>
 
-int main()
-{
+int main() {
     const char *il = R"(il 0.1
 
 func @materialize(i1 %flag) -> i64 {

@@ -28,28 +28,23 @@ using viper::tui::ui::ModalHost;
 using viper::tui::ui::Popup;
 using viper::tui::ui::Widget;
 
-struct FlagWidget : Widget
-{
+struct FlagWidget : Widget {
     bool flag{false};
 
-    bool onEvent(const Event &ev) override
-    {
-        if (ev.key.code == KeyEvent::Code::Enter)
-        {
+    bool onEvent(const Event &ev) override {
+        if (ev.key.code == KeyEvent::Code::Enter) {
             flag = true;
             return true;
         }
         return false;
     }
 
-    bool wantsFocus() const override
-    {
+    bool wantsFocus() const override {
         return true;
     }
 };
 
-TEST(TUI, Modal)
-{
+TEST(TUI, Modal) {
     auto base = std::make_unique<FlagWidget>();
     FlagWidget *ptr = base.get();
     auto host = std::make_unique<ModalHost>(std::move(base));
@@ -88,8 +83,7 @@ TEST(TUI, Modal)
     ASSERT_TRUE(ptr->flag);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

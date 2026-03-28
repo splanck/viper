@@ -29,22 +29,19 @@
 #include <utility>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 struct BasicBlock;
 struct Value;
 } // namespace il::core
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 class Lowerer;
 
 /// @brief Internal helper for lowering SELECT CASE statements.
 /// @notes Encapsulates block preparation and dispatch emission logic to keep
 ///        Lowerer.hpp free of private implementation details.
-class SelectCaseLowering
-{
+class SelectCaseLowering {
   public:
     /// @brief Construct a SELECT CASE lowering helper bound to a Lowerer instance.
     /// @param lowerer Parent lowerer providing context and helper methods.
@@ -56,8 +53,7 @@ class SelectCaseLowering
 
   private:
     /// @brief Block indices produced by prepareBlocks for SELECT CASE lowering.
-    struct Blocks
-    {
+    struct Blocks {
         size_t currentIdx{};           ///< Index of the block active at SELECT entry.
         std::vector<size_t> armIdx;    ///< Indices of per-arm body blocks.
         std::optional<size_t> elseIdx; ///< Index of the CASE ELSE block, if present.
@@ -66,11 +62,9 @@ class SelectCaseLowering
     };
 
     /// @brief Describes a single comparison entry in the case dispatch plan.
-    struct CasePlanEntry
-    {
+    struct CasePlanEntry {
         /// @brief Classification of the case comparison type.
-        enum class Kind
-        {
+        enum class Kind {
             StringLabel, ///< Case tests a string literal via equality.
             RelLT,       ///< Relational: selector < value.
             RelLE,       ///< Relational: selector <= value.

@@ -20,10 +20,8 @@
 #include <regex>
 #include <string>
 
-int main(int argc, char **argv)
-{
-    if (argc != 3)
-    {
+int main(int argc, char **argv) {
+    if (argc != 3) {
         std::cerr << "usage: SummaryTests <ilc> <il file>\n";
         return 1;
     }
@@ -35,20 +33,17 @@ int main(int argc, char **argv)
         return 1;
     std::ifstream out(outFile);
     std::string line;
-    if (!std::getline(out, line))
-    {
+    if (!std::getline(out, line)) {
         std::cerr << "no summary output\n";
         return 1;
     }
     std::regex re("^\\[SUMMARY\\] instr=3 time_ms=([0-9]+\\.[0-9]+)$");
     std::smatch m;
-    if (!std::regex_match(line, m, re))
-    {
+    if (!std::regex_match(line, m, re)) {
         std::cerr << "unexpected summary: " << line << "\n";
         return 1;
     }
-    if (std::getline(out, line))
-    {
+    if (std::getline(out, line)) {
         std::cerr << "extra output\n";
         return 1;
     }

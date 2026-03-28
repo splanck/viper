@@ -27,8 +27,7 @@ using viper::tui::text::TextBuffer;
 using viper::tui::ui::Event;
 using viper::tui::views::TextView;
 
-TEST(TUI, TextView)
-{
+TEST(TUI, TextView) {
     Theme theme;
     TextBuffer buf;
     buf.load("alpha\nbeta\ngamma\ndelta");
@@ -77,8 +76,7 @@ TEST(TUI, TextView)
     ASSERT_EQ(view.cursorRow(), 1);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

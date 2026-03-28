@@ -33,10 +33,8 @@ static int gFail = 0;
 static int gPass = 0;
 static const char *gCurrentTest = nullptr;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -44,16 +42,14 @@ static void check(bool cond, const char *msg, int line)
 
 #define CHECK(cond) check((cond), #cond, __LINE__)
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         check((cond), #cond, __LINE__);                                                            \
         if (!(cond))                                                                               \
             return;                                                                                \
     } while (0)
 
 #define TEST_BEGIN(name)                                                                           \
-    static void test_##name()                                                                      \
-    {                                                                                              \
+    static void test_##name() {                                                                    \
         gCurrentTest = #name;                                                                      \
         std::cerr << "[  RUN     ] NativeAsmX64." #name "\n";
 
@@ -64,15 +60,13 @@ static void check(bool cond, const char *msg, int line)
 
 namespace fs = std::filesystem;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     const fs::path dir{"build/test-out/x64-nativeasm"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ofs << text;
 }
@@ -82,8 +76,7 @@ using Pipeline = viper::codegen::x64::CodegenPipeline;
 /// Run the CodegenPipeline with native-asm mode and return the exit code.
 static int runNative(const std::string &ilPath,
                      const std::string &exePath = "",
-                     bool runExe = false)
-{
+                     bool runExe = false) {
     Pipeline::Options opts;
     opts.input_il_path = ilPath;
     opts.assembler_mode = Pipeline::AssemblerMode::Native;
@@ -99,8 +92,7 @@ static int runNative(const std::string &ilPath,
 /// Run the CodegenPipeline with system-asm mode and return the exit code.
 static int runSystem(const std::string &ilPath,
                      const std::string &exePath = "",
-                     bool runExe = false)
-{
+                     bool runExe = false) {
     Pipeline::Options opts;
     opts.input_il_path = ilPath;
     opts.assembler_mode = Pipeline::AssemblerMode::System;
@@ -283,8 +275,7 @@ CHECK(runNative(in, "", true) == 6);
 fs::remove(in);
 TEST_END()
 
-int main()
-{
+int main() {
     test_BasicReturn0();
     test_BasicReturn42();
     test_MultiFunctionCall();

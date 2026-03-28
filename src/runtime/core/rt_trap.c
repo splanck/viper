@@ -48,8 +48,7 @@
 ///          embedders observe the message, and exits with status code 1.  The
 ///          behaviour mirrors the VM trap hook so test suites observe consistent
 ///          failure semantics across execution modes.
-void rt_trap_div0(void)
-{
+void rt_trap_div0(void) {
     fprintf(stderr, "Viper runtime trap: division by zero\n");
     fflush(stderr);
     exit(1); // Match VM behavior if your VM uses a specific code; adjust here later if needed.
@@ -61,14 +60,12 @@ void rt_trap_div0(void)
 ///          text "Assertion failed" to avoid silent failures.
 /// @param condition Non-zero when the assertion succeeded.
 /// @param message Optional runtime string describing the failure.
-void rt_diag_assert(int8_t condition, rt_string message)
-{
+void rt_diag_assert(int8_t condition, rt_string message) {
     if (condition)
         return;
 
     const char *msg = "Assertion failed";
-    if (message && message->data)
-    {
+    if (message && message->data) {
         size_t len = (message->heap && message->heap != RT_SSO_SENTINEL)
                          ? rt_heap_len(message->data)
                          : message->literal_len;
@@ -80,10 +77,8 @@ void rt_diag_assert(int8_t condition, rt_string message)
 }
 
 /// @brief Helper to extract message string with fallback.
-static const char *get_message(rt_string message, const char *fallback)
-{
-    if (message && message->data)
-    {
+static const char *get_message(rt_string message, const char *fallback) {
+    if (message && message->data) {
         size_t len = (message->heap && message->heap != RT_SSO_SENTINEL)
                          ? rt_heap_len(message->data)
                          : message->literal_len;
@@ -94,8 +89,7 @@ static const char *get_message(rt_string message, const char *fallback)
 }
 
 /// @brief Assert two integers are equal.
-void rt_diag_assert_eq(int64_t expected, int64_t actual, rt_string message)
-{
+void rt_diag_assert_eq(int64_t expected, int64_t actual, rt_string message) {
     if (expected == actual)
         return;
 
@@ -106,8 +100,7 @@ void rt_diag_assert_eq(int64_t expected, int64_t actual, rt_string message)
 }
 
 /// @brief Assert two integers are not equal.
-void rt_diag_assert_neq(int64_t a, int64_t b, rt_string message)
-{
+void rt_diag_assert_neq(int64_t a, int64_t b, rt_string message) {
     if (a != b)
         return;
 
@@ -118,8 +111,7 @@ void rt_diag_assert_neq(int64_t a, int64_t b, rt_string message)
 }
 
 /// @brief Assert two numbers are approximately equal.
-void rt_diag_assert_eq_num(double expected, double actual, rt_string message)
-{
+void rt_diag_assert_eq_num(double expected, double actual, rt_string message) {
     // Use a relative epsilon for float comparison
     double epsilon = 1e-9;
     double diff = fabs(expected - actual);
@@ -143,8 +135,7 @@ void rt_diag_assert_eq_num(double expected, double actual, rt_string message)
 }
 
 /// @brief Assert two strings are equal.
-void rt_diag_assert_eq_str(rt_string expected, rt_string actual, rt_string message)
-{
+void rt_diag_assert_eq_str(rt_string expected, rt_string actual, rt_string message) {
     const char *exp_str = expected ? rt_string_cstr(expected) : "";
     const char *act_str = actual ? rt_string_cstr(actual) : "";
 
@@ -163,8 +154,7 @@ void rt_diag_assert_eq_str(rt_string expected, rt_string actual, rt_string messa
 }
 
 /// @brief Assert an object reference is null.
-void rt_diag_assert_null(void *obj, rt_string message)
-{
+void rt_diag_assert_null(void *obj, rt_string message) {
     if (obj == NULL)
         return;
 
@@ -175,8 +165,7 @@ void rt_diag_assert_null(void *obj, rt_string message)
 }
 
 /// @brief Assert an object reference is not null.
-void rt_diag_assert_not_null(void *obj, rt_string message)
-{
+void rt_diag_assert_not_null(void *obj, rt_string message) {
     if (obj != NULL)
         return;
 
@@ -187,15 +176,13 @@ void rt_diag_assert_not_null(void *obj, rt_string message)
 }
 
 /// @brief Unconditionally fail with a message.
-void rt_diag_assert_fail(rt_string message)
-{
+void rt_diag_assert_fail(rt_string message) {
     const char *msg = get_message(message, "AssertFail called");
     rt_trap(msg);
 }
 
 /// @brief Assert first value is greater than second.
-void rt_diag_assert_gt(int64_t a, int64_t b, rt_string message)
-{
+void rt_diag_assert_gt(int64_t a, int64_t b, rt_string message) {
     if (a > b)
         return;
 
@@ -206,8 +193,7 @@ void rt_diag_assert_gt(int64_t a, int64_t b, rt_string message)
 }
 
 /// @brief Assert first value is less than second.
-void rt_diag_assert_lt(int64_t a, int64_t b, rt_string message)
-{
+void rt_diag_assert_lt(int64_t a, int64_t b, rt_string message) {
     if (a < b)
         return;
 
@@ -218,8 +204,7 @@ void rt_diag_assert_lt(int64_t a, int64_t b, rt_string message)
 }
 
 /// @brief Assert first value is greater than or equal to second.
-void rt_diag_assert_gte(int64_t a, int64_t b, rt_string message)
-{
+void rt_diag_assert_gte(int64_t a, int64_t b, rt_string message) {
     if (a >= b)
         return;
 
@@ -230,8 +215,7 @@ void rt_diag_assert_gte(int64_t a, int64_t b, rt_string message)
 }
 
 /// @brief Assert first value is less than or equal to second.
-void rt_diag_assert_lte(int64_t a, int64_t b, rt_string message)
-{
+void rt_diag_assert_lte(int64_t a, int64_t b, rt_string message) {
     if (a <= b)
         return;
 

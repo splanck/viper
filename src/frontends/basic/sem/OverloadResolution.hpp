@@ -23,14 +23,12 @@
 #include <string_view>
 #include <vector>
 
-namespace il::frontends::basic::sem
-{
+namespace il::frontends::basic::sem {
 
 /// @brief Result of overload resolution for a method call on a user-defined class.
 /// @details Contains the owning class, selected method, and name information
 ///          needed by the lowerer to emit the correct call instruction.
-struct ResolvedMethod
-{
+struct ResolvedMethod {
     const ClassInfo *owner{nullptr};              ///< Class that declares the selected method.
     const ClassInfo::MethodInfo *method{nullptr}; ///< Selected method overload metadata.
     std::string qualifiedClass;                   ///< Qualified class name in declared casing.

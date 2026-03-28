@@ -23,10 +23,8 @@
 
 using namespace il::core;
 
-namespace
-{
-void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs, int64_t rhs)
-{
+namespace {
+void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs, int64_t rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -49,8 +47,7 @@ void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs
     bb.instructions.push_back(ret);
 }
 
-void buildComparisonFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs)
-{
+void buildComparisonFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I1), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -73,8 +70,7 @@ void buildComparisonFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs
     bb.instructions.push_back(ret);
 }
 
-bool runUnsignedCompare(Opcode op, int64_t lhs, int64_t rhs)
-{
+bool runUnsignedCompare(Opcode op, int64_t lhs, int64_t rhs) {
     Module module;
     buildComparisonFunction(module, op, lhs, rhs);
     viper::tests::VmFixture fixture;
@@ -83,8 +79,7 @@ bool runUnsignedCompare(Opcode op, int64_t lhs, int64_t rhs)
     return raw == 1;
 }
 
-void expectDivideByZeroTrap(Opcode op)
-{
+void expectDivideByZeroTrap(Opcode op) {
     Module module;
     buildBinaryFunction(module, op, Type::Kind::I64, 1, 0);
     viper::tests::VmFixture fixture;
@@ -93,8 +88,7 @@ void expectDivideByZeroTrap(Opcode op)
 }
 } // namespace
 
-int main()
-{
+int main() {
     using viper::tests::VmFixture;
 
     VmFixture fixture;
@@ -168,8 +162,7 @@ int main()
         const uint64_t shift = static_cast<uint64_t>(rhs) & 63U;
         uint64_t bits = static_cast<uint64_t>(lhs);
         uint64_t shifted = bits >> shift;
-        if (shift != 0 && (bits & (uint64_t{1} << 63U)) != 0)
-        {
+        if (shift != 0 && (bits & (uint64_t{1} << 63U)) != 0) {
             shifted |= (~uint64_t{0}) << (64U - shift);
         }
         const int64_t expected = static_cast<int64_t>(shifted);

@@ -65,8 +65,7 @@ static void pbkdf2_sha256(const uint8_t *password,
                           size_t salt_len,
                           uint32_t iterations,
                           uint8_t *out,
-                          size_t out_len)
-{
+                          size_t out_len) {
     // Number of blocks needed
     uint32_t block_count = (uint32_t)((out_len + SHA256_DIGEST_LEN - 1) / SHA256_DIGEST_LEN);
 
@@ -81,8 +80,7 @@ static void pbkdf2_sha256(const uint8_t *password,
 
     size_t bytes_written = 0;
 
-    for (uint32_t block_num = 1; block_num <= block_count; block_num++)
-    {
+    for (uint32_t block_num = 1; block_num <= block_count; block_num++) {
         // Append block number as big-endian 32-bit integer
         salt_int[salt_len] = (uint8_t)(block_num >> 24);
         salt_int[salt_len + 1] = (uint8_t)(block_num >> 16);
@@ -97,11 +95,9 @@ static void pbkdf2_sha256(const uint8_t *password,
         memcpy(T, U, SHA256_DIGEST_LEN);
 
         // U2 through Uc
-        for (uint32_t iter = 2; iter <= iterations; iter++)
-        {
+        for (uint32_t iter = 2; iter <= iterations; iter++) {
             rt_hash_hmac_sha256_raw(password, password_len, U, SHA256_DIGEST_LEN, U);
-            for (int j = 0; j < SHA256_DIGEST_LEN; j++)
-            {
+            for (int j = 0; j < SHA256_DIGEST_LEN; j++) {
                 T[j] ^= U[j];
             }
         }
@@ -122,17 +118,14 @@ static void pbkdf2_sha256(const uint8_t *password,
 void *rt_keyderive_pbkdf2_sha256(rt_string password,
                                  void *salt,
                                  int64_t iterations,
-                                 int64_t key_len)
-{
+                                 int64_t key_len) {
     // Validate iterations
-    if (iterations < PBKDF2_MIN_ITERATIONS)
-    {
+    if (iterations < PBKDF2_MIN_ITERATIONS) {
         rt_trap("PBKDF2: iterations must be at least 1000");
     }
 
     // Validate key length
-    if (key_len < 1 || key_len > PBKDF2_MAX_KEY_LEN)
-    {
+    if (key_len < 1 || key_len > PBKDF2_MAX_KEY_LEN) {
         rt_trap("PBKDF2: key_len must be between 1 and 1024");
     }
 
@@ -173,17 +166,14 @@ void *rt_keyderive_pbkdf2_sha256(rt_string password,
 rt_string rt_keyderive_pbkdf2_sha256_str(rt_string password,
                                          void *salt,
                                          int64_t iterations,
-                                         int64_t key_len)
-{
+                                         int64_t key_len) {
     // Validate iterations
-    if (iterations < PBKDF2_MIN_ITERATIONS)
-    {
+    if (iterations < PBKDF2_MIN_ITERATIONS) {
         rt_trap("PBKDF2: iterations must be at least 1000");
     }
 
     // Validate key length
-    if (key_len < 1 || key_len > PBKDF2_MAX_KEY_LEN)
-    {
+    if (key_len < 1 || key_len > PBKDF2_MAX_KEY_LEN) {
         rt_trap("PBKDF2: key_len must be between 1 and 1024");
     }
 

@@ -58,8 +58,7 @@ extern void rt_trap(const char *msg);
 /// Each entry stores a key-value pair in the Map. Entries are organized into
 /// collision chains (linked lists) within each bucket. The Map owns a copy
 /// of each string key and retains a reference to each value.
-typedef struct rt_map_entry
-{
+typedef struct rt_map_entry {
     char *key;                 ///< Owned copy of key string (null-terminated).
     size_t key_len;            ///< Length of key string (excluding null terminator).
     void *value;               ///< Retained reference to the value object.
@@ -92,8 +91,7 @@ typedef struct rt_map_entry
 /// **Key/Value ownership:**
 /// - Keys: The Map owns copies of all keys (not references to originals)
 /// - Values: The Map retains references (increments ref count)
-typedef struct rt_map_impl
-{
+typedef struct rt_map_impl {
     void **vptr;            ///< Vtable pointer placeholder (for OOP compatibility).
     rt_map_entry **buckets; ///< Array of bucket heads (collision chain pointers).
     size_t capacity;        ///< Number of buckets in the hash table.
@@ -110,11 +108,9 @@ typedef struct rt_map_impl
 ///
 /// @return Pointer to the string's character data (not owned by caller).
 ///         Returns "" with length 0 if key is NULL.
-static const char *get_key_data(rt_string key, size_t *out_len)
-{
+static const char *get_key_data(rt_string key, size_t *out_len) {
     const char *cstr = rt_string_cstr(key);
-    if (!cstr)
-    {
+    if (!cstr) {
         *out_len = 0;
         return "";
     }
@@ -134,10 +130,8 @@ static const char *get_key_data(rt_string key, size_t *out_len)
 /// @return Pointer to the matching entry, or NULL if not found.
 ///
 /// @note O(k) time where k is the chain length.
-static rt_map_entry *find_entry(rt_map_entry *head, const char *key, size_t key_len)
-{
-    for (rt_map_entry *e = head; e; e = e->next)
-    {
+static rt_map_entry *find_entry(rt_map_entry *head, const char *key, size_t key_len) {
+    for (rt_map_entry *e = head; e; e = e->next) {
         if (e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
             return e;
     }
@@ -152,10 +146,8 @@ static rt_map_entry *find_entry(rt_map_entry *head, const char *key, size_t key_
 /// 3. Frees the entry structure itself
 ///
 /// @param entry The entry to free. If NULL, this is a no-op.
-static void free_entry(rt_map_entry *entry)
-{
-    if (entry)
-    {
+static void free_entry(rt_map_entry *entry) {
+    if (entry) {
         free(entry->key);
         if (entry->value && rt_obj_release_check0(entry->value))
             rt_obj_free(entry->value);
@@ -172,8 +164,7 @@ static void free_entry(rt_map_entry *entry)
 /// @param obj Pointer to the Map object being finalized. May be NULL (no-op).
 ///
 /// @note This function is idempotent - safe to call on already-finalized maps.
-static void rt_map_finalize(void *obj)
-{
+static void rt_map_finalize(void *obj) {
     if (!obj)
         return;
     rt_map_impl *map = (rt_map_impl *)obj;
@@ -196,18 +187,15 @@ static void rt_map_finalize(void *obj)
 ///
 /// @note On allocation failure, the old buckets are kept (silent failure).
 /// @note O(n) time complexity where n is the number of entries.
-static void map_resize(rt_map_impl *map, size_t new_capacity)
-{
+static void map_resize(rt_map_impl *map, size_t new_capacity) {
     rt_map_entry **new_buckets = (rt_map_entry **)calloc(new_capacity, sizeof(rt_map_entry *));
     if (!new_buckets)
         return; // Keep old buckets on allocation failure
 
     // Rehash all entries
-    for (size_t i = 0; i < map->capacity; ++i)
-    {
+    for (size_t i = 0; i < map->capacity; ++i) {
         rt_map_entry *entry = map->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_map_entry *next = entry->next;
             uint64_t hash = rt_fnv1a(entry->key, entry->key_len);
             size_t idx = hash % new_capacity;
@@ -229,11 +217,9 @@ static void map_resize(rt_map_impl *map, size_t new_capacity)
 /// @param map The Map to potentially resize.
 ///
 /// @note The capacity doubles on each resize.
-static void maybe_resize(rt_map_impl *map)
-{
+static void maybe_resize(rt_map_impl *map) {
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
-    if (map->count * MAP_LOAD_FACTOR_DEN > map->capacity * MAP_LOAD_FACTOR_NUM)
-    {
+    if (map->count * MAP_LOAD_FACTOR_DEN > map->capacity * MAP_LOAD_FACTOR_NUM) {
         if (map->capacity > SIZE_MAX / 2)
             return;
         map_resize(map, map->capacity * 2);
@@ -270,16 +256,14 @@ static void maybe_resize(rt_map_impl *map)
 /// @see rt_map_set For adding key-value pairs
 /// @see rt_map_get For retrieving values
 /// @see rt_map_finalize For cleanup behavior
-void *rt_map_new(void)
-{
+void *rt_map_new(void) {
     rt_map_impl *map = (rt_map_impl *)rt_obj_new_i64(RT_MAP_CLASS_ID, (int64_t)sizeof(rt_map_impl));
     if (!map)
         return NULL;
 
     map->vptr = NULL;
     map->buckets = (rt_map_entry **)calloc(MAP_INITIAL_CAPACITY, sizeof(rt_map_entry *));
-    if (!map->buckets)
-    {
+    if (!map->buckets) {
         if (rt_obj_release_check0(map))
             rt_obj_free(map);
         rt_trap("Map: memory allocation failed");
@@ -304,8 +288,7 @@ void *rt_map_new(void)
 /// @see rt_map_is_empty For a boolean check
 /// @see rt_map_set For operations that may increase the count
 /// @see rt_map_remove For operations that decrease the count
-int64_t rt_map_len(void *obj)
-{
+int64_t rt_map_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_map_impl *)obj)->count;
@@ -326,8 +309,7 @@ int64_t rt_map_len(void *obj)
 ///
 /// @see rt_map_len For the exact count
 /// @see rt_map_clear For removing all entries
-int8_t rt_map_is_empty(void *obj)
-{
+int8_t rt_map_is_empty(void *obj) {
     return rt_map_len(obj) == 0;
 }
 
@@ -364,8 +346,7 @@ int8_t rt_map_is_empty(void *obj)
 /// @see rt_map_get For retrieving values
 /// @see rt_map_has For checking if a key exists
 /// @see rt_map_remove For removing entries
-void rt_map_set(void *obj, rt_string key, void *value)
-{
+void rt_map_set(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
 
@@ -378,8 +359,7 @@ void rt_map_set(void *obj, rt_string key, void *value)
 
     // Check if key already exists
     rt_map_entry *existing = find_entry(map->buckets[idx], key_data, key_len);
-    if (existing)
-    {
+    if (existing) {
         // Update existing entry
         void *old_value = existing->value;
         rt_obj_retain_maybe(value);
@@ -395,8 +375,7 @@ void rt_map_set(void *obj, rt_string key, void *value)
         rt_trap("Map.Set: memory allocation failed");
 
     entry->key = (char *)malloc(key_len + 1);
-    if (!entry->key)
-    {
+    if (!entry->key) {
         free(entry);
         rt_trap("Map.Set: key allocation failed");
     }
@@ -440,8 +419,7 @@ void rt_map_set(void *obj, rt_string key, void *value)
 /// @see rt_map_get_or For providing a default value
 /// @see rt_map_has For checking existence without retrieving
 /// @see rt_map_set For storing values
-void *rt_map_get(void *obj, rt_string key)
-{
+void *rt_map_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
 
@@ -487,8 +465,7 @@ void *rt_map_get(void *obj, rt_string key)
 ///
 /// @see rt_map_get For returning NULL on missing keys
 /// @see rt_map_has For checking existence
-void *rt_map_get_or(void *obj, rt_string key, void *default_value)
-{
+void *rt_map_get_or(void *obj, rt_string key, void *default_value) {
     if (!obj)
         return default_value;
 
@@ -529,8 +506,7 @@ void *rt_map_get_or(void *obj, rt_string key, void *default_value)
 ///
 /// @see rt_map_get For retrieving the value
 /// @see rt_map_set For adding entries
-int8_t rt_map_has(void *obj, rt_string key)
-{
+int8_t rt_map_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
 
@@ -577,8 +553,7 @@ int8_t rt_map_has(void *obj, rt_string key)
 ///
 /// @see rt_map_set For unconditional set (replaces existing)
 /// @see rt_map_has For checking existence
-int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value)
-{
+int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value) {
     if (!obj)
         return 0;
 
@@ -599,8 +574,7 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value)
         return 0;
 
     entry->key = (char *)malloc(key_len + 1);
-    if (!entry->key)
-    {
+    if (!entry->key) {
         free(entry);
         return 0;
     }
@@ -646,8 +620,7 @@ int8_t rt_map_set_if_missing(void *obj, rt_string key, void *value)
 ///
 /// @see rt_map_set For adding entries
 /// @see rt_map_clear For removing all entries
-int8_t rt_map_remove(void *obj, rt_string key)
-{
+int8_t rt_map_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
 
@@ -663,10 +636,8 @@ int8_t rt_map_remove(void *obj, rt_string key)
     rt_map_entry **prev_ptr = &map->buckets[idx];
     rt_map_entry *entry = map->buckets[idx];
 
-    while (entry)
-    {
-        if (entry->key_len == key_len && memcmp(entry->key, key_data, key_len) == 0)
-        {
+    while (entry) {
+        if (entry->key_len == key_len && memcmp(entry->key, key_data, key_len) == 0) {
             *prev_ptr = entry->next;
             free_entry(entry);
             map->count--;
@@ -710,17 +681,14 @@ int8_t rt_map_remove(void *obj, rt_string key)
 ///
 /// @see rt_map_finalize For complete cleanup including bucket array
 /// @see rt_map_is_empty For checking if empty
-void rt_map_clear(void *obj)
-{
+void rt_map_clear(void *obj) {
     if (!obj)
         return;
 
     rt_map_impl *map = (rt_map_impl *)obj;
-    for (size_t i = 0; i < map->capacity; ++i)
-    {
+    for (size_t i = 0; i < map->capacity; ++i) {
         rt_map_entry *entry = map->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_map_entry *next = entry->next;
             free_entry(entry);
             entry = next;
@@ -760,8 +728,7 @@ void rt_map_clear(void *obj)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_map_values For getting all values
-void *rt_map_keys(void *obj)
-{
+void *rt_map_keys(void *obj) {
     void *result = rt_seq_new();
     rt_seq_set_owns_elements(result, 1);
     if (!obj)
@@ -770,11 +737,9 @@ void *rt_map_keys(void *obj)
     rt_map_impl *map = (rt_map_impl *)obj;
 
     // Iterate through all buckets and entries
-    for (size_t i = 0; i < map->capacity; ++i)
-    {
+    for (size_t i = 0; i < map->capacity; ++i) {
         rt_map_entry *entry = map->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             // Create a copy of the key as rt_string and push to seq
             rt_string key_str = rt_string_from_bytes(entry->key, entry->key_len);
             rt_seq_push(result, (void *)key_str);
@@ -815,8 +780,7 @@ void *rt_map_keys(void *obj)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_map_keys For getting all keys
-void *rt_map_values(void *obj)
-{
+void *rt_map_values(void *obj) {
     void *result = rt_seq_new();
     if (!obj)
         return result;
@@ -824,11 +788,9 @@ void *rt_map_values(void *obj)
     rt_map_impl *map = (rt_map_impl *)obj;
 
     // Iterate through all buckets and entries
-    for (size_t i = 0; i < map->capacity; ++i)
-    {
+    for (size_t i = 0; i < map->capacity; ++i) {
         rt_map_entry *entry = map->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_seq_push(result, entry->value);
             entry = entry->next;
         }
@@ -843,8 +805,7 @@ void *rt_map_values(void *obj)
 
 #include "rt_box.h"
 
-void rt_map_set_int(void *obj, rt_string key, int64_t value)
-{
+void rt_map_set_int(void *obj, rt_string key, int64_t value) {
     void *boxed = rt_box_i64(value);
     rt_map_set(obj, key, boxed);
     // Release local ref — map_set already retained the boxed value
@@ -852,24 +813,21 @@ void rt_map_set_int(void *obj, rt_string key, int64_t value)
         rt_obj_free(boxed);
 }
 
-int64_t rt_map_get_int(void *obj, rt_string key)
-{
+int64_t rt_map_get_int(void *obj, rt_string key) {
     void *val = rt_map_get(obj, key);
     if (!val)
         return 0;
     return rt_unbox_i64(val);
 }
 
-int64_t rt_map_get_int_or(void *obj, rt_string key, int64_t def)
-{
+int64_t rt_map_get_int_or(void *obj, rt_string key, int64_t def) {
     void *val = rt_map_get(obj, key);
     if (!val)
         return def;
     return rt_unbox_i64(val);
 }
 
-void rt_map_set_float(void *obj, rt_string key, double value)
-{
+void rt_map_set_float(void *obj, rt_string key, double value) {
     void *boxed = rt_box_f64(value);
     rt_map_set(obj, key, boxed);
     // Release local ref — map_set already retained the boxed value
@@ -877,29 +835,25 @@ void rt_map_set_float(void *obj, rt_string key, double value)
         rt_obj_free(boxed);
 }
 
-double rt_map_get_float(void *obj, rt_string key)
-{
+double rt_map_get_float(void *obj, rt_string key) {
     void *val = rt_map_get(obj, key);
     if (!val)
         return 0.0;
     return rt_unbox_f64(val);
 }
 
-double rt_map_get_float_or(void *obj, rt_string key, double def)
-{
+double rt_map_get_float_or(void *obj, rt_string key, double def) {
     void *val = rt_map_get(obj, key);
     if (!val)
         return def;
     return rt_unbox_f64(val);
 }
 
-void rt_map_set_str(void *obj, rt_string key, rt_string value)
-{
+void rt_map_set_str(void *obj, rt_string key, rt_string value) {
     rt_map_set(obj, key, (void *)value);
 }
 
-rt_string rt_map_get_str(void *obj, rt_string key)
-{
+rt_string rt_map_get_str(void *obj, rt_string key) {
     void *val = rt_map_get(obj, key);
     if (!val)
         return rt_string_from_bytes("", 0);
@@ -914,18 +868,15 @@ rt_string rt_map_get_str(void *obj, rt_string key)
 ///
 /// @param obj Source Map pointer (may be NULL).
 /// @return New Map containing the same key-value pairs, or empty map if NULL.
-void *rt_map_clone(void *obj)
-{
+void *rt_map_clone(void *obj) {
     void *result = rt_map_new();
     if (!obj)
         return result;
 
     rt_map_impl *map = (rt_map_impl *)obj;
-    for (size_t i = 0; i < map->capacity; ++i)
-    {
+    for (size_t i = 0; i < map->capacity; ++i) {
         rt_map_entry *entry = map->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_string key_str = rt_string_from_bytes(entry->key, entry->key_len);
             rt_map_set(result, key_str, entry->value);
             rt_str_release_maybe(key_str);

@@ -20,8 +20,7 @@
 #include <sys/types.h>
 
 /// @brief End-to-end checks for channel open/read/write/close workflows.
-int main(void)
-{
+int main(void) {
 #ifdef _WIN32
     // Skip on Windows: test uses POSIX file descriptor operations (lseek, dup2)
     // that have different semantics on Windows
@@ -146,8 +145,7 @@ int main(void)
 
     int replacement_fd = open(template_path, O_WRONLY);
     assert(replacement_fd >= 0);
-    if (replacement_fd != failure_fd)
-    {
+    if (replacement_fd != failure_fd) {
         int dup_rc = dup2(replacement_fd, failure_fd);
         assert(dup_rc == failure_fd);
         int replacement_close_rc = close(replacement_fd);

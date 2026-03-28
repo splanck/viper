@@ -21,8 +21,7 @@ using il::common::integer::narrow_to;
 using il::common::integer::OverflowPolicy;
 using il::common::integer::Value;
 
-int main()
-{
+int main() {
     const Value neg_one = -1;
     const Value neg_two = -2;
     const Value neg_sixty_five = -65;

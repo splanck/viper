@@ -25,8 +25,7 @@
 #include <string>
 #include <unordered_set>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// @brief Generate ObjC selector stub trampolines for AArch64 macOS.
 ///

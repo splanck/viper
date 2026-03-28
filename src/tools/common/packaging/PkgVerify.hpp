@@ -27,8 +27,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Verify structural correctness of a ZIP archive.
 ///

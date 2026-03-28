@@ -27,14 +27,12 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
-static bool containsCall(const il::core::Module &m, std::string_view name)
-{
-    auto ieq = [](char a, char b)
-    { return std::tolower((unsigned char)a) == std::tolower((unsigned char)b); };
-    auto eq = [&](std::string_view a, std::string_view b)
-    {
+namespace {
+static bool containsCall(const il::core::Module &m, std::string_view name) {
+    auto ieq = [](char a, char b) {
+        return std::tolower((unsigned char)a) == std::tolower((unsigned char)b);
+    };
+    auto eq = [&](std::string_view a, std::string_view b) {
         if (a.size() != b.size())
             return false;
         for (size_t i = 0; i < a.size(); ++i)
@@ -51,8 +49,7 @@ static bool containsCall(const il::core::Module &m, std::string_view name)
 }
 } // namespace
 
-TEST(BasicBuiltinsArgsCmd, LowersToRuntime)
-{
+TEST(BasicBuiltinsArgsCmd, LowersToRuntime) {
     const std::string src = "10 PRINT ARGC()\n"
                             "20 PRINT ARG$(0)\n"
                             "30 PRINT COMMAND$()\n"
@@ -68,8 +65,7 @@ TEST(BasicBuiltinsArgsCmd, LowersToRuntime)
     EXPECT_TRUE(containsCall(mod, "rt_cmdline"));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

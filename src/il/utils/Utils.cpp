@@ -28,8 +28,7 @@
 #include <algorithm>
 #include <string_view>
 
-namespace viper::il
-{
+namespace viper::il {
 
 /// @brief Determine whether instruction @p I resides in block @p B.
 /// @details Performs a linear scan over the block's instruction list and
@@ -39,12 +38,9 @@ namespace viper::il
 /// @param I Instruction to locate.
 /// @param B Candidate parent block.
 /// @return True when @p I is one of @p B's instructions; false otherwise.
-bool belongsToBlock(const Instruction &I, const Block &B)
-{
-    for (const auto &inst : B.instructions)
-    {
-        if (&inst == &I)
-        {
+bool belongsToBlock(const Instruction &I, const Block &B) {
+    for (const auto &inst : B.instructions) {
+        if (&inst == &I) {
             return true;
         }
     }
@@ -60,10 +56,8 @@ bool belongsToBlock(const Instruction &I, const Block &B)
 /// @param B Block to inspect.
 /// @return Pointer to the terminator instruction or nullptr if the block is
 ///         empty or the last instruction is non-terminating.
-Instruction *terminator(Block &B)
-{
-    if (B.instructions.empty())
-    {
+Instruction *terminator(Block &B) {
+    if (B.instructions.empty()) {
         return nullptr;
     }
     Instruction &last = B.instructions.back();
@@ -78,11 +72,9 @@ Instruction *terminator(Block &B)
 ///          basic blocks.
 /// @param I Instruction to inspect.
 /// @return True when @p I.op is a terminating opcode; false otherwise.
-bool isTerminator(const Instruction &I)
-{
+bool isTerminator(const Instruction &I) {
     using ::il::core::Opcode;
-    switch (I.op)
-    {
+    switch (I.op) {
         case Opcode::Br:
         case Opcode::CBr:
         case Opcode::SwitchI32:
@@ -107,30 +99,24 @@ bool isTerminator(const Instruction &I)
 /// @param tempId Temporary identifier to replace.
 /// @param replacement Replacement value assigned to each occurrence.
 /// @sideeffect Mutates operands and branch arguments in place.
-void replaceAllUses(::il::core::Function &F, unsigned tempId, const ::il::core::Value &replacement)
-{
+void replaceAllUses(::il::core::Function &F,
+                    unsigned tempId,
+                    const ::il::core::Value &replacement) {
     using ::il::core::Value;
 
-    for (auto &B : F.blocks)
-    {
-        for (auto &I : B.instructions)
-        {
+    for (auto &B : F.blocks) {
+        for (auto &I : B.instructions) {
             // Replace in instruction operands
-            for (auto &Op : I.operands)
-            {
-                if (Op.kind == Value::Kind::Temp && Op.id == tempId)
-                {
+            for (auto &Op : I.operands) {
+                if (Op.kind == Value::Kind::Temp && Op.id == tempId) {
                     Op = replacement;
                 }
             }
 
             // Replace in branch arguments
-            for (auto &argList : I.brArgs)
-            {
-                for (auto &Arg : argList)
-                {
-                    if (Arg.kind == Value::Kind::Temp && Arg.id == tempId)
-                    {
+            for (auto &argList : I.brArgs) {
+                for (auto &Arg : argList) {
+                    if (Arg.kind == Value::Kind::Temp && Arg.id == tempId) {
                         Arg = replacement;
                     }
                 }
@@ -148,53 +134,42 @@ void replaceAllUses(::il::core::Function &F, unsigned tempId, const ::il::core::
 ///          temporaries without causing identifier collisions.
 /// @param F Function to inspect.
 /// @return First unused temporary identifier (max + 1).
-unsigned nextTempId(const ::il::core::Function &F)
-{
+unsigned nextTempId(const ::il::core::Function &F) {
     using ::il::core::Value;
 
     unsigned next = 0;
     auto update = [&](unsigned v) { next = std::max(next, v + 1); };
 
     // Scan function parameters
-    for (const auto &p : F.params)
-    {
+    for (const auto &p : F.params) {
         update(p.id);
     }
 
     // Scan blocks
-    for (const auto &B : F.blocks)
-    {
+    for (const auto &B : F.blocks) {
         // Scan block parameters
-        for (const auto &p : B.params)
-        {
+        for (const auto &p : B.params) {
             update(p.id);
         }
 
         // Scan instructions
-        for (const auto &I : B.instructions)
-        {
+        for (const auto &I : B.instructions) {
             // Check instruction result
-            if (I.result)
-            {
+            if (I.result) {
                 update(*I.result);
             }
 
             // Check operands
-            for (const auto &Op : I.operands)
-            {
-                if (Op.kind == Value::Kind::Temp)
-                {
+            for (const auto &Op : I.operands) {
+                if (Op.kind == Value::Kind::Temp) {
                     update(Op.id);
                 }
             }
 
             // Check branch arguments
-            for (const auto &argList : I.brArgs)
-            {
-                for (const auto &Arg : argList)
-                {
-                    if (Arg.kind == Value::Kind::Temp)
-                    {
+            for (const auto &argList : I.brArgs) {
+                for (const auto &Arg : argList) {
+                    if (Arg.kind == Value::Kind::Temp) {
                         update(Arg.id);
                     }
                 }
@@ -206,10 +181,8 @@ unsigned nextTempId(const ::il::core::Function &F)
 }
 
 /// @brief Linear search for a block with @p label in @p F.
-viper::il::Block *findBlock(::il::core::Function &F, std::string_view label)
-{
-    for (auto &B : F.blocks)
-    {
+viper::il::Block *findBlock(::il::core::Function &F, std::string_view label) {
+    for (auto &B : F.blocks) {
         if (B.label == label)
             return &B;
     }
@@ -217,10 +190,8 @@ viper::il::Block *findBlock(::il::core::Function &F, std::string_view label)
 }
 
 /// @brief Const overload of findBlock.
-const viper::il::Block *findBlock(const ::il::core::Function &F, std::string_view label)
-{
-    for (const auto &B : F.blocks)
-    {
+const viper::il::Block *findBlock(const ::il::core::Function &F, std::string_view label) {
+    for (const auto &B : F.blocks) {
         if (B.label == label)
             return &B;
     }

@@ -20,8 +20,7 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 constexpr int kBogusOpcodeValue = static_cast<int>(Opcode::Count) + 17;
 constexpr Opcode kBogusOpcode = static_cast<Opcode>(kBogusOpcodeValue);
 

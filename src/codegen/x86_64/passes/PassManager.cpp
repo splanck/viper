@@ -28,16 +28,14 @@
 #include <stdexcept>
 #include <utility>
 
-namespace viper::codegen::x64::passes
-{
+namespace viper::codegen::x64::passes {
 
 /// @brief Record an error message reported by a pass.
 /// @details Errors are stored verbatim and surfaced when @ref flush is called.
 ///          The pass manager treats the presence of errors as a fatal
 ///          condition, short-circuiting the pipeline.
 /// @param message Human-readable description of the failure.
-void Diagnostics::error(std::string message)
-{
+void Diagnostics::error(std::string message) {
     errors_.push_back(std::move(message));
 }
 
@@ -45,8 +43,7 @@ void Diagnostics::error(std::string message)
 /// @details Warnings do not stop the pipeline but remain available to callers
 ///          via @ref flush so front ends can present them to users.
 /// @param message Advisory diagnostic text.
-void Diagnostics::warning(std::string message)
-{
+void Diagnostics::warning(std::string message) {
     warnings_.push_back(std::move(message));
 }
 
@@ -54,8 +51,7 @@ void Diagnostics::warning(std::string message)
 /// @details Used by the pass manager to decide whether execution should stop
 ///          after a pass completes.
 /// @return @c true when at least one error has been reported.
-bool Diagnostics::hasErrors() const noexcept
-{
+bool Diagnostics::hasErrors() const noexcept {
     return !errors_.empty();
 }
 
@@ -63,8 +59,7 @@ bool Diagnostics::hasErrors() const noexcept
 /// @details Enables callers to present non-fatal advisories even when the
 ///          pipeline finishes successfully.
 /// @return @c true when one or more warnings were captured.
-bool Diagnostics::hasWarnings() const noexcept
-{
+bool Diagnostics::hasWarnings() const noexcept {
     return !warnings_.empty();
 }
 
@@ -72,8 +67,7 @@ bool Diagnostics::hasWarnings() const noexcept
 /// @details Exposes the underlying storage so CLI front ends can surface every
 ///          message even if they want to format output differently from @ref flush.
 /// @return Reference to the vector storing error diagnostics.
-const std::vector<std::string> &Diagnostics::errors() const noexcept
-{
+const std::vector<std::string> &Diagnostics::errors() const noexcept {
     return errors_;
 }
 
@@ -82,8 +76,7 @@ const std::vector<std::string> &Diagnostics::errors() const noexcept
 ///          presentation while preserving the ability to flush them through
 ///          the helper.
 /// @return Reference to the vector storing warning diagnostics.
-const std::vector<std::string> &Diagnostics::warnings() const noexcept
-{
+const std::vector<std::string> &Diagnostics::warnings() const noexcept {
     return warnings_;
 }
 
@@ -93,23 +86,17 @@ const std::vector<std::string> &Diagnostics::warnings() const noexcept
 ///          in the diagnostics object so callers can handle them manually.
 /// @param err   Destination stream for fatal diagnostics.
 /// @param warn  Optional destination stream for warnings.
-void Diagnostics::flush(std::ostream &err, std::ostream *warn) const
-{
-    for (const auto &msg : errors_)
-    {
+void Diagnostics::flush(std::ostream &err, std::ostream *warn) const {
+    for (const auto &msg : errors_) {
         err << msg;
-        if (!msg.empty() && msg.back() != '\n')
-        {
+        if (!msg.empty() && msg.back() != '\n') {
             err << '\n';
         }
     }
-    if (warn != nullptr)
-    {
-        for (const auto &msg : warnings_)
-        {
+    if (warn != nullptr) {
+        for (const auto &msg : warnings_) {
             *warn << msg;
-            if (!msg.empty() && msg.back() != '\n')
-            {
+            if (!msg.empty() && msg.back() != '\n') {
                 *warn << '\n';
             }
         }
@@ -121,8 +108,7 @@ void Diagnostics::flush(std::ostream &err, std::ostream *warn) const
 ///          manager, ensuring the pass outlives the pipeline execution. Passes
 ///          are executed in the order they were added.
 /// @param pass Unique pointer to the pass to enqueue.
-void PassManager::addPass(std::unique_ptr<Pass> pass)
-{
+void PassManager::addPass(std::unique_ptr<Pass> pass) {
     passes_.push_back(std::move(pass));
 }
 
@@ -133,25 +119,18 @@ void PassManager::addPass(std::unique_ptr<Pass> pass)
 /// @param module Module state mutated by passes.
 /// @param diags  Diagnostics sink shared across passes.
 /// @return @c true when every pass completes successfully.
-bool PassManager::run(Module &module, Diagnostics &diags) const
-{
-    for (const auto &pass : passes_)
-    {
-        try
-        {
-            if (!pass->run(module, diags))
-            {
+bool PassManager::run(Module &module, Diagnostics &diags) const {
+    for (const auto &pass : passes_) {
+        try {
+            if (!pass->run(module, diags)) {
                 return false;
             }
             // A pass may report errors via Diagnostics but still return true.
             // Catch that case to avoid silent miscompilation.
-            if (diags.hasErrors())
-            {
+            if (diags.hasErrors()) {
                 return false;
             }
-        }
-        catch (const std::exception &e)
-        {
+        } catch (const std::exception &e) {
             diags.error(std::string("pass threw exception: ") + e.what());
             return false;
         }

@@ -36,18 +36,15 @@ static const ServerConfig kBasicConfig{
 
 // --- Mock transport that captures written messages ---
 
-class MockTransport : public Transport
-{
+class MockTransport : public Transport {
   public:
     std::vector<std::string> written;
 
-    bool readMessage(RawMessage & /*msg*/) override
-    {
+    bool readMessage(RawMessage & /*msg*/) override {
         return false;
     }
 
-    void writeMessage(const std::string &message) override
-    {
+    void writeMessage(const std::string &message) override {
         written.push_back(message);
     }
 };
@@ -55,20 +52,18 @@ class MockTransport : public Transport
 /// Helper: build a JsonRpcRequest.
 static JsonRpcRequest makeReq(const std::string &method,
                               JsonValue params = JsonValue::object({}),
-                              JsonValue id = JsonValue(1))
-{
+                              JsonValue id = JsonValue(1)) {
     return {method, std::move(params), std::move(id)};
 }
 
 /// Helper: build a notification (null id).
-static JsonRpcRequest makeNotif(const std::string &method, JsonValue params = JsonValue::object({}))
-{
+static JsonRpcRequest makeNotif(const std::string &method,
+                                JsonValue params = JsonValue::object({})) {
     return {method, std::move(params), JsonValue()};
 }
 
 /// Helper: parse response.
-static JsonValue parseResponse(const std::string &resp)
-{
+static JsonValue parseResponse(const std::string &resp) {
     EXPECT_TRUE(!resp.empty());
     return JsonValue::parse(resp);
 }
@@ -78,8 +73,7 @@ static const char *kValidSource = "DIM x AS INTEGER\nPRINT x\nEND\n";
 
 // ===== Lifecycle =====
 
-TEST(BasicLsp, Initialize)
-{
+TEST(BasicLsp, Initialize) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
@@ -97,8 +91,7 @@ TEST(BasicLsp, Initialize)
     EXPECT_EQ(info["name"].asString(), "vbasic-server");
 }
 
-TEST(BasicLsp, Shutdown)
-{
+TEST(BasicLsp, Shutdown) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
@@ -110,8 +103,7 @@ TEST(BasicLsp, Shutdown)
 
 // ===== Document Sync =====
 
-TEST(BasicLsp, DidOpenPublishesDiagnostics)
-{
+TEST(BasicLsp, DidOpenPublishesDiagnostics) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
@@ -134,8 +126,7 @@ TEST(BasicLsp, DidOpenPublishesDiagnostics)
     EXPECT_EQ(diag["params"]["uri"].asString(), "file:///test.bas");
 }
 
-TEST(BasicLsp, DidChangeUpdatesDiagnostics)
-{
+TEST(BasicLsp, DidChangeUpdatesDiagnostics) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
@@ -171,8 +162,7 @@ TEST(BasicLsp, DidChangeUpdatesDiagnostics)
     EXPECT_TRUE(diag["params"]["diagnostics"].size() > 0u);
 }
 
-TEST(BasicLsp, DidCloseClearsDiagnostics)
-{
+TEST(BasicLsp, DidCloseClearsDiagnostics) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
@@ -201,8 +191,7 @@ TEST(BasicLsp, DidCloseClearsDiagnostics)
 
 // ===== Completion =====
 
-TEST(BasicLsp, CompletionReturnsItems)
-{
+TEST(BasicLsp, CompletionReturnsItems) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
@@ -232,8 +221,7 @@ TEST(BasicLsp, CompletionReturnsItems)
     EXPECT_TRUE(result.size() > 0u);
 }
 
-TEST(BasicLsp, CompletionOnClosedDoc)
-{
+TEST(BasicLsp, CompletionOnClosedDoc) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
@@ -249,8 +237,7 @@ TEST(BasicLsp, CompletionOnClosedDoc)
 
 // ===== Hover =====
 
-TEST(BasicLsp, HoverOnVariable)
-{
+TEST(BasicLsp, HoverOnVariable) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
@@ -284,8 +271,7 @@ TEST(BasicLsp, HoverOnVariable)
     EXPECT_TRUE(value.find("INTEGER") != std::string::npos);
 }
 
-TEST(BasicLsp, HoverOnWhitespaceReturnsNull)
-{
+TEST(BasicLsp, HoverOnWhitespaceReturnsNull) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
@@ -315,8 +301,7 @@ TEST(BasicLsp, HoverOnWhitespaceReturnsNull)
 
 // ===== Document Symbol =====
 
-TEST(BasicLsp, DocumentSymbolsListsVariables)
-{
+TEST(BasicLsp, DocumentSymbolsListsVariables) {
     BasicCompilerBridge bridge;
     MockTransport transport;
     LspHandler handler(bridge, transport, kBasicConfig);
@@ -341,16 +326,14 @@ TEST(BasicLsp, DocumentSymbolsListsVariables)
     auto result = resp["result"];
     // BASIC lexer uppercases identifiers: "x" → "X"
     bool foundX = false;
-    for (size_t i = 0; i < result.size(); ++i)
-    {
+    for (size_t i = 0; i < result.size(); ++i) {
         if (result.at(i)["name"].asString() == "X")
             foundX = true;
     }
     EXPECT_TRUE(foundX);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -13,8 +13,7 @@
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
@@ -22,14 +21,12 @@ using namespace runtime;
 // Collection Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerListLiteral(ListLiteralExpr *expr)
-{
+LowerResult Lowerer::lowerListLiteral(ListLiteralExpr *expr) {
     // Create a new list
     Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
 
     // Add each element to the list (boxed)
-    for (auto &elem : expr->elements)
-    {
+    for (auto &elem : expr->elements) {
         auto result = lowerExpr(elem.get());
         TypeRef elemType = sema_.typeOf(elem.get());
         Value boxed = emitBoxValue(result.value, result.type, elemType);
@@ -39,14 +36,12 @@ LowerResult Lowerer::lowerListLiteral(ListLiteralExpr *expr)
     return {list, Type(Type::Kind::Ptr)};
 }
 
-LowerResult Lowerer::lowerSetLiteral(SetLiteralExpr *expr)
-{
+LowerResult Lowerer::lowerSetLiteral(SetLiteralExpr *expr) {
     // Create a new set
     Value set = emitCallRet(Type(Type::Kind::Ptr), kSetNew, {});
 
     // Add each element to the set (boxed)
-    for (auto &elem : expr->elements)
-    {
+    for (auto &elem : expr->elements) {
         auto result = lowerExpr(elem.get());
         TypeRef elemType = sema_.typeOf(elem.get());
         Value boxed = emitBoxValue(result.value, result.type, elemType);
@@ -56,12 +51,10 @@ LowerResult Lowerer::lowerSetLiteral(SetLiteralExpr *expr)
     return {set, Type(Type::Kind::Ptr)};
 }
 
-LowerResult Lowerer::lowerMapLiteral(MapLiteralExpr *expr)
-{
+LowerResult Lowerer::lowerMapLiteral(MapLiteralExpr *expr) {
     Value map = emitCallRet(Type(Type::Kind::Ptr), kMapNew, {});
 
-    for (auto &entry : expr->entries)
-    {
+    for (auto &entry : expr->entries) {
         auto keyResult = lowerExpr(entry.key.get());
         auto valueResult = lowerExpr(entry.value.get());
         TypeRef valueType = sema_.typeOf(entry.value.get());
@@ -72,8 +65,7 @@ LowerResult Lowerer::lowerMapLiteral(MapLiteralExpr *expr)
     return {map, Type(Type::Kind::Ptr)};
 }
 
-LowerResult Lowerer::lowerTuple(TupleExpr *expr)
-{
+LowerResult Lowerer::lowerTuple(TupleExpr *expr) {
     // Get the tuple type from sema
     TypeRef tupleType = sema_.typeOf(expr);
 
@@ -93,14 +85,12 @@ LowerResult Lowerer::lowerTuple(TupleExpr *expr)
 
     // Store each element in the tuple
     size_t offset = 0;
-    for (auto &elem : expr->elements)
-    {
+    for (auto &elem : expr->elements) {
         auto result = lowerExpr(elem.get());
 
         // Calculate element pointer
         Value elemPtr = tuplePtr;
-        if (offset > 0)
-        {
+        if (offset > 0) {
             unsigned gepId = nextTempId();
             il::core::Instr gepInstr;
             gepInstr.result = gepId;
@@ -126,8 +116,7 @@ LowerResult Lowerer::lowerTuple(TupleExpr *expr)
     return {tuplePtr, Type(Type::Kind::Ptr)};
 }
 
-LowerResult Lowerer::lowerTupleIndex(TupleIndexExpr *expr)
-{
+LowerResult Lowerer::lowerTupleIndex(TupleIndexExpr *expr) {
     // Lower the tuple expression
     auto tupleResult = lowerExpr(expr->tuple.get());
 
@@ -141,8 +130,7 @@ LowerResult Lowerer::lowerTupleIndex(TupleIndexExpr *expr)
 
     // Calculate element pointer
     Value elemPtr = tupleResult.value;
-    if (offset > 0)
-    {
+    if (offset > 0) {
         unsigned gepId = nextTempId();
         il::core::Instr gepInstr;
         gepInstr.result = gepId;
@@ -167,8 +155,7 @@ LowerResult Lowerer::lowerTupleIndex(TupleIndexExpr *expr)
     return {Value::temp(loadId), ilType};
 }
 
-LowerResult Lowerer::lowerIndex(IndexExpr *expr)
-{
+LowerResult Lowerer::lowerIndex(IndexExpr *expr) {
     auto base = lowerExpr(expr->base.get());
     auto index = lowerExpr(expr->index.get());
 
@@ -176,8 +163,7 @@ LowerResult Lowerer::lowerIndex(IndexExpr *expr)
     TypeRef baseType = sema_.typeOf(expr->base.get());
 
     // Fixed-size array: direct GEP + Load (no boxing, no runtime call)
-    if (baseType && baseType->kind == TypeKindSem::FixedArray)
-    {
+    if (baseType && baseType->kind == TypeKindSem::FixedArray) {
         TypeRef elemType = baseType->elementType();
         Type ilElemType = elemType ? mapType(elemType) : Type(Type::Kind::I64);
         size_t elemSize = getILTypeSize(ilElemType);
@@ -210,13 +196,10 @@ LowerResult Lowerer::lowerIndex(IndexExpr *expr)
     }
 
     Value boxed;
-    if (baseType && baseType->kind == TypeKindSem::Map)
-    {
+    if (baseType && baseType->kind == TypeKindSem::Map) {
         // Map index access - key is a string
         boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {base.value, index.value});
-    }
-    else
-    {
+    } else {
         // List index access (default)
         boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {base.value, index.value});
     }

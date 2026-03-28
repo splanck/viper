@@ -23,22 +23,15 @@
 /// @brief Records diagnostics and prints them later.
 /// @invariant Counts reflect reported diagnostics.
 /// @ownership Owns stored diagnostic messages.
-namespace il::support
-{
+namespace il::support {
 
 class SourceManager;
 
 /// @brief Severity levels for diagnostics.
-enum class Severity
-{
-    Note,
-    Warning,
-    Error
-};
+enum class Severity { Note, Warning, Error };
 
 /// @brief Single diagnostic message with location.
-struct Diagnostic
-{
+struct Diagnostic {
     Severity severity;   ///< Message severity
     std::string message; ///< Human-readable text
     SourceLoc loc;       ///< Optional source location
@@ -46,8 +39,7 @@ struct Diagnostic
 };
 
 /// @brief Collects diagnostics and prints them in order.
-class DiagnosticEngine
-{
+class DiagnosticEngine {
   public:
     /// @brief Record diagnostic @p d.
     /// @param d Diagnostic to store.
@@ -66,8 +58,7 @@ class DiagnosticEngine
 
     /// @brief Access collected diagnostics for inspection.
     /// @return Const reference to the internal diagnostics vector.
-    [[nodiscard]] const std::vector<Diagnostic> &diagnostics() const
-    {
+    [[nodiscard]] const std::vector<Diagnostic> &diagnostics() const {
         return diags_;
     }
 

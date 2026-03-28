@@ -29,13 +29,11 @@
 #include <sstream>
 #include <string>
 
-namespace
-{
+namespace {
 
 using namespace il::core;
 
-Module buildEhFixture()
-{
+Module buildEhFixture() {
     Module module;
 
     Function fn;
@@ -105,8 +103,7 @@ Module buildEhFixture()
     return module;
 }
 
-std::string verifyAndCaptureMessage(Module &module)
-{
+std::string verifyAndCaptureMessage(Module &module) {
     auto result = il::verify::Verifier::verify(module);
     assert(!result && "verification should fail for negative cases");
     return result.error().message;
@@ -114,15 +111,13 @@ std::string verifyAndCaptureMessage(Module &module)
 
 } // namespace
 
-int main()
-{
+int main() {
     {
         Module module = buildEhFixture();
 
         std::ostringstream diag;
         auto result = il::verify::Verifier::verify(module);
-        if (!result)
-        {
+        if (!result) {
             const std::string diagMessage = result.error().message;
             std::fprintf(stderr, "%s\n", diagMessage.c_str());
             il::support::printDiag(result.error(), diag);
@@ -145,8 +140,7 @@ int main()
 
         const std::string message = verifyAndCaptureMessage(module);
         if (message.find("operand type mismatch") == std::string::npos &&
-            message.find("operand 0 must be resume_tok") == std::string::npos)
-        {
+            message.find("operand 0 must be resume_tok") == std::string::npos) {
             std::fprintf(stderr, "%s\n", message.c_str());
         }
         const bool typeMismatch = message.find("operand type mismatch") != std::string::npos;
@@ -162,8 +156,7 @@ int main()
         pushInstr.labels.push_back("duplicate");
 
         const std::string message = verifyAndCaptureMessage(module);
-        if (message.find("expected 1 successor") == std::string::npos)
-        {
+        if (message.find("expected 1 successor") == std::string::npos) {
             std::fprintf(stderr, "%s\n", message.c_str());
         }
         assert(message.find("expected 1 successor") != std::string::npos);

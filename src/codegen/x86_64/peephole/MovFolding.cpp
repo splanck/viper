@@ -23,11 +23,9 @@
 
 #include "MovFolding.hpp"
 
-namespace viper::codegen::x64::peephole
-{
+namespace viper::codegen::x64::peephole {
 
-bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
-{
+bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx + 1 >= instrs.size())
         return false;
 
@@ -50,11 +48,9 @@ bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, Peeph
     // Don't fold if the intermediate register is an argument register and
     // there's a call instruction nearby.
     const Operand &r1 = first.operands[0];
-    if (isArgReg(r1))
-    {
+    if (isArgReg(r1)) {
         // Check for call instructions after the second move
-        for (std::size_t i = idx + 2; i < instrs.size(); ++i)
-        {
+        for (std::size_t i = idx + 2; i < instrs.size(); ++i) {
             if (instrs[i].opcode == MOpcode::CALL)
                 return false; // Call instruction found, don't fold
             if (definesReg(instrs[i], r1))
@@ -63,8 +59,7 @@ bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, Peeph
     }
 
     // Check that r1 is not used after second in this block
-    for (std::size_t i = idx + 2; i < instrs.size(); ++i)
-    {
+    for (std::size_t i = idx + 2; i < instrs.size(); ++i) {
         if (usesReg(instrs[i], r1))
             return false; // r1 is still live, can't fold
         if (definesReg(instrs[i], r1))

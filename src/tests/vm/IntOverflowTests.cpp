@@ -21,10 +21,8 @@
 
 using namespace il::core;
 
-namespace
-{
-void buildOverflowFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs)
-{
+namespace {
+void buildOverflowFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -47,16 +45,14 @@ void buildOverflowFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs)
     bb.instructions.push_back(ret);
 }
 
-int64_t runOverflow(Opcode op, int64_t lhs, int64_t rhs)
-{
+int64_t runOverflow(Opcode op, int64_t lhs, int64_t rhs) {
     Module module;
     buildOverflowFunction(module, op, lhs, rhs);
     viper::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
-void expectOverflowTrap(Opcode op, int64_t lhs, int64_t rhs)
-{
+void expectOverflowTrap(Opcode op, int64_t lhs, int64_t rhs) {
     Module module;
     buildOverflowFunction(module, op, lhs, rhs);
     viper::tests::VmFixture fixture;
@@ -66,8 +62,7 @@ void expectOverflowTrap(Opcode op, int64_t lhs, int64_t rhs)
 
 } // namespace
 
-int main()
-{
+int main() {
     const int64_t minVal = std::numeric_limits<int64_t>::min();
     const int64_t maxVal = std::numeric_limits<int64_t>::max();
 

@@ -46,22 +46,19 @@
 #include "il/core/Opcode.hpp"
 #include "vm/VM.hpp"
 
-namespace il::vm
-{
+namespace il::vm {
 
 /// @brief Abstract interface for opcode dispatch strategies.
 /// @details Each concrete strategy only implements the mapping from opcode
 ///          to handler execution, while the shared loop handles all control flow,
 ///          trap handling, and debug hooks.
-class DispatchStrategy
-{
+class DispatchStrategy {
   public:
     /// @brief Virtual destructor for proper cleanup.
     virtual ~DispatchStrategy() = default;
 
     /// @brief Strategy identifier for diagnostics and configuration.
-    enum class Kind
-    {
+    enum class Kind {
         FnTable, ///< Function table lookup
         Switch,  ///< Switch statement dispatch
         Threaded ///< Computed goto threading
@@ -82,8 +79,7 @@ class DispatchStrategy
     /// @brief Check if this strategy requires special trap handling.
     /// @details The threaded strategy needs to catch TrapDispatchSignal
     ///          while others can let it propagate.
-    virtual bool requiresTrapCatch() const
-    {
+    virtual bool requiresTrapCatch() const {
         return false;
     }
 
@@ -91,8 +87,7 @@ class DispatchStrategy
     /// @details The switch strategy's inline handlers call handleInlineResult,
     ///          which traces and finalizes internally. Other strategies return
     ///          ExecResult and expect the main loop to handle finalization.
-    virtual bool handlesFinalizationInternally() const
-    {
+    virtual bool handlesFinalizationInternally() const {
         return false;
     }
 };

@@ -29,12 +29,10 @@
 #include <array>
 #include <cstdint>
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Verification strategy applied after structural checks succeed.
-enum class VerifyStrategy : uint8_t
-{
+enum class VerifyStrategy : uint8_t {
     Default = 0,      ///< Record the declared result type with no extra checks.
     Alloca,           ///< Delegate to checker::checkAlloca.
     GEP,              ///< Delegate to checker::checkGEP.
@@ -58,8 +56,7 @@ enum class VerifyStrategy : uint8_t
 };
 
 /// @brief Schema-driven specification describing operand and control-flow rules.
-struct InstructionSpec
-{
+struct InstructionSpec {
     il::core::ResultArity resultArity; ///< Required result cardinality.
     il::core::TypeCategory resultType; ///< Declared result type category.
     uint8_t numOperandsMin;            ///< Minimum number of operands.

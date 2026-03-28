@@ -8,17 +8,14 @@
 #include "frontends/zia/ZiaLocationScope.hpp"
 #include "frontends/zia/Lowerer.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 ZiaLocationScope::ZiaLocationScope(Lowerer &lowerer, il::support::SourceLoc loc)
-    : lowerer_(lowerer), previousLoc_(lowerer.sourceLocation())
-{
+    : lowerer_(lowerer), previousLoc_(lowerer.sourceLocation()) {
     lowerer_.setSourceLocation(loc);
 }
 
-ZiaLocationScope::~ZiaLocationScope()
-{
+ZiaLocationScope::~ZiaLocationScope() {
     lowerer_.setSourceLocation(previousLoc_);
 }
 

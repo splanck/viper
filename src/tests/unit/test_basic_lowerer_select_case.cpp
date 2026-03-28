@@ -24,23 +24,19 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-const il::core::BasicBlock *findBlockByLabel(const il::core::Function &fn, const std::string &label)
-{
-    for (const auto &bb : fn.blocks)
-    {
+const il::core::BasicBlock *findBlockByLabel(const il::core::Function &fn,
+                                             const std::string &label) {
+    for (const auto &bb : fn.blocks) {
         if (bb.label == label)
             return &bb;
     }
     return nullptr;
 }
 
-bool blockPrintsConstant(const il::core::BasicBlock &bb, long long value)
-{
-    for (const auto &instr : bb.instructions)
-    {
+bool blockPrintsConstant(const il::core::BasicBlock &bb, long long value) {
+    for (const auto &instr : bb.instructions) {
         if (instr.op != il::core::Opcode::Call)
             continue;
         if (instr.callee != "rt_print_i64" && instr.callee != "Viper.Terminal.PrintI64")
@@ -58,8 +54,7 @@ bool blockPrintsConstant(const il::core::BasicBlock &bb, long long value)
 
 } // namespace
 
-int main()
-{
+int main() {
     const std::string src = "10 DIM X AS LONG\n"
                             "20 LET X = 2\n"
                             "30 SELECT CASE X\n"
@@ -82,10 +77,8 @@ int main()
     il::core::Module module = lowerer.lowerProgram(*prog);
 
     const il::core::Function *mainFn = nullptr;
-    for (const auto &fn : module.functions)
-    {
-        if (fn.name == "main")
-        {
+    for (const auto &fn : module.functions) {
+        if (fn.name == "main") {
             mainFn = &fn;
             break;
         }
@@ -93,12 +86,9 @@ int main()
     assert(mainFn);
 
     const il::core::Instr *switchInstr = nullptr;
-    for (const auto &bb : mainFn->blocks)
-    {
-        for (const auto &instr : bb.instructions)
-        {
-            if (instr.op == il::core::Opcode::SwitchI32)
-            {
+    for (const auto &bb : mainFn->blocks) {
+        for (const auto &instr : bb.instructions) {
+            if (instr.op == il::core::Opcode::SwitchI32) {
                 switchInstr = &instr;
                 break;
             }
@@ -113,8 +103,7 @@ int main()
 
     std::vector<long long> caseValues;
     caseValues.reserve(caseCount);
-    for (size_t i = 0; i < caseCount; ++i)
-    {
+    for (size_t i = 0; i < caseCount; ++i) {
         const il::core::Value &val = il::core::switchCaseValue(*switchInstr, i);
         assert(val.kind == il::core::Value::Kind::ConstInt);
         caseValues.push_back(val.i64);
@@ -128,8 +117,7 @@ int main()
     assert(defaultBlock);
     assert(blockPrintsConstant(*defaultBlock, 0));
 
-    for (size_t i = 0; i < caseCount; ++i)
-    {
+    for (size_t i = 0; i < caseCount; ++i) {
         const std::string &label = il::core::switchCaseLabel(*switchInstr, i);
         const il::core::BasicBlock *caseBlock = findBlockByLabel(*mainFn, label);
         assert(caseBlock);

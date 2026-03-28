@@ -20,23 +20,20 @@
 #include <limits>
 #include <setjmp.h>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
 
-int main()
-{
+int main() {
     rt_string empty = rt_const_cstr("");
     assert(rt_str_len(empty) == 0);
 
@@ -159,13 +156,10 @@ int main()
         rt_string_impl small_literal = {RT_STRING_MAGIC, nullptr, nullptr, 16, 0};
         g_last_trap = nullptr;
         g_trap_expected = true;
-        if (setjmp(g_trap_jmp) == 0)
-        {
+        if (setjmp(g_trap_jmp) == 0) {
             (void)rt_str_concat(&huge_literal, &small_literal);
             assert(!"rt_str_concat should trap on overflow");
-        }
-        else
-        {
+        } else {
             assert(g_last_trap != nullptr);
             assert(std::strcmp(g_last_trap, "rt_str_concat: length overflow") == 0);
         }

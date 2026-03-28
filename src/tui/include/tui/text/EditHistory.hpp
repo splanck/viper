@@ -37,28 +37,21 @@
 #include <string>
 #include <vector>
 
-namespace viper::tui::text
-{
+namespace viper::tui::text {
 /// @brief Transactional undo/redo system for text editing operations.
 /// @details Groups insert and erase operations into transactions that can be
 ///          atomically undone and redone. Maintains twin stacks (undo/redo)
 ///          of committed transactions. Recording any new edit forks the history
 ///          by clearing the redo stack.
-class EditHistory
-{
+class EditHistory {
   public:
     /// @brief Discriminator for the kind of edit operation stored in a transaction.
-    enum class OpType
-    {
-        Insert,
-        Erase
-    };
+    enum class OpType { Insert, Erase };
 
     /// @brief Single edit operation payload storing the type, byte position, and affected text.
     /// @details Represents either an insertion or an erasure at a specific byte position.
     ///          The text field contains the inserted or erased text for replay.
-    struct Op
-    {
+    struct Op {
         OpType type{};
         std::size_t pos{};
         std::string text{};

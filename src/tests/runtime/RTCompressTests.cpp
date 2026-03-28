@@ -22,17 +22,14 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Get bytes data pointer
-static uint8_t *get_bytes_data(void *bytes)
-{
-    struct bytes_impl
-    {
+static uint8_t *get_bytes_data(void *bytes) {
+    struct bytes_impl {
         int64_t len;
         uint8_t *data;
     };
@@ -41,14 +38,12 @@ static uint8_t *get_bytes_data(void *bytes)
 }
 
 /// @brief Get bytes length
-static int64_t get_bytes_len(void *bytes)
-{
+static int64_t get_bytes_len(void *bytes) {
     return rt_bytes_len(bytes);
 }
 
 /// @brief Compare two byte arrays
-static bool bytes_equal(void *a, void *b)
-{
+static bool bytes_equal(void *a, void *b) {
     int64_t len_a = get_bytes_len(a);
     int64_t len_b = get_bytes_len(b);
     if (len_a != len_b)
@@ -57,16 +52,14 @@ static bool bytes_equal(void *a, void *b)
 }
 
 /// @brief Create bytes from raw data
-static void *make_bytes(const uint8_t *data, size_t len)
-{
+static void *make_bytes(const uint8_t *data, size_t len) {
     void *bytes = rt_bytes_new(len);
     memcpy(get_bytes_data(bytes), data, len);
     return bytes;
 }
 
 /// @brief Create bytes from string literal
-static void *make_bytes_str(const char *str)
-{
+static void *make_bytes_str(const char *str) {
     size_t len = strlen(str);
     return make_bytes((const uint8_t *)str, len);
 }
@@ -75,15 +68,13 @@ static void *make_bytes_str(const char *str)
 // DEFLATE Tests
 //=============================================================================
 
-static void test_deflate_literals_only()
-{
+static void test_deflate_literals_only() {
     printf("Testing DEFLATE Literals Only (Fixed Huffman):\n");
 
     // Create 100 sequential bytes - no matches possible since each 3-byte
     // sequence is unique. This tests literal encoding only.
     uint8_t buffer[100];
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         buffer[i] = (uint8_t)i;
     }
 
@@ -97,8 +88,7 @@ static void test_deflate_literals_only()
            (long long)get_bytes_len(compressed));
 }
 
-static void test_deflate_simple_match()
-{
+static void test_deflate_simple_match() {
     printf("Testing DEFLATE Simple Match (Fixed Huffman):\n");
 
     // Create data with one simple match: "ABCABC" repeated
@@ -115,8 +105,7 @@ static void test_deflate_simple_match()
            (long long)get_bytes_len(compressed));
 }
 
-static void test_deflate_distance_with_extra_bits()
-{
+static void test_deflate_distance_with_extra_bits() {
     printf("Testing DEFLATE Distance with Extra Bits:\n");
 
     // Distance 5-6 require 1 extra bit (dist code 4-5)
@@ -143,8 +132,7 @@ static void test_deflate_distance_with_extra_bits()
            (long long)get_bytes_len(compressed));
 }
 
-static void test_deflate_distance_26()
-{
+static void test_deflate_distance_26() {
     printf("Testing DEFLATE Distance 26:\n");
 
     // Distance 26 requires 3 extra bits (dist code 9, base 25, extra 1)
@@ -162,18 +150,15 @@ static void test_deflate_distance_26()
            (long long)get_bytes_len(compressed));
 }
 
-static void test_deflate_longer_data()
-{
+static void test_deflate_longer_data() {
     printf("Testing DEFLATE Longer Data:\n");
 
     // Test sizes around length code boundaries (414 uses code 280, 415 uses code 281)
     int sizes[] = {300, 414, 415, 500, 1000};
-    for (int s = 0; s < 5; s++)
-    {
+    for (int s = 0; s < 5; s++) {
         int size = sizes[s];
         char *buffer = (char *)malloc(size);
-        for (int i = 0; i < size; i++)
-        {
+        for (int i = 0; i < size; i++) {
             buffer[i] = 'A' + (i % 26);
         }
 
@@ -188,8 +173,7 @@ static void test_deflate_longer_data()
     }
 }
 
-static void test_deflate_inflate_empty()
-{
+static void test_deflate_inflate_empty() {
     printf("Testing DEFLATE Empty:\n");
 
     void *empty = rt_bytes_new(0);
@@ -199,8 +183,7 @@ static void test_deflate_inflate_empty()
     test_result("Empty data round-trip", bytes_equal(empty, decompressed));
 }
 
-static void test_deflate_inflate_small()
-{
+static void test_deflate_inflate_small() {
     printf("Testing DEFLATE Small Data:\n");
 
     // Small data uses stored blocks
@@ -215,14 +198,12 @@ static void test_deflate_inflate_small()
            (long long)get_bytes_len(compressed));
 }
 
-static void test_deflate_inflate_repeated()
-{
+static void test_deflate_inflate_repeated() {
     printf("Testing DEFLATE Repeated Data:\n");
 
     // Data with lots of repetition - verify round-trip works
     char buffer[1000];
-    for (int i = 0; i < 1000; i++)
-    {
+    for (int i = 0; i < 1000; i++) {
         buffer[i] = 'A' + (i % 26);
     }
 
@@ -238,21 +219,18 @@ static void test_deflate_inflate_repeated()
            100.0 * get_bytes_len(compressed) / get_bytes_len(original));
 }
 
-static void test_deflate_levels()
-{
+static void test_deflate_levels() {
     printf("Testing DEFLATE Levels:\n");
 
     // Create compressible data
     char buffer[2000];
-    for (int i = 0; i < 2000; i++)
-    {
+    for (int i = 0; i < 2000; i++) {
         buffer[i] = 'A' + (i % 10);
     }
     void *original = make_bytes((const uint8_t *)buffer, 2000);
 
     // Test different levels
-    for (int level = 1; level <= 9; level++)
-    {
+    for (int level = 1; level <= 9; level++) {
         void *compressed = rt_compress_deflate_lvl(original, level);
         void *decompressed = rt_compress_inflate(compressed);
 
@@ -262,14 +240,12 @@ static void test_deflate_levels()
     }
 }
 
-static void test_deflate_binary()
-{
+static void test_deflate_binary() {
     printf("Testing DEFLATE Binary Data:\n");
 
     // Binary data with all byte values
     uint8_t buffer[512];
-    for (int i = 0; i < 512; i++)
-    {
+    for (int i = 0; i < 512; i++) {
         buffer[i] = (uint8_t)(i & 0xFF);
     }
 
@@ -284,8 +260,7 @@ static void test_deflate_binary()
 // GZIP Tests
 //=============================================================================
 
-static void test_gzip_gunzip_basic()
-{
+static void test_gzip_gunzip_basic() {
     printf("Testing GZIP Basic:\n");
 
     const char *text = "Hello, GZIP World!";
@@ -301,19 +276,16 @@ static void test_gzip_gunzip_basic()
     test_result("GZIP method = deflate", data[2] == 0x08);
 }
 
-static void test_gzip_levels()
-{
+static void test_gzip_levels() {
     printf("Testing GZIP Levels:\n");
 
     char buffer[1000];
-    for (int i = 0; i < 1000; i++)
-    {
+    for (int i = 0; i < 1000; i++) {
         buffer[i] = 'X';
     }
     void *original = make_bytes((const uint8_t *)buffer, 1000);
 
-    for (int level = 1; level <= 9; level++)
-    {
+    for (int level = 1; level <= 9; level++) {
         void *compressed = rt_compress_gzip_lvl(original, level);
         void *decompressed = rt_compress_gunzip(compressed);
 
@@ -323,8 +295,7 @@ static void test_gzip_levels()
     }
 }
 
-static void test_gzip_crc()
-{
+static void test_gzip_crc() {
     printf("Testing GZIP CRC:\n");
 
     // Create data and compress
@@ -339,8 +310,7 @@ static void test_gzip_crc()
 // String Convenience Tests
 //=============================================================================
 
-static void test_deflate_string()
-{
+static void test_deflate_string() {
     printf("Testing DEFLATE String:\n");
 
     rt_string text = rt_const_cstr("Hello, String Compression!");
@@ -353,8 +323,7 @@ static void test_deflate_string()
     test_result("String round-trip", strcmp(orig_str, dec_str) == 0);
 }
 
-static void test_gzip_string()
-{
+static void test_gzip_string() {
     printf("Testing GZIP String:\n");
 
     rt_string text = rt_const_cstr("Hello, GZIP String!");
@@ -371,8 +340,7 @@ static void test_gzip_string()
 // Known Compressed Data Tests
 //=============================================================================
 
-static void test_inflate_known_data()
-{
+static void test_inflate_known_data() {
     printf("Testing Inflate Known Data:\n");
 
     // This is "Hello" compressed with deflate (stored block)
@@ -392,15 +360,13 @@ static void test_inflate_known_data()
 // Large Data Test
 //=============================================================================
 
-static void test_large_data()
-{
+static void test_large_data() {
     printf("Testing Large Data:\n");
 
     // 100KB of compressible data
     size_t size = 100 * 1024;
     uint8_t *buffer = (uint8_t *)malloc(size);
-    for (size_t i = 0; i < size; i++)
-    {
+    for (size_t i = 0; i < size; i++) {
         buffer[i] = (uint8_t)('A' + (i % 26));
     }
 
@@ -422,15 +388,13 @@ static void test_large_data()
 // Random Data Test
 //=============================================================================
 
-static void test_random_data()
-{
+static void test_random_data() {
     printf("Testing Random Data:\n");
 
     // Random data (hard to compress)
     uint8_t buffer[1000];
     unsigned int seed = 12345;
-    for (int i = 0; i < 1000; i++)
-    {
+    for (int i = 0; i < 1000; i++) {
         seed = seed * 1103515245 + 12345;
         buffer[i] = (uint8_t)(seed >> 16);
     }
@@ -450,8 +414,7 @@ static void test_random_data()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Compress Tests ===\n\n");
 
     // DEFLATE tests

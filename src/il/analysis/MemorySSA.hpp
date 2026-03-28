@@ -38,25 +38,21 @@
 #include <utility>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 struct Function;
 struct BasicBlock;
 using Block = BasicBlock;
 struct Instr;
 } // namespace il::core
 
-namespace viper::analysis
-{
+namespace viper::analysis {
 class BasicAA;
 } // namespace viper::analysis
 
-namespace viper::analysis
-{
+namespace viper::analysis {
 
 /// @brief Identifies the role of a memory access in the MemorySSA graph.
-enum class MemAccessKind
-{
+enum class MemAccessKind {
     LiveOnEntry, ///< Synthetic root access representing pre-function memory state.
     Def,         ///< A store (or modifying call) that defines a new memory version.
     Use,         ///< A load (or reading call) that consumes a memory version.
@@ -67,8 +63,7 @@ enum class MemAccessKind
 ///
 /// MemoryAccess nodes are owned and indexed inside @ref MemorySSA.  Consumers
 /// hold IDs (uint32_t) and look up nodes through the owning analysis.
-struct MemoryAccess
-{
+struct MemoryAccess {
     MemAccessKind kind;
     uint32_t id;                    ///< Dense ID; 0 is reserved for LiveOnEntry.
     il::core::Block *block;         ///< Containing block; nullptr for LiveOnEntry.
@@ -89,8 +84,7 @@ struct MemoryAccess
 ///   MemorySSA mssa = computeMemorySSA(module, fn, aa);
 ///   if (mssa.isDeadStore(&block, instrIdx)) { /* eliminate store */ }
 /// @endcode
-class MemorySSA
-{
+class MemorySSA {
   public:
     MemorySSA() = default;
     MemorySSA(const MemorySSA &) = default;
@@ -111,8 +105,7 @@ class MemorySSA
                                                 size_t instrIdx) const;
 
     /// @brief Access the full node table (for diagnostics/testing).
-    [[nodiscard]] const std::vector<MemoryAccess> &accesses() const
-    {
+    [[nodiscard]] const std::vector<MemoryAccess> &accesses() const {
         return accesses_;
     }
 

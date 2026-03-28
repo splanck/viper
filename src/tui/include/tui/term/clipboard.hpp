@@ -32,16 +32,14 @@
 #include <string>
 #include <string_view>
 
-namespace viper::tui::term
-{
+namespace viper::tui::term {
 class TermIO;
 
 /// @brief Abstract interface for system clipboard operations in the TUI.
 /// @details Provides copy (write to clipboard) and paste (read from clipboard)
 ///          operations. Concrete implementations handle platform-specific
 ///          clipboard access mechanisms.
-class Clipboard
-{
+class Clipboard {
   public:
     virtual ~Clipboard() = default;
     /// @brief Copy text to the system clipboard.
@@ -58,8 +56,7 @@ class Clipboard
 ///          terminal emulator, which forwards it to the system clipboard. Works
 ///          over SSH and in terminals supporting the OSC 52 specification.
 ///          Paste is not currently supported (returns empty string).
-class Osc52Clipboard : public Clipboard
-{
+class Osc52Clipboard : public Clipboard {
   public:
     /// @brief Construct an OSC 52 clipboard bound to a terminal I/O sink.
     /// @param io Terminal I/O used to emit the OSC 52 escape sequence. Must outlive this object.
@@ -75,8 +72,7 @@ class Osc52Clipboard : public Clipboard
 /// @details Stores the last copied text in memory for inspection by test code.
 ///          Does not interact with the system clipboard. Useful for verifying
 ///          clipboard operations in headless tests.
-class MockClipboard : public Clipboard
-{
+class MockClipboard : public Clipboard {
   public:
     bool copy(std::string_view text) override;
     std::string paste() override;

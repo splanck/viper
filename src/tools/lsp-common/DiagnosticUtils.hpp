@@ -22,13 +22,11 @@
 
 #include <vector>
 
-namespace il::support
-{
+namespace il::support {
 class DiagnosticEngine;
 }
 
-namespace viper::server
-{
+namespace viper::server {
 
 /// @brief Extract structured diagnostics from a DiagnosticEngine.
 std::vector<DiagnosticInfo> extractDiagnostics(const il::support::DiagnosticEngine &diag);

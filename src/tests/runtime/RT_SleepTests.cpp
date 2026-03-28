@@ -17,14 +17,12 @@
 #include <cassert>
 #include <chrono>
 
-static inline int64_t now_ms()
-{
+static inline int64_t now_ms() {
     using namespace std::chrono;
     return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 }
 
-int main()
-{
+int main() {
     const int sleep_ms = 100;
     const int64_t t0 = now_ms();
     rt_sleep_ms(sleep_ms);

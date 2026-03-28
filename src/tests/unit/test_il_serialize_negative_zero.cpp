@@ -20,8 +20,7 @@
 #include <optional>
 #include <string>
 
-int main()
-{
+int main() {
     il::core::Module module;
     il::build::IRBuilder builder(module);
 

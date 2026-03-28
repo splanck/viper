@@ -29,10 +29,8 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::transform::simplify_cfg
-{
-namespace
-{
+namespace il::transform::simplify_cfg {
+namespace {
 
 /// @brief Compute the set of blocks reachable from the entry block.
 /// @details Performs a breadth-first traversal following branch labels while
@@ -40,8 +38,7 @@ namespace
 ///          marking every block visited.
 /// @param function Function whose blocks should be analysed.
 /// @return Bit vector with bits set for reachable block indices.
-BitVector markReachable(il::core::Function &function)
-{
+BitVector markReachable(il::core::Function &function) {
     BitVector reachable(function.blocks.size(), false);
     if (function.blocks.empty())
         return reachable;
@@ -55,8 +52,7 @@ BitVector markReachable(il::core::Function &function)
     reachable.set(0);
     worklist.push_back(0);
 
-    while (!worklist.empty())
-    {
+    while (!worklist.empty()) {
         size_t index = worklist.front();
         worklist.pop_front();
 
@@ -65,11 +61,11 @@ BitVector markReachable(il::core::Function &function)
         if (!terminator)
             continue;
 
-        auto addLabel = [&](const std::string &label)
-        { enqueueSuccessor(reachable, worklist, lookupBlockIndex(labelToIndex, label)); };
+        auto addLabel = [&](const std::string &label) {
+            enqueueSuccessor(reachable, worklist, lookupBlockIndex(labelToIndex, label));
+        };
 
-        switch (terminator->op)
-        {
+        switch (terminator->op) {
             case il::core::Opcode::Br:
                 if (!terminator->labels.empty())
                     addLabel(terminator->labels.front());
@@ -99,23 +95,20 @@ BitVector markReachable(il::core::Function &function)
 ///          blocks, erases the blocks, and updates statistics/logging hooks.
 /// @param ctx Pass context providing function, EH sensitivity checks, and stats.
 /// @return True when any block was removed.
-bool removeUnreachableBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
-{
+bool removeUnreachableBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx) {
     il::core::Function &F = ctx.function;
     BitVector reachable = markReachable(F);
 
     std::vector<size_t> unreachableBlocks;
     unreachableBlocks.reserve(F.blocks.size());
-    for (size_t index = 1; index < F.blocks.size(); ++index)
-    {
+    for (size_t index = 1; index < F.blocks.size(); ++index) {
         if (!reachable.test(index))
             unreachableBlocks.push_back(index);
     }
 
     size_t removedBlocks = 0;
 
-    for (auto it = unreachableBlocks.rbegin(); it != unreachableBlocks.rend(); ++it)
-    {
+    for (auto it = unreachableBlocks.rbegin(); it != unreachableBlocks.rend(); ++it) {
         const size_t blockIndex = *it;
         if (blockIndex >= F.blocks.size())
             continue;
@@ -126,23 +119,17 @@ bool removeUnreachableBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
 
         const std::string label = candidate.label;
 
-        for (auto &block : F.blocks)
-        {
-            for (auto &instr : block.instructions)
-            {
+        for (auto &block : F.blocks) {
+            for (auto &instr : block.instructions) {
                 if (instr.labels.empty())
                     continue;
 
-                for (size_t idx = 0; idx < instr.labels.size();)
-                {
-                    if (instr.labels[idx] == label)
-                    {
+                for (size_t idx = 0; idx < instr.labels.size();) {
+                    if (instr.labels[idx] == label) {
                         instr.labels.erase(instr.labels.begin() + idx);
                         if (idx < instr.brArgs.size())
                             instr.brArgs.erase(instr.brArgs.begin() + idx);
-                    }
-                    else
-                    {
+                    } else {
                         ++idx;
                     }
                 }
@@ -153,11 +140,9 @@ bool removeUnreachableBlocks(SimplifyCFG::SimplifyCFGPassContext &ctx)
         ++removedBlocks;
     }
 
-    if (removedBlocks > 0)
-    {
+    if (removedBlocks > 0) {
         ctx.stats.unreachableRemoved += removedBlocks;
-        if (ctx.isDebugLoggingEnabled())
-        {
+        if (ctx.isDebugLoggingEnabled()) {
             std::string message = "erased " + std::to_string(removedBlocks) + " unreachable block" +
                                   (removedBlocks == 1 ? "" : "s");
             ctx.logDebug(message);

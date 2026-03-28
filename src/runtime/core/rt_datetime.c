@@ -69,8 +69,7 @@
 ///
 /// @see rt_datetime_now_ms For millisecond precision
 /// @see rt_datetime_year For extracting the year component
-int64_t rt_datetime_now(void)
-{
+int64_t rt_datetime_now(void) {
     return (int64_t)time(NULL);
 }
 
@@ -109,8 +108,7 @@ int64_t rt_datetime_now(void)
 ///
 /// @see rt_datetime_now For second-precision timestamps
 /// @see rt_stopwatch.c For monotonic elapsed time measurement
-int64_t rt_datetime_now_ms(void)
-{
+int64_t rt_datetime_now_ms(void) {
 #if RT_PLATFORM_WINDOWS
     return rt_windows_time_ms();
 #elif RT_PLATFORM_VIPERDOS
@@ -152,8 +150,7 @@ int64_t rt_datetime_now_ms(void)
 ///
 /// @see rt_datetime_month For extracting the month
 /// @see rt_datetime_day For extracting the day
-int64_t rt_datetime_year(int64_t timestamp)
-{
+int64_t rt_datetime_year(int64_t timestamp) {
     time_t t = (time_t)timestamp;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
@@ -192,8 +189,7 @@ int64_t rt_datetime_year(int64_t timestamp)
 ///
 /// @see rt_datetime_year For extracting the year
 /// @see rt_datetime_day For extracting the day
-int64_t rt_datetime_month(int64_t timestamp)
-{
+int64_t rt_datetime_month(int64_t timestamp) {
     time_t t = (time_t)timestamp;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
@@ -222,8 +218,7 @@ int64_t rt_datetime_month(int64_t timestamp)
 ///
 /// @see rt_datetime_month For extracting the month
 /// @see rt_datetime_day_of_week For getting the weekday
-int64_t rt_datetime_day(int64_t timestamp)
-{
+int64_t rt_datetime_day(int64_t timestamp) {
     time_t t = (time_t)timestamp;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
@@ -258,8 +253,7 @@ int64_t rt_datetime_day(int64_t timestamp)
 ///
 /// @see rt_datetime_minute For extracting minutes
 /// @see rt_datetime_second For extracting seconds
-int64_t rt_datetime_hour(int64_t timestamp)
-{
+int64_t rt_datetime_hour(int64_t timestamp) {
     time_t t = (time_t)timestamp;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
@@ -288,8 +282,7 @@ int64_t rt_datetime_hour(int64_t timestamp)
 ///
 /// @see rt_datetime_hour For extracting the hour
 /// @see rt_datetime_second For extracting seconds
-int64_t rt_datetime_minute(int64_t timestamp)
-{
+int64_t rt_datetime_minute(int64_t timestamp) {
     time_t t = (time_t)timestamp;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
@@ -317,8 +310,7 @@ int64_t rt_datetime_minute(int64_t timestamp)
 ///
 /// @see rt_datetime_minute For extracting minutes
 /// @see rt_datetime_hour For extracting the hour
-int64_t rt_datetime_second(int64_t timestamp)
-{
+int64_t rt_datetime_second(int64_t timestamp) {
     time_t t = (time_t)timestamp;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
@@ -363,8 +355,7 @@ int64_t rt_datetime_second(int64_t timestamp)
 /// @note O(1) time complexity.
 ///
 /// @see rt_datetime_day For the day of month
-int64_t rt_datetime_day_of_week(int64_t timestamp)
-{
+int64_t rt_datetime_day_of_week(int64_t timestamp) {
     time_t t = (time_t)timestamp;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
@@ -422,20 +413,17 @@ int64_t rt_datetime_day_of_week(int64_t timestamp)
 /// @note O(1) time complexity.
 ///
 /// @see rt_datetime_to_iso For ISO 8601 format (UTC)
-rt_string rt_datetime_format(int64_t timestamp, rt_string format)
-{
+rt_string rt_datetime_format(int64_t timestamp, rt_string format) {
     time_t t = (time_t)timestamp;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
-    if (!tm)
-    {
+    if (!tm) {
         return rt_string_from_bytes("", 0);
     }
 
     // Get format string as C string
     const char *fmt_cstr = rt_string_cstr(format);
-    if (!fmt_cstr || *fmt_cstr == '\0')
-    {
+    if (!fmt_cstr || *fmt_cstr == '\0') {
         return rt_string_from_bytes("", 0);
     }
 
@@ -443,8 +431,7 @@ rt_string rt_datetime_format(int64_t timestamp, rt_string format)
     char buffer[256];
     size_t len = strftime(buffer, sizeof(buffer), fmt_cstr, tm);
 
-    if (len == 0)
-    {
+    if (len == 0) {
         return rt_string_from_bytes("", 0);
     }
 
@@ -489,13 +476,11 @@ rt_string rt_datetime_format(int64_t timestamp, rt_string format)
 ///
 /// @see rt_datetime_format For custom formatting in local time
 /// @see rt_datetime_create For creating timestamps from components
-rt_string rt_datetime_to_iso(int64_t timestamp)
-{
+rt_string rt_datetime_to_iso(int64_t timestamp) {
     time_t t = (time_t)timestamp;
     struct tm tm_buf;
     struct tm *tm = rt_gmtime_r(&t, &tm_buf); // Use UTC for ISO format
-    if (!tm)
-    {
+    if (!tm) {
         return rt_string_from_bytes("", 0);
     }
 
@@ -520,13 +505,11 @@ rt_string rt_datetime_to_iso(int64_t timestamp)
 ///
 /// @param timestamp Unix timestamp (seconds since epoch).
 /// @return Local ISO 8601 formatted string, or empty string if invalid.
-rt_string rt_datetime_to_local(int64_t timestamp)
-{
+rt_string rt_datetime_to_local(int64_t timestamp) {
     time_t t = (time_t)timestamp;
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&t, &tm_buf);
-    if (!tm)
-    {
+    if (!tm) {
         return rt_string_from_bytes("", 0);
     }
 
@@ -594,8 +577,7 @@ rt_string rt_datetime_to_local(int64_t timestamp)
 /// @see rt_datetime_year For extracting components from a timestamp
 /// @see rt_datetime_to_iso For formatting timestamps
 int64_t rt_datetime_create(
-    int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second)
-{
+    int64_t year, int64_t month, int64_t day, int64_t hour, int64_t minute, int64_t second) {
     struct tm tm = {0};
     tm.tm_year = (int)(year - 1900);
     tm.tm_mon = (int)(month - 1);
@@ -646,8 +628,7 @@ int64_t rt_datetime_create(
 ///
 /// @see rt_datetime_add_days For adding days
 /// @see rt_datetime_diff For calculating time differences
-int64_t rt_datetime_add_seconds(int64_t timestamp, int64_t seconds)
-{
+int64_t rt_datetime_add_seconds(int64_t timestamp, int64_t seconds) {
     return timestamp + seconds;
 }
 
@@ -684,8 +665,7 @@ int64_t rt_datetime_add_seconds(int64_t timestamp, int64_t seconds)
 ///
 /// @see rt_datetime_add_seconds For adding arbitrary time intervals
 /// @see rt_datetime_diff For calculating time differences
-int64_t rt_datetime_add_days(int64_t timestamp, int64_t days)
-{
+int64_t rt_datetime_add_days(int64_t timestamp, int64_t days) {
     return timestamp + (days * 86400); // 86400 seconds per day
 }
 
@@ -730,8 +710,7 @@ int64_t rt_datetime_add_days(int64_t timestamp, int64_t days)
 ///
 /// @see rt_datetime_add_seconds For the inverse operation
 /// @see rt_datetime_add_days For adding day intervals
-int64_t rt_datetime_diff(int64_t ts1, int64_t ts2)
-{
+int64_t rt_datetime_diff(int64_t ts1, int64_t ts2) {
     return ts1 - ts2;
 }
 
@@ -740,18 +719,15 @@ int64_t rt_datetime_diff(int64_t ts1, int64_t ts2)
 //=============================================================================
 
 /// @brief Helper to check if a character is a digit.
-static int dt_is_digit(char c)
-{
+static int dt_is_digit(char c) {
     return c >= '0' && c <= '9';
 }
 
 /// @brief Helper to parse exactly N digits from a string.
 /// @return The parsed integer, or -1 if insufficient digits.
-static int dt_parse_digits(const char *s, int n, const char **end)
-{
+static int dt_parse_digits(const char *s, int n, const char **end) {
     int val = 0;
-    for (int i = 0; i < n; ++i)
-    {
+    for (int i = 0; i < n; ++i) {
         if (!dt_is_digit(s[i]))
             return -1;
         val = val * 10 + (s[i] - '0');
@@ -760,8 +736,7 @@ static int dt_parse_digits(const char *s, int n, const char **end)
     return val;
 }
 
-int64_t rt_datetime_parse_iso(rt_string s)
-{
+int64_t rt_datetime_parse_iso(rt_string s) {
     const char *str = rt_string_cstr(s);
     if (!str)
         return 0;
@@ -815,8 +790,7 @@ int64_t rt_datetime_parse_iso(rt_string s)
     tm.tm_min = minute;
     tm.tm_sec = second;
 
-    if (is_utc)
-    {
+    if (is_utc) {
         // Portable UTC mktime: use mktime (local), then adjust by the UTC offset.
         // First, convert with mktime (local time interpretation)
         struct tm utc_tm = tm;
@@ -837,17 +811,14 @@ int64_t rt_datetime_parse_iso(rt_string s)
         // UTC offset in seconds
         int64_t utc_off = (int64_t)mktime(loc) - (int64_t)mktime(gm);
         return (int64_t)local_t - utc_off;
-    }
-    else
-    {
+    } else {
         tm.tm_isdst = -1;
         time_t t = mktime(&tm);
         return (int64_t)t;
     }
 }
 
-int64_t rt_datetime_parse_date(rt_string s)
-{
+int64_t rt_datetime_parse_date(rt_string s) {
     const char *str = rt_string_cstr(s);
     if (!str)
         return 0;
@@ -883,8 +854,7 @@ int64_t rt_datetime_parse_date(rt_string s)
     return (int64_t)t;
 }
 
-int64_t rt_datetime_parse_time(rt_string s)
-{
+int64_t rt_datetime_parse_time(rt_string s) {
     const char *str = rt_string_cstr(s);
     if (!str)
         return -1;
@@ -904,8 +874,7 @@ int64_t rt_datetime_parse_time(rt_string s)
     p = end;
 
     int second = 0;
-    if (*p == ':')
-    {
+    if (*p == ':') {
         p++;
         second = dt_parse_digits(p, 2, &end);
         if (second < 0)
@@ -918,8 +887,7 @@ int64_t rt_datetime_parse_time(rt_string s)
     return (int64_t)(hour * 3600 + minute * 60 + second);
 }
 
-int64_t rt_datetime_try_parse(rt_string s)
-{
+int64_t rt_datetime_try_parse(rt_string s) {
     const char *str = rt_string_cstr(s);
     if (!str || *str == '\0')
         return 0;
@@ -927,24 +895,21 @@ int64_t rt_datetime_try_parse(rt_string s)
     size_t len = strlen(str);
 
     // Try ISO 8601 first (contains 'T' or space separator)
-    if (len >= 19)
-    {
+    if (len >= 19) {
         int64_t result = rt_datetime_parse_iso(s);
         if (result != 0)
             return result;
     }
 
     // Try date-only (YYYY-MM-DD, length 10)
-    if (len == 10 && str[4] == '-' && str[7] == '-')
-    {
+    if (len == 10 && str[4] == '-' && str[7] == '-') {
         int64_t result = rt_datetime_parse_date(s);
         if (result != 0)
             return result;
     }
 
     // Try time-only (HH:MM or HH:MM:SS)
-    if ((len == 5 || len == 8) && str[2] == ':')
-    {
+    if ((len == 5 || len == 8) && str[2] == ':') {
         int64_t result = rt_datetime_parse_time(s);
         if (result >= 0)
             return result;

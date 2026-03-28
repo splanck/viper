@@ -26,8 +26,7 @@
 
 #include "frontends/basic/sem/Check_Common.hpp"
 
-namespace il::frontends::basic::sem
-{
+namespace il::frontends::basic::sem {
 
 /// @brief Type-check a BASIC call expression and compute its resulting type.
 ///
@@ -51,8 +50,7 @@ namespace il::frontends::basic::sem
 /// @param expr Call expression to validate.
 /// @return Semantic type that the call expression produces (or Unknown on
 ///         failure when diagnostics have been emitted).
-SemanticAnalyzer::Type analyzeCallExpr(SemanticAnalyzer &analyzer, const CallExpr &expr)
-{
+SemanticAnalyzer::Type analyzeCallExpr(SemanticAnalyzer &analyzer, const CallExpr &expr) {
     ExprCheckContext context(analyzer);
     const auto *sig = context.resolveCallee(expr, ProcSignature::Kind::Function);
     auto argTypes [[maybe_unused]] = context.checkCallArgs(expr, sig);

@@ -22,8 +22,7 @@
 #include <string>
 #include <vector>
 
-TEST(IL, SimplifyCFGMergeSinglePred)
-{
+TEST(IL, SimplifyCFGMergeSinglePred) {
     using namespace il::core;
 
     Module module;
@@ -84,10 +83,8 @@ TEST(IL, SimplifyCFGMergeSinglePred)
     ASSERT_TRUE(stats.blocksMerged >= 1);
 
     const auto findBlock = [](const Function &function,
-                              const std::string &label) -> const BasicBlock *
-    {
-        for (const auto &block : function.blocks)
-        {
+                              const std::string &label) -> const BasicBlock * {
+        for (const auto &block : function.blocks) {
             if (block.label == label)
                 return &block;
         }
@@ -122,8 +119,7 @@ TEST(IL, SimplifyCFGMergeSinglePred)
     ASSERT_TRUE(mulRhs.kind == Value::Kind::ConstInt && mulRhs.i64 == 2);
 
     const Instr &entryTerm = entryBlock->instructions.back();
-    if (exitBlock)
-    {
+    if (exitBlock) {
         ASSERT_EQ(entryTerm.op, Opcode::Br);
         ASSERT_TRUE(entryTerm.labels.size() == 1 && entryTerm.labels.front() == exitBlock->label);
         ASSERT_EQ(entryTerm.brArgs.size(), 1);
@@ -132,9 +128,7 @@ TEST(IL, SimplifyCFGMergeSinglePred)
         ASSERT_EQ(branchArg.kind, Value::Kind::Temp);
         ASSERT_EQ(branchArg.id, *secondInstr.result);
         ASSERT_EQ(exitBlock->params.size(), 1);
-    }
-    else
-    {
+    } else {
         ASSERT_EQ(entryTerm.op, Opcode::Ret);
         ASSERT_EQ(entryTerm.operands.size(), 1);
         const Value &retValue = entryTerm.operands.front();
@@ -143,8 +137,7 @@ TEST(IL, SimplifyCFGMergeSinglePred)
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

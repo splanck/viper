@@ -53,10 +53,8 @@ using namespace il;
 /// @param argc Number of subcommand arguments (excluding `il-opt`).
 /// @param argv Argument list starting with the input IL file.
 /// @return Exit status code (zero on success, one on failure).
-int cmdILOpt(int argc, char **argv)
-{
-    if (argc < 3)
-    {
+int cmdILOpt(int argc, char **argv) {
+    if (argc < 3) {
         usage();
         return 1;
     }
@@ -70,39 +68,30 @@ int cmdILOpt(int argc, char **argv)
     bool printAfter = false;
     bool verifyEach = false;
     std::string pipelineName; // O0/O1/O2
-    auto trimToken = [](const std::string &token)
-    {
+    auto trimToken = [](const std::string &token) {
         auto begin = token.begin();
         auto end = token.end();
-        while (begin != end && std::isspace(static_cast<unsigned char>(*begin)))
-        {
+        while (begin != end && std::isspace(static_cast<unsigned char>(*begin))) {
             ++begin;
         }
-        while (end != begin && std::isspace(static_cast<unsigned char>(*(end - 1))))
-        {
+        while (end != begin && std::isspace(static_cast<unsigned char>(*(end - 1)))) {
             --end;
         }
         return std::string(begin, end);
     };
 
-    for (int i = 1; i < argc; ++i)
-    {
+    for (int i = 1; i < argc; ++i) {
         std::string_view arg = argv[i];
-        if (arg == "-o" && i + 1 < argc)
-        {
+        if (arg == "-o" && i + 1 < argc) {
             outFile = argv[++i];
-        }
-        else if (arg == "--passes" && i + 1 < argc)
-        {
+        } else if (arg == "--passes" && i + 1 < argc) {
             std::string passes = argv[++i];
             size_t pos = 0;
             passesExplicit = true;
-            while (pos != std::string::npos)
-            {
+            while (pos != std::string::npos) {
                 size_t comma = passes.find(',', pos);
                 std::string token = trimToken(passes.substr(pos, comma - pos));
-                if (token.empty())
-                {
+                if (token.empty()) {
                     usage();
                     return 1;
                 }
@@ -111,46 +100,30 @@ int cmdILOpt(int argc, char **argv)
                     break;
                 pos = comma + 1;
             }
-        }
-        else if (arg == "--no-mem2reg")
-        {
+        } else if (arg == "--no-mem2reg") {
             noMem2Reg = true;
-        }
-        else if (arg == "--pipeline" && i + 1 < argc)
-        {
+        } else if (arg == "--pipeline" && i + 1 < argc) {
             pipelineName = argv[++i];
-        }
-        else if (arg == "--mem2reg-stats")
-        {
+        } else if (arg == "--mem2reg-stats") {
             mem2regStats = true;
-        }
-        else if (arg == "-print-before")
-        {
+        } else if (arg == "-print-before") {
             printBefore = true;
-        }
-        else if (arg == "-print-after")
-        {
+        } else if (arg == "-print-after") {
             printAfter = true;
-        }
-        else if (arg == "-verify-each")
-        {
+        } else if (arg == "-verify-each") {
             verifyEach = true;
-        }
-        else
-        {
+        } else {
             usage();
             return 1;
         }
     }
-    if (outFile.empty())
-    {
+    if (outFile.empty()) {
         usage();
         return 1;
     }
     core::Module m;
     auto load = il::tools::common::loadModuleFromFile(inFile, m, std::cerr);
-    if (!load.succeeded())
-    {
+    if (!load.succeeded()) {
         return 1;
     }
     transform::PassManager pm;
@@ -164,11 +137,9 @@ int cmdILOpt(int argc, char **argv)
     pm.addSimplifyCFG();
 
     transform::PassManager::Pipeline selectedPipeline;
-    auto resolvePipeline = [&](std::string name) -> bool
-    {
+    auto resolvePipeline = [&](std::string name) -> bool {
         const auto *pipeline = pm.getPipeline(name);
-        if (!pipeline)
-        {
+        if (!pipeline) {
             std::cerr << "unknown pipeline '" << name << "' (use O0/O1/O2)\n";
             return false;
         }
@@ -176,35 +147,28 @@ int cmdILOpt(int argc, char **argv)
         return true;
     };
 
-    if (!pipelineName.empty())
-    {
+    if (!pipelineName.empty()) {
         std::string upper = pipelineName;
-        std::transform(upper.begin(),
-                       upper.end(),
-                       upper.begin(),
-                       [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c) {
+            return static_cast<char>(std::toupper(c));
+        });
         if (!resolvePipeline(upper))
             return 1;
     }
 
-    if (passesExplicit)
-    {
+    if (passesExplicit) {
         selectedPipeline = passList;
-    }
-    else if (selectedPipeline.empty())
-    {
+    } else if (selectedPipeline.empty()) {
         if (!resolvePipeline("O1"))
             return 1;
     }
 
-    if (selectedPipeline.empty())
-    {
+    if (selectedPipeline.empty()) {
         std::cerr << "no passes selected\n";
         return 1;
     }
 
-    if (noMem2Reg)
-    {
+    if (noMem2Reg) {
         selectedPipeline.erase(
             std::remove(selectedPipeline.begin(), selectedPipeline.end(), "mem2reg"),
             selectedPipeline.end());
@@ -213,8 +177,7 @@ int cmdILOpt(int argc, char **argv)
     // remove it from the pass list to avoid double-running it. This preserves
     // the pipeline semantics while providing accurate statistics for the first
     // (and only) mem2reg run.
-    if (mem2regStats)
-    {
+    if (mem2regStats) {
         selectedPipeline.erase(
             std::remove(selectedPipeline.begin(), selectedPipeline.end(), "mem2reg"),
             selectedPipeline.end());
@@ -224,10 +187,8 @@ int cmdILOpt(int argc, char **argv)
                   << stats.removedLoads << ", removed stores " << stats.removedStores << "\n";
     }
 
-    for (const auto &passId : selectedPipeline)
-    {
-        if (!pm.passes().lookup(passId))
-        {
+    for (const auto &passId : selectedPipeline) {
+        if (!pm.passes().lookup(passId)) {
             std::cerr << "unknown pass '" << passId << "'\n";
             return 1;
         }
@@ -235,14 +196,12 @@ int cmdILOpt(int argc, char **argv)
 
     pm.run(m, selectedPipeline);
     std::ofstream ofs(outFile);
-    if (!ofs)
-    {
+    if (!ofs) {
         std::cerr << "unable to open " << outFile << "\n";
         return 1;
     }
     io::Serializer::write(m, ofs, io::Serializer::Mode::Canonical);
-    if (!ofs)
-    {
+    if (!ofs) {
         std::cerr << "error: failed to write IL to " << outFile << "\n";
         return 1;
     }

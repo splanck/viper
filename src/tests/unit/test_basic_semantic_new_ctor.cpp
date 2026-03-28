@@ -24,16 +24,13 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
-struct AnalysisResult
-{
+namespace {
+struct AnalysisResult {
     size_t errors = 0;
     size_t warnings = 0;
 };
 
-AnalysisResult analyzeSource(const std::string &src)
-{
+AnalysisResult analyzeSource(const std::string &src) {
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");
 
@@ -52,8 +49,7 @@ AnalysisResult analyzeSource(const std::string &src)
 }
 } // namespace
 
-int main()
-{
+int main() {
     {
         const std::string src = "10 CLASS P\n"
                                 "20   SUB NEW(v AS INTEGER)\n"

@@ -15,31 +15,25 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "tests/TestHarness.hpp"
 
-namespace
-{
+namespace {
 
 /// @brief RAII helper to restore invariant mode after test.
-struct ModeRestorer
-{
+struct ModeRestorer {
     il::runtime::InvariantViolationMode original;
     il::runtime::InvariantTrapHandler originalHandler;
 
     ModeRestorer()
         : original(il::runtime::getInvariantViolationMode()),
-          originalHandler(il::runtime::getInvariantTrapHandler())
-    {
-    }
+          originalHandler(il::runtime::getInvariantTrapHandler()) {}
 
-    ~ModeRestorer()
-    {
+    ~ModeRestorer() {
         il::runtime::setInvariantViolationMode(original);
         il::runtime::setInvariantTrapHandler(originalHandler);
     }
 };
 
 /// @brief Test that the default mode is Abort.
-TEST(InvariantViolationMode, DefaultIsAbort)
-{
+TEST(InvariantViolationMode, DefaultIsAbort) {
     // Note: This test assumes no other code has changed the mode.
     // The VM static initializer may have changed it, so we just verify
     // the API works rather than the specific default value.
@@ -50,8 +44,7 @@ TEST(InvariantViolationMode, DefaultIsAbort)
 }
 
 /// @brief Test setting and getting the mode.
-TEST(InvariantViolationMode, SetAndGetMode)
-{
+TEST(InvariantViolationMode, SetAndGetMode) {
     ModeRestorer restorer;
 
     // Set to Abort
@@ -68,16 +61,14 @@ TEST(InvariantViolationMode, SetAndGetMode)
 }
 
 /// @brief Test setting and getting the trap handler.
-TEST(InvariantViolationMode, SetAndGetHandler)
-{
+TEST(InvariantViolationMode, SetAndGetHandler) {
     ModeRestorer restorer;
 
     // Custom handler for testing
     static bool handlerCalled = false;
     static const char *lastMessage = nullptr;
 
-    auto testHandler = [](const char *message) -> bool
-    {
+    auto testHandler = [](const char *message) -> bool {
         handlerCalled = true;
         lastMessage = message;
         return false; // Indicate trap not handled (would fall through to abort)
@@ -93,8 +84,7 @@ TEST(InvariantViolationMode, SetAndGetHandler)
 }
 
 /// @brief Test that handler registration can be chained.
-TEST(InvariantViolationMode, HandlerRegistrationChaining)
-{
+TEST(InvariantViolationMode, HandlerRegistrationChaining) {
     ModeRestorer restorer;
 
     auto handler1 = [](const char *) -> bool { return false; };
@@ -112,8 +102,7 @@ TEST(InvariantViolationMode, HandlerRegistrationChaining)
 
 /// @brief Test that handler can be nullptr.
 /// @details Verify that nullptr is a valid handler value.
-TEST(InvariantViolationMode, NullHandlerIsValid)
-{
+TEST(InvariantViolationMode, NullHandlerIsValid) {
     ModeRestorer restorer;
 
     il::runtime::setInvariantTrapHandler(nullptr);
@@ -122,8 +111,7 @@ TEST(InvariantViolationMode, NullHandlerIsValid)
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

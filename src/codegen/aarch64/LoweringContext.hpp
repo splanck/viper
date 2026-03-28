@@ -28,16 +28,14 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Encapsulates all mutable state needed during IL->MIR lowering.
 ///
 /// This context is passed to opcode handlers to avoid long parameter lists.
 /// It contains references to the target info, frame builder, and various
 /// maps tracking temp-to-vreg mappings, phi spill slots, and cross-block temps.
-struct LoweringContext
-{
+struct LoweringContext {
     /// @brief ABI and register information for the AArch64 target.
     const TargetInfo &ti;
 
@@ -80,8 +78,7 @@ struct LoweringContext
     /// @brief Retrieve the MIR basic block at the given index.
     /// @param idx Zero-based index into the function's block list.
     /// @return Reference to the corresponding MBasicBlock.
-    MBasicBlock &bbOut(std::size_t idx)
-    {
+    MBasicBlock &bbOut(std::size_t idx) {
         return mf.blocks[idx];
     }
 };
@@ -90,8 +87,7 @@ struct LoweringContext
 /// @param bb     The basic block whose parameter list is searched.
 /// @param tempId The IL temp ID to locate.
 /// @return Parameter index (0-based) or -1 if not found.
-inline int indexOfParam(const il::core::BasicBlock &bb, unsigned tempId)
-{
+inline int indexOfParam(const il::core::BasicBlock &bb, unsigned tempId) {
     for (size_t i = 0; i < bb.params.size(); ++i)
         if (bb.params[i].id == tempId)
             return static_cast<int>(i);
@@ -102,12 +98,10 @@ inline int indexOfParam(const il::core::BasicBlock &bb, unsigned tempId)
 /// @param fn     The IL function to search across all basic blocks.
 /// @param tempId The IL temp ID whose defining instruction is sought.
 /// @return Pointer to the instruction, or nullptr if not found.
-inline const il::core::Instr *findProducerInFunction(const il::core::Function &fn, unsigned tempId)
-{
-    for (const auto &bb : fn.blocks)
-    {
-        for (const auto &ins : bb.instructions)
-        {
+inline const il::core::Instr *findProducerInFunction(const il::core::Function &fn,
+                                                     unsigned tempId) {
+    for (const auto &bb : fn.blocks) {
+        for (const auto &ins : bb.instructions) {
             if (ins.result && *ins.result == tempId)
                 return &ins;
         }
@@ -118,12 +112,9 @@ inline const il::core::Instr *findProducerInFunction(const il::core::Function &f
 /// @brief Check if a basic block contains side-effecting instructions.
 /// @param bb The basic block to inspect for stores, calls, or traps.
 /// @return True if any instruction in the block has observable side effects.
-inline bool hasSideEffects(const il::core::BasicBlock &bb)
-{
-    for (const auto &ins : bb.instructions)
-    {
-        switch (ins.op)
-        {
+inline bool hasSideEffects(const il::core::BasicBlock &bb) {
+    for (const auto &ins : bb.instructions) {
+        switch (ins.op) {
             case il::core::Opcode::Store:
             case il::core::Opcode::Call:
             case il::core::Opcode::Trap:
@@ -141,8 +132,7 @@ inline bool hasSideEffects(const il::core::BasicBlock &bb)
 ///          that materialise and marshal arguments into ABI registers/stack
 ///          slots, the actual BL instruction, and postfix instructions that
 ///          perform any required clean-up (e.g. restoring the stack pointer).
-struct LoweredCall
-{
+struct LoweredCall {
     std::vector<MInstr> prefix;  ///< Argument materialisation and marshalling instructions.
     MInstr call;                 ///< The BL (branch-with-link) callee instruction.
     std::vector<MInstr> postfix; ///< Post-call clean-up (e.g. stack restore).

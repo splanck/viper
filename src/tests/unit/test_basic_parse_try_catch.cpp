@@ -23,8 +23,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     // Positive: basic TRY/CATCH with a catch variable and simple bodies
     {
         std::string src = "10 TRY\n"

@@ -24,20 +24,16 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
-std::vector<TokenKind> lexKinds(std::string_view text)
-{
+namespace {
+std::vector<TokenKind> lexKinds(std::string_view text) {
     SourceManager sm;
     uint32_t fid = sm.addFile("lexer_select_case.bas");
     Lexer lexer(text, fid);
 
     std::vector<TokenKind> kinds;
-    for (Token tok = lexer.next();; tok = lexer.next())
-    {
+    for (Token tok = lexer.next();; tok = lexer.next()) {
         kinds.push_back(tok.kind);
-        if (tok.kind == TokenKind::EndOfFile)
-        {
+        if (tok.kind == TokenKind::EndOfFile) {
             break;
         }
     }
@@ -45,8 +41,7 @@ std::vector<TokenKind> lexKinds(std::string_view text)
 }
 } // namespace
 
-int main()
-{
+int main() {
     {
         const auto kinds = lexKinds("SELECT CASE X\n");
         const std::vector<TokenKind> expected{

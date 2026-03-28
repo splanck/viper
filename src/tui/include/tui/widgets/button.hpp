@@ -31,16 +31,14 @@
 #include "tui/style/theme.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 
 /// @brief Interactive button widget with border, label, and activation callback.
 /// @details Renders a bordered rectangle with centered label text. When focused,
 ///          responds to Enter/Return key presses by invoking the onClick callback.
 ///          Styled using the theme's normal and accent roles for unfocused and
 ///          focused states respectively.
-class Button : public ui::Widget
-{
+class Button : public ui::Widget {
   public:
     using OnClick = std::function<void()>;
 

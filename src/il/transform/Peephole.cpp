@@ -65,11 +65,9 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
+namespace il::transform {
 
-namespace
-{
+namespace {
 
 //===----------------------------------------------------------------------===//
 // Section 1: Value Utilities
@@ -84,10 +82,8 @@ namespace
 /// @param v      Candidate value operand.
 /// @param out    Populated with the constant when the check succeeds.
 /// @returns True when @p v is a @c ConstInt.
-static bool isConstInt(const Value &v, long long &out)
-{
-    if (v.kind == Value::Kind::ConstInt)
-    {
+static bool isConstInt(const Value &v, long long &out) {
+    if (v.kind == Value::Kind::ConstInt) {
         out = v.i64;
         return true;
     }
@@ -105,8 +101,7 @@ static bool isConstInt(const Value &v, long long &out)
 /// @param target  Required constant value.
 /// @returns True when the operand is an integer constant identical to
 ///          @p target.
-static bool isConstEq(const Value &v, long long target)
-{
+static bool isConstEq(const Value &v, long long target) {
     long long c;
     return isConstInt(v, c) && c == target;
 }
@@ -116,12 +111,10 @@ static bool isConstEq(const Value &v, long long target)
 /// Peephole rules occasionally rely on reflexivity (e.g. @c xor x, x -> 0).
 /// This helper checks equality across the supported operand kinds to keep the
 /// rule application loop concise.
-static bool sameValue(const Value &a, const Value &b)
-{
+static bool sameValue(const Value &a, const Value &b) {
     if (a.kind != b.kind)
         return false;
-    switch (a.kind)
-    {
+    switch (a.kind) {
         case Value::Kind::Temp:
             return a.id == b.id;
         case Value::Kind::ConstInt:
@@ -154,8 +147,7 @@ using UseCountMap = std::unordered_map<unsigned, size_t>;
 ///
 /// @param f   Function to analyze.
 /// @returns Map from temporary id to use count.
-static UseCountMap buildUseCountMap(const Function &f)
-{
+static UseCountMap buildUseCountMap(const Function &f) {
     UseCountMap counts;
     for (const auto &b : f.blocks)
         for (const auto &in : b.instructions)
@@ -170,8 +162,7 @@ static UseCountMap buildUseCountMap(const Function &f)
 /// @param counts  Precomputed use-count map.
 /// @param id      Temporary identifier to query.
 /// @returns Number of uses, or 0 if not present.
-static size_t getUseCount(const UseCountMap &counts, unsigned id)
-{
+static size_t getUseCount(const UseCountMap &counts, unsigned id) {
     auto it = counts.find(id);
     return it != counts.end() ? it->second : 0;
 }
@@ -190,11 +181,9 @@ static size_t getUseCount(const UseCountMap &counts, unsigned id)
 /// @param f   Function whose operands should be updated.
 /// @param id  Temporary identifier to replace.
 /// @param v   Replacement value propagated to all uses.
-static void replaceAll(Function &f, unsigned id, const Value &v)
-{
+static void replaceAll(Function &f, unsigned id, const Value &v) {
     for (auto &b : f.blocks)
-        for (auto &in : b.instructions)
-        {
+        for (auto &in : b.instructions) {
             for (auto &op : in.operands)
                 if (op.kind == Value::Kind::Temp && op.id == id)
                     op = v;
@@ -215,12 +204,10 @@ static void replaceAll(Function &f, unsigned id, const Value &v)
 /// @param r   Right-hand side constant.
 /// @param out Output boolean result if comparison is foldable.
 /// @returns True if the comparison was evaluated, false if opcode not supported.
-static bool evaluateComparison(Opcode op, long long l, long long r, long long &out)
-{
+static bool evaluateComparison(Opcode op, long long l, long long r, long long &out) {
     auto ul = static_cast<unsigned long long>(l);
     auto ur = static_cast<unsigned long long>(r);
-    switch (op)
-    {
+    switch (op) {
         case Opcode::ICmpEq:
             out = (l == r);
             return true;
@@ -257,10 +244,8 @@ static bool evaluateComparison(Opcode op, long long l, long long r, long long &o
 }
 
 /// @brief Evaluate a float comparison opcode with two constant operands.
-static bool evaluateFloatComparison(Opcode op, double l, double r, long long &out)
-{
-    switch (op)
-    {
+static bool evaluateFloatComparison(Opcode op, double l, double r, long long &out) {
+    switch (op) {
         case Opcode::FCmpEQ:
             out = (l == r);
             return true;
@@ -284,17 +269,14 @@ static bool evaluateFloatComparison(Opcode op, double l, double r, long long &ou
     }
 }
 
-static bool traceEnabled()
-{
+static bool traceEnabled() {
     static const bool enabled = std::getenv("VIPER_PEEPHOLE_TRACE") != nullptr;
     return enabled;
 }
 
 /// @brief Check if a value is a float constant with the expected value.
-static bool isConstFloatEq(const Value &v, double target)
-{
-    if (v.kind == Value::Kind::ConstFloat)
-    {
+static bool isConstFloatEq(const Value &v, double target) {
+    if (v.kind == Value::Kind::ConstFloat) {
         return v.f64 == target;
     }
     return false;
@@ -306,13 +288,11 @@ static bool isConstFloatEq(const Value &v, double target)
 /// @param in Instruction to inspect (must be binary with a result).
 /// @param out Receives the replacement value on match.
 /// @returns True when the rule matched and @p out is valid.
-static bool applyRule(const Rule &rule, const Instr &in, Value &out)
-{
+static bool applyRule(const Rule &rule, const Instr &in, Value &out) {
     if (in.op != rule.match.op || in.operands.size() != 2)
         return false;
 
-    switch (rule.match.kind)
-    {
+    switch (rule.match.kind) {
         case Match::Kind::ConstOperand:
             if (!isConstEq(in.operands[rule.match.constIdx], rule.match.value))
                 return false;
@@ -327,8 +307,7 @@ static bool applyRule(const Rule &rule, const Instr &in, Value &out)
             break;
     }
 
-    switch (rule.repl.kind)
-    {
+    switch (rule.repl.kind) {
         case Replace::Kind::Operand:
             out = in.operands[rule.repl.operandIdx];
             return true;
@@ -365,18 +344,14 @@ static bool applyRule(const Rule &rule, const Instr &in, Value &out)
 /// implementation intentionally limits itself to integer comparisons with
 /// literal operands and does not chase values across blocks or through
 /// non-literal arithmetic.
-void peephole(Module &m)
-{
+void peephole(Module &m) {
     const bool trace = traceEnabled();
-    for (auto &f : m.functions)
-    {
+    for (auto &f : m.functions) {
         // Precompute use counts once per function to avoid repeated O(n) scans.
         UseCountMap useCounts = buildUseCountMap(f);
 
-        for (auto &b : f.blocks)
-        {
-            for (size_t i = 0; i < b.instructions.size(); ++i)
-            {
+        for (auto &b : f.blocks) {
+            for (size_t i = 0; i < b.instructions.size(); ++i) {
                 Instr &in = b.instructions[i];
 
                 //===----------------------------------------------------------===//
@@ -387,28 +362,23 @@ void peephole(Module &m)
                 // 2. The condition is a constant
                 // 3. The condition is defined by a comparison with constant operands
                 //===----------------------------------------------------------===//
-                if (in.op == Opcode::CBr)
-                {
+                if (in.op == Opcode::CBr) {
                     // Case 1: Both targets identical -> unconditional branch.
                     // Only safe when both edge argument sets are identical;
                     // if they differ (e.g., after block merging), leave the CBr
                     // for SimplifyCFG to handle with proper phi insertion.
-                    if (in.labels.size() == 2 && in.labels[0] == in.labels[1])
-                    {
+                    if (in.labels.size() == 2 && in.labels[0] == in.labels[1]) {
                         bool argsMatch = (in.brArgs.size() <= 1);
                         if (!argsMatch && in.brArgs.size() == 2 &&
-                            in.brArgs[0].size() == in.brArgs[1].size())
-                        {
+                            in.brArgs[0].size() == in.brArgs[1].size()) {
                             argsMatch = true;
                             for (size_t a = 0; a < in.brArgs[0].size(); ++a)
-                                if (!sameValue(in.brArgs[0][a], in.brArgs[1][a]))
-                                {
+                                if (!sameValue(in.brArgs[0][a], in.brArgs[1][a])) {
                                     argsMatch = false;
                                     break;
                                 }
                         }
-                        if (argsMatch)
-                        {
+                        if (argsMatch) {
                             in.op = Opcode::Br;
                             in.labels = {in.labels[0]};
                             in.operands.clear();
@@ -425,39 +395,31 @@ void peephole(Module &m)
                     size_t uses = 0;
 
                     // Case 2: Condition is a constant
-                    if (isConstInt(in.operands[0], v))
-                    {
+                    if (isConstInt(in.operands[0], v)) {
                         known = true;
                     }
                     // Case 3: Condition is defined by a comparison in this block
-                    else if (in.operands[0].kind == Value::Kind::Temp)
-                    {
+                    else if (in.operands[0].kind == Value::Kind::Temp) {
                         unsigned id = in.operands[0].id;
                         uses = getUseCount(useCounts, id);
 
                         // Search backwards for the defining instruction
-                        for (size_t j = 0; j < i; ++j)
-                        {
+                        for (size_t j = 0; j < i; ++j) {
                             Instr &def = b.instructions[j];
-                            if (def.result && *def.result == id && def.operands.size() == 2)
-                            {
+                            if (def.result && *def.result == id && def.operands.size() == 2) {
                                 long long l, r;
                                 if (isConstInt(def.operands[0], l) &&
-                                    isConstInt(def.operands[1], r))
-                                {
-                                    if (evaluateComparison(def.op, l, r, v))
-                                    {
+                                    isConstInt(def.operands[1], r)) {
+                                    if (evaluateComparison(def.op, l, r, v)) {
                                         known = true;
                                         defIdx = j;
                                     }
                                 }
                                 // Also try float constant comparisons
                                 if (!known && def.operands[0].kind == Value::Kind::ConstFloat &&
-                                    def.operands[1].kind == Value::Kind::ConstFloat)
-                                {
+                                    def.operands[1].kind == Value::Kind::ConstFloat) {
                                     if (evaluateFloatComparison(
-                                            def.op, def.operands[0].f64, def.operands[1].f64, v))
-                                    {
+                                            def.op, def.operands[0].f64, def.operands[1].f64, v)) {
                                         known = true;
                                         defIdx = j;
                                     }
@@ -469,33 +431,25 @@ void peephole(Module &m)
                     }
 
                     // Rewrite CBr to Br if condition is known
-                    if (known)
-                    {
+                    if (known) {
                         in.op = Opcode::Br;
                         const bool takeTrue = (v != 0);
                         in.labels = {takeTrue ? in.labels[0] : in.labels[1]};
 
                         // Preserve the correct branch arguments
-                        if (!in.brArgs.empty())
-                        {
-                            if (takeTrue)
-                            {
+                        if (!in.brArgs.empty()) {
+                            if (takeTrue) {
                                 in.brArgs = std::vector<std::vector<Value>>{in.brArgs.front()};
-                            }
-                            else if (in.brArgs.size() > 1)
-                            {
+                            } else if (in.brArgs.size() > 1) {
                                 in.brArgs = std::vector<std::vector<Value>>{in.brArgs[1]};
-                            }
-                            else
-                            {
+                            } else {
                                 in.brArgs.clear();
                             }
                         }
                         in.operands.clear();
 
                         // Remove the dead comparison if it was single-use
-                        if (defIdx != static_cast<size_t>(-1) && uses == 1)
-                        {
+                        if (defIdx != static_cast<size_t>(-1) && uses == 1) {
                             b.instructions.erase(b.instructions.begin() + defIdx);
                             --i;
                         }
@@ -516,10 +470,8 @@ void peephole(Module &m)
 
                 Value repl{};
                 bool match = false;
-                for (const auto &r : kRules)
-                {
-                    if (applyRule(r, in, repl))
-                    {
+                for (const auto &r : kRules) {
+                    if (applyRule(r, in, repl)) {
                         match = true;
                         if (trace && in.result)
                             std::cerr << "[peephole] rule " << r.name << " in %" << *in.result
@@ -528,8 +480,7 @@ void peephole(Module &m)
                     }
                 }
 
-                if (match)
-                {
+                if (match) {
                     replaceAll(f, *in.result, repl);
                     b.instructions.erase(b.instructions.begin() + i);
                     --i;

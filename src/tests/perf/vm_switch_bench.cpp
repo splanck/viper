@@ -35,28 +35,24 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 constexpr size_t kCaseCount = 50;
 constexpr size_t kIterations = 20'000;
 constexpr size_t kBenchmarkRuns = 3;
 
-int64_t caseValue(size_t index)
-{
+int64_t caseValue(size_t index) {
     return static_cast<int64_t>(index) * 3 + 1;
 }
 
-int64_t computeExpectedSum(size_t caseCount, size_t iterations)
-{
+int64_t computeExpectedSum(size_t caseCount, size_t iterations) {
     int64_t total = 0;
     for (size_t i = 0; i < iterations; ++i)
         total += caseValue(i % caseCount);
     return total;
 }
 
-Module buildSwitchModule(size_t caseCount, size_t iterations)
-{
+Module buildSwitchModule(size_t caseCount, size_t iterations) {
     Module module;
 
     Function fn;
@@ -122,8 +118,7 @@ Module buildSwitchModule(size_t caseCount, size_t iterations)
     sw.operands.push_back(Value::temp(*rem.result));
     sw.labels.push_back("dispatch");
     sw.brArgs.push_back({Value::temp(workSum.id), Value::temp(workIdx.id), Value::constInt(-1)});
-    for (size_t i = 0; i < caseCount; ++i)
-    {
+    for (size_t i = 0; i < caseCount; ++i) {
         sw.operands.push_back(Value::constInt(static_cast<int32_t>(i)));
         sw.labels.push_back("dispatch");
         sw.brArgs.push_back(
@@ -201,14 +196,12 @@ Module buildSwitchModule(size_t caseCount, size_t iterations)
     return module;
 }
 
-struct BenchResult
-{
+struct BenchResult {
     double milliseconds;
     int64_t checksum;
 };
 
-BenchResult runSwitchBench(const char *mode, size_t caseCount, size_t iterations)
-{
+BenchResult runSwitchBench(const char *mode, size_t caseCount, size_t iterations) {
     if (mode != nullptr)
         ::setenv("VIPER_SWITCH_MODE", mode, 1);
     else
@@ -224,8 +217,7 @@ BenchResult runSwitchBench(const char *mode, size_t caseCount, size_t iterations
 
     int64_t total = 0;
     const auto start = std::chrono::steady_clock::now();
-    for (size_t i = 0; i < kBenchmarkRuns; ++i)
-    {
+    for (size_t i = 0; i < kBenchmarkRuns; ++i) {
         const int64_t result = vm.run();
         if (result != expected)
             throw std::runtime_error("benchmark run produced unexpected result");
@@ -242,19 +234,15 @@ BenchResult runSwitchBench(const char *mode, size_t caseCount, size_t iterations
     return BenchResult{elapsedMs, total};
 }
 
-class SwitchModeEnvGuard
-{
+class SwitchModeEnvGuard {
   public:
-    SwitchModeEnvGuard()
-    {
-        if (const char *value = std::getenv("VIPER_SWITCH_MODE"); value != nullptr)
-        {
+    SwitchModeEnvGuard() {
+        if (const char *value = std::getenv("VIPER_SWITCH_MODE"); value != nullptr) {
             original = value;
         }
     }
 
-    ~SwitchModeEnvGuard()
-    {
+    ~SwitchModeEnvGuard() {
         if (original.has_value())
             ::setenv("VIPER_SWITCH_MODE", original->c_str(), 1);
         else
@@ -267,30 +255,26 @@ class SwitchModeEnvGuard
 
 } // namespace
 
-int main()
-{
+int main() {
     SwitchModeEnvGuard guard;
 
     const BenchResult linear = runSwitchBench("Linear", kCaseCount, kIterations);
     const BenchResult autoResult = runSwitchBench("Auto", kCaseCount, kIterations);
 
-    if (linear.checksum != autoResult.checksum)
-    {
+    if (linear.checksum != autoResult.checksum) {
         std::cerr << "Switch benchmark checksum mismatch: linear=" << linear.checksum
                   << ", auto=" << autoResult.checksum << '\n';
         return 1;
     }
 
-    if (linear.milliseconds <= 0.0)
-    {
+    if (linear.milliseconds <= 0.0) {
         std::cout << "Linear dispatch completed too quickly; skipping ratio assertion."
                   << std::endl;
         return 0;
     }
 
     const double ratio = autoResult.milliseconds / linear.milliseconds;
-    if (ratio > 5.0)
-    {
+    if (ratio > 5.0) {
         std::cerr << "Auto switch dispatch regressed: ratio=" << ratio
                   << ", linear=" << linear.milliseconds << "ms, auto=" << autoResult.milliseconds
                   << "ms." << std::endl;

@@ -17,8 +17,7 @@
 #include "RuntimeCallHelpers.hpp"
 #include "Lowerer.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Construct a runtime call builder bound to a lowerer.
 /// @details Stores a reference to the lowering context and initializes an empty
@@ -31,8 +30,7 @@ RuntimeCallBuilder::RuntimeCallBuilder(Lowerer &lowerer) noexcept : lowerer_(low
 ///          any arguments are coerced or calls are emitted.
 /// @param loc Source location to attach to emitted instructions.
 /// @return Reference to this builder for chaining.
-RuntimeCallBuilder &RuntimeCallBuilder::at(il::support::SourceLoc loc) noexcept
-{
+RuntimeCallBuilder &RuntimeCallBuilder::at(il::support::SourceLoc loc) noexcept {
     loc_ = loc;
     return *this;
 }
@@ -42,8 +40,7 @@ RuntimeCallBuilder &RuntimeCallBuilder::at(il::support::SourceLoc loc) noexcept
 ///          supply pre-coerced or constant values.
 /// @param v Argument value to append.
 /// @return Reference to this builder for chaining.
-RuntimeCallBuilder &RuntimeCallBuilder::arg(Value v)
-{
+RuntimeCallBuilder &RuntimeCallBuilder::arg(Value v) {
     args_.push_back(v);
     return *this;
 }
@@ -53,8 +50,7 @@ RuntimeCallBuilder &RuntimeCallBuilder::arg(Value v)
 ///          appends the narrowed value to the argument list.
 /// @param v 64-bit value to narrow.
 /// @return Reference to this builder for chaining.
-RuntimeCallBuilder &RuntimeCallBuilder::argNarrow32(Value v)
-{
+RuntimeCallBuilder &RuntimeCallBuilder::argNarrow32(Value v) {
     applyLoc();
     Value narrowed = lowerer_.narrow32(v, loc_.value_or(il::support::SourceLoc{}));
     args_.push_back(narrowed);
@@ -68,8 +64,7 @@ RuntimeCallBuilder &RuntimeCallBuilder::argNarrow32(Value v)
 /// @param v Channel value to normalize.
 /// @param ty Type of the channel value.
 /// @return Reference to this builder for chaining.
-RuntimeCallBuilder &RuntimeCallBuilder::argChannel(Value v, Type ty)
-{
+RuntimeCallBuilder &RuntimeCallBuilder::argChannel(Value v, Type ty) {
     applyLoc();
     Lowerer::RVal channel{v, ty};
     channel =
@@ -84,8 +79,7 @@ RuntimeCallBuilder &RuntimeCallBuilder::argChannel(Value v, Type ty)
 /// @param v Value to coerce.
 /// @param ty Current type of the value.
 /// @return Reference to this builder for chaining.
-RuntimeCallBuilder &RuntimeCallBuilder::argI64(Value v, Type ty)
-{
+RuntimeCallBuilder &RuntimeCallBuilder::argI64(Value v, Type ty) {
     applyLoc();
     Lowerer::RVal rval{v, ty};
     rval = lowerer_.ensureI64(std::move(rval), loc_.value_or(il::support::SourceLoc{}));
@@ -99,8 +93,7 @@ RuntimeCallBuilder &RuntimeCallBuilder::argI64(Value v, Type ty)
 /// @param v Value to coerce.
 /// @param ty Current type of the value.
 /// @return Reference to this builder for chaining.
-RuntimeCallBuilder &RuntimeCallBuilder::argF64(Value v, Type ty)
-{
+RuntimeCallBuilder &RuntimeCallBuilder::argF64(Value v, Type ty) {
     applyLoc();
     Lowerer::RVal rval{v, ty};
     rval = lowerer_.ensureF64(std::move(rval), loc_.value_or(il::support::SourceLoc{}));
@@ -113,8 +106,7 @@ RuntimeCallBuilder &RuntimeCallBuilder::argF64(Value v, Type ty)
 ///          and linked when needed.
 /// @param feature Runtime feature to request.
 /// @return Reference to this builder for chaining.
-RuntimeCallBuilder &RuntimeCallBuilder::withFeature(RuntimeFeature feature)
-{
+RuntimeCallBuilder &RuntimeCallBuilder::withFeature(RuntimeFeature feature) {
     lowerer_.requestHelper(feature);
     return *this;
 }
@@ -124,8 +116,7 @@ RuntimeCallBuilder &RuntimeCallBuilder::withFeature(RuntimeFeature feature)
 ///          emitted deterministically.
 /// @param feature Runtime feature to track.
 /// @return Reference to this builder for chaining.
-RuntimeCallBuilder &RuntimeCallBuilder::trackFeature(RuntimeFeature feature)
-{
+RuntimeCallBuilder &RuntimeCallBuilder::trackFeature(RuntimeFeature feature) {
     lowerer_.trackRuntime(feature);
     return *this;
 }
@@ -135,8 +126,7 @@ RuntimeCallBuilder &RuntimeCallBuilder::trackFeature(RuntimeFeature feature)
 ///          as required when no enum-based runtime feature exists.
 /// @param requireFn Member-function pointer to invoke on the lowerer.
 /// @return Reference to this builder for chaining.
-RuntimeCallBuilder &RuntimeCallBuilder::withManualHelper(void (Lowerer::*requireFn)())
-{
+RuntimeCallBuilder &RuntimeCallBuilder::withManualHelper(void (Lowerer::*requireFn)()) {
     (lowerer_.*requireFn)();
     return *this;
 }
@@ -145,8 +135,7 @@ RuntimeCallBuilder &RuntimeCallBuilder::withManualHelper(void (Lowerer::*require
 /// @details Applies the stored source location and emits a call with no return
 ///          value and no error handling.
 /// @param callee Runtime function name to call.
-void RuntimeCallBuilder::call(const std::string &callee)
-{
+void RuntimeCallBuilder::call(const std::string &callee) {
     applyLoc();
     lowerer_.emitCall(callee, args_);
 }
@@ -157,8 +146,7 @@ void RuntimeCallBuilder::call(const std::string &callee)
 /// @param retTy Return type of the call.
 /// @param callee Runtime function name to call.
 /// @return Value representing the call result.
-RuntimeCallBuilder::Value RuntimeCallBuilder::callRet(Type retTy, const std::string &callee)
-{
+RuntimeCallBuilder::Value RuntimeCallBuilder::callRet(Type retTy, const std::string &callee) {
     applyLoc();
     return lowerer_.emitCallRet(retTy, callee, args_);
 }
@@ -172,8 +160,7 @@ RuntimeCallBuilder::Value RuntimeCallBuilder::callRet(Type retTy, const std::str
 /// @return Value representing the call result.
 RuntimeCallBuilder::Value RuntimeCallBuilder::callHelper(RuntimeFeature feature,
                                                          const std::string &callee,
-                                                         Type retTy)
-{
+                                                         Type retTy) {
     applyLoc();
     return lowerer_.emitRuntimeHelper(feature, callee, retTy, args_);
 }
@@ -183,8 +170,7 @@ RuntimeCallBuilder::Value RuntimeCallBuilder::callHelper(RuntimeFeature feature,
 ///          type.
 /// @param feature Runtime feature to request.
 /// @param callee Runtime function name to call.
-void RuntimeCallBuilder::callHelperVoid(RuntimeFeature feature, const std::string &callee)
-{
+void RuntimeCallBuilder::callHelperVoid(RuntimeFeature feature, const std::string &callee) {
     applyLoc();
     lowerer_.emitRuntimeHelper(feature, callee, Type(Type::Kind::Void), args_);
 }
@@ -198,8 +184,7 @@ void RuntimeCallBuilder::callHelperVoid(RuntimeFeature feature, const std::strin
 /// @param labelStem Prefix for generated failure/continuation blocks.
 void RuntimeCallBuilder::callWithErrCheck(Type retTy,
                                           const std::string &callee,
-                                          std::string_view labelStem)
-{
+                                          std::string_view labelStem) {
     applyLoc();
     Value err = lowerer_.emitCallRet(retTy, callee, args_);
     lowerer_.emitRuntimeErrCheck(err,
@@ -219,8 +204,7 @@ void RuntimeCallBuilder::callWithErrCheck(Type retTy,
 void RuntimeCallBuilder::callWithErrHandler(Type retTy,
                                             const std::string &callee,
                                             std::string_view labelStem,
-                                            const std::function<void(Value)> &onFailure)
-{
+                                            const std::function<void(Value)> &onFailure) {
     applyLoc();
     Value err = lowerer_.emitCallRet(retTy, callee, args_);
     lowerer_.emitRuntimeErrCheck(
@@ -231,31 +215,27 @@ void RuntimeCallBuilder::callWithErrHandler(Type retTy,
 /// @details Returns a reference to the internal argument vector for inspection
 ///          or testing; callers should not mutate the returned container.
 /// @return Const reference to the argument vector.
-const std::vector<RuntimeCallBuilder::Value> &RuntimeCallBuilder::args() const noexcept
-{
+const std::vector<RuntimeCallBuilder::Value> &RuntimeCallBuilder::args() const noexcept {
     return args_;
 }
 
 /// @brief Access the stored source location.
 /// @details Returns the source location last set via @ref at, if any.
 /// @return Optional source location.
-std::optional<il::support::SourceLoc> RuntimeCallBuilder::location() const noexcept
-{
+std::optional<il::support::SourceLoc> RuntimeCallBuilder::location() const noexcept {
     return loc_;
 }
 
 /// @brief Clear collected arguments.
 /// @details Resets the internal argument list so the builder can be reused.
-void RuntimeCallBuilder::clearArgs() noexcept
-{
+void RuntimeCallBuilder::clearArgs() noexcept {
     args_.clear();
 }
 
 /// @brief Apply the stored source location to the lowerer.
 /// @details Updates the lowerer's current source location just before emitting
 ///          instructions so diagnostics and debug info are anchored correctly.
-void RuntimeCallBuilder::applyLoc() const
-{
+void RuntimeCallBuilder::applyLoc() const {
     if (loc_)
         lowerer_.curLoc = *loc_;
 }

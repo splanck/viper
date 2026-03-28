@@ -18,16 +18,14 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 //===----------------------------------------------------------------------===//
 // Integer Literals
 //===----------------------------------------------------------------------===//
 
 /// @brief Test decimal integer literals.
-TEST(ZiaLiterals, DecimalIntegers)
-{
+TEST(ZiaLiterals, DecimalIntegers) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -52,8 +50,7 @@ func start() {
 }
 
 /// @brief Test hexadecimal integer literals.
-TEST(ZiaLiterals, HexIntegers)
-{
+TEST(ZiaLiterals, HexIntegers) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -78,8 +75,7 @@ func start() {
 }
 
 /// @brief Test binary integer literals.
-TEST(ZiaLiterals, BinaryIntegers)
-{
+TEST(ZiaLiterals, BinaryIntegers) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -108,8 +104,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test floating-point literals with var inference.
-TEST(ZiaLiterals, FloatingPoint)
-{
+TEST(ZiaLiterals, FloatingPoint) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -130,8 +125,7 @@ func start() {
 }
 
 /// @brief Test scientific notation with var inference.
-TEST(ZiaLiterals, ScientificNotation)
-{
+TEST(ZiaLiterals, ScientificNotation) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -155,8 +149,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test basic string literals.
-TEST(ZiaLiterals, BasicStrings)
-{
+TEST(ZiaLiterals, BasicStrings) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -181,8 +174,7 @@ func start() {
 }
 
 /// @brief Test string escape sequences.
-TEST(ZiaLiterals, StringEscapes)
-{
+TEST(ZiaLiterals, StringEscapes) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -211,8 +203,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test boolean literals.
-TEST(ZiaLiterals, Booleans)
-{
+TEST(ZiaLiterals, Booleans) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -237,8 +228,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test null literal with optional types.
-TEST(ZiaLiterals, NullLiteral)
-{
+TEST(ZiaLiterals, NullLiteral) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -264,8 +254,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test list literals.
-TEST(ZiaLiterals, ListLiterals)
-{
+TEST(ZiaLiterals, ListLiterals) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -291,8 +280,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test tuple literals.
-TEST(ZiaLiterals, TupleLiterals)
-{
+TEST(ZiaLiterals, TupleLiterals) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -314,7 +302,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

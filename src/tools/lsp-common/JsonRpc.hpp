@@ -23,8 +23,7 @@
 
 #include <string>
 
-namespace viper::server
-{
+namespace viper::server {
 
 /// @brief Standard JSON-RPC 2.0 error codes.
 constexpr int kParseError = -32700;
@@ -34,15 +33,13 @@ constexpr int kInvalidParams = -32602;
 constexpr int kInternalError = -32603;
 
 /// @brief A parsed JSON-RPC 2.0 request or notification.
-struct JsonRpcRequest
-{
+struct JsonRpcRequest {
     std::string method; ///< Method name (e.g., "initialize", "tools/call")
     JsonValue params;   ///< Parameters (may be null, object, or array)
     JsonValue id;       ///< Request ID (string, int, or null for notifications)
 
     /// @brief True if this is a notification (no id, no response expected).
-    [[nodiscard]] bool isNotification() const
-    {
+    [[nodiscard]] bool isNotification() const {
         return id.isNull();
     }
 };

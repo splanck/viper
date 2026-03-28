@@ -40,8 +40,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Fetch the canonical IL boolean type used by BASIC lowering.
 /// @details Delegates to the shared @ref Emitter instance because it owns the
@@ -49,8 +48,7 @@ namespace il::frontends::basic
 ///          sites receive the exact handle used when materialising boolean
 ///          constants.
 /// @return IL type representing a one-bit logical value.
-Lowerer::IlType Lowerer::ilBoolTy()
-{
+Lowerer::IlType Lowerer::ilBoolTy() {
     return emitter().ilBoolTy();
 }
 
@@ -59,8 +57,7 @@ Lowerer::IlType Lowerer::ilBoolTy()
 ///          lowering stay consistent with other constant-generation paths.
 /// @param v Boolean value that should be materialised.
 /// @return IL value referencing the emitted constant.
-Lowerer::IlValue Lowerer::emitBoolConst(bool v)
-{
+Lowerer::IlValue Lowerer::emitBoolConst(bool v) {
     return emitter().emitBoolConst(v);
 }
 
@@ -79,8 +76,7 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
                                                const std::function<void(Value)> &emitElse,
                                                std::string_view thenLabelBase,
                                                std::string_view elseLabelBase,
-                                               std::string_view joinLabelBase)
-{
+                                               std::string_view joinLabelBase) {
     return emitter().emitBoolFromBranches(
         emitThen, emitElse, thenLabelBase, elseLabelBase, joinLabelBase);
 }
@@ -94,8 +90,7 @@ Lowerer::IlValue Lowerer::emitBoolFromBranches(const std::function<void(Value)> 
 /// @param expr Array expression AST node being lowered.
 /// @param kind Indicates whether the caller intends to load from or store to the array.
 /// @return Metadata describing the computed address and optional result slot.
-Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAccessKind kind)
-{
+Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAccessKind kind) {
     // Resolve storage for the target symbol instead of assuming a local slot.
     // This supports module-level globals referenced inside procedures (BUG-053),
     // where globals are routed through runtime-backed storage and do not have
@@ -112,8 +107,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
     // BUG-097 fix: Check module cache for object array type info
     std::string moduleObjectClass;
-    if (!isMemberArray && (!info || (info && !info->isObject)))
-    {
+    if (!isMemberArray && (!info || (info && !info->isObject))) {
         moduleObjectClass = lookupModuleArrayElemClass(expr.name);
     }
 
@@ -128,8 +122,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     Value base;
 
     // Derive IL element kind from resolved field info
-    if (fieldInfo.isField)
-    {
+    if (fieldInfo.isField) {
         if (fieldInfo.elementAstType == ::il::frontends::basic::Type::Str)
             memberElemIlKind = Type::Kind::Str;
         else if (fieldInfo.isObjectArray)
@@ -140,8 +133,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
     // Only resolve storage for non-member arrays
     std::optional<VariableStorage> storage;
-    if (!isMemberArray)
-    {
+    if (!isMemberArray) {
         storage = resolveVariableStorage(expr.name, expr.loc);
         assert(storage && "array access requires resolvable storage");
         if (!storage)
@@ -149,31 +141,24 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     }
 
     // Require appropriate runtime functions based on array element type
-    if (isMemberArray)
-    {
+    if (isMemberArray) {
         // Use memberElemAstType for field arrays (dotted or implicit)
-        if (memberElemAstType == ::il::frontends::basic::Type::Str)
-        {
+        if (memberElemAstType == ::il::frontends::basic::Type::Str) {
             requireArrayStrLen();
             if (kind == ArrayAccessKind::Load)
                 requireArrayStrGet();
-            else
-            {
+            else {
                 requireArrayStrPut();
                 requireStrRetainMaybe();
             }
-        }
-        else if (isMemberObjectArray)
-        {
+        } else if (isMemberObjectArray) {
             // BUG-089 fix: Use object array runtime functions for object fields
             requireArrayObjLen();
             if (kind == ArrayAccessKind::Load)
                 requireArrayObjGet();
             else
                 requireArrayObjPut();
-        }
-        else
-        {
+        } else {
             requireArrayI64Len();
             if (kind == ArrayAccessKind::Load)
                 requireArrayI64Get();
@@ -182,28 +167,22 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         }
     }
     // BUG-OOP-011 fix: Also check module-level string array cache
-    else if ((info && info->type == AstType::Str) || isModuleStrArrayVar)
-    {
+    else if ((info && info->type == AstType::Str) || isModuleStrArrayVar) {
         requireArrayStrLen();
         if (kind == ArrayAccessKind::Load)
             requireArrayStrGet();
-        else
-        {
+        else {
             requireArrayStrPut();
             requireStrRetainMaybe();
         }
-    }
-    else if ((info && info->isObject) || !moduleObjectClass.empty())
-    {
+    } else if ((info && info->isObject) || !moduleObjectClass.empty()) {
         // BUG-097 fix: Use object array functions for module-level object arrays too
         requireArrayObjLen();
         if (kind == ArrayAccessKind::Load)
             requireArrayObjGet();
         else
             requireArrayObjPut();
-    }
-    else
-    {
+    } else {
         requireArrayI64Len();
         if (kind == ArrayAccessKind::Load)
             requireArrayI64Get();
@@ -216,8 +195,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     // correct row-major flattened indices for multi-dimensional arrays.
     std::vector<long long> memberFieldExtents;
     ProcedureContext &ctx = context();
-    if (isMemberArray)
-    {
+    if (isMemberArray) {
         // Split into base variable and field name
         const std::string &full = expr.name;
         std::size_t dot = full.find('.');
@@ -226,17 +204,14 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
         // Load the object pointer for the base
         const auto *baseSym = findSymbol(baseName);
-        if (baseSym && baseSym->slotId)
-        {
+        if (baseSym && baseSym->slotId) {
             curLoc = expr.loc;
             Value selfPtr = emitLoad(Type(Type::Kind::Ptr), Value::temp(*baseSym->slotId));
             // Find field in class layout (already looked up above)
             std::string klass = getSlotType(baseName).objectClass;
             auto it = classLayouts_.find(klass);
-            if (it != classLayouts_.end())
-            {
-                if (const ClassLayout::Field *fld = it->second.findField(fieldName))
-                {
+            if (it != classLayouts_.end()) {
+                if (const ClassLayout::Field *fld = it->second.findField(fieldName)) {
                     // Type info already resolved via resolveMemberArrayField() above.
                     curLoc = expr.loc;
                     Value fieldPtr =
@@ -247,16 +222,13 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                     curLoc = expr.loc;
                     base = emitLoad(Type(Type::Kind::Ptr), fieldPtr);
                     // Use declared extents from class layout if available
-                    if (fld->isArray)
-                    {
+                    if (fld->isArray) {
                         memberFieldExtents = fld->arrayExtents;
                     }
                 }
             }
         }
-    }
-    else
-    {
+    } else {
         // storage->pointer is the address of the variable's storage (local slot or
         // runtime-backed module variable). Load the array handle pointer from it.
         base = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
@@ -264,14 +236,10 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
     // Collect all index expressions (backward compat: check 'index' first, then 'indices')
     std::vector<const ExprPtr *> indexExprs;
-    if (expr.index)
-    {
+    if (expr.index) {
         indexExprs.push_back(&expr.index);
-    }
-    else
-    {
-        for (const auto &idxExpr : expr.indices)
-        {
+    } else {
+        for (const auto &idxExpr : expr.indices) {
             if (idxExpr)
                 indexExprs.push_back(&idxExpr);
         }
@@ -280,8 +248,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
     // Lower all index expressions to i64 for bounds checking in the current block
     std::vector<Value> indices;
-    for (const ExprPtr *idxPtr : indexExprs)
-    {
+    for (const ExprPtr *idxPtr : indexExprs) {
         RVal idx = lowerExpr(**idxPtr);
         idx = coerceToI64(std::move(idx), expr.loc);
         indices.push_back(idx.value);
@@ -295,25 +262,20 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     Value index;
     // For implicit field arrays (e.g., inventory(i) in methods), retrieve extents from active
     // layout
-    if (memberFieldExtents.empty())
-    {
+    if (memberFieldExtents.empty()) {
         // Try field scope layout for implicit field arrays
-        if (const FieldScope *scope = activeFieldScope(); scope && scope->layout)
-        {
-            if (const ClassLayout::Field *fld2 = scope->layout->findField(expr.name))
-            {
+        if (const FieldScope *scope = activeFieldScope(); scope && scope->layout) {
+            if (const ClassLayout::Field *fld2 = scope->layout->findField(expr.name)) {
                 if (fld2->isArray)
                     memberFieldExtents = fld2->arrayExtents;
             }
         }
     }
-    auto computeFlatIndex = [&](const std::vector<Value> &idxVals) -> Value
-    {
+    auto computeFlatIndex = [&](const std::vector<Value> &idxVals) -> Value {
         if (idxVals.size() == 1)
             return idxVals[0];
         // Prefer member field extents when available
-        if (!memberFieldExtents.empty() && memberFieldExtents.size() == idxVals.size())
-        {
+        if (!memberFieldExtents.empty() && memberFieldExtents.size() == idxVals.size()) {
             // Convert declared bounds to inclusive lengths
             std::vector<long long> lengths(memberFieldExtents.size(), 0);
             for (size_t i = 0; i < memberFieldExtents.size(); ++i)
@@ -323,8 +285,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                 stride *= lengths[i];
             Value sum = emitBinary(
                 Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[0], Value::constInt(stride));
-            for (size_t k = 1; k < idxVals.size(); ++k)
-            {
+            for (size_t k = 1; k < idxVals.size(); ++k) {
                 stride = 1;
                 for (size_t i = k + 1; i < lengths.size(); ++i)
                     stride *= lengths[i];
@@ -337,8 +298,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         // BUG-020 fix: Use resolvedExtents from AST node instead of looking up metadata.
         // The semantic analyzer stores extents in the ArrayExpr during analysis, ensuring
         // they remain available even after procedure scope cleanup erases ArrayMetadata.
-        if (!expr.resolvedExtents.empty() && expr.resolvedExtents.size() == idxVals.size())
-        {
+        if (!expr.resolvedExtents.empty() && expr.resolvedExtents.size() == idxVals.size()) {
             std::vector<long long> lengths(expr.resolvedExtents.size(), 0);
             for (size_t i = 0; i < expr.resolvedExtents.size(); ++i)
                 lengths[i] = expr.resolvedExtents[i] + 1;
@@ -347,8 +307,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                 stride *= lengths[i];
             Value sum = emitBinary(
                 Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[0], Value::constInt(stride));
-            for (size_t k = 1; k < idxVals.size(); ++k)
-            {
+            for (size_t k = 1; k < idxVals.size(); ++k) {
                 stride = 1;
                 for (size_t i = k + 1; i < lengths.size(); ++i)
                     stride *= lengths[i];
@@ -362,8 +321,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
         // (e.g., arrays not yet processed through full semantic analysis path)
         const SemanticAnalyzer *sema = semanticAnalyzer();
         const ArrayMetadata *metadata = sema ? sema->lookupArrayMetadata(expr.name) : nullptr;
-        if (metadata && metadata->extents.size() == idxVals.size())
-        {
+        if (metadata && metadata->extents.size() == idxVals.size()) {
             std::vector<long long> lengths(metadata->extents.size(), 0);
             for (size_t i = 0; i < metadata->extents.size(); ++i)
                 lengths[i] = metadata->extents[i] + 1;
@@ -372,8 +330,7 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                 stride *= lengths[i];
             Value sum = emitBinary(
                 Opcode::IMulOvf, Type(Type::Kind::I64), idxVals[0], Value::constInt(stride));
-            for (size_t k = 1; k < idxVals.size(); ++k)
-            {
+            for (size_t k = 1; k < idxVals.size(); ++k) {
                 stride = 1;
                 for (size_t i = k + 1; i < lengths.size(); ++i)
                     stride *= lengths[i];
@@ -390,17 +347,14 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
 
     // Use appropriate length function based on array element type
     Value len;
-    if (isMemberArray)
-    {
+    if (isMemberArray) {
         if (memberElemAstType == ::il::frontends::basic::Type::Str)
             len = emitCallRet(Type(Type::Kind::I64), "rt_arr_str_len", {base});
         else if (isMemberObjectArray)
             len = emitCallRet(Type(Type::Kind::I64), "rt_arr_obj_len", {base}); // BUG-089 fix
         else
             len = emitCallRet(Type(Type::Kind::I64), "rt_arr_i64_len", {base});
-    }
-    else
-    {
+    } else {
         // BUG-OOP-011 fix: info may be null for module-level arrays accessed from procedures
         // In that case we rely on isModuleStrArrayVar and moduleObjectClass caches
         if ((info && info->type == AstType::Str) || isModuleStrArrayVar)
@@ -454,26 +408,21 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     else if (!moduleObjectClass.empty() || isModuleStrArrayVar)
         isRefCountedArray = true;
 
-    if (isRefCountedArray)
-    {
+    if (isRefCountedArray) {
         Value baseOk;
-        if (isMemberArray)
-        {
+        if (isMemberArray) {
             const std::string &full = expr.name;
             std::size_t dot = full.find('.');
             std::string baseName = full.substr(0, dot);
             std::string fieldName = full.substr(dot + 1);
             const auto *baseSym = findSymbol(baseName);
-            if (baseSym && baseSym->slotId)
-            {
+            if (baseSym && baseSym->slotId) {
                 curLoc = expr.loc;
                 Value selfPtr = emitLoad(Type(Type::Kind::Ptr), Value::temp(*baseSym->slotId));
                 std::string klass = getSlotType(baseName).objectClass;
                 auto it = classLayouts_.find(klass);
-                if (it != classLayouts_.end())
-                {
-                    if (const ClassLayout::Field *fld = it->second.findField(fieldName))
-                    {
+                if (it != classLayouts_.end()) {
+                    if (const ClassLayout::Field *fld = it->second.findField(fieldName)) {
                         Value fieldPtr =
                             emitBinary(Opcode::GEP,
                                        Type(Type::Kind::Ptr),
@@ -483,15 +432,12 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
                     }
                 }
             }
-        }
-        else
-        {
+        } else {
             baseOk = emitLoad(Type(Type::Kind::Ptr), storage->pointer);
         }
         std::vector<Value> indicesOk;
         indicesOk.reserve(indexExprs.size());
-        for (const ExprPtr *idxPtr : indexExprs)
-        {
+        for (const ExprPtr *idxPtr : indexExprs) {
             RVal idx = lowerExpr(**idxPtr);
             idx = coerceToI64(std::move(idx), expr.loc);
             indicesOk.push_back(idx.value);
@@ -504,33 +450,27 @@ Lowerer::ArrayAccess Lowerer::lowerArrayAccess(const ArrayExpr &expr, ArrayAcces
     return ArrayAccess{base, index};
 }
 
-Value Lowerer::emitAlloca(int bytes)
-{
+Value Lowerer::emitAlloca(int bytes) {
     return emitter().emitAlloca(bytes);
 }
 
-Value Lowerer::emitLoad(Type ty, Value addr)
-{
+Value Lowerer::emitLoad(Type ty, Value addr) {
     return emitter().emitLoad(ty, addr);
 }
 
-void Lowerer::emitStore(Type ty, Value addr, Value val)
-{
+void Lowerer::emitStore(Type ty, Value addr, Value val) {
     emitter().emitStore(ty, addr, val);
 }
 
-Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
-{
+Value Lowerer::emitBinary(Opcode op, Type ty, Value lhs, Value rhs) {
     return emitter().emitBinary(op, ty, lhs, rhs);
 }
 
-Value Lowerer::emitUnary(Opcode op, Type ty, Value val)
-{
+Value Lowerer::emitUnary(Opcode op, Type ty, Value val) {
     return emitter().emitUnary(op, ty, val);
 }
 
-Value Lowerer::emitCheckedNeg(Type ty, Value val)
-{
+Value Lowerer::emitCheckedNeg(Type ty, Value val) {
     return emitter().emitCheckedNeg(ty, val);
 }
 
@@ -542,17 +482,14 @@ Value Lowerer::emitCheckedNeg(Type ty, Value val)
 /// @param value The value to narrow (typically i64 from BASIC expressions).
 /// @param loc Source location for the narrowing instruction.
 /// @return Narrowed 32-bit value suitable for passing to runtime helpers.
-Value Lowerer::narrow32(Value value, il::support::SourceLoc loc)
-{
+Value Lowerer::narrow32(Value value, il::support::SourceLoc loc) {
     return emitCommon(loc).to_iN(value, 32);
 }
 
-namespace
-{
+namespace {
 // Prefer canonical Viper.* runtime names when an alias group exists.
 // Falls back to the original spelling when no registry entry is known.
-static std::string mapToCanonicalRuntime(std::string_view name)
-{
+static std::string mapToCanonicalRuntime(std::string_view name) {
     using namespace il::runtime;
 
     const RuntimeDescriptor *desc = findRuntimeDescriptor(name);
@@ -562,8 +499,7 @@ static std::string mapToCanonicalRuntime(std::string_view name)
     // Identify a canonical descriptor in the alias group sharing the same
     // generated signature id. Prefer entries with a namespace ('.' in name).
     // Priority: Viper.String.* > Viper.Terminal.* > other Viper.* namespaces.
-    if (auto sigId = findRuntimeSignatureId(desc->name))
-    {
+    if (auto sigId = findRuntimeSignatureId(desc->name)) {
         const bool callerCanonical = name.find('.') != std::string_view::npos;
         const RuntimeDescriptor *callerDesc =
             (callerCanonical && desc->name == name) ? desc : nullptr;
@@ -571,8 +507,7 @@ static std::string mapToCanonicalRuntime(std::string_view name)
         const RuntimeDescriptor *terminalPreferred = nullptr;
         const RuntimeDescriptor *firstCanonical = nullptr;
         const auto &reg = runtimeRegistry();
-        for (const auto &entry : reg)
-        {
+        for (const auto &entry : reg) {
             auto otherId = findRuntimeSignatureId(entry.name);
             if (!otherId || *otherId != *sigId)
                 continue;
@@ -581,13 +516,11 @@ static std::string mapToCanonicalRuntime(std::string_view name)
                 continue;
             if (!firstCanonical)
                 firstCanonical = &entry;
-            if (entry.name.rfind("Viper.String.", 0) == 0)
-            {
+            if (entry.name.rfind("Viper.String.", 0) == 0) {
                 stringPreferred = &entry;
                 break; // strongest preference satisfied
             }
-            if (entry.name.rfind("Viper.Terminal.", 0) == 0)
-            {
+            if (entry.name.rfind("Viper.Terminal.", 0) == 0) {
                 terminalPreferred = &entry;
                 continue; // keep looking for String.*
             }
@@ -607,8 +540,7 @@ static std::string mapToCanonicalRuntime(std::string_view name)
 }
 } // namespace
 
-void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args)
-{
+void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args) {
     const std::string name = mapToCanonicalRuntime(callee);
     // Track runtime callees so externs match call-site spellings.
     if (il::runtime::findRuntimeDescriptor(name))
@@ -616,8 +548,7 @@ void Lowerer::emitCall(const std::string &callee, const std::vector<Value> &args
     emitter().emitCall(name, args);
 }
 
-Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args)
-{
+Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector<Value> &args) {
     const std::string name = mapToCanonicalRuntime(callee);
     if (il::runtime::findRuntimeDescriptor(name))
         runtimeTracker.trackCalleeName(name);
@@ -637,45 +568,39 @@ Value Lowerer::emitCallRet(Type ty, const std::string &callee, const std::vector
 Value Lowerer::emitRuntimeHelper(il::runtime::RuntimeFeature feature,
                                  const std::string &callee,
                                  Type returnType,
-                                 const std::vector<Value> &args)
-{
+                                 const std::vector<Value> &args) {
     requestHelper(feature);
     // Void-returning helpers must use emitCall (no result) to maintain IL validity.
-    if (returnType.kind == Type::Kind::Void)
-    {
+    if (returnType.kind == Type::Kind::Void) {
         emitCall(callee, args);
         return Value::null();
     }
     return emitCallRet(returnType, callee, args);
 }
 
-Value Lowerer::emitCallIndirectRet(Type ty, Value callee, const std::vector<Value> &args)
-{
+Value Lowerer::emitCallIndirectRet(Type ty, Value callee, const std::vector<Value> &args) {
     return emitter().emitCallIndirectRet(ty, callee, args);
 }
 
-void Lowerer::emitCallIndirect(Value callee, const std::vector<Value> &args)
-{
+void Lowerer::emitCallIndirect(Value callee, const std::vector<Value> &args) {
     emitter().emitCallIndirect(callee, args);
 }
 
-Value Lowerer::emitConstStr(const std::string &globalName)
-{
+Value Lowerer::emitConstStr(const std::string &globalName) {
     return emitter().emitConstStr(globalName);
 }
 
-std::string Lowerer::getStringLabel(const std::string &s)
-{
+std::string Lowerer::getStringLabel(const std::string &s) {
     // Check if already interned in the StringTable
     std::string existing = stringTable_.lookup(s);
     if (!existing.empty())
         return existing;
 
     // Set up the emitter callback if not already configured
-    if (!stringTable_.size())
-    {
-        stringTable_.setEmitter([this](const std::string &label, const std::string &content)
-                                { builder->addGlobalStr(label, content); });
+    if (!stringTable_.size()) {
+        stringTable_.setEmitter([this](const std::string &label, const std::string &content) {
+            builder->addGlobalStr(label, content);
+        });
     }
 
     // Intern the string (this will call the emitter callback)

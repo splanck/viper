@@ -17,16 +17,14 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
@@ -34,8 +32,7 @@ static void writeFile(const std::string &path, const std::string &text)
 
 /// @brief Sum of 10 parameters (2 on stack) returned as exit code.
 /// Tests basic callee-side stack parameter loading.
-TEST(Arm64CLI, CalleeStackParamsSum10)
-{
+TEST(Arm64CLI, CalleeStackParamsSum10) {
     const std::string in = outPath("arm64_callee_stack_params_sum10.il");
     const std::string il = "il 0.1\n"
                            "func @sum10(%a:i64, %b:i64, %c:i64, %d:i64, %e:i64, %f:i64, "
@@ -69,8 +66,7 @@ TEST(Arm64CLI, CalleeStackParamsSum10)
 /// registers. This is the exact scenario that triggered BUG-NAT-002: the
 /// register allocator assigned a callee's vreg to the same physical register
 /// (X10) that was hardcoded for stack param loading in the prologue.
-TEST(Arm64CLI, CalleeStackParamsSurviveCall)
-{
+TEST(Arm64CLI, CalleeStackParamsSurviveCall) {
     const std::string in = outPath("arm64_callee_stack_params_survive.il");
     const std::string il = "il 0.1\n"
                            // Helper that returns its argument (forces a call that clobbers regs)
@@ -102,8 +98,7 @@ TEST(Arm64CLI, CalleeStackParamsSurviveCall)
 /// @brief 13 parameters (5 on stack) with all register params used alongside
 /// stack params. Tests that register allocator doesn't conflict with stack
 /// param loading even under high register pressure.
-TEST(Arm64CLI, CalleeStackParams13Wide)
-{
+TEST(Arm64CLI, CalleeStackParams13Wide) {
     const std::string in = outPath("arm64_callee_stack_params_13wide.il");
     const std::string il = "il 0.1\n"
                            "func @identity(%x:i64) -> i64 {\n"
@@ -147,8 +142,7 @@ TEST(Arm64CLI, CalleeStackParams13Wide)
     ASSERT_EQ(rc, 85);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

@@ -24,13 +24,10 @@
 
 #include <cstring>
 
-namespace viper::pkg
-{
-namespace
-{
+namespace viper::pkg {
+namespace {
 
-struct MD5Context
-{
+struct MD5Context {
     uint32_t state[4];
     uint32_t count[2];
     uint8_t buffer[64];
@@ -67,13 +64,11 @@ struct MD5Context
         (a) += (b);                                                                                \
     }
 
-void md5Transform(uint32_t state[4], const uint8_t block[64])
-{
+void md5Transform(uint32_t state[4], const uint8_t block[64]) {
     uint32_t a = state[0], b = state[1], c = state[2], d = state[3];
     uint32_t x[16];
 
-    for (int i = 0; i < 16; i++)
-    {
+    for (int i = 0; i < 16; i++) {
         x[i] = static_cast<uint32_t>(block[i * 4]) |
                (static_cast<uint32_t>(block[i * 4 + 1]) << 8) |
                (static_cast<uint32_t>(block[i * 4 + 2]) << 16) |
@@ -158,8 +153,7 @@ void md5Transform(uint32_t state[4], const uint8_t block[64])
     state[3] += d;
 }
 
-void md5Init(MD5Context &ctx)
-{
+void md5Init(MD5Context &ctx) {
     ctx.count[0] = ctx.count[1] = 0;
     ctx.state[0] = 0x67452301;
     ctx.state[1] = 0xefcdab89;
@@ -167,8 +161,7 @@ void md5Init(MD5Context &ctx)
     ctx.state[3] = 0x10325476;
 }
 
-void md5Update(MD5Context &ctx, const uint8_t *data, size_t len)
-{
+void md5Update(MD5Context &ctx, const uint8_t *data, size_t len) {
     size_t index = static_cast<size_t>((ctx.count[0] >> 3) & 0x3F);
 
     if ((ctx.count[0] += (static_cast<uint32_t>(len) << 3)) < (static_cast<uint32_t>(len) << 3))
@@ -178,30 +171,25 @@ void md5Update(MD5Context &ctx, const uint8_t *data, size_t len)
     size_t partLen = 64 - index;
     size_t i;
 
-    if (len >= partLen)
-    {
+    if (len >= partLen) {
         std::memcpy(&ctx.buffer[index], data, partLen);
         md5Transform(ctx.state, ctx.buffer);
 
         for (i = partLen; i + 63 < len; i += 64)
             md5Transform(ctx.state, &data[i]);
         index = 0;
-    }
-    else
-    {
+    } else {
         i = 0;
     }
 
     std::memcpy(&ctx.buffer[index], &data[i], len - i);
 }
 
-void md5Final(uint8_t digest[16], MD5Context &ctx)
-{
+void md5Final(uint8_t digest[16], MD5Context &ctx) {
     static const uint8_t padding[64] = {0x80};
     uint8_t bits[8];
 
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         bits[i] = static_cast<uint8_t>(ctx.count[0] >> (i * 8));
         bits[i + 4] = static_cast<uint8_t>(ctx.count[1] >> (i * 8));
     }
@@ -211,8 +199,7 @@ void md5Final(uint8_t digest[16], MD5Context &ctx)
     md5Update(ctx, padding, padLen);
     md5Update(ctx, bits, 8);
 
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         digest[i] = static_cast<uint8_t>(ctx.state[0] >> (i * 8));
         digest[i + 4] = static_cast<uint8_t>(ctx.state[1] >> (i * 8));
         digest[i + 8] = static_cast<uint8_t>(ctx.state[2] >> (i * 8));
@@ -222,24 +209,21 @@ void md5Final(uint8_t digest[16], MD5Context &ctx)
 
 } // namespace
 
-void md5(const uint8_t *data, size_t len, uint8_t digest[16])
-{
+void md5(const uint8_t *data, size_t len, uint8_t digest[16]) {
     MD5Context ctx{};
     md5Init(ctx);
     md5Update(ctx, data, len);
     md5Final(digest, ctx);
 }
 
-std::string md5hex(const uint8_t *data, size_t len)
-{
+std::string md5hex(const uint8_t *data, size_t len) {
     uint8_t digest[16];
     md5(data, len, digest);
 
     static const char hex[] = "0123456789abcdef";
     std::string result;
     result.reserve(32);
-    for (int i = 0; i < 16; i++)
-    {
+    for (int i = 0; i < 16; i++) {
         result.push_back(hex[digest[i] >> 4]);
         result.push_back(hex[digest[i] & 0x0f]);
     }

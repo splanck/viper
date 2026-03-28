@@ -34,8 +34,7 @@ using il::support::Expected;
 using il::support::makeError;
 using il::verify::detail::kindFromCategory;
 
-namespace il::verify::detail
-{
+namespace il::verify::detail {
 
 /// @brief Construct a checker bound to a verification context and opcode metadata.
 ///
@@ -47,9 +46,7 @@ namespace il::verify::detail
 /// @param ctx Verification context describing the current instruction.
 /// @param info Opcode metadata containing result-type requirements.
 ResultTypeChecker::ResultTypeChecker(const VerifyCtx &ctx, const InstructionSpec &spec)
-    : ctx_(ctx), spec_(spec)
-{
-}
+    : ctx_(ctx), spec_(spec) {}
 
 /// @brief Validate the presence and type of an instruction's result value.
 ///
@@ -66,13 +63,11 @@ ResultTypeChecker::ResultTypeChecker(const VerifyCtx &ctx, const InstructionSpec
 ///          Any failure results in a richly formatted diagnostic via @ref report.
 ///
 /// @return Empty success on validity; otherwise a structured diagnostic error.
-Expected<void> ResultTypeChecker::run() const
-{
+Expected<void> ResultTypeChecker::run() const {
     const auto &instr = ctx_.instr;
     const bool hasResult = instr.result.has_value();
 
-    switch (spec_.resultArity)
-    {
+    switch (spec_.resultArity) {
         case ResultArity::None:
             if (hasResult)
                 return report("unexpected result");
@@ -87,15 +82,11 @@ Expected<void> ResultTypeChecker::run() const
             break;
     }
 
-    if (spec_.resultType == TypeCategory::InstrType)
-    {
-        if (instr.op != il::core::Opcode::IdxChk && instr.type.kind == il::core::Type::Kind::Void)
-        {
+    if (spec_.resultType == TypeCategory::InstrType) {
+        if (instr.op != il::core::Opcode::IdxChk && instr.type.kind == il::core::Type::Kind::Void) {
             return report("instruction type must be non-void");
         }
-    }
-    else if (auto expectedKind = kindFromCategory(spec_.resultType))
-    {
+    } else if (auto expectedKind = kindFromCategory(spec_.resultType)) {
         (void)expectedKind;
         // Result annotations on fixed-type instructions are advisory; the verifier
         // records the schema-defined type regardless of the IL's explicit hint.
@@ -113,8 +104,7 @@ Expected<void> ResultTypeChecker::run() const
 ///
 /// @param message Human-readable description of the mismatch.
 /// @return Expected error containing the diagnostic payload.
-Expected<void> ResultTypeChecker::report(std::string_view message) const
-{
+Expected<void> ResultTypeChecker::report(std::string_view message) const {
     return Expected<void>{
         makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};
 }

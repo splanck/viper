@@ -32,8 +32,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 using pipeline_detail::coreTypeForAstType;
 
@@ -41,8 +40,7 @@ using pipeline_detail::coreTypeForAstType;
 // Variable Collection Walker
 // =============================================================================
 
-namespace
-{
+namespace {
 
 /// @brief AST walker that records symbol usage within a procedure body.
 /// @details Traverses expressions and statements to discover variable references
@@ -53,50 +51,41 @@ namespace
 ///
 ///          Uses ProcedureSymbolTracker to centralize symbol tracking logic,
 ///          avoiding duplication with RuntimeNeedsScanner.
-class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
-{
+class VarCollectWalker final : public BasicAstWalker<VarCollectWalker> {
   public:
     /// @brief Create a walker bound to the current lowering instance.
     /// @param lowerer Owning lowering driver whose symbol tables are updated.
     explicit VarCollectWalker(Lowerer &lowerer) noexcept : lowerer_(lowerer), tracker_(lowerer) {}
 
     /// @brief Record usage of a scalar variable expression.
-    void after(const VarExpr &expr)
-    {
+    void after(const VarExpr &expr) {
         tracker_.trackScalar(expr.name);
     }
 
     /// @brief Record usage of an array element expression.
-    void after(const ArrayExpr &expr)
-    {
+    void after(const ArrayExpr &expr) {
         tracker_.trackArray(expr.name);
     }
 
     /// @brief Record usage of an array lower-bound expression.
-    void after(const LBoundExpr &expr)
-    {
+    void after(const LBoundExpr &expr) {
         tracker_.trackArray(expr.name);
     }
 
     /// @brief Record usage of an array upper-bound expression.
-    void after(const UBoundExpr &expr)
-    {
+    void after(const UBoundExpr &expr) {
         tracker_.trackArray(expr.name);
     }
 
     /// @brief Track variables introduced by DIM statements.
-    void before(const DimStmt &stmt)
-    {
+    void before(const DimStmt &stmt) {
         if (stmt.name.empty())
             return;
-        if (!stmt.explicitClassQname.empty())
-        {
+        if (!stmt.explicitClassQname.empty()) {
             std::string className =
                 lowerer_.resolveQualifiedClassCasing(JoinDots(stmt.explicitClassQname));
             lowerer_.setSymbolObjectType(stmt.name, className);
-        }
-        else
-        {
+        } else {
             lowerer_.setSymbolType(stmt.name, stmt.type);
         }
         lowerer_.markSymbolReferenced(stmt.name);
@@ -105,8 +94,7 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     }
 
     /// @brief Track constant declarations.
-    void before(const ConstStmt &stmt)
-    {
+    void before(const ConstStmt &stmt) {
         if (stmt.name.empty())
             return;
         lowerer_.setSymbolType(stmt.name, stmt.type);
@@ -114,8 +102,7 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     }
 
     /// @brief Track STATIC variable declarations.
-    void before(const StaticStmt &stmt)
-    {
+    void before(const StaticStmt &stmt) {
         if (stmt.name.empty())
             return;
         lowerer_.setSymbolType(stmt.name, stmt.type);
@@ -124,8 +111,7 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     }
 
     /// @brief Track variables re-dimensioned at runtime.
-    void before(const ReDimStmt &stmt)
-    {
+    void before(const ReDimStmt &stmt) {
         if (stmt.name.empty())
             return;
         lowerer_.markSymbolReferenced(stmt.name);
@@ -133,60 +119,48 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
     }
 
     /// @brief Track optional catch variable introduced by TRY/CATCH.
-    void before(const TryCatchStmt &stmt)
-    {
-        if (stmt.catchVar && !stmt.catchVar->empty())
-        {
+    void before(const TryCatchStmt &stmt) {
+        if (stmt.catchVar && !stmt.catchVar->empty()) {
             lowerer_.markSymbolReferenced(*stmt.catchVar);
         }
     }
 
     /// @brief Track resource variable introduced by USING.
-    void before(const UsingStmt &stmt)
-    {
-        if (!stmt.varName.empty())
-        {
+    void before(const UsingStmt &stmt) {
+        if (!stmt.varName.empty()) {
             lowerer_.markSymbolReferenced(stmt.varName);
 
             // Build qualified class name from type parts
             std::string className;
-            for (size_t i = 0; i < stmt.typeQualified.size(); ++i)
-            {
+            for (size_t i = 0; i < stmt.typeQualified.size(); ++i) {
                 if (i > 0)
                     className += ".";
                 className += stmt.typeQualified[i];
             }
-            if (!className.empty())
-            {
+            if (!className.empty()) {
                 lowerer_.setSymbolObjectType(stmt.varName, className);
             }
         }
     }
 
     /// @brief Record loop induction variables referenced by FOR statements.
-    void before(const ForStmt &stmt)
-    {
-        if (stmt.varExpr)
-        {
-            if (auto *varExpr = as<VarExpr>(*stmt.varExpr))
-            {
+    void before(const ForStmt &stmt) {
+        if (stmt.varExpr) {
+            if (auto *varExpr = as<VarExpr>(*stmt.varExpr)) {
                 lowerer_.markSymbolReferenced(varExpr->name);
             }
         }
     }
 
     /// @brief Record loop induction variables referenced by NEXT statements.
-    void before(const NextStmt &stmt)
-    {
+    void before(const NextStmt &stmt) {
         if (!stmt.var.empty())
             lowerer_.markSymbolReferenced(stmt.var);
     }
 
     /// @brief Record variables that participate in INPUT statements.
-    void before(const InputStmt &stmt)
-    {
-        for (const auto &name : stmt.vars)
-        {
+    void before(const InputStmt &stmt) {
+        for (const auto &name : stmt.vars) {
             tracker_.trackScalar(name);
         }
     }
@@ -206,8 +180,7 @@ class VarCollectWalker final : public BasicAstWalker<VarCollectWalker>
 /// @details Drives @ref VarCollectWalker over each statement pointer, skipping
 ///          null entries to accommodate partially built AST lists.
 /// @param stmts Statement pointers whose referenced symbols should be recorded.
-void ProcedureLowering::collectVars(const std::vector<const Stmt *> &stmts)
-{
+void ProcedureLowering::collectVars(const std::vector<const Stmt *> &stmts) {
     VarCollectWalker walker(lowerer);
     for (const auto *stmt : stmts)
         if (stmt)
@@ -218,8 +191,7 @@ void ProcedureLowering::collectVars(const std::vector<const Stmt *> &stmts)
 /// @details Flattens procedure and main-body statements into a temporary array
 ///          before deferring to @ref collectVars(const std::vector<const Stmt *> &).
 /// @param prog Program providing statements to analyse.
-void ProcedureLowering::collectVars(const Program &prog)
-{
+void ProcedureLowering::collectVars(const Program &prog) {
     std::vector<const Stmt *> ptrs;
     ptrs.reserve(prog.procs.size() + prog.main.size());
     for (const auto &s : prog.procs)
@@ -231,15 +203,13 @@ void ProcedureLowering::collectVars(const Program &prog)
 
 /// @brief Forward variable discovery to the procedure lowering helper.
 /// @param prog Program whose statements should be scanned for symbol usage.
-void Lowerer::collectVars(const Program &prog)
-{
+void Lowerer::collectVars(const Program &prog) {
     procedureLowering->collectVars(prog);
 }
 
 /// @brief Forward variable discovery for an arbitrary statement list.
 /// @param stmts Statements whose referenced symbols should be recorded.
-void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
-{
+void Lowerer::collectVars(const std::vector<const Stmt *> &stmts) {
     procedureLowering->collectVars(stmts);
 }
 
@@ -253,16 +223,12 @@ void Lowerer::collectVars(const std::vector<const Stmt *> &stmts)
 /// @param lowerer Lowerer instance providing access to semantic analyzer.
 /// @param name Variable name to query.
 /// @return Best-effort type derived from semantic analysis or naming convention.
-Type inferVariableTypeForLowering(const Lowerer &lowerer, std::string_view name)
-{
+Type inferVariableTypeForLowering(const Lowerer &lowerer, std::string_view name) {
     // Query semantic analyzer for value-based type inference
-    if (const auto *sema = lowerer.semanticAnalyzer())
-    {
-        if (auto semaType = sema->lookupVarType(std::string{name}))
-        {
+    if (const auto *sema = lowerer.semanticAnalyzer()) {
+        if (auto semaType = sema->lookupVarType(std::string{name})) {
             using SemaType = SemanticAnalyzer::Type;
-            switch (*semaType)
-            {
+            switch (*semaType) {
                 case SemaType::Int:
                     return Type::I64;
                 case SemaType::Float:
@@ -287,17 +253,16 @@ Type inferVariableTypeForLowering(const Lowerer &lowerer, std::string_view name)
 ///          array metadata allocation.
 /// @param name Identifier describing the symbol.
 /// @return Populated slot descriptor containing IL type and auxiliary flags.
-Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
-{
+Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const {
     SlotType info;
     AstType astTy = inferVariableTypeForLowering(*this, name);
-    auto isGenericObject = [](std::string_view cls)
-    { return string_utils::iequals(cls, "object"); };
+    auto isGenericObject = [](std::string_view cls) {
+        return string_utils::iequals(cls, "object");
+    };
 
     const auto *sym = findSymbol(name);
 
-    if (sym && sym->isObject && !sym->objectClass.empty() && !isGenericObject(sym->objectClass))
-    {
+    if (sym && sym->isObject && !sym->objectClass.empty() && !isGenericObject(sym->objectClass)) {
         info.type = Type(Type::Kind::Ptr);
         info.isArray = false;
         info.isBoolean = false;
@@ -309,12 +274,10 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
     // BUG-BAS-002 fix: Skip module-level object cache for procedure parameters.
     // Parameters should use their declared type, not be shadowed by module-level
     // object variables with the same name.
-    if (!isProcParam(name))
-    {
+    if (!isProcParam(name)) {
         auto modObjIt = moduleObjectClass_.find(name);
         if (modObjIt != moduleObjectClass_.end() && !modObjIt->second.empty() &&
-            !isGenericObject(modObjIt->second))
-        {
+            !isGenericObject(modObjIt->second)) {
             info.type = Type(Type::Kind::Ptr);
             info.isArray = false;
             info.isBoolean = false;
@@ -324,12 +287,10 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
         }
     }
 
-    if (sym)
-    {
+    if (sym) {
         // BUG-BAS-002 fix: Only treat as object if it has a valid object class.
         // This prevents module-level object variables from polluting constructor parameters.
-        if (sym->isObject && !sym->objectClass.empty())
-        {
+        if (sym->isObject && !sym->objectClass.empty()) {
             info.type = Type(Type::Kind::Ptr);
             info.isArray = false;
             info.isBoolean = false;
@@ -342,8 +303,7 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
         // 2. This is a procedure parameter (BUG-BAS-002) - params use their declared type,
         //    not module-level semantic analysis type
         bool hasSemaType = false;
-        if (semanticAnalyzer_)
-        {
+        if (semanticAnalyzer_) {
             hasSemaType = semanticAnalyzer_->lookupVarType(std::string{name}).has_value();
         }
         if (sym->hasType && (!hasSemaType || isProcParam(name)))
@@ -355,9 +315,7 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
             info.isBoolean = (astTy == AstType::Bool);
         else
             info.isBoolean = false;
-    }
-    else
-    {
+    } else {
         info.isArray = false;
         info.isBoolean = (astTy == AstType::Bool);
     }
@@ -379,28 +337,23 @@ Lowerer::SlotType Lowerer::getSlotType(std::string_view name) const
 /// @param name Variable identifier to resolve.
 /// @param loc Source location for error reporting.
 /// @return Storage descriptor or nullopt if unresolved.
-std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::string_view name,
-                                                                        il::support::SourceLoc loc)
-{
+std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(
+    std::string_view name, il::support::SourceLoc loc) {
     if (name.empty())
         return std::nullopt;
 
     SlotType slotInfo = getSlotType(name);
 
     // STATIC variables use procedure-qualified runtime storage. (BUG-010)
-    if (const auto *info = findSymbol(name))
-    {
-        if (info->isStatic)
-        {
+    if (const auto *info = findSymbol(name)) {
+        if (info->isStatic) {
             return resolveStaticVariableStorage(name, slotInfo);
         }
     }
 
     // Local/parameter symbols shadow module globals. (BUG-103/BUG-OOP-036)
-    if (const auto *info = findSymbol(name))
-    {
-        if (info->slotId)
-        {
+    if (const auto *info = findSymbol(name)) {
+        if (info->slotId) {
             bool isMain = (context().function() && context().function()->name == "main");
 
             // In SUB/FUNCTION, local variables always shadow module-level symbols
@@ -418,18 +371,15 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::str
     }
 
     // Module-level globals use runtime-managed storage for cross-procedure sharing
-    if (semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(std::string(name)))
-    {
+    if (semanticAnalyzer_ && semanticAnalyzer_->isModuleLevelSymbol(std::string(name))) {
         bool isMain = (context().function() && context().function()->name == "main");
-        if (!isMain || isCrossProcGlobal(std::string(name)))
-        {
+        if (!isMain || isCrossProcGlobal(std::string(name))) {
             return resolveModuleLevelStorage(name, slotInfo);
         }
     }
 
     // Try implicit class field access
-    if (auto field = resolveImplicitField(name, loc))
-    {
+    if (auto field = resolveImplicitField(name, loc)) {
         VariableStorage storage;
         storage.slotInfo = slotInfo;
         storage.slotInfo.type = field->ilType;
@@ -452,16 +402,12 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveVariableStorage(std::str
 /// @param slotInfo Slot type information.
 /// @return Storage descriptor pointing to runtime-managed address.
 std::optional<Lowerer::VariableStorage> Lowerer::resolveStaticVariableStorage(
-    std::string_view name, const SlotType &slotInfo)
-{
+    std::string_view name, const SlotType &slotInfo) {
     // Construct scoped name: "ProcedureName.VariableName"
     std::string scopedName;
-    if (auto *func = context().function())
-    {
+    if (auto *func = context().function()) {
         scopedName = std::string(func->name) + "." + std::string(name);
-    }
-    else
-    {
+    } else {
         scopedName = std::string(name);
     }
 
@@ -485,9 +431,8 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveStaticVariableStorage(
 /// @param name Variable identifier.
 /// @param slotInfo Slot type information.
 /// @return Storage descriptor pointing to runtime-managed address.
-std::optional<Lowerer::VariableStorage> Lowerer::resolveModuleLevelStorage(std::string_view name,
-                                                                           const SlotType &slotInfo)
-{
+std::optional<Lowerer::VariableStorage> Lowerer::resolveModuleLevelStorage(
+    std::string_view name, const SlotType &slotInfo) {
     std::string callee = selectModvarAddrHelper(slotInfo.type.kind);
 
     std::string label = getStringLabel(std::string(name));
@@ -504,10 +449,8 @@ std::optional<Lowerer::VariableStorage> Lowerer::resolveModuleLevelStorage(std::
 /// @brief Select the appropriate rt_modvar_addr_* helper based on type kind.
 /// @param kind IL type kind for the variable.
 /// @return Runtime function name for address lookup.
-std::string Lowerer::selectModvarAddrHelper(Type::Kind kind)
-{
-    switch (kind)
-    {
+std::string Lowerer::selectModvarAddrHelper(Type::Kind kind) {
+    switch (kind) {
         case Type::Kind::I1:
             requireModvarAddrI1();
             return "rt_modvar_addr_i1";
@@ -533,14 +476,12 @@ std::string Lowerer::selectModvarAddrHelper(Type::Kind kind)
 /// @brief Resolve canonical class name to declared qualified casing using OOP index.
 /// @param qname Case-insensitive qualified class name (segments separated by '.').
 /// @return Qualified name with original casing when found; otherwise @p qname.
-std::string Lowerer::resolveQualifiedClassCasing(const std::string &qname) const
-{
+std::string Lowerer::resolveQualifiedClassCasing(const std::string &qname) const {
     // Fast path: exact match
     if (const ClassInfo *ci = oopIndex_.findClass(qname))
         return ci->qualifiedName.empty() ? qname : ci->qualifiedName;
     // Case-insensitive match over indexed classes
-    auto lower = [](const std::string &s)
-    {
+    auto lower = [](const std::string &s) {
         std::string out;
         out.reserve(s.size());
         for (unsigned char c : s)
@@ -548,8 +489,7 @@ std::string Lowerer::resolveQualifiedClassCasing(const std::string &qname) const
         return out;
     };
     const std::string needle = lower(qname);
-    for (const auto &p : oopIndex_.classes())
-    {
+    for (const auto &p : oopIndex_.classes()) {
         const ClassInfo &ci = p.second;
         if (lower(ci.qualifiedName) == needle)
             return ci.qualifiedName;
@@ -562,8 +502,7 @@ std::string Lowerer::resolveQualifiedClassCasing(const std::string &qname) const
 ///          class name after resolving casing via the OOP index.
 /// @param className Class name to canonicalize.
 /// @return Unqualified class name suitable for classLayouts_ lookup.
-std::string Lowerer::canonicalLayoutKey(std::string_view className) const
-{
+std::string Lowerer::canonicalLayoutKey(std::string_view className) const {
     std::string qname = resolveQualifiedClassCasing(std::string(className));
     auto lastDot = qname.find_last_of('.');
     std::string leaf = (lastDot == std::string::npos) ? qname : qname.substr(lastDot + 1);
@@ -574,8 +513,7 @@ std::string Lowerer::canonicalLayoutKey(std::string_view className) const
 /// @details Tries direct lookup, canonicalized key, and case-insensitive match.
 /// @param className Class name to look up.
 /// @return Pointer to layout or nullptr if not found.
-const Lowerer::ClassLayout *Lowerer::findClassLayout(std::string_view className) const
-{
+const Lowerer::ClassLayout *Lowerer::findClassLayout(std::string_view className) const {
     // Try direct key (heterogeneous lookup)
     auto it = classLayouts_.find(className);
     if (it != classLayouts_.end())
@@ -586,15 +524,13 @@ const Lowerer::ClassLayout *Lowerer::findClassLayout(std::string_view className)
     if (it2 != classLayouts_.end())
         return &it2->second;
     // Case-insensitive fallback
-    auto lower = [](std::string s)
-    {
+    auto lower = [](std::string s) {
         for (auto &c : s)
             c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
         return s;
     };
     std::string needle = lower(key);
-    for (const auto &p : classLayouts_)
-    {
+    for (const auto &p : classLayouts_) {
         std::string leaf = p.first;
         if (lower(leaf) == needle)
             return &p.second;
@@ -609,34 +545,28 @@ const Lowerer::ClassLayout *Lowerer::findClassLayout(std::string_view className)
 /// @brief Cache module-level object arrays from AST for cross-procedure access.
 /// @details Scans main body DIM statements to populate element class caches.
 /// @param main Main body statements to scan.
-void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main)
-{
+void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main) {
     moduleObjArrayElemClass_.clear();
     moduleObjectClass_.clear();
     moduleStrArrayNames_.clear();
 
-    for (const auto &stmtPtr : main)
-    {
+    for (const auto &stmtPtr : main) {
         if (!stmtPtr)
             continue;
 
-        if (stmtPtr->stmtKind() == Stmt::Kind::Dim)
-        {
+        if (stmtPtr->stmtKind() == Stmt::Kind::Dim) {
             const auto *dim = as<const DimStmt>(*stmtPtr);
             if (!dim)
                 continue;
 
             // Cache string arrays
-            if (dim->isArray && dim->type == AstType::Str)
-            {
+            if (dim->isArray && dim->type == AstType::Str) {
                 moduleStrArrayNames_.insert(dim->name);
             }
 
-            if (!dim->explicitClassQname.empty())
-            {
+            if (!dim->explicitClassQname.empty()) {
                 std::string className;
-                for (size_t i = 0; i < dim->explicitClassQname.size(); ++i)
-                {
+                for (size_t i = 0; i < dim->explicitClassQname.size(); ++i) {
                     if (i > 0)
                         className += '.';
                     className += dim->explicitClassQname[i];
@@ -653,20 +583,16 @@ void Lowerer::cacheModuleObjectArraysFromAST(const std::vector<StmtPtr> &main)
 
 /// @brief Cache module-level object arrays from symbol table.
 /// @details Alternative to AST-based caching when symbols are already populated.
-void Lowerer::cacheModuleObjectArraysFromSymbols()
-{
+void Lowerer::cacheModuleObjectArraysFromSymbols() {
     moduleObjArrayElemClass_.clear();
     moduleStrArrayNames_.clear();
-    for (const auto &p : symbols)
-    {
+    for (const auto &p : symbols) {
         const std::string &name = p.first;
         const SymbolInfo &info = p.second;
-        if (info.isArray && info.isObject && !info.objectClass.empty())
-        {
+        if (info.isArray && info.isObject && !info.objectClass.empty()) {
             moduleObjArrayElemClass_[name] = info.objectClass;
         }
-        if (info.isArray && info.type == AstType::Str)
-        {
+        if (info.isArray && info.type == AstType::Str) {
             moduleStrArrayNames_.insert(name);
         }
     }
@@ -675,8 +601,7 @@ void Lowerer::cacheModuleObjectArraysFromSymbols()
 /// @brief Look up the element class for a module-level object array.
 /// @param name Array name to query.
 /// @return Class name or empty string if not an object array.
-std::string Lowerer::lookupModuleArrayElemClass(std::string_view name) const
-{
+std::string Lowerer::lookupModuleArrayElemClass(std::string_view name) const {
     auto it = moduleObjArrayElemClass_.find(std::string{name});
     if (it == moduleObjArrayElemClass_.end())
         return {};
@@ -686,8 +611,7 @@ std::string Lowerer::lookupModuleArrayElemClass(std::string_view name) const
 /// @brief Check if a module-level variable is a string array.
 /// @param name Variable name to check.
 /// @return True if the name refers to a module-level string array.
-bool Lowerer::isModuleStrArray(std::string_view name) const
-{
+bool Lowerer::isModuleStrArray(std::string_view name) const {
     return moduleStrArrayNames_.contains(std::string{name});
 }
 

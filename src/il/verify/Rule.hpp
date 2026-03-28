@@ -35,12 +35,10 @@
 
 #include "il/core/Instr.hpp"
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Interface implemented by verification rules for specific opcodes.
-class Rule
-{
+class Rule {
   public:
     virtual ~Rule() = default;
 

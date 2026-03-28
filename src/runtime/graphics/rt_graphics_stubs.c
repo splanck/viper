@@ -51,8 +51,7 @@
 
 extern void rt_trap(const char *msg);
 
-void *rt_canvas_new(rt_string title, int64_t width, int64_t height)
-{
+void *rt_canvas_new(rt_string title, int64_t width, int64_t height) {
     (void)title;
     (void)width;
     (void)height;
@@ -62,16 +61,14 @@ void *rt_canvas_new(rt_string title, int64_t width, int64_t height)
 
 /// @brief Destroy and free destroy resources.
 /// @param canvas
-void rt_canvas_destroy(void *canvas)
-{
+void rt_canvas_destroy(void *canvas) {
     (void)canvas;
 }
 
 /// @brief Perform width operation.
 /// @param canvas
 /// @return Result value.
-int64_t rt_canvas_width(void *canvas)
-{
+int64_t rt_canvas_width(void *canvas) {
     (void)canvas;
     return 0;
 }
@@ -79,8 +76,7 @@ int64_t rt_canvas_width(void *canvas)
 /// @brief Perform height operation.
 /// @param canvas
 /// @return Result value.
-int64_t rt_canvas_height(void *canvas)
-{
+int64_t rt_canvas_height(void *canvas) {
     (void)canvas;
     return 0;
 }
@@ -88,24 +84,21 @@ int64_t rt_canvas_height(void *canvas)
 /// @brief Perform should close operation.
 /// @param canvas
 /// @return Result value.
-int64_t rt_canvas_should_close(void *canvas)
-{
+int64_t rt_canvas_should_close(void *canvas) {
     (void)canvas;
     return 1;
 }
 
 /// @brief Perform flip operation.
 /// @param canvas
-void rt_canvas_flip(void *canvas)
-{
+void rt_canvas_flip(void *canvas) {
     (void)canvas;
 }
 
 /// @brief Clear all clear.
 /// @param canvas
 /// @param color
-void rt_canvas_clear(void *canvas, int64_t color)
-{
+void rt_canvas_clear(void *canvas, int64_t color) {
     (void)canvas;
     (void)color;
 }
@@ -117,8 +110,7 @@ void rt_canvas_clear(void *canvas, int64_t color)
 /// @param x2
 /// @param y2
 /// @param color
-void rt_canvas_line(void *canvas, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color)
-{
+void rt_canvas_line(void *canvas, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color) {
     (void)canvas;
     (void)x1;
     (void)y1;
@@ -134,8 +126,7 @@ void rt_canvas_line(void *canvas, int64_t x1, int64_t y1, int64_t x2, int64_t y2
 /// @param w
 /// @param h
 /// @param color
-void rt_canvas_box(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
-{
+void rt_canvas_box(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -151,8 +142,7 @@ void rt_canvas_box(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int
 /// @param w
 /// @param h
 /// @param color
-void rt_canvas_frame(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
-{
+void rt_canvas_frame(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -167,8 +157,7 @@ void rt_canvas_frame(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, i
 /// @param cy
 /// @param radius
 /// @param color
-void rt_canvas_disc(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_t color)
-{
+void rt_canvas_disc(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_t color) {
     (void)canvas;
     (void)cx;
     (void)cy;
@@ -182,8 +171,7 @@ void rt_canvas_disc(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_
 /// @param cy
 /// @param radius
 /// @param color
-void rt_canvas_ring(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_t color)
-{
+void rt_canvas_ring(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_t color) {
     (void)canvas;
     (void)cx;
     (void)cy;
@@ -196,8 +184,7 @@ void rt_canvas_ring(void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_
 /// @param x
 /// @param y
 /// @param color
-void rt_canvas_plot(void *canvas, int64_t x, int64_t y, int64_t color)
-{
+void rt_canvas_plot(void *canvas, int64_t x, int64_t y, int64_t color) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -207,8 +194,7 @@ void rt_canvas_plot(void *canvas, int64_t x, int64_t y, int64_t color)
 /// @brief Perform poll operation.
 /// @param canvas
 /// @return Result value.
-int64_t rt_canvas_poll(void *canvas)
-{
+int64_t rt_canvas_poll(void *canvas) {
     (void)canvas;
     return 0;
 }
@@ -217,8 +203,7 @@ int64_t rt_canvas_poll(void *canvas)
 /// @param canvas
 /// @param key
 /// @return Result value.
-int64_t rt_canvas_key_held(void *canvas, int64_t key)
-{
+int64_t rt_canvas_key_held(void *canvas, int64_t key) {
     (void)canvas;
     (void)key;
     return 0;
@@ -230,8 +215,7 @@ int64_t rt_canvas_key_held(void *canvas, int64_t key)
 /// @param y
 /// @param text
 /// @param color
-void rt_canvas_text(void *canvas, int64_t x, int64_t y, rt_string text, int64_t color)
-{
+void rt_canvas_text(void *canvas, int64_t x, int64_t y, rt_string text, int64_t color) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -246,8 +230,7 @@ void rt_canvas_text(void *canvas, int64_t x, int64_t y, rt_string text, int64_t 
 /// @param text
 /// @param fg
 /// @param bg
-void rt_canvas_text_bg(void *canvas, int64_t x, int64_t y, rt_string text, int64_t fg, int64_t bg)
-{
+void rt_canvas_text_bg(void *canvas, int64_t x, int64_t y, rt_string text, int64_t fg, int64_t bg) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -259,22 +242,19 @@ void rt_canvas_text_bg(void *canvas, int64_t x, int64_t y, rt_string text, int64
 /// @brief Perform text width operation.
 /// @param text
 /// @return Result value.
-int64_t rt_canvas_text_width(rt_string text)
-{
+int64_t rt_canvas_text_width(rt_string text) {
     (void)text;
     return 0;
 }
 
 /// @brief Perform text height operation.
 /// @return Result value.
-int64_t rt_canvas_text_height(void)
-{
+int64_t rt_canvas_text_height(void) {
     return 8;
 }
 
 void rt_canvas_text_scaled(
-    void *canvas, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t color)
-{
+    void *canvas, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t color) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -284,8 +264,7 @@ void rt_canvas_text_scaled(
 }
 
 void rt_canvas_text_scaled_bg(
-    void *canvas, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t fg, int64_t bg)
-{
+    void *canvas, int64_t x, int64_t y, rt_string text, int64_t scale, int64_t fg, int64_t bg) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -299,8 +278,7 @@ void rt_canvas_text_scaled_bg(
 /// @param text
 /// @param scale
 /// @return Result value.
-int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale)
-{
+int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale) {
     (void)text;
     (void)scale;
     return 0;
@@ -311,8 +289,7 @@ int64_t rt_canvas_text_scaled_width(rt_string text, int64_t scale)
 /// @param y
 /// @param text
 /// @param color
-void rt_canvas_text_centered(void *canvas, int64_t y, rt_string text, int64_t color)
-{
+void rt_canvas_text_centered(void *canvas, int64_t y, rt_string text, int64_t color) {
     (void)canvas;
     (void)y;
     (void)text;
@@ -325,8 +302,7 @@ void rt_canvas_text_centered(void *canvas, int64_t y, rt_string text, int64_t co
 /// @param y
 /// @param text
 /// @param color
-void rt_canvas_text_right(void *canvas, int64_t margin, int64_t y, rt_string text, int64_t color)
-{
+void rt_canvas_text_right(void *canvas, int64_t margin, int64_t y, rt_string text, int64_t color) {
     (void)canvas;
     (void)margin;
     (void)y;
@@ -335,8 +311,7 @@ void rt_canvas_text_right(void *canvas, int64_t margin, int64_t y, rt_string tex
 }
 
 void rt_canvas_text_centered_scaled(
-    void *canvas, int64_t y, rt_string text, int64_t color, int64_t scale)
-{
+    void *canvas, int64_t y, rt_string text, int64_t color, int64_t scale) {
     (void)canvas;
     (void)y;
     (void)text;
@@ -345,8 +320,7 @@ void rt_canvas_text_centered_scaled(
 }
 
 void rt_canvas_box_alpha(
-    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, int64_t alpha)
-{
+    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color, int64_t alpha) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -357,8 +331,7 @@ void rt_canvas_box_alpha(
 }
 
 void rt_canvas_disc_alpha(
-    void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_t color, int64_t alpha)
-{
+    void *canvas, int64_t cx, int64_t cy, int64_t radius, int64_t color, int64_t alpha) {
     (void)canvas;
     (void)cx;
     (void)cy;
@@ -372,8 +345,7 @@ void rt_canvas_disc_alpha(
 /// @param x
 /// @param y
 /// @param pixels
-void rt_canvas_blit(void *canvas, int64_t x, int64_t y, void *pixels)
-{
+void rt_canvas_blit(void *canvas, int64_t x, int64_t y, void *pixels) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -387,8 +359,7 @@ void rt_canvas_blit_region(void *canvas,
                            int64_t sx,
                            int64_t sy,
                            int64_t w,
-                           int64_t h)
-{
+                           int64_t h) {
     (void)canvas;
     (void)dx;
     (void)dy;
@@ -404,17 +375,20 @@ void rt_canvas_blit_region(void *canvas,
 /// @param x
 /// @param y
 /// @param pixels
-void rt_canvas_blit_alpha(void *canvas, int64_t x, int64_t y, void *pixels)
-{
+void rt_canvas_blit_alpha(void *canvas, int64_t x, int64_t y, void *pixels) {
     (void)canvas;
     (void)x;
     (void)y;
     (void)pixels;
 }
 
-void rt_canvas_thick_line(
-    void *canvas, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t thickness, int64_t color)
-{
+void rt_canvas_thick_line(void *canvas,
+                          int64_t x1,
+                          int64_t y1,
+                          int64_t x2,
+                          int64_t y2,
+                          int64_t thickness,
+                          int64_t color) {
     (void)canvas;
     (void)x1;
     (void)y1;
@@ -425,8 +399,7 @@ void rt_canvas_thick_line(
 }
 
 void rt_canvas_round_box(
-    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t radius, int64_t color)
-{
+    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t radius, int64_t color) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -437,8 +410,7 @@ void rt_canvas_round_box(
 }
 
 void rt_canvas_round_frame(
-    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t radius, int64_t color)
-{
+    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t radius, int64_t color) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -453,8 +425,7 @@ void rt_canvas_round_frame(
 /// @param x
 /// @param y
 /// @param color
-void rt_canvas_flood_fill(void *canvas, int64_t x, int64_t y, int64_t color)
-{
+void rt_canvas_flood_fill(void *canvas, int64_t x, int64_t y, int64_t color) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -468,8 +439,7 @@ void rt_canvas_triangle(void *canvas,
                         int64_t y2,
                         int64_t x3,
                         int64_t y3,
-                        int64_t color)
-{
+                        int64_t color) {
     (void)canvas;
     (void)x1;
     (void)y1;
@@ -487,8 +457,7 @@ void rt_canvas_triangle_frame(void *canvas,
                               int64_t y2,
                               int64_t x3,
                               int64_t y3,
-                              int64_t color)
-{
+                              int64_t color) {
     (void)canvas;
     (void)x1;
     (void)y1;
@@ -506,8 +475,8 @@ void rt_canvas_triangle_frame(void *canvas,
 /// @param rx
 /// @param ry
 /// @param color
-void rt_canvas_ellipse(void *canvas, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color)
-{
+void rt_canvas_ellipse(
+    void *canvas, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color) {
     (void)canvas;
     (void)cx;
     (void)cy;
@@ -517,8 +486,7 @@ void rt_canvas_ellipse(void *canvas, int64_t cx, int64_t cy, int64_t rx, int64_t
 }
 
 void rt_canvas_ellipse_frame(
-    void *canvas, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color)
-{
+    void *canvas, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color) {
     (void)canvas;
     (void)cx;
     (void)cy;
@@ -533,8 +501,7 @@ void rt_canvas_arc(void *canvas,
                    int64_t radius,
                    int64_t start_angle,
                    int64_t end_angle,
-                   int64_t color)
-{
+                   int64_t color) {
     (void)canvas;
     (void)cx;
     (void)cy;
@@ -550,8 +517,7 @@ void rt_canvas_arc_frame(void *canvas,
                          int64_t radius,
                          int64_t start_angle,
                          int64_t end_angle,
-                         int64_t color)
-{
+                         int64_t color) {
     (void)canvas;
     (void)cx;
     (void)cy;
@@ -568,8 +534,7 @@ void rt_canvas_bezier(void *canvas,
                       int64_t cy,
                       int64_t x2,
                       int64_t y2,
-                      int64_t color)
-{
+                      int64_t color) {
     (void)canvas;
     (void)x1;
     (void)y1;
@@ -585,8 +550,7 @@ void rt_canvas_bezier(void *canvas,
 /// @param points
 /// @param count
 /// @param color
-void rt_canvas_polyline(void *canvas, void *points, int64_t count, int64_t color)
-{
+void rt_canvas_polyline(void *canvas, void *points, int64_t count, int64_t color) {
     (void)canvas;
     (void)points;
     (void)count;
@@ -598,8 +562,7 @@ void rt_canvas_polyline(void *canvas, void *points, int64_t count, int64_t color
 /// @param points
 /// @param count
 /// @param color
-void rt_canvas_polygon(void *canvas, void *points, int64_t count, int64_t color)
-{
+void rt_canvas_polygon(void *canvas, void *points, int64_t count, int64_t color) {
     (void)canvas;
     (void)points;
     (void)count;
@@ -611,8 +574,7 @@ void rt_canvas_polygon(void *canvas, void *points, int64_t count, int64_t color)
 /// @param points
 /// @param count
 /// @param color
-void rt_canvas_polygon_frame(void *canvas, void *points, int64_t count, int64_t color)
-{
+void rt_canvas_polygon_frame(void *canvas, void *points, int64_t count, int64_t color) {
     (void)canvas;
     (void)points;
     (void)count;
@@ -624,16 +586,14 @@ void rt_canvas_polygon_frame(void *canvas, void *points, int64_t count, int64_t 
 /// @param x
 /// @param y
 /// @return Result value.
-int64_t rt_canvas_get_pixel(void *canvas, int64_t x, int64_t y)
-{
+int64_t rt_canvas_get_pixel(void *canvas, int64_t x, int64_t y) {
     (void)canvas;
     (void)x;
     (void)y;
     return 0;
 }
 
-void *rt_canvas_copy_rect(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h)
-{
+void *rt_canvas_copy_rect(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -646,8 +606,7 @@ void *rt_canvas_copy_rect(void *canvas, int64_t x, int64_t y, int64_t w, int64_t
 /// @param canvas
 /// @param path
 /// @return Result value.
-int64_t rt_canvas_save_bmp(void *canvas, rt_string path)
-{
+int64_t rt_canvas_save_bmp(void *canvas, rt_string path) {
     (void)canvas;
     (void)path;
     return 0;
@@ -657,8 +616,7 @@ int64_t rt_canvas_save_bmp(void *canvas, rt_string path)
 /// @param canvas
 /// @param path
 /// @return Result value.
-int64_t rt_canvas_save_png(void *canvas, rt_string path)
-{
+int64_t rt_canvas_save_png(void *canvas, rt_string path) {
     (void)canvas;
     (void)path;
     return 0;
@@ -667,71 +625,61 @@ int64_t rt_canvas_save_png(void *canvas, rt_string path)
 // Color constants — packed 0x00RRGGBB
 /// @brief Perform red operation.
 /// @return Result value.
-int64_t rt_color_red(void)
-{
+int64_t rt_color_red(void) {
     return 0xFF0000;
 }
 
 /// @brief Perform green operation.
 /// @return Result value.
-int64_t rt_color_green(void)
-{
+int64_t rt_color_green(void) {
     return 0x00FF00;
 }
 
 /// @brief Perform blue operation.
 /// @return Result value.
-int64_t rt_color_blue(void)
-{
+int64_t rt_color_blue(void) {
     return 0x0000FF;
 }
 
 /// @brief Perform white operation.
 /// @return Result value.
-int64_t rt_color_white(void)
-{
+int64_t rt_color_white(void) {
     return 0xFFFFFF;
 }
 
 /// @brief Perform black operation.
 /// @return Result value.
-int64_t rt_color_black(void)
-{
+int64_t rt_color_black(void) {
     return 0x000000;
 }
 
 /// @brief Perform yellow operation.
 /// @return Result value.
-int64_t rt_color_yellow(void)
-{
+int64_t rt_color_yellow(void) {
     return 0xFFFF00;
 }
 
 /// @brief Perform cyan operation.
 /// @return Result value.
-int64_t rt_color_cyan(void)
-{
+int64_t rt_color_cyan(void) {
     return 0x00FFFF;
 }
 
 /// @brief Perform magenta operation.
 /// @return Result value.
-int64_t rt_color_magenta(void)
-{
+int64_t rt_color_magenta(void) {
     return 0xFF00FF;
 }
 
 /// @brief Perform gray operation.
 /// @return Result value.
-int64_t rt_color_gray(void)
-{
+int64_t rt_color_gray(void) {
     return 0x808080;
 }
 
 /// @brief Perform orange operation.
 /// @return Result value.
-int64_t rt_color_orange(void)
-{
+int64_t rt_color_orange(void) {
     return 0xFFA500;
 }
 
@@ -740,8 +688,7 @@ int64_t rt_color_orange(void)
 /// @param g
 /// @param b
 /// @return Result value.
-int64_t rt_color_rgb(int64_t r, int64_t g, int64_t b)
-{
+int64_t rt_color_rgb(int64_t r, int64_t g, int64_t b) {
     uint8_t r8 = (r < 0) ? 0 : (r > 255) ? 255 : (uint8_t)r;
     uint8_t g8 = (g < 0) ? 0 : (g > 255) ? 255 : (uint8_t)g;
     uint8_t b8 = (b < 0) ? 0 : (b > 255) ? 255 : (uint8_t)b;
@@ -754,8 +701,7 @@ int64_t rt_color_rgb(int64_t r, int64_t g, int64_t b)
 /// @param b
 /// @param a
 /// @return Result value.
-int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a)
-{
+int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a) {
     uint8_t r8 = (r < 0) ? 0 : (r > 255) ? 255 : (uint8_t)r;
     uint8_t g8 = (g < 0) ? 0 : (g > 255) ? 255 : (uint8_t)g;
     uint8_t b8 = (b < 0) ? 0 : (b > 255) ? 255 : (uint8_t)b;
@@ -769,8 +715,7 @@ int64_t rt_color_rgba(int64_t r, int64_t g, int64_t b, int64_t a)
 /// @param s
 /// @param l
 /// @return Result value.
-int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l)
-{
+int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l) {
     (void)h;
     (void)s;
     (void)l;
@@ -780,8 +725,7 @@ int64_t rt_color_from_hsl(int64_t h, int64_t s, int64_t l)
 /// @brief Get the h value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_h(int64_t color)
-{
+int64_t rt_color_get_h(int64_t color) {
     (void)color;
     return 0;
 }
@@ -789,8 +733,7 @@ int64_t rt_color_get_h(int64_t color)
 /// @brief Get the s value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_s(int64_t color)
-{
+int64_t rt_color_get_s(int64_t color) {
     (void)color;
     return 0;
 }
@@ -798,8 +741,7 @@ int64_t rt_color_get_s(int64_t color)
 /// @brief Get the l value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_l(int64_t color)
-{
+int64_t rt_color_get_l(int64_t color) {
     (void)color;
     return 0;
 }
@@ -809,8 +751,7 @@ int64_t rt_color_get_l(int64_t color)
 /// @param c2
 /// @param t
 /// @return Result value.
-int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t)
-{
+int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t) {
     (void)c1;
     (void)c2;
     (void)t;
@@ -820,32 +761,28 @@ int64_t rt_color_lerp(int64_t c1, int64_t c2, int64_t t)
 /// @brief Get the r value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_r(int64_t color)
-{
+int64_t rt_color_get_r(int64_t color) {
     return (color >> 16) & 0xFF;
 }
 
 /// @brief Get the g value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_g(int64_t color)
-{
+int64_t rt_color_get_g(int64_t color) {
     return (color >> 8) & 0xFF;
 }
 
 /// @brief Get the b value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_b(int64_t color)
-{
+int64_t rt_color_get_b(int64_t color) {
     return color & 0xFF;
 }
 
 /// @brief Get the a value.
 /// @param color
 /// @return Result value.
-int64_t rt_color_get_a(int64_t color)
-{
+int64_t rt_color_get_a(int64_t color) {
     return (color >> 24) & 0xFF;
 }
 
@@ -853,8 +790,7 @@ int64_t rt_color_get_a(int64_t color)
 /// @param color
 /// @param amount
 /// @return Result value.
-int64_t rt_color_brighten(int64_t color, int64_t amount)
-{
+int64_t rt_color_brighten(int64_t color, int64_t amount) {
     (void)color;
     (void)amount;
     return 0;
@@ -864,8 +800,7 @@ int64_t rt_color_brighten(int64_t color, int64_t amount)
 /// @param color
 /// @param amount
 /// @return Result value.
-int64_t rt_color_darken(int64_t color, int64_t amount)
-{
+int64_t rt_color_darken(int64_t color, int64_t amount) {
     (void)color;
     (void)amount;
     return 0;
@@ -874,8 +809,7 @@ int64_t rt_color_darken(int64_t color, int64_t amount)
 /// @brief Perform from hex operation.
 /// @param hex
 /// @return Result value.
-int64_t rt_color_from_hex(rt_string hex)
-{
+int64_t rt_color_from_hex(rt_string hex) {
     (void)hex;
     return 0;
 }
@@ -883,8 +817,7 @@ int64_t rt_color_from_hex(rt_string hex)
 /// @brief Perform to hex operation.
 /// @param color
 /// @return Result value.
-rt_string rt_color_to_hex(int64_t color)
-{
+rt_string rt_color_to_hex(int64_t color) {
     (void)color;
     return rt_string_from_bytes("#000000", 7);
 }
@@ -893,8 +826,7 @@ rt_string rt_color_to_hex(int64_t color)
 /// @param color
 /// @param amount
 /// @return Result value.
-int64_t rt_color_saturate(int64_t color, int64_t amount)
-{
+int64_t rt_color_saturate(int64_t color, int64_t amount) {
     (void)color;
     (void)amount;
     return 0;
@@ -904,8 +836,7 @@ int64_t rt_color_saturate(int64_t color, int64_t amount)
 /// @param color
 /// @param amount
 /// @return Result value.
-int64_t rt_color_desaturate(int64_t color, int64_t amount)
-{
+int64_t rt_color_desaturate(int64_t color, int64_t amount) {
     (void)color;
     (void)amount;
     return 0;
@@ -914,8 +845,7 @@ int64_t rt_color_desaturate(int64_t color, int64_t amount)
 /// @brief Perform complement operation.
 /// @param color
 /// @return Result value.
-int64_t rt_color_complement(int64_t color)
-{
+int64_t rt_color_complement(int64_t color) {
     (void)color;
     return 0;
 }
@@ -923,8 +853,7 @@ int64_t rt_color_complement(int64_t color)
 /// @brief Perform grayscale operation.
 /// @param color
 /// @return Result value.
-int64_t rt_color_grayscale(int64_t color)
-{
+int64_t rt_color_grayscale(int64_t color) {
     (void)color;
     return 0;
 }
@@ -932,8 +861,7 @@ int64_t rt_color_grayscale(int64_t color)
 /// @brief Perform invert operation.
 /// @param color
 /// @return Result value.
-int64_t rt_color_invert(int64_t color)
-{
+int64_t rt_color_invert(int64_t color) {
     (void)color;
     return 0;
 }
@@ -944,8 +872,7 @@ int64_t rt_color_invert(int64_t color)
 /// @param y
 /// @param w
 /// @param h
-void rt_canvas_set_clip_rect(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h)
-{
+void rt_canvas_set_clip_rect(void *canvas, int64_t x, int64_t y, int64_t w, int64_t h) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -955,16 +882,14 @@ void rt_canvas_set_clip_rect(void *canvas, int64_t x, int64_t y, int64_t w, int6
 
 /// @brief Clear all clip rect.
 /// @param canvas
-void rt_canvas_clear_clip_rect(void *canvas)
-{
+void rt_canvas_clear_clip_rect(void *canvas) {
     (void)canvas;
 }
 
 /// @brief Set the title value.
 /// @param canvas
 /// @param title
-void rt_canvas_set_title(void *canvas, rt_string title)
-{
+void rt_canvas_set_title(void *canvas, rt_string title) {
     (void)canvas;
     (void)title;
 }
@@ -972,8 +897,7 @@ void rt_canvas_set_title(void *canvas, rt_string title)
 /// @brief Get the title value.
 /// @param canvas
 /// @return Result value.
-rt_string rt_canvas_get_title(void *canvas)
-{
+rt_string rt_canvas_get_title(void *canvas) {
     (void)canvas;
     return rt_string_from_bytes("", 0);
 }
@@ -982,8 +906,7 @@ rt_string rt_canvas_get_title(void *canvas)
 /// @param canvas
 /// @param width
 /// @param height
-void rt_canvas_resize(void *canvas, int64_t width, int64_t height)
-{
+void rt_canvas_resize(void *canvas, int64_t width, int64_t height) {
     (void)canvas;
     (void)width;
     (void)height;
@@ -991,34 +914,29 @@ void rt_canvas_resize(void *canvas, int64_t width, int64_t height)
 
 /// @brief Perform close operation.
 /// @param canvas
-void rt_canvas_close(void *canvas)
-{
+void rt_canvas_close(void *canvas) {
     (void)canvas;
 }
 
-void *rt_canvas_screenshot(void *canvas)
-{
+void *rt_canvas_screenshot(void *canvas) {
     (void)canvas;
     return NULL;
 }
 
 /// @brief Perform fullscreen operation.
 /// @param canvas
-void rt_canvas_fullscreen(void *canvas)
-{
+void rt_canvas_fullscreen(void *canvas) {
     (void)canvas;
 }
 
 /// @brief Perform windowed operation.
 /// @param canvas
-void rt_canvas_windowed(void *canvas)
-{
+void rt_canvas_windowed(void *canvas) {
     (void)canvas;
 }
 
 void rt_canvas_gradient_h(
-    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2)
-{
+    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -1029,8 +947,7 @@ void rt_canvas_gradient_h(
 }
 
 void rt_canvas_gradient_v(
-    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2)
-{
+    void *canvas, int64_t x, int64_t y, int64_t w, int64_t h, int64_t c1, int64_t c2) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -1043,8 +960,7 @@ void rt_canvas_gradient_v(
 /// @brief Get the scale value.
 /// @param canvas
 /// @return Result value.
-double rt_canvas_get_scale(void *canvas)
-{
+double rt_canvas_get_scale(void *canvas) {
     (void)canvas;
     return 1.0;
 }
@@ -1053,8 +969,7 @@ double rt_canvas_get_scale(void *canvas)
 /// @param canvas
 /// @param x
 /// @param y
-void rt_canvas_get_position(void *canvas, int64_t *x, int64_t *y)
-{
+void rt_canvas_get_position(void *canvas, int64_t *x, int64_t *y) {
     (void)canvas;
     if (x)
         *x = 0;
@@ -1066,8 +981,7 @@ void rt_canvas_get_position(void *canvas, int64_t *x, int64_t *y)
 /// @param canvas
 /// @param x
 /// @param y
-void rt_canvas_set_position(void *canvas, int64_t x, int64_t y)
-{
+void rt_canvas_set_position(void *canvas, int64_t x, int64_t y) {
     (void)canvas;
     (void)x;
     (void)y;
@@ -1076,8 +990,7 @@ void rt_canvas_set_position(void *canvas, int64_t x, int64_t y)
 /// @brief Get the fps value.
 /// @param canvas
 /// @return Result value.
-int64_t rt_canvas_get_fps(void *canvas)
-{
+int64_t rt_canvas_get_fps(void *canvas) {
     (void)canvas;
     return -1;
 }
@@ -1085,8 +998,7 @@ int64_t rt_canvas_get_fps(void *canvas)
 /// @brief Set the fps value.
 /// @param canvas
 /// @param fps
-void rt_canvas_set_fps(void *canvas, int64_t fps)
-{
+void rt_canvas_set_fps(void *canvas, int64_t fps) {
     (void)canvas;
     (void)fps;
 }
@@ -1094,8 +1006,7 @@ void rt_canvas_set_fps(void *canvas, int64_t fps)
 /// @brief Get the delta time value.
 /// @param canvas
 /// @return Result value.
-int64_t rt_canvas_get_delta_time(void *canvas)
-{
+int64_t rt_canvas_get_delta_time(void *canvas) {
     (void)canvas;
     return 0;
 }
@@ -1103,8 +1014,7 @@ int64_t rt_canvas_get_delta_time(void *canvas)
 /// @brief Set the dt max value.
 /// @param canvas
 /// @param max_ms
-void rt_canvas_set_dt_max(void *canvas, int64_t max_ms)
-{
+void rt_canvas_set_dt_max(void *canvas, int64_t max_ms) {
     (void)canvas;
     (void)max_ms;
 }
@@ -1112,8 +1022,7 @@ void rt_canvas_set_dt_max(void *canvas, int64_t max_ms)
 /// @brief Begin frame.
 /// @param canvas
 /// @return Result value.
-int64_t rt_canvas_begin_frame(void *canvas)
-{
+int64_t rt_canvas_begin_frame(void *canvas) {
     (void)canvas;
     return 0;
 }
@@ -1121,63 +1030,55 @@ int64_t rt_canvas_begin_frame(void *canvas)
 /// @brief Check if maximized.
 /// @param canvas
 /// @return Result value.
-int8_t rt_canvas_is_maximized(void *canvas)
-{
+int8_t rt_canvas_is_maximized(void *canvas) {
     (void)canvas;
     return 0;
 }
 
 /// @brief Perform maximize operation.
 /// @param canvas
-void rt_canvas_maximize(void *canvas)
-{
+void rt_canvas_maximize(void *canvas) {
     (void)canvas;
 }
 
 /// @brief Check if minimized.
 /// @param canvas
 /// @return Result value.
-int8_t rt_canvas_is_minimized(void *canvas)
-{
+int8_t rt_canvas_is_minimized(void *canvas) {
     (void)canvas;
     return 0;
 }
 
 /// @brief Perform minimize operation.
 /// @param canvas
-void rt_canvas_minimize(void *canvas)
-{
+void rt_canvas_minimize(void *canvas) {
     (void)canvas;
 }
 
 /// @brief Perform restore operation.
 /// @param canvas
-void rt_canvas_restore(void *canvas)
-{
+void rt_canvas_restore(void *canvas) {
     (void)canvas;
 }
 
 /// @brief Check if focused.
 /// @param canvas
 /// @return Result value.
-int8_t rt_canvas_is_focused(void *canvas)
-{
+int8_t rt_canvas_is_focused(void *canvas) {
     (void)canvas;
     return 0;
 }
 
 /// @brief Perform focus operation.
 /// @param canvas
-void rt_canvas_focus(void *canvas)
-{
+void rt_canvas_focus(void *canvas) {
     (void)canvas;
 }
 
 /// @brief Perform prevent close operation.
 /// @param canvas
 /// @param prevent
-void rt_canvas_prevent_close(void *canvas, int64_t prevent)
-{
+void rt_canvas_prevent_close(void *canvas, int64_t prevent) {
     (void)canvas;
     (void)prevent;
 }
@@ -1186,8 +1087,7 @@ void rt_canvas_prevent_close(void *canvas, int64_t prevent)
 /// @param canvas
 /// @param w
 /// @param h
-void rt_canvas_get_monitor_size(void *canvas, int64_t *w, int64_t *h)
-{
+void rt_canvas_get_monitor_size(void *canvas, int64_t *w, int64_t *h) {
     (void)canvas;
     if (w)
         *w = 0;
@@ -1199,8 +1099,7 @@ void rt_canvas_get_monitor_size(void *canvas, int64_t *w, int64_t *h)
 // Graphics 3D stubs — Canvas3D, Mesh3D, Camera3D, Material3D, Light3D
 //=============================================================================
 
-void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz)
-{
+void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *nz) {
     (void)px;
     (void)nx;
     (void)py;
@@ -1214,24 +1113,21 @@ void *rt_cubemap3d_new(void *px, void *nx, void *py, void *ny, void *pz, void *n
 /// @brief Perform canvas3d set skybox operation.
 /// @param c
 /// @param cm
-void rt_canvas3d_set_skybox(void *c, void *cm)
-{
+void rt_canvas3d_set_skybox(void *c, void *cm) {
     (void)c;
     (void)cm;
 }
 
 /// @brief Perform canvas3d clear skybox operation.
 /// @param c
-void rt_canvas3d_clear_skybox(void *c)
-{
+void rt_canvas3d_clear_skybox(void *c) {
     (void)c;
 }
 
 /// @brief Perform material3d set env map operation.
 /// @param o
 /// @param cm
-void rt_material3d_set_env_map(void *o, void *cm)
-{
+void rt_material3d_set_env_map(void *o, void *cm) {
     (void)o;
     (void)cm;
 }
@@ -1239,8 +1135,7 @@ void rt_material3d_set_env_map(void *o, void *cm)
 /// @brief Perform material3d set reflectivity operation.
 /// @param o
 /// @param r
-void rt_material3d_set_reflectivity(void *o, double r)
-{
+void rt_material3d_set_reflectivity(void *o, double r) {
     (void)o;
     (void)r;
 }
@@ -1248,14 +1143,12 @@ void rt_material3d_set_reflectivity(void *o, double r)
 /// @brief Perform material3d get reflectivity operation.
 /// @param o
 /// @return Result value.
-double rt_material3d_get_reflectivity(void *o)
-{
+double rt_material3d_get_reflectivity(void *o) {
     (void)o;
     return 0.0;
 }
 
-void *rt_rendertarget3d_new(int64_t w, int64_t h)
-{
+void *rt_rendertarget3d_new(int64_t w, int64_t h) {
     (void)w;
     (void)h;
     rt_trap("RenderTarget3D.New: graphics support not compiled in");
@@ -1265,8 +1158,7 @@ void *rt_rendertarget3d_new(int64_t w, int64_t h)
 /// @brief Perform rendertarget3d get width operation.
 /// @param o
 /// @return Result value.
-int64_t rt_rendertarget3d_get_width(void *o)
-{
+int64_t rt_rendertarget3d_get_width(void *o) {
     (void)o;
     return 0;
 }
@@ -1274,14 +1166,12 @@ int64_t rt_rendertarget3d_get_width(void *o)
 /// @brief Perform rendertarget3d get height operation.
 /// @param o
 /// @return Result value.
-int64_t rt_rendertarget3d_get_height(void *o)
-{
+int64_t rt_rendertarget3d_get_height(void *o) {
     (void)o;
     return 0;
 }
 
-void *rt_rendertarget3d_as_pixels(void *o)
-{
+void *rt_rendertarget3d_as_pixels(void *o) {
     (void)o;
     return NULL;
 }
@@ -1289,21 +1179,18 @@ void *rt_rendertarget3d_as_pixels(void *o)
 /// @brief Perform canvas3d set render target operation.
 /// @param c
 /// @param t
-void rt_canvas3d_set_render_target(void *c, void *t)
-{
+void rt_canvas3d_set_render_target(void *c, void *t) {
     (void)c;
     (void)t;
 }
 
 /// @brief Perform canvas3d reset render target operation.
 /// @param c
-void rt_canvas3d_reset_render_target(void *c)
-{
+void rt_canvas3d_reset_render_target(void *c) {
     (void)c;
 }
 
-void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h)
-{
+void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     (void)title;
     (void)w;
     (void)h;
@@ -1316,8 +1203,7 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h)
 /// @param r
 /// @param g
 /// @param b
-void rt_canvas3d_clear(void *o, double r, double g, double b)
-{
+void rt_canvas3d_clear(void *o, double r, double g, double b) {
     (void)o;
     (void)r;
     (void)g;
@@ -1327,8 +1213,7 @@ void rt_canvas3d_clear(void *o, double r, double g, double b)
 /// @brief Perform canvas3d begin operation.
 /// @param o
 /// @param c
-void rt_canvas3d_begin(void *o, void *c)
-{
+void rt_canvas3d_begin(void *o, void *c) {
     (void)o;
     (void)c;
 }
@@ -1338,8 +1223,7 @@ void rt_canvas3d_begin(void *o, void *c)
 /// @param m
 /// @param t
 /// @param mt
-void rt_canvas3d_draw_mesh(void *o, void *m, void *t, void *mt)
-{
+void rt_canvas3d_draw_mesh(void *o, void *m, void *t, void *mt) {
     (void)o;
     (void)m;
     (void)t;
@@ -1348,23 +1232,20 @@ void rt_canvas3d_draw_mesh(void *o, void *m, void *t, void *mt)
 
 /// @brief Perform canvas3d end operation.
 /// @param o
-void rt_canvas3d_end(void *o)
-{
+void rt_canvas3d_end(void *o) {
     (void)o;
 }
 
 /// @brief Perform canvas3d flip operation.
 /// @param o
-void rt_canvas3d_flip(void *o)
-{
+void rt_canvas3d_flip(void *o) {
     (void)o;
 }
 
 /// @brief Perform canvas3d poll operation.
 /// @param o
 /// @return Result value.
-int64_t rt_canvas3d_poll(void *o)
-{
+int64_t rt_canvas3d_poll(void *o) {
     (void)o;
     return 0;
 }
@@ -1372,8 +1253,7 @@ int64_t rt_canvas3d_poll(void *o)
 /// @brief Perform canvas3d should close operation.
 /// @param o
 /// @return Result value.
-int8_t rt_canvas3d_should_close(void *o)
-{
+int8_t rt_canvas3d_should_close(void *o) {
     (void)o;
     return 0;
 }
@@ -1381,8 +1261,7 @@ int8_t rt_canvas3d_should_close(void *o)
 /// @brief Perform canvas3d set wireframe operation.
 /// @param o
 /// @param e
-void rt_canvas3d_set_wireframe(void *o, int8_t e)
-{
+void rt_canvas3d_set_wireframe(void *o, int8_t e) {
     (void)o;
     (void)e;
 }
@@ -1390,8 +1269,7 @@ void rt_canvas3d_set_wireframe(void *o, int8_t e)
 /// @brief Perform canvas3d set backface cull operation.
 /// @param o
 /// @param e
-void rt_canvas3d_set_backface_cull(void *o, int8_t e)
-{
+void rt_canvas3d_set_backface_cull(void *o, int8_t e) {
     (void)o;
     (void)e;
 }
@@ -1399,8 +1277,7 @@ void rt_canvas3d_set_backface_cull(void *o, int8_t e)
 /// @brief Perform canvas3d get width operation.
 /// @param o
 /// @return Result value.
-int64_t rt_canvas3d_get_width(void *o)
-{
+int64_t rt_canvas3d_get_width(void *o) {
     (void)o;
     return 0;
 }
@@ -1408,8 +1285,7 @@ int64_t rt_canvas3d_get_width(void *o)
 /// @brief Perform canvas3d get height operation.
 /// @param o
 /// @return Result value.
-int64_t rt_canvas3d_get_height(void *o)
-{
+int64_t rt_canvas3d_get_height(void *o) {
     (void)o;
     return 0;
 }
@@ -1417,8 +1293,7 @@ int64_t rt_canvas3d_get_height(void *o)
 /// @brief Perform canvas3d get fps operation.
 /// @param o
 /// @return Result value.
-int64_t rt_canvas3d_get_fps(void *o)
-{
+int64_t rt_canvas3d_get_fps(void *o) {
     (void)o;
     return 0;
 }
@@ -1426,8 +1301,7 @@ int64_t rt_canvas3d_get_fps(void *o)
 /// @brief Perform canvas3d get delta time operation.
 /// @param o
 /// @return Result value.
-int64_t rt_canvas3d_get_delta_time(void *o)
-{
+int64_t rt_canvas3d_get_delta_time(void *o) {
     (void)o;
     return 0;
 }
@@ -1435,8 +1309,7 @@ int64_t rt_canvas3d_get_delta_time(void *o)
 /// @brief Perform canvas3d set dt max operation.
 /// @param o
 /// @param m
-void rt_canvas3d_set_dt_max(void *o, int64_t m)
-{
+void rt_canvas3d_set_dt_max(void *o, int64_t m) {
     (void)o;
     (void)m;
 }
@@ -1445,8 +1318,7 @@ void rt_canvas3d_set_dt_max(void *o, int64_t m)
 /// @param o
 /// @param i
 /// @param l
-void rt_canvas3d_set_light(void *o, int64_t i, void *l)
-{
+void rt_canvas3d_set_light(void *o, int64_t i, void *l) {
     (void)o;
     (void)i;
     (void)l;
@@ -1457,8 +1329,7 @@ void rt_canvas3d_set_light(void *o, int64_t i, void *l)
 /// @param r
 /// @param g
 /// @param b
-void rt_canvas3d_set_ambient(void *o, double r, double g, double b)
-{
+void rt_canvas3d_set_ambient(void *o, double r, double g, double b) {
     (void)o;
     (void)r;
     (void)g;
@@ -1470,8 +1341,7 @@ void rt_canvas3d_set_ambient(void *o, double r, double g, double b)
 /// @param f
 /// @param t
 /// @param c
-void rt_canvas3d_draw_line3d(void *o, void *f, void *t, int64_t c)
-{
+void rt_canvas3d_draw_line3d(void *o, void *f, void *t, int64_t c) {
     (void)o;
     (void)f;
     (void)t;
@@ -1483,8 +1353,7 @@ void rt_canvas3d_draw_line3d(void *o, void *f, void *t, int64_t c)
 /// @param p
 /// @param c
 /// @param s
-void rt_canvas3d_draw_point3d(void *o, void *p, int64_t c, int64_t s)
-{
+void rt_canvas3d_draw_point3d(void *o, void *p, int64_t c, int64_t s) {
     (void)o;
     (void)p;
     (void)c;
@@ -1494,26 +1363,22 @@ void rt_canvas3d_draw_point3d(void *o, void *p, int64_t c, int64_t s)
 /// @brief Perform canvas3d get backend operation.
 /// @param o
 /// @return Result value.
-rt_string rt_canvas3d_get_backend(void *o)
-{
+rt_string rt_canvas3d_get_backend(void *o) {
     (void)o;
     return NULL;
 }
 
-void *rt_canvas3d_screenshot(void *o)
-{
+void *rt_canvas3d_screenshot(void *o) {
     (void)o;
     return NULL;
 }
 
-void *rt_mesh3d_new(void)
-{
+void *rt_mesh3d_new(void) {
     rt_trap("Mesh3D.New: graphics support not compiled in");
     return NULL;
 }
 
-void *rt_mesh3d_new_box(double sx, double sy, double sz)
-{
+void *rt_mesh3d_new_box(double sx, double sy, double sz) {
     (void)sx;
     (void)sy;
     (void)sz;
@@ -1521,24 +1386,21 @@ void *rt_mesh3d_new_box(double sx, double sy, double sz)
     return NULL;
 }
 
-void *rt_mesh3d_new_sphere(double r, int64_t s)
-{
+void *rt_mesh3d_new_sphere(double r, int64_t s) {
     (void)r;
     (void)s;
     rt_trap("Mesh3D.NewSphere: graphics support not compiled in");
     return NULL;
 }
 
-void *rt_mesh3d_new_plane(double sx, double sz)
-{
+void *rt_mesh3d_new_plane(double sx, double sz) {
     (void)sx;
     (void)sz;
     rt_trap("Mesh3D.NewPlane: graphics support not compiled in");
     return NULL;
 }
 
-void *rt_mesh3d_new_cylinder(double r, double h, int64_t s)
-{
+void *rt_mesh3d_new_cylinder(double r, double h, int64_t s) {
     (void)r;
     (void)h;
     (void)s;
@@ -1546,8 +1408,7 @@ void *rt_mesh3d_new_cylinder(double r, double h, int64_t s)
     return NULL;
 }
 
-void *rt_mesh3d_from_obj(rt_string p)
-{
+void *rt_mesh3d_from_obj(rt_string p) {
     (void)p;
     rt_trap("Mesh3D.FromOBJ: graphics support not compiled in");
     return NULL;
@@ -1556,8 +1417,7 @@ void *rt_mesh3d_from_obj(rt_string p)
 /// @brief Perform mesh3d get vertex count operation.
 /// @param o
 /// @return Result value.
-int64_t rt_mesh3d_get_vertex_count(void *o)
-{
+int64_t rt_mesh3d_get_vertex_count(void *o) {
     (void)o;
     return 0;
 }
@@ -1565,15 +1425,13 @@ int64_t rt_mesh3d_get_vertex_count(void *o)
 /// @brief Perform mesh3d get triangle count operation.
 /// @param o
 /// @return Result value.
-int64_t rt_mesh3d_get_triangle_count(void *o)
-{
+int64_t rt_mesh3d_get_triangle_count(void *o) {
     (void)o;
     return 0;
 }
 
 void rt_mesh3d_add_vertex(
-    void *o, double x, double y, double z, double nx, double ny, double nz, double u, double v)
-{
+    void *o, double x, double y, double z, double nx, double ny, double nz, double u, double v) {
     (void)o;
     (void)x;
     (void)y;
@@ -1590,8 +1448,7 @@ void rt_mesh3d_add_vertex(
 /// @param v0
 /// @param v1
 /// @param v2
-void rt_mesh3d_add_triangle(void *o, int64_t v0, int64_t v1, int64_t v2)
-{
+void rt_mesh3d_add_triangle(void *o, int64_t v0, int64_t v1, int64_t v2) {
     (void)o;
     (void)v0;
     (void)v1;
@@ -1600,13 +1457,11 @@ void rt_mesh3d_add_triangle(void *o, int64_t v0, int64_t v1, int64_t v2)
 
 /// @brief Perform mesh3d recalc normals operation.
 /// @param o
-void rt_mesh3d_recalc_normals(void *o)
-{
+void rt_mesh3d_recalc_normals(void *o) {
     (void)o;
 }
 
-void *rt_mesh3d_clone(void *o)
-{
+void *rt_mesh3d_clone(void *o) {
     (void)o;
     return NULL;
 }
@@ -1614,14 +1469,12 @@ void *rt_mesh3d_clone(void *o)
 /// @brief Perform mesh3d transform operation.
 /// @param o
 /// @param m
-void rt_mesh3d_transform(void *o, void *m)
-{
+void rt_mesh3d_transform(void *o, void *m) {
     (void)o;
     (void)m;
 }
 
-void *rt_camera3d_new(double f, double a, double n, double fa)
-{
+void *rt_camera3d_new(double f, double a, double n, double fa) {
     (void)f;
     (void)a;
     (void)n;
@@ -1635,8 +1488,7 @@ void *rt_camera3d_new(double f, double a, double n, double fa)
 /// @param e
 /// @param t
 /// @param u
-void rt_camera3d_look_at(void *o, void *e, void *t, void *u)
-{
+void rt_camera3d_look_at(void *o, void *e, void *t, void *u) {
     (void)o;
     (void)e;
     (void)t;
@@ -1649,8 +1501,7 @@ void rt_camera3d_look_at(void *o, void *e, void *t, void *u)
 /// @param d
 /// @param y
 /// @param p
-void rt_camera3d_orbit(void *o, void *t, double d, double y, double p)
-{
+void rt_camera3d_orbit(void *o, void *t, double d, double y, double p) {
     (void)o;
     (void)t;
     (void)d;
@@ -1661,8 +1512,7 @@ void rt_camera3d_orbit(void *o, void *t, double d, double y, double p)
 /// @brief Perform camera3d get fov operation.
 /// @param o
 /// @return Result value.
-double rt_camera3d_get_fov(void *o)
-{
+double rt_camera3d_get_fov(void *o) {
     (void)o;
     return 0.0;
 }
@@ -1670,14 +1520,12 @@ double rt_camera3d_get_fov(void *o)
 /// @brief Perform camera3d set fov operation.
 /// @param o
 /// @param f
-void rt_camera3d_set_fov(void *o, double f)
-{
+void rt_camera3d_set_fov(void *o, double f) {
     (void)o;
     (void)f;
 }
 
-void *rt_camera3d_get_position(void *o)
-{
+void *rt_camera3d_get_position(void *o) {
     (void)o;
     return NULL;
 }
@@ -1685,26 +1533,22 @@ void *rt_camera3d_get_position(void *o)
 /// @brief Perform camera3d set position operation.
 /// @param o
 /// @param p
-void rt_camera3d_set_position(void *o, void *p)
-{
+void rt_camera3d_set_position(void *o, void *p) {
     (void)o;
     (void)p;
 }
 
-void *rt_camera3d_get_forward(void *o)
-{
+void *rt_camera3d_get_forward(void *o) {
     (void)o;
     return NULL;
 }
 
-void *rt_camera3d_get_right(void *o)
-{
+void *rt_camera3d_get_right(void *o) {
     (void)o;
     return NULL;
 }
 
-void *rt_camera3d_screen_to_ray(void *o, int64_t sx, int64_t sy, int64_t sw, int64_t sh)
-{
+void *rt_camera3d_screen_to_ray(void *o, int64_t sx, int64_t sy, int64_t sw, int64_t sh) {
     (void)o;
     (void)sx;
     (void)sy;
@@ -1713,14 +1557,12 @@ void *rt_camera3d_screen_to_ray(void *o, int64_t sx, int64_t sy, int64_t sw, int
     return NULL;
 }
 
-void *rt_material3d_new(void)
-{
+void *rt_material3d_new(void) {
     rt_trap("Material3D.New: graphics support not compiled in");
     return NULL;
 }
 
-void *rt_material3d_new_color(double r, double g, double b)
-{
+void *rt_material3d_new_color(double r, double g, double b) {
     (void)r;
     (void)g;
     (void)b;
@@ -1728,8 +1570,7 @@ void *rt_material3d_new_color(double r, double g, double b)
     return NULL;
 }
 
-void *rt_material3d_new_textured(void *p)
-{
+void *rt_material3d_new_textured(void *p) {
     (void)p;
     rt_trap("Material3D.NewTextured: graphics support not compiled in");
     return NULL;
@@ -1740,8 +1581,7 @@ void *rt_material3d_new_textured(void *p)
 /// @param r
 /// @param g
 /// @param b
-void rt_material3d_set_color(void *o, double r, double g, double b)
-{
+void rt_material3d_set_color(void *o, double r, double g, double b) {
     (void)o;
     (void)r;
     (void)g;
@@ -1751,8 +1591,7 @@ void rt_material3d_set_color(void *o, double r, double g, double b)
 /// @brief Perform material3d set texture operation.
 /// @param o
 /// @param p
-void rt_material3d_set_texture(void *o, void *p)
-{
+void rt_material3d_set_texture(void *o, void *p) {
     (void)o;
     (void)p;
 }
@@ -1760,8 +1599,7 @@ void rt_material3d_set_texture(void *o, void *p)
 /// @brief Perform material3d set shininess operation.
 /// @param o
 /// @param s
-void rt_material3d_set_shininess(void *o, double s)
-{
+void rt_material3d_set_shininess(void *o, double s) {
     (void)o;
     (void)s;
 }
@@ -1769,8 +1607,7 @@ void rt_material3d_set_shininess(void *o, double s)
 /// @brief Perform material3d set alpha operation.
 /// @param o
 /// @param a
-void rt_material3d_set_alpha(void *o, double a)
-{
+void rt_material3d_set_alpha(void *o, double a) {
     (void)o;
     (void)a;
 }
@@ -1778,8 +1615,7 @@ void rt_material3d_set_alpha(void *o, double a)
 /// @brief Perform material3d get alpha operation.
 /// @param o
 /// @return Result value.
-double rt_material3d_get_alpha(void *o)
-{
+double rt_material3d_get_alpha(void *o) {
     (void)o;
     return 1.0;
 }
@@ -1787,8 +1623,7 @@ double rt_material3d_get_alpha(void *o)
 /// @brief Perform material3d set unlit operation.
 /// @param o
 /// @param u
-void rt_material3d_set_unlit(void *o, int8_t u)
-{
+void rt_material3d_set_unlit(void *o, int8_t u) {
     (void)o;
     (void)u;
 }
@@ -1796,8 +1631,7 @@ void rt_material3d_set_unlit(void *o, int8_t u)
 /// @brief Perform material3d set normal map operation.
 /// @param o
 /// @param p
-void rt_material3d_set_normal_map(void *o, void *p)
-{
+void rt_material3d_set_normal_map(void *o, void *p) {
     (void)o;
     (void)p;
 }
@@ -1805,8 +1639,7 @@ void rt_material3d_set_normal_map(void *o, void *p)
 /// @brief Perform material3d set specular map operation.
 /// @param o
 /// @param p
-void rt_material3d_set_specular_map(void *o, void *p)
-{
+void rt_material3d_set_specular_map(void *o, void *p) {
     (void)o;
     (void)p;
 }
@@ -1814,8 +1647,7 @@ void rt_material3d_set_specular_map(void *o, void *p)
 /// @brief Perform material3d set emissive map operation.
 /// @param o
 /// @param p
-void rt_material3d_set_emissive_map(void *o, void *p)
-{
+void rt_material3d_set_emissive_map(void *o, void *p) {
     (void)o;
     (void)p;
 }
@@ -1825,8 +1657,7 @@ void rt_material3d_set_emissive_map(void *o, void *p)
 /// @param r
 /// @param g
 /// @param b
-void rt_material3d_set_emissive_color(void *o, double r, double g, double b)
-{
+void rt_material3d_set_emissive_color(void *o, double r, double g, double b) {
     (void)o;
     (void)r;
     (void)g;
@@ -1835,13 +1666,11 @@ void rt_material3d_set_emissive_color(void *o, double r, double g, double b)
 
 /// @brief Perform mesh3d calc tangents operation.
 /// @param o
-void rt_mesh3d_calc_tangents(void *o)
-{
+void rt_mesh3d_calc_tangents(void *o) {
     (void)o;
 }
 
-void *rt_light3d_new_directional(void *d, double r, double g, double b)
-{
+void *rt_light3d_new_directional(void *d, double r, double g, double b) {
     (void)d;
     (void)r;
     (void)g;
@@ -1850,8 +1679,7 @@ void *rt_light3d_new_directional(void *d, double r, double g, double b)
     return NULL;
 }
 
-void *rt_light3d_new_point(void *p, double r, double g, double b, double a)
-{
+void *rt_light3d_new_point(void *p, double r, double g, double b, double a) {
     (void)p;
     (void)r;
     (void)g;
@@ -1861,8 +1689,7 @@ void *rt_light3d_new_point(void *p, double r, double g, double b, double a)
     return NULL;
 }
 
-void *rt_light3d_new_ambient(double r, double g, double b)
-{
+void *rt_light3d_new_ambient(double r, double g, double b) {
     (void)r;
     (void)g;
     (void)b;
@@ -1873,8 +1700,7 @@ void *rt_light3d_new_ambient(double r, double g, double b)
 /// @brief Perform light3d set intensity operation.
 /// @param o
 /// @param i
-void rt_light3d_set_intensity(void *o, double i)
-{
+void rt_light3d_set_intensity(void *o, double i) {
     (void)o;
     (void)i;
 }
@@ -1884,8 +1710,7 @@ void rt_light3d_set_intensity(void *o, double i)
 /// @param r
 /// @param g
 /// @param b
-void rt_light3d_set_color(void *o, double r, double g, double b)
-{
+void rt_light3d_set_color(void *o, double r, double g, double b) {
     (void)o;
     (void)r;
     (void)g;
@@ -1893,14 +1718,12 @@ void rt_light3d_set_color(void *o, double r, double g, double b)
 }
 
 /* Scene3D / SceneNode3D stubs */
-void *rt_scene3d_new(void)
-{
+void *rt_scene3d_new(void) {
     rt_trap("Scene3D.New: graphics support not compiled in");
     return NULL;
 }
 
-void *rt_scene3d_get_root(void *s)
-{
+void *rt_scene3d_get_root(void *s) {
     (void)s;
     return NULL;
 }
@@ -1908,8 +1731,7 @@ void *rt_scene3d_get_root(void *s)
 /// @brief Perform scene3d add operation.
 /// @param s
 /// @param n
-void rt_scene3d_add(void *s, void *n)
-{
+void rt_scene3d_add(void *s, void *n) {
     (void)s;
     (void)n;
 }
@@ -1917,14 +1739,12 @@ void rt_scene3d_add(void *s, void *n)
 /// @brief Perform scene3d remove operation.
 /// @param s
 /// @param n
-void rt_scene3d_remove(void *s, void *n)
-{
+void rt_scene3d_remove(void *s, void *n) {
     (void)s;
     (void)n;
 }
 
-void *rt_scene3d_find(void *s, rt_string n)
-{
+void *rt_scene3d_find(void *s, rt_string n) {
     (void)s;
     (void)n;
     return NULL;
@@ -1934,8 +1754,7 @@ void *rt_scene3d_find(void *s, rt_string n)
 /// @param s
 /// @param c
 /// @param cam
-void rt_scene3d_draw(void *s, void *c, void *cam)
-{
+void rt_scene3d_draw(void *s, void *c, void *cam) {
     (void)s;
     (void)c;
     (void)cam;
@@ -1943,22 +1762,19 @@ void rt_scene3d_draw(void *s, void *c, void *cam)
 
 /// @brief Perform scene3d clear operation.
 /// @param s
-void rt_scene3d_clear(void *s)
-{
+void rt_scene3d_clear(void *s) {
     (void)s;
 }
 
 /// @brief Perform scene3d get node count operation.
 /// @param s
 /// @return Result value.
-int64_t rt_scene3d_get_node_count(void *s)
-{
+int64_t rt_scene3d_get_node_count(void *s) {
     (void)s;
     return 0;
 }
 
-void *rt_scene_node3d_new(void)
-{
+void *rt_scene_node3d_new(void) {
     rt_trap("SceneNode3D.New: graphics support not compiled in");
     return NULL;
 }
@@ -1968,16 +1784,14 @@ void *rt_scene_node3d_new(void)
 /// @param x
 /// @param y
 /// @param z
-void rt_scene_node3d_set_position(void *n, double x, double y, double z)
-{
+void rt_scene_node3d_set_position(void *n, double x, double y, double z) {
     (void)n;
     (void)x;
     (void)y;
     (void)z;
 }
 
-void *rt_scene_node3d_get_position(void *n)
-{
+void *rt_scene_node3d_get_position(void *n) {
     (void)n;
     return NULL;
 }
@@ -1985,14 +1799,12 @@ void *rt_scene_node3d_get_position(void *n)
 /// @brief Perform node3d set rotation operation.
 /// @param n
 /// @param q
-void rt_scene_node3d_set_rotation(void *n, void *q)
-{
+void rt_scene_node3d_set_rotation(void *n, void *q) {
     (void)n;
     (void)q;
 }
 
-void *rt_scene_node3d_get_rotation(void *n)
-{
+void *rt_scene_node3d_get_rotation(void *n) {
     (void)n;
     return NULL;
 }
@@ -2002,22 +1814,19 @@ void *rt_scene_node3d_get_rotation(void *n)
 /// @param x
 /// @param y
 /// @param z
-void rt_scene_node3d_set_scale(void *n, double x, double y, double z)
-{
+void rt_scene_node3d_set_scale(void *n, double x, double y, double z) {
     (void)n;
     (void)x;
     (void)y;
     (void)z;
 }
 
-void *rt_scene_node3d_get_scale(void *n)
-{
+void *rt_scene_node3d_get_scale(void *n) {
     (void)n;
     return NULL;
 }
 
-void *rt_scene_node3d_get_world_matrix(void *n)
-{
+void *rt_scene_node3d_get_world_matrix(void *n) {
     (void)n;
     return NULL;
 }
@@ -2025,8 +1834,7 @@ void *rt_scene_node3d_get_world_matrix(void *n)
 /// @brief Perform node3d add child operation.
 /// @param n
 /// @param c
-void rt_scene_node3d_add_child(void *n, void *c)
-{
+void rt_scene_node3d_add_child(void *n, void *c) {
     (void)n;
     (void)c;
 }
@@ -2034,8 +1842,7 @@ void rt_scene_node3d_add_child(void *n, void *c)
 /// @brief Perform node3d remove child operation.
 /// @param n
 /// @param c
-void rt_scene_node3d_remove_child(void *n, void *c)
-{
+void rt_scene_node3d_remove_child(void *n, void *c) {
     (void)n;
     (void)c;
 }
@@ -2043,27 +1850,23 @@ void rt_scene_node3d_remove_child(void *n, void *c)
 /// @brief Perform node3d child count operation.
 /// @param n
 /// @return Result value.
-int64_t rt_scene_node3d_child_count(void *n)
-{
+int64_t rt_scene_node3d_child_count(void *n) {
     (void)n;
     return 0;
 }
 
-void *rt_scene_node3d_get_child(void *n, int64_t i)
-{
+void *rt_scene_node3d_get_child(void *n, int64_t i) {
     (void)n;
     (void)i;
     return NULL;
 }
 
-void *rt_scene_node3d_get_parent(void *n)
-{
+void *rt_scene_node3d_get_parent(void *n) {
     (void)n;
     return NULL;
 }
 
-void *rt_scene_node3d_find(void *n, rt_string name)
-{
+void *rt_scene_node3d_find(void *n, rt_string name) {
     (void)n;
     (void)name;
     return NULL;
@@ -2072,8 +1875,7 @@ void *rt_scene_node3d_find(void *n, rt_string name)
 /// @brief Perform node3d set mesh operation.
 /// @param n
 /// @param m
-void rt_scene_node3d_set_mesh(void *n, void *m)
-{
+void rt_scene_node3d_set_mesh(void *n, void *m) {
     (void)n;
     (void)m;
 }
@@ -2081,8 +1883,7 @@ void rt_scene_node3d_set_mesh(void *n, void *m)
 /// @brief Perform node3d set material operation.
 /// @param n
 /// @param m
-void rt_scene_node3d_set_material(void *n, void *m)
-{
+void rt_scene_node3d_set_material(void *n, void *m) {
     (void)n;
     (void)m;
 }
@@ -2090,8 +1891,7 @@ void rt_scene_node3d_set_material(void *n, void *m)
 /// @brief Perform node3d set visible operation.
 /// @param n
 /// @param v
-void rt_scene_node3d_set_visible(void *n, int8_t v)
-{
+void rt_scene_node3d_set_visible(void *n, int8_t v) {
     (void)n;
     (void)v;
 }
@@ -2099,8 +1899,7 @@ void rt_scene_node3d_set_visible(void *n, int8_t v)
 /// @brief Perform node3d get visible operation.
 /// @param n
 /// @return Result value.
-int8_t rt_scene_node3d_get_visible(void *n)
-{
+int8_t rt_scene_node3d_get_visible(void *n) {
     (void)n;
     return 0;
 }
@@ -2108,8 +1907,7 @@ int8_t rt_scene_node3d_get_visible(void *n)
 /// @brief Perform node3d set name operation.
 /// @param n
 /// @param s
-void rt_scene_node3d_set_name(void *n, rt_string s)
-{
+void rt_scene_node3d_set_name(void *n, rt_string s) {
     (void)n;
     (void)s;
 }
@@ -2117,20 +1915,17 @@ void rt_scene_node3d_set_name(void *n, rt_string s)
 /// @brief Perform node3d get name operation.
 /// @param n
 /// @return Result value.
-rt_string rt_scene_node3d_get_name(void *n)
-{
+rt_string rt_scene_node3d_get_name(void *n) {
     (void)n;
     return NULL;
 }
 
-void *rt_scene_node3d_get_aabb_min(void *n)
-{
+void *rt_scene_node3d_get_aabb_min(void *n) {
     (void)n;
     return NULL;
 }
 
-void *rt_scene_node3d_get_aabb_max(void *n)
-{
+void *rt_scene_node3d_get_aabb_max(void *n) {
     (void)n;
     return NULL;
 }
@@ -2138,8 +1933,7 @@ void *rt_scene_node3d_get_aabb_max(void *n)
 /// @brief Perform scene3d get culled count operation.
 /// @param s
 /// @return Result value.
-int64_t rt_scene3d_get_culled_count(void *s)
-{
+int64_t rt_scene3d_get_culled_count(void *s) {
     (void)s;
     return 0;
 }
@@ -2149,8 +1943,7 @@ int64_t rt_scene3d_get_culled_count(void *s)
 /// @param n
 /// @param d
 /// @param m
-void rt_scene_node3d_add_lod(void *n, double d, void *m)
-{
+void rt_scene_node3d_add_lod(void *n, double d, void *m) {
     (void)n;
     (void)d;
     (void)m;
@@ -2158,14 +1951,12 @@ void rt_scene_node3d_add_lod(void *n, double d, void *m)
 
 /// @brief Perform node3d clear lod operation.
 /// @param n
-void rt_scene_node3d_clear_lod(void *n)
-{
+void rt_scene_node3d_clear_lod(void *n) {
     (void)n;
 }
 
 /* Skeleton3D / Animation3D / AnimPlayer3D stubs */
-void *rt_skeleton3d_new(void)
-{
+void *rt_skeleton3d_new(void) {
     rt_trap("Skeleton3D.New: graphics support not compiled in");
     return NULL;
 }
@@ -2176,8 +1967,7 @@ void *rt_skeleton3d_new(void)
 /// @param p
 /// @param m
 /// @return Result value.
-int64_t rt_skeleton3d_add_bone(void *s, rt_string n, int64_t p, void *m)
-{
+int64_t rt_skeleton3d_add_bone(void *s, rt_string n, int64_t p, void *m) {
     (void)s;
     (void)n;
     (void)p;
@@ -2187,16 +1977,14 @@ int64_t rt_skeleton3d_add_bone(void *s, rt_string n, int64_t p, void *m)
 
 /// @brief Perform skeleton3d compute inverse bind operation.
 /// @param s
-void rt_skeleton3d_compute_inverse_bind(void *s)
-{
+void rt_skeleton3d_compute_inverse_bind(void *s) {
     (void)s;
 }
 
 /// @brief Perform skeleton3d get bone count operation.
 /// @param s
 /// @return Result value.
-int64_t rt_skeleton3d_get_bone_count(void *s)
-{
+int64_t rt_skeleton3d_get_bone_count(void *s) {
     (void)s;
     return 0;
 }
@@ -2205,8 +1993,7 @@ int64_t rt_skeleton3d_get_bone_count(void *s)
 /// @param s
 /// @param n
 /// @return Result value.
-int64_t rt_skeleton3d_find_bone(void *s, rt_string n)
-{
+int64_t rt_skeleton3d_find_bone(void *s, rt_string n) {
     (void)s;
     (void)n;
     return -1;
@@ -2216,22 +2003,19 @@ int64_t rt_skeleton3d_find_bone(void *s, rt_string n)
 /// @param s
 /// @param i
 /// @return Result value.
-rt_string rt_skeleton3d_get_bone_name(void *s, int64_t i)
-{
+rt_string rt_skeleton3d_get_bone_name(void *s, int64_t i) {
     (void)s;
     (void)i;
     return NULL;
 }
 
-void *rt_skeleton3d_get_bone_bind_pose(void *s, int64_t i)
-{
+void *rt_skeleton3d_get_bone_bind_pose(void *s, int64_t i) {
     (void)s;
     (void)i;
     return NULL;
 }
 
-void *rt_animation3d_new(rt_string n, double d)
-{
+void *rt_animation3d_new(rt_string n, double d) {
     (void)n;
     (void)d;
     rt_trap("Animation3D.New: graphics support not compiled in");
@@ -2245,8 +2029,7 @@ void *rt_animation3d_new(rt_string n, double d)
 /// @param p
 /// @param r
 /// @param s
-void rt_animation3d_add_keyframe(void *a, int64_t b, double t, void *p, void *r, void *s)
-{
+void rt_animation3d_add_keyframe(void *a, int64_t b, double t, void *p, void *r, void *s) {
     (void)a;
     (void)b;
     (void)t;
@@ -2258,8 +2041,7 @@ void rt_animation3d_add_keyframe(void *a, int64_t b, double t, void *p, void *r,
 /// @brief Perform animation3d set looping operation.
 /// @param a
 /// @param l
-void rt_animation3d_set_looping(void *a, int8_t l)
-{
+void rt_animation3d_set_looping(void *a, int8_t l) {
     (void)a;
     (void)l;
 }
@@ -2267,8 +2049,7 @@ void rt_animation3d_set_looping(void *a, int8_t l)
 /// @brief Perform animation3d get looping operation.
 /// @param a
 /// @return Result value.
-int8_t rt_animation3d_get_looping(void *a)
-{
+int8_t rt_animation3d_get_looping(void *a) {
     (void)a;
     return 0;
 }
@@ -2276,8 +2057,7 @@ int8_t rt_animation3d_get_looping(void *a)
 /// @brief Perform animation3d get duration operation.
 /// @param a
 /// @return Result value.
-double rt_animation3d_get_duration(void *a)
-{
+double rt_animation3d_get_duration(void *a) {
     (void)a;
     return 0.0;
 }
@@ -2285,14 +2065,12 @@ double rt_animation3d_get_duration(void *a)
 /// @brief Perform animation3d get name operation.
 /// @param a
 /// @return Result value.
-rt_string rt_animation3d_get_name(void *a)
-{
+rt_string rt_animation3d_get_name(void *a) {
     (void)a;
     return NULL;
 }
 
-void *rt_anim_player3d_new(void *s)
-{
+void *rt_anim_player3d_new(void *s) {
     (void)s;
     rt_trap("AnimPlayer3D.New: graphics support not compiled in");
     return NULL;
@@ -2301,8 +2079,7 @@ void *rt_anim_player3d_new(void *s)
 /// @brief Perform anim player3d play operation.
 /// @param p
 /// @param a
-void rt_anim_player3d_play(void *p, void *a)
-{
+void rt_anim_player3d_play(void *p, void *a) {
     (void)p;
     (void)a;
 }
@@ -2311,8 +2088,7 @@ void rt_anim_player3d_play(void *p, void *a)
 /// @param p
 /// @param a
 /// @param d
-void rt_anim_player3d_crossfade(void *p, void *a, double d)
-{
+void rt_anim_player3d_crossfade(void *p, void *a, double d) {
     (void)p;
     (void)a;
     (void)d;
@@ -2320,16 +2096,14 @@ void rt_anim_player3d_crossfade(void *p, void *a, double d)
 
 /// @brief Perform anim player3d stop operation.
 /// @param p
-void rt_anim_player3d_stop(void *p)
-{
+void rt_anim_player3d_stop(void *p) {
     (void)p;
 }
 
 /// @brief Perform anim player3d update operation.
 /// @param p
 /// @param d
-void rt_anim_player3d_update(void *p, double d)
-{
+void rt_anim_player3d_update(void *p, double d) {
     (void)p;
     (void)d;
 }
@@ -2337,8 +2111,7 @@ void rt_anim_player3d_update(void *p, double d)
 /// @brief Perform anim player3d set speed operation.
 /// @param p
 /// @param s
-void rt_anim_player3d_set_speed(void *p, double s)
-{
+void rt_anim_player3d_set_speed(void *p, double s) {
     (void)p;
     (void)s;
 }
@@ -2346,8 +2119,7 @@ void rt_anim_player3d_set_speed(void *p, double s)
 /// @brief Perform anim player3d get speed operation.
 /// @param p
 /// @return Result value.
-double rt_anim_player3d_get_speed(void *p)
-{
+double rt_anim_player3d_get_speed(void *p) {
     (void)p;
     return 1.0;
 }
@@ -2355,8 +2127,7 @@ double rt_anim_player3d_get_speed(void *p)
 /// @brief Perform anim player3d is playing operation.
 /// @param p
 /// @return Result value.
-int8_t rt_anim_player3d_is_playing(void *p)
-{
+int8_t rt_anim_player3d_is_playing(void *p) {
     (void)p;
     return 0;
 }
@@ -2364,8 +2135,7 @@ int8_t rt_anim_player3d_is_playing(void *p)
 /// @brief Perform anim player3d get time operation.
 /// @param p
 /// @return Result value.
-double rt_anim_player3d_get_time(void *p)
-{
+double rt_anim_player3d_get_time(void *p) {
     (void)p;
     return 0.0;
 }
@@ -2373,14 +2143,12 @@ double rt_anim_player3d_get_time(void *p)
 /// @brief Perform anim player3d set time operation.
 /// @param p
 /// @param t
-void rt_anim_player3d_set_time(void *p, double t)
-{
+void rt_anim_player3d_set_time(void *p, double t) {
     (void)p;
     (void)t;
 }
 
-void *rt_anim_player3d_get_bone_matrix(void *p, int64_t i)
-{
+void *rt_anim_player3d_get_bone_matrix(void *p, int64_t i) {
     (void)p;
     (void)i;
     return NULL;
@@ -2389,8 +2157,7 @@ void *rt_anim_player3d_get_bone_matrix(void *p, int64_t i)
 /// @brief Perform mesh3d set skeleton operation.
 /// @param m
 /// @param s
-void rt_mesh3d_set_skeleton(void *m, void *s)
-{
+void rt_mesh3d_set_skeleton(void *m, void *s) {
     (void)m;
     (void)s;
 }
@@ -2404,8 +2171,7 @@ void rt_mesh3d_set_bone_weights(void *m,
                                 int64_t b2,
                                 double w2,
                                 int64_t b3,
-                                double w3)
-{
+                                double w3) {
     (void)m;
     (void)v;
     (void)b0;
@@ -2424,8 +2190,7 @@ void rt_mesh3d_set_bone_weights(void *m,
 /// @param t
 /// @param mat
 /// @param p
-void rt_canvas3d_draw_mesh_skinned(void *c, void *m, void *t, void *mat, void *p)
-{
+void rt_canvas3d_draw_mesh_skinned(void *c, void *m, void *t, void *mat, void *p) {
     (void)c;
     (void)m;
     (void)t;
@@ -2434,8 +2199,7 @@ void rt_canvas3d_draw_mesh_skinned(void *c, void *m, void *t, void *mat, void *p
 }
 
 /* FBX Loader stubs */
-void *rt_fbx_load(rt_string p)
-{
+void *rt_fbx_load(rt_string p) {
     (void)p;
     rt_trap("FBX.Load: graphics support not compiled in");
     return NULL;
@@ -2444,21 +2208,18 @@ void *rt_fbx_load(rt_string p)
 /// @brief Perform fbx mesh count operation.
 /// @param f
 /// @return Result value.
-int64_t rt_fbx_mesh_count(void *f)
-{
+int64_t rt_fbx_mesh_count(void *f) {
     (void)f;
     return 0;
 }
 
-void *rt_fbx_get_mesh(void *f, int64_t i)
-{
+void *rt_fbx_get_mesh(void *f, int64_t i) {
     (void)f;
     (void)i;
     return NULL;
 }
 
-void *rt_fbx_get_skeleton(void *f)
-{
+void *rt_fbx_get_skeleton(void *f) {
     (void)f;
     return NULL;
 }
@@ -2466,14 +2227,12 @@ void *rt_fbx_get_skeleton(void *f)
 /// @brief Perform fbx animation count operation.
 /// @param f
 /// @return Result value.
-int64_t rt_fbx_animation_count(void *f)
-{
+int64_t rt_fbx_animation_count(void *f) {
     (void)f;
     return 0;
 }
 
-void *rt_fbx_get_animation(void *f, int64_t i)
-{
+void *rt_fbx_get_animation(void *f, int64_t i) {
     (void)f;
     (void)i;
     return NULL;
@@ -2483,8 +2242,7 @@ void *rt_fbx_get_animation(void *f, int64_t i)
 /// @param f
 /// @param i
 /// @return Result value.
-rt_string rt_fbx_get_animation_name(void *f, int64_t i)
-{
+rt_string rt_fbx_get_animation_name(void *f, int64_t i) {
     (void)f;
     (void)i;
     return NULL;
@@ -2493,22 +2251,19 @@ rt_string rt_fbx_get_animation_name(void *f, int64_t i)
 /// @brief Perform fbx material count operation.
 /// @param f
 /// @return Result value.
-int64_t rt_fbx_material_count(void *f)
-{
+int64_t rt_fbx_material_count(void *f) {
     (void)f;
     return 0;
 }
 
-void *rt_fbx_get_material(void *f, int64_t i)
-{
+void *rt_fbx_get_material(void *f, int64_t i) {
     (void)f;
     (void)i;
     return NULL;
 }
 
 /* MorphTarget3D stubs */
-void *rt_morphtarget3d_new(int64_t vc)
-{
+void *rt_morphtarget3d_new(int64_t vc) {
     (void)vc;
     rt_trap("MorphTarget3D.New: graphics support not compiled in");
     return NULL;
@@ -2518,8 +2273,7 @@ void *rt_morphtarget3d_new(int64_t vc)
 /// @param m
 /// @param n
 /// @return Result value.
-int64_t rt_morphtarget3d_add_shape(void *m, rt_string n)
-{
+int64_t rt_morphtarget3d_add_shape(void *m, rt_string n) {
     (void)m;
     (void)n;
     return -1;
@@ -2532,8 +2286,7 @@ int64_t rt_morphtarget3d_add_shape(void *m, rt_string n)
 /// @param dx
 /// @param dy
 /// @param dz
-void rt_morphtarget3d_set_delta(void *m, int64_t s, int64_t v, double dx, double dy, double dz)
-{
+void rt_morphtarget3d_set_delta(void *m, int64_t s, int64_t v, double dx, double dy, double dz) {
     (void)m;
     (void)s;
     (void)v;
@@ -2543,8 +2296,7 @@ void rt_morphtarget3d_set_delta(void *m, int64_t s, int64_t v, double dx, double
 }
 
 void rt_morphtarget3d_set_normal_delta(
-    void *m, int64_t s, int64_t v, double dx, double dy, double dz)
-{
+    void *m, int64_t s, int64_t v, double dx, double dy, double dz) {
     (void)m;
     (void)s;
     (void)v;
@@ -2557,8 +2309,7 @@ void rt_morphtarget3d_set_normal_delta(
 /// @param m
 /// @param s
 /// @param w
-void rt_morphtarget3d_set_weight(void *m, int64_t s, double w)
-{
+void rt_morphtarget3d_set_weight(void *m, int64_t s, double w) {
     (void)m;
     (void)s;
     (void)w;
@@ -2568,8 +2319,7 @@ void rt_morphtarget3d_set_weight(void *m, int64_t s, double w)
 /// @param m
 /// @param s
 /// @return Result value.
-double rt_morphtarget3d_get_weight(void *m, int64_t s)
-{
+double rt_morphtarget3d_get_weight(void *m, int64_t s) {
     (void)m;
     (void)s;
     return 0.0;
@@ -2579,8 +2329,7 @@ double rt_morphtarget3d_get_weight(void *m, int64_t s)
 /// @param m
 /// @param n
 /// @param w
-void rt_morphtarget3d_set_weight_by_name(void *m, rt_string n, double w)
-{
+void rt_morphtarget3d_set_weight_by_name(void *m, rt_string n, double w) {
     (void)m;
     (void)n;
     (void)w;
@@ -2589,8 +2338,7 @@ void rt_morphtarget3d_set_weight_by_name(void *m, rt_string n, double w)
 /// @brief Perform morphtarget3d get shape count operation.
 /// @param m
 /// @return Result value.
-int64_t rt_morphtarget3d_get_shape_count(void *m)
-{
+int64_t rt_morphtarget3d_get_shape_count(void *m) {
     (void)m;
     return 0;
 }
@@ -2598,8 +2346,7 @@ int64_t rt_morphtarget3d_get_shape_count(void *m)
 /// @brief Perform mesh3d set morph targets operation.
 /// @param m
 /// @param mt
-void rt_mesh3d_set_morph_targets(void *m, void *mt)
-{
+void rt_mesh3d_set_morph_targets(void *m, void *mt) {
     (void)m;
     (void)mt;
 }
@@ -2610,8 +2357,7 @@ void rt_mesh3d_set_morph_targets(void *m, void *mt)
 /// @param t
 /// @param mat
 /// @param mt
-void rt_canvas3d_draw_mesh_morphed(void *c, void *m, void *t, void *mat, void *mt)
-{
+void rt_canvas3d_draw_mesh_morphed(void *c, void *m, void *t, void *mat, void *mt) {
     (void)c;
     (void)m;
     (void)t;
@@ -2620,8 +2366,7 @@ void rt_canvas3d_draw_mesh_morphed(void *c, void *m, void *t, void *mat, void *m
 }
 
 /* Particles3D stubs */
-void *rt_particles3d_new(int64_t n)
-{
+void *rt_particles3d_new(int64_t n) {
     (void)n;
     rt_trap("Particles3D.New: graphics support not compiled in");
     return NULL;
@@ -2632,8 +2377,7 @@ void *rt_particles3d_new(int64_t n)
 /// @param x
 /// @param y
 /// @param z
-void rt_particles3d_set_position(void *o, double x, double y, double z)
-{
+void rt_particles3d_set_position(void *o, double x, double y, double z) {
     (void)o;
     (void)x;
     (void)y;
@@ -2646,8 +2390,7 @@ void rt_particles3d_set_position(void *o, double x, double y, double z)
 /// @param dy
 /// @param dz
 /// @param s
-void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, double s)
-{
+void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, double s) {
     (void)o;
     (void)dx;
     (void)dy;
@@ -2659,8 +2402,7 @@ void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, doub
 /// @param o
 /// @param mn
 /// @param mx
-void rt_particles3d_set_speed(void *o, double mn, double mx)
-{
+void rt_particles3d_set_speed(void *o, double mn, double mx) {
     (void)o;
     (void)mn;
     (void)mx;
@@ -2670,8 +2412,7 @@ void rt_particles3d_set_speed(void *o, double mn, double mx)
 /// @param o
 /// @param mn
 /// @param mx
-void rt_particles3d_set_lifetime(void *o, double mn, double mx)
-{
+void rt_particles3d_set_lifetime(void *o, double mn, double mx) {
     (void)o;
     (void)mn;
     (void)mx;
@@ -2681,8 +2422,7 @@ void rt_particles3d_set_lifetime(void *o, double mn, double mx)
 /// @param o
 /// @param s
 /// @param e
-void rt_particles3d_set_size(void *o, double s, double e)
-{
+void rt_particles3d_set_size(void *o, double s, double e) {
     (void)o;
     (void)s;
     (void)e;
@@ -2693,8 +2433,7 @@ void rt_particles3d_set_size(void *o, double s, double e)
 /// @param gx
 /// @param gy
 /// @param gz
-void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz)
-{
+void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz) {
     (void)o;
     (void)gx;
     (void)gy;
@@ -2705,8 +2444,7 @@ void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz)
 /// @param o
 /// @param sc
 /// @param ec
-void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec)
-{
+void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec) {
     (void)o;
     (void)sc;
     (void)ec;
@@ -2716,8 +2454,7 @@ void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec)
 /// @param o
 /// @param sa
 /// @param ea
-void rt_particles3d_set_alpha(void *o, double sa, double ea)
-{
+void rt_particles3d_set_alpha(void *o, double sa, double ea) {
     (void)o;
     (void)sa;
     (void)ea;
@@ -2726,8 +2463,7 @@ void rt_particles3d_set_alpha(void *o, double sa, double ea)
 /// @brief Perform particles3d set rate operation.
 /// @param o
 /// @param r
-void rt_particles3d_set_rate(void *o, double r)
-{
+void rt_particles3d_set_rate(void *o, double r) {
     (void)o;
     (void)r;
 }
@@ -2735,8 +2471,7 @@ void rt_particles3d_set_rate(void *o, double r)
 /// @brief Perform particles3d set additive operation.
 /// @param o
 /// @param a
-void rt_particles3d_set_additive(void *o, int8_t a)
-{
+void rt_particles3d_set_additive(void *o, int8_t a) {
     (void)o;
     (void)a;
 }
@@ -2744,8 +2479,7 @@ void rt_particles3d_set_additive(void *o, int8_t a)
 /// @brief Perform particles3d set texture operation.
 /// @param o
 /// @param t
-void rt_particles3d_set_texture(void *o, void *t)
-{
+void rt_particles3d_set_texture(void *o, void *t) {
     (void)o;
     (void)t;
 }
@@ -2753,8 +2487,7 @@ void rt_particles3d_set_texture(void *o, void *t)
 /// @brief Perform particles3d set emitter shape operation.
 /// @param o
 /// @param s
-void rt_particles3d_set_emitter_shape(void *o, int64_t s)
-{
+void rt_particles3d_set_emitter_shape(void *o, int64_t s) {
     (void)o;
     (void)s;
 }
@@ -2764,8 +2497,7 @@ void rt_particles3d_set_emitter_shape(void *o, int64_t s)
 /// @param sx
 /// @param sy
 /// @param sz
-void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz)
-{
+void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz) {
     (void)o;
     (void)sx;
     (void)sy;
@@ -2774,39 +2506,34 @@ void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz)
 
 /// @brief Perform particles3d start operation.
 /// @param o
-void rt_particles3d_start(void *o)
-{
+void rt_particles3d_start(void *o) {
     (void)o;
 }
 
 /// @brief Perform particles3d stop operation.
 /// @param o
-void rt_particles3d_stop(void *o)
-{
+void rt_particles3d_stop(void *o) {
     (void)o;
 }
 
 /// @brief Perform particles3d burst operation.
 /// @param o
 /// @param n
-void rt_particles3d_burst(void *o, int64_t n)
-{
+void rt_particles3d_burst(void *o, int64_t n) {
     (void)o;
     (void)n;
 }
 
 /// @brief Perform particles3d clear operation.
 /// @param o
-void rt_particles3d_clear(void *o)
-{
+void rt_particles3d_clear(void *o) {
     (void)o;
 }
 
 /// @brief Perform particles3d update operation.
 /// @param o
 /// @param dt
-void rt_particles3d_update(void *o, double dt)
-{
+void rt_particles3d_update(void *o, double dt) {
     (void)o;
     (void)dt;
 }
@@ -2815,8 +2542,7 @@ void rt_particles3d_update(void *o, double dt)
 /// @param o
 /// @param c
 /// @param cam
-void rt_particles3d_draw(void *o, void *c, void *cam)
-{
+void rt_particles3d_draw(void *o, void *c, void *cam) {
     (void)o;
     (void)c;
     (void)cam;
@@ -2825,8 +2551,7 @@ void rt_particles3d_draw(void *o, void *c, void *cam)
 /// @brief Perform particles3d get count operation.
 /// @param o
 /// @return Result value.
-int64_t rt_particles3d_get_count(void *o)
-{
+int64_t rt_particles3d_get_count(void *o) {
     (void)o;
     return 0;
 }
@@ -2834,15 +2559,13 @@ int64_t rt_particles3d_get_count(void *o)
 /// @brief Perform particles3d get emitting operation.
 /// @param o
 /// @return Result value.
-int8_t rt_particles3d_get_emitting(void *o)
-{
+int8_t rt_particles3d_get_emitting(void *o) {
     (void)o;
     return 0;
 }
 
 /* PostFX3D stubs */
-void *rt_postfx3d_new(void)
-{
+void *rt_postfx3d_new(void) {
     rt_trap("PostFX3D.New: graphics support not compiled in");
     return NULL;
 }
@@ -2852,8 +2575,7 @@ void *rt_postfx3d_new(void)
 /// @param t
 /// @param i
 /// @param b
-void rt_postfx3d_add_bloom(void *o, double t, double i, int64_t b)
-{
+void rt_postfx3d_add_bloom(void *o, double t, double i, int64_t b) {
     (void)o;
     (void)t;
     (void)i;
@@ -2864,8 +2586,7 @@ void rt_postfx3d_add_bloom(void *o, double t, double i, int64_t b)
 /// @param o
 /// @param m
 /// @param e
-void rt_postfx3d_add_tonemap(void *o, int64_t m, double e)
-{
+void rt_postfx3d_add_tonemap(void *o, int64_t m, double e) {
     (void)o;
     (void)m;
     (void)e;
@@ -2873,8 +2594,7 @@ void rt_postfx3d_add_tonemap(void *o, int64_t m, double e)
 
 /// @brief Perform postfx3d add fxaa operation.
 /// @param o
-void rt_postfx3d_add_fxaa(void *o)
-{
+void rt_postfx3d_add_fxaa(void *o) {
     (void)o;
 }
 
@@ -2883,8 +2603,7 @@ void rt_postfx3d_add_fxaa(void *o)
 /// @param b
 /// @param c
 /// @param s
-void rt_postfx3d_add_color_grade(void *o, double b, double c, double s)
-{
+void rt_postfx3d_add_color_grade(void *o, double b, double c, double s) {
     (void)o;
     (void)b;
     (void)c;
@@ -2895,8 +2614,7 @@ void rt_postfx3d_add_color_grade(void *o, double b, double c, double s)
 /// @param o
 /// @param r
 /// @param s
-void rt_postfx3d_add_vignette(void *o, double r, double s)
-{
+void rt_postfx3d_add_vignette(void *o, double r, double s) {
     (void)o;
     (void)r;
     (void)s;
@@ -2905,8 +2623,7 @@ void rt_postfx3d_add_vignette(void *o, double r, double s)
 /// @brief Perform postfx3d set enabled operation.
 /// @param o
 /// @param e
-void rt_postfx3d_set_enabled(void *o, int8_t e)
-{
+void rt_postfx3d_set_enabled(void *o, int8_t e) {
     (void)o;
     (void)e;
 }
@@ -2914,24 +2631,21 @@ void rt_postfx3d_set_enabled(void *o, int8_t e)
 /// @brief Perform postfx3d get enabled operation.
 /// @param o
 /// @return Result value.
-int8_t rt_postfx3d_get_enabled(void *o)
-{
+int8_t rt_postfx3d_get_enabled(void *o) {
     (void)o;
     return 0;
 }
 
 /// @brief Perform postfx3d clear operation.
 /// @param o
-void rt_postfx3d_clear(void *o)
-{
+void rt_postfx3d_clear(void *o) {
     (void)o;
 }
 
 /// @brief Perform postfx3d get effect count operation.
 /// @param o
 /// @return Result value.
-int64_t rt_postfx3d_get_effect_count(void *o)
-{
+int64_t rt_postfx3d_get_effect_count(void *o) {
     (void)o;
     return 0;
 }
@@ -2939,16 +2653,14 @@ int64_t rt_postfx3d_get_effect_count(void *o)
 /// @brief Perform canvas3d set post fx operation.
 /// @param c
 /// @param fx
-void rt_canvas3d_set_post_fx(void *c, void *fx)
-{
+void rt_canvas3d_set_post_fx(void *c, void *fx) {
     (void)c;
     (void)fx;
 }
 
 /// @brief Perform postfx3d apply to canvas operation.
 /// @param c
-void rt_postfx3d_apply_to_canvas(void *c)
-{
+void rt_postfx3d_apply_to_canvas(void *c) {
     (void)c;
 }
 
@@ -2960,8 +2672,7 @@ void rt_postfx3d_apply_to_canvas(void *c)
 /// @param v1
 /// @param v2
 /// @return Result value.
-double rt_ray3d_intersect_triangle(void *o, void *d, void *v0, void *v1, void *v2)
-{
+double rt_ray3d_intersect_triangle(void *o, void *d, void *v0, void *v1, void *v2) {
     (void)o;
     (void)d;
     (void)v0;
@@ -2970,8 +2681,7 @@ double rt_ray3d_intersect_triangle(void *o, void *d, void *v0, void *v1, void *v
     return -1.0;
 }
 
-void *rt_ray3d_intersect_mesh(void *o, void *d, void *m, void *t)
-{
+void *rt_ray3d_intersect_mesh(void *o, void *d, void *m, void *t) {
     (void)o;
     (void)d;
     (void)m;
@@ -2985,8 +2695,7 @@ void *rt_ray3d_intersect_mesh(void *o, void *d, void *m, void *t)
 /// @param mn
 /// @param mx
 /// @return Result value.
-double rt_ray3d_intersect_aabb(void *o, void *d, void *mn, void *mx)
-{
+double rt_ray3d_intersect_aabb(void *o, void *d, void *mn, void *mx) {
     (void)o;
     (void)d;
     (void)mn;
@@ -3000,8 +2709,7 @@ double rt_ray3d_intersect_aabb(void *o, void *d, void *mn, void *mx)
 /// @param c
 /// @param r
 /// @return Result value.
-double rt_ray3d_intersect_sphere(void *o, void *d, void *c, double r)
-{
+double rt_ray3d_intersect_sphere(void *o, void *d, void *c, double r) {
     (void)o;
     (void)d;
     (void)c;
@@ -3015,8 +2723,7 @@ double rt_ray3d_intersect_sphere(void *o, void *d, void *c, double r)
 /// @param b0
 /// @param b1
 /// @return Result value.
-int8_t rt_aabb3d_overlaps(void *a0, void *a1, void *b0, void *b1)
-{
+int8_t rt_aabb3d_overlaps(void *a0, void *a1, void *b0, void *b1) {
     (void)a0;
     (void)a1;
     (void)b0;
@@ -3024,8 +2731,7 @@ int8_t rt_aabb3d_overlaps(void *a0, void *a1, void *b0, void *b1)
     return 0;
 }
 
-void *rt_aabb3d_penetration(void *a0, void *a1, void *b0, void *b1)
-{
+void *rt_aabb3d_penetration(void *a0, void *a1, void *b0, void *b1) {
     (void)a0;
     (void)a1;
     (void)b0;
@@ -3036,20 +2742,17 @@ void *rt_aabb3d_penetration(void *a0, void *a1, void *b0, void *b1)
 /// @brief Perform ray3d hit distance operation.
 /// @param h
 /// @return Result value.
-double rt_ray3d_hit_distance(void *h)
-{
+double rt_ray3d_hit_distance(void *h) {
     (void)h;
     return -1.0;
 }
 
-void *rt_ray3d_hit_point(void *h)
-{
+void *rt_ray3d_hit_point(void *h) {
     (void)h;
     return NULL;
 }
 
-void *rt_ray3d_hit_normal(void *h)
-{
+void *rt_ray3d_hit_normal(void *h) {
     (void)h;
     return NULL;
 }
@@ -3057,8 +2760,7 @@ void *rt_ray3d_hit_normal(void *h)
 /// @brief Perform ray3d hit triangle operation.
 /// @param h
 /// @return Result value.
-int64_t rt_ray3d_hit_triangle(void *h)
-{
+int64_t rt_ray3d_hit_triangle(void *h) {
     (void)h;
     return -1;
 }
@@ -3069,8 +2771,7 @@ int64_t rt_ray3d_hit_triangle(void *h)
 /// @param b
 /// @param rb
 /// @return Result value.
-int8_t rt_sphere3d_overlaps(void *a, double ra, void *b, double rb)
-{
+int8_t rt_sphere3d_overlaps(void *a, double ra, void *b, double rb) {
     (void)a;
     (void)ra;
     (void)b;
@@ -3078,8 +2779,7 @@ int8_t rt_sphere3d_overlaps(void *a, double ra, void *b, double rb)
     return 0;
 }
 
-void *rt_sphere3d_penetration(void *a, double ra, void *b, double rb)
-{
+void *rt_sphere3d_penetration(void *a, double ra, void *b, double rb) {
     (void)a;
     (void)ra;
     (void)b;
@@ -3087,8 +2787,7 @@ void *rt_sphere3d_penetration(void *a, double ra, void *b, double rb)
     return NULL;
 }
 
-void *rt_aabb3d_closest_point(void *mn, void *mx, void *p)
-{
+void *rt_aabb3d_closest_point(void *mn, void *mx, void *p) {
     (void)mn;
     (void)mx;
     (void)p;
@@ -3101,8 +2800,7 @@ void *rt_aabb3d_closest_point(void *mn, void *mx, void *p)
 /// @param c
 /// @param r
 /// @return Result value.
-int8_t rt_aabb3d_sphere_overlaps(void *mn, void *mx, void *c, double r)
-{
+int8_t rt_aabb3d_sphere_overlaps(void *mn, void *mx, void *c, double r) {
     (void)mn;
     (void)mx;
     (void)c;
@@ -3110,8 +2808,7 @@ int8_t rt_aabb3d_sphere_overlaps(void *mn, void *mx, void *c, double r)
     return 0;
 }
 
-void *rt_segment3d_closest_point(void *a, void *b, void *p)
-{
+void *rt_segment3d_closest_point(void *a, void *b, void *p) {
     (void)a;
     (void)b;
     (void)p;
@@ -3125,8 +2822,7 @@ void *rt_segment3d_closest_point(void *a, void *b, void *p)
 /// @param c
 /// @param sr
 /// @return Result value.
-int8_t rt_capsule3d_sphere_overlaps(void *a, void *b, double cr, void *c, double sr)
-{
+int8_t rt_capsule3d_sphere_overlaps(void *a, void *b, double cr, void *c, double sr) {
     (void)a;
     (void)b;
     (void)cr;
@@ -3142,8 +2838,7 @@ int8_t rt_capsule3d_sphere_overlaps(void *a, void *b, double cr, void *c, double
 /// @param mn
 /// @param mx
 /// @return Result value.
-int8_t rt_capsule3d_aabb_overlaps(void *a, void *b, double r, void *mn, void *mx)
-{
+int8_t rt_capsule3d_aabb_overlaps(void *a, void *b, double r, void *mn, void *mx) {
     (void)a;
     (void)b;
     (void)r;
@@ -3155,14 +2850,12 @@ int8_t rt_capsule3d_aabb_overlaps(void *a, void *b, double r, void *mn, void *mx
 /* FPS Camera stubs */
 /// @brief Perform camera3d fps init operation.
 /// @param c
-void rt_camera3d_fps_init(void *c)
-{
+void rt_camera3d_fps_init(void *c) {
     (void)c;
 }
 
 void rt_camera3d_fps_update(
-    void *c, double a, double b, double d, double e, double f, double g, double h)
-{
+    void *c, double a, double b, double d, double e, double f, double g, double h) {
     (void)c;
     (void)a;
     (void)b;
@@ -3176,8 +2869,7 @@ void rt_camera3d_fps_update(
 /// @brief Perform camera3d get yaw operation.
 /// @param c
 /// @return Result value.
-double rt_camera3d_get_yaw(void *c)
-{
+double rt_camera3d_get_yaw(void *c) {
     (void)c;
     return 0.0;
 }
@@ -3185,8 +2877,7 @@ double rt_camera3d_get_yaw(void *c)
 /// @brief Perform camera3d get pitch operation.
 /// @param c
 /// @return Result value.
-double rt_camera3d_get_pitch(void *c)
-{
+double rt_camera3d_get_pitch(void *c) {
     (void)c;
     return 0.0;
 }
@@ -3194,8 +2885,7 @@ double rt_camera3d_get_pitch(void *c)
 /// @brief Perform camera3d set yaw operation.
 /// @param c
 /// @param v
-void rt_camera3d_set_yaw(void *c, double v)
-{
+void rt_camera3d_set_yaw(void *c, double v) {
     (void)c;
     (void)v;
 }
@@ -3203,8 +2893,7 @@ void rt_camera3d_set_yaw(void *c, double v)
 /// @brief Perform camera3d set pitch operation.
 /// @param c
 /// @param v
-void rt_camera3d_set_pitch(void *c, double v)
-{
+void rt_camera3d_set_pitch(void *c, double v) {
     (void)c;
     (void)v;
 }
@@ -3217,8 +2906,7 @@ void rt_camera3d_set_pitch(void *c, double v)
 /// @param w
 /// @param h
 /// @param cl
-void rt_canvas3d_draw_rect2d(void *c, int64_t x, int64_t y, int64_t w, int64_t h, int64_t cl)
-{
+void rt_canvas3d_draw_rect2d(void *c, int64_t x, int64_t y, int64_t w, int64_t h, int64_t cl) {
     (void)c;
     (void)x;
     (void)y;
@@ -3231,8 +2919,7 @@ void rt_canvas3d_draw_rect2d(void *c, int64_t x, int64_t y, int64_t w, int64_t h
 /// @param c
 /// @param cl
 /// @param sz
-void rt_canvas3d_draw_crosshair(void *c, int64_t cl, int64_t sz)
-{
+void rt_canvas3d_draw_crosshair(void *c, int64_t cl, int64_t sz) {
     (void)c;
     (void)cl;
     (void)sz;
@@ -3244,8 +2931,7 @@ void rt_canvas3d_draw_crosshair(void *c, int64_t cl, int64_t sz)
 /// @param y
 /// @param t
 /// @param cl
-void rt_canvas3d_draw_text2d(void *c, int64_t x, int64_t y, rt_string t, int64_t cl)
-{
+void rt_canvas3d_draw_text2d(void *c, int64_t x, int64_t y, rt_string t, int64_t cl) {
     (void)c;
     (void)x;
     (void)y;
@@ -3259,8 +2945,7 @@ void rt_canvas3d_draw_text2d(void *c, int64_t x, int64_t y, rt_string t, int64_t
 /// @param mn
 /// @param mx
 /// @param cl
-void rt_canvas3d_draw_aabb_wire(void *c, void *mn, void *mx, int64_t cl)
-{
+void rt_canvas3d_draw_aabb_wire(void *c, void *mn, void *mx, int64_t cl) {
     (void)c;
     (void)mn;
     (void)mx;
@@ -3272,8 +2957,7 @@ void rt_canvas3d_draw_aabb_wire(void *c, void *mn, void *mx, int64_t cl)
 /// @param ctr
 /// @param r
 /// @param cl
-void rt_canvas3d_draw_sphere_wire(void *c, void *ctr, double r, int64_t cl)
-{
+void rt_canvas3d_draw_sphere_wire(void *c, void *ctr, double r, int64_t cl) {
     (void)c;
     (void)ctr;
     (void)r;
@@ -3286,8 +2970,7 @@ void rt_canvas3d_draw_sphere_wire(void *c, void *ctr, double r, int64_t cl)
 /// @param d
 /// @param l
 /// @param cl
-void rt_canvas3d_draw_debug_ray(void *c, void *o, void *d, double l, int64_t cl)
-{
+void rt_canvas3d_draw_debug_ray(void *c, void *o, void *d, double l, int64_t cl) {
     (void)c;
     (void)o;
     (void)d;
@@ -3299,8 +2982,7 @@ void rt_canvas3d_draw_debug_ray(void *c, void *o, void *d, double l, int64_t cl)
 /// @param c
 /// @param o
 /// @param s
-void rt_canvas3d_draw_axis(void *c, void *o, double s)
-{
+void rt_canvas3d_draw_axis(void *c, void *o, double s) {
     (void)c;
     (void)o;
     (void)s;
@@ -3314,8 +2996,7 @@ void rt_canvas3d_draw_axis(void *c, void *o, double s)
 /// @param r
 /// @param g
 /// @param b
-void rt_canvas3d_set_fog(void *c, double n, double f, double r, double g, double b)
-{
+void rt_canvas3d_set_fog(void *c, double n, double f, double r, double g, double b) {
     (void)c;
     (void)n;
     (void)f;
@@ -3326,8 +3007,7 @@ void rt_canvas3d_set_fog(void *c, double n, double f, double r, double g, double
 
 /// @brief Perform canvas3d clear fog operation.
 /// @param c
-void rt_canvas3d_clear_fog(void *c)
-{
+void rt_canvas3d_clear_fog(void *c) {
     (void)c;
 }
 
@@ -3335,24 +3015,21 @@ void rt_canvas3d_clear_fog(void *c)
 /// @brief Perform canvas3d enable shadows operation.
 /// @param c
 /// @param r
-void rt_canvas3d_enable_shadows(void *c, int64_t r)
-{
+void rt_canvas3d_enable_shadows(void *c, int64_t r) {
     (void)c;
     (void)r;
 }
 
 /// @brief Perform canvas3d disable shadows operation.
 /// @param c
-void rt_canvas3d_disable_shadows(void *c)
-{
+void rt_canvas3d_disable_shadows(void *c) {
     (void)c;
 }
 
 /// @brief Perform canvas3d set shadow bias operation.
 /// @param c
 /// @param b
-void rt_canvas3d_set_shadow_bias(void *c, double b)
-{
+void rt_canvas3d_set_shadow_bias(void *c, double b) {
     (void)c;
     (void)b;
 }
@@ -3361,8 +3038,7 @@ void rt_canvas3d_set_shadow_bias(void *c, double b)
 /// @brief Perform audio3d set listener operation.
 /// @param p
 /// @param f
-void rt_audio3d_set_listener(void *p, void *f)
-{
+void rt_audio3d_set_listener(void *p, void *f) {
     (void)p;
     (void)f;
 }
@@ -3373,8 +3049,7 @@ void rt_audio3d_set_listener(void *p, void *f)
 /// @param d
 /// @param v
 /// @return Result value.
-int64_t rt_audio3d_play_at(void *s, void *p, double d, int64_t v)
-{
+int64_t rt_audio3d_play_at(void *s, void *p, double d, int64_t v) {
     (void)s;
     (void)p;
     (void)d;
@@ -3386,16 +3061,14 @@ int64_t rt_audio3d_play_at(void *s, void *p, double d, int64_t v)
 /// @param v
 /// @param p
 /// @param md
-void rt_audio3d_update_voice(int64_t v, void *p, double md)
-{
+void rt_audio3d_update_voice(int64_t v, void *p, double md) {
     (void)v;
     (void)p;
     (void)md;
 }
 
 /* Physics3D World stubs */
-void *rt_world3d_new(double gx, double gy, double gz)
-{
+void *rt_world3d_new(double gx, double gy, double gz) {
     (void)gx;
     (void)gy;
     (void)gz;
@@ -3406,8 +3079,7 @@ void *rt_world3d_new(double gx, double gy, double gz)
 /// @brief Perform world3d step operation.
 /// @param w
 /// @param dt
-void rt_world3d_step(void *w, double dt)
-{
+void rt_world3d_step(void *w, double dt) {
     (void)w;
     (void)dt;
 }
@@ -3415,8 +3087,7 @@ void rt_world3d_step(void *w, double dt)
 /// @brief Perform world3d add operation.
 /// @param w
 /// @param b
-void rt_world3d_add(void *w, void *b)
-{
+void rt_world3d_add(void *w, void *b) {
     (void)w;
     (void)b;
 }
@@ -3424,8 +3095,7 @@ void rt_world3d_add(void *w, void *b)
 /// @brief Perform world3d remove operation.
 /// @param w
 /// @param b
-void rt_world3d_remove(void *w, void *b)
-{
+void rt_world3d_remove(void *w, void *b) {
     (void)w;
     (void)b;
 }
@@ -3433,8 +3103,7 @@ void rt_world3d_remove(void *w, void *b)
 /// @brief Perform world3d body count operation.
 /// @param w
 /// @return Result value.
-int64_t rt_world3d_body_count(void *w)
-{
+int64_t rt_world3d_body_count(void *w) {
     (void)w;
     return 0;
 }
@@ -3444,8 +3113,7 @@ int64_t rt_world3d_body_count(void *w)
 /// @param gx
 /// @param gy
 /// @param gz
-void rt_world3d_set_gravity(void *w, double gx, double gy, double gz)
-{
+void rt_world3d_set_gravity(void *w, double gx, double gy, double gz) {
     (void)w;
     (void)gx;
     (void)gy;
@@ -3453,8 +3121,7 @@ void rt_world3d_set_gravity(void *w, double gx, double gy, double gz)
 }
 
 /* Physics3D Body stubs */
-void *rt_body3d_new_aabb(double hx, double hy, double hz, double mass)
-{
+void *rt_body3d_new_aabb(double hx, double hy, double hz, double mass) {
     (void)hx;
     (void)hy;
     (void)hz;
@@ -3462,15 +3129,13 @@ void *rt_body3d_new_aabb(double hx, double hy, double hz, double mass)
     return NULL;
 }
 
-void *rt_body3d_new_sphere(double radius, double mass)
-{
+void *rt_body3d_new_sphere(double radius, double mass) {
     (void)radius;
     (void)mass;
     return NULL;
 }
 
-void *rt_body3d_new_capsule(double radius, double height, double mass)
-{
+void *rt_body3d_new_capsule(double radius, double height, double mass) {
     (void)radius;
     (void)height;
     (void)mass;
@@ -3482,16 +3147,14 @@ void *rt_body3d_new_capsule(double radius, double height, double mass)
 /// @param x
 /// @param y
 /// @param z
-void rt_body3d_set_position(void *o, double x, double y, double z)
-{
+void rt_body3d_set_position(void *o, double x, double y, double z) {
     (void)o;
     (void)x;
     (void)y;
     (void)z;
 }
 
-void *rt_body3d_get_position(void *o)
-{
+void *rt_body3d_get_position(void *o) {
     (void)o;
     return NULL;
 }
@@ -3501,16 +3164,14 @@ void *rt_body3d_get_position(void *o)
 /// @param vx
 /// @param vy
 /// @param vz
-void rt_body3d_set_velocity(void *o, double vx, double vy, double vz)
-{
+void rt_body3d_set_velocity(void *o, double vx, double vy, double vz) {
     (void)o;
     (void)vx;
     (void)vy;
     (void)vz;
 }
 
-void *rt_body3d_get_velocity(void *o)
-{
+void *rt_body3d_get_velocity(void *o) {
     (void)o;
     return NULL;
 }
@@ -3520,8 +3181,7 @@ void *rt_body3d_get_velocity(void *o)
 /// @param fx
 /// @param fy
 /// @param fz
-void rt_body3d_apply_force(void *o, double fx, double fy, double fz)
-{
+void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
     (void)o;
     (void)fx;
     (void)fy;
@@ -3533,8 +3193,7 @@ void rt_body3d_apply_force(void *o, double fx, double fy, double fz)
 /// @param ix
 /// @param iy
 /// @param iz
-void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz)
-{
+void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
     (void)o;
     (void)ix;
     (void)iy;
@@ -3544,8 +3203,7 @@ void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz)
 /// @brief Perform body3d set restitution operation.
 /// @param o
 /// @param r
-void rt_body3d_set_restitution(void *o, double r)
-{
+void rt_body3d_set_restitution(void *o, double r) {
     (void)o;
     (void)r;
 }
@@ -3553,8 +3211,7 @@ void rt_body3d_set_restitution(void *o, double r)
 /// @brief Perform body3d get restitution operation.
 /// @param o
 /// @return Result value.
-double rt_body3d_get_restitution(void *o)
-{
+double rt_body3d_get_restitution(void *o) {
     (void)o;
     return 0.0;
 }
@@ -3562,8 +3219,7 @@ double rt_body3d_get_restitution(void *o)
 /// @brief Perform body3d set friction operation.
 /// @param o
 /// @param f
-void rt_body3d_set_friction(void *o, double f)
-{
+void rt_body3d_set_friction(void *o, double f) {
     (void)o;
     (void)f;
 }
@@ -3571,8 +3227,7 @@ void rt_body3d_set_friction(void *o, double f)
 /// @brief Perform body3d get friction operation.
 /// @param o
 /// @return Result value.
-double rt_body3d_get_friction(void *o)
-{
+double rt_body3d_get_friction(void *o) {
     (void)o;
     return 0.0;
 }
@@ -3580,8 +3235,7 @@ double rt_body3d_get_friction(void *o)
 /// @brief Perform body3d set collision layer operation.
 /// @param o
 /// @param l
-void rt_body3d_set_collision_layer(void *o, int64_t l)
-{
+void rt_body3d_set_collision_layer(void *o, int64_t l) {
     (void)o;
     (void)l;
 }
@@ -3589,8 +3243,7 @@ void rt_body3d_set_collision_layer(void *o, int64_t l)
 /// @brief Perform body3d get collision layer operation.
 /// @param o
 /// @return Result value.
-int64_t rt_body3d_get_collision_layer(void *o)
-{
+int64_t rt_body3d_get_collision_layer(void *o) {
     (void)o;
     return 0;
 }
@@ -3598,8 +3251,7 @@ int64_t rt_body3d_get_collision_layer(void *o)
 /// @brief Perform body3d set collision mask operation.
 /// @param o
 /// @param m
-void rt_body3d_set_collision_mask(void *o, int64_t m)
-{
+void rt_body3d_set_collision_mask(void *o, int64_t m) {
     (void)o;
     (void)m;
 }
@@ -3607,8 +3259,7 @@ void rt_body3d_set_collision_mask(void *o, int64_t m)
 /// @brief Perform body3d get collision mask operation.
 /// @param o
 /// @return Result value.
-int64_t rt_body3d_get_collision_mask(void *o)
-{
+int64_t rt_body3d_get_collision_mask(void *o) {
     (void)o;
     return 0;
 }
@@ -3616,8 +3267,7 @@ int64_t rt_body3d_get_collision_mask(void *o)
 /// @brief Perform body3d set static operation.
 /// @param o
 /// @param s
-void rt_body3d_set_static(void *o, int8_t s)
-{
+void rt_body3d_set_static(void *o, int8_t s) {
     (void)o;
     (void)s;
 }
@@ -3625,8 +3275,7 @@ void rt_body3d_set_static(void *o, int8_t s)
 /// @brief Perform body3d is static operation.
 /// @param o
 /// @return Result value.
-int8_t rt_body3d_is_static(void *o)
-{
+int8_t rt_body3d_is_static(void *o) {
     (void)o;
     return 0;
 }
@@ -3634,8 +3283,7 @@ int8_t rt_body3d_is_static(void *o)
 /// @brief Perform body3d set trigger operation.
 /// @param o
 /// @param t
-void rt_body3d_set_trigger(void *o, int8_t t)
-{
+void rt_body3d_set_trigger(void *o, int8_t t) {
     (void)o;
     (void)t;
 }
@@ -3643,8 +3291,7 @@ void rt_body3d_set_trigger(void *o, int8_t t)
 /// @brief Perform body3d is trigger operation.
 /// @param o
 /// @return Result value.
-int8_t rt_body3d_is_trigger(void *o)
-{
+int8_t rt_body3d_is_trigger(void *o) {
     (void)o;
     return 0;
 }
@@ -3652,14 +3299,12 @@ int8_t rt_body3d_is_trigger(void *o)
 /// @brief Perform body3d is grounded operation.
 /// @param o
 /// @return Result value.
-int8_t rt_body3d_is_grounded(void *o)
-{
+int8_t rt_body3d_is_grounded(void *o) {
     (void)o;
     return 0;
 }
 
-void *rt_body3d_get_ground_normal(void *o)
-{
+void *rt_body3d_get_ground_normal(void *o) {
     (void)o;
     return NULL;
 }
@@ -3667,15 +3312,13 @@ void *rt_body3d_get_ground_normal(void *o)
 /// @brief Perform body3d get mass operation.
 /// @param o
 /// @return Result value.
-double rt_body3d_get_mass(void *o)
-{
+double rt_body3d_get_mass(void *o) {
     (void)o;
     return 0.0;
 }
 
 /* Character3D stubs */
-void *rt_character3d_new(double radius, double height, double mass)
-{
+void *rt_character3d_new(double radius, double height, double mass) {
     (void)radius;
     (void)height;
     (void)mass;
@@ -3686,8 +3329,7 @@ void *rt_character3d_new(double radius, double height, double mass)
 /// @param c
 /// @param v
 /// @param dt
-void rt_character3d_move(void *c, void *v, double dt)
-{
+void rt_character3d_move(void *c, void *v, double dt) {
     (void)c;
     (void)v;
     (void)dt;
@@ -3696,8 +3338,7 @@ void rt_character3d_move(void *c, void *v, double dt)
 /// @brief Perform character3d set step height operation.
 /// @param c
 /// @param h
-void rt_character3d_set_step_height(void *c, double h)
-{
+void rt_character3d_set_step_height(void *c, double h) {
     (void)c;
     (void)h;
 }
@@ -3705,8 +3346,7 @@ void rt_character3d_set_step_height(void *c, double h)
 /// @brief Perform character3d get step height operation.
 /// @param c
 /// @return Result value.
-double rt_character3d_get_step_height(void *c)
-{
+double rt_character3d_get_step_height(void *c) {
     (void)c;
     return 0.3;
 }
@@ -3714,8 +3354,7 @@ double rt_character3d_get_step_height(void *c)
 /// @brief Perform character3d set slope limit operation.
 /// @param c
 /// @param d
-void rt_character3d_set_slope_limit(void *c, double d)
-{
+void rt_character3d_set_slope_limit(void *c, double d) {
     (void)c;
     (void)d;
 }
@@ -3723,8 +3362,7 @@ void rt_character3d_set_slope_limit(void *c, double d)
 /// @brief Perform character3d is grounded operation.
 /// @param c
 /// @return Result value.
-int8_t rt_character3d_is_grounded(void *c)
-{
+int8_t rt_character3d_is_grounded(void *c) {
     (void)c;
     return 0;
 }
@@ -3732,14 +3370,12 @@ int8_t rt_character3d_is_grounded(void *c)
 /// @brief Perform character3d just landed operation.
 /// @param c
 /// @return Result value.
-int8_t rt_character3d_just_landed(void *c)
-{
+int8_t rt_character3d_just_landed(void *c) {
     (void)c;
     return 0;
 }
 
-void *rt_character3d_get_position(void *c)
-{
+void *rt_character3d_get_position(void *c) {
     (void)c;
     return NULL;
 }
@@ -3749,8 +3385,7 @@ void *rt_character3d_get_position(void *c)
 /// @param x
 /// @param y
 /// @param z
-void rt_character3d_set_position(void *c, double x, double y, double z)
-{
+void rt_character3d_set_position(void *c, double x, double y, double z) {
     (void)c;
     (void)x;
     (void)y;
@@ -3758,8 +3393,7 @@ void rt_character3d_set_position(void *c, double x, double y, double z)
 }
 
 /* Trigger3D stubs */
-void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, double z1)
-{
+void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, double z1) {
     (void)x0;
     (void)y0;
     (void)z0;
@@ -3773,8 +3407,7 @@ void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, do
 /// @param t
 /// @param p
 /// @return Result value.
-int8_t rt_trigger3d_contains(void *t, void *p)
-{
+int8_t rt_trigger3d_contains(void *t, void *p) {
     (void)t;
     (void)p;
     return 0;
@@ -3783,8 +3416,7 @@ int8_t rt_trigger3d_contains(void *t, void *p)
 /// @brief Perform trigger3d update operation.
 /// @param t
 /// @param w
-void rt_trigger3d_update(void *t, void *w)
-{
+void rt_trigger3d_update(void *t, void *w) {
     (void)t;
     (void)w;
 }
@@ -3792,8 +3424,7 @@ void rt_trigger3d_update(void *t, void *w)
 /// @brief Perform trigger3d get enter count operation.
 /// @param t
 /// @return Result value.
-int64_t rt_trigger3d_get_enter_count(void *t)
-{
+int64_t rt_trigger3d_get_enter_count(void *t) {
     (void)t;
     return 0;
 }
@@ -3801,8 +3432,7 @@ int64_t rt_trigger3d_get_enter_count(void *t)
 /// @brief Perform trigger3d get exit count operation.
 /// @param t
 /// @return Result value.
-int64_t rt_trigger3d_get_exit_count(void *t)
-{
+int64_t rt_trigger3d_get_exit_count(void *t) {
     (void)t;
     return 0;
 }
@@ -3816,8 +3446,7 @@ int64_t rt_trigger3d_get_exit_count(void *t)
 /// @param y1
 /// @param z1
 void rt_trigger3d_set_bounds(
-    void *t, double x0, double y0, double z0, double x1, double y1, double z1)
-{
+    void *t, double x0, double y0, double z0, double x1, double y1, double z1) {
     (void)t;
     (void)x0;
     (void)y0;
@@ -3833,8 +3462,7 @@ void rt_trigger3d_set_bounds(
 /// @param i
 /// @param d
 /// @param dc
-void rt_camera3d_shake(void *c, double i, double d, double dc)
-{
+void rt_camera3d_shake(void *c, double i, double d, double dc) {
     (void)c;
     (void)i;
     (void)d;
@@ -3848,8 +3476,7 @@ void rt_camera3d_shake(void *c, double i, double d, double dc)
 /// @param h
 /// @param s
 /// @param dt
-void rt_camera3d_smooth_follow(void *c, void *t, double d, double h, double s, double dt)
-{
+void rt_camera3d_smooth_follow(void *c, void *t, double d, double h, double s, double dt) {
     (void)c;
     (void)t;
     (void)d;
@@ -3863,8 +3490,7 @@ void rt_camera3d_smooth_follow(void *c, void *t, double d, double h, double s, d
 /// @param t
 /// @param s
 /// @param dt
-void rt_camera3d_smooth_look_at(void *c, void *t, double s, double dt)
-{
+void rt_camera3d_smooth_look_at(void *c, void *t, double s, double dt) {
     (void)c;
     (void)t;
     (void)s;
@@ -3872,8 +3498,7 @@ void rt_camera3d_smooth_look_at(void *c, void *t, double s, double dt)
 }
 
 /* Transform3D stubs */
-void *rt_transform3d_new(void)
-{
+void *rt_transform3d_new(void) {
     return NULL;
 }
 
@@ -3882,16 +3507,14 @@ void *rt_transform3d_new(void)
 /// @param a
 /// @param b
 /// @param c
-void rt_transform3d_set_position(void *x, double a, double b, double c)
-{
+void rt_transform3d_set_position(void *x, double a, double b, double c) {
     (void)x;
     (void)a;
     (void)b;
     (void)c;
 }
 
-void *rt_transform3d_get_position(void *x)
-{
+void *rt_transform3d_get_position(void *x) {
     (void)x;
     return NULL;
 }
@@ -3899,14 +3522,12 @@ void *rt_transform3d_get_position(void *x)
 /// @brief Perform transform3d set rotation operation.
 /// @param x
 /// @param q
-void rt_transform3d_set_rotation(void *x, void *q)
-{
+void rt_transform3d_set_rotation(void *x, void *q) {
     (void)x;
     (void)q;
 }
 
-void *rt_transform3d_get_rotation(void *x)
-{
+void *rt_transform3d_get_rotation(void *x) {
     (void)x;
     return NULL;
 }
@@ -3916,8 +3537,7 @@ void *rt_transform3d_get_rotation(void *x)
 /// @param p
 /// @param y
 /// @param r
-void rt_transform3d_set_euler(void *x, double p, double y, double r)
-{
+void rt_transform3d_set_euler(void *x, double p, double y, double r) {
     (void)x;
     (void)p;
     (void)y;
@@ -3929,22 +3549,19 @@ void rt_transform3d_set_euler(void *x, double p, double y, double r)
 /// @param a
 /// @param b
 /// @param c
-void rt_transform3d_set_scale(void *x, double a, double b, double c)
-{
+void rt_transform3d_set_scale(void *x, double a, double b, double c) {
     (void)x;
     (void)a;
     (void)b;
     (void)c;
 }
 
-void *rt_transform3d_get_scale(void *x)
-{
+void *rt_transform3d_get_scale(void *x) {
     (void)x;
     return NULL;
 }
 
-void *rt_transform3d_get_matrix(void *x)
-{
+void *rt_transform3d_get_matrix(void *x) {
     (void)x;
     return NULL;
 }
@@ -3952,8 +3569,7 @@ void *rt_transform3d_get_matrix(void *x)
 /// @brief Perform transform3d translate operation.
 /// @param x
 /// @param d
-void rt_transform3d_translate(void *x, void *d)
-{
+void rt_transform3d_translate(void *x, void *d) {
     (void)x;
     (void)d;
 }
@@ -3962,8 +3578,7 @@ void rt_transform3d_translate(void *x, void *d)
 /// @param x
 /// @param a
 /// @param ang
-void rt_transform3d_rotate(void *x, void *a, double ang)
-{
+void rt_transform3d_rotate(void *x, void *a, double ang) {
     (void)x;
     (void)a;
     (void)ang;
@@ -3973,37 +3588,32 @@ void rt_transform3d_rotate(void *x, void *a, double ang)
 /// @param x
 /// @param t
 /// @param u
-void rt_transform3d_look_at(void *x, void *t, void *u)
-{
+void rt_transform3d_look_at(void *x, void *t, void *u) {
     (void)x;
     (void)t;
     (void)u;
 }
 
 /* Path3D stubs */
-void *rt_path3d_new(void)
-{
+void *rt_path3d_new(void) {
     return NULL;
 }
 
 /// @brief Perform path3d add point operation.
 /// @param p
 /// @param v
-void rt_path3d_add_point(void *p, void *v)
-{
+void rt_path3d_add_point(void *p, void *v) {
     (void)p;
     (void)v;
 }
 
-void *rt_path3d_get_position_at(void *p, double t)
-{
+void *rt_path3d_get_position_at(void *p, double t) {
     (void)p;
     (void)t;
     return NULL;
 }
 
-void *rt_path3d_get_direction_at(void *p, double t)
-{
+void *rt_path3d_get_direction_at(void *p, double t) {
     (void)p;
     (void)t;
     return NULL;
@@ -4012,8 +3622,7 @@ void *rt_path3d_get_direction_at(void *p, double t)
 /// @brief Perform path3d get length operation.
 /// @param p
 /// @return Result value.
-double rt_path3d_get_length(void *p)
-{
+double rt_path3d_get_length(void *p) {
     (void)p;
     return 0.0;
 }
@@ -4021,8 +3630,7 @@ double rt_path3d_get_length(void *p)
 /// @brief Perform path3d get point count operation.
 /// @param p
 /// @return Result value.
-int64_t rt_path3d_get_point_count(void *p)
-{
+int64_t rt_path3d_get_point_count(void *p) {
     (void)p;
     return 0;
 }
@@ -4030,22 +3638,19 @@ int64_t rt_path3d_get_point_count(void *p)
 /// @brief Perform path3d set looping operation.
 /// @param p
 /// @param l
-void rt_path3d_set_looping(void *p, int8_t l)
-{
+void rt_path3d_set_looping(void *p, int8_t l) {
     (void)p;
     (void)l;
 }
 
 /// @brief Perform path3d clear operation.
 /// @param p
-void rt_path3d_clear(void *p)
-{
+void rt_path3d_clear(void *p) {
     (void)p;
 }
 
 /* InstanceBatch3D stubs */
-void *rt_instbatch3d_new(void *m, void *mt)
-{
+void *rt_instbatch3d_new(void *m, void *mt) {
     (void)m;
     (void)mt;
     return NULL;
@@ -4054,8 +3659,7 @@ void *rt_instbatch3d_new(void *m, void *mt)
 /// @brief Perform instbatch3d add operation.
 /// @param b
 /// @param t
-void rt_instbatch3d_add(void *b, void *t)
-{
+void rt_instbatch3d_add(void *b, void *t) {
     (void)b;
     (void)t;
 }
@@ -4063,8 +3667,7 @@ void rt_instbatch3d_add(void *b, void *t)
 /// @brief Perform instbatch3d remove operation.
 /// @param b
 /// @param i
-void rt_instbatch3d_remove(void *b, int64_t i)
-{
+void rt_instbatch3d_remove(void *b, int64_t i) {
     (void)b;
     (void)i;
 }
@@ -4073,8 +3676,7 @@ void rt_instbatch3d_remove(void *b, int64_t i)
 /// @param b
 /// @param i
 /// @param t
-void rt_instbatch3d_set(void *b, int64_t i, void *t)
-{
+void rt_instbatch3d_set(void *b, int64_t i, void *t) {
     (void)b;
     (void)i;
     (void)t;
@@ -4082,16 +3684,14 @@ void rt_instbatch3d_set(void *b, int64_t i, void *t)
 
 /// @brief Perform instbatch3d clear operation.
 /// @param b
-void rt_instbatch3d_clear(void *b)
-{
+void rt_instbatch3d_clear(void *b) {
     (void)b;
 }
 
 /// @brief Perform instbatch3d count operation.
 /// @param b
 /// @return Result value.
-int64_t rt_instbatch3d_count(void *b)
-{
+int64_t rt_instbatch3d_count(void *b) {
     (void)b;
     return 0;
 }
@@ -4099,15 +3699,13 @@ int64_t rt_instbatch3d_count(void *b)
 /// @brief Perform canvas3d draw instanced operation.
 /// @param c
 /// @param b
-void rt_canvas3d_draw_instanced(void *c, void *b)
-{
+void rt_canvas3d_draw_instanced(void *c, void *b) {
     (void)c;
     (void)b;
 }
 
 /* Terrain3D stubs */
-void *rt_terrain3d_new(int64_t w, int64_t d)
-{
+void *rt_terrain3d_new(int64_t w, int64_t d) {
     (void)w;
     (void)d;
     return NULL;
@@ -4116,8 +3714,7 @@ void *rt_terrain3d_new(int64_t w, int64_t d)
 /// @brief Perform terrain3d set heightmap operation.
 /// @param t
 /// @param p
-void rt_terrain3d_set_heightmap(void *t, void *p)
-{
+void rt_terrain3d_set_heightmap(void *t, void *p) {
     (void)t;
     (void)p;
 }
@@ -4125,8 +3722,7 @@ void rt_terrain3d_set_heightmap(void *t, void *p)
 /// @brief Perform terrain3d set material operation.
 /// @param t
 /// @param m
-void rt_terrain3d_set_material(void *t, void *m)
-{
+void rt_terrain3d_set_material(void *t, void *m) {
     (void)t;
     (void)m;
 }
@@ -4136,8 +3732,7 @@ void rt_terrain3d_set_material(void *t, void *m)
 /// @param sx
 /// @param sy
 /// @param sz
-void rt_terrain3d_set_scale(void *t, double sx, double sy, double sz)
-{
+void rt_terrain3d_set_scale(void *t, double sx, double sy, double sz) {
     (void)t;
     (void)sx;
     (void)sy;
@@ -4149,16 +3744,14 @@ void rt_terrain3d_set_scale(void *t, double sx, double sy, double sz)
 /// @param x
 /// @param z
 /// @return Result value.
-double rt_terrain3d_get_height_at(void *t, double x, double z)
-{
+double rt_terrain3d_get_height_at(void *t, double x, double z) {
     (void)t;
     (void)x;
     (void)z;
     return 0.0;
 }
 
-void *rt_terrain3d_get_normal_at(void *t, double x, double z)
-{
+void *rt_terrain3d_get_normal_at(void *t, double x, double z) {
     (void)t;
     (void)x;
     (void)z;
@@ -4168,31 +3761,27 @@ void *rt_terrain3d_get_normal_at(void *t, double x, double z)
 /// @brief Perform canvas3d draw terrain operation.
 /// @param c
 /// @param t
-void rt_canvas3d_draw_terrain(void *c, void *t)
-{
+void rt_canvas3d_draw_terrain(void *c, void *t) {
     (void)c;
     (void)t;
 }
 
 /* NavMesh3D stubs */
-void *rt_navmesh3d_build(void *m, double r, double h)
-{
+void *rt_navmesh3d_build(void *m, double r, double h) {
     (void)m;
     (void)r;
     (void)h;
     return NULL;
 }
 
-void *rt_navmesh3d_find_path(void *n, void *f, void *t)
-{
+void *rt_navmesh3d_find_path(void *n, void *f, void *t) {
     (void)n;
     (void)f;
     (void)t;
     return NULL;
 }
 
-void *rt_navmesh3d_sample_position(void *n, void *p)
-{
+void *rt_navmesh3d_sample_position(void *n, void *p) {
     (void)n;
     (void)p;
     return NULL;
@@ -4202,8 +3791,7 @@ void *rt_navmesh3d_sample_position(void *n, void *p)
 /// @param n
 /// @param p
 /// @return Result value.
-int8_t rt_navmesh3d_is_walkable(void *n, void *p)
-{
+int8_t rt_navmesh3d_is_walkable(void *n, void *p) {
     (void)n;
     (void)p;
     return 0;
@@ -4212,8 +3800,7 @@ int8_t rt_navmesh3d_is_walkable(void *n, void *p)
 /// @brief Perform navmesh3d get triangle count operation.
 /// @param n
 /// @return Result value.
-int64_t rt_navmesh3d_get_triangle_count(void *n)
-{
+int64_t rt_navmesh3d_get_triangle_count(void *n) {
     (void)n;
     return 0;
 }
@@ -4221,8 +3808,7 @@ int64_t rt_navmesh3d_get_triangle_count(void *n)
 /// @brief Perform navmesh3d set max slope operation.
 /// @param n
 /// @param d
-void rt_navmesh3d_set_max_slope(void *n, double d)
-{
+void rt_navmesh3d_set_max_slope(void *n, double d) {
     (void)n;
     (void)d;
 }
@@ -4230,15 +3816,13 @@ void rt_navmesh3d_set_max_slope(void *n, double d)
 /// @brief Perform navmesh3d debug draw operation.
 /// @param n
 /// @param c
-void rt_navmesh3d_debug_draw(void *n, void *c)
-{
+void rt_navmesh3d_debug_draw(void *n, void *c) {
     (void)n;
     (void)c;
 }
 
 /* AnimBlend3D stubs */
-void *rt_anim_blend3d_new(void *s)
-{
+void *rt_anim_blend3d_new(void *s) {
     (void)s;
     return NULL;
 }
@@ -4248,8 +3832,7 @@ void *rt_anim_blend3d_new(void *s)
 /// @param n
 /// @param a
 /// @return Result value.
-int64_t rt_anim_blend3d_add_state(void *b, rt_string n, void *a)
-{
+int64_t rt_anim_blend3d_add_state(void *b, rt_string n, void *a) {
     (void)b;
     (void)n;
     (void)a;
@@ -4260,8 +3843,7 @@ int64_t rt_anim_blend3d_add_state(void *b, rt_string n, void *a)
 /// @param b
 /// @param s
 /// @param w
-void rt_anim_blend3d_set_weight(void *b, int64_t s, double w)
-{
+void rt_anim_blend3d_set_weight(void *b, int64_t s, double w) {
     (void)b;
     (void)s;
     (void)w;
@@ -4271,8 +3853,7 @@ void rt_anim_blend3d_set_weight(void *b, int64_t s, double w)
 /// @param b
 /// @param n
 /// @param w
-void rt_anim_blend3d_set_weight_by_name(void *b, rt_string n, double w)
-{
+void rt_anim_blend3d_set_weight_by_name(void *b, rt_string n, double w) {
     (void)b;
     (void)n;
     (void)w;
@@ -4282,8 +3863,7 @@ void rt_anim_blend3d_set_weight_by_name(void *b, rt_string n, double w)
 /// @param b
 /// @param s
 /// @return Result value.
-double rt_anim_blend3d_get_weight(void *b, int64_t s)
-{
+double rt_anim_blend3d_get_weight(void *b, int64_t s) {
     (void)b;
     (void)s;
     return 0.0;
@@ -4293,8 +3873,7 @@ double rt_anim_blend3d_get_weight(void *b, int64_t s)
 /// @param b
 /// @param s
 /// @param sp
-void rt_anim_blend3d_set_speed(void *b, int64_t s, double sp)
-{
+void rt_anim_blend3d_set_speed(void *b, int64_t s, double sp) {
     (void)b;
     (void)s;
     (void)sp;
@@ -4303,8 +3882,7 @@ void rt_anim_blend3d_set_speed(void *b, int64_t s, double sp)
 /// @brief Perform anim blend3d update operation.
 /// @param b
 /// @param dt
-void rt_anim_blend3d_update(void *b, double dt)
-{
+void rt_anim_blend3d_update(void *b, double dt) {
     (void)b;
     (void)dt;
 }
@@ -4312,8 +3890,7 @@ void rt_anim_blend3d_update(void *b, double dt)
 /// @brief Perform anim blend3d state count operation.
 /// @param b
 /// @return Result value.
-int64_t rt_anim_blend3d_state_count(void *b)
-{
+int64_t rt_anim_blend3d_state_count(void *b) {
     (void)b;
     return 0;
 }
@@ -4324,8 +3901,7 @@ int64_t rt_anim_blend3d_state_count(void *b)
 /// @param t
 /// @param mt
 /// @param bl
-void rt_canvas3d_draw_mesh_blended(void *c, void *m, void *t, void *mt, void *bl)
-{
+void rt_canvas3d_draw_mesh_blended(void *c, void *m, void *t, void *mt, void *bl) {
     (void)c;
     (void)m;
     (void)t;
@@ -4334,8 +3910,7 @@ void rt_canvas3d_draw_mesh_blended(void *c, void *m, void *t, void *mt, void *bl
 }
 
 /* Decal3D stubs */
-void *rt_decal3d_new(void *p, void *n, double s, void *t)
-{
+void *rt_decal3d_new(void *p, void *n, double s, void *t) {
     (void)p;
     (void)n;
     (void)s;
@@ -4346,8 +3921,7 @@ void *rt_decal3d_new(void *p, void *n, double s, void *t)
 /// @brief Perform decal3d set lifetime operation.
 /// @param d
 /// @param s
-void rt_decal3d_set_lifetime(void *d, double s)
-{
+void rt_decal3d_set_lifetime(void *d, double s) {
     (void)d;
     (void)s;
 }
@@ -4355,8 +3929,7 @@ void rt_decal3d_set_lifetime(void *d, double s)
 /// @brief Perform decal3d update operation.
 /// @param d
 /// @param dt
-void rt_decal3d_update(void *d, double dt)
-{
+void rt_decal3d_update(void *d, double dt) {
     (void)d;
     (void)dt;
 }
@@ -4364,8 +3937,7 @@ void rt_decal3d_update(void *d, double dt)
 /// @brief Perform decal3d is expired operation.
 /// @param d
 /// @return Result value.
-int8_t rt_decal3d_is_expired(void *d)
-{
+int8_t rt_decal3d_is_expired(void *d) {
     (void)d;
     return 1;
 }
@@ -4373,15 +3945,13 @@ int8_t rt_decal3d_is_expired(void *d)
 /// @brief Perform canvas3d draw decal operation.
 /// @param c
 /// @param d
-void rt_canvas3d_draw_decal(void *c, void *d)
-{
+void rt_canvas3d_draw_decal(void *c, void *d) {
     (void)c;
     (void)d;
 }
 
 /* Sprite3D stubs */
-void *rt_sprite3d_new(void *t)
-{
+void *rt_sprite3d_new(void *t) {
     (void)t;
     return NULL;
 }
@@ -4391,8 +3961,7 @@ void *rt_sprite3d_new(void *t)
 /// @param x
 /// @param y
 /// @param z
-void rt_sprite3d_set_position(void *s, double x, double y, double z)
-{
+void rt_sprite3d_set_position(void *s, double x, double y, double z) {
     (void)s;
     (void)x;
     (void)y;
@@ -4403,8 +3972,7 @@ void rt_sprite3d_set_position(void *s, double x, double y, double z)
 /// @param s
 /// @param w
 /// @param h
-void rt_sprite3d_set_scale(void *s, double w, double h)
-{
+void rt_sprite3d_set_scale(void *s, double w, double h) {
     (void)s;
     (void)w;
     (void)h;
@@ -4414,8 +3982,7 @@ void rt_sprite3d_set_scale(void *s, double w, double h)
 /// @param s
 /// @param ax
 /// @param ay
-void rt_sprite3d_set_anchor(void *s, double ax, double ay)
-{
+void rt_sprite3d_set_anchor(void *s, double ax, double ay) {
     (void)s;
     (void)ax;
     (void)ay;
@@ -4427,8 +3994,7 @@ void rt_sprite3d_set_anchor(void *s, double ax, double ay)
 /// @param fy
 /// @param fw
 /// @param fh
-void rt_sprite3d_set_frame(void *s, int64_t fx, int64_t fy, int64_t fw, int64_t fh)
-{
+void rt_sprite3d_set_frame(void *s, int64_t fx, int64_t fy, int64_t fw, int64_t fh) {
     (void)s;
     (void)fx;
     (void)fy;
@@ -4440,16 +4006,14 @@ void rt_sprite3d_set_frame(void *s, int64_t fx, int64_t fy, int64_t fw, int64_t 
 /// @param c
 /// @param s
 /// @param cam
-void rt_canvas3d_draw_sprite3d(void *c, void *s, void *cam)
-{
+void rt_canvas3d_draw_sprite3d(void *c, void *s, void *cam) {
     (void)c;
     (void)s;
     (void)cam;
 }
 
 /* Water3D stubs */
-void *rt_water3d_new(double w, double d)
-{
+void *rt_water3d_new(double w, double d) {
     (void)w;
     (void)d;
     return NULL;
@@ -4458,8 +4022,7 @@ void *rt_water3d_new(double w, double d)
 /// @brief Perform water3d set height operation.
 /// @param w
 /// @param y
-void rt_water3d_set_height(void *w, double y)
-{
+void rt_water3d_set_height(void *w, double y) {
     (void)w;
     (void)y;
 }
@@ -4469,8 +4032,7 @@ void rt_water3d_set_height(void *w, double y)
 /// @param s
 /// @param a
 /// @param f
-void rt_water3d_set_wave_params(void *w, double s, double a, double f)
-{
+void rt_water3d_set_wave_params(void *w, double s, double a, double f) {
     (void)w;
     (void)s;
     (void)a;
@@ -4483,8 +4045,7 @@ void rt_water3d_set_wave_params(void *w, double s, double a, double f)
 /// @param g
 /// @param b
 /// @param a
-void rt_water3d_set_color(void *w, double r, double g, double b, double a)
-{
+void rt_water3d_set_color(void *w, double r, double g, double b, double a) {
     (void)w;
     (void)r;
     (void)g;
@@ -4495,8 +4056,7 @@ void rt_water3d_set_color(void *w, double r, double g, double b, double a)
 /// @brief Perform water3d update operation.
 /// @param w
 /// @param dt
-void rt_water3d_update(void *w, double dt)
-{
+void rt_water3d_update(void *w, double dt) {
     (void)w;
     (void)dt;
 }
@@ -4505,8 +4065,7 @@ void rt_water3d_update(void *w, double dt)
 /// @param c
 /// @param w
 /// @param cam
-void rt_canvas3d_draw_water(void *c, void *w, void *cam)
-{
+void rt_canvas3d_draw_water(void *c, void *w, void *cam) {
     (void)c;
     (void)w;
     (void)cam;
@@ -4518,8 +4077,7 @@ void rt_canvas3d_draw_water(void *c, void *w, void *cam)
 /// @param r
 /// @param i
 /// @param s
-void rt_postfx3d_add_ssao(void *p, double r, double i, int64_t s)
-{
+void rt_postfx3d_add_ssao(void *p, double r, double i, int64_t s) {
     (void)p;
     (void)r;
     (void)i;
@@ -4531,8 +4089,7 @@ void rt_postfx3d_add_ssao(void *p, double r, double i, int64_t s)
 /// @param f
 /// @param a
 /// @param m
-void rt_postfx3d_add_dof(void *p, double f, double a, double m)
-{
+void rt_postfx3d_add_dof(void *p, double f, double a, double m) {
     (void)p;
     (void)f;
     (void)a;
@@ -4543,8 +4100,7 @@ void rt_postfx3d_add_dof(void *p, double f, double a, double m)
 /// @param p
 /// @param i
 /// @param s
-void rt_postfx3d_add_motion_blur(void *p, double i, int64_t s)
-{
+void rt_postfx3d_add_motion_blur(void *p, double i, int64_t s) {
     (void)p;
     (void)i;
     (void)s;
@@ -4554,16 +4110,14 @@ void rt_postfx3d_add_motion_blur(void *p, double i, int64_t s)
 /// @brief Perform canvas3d set occlusion culling operation.
 /// @param c
 /// @param e
-void rt_canvas3d_set_occlusion_culling(void *c, int8_t e)
-{
+void rt_canvas3d_set_occlusion_culling(void *c, int8_t e) {
     (void)c;
     (void)e;
 }
 
 /// @brief Perform canvas3d begin 2d operation.
 /// @param c
-void rt_canvas3d_begin_2d(void *c)
-{
+void rt_canvas3d_begin_2d(void *c) {
     (void)c;
 }
 
@@ -4574,8 +4128,7 @@ void rt_canvas3d_begin_2d(void *c)
 /// @param w
 /// @param h
 /// @param cl
-void rt_canvas3d_draw_rect_3d(void *c, int64_t x, int64_t y, int64_t w, int64_t h, int64_t cl)
-{
+void rt_canvas3d_draw_rect_3d(void *c, int64_t x, int64_t y, int64_t w, int64_t h, int64_t cl) {
     (void)c;
     (void)x;
     (void)y;
@@ -4590,8 +4143,7 @@ void rt_canvas3d_draw_rect_3d(void *c, int64_t x, int64_t y, int64_t w, int64_t 
 /// @param y
 /// @param t
 /// @param cl
-void rt_canvas3d_draw_text_3d(void *c, int64_t x, int64_t y, rt_string t, int64_t cl)
-{
+void rt_canvas3d_draw_text_3d(void *c, int64_t x, int64_t y, rt_string t, int64_t cl) {
     (void)c;
     (void)x;
     (void)y;
@@ -4600,8 +4152,7 @@ void rt_canvas3d_draw_text_3d(void *c, int64_t x, int64_t y, rt_string t, int64_
 }
 
 /* TextureAtlas3D stubs (F4) */
-void *rt_texatlas3d_new(int64_t w, int64_t h)
-{
+void *rt_texatlas3d_new(int64_t w, int64_t h) {
     (void)w;
     (void)h;
     return NULL;
@@ -4611,15 +4162,13 @@ void *rt_texatlas3d_new(int64_t w, int64_t h)
 /// @param a
 /// @param p
 /// @return Result value.
-int64_t rt_texatlas3d_add(void *a, void *p)
-{
+int64_t rt_texatlas3d_add(void *a, void *p) {
     (void)a;
     (void)p;
     return -1;
 }
 
-void *rt_texatlas3d_get_texture(void *a)
-{
+void *rt_texatlas3d_get_texture(void *a) {
     (void)a;
     return NULL;
 }
@@ -4631,8 +4180,8 @@ void *rt_texatlas3d_get_texture(void *a)
 /// @param v0
 /// @param u1
 /// @param v1
-void rt_texatlas3d_get_uv_rect(void *a, int64_t id, double *u0, double *v0, double *u1, double *v1)
-{
+void rt_texatlas3d_get_uv_rect(
+    void *a, int64_t id, double *u0, double *v0, double *u1, double *v1) {
     (void)a;
     (void)id;
     if (u0)

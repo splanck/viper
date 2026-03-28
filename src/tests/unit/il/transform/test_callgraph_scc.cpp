@@ -30,12 +30,10 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// Build a minimal void→void function with a single Ret instruction.
-Function makeRetFn(const std::string &name)
-{
+Function makeRetFn(const std::string &name) {
     Function f;
     f.name = name;
     f.retType = Type(Type::Kind::Void);
@@ -51,8 +49,7 @@ Function makeRetFn(const std::string &name)
 }
 
 /// Add a void direct call from caller to callee (no result, no args).
-void addCall(Function &caller, const std::string &callee)
-{
+void addCall(Function &caller, const std::string &callee) {
     // Insert before the existing Ret.
     Instr call;
     call.op = Opcode::Call;
@@ -63,8 +60,7 @@ void addCall(Function &caller, const std::string &callee)
 }
 
 /// Return the names in an SCC as a sorted vector for deterministic comparison.
-std::vector<std::string> sorted(std::vector<std::string> v)
-{
+std::vector<std::string> sorted(std::vector<std::string> v) {
     std::sort(v.begin(), v.end());
     return v;
 }
@@ -73,8 +69,7 @@ std::vector<std::string> sorted(std::vector<std::string> v)
 
 // A → B → C linear chain. Each function is its own SCC.
 // SCCs must appear in reverse-topological order: C before B before A.
-TEST(CallGraphSCC, LinearChainHasOneSCCPerFunction)
-{
+TEST(CallGraphSCC, LinearChainHasOneSCCPerFunction) {
     Module M;
     M.functions.push_back(makeRetFn("A"));
     M.functions.push_back(makeRetFn("B"));
@@ -105,8 +100,7 @@ TEST(CallGraphSCC, LinearChainHasOneSCCPerFunction)
 // F ↔ G (mutual recursion), H → F (external caller).
 // F and G must be in one SCC; H is its own SCC.
 // H's SCC appears after {F,G}'s SCC in reverse-topo order.
-TEST(CallGraphSCC, MutualRecursionFormsOneSCC)
-{
+TEST(CallGraphSCC, MutualRecursionFormsOneSCC) {
     Module M;
     M.functions.push_back(makeRetFn("F"));
     M.functions.push_back(makeRetFn("G"));
@@ -139,8 +133,7 @@ TEST(CallGraphSCC, MutualRecursionFormsOneSCC)
 }
 
 // A self-recursive function forms a single-node SCC with isRecursive()=true.
-TEST(CallGraphSCC, SelfRecursiveFunction)
-{
+TEST(CallGraphSCC, SelfRecursiveFunction) {
     Module M;
     M.functions.push_back(makeRetFn("recur"));
     /// @brief Add Call.
@@ -156,8 +149,7 @@ TEST(CallGraphSCC, SelfRecursiveFunction)
 }
 
 // Non-recursive function in a linear chain must report isRecursive()=false.
-TEST(CallGraphSCC, NonRecursiveFunctionIsNotRecursive)
-{
+TEST(CallGraphSCC, NonRecursiveFunctionIsNotRecursive) {
     Module M;
     M.functions.push_back(makeRetFn("leaf"));
     M.functions.push_back(makeRetFn("root"));
@@ -171,8 +163,7 @@ TEST(CallGraphSCC, NonRecursiveFunctionIsNotRecursive)
 }
 
 /// @brief Main.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

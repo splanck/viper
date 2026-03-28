@@ -20,13 +20,10 @@
 #include <string>
 #include <string_view>
 
-namespace viper::codegen::x64
-{
-namespace
-{
+namespace viper::codegen::x64 {
+namespace {
 
-[[nodiscard]] ILValue makeValue(ILValue::Kind kind, int id)
-{
+[[nodiscard]] ILValue makeValue(ILValue::Kind kind, int id) {
     ILValue v{};
     v.kind = kind;
     v.id = id;
@@ -34,8 +31,7 @@ namespace
 }
 
 // Build a function that takes a function pointer and calls it: fnptr() -> i64
-[[nodiscard]] ILModule makeCallIndirectModule()
-{
+[[nodiscard]] ILModule makeCallIndirectModule() {
     // Callee function: callee() -> i64 { ret 7 }
     ILInstr calleeRet{};
     calleeRet.opcode = "ret";
@@ -87,8 +83,7 @@ namespace
     return m;
 }
 
-[[nodiscard]] bool containsIndirectCall(const std::string &asmText)
-{
+[[nodiscard]] bool containsIndirectCall(const std::string &asmText) {
     // Look for an indirect call form
     return asmText.find("callq *") != std::string::npos;
 }
@@ -96,13 +91,11 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
     const ILModule module = makeCallIndirectModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
-    if (!result.errors.empty() || !containsIndirectCall(result.asmText))
-    {
+    if (!result.errors.empty() || !containsIndirectCall(result.asmText)) {
         std::cerr << result.asmText;
         return EXIT_FAILURE;
     }

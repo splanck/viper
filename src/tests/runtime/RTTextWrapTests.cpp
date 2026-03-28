@@ -18,8 +18,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -28,8 +27,7 @@ static void test_result(const char *name, bool passed)
 // TextWrapper Tests
 //=============================================================================
 
-static void test_wrap()
-{
+static void test_wrap() {
     printf("Testing TextWrapper Wrap:\n");
 
     // Test 1: Short text (no wrapping needed)
@@ -56,8 +54,7 @@ static void test_wrap()
     printf("\n");
 }
 
-static void test_indent()
-{
+static void test_indent() {
     printf("Testing TextWrapper Indent:\n");
 
     // Test 1: Indent single line
@@ -78,8 +75,7 @@ static void test_indent()
     printf("\n");
 }
 
-static void test_dedent()
-{
+static void test_dedent() {
     printf("Testing TextWrapper Dedent:\n");
 
     // Test 1: Remove common indent
@@ -99,8 +95,7 @@ static void test_dedent()
     printf("\n");
 }
 
-static void test_truncate()
-{
+static void test_truncate() {
     printf("Testing TextWrapper Truncate:\n");
 
     // Test 1: Truncate with ellipsis
@@ -127,8 +122,7 @@ static void test_truncate()
     printf("\n");
 }
 
-static void test_shorten()
-{
+static void test_shorten() {
     printf("Testing TextWrapper Shorten:\n");
 
     // Test 1: Shorten in middle
@@ -143,8 +137,7 @@ static void test_shorten()
     printf("\n");
 }
 
-static void test_alignment()
-{
+static void test_alignment() {
     printf("Testing TextWrapper Alignment:\n");
 
     // Test 1: Left align
@@ -178,8 +171,7 @@ static void test_alignment()
     printf("\n");
 }
 
-static void test_utility()
-{
+static void test_utility() {
     printf("Testing TextWrapper Utility:\n");
 
     // Test 1: Line count
@@ -203,8 +195,7 @@ static void test_utility()
     printf("\n");
 }
 
-static void test_hang()
-{
+static void test_hang() {
     printf("Testing TextWrapper Hang:\n");
 
     // Test: Hanging indent
@@ -225,8 +216,7 @@ static void test_hang()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT TextWrapper Tests ===\n\n");
 
     test_wrap();

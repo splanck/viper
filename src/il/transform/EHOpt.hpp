@@ -22,8 +22,7 @@
 
 #include "il/core/Module.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Remove redundant eh.push/eh.pop pairs from all functions.
 /// @param module Module to optimize.

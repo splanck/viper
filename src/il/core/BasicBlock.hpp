@@ -29,12 +29,10 @@
 #include <string>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 
 /// @brief Sequence of instructions terminated by a control-flow instruction.
-struct BasicBlock
-{
+struct BasicBlock {
     /// Human-readable identifier for the block within its function.
     ///
     /// @invariant Non-empty and unique in the parent function.

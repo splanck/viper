@@ -17,8 +17,7 @@
 #include <sys/stat.h>
 
 /// @brief Entry point for validating basic file wrapper behaviours.
-int main(void)
-{
+int main(void) {
     rt_string missing = rt_const_cstr("tests/runtime/does-not-exist.txt");
     int32_t code = rt_open_err_vstr(missing, RT_F_INPUT, 7);
     assert(code == Err_FileNotFound);

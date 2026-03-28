@@ -29,8 +29,7 @@
 #include <cassert>
 #include <string>
 
-namespace il::vm::detail::control
-{
+namespace il::vm::detail::control {
 
 /// @brief Extract fields from a VmError record and store them into registers.
 ///
@@ -53,8 +52,7 @@ VM::ExecResult handleErrGet(VM &vm,
                             const il::core::Instr &in,
                             const VM::BlockMap &blocks,
                             const il::core::BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -66,8 +64,7 @@ VM::ExecResult handleErrGet(VM &vm,
     const VmError *error = resolveErrorToken(fr, operandSlot);
 
     Slot out{};
-    switch (in.op)
-    {
+    switch (in.op) {
         case il::core::Opcode::ErrGetKind:
             out.i64 = static_cast<int64_t>(static_cast<int32_t>(error->kind));
             break;
@@ -100,8 +97,7 @@ VM::ExecResult handleEhEntry(VM &vm,
                              const il::core::Instr &in,
                              const VM::BlockMap &blocks,
                              const il::core::BasicBlock *&bb,
-                             size_t &ip)
-{
+                             size_t &ip) {
     (void)vm;
     (void)fr;
     (void)in;
@@ -123,13 +119,11 @@ VM::ExecResult handleEhPush(VM &vm,
                             const il::core::Instr &in,
                             const VM::BlockMap &blocks,
                             const il::core::BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)vm;
     (void)bb;
     (void)ip;
-    if (in.labels.empty())
-    {
+    if (in.labels.empty()) {
         RuntimeBridge::trap(TrapKind::InvalidOperation,
                             "eh.push requires handler label",
                             in.loc,
@@ -137,8 +131,7 @@ VM::ExecResult handleEhPush(VM &vm,
                             bb ? bb->label : std::string());
     }
     auto it = blocks.find(in.labels[0]);
-    if (it == blocks.end())
-    {
+    if (it == blocks.end()) {
         RuntimeBridge::trap(TrapKind::InvalidOperation,
                             "eh.push handler block not found",
                             in.loc,
@@ -163,8 +156,7 @@ VM::ExecResult handleEhPop(VM &vm,
                            const il::core::Instr &in,
                            const VM::BlockMap &blocks,
                            const il::core::BasicBlock *&bb,
-                           size_t &ip)
-{
+                           size_t &ip) {
     (void)vm;
     (void)in;
     (void)blocks;
@@ -189,24 +181,20 @@ VM::ExecResult handleResumeSame(VM &vm,
                                 const il::core::Instr &in,
                                 const VM::BlockMap &blocks,
                                 const il::core::BasicBlock *&bb,
-                                size_t &ip)
-{
+                                size_t &ip) {
     (void)blocks;
-    if (in.operands.empty())
-    {
+    if (in.operands.empty()) {
         trapInvalidResume(fr, in, bb, "resume.same: missing resume token operand");
         return {};
     }
 
     Slot tokSlot = VMAccess::eval(vm, fr, in.operands[0]);
     Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
-    if (!token)
-    {
+    if (!token) {
         trapInvalidResume(fr, in, bb, "resume.same: requires an active resume token");
         return {};
     }
-    if (!token->block)
-    {
+    if (!token->block) {
         trapInvalidResume(fr, in, bb, "resume.same: resume target is no longer available");
         return {};
     }
@@ -233,24 +221,20 @@ VM::ExecResult handleResumeNext(VM &vm,
                                 const il::core::Instr &in,
                                 const VM::BlockMap &blocks,
                                 const il::core::BasicBlock *&bb,
-                                size_t &ip)
-{
+                                size_t &ip) {
     (void)blocks;
-    if (in.operands.empty())
-    {
+    if (in.operands.empty()) {
         trapInvalidResume(fr, in, bb, "resume.next: missing resume token operand");
         return {};
     }
 
     Slot tokSlot = VMAccess::eval(vm, fr, in.operands[0]);
     Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
-    if (!token)
-    {
+    if (!token) {
         trapInvalidResume(fr, in, bb, "resume.next: requires an active resume token");
         return {};
     }
-    if (!token->block)
-    {
+    if (!token->block) {
         trapInvalidResume(fr, in, bb, "resume.next: resume target is no longer available");
         return {};
     }
@@ -277,31 +261,26 @@ VM::ExecResult handleResumeLabel(VM &vm,
                                  const il::core::Instr &in,
                                  const VM::BlockMap &blocks,
                                  const il::core::BasicBlock *&bb,
-                                 size_t &ip)
-{
-    if (in.operands.empty())
-    {
+                                 size_t &ip) {
+    if (in.operands.empty()) {
         trapInvalidResume(fr, in, bb, "resume.label: missing resume token operand");
         return {};
     }
 
     Slot tokSlot = VMAccess::eval(vm, fr, in.operands[0]);
     Frame::ResumeState *token = expectResumeToken(fr, tokSlot);
-    if (!token)
-    {
+    if (!token) {
         trapInvalidResume(fr, in, bb, "resume.label: requires an active resume token");
         return {};
     }
 
-    if (in.labels.empty())
-    {
+    if (in.labels.empty()) {
         trapInvalidResume(fr, in, bb, "resume.label: missing destination label");
         return {};
     }
 
     const auto &label = in.labels[0];
-    if (blocks.find(label) == blocks.end())
-    {
+    if (blocks.find(label) == blocks.end()) {
         std::string msg;
         msg.reserve(48 + label.size());
         msg.append("resume.label: unknown destination label '");
@@ -325,15 +304,13 @@ VM::ExecResult handleTrapKind(VM &vm,
                               const il::core::Instr &in,
                               const VM::BlockMap &blocks,
                               const il::core::BasicBlock *&bb,
-                              size_t &ip)
-{
+                              size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
 
     const VmError *error = nullptr;
-    if (!in.operands.empty())
-    {
+    if (!in.operands.empty()) {
         Slot errorSlot = VMAccess::eval(vm, fr, in.operands[0]);
         error = reinterpret_cast<const VmError *>(errorSlot.ptr);
     }
@@ -363,15 +340,13 @@ VM::ExecResult handleTrapErr(VM &vm,
                              const il::core::Instr &in,
                              const VM::BlockMap &blocks,
                              const il::core::BasicBlock *&bb,
-                             size_t &ip)
-{
+                             size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
     (void)fr;
 
-    if (in.operands.empty())
-    {
+    if (in.operands.empty()) {
         RuntimeBridge::trap(TrapKind::InvalidOperation,
                             "trap.err: missing error code operand",
                             in.loc,
@@ -382,11 +357,9 @@ VM::ExecResult handleTrapErr(VM &vm,
     const int32_t code = static_cast<int32_t>(codeSlot.i64);
 
     std::string message;
-    if (in.operands.size() > 1)
-    {
+    if (in.operands.size() > 1) {
         Slot textSlot = VMAccess::eval(vm, fr, in.operands[1]);
-        if (textSlot.str != nullptr)
-        {
+        if (textSlot.str != nullptr) {
             auto view = fromViperString(textSlot.str);
             message.assign(view.begin(), view.end());
         }
@@ -416,21 +389,17 @@ VM::ExecResult handleTrap(VM &vm,
                           const il::core::Instr &in,
                           const VM::BlockMap &blocks,
                           const il::core::BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
 
-    switch (in.op)
-    {
+    switch (in.op) {
         case il::core::Opcode::Trap:
             vm_raise(TrapKind::DomainError);
             break;
-        case il::core::Opcode::TrapFromErr:
-        {
-            if (in.operands.empty())
-            {
+        case il::core::Opcode::TrapFromErr: {
+            if (in.operands.empty()) {
                 vm_raise(TrapKind::RuntimeError);
                 break;
             }

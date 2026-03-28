@@ -24,21 +24,18 @@
 #include <cmath>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
 static const double EPSILON = 1e-9;
 
-static bool approx_eq(double a, double b)
-{
+static bool approx_eq(double a, double b) {
     return fabs(a - b) < EPSILON;
 }
 
 /// Release a Vec2 object, triggering the finalizer / pool return.
-static void vec2_release(void *v)
-{
+static void vec2_release(void *v) {
     if (rt_obj_release_check0(v))
         rt_obj_free(v);
 }
@@ -47,8 +44,7 @@ static void vec2_release(void *v)
 // Pool recycling: same address returned after release
 // ============================================================================
 
-static void test_pool_recycles_address(void)
-{
+static void test_pool_recycles_address(void) {
     void *first = rt_vec2_new(1.0, 2.0);
     assert(first != nullptr);
     void *saved = first;
@@ -72,8 +68,7 @@ static void test_pool_recycles_address(void)
 // Pool re-initializes: stale fields from previous use are overwritten
 // ============================================================================
 
-static void test_pool_reinitializes_values(void)
-{
+static void test_pool_reinitializes_values(void) {
     void *v1 = rt_vec2_new(99.0, -99.0);
     assert(v1 != nullptr);
     vec2_release(v1); // back to pool
@@ -92,10 +87,8 @@ static void test_pool_reinitializes_values(void)
 // Pool stress: 200 alloc/release cycles must not corrupt memory
 // ============================================================================
 
-static void test_pool_stress_cycles(void)
-{
-    for (int i = 0; i < 200; i++)
-    {
+static void test_pool_stress_cycles(void) {
+    for (int i = 0; i < 200; i++) {
         double x = (double)i;
         double y = (double)(i * 2);
         void *v = rt_vec2_new(x, y);
@@ -114,8 +107,7 @@ static void test_pool_stress_cycles(void)
 // VEC2_POOL_CAPACITY is 32; release 40 to fill the pool and spill 8 to free.
 static const int kPoolOverflowCount = 40;
 
-static void test_pool_overflow(void)
-{
+static void test_pool_overflow(void) {
     void *objs[kPoolOverflowCount];
     for (int i = 0; i < kPoolOverflowCount; i++)
         objs[i] = rt_vec2_new((double)i, (double)i);
@@ -125,8 +117,7 @@ static void test_pool_overflow(void)
         vec2_release(objs[i]);
 
     // Now allocate kPoolOverflowCount new objects; pool supplies up to 32.
-    for (int i = 0; i < kPoolOverflowCount; i++)
-    {
+    for (int i = 0; i < kPoolOverflowCount; i++) {
         void *v = rt_vec2_new(7.0, 8.0);
         assert(v != nullptr);
         assert(approx_eq(rt_vec2_x(v), 7.0));
@@ -141,8 +132,7 @@ static void test_pool_overflow(void)
 // Multiple alive objects don't interfere with each other via the pool
 // ============================================================================
 
-static void test_pool_live_objects_independent(void)
-{
+static void test_pool_live_objects_independent(void) {
     void *a = rt_vec2_new(1.0, 0.0);
     void *b = rt_vec2_new(0.0, 1.0);
     void *c = rt_vec2_new(3.0, 4.0);
@@ -164,8 +154,7 @@ static void test_pool_live_objects_independent(void)
 // Entry point
 // ============================================================================
 
-int main(void)
-{
+int main(void) {
     printf("=== Vec2 Pool Tests ===\n\n");
 
     test_pool_recycles_address();

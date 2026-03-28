@@ -23,16 +23,14 @@
 
 #include "frontends/basic/NameMangler.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 /// @brief Produce the next compiler-generated temporary identifier.
 ///
 /// The mangler reserves the "%t" prefix for temporaries.  Every invocation
 /// increments `tempCounter` and appends the previous value to the prefix,
 /// yielding monotonically increasing, collision-free identifiers that remain
 /// deterministic across compiler runs.
-std::string NameMangler::nextTemp()
-{
+std::string NameMangler::nextTemp() {
     return "%t" + std::to_string(tempCounter++);
 }
 
@@ -43,8 +41,7 @@ std::string NameMangler::nextTemp()
 /// subsequent request appends the current counter value, then increments the
 /// counter, ensuring unique yet recognizable labels across control-flow
 /// lowering passes.
-std::string NameMangler::block(const std::string &hint)
-{
+std::string NameMangler::block(const std::string &hint) {
     auto &count = blockCounters[hint];
     std::string name = hint;
     if (count > 0)

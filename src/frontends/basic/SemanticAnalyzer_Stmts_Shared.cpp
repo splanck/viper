@@ -23,16 +23,14 @@
 #include <algorithm>
 #include <utility>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Ensure an expression has a numeric type.
 /// @details Evaluates @p expr and emits diagnostic B2001 when the result is not
 ///          numeric, appending @p message to explain the context.
 /// @param expr Expression to validate.
 /// @param message Prefix for the diagnostic message.
-void SemanticAnalyzer::requireNumeric(Expr &expr, std::string_view message)
-{
+void SemanticAnalyzer::requireNumeric(Expr &expr, std::string_view message) {
     Type exprType = visitExpr(expr);
     if (exprType == Type::Unknown || exprType == Type::Int || exprType == Type::Float)
         return;
@@ -49,15 +47,13 @@ void SemanticAnalyzer::requireNumeric(Expr &expr, std::string_view message)
 /// @details Pushes @p kind onto the loop stack so nested constructs can validate
 ///          statements like EXIT or NEXT.
 /// @param kind Loop type being entered.
-void SemanticAnalyzer::pushLoop(LoopKind kind)
-{
+void SemanticAnalyzer::pushLoop(LoopKind kind) {
     loopStack_.push_back(kind);
 }
 
 /// @brief Mark exit from the innermost loop.
 /// @details Pops the loop stack if present, guarding against unbalanced calls.
-void SemanticAnalyzer::popLoop()
-{
+void SemanticAnalyzer::popLoop() {
     if (!loopStack_.empty())
         loopStack_.pop_back();
 }
@@ -66,15 +62,13 @@ void SemanticAnalyzer::popLoop()
 /// @details Stores the variable so assignments can be flagged while the loop is
 ///          active.
 /// @param name Name of the FOR-loop variable.
-void SemanticAnalyzer::pushForVariable(std::string_view name)
-{
+void SemanticAnalyzer::pushForVariable(std::string_view name) {
     forStack_.emplace_back(name);
 }
 
 /// @brief Remove the most recently tracked FOR-loop variable.
 /// @details Pops the stack if non-empty, mirroring loop exit.
-void SemanticAnalyzer::popForVariable()
-{
+void SemanticAnalyzer::popForVariable() {
     if (!forStack_.empty())
         forStack_.pop_back();
 }
@@ -82,23 +76,20 @@ void SemanticAnalyzer::popForVariable()
 /// @brief Test whether a variable is currently registered as a FOR-loop control variable.
 /// @param name Identifier to search for.
 /// @return True when @p name appears in the active FOR-loop stack.
-bool SemanticAnalyzer::isLoopVariableActive(std::string_view name) const noexcept
-{
+bool SemanticAnalyzer::isLoopVariableActive(std::string_view name) const noexcept {
     return std::find(forStack_.begin(), forStack_.end(), name) != forStack_.end();
 }
 
 /// @brief Check if a specific loop kind exists anywhere in the loop stack.
 /// @param kind Loop kind to search for (e.g., Function, Sub).
 /// @return True when @p kind appears anywhere in the active loop stack.
-bool SemanticAnalyzer::hasLoopOfKind(LoopKind kind) const noexcept
-{
+bool SemanticAnalyzer::hasLoopOfKind(LoopKind kind) const noexcept {
     return std::find(loopStack_.begin(), loopStack_.end(), kind) != loopStack_.end();
 }
 
 } // namespace il::frontends::basic
 
-namespace il::frontends::basic::semantic_analyzer_detail
-{
+namespace il::frontends::basic::semantic_analyzer_detail {
 
 /// @brief Construct shared helpers bound to the owning analyser.
 /// @param analyzer Semantic analyser that maintains loop stacks and diagnostics.
@@ -109,20 +100,17 @@ StmtShared::StmtShared(SemanticAnalyzer &analyzer) noexcept : analyzer_(analyzer
 ///          during destruction.
 StmtShared::LoopGuard::LoopGuard(SemanticAnalyzer &analyzer,
                                  SemanticAnalyzer::LoopKind kind) noexcept
-    : analyzer_(&analyzer)
-{
+    : analyzer_(&analyzer) {
     analyzer_->pushLoop(kind);
 }
 
 /// @brief Move-construct the guard, transferring ownership of the stack entry.
-StmtShared::LoopGuard::LoopGuard(LoopGuard &&other) noexcept : analyzer_(other.analyzer_)
-{
+StmtShared::LoopGuard::LoopGuard(LoopGuard &&other) noexcept : analyzer_(other.analyzer_) {
     other.analyzer_ = nullptr;
 }
 
 /// @brief Move-assign the guard, releasing any existing loop tracking.
-StmtShared::LoopGuard &StmtShared::LoopGuard::operator=(LoopGuard &&other) noexcept
-{
+StmtShared::LoopGuard &StmtShared::LoopGuard::operator=(LoopGuard &&other) noexcept {
     if (this == &other)
         return *this;
     if (analyzer_)
@@ -133,8 +121,7 @@ StmtShared::LoopGuard &StmtShared::LoopGuard::operator=(LoopGuard &&other) noexc
 }
 
 /// @brief Pop the loop stack when the guard goes out of scope.
-StmtShared::LoopGuard::~LoopGuard() noexcept
-{
+StmtShared::LoopGuard::~LoopGuard() noexcept {
     if (analyzer_)
         analyzer_->popLoop();
 }
@@ -142,20 +129,17 @@ StmtShared::LoopGuard::~LoopGuard() noexcept
 /// @brief RAII guard that tracks FOR-loop variables.
 /// @details Registers @p variable on construction and removes it when destroyed.
 StmtShared::ForLoopGuard::ForLoopGuard(SemanticAnalyzer &analyzer, std::string variable)
-    : analyzer_(&analyzer)
-{
+    : analyzer_(&analyzer) {
     analyzer_->pushForVariable(std::move(variable));
 }
 
 /// @brief Move-construct a guard, adopting the tracked variable.
-StmtShared::ForLoopGuard::ForLoopGuard(ForLoopGuard &&other) noexcept : analyzer_(other.analyzer_)
-{
+StmtShared::ForLoopGuard::ForLoopGuard(ForLoopGuard &&other) noexcept : analyzer_(other.analyzer_) {
     other.analyzer_ = nullptr;
 }
 
 /// @brief Move-assign a guard, releasing any currently tracked variable first.
-StmtShared::ForLoopGuard &StmtShared::ForLoopGuard::operator=(ForLoopGuard &&other) noexcept
-{
+StmtShared::ForLoopGuard &StmtShared::ForLoopGuard::operator=(ForLoopGuard &&other) noexcept {
     if (this == &other)
         return *this;
     if (analyzer_)
@@ -166,8 +150,7 @@ StmtShared::ForLoopGuard &StmtShared::ForLoopGuard::operator=(ForLoopGuard &&oth
 }
 
 /// @brief Deregister the loop variable when the guard is destroyed.
-StmtShared::ForLoopGuard::~ForLoopGuard() noexcept
-{
+StmtShared::ForLoopGuard::~ForLoopGuard() noexcept {
     if (analyzer_)
         analyzer_->popForVariable();
 }
@@ -175,8 +158,7 @@ StmtShared::ForLoopGuard::~ForLoopGuard() noexcept
 /// @brief Determine whether a name refers to an active FOR-loop variable.
 /// @param name Identifier to test.
 /// @return True when @p name is currently tracked via @ref ForLoopGuard.
-bool StmtShared::isLoopVariable(std::string_view name) const noexcept
-{
+bool StmtShared::isLoopVariable(std::string_view name) const noexcept {
     return analyzer_.isLoopVariableActive(name);
 }
 
@@ -186,8 +168,7 @@ bool StmtShared::isLoopVariable(std::string_view name) const noexcept
 /// @param width Highlight width for caret printing.
 void StmtShared::reportLoopVariableMutation(const std::string &name,
                                             const il::support::SourceLoc &loc,
-                                            uint32_t width)
-{
+                                            uint32_t width) {
     std::string msg = "cannot assign to loop variable '" + name + "' inside FOR";
     analyzer_.de.emit(il::support::Severity::Error, "B1010", loc, width, std::move(msg));
 }

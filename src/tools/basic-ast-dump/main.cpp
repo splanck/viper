@@ -51,13 +51,11 @@ using il::tools::basic::loadBasicSource;
 /// @param argc Argument count supplied by the C runtime.
 /// @param argv Argument vector containing UTF-8 encoded strings.
 /// @return Zero on success; one when argument validation or file loading fails.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     std::string src;
     SourceManager sm;
     std::optional<std::uint32_t> fileId = loadBasicSource(argc == 2 ? argv[1] : nullptr, src, sm);
-    if (!fileId)
-    {
+    if (!fileId) {
         return 1;
     }
 
@@ -68,8 +66,7 @@ int main(int argc, char **argv)
     std::vector<std::string> includeStack;
     Parser p(src, *fileId, &emitter, &sm, &includeStack);
     auto prog = p.parseProgram();
-    if (!prog)
-    {
+    if (!prog) {
         emitter.printAll(std::cerr);
         std::cerr << std::flush;
         return 1;

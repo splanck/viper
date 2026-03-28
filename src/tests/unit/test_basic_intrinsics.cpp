@@ -18,8 +18,7 @@
 
 using namespace il::frontends::basic::intrinsics;
 
-int main()
-{
+int main() {
     const Intrinsic *i = lookup("LEFT$");
     assert(i && i->returnType == Type::String && i->paramCount == 2);
     assert(i->params[0].type == Type::String && !i->params[0].optional);

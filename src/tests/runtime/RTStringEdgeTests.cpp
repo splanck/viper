@@ -18,13 +18,11 @@
 #include <cassert>
 #include <cstring>
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     if (!s && !expected)
         return true;
     if (!s || !expected)
@@ -36,8 +34,7 @@ static bool str_eq(rt_string s, const char *expected)
 // Empty string
 //===----------------------------------------------------------------------===//
 
-static void test_empty_string()
-{
+static void test_empty_string() {
     rt_string empty = make_str("");
     assert(rt_str_len(empty) == 0);
     assert(rt_str_is_empty(empty));
@@ -48,8 +45,7 @@ static void test_empty_string()
 // UTF-8 multi-byte: byte-length vs codepoint count
 //===----------------------------------------------------------------------===//
 
-static void test_utf8_byte_length()
-{
+static void test_utf8_byte_length() {
     // "café" = 'c'(1) + 'a'(1) + 'f'(1) + 'é'(2) = 5 bytes, 4 codepoints
     rt_string cafe = make_str("caf\xc3\xa9");
     assert(rt_str_len(cafe) == 5);
@@ -67,8 +63,7 @@ static void test_utf8_byte_length()
 // rt_str_flip: codepoint-aware reversal
 //===----------------------------------------------------------------------===//
 
-static void test_flip_utf8()
-{
+static void test_flip_utf8() {
     // "café" reversed by codepoints → "éfac"
     rt_string cafe = make_str("caf\xc3\xa9");
     rt_string flipped = rt_str_flip(cafe);
@@ -82,8 +77,7 @@ static void test_flip_utf8()
     assert(str_eq(jp_flipped, "\xe8\xaa\x9e\xe6\x9c\xac\xe6\x97\xa5"));
 }
 
-static void test_flip_empty()
-{
+static void test_flip_empty() {
     rt_string empty = make_str("");
     rt_string result = rt_str_flip(empty);
     assert(rt_str_len(result) == 0);
@@ -93,8 +87,7 @@ static void test_flip_empty()
 // Byte-indexed slicing on multi-byte strings
 //===----------------------------------------------------------------------===//
 
-static void test_left_boundary()
-{
+static void test_left_boundary() {
     rt_string s = make_str("hello");
     // Left$(s, 0) → empty
     rt_string zero = rt_str_left(s, 0);
@@ -105,8 +98,7 @@ static void test_left_boundary()
     assert(str_eq(full, "hello"));
 }
 
-static void test_right_boundary()
-{
+static void test_right_boundary() {
     rt_string s = make_str("hello");
     // Right$(s, 0) → empty
     rt_string zero = rt_str_right(s, 0);
@@ -117,8 +109,7 @@ static void test_right_boundary()
     assert(str_eq(full, "hello"));
 }
 
-static void test_mid_boundary()
-{
+static void test_mid_boundary() {
     rt_string s = make_str("hello");
     // Mid$ uses 1-based indexing (BASIC semantics).
     // Mid$(s, 6) on 5-byte string → empty (past end)
@@ -134,8 +125,7 @@ static void test_mid_boundary()
     assert(str_eq(last, "o"));
 }
 
-static void test_substr_boundary()
-{
+static void test_substr_boundary() {
     rt_string s = make_str("hello");
     // Substr at start, full length
     rt_string full = rt_str_substr(s, 0, 5);
@@ -150,8 +140,7 @@ static void test_substr_boundary()
 // Slicing mid-codepoint (byte-indexed on multi-byte)
 //===----------------------------------------------------------------------===//
 
-static void test_slice_mid_codepoint()
-{
+static void test_slice_mid_codepoint() {
     // "café" = c(0) a(1) f(2) é(3,4) — take Left$(s, 3) splits before é
     rt_string cafe = make_str("caf\xc3\xa9");
     rt_string left3 = rt_str_left(cafe, 3);
@@ -170,8 +159,7 @@ static void test_slice_mid_codepoint()
 // Null terminator preservation through operations
 //===----------------------------------------------------------------------===//
 
-static void test_null_terminator_concat()
-{
+static void test_null_terminator_concat() {
     rt_string a = make_str("hello");
     rt_string b = make_str(" world");
     // Retain both since concat may consume them
@@ -183,8 +171,7 @@ static void test_null_terminator_concat()
     assert(str_eq(result, "hello world"));
 }
 
-static void test_null_terminator_substr()
-{
+static void test_null_terminator_substr() {
     rt_string s = make_str("hello world");
     rt_string sub = rt_str_substr(s, 0, 5);
     const char *cstr = rt_string_cstr(sub);
@@ -196,8 +183,7 @@ static void test_null_terminator_substr()
 // rt_string_from_bytes with explicit length (not strlen-based)
 //===----------------------------------------------------------------------===//
 
-static void test_from_bytes_explicit_length()
-{
+static void test_from_bytes_explicit_length() {
     // Create string from first 5 bytes of a longer buffer
     const char *buf = "hello world";
     rt_string s = rt_string_from_bytes(buf, 5);
@@ -205,8 +191,7 @@ static void test_from_bytes_explicit_length()
     assert(str_eq(s, "hello"));
 }
 
-static void test_from_bytes_zero_length()
-{
+static void test_from_bytes_zero_length() {
     rt_string s = rt_string_from_bytes("anything", 0);
     assert(rt_str_len(s) == 0);
 }
@@ -215,8 +200,7 @@ static void test_from_bytes_zero_length()
 // ASCII case conversion with multi-byte pass-through
 //===----------------------------------------------------------------------===//
 
-static void test_ucase_ascii_only()
-{
+static void test_ucase_ascii_only() {
     // ASCII chars are uppercased; multi-byte UTF-8 passes through unchanged
     rt_string mixed = make_str("caf\xc3\xa9");
     rt_string upper = rt_str_ucase(mixed);
@@ -224,8 +208,7 @@ static void test_ucase_ascii_only()
     assert(rt_str_len(upper) == 5);
 }
 
-static void test_lcase_ascii_only()
-{
+static void test_lcase_ascii_only() {
     rt_string s = make_str("HELLO");
     rt_string lower = rt_str_lcase(s);
     assert(str_eq(lower, "hello"));
@@ -235,8 +218,7 @@ static void test_lcase_ascii_only()
 // Concat with empty strings
 //===----------------------------------------------------------------------===//
 
-static void test_concat_empty()
-{
+static void test_concat_empty() {
     rt_string a = make_str("hello");
     rt_string empty = make_str("");
     rt_string_ref(a);
@@ -250,8 +232,7 @@ static void test_concat_empty()
 // Main
 //===----------------------------------------------------------------------===//
 
-int main()
-{
+int main() {
     test_empty_string();
     test_utf8_byte_length();
     test_flip_utf8();

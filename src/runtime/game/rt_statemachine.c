@@ -44,8 +44,7 @@
 #include <string.h>
 
 /// Internal state machine implementation.
-struct rt_statemachine_impl
-{
+struct rt_statemachine_impl {
     int64_t current_state;       ///< Current state ID (-1 if none).
     int64_t previous_state;      ///< Previous state ID (-1 if none).
     int64_t frames_in_state;     ///< Frames since entering current state.
@@ -57,8 +56,7 @@ struct rt_statemachine_impl
 
 /// @brief Perform statemachine new operation.
 /// @return Result value.
-rt_statemachine rt_statemachine_new(void)
-{
+rt_statemachine rt_statemachine_new(void) {
     rt_statemachine sm = rt_obj_new_i64(0, sizeof(struct rt_statemachine_impl));
     if (!sm)
         return NULL;
@@ -76,8 +74,7 @@ rt_statemachine rt_statemachine_new(void)
 
 /// @brief Perform statemachine destroy operation.
 /// @param sm
-void rt_statemachine_destroy(rt_statemachine sm)
-{
+void rt_statemachine_destroy(rt_statemachine sm) {
     // Object is GC-managed via rt_obj_new_i64; no manual free needed.
     (void)sm;
 }
@@ -86,12 +83,10 @@ void rt_statemachine_destroy(rt_statemachine sm)
 /// @param sm
 /// @param state_id
 /// @return Result value.
-int8_t rt_statemachine_add_state(rt_statemachine sm, int64_t state_id)
-{
+int8_t rt_statemachine_add_state(rt_statemachine sm, int64_t state_id) {
     if (!sm)
         return 0;
-    if (state_id < 0 || state_id >= RT_STATE_MAX)
-    {
+    if (state_id < 0 || state_id >= RT_STATE_MAX) {
         rt_trap("StateMachine.AddState: state_id out of range [0, RT_STATE_MAX-1]");
         return 0;
     }
@@ -107,8 +102,7 @@ int8_t rt_statemachine_add_state(rt_statemachine sm, int64_t state_id)
 /// @param sm
 /// @param state_id
 /// @return Result value.
-int8_t rt_statemachine_set_initial(rt_statemachine sm, int64_t state_id)
-{
+int8_t rt_statemachine_set_initial(rt_statemachine sm, int64_t state_id) {
     if (!sm)
         return 0;
     if (state_id < 0 || state_id >= RT_STATE_MAX)
@@ -127,8 +121,7 @@ int8_t rt_statemachine_set_initial(rt_statemachine sm, int64_t state_id)
 /// @brief Perform statemachine current operation.
 /// @param sm
 /// @return Result value.
-int64_t rt_statemachine_current(rt_statemachine sm)
-{
+int64_t rt_statemachine_current(rt_statemachine sm) {
     if (!sm)
         return -1;
     return sm->current_state;
@@ -137,8 +130,7 @@ int64_t rt_statemachine_current(rt_statemachine sm)
 /// @brief Perform statemachine previous operation.
 /// @param sm
 /// @return Result value.
-int64_t rt_statemachine_previous(rt_statemachine sm)
-{
+int64_t rt_statemachine_previous(rt_statemachine sm) {
     if (!sm)
         return -1;
     return sm->previous_state;
@@ -148,8 +140,7 @@ int64_t rt_statemachine_previous(rt_statemachine sm)
 /// @param sm
 /// @param state_id
 /// @return Result value.
-int8_t rt_statemachine_is_state(rt_statemachine sm, int64_t state_id)
-{
+int8_t rt_statemachine_is_state(rt_statemachine sm, int64_t state_id) {
     if (!sm)
         return 0;
     return sm->current_state == state_id ? 1 : 0;
@@ -159,8 +150,7 @@ int8_t rt_statemachine_is_state(rt_statemachine sm, int64_t state_id)
 /// @param sm
 /// @param state_id
 /// @return Result value.
-int8_t rt_statemachine_transition(rt_statemachine sm, int64_t state_id)
-{
+int8_t rt_statemachine_transition(rt_statemachine sm, int64_t state_id) {
     if (!sm)
         return 0;
     if (state_id < 0 || state_id >= RT_STATE_MAX)
@@ -181,8 +171,7 @@ int8_t rt_statemachine_transition(rt_statemachine sm, int64_t state_id)
 /// @brief Perform statemachine just entered operation.
 /// @param sm
 /// @return Result value.
-int8_t rt_statemachine_just_entered(rt_statemachine sm)
-{
+int8_t rt_statemachine_just_entered(rt_statemachine sm) {
     if (!sm)
         return 0;
     return sm->just_entered;
@@ -191,8 +180,7 @@ int8_t rt_statemachine_just_entered(rt_statemachine sm)
 /// @brief Perform statemachine just exited operation.
 /// @param sm
 /// @return Result value.
-int8_t rt_statemachine_just_exited(rt_statemachine sm)
-{
+int8_t rt_statemachine_just_exited(rt_statemachine sm) {
     if (!sm)
         return 0;
     return sm->just_exited;
@@ -200,8 +188,7 @@ int8_t rt_statemachine_just_exited(rt_statemachine sm)
 
 /// @brief Perform statemachine clear flags operation.
 /// @param sm
-void rt_statemachine_clear_flags(rt_statemachine sm)
-{
+void rt_statemachine_clear_flags(rt_statemachine sm) {
     if (!sm)
         return;
     sm->just_entered = 0;
@@ -211,8 +198,7 @@ void rt_statemachine_clear_flags(rt_statemachine sm)
 /// @brief Perform statemachine frames in state operation.
 /// @param sm
 /// @return Result value.
-int64_t rt_statemachine_frames_in_state(rt_statemachine sm)
-{
+int64_t rt_statemachine_frames_in_state(rt_statemachine sm) {
     if (!sm)
         return 0;
     return sm->frames_in_state;
@@ -220,12 +206,10 @@ int64_t rt_statemachine_frames_in_state(rt_statemachine sm)
 
 /// @brief Perform statemachine update operation.
 /// @param sm
-void rt_statemachine_update(rt_statemachine sm)
-{
+void rt_statemachine_update(rt_statemachine sm) {
     if (!sm)
         return;
-    if (sm->current_state >= 0)
-    {
+    if (sm->current_state >= 0) {
         sm->frames_in_state++;
     }
 }
@@ -234,8 +218,7 @@ void rt_statemachine_update(rt_statemachine sm)
 /// @param sm
 /// @param state_id
 /// @return Result value.
-int8_t rt_statemachine_has_state(rt_statemachine sm, int64_t state_id)
-{
+int8_t rt_statemachine_has_state(rt_statemachine sm, int64_t state_id) {
     if (!sm)
         return 0;
     if (state_id < 0 || state_id >= RT_STATE_MAX)
@@ -246,8 +229,7 @@ int8_t rt_statemachine_has_state(rt_statemachine sm, int64_t state_id)
 /// @brief Perform statemachine state count operation.
 /// @param sm
 /// @return Result value.
-int64_t rt_statemachine_state_count(rt_statemachine sm)
-{
+int64_t rt_statemachine_state_count(rt_statemachine sm) {
     if (!sm)
         return 0;
     return sm->state_count;

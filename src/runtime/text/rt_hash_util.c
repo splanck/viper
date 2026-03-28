@@ -45,8 +45,7 @@ uint64_t rt_siphash_k1_ = 0;
 int rt_siphash_seeded_ = 0;
 
 /// @brief Fill buffer with random bytes from the OS CSPRNG.
-static int hash_random_fill(uint8_t *buf, size_t len)
-{
+static int hash_random_fill(uint8_t *buf, size_t len) {
     if (len == 0)
         return 0;
 #ifdef _WIN32
@@ -57,11 +56,9 @@ static int hash_random_fill(uint8_t *buf, size_t len)
     if (fd < 0)
         return -1;
     size_t done = 0;
-    while (done < len)
-    {
+    while (done < len) {
         ssize_t r = read(fd, buf + done, len - done);
-        if (r <= 0)
-        {
+        if (r <= 0) {
             close(fd);
             return -1;
         }
@@ -73,16 +70,12 @@ static int hash_random_fill(uint8_t *buf, size_t len)
 }
 
 /// @brief Actual seed initialization (called exactly once).
-static void hash_seed_init(void)
-{
+static void hash_seed_init(void) {
     uint8_t buf[16];
-    if (hash_random_fill(buf, 16) == 0)
-    {
+    if (hash_random_fill(buf, 16) == 0) {
         memcpy(&rt_siphash_k0_, buf, 8);
         memcpy(&rt_siphash_k1_, buf + 8, 8);
-    }
-    else
-    {
+    } else {
         /* Fallback: use address-space entropy if CSPRNG unavailable. */
         rt_siphash_k0_ = (uint64_t)(uintptr_t)&rt_siphash_k0_ ^ 0x736f6d6570736575ULL;
         rt_siphash_k1_ = (uint64_t)(uintptr_t)&rt_siphash_k1_ ^ 0x646f72616e646f6dULL;
@@ -97,8 +90,7 @@ static void hash_seed_init(void)
 #ifdef _WIN32
 static INIT_ONCE g_hash_seed_once_ = INIT_ONCE_STATIC_INIT;
 
-static BOOL CALLBACK hash_seed_once_cb(PINIT_ONCE InitOnce, PVOID Parameter, PVOID *Context)
-{
+static BOOL CALLBACK hash_seed_once_cb(PINIT_ONCE InitOnce, PVOID Parameter, PVOID *Context) {
     (void)InitOnce;
     (void)Parameter;
     (void)Context;
@@ -106,15 +98,13 @@ static BOOL CALLBACK hash_seed_once_cb(PINIT_ONCE InitOnce, PVOID Parameter, PVO
     return TRUE;
 }
 
-void rt_hash_ensure_seeded_(void)
-{
+void rt_hash_ensure_seeded_(void) {
     InitOnceExecuteOnce(&g_hash_seed_once_, hash_seed_once_cb, NULL, NULL);
 }
 #else
 static pthread_once_t g_hash_seed_once_ = PTHREAD_ONCE_INIT;
 
-void rt_hash_ensure_seeded_(void)
-{
+void rt_hash_ensure_seeded_(void) {
     pthread_once(&g_hash_seed_once_, hash_seed_init);
 }
 #endif

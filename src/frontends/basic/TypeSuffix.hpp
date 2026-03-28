@@ -20,8 +20,7 @@
 #include <optional>
 #include <string_view>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Determine the BASIC AST type implied by an identifier suffix.
 /// @param name BASIC identifier, potentially containing a type suffix character.

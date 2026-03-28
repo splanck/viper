@@ -27,18 +27,15 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
-struct AnalysisResult
-{
+namespace {
+struct AnalysisResult {
     size_t errors;
     size_t warnings;
     std::string output;
 };
 
 AnalysisResult analyzeSnippet(const std::string &src,
-                              const std::function<void(Program &)> &mutator = {})
-{
+                              const std::function<void(Program &)> &mutator = {}) {
     SourceManager sm;
     uint32_t fid = sm.addFile("select_case.bas");
 
@@ -62,8 +59,7 @@ AnalysisResult analyzeSnippet(const std::string &src,
 }
 } // namespace
 
-int main()
-{
+int main() {
     {
         const std::string src = "10 SELECT CASE \"foo\"\n"
                                 "20 CASE 1\n"
@@ -172,19 +168,16 @@ int main()
                                 "60 END SELECT\n"
                                 "70 END\n";
 
-        auto result = analyzeSnippet(src,
-                                     [](Program &program)
-                                     {
-                                         assert(!program.main.empty());
-                                         auto *select = dynamic_cast<SelectCaseStmt *>(
-                                             program.main.front().get());
-                                         assert(select);
+        auto result = analyzeSnippet(src, [](Program &program) {
+            assert(!program.main.empty());
+            auto *select = dynamic_cast<SelectCaseStmt *>(program.main.front().get());
+            assert(select);
 
-                                         CaseArm duplicateElse;
-                                         duplicateElse.range.begin = select->range.begin;
-                                         duplicateElse.range.end = select->range.begin;
-                                         select->arms.push_back(std::move(duplicateElse));
-                                     });
+            CaseArm duplicateElse;
+            duplicateElse.range.begin = select->range.begin;
+            duplicateElse.range.end = select->range.begin;
+            select->arms.push_back(std::move(duplicateElse));
+        });
 
         assert(result.errors == 1);
         const std::string expected =

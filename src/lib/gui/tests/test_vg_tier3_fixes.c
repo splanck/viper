@@ -45,8 +45,7 @@ static int g_failed = 0;
 
 #define TEST(name) static void test_##name(void)
 #define RUN(name)                                                                                  \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("  %-60s", #name "...");                                                            \
         fflush(stdout);                                                                            \
         test_##name();                                                                             \
@@ -56,10 +55,8 @@ static int g_failed = 0;
     } while (0)
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             printf("FAIL\n  (%s:%d: %s)\n", __FILE__, __LINE__, #cond);                            \
             g_failed++;                                                                            \
             return;                                                                                \
@@ -77,8 +74,7 @@ static int g_failed = 0;
 // PERF-002: LRU Glyph Cache
 //=============================================================================
 
-TEST(lru_cache_hit_updates_tick)
-{
+TEST(lru_cache_hit_updates_tick) {
     vg_glyph_cache_t *cache = vg_cache_create();
     ASSERT_NOT_NULL(cache);
 
@@ -117,8 +113,7 @@ TEST(lru_cache_hit_updates_tick)
     vg_cache_destroy(cache);
 }
 
-TEST(lru_cache_lru_evicts_unaccessed_first)
-{
+TEST(lru_cache_lru_evicts_unaccessed_first) {
     vg_glyph_cache_t *cache = vg_cache_create();
     ASSERT_NOT_NULL(cache);
 
@@ -173,8 +168,7 @@ TEST(lru_cache_lru_evicts_unaccessed_first)
 //=============================================================================
 
 // Helper: create a mock key event
-static vg_event_t make_key_event(vg_key_t key, uint32_t mods)
-{
+static vg_event_t make_key_event(vg_key_t key, uint32_t mods) {
     vg_event_t ev;
     memset(&ev, 0, sizeof(ev));
     ev.type = VG_EVENT_KEY_DOWN;
@@ -184,8 +178,7 @@ static vg_event_t make_key_event(vg_key_t key, uint32_t mods)
 }
 
 // Helper: create a character input event
-static vg_event_t make_char_event(uint32_t codepoint)
-{
+static vg_event_t make_char_event(uint32_t codepoint) {
     vg_event_t ev;
     memset(&ev, 0, sizeof(ev));
     ev.type = VG_EVENT_KEY_CHAR;
@@ -193,8 +186,7 @@ static vg_event_t make_char_event(uint32_t codepoint)
     return ev;
 }
 
-TEST(textinput_undo_restores_previous_text)
-{
+TEST(textinput_undo_restores_previous_text) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
 
@@ -226,8 +218,7 @@ TEST(textinput_undo_restores_previous_text)
     vg_widget_destroy(w);
 }
 
-TEST(textinput_undo_at_beginning_is_noop)
-{
+TEST(textinput_undo_at_beginning_is_noop) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
 
@@ -249,8 +240,7 @@ TEST(textinput_undo_at_beginning_is_noop)
     vg_widget_destroy(w);
 }
 
-TEST(textinput_redo_reapplies_undone_edit)
-{
+TEST(textinput_redo_reapplies_undone_edit) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
 
@@ -283,8 +273,7 @@ TEST(textinput_redo_reapplies_undone_edit)
     vg_widget_destroy(w);
 }
 
-TEST(textinput_new_edit_clears_redo)
-{
+TEST(textinput_new_edit_clears_redo) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
 
@@ -316,24 +305,20 @@ TEST(textinput_new_edit_clears_redo)
 //=============================================================================
 
 // Dummy widget that records whether it received a mouse event
-typedef struct
-{
+typedef struct {
     vg_widget_t base;
     int click_count;
 } test_clickable_t;
 
-static bool test_clickable_handle(vg_widget_t *w, vg_event_t *ev)
-{
-    if (ev->type == VG_EVENT_MOUSE_DOWN || ev->type == VG_EVENT_CLICK)
-    {
+static bool test_clickable_handle(vg_widget_t *w, vg_event_t *ev) {
+    if (ev->type == VG_EVENT_MOUSE_DOWN || ev->type == VG_EVENT_CLICK) {
         ((test_clickable_t *)w)->click_count++;
         return true;
     }
     return false;
 }
 
-static bool test_clickable_can_focus(vg_widget_t *w)
-{
+static bool test_clickable_can_focus(vg_widget_t *w) {
     (void)w;
     return true;
 }
@@ -343,8 +328,7 @@ static vg_widget_vtable_t s_clickable_vtable = {
     .can_focus = test_clickable_can_focus,
 };
 
-TEST(modal_blocks_mouse_behind_dialog)
-{
+TEST(modal_blocks_mouse_behind_dialog) {
     // Widget tree:
     //   root (container at 0,0 200x200)
     //     ├─ background_btn (10,10 80x30) — behind the dialog
@@ -426,8 +410,7 @@ TEST(modal_blocks_mouse_behind_dialog)
 // FEAT-006: Tab Order via tab_index
 //=============================================================================
 
-TEST(focus_next_respects_tab_index_order)
-{
+TEST(focus_next_respects_tab_index_order) {
     // Create root and three focusable buttons with explicit tab_index
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     ASSERT_NOT_NULL(root);
@@ -468,8 +451,7 @@ TEST(focus_next_respects_tab_index_order)
     vg_widget_destroy(root);
 }
 
-TEST(focus_prev_reverses_tab_index_order)
-{
+TEST(focus_prev_reverses_tab_index_order) {
     vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
     ASSERT_NOT_NULL(root);
     root->visible = true;
@@ -502,8 +484,7 @@ TEST(focus_prev_reverses_tab_index_order)
     vg_widget_destroy(root);
 }
 
-TEST(tab_index_defaults_to_minus_one)
-{
+TEST(tab_index_defaults_to_minus_one) {
     vg_button_t *btn = vg_button_create(NULL, "test");
     ASSERT_NOT_NULL(btn);
     ASSERT_EQ(-1, btn->base.tab_index);
@@ -514,8 +495,7 @@ TEST(tab_index_defaults_to_minus_one)
 // FEAT-005: Button Icon Support
 //=============================================================================
 
-TEST(button_set_icon_stores_text)
-{
+TEST(button_set_icon_stores_text) {
     vg_button_t *btn = vg_button_create(NULL, "Save");
     ASSERT_NOT_NULL(btn);
     ASSERT_NULL(btn->icon_text); // no icon by default
@@ -527,8 +507,7 @@ TEST(button_set_icon_stores_text)
     vg_widget_destroy(&btn->base);
 }
 
-TEST(button_set_icon_null_clears_icon)
-{
+TEST(button_set_icon_null_clears_icon) {
     vg_button_t *btn = vg_button_create(NULL, "Delete");
     ASSERT_NOT_NULL(btn);
 
@@ -541,8 +520,7 @@ TEST(button_set_icon_null_clears_icon)
     vg_widget_destroy(&btn->base);
 }
 
-TEST(button_set_icon_position)
-{
+TEST(button_set_icon_position) {
     vg_button_t *btn = vg_button_create(NULL, "OK");
     ASSERT_NOT_NULL(btn);
     ASSERT_EQ(0, btn->icon_pos); // default = left
@@ -556,8 +534,7 @@ TEST(button_set_icon_position)
     vg_widget_destroy(&btn->base);
 }
 
-TEST(button_destroy_with_icon_no_crash)
-{
+TEST(button_destroy_with_icon_no_crash) {
     // Verify destroy frees icon_text without double-free
     vg_button_t *btn = vg_button_create(NULL, "Close");
     ASSERT_NOT_NULL(btn);
@@ -574,8 +551,7 @@ TEST(button_destroy_with_icon_no_crash)
 // Main
 //=============================================================================
 
-int main(void)
-{
+int main(void) {
     printf("=== Tier 3 GUI Fixes Tests ===\n\n");
 
     printf("PERF-002: LRU Glyph Cache Eviction\n");

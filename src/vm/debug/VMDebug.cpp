@@ -38,8 +38,7 @@
 
 using namespace il::core;
 
-namespace il::vm
-{
+namespace il::vm {
 
 /// @brief Apply pending block parameter transfers for the given block.
 /// @details Any arguments staged by a predecessor terminator are copied into the
@@ -51,10 +50,8 @@ namespace il::vm
 ///          updates remain.
 /// @param fr Current frame whose registers receive parameter values.
 /// @param bb Basic block that has just become active.
-void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
-{
-    for (const auto &p : bb.params)
-    {
+void VM::transferBlockParams(Frame &fr, const BasicBlock &bb) {
+    for (const auto &p : bb.params) {
         assert(p.id < fr.params.size());
         if (!fr.paramsSet[p.id])
             continue;
@@ -89,16 +86,12 @@ void VM::transferBlockParams(Frame &fr, const BasicBlock &bb)
 /// @param in            Optional instruction for source line breakpoints.
 /// @return @c std::nullopt to continue or a @c Slot signalling a pause.
 std::optional<Slot> VM::handleDebugBreak(
-    Frame &fr, const BasicBlock &bb, size_t ip, bool &skipBreakOnce, const Instr *in)
-{
-    if (!in)
-    {
-        if (debug.shouldBreak(bb))
-        {
+    Frame &fr, const BasicBlock &bb, size_t ip, bool &skipBreakOnce, const Instr *in) {
+    if (!in) {
+        if (debug.shouldBreak(bb)) {
             std::cerr << "[BREAK] fn=@" << fr.func->name << " blk=" << bb.label
                       << " reason=label\n";
-            if (!script || script->empty())
-            {
+            if (!script || script->empty()) {
                 Slot s{};
                 s.i64 = kDebugBreakpointSentinel;
                 return s;
@@ -110,15 +103,13 @@ std::optional<Slot> VM::handleDebugBreak(
         }
         return std::nullopt;
     }
-    if (debug.hasSrcLineBPs() && debug.shouldBreakOn(*in))
-    {
+    if (debug.hasSrcLineBPs() && debug.shouldBreakOn(*in)) {
         const auto *sm = debug.getSourceManager();
         std::string path;
         if (sm && in->loc.hasFile())
             path = std::filesystem::path(sm->getPath(in->loc.file_id)).filename().string();
         std::cerr << "[BREAK] src=" << path;
-        if (in->loc.hasLine())
-        {
+        if (in->loc.hasLine()) {
             std::cerr << ':' << in->loc.line;
             if (in->loc.hasColumn())
                 std::cerr << ':' << in->loc.column;
@@ -143,30 +134,23 @@ std::optional<Slot> VM::handleDebugBreak(
 /// @param in      Instruction being processed, if any.
 /// @param postExec Set to true when invoked after executing @p in.
 /// @return Optional slot causing execution to pause; @c std::nullopt otherwise.
-std::optional<Slot> VM::processDebugControl(ExecState &st, const Instr *in, bool postExec)
-{
-    if (!postExec)
-    {
-        if (maxSteps && instrCount >= maxSteps)
-        {
+std::optional<Slot> VM::processDebugControl(ExecState &st, const Instr *in, bool postExec) {
+    if (!postExec) {
+        if (maxSteps && instrCount >= maxSteps) {
             std::cerr << "VM: step limit exceeded (" << maxSteps << "); aborting.\n";
             Slot s{};
             s.i64 = kDebugPauseSentinel;
             return s;
         }
-        if (st.ip == 0 && st.bb)
-        {
+        if (st.ip == 0 && st.bb) {
             transferBlockParams(st.fr, *st.bb);
             // Refresh the pre-resolved operand cache for the newly active block.
             st.blockCache = getOrBuildBlockCache(st.fr.func, st.bb);
         }
-        if (st.ip == 0 && stepBudget == 0 && !st.skipBreakOnce)
-        {
+        if (st.ip == 0 && stepBudget == 0 && !st.skipBreakOnce) {
             if (auto br = handleDebugBreak(st.fr, *st.bb, st.ip, st.skipBreakOnce, nullptr))
                 return br;
-        }
-        else if (st.skipBreakOnce)
-        {
+        } else if (st.skipBreakOnce) {
             st.skipBreakOnce = false;
         }
         if (in)
@@ -174,15 +158,12 @@ std::optional<Slot> VM::processDebugControl(ExecState &st, const Instr *in, bool
                 return br;
         return std::nullopt;
     }
-    if (stepBudget > 0)
-    {
+    if (stepBudget > 0) {
         --stepBudget;
-        if (stepBudget == 0)
-        {
+        if (stepBudget == 0) {
             std::cerr << "[BREAK] fn=@" << st.fr.func->name << " blk=" << st.bb->label
                       << " reason=step\n";
-            if (!script || script->empty())
-            {
+            if (!script || script->empty()) {
                 Slot s{};
                 s.i64 = kDebugBreakpointSentinel;
                 return s;

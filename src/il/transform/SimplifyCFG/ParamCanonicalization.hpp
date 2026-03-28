@@ -24,8 +24,7 @@
 
 #include "il/transform/SimplifyCFG.hpp"
 
-namespace il::transform::simplify_cfg
-{
+namespace il::transform::simplify_cfg {
 
 /// @brief Canonicalise block parameters and incoming branch arguments.
 /// @details For each non-EH-sensitive block, the helper first replaces

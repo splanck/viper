@@ -54,11 +54,9 @@ using namespace viper::codegen::aarch64::passes;
 // Helpers
 // ---------------------------------------------------------------------------
 
-namespace
-{
+namespace {
 
-static il::core::Module parseIL(const std::string &src)
-{
+static il::core::Module parseIL(const std::string &src) {
     std::istringstream ss(src);
     il::core::Module mod;
     if (!il::io::Parser::parse(ss, mod))
@@ -67,8 +65,7 @@ static il::core::Module parseIL(const std::string &src)
 }
 
 /// Full pipeline with BlockLayoutPass inserted between RegAlloc and Peephole.
-static PassManager buildLayoutPipeline()
-{
+static PassManager buildLayoutPipeline() {
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
     pm.addPass(std::make_unique<RegAllocPass>());
@@ -79,12 +76,10 @@ static PassManager buildLayoutPipeline()
 }
 
 /// Count occurrences of a literal substring.
-static int countSubstr(const std::string &text, const std::string &needle)
-{
+static int countSubstr(const std::string &text, const std::string &needle) {
     int n = 0;
     std::size_t pos = 0;
-    while ((pos = text.find(needle, pos)) != std::string::npos)
-    {
+    while ((pos = text.find(needle, pos)) != std::string::npos) {
         ++n;
         pos += needle.size();
     }
@@ -96,8 +91,7 @@ static int countSubstr(const std::string &text, const std::string &needle)
 // ---------------------------------------------------------------------------
 // Test 1: Full pipeline with layout pass produces correct assembly.
 // ---------------------------------------------------------------------------
-TEST(AArch64BlockLayout, CorrectOutput)
-{
+TEST(AArch64BlockLayout, CorrectOutput) {
     const std::string il = "il 0.1\n"
                            "func @layout_simple() -> i64 {\n"
                            "entry:\n"
@@ -130,8 +124,7 @@ TEST(AArch64BlockLayout, CorrectOutput)
 // Run both with and without BlockLayoutPass and compare the number of block
 // labels in the assembly. The pass must not add or remove any blocks.
 //
-TEST(AArch64BlockLayout, BlockCountStable)
-{
+TEST(AArch64BlockLayout, BlockCountStable) {
     const std::string il = "il 0.1\n"
                            "func @block_count() -> i64 {\n"
                            "entry:\n"
@@ -168,8 +161,7 @@ TEST(AArch64BlockLayout, BlockCountStable)
     ASSERT_TRUE(buildLayoutPipeline().run(m2, d2));
 
     // Count block labels (non-prefixed labels ending with ':' not starting with '.').
-    auto countLabels = [](const std::string &asm_)
-    {
+    auto countLabels = [](const std::string &asm_) {
         int n = 0;
         std::istringstream ss(asm_);
         std::string line;
@@ -183,8 +175,7 @@ TEST(AArch64BlockLayout, BlockCountStable)
     const int labelsWithout = countLabels(m1.assembly);
     const int labelsWith = countLabels(m2.assembly);
 
-    if (labelsWithout != labelsWith)
-    {
+    if (labelsWithout != labelsWith) {
         std::cerr << "Without layout: " << labelsWithout << " labels\n"
                   << "With layout:    " << labelsWith << " labels\n";
     }
@@ -206,8 +197,7 @@ TEST(AArch64BlockLayout, BlockCountStable)
 //
 // Measurable: unconditional "  b " count should drop by at least 1.
 //
-TEST(AArch64BlockLayout, LoopBranchReduced)
-{
+TEST(AArch64BlockLayout, LoopBranchReduced) {
     // Exit is defined before start/loop — forcing a suboptimal block order.
     const std::string il = "il 0.1\n"
                            "func @loop_sum() -> i64 {\n"
@@ -250,13 +240,11 @@ TEST(AArch64BlockLayout, LoopBranchReduced)
     // Count unconditional branch instructions "  b " (not b.cond).
     // We look for lines containing "  b " followed by a non-dot character
     // (to exclude "  b.ne", "  b.eq", etc).
-    auto countUnconditionalBranches = [](const std::string &asm_) -> int
-    {
+    auto countUnconditionalBranches = [](const std::string &asm_) -> int {
         int n = 0;
         std::istringstream ss(asm_);
         std::string line;
-        while (std::getline(ss, line))
-        {
+        while (std::getline(ss, line)) {
             // Match "  b <label>" but not "  b.<cond>"
             auto pos = line.find("  b ");
             if (pos != std::string::npos && pos + 4 < line.size() && line[pos + 3] == ' ')
@@ -268,8 +256,7 @@ TEST(AArch64BlockLayout, LoopBranchReduced)
     const int brWithout = countUnconditionalBranches(m1.assembly);
     const int brWith = countUnconditionalBranches(m2.assembly);
 
-    if (brWith >= brWithout)
-    {
+    if (brWith >= brWithout) {
         std::cerr << "Expected fewer unconditional branches with BlockLayoutPass.\n"
                   << "Without: " << brWithout << "\n"
                   << "With:    " << brWith << "\n"
@@ -283,8 +270,7 @@ TEST(AArch64BlockLayout, LoopBranchReduced)
 // ---------------------------------------------------------------------------
 // Test 4: Entry block (index 0) always remains first after layout.
 // ---------------------------------------------------------------------------
-TEST(AArch64BlockLayout, EntryBlockFirst)
-{
+TEST(AArch64BlockLayout, EntryBlockFirst) {
     const std::string il = "il 0.1\n"
                            "func @entry_first() -> i64 {\n"
                            "entry:\n"
@@ -327,8 +313,7 @@ TEST(AArch64BlockLayout, EntryBlockFirst)
 // ---------------------------------------------------------------------------
 // Test 5: BlockLayoutPass integrates cleanly in the full PassManager.
 // ---------------------------------------------------------------------------
-TEST(AArch64BlockLayout, PipelineIntegration)
-{
+TEST(AArch64BlockLayout, PipelineIntegration) {
     const std::string il = "il 0.1\n"
                            "func @layout_integration() -> i64 {\n"
                            "entry:\n"
@@ -353,8 +338,7 @@ TEST(AArch64BlockLayout, PipelineIntegration)
     EXPECT_NE(m.assembly.find("ret"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

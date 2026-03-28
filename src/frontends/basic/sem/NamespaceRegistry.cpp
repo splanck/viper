@@ -23,26 +23,21 @@
 #include "il/runtime/RuntimeSignatures.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-std::string NamespaceRegistry::toLower(const std::string &str)
-{
+std::string NamespaceRegistry::toLower(const std::string &str) {
     std::string result;
     result.reserve(str.size());
-    for (char c : str)
-    {
+    for (char c : str) {
         result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
     }
     return result;
 }
 
-void NamespaceRegistry::registerNamespace(const std::string &full)
-{
+void NamespaceRegistry::registerNamespace(const std::string &full) {
     std::string key = toLower(full);
     auto it = namespaces_.find(key);
-    if (it == namespaces_.end())
-    {
+    if (it == namespaces_.end()) {
         // First time seeing this namespace; store canonical spelling.
         NamespaceInfo info;
         info.full = full;
@@ -51,8 +46,7 @@ void NamespaceRegistry::registerNamespace(const std::string &full)
     // If already exists, preserve first-seen spelling (no-op).
 }
 
-void NamespaceRegistry::registerClass(const std::string &nsFull, const std::string &className)
-{
+void NamespaceRegistry::registerClass(const std::string &nsFull, const std::string &className) {
     // Ensure namespace exists.
     registerNamespace(nsFull);
 
@@ -76,8 +70,7 @@ void NamespaceRegistry::registerClass(const std::string &nsFull, const std::stri
     types_[typeKey] = TypeKind::Class;
 }
 
-void NamespaceRegistry::registerInterface(const std::string &nsFull, const std::string &ifaceName)
-{
+void NamespaceRegistry::registerInterface(const std::string &nsFull, const std::string &ifaceName) {
     // Ensure namespace exists.
     registerNamespace(nsFull);
 
@@ -101,20 +94,17 @@ void NamespaceRegistry::registerInterface(const std::string &nsFull, const std::
     types_[typeKey] = TypeKind::Interface;
 }
 
-bool NamespaceRegistry::namespaceExists(const std::string &full) const
-{
+bool NamespaceRegistry::namespaceExists(const std::string &full) const {
     std::string key = toLower(full);
     return namespaces_.find(key) != namespaces_.end();
 }
 
-bool NamespaceRegistry::typeExists(const std::string &qualified) const
-{
+bool NamespaceRegistry::typeExists(const std::string &qualified) const {
     std::string key = toLower(qualified);
     return types_.find(key) != types_.end();
 }
 
-NamespaceRegistry::TypeKind NamespaceRegistry::getTypeKind(const std::string &qualified) const
-{
+NamespaceRegistry::TypeKind NamespaceRegistry::getTypeKind(const std::string &qualified) const {
     std::string key = toLower(qualified);
     auto it = types_.find(key);
     if (it == types_.end())
@@ -122,8 +112,7 @@ NamespaceRegistry::TypeKind NamespaceRegistry::getTypeKind(const std::string &qu
     return it->second;
 }
 
-const NamespaceRegistry::NamespaceInfo *NamespaceRegistry::info(const std::string &full) const
-{
+const NamespaceRegistry::NamespaceInfo *NamespaceRegistry::info(const std::string &full) const {
     std::string key = toLower(full);
     auto it = namespaces_.find(key);
     if (it == namespaces_.end())
@@ -132,10 +121,8 @@ const NamespaceRegistry::NamespaceInfo *NamespaceRegistry::info(const std::strin
 }
 
 void NamespaceRegistry::seedFromRuntimeBuiltins(
-    const std::vector<il::runtime::RuntimeDescriptor> &descs)
-{
-    for (const auto &d : descs)
-    {
+    const std::vector<il::runtime::RuntimeDescriptor> &descs) {
+    for (const auto &d : descs) {
         std::string_view name = d.name;
         // Only consider dotted names: treat as Namespace.Type or Namespace.Member
         if (name.find('.') == std::string_view::npos)
@@ -146,8 +133,7 @@ void NamespaceRegistry::seedFromRuntimeBuiltins(
         std::string current;
         current.reserve(name.size());
         std::size_t start = 0;
-        while (true)
-        {
+        while (true) {
             std::size_t dot = name.find('.', start);
             if (dot == std::string_view::npos)
                 break; // stop before final segment (function/type)
@@ -162,10 +148,8 @@ void NamespaceRegistry::seedFromRuntimeBuiltins(
 }
 
 void NamespaceRegistry::seedRuntimeClassNamespaces(
-    const std::vector<il::runtime::RuntimeClass> &classes)
-{
-    for (const auto &cls : classes)
-    {
+    const std::vector<il::runtime::RuntimeClass> &classes) {
+    for (const auto &cls : classes) {
         std::string_view name = cls.qname;
         if (name.empty())
             continue;
@@ -174,8 +158,7 @@ void NamespaceRegistry::seedRuntimeClassNamespaces(
         std::string current;
         current.reserve(name.size());
         std::size_t start = 0;
-        while (start < name.size())
-        {
+        while (start < name.size()) {
             std::size_t dot = name.find('.', start);
             if (dot == std::string_view::npos)
                 dot = name.size();

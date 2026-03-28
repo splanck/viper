@@ -25,11 +25,9 @@
 
 #include "PeepholeCommon.hpp"
 
-namespace viper::codegen::aarch64::peephole
-{
+namespace viper::codegen::aarch64::peephole {
 
-bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
-{
+bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx + 1 >= instrs.size())
         return false;
 
@@ -40,28 +38,19 @@ bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats 
     bool isLoad = false;
     bool isFPR = false;
 
-    if (first.opc == MOpcode::LdrRegFpImm && second.opc == MOpcode::LdrRegFpImm)
-    {
+    if (first.opc == MOpcode::LdrRegFpImm && second.opc == MOpcode::LdrRegFpImm) {
         pairOpc = MOpcode::LdpRegFpImm;
         isLoad = true;
-    }
-    else if (first.opc == MOpcode::StrRegFpImm && second.opc == MOpcode::StrRegFpImm)
-    {
+    } else if (first.opc == MOpcode::StrRegFpImm && second.opc == MOpcode::StrRegFpImm) {
         pairOpc = MOpcode::StpRegFpImm;
-    }
-    else if (first.opc == MOpcode::LdrFprFpImm && second.opc == MOpcode::LdrFprFpImm)
-    {
+    } else if (first.opc == MOpcode::LdrFprFpImm && second.opc == MOpcode::LdrFprFpImm) {
         pairOpc = MOpcode::LdpFprFpImm;
         isLoad = true;
         isFPR = true;
-    }
-    else if (first.opc == MOpcode::StrFprFpImm && second.opc == MOpcode::StrFprFpImm)
-    {
+    } else if (first.opc == MOpcode::StrFprFpImm && second.opc == MOpcode::StrFprFpImm) {
         pairOpc = MOpcode::StpFprFpImm;
         isFPR = true;
-    }
-    else
-    {
+    } else {
         return false;
     }
 
@@ -81,8 +70,7 @@ bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats 
     if (off1 < -512 || off1 > 504)
         return false;
 
-    if (isLoad)
-    {
+    if (isLoad) {
         if (samePhysReg(first.ops[0], second.ops[0]))
             return false;
     }
@@ -103,11 +91,9 @@ bool tryLdpStpMerge(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats 
     return true;
 }
 
-std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
-{
+std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats) {
     std::size_t forwarded = 0;
-    for (std::size_t i = 0; i < instrs.size(); ++i)
-    {
+    for (std::size_t i = 0; i < instrs.size(); ++i) {
         const bool isGPR = instrs[i].opc == MOpcode::StrRegFpImm;
         const bool isFPR = instrs[i].opc == MOpcode::StrFprFpImm;
         if (!isGPR && !isFPR)
@@ -125,8 +111,7 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
         const MOpcode matchStore = isGPR ? MOpcode::StrRegFpImm : MOpcode::StrFprFpImm;
         const MOpcode movOpc = isGPR ? MOpcode::MovRR : MOpcode::FMovRR;
 
-        for (std::size_t j = i + 1; j < instrs.size(); ++j)
-        {
+        for (std::size_t j = i + 1; j < instrs.size(); ++j) {
             const auto &next = instrs[j];
 
             if (next.opc == matchStore && next.ops.size() >= 2 &&
@@ -135,8 +120,7 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
 
             if (next.opc == matchLoad && next.ops.size() >= 2 &&
                 next.ops[1].kind == MOperand::Kind::Imm && next.ops[1].imm == storeOff &&
-                isPhysReg(next.ops[0]))
-            {
+                isPhysReg(next.ops[0])) {
                 instrs[j] = MInstr{movOpc, {next.ops[0], storeReg}};
                 ++forwarded;
                 ++stats.deadInstructionsRemoved;
@@ -157,8 +141,7 @@ std::size_t forwardStoreLoads(std::vector<MInstr> &instrs, PeepholeStats &stats)
     return forwarded;
 }
 
-bool tryMaddFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
-{
+bool tryMaddFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx + 1 >= instrs.size())
         return false;
 
@@ -181,21 +164,15 @@ bool tryMaddFusion(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &
     bool mulDstInLhs = samePhysReg(addInstr.ops[1], mulDst);
     bool mulDstInRhs = samePhysReg(addInstr.ops[2], mulDst);
 
-    if (mulDstInLhs && !mulDstInRhs)
-    {
+    if (mulDstInLhs && !mulDstInRhs) {
         addend = addInstr.ops[2];
-    }
-    else if (mulDstInRhs && !mulDstInLhs)
-    {
+    } else if (mulDstInRhs && !mulDstInLhs) {
         addend = addInstr.ops[1];
-    }
-    else
-    {
+    } else {
         return false;
     }
 
-    for (std::size_t i = idx + 2; i < instrs.size(); ++i)
-    {
+    for (std::size_t i = idx + 2; i < instrs.size(); ++i) {
         if (usesReg(instrs[i], mulDst))
             return false;
         if (definesReg(instrs[i], mulDst))

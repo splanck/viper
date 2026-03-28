@@ -43,19 +43,16 @@ static const char *g_last_error = NULL;
 static vaud_error_t g_last_error_code = VAUD_OK;
 #endif
 
-void vaud_set_error(vaud_error_t code, const char *msg)
-{
+void vaud_set_error(vaud_error_t code, const char *msg) {
     g_last_error_code = code;
     g_last_error = msg;
 }
 
-const char *vaud_get_last_error(void)
-{
+const char *vaud_get_last_error(void) {
     return g_last_error;
 }
 
-void vaud_clear_error(void)
-{
+void vaud_clear_error(void) {
     g_last_error = NULL;
     g_last_error_code = VAUD_OK;
 }
@@ -66,45 +63,37 @@ void vaud_clear_error(void)
 
 #if defined(VAUD_PLATFORM_WINDOWS)
 
-void vaud_mutex_init(vaud_mutex_t *mutex)
-{
+void vaud_mutex_init(vaud_mutex_t *mutex) {
     InitializeCriticalSection(mutex);
 }
 
-void vaud_mutex_destroy(vaud_mutex_t *mutex)
-{
+void vaud_mutex_destroy(vaud_mutex_t *mutex) {
     DeleteCriticalSection(mutex);
 }
 
-void vaud_mutex_lock(vaud_mutex_t *mutex)
-{
+void vaud_mutex_lock(vaud_mutex_t *mutex) {
     EnterCriticalSection(mutex);
 }
 
-void vaud_mutex_unlock(vaud_mutex_t *mutex)
-{
+void vaud_mutex_unlock(vaud_mutex_t *mutex) {
     LeaveCriticalSection(mutex);
 }
 
 #else /* POSIX */
 
-void vaud_mutex_init(vaud_mutex_t *mutex)
-{
+void vaud_mutex_init(vaud_mutex_t *mutex) {
     pthread_mutex_init(mutex, NULL);
 }
 
-void vaud_mutex_destroy(vaud_mutex_t *mutex)
-{
+void vaud_mutex_destroy(vaud_mutex_t *mutex) {
     pthread_mutex_destroy(mutex);
 }
 
-void vaud_mutex_lock(vaud_mutex_t *mutex)
-{
+void vaud_mutex_lock(vaud_mutex_t *mutex) {
     pthread_mutex_lock(mutex);
 }
 
-void vaud_mutex_unlock(vaud_mutex_t *mutex)
-{
+void vaud_mutex_unlock(vaud_mutex_t *mutex) {
     pthread_mutex_unlock(mutex);
 }
 
@@ -114,13 +103,11 @@ void vaud_mutex_unlock(vaud_mutex_t *mutex)
 // Version Functions
 //===----------------------------------------------------------------------===//
 
-uint32_t vaud_version(void)
-{
+uint32_t vaud_version(void) {
     return (VAUD_VERSION_MAJOR << 16) | (VAUD_VERSION_MINOR << 8) | VAUD_VERSION_PATCH;
 }
 
-const char *vaud_version_string(void)
-{
+const char *vaud_version_string(void) {
     return "1.0.0";
 }
 
@@ -128,11 +115,9 @@ const char *vaud_version_string(void)
 // Context Management
 //===----------------------------------------------------------------------===//
 
-vaud_context_t vaud_create(void)
-{
+vaud_context_t vaud_create(void) {
     vaud_context_t ctx = (vaud_context_t)calloc(1, sizeof(struct vaud_context));
-    if (!ctx)
-    {
+    if (!ctx) {
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate audio context");
         return NULL;
     }
@@ -146,16 +131,14 @@ vaud_context_t vaud_create(void)
     ctx->music_count = 0;
 
     /* Initialize all voices as inactive */
-    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++)
-    {
+    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
         ctx->voices[i].state = VAUD_VOICE_INACTIVE;
         ctx->voices[i].sound = NULL;
         ctx->voices[i].id = VAUD_INVALID_VOICE;
     }
 
     /* Initialize music slots */
-    for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++)
-    {
+    for (int32_t i = 0; i < VAUD_MAX_MUSIC; i++) {
         ctx->active_music[i] = NULL;
     }
 
@@ -163,8 +146,7 @@ vaud_context_t vaud_create(void)
     vaud_mutex_init(&ctx->mutex);
 
     /* Initialize platform backend */
-    if (!vaud_platform_init(ctx))
-    {
+    if (!vaud_platform_init(ctx)) {
         vaud_mutex_destroy(&ctx->mutex);
         free(ctx);
         return NULL;
@@ -173,8 +155,7 @@ vaud_context_t vaud_create(void)
     return ctx;
 }
 
-void vaud_destroy(vaud_context_t ctx)
-{
+void vaud_destroy(vaud_context_t ctx) {
     if (!ctx)
         return;
 
@@ -187,17 +168,14 @@ void vaud_destroy(vaud_context_t ctx)
     /* Free all loaded sounds - voices reference sounds so they become invalid */
     /* Note: sounds track their own context, so we just clear voices here */
     vaud_mutex_lock(&ctx->mutex);
-    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++)
-    {
+    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
         ctx->voices[i].state = VAUD_VOICE_INACTIVE;
         ctx->voices[i].sound = NULL;
     }
 
     /* Free all music streams */
-    for (int32_t i = 0; i < ctx->music_count; i++)
-    {
-        if (ctx->active_music[i])
-        {
+    for (int32_t i = 0; i < ctx->music_count; i++) {
+        if (ctx->active_music[i]) {
             vaud_free_music(ctx->active_music[i]);
             ctx->active_music[i] = NULL;
         }
@@ -208,8 +186,7 @@ void vaud_destroy(vaud_context_t ctx)
     free(ctx);
 }
 
-void vaud_set_master_volume(vaud_context_t ctx, float volume)
-{
+void vaud_set_master_volume(vaud_context_t ctx, float volume) {
     if (!ctx)
         return;
     if (volume < 0.0f)
@@ -222,8 +199,7 @@ void vaud_set_master_volume(vaud_context_t ctx, float volume)
     vaud_mutex_unlock(&ctx->mutex);
 }
 
-float vaud_get_master_volume(vaud_context_t ctx)
-{
+float vaud_get_master_volume(vaud_context_t ctx) {
     if (!ctx)
         return 0.0f;
     /* H-3: setter holds mutex; reader must too (torn read on ARM64 otherwise) */
@@ -233,8 +209,7 @@ float vaud_get_master_volume(vaud_context_t ctx)
     return vol;
 }
 
-void vaud_pause_all(vaud_context_t ctx)
-{
+void vaud_pause_all(vaud_context_t ctx) {
     if (!ctx)
         return;
 
@@ -245,8 +220,7 @@ void vaud_pause_all(vaud_context_t ctx)
     vaud_platform_pause(ctx);
 }
 
-void vaud_resume_all(vaud_context_t ctx)
-{
+void vaud_resume_all(vaud_context_t ctx) {
     if (!ctx)
         return;
 
@@ -261,10 +235,8 @@ void vaud_resume_all(vaud_context_t ctx)
 // Sound Effect Loading
 //===----------------------------------------------------------------------===//
 
-vaud_sound_t vaud_load_sound(vaud_context_t ctx, const char *path)
-{
-    if (!ctx || !path)
-    {
+vaud_sound_t vaud_load_sound(vaud_context_t ctx, const char *path) {
+    if (!ctx || !path) {
         vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL context or path");
         return NULL;
     }
@@ -274,8 +246,7 @@ vaud_sound_t vaud_load_sound(vaud_context_t ctx, const char *path)
     int32_t sample_rate = 0;
     int32_t channels = 0;
 
-    if (!vaud_wav_load_file(path, &samples, &frames, &sample_rate, &channels))
-    {
+    if (!vaud_wav_load_file(path, &samples, &frames, &sample_rate, &channels)) {
         return NULL;
     }
 
@@ -283,13 +254,11 @@ vaud_sound_t vaud_load_sound(vaud_context_t ctx, const char *path)
     int16_t *final_samples = samples;
     int64_t final_frames = frames;
 
-    if (sample_rate != VAUD_SAMPLE_RATE)
-    {
+    if (sample_rate != VAUD_SAMPLE_RATE) {
         final_frames = vaud_resample_output_frames(frames, sample_rate, VAUD_SAMPLE_RATE);
         final_samples = (int16_t *)malloc((size_t)(final_frames * 2 * sizeof(int16_t)));
 
-        if (!final_samples)
-        {
+        if (!final_samples) {
             free(samples);
             vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate resampled buffer");
             return NULL;
@@ -302,8 +271,7 @@ vaud_sound_t vaud_load_sound(vaud_context_t ctx, const char *path)
 
     /* Allocate sound structure */
     vaud_sound_t sound = (vaud_sound_t)malloc(sizeof(struct vaud_sound));
-    if (!sound)
-    {
+    if (!sound) {
         free(final_samples);
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate sound structure");
         return NULL;
@@ -319,10 +287,8 @@ vaud_sound_t vaud_load_sound(vaud_context_t ctx, const char *path)
     return sound;
 }
 
-vaud_sound_t vaud_load_sound_mem(vaud_context_t ctx, const void *data, size_t size)
-{
-    if (!ctx || !data || size == 0)
-    {
+vaud_sound_t vaud_load_sound_mem(vaud_context_t ctx, const void *data, size_t size) {
+    if (!ctx || !data || size == 0) {
         vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL context or data");
         return NULL;
     }
@@ -332,8 +298,7 @@ vaud_sound_t vaud_load_sound_mem(vaud_context_t ctx, const void *data, size_t si
     int32_t sample_rate = 0;
     int32_t channels = 0;
 
-    if (!vaud_wav_load_mem(data, size, &samples, &frames, &sample_rate, &channels))
-    {
+    if (!vaud_wav_load_mem(data, size, &samples, &frames, &sample_rate, &channels)) {
         return NULL;
     }
 
@@ -341,13 +306,11 @@ vaud_sound_t vaud_load_sound_mem(vaud_context_t ctx, const void *data, size_t si
     int16_t *final_samples = samples;
     int64_t final_frames = frames;
 
-    if (sample_rate != VAUD_SAMPLE_RATE)
-    {
+    if (sample_rate != VAUD_SAMPLE_RATE) {
         final_frames = vaud_resample_output_frames(frames, sample_rate, VAUD_SAMPLE_RATE);
         final_samples = (int16_t *)malloc((size_t)(final_frames * 2 * sizeof(int16_t)));
 
-        if (!final_samples)
-        {
+        if (!final_samples) {
             free(samples);
             vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate resampled buffer");
             return NULL;
@@ -360,8 +323,7 @@ vaud_sound_t vaud_load_sound_mem(vaud_context_t ctx, const void *data, size_t si
 
     /* Allocate sound structure */
     vaud_sound_t sound = (vaud_sound_t)malloc(sizeof(struct vaud_sound));
-    if (!sound)
-    {
+    if (!sound) {
         free(final_samples);
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate sound structure");
         return NULL;
@@ -377,21 +339,17 @@ vaud_sound_t vaud_load_sound_mem(vaud_context_t ctx, const void *data, size_t si
     return sound;
 }
 
-void vaud_free_sound(vaud_sound_t sound)
-{
+void vaud_free_sound(vaud_sound_t sound) {
     if (!sound)
         return;
 
     vaud_context_t ctx = sound->ctx;
 
     /* Stop any voices playing this sound */
-    if (ctx)
-    {
+    if (ctx) {
         vaud_mutex_lock(&ctx->mutex);
-        for (int32_t i = 0; i < VAUD_MAX_VOICES; i++)
-        {
-            if (ctx->voices[i].sound == sound)
-            {
+        for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
+            if (ctx->voices[i].sound == sound) {
                 ctx->voices[i].state = VAUD_VOICE_INACTIVE;
                 ctx->voices[i].sound = NULL;
             }
@@ -407,13 +365,11 @@ void vaud_free_sound(vaud_sound_t sound)
 // Sound Effect Playback
 //===----------------------------------------------------------------------===//
 
-vaud_voice_id vaud_play(vaud_sound_t sound)
-{
+vaud_voice_id vaud_play(vaud_sound_t sound) {
     return vaud_play_ex(sound, VAUD_DEFAULT_SOUND_VOLUME, VAUD_DEFAULT_PAN);
 }
 
-vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan)
-{
+vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan) {
     if (!sound || !sound->ctx)
         return VAUD_INVALID_VOICE;
 
@@ -422,8 +378,7 @@ vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan)
     vaud_mutex_lock(&ctx->mutex);
 
     vaud_voice *voice = vaud_alloc_voice(ctx);
-    if (!voice)
-    {
+    if (!voice) {
         vaud_mutex_unlock(&ctx->mutex);
         return VAUD_INVALID_VOICE;
     }
@@ -442,8 +397,7 @@ vaud_voice_id vaud_play_ex(vaud_sound_t sound, float volume, float pan)
     return id;
 }
 
-vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan)
-{
+vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan) {
     if (!sound || !sound->ctx)
         return VAUD_INVALID_VOICE;
 
@@ -452,8 +406,7 @@ vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan)
     vaud_mutex_lock(&ctx->mutex);
 
     vaud_voice *voice = vaud_alloc_voice(ctx);
-    if (!voice)
-    {
+    if (!voice) {
         vaud_mutex_unlock(&ctx->mutex);
         return VAUD_INVALID_VOICE;
     }
@@ -472,51 +425,44 @@ vaud_voice_id vaud_play_loop(vaud_sound_t sound, float volume, float pan)
     return id;
 }
 
-void vaud_stop_voice(vaud_context_t ctx, vaud_voice_id voice_id)
-{
+void vaud_stop_voice(vaud_context_t ctx, vaud_voice_id voice_id) {
     if (!ctx || voice_id == VAUD_INVALID_VOICE)
         return;
 
     vaud_mutex_lock(&ctx->mutex);
     vaud_voice *voice = vaud_find_voice(ctx, voice_id);
-    if (voice)
-    {
+    if (voice) {
         voice->state = VAUD_VOICE_INACTIVE;
         voice->sound = NULL;
     }
     vaud_mutex_unlock(&ctx->mutex);
 }
 
-void vaud_set_voice_volume(vaud_context_t ctx, vaud_voice_id voice_id, float volume)
-{
+void vaud_set_voice_volume(vaud_context_t ctx, vaud_voice_id voice_id, float volume) {
     if (!ctx || voice_id == VAUD_INVALID_VOICE)
         return;
 
     vaud_mutex_lock(&ctx->mutex);
     vaud_voice *voice = vaud_find_voice(ctx, voice_id);
-    if (voice)
-    {
+    if (voice) {
         voice->volume = (volume < 0.0f) ? 0.0f : (volume > 1.0f) ? 1.0f : volume;
     }
     vaud_mutex_unlock(&ctx->mutex);
 }
 
-void vaud_set_voice_pan(vaud_context_t ctx, vaud_voice_id voice_id, float pan)
-{
+void vaud_set_voice_pan(vaud_context_t ctx, vaud_voice_id voice_id, float pan) {
     if (!ctx || voice_id == VAUD_INVALID_VOICE)
         return;
 
     vaud_mutex_lock(&ctx->mutex);
     vaud_voice *voice = vaud_find_voice(ctx, voice_id);
-    if (voice)
-    {
+    if (voice) {
         voice->pan = (pan < -1.0f) ? -1.0f : (pan > 1.0f) ? 1.0f : pan;
     }
     vaud_mutex_unlock(&ctx->mutex);
 }
 
-int vaud_voice_is_playing(vaud_context_t ctx, vaud_voice_id voice_id)
-{
+int vaud_voice_is_playing(vaud_context_t ctx, vaud_voice_id voice_id) {
     if (!ctx || voice_id == VAUD_INVALID_VOICE)
         return 0;
 
@@ -532,10 +478,8 @@ int vaud_voice_is_playing(vaud_context_t ctx, vaud_voice_id voice_id)
 // Music Loading and Playback
 //===----------------------------------------------------------------------===//
 
-vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path)
-{
-    if (!ctx || !path)
-    {
+vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path) {
+    if (!ctx || !path) {
         vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL context or path");
         return NULL;
     }
@@ -549,25 +493,21 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path)
     int32_t bits = 0;
 
     if (!vaud_wav_open_stream(
-            path, &file, &data_offset, &data_size, &frames, &sample_rate, &channels, &bits))
-    {
+            path, &file, &data_offset, &data_size, &frames, &sample_rate, &channels, &bits)) {
         return NULL;
     }
 
     vaud_music_t music = (vaud_music_t)calloc(1, sizeof(struct vaud_music));
-    if (!music)
-    {
+    if (!music) {
         fclose((FILE *)file);
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate music structure");
         return NULL;
     }
 
     /* Allocate streaming buffers */
-    for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++)
-    {
+    for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++) {
         music->buffers[i] = (int16_t *)malloc(VAUD_MUSIC_BUFFER_FRAMES * 2 * sizeof(int16_t));
-        if (!music->buffers[i])
-        {
+        if (!music->buffers[i]) {
             for (int32_t j = 0; j < i; j++)
                 free(music->buffers[j]);
             free(music);
@@ -600,13 +540,10 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path)
 
     /* Add to context's music list (H-4: return NULL and free if list is full) */
     vaud_mutex_lock(&ctx->mutex);
-    if (ctx->music_count < VAUD_MAX_MUSIC)
-    {
+    if (ctx->music_count < VAUD_MAX_MUSIC) {
         ctx->active_music[ctx->music_count++] = music;
         vaud_mutex_unlock(&ctx->mutex);
-    }
-    else
-    {
+    } else {
         vaud_mutex_unlock(&ctx->mutex);
         /* Music was never added to the active list — vaud_free_music's
          * remove loop is a safe no-op, then it closes the file and frees buffers. */
@@ -618,24 +555,19 @@ vaud_music_t vaud_load_music(vaud_context_t ctx, const char *path)
     return music;
 }
 
-void vaud_free_music(vaud_music_t music)
-{
+void vaud_free_music(vaud_music_t music) {
     if (!music)
         return;
 
     vaud_context_t ctx = music->ctx;
 
     /* Remove from context's music list */
-    if (ctx)
-    {
+    if (ctx) {
         vaud_mutex_lock(&ctx->mutex);
-        for (int32_t i = 0; i < ctx->music_count; i++)
-        {
-            if (ctx->active_music[i] == music)
-            {
+        for (int32_t i = 0; i < ctx->music_count; i++) {
+            if (ctx->active_music[i] == music) {
                 /* Shift remaining entries */
-                for (int32_t j = i; j < ctx->music_count - 1; j++)
-                {
+                for (int32_t j = i; j < ctx->music_count - 1; j++) {
                     ctx->active_music[j] = ctx->active_music[j + 1];
                 }
                 ctx->music_count--;
@@ -647,22 +579,19 @@ void vaud_free_music(vaud_music_t music)
     }
 
     /* Close file */
-    if (music->file)
-    {
+    if (music->file) {
         fclose((FILE *)music->file);
     }
 
     /* Free buffers */
-    for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++)
-    {
+    for (int32_t i = 0; i < VAUD_MUSIC_BUFFER_COUNT; i++) {
         free(music->buffers[i]);
     }
 
     free(music);
 }
 
-void vaud_music_play(vaud_music_t music, int loop)
-{
+void vaud_music_play(vaud_music_t music, int loop) {
     if (!music || !music->ctx)
         return;
 
@@ -672,8 +601,7 @@ void vaud_music_play(vaud_music_t music, int loop)
     music->state = VAUD_MUSIC_PLAYING;
 
     /* Seek to beginning if stopped */
-    if (music->position == 0 && music->file)
-    {
+    if (music->position == 0 && music->file) {
         fseek((FILE *)music->file, (long)music->data_offset, SEEK_SET);
         music->current_buffer = 0;
         music->buffer_position = 0;
@@ -690,8 +618,7 @@ void vaud_music_play(vaud_music_t music, int loop)
     vaud_mutex_unlock(&music->ctx->mutex);
 }
 
-void vaud_music_stop(vaud_music_t music)
-{
+void vaud_music_stop(vaud_music_t music) {
     if (!music || !music->ctx)
         return;
 
@@ -703,42 +630,36 @@ void vaud_music_stop(vaud_music_t music)
     music->buffer_position = 0;
 
     /* Seek to beginning */
-    if (music->file)
-    {
+    if (music->file) {
         fseek((FILE *)music->file, (long)music->data_offset, SEEK_SET);
     }
 
     vaud_mutex_unlock(&music->ctx->mutex);
 }
 
-void vaud_music_pause(vaud_music_t music)
-{
+void vaud_music_pause(vaud_music_t music) {
     if (!music || !music->ctx)
         return;
 
     vaud_mutex_lock(&music->ctx->mutex);
-    if (music->state == VAUD_MUSIC_PLAYING)
-    {
+    if (music->state == VAUD_MUSIC_PLAYING) {
         music->state = VAUD_MUSIC_PAUSED;
     }
     vaud_mutex_unlock(&music->ctx->mutex);
 }
 
-void vaud_music_resume(vaud_music_t music)
-{
+void vaud_music_resume(vaud_music_t music) {
     if (!music || !music->ctx)
         return;
 
     vaud_mutex_lock(&music->ctx->mutex);
-    if (music->state == VAUD_MUSIC_PAUSED)
-    {
+    if (music->state == VAUD_MUSIC_PAUSED) {
         music->state = VAUD_MUSIC_PLAYING;
     }
     vaud_mutex_unlock(&music->ctx->mutex);
 }
 
-void vaud_music_set_volume(vaud_music_t music, float volume)
-{
+void vaud_music_set_volume(vaud_music_t music, float volume) {
     if (!music)
         return;
 
@@ -747,25 +668,20 @@ void vaud_music_set_volume(vaud_music_t music, float volume)
     if (volume > 1.0f)
         volume = 1.0f;
 
-    if (music->ctx)
-    {
+    if (music->ctx) {
         vaud_mutex_lock(&music->ctx->mutex);
         music->volume = volume;
         vaud_mutex_unlock(&music->ctx->mutex);
-    }
-    else
-    {
+    } else {
         music->volume = volume;
     }
 }
 
-float vaud_music_get_volume(vaud_music_t music)
-{
+float vaud_music_get_volume(vaud_music_t music) {
     if (!music)
         return 0.0f;
     /* H-3: read volume under mutex (setter holds it; torn read possible on ARM64) */
-    if (music->ctx)
-    {
+    if (music->ctx) {
         vaud_mutex_lock(&music->ctx->mutex);
         float vol = music->volume;
         vaud_mutex_unlock(&music->ctx->mutex);
@@ -774,15 +690,13 @@ float vaud_music_get_volume(vaud_music_t music)
     return music->volume;
 }
 
-int vaud_music_is_playing(vaud_music_t music)
-{
+int vaud_music_is_playing(vaud_music_t music) {
     if (!music)
         return 0;
     return (music->state == VAUD_MUSIC_PLAYING) ? 1 : 0;
 }
 
-void vaud_music_seek(vaud_music_t music, float seconds)
-{
+void vaud_music_seek(vaud_music_t music, float seconds) {
     if (!music || !music->ctx || !music->file)
         return;
 
@@ -813,15 +727,13 @@ void vaud_music_seek(vaud_music_t music, float seconds)
     vaud_mutex_unlock(&music->ctx->mutex);
 }
 
-float vaud_music_get_position(vaud_music_t music)
-{
+float vaud_music_get_position(vaud_music_t music) {
     if (!music)
         return 0.0f;
     return (float)music->position / (float)music->sample_rate;
 }
 
-float vaud_music_get_duration(vaud_music_t music)
-{
+float vaud_music_get_duration(vaud_music_t music) {
     if (!music)
         return 0.0f;
     return (float)music->frame_count / (float)music->sample_rate;
@@ -831,17 +743,14 @@ float vaud_music_get_duration(vaud_music_t music)
 // Utility Functions
 //===----------------------------------------------------------------------===//
 
-int32_t vaud_get_active_voice_count(vaud_context_t ctx)
-{
+int32_t vaud_get_active_voice_count(vaud_context_t ctx) {
     if (!ctx)
         return 0;
 
     int32_t count = 0;
     vaud_mutex_lock(&ctx->mutex);
-    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++)
-    {
-        if (ctx->voices[i].state == VAUD_VOICE_PLAYING)
-        {
+    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
+        if (ctx->voices[i].state == VAUD_VOICE_PLAYING) {
             count++;
         }
     }
@@ -850,22 +759,19 @@ int32_t vaud_get_active_voice_count(vaud_context_t ctx)
     return count;
 }
 
-void vaud_stop_all_sounds(vaud_context_t ctx)
-{
+void vaud_stop_all_sounds(vaud_context_t ctx) {
     if (!ctx)
         return;
 
     vaud_mutex_lock(&ctx->mutex);
-    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++)
-    {
+    for (int32_t i = 0; i < VAUD_MAX_VOICES; i++) {
         ctx->voices[i].state = VAUD_VOICE_INACTIVE;
         ctx->voices[i].sound = NULL;
     }
     vaud_mutex_unlock(&ctx->mutex);
 }
 
-float vaud_get_latency_ms(vaud_context_t ctx)
-{
+float vaud_get_latency_ms(vaud_context_t ctx) {
     if (!ctx)
         return 0.0f;
 

@@ -19,10 +19,8 @@
 #include <iostream>
 #include <string>
 
-int main(int argc, char **argv)
-{
-    if (argc != 4)
-    {
+int main(int argc, char **argv) {
+    if (argc != 4) {
         std::cerr << "usage: TraceILTests <ilc> <il file> <golden>\n";
         return 1;
     }
@@ -36,16 +34,13 @@ int main(int argc, char **argv)
     std::ifstream out(outFile);
     std::ifstream gold(golden);
     std::string o, g;
-    while (std::getline(out, o))
-    {
-        if (!std::getline(gold, g) || o != g)
-        {
+    while (std::getline(out, o)) {
+        if (!std::getline(gold, g) || o != g) {
             std::cerr << "trace mismatch\n";
             return 1;
         }
     }
-    if (std::getline(gold, g))
-    {
+    if (std::getline(gold, g)) {
         std::cerr << "golden has extra lines\n";
         return 1;
     }
@@ -54,8 +49,7 @@ int main(int argc, char **argv)
     if (std::system(cmd.c_str()) != 0)
         return 1;
     std::ifstream none(noneFile);
-    if (none.peek() != EOF)
-    {
+    if (none.peek() != EOF) {
         std::cerr << "trace emitted without flag\n";
         return 1;
     }

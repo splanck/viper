@@ -31,29 +31,25 @@
 //=============================================================================
 
 /// Release an object allocated with rt_obj_new_i64.
-static void release_obj(void *p)
-{
+static void release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
 }
 
 /// Create a small heap-allocated runtime object usable as a trie value.
-static void *make_value(void)
-{
+static void *make_value(void) {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != NULL);
     return p;
 }
 
 /// Build an rt_string from a C string literal.
-static rt_string make_key(const char *text)
-{
+static rt_string make_key(const char *text) {
     return rt_string_from_bytes(text, (int64_t)strlen(text));
 }
 
 /// Build an rt_string from a buffer of known length (may contain NULs).
-static rt_string make_key_buf(const char *buf, size_t len)
-{
+static rt_string make_key_buf(const char *buf, size_t len) {
     return rt_string_from_bytes(buf, (int64_t)len);
 }
 
@@ -64,8 +60,7 @@ static rt_string make_key_buf(const char *buf, size_t len)
 /// Insert a single key of 4096 characters into a trie and verify rt_trie_keys
 /// returns exactly one key.  Before the fix, collect_keys wrote past the end of
 /// a 4096-byte stack buffer, causing undefined behaviour.
-static void test_trie_single_long_key(void)
-{
+static void test_trie_single_long_key(void) {
     const size_t KEY_LEN = 4096;
 
     char *long_key_buf = (char *)malloc(KEY_LEN);
@@ -94,8 +89,7 @@ static void test_trie_single_long_key(void)
 
 /// Insert 100 distinct keys each 4100 characters long, then call rt_trie_keys()
 /// and verify all 100 keys are returned without crashing.
-static void test_trie_many_long_keys(void)
-{
+static void test_trie_many_long_keys(void) {
     const size_t KEY_LEN = 4100;
     const int KEY_COUNT = 100;
 
@@ -106,8 +100,7 @@ static void test_trie_many_long_keys(void)
     assert(trie != NULL);
     void *val = make_value();
 
-    for (int i = 0; i < KEY_COUNT; i++)
-    {
+    for (int i = 0; i < KEY_COUNT; i++) {
         // Make each key distinct by varying the first byte.
         memset(buf, 'b', KEY_LEN);
         // Use printable ASCII characters (33..126) for the first byte.
@@ -133,8 +126,7 @@ static void test_trie_many_long_keys(void)
 }
 
 /// Verify rt_trie_with_prefix also handles long keys correctly.
-static void test_trie_with_prefix_long_key(void)
-{
+static void test_trie_with_prefix_long_key(void) {
     const size_t KEY_LEN = 4096;
 
     char *buf = (char *)malloc(KEY_LEN);
@@ -171,8 +163,7 @@ static void test_trie_with_prefix_long_key(void)
 /// ("Wednesday" = 9 chars).  Repeating these across a 255-byte buffer boundary
 /// triggered the overflow before the fix.  After the fix the output must be
 /// null-terminated within the 256-byte buffer.
-static void test_dateonly_format_long_output(void)
-{
+static void test_dateonly_format_long_output(void) {
     // September 17, 2025 is a Wednesday.
     void *date = rt_dateonly_create(2025, 9, 17);
     assert(date != NULL);
@@ -201,8 +192,7 @@ static void test_dateonly_format_long_output(void)
 
 /// Format a date with a format string that produces exactly 255 bytes to
 /// verify the boundary condition is handled correctly.
-static void test_dateonly_format_boundary(void)
-{
+static void test_dateonly_format_boundary(void) {
     // Use January 1, 2000 — short month name "January" (7 chars), day is "Saturday" (8 chars).
     void *date = rt_dateonly_create(2000, 1, 1);
     assert(date != NULL);
@@ -233,8 +223,7 @@ static void test_dateonly_format_boundary(void)
 /// Resize a 1x1 pixel image to 10x10. Before the fix, bilinear interpolation
 /// computed src_x = p->width - 2 = -1 which was then clamped to 0, but
 /// the access p->data[... + src_x + 1] still used index 1 which is OOB.
-static void test_pixels_resize_1x1(void)
-{
+static void test_pixels_resize_1x1(void) {
     void *src = rt_pixels_new(1, 1);
     assert(src != NULL);
 
@@ -254,8 +243,7 @@ static void test_pixels_resize_1x1(void)
 
 /// Resize a 1×100 pixel image (width=1, height=100) to verify the width=1
 /// edge case is handled for a non-degenerate height.
-static void test_pixels_resize_1xN(void)
-{
+static void test_pixels_resize_1xN(void) {
     const int64_t H = 100;
     void *src = rt_pixels_new(1, H);
     assert(src != NULL);
@@ -276,8 +264,7 @@ static void test_pixels_resize_1xN(void)
 
 /// Resize a 100×1 pixel image (width=100, height=1) to exercise the height=1
 /// edge case symmetrically.
-static void test_pixels_resize_Nx1(void)
-{
+static void test_pixels_resize_Nx1(void) {
     const int64_t W = 100;
     void *src = rt_pixels_new(W, 1);
     assert(src != NULL);
@@ -299,8 +286,7 @@ static void test_pixels_resize_Nx1(void)
 // Entry Point
 //=============================================================================
 
-int main(void)
-{
+int main(void) {
     // R-12: trie long-key overflow
     test_trie_single_long_key();
     test_trie_many_long_keys();

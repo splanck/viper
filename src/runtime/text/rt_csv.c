@@ -46,8 +46,7 @@
 /// @brief Extract an rt_string from a value that may be a boxed string or raw string.
 /// @details Checks if the pointer is a boxed string (tag == RT_BOX_STR) and unboxes it,
 ///          otherwise treats it as a raw rt_string.
-static rt_string csv_extract_string(void *val)
-{
+static rt_string csv_extract_string(void *val) {
     if (!val)
         return NULL;
     // Check if the value is a boxed string (first 8 bytes = tag 0-3)
@@ -59,8 +58,7 @@ static rt_string csv_extract_string(void *val)
 }
 
 /// @brief Get delimiter character from string.
-static char get_delim(rt_string delim)
-{
+static char get_delim(rt_string delim) {
     const char *s = rt_string_cstr(delim);
     if (s && s[0] != '\0')
         return s[0];
@@ -68,10 +66,8 @@ static char get_delim(rt_string delim)
 }
 
 /// @brief Check if field needs quoting for CSV output.
-static bool needs_quoting(const char *field, size_t len, char delim)
-{
-    for (size_t i = 0; i < len; i++)
-    {
+static bool needs_quoting(const char *field, size_t len, char delim) {
+    for (size_t i = 0; i < len; i++) {
         char c = field[i];
         if (c == delim || c == '"' || c == '\n' || c == '\r')
             return true;
@@ -84,8 +80,7 @@ static bool needs_quoting(const char *field, size_t len, char delim)
 //=============================================================================
 
 /// @brief Parse state for RFC 4180 CSV parsing.
-typedef struct
-{
+typedef struct {
     const char *input; ///< Input string.
     size_t len;        ///< Total length.
     size_t pos;        ///< Current position.
@@ -93,8 +88,7 @@ typedef struct
 } csv_parser;
 
 /// @brief Initialize parser state.
-static void parser_init(csv_parser *p, const char *input, size_t len, char delim)
-{
+static void parser_init(csv_parser *p, const char *input, size_t len, char delim) {
     p->input = input;
     p->len = len;
     p->pos = 0;
@@ -102,22 +96,19 @@ static void parser_init(csv_parser *p, const char *input, size_t len, char delim
 }
 
 /// @brief Check if parser is at end of input.
-static bool parser_eof(csv_parser *p)
-{
+static bool parser_eof(csv_parser *p) {
     return p->pos >= p->len;
 }
 
 /// @brief Peek current character without advancing.
-static char parser_peek(csv_parser *p)
-{
+static char parser_peek(csv_parser *p) {
     if (p->pos >= p->len)
         return '\0';
     return p->input[p->pos];
 }
 
 /// @brief Consume current character and advance.
-static char parser_consume(csv_parser *p)
-{
+static char parser_consume(csv_parser *p) {
     if (p->pos >= p->len)
         return '\0';
     return p->input[p->pos++];
@@ -127,20 +118,17 @@ static char parser_consume(csv_parser *p)
 /// @param p Parser state.
 /// @param at_line_end Output: set to true if field ends at line boundary.
 /// @return Newly allocated field string.
-static rt_string parse_field(csv_parser *p, bool *at_line_end)
-{
+static rt_string parse_field(csv_parser *p, bool *at_line_end) {
     *at_line_end = false;
 
     // EOF case - return empty field and signal end of line
-    if (parser_eof(p))
-    {
+    if (parser_eof(p)) {
         *at_line_end = true;
         return rt_string_from_bytes("", 0);
     }
 
     // Check for quoted field
-    if (parser_peek(p) == '"')
-    {
+    if (parser_peek(p) == '"') {
         parser_consume(p); // consume opening quote
 
         // Build field content with escaped quotes handled
@@ -150,45 +138,34 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end)
         if (!buf)
             rt_trap("Csv.Parse: memory allocation failed");
 
-        while (!parser_eof(p))
-        {
+        while (!parser_eof(p)) {
             char c = parser_consume(p);
 
-            if (c == '"')
-            {
+            if (c == '"') {
                 // Check for escaped quote
-                if (parser_peek(p) == '"')
-                {
+                if (parser_peek(p) == '"') {
                     // Escaped quote - consume and add single quote
                     parser_consume(p);
-                    if (len + 1 >= cap)
-                    {
+                    if (len + 1 >= cap) {
                         cap *= 2;
                         char *tmp = (char *)realloc(buf, cap);
-                        if (!tmp)
-                        {
+                        if (!tmp) {
                             free(buf);
                             rt_trap("Csv.Parse: memory allocation failed");
                         }
                         buf = tmp;
                     }
                     buf[len++] = '"';
-                }
-                else
-                {
+                } else {
                     // End of quoted field
                     break;
                 }
-            }
-            else
-            {
+            } else {
                 // Regular character (including newlines in quoted fields)
-                if (len + 1 >= cap)
-                {
+                if (len + 1 >= cap) {
                     cap *= 2;
                     char *tmp = (char *)realloc(buf, cap);
-                    if (!tmp)
-                    {
+                    if (!tmp) {
                         free(buf);
                         rt_trap("Csv.Parse: memory allocation failed");
                     }
@@ -203,39 +180,28 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end)
         free(buf);
 
         // Skip to delimiter or line end
-        if (!parser_eof(p))
-        {
+        if (!parser_eof(p)) {
             char c = parser_peek(p);
-            if (c == p->delim)
-            {
+            if (c == p->delim) {
                 parser_consume(p);
-            }
-            else if (c == '\r')
-            {
+            } else if (c == '\r') {
                 parser_consume(p);
                 if (parser_peek(p) == '\n')
                     parser_consume(p);
                 *at_line_end = true;
-            }
-            else if (c == '\n')
-            {
+            } else if (c == '\n') {
                 parser_consume(p);
                 *at_line_end = true;
             }
-        }
-        else
-        {
+        } else {
             *at_line_end = true;
         }
 
         return result;
-    }
-    else
-    {
+    } else {
         // Unquoted field - read until delimiter or line end
         size_t start = p->pos;
-        while (!parser_eof(p))
-        {
+        while (!parser_eof(p)) {
             char c = parser_peek(p);
             if (c == p->delim || c == '\r' || c == '\n')
                 break;
@@ -245,28 +211,20 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end)
         rt_string result = rt_string_from_bytes(p->input + start, field_len);
 
         // Handle delimiter or line end
-        if (!parser_eof(p))
-        {
+        if (!parser_eof(p)) {
             char c = parser_peek(p);
-            if (c == p->delim)
-            {
+            if (c == p->delim) {
                 parser_consume(p);
-            }
-            else if (c == '\r')
-            {
+            } else if (c == '\r') {
                 parser_consume(p);
                 if (parser_peek(p) == '\n')
                     parser_consume(p);
                 *at_line_end = true;
-            }
-            else if (c == '\n')
-            {
+            } else if (c == '\n') {
                 parser_consume(p);
                 *at_line_end = true;
             }
-        }
-        else
-        {
+        } else {
             *at_line_end = true;
         }
 
@@ -275,14 +233,12 @@ static rt_string parse_field(csv_parser *p, bool *at_line_end)
 }
 
 /// @brief Parse a single row (line) of CSV.
-static void *parse_row(csv_parser *p)
-{
+static void *parse_row(csv_parser *p) {
     void *row = rt_seq_new();
     bool at_line_end = false;
 
     // Use do-while to ensure we process trailing empty fields after delimiter
-    do
-    {
+    do {
         rt_string field = parse_field(p, &at_line_end);
         rt_seq_push(row, (void *)field);
     } while (!at_line_end);
@@ -299,10 +255,8 @@ static void *parse_row(csv_parser *p)
 /// @param delim Delimiter character.
 /// @param out Output buffer (must have enough space).
 /// @return Number of bytes written.
-static size_t format_field(const char *field, size_t field_len, char delim, char *out)
-{
-    if (!needs_quoting(field, field_len, delim))
-    {
+static size_t format_field(const char *field, size_t field_len, char delim, char *out) {
+    if (!needs_quoting(field, field_len, delim)) {
         // No quoting needed
         memcpy(out, field, field_len);
         return field_len;
@@ -311,16 +265,12 @@ static size_t format_field(const char *field, size_t field_len, char delim, char
     // Need quoting
     size_t o = 0;
     out[o++] = '"';
-    for (size_t i = 0; i < field_len; i++)
-    {
+    for (size_t i = 0; i < field_len; i++) {
         char c = field[i];
-        if (c == '"')
-        {
+        if (c == '"') {
             out[o++] = '"';
             out[o++] = '"';
-        }
-        else
-        {
+        } else {
             out[o++] = c;
         }
     }
@@ -329,15 +279,13 @@ static size_t format_field(const char *field, size_t field_len, char delim, char
 }
 
 /// @brief Calculate output size for a formatted field.
-static size_t calc_field_size(const char *field, size_t field_len, char delim)
-{
+static size_t calc_field_size(const char *field, size_t field_len, char delim) {
     if (!needs_quoting(field, field_len, delim))
         return field_len;
 
     // 2 for quotes + escaped quotes
     size_t size = 2;
-    for (size_t i = 0; i < field_len; i++)
-    {
+    for (size_t i = 0; i < field_len; i++) {
         size += (field[i] == '"') ? 2 : 1;
     }
     return size;
@@ -378,8 +326,7 @@ static size_t calc_field_size(const char *field, size_t field_len, char delim)
 /// @see rt_csv_parse_line_with For custom delimiters
 /// @see rt_csv_parse For parsing multiple lines
 /// @see rt_csv_format_line For the inverse operation
-void *rt_csv_parse_line(rt_string line)
-{
+void *rt_csv_parse_line(rt_string line) {
     return rt_csv_parse_line_with(line, rt_const_cstr(","));
 }
 
@@ -418,8 +365,7 @@ void *rt_csv_parse_line(rt_string line)
 ///
 /// @see rt_csv_parse_line For the default comma delimiter
 /// @see rt_csv_parse_with For parsing multiple lines
-void *rt_csv_parse_line_with(rt_string line, rt_string delim)
-{
+void *rt_csv_parse_line_with(rt_string line, rt_string delim) {
     const char *input = rt_string_cstr(line);
     if (!input)
         return rt_seq_new();
@@ -475,8 +421,7 @@ void *rt_csv_parse_line_with(rt_string line, rt_string delim)
 /// @see rt_csv_parse_with For custom delimiters
 /// @see rt_csv_parse_line For parsing a single line
 /// @see rt_csv_format For the inverse operation
-void *rt_csv_parse(rt_string text)
-{
+void *rt_csv_parse(rt_string text) {
     return rt_csv_parse_with(text, rt_const_cstr(","));
 }
 
@@ -510,8 +455,7 @@ void *rt_csv_parse(rt_string text)
 ///
 /// @see rt_csv_parse For the default comma delimiter
 /// @see rt_csv_parse_line_with For parsing a single line
-void *rt_csv_parse_with(rt_string text, rt_string delim)
-{
+void *rt_csv_parse_with(rt_string text, rt_string delim) {
     const char *input = rt_string_cstr(text);
     if (!input)
         return rt_seq_new();
@@ -527,8 +471,7 @@ void *rt_csv_parse_with(rt_string text, rt_string delim)
 
     void *rows = rt_seq_new();
 
-    while (!parser_eof(&p))
-    {
+    while (!parser_eof(&p)) {
         void *row = parse_row(&p);
         rt_seq_push(rows, row);
     }
@@ -572,8 +515,7 @@ void *rt_csv_parse_with(rt_string text, rt_string delim)
 /// @see rt_csv_format_line_with For custom delimiters
 /// @see rt_csv_format For formatting multiple rows
 /// @see rt_csv_parse_line For the inverse operation
-rt_string rt_csv_format_line(void *fields)
-{
+rt_string rt_csv_format_line(void *fields) {
     return rt_csv_format_line_with(fields, rt_const_cstr(","));
 }
 
@@ -608,8 +550,7 @@ rt_string rt_csv_format_line(void *fields)
 ///
 /// @see rt_csv_format_line For the default comma delimiter
 /// @see rt_csv_format_with For formatting multiple rows
-rt_string rt_csv_format_line_with(void *fields, rt_string delim)
-{
+rt_string rt_csv_format_line_with(void *fields, rt_string delim) {
     if (!fields)
         return rt_string_from_bytes("", 0);
 
@@ -621,8 +562,7 @@ rt_string rt_csv_format_line_with(void *fields, rt_string delim)
 
     // Calculate total output size
     size_t total_size = 0;
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         rt_string field = csv_extract_string(rt_seq_get(fields, i));
         const char *str = rt_string_cstr(field);
         if (!str)
@@ -638,8 +578,7 @@ rt_string rt_csv_format_line_with(void *fields, rt_string delim)
         rt_trap("Csv.FormatLine: memory allocation failed");
 
     size_t pos = 0;
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         rt_string field = csv_extract_string(rt_seq_get(fields, i));
         const char *str = rt_string_cstr(field);
         if (!str)
@@ -692,8 +631,7 @@ rt_string rt_csv_format_line_with(void *fields, rt_string delim)
 /// @see rt_csv_format_with For custom delimiters
 /// @see rt_csv_format_line For formatting a single row
 /// @see rt_csv_parse For the inverse operation
-rt_string rt_csv_format(void *rows)
-{
+rt_string rt_csv_format(void *rows) {
     return rt_csv_format_with(rows, rt_const_cstr(","));
 }
 
@@ -732,8 +670,7 @@ rt_string rt_csv_format(void *rows)
 /// @see rt_csv_format For the default comma delimiter
 /// @see rt_csv_format_line_with For formatting a single row
 /// @see rt_csv_parse_with For the inverse operation
-rt_string rt_csv_format_with(void *rows, rt_string delim)
-{
+rt_string rt_csv_format_with(void *rows, rt_string delim) {
     if (!rows)
         return rt_string_from_bytes("", 0);
 
@@ -745,15 +682,13 @@ rt_string rt_csv_format_with(void *rows, rt_string delim)
 
     // Calculate total output size
     size_t total_size = 0;
-    for (int64_t r = 0; r < row_count; r++)
-    {
+    for (int64_t r = 0; r < row_count; r++) {
         void *row = rt_seq_get(rows, r);
         if (!row)
             continue;
 
         int64_t count = rt_seq_len(row);
-        for (int64_t i = 0; i < count; i++)
-        {
+        for (int64_t i = 0; i < count; i++) {
             rt_string field = csv_extract_string(rt_seq_get(row, i));
             const char *str = rt_string_cstr(field);
             if (!str)
@@ -771,18 +706,15 @@ rt_string rt_csv_format_with(void *rows, rt_string delim)
         rt_trap("Csv.Format: memory allocation failed");
 
     size_t pos = 0;
-    for (int64_t r = 0; r < row_count; r++)
-    {
+    for (int64_t r = 0; r < row_count; r++) {
         void *row = rt_seq_get(rows, r);
-        if (!row)
-        {
+        if (!row) {
             out[pos++] = '\n';
             continue;
         }
 
         int64_t count = rt_seq_len(row);
-        for (int64_t i = 0; i < count; i++)
-        {
+        for (int64_t i = 0; i < count; i++) {
             rt_string field = csv_extract_string(rt_seq_get(row, i));
             const char *str = rt_string_cstr(field);
             if (!str)

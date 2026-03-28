@@ -54,8 +54,7 @@ int sysctlbyname(const char *, void *, size_t *, void *, size_t);
 
 /// @brief Convert a function pointer to void* without pedantic warnings.
 /// POSIX guarantees function/data pointer round-trip, but ISO C forbids the cast.
-static inline void *fnptr_to_voidptr(void (*fn)(void *))
-{
+static inline void *fnptr_to_voidptr(void (*fn)(void *)) {
     void *p;
     memcpy(&p, &fn, sizeof(p));
     return p;
@@ -66,8 +65,7 @@ static inline void *fnptr_to_voidptr(void (*fn)(void *))
 //=============================================================================
 
 // Task context for foreach
-typedef struct
-{
+typedef struct {
     void *item;
     void (*func)(void *);
 #ifdef _WIN32
@@ -81,8 +79,7 @@ typedef struct
 } foreach_task;
 
 // Task context for map
-typedef struct
-{
+typedef struct {
     void *item;
     void *(*func)(void *);
     void *result;
@@ -98,8 +95,7 @@ typedef struct
 } map_task;
 
 // Task context for invoke
-typedef struct
-{
+typedef struct {
     void (*func)(void);
 #ifdef _WIN32
     LONG *remaining;
@@ -112,8 +108,7 @@ typedef struct
 } invoke_task;
 
 // Task context for reduce
-typedef struct
-{
+typedef struct {
     void **items;
     int64_t start;
     int64_t end;
@@ -131,8 +126,7 @@ typedef struct
 } reduce_task;
 
 // Task context for parallel for
-typedef struct
-{
+typedef struct {
     int64_t index;
     void (*func)(int64_t);
 #ifdef _WIN32
@@ -150,15 +144,13 @@ typedef struct
    Using heap allocation (rather than stack) eliminates any risk of
    use-after-stack-free if a future code path ever returns early.
    CONC-006 fix: volatile removed — mutex provides ordering guarantees. */
-typedef struct
-{
+typedef struct {
     int remaining;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
 } parallel_sync;
 
-static parallel_sync *parallel_sync_new(int initial)
-{
+static parallel_sync *parallel_sync_new(int initial) {
     parallel_sync *s = (parallel_sync *)malloc(sizeof(parallel_sync));
     if (!s)
         return NULL;
@@ -168,8 +160,7 @@ static parallel_sync *parallel_sync_new(int initial)
     return s;
 }
 
-static void parallel_sync_wait_and_free(parallel_sync *s)
-{
+static void parallel_sync_wait_and_free(parallel_sync *s) {
     pthread_mutex_lock(&s->mutex);
     while (s->remaining > 0)
         pthread_cond_wait(&s->cond, &s->mutex);
@@ -189,8 +180,7 @@ static void *g_default_pool = NULL;
 static INIT_ONCE g_pool_lock_once = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_pool_lock;
 
-static BOOL CALLBACK pool_lock_init_callback(PINIT_ONCE InitOnce, PVOID Param, PVOID *Ctx)
-{
+static BOOL CALLBACK pool_lock_init_callback(PINIT_ONCE InitOnce, PVOID Param, PVOID *Ctx) {
     (void)InitOnce;
     (void)Param;
     (void)Ctx;
@@ -201,8 +191,7 @@ static BOOL CALLBACK pool_lock_init_callback(PINIT_ONCE InitOnce, PVOID Param, P
 static pthread_mutex_t g_pool_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
-int64_t rt_parallel_default_workers(void)
-{
+int64_t rt_parallel_default_workers(void) {
 #ifdef _WIN32
     SYSTEM_INFO si;
     GetSystemInfo(&si);
@@ -218,8 +207,7 @@ int64_t rt_parallel_default_workers(void)
     return count > 0 ? count : 4;
 }
 
-void *rt_parallel_default_pool(void)
-{
+void *rt_parallel_default_pool(void) {
 #ifdef _WIN32
     InitOnceExecuteOnce(&g_pool_lock_once, pool_lock_init_callback, NULL, NULL);
     EnterCriticalSection(&g_pool_lock);
@@ -227,8 +215,7 @@ void *rt_parallel_default_pool(void)
     pthread_mutex_lock(&g_pool_lock);
 #endif
 
-    if (!g_default_pool)
-    {
+    if (!g_default_pool) {
         g_default_pool = rt_threadpool_new(rt_parallel_default_workers());
     }
 
@@ -245,110 +232,94 @@ void *rt_parallel_default_pool(void)
 // Task Callbacks
 //=============================================================================
 
-static void foreach_callback(void *arg)
-{
+static void foreach_callback(void *arg) {
     foreach_task *task = (foreach_task *)arg;
     task->func(task->item);
 
 #ifdef _WIN32
-    if (InterlockedDecrement(task->remaining) == 0)
-    {
+    if (InterlockedDecrement(task->remaining) == 0) {
         SetEvent(task->event);
     }
 #else
     pthread_mutex_lock(task->mutex);
     (*task->remaining)--;
-    if (*task->remaining == 0)
-    {
+    if (*task->remaining == 0) {
         pthread_cond_signal(task->cond);
     }
     pthread_mutex_unlock(task->mutex);
 #endif
 }
 
-static void map_callback(void *arg)
-{
+static void map_callback(void *arg) {
     map_task *task = (map_task *)arg;
     task->result = task->func(task->item);
 
 #ifdef _WIN32
-    if (InterlockedDecrement(task->remaining) == 0)
-    {
+    if (InterlockedDecrement(task->remaining) == 0) {
         SetEvent(task->event);
     }
 #else
     pthread_mutex_lock(task->mutex);
     (*task->remaining)--;
-    if (*task->remaining == 0)
-    {
+    if (*task->remaining == 0) {
         pthread_cond_signal(task->cond);
     }
     pthread_mutex_unlock(task->mutex);
 #endif
 }
 
-static void invoke_callback(void *arg)
-{
+static void invoke_callback(void *arg) {
     invoke_task *task = (invoke_task *)arg;
     task->func();
 
 #ifdef _WIN32
-    if (InterlockedDecrement(task->remaining) == 0)
-    {
+    if (InterlockedDecrement(task->remaining) == 0) {
         SetEvent(task->event);
     }
 #else
     pthread_mutex_lock(task->mutex);
     (*task->remaining)--;
-    if (*task->remaining == 0)
-    {
+    if (*task->remaining == 0) {
         pthread_cond_signal(task->cond);
     }
     pthread_mutex_unlock(task->mutex);
 #endif
 }
 
-static void reduce_callback(void *arg)
-{
+static void reduce_callback(void *arg) {
     reduce_task *task = (reduce_task *)arg;
     void *accum = task->identity;
-    for (int64_t i = task->start; i < task->end; i++)
-    {
+    for (int64_t i = task->start; i < task->end; i++) {
         accum = task->func(accum, task->items[i]);
     }
     task->result = accum;
 
 #ifdef _WIN32
-    if (InterlockedDecrement(task->remaining) == 0)
-    {
+    if (InterlockedDecrement(task->remaining) == 0) {
         SetEvent(task->event);
     }
 #else
     pthread_mutex_lock(task->mutex);
     (*task->remaining)--;
-    if (*task->remaining == 0)
-    {
+    if (*task->remaining == 0) {
         pthread_cond_signal(task->cond);
     }
     pthread_mutex_unlock(task->mutex);
 #endif
 }
 
-static void for_callback(void *arg)
-{
+static void for_callback(void *arg) {
     for_task *task = (for_task *)arg;
     task->func(task->index);
 
 #ifdef _WIN32
-    if (InterlockedDecrement(task->remaining) == 0)
-    {
+    if (InterlockedDecrement(task->remaining) == 0) {
         SetEvent(task->event);
     }
 #else
     pthread_mutex_lock(task->mutex);
     (*task->remaining)--;
-    if (*task->remaining == 0)
-    {
+    if (*task->remaining == 0) {
         pthread_cond_signal(task->cond);
     }
     pthread_mutex_unlock(task->mutex);
@@ -359,8 +330,7 @@ static void for_callback(void *arg)
 // Parallel ForEach
 //=============================================================================
 
-void rt_parallel_foreach_pool(void *seq, void *func, void *pool)
-{
+void rt_parallel_foreach_pool(void *seq, void *func, void *pool) {
     if (!seq || !func)
         return;
 
@@ -381,8 +351,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool)
 
     // Allocate task array
     foreach_task *tasks = (foreach_task *)malloc(count * sizeof(foreach_task));
-    if (!tasks)
-    {
+    if (!tasks) {
 #ifdef _WIN32
         CloseHandle(event);
 #else
@@ -392,8 +361,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool)
     }
 
     // Submit all tasks
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         tasks[i].item = rt_seq_get(seq, i);
         tasks[i].func = (void (*)(void *))func;
 #ifdef _WIN32
@@ -418,8 +386,7 @@ void rt_parallel_foreach_pool(void *seq, void *func, void *pool)
     free(tasks);
 }
 
-void rt_parallel_foreach(void *seq, void *func)
-{
+void rt_parallel_foreach(void *seq, void *func) {
     rt_parallel_foreach_pool(seq, func, NULL);
 }
 
@@ -427,8 +394,7 @@ void rt_parallel_foreach(void *seq, void *func)
 // Parallel Map
 //=============================================================================
 
-void *rt_parallel_map_pool(void *seq, void *func, void *pool)
-{
+void *rt_parallel_map_pool(void *seq, void *func, void *pool) {
     if (!seq || !func)
         return rt_seq_new();
 
@@ -449,8 +415,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool)
 
     // Allocate task array
     map_task *tasks = (map_task *)malloc(count * sizeof(map_task));
-    if (!tasks)
-    {
+    if (!tasks) {
 #ifdef _WIN32
         CloseHandle(event);
 #else
@@ -460,8 +425,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool)
     }
 
     // Submit all tasks
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         tasks[i].item = rt_seq_get(seq, i);
         tasks[i].func = (void *(*)(void *))func;
         tasks[i].result = NULL;
@@ -487,8 +451,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool)
 
     // Collect results in order
     void *result = rt_seq_new();
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         rt_seq_push(result, tasks[i].result);
     }
 
@@ -496,8 +459,7 @@ void *rt_parallel_map_pool(void *seq, void *func, void *pool)
     return result;
 }
 
-void *rt_parallel_map(void *seq, void *func)
-{
+void *rt_parallel_map(void *seq, void *func) {
     return rt_parallel_map_pool(seq, func, NULL);
 }
 
@@ -505,8 +467,7 @@ void *rt_parallel_map(void *seq, void *func)
 // Parallel Invoke
 //=============================================================================
 
-void rt_parallel_invoke_pool(void *funcs, void *pool)
-{
+void rt_parallel_invoke_pool(void *funcs, void *pool) {
     if (!funcs)
         return;
 
@@ -527,8 +488,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool)
 
     // Allocate task array
     invoke_task *tasks = (invoke_task *)malloc(count * sizeof(invoke_task));
-    if (!tasks)
-    {
+    if (!tasks) {
 #ifdef _WIN32
         CloseHandle(event);
 #else
@@ -538,8 +498,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool)
     }
 
     // Submit all tasks
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         tasks[i].func = (void (*)(void))rt_seq_get(funcs, i);
 #ifdef _WIN32
         tasks[i].remaining = &remaining;
@@ -563,8 +522,7 @@ void rt_parallel_invoke_pool(void *funcs, void *pool)
     free(tasks);
 }
 
-void rt_parallel_invoke(void *funcs)
-{
+void rt_parallel_invoke(void *funcs) {
     rt_parallel_invoke_pool(funcs, NULL);
 }
 
@@ -572,8 +530,7 @@ void rt_parallel_invoke(void *funcs)
 // Parallel Reduce
 //=============================================================================
 
-void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
-{
+void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool) {
     if (!seq || !func)
         return identity;
 
@@ -583,11 +540,9 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
 
     /* For small sequences, reduce serially. */
     void *(*combine)(void *, void *) = (void *(*)(void *, void *))func;
-    if (count <= 4)
-    {
+    if (count <= 4) {
         void *accum = identity;
-        for (int64_t i = 0; i < count; i++)
-        {
+        for (int64_t i = 0; i < count; i++) {
             accum = combine(accum, rt_seq_get(seq, i));
         }
         return accum;
@@ -602,8 +557,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     void **items = (void **)malloc((size_t)count * sizeof(void *));
     if (!items)
         rt_trap("Parallel.Reduce: memory allocation failed");
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         items[i] = rt_seq_get(seq, i);
     }
 
@@ -612,16 +566,14 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     HANDLE event = CreateEvent(NULL, TRUE, FALSE, NULL);
 #else
     parallel_sync *sync = parallel_sync_new((int)nworkers);
-    if (!sync)
-    {
+    if (!sync) {
         free(items);
         rt_trap("Parallel.Reduce: memory allocation failed");
     }
 #endif
 
     reduce_task *tasks = (reduce_task *)malloc((size_t)nworkers * sizeof(reduce_task));
-    if (!tasks)
-    {
+    if (!tasks) {
 #ifdef _WIN32
         CloseHandle(event);
 #else
@@ -635,8 +587,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     int64_t remainder = count % nworkers;
     int64_t offset = 0;
 
-    for (int64_t i = 0; i < nworkers; i++)
-    {
+    for (int64_t i = 0; i < nworkers; i++) {
         int64_t chunk_size = chunk + (i < remainder ? 1 : 0);
         tasks[i].items = items;
         tasks[i].start = offset;
@@ -666,8 +617,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
 
     /* Combine partial results on main thread. */
     void *result = tasks[0].result;
-    for (int64_t i = 1; i < nworkers; i++)
-    {
+    for (int64_t i = 1; i < nworkers; i++) {
         result = combine(result, tasks[i].result);
     }
 
@@ -676,8 +626,7 @@ void *rt_parallel_reduce_pool(void *seq, void *func, void *identity, void *pool)
     return result;
 }
 
-void *rt_parallel_reduce(void *seq, void *func, void *identity)
-{
+void *rt_parallel_reduce(void *seq, void *func, void *identity) {
     return rt_parallel_reduce_pool(seq, func, identity, NULL);
 }
 
@@ -685,8 +634,7 @@ void *rt_parallel_reduce(void *seq, void *func, void *identity)
 // Parallel For
 //=============================================================================
 
-void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool)
-{
+void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool) {
     if (!func || start >= end)
         return;
 
@@ -704,8 +652,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool)
 
     // Allocate task array
     for_task *tasks = (for_task *)malloc(count * sizeof(for_task));
-    if (!tasks)
-    {
+    if (!tasks) {
 #ifdef _WIN32
         CloseHandle(event);
 #else
@@ -715,8 +662,7 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool)
     }
 
     // Submit all tasks
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         tasks[i].index = start + i;
         tasks[i].func = (void (*)(int64_t))func;
 #ifdef _WIN32
@@ -741,7 +687,6 @@ void rt_parallel_for_pool(int64_t start, int64_t end, void *func, void *pool)
     free(tasks);
 }
 
-void rt_parallel_for(int64_t start, int64_t end, void *func)
-{
+void rt_parallel_for(int64_t start, int64_t end, void *func) {
     rt_parallel_for_pool(start, end, func, NULL);
 }

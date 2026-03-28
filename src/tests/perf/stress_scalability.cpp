@@ -69,8 +69,7 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 // ============================================================================
 // Test Configuration
@@ -105,22 +104,18 @@ constexpr size_t kSwitchIterations = 50000;
 // Utility: Timer and Reporting
 // ============================================================================
 
-class Timer
-{
+class Timer {
   public:
-    void start()
-    {
+    void start() {
         start_ = std::chrono::steady_clock::now();
     }
 
-    double elapsedMs() const
-    {
+    double elapsedMs() const {
         auto end = std::chrono::steady_clock::now();
         return std::chrono::duration<double, std::milli>(end - start_).count();
     }
 
-    void report(const char *phase) const
-    {
+    void report(const char *phase) const {
         std::cout << "  " << phase << ": " << elapsedMs() << " ms\n";
     }
 
@@ -128,18 +123,15 @@ class Timer
     std::chrono::steady_clock::time_point start_;
 };
 
-void reportTestStart(const char *name)
-{
+void reportTestStart(const char *name) {
     std::cout << "\n=== " << name << " ===\n";
 }
 
-void reportSuccess(const char *name, double totalMs)
-{
+void reportSuccess(const char *name, double totalMs) {
     std::cout << "PASS: " << name << " completed in " << totalMs << " ms\n";
 }
 
-void reportFailure(const char *name, const std::string &reason)
-{
+void reportFailure(const char *name, const std::string &reason) {
     std::cerr << "FAIL: " << name << ": " << reason << "\n";
 }
 
@@ -154,8 +146,7 @@ void reportFailure(const char *name, const std::string &reason)
 //   - VM's block lookup performance
 //   - Pass manager's iteration efficiency
 
-Module buildLargeCfgModule()
-{
+Module buildLargeCfgModule() {
     Module module;
     Function fn;
     fn.name = "main";
@@ -208,8 +199,7 @@ Module buildLargeCfgModule()
 
     // Generate kLargeCfgBlocks basic blocks
     // Each block receives: (outer_idx, sum)
-    for (size_t i = 0; i < kLargeCfgBlocks; ++i)
-    {
+    for (size_t i = 0; i < kLargeCfgBlocks; ++i) {
         BasicBlock bb;
         bb.label = "block_" + std::to_string(i);
 
@@ -228,8 +218,7 @@ Module buildLargeCfgModule()
         bb.instructions.push_back(add);
 
         // Every 100 blocks, add a conditional branch to create more edges
-        if (i % 100 == 99 && i + 1 < kLargeCfgBlocks)
-        {
+        if (i % 100 == 99 && i + 1 < kLargeCfgBlocks) {
             // Simple condition: always take the first branch in this test
             Instr cmp;
             cmp.result = nextTemp++;
@@ -248,9 +237,7 @@ Module buildLargeCfgModule()
             cbr.brArgs.push_back({Value::temp(blockOuterIdx.id), Value::temp(*add.result)});
             cbr.brArgs.push_back({Value::temp(blockOuterIdx.id), Value::temp(*add.result)});
             bb.instructions.push_back(cbr);
-        }
-        else if (i + 1 < kLargeCfgBlocks)
-        {
+        } else if (i + 1 < kLargeCfgBlocks) {
             // Branch to next block
             Instr br;
             br.op = Opcode::Br;
@@ -258,9 +245,7 @@ Module buildLargeCfgModule()
             br.labels.push_back("block_" + std::to_string(i + 1));
             br.brArgs.push_back({Value::temp(blockOuterIdx.id), Value::temp(*add.result)});
             bb.instructions.push_back(br);
-        }
-        else
-        {
+        } else {
             // Last block: branch back to outer_loop with incremented counter
             Instr inc;
             inc.result = nextTemp++;
@@ -302,8 +287,7 @@ Module buildLargeCfgModule()
     return module;
 }
 
-bool testLargeCfgStress()
-{
+bool testLargeCfgStress() {
     reportTestStart("Large CFG Stress Test");
     Timer timer;
     Timer totalTimer;
@@ -320,8 +304,7 @@ bool testLargeCfgStress()
     timer.start();
     auto verifyResult = il::verify::Verifier::verify(module);
     timer.report("Verification");
-    if (!verifyResult)
-    {
+    if (!verifyResult) {
         reportFailure("Large CFG Stress", "Verification failed: " + verifyResult.error().message);
         return false;
     }
@@ -335,8 +318,7 @@ bool testLargeCfgStress()
     // Compute expected sum: sum of 1..kLargeCfgBlocks * kLargeCfgIterations
     int64_t expectedSum =
         static_cast<int64_t>(kLargeCfgBlocks * (kLargeCfgBlocks + 1) / 2 * kLargeCfgIterations);
-    if (result != expectedSum)
-    {
+    if (result != expectedSum) {
         reportFailure("Large CFG Stress",
                       "Result mismatch: got " + std::to_string(result) + ", expected " +
                           std::to_string(expectedSum));
@@ -354,8 +336,7 @@ bool testLargeCfgStress()
 // Structure: Chain of if-then-else blocks to depth D, with work at the bottom.
 // This tests verifier and CFG analysis with many basic blocks and edges.
 
-Module buildDeepNestingModule()
-{
+Module buildDeepNestingModule() {
     Module module;
     Function fn;
     fn.name = "main";
@@ -407,8 +388,7 @@ Module buildDeepNestingModule()
     fn.blocks.push_back(std::move(outerLoop));
 
     // Create chain of nested conditional blocks
-    for (size_t depth = 0; depth < kDeepNestingDepth; ++depth)
-    {
+    for (size_t depth = 0; depth < kDeepNestingDepth; ++depth) {
         BasicBlock nestBlock;
         nestBlock.label = "nest_" + std::to_string(depth);
 
@@ -487,8 +467,7 @@ Module buildDeepNestingModule()
     return module;
 }
 
-bool testDeepNestingStress()
-{
+bool testDeepNestingStress() {
     reportTestStart("Deep Nesting Stress Test");
     Timer timer;
     Timer totalTimer;
@@ -507,8 +486,7 @@ bool testDeepNestingStress()
     timer.start();
     auto verifyResult = il::verify::Verifier::verify(module);
     timer.report("Verification");
-    if (!verifyResult)
-    {
+    if (!verifyResult) {
         reportFailure("Deep Nesting Stress",
                       "Verification failed: " + verifyResult.error().message);
         return false;
@@ -523,8 +501,7 @@ bool testDeepNestingStress()
     // Expected: sum of 1..kDeepNestingDepth per iteration * kDeepNestingIterations
     int64_t perIterSum = static_cast<int64_t>(kDeepNestingDepth * (kDeepNestingDepth + 1) / 2);
     int64_t expected = perIterSum * static_cast<int64_t>(kDeepNestingIterations);
-    if (result != expected)
-    {
+    if (result != expected) {
         reportFailure("Deep Nesting Stress",
                       "Result mismatch: got " + std::to_string(result) + ", expected " +
                           std::to_string(expected));
@@ -541,8 +518,7 @@ bool testDeepNestingStress()
 // Tests handleAlloca with sizes approaching frame stack limits.
 // Validates proper bounds checking and trap behavior.
 
-Module buildStackLimitModule(size_t allocaSize)
-{
+Module buildStackLimitModule(size_t allocaSize) {
     Module module;
     Function fn;
     fn.name = "main";
@@ -570,8 +546,7 @@ Module buildStackLimitModule(size_t allocaSize)
     entry.instructions.push_back(store1);
 
     // GEP to last valid position (allocaSize - 8 for i64)
-    if (allocaSize >= 8)
-    {
+    if (allocaSize >= 8) {
         Instr gep;
         gep.result = nextTemp++;
         gep.op = Opcode::GEP;
@@ -615,9 +590,7 @@ Module buildStackLimitModule(size_t allocaSize)
         ret.type = Type(Type::Kind::Void);
         ret.operands.push_back(Value::temp(*add.result));
         entry.instructions.push_back(ret);
-    }
-    else
-    {
+    } else {
         Instr ret;
         ret.op = Opcode::Ret;
         ret.type = Type(Type::Kind::Void);
@@ -633,22 +606,19 @@ Module buildStackLimitModule(size_t allocaSize)
     return module;
 }
 
-bool testStackLimitStress()
-{
+bool testStackLimitStress() {
     reportTestStart("Stack Limit Stress Test");
     Timer totalTimer;
     totalTimer.start();
 
     // Test progressively larger alloca sizes
-    for (size_t allocaSize : kStackTestAllocaSizes)
-    {
+    for (size_t allocaSize : kStackTestAllocaSizes) {
         std::cout << "  Testing alloca size: " << allocaSize << " bytes\n";
 
         Module module = buildStackLimitModule(allocaSize);
 
         auto verifyResult = il::verify::Verifier::verify(module);
-        if (!verifyResult)
-        {
+        if (!verifyResult) {
             reportFailure("Stack Limit Stress",
                           "Verification failed for size " + std::to_string(allocaSize));
             return false;
@@ -658,8 +628,7 @@ bool testStackLimitStress()
         int64_t result = vm.run();
 
         int64_t expected = (allocaSize >= 8) ? (42 + 99) : 42;
-        if (result != expected)
-        {
+        if (result != expected) {
             reportFailure("Stack Limit Stress",
                           "Result mismatch for size " + std::to_string(allocaSize) + ": got " +
                               std::to_string(result) + ", expected " + std::to_string(expected));
@@ -673,8 +642,7 @@ bool testStackLimitStress()
         Module module = buildStackLimitModule(kStackTestTargetBytes);
 
         auto verifyResult = il::verify::Verifier::verify(module);
-        if (!verifyResult)
-        {
+        if (!verifyResult) {
             reportFailure("Stack Limit Stress", "Verification failed for near-limit alloca");
             return false;
         }
@@ -682,8 +650,7 @@ bool testStackLimitStress()
         il::vm::VM vm(module);
         int64_t result = vm.run();
 
-        if (result != 42 + 99)
-        {
+        if (result != 42 + 99) {
             reportFailure("Stack Limit Stress",
                           "Near-limit alloca result mismatch: " + std::to_string(result));
             return false;
@@ -700,8 +667,7 @@ bool testStackLimitStress()
 // Exercises runtime bridge with many extern calls.
 // Uses basic math operations available in most runtime configurations.
 
-Module buildRuntimeHelperModule()
-{
+Module buildRuntimeHelperModule() {
     Module module;
 
     // Declare externs for basic operations
@@ -767,8 +733,7 @@ Module buildRuntimeHelperModule()
         unsigned currentSum = workSum.id;
 
         // Simulate multiple runtime-like operations per iteration
-        for (size_t i = 0; i < kRuntimeHelperCallsPerIter; ++i)
-        {
+        for (size_t i = 0; i < kRuntimeHelperCallsPerIter; ++i) {
             // Add, multiply, etc. to simulate runtime work
             Instr add;
             add.result = nextTemp++;
@@ -829,8 +794,7 @@ Module buildRuntimeHelperModule()
     return module;
 }
 
-bool testRuntimeHelperStress()
-{
+bool testRuntimeHelperStress() {
     reportTestStart("Runtime Helper Stress Test");
     Timer timer;
     Timer totalTimer;
@@ -848,8 +812,7 @@ bool testRuntimeHelperStress()
     timer.start();
     auto verifyResult = il::verify::Verifier::verify(module);
     timer.report("Verification");
-    if (!verifyResult)
-    {
+    if (!verifyResult) {
         reportFailure("Runtime Helper Stress",
                       "Verification failed: " + verifyResult.error().message);
         return false;
@@ -866,8 +829,7 @@ bool testRuntimeHelperStress()
         static_cast<int64_t>(kRuntimeHelperCallsPerIter * (kRuntimeHelperCallsPerIter + 1) / 2);
     int64_t expected = perIterSum * static_cast<int64_t>(kRuntimeHelperIterations);
 
-    if (result != expected)
-    {
+    if (result != expected) {
         reportFailure("Runtime Helper Stress",
                       "Result mismatch: got " + std::to_string(result) + ", expected " +
                           std::to_string(expected));
@@ -883,8 +845,7 @@ bool testRuntimeHelperStress()
 // ============================================================================
 // Tests SwitchI32 with many cases.
 
-Module buildSwitchStressModule()
-{
+Module buildSwitchStressModule() {
     Module module;
     Function fn;
     fn.name = "main";
@@ -972,8 +933,7 @@ Module buildSwitchStressModule()
             {Value::temp(switchIdx.id), Value::temp(switchSum.id), Value::constInt(-1)});
 
         // Generate cases
-        for (size_t i = 0; i < kSwitchCaseCount; ++i)
-        {
+        for (size_t i = 0; i < kSwitchCaseCount; ++i) {
             sw.operands.push_back(Value::constInt(static_cast<int32_t>(i)));
             sw.labels.push_back("dispatch");
             sw.brArgs.push_back({Value::temp(switchIdx.id),
@@ -1045,8 +1005,7 @@ Module buildSwitchStressModule()
     return module;
 }
 
-bool testSwitchStress()
-{
+bool testSwitchStress() {
     reportTestStart("Switch Stress Test");
     Timer timer;
     Timer totalTimer;
@@ -1064,8 +1023,7 @@ bool testSwitchStress()
     timer.start();
     auto verifyResult = il::verify::Verifier::verify(module);
     timer.report("Verification");
-    if (!verifyResult)
-    {
+    if (!verifyResult) {
         reportFailure("Switch Stress", "Verification failed: " + verifyResult.error().message);
         return false;
     }
@@ -1080,13 +1038,11 @@ bool testSwitchStress()
     // Each iteration adds (i % kSwitchCaseCount) + 1
     // Over kSwitchIterations iterations
     int64_t expected = 0;
-    for (size_t i = 0; i < kSwitchIterations; ++i)
-    {
+    for (size_t i = 0; i < kSwitchIterations; ++i) {
         expected += static_cast<int64_t>((i % kSwitchCaseCount) + 1);
     }
 
-    if (result != expected)
-    {
+    if (result != expected) {
         reportFailure("Switch Stress",
                       "Result mismatch: got " + std::to_string(result) + ", expected " +
                           std::to_string(expected));
@@ -1103,8 +1059,7 @@ bool testSwitchStress()
 // Main: Run All Stress Tests
 // ============================================================================
 
-int main()
-{
+int main() {
     std::cout << "===== Viper IL Scalability Stress Tests =====\n";
 
     int failures = 0;
@@ -1125,13 +1080,10 @@ int main()
         ++failures;
 
     std::cout << "\n===== Summary =====\n";
-    if (failures == 0)
-    {
+    if (failures == 0) {
         std::cout << "All stress tests PASSED\n";
         return 0;
-    }
-    else
-    {
+    } else {
         std::cout << failures << " test(s) FAILED\n";
         return 1;
     }

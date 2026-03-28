@@ -19,8 +19,7 @@
 
 #include <utility>
 
-namespace il::vm
-{
+namespace il::vm {
 
 /// @brief RAII wrapper for runtime string handles (`rt_string`).
 /// @details Manages the reference count of a runtime string handle, ensuring
@@ -29,8 +28,7 @@ namespace il::vm
 ///          while move operations transfer ownership without changing the count.
 /// @invariant The wrapped handle is either null or has at least one reference
 ///            owned by this wrapper instance.
-class ViperStringHandle
-{
+class ViperStringHandle {
   public:
     /// @brief Construct an empty handle (null string).
     ViperStringHandle() noexcept : handle_(nullptr) {}
@@ -42,16 +40,14 @@ class ViperStringHandle
     explicit ViperStringHandle(rt_string s) noexcept : handle_(s) {}
 
     /// @brief Release the owned string handle on destruction.
-    ~ViperStringHandle()
-    {
+    ~ViperStringHandle() {
         if (handle_)
             rt_str_release_maybe(handle_);
     }
 
     /// @brief Copy constructor - increments reference count.
     /// @param other Handle to copy from.
-    ViperStringHandle(const ViperStringHandle &other) noexcept : handle_(other.handle_)
-    {
+    ViperStringHandle(const ViperStringHandle &other) noexcept : handle_(other.handle_) {
         if (handle_)
             rt_str_retain_maybe(handle_);
     }
@@ -59,10 +55,8 @@ class ViperStringHandle
     /// @brief Copy assignment - releases current, then copies and retains.
     /// @param other Handle to copy from.
     /// @return Reference to this handle.
-    ViperStringHandle &operator=(const ViperStringHandle &other) noexcept
-    {
-        if (this != &other)
-        {
+    ViperStringHandle &operator=(const ViperStringHandle &other) noexcept {
+        if (this != &other) {
             if (handle_)
                 rt_str_release_maybe(handle_);
             handle_ = other.handle_;
@@ -74,18 +68,15 @@ class ViperStringHandle
 
     /// @brief Move constructor - transfers ownership.
     /// @param other Handle to move from.
-    ViperStringHandle(ViperStringHandle &&other) noexcept : handle_(other.handle_)
-    {
+    ViperStringHandle(ViperStringHandle &&other) noexcept : handle_(other.handle_) {
         other.handle_ = nullptr;
     }
 
     /// @brief Move assignment - releases current, then transfers ownership.
     /// @param other Handle to move from.
     /// @return Reference to this handle.
-    ViperStringHandle &operator=(ViperStringHandle &&other) noexcept
-    {
-        if (this != &other)
-        {
+    ViperStringHandle &operator=(ViperStringHandle &&other) noexcept {
+        if (this != &other) {
             if (handle_)
                 rt_str_release_maybe(handle_);
             handle_ = other.handle_;
@@ -96,30 +87,26 @@ class ViperStringHandle
 
     /// @brief Get the raw handle for passing to runtime functions.
     /// @return The underlying rt_string handle.
-    [[nodiscard]] rt_string get() const noexcept
-    {
+    [[nodiscard]] rt_string get() const noexcept {
         return handle_;
     }
 
     /// @brief Implicit conversion to raw handle for convenience.
     /// @return The underlying rt_string handle.
-    operator rt_string() const noexcept
-    {
+    operator rt_string() const noexcept {
         return handle_;
     }
 
     /// @brief Check if the handle is non-null.
     /// @return True if the handle is valid (non-null).
-    explicit operator bool() const noexcept
-    {
+    explicit operator bool() const noexcept {
         return handle_ != nullptr;
     }
 
     /// @brief Release ownership and return the raw handle.
     /// @return The underlying rt_string handle.
     /// @note After calling this, the wrapper no longer owns the handle.
-    [[nodiscard]] rt_string release() noexcept
-    {
+    [[nodiscard]] rt_string release() noexcept {
         rt_string result = handle_;
         handle_ = nullptr;
         return result;
@@ -127,8 +114,7 @@ class ViperStringHandle
 
     /// @brief Reset to a new handle, releasing any current handle.
     /// @param s New handle to take ownership of. May be null.
-    void reset(rt_string s = nullptr) noexcept
-    {
+    void reset(rt_string s = nullptr) noexcept {
         if (handle_)
             rt_str_release_maybe(handle_);
         handle_ = s;
@@ -143,20 +129,16 @@ class ViperStringHandle
 ///          exit, but ownership might be transferred before the scope ends.
 ///          Call `dismiss()` to prevent the release when ownership is transferred.
 /// @invariant Only releases if the slot contains a string (kind==Str) and not dismissed.
-class ScopedSlotStringGuard
-{
+class ScopedSlotStringGuard {
   public:
     /// @brief Construct a guard for a slot that may contain a string.
     /// @param slot Reference to the slot to guard.
     /// @param isString True if the slot contains a string type.
     ScopedSlotStringGuard(rt_string &str, bool isString) noexcept
-        : str_(str), isString_(isString), dismissed_(false)
-    {
-    }
+        : str_(str), isString_(isString), dismissed_(false) {}
 
     /// @brief Release the string on destruction unless dismissed.
-    ~ScopedSlotStringGuard()
-    {
+    ~ScopedSlotStringGuard() {
         if (isString_ && !dismissed_ && str_)
             rt_str_release_maybe(str_);
     }
@@ -169,8 +151,7 @@ class ScopedSlotStringGuard
 
     /// @brief Prevent the guard from releasing the string.
     /// @details Call this when ownership is transferred elsewhere.
-    void dismiss() noexcept
-    {
+    void dismiss() noexcept {
         dismissed_ = true;
     }
 

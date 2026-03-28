@@ -23,8 +23,7 @@ using namespace il::core;
 using namespace il::build;
 
 /// Test: Valid function and block creation with unique names.
-static void test_valid_function_and_block_creation()
-{
+static void test_valid_function_and_block_creation() {
     Module m;
     IRBuilder b(m);
 
@@ -53,8 +52,7 @@ static void test_valid_function_and_block_creation()
 }
 
 /// Test: Valid extern creation with unique name.
-static void test_valid_extern_creation()
-{
+static void test_valid_extern_creation() {
     Module m;
     IRBuilder b(m);
 
@@ -70,8 +68,7 @@ static void test_valid_extern_creation()
 }
 
 /// Test: Valid global creation.
-static void test_valid_global_creation()
-{
+static void test_valid_global_creation() {
     Module m;
     IRBuilder b(m);
 
@@ -86,8 +83,7 @@ static void test_valid_global_creation()
 }
 
 /// Test: Valid branch with matching argument counts.
-static void test_valid_branch_arguments()
-{
+static void test_valid_branch_arguments() {
     Module m;
     IRBuilder b(m);
 
@@ -111,8 +107,7 @@ static void test_valid_branch_arguments()
 }
 
 /// Test: Valid conditional branch with matching argument counts.
-static void test_valid_cbr_arguments()
-{
+static void test_valid_cbr_arguments() {
     Module m;
     IRBuilder b(m);
 
@@ -145,8 +140,7 @@ static void test_valid_cbr_arguments()
 }
 
 /// Test: Valid call emission with known callee.
-static void test_valid_call_emission()
-{
+static void test_valid_call_emission() {
     Module m;
     IRBuilder b(m);
 
@@ -168,8 +162,7 @@ static void test_valid_call_emission()
 }
 
 /// Test: Valid return emission.
-static void test_valid_return_emission()
-{
+static void test_valid_return_emission() {
     Module m;
     IRBuilder b(m);
 
@@ -187,8 +180,7 @@ static void test_valid_return_emission()
 }
 
 /// Test: Block parameter access returns correct SSA values.
-static void test_block_param_access()
-{
+static void test_block_param_access() {
     Module m;
     IRBuilder b(m);
 
@@ -210,8 +202,7 @@ static void test_block_param_access()
 }
 
 /// Test: Insert block at specific index.
-static void test_insert_block_at_index()
-{
+static void test_insert_block_at_index() {
     Module m;
     IRBuilder b(m);
 
@@ -231,8 +222,7 @@ static void test_insert_block_at_index()
 }
 
 /// Test: Reserve temp IDs correctly increment.
-static void test_reserve_temp_increments()
-{
+static void test_reserve_temp_increments() {
     Module m;
     IRBuilder b(m);
 
@@ -253,8 +243,7 @@ static void test_reserve_temp_increments()
 }
 
 /// Test: setInsertPoint changes active block.
-static void test_set_insert_point()
-{
+static void test_set_insert_point() {
     Module m;
     IRBuilder b(m);
 
@@ -281,8 +270,7 @@ static void test_set_insert_point()
 }
 
 /// Test: Module seeding in constructor picks up existing entries.
-static void test_module_seeding()
-{
+static void test_module_seeding() {
     Module m;
     // Pre-populate the module
     m.functions.push_back({"existing_fn", Type(Type::Kind::Void), {}, {}, {}});
@@ -361,8 +349,7 @@ static void test_module_seeding()
  *     -> Assertion: "branch argument count must match block parameter count"
  */
 
-int main()
-{
+int main() {
     std::cout << "Running IRBuilder assertion tests...\n";
 
     test_valid_function_and_block_creation();

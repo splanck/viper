@@ -24,13 +24,11 @@
 #include <unordered_set>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 struct OopLoweringContext;
 
-namespace lower::detail
-{
+namespace lower::detail {
 
 //===----------------------------------------------------------------------===//
 // Expression Lowering Helpers
@@ -42,8 +40,7 @@ namespace lower::detail
 ///          visitor pattern to dispatch to specific lowering routines.
 /// @invariant All methods preserve Lowerer state consistency.
 /// @ownership Borrows Lowerer reference; does not own AST nodes.
-class ExprLoweringHelper
-{
+class ExprLoweringHelper {
   public:
     explicit ExprLoweringHelper(Lowerer::DetailAccess access) noexcept;
 
@@ -90,8 +87,7 @@ class ExprLoweringHelper
 ///          control flow constructs. Manages block creation and branching.
 /// @invariant Preserves CFG validity (single terminator per block).
 /// @ownership Borrows Lowerer reference; does not own AST nodes.
-class ControlLoweringHelper
-{
+class ControlLoweringHelper {
   public:
     explicit ControlLoweringHelper(Lowerer::DetailAccess access) noexcept;
 
@@ -153,8 +149,7 @@ class ControlLoweringHelper
 ///          DELETE statements, and class/constructor/method emission.
 /// @invariant Maintains class layout consistency during lowering.
 /// @ownership Borrows Lowerer reference and OOP context; does not own AST nodes.
-class OopLoweringHelper
-{
+class OopLoweringHelper {
   public:
     explicit OopLoweringHelper(Lowerer::DetailAccess access) noexcept;
 
@@ -197,8 +192,7 @@ class OopLoweringHelper
 ///          runtime-related statements that interact with memory and state.
 /// @invariant Preserves symbol table and slot consistency.
 /// @ownership Borrows Lowerer reference; does not own AST nodes.
-class RuntimeLoweringHelper
-{
+class RuntimeLoweringHelper {
   public:
     explicit RuntimeLoweringHelper(Lowerer::DetailAccess access) noexcept;
 

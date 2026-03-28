@@ -25,12 +25,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Compile Zia source and return the result.
-CompilerResult compileSource(const std::string &source)
-{
+CompilerResult compileSource(const std::string &source) {
     SourceManager sm;
     CompilerInput input{.source = source, .path = "error_test.zia"};
     CompilerOptions opts{};
@@ -38,10 +36,8 @@ CompilerResult compileSource(const std::string &source)
 }
 
 /// @brief Check whether any diagnostic message contains @p needle.
-bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle)
-{
-    for (const auto &d : diag.diagnostics())
-    {
+bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle) {
+    for (const auto &d : diag.diagnostics()) {
         if (d.message.find(needle) != std::string::npos)
             return true;
     }
@@ -52,8 +48,7 @@ bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle)
 // Missing tokens
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaParserErrors, MissingSemicolon)
-{
+TEST(ZiaParserErrors, MissingSemicolon) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -65,8 +60,7 @@ func start() {
     // (semicolons are not required in Zia, so this may succeed)
 }
 
-TEST(ZiaParserErrors, MissingClosingBrace)
-{
+TEST(ZiaParserErrors, MissingClosingBrace) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -75,8 +69,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, MissingClosingParen)
-{
+TEST(ZiaParserErrors, MissingClosingParen) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -86,8 +79,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, MissingFuncBody)
-{
+TEST(ZiaParserErrors, MissingFuncBody) {
     auto result = compileSource(R"(
 module Test;
 func start()
@@ -99,8 +91,7 @@ func start()
 // Invalid expressions
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaParserErrors, DoubleOperator)
-{
+TEST(ZiaParserErrors, DoubleOperator) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -110,8 +101,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, TrailingOperator)
-{
+TEST(ZiaParserErrors, TrailingOperator) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -121,8 +111,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, EmptyParens)
-{
+TEST(ZiaParserErrors, EmptyParens) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -132,8 +121,7 @@ func start() {
     // Empty parens could be valid (unit/void) or error depending on grammar
 }
 
-TEST(ZiaParserErrors, InvalidAssignmentTarget)
-{
+TEST(ZiaParserErrors, InvalidAssignmentTarget) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -147,8 +135,7 @@ func start() {
 // Module declaration errors
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaParserErrors, MissingModuleDecl)
-{
+TEST(ZiaParserErrors, MissingModuleDecl) {
     auto result = compileSource(R"(
 func start() {
 }
@@ -156,8 +143,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, DuplicateModuleDecl)
-{
+TEST(ZiaParserErrors, DuplicateModuleDecl) {
     auto result = compileSource(R"(
 module Test;
 module Other;
@@ -171,8 +157,7 @@ func start() {
 // Type annotation errors
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaParserErrors, InvalidTypeAnnotation)
-{
+TEST(ZiaParserErrors, InvalidTypeAnnotation) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -186,8 +171,7 @@ func start() {
 // Control flow errors
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaParserErrors, IfWithoutCondition)
-{
+TEST(ZiaParserErrors, IfWithoutCondition) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -199,8 +183,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, WhileWithoutCondition)
-{
+TEST(ZiaParserErrors, WhileWithoutCondition) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -212,8 +195,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, ForInWithoutIterable)
-{
+TEST(ZiaParserErrors, ForInWithoutIterable) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -228,14 +210,12 @@ func start() {
 // String / literal edge cases
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaParserErrors, UnterminatedString)
-{
+TEST(ZiaParserErrors, UnterminatedString) {
     auto result = compileSource("module Test;\nfunc start() {\n    var x = \"hello\n}\n");
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, UnterminatedStringInterpolation)
-{
+TEST(ZiaParserErrors, UnterminatedStringInterpolation) {
     auto result = compileSource("module Test;\nfunc start() {\n    var x = \"hello \\(\n}\n");
     EXPECT_FALSE(result.succeeded());
 }
@@ -244,8 +224,7 @@ TEST(ZiaParserErrors, UnterminatedStringInterpolation)
 // Function declaration errors
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaParserErrors, DuplicateParamNames)
-{
+TEST(ZiaParserErrors, DuplicateParamNames) {
     auto result = compileSource(R"(
 module Test;
 func add(x: Integer, x: Integer) -> Integer {
@@ -256,8 +235,7 @@ func start() {}
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, MissingReturnType)
-{
+TEST(ZiaParserErrors, MissingReturnType) {
     auto result = compileSource(R"(
 module Test;
 func add(x: Integer) -> {
@@ -272,8 +250,7 @@ func start() {}
 // Match expression errors
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaParserErrors, MatchWithoutSubject)
-{
+TEST(ZiaParserErrors, MatchWithoutSubject) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -285,8 +262,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, MatchCaseWithoutArrow)
-{
+TEST(ZiaParserErrors, MatchCaseWithoutArrow) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -303,8 +279,7 @@ func start() {
 // Entity declaration errors
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaParserErrors, EntityMissingName)
-{
+TEST(ZiaParserErrors, EntityMissingName) {
     auto result = compileSource(R"(
 module Test;
 entity {
@@ -315,8 +290,7 @@ func start() {}
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, EntityMissingBrace)
-{
+TEST(ZiaParserErrors, EntityMissingBrace) {
     auto result = compileSource(R"(
 module Test;
 entity Foo
@@ -330,27 +304,23 @@ func start() {}
 // Empty / minimal input
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaParserErrors, EmptyInput)
-{
+TEST(ZiaParserErrors, EmptyInput) {
     auto result = compileSource("");
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, WhitespaceOnly)
-{
+TEST(ZiaParserErrors, WhitespaceOnly) {
     auto result = compileSource("   \n\n\t\t\n   ");
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaParserErrors, CommentOnly)
-{
+TEST(ZiaParserErrors, CommentOnly) {
     auto result = compileSource("// just a comment\n");
     EXPECT_FALSE(result.succeeded());
 }
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

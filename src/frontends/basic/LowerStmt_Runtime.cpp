@@ -18,15 +18,13 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/RuntimeStatementLowerer.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Forward BEEP lowering to the runtime statement lowerer.
 /// @details Delegates to @ref RuntimeStatementLowerer::visit to emit the runtime
 ///          helper that triggers a terminal beep.
 /// @param s Parsed BEEP statement.
-void Lowerer::visit(const BeepStmt &s)
-{
+void Lowerer::visit(const BeepStmt &s) {
     runtimeStmtLowerer_->visit(s);
 }
 
@@ -34,8 +32,7 @@ void Lowerer::visit(const BeepStmt &s)
 /// @details Delegates to @ref RuntimeStatementLowerer::visit to emit the runtime
 ///          helper that clears the terminal.
 /// @param s Parsed CLS statement.
-void Lowerer::visit(const ClsStmt &s)
-{
+void Lowerer::visit(const ClsStmt &s) {
     runtimeStmtLowerer_->visit(s);
 }
 
@@ -43,8 +40,7 @@ void Lowerer::visit(const ClsStmt &s)
 /// @details Delegates to @ref RuntimeStatementLowerer::visit to emit runtime
 ///          calls that update the terminal colors.
 /// @param s Parsed COLOR statement.
-void Lowerer::visit(const ColorStmt &s)
-{
+void Lowerer::visit(const ColorStmt &s) {
     runtimeStmtLowerer_->visit(s);
 }
 
@@ -52,8 +48,7 @@ void Lowerer::visit(const ColorStmt &s)
 /// @details Delegates to @ref RuntimeStatementLowerer::visit to emit runtime
 ///          cursor-positioning calls.
 /// @param s Parsed LOCATE statement.
-void Lowerer::visit(const LocateStmt &s)
-{
+void Lowerer::visit(const LocateStmt &s) {
     runtimeStmtLowerer_->visit(s);
 }
 
@@ -61,8 +56,7 @@ void Lowerer::visit(const LocateStmt &s)
 /// @details Delegates to @ref RuntimeStatementLowerer::visit to emit runtime
 ///          cursor visibility toggles.
 /// @param s Parsed CURSOR statement.
-void Lowerer::visit(const CursorStmt &s)
-{
+void Lowerer::visit(const CursorStmt &s) {
     runtimeStmtLowerer_->visit(s);
 }
 
@@ -70,8 +64,7 @@ void Lowerer::visit(const CursorStmt &s)
 /// @details Delegates to @ref RuntimeStatementLowerer::visit to emit runtime
 ///          helpers that toggle the alternate screen buffer.
 /// @param s Parsed ALTSCREEN statement.
-void Lowerer::visit(const AltScreenStmt &s)
-{
+void Lowerer::visit(const AltScreenStmt &s) {
     runtimeStmtLowerer_->visit(s);
 }
 
@@ -79,8 +72,7 @@ void Lowerer::visit(const AltScreenStmt &s)
 /// @details Delegates to @ref RuntimeStatementLowerer::visit to emit runtime
 ///          sleep/delay helpers.
 /// @param s Parsed SLEEP statement.
-void Lowerer::visit(const SleepStmt &s)
-{
+void Lowerer::visit(const SleepStmt &s) {
     runtimeStmtLowerer_->visit(s);
 }
 
@@ -94,8 +86,7 @@ void Lowerer::visit(const SleepStmt &s)
 void Lowerer::assignScalarSlot(const SlotType &slotInfo,
                                Value slot,
                                RVal value,
-                               il::support::SourceLoc loc)
-{
+                               il::support::SourceLoc loc) {
     runtimeStmtLowerer_->assignScalarSlot(slotInfo, slot, value, loc);
 }
 
@@ -105,8 +96,7 @@ void Lowerer::assignScalarSlot(const SlotType &slotInfo,
 /// @param target Array expression describing the destination.
 /// @param value Lowered r-value to assign.
 /// @param loc Source location for diagnostics and emitted instructions.
-void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::support::SourceLoc loc)
-{
+void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::support::SourceLoc loc) {
     runtimeStmtLowerer_->assignArrayElement(target, value, loc);
 }
 
@@ -114,8 +104,7 @@ void Lowerer::assignArrayElement(const ArrayExpr &target, RVal value, il::suppor
 /// @details Delegates to @ref RuntimeStatementLowerer::lowerLet to resolve the
 ///          l-value and emit the appropriate assignment logic.
 /// @param stmt Parsed LET statement.
-void Lowerer::lowerLet(const LetStmt &stmt)
-{
+void Lowerer::lowerLet(const LetStmt &stmt) {
     runtimeStmtLowerer_->lowerLet(stmt);
 }
 
@@ -123,8 +112,7 @@ void Lowerer::lowerLet(const LetStmt &stmt)
 /// @details Delegates to @ref RuntimeStatementLowerer::lowerConst to evaluate
 ///          the initializer and store the constant value.
 /// @param stmt Parsed CONST statement.
-void Lowerer::lowerConst(const ConstStmt &stmt)
-{
+void Lowerer::lowerConst(const ConstStmt &stmt) {
     runtimeStmtLowerer_->lowerConst(stmt);
 }
 
@@ -132,8 +120,7 @@ void Lowerer::lowerConst(const ConstStmt &stmt)
 /// @details Delegates to @ref RuntimeStatementLowerer::lowerStatic, which
 ///          handles any declaration-side bookkeeping for static storage.
 /// @param stmt Parsed STATIC statement.
-void Lowerer::lowerStatic(const StaticStmt &stmt)
-{
+void Lowerer::lowerStatic(const StaticStmt &stmt) {
     runtimeStmtLowerer_->lowerStatic(stmt);
 }
 
@@ -141,8 +128,7 @@ void Lowerer::lowerStatic(const StaticStmt &stmt)
 /// @details Delegates to @ref RuntimeStatementLowerer::lowerDim to evaluate
 ///          array bounds and emit allocation helpers.
 /// @param stmt Parsed DIM statement.
-void Lowerer::lowerDim(const DimStmt &stmt)
-{
+void Lowerer::lowerDim(const DimStmt &stmt) {
     runtimeStmtLowerer_->lowerDim(stmt);
 }
 
@@ -150,8 +136,7 @@ void Lowerer::lowerDim(const DimStmt &stmt)
 /// @details Delegates to @ref RuntimeStatementLowerer::lowerReDim to resize
 ///          arrays and preserve BASIC semantics.
 /// @param stmt Parsed REDIM statement.
-void Lowerer::lowerReDim(const ReDimStmt &stmt)
-{
+void Lowerer::lowerReDim(const ReDimStmt &stmt) {
     runtimeStmtLowerer_->lowerReDim(stmt);
 }
 
@@ -159,8 +144,7 @@ void Lowerer::lowerReDim(const ReDimStmt &stmt)
 /// @details Delegates to @ref RuntimeStatementLowerer::lowerRandomize to seed
 ///          the runtime RNG.
 /// @param stmt Parsed RANDOMIZE statement.
-void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
-{
+void Lowerer::lowerRandomize(const RandomizeStmt &stmt) {
     runtimeStmtLowerer_->lowerRandomize(stmt);
 }
 
@@ -168,8 +152,7 @@ void Lowerer::lowerRandomize(const RandomizeStmt &stmt)
 /// @details Delegates to @ref RuntimeStatementLowerer::lowerSwap to swap two
 ///          l-values with proper coercion and lifetime handling.
 /// @param stmt Parsed SWAP statement.
-void Lowerer::lowerSwap(const SwapStmt &stmt)
-{
+void Lowerer::lowerSwap(const SwapStmt &stmt) {
     runtimeStmtLowerer_->lowerSwap(stmt);
 }
 
@@ -182,8 +165,7 @@ void Lowerer::lowerSwap(const SwapStmt &stmt)
 /// @return Validated length value suitable for allocation helpers.
 Lowerer::Value Lowerer::emitArrayLengthCheck(Value bound,
                                              il::support::SourceLoc loc,
-                                             std::string_view labelBase)
-{
+                                             std::string_view labelBase) {
     return runtimeStmtLowerer_->emitArrayLengthCheck(bound, loc, labelBase);
 }
 

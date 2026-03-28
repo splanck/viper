@@ -25,8 +25,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// Iterate over a register list in forward-pair order for callee save (prologue).
 ///
@@ -36,10 +35,8 @@ namespace viper::codegen::aarch64
 /// @tparam OnPair   Callable with signature void(PhysReg, PhysReg)
 /// @tparam OnSingle Callable with signature void(PhysReg)
 template <typename OnPair, typename OnSingle>
-void forEachSaveReg(const std::vector<PhysReg> &regs, OnPair onPair, OnSingle onSingle)
-{
-    for (std::size_t i = 0; i < regs.size();)
-    {
+void forEachSaveReg(const std::vector<PhysReg> &regs, OnPair onPair, OnSingle onSingle) {
+    for (std::size_t i = 0; i < regs.size();) {
         const PhysReg r0 = regs[i++];
         if (i < regs.size())
             onPair(r0, regs[i++]);
@@ -57,16 +54,13 @@ void forEachSaveReg(const std::vector<PhysReg> &regs, OnPair onPair, OnSingle on
 /// @tparam OnPair   Callable with signature void(PhysReg, PhysReg)
 /// @tparam OnSingle Callable with signature void(PhysReg)
 template <typename OnPair, typename OnSingle>
-void forEachRestoreReg(const std::vector<PhysReg> &regs, OnPair onPair, OnSingle onSingle)
-{
+void forEachRestoreReg(const std::vector<PhysReg> &regs, OnPair onPair, OnSingle onSingle) {
     std::size_t n = regs.size();
-    if (n % 2 == 1)
-    {
+    if (n % 2 == 1) {
         onSingle(regs[n - 1]);
         --n;
     }
-    while (n > 0)
-    {
+    while (n > 0) {
         onPair(regs[n - 2], regs[n - 1]);
         n -= 2;
     }

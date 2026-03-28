@@ -36,10 +36,8 @@
 
 using namespace il::core;
 
-namespace il::vm::detail::floating
-{
-namespace
-{
+namespace il::vm::detail::floating {
+namespace {
 constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel for overflow.
 
 /// @brief Round @p operand to the nearest unsigned 64-bit integer or raise a trap.
@@ -62,13 +60,11 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
 [[nodiscard]] uint64_t castFpToUiRoundedOrTrap(double operand,
                                                const Instr &in,
                                                Frame &fr,
-                                               const BasicBlock *bb)
-{
+                                               const BasicBlock *bb) {
     constexpr const char *kInvalidOperandMessage = "invalid fp operand in cast.fp_to_ui.rte.chk";
     constexpr const char *kOverflowMessage = "fp overflow in cast.fp_to_ui.rte.chk";
 
-    auto trap = [&](TrapKind kind, const char *message)
-    {
+    auto trap = [&](TrapKind kind, const char *message) {
         RuntimeBridge::trap(kind,
                             message,
                             in.loc,
@@ -76,33 +72,26 @@ constexpr double kUint64Boundary = 18446744073709551616.0; ///< 2^64, sentinel f
                             bb ? bb->label : std::string());
     };
 
-    if (!std::isfinite(operand) || std::signbit(operand))
-    {
+    if (!std::isfinite(operand) || std::signbit(operand)) {
         trap(TrapKind::InvalidCast, kInvalidOperandMessage);
     }
 
-    if (operand >= kUint64Boundary)
-    {
+    if (operand >= kUint64Boundary) {
         trap(TrapKind::Overflow, kOverflowMessage);
     }
 
     double integral = 0.0;
     const double fractional = std::modf(operand, &integral);
 
-    if (fractional > 0.5)
-    {
+    if (fractional > 0.5) {
         integral += 1.0;
-    }
-    else if (fractional == 0.5)
-    {
-        if (std::fmod(integral, 2.0) != 0.0)
-        {
+    } else if (fractional == 0.5) {
+        if (std::fmod(integral, 2.0) != 0.0) {
             integral += 1.0;
         }
     }
 
-    if (integral >= kUint64Boundary)
-    {
+    if (integral >= kUint64Boundary) {
         trap(TrapKind::Overflow, kOverflowMessage);
     }
 
@@ -132,8 +121,7 @@ VM::ExecResult handleFAdd(VM &vm,
                           const Instr &in,
                           const VM::BlockMap &blocks,
                           const BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -158,16 +146,13 @@ VM::ExecResult handleFSub(VM &vm,
                           const Instr &in,
                           const VM::BlockMap &blocks,
                           const BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.f64 = lhsVal.f64 - rhsVal.f64; });
+    return ops::applyBinary(vm, fr, in, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal) {
+        out.f64 = lhsVal.f64 - rhsVal.f64;
+    });
 }
 
 /// @brief Execute the `fmul` opcode by multiplying two floating-point operands.
@@ -188,16 +173,13 @@ VM::ExecResult handleFMul(VM &vm,
                           const Instr &in,
                           const VM::BlockMap &blocks,
                           const BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.f64 = lhsVal.f64 * rhsVal.f64; });
+    return ops::applyBinary(vm, fr, in, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal) {
+        out.f64 = lhsVal.f64 * rhsVal.f64;
+    });
 }
 
 /// @brief Execute the `fdiv` opcode by dividing two floating-point operands.
@@ -218,16 +200,13 @@ VM::ExecResult handleFDiv(VM &vm,
                           const Instr &in,
                           const VM::BlockMap &blocks,
                           const BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            { out.f64 = lhsVal.f64 / rhsVal.f64; });
+    return ops::applyBinary(vm, fr, in, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal) {
+        out.f64 = lhsVal.f64 / rhsVal.f64;
+    });
 }
 
 /// @brief Execute the `fcmp.eq` opcode and record whether operands compare equal.
@@ -248,16 +227,13 @@ VM::ExecResult handleFCmpEQ(VM &vm,
                             const Instr &in,
                             const VM::BlockMap &blocks,
                             const BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(vm,
-                             fr,
-                             in,
-                             [](const Slot &lhsVal, const Slot &rhsVal)
-                             { return lhsVal.f64 == rhsVal.f64; });
+    return ops::applyCompare(vm, fr, in, [](const Slot &lhsVal, const Slot &rhsVal) {
+        return lhsVal.f64 == rhsVal.f64;
+    });
 }
 
 /// @brief Execute the `fcmp.ne` opcode and record whether operands differ.
@@ -278,16 +254,13 @@ VM::ExecResult handleFCmpNE(VM &vm,
                             const Instr &in,
                             const VM::BlockMap &blocks,
                             const BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(vm,
-                             fr,
-                             in,
-                             [](const Slot &lhsVal, const Slot &rhsVal)
-                             { return lhsVal.f64 != rhsVal.f64; });
+    return ops::applyCompare(vm, fr, in, [](const Slot &lhsVal, const Slot &rhsVal) {
+        return lhsVal.f64 != rhsVal.f64;
+    });
 }
 
 /// @brief Execute the `fcmp.gt` opcode and record whether lhs > rhs.
@@ -307,8 +280,7 @@ VM::ExecResult handleFCmpGT(VM &vm,
                             const Instr &in,
                             const VM::BlockMap &blocks,
                             const BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -333,8 +305,7 @@ VM::ExecResult handleFCmpLT(VM &vm,
                             const Instr &in,
                             const VM::BlockMap &blocks,
                             const BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -360,16 +331,13 @@ VM::ExecResult handleFCmpLE(VM &vm,
                             const Instr &in,
                             const VM::BlockMap &blocks,
                             const BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(vm,
-                             fr,
-                             in,
-                             [](const Slot &lhsVal, const Slot &rhsVal)
-                             { return lhsVal.f64 <= rhsVal.f64; });
+    return ops::applyCompare(vm, fr, in, [](const Slot &lhsVal, const Slot &rhsVal) {
+        return lhsVal.f64 <= rhsVal.f64;
+    });
 }
 
 /// @brief Execute the `fcmp.ge` opcode and record whether lhs >= rhs.
@@ -389,16 +357,13 @@ VM::ExecResult handleFCmpGE(VM &vm,
                             const Instr &in,
                             const VM::BlockMap &blocks,
                             const BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(vm,
-                             fr,
-                             in,
-                             [](const Slot &lhsVal, const Slot &rhsVal)
-                             { return lhsVal.f64 >= rhsVal.f64; });
+    return ops::applyCompare(vm, fr, in, [](const Slot &lhsVal, const Slot &rhsVal) {
+        return lhsVal.f64 >= rhsVal.f64;
+    });
 }
 
 /// @brief Execute the `fcmp_ord` opcode to test if both operands are ordered.
@@ -417,16 +382,13 @@ VM::ExecResult handleFCmpOrd(VM &vm,
                              const Instr &in,
                              const VM::BlockMap &blocks,
                              const BasicBlock *&bb,
-                             size_t &ip)
-{
+                             size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(vm,
-                             fr,
-                             in,
-                             [](const Slot &lhsVal, const Slot &rhsVal)
-                             { return !std::isnan(lhsVal.f64) && !std::isnan(rhsVal.f64); });
+    return ops::applyCompare(vm, fr, in, [](const Slot &lhsVal, const Slot &rhsVal) {
+        return !std::isnan(lhsVal.f64) && !std::isnan(rhsVal.f64);
+    });
 }
 
 /// @brief Execute the `fcmp_uno` opcode to test if either operand is unordered (NaN).
@@ -445,16 +407,13 @@ VM::ExecResult handleFCmpUno(VM &vm,
                              const Instr &in,
                              const VM::BlockMap &blocks,
                              const BasicBlock *&bb,
-                             size_t &ip)
-{
+                             size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyCompare(vm,
-                             fr,
-                             in,
-                             [](const Slot &lhsVal, const Slot &rhsVal)
-                             { return std::isnan(lhsVal.f64) || std::isnan(rhsVal.f64); });
+    return ops::applyCompare(vm, fr, in, [](const Slot &lhsVal, const Slot &rhsVal) {
+        return std::isnan(lhsVal.f64) || std::isnan(rhsVal.f64);
+    });
 }
 
 /// @brief Execute the `sitofp` opcode by converting a signed 64-bit integer to `double`.
@@ -475,8 +434,7 @@ VM::ExecResult handleSitofp(VM &vm,
                             const Instr &in,
                             const VM::BlockMap &blocks,
                             const BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -504,15 +462,13 @@ VM::ExecResult handleFptosi(VM &vm,
                             const Instr &in,
                             const VM::BlockMap &blocks,
                             const BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)blocks;
     (void)ip;
     Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     const double operand = value.f64;
 
-    if (!std::isfinite(operand))
-    {
+    if (!std::isfinite(operand)) {
         RuntimeBridge::trap(TrapKind::InvalidCast,
                             "invalid fp operand in fptosi",
                             in.loc,
@@ -522,8 +478,7 @@ VM::ExecResult handleFptosi(VM &vm,
 
     constexpr double kMin = static_cast<double>(std::numeric_limits<int64_t>::min());
     constexpr double kMax = static_cast<double>(std::numeric_limits<int64_t>::max());
-    if (operand < kMin || operand > kMax)
-    {
+    if (operand < kMin || operand > kMax) {
         RuntimeBridge::trap(TrapKind::Overflow,
                             "fp overflow in fptosi",
                             in.loc,
@@ -559,14 +514,12 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
                                       const BasicBlock *&bb,
-                                      size_t &ip)
-{
+                                      size_t &ip) {
     (void)blocks;
     (void)ip;
     const Slot value = VMAccess::eval(vm, fr, in.operands[0]);
     const double operand = value.f64;
-    if (!std::isfinite(operand))
-    {
+    if (!std::isfinite(operand)) {
         RuntimeBridge::trap(TrapKind::InvalidCast,
                             "invalid fp operand in cast.fp_to_si.rte.chk",
                             in.loc,
@@ -575,8 +528,7 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
     }
 
     const double rounded = std::nearbyint(operand);
-    if (!std::isfinite(rounded))
-    {
+    if (!std::isfinite(rounded)) {
         RuntimeBridge::trap(TrapKind::Overflow,
                             "fp overflow in cast.fp_to_si.rte.chk",
                             in.loc,
@@ -586,8 +538,7 @@ VM::ExecResult handleCastFpToSiRteChk(VM &vm,
 
     constexpr double kMin = static_cast<double>(std::numeric_limits<int64_t>::min());
     constexpr double kMax = static_cast<double>(std::numeric_limits<int64_t>::max());
-    if (rounded < kMin || rounded > kMax)
-    {
+    if (rounded < kMin || rounded > kMax) {
         RuntimeBridge::trap(TrapKind::Overflow,
                             "fp overflow in cast.fp_to_si.rte.chk",
                             in.loc,
@@ -621,8 +572,7 @@ VM::ExecResult handleCastFpToUiRteChk(VM &vm,
                                       const Instr &in,
                                       const VM::BlockMap &blocks,
                                       const BasicBlock *&bb,
-                                      size_t &ip)
-{
+                                      size_t &ip) {
     (void)blocks;
     (void)ip;
     const Slot value = VMAccess::eval(vm, fr, in.operands[0]);

@@ -25,8 +25,7 @@
 #include "InstallerStub.hpp"
 #include "InstallerStubGen.hpp"
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 // ============================================================================
 // Import slot indices — order must match the PEImport arrays below.
@@ -36,8 +35,7 @@ namespace viper::pkg
 // compute absolute RVAs when the builder wires everything together.
 // ============================================================================
 
-namespace
-{
+namespace {
 
 // ---------- Installer import layout ----------
 // kernel32.dll (index 0-11):
@@ -65,8 +63,7 @@ namespace
 // user32.dll (index 16):
 //  16: MessageBoxW
 
-std::vector<PEImport> installerImports()
-{
+std::vector<PEImport> installerImports() {
     return {
         {"kernel32.dll",
          {"ExitProcess",
@@ -111,8 +108,7 @@ std::vector<PEImport> installerImports()
 // user32.dll (index 14):
 //  14: MessageBoxW
 
-std::vector<PEImport> uninstallerImports()
-{
+std::vector<PEImport> uninstallerImports() {
     return {
         {"kernel32.dll",
          {"ExitProcess",
@@ -140,14 +136,11 @@ std::vector<PEImport> uninstallerImports()
 /// @param imports  The import list.
 /// @param iatBaseRVA  The base RVA of the IAT section.
 /// @param flatIndex   The flat function index (across all DLLs).
-uint32_t iatSlotRVA(const std::vector<PEImport> &imports, uint32_t iatBaseRVA, int flatIndex)
-{
+uint32_t iatSlotRVA(const std::vector<PEImport> &imports, uint32_t iatBaseRVA, int flatIndex) {
     uint32_t offset = 0;
     int idx = 0;
-    for (const auto &dll : imports)
-    {
-        for (size_t f = 0; f < dll.functions.size(); ++f)
-        {
+    for (const auto &dll : imports) {
+        for (size_t f = 0; f < dll.functions.size(); ++f) {
             if (idx == flatIndex)
                 return iatBaseRVA + offset;
             offset += 8;
@@ -177,8 +170,7 @@ constexpr uint32_t kFrameSize = 0x440;
 
 /// @brief Compute the IAT offset within the .rdata section for a given import list.
 /// Mirrors the layout computed by PEBuilder::buildImportTables().
-uint32_t computeIATOffset(const std::vector<PEImport> &imports)
-{
+uint32_t computeIATOffset(const std::vector<PEImport> &imports) {
     if (imports.empty())
         return 0;
 
@@ -188,8 +180,7 @@ uint32_t computeIATOffset(const std::vector<PEImport> &imports)
         iltSize += static_cast<uint32_t>((imp.functions.size() + 1) * 8);
     uint32_t hintNameSize = 0;
     for (const auto &imp : imports)
-        for (const auto &fn : imp.functions)
-        {
+        for (const auto &fn : imp.functions) {
             uint32_t entryLen = static_cast<uint32_t>(2 + fn.size() + 1);
             hintNameSize += (entryLen + 1) & ~1u; // alignUp to 2
         }
@@ -213,8 +204,7 @@ uint32_t computeIATOffset(const std::vector<PEImport> &imports)
 /// Note: This only works correctly when stubs are < 4096 bytes and the PE
 /// has exactly the import tables we specify. PEBuilder's section layout
 /// must match these assumptions.
-void finalizeStubRVAs(StubResult &stub, InstallerStubGen &gen)
-{
+void finalizeStubRVAs(StubResult &stub, InstallerStubGen &gen) {
     constexpr uint32_t textRVA = 0x1000;
     constexpr uint32_t rdataRVA = 0x2000;
 
@@ -254,8 +244,7 @@ void finalizeStubRVAs(StubResult &stub, InstallerStubGen &gen)
 // ============================================================================
 
 // Installer IAT flat indices (must match installerImports() order):
-enum InstallerIAT : uint32_t
-{
+enum InstallerIAT : uint32_t {
     kI_ExitProcess = 0,
     kI_GetModuleFileNameW = 1,
     kI_CreateFileW = 2,
@@ -277,13 +266,11 @@ enum InstallerIAT : uint32_t
 
 StubResult buildInstallerStub(const std::string &displayName,
                               const std::string &installDir,
-                              const std::string &arch)
-{
+                              const std::string &arch) {
     StubResult result;
     result.imports = installerImports();
 
-    if (arch == "arm64")
-    {
+    if (arch == "arm64") {
         result.textSection = {0xC0, 0x03, 0x5F, 0xD6}; // ARM64 ret
         return result;
     }
@@ -399,8 +386,7 @@ StubResult buildInstallerStub(const std::string &displayName,
 // ============================================================================
 
 // Uninstaller IAT flat indices (must match uninstallerImports() order):
-enum UninstallerIAT : uint32_t
-{
+enum UninstallerIAT : uint32_t {
     kU_ExitProcess = 0,
     kU_GetModuleFileNameW = 1,
     kU_CreateFileW = 2,
@@ -418,13 +404,11 @@ enum UninstallerIAT : uint32_t
     kU_MessageBoxW = 14,
 };
 
-StubResult buildUninstallerStub(const std::string &displayName, const std::string &arch)
-{
+StubResult buildUninstallerStub(const std::string &displayName, const std::string &arch) {
     StubResult result;
     result.imports = uninstallerImports();
 
-    if (arch == "arm64")
-    {
+    if (arch == "arm64") {
         result.textSection = {0xC0, 0x03, 0x5F, 0xD6}; // ARM64 ret
         return result;
     }

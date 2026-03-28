@@ -34,8 +34,7 @@ extern void rt_trap(const char *msg);
 // Internal Structure
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *tcp; // TCP connection
     char *host;
     int port;
@@ -45,8 +44,7 @@ typedef struct
     int8_t use_tls;
 } rt_smtp_impl;
 
-static void rt_smtp_finalize(void *obj)
-{
+static void rt_smtp_finalize(void *obj) {
     if (!obj)
         return;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
@@ -62,17 +60,14 @@ static void rt_smtp_finalize(void *obj)
 // SMTP Helpers
 //=============================================================================
 
-static void set_error(rt_smtp_impl *s, const char *msg)
-{
+static void set_error(rt_smtp_impl *s, const char *msg) {
     free(s->last_error);
     s->last_error = strdup(msg);
 }
 
 /// @brief Send a command and read the response code.
-static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code)
-{
-    if (cmd)
-    {
+static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code) {
+    if (cmd) {
         rt_string cmd_str = rt_string_from_bytes(cmd, strlen(cmd));
         rt_tcp_send_str(s->tcp, cmd_str);
         rt_string_unref(cmd_str);
@@ -80,8 +75,7 @@ static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code)
 
     // Read response line(s)
     rt_string line = rt_tcp_recv_line(s->tcp);
-    if (!line)
-    {
+    if (!line) {
         set_error(s, "SMTP: no response");
         return -1;
     }
@@ -90,8 +84,7 @@ static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code)
     rt_string_unref(line);
 
     // Drain multi-line responses (line[3] == '-')
-    while (l && strlen(l) > 3 && l[3] == '-')
-    {
+    while (l && strlen(l) > 3 && l[3] == '-') {
         line = rt_tcp_recv_line(s->tcp);
         if (!line)
             break;
@@ -99,8 +92,7 @@ static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code)
         rt_string_unref(line);
     }
 
-    if (expected_code > 0 && code != expected_code)
-    {
+    if (expected_code > 0 && code != expected_code) {
         char err[128];
         snprintf(err, sizeof(err), "SMTP: expected %d, got %d", expected_code, code);
         set_error(s, err);
@@ -114,8 +106,7 @@ static int smtp_command(rt_smtp_impl *s, const char *cmd, int expected_code)
 // Public API
 //=============================================================================
 
-void *rt_smtp_new(rt_string host, int64_t port)
-{
+void *rt_smtp_new(rt_string host, int64_t port) {
     const char *h = rt_string_cstr(host);
     if (!h || port < 1 || port > 65535)
         rt_trap("SmtpClient: invalid host or port");
@@ -131,8 +122,7 @@ void *rt_smtp_new(rt_string host, int64_t port)
     return s;
 }
 
-void rt_smtp_set_auth(void *obj, rt_string username, rt_string password)
-{
+void rt_smtp_set_auth(void *obj, rt_string username, rt_string password) {
     if (!obj)
         return;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
@@ -144,22 +134,19 @@ void rt_smtp_set_auth(void *obj, rt_string username, rt_string password)
     s->password = p ? strdup(p) : NULL;
 }
 
-void rt_smtp_set_tls(void *obj, int8_t enable)
-{
+void rt_smtp_set_tls(void *obj, int8_t enable) {
     if (!obj)
         return;
     ((rt_smtp_impl *)obj)->use_tls = enable;
 }
 
-static int smtp_connect_and_handshake(rt_smtp_impl *s)
-{
+static int smtp_connect_and_handshake(rt_smtp_impl *s) {
     // Connect
     rt_string host_str = rt_string_from_bytes(s->host, strlen(s->host));
     s->tcp = rt_tcp_connect_for(host_str, s->port, 30000);
     rt_string_unref(host_str);
 
-    if (!s->tcp || !rt_tcp_is_open(s->tcp))
-    {
+    if (!s->tcp || !rt_tcp_is_open(s->tcp)) {
         set_error(s, "SMTP: connection failed");
         return -1;
     }
@@ -177,8 +164,7 @@ static int smtp_connect_and_handshake(rt_smtp_impl *s)
         return -1;
 
     // AUTH LOGIN if credentials provided
-    if (s->username && s->password)
-    {
+    if (s->username && s->password) {
         if (smtp_command(s, "AUTH LOGIN\r\n", 334) < 0)
             return -1;
 
@@ -215,8 +201,7 @@ static int smtp_send_message(rt_smtp_impl *s,
                              const char *to,
                              const char *subject,
                              const char *body,
-                             const char *content_type)
-{
+                             const char *content_type) {
     char cmd[1024];
 
     // MAIL FROM
@@ -236,8 +221,7 @@ static int smtp_send_message(rt_smtp_impl *s,
     // Build MIME message
     size_t msg_cap = 1024 + strlen(body);
     char *msg = (char *)malloc(msg_cap);
-    if (!msg)
-    {
+    if (!msg) {
         set_error(s, "SMTP: OOM");
         return -1;
     }
@@ -268,8 +252,7 @@ static int smtp_send_message(rt_smtp_impl *s,
     return 0;
 }
 
-int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, rt_string body)
-{
+int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, rt_string body) {
     if (!obj)
         return 0;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
@@ -294,8 +277,7 @@ int8_t rt_smtp_send(void *obj, rt_string from, rt_string to, rt_string subject, 
 }
 
 int8_t rt_smtp_send_html(
-    void *obj, rt_string from, rt_string to, rt_string subject, rt_string html_body)
-{
+    void *obj, rt_string from, rt_string to, rt_string subject, rt_string html_body) {
     if (!obj)
         return 0;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
@@ -318,8 +300,7 @@ int8_t rt_smtp_send_html(
     return result == 0 ? 1 : 0;
 }
 
-rt_string rt_smtp_last_error(void *obj)
-{
+rt_string rt_smtp_last_error(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
@@ -327,13 +308,11 @@ rt_string rt_smtp_last_error(void *obj)
     return rt_string_from_bytes(e, strlen(e));
 }
 
-void rt_smtp_close(void *obj)
-{
+void rt_smtp_close(void *obj) {
     if (!obj)
         return;
     rt_smtp_impl *s = (rt_smtp_impl *)obj;
-    if (s->tcp)
-    {
+    if (s->tcp) {
         rt_tcp_close(s->tcp);
         s->tcp = NULL;
     }

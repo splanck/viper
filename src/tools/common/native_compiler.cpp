@@ -26,18 +26,15 @@
 #include <unistd.h>
 #endif
 
-namespace viper::tools
-{
+namespace viper::tools {
 
 /// @brief Is native output path.
-bool isNativeOutputPath(const std::string &path)
-{
+bool isNativeOutputPath(const std::string &path) {
     return std::filesystem::path(path).extension() != ".il";
 }
 
 /// @brief Generate temp il path.
-std::string generateTempIlPath()
-{
+std::string generateTempIlPath() {
     auto dir = std::filesystem::temp_directory_path();
 #ifdef _WIN32
     auto pid = _getpid();
@@ -48,10 +45,8 @@ std::string generateTempIlPath()
 }
 
 /// @brief Compile to native.
-int compileToNative(const std::string &ilPath, const std::string &outputPath, TargetArch arch)
-{
-    if (arch == TargetArch::ARM64)
-    {
+int compileToNative(const std::string &ilPath, const std::string &outputPath, TargetArch arch) {
+    if (arch == TargetArch::ARM64) {
         // The frontend already emitted the final IL. Do not re-run an IL
         // optimization pipeline here; that can double-optimize build output
         // and introduce correctness regressions.

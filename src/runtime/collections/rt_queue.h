@@ -30,63 +30,62 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Create a new empty queue with default capacity.
-    /// @return Opaque pointer to the new Queue object.
-    void *rt_queue_new(void);
+/// @brief Create a new empty queue with default capacity.
+/// @return Opaque pointer to the new Queue object.
+void *rt_queue_new(void);
 
-    /// @brief Get the number of elements in the queue.
-    /// @param obj Opaque Queue object pointer.
-    /// @return Number of elements currently in the queue.
-    int64_t rt_queue_len(void *obj);
+/// @brief Get the number of elements in the queue.
+/// @param obj Opaque Queue object pointer.
+/// @return Number of elements currently in the queue.
+int64_t rt_queue_len(void *obj);
 
-    /// @brief Check if the queue is empty.
-    /// @param obj Opaque Queue object pointer.
-    /// @return 1 if empty, 0 otherwise.
-    int8_t rt_queue_is_empty(void *obj);
+/// @brief Check if the queue is empty.
+/// @param obj Opaque Queue object pointer.
+/// @return 1 if empty, 0 otherwise.
+int8_t rt_queue_is_empty(void *obj);
 
-    /// @brief Push an element to the back of the queue.
-    /// @param obj Opaque Queue object pointer.
-    /// @param elem Element to push.
-    void rt_queue_push(void *obj, void *elem);
+/// @brief Push an element to the back of the queue.
+/// @param obj Opaque Queue object pointer.
+/// @param elem Element to push.
+void rt_queue_push(void *obj, void *elem);
 
-    /// @brief Pop and return the front element from the queue.
-    /// @param obj Opaque Queue object pointer.
-    /// @return The removed element; traps if empty.
-    void *rt_queue_pop(void *obj);
+/// @brief Pop and return the front element from the queue.
+/// @param obj Opaque Queue object pointer.
+/// @return The removed element; traps if empty.
+void *rt_queue_pop(void *obj);
 
-    /// @brief Return the front element without removing it.
-    /// @param obj Opaque Queue object pointer.
-    /// @return The front element; traps if empty.
-    void *rt_queue_peek(void *obj);
+/// @brief Return the front element without removing it.
+/// @param obj Opaque Queue object pointer.
+/// @return The front element; traps if empty.
+void *rt_queue_peek(void *obj);
 
-    /// @brief Remove all elements from the queue.
-    /// @param obj Opaque Queue object pointer.
-    void rt_queue_clear(void *obj);
+/// @brief Remove all elements from the queue.
+/// @param obj Opaque Queue object pointer.
+void rt_queue_clear(void *obj);
 
-    /// @brief Check if the queue contains a given element (pointer equality).
-    /// @param obj Opaque Queue object pointer.
-    /// @param elem Element to search for.
-    /// @return 1 if found, 0 otherwise.
-    int8_t rt_queue_has(void *obj, void *elem);
+/// @brief Check if the queue contains a given element (pointer equality).
+/// @param obj Opaque Queue object pointer.
+/// @param elem Element to search for.
+/// @return 1 if found, 0 otherwise.
+int8_t rt_queue_has(void *obj, void *elem);
 
-    /// @brief Convert the queue to a List (front-to-back order).
-    /// @param obj Opaque Queue object pointer.
-    /// @return New List containing all elements.
-    void *rt_queue_to_list(void *obj);
+/// @brief Convert the queue to a List (front-to-back order).
+/// @param obj Opaque Queue object pointer.
+/// @return New List containing all elements.
+void *rt_queue_to_list(void *obj);
 
-    /// @brief Pop the front element, or return NULL if empty (no trap).
-    /// @param obj Opaque Queue object pointer.
-    /// @return The removed element, or NULL if empty.
-    void *rt_queue_try_pop(void *obj);
+/// @brief Pop the front element, or return NULL if empty (no trap).
+/// @param obj Opaque Queue object pointer.
+/// @return The removed element, or NULL if empty.
+void *rt_queue_try_pop(void *obj);
 
-    /// @brief Create a shallow copy of the queue.
-    /// @param obj Source Queue pointer.
-    /// @return New queue with same elements in same order.
-    void *rt_queue_clone(void *obj);
+/// @brief Create a shallow copy of the queue.
+/// @param obj Source Queue pointer.
+/// @return New queue with same elements in same order.
+void *rt_queue_clone(void *obj);
 
 #ifdef __cplusplus
 }

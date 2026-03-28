@@ -27,13 +27,11 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 // Build a function with a self-loop: entry -> header -> header (back edge)
 //                                                  \-> exit
-Module buildSelfLoopModule()
-{
+Module buildSelfLoopModule() {
     Module module;
     Function fn;
     fn.name = "self_loop";
@@ -76,8 +74,7 @@ Module buildSelfLoopModule()
 
 // Build a function with a normal loop: entry -> header -> body -> header
 //                                                  \-> exit
-Module buildNormalLoopModule()
-{
+Module buildNormalLoopModule() {
     Module module;
     Function fn;
     fn.name = "normal_loop";
@@ -128,11 +125,9 @@ Module buildNormalLoopModule()
 }
 
 /// @brief Has duplicates.
-bool hasDuplicates(const std::vector<std::string> &vec)
-{
+bool hasDuplicates(const std::vector<std::string> &vec) {
     std::unordered_set<std::string> seen;
-    for (const auto &s : vec)
-    {
+    for (const auto &s : vec) {
         if (!seen.insert(s).second)
             return true;
     }
@@ -143,8 +138,7 @@ bool hasDuplicates(const std::vector<std::string> &vec)
 
 // The fix ensures latch blocks are not added to blockLabels twice
 // when the latch is the header itself (self-loop)
-TEST(LoopInfo, SelfLoopNoDuplicateBlockLabels)
-{
+TEST(LoopInfo, SelfLoopNoDuplicateBlockLabels) {
     Module module = buildSelfLoopModule();
     Function &fn = module.functions.front();
 
@@ -163,8 +157,7 @@ TEST(LoopInfo, SelfLoopNoDuplicateBlockLabels)
 }
 
 // Normal loop with separate latch block should also have no duplicates
-TEST(LoopInfo, NormalLoopNoDuplicateBlockLabels)
-{
+TEST(LoopInfo, NormalLoopNoDuplicateBlockLabels) {
     Module module = buildNormalLoopModule();
     Function &fn = module.functions.front();
 
@@ -190,8 +183,7 @@ TEST(LoopInfo, NormalLoopNoDuplicateBlockLabels)
 }
 
 // Verify blockLabels count matches expected
-TEST(LoopInfo, SelfLoopBlockCount)
-{
+TEST(LoopInfo, SelfLoopBlockCount) {
     Module module = buildSelfLoopModule();
     Function &fn = module.functions.front();
 
@@ -204,8 +196,7 @@ TEST(LoopInfo, SelfLoopBlockCount)
     EXPECT_EQ(loop.blockLabels.size(), 1U);
 }
 
-TEST(LoopInfo, NormalLoopBlockCount)
-{
+TEST(LoopInfo, NormalLoopBlockCount) {
     Module module = buildNormalLoopModule();
     Function &fn = module.functions.front();
 
@@ -218,8 +209,7 @@ TEST(LoopInfo, NormalLoopBlockCount)
     EXPECT_EQ(loop.blockLabels.size(), 2U);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

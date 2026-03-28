@@ -37,87 +37,71 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
-namespace
-{
+namespace il::transform {
+namespace {
 
 /// @brief Represents an incoming CFG edge using stable indices instead of pointers.
 /// @details Using indices into function.blocks avoids pointer invalidation when
 ///          blocks are added to the function. The blockIdx field indexes into
 ///          function.blocks, and edgeIdx indexes into the terminator's labels.
-struct IncomingEdge
-{
+struct IncomingEdge {
     size_t blockIdx;
     size_t edgeIdx;
 };
 
 /// @brief Finds the index of a block with the given label in function.blocks.
 /// @return The index if found, or SIZE_MAX if not found.
-size_t findBlockIndex(const Function &function, const std::string &label)
-{
-    for (size_t i = 0; i < function.blocks.size(); ++i)
-    {
+size_t findBlockIndex(const Function &function, const std::string &label) {
+    for (size_t i = 0; i < function.blocks.size(); ++i) {
         if (function.blocks[i].label == label)
             return i;
     }
     return SIZE_MAX;
 }
 
-Instr *getTerminator(BasicBlock &block)
-{
+Instr *getTerminator(BasicBlock &block) {
     return il::transform::simplify_cfg::findTerminator(block);
 }
 
-const Instr *getTerminator(const BasicBlock &block)
-{
+const Instr *getTerminator(const BasicBlock &block) {
     return il::transform::simplify_cfg::findTerminator(block);
 }
 
-BasicBlock *findBlock(Function &function, const std::string &label)
-{
+BasicBlock *findBlock(Function &function, const std::string &label) {
     return viper::il::findBlock(function, label);
 }
 
-static inline unsigned nextTempId(Function &function)
-{
+static inline unsigned nextTempId(Function &function) {
     return viper::il::nextTempId(function);
 }
 
-std::string makeUniqueLabel(const Function &function, const std::string &base)
-{
+std::string makeUniqueLabel(const Function &function, const std::string &base) {
     std::string candidate = base;
     unsigned suffix = 0;
-    auto labelExists = [&](const std::string &label)
-    {
-        for (const auto &block : function.blocks)
-        {
+    auto labelExists = [&](const std::string &label) {
+        for (const auto &block : function.blocks) {
             if (block.label == label)
                 return true;
         }
         return false;
     };
 
-    while (labelExists(candidate))
-    {
+    while (labelExists(candidate)) {
         candidate = base + "." + std::to_string(++suffix);
     }
     return candidate;
 }
 
 // Use shared equality from SimplifyCFG utilities to avoid divergence.
-static inline bool valuesEqual(const Value &lhs, const Value &rhs)
-{
+static inline bool valuesEqual(const Value &lhs, const Value &rhs) {
     return il::transform::simplify_cfg::valuesEqual(lhs, rhs);
 }
 
-static inline bool valueVectorsEqual(const std::vector<Value> &lhs, const std::vector<Value> &rhs)
-{
+static inline bool valueVectorsEqual(const std::vector<Value> &lhs, const std::vector<Value> &rhs) {
     return il::transform::simplify_cfg::valueVectorsEqual(lhs, rhs);
 }
 
-bool ensurePreheader(Function &function, const Loop &loop)
-{
+bool ensurePreheader(Function &function, const Loop &loop) {
     size_t headerIdx = findBlockIndex(function, loop.headerLabel);
     if (headerIdx == SIZE_MAX)
         return false;
@@ -130,14 +114,12 @@ bool ensurePreheader(Function &function, const Loop &loop)
     // Collect edges from outside the loop that target the header.
     // Store block indices instead of pointers to survive vector reallocation.
     std::vector<IncomingEdge> outsideEdges;
-    for (size_t blockIdx = 0; blockIdx < function.blocks.size(); ++blockIdx)
-    {
+    for (size_t blockIdx = 0; blockIdx < function.blocks.size(); ++blockIdx) {
         BasicBlock &block = function.blocks[blockIdx];
         Instr *term = getTerminator(block);
         if (!term)
             continue;
-        for (size_t edgeIdx = 0; edgeIdx < term->labels.size(); ++edgeIdx)
-        {
+        for (size_t edgeIdx = 0; edgeIdx < term->labels.size(); ++edgeIdx) {
             if (term->labels[edgeIdx] != headerLabel)
                 continue;
             if (loop.contains(block.label))
@@ -152,8 +134,7 @@ bool ensurePreheader(Function &function, const Loop &loop)
     // Check if there's already a dedicated preheader (single predecessor with
     // unconditional branch to header).
     bool hasDedicatedPreheader = false;
-    if (outsideEdges.size() == 1)
-    {
+    if (outsideEdges.size() == 1) {
         const auto &edge = outsideEdges.front();
         const Instr *term = getTerminator(function.blocks[edge.blockIdx]);
         hasDedicatedPreheader =
@@ -172,8 +153,7 @@ bool ensurePreheader(Function &function, const Loop &loop)
 
     unsigned id = nextTempId(function);
     preheader.params.reserve(headerParams.size());
-    for (const auto &param : headerParams)
-    {
+    for (const auto &param : headerParams) {
         Param clone = param;
         clone.id = id++;
         preheader.params.push_back(clone);
@@ -197,8 +177,7 @@ bool ensurePreheader(Function &function, const Loop &loop)
 
     // Redirect outside edges to the new preheader.
     // Use indices to access blocks safely even after potential reallocation.
-    for (const auto &edge : outsideEdges)
-    {
+    for (const auto &edge : outsideEdges) {
         Instr *term = getTerminator(function.blocks[edge.blockIdx]);
         if (!term)
             continue;
@@ -209,8 +188,7 @@ bool ensurePreheader(Function &function, const Loop &loop)
     return true;
 }
 
-bool mergeTrivialLatches(Function &function, const Loop &loop)
-{
+bool mergeTrivialLatches(Function &function, const Loop &loop) {
     if (loop.latchLabels.size() <= 1)
         return false;
 
@@ -225,8 +203,7 @@ bool mergeTrivialLatches(Function &function, const Loop &loop)
     // Collect latch block indices instead of pointers to survive vector reallocation.
     std::vector<size_t> latchIndices;
     latchIndices.reserve(loop.latchLabels.size());
-    for (const auto &label : loop.latchLabels)
-    {
+    for (const auto &label : loop.latchLabels) {
         size_t idx = findBlockIndex(function, label);
         if (idx != SIZE_MAX)
             latchIndices.push_back(idx);
@@ -240,8 +217,7 @@ bool mergeTrivialLatches(Function &function, const Loop &loop)
     std::vector<Value> canonicalArgs;
     canonicalArgs.reserve(headerParams.size());
 
-    for (size_t i = 0; i < latchIndices.size(); ++i)
-    {
+    for (size_t i = 0; i < latchIndices.size(); ++i) {
         const BasicBlock &latch = function.blocks[latchIndices[i]];
         const Instr *term = getTerminator(latch);
         if (!term || term->op != Opcode::Br)
@@ -253,12 +229,9 @@ bool mergeTrivialLatches(Function &function, const Loop &loop)
         std::vector<Value> args;
         if (!term->brArgs.empty())
             args = term->brArgs.front();
-        if (i == 0)
-        {
+        if (i == 0) {
             canonicalArgs = args;
-        }
-        else if (!valueVectorsEqual(canonicalArgs, args))
-        {
+        } else if (!valueVectorsEqual(canonicalArgs, args)) {
             return false;
         }
     }
@@ -272,8 +245,7 @@ bool mergeTrivialLatches(Function &function, const Loop &loop)
 
     unsigned id = nextTempId(function);
     newLatch.params.reserve(headerParams.size());
-    for (const auto &param : headerParams)
-    {
+    for (const auto &param : headerParams) {
         Param clone = param;
         clone.id = id++;
         newLatch.params.push_back(clone);
@@ -297,8 +269,7 @@ bool mergeTrivialLatches(Function &function, const Loop &loop)
 
     // Redirect all latch branches to the new merged latch.
     // Use indices to access blocks safely even after potential reallocation.
-    for (size_t latchIdx : latchIndices)
-    {
+    for (size_t latchIdx : latchIndices) {
         Instr *term = getTerminator(function.blocks[latchIdx]);
         if (!term)
             continue;
@@ -315,20 +286,17 @@ bool mergeTrivialLatches(Function &function, const Loop &loop)
 
 } // namespace
 
-std::string_view LoopSimplify::id() const
-{
+std::string_view LoopSimplify::id() const {
     return "loop-simplify";
 }
 
-PreservedAnalyses LoopSimplify::run(Function &function, AnalysisManager &analysis)
-{
+PreservedAnalyses LoopSimplify::run(Function &function, AnalysisManager &analysis) {
     [[maybe_unused]] auto &domTree =
         analysis.getFunctionResult<viper::analysis::DomTree>(kAnalysisDominators, function);
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
 
     bool changed = false;
-    for (const Loop &loop : loopInfo.loops())
-    {
+    for (const Loop &loop : loopInfo.loops()) {
         changed |= ensurePreheader(function, loop);
         changed |= mergeTrivialLatches(function, loop);
     }

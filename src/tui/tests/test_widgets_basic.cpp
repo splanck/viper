@@ -33,8 +33,7 @@ using viper::tui::ui::Event;
 using viper::tui::widgets::Button;
 using viper::tui::widgets::Label;
 
-TEST(TUI, WidgetsBasic)
-{
+TEST(TUI, WidgetsBasic) {
     Theme theme;
 
     // Label paint
@@ -75,8 +74,7 @@ TEST(TUI, WidgetsBasic)
     ASSERT_TRUE(clicked);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

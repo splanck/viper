@@ -13,18 +13,15 @@
 #include "viper/version.hpp"
 #include <iostream>
 
-namespace vbasic
-{
+namespace vbasic {
 
-void printVersion()
-{
+void printVersion() {
     std::cout << "vbasic v" << VIPER_VERSION_STR << "\n";
     std::cout << "Viper BASIC Interpreter/Compiler\n";
     std::cout << "IL version: " << VIPER_IL_VERSION_STR << "\n";
 }
 
-void printUsage()
-{
+void printUsage() {
     std::cerr << "vbasic v" << VIPER_VERSION_STR << " - Viper BASIC Interpreter\n"
               << "\n"
               << "Usage: vbasic [options] <file.bas>\n"

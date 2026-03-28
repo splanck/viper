@@ -29,14 +29,12 @@
 #include <string_view>
 #include <unordered_set>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 /// @brief Individual warning codes for the Zia compiler.
 /// @details Each code corresponds to a specific class of suspicious-but-legal
 /// code that the compiler can detect and report.
-enum class WarningCode : uint16_t
-{
+enum class WarningCode : uint16_t {
     W001_UnusedVariable = 1,
     W002_UnreachableCode = 2,
     W003_ImplicitNarrowing = 3,
@@ -81,8 +79,7 @@ std::optional<WarningCode> parseWarningCode(std::string_view name);
 /// @details Default-constructed policy enables the conservative default set.
 /// Use `-Wall` to enable all warnings, `-Werror` to treat warnings as errors,
 /// and `-Wno-XXXX` to disable specific warnings.
-struct WarningPolicy
-{
+struct WarningPolicy {
     /// @brief Enable all warnings (corresponds to `-Wall`).
     bool enableAll{false};
 

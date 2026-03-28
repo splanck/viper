@@ -20,8 +20,7 @@
 #include <fstream>
 #include <sstream>
 
-int main()
-{
+int main() {
     const char *files[] = {EXAMPLES_DIR "/il/ex1_hello_cond.il",
                            EXAMPLES_DIR "/il/ex2_sum_1_to_10.il",
                            EXAMPLES_DIR "/il/ex3_table_5x5.il",
@@ -30,8 +29,7 @@ int main()
                            EXAMPLES_DIR "/il/ex6_heap_array_avg.il",
                            ROUNDTRIP_DIR "/block-params.il",
                            ROUNDTRIP_DIR "/zero-args-shorthand.il"};
-    for (const char *path : files)
-    {
+    for (const char *path : files) {
         std::ifstream in(path);
         std::stringstream buf;
         buf << in.rdbuf();

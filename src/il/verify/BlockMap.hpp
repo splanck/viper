@@ -25,29 +25,24 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace il::core
-{
+namespace il::core {
 struct BasicBlock;
 } // namespace il::core
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Transparent hash functor enabling heterogeneous lookup by string_view.
 /// @details The `is_transparent` tag allows std::unordered_map::find() to accept
 ///          std::string_view arguments without converting them to std::string,
 ///          eliminating temporary allocations on every lookup.
-struct BlockMapHash
-{
+struct BlockMapHash {
     using is_transparent = void;
 
-    std::size_t operator()(std::string_view sv) const noexcept
-    {
+    std::size_t operator()(std::string_view sv) const noexcept {
         return std::hash<std::string_view>{}(sv);
     }
 
-    std::size_t operator()(const std::string &s) const noexcept
-    {
+    std::size_t operator()(const std::string &s) const noexcept {
         return std::hash<std::string_view>{}(std::string_view{s});
     }
 };
@@ -55,12 +50,10 @@ struct BlockMapHash
 /// @brief Transparent equality comparator for heterogeneous lookup.
 /// @details Works in conjunction with BlockMapHash to enable find() calls
 ///          that accept string_view without constructing temporary strings.
-struct BlockMapEqual
-{
+struct BlockMapEqual {
     using is_transparent = void;
 
-    bool operator()(std::string_view lhs, std::string_view rhs) const noexcept
-    {
+    bool operator()(std::string_view lhs, std::string_view rhs) const noexcept {
         return lhs == rhs;
     }
 };

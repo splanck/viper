@@ -24,8 +24,7 @@
 #include <cassert>
 #include <functional>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Construct a lowering helper bound to the owning @ref Lowerer.
 /// @details Stores a reference to the parent lowerer so helper routines can
@@ -47,8 +46,7 @@ StatementLowering::StatementLowering(Lowerer &lowerer) : lowerer(lowerer) {}
 ///        fallthrough branch.
 void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
                                       bool stopOnTerminated,
-                                      const std::function<void(const Stmt &)> &beforeBranch)
-{
+                                      const std::function<void(const Stmt &)> &beforeBranch) {
     if (stmts.empty())
         return;
 
@@ -64,14 +62,10 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
 
     // Helper to recursively find GOSUB statements, including those nested in StmtList
     std::function<void(const Stmt *, size_t)> scanForGosub;
-    scanForGosub = [&](const Stmt *stmt, size_t nextIdx)
-    {
-        if (const auto *gosubStmt = as<const GosubStmt>(*stmt))
-        {
+    scanForGosub = [&](const Stmt *stmt, size_t nextIdx) {
+        if (const auto *gosubStmt = as<const GosubStmt>(*stmt)) {
             ctx.gosub().registerContinuation(gosubStmt, nextIdx);
-        }
-        else if (const auto *stmtList = as<const StmtList>(*stmt))
-        {
+        } else if (const auto *stmtList = as<const StmtList>(*stmt)) {
             // Recursively scan statements in the list
             for (const auto &childStmt : stmtList->stmts)
                 scanForGosub(childStmt.get(), nextIdx);
@@ -79,18 +73,15 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
     };
 
     bool hasGosub = false;
-    for (size_t i = 0; i < stmts.size(); ++i)
-    {
+    for (size_t i = 0; i < stmts.size(); ++i) {
         size_t contIdx = ctx.exitIndex();
-        if (i + 1 < stmts.size())
-        {
+        if (i + 1 < stmts.size()) {
             int nextLine = lowerer.virtualLine(*stmts[i + 1]);
             contIdx = lineBlocks[nextLine];
         }
 
         // Check if this statement (or any nested statement) is a GOSUB
-        if (as<const GosubStmt>(*stmts[i]) || as<const StmtList>(*stmts[i]))
-        {
+        if (as<const GosubStmt>(*stmts[i]) || as<const StmtList>(*stmts[i])) {
             scanForGosub(stmts[i], contIdx);
             hasGosub = true;
         }
@@ -101,8 +92,7 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
     int firstLine = lowerer.virtualLine(*stmts.front());
     lowerer.emitBr(&func->blocks[lineBlocks[firstLine]]);
 
-    for (size_t i = 0; i < stmts.size(); ++i)
-    {
+    for (size_t i = 0; i < stmts.size(); ++i) {
         const Stmt &stmt = *stmts[i];
         int vLine = lowerer.virtualLine(stmt);
 
@@ -111,17 +101,14 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
         auto handlerIt = handlerBlocks.find(vLine);
         std::optional<size_t> lineBlockIndex;
         const bool isTryCatchStmt = (stmt.stmtKind() == Stmt::Kind::TryCatch);
-        if (handlerIt != handlerBlocks.end() && !isTryCatchStmt)
-        {
+        if (handlerIt != handlerBlocks.end() && !isTryCatchStmt) {
             // This line is a handler target - use the handler block
             ctx.setCurrent(&func->blocks[handlerIt->second]);
             // Remember the numeric index of the line block (avoid dangling pointers
             // across potential vector reallocation during lowering of this stmt).
             if (auto it = lineBlocks.find(vLine); it != lineBlocks.end())
                 lineBlockIndex = it->second;
-        }
-        else
-        {
+        } else {
             // Normal line block
             ctx.setCurrent(&func->blocks[lineBlocks[vLine]]);
         }
@@ -129,15 +116,12 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
         lowerer.lowerStmt(stmt);
 
         // If this was a handler target with a line block, add a trap to the line block
-        if (lineBlockIndex)
-        {
+        if (lineBlockIndex) {
             // Refresh pointers after the above lowering, which may have grown fn.blocks
             func = ctx.function();
-            if (func && *lineBlockIndex < func->blocks.size())
-            {
+            if (func && *lineBlockIndex < func->blocks.size()) {
                 auto *lineBlock = &func->blocks[*lineBlockIndex];
-                if (lineBlock->instructions.empty() && !lineBlock->terminated)
-                {
+                if (lineBlock->instructions.empty() && !lineBlock->terminated) {
                     auto *savedCurrent = ctx.current();
                     ctx.setCurrent(lineBlock);
                     lowerer.emitTrap();
@@ -146,8 +130,7 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
             }
         }
         auto *current = ctx.current();
-        if (current && current->terminated)
-        {
+        if (current && current->terminated) {
             if (stopOnTerminated)
                 break;
             continue;
@@ -155,28 +138,23 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
 
         // Skip automatic branching for handler blocks - control flow is via RESUME
         bool isHandlerBlock = (handlerIt != handlerBlocks.end()) && !isTryCatchStmt;
-        if (!isHandlerBlock)
-        {
+        if (!isHandlerBlock) {
             auto *next = (i + 1 < stmts.size())
                              ? &func->blocks[lineBlocks[lowerer.virtualLine(*stmts[i + 1])]]
                              : &func->blocks[ctx.exitIndex()];
             if (beforeBranch)
                 beforeBranch(stmt);
             lowerer.emitBr(next);
-        }
-        else
-        {
+        } else {
             // Handler block: if no terminator was emitted, add default terminator
             auto *handlerBlock = ctx.current();
-            if (handlerBlock && !handlerBlock->terminated)
-            {
+            if (handlerBlock && !handlerBlock->terminated) {
                 // Check if this is the last statement or if the next statement is on a different
                 // line
                 bool isLastInHandler =
                     (i + 1 >= stmts.size()) || (lowerer.virtualLine(*stmts[i + 1]) != vLine);
 
-                if (isLastInHandler)
-                {
+                if (isLastInHandler) {
                     // Return from program (emitRet will pop handler if needed)
                     lowerer.emitRet(il::core::Value::constInt(0));
                 }
@@ -187,8 +165,7 @@ void StatementLowering::lowerSequence(const std::vector<const Stmt *> &stmts,
 
 void Lowerer::lowerStatementSequence(const std::vector<const Stmt *> &stmts,
                                      bool stopOnTerminated,
-                                     const std::function<void(const Stmt &)> &beforeBranch)
-{
+                                     const std::function<void(const Stmt &)> &beforeBranch) {
     statementLowering->lowerSequence(stmts, stopOnTerminated, beforeBranch);
 }
 

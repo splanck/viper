@@ -28,14 +28,12 @@
 
 #include <cstdint>
 
-namespace viper::tui::term
-{
+namespace viper::tui::term {
 /// @brief Result of decoding a single byte through the UTF-8 state machine.
 /// @details Communicates whether a complete code point was produced, whether an
 ///          encoding error was detected, and whether the caller should replay the
 ///          current byte (used when a new sequence starts after an error mid-sequence).
-struct Utf8Result
-{
+struct Utf8Result {
     bool has_codepoint{false}; ///< True when a complete codepoint was produced.
     uint32_t codepoint{0};     ///< The decoded Unicode scalar value when available.
     bool error{false};         ///< Set when an invalid sequence was encountered.
@@ -48,8 +46,7 @@ struct Utf8Result
 ///          and invalid continuation bytes, and signals errors via the Utf8Result struct.
 ///          Designed for use in the terminal input pipeline where bytes arrive
 ///          one at a time from non-blocking reads.
-class Utf8Decoder
-{
+class Utf8Decoder {
   public:
     /// @brief Decode the next byte of UTF-8 data.
     /// @param byte Next byte from the input stream.

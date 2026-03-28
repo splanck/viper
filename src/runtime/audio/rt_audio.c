@@ -49,8 +49,7 @@
 static int64_t g_group_volume[RT_MIXGROUP_COUNT] = {100, 100};
 
 /// @brief Crossfade state.
-static struct
-{
+static struct {
     void *fade_out;   ///< Music being faded out (NULL when not crossfading).
     void *fade_in;    ///< Music being faded in (NULL when not crossfading).
     int64_t elapsed;  ///< Milliseconds elapsed in crossfade.
@@ -88,21 +87,18 @@ static volatile int g_audio_init_lock = 0;
 
 /// @brief Internal sound wrapper structure.
 /// @details Contains the vptr (for future OOP support) and the vaud sound handle.
-typedef struct
-{
+typedef struct {
     void *vptr;         ///< VTable pointer (reserved for future use)
     vaud_sound_t sound; ///< ViperAUD sound handle
 } rt_sound;
 
 /// @brief Finalizer for sound objects.
-static void rt_sound_finalize(void *obj)
-{
+static void rt_sound_finalize(void *obj) {
     if (!obj)
         return;
 
     rt_sound *snd = (rt_sound *)obj;
-    if (snd->sound)
-    {
+    if (snd->sound) {
         vaud_free_sound(snd->sound);
         snd->sound = NULL;
     }
@@ -114,21 +110,18 @@ static void rt_sound_finalize(void *obj)
 
 /// @brief Internal music wrapper structure.
 /// @details Contains the vptr (for future OOP support) and the vaud music handle.
-typedef struct
-{
+typedef struct {
     void *vptr;         ///< VTable pointer (reserved for future use)
     vaud_music_t music; ///< ViperAUD music handle
 } rt_music;
 
 /// @brief Finalizer for music objects.
-static void rt_music_finalize(void *obj)
-{
+static void rt_music_finalize(void *obj) {
     if (!obj)
         return;
 
     rt_music *mus = (rt_music *)obj;
-    if (mus->music)
-    {
+    if (mus->music) {
         vaud_free_music(mus->music);
         mus->music = NULL;
     }
@@ -143,8 +136,7 @@ static void rt_music_finalize(void *obj)
 ///          initialization. Only one thread will perform the actual initialization;
 ///          other threads will wait and then use the result (RACE-009 fix).
 /// @return 1 if initialized, 0 on failure.
-static int ensure_audio_init(void)
-{
+static int ensure_audio_init(void) {
     // Fast path: already initialized (use acquire to sync with the release below)
 #if RT_COMPILER_MSVC
     int state = rt_atomic_load_i32(&g_audio_initialized, __ATOMIC_ACQUIRE);
@@ -174,8 +166,7 @@ static int ensure_audio_init(void)
 #else
     state = __atomic_load_n(&g_audio_initialized, __ATOMIC_RELAXED);
 #endif
-    if (state != 0)
-    {
+    if (state != 0) {
         // Another thread already initialized - release lock and return
 #if RT_COMPILER_MSVC
         _InterlockedExchange8((volatile char *)&g_audio_init_lock, 0);
@@ -203,13 +194,11 @@ static int ensure_audio_init(void)
     return g_audio_ctx != NULL;
 }
 
-int64_t rt_audio_init(void)
-{
+int64_t rt_audio_init(void) {
     return ensure_audio_init() ? 1 : 0;
 }
 
-void rt_audio_shutdown(void)
-{
+void rt_audio_shutdown(void) {
     // Acquire lock to ensure exclusive access during shutdown
 #if RT_COMPILER_MSVC
     while (_InterlockedExchange8((volatile char *)&g_audio_init_lock, 1))
@@ -224,8 +213,7 @@ void rt_audio_shutdown(void)
 #endif
     }
 
-    if (g_audio_ctx)
-    {
+    if (g_audio_ctx) {
         vaud_destroy(g_audio_ctx);
         g_audio_ctx = NULL;
     }
@@ -244,8 +232,7 @@ void rt_audio_shutdown(void)
 #endif
 }
 
-void rt_audio_set_master_volume(int64_t volume)
-{
+void rt_audio_set_master_volume(int64_t volume) {
     if (!ensure_audio_init())
         return;
 
@@ -258,8 +245,7 @@ void rt_audio_set_master_volume(int64_t volume)
     vaud_set_master_volume(g_audio_ctx, (float)volume / 100.0f);
 }
 
-int64_t rt_audio_get_master_volume(void)
-{
+int64_t rt_audio_get_master_volume(void) {
     if (!g_audio_ctx)
         return 0;
 
@@ -267,20 +253,17 @@ int64_t rt_audio_get_master_volume(void)
     return (int64_t)(vol * 100.0f + 0.5f);
 }
 
-void rt_audio_pause_all(void)
-{
+void rt_audio_pause_all(void) {
     if (g_audio_ctx)
         vaud_pause_all(g_audio_ctx);
 }
 
-void rt_audio_resume_all(void)
-{
+void rt_audio_resume_all(void) {
     if (g_audio_ctx)
         vaud_resume_all(g_audio_ctx);
 }
 
-void rt_audio_stop_all_sounds(void)
-{
+void rt_audio_stop_all_sounds(void) {
     if (g_audio_ctx)
         vaud_stop_all_sounds(g_audio_ctx);
 }
@@ -289,8 +272,7 @@ void rt_audio_stop_all_sounds(void)
 // Sound Effects
 //===----------------------------------------------------------------------===//
 
-void *rt_sound_load(rt_string path)
-{
+void *rt_sound_load(rt_string path) {
     if (!path)
         return NULL;
 
@@ -308,8 +290,7 @@ void *rt_sound_load(rt_string path)
 
     /* Allocate wrapper object */
     rt_sound *wrapper = (rt_sound *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sound));
-    if (!wrapper)
-    {
+    if (!wrapper) {
         vaud_free_sound(snd);
         return NULL;
     }
@@ -321,8 +302,7 @@ void *rt_sound_load(rt_string path)
     return wrapper;
 }
 
-void *rt_sound_load_mem(const void *data, int64_t size)
-{
+void *rt_sound_load_mem(const void *data, int64_t size) {
     if (!data || size <= 0)
         return NULL;
 
@@ -336,8 +316,7 @@ void *rt_sound_load_mem(const void *data, int64_t size)
 
     /* Allocate wrapper object */
     rt_sound *wrapper = (rt_sound *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sound));
-    if (!wrapper)
-    {
+    if (!wrapper) {
         vaud_free_sound(snd);
         return NULL;
     }
@@ -349,8 +328,7 @@ void *rt_sound_load_mem(const void *data, int64_t size)
     return wrapper;
 }
 
-void rt_sound_destroy(void *sound)
-{
+void rt_sound_destroy(void *sound) {
     if (!sound)
         return;
 
@@ -358,8 +336,7 @@ void rt_sound_destroy(void *sound)
         rt_obj_free(sound);
 }
 
-int64_t rt_sound_play(void *sound)
-{
+int64_t rt_sound_play(void *sound) {
     if (!sound)
         return -1;
 
@@ -371,8 +348,7 @@ int64_t rt_sound_play(void *sound)
     return (int64_t)voice;
 }
 
-int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan)
-{
+int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan) {
     if (!sound)
         return -1;
 
@@ -398,8 +374,7 @@ int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan)
     return (int64_t)voice;
 }
 
-int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan)
-{
+int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan) {
     if (!sound)
         return -1;
 
@@ -425,16 +400,14 @@ int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan)
     return (int64_t)voice;
 }
 
-void rt_voice_stop(int64_t voice_id)
-{
+void rt_voice_stop(int64_t voice_id) {
     if (!g_audio_ctx || voice_id < 0)
         return;
 
     vaud_stop_voice(g_audio_ctx, (vaud_voice_id)voice_id);
 }
 
-void rt_voice_set_volume(int64_t voice_id, int64_t volume)
-{
+void rt_voice_set_volume(int64_t voice_id, int64_t volume) {
     if (!g_audio_ctx || voice_id < 0)
         return;
 
@@ -447,8 +420,7 @@ void rt_voice_set_volume(int64_t voice_id, int64_t volume)
     vaud_set_voice_volume(g_audio_ctx, (vaud_voice_id)voice_id, vol);
 }
 
-void rt_voice_set_pan(int64_t voice_id, int64_t pan)
-{
+void rt_voice_set_pan(int64_t voice_id, int64_t pan) {
     if (!g_audio_ctx || voice_id < 0)
         return;
 
@@ -461,8 +433,7 @@ void rt_voice_set_pan(int64_t voice_id, int64_t pan)
     vaud_set_voice_pan(g_audio_ctx, (vaud_voice_id)voice_id, p);
 }
 
-int64_t rt_voice_is_playing(int64_t voice_id)
-{
+int64_t rt_voice_is_playing(int64_t voice_id) {
     if (!g_audio_ctx || voice_id < 0)
         return 0;
 
@@ -473,8 +444,7 @@ int64_t rt_voice_is_playing(int64_t voice_id)
 // Music Streaming
 //===----------------------------------------------------------------------===//
 
-void *rt_music_load(rt_string path)
-{
+void *rt_music_load(rt_string path) {
     if (!path)
         return NULL;
 
@@ -492,8 +462,7 @@ void *rt_music_load(rt_string path)
 
     /* Allocate wrapper object */
     rt_music *wrapper = (rt_music *)rt_obj_new_i64(0, (int64_t)sizeof(rt_music));
-    if (!wrapper)
-    {
+    if (!wrapper) {
         vaud_free_music(mus);
         return NULL;
     }
@@ -505,8 +474,7 @@ void *rt_music_load(rt_string path)
     return wrapper;
 }
 
-void rt_music_destroy(void *music)
-{
+void rt_music_destroy(void *music) {
     if (!music)
         return;
 
@@ -514,8 +482,7 @@ void rt_music_destroy(void *music)
         rt_obj_free(music);
 }
 
-void rt_music_play(void *music, int64_t loop)
-{
+void rt_music_play(void *music, int64_t loop) {
     if (!music)
         return;
 
@@ -526,8 +493,7 @@ void rt_music_play(void *music, int64_t loop)
     vaud_music_play(mus->music, loop ? 1 : 0);
 }
 
-void rt_music_stop(void *music)
-{
+void rt_music_stop(void *music) {
     if (!music)
         return;
 
@@ -536,8 +502,7 @@ void rt_music_stop(void *music)
         vaud_music_stop(mus->music);
 }
 
-void rt_music_pause(void *music)
-{
+void rt_music_pause(void *music) {
     if (!music)
         return;
 
@@ -546,8 +511,7 @@ void rt_music_pause(void *music)
         vaud_music_pause(mus->music);
 }
 
-void rt_music_resume(void *music)
-{
+void rt_music_resume(void *music) {
     if (!music)
         return;
 
@@ -556,8 +520,7 @@ void rt_music_resume(void *music)
         vaud_music_resume(mus->music);
 }
 
-void rt_music_set_volume(void *music, int64_t volume)
-{
+void rt_music_set_volume(void *music, int64_t volume) {
     if (!music)
         return;
 
@@ -574,8 +537,7 @@ void rt_music_set_volume(void *music, int64_t volume)
     vaud_music_set_volume(mus->music, vol);
 }
 
-int64_t rt_music_get_volume(void *music)
-{
+int64_t rt_music_get_volume(void *music) {
     if (!music)
         return 0;
 
@@ -587,8 +549,7 @@ int64_t rt_music_get_volume(void *music)
     return (int64_t)(vol * 100.0f + 0.5f);
 }
 
-int64_t rt_music_is_playing(void *music)
-{
+int64_t rt_music_is_playing(void *music) {
     if (!music)
         return 0;
 
@@ -599,8 +560,7 @@ int64_t rt_music_is_playing(void *music)
     return vaud_music_is_playing(mus->music) ? 1 : 0;
 }
 
-void rt_music_seek(void *music, int64_t position_ms)
-{
+void rt_music_seek(void *music, int64_t position_ms) {
     if (!music)
         return;
 
@@ -615,8 +575,7 @@ void rt_music_seek(void *music, int64_t position_ms)
     vaud_music_seek(mus->music, seconds);
 }
 
-int64_t rt_music_get_position(void *music)
-{
+int64_t rt_music_get_position(void *music) {
     if (!music)
         return 0;
 
@@ -628,8 +587,7 @@ int64_t rt_music_get_position(void *music)
     return (int64_t)(seconds * 1000.0f + 0.5f);
 }
 
-int64_t rt_music_get_duration(void *music)
-{
+int64_t rt_music_get_duration(void *music) {
     if (!music)
         return 0;
 
@@ -645,8 +603,7 @@ int64_t rt_music_get_duration(void *music)
 // Mix Groups — real implementation
 //===----------------------------------------------------------------------===//
 
-void rt_audio_set_group_volume(int64_t group, int64_t volume)
-{
+void rt_audio_set_group_volume(int64_t group, int64_t volume) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return;
     if (volume < 0)
@@ -656,8 +613,7 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume)
     g_group_volume[group] = volume;
 }
 
-int64_t rt_audio_get_group_volume(int64_t group)
-{
+int64_t rt_audio_get_group_volume(int64_t group) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return 100;
     return g_group_volume[group];
@@ -667,20 +623,16 @@ int64_t rt_audio_get_group_volume(int64_t group)
 // Music Crossfade — real implementation
 //===----------------------------------------------------------------------===//
 
-void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duration_ms)
-{
+void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duration_ms) {
     // Cancel any existing crossfade and release retained music objects
-    if (g_crossfade.active)
-    {
+    if (g_crossfade.active) {
         // Complete the previous crossfade immediately
-        if (g_crossfade.fade_out)
-        {
+        if (g_crossfade.fade_out) {
             rt_music_stop(g_crossfade.fade_out);
             if (rt_obj_release_check0(g_crossfade.fade_out))
                 rt_obj_free(g_crossfade.fade_out);
         }
-        if (g_crossfade.fade_in)
-        {
+        if (g_crossfade.fade_in) {
             if (rt_obj_release_check0(g_crossfade.fade_in))
                 rt_obj_free(g_crossfade.fade_in);
         }
@@ -693,8 +645,7 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
     if (!current_music && !new_music)
         return;
 
-    if (duration_ms <= 0)
-    {
+    if (duration_ms <= 0) {
         // Immediate switch: stop old, start new
         if (current_music)
             rt_music_stop(current_music);
@@ -721,30 +672,25 @@ void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duratio
         g_crossfade.vol_out = 100;
 
     // Start the new track at volume 0
-    if (new_music)
-    {
+    if (new_music) {
         rt_music_set_volume(new_music, 0);
         rt_music_play(new_music, 0);
     }
 }
 
-int8_t rt_music_is_crossfading(void)
-{
+int8_t rt_music_is_crossfading(void) {
     return g_crossfade.active;
 }
 
-void rt_music_crossfade_update(int64_t dt_ms)
-{
+void rt_music_crossfade_update(int64_t dt_ms) {
     if (!g_crossfade.active)
         return;
 
     g_crossfade.elapsed += dt_ms;
 
-    if (g_crossfade.elapsed >= g_crossfade.duration)
-    {
+    if (g_crossfade.elapsed >= g_crossfade.duration) {
         // Crossfade complete
-        if (g_crossfade.fade_out)
-        {
+        if (g_crossfade.fade_out) {
             rt_music_stop(g_crossfade.fade_out);
             rt_music_set_volume(g_crossfade.fade_out, (int64_t)g_crossfade.vol_out);
         }
@@ -752,13 +698,11 @@ void rt_music_crossfade_update(int64_t dt_ms)
             rt_music_set_volume(g_crossfade.fade_in, (int64_t)g_crossfade.vol_out);
 
         // Release retained music objects
-        if (g_crossfade.fade_out)
-        {
+        if (g_crossfade.fade_out) {
             if (rt_obj_release_check0(g_crossfade.fade_out))
                 rt_obj_free(g_crossfade.fade_out);
         }
-        if (g_crossfade.fade_in)
-        {
+        if (g_crossfade.fade_in) {
             if (rt_obj_release_check0(g_crossfade.fade_in))
                 rt_obj_free(g_crossfade.fade_in);
         }
@@ -771,13 +715,11 @@ void rt_music_crossfade_update(int64_t dt_ms)
     // Linear interpolation
     int64_t progress = (g_crossfade.elapsed * 1000) / g_crossfade.duration; // 0-1000
 
-    if (g_crossfade.fade_out)
-    {
+    if (g_crossfade.fade_out) {
         int64_t vol = g_crossfade.vol_out * (1000 - progress) / 1000;
         rt_music_set_volume(g_crossfade.fade_out, vol);
     }
-    if (g_crossfade.fade_in)
-    {
+    if (g_crossfade.fade_in) {
         int64_t vol = g_crossfade.vol_out * progress / 1000;
         rt_music_set_volume(g_crossfade.fade_in, vol);
     }
@@ -788,31 +730,27 @@ void rt_music_crossfade_update(int64_t dt_ms)
 //===----------------------------------------------------------------------===//
 
 /// @brief Apply group volume to a requested volume.
-static int64_t apply_group_volume(int64_t volume, int64_t group)
-{
+static int64_t apply_group_volume(int64_t volume, int64_t group) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         group = RT_MIXGROUP_SFX;
     return volume * g_group_volume[group] / 100;
 }
 
-int64_t rt_sound_play_in_group(void *sound, int64_t group)
-{
+int64_t rt_sound_play_in_group(void *sound, int64_t group) {
     if (!sound)
         return -1;
     int64_t vol = apply_group_volume(100, group);
     return rt_sound_play_ex(sound, vol, 0);
 }
 
-int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int64_t group)
-{
+int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int64_t group) {
     if (!sound)
         return -1;
     int64_t vol = apply_group_volume(volume, group);
     return rt_sound_play_ex(sound, vol, pan);
 }
 
-int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, int64_t group)
-{
+int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, int64_t group) {
     if (!sound)
         return -1;
     int64_t vol = apply_group_volume(volume, group);
@@ -825,20 +763,17 @@ int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, in
 // Stub implementations when audio library is not available
 //===----------------------------------------------------------------------===//
 
-int64_t rt_audio_init(void)
-{
+int64_t rt_audio_init(void) {
     return 0;
 }
 
 void rt_audio_shutdown(void) {}
 
-void rt_audio_set_master_volume(int64_t volume)
-{
+void rt_audio_set_master_volume(int64_t volume) {
     (void)volume;
 }
 
-int64_t rt_audio_get_master_volume(void)
-{
+int64_t rt_audio_get_master_volume(void) {
     return 0;
 }
 
@@ -848,140 +783,117 @@ void rt_audio_resume_all(void) {}
 
 void rt_audio_stop_all_sounds(void) {}
 
-void *rt_sound_load(rt_string path)
-{
+void *rt_sound_load(rt_string path) {
     (void)path;
     return NULL;
 }
 
-void *rt_sound_load_mem(const void *data, int64_t size)
-{
+void *rt_sound_load_mem(const void *data, int64_t size) {
     (void)data;
     (void)size;
     return NULL;
 }
 
-void rt_sound_destroy(void *sound)
-{
+void rt_sound_destroy(void *sound) {
     (void)sound;
 }
 
-int64_t rt_sound_play(void *sound)
-{
+int64_t rt_sound_play(void *sound) {
     (void)sound;
     return -1;
 }
 
-int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan)
-{
+int64_t rt_sound_play_ex(void *sound, int64_t volume, int64_t pan) {
     (void)sound;
     (void)volume;
     (void)pan;
     return -1;
 }
 
-int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan)
-{
+int64_t rt_sound_play_loop(void *sound, int64_t volume, int64_t pan) {
     (void)sound;
     (void)volume;
     (void)pan;
     return -1;
 }
 
-void rt_voice_stop(int64_t voice_id)
-{
+void rt_voice_stop(int64_t voice_id) {
     (void)voice_id;
 }
 
-void rt_voice_set_volume(int64_t voice_id, int64_t volume)
-{
+void rt_voice_set_volume(int64_t voice_id, int64_t volume) {
     (void)voice_id;
     (void)volume;
 }
 
-void rt_voice_set_pan(int64_t voice_id, int64_t pan)
-{
+void rt_voice_set_pan(int64_t voice_id, int64_t pan) {
     (void)voice_id;
     (void)pan;
 }
 
-int64_t rt_voice_is_playing(int64_t voice_id)
-{
+int64_t rt_voice_is_playing(int64_t voice_id) {
     (void)voice_id;
     return 0;
 }
 
-void *rt_music_load(rt_string path)
-{
+void *rt_music_load(rt_string path) {
     (void)path;
     return NULL;
 }
 
-void rt_music_destroy(void *music)
-{
+void rt_music_destroy(void *music) {
     (void)music;
 }
 
-void rt_music_play(void *music, int64_t loop)
-{
+void rt_music_play(void *music, int64_t loop) {
     (void)music;
     (void)loop;
 }
 
-void rt_music_stop(void *music)
-{
+void rt_music_stop(void *music) {
     (void)music;
 }
 
-void rt_music_pause(void *music)
-{
+void rt_music_pause(void *music) {
     (void)music;
 }
 
-void rt_music_resume(void *music)
-{
+void rt_music_resume(void *music) {
     (void)music;
 }
 
-void rt_music_set_volume(void *music, int64_t volume)
-{
+void rt_music_set_volume(void *music, int64_t volume) {
     (void)music;
     (void)volume;
 }
 
-int64_t rt_music_get_volume(void *music)
-{
+int64_t rt_music_get_volume(void *music) {
     (void)music;
     return 0;
 }
 
-int64_t rt_music_is_playing(void *music)
-{
+int64_t rt_music_is_playing(void *music) {
     (void)music;
     return 0;
 }
 
-void rt_music_seek(void *music, int64_t position_ms)
-{
+void rt_music_seek(void *music, int64_t position_ms) {
     (void)music;
     (void)position_ms;
 }
 
-int64_t rt_music_get_position(void *music)
-{
+int64_t rt_music_get_position(void *music) {
     (void)music;
     return 0;
 }
 
-int64_t rt_music_get_duration(void *music)
-{
+int64_t rt_music_get_duration(void *music) {
     (void)music;
     return 0;
 }
 
 // Mix group stubs — these work without audio (just store state)
-void rt_audio_set_group_volume(int64_t group, int64_t volume)
-{
+void rt_audio_set_group_volume(int64_t group, int64_t volume) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return;
     if (volume < 0)
@@ -991,39 +903,33 @@ void rt_audio_set_group_volume(int64_t group, int64_t volume)
     g_group_volume[group] = volume;
 }
 
-int64_t rt_audio_get_group_volume(int64_t group)
-{
+int64_t rt_audio_get_group_volume(int64_t group) {
     if (group < 0 || group >= RT_MIXGROUP_COUNT)
         return 100;
     return g_group_volume[group];
 }
 
-void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duration_ms)
-{
+void rt_music_crossfade_to(void *current_music, void *new_music, int64_t duration_ms) {
     (void)current_music;
     (void)new_music;
     (void)duration_ms;
 }
 
-int8_t rt_music_is_crossfading(void)
-{
+int8_t rt_music_is_crossfading(void) {
     return 0;
 }
 
-void rt_music_crossfade_update(int64_t dt_ms)
-{
+void rt_music_crossfade_update(int64_t dt_ms) {
     (void)dt_ms;
 }
 
-int64_t rt_sound_play_in_group(void *sound, int64_t group)
-{
+int64_t rt_sound_play_in_group(void *sound, int64_t group) {
     (void)sound;
     (void)group;
     return -1;
 }
 
-int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int64_t group)
-{
+int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int64_t group) {
     (void)sound;
     (void)volume;
     (void)pan;
@@ -1031,8 +937,7 @@ int64_t rt_sound_play_ex_in_group(void *sound, int64_t volume, int64_t pan, int6
     return -1;
 }
 
-int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, int64_t group)
-{
+int64_t rt_sound_play_loop_in_group(void *sound, int64_t volume, int64_t pan, int64_t group) {
     (void)sound;
     (void)volume;
     (void)pan;

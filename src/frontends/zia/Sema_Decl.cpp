@@ -16,8 +16,7 @@
 
 #include <unordered_set>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //=============================================================================
 // Declaration Analysis
@@ -27,24 +26,20 @@ namespace il::frontends::zia
 /// @details Routes to analyzeNamespaceBind() for namespace paths, or registers
 ///          the file module name as a Module symbol for qualified access.
 /// @param decl The bind declaration to analyze.
-void Sema::analyzeBind(BindDecl &decl)
-{
-    if (decl.path.empty())
-    {
+void Sema::analyzeBind(BindDecl &decl) {
+    if (decl.path.empty()) {
         error(decl.loc, "Bind path cannot be empty");
         return;
     }
 
     // Handle namespace binds (e.g., "Viper.Terminal")
-    if (decl.isNamespaceBind)
-    {
+    if (decl.isNamespaceBind) {
         analyzeNamespaceBind(decl);
         return;
     }
 
     // W012: Duplicate import
-    if (binds_.count(decl.path))
-    {
+    if (binds_.count(decl.path)) {
         warn(
             WarningCode::W012_DuplicateImport, decl.loc, "Duplicate import of '" + decl.path + "'");
     }
@@ -56,33 +51,27 @@ void Sema::analyzeBind(BindDecl &decl)
     // For "./colors" or "../utils/colors", extract "colors"
     // For "colors", use "colors"
     std::string moduleName;
-    if (!decl.alias.empty())
-    {
+    if (!decl.alias.empty()) {
         // Use alias if provided: bind "./colors" as c;
         moduleName = decl.alias;
-    }
-    else
-    {
+    } else {
         // Extract filename without extension from path
         std::string path = decl.path;
         // Remove directory components (handle both / and \ separators)
         auto lastSlash = path.find_last_of("/\\");
-        if (lastSlash != std::string::npos)
-        {
+        if (lastSlash != std::string::npos) {
             path = path.substr(lastSlash + 1);
         }
         // Remove .zia extension if present
         auto extPos = path.rfind(".zia");
-        if (extPos != std::string::npos)
-        {
+        if (extPos != std::string::npos) {
             path = path.substr(0, extPos);
         }
         moduleName = path;
     }
 
     // Register the module name as a Module symbol for qualified access
-    if (!moduleName.empty())
-    {
+    if (!moduleName.empty()) {
         Symbol sym;
         sym.kind = Symbol::Kind::Module;
         sym.name = moduleName;
@@ -102,13 +91,11 @@ void Sema::analyzeBind(BindDecl &decl)
 ///             - All namespace symbols imported into current scope
 ///          Validates that the namespace exists and checks for symbol conflicts.
 /// @param decl The bind declaration AST node to analyze.
-void Sema::analyzeNamespaceBind(BindDecl &decl)
-{
+void Sema::analyzeNamespaceBind(BindDecl &decl) {
     const std::string &ns = decl.path;
 
     // Validate this is a known runtime namespace
-    if (!isValidRuntimeNamespace(ns))
-    {
+    if (!isValidRuntimeNamespace(ns)) {
         error(decl.loc, "Unknown runtime namespace: " + ns);
         return;
     }
@@ -118,22 +105,18 @@ void Sema::analyzeNamespaceBind(BindDecl &decl)
     if (!decl.alias.empty())
         aliasToNamespace_[decl.alias] = ns;
 
-    if (!decl.specificItems.empty())
-    {
+    if (!decl.specificItems.empty()) {
         // Selective import: bind Viper.Terminal { Say, ReadLine };
-        for (const auto &item : decl.specificItems)
-        {
+        for (const auto &item : decl.specificItems) {
             std::string fullName = ns + "." + item;
             Symbol *sym = lookupSymbol(fullName);
-            if (!sym)
-            {
+            if (!sym) {
                 error(decl.loc, "Unknown symbol '" + item + "' in namespace " + ns);
                 continue;
             }
             // Check for conflicts with existing imports
             auto existingIt = importedSymbols_.find(item);
-            if (existingIt != importedSymbols_.end() && existingIt->second != fullName)
-            {
+            if (existingIt != importedSymbols_.end() && existingIt->second != fullName) {
                 error(decl.loc,
                       "Symbol '" + item + "' conflicts with existing import from " +
                           existingIt->second);
@@ -141,9 +124,7 @@ void Sema::analyzeNamespaceBind(BindDecl &decl)
             }
             importedSymbols_[item] = fullName;
         }
-    }
-    else if (!decl.alias.empty())
-    {
+    } else if (!decl.alias.empty()) {
         // Alias import: bind Viper.Terminal as T;
         // Register alias as a module symbol for qualified access
         Symbol sym;
@@ -155,9 +136,7 @@ void Sema::analyzeNamespaceBind(BindDecl &decl)
         // Also register in importedSymbols_ so type resolution can expand
         // aliased dotted names (e.g., T.Canvas → Viper.Graphics.Canvas)
         importedSymbols_[decl.alias] = ns;
-    }
-    else
-    {
+    } else {
         // Full namespace import: bind Viper.Terminal;
         // Import all symbols from this namespace into scope
         importNamespaceSymbols(ns);
@@ -169,16 +148,13 @@ void Sema::analyzeNamespaceBind(BindDecl &decl)
 ///          for any entry matching the given namespace prefix.
 /// @param ns The namespace string to validate.
 /// @return True if any registered type, class, or method matches the namespace prefix.
-bool Sema::isValidRuntimeNamespace(const std::string &ns)
-{
+bool Sema::isValidRuntimeNamespace(const std::string &ns) {
     // A namespace is valid if any runtime class or method starts with "ns."
     const std::string prefix = ns + ".";
 
     // Check typeRegistry_ for runtime class types
-    for (const auto &[name, type] : typeRegistry_)
-    {
-        if (name.rfind(prefix, 0) == 0 || name == ns)
-        {
+    for (const auto &[name, type] : typeRegistry_) {
+        if (name.rfind(prefix, 0) == 0 || name == ns) {
             return true;
         }
     }
@@ -186,16 +162,14 @@ bool Sema::isValidRuntimeNamespace(const std::string &ns)
     // Also check the RuntimeRegistry for methods that match this namespace
     const auto &registry = il::runtime::RuntimeRegistry::instance();
     const auto &catalog = registry.rawCatalog();
-    for (const auto &cls : catalog)
-    {
+    for (const auto &cls : catalog) {
         // Check if class is in this namespace
         std::string clsName = cls.qname ? cls.qname : "";
         if (clsName.rfind(prefix, 0) == 0 || clsName == ns)
             return true;
 
         // Check if any method target starts with this namespace
-        for (const auto &m : cls.methods)
-        {
+        for (const auto &m : cls.methods) {
             if (m.target && std::string(m.target).rfind(prefix, 0) == 0)
                 return true;
         }
@@ -203,8 +177,7 @@ bool Sema::isValidRuntimeNamespace(const std::string &ns)
 
     // Check scope symbols for extern functions registered via defineExternFunction
     // (e.g., Viper.Box.* functions that aren't part of a runtime class)
-    for (Scope *s = currentScope_; s != nullptr; s = s->parent())
-    {
+    for (Scope *s = currentScope_; s != nullptr; s = s->parent()) {
         if (s->hasSymbolWithPrefix(prefix))
             return true;
     }
@@ -216,16 +189,13 @@ bool Sema::isValidRuntimeNamespace(const std::string &ns)
 /// @details Imports types from typeRegistry_, classes and methods from RuntimeRegistry,
 ///          properties by display name, and sub-namespace prefixes from kRuntimeNameAliases.
 /// @param ns The namespace whose symbols should be imported.
-void Sema::importNamespaceSymbols(const std::string &ns)
-{
+void Sema::importNamespaceSymbols(const std::string &ns) {
     // Import all symbols from this namespace
     const std::string prefix = ns + ".";
 
     // Walk through all registered types and import matching class names
-    for (const auto &[name, type] : typeRegistry_)
-    {
-        if (name.rfind(prefix, 0) == 0)
-        {
+    for (const auto &[name, type] : typeRegistry_) {
+        if (name.rfind(prefix, 0) == 0) {
             // Extract short name (e.g., "Canvas" from "Viper.Graphics.Canvas")
             std::string shortName = name.substr(prefix.size());
             // Skip nested namespaces (only import direct children)
@@ -234,8 +204,7 @@ void Sema::importNamespaceSymbols(const std::string &ns)
 
             // Check for conflicts
             auto existingIt = importedSymbols_.find(shortName);
-            if (existingIt != importedSymbols_.end() && existingIt->second != name)
-            {
+            if (existingIt != importedSymbols_.end() && existingIt->second != name) {
                 // Conflict - first import wins, but we could warn here
                 continue;
             }
@@ -248,28 +217,23 @@ void Sema::importNamespaceSymbols(const std::string &ns)
     const auto &registry = il::runtime::RuntimeRegistry::instance();
     const auto &catalog = registry.rawCatalog();
 
-    for (const auto &cls : catalog)
-    {
+    for (const auto &cls : catalog) {
         // Import the class name itself (e.g., "Canvas" from "Viper.Graphics.Canvas")
         std::string clsName = cls.qname ? cls.qname : "";
-        if (!clsName.empty() && clsName.rfind(prefix, 0) == 0)
-        {
+        if (!clsName.empty() && clsName.rfind(prefix, 0) == 0) {
             // Extract short name
             std::string shortName = clsName.substr(prefix.size());
             // Skip nested namespaces (only import direct children)
-            if (shortName.find('.') == std::string::npos)
-            {
+            if (shortName.find('.') == std::string::npos) {
                 auto existingIt = importedSymbols_.find(shortName);
-                if (existingIt == importedSymbols_.end())
-                {
+                if (existingIt == importedSymbols_.end()) {
                     importedSymbols_[shortName] = clsName;
                 }
             }
         }
 
         // Import methods from classes in this namespace
-        for (const auto &m : cls.methods)
-        {
+        for (const auto &m : cls.methods) {
             if (!m.target)
                 continue;
 
@@ -286,8 +250,7 @@ void Sema::importNamespaceSymbols(const std::string &ns)
 
             // Check for conflicts
             auto existingIt = importedSymbols_.find(shortName);
-            if (existingIt != importedSymbols_.end() && existingIt->second != target)
-            {
+            if (existingIt != importedSymbols_.end() && existingIt->second != target) {
                 // Conflict - first import wins
                 continue;
             }
@@ -296,10 +259,8 @@ void Sema::importNamespaceSymbols(const std::string &ns)
 
         // Also import properties by their display name (e.g., "Length")
         // mapped to the getter's qualified name (e.g., "Viper.String.get_Length")
-        for (const auto &p : cls.properties)
-        {
-            if (p.getter && p.name)
-            {
+        for (const auto &p : cls.properties) {
+            if (p.getter && p.name) {
                 std::string getter(p.getter);
                 if (getter.rfind(prefix, 0) != 0)
                     continue;
@@ -321,22 +282,18 @@ void Sema::importNamespaceSymbols(const std::string &ns)
     // are imported as short name → qualified name mappings.
     // Sub-namespace prefixes (e.g., Viper.GUI.Shortcuts.Register → "Shortcuts")
     // are imported as module-like symbols.
-    for (const auto &alias : il::runtime::kRuntimeNameAliases)
-    {
+    for (const auto &alias : il::runtime::kRuntimeNameAliases) {
         std::string canonical(alias.canonical);
         if (canonical.rfind(prefix, 0) != 0)
             continue;
         std::string shortName = canonical.substr(prefix.size());
         auto dotPos = shortName.find('.');
-        if (dotPos == std::string::npos)
-        {
+        if (dotPos == std::string::npos) {
             // Direct child — standalone function (e.g., "Capitalize" from bind Viper.String)
             auto existingIt = importedSymbols_.find(shortName);
             if (existingIt == importedSymbols_.end())
                 importedSymbols_[shortName] = canonical;
-        }
-        else
-        {
+        } else {
             // Sub-namespace prefix
             std::string subNs = shortName.substr(0, dotPos);
             if (importedSymbols_.find(subNs) == importedSymbols_.end())
@@ -347,21 +304,16 @@ void Sema::importNamespaceSymbols(const std::string &ns)
 
 /// @brief Analyze a global variable declaration, type-checking its initializer.
 /// @param decl The global variable declaration to analyze.
-void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl)
-{
+void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl) {
     // Analyze initializer if present
-    if (decl.initializer)
-    {
+    if (decl.initializer) {
         TypeRef initType = analyzeExpr(decl.initializer.get());
 
         // If type was inferred, update the symbol
         Symbol *sym = lookupSymbol(decl.name);
-        if (sym && sym->type->isUnknown())
-        {
+        if (sym && sym->type->isUnknown()) {
             sym->type = initType;
-        }
-        else if (sym && !sym->type->isAssignableFrom(*initType))
-        {
+        } else if (sym && !sym->type->isAssignableFrom(*initType)) {
             errorTypeMismatch(decl.initializer->loc, sym->type, initType);
         }
     }
@@ -374,21 +326,17 @@ void Sema::analyzeGlobalVarDecl(GlobalVarDecl &decl)
 /// @param interfaces The list of interface names the type claims to implement.
 void Sema::validateInterfaceImplementations(const std::string &typeName,
                                             const SourceLoc &loc,
-                                            const std::vector<std::string> &interfaces)
-{
-    for (const auto &ifaceName : interfaces)
-    {
+                                            const std::vector<std::string> &interfaces) {
+    for (const auto &ifaceName : interfaces) {
         auto ifaceIt = interfaceDecls_.find(ifaceName);
-        if (ifaceIt == interfaceDecls_.end())
-        {
+        if (ifaceIt == interfaceDecls_.end()) {
             error(loc, "Unknown interface: " + ifaceName);
             continue;
         }
 
         bool ok = true;
         InterfaceDecl *iface = ifaceIt->second;
-        for (auto &member : iface->members)
-        {
+        for (auto &member : iface->members) {
             if (member->kind != DeclKind::Method)
                 continue;
 
@@ -398,18 +346,15 @@ void Sema::validateInterfaceImplementations(const std::string &typeName,
                 continue;
 
             MethodDecl *implMethod = nullptr;
-            for (auto *candidate : collectMethodOverloads(typeName, ifaceMethod->name, true))
-            {
+            for (auto *candidate : collectMethodOverloads(typeName, ifaceMethod->name, true)) {
                 TypeRef candidateType = getMethodType(candidate);
-                if (candidateType && candidateType->equals(*ifaceType))
-                {
+                if (candidateType && candidateType->equals(*ifaceType)) {
                     implMethod = candidate;
                     break;
                 }
             }
 
-            if (!implMethod)
-            {
+            if (!implMethod) {
                 error(loc,
                       "Type '" + typeName + "' does not implement interface method '" + ifaceName +
                           "." + ifaceMethod->name + "'");
@@ -417,8 +362,7 @@ void Sema::validateInterfaceImplementations(const std::string &typeName,
                 continue;
             }
 
-            if (implMethod->visibility != Visibility::Public)
-            {
+            if (implMethod->visibility != Visibility::Public) {
                 error(loc,
                       "Method '" + typeName + "." + implMethod->name +
                           "' must be public to satisfy interface '" + ifaceName + "'");
@@ -433,8 +377,7 @@ void Sema::validateInterfaceImplementations(const std::string &typeName,
 
 /// @brief Analyze a value type declaration body (fields, methods, interface validation).
 /// @param decl The value type declaration to analyze.
-void Sema::analyzeValueDecl(ValueDecl &decl)
-{
+void Sema::analyzeValueDecl(ValueDecl &decl) {
     // Generic types are registered in the first pass; skip body analysis
     if (!decl.genericParams.empty())
         return;
@@ -445,23 +388,17 @@ void Sema::analyzeValueDecl(ValueDecl &decl)
     pushScope(decl.loc);
 
     // Analyze fields
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Field)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Field) {
             analyzeFieldDecl(*static_cast<FieldDecl *>(member.get()), selfType);
         }
     }
 
     // Analyze methods
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Method)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Method) {
             analyzeMethodDecl(*static_cast<MethodDecl *>(member.get()), selfType);
-        }
-        else if (member->kind == DeclKind::Property)
-        {
+        } else if (member->kind == DeclKind::Property) {
             analyzePropertyDecl(*static_cast<PropertyDecl *>(member.get()), selfType);
         }
     }
@@ -479,20 +416,15 @@ void Sema::analyzeValueDecl(ValueDecl &decl)
 /// @tparam T The declaration type (EntityDecl, ValueDecl, or InterfaceDecl).
 /// @param decl The type declaration whose members should be registered.
 /// @param includeFields If true, register field types; false for interface-only registration.
-template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields)
-{
+template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields) {
     // Register field types (if applicable)
     std::unordered_set<std::string> seenFields;
     std::unordered_set<std::string> seenProperties;
-    if (includeFields)
-    {
-        for (auto &member : decl.members)
-        {
-            if (member->kind == DeclKind::Field)
-            {
+    if (includeFields) {
+        for (auto &member : decl.members) {
+            if (member->kind == DeclKind::Field) {
                 auto *field = static_cast<FieldDecl *>(member.get());
-                if (!seenFields.insert(field->name).second)
-                {
+                if (!seenFields.insert(field->name).second) {
                     error(field->loc,
                           "Duplicate definition of '" + field->name + "' in type '" + decl.name +
                               "'");
@@ -503,12 +435,9 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
                 std::string fieldKey = decl.name + "." + field->name;
                 fieldTypes_[fieldKey] = fieldType;
                 memberVisibility_[fieldKey] = field->visibility;
-            }
-            else if (member->kind == DeclKind::Property)
-            {
+            } else if (member->kind == DeclKind::Property) {
                 auto *prop = static_cast<PropertyDecl *>(member.get());
-                if (!seenProperties.insert(prop->name).second || seenFields.contains(prop->name))
-                {
+                if (!seenProperties.insert(prop->name).second || seenFields.contains(prop->name)) {
                     error(prop->loc,
                           "Duplicate definition of '" + prop->name + "' in type '" + decl.name +
                               "'");
@@ -523,8 +452,7 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
                 memberVisibility_[decl.name + "." + prop->name] = prop->visibility;
                 memberVisibility_[getterKey] = prop->visibility;
 
-                if (prop->setterBody)
-                {
+                if (prop->setterBody) {
                     std::string setterKey = decl.name + ".set_" + prop->name;
                     TypeRef setterType = types::function({propType}, types::voidType());
                     methodTypes_[setterKey] = setterType;
@@ -535,10 +463,8 @@ template <typename T> void Sema::registerTypeMembers(T &decl, bool includeFields
     }
 
     // Register method types (signatures only, not bodies)
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Method)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
             TypeRef methodType = methodTypeForDecl(*method);
             if (!registerMethodOverload(decl.name, method, methodType, method->loc))
@@ -559,8 +485,7 @@ template void Sema::registerTypeMembers<InterfaceDecl>(InterfaceDecl &, bool);
 
 /// @brief Register entity member signatures (fields and methods).
 /// @details Skips generic types, which are registered during instantiation.
-void Sema::registerEntityMembers(EntityDecl &decl)
-{
+void Sema::registerEntityMembers(EntityDecl &decl) {
     // Skip member registration for generic types - done during instantiation
     if (!decl.genericParams.empty())
         return;
@@ -569,8 +494,7 @@ void Sema::registerEntityMembers(EntityDecl &decl)
 
 /// @brief Register value member signatures (fields and methods).
 /// @details Skips generic types, which are registered during instantiation.
-void Sema::registerValueMembers(ValueDecl &decl)
-{
+void Sema::registerValueMembers(ValueDecl &decl) {
     // Skip member registration for generic types - done during instantiation
     if (!decl.genericParams.empty())
         return;
@@ -578,8 +502,7 @@ void Sema::registerValueMembers(ValueDecl &decl)
 }
 
 /// @brief Register interface member signatures (methods only, no fields).
-void Sema::registerInterfaceMembers(InterfaceDecl &decl)
-{
+void Sema::registerInterfaceMembers(InterfaceDecl &decl) {
     registerTypeMembers(decl, false);
 }
 
@@ -588,8 +511,7 @@ void Sema::registerInterfaceMembers(InterfaceDecl &decl)
 ///          pre-defines method symbols for intra-entity calls, then analyzes member bodies.
 ///          Validates interface implementations after all members are analyzed.
 /// @param decl The entity declaration to analyze.
-void Sema::analyzeEntityDecl(EntityDecl &decl)
-{
+void Sema::analyzeEntityDecl(EntityDecl &decl) {
     // Generic types are registered in the first pass; skip body analysis
     if (!decl.genericParams.empty())
         return;
@@ -601,30 +523,22 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
 
     std::unordered_set<std::string> declaredFieldNames;
     std::vector<MethodDecl *> declaredMethods;
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Field)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Field) {
             auto *field = static_cast<FieldDecl *>(member.get());
             declaredFieldNames.insert(field->name);
-        }
-        else if (member->kind == DeclKind::Method)
-        {
+        } else if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
             declaredMethods.push_back(method);
         }
     }
 
     // BUG-VL-006 fix: Handle inheritance - add parent's members to scope
-    if (!decl.baseClass.empty())
-    {
+    if (!decl.baseClass.empty()) {
         auto parentIt = entityDecls_.find(decl.baseClass);
-        if (parentIt == entityDecls_.end())
-        {
+        if (parentIt == entityDecls_.end()) {
             error(decl.loc, "Unknown base class: " + decl.baseClass);
-        }
-        else
-        {
+        } else {
             EntityDecl *parent = parentIt->second;
             // BUG-VL-007 fix: Register inheritance for polymorphism support
             types::registerEntityInheritance(decl.name, parent->name);
@@ -637,20 +551,16 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
             // invalidate the iterator.
             std::string parentPrefix = parent->name + ".";
             std::vector<std::pair<std::string, TypeRef>> inheritedFields;
-            for (const auto &entry : fieldTypes_)
-            {
-                if (entry.first.rfind(parentPrefix, 0) == 0)
-                {
+            for (const auto &entry : fieldTypes_) {
+                if (entry.first.rfind(parentPrefix, 0) == 0) {
                     std::string fieldName = entry.first.substr(parentPrefix.size());
                     if (!declaredFieldNames.contains(fieldName) &&
-                        !currentScope_->lookupLocal(fieldName))
-                    {
+                        !currentScope_->lookupLocal(fieldName)) {
                         inheritedFields.emplace_back(fieldName, entry.second);
                     }
                 }
             }
-            for (const auto &[fieldName, fieldType] : inheritedFields)
-            {
+            for (const auto &[fieldName, fieldType] : inheritedFields) {
                 Symbol sym;
                 sym.kind = Symbol::Kind::Field;
                 sym.name = fieldName;
@@ -661,16 +571,12 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
         }
     }
 
-    if (!decl.baseClass.empty())
-    {
+    if (!decl.baseClass.empty()) {
         auto parentIt = entityDecls_.find(decl.baseClass);
-        if (parentIt != entityDecls_.end())
-        {
-            for (auto *method : declaredMethods)
-            {
+        if (parentIt != entityDecls_.end()) {
+            for (auto *method : declaredMethods) {
                 MethodDecl *parentMethod = findInheritedExactMethod(decl.name, *method);
-                if (method->isOverride && !parentMethod)
-                {
+                if (method->isOverride && !parentMethod) {
                     error(method->loc,
                           "Method '" + method->name +
                               "' is marked override but no parent method with the same signature "
@@ -678,20 +584,17 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
                     continue;
                 }
 
-                if (parentMethod && !method->isOverride)
-                {
+                if (parentMethod && !method->isOverride) {
                     error(method->loc,
                           "Method '" + method->name +
                               "' must be marked override to replace an inherited overload");
                     continue;
                 }
 
-                if (parentMethod)
-                {
+                if (parentMethod) {
                     TypeRef parentType = getMethodType(decl.baseClass, parentMethod);
                     TypeRef childType = getMethodType(decl.name, method);
-                    if (parentType && childType && !parentType->equals(*childType))
-                    {
+                    if (parentType && childType && !parentType->equals(*childType)) {
                         error(method->loc,
                               "Method '" + method->name +
                                   "' must preserve the inherited return type for an override");
@@ -702,20 +605,16 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
     }
 
     // Analyze fields first (adds them to scope)
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Field)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Field) {
             analyzeFieldDecl(*static_cast<FieldDecl *>(member.get()), selfType);
         }
     }
 
     // Pre-define method symbols in scope so they can be called without 'self.'
     // This allows methods to call each other by bare name within the entity.
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Method)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
             TypeRef methodType = getMethodType(decl.name, method);
             Symbol sym;
@@ -730,18 +629,12 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
     }
 
     // Analyze methods (now they can reference each other by bare name)
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Method)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Method) {
             analyzeMethodDecl(*static_cast<MethodDecl *>(member.get()), selfType);
-        }
-        else if (member->kind == DeclKind::Property)
-        {
+        } else if (member->kind == DeclKind::Property) {
             analyzePropertyDecl(*static_cast<PropertyDecl *>(member.get()), selfType);
-        }
-        else if (member->kind == DeclKind::Destructor)
-        {
+        } else if (member->kind == DeclKind::Destructor) {
             analyzeDestructorDecl(*static_cast<DestructorDecl *>(member.get()), selfType);
         }
     }
@@ -758,18 +651,15 @@ void Sema::analyzeEntityDecl(EntityDecl &decl)
 
 /// @brief Analyze an interface declaration, registering method signatures.
 /// @param decl The interface declaration to analyze.
-void Sema::analyzeInterfaceDecl(InterfaceDecl &decl)
-{
+void Sema::analyzeInterfaceDecl(InterfaceDecl &decl) {
     auto selfType = types::interface(decl.name);
     currentSelfType_ = selfType;
 
     pushScope(decl.loc);
 
     // Analyze method signatures
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Method)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
             TypeRef methodType = getMethodType(decl.name, method);
             if (!methodType)
@@ -791,8 +681,7 @@ void Sema::analyzeInterfaceDecl(InterfaceDecl &decl)
 
 /// @brief Analyze an enum declaration: validate variants and register them.
 /// @param decl The enum declaration to analyze.
-void Sema::analyzeEnumDecl(EnumDecl &decl)
-{
+void Sema::analyzeEnumDecl(EnumDecl &decl) {
     auto enumT = types::enumType(decl.name);
     enumDecls_[decl.name] = &decl;
 
@@ -800,23 +689,18 @@ void Sema::analyzeEnumDecl(EnumDecl &decl)
     std::unordered_set<std::string> seenNames;
     int64_t nextValue = 0;
 
-    for (auto &variant : decl.variants)
-    {
+    for (auto &variant : decl.variants) {
         // Check for duplicate variant names
-        if (!seenNames.insert(variant.name).second)
-        {
+        if (!seenNames.insert(variant.name).second) {
             error(variant.loc,
                   "Duplicate enum variant '" + variant.name + "' in '" + decl.name + "'");
             continue;
         }
 
         // Resolve the value (explicit or auto-increment)
-        if (variant.explicitValue.has_value())
-        {
+        if (variant.explicitValue.has_value()) {
             nextValue = variant.explicitValue.value();
-        }
-        else
-        {
+        } else {
             variant.explicitValue = nextValue;
         }
 
@@ -830,8 +714,7 @@ void Sema::analyzeEnumDecl(EnumDecl &decl)
 
 /// @brief Analyze a function declaration body (parameters, return type, body statements).
 /// @param decl The function declaration to analyze.
-void Sema::analyzeFunctionDecl(FunctionDecl &decl)
-{
+void Sema::analyzeFunctionDecl(FunctionDecl &decl) {
     // Generic functions are registered in the first pass; skip body analysis
     // The body will be analyzed when the function is instantiated
     if (!decl.genericParams.empty())
@@ -851,8 +734,7 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
     pushScope(decl.loc);
 
     // Define parameters
-    for (const auto &param : decl.params)
-    {
+    for (const auto &param : decl.params) {
         TypeRef paramType = param.type ? resolveTypeNode(param.type.get()) : types::unknown();
 
         Symbol sym;
@@ -865,15 +747,12 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
     }
 
     // Analyze body
-    if (decl.body)
-    {
+    if (decl.body) {
         analyzeStmt(decl.body.get());
 
         // W008: Missing return in non-void function
-        if (expectedReturnType_ && expectedReturnType_->kind != TypeKindSem::Void)
-        {
-            if (!stmtAlwaysExits(decl.body.get()))
-            {
+        if (expectedReturnType_ && expectedReturnType_->kind != TypeKindSem::Void) {
+            if (!stmtAlwaysExits(decl.body.get())) {
                 warn(WarningCode::W008_MissingReturn,
                      decl.loc,
                      "Function '" + decl.name + "' may not return a value on all code paths");
@@ -890,26 +769,21 @@ void Sema::analyzeFunctionDecl(FunctionDecl &decl)
 /// @brief Analyze a field declaration (type resolution and initializer type checking).
 /// @param decl The field declaration to analyze.
 /// @param ownerType The type that owns this field.
-void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType)
-{
+void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType) {
     TypeRef fieldType = decl.type ? resolveTypeNode(decl.type.get()) : types::unknown();
 
     // Check initializer type
-    if (decl.initializer)
-    {
+    if (decl.initializer) {
         TypeRef initType = analyzeExpr(decl.initializer.get());
-        if (!fieldType->isAssignableFrom(*initType))
-        {
+        if (!fieldType->isAssignableFrom(*initType)) {
             errorTypeMismatch(decl.initializer->loc, fieldType, initType);
         }
     }
 
     // Store field type and visibility for access checking
-    if (ownerType)
-    {
+    if (ownerType) {
         std::string fieldKey = ownerType->name + "." + decl.name;
-        if (fieldTypes_.find(fieldKey) == fieldTypes_.end())
-        {
+        if (fieldTypes_.find(fieldKey) == fieldTypes_.end()) {
             fieldTypes_[fieldKey] = fieldType;
             memberVisibility_[fieldKey] = decl.visibility;
         }
@@ -924,12 +798,10 @@ void Sema::analyzeFieldDecl(FieldDecl &decl, TypeRef ownerType)
     defineSymbol(decl.name, sym);
 }
 
-void Sema::analyzePropertyDecl(PropertyDecl &decl, TypeRef ownerType)
-{
+void Sema::analyzePropertyDecl(PropertyDecl &decl, TypeRef ownerType) {
     TypeRef propType = decl.type ? resolveTypeNode(decl.type.get()) : types::unknown();
 
-    auto analyzeBody = [&](Stmt *body, TypeRef returnType, bool defineSetterParam)
-    {
+    auto analyzeBody = [&](Stmt *body, TypeRef returnType, bool defineSetterParam) {
         if (!body)
             return;
 
@@ -941,8 +813,7 @@ void Sema::analyzePropertyDecl(PropertyDecl &decl, TypeRef ownerType)
 
         pushScope(decl.loc);
 
-        if (!decl.isStatic)
-        {
+        if (!decl.isStatic) {
             Symbol selfSym;
             selfSym.kind = Symbol::Kind::Parameter;
             selfSym.name = "self";
@@ -952,8 +823,7 @@ void Sema::analyzePropertyDecl(PropertyDecl &decl, TypeRef ownerType)
             markInitialized("self");
         }
 
-        if (defineSetterParam)
-        {
+        if (defineSetterParam) {
             Symbol paramSym;
             paramSym.kind = Symbol::Kind::Parameter;
             paramSym.name = decl.setterParam;
@@ -965,8 +835,7 @@ void Sema::analyzePropertyDecl(PropertyDecl &decl, TypeRef ownerType)
 
         analyzeStmt(body);
 
-        if (returnType && returnType->kind != TypeKindSem::Void && !stmtAlwaysExits(body))
-        {
+        if (returnType && returnType->kind != TypeKindSem::Void && !stmtAlwaysExits(body)) {
             warn(WarningCode::W008_MissingReturn,
                  decl.loc,
                  "Property '" + decl.name + "' may not return a value on all code paths");
@@ -983,14 +852,11 @@ void Sema::analyzePropertyDecl(PropertyDecl &decl, TypeRef ownerType)
 }
 
 const PropertyDecl *Sema::findPropertyDecl(const std::string &ownerName,
-                                           const std::string &propertyName) const
-{
-    auto scanMembers = [&](const auto *typeDecl) -> const PropertyDecl *
-    {
+                                           const std::string &propertyName) const {
+    auto scanMembers = [&](const auto *typeDecl) -> const PropertyDecl * {
         if (!typeDecl)
             return nullptr;
-        for (const auto &member : typeDecl->members)
-        {
+        for (const auto &member : typeDecl->members) {
             if (member->kind != DeclKind::Property)
                 continue;
             auto *prop = static_cast<PropertyDecl *>(member.get());
@@ -1001,8 +867,7 @@ const PropertyDecl *Sema::findPropertyDecl(const std::string &ownerName,
     };
 
     auto entityIt = entityDecls_.find(ownerName);
-    if (entityIt != entityDecls_.end())
-    {
+    if (entityIt != entityDecls_.end()) {
         if (const PropertyDecl *prop = scanMembers(entityIt->second))
             return prop;
         if (!entityIt->second->baseClass.empty())
@@ -1017,8 +882,7 @@ const PropertyDecl *Sema::findPropertyDecl(const std::string &ownerName,
     return nullptr;
 }
 
-void Sema::analyzeDestructorDecl(DestructorDecl &decl, TypeRef ownerType)
-{
+void Sema::analyzeDestructorDecl(DestructorDecl &decl, TypeRef ownerType) {
     if (!decl.body)
         return;
 
@@ -1052,8 +916,7 @@ void Sema::analyzeDestructorDecl(DestructorDecl &decl, TypeRef ownerType)
 /// @brief Analyze a method declaration body (implicit self parameter, parameters, body).
 /// @param decl The method declaration to analyze.
 /// @param ownerType The type that owns this method, used as the type of 'self'.
-void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
-{
+void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType) {
     currentSelfType_ = ownerType;
     TypeRef methodType =
         methodDeclTypes_.count(&decl) ? methodDeclTypes_[&decl] : methodTypeForDecl(decl);
@@ -1064,8 +927,7 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
 
     // Register method type: "TypeName.methodName" -> function type
     std::string methodKey = ownerType->name + "." + decl.name;
-    if (methodTypes_.find(methodKey) == methodTypes_.end())
-    {
+    if (methodTypes_.find(methodKey) == methodTypes_.end()) {
         methodTypes_[methodKey] = methodType;
         memberVisibility_[methodKey] = decl.visibility;
     }
@@ -1082,18 +944,14 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
     markInitialized("self");
 
     // Define explicit parameters
-    for (size_t i = 0; i < decl.params.size(); ++i)
-    {
+    for (size_t i = 0; i < decl.params.size(); ++i) {
         const auto &param = decl.params[i];
         TypeRef paramType = types::unknown();
-        if (methodType && methodType->kind == TypeKindSem::Function)
-        {
+        if (methodType && methodType->kind == TypeKindSem::Function) {
             const auto &paramTypes = methodType->paramTypes();
             if (i < paramTypes.size())
                 paramType = paramTypes[i];
-        }
-        else if (param.type)
-        {
+        } else if (param.type) {
             paramType = resolveTypeNode(param.type.get());
         }
 
@@ -1107,15 +965,12 @@ void Sema::analyzeMethodDecl(MethodDecl &decl, TypeRef ownerType)
     }
 
     // Analyze body
-    if (decl.body)
-    {
+    if (decl.body) {
         analyzeStmt(decl.body.get());
 
         // W008: Missing return in non-void method
-        if (expectedReturnType_ && expectedReturnType_->kind != TypeKindSem::Void)
-        {
-            if (!stmtAlwaysExits(decl.body.get()))
-            {
+        if (expectedReturnType_ && expectedReturnType_->kind != TypeKindSem::Void) {
+            if (!stmtAlwaysExits(decl.body.get())) {
                 warn(WarningCode::W008_MissingReturn,
                      decl.loc,
                      "Method '" + decl.name + "' may not return a value on all code paths");

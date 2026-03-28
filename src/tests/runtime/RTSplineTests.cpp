@@ -19,24 +19,20 @@
 #include <cmath>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
 static const double EPSILON = 1e-6;
 
-static bool approx_eq(double a, double b)
-{
+static bool approx_eq(double a, double b) {
     return fabs(a - b) < EPSILON;
 }
 
 /* Helper: create a Seq of Vec2 from arrays. */
-static void *make_points(const double *xs, const double *ys, int n)
-{
+static void *make_points(const double *xs, const double *ys, int n) {
     void *seq = rt_seq_new();
-    for (int i = 0; i < n; ++i)
-    {
+    for (int i = 0; i < n; ++i) {
         rt_seq_push(seq, rt_vec2_new(xs[i], ys[i]));
     }
     return seq;
@@ -46,8 +42,7 @@ static void *make_points(const double *xs, const double *ys, int n)
 // Linear spline
 // ============================================================================
 
-static void test_linear_endpoints()
-{
+static void test_linear_endpoints() {
     double xs[] = {0.0, 10.0};
     double ys[] = {0.0, 20.0};
     void *pts = make_points(xs, ys, 2);
@@ -67,8 +62,7 @@ static void test_linear_endpoints()
     printf("test_linear_endpoints: PASSED\n");
 }
 
-static void test_linear_midpoint()
-{
+static void test_linear_midpoint() {
     double xs[] = {0.0, 10.0};
     double ys[] = {0.0, 20.0};
     void *pts = make_points(xs, ys, 2);
@@ -81,8 +75,7 @@ static void test_linear_midpoint()
     printf("test_linear_midpoint: PASSED\n");
 }
 
-static void test_linear_multi_segment()
-{
+static void test_linear_multi_segment() {
     double xs[] = {0.0, 10.0, 20.0};
     double ys[] = {0.0, 10.0, 0.0};
     void *pts = make_points(xs, ys, 3);
@@ -101,8 +94,7 @@ static void test_linear_multi_segment()
     printf("test_linear_multi_segment: PASSED\n");
 }
 
-static void test_linear_clamp()
-{
+static void test_linear_clamp() {
     double xs[] = {0.0, 10.0};
     double ys[] = {0.0, 20.0};
     void *pts = make_points(xs, ys, 2);
@@ -125,8 +117,7 @@ static void test_linear_clamp()
 // Bezier spline
 // ============================================================================
 
-static void test_bezier_endpoints()
-{
+static void test_bezier_endpoints() {
     void *p0 = rt_vec2_new(0.0, 0.0);
     void *p1 = rt_vec2_new(1.0, 2.0);
     void *p2 = rt_vec2_new(3.0, 2.0);
@@ -147,8 +138,7 @@ static void test_bezier_endpoints()
     printf("test_bezier_endpoints: PASSED\n");
 }
 
-static void test_bezier_midpoint()
-{
+static void test_bezier_midpoint() {
     /* Symmetric bezier: (0,0), (0,2), (4,2), (4,0) */
     void *p0 = rt_vec2_new(0.0, 0.0);
     void *p1 = rt_vec2_new(0.0, 2.0);
@@ -169,8 +159,7 @@ static void test_bezier_midpoint()
 // Catmull-Rom spline
 // ============================================================================
 
-static void test_catmull_rom_endpoints()
-{
+static void test_catmull_rom_endpoints() {
     double xs[] = {0.0, 1.0, 2.0, 3.0};
     double ys[] = {0.0, 1.0, 1.0, 0.0};
     void *pts = make_points(xs, ys, 4);
@@ -190,8 +179,7 @@ static void test_catmull_rom_endpoints()
     printf("test_catmull_rom_endpoints: PASSED\n");
 }
 
-static void test_catmull_rom_passes_through_controls()
-{
+static void test_catmull_rom_passes_through_controls() {
     /* Catmull-Rom passes through all control points */
     double xs[] = {0.0, 1.0, 2.0, 3.0};
     double ys[] = {0.0, 1.0, 1.0, 0.0};
@@ -217,8 +205,7 @@ static void test_catmull_rom_passes_through_controls()
 // Point access
 // ============================================================================
 
-static void test_point_count()
-{
+static void test_point_count() {
     double xs[] = {0.0, 1.0, 2.0};
     double ys[] = {0.0, 1.0, 0.0};
     void *pts = make_points(xs, ys, 3);
@@ -228,8 +215,7 @@ static void test_point_count()
     printf("test_point_count: PASSED\n");
 }
 
-static void test_point_at()
-{
+static void test_point_at() {
     double xs[] = {10.0, 20.0, 30.0};
     double ys[] = {5.0, 15.0, 25.0};
     void *pts = make_points(xs, ys, 3);
@@ -246,8 +232,7 @@ static void test_point_at()
     printf("test_point_at: PASSED\n");
 }
 
-static void test_bezier_point_count()
-{
+static void test_bezier_point_count() {
     void *s = rt_spline_bezier(
         rt_vec2_new(0.0, 0.0), rt_vec2_new(1.0, 1.0), rt_vec2_new(2.0, 1.0), rt_vec2_new(3.0, 0.0));
     assert(rt_spline_point_count(s) == 4);
@@ -258,8 +243,7 @@ static void test_bezier_point_count()
 // Tangent
 // ============================================================================
 
-static void test_linear_tangent()
-{
+static void test_linear_tangent() {
     double xs[] = {0.0, 10.0};
     double ys[] = {0.0, 20.0};
     void *pts = make_points(xs, ys, 2);
@@ -273,8 +257,7 @@ static void test_linear_tangent()
     printf("test_linear_tangent: PASSED\n");
 }
 
-static void test_bezier_tangent()
-{
+static void test_bezier_tangent() {
     /* Straight-line bezier: tangent should be in the positive X direction */
     void *s = rt_spline_bezier(
         rt_vec2_new(0.0, 0.0), rt_vec2_new(1.0, 0.0), rt_vec2_new(2.0, 0.0), rt_vec2_new(3.0, 0.0));
@@ -292,8 +275,7 @@ static void test_bezier_tangent()
 // Arc length
 // ============================================================================
 
-static void test_linear_arc_length()
-{
+static void test_linear_arc_length() {
     /* Straight line from (0,0) to (3,4): length = 5 */
     double xs[] = {0.0, 3.0};
     double ys[] = {0.0, 4.0};
@@ -306,8 +288,7 @@ static void test_linear_arc_length()
     printf("test_linear_arc_length: PASSED\n");
 }
 
-static void test_arc_length_partial()
-{
+static void test_arc_length_partial() {
     /* Half of a straight line from (0,0) to (10,0): length = 5 */
     double xs[] = {0.0, 10.0};
     double ys[] = {0.0, 0.0};
@@ -324,8 +305,7 @@ static void test_arc_length_partial()
 // Sample
 // ============================================================================
 
-static void test_sample()
-{
+static void test_sample() {
     double xs[] = {0.0, 10.0};
     double ys[] = {0.0, 20.0};
     void *pts = make_points(xs, ys, 2);
@@ -356,8 +336,7 @@ static void test_sample()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Viper.Spline Tests ===\n\n");
 
     /* Linear */

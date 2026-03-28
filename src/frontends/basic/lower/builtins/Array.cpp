@@ -23,8 +23,7 @@
 
 #include "frontends/basic/lower/builtins/Registrars.hpp"
 
-namespace il::frontends::basic::lower::builtins
-{
+namespace il::frontends::basic::lower::builtins {
 /// @brief Install array builtin lowering rules into the shared registry.
 /// @details The lowering pipeline invokes a registrar for every builtin domain
 ///          during initialisation.  Array intrinsics currently lower through
@@ -37,8 +36,7 @@ namespace il::frontends::basic::lower::builtins
 ///            - Future developers have a documented entry point when specialised
 ///              array lowering becomes necessary.
 ///          The body intentionally remains a no-op.
-void registerArrayBuiltins()
-{
+void registerArrayBuiltins() {
     // No array-specific builtin lowering is routed through the shared registry.
 }
 } // namespace il::frontends::basic::lower::builtins

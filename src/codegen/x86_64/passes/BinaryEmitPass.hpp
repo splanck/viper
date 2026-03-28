@@ -25,12 +25,10 @@
 #include "codegen/x86_64/Backend.hpp"
 #include "codegen/x86_64/passes/PassManager.hpp"
 
-namespace viper::codegen::x64::passes
-{
+namespace viper::codegen::x64::passes {
 
 /// \brief Encode MIR functions into machine code bytes for the x86-64 backend.
-class BinaryEmitPass final : public Pass
-{
+class BinaryEmitPass final : public Pass {
   public:
     /// @param isDarwin If true, symbol names get underscore-prefixed (Mach-O convention).
     BinaryEmitPass(bool isDarwin, CodegenOptions options) noexcept;

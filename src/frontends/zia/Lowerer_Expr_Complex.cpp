@@ -22,8 +22,7 @@
 #include "frontends/zia/RuntimeNames.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
@@ -31,17 +30,13 @@ using namespace runtime;
 // Field Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerField(FieldExpr *expr)
-{
-    auto dottedName = [](Expr *node, std::string &out, auto &self) -> bool
-    {
-        if (auto *ident = dynamic_cast<IdentExpr *>(node))
-        {
+LowerResult Lowerer::lowerField(FieldExpr *expr) {
+    auto dottedName = [](Expr *node, std::string &out, auto &self) -> bool {
+        if (auto *ident = dynamic_cast<IdentExpr *>(node)) {
             out = ident->name;
             return true;
         }
-        if (auto *field = dynamic_cast<FieldExpr *>(node))
-        {
+        if (auto *field = dynamic_cast<FieldExpr *>(node)) {
             std::string base;
             if (!self(field->base.get(), base, self))
                 return false;
@@ -54,14 +49,12 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
     // Property access lowers to a synthesized getter call for both runtime and
     // user-defined properties.
     std::string getterName = sema_.resolvedFieldGetter(expr);
-    if (!getterName.empty())
-    {
+    if (!getterName.empty()) {
         TypeRef resultType = sema_.typeOf(expr);
         Type ilType = mapType(resultType);
         TypeRef baseType = sema_.typeOf(expr->base.get());
         std::vector<Value> args;
-        if (!baseType || baseType->kind != TypeKindSem::Module)
-        {
+        if (!baseType || baseType->kind != TypeKindSem::Module) {
             auto base = lowerExpr(expr->base.get());
             args.push_back(base.value);
         }
@@ -72,8 +65,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
     // Handle dotted enum variant access even when the base expression itself was
     // not cached as an Enum type during semantic analysis (e.g. Color.Red).
     std::string dottedBase;
-    if (dottedName(expr->base.get(), dottedBase, dottedName))
-    {
+    if (dottedName(expr->base.get(), dottedBase, dottedName)) {
         std::string key = dottedBase + "." + expr->field;
         auto it = enumVariantValues_.find(key);
         if (it != enumVariantValues_.end())
@@ -82,26 +74,22 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
 
     // Get the type of the base expression first (before lowering)
     TypeRef baseType = sema_.typeOf(expr->base.get());
-    if (!baseType)
-    {
+    if (!baseType) {
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
     // Unwrap Optional types for field access
     // This handles variables assigned from optionals after null checks
     // (e.g., `var col = maybeCol;` where maybeCol is Column?)
-    if (baseType->kind == TypeKindSem::Optional && baseType->innerType())
-    {
+    if (baseType->kind == TypeKindSem::Optional && baseType->innerType()) {
         baseType = baseType->innerType();
     }
 
     // Handle enum variant access (e.g., Color.Red) -- emit I64 constant
-    if (baseType->kind == TypeKindSem::Enum)
-    {
+    if (baseType->kind == TypeKindSem::Enum) {
         std::string key = baseType->name + "." + expr->field;
         auto it = enumVariantValues_.find(key);
-        if (it != enumVariantValues_.end())
-        {
+        if (it != enumVariantValues_.end()) {
             return {Value::constInt(it->second), Type(Type::Kind::I64)};
         }
         // Fallthrough should not happen (Sema catches unknown variants)
@@ -110,24 +98,20 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
 
     // Handle module-qualified identifier access (e.g., colors.BLACK)
     // The module is just a namespace - we load the symbol directly
-    if (baseType->kind == TypeKindSem::Module)
-    {
+    if (baseType->kind == TypeKindSem::Module) {
         // Look up the symbol as a global variable or function
         std::string symbolName = expr->field;
 
         // Check for global constants first (compile-time constants)
         auto constIt = globalConstants_.find(symbolName);
-        if (constIt != globalConstants_.end())
-        {
+        if (constIt != globalConstants_.end()) {
             const Value &val = constIt->second;
             Type ilType;
-            switch (val.kind)
-            {
+            switch (val.kind) {
                 case Value::Kind::ConstFloat:
                     ilType = Type(Type::Kind::F64);
                     break;
-                case Value::Kind::ConstStr:
-                {
+                case Value::Kind::ConstStr: {
                     Value loaded = emitConstStr(val.str);
                     return {loaded, Type(Type::Kind::Str)};
                 }
@@ -143,8 +127,7 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
 
         // Check for global mutable variables
         auto globalIt = globalVariables_.find(symbolName);
-        if (globalIt != globalVariables_.end())
-        {
+        if (globalIt != globalVariables_.end()) {
             TypeRef varType = globalIt->second;
             Type ilType = mapType(varType);
             Value addr = getGlobalVarAddr(symbolName, varType);
@@ -162,12 +145,10 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
     // Check if base is a value type
     std::string typeName = baseType->name;
     const ValueTypeInfo *info = getOrCreateValueTypeInfo(typeName);
-    if (info)
-    {
+    if (info) {
         const FieldLayout *field = info->findField(expr->field);
 
-        if (field)
-        {
+        if (field) {
             // GEP to get field address
             unsigned gepId = nextTempId();
             il::core::Instr gepInstr;
@@ -204,13 +185,11 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
 
     // Check if base is an entity type
     const EntityTypeInfo *entityInfoPtr = getOrCreateEntityTypeInfo(typeName);
-    if (entityInfoPtr)
-    {
+    if (entityInfoPtr) {
         const EntityTypeInfo &entityInfo = *entityInfoPtr;
         const FieldLayout *field = entityInfo.findField(expr->field);
 
-        if (field)
-        {
+        if (field) {
             // GEP to get field address
             unsigned gepId = nextTempId();
             il::core::Instr gepInstr;
@@ -249,10 +228,8 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
     }
 
     // Handle String.Length and String.length property (Bug #3 fix)
-    if (baseType->kind == TypeKindSem::String)
-    {
-        if (expr->field == "Length" || expr->field == "length")
-        {
+    if (baseType->kind == TypeKindSem::String) {
+        if (expr->field == "Length" || expr->field == "length") {
             // Synthesize a call to Viper.String.Length(str)
             Value result = emitCallRet(Type(Type::Kind::I64), kStringLength, {base.value});
             return {result, Type(Type::Kind::I64)};
@@ -260,11 +237,9 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
     }
 
     // Handle List.count, List.size, List.length, and List.Len property
-    if (baseType->kind == TypeKindSem::List)
-    {
+    if (baseType->kind == TypeKindSem::List) {
         if (expr->field == "Count" || expr->field == "count" || expr->field == "size" ||
-            expr->field == "length" || expr->field == "Len" || expr->field == "Length")
-        {
+            expr->field == "length" || expr->field == "Len" || expr->field == "Length") {
             // Synthesize a call to Viper.Collections.List.get_Count(list)
             Value result = emitCallRet(Type(Type::Kind::I64), kListCount, {base.value});
             return {result, Type(Type::Kind::I64)};
@@ -272,22 +247,18 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
     }
 
     // Handle Map.Length, Map.Len, Map.Count, etc. property
-    if (baseType->kind == TypeKindSem::Map)
-    {
+    if (baseType->kind == TypeKindSem::Map) {
         if (expr->field == "Length" || expr->field == "length" || expr->field == "Len" ||
-            expr->field == "Count" || expr->field == "count" || expr->field == "size")
-        {
+            expr->field == "Count" || expr->field == "count" || expr->field == "size") {
             Value result = emitCallRet(Type(Type::Kind::I64), kMapCount, {base.value});
             return {result, Type(Type::Kind::I64)};
         }
     }
 
     // Handle Set.Length, Set.Len, Set.Count, etc. property
-    if (baseType->kind == TypeKindSem::Set)
-    {
+    if (baseType->kind == TypeKindSem::Set) {
         if (expr->field == "Length" || expr->field == "length" || expr->field == "Len" ||
-            expr->field == "Count" || expr->field == "count" || expr->field == "size")
-        {
+            expr->field == "Count" || expr->field == "count" || expr->field == "size") {
             Value result = emitCallRet(Type(Type::Kind::I64), kSetCount, {base.value});
             return {result, Type(Type::Kind::I64)};
         }
@@ -295,19 +266,16 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
 
     // Handle runtime class property access (e.g., app.ShouldClose, editor.LineCount)
     // Runtime classes are Ptr types with a non-empty name like "Viper.GUI.App"
-    if (baseType->kind == TypeKindSem::Ptr && !baseType->name.empty())
-    {
+    if (baseType->kind == TypeKindSem::Ptr && !baseType->name.empty()) {
         // Construct getter function name: {ClassName}.get_{PropertyName}
         std::string rtGetterName = baseType->name + ".get_" + expr->field;
 
         // Look up the getter function
         Symbol *getterSym = sema_.findExternFunction(rtGetterName);
-        if (getterSym && getterSym->type)
-        {
+        if (getterSym && getterSym->type) {
             // Determine the return type - extract from function type if needed
             TypeRef symType = getterSym->type;
-            if (symType->kind == TypeKindSem::Function && symType->returnType())
-            {
+            if (symType->kind == TypeKindSem::Function && symType->returnType()) {
                 symType = symType->returnType();
             }
             Type retType = mapType(symType);
@@ -329,29 +297,24 @@ LowerResult Lowerer::lowerField(FieldExpr *expr)
 // New Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerNew(NewExpr *expr)
-{
+LowerResult Lowerer::lowerNew(NewExpr *expr) {
     // Get the type from the new expression
     TypeRef type = sema_.resolveType(expr->type.get());
-    if (!type)
-    {
+    if (!type) {
         return {Value::null(), Type(Type::Kind::Ptr)};
     }
 
     // Handle built-in collection types
-    if (type->kind == TypeKindSem::List)
-    {
+    if (type->kind == TypeKindSem::List) {
         // Create a new list via runtime
         Value list = emitCallRet(Type(Type::Kind::Ptr), kListNew, {});
         return {list, Type(Type::Kind::Ptr)};
     }
-    if (type->kind == TypeKindSem::Set)
-    {
+    if (type->kind == TypeKindSem::Set) {
         Value set = emitCallRet(Type(Type::Kind::Ptr), kSetNew, {});
         return {set, Type(Type::Kind::Ptr)};
     }
-    if (type->kind == TypeKindSem::Map)
-    {
+    if (type->kind == TypeKindSem::Map) {
         Value map = emitCallRet(Type(Type::Kind::Ptr), kMapNew, {});
         return {map, Type(Type::Kind::Ptr)};
     }
@@ -361,11 +324,9 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
     // "Viper.Collections.FrozenSet.FromSeq"
     // Skip Entity and Value types -- they have their own lowering below.
     if (type && !type->name.empty() && type->kind != TypeKindSem::Entity &&
-        type->kind != TypeKindSem::Value)
-    {
+        type->kind != TypeKindSem::Value) {
         std::string ctorName;
-        if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name))
-        {
+        if (const auto *rtClass = il::runtime::findRuntimeClassByQName(type->name)) {
             if (rtClass->ctor)
                 ctorName = rtClass->ctor;
         }
@@ -375,8 +336,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
 
         // Lower arguments
         std::vector<Value> argValues;
-        for (auto &arg : expr->args)
-        {
+        for (auto &arg : expr->args) {
             auto result = lowerExpr(arg.value.get());
             argValues.push_back(result.value);
         }
@@ -390,14 +350,12 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
     // Value types can be instantiated with 'new' just like entity types
     std::string typeName = type->name;
     const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(typeName);
-    if (valueInfo)
-    {
+    if (valueInfo) {
         const ValueTypeInfo &valInfo = *valueInfo;
 
         // Lower arguments
         std::vector<Value> argValues;
-        for (auto &arg : expr->args)
-        {
+        for (auto &arg : expr->args) {
             auto result = lowerExpr(arg.value.get());
             argValues.push_back(result.value);
         }
@@ -415,23 +373,18 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
 
         // Check if the value type has an explicit init method
         auto initIt = valInfo.methodMap.find("init");
-        if (initIt != valInfo.methodMap.end())
-        {
+        if (initIt != valInfo.methodMap.end()) {
             // Call the explicit init method
             std::string initName = typeName + ".init";
             std::vector<Value> initArgs;
             initArgs.push_back(ptr); // self is first argument
-            for (const auto &argVal : argValues)
-            {
+            for (const auto &argVal : argValues) {
                 initArgs.push_back(argVal);
             }
             emitCall(initName, initArgs);
-        }
-        else
-        {
+        } else {
             // No init method - store arguments directly into fields
-            for (size_t i = 0; i < argValues.size() && i < valInfo.fields.size(); ++i)
-            {
+            for (size_t i = 0; i < argValues.size() && i < valInfo.fields.size(); ++i) {
                 const FieldLayout &field = valInfo.fields[i];
 
                 // GEP to get field address
@@ -460,8 +413,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
 
     // Find the entity type info
     const EntityTypeInfo *infoPtr = getOrCreateEntityTypeInfo(typeName);
-    if (!infoPtr)
-    {
+    if (!infoPtr) {
         // Not an entity type
         return {Value::null(), Type(Type::Kind::Ptr)};
     }
@@ -470,8 +422,7 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
 
     // Lower arguments
     std::vector<Value> argValues;
-    for (auto &arg : expr->args)
-    {
+    for (auto &arg : expr->args) {
         auto result = lowerExpr(arg.value.get());
         argValues.push_back(result.value);
     }
@@ -487,40 +438,31 @@ LowerResult Lowerer::lowerNew(NewExpr *expr)
     // Check if the entity has an explicit init method
     MethodDecl *resolvedInit = sema_.resolvedInitDecl(expr);
     auto initIt = entityInfo.methodMap.find("init");
-    if (resolvedInit || initIt != entityInfo.methodMap.end())
-    {
+    if (resolvedInit || initIt != entityInfo.methodMap.end()) {
         MethodDecl *initDecl = resolvedInit ? resolvedInit : initIt->second;
         std::string initName = sema_.loweredMethodName(typeName, initDecl);
         if (initName.empty())
             initName = typeName + ".init";
         std::vector<Value> initArgs;
         initArgs.push_back(ptr); // self is first argument
-        for (const auto &argVal : argValues)
-        {
+        for (const auto &argVal : argValues) {
             initArgs.push_back(argVal);
         }
         emitCall(initName, initArgs);
-    }
-    else
-    {
+    } else {
         // No explicit init - do inline field initialization
         // Constructor args map directly to fields in declaration order
-        for (size_t i = 0; i < entityInfo.fields.size(); ++i)
-        {
+        for (size_t i = 0; i < entityInfo.fields.size(); ++i) {
             const auto &field = entityInfo.fields[i];
             Type ilFieldType = mapType(field.type);
             Value fieldValue;
 
-            if (i < argValues.size())
-            {
+            if (i < argValues.size()) {
                 // Use constructor argument
                 fieldValue = argValues[i];
-            }
-            else
-            {
+            } else {
                 // Use default value
-                switch (ilFieldType.kind)
-                {
+                switch (ilFieldType.kind) {
                     case Type::Kind::I1:
                         fieldValue = Value::constBool(false);
                         break;

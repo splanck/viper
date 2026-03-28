@@ -12,8 +12,7 @@ static int tests_failed = 0;
 
 #define TEST(name) static void test_##name()
 #define RUN_TEST(name)                                                                             \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("  %s...", #name);                                                                  \
         test_##name();                                                                             \
         printf(" OK\n");                                                                           \
@@ -21,26 +20,22 @@ static int tests_failed = 0;
     } while (0)
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
             tests_failed++;                                                                        \
             return;                                                                                \
         }                                                                                          \
     } while (0)
 
-TEST(create_destroy)
-{
+TEST(create_destroy) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000); // 1000x1000
     ASSERT(tree != NULL);
     ASSERT(rt_quadtree_item_count(tree) == 0);
     rt_quadtree_destroy(tree);
 }
 
-TEST(insert)
-{
+TEST(insert) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     ASSERT(rt_quadtree_insert(tree, 1, 100000, 100000, 10000, 10000) == 1);
@@ -51,8 +46,7 @@ TEST(insert)
     rt_quadtree_destroy(tree);
 }
 
-TEST(insert_out_of_bounds)
-{
+TEST(insert_out_of_bounds) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 100000, 100000);
 
     // Completely outside bounds
@@ -61,8 +55,7 @@ TEST(insert_out_of_bounds)
     rt_quadtree_destroy(tree);
 }
 
-TEST(remove)
-{
+TEST(remove) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     rt_quadtree_insert(tree, 1, 100000, 100000, 10000, 10000);
@@ -79,8 +72,7 @@ TEST(remove)
     rt_quadtree_destroy(tree);
 }
 
-TEST(query_rect)
-{
+TEST(query_rect) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     rt_quadtree_insert(tree, 1, 100000, 100000, 10000, 10000);
@@ -100,8 +92,7 @@ TEST(query_rect)
     rt_quadtree_destroy(tree);
 }
 
-TEST(query_point)
-{
+TEST(query_point) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     rt_quadtree_insert(tree, 1, 100000, 100000, 20000, 20000);
@@ -115,8 +106,7 @@ TEST(query_point)
     rt_quadtree_destroy(tree);
 }
 
-TEST(update)
-{
+TEST(update) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     rt_quadtree_insert(tree, 1, 100000, 100000, 10000, 10000);
@@ -135,8 +125,7 @@ TEST(update)
     rt_quadtree_destroy(tree);
 }
 
-TEST(clear)
-{
+TEST(clear) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     rt_quadtree_insert(tree, 1, 100000, 100000, 10000, 10000);
@@ -149,8 +138,7 @@ TEST(clear)
     rt_quadtree_destroy(tree);
 }
 
-TEST(get_pairs)
-{
+TEST(get_pairs) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     // Insert overlapping items
@@ -172,13 +160,11 @@ TEST(get_pairs)
     rt_quadtree_destroy(tree);
 }
 
-TEST(many_items)
-{
+TEST(many_items) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     // Insert many items
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         int64_t x = (i % 10) * 100000;
         int64_t y = (i / 10) * 100000;
         rt_quadtree_insert(tree, i, x, y, 10000, 10000);
@@ -193,8 +179,7 @@ TEST(many_items)
     rt_quadtree_destroy(tree);
 }
 
-TEST(invalid_result_index)
-{
+TEST(invalid_result_index) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     rt_quadtree_insert(tree, 1, 100000, 100000, 10000, 10000);
@@ -209,8 +194,7 @@ TEST(invalid_result_index)
 
 // GAME-H-5: Duplicate ID guard — inserting same ID twice must return 0 on second call
 // and must NOT create a ghost item that persists in query results.
-TEST(duplicate_id_rejected)
-{
+TEST(duplicate_id_rejected) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 1000000, 1000000);
 
     ASSERT(rt_quadtree_insert(tree, 42, 500000, 500000, 10000, 10000) == 1);
@@ -230,8 +214,7 @@ TEST(duplicate_id_rejected)
 // Items are spread on a 17×16 grid with spacing 5500 and half-size 2 so that
 // no item straddles any quadrant boundary at any subdivision depth, guaranteeing
 // all N items land in the node tree and are reachable by the query.
-TEST(query_truncation_detected)
-{
+TEST(query_truncation_detected) {
     const int N = RT_QUADTREE_MAX_RESULTS + 10; // 266 > 256
 
     // World 100000×100000; grid spacing 5500 starting at offset 2750 keeps
@@ -239,8 +222,7 @@ TEST(query_truncation_detected)
     // 25000, 12500, ...) so get_quadrant() never returns -1 for any item.
     rt_quadtree tree = rt_quadtree_new(0, 0, 100000, 100000);
 
-    for (int i = 0; i < N; i++)
-    {
+    for (int i = 0; i < N; i++) {
         int64_t cx = (int64_t)(i % 17) * 5500 + 2750; // 2750..90750
         int64_t cy = (int64_t)(i / 17) * 5500 + 2750; // 2750..85250 (row 15 max)
         rt_quadtree_insert(tree, (int64_t)(i + 1), cx, cy, 4, 4);
@@ -255,12 +237,10 @@ TEST(query_truncation_detected)
 }
 
 // GAME-C-3 complement: small result sets must NOT set the truncation flag.
-TEST(query_no_truncation_small_result)
-{
+TEST(query_no_truncation_small_result) {
     rt_quadtree tree = rt_quadtree_new(0, 0, 100000, 100000);
 
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         int64_t cx = (int64_t)(i + 1) * 8000; // well-spaced, no boundary straddling
         rt_quadtree_insert(tree, (int64_t)(i + 1), cx, 50000, 100, 100);
     }
@@ -273,8 +253,7 @@ TEST(query_no_truncation_small_result)
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     printf("RTQuadtreeTests:\n");
     RUN_TEST(create_destroy);
     RUN_TEST(insert);

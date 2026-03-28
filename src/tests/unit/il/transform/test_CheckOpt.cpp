@@ -38,26 +38,20 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-BasicBlock *findBlock(Function &function, const std::string &label)
-{
-    for (auto &block : function.blocks)
-    {
+BasicBlock *findBlock(Function &function, const std::string &label) {
+    for (auto &block : function.blocks) {
         if (block.label == label)
             return &block;
     }
     return nullptr;
 }
 
-size_t countIdxChk(const Function &function)
-{
+size_t countIdxChk(const Function &function) {
     size_t count = 0;
-    for (const auto &block : function.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : function.blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == Opcode::IdxChk)
                 ++count;
         }
@@ -65,15 +59,12 @@ size_t countIdxChk(const Function &function)
     return count;
 }
 
-il::transform::AnalysisRegistry createRegistry()
-{
+il::transform::AnalysisRegistry createRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fnRef)
-        {
+        "dominators", [](Module &mod, Function &fnRef) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fnRef);
         });
@@ -88,8 +79,7 @@ il::transform::AnalysisRegistry createRegistry()
 
 /// Test 1: Dominated redundant check elimination
 /// Two identical idx.chk in dominated blocks; second should be removed.
-void test_redundant_check_elimination()
-{
+void test_redundant_check_elimination() {
     Module module;
     Function fn;
     fn.name = "test_redundant";
@@ -179,8 +169,7 @@ void test_redundant_check_elimination()
 
 /// Test 2: Different checks should not be eliminated
 /// Two idx.chk with different bounds; both should remain.
-void test_different_checks_not_eliminated()
-{
+void test_different_checks_not_eliminated() {
     Module module;
     Function fn;
     fn.name = "test_different";
@@ -258,8 +247,7 @@ void test_different_checks_not_eliminated()
 
 /// Test 3: Loop-invariant check hoisting
 /// A loop with idx.chk whose operands are defined outside; should be hoisted.
-void test_loop_invariant_hoisting()
-{
+void test_loop_invariant_hoisting() {
     Module module;
     Function fn;
     fn.name = "test_loop_hoist";
@@ -360,10 +348,8 @@ void test_loop_invariant_hoisting()
     BasicBlock *loopBlock = findBlock(function, "loop");
     assert(loopBlock);
     bool checkInLoop = false;
-    for (const auto &instr : loopBlock->instructions)
-    {
-        if (instr.op == Opcode::IdxChk)
-        {
+    for (const auto &instr : loopBlock->instructions) {
+        if (instr.op == Opcode::IdxChk) {
             checkInLoop = true;
             break;
         }
@@ -380,10 +366,8 @@ void test_loop_invariant_hoisting()
     assert(preheader && "LoopSimplify should have created a preheader");
 
     bool checkInPreheader = false;
-    for (const auto &instr : preheader->instructions)
-    {
-        if (instr.op == Opcode::IdxChk && instr.result && *instr.result == loopCheckId)
-        {
+    for (const auto &instr : preheader->instructions) {
+        if (instr.op == Opcode::IdxChk && instr.result && *instr.result == loopCheckId) {
             checkInPreheader = true;
             break;
         }
@@ -393,16 +377,14 @@ void test_loop_invariant_hoisting()
     // Verify check is no longer in the loop header
     loopBlock = findBlock(function, "loop");
     assert(loopBlock);
-    for (const auto &instr : loopBlock->instructions)
-    {
+    for (const auto &instr : loopBlock->instructions) {
         assert(instr.op != Opcode::IdxChk && "idx.chk should not be in loop after hoisting");
     }
 }
 
 } // namespace
 
-int main()
-{
+int main() {
     test_redundant_check_elimination();
     test_different_checks_not_eliminated();
     test_loop_invariant_hoisting();

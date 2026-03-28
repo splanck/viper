@@ -52,8 +52,7 @@ static vg_widget_vtable_t g_floatingpanel_vtable = {
 // Implementation
 //=============================================================================
 
-vg_floatingpanel_t *vg_floatingpanel_create(vg_widget_t *root)
-{
+vg_floatingpanel_t *vg_floatingpanel_create(vg_widget_t *root) {
     vg_floatingpanel_t *panel = calloc(1, sizeof(vg_floatingpanel_t));
     if (!panel)
         return NULL;
@@ -75,8 +74,7 @@ vg_floatingpanel_t *vg_floatingpanel_create(vg_widget_t *root)
     return panel;
 }
 
-static void floatingpanel_destroy(vg_widget_t *widget)
-{
+static void floatingpanel_destroy(vg_widget_t *widget) {
     vg_floatingpanel_t *panel = (vg_floatingpanel_t *)widget;
     // Free private child array (does NOT destroy children — caller owns them)
     free(panel->children);
@@ -86,8 +84,7 @@ static void floatingpanel_destroy(vg_widget_t *widget)
 }
 
 /// @brief Floatingpanel destroy.
-void vg_floatingpanel_destroy(vg_floatingpanel_t *panel)
-{
+void vg_floatingpanel_destroy(vg_floatingpanel_t *panel) {
     if (!panel)
         return;
     vg_widget_destroy(&panel->base);
@@ -95,8 +92,7 @@ void vg_floatingpanel_destroy(vg_floatingpanel_t *panel)
 
 static void floatingpanel_measure(vg_widget_t *widget,
                                   float available_width,
-                                  float available_height)
-{
+                                  float available_height) {
     // The panel takes zero space in the normal layout pass.
     (void)available_width;
     (void)available_height;
@@ -105,15 +101,13 @@ static void floatingpanel_measure(vg_widget_t *widget,
 }
 
 // Normal paint pass — do nothing; all drawing happens in paint_overlay.
-static void floatingpanel_paint(vg_widget_t *widget, void *canvas)
-{
+static void floatingpanel_paint(vg_widget_t *widget, void *canvas) {
     (void)widget;
     (void)canvas;
 }
 
 // Overlay pass — paint background, border, and private children.
-static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas)
-{
+static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas) {
     vg_floatingpanel_t *panel = (vg_floatingpanel_t *)widget;
 
     if (!panel->base.visible || panel->abs_w <= 0.0f || panel->abs_h <= 0.0f)
@@ -130,8 +124,7 @@ static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas)
     vgfx_fill_rect(win, px, py, pw, ph, panel->bg_color);
 
     // Border (1-px rectangles on each edge)
-    if (panel->border_width > 0.0f)
-    {
+    if (panel->border_width > 0.0f) {
         int32_t bw = (int32_t)panel->border_width;
         uint32_t bc = panel->border_color;
         // Top
@@ -145,8 +138,7 @@ static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas)
     }
 
     // Lay out and paint each private child to fill the panel's rect.
-    for (int i = 0; i < panel->child_count; i++)
-    {
+    for (int i = 0; i < panel->child_count; i++) {
         vg_widget_t *child = panel->children[i];
         if (!child || !child->visible)
             continue;
@@ -157,8 +149,7 @@ static void floatingpanel_paint_overlay(vg_widget_t *widget, void *canvas)
 }
 
 /// @brief Floatingpanel set position.
-void vg_floatingpanel_set_position(vg_floatingpanel_t *panel, float x, float y)
-{
+void vg_floatingpanel_set_position(vg_floatingpanel_t *panel, float x, float y) {
     if (!panel)
         return;
     panel->abs_x = x;
@@ -167,8 +158,7 @@ void vg_floatingpanel_set_position(vg_floatingpanel_t *panel, float x, float y)
 }
 
 /// @brief Floatingpanel set size.
-void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h)
-{
+void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h) {
     if (!panel)
         return;
     panel->abs_w = w;
@@ -177,8 +167,7 @@ void vg_floatingpanel_set_size(vg_floatingpanel_t *panel, float w, float h)
 }
 
 /// @brief Floatingpanel set visible.
-void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible)
-{
+void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible) {
     if (!panel)
         return;
     panel->base.visible = (visible != 0);
@@ -186,14 +175,12 @@ void vg_floatingpanel_set_visible(vg_floatingpanel_t *panel, int visible)
 }
 
 /// @brief Floatingpanel add child.
-void vg_floatingpanel_add_child(vg_floatingpanel_t *panel, vg_widget_t *child)
-{
+void vg_floatingpanel_add_child(vg_floatingpanel_t *panel, vg_widget_t *child) {
     if (!panel || !child)
         return;
 
     // Grow private array if needed (initial cap = 4, double on overflow)
-    if (panel->child_count >= panel->child_cap)
-    {
+    if (panel->child_count >= panel->child_cap) {
         int new_cap = panel->child_cap > 0 ? panel->child_cap * 2 : 4;
         vg_widget_t **new_arr = realloc(panel->children, (size_t)new_cap * sizeof(vg_widget_t *));
         if (!new_arr)

@@ -19,16 +19,14 @@
 
 #include "frontends/basic/AST.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 class Lowerer;
 
 /// @brief Handles lowering of BASIC I/O statements to IL runtime calls.
 /// @invariant All methods operate on the Lowerer's active context
 /// @ownership Borrows Lowerer reference for state access and delegation
-class IoStatementLowerer
-{
+class IoStatementLowerer {
   public:
     /// @brief Construct an I/O statement lowerer bound to a Lowerer instance.
     /// @param lowerer Parent lowerer providing context and helper methods

@@ -41,8 +41,7 @@ extern void rt_trap(const char *msg);
  * Effect types
  *=========================================================================*/
 
-typedef enum
-{
+typedef enum {
     POSTFX_BLOOM = 0,
     POSTFX_TONEMAP,
     POSTFX_FXAA,
@@ -53,69 +52,58 @@ typedef enum
     POSTFX_MOTION_BLUR,
 } postfx_type_t;
 
-typedef struct
-{
+typedef struct {
     postfx_type_t type;
     int8_t enabled;
 
-    union
-    {
-        struct
-        {
+    union {
+        struct {
             float threshold;
             float intensity;
             int32_t blur_passes;
         } bloom;
 
-        struct
-        {
+        struct {
             int32_t mode;
             float exposure;
         } tonemap;
 
-        struct
-        {
+        struct {
             float edge_threshold;
             float min_threshold;
         } fxaa;
 
-        struct
-        {
+        struct {
             float brightness;
             float contrast;
             float saturation;
         } color_grade;
 
-        struct
-        {
+        struct {
             float radius;
             float softness;
         } vignette;
 
-        struct
-        {
+        struct {
             float ao_radius;
             float ao_intensity;
             int32_t ao_samples;
         } ssao;
 
-        struct
-        {
+        struct {
             float focus_distance;
             float aperture;
             float max_blur;
         } dof;
 
-        struct
-        {
+        struct {
             float mb_intensity;
             int32_t mb_samples;
         } motion_blur;
     } p;
 } postfx_entry_t;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     postfx_entry_t effects[8];
     int32_t effect_count;
@@ -126,13 +114,11 @@ typedef struct
  * Helpers
  *=========================================================================*/
 
-static float clampf(float v, float lo, float hi)
-{
+static float clampf(float v, float lo, float hi) {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-static float luminance(float r, float g, float b)
-{
+static float luminance(float r, float g, float b) {
     return 0.2126f * r + 0.7152f * g + 0.0722f * b;
 }
 
@@ -142,8 +128,7 @@ static float luminance(float r, float g, float b)
 
 /// @brief Apply bloom: extract bright pixels, blur, composite.
 static void apply_bloom(
-    float *buf, int32_t w, int32_t h, float threshold, float intensity, int32_t blur_passes)
-{
+    float *buf, int32_t w, int32_t h, float threshold, float intensity, int32_t blur_passes) {
     int32_t hw = w / 2, hh = h / 2;
     if (hw < 1 || hh < 1)
         return;
@@ -154,14 +139,12 @@ static void apply_bloom(
         return;
 
     for (int32_t y = 0; y < hh; y++)
-        for (int32_t x = 0; x < hw; x++)
-        {
+        for (int32_t x = 0; x < hw; x++) {
             int32_t sx = x * 2, sy = y * 2;
             int32_t si = (sy * w + sx) * 3;
             float r = buf[si], g = buf[si + 1], b = buf[si + 2];
             float lum = luminance(r, g, b);
-            if (lum > threshold)
-            {
+            if (lum > threshold) {
                 float scale = (lum - threshold) / (lum + 1e-6f);
                 int32_t di = (y * hw + x) * 3;
                 bloom[di] = r * scale;
@@ -172,23 +155,19 @@ static void apply_bloom(
 
     /* Separable Gaussian blur (simplified 5-tap kernel) */
     float *tmp = (float *)calloc((size_t)hw * hh * 3, sizeof(float));
-    if (!tmp)
-    {
+    if (!tmp) {
         free(bloom);
         return;
     }
 
     static const float kernel[5] = {0.0625f, 0.25f, 0.375f, 0.25f, 0.0625f};
 
-    for (int32_t pass = 0; pass < blur_passes; pass++)
-    {
+    for (int32_t pass = 0; pass < blur_passes; pass++) {
         /* Horizontal */
         for (int32_t y = 0; y < hh; y++)
-            for (int32_t x = 0; x < hw; x++)
-            {
+            for (int32_t x = 0; x < hw; x++) {
                 float r = 0, g = 0, b = 0;
-                for (int k = -2; k <= 2; k++)
-                {
+                for (int k = -2; k <= 2; k++) {
                     int32_t sx = x + k;
                     if (sx < 0)
                         sx = 0;
@@ -207,11 +186,9 @@ static void apply_bloom(
             }
         /* Vertical */
         for (int32_t y = 0; y < hh; y++)
-            for (int32_t x = 0; x < hw; x++)
-            {
+            for (int32_t x = 0; x < hw; x++) {
                 float r = 0, g = 0, b = 0;
-                for (int k = -2; k <= 2; k++)
-                {
+                for (int k = -2; k <= 2; k++) {
                     int32_t sy = y + k;
                     if (sy < 0)
                         sy = 0;
@@ -233,8 +210,7 @@ static void apply_bloom(
 
     /* Composite: add bloom back to scene (upsampled bilinear) */
     for (int32_t y = 0; y < h; y++)
-        for (int32_t x = 0; x < w; x++)
-        {
+        for (int32_t x = 0; x < w; x++) {
             int32_t bx = x / 2, by = y / 2;
             if (bx >= hw)
                 bx = hw - 1;
@@ -251,22 +227,17 @@ static void apply_bloom(
 }
 
 /// @brief Apply tone mapping (Reinhard or ACES filmic).
-static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float exposure)
-{
+static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float exposure) {
     int32_t count = w * h;
-    for (int32_t i = 0; i < count; i++)
-    {
+    for (int32_t i = 0; i < count; i++) {
         float *p = &buf[i * 3];
         float r = p[0] * exposure, g = p[1] * exposure, b = p[2] * exposure;
-        if (mode == 0)
-        {
+        if (mode == 0) {
             /* Reinhard */
             r = r / (r + 1.0f);
             g = g / (g + 1.0f);
             b = b / (b + 1.0f);
-        }
-        else
-        {
+        } else {
             /* ACES filmic approximation (Narkowicz) */
             float ar = r * (r * 2.51f + 0.03f);
             float br = r * (r * 2.43f + 0.59f) + 0.14f;
@@ -286,16 +257,14 @@ static void apply_tonemap(float *buf, int32_t w, int32_t h, int32_t mode, float 
 }
 
 /// @brief Apply simplified FXAA (edge-aware 3x3 blur on high-contrast edges).
-static void apply_fxaa(float *buf, int32_t w, int32_t h, float edge_thresh, float min_thresh)
-{
+static void apply_fxaa(float *buf, int32_t w, int32_t h, float edge_thresh, float min_thresh) {
     float *out = (float *)malloc((size_t)w * h * 3 * sizeof(float));
     if (!out)
         return;
     memcpy(out, buf, (size_t)w * h * 3 * sizeof(float));
 
     for (int32_t y = 1; y < h - 1; y++)
-        for (int32_t x = 1; x < w - 1; x++)
-        {
+        for (int32_t x = 1; x < w - 1; x++) {
             /* Sample 5 luminances */
             float lC =
                 luminance(buf[(y * w + x) * 3], buf[(y * w + x) * 3 + 1], buf[(y * w + x) * 3 + 2]);
@@ -340,8 +309,7 @@ static void apply_fxaa(float *buf, int32_t w, int32_t h, float edge_thresh, floa
 
             /* Simple 3x3 average for edge pixels */
             int32_t oi = (y * w + x) * 3;
-            for (int c = 0; c < 3; c++)
-            {
+            for (int c = 0; c < 3; c++) {
                 float sum = 0;
                 for (int dy = -1; dy <= 1; dy++)
                     for (int dx = -1; dx <= 1; dx++)
@@ -356,11 +324,9 @@ static void apply_fxaa(float *buf, int32_t w, int32_t h, float edge_thresh, floa
 
 /// @brief Apply color grading (brightness, contrast, saturation).
 static void apply_color_grade(
-    float *buf, int32_t w, int32_t h, float brightness, float contrast, float saturation)
-{
+    float *buf, int32_t w, int32_t h, float brightness, float contrast, float saturation) {
     int32_t count = w * h;
-    for (int32_t i = 0; i < count; i++)
-    {
+    for (int32_t i = 0; i < count; i++) {
         float *p = &buf[i * 3];
         /* Brightness + contrast */
         p[0] = (p[0] - 0.5f) * contrast + 0.5f + brightness;
@@ -379,20 +345,17 @@ static void apply_color_grade(
 }
 
 /// @brief Apply vignette (darken corners).
-static void apply_vignette(float *buf, int32_t w, int32_t h, float radius, float softness)
-{
+static void apply_vignette(float *buf, int32_t w, int32_t h, float radius, float softness) {
     float cx = (float)w * 0.5f, cy = (float)h * 0.5f;
     float maxdist = sqrtf(cx * cx + cy * cy);
 
     for (int32_t y = 0; y < h; y++)
-        for (int32_t x = 0; x < w; x++)
-        {
+        for (int32_t x = 0; x < w; x++) {
             float dx = ((float)x - cx) / maxdist;
             float dy = ((float)y - cy) / maxdist;
             float dist = sqrtf(dx * dx + dy * dy);
             float vig = 1.0f;
-            if (dist > radius)
-            {
+            if (dist > radius) {
                 vig = 1.0f - clampf((dist - radius) / (softness + 1e-6f), 0.0f, 1.0f);
             }
             int32_t si = (y * w + x) * 3;
@@ -406,8 +369,7 @@ static void apply_vignette(float *buf, int32_t w, int32_t h, float radius, float
  * Apply entire effect chain to a framebuffer
  *=========================================================================*/
 
-static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h, int32_t stride)
-{
+static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h, int32_t stride) {
     if (!fx || !fx->enabled || fx->effect_count == 0 || !pixels)
         return;
 
@@ -418,8 +380,7 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
         return;
 
     for (int32_t y = 0; y < h; y++)
-        for (int32_t x = 0; x < w; x++)
-        {
+        for (int32_t x = 0; x < w; x++) {
             const uint8_t *src = &pixels[y * stride + x * 4];
             int32_t di = (y * w + x) * 3;
             fbuf[di] = (float)src[0] / 255.0f;
@@ -428,14 +389,12 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
         }
 
     /* Apply each enabled effect in chain order */
-    for (int32_t i = 0; i < fx->effect_count; i++)
-    {
+    for (int32_t i = 0; i < fx->effect_count; i++) {
         postfx_entry_t *e = &fx->effects[i];
         if (!e->enabled)
             continue;
 
-        switch (e->type)
-        {
+        switch (e->type) {
             case POSTFX_BLOOM:
                 apply_bloom(
                     fbuf, w, h, e->p.bloom.threshold, e->p.bloom.intensity, e->p.bloom.blur_passes);
@@ -469,8 +428,7 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
 
     /* Write back to framebuffer */
     for (int32_t y = 0; y < h; y++)
-        for (int32_t x = 0; x < w; x++)
-        {
+        for (int32_t x = 0; x < w; x++) {
             uint8_t *dst = &pixels[y * stride + x * 4];
             int32_t si = (y * w + x) * 3;
             dst[0] = (uint8_t)(clampf(fbuf[si], 0.0f, 1.0f) * 255.0f);
@@ -486,16 +444,13 @@ static void postfx_apply(rt_postfx3d *fx, uint8_t *pixels, int32_t w, int32_t h,
  * PostFX3D lifecycle + API
  *=========================================================================*/
 
-static void rt_postfx3d_finalize(void *obj)
-{
+static void rt_postfx3d_finalize(void *obj) {
     (void)obj; /* no heap allocations in the struct itself */
 }
 
-void *rt_postfx3d_new(void)
-{
+void *rt_postfx3d_new(void) {
     rt_postfx3d *fx = (rt_postfx3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_postfx3d));
-    if (!fx)
-    {
+    if (!fx) {
         rt_trap("PostFX3D.New: memory allocation failed");
         return NULL;
     }
@@ -507,8 +462,7 @@ void *rt_postfx3d_new(void)
     return fx;
 }
 
-void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_t blur_passes)
-{
+void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_t blur_passes) {
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
@@ -522,8 +476,7 @@ void rt_postfx3d_add_bloom(void *obj, double threshold, double intensity, int64_
     e->p.bloom.blur_passes = (int32_t)blur_passes;
 }
 
-void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure)
-{
+void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure) {
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
@@ -536,8 +489,7 @@ void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure)
     e->p.tonemap.exposure = (float)exposure;
 }
 
-void rt_postfx3d_add_fxaa(void *obj)
-{
+void rt_postfx3d_add_fxaa(void *obj) {
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
@@ -550,8 +502,7 @@ void rt_postfx3d_add_fxaa(void *obj)
     e->p.fxaa.min_threshold = 0.0833f;
 }
 
-void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, double saturation)
-{
+void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, double saturation) {
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
@@ -565,8 +516,7 @@ void rt_postfx3d_add_color_grade(void *obj, double brightness, double contrast, 
     e->p.color_grade.saturation = (float)saturation;
 }
 
-void rt_postfx3d_add_vignette(void *obj, double radius, double softness)
-{
+void rt_postfx3d_add_vignette(void *obj, double radius, double softness) {
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
@@ -579,19 +529,16 @@ void rt_postfx3d_add_vignette(void *obj, double radius, double softness)
     e->p.vignette.softness = (float)softness;
 }
 
-void rt_postfx3d_set_enabled(void *obj, int8_t enabled)
-{
+void rt_postfx3d_set_enabled(void *obj, int8_t enabled) {
     if (obj)
         ((rt_postfx3d *)obj)->enabled = enabled;
 }
 
-int8_t rt_postfx3d_get_enabled(void *obj)
-{
+int8_t rt_postfx3d_get_enabled(void *obj) {
     return obj ? ((rt_postfx3d *)obj)->enabled : 0;
 }
 
-void rt_postfx3d_clear(void *obj)
-{
+void rt_postfx3d_clear(void *obj) {
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
@@ -599,8 +546,7 @@ void rt_postfx3d_clear(void *obj)
     memset(fx->effects, 0, sizeof(fx->effects));
 }
 
-int64_t rt_postfx3d_get_effect_count(void *obj)
-{
+int64_t rt_postfx3d_get_effect_count(void *obj) {
     return obj ? ((rt_postfx3d *)obj)->effect_count : 0;
 }
 
@@ -608,8 +554,7 @@ int64_t rt_postfx3d_get_effect_count(void *obj)
  * Canvas3D integration
  *=========================================================================*/
 
-void rt_canvas3d_set_post_fx(void *canvas, void *postfx)
-{
+void rt_canvas3d_set_post_fx(void *canvas, void *postfx) {
     if (!canvas)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;
@@ -617,8 +562,7 @@ void rt_canvas3d_set_post_fx(void *canvas, void *postfx)
 }
 
 /// @brief Called from rt_canvas3d_flip to apply post-processing effects.
-void rt_postfx3d_apply_to_canvas(void *canvas)
-{
+void rt_postfx3d_apply_to_canvas(void *canvas) {
     if (!canvas)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;
@@ -635,8 +579,7 @@ void rt_postfx3d_apply_to_canvas(void *canvas)
     postfx_apply(fx, fb.pixels, fb.width, fb.height, fb.stride);
 }
 
-void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t samples)
-{
+void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t samples) {
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
@@ -650,8 +593,7 @@ void rt_postfx3d_add_ssao(void *obj, double radius, double intensity, int64_t sa
     e->p.ssao.ao_samples = (int32_t)samples;
 }
 
-void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, double max_blur)
-{
+void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, double max_blur) {
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;
@@ -665,8 +607,7 @@ void rt_postfx3d_add_dof(void *obj, double focus_distance, double aperture, doub
     e->p.dof.max_blur = (float)max_blur;
 }
 
-void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples)
-{
+void rt_postfx3d_add_motion_blur(void *obj, double intensity, int64_t samples) {
     if (!obj)
         return;
     rt_postfx3d *fx = (rt_postfx3d *)obj;

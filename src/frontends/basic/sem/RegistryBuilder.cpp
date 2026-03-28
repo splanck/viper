@@ -100,8 +100,7 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Populates the namespace registry and USING context from a BASIC program.
 ///
@@ -157,8 +156,7 @@ namespace il::frontends::basic
 void buildNamespaceRegistry(const Program &program,
                             NamespaceRegistry &registry,
                             UsingContext &usings,
-                            DiagnosticEmitter *emitter)
-{
+                            DiagnosticEmitter *emitter) {
     // Clear previous state to ensure fresh registration
     usings.clear();
 
@@ -193,8 +191,7 @@ void buildNamespaceRegistry(const Program &program,
 
     // Helper lambda to join namespace segments with dots.
     // Example: ["Viper", "Graphics"] -> "Viper.Graphics"
-    auto joinNs = [&]() -> std::string
-    {
+    auto joinNs = [&]() -> std::string {
         if (nsStack.empty())
             return {};
 
@@ -207,8 +204,7 @@ void buildNamespaceRegistry(const Program &program,
             size -= 1; // No trailing dot needed
 
         result.reserve(size);
-        for (std::size_t i = 0; i < nsStack.size(); ++i)
-        {
+        for (std::size_t i = 0; i < nsStack.size(); ++i) {
             if (i)
                 result.push_back('.');
             result += nsStack[i];
@@ -219,20 +215,16 @@ void buildNamespaceRegistry(const Program &program,
     // Recursive lambda to scan statements and populate the registry.
     // This is the core AST walker that finds declarations.
     std::function<void(const std::vector<StmtPtr> &)> scan;
-    scan = [&](const std::vector<StmtPtr> &stmts)
-    {
-        for (const auto &stmtPtr : stmts)
-        {
+    scan = [&](const std::vector<StmtPtr> &stmts) {
+        for (const auto &stmtPtr : stmts) {
             if (!stmtPtr)
                 continue;
 
-            switch (stmtPtr->stmtKind())
-            {
+            switch (stmtPtr->stmtKind()) {
                 //--------------------------------------------------------------
                 // NAMESPACE declaration
                 //--------------------------------------------------------------
-                case Stmt::Kind::NamespaceDecl:
-                {
+                case Stmt::Kind::NamespaceDecl: {
                     const auto &ns = static_cast<const NamespaceDecl &>(*stmtPtr);
 
                     // Push all path segments onto the namespace stack.
@@ -257,8 +249,7 @@ void buildNamespaceRegistry(const Program &program,
                 //--------------------------------------------------------------
                 // CLASS declaration
                 //--------------------------------------------------------------
-                case Stmt::Kind::ClassDecl:
-                {
+                case Stmt::Kind::ClassDecl: {
                     const auto &classDecl = static_cast<const ClassDecl &>(*stmtPtr);
                     std::string nsFull = joinNs();
 
@@ -271,23 +262,19 @@ void buildNamespaceRegistry(const Program &program,
                 //--------------------------------------------------------------
                 // INTERFACE declaration
                 //--------------------------------------------------------------
-                case Stmt::Kind::InterfaceDecl:
-                {
+                case Stmt::Kind::InterfaceDecl: {
                     const auto &ifaceDecl = static_cast<const InterfaceDecl &>(*stmtPtr);
 
                     // InterfaceDecl.qualifiedName contains the full path including
                     // the type name. Extract namespace (all but last segment) and
                     // name (last segment).
-                    if (!ifaceDecl.qualifiedName.empty())
-                    {
+                    if (!ifaceDecl.qualifiedName.empty()) {
                         std::string ifaceName = ifaceDecl.qualifiedName.back();
                         std::string nsFull;
 
-                        if (ifaceDecl.qualifiedName.size() > 1)
-                        {
+                        if (ifaceDecl.qualifiedName.size() > 1) {
                             // Build namespace from all segments except the last
-                            for (std::size_t i = 0; i + 1 < ifaceDecl.qualifiedName.size(); ++i)
-                            {
+                            for (std::size_t i = 0; i + 1 < ifaceDecl.qualifiedName.size(); ++i) {
                                 if (i > 0)
                                     nsFull.push_back('.');
                                 nsFull += ifaceDecl.qualifiedName[i];
@@ -303,14 +290,12 @@ void buildNamespaceRegistry(const Program &program,
                 //--------------------------------------------------------------
                 // USING directive
                 //--------------------------------------------------------------
-                case Stmt::Kind::UsingDecl:
-                {
+                case Stmt::Kind::UsingDecl: {
                     const auto &usingDecl = static_cast<const UsingDecl &>(*stmtPtr);
 
                     // Build dotted namespace path from segments
                     std::string nsPath;
-                    for (std::size_t i = 0; i < usingDecl.namespacePath.size(); ++i)
-                    {
+                    for (std::size_t i = 0; i < usingDecl.namespacePath.size(); ++i) {
                         if (i)
                             nsPath.push_back('.');
                         nsPath += usingDecl.namespacePath[i];
@@ -350,8 +335,7 @@ void buildNamespaceRegistry(const Program &program,
 ///
 /// @param registry The namespace registry to seed with class namespace prefixes.
 ///
-void seedRuntimeClassCatalogs(NamespaceRegistry &registry)
-{
+void seedRuntimeClassCatalogs(NamespaceRegistry &registry) {
     const auto &classes = il::runtime::runtimeClassCatalog();
 
     // Seed type registry with runtime class names

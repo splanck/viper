@@ -26,8 +26,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 struct ObjFile;
 struct GlobalSymEntry;

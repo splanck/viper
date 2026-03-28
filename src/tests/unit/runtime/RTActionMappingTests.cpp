@@ -18,14 +18,12 @@
 #include <cstring>
 
 // Helper to create an rt_string from a C string
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
 // Test: Define button action and check existence
-static void test_define_button_action()
-{
+static void test_define_button_action() {
     rt_action_init();
     rt_action_clear();
 
@@ -42,8 +40,7 @@ static void test_define_button_action()
 }
 
 // Test: Define axis action and check existence
-static void test_define_axis_action()
-{
+static void test_define_axis_action() {
     rt_action_init();
     rt_action_clear();
 
@@ -56,8 +53,7 @@ static void test_define_axis_action()
 }
 
 // Test: Remove action
-static void test_remove_action()
-{
+static void test_remove_action() {
     rt_action_init();
     rt_action_clear();
 
@@ -77,8 +73,7 @@ static void test_remove_action()
 }
 
 // Test: Bind keyboard key to button action
-static void test_bind_key()
-{
+static void test_bind_key() {
     rt_action_init();
     rt_action_clear();
 
@@ -102,8 +97,7 @@ static void test_bind_key()
 }
 
 // Test: Bind key to axis action
-static void test_bind_key_axis()
-{
+static void test_bind_key_axis() {
     rt_action_init();
     rt_action_clear();
 
@@ -123,8 +117,7 @@ static void test_bind_key_axis()
 }
 
 // Test: Unbind key
-static void test_unbind_key()
-{
+static void test_unbind_key() {
     rt_action_init();
     rt_action_clear();
 
@@ -151,8 +144,7 @@ static void test_unbind_key()
 }
 
 // Test: Bind mouse button
-static void test_bind_mouse()
-{
+static void test_bind_mouse() {
     rt_action_init();
     rt_action_clear();
 
@@ -169,8 +161,7 @@ static void test_bind_mouse()
 }
 
 // Test: Bind gamepad button
-static void test_bind_pad_button()
-{
+static void test_bind_pad_button() {
     rt_action_init();
     rt_action_clear();
 
@@ -188,8 +179,7 @@ static void test_bind_pad_button()
 }
 
 // Test: Bind gamepad axis
-static void test_bind_pad_axis()
-{
+static void test_bind_pad_axis() {
     rt_action_init();
     rt_action_clear();
 
@@ -206,8 +196,7 @@ static void test_bind_pad_axis()
 }
 
 // Test: Multiple bindings for one action
-static void test_multiple_bindings()
-{
+static void test_multiple_bindings() {
     rt_action_init();
     rt_action_clear();
 
@@ -230,8 +219,7 @@ static void test_multiple_bindings()
 }
 
 // Test: Action bindings string
-static void test_bindings_str()
-{
+static void test_bindings_str() {
     rt_action_init();
     rt_action_clear();
 
@@ -252,8 +240,7 @@ static void test_bindings_str()
 }
 
 // Test: Key bound to detection
-static void test_key_bound_to()
-{
+static void test_key_bound_to() {
     rt_action_init();
     rt_action_clear();
 
@@ -274,8 +261,7 @@ static void test_key_bound_to()
 }
 
 // Test: Axis constant getters
-static void test_axis_constants()
-{
+static void test_axis_constants() {
     assert(rt_action_axis_left_x() == VIPER_AXIS_LEFT_X);
     assert(rt_action_axis_left_y() == VIPER_AXIS_LEFT_Y);
     assert(rt_action_axis_right_x() == VIPER_AXIS_RIGHT_X);
@@ -285,8 +271,7 @@ static void test_axis_constants()
 }
 
 // Test: Action system lifecycle
-static void test_lifecycle()
-{
+static void test_lifecycle() {
     rt_action_init();
 
     rt_string test = make_str("test");
@@ -304,8 +289,7 @@ static void test_lifecycle()
 }
 
 // Test: Empty/null action name handling
-static void test_invalid_names()
-{
+static void test_invalid_names() {
     rt_action_init();
     rt_action_clear();
 
@@ -323,8 +307,7 @@ static void test_invalid_names()
     rt_action_clear();
 }
 
-int main()
-{
+int main() {
     // Initialize keyboard for key name lookups
     rt_keyboard_init();
 

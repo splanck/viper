@@ -95,8 +95,7 @@ extern void *rt_mat4_new(double m0,
  * FBX asset container
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     void **meshes;
     int32_t mesh_count;
@@ -111,8 +110,7 @@ typedef struct
  * Binary reader helpers
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     const uint8_t *data;
     size_t len;
     size_t pos;
@@ -120,20 +118,17 @@ typedef struct
     int is_64bit; /* version >= 7500 */
 } fbx_reader_t;
 
-static int fbx_eof(const fbx_reader_t *r)
-{
+static int fbx_eof(const fbx_reader_t *r) {
     return r->pos >= r->len;
 }
 
-static uint8_t fbx_u8(fbx_reader_t *r)
-{
+static uint8_t fbx_u8(fbx_reader_t *r) {
     if (r->pos + 1 > r->len)
         return 0;
     return r->data[r->pos++];
 }
 
-static uint16_t fbx_u16(fbx_reader_t *r)
-{
+static uint16_t fbx_u16(fbx_reader_t *r) {
     if (r->pos + 2 > r->len)
         return 0;
     uint16_t v = (uint16_t)r->data[r->pos] | ((uint16_t)r->data[r->pos + 1] << 8);
@@ -141,8 +136,7 @@ static uint16_t fbx_u16(fbx_reader_t *r)
     return v;
 }
 
-static uint32_t fbx_u32(fbx_reader_t *r)
-{
+static uint32_t fbx_u32(fbx_reader_t *r) {
     if (r->pos + 4 > r->len)
         return 0;
     uint32_t v = (uint32_t)r->data[r->pos] | ((uint32_t)r->data[r->pos + 1] << 8) |
@@ -151,13 +145,11 @@ static uint32_t fbx_u32(fbx_reader_t *r)
     return v;
 }
 
-static int32_t fbx_i32(fbx_reader_t *r)
-{
+static int32_t fbx_i32(fbx_reader_t *r) {
     return (int32_t)fbx_u32(r);
 }
 
-static uint64_t fbx_u64(fbx_reader_t *r)
-{
+static uint64_t fbx_u64(fbx_reader_t *r) {
     if (r->pos + 8 > r->len)
         return 0;
     uint64_t lo = fbx_u32(r);
@@ -165,29 +157,25 @@ static uint64_t fbx_u64(fbx_reader_t *r)
     return lo | (hi << 32);
 }
 
-static int64_t fbx_i64(fbx_reader_t *r)
-{
+static int64_t fbx_i64(fbx_reader_t *r) {
     return (int64_t)fbx_u64(r);
 }
 
-static float fbx_f32(fbx_reader_t *r)
-{
+static float fbx_f32(fbx_reader_t *r) {
     uint32_t bits = fbx_u32(r);
     float f;
     memcpy(&f, &bits, 4);
     return f;
 }
 
-static double fbx_f64(fbx_reader_t *r)
-{
+static double fbx_f64(fbx_reader_t *r) {
     uint64_t bits = fbx_u64(r);
     double d;
     memcpy(&d, &bits, 8);
     return d;
 }
 
-static void fbx_skip(fbx_reader_t *r, size_t n)
-{
+static void fbx_skip(fbx_reader_t *r, size_t n) {
     r->pos += n;
     if (r->pos > r->len)
         r->pos = r->len;
@@ -200,12 +188,10 @@ static void fbx_skip(fbx_reader_t *r, size_t n)
 #define FBX_MAX_CHILDREN 256
 #define FBX_MAX_PROPS 32
 
-typedef struct
-{
+typedef struct {
     char type; /* C/Y/I/L/F/D/S/R/b/i/l/f/d */
 
-    union
-    {
+    union {
         int8_t bool_val;
         int16_t i16;
         int32_t i32;
@@ -213,20 +199,17 @@ typedef struct
         float f32;
         double f64;
 
-        struct
-        {
+        struct {
             char *str;
             uint32_t len;
         } string;
 
-        struct
-        {
+        struct {
             uint8_t *data;
             uint32_t len;
         } raw;
 
-        struct
-        {
+        struct {
             void *data;
             uint32_t count;
             char elem_type;
@@ -234,8 +217,7 @@ typedef struct
     } v;
 } fbx_prop_t;
 
-typedef struct fbx_node
-{
+typedef struct fbx_node {
     char name[128];
     fbx_prop_t *props;
     int32_t prop_count;
@@ -251,8 +233,7 @@ typedef struct fbx_node
 static void *fbx_decompress_array(const uint8_t *data,
                                   uint32_t comp_len,
                                   uint32_t count,
-                                  uint32_t elem_size)
-{
+                                  uint32_t elem_size) {
     if (comp_len < 6)
         return NULL;
     uint32_t deflate_len = comp_len - 6; /* strip 2-byte header + 4-byte adler32 */
@@ -262,8 +243,7 @@ static void *fbx_decompress_array(const uint8_t *data,
         return NULL;
 
     /* Copy raw DEFLATE payload (skip 2-byte zlib header) */
-    typedef struct
-    {
+    typedef struct {
         int64_t len;
         uint8_t *bdata;
     } bytes_view;
@@ -292,13 +272,11 @@ static void *fbx_decompress_array(const uint8_t *data,
  * Property parsing
  *=========================================================================*/
 
-static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop)
-{
+static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop) {
     if (fbx_eof(r))
         return -1;
     prop->type = (char)fbx_u8(r);
-    switch (prop->type)
-    {
+    switch (prop->type) {
         case 'C':
             prop->v.bool_val = (int8_t)fbx_u8(r);
             break;
@@ -318,23 +296,18 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop)
             prop->v.f64 = fbx_f64(r);
             break;
         case 'S':
-        case 'R':
-        {
+        case 'R': {
             uint32_t len = fbx_u32(r);
             if (r->pos + len > r->len)
                 return -1;
-            if (prop->type == 'S')
-            {
+            if (prop->type == 'S') {
                 prop->v.string.str = (char *)malloc(len + 1);
-                if (prop->v.string.str)
-                {
+                if (prop->v.string.str) {
                     memcpy(prop->v.string.str, r->data + r->pos, len);
                     prop->v.string.str[len] = '\0';
                 }
                 prop->v.string.len = len;
-            }
-            else
-            {
+            } else {
                 prop->v.raw.data = (uint8_t *)malloc(len);
                 if (prop->v.raw.data)
                     memcpy(prop->v.raw.data, r->data + r->pos, len);
@@ -347,8 +320,7 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop)
         case 'i':
         case 'l':
         case 'f':
-        case 'd':
-        {
+        case 'd': {
             uint32_t count = fbx_u32(r);
             uint32_t encoding = fbx_u32(r);
             uint32_t comp_len = fbx_u32(r);
@@ -356,8 +328,7 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop)
                 return -1;
 
             uint32_t elem_size = 0;
-            switch (prop->type)
-            {
+            switch (prop->type) {
                 case 'b':
                     elem_size = 1;
                     break;
@@ -377,13 +348,10 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop)
 
             prop->v.array.count = count;
             prop->v.array.elem_type = prop->type;
-            if (encoding == 1)
-            {
+            if (encoding == 1) {
                 prop->v.array.data =
                     fbx_decompress_array(r->data + r->pos, comp_len, count, elem_size);
-            }
-            else
-            {
+            } else {
                 if (elem_size > 0 && count > SIZE_MAX / elem_size)
                     return -1; /* overflow guard for 32-bit platforms */
                 size_t expected = (size_t)count * elem_size;
@@ -406,10 +374,8 @@ static int fbx_parse_property(fbx_reader_t *r, fbx_prop_t *prop)
  * Node parsing (recursive)
  *=========================================================================*/
 
-static void fbx_free_prop(fbx_prop_t *p)
-{
-    switch (p->type)
-    {
+static void fbx_free_prop(fbx_prop_t *p) {
+    switch (p->type) {
         case 'S':
             free(p->v.string.str);
             break;
@@ -428,8 +394,7 @@ static void fbx_free_prop(fbx_prop_t *p)
     }
 }
 
-static void fbx_free_node(fbx_node_t *n)
-{
+static void fbx_free_node(fbx_node_t *n) {
     for (int32_t i = 0; i < n->prop_count; i++)
         fbx_free_prop(&n->props[i]);
     free(n->props);
@@ -438,8 +403,7 @@ static void fbx_free_node(fbx_node_t *n)
     free(n->children);
 }
 
-static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node)
-{
+static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node) {
     memset(node, 0, sizeof(fbx_node_t));
 
     uint64_t end_offset = r->is_64bit ? fbx_u64(r) : fbx_u32(r);
@@ -461,15 +425,12 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node)
     fbx_skip(r, name_len);
 
     /* Parse properties */
-    if (num_props > 0)
-    {
+    if (num_props > 0) {
         node->props = (fbx_prop_t *)calloc((size_t)num_props, sizeof(fbx_prop_t));
         if (!node->props)
             return -1;
-        for (uint64_t i = 0; i < num_props; i++)
-        {
-            if (fbx_parse_property(r, &node->props[i]) < 0)
-            {
+        for (uint64_t i = 0; i < num_props; i++) {
+            if (fbx_parse_property(r, &node->props[i]) < 0) {
                 node->prop_count = (int32_t)i;
                 return -1;
             }
@@ -478,28 +439,23 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node)
     }
 
     /* Parse children (until end_offset or null record) */
-    while (r->pos < (size_t)end_offset && !fbx_eof(r))
-    {
+    while (r->pos < (size_t)end_offset && !fbx_eof(r)) {
         /* Check for null record sentinel */
         size_t sentinel_size = r->is_64bit ? 25 : 13;
-        if (r->pos + sentinel_size <= r->len)
-        {
+        if (r->pos + sentinel_size <= r->len) {
             int is_null = 1;
             for (size_t i = 0; i < sentinel_size; i++)
-                if (r->data[r->pos + i] != 0)
-                {
+                if (r->data[r->pos + i] != 0) {
                     is_null = 0;
                     break;
                 }
-            if (is_null)
-            {
+            if (is_null) {
                 fbx_skip(r, sentinel_size);
                 break;
             }
         }
 
-        if (node->child_count >= node->child_capacity)
-        {
+        if (node->child_count >= node->child_capacity) {
             int32_t new_cap = node->child_capacity == 0 ? 8 : node->child_capacity * 2;
             fbx_node_t *nc =
                 (fbx_node_t *)realloc(node->children, (size_t)new_cap * sizeof(fbx_node_t));
@@ -526,21 +482,18 @@ static int fbx_parse_node(fbx_reader_t *r, fbx_node_t *node)
  * Node tree query helpers
  *=========================================================================*/
 
-static fbx_node_t *fbx_find_child(fbx_node_t *parent, const char *name)
-{
+static fbx_node_t *fbx_find_child(fbx_node_t *parent, const char *name) {
     for (int32_t i = 0; i < parent->child_count; i++)
         if (strcmp(parent->children[i].name, name) == 0)
             return &parent->children[i];
     return NULL;
 }
 
-static int64_t fbx_prop_i64(fbx_node_t *node, int idx)
-{
+static int64_t fbx_prop_i64(fbx_node_t *node, int idx) {
     if (!node || idx >= node->prop_count)
         return 0;
     fbx_prop_t *p = &node->props[idx];
-    switch (p->type)
-    {
+    switch (p->type) {
         case 'L':
             return p->v.i64;
         case 'I':
@@ -554,8 +507,7 @@ static int64_t fbx_prop_i64(fbx_node_t *node, int idx)
     }
 }
 
-static double fbx_prop_f64(fbx_node_t *node, int idx)
-{
+static double fbx_prop_f64(fbx_node_t *node, int idx) {
     if (!node || idx >= node->prop_count)
         return 0.0;
     fbx_prop_t *p = &node->props[idx];
@@ -566,8 +518,7 @@ static double fbx_prop_f64(fbx_node_t *node, int idx)
     return 0.0;
 }
 
-static const char *fbx_prop_str(fbx_node_t *node, int idx)
-{
+static const char *fbx_prop_str(fbx_node_t *node, int idx) {
     if (!node || idx >= node->prop_count)
         return "";
     fbx_prop_t *p = &node->props[idx];
@@ -580,34 +531,29 @@ static const char *fbx_prop_str(fbx_node_t *node, int idx)
  * Connection table
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     int64_t child_id;
     int64_t parent_id;
     char prop[64];
 } fbx_conn_t;
 
-typedef struct
-{
+typedef struct {
     fbx_conn_t *entries;
     int32_t count;
     int32_t capacity;
 } fbx_conn_table_t;
 
-static void fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct)
-{
+static void fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct) {
     fbx_node_t *conns_node = fbx_find_child(root, "Connections");
     if (!conns_node)
         return;
 
-    for (int32_t i = 0; i < conns_node->child_count; i++)
-    {
+    for (int32_t i = 0; i < conns_node->child_count; i++) {
         fbx_node_t *c = &conns_node->children[i];
         if (strcmp(c->name, "C") != 0 || c->prop_count < 3)
             continue;
 
-        if (ct->count >= ct->capacity)
-        {
+        if (ct->count >= ct->capacity) {
             int32_t new_cap = ct->capacity == 0 ? 64 : ct->capacity * 2;
             fbx_conn_t *nc =
                 (fbx_conn_t *)realloc(ct->entries, (size_t)new_cap * sizeof(fbx_conn_t));
@@ -621,8 +567,7 @@ static void fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct)
         entry->child_id = fbx_prop_i64(c, 1);
         entry->parent_id = fbx_prop_i64(c, 2);
         entry->prop[0] = '\0';
-        if (c->prop_count >= 4)
-        {
+        if (c->prop_count >= 4) {
             const char *pname = fbx_prop_str(c, 3);
             size_t plen = strlen(pname);
             if (plen > 63)
@@ -633,8 +578,7 @@ static void fbx_parse_connections(fbx_node_t *root, fbx_conn_table_t *ct)
     }
 }
 
-static int64_t fbx_find_parent(const fbx_conn_table_t *ct, int64_t child_id)
-{
+static int64_t fbx_find_parent(const fbx_conn_table_t *ct, int64_t child_id) {
     for (int32_t i = 0; i < ct->count; i++)
         if (ct->entries[i].child_id == child_id)
             return ct->entries[i].parent_id;
@@ -645,22 +589,19 @@ static int64_t fbx_find_parent(const fbx_conn_table_t *ct, int64_t child_id)
  * Coordinate system detection + correction
  *=========================================================================*/
 
-static int fbx_is_z_up(fbx_node_t *root)
-{
+static int fbx_is_z_up(fbx_node_t *root) {
     fbx_node_t *gs = fbx_find_child(root, "GlobalSettings");
     if (!gs)
         return 0;
     fbx_node_t *p70 = fbx_find_child(gs, "Properties70");
     if (!p70)
         return 0;
-    for (int32_t i = 0; i < p70->child_count; i++)
-    {
+    for (int32_t i = 0; i < p70->child_count; i++) {
         fbx_node_t *p = &p70->children[i];
         if (strcmp(p->name, "P") != 0 || p->prop_count < 5)
             continue;
         const char *pname = fbx_prop_str(p, 0);
-        if (strcmp(pname, "UpAxis") == 0)
-        {
+        if (strcmp(pname, "UpAxis") == 0) {
             int64_t axis = fbx_prop_i64(p, 4);
             return axis == 2; /* 2 = Z-up */
         }
@@ -669,8 +610,7 @@ static int fbx_is_z_up(fbx_node_t *root)
 }
 
 /// @brief Apply Z-up → Y-up correction: swap Y/Z and negate new Z.
-static void fbx_correct_zup(double *x, double *y, double *z)
-{
+static void fbx_correct_zup(double *x, double *y, double *z) {
     double tmp = *y;
     *y = *z;
     *z = -tmp;
@@ -680,8 +620,7 @@ static void fbx_correct_zup(double *x, double *y, double *z)
  * Geometry extraction
  *=========================================================================*/
 
-static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up)
-{
+static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up) {
     if (!geom_node)
         return NULL;
 
@@ -711,11 +650,9 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up)
     int norm_by_polygon_vertex = 0;
     int norm_index_to_direct = 0;
 
-    if (norm_layer)
-    {
+    if (norm_layer) {
         fbx_node_t *n_node = fbx_find_child(norm_layer, "Normals");
-        if (n_node && n_node->prop_count >= 1 && n_node->props[0].type == 'd')
-        {
+        if (n_node && n_node->prop_count >= 1 && n_node->props[0].type == 'd') {
             normals = (double *)n_node->props[0].v.array.data;
             norm_count = n_node->props[0].v.array.count / 3;
         }
@@ -725,8 +662,7 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up)
         fbx_node_t *rm = fbx_find_child(norm_layer, "ReferenceInformationType");
         if (rm && rm->prop_count >= 1)
             norm_index_to_direct = strcmp(fbx_prop_str(rm, 0), "IndexToDirect") == 0;
-        if (norm_index_to_direct)
-        {
+        if (norm_index_to_direct) {
             fbx_node_t *ni = fbx_find_child(norm_layer, "NormalsIndex");
             if (ni && ni->prop_count >= 1 && ni->props[0].type == 'i')
                 norm_indices = (int32_t *)ni->props[0].v.array.data;
@@ -741,11 +677,9 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up)
     int uv_by_polygon_vertex = 0;
     int uv_index_to_direct = 0;
 
-    if (uv_layer)
-    {
+    if (uv_layer) {
         fbx_node_t *u_node = fbx_find_child(uv_layer, "UV");
-        if (u_node && u_node->prop_count >= 1 && u_node->props[0].type == 'd')
-        {
+        if (u_node && u_node->prop_count >= 1 && u_node->props[0].type == 'd') {
             uvs = (double *)u_node->props[0].v.array.data;
             uv_count = u_node->props[0].v.array.count / 2;
         }
@@ -755,8 +689,7 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up)
         fbx_node_t *urm = fbx_find_child(uv_layer, "ReferenceInformationType");
         if (urm && urm->prop_count >= 1)
             uv_index_to_direct = strcmp(fbx_prop_str(urm, 0), "IndexToDirect") == 0;
-        if (uv_index_to_direct)
-        {
+        if (uv_index_to_direct) {
             fbx_node_t *ui = fbx_find_child(uv_layer, "UVIndex");
             if (ui && ui->prop_count >= 1 && ui->props[0].type == 'i')
                 uv_indices = (int32_t *)ui->props[0].v.array.data;
@@ -773,14 +706,12 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up)
     int32_t polygon_vertex_idx = 0; /* running index for ByPolygonVertex mapping */
     int32_t mesh_vertex_count = 0;
 
-    for (uint32_t i = 0; i < idx_count; i++)
-    {
+    for (uint32_t i = 0; i < idx_count; i++) {
         int32_t raw_idx = indices[i];
         int end_of_polygon = (raw_idx < 0);
         int32_t vi = end_of_polygon ? ~raw_idx : raw_idx;
 
-        if (vi < 0 || vi >= (int32_t)pos_count)
-        {
+        if (vi < 0 || vi >= (int32_t)pos_count) {
             polygon_vertex_idx++;
             continue;
         }
@@ -794,16 +725,14 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up)
 
         /* Get normal */
         double nx = 0, ny = 1, nz = 0;
-        if (normals)
-        {
+        if (normals) {
             int ni = 0;
             if (norm_by_polygon_vertex)
                 ni = norm_index_to_direct ? (norm_indices ? norm_indices[polygon_vertex_idx] : 0)
                                           : polygon_vertex_idx;
             else
                 ni = norm_index_to_direct ? (norm_indices ? norm_indices[vi] : 0) : vi;
-            if (ni >= 0 && ni < (int32_t)norm_count)
-            {
+            if (ni >= 0 && ni < (int32_t)norm_count) {
                 nx = normals[ni * 3 + 0];
                 ny = normals[ni * 3 + 1];
                 nz = normals[ni * 3 + 2];
@@ -814,16 +743,14 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up)
 
         /* Get UV */
         double u = 0, v = 0;
-        if (uvs)
-        {
+        if (uvs) {
             int ui = 0;
             if (uv_by_polygon_vertex)
                 ui = uv_index_to_direct ? (uv_indices ? uv_indices[polygon_vertex_idx] : 0)
                                         : polygon_vertex_idx;
             else
                 ui = uv_index_to_direct ? (uv_indices ? uv_indices[vi] : 0) : vi;
-            if (ui >= 0 && ui < (int32_t)uv_count)
-            {
+            if (ui >= 0 && ui < (int32_t)uv_count) {
                 u = uvs[ui * 2 + 0];
                 v = 1.0 - uvs[ui * 2 + 1]; /* FBX V is flipped vs OpenGL */
             }
@@ -833,8 +760,7 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up)
         polygon[poly_count++] = mesh_vertex_count++;
         polygon_vertex_idx++;
 
-        if (end_of_polygon)
-        {
+        if (end_of_polygon) {
             /* Fan triangulate */
             for (int32_t fi = 1; fi < poly_count - 1; fi++)
                 rt_mesh3d_add_triangle(mesh, polygon[0], polygon[fi], polygon[fi + 1]);
@@ -852,8 +778,7 @@ static void *fbx_extract_geometry(fbx_node_t *geom_node, int z_up)
  * Material extraction
  *=========================================================================*/
 
-static void *fbx_extract_material(fbx_node_t *mat_node)
-{
+static void *fbx_extract_material(fbx_node_t *mat_node) {
     if (!mat_node)
         return NULL;
     void *mat = rt_material3d_new();
@@ -864,21 +789,17 @@ static void *fbx_extract_material(fbx_node_t *mat_node)
     if (!p70)
         return mat;
 
-    for (int32_t i = 0; i < p70->child_count; i++)
-    {
+    for (int32_t i = 0; i < p70->child_count; i++) {
         fbx_node_t *p = &p70->children[i];
         if (strcmp(p->name, "P") != 0 || p->prop_count < 7)
             continue;
         const char *pname = fbx_prop_str(p, 0);
-        if (strcmp(pname, "DiffuseColor") == 0)
-        {
+        if (strcmp(pname, "DiffuseColor") == 0) {
             double r = fbx_prop_f64(p, 4);
             double g = fbx_prop_f64(p, 5);
             double b = fbx_prop_f64(p, 6);
             rt_material3d_set_color(mat, r, g, b);
-        }
-        else if (strcmp(pname, "Shininess") == 0 || strcmp(pname, "ShininessExponent") == 0)
-        {
+        } else if (strcmp(pname, "Shininess") == 0 || strcmp(pname, "ShininessExponent") == 0) {
             double s = fbx_prop_f64(p, 4);
             rt_material3d_set_shininess(mat, s);
         }
@@ -891,15 +812,13 @@ static void *fbx_extract_material(fbx_node_t *mat_node)
  * Skeleton extraction
  *=========================================================================*/
 
-static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, int z_up)
-{
+static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, int z_up) {
     fbx_node_t *objects = fbx_find_child(root, "Objects");
     if (!objects)
         return NULL;
 
     /* Collect Model nodes that are skeleton limbs */
-    typedef struct
-    {
+    typedef struct {
         int64_t id;
         char name[64];
         double lcl_translation[3];
@@ -913,8 +832,7 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
     int32_t bone_count = 0;
     int32_t bone_cap = 0;
 
-    for (int32_t i = 0; i < objects->child_count; i++)
-    {
+    for (int32_t i = 0; i < objects->child_count; i++) {
         fbx_node_t *obj = &objects->children[i];
         if (strcmp(obj->name, "Model") != 0 || obj->prop_count < 3)
             continue;
@@ -923,8 +841,7 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
             strcmp(type_str, "Root") != 0)
             continue;
 
-        if (bone_count >= bone_cap)
-        {
+        if (bone_count >= bone_cap) {
             int32_t new_cap = bone_cap == 0 ? 32 : bone_cap * 2;
             bone_info_t *nb = (bone_info_t *)realloc(bones, (size_t)new_cap * sizeof(bone_info_t));
             if (!nb)
@@ -950,28 +867,21 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
 
         /* Extract Lcl Translation/Rotation/Scaling from Properties70 */
         fbx_node_t *p70 = fbx_find_child(obj, "Properties70");
-        if (p70)
-        {
-            for (int32_t pi = 0; pi < p70->child_count; pi++)
-            {
+        if (p70) {
+            for (int32_t pi = 0; pi < p70->child_count; pi++) {
                 fbx_node_t *p = &p70->children[pi];
                 if (strcmp(p->name, "P") != 0 || p->prop_count < 7)
                     continue;
                 const char *pn = fbx_prop_str(p, 0);
-                if (strcmp(pn, "Lcl Translation") == 0)
-                {
+                if (strcmp(pn, "Lcl Translation") == 0) {
                     bi->lcl_translation[0] = fbx_prop_f64(p, 4);
                     bi->lcl_translation[1] = fbx_prop_f64(p, 5);
                     bi->lcl_translation[2] = fbx_prop_f64(p, 6);
-                }
-                else if (strcmp(pn, "Lcl Rotation") == 0)
-                {
+                } else if (strcmp(pn, "Lcl Rotation") == 0) {
                     bi->lcl_rotation[0] = fbx_prop_f64(p, 4);
                     bi->lcl_rotation[1] = fbx_prop_f64(p, 5);
                     bi->lcl_rotation[2] = fbx_prop_f64(p, 6);
-                }
-                else if (strcmp(pn, "Lcl Scaling") == 0)
-                {
+                } else if (strcmp(pn, "Lcl Scaling") == 0) {
                     bi->lcl_scaling[0] = fbx_prop_f64(p, 4);
                     bi->lcl_scaling[1] = fbx_prop_f64(p, 5);
                     bi->lcl_scaling[2] = fbx_prop_f64(p, 6);
@@ -982,16 +892,14 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
         bi->parent_id = fbx_find_parent(ct, bi->id);
     }
 
-    if (bone_count == 0)
-    {
+    if (bone_count == 0) {
         free(bones);
         return NULL;
     }
 
     /* Build skeleton in topological order */
     void *skel = rt_skeleton3d_new();
-    if (!skel)
-    {
+    if (!skel) {
         free(bones);
         return NULL;
     }
@@ -1002,33 +910,26 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
     int32_t placed_count = 0;
 
     /* Place roots first */
-    for (int32_t i = 0; i < bone_count; i++)
-    {
+    for (int32_t i = 0; i < bone_count; i++) {
         int is_root = 1;
         for (int32_t j = 0; j < bone_count; j++)
-            if (bones[i].parent_id == bones[j].id)
-            {
+            if (bones[i].parent_id == bones[j].id) {
                 is_root = 0;
                 break;
             }
-        if (is_root)
-        {
+        if (is_root) {
             order[placed_count++] = i;
             placed[i] = 1;
         }
     }
 
     /* Place children */
-    for (int32_t pass = 0; pass < bone_count && placed_count < bone_count; pass++)
-    {
-        for (int32_t i = 0; i < bone_count; i++)
-        {
+    for (int32_t pass = 0; pass < bone_count && placed_count < bone_count; pass++) {
+        for (int32_t i = 0; i < bone_count; i++) {
             if (placed[i])
                 continue;
-            for (int32_t j = 0; j < placed_count; j++)
-            {
-                if (bones[i].parent_id == bones[order[j]].id)
-                {
+            for (int32_t j = 0; j < placed_count; j++) {
+                if (bones[i].parent_id == bones[order[j]].id) {
                     order[placed_count++] = i;
                     placed[i] = 1;
                     break;
@@ -1038,14 +939,11 @@ static void *fbx_extract_skeleton(fbx_node_t *root, const fbx_conn_table_t *ct, 
     }
 
     /* Add bones to skeleton in topological order */
-    for (int32_t i = 0; i < placed_count; i++)
-    {
+    for (int32_t i = 0; i < placed_count; i++) {
         bone_info_t *bi = &bones[order[i]];
         int64_t parent_idx = -1;
-        for (int32_t j = 0; j < i; j++)
-        {
-            if (bi->parent_id == bones[order[j]].id)
-            {
+        for (int32_t j = 0; j < i; j++) {
+            if (bi->parent_id == bones[order[j]].id) {
                 parent_idx = j;
                 break;
             }
@@ -1109,13 +1007,10 @@ static int32_t fbx_find_children(const fbx_conn_table_t *ct,
                                  int64_t parent_id,
                                  int64_t *out_ids,
                                  const char **out_props,
-                                 int32_t max_out)
-{
+                                 int32_t max_out) {
     int32_t count = 0;
-    for (int32_t i = 0; i < ct->count && count < max_out; i++)
-    {
-        if (ct->entries[i].parent_id == parent_id)
-        {
+    for (int32_t i = 0; i < ct->count && count < max_out; i++) {
+        if (ct->entries[i].parent_id == parent_id) {
             out_ids[count] = ct->entries[i].child_id;
             if (out_props)
                 out_props[count] = ct->entries[i].prop;
@@ -1126,10 +1021,8 @@ static int32_t fbx_find_children(const fbx_conn_table_t *ct,
 }
 
 /* Find an Objects node by its FBX ID (first property) */
-static fbx_node_t *fbx_find_object_by_id(fbx_node_t *objects, int64_t id)
-{
-    for (int32_t i = 0; i < objects->child_count; i++)
-    {
+static fbx_node_t *fbx_find_object_by_id(fbx_node_t *objects, int64_t id) {
+    for (int32_t i = 0; i < objects->child_count; i++) {
         fbx_node_t *obj = &objects->children[i];
         if (obj->prop_count >= 1 && fbx_prop_i64(obj, 0) == id)
             return obj;
@@ -1138,14 +1031,12 @@ static fbx_node_t *fbx_find_object_by_id(fbx_node_t *objects, int64_t id)
 }
 
 /* Extract int64 array data from an FBX property */
-static const int64_t *fbx_get_i64_array(fbx_node_t *node, const char *child_name, uint32_t *count)
-{
+static const int64_t *fbx_get_i64_array(fbx_node_t *node, const char *child_name, uint32_t *count) {
     fbx_node_t *child = fbx_find_child(node, child_name);
     if (!child || child->prop_count < 1)
         return NULL;
     fbx_prop_t *p = &child->props[0];
-    if (p->type == 'l' && p->v.array.data)
-    {
+    if (p->type == 'l' && p->v.array.data) {
         *count = p->v.array.count;
         return (const int64_t *)p->v.array.data;
     }
@@ -1153,34 +1044,29 @@ static const int64_t *fbx_get_i64_array(fbx_node_t *node, const char *child_name
 }
 
 /* Extract double array data from an FBX property */
-static const double *fbx_get_f64_array(fbx_node_t *node, const char *child_name, uint32_t *count)
-{
+static const double *fbx_get_f64_array(fbx_node_t *node, const char *child_name, uint32_t *count) {
     fbx_node_t *child = fbx_find_child(node, child_name);
     if (!child || child->prop_count < 1)
         return NULL;
     fbx_prop_t *p = &child->props[0];
-    if (p->type == 'd' && p->v.array.data)
-    {
+    if (p->type == 'd' && p->v.array.data) {
         *count = p->v.array.count;
         return (const double *)p->v.array.data;
     }
     /* Also handle float arrays by reading as float */
-    if (p->type == 'f' && p->v.array.data)
-    {
+    if (p->type == 'f' && p->v.array.data) {
         *count = p->v.array.count;
         return NULL; /* caller must handle float arrays separately */
     }
     return NULL;
 }
 
-static const float *fbx_get_f32_array(fbx_node_t *node, const char *child_name, uint32_t *count)
-{
+static const float *fbx_get_f32_array(fbx_node_t *node, const char *child_name, uint32_t *count) {
     fbx_node_t *child = fbx_find_child(node, child_name);
     if (!child || child->prop_count < 1)
         return NULL;
     fbx_prop_t *p = &child->props[0];
-    if (p->type == 'f' && p->v.array.data)
-    {
+    if (p->type == 'f' && p->v.array.data) {
         *count = p->v.array.count;
         return (const float *)p->v.array.data;
     }
@@ -1191,8 +1077,7 @@ static void fbx_extract_animations(fbx_node_t *root,
                                    const fbx_conn_table_t *ct,
                                    void *skeleton,
                                    void ***out_anims,
-                                   int32_t *out_count)
-{
+                                   int32_t *out_count) {
     *out_anims = NULL;
     *out_count = 0;
 
@@ -1203,8 +1088,7 @@ static void fbx_extract_animations(fbx_node_t *root,
     int64_t bone_count = skeleton ? rt_skeleton3d_get_bone_count(skeleton) : 0;
 
     /* Find AnimationStack nodes */
-    for (int32_t i = 0; i < objects->child_count; i++)
-    {
+    for (int32_t i = 0; i < objects->child_count; i++) {
         fbx_node_t *obj = &objects->children[i];
         if (strcmp(obj->name, "AnimationStack") != 0)
             continue;
@@ -1229,8 +1113,7 @@ static void fbx_extract_animations(fbx_node_t *root,
             continue;
 
         /* For each AnimationLayer, find AnimationCurveNode children */
-        for (int32_t li = 0; li < layer_count; li++)
-        {
+        for (int32_t li = 0; li < layer_count; li++) {
             fbx_node_t *layer_node = fbx_find_object_by_id(objects, layer_ids[li]);
             if (!layer_node || strcmp(layer_node->name, "AnimationLayer") != 0)
                 continue;
@@ -1238,8 +1121,7 @@ static void fbx_extract_animations(fbx_node_t *root,
             int64_t curve_node_ids[256];
             int32_t cn_count = fbx_find_children(ct, layer_ids[li], curve_node_ids, NULL, 256);
 
-            for (int32_t ci = 0; ci < cn_count; ci++)
-            {
+            for (int32_t ci = 0; ci < cn_count; ci++) {
                 fbx_node_t *cn_node = fbx_find_object_by_id(objects, curve_node_ids[ci]);
                 if (!cn_node || strcmp(cn_node->name, "AnimationCurveNode") != 0)
                     continue;
@@ -1249,14 +1131,11 @@ static void fbx_extract_animations(fbx_node_t *root,
                  * Scaling" */
                 int32_t trs_type = -1; /* 0=T, 1=R, 2=S */
                 int64_t model_id = 0;
-                for (int32_t ci2 = 0; ci2 < ct->count; ci2++)
-                {
-                    if (ct->entries[ci2].child_id == curve_node_ids[ci])
-                    {
+                for (int32_t ci2 = 0; ci2 < ct->count; ci2++) {
+                    if (ct->entries[ci2].child_id == curve_node_ids[ci]) {
                         int64_t pid = ct->entries[ci2].parent_id;
                         fbx_node_t *pnode = fbx_find_object_by_id(objects, pid);
-                        if (pnode && strcmp(pnode->name, "Model") == 0)
-                        {
+                        if (pnode && strcmp(pnode->name, "Model") == 0) {
                             model_id = pid;
                             const char *cprop = ct->entries[ci2].prop;
                             if (strcmp(cprop, "Lcl Translation") == 0)
@@ -1274,21 +1153,17 @@ static void fbx_extract_animations(fbx_node_t *root,
 
                 /* Find bone index by matching model name to skeleton bone name */
                 int64_t bone_idx = -1;
-                if (skeleton)
-                {
+                if (skeleton) {
                     fbx_node_t *model_node = fbx_find_object_by_id(objects, model_id);
-                    if (model_node && model_node->prop_count >= 2)
-                    {
+                    if (model_node && model_node->prop_count >= 2) {
                         const char *mname = fbx_prop_str(model_node, 1);
                         const char *msep = strstr(mname, "\x00\x01");
                         if (msep)
                             mname = msep + 2;
-                        for (int64_t bi = 0; bi < bone_count; bi++)
-                        {
+                        for (int64_t bi = 0; bi < bone_count; bi++) {
                             rt_string bname = rt_skeleton3d_get_bone_name(skeleton, bi);
                             const char *bstr = rt_string_cstr(bname);
-                            if (bstr && strcmp(bstr, mname) == 0)
-                            {
+                            if (bstr && strcmp(bstr, mname) == 0) {
                                 bone_idx = bi;
                                 break;
                             }
@@ -1304,8 +1179,7 @@ static void fbx_extract_animations(fbx_node_t *root,
                 int32_t curve_count =
                     fbx_find_children(ct, curve_node_ids[ci], curve_ids, curve_props, 8);
 
-                for (int32_t ki = 0; ki < curve_count; ki++)
-                {
+                for (int32_t ki = 0; ki < curve_count; ki++) {
                     fbx_node_t *curve = fbx_find_object_by_id(objects, curve_ids[ki]);
                     if (!curve || strcmp(curve->name, "AnimationCurve") != 0)
                         continue;
@@ -1337,8 +1211,7 @@ static void fbx_extract_animations(fbx_node_t *root,
                     uint32_t kc = tc < vc ? tc : vc;
 
                     /* Emit keyframes for this component */
-                    for (uint32_t k = 0; k < kc; k++)
-                    {
+                    for (uint32_t k = 0; k < kc; k++) {
                         double t = (double)times[k] / (double)FBX_TIME_SECOND;
                         if (t > max_time)
                             max_time = t;
@@ -1350,16 +1223,11 @@ static void fbx_extract_animations(fbx_node_t *root,
                         double rv[3] = {0.0, 0.0, 0.0};
                         double sv[3] = {1.0, 1.0, 1.0};
 
-                        if (trs_type == 0)
-                        {
+                        if (trs_type == 0) {
                             tv[comp] = val;
-                        }
-                        else if (trs_type == 1)
-                        {
+                        } else if (trs_type == 1) {
                             rv[comp] = val;
-                        }
-                        else
-                        {
+                        } else {
                             sv[comp] = val;
                         }
 
@@ -1387,8 +1255,7 @@ static void fbx_extract_animations(fbx_node_t *root,
         }
 
         /* Update animation duration from extracted keyframes */
-        if (max_time > 0.0)
-        {
+        if (max_time > 0.0) {
             /* Re-create with correct duration (API doesn't have set_duration) */
             /* The duration was set to 1.0 as placeholder — keyframes beyond 1.0
              * will still be stored, and the animation system uses the max keyframe
@@ -1410,8 +1277,7 @@ static void fbx_extract_animations(fbx_node_t *root,
  * Top-level FBX loader
  *=========================================================================*/
 
-static void rt_fbx_asset_finalize(void *obj)
-{
+static void rt_fbx_asset_finalize(void *obj) {
     rt_fbx_asset *fbx = (rt_fbx_asset *)obj;
     free(fbx->meshes);
     fbx->meshes = NULL;
@@ -1421,46 +1287,39 @@ static void rt_fbx_asset_finalize(void *obj)
     fbx->materials = NULL;
 }
 
-void *rt_fbx_load(rt_string path)
-{
-    if (!path)
-    {
+void *rt_fbx_load(rt_string path) {
+    if (!path) {
         rt_trap("FBX.Load: null path");
         return NULL;
     }
     const char *cpath = rt_string_cstr(path);
-    if (!cpath)
-    {
+    if (!cpath) {
         rt_trap("FBX.Load: invalid path");
         return NULL;
     }
 
     /* Read file */
     FILE *f = fopen(cpath, "rb");
-    if (!f)
-    {
+    if (!f) {
         rt_trap("FBX.Load: cannot open file");
         return NULL;
     }
     fseek(f, 0, SEEK_END);
     long fsize = ftell(f);
     fseek(f, 0, SEEK_SET);
-    if (fsize < 27)
-    {
+    if (fsize < 27) {
         fclose(f);
         rt_trap("FBX.Load: file too small");
         return NULL;
     }
 
     uint8_t *data = (uint8_t *)malloc((size_t)fsize);
-    if (!data)
-    {
+    if (!data) {
         fclose(f);
         rt_trap("FBX.Load: out of memory");
         return NULL;
     }
-    if (fread(data, 1, (size_t)fsize, f) != (size_t)fsize)
-    {
+    if (fread(data, 1, (size_t)fsize, f) != (size_t)fsize) {
         fclose(f);
         free(data);
         rt_trap("FBX.Load: read error");
@@ -1470,8 +1329,7 @@ void *rt_fbx_load(rt_string path)
 
     /* Verify magic */
     static const char magic[] = "Kaydara FBX Binary  ";
-    if (memcmp(data, magic, 20) != 0)
-    {
+    if (memcmp(data, magic, 20) != 0) {
         free(data);
         rt_trap("FBX.Load: not a binary FBX file");
         return NULL;
@@ -1490,16 +1348,13 @@ void *rt_fbx_load(rt_string path)
     memset(&root, 0, sizeof(root));
     strcpy(root.name, "_root_");
 
-    while (!fbx_eof(&reader))
-    {
+    while (!fbx_eof(&reader)) {
         /* Check for file-level null sentinel */
         size_t sentinel = reader.is_64bit ? 25 : 13;
-        if (reader.pos + sentinel <= reader.len)
-        {
+        if (reader.pos + sentinel <= reader.len) {
             int is_null = 1;
             for (size_t si = 0; si < sentinel; si++)
-                if (reader.data[reader.pos + si] != 0)
-                {
+                if (reader.data[reader.pos + si] != 0) {
                     is_null = 0;
                     break;
                 }
@@ -1507,8 +1362,7 @@ void *rt_fbx_load(rt_string path)
                 break;
         }
 
-        if (root.child_count >= root.child_capacity)
-        {
+        if (root.child_count >= root.child_capacity) {
             int32_t new_cap = root.child_capacity == 0 ? 16 : root.child_capacity * 2;
             fbx_node_t *nc =
                 (fbx_node_t *)realloc(root.children, (size_t)new_cap * sizeof(fbx_node_t));
@@ -1536,8 +1390,7 @@ void *rt_fbx_load(rt_string path)
 
     /* Extract assets */
     rt_fbx_asset *asset = (rt_fbx_asset *)rt_obj_new_i64(0, (int64_t)sizeof(rt_fbx_asset));
-    if (!asset)
-    {
+    if (!asset) {
         free(ct.entries);
         fbx_free_node(&root);
         rt_trap("FBX.Load: out of memory");
@@ -1555,35 +1408,26 @@ void *rt_fbx_load(rt_string path)
 
     /* Extract geometry */
     fbx_node_t *objects = fbx_find_child(&root, "Objects");
-    if (objects)
-    {
-        for (int32_t i = 0; i < objects->child_count; i++)
-        {
+    if (objects) {
+        for (int32_t i = 0; i < objects->child_count; i++) {
             fbx_node_t *obj = &objects->children[i];
-            if (strcmp(obj->name, "Geometry") == 0)
-            {
+            if (strcmp(obj->name, "Geometry") == 0) {
                 void *mesh = fbx_extract_geometry(obj, z_up);
-                if (mesh)
-                {
+                if (mesh) {
                     int32_t nc = asset->mesh_count + 1;
                     void **nm = (void **)realloc(asset->meshes, (size_t)nc * sizeof(void *));
-                    if (nm)
-                    {
+                    if (nm) {
                         asset->meshes = nm;
                         asset->meshes[asset->mesh_count] = mesh;
                         asset->mesh_count = nc;
                     }
                 }
-            }
-            else if (strcmp(obj->name, "Material") == 0)
-            {
+            } else if (strcmp(obj->name, "Material") == 0) {
                 void *mat = fbx_extract_material(obj);
-                if (mat)
-                {
+                if (mat) {
                     int32_t nc = asset->material_count + 1;
                     void **nm = (void **)realloc(asset->materials, (size_t)nc * sizeof(void *));
-                    if (nm)
-                    {
+                    if (nm) {
                         asset->materials = nm;
                         asset->materials[asset->material_count] = mat;
                         asset->material_count = nc;
@@ -1611,13 +1455,11 @@ void *rt_fbx_load(rt_string path)
  * FBX asset accessors
  *=========================================================================*/
 
-int64_t rt_fbx_mesh_count(void *obj)
-{
+int64_t rt_fbx_mesh_count(void *obj) {
     return obj ? ((rt_fbx_asset *)obj)->mesh_count : 0;
 }
 
-void *rt_fbx_get_mesh(void *obj, int64_t index)
-{
+void *rt_fbx_get_mesh(void *obj, int64_t index) {
     if (!obj)
         return NULL;
     rt_fbx_asset *a = (rt_fbx_asset *)obj;
@@ -1626,18 +1468,15 @@ void *rt_fbx_get_mesh(void *obj, int64_t index)
     return a->meshes[index];
 }
 
-void *rt_fbx_get_skeleton(void *obj)
-{
+void *rt_fbx_get_skeleton(void *obj) {
     return obj ? ((rt_fbx_asset *)obj)->skeleton : NULL;
 }
 
-int64_t rt_fbx_animation_count(void *obj)
-{
+int64_t rt_fbx_animation_count(void *obj) {
     return obj ? ((rt_fbx_asset *)obj)->animation_count : 0;
 }
 
-void *rt_fbx_get_animation(void *obj, int64_t index)
-{
+void *rt_fbx_get_animation(void *obj, int64_t index) {
     if (!obj)
         return NULL;
     rt_fbx_asset *a = (rt_fbx_asset *)obj;
@@ -1646,8 +1485,7 @@ void *rt_fbx_get_animation(void *obj, int64_t index)
     return a->animations[index];
 }
 
-rt_string rt_fbx_get_animation_name(void *obj, int64_t index)
-{
+rt_string rt_fbx_get_animation_name(void *obj, int64_t index) {
     void *anim = rt_fbx_get_animation(obj, index);
     if (!anim)
         return rt_const_cstr("");
@@ -1655,13 +1493,11 @@ rt_string rt_fbx_get_animation_name(void *obj, int64_t index)
     return rt_animation3d_get_name(anim);
 }
 
-int64_t rt_fbx_material_count(void *obj)
-{
+int64_t rt_fbx_material_count(void *obj) {
     return obj ? ((rt_fbx_asset *)obj)->material_count : 0;
 }
 
-void *rt_fbx_get_material(void *obj, int64_t index)
-{
+void *rt_fbx_get_material(void *obj, int64_t index) {
     if (!obj)
         return NULL;
     rt_fbx_asset *a = (rt_fbx_asset *)obj;

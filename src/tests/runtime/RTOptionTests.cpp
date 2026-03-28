@@ -19,8 +19,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -29,8 +28,7 @@ static void test_result(const char *name, bool passed)
 // Option Tests
 //=============================================================================
 
-static void test_option_some_creation()
-{
+static void test_option_some_creation() {
     printf("Testing Option Some creation:\n");
 
     // Test 1: Create Some with pointer
@@ -69,8 +67,7 @@ static void test_option_some_creation()
     printf("\n");
 }
 
-static void test_option_none_creation()
-{
+static void test_option_none_creation() {
     printf("Testing Option None creation:\n");
 
     // Test 1: Create None
@@ -83,8 +80,7 @@ static void test_option_none_creation()
     printf("\n");
 }
 
-static void test_option_unwrap_or()
-{
+static void test_option_unwrap_or() {
     printf("Testing Option UnwrapOr:\n");
 
     // Test 1: UnwrapOr on Some returns value
@@ -134,8 +130,7 @@ static void test_option_unwrap_or()
     printf("\n");
 }
 
-static void test_option_value()
-{
+static void test_option_value() {
     printf("Testing Option Value:\n");
 
     // Test 1: Value on Some returns value
@@ -154,8 +149,7 @@ static void test_option_value()
     printf("\n");
 }
 
-static void test_option_to_string()
-{
+static void test_option_to_string() {
     printf("Testing Option ToString:\n");
 
     // Test 1: Some pointer
@@ -189,8 +183,7 @@ static void test_option_to_string()
     printf("\n");
 }
 
-static void test_option_equality()
-{
+static void test_option_equality() {
     printf("Testing Option Equality:\n");
 
     // Test 1: Two Some i64 with same value
@@ -231,8 +224,7 @@ static void test_option_equality()
     printf("\n");
 }
 
-static void test_option_conversion()
-{
+static void test_option_conversion() {
     printf("Testing Option Conversion:\n");
 
     // Test 1: Some to Ok
@@ -260,8 +252,7 @@ static void test_option_conversion()
     printf("\n");
 }
 
-static void test_option_null_handling()
-{
+static void test_option_null_handling() {
     printf("Testing Option NULL handling:\n");
 
     // Test 1: IsSome on NULL
@@ -288,8 +279,7 @@ static void test_option_null_handling()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Option Tests ===\n\n");
 
     test_option_some_creation();

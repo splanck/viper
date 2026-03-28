@@ -41,8 +41,7 @@
 #include <stdlib.h>
 
 /// Internal structure for Timer.
-struct rt_timer_impl
-{
+struct rt_timer_impl {
     int64_t duration; // Total frames (or ms in ms_mode) for the timer
     int64_t elapsed;  // Frames (or ms) elapsed since start
     int8_t running;   // 1 if timer is running
@@ -52,12 +51,10 @@ struct rt_timer_impl
 
 /// @brief Create a new new instance.
 /// @return Result value.
-rt_timer rt_timer_new(void)
-{
+rt_timer rt_timer_new(void) {
     struct rt_timer_impl *timer =
         (struct rt_timer_impl *)rt_obj_new_i64(0, (int64_t)sizeof(struct rt_timer_impl));
-    if (!timer)
-    {
+    if (!timer) {
         return NULL;
     }
 
@@ -72,8 +69,7 @@ rt_timer rt_timer_new(void)
 
 /// @brief Destroy and free destroy resources.
 /// @param timer
-void rt_timer_destroy(rt_timer timer)
-{
+void rt_timer_destroy(rt_timer timer) {
     if (timer && rt_obj_release_check0(timer))
         rt_obj_free(timer);
 }
@@ -81,8 +77,7 @@ void rt_timer_destroy(rt_timer timer)
 /// @brief Start start.
 /// @param timer
 /// @param frames
-void rt_timer_start(rt_timer timer, int64_t frames)
-{
+void rt_timer_start(rt_timer timer, int64_t frames) {
     if (!timer || frames <= 0)
         return;
 
@@ -95,8 +90,7 @@ void rt_timer_start(rt_timer timer, int64_t frames)
 /// @brief Start repeating.
 /// @param timer
 /// @param frames
-void rt_timer_start_repeating(rt_timer timer, int64_t frames)
-{
+void rt_timer_start_repeating(rt_timer timer, int64_t frames) {
     if (!timer || frames <= 0)
         return;
 
@@ -108,8 +102,7 @@ void rt_timer_start_repeating(rt_timer timer, int64_t frames)
 
 /// @brief Stop stop.
 /// @param timer
-void rt_timer_stop(rt_timer timer)
-{
+void rt_timer_stop(rt_timer timer) {
     if (!timer)
         return;
     timer->running = 0;
@@ -117,8 +110,7 @@ void rt_timer_stop(rt_timer timer)
 
 /// @brief Reset reset to initial state.
 /// @param timer
-void rt_timer_reset(rt_timer timer)
-{
+void rt_timer_reset(rt_timer timer) {
     if (!timer)
         return;
     timer->elapsed = 0;
@@ -127,24 +119,18 @@ void rt_timer_reset(rt_timer timer)
 /// @brief Update update state for current frame.
 /// @param timer
 /// @return Result value.
-int8_t rt_timer_update(rt_timer timer)
-{
-    if (!timer || !timer->running)
-    {
+int8_t rt_timer_update(rt_timer timer) {
+    if (!timer || !timer->running) {
         return 0;
     }
 
     timer->elapsed++;
 
-    if (timer->elapsed >= timer->duration)
-    {
-        if (timer->repeating)
-        {
+    if (timer->elapsed >= timer->duration) {
+        if (timer->repeating) {
             // Wrap around for repeating timers
             timer->elapsed = 0;
-        }
-        else
-        {
+        } else {
             timer->running = 0;
         }
         return 1; // Timer expired this frame
@@ -156,16 +142,14 @@ int8_t rt_timer_update(rt_timer timer)
 /// @brief Check if running.
 /// @param timer
 /// @return Result value.
-int8_t rt_timer_is_running(rt_timer timer)
-{
+int8_t rt_timer_is_running(rt_timer timer) {
     return timer ? timer->running : 0;
 }
 
 /// @brief Check if expired.
 /// @param timer
 /// @return Result value.
-int8_t rt_timer_is_expired(rt_timer timer)
-{
+int8_t rt_timer_is_expired(rt_timer timer) {
     if (!timer)
         return 0;
     return (!timer->running && timer->elapsed >= timer->duration) ? 1 : 0;
@@ -174,16 +158,14 @@ int8_t rt_timer_is_expired(rt_timer timer)
 /// @brief Perform elapsed operation.
 /// @param timer
 /// @return Result value.
-int64_t rt_timer_elapsed(rt_timer timer)
-{
+int64_t rt_timer_elapsed(rt_timer timer) {
     return timer ? timer->elapsed : 0;
 }
 
 /// @brief Perform remaining operation.
 /// @param timer
 /// @return Result value.
-int64_t rt_timer_remaining(rt_timer timer)
-{
+int64_t rt_timer_remaining(rt_timer timer) {
     if (!timer || timer->duration == 0)
         return 0;
 
@@ -194,8 +176,7 @@ int64_t rt_timer_remaining(rt_timer timer)
 /// @brief Perform progress operation.
 /// @param timer
 /// @return Result value.
-int64_t rt_timer_progress(rt_timer timer)
-{
+int64_t rt_timer_progress(rt_timer timer) {
     if (!timer || timer->duration == 0)
         return 0;
 
@@ -206,24 +187,21 @@ int64_t rt_timer_progress(rt_timer timer)
 /// @brief Perform duration operation.
 /// @param timer
 /// @return Result value.
-int64_t rt_timer_duration(rt_timer timer)
-{
+int64_t rt_timer_duration(rt_timer timer) {
     return timer ? timer->duration : 0;
 }
 
 /// @brief Check if repeating.
 /// @param timer
 /// @return Result value.
-int8_t rt_timer_is_repeating(rt_timer timer)
-{
+int8_t rt_timer_is_repeating(rt_timer timer) {
     return timer ? timer->repeating : 0;
 }
 
 /// @brief Set the duration value.
 /// @param timer
 /// @param frames
-void rt_timer_set_duration(rt_timer timer, int64_t frames)
-{
+void rt_timer_set_duration(rt_timer timer, int64_t frames) {
     if (!timer || frames <= 0)
         return;
     timer->duration = frames;
@@ -233,8 +211,7 @@ void rt_timer_set_duration(rt_timer timer, int64_t frames)
 // Millisecond-based timer mode
 // =========================================================================
 
-void rt_timer_start_ms(rt_timer timer, int64_t duration_ms)
-{
+void rt_timer_start_ms(rt_timer timer, int64_t duration_ms) {
     if (!timer || duration_ms <= 0)
         return;
     timer->duration = duration_ms;
@@ -244,8 +221,7 @@ void rt_timer_start_ms(rt_timer timer, int64_t duration_ms)
     timer->ms_mode = 1;
 }
 
-void rt_timer_start_repeating_ms(rt_timer timer, int64_t interval_ms)
-{
+void rt_timer_start_repeating_ms(rt_timer timer, int64_t interval_ms) {
     if (!timer || interval_ms <= 0)
         return;
     timer->duration = interval_ms;
@@ -255,24 +231,19 @@ void rt_timer_start_repeating_ms(rt_timer timer, int64_t interval_ms)
     timer->ms_mode = 1;
 }
 
-int8_t rt_timer_update_ms(rt_timer timer, int64_t dt)
-{
+int8_t rt_timer_update_ms(rt_timer timer, int64_t dt) {
     if (!timer || !timer->running || dt <= 0)
         return 0;
 
     timer->elapsed += dt;
 
-    if (timer->elapsed >= timer->duration)
-    {
-        if (timer->repeating)
-        {
+    if (timer->elapsed >= timer->duration) {
+        if (timer->repeating) {
             // Wrap around, preserving overshoot for accuracy
             timer->elapsed -= timer->duration;
             if (timer->elapsed < 0)
                 timer->elapsed = 0;
-        }
-        else
-        {
+        } else {
             timer->elapsed = timer->duration;
             timer->running = 0;
         }
@@ -282,13 +253,11 @@ int8_t rt_timer_update_ms(rt_timer timer, int64_t dt)
     return 0;
 }
 
-int64_t rt_timer_elapsed_ms(rt_timer timer)
-{
+int64_t rt_timer_elapsed_ms(rt_timer timer) {
     return timer ? timer->elapsed : 0;
 }
 
-int64_t rt_timer_remaining_ms(rt_timer timer)
-{
+int64_t rt_timer_remaining_ms(rt_timer timer) {
     if (!timer || timer->duration == 0)
         return 0;
     int64_t remaining = timer->duration - timer->elapsed;

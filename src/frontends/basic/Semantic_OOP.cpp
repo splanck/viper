@@ -19,15 +19,13 @@
 #include "frontends/basic/Semantic_OOP.hpp"
 #include "frontends/basic/detail/Semantic_OOP_Internal.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 //===----------------------------------------------------------------------===//
 // Public API
 //===----------------------------------------------------------------------===//
 
-void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *emitter)
-{
+void buildOopIndex(const Program &program, OopIndex &index, DiagnosticEmitter *emitter) {
     detail::OopIndexBuilder builder(index, emitter);
     builder.build(program);
 }

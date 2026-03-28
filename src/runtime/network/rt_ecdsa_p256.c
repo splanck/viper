@@ -68,29 +68,24 @@ static const u256 P256_GY = {
 // 256-bit arithmetic helpers
 //=============================================================================
 
-static void u256_zero(u256 r)
-{
+static void u256_zero(u256 r) {
     r[0] = r[1] = r[2] = r[3] = 0;
 }
 
-static void u256_copy(u256 r, const u256 a)
-{
+static void u256_copy(u256 r, const u256 a) {
     r[0] = a[0];
     r[1] = a[1];
     r[2] = a[2];
     r[3] = a[3];
 }
 
-static int u256_is_zero(const u256 a)
-{
+static int u256_is_zero(const u256 a) {
     return (a[0] | a[1] | a[2] | a[3]) == 0;
 }
 
 // Compare: returns -1 if a < b, 0 if equal, 1 if a > b
-static int u256_cmp(const u256 a, const u256 b)
-{
-    for (int i = 0; i < 4; i++)
-    {
+static int u256_cmp(const u256 a, const u256 b) {
+    for (int i = 0; i < 4; i++) {
         if (a[i] < b[i])
             return -1;
         if (a[i] > b[i])
@@ -100,10 +95,8 @@ static int u256_cmp(const u256 a, const u256 b)
 }
 
 // Load from 32-byte big-endian
-static void u256_from_bytes(u256 r, const uint8_t b[32])
-{
-    for (int i = 0; i < 4; i++)
-    {
+static void u256_from_bytes(u256 r, const uint8_t b[32]) {
+    for (int i = 0; i < 4; i++) {
         r[i] = 0;
         for (int j = 0; j < 8; j++)
             r[i] = (r[i] << 8) | b[i * 8 + j];
@@ -112,19 +105,16 @@ static void u256_from_bytes(u256 r, const uint8_t b[32])
 
 // r = a + b, returns carry (0 or 1)
 #ifdef _MSC_VER
-static uint64_t u256_add(u256 r, const u256 a, const u256 b)
-{
+static uint64_t u256_add(u256 r, const u256 a, const u256 b) {
     unsigned char carry = 0;
     for (int i = 3; i >= 0; i--)
         carry = _addcarry_u64(carry, a[i], b[i], &r[i]);
     return carry;
 }
 #else
-static uint64_t u256_add(u256 r, const u256 a, const u256 b)
-{
+static uint64_t u256_add(u256 r, const u256 a, const u256 b) {
     uint64_t carry = 0;
-    for (int i = 3; i >= 0; i--)
-    {
+    for (int i = 3; i >= 0; i--) {
         __uint128_t sum = (__uint128_t)a[i] + b[i] + carry;
         r[i] = (uint64_t)sum;
         carry = (uint64_t)(sum >> 64);
@@ -135,19 +125,16 @@ static uint64_t u256_add(u256 r, const u256 a, const u256 b)
 
 // r = a - b, returns borrow (0 or 1)
 #ifdef _MSC_VER
-static uint64_t u256_sub(u256 r, const u256 a, const u256 b)
-{
+static uint64_t u256_sub(u256 r, const u256 a, const u256 b) {
     unsigned char borrow = 0;
     for (int i = 3; i >= 0; i--)
         borrow = _subborrow_u64(borrow, a[i], b[i], &r[i]);
     return borrow;
 }
 #else
-static uint64_t u256_sub(u256 r, const u256 a, const u256 b)
-{
+static uint64_t u256_sub(u256 r, const u256 a, const u256 b) {
     uint64_t borrow = 0;
-    for (int i = 3; i >= 0; i--)
-    {
+    for (int i = 3; i >= 0; i--) {
         __uint128_t diff = (__uint128_t)a[i] - b[i] - borrow;
         r[i] = (uint64_t)diff;
         borrow = (diff >> 127) & 1; // top bit indicates borrow
@@ -158,14 +145,11 @@ static uint64_t u256_sub(u256 r, const u256 a, const u256 b)
 
 // 256x256 → 512 schoolbook multiplication
 #ifdef _MSC_VER
-static void u256_mul_wide(u512 r, const u256 a, const u256 b)
-{
+static void u256_mul_wide(u512 r, const u256 a, const u256 b) {
     memset(r, 0, 8 * sizeof(uint64_t));
-    for (int i = 3; i >= 0; i--)
-    {
+    for (int i = 3; i >= 0; i--) {
         uint64_t carry = 0;
-        for (int j = 3; j >= 0; j--)
-        {
+        for (int j = 3; j >= 0; j--) {
             uint64_t hi;
             uint64_t lo = _umul128(a[i], b[j], &hi);
             // Add existing value at r[i+j+1]
@@ -180,14 +164,11 @@ static void u256_mul_wide(u512 r, const u256 a, const u256 b)
     }
 }
 #else
-static void u256_mul_wide(u512 r, const u256 a, const u256 b)
-{
+static void u256_mul_wide(u512 r, const u256 a, const u256 b) {
     memset(r, 0, 8 * sizeof(uint64_t));
-    for (int i = 3; i >= 0; i--)
-    {
+    for (int i = 3; i >= 0; i--) {
         __uint128_t carry = 0;
-        for (int j = 3; j >= 0; j--)
-        {
+        for (int j = 3; j >= 0; j--) {
             __uint128_t prod = (__uint128_t)a[i] * b[j] + r[i + j + 1] + carry;
             r[i + j + 1] = (uint64_t)prod;
             carry = prod >> 64;
@@ -202,8 +183,7 @@ static void u256_mul_wide(u512 r, const u256 a, const u256 b)
 //=============================================================================
 
 // r = a mod p (assumes a < 2p)
-static void fp_reduce_once(u256 r, const u256 a)
-{
+static void fp_reduce_once(u256 r, const u256 a) {
     u256 tmp;
     uint64_t borrow = u256_sub(tmp, a, P256_P);
     // If borrow, a < p, so keep a; otherwise use a - p
@@ -214,26 +194,20 @@ static void fp_reduce_once(u256 r, const u256 a)
 }
 
 // r = a + b mod p
-static void fp_add(u256 r, const u256 a, const u256 b)
-{
+static void fp_add(u256 r, const u256 a, const u256 b) {
     uint64_t carry = u256_add(r, a, b);
-    if (carry)
-    {
+    if (carry) {
         // Subtract p to bring back in range
         u256_sub(r, r, P256_P);
-    }
-    else
-    {
+    } else {
         fp_reduce_once(r, r);
     }
 }
 
 // r = a - b mod p
-static void fp_sub(u256 r, const u256 a, const u256 b)
-{
+static void fp_sub(u256 r, const u256 a, const u256 b) {
     uint64_t borrow = u256_sub(r, a, b);
-    if (borrow)
-    {
+    if (borrow) {
         // Add p to make positive
         u256_add(r, r, P256_P);
     }
@@ -242,13 +216,11 @@ static void fp_sub(u256 r, const u256 a, const u256 b)
 // P-256 fast reduction (Solinas reduction)
 // p = 2^256 - 2^224 + 2^192 + 2^96 - 1
 // Input: 512-bit product t[0..7], output: 256-bit result r mod p
-static void fp_reduce_512(u256 r, const u512 t)
-{
+static void fp_reduce_512(u256 r, const u512 t) {
     // Extract 32-bit words from the 512-bit value (c0=MSW, c15=LSW)
     // t[0] is the most significant 64 bits, t[7] is least significant
     uint64_t c[16];
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         c[2 * i] = t[i] >> 32;
         c[2 * i + 1] = t[i] & 0xFFFFFFFFULL;
     }
@@ -377,8 +349,7 @@ static void fp_reduce_512(u256 r, const u512 t)
     acc[7] -= (int64_t)w[13];
 
     // Propagate carries through the 32-bit columns
-    for (int i = 0; i < 7; i++)
-    {
+    for (int i = 0; i < 7; i++) {
         acc[i + 1] += acc[i] >> 32;
         acc[i] &= 0xFFFFFFFF;
     }
@@ -394,11 +365,9 @@ static void fp_reduce_512(u256 r, const u512 t)
     // Reduce: the result may be slightly negative or > p, so add/sub p as needed
     // acc[7] carries tell us how many times p to add/subtract
     int64_t top = acc[7] >> 32;
-    if (top > 0)
-    {
+    if (top > 0) {
         // Subtract p up to a few times
-        for (int64_t i = 0; i < top + 1; i++)
-        {
+        for (int64_t i = 0; i < top + 1; i++) {
             u256 tmp;
             if (u256_cmp(r, P256_P) >= 0)
                 u256_sub(r, r, P256_P);
@@ -406,12 +375,9 @@ static void fp_reduce_512(u256 r, const u512 t)
                 break;
             (void)tmp;
         }
-    }
-    else if (top < 0)
-    {
+    } else if (top < 0) {
         // Add p to make positive
-        for (int64_t i = 0; i > top - 1; i--)
-        {
+        for (int64_t i = 0; i > top - 1; i--) {
             u256_add(r, r, P256_P);
             if (u256_cmp(r, P256_P) < 0 || (r[0] >> 63) == 0)
                 break;
@@ -423,22 +389,19 @@ static void fp_reduce_512(u256 r, const u512 t)
 }
 
 // r = a * b mod p
-static void fp_mul(u256 r, const u256 a, const u256 b)
-{
+static void fp_mul(u256 r, const u256 a, const u256 b) {
     u512 wide;
     u256_mul_wide(wide, a, b);
     fp_reduce_512(r, wide);
 }
 
 // r = a^2 mod p
-static void fp_sqr(u256 r, const u256 a)
-{
+static void fp_sqr(u256 r, const u256 a) {
     fp_mul(r, a, a);
 }
 
 // r = a^exp mod p (binary square-and-multiply, exp is u256)
-static void fp_pow(u256 r, const u256 a, const u256 exp)
-{
+static void fp_pow(u256 r, const u256 a, const u256 exp) {
     u256 base, result;
     u256_copy(base, a);
     result[0] = 0;
@@ -446,10 +409,8 @@ static void fp_pow(u256 r, const u256 a, const u256 exp)
     result[2] = 0;
     result[3] = 1; // result = 1
 
-    for (int i = 0; i < 4; i++)
-    {
-        for (int bit = 63; bit >= 0; bit--)
-        {
+    for (int i = 0; i < 4; i++) {
+        for (int bit = 63; bit >= 0; bit--) {
             fp_sqr(result, result);
             if ((exp[i] >> bit) & 1)
                 fp_mul(result, result, base);
@@ -459,8 +420,7 @@ static void fp_pow(u256 r, const u256 a, const u256 exp)
 }
 
 // r = a^(-1) mod p using Fermat's little theorem: a^(p-2) mod p
-static void fp_inv(u256 r, const u256 a)
-{
+static void fp_inv(u256 r, const u256 a) {
     u256 exp;
     u256_copy(exp, P256_P);
     // p - 2
@@ -473,8 +433,7 @@ static void fp_inv(u256 r, const u256 a)
     __uint128_t diff = (__uint128_t)exp[3] - 2 - borrow;
     exp[3] = (uint64_t)diff;
     borrow = (diff >> 127) & 1;
-    for (int i = 2; i >= 0 && borrow; i--)
-    {
+    for (int i = 2; i >= 0 && borrow; i--) {
         diff = (__uint128_t)exp[i] - borrow;
         exp[i] = (uint64_t)diff;
         borrow = (diff >> 127) & 1;
@@ -489,8 +448,7 @@ static void fp_inv(u256 r, const u256 a)
 //=============================================================================
 
 // r = a mod n (assumes a < 2n)
-static void sn_reduce_once(u256 r, const u256 a)
-{
+static void sn_reduce_once(u256 r, const u256 a) {
     u256 tmp;
     uint64_t borrow = u256_sub(tmp, a, P256_N);
     if (borrow)
@@ -500,8 +458,7 @@ static void sn_reduce_once(u256 r, const u256 a)
 }
 
 // r = a * b mod n
-static void sn_mul(u256 r, const u256 a, const u256 b)
-{
+static void sn_mul(u256 r, const u256 a, const u256 b) {
     u512 wide;
     u256_mul_wide(wide, a, b);
 
@@ -518,8 +475,7 @@ static void sn_mul(u256 r, const u256 a, const u256 b)
     u256 hi = {wide[0], wide[1], wide[2], wide[3]};
 
     // If hi is zero, just reduce lo
-    if (u256_is_zero(hi))
-    {
+    if (u256_is_zero(hi)) {
         sn_reduce_once(r, lo);
         return;
     }
@@ -544,16 +500,14 @@ static void sn_mul(u256 r, const u256 a, const u256 b)
 
     u256 sum;
     uint64_t carry = u256_add(sum, hr_lo, lo);
-    if (carry)
-    {
+    if (carry) {
         u256 one_val = {0, 0, 0, 1};
         u256_add(hr_hi, hr_hi, one_val);
     }
 
     // Now reduce hr_hi * 2^256 + sum (mod n)
     // Recurse: if hr_hi is non-zero, multiply again
-    if (u256_is_zero(hr_hi))
-    {
+    if (u256_is_zero(hr_hi)) {
         sn_reduce_once(r, sum);
         return;
     }
@@ -571,8 +525,7 @@ static void sn_mul(u256 r, const u256 a, const u256 b)
 }
 
 // r = a^(-1) mod n using Fermat: a^(n-2) mod n
-static void sn_inv(u256 r, const u256 a)
-{
+static void sn_inv(u256 r, const u256 a) {
     u256 exp;
     u256_copy(exp, P256_N);
     // n - 2
@@ -585,8 +538,7 @@ static void sn_inv(u256 r, const u256 a)
     __uint128_t diff = (__uint128_t)exp[3] - 2 - borrow;
     exp[3] = (uint64_t)diff;
     borrow = (diff >> 127) & 1;
-    for (int i = 2; i >= 0 && borrow; i--)
-    {
+    for (int i = 2; i >= 0 && borrow; i--) {
         diff = (__uint128_t)exp[i] - borrow;
         exp[i] = (uint64_t)diff;
         borrow = (diff >> 127) & 1;
@@ -599,10 +551,8 @@ static void sn_inv(u256 r, const u256 a)
     u256_zero(result);
     result[3] = 1; // result = 1
 
-    for (int i = 0; i < 4; i++)
-    {
-        for (int bit = 63; bit >= 0; bit--)
-        {
+    for (int i = 0; i < 4; i++) {
+        for (int bit = 63; bit >= 0; bit--) {
             sn_mul(result, result, result);
             if ((exp[i] >> bit) & 1)
                 sn_mul(result, result, base);
@@ -616,26 +566,22 @@ static void sn_inv(u256 r, const u256 a)
 // Affine (x, y) = (X/Z^2, Y/Z^3), point at infinity has Z = 0
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     u256 X, Y, Z;
 } jpoint;
 
-static void jpoint_set_infinity(jpoint *P)
-{
+static void jpoint_set_infinity(jpoint *P) {
     u256_zero(P->X);
     u256_zero(P->Y);
     u256_zero(P->Z);
     P->Y[3] = 1; // Convention: Y=1 for point at infinity
 }
 
-static int jpoint_is_infinity(const jpoint *P)
-{
+static int jpoint_is_infinity(const jpoint *P) {
     return u256_is_zero(P->Z);
 }
 
-static void jpoint_from_affine(jpoint *P, const u256 x, const u256 y)
-{
+static void jpoint_from_affine(jpoint *P, const u256 x, const u256 y) {
     u256_copy(P->X, x);
     u256_copy(P->Y, y);
     u256_zero(P->Z);
@@ -649,10 +595,8 @@ static void jpoint_from_affine(jpoint *P, const u256 x, const u256 y)
 //   X' = M^2 - 2*S
 //   Y' = M*(S - X') - 8*Y^4
 //   Z' = 2*Y*Z
-static void jpoint_double(jpoint *R, const jpoint *P)
-{
-    if (jpoint_is_infinity(P))
-    {
+static void jpoint_double(jpoint *R, const jpoint *P) {
+    if (jpoint_is_infinity(P)) {
         jpoint_set_infinity(R);
         return;
     }
@@ -705,15 +649,12 @@ static void jpoint_double(jpoint *R, const jpoint *P)
 //   X3 = R^2 - H^3 - 2*U1*H^2
 //   Y3 = R*(U1*H^2 - X3) - S1*H^3
 //   Z3 = H*Z1*Z2
-static void jpoint_add(jpoint *Res, const jpoint *P, const jpoint *Q)
-{
-    if (jpoint_is_infinity(P))
-    {
+static void jpoint_add(jpoint *Res, const jpoint *P, const jpoint *Q) {
+    if (jpoint_is_infinity(P)) {
         memcpy(Res, Q, sizeof(jpoint));
         return;
     }
-    if (jpoint_is_infinity(Q))
-    {
+    if (jpoint_is_infinity(Q)) {
         memcpy(Res, P, sizeof(jpoint));
         return;
     }
@@ -736,14 +677,12 @@ static void jpoint_add(jpoint *Res, const jpoint *P, const jpoint *Q)
     fp_sub(rr, s2, s1);
 
     // If h == 0 and rr == 0, points are equal → double
-    if (u256_is_zero(h) && u256_is_zero(rr))
-    {
+    if (u256_is_zero(h) && u256_is_zero(rr)) {
         jpoint_double(Res, P);
         return;
     }
     // If h == 0 and rr != 0, points are inverses → infinity
-    if (u256_is_zero(h))
-    {
+    if (u256_is_zero(h)) {
         jpoint_set_infinity(Res);
         return;
     }
@@ -772,25 +711,20 @@ static void jpoint_add(jpoint *Res, const jpoint *P, const jpoint *Q)
 }
 
 // Scalar multiplication: R = k * P (double-and-add, MSB first)
-static void jpoint_scalar_mul(jpoint *R, const u256 k, const jpoint *P)
-{
+static void jpoint_scalar_mul(jpoint *R, const u256 k, const jpoint *P) {
     jpoint_set_infinity(R);
 
     // Find the highest set bit
     int started = 0;
-    for (int i = 0; i < 4; i++)
-    {
-        for (int bit = 63; bit >= 0; bit--)
-        {
-            if (started)
-            {
+    for (int i = 0; i < 4; i++) {
+        for (int bit = 63; bit >= 0; bit--) {
+            if (started) {
                 jpoint tmp;
                 jpoint_double(&tmp, R);
                 memcpy(R, &tmp, sizeof(jpoint));
             }
 
-            if ((k[i] >> bit) & 1)
-            {
+            if ((k[i] >> bit) & 1) {
                 started = 1;
                 jpoint tmp;
                 jpoint_add(&tmp, R, P);
@@ -801,10 +735,8 @@ static void jpoint_scalar_mul(jpoint *R, const u256 k, const jpoint *P)
 }
 
 // Convert Jacobian → affine: x = X/Z^2, y = Y/Z^3
-static void jpoint_to_affine(u256 x, u256 y, const jpoint *P)
-{
-    if (jpoint_is_infinity(P))
-    {
+static void jpoint_to_affine(u256 x, u256 y, const jpoint *P) {
+    if (jpoint_is_infinity(P)) {
         u256_zero(x);
         u256_zero(y);
         return;
@@ -828,8 +760,7 @@ int ecdsa_p256_verify(const uint8_t pubkey_x[32],
                       const uint8_t pubkey_y[32],
                       const uint8_t digest[32],
                       const uint8_t sig_r[32],
-                      const uint8_t sig_s[32])
-{
+                      const uint8_t sig_s[32]) {
     u256 r, s, e, qx, qy;
 
     u256_from_bytes(r, sig_r);

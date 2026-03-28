@@ -24,15 +24,13 @@
 #include <cstdio>
 #include <cstring>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
@@ -40,12 +38,10 @@ extern "C" void vm_trap(const char *msg)
 }
 
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
         g_last_trap = nullptr;                                                                     \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             expr;                                                                                  \
             assert(false && "Expected trap did not occur");                                        \
         }                                                                                          \
@@ -53,15 +49,13 @@ extern "C" void vm_trap(const char *msg)
     } while (0)
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Test basic stream creation.
-static void test_create_empty()
-{
+static void test_create_empty() {
     printf("Testing MemStream.New()...\n");
 
     void *ms = rt_memstream_new();
@@ -73,8 +67,7 @@ static void test_create_empty()
 }
 
 /// @brief Test stream creation with capacity.
-static void test_create_with_capacity()
-{
+static void test_create_with_capacity() {
     printf("Testing MemStream.NewCapacity()...\n");
 
     void *ms = rt_memstream_new_capacity(1024);
@@ -87,8 +80,7 @@ static void test_create_with_capacity()
 }
 
 /// @brief Test stream creation from bytes.
-static void test_from_bytes()
-{
+static void test_from_bytes() {
     printf("Testing MemStream.FromBytes()...\n");
 
     void *bytes = rt_bytes_new(4);
@@ -112,8 +104,7 @@ static void test_from_bytes()
 }
 
 /// @brief Test 8-bit integer read/write.
-static void test_i8_u8()
-{
+static void test_i8_u8() {
     printf("Testing I8/U8...\n");
 
     void *ms = rt_memstream_new();
@@ -138,8 +129,7 @@ static void test_i8_u8()
 }
 
 /// @brief Test 16-bit integer read/write.
-static void test_i16_u16()
-{
+static void test_i16_u16() {
     printf("Testing I16/U16...\n");
 
     void *ms = rt_memstream_new();
@@ -161,8 +151,7 @@ static void test_i16_u16()
 }
 
 /// @brief Test 32-bit integer read/write.
-static void test_i32_u32()
-{
+static void test_i32_u32() {
     printf("Testing I32/U32...\n");
 
     void *ms = rt_memstream_new();
@@ -184,8 +173,7 @@ static void test_i32_u32()
 }
 
 /// @brief Test 64-bit integer read/write.
-static void test_i64()
-{
+static void test_i64() {
     printf("Testing I64...\n");
 
     void *ms = rt_memstream_new();
@@ -205,8 +193,7 @@ static void test_i64()
 }
 
 /// @brief Test float read/write.
-static void test_floats()
-{
+static void test_floats() {
     printf("Testing F32/F64...\n");
 
     void *ms = rt_memstream_new();
@@ -238,8 +225,7 @@ static void test_floats()
 }
 
 /// @brief Test bytes read/write.
-static void test_bytes()
-{
+static void test_bytes() {
     printf("Testing ReadBytes/WriteBytes...\n");
 
     void *ms = rt_memstream_new();
@@ -265,8 +251,7 @@ static void test_bytes()
 }
 
 /// @brief Test string read/write.
-static void test_strings()
-{
+static void test_strings() {
     printf("Testing ReadStr/WriteStr...\n");
 
     void *ms = rt_memstream_new();
@@ -284,8 +269,7 @@ static void test_strings()
 }
 
 /// @brief Test ToBytes.
-static void test_to_bytes()
-{
+static void test_to_bytes() {
     printf("Testing ToBytes...\n");
 
     void *ms = rt_memstream_new();
@@ -305,8 +289,7 @@ static void test_to_bytes()
 }
 
 /// @brief Test Clear.
-static void test_clear()
-{
+static void test_clear() {
     printf("Testing Clear...\n");
 
     void *ms = rt_memstream_new();
@@ -322,8 +305,7 @@ static void test_clear()
 }
 
 /// @brief Test Seek and Skip.
-static void test_seek_skip()
-{
+static void test_seek_skip() {
     printf("Testing Seek/Skip...\n");
 
     void *ms = rt_memstream_new();
@@ -348,8 +330,7 @@ static void test_seek_skip()
 }
 
 /// @brief Test position property.
-static void test_pos_property()
-{
+static void test_pos_property() {
     printf("Testing Pos property...\n");
 
     void *ms = rt_memstream_new();
@@ -367,15 +348,13 @@ static void test_pos_property()
 }
 
 /// @brief Test automatic growth.
-static void test_auto_growth()
-{
+static void test_auto_growth() {
     printf("Testing automatic growth...\n");
 
     void *ms = rt_memstream_new();
 
     // Write a lot of data to force growth
-    for (int i = 0; i < 1000; i++)
-    {
+    for (int i = 0; i < 1000; i++) {
         rt_memstream_write_i32(ms, i);
     }
 
@@ -384,8 +363,7 @@ static void test_auto_growth()
 
     // Verify data
     rt_memstream_set_pos(ms, 0);
-    for (int i = 0; i < 1000; i++)
-    {
+    for (int i = 0; i < 1000; i++) {
         assert(rt_memstream_read_i32(ms) == i);
     }
 
@@ -393,8 +371,7 @@ static void test_auto_growth()
 }
 
 /// @brief Test position beyond length.
-static void test_pos_beyond_len()
-{
+static void test_pos_beyond_len() {
     printf("Testing position beyond length...\n");
 
     void *ms = rt_memstream_new();
@@ -410,8 +387,7 @@ static void test_pos_beyond_len()
     // Read back - gap should be zeros
     rt_memstream_set_pos(ms, 0);
     assert(rt_memstream_read_u8(ms) == 0xAA);
-    for (int i = 1; i < 10; i++)
-    {
+    for (int i = 1; i < 10; i++) {
         assert(rt_memstream_read_u8(ms) == 0);
     }
     assert(rt_memstream_read_u8(ms) == 0xBB);
@@ -420,8 +396,7 @@ static void test_pos_beyond_len()
 }
 
 /// @brief Test reading past end traps.
-static void test_read_past_end()
-{
+static void test_read_past_end() {
     printf("Testing read past end traps...\n");
 
     void *ms = rt_memstream_new();
@@ -438,8 +413,7 @@ static void test_read_past_end()
 }
 
 /// @brief Test negative position traps.
-static void test_negative_pos()
-{
+static void test_negative_pos() {
     printf("Testing negative position traps...\n");
 
     void *ms = rt_memstream_new();
@@ -450,8 +424,7 @@ static void test_negative_pos()
 }
 
 /// @brief Test little-endian encoding.
-static void test_little_endian()
-{
+static void test_little_endian() {
     printf("Testing little-endian encoding...\n");
 
     void *ms = rt_memstream_new();
@@ -469,8 +442,7 @@ static void test_little_endian()
     test_result("Little-endian encoding", true);
 }
 
-int main()
-{
+int main() {
     printf("=== MemStream Runtime Tests ===\n");
 
     test_create_empty();

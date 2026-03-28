@@ -18,8 +18,7 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 // ============================================================================
 // Helper: check if a function contains a Call to a specific callee
@@ -27,16 +26,11 @@ namespace
 
 static bool hasCall(const il::core::Module &mod,
                     const std::string &fnName,
-                    const std::string &callee)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+                    const std::string &callee) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call && instr.callee == callee)
                         return true;
                 }
@@ -46,16 +40,11 @@ static bool hasCall(const il::core::Module &mod,
     return false;
 }
 
-static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == op)
                         return true;
                 }
@@ -70,8 +59,7 @@ static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il
 // ============================================================================
 
 /// @brief Test that `is` expression compiles and emits rt_obj_class_id call.
-TEST(ZiaIsExpr, BasicIsCheck)
-{
+TEST(ZiaIsExpr, BasicIsCheck) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -95,11 +83,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for BasicIsCheck:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -115,8 +101,7 @@ func start() {
 }
 
 /// @brief Test that `is` check with base type compiles.
-TEST(ZiaIsExpr, IsCheckBaseType)
-{
+TEST(ZiaIsExpr, IsCheckBaseType) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -140,11 +125,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for IsCheckBaseType:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -159,8 +142,7 @@ func start() {
 // ============================================================================
 
 /// @brief Test that set literal `{1, 2, 3}` compiles and emits Set.New + Set.Add.
-TEST(ZiaSetLiteral, BasicSetLiteral)
-{
+TEST(ZiaSetLiteral, BasicSetLiteral) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -174,11 +156,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for BasicSetLiteral:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -192,8 +172,7 @@ func start() {
 }
 
 /// @brief Test that empty set literal compiles.
-TEST(ZiaSetLiteral, EmptySetLiteral)
-{
+TEST(ZiaSetLiteral, EmptySetLiteral) {
     SourceManager sm;
     // Note: Empty set {} would conflict with empty map or empty block.
     // Sets require at least one element to be distinguishable from maps.
@@ -210,11 +189,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for EmptySetLiteral:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -225,8 +202,7 @@ func start() {
 }
 
 /// @brief Test set literal with string elements.
-TEST(ZiaSetLiteral, StringSetLiteral)
-{
+TEST(ZiaSetLiteral, StringSetLiteral) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -240,11 +216,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for StringSetLiteral:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -257,7 +231,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

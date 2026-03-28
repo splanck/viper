@@ -32,8 +32,7 @@
 #include <cstdio>
 
 // Trap handler for runtime
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -42,8 +41,7 @@ extern "C" void vm_trap(const char *msg)
 //=============================================================================
 
 /// @brief Get an integer from a boxed value in a list.
-static int64_t list_get_i64(void *list, int64_t index)
-{
+static int64_t list_get_i64(void *list, int64_t index) {
     void *elem = rt_list_get(list, index);
     if (!elem)
         return -999;
@@ -54,15 +52,13 @@ static int tests_passed = 0;
 static int tests_total = 0;
 
 #define TEST(name)                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_total++;                                                                             \
         printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 
 #define PASS()                                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_passed++;                                                                            \
         printf("ok\n");                                                                            \
     } while (0)
@@ -71,8 +67,7 @@ static int tests_total = 0;
 // Tests
 //=============================================================================
 
-static void test_creation(void)
-{
+static void test_creation(void) {
     TEST("Pathfinder creation");
     void *pf = rt_pathfinder_new(10, 10);
     assert(pf != NULL);
@@ -81,8 +76,7 @@ static void test_creation(void)
     PASS();
 }
 
-static void test_walkable_default(void)
-{
+static void test_walkable_default(void) {
     TEST("All cells walkable by default");
     void *pf = rt_pathfinder_new(5, 5);
     for (int x = 0; x < 5; x++)
@@ -91,8 +85,7 @@ static void test_walkable_default(void)
     PASS();
 }
 
-static void test_set_walkable(void)
-{
+static void test_set_walkable(void) {
     TEST("Set/get walkability");
     void *pf = rt_pathfinder_new(5, 5);
     rt_pathfinder_set_walkable(pf, 2, 2, 0);
@@ -101,8 +94,7 @@ static void test_set_walkable(void)
     PASS();
 }
 
-static void test_start_equals_goal(void)
-{
+static void test_start_equals_goal(void) {
     TEST("Start == goal returns single point");
     void *pf = rt_pathfinder_new(5, 5);
     void *path = rt_pathfinder_find_path(pf, 2, 2, 2, 2);
@@ -114,8 +106,7 @@ static void test_start_equals_goal(void)
     PASS();
 }
 
-static void test_4way_straight_line(void)
-{
+static void test_4way_straight_line(void) {
     TEST("4-way straight horizontal path");
     void *pf = rt_pathfinder_new(5, 1);
     void *path = rt_pathfinder_find_path(pf, 0, 0, 4, 0);
@@ -130,8 +121,7 @@ static void test_4way_straight_line(void)
     PASS();
 }
 
-static void test_4way_manhattan(void)
-{
+static void test_4way_manhattan(void) {
     TEST("4-way path is Manhattan (no diagonals)");
     void *pf = rt_pathfinder_new(5, 5);
     // 4-way (default): path from (0,0) to (2,2) should have 4 moves = 5 waypoints
@@ -140,8 +130,7 @@ static void test_4way_manhattan(void)
     assert(rt_list_len(path) == 10); // 5 waypoints × 2 coords
 
     // Verify all moves are cardinal (dx+dy == 1)
-    for (int64_t i = 2; i < rt_list_len(path); i += 2)
-    {
+    for (int64_t i = 2; i < rt_list_len(path); i += 2) {
         int64_t px = list_get_i64(path, i - 2);
         int64_t py = list_get_i64(path, i - 1);
         int64_t cx = list_get_i64(path, i);
@@ -157,8 +146,7 @@ static void test_4way_manhattan(void)
     PASS();
 }
 
-static void test_8way_diagonal(void)
-{
+static void test_8way_diagonal(void) {
     TEST("8-way path uses diagonal shortcuts");
     void *pf = rt_pathfinder_new(5, 5);
     rt_pathfinder_set_diagonal(pf, 1);
@@ -170,8 +158,7 @@ static void test_8way_diagonal(void)
     PASS();
 }
 
-static void test_wall_avoidance(void)
-{
+static void test_wall_avoidance(void) {
     TEST("Path avoids walls");
     void *pf = rt_pathfinder_new(5, 5);
     // Vertical wall at x=2, rows 0-3 (gap at y=4)
@@ -184,8 +171,7 @@ static void test_wall_avoidance(void)
     assert(rt_pathfinder_get_last_found(pf) == 1);
 
     // Verify no waypoint is on the wall
-    for (int64_t i = 0; i < rt_list_len(path); i += 2)
-    {
+    for (int64_t i = 0; i < rt_list_len(path); i += 2) {
         int64_t x = list_get_i64(path, i);
         int64_t y = list_get_i64(path, i + 1);
         if (x == 2 && y < 4)
@@ -194,8 +180,7 @@ static void test_wall_avoidance(void)
     PASS();
 }
 
-static void test_no_path(void)
-{
+static void test_no_path(void) {
     TEST("No path returns empty list");
     void *pf = rt_pathfinder_new(5, 5);
     // Complete wall at x=2
@@ -209,8 +194,7 @@ static void test_no_path(void)
     PASS();
 }
 
-static void test_goal_not_walkable(void)
-{
+static void test_goal_not_walkable(void) {
     TEST("Goal not walkable returns empty");
     void *pf = rt_pathfinder_new(5, 5);
     rt_pathfinder_set_walkable(pf, 4, 4, 0);
@@ -221,8 +205,7 @@ static void test_goal_not_walkable(void)
     PASS();
 }
 
-static void test_out_of_bounds(void)
-{
+static void test_out_of_bounds(void) {
     TEST("Out of bounds returns empty");
     void *pf = rt_pathfinder_new(5, 5);
     void *path = rt_pathfinder_find_path(pf, -1, 0, 10, 10);
@@ -232,8 +215,7 @@ static void test_out_of_bounds(void)
     PASS();
 }
 
-static void test_path_length(void)
-{
+static void test_path_length(void) {
     TEST("FindPathLength returns correct cost");
     void *pf = rt_pathfinder_new(5, 1);
     // 4 moves × 100 cost each = 400
@@ -248,8 +230,7 @@ static void test_path_length(void)
     PASS();
 }
 
-static void test_weighted_cost(void)
-{
+static void test_weighted_cost(void) {
     TEST("Weighted costs influence path choice");
     // 3-wide corridor: top row (y=0), middle (y=1), bottom (y=2)
     // Make middle row very expensive
@@ -271,8 +252,7 @@ static void test_weighted_cost(void)
     PASS();
 }
 
-static void test_max_steps(void)
-{
+static void test_max_steps(void) {
     TEST("MaxSteps limits search");
     void *pf = rt_pathfinder_new(100, 100);
     rt_pathfinder_set_max_steps(pf, 10);
@@ -284,8 +264,7 @@ static void test_max_steps(void)
     PASS();
 }
 
-static void test_cost_get_set(void)
-{
+static void test_cost_get_set(void) {
     TEST("Cost get/set round-trip");
     void *pf = rt_pathfinder_new(5, 5);
     rt_pathfinder_set_cost(pf, 2, 3, 500);
@@ -294,8 +273,7 @@ static void test_cost_get_set(void)
     PASS();
 }
 
-static void test_null_safety(void)
-{
+static void test_null_safety(void) {
     TEST("NULL safety");
     assert(rt_pathfinder_get_width(NULL) == 0);
     assert(rt_pathfinder_get_height(NULL) == 0);
@@ -306,8 +284,7 @@ static void test_null_safety(void)
     PASS();
 }
 
-static void test_walkable_out_of_bounds(void)
-{
+static void test_walkable_out_of_bounds(void) {
     TEST("Walkable check out of bounds returns false");
     void *pf = rt_pathfinder_new(5, 5);
     assert(rt_pathfinder_is_walkable(pf, -1, 0) == 0);
@@ -320,8 +297,7 @@ static void test_walkable_out_of_bounds(void)
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("test_rt_pathfinder:\n");
 
     test_creation();

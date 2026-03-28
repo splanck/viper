@@ -63,8 +63,7 @@
 #define MAX_PAIRS 1024
 
 /// Item entry.
-struct qt_item
-{
+struct qt_item {
     int64_t id;
     int64_t x, y;          ///< Center position.
     int64_t width, height; ///< Dimensions.
@@ -72,8 +71,7 @@ struct qt_item
 };
 
 /// Quadtree node.
-struct qt_node
-{
+struct qt_node {
     int64_t x, y;                         ///< Bounds top-left.
     int64_t width, height;                ///< Bounds dimensions.
     int64_t items[RT_QUADTREE_MAX_ITEMS]; ///< Item indices in this node.
@@ -84,15 +82,13 @@ struct qt_node
 };
 
 /// Collision pair.
-struct qt_pair
-{
+struct qt_pair {
     int64_t first;
     int64_t second;
 };
 
 /// Internal quadtree structure.
-struct rt_quadtree_impl
-{
+struct rt_quadtree_impl {
     struct qt_node *root;
     struct qt_item items[MAX_TOTAL_ITEMS];
     int64_t item_count;
@@ -105,8 +101,7 @@ struct rt_quadtree_impl
 
 /// Creates a new node.
 static struct qt_node *create_node(
-    int64_t x, int64_t y, int64_t width, int64_t height, int64_t depth)
-{
+    int64_t x, int64_t y, int64_t width, int64_t height, int64_t depth) {
     struct qt_node *node = malloc(sizeof(struct qt_node));
     if (!node)
         return NULL;
@@ -127,13 +122,11 @@ static struct qt_node *create_node(
 }
 
 /// Destroys a node and its children.
-static void destroy_node(struct qt_node *node)
-{
+static void destroy_node(struct qt_node *node) {
     if (!node)
         return;
 
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         if (node->children[i])
             destroy_node(node->children[i]);
     }
@@ -141,17 +134,14 @@ static void destroy_node(struct qt_node *node)
 }
 
 /// Clears a node (keeps structure but removes items).
-static void clear_node(struct qt_node *node)
-{
+static void clear_node(struct qt_node *node) {
     if (!node)
         return;
 
     node->item_count = 0;
 
-    for (int i = 0; i < 4; i++)
-    {
-        if (node->children[i])
-        {
+    for (int i = 0; i < 4; i++) {
+        if (node->children[i]) {
             destroy_node(node->children[i]);
             node->children[i] = NULL;
         }
@@ -160,15 +150,13 @@ static void clear_node(struct qt_node *node)
 }
 
 /// Check if a rectangle intersects a node's bounds.
-static int8_t intersects(struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h)
-{
+static int8_t intersects(struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h) {
     return !(x >= node->x + node->width || x + w <= node->x || y >= node->y + node->height ||
              y + h <= node->y);
 }
 
 /// Split a node into 4 children.
-static void split_node(struct qt_node *node)
-{
+static void split_node(struct qt_node *node) {
     if (node->is_split || node->depth >= RT_QUADTREE_MAX_DEPTH)
         return;
 
@@ -187,8 +175,7 @@ static void split_node(struct qt_node *node)
 
 /// Get which child quadrant(s) an item belongs to.
 /// Returns -1 if item spans multiple quadrants.
-static int get_quadrant(struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h)
-{
+static int get_quadrant(struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h) {
     int64_t mid_x = node->x + node->width / 2;
     int64_t mid_y = node->y + node->height / 2;
 
@@ -216,8 +203,7 @@ static int get_quadrant(struct qt_node *node, int64_t x, int64_t y, int64_t w, i
 /// Insert item into node.
 static int8_t insert_into_node(struct rt_quadtree_impl *tree,
                                struct qt_node *node,
-                               int64_t item_idx)
-{
+                               int64_t item_idx) {
     if (!node)
         return 0;
 
@@ -226,36 +212,30 @@ static int8_t insert_into_node(struct rt_quadtree_impl *tree,
     int64_t y = item->y - item->height / 2;
 
     // If node is split, try to insert into child
-    if (node->is_split)
-    {
+    if (node->is_split) {
         int quad = get_quadrant(node, x, y, item->width, item->height);
-        if (quad >= 0 && node->children[quad])
-        {
+        if (quad >= 0 && node->children[quad]) {
             return insert_into_node(tree, node->children[quad], item_idx);
         }
     }
 
     // Insert into this node
-    if (node->item_count < RT_QUADTREE_MAX_ITEMS)
-    {
+    if (node->item_count < RT_QUADTREE_MAX_ITEMS) {
         node->items[node->item_count++] = item_idx;
         return 1;
     }
 
     // Node is full, try to split
-    if (!node->is_split && node->depth < RT_QUADTREE_MAX_DEPTH)
-    {
+    if (!node->is_split && node->depth < RT_QUADTREE_MAX_DEPTH) {
         split_node(node);
 
         // Re-distribute existing items
-        for (int64_t i = 0; i < node->item_count; i++)
-        {
+        for (int64_t i = 0; i < node->item_count; i++) {
             struct qt_item *existing = &tree->items[node->items[i]];
             int64_t ex = existing->x - existing->width / 2;
             int64_t ey = existing->y - existing->height / 2;
             int quad = get_quadrant(node, ex, ey, existing->width, existing->height);
-            if (quad >= 0 && node->children[quad])
-            {
+            if (quad >= 0 && node->children[quad]) {
                 insert_into_node(tree, node->children[quad], node->items[i]);
                 // Move last item to this slot
                 node->items[i] = node->items[node->item_count - 1];
@@ -266,15 +246,13 @@ static int8_t insert_into_node(struct rt_quadtree_impl *tree,
 
         // Try again with the new item
         int quad = get_quadrant(node, x, y, item->width, item->height);
-        if (quad >= 0 && node->children[quad])
-        {
+        if (quad >= 0 && node->children[quad]) {
             return insert_into_node(tree, node->children[quad], item_idx);
         }
     }
 
     // Still can't fit, add anyway (overflow)
-    if (node->item_count < RT_QUADTREE_MAX_ITEMS)
-    {
+    if (node->item_count < RT_QUADTREE_MAX_ITEMS) {
         node->items[node->item_count++] = item_idx;
         return 1;
     }
@@ -283,25 +261,25 @@ static int8_t insert_into_node(struct rt_quadtree_impl *tree,
 }
 
 /// Query items in a region.
-static void query_node(
-    struct rt_quadtree_impl *tree, struct qt_node *node, int64_t x, int64_t y, int64_t w, int64_t h)
-{
+static void query_node(struct rt_quadtree_impl *tree,
+                       struct qt_node *node,
+                       int64_t x,
+                       int64_t y,
+                       int64_t w,
+                       int64_t h) {
     if (!node)
         return;
     // When result_count is already at the cap, more matching items may exist in
     // this subtree (the caller only invokes us when the subtree intersects the
     // query rect).  Mark truncation so the caller can detect partial results.
-    if (tree->result_count >= RT_QUADTREE_MAX_RESULTS)
-    {
+    if (tree->result_count >= RT_QUADTREE_MAX_RESULTS) {
         tree->query_truncated = 1;
         return;
     }
 
     // Check items in this node
-    for (int64_t i = 0; i < node->item_count; i++)
-    {
-        if (tree->result_count >= RT_QUADTREE_MAX_RESULTS)
-        {
+    for (int64_t i = 0; i < node->item_count; i++) {
+        if (tree->result_count >= RT_QUADTREE_MAX_RESULTS) {
             tree->query_truncated = 1; // Mark truncation for caller detection
             break;
         }
@@ -314,19 +292,15 @@ static void query_node(
         int64_t ix = item->x - item->width / 2;
         int64_t iy = item->y - item->height / 2;
 
-        if (!(ix >= x + w || ix + item->width <= x || iy >= y + h || iy + item->height <= y))
-        {
+        if (!(ix >= x + w || ix + item->width <= x || iy >= y + h || iy + item->height <= y)) {
             tree->results[tree->result_count++] = item->id;
         }
     }
 
     // Query children
-    if (node->is_split)
-    {
-        for (int i = 0; i < 4; i++)
-        {
-            if (node->children[i] && intersects(node->children[i], x, y, w, h))
-            {
+    if (node->is_split) {
+        for (int i = 0; i < 4; i++) {
+            if (node->children[i] && intersects(node->children[i], x, y, w, h)) {
                 query_node(tree, node->children[i], x, y, w, h);
             }
         }
@@ -334,16 +308,13 @@ static void query_node(
 }
 
 /// Remove item from node.
-static int8_t remove_from_node(struct rt_quadtree_impl *tree, struct qt_node *node, int64_t id)
-{
+static int8_t remove_from_node(struct rt_quadtree_impl *tree, struct qt_node *node, int64_t id) {
     if (!node)
         return 0;
 
     // Check items in this node
-    for (int64_t i = 0; i < node->item_count; i++)
-    {
-        if (tree->items[node->items[i]].id == id)
-        {
+    for (int64_t i = 0; i < node->item_count; i++) {
+        if (tree->items[node->items[i]].id == id) {
             // Remove by swapping with last
             node->items[i] = node->items[node->item_count - 1];
             node->item_count--;
@@ -352,10 +323,8 @@ static int8_t remove_from_node(struct rt_quadtree_impl *tree, struct qt_node *no
     }
 
     // Check children
-    if (node->is_split)
-    {
-        for (int i = 0; i < 4; i++)
-        {
+    if (node->is_split) {
+        for (int i = 0; i < 4; i++) {
             if (node->children[i] && remove_from_node(tree, node->children[i], id))
                 return 1;
         }
@@ -368,21 +337,18 @@ static int8_t remove_from_node(struct rt_quadtree_impl *tree, struct qt_node *no
 static void collect_pairs_node(struct rt_quadtree_impl *tree,
                                struct qt_node *node,
                                int64_t *ancestors,
-                               int64_t ancestor_count)
-{
+                               int64_t ancestor_count) {
     if (!node || tree->pair_count >= MAX_PAIRS)
         return;
 
     // Check items in this node against each other
-    for (int64_t i = 0; i < node->item_count && tree->pair_count < MAX_PAIRS; i++)
-    {
+    for (int64_t i = 0; i < node->item_count && tree->pair_count < MAX_PAIRS; i++) {
         struct qt_item *item_i = &tree->items[node->items[i]];
         if (!item_i->active)
             continue;
 
         // Against other items in same node
-        for (int64_t j = i + 1; j < node->item_count && tree->pair_count < MAX_PAIRS; j++)
-        {
+        for (int64_t j = i + 1; j < node->item_count && tree->pair_count < MAX_PAIRS; j++) {
             struct qt_item *item_j = &tree->items[node->items[j]];
             if (!item_j->active)
                 continue;
@@ -393,8 +359,7 @@ static void collect_pairs_node(struct rt_quadtree_impl *tree,
         }
 
         // Against ancestor items
-        for (int64_t a = 0; a < ancestor_count && tree->pair_count < MAX_PAIRS; a++)
-        {
+        for (int64_t a = 0; a < ancestor_count && tree->pair_count < MAX_PAIRS; a++) {
             struct qt_item *item_a = &tree->items[ancestors[a]];
             if (!item_a->active)
                 continue;
@@ -406,8 +371,7 @@ static void collect_pairs_node(struct rt_quadtree_impl *tree,
     }
 
     // Recurse into children with updated ancestor list
-    if (node->is_split)
-    {
+    if (node->is_split) {
         // Expand ancestors to include this node's items
         // NOTE: 2KB stack allocation per recursion level (256 × 8 bytes).
         // Bounded by quadtree max depth which is typically < 20 levels.
@@ -420,18 +384,15 @@ static void collect_pairs_node(struct rt_quadtree_impl *tree,
         for (int64_t i = 0; i < node->item_count && new_count < 256; i++)
             new_ancestors[new_count++] = node->items[i];
 
-        for (int i = 0; i < 4; i++)
-        {
-            if (node->children[i])
-            {
+        for (int i = 0; i < 4; i++) {
+            if (node->children[i]) {
                 collect_pairs_node(tree, node->children[i], new_ancestors, new_count);
             }
         }
     }
 }
 
-static void quadtree_finalizer(void *obj)
-{
+static void quadtree_finalizer(void *obj) {
     struct rt_quadtree_impl *tree = (struct rt_quadtree_impl *)obj;
     destroy_node(tree->root);
     tree->root = NULL;
@@ -443,8 +404,7 @@ static void quadtree_finalizer(void *obj)
 /// @param width
 /// @param height
 /// @return Result value.
-rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
-{
+rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height) {
     struct rt_quadtree_impl *tree = rt_obj_new_i64(0, sizeof(struct rt_quadtree_impl));
     if (!tree)
         return NULL;
@@ -452,8 +412,7 @@ rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
     memset(tree, 0, sizeof(struct rt_quadtree_impl));
 
     tree->root = create_node(x, y, width, height, 0);
-    if (!tree->root)
-    {
+    if (!tree->root) {
         if (rt_obj_release_check0(tree))
             rt_obj_free(tree);
         return NULL;
@@ -465,22 +424,19 @@ rt_quadtree rt_quadtree_new(int64_t x, int64_t y, int64_t width, int64_t height)
 
 /// @brief Perform quadtree destroy operation.
 /// @param tree
-void rt_quadtree_destroy(rt_quadtree tree)
-{
+void rt_quadtree_destroy(rt_quadtree tree) {
     // Object is GC-managed; finalizer frees internal nodes.
     (void)tree;
 }
 
 /// @brief Perform quadtree clear operation.
 /// @param tree
-void rt_quadtree_clear(rt_quadtree tree)
-{
+void rt_quadtree_clear(rt_quadtree tree) {
     if (!tree)
         return;
 
     // Clear all items
-    for (int64_t i = 0; i < tree->item_count; i++)
-    {
+    for (int64_t i = 0; i < tree->item_count; i++) {
         tree->items[i].active = 0;
     }
     tree->item_count = 0;
@@ -493,15 +449,13 @@ void rt_quadtree_clear(rt_quadtree tree)
 }
 
 int8_t rt_quadtree_insert(
-    rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height)
-{
+    rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height) {
     if (!tree || tree->item_count >= MAX_TOTAL_ITEMS)
         return 0;
 
     // Guard against duplicate IDs — inserting the same ID twice leaves a ghost
     // after the first Remove(), producing phantom collision responses.
-    for (int64_t i = 0; i < tree->item_count; i++)
-    {
+    for (int64_t i = 0; i < tree->item_count; i++) {
         if (tree->items[i].active && tree->items[i].id == id)
             return 0; // Already present; caller should use rt_quadtree_update()
     }
@@ -530,16 +484,13 @@ int8_t rt_quadtree_insert(
 /// @param tree
 /// @param id
 /// @return Result value.
-int8_t rt_quadtree_remove(rt_quadtree tree, int64_t id)
-{
+int8_t rt_quadtree_remove(rt_quadtree tree, int64_t id) {
     if (!tree)
         return 0;
 
     // Mark item as inactive
-    for (int64_t i = 0; i < tree->item_count; i++)
-    {
-        if (tree->items[i].id == id && tree->items[i].active)
-        {
+    for (int64_t i = 0; i < tree->item_count; i++) {
+        if (tree->items[i].id == id && tree->items[i].active) {
             tree->items[i].active = 0;
             remove_from_node(tree, tree->root, id);
             return 1;
@@ -550,16 +501,13 @@ int8_t rt_quadtree_remove(rt_quadtree tree, int64_t id)
 }
 
 int8_t rt_quadtree_update(
-    rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height)
-{
+    rt_quadtree tree, int64_t id, int64_t x, int64_t y, int64_t width, int64_t height) {
     if (!tree)
         return 0;
 
     // Find and update item
-    for (int64_t i = 0; i < tree->item_count; i++)
-    {
-        if (tree->items[i].id == id && tree->items[i].active)
-        {
+    for (int64_t i = 0; i < tree->item_count; i++) {
+        if (tree->items[i].id == id && tree->items[i].active) {
             // Remove from tree
             remove_from_node(tree, tree->root, id);
 
@@ -578,8 +526,7 @@ int8_t rt_quadtree_update(
 }
 
 int64_t rt_quadtree_query_rect(
-    rt_quadtree tree, int64_t x, int64_t y, int64_t width, int64_t height)
-{
+    rt_quadtree tree, int64_t x, int64_t y, int64_t width, int64_t height) {
     if (!tree)
         return 0;
 
@@ -592,8 +539,7 @@ int64_t rt_quadtree_query_rect(
 /// @brief Perform quadtree query was truncated operation.
 /// @param tree
 /// @return Result value.
-int8_t rt_quadtree_query_was_truncated(rt_quadtree tree)
-{
+int8_t rt_quadtree_query_was_truncated(rt_quadtree tree) {
     return tree ? tree->query_truncated : 0;
 }
 
@@ -603,8 +549,7 @@ int8_t rt_quadtree_query_was_truncated(rt_quadtree tree)
 /// @param y
 /// @param radius
 /// @return Result value.
-int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t radius)
-{
+int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t radius) {
     if (!tree)
         return 0;
 
@@ -616,8 +561,7 @@ int64_t rt_quadtree_query_point(rt_quadtree tree, int64_t x, int64_t y, int64_t 
 /// @param tree
 /// @param index
 /// @return Result value.
-int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index)
-{
+int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index) {
     if (!tree || index < 0 || index >= tree->result_count)
         return -1;
     return tree->results[index];
@@ -626,22 +570,19 @@ int64_t rt_quadtree_get_result(rt_quadtree tree, int64_t index)
 /// @brief Perform quadtree result count operation.
 /// @param tree
 /// @return Result value.
-int64_t rt_quadtree_result_count(rt_quadtree tree)
-{
+int64_t rt_quadtree_result_count(rt_quadtree tree) {
     return tree ? tree->result_count : 0;
 }
 
 /// @brief Perform quadtree item count operation.
 /// @param tree
 /// @return Result value.
-int64_t rt_quadtree_item_count(rt_quadtree tree)
-{
+int64_t rt_quadtree_item_count(rt_quadtree tree) {
     if (!tree)
         return 0;
 
     int64_t count = 0;
-    for (int64_t i = 0; i < tree->item_count; i++)
-    {
+    for (int64_t i = 0; i < tree->item_count; i++) {
         if (tree->items[i].active)
             count++;
     }
@@ -651,8 +592,7 @@ int64_t rt_quadtree_item_count(rt_quadtree tree)
 /// @brief Perform quadtree get pairs operation.
 /// @param tree
 /// @return Result value.
-int64_t rt_quadtree_get_pairs(rt_quadtree tree)
-{
+int64_t rt_quadtree_get_pairs(rt_quadtree tree) {
     if (!tree)
         return 0;
 
@@ -666,8 +606,7 @@ int64_t rt_quadtree_get_pairs(rt_quadtree tree)
 /// @param tree
 /// @param pair_index
 /// @return Result value.
-int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index)
-{
+int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index) {
     if (!tree || pair_index < 0 || pair_index >= tree->pair_count)
         return -1;
     return tree->pairs[pair_index].first;
@@ -677,8 +616,7 @@ int64_t rt_quadtree_pair_first(rt_quadtree tree, int64_t pair_index)
 /// @param tree
 /// @param pair_index
 /// @return Result value.
-int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index)
-{
+int64_t rt_quadtree_pair_second(rt_quadtree tree, int64_t pair_index) {
     if (!tree || pair_index < 0 || pair_index >= tree->pair_count)
         return -1;
     return tree->pairs[pair_index].second;

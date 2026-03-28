@@ -49,14 +49,12 @@
 
 // --- Node for linked list queue ---
 
-typedef struct cq_node
-{
+typedef struct cq_node {
     void *value;
     struct cq_node *next;
 } cq_node;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     cq_node *head;
     cq_node *tail;
@@ -86,14 +84,12 @@ typedef struct
 
 // --- Internal helpers ---
 
-static void cq_finalizer(void *obj)
-{
+static void cq_finalizer(void *obj) {
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
     CQ_LOCK(cq);
     cq_node *n = cq->head;
-    while (n)
-    {
+    while (n) {
         cq_node *next = n->next;
         if (rt_obj_release_check0(n->value))
             rt_obj_free(n->value);
@@ -116,8 +112,7 @@ static void cq_finalizer(void *obj)
 
 // --- Public API ---
 
-void *rt_concqueue_new(void)
-{
+void *rt_concqueue_new(void) {
     rt_concqueue_impl *cq = (rt_concqueue_impl *)rt_obj_new_i64(0, sizeof(rt_concqueue_impl));
     cq->head = NULL;
     cq->tail = NULL;
@@ -136,8 +131,7 @@ void *rt_concqueue_new(void)
 /// @brief Perform concqueue len operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_concqueue_len(void *obj)
-{
+int64_t rt_concqueue_len(void *obj) {
     if (!obj)
         return 0;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
@@ -150,23 +144,20 @@ int64_t rt_concqueue_len(void *obj)
 /// @brief Perform concqueue is empty operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_concqueue_is_empty(void *obj)
-{
+int8_t rt_concqueue_is_empty(void *obj) {
     return rt_concqueue_len(obj) == 0 ? 1 : 0;
 }
 
 /// @brief Perform concqueue enqueue operation.
 /// @param obj
 /// @param item
-void rt_concqueue_enqueue(void *obj, void *item)
-{
+void rt_concqueue_enqueue(void *obj, void *item) {
     if (!obj)
         return;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
     cq_node *node = (cq_node *)malloc(sizeof(cq_node));
-    if (!node)
-    {
+    if (!node) {
         rt_trap("ConcurrentQueue: memory allocation failed");
         return;
     }
@@ -185,15 +176,13 @@ void rt_concqueue_enqueue(void *obj, void *item)
     CQ_UNLOCK(cq);
 }
 
-void *rt_concqueue_try_dequeue(void *obj)
-{
+void *rt_concqueue_try_dequeue(void *obj) {
     if (!obj)
         return NULL;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
     CQ_LOCK(cq);
-    if (!cq->head)
-    {
+    if (!cq->head) {
         CQ_UNLOCK(cq);
         return NULL;
     }
@@ -210,8 +199,7 @@ void *rt_concqueue_try_dequeue(void *obj)
     return value;
 }
 
-void *rt_concqueue_dequeue(void *obj)
-{
+void *rt_concqueue_dequeue(void *obj) {
     if (!obj)
         return NULL;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
@@ -232,18 +220,15 @@ void *rt_concqueue_dequeue(void *obj)
     return value;
 }
 
-void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms)
-{
+void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         return NULL;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
 #if defined(_WIN32)
     CQ_LOCK(cq);
-    while (!cq->head)
-    {
-        if (!SleepConditionVariableCS(&cq->cond, &cq->mutex, (DWORD)timeout_ms))
-        {
+    while (!cq->head) {
+        if (!SleepConditionVariableCS(&cq->cond, &cq->mutex, (DWORD)timeout_ms)) {
             // Timeout or error
             CQ_UNLOCK(cq);
             return NULL;
@@ -254,18 +239,15 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms)
     clock_gettime(CLOCK_REALTIME, &ts);
     ts.tv_sec += timeout_ms / 1000;
     ts.tv_nsec += (timeout_ms % 1000) * 1000000L;
-    if (ts.tv_nsec >= 1000000000L)
-    {
+    if (ts.tv_nsec >= 1000000000L) {
         ts.tv_sec++;
         ts.tv_nsec -= 1000000000L;
     }
 
     CQ_LOCK(cq);
-    while (!cq->head)
-    {
+    while (!cq->head) {
         int rc = pthread_cond_timedwait(&cq->cond, &cq->mutex, &ts);
-        if (rc != 0)
-        {
+        if (rc != 0) {
             // Timeout or error
             CQ_UNLOCK(cq);
             return NULL;
@@ -285,8 +267,7 @@ void *rt_concqueue_dequeue_timeout(void *obj, int64_t timeout_ms)
     return value;
 }
 
-void *rt_concqueue_peek(void *obj)
-{
+void *rt_concqueue_peek(void *obj) {
     if (!obj)
         return NULL;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
@@ -299,16 +280,14 @@ void *rt_concqueue_peek(void *obj)
 
 /// @brief Perform concqueue clear operation.
 /// @param obj
-void rt_concqueue_clear(void *obj)
-{
+void rt_concqueue_clear(void *obj) {
     if (!obj)
         return;
     rt_concqueue_impl *cq = (rt_concqueue_impl *)obj;
 
     CQ_LOCK(cq);
     cq_node *n = cq->head;
-    while (n)
-    {
+    while (n) {
         cq_node *next = n->next;
         if (rt_obj_release_check0(n->value))
             rt_obj_free(n->value);

@@ -49,13 +49,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct
-{
+typedef struct {
     int64_t x, y, w, h;
 } ss_region;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     void *atlas;
     ss_region *regions;
@@ -66,14 +64,11 @@ typedef struct
 
 #define SS_INITIAL_CAP 16
 
-static void ss_finalizer(void *obj)
-{
+static void ss_finalizer(void *obj) {
     rt_spritesheet_impl *ss = (rt_spritesheet_impl *)obj;
-    if (ss)
-    {
+    if (ss) {
         int64_t i;
-        for (i = 0; i < ss->count; i++)
-        {
+        for (i = 0; i < ss->count; i++) {
             free(ss->names[i]);
         }
         free(ss->regions);
@@ -81,31 +76,26 @@ static void ss_finalizer(void *obj)
         ss->regions = NULL;
         ss->names = NULL;
         ss->count = 0;
-        if (ss->atlas)
-        {
+        if (ss->atlas) {
             rt_obj_release_check0(ss->atlas);
             ss->atlas = NULL;
         }
     }
 }
 
-static int64_t find_region(rt_spritesheet_impl *ss, const char *name)
-{
+static int64_t find_region(rt_spritesheet_impl *ss, const char *name) {
     int64_t i;
-    for (i = 0; i < ss->count; i++)
-    {
+    for (i = 0; i < ss->count; i++) {
         if (strcmp(ss->names[i], name) == 0)
             return i;
     }
     return -1;
 }
 
-static void ensure_cap(rt_spritesheet_impl *ss)
-{
+static void ensure_cap(rt_spritesheet_impl *ss) {
     if (ss->count < ss->capacity)
         return;
-    if (ss->capacity > INT64_MAX / 2)
-    {
+    if (ss->capacity > INT64_MAX / 2) {
         rt_trap("SpriteSheet: capacity overflow");
         return;
     }
@@ -115,14 +105,12 @@ static void ensure_cap(rt_spritesheet_impl *ss)
     // realloc cannot be rolled back after success, so sequential reallocs risk leaving
     // the struct with mismatched array sizes if the second call fails.
     ss_region *tmp_regions = (ss_region *)malloc((size_t)new_cap * sizeof(ss_region));
-    if (!tmp_regions)
-    {
+    if (!tmp_regions) {
         rt_trap("SpriteSheet: memory allocation failed");
         return;
     }
     char **tmp_names = (char **)malloc((size_t)new_cap * sizeof(char *));
-    if (!tmp_names)
-    {
+    if (!tmp_names) {
         free(tmp_regions);
         rt_trap("SpriteSheet: memory allocation failed");
         return;
@@ -140,15 +128,13 @@ static void ensure_cap(rt_spritesheet_impl *ss)
 // Public API
 //=============================================================================
 
-void *rt_spritesheet_new(void *atlas_pixels)
-{
+void *rt_spritesheet_new(void *atlas_pixels) {
     rt_spritesheet_impl *ss;
     if (!atlas_pixels)
         return NULL;
 
     ss = (rt_spritesheet_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_spritesheet_impl));
-    if (!ss)
-    {
+    if (!ss) {
         rt_trap("SpriteSheet: memory allocation failed");
         return NULL;
     }
@@ -159,8 +145,7 @@ void *rt_spritesheet_new(void *atlas_pixels)
     ss->capacity = SS_INITIAL_CAP;
     ss->regions = (ss_region *)calloc((size_t)SS_INITIAL_CAP, sizeof(ss_region));
     ss->names = (char **)calloc((size_t)SS_INITIAL_CAP, sizeof(char *));
-    if (!ss->regions || !ss->names)
-    {
+    if (!ss->regions || !ss->names) {
         rt_trap("SpriteSheet: memory allocation failed");
         return NULL;
     }
@@ -168,8 +153,7 @@ void *rt_spritesheet_new(void *atlas_pixels)
     return ss;
 }
 
-void *rt_spritesheet_from_grid(void *atlas_pixels, int64_t frame_w, int64_t frame_h)
-{
+void *rt_spritesheet_from_grid(void *atlas_pixels, int64_t frame_w, int64_t frame_h) {
     void *sheet;
     int64_t atlas_w, atlas_h, cols, rows, idx, iy, ix;
     if (!atlas_pixels || frame_w <= 0 || frame_h <= 0)
@@ -185,10 +169,8 @@ void *rt_spritesheet_from_grid(void *atlas_pixels, int64_t frame_w, int64_t fram
     rows = atlas_h / frame_h;
 
     idx = 0;
-    for (iy = 0; iy < rows; iy++)
-    {
-        for (ix = 0; ix < cols; ix++)
-        {
+    for (iy = 0; iy < rows; iy++) {
+        for (ix = 0; ix < cols; ix++) {
             char name_buf[32];
             snprintf(name_buf, sizeof(name_buf), "%d", (int)idx);
             rt_spritesheet_set_region(
@@ -200,8 +182,7 @@ void *rt_spritesheet_from_grid(void *atlas_pixels, int64_t frame_w, int64_t fram
 }
 
 void rt_spritesheet_set_region(
-    void *obj, rt_string name, int64_t x, int64_t y, int64_t w, int64_t h)
-{
+    void *obj, rt_string name, int64_t x, int64_t y, int64_t w, int64_t h) {
     rt_spritesheet_impl *ss;
     const char *cstr;
     int64_t idx;
@@ -214,8 +195,7 @@ void rt_spritesheet_set_region(
 
     /* Update existing region if name matches */
     idx = find_region(ss, cstr);
-    if (idx >= 0)
-    {
+    if (idx >= 0) {
         ss->regions[idx].x = x;
         ss->regions[idx].y = y;
         ss->regions[idx].w = w;
@@ -239,8 +219,7 @@ void rt_spritesheet_set_region(
     }
 }
 
-void *rt_spritesheet_get_region(void *obj, rt_string name)
-{
+void *rt_spritesheet_get_region(void *obj, rt_string name) {
     rt_spritesheet_impl *ss;
     const char *cstr;
     int64_t idx;
@@ -270,8 +249,7 @@ void *rt_spritesheet_get_region(void *obj, rt_string name)
 /// @param obj
 /// @param name
 /// @return Result value.
-int8_t rt_spritesheet_has_region(void *obj, rt_string name)
-{
+int8_t rt_spritesheet_has_region(void *obj, rt_string name) {
     rt_spritesheet_impl *ss;
     const char *cstr;
     if (!obj || !name)
@@ -286,8 +264,7 @@ int8_t rt_spritesheet_has_region(void *obj, rt_string name)
 /// @brief Perform spritesheet region count operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_spritesheet_region_count(void *obj)
-{
+int64_t rt_spritesheet_region_count(void *obj) {
     if (!obj)
         return 0;
     return ((rt_spritesheet_impl *)obj)->count;
@@ -296,8 +273,7 @@ int64_t rt_spritesheet_region_count(void *obj)
 /// @brief Perform spritesheet width operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_spritesheet_width(void *obj)
-{
+int64_t rt_spritesheet_width(void *obj) {
     if (!obj)
         return 0;
     return rt_pixels_width(((rt_spritesheet_impl *)obj)->atlas);
@@ -306,15 +282,13 @@ int64_t rt_spritesheet_width(void *obj)
 /// @brief Perform spritesheet height operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_spritesheet_height(void *obj)
-{
+int64_t rt_spritesheet_height(void *obj) {
     if (!obj)
         return 0;
     return rt_pixels_height(((rt_spritesheet_impl *)obj)->atlas);
 }
 
-void *rt_spritesheet_region_names(void *obj)
-{
+void *rt_spritesheet_region_names(void *obj) {
     rt_spritesheet_impl *ss;
     void *seq;
     int64_t i;
@@ -322,8 +296,7 @@ void *rt_spritesheet_region_names(void *obj)
         return rt_seq_new();
     ss = (rt_spritesheet_impl *)obj;
     seq = rt_seq_new();
-    for (i = 0; i < ss->count; i++)
-    {
+    for (i = 0; i < ss->count; i++) {
         rt_string s = rt_const_cstr(ss->names[i]);
         rt_seq_push(seq, (void *)s);
     }
@@ -334,8 +307,7 @@ void *rt_spritesheet_region_names(void *obj)
 /// @param obj
 /// @param name
 /// @return Result value.
-int8_t rt_spritesheet_remove_region(void *obj, rt_string name)
-{
+int8_t rt_spritesheet_remove_region(void *obj, rt_string name) {
     rt_spritesheet_impl *ss;
     const char *cstr;
     int64_t idx, j;
@@ -351,8 +323,7 @@ int8_t rt_spritesheet_remove_region(void *obj, rt_string name)
         return 0;
 
     free(ss->names[idx]);
-    for (j = idx; j < ss->count - 1; j++)
-    {
+    for (j = idx; j < ss->count - 1; j++) {
         ss->names[j] = ss->names[j + 1];
         ss->regions[j] = ss->regions[j + 1];
     }

@@ -16,8 +16,7 @@
 #include <cassert>
 #include <cstdio>
 
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -26,8 +25,7 @@ static void test_result(const char *name, bool passed)
 // Seq.Find / Seq.Has with boxed strings
 //=============================================================================
 
-static void test_seq_find_boxed_strings()
-{
+static void test_seq_find_boxed_strings() {
     printf("Testing Seq.Find/Has with boxed strings:\n");
 
     void *seq = rt_seq_new();
@@ -62,8 +60,7 @@ static void test_seq_find_boxed_strings()
 // Seq.Find / Seq.Has with boxed integers
 //=============================================================================
 
-static void test_seq_find_boxed_integers()
-{
+static void test_seq_find_boxed_integers() {
     printf("Testing Seq.Find/Has with boxed integers:\n");
 
     void *seq = rt_seq_new();
@@ -97,8 +94,7 @@ static void test_seq_find_boxed_integers()
 // Seq.Find / Seq.Has with boxed floats
 //=============================================================================
 
-static void test_seq_find_boxed_floats()
-{
+static void test_seq_find_boxed_floats() {
     printf("Testing Seq.Find/Has with boxed floats:\n");
 
     void *seq = rt_seq_new();
@@ -123,8 +119,7 @@ static void test_seq_find_boxed_floats()
 // Seq.Find / Seq.Has with boxed booleans
 //=============================================================================
 
-static void test_seq_find_boxed_booleans()
-{
+static void test_seq_find_boxed_booleans() {
     printf("Testing Seq.Find/Has with boxed booleans:\n");
 
     void *seq = rt_seq_new();
@@ -146,8 +141,7 @@ static void test_seq_find_boxed_booleans()
 // Pointer identity still works for non-boxed objects
 //=============================================================================
 
-static void test_seq_pointer_identity()
-{
+static void test_seq_pointer_identity() {
     printf("Testing Seq.Find/Has with pointer identity (non-boxed):\n");
 
     void *seq = rt_seq_new();
@@ -164,8 +158,7 @@ static void test_seq_pointer_identity()
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== Seq Box Content Equality Tests ===\n\n");
 
     test_seq_find_boxed_strings();

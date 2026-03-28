@@ -22,33 +22,28 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
     return ss.str();
 }
 
-TEST(Arm64CLI, OverflowVariantsRR)
-{
-    struct Case
-    {
+TEST(Arm64CLI, OverflowVariantsRR) {
+    struct Case {
         const char *op;
         const char *expect;     // primary instruction
         const char *expectTrap; // trap branch (nullptr if no trap expected)
@@ -58,8 +53,7 @@ TEST(Arm64CLI, OverflowVariantsRR)
         {"imul.ovf", "mul x0, x0, x1", nullptr},
     };
 
-    for (const auto &c : cases)
-    {
+    for (const auto &c : cases) {
         std::string in = std::string("arm64_ovf_") + c.op + ".il";
         std::string out = std::string("arm64_ovf_") + c.op + ".s";
         std::string il = std::string("il 0.1\n"
@@ -74,16 +68,14 @@ TEST(Arm64CLI, OverflowVariantsRR)
         ASSERT_EQ(cmd_codegen_arm64(3, const_cast<char **>(argv)), 0);
         const std::string asmText = readFile(outP);
         EXPECT_NE(asmText.find(c.expect), std::string::npos);
-        if (c.expectTrap)
-        {
+        if (c.expectTrap) {
             EXPECT_NE(asmText.find(c.expectTrap), std::string::npos);
             EXPECT_NE(asmText.find("rt_trap"), std::string::npos);
         }
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

@@ -40,8 +40,7 @@
 #include "TargetAArch64.hpp"
 #include "codegen/common/FrameLayout.hpp"
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Centralizes AArch64 stack frame layout construction for codegen.
 /// @details Manages incremental allocation of local variable slots, register spill
@@ -58,11 +57,9 @@ namespace viper::codegen::aarch64
 /// @invariant All offsets are negative (below the frame pointer).
 /// @invariant Stack slots are 8-byte aligned minimum; 16-byte alignment is
 ///            maintained for the overall frame.
-class FrameBuilder : public common::FrameLayout
-{
+class FrameBuilder : public common::FrameLayout {
   public:
-    explicit FrameBuilder(MFunction &fn) noexcept : fn_(&fn)
-    {
+    explicit FrameBuilder(MFunction &fn) noexcept : fn_(&fn) {
         // Initialize nextOffset_ based on existing frame state to avoid
         // collisions when the register allocator creates a new FrameBuilder
         // after locals have already been allocated during MIR lowering.
@@ -121,8 +118,7 @@ class FrameBuilder : public common::FrameLayout
     void setMaxOutgoingBytes(int bytes);
 
     /// @brief FrameLayout interface: reserve outgoing argument space.
-    void setMaxOutgoing(int bytes) override
-    {
+    void setMaxOutgoing(int bytes) override {
         setMaxOutgoingBytes(bytes);
     }
 
@@ -133,8 +129,7 @@ class FrameBuilder : public common::FrameLayout
     void finalize() override;
 
     /// @brief FrameLayout interface: get the total frame size after finalize().
-    int totalBytes() const override
-    {
+    int totalBytes() const override {
         return fn_ ? fn_->localFrameSize : 0;
     }
 
@@ -143,8 +138,7 @@ class FrameBuilder : public common::FrameLayout
     /// Increments the block epoch so that spill slots from previous blocks are
     /// never reused in the current block.  Must be called before processing
     /// each basic block during register allocation.
-    void beginNewBlock() noexcept
-    {
+    void beginNewBlock() noexcept {
         ++blockEpoch_;
     }
 
@@ -157,8 +151,7 @@ class FrameBuilder : public common::FrameLayout
     /// SAME block epoch — cross-block reuse is prohibited because
     /// @p currentInstrIdx is a per-block counter that resets to 0 at each block
     /// boundary, making cross-epoch comparisons meaningless.
-    struct SlotLifetime
-    {
+    struct SlotLifetime {
         int offset;          ///< FP-relative offset (always negative).
         int sizeBytes;       ///< Slot size (for size-compatible reuse check).
         unsigned lastUseIdx; ///< Last instruction index reading the current vreg.

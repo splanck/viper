@@ -22,8 +22,7 @@
 
 #include <limits>
 
-namespace il::verify::detail
-{
+namespace il::verify::detail {
 
 /// @brief Determine whether a signed value fits within the specified integer kind.
 ///
@@ -36,10 +35,8 @@ namespace il::verify::detail
 /// @param value Signed integer to test.
 /// @param kind Target IL integer kind.
 /// @return @c true when @p value lies within the representable range of @p kind.
-bool fitsInIntegerKind(long long value, il::core::Type::Kind kind)
-{
-    switch (kind)
-    {
+bool fitsInIntegerKind(long long value, il::core::Type::Kind kind) {
+    switch (kind) {
         case il::core::Type::Kind::I1:
             return value == 0 || value == 1;
         case il::core::Type::Kind::I16:
@@ -67,12 +64,10 @@ bool fitsInIntegerKind(long long value, il::core::Type::Kind kind)
 /// @param category Operand category derived from opcode metadata.
 /// @return Matching type kind or @c std::nullopt when the category represents a
 ///         polymorphic or unsupported type.
-std::optional<il::core::Type::Kind> kindFromCategory(il::core::TypeCategory category)
-{
+std::optional<il::core::Type::Kind> kindFromCategory(il::core::TypeCategory category) {
     using il::core::Type;
 
-    switch (category)
-    {
+    switch (category) {
         case il::core::TypeCategory::Void:
             return Type::Kind::Void;
         case il::core::TypeCategory::I1:

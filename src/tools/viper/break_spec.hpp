@@ -17,8 +17,7 @@
 
 #include <string>
 
-namespace ilc
-{
+namespace ilc {
 
 /// @brief Determine whether a --break argument refers to a source line.
 ///

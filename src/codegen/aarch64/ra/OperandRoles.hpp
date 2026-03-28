@@ -24,8 +24,7 @@
 
 #include "codegen/aarch64/MachineIR.hpp"
 
-namespace viper::codegen::aarch64::ra
-{
+namespace viper::codegen::aarch64::ra {
 
 /// @brief Determine the use/def roles of operand @p idx in instruction @p ins.
 /// @return {isUse, isDef} pair.

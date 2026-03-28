@@ -19,8 +19,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -29,8 +28,7 @@ static void test_result(const char *name, bool passed)
 // Basic Operations Tests
 //=============================================================================
 
-static void test_bag_new_empty()
-{
+static void test_bag_new_empty() {
     printf("Testing Bag.New and empty state:\n");
 
     void *bag = rt_bag_new();
@@ -41,8 +39,7 @@ static void test_bag_new_empty()
     printf("\n");
 }
 
-static void test_bag_add_has()
-{
+static void test_bag_add_has() {
     printf("Testing Bag.Add and Bag.Has:\n");
 
     void *bag = rt_bag_new();
@@ -74,8 +71,7 @@ static void test_bag_add_has()
     printf("\n");
 }
 
-static void test_bag_remove()
-{
+static void test_bag_remove() {
     printf("Testing Bag.Remove:\n");
 
     void *bag = rt_bag_new();
@@ -105,8 +101,7 @@ static void test_bag_remove()
     printf("\n");
 }
 
-static void test_bag_clear()
-{
+static void test_bag_clear() {
     printf("Testing Bag.Clear:\n");
 
     void *bag = rt_bag_new();
@@ -124,8 +119,7 @@ static void test_bag_clear()
     printf("\n");
 }
 
-static void test_bag_items()
-{
+static void test_bag_items() {
     printf("Testing Bag.Items:\n");
 
     void *bag = rt_bag_new();
@@ -140,8 +134,7 @@ static void test_bag_items()
 
     // Verify all items are present (order may vary due to hash table)
     bool found_one = false, found_two = false, found_three = false;
-    for (int64_t i = 0; i < rt_seq_len(items); i++)
-    {
+    for (int64_t i = 0; i < rt_seq_len(items); i++) {
         rt_string s = (rt_string)rt_seq_get(items, i);
         const char *cstr = rt_string_cstr(s);
         if (strcmp(cstr, "one") == 0)
@@ -162,8 +155,7 @@ static void test_bag_items()
 // Set Operations Tests
 //=============================================================================
 
-static void test_bag_union()
-{
+static void test_bag_union() {
     printf("Testing Bag.Union:\n");
 
     void *bag1 = rt_bag_new();
@@ -190,8 +182,7 @@ static void test_bag_union()
     printf("\n");
 }
 
-static void test_bag_intersect()
-{
+static void test_bag_intersect() {
     printf("Testing Bag.Intersect:\n");
 
     void *bag1 = rt_bag_new();
@@ -214,8 +205,7 @@ static void test_bag_intersect()
     printf("\n");
 }
 
-static void test_bag_diff()
-{
+static void test_bag_diff() {
     printf("Testing Bag.Diff (difference):\n");
 
     void *bag1 = rt_bag_new();
@@ -243,8 +233,7 @@ static void test_bag_diff()
     printf("\n");
 }
 
-static void test_bag_empty_operations()
-{
+static void test_bag_empty_operations() {
     printf("Testing operations with empty bags:\n");
 
     void *empty1 = rt_bag_new();
@@ -284,16 +273,14 @@ static void test_bag_empty_operations()
 // Resize Tests
 //=============================================================================
 
-static void test_bag_resize()
-{
+static void test_bag_resize() {
     printf("Testing Bag resize with many elements:\n");
 
     void *bag = rt_bag_new();
 
     // Add many elements to trigger resize
     char buf[32];
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         snprintf(buf, sizeof(buf), "element_%d", i);
         rt_bag_add(bag, rt_const_cstr(buf));
     }
@@ -302,11 +289,9 @@ static void test_bag_resize()
 
     // Verify all elements are present
     bool all_present = true;
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         snprintf(buf, sizeof(buf), "element_%d", i);
-        if (!rt_bag_has(bag, rt_const_cstr(buf)))
-        {
+        if (!rt_bag_has(bag, rt_const_cstr(buf))) {
             all_present = false;
             break;
         }
@@ -320,8 +305,7 @@ static void test_bag_resize()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Bag Tests ===\n\n");
 
     test_bag_new_empty();

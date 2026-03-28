@@ -26,8 +26,7 @@
 
 #include "il/core/BasicBlock.hpp"
 
-namespace il::core
-{
+namespace il::core {
 
 // No out-of-line methods.
 } // namespace il::core

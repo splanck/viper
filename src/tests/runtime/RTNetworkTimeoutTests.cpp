@@ -36,14 +36,12 @@
 #endif
 
 // -- vm_trap override ---------------------------------------------------------
-namespace
-{
+namespace {
 int g_trap_count = 0;
 std::string g_last_trap;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_trap_count++;
     g_last_trap = msg ? msg : "";
 }
@@ -52,8 +50,7 @@ extern "C" void vm_trap(const char *msg)
 // Strategy: Create a localhost TCP server that accepts connections but never
 // sends data. Connect via rt_tcp_connect, set a 100ms recv timeout, call
 // rt_tcp_recv -> should return empty bytes (length 0) without trap.
-static void test_tcp_recv_timeout()
-{
+static void test_tcp_recv_timeout() {
 #if defined(_WIN32)
     // Initialize WinSock2
     WSADATA wsa;
@@ -64,16 +61,14 @@ static void test_tcp_recv_timeout()
     // Create a TCP listener on a random port
 #if defined(_WIN32)
     SOCKET listener = socket(AF_INET, SOCK_STREAM, 0);
-    if (listener == INVALID_SOCKET)
-    {
+    if (listener == INVALID_SOCKET) {
         printf("  SKIP: TCP recv timeout → local listener unavailable in this environment\n");
         WSACleanup();
         return;
     }
 #else
     int listener = socket(AF_INET, SOCK_STREAM, 0);
-    if (listener < 0)
-    {
+    if (listener < 0) {
         printf("  SKIP: TCP recv timeout → local listener unavailable in this environment\n");
         return;
     }
@@ -88,8 +83,7 @@ static void test_tcp_recv_timeout()
     addr.sin_port = 0; // Let OS assign port
 
     int rc = bind(listener, (struct sockaddr *)&addr, sizeof(addr));
-    if (rc != 0)
-    {
+    if (rc != 0) {
 #if defined(_WIN32)
         closesocket(listener);
         WSACleanup();
@@ -101,8 +95,7 @@ static void test_tcp_recv_timeout()
     }
 
     rc = listen(listener, 1);
-    if (rc != 0)
-    {
+    if (rc != 0) {
 #if defined(_WIN32)
         closesocket(listener);
         WSACleanup();
@@ -159,8 +152,7 @@ static void test_tcp_recv_timeout()
 #endif
 }
 
-int main()
-{
+int main() {
     test_tcp_recv_timeout();
     printf("  PASS: TCP recv with 100ms timeout -> empty bytes, no crash\n");
 

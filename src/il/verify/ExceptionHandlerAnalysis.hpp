@@ -25,18 +25,15 @@
 
 #include <optional>
 
-namespace il::core
-{
+namespace il::core {
 struct BasicBlock;
 struct Function;
 } // namespace il::core
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Captures the parameter IDs associated with a handler's %err and %tok values.
-struct HandlerSignature
-{
+struct HandlerSignature {
     unsigned errorParam = 0;
     unsigned resumeTokenParam = 0;
 };

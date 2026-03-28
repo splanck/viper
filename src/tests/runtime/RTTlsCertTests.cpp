@@ -109,8 +109,7 @@ static const size_t TEST_CERT_CN_ONLY_LEN = 405;
 //     N bytes: DER
 //     2 bytes: extensions_len (0)
 // ---------------------------------------------------------------------------
-static void build_tls_cert_msg(const uint8_t *der, size_t der_len, uint8_t *out, size_t *out_len)
-{
+static void build_tls_cert_msg(const uint8_t *der, size_t der_len, uint8_t *out, size_t *out_len) {
     size_t extensions_len = 0;
     size_t entry_len = 3 + der_len + 2; // cert_len_field + DER + ext_len
     size_t list_len = entry_len;
@@ -143,8 +142,7 @@ static void build_tls_cert_msg(const uint8_t *der, size_t der_len, uint8_t *out,
 // tls_match_hostname tests
 // ---------------------------------------------------------------------------
 
-static void test_hostname_match_exact(void)
-{
+static void test_hostname_match_exact(void) {
     assert(tls_match_hostname("example.com", "example.com") == 1);
     assert(tls_match_hostname("EXAMPLE.COM", "example.com") == 1); // case-insensitive
     assert(tls_match_hostname("example.com", "EXAMPLE.COM") == 1);
@@ -156,8 +154,7 @@ static void test_hostname_match_exact(void)
     printf("  PASS: test_hostname_match_exact\n");
 }
 
-static void test_hostname_match_wildcard(void)
-{
+static void test_hostname_match_wildcard(void) {
     // Standard single-label wildcard
     assert(tls_match_hostname("*.example.com", "foo.example.com") == 1);
     assert(tls_match_hostname("*.example.com", "bar.example.com") == 1);
@@ -179,8 +176,7 @@ static void test_hostname_match_wildcard(void)
     printf("  PASS: test_hostname_match_wildcard\n");
 }
 
-static void test_hostname_match_no_wildcard_mismatch(void)
-{
+static void test_hostname_match_no_wildcard_mismatch(void) {
     // Pattern with no wildcard must match exactly
     assert(tls_match_hostname("www.example.com", "example.com") == 0);
     assert(tls_match_hostname("www.example.com", "www.example.com") == 1);
@@ -197,8 +193,7 @@ static void test_hostname_match_no_wildcard_mismatch(void)
 // tls_extract_san_names tests
 // ---------------------------------------------------------------------------
 
-static void test_san_extraction_three_names(void)
-{
+static void test_san_extraction_three_names(void) {
     char san[8][256];
     int count = tls_extract_san_names(TEST_CERT_WITH_SAN, TEST_CERT_WITH_SAN_LEN, san, 8);
 
@@ -211,8 +206,7 @@ static void test_san_extraction_three_names(void)
     printf("  PASS: test_san_extraction_three_names\n");
 }
 
-static void test_san_extraction_no_san(void)
-{
+static void test_san_extraction_no_san(void) {
     // CN-only cert has no SubjectAltName extension
     char san[8][256];
     int count = tls_extract_san_names(TEST_CERT_CN_ONLY, TEST_CERT_CN_ONLY_LEN, san, 8);
@@ -220,8 +214,7 @@ static void test_san_extraction_no_san(void)
     printf("  PASS: test_san_extraction_no_san\n");
 }
 
-static void test_san_extraction_cap_respected(void)
-{
+static void test_san_extraction_cap_respected(void) {
     // Request fewer slots than the cert has — should not overflow
     char san[2][256];
     int count = tls_extract_san_names(TEST_CERT_WITH_SAN, TEST_CERT_WITH_SAN_LEN, san, 2);
@@ -231,8 +224,7 @@ static void test_san_extraction_cap_respected(void)
     printf("  PASS: test_san_extraction_cap_respected\n");
 }
 
-static void test_san_extraction_empty_input(void)
-{
+static void test_san_extraction_empty_input(void) {
     char san[4][256];
     // Zero-length input should return 0
     int count = tls_extract_san_names(TEST_CERT_WITH_SAN, 0, san, 4);
@@ -244,8 +236,7 @@ static void test_san_extraction_empty_input(void)
 // tls_extract_cn tests
 // ---------------------------------------------------------------------------
 
-static void test_cn_extraction_cn_only_cert(void)
-{
+static void test_cn_extraction_cn_only_cert(void) {
     char cn[256] = {0};
     int rc = tls_extract_cn(TEST_CERT_CN_ONLY, TEST_CERT_CN_ONLY_LEN, cn);
     assert(rc == 1);
@@ -253,8 +244,7 @@ static void test_cn_extraction_cn_only_cert(void)
     printf("  PASS: test_cn_extraction_cn_only_cert\n");
 }
 
-static void test_cn_extraction_san_cert(void)
-{
+static void test_cn_extraction_san_cert(void) {
     // The SAN cert also has CN=example.com in its Subject
     char cn[256] = {0};
     int rc = tls_extract_cn(TEST_CERT_WITH_SAN, TEST_CERT_WITH_SAN_LEN, cn);
@@ -263,8 +253,7 @@ static void test_cn_extraction_san_cert(void)
     printf("  PASS: test_cn_extraction_san_cert\n");
 }
 
-static void test_cn_extraction_empty_input(void)
-{
+static void test_cn_extraction_empty_input(void) {
     char cn[256] = {0};
     int rc = tls_extract_cn(TEST_CERT_WITH_SAN, 0, cn);
     assert(rc == 0);
@@ -300,8 +289,7 @@ static void test_cn_extraction_empty_input(void)
 // via the public API that exercises the same code path.  Since we can't
 // directly construct an rt_tls_session_t (opaque), we test at the function
 // level using the exposed helpers, which is the approved unit-test contract.
-static void test_certificate_msg_parse_san_cert(void)
-{
+static void test_certificate_msg_parse_san_cert(void) {
     // Build a TLS 1.3 Certificate message around TEST_CERT_WITH_SAN
     uint8_t msg[4096];
     size_t msg_len = 0;
@@ -334,18 +322,15 @@ static void test_certificate_msg_parse_san_cert(void)
 // These test the SAN-first, CN-fallback matching logic combined with real DER.
 // ---------------------------------------------------------------------------
 
-static void test_hostname_verified_exact_san(void)
-{
+static void test_hostname_verified_exact_san(void) {
     // "example.com" should match SAN entry "example.com"
     char san[8][256];
     int count = tls_extract_san_names(TEST_CERT_WITH_SAN, TEST_CERT_WITH_SAN_LEN, san, 8);
     assert(count == 3);
 
     int matched = 0;
-    for (int i = 0; i < count; i++)
-    {
-        if (tls_match_hostname(san[i], "example.com"))
-        {
+    for (int i = 0; i < count; i++) {
+        if (tls_match_hostname(san[i], "example.com")) {
             matched = 1;
             break;
         }
@@ -354,18 +339,15 @@ static void test_hostname_verified_exact_san(void)
     printf("  PASS: test_hostname_verified_exact_san\n");
 }
 
-static void test_hostname_verified_wildcard_san(void)
-{
+static void test_hostname_verified_wildcard_san(void) {
     // "foo.example.com" should match SAN entry "*.example.com"
     char san[8][256];
     int count = tls_extract_san_names(TEST_CERT_WITH_SAN, TEST_CERT_WITH_SAN_LEN, san, 8);
     assert(count == 3);
 
     int matched = 0;
-    for (int i = 0; i < count; i++)
-    {
-        if (tls_match_hostname(san[i], "foo.example.com"))
-        {
+    for (int i = 0; i < count; i++) {
+        if (tls_match_hostname(san[i], "foo.example.com")) {
             matched = 1;
             break;
         }
@@ -374,18 +356,15 @@ static void test_hostname_verified_wildcard_san(void)
     printf("  PASS: test_hostname_verified_wildcard_san\n");
 }
 
-static void test_hostname_verified_mismatch_san(void)
-{
+static void test_hostname_verified_mismatch_san(void) {
     // "other.com" should NOT match any SAN
     char san[8][256];
     int count = tls_extract_san_names(TEST_CERT_WITH_SAN, TEST_CERT_WITH_SAN_LEN, san, 8);
     assert(count == 3);
 
     int matched = 0;
-    for (int i = 0; i < count; i++)
-    {
-        if (tls_match_hostname(san[i], "other.com"))
-        {
+    for (int i = 0; i < count; i++) {
+        if (tls_match_hostname(san[i], "other.com")) {
             matched = 1;
             break;
         }
@@ -394,8 +373,7 @@ static void test_hostname_verified_mismatch_san(void)
     printf("  PASS: test_hostname_verified_mismatch_san\n");
 }
 
-static void test_hostname_verified_cn_fallback(void)
-{
+static void test_hostname_verified_cn_fallback(void) {
     // CN-only cert: no SAN, CN = "cn-only.example.com"
     char san[8][256];
     int san_count = tls_extract_san_names(TEST_CERT_CN_ONLY, TEST_CERT_CN_ONLY_LEN, san, 8);
@@ -414,18 +392,15 @@ static void test_hostname_verified_cn_fallback(void)
     printf("  PASS: test_hostname_verified_cn_fallback\n");
 }
 
-static void test_hostname_verified_wildcard_san_two_levels(void)
-{
+static void test_hostname_verified_wildcard_san_two_levels(void) {
     // "foo.bar.example.com" is two labels deep — *.example.com should NOT match
     char san[8][256];
     int count = tls_extract_san_names(TEST_CERT_WITH_SAN, TEST_CERT_WITH_SAN_LEN, san, 8);
     assert(count == 3);
 
     int matched = 0;
-    for (int i = 0; i < count; i++)
-    {
-        if (tls_match_hostname(san[i], "foo.bar.example.com"))
-        {
+    for (int i = 0; i < count; i++) {
+        if (tls_match_hostname(san[i], "foo.bar.example.com")) {
             matched = 1;
             break;
         }
@@ -434,18 +409,15 @@ static void test_hostname_verified_wildcard_san_two_levels(void)
     printf("  PASS: test_hostname_verified_wildcard_san_two_levels\n");
 }
 
-static void test_hostname_verified_www_san(void)
-{
+static void test_hostname_verified_www_san(void) {
     // "www.example.com" appears as an explicit SAN entry
     char san[8][256];
     int count = tls_extract_san_names(TEST_CERT_WITH_SAN, TEST_CERT_WITH_SAN_LEN, san, 8);
     assert(count == 3);
 
     int matched = 0;
-    for (int i = 0; i < count; i++)
-    {
-        if (tls_match_hostname(san[i], "www.example.com"))
-        {
+    for (int i = 0; i < count; i++) {
+        if (tls_match_hostname(san[i], "www.example.com")) {
             matched = 1;
             break;
         }
@@ -458,8 +430,7 @@ static void test_hostname_verified_www_san(void)
 // main
 // ---------------------------------------------------------------------------
 
-int main(void)
-{
+int main(void) {
     printf("=== RTTlsCertTests ===\n");
 
     printf("-- tls_match_hostname --\n");

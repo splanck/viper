@@ -29,23 +29,20 @@
 #include <cstdint>
 #include <cstring>
 
-namespace viper::codegen::aarch64::binenc
-{
+namespace viper::codegen::aarch64::binenc {
 
 // =============================================================================
 // Register Encoding
 // =============================================================================
 
 /// Map a GPR PhysReg to its 5-bit hardware encoding (0-31).
-constexpr uint32_t hwGPR(PhysReg r)
-{
+constexpr uint32_t hwGPR(PhysReg r) {
     assert(static_cast<uint32_t>(r) <= static_cast<uint32_t>(PhysReg::SP));
     return static_cast<uint32_t>(r);
 }
 
 /// Map an FPR PhysReg (V0-V31) to its 5-bit hardware encoding (0-31).
-constexpr uint32_t hwFPR(PhysReg r)
-{
+constexpr uint32_t hwFPR(PhysReg r) {
     assert(static_cast<uint32_t>(r) >= static_cast<uint32_t>(PhysReg::V0));
     assert(static_cast<uint32_t>(r) <= static_cast<uint32_t>(PhysReg::V31));
     return static_cast<uint32_t>(r) - static_cast<uint32_t>(PhysReg::V0);
@@ -57,14 +54,12 @@ constexpr uint32_t hwFPR(PhysReg r)
 
 /// Map a condition code string ("eq", "ne", "lt", etc.) to its 4-bit ARM value.
 /// Returns 0xE (always) for unrecognized codes.
-inline uint32_t condCode(const char *cond)
-{
+inline uint32_t condCode(const char *cond) {
     if (!cond)
         return 0xE;
 
     // Fast 2-char comparison using memcmp
-    struct Entry
-    {
+    struct Entry {
         const char str[3];
         uint32_t code;
     };
@@ -96,8 +91,7 @@ inline uint32_t condCode(const char *cond)
 }
 
 /// Invert a 4-bit condition code (flip LSB).
-constexpr uint32_t invertCond(uint32_t cc)
-{
+constexpr uint32_t invertCond(uint32_t cc) {
     return cc ^ 1;
 }
 
@@ -265,34 +259,29 @@ inline constexpr uint32_t kAdrp = 0x90000000; // adrp Xd, label
 // =============================================================================
 
 /// Build a 3-register instruction: template | (Rm << 16) | (Rn << 5) | Rd
-constexpr uint32_t encode3Reg(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t rm)
-{
+constexpr uint32_t encode3Reg(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t rm) {
     return tmpl | (rm << 16) | (rn << 5) | rd;
 }
 
 /// Build a 4-register instruction (madd/msub): template | (Rm << 16) | (Ra << 10) | (Rn << 5) | Rd
-constexpr uint32_t encode4Reg(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t rm, uint32_t ra)
-{
+constexpr uint32_t encode4Reg(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t rm, uint32_t ra) {
     return tmpl | (rm << 16) | (ra << 10) | (rn << 5) | rd;
 }
 
 /// Build an add/sub immediate instruction: template | (imm12 << 10) | (Rn << 5) | Rd
-inline uint32_t encodeAddSubImm(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t imm12)
-{
+inline uint32_t encodeAddSubImm(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t imm12) {
     assert(imm12 <= 0xFFF && "encodeAddSubImm: immediate exceeds 12-bit range");
     return tmpl | ((imm12 & 0xFFF) << 10) | (rn << 5) | rd;
 }
 
 /// Build an add/sub immediate with shift: bit 22 selects lsl #12.
-inline uint32_t encodeAddSubImmShift(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t imm12)
-{
+inline uint32_t encodeAddSubImmShift(uint32_t tmpl, uint32_t rd, uint32_t rn, uint32_t imm12) {
     assert(imm12 <= 0xFFF && "encodeAddSubImmShift: immediate exceeds 12-bit range");
     return tmpl | (1U << 22) | ((imm12 & 0xFFF) << 10) | (rn << 5) | rd;
 }
 
 /// Build a 2-register instruction: template | (Rn << 5) | Rd
-constexpr uint32_t encode2Reg(uint32_t tmpl, uint32_t rd, uint32_t rn)
-{
+constexpr uint32_t encode2Reg(uint32_t tmpl, uint32_t rd, uint32_t rn) {
     return tmpl | (rn << 5) | rd;
 }
 
@@ -304,23 +293,19 @@ constexpr uint32_t encode2Reg(uint32_t tmpl, uint32_t rd, uint32_t rn)
 /// Returns the 13-bit encoding on success, or -1 if the value is not encodable.
 /// The algorithm finds the smallest repeating element size whose rotation produces
 /// the input value. See ARM ARM section C6.2.
-inline int32_t encodeLogicalImmediate(uint64_t val)
-{
+inline int32_t encodeLogicalImmediate(uint64_t val) {
     if (val == 0 || val == ~0ULL)
         return -1; // All-zeros and all-ones are not encodable.
 
     // For each element size, check if the value is a rotated run of ones.
-    for (unsigned size = 2; size <= 64; size <<= 1)
-    {
+    for (unsigned size = 2; size <= 64; size <<= 1) {
         uint64_t mask = (~0ULL) >> (64 - size);
         uint64_t elem = val & mask;
 
         // Verify the value is a repeating pattern of this element.
         bool repeating = true;
-        for (unsigned shift = size; shift < 64; shift += size)
-        {
-            if (((val >> shift) & mask) != elem)
-            {
+        for (unsigned shift = size; shift < 64; shift += size) {
+            if (((val >> shift) & mask) != elem) {
                 repeating = false;
                 break;
             }
@@ -337,8 +322,7 @@ inline int32_t encodeLogicalImmediate(uint64_t val)
         unsigned tz = 0;
         {
             uint64_t tmp = doubled;
-            while (tz < 2 * size && (tmp & 1) == 0)
-            {
+            while (tz < 2 * size && (tmp & 1) == 0) {
                 ++tz;
                 tmp >>= 1;
             }
@@ -347,8 +331,7 @@ inline int32_t encodeLogicalImmediate(uint64_t val)
         unsigned runLen = 0;
         {
             uint64_t tmp = doubled >> tz;
-            while (runLen < 2 * size && (tmp & 1) == 1)
-            {
+            while (runLen < 2 * size && (tmp & 1) == 1) {
                 ++runLen;
                 tmp >>= 1;
             }
@@ -379,13 +362,10 @@ inline int32_t encodeLogicalImmediate(uint64_t val)
         unsigned immr = (size - rotation) % size; // Right-rotation amount.
         unsigned imms;
         unsigned N;
-        if (size == 64)
-        {
+        if (size == 64) {
             N = 1;
             imms = runLen - 1;
-        }
-        else
-        {
+        } else {
             N = 0;
             // imms has a size-encoding prefix: for size=32, top bit is 0; for 16, top 2 are 10;
             // etc. The pattern is: imms = (NOT(size-1) & 0x3F) | (runLen - 1) More precisely: the
@@ -406,8 +386,7 @@ inline int32_t encodeLogicalImmediate(uint64_t val)
 }
 
 /// Build a logical immediate instruction: template | (N:immr:imms << 10) | (Rn << 5) | Rd
-inline uint32_t encodeLogImm(uint32_t tmpl, uint32_t rd, uint32_t rn, int32_t nimms)
-{
+inline uint32_t encodeLogImm(uint32_t tmpl, uint32_t rd, uint32_t rn, int32_t nimms) {
     // nimms = N:immr:imms (13 bits)
     return tmpl | (static_cast<uint32_t>(nimms) << 10) | (rn << 5) | rd;
 }
@@ -422,8 +401,7 @@ inline constexpr uint32_t kFMovDImm = 0x1E601000;
 /// Encode a double-precision FP value as an 8-bit AArch64 FP immediate.
 /// Returns the 8-bit encoding on success, or -1 if not encodable.
 /// Encodable values: ±(1 + n/16) * 2^r where n ∈ [0,15], r ∈ [-3,4].
-inline int32_t encodeFP8Immediate(double val)
-{
+inline int32_t encodeFP8Immediate(double val) {
     uint64_t bits;
     std::memcpy(&bits, &val, sizeof(bits));
 
@@ -444,13 +422,10 @@ inline int32_t encodeFP8Immediate(double val)
     // Encode exponent: value = NOT(b)*4 + c*2 + d - 3, where bcd are the 3 exponent bits.
     int32_t e = exp + 3; // Maps [-3,4] → [0,7].
     uint32_t b, cd;
-    if (e >= 4)
-    {
+    if (e >= 4) {
         b = 0;
         cd = static_cast<uint32_t>(e - 4);
-    }
-    else
-    {
+    } else {
         b = 1;
         cd = static_cast<uint32_t>(e);
     }
@@ -459,8 +434,7 @@ inline int32_t encodeFP8Immediate(double val)
 }
 
 /// Build a load/store pair: template | ((imm7 & 0x7F) << 15) | (Rt2 << 10) | (Rn << 5) | Rt
-constexpr uint32_t encodePair(uint32_t tmpl, uint32_t rt, uint32_t rt2, uint32_t rn, int32_t imm7)
-{
+constexpr uint32_t encodePair(uint32_t tmpl, uint32_t rt, uint32_t rt2, uint32_t rn, int32_t imm7) {
     return tmpl | ((static_cast<uint32_t>(imm7) & 0x7F) << 15) | (rt2 << 10) | (rn << 5) | rt;
 }
 

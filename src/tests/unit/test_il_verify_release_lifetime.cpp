@@ -27,11 +27,9 @@
 #include <cassert>
 #include <string>
 
-namespace
-{
+namespace {
 
-void appendRuntimeArrayExterns(il::core::Module &module)
-{
+void appendRuntimeArrayExterns(il::core::Module &module) {
     using il::core::Extern;
     using il::core::Type;
 
@@ -50,8 +48,7 @@ void appendRuntimeArrayExterns(il::core::Module &module)
 
 } // namespace
 
-int main()
-{
+int main() {
     using namespace il::core;
 
     {

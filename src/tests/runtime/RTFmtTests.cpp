@@ -21,8 +21,7 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -30,13 +29,11 @@ extern "C" void vm_trap(const char *msg)
 // Helper
 // ============================================================================
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     const char *data = rt_string_cstr(s);
     return data != nullptr && strcmp(data, expected) == 0;
 }
@@ -45,8 +42,7 @@ static bool str_eq(rt_string s, const char *expected)
 // Int Tests
 // ============================================================================
 
-static void test_fmt_int()
-{
+static void test_fmt_int() {
     assert(str_eq(rt_fmt_int(42), "42"));
     assert(str_eq(rt_fmt_int(-123), "-123"));
     assert(str_eq(rt_fmt_int(0), "0"));
@@ -56,8 +52,7 @@ static void test_fmt_int()
     printf("test_fmt_int: PASSED\n");
 }
 
-static void test_fmt_int_radix()
-{
+static void test_fmt_int_radix() {
     // Binary
     assert(str_eq(rt_fmt_int_radix(10, 2), "1010"));
     assert(str_eq(rt_fmt_int_radix(255, 2), "11111111"));
@@ -89,8 +84,7 @@ static void test_fmt_int_radix()
     printf("test_fmt_int_radix: PASSED\n");
 }
 
-static void test_fmt_int_pad()
-{
+static void test_fmt_int_pad() {
     assert(str_eq(rt_fmt_int_pad(42, 5, make_str("0")), "00042"));
     assert(str_eq(rt_fmt_int_pad(42, 5, make_str(" ")), "   42"));
     assert(str_eq(rt_fmt_int_pad(-42, 5, make_str("0")), "-0042"));
@@ -105,8 +99,7 @@ static void test_fmt_int_pad()
 // Num Tests
 // ============================================================================
 
-static void test_fmt_num()
-{
+static void test_fmt_num() {
     rt_string s = rt_fmt_num(3.14159);
     const char *data = rt_string_cstr(s);
     assert(data != nullptr);
@@ -122,8 +115,7 @@ static void test_fmt_num()
     printf("test_fmt_num: PASSED\n");
 }
 
-static void test_fmt_num_fixed()
-{
+static void test_fmt_num_fixed() {
     assert(str_eq(rt_fmt_num_fixed(3.14159, 2), "3.14"));
     assert(str_eq(rt_fmt_num_fixed(3.14159, 0), "3"));
     assert(str_eq(rt_fmt_num_fixed(3.14159, 4), "3.1416"));
@@ -133,8 +125,7 @@ static void test_fmt_num_fixed()
     printf("test_fmt_num_fixed: PASSED\n");
 }
 
-static void test_fmt_num_sci()
-{
+static void test_fmt_num_sci() {
     rt_string s = rt_fmt_num_sci(1234.5, 2);
     const char *data = rt_string_cstr(s);
     assert(data != nullptr);
@@ -148,8 +139,7 @@ static void test_fmt_num_sci()
     printf("test_fmt_num_sci: PASSED\n");
 }
 
-static void test_fmt_num_pct()
-{
+static void test_fmt_num_pct() {
     assert(str_eq(rt_fmt_num_pct(0.5, 0), "50%"));
     assert(str_eq(rt_fmt_num_pct(0.5, 2), "50.00%"));
     assert(str_eq(rt_fmt_num_pct(1.0, 0), "100%"));
@@ -164,16 +154,14 @@ static void test_fmt_num_pct()
 // Bool Tests
 // ============================================================================
 
-static void test_fmt_bool()
-{
+static void test_fmt_bool() {
     assert(str_eq(rt_fmt_bool(true), "true"));
     assert(str_eq(rt_fmt_bool(false), "false"));
 
     printf("test_fmt_bool: PASSED\n");
 }
 
-static void test_fmt_bool_yn()
-{
+static void test_fmt_bool_yn() {
     assert(str_eq(rt_fmt_bool_yn(true), "yes"));
     assert(str_eq(rt_fmt_bool_yn(false), "no"));
 
@@ -184,8 +172,7 @@ static void test_fmt_bool_yn()
 // Size Tests
 // ============================================================================
 
-static void test_fmt_size()
-{
+static void test_fmt_size() {
     assert(str_eq(rt_fmt_size(0), "0 B"));
     assert(str_eq(rt_fmt_size(100), "100 B"));
     assert(str_eq(rt_fmt_size(1024), "1.0 KB"));
@@ -200,8 +187,7 @@ static void test_fmt_size()
 // Hex Tests
 // ============================================================================
 
-static void test_fmt_hex()
-{
+static void test_fmt_hex() {
     assert(str_eq(rt_fmt_hex(0), "0"));
     assert(str_eq(rt_fmt_hex(255), "ff"));
     assert(str_eq(rt_fmt_hex(16), "10"));
@@ -210,8 +196,7 @@ static void test_fmt_hex()
     printf("test_fmt_hex: PASSED\n");
 }
 
-static void test_fmt_hex_pad()
-{
+static void test_fmt_hex_pad() {
     assert(str_eq(rt_fmt_hex_pad(255, 4), "00ff"));
     assert(str_eq(rt_fmt_hex_pad(255, 2), "ff"));
     assert(str_eq(rt_fmt_hex_pad(0, 8), "00000000"));
@@ -224,8 +209,7 @@ static void test_fmt_hex_pad()
 // Bin Tests
 // ============================================================================
 
-static void test_fmt_bin()
-{
+static void test_fmt_bin() {
     assert(str_eq(rt_fmt_bin(0), "0"));
     assert(str_eq(rt_fmt_bin(1), "1"));
     assert(str_eq(rt_fmt_bin(10), "1010"));
@@ -238,8 +222,7 @@ static void test_fmt_bin()
 // Oct Tests
 // ============================================================================
 
-static void test_fmt_oct()
-{
+static void test_fmt_oct() {
     assert(str_eq(rt_fmt_oct(0), "0"));
     assert(str_eq(rt_fmt_oct(8), "10"));
     assert(str_eq(rt_fmt_oct(63), "77"));
@@ -252,8 +235,7 @@ static void test_fmt_oct()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Viper.Fmt Tests ===\n\n");
 
     // Int formatting

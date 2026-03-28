@@ -24,13 +24,11 @@
 #include <cstdint>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
@@ -38,8 +36,7 @@ static rt_string make_str(const char *s)
 // rt_parse return type tests
 // ============================================================================
 
-static void test_parse_try_int_returns()
-{
+static void test_parse_try_int_returns() {
     int64_t val = 0;
     int8_t r = rt_parse_try_int(make_str("42"), &val);
     assert(r == 1);
@@ -51,8 +48,7 @@ static void test_parse_try_int_returns()
     printf("test_parse_try_int_returns: PASSED\n");
 }
 
-static void test_parse_try_num_returns()
-{
+static void test_parse_try_num_returns() {
     double val = 0.0;
     int8_t r = rt_parse_try_num(make_str("3.14"), &val);
     assert(r == 1);
@@ -63,8 +59,7 @@ static void test_parse_try_num_returns()
     printf("test_parse_try_num_returns: PASSED\n");
 }
 
-static void test_parse_try_bool_returns()
-{
+static void test_parse_try_bool_returns() {
     int8_t val = 0;
     int8_t r = rt_parse_try_bool(make_str("true"), &val);
     assert(r == 1);
@@ -80,8 +75,7 @@ static void test_parse_try_bool_returns()
     printf("test_parse_try_bool_returns: PASSED\n");
 }
 
-static void test_parse_bool_or_returns()
-{
+static void test_parse_bool_or_returns() {
     int8_t r = rt_parse_bool_or(make_str("yes"), 0);
     assert(r == 1);
 
@@ -97,8 +91,7 @@ static void test_parse_bool_or_returns()
     printf("test_parse_bool_or_returns: PASSED\n");
 }
 
-static void test_parse_is_int_returns()
-{
+static void test_parse_is_int_returns() {
     int8_t r = rt_parse_is_int(make_str("42"));
     assert(r == 1);
 
@@ -108,8 +101,7 @@ static void test_parse_is_int_returns()
     printf("test_parse_is_int_returns: PASSED\n");
 }
 
-static void test_parse_is_num_returns()
-{
+static void test_parse_is_num_returns() {
     int8_t r = rt_parse_is_num(make_str("3.14"));
     assert(r == 1);
 
@@ -123,8 +115,7 @@ static void test_parse_is_num_returns()
 // rt_regex return type test
 // ============================================================================
 
-static void test_regex_is_match_returns()
-{
+static void test_regex_is_match_returns() {
     int8_t r = rt_pattern_is_match(make_str("hello world"), make_str("^hello"));
     assert(r == 1);
 
@@ -138,8 +129,7 @@ static void test_regex_is_match_returns()
 // rt_error return type test
 // ============================================================================
 
-static void test_error_ok_returns()
-{
+static void test_error_ok_returns() {
     RtError none = {Err_None, 0};
     int8_t r = rt_ok(none);
     assert(r == 1);
@@ -155,8 +145,7 @@ static void test_error_ok_returns()
 // rt_bits return type test
 // ============================================================================
 
-static void test_bits_get_returns()
-{
+static void test_bits_get_returns() {
     int8_t r = rt_bits_get(0xFF, 0);
     assert(r == 1);
 
@@ -170,8 +159,7 @@ static void test_bits_get_returns()
 // rt_log return type test
 // ============================================================================
 
-static void test_log_enabled_returns()
-{
+static void test_log_enabled_returns() {
     int64_t original = rt_log_level();
 
     rt_log_set_level(rt_log_level_debug());
@@ -191,8 +179,7 @@ static void test_log_enabled_returns()
 // rt_template return type test
 // ============================================================================
 
-static void test_template_has_returns()
-{
+static void test_template_has_returns() {
     int8_t r = rt_template_has(make_str("Hello {{name}}!"), make_str("name"));
     assert(r == 1);
 
@@ -206,8 +193,7 @@ static void test_template_has_returns()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Bool Standardization Tests ===\n\n");
 
     test_parse_try_int_returns();

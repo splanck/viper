@@ -48,8 +48,7 @@ void lowerSubDecl(const SubDecl &decl);
 
 public:
 /// @brief Configuration shared by FUNCTION and SUB lowering.
-struct ProcedureConfig
-{
+struct ProcedureConfig {
     Type retType{Type(Type::Kind::Void)};  ///< IL return type for the procedure.
     std::function<void()> postCollect;     ///< Hook after variable discovery.
     std::function<void()> emitEmptyBody;   ///< Emit return path for empty bodies.

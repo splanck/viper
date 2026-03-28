@@ -41,10 +41,8 @@
 
 using namespace il::core;
 
-namespace il::verify
-{
-namespace
-{
+namespace il::verify {
+namespace {
 
 /// @brief Encode an exception-handler stack snapshot into a stable cache key.
 /// @details Serialises the handler stack into a semicolon-separated string and
@@ -55,21 +53,18 @@ namespace
 /// @param stack Ordered list of handler blocks currently on the stack.
 /// @param hasResumeToken Flag indicating whether a resume token is present.
 /// @return Deterministic key suitable for hash-table lookups.
-std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool hasResumeToken)
-{
+std::string encodeStateKey(const std::vector<const BasicBlock *> &stack, bool hasResumeToken) {
     std::string key;
     key.reserve(stack.size() * 8 + 4);
     key.append(hasResumeToken ? "1|" : "0|");
-    for (const BasicBlock *handler : stack)
-    {
+    for (const BasicBlock *handler : stack) {
         key.append(handler ? handler->label : "<null>");
         key.push_back(';');
     }
     return key;
 }
 
-struct StackState
-{
+struct StackState {
     const BasicBlock *block = nullptr;
     std::vector<const BasicBlock *> handlerStack;
     bool hasResumeToken = false;
@@ -85,11 +80,9 @@ struct StackState
 /// @param states Arena of explored execution states.
 /// @param index Index of the state whose ancestry should be materialised.
 /// @return Ordered list of basic blocks visited before the state.
-std::vector<const BasicBlock *> buildPath(const std::vector<StackState> &states, int index)
-{
+std::vector<const BasicBlock *> buildPath(const std::vector<StackState> &states, int index) {
     std::vector<const BasicBlock *> path;
-    for (int cur = index; cur >= 0; cur = states[cur].parent)
-    {
+    for (int cur = index; cur >= 0; cur = states[cur].parent) {
         if (states[cur].block)
             path.push_back(states[cur].block);
     }
@@ -103,11 +96,9 @@ std::vector<const BasicBlock *> buildPath(const std::vector<StackState> &states,
 ///          keeping messages terse for entry-block failures.
 /// @param path Basic blocks comprising the path from entry to failure.
 /// @return Formatted path string for diagnostic suffixes.
-std::string formatPathString(const std::vector<const BasicBlock *> &path)
-{
+std::string formatPathString(const std::vector<const BasicBlock *> &path) {
     std::string buffer;
-    for (const BasicBlock *node : path)
-    {
+    for (const BasicBlock *node : path) {
         if (!buffer.empty())
             buffer.append(" -> ");
         buffer.append(node->label);
@@ -115,21 +106,17 @@ std::string formatPathString(const std::vector<const BasicBlock *> &path)
     return buffer;
 }
 
-struct Diagnostics
-{
-    void fail(il::support::Diag diag)
-    {
+struct Diagnostics {
+    void fail(il::support::Diag diag) {
         if (!error)
             error = std::move(diag);
     }
 
-    [[nodiscard]] bool hasError() const noexcept
-    {
+    [[nodiscard]] bool hasError() const noexcept {
         return error.has_value();
     }
 
-    il::support::Expected<void> take()
-    {
+    il::support::Expected<void> take() {
         if (error)
             return il::support::Expected<void>{std::move(*error)};
         return {};
@@ -146,8 +133,7 @@ void emitInvariantFailure(Diagnostics &diags,
                           const Instr &instr,
                           const std::vector<StackState> &states,
                           int stateIndex,
-                          int depth)
-{
+                          int depth) {
     if (diags.hasError())
         return;
 
@@ -156,8 +142,7 @@ void emitInvariantFailure(Diagnostics &diags,
     suffix += invariant;
     suffix += "] ";
 
-    switch (code)
-    {
+    switch (code) {
         case VerifyDiagCode::EhStackUnderflow:
             suffix += "eh.pop without matching eh.push";
             break;
@@ -185,10 +170,8 @@ bool checkNoHandlerCrossing(const EhModel &model,
                             std::vector<const BasicBlock *> &handlerStack,
                             Diagnostics &diags,
                             const std::vector<StackState> &states,
-                            int stateIndex)
-{
-    if (!handlerStack.empty())
-    {
+                            int stateIndex) {
+    if (!handlerStack.empty()) {
         handlerStack.pop_back();
         return true;
     }
@@ -212,10 +195,8 @@ bool checkUnreachableAfterThrow(const EhModel &model,
                                 bool &hasResumeToken,
                                 Diagnostics &diags,
                                 const std::vector<StackState> &states,
-                                int stateIndex)
-{
-    if (!hasResumeToken)
-    {
+                                int stateIndex) {
+    if (!hasResumeToken) {
         emitInvariantFailure(diags,
                              "checkUnreachableAfterThrow",
                              VerifyDiagCode::EhResumeTokenMissing,
@@ -240,8 +221,7 @@ bool checkAllPathsCloseTry(const EhModel &model,
                            const std::vector<const BasicBlock *> &handlerStack,
                            Diagnostics &diags,
                            const std::vector<StackState> &states,
-                           int stateIndex)
-{
+                           int stateIndex) {
     if (terminator.op != Opcode::Ret || handlerStack.empty())
         return true;
 
@@ -257,13 +237,11 @@ bool checkAllPathsCloseTry(const EhModel &model,
     return false;
 }
 
-class EhStackTraversal
-{
+class EhStackTraversal {
   public:
     EhStackTraversal(const EhModel &model, Diagnostics &diags) : model(model), diags(diags) {}
 
-    bool run()
-    {
+    bool run() {
         if (!model.entry())
             return true;
 
@@ -271,8 +249,7 @@ class EhStackTraversal
         initial.block = model.entry();
         enqueueState(std::move(initial));
 
-        while (!worklist.empty())
-        {
+        while (!worklist.empty()) {
             const int stateIndex = worklist.front();
             worklist.pop_front();
             if (!processState(stateIndex))
@@ -285,8 +262,7 @@ class EhStackTraversal
   private:
     std::vector<StackState> states;
 
-    void enqueueState(StackState state)
-    {
+    void enqueueState(StackState state) {
         if (!state.block)
             return;
 
@@ -299,8 +275,7 @@ class EhStackTraversal
         worklist.push_back(index);
     }
 
-    bool processState(int stateIndex)
-    {
+    bool processState(int stateIndex) {
         const StackState &snapshot = states[stateIndex];
         if (!snapshot.block)
             return true;
@@ -310,31 +285,24 @@ class EhStackTraversal
         bool hasResumeToken = snapshot.hasResumeToken;
 
         const Instr *terminator = nullptr;
-        for (const auto &instr : bb.instructions)
-        {
-            if (instr.op == Opcode::EhPush)
-            {
+        for (const auto &instr : bb.instructions) {
+            if (instr.op == Opcode::EhPush) {
                 const BasicBlock *handlerBlock = nullptr;
                 if (!instr.labels.empty())
                     handlerBlock = model.findBlock(instr.labels[0]);
                 handlerStack.push_back(handlerBlock);
-            }
-            else if (instr.op == Opcode::EhPop)
-            {
+            } else if (instr.op == Opcode::EhPop) {
                 if (!checkNoHandlerCrossing(
                         model, bb, instr, handlerStack, diags, states, stateIndex))
                     return false;
-            }
-            else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
-                     instr.op == Opcode::ResumeLabel)
-            {
+            } else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
+                       instr.op == Opcode::ResumeLabel) {
                 if (!checkUnreachableAfterThrow(
                         model, bb, instr, handlerStack, hasResumeToken, diags, states, stateIndex))
                     return false;
             }
 
-            if (isTerminator(instr.op))
-            {
+            if (isTerminator(instr.op)) {
                 terminator = &instr;
                 break;
             }
@@ -350,8 +318,7 @@ class EhStackTraversal
         if (!checkAllPathsCloseTry(model, bb, *terminator, handlerStack, diags, states, stateIndex))
             return false;
 
-        if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr)
-        {
+        if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr) {
             enqueueTrapHandler(stateIndex, handlerStack);
             return true;
         }
@@ -360,8 +327,7 @@ class EhStackTraversal
         return true;
     }
 
-    void enqueueTrapHandler(int stateIndex, const std::vector<const BasicBlock *> &handlerStack)
-    {
+    void enqueueTrapHandler(int stateIndex, const std::vector<const BasicBlock *> &handlerStack) {
         if (handlerStack.empty())
             return;
 
@@ -381,11 +347,9 @@ class EhStackTraversal
     void enqueueSuccessors(const Instr &terminator,
                            int stateIndex,
                            const std::vector<const BasicBlock *> &handlerStack,
-                           bool hasResumeToken)
-    {
+                           bool hasResumeToken) {
         const std::vector<const BasicBlock *> successors = model.gatherSuccessors(terminator);
-        for (const BasicBlock *succ : successors)
-        {
+        for (const BasicBlock *succ : successors) {
             StackState nextState;
             nextState.block = succ;
             nextState.handlerStack = handlerStack;
@@ -410,10 +374,8 @@ class EhStackTraversal
 ///          must be dominated by a handler when resume tokens are absent.
 /// @param op Opcode under evaluation.
 /// @return True when @p op may raise a fault, false for benign instructions.
-bool isPotentialFaultingOpcode(Opcode op)
-{
-    switch (op)
-    {
+bool isPotentialFaultingOpcode(Opcode op) {
+    switch (op) {
         case Opcode::EhPush:
         case Opcode::EhPop:
         case Opcode::EhEntry:
@@ -439,8 +401,7 @@ using HandlerCoverage =
 ///          potential faulting instructions it records the innermost handler
 ///          responsible for the current block, building the coverage map used
 ///          by later checks.
-class HandlerCoverageTraversal
-{
+class HandlerCoverageTraversal {
   public:
     /// @brief Create a traversal wired to the given EH model and coverage map.
     /// @details Stores references so @ref compute can populate @p coverage in
@@ -448,9 +409,7 @@ class HandlerCoverageTraversal
     /// @param model Exception-handling graph to traverse.
     /// @param coverage Output map that gathers handler-to-block relationships.
     HandlerCoverageTraversal(const EhModel &model, HandlerCoverage &coverage)
-        : model(model), coverage(coverage)
-    {
-    }
+        : model(model), coverage(coverage) {}
 
     /// @brief Execute the traversal starting at the function entry block.
     /// @details Initialises the work queue, walks reachable basic blocks, and
@@ -458,8 +417,7 @@ class HandlerCoverageTraversal
     ///          without an active resume token.  The algorithm mirrors the stack
     ///          discipline enforced by the VM to faithfully reproduce handler
     ///          transitions.
-    void compute()
-    {
+    void compute() {
         if (!model.entry())
             return;
 
@@ -468,24 +426,19 @@ class HandlerCoverageTraversal
         enqueueState(std::move(initial));
 
         std::deque<State> worklist;
-        if (!pending.empty())
-        {
+        if (!pending.empty()) {
             worklist.push_back(std::move(pending.front()));
             pending.pop_front();
         }
 
-        while (!worklist.empty())
-        {
+        while (!worklist.empty()) {
             State frame = std::move(worklist.front());
             worklist.pop_front();
 
             const BasicBlock &bb = *frame.block;
-            for (const auto &instr : bb.instructions)
-            {
-                if (const Instr *terminator = processEhInstruction(instr, bb, frame))
-                {
-                    if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr)
-                    {
+            for (const auto &instr : bb.instructions) {
+                if (const Instr *terminator = processEhInstruction(instr, bb, frame)) {
+                    if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr) {
                         handleTrapTerminator(bb, frame, worklist);
                         break;
                     }
@@ -498,8 +451,7 @@ class HandlerCoverageTraversal
     }
 
   private:
-    struct State
-    {
+    struct State {
         const BasicBlock *block = nullptr;
         std::vector<const BasicBlock *> handlerStack;
         bool hasResumeToken = false;
@@ -514,61 +466,44 @@ class HandlerCoverageTraversal
     /// @param bb Owning basic block (used for coverage bookkeeping).
     /// @param state Mutable traversal snapshot describing the active handlers.
     /// @return Pointer to the instruction when it terminates the block; null otherwise.
-    const Instr *processEhInstruction(const Instr &instr, const BasicBlock &bb, State &state)
-    {
+    const Instr *processEhInstruction(const Instr &instr, const BasicBlock &bb, State &state) {
         if (!state.hasResumeToken && !state.handlerStack.empty() &&
-            isPotentialFaultingOpcode(instr.op))
-        {
-            if (const BasicBlock *handlerBlock = state.handlerStack.back())
-            {
+            isPotentialFaultingOpcode(instr.op)) {
+            if (const BasicBlock *handlerBlock = state.handlerStack.back()) {
                 // Heuristic: when the current block immediately branches to a trap block,
                 // attribute coverage to the trap successor instead of the current block.
-                if (const Instr *term = model.findTerminator(bb))
-                {
+                if (const Instr *term = model.findTerminator(bb)) {
                     const std::vector<const BasicBlock *> succs = model.gatherSuccessors(*term);
                     const BasicBlock *trapSucc = nullptr;
-                    for (const BasicBlock *s : succs)
-                    {
-                        if (const Instr *sTerm = model.findTerminator(*s))
-                        {
-                            if (sTerm->op == Opcode::Trap || sTerm->op == Opcode::TrapFromErr)
-                            {
+                    for (const BasicBlock *s : succs) {
+                        if (const Instr *sTerm = model.findTerminator(*s)) {
+                            if (sTerm->op == Opcode::Trap || sTerm->op == Opcode::TrapFromErr) {
                                 trapSucc = s;
                                 break;
                             }
                         }
                     }
-                    if (trapSucc)
-                    {
+                    if (trapSucc) {
                         coverage[handlerBlock].insert(trapSucc);
-                    }
-                    else
-                    {
+                    } else {
                         coverage[handlerBlock].insert(&bb);
                     }
-                }
-                else
-                {
+                } else {
                     coverage[handlerBlock].insert(&bb);
                 }
             }
         }
 
-        if (instr.op == Opcode::EhPush)
-        {
+        if (instr.op == Opcode::EhPush) {
             const BasicBlock *handlerBlock = nullptr;
             if (!instr.labels.empty())
                 handlerBlock = model.findBlock(instr.labels[0]);
             state.handlerStack.push_back(handlerBlock);
-        }
-        else if (instr.op == Opcode::EhPop)
-        {
+        } else if (instr.op == Opcode::EhPop) {
             if (!state.handlerStack.empty())
                 state.handlerStack.pop_back();
-        }
-        else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
-                 instr.op == Opcode::ResumeLabel)
-        {
+        } else if (instr.op == Opcode::ResumeSame || instr.op == Opcode::ResumeNext ||
+                   instr.op == Opcode::ResumeLabel) {
             if (!state.handlerStack.empty())
                 state.handlerStack.pop_back();
             state.hasResumeToken = false;
@@ -588,8 +523,9 @@ class HandlerCoverageTraversal
     /// @param bb Faulting block whose handler should be entered.
     /// @param state Traversal state observed at the trap terminator.
     /// @param worklist Queue receiving the synthesised handler state.
-    void handleTrapTerminator(const BasicBlock &bb, const State &state, std::deque<State> &worklist)
-    {
+    void handleTrapTerminator(const BasicBlock &bb,
+                              const State &state,
+                              std::deque<State> &worklist) {
         if (state.handlerStack.empty())
             return;
 
@@ -613,11 +549,11 @@ class HandlerCoverageTraversal
     /// @param terminator Block terminator that produced the successor list.
     /// @param state Traversal state prior to transferring control.
     /// @param worklist Queue that receives unexplored states.
-    void enqueueSuccessors(const Instr &terminator, const State &state, std::deque<State> &worklist)
-    {
+    void enqueueSuccessors(const Instr &terminator,
+                           const State &state,
+                           std::deque<State> &worklist) {
         const std::vector<const BasicBlock *> successors = model.gatherSuccessors(terminator);
-        for (const BasicBlock *succ : successors)
-        {
+        for (const BasicBlock *succ : successors) {
             State nextState = state;
             nextState.block = succ;
             if (terminator.op == Opcode::ResumeLabel)
@@ -632,8 +568,7 @@ class HandlerCoverageTraversal
     ///          lacking a block pointer are discarded silently.
     /// @param state Candidate state to explore.
     /// @param worklist Work queue managed by @ref compute.
-    void enqueueState(State state, std::deque<State> &worklist)
-    {
+    void enqueueState(State state, std::deque<State> &worklist) {
         if (!state.block)
             return;
 
@@ -649,8 +584,7 @@ class HandlerCoverageTraversal
     ///          deque used to bootstrap the traversal before the main loop
     ///          begins.  This keeps queue initialisation logic centralised.
     /// @param state Candidate state to schedule.
-    void enqueueState(State state)
-    {
+    void enqueueState(State state) {
         if (!state.block)
             return;
 
@@ -674,16 +608,14 @@ class HandlerCoverageTraversal
 ///          guard.
 /// @param model Exception-handling model describing the function.
 /// @return Map of handler blocks to the set of basic blocks they cover.
-HandlerCoverage computeHandlerCoverage(const EhModel &model)
-{
+HandlerCoverage computeHandlerCoverage(const EhModel &model) {
     HandlerCoverage coverage;
     HandlerCoverageTraversal traversal(model, coverage);
     traversal.compute();
     return coverage;
 }
 
-struct DomInfo
-{
+struct DomInfo {
     std::unordered_map<const BasicBlock *, size_t> indices;
     std::vector<const BasicBlock *> nodes;
     std::unordered_map<const BasicBlock *, const BasicBlock *> idom;
@@ -696,8 +628,7 @@ struct DomInfo
 ///          queries by walking the idom chain.
 /// @param model Exception-handling model describing the function under check.
 /// @return Dominator info with immediate dominator map for all reachable blocks.
-DomInfo computeDominators(const EhModel &model)
-{
+DomInfo computeDominators(const EhModel &model) {
     DomInfo info;
     if (!model.entry())
         return info;
@@ -710,15 +641,12 @@ DomInfo computeDominators(const EhModel &model)
     queue.push_back(entry);
     reachable.insert(entry);
 
-    while (!queue.empty())
-    {
+    while (!queue.empty()) {
         const BasicBlock *bb = queue.front();
         queue.pop_front();
 
-        if (const Instr *terminator = model.findTerminator(*bb))
-        {
-            for (const BasicBlock *succ : model.gatherSuccessors(*terminator))
-            {
+        if (const Instr *terminator = model.findTerminator(*bb)) {
+            for (const BasicBlock *succ : model.gatherSuccessors(*terminator)) {
                 if (reachable.insert(succ).second)
                     queue.push_back(succ);
             }
@@ -728,14 +656,11 @@ DomInfo computeDominators(const EhModel &model)
     // Build reverse-post-order by doing DFS
     std::vector<const BasicBlock *> rpo;
     std::unordered_set<const BasicBlock *> visited;
-    std::function<void(const BasicBlock *)> dfs = [&](const BasicBlock *bb)
-    {
+    std::function<void(const BasicBlock *)> dfs = [&](const BasicBlock *bb) {
         if (!visited.insert(bb).second)
             return;
-        if (const Instr *terminator = model.findTerminator(*bb))
-        {
-            for (const BasicBlock *succ : model.gatherSuccessors(*terminator))
-            {
+        if (const Instr *terminator = model.findTerminator(*bb)) {
+            for (const BasicBlock *succ : model.gatherSuccessors(*terminator)) {
                 if (reachable.count(succ))
                     dfs(succ);
             }
@@ -746,20 +671,16 @@ DomInfo computeDominators(const EhModel &model)
     std::reverse(rpo.begin(), rpo.end());
 
     // Assign indices
-    for (size_t i = 0; i < rpo.size(); ++i)
-    {
+    for (size_t i = 0; i < rpo.size(); ++i) {
         info.indices[rpo[i]] = i;
         info.nodes.push_back(rpo[i]);
     }
 
     // Build predecessor map
     std::unordered_map<const BasicBlock *, std::vector<const BasicBlock *>> preds;
-    for (const BasicBlock *bb : rpo)
-    {
-        if (const Instr *terminator = model.findTerminator(*bb))
-        {
-            for (const BasicBlock *succ : model.gatherSuccessors(*terminator))
-            {
+    for (const BasicBlock *bb : rpo) {
+        if (const Instr *terminator = model.findTerminator(*bb)) {
+            for (const BasicBlock *succ : model.gatherSuccessors(*terminator)) {
                 if (reachable.count(succ))
                     preds[succ].push_back(bb);
             }
@@ -770,19 +691,15 @@ DomInfo computeDominators(const EhModel &model)
     info.idom[entry] = nullptr;
 
     // Intersect helper: find nearest common ancestor in dominator tree
-    auto intersect = [&](const BasicBlock *b1, const BasicBlock *b2) -> const BasicBlock *
-    {
-        while (b1 != b2)
-        {
-            while (info.indices[b1] > info.indices[b2])
-            {
+    auto intersect = [&](const BasicBlock *b1, const BasicBlock *b2) -> const BasicBlock * {
+        while (b1 != b2) {
+            while (info.indices[b1] > info.indices[b2]) {
                 auto it = info.idom.find(b1);
                 if (it == info.idom.end() || !it->second)
                     return nullptr;
                 b1 = it->second;
             }
-            while (info.indices[b2] > info.indices[b1])
-            {
+            while (info.indices[b2] > info.indices[b1]) {
                 auto it = info.idom.find(b2);
                 if (it == info.idom.end() || !it->second)
                     return nullptr;
@@ -794,20 +711,16 @@ DomInfo computeDominators(const EhModel &model)
 
     // Iterative dominator computation
     bool changed = true;
-    while (changed)
-    {
+    while (changed) {
         changed = false;
-        for (size_t i = 1; i < rpo.size(); ++i)
-        {
+        for (size_t i = 1; i < rpo.size(); ++i) {
             const BasicBlock *bb = rpo[i];
             const auto &predList = preds[bb];
 
             // Find first predecessor with computed idom
             const BasicBlock *newIdom = nullptr;
-            for (const BasicBlock *p : predList)
-            {
-                if (info.idom.count(p))
-                {
+            for (const BasicBlock *p : predList) {
+                if (info.idom.count(p)) {
                     newIdom = p;
                     break;
                 }
@@ -816,8 +729,7 @@ DomInfo computeDominators(const EhModel &model)
                 continue;
 
             // Intersect with other predecessors
-            for (const BasicBlock *p : predList)
-            {
+            for (const BasicBlock *p : predList) {
                 if (p == newIdom || !info.idom.count(p))
                     continue;
                 newIdom = intersect(p, newIdom);
@@ -825,8 +737,7 @@ DomInfo computeDominators(const EhModel &model)
                     break;
             }
 
-            if (!info.idom.count(bb) || info.idom[bb] != newIdom)
-            {
+            if (!info.idom.count(bb) || info.idom[bb] != newIdom) {
                 info.idom[bb] = newIdom;
                 changed = true;
             }
@@ -843,16 +754,14 @@ DomInfo computeDominators(const EhModel &model)
 /// @param dominator Block that may dominate @p target.
 /// @param target Block being tested for domination.
 /// @return True if @p dominator dominates @p target, false otherwise.
-bool isDominator(const DomInfo &info, const BasicBlock *dominator, const BasicBlock *target)
-{
+bool isDominator(const DomInfo &info, const BasicBlock *dominator, const BasicBlock *target) {
     if (!dominator || !target)
         return false;
     if (dominator == target)
         return true;
 
     const BasicBlock *current = target;
-    while (current)
-    {
+    while (current) {
         auto it = info.idom.find(current);
         if (it == info.idom.end())
             return false;
@@ -863,8 +772,7 @@ bool isDominator(const DomInfo &info, const BasicBlock *dominator, const BasicBl
     return false;
 }
 
-struct PostDomInfo
-{
+struct PostDomInfo {
     std::unordered_map<const BasicBlock *, size_t> indices;
     std::vector<const BasicBlock *> nodes;
     std::vector<std::vector<uint8_t>> matrix;
@@ -878,8 +786,7 @@ struct PostDomInfo
 ///          EH resume edges.
 /// @param model Exception-handling model describing the function under check.
 /// @return Matrix-backed summary of post-dominator relationships.
-PostDomInfo computePostDominators(const EhModel &model)
-{
+PostDomInfo computePostDominators(const EhModel &model) {
     PostDomInfo info;
     if (!model.entry())
         return info;
@@ -890,23 +797,19 @@ PostDomInfo computePostDominators(const EhModel &model)
     queue.push_back(entry);
     reachable.insert(entry);
 
-    while (!queue.empty())
-    {
+    while (!queue.empty()) {
         const BasicBlock *bb = queue.front();
         queue.pop_front();
 
-        if (const Instr *terminator = model.findTerminator(*bb))
-        {
-            for (const BasicBlock *succ : model.gatherSuccessors(*terminator))
-            {
+        if (const Instr *terminator = model.findTerminator(*bb)) {
+            for (const BasicBlock *succ : model.gatherSuccessors(*terminator)) {
                 if (reachable.insert(succ).second)
                     queue.push_back(succ);
             }
         }
     }
 
-    for (const auto &bb : model.function().blocks)
-    {
+    for (const auto &bb : model.function().blocks) {
         if (reachable.find(&bb) == reachable.end())
             continue;
         info.indices[&bb] = info.nodes.size();
@@ -918,12 +821,10 @@ PostDomInfo computePostDominators(const EhModel &model)
     std::vector<std::vector<size_t>> successors(n);
     std::vector<uint8_t> isExit(n, 0);
 
-    for (size_t idx = 0; idx < n; ++idx)
-    {
+    for (size_t idx = 0; idx < n; ++idx) {
         const BasicBlock *bb = info.nodes[idx];
         const Instr *terminator = model.findTerminator(*bb);
-        if (!terminator)
-        {
+        if (!terminator) {
             std::fill(info.matrix[idx].begin(), info.matrix[idx].end(), 0);
             info.matrix[idx][idx] = 1;
             isExit[idx] = 1;
@@ -931,15 +832,13 @@ PostDomInfo computePostDominators(const EhModel &model)
         }
 
         const std::vector<const BasicBlock *> succBlocks = model.gatherSuccessors(*terminator);
-        for (const BasicBlock *succ : succBlocks)
-        {
+        for (const BasicBlock *succ : succBlocks) {
             auto it = info.indices.find(succ);
             if (it != info.indices.end())
                 successors[idx].push_back(it->second);
         }
 
-        if (successors[idx].empty())
-        {
+        if (successors[idx].empty()) {
             std::fill(info.matrix[idx].begin(), info.matrix[idx].end(), 0);
             info.matrix[idx][idx] = 1;
             isExit[idx] = 1;
@@ -947,33 +846,26 @@ PostDomInfo computePostDominators(const EhModel &model)
     }
 
     bool changed = true;
-    while (changed)
-    {
+    while (changed) {
         changed = false;
-        for (size_t idx = 0; idx < n; ++idx)
-        {
+        for (size_t idx = 0; idx < n; ++idx) {
             if (isExit[idx])
                 continue;
 
             std::vector<uint8_t> newSet(n, 1);
-            if (!successors[idx].empty())
-            {
+            if (!successors[idx].empty()) {
                 newSet = info.matrix[successors[idx].front()];
-                for (size_t succPos = 1; succPos < successors[idx].size(); ++succPos)
-                {
+                for (size_t succPos = 1; succPos < successors[idx].size(); ++succPos) {
                     const size_t succIdx = successors[idx][succPos];
                     for (size_t bit = 0; bit < n; ++bit)
                         newSet[bit] = static_cast<uint8_t>(newSet[bit] & info.matrix[succIdx][bit]);
                 }
-            }
-            else
-            {
+            } else {
                 std::fill(newSet.begin(), newSet.end(), 0);
             }
 
             newSet[idx] = 1;
-            if (newSet != info.matrix[idx])
-            {
+            if (newSet != info.matrix[idx]) {
                 info.matrix[idx] = std::move(newSet);
                 changed = true;
             }
@@ -991,8 +883,7 @@ PostDomInfo computePostDominators(const EhModel &model)
 /// @param from Basic block being post-dominated.
 /// @param candidate Block that may post-dominate @p from.
 /// @return True if @p candidate post-dominates @p from, false otherwise.
-bool isPostDominator(const PostDomInfo &info, const BasicBlock *from, const BasicBlock *candidate)
-{
+bool isPostDominator(const PostDomInfo &info, const BasicBlock *from, const BasicBlock *candidate) {
     if (info.nodes.empty())
         return false;
 
@@ -1014,8 +905,7 @@ bool isPostDominator(const PostDomInfo &info, const BasicBlock *from, const Basi
 ///          control-flow path leading to the violation.
 /// @param model Exception-handling model for the function under inspection.
 /// @return Empty expected on success, or a diagnostic describing the failure.
-il::support::Expected<void> checkEhStackBalance(const EhModel &model)
-{
+il::support::Expected<void> checkEhStackBalance(const EhModel &model) {
     if (!model.entry())
         return {};
 
@@ -1032,8 +922,7 @@ il::support::Expected<void> checkEhStackBalance(const EhModel &model)
 ///          before any protected code executes, maintaining structured EH semantics.
 /// @param model Exception-handling model describing the function under check.
 /// @return Empty expected on success, or a diagnostic describing the violation.
-il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model)
-{
+il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model) {
     if (!model.entry())
         return {};
 
@@ -1046,12 +935,9 @@ il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model)
     // Build a map from handler blocks to their eh.push sites
     std::unordered_map<const BasicBlock *, std::pair<const BasicBlock *, const Instr *>>
         handlerToEhPush;
-    for (const auto &bb : model.function().blocks)
-    {
-        for (const auto &instr : bb.instructions)
-        {
-            if (instr.op == Opcode::EhPush && !instr.labels.empty())
-            {
+    for (const auto &bb : model.function().blocks) {
+        for (const auto &instr : bb.instructions) {
+            if (instr.op == Opcode::EhPush && !instr.labels.empty()) {
                 const BasicBlock *handlerBlock = model.findBlock(instr.labels[0]);
                 if (handlerBlock)
                     handlerToEhPush[handlerBlock] = {&bb, &instr};
@@ -1060,8 +946,7 @@ il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model)
     }
 
     // For each handler, verify the eh.push block dominates all protected blocks
-    for (const auto &[handlerBlock, protectedBlocks] : coverage)
-    {
+    for (const auto &[handlerBlock, protectedBlocks] : coverage) {
         if (!handlerBlock)
             continue;
 
@@ -1072,15 +957,13 @@ il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model)
         const BasicBlock *ehPushBlock = ehPushIt->second.first;
         const Instr *ehPushInstr = ehPushIt->second.second;
 
-        for (const BasicBlock *protectedBlock : protectedBlocks)
-        {
+        for (const BasicBlock *protectedBlock : protectedBlocks) {
             if (!protectedBlock)
                 continue;
 
             // The block containing eh.push must dominate the protected block.
             // This ensures the handler is installed before the protected code runs.
-            if (!isDominator(domInfo, ehPushBlock, protectedBlock))
-            {
+            if (!isDominator(domInfo, ehPushBlock, protectedBlock)) {
                 // Pre-allocate string to avoid multiple reallocations
                 std::string suffix;
                 suffix.reserve(64 + ehPushBlock->label.size() + protectedBlock->label.size() +
@@ -1111,19 +994,15 @@ il::support::Expected<void> checkDominanceOfHandlers(const EhModel &model)
 ///          could never execute, which is usually a sign of malformed IL.
 /// @param model Exception-handling model describing the function under check.
 /// @return Empty expected on success, or a diagnostic listing unreachable handlers.
-il::support::Expected<void> checkUnreachableHandlers(const EhModel &model)
-{
+il::support::Expected<void> checkUnreachableHandlers(const EhModel &model) {
     if (!model.entry())
         return {};
 
     // Collect all handler blocks referenced by eh.push instructions
     std::unordered_set<const BasicBlock *> handlerBlocks;
-    for (const auto &bb : model.function().blocks)
-    {
-        for (const auto &instr : bb.instructions)
-        {
-            if (instr.op == Opcode::EhPush && !instr.labels.empty())
-            {
+    for (const auto &bb : model.function().blocks) {
+        for (const auto &instr : bb.instructions) {
+            if (instr.op == Opcode::EhPush && !instr.labels.empty()) {
                 if (const BasicBlock *handlerBlock = model.findBlock(instr.labels[0]))
                     handlerBlocks.insert(handlerBlock);
             }
@@ -1147,36 +1026,28 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model)
     // Track handlers that SHOULD be reachable (have faulting instructions in protected region)
     std::unordered_set<const BasicBlock *> shouldBeReachable;
 
-    while (!worklist.empty())
-    {
+    while (!worklist.empty()) {
         const BasicBlock *bb = worklist.front();
         worklist.pop_front();
 
         std::vector<const BasicBlock *> currentStack = blockHandlerStack[bb];
 
         // Process instructions to track EH stack and detect potential faults
-        for (const auto &instr : bb->instructions)
-        {
-            if (instr.op == Opcode::EhPush && !instr.labels.empty())
-            {
+        for (const auto &instr : bb->instructions) {
+            if (instr.op == Opcode::EhPush && !instr.labels.empty()) {
                 if (const BasicBlock *handlerBlock = model.findBlock(instr.labels[0]))
                     currentStack.push_back(handlerBlock);
-            }
-            else if (instr.op == Opcode::EhPop)
-            {
+            } else if (instr.op == Opcode::EhPop) {
                 if (!currentStack.empty())
                     currentStack.pop_back();
             }
             // Any potentially faulting instruction marks the current handler as
             // "should be reachable" since it could trap at runtime
-            else if (!currentStack.empty() && isPotentialFaultingOpcode(instr.op))
-            {
+            else if (!currentStack.empty() && isPotentialFaultingOpcode(instr.op)) {
                 const BasicBlock *handlerBlock = currentStack.back();
-                if (handlerBlock)
-                {
+                if (handlerBlock) {
                     shouldBeReachable.insert(handlerBlock);
-                    if (reachable.insert(handlerBlock).second)
-                    {
+                    if (reachable.insert(handlerBlock).second) {
                         worklist.push_back(handlerBlock);
                         blockHandlerStack[handlerBlock] = currentStack;
                     }
@@ -1185,29 +1056,22 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model)
         }
 
         // Find terminator and process successors
-        if (const Instr *terminator = model.findTerminator(*bb))
-        {
+        if (const Instr *terminator = model.findTerminator(*bb)) {
             // Normal CFG successors
-            for (const BasicBlock *succ : model.gatherSuccessors(*terminator))
-            {
-                if (reachable.insert(succ).second)
-                {
+            for (const BasicBlock *succ : model.gatherSuccessors(*terminator)) {
+                if (reachable.insert(succ).second) {
                     worklist.push_back(succ);
                     blockHandlerStack[succ] = currentStack;
                 }
             }
 
             // Exception edge: trap/trap_from_err can transfer to handler
-            if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr)
-            {
-                if (!currentStack.empty())
-                {
+            if (terminator->op == Opcode::Trap || terminator->op == Opcode::TrapFromErr) {
+                if (!currentStack.empty()) {
                     const BasicBlock *handlerBlock = currentStack.back();
-                    if (handlerBlock)
-                    {
+                    if (handlerBlock) {
                         shouldBeReachable.insert(handlerBlock);
-                        if (reachable.insert(handlerBlock).second)
-                        {
+                        if (reachable.insert(handlerBlock).second) {
                             worklist.push_back(handlerBlock);
                             blockHandlerStack[handlerBlock] = currentStack;
                         }
@@ -1221,15 +1085,13 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model)
     // Handlers with no faulting instructions in their protected region are allowed
     // to be unreachable (they're just unused, not invalid).
     std::vector<std::string> unreachableLabels;
-    for (const BasicBlock *handler : handlerBlocks)
-    {
+    for (const BasicBlock *handler : handlerBlocks) {
         // Only report if the handler should be reachable but isn't
         if (shouldBeReachable.count(handler) && reachable.find(handler) == reachable.end())
             unreachableLabels.push_back(handler->label);
     }
 
-    if (!unreachableLabels.empty())
-    {
+    if (!unreachableLabels.empty()) {
         // Sort for deterministic output
         std::sort(unreachableLabels.begin(), unreachableLabels.end());
 
@@ -1237,8 +1099,7 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model)
         if (unreachableLabels.size() > 1)
             suffix += "s";
         suffix += ": ";
-        for (size_t i = 0; i < unreachableLabels.size(); ++i)
-        {
+        for (size_t i = 0; i < unreachableLabels.size(); ++i) {
             if (i > 0)
                 suffix += ", ";
             suffix += "^";
@@ -1265,19 +1126,16 @@ il::support::Expected<void> checkUnreachableHandlers(const EhModel &model)
 ///          handler and resume site.
 /// @param model Exception-handling model that exposes block lookups.
 /// @return Success when all resume edges are valid; otherwise a diagnostic.
-il::support::Expected<void> checkResumeEdges(const EhModel &model)
-{
+il::support::Expected<void> checkResumeEdges(const EhModel &model) {
     const HandlerCoverage coverage = computeHandlerCoverage(model);
     const PostDomInfo postDomInfo = computePostDominators(model);
 
-    for (const auto &bb : model.function().blocks)
-    {
+    for (const auto &bb : model.function().blocks) {
         auto coverageIt = coverage.find(&bb);
         if (coverageIt == coverage.end())
             continue;
 
-        for (const auto &instr : bb.instructions)
-        {
+        for (const auto &instr : bb.instructions) {
             if (instr.op != Opcode::ResumeLabel)
                 continue;
             if (instr.labels.empty())
@@ -1287,8 +1145,7 @@ il::support::Expected<void> checkResumeEdges(const EhModel &model)
             if (!targetBlock)
                 continue;
 
-            for (const BasicBlock *faultingBlock : coverageIt->second)
-            {
+            for (const BasicBlock *faultingBlock : coverageIt->second) {
                 const Instr *faultTerminator = model.findTerminator(*faultingBlock);
                 if (!faultTerminator)
                     continue;

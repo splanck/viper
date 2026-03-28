@@ -32,12 +32,10 @@
 
 #include <istream>
 
-namespace il::io
-{
+namespace il::io {
 
 /// @brief Hand-rolled parser for textual IL subset.
-class Parser
-{
+class Parser {
   public:
     /// @brief Parse IL from stream into module @p m.
     /// @param is Input stream containing IL text.

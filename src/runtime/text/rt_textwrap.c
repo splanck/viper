@@ -43,8 +43,7 @@
 /// @param text
 /// @param width
 /// @return Result value.
-rt_string rt_textwrap_wrap(rt_string text, int64_t width)
-{
+rt_string rt_textwrap_wrap(rt_string text, int64_t width) {
     if (width < 1)
         width = 1;
 
@@ -61,12 +60,10 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width)
     int64_t last_space = -1;
     int64_t col = 0;
 
-    for (int64_t i = 0; i < src_len; i++)
-    {
+    for (int64_t i = 0; i < src_len; i++) {
         char c = src[i];
 
-        if (c == '\n')
-        {
+        if (c == '\n') {
             // Copy line up to newline
             memcpy(result + result_pos, src + line_start, (size_t)(i - line_start + 1));
             result_pos += i - line_start + 1;
@@ -76,17 +73,14 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width)
             continue;
         }
 
-        if (c == ' ' || c == '\t')
-        {
+        if (c == ' ' || c == '\t') {
             last_space = i;
         }
 
         col++;
 
-        if (col > width)
-        {
-            if (last_space > line_start)
-            {
+        if (col > width) {
+            if (last_space > line_start) {
                 // Wrap at last space
                 memcpy(result + result_pos, src + line_start, (size_t)(last_space - line_start));
                 result_pos += last_space - line_start;
@@ -94,9 +88,7 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width)
                 line_start = last_space + 1;
                 col = i - last_space;
                 last_space = -1;
-            }
-            else
-            {
+            } else {
                 // No space found, force break
                 memcpy(result + result_pos, src + line_start, (size_t)(i - line_start));
                 result_pos += i - line_start;
@@ -108,8 +100,7 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width)
     }
 
     // Copy remaining text
-    if (line_start < src_len)
-    {
+    if (line_start < src_len) {
         memcpy(result + result_pos, src + line_start, (size_t)(src_len - line_start));
         result_pos += src_len - line_start;
     }
@@ -120,8 +111,7 @@ rt_string rt_textwrap_wrap(rt_string text, int64_t width)
     return ret;
 }
 
-void *rt_textwrap_wrap_lines(rt_string text, int64_t width)
-{
+void *rt_textwrap_wrap_lines(rt_string text, int64_t width) {
     rt_string wrapped = rt_textwrap_wrap(text, width);
     void *lines = rt_seq_new();
 
@@ -129,10 +119,8 @@ void *rt_textwrap_wrap_lines(rt_string text, int64_t width)
     int64_t len = rt_str_len(wrapped);
     int64_t start = 0;
 
-    for (int64_t i = 0; i <= len; i++)
-    {
-        if (i == len || src[i] == '\n')
-        {
+    for (int64_t i = 0; i <= len; i++) {
+        if (i == len || src[i] == '\n') {
             rt_string line = rt_string_from_bytes(src + start, i - start);
             rt_seq_push(lines, (void *)line);
             start = i + 1;
@@ -146,8 +134,7 @@ void *rt_textwrap_wrap_lines(rt_string text, int64_t width)
 /// @param text
 /// @param width
 /// @return Result value.
-rt_string rt_textwrap_fill(rt_string text, int64_t width)
-{
+rt_string rt_textwrap_fill(rt_string text, int64_t width) {
     return rt_textwrap_wrap(text, width);
 }
 
@@ -159,8 +146,7 @@ rt_string rt_textwrap_fill(rt_string text, int64_t width)
 /// @param text
 /// @param prefix
 /// @return Result value.
-rt_string rt_textwrap_indent(rt_string text, rt_string prefix)
-{
+rt_string rt_textwrap_indent(rt_string text, rt_string prefix) {
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
     const char *pre = rt_string_cstr(prefix);
@@ -168,8 +154,7 @@ rt_string rt_textwrap_indent(rt_string text, rt_string prefix)
 
     // Count lines
     int64_t line_count = 1;
-    for (int64_t i = 0; i < src_len; i++)
-    {
+    for (int64_t i = 0; i < src_len; i++) {
         if (src[i] == '\n')
             line_count++;
     }
@@ -182,20 +167,16 @@ rt_string rt_textwrap_indent(rt_string text, rt_string prefix)
     int64_t result_pos = 0;
     int at_line_start = 1;
 
-    for (int64_t i = 0; i <= src_len; i++)
-    {
-        if (at_line_start)
-        {
+    for (int64_t i = 0; i <= src_len; i++) {
+        if (at_line_start) {
             memcpy(result + result_pos, pre, (size_t)pre_len);
             result_pos += pre_len;
             at_line_start = 0;
         }
 
-        if (i < src_len)
-        {
+        if (i < src_len) {
             result[result_pos++] = src[i];
-            if (src[i] == '\n')
-            {
+            if (src[i] == '\n') {
                 at_line_start = 1;
             }
         }
@@ -210,8 +191,7 @@ rt_string rt_textwrap_indent(rt_string text, rt_string prefix)
 /// @brief Perform textwrap dedent operation.
 /// @param text
 /// @return Result value.
-rt_string rt_textwrap_dedent(rt_string text)
-{
+rt_string rt_textwrap_dedent(rt_string text) {
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
 
@@ -220,34 +200,22 @@ rt_string rt_textwrap_dedent(rt_string text)
     int64_t current_indent = 0;
     int at_line_start = 1;
 
-    for (int64_t i = 0; i < src_len; i++)
-    {
-        if (at_line_start)
-        {
-            if (src[i] == ' ')
-            {
+    for (int64_t i = 0; i < src_len; i++) {
+        if (at_line_start) {
+            if (src[i] == ' ') {
                 current_indent++;
-            }
-            else if (src[i] == '\t')
-            {
+            } else if (src[i] == '\t') {
                 current_indent += 4; // Treat tab as 4 spaces
-            }
-            else if (src[i] == '\n')
-            {
+            } else if (src[i] == '\n') {
                 // Empty line, skip
                 current_indent = 0;
-            }
-            else
-            {
-                if (min_indent < 0 || current_indent < min_indent)
-                {
+            } else {
+                if (min_indent < 0 || current_indent < min_indent) {
                     min_indent = current_indent;
                 }
                 at_line_start = 0;
             }
-        }
-        else if (src[i] == '\n')
-        {
+        } else if (src[i] == '\n') {
             at_line_start = 1;
             current_indent = 0;
         }
@@ -265,12 +233,9 @@ rt_string rt_textwrap_dedent(rt_string text)
     int64_t skip_remaining = min_indent;
     at_line_start = 1;
 
-    for (int64_t i = 0; i < src_len; i++)
-    {
-        if (at_line_start)
-        {
-            if ((src[i] == ' ' || src[i] == '\t') && skip_remaining > 0)
-            {
+    for (int64_t i = 0; i < src_len; i++) {
+        if (at_line_start) {
+            if ((src[i] == ' ' || src[i] == '\t') && skip_remaining > 0) {
                 skip_remaining -= (src[i] == '\t') ? 4 : 1;
                 continue;
             }
@@ -279,8 +244,7 @@ rt_string rt_textwrap_dedent(rt_string text)
 
         result[result_pos++] = src[i];
 
-        if (src[i] == '\n')
-        {
+        if (src[i] == '\n') {
             at_line_start = 1;
             skip_remaining = min_indent;
         }
@@ -296,8 +260,7 @@ rt_string rt_textwrap_dedent(rt_string text)
 /// @param text
 /// @param prefix
 /// @return Result value.
-rt_string rt_textwrap_hang(rt_string text, rt_string prefix)
-{
+rt_string rt_textwrap_hang(rt_string text, rt_string prefix) {
     const char *src = rt_string_cstr(text);
     int64_t src_len = rt_str_len(text);
     const char *pre = rt_string_cstr(prefix);
@@ -305,8 +268,7 @@ rt_string rt_textwrap_hang(rt_string text, rt_string prefix)
 
     // Count lines
     int64_t line_count = 0;
-    for (int64_t i = 0; i < src_len; i++)
-    {
+    for (int64_t i = 0; i < src_len; i++) {
         if (src[i] == '\n')
             line_count++;
     }
@@ -319,18 +281,15 @@ rt_string rt_textwrap_hang(rt_string text, rt_string prefix)
     int64_t result_pos = 0;
     int first_line = 1;
 
-    for (int64_t i = 0; i < src_len; i++)
-    {
-        if (!first_line && (i == 0 || src[i - 1] == '\n'))
-        {
+    for (int64_t i = 0; i < src_len; i++) {
+        if (!first_line && (i == 0 || src[i - 1] == '\n')) {
             memcpy(result + result_pos, pre, (size_t)pre_len);
             result_pos += pre_len;
         }
 
         result[result_pos++] = src[i];
 
-        if (src[i] == '\n')
-        {
+        if (src[i] == '\n') {
             first_line = 0;
         }
     }
@@ -349,8 +308,7 @@ rt_string rt_textwrap_hang(rt_string text, rt_string prefix)
 /// @param text
 /// @param width
 /// @return Result value.
-rt_string rt_textwrap_truncate(rt_string text, int64_t width)
-{
+rt_string rt_textwrap_truncate(rt_string text, int64_t width) {
     return rt_textwrap_truncate_with(text, width, rt_const_cstr("..."));
 }
 
@@ -359,8 +317,7 @@ rt_string rt_textwrap_truncate(rt_string text, int64_t width)
 /// @param width
 /// @param suffix
 /// @return Result value.
-rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suffix)
-{
+rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suffix) {
     int64_t text_len = rt_str_len(text);
     int64_t suffix_len = rt_str_len(suffix);
 
@@ -379,8 +336,7 @@ rt_string rt_textwrap_truncate_with(rt_string text, int64_t width, rt_string suf
 /// @param text
 /// @param width
 /// @return Result value.
-rt_string rt_textwrap_shorten(rt_string text, int64_t width)
-{
+rt_string rt_textwrap_shorten(rt_string text, int64_t width) {
     int64_t text_len = rt_str_len(text);
 
     if (text_len <= width)
@@ -407,8 +363,7 @@ rt_string rt_textwrap_shorten(rt_string text, int64_t width)
 /// @param text
 /// @param width
 /// @return Result value.
-rt_string rt_textwrap_left(rt_string text, int64_t width)
-{
+rt_string rt_textwrap_left(rt_string text, int64_t width) {
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
         return text;
@@ -431,8 +386,7 @@ rt_string rt_textwrap_left(rt_string text, int64_t width)
 /// @param text
 /// @param width
 /// @return Result value.
-rt_string rt_textwrap_right(rt_string text, int64_t width)
-{
+rt_string rt_textwrap_right(rt_string text, int64_t width) {
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
         return text;
@@ -455,8 +409,7 @@ rt_string rt_textwrap_right(rt_string text, int64_t width)
 /// @param text
 /// @param width
 /// @return Result value.
-rt_string rt_textwrap_center(rt_string text, int64_t width)
-{
+rt_string rt_textwrap_center(rt_string text, int64_t width) {
     int64_t text_len = rt_str_len(text);
     if (text_len >= width)
         return text;
@@ -467,8 +420,7 @@ rt_string rt_textwrap_center(rt_string text, int64_t width)
 
     char *left_spaces = (char *)malloc((size_t)(left_pad + 1));
     char *right_spaces = (char *)malloc((size_t)(right_pad + 1));
-    if (!left_spaces || !right_spaces)
-    {
+    if (!left_spaces || !right_spaces) {
         if (left_spaces)
             free(left_spaces);
         if (right_spaces)
@@ -497,14 +449,12 @@ rt_string rt_textwrap_center(rt_string text, int64_t width)
 /// @brief Perform textwrap line count operation.
 /// @param text
 /// @return Result value.
-int64_t rt_textwrap_line_count(rt_string text)
-{
+int64_t rt_textwrap_line_count(rt_string text) {
     const char *src = rt_string_cstr(text);
     int64_t len = rt_str_len(text);
     int64_t count = 1;
 
-    for (int64_t i = 0; i < len; i++)
-    {
+    for (int64_t i = 0; i < len; i++) {
         if (src[i] == '\n')
             count++;
     }
@@ -515,23 +465,18 @@ int64_t rt_textwrap_line_count(rt_string text)
 /// @brief Perform textwrap max line len operation.
 /// @param text
 /// @return Result value.
-int64_t rt_textwrap_max_line_len(rt_string text)
-{
+int64_t rt_textwrap_max_line_len(rt_string text) {
     const char *src = rt_string_cstr(text);
     int64_t len = rt_str_len(text);
     int64_t max_len = 0;
     int64_t current_len = 0;
 
-    for (int64_t i = 0; i < len; i++)
-    {
-        if (src[i] == '\n')
-        {
+    for (int64_t i = 0; i < len; i++) {
+        if (src[i] == '\n') {
             if (current_len > max_len)
                 max_len = current_len;
             current_len = 0;
-        }
-        else
-        {
+        } else {
             current_len++;
         }
     }

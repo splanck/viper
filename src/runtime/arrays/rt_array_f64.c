@@ -44,8 +44,7 @@
 ///          memory and encodes length, capacity, and element kind.
 /// @param payload Array payload pointer or NULL.
 /// @return Heap header pointer, or NULL if @p payload is NULL.
-rt_heap_hdr_t *rt_arr_f64_hdr(const double *payload)
-{
+rt_heap_hdr_t *rt_arr_f64_hdr(const double *payload) {
     return payload ? rt_heap_hdr((void *)(uintptr_t)payload) : NULL;
 }
 
@@ -58,8 +57,7 @@ RT_ARR_DEFINE_PAYLOAD_BYTES_FN(rt_arr_f64_payload_bytes, double)
 ///          beyond the current logical length.
 /// @param arr Array payload pointer.
 /// @param idx Element index to validate.
-static void rt_arr_f64_validate_bounds(double *arr, size_t idx)
-{
+static void rt_arr_f64_validate_bounds(double *arr, size_t idx) {
     if (!arr)
         rt_arr_oob_panic(idx, 0);
 
@@ -75,16 +73,14 @@ static void rt_arr_f64_validate_bounds(double *arr, size_t idx)
 /// @details Allocates a runtime heap array with matching length and capacity.
 /// @param len Number of elements to allocate.
 /// @return Payload pointer or NULL on allocation failure.
-double *rt_arr_f64_new(size_t len)
-{
+double *rt_arr_f64_new(size_t len) {
     return (double *)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_F64, sizeof(double), len, len);
 }
 
 /// @brief Increment the reference count on the array payload.
 /// @details No-op when @p arr is NULL.
 /// @param arr Array payload pointer.
-void rt_arr_f64_retain(double *arr)
-{
+void rt_arr_f64_retain(double *arr) {
     if (!arr)
         return;
     rt_heap_hdr_t *hdr = rt_arr_f64_hdr(arr);
@@ -95,8 +91,7 @@ void rt_arr_f64_retain(double *arr)
 /// @brief Decrement the reference count and free on zero.
 /// @details No-op when @p arr is NULL.
 /// @param arr Array payload pointer.
-void rt_arr_f64_release(double *arr)
-{
+void rt_arr_f64_release(double *arr) {
     if (!arr)
         return;
     rt_heap_hdr_t *hdr = rt_arr_f64_hdr(arr);
@@ -108,8 +103,7 @@ void rt_arr_f64_release(double *arr)
 /// @details Returns 0 for NULL arrays for convenience.
 /// @param arr Array payload pointer (may be NULL).
 /// @return Number of elements in the array.
-size_t rt_arr_f64_len(double *arr)
-{
+size_t rt_arr_f64_len(double *arr) {
     if (!arr)
         return 0;
     rt_heap_hdr_t *hdr = rt_arr_f64_hdr(arr);
@@ -121,8 +115,7 @@ size_t rt_arr_f64_len(double *arr)
 /// @details Returns 0 for NULL arrays.
 /// @param arr Array payload pointer (may be NULL).
 /// @return Capacity in elements.
-size_t rt_arr_f64_cap(double *arr)
-{
+size_t rt_arr_f64_cap(double *arr) {
     if (!arr)
         return 0;
     rt_heap_hdr_t *hdr = rt_arr_f64_hdr(arr);
@@ -135,8 +128,7 @@ size_t rt_arr_f64_cap(double *arr)
 /// @param arr Array payload pointer.
 /// @param idx Element index to read.
 /// @return The element value at @p idx.
-double rt_arr_f64_get(double *arr, size_t idx)
-{
+double rt_arr_f64_get(double *arr, size_t idx) {
     rt_arr_f64_validate_bounds(arr, idx);
     return arr[idx];
 }
@@ -146,8 +138,7 @@ double rt_arr_f64_get(double *arr, size_t idx)
 /// @param arr Array payload pointer.
 /// @param idx Element index to write.
 /// @param value Value to store.
-void rt_arr_f64_set(double *arr, size_t idx, double value)
-{
+void rt_arr_f64_set(double *arr, size_t idx, double value) {
     rt_arr_f64_validate_bounds(arr, idx);
     arr[idx] = value;
 }
@@ -157,8 +148,7 @@ void rt_arr_f64_set(double *arr, size_t idx, double value)
 /// @param dst Destination payload pointer.
 /// @param src Source payload pointer.
 /// @param count Number of elements to copy.
-void rt_arr_f64_copy_payload(double *dst, const double *src, size_t count)
-{
+void rt_arr_f64_copy_payload(double *dst, const double *src, size_t count) {
     if (count == 0)
         return;
 

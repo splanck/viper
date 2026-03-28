@@ -22,8 +22,7 @@
 
 using namespace il::support;
 
-int main()
-{
+int main() {
     // Build a tiny module with a function named with a qualified identifier.
     il::core::Module m;
     il::build::IRBuilder b(m);

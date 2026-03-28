@@ -61,35 +61,30 @@
 #endif
 
 /// @brief Pixels implementation structure.
-typedef struct rt_pixels_impl
-{
+typedef struct rt_pixels_impl {
     int64_t width;  ///< Width in pixels.
     int64_t height; ///< Height in pixels.
     uint32_t *data; ///< Pixel storage (RGBA, row-major).
 } rt_pixels_impl;
 
 /// @brief Convert 0x00RRGGBB canvas color to 0xRRGGBBFF (fully-opaque RGBA).
-static inline uint32_t rgb_to_rgba(int64_t color)
-{
+static inline uint32_t rgb_to_rgba(int64_t color) {
     return (uint32_t)((color << 8) | 0xFF);
 }
 
 /// @brief Write one pixel with bounds check (no null check — caller ensures p is valid).
-static inline void set_pixel_raw(rt_pixels_impl *p, int64_t x, int64_t y, uint32_t c)
-{
+static inline void set_pixel_raw(rt_pixels_impl *p, int64_t x, int64_t y, uint32_t c) {
     if (x >= 0 && x < p->width && y >= 0 && y < p->height)
         p->data[y * p->width + x] = c;
 }
 
 /// @brief Integer square root (Newton's method, exact for perfect squares).
-static int64_t isqrt64(int64_t n)
-{
+static int64_t isqrt64(int64_t n) {
     if (n <= 0)
         return 0;
     int64_t x = n;
     int64_t y = (x + 1) / 2;
-    while (y < x)
-    {
+    while (y < x) {
         x = y;
         y = (x + n / x) / 2;
     }
@@ -97,8 +92,7 @@ static int64_t isqrt64(int64_t n)
 }
 
 /// @brief Allocate a new Pixels object.
-static rt_pixels_impl *pixels_alloc(int64_t width, int64_t height)
-{
+static rt_pixels_impl *pixels_alloc(int64_t width, int64_t height) {
     if (width < 0)
         width = 0;
     if (height < 0)
@@ -136,8 +130,7 @@ static rt_pixels_impl *pixels_alloc(int64_t width, int64_t height)
 // Constructors
 //=============================================================================
 
-void *rt_pixels_new(int64_t width, int64_t height)
-{
+void *rt_pixels_new(int64_t width, int64_t height) {
     return pixels_alloc(width, height);
 }
 
@@ -145,20 +138,16 @@ void *rt_pixels_new(int64_t width, int64_t height)
 // Property Accessors
 //=============================================================================
 
-int64_t rt_pixels_width(void *pixels)
-{
-    if (!pixels)
-    {
+int64_t rt_pixels_width(void *pixels) {
+    if (!pixels) {
         rt_trap("Pixels.Width: null pixels");
         return 0;
     }
     return ((rt_pixels_impl *)pixels)->width;
 }
 
-int64_t rt_pixels_height(void *pixels)
-{
-    if (!pixels)
-    {
+int64_t rt_pixels_height(void *pixels) {
+    if (!pixels) {
         rt_trap("Pixels.Height: null pixels");
         return 0;
     }
@@ -169,10 +158,8 @@ int64_t rt_pixels_height(void *pixels)
 // Pixel Access
 //=============================================================================
 
-int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y)
-{
-    if (!pixels)
-    {
+int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y) {
+    if (!pixels) {
         rt_trap("Pixels.Get: null pixels");
         return 0;
     }
@@ -186,10 +173,8 @@ int64_t rt_pixels_get(void *pixels, int64_t x, int64_t y)
     return (int64_t)p->data[idx];
 }
 
-void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color)
-{
-    if (!pixels)
-    {
+void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.Set: null pixels");
         return;
     }
@@ -207,10 +192,8 @@ void rt_pixels_set(void *pixels, int64_t x, int64_t y, int64_t color)
 // Fill Operations
 //=============================================================================
 
-void rt_pixels_fill(void *pixels, int64_t color)
-{
-    if (!pixels)
-    {
+void rt_pixels_fill(void *pixels, int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.Fill: null pixels");
         return;
     }
@@ -218,8 +201,7 @@ void rt_pixels_fill(void *pixels, int64_t color)
 
     uint32_t c = (uint32_t)color;
     int64_t count = p->width * p->height;
-    if (c == 0)
-    {
+    if (c == 0) {
         memset(p->data, 0, (size_t)count * sizeof(uint32_t));
         return;
     }
@@ -227,10 +209,8 @@ void rt_pixels_fill(void *pixels, int64_t color)
         p->data[i] = c;
 }
 
-void rt_pixels_clear(void *pixels)
-{
-    if (!pixels)
-    {
+void rt_pixels_clear(void *pixels) {
+    if (!pixels) {
         rt_trap("Pixels.Clear: null pixels");
         return;
     }
@@ -246,10 +226,8 @@ void rt_pixels_clear(void *pixels)
 //=============================================================================
 
 void rt_pixels_copy(
-    void *dst, int64_t dx, int64_t dy, void *src, int64_t sx, int64_t sy, int64_t w, int64_t h)
-{
-    if (!dst || !src)
-    {
+    void *dst, int64_t dx, int64_t dy, void *src, int64_t sx, int64_t sy, int64_t w, int64_t h) {
+    if (!dst || !src) {
         rt_trap("Pixels.Copy: null pixels");
         return;
     }
@@ -258,14 +236,12 @@ void rt_pixels_copy(
     rt_pixels_impl *s = (rt_pixels_impl *)src;
 
     // Clip source rectangle to source bounds
-    if (sx < 0)
-    {
+    if (sx < 0) {
         w += sx;
         dx -= sx;
         sx = 0;
     }
-    if (sy < 0)
-    {
+    if (sy < 0) {
         h += sy;
         dy -= sy;
         sy = 0;
@@ -276,14 +252,12 @@ void rt_pixels_copy(
         h = s->height - sy;
 
     // Clip destination rectangle to destination bounds
-    if (dx < 0)
-    {
+    if (dx < 0) {
         w += dx;
         sx -= dx;
         dx = 0;
     }
-    if (dy < 0)
-    {
+    if (dy < 0) {
         h += dy;
         sy -= dy;
         dy = 0;
@@ -302,8 +276,7 @@ void rt_pixels_copy(
     int copy_backwards = overlap && dy > sy;
 
     // Copy row by row. memmove is required for overlapping self-copies.
-    for (int64_t row_idx = 0; row_idx < h; row_idx++)
-    {
+    for (int64_t row_idx = 0; row_idx < h; row_idx++) {
         int64_t row = copy_backwards ? (h - 1 - row_idx) : row_idx;
         int64_t src_idx = (sy + row) * s->width + sx;
         int64_t dst_idx = (dy + row) * d->width + dx;
@@ -314,18 +287,15 @@ void rt_pixels_copy(
     }
 }
 
-void *rt_pixels_clone(void *pixels)
-{
-    if (!pixels)
-    {
+void *rt_pixels_clone(void *pixels) {
+    if (!pixels) {
         rt_trap("Pixels.Clone: null pixels");
         return NULL;
     }
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     rt_pixels_impl *clone = pixels_alloc(p->width, p->height);
-    if (p->data && clone->data)
-    {
+    if (p->data && clone->data) {
         size_t size = (size_t)(p->width * p->height) * sizeof(uint32_t);
         memcpy(clone->data, p->data, size);
     }
@@ -337,16 +307,13 @@ void *rt_pixels_clone(void *pixels)
 //=============================================================================
 
 // Forward declarations for Bytes internal structure access
-typedef struct rt_bytes_impl
-{
+typedef struct rt_bytes_impl {
     int64_t len;
     uint8_t *data;
 } rt_bytes_impl;
 
-void *rt_pixels_to_bytes(void *pixels)
-{
-    if (!pixels)
-    {
+void *rt_pixels_to_bytes(void *pixels) {
+    if (!pixels) {
         rt_trap("Pixels.ToBytes: null pixels");
         return NULL;
     }
@@ -355,8 +322,7 @@ void *rt_pixels_to_bytes(void *pixels)
     int64_t byte_count = p->width * p->height * 4; // 4 bytes per pixel (RGBA)
     void *bytes = rt_bytes_new(byte_count);
 
-    if (byte_count > 0 && p->data)
-    {
+    if (byte_count > 0 && p->data) {
         rt_bytes_impl *b = (rt_bytes_impl *)bytes;
         memcpy(b->data, p->data, (size_t)byte_count);
     }
@@ -364,10 +330,8 @@ void *rt_pixels_to_bytes(void *pixels)
     return bytes;
 }
 
-void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes)
-{
-    if (!bytes)
-    {
+void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes) {
+    if (!bytes) {
         rt_trap("Pixels.FromBytes: null bytes");
         return NULL;
     }
@@ -380,16 +344,14 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes)
     int64_t required_bytes = width * height * 4;
     int64_t available_bytes = rt_bytes_len(bytes);
 
-    if (available_bytes < required_bytes)
-    {
+    if (available_bytes < required_bytes) {
         rt_trap("Pixels.FromBytes: insufficient bytes");
         return NULL;
     }
 
     rt_pixels_impl *p = pixels_alloc(width, height);
 
-    if (required_bytes > 0 && p->data)
-    {
+    if (required_bytes > 0 && p->data) {
         rt_bytes_impl *b = (rt_bytes_impl *)bytes;
         memcpy(p->data, b->data, (size_t)required_bytes);
     }
@@ -404,8 +366,7 @@ void *rt_pixels_from_bytes(int64_t width, int64_t height, void *bytes)
 // BMP file format structures (packed)
 #pragma pack(push, 1)
 
-typedef struct bmp_file_header
-{
+typedef struct bmp_file_header {
     uint8_t magic[2];     // 'B', 'M'
     uint32_t file_size;   // Total file size
     uint16_t reserved1;   // 0
@@ -413,8 +374,7 @@ typedef struct bmp_file_header
     uint32_t data_offset; // Offset to pixel data
 } bmp_file_header;
 
-typedef struct bmp_info_header
-{
+typedef struct bmp_info_header {
     uint32_t header_size;      // 40 for BITMAPINFOHEADER
     int32_t width;             // Image width
     int32_t height;            // Image height (positive = bottom-up)
@@ -430,8 +390,7 @@ typedef struct bmp_info_header
 
 #pragma pack(pop)
 
-void *rt_pixels_load_bmp(void *path)
-{
+void *rt_pixels_load_bmp(void *path) {
     if (!path)
         return NULL;
 
@@ -469,8 +428,7 @@ void *rt_pixels_load_bmp(void *path)
     int bottom_up = 1;
 
     // Handle negative height (top-down)
-    if (height < 0)
-    {
+    if (height < 0) {
         height = -height;
         bottom_up = 0;
     }
@@ -492,17 +450,14 @@ void *rt_pixels_load_bmp(void *path)
         goto bmp_cleanup;
 
     // Seek to pixel data
-    if (fseek(f, (long)file_hdr.data_offset, SEEK_SET) != 0)
-    {
+    if (fseek(f, (long)file_hdr.data_offset, SEEK_SET) != 0) {
         pixels = NULL; // signal failure; pixels_alloc object is GC-managed
         goto bmp_cleanup;
     }
 
     // Read pixel data
-    for (int32_t y = 0; y < height; y++)
-    {
-        if (fread(row_buf, 1, (size_t)row_size, f) != (size_t)row_size)
-        {
+    for (int32_t y = 0; y < height; y++) {
+        if (fread(row_buf, 1, (size_t)row_size, f) != (size_t)row_size) {
             pixels = NULL;
             goto bmp_cleanup;
         }
@@ -512,8 +467,7 @@ void *rt_pixels_load_bmp(void *path)
         uint32_t *dst_row = pixels->data + dst_y * width;
 
         // Convert BGR to RGBA
-        for (int32_t x = 0; x < width; x++)
-        {
+        for (int32_t x = 0; x < width; x++) {
             uint8_t b = row_buf[x * 3 + 0];
             uint8_t g = row_buf[x * 3 + 1];
             uint8_t r = row_buf[x * 3 + 2];
@@ -528,8 +482,7 @@ bmp_cleanup:
     return pixels;
 }
 
-int64_t rt_pixels_save_bmp(void *pixels, void *path)
-{
+int64_t rt_pixels_save_bmp(void *pixels, void *path) {
     if (!pixels || !path)
         return 0;
 
@@ -567,8 +520,7 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path)
         .reserved2 = 0,
         .data_offset = 54,
     };
-    if (fwrite(&file_hdr, sizeof(file_hdr), 1, f) != 1)
-    {
+    if (fwrite(&file_hdr, sizeof(file_hdr), 1, f) != 1) {
         fclose(f);
         return 0;
     }
@@ -587,28 +539,24 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path)
         .colors_used = 0,
         .colors_important = 0,
     };
-    if (fwrite(&info_hdr, sizeof(info_hdr), 1, f) != 1)
-    {
+    if (fwrite(&info_hdr, sizeof(info_hdr), 1, f) != 1) {
         fclose(f);
         return 0;
     }
 
     // Allocate row buffer
     uint8_t *row_buf = (uint8_t *)calloc(1, (size_t)row_size);
-    if (!row_buf)
-    {
+    if (!row_buf) {
         fclose(f);
         return 0;
     }
 
     // Write pixel data (bottom-up)
-    for (int32_t y = height - 1; y >= 0; y--)
-    {
+    for (int32_t y = height - 1; y >= 0; y--) {
         uint32_t *src_row = p->data + y * width;
 
         // Convert RGBA to BGR
-        for (int32_t x = 0; x < width; x++)
-        {
+        for (int32_t x = 0; x < width; x++) {
             uint32_t pixel = src_row[x];
             // Pixel format is 0xRRGGBBAA
             row_buf[x * 3 + 0] = (uint8_t)((pixel >> 8) & 0xFF);  // B
@@ -620,8 +568,7 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path)
         for (int i = 0; i < padding; i++)
             row_buf[width * 3 + i] = 0;
 
-        if (fwrite(row_buf, 1, (size_t)row_size, f) != (size_t)row_size)
-        {
+        if (fwrite(row_buf, 1, (size_t)row_size, f) != (size_t)row_size) {
             free(row_buf);
             fclose(f);
             return 0;
@@ -639,14 +586,12 @@ int64_t rt_pixels_save_bmp(void *pixels, void *path)
 //=============================================================================
 
 // PNG uses big-endian integers
-static uint32_t png_read_u32(const uint8_t *p)
-{
+static uint32_t png_read_u32(const uint8_t *p) {
     return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
 // Paeth predictor as defined by the PNG spec
-static uint8_t paeth_predict(uint8_t a, uint8_t b, uint8_t c)
-{
+static uint8_t paeth_predict(uint8_t a, uint8_t b, uint8_t c) {
     int p = (int)a + (int)b - (int)c;
     int pa = p > (int)a ? p - (int)a : (int)a - p;
     int pb = p > (int)b ? p - (int)b : (int)b - p;
@@ -658,8 +603,7 @@ static uint8_t paeth_predict(uint8_t a, uint8_t b, uint8_t c)
     return c;
 }
 
-void *rt_pixels_load_png(void *path)
-{
+void *rt_pixels_load_png(void *path) {
     if (!path)
         return NULL;
 
@@ -675,20 +619,17 @@ void *rt_pixels_load_png(void *path)
     px_fseek(f, 0, SEEK_END);
     int64_t file_len = px_ftell(f);
     px_fseek(f, 0, SEEK_SET);
-    if (file_len < 8 || file_len > 256 * 1024 * 1024)
-    {
+    if (file_len < 8 || file_len > 256 * 1024 * 1024) {
         fclose(f);
         return NULL;
     }
 
     uint8_t *file_data = (uint8_t *)malloc((size_t)file_len);
-    if (!file_data)
-    {
+    if (!file_data) {
         fclose(f);
         return NULL;
     }
-    if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len)
-    {
+    if (fread(file_data, 1, (size_t)file_len, f) != (size_t)file_len) {
         free(file_data);
         fclose(f);
         return NULL;
@@ -697,8 +638,7 @@ void *rt_pixels_load_png(void *path)
 
     // Verify PNG signature
     static const uint8_t png_sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
-    if (memcmp(file_data, png_sig, 8) != 0)
-    {
+    if (memcmp(file_data, png_sig, 8) != 0) {
         free(file_data);
         return NULL;
     }
@@ -711,8 +651,7 @@ void *rt_pixels_load_png(void *path)
     size_t idat_cap = 0;
     size_t pos = 8;
 
-    while (pos + 12 <= (size_t)file_len)
-    {
+    while (pos + 12 <= (size_t)file_len) {
         uint32_t chunk_len = png_read_u32(file_data + pos);
         const uint8_t *chunk_type = file_data + pos + 4;
         const uint8_t *chunk_data = file_data + pos + 8;
@@ -720,23 +659,19 @@ void *rt_pixels_load_png(void *path)
         if (pos + 12 + chunk_len > (size_t)file_len)
             break;
 
-        if (memcmp(chunk_type, "IHDR", 4) == 0 && chunk_len >= 13)
-        {
+        if (memcmp(chunk_type, "IHDR", 4) == 0 && chunk_len >= 13) {
             width = png_read_u32(chunk_data);
             height = png_read_u32(chunk_data + 4);
             bit_depth = chunk_data[8];
             color_type = chunk_data[9];
             // Only support 8-bit RGB (2) and RGBA (6)
-            if (bit_depth != 8 || (color_type != 2 && color_type != 6))
-            {
+            if (bit_depth != 8 || (color_type != 2 && color_type != 6)) {
                 free(file_data);
                 if (idat_buf)
                     free(idat_buf);
                 return NULL;
             }
-        }
-        else if (memcmp(chunk_type, "IDAT", 4) == 0)
-        {
+        } else if (memcmp(chunk_type, "IDAT", 4) == 0) {
             // Accumulate IDAT data
             if (chunk_len > SIZE_MAX - idat_len) // overflow guard
             {
@@ -745,12 +680,10 @@ void *rt_pixels_load_png(void *path)
                     free(idat_buf);
                 return NULL;
             }
-            if (idat_len + chunk_len > idat_cap)
-            {
+            if (idat_len + chunk_len > idat_cap) {
                 idat_cap = (idat_len + chunk_len) * 2;
                 uint8_t *new_buf = (uint8_t *)realloc(idat_buf, idat_cap);
-                if (!new_buf)
-                {
+                if (!new_buf) {
                     free(file_data);
                     if (idat_buf)
                         free(idat_buf);
@@ -760,9 +693,7 @@ void *rt_pixels_load_png(void *path)
             }
             memcpy(idat_buf + idat_len, chunk_data, chunk_len);
             idat_len += chunk_len;
-        }
-        else if (memcmp(chunk_type, "IEND", 4) == 0)
-        {
+        } else if (memcmp(chunk_type, "IEND", 4) == 0) {
             break;
         }
 
@@ -771,8 +702,7 @@ void *rt_pixels_load_png(void *path)
 
     free(file_data);
 
-    if (width == 0 || height == 0 || !idat_buf || idat_len < 2)
-    {
+    if (width == 0 || height == 0 || !idat_buf || idat_len < 2) {
         if (idat_buf)
             free(idat_buf);
         return NULL;
@@ -781,8 +711,7 @@ void *rt_pixels_load_png(void *path)
     // IDAT data is a zlib stream: 2-byte header + DEFLATE data + 4-byte Adler32
     // Skip the 2-byte zlib header and use our DEFLATE decompressor
     size_t deflate_len = idat_len - 2; // skip zlib header, ignore trailing adler32
-    if (deflate_len <= 4)
-    {
+    if (deflate_len <= 4) {
         free(idat_buf);
         return NULL;
     }
@@ -790,16 +719,14 @@ void *rt_pixels_load_png(void *path)
 
     // Create a Bytes object with the raw DEFLATE data for rt_compress_inflate
     void *comp_bytes = rt_bytes_new((int64_t)deflate_len);
-    if (!comp_bytes)
-    {
+    if (!comp_bytes) {
         free(idat_buf);
         return NULL;
     }
     // Copy deflate data (skip 2-byte zlib header)
     {
         // Access internal bytes data
-        typedef struct
-        {
+        typedef struct {
             int64_t len;
             uint8_t *data;
         } bytes_t;
@@ -820,8 +747,7 @@ void *rt_pixels_load_png(void *path)
         goto cleanup;
 
     // Access decompressed data
-    typedef struct
-    {
+    typedef struct {
         int64_t len;
         uint8_t *data;
     } bytes_t;
@@ -846,22 +772,19 @@ void *rt_pixels_load_png(void *path)
     if (!img)
         goto cleanup;
 
-    for (uint32_t y = 0; y < height; y++)
-    {
+    for (uint32_t y = 0; y < height; y++) {
         uint8_t filter = scanlines[y * (stride + 1)];
         const uint8_t *src = scanlines + y * (stride + 1) + 1;
         uint8_t *dst = img + y * stride;
         const uint8_t *prev = (y > 0) ? img + (y - 1) * stride : NULL;
 
-        for (size_t i = 0; i < stride; i++)
-        {
+        for (size_t i = 0; i < stride; i++) {
             uint8_t raw_byte = src[i];
             uint8_t a = (i >= (size_t)channels) ? dst[i - channels] : 0;
             uint8_t b_val = prev ? prev[i] : 0;
             uint8_t c = (prev && i >= (size_t)channels) ? prev[i - channels] : 0;
 
-            switch (filter)
-            {
+            switch (filter) {
                 case 0: // None
                     dst[i] = raw_byte;
                     break;
@@ -888,10 +811,8 @@ void *rt_pixels_load_png(void *path)
     if (!pixels)
         goto cleanup;
 
-    for (uint32_t y = 0; y < height; y++)
-    {
-        for (uint32_t x = 0; x < width; x++)
-        {
+    for (uint32_t y = 0; y < height; y++) {
+        for (uint32_t x = 0; x < width; x++) {
             const uint8_t *px = img + (y * stride) + x * channels;
             uint8_t r = px[0];
             uint8_t g = px[1];
@@ -904,21 +825,18 @@ void *rt_pixels_load_png(void *path)
 
 cleanup:
     free(img);
-    if (raw_bytes)
-    {
+    if (raw_bytes) {
         rt_obj_release_check0(raw_bytes);
         rt_obj_free(raw_bytes);
     }
-    if (comp_bytes)
-    {
+    if (comp_bytes) {
         rt_obj_release_check0(comp_bytes);
         rt_obj_free(comp_bytes);
     }
     return pixels;
 }
 
-int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
-{
+int64_t rt_pixels_save_png(void *pixels_ptr, void *path) {
     if (!pixels_ptr || !path)
         return 0;
 
@@ -939,23 +857,18 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
     if (!raw)
         return 0;
 
-    for (uint32_t y = 0; y < h; y++)
-    {
+    for (uint32_t y = 0; y < h; y++) {
         uint8_t *dst = raw + y * (stride + 1) + 1;
-        for (uint32_t x = 0; x < w; x++)
-        {
+        for (uint32_t x = 0; x < w; x++) {
             uint32_t pixel = p->data[y * w + x];
             dst[x * 4 + 0] = (uint8_t)((pixel >> 24) & 0xFF); // R
             dst[x * 4 + 1] = (uint8_t)((pixel >> 16) & 0xFF); // G
             dst[x * 4 + 2] = (uint8_t)((pixel >> 8) & 0xFF);  // B
             dst[x * 4 + 3] = (uint8_t)(pixel & 0xFF);         // A
         }
-        if (y == 0)
-        {
+        if (y == 0) {
             raw[y * (stride + 1)] = 0; // Filter: None (no left neighbor for first row)
-        }
-        else
-        {
+        } else {
             raw[y * (stride + 1)] = 1; // Filter: Sub
             for (int32_t i = stride - 1; i >= 4; i--)
                 dst[i] -= dst[i - 4]; // Sub: each byte minus byte at same position 4 bytes left
@@ -966,14 +879,12 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
     // All error paths after raw_bytes/comp_bytes allocation must go through
     // cleanup to release these GC-managed objects (refcount=1).
     void *raw_bytes = rt_bytes_new((int64_t)raw_len);
-    if (!raw_bytes)
-    {
+    if (!raw_bytes) {
         free(raw);
         return 0;
     }
     {
-        typedef struct
-        {
+        typedef struct {
             int64_t len;
             uint8_t *data;
         } bytes_t;
@@ -992,8 +903,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
     if (!comp_bytes)
         goto save_cleanup;
 
-    typedef struct
-    {
+    typedef struct {
         int64_t len;
         uint8_t *data;
     } bytes_t;
@@ -1015,8 +925,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
     {
         bytes_t *raw_b = (bytes_t *)raw_bytes;
         uint32_t a = 1, b_v = 0;
-        for (int64_t i = 0; i < raw_b->len; i++)
-        {
+        for (int64_t i = 0; i < raw_b->len; i++) {
             a = (a + raw_b->data[i]) % 65521;
             b_v = (b_v + a) % 65521;
         }
@@ -1071,8 +980,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
 
 // Helper: compute CRC over type + data
 #define PNG_CRC(type_data, len)                                                                    \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         uint32_t crc = 0xFFFFFFFF;                                                                 \
         for (size_t _i = 0; _i < (size_t)(len); _i++)                                              \
             crc = crc_table[(crc ^ (type_data)[_i]) & 0xFF] ^ (crc >> 8);                          \
@@ -1092,8 +1000,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
         write_ok = 0;
 
     // Write IHDR chunk
-    if (write_ok)
-    {
+    if (write_ok) {
         uint8_t ihdr[13];
         ihdr[0] = (uint8_t)(w >> 24);
         ihdr[1] = (uint8_t)(w >> 16);
@@ -1130,8 +1037,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
     }
 
     // Write IDAT chunk
-    if (write_ok)
-    {
+    if (write_ok) {
         uint8_t len_buf[4] = {(uint8_t)(zlib_len >> 24),
                               (uint8_t)(zlib_len >> 16),
                               (uint8_t)(zlib_len >> 8),
@@ -1160,8 +1066,7 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
     }
 
     // Write IEND chunk
-    if (write_ok)
-    {
+    if (write_ok) {
         uint8_t iend[12] = {0, 0, 0, 0, 'I', 'E', 'N', 'D', 0xAE, 0x42, 0x60, 0x82};
         if (fwrite(iend, 1, 12, out) != 12)
             write_ok = 0;
@@ -1172,21 +1077,18 @@ int64_t rt_pixels_save_png(void *pixels_ptr, void *path)
 save_cleanup:
 #undef PNG_CRC
     free(zlib_data);
-    if (out)
-    {
+    if (out) {
         fflush(out);
         fclose(out);
         // Remove corrupt PNG if write failed partway through
         if (!result)
             remove(filepath);
     }
-    if (comp_bytes)
-    {
+    if (comp_bytes) {
         rt_obj_release_check0(comp_bytes);
         rt_obj_free(comp_bytes);
     }
-    if (raw_bytes)
-    {
+    if (raw_bytes) {
         rt_obj_release_check0(raw_bytes);
         rt_obj_free(raw_bytes);
     }
@@ -1197,10 +1099,8 @@ save_cleanup:
 // Image Transforms
 //=============================================================================
 
-void *rt_pixels_flip_h(void *pixels)
-{
-    if (!pixels)
-    {
+void *rt_pixels_flip_h(void *pixels) {
+    if (!pixels) {
         rt_trap("Pixels.FlipH: null pixels");
         return NULL;
     }
@@ -1208,11 +1108,9 @@ void *rt_pixels_flip_h(void *pixels)
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     // Flip in place: swap pixels symmetrically within each row
-    for (int64_t y = 0; y < p->height; y++)
-    {
+    for (int64_t y = 0; y < p->height; y++) {
         uint32_t *row = p->data + y * p->width;
-        for (int64_t x = 0; x < p->width / 2; x++)
-        {
+        for (int64_t x = 0; x < p->width / 2; x++) {
             uint32_t tmp = row[x];
             row[x] = row[p->width - 1 - x];
             row[p->width - 1 - x] = tmp;
@@ -1222,10 +1120,8 @@ void *rt_pixels_flip_h(void *pixels)
     return pixels; // Return self for chaining
 }
 
-void *rt_pixels_flip_v(void *pixels)
-{
-    if (!pixels)
-    {
+void *rt_pixels_flip_v(void *pixels) {
+    if (!pixels) {
         rt_trap("Pixels.FlipV: null pixels");
         return NULL;
     }
@@ -1238,8 +1134,7 @@ void *rt_pixels_flip_v(void *pixels)
     if (!tmp_row)
         return pixels;
 
-    for (int64_t y = 0; y < p->height / 2; y++)
-    {
+    for (int64_t y = 0; y < p->height / 2; y++) {
         uint32_t *top = p->data + y * p->width;
         uint32_t *bot = p->data + (p->height - 1 - y) * p->width;
         memcpy(tmp_row, top, row_bytes);
@@ -1251,10 +1146,8 @@ void *rt_pixels_flip_v(void *pixels)
     return pixels; // Return self for chaining
 }
 
-void *rt_pixels_rotate_cw(void *pixels)
-{
-    if (!pixels)
-    {
+void *rt_pixels_rotate_cw(void *pixels) {
+    if (!pixels) {
         rt_trap("Pixels.RotateCW: null pixels");
         return NULL;
     }
@@ -1271,10 +1164,8 @@ void *rt_pixels_rotate_cw(void *pixels)
 
     // Rotate 90 CW: src[x,y] -> dst[height-1-y, x]
     // In terms of new coords: dst[x',y'] = src[y', width-1-x']
-    for (int64_t y = 0; y < p->height; y++)
-    {
-        for (int64_t x = 0; x < p->width; x++)
-        {
+    for (int64_t y = 0; y < p->height; y++) {
+        for (int64_t x = 0; x < p->width; x++) {
             uint32_t pixel = p->data[y * p->width + x];
             // New position: (height-1-y, x) in new coordinate system
             int64_t new_x = p->height - 1 - y;
@@ -1286,10 +1177,8 @@ void *rt_pixels_rotate_cw(void *pixels)
     return result;
 }
 
-void *rt_pixels_rotate_ccw(void *pixels)
-{
-    if (!pixels)
-    {
+void *rt_pixels_rotate_ccw(void *pixels) {
+    if (!pixels) {
         rt_trap("Pixels.RotateCCW: null pixels");
         return NULL;
     }
@@ -1305,10 +1194,8 @@ void *rt_pixels_rotate_ccw(void *pixels)
         return NULL;
 
     // Rotate 90 CCW: src[x,y] -> dst[y, width-1-x]
-    for (int64_t y = 0; y < p->height; y++)
-    {
-        for (int64_t x = 0; x < p->width; x++)
-        {
+    for (int64_t y = 0; y < p->height; y++) {
+        for (int64_t x = 0; x < p->width; x++) {
             uint32_t pixel = p->data[y * p->width + x];
             // New position: (y, width-1-x) in new coordinate system
             int64_t new_x = y;
@@ -1320,10 +1207,8 @@ void *rt_pixels_rotate_ccw(void *pixels)
     return result;
 }
 
-void *rt_pixels_rotate_180(void *pixels)
-{
-    if (!pixels)
-    {
+void *rt_pixels_rotate_180(void *pixels) {
+    if (!pixels) {
         rt_trap("Pixels.Rotate180: null pixels");
         return NULL;
     }
@@ -1335,18 +1220,15 @@ void *rt_pixels_rotate_180(void *pixels)
 
     // Rotate 180: src[x,y] -> dst[width-1-x, height-1-y]
     int64_t total = p->width * p->height;
-    for (int64_t i = 0; i < total; i++)
-    {
+    for (int64_t i = 0; i < total; i++) {
         result->data[total - 1 - i] = p->data[i];
     }
 
     return result;
 }
 
-void *rt_pixels_rotate(void *pixels, double angle_degrees)
-{
-    if (!pixels)
-    {
+void *rt_pixels_rotate(void *pixels, double angle_degrees) {
+    if (!pixels) {
         rt_trap("Pixels.Rotate: null pixels");
         return NULL;
     }
@@ -1363,8 +1245,7 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees)
         angle_degrees -= 360.0;
 
     // Fast paths for common angles
-    if (fabs(angle_degrees) < 0.001 || fabs(angle_degrees - 360.0) < 0.001)
-    {
+    if (fabs(angle_degrees) < 0.001 || fabs(angle_degrees - 360.0) < 0.001) {
         // No rotation - return a copy
         rt_pixels_impl *result = pixels_alloc(p->width, p->height);
         if (!result)
@@ -1399,8 +1280,7 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees)
 
     double min_x = corners[0][0], max_x = corners[0][0];
     double min_y = corners[0][1], max_y = corners[0][1];
-    for (int i = 1; i < 4; i++)
-    {
+    for (int i = 1; i < 4; i++) {
         if (corners[i][0] < min_x)
             min_x = corners[i][0];
         if (corners[i][0] > max_x)
@@ -1430,10 +1310,8 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees)
     double new_hh = new_height / 2.0;
 
     // For each destination pixel, find source pixel using inverse rotation
-    for (int64_t dy = 0; dy < new_height; dy++)
-    {
-        for (int64_t dx = 0; dx < new_width; dx++)
-        {
+    for (int64_t dy = 0; dy < new_height; dy++) {
+        for (int64_t dx = 0; dx < new_width; dx++) {
             // Destination position relative to new center
             double dx_c = dx - new_hw;
             double dy_c = dy - new_hh;
@@ -1504,10 +1382,8 @@ void *rt_pixels_rotate(void *pixels, double angle_degrees)
     return result;
 }
 
-void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height)
-{
-    if (!pixels)
-    {
+void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height) {
+    if (!pixels) {
         rt_trap("Pixels.Scale: null pixels");
         return NULL;
     }
@@ -1520,8 +1396,7 @@ void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height)
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     // Handle empty source
-    if (p->width <= 0 || p->height <= 0)
-    {
+    if (p->width <= 0 || p->height <= 0) {
         return pixels_alloc(new_width, new_height);
     }
 
@@ -1530,8 +1405,7 @@ void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height)
         return NULL;
 
     // Nearest-neighbor scaling
-    for (int64_t y = 0; y < new_height; y++)
-    {
+    for (int64_t y = 0; y < new_height; y++) {
         // Map destination y to source y
         int64_t src_y = (y * p->height) / new_height;
         if (src_y >= p->height)
@@ -1540,8 +1414,7 @@ void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height)
         uint32_t *src_row = p->data + src_y * p->width;
         uint32_t *dst_row = result->data + y * new_width;
 
-        for (int64_t x = 0; x < new_width; x++)
-        {
+        for (int64_t x = 0; x < new_width; x++) {
             // Map destination x to source x
             int64_t src_x = (x * p->width) / new_width;
             if (src_x >= p->width)
@@ -1558,10 +1431,8 @@ void *rt_pixels_scale(void *pixels, int64_t new_width, int64_t new_height)
 // Image Processing
 //=============================================================================
 
-void *rt_pixels_invert(void *pixels)
-{
-    if (!pixels)
-    {
+void *rt_pixels_invert(void *pixels) {
+    if (!pixels) {
         rt_trap("Pixels.Invert: null pixels");
         return NULL;
     }
@@ -1572,8 +1443,7 @@ void *rt_pixels_invert(void *pixels)
         return NULL;
 
     int64_t count = p->width * p->height;
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         uint32_t px = p->data[i];
         // Format is 0xRRGGBBAA - invert RGB, keep alpha
         uint8_t r = (px >> 24) & 0xFF;
@@ -1587,10 +1457,8 @@ void *rt_pixels_invert(void *pixels)
     return result;
 }
 
-void *rt_pixels_grayscale(void *pixels)
-{
-    if (!pixels)
-    {
+void *rt_pixels_grayscale(void *pixels) {
+    if (!pixels) {
         rt_trap("Pixels.Grayscale: null pixels");
         return NULL;
     }
@@ -1601,8 +1469,7 @@ void *rt_pixels_grayscale(void *pixels)
         return NULL;
 
     int64_t count = p->width * p->height;
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         uint32_t px = p->data[i];
         // Format is 0xRRGGBBAA
         uint8_t r = (px >> 24) & 0xFF;
@@ -1619,10 +1486,8 @@ void *rt_pixels_grayscale(void *pixels)
     return result;
 }
 
-void *rt_pixels_tint(void *pixels, int64_t color)
-{
-    if (!pixels)
-    {
+void *rt_pixels_tint(void *pixels, int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.Tint: null pixels");
         return NULL;
     }
@@ -1638,8 +1503,7 @@ void *rt_pixels_tint(void *pixels, int64_t color)
     int64_t tb = color & 0xFF;
 
     int64_t count = p->width * p->height;
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         uint32_t px = p->data[i];
         // Format is 0xRRGGBBAA
         int64_t r = (px >> 24) & 0xFF;
@@ -1659,10 +1523,8 @@ void *rt_pixels_tint(void *pixels, int64_t color)
     return result;
 }
 
-void *rt_pixels_blur(void *pixels, int64_t radius)
-{
-    if (!pixels)
-    {
+void *rt_pixels_blur(void *pixels, int64_t radius) {
+    if (!pixels) {
         rt_trap("Pixels.Blur: null pixels");
         return NULL;
     }
@@ -1687,17 +1549,13 @@ void *rt_pixels_blur(void *pixels, int64_t radius)
         return result; // return zero-filled result on OOM
 
     // Horizontal pass: blur each row independently into tmp
-    for (int64_t y = 0; y < h; y++)
-    {
-        for (int64_t x = 0; x < w; x++)
-        {
+    for (int64_t y = 0; y < h; y++) {
+        for (int64_t x = 0; x < w; x++) {
             int64_t sum_r = 0, sum_g = 0, sum_b = 0, sum_a = 0;
             int64_t count = 0;
-            for (int64_t kdx = -radius; kdx <= radius; kdx++)
-            {
+            for (int64_t kdx = -radius; kdx <= radius; kdx++) {
                 int64_t sx = x + kdx;
-                if (sx >= 0 && sx < w)
-                {
+                if (sx >= 0 && sx < w) {
                     uint32_t pixel = p->data[y * w + sx];
                     sum_a += (pixel >> 24) & 0xFF;
                     sum_r += (pixel >> 16) & 0xFF;
@@ -1714,17 +1572,13 @@ void *rt_pixels_blur(void *pixels, int64_t radius)
     }
 
     // Vertical pass: blur each column from tmp into result (y-outer for cache locality)
-    for (int64_t y = 0; y < h; y++)
-    {
-        for (int64_t x = 0; x < w; x++)
-        {
+    for (int64_t y = 0; y < h; y++) {
+        for (int64_t x = 0; x < w; x++) {
             int64_t sum_r = 0, sum_g = 0, sum_b = 0, sum_a = 0;
             int64_t count = 0;
-            for (int64_t kdy = -radius; kdy <= radius; kdy++)
-            {
+            for (int64_t kdy = -radius; kdy <= radius; kdy++) {
                 int64_t sy = y + kdy;
-                if (sy >= 0 && sy < h)
-                {
+                if (sy >= 0 && sy < h) {
                     uint32_t pixel = tmp[sy * w + x];
                     sum_a += (pixel >> 24) & 0xFF;
                     sum_r += (pixel >> 16) & 0xFF;
@@ -1744,10 +1598,8 @@ void *rt_pixels_blur(void *pixels, int64_t radius)
     return result;
 }
 
-void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height)
-{
-    if (!pixels)
-    {
+void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height) {
+    if (!pixels) {
         rt_trap("Pixels.Resize: null pixels");
         return NULL;
     }
@@ -1760,8 +1612,7 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height)
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
 
     // Handle empty source
-    if (p->width <= 0 || p->height <= 0)
-    {
+    if (p->width <= 0 || p->height <= 0) {
         return pixels_alloc(new_width, new_height);
     }
 
@@ -1770,8 +1621,7 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height)
         return NULL;
 
     // Bilinear interpolation scaling
-    for (int64_t y = 0; y < new_height; y++)
-    {
+    for (int64_t y = 0; y < new_height; y++) {
         // Map destination y to source y (with fractional part)
         int64_t src_y_256 = (y * p->height * 256) / new_height;
         int64_t src_y = src_y_256 >> 8;
@@ -1785,8 +1635,7 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height)
         if (src_y >= p->height - 1)
             frac_y = 255;
 
-        for (int64_t x = 0; x < new_width; x++)
-        {
+        for (int64_t x = 0; x < new_width; x++) {
             // Map destination x to source x (with fractional part)
             int64_t src_x_256 = (x * p->width * 256) / new_width;
             int64_t src_x = src_x_256 >> 8;
@@ -1846,21 +1695,17 @@ void *rt_pixels_resize(void *pixels, int64_t new_width, int64_t new_height)
 // Drawing Primitives  (color format: 0x00RRGGBB — Canvas-compatible)
 //=============================================================================
 
-void rt_pixels_set_rgb(void *pixels, int64_t x, int64_t y, int64_t color)
-{
+void rt_pixels_set_rgb(void *pixels, int64_t x, int64_t y, int64_t color) {
     rt_pixels_set(pixels, x, y, (color << 8) | 0xFF);
 }
 
-int64_t rt_pixels_get_rgb(void *pixels, int64_t x, int64_t y)
-{
+int64_t rt_pixels_get_rgb(void *pixels, int64_t x, int64_t y) {
     return rt_pixels_get(pixels, x, y) >> 8;
 }
 
 void rt_pixels_draw_line(
-    void *pixels, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color)
-{
-    if (!pixels)
-    {
+    void *pixels, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.DrawLine: null pixels");
         return;
     }
@@ -1878,29 +1723,24 @@ void rt_pixels_draw_line(
     int64_t x = x1;
     int64_t y = y1;
 
-    for (;;)
-    {
+    for (;;) {
         set_pixel_raw(p, x, y, rgba);
         if (x == x2 && y == y2)
             break;
         int64_t e2 = err * 2;
-        if (e2 > -ady)
-        {
+        if (e2 > -ady) {
             err -= ady;
             x += sx;
         }
-        if (e2 < adx)
-        {
+        if (e2 < adx) {
             err += adx;
             y += sy;
         }
     }
 }
 
-void rt_pixels_draw_box(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
-{
-    if (!pixels)
-    {
+void rt_pixels_draw_box(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.DrawBox: null pixels");
         return;
     }
@@ -1922,10 +1762,8 @@ void rt_pixels_draw_box(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h
             p->data[row * p->width + col] = rgba;
 }
 
-void rt_pixels_draw_frame(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color)
-{
-    if (!pixels)
-    {
+void rt_pixels_draw_frame(void *pixels, int64_t x, int64_t y, int64_t w, int64_t h, int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.DrawFrame: null pixels");
         return;
     }
@@ -1936,23 +1774,19 @@ void rt_pixels_draw_frame(void *pixels, int64_t x, int64_t y, int64_t w, int64_t
         return;
 
     // Top and bottom rows
-    for (int64_t col = x; col < x + w; col++)
-    {
+    for (int64_t col = x; col < x + w; col++) {
         set_pixel_raw(p, col, y, rgba);
         set_pixel_raw(p, col, y + h - 1, rgba);
     }
     // Left and right columns (skip corners already drawn)
-    for (int64_t row = y + 1; row < y + h - 1; row++)
-    {
+    for (int64_t row = y + 1; row < y + h - 1; row++) {
         set_pixel_raw(p, x, row, rgba);
         set_pixel_raw(p, x + w - 1, row, rgba);
     }
 }
 
-void rt_pixels_draw_disc(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_t color)
-{
-    if (!pixels)
-    {
+void rt_pixels_draw_disc(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.DrawDisc: null pixels");
         return;
     }
@@ -1962,18 +1796,15 @@ void rt_pixels_draw_disc(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
     if (r < 0)
         r = 0;
 
-    for (int64_t dy = -r; dy <= r; dy++)
-    {
+    for (int64_t dy = -r; dy <= r; dy++) {
         int64_t dx = isqrt64(r * r - dy * dy);
         for (int64_t fx = cx - dx; fx <= cx + dx; fx++)
             set_pixel_raw(p, fx, cy + dy, rgba);
     }
 }
 
-void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_t color)
-{
-    if (!pixels)
-    {
+void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.DrawRing: null pixels");
         return;
     }
@@ -1982,8 +1813,7 @@ void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
 
     if (r < 0)
         return;
-    if (r == 0)
-    {
+    if (r == 0) {
         set_pixel_raw(p, cx, cy, rgba);
         return;
     }
@@ -1993,8 +1823,7 @@ void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
     int64_t my = 0;
     int64_t err = 0;
 
-    while (mx >= my)
-    {
+    while (mx >= my) {
         set_pixel_raw(p, cx + mx, cy + my, rgba);
         set_pixel_raw(p, cx + my, cy + mx, rgba);
         set_pixel_raw(p, cx - my, cy + mx, rgba);
@@ -2005,12 +1834,9 @@ void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
         set_pixel_raw(p, cx + mx, cy - my, rgba);
 
         my++;
-        if (err <= 0)
-        {
+        if (err <= 0) {
             err += 2 * my + 1;
-        }
-        else
-        {
+        } else {
             mx--;
             err += 2 * (my - mx) + 1;
         }
@@ -2018,18 +1844,15 @@ void rt_pixels_draw_ring(void *pixels, int64_t cx, int64_t cy, int64_t r, int64_
 }
 
 void rt_pixels_draw_ellipse(
-    void *pixels, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color)
-{
-    if (!pixels)
-    {
+    void *pixels, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.DrawEllipse: null pixels");
         return;
     }
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
     uint32_t rgba = rgb_to_rgba(color);
 
-    if (rx <= 0 || ry <= 0)
-    {
+    if (rx <= 0 || ry <= 0) {
         set_pixel_raw(p, cx, cy, rgba);
         return;
     }
@@ -2037,8 +1860,7 @@ void rt_pixels_draw_ellipse(
     // Scanline fill: for each row dy, fill span [cx-dx .. cx+dx]
     // dx = rx * isqrt(ry^2 - dy^2) / ry  (integer arithmetic, no float)
     int64_t ry2 = ry * ry;
-    for (int64_t dy = -ry; dy <= ry; dy++)
-    {
+    for (int64_t dy = -ry; dy <= ry; dy++) {
         int64_t rem = ry2 - dy * dy;
         if (rem < 0)
             rem = 0;
@@ -2049,18 +1871,15 @@ void rt_pixels_draw_ellipse(
 }
 
 void rt_pixels_draw_ellipse_frame(
-    void *pixels, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color)
-{
-    if (!pixels)
-    {
+    void *pixels, int64_t cx, int64_t cy, int64_t rx, int64_t ry, int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.DrawEllipseFrame: null pixels");
         return;
     }
     rt_pixels_impl *p = (rt_pixels_impl *)pixels;
     uint32_t rgba = rgb_to_rgba(color);
 
-    if (rx <= 0 || ry <= 0)
-    {
+    if (rx <= 0 || ry <= 0) {
         set_pixel_raw(p, cx, cy, rgba);
         return;
     }
@@ -2077,20 +1896,16 @@ void rt_pixels_draw_ellipse_frame(
 
     // Region 1 (slope magnitude < 1)
     int64_t d1 = ry2 - rx2 * ry + rx2 / 4;
-    while (px_val < py_val)
-    {
+    while (px_val < py_val) {
         set_pixel_raw(p, cx + ex, cy + ey, rgba);
         set_pixel_raw(p, cx - ex, cy + ey, rgba);
         set_pixel_raw(p, cx + ex, cy - ey, rgba);
         set_pixel_raw(p, cx - ex, cy - ey, rgba);
         ex++;
         px_val += two_ry2;
-        if (d1 < 0)
-        {
+        if (d1 < 0) {
             d1 += ry2 + px_val;
-        }
-        else
-        {
+        } else {
             ey--;
             py_val -= two_rx2;
             d1 += ry2 + px_val - py_val;
@@ -2099,20 +1914,16 @@ void rt_pixels_draw_ellipse_frame(
 
     // Region 2 (slope magnitude >= 1)
     int64_t d2 = ry2 * ex * ex + rx2 * (ey - 1) * (ey - 1) - rx2 * ry2;
-    while (ey >= 0)
-    {
+    while (ey >= 0) {
         set_pixel_raw(p, cx + ex, cy + ey, rgba);
         set_pixel_raw(p, cx - ex, cy + ey, rgba);
         set_pixel_raw(p, cx + ex, cy - ey, rgba);
         set_pixel_raw(p, cx - ex, cy - ey, rgba);
         ey--;
         py_val -= two_rx2;
-        if (d2 > 0)
-        {
+        if (d2 > 0) {
             d2 += rx2 - py_val;
-        }
-        else
-        {
+        } else {
             ex++;
             px_val += two_ry2;
             d2 += rx2 - py_val + px_val;
@@ -2120,10 +1931,8 @@ void rt_pixels_draw_ellipse_frame(
     }
 }
 
-void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color)
-{
-    if (!pixels)
-    {
+void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.FloodFill: null pixels");
         return;
     }
@@ -2139,8 +1948,7 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color)
         return;
 
     // Iterative scanline flood fill — no recursion, no stack overflow risk
-    typedef struct
-    {
+    typedef struct {
         int64_t x;
         int64_t y;
     } FillSeed;
@@ -2155,8 +1963,7 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color)
     stack[top].y = y;
     top++;
 
-    while (top > 0)
-    {
+    while (top > 0) {
         top--;
         int64_t sx = stack[top].x;
         int64_t sy = stack[top].y;
@@ -2181,31 +1988,24 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color)
             p->data[sy * p->width + fx] = fill_c;
 
         // Push seed pixels for rows above and below this span
-        for (int64_t row_off = -1; row_off <= 1; row_off += 2)
-        {
+        for (int64_t row_off = -1; row_off <= 1; row_off += 2) {
             int64_t ny = sy + row_off;
             if (ny < 0 || ny >= p->height)
                 continue;
 
             int64_t in_span = 0;
-            for (int64_t fx = lx; fx <= rx; fx++)
-            {
-                if (p->data[ny * p->width + fx] == target)
-                {
-                    if (!in_span)
-                    {
-                        if (top >= cap)
-                        {
-                            if (cap > INT64_MAX / 2)
-                            {
+            for (int64_t fx = lx; fx <= rx; fx++) {
+                if (p->data[ny * p->width + fx] == target) {
+                    if (!in_span) {
+                        if (top >= cap) {
+                            if (cap > INT64_MAX / 2) {
                                 free(stack);
                                 return; // Abort flood fill on capacity overflow
                             }
                             int64_t new_cap = cap * 2;
                             FillSeed *ns =
                                 (FillSeed *)realloc(stack, (size_t)new_cap * sizeof(FillSeed));
-                            if (!ns)
-                            {
+                            if (!ns) {
                                 free(stack);
                                 return;
                             }
@@ -2217,9 +2017,7 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color)
                         top++;
                         in_span = 1;
                     }
-                }
-                else
-                {
+                } else {
                     in_span = 0;
                 }
             }
@@ -2229,16 +2027,18 @@ void rt_pixels_flood_fill(void *pixels, int64_t x, int64_t y, int64_t color)
     free(stack);
 }
 
-void rt_pixels_draw_thick_line(
-    void *pixels, int64_t x1, int64_t y1, int64_t x2, int64_t y2, int64_t thickness, int64_t color)
-{
-    if (!pixels)
-    {
+void rt_pixels_draw_thick_line(void *pixels,
+                               int64_t x1,
+                               int64_t y1,
+                               int64_t x2,
+                               int64_t y2,
+                               int64_t thickness,
+                               int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.DrawThickLine: null pixels");
         return;
     }
-    if (thickness <= 1)
-    {
+    if (thickness <= 1) {
         rt_pixels_draw_line(pixels, x1, y1, x2, y2, color);
         return;
     }
@@ -2256,19 +2056,16 @@ void rt_pixels_draw_thick_line(
     int64_t x = x1;
     int64_t y = y1;
 
-    for (;;)
-    {
+    for (;;) {
         rt_pixels_draw_disc(pixels, x, y, radius, color);
         if (x == x2 && y == y2)
             break;
         int64_t e2 = err * 2;
-        if (e2 > -ady)
-        {
+        if (e2 > -ady) {
             err -= ady;
             x += sx;
         }
-        if (e2 < adx)
-        {
+        if (e2 < adx) {
             err += adx;
             y += sy;
         }
@@ -2282,10 +2079,8 @@ void rt_pixels_draw_triangle(void *pixels,
                              int64_t y2,
                              int64_t x3,
                              int64_t y3,
-                             int64_t color)
-{
-    if (!pixels)
-    {
+                             int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.DrawTriangle: null pixels");
         return;
     }
@@ -2293,8 +2088,7 @@ void rt_pixels_draw_triangle(void *pixels,
     uint32_t rgba = rgb_to_rgba(color);
 
     // Sort vertices by y ascending (bubble sort 3 elements)
-    if (y1 > y2)
-    {
+    if (y1 > y2) {
         int64_t tx = x1;
         x1 = x2;
         x2 = tx;
@@ -2302,8 +2096,7 @@ void rt_pixels_draw_triangle(void *pixels,
         y1 = y2;
         y2 = ty;
     }
-    if (y1 > y3)
-    {
+    if (y1 > y3) {
         int64_t tx = x1;
         x1 = x3;
         x3 = tx;
@@ -2311,8 +2104,7 @@ void rt_pixels_draw_triangle(void *pixels,
         y1 = y3;
         y3 = ty;
     }
-    if (y2 > y3)
-    {
+    if (y2 > y3) {
         int64_t tx = x2;
         x2 = x3;
         x3 = tx;
@@ -2327,13 +2119,11 @@ void rt_pixels_draw_triangle(void *pixels,
 
     // Upper half: y1 .. y2
     int64_t upper_h = y2 - y1;
-    for (int64_t row = 0; row <= upper_h; row++)
-    {
+    for (int64_t row = 0; row <= upper_h; row++) {
         int64_t scan_y = y1 + row;
         int64_t ax = x1 + (x3 - x1) * row / total_h;
         int64_t bx = x1 + (x2 - x1) * row / (upper_h > 0 ? upper_h : 1);
-        if (ax > bx)
-        {
+        if (ax > bx) {
             int64_t tmp = ax;
             ax = bx;
             bx = tmp;
@@ -2344,13 +2134,11 @@ void rt_pixels_draw_triangle(void *pixels,
 
     // Lower half: y2 .. y3
     int64_t lower_h = y3 - y2;
-    for (int64_t row = 0; row <= lower_h; row++)
-    {
+    for (int64_t row = 0; row <= lower_h; row++) {
         int64_t scan_y = y2 + row;
         int64_t ax = x1 + (x3 - x1) * (upper_h + row) / total_h;
         int64_t bx = x2 + (x3 - x2) * row / (lower_h > 0 ? lower_h : 1);
-        if (ax > bx)
-        {
+        if (ax > bx) {
             int64_t tmp = ax;
             ax = bx;
             bx = tmp;
@@ -2367,10 +2155,8 @@ void rt_pixels_draw_bezier(void *pixels,
                            int64_t cy_ctrl,
                            int64_t x2,
                            int64_t y2,
-                           int64_t color)
-{
-    if (!pixels)
-    {
+                           int64_t color) {
+    if (!pixels) {
         rt_trap("Pixels.DrawBezier: null pixels");
         return;
     }
@@ -2402,8 +2188,7 @@ void rt_pixels_draw_bezier(void *pixels,
         steps = 10000; // Cap to prevent excessive loops
 
     // Integer de Casteljau: P(t) via linear interpolation at t = i/steps
-    for (int64_t i = 0; i <= steps; i++)
-    {
+    for (int64_t i = 0; i <= steps; i++) {
         int64_t lx0 = x1 + (cx_ctrl - x1) * i / steps;
         int64_t ly0 = y1 + (cy_ctrl - y1) * i / steps;
         int64_t lx1 = cx_ctrl + (x2 - cx_ctrl) * i / steps;
@@ -2414,10 +2199,8 @@ void rt_pixels_draw_bezier(void *pixels,
     }
 }
 
-void rt_pixels_blend_pixel(void *pixels, int64_t x, int64_t y, int64_t color, int64_t alpha)
-{
-    if (!pixels)
-    {
+void rt_pixels_blend_pixel(void *pixels, int64_t x, int64_t y, int64_t color, int64_t alpha) {
+    if (!pixels) {
         rt_trap("Pixels.BlendPixel: null pixels");
         return;
     }
@@ -2432,8 +2215,7 @@ void rt_pixels_blend_pixel(void *pixels, int64_t x, int64_t y, int64_t color, in
         alpha = 255;
 
     // Fully opaque fast path — same as set_rgb
-    if (alpha == 255)
-    {
+    if (alpha == 255) {
         p->data[y * p->width + x] = (uint32_t)((color << 8) | 0xFF);
         return;
     }

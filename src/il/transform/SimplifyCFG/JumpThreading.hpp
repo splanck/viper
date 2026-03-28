@@ -17,8 +17,7 @@
 
 #include "il/transform/SimplifyCFG.hpp"
 
-namespace il::transform::simplify_cfg
-{
+namespace il::transform::simplify_cfg {
 
 /// \brief Thread jumps through blocks with predictable branch conditions.
 /// \details When a predecessor passes a constant value that determines a

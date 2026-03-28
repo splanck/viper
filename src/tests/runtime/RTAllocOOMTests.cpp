@@ -25,24 +25,20 @@
 #include <string>
 
 // ── vm_trap override ────────────────────────────────────────────────────────
-namespace
-{
+namespace {
 int g_trap_count = 0;
 std::string g_last_trap;
 bool g_fail_next_alloc = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_trap_count++;
     g_last_trap = msg ? msg : "";
 }
 
 /// Fail the next allocation, then delegate to real allocator.
-static void *fail_once_hook(int64_t bytes, void *(*next)(int64_t))
-{
-    if (g_fail_next_alloc)
-    {
+static void *fail_once_hook(int64_t bytes, void *(*next)(int64_t)) {
+    if (g_fail_next_alloc) {
         g_fail_next_alloc = false;
         return NULL;
     }
@@ -53,8 +49,7 @@ static void *fail_once_hook(int64_t bytes, void *(*next)(int64_t))
 
 /// rt_alloc with negative size → trap "negative allocation"
 /// (goes through rt_alloc_impl since no hook is installed)
-static void test_alloc_negative_traps()
-{
+static void test_alloc_negative_traps() {
     g_trap_count = 0;
     g_last_trap.clear();
     rt_set_alloc_hook(NULL);
@@ -67,8 +62,7 @@ static void test_alloc_negative_traps()
 
 /// rt_alloc with oversized request → trap "allocation too large"
 /// (goes through rt_alloc_impl since no hook is installed)
-static void test_alloc_too_large_traps()
-{
+static void test_alloc_too_large_traps() {
     g_trap_count = 0;
     g_last_trap.clear();
     rt_set_alloc_hook(NULL);
@@ -77,8 +71,7 @@ static void test_alloc_too_large_traps()
     // but the check is (uint64_t)bytes > SIZE_MAX)
     // Since SIZE_MAX == UINT64_MAX on 64-bit, this path is only reachable
     // on 32-bit. Skip this test on 64-bit.
-    if (sizeof(size_t) < 8)
-    {
+    if (sizeof(size_t) < 8) {
         void *p = rt_alloc((int64_t)((uint64_t)SIZE_MAX + 1));
         assert(p == NULL);
         assert(g_trap_count == 1);
@@ -87,8 +80,7 @@ static void test_alloc_too_large_traps()
 }
 
 /// String allocation with OOM hook → trap from string layer
-static void test_string_alloc_oom()
-{
+static void test_string_alloc_oom() {
     g_trap_count = 0;
     g_last_trap.clear();
     g_fail_next_alloc = true;
@@ -105,8 +97,7 @@ static void test_string_alloc_oom()
     rt_set_alloc_hook(NULL);
 }
 
-int main()
-{
+int main() {
     test_alloc_negative_traps();
     printf("  PASS: rt_alloc(-1) → trap 'negative allocation'\n");
 

@@ -39,8 +39,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct rt_version_impl
-{
+typedef struct rt_version_impl {
     void **vptr;
     int64_t major;
     int64_t minor;
@@ -49,8 +48,7 @@ typedef struct rt_version_impl
     char *build;      // NULL if none
 } rt_version_impl;
 
-static void version_finalizer(void *obj)
-{
+static void version_finalizer(void *obj) {
     rt_version_impl *v = (rt_version_impl *)obj;
     if (!v)
         return;
@@ -58,8 +56,7 @@ static void version_finalizer(void *obj)
     free(v->build);
 }
 
-static char *dup_str(const char *s, size_t len)
-{
+static char *dup_str(const char *s, size_t len) {
     char *r = (char *)malloc(len + 1);
     if (!r)
         return NULL;
@@ -70,8 +67,7 @@ static char *dup_str(const char *s, size_t len)
 
 // Parse a non-negative integer from str[*pos], advancing *pos.
 // Returns -1 on failure.
-static int64_t parse_num(const char *str, size_t len, size_t *pos)
-{
+static int64_t parse_num(const char *str, size_t len, size_t *pos) {
     if (*pos >= len || !isdigit((unsigned char)str[*pos]))
         return -1;
 
@@ -80,16 +76,14 @@ static int64_t parse_num(const char *str, size_t len, size_t *pos)
         return -1;
 
     int64_t val = 0;
-    while (*pos < len && isdigit((unsigned char)str[*pos]))
-    {
+    while (*pos < len && isdigit((unsigned char)str[*pos])) {
         val = val * 10 + (str[*pos] - '0');
         (*pos)++;
     }
     return val;
 }
 
-void *rt_version_parse(rt_string str)
-{
+void *rt_version_parse(rt_string str) {
     if (!str)
         return NULL;
     const char *src = rt_string_cstr(str);
@@ -121,8 +115,7 @@ void *rt_version_parse(rt_string str)
 
     // PATCH is optional - default to 0
     int64_t patch = 0;
-    if (pos < len && src[pos] == '.')
-    {
+    if (pos < len && src[pos] == '.') {
         pos++;
         patch = parse_num(src, len, &pos);
         if (patch < 0)
@@ -131,8 +124,7 @@ void *rt_version_parse(rt_string str)
 
     // Pre-release: -alpha.1.beta
     char *prerelease = NULL;
-    if (pos < len && src[pos] == '-')
-    {
+    if (pos < len && src[pos] == '-') {
         pos++;
         size_t start = pos;
         while (pos < len && src[pos] != '+')
@@ -143,8 +135,7 @@ void *rt_version_parse(rt_string str)
 
     // Build metadata: +build.42
     char *build = NULL;
-    if (pos < len && src[pos] == '+')
-    {
+    if (pos < len && src[pos] == '+') {
         pos++;
         size_t start = pos;
         while (pos < len)
@@ -154,16 +145,14 @@ void *rt_version_parse(rt_string str)
     }
 
     // Should have consumed everything
-    if (pos != len)
-    {
+    if (pos != len) {
         free(prerelease);
         free(build);
         return NULL;
     }
 
     rt_version_impl *v = (rt_version_impl *)rt_obj_new_i64(0, sizeof(rt_version_impl));
-    if (!v)
-    {
+    if (!v) {
         free(prerelease);
         free(build);
         return NULL;
@@ -181,8 +170,7 @@ void *rt_version_parse(rt_string str)
 /// @brief Perform version is valid operation.
 /// @param str
 /// @return Result value.
-int8_t rt_version_is_valid(rt_string str)
-{
+int8_t rt_version_is_valid(rt_string str) {
     void *v = rt_version_parse(str);
     if (!v)
         return 0;
@@ -194,8 +182,7 @@ int8_t rt_version_is_valid(rt_string str)
 /// @brief Perform version major operation.
 /// @param ver
 /// @return Result value.
-int64_t rt_version_major(void *ver)
-{
+int64_t rt_version_major(void *ver) {
     if (!ver)
         return 0;
     return ((rt_version_impl *)ver)->major;
@@ -204,8 +191,7 @@ int64_t rt_version_major(void *ver)
 /// @brief Perform version minor operation.
 /// @param ver
 /// @return Result value.
-int64_t rt_version_minor(void *ver)
-{
+int64_t rt_version_minor(void *ver) {
     if (!ver)
         return 0;
     return ((rt_version_impl *)ver)->minor;
@@ -214,8 +200,7 @@ int64_t rt_version_minor(void *ver)
 /// @brief Perform version patch operation.
 /// @param ver
 /// @return Result value.
-int64_t rt_version_patch(void *ver)
-{
+int64_t rt_version_patch(void *ver) {
     if (!ver)
         return 0;
     return ((rt_version_impl *)ver)->patch;
@@ -224,8 +209,7 @@ int64_t rt_version_patch(void *ver)
 /// @brief Perform version prerelease operation.
 /// @param ver
 /// @return Result value.
-rt_string rt_version_prerelease(void *ver)
-{
+rt_string rt_version_prerelease(void *ver) {
     if (!ver || !((rt_version_impl *)ver)->prerelease)
         return rt_string_from_bytes("", 0);
     const char *pr = ((rt_version_impl *)ver)->prerelease;
@@ -235,8 +219,7 @@ rt_string rt_version_prerelease(void *ver)
 /// @brief Perform version build operation.
 /// @param ver
 /// @return Result value.
-rt_string rt_version_build(void *ver)
-{
+rt_string rt_version_build(void *ver) {
     if (!ver || !((rt_version_impl *)ver)->build)
         return rt_string_from_bytes("", 0);
     const char *b = ((rt_version_impl *)ver)->build;
@@ -246,8 +229,7 @@ rt_string rt_version_build(void *ver)
 /// @brief Perform version to string operation.
 /// @param ver
 /// @return Result value.
-rt_string rt_version_to_string(void *ver)
-{
+rt_string rt_version_to_string(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
     rt_version_impl *v = (rt_version_impl *)ver;
@@ -270,8 +252,7 @@ rt_string rt_version_to_string(void *ver)
 // Compare pre-release identifiers per SemVer spec.
 // No pre-release > with pre-release.
 // Numeric identifiers compared numerically, alphanumeric lexically.
-static int cmp_prerelease(const char *a, const char *b)
-{
+static int cmp_prerelease(const char *a, const char *b) {
     // Both NULL -> equal
     if (!a && !b)
         return 0;
@@ -283,8 +264,7 @@ static int cmp_prerelease(const char *a, const char *b)
 
     // Split by '.' and compare each identifier
     const char *pa = a, *pb = b;
-    while (*pa || *pb)
-    {
+    while (*pa || *pb) {
         if (!*pa)
             return -1; // Fewer identifiers -> lower precedence
         if (!*pb)
@@ -305,8 +285,7 @@ static int cmp_prerelease(const char *a, const char *b)
             if (!isdigit((unsigned char)pb[i]))
                 b_num = 0;
 
-        if (a_num && b_num)
-        {
+        if (a_num && b_num) {
             // Both numeric: compare as integers
             long long va = 0, vb = 0;
             for (size_t i = 0; i < la; ++i)
@@ -317,14 +296,10 @@ static int cmp_prerelease(const char *a, const char *b)
                 return -1;
             if (va > vb)
                 return 1;
-        }
-        else if (a_num != b_num)
-        {
+        } else if (a_num != b_num) {
             // Numeric < alphanumeric
             return a_num ? -1 : 1;
-        }
-        else
-        {
+        } else {
             // Both alphanumeric: lexicographic
             size_t minl = la < lb ? la : lb;
             int cmp = memcmp(pa, pb, minl);
@@ -346,8 +321,7 @@ static int cmp_prerelease(const char *a, const char *b)
 /// @param a
 /// @param b
 /// @return Result value.
-int64_t rt_version_cmp(void *a, void *b)
-{
+int64_t rt_version_cmp(void *a, void *b) {
     if (!a && !b)
         return 0;
     if (!a)
@@ -372,8 +346,7 @@ int64_t rt_version_cmp(void *a, void *b)
 /// @param ver
 /// @param constraint
 /// @return Result value.
-int8_t rt_version_satisfies(void *ver, rt_string constraint)
-{
+int8_t rt_version_satisfies(void *ver, rt_string constraint) {
     if (!ver || !constraint)
         return 0;
 
@@ -390,8 +363,7 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint)
     const char *p = cstr;
     char op[3] = {0};
 
-    if (p[0] == '^')
-    {
+    if (p[0] == '^') {
         // Caret: compatible with (same major, if major > 0)
         p++;
         rt_string vs = rt_string_from_bytes(p, len - 1);
@@ -402,25 +374,18 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint)
 
         rt_version_impl *c = (rt_version_impl *)cv;
         int8_t result = 0;
-        if (c->major > 0)
-        {
+        if (c->major > 0) {
             result = (v->major == c->major && rt_version_cmp(ver, cv) >= 0) ? 1 : 0;
-        }
-        else if (c->minor > 0)
-        {
+        } else if (c->minor > 0) {
             result =
                 (v->major == 0 && v->minor == c->minor && rt_version_cmp(ver, cv) >= 0) ? 1 : 0;
-        }
-        else
-        {
+        } else {
             result = (rt_version_cmp(ver, cv) == 0) ? 1 : 0;
         }
         rt_obj_release_check0(cv);
         rt_obj_free(cv);
         return result;
-    }
-    else if (p[0] == '~')
-    {
+    } else if (p[0] == '~') {
         // Tilde: same major.minor
         p++;
         rt_string vs = rt_string_from_bytes(p, strlen(p));
@@ -438,41 +403,28 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint)
     }
 
     // Comparison operators: >=, <=, !=, >, <, =
-    if (p[0] == '>' && p[1] == '=')
-    {
+    if (p[0] == '>' && p[1] == '=') {
         op[0] = '>';
         op[1] = '=';
         p += 2;
-    }
-    else if (p[0] == '<' && p[1] == '=')
-    {
+    } else if (p[0] == '<' && p[1] == '=') {
         op[0] = '<';
         op[1] = '=';
         p += 2;
-    }
-    else if (p[0] == '!' && p[1] == '=')
-    {
+    } else if (p[0] == '!' && p[1] == '=') {
         op[0] = '!';
         op[1] = '=';
         p += 2;
-    }
-    else if (p[0] == '>')
-    {
+    } else if (p[0] == '>') {
         op[0] = '>';
         p++;
-    }
-    else if (p[0] == '<')
-    {
+    } else if (p[0] == '<') {
         op[0] = '<';
         p++;
-    }
-    else if (p[0] == '=')
-    {
+    } else if (p[0] == '=') {
         op[0] = '=';
         p++;
-    }
-    else
-    {
+    } else {
         // No operator -> exact match
         op[0] = '=';
     }
@@ -508,8 +460,7 @@ int8_t rt_version_satisfies(void *ver, rt_string constraint)
 /// @brief Perform version bump major operation.
 /// @param ver
 /// @return Result value.
-rt_string rt_version_bump_major(void *ver)
-{
+rt_string rt_version_bump_major(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
     rt_version_impl *v = (rt_version_impl *)ver;
@@ -521,8 +472,7 @@ rt_string rt_version_bump_major(void *ver)
 /// @brief Perform version bump minor operation.
 /// @param ver
 /// @return Result value.
-rt_string rt_version_bump_minor(void *ver)
-{
+rt_string rt_version_bump_minor(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
     rt_version_impl *v = (rt_version_impl *)ver;
@@ -534,8 +484,7 @@ rt_string rt_version_bump_minor(void *ver)
 /// @brief Perform version bump patch operation.
 /// @param ver
 /// @return Result value.
-rt_string rt_version_bump_patch(void *ver)
-{
+rt_string rt_version_bump_patch(void *ver) {
     if (!ver)
         return rt_string_from_bytes("", 0);
     rt_version_impl *v = (rt_version_impl *)ver;

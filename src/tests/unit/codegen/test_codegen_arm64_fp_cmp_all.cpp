@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,10 +43,8 @@ static std::string readFile(const std::string &path)
 }
 
 // Test all FP comparison operators
-TEST(Arm64FPCmpAll, AllComparisons)
-{
-    struct Case
-    {
+TEST(Arm64FPCmpAll, AllComparisons) {
+    struct Case {
         const char *op;
         const char *desc;
     } cases[] = {
@@ -61,8 +56,7 @@ TEST(Arm64FPCmpAll, AllComparisons)
         {"fcmp_ge", "greater or equal"},
     };
 
-    for (const auto &c : cases)
-    {
+    for (const auto &c : cases) {
         std::string in = std::string("arm64_fp_") + c.op + ".il";
         std::string out = std::string("arm64_fp_") + c.op + ".s";
         std::string il = std::string("il 0.1\n"
@@ -88,8 +82,7 @@ TEST(Arm64FPCmpAll, AllComparisons)
 }
 
 // Test: fcmp_ord (ordered - neither is NaN)
-TEST(Arm64FPCmpAll, Ordered)
-{
+TEST(Arm64FPCmpAll, Ordered) {
     const std::string in = outPath("arm64_fp_fcmp_ord.il");
     const std::string out = outPath("arm64_fp_fcmp_ord.s");
     const std::string il = "il 0.1\n"
@@ -108,8 +101,7 @@ TEST(Arm64FPCmpAll, Ordered)
 }
 
 // Test: fcmp_uno (unordered - at least one is NaN)
-TEST(Arm64FPCmpAll, Unordered)
-{
+TEST(Arm64FPCmpAll, Unordered) {
     const std::string in = outPath("arm64_fp_fcmp_uno.il");
     const std::string out = outPath("arm64_fp_fcmp_uno.s");
     const std::string il = "il 0.1\n"
@@ -128,8 +120,7 @@ TEST(Arm64FPCmpAll, Unordered)
 }
 
 // Test: FP comparison feeding conditional branch
-TEST(Arm64FPCmpAll, CmpBranch)
-{
+TEST(Arm64FPCmpAll, CmpBranch) {
     const std::string in = outPath("arm64_fp_cmp_branch.il");
     const std::string out = outPath("arm64_fp_cmp_branch.s");
     const std::string il = "il 0.1\n"
@@ -156,8 +147,7 @@ TEST(Arm64FPCmpAll, CmpBranch)
 }
 
 // Test: Chained FP comparisons
-TEST(Arm64FPCmpAll, ChainedComparisons)
-{
+TEST(Arm64FPCmpAll, ChainedComparisons) {
     const std::string in = outPath("arm64_fp_chain_cmp.il");
     const std::string out = outPath("arm64_fp_chain_cmp.s");
     // Check if x is in range [lo, hi)
@@ -178,8 +168,7 @@ TEST(Arm64FPCmpAll, ChainedComparisons)
     // Should have multiple fcmp
     std::size_t fcmpCount = 0;
     std::size_t pos = 0;
-    while ((pos = asmText.find("fcmp d", pos)) != std::string::npos)
-    {
+    while ((pos = asmText.find("fcmp d", pos)) != std::string::npos) {
         ++fcmpCount;
         pos += 6;
     }
@@ -187,8 +176,7 @@ TEST(Arm64FPCmpAll, ChainedComparisons)
 }
 
 // Test: FP comparison with constant
-TEST(Arm64FPCmpAll, CmpWithZero)
-{
+TEST(Arm64FPCmpAll, CmpWithZero) {
     const std::string in = outPath("arm64_fp_cmp_zero.il");
     const std::string out = outPath("arm64_fp_cmp_zero.s");
     const std::string il = "il 0.1\n"
@@ -206,8 +194,7 @@ TEST(Arm64FPCmpAll, CmpWithZero)
     EXPECT_NE(asmText.find("fcmp d"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

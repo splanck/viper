@@ -188,8 +188,7 @@
 #include "il/core/Opcode.hpp"
 #include <cstddef>
 
-namespace il::vm::dispatch
-{
+namespace il::vm::dispatch {
 
 //===----------------------------------------------------------------------===//
 // Handler Registry Types
@@ -198,8 +197,7 @@ namespace il::vm::dispatch
 /// @brief Marker type for VM dispatch entries.
 /// @details Used in Opcode.def to bind opcodes to handlers at compile time.
 ///          The VMDispatch enum mirrors Opcode names for dispatch metadata.
-enum class VMDispatch
-{
+enum class VMDispatch {
 #define IL_OPCODE(NAME, ...) NAME,
 #include "il/core/Opcode.def"
     Count
@@ -252,8 +250,7 @@ constexpr size_t kDispatchCount = static_cast<size_t>(VMDispatch::Count);
 /// @param op Opcode to check.
 /// @param table Handler table to search.
 /// @return true if a non-null handler exists.
-template <typename Table> constexpr bool hasHandler(il::core::Opcode op, const Table &table)
-{
+template <typename Table> constexpr bool hasHandler(il::core::Opcode op, const Table &table) {
     const size_t index = static_cast<size_t>(op);
     return index < std::size(table) && table[index] != nullptr;
 }
@@ -261,10 +258,8 @@ template <typename Table> constexpr bool hasHandler(il::core::Opcode op, const T
 /// @brief Verify all opcodes have handlers (for debug builds).
 /// @param table Handler table to verify.
 /// @return true if all opcodes have non-null handlers.
-template <typename Table> constexpr bool verifyAllHandlers(const Table &table)
-{
-    for (size_t i = 0; i < il::core::kNumOpcodes; ++i)
-    {
+template <typename Table> constexpr bool verifyAllHandlers(const Table &table) {
+    for (size_t i = 0; i < il::core::kNumOpcodes; ++i) {
         if (i >= std::size(table) || table[i] == nullptr)
             return false;
     }

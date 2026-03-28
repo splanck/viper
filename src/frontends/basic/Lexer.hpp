@@ -50,16 +50,14 @@
 #include "frontends/common/LexerBase.hpp"
 #include <string_view>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Tokenizes BASIC source text into a stream of tokens.
 /// @details Construct with a source buffer and file identifier, then call
 /// next() repeatedly to iterate through tokens until an EOF token is returned.
 /// Inherits cursor management (peek/get/eof/position tracking) from
 /// LexerCursor<Lexer> via CRTP.
-class Lexer : public il::frontends::common::lexer_base::LexerCursor<Lexer>
-{
+class Lexer : public il::frontends::common::lexer_base::LexerCursor<Lexer> {
     using Base = il::frontends::common::lexer_base::LexerCursor<Lexer>;
 
   public:
@@ -75,8 +73,7 @@ class Lexer : public il::frontends::common::lexer_base::LexerCursor<Lexer>
 
     /// @brief Provide the source buffer to the CRTP base class.
     /// @return View of the source text being tokenized.
-    [[nodiscard]] std::string_view source() const
-    {
+    [[nodiscard]] std::string_view source() const {
         return src_;
     }
 

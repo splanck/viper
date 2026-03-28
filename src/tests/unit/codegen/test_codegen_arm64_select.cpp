@@ -20,31 +20,27 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
     return ss.str();
 }
 
-TEST(Arm64CLI, Select_ConstArms)
-{
+TEST(Arm64CLI, Select_ConstArms) {
     const std::string in = outPath("arm64_select_const.il");
     const std::string out = outPath("arm64_select_const.s");
     const std::string il = "il 0.1\n"
@@ -79,8 +75,7 @@ TEST(Arm64CLI, Select_ConstArms)
     EXPECT_TRUE(hasLoadOrFwd);
 }
 
-TEST(Arm64CLI, Select_LoadArms)
-{
+TEST(Arm64CLI, Select_LoadArms) {
     const std::string in = outPath("arm64_select_load.il");
     const std::string out = outPath("arm64_select_load.s");
     const std::string il = "il 0.1\n"
@@ -112,8 +107,7 @@ TEST(Arm64CLI, Select_LoadArms)
     EXPECT_NE(asmText.find(" mov x"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

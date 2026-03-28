@@ -23,19 +23,15 @@
 #include <sstream>
 #include <string>
 
-namespace il::support
-{
-struct SourceManagerTestAccess
-{
-    static void setNextFileId(SourceManager &sm, uint64_t next)
-    {
+namespace il::support {
+struct SourceManagerTestAccess {
+    static void setNextFileId(SourceManager &sm, uint64_t next) {
         sm.next_file_id_ = next;
     }
 };
 } // namespace il::support
 
-int main()
-{
+int main() {
     il::support::SourceManager sm;
     il::support::SourceManagerTestAccess::setNextFileId(
         sm, static_cast<uint64_t>(std::numeric_limits<std::uint32_t>::max()) + 1);

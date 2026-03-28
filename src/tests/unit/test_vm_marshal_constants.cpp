@@ -21,8 +21,7 @@
 #include <cstdint>
 #include <limits>
 
-int main()
-{
+int main() {
     using il::core::Value;
     using Kind = Value::Kind;
 

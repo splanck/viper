@@ -27,19 +27,16 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-struct AnalysisResult
-{
+struct AnalysisResult {
     size_t errors;
     size_t warnings;
     std::string output;
     std::optional<SemanticAnalyzer::Type> symbolType;
 };
 
-AnalysisResult analyzeSnippet(const std::string &src, std::string symbol)
-{
+AnalysisResult analyzeSnippet(const std::string &src, std::string symbol) {
     SourceManager sm;
     uint32_t fid = sm.addFile("snippet.bas");
     Parser parser(src, fid);
@@ -64,8 +61,7 @@ AnalysisResult analyzeSnippet(const std::string &src, std::string symbol)
 
 } // namespace
 
-int main()
-{
+int main() {
     {
         auto result = analyzeSnippet("10 LET S! = 1\n20 LET I% = S!\n30 END\n", "S!");
         assert(result.errors == 0);

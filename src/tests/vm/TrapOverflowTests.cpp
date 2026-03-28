@@ -22,8 +22,7 @@
 
 using namespace il::core;
 
-int main()
-{
+int main() {
     using viper::tests::VmFixture;
 
     Module module;

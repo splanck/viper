@@ -17,20 +17,17 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
 
 // Helper: build a color from RGB components
-static int64_t rgb(int r, int g, int b)
-{
+static int64_t rgb(int r, int g, int b) {
     return ((int64_t)(r & 0xFF) << 16) | ((int64_t)(g & 0xFF) << 8) | (int64_t)(b & 0xFF);
 }
 
@@ -38,54 +35,47 @@ static int64_t rgb(int r, int g, int b)
 // Tests
 // ---------------------------------------------------------------------------
 
-static void test_from_hex_6digit()
-{
+static void test_from_hex_6digit() {
     rt_string hex = rt_string_from_bytes("#FF8000", 7);
     int64_t c = rt_color_from_hex(hex);
     assert(c == rgb(0xFF, 0x80, 0x00));
     rt_string_unref(hex);
 }
 
-static void test_from_hex_no_hash()
-{
+static void test_from_hex_no_hash() {
     rt_string hex = rt_string_from_bytes("00FF00", 6);
     int64_t c = rt_color_from_hex(hex);
     assert(c == rgb(0x00, 0xFF, 0x00));
     rt_string_unref(hex);
 }
 
-static void test_from_hex_3digit()
-{
+static void test_from_hex_3digit() {
     rt_string hex = rt_string_from_bytes("#F00", 4);
     int64_t c = rt_color_from_hex(hex);
     assert(c == rgb(0xFF, 0x00, 0x00));
     rt_string_unref(hex);
 }
 
-static void test_to_hex_basic()
-{
+static void test_to_hex_basic() {
     int64_t c = rgb(0xFF, 0x80, 0x00);
     rt_string result = rt_color_to_hex(c);
     assert(str_eq(result, "#FF8000"));
     rt_string_unref(result);
 }
 
-static void test_to_hex_black()
-{
+static void test_to_hex_black() {
     rt_string result = rt_color_to_hex(rgb(0, 0, 0));
     assert(str_eq(result, "#000000"));
     rt_string_unref(result);
 }
 
-static void test_to_hex_white()
-{
+static void test_to_hex_white() {
     rt_string result = rt_color_to_hex(rgb(255, 255, 255));
     assert(str_eq(result, "#FFFFFF"));
     rt_string_unref(result);
 }
 
-static void test_roundtrip_hex()
-{
+static void test_roundtrip_hex() {
     int64_t original = rgb(0x12, 0x34, 0x56);
     rt_string hex = rt_color_to_hex(original);
     int64_t back = rt_color_from_hex(hex);
@@ -93,8 +83,7 @@ static void test_roundtrip_hex()
     rt_string_unref(hex);
 }
 
-static void test_complement_red()
-{
+static void test_complement_red() {
     // Red's complement should be cyan-ish
     int64_t red = rgb(255, 0, 0);
     int64_t comp = rt_color_complement(red);
@@ -108,8 +97,7 @@ static void test_complement_red()
     assert(b > 200);
 }
 
-static void test_grayscale()
-{
+static void test_grayscale() {
     int64_t c = rgb(100, 150, 200);
     int64_t gray = rt_color_grayscale(c);
     int64_t r = (gray >> 16) & 0xFF;
@@ -122,22 +110,19 @@ static void test_grayscale()
     assert(r == 140);
 }
 
-static void test_invert()
-{
+static void test_invert() {
     int64_t c = rgb(100, 150, 200);
     int64_t inv = rt_color_invert(c);
     assert(inv == rgb(155, 105, 55));
 }
 
-static void test_invert_roundtrip()
-{
+static void test_invert_roundtrip() {
     int64_t c = rgb(42, 128, 200);
     int64_t inv = rt_color_invert(rt_color_invert(c));
     assert(inv == c);
 }
 
-static void test_saturate()
-{
+static void test_saturate() {
     // Start with a grayish color and saturate it
     int64_t c = rgb(128, 128, 128);
     int64_t sat = rt_color_saturate(c, 50);
@@ -153,8 +138,7 @@ static void test_saturate()
     (void)sat;
 }
 
-static void test_desaturate()
-{
+static void test_desaturate() {
     int64_t c = rgb(255, 0, 0); // Pure red
     int64_t desat = rt_color_desaturate(c, 100);
     // Fully desaturated red should be gray
@@ -165,8 +149,7 @@ static void test_desaturate()
     assert(g == b);
 }
 
-static void test_saturate_clamps()
-{
+static void test_saturate_clamps() {
     int64_t c = rgb(200, 100, 100);
     // Saturate by 200% should clamp to 100%
     int64_t sat = rt_color_saturate(c, 200);
@@ -175,8 +158,7 @@ static void test_saturate_clamps()
     assert(r <= 255);
 }
 
-int main()
-{
+int main() {
     test_from_hex_6digit();
     test_from_hex_no_hash();
     test_from_hex_3digit();

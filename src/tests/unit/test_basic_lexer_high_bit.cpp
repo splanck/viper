@@ -19,8 +19,7 @@
 
 using namespace il::frontends::basic;
 
-int main()
-{
+int main() {
     assert(std::string(tokenKindToString(TokenKind::Unknown)) == "?");
     {
         std::string input = std::string("1") + static_cast<char>(0x80);

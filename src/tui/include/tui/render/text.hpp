@@ -20,8 +20,7 @@
 #include <algorithm>
 #include <string_view>
 
-namespace viper::tui::render
-{
+namespace viper::tui::render {
 
 /// @brief Render left-aligned text into a screen buffer row.
 /// @details Paints characters from the given text starting at position (y, x)
@@ -34,11 +33,9 @@ namespace viper::tui::render
 /// @param text Text to render.
 /// @param style Style to apply to each character cell.
 inline void renderText(
-    ScreenBuffer &sb, int y, int x, int maxWidth, std::string_view text, const Style &style)
-{
+    ScreenBuffer &sb, int y, int x, int maxWidth, std::string_view text, const Style &style) {
     int len = std::min(static_cast<int>(text.size()), maxWidth);
-    for (int i = 0; i < len; ++i)
-    {
+    for (int i = 0; i < len; ++i) {
         Cell &cell = sb.at(y, x + i);
         cell.ch = static_cast<char32_t>(static_cast<unsigned char>(text[static_cast<size_t>(i)]));
         cell.style = style;
@@ -55,14 +52,12 @@ inline void renderText(
 /// @param text Text to render.
 /// @param style Style to apply to each character cell.
 inline void renderTextRight(
-    ScreenBuffer &sb, int y, int x, int width, std::string_view text, const Style &style)
-{
+    ScreenBuffer &sb, int y, int x, int width, std::string_view text, const Style &style) {
     int textLen = static_cast<int>(text.size());
     int start = x + width - textLen;
     start = std::max(start, x);
     int len = std::min(textLen, width);
-    for (int i = 0; i < len; ++i)
-    {
+    for (int i = 0; i < len; ++i) {
         Cell &cell = sb.at(y, start + i);
         cell.ch = static_cast<char32_t>(static_cast<unsigned char>(text[static_cast<size_t>(i)]));
         cell.style = style;
@@ -79,13 +74,11 @@ inline void renderTextRight(
 /// @param text Text to render.
 /// @param style Style to apply to each character cell.
 inline void renderTextCentered(
-    ScreenBuffer &sb, int y, int x, int width, std::string_view text, const Style &style)
-{
+    ScreenBuffer &sb, int y, int x, int width, std::string_view text, const Style &style) {
     int textLen = static_cast<int>(text.size());
     int renderLen = std::min(textLen, width);
     int start = x + (width - renderLen) / 2;
-    for (int i = 0; i < renderLen; ++i)
-    {
+    for (int i = 0; i < renderLen; ++i) {
         Cell &cell = sb.at(y, start + i);
         cell.ch = static_cast<char32_t>(static_cast<unsigned char>(text[static_cast<size_t>(i)]));
         cell.style = style;

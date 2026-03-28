@@ -21,25 +21,21 @@
 #include <thread>
 #include <vector>
 
-static void call_thread_start_null()
-{
+static void call_thread_start_null() {
     (void)rt_thread_start(nullptr, nullptr);
 }
 
-static void call_thread_join_null()
-{
+static void call_thread_join_null() {
     rt_thread_join(nullptr);
 }
 
-extern "C" void add_loop_entry(void *arg)
-{
+extern "C" void add_loop_entry(void *arg) {
     void *cell = arg;
     for (int i = 0; i < 1000; ++i)
         (void)rt_safe_i64_add(cell, 1);
 }
 
-static void test_safe_i64_concurrent_add()
-{
+static void test_safe_i64_concurrent_add() {
     void *cell = rt_safe_i64_new(0);
     assert(cell != nullptr);
 
@@ -56,15 +52,13 @@ static void test_safe_i64_concurrent_add()
     assert(final == 1000LL * kThreads);
 }
 
-extern "C" void sleep_then_store(void *arg)
-{
+extern "C" void sleep_then_store(void *arg) {
     auto *p = static_cast<std::atomic<int> *>(arg);
     rt_thread_sleep(50);
     p->store(1, std::memory_order_release);
 }
 
-static void test_thread_join_for_timeout()
-{
+static void test_thread_join_for_timeout() {
     std::atomic<int> flag{0};
     void *t = rt_thread_start((void *)&sleep_then_store, &flag);
     assert(t != nullptr);
@@ -76,8 +70,7 @@ static void test_thread_join_for_timeout()
     assert(flag.load(std::memory_order_acquire) == 1);
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

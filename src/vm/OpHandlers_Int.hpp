@@ -29,8 +29,7 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 
-namespace il::vm::detail::integer
-{
+namespace il::vm::detail::integer {
 /// @brief Execution state alias used by integer handlers.
 using ExecState = VMAccess::ExecState;
 
@@ -51,8 +50,7 @@ inline VM::ExecResult handleAddImpl(VM &vm,
                                     const il::core::Instr &in,
                                     const VM::BlockMap &blocks,
                                     const il::core::BasicBlock *&bb,
-                                    size_t &ip)
-{
+                                    size_t &ip) {
     (void)state;
     (void)blocks;
     (void)bb;
@@ -78,20 +76,15 @@ inline VM::ExecResult handleSubImpl(VM &vm,
                                     const il::core::Instr &in,
                                     const VM::BlockMap &blocks,
                                     const il::core::BasicBlock *&bb,
-                                    size_t &ip)
-{
+                                    size_t &ip) {
     (void)state;
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                // Plain integer sub wraps on overflow per IL semantics.
-                                out.i64 = ops::wrap_sub(lhsVal.i64, rhsVal.i64);
-                            });
+    return ops::applyBinary(vm, fr, in, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal) {
+        // Plain integer sub wraps on overflow per IL semantics.
+        out.i64 = ops::wrap_sub(lhsVal.i64, rhsVal.i64);
+    });
 }
 
 /// @brief Inline implementation for Mul with wraparound semantics.
@@ -111,20 +104,15 @@ inline VM::ExecResult handleMulImpl(VM &vm,
                                     const il::core::Instr &in,
                                     const VM::BlockMap &blocks,
                                     const il::core::BasicBlock *&bb,
-                                    size_t &ip)
-{
+                                    size_t &ip) {
     (void)state;
     (void)blocks;
     (void)bb;
     (void)ip;
-    return ops::applyBinary(vm,
-                            fr,
-                            in,
-                            [](Slot &out, const Slot &lhsVal, const Slot &rhsVal)
-                            {
-                                // Plain integer mul wraps on overflow per IL semantics.
-                                out.i64 = ops::wrap_mul(lhsVal.i64, rhsVal.i64);
-                            });
+    return ops::applyBinary(vm, fr, in, [](Slot &out, const Slot &lhsVal, const Slot &rhsVal) {
+        // Plain integer mul wraps on overflow per IL semantics.
+        out.i64 = ops::wrap_mul(lhsVal.i64, rhsVal.i64);
+    });
 }
 
 /// @brief Execute integer addition (add) with wraparound semantics.

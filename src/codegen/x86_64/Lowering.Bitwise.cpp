@@ -28,8 +28,7 @@
 #include "LowerILToMIR.hpp"
 #include "Lowering.EmitCommon.hpp"
 
-namespace viper::codegen::x64::lowering
-{
+namespace viper::codegen::x64::lowering {
 
 /// @brief Lower a bitwise AND IL instruction.
 /// @details Emits an `AND` binary instruction when the IL result type maps to a
@@ -37,11 +36,9 @@ namespace viper::codegen::x64::lowering
 ///          @ref EmitCommon::emitBinary.
 /// @param instr IL bitwise AND instruction.
 /// @param builder Machine IR builder receiving the lowered sequence.
-void emitAnd(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitAnd(const ILInstr &instr, MIRBuilder &builder) {
     const RegClass cls = builder.regClassFor(instr.resultKind);
-    if (cls == RegClass::GPR)
-    {
+    if (cls == RegClass::GPR) {
         EmitCommon(builder).emitBinary(instr, MOpcode::ANDrr, MOpcode::ANDri, cls, true);
     }
 }
@@ -52,11 +49,9 @@ void emitAnd(const ILInstr &instr, MIRBuilder &builder)
 ///          @ref EmitCommon::emitBinary.
 /// @param instr IL bitwise OR instruction.
 /// @param builder Machine IR builder receiving the lowered sequence.
-void emitOr(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitOr(const ILInstr &instr, MIRBuilder &builder) {
     const RegClass cls = builder.regClassFor(instr.resultKind);
-    if (cls == RegClass::GPR)
-    {
+    if (cls == RegClass::GPR) {
         EmitCommon(builder).emitBinary(instr, MOpcode::ORrr, MOpcode::ORri, cls, true);
     }
 }
@@ -67,11 +62,9 @@ void emitOr(const ILInstr &instr, MIRBuilder &builder)
 ///          keep operand handling consistent.
 /// @param instr IL bitwise XOR instruction.
 /// @param builder Machine IR builder receiving the lowered sequence.
-void emitXor(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitXor(const ILInstr &instr, MIRBuilder &builder) {
     const RegClass cls = builder.regClassFor(instr.resultKind);
-    if (cls == RegClass::GPR)
-    {
+    if (cls == RegClass::GPR) {
         EmitCommon(builder).emitBinary(instr, MOpcode::XORrr, MOpcode::XORri, cls, true);
     }
 }
@@ -81,8 +74,7 @@ void emitXor(const ILInstr &instr, MIRBuilder &builder)
 ///          between immediate and RCX-based shift encodings.
 /// @param instr IL shift-left instruction.
 /// @param builder Machine IR builder receiving the lowered sequence.
-void emitShiftLeft(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitShiftLeft(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitShift(instr, MOpcode::SHLri, MOpcode::SHLrc);
 }
 
@@ -91,8 +83,7 @@ void emitShiftLeft(const ILInstr &instr, MIRBuilder &builder)
 ///          variable shift form corresponding to the SHR opcode family.
 /// @param instr IL logical right-shift instruction.
 /// @param builder Machine IR builder receiving the lowered sequence.
-void emitShiftLshr(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitShiftLshr(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitShift(instr, MOpcode::SHRri, MOpcode::SHRrc);
 }
 
@@ -102,8 +93,7 @@ void emitShiftLshr(const ILInstr &instr, MIRBuilder &builder)
 ///          counts.
 /// @param instr IL arithmetic right-shift instruction.
 /// @param builder Machine IR builder receiving the lowered sequence.
-void emitShiftAshr(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitShiftAshr(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitShift(instr, MOpcode::SARri, MOpcode::SARrc);
 }
 

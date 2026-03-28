@@ -33,10 +33,8 @@
 #include <string>
 #include <string_view>
 
-namespace viper::il::io
-{
-namespace
-{
+namespace viper::il::io {
+namespace {
 
 /// @brief Compare ASCII strings without considering letter case.
 /// @details Literal parsing must recognise canonical spellings like "INF" and
@@ -46,12 +44,10 @@ namespace
 /// @param value Source token extracted from the IL stream.
 /// @param literal Reference literal to compare against.
 /// @return @c true when both strings match ignoring ASCII case, otherwise @c false.
-bool equalsIgnoreCase(std::string_view value, std::string_view literal)
-{
+bool equalsIgnoreCase(std::string_view value, std::string_view literal) {
     if (value.size() != literal.size())
         return false;
-    for (std::size_t index = 0; index < literal.size(); ++index)
-    {
+    for (std::size_t index = 0; index < literal.size(); ++index) {
         const unsigned char lhs = static_cast<unsigned char>(value[index]);
         const unsigned char rhs = static_cast<unsigned char>(literal[index]);
         if (std::tolower(lhs) != std::tolower(rhs))
@@ -67,8 +63,7 @@ bool equalsIgnoreCase(std::string_view value, std::string_view literal)
 ///          diagnostic when the operand list unexpectedly ends.
 /// @param cur Cursor positioned at the beginning of the token.
 /// @return View representing the consumed token or `std::nullopt` when no bytes remain.
-std::optional<std::string_view> consumeToken(viper::parse::Cursor &cur)
-{
+std::optional<std::string_view> consumeToken(viper::parse::Cursor &cur) {
     cur.skipWs();
     const std::size_t begin = cur.offset();
     const std::string_view token =
@@ -88,24 +83,20 @@ std::optional<std::string_view> consumeToken(viper::parse::Cursor &cur)
 /// @param cur Cursor positioned at the opening quote.
 /// @param ctx Parser context used for diagnostic emission.
 /// @return Parse result whose value contains the decoded string on success.
-ParseResult parseStringLiteral(viper::parse::Cursor &cur, Context &ctx)
-{
+ParseResult parseStringLiteral(viper::parse::Cursor &cur, Context &ctx) {
     const std::size_t begin = cur.offset();
     cur.consume('"');
     std::string literal;
     bool escape = false;
-    while (!cur.atEnd())
-    {
+    while (!cur.atEnd()) {
         const char ch = cur.peek();
         cur.advance();
-        if (escape)
-        {
+        if (escape) {
             literal.push_back(ch);
             escape = false;
             continue;
         }
-        if (ch == '\\')
-        {
+        if (ch == '\\') {
             literal.push_back(ch);
             escape = true;
             continue;
@@ -138,8 +129,7 @@ ParseResult parseStringLiteral(viper::parse::Cursor &cur, Context &ctx)
 /// @param token Literal token stripped of trailing delimiters and whitespace.
 /// @param ctx Parser context that receives diagnostics when parsing fails.
 /// @return Parse result containing the parsed value or an error status.
-ParseResult parseNumericLiteral(const std::string &token, Context &ctx)
-{
+ParseResult parseNumericLiteral(const std::string &token, Context &ctx) {
     ParseResult result;
 
     const bool hasDecimalPoint = token.find('.') != std::string::npos;
@@ -148,11 +138,9 @@ ParseResult parseNumericLiteral(const std::string &token, Context &ctx)
     const bool hasExponent = (!isHexLiteral) && (token.find('e') != std::string::npos ||
                                                  token.find('E') != std::string::npos);
 
-    auto handleFloat = [&](const std::string &literal) -> ParseResult
-    {
+    auto handleFloat = [&](const std::string &literal) -> ParseResult {
         double value = 0.0;
-        if (::il::io::parseFloatLiteral(literal, value))
-        {
+        if (::il::io::parseFloatLiteral(literal, value)) {
             result.value = ::il::core::Value::constFloat(value);
             return result;
         }
@@ -167,8 +155,7 @@ ParseResult parseNumericLiteral(const std::string &token, Context &ctx)
         return handleFloat(token);
 
     long long intValue = 0;
-    if (::il::io::parseIntegerLiteral(token, intValue))
-    {
+    if (::il::io::parseIntegerLiteral(token, intValue)) {
         result.value = ::il::core::Value::constInt(intValue);
         return result;
     }
@@ -189,8 +176,7 @@ ParseResult parseNumericLiteral(const std::string &token, Context &ctx)
 /// @param cur Cursor describing the remaining operand text.
 /// @param ctx Parser context capturing diagnostics and results.
 /// @return Parse result containing the decoded literal or an error.
-ParseResult parseConstOperand(viper::parse::Cursor &cur, Context &ctx)
-{
+ParseResult parseConstOperand(viper::parse::Cursor &cur, Context &ctx) {
     cur.skipWs();
     if (cur.atEnd())
         return syntaxError(ctx, "missing operand");
@@ -203,34 +189,29 @@ ParseResult parseConstOperand(viper::parse::Cursor &cur, Context &ctx)
         return syntaxError(ctx, "missing operand");
 
     std::string token(tokenView->begin(), tokenView->end());
-    if (!token.empty() && (token.back() == ',' || token.back() == ')'))
-    {
+    if (!token.empty() && (token.back() == ',' || token.back() == ')')) {
         char tail = token.back();
         token.pop_back();
         while (!token.empty() && std::isspace(static_cast<unsigned char>(token.back())))
             token.pop_back();
-        if (token.empty())
-        {
+        if (token.empty()) {
             std::string msg =
                 tail == ',' ? "missing operand before ','" : "missing operand before ')'";
             return syntaxError(ctx, msg);
         }
     }
 
-    if (equalsIgnoreCase(token, "true"))
-    {
+    if (equalsIgnoreCase(token, "true")) {
         ParseResult result;
         result.value = ::il::core::Value::constBool(true);
         return result;
     }
-    if (equalsIgnoreCase(token, "false"))
-    {
+    if (equalsIgnoreCase(token, "false")) {
         ParseResult result;
         result.value = ::il::core::Value::constBool(false);
         return result;
     }
-    if (token == "null")
-    {
+    if (token == "null") {
         ParseResult result;
         result.value = ::il::core::Value::null();
         return result;

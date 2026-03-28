@@ -26,18 +26,15 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-void addPowExtern(Module &module)
-{
+void addPowExtern(Module &module) {
     il::build::IRBuilder builder(module);
     builder.addExtern(
         "rt_pow_f64_chkdom", Type(Type::Kind::F64), {Type(Type::Kind::F64), Type(Type::Kind::F64)});
 }
 
-Module buildHostCallModule()
-{
+Module buildHostCallModule() {
     Module module;
     addPowExtern(module);
 
@@ -66,8 +63,7 @@ Module buildHostCallModule()
     return module;
 }
 
-int64_t runWithDispatch(const char *dispatch)
-{
+int64_t runWithDispatch(const char *dispatch) {
     assert(dispatch != nullptr);
     assert(setenv("VIPER_DISPATCH", dispatch, 1) == 0);
 
@@ -81,8 +77,7 @@ int64_t runWithDispatch(const char *dispatch)
 
 } // namespace
 
-int main()
-{
+int main() {
     const int64_t expected = 32; // 2^5 converted via host pow helper.
 
     assert(runWithDispatch("switch") == expected);

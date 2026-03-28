@@ -39,8 +39,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 using pipeline_detail::coreTypeForAstType;
 
@@ -64,8 +63,7 @@ ProcedureLowering::LoweringContext ProcedureLowering::makeContext(
     const std::string &name,
     const std::vector<Param> &params,
     const std::vector<StmtPtr> &body,
-    const Lowerer::ProcedureConfig &config)
-{
+    const Lowerer::ProcedureConfig &config) {
     assert(lowerer.builder && "makeContext requires an active IRBuilder");
     return LoweringContext(
         lowerer, lowerer.symbols, *lowerer.builder, lowerer.emitter(), name, params, body, config);
@@ -75,8 +73,7 @@ ProcedureLowering::LoweringContext ProcedureLowering::makeContext(
 /// @details Defers to @ref Lowerer::resetLoweringState; the @p ctx parameter
 ///          exists for symmetry with other hooks and future expansion.
 /// @param ctx Active lowering context (unused).
-void ProcedureLowering::resetContext(LoweringContext &ctx)
-{
+void ProcedureLowering::resetContext(LoweringContext &ctx) {
     lowerer.resetLoweringState();
     (void)ctx;
 }
@@ -85,8 +82,7 @@ void ProcedureLowering::resetContext(LoweringContext &ctx)
 /// @details Invokes @ref Lowerer::collectProcedureMetadata to gather parameter
 ///          names, IR parameter descriptions, and the flattened statement list.
 /// @param ctx Lowering context receiving the computed metadata.
-void ProcedureLowering::collectProcedureInfo(LoweringContext &ctx)
-{
+void ProcedureLowering::collectProcedureInfo(LoweringContext &ctx) {
     auto metadata = std::make_shared<Lowerer::ProcedureMetadata>(
         lowerer.collectProcedureMetadata(ctx.params, ctx.body, ctx.config));
     ctx.metadata = metadata;
@@ -101,8 +97,7 @@ void ProcedureLowering::collectProcedureInfo(LoweringContext &ctx)
 ///          synthetic labels for each unique source line, and materialises
 ///          parameter slots.
 /// @param ctx Lowering context describing the procedure.
-void ProcedureLowering::scheduleBlocks(LoweringContext &ctx)
-{
+void ProcedureLowering::scheduleBlocks(LoweringContext &ctx) {
     const auto &config = ctx.config;
     assert(config.emitEmptyBody && "Missing empty body return handler");
     assert(config.emitFinalReturn && "Missing final return handler");
@@ -134,8 +129,7 @@ void ProcedureLowering::scheduleBlocks(LoweringContext &ctx)
 ///          lowered sequentially.  After lowering, performs cleanup including
 ///          deferred temp release and object/array local release.
 /// @param ctx Lowering context that owns the partially constructed function.
-void ProcedureLowering::emitProcedureIL(LoweringContext &ctx)
-{
+void ProcedureLowering::emitProcedureIL(LoweringContext &ctx) {
     const auto &config = ctx.config;
     if (!config.emitEmptyBody || !config.emitFinalReturn || !ctx.function)
         return;
@@ -143,13 +137,11 @@ void ProcedureLowering::emitProcedureIL(LoweringContext &ctx)
     auto &procCtx = lowerer.context();
 
     // Fast path for empty bodies
-    if (ctx.bodyStmts.empty())
-    {
+    if (ctx.bodyStmts.empty()) {
         lowerer.curLoc = {};
         config.emitEmptyBody();
         // Remove any empty blocks (e.g., the exit block created by skeleton that's now unreachable)
-        if (ctx.function)
-        {
+        if (ctx.function) {
             auto &blocks = ctx.function->blocks;
             blocks.erase(std::remove_if(blocks.begin(),
                                         blocks.end(),
@@ -176,8 +168,7 @@ void ProcedureLowering::emitProcedureIL(LoweringContext &ctx)
 /// @details BUG-052 guard: ensures no preallocated line blocks remain completely
 ///          empty, which would fail verification.
 /// @param ctx Lowering context with the function being patched.
-void ProcedureLowering::patchEmptyLineBlocks(LoweringContext &ctx)
-{
+void ProcedureLowering::patchEmptyLineBlocks(LoweringContext &ctx) {
     if (!ctx.function)
         return;
 
@@ -185,13 +176,11 @@ void ProcedureLowering::patchEmptyLineBlocks(LoweringContext &ctx)
     auto &procCtx = lowerer.context();
     int exitIdx = procCtx.exitIndex();
 
-    for (std::size_t i = 0; i < f.blocks.size(); ++i)
-    {
+    for (std::size_t i = 0; i < f.blocks.size(); ++i) {
         if (i == 0 || i == static_cast<std::size_t>(exitIdx))
             continue; // skip entry and exit
         auto &bb = f.blocks[i];
-        if (bb.instructions.empty())
-        {
+        if (bb.instructions.empty()) {
             procCtx.setCurrent(&bb);
             lowerer.emitBr(&f.blocks[exitIdx]);
         }
@@ -202,8 +191,7 @@ void ProcedureLowering::patchEmptyLineBlocks(LoweringContext &ctx)
 /// @details Switches to exit block, releases deferred temps, objects, and arrays,
 ///          then invokes the configured final return callback.
 /// @param ctx Lowering context for cleanup emission.
-void ProcedureLowering::emitProcedureCleanup(LoweringContext &ctx)
-{
+void ProcedureLowering::emitProcedureCleanup(LoweringContext &ctx) {
     auto &procCtx = lowerer.context();
     const auto &config = ctx.config;
 
@@ -213,8 +201,7 @@ void ProcedureLowering::emitProcedureCleanup(LoweringContext &ctx)
 
     // BUG-OOP-035 fix: Exclude function name from release for object-returning functions
     std::unordered_set<std::string> excludeFromRelease = ctx.paramNames;
-    if (config.retType.kind == il::core::Type::Kind::Ptr)
-    {
+    if (config.retType.kind == il::core::Type::Kind::Ptr) {
         excludeFromRelease.insert(ctx.name);
     }
 
@@ -241,12 +228,10 @@ void ProcedureLowering::emitProcedureCleanup(LoweringContext &ctx)
 /// @return Populated metadata structure consumed by later lowering stages.
 Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(const std::vector<Param> &params,
                                                              const std::vector<StmtPtr> &body,
-                                                             const ProcedureConfig &config)
-{
+                                                             const ProcedureConfig &config) {
     // BUG-BAS-002 fix: Register param names and types early so collectVars doesn't pollute them
     // with module-level object types of the same name and so type inference uses correct types.
-    for (const auto &p : params)
-    {
+    for (const auto &p : params) {
         registerProcParam(p.name);
         if (!p.objectClass.empty())
             setSymbolObjectType(p.name, qualify(p.objectClass));
@@ -266,13 +251,11 @@ Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(const std::vector<P
         config.postCollect();
 
     metadata.irParams.reserve(params.size());
-    for (const auto &p : params)
-    {
+    for (const auto &p : params) {
         metadata.paramNames.insert(p.name);
         Type ty = computeParamILType(p);
         metadata.irParams.push_back({p.name, ty});
-        if (p.is_array)
-        {
+        if (p.is_array) {
             requireArrayI64Retain();
             requireArrayI64Release();
         }
@@ -285,8 +268,7 @@ Lowerer::ProcedureMetadata Lowerer::collectProcedureMetadata(const std::vector<P
 /// @details Arrays, objects, and BYREF parameters all use pointer types.
 /// @param p Parameter declaration.
 /// @return IL type for the parameter slot.
-il::core::Type Lowerer::computeParamILType(const Param &p)
-{
+il::core::Type Lowerer::computeParamILType(const Param &p) {
     if (p.is_array)
         return il::core::Type(il::core::Type::Kind::Ptr);
     if (!p.objectClass.empty())
@@ -305,8 +287,7 @@ il::core::Type Lowerer::computeParamILType(const Param &p)
 ///          for arrays, records the slot identifier, and writes the incoming
 ///          argument value into the slot.
 /// @param params Procedure parameters in declaration order.
-void Lowerer::materializeParams(const std::vector<Param> &params)
-{
+void Lowerer::materializeParams(const std::vector<Param> &params) {
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     assert(func && "materializeParams requires an active function");
@@ -315,8 +296,7 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
     if (func->params.size() >= params.size())
         ilParamOffset = func->params.size() - params.size();
 
-    for (size_t i = 0; i < params.size(); ++i)
-    {
+    for (size_t i = 0; i < params.size(); ++i) {
         materializeSingleParam(params[i], i, ilParamOffset);
     }
 }
@@ -325,8 +305,7 @@ void Lowerer::materializeParams(const std::vector<Param> &params)
 /// @param p Parameter to materialize.
 /// @param index Parameter index in declaration order.
 /// @param ilParamOffset Offset into IL function params.
-void Lowerer::materializeSingleParam(const Param &p, size_t index, size_t ilParamOffset)
-{
+void Lowerer::materializeSingleParam(const Param &p, size_t index, size_t ilParamOffset) {
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
 
@@ -342,18 +321,14 @@ void Lowerer::materializeSingleParam(const Param &p, size_t index, size_t ilPara
     bool byRef = p.isByRef;
     Value slot = byRef ? incoming : emitAlloca(isBoolParam ? 1 : 8);
 
-    if (p.is_array)
-    {
+    if (p.is_array) {
         markArray(p.name);
         emitStore(Type(Type::Kind::Ptr), slot, Value::null());
     }
 
-    if (isObjectParam)
-    {
+    if (isObjectParam) {
         setSymbolObjectType(p.name, p.objectClass);
-    }
-    else
-    {
+    } else {
         setSymbolType(p.name, p.type);
     }
     markSymbolReferenced(p.name);
@@ -366,13 +341,10 @@ void Lowerer::materializeSingleParam(const Param &p, size_t index, size_t ilPara
         return;
 
     il::core::Type ty = func->params[ilIndex].type;
-    if (p.is_array)
-    {
+    if (p.is_array) {
         bool isObjectArray = !p.objectClass.empty();
         storeArray(slot, incoming, p.type, isObjectArray);
-    }
-    else if (!byRef)
-    {
+    } else if (!byRef) {
         emitStore(ty, slot, incoming);
     }
 }
@@ -386,14 +358,11 @@ void Lowerer::materializeSingleParam(const Param &p, size_t index, size_t ilPara
 ///          correct default, ensures the function name's symbol adopts the
 ///          declared return type, and delegates to @ref lowerProcedure.
 /// @param decl AST node describing the function declaration.
-void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
-{
-    auto defaultRet = [&]()
-    {
+void Lowerer::lowerFunctionDecl(const FunctionDecl &decl) {
+    auto defaultRet = [&]() {
         if (!decl.explicitClassRetQname.empty())
             return Value::null();
-        switch (decl.ret)
-        {
+        switch (decl.ret) {
             case ::il::frontends::basic::Type::I64:
                 return Value::constInt(0);
             case ::il::frontends::basic::Type::F64:
@@ -407,40 +376,30 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     };
 
     ProcedureConfig config;
-    if (!decl.explicitClassRetQname.empty())
-    {
+    if (!decl.explicitClassRetQname.empty()) {
         config.retType = Type(Type::Kind::Ptr);
-        config.postCollect = [&]()
-        {
-            if (findSymbol(decl.name))
-            {
+        config.postCollect = [&]() {
+            if (findSymbol(decl.name)) {
                 std::string q = resolveQualifiedClassCasing(JoinDots(decl.explicitClassRetQname));
                 setSymbolObjectType(decl.name, q);
             }
         };
-    }
-    else
-    {
+    } else {
         config.retType = functionRetTypeFromHint(decl.name, decl.explicitRetType);
-        config.postCollect = [&]()
-        {
+        config.postCollect = [&]() {
             if (findSymbol(decl.name))
                 setSymbolType(decl.name, decl.ret);
         };
     }
     config.emitEmptyBody = [&]() { emitRet(defaultRet()); };
-    config.emitFinalReturn = [&]()
-    {
+    config.emitFinalReturn = [&]() {
         // VB-style implicit return: check if function name was assigned
-        if (auto storage = resolveVariableStorage(decl.name, {}))
-        {
+        if (auto storage = resolveVariableStorage(decl.name, {})) {
             const bool isClassReturn = !decl.explicitClassRetQname.empty();
             Type loadTy = isClassReturn ? Type(Type::Kind::Ptr) : storage->slotInfo.type;
             Value val = emitLoad(loadTy, storage->pointer);
             emitRet(val);
-        }
-        else
-        {
+        } else {
             emitRet(defaultRet());
         }
     };
@@ -448,11 +407,9 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
     const std::string ilName = decl.qualifiedName.empty() ? decl.name : decl.qualifiedName;
 
     // Foreign (import) functions: emit declaration only, no body.
-    if (decl.isForeign)
-    {
+    if (decl.isForeign) {
         std::vector<il::core::Param> irParams;
-        for (size_t i = 0; i < decl.params.size(); ++i)
-        {
+        for (size_t i = 0; i < decl.params.size(); ++i) {
             il::core::Param p;
             p.name = decl.params[i].name;
             p.type = coreTypeForAstType(decl.params[i].type);
@@ -475,8 +432,7 @@ void Lowerer::lowerFunctionDecl(const FunctionDecl &decl)
 /// @details Configures a void-returning @ref ProcedureConfig and delegates to
 ///          @ref lowerProcedure.
 /// @param decl AST node describing the subroutine declaration.
-void Lowerer::lowerSubDecl(const SubDecl &decl)
-{
+void Lowerer::lowerSubDecl(const SubDecl &decl) {
     ProcedureConfig config;
     config.retType = Type(Type::Kind::Void);
     config.emitEmptyBody = [&]() { emitRetVoid(); };
@@ -485,11 +441,9 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
     const std::string ilName = decl.qualifiedName.empty() ? decl.name : decl.qualifiedName;
 
     // Foreign (import) subs: emit declaration only, no body.
-    if (decl.isForeign)
-    {
+    if (decl.isForeign) {
         std::vector<il::core::Param> irParams;
-        for (size_t i = 0; i < decl.params.size(); ++i)
-        {
+        for (size_t i = 0; i < decl.params.size(); ++i) {
             il::core::Param p;
             p.name = decl.params[i].name;
             p.type = coreTypeForAstType(decl.params[i].type);
@@ -515,8 +469,7 @@ void Lowerer::lowerSubDecl(const SubDecl &decl)
 /// @brief Clear all procedure-specific lowering state.
 /// @details Resets the symbol table, clears the procedure context, and drops the
 ///          cache of synthetic line numbers so the next procedure starts fresh.
-void Lowerer::resetLoweringState()
-{
+void Lowerer::resetLoweringState() {
     resetSymbolState();
     context().reset();
     stmtVirtualLines_.clear();
@@ -530,41 +483,35 @@ void Lowerer::resetLoweringState()
 // =============================================================================
 
 /// @brief Access the mutable procedure context for the current lowering run.
-Lowerer::ProcedureContext &Lowerer::context() noexcept
-{
+Lowerer::ProcedureContext &Lowerer::context() noexcept {
     return context_;
 }
 
 /// @brief Access the immutable procedure context for the current lowering run.
-const Lowerer::ProcedureContext &Lowerer::context() const noexcept
-{
+const Lowerer::ProcedureContext &Lowerer::context() const noexcept {
     return context_;
 }
 
 /// @brief Construct an @ref Emit helper bound to the current lowering state.
-Emit Lowerer::emitCommon() noexcept
-{
+Emit Lowerer::emitCommon() noexcept {
     return Emit(*this);
 }
 
 /// @brief Construct an emit helper and pre-set its source location.
-Emit Lowerer::emitCommon(il::support::SourceLoc loc) noexcept
-{
+Emit Lowerer::emitCommon(il::support::SourceLoc loc) noexcept {
     Emit helper(*this);
     helper.at(loc);
     return helper;
 }
 
 /// @brief Retrieve the shared lowering emitter.
-lower::Emitter &Lowerer::emitter() noexcept
-{
+lower::Emitter &Lowerer::emitter() noexcept {
     assert(emitter_ && "emitter must be initialized");
     return *emitter_;
 }
 
 /// @brief Retrieve the shared lowering emitter (const overload).
-const lower::Emitter &Lowerer::emitter() const noexcept
-{
+const lower::Emitter &Lowerer::emitter() const noexcept {
     assert(emitter_ && "emitter must be initialized");
     return *emitter_;
 }
@@ -574,21 +521,16 @@ const lower::Emitter &Lowerer::emitter() const noexcept
 // =============================================================================
 
 /// @brief Reserve a fresh temporary identifier for IL value creation.
-unsigned Lowerer::nextTempId()
-{
+unsigned Lowerer::nextTempId() {
     ProcedureContext &ctx = context();
     unsigned id = 0;
-    if (builder)
-    {
+    if (builder) {
         id = builder->reserveTempId();
-    }
-    else
-    {
+    } else {
         id = ctx.nextTemp();
         ctx.setNextTemp(id + 1);
     }
-    if (Function *func = ctx.function())
-    {
+    if (Function *func = ctx.function()) {
         if (func->valueNames.size() <= id)
             func->valueNames.resize(id + 1);
         if (func->valueNames[id].empty())
@@ -600,8 +542,7 @@ unsigned Lowerer::nextTempId()
 }
 
 /// @brief Generate a unique fallback block label for ad-hoc control flow.
-std::string Lowerer::nextFallbackBlockLabel()
-{
+std::string Lowerer::nextFallbackBlockLabel() {
     return mangler.block("bb_" + std::to_string(nextFallbackBlockId++));
 }
 

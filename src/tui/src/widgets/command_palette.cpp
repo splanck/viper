@@ -23,8 +23,7 @@
 #include "tui/render/screen.hpp"
 #include "tui/util/string.hpp"
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 using viper::tui::term::KeyEvent;
 
 /// @brief Construct a command palette bound to an existing keymap and theme.
@@ -32,16 +31,14 @@ using viper::tui::term::KeyEvent;
 ///          initial result list so the widget paints correctly before receiving
 ///          user input.
 CommandPalette::CommandPalette(input::Keymap &km, const style::Theme &theme)
-    : km_(km), theme_(theme)
-{
+    : km_(km), theme_(theme) {
     update();
 }
 
 /// @brief Command palette must hold focus to accept incremental query input.
 /// @details Returning true ensures the application routes keystrokes directly to
 ///          the widget whenever it is active.
-bool CommandPalette::wantsFocus() const
-{
+bool CommandPalette::wantsFocus() const {
     return true;
 }
 
@@ -49,15 +46,12 @@ bool CommandPalette::wantsFocus() const
 /// @details Normalises both the query and candidate command names to lowercase
 ///          so matching becomes case-insensitive.  Commands whose name contains
 ///          the query as a substring are kept in insertion order.
-void CommandPalette::update()
-{
+void CommandPalette::update() {
     results_.clear();
     std::string q = util::toLower(query_);
-    for (const auto &cmd : km_.commands())
-    {
+    for (const auto &cmd : km_.commands()) {
         std::string name = util::toLower(cmd.name);
-        if (q.empty() || name.find(q) != std::string::npos)
-        {
+        if (q.empty() || name.find(q) != std::string::npos) {
             results_.push_back(cmd.id);
         }
     }
@@ -67,28 +61,22 @@ void CommandPalette::update()
 /// @details Supports backspace, enter, and printable ASCII characters.  Enter
 ///          executes the first match, while typing adds characters to the query
 ///          and re-filters the result list.  Unhandled keys bubble up to callers.
-bool CommandPalette::onEvent(const ui::Event &ev)
-{
+bool CommandPalette::onEvent(const ui::Event &ev) {
     using Code = KeyEvent::Code;
-    if (ev.key.code == Code::Backspace)
-    {
-        if (!query_.empty())
-        {
+    if (ev.key.code == Code::Backspace) {
+        if (!query_.empty()) {
             query_.pop_back();
             update();
         }
         return true;
     }
-    if (ev.key.code == Code::Enter)
-    {
-        if (!results_.empty())
-        {
+    if (ev.key.code == Code::Enter) {
+        if (!results_.empty()) {
             km_.execute(results_.front());
         }
         return true;
     }
-    if (ev.key.code == Code::Unknown && ev.key.codepoint >= 32 && ev.key.codepoint <= 126)
-    {
+    if (ev.key.code == Code::Unknown && ev.key.codepoint >= 32 && ev.key.codepoint <= 126) {
         query_.push_back(static_cast<char>(ev.key.codepoint));
         update();
         return true;
@@ -100,36 +88,28 @@ bool CommandPalette::onEvent(const ui::Event &ev)
 /// @details Clears the widget's rectangle, renders the prompt prefixed with a
 ///          colon, and lists the currently matched command names.  Rows beyond
 ///          the widget height are clipped.
-void CommandPalette::paint(render::ScreenBuffer &sb)
-{
+void CommandPalette::paint(render::ScreenBuffer &sb) {
     const auto &st = theme_.style(style::Role::Normal);
-    for (int y = 0; y < rect_.h; ++y)
-    {
-        for (int x = 0; x < rect_.w; ++x)
-        {
+    for (int y = 0; y < rect_.h; ++y) {
+        for (int x = 0; x < rect_.w; ++x) {
             auto &cell = sb.at(rect_.y + y, rect_.x + x);
             cell.ch = U' ';
             cell.style = st;
         }
     }
     std::string header = ":" + query_;
-    for (int x = 0; x < rect_.w && x < static_cast<int>(header.size()); ++x)
-    {
+    for (int x = 0; x < rect_.w && x < static_cast<int>(header.size()); ++x) {
         auto &cell = sb.at(rect_.y, rect_.x + x);
         cell.ch = static_cast<char32_t>(header[x]);
         cell.style = st;
     }
     int row = 1;
-    for (const auto &id : results_)
-    {
-        if (row >= rect_.h)
-        {
+    for (const auto &id : results_) {
+        if (row >= rect_.h) {
             break;
         }
-        if (const auto *cmd = km_.find(id))
-        {
-            for (int x = 0; x < rect_.w && x < static_cast<int>(cmd->name.size()); ++x)
-            {
+        if (const auto *cmd = km_.find(id)) {
+            for (int x = 0; x < rect_.w && x < static_cast<int>(cmd->name.size()); ++x) {
                 auto &cell = sb.at(rect_.y + row, rect_.x + x);
                 cell.ch = static_cast<char32_t>(cmd->name[x]);
                 cell.style = st;

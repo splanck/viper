@@ -16,8 +16,7 @@
 
 #include "frontends/common/NameMangler.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Alias for the common NameMangler.
 /// @details BASIC uses the standard common NameMangler with default settings.

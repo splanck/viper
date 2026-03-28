@@ -26,8 +26,7 @@
 #include "il/io/Parser.hpp"
 #include "il/verify/Verifier.hpp"
 
-namespace il::api::v2
-{
+namespace il::api::v2 {
 
 /// @brief Parse IL text into a module using the modern Expected-oriented API.
 /// @details Forwards to @ref il::io::Parser::parse so textual IL is decoded
@@ -37,8 +36,7 @@ namespace il::api::v2
 /// @param is Stream supplying UTF-8 IL source text.
 /// @param m Module that receives the parsed representation.
 /// @returns Empty Expected on success; otherwise the parse diagnostics.
-il::support::Expected<void> parse_text_expected(std::istream &is, il::core::Module &m)
-{
+il::support::Expected<void> parse_text_expected(std::istream &is, il::core::Module &m) {
     return il::io::Parser::parse(is, m);
 }
 
@@ -50,8 +48,7 @@ il::support::Expected<void> parse_text_expected(std::istream &is, il::core::Modu
 /// @param m Module to validate.
 /// @returns Empty Expected when verification succeeds; otherwise a populated
 /// diagnostic collection.
-il::support::Expected<void> verify_module_expected(const il::core::Module &m)
-{
+il::support::Expected<void> verify_module_expected(const il::core::Module &m) {
     return il::verify::Verifier::verify(m);
 }
 

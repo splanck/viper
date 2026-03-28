@@ -17,13 +17,11 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static void test_new_and_basic_properties()
-{
+static void test_new_and_basic_properties() {
     void *ring = rt_ring_new(10);
     assert(ring != nullptr);
     assert(rt_ring_len(ring) == 0);
@@ -32,8 +30,7 @@ static void test_new_and_basic_properties()
     assert(rt_ring_is_full(ring) == 0);
 }
 
-static void test_capacity_clamped_to_minimum()
-{
+static void test_capacity_clamped_to_minimum() {
     // Capacity of 0 or negative should clamp to 1
     void *ring = rt_ring_new(0);
     assert(ring != nullptr);
@@ -44,8 +41,7 @@ static void test_capacity_clamped_to_minimum()
     assert(rt_ring_cap(ring) == 1);
 }
 
-static void test_push_increases_length()
-{
+static void test_push_increases_length() {
     void *ring = rt_ring_new(10);
 
     int a = 10, b = 20, c = 30;
@@ -61,8 +57,7 @@ static void test_push_increases_length()
     assert(rt_ring_len(ring) == 3);
 }
 
-static void test_push_until_full()
-{
+static void test_push_until_full() {
     void *ring = rt_ring_new(3);
 
     int a = 10, b = 20, c = 30;
@@ -75,8 +70,7 @@ static void test_push_until_full()
     assert(rt_ring_is_full(ring) == 1);
 }
 
-static void test_fifo_order()
-{
+static void test_fifo_order() {
     void *ring = rt_ring_new(10);
 
     int a = 10, b = 20, c = 30;
@@ -99,8 +93,7 @@ static void test_fifo_order()
     assert(rt_ring_is_empty(ring) == 1);
 }
 
-static void test_peek_returns_oldest_without_removing()
-{
+static void test_peek_returns_oldest_without_removing() {
     void *ring = rt_ring_new(10);
 
     int a = 10, b = 20;
@@ -123,8 +116,7 @@ static void test_peek_returns_oldest_without_removing()
     assert(rt_ring_len(ring) == 1);
 }
 
-static void test_get_by_index()
-{
+static void test_get_by_index() {
     void *ring = rt_ring_new(10);
 
     int a = 10, b = 20, c = 30;
@@ -141,8 +133,7 @@ static void test_get_by_index()
     assert(rt_ring_len(ring) == 3);
 }
 
-static void test_get_out_of_bounds_returns_null()
-{
+static void test_get_out_of_bounds_returns_null() {
     void *ring = rt_ring_new(10);
 
     int a = 10;
@@ -153,8 +144,7 @@ static void test_get_out_of_bounds_returns_null()
     assert(rt_ring_get(ring, 100) == nullptr);
 }
 
-static void test_overwrite_oldest_when_full()
-{
+static void test_overwrite_oldest_when_full() {
     void *ring = rt_ring_new(3);
 
     int a = 10, b = 20, c = 30, d = 40, e = 50;
@@ -184,8 +174,7 @@ static void test_overwrite_oldest_when_full()
     assert(rt_ring_get(ring, 2) == &e);
 }
 
-static void test_clear_empties_ring()
-{
+static void test_clear_empties_ring() {
     void *ring = rt_ring_new(5);
 
     int a = 10, b = 20, c = 30;
@@ -209,8 +198,7 @@ static void test_clear_empties_ring()
     assert(rt_ring_len(ring) == 0);
 }
 
-static void test_push_after_clear()
-{
+static void test_push_after_clear() {
     void *ring = rt_ring_new(5);
 
     int a = 10, b = 20;
@@ -224,14 +212,12 @@ static void test_push_after_clear()
     assert(rt_ring_peek(ring) == &c);
 }
 
-static void test_wrap_around_indices()
-{
+static void test_wrap_around_indices() {
     void *ring = rt_ring_new(5);
 
     // Fill the ring
     int vals[5] = {10, 20, 30, 40, 50};
-    for (int i = 0; i < 5; ++i)
-    {
+    for (int i = 0; i < 5; ++i) {
         rt_ring_push(ring, &vals[i]);
     }
 
@@ -245,8 +231,7 @@ static void test_wrap_around_indices()
 
     // Push 4 more elements - this will wrap around
     int more[4] = {60, 70, 80, 90};
-    for (int i = 0; i < 4; ++i)
-    {
+    for (int i = 0; i < 4; ++i) {
         rt_ring_push(ring, &more[i]);
     }
 
@@ -277,13 +262,11 @@ static void test_wrap_around_indices()
     assert(rt_ring_get(ring, 4) == &more[3]); // 90
 }
 
-static void test_full_cycle_with_pop()
-{
+static void test_full_cycle_with_pop() {
     void *ring = rt_ring_new(3);
 
     // Go through multiple full cycles
-    for (int cycle = 0; cycle < 5; ++cycle)
-    {
+    for (int cycle = 0; cycle < 5; ++cycle) {
         int vals[3] = {cycle * 10 + 1, cycle * 10 + 2, cycle * 10 + 3};
         rt_ring_push(ring, &vals[0]);
         rt_ring_push(ring, &vals[1]);
@@ -299,8 +282,7 @@ static void test_full_cycle_with_pop()
     }
 }
 
-static void test_null_handling()
-{
+static void test_null_handling() {
     // Operations on null should return safe defaults
     assert(rt_ring_len(nullptr) == 0);
     assert(rt_ring_cap(nullptr) == 0);
@@ -316,8 +298,7 @@ static void test_null_handling()
     rt_ring_clear(nullptr);
 }
 
-static void test_pop_empty_returns_null()
-{
+static void test_pop_empty_returns_null() {
     void *ring = rt_ring_new(3);
 
     // Pop on empty returns NULL (not a trap for Ring)
@@ -330,8 +311,7 @@ static void test_pop_empty_returns_null()
     assert(rt_ring_pop(ring) == nullptr);
 }
 
-static void test_peek_empty_returns_null()
-{
+static void test_peek_empty_returns_null() {
     void *ring = rt_ring_new(3);
 
     // Peek on empty returns NULL
@@ -344,8 +324,7 @@ static void test_peek_empty_returns_null()
     assert(rt_ring_peek(ring) == nullptr);
 }
 
-static void test_push_null_value()
-{
+static void test_push_null_value() {
     void *ring = rt_ring_new(5);
 
     // Pushing null value should be allowed
@@ -356,8 +335,7 @@ static void test_push_null_value()
     assert(rt_ring_is_empty(ring) == 1);
 }
 
-static void test_interleaved_operations()
-{
+static void test_interleaved_operations() {
     void *ring = rt_ring_new(4);
 
     int a = 1, b = 2, c = 3, d = 4, e = 5;
@@ -381,8 +359,7 @@ static void test_interleaved_operations()
     assert(rt_ring_is_empty(ring) == 1);
 }
 
-static void test_capacity_one()
-{
+static void test_capacity_one() {
     void *ring = rt_ring_new(1);
 
     assert(rt_ring_cap(ring) == 1);
@@ -404,16 +381,14 @@ static void test_capacity_one()
     assert(rt_ring_is_empty(ring) == 1);
 }
 
-static void test_large_capacity()
-{
+static void test_large_capacity() {
     void *ring = rt_ring_new(1000);
 
     assert(rt_ring_cap(ring) == 1000);
 
     // Fill to capacity
     int vals[1000];
-    for (int i = 0; i < 1000; ++i)
-    {
+    for (int i = 0; i < 1000; ++i) {
         vals[i] = i;
         rt_ring_push(ring, &vals[i]);
     }
@@ -422,34 +397,29 @@ static void test_large_capacity()
     assert(rt_ring_is_full(ring) == 1);
 
     // Verify all elements
-    for (int i = 0; i < 1000; ++i)
-    {
+    for (int i = 0; i < 1000; ++i) {
         assert(rt_ring_get(ring, i) == &vals[i]);
     }
 
     // Pop all and verify FIFO
-    for (int i = 0; i < 1000; ++i)
-    {
+    for (int i = 0; i < 1000; ++i) {
         assert(rt_ring_pop(ring) == &vals[i]);
     }
 
     assert(rt_ring_is_empty(ring) == 1);
 }
 
-static void test_overwrite_sequence()
-{
+static void test_overwrite_sequence() {
     // Test a longer sequence of overwrites
     void *ring = rt_ring_new(3);
 
     int vals[10];
-    for (int i = 0; i < 10; ++i)
-    {
+    for (int i = 0; i < 10; ++i) {
         vals[i] = i * 10;
     }
 
     // Push all 10 values - only last 3 should remain
-    for (int i = 0; i < 10; ++i)
-    {
+    for (int i = 0; i < 10; ++i) {
         rt_ring_push(ring, &vals[i]);
     }
 
@@ -466,8 +436,7 @@ static void test_overwrite_sequence()
     assert(rt_ring_pop(ring) == &vals[9]);
 }
 
-int main()
-{
+int main() {
     test_new_and_basic_properties();
     test_capacity_clamped_to_minimum();
     test_push_increases_length();

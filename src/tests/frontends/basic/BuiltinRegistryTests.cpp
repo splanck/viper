@@ -23,23 +23,19 @@
 
 using namespace il::frontends::basic;
 
-namespace
-{
+namespace {
 
-Lowerer::RVal dummy_handler(lower::BuiltinLowerContext &)
-{
+Lowerer::RVal dummy_handler(lower::BuiltinLowerContext &) {
     return Lowerer::RVal{il::core::Value::null(), il::core::Type{il::core::Type::Kind::Void}};
 }
 
-void register_with_temporary_key()
-{
+void register_with_temporary_key() {
     register_builtin(std::string("__TEMP_BUILTIN_HANDLER__"), dummy_handler);
 }
 
 } // namespace
 
-int main()
-{
+int main() {
     register_with_temporary_key();
 
     constexpr std::string_view kName = "__TEMP_BUILTIN_HANDLER__";

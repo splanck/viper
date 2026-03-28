@@ -38,8 +38,7 @@
 using viper::tui::util::char_width;
 using viper::tui::util::clampAdd;
 
-namespace viper::tui::views
-{
+namespace viper::tui::views {
 
 /// @brief Construct a TextView bound to a text buffer and theme.
 /// @details Stores references to the backing @ref text::TextBuffer and
@@ -49,28 +48,23 @@ namespace viper::tui::views
 /// @param theme Colour/style palette used when painting cells.
 /// @param showLineNumbers Whether the gutter with line numbers is enabled.
 TextView::TextView(text::TextBuffer &buf, const style::Theme &theme, bool showLineNumbers)
-    : buf_(buf), theme_(theme), show_line_numbers_(showLineNumbers)
-{
-}
+    : buf_(buf), theme_(theme), show_line_numbers_(showLineNumbers) {}
 
 /// @brief Report whether the view wants keyboard focus.
 /// @return Always true; TextView handles keyboard navigation and editing.
-bool TextView::wantsFocus() const
-{
+bool TextView::wantsFocus() const {
     return true;
 }
 
 /// @brief Retrieve the zero-based row containing the cursor.
 /// @return Cursor row in visual coordinates.
-std::size_t TextView::cursorRow() const
-{
+std::size_t TextView::cursorRow() const {
     return cursor_row_;
 }
 
 /// @brief Retrieve the zero-based column containing the cursor.
 /// @return Cursor column measured in terminal cell units.
-std::size_t TextView::cursorCol() const
-{
+std::size_t TextView::cursorCol() const {
     return cursor_col_;
 }
 
@@ -82,8 +76,7 @@ std::size_t TextView::cursorCol() const
 /// @param s UTF-8 string view containing the encoded text.
 /// @param off Starting byte offset within @p s.
 /// @return Pair of decoded code point and number of bytes consumed.
-std::pair<char32_t, std::size_t> TextView::decodeChar(std::string_view s, std::size_t off)
-{
+std::pair<char32_t, std::size_t> TextView::decodeChar(std::string_view s, std::size_t off) {
     // UTF-8 decoding mirrors the terminal input pipeline: invalid sequences are
     // replaced with U+FFFD and treated as having a single cell of display width.
     if (off >= s.size())
@@ -115,12 +108,10 @@ std::pair<char32_t, std::size_t> TextView::decodeChar(std::string_view s, std::s
 ///          view to clamp cursor columns and scroll offsets accurately.
 /// @param line UTF-8 line slice sourced from the text buffer.
 /// @return Total number of terminal columns required to display @p line.
-std::size_t TextView::lineWidth(std::string_view line)
-{
+std::size_t TextView::lineWidth(std::string_view line) {
     std::size_t i = 0;
     std::size_t c = 0;
-    while (i < line.size())
-    {
+    while (i < line.size()) {
         auto [cp, len] = decodeChar(line, i);
         c += char_width(cp);
         i += len;
@@ -136,12 +127,10 @@ std::size_t TextView::lineWidth(std::string_view line)
 /// @param line UTF-8 encoded line segment.
 /// @param col Target visual column.
 /// @return Byte offset within @p line nearest to @p col.
-std::size_t TextView::columnToOffset(std::string_view line, std::size_t col)
-{
+std::size_t TextView::columnToOffset(std::string_view line, std::size_t col) {
     std::size_t i = 0;
     std::size_t c = 0;
-    while (i < line.size())
-    {
+    while (i < line.size()) {
         auto [cp, len] = decodeChar(line, i);
         std::size_t w = static_cast<std::size_t>(char_width(cp));
         if (c + w > col)
@@ -160,8 +149,7 @@ std::size_t TextView::columnToOffset(std::string_view line, std::size_t col)
 /// @param row Zero-based row.
 /// @param col Zero-based column in terminal cells.
 /// @return Byte offset within the buffer representing @p row/@p col.
-std::size_t TextView::offsetFromRowCol(std::size_t row, std::size_t col) const
-{
+std::size_t TextView::offsetFromRowCol(std::size_t row, std::size_t col) const {
     const std::size_t total = buf_.lineCount();
     if (total == 0)
         return 0;
@@ -171,31 +159,27 @@ std::size_t TextView::offsetFromRowCol(std::size_t row, std::size_t col) const
     auto line = buf_.lineView(row);
     std::size_t byteOffset = 0;
     std::size_t currentCol = 0;
-    line.forEachSegment(
-        [&](std::string_view segment) -> bool
-        {
-            std::size_t idx = 0;
-            while (idx < segment.size())
-            {
-                auto [cp, len] = decodeChar(segment, idx);
-                if (len == 0)
-                    return false;
-                std::size_t width = static_cast<std::size_t>(char_width(cp));
-                if (currentCol + width > col)
-                    return false;
-                idx += len;
-                byteOffset += len;
-                currentCol += width;
-            }
-            return true;
-        });
+    line.forEachSegment([&](std::string_view segment) -> bool {
+        std::size_t idx = 0;
+        while (idx < segment.size()) {
+            auto [cp, len] = decodeChar(segment, idx);
+            if (len == 0)
+                return false;
+            std::size_t width = static_cast<std::size_t>(char_width(cp));
+            if (currentCol + width > col)
+                return false;
+            idx += len;
+            byteOffset += len;
+            currentCol += width;
+        }
+        return true;
+    });
     return line.offset() + byteOffset;
 }
 
 /// @brief Report the number of lines currently in the buffer.
 /// @return Line count as reported by the backing text buffer.
-std::size_t TextView::totalLines() const
-{
+std::size_t TextView::totalLines() const {
     return buf_.lineCount();
 }
 
@@ -209,8 +193,7 @@ std::size_t TextView::totalLines() const
 /// @param col New cursor column.
 /// @param shift Whether the selection anchor should be preserved.
 /// @param updateTarget Whether to update the sticky target column.
-void TextView::setCursor(std::size_t row, std::size_t col, bool shift, bool updateTarget)
-{
+void TextView::setCursor(std::size_t row, std::size_t col, bool shift, bool updateTarget) {
     cursor_row_ = row;
     cursor_col_ = col;
     if (updateTarget)
@@ -227,8 +210,7 @@ void TextView::setCursor(std::size_t row, std::size_t col, bool shift, bool upda
 ///          coordinates. The renderer consults this vector to accent spans such
 ///          as search results.
 /// @param ranges New highlight ranges to adopt.
-void TextView::setHighlights(std::vector<std::pair<std::size_t, std::size_t>> ranges)
-{
+void TextView::setHighlights(std::vector<std::pair<std::size_t, std::size_t>> ranges) {
     highlights_ = std::move(ranges);
 }
 
@@ -238,8 +220,7 @@ void TextView::setHighlights(std::vector<std::pair<std::size_t, std::size_t>> ra
 ///          column. Scrolling is adjusted to keep the caret inside the viewport
 ///          when possible.
 /// @param off Absolute byte offset requested by the caller.
-void TextView::moveCursorToOffset(std::size_t off)
-{
+void TextView::moveCursorToOffset(std::size_t off) {
     const std::size_t size = buf_.size();
     const std::size_t clamped = std::min(off, size);
     const std::size_t total = buf_.lineCount();
@@ -247,30 +228,24 @@ void TextView::moveCursorToOffset(std::size_t off)
     std::size_t row = 0;
     std::size_t rowStart = 0;
 
-    if (total > 0)
-    {
+    if (total > 0) {
         std::size_t low = 0;
         std::size_t high = total;
-        while (low < high)
-        {
+        while (low < high) {
             std::size_t mid = (low + high) / 2;
             std::size_t start = buf_.lineOffset(mid);
-            if (start <= clamped)
-            {
+            if (start <= clamped) {
                 row = mid;
                 rowStart = start;
                 low = mid + 1;
-            }
-            else
-            {
+            } else {
                 high = mid;
             }
         }
         rowStart = buf_.lineOffset(row);
 
         std::size_t length = buf_.lineLength(row);
-        if (row + 1 < total && clamped == clampAdd(rowStart, length))
-        {
+        if (row + 1 < total && clamped == clampAdd(rowStart, length)) {
             ++row;
             if (row >= total)
                 row = total - 1;
@@ -285,29 +260,24 @@ void TextView::moveCursorToOffset(std::size_t off)
         std::size_t col = 0;
         std::size_t consumed = 0;
         auto line = buf_.lineView(row);
-        line.forEachSegment(
-            [&](std::string_view segment) -> bool
-            {
-                std::size_t idx = 0;
-                while (idx < segment.size() && consumed < inLineOffset)
-                {
-                    auto [cp, len] = decodeChar(segment, idx);
-                    if (len == 0)
-                        return false;
-                    std::size_t advance = std::min(len, inLineOffset - consumed);
-                    consumed += advance;
-                    col += static_cast<std::size_t>(char_width(cp));
-                    idx += len;
-                    if (consumed >= inLineOffset)
-                        break;
-                }
-                return consumed < inLineOffset;
-            });
+        line.forEachSegment([&](std::string_view segment) -> bool {
+            std::size_t idx = 0;
+            while (idx < segment.size() && consumed < inLineOffset) {
+                auto [cp, len] = decodeChar(segment, idx);
+                if (len == 0)
+                    return false;
+                std::size_t advance = std::min(len, inLineOffset - consumed);
+                consumed += advance;
+                col += static_cast<std::size_t>(char_width(cp));
+                idx += len;
+                if (consumed >= inLineOffset)
+                    break;
+            }
+            return consumed < inLineOffset;
+        });
 
         setCursor(row, col, false, true);
-    }
-    else
-    {
+    } else {
         setCursor(0, 0, false, true);
     }
 
@@ -321,8 +291,7 @@ void TextView::moveCursorToOffset(std::size_t off)
 /// @details The renderer consults the rule set to colourize buffer contents.
 ///          Passing nullptr disables syntax highlighting.
 /// @param syntax Rule set owned by the caller; may be nullptr.
-void TextView::setSyntax(syntax::SyntaxRuleSet *syntax)
-{
+void TextView::setSyntax(syntax::SyntaxRuleSet *syntax) {
     syntax_ = syntax;
 }
 

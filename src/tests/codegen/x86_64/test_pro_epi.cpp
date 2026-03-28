@@ -19,12 +19,9 @@
 #include <iostream>
 #include <string>
 
-namespace viper::codegen::x64
-{
-namespace
-{
-[[nodiscard]] ILModule makeTrivialModule()
-{
+namespace viper::codegen::x64 {
+namespace {
+[[nodiscard]] ILModule makeTrivialModule() {
     // Build a callee so the main function is non-leaf and the backend
     // cannot eliminate the prologue/epilogue via leaf-frame optimisation.
     ILValue calleeZero{};
@@ -76,8 +73,7 @@ namespace
     return module;
 }
 
-[[nodiscard]] bool hasCanonicalFrameSequence(const std::string &asmText)
-{
+[[nodiscard]] bool hasCanonicalFrameSequence(const std::string &asmText) {
     const bool hasFrameMove = asmText.find("movq %rsp, %rbp") != std::string::npos;
     const bool hasStackAdjust =
         asmText.find("subq $") != std::string::npos || asmText.find("addq $-") != std::string::npos;
@@ -88,15 +84,13 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makeTrivialModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
 
-    if (!result.errors.empty() || !hasCanonicalFrameSequence(result.asmText))
-    {
+    if (!result.errors.empty() || !hasCanonicalFrameSequence(result.asmText)) {
         std::cerr << "Unexpected assembly output:\n" << result.asmText;
         return EXIT_FAILURE;
     }

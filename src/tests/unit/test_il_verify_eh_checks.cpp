@@ -44,8 +44,7 @@
 #include <cassert>
 #include <string>
 
-int main()
-{
+int main() {
     using namespace il::core;
     using il::verify::checkEhStackBalance;
     using il::verify::checkResumeEdges;

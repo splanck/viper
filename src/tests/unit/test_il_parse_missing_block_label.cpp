@@ -25,8 +25,7 @@
 #error "PARSE_ROUNDTRIP_DIR must be defined"
 #endif
 
-int main()
-{
+int main() {
     const char *path = PARSE_ROUNDTRIP_DIR "/missing_block_label.il";
     std::ifstream in(path);
     std::stringstream buffer;

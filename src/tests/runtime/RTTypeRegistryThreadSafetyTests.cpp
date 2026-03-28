@@ -43,8 +43,7 @@ static const int TYPE_B = 501;
 static const int TYPE_C = 502;
 static const int IFACE_I = 50;
 
-static void register_test_types()
-{
+static void register_test_types() {
     rt_register_class_with_base(TYPE_A, vtable_a, "Thread.A", 0, -1);
     rt_register_class_with_base(TYPE_B, vtable_b, "Thread.B", 0, TYPE_A);
     rt_register_class_with_base(TYPE_C, vtable_c, "Thread.C", 0, TYPE_B);
@@ -55,8 +54,7 @@ static void register_test_types()
 // ============================================================================
 // Test 1: Reads work correctly before sealing
 // ============================================================================
-static void test_reads_before_seal()
-{
+static void test_reads_before_seal() {
     printf("  test_reads_before_seal...");
 
     assert(rt_type_is_a(TYPE_A, TYPE_A) == 1);
@@ -74,8 +72,7 @@ static void test_reads_before_seal()
 // ============================================================================
 // Test 2: Reads work correctly after sealing
 // ============================================================================
-static void test_reads_after_seal()
-{
+static void test_reads_after_seal() {
     printf("  test_reads_after_seal...");
 
     rt_type_registry_seal();
@@ -95,18 +92,15 @@ static void test_reads_after_seal()
 // ============================================================================
 // Test 3: Concurrent reads on a sealed registry
 // ============================================================================
-static void test_concurrent_reads_post_seal()
-{
+static void test_concurrent_reads_post_seal() {
     printf("  test_concurrent_reads_post_seal...");
 
     const int NUM_THREADS = 8;
     const int ITERS_PER_THREAD = 10000;
     std::atomic<int> failures{0};
 
-    auto worker = [&]()
-    {
-        for (int i = 0; i < ITERS_PER_THREAD; ++i)
-        {
+    auto worker = [&]() {
+        for (int i = 0; i < ITERS_PER_THREAD; ++i) {
             if (rt_type_is_a(TYPE_C, TYPE_A) != 1)
                 failures++;
             if (rt_type_is_a(TYPE_B, TYPE_A) != 1)
@@ -136,8 +130,7 @@ static void test_concurrent_reads_post_seal()
 // ============================================================================
 // Test 4: Interface lookup under concurrency
 // ============================================================================
-static void test_concurrent_interface_lookup()
-{
+static void test_concurrent_interface_lookup() {
     printf("  test_concurrent_interface_lookup...");
 
     const int NUM_THREADS = 8;
@@ -145,8 +138,7 @@ static void test_concurrent_interface_lookup()
     std::atomic<int> failures{0};
 
     // Create mock objects with vtables (minimal object layout: vptr at offset 0)
-    struct MockObj
-    {
+    struct MockObj {
         void **vptr;
     };
 
@@ -154,10 +146,8 @@ static void test_concurrent_interface_lookup()
     MockObj obj_b = {vtable_b};
     MockObj obj_c = {vtable_c};
 
-    auto worker = [&]()
-    {
-        for (int i = 0; i < ITERS_PER_THREAD; ++i)
-        {
+    auto worker = [&]() {
+        for (int i = 0; i < ITERS_PER_THREAD; ++i) {
             void **it_a = rt_itable_lookup(&obj_a, IFACE_I);
             void **it_b = rt_itable_lookup(&obj_b, IFACE_I);
             void **it_c = rt_itable_lookup(&obj_c, IFACE_I);
@@ -181,8 +171,7 @@ static void test_concurrent_interface_lookup()
     printf(" OK (%d threads x %d iterations)\n", NUM_THREADS, ITERS_PER_THREAD);
 }
 
-int main()
-{
+int main() {
     printf("RTTypeRegistryThreadSafetyTests\n");
 
     register_test_types();

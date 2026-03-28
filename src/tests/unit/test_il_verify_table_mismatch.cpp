@@ -25,13 +25,11 @@
 #include <cassert>
 #include <string>
 
-namespace
-{
+namespace {
 
 using namespace il::core;
 
-std::string verifyAndCaptureMessage(Module &module)
-{
+std::string verifyAndCaptureMessage(Module &module) {
     auto result = il::verify::Verifier::verify(module);
     assert(!result && "verification should fail for negative cases");
     return result.error().message;
@@ -39,8 +37,7 @@ std::string verifyAndCaptureMessage(Module &module)
 
 } // namespace
 
-int main()
-{
+int main() {
     {
         Module module;
 

@@ -20,8 +20,7 @@
 
 #pragma once
 
-namespace il::core
-{
+namespace il::core {
 
 /// @brief Controls cross-module visibility of functions and globals.
 ///
@@ -31,18 +30,15 @@ namespace il::core
 ///   - `Import`: declared here, defined in another module (no body).
 ///
 /// @see ADR-0003 for design rationale.
-enum class Linkage
-{
+enum class Linkage {
     Internal, ///< Module-private (default for backwards compatibility).
     Export,   ///< Defined here, callable from other modules.
     Import    ///< Declared here, resolved by the linker from another module.
 };
 
 /// @brief Return a human-readable name for a Linkage value.
-inline const char *linkageName(Linkage l)
-{
-    switch (l)
-    {
+inline const char *linkageName(Linkage l) {
+    switch (l) {
         case Linkage::Internal:
             return "internal";
         case Linkage::Export:

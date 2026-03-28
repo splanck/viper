@@ -30,12 +30,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Result of building an installer/uninstaller stub.
-struct StubResult
-{
+struct StubResult {
     std::vector<uint8_t> textSection; ///< Machine code for .text
     std::vector<uint8_t> stubData;    ///< Embedded string data (appended to .rdata)
     std::vector<PEImport> imports;    ///< DLL imports needed

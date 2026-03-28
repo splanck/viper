@@ -22,21 +22,17 @@
 
 using namespace il::core;
 
-namespace
-{
-std::string captureTrap(il::vm::TrapKind kind, int line)
-{
+namespace {
+std::string captureTrap(il::vm::TrapKind kind, int line) {
     viper::tests::TestIRBuilder il;
     const il::support::SourceLoc trapLoc = il.loc(static_cast<uint32_t>(line));
 
-    switch (kind)
-    {
+    switch (kind) {
         case il::vm::TrapKind::DivideByZero:
             il.binary(
                 Opcode::SDivChk0, Type(Type::Kind::I64), il.const_i64(1), il.const_i64(0), trapLoc);
             break;
-        case il::vm::TrapKind::Bounds:
-        {
+        case il::vm::TrapKind::Bounds: {
             il::core::Instr trap;
             trap.op = Opcode::TrapFromErr;
             trap.type = Type(Type::Kind::I32);
@@ -46,8 +42,7 @@ std::string captureTrap(il::vm::TrapKind kind, int line)
             il.block().instructions.push_back(trap);
             break;
         }
-        case il::vm::TrapKind::RuntimeError:
-        {
+        case il::vm::TrapKind::RuntimeError: {
             il::core::Instr trap;
             trap.op = Opcode::TrapFromErr;
             trap.type = Type(Type::Kind::I32);
@@ -57,8 +52,7 @@ std::string captureTrap(il::vm::TrapKind kind, int line)
             il.block().instructions.push_back(trap);
             break;
         }
-        default:
-        {
+        default: {
             il::core::Instr trap;
             trap.op = Opcode::Trap;
             trap.type = Type(Type::Kind::Void);
@@ -73,10 +67,8 @@ std::string captureTrap(il::vm::TrapKind kind, int line)
 }
 } // namespace
 
-int main()
-{
-    struct Sample
-    {
+int main() {
+    struct Sample {
         il::vm::TrapKind kind;
         int line;
         const char *token;
@@ -91,8 +83,7 @@ int main()
           "RuntimeError",
           static_cast<int>(il::vm::ErrCode::Err_RuntimeError)}}};
 
-    for (const auto &sample : samples)
-    {
+    for (const auto &sample : samples) {
         const std::string out = captureTrap(sample.kind, sample.line);
         const bool hasKind = out.find(sample.token) != std::string::npos;
         assert(hasKind && "trap.kind diagnostic must include the trap kind");

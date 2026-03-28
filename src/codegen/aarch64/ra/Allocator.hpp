@@ -37,11 +37,9 @@
 #include "codegen/aarch64/RegAllocLinear.hpp"
 #include "codegen/aarch64/TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64::ra
-{
+namespace viper::codegen::aarch64::ra {
 
-class LinearAllocator
-{
+class LinearAllocator {
   public:
     LinearAllocator(MFunction &fn, const TargetInfo &ti);
 
@@ -68,8 +66,7 @@ class LinearAllocator
 
     // Cross-block register persistence: exit-state cache.
 
-    struct BlockExitState
-    {
+    struct BlockExitState {
         std::unordered_map<uint16_t, PhysReg> gpr;
         std::unordered_map<uint16_t, PhysReg> fpr;
     };

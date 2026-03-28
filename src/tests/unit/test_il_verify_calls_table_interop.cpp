@@ -28,12 +28,10 @@
 #include <sstream>
 #include <string>
 
-int main()
-{
+int main() {
     using namespace il::core;
 
-    auto makeFooExtern = []()
-    {
+    auto makeFooExtern = []() {
         Extern foo;
         foo.name = "foo";
         foo.retType = Type(Type::Kind::I32);
@@ -88,8 +86,7 @@ int main()
 
         auto result = il::verify::Verifier::verify(module);
         std::ostringstream diag;
-        if (!result)
-        {
+        if (!result) {
             il::support::printDiag(result.error(), diag);
         }
 
@@ -136,8 +133,7 @@ int main()
 
         auto result = il::verify::Verifier::verify(module);
         std::ostringstream diag;
-        if (!result)
-        {
+        if (!result) {
             il::support::printDiag(result.error(), diag);
         }
 
@@ -194,8 +190,7 @@ int main()
 
         auto result = il::verify::Verifier::verify(module);
         std::ostringstream diag;
-        if (!result)
-        {
+        if (!result) {
             il::support::printDiag(result.error(), diag);
         }
 

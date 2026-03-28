@@ -18,8 +18,7 @@
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Parse a `WHILE ... WEND` loop statement.
 ///
@@ -29,8 +28,7 @@ namespace il::frontends::basic
 ///          and records the loop header location for diagnostics.
 ///
 /// @return Newly allocated @ref WhileStmt representing the loop.
-StmtPtr Parser::parseWhileStatement()
-{
+StmtPtr Parser::parseWhileStatement() {
     auto loc = peek().loc;
     consume(); // WHILE
     auto cond = parseExpression();
@@ -51,16 +49,14 @@ StmtPtr Parser::parseWhileStatement()
 ///          with their source locations.
 ///
 /// @return Newly allocated @ref DoStmt capturing the loop semantics.
-StmtPtr Parser::parseDoStatement()
-{
+StmtPtr Parser::parseDoStatement() {
     auto loc = peek().loc;
     consume(); // DO
     auto stmt = std::make_unique<DoStmt>();
     stmt->loc = loc;
 
     bool hasPreTest = false;
-    if (at(TokenKind::KeywordWhile) || at(TokenKind::KeywordUntil))
-    {
+    if (at(TokenKind::KeywordWhile) || at(TokenKind::KeywordUntil)) {
         hasPreTest = true;
         Token testTok = consume();
         stmt->testPos = DoStmt::TestPos::Pre;
@@ -76,8 +72,7 @@ StmtPtr Parser::parseDoStatement()
     Token postTok{};
     DoStmt::CondKind postKind = DoStmt::CondKind::None;
     ExprPtr postCond;
-    if (at(TokenKind::KeywordWhile) || at(TokenKind::KeywordUntil))
-    {
+    if (at(TokenKind::KeywordWhile) || at(TokenKind::KeywordUntil)) {
         hasPostTest = true;
         postTok = consume();
         postKind = postTok.kind == TokenKind::KeywordWhile ? DoStmt::CondKind::While
@@ -85,12 +80,9 @@ StmtPtr Parser::parseDoStatement()
         postCond = parseExpression();
     }
 
-    if (hasPreTest && hasPostTest)
-    {
+    if (hasPreTest && hasPostTest) {
         emitError("B0001", postTok, "DO loop cannot have both pre and post conditions");
-    }
-    else if (hasPostTest)
-    {
+    } else if (hasPostTest) {
         stmt->testPos = DoStmt::TestPos::Post;
         stmt->condKind = postKind;
         stmt->cond = std::move(postCond);
@@ -107,14 +99,12 @@ StmtPtr Parser::parseDoStatement()
 ///          Statements are collected until the matching `NEXT`.
 ///
 /// @return Newly allocated @ref ForStmt or @ref ForEachStmt describing the loop.
-StmtPtr Parser::parseForStatement()
-{
+StmtPtr Parser::parseForStatement() {
     auto loc = peek().loc;
     consume(); // FOR
 
     // Check for FOR EACH syntax
-    if (at(TokenKind::KeywordEach))
-    {
+    if (at(TokenKind::KeywordEach)) {
         consume(); // EACH
         auto stmt = std::make_unique<ForEachStmt>();
         stmt->loc = loc;
@@ -135,8 +125,7 @@ StmtPtr Parser::parseForStatement()
         ctxFor.collectStatements(TokenKind::KeywordNext, stmt->body);
 
         // Optionally consume variable name after NEXT
-        if (at(TokenKind::Identifier))
-        {
+        if (at(TokenKind::Identifier)) {
             consume();
         }
         return stmt;
@@ -151,10 +140,8 @@ StmtPtr Parser::parseForStatement()
     stmt->varExpr = parsePrimary();
 
     // Continue parsing member access or array subscripts to build full lvalue
-    while (at(TokenKind::Dot) || at(TokenKind::LParen))
-    {
-        if (at(TokenKind::Dot))
-        {
+    while (at(TokenKind::Dot) || at(TokenKind::LParen)) {
+        if (at(TokenKind::Dot)) {
             consume(); // .
             Token memberTok = expect(TokenKind::Identifier);
             auto access = std::make_unique<MemberAccessExpr>();
@@ -162,16 +149,13 @@ StmtPtr Parser::parseForStatement()
             access->base = std::move(stmt->varExpr);
             access->member = memberTok.lexeme;
             stmt->varExpr = std::move(access);
-        }
-        else if (at(TokenKind::LParen))
-        {
+        } else if (at(TokenKind::LParen)) {
             consume(); // (
             auto index = parseExpression();
             expect(TokenKind::RParen);
             auto arr = std::make_unique<ArrayExpr>();
             arr->loc = stmt->varExpr->loc;
-            if (auto *v = as<VarExpr>(*stmt->varExpr))
-            {
+            if (auto *v = as<VarExpr>(*stmt->varExpr)) {
                 arr->name = v->name;
             }
             arr->indices.push_back(std::move(index));
@@ -183,15 +167,13 @@ StmtPtr Parser::parseForStatement()
     stmt->start = parseExpression();
     expect(TokenKind::KeywordTo);
     stmt->end = parseExpression();
-    if (at(TokenKind::KeywordStep))
-    {
+    if (at(TokenKind::KeywordStep)) {
         consume();
         stmt->step = parseExpression();
     }
     auto ctxFor = statementSequencer();
     ctxFor.collectStatements(TokenKind::KeywordNext, stmt->body);
-    if (at(TokenKind::Identifier))
-    {
+    if (at(TokenKind::Identifier)) {
         consume();
     }
     return stmt;
@@ -204,13 +186,11 @@ StmtPtr Parser::parseForStatement()
 ///          `FOR` loops are properly nested.
 ///
 /// @return Newly allocated @ref NextStmt capturing the terminator.
-StmtPtr Parser::parseNextStatement()
-{
+StmtPtr Parser::parseNextStatement() {
     auto loc = peek().loc;
     consume(); // NEXT
     std::string name;
-    if (at(TokenKind::Identifier))
-    {
+    if (at(TokenKind::Identifier)) {
         name = peek().lexeme;
         consume();
     }
@@ -228,39 +208,27 @@ StmtPtr Parser::parseNextStatement()
 ///          synthesises a no-op sentinel so compilation can continue.
 ///
 /// @return Newly allocated @ref ExitStmt describing the exit semantics.
-StmtPtr Parser::parseExitStatement()
-{
+StmtPtr Parser::parseExitStatement() {
     auto loc = peek().loc;
     consume(); // EXIT
 
     ExitStmt::LoopKind kind = ExitStmt::LoopKind::While;
-    if (at(TokenKind::KeywordFor))
-    {
+    if (at(TokenKind::KeywordFor)) {
         consume();
         kind = ExitStmt::LoopKind::For;
-    }
-    else if (at(TokenKind::KeywordWhile))
-    {
+    } else if (at(TokenKind::KeywordWhile)) {
         consume();
         kind = ExitStmt::LoopKind::While;
-    }
-    else if (at(TokenKind::KeywordDo))
-    {
+    } else if (at(TokenKind::KeywordDo)) {
         consume();
         kind = ExitStmt::LoopKind::Do;
-    }
-    else if (at(TokenKind::KeywordSub))
-    {
+    } else if (at(TokenKind::KeywordSub)) {
         consume();
         kind = ExitStmt::LoopKind::Sub;
-    }
-    else if (at(TokenKind::KeywordFunction))
-    {
+    } else if (at(TokenKind::KeywordFunction)) {
         consume();
         kind = ExitStmt::LoopKind::Function;
-    }
-    else
-    {
+    } else {
         Token unexpected = peek();
         il::support::SourceLoc diagLoc =
             unexpected.kind == TokenKind::EndOfFile ? loc : unexpected.loc;

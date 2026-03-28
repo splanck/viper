@@ -66,18 +66,15 @@ void rt_file_state_cleanup(RtContext *ctx);
 void rt_type_registry_cleanup(RtContext *ctx);
 void rt_type_registry_init(RtContext *ctx);
 #else
-__attribute__((weak)) void rt_file_state_cleanup(RtContext *ctx)
-{
+__attribute__((weak)) void rt_file_state_cleanup(RtContext *ctx) {
     (void)ctx;
 }
 
-__attribute__((weak)) void rt_type_registry_cleanup(RtContext *ctx)
-{
+__attribute__((weak)) void rt_type_registry_cleanup(RtContext *ctx) {
     (void)ctx;
 }
 
-__attribute__((weak)) void rt_type_registry_init(RtContext *ctx)
-{
+__attribute__((weak)) void rt_type_registry_init(RtContext *ctx) {
     (void)ctx;
 }
 #endif
@@ -124,12 +121,9 @@ static int g_legacy_handoff_lock = 0;
 /// @param lock Pointer to the lock variable (0 = unlocked, 1 = locked).
 ///
 /// @note Only used for init/handoff paths where contention is rare.
-static void rt_spin_lock(int *lock)
-{
-    if (__atomic_test_and_set(lock, __ATOMIC_ACQUIRE))
-    {
-        do
-        {
+static void rt_spin_lock(int *lock) {
+    if (__atomic_test_and_set(lock, __ATOMIC_ACQUIRE)) {
+        do {
 #if RT_PLATFORM_WINDOWS
             SwitchToThread();
 #elif !RT_PLATFORM_VIPERDOS
@@ -145,8 +139,7 @@ static void rt_spin_lock(int *lock)
 /// the critical section are visible to subsequent lock acquirers.
 ///
 /// @param lock Pointer to the lock variable to release.
-static void rt_spin_unlock(int *lock)
-{
+static void rt_spin_unlock(int *lock) {
     __atomic_clear(lock, __ATOMIC_RELEASE);
 }
 
@@ -163,8 +156,7 @@ static pthread_t g_main_thread_;
 #endif
 static int g_main_thread_set_ = 0;
 
-void rt_set_main_thread(void)
-{
+void rt_set_main_thread(void) {
 #if RT_PLATFORM_WINDOWS
     g_main_thread_id_ = GetCurrentThreadId();
 #elif !RT_PLATFORM_VIPERDOS
@@ -173,8 +165,7 @@ void rt_set_main_thread(void)
     __atomic_store_n(&g_main_thread_set_, 1, __ATOMIC_RELEASE);
 }
 
-int8_t rt_is_main_thread(void)
-{
+int8_t rt_is_main_thread(void) {
     if (!__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE))
         return 1; // Before init, assume main thread (avoids false positives)
 #if RT_PLATFORM_WINDOWS
@@ -186,10 +177,8 @@ int8_t rt_is_main_thread(void)
 #endif
 }
 
-void rt_assert_main_thread_(const char *file, int line)
-{
-    if (!rt_is_main_thread())
-    {
+void rt_assert_main_thread_(const char *file, int line) {
+    if (!rt_is_main_thread()) {
         fprintf(stderr, "%s:%d: GUI/input state accessed from non-main thread\n", file, line);
         abort();
     }
@@ -217,16 +206,14 @@ void rt_assert_main_thread_(const char *file, int line)
 /// ```
 ///
 /// @note Called automatically by rt_legacy_context() and rt_set_current_context().
-static void rt_legacy_ensure_init(void)
-{
+static void rt_legacy_ensure_init(void) {
     int state = __atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE);
     if (state == 2)
         return;
 
     int expected = 0;
     if (__atomic_compare_exchange_n(
-            &g_legacy_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE))
-    {
+            &g_legacy_state, &expected, 1, /*weak=*/0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
         rt_context_init(&g_legacy_ctx);
         // The first thread to reach here is the main thread.
         if (!__atomic_load_n(&g_main_thread_set_, __ATOMIC_ACQUIRE))
@@ -236,8 +223,7 @@ static void rt_legacy_ensure_init(void)
     }
 
     // Another thread is initializing; yield while waiting.
-    while (__atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE) != 2)
-    {
+    while (__atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE) != 2) {
 #if RT_PLATFORM_WINDOWS
         SwitchToThread();
 #elif !RT_PLATFORM_VIPERDOS
@@ -276,8 +262,7 @@ static void rt_legacy_ensure_init(void)
 /// @note The deterministic seed ensures tests produce repeatable results.
 ///
 /// @see rt_context_cleanup For releasing resources when done
-void rt_context_init(RtContext *ctx)
-{
+void rt_context_init(RtContext *ctx) {
     if (!ctx)
         return;
 
@@ -338,22 +323,18 @@ void rt_context_init(RtContext *ctx)
 /// @note Should only be called when no threads are using the context.
 ///
 /// @see rt_context_init For initializing a context
-void rt_context_cleanup(RtContext *ctx)
-{
+void rt_context_cleanup(RtContext *ctx) {
     if (!ctx)
         return;
 
     rt_file_state_cleanup(ctx);
     rt_args_state_cleanup(ctx);
 
-    for (size_t i = 0; i < ctx->modvar_count; ++i)
-    {
+    for (size_t i = 0; i < ctx->modvar_count; ++i) {
         RtModvarEntry *e = &ctx->modvar_entries[i];
-        if (e->kind == 4 && e->addr)
-        {
+        if (e->kind == 4 && e->addr) {
             rt_string *slot = (rt_string *)e->addr;
-            if (slot && *slot)
-            {
+            if (slot && *slot) {
                 rt_string_unref(*slot);
                 *slot = NULL;
             }
@@ -411,41 +392,35 @@ void rt_context_cleanup(RtContext *ctx)
 ///
 /// @see rt_get_current_context For reading the current context
 /// @see rt_legacy_context For the fallback when no context is bound
-void rt_set_current_context(RtContext *ctx)
-{
+void rt_set_current_context(RtContext *ctx) {
     RtContext *old = g_rt_context;
     if (old == ctx)
         return;
     g_rt_context = ctx;
 
-    if (old)
-    {
+    if (old) {
         size_t prev = __atomic_fetch_sub(&old->bind_count, 1, __ATOMIC_ACQ_REL);
         assert(prev > 0);
-        if (prev == 1 && ctx == NULL)
-        {
+        if (prev == 1 && ctx == NULL) {
             // Last thread unbound: move state back to legacy so calls after VM exit keep working.
             rt_legacy_ensure_init();
             rt_spin_lock(&g_legacy_handoff_lock);
 
-            if (g_legacy_ctx.file_state.entries == NULL && old->file_state.entries != NULL)
-            {
+            if (g_legacy_ctx.file_state.entries == NULL && old->file_state.entries != NULL) {
                 g_legacy_ctx.file_state = old->file_state;
                 old->file_state.entries = NULL;
                 old->file_state.count = 0;
                 old->file_state.capacity = 0;
             }
 
-            if (g_legacy_ctx.args_state.items == NULL && old->args_state.items != NULL)
-            {
+            if (g_legacy_ctx.args_state.items == NULL && old->args_state.items != NULL) {
                 g_legacy_ctx.args_state = old->args_state;
                 old->args_state.items = NULL;
                 old->args_state.size = 0;
                 old->args_state.cap = 0;
             }
 
-            if (g_legacy_ctx.type_registry.classes == NULL && old->type_registry.classes != NULL)
-            {
+            if (g_legacy_ctx.type_registry.classes == NULL && old->type_registry.classes != NULL) {
                 g_legacy_ctx.type_registry = old->type_registry;
                 old->type_registry.classes = NULL;
                 old->type_registry.classes_len = 0;
@@ -464,19 +439,16 @@ void rt_set_current_context(RtContext *ctx)
         }
     }
 
-    if (ctx)
-    {
+    if (ctx) {
         rt_legacy_ensure_init();
 
         size_t prev = __atomic_fetch_add(&ctx->bind_count, 1, __ATOMIC_ACQ_REL);
-        if (prev == 0)
-        {
+        if (prev == 0) {
             // First bind: adopt legacy state to preserve pre-context behaviour.
             rt_spin_lock(&g_legacy_handoff_lock);
 
             // Move file_state if destination is empty and legacy has entries.
-            if (ctx->file_state.entries == NULL && g_legacy_ctx.file_state.entries != NULL)
-            {
+            if (ctx->file_state.entries == NULL && g_legacy_ctx.file_state.entries != NULL) {
                 ctx->file_state = g_legacy_ctx.file_state;
                 g_legacy_ctx.file_state.entries = NULL;
                 g_legacy_ctx.file_state.count = 0;
@@ -484,8 +456,7 @@ void rt_set_current_context(RtContext *ctx)
             }
 
             // Move args_state if destination is empty and legacy has entries.
-            if (ctx->args_state.items == NULL && g_legacy_ctx.args_state.items != NULL)
-            {
+            if (ctx->args_state.items == NULL && g_legacy_ctx.args_state.items != NULL) {
                 ctx->args_state = g_legacy_ctx.args_state;
                 g_legacy_ctx.args_state.items = NULL;
                 g_legacy_ctx.args_state.size = 0;
@@ -493,8 +464,7 @@ void rt_set_current_context(RtContext *ctx)
             }
 
             // Move type registry if destination is empty and legacy has data.
-            if (ctx->type_registry.classes == NULL && g_legacy_ctx.type_registry.classes != NULL)
-            {
+            if (ctx->type_registry.classes == NULL && g_legacy_ctx.type_registry.classes != NULL) {
                 ctx->type_registry = g_legacy_ctx.type_registry;
                 g_legacy_ctx.type_registry.classes = NULL;
                 g_legacy_ctx.type_registry.classes_len = 0;
@@ -537,8 +507,7 @@ void rt_set_current_context(RtContext *ctx)
 ///
 /// @see rt_set_current_context For binding a context
 /// @see rt_legacy_context For the fallback context
-RtContext *rt_get_current_context(void)
-{
+RtContext *rt_get_current_context(void) {
     return g_rt_context;
 }
 
@@ -568,8 +537,7 @@ RtContext *rt_get_current_context(void)
 /// @note The returned context is shared across all threads not using a VM context.
 ///
 /// @see rt_get_current_context For getting the thread's bound context
-RtContext *rt_legacy_context(void)
-{
+RtContext *rt_legacy_context(void) {
     rt_legacy_ensure_init();
     return &g_legacy_ctx;
 }
@@ -582,8 +550,7 @@ RtContext *rt_legacy_context(void)
 ///
 ///          Called from the rt_global_shutdown atexit handler in rt_heap.c,
 ///          AFTER GC finalizers have run and BEFORE string intern teardown.
-void rt_legacy_context_shutdown(void)
-{
+void rt_legacy_context_shutdown(void) {
     int state = __atomic_load_n(&g_legacy_state, __ATOMIC_ACQUIRE);
     if (state != 2)
         return; /* never initialized — nothing to clean up */

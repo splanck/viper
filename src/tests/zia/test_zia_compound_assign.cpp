@@ -18,23 +18,17 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 // ============================================================================
 // Helper: check if a function contains a specific opcode
 // ============================================================================
 
-static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == op)
                         return true;
                 }
@@ -49,8 +43,7 @@ static bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il
 // ============================================================================
 
 /// @brief Test that += desugars to add + assign.
-TEST(ZiaCompoundAssign, PlusEqual)
-{
+TEST(ZiaCompoundAssign, PlusEqual) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -66,11 +59,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for PlusEqual:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -84,8 +75,7 @@ func start() {
 }
 
 /// @brief Test that -= desugars to sub + assign.
-TEST(ZiaCompoundAssign, MinusEqual)
-{
+TEST(ZiaCompoundAssign, MinusEqual) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -101,11 +91,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for MinusEqual:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -118,8 +106,7 @@ func start() {
 }
 
 /// @brief Test that *= desugars to mul + assign.
-TEST(ZiaCompoundAssign, StarEqual)
-{
+TEST(ZiaCompoundAssign, StarEqual) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -135,11 +122,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for StarEqual:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -152,8 +137,7 @@ func start() {
 }
 
 /// @brief Test that /= desugars to div + assign.
-TEST(ZiaCompoundAssign, SlashEqual)
-{
+TEST(ZiaCompoundAssign, SlashEqual) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -169,11 +153,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for SlashEqual:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -183,8 +165,7 @@ func start() {
 }
 
 /// @brief Test that %= desugars to mod + assign.
-TEST(ZiaCompoundAssign, PercentEqual)
-{
+TEST(ZiaCompoundAssign, PercentEqual) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -200,11 +181,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for PercentEqual:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -214,8 +193,7 @@ func start() {
 }
 
 /// @brief Test compound assignment on entity fields.
-TEST(ZiaCompoundAssign, FieldCompoundAssign)
-{
+TEST(ZiaCompoundAssign, FieldCompoundAssign) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -240,11 +218,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for FieldCompoundAssign:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -254,8 +230,7 @@ func start() {
 }
 
 /// @brief Test compound assignment with multiple operations chained.
-TEST(ZiaCompoundAssign, MultipleCompoundOps)
-{
+TEST(ZiaCompoundAssign, MultipleCompoundOps) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -273,11 +248,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for MultipleCompoundOps:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -287,8 +260,7 @@ func start() {
 }
 
 /// @brief Test compound assignment with float operands.
-TEST(ZiaCompoundAssign, FloatCompoundAssign)
-{
+TEST(ZiaCompoundAssign, FloatCompoundAssign) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -305,11 +277,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for FloatCompoundAssign:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -322,7 +292,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

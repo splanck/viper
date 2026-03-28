@@ -37,15 +37,13 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::analysis
-{
+namespace viper::analysis {
 
 /// @brief Direct-call graph summary for a module.
 /// @details Tracks per-callee call counts, caller→callee edges, and strongly
 ///          connected components (SCCs). The graph only includes direct calls
 ///          with explicit callee names.
-struct CallGraph
-{
+struct CallGraph {
     /// @brief Total direct call sites per callee name.
     std::unordered_map<std::string, unsigned> callCounts;
     /// @brief Caller-to-callee edges keyed by caller function name.

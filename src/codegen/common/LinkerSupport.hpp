@@ -28,8 +28,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::common
-{
+namespace viper::codegen::common {
 
 // =========================================================================
 // Pure utility functions
@@ -74,8 +73,7 @@ std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
 /// @details Populated by prepareLinkContext(). Contains the build directory,
 ///          the set of required runtime components, and the resolved paths to
 ///          their archive files.
-struct LinkContext
-{
+struct LinkContext {
     std::filesystem::path buildDir;              ///< Resolved CMake build directory.
     std::vector<RtComponent> requiredComponents; ///< Runtime components needed by the program.
     std::vector<std::pair<std::string, std::filesystem::path>>

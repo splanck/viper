@@ -28,8 +28,7 @@
 #include <ostream>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Merge sections from all object files and compute virtual address layout.
 /// @param objects     All object files (including archive extracts).

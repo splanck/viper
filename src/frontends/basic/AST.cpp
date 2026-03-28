@@ -30,8 +30,7 @@
 
 #include "frontends/basic/AST.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // ============================================================================
 // Accept Method Generation Macros
@@ -47,24 +46,20 @@ namespace il::frontends::basic
 /// @brief Define accept methods for expression nodes.
 /// @param NodeType The concrete expression class name.
 #define DEFINE_EXPR_ACCEPT(NodeType)                                                               \
-    void NodeType::accept(ExprVisitor &visitor) const                                              \
-    {                                                                                              \
+    void NodeType::accept(ExprVisitor &visitor) const {                                            \
         visitor.visit(*this);                                                                      \
     }                                                                                              \
-    void NodeType::accept(MutExprVisitor &visitor)                                                 \
-    {                                                                                              \
+    void NodeType::accept(MutExprVisitor &visitor) {                                               \
         visitor.visit(*this);                                                                      \
     }
 
 /// @brief Define accept methods for statement nodes.
 /// @param NodeType The concrete statement class name.
 #define DEFINE_STMT_ACCEPT(NodeType)                                                               \
-    void NodeType::accept(StmtVisitor &visitor) const                                              \
-    {                                                                                              \
+    void NodeType::accept(StmtVisitor &visitor) const {                                            \
         visitor.visit(*this);                                                                      \
     }                                                                                              \
-    void NodeType::accept(MutStmtVisitor &visitor)                                                 \
-    {                                                                                              \
+    void NodeType::accept(MutStmtVisitor &visitor) {                                               \
         visitor.visit(*this);                                                                      \
     }
 
@@ -77,8 +72,7 @@ namespace il::frontends::basic
 ///          `visit(expr, visitor)` without naming the exact derived type.
 /// @param expr Expression node to visit.
 /// @param visitor Visitor receiving the node.
-void visit(const Expr &expr, ExprVisitor &visitor)
-{
+void visit(const Expr &expr, ExprVisitor &visitor) {
     expr.accept(visitor);
 }
 
@@ -87,8 +81,7 @@ void visit(const Expr &expr, ExprVisitor &visitor)
 ///          the node's @c accept overload.
 /// @param expr Expression node to visit and potentially mutate.
 /// @param visitor Visitor receiving the node.
-void visit(Expr &expr, MutExprVisitor &visitor)
-{
+void visit(Expr &expr, MutExprVisitor &visitor) {
     expr.accept(visitor);
 }
 
@@ -97,8 +90,7 @@ void visit(Expr &expr, MutExprVisitor &visitor)
 ///          perform the double-dispatch.
 /// @param stmt Statement node to visit.
 /// @param visitor Visitor receiving the node.
-void visit(const Stmt &stmt, StmtVisitor &visitor)
-{
+void visit(const Stmt &stmt, StmtVisitor &visitor) {
     stmt.accept(visitor);
 }
 
@@ -107,8 +99,7 @@ void visit(const Stmt &stmt, StmtVisitor &visitor)
 ///          statement in-place.
 /// @param stmt Statement node to visit and potentially mutate.
 /// @param visitor Visitor receiving the node.
-void visit(Stmt &stmt, MutStmtVisitor &visitor)
-{
+void visit(Stmt &stmt, MutStmtVisitor &visitor) {
     stmt.accept(visitor);
 }
 

@@ -28,8 +28,7 @@
 #include <functional>
 #include <string>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Determine the class name associated with an OOP expression.
 ///
@@ -41,17 +40,14 @@ namespace il::frontends::basic
 ///
 /// @param expr AST node describing the expression under inspection.
 /// @return Class name string or empty when no object type is associated.
-std::string Lowerer::resolveObjectClass(const Expr &expr) const
-{
-    if (const auto *var = as<const VarExpr>(expr))
-    {
+std::string Lowerer::resolveObjectClass(const Expr &expr) const {
+    if (const auto *var = as<const VarExpr>(expr)) {
         SlotType slotInfo = getSlotType(var->name);
         if (slotInfo.isObject)
             return slotInfo.objectClass;
 
         // Module-level object variables may lack slots; check SymbolInfo directly. (BUG-107)
-        if (const auto *info = findSymbol(var->name))
-        {
+        if (const auto *info = findSymbol(var->name)) {
             if (info->isObject && !info->objectClass.empty())
                 return info->objectClass;
         }
@@ -63,27 +59,22 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
 
         return {};
     }
-    if (is<MeExpr>(expr))
-    {
+    if (is<MeExpr>(expr)) {
         SlotType slotInfo = getSlotType("ME");
         if (slotInfo.isObject)
             return slotInfo.objectClass;
         return {};
     }
-    if (const auto *alloc = as<const NewExpr>(expr))
-    {
+    if (const auto *alloc = as<const NewExpr>(expr)) {
         return alloc->className;
     }
-    if (const auto *call = as<const CallExpr>(expr))
-    {
+    if (const auto *call = as<const CallExpr>(expr)) {
         // CallExpr may be a field array access (BASIC uses () for both calls and indexing).
         // Check if this is an implicit field array in a class method. (BUG-089)
         const FieldScope *scope = activeFieldScope();
-        if (scope && scope->layout)
-        {
+        if (scope && scope->layout) {
             const auto *field = scope->layout->findField(call->callee);
-            if (field && field->isArray && !field->objectClassName.empty())
-            {
+            if (field && field->isArray && !field->objectClassName.empty()) {
                 return qualify(field->objectClassName);
             }
         }
@@ -93,11 +84,9 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
             calleeName = JoinDots(call->calleeQualified);
         else
             calleeName = call->callee;
-        if (!calleeName.empty())
-        {
+        if (!calleeName.empty()) {
             const auto &classes = il::runtime::runtimeClassCatalog();
-            for (const auto &klass : classes)
-            {
+            for (const auto &klass : classes) {
                 if (!klass.ctor)
                     continue;
                 if (string_utils::iequals(calleeName, klass.ctor))
@@ -107,17 +96,13 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
             // Check if callee is a static factory method on a runtime class
             // (e.g., Viper.Math.Vec2.Zero → returns Vec2)
             auto lastDot = calleeName.rfind('.');
-            if (lastDot != std::string::npos)
-            {
+            if (lastDot != std::string::npos) {
                 std::string prefix = calleeName.substr(0, lastDot);
                 std::string method = calleeName.substr(lastDot + 1);
-                if (const auto *rtClass = il::runtime::findRuntimeClassByQName(prefix))
-                {
+                if (const auto *rtClass = il::runtime::findRuntimeClassByQName(prefix)) {
                     // Check class methods for obj return type
-                    for (const auto &m : rtClass->methods)
-                    {
-                        if (m.name && string_utils::iequals(m.name, method) && m.signature)
-                        {
+                    for (const auto &m : rtClass->methods) {
+                        if (m.name && string_utils::iequals(m.name, method) && m.signature) {
                             auto sig = il::runtime::parseRuntimeSignature(m.signature);
                             if (sig.returnType == il::runtime::ILScalarType::Object)
                                 return std::string(rtClass->qname);
@@ -126,8 +111,7 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
                     }
                     // Also check standalone RT_FUNCs with this prefix that return obj.
                     // Try various arities to find the method in RuntimeMethodIndex.
-                    for (std::size_t ar = 0; ar <= 4; ++ar)
-                    {
+                    for (std::size_t ar = 0; ar <= 4; ++ar) {
                         auto entry = runtimeMethodIndex().find(prefix, method, ar);
                         if (entry && entry->ret == BasicType::Object)
                             return prefix;
@@ -138,8 +122,7 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
 
         return {};
     }
-    if (const auto *arr = as<const ArrayExpr>(expr))
-    {
+    if (const auto *arr = as<const ArrayExpr>(expr)) {
         // Handle module-level, dotted member, and implicit field arrays. (BUG-089)
         const auto *info = findSymbol(arr->name);
         if (info && info->isObject && !info->objectClass.empty())
@@ -154,28 +137,22 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
         // Module-level arrays referenced inside procedures need their element class
         // recovered from the cached module-level object array map. (BUG-097)
         std::string cls = lookupModuleArrayElemClass(arr->name);
-        if (!cls.empty())
-        {
+        if (!cls.empty()) {
             // Resolve canonical lowercase name to declared casing (e.g., 'widget' -> 'WIDGET')
             std::string qualified = qualify(cls);
             return resolveQualifiedClassCasing(qualified);
         }
         return {};
     }
-    if (const auto *access = as<const MemberAccessExpr>(expr))
-    {
+    if (const auto *access = as<const MemberAccessExpr>(expr)) {
         // Check if the FIELD itself is an object type, not the base. (BUG-061)
-        if (access->base)
-        {
+        if (access->base) {
             std::string baseClass = resolveObjectClass(*access->base);
-            if (!baseClass.empty())
-            {
+            if (!baseClass.empty()) {
                 // Look up the field class name in the class layout. (BUG-082)
-                if (const ClassLayout *layout = findClassLayout(baseClass))
-                {
+                if (const ClassLayout *layout = findClassLayout(baseClass)) {
                     const auto *field = layout->findField(access->member);
-                    if (field && !field->objectClassName.empty())
-                    {
+                    if (field && !field->objectClassName.empty()) {
                         // Field is an object type - qualify the class name for proper lookup
                         return qualify(field->objectClassName);
                     }
@@ -186,21 +163,16 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
         }
         return {};
     }
-    if (const auto *call = as<const MethodCallExpr>(expr))
-    {
+    if (const auto *call = as<const MethodCallExpr>(expr)) {
         // MethodCallExpr may be a field array access (e.g., container.items(0)).
         // Check this BEFORE checking for method return types. (BUG-096/BUG-098)
-        if (call->base)
-        {
+        if (call->base) {
             std::string baseClass = resolveObjectClass(*call->base);
-            if (!baseClass.empty())
-            {
+            if (!baseClass.empty()) {
                 // First check if this is a field array access, not an actual method call
-                if (const ClassLayout *layout = findClassLayout(baseClass))
-                {
+                if (const ClassLayout *layout = findClassLayout(baseClass)) {
                     const auto *field = layout->findField(call->method);
-                    if (field && field->isArray && !field->objectClassName.empty())
-                    {
+                    if (field && field->isArray && !field->objectClassName.empty()) {
                         // This is a field array access (e.g., obj.arrayField(idx))
                         // Return the array element class
                         return qualify(field->objectClassName);
@@ -210,8 +182,7 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
                 // Not a field array; check the method's return type.
                 // Use findMethodReturnClassName to get the actual return class. (BUG-099)
                 std::string returnClassName = findMethodReturnClassName(baseClass, call->method);
-                if (!returnClassName.empty())
-                {
+                if (!returnClassName.empty()) {
                     return returnClassName;
                 }
             }
@@ -227,10 +198,10 @@ std::string Lowerer::resolveObjectClass(const Expr &expr) const
 // These helpers consolidate patterns for resolving object class names from
 // fields, arrays, and method return types. (BUG-061, BUG-082, BUG-089, etc.)
 
-std::string resolveFieldObjectClass(const ClassLayout *layout,
-                                    std::string_view fieldName,
-                                    const std::function<std::string(const std::string &)> &qualify)
-{
+std::string resolveFieldObjectClass(
+    const ClassLayout *layout,
+    std::string_view fieldName,
+    const std::function<std::string(const std::string &)> &qualify) {
     if (!layout)
         return {};
     const auto *field = layout->findField(fieldName);
@@ -242,8 +213,7 @@ std::string resolveFieldObjectClass(const ClassLayout *layout,
 std::string resolveFieldArrayElementClass(
     const ClassLayout *layout,
     std::string_view fieldName,
-    const std::function<std::string(const std::string &)> &qualify)
-{
+    const std::function<std::string(const std::string &)> &qualify) {
     if (!layout)
         return {};
     const auto *field = layout->findField(fieldName);

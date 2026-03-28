@@ -34,23 +34,19 @@
 using namespace viper::codegen::aarch64;
 using namespace viper::codegen::aarch64::binenc;
 
-namespace
-{
+namespace {
 
 /// Read a little-endian 32-bit word from a byte buffer at the given offset.
-uint32_t readWord(const std::vector<uint8_t> &bytes, size_t offset)
-{
+uint32_t readWord(const std::vector<uint8_t> &bytes, size_t offset) {
     return static_cast<uint32_t>(bytes[offset]) | (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
            (static_cast<uint32_t>(bytes[offset + 2]) << 16) |
            (static_cast<uint32_t>(bytes[offset + 3]) << 24);
 }
 
 /// Check if a specific 32-bit instruction word appears anywhere in the code section.
-bool containsWord(const viper::codegen::objfile::CodeSection &cs, uint32_t word)
-{
+bool containsWord(const viper::codegen::objfile::CodeSection &cs, uint32_t word) {
     const auto &bytes = cs.bytes();
-    for (size_t i = 0; i + 3 < bytes.size(); i += 4)
-    {
+    for (size_t i = 0; i + 3 < bytes.size(); i += 4) {
         if (readWord(bytes, i) == word)
             return true;
     }
@@ -58,8 +54,7 @@ bool containsWord(const viper::codegen::objfile::CodeSection &cs, uint32_t word)
 }
 
 /// Create a minimal non-leaf MIR function (has a Bl call → not leaf).
-MFunction makeNonLeafFunc(const std::string &name)
-{
+MFunction makeNonLeafFunc(const std::string &name) {
     MFunction fn{};
     fn.name = name;
     fn.isLeaf = false;
@@ -82,8 +77,7 @@ MFunction makeNonLeafFunc(const std::string &name)
 }
 
 /// Create a minimal leaf MIR function (no calls, no saves, no locals).
-MFunction makeLeafFunc(const std::string &name)
-{
+MFunction makeLeafFunc(const std::string &name) {
     MFunction fn{};
     fn.name = name;
     fn.isLeaf = true;
@@ -111,8 +105,7 @@ constexpr uint32_t kRetInstr = 0xD65F03C0;
 // ---------------------------------------------------------------------------
 // Test: Non-leaf function gets BTI C at entry
 // ---------------------------------------------------------------------------
-TEST(AArch64PacBti, BtiAtFunctionEntry)
-{
+TEST(AArch64PacBti, BtiAtFunctionEntry) {
     A64BinaryEncoder encoder;
     viper::codegen::objfile::CodeSection text;
     viper::codegen::objfile::CodeSection rodata;
@@ -129,8 +122,7 @@ TEST(AArch64PacBti, BtiAtFunctionEntry)
 // ---------------------------------------------------------------------------
 // Test: Non-leaf function gets PACIASP in prologue
 // ---------------------------------------------------------------------------
-TEST(AArch64PacBti, PaciaspInPrologue)
-{
+TEST(AArch64PacBti, PaciaspInPrologue) {
     A64BinaryEncoder encoder;
     viper::codegen::objfile::CodeSection text;
     viper::codegen::objfile::CodeSection rodata;
@@ -145,8 +137,7 @@ TEST(AArch64PacBti, PaciaspInPrologue)
 // ---------------------------------------------------------------------------
 // Test: Non-leaf function gets AUTIASP before ret
 // ---------------------------------------------------------------------------
-TEST(AArch64PacBti, AutoaspBeforeRet)
-{
+TEST(AArch64PacBti, AutoaspBeforeRet) {
     A64BinaryEncoder encoder;
     viper::codegen::objfile::CodeSection text;
     viper::codegen::objfile::CodeSection rodata;
@@ -161,8 +152,7 @@ TEST(AArch64PacBti, AutoaspBeforeRet)
     const auto &bytes = text.bytes();
     size_t autiaspPos = SIZE_MAX;
     size_t retPos = SIZE_MAX;
-    for (size_t i = 0; i + 3 < bytes.size(); i += 4)
-    {
+    for (size_t i = 0; i + 3 < bytes.size(); i += 4) {
         uint32_t w = readWord(bytes, i);
         if (w == kAutiasp)
             autiaspPos = i;
@@ -171,8 +161,7 @@ TEST(AArch64PacBti, AutoaspBeforeRet)
     }
     EXPECT_NE(autiaspPos, SIZE_MAX);
     EXPECT_NE(retPos, SIZE_MAX);
-    if (autiaspPos != SIZE_MAX && retPos != SIZE_MAX)
-    {
+    if (autiaspPos != SIZE_MAX && retPos != SIZE_MAX) {
         EXPECT_LT(autiaspPos, retPos);
     }
 }
@@ -180,8 +169,7 @@ TEST(AArch64PacBti, AutoaspBeforeRet)
 // ---------------------------------------------------------------------------
 // Test: Leaf function still gets BTI C (needed for indirect calls)
 // ---------------------------------------------------------------------------
-TEST(AArch64PacBti, LeafFuncGetsBti)
-{
+TEST(AArch64PacBti, LeafFuncGetsBti) {
     A64BinaryEncoder encoder;
     viper::codegen::objfile::CodeSection text;
     viper::codegen::objfile::CodeSection rodata;
@@ -198,8 +186,7 @@ TEST(AArch64PacBti, LeafFuncGetsBti)
 // ---------------------------------------------------------------------------
 // Test: Leaf function does NOT get PACIASP/AUTIASP (no LR to sign)
 // ---------------------------------------------------------------------------
-TEST(AArch64PacBti, LeafFuncNoPac)
-{
+TEST(AArch64PacBti, LeafFuncNoPac) {
     A64BinaryEncoder encoder;
     viper::codegen::objfile::CodeSection text;
     viper::codegen::objfile::CodeSection rodata;
@@ -212,8 +199,7 @@ TEST(AArch64PacBti, LeafFuncNoPac)
     EXPECT_FALSE(containsWord(text, kAutiasp));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

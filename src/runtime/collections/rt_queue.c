@@ -70,8 +70,7 @@
 /// - Add (enqueue) at tail: O(1)
 /// - Take (dequeue) from head: O(1)
 /// - No element shifting needed
-typedef struct rt_queue_impl
-{
+typedef struct rt_queue_impl {
     int64_t len;  ///< Number of elements currently in the queue
     int64_t cap;  ///< Current capacity (allocated slots)
     int64_t head; ///< Index of first element (front of queue)
@@ -92,8 +91,7 @@ typedef struct rt_queue_impl
 /// @note This function is idempotent - safe to call on already-finalized queues.
 ///
 /// @see rt_queue_clear For removing elements without finalization
-static void rt_queue_finalize(void *obj)
-{
+static void rt_queue_finalize(void *obj) {
     if (!obj)
         return;
     rt_queue_impl *q = (rt_queue_impl *)obj;
@@ -125,28 +123,22 @@ static void rt_queue_finalize(void *obj)
 /// @note Capacity doubles each time (QUEUE_GROWTH_FACTOR = 2).
 /// @note Traps on memory allocation failure.
 /// @note O(n) time complexity where n is the number of elements.
-static void queue_grow(rt_queue_impl *q)
-{
+static void queue_grow(rt_queue_impl *q) {
     if (q->cap > INT64_MAX / QUEUE_GROWTH_FACTOR)
         rt_trap("Queue: capacity overflow");
     int64_t new_cap = q->cap * QUEUE_GROWTH_FACTOR;
     void **new_items = malloc((size_t)new_cap * sizeof(void *));
 
-    if (!new_items)
-    {
+    if (!new_items) {
         rt_trap("Queue: memory allocation failed");
     }
 
     // Linearize the circular buffer into the new array
-    if (q->len > 0)
-    {
-        if (q->head < q->tail)
-        {
+    if (q->len > 0) {
+        if (q->head < q->tail) {
             // Contiguous region: head...tail
             memcpy(new_items, &q->items[q->head], (size_t)q->len * sizeof(void *));
-        }
-        else
-        {
+        } else {
             // Wrapped around: head...end, then start...tail
             int64_t first_part = q->cap - q->head;
             memcpy(new_items, &q->items[q->head], (size_t)first_part * sizeof(void *));
@@ -191,11 +183,9 @@ static void queue_grow(rt_queue_impl *q)
 /// @see rt_queue_push For adding elements
 /// @see rt_queue_pop For removing elements
 /// @see rt_queue_finalize For cleanup behavior
-void *rt_queue_new(void)
-{
+void *rt_queue_new(void) {
     rt_queue_impl *q = (rt_queue_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_queue_impl));
-    if (!q)
-    {
+    if (!q) {
         rt_trap("Queue: memory allocation failed");
     }
 
@@ -206,8 +196,7 @@ void *rt_queue_new(void)
     q->items = malloc((size_t)QUEUE_DEFAULT_CAP * sizeof(void *));
     rt_obj_set_finalizer(q, rt_queue_finalize);
 
-    if (!q->items)
-    {
+    if (!q->items) {
         if (rt_obj_release_check0(q))
             rt_obj_free(q);
         rt_trap("Queue: memory allocation failed");
@@ -230,8 +219,7 @@ void *rt_queue_new(void)
 /// @see rt_queue_is_empty For a boolean check
 /// @see rt_queue_push For operations that increase the count
 /// @see rt_queue_pop For operations that decrease the count
-int64_t rt_queue_len(void *obj)
-{
+int64_t rt_queue_len(void *obj) {
     if (!obj)
         return 0;
     return ((rt_queue_impl *)obj)->len;
@@ -255,8 +243,7 @@ int64_t rt_queue_len(void *obj)
 /// @see rt_queue_len For the exact count
 /// @see rt_queue_pop For removing elements (traps if empty)
 /// @see rt_queue_peek For viewing front element (traps if empty)
-int8_t rt_queue_is_empty(void *obj)
-{
+int8_t rt_queue_is_empty(void *obj) {
     if (!obj)
         return 1;
     return ((rt_queue_impl *)obj)->len == 0 ? 1 : 0;
@@ -287,15 +274,13 @@ int8_t rt_queue_is_empty(void *obj)
 ///
 /// @see rt_queue_pop For the removal operation
 /// @see rt_queue_peek For viewing without removing
-void rt_queue_push(void *obj, void *elem)
-{
+void rt_queue_push(void *obj, void *elem) {
     if (!obj)
         rt_trap("Queue.Add: null queue");
 
     rt_queue_impl *q = (rt_queue_impl *)obj;
 
-    if (q->len >= q->cap)
-    {
+    if (q->len >= q->cap) {
         queue_grow(q);
     }
 
@@ -333,15 +318,13 @@ void rt_queue_push(void *obj, void *elem)
 /// @see rt_queue_push For the insertion operation
 /// @see rt_queue_peek For viewing without removing
 /// @see rt_queue_is_empty For checking before take
-void *rt_queue_pop(void *obj)
-{
+void *rt_queue_pop(void *obj) {
     if (!obj)
         rt_trap("Queue.Take: null queue");
 
     rt_queue_impl *q = (rt_queue_impl *)obj;
 
-    if (q->len == 0)
-    {
+    if (q->len == 0) {
         rt_trap("Queue.Take: queue is empty");
     }
 
@@ -382,15 +365,13 @@ void *rt_queue_pop(void *obj)
 ///
 /// @see rt_queue_pop For removing while retrieving
 /// @see rt_queue_is_empty For checking before peek
-void *rt_queue_peek(void *obj)
-{
+void *rt_queue_peek(void *obj) {
     if (!obj)
         rt_trap("Queue.Peek: null queue");
 
     rt_queue_impl *q = (rt_queue_impl *)obj;
 
-    if (q->len == 0)
-    {
+    if (q->len == 0) {
         rt_trap("Queue.Peek: queue is empty");
     }
 
@@ -418,8 +399,7 @@ void *rt_queue_peek(void *obj)
 ///
 /// @see rt_queue_finalize For complete cleanup
 /// @see rt_queue_is_empty For checking if empty
-void rt_queue_clear(void *obj)
-{
+void rt_queue_clear(void *obj) {
     if (!obj)
         return;
 
@@ -433,14 +413,12 @@ void rt_queue_clear(void *obj)
 /// @param obj Opaque Queue object pointer.
 /// @param elem Element to search for.
 /// @return 1 if found, 0 otherwise.
-int8_t rt_queue_has(void *obj, void *elem)
-{
+int8_t rt_queue_has(void *obj, void *elem) {
     if (!obj)
         return 0;
 
     rt_queue_impl *q = (rt_queue_impl *)obj;
-    for (int64_t i = 0; i < q->len; i++)
-    {
+    for (int64_t i = 0; i < q->len; i++) {
         if (q->items[(q->head + i) % q->cap] == elem)
             return 1;
     }
@@ -450,8 +428,7 @@ int8_t rt_queue_has(void *obj, void *elem)
 /// @brief Pop the front element, or return NULL if empty (no trap).
 /// @param obj Opaque Queue object pointer.
 /// @return The removed element, or NULL if empty.
-void *rt_queue_try_pop(void *obj)
-{
+void *rt_queue_try_pop(void *obj) {
     if (!obj)
         return NULL;
 
@@ -472,15 +449,13 @@ void *rt_queue_try_pop(void *obj)
 ///
 /// @param obj Source Queue pointer (may be NULL).
 /// @return New Queue with the same elements, or empty queue if NULL.
-void *rt_queue_clone(void *obj)
-{
+void *rt_queue_clone(void *obj) {
     void *result = rt_queue_new();
     if (!obj)
         return result;
 
     rt_queue_impl *q = (rt_queue_impl *)obj;
-    for (int64_t i = 0; i < q->len; i++)
-    {
+    for (int64_t i = 0; i < q->len; i++) {
         rt_queue_push(result, q->items[(q->head + i) % q->cap]);
     }
     return result;

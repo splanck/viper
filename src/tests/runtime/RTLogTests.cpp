@@ -18,8 +18,7 @@
 #include <cstdint>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -27,8 +26,7 @@ extern "C" void vm_trap(const char *msg)
 // Helper
 // ============================================================================
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
@@ -36,8 +34,7 @@ static rt_string make_str(const char *s)
 // Level Constant Tests
 // ============================================================================
 
-static void test_level_constants()
-{
+static void test_level_constants() {
     assert(rt_log_level_debug() == 0);
     assert(rt_log_level_info() == 1);
     assert(rt_log_level_warn() == 2);
@@ -51,8 +48,7 @@ static void test_level_constants()
 // Level Get/Set Tests
 // ============================================================================
 
-static void test_level_get_set()
-{
+static void test_level_get_set() {
     // Save original level
     int64_t original = rt_log_level();
 
@@ -90,8 +86,7 @@ static void test_level_get_set()
 // Enabled Tests
 // ============================================================================
 
-static void test_enabled()
-{
+static void test_enabled() {
     // Save original level
     int64_t original = rt_log_level();
 
@@ -141,8 +136,7 @@ static void test_enabled()
 // Log Output Tests (visual inspection)
 // ============================================================================
 
-static void test_log_output()
-{
+static void test_log_output() {
     // Save original level
     int64_t original = rt_log_level();
 
@@ -180,8 +174,7 @@ static void test_log_output()
 // Default Level Tests
 // ============================================================================
 
-static void test_default_level()
-{
+static void test_default_level() {
     // Note: This test assumes the default level is INFO (1)
     // If run first before other tests modify the level
     // We can't really test this without resetting global state
@@ -193,8 +186,7 @@ static void test_default_level()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Viper.Log Tests ===\n\n");
 
     // Level constants

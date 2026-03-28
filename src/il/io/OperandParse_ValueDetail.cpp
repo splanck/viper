@@ -38,10 +38,8 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::il::io
-{
-namespace
-{
+namespace viper::il::io {
+namespace {
 using ::il::core::Value;
 using ::il::io::detail::ParserState;
 using ::il::support::Expected;
@@ -55,8 +53,7 @@ using ::il::support::makeError;
 /// @param state Parser bookkeeping providing the line number and cursor location.
 /// @param message Human-readable explanation of the syntax issue encountered.
 /// @return Error-valued @ref Expected propagating the formatted diagnostic.
-template <class T> Expected<T> makeSyntaxError(ParserState &state, std::string message)
-{
+template <class T> Expected<T> makeSyntaxError(ParserState &state, std::string message) {
     return Expected<T>{::il::io::makeLineErrorDiag(state.curLoc, state.lineNo, std::move(message))};
 }
 
@@ -65,8 +62,7 @@ template <class T> Expected<T> makeSyntaxError(ParserState &state, std::string m
 ///          and dots are permitted so qualified lowering names remain valid.
 /// @param c Character to test.
 /// @return @c true when the character can appear at the start of an identifier.
-bool isIdentStart(char c)
-{
+bool isIdentStart(char c) {
     return std::isalpha(static_cast<unsigned char>(c)) || c == '_' || c == '.';
 }
 
@@ -76,8 +72,7 @@ bool isIdentStart(char c)
 ///          integer), preserving the classic BASIC type suffix syntax.
 /// @param c Character to test.
 /// @return @c true when the character is valid within an identifier body.
-bool isIdentBody(char c)
-{
+bool isIdentBody(char c) {
     return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.' || c == '$' ||
            c == '#' || c == '%';
 }
@@ -89,8 +84,7 @@ bool isIdentBody(char c)
 ///          returns the view referencing the consumed range.
 /// @param text [in,out] Buffer containing the identifier to parse.
 /// @return Identifier slice or @c std::nullopt when no identifier is present.
-std::optional<std::string_view> parseIdent(std::string_view &text)
-{
+std::optional<std::string_view> parseIdent(std::string_view &text) {
     std::string_view original = text;
     if (original.empty() || !isIdentStart(original.front()))
         return std::nullopt;
@@ -110,8 +104,7 @@ std::optional<std::string_view> parseIdent(std::string_view &text)
 /// @param text [in,out] Buffer containing the candidate integer literal.
 /// @param value Destination for the parsed numeric value.
 /// @return @c true when a decimal integer was consumed successfully.
-bool parseInt(std::string_view &text, int64_t &value)
-{
+bool parseInt(std::string_view &text, int64_t &value) {
     std::string_view original = text;
     if (original.empty())
         return false;
@@ -134,8 +127,7 @@ bool parseInt(std::string_view &text, int64_t &value)
 /// @param text [in,out] Source beginning with a '[' character.
 /// @param out Output view referencing the characters inside the brackets.
 /// @return @c true when a balanced bracketed region was consumed.
-bool parseBracketed(std::string_view &text, std::string_view &out)
-{
+bool parseBracketed(std::string_view &text, std::string_view &out) {
     std::string_view original = text;
     if (original.empty() || original.front() != '[')
         return false;
@@ -144,18 +136,14 @@ bool parseBracketed(std::string_view &text, std::string_view &out)
     size_t start = 0;
     bool inString = false;
     bool escape = false;
-    for (size_t index = 0; index < original.size(); ++index)
-    {
+    for (size_t index = 0; index < original.size(); ++index) {
         char c = original[index];
-        if (inString)
-        {
-            if (escape)
-            {
+        if (inString) {
+            if (escape) {
                 escape = false;
                 continue;
             }
-            if (c == '\\')
-            {
+            if (c == '\\') {
                 escape = true;
                 continue;
             }
@@ -164,27 +152,23 @@ bool parseBracketed(std::string_view &text, std::string_view &out)
             continue;
         }
 
-        if (c == '"')
-        {
+        if (c == '"') {
             inString = true;
             continue;
         }
 
-        if (c == '[')
-        {
+        if (c == '[') {
             if (depth == 0)
                 start = index + 1;
             ++depth;
             continue;
         }
 
-        if (c == ']')
-        {
+        if (c == ']') {
             if (depth == 0)
                 return false;
             --depth;
-            if (depth == 0)
-            {
+            if (depth == 0) {
                 out = original.substr(start, index - start);
                 text.remove_prefix(index + 1);
                 return true;
@@ -208,8 +192,7 @@ bool parseBracketed(std::string_view &text, std::string_view &out)
 /// @param ctx Parser context exposing the known temporary identifiers.
 /// @param matched [out] Indicates whether the `%` prefix was present.
 /// @return Character count consumed on success or a diagnostic on failure.
-Expected<size_t> tryParseRegister(std::string_view text, Value &out, Context &ctx, bool &matched)
-{
+Expected<size_t> tryParseRegister(std::string_view text, Value &out, Context &ctx, bool &matched) {
     matched = false;
     if (text.empty() || text.front() != '%')
         return Expected<size_t>{size_t{0}};
@@ -223,21 +206,18 @@ Expected<size_t> tryParseRegister(std::string_view text, Value &out, Context &ct
 
     std::string name(ident->begin(), ident->end());
     auto it = ctx.state.tempIds.find(name);
-    if (it != ctx.state.tempIds.end())
-    {
+    if (it != ctx.state.tempIds.end()) {
         out = Value::temp(it->second);
         return Expected<size_t>{1 + ident->size()};
     }
 
-    if (name.size() > 1 && name.front() == 't')
-    {
+    if (name.size() > 1 && name.front() == 't') {
         std::string_view digits = name;
         digits.remove_prefix(1);
         std::string_view digitCursor = digits;
         int64_t parsed = 0;
         if (parseInt(digitCursor, parsed) && digitCursor.empty() && parsed >= 0 &&
-            static_cast<uint64_t>(parsed) <= std::numeric_limits<unsigned>::max())
-        {
+            static_cast<uint64_t>(parsed) <= std::numeric_limits<unsigned>::max()) {
             out = Value::temp(static_cast<unsigned>(parsed));
             return Expected<size_t>{1 + ident->size()};
         }
@@ -257,8 +237,7 @@ Expected<size_t> tryParseRegister(std::string_view text, Value &out, Context &ct
 /// @param ctx Parser context used to format diagnostics.
 /// @param matched [out] Set to @c true when a bracket prefix was recognised.
 /// @return Character count consumed (unused) or a diagnostic when malformed.
-Expected<size_t> tryParseMemory(std::string_view text, Context &ctx, bool &matched)
-{
+Expected<size_t> tryParseMemory(std::string_view text, Context &ctx, bool &matched) {
     matched = false;
     if (text.empty() || text.front() != '[')
         return Expected<size_t>{size_t{0}};
@@ -283,8 +262,7 @@ Expected<size_t> tryParseMemory(std::string_view text, Context &ctx, bool &match
 /// @param out [out] Resulting @ref Value when parsing succeeds.
 /// @param ctx Parser context providing literal parsing utilities.
 /// @return Characters consumed or a diagnostic on failure.
-Expected<size_t> parseImmediate(std::string_view text, Value &out, Context &ctx)
-{
+Expected<size_t> parseImmediate(std::string_view text, Value &out, Context &ctx) {
     viper::parse::Cursor literalCursor{text, viper::parse::SourcePos{ctx.state.lineNo, 0}};
     auto parsed = parseConstOperand(literalCursor, ctx);
     if (!parsed.ok())
@@ -306,8 +284,7 @@ Expected<size_t> parseImmediate(std::string_view text, Value &out, Context &ctx)
 /// @param text [in,out] Buffer beginning at the potential symbol reference.
 /// @param ctx Parser context exposing diagnostic helpers.
 /// @return Parsed @ref Value or an error-valued @ref Expected when malformed.
-Expected<Value> parseSymbolOperand(std::string_view &text, Context &ctx)
-{
+Expected<Value> parseSymbolOperand(std::string_view &text, Context &ctx) {
     auto working = text;
     while (!working.empty() && std::isspace(static_cast<unsigned char>(working.front())))
         working.remove_prefix(1);
@@ -341,12 +318,10 @@ Expected<Value> parseSymbolOperand(std::string_view &text, Context &ctx)
 /// @param out [out] Resulting value when a register or literal is parsed.
 /// @param ctx Parser context supplying lookup tables and diagnostics.
 /// @return Characters consumed or a diagnostic when parsing fails.
-Expected<size_t> parseValueTokenComponents(std::string_view &text, Value &out, Context &ctx)
-{
+Expected<size_t> parseValueTokenComponents(std::string_view &text, Value &out, Context &ctx) {
     bool matched = false;
     auto reg = tryParseRegister(text, out, ctx, matched);
-    if (matched)
-    {
+    if (matched) {
         if (!reg)
             return reg;
         text.remove_prefix(reg.value());
@@ -354,8 +329,7 @@ Expected<size_t> parseValueTokenComponents(std::string_view &text, Value &out, C
     }
 
     auto mem = tryParseMemory(text, ctx, matched);
-    if (matched)
-    {
+    if (matched) {
         if (!mem)
             return mem;
         text.remove_prefix(mem.value());

@@ -46,8 +46,7 @@
 #define PCLOSE pclose
 #endif
 
-namespace
-{
+namespace {
 #if defined(_WIN32)
 /// @brief Check if an argument needs quoting for cmd.exe.
 /// @details Returns true when the argument contains whitespace, quotes, or other
@@ -56,16 +55,13 @@ namespace
 ///          interpret as option markers.
 /// @param arg Argument to check.
 /// @return True if quoting is necessary.
-bool needs_quoting(const std::string &arg)
-{
+bool needs_quoting(const std::string &arg) {
     if (arg.empty())
         return true;
 
-    for (const char ch : arg)
-    {
+    for (const char ch : arg) {
         if (ch == ' ' || ch == '\t' || ch == '"' || ch == '&' || ch == '|' || ch == '<' ||
-            ch == '>' || ch == '^' || ch == '(' || ch == ')' || ch == '/')
-        {
+            ch == '>' || ch == '^' || ch == '(' || ch == ')' || ch == '/') {
             return true;
         }
     }
@@ -84,11 +80,9 @@ bool needs_quoting(const std::string &arg)
 ///
 /// @param arg Individual argv element to quote.
 /// @return Quoted argument ready for concatenation into a command string.
-std::string quote_windows_argument(const std::string &arg)
-{
+std::string quote_windows_argument(const std::string &arg) {
     // For simple arguments, don't quote to avoid cmd.exe parsing complexity
-    if (!needs_quoting(arg))
-    {
+    if (!needs_quoting(arg)) {
         return arg;
     }
 
@@ -97,24 +91,20 @@ std::string quote_windows_argument(const std::string &arg)
     quoted.push_back('"');
 
     std::size_t backslashCount = 0;
-    for (const char ch : arg)
-    {
-        if (ch == '\\')
-        {
+    for (const char ch : arg) {
+        if (ch == '\\') {
             ++backslashCount;
             continue;
         }
 
-        if (ch == '"')
-        {
+        if (ch == '"') {
             quoted.append(backslashCount * 2 + 1, '\\');
             quoted.push_back('"');
             backslashCount = 0;
             continue;
         }
 
-        if (backslashCount != 0)
-        {
+        if (backslashCount != 0) {
             quoted.append(backslashCount, '\\');
             backslashCount = 0;
         }
@@ -122,8 +112,7 @@ std::string quote_windows_argument(const std::string &arg)
         quoted.push_back(ch);
     }
 
-    if (backslashCount != 0)
-    {
+    if (backslashCount != 0) {
         quoted.append(backslashCount * 2, '\\');
     }
 
@@ -141,16 +130,13 @@ std::string quote_windows_argument(const std::string &arg)
 ///
 /// @param arg Individual argv element to quote.
 /// @return Quoted argument ready for concatenation into a command string.
-std::string quote_posix_argument(const std::string &arg)
-{
+std::string quote_posix_argument(const std::string &arg) {
     std::string quoted;
     quoted.reserve(arg.size() + 2);
     quoted.push_back('"');
 
-    for (const char ch : arg)
-    {
-        switch (ch)
-        {
+    for (const char ch : arg) {
+        switch (ch) {
             case '\\':
             case '"':
             case '$':
@@ -176,10 +162,8 @@ std::string quote_posix_argument(const std::string &arg)
 ///          is honoured by temporarily adjusting the current process environment
 ///          for the duration of the child invocation.  The @p cwd parameter is
 ///          presently ignored, matching the previous behaviour of the helper.
-namespace
-{
-class ScopedEnvironmentAssignment
-{
+namespace {
+class ScopedEnvironmentAssignment {
   public:
     /// @brief Construct a scoped override for the specified environment variable.
     /// @details Captures the existing value, installs @p value, and restores the
@@ -187,8 +171,7 @@ class ScopedEnvironmentAssignment
     /// @param name Environment variable to override.
     /// @param value Temporary value applied for the guard's lifetime.
     ScopedEnvironmentAssignment(std::string name, std::string value)
-        : name_(std::move(name)), previous_(capture_existing()), override_(std::move(value))
-    {
+        : name_(std::move(name)), previous_(capture_existing()), override_(std::move(value)) {
         apply_override();
     }
 
@@ -202,8 +185,7 @@ class ScopedEnvironmentAssignment
     /// @param other Guard supplying the override to adopt.
     ScopedEnvironmentAssignment(ScopedEnvironmentAssignment &&other) noexcept
         : name_(std::move(other.name_)), previous_(std::move(other.previous_)),
-          override_(std::move(other.override_))
-    {
+          override_(std::move(other.override_)) {
         other.name_.clear();
         other.previous_.reset();
         other.override_.reset();
@@ -214,10 +196,8 @@ class ScopedEnvironmentAssignment
     ///          @p other 's environment state to keep mutations balanced.
     /// @param other Guard providing the override to adopt.
     /// @return Reference to this guard after the transfer.
-    ScopedEnvironmentAssignment &operator=(ScopedEnvironmentAssignment &&other) noexcept
-    {
-        if (this == &other)
-        {
+    ScopedEnvironmentAssignment &operator=(ScopedEnvironmentAssignment &&other) noexcept {
+        if (this == &other) {
             return *this;
         }
 
@@ -238,8 +218,7 @@ class ScopedEnvironmentAssignment
 
     /// @brief Restore the environment when the guard leaves scope.
     /// @details Calls @ref restore so RAII users observe deterministic cleanup.
-    ~ScopedEnvironmentAssignment()
-    {
+    ~ScopedEnvironmentAssignment() {
         restore();
     }
 
@@ -248,11 +227,9 @@ class ScopedEnvironmentAssignment
     /// @details Returns `std::nullopt` when the variable was unset so the guard
     ///          knows to erase it during restoration rather than reassign a
     ///          value.
-    std::optional<std::string> capture_existing() const
-    {
+    std::optional<std::string> capture_existing() const {
         const char *existing = std::getenv(name_.c_str());
-        if (existing == nullptr)
-        {
+        if (existing == nullptr) {
             return std::nullopt;
         }
         return std::string(existing);
@@ -265,8 +242,7 @@ class ScopedEnvironmentAssignment
     ///          under catastrophic conditions (for example, running out of
     ///          memory while duplicating the string).
     /// @param value Environment value to install.
-    void apply(const std::string &value) const
-    {
+    void apply(const std::string &value) const {
 #ifdef _WIN32
         _putenv_s(name_.c_str(), value.c_str());
 #else
@@ -274,10 +250,8 @@ class ScopedEnvironmentAssignment
 #endif
     }
 
-    void apply_override() const
-    {
-        if (!override_.has_value() || name_.empty())
-        {
+    void apply_override() const {
+        if (!override_.has_value() || name_.empty()) {
             return;
         }
 
@@ -288,15 +262,12 @@ class ScopedEnvironmentAssignment
     /// @details Restores the previous value when one existed or removes the
     ///          variable entirely.  The method is const to allow guards stored in
     ///          containers of const elements used purely for cleanup.
-    void restore() const
-    {
-        if (name_.empty())
-        {
+    void restore() const {
+        if (name_.empty()) {
             return;
         }
 
-        if (previous_.has_value())
-        {
+        if (previous_.has_value()) {
 #ifdef _WIN32
             _putenv_s(name_.c_str(), previous_->c_str());
 #else
@@ -318,14 +289,12 @@ class ScopedEnvironmentAssignment
 };
 } // namespace
 
-namespace viper::test_support
-{
+namespace viper::test_support {
 /// @brief Outcome bundle returned by environment-override move tests.
 /// @details Records whether the override remained visible after move
 ///          construction and move assignment as well as whether the original
 ///          environment value was restored once the guards exited scope.
-struct ScopedEnvironmentAssignmentMoveResult
-{
+struct ScopedEnvironmentAssignmentMoveResult {
     bool value_visible_after_move_ctor;
     bool value_visible_after_move_assign;
     bool restored;
@@ -340,12 +309,10 @@ struct ScopedEnvironmentAssignmentMoveResult
 /// @param value Temporary value assigned by the guard.
 /// @return Structured summary of the observed behaviour.
 ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserves(
-    const std::string &name, const std::string &source_value, const std::string &receiver_value)
-{
+    const std::string &name, const std::string &source_value, const std::string &receiver_value) {
     const char *original_raw = std::getenv(name.c_str());
     std::optional<std::string> original_value;
-    if (original_raw != nullptr)
-    {
+    if (original_raw != nullptr) {
         original_value = std::string(original_raw);
     }
 
@@ -361,24 +328,18 @@ ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserv
         ScopedEnvironmentAssignment receiver(name, receiver_value);
         receiver = std::move(moved);
         current = std::getenv(name.c_str());
-        if (current != nullptr)
-        {
+        if (current != nullptr) {
             result.move_assigned_value = std::string(current);
             result.value_visible_after_move_assign = *result.move_assigned_value == source_value;
-        }
-        else
-        {
+        } else {
             result.value_visible_after_move_assign = false;
         }
     }
 
     const char *restored_raw = std::getenv(name.c_str());
-    if (original_value.has_value())
-    {
+    if (original_value.has_value()) {
         result.restored = (restored_raw != nullptr) && std::string(restored_raw) == *original_value;
-    }
-    else
-    {
+    } else {
         result.restored = (restored_raw == nullptr) || std::string(restored_raw).empty();
     }
 
@@ -386,27 +347,22 @@ ScopedEnvironmentAssignmentMoveResult scoped_environment_assignment_move_preserv
 }
 } // namespace viper::test_support
 
-namespace
-{
-class ScopedWorkingDirectory
-{
+namespace {
+class ScopedWorkingDirectory {
   public:
     /// @brief Optionally change the process working directory for the guard's lifetime.
     /// @details Captures the original directory and attempts to switch to
     ///          @p target.  Failures record a diagnostic so @ref run_process can
     ///          surface the issue without throwing exceptions.
     /// @param target Destination directory; when absent the guard becomes a no-op.
-    explicit ScopedWorkingDirectory(const std::optional<std::string> &target)
-    {
-        if (!target)
-        {
+    explicit ScopedWorkingDirectory(const std::optional<std::string> &target) {
+        if (!target) {
             return;
         }
 
 #ifdef _WIN32
         std::unique_ptr<wchar_t, decltype(&std::free)> previous(_wgetcwd(nullptr, 0), &std::free);
-        if (!previous)
-        {
+        if (!previous) {
             error_.emplace("failed to query current working directory");
             return;
         }
@@ -414,23 +370,20 @@ class ScopedWorkingDirectory
         previous_ = std::wstring(previous.get());
         const std::wstring newDirectory =
             std::filesystem::path(std::u8string(target->begin(), target->end())).wstring();
-        if (_wchdir(newDirectory.c_str()) != 0)
-        {
+        if (_wchdir(newDirectory.c_str()) != 0) {
             error_.emplace("failed to change working directory to '" + *target + "'");
             previous_.clear();
             return;
         }
 #else
         std::unique_ptr<char, decltype(&std::free)> previous(::getcwd(nullptr, 0), &std::free);
-        if (!previous)
-        {
+        if (!previous) {
             error_.emplace("failed to query current working directory");
             return;
         }
 
         previous_ = std::string(previous.get());
-        if (::chdir(target->c_str()) != 0)
-        {
+        if (::chdir(target->c_str()) != 0) {
             error_.emplace("failed to change working directory to '" + *target + "'");
             previous_.clear();
             return;
@@ -446,10 +399,8 @@ class ScopedWorkingDirectory
     /// @brief Restore the previous working directory on scope exit.
     /// @details Invoked automatically when the guard is destroyed.  If the
     ///          constructor failed, the destructor becomes a no-op.
-    ~ScopedWorkingDirectory()
-    {
-        if (!active_)
-        {
+    ~ScopedWorkingDirectory() {
+        if (!active_) {
             return;
         }
 
@@ -462,15 +413,13 @@ class ScopedWorkingDirectory
 
     /// @brief Check whether the constructor encountered an error.
     /// @return True when the working directory change failed.
-    bool has_error() const
-    {
+    bool has_error() const {
         return error_.has_value();
     }
 
     /// @brief Retrieve the human-readable error captured during construction.
     /// @return Reference to the stored diagnostic message.
-    const std::string &error_message() const
-    {
+    const std::string &error_message() const {
         return *error_;
     }
 
@@ -498,30 +447,25 @@ class ScopedWorkingDirectory
 /// @return Result bundle containing exit code, stdout, and stderr text.
 RunResult run_process(const std::vector<std::string> &argv,
                       std::optional<std::string> cwd,
-                      const std::vector<std::pair<std::string, std::string>> &env)
-{
+                      const std::vector<std::pair<std::string, std::string>> &env) {
     std::vector<ScopedEnvironmentAssignment> scoped_env;
     scoped_env.reserve(env.size());
-    for (const auto &pair : env)
-    {
+    for (const auto &pair : env) {
         scoped_env.emplace_back(pair.first, pair.second);
     }
 
     RunResult rr{0, "", ""};
 
     ScopedWorkingDirectory scoped_cwd(cwd);
-    if (scoped_cwd.has_error())
-    {
+    if (scoped_cwd.has_error()) {
         rr.exit_code = -1;
         rr.err = scoped_cwd.error_message();
         return rr;
     }
 
     std::string cmd;
-    for (std::size_t i = 0; i < argv.size(); ++i)
-    {
-        if (i != 0)
-        {
+    for (std::size_t i = 0; i < argv.size(); ++i) {
+        if (i != 0) {
             cmd += ' ';
         }
 #if defined(_WIN32)
@@ -530,22 +474,19 @@ RunResult run_process(const std::vector<std::string> &argv,
         cmd += quote_posix_argument(argv[i]);
 #endif
     }
-    if (!cmd.empty())
-    {
+    if (!cmd.empty()) {
         cmd += " 2>&1";
     }
 
     FILE *pipe = POPEN(cmd.c_str(), "r");
-    if (!pipe)
-    {
+    if (!pipe) {
         rr.exit_code = -1;
         rr.err = "failed to popen";
         return rr;
     }
 
     char buffer[4096];
-    while (fgets(buffer, sizeof(buffer), pipe))
-    {
+    while (fgets(buffer, sizeof(buffer), pipe)) {
         rr.out += buffer;
     }
 
@@ -553,12 +494,9 @@ RunResult run_process(const std::vector<std::string> &argv,
 #ifdef _WIN32
     rr.exit_code = status;
 #else
-    if (WIFEXITED(status))
-    {
+    if (WIFEXITED(status)) {
         rr.exit_code = WEXITSTATUS(status);
-    }
-    else
-    {
+    } else {
         rr.exit_code = status;
     }
 #endif

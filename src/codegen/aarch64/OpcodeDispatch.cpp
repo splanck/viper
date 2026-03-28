@@ -102,30 +102,25 @@
 #include <cstdio>
 #include <cstring>
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 using il::core::Opcode;
 
-static const char *condForOpcode(Opcode op)
-{
+static const char *condForOpcode(Opcode op) {
     return lookupCondition(op);
 }
 
 bool lowerInstruction(const il::core::Instr &ins,
                       const il::core::BasicBlock &bbIn,
                       LoweringContext &ctx,
-                      std::size_t bbOutIdx)
-{
+                      std::size_t bbOutIdx) {
     // Helper lambda to access the output block by index.
     // This ensures we always get a valid reference even after emplace_back().
     auto bbOut = [&]() -> MBasicBlock & { return ctx.mf.blocks[bbOutIdx]; };
 
-    switch (ins.op)
-    {
+    switch (ins.op) {
         case Opcode::Zext1:
-        case Opcode::Trunc1:
-        {
+        case Opcode::Trunc1: {
             if (!ins.result || ins.operands.empty())
                 return true; // Handled (as no-op for invalid input)
             uint16_t sv = 0;
@@ -153,8 +148,7 @@ bool lowerInstruction(const il::core::Instr &ins,
             return true;
         }
         case Opcode::CastSiNarrowChk:
-        case Opcode::CastUiNarrowChk:
-        {
+        case Opcode::CastUiNarrowChk: {
             if (!ins.result || ins.operands.empty())
                 return true;
             int bits = 64;
@@ -177,13 +171,11 @@ bool lowerInstruction(const il::core::Instr &ins,
                                         scls))
                 return true;
             const uint16_t vt = ctx.nextVRegId++;
-            if (sh > 0)
-            {
+            if (sh > 0) {
                 bbOut().instrs.push_back(MInstr{
                     MOpcode::MovRR,
                     {MOperand::vregOp(RegClass::GPR, vt), MOperand::vregOp(RegClass::GPR, sv)}});
-                if (ins.op == Opcode::CastSiNarrowChk)
-                {
+                if (ins.op == Opcode::CastSiNarrowChk) {
                     bbOut().instrs.push_back(MInstr{MOpcode::LslRI,
                                                     {MOperand::vregOp(RegClass::GPR, vt),
                                                      MOperand::vregOp(RegClass::GPR, vt),
@@ -192,9 +184,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                                     {MOperand::vregOp(RegClass::GPR, vt),
                                                      MOperand::vregOp(RegClass::GPR, vt),
                                                      MOperand::immOp(sh)}});
-                }
-                else
-                {
+                } else {
                     bbOut().instrs.push_back(MInstr{MOpcode::LslRI,
                                                     {MOperand::vregOp(RegClass::GPR, vt),
                                                      MOperand::vregOp(RegClass::GPR, vt),
@@ -204,9 +194,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                                      MOperand::vregOp(RegClass::GPR, vt),
                                                      MOperand::immOp(sh)}});
                 }
-            }
-            else
-            {
+            } else {
                 bbOut().instrs.push_back(MInstr{
                     MOpcode::MovRR,
                     {MOperand::vregOp(RegClass::GPR, vt), MOperand::vregOp(RegClass::GPR, sv)}});
@@ -229,8 +217,7 @@ bool lowerInstruction(const il::core::Instr &ins,
             return true;
         }
         case Opcode::CastFpToSiRteChk:
-        case Opcode::CastFpToUiRteChk:
-        {
+        case Opcode::CastFpToUiRteChk: {
             // Per IL spec: .rte = round-to-even, .chk = trap on overflow only.
             // First round to nearest even, then convert to integer.
             if (!ins.result || ins.operands.empty())
@@ -258,14 +245,11 @@ bool lowerInstruction(const il::core::Instr &ins,
             // Convert rounded value to integer
             const uint16_t dst = ctx.nextVRegId++;
             ctx.tempVReg[*ins.result] = dst;
-            if (ins.op == Opcode::CastFpToSiRteChk)
-            {
+            if (ins.op == Opcode::CastFpToSiRteChk) {
                 bbOut().instrs.push_back(MInstr{MOpcode::FCvtZS,
                                                 {MOperand::vregOp(RegClass::GPR, dst),
                                                  MOperand::vregOp(RegClass::FPR, rounded)}});
-            }
-            else
-            {
+            } else {
                 bbOut().instrs.push_back(MInstr{MOpcode::FCvtZU,
                                                 {MOperand::vregOp(RegClass::GPR, dst),
                                                  MOperand::vregOp(RegClass::FPR, rounded)}});
@@ -273,8 +257,7 @@ bool lowerInstruction(const il::core::Instr &ins,
             return true;
         }
         case Opcode::CastSiToFp:
-        case Opcode::CastUiToFp:
-        {
+        case Opcode::CastUiToFp: {
             if (!ins.result || ins.operands.empty())
                 return true;
             uint16_t sv = 0;
@@ -346,8 +329,7 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::Fptosi:
             lowerFptosi(ins, bbIn, ctx, bbOut());
             return true;
-        case Opcode::ConstF64:
-        {
+        case Opcode::ConstF64: {
             // Lower const.f64 by materializing a floating-point constant.
             // We load the 64-bit IEEE-754 representation into a GPR and then
             // use fmov to transfer to FPR.  Operands may arrive as ConstFloat
@@ -362,18 +344,13 @@ bool lowerInstruction(const il::core::Instr &ins,
             ctx.tempRegClass[*ins.result] = RegClass::FPR;
 
             uint64_t bits = 0;
-            if (ins.operands[0].kind == il::core::Value::Kind::ConstFloat)
-            {
+            if (ins.operands[0].kind == il::core::Value::Kind::ConstFloat) {
                 const double fval = ins.operands[0].f64;
                 std::memcpy(&bits, &fval, sizeof(bits));
-            }
-            else if (ins.operands[0].kind == il::core::Value::Kind::ConstInt)
-            {
+            } else if (ins.operands[0].kind == il::core::Value::Kind::ConstInt) {
                 // Integer operand holds IEEE-754 bit pattern directly.
                 bits = static_cast<uint64_t>(ins.operands[0].i64);
-            }
-            else
-            {
+            } else {
                 return false;
             }
 
@@ -386,8 +363,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                 {MOperand::vregOp(RegClass::FPR, dst), MOperand::vregOp(RegClass::GPR, tmpGpr)}});
             return true;
         }
-        case Opcode::ConstNull:
-        {
+        case Opcode::ConstNull: {
             // const_null produces a null pointer (0)
             if (!ins.result)
                 return true;
@@ -398,8 +374,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                 MInstr{MOpcode::MovRI, {MOperand::vregOp(RegClass::GPR, dst), MOperand::immOp(0)}});
             return true;
         }
-        case Opcode::GAddr:
-        {
+        case Opcode::GAddr: {
             // gaddr @symbol produces the address of a global variable
             if (!ins.result || ins.operands.empty())
                 return true;
@@ -418,8 +393,7 @@ bool lowerInstruction(const il::core::Instr &ins,
                                              MOperand::labelOp(sym)}});
             return true;
         }
-        case Opcode::ConstStr:
-        {
+        case Opcode::ConstStr: {
             // Lower const_str to produce a string handle via rt_const_cstr.
             // This must be lowered proactively (not demand-lowered) when the result
             // is a cross-block temp that will be spilled.
@@ -500,8 +474,7 @@ bool lowerInstruction(const il::core::Instr &ins,
         case Opcode::ErrGetKind:
         case Opcode::ErrGetCode:
         case Opcode::ErrGetIp:
-        case Opcode::ErrGetLine:
-        {
+        case Opcode::ErrGetLine: {
             const uint16_t dst = ctx.nextVRegId++;
             if (ins.result)
                 ctx.tempVReg[*ins.result] = dst;

@@ -27,8 +27,7 @@
 
 using il::vm::TrapKind;
 
-int main()
-{
+int main() {
     constexpr std::array<std::pair<TrapKind, std::string_view>, 10> cases{{
         {TrapKind::DivideByZero, "DivideByZero"},
         {TrapKind::Overflow, "Overflow"},
@@ -42,8 +41,7 @@ int main()
         {TrapKind::RuntimeError, "RuntimeError"},
     }};
 
-    for (const auto &[kind, name] : cases)
-    {
+    for (const auto &[kind, name] : cases) {
         const auto stringified = il::vm::toString(kind);
         assert(stringified == name);
 

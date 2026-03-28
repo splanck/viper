@@ -19,24 +19,20 @@
 
 #include <vector>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 struct ILInstr;
 } // namespace viper::codegen::x64
 
-namespace IL
-{
+namespace IL {
 using Instr = viper::codegen::x64::ILInstr;
 } // namespace IL
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 class MIRBuilder;
 
 /// \brief Description of a single IL lowering rule.
-struct LoweringRule
-{
+struct LoweringRule {
     bool (*match)(const IL::Instr &);              ///< Match predicate invoked before emit.
     void (*emit)(const IL::Instr &, MIRBuilder &); ///< Emit routine for matched opcode.
     const char *name; ///< Debug name describing the handled opcode family.

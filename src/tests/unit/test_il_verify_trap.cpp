@@ -23,8 +23,7 @@
 #include <cassert>
 #include <sstream>
 
-int main()
-{
+int main() {
     using namespace il::core;
 
     Module m;
@@ -45,8 +44,7 @@ int main()
 
     std::ostringstream diag;
     auto ve = il::verify::Verifier::verify(m);
-    if (!ve)
-    {
+    if (!ve) {
         il::support::printDiag(ve.error(), diag);
     }
     assert(ve);

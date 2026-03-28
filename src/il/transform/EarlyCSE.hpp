@@ -23,8 +23,7 @@
 #include "il/core/Function.hpp"
 #include "il/core/Module.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// \brief Eliminate redundant pure instructions across dominator-tree scope.
 /// \details Walks the dominator tree in pre-order, maintaining a stack of

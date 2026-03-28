@@ -23,16 +23,14 @@
 #include <unordered_map>
 #include <utility>
 
-namespace viper::server
-{
+namespace viper::server {
 
 /// @brief In-memory store for open documents, keyed by URI.
 ///
 /// Tracks the current content and version of each open file so that
 /// LSP requests (completion, hover, etc.) can retrieve the latest text
 /// without re-reading from disk.
-class DocumentStore
-{
+class DocumentStore {
   public:
     /// @brief Open or update a document.
     /// @param uri Document URI (e.g., "file:///path/to/file.zia").
@@ -58,8 +56,7 @@ class DocumentStore
     static std::string uriToPath(const std::string &uri);
 
   private:
-    struct Document
-    {
+    struct Document {
         int version;
         std::string content;
     };

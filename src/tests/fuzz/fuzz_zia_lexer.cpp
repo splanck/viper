@@ -28,8 +28,7 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
-{
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     // Cap input size to 16 KB to prevent OOM on large corpus entries.
     constexpr size_t kMaxInputSize = 16 * 1024;
     if (size > kMaxInputSize)
@@ -41,8 +40,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     Lexer lexer(source, /*fileId=*/0, diag);
 
     // Drain the entire token stream. The lexer must always terminate.
-    for (;;)
-    {
+    for (;;) {
         Token tok = lexer.next();
         if (tok.kind == TokenKind::Eof)
             break;

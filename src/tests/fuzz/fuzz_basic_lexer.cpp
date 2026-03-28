@@ -22,8 +22,7 @@
 
 using namespace il::frontends::basic;
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
-{
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     constexpr size_t kMaxInputSize = 16 * 1024;
     if (size > kMaxInputSize)
         return 0;
@@ -31,8 +30,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     std::string source(reinterpret_cast<const char *>(data), size);
     Lexer lexer(source, /*fileId=*/0);
 
-    for (;;)
-    {
+    for (;;) {
         auto tok = lexer.nextToken();
         if (tok.type == TokenType::END_OF_FILE)
             break;

@@ -98,18 +98,15 @@ static const uint8_t rcon[11] = {0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40,
 //=============================================================================
 
 /// @brief Multiply by 2 in GF(2^8)
-static inline uint8_t xtime(uint8_t x)
-{
+static inline uint8_t xtime(uint8_t x) {
     return (uint8_t)((x << 1) ^ (((x >> 7) & 1) * 0x1b));
 }
 
 /// @brief Multiply two bytes in GF(2^8)
-static inline uint8_t gf_mul(uint8_t a, uint8_t b)
-{
+static inline uint8_t gf_mul(uint8_t a, uint8_t b) {
     uint8_t result = 0;
     uint8_t hi_bit;
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         if (b & 1)
             result ^= a;
         hi_bit = a & 0x80;
@@ -152,8 +149,7 @@ static const uint32_t sha256_h0[8] = {
 /// @param data Input data
 /// @param len Length of input data
 /// @param hash Output hash (32 bytes)
-static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32])
-{
+static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32]) {
     uint32_t h[8];
     for (int i = 0; i < 8; i++)
         h[i] = sha256_h0[i];
@@ -182,13 +178,11 @@ static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32])
     padded[padded_len - 1] = (uint8_t)(bit_len);
 
     // Process each 64-byte chunk
-    for (size_t chunk = 0; chunk < padded_len; chunk += 64)
-    {
+    for (size_t chunk = 0; chunk < padded_len; chunk += 64) {
         uint32_t w[64];
 
         // Break chunk into sixteen 32-bit big-endian words
-        for (int i = 0; i < 16; i++)
-        {
+        for (int i = 0; i < 16; i++) {
             w[i] = ((uint32_t)padded[chunk + i * 4 + 0] << 24) |
                    ((uint32_t)padded[chunk + i * 4 + 1] << 16) |
                    ((uint32_t)padded[chunk + i * 4 + 2] << 8) |
@@ -204,8 +198,7 @@ static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32])
         uint32_t e = h[4], f = h[5], g = h[6], hh = h[7];
 
         // Main loop
-        for (int i = 0; i < 64; i++)
-        {
+        for (int i = 0; i < 64; i++) {
             uint32_t t1 = hh + SHA256_EP1(e) + SHA256_CH(e, f, g) + sha256_k[i] + w[i];
             uint32_t t2 = SHA256_EP0(a) + SHA256_MAJ(a, b, c);
             hh = g;
@@ -232,8 +225,7 @@ static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32])
     free(padded);
 
     // Produce final hash value (big-endian)
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         hash[i * 4 + 0] = (uint8_t)(h[i] >> 24);
         hash[i * 4 + 1] = (uint8_t)(h[i] >> 16);
         hash[i * 4 + 2] = (uint8_t)(h[i] >> 8);
@@ -250,14 +242,12 @@ static void local_sha256(const uint8_t *data, size_t len, uint8_t hash[32])
 /// @param w Expanded key schedule (176 or 240 bytes)
 /// @param nk Number of 32-bit words in key (4 for AES-128, 8 for AES-256)
 /// @param nr Number of rounds (10 for AES-128, 14 for AES-256)
-static void aes_key_expansion(const uint8_t *key, uint8_t *w, int nk, int nr)
-{
+static void aes_key_expansion(const uint8_t *key, uint8_t *w, int nk, int nr) {
     int nb = 4; // Number of columns (always 4 for AES)
     int i = 0;
 
     // First nk words are the original key
-    while (i < nk)
-    {
+    while (i < nk) {
         w[4 * i + 0] = key[4 * i + 0];
         w[4 * i + 1] = key[4 * i + 1];
         w[4 * i + 2] = key[4 * i + 2];
@@ -268,24 +258,20 @@ static void aes_key_expansion(const uint8_t *key, uint8_t *w, int nk, int nr)
     // Generate remaining words
     uint8_t temp[4];
     i = nk;
-    while (i < nb * (nr + 1))
-    {
+    while (i < nb * (nr + 1)) {
         temp[0] = w[4 * (i - 1) + 0];
         temp[1] = w[4 * (i - 1) + 1];
         temp[2] = w[4 * (i - 1) + 2];
         temp[3] = w[4 * (i - 1) + 3];
 
-        if (i % nk == 0)
-        {
+        if (i % nk == 0) {
             // RotWord + SubWord + Rcon
             uint8_t t = temp[0];
             temp[0] = sbox[temp[1]] ^ rcon[i / nk];
             temp[1] = sbox[temp[2]];
             temp[2] = sbox[temp[3]];
             temp[3] = sbox[t];
-        }
-        else if (nk > 6 && i % nk == 4)
-        {
+        } else if (nk > 6 && i % nk == 4) {
             // Extra SubWord for AES-256
             temp[0] = sbox[temp[0]];
             temp[1] = sbox[temp[1]];
@@ -306,23 +292,20 @@ static void aes_key_expansion(const uint8_t *key, uint8_t *w, int nk, int nr)
 //=============================================================================
 
 /// @brief Apply S-box substitution to all bytes in state
-static void sub_bytes(uint8_t *state)
-{
+static void sub_bytes(uint8_t *state) {
     for (int i = 0; i < 16; i++)
         state[i] = sbox[state[i]];
 }
 
 /// @brief Apply inverse S-box substitution to all bytes in state
-static void inv_sub_bytes(uint8_t *state)
-{
+static void inv_sub_bytes(uint8_t *state) {
     for (int i = 0; i < 16; i++)
         state[i] = inv_sbox[state[i]];
 }
 
 /// @brief Shift rows of the state matrix
 /// State is column-major: state[row + 4*col]
-static void shift_rows(uint8_t *state)
-{
+static void shift_rows(uint8_t *state) {
     uint8_t temp;
 
     // Row 1: shift left by 1
@@ -349,8 +332,7 @@ static void shift_rows(uint8_t *state)
 }
 
 /// @brief Inverse shift rows of the state matrix
-static void inv_shift_rows(uint8_t *state)
-{
+static void inv_shift_rows(uint8_t *state) {
     uint8_t temp;
 
     // Row 1: shift right by 1
@@ -377,10 +359,8 @@ static void inv_shift_rows(uint8_t *state)
 }
 
 /// @brief Mix columns transformation
-static void mix_columns(uint8_t *state)
-{
-    for (int c = 0; c < 4; c++)
-    {
+static void mix_columns(uint8_t *state) {
+    for (int c = 0; c < 4; c++) {
         int i = c * 4;
         uint8_t a0 = state[i + 0];
         uint8_t a1 = state[i + 1];
@@ -395,10 +375,8 @@ static void mix_columns(uint8_t *state)
 }
 
 /// @brief Inverse mix columns transformation
-static void inv_mix_columns(uint8_t *state)
-{
-    for (int c = 0; c < 4; c++)
-    {
+static void inv_mix_columns(uint8_t *state) {
+    for (int c = 0; c < 4; c++) {
         int i = c * 4;
         uint8_t a0 = state[i + 0];
         uint8_t a1 = state[i + 1];
@@ -413,8 +391,7 @@ static void inv_mix_columns(uint8_t *state)
 }
 
 /// @brief XOR state with round key
-static void add_round_key(uint8_t *state, const uint8_t *round_key)
-{
+static void add_round_key(uint8_t *state, const uint8_t *round_key) {
     for (int i = 0; i < 16; i++)
         state[i] ^= round_key[i];
 }
@@ -428,8 +405,7 @@ static void add_round_key(uint8_t *state, const uint8_t *round_key)
 /// @param output 16-byte ciphertext block
 /// @param w Expanded key schedule
 /// @param nr Number of rounds (10 or 14)
-static void aes_encrypt_block(const uint8_t *input, uint8_t *output, const uint8_t *w, int nr)
-{
+static void aes_encrypt_block(const uint8_t *input, uint8_t *output, const uint8_t *w, int nr) {
     uint8_t state[16];
     memcpy(state, input, 16);
 
@@ -437,8 +413,7 @@ static void aes_encrypt_block(const uint8_t *input, uint8_t *output, const uint8
     add_round_key(state, w);
 
     // Main rounds
-    for (int round = 1; round < nr; round++)
-    {
+    for (int round = 1; round < nr; round++) {
         sub_bytes(state);
         shift_rows(state);
         mix_columns(state);
@@ -458,8 +433,7 @@ static void aes_encrypt_block(const uint8_t *input, uint8_t *output, const uint8
 /// @param output 16-byte plaintext block
 /// @param w Expanded key schedule
 /// @param nr Number of rounds (10 or 14)
-static void aes_decrypt_block(const uint8_t *input, uint8_t *output, const uint8_t *w, int nr)
-{
+static void aes_decrypt_block(const uint8_t *input, uint8_t *output, const uint8_t *w, int nr) {
     uint8_t state[16];
     memcpy(state, input, 16);
 
@@ -467,8 +441,7 @@ static void aes_decrypt_block(const uint8_t *input, uint8_t *output, const uint8
     add_round_key(state, w + nr * 16);
 
     // Main rounds (in reverse)
-    for (int round = nr - 1; round > 0; round--)
-    {
+    for (int round = nr - 1; round > 0; round--) {
         inv_shift_rows(state);
         inv_sub_bytes(state);
         add_round_key(state, w + round * 16);
@@ -492,8 +465,7 @@ static void aes_decrypt_block(const uint8_t *input, uint8_t *output, const uint8
 /// @param len Length of input data
 /// @param out_len Output: length of padded data (always multiple of 16)
 /// @return Newly allocated padded data
-static uint8_t *pkcs7_pad(const uint8_t *data, size_t len, size_t *out_len)
-{
+static uint8_t *pkcs7_pad(const uint8_t *data, size_t len, size_t *out_len) {
     size_t pad_len = AES_BLOCK_SIZE - (len % AES_BLOCK_SIZE);
     *out_len = len + pad_len;
 
@@ -512,8 +484,7 @@ static uint8_t *pkcs7_pad(const uint8_t *data, size_t len, size_t *out_len)
 /// @param len Length of padded data
 /// @param out_len Output: length of unpadded data
 /// @return 0 on success, -1 on invalid padding
-static int pkcs7_unpad(const uint8_t *data, size_t len, size_t *out_len)
-{
+static int pkcs7_unpad(const uint8_t *data, size_t len, size_t *out_len) {
     if (len == 0 || len % AES_BLOCK_SIZE != 0)
         return -1;
 
@@ -524,8 +495,7 @@ static int pkcs7_unpad(const uint8_t *data, size_t len, size_t *out_len)
     /* S-05: Constant-time padding check — accumulate mismatch bits without
      * branching on individual byte values to prevent timing side-channels. */
     uint8_t mismatch = 0;
-    for (size_t i = 0; i < (size_t)AES_BLOCK_SIZE; i++)
-    {
+    for (size_t i = 0; i < (size_t)AES_BLOCK_SIZE; i++) {
         /* Only check bytes that fall within the padding region */
         uint8_t in_range = (uint8_t)(i < (size_t)pad_byte ? 0xFF : 0x00);
         mismatch |= in_range & (data[len - 1 - i] ^ pad_byte);
@@ -553,8 +523,7 @@ static uint8_t *aes_cbc_encrypt(const uint8_t *plaintext,
                                 const uint8_t *iv,
                                 int nk,
                                 int nr,
-                                size_t *out_len)
-{
+                                size_t *out_len) {
     // Expand key
     size_t w_size = (size_t)(16 * (nr + 1));
     uint8_t *w = (uint8_t *)malloc(w_size);
@@ -568,8 +537,7 @@ static uint8_t *aes_cbc_encrypt(const uint8_t *plaintext,
 
     // Allocate ciphertext
     uint8_t *ciphertext = (uint8_t *)malloc(padded_len);
-    if (!ciphertext)
-    {
+    if (!ciphertext) {
         free(w);
         free(padded);
         rt_trap("AES: memory allocation failed");
@@ -579,8 +547,7 @@ static uint8_t *aes_cbc_encrypt(const uint8_t *plaintext,
     uint8_t prev_block[AES_BLOCK_SIZE];
     memcpy(prev_block, iv, AES_BLOCK_SIZE);
 
-    for (size_t i = 0; i < padded_len; i += AES_BLOCK_SIZE)
-    {
+    for (size_t i = 0; i < padded_len; i += AES_BLOCK_SIZE) {
         uint8_t block[AES_BLOCK_SIZE];
 
         // XOR with previous ciphertext (or IV for first block)
@@ -615,8 +582,7 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext,
                                 const uint8_t *iv,
                                 int nk,
                                 int nr,
-                                size_t *out_len)
-{
+                                size_t *out_len) {
     if (len == 0 || len % AES_BLOCK_SIZE != 0)
         return NULL;
 
@@ -629,8 +595,7 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext,
 
     // Allocate plaintext buffer
     uint8_t *plaintext = (uint8_t *)malloc(len);
-    if (!plaintext)
-    {
+    if (!plaintext) {
         free(w);
         rt_trap("AES: memory allocation failed");
     }
@@ -639,8 +604,7 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext,
     uint8_t prev_block[AES_BLOCK_SIZE];
     memcpy(prev_block, iv, AES_BLOCK_SIZE);
 
-    for (size_t i = 0; i < len; i += AES_BLOCK_SIZE)
-    {
+    for (size_t i = 0; i < len; i += AES_BLOCK_SIZE) {
         uint8_t decrypted[AES_BLOCK_SIZE];
 
         // Decrypt block
@@ -658,8 +622,7 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext,
 
     // Remove PKCS7 padding
     size_t unpadded_len;
-    if (pkcs7_unpad(plaintext, len, &unpadded_len) != 0)
-    {
+    if (pkcs7_unpad(plaintext, len, &unpadded_len) != 0) {
         free(plaintext);
         return NULL; // Invalid padding
     }
@@ -681,8 +644,7 @@ static uint8_t *aes_cbc_decrypt(const uint8_t *ciphertext,
 /// @param key Bytes object containing key (16 or 32 bytes)
 /// @param iv Bytes object containing initialization vector (must be 16 bytes)
 /// @return Bytes object containing ciphertext
-void *rt_aes_encrypt(void *data, void *key, void *iv)
-{
+void *rt_aes_encrypt(void *data, void *key, void *iv) {
     size_t data_len, key_len, iv_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -690,18 +652,13 @@ void *rt_aes_encrypt(void *data, void *key, void *iv)
 
     // Validate key length
     int nk, nr;
-    if (key_len == 16)
-    {
+    if (key_len == 16) {
         nk = 4;
         nr = 10;
-    }
-    else if (key_len == 32)
-    {
+    } else if (key_len == 32) {
         nk = 8;
         nr = 14;
-    }
-    else
-    {
+    } else {
         if (data_raw)
             free(data_raw);
         if (key_raw)
@@ -713,8 +670,7 @@ void *rt_aes_encrypt(void *data, void *key, void *iv)
     }
 
     // Validate IV length
-    if (iv_len != AES_BLOCK_SIZE)
-    {
+    if (iv_len != AES_BLOCK_SIZE) {
         if (data_raw)
             free(data_raw);
         if (key_raw)
@@ -726,8 +682,7 @@ void *rt_aes_encrypt(void *data, void *key, void *iv)
     }
 
     // Handle empty data
-    if (data_len == 0)
-    {
+    if (data_len == 0) {
         data_raw = (uint8_t *)malloc(1);
         if (!data_raw)
             rt_trap("AES: memory allocation failed");
@@ -758,8 +713,7 @@ void *rt_aes_encrypt(void *data, void *key, void *iv)
 /// @param key Bytes object containing key (16 or 32 bytes)
 /// @param iv Bytes object containing initialization vector (must be 16 bytes)
 /// @return Bytes object containing plaintext, or NULL on decryption error
-void *rt_aes_decrypt(void *data, void *key, void *iv)
-{
+void *rt_aes_decrypt(void *data, void *key, void *iv) {
     size_t data_len, key_len, iv_len;
     uint8_t *data_raw = rt_bytes_extract_raw(data, &data_len);
     uint8_t *key_raw = rt_bytes_extract_raw(key, &key_len);
@@ -767,18 +721,13 @@ void *rt_aes_decrypt(void *data, void *key, void *iv)
 
     // Validate key length
     int nk, nr;
-    if (key_len == 16)
-    {
+    if (key_len == 16) {
         nk = 4;
         nr = 10;
-    }
-    else if (key_len == 32)
-    {
+    } else if (key_len == 32) {
         nk = 8;
         nr = 14;
-    }
-    else
-    {
+    } else {
         if (data_raw)
             free(data_raw);
         if (key_raw)
@@ -790,8 +739,7 @@ void *rt_aes_decrypt(void *data, void *key, void *iv)
     }
 
     // Validate IV length
-    if (iv_len != AES_BLOCK_SIZE)
-    {
+    if (iv_len != AES_BLOCK_SIZE) {
         if (data_raw)
             free(data_raw);
         if (key_raw)
@@ -811,8 +759,7 @@ void *rt_aes_decrypt(void *data, void *key, void *iv)
     free(key_raw);
     free(iv_raw);
 
-    if (!plain)
-    {
+    if (!plain) {
         rt_trap("AES: decryption failed (invalid padding or corrupted data)");
         return NULL;
     }
@@ -832,8 +779,7 @@ void *rt_aes_decrypt(void *data, void *key, void *iv)
 /// For production-grade security, use PBKDF2-HMAC-SHA256 with a random salt.
 #define DERIVE_KEY_ROUNDS 10000
 
-static void derive_key(const char *password, uint8_t key[32])
-{
+static void derive_key(const char *password, uint8_t key[32]) {
     size_t pass_len = password ? strlen(password) : 0;
 
     /* Fixed application-level domain separator (S-06) */
@@ -871,8 +817,7 @@ static void derive_key(const char *password, uint8_t key[32])
 #undef DERIVE_KEY_ROUNDS
 
 /// @brief Generate random IV using rt_crypto_rand_bytes
-static void generate_iv(uint8_t iv[16])
-{
+static void generate_iv(uint8_t iv[16]) {
     void *rand_bytes = rt_crypto_rand_bytes(16);
     for (int i = 0; i < 16; i++)
         iv[i] = (uint8_t)rt_bytes_get(rand_bytes, i);
@@ -892,8 +837,7 @@ static void generate_iv(uint8_t iv[16])
 /// @param data String to encrypt
 /// @param password Password string
 /// @return Bytes object containing IV + ciphertext
-void *rt_aes_encrypt_str(rt_string data, rt_string password)
-{
+void *rt_aes_encrypt_str(rt_string data, rt_string password) {
     const char *data_cstr = rt_string_cstr(data);
     const char *pass_cstr = rt_string_cstr(password);
 
@@ -940,16 +884,14 @@ void *rt_aes_encrypt_str(rt_string data, rt_string password)
 /// @param data Bytes object containing IV + ciphertext
 /// @param password Password string
 /// @return Decrypted string
-rt_string rt_aes_decrypt_str(void *data, rt_string password)
-{
+rt_string rt_aes_decrypt_str(void *data, rt_string password) {
     const char *pass_cstr = rt_string_cstr(password);
     if (!pass_cstr)
         pass_cstr = "";
 
     // Get data length
     int64_t total_len = rt_bytes_len(data);
-    if (total_len < 16)
-    {
+    if (total_len < 16) {
         rt_trap("AES: encrypted data too short (missing IV)");
         return rt_const_cstr("");
     }
@@ -977,8 +919,7 @@ rt_string rt_aes_decrypt_str(void *data, rt_string password)
     uint8_t *plain = aes_cbc_decrypt(cipher, cipher_len, key, iv, 8, 14, &plain_len);
     free(cipher);
 
-    if (!plain)
-    {
+    if (!plain) {
         rt_trap("AES: decryption failed (wrong password or corrupted data)");
         return rt_const_cstr("");
     }

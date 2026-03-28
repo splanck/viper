@@ -25,14 +25,12 @@
 
 #include "il/core/Module.hpp"
 
-namespace viper::passes
-{
+namespace viper::passes {
 
 /// @brief Statistics collected during memory-to-register promotion.
 /// @details Tracks the number of allocas promoted to SSA temporaries and
 ///          the number of load/store instructions eliminated as a result.
-struct Mem2RegStats
-{
+struct Mem2RegStats {
     unsigned promotedVars{0};  ///< Number of allocas promoted to SSA form.
     unsigned removedLoads{0};  ///< Number of load instructions eliminated.
     unsigned removedStores{0}; ///< Number of store instructions eliminated.

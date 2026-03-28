@@ -15,8 +15,7 @@
 
 #pragma once
 
-namespace vbasic
-{
+namespace vbasic {
 
 /// @brief Print usage information for the vbasic command-line tool.
 ///

@@ -28,8 +28,7 @@
 #define IL_VM_ERR_BRIDGE_CPP_RESTORE_EOF 1
 #endif
 
-namespace il::vm
-{
+namespace il::vm {
 /// @brief Translate legacy BASIC error codes into @ref TrapKind enumerators.
 ///
 /// @details Matches the historic runtime error numbers used by the BASIC
@@ -39,10 +38,8 @@ namespace il::vm
 ///
 /// @param err_code Numeric error code originating from the BASIC runtime.
 /// @return Equivalent @ref TrapKind classification.
-TrapKind map_err_to_trap(int err_code)
-{
-    switch (err_code)
-    {
+TrapKind map_err_to_trap(int err_code) {
+    switch (err_code) {
         case 1:
             return TrapKind::FileNotFound;
         case 2:

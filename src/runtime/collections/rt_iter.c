@@ -51,8 +51,7 @@
 #include <string.h>
 
 /// Iterator source kind. All sources are heap-managed (rt_obj_new_i64).
-typedef enum
-{
+typedef enum {
     ITER_SEQ,
     ITER_LIST,
     ITER_RING,
@@ -60,8 +59,7 @@ typedef enum
 } iter_kind;
 
 /// Internal iterator state.
-typedef struct
-{
+typedef struct {
     void *vptr;
     void *source; ///< Retained reference to the original collection or snapshot Seq
     iter_kind kind;
@@ -69,11 +67,9 @@ typedef struct
     int64_t len; ///< Cached length at creation time
 } rt_iter_impl;
 
-static void iter_finalizer(void *obj)
-{
+static void iter_finalizer(void *obj) {
     rt_iter_impl *it = (rt_iter_impl *)obj;
-    if (it && it->source)
-    {
+    if (it && it->source) {
         if (rt_obj_release_check0(it->source))
             rt_obj_free(it->source);
         it->source = NULL;
@@ -81,14 +77,12 @@ static void iter_finalizer(void *obj)
 }
 
 /// Create an iterator that retains source. Source MUST be a heap object.
-static rt_iter_impl *make_iter(void *source, iter_kind kind, int64_t len)
-{
+static rt_iter_impl *make_iter(void *source, iter_kind kind, int64_t len) {
     rt_iter_impl *it;
     if (!source)
         return NULL;
     it = (rt_iter_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_iter_impl));
-    if (!it)
-    {
+    if (!it) {
         rt_trap("Iterator: allocation failed");
         return NULL;
     }
@@ -103,14 +97,12 @@ static rt_iter_impl *make_iter(void *source, iter_kind kind, int64_t len)
 }
 
 /// Create a snapshot iterator. Takes ownership of snapshot (does not add retain).
-static rt_iter_impl *make_iter_snapshot(void *snapshot, int64_t len)
-{
+static rt_iter_impl *make_iter_snapshot(void *snapshot, int64_t len) {
     rt_iter_impl *it;
     if (!snapshot)
         return NULL;
     it = (rt_iter_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_iter_impl));
-    if (!it)
-    {
+    if (!it) {
         /* Failed to create iterator — release the snapshot we own. */
         if (rt_obj_release_check0(snapshot))
             rt_obj_free(snapshot);
@@ -131,22 +123,19 @@ static rt_iter_impl *make_iter_snapshot(void *snapshot, int64_t len)
 // Factory functions
 //=============================================================================
 
-void *rt_iter_from_seq(void *seq)
-{
+void *rt_iter_from_seq(void *seq) {
     if (!seq)
         return NULL;
     return make_iter(seq, ITER_SEQ, rt_seq_len(seq));
 }
 
-void *rt_iter_from_list(void *list)
-{
+void *rt_iter_from_list(void *list) {
     if (!list)
         return NULL;
     return make_iter(list, ITER_LIST, rt_list_len(list));
 }
 
-void *rt_iter_from_deque(void *deque)
-{
+void *rt_iter_from_deque(void *deque) {
     void *snapshot;
     int64_t len, i;
     if (!deque)
@@ -162,15 +151,13 @@ void *rt_iter_from_deque(void *deque)
     return make_iter_snapshot(snapshot, len);
 }
 
-void *rt_iter_from_ring(void *ring)
-{
+void *rt_iter_from_ring(void *ring) {
     if (!ring)
         return NULL;
     return make_iter(ring, ITER_RING, rt_ring_len(ring));
 }
 
-void *rt_iter_from_map_keys(void *map)
-{
+void *rt_iter_from_map_keys(void *map) {
     void *keys;
     if (!map)
         return NULL;
@@ -180,8 +167,7 @@ void *rt_iter_from_map_keys(void *map)
     return make_iter_snapshot(keys, rt_seq_len(keys));
 }
 
-void *rt_iter_from_map_values(void *map)
-{
+void *rt_iter_from_map_values(void *map) {
     void *values;
     if (!map)
         return NULL;
@@ -191,8 +177,7 @@ void *rt_iter_from_map_values(void *map)
     return make_iter_snapshot(values, rt_seq_len(values));
 }
 
-void *rt_iter_from_set(void *set)
-{
+void *rt_iter_from_set(void *set) {
     void *items;
     if (!set)
         return NULL;
@@ -202,8 +187,7 @@ void *rt_iter_from_set(void *set)
     return make_iter_snapshot(items, rt_seq_len(items));
 }
 
-void *rt_iter_from_stack(void *stack)
-{
+void *rt_iter_from_stack(void *stack) {
     void *snapshot;
     if (!stack)
         return NULL;
@@ -219,10 +203,8 @@ void *rt_iter_from_stack(void *stack)
 // Core iteration
 //=============================================================================
 
-static void *get_element(rt_iter_impl *it, int64_t idx)
-{
-    switch (it->kind)
-    {
+static void *get_element(rt_iter_impl *it, int64_t idx) {
+    switch (it->kind) {
         case ITER_SEQ:
         case ITER_SNAPSHOT:
             return rt_seq_get(it->source, idx);
@@ -237,8 +219,7 @@ static void *get_element(rt_iter_impl *it, int64_t idx)
 /// @brief Perform iter has next operation.
 /// @param iter
 /// @return Result value.
-int8_t rt_iter_has_next(void *iter)
-{
+int8_t rt_iter_has_next(void *iter) {
     rt_iter_impl *it;
     if (!iter)
         return 0;
@@ -246,8 +227,7 @@ int8_t rt_iter_has_next(void *iter)
     return (it->pos < it->len) ? 1 : 0;
 }
 
-void *rt_iter_next(void *iter)
-{
+void *rt_iter_next(void *iter) {
     rt_iter_impl *it;
     void *elem;
     if (!iter)
@@ -260,8 +240,7 @@ void *rt_iter_next(void *iter)
     return elem;
 }
 
-void *rt_iter_peek(void *iter)
-{
+void *rt_iter_peek(void *iter) {
     rt_iter_impl *it;
     if (!iter)
         return NULL;
@@ -273,8 +252,7 @@ void *rt_iter_peek(void *iter)
 
 /// @brief Perform iter reset operation.
 /// @param iter
-void rt_iter_reset(void *iter)
-{
+void rt_iter_reset(void *iter) {
     if (!iter)
         return;
     ((rt_iter_impl *)iter)->pos = 0;
@@ -283,8 +261,7 @@ void rt_iter_reset(void *iter)
 /// @brief Perform iter index operation.
 /// @param iter
 /// @return Result value.
-int64_t rt_iter_index(void *iter)
-{
+int64_t rt_iter_index(void *iter) {
     if (!iter)
         return 0;
     return ((rt_iter_impl *)iter)->pos;
@@ -293,23 +270,20 @@ int64_t rt_iter_index(void *iter)
 /// @brief Perform iter count operation.
 /// @param iter
 /// @return Result value.
-int64_t rt_iter_count(void *iter)
-{
+int64_t rt_iter_count(void *iter) {
     if (!iter)
         return 0;
     return ((rt_iter_impl *)iter)->len;
 }
 
-void *rt_iter_to_seq(void *iter)
-{
+void *rt_iter_to_seq(void *iter) {
     rt_iter_impl *it;
     void *seq;
     if (!iter)
         return rt_seq_new();
     it = (rt_iter_impl *)iter;
     seq = rt_seq_new();
-    while (it->pos < it->len)
-    {
+    while (it->pos < it->len) {
         void *elem = get_element(it, it->pos);
         rt_seq_push(seq, elem);
         it->pos++;
@@ -321,8 +295,7 @@ void *rt_iter_to_seq(void *iter)
 /// @param iter
 /// @param n
 /// @return Result value.
-int64_t rt_iter_skip(void *iter, int64_t n)
-{
+int64_t rt_iter_skip(void *iter, int64_t n) {
     rt_iter_impl *it;
     int64_t remaining, skipped;
     if (!iter || n <= 0)

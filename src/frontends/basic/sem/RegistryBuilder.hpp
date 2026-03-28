@@ -19,8 +19,7 @@
 #include "frontends/basic/sem/UsingContext.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // Forward declarations
 struct Program;

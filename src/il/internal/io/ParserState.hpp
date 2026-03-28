@@ -22,12 +22,10 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::io::detail
-{
+namespace il::io::detail {
 
 /// @brief Mutable context shared among IL parser helpers.
-struct ParserState
-{
+struct ParserState {
     /// @brief Module being populated while parsing proceeds.
     il::core::Module &m;
 
@@ -53,8 +51,7 @@ struct ParserState
     std::unordered_map<std::string, size_t> blockParamCount;
 
     /// @brief Record of forward branches awaiting resolution.
-    struct PendingBr
-    {
+    struct PendingBr {
         /// @brief Target label referenced before its definition.
         std::string label;
         /// @brief Number of arguments supplied with the branch.

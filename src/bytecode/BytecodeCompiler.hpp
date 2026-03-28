@@ -37,10 +37,8 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper
-{
-namespace bytecode
-{
+namespace viper {
+namespace bytecode {
 
 /// @brief Compiler that transforms IL modules into bytecode for the Viper VM.
 /// @details The BytecodeCompiler lowers an IL module's functions into compact
@@ -48,8 +46,7 @@ namespace bytecode
 ///          linearization, constant pool construction, instruction emission,
 ///          and branch fixup resolution. The resulting BytecodeModule is
 ///          self-contained and ready for execution by BytecodeVM.
-class BytecodeCompiler
-{
+class BytecodeCompiler {
   public:
     /// @brief Compile an entire IL module to a bytecode module.
     /// @details Iterates over all functions in the IL module, compiles each
@@ -93,8 +90,7 @@ class BytecodeCompiler
 
     /// @brief A pending branch fixup requiring offset resolution after all blocks
     ///        have been emitted.
-    struct BranchFixup
-    {
+    struct BranchFixup {
         uint32_t codeOffset;     ///< Index into the code vector where the offset is stored.
         std::string targetLabel; ///< Target block label to resolve.
         bool isLong;             ///< True if the offset is 24-bit; false for 16-bit.

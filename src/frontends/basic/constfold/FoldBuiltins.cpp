@@ -34,16 +34,13 @@
 #include <optional>
 #include <string>
 
-namespace il::frontends::basic::constfold
-{
-namespace
-{
+namespace il::frontends::basic::constfold {
+namespace {
 
 /// @brief Create a floating-point literal node.
 /// @param value Numeric value to embed.
 /// @return Unique pointer owning the new float literal.
-AST::ExprPtr make_float(double value)
-{
+AST::ExprPtr make_float(double value) {
     auto out = std::make_unique<::il::frontends::basic::FloatExpr>();
     out->value = value;
     return out;
@@ -52,8 +49,7 @@ AST::ExprPtr make_float(double value)
 /// @brief Create a string literal node.
 /// @param value Text to embed.
 /// @return Unique pointer owning the new string literal.
-AST::ExprPtr make_string(std::string value)
-{
+AST::ExprPtr make_string(std::string value) {
     auto out = std::make_unique<::il::frontends::basic::StringExpr>();
     out->value = std::move(value);
     return out;
@@ -62,8 +58,7 @@ AST::ExprPtr make_string(std::string value)
 /// @brief Extract a finite double from an expression if possible.
 /// @param expr Expression to inspect.
 /// @return Finite double value or empty optional.
-std::optional<double> get_finite_double(const AST::Expr &expr)
-{
+std::optional<double> get_finite_double(const AST::Expr &expr) {
     auto numeric = numeric_from_expr(expr);
     if (!numeric)
         return std::nullopt;
@@ -77,13 +72,11 @@ std::optional<double> get_finite_double(const AST::Expr &expr)
 /// @param value Value to round.
 /// @param digits Positive for fractional, negative for integral multiples.
 /// @return Rounded result or empty optional on overflow.
-std::optional<double> round_to_digits(double value, int digits)
-{
+std::optional<double> round_to_digits(double value, int digits) {
     if (!std::isfinite(value))
         return std::nullopt;
 
-    if (digits == 0)
-    {
+    if (digits == 0) {
         double rounded = std::nearbyint(value);
         if (!std::isfinite(rounded))
             return std::nullopt;
@@ -112,8 +105,7 @@ std::optional<double> round_to_digits(double value, int digits)
 /// @brief Parse a string using BASIC's VAL semantics.
 /// @param s String to parse.
 /// @return Parsed double or empty optional when invalid.
-std::optional<double> parse_val_string(const std::string &s)
-{
+std::optional<double> parse_val_string(const std::string &s) {
     const char *raw = s.c_str();
     while (*raw && std::isspace(static_cast<unsigned char>(*raw)))
         ++raw;
@@ -123,26 +115,18 @@ std::optional<double> parse_val_string(const std::string &s)
 
     auto isDigit = [](char ch) { return ch >= '0' && ch <= '9'; };
 
-    if (*raw == '+' || *raw == '-')
-    {
+    if (*raw == '+' || *raw == '-') {
         char next = raw[1];
-        if (next == '.')
-        {
+        if (next == '.') {
             if (!isDigit(raw[2]))
                 return 0.0;
-        }
-        else if (!isDigit(next))
-        {
+        } else if (!isDigit(next)) {
             return 0.0;
         }
-    }
-    else if (*raw == '.')
-    {
+    } else if (*raw == '.') {
         if (!isDigit(raw[1]))
             return 0.0;
-    }
-    else if (!isDigit(*raw))
-    {
+    } else if (!isDigit(*raw)) {
         return 0.0;
     }
 
@@ -160,8 +144,7 @@ std::optional<double> parse_val_string(const std::string &s)
 /// @brief Fold VAL builtin when the argument is a literal string.
 /// @param arg Expression passed to VAL().
 /// @return Float literal or nullptr when folding cannot proceed.
-AST::ExprPtr foldValLiteral(const AST::Expr &arg)
-{
+AST::ExprPtr foldValLiteral(const AST::Expr &arg) {
     const auto *str = as<const StringExpr>(arg);
     if (!str)
         return nullptr;
@@ -174,8 +157,7 @@ AST::ExprPtr foldValLiteral(const AST::Expr &arg)
 /// @brief Fold INT builtin (floor) when the argument is a literal numeric.
 /// @param arg Expression passed to INT().
 /// @return Float literal with floor value or nullptr.
-AST::ExprPtr foldIntLiteral(const AST::Expr &arg)
-{
+AST::ExprPtr foldIntLiteral(const AST::Expr &arg) {
     auto value = get_finite_double(arg);
     if (!value)
         return nullptr;
@@ -188,8 +170,7 @@ AST::ExprPtr foldIntLiteral(const AST::Expr &arg)
 /// @brief Fold FIX builtin (truncate) when the argument is a literal numeric.
 /// @param arg Expression passed to FIX().
 /// @return Float literal with truncated value or nullptr.
-AST::ExprPtr foldFixLiteral(const AST::Expr &arg)
-{
+AST::ExprPtr foldFixLiteral(const AST::Expr &arg) {
     auto value = get_finite_double(arg);
     if (!value)
         return nullptr;
@@ -203,15 +184,13 @@ AST::ExprPtr foldFixLiteral(const AST::Expr &arg)
 /// @param value Expression for the value to round.
 /// @param digits Optional expression for decimal digits (may be nullptr).
 /// @return Float literal with rounded value or nullptr.
-AST::ExprPtr foldRoundLiteral(const AST::Expr &value, const AST::Expr *digits)
-{
+AST::ExprPtr foldRoundLiteral(const AST::Expr &value, const AST::Expr *digits) {
     auto val = get_finite_double(value);
     if (!val)
         return nullptr;
 
     int digitCount = 0;
-    if (digits)
-    {
+    if (digits) {
         auto digVal = get_finite_double(*digits);
         if (!digVal)
             return nullptr;
@@ -233,8 +212,7 @@ AST::ExprPtr foldRoundLiteral(const AST::Expr &value, const AST::Expr *digits)
 /// @brief Fold STR$ builtin when the argument is a literal numeric.
 /// @param arg Expression passed to STR$().
 /// @return String literal or nullptr.
-AST::ExprPtr foldStrLiteral(const AST::Expr &arg)
-{
+AST::ExprPtr foldStrLiteral(const AST::Expr &arg) {
     auto numeric = numeric_from_expr(arg);
     if (!numeric)
         return nullptr;

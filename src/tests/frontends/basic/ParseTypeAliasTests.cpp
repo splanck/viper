@@ -22,8 +22,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     {
         const std::string src = "CLASS A\n"
                                 "  n AS INT\n"

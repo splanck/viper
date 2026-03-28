@@ -30,31 +30,26 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Error thrown on PNG read/write failure.
-class PNGError : public std::runtime_error
-{
+class PNGError : public std::runtime_error {
   public:
     using std::runtime_error::runtime_error;
 };
 
 /// @brief Simple RGBA image buffer.
-struct PkgImage
-{
+struct PkgImage {
     uint32_t width = 0;
     uint32_t height = 0;
     std::vector<uint8_t> pixels; // RGBA, 4 bytes per pixel, row-major
 
     /// @brief Get pixel pointer at (x, y).
-    uint8_t *at(uint32_t x, uint32_t y)
-    {
+    uint8_t *at(uint32_t x, uint32_t y) {
         return pixels.data() + (y * width + x) * 4;
     }
 
-    const uint8_t *at(uint32_t x, uint32_t y) const
-    {
+    const uint8_t *at(uint32_t x, uint32_t y) const {
         return pixels.data() + (y * width + x) * 4;
     }
 };

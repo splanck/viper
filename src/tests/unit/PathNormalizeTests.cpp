@@ -16,8 +16,7 @@
 #include "viper/vm/debug/Debug.hpp"
 #include <cassert>
 
-int main()
-{
+int main() {
     using il::vm::DebugCtrl;
     std::string norm = DebugCtrl::normalizePath("a/b/../c\\file.bas");
     assert(norm == "a/c/file.bas");

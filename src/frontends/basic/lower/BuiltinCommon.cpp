@@ -23,10 +23,8 @@
 #include "frontends/basic/lower/BuiltinCommon.hpp"
 #include "frontends/basic/lower/builtins/Registrars.hpp"
 
-namespace il::frontends::basic::lower
-{
-namespace builtins
-{
+namespace il::frontends::basic::lower {
+namespace builtins {
 /// @brief Anchor symbol that forces the builtin lowering translation unit to link.
 /// @details The builtin lowering registry is populated via static initialisers
 ///          inside the domain-specific registrar files.  Some linkers discard
@@ -36,8 +34,7 @@ namespace builtins
 ///          final binary and therefore that all registrar constructors run.
 ///          Beyond that linkage guarantee the function intentionally performs no
 ///          work, keeping call sites side-effect free.
-void anchorBuiltinLowering()
-{
+void anchorBuiltinLowering() {
     // Intentionally empty.
 }
 } // namespace builtins

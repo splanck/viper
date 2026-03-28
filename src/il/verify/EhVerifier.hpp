@@ -26,17 +26,14 @@
 
 #include "support/diag_expected.hpp"
 
-namespace il::core
-{
+namespace il::core {
 struct Module;
 }
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Verifier pass that ensures eh.push/eh.pop usage remains balanced.
-class EhVerifier
-{
+class EhVerifier {
   public:
     /// @brief Analyse all functions within @p module for balanced EH stacks.
     /// @param module Module whose functions are analysed.

@@ -24,14 +24,12 @@
 #include <string_view>
 #include <vector>
 
-namespace
-{
+namespace {
 
 using il::core::Type;
 using il::runtime::RuntimeDescriptor;
 
-std::string trim(std::string s)
-{
+std::string trim(std::string s) {
     auto isspace2 = [](unsigned char c) { return std::isspace(c) != 0; };
     s.erase(s.begin(),
             std::find_if(s.begin(), s.end(), [&](unsigned char c) { return !isspace2(c); }));
@@ -41,8 +39,7 @@ std::string trim(std::string s)
     return s;
 }
 
-std::vector<std::string> parseArgs(std::string_view sig)
-{
+std::vector<std::string> parseArgs(std::string_view sig) {
     std::vector<std::string> out;
     auto lp = sig.find('(');
     auto rp = sig.rfind(')');
@@ -51,8 +48,7 @@ std::vector<std::string> parseArgs(std::string_view sig)
     std::string args(sig.substr(lp + 1, rp - lp - 1));
     std::stringstream ss(args);
     std::string tok;
-    while (std::getline(ss, tok, ','))
-    {
+    while (std::getline(ss, tok, ',')) {
         tok = trim(tok);
         if (!tok.empty())
             out.push_back(tok);
@@ -60,8 +56,7 @@ std::vector<std::string> parseArgs(std::string_view sig)
     return out;
 }
 
-Type::Kind mapTokenToKind(const std::string &tok)
-{
+Type::Kind mapTokenToKind(const std::string &tok) {
     if (tok == "i64")
         return Type::Kind::I64;
     if (tok == "f64")
@@ -78,8 +73,7 @@ Type::Kind mapTokenToKind(const std::string &tok)
     return Type::Kind::I64;
 }
 
-std::string toLower(std::string_view s)
-{
+std::string toLower(std::string_view s) {
     std::string out;
     out.reserve(s.size());
     for (unsigned char c : s)
@@ -89,8 +83,7 @@ std::string toLower(std::string_view s)
 
 } // namespace
 
-TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity)
-{
+TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity) {
     const auto &reg = il::runtime::runtimeRegistry();
     std::map<std::string, const RuntimeDescriptor *> map;
     for (const auto &d : reg)
@@ -99,18 +92,15 @@ TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity)
     std::vector<std::string> errors;
 
     const auto &classes = il::runtime::runtimeClassCatalog();
-    for (const auto &c : classes)
-    {
+    for (const auto &c : classes) {
         const std::string qname = c.qname ? c.qname : "";
         const bool isString = toLower(qname) == "viper.string";
-        auto checkReceiverKind = [&](const RuntimeDescriptor &desc)
-        {
+        auto checkReceiverKind = [&](const RuntimeDescriptor &desc) {
             if (desc.signature.paramTypes.empty())
                 return; // don't over-report
             auto got = desc.signature.paramTypes[0].kind;
             auto want = isString ? Type::Kind::Str : Type::Kind::Ptr;
-            if (got != want)
-            {
+            if (got != want) {
                 std::ostringstream os;
                 os << "receiver type mismatch for '" << desc.name << "': got "
                    << il::core::kindToString(got) << ", want " << il::core::kindToString(want);
@@ -119,52 +109,37 @@ TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity)
         };
 
         // Properties
-        for (const auto &p : c.properties)
-        {
-            if (p.getter)
-            {
+        for (const auto &p : c.properties) {
+            if (p.getter) {
                 auto it = map.find(p.getter);
-                if (it == map.end())
-                {
+                if (it == map.end()) {
                     errors.push_back("missing descriptor for getter: " + std::string(p.getter));
-                }
-                else
-                {
+                } else {
                     const auto *d = it->second;
                     // expect 1 param (receiver)
-                    if (d->signature.paramTypes.size() != 1)
-                    {
+                    if (d->signature.paramTypes.size() != 1) {
                         std::ostringstream os;
                         os << "getter arity mismatch for '" << p.getter << "': got "
                            << d->signature.paramTypes.size() << ", want 1";
                         errors.push_back(os.str());
-                    }
-                    else
-                    {
+                    } else {
                         checkReceiverKind(*d);
                     }
                 }
             }
-            if (p.setter)
-            {
+            if (p.setter) {
                 auto it = map.find(p.setter);
-                if (it == map.end())
-                {
+                if (it == map.end()) {
                     errors.push_back("missing descriptor for setter: " + std::string(p.setter));
-                }
-                else
-                {
+                } else {
                     const auto *d = it->second;
                     // expect 2 params (receiver, value)
-                    if (d->signature.paramTypes.size() != 2)
-                    {
+                    if (d->signature.paramTypes.size() != 2) {
                         std::ostringstream os;
                         os << "setter arity mismatch for '" << p.setter << "': got "
                            << d->signature.paramTypes.size() << ", want 2";
                         errors.push_back(os.str());
-                    }
-                    else
-                    {
+                    } else {
                         checkReceiverKind(*d);
                     }
                 }
@@ -172,13 +147,11 @@ TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity)
         }
 
         // Methods
-        for (const auto &m : c.methods)
-        {
+        for (const auto &m : c.methods) {
             if (!m.target)
                 continue;
             auto it = map.find(m.target);
-            if (it == map.end())
-            {
+            if (it == map.end()) {
                 errors.push_back("missing descriptor for method: " + std::string(m.target));
                 continue;
             }
@@ -186,23 +159,18 @@ TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity)
             auto args =
                 parseArgs(m.signature ? std::string_view(m.signature) : std::string_view(""));
             const size_t expectedParams = 1 + args.size();
-            if (d->signature.paramTypes.size() != expectedParams)
-            {
+            if (d->signature.paramTypes.size() != expectedParams) {
                 std::ostringstream os;
                 os << "method arity mismatch for '" << m.target << "': got "
                    << d->signature.paramTypes.size() << ", want " << expectedParams;
                 errors.push_back(os.str());
-            }
-            else
-            {
+            } else {
                 checkReceiverKind(*d);
                 // Optional: verify arg kinds beyond receiver
-                for (size_t i = 0; i < args.size(); ++i)
-                {
+                for (size_t i = 0; i < args.size(); ++i) {
                     Type::Kind want = mapTokenToKind(args[i]);
                     Type::Kind got = d->signature.paramTypes[1 + i].kind;
-                    if (want != got)
-                    {
+                    if (want != got) {
                         std::ostringstream os;
                         os << "param[" << i << "] kind mismatch for '" << m.target << "': got "
                            << il::core::kindToString(got) << ", want "
@@ -214,8 +182,7 @@ TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity)
         }
     }
 
-    if (!errors.empty())
-    {
+    if (!errors.empty()) {
         std::ostringstream os;
         os << "Runtime class catalog target check failed (" << errors.size() << "):\n";
         for (const auto &e : errors)
@@ -225,8 +192,7 @@ TEST(RuntimeClassCatalogTargets, AllTargetsResolveAndMatchArity)
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

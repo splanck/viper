@@ -24,23 +24,22 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    void *rt_morphtarget3d_new(int64_t vertex_count);
-    int64_t rt_morphtarget3d_add_shape(void *mt, rt_string name);
-    void rt_morphtarget3d_set_delta(
-        void *mt, int64_t shape, int64_t vertex, double dx, double dy, double dz);
-    void rt_morphtarget3d_set_normal_delta(
-        void *mt, int64_t shape, int64_t vertex, double dx, double dy, double dz);
-    void rt_morphtarget3d_set_weight(void *mt, int64_t shape, double weight);
-    double rt_morphtarget3d_get_weight(void *mt, int64_t shape);
-    void rt_morphtarget3d_set_weight_by_name(void *mt, rt_string name, double weight);
-    int64_t rt_morphtarget3d_get_shape_count(void *mt);
-    void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets);
-    void rt_canvas3d_draw_mesh_morphed(
-        void *canvas, void *mesh, void *transform, void *material, void *morph_targets);
+void *rt_morphtarget3d_new(int64_t vertex_count);
+int64_t rt_morphtarget3d_add_shape(void *mt, rt_string name);
+void rt_morphtarget3d_set_delta(
+    void *mt, int64_t shape, int64_t vertex, double dx, double dy, double dz);
+void rt_morphtarget3d_set_normal_delta(
+    void *mt, int64_t shape, int64_t vertex, double dx, double dy, double dz);
+void rt_morphtarget3d_set_weight(void *mt, int64_t shape, double weight);
+double rt_morphtarget3d_get_weight(void *mt, int64_t shape);
+void rt_morphtarget3d_set_weight_by_name(void *mt, rt_string name, double weight);
+int64_t rt_morphtarget3d_get_shape_count(void *mt);
+void rt_mesh3d_set_morph_targets(void *mesh, void *morph_targets);
+void rt_canvas3d_draw_mesh_morphed(
+    void *canvas, void *mesh, void *transform, void *material, void *morph_targets);
 
 #ifdef __cplusplus
 }

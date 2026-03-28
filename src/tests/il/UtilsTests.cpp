@@ -19,8 +19,7 @@
 #include "il/utils/Utils.hpp"
 #include "tests/TestHarness.hpp"
 
-TEST(IL, UtilsTests)
-{
+TEST(IL, UtilsTests) {
     using namespace viper::il;
     using il::core::BasicBlock;
     using il::core::Instr;
@@ -39,8 +38,7 @@ TEST(IL, UtilsTests)
     ASSERT_FALSE(isTerminator(add));
     ASSERT_EQ(terminator(b), nullptr);
 
-    auto checkTerm = [](Opcode op)
-    {
+    auto checkTerm = [](Opcode op) {
         BasicBlock blk;
         blk.label = "t";
         blk.instructions.emplace_back();
@@ -63,8 +61,7 @@ TEST(IL, UtilsTests)
     checkTerm(Opcode::ResumeLabel);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

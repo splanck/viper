@@ -78,20 +78,17 @@
 #include <utility>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 class SemanticAnalyzer;
 
-namespace sem
-{
+namespace sem {
 class ControlCheckContext;
 class ExprCheckContext;
 } // namespace sem
 
 /// @brief Metadata for multi-dimensional arrays.
 /// @details Stores extent values and computed total size for array allocation.
-struct ArrayMetadata
-{
+struct ArrayMetadata {
     /// Extent values for each dimension (empty for dynamic/unknown size).
     std::vector<long long> extents;
 
@@ -106,16 +103,13 @@ struct ArrayMetadata
 
     /// Construct with multiple dimensions and pre-computed total.
     ArrayMetadata(std::vector<long long> exts, long long total)
-        : extents(std::move(exts)), totalSize(total)
-    {
-    }
+        : extents(std::move(exts)), totalSize(total) {}
 };
 
 class SemanticAnalyzerExprVisitor;
 class SemanticAnalyzerStmtVisitor;
 
-namespace semantic_analyzer_detail
-{
+namespace semantic_analyzer_detail {
 struct ExprRule;
 class StmtShared;
 const ExprRule &exprRule(BinaryExpr::Op op);
@@ -126,8 +120,7 @@ const ExprRule &exprRule(BinaryExpr::Op op);
 /// @invariant Symbol table only contains definitions; unknown uses report
 ///            diagnostics.
 /// @ownership Borrows DiagnosticEmitter; AST not owned.
-class SemanticAnalyzer
-{
+class SemanticAnalyzer {
   public:
     /// @brief Diagnostic code for non-boolean conditional expressions.
     static constexpr std::string_view DiagNonBooleanCondition = "E1001";
@@ -176,8 +169,7 @@ class SemanticAnalyzer
 
     /// @brief Access the OOP class/interface index (for IDE tooling queries).
     /// @return Const reference to the OopIndex populated during analysis.
-    const OopIndex &oopIndex() const noexcept
-    {
+    const OopIndex &oopIndex() const noexcept {
         return oopIndex_;
     }
 
@@ -308,17 +300,7 @@ class SemanticAnalyzer
 
   public:
     /// @brief Inferred BASIC value type.
-    enum class Type
-    {
-        Int,
-        Float,
-        String,
-        Bool,
-        ArrayInt,
-        ArrayString,
-        Object,
-        Unknown
-    };
+    enum class Type { Int, Float, String, Bool, ArrayInt, ArrayString, Object, Unknown };
 
     /// @brief Look up the tracked type for @p name when available.
     /// @param name Symbol whose type should be queried.
@@ -350,8 +332,7 @@ class SemanticAnalyzer
     [[nodiscard]] bool isConstSymbol(const std::string &name) const;
 
   private:
-    class ProcedureScope
-    {
+    class ProcedureScope {
       public:
         explicit ProcedureScope(SemanticAnalyzer &analyzer) noexcept;
 
@@ -369,26 +350,22 @@ class SemanticAnalyzer
         void noteLabelRefInserted(int label);
 
       private:
-        struct VarTypeDelta
-        {
+        struct VarTypeDelta {
             std::string name;
             std::optional<Type> previous;
         };
 
-        struct ObjectClassDelta
-        {
+        struct ObjectClassDelta {
             std::string name;
             std::optional<std::string> previous;
         };
 
-        struct ArrayDelta
-        {
+        struct ArrayDelta {
             std::string name;
             std::optional<ArrayMetadata> previous;
         };
 
-        struct ChannelDelta
-        {
+        struct ChannelDelta {
             long long channel;
             bool previouslyOpen;
         };
@@ -413,22 +390,14 @@ class SemanticAnalyzer
     };
 
     /// @brief Classify how a symbol should be tracked during resolution.
-    enum class SymbolKind
-    {
+    enum class SymbolKind {
         Reference,  ///< Existing symbol use; do not declare or type.
         Definition, ///< Implicit definition; apply suffix defaults if unset.
         InputTarget ///< INPUT destination; force suffix-based defaults.
     };
 
     /// @brief Track active loop constructs for EXIT validation.
-    enum class LoopKind
-    {
-        For,
-        While,
-        Do,
-        Sub,
-        Function
-    };
+    enum class LoopKind { For, While, Do, Sub, Function };
 
     /// @brief Resolve @p name in current scope and update symbol/type tables.
     /// @param name Symbol to resolve; updated when a scoped alias exists.
@@ -462,16 +431,14 @@ class SemanticAnalyzer
 
   public:
     /// @brief Metadata describing a single builtin argument slot.
-    struct BuiltinArgSpec
-    {
+    struct BuiltinArgSpec {
         bool optional{false};         ///< Whether the argument may be omitted.
         const Type *allowed{nullptr}; ///< Pointer to allowed types array.
         std::size_t allowedCount{0};  ///< Number of entries in @ref allowed.
     };
 
     /// @brief Metadata describing builtin arity and result type.
-    struct BuiltinSignature
-    {
+    struct BuiltinSignature {
         std::size_t requiredArgs{0};              ///< Number of mandatory arguments.
         std::size_t optionalArgs{0};              ///< Number of optional arguments.
         const BuiltinArgSpec *arguments{nullptr}; ///< Per-position argument specs.
@@ -586,8 +553,7 @@ class SemanticAnalyzer
     NamespaceRegistry ns_; ///< Registry for declared namespaces and types.
     UsingContext usings_;  ///< File-scoped USING imports.
 
-    struct UsingScope
-    {
+    struct UsingScope {
         std::unordered_set<std::string> imports; ///< Canonical lowercase qualified namespaces
         std::unordered_map<std::string, std::string> aliases; ///< alias (lower) -> qualified ns
         std::unordered_map<std::string, il::support::SourceLoc> aliasLoc; ///< alias -> loc

@@ -70,8 +70,7 @@
 /// @return The bitwise AND of a and b.
 ///
 /// @note O(1) time complexity.
-int64_t rt_bits_and(int64_t a, int64_t b)
-{
+int64_t rt_bits_and(int64_t a, int64_t b) {
     return a & b;
 }
 
@@ -104,8 +103,7 @@ int64_t rt_bits_and(int64_t a, int64_t b)
 /// @return The bitwise OR of a and b.
 ///
 /// @note O(1) time complexity.
-int64_t rt_bits_or(int64_t a, int64_t b)
-{
+int64_t rt_bits_or(int64_t a, int64_t b) {
     return a | b;
 }
 
@@ -140,8 +138,7 @@ int64_t rt_bits_or(int64_t a, int64_t b)
 ///
 /// @note O(1) time complexity.
 /// @note XOR is its own inverse: `(a XOR b) XOR b == a`
-int64_t rt_bits_xor(int64_t a, int64_t b)
-{
+int64_t rt_bits_xor(int64_t a, int64_t b) {
     return a ^ b;
 }
 
@@ -170,8 +167,7 @@ int64_t rt_bits_xor(int64_t a, int64_t b)
 /// @return The bitwise complement of val.
 ///
 /// @note O(1) time complexity.
-int64_t rt_bits_not(int64_t val)
-{
+int64_t rt_bits_not(int64_t val) {
     return ~val;
 }
 
@@ -215,8 +211,7 @@ int64_t rt_bits_not(int64_t val)
 /// @see rt_bits_shr For arithmetic right shift
 /// @see rt_bits_ushr For logical right shift
 /// @see rt_bits_rotl For rotation (no bit loss)
-int64_t rt_bits_shl(int64_t val, int64_t count)
-{
+int64_t rt_bits_shl(int64_t val, int64_t count) {
     // Clamp count to valid range
     if (count < 0 || count >= 64)
         return 0;
@@ -265,8 +260,7 @@ int64_t rt_bits_shl(int64_t val, int64_t count)
 ///
 /// @see rt_bits_ushr For logical right shift (zero-fill)
 /// @see rt_bits_shl For left shift
-int64_t rt_bits_shr(int64_t val, int64_t count)
-{
+int64_t rt_bits_shr(int64_t val, int64_t count) {
     // Arithmetic shift right (sign-extended)
     // C guarantees arithmetic shift for signed types on most compilers
     if (count < 0)
@@ -318,8 +312,7 @@ int64_t rt_bits_shr(int64_t val, int64_t count)
 ///
 /// @see rt_bits_shr For arithmetic right shift (sign-preserving)
 /// @see rt_bits_shl For left shift
-int64_t rt_bits_ushr(int64_t val, int64_t count)
-{
+int64_t rt_bits_ushr(int64_t val, int64_t count) {
     // Logical shift right (zero-fill)
     if (count < 0 || count >= 64)
         return 0;
@@ -363,8 +356,7 @@ int64_t rt_bits_ushr(int64_t val, int64_t count)
 ///
 /// @see rt_bits_rotr For right rotation
 /// @see rt_bits_shl For shift (with bit loss)
-int64_t rt_bits_rotl(int64_t val, int64_t count)
-{
+int64_t rt_bits_rotl(int64_t val, int64_t count) {
     uint64_t u = (uint64_t)val;
     // Normalize count to 0-63
     int shift = (int)(count & 63);
@@ -402,8 +394,7 @@ int64_t rt_bits_rotl(int64_t val, int64_t count)
 ///
 /// @see rt_bits_rotl For left rotation
 /// @see rt_bits_shr For shift (with bit loss or sign extension)
-int64_t rt_bits_rotr(int64_t val, int64_t count)
-{
+int64_t rt_bits_rotr(int64_t val, int64_t count) {
     uint64_t u = (uint64_t)val;
     // Normalize count to 0-63
     int shift = (int)(count & 63);
@@ -446,8 +437,7 @@ int64_t rt_bits_rotr(int64_t val, int64_t count)
 /// @note O(1) time complexity (uses hardware instruction when available).
 /// @note Implementation uses compiler intrinsics on GCC/Clang/MSVC, with
 ///       portable fallback using parallel counting algorithm.
-int64_t rt_bits_count(int64_t val)
-{
+int64_t rt_bits_count(int64_t val) {
     // Population count (number of 1 bits)
 #if defined(__GNUC__) || defined(__clang__)
     return (int64_t)__builtin_popcountll((unsigned long long)val);
@@ -497,8 +487,7 @@ int64_t rt_bits_count(int64_t val)
 /// @note Returns 64 for val = 0 (all bits are zero).
 ///
 /// @see rt_bits_trailz For counting trailing zeros
-int64_t rt_bits_leadz(int64_t val)
-{
+int64_t rt_bits_leadz(int64_t val) {
     // Count leading zeros
     if (val == 0)
         return 64;
@@ -506,8 +495,7 @@ int64_t rt_bits_leadz(int64_t val)
     return (int64_t)__builtin_clzll((unsigned long long)val);
 #elif defined(_MSC_VER)
     unsigned long idx;
-    if (_BitScanReverse64(&idx, (unsigned __int64)val))
-    {
+    if (_BitScanReverse64(&idx, (unsigned __int64)val)) {
         return (int64_t)(63 - idx);
     }
     return 64;
@@ -515,33 +503,27 @@ int64_t rt_bits_leadz(int64_t val)
     // Portable fallback using binary search
     uint64_t u = (uint64_t)val;
     int64_t n = 0;
-    if ((u & 0xFFFFFFFF00000000ULL) == 0)
-    {
+    if ((u & 0xFFFFFFFF00000000ULL) == 0) {
         n += 32;
         u <<= 32;
     }
-    if ((u & 0xFFFF000000000000ULL) == 0)
-    {
+    if ((u & 0xFFFF000000000000ULL) == 0) {
         n += 16;
         u <<= 16;
     }
-    if ((u & 0xFF00000000000000ULL) == 0)
-    {
+    if ((u & 0xFF00000000000000ULL) == 0) {
         n += 8;
         u <<= 8;
     }
-    if ((u & 0xF000000000000000ULL) == 0)
-    {
+    if ((u & 0xF000000000000000ULL) == 0) {
         n += 4;
         u <<= 4;
     }
-    if ((u & 0xC000000000000000ULL) == 0)
-    {
+    if ((u & 0xC000000000000000ULL) == 0) {
         n += 2;
         u <<= 2;
     }
-    if ((u & 0x8000000000000000ULL) == 0)
-    {
+    if ((u & 0x8000000000000000ULL) == 0) {
         n += 1;
     }
     return n;
@@ -583,8 +565,7 @@ int64_t rt_bits_leadz(int64_t val)
 /// @note Returns 64 for val = 0 (all bits are zero).
 ///
 /// @see rt_bits_leadz For counting leading zeros
-int64_t rt_bits_trailz(int64_t val)
-{
+int64_t rt_bits_trailz(int64_t val) {
     // Count trailing zeros
     if (val == 0)
         return 64;
@@ -592,8 +573,7 @@ int64_t rt_bits_trailz(int64_t val)
     return (int64_t)__builtin_ctzll((unsigned long long)val);
 #elif defined(_MSC_VER)
     unsigned long idx;
-    if (_BitScanForward64(&idx, (unsigned __int64)val))
-    {
+    if (_BitScanForward64(&idx, (unsigned __int64)val)) {
         return (int64_t)idx;
     }
     return 64;
@@ -601,33 +581,27 @@ int64_t rt_bits_trailz(int64_t val)
     // Portable fallback using binary search
     uint64_t u = (uint64_t)val;
     int64_t n = 0;
-    if ((u & 0x00000000FFFFFFFFULL) == 0)
-    {
+    if ((u & 0x00000000FFFFFFFFULL) == 0) {
         n += 32;
         u >>= 32;
     }
-    if ((u & 0x000000000000FFFFULL) == 0)
-    {
+    if ((u & 0x000000000000FFFFULL) == 0) {
         n += 16;
         u >>= 16;
     }
-    if ((u & 0x00000000000000FFULL) == 0)
-    {
+    if ((u & 0x00000000000000FFULL) == 0) {
         n += 8;
         u >>= 8;
     }
-    if ((u & 0x000000000000000FULL) == 0)
-    {
+    if ((u & 0x000000000000000FULL) == 0) {
         n += 4;
         u >>= 4;
     }
-    if ((u & 0x0000000000000003ULL) == 0)
-    {
+    if ((u & 0x0000000000000003ULL) == 0) {
         n += 2;
         u >>= 2;
     }
-    if ((u & 0x0000000000000001ULL) == 0)
-    {
+    if ((u & 0x0000000000000001ULL) == 0) {
         n += 1;
     }
     return n;
@@ -670,8 +644,7 @@ int64_t rt_bits_trailz(int64_t val)
 /// @note Self-inverse: `Flip(Flip(val)) == val`
 ///
 /// @see rt_bits_swap For byte-level reversal (endian swap)
-int64_t rt_bits_flip(int64_t val)
-{
+int64_t rt_bits_flip(int64_t val) {
     // Reverse all 64 bits
     uint64_t u = (uint64_t)val;
     // Swap adjacent bits
@@ -723,8 +696,7 @@ int64_t rt_bits_flip(int64_t val)
 /// @note Self-inverse: `Swap(Swap(val)) == val`
 ///
 /// @see rt_bits_flip For bit-level reversal
-int64_t rt_bits_swap(int64_t val)
-{
+int64_t rt_bits_swap(int64_t val) {
     // Byte swap (endian swap)
 #if defined(__GNUC__) || defined(__clang__)
     return (int64_t)__builtin_bswap64((uint64_t)val);
@@ -778,8 +750,7 @@ int64_t rt_bits_swap(int64_t val)
 /// @see rt_bits_set For setting a bit to 1
 /// @see rt_bits_clear For clearing a bit to 0
 /// @see rt_bits_toggle For flipping a bit
-int8_t rt_bits_get(int64_t val, int64_t bit)
-{
+int8_t rt_bits_get(int64_t val, int64_t bit) {
     // Return 1 if bit is set (bit position 0-63)
     if (bit < 0 || bit >= 64)
         return 0;
@@ -812,8 +783,7 @@ int8_t rt_bits_get(int64_t val, int64_t bit)
 /// @see rt_bits_clear For clearing a bit to 0
 /// @see rt_bits_toggle For flipping a bit
 /// @see rt_bits_get For testing if a bit is set
-int64_t rt_bits_set(int64_t val, int64_t bit)
-{
+int64_t rt_bits_set(int64_t val, int64_t bit) {
     // Return val with bit set
     if (bit < 0 || bit >= 64)
         return val;
@@ -845,8 +815,7 @@ int64_t rt_bits_set(int64_t val, int64_t bit)
 /// @see rt_bits_set For setting a bit to 1
 /// @see rt_bits_toggle For flipping a bit
 /// @see rt_bits_get For testing if a bit is set
-int64_t rt_bits_clear(int64_t val, int64_t bit)
-{
+int64_t rt_bits_clear(int64_t val, int64_t bit) {
     // Return val with bit cleared
     if (bit < 0 || bit >= 64)
         return val;
@@ -880,8 +849,7 @@ int64_t rt_bits_clear(int64_t val, int64_t bit)
 /// @see rt_bits_set For unconditionally setting a bit to 1
 /// @see rt_bits_clear For unconditionally clearing a bit to 0
 /// @see rt_bits_get For testing if a bit is set
-int64_t rt_bits_toggle(int64_t val, int64_t bit)
-{
+int64_t rt_bits_toggle(int64_t val, int64_t bit) {
     // Return val with bit flipped
     if (bit < 0 || bit >= 64)
         return val;

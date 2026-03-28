@@ -33,8 +33,7 @@
 #define IL_VM_TRAP_CPP_RESTORE_EOF 1
 #endif
 
-namespace il::vm
-{
+namespace il::vm {
 
 // NOTE: toString() and trapKindFromValue() are now defined inline in Trap.hpp
 // as constexpr functions for compile-time evaluation
@@ -44,8 +43,7 @@ namespace il::vm
 #undef IL_VM_TRAP_CPP_RESTORE_EOF
 #endif
 
-namespace
-{
+namespace {
 thread_local VmError tlsTrapError{};
 thread_local std::string tlsTrapMessage;
 thread_local bool tlsTrapValid = false;
@@ -63,10 +61,8 @@ thread_local bool tlsTrapValid = false;
 /// GUARANTEE: Previous trap token data is cleared before returning.
 ///
 /// @return Pointer to a writable trap token associated with the current thread.
-VmError *vm_acquire_trap_token()
-{
-    if (auto *vm = VM::activeInstance())
-    {
+VmError *vm_acquire_trap_token() {
+    if (auto *vm = VM::activeInstance()) {
         // Clear any previous trap data to prevent stale state
         vm->trapToken.error = {};
         vm->trapToken.message.clear();
@@ -89,10 +85,8 @@ VmError *vm_acquire_trap_token()
 ///          armed.
 ///
 /// @return Pointer to the active trap token or nullptr when none is available.
-const VmError *vm_current_trap_token()
-{
-    if (auto *vm = VM::activeInstance())
-    {
+const VmError *vm_current_trap_token() {
+    if (auto *vm = VM::activeInstance()) {
         if (!vm->trapToken.valid)
             return nullptr;
         return &vm->trapToken.error;
@@ -108,8 +102,7 @@ const VmError *vm_current_trap_token()
 ///          active and clears the thread-local token otherwise.  Callers invoke
 ///          this once a trap has been processed so subsequent lookups do not
 ///          observe stale diagnostics.
-void vm_clear_trap_token()
-{
+void vm_clear_trap_token() {
     if (auto *vm = VM::activeInstance())
         vm->trapToken.valid = false;
 
@@ -124,10 +117,8 @@ void vm_clear_trap_token()
 ///          subsequent queries recognise that a trap has been produced.
 ///
 /// @param text Message describing the trap for diagnostics.
-void vm_store_trap_token_message(std::string_view text)
-{
-    if (auto *vm = VM::activeInstance())
-    {
+void vm_store_trap_token_message(std::string_view text) {
+    if (auto *vm = VM::activeInstance()) {
         vm->trapToken.message.assign(text.begin(), text.end());
         vm->trapToken.valid = true;
         return;
@@ -144,8 +135,7 @@ void vm_store_trap_token_message(std::string_view text)
 ///          to users or logs.
 ///
 /// @return Copy of the currently recorded trap message.
-std::string vm_current_trap_message()
-{
+std::string vm_current_trap_message() {
     if (auto *vm = VM::activeInstance())
         return vm->trapToken.message;
     std::string message = tlsTrapMessage;
@@ -165,8 +155,7 @@ std::string vm_current_trap_message()
 /// @param error Trap token describing the failure.
 /// @param frame Frame metadata captured when the trap surfaced.
 /// @return Human-readable description of the trap.
-std::string vm_format_error(const VmError &error, const FrameInfo &frame)
-{
+std::string vm_format_error(const VmError &error, const FrameInfo &frame) {
     const std::string_view function =
         frame.function.empty() ? std::string_view("<unknown>") : std::string_view(frame.function);
     const uint64_t ip = error.ip ? error.ip : frame.ip;
@@ -180,15 +169,13 @@ std::string vm_format_error(const VmError &error, const FrameInfo &frame)
 
     result.append("Trap @");
     result.append(function);
-    if (!frame.block.empty())
-    {
+    if (!frame.block.empty()) {
         result.push_back(':');
         result.append(frame.block);
     }
     result.push_back('#');
     result.append(std::to_string(ip));
-    if (line >= 0)
-    {
+    if (line >= 0) {
         result.append(" line ");
         result.append(std::to_string(line));
     }
@@ -209,15 +196,13 @@ std::string vm_format_error(const VmError &error, const FrameInfo &frame)
 ///          invoked to terminate execution with the formatted message.
 ///
 /// @param input Trap information describing the failure.
-void vm_raise_from_error(const VmError &input)
-{
+void vm_raise_from_error(const VmError &input) {
     VmError error = input;
     FrameInfo frame{};
     std::string message;
 
     VM *activeVm = VM::activeInstance();
-    if (activeVm)
-    {
+    if (activeVm) {
         const auto ctx = activeVm->currentTrapContext();
         if (error.ip == 0 && ctx.hasInstruction)
             error.ip = static_cast<uint64_t>(ctx.instructionIndex);
@@ -229,9 +214,7 @@ void vm_raise_from_error(const VmError &input)
 
         frame = activeVm->buildFrameInfo(error);
         message = activeVm->recordTrap(error, frame);
-    }
-    else
-    {
+    } else {
         frame.function = "<unknown>";
         frame.ip = error.ip;
         frame.line = error.line;
@@ -239,10 +222,8 @@ void vm_raise_from_error(const VmError &input)
         message = vm_format_error(error, frame);
     }
 
-    if (!frame.handlerInstalled)
-    {
-        if (activeVm)
-        {
+    if (!frame.handlerInstalled) {
+        if (activeVm) {
             auto bt = activeVm->buildBacktrace();
             if (bt.size() > 1)
                 activeVm->printBacktrace(bt);
@@ -263,8 +244,7 @@ void vm_raise_from_error(const VmError &input)
 ///
 /// @param kind Trap classification to raise.
 /// @param code Optional runtime-specific error code.
-void vm_raise(TrapKind kind, int32_t code)
-{
+void vm_raise(TrapKind kind, int32_t code) {
     // HIGH-2: Cache TLS lookup once for both enrichment and final processing
     // This avoids the double TLS access that would occur if we called
     // vm_raise_from_error() which does its own activeInstance() lookup.
@@ -279,8 +259,7 @@ void vm_raise(TrapKind kind, int32_t code)
     FrameInfo frame{};
     std::string message;
 
-    if (vm)
-    {
+    if (vm) {
         const auto ctx = vm->currentTrapContext();
         if (ctx.hasInstruction)
             error.ip = static_cast<uint64_t>(ctx.instructionIndex);
@@ -292,9 +271,7 @@ void vm_raise(TrapKind kind, int32_t code)
 
         frame = vm->buildFrameInfo(error);
         message = vm->recordTrap(error, frame);
-    }
-    else
-    {
+    } else {
         frame.function = "<unknown>";
         frame.ip = error.ip;
         frame.line = error.line;
@@ -302,10 +279,8 @@ void vm_raise(TrapKind kind, int32_t code)
         message = vm_format_error(error, frame);
     }
 
-    if (!frame.handlerInstalled)
-    {
-        if (vm)
-        {
+    if (!frame.handlerInstalled) {
+        if (vm) {
             auto bt = vm->buildBacktrace();
             if (bt.size() > 1)
                 vm->printBacktrace(bt);

@@ -21,14 +21,12 @@
 #include <cstdint>
 #include <string>
 
-namespace il::tools::common
-{
+namespace il::tools::common {
 
 /// @brief Result of loading a source file into memory.
 /// @details Contains the file contents as a string and the identifier assigned
 ///          by the SourceManager. The fileId can be used for diagnostic reporting.
-struct LoadedSource
-{
+struct LoadedSource {
     std::string buffer; ///< Full contents of the source file.
     uint32_t fileId{0}; ///< Identifier assigned by SourceManager (0 indicates failure).
 };

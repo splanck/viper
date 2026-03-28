@@ -21,16 +21,14 @@
 
 #include "il/transform/PassRegistry.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Loop canonicalisation pass that ensures well-structured loop form.
 /// @details Transforms each natural loop to have a unique preheader block,
 ///          a single dedicated latch block, and dedicated exit blocks. This
 ///          canonical form is required by downstream loop optimisation passes
 ///          like IndVarSimplify and loop-invariant code motion.
-class LoopSimplify : public FunctionPass
-{
+class LoopSimplify : public FunctionPass {
   public:
     /// \brief Identifier used when registering the pass.
     std::string_view id() const override;

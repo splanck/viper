@@ -21,10 +21,8 @@
 
 using namespace il::core;
 
-namespace il::verify
-{
-namespace
-{
+namespace il::verify {
+namespace {
 using il::support::Expected;
 using il::support::makeError;
 
@@ -36,8 +34,7 @@ using il::support::makeError;
 /// @param lhs First extern declaration.
 /// @param rhs Second extern declaration.
 /// @return @c true when return and parameter types are identical.
-bool signaturesMatch(const Extern &lhs, const Extern &rhs)
-{
+bool signaturesMatch(const Extern &lhs, const Extern &rhs) {
     if (lhs.retType.kind != rhs.retType.kind || lhs.params.size() != rhs.params.size())
         return false;
     for (size_t i = 0; i < lhs.params.size(); ++i)
@@ -54,8 +51,7 @@ bool signaturesMatch(const Extern &lhs, const Extern &rhs)
 /// @param decl Extern declaration authored in IL.
 /// @param runtime Canonical runtime signature retrieved from the runtime table.
 /// @return @c true when both signatures agree on return and parameter types.
-bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &runtime)
-{
+bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &runtime) {
     if (decl.retType.kind != runtime.retType.kind ||
         decl.params.size() != runtime.paramTypes.size())
         return false;
@@ -69,8 +65,7 @@ bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &ru
 
 /// @brief Access the interned extern declaration map.
 /// @return Reference to the map keyed by extern name.
-[[nodiscard]] const ExternVerifier::ExternMap &ExternVerifier::externs() const
-{
+[[nodiscard]] const ExternVerifier::ExternMap &ExternVerifier::externs() const {
     return externs_;
 }
 
@@ -82,15 +77,12 @@ bool signaturesMatch(const Extern &decl, const il::runtime::RuntimeSignature &ru
 /// @param module Module supplying extern declarations.
 /// @param sink Diagnostic sink used for structured reporting (unused currently).
 /// @return Empty success on validity; otherwise a formatted diagnostic error.
-Expected<void> ExternVerifier::run(const Module &module, DiagSink &)
-{
+Expected<void> ExternVerifier::run(const Module &module, DiagSink &) {
     externs_.clear();
 
-    for (const auto &ext : module.externs)
-    {
+    for (const auto &ext : module.externs) {
         auto [it, inserted] = externs_.emplace(ext.name, &ext);
-        if (!inserted)
-        {
+        if (!inserted) {
             const Extern *prev = it->second;
             std::ostringstream msg;
             msg << "duplicate extern @" << ext.name;
@@ -99,8 +91,7 @@ Expected<void> ExternVerifier::run(const Module &module, DiagSink &)
             return Expected<void>{makeError({}, msg.str())};
         }
 
-        if (const auto *runtimeSig = il::runtime::findRuntimeSignature(ext.name))
-        {
+        if (const auto *runtimeSig = il::runtime::findRuntimeSignature(ext.name)) {
             if (!signaturesMatch(ext, *runtimeSig))
                 return Expected<void>{makeError({}, "extern @" + ext.name + " signature mismatch")};
         }

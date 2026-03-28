@@ -47,8 +47,7 @@
 
 // --- Helper: current time in milliseconds ---
 
-static int64_t current_time_ms(void)
-{
+static int64_t current_time_ms(void) {
 #if defined(_WIN32)
     static LARGE_INTEGER freq = {0};
     LARGE_INTEGER counter;
@@ -70,20 +69,17 @@ static int64_t current_time_ms(void)
 
 // --- Debouncer ---
 
-typedef struct
-{
+typedef struct {
     int64_t delay_ms;
     int64_t last_signal_time;
     int64_t signal_count;
 } rt_debounce_data;
 
-static void debounce_finalizer(void *obj)
-{
+static void debounce_finalizer(void *obj) {
     (void)obj;
 }
 
-void *rt_debounce_new(int64_t delay_ms)
-{
+void *rt_debounce_new(int64_t delay_ms) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_debounce_data));
     rt_debounce_data *data = (rt_debounce_data *)obj;
     data->delay_ms = delay_ms > 0 ? delay_ms : 0;
@@ -95,8 +91,7 @@ void *rt_debounce_new(int64_t delay_ms)
 
 /// @brief Perform debounce signal operation.
 /// @param debouncer
-void rt_debounce_signal(void *debouncer)
-{
+void rt_debounce_signal(void *debouncer) {
     if (!debouncer)
         return;
     rt_debounce_data *data = (rt_debounce_data *)debouncer;
@@ -107,8 +102,7 @@ void rt_debounce_signal(void *debouncer)
 /// @brief Perform debounce is ready operation.
 /// @param debouncer
 /// @return Result value.
-int8_t rt_debounce_is_ready(void *debouncer)
-{
+int8_t rt_debounce_is_ready(void *debouncer) {
     if (!debouncer)
         return 0;
     rt_debounce_data *data = (rt_debounce_data *)debouncer;
@@ -120,8 +114,7 @@ int8_t rt_debounce_is_ready(void *debouncer)
 
 /// @brief Perform debounce reset operation.
 /// @param debouncer
-void rt_debounce_reset(void *debouncer)
-{
+void rt_debounce_reset(void *debouncer) {
     if (!debouncer)
         return;
     rt_debounce_data *data = (rt_debounce_data *)debouncer;
@@ -132,8 +125,7 @@ void rt_debounce_reset(void *debouncer)
 /// @brief Perform debounce get delay operation.
 /// @param debouncer
 /// @return Result value.
-int64_t rt_debounce_get_delay(void *debouncer)
-{
+int64_t rt_debounce_get_delay(void *debouncer) {
     if (!debouncer)
         return 0;
     return ((rt_debounce_data *)debouncer)->delay_ms;
@@ -142,8 +134,7 @@ int64_t rt_debounce_get_delay(void *debouncer)
 /// @brief Perform debounce get signal count operation.
 /// @param debouncer
 /// @return Result value.
-int64_t rt_debounce_get_signal_count(void *debouncer)
-{
+int64_t rt_debounce_get_signal_count(void *debouncer) {
     if (!debouncer)
         return 0;
     return ((rt_debounce_data *)debouncer)->signal_count;
@@ -151,20 +142,17 @@ int64_t rt_debounce_get_signal_count(void *debouncer)
 
 // --- Throttler ---
 
-typedef struct
-{
+typedef struct {
     int64_t interval_ms;
     int64_t last_allowed_time;
     int64_t count;
 } rt_throttle_data;
 
-static void throttle_finalizer(void *obj)
-{
+static void throttle_finalizer(void *obj) {
     (void)obj;
 }
 
-void *rt_throttle_new(int64_t interval_ms)
-{
+void *rt_throttle_new(int64_t interval_ms) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_throttle_data));
     rt_throttle_data *data = (rt_throttle_data *)obj;
     data->interval_ms = interval_ms > 0 ? interval_ms : 0;
@@ -177,15 +165,13 @@ void *rt_throttle_new(int64_t interval_ms)
 /// @brief Perform throttle try operation.
 /// @param throttler
 /// @return Result value.
-int8_t rt_throttle_try(void *throttler)
-{
+int8_t rt_throttle_try(void *throttler) {
     if (!throttler)
         return 0;
     rt_throttle_data *data = (rt_throttle_data *)throttler;
     int64_t now = current_time_ms();
     int64_t elapsed = now - data->last_allowed_time;
-    if (data->last_allowed_time == 0 || elapsed >= data->interval_ms)
-    {
+    if (data->last_allowed_time == 0 || elapsed >= data->interval_ms) {
         data->last_allowed_time = now;
         data->count++;
         return 1;
@@ -196,8 +182,7 @@ int8_t rt_throttle_try(void *throttler)
 /// @brief Perform throttle can proceed operation.
 /// @param throttler
 /// @return Result value.
-int8_t rt_throttle_can_proceed(void *throttler)
-{
+int8_t rt_throttle_can_proceed(void *throttler) {
     if (!throttler)
         return 0;
     rt_throttle_data *data = (rt_throttle_data *)throttler;
@@ -209,8 +194,7 @@ int8_t rt_throttle_can_proceed(void *throttler)
 
 /// @brief Perform throttle reset operation.
 /// @param throttler
-void rt_throttle_reset(void *throttler)
-{
+void rt_throttle_reset(void *throttler) {
     if (!throttler)
         return;
     rt_throttle_data *data = (rt_throttle_data *)throttler;
@@ -221,8 +205,7 @@ void rt_throttle_reset(void *throttler)
 /// @brief Perform throttle get interval operation.
 /// @param throttler
 /// @return Result value.
-int64_t rt_throttle_get_interval(void *throttler)
-{
+int64_t rt_throttle_get_interval(void *throttler) {
     if (!throttler)
         return 0;
     return ((rt_throttle_data *)throttler)->interval_ms;
@@ -231,8 +214,7 @@ int64_t rt_throttle_get_interval(void *throttler)
 /// @brief Perform throttle get count operation.
 /// @param throttler
 /// @return Result value.
-int64_t rt_throttle_get_count(void *throttler)
-{
+int64_t rt_throttle_get_count(void *throttler) {
     if (!throttler)
         return 0;
     return ((rt_throttle_data *)throttler)->count;
@@ -241,8 +223,7 @@ int64_t rt_throttle_get_count(void *throttler)
 /// @brief Perform throttle remaining ms operation.
 /// @param throttler
 /// @return Result value.
-int64_t rt_throttle_remaining_ms(void *throttler)
-{
+int64_t rt_throttle_remaining_ms(void *throttler) {
     if (!throttler)
         return 0;
     rt_throttle_data *data = (rt_throttle_data *)throttler;

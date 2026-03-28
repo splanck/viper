@@ -17,8 +17,7 @@
 
 #include <string_view>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 class Lowerer;
 class SemanticAnalyzer;
@@ -55,8 +54,7 @@ class SemanticAnalyzer;
 ///
 /// Benefits: Eliminates runtime overhead, simplifies lowering, enables
 /// future optimizations like constant propagation for module-level constants.
-class ProcedureSymbolTracker
-{
+class ProcedureSymbolTracker {
   public:
     /// @brief Construct a tracker bound to the lowering context.
     /// @param lowerer Owning lowering driver whose symbol tables are updated.

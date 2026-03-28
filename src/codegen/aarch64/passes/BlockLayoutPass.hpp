@@ -20,8 +20,7 @@
 
 #include "codegen/aarch64/passes/PassManager.hpp"
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
 /// @brief Reorder MIR basic blocks using a greedy trace algorithm.
 ///
@@ -30,8 +29,7 @@ namespace viper::codegen::aarch64::passes
 /// reordering, PeepholePass can eliminate the resulting fall-through branches.
 ///
 /// The pass is a pure reorder: block names and branch targets are stable.
-class BlockLayoutPass final : public Pass
-{
+class BlockLayoutPass final : public Pass {
   public:
     /// @brief Reorder blocks in all MIR functions to improve fall-through layout.
     /// @param module Module state; mir must have physical registers assigned.

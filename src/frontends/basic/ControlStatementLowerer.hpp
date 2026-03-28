@@ -19,16 +19,14 @@
 
 #include "frontends/basic/AST.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 class Lowerer;
 
 /// @brief Handles lowering of BASIC control flow statements to IL branches.
 /// @invariant All methods operate on the Lowerer's active context
 /// @ownership Borrows Lowerer reference for state access and delegation
-class ControlStatementLowerer
-{
+class ControlStatementLowerer {
   public:
     /// @brief Construct a control statement lowerer bound to a Lowerer instance.
     /// @param lowerer Parent lowerer providing context and helper methods

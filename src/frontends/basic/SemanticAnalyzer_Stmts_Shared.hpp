@@ -20,12 +20,10 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::basic::semantic_analyzer_detail
-{
+namespace il::frontends::basic::semantic_analyzer_detail {
 
 /// @brief Shared utilities reused by themed statement analyzers.
-class StmtShared
-{
+class StmtShared {
   public:
     /// @brief Create helper bound to @p analyzer.
     explicit StmtShared(SemanticAnalyzer &analyzer) noexcept;
@@ -35,8 +33,7 @@ class StmtShared
 
     /// @brief Guard that pushes a loop kind on construction and pops it on
     ///        destruction.
-    class LoopGuard
-    {
+    class LoopGuard {
       public:
         LoopGuard(SemanticAnalyzer &analyzer, SemanticAnalyzer::LoopKind kind) noexcept;
         LoopGuard(const LoopGuard &) = delete;
@@ -51,8 +48,7 @@ class StmtShared
 
     /// @brief Guard that records an active FOR loop variable for the current
     ///        statement body.
-    class ForLoopGuard
-    {
+    class ForLoopGuard {
       public:
         ForLoopGuard(SemanticAnalyzer &analyzer, std::string variable);
         ForLoopGuard(const ForLoopGuard &) = delete;
@@ -75,14 +71,12 @@ class StmtShared
 
   protected:
     /// @brief Access bound analyzer.
-    SemanticAnalyzer &analyzer() noexcept
-    {
+    SemanticAnalyzer &analyzer() noexcept {
         return analyzer_;
     }
 
     /// @brief Access bound analyzer.
-    const SemanticAnalyzer &analyzer() const noexcept
-    {
+    const SemanticAnalyzer &analyzer() const noexcept {
         return analyzer_;
     }
 

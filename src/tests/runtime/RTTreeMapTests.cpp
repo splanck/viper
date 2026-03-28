@@ -21,8 +21,7 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -30,19 +29,16 @@ extern "C" void vm_trap(const char *msg)
 // Helper
 // ============================================================================
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
-static const char *str_cstr(rt_string s)
-{
+static const char *str_cstr(rt_string s) {
     return rt_string_cstr(s);
 }
 
 /// Create a simple test object with 8 bytes payload
-static void *new_test_obj()
-{
+static void *new_test_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
@@ -52,8 +48,7 @@ static void *new_test_obj()
 // Basic Creation Tests
 // ============================================================================
 
-static void test_new_treemap()
-{
+static void test_new_treemap() {
     void *tm = rt_treemap_new();
     assert(tm != nullptr);
     assert(rt_treemap_len(tm) == 0);
@@ -66,8 +61,7 @@ static void test_new_treemap()
 // Set/Get/Has Tests
 // ============================================================================
 
-static void test_set_get()
-{
+static void test_set_get() {
     void *tm = rt_treemap_new();
 
     // Create some test values
@@ -97,8 +91,7 @@ static void test_set_get()
     printf("test_set_get: PASSED\n");
 }
 
-static void test_has()
-{
+static void test_has() {
     void *tm = rt_treemap_new();
 
     rt_treemap_set(tm, make_str("key1"), new_test_obj());
@@ -111,8 +104,7 @@ static void test_has()
     printf("test_has: PASSED\n");
 }
 
-static void test_update()
-{
+static void test_update() {
     void *tm = rt_treemap_new();
 
     void *val1 = new_test_obj();
@@ -134,8 +126,7 @@ static void test_update()
 // Drop/Clear Tests
 // ============================================================================
 
-static void test_drop()
-{
+static void test_drop() {
     void *tm = rt_treemap_new();
 
     rt_treemap_set(tm, make_str("a"), new_test_obj());
@@ -156,8 +147,7 @@ static void test_drop()
     printf("test_remove: PASSED\n");
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *tm = rt_treemap_new();
 
     rt_treemap_set(tm, make_str("a"), new_test_obj());
@@ -178,8 +168,7 @@ static void test_clear()
 // Keys/Values Tests (sorted order)
 // ============================================================================
 
-static void test_keys_sorted()
-{
+static void test_keys_sorted() {
     void *tm = rt_treemap_new();
 
     // Insert in non-sorted order
@@ -206,8 +195,7 @@ static void test_keys_sorted()
     printf("test_keys_sorted: PASSED\n");
 }
 
-static void test_values_sorted()
-{
+static void test_values_sorted() {
     void *tm = rt_treemap_new();
 
     // Insert with known values to track order
@@ -239,8 +227,7 @@ static void test_values_sorted()
 // First/Last Tests
 // ============================================================================
 
-static void test_first_last()
-{
+static void test_first_last() {
     void *tm = rt_treemap_new();
 
     // Empty map
@@ -267,8 +254,7 @@ static void test_first_last()
 // Floor/Ceil Tests
 // ============================================================================
 
-static void test_floor()
-{
+static void test_floor() {
     void *tm = rt_treemap_new();
 
     rt_treemap_set(tm, make_str("apple"), new_test_obj());
@@ -297,8 +283,7 @@ static void test_floor()
     printf("test_floor: PASSED\n");
 }
 
-static void test_ceil()
-{
+static void test_ceil() {
     void *tm = rt_treemap_new();
 
     rt_treemap_set(tm, make_str("apple"), new_test_obj());
@@ -331,8 +316,7 @@ static void test_ceil()
 // Edge Cases
 // ============================================================================
 
-static void test_empty_key()
-{
+static void test_empty_key() {
     void *tm = rt_treemap_new();
 
     rt_treemap_set(tm, make_str(""), new_test_obj());
@@ -342,8 +326,7 @@ static void test_empty_key()
     printf("test_empty_key: PASSED\n");
 }
 
-static void test_null_value()
-{
+static void test_null_value() {
     void *tm = rt_treemap_new();
 
     rt_treemap_set(tm, make_str("key"), nullptr);
@@ -357,8 +340,7 @@ static void test_null_value()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Viper.Collections.TreeMap Tests ===\n\n");
 
     // Basic creation

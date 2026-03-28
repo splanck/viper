@@ -19,23 +19,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -44,8 +41,7 @@ static std::string readFile(const std::string &path)
 
 /// @brief Returns the expected mangled symbol name for a call target.
 /// On Darwin (macOS), symbols are prefixed with underscore.
-static std::string blSym(const std::string &name)
-{
+static std::string blSym(const std::string &name) {
 #if defined(__APPLE__)
     return "bl _" + name;
 #else
@@ -54,8 +50,7 @@ static std::string blSym(const std::string &name)
 }
 
 // Test 1: Simple add3(a, b, c) helper
-TEST(Arm64CallConv, Add3Helper)
-{
+TEST(Arm64CallConv, Add3Helper) {
     const std::string in = outPath("arm64_call_add3.il");
     const std::string out = outPath("arm64_call_add3.s");
     const std::string il = "il 0.1\n"
@@ -75,8 +70,7 @@ TEST(Arm64CallConv, Add3Helper)
 }
 
 // Test 2: Caller passes computed values to add3
-TEST(Arm64CallConv, CallerWithComputedArgs)
-{
+TEST(Arm64CallConv, CallerWithComputedArgs) {
     const std::string in = outPath("arm64_call_computed.il");
     const std::string out = outPath("arm64_call_computed.s");
     const std::string il = "il 0.1\n"
@@ -103,8 +97,7 @@ TEST(Arm64CallConv, CallerWithComputedArgs)
 }
 
 // Test 3: Call result stored to local and reused
-TEST(Arm64CallConv, CallResultStoredAndReused)
-{
+TEST(Arm64CallConv, CallResultStoredAndReused) {
     const std::string in = outPath("arm64_call_reuse.il");
     const std::string out = outPath("arm64_call_reuse.s");
     const std::string il = "il 0.1\n"
@@ -130,8 +123,7 @@ TEST(Arm64CallConv, CallResultStoredAndReused)
 }
 
 // Test 4: Multiple calls in sequence
-TEST(Arm64CallConv, MultipleCalls)
-{
+TEST(Arm64CallConv, MultipleCalls) {
     const std::string in = outPath("arm64_multi_call.il");
     const std::string out = outPath("arm64_multi_call.s");
     const std::string il = "il 0.1\n"
@@ -158,8 +150,7 @@ TEST(Arm64CallConv, MultipleCalls)
 }
 
 // Test 5: Call with >8 args where args are computed
-TEST(Arm64CallConv, ManyArgsComputed)
-{
+TEST(Arm64CallConv, ManyArgsComputed) {
     const std::string in = outPath("arm64_call_many_computed.il");
     const std::string out = outPath("arm64_call_many_computed.s");
     const std::string il = "il 0.1\n"
@@ -185,8 +176,7 @@ TEST(Arm64CallConv, ManyArgsComputed)
 }
 
 // Test 6: Call result used in conditional branch
-TEST(Arm64CallConv, CallResultInCondition)
-{
+TEST(Arm64CallConv, CallResultInCondition) {
     const std::string in = outPath("arm64_call_cond.il");
     const std::string out = outPath("arm64_call_cond.s");
     const std::string il = "il 0.1\n"
@@ -212,8 +202,7 @@ TEST(Arm64CallConv, CallResultInCondition)
     EXPECT_TRUE(hasCompare);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

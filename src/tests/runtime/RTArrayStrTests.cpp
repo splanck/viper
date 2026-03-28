@@ -24,8 +24,7 @@
 #include <cstdlib>
 #include <cstring>
 
-int main()
-{
+int main() {
     // Test 1: Allocate empty array
     rt_string *arr = rt_arr_str_alloc(0);
     assert(arr != nullptr);
@@ -38,8 +37,7 @@ int main()
     assert(rt_arr_str_len(arr) == 3);
 
     // All slots should be initialized to NULL
-    for (size_t i = 0; i < 3; ++i)
-    {
+    for (size_t i = 0; i < 3; ++i) {
         rt_string s = rt_arr_str_get(arr, i);
         assert(s == nullptr);
         // Note: rt_arr_str_get retains, so we need to release even if NULL

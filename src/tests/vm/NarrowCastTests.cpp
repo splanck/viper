@@ -21,12 +21,10 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 // Build function for signed narrowing cast with check
 // The target type is specified by the instruction's type field
-void buildCastSiNarrowChkFunction(Module &module, int64_t val, Type::Kind targetKind)
-{
+void buildCastSiNarrowChkFunction(Module &module, int64_t val, Type::Kind targetKind) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -49,8 +47,7 @@ void buildCastSiNarrowChkFunction(Module &module, int64_t val, Type::Kind target
 }
 
 // Build function for unsigned narrowing cast with check
-void buildCastUiNarrowChkFunction(Module &module, int64_t val, Type::Kind targetKind)
-{
+void buildCastUiNarrowChkFunction(Module &module, int64_t val, Type::Kind targetKind) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -72,24 +69,21 @@ void buildCastUiNarrowChkFunction(Module &module, int64_t val, Type::Kind target
     bb.instructions.push_back(ret);
 }
 
-int64_t runCastSiNarrowChk(int64_t val, Type::Kind targetKind)
-{
+int64_t runCastSiNarrowChk(int64_t val, Type::Kind targetKind) {
     Module module;
     buildCastSiNarrowChkFunction(module, val, targetKind);
     viper::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
-int64_t runCastUiNarrowChk(int64_t val, Type::Kind targetKind)
-{
+int64_t runCastUiNarrowChk(int64_t val, Type::Kind targetKind) {
     Module module;
     buildCastUiNarrowChkFunction(module, val, targetKind);
     viper::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
-void expectInvalidCastTrapSi(int64_t val, Type::Kind targetKind)
-{
+void expectInvalidCastTrapSi(int64_t val, Type::Kind targetKind) {
     Module module;
     buildCastSiNarrowChkFunction(module, val, targetKind);
     viper::tests::VmFixture fixture;
@@ -97,8 +91,7 @@ void expectInvalidCastTrapSi(int64_t val, Type::Kind targetKind)
     assert(out.find("InvalidCast") != std::string::npos);
 }
 
-void expectInvalidCastTrapUi(int64_t val, Type::Kind targetKind)
-{
+void expectInvalidCastTrapUi(int64_t val, Type::Kind targetKind) {
     Module module;
     buildCastUiNarrowChkFunction(module, val, targetKind);
     viper::tests::VmFixture fixture;
@@ -108,8 +101,7 @@ void expectInvalidCastTrapUi(int64_t val, Type::Kind targetKind)
 
 } // namespace
 
-int main()
-{
+int main() {
     //=========================================================================
     // CastSiNarrowChk to I32 tests
     //=========================================================================

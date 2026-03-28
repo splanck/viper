@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,8 +43,7 @@ static std::string readFile(const std::string &path)
 }
 
 // Test 1: Simple FPR spill - many live FP values exceeding register count
-TEST(Arm64SpillFPR, SimpleSpill)
-{
+TEST(Arm64SpillFPR, SimpleSpill) {
     const std::string in = outPath("arm64_fpr_spill_simple.il");
     const std::string out = outPath("arm64_fpr_spill_simple.s");
     // Create many live FP values to force spilling
@@ -75,8 +71,7 @@ TEST(Arm64SpillFPR, SimpleSpill)
 }
 
 // Test 2: FPR spill across call - caller-saved FPRs need saving
-TEST(Arm64SpillFPR, SpillAcrossCall)
-{
+TEST(Arm64SpillFPR, SpillAcrossCall) {
     const std::string in = outPath("arm64_fpr_spill_call.il");
     const std::string out = outPath("arm64_fpr_spill_call.s");
     const std::string il = "il 0.1\n"
@@ -98,8 +93,7 @@ TEST(Arm64SpillFPR, SpillAcrossCall)
 }
 
 // Test 3: Many FP temporaries to force spills
-TEST(Arm64SpillFPR, ManyTemporaries)
-{
+TEST(Arm64SpillFPR, ManyTemporaries) {
     const std::string in = outPath("arm64_fpr_many_temps.il");
     const std::string out = outPath("arm64_fpr_many_temps.s");
     // Create a chain that keeps many values live
@@ -109,8 +103,7 @@ TEST(Arm64SpillFPR, ManyTemporaries)
          << "entry(%a:f64, %b:f64):\n";
 
     // Create many intermediate values
-    for (int i = 1; i <= 16; ++i)
-    {
+    for (int i = 1; i <= 16; ++i) {
         if (i == 1)
             ilss << "  %t" << i << " = fadd %a, %b\n";
         else
@@ -145,8 +138,7 @@ TEST(Arm64SpillFPR, ManyTemporaries)
 }
 
 // Test 4: Mixed GPR and FPR pressure
-TEST(Arm64SpillFPR, MixedRegisterPressure)
-{
+TEST(Arm64SpillFPR, MixedRegisterPressure) {
     const std::string in = outPath("arm64_fpr_mixed.il");
     const std::string out = outPath("arm64_fpr_mixed.s");
     const std::string il = "il 0.1\n"
@@ -170,8 +162,7 @@ TEST(Arm64SpillFPR, MixedRegisterPressure)
 }
 
 // Test 5: FPR in loop with accumulator
-TEST(Arm64SpillFPR, LoopAccumulator)
-{
+TEST(Arm64SpillFPR, LoopAccumulator) {
     const std::string in = outPath("arm64_fpr_loop.il");
     const std::string out = outPath("arm64_fpr_loop.s");
     const std::string il = "il 0.1\n"
@@ -197,8 +188,7 @@ TEST(Arm64SpillFPR, LoopAccumulator)
     EXPECT_NE(asmText.find("b "), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

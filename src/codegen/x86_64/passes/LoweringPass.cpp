@@ -34,34 +34,28 @@
 #include <unordered_map>
 #include <utility>
 
-namespace viper::codegen::x64::passes
-{
-namespace
-{
+namespace viper::codegen::x64::passes {
+namespace {
 
 /// @brief Emit a backend-unsupported diagnostic and terminate lowering.
-[[noreturn]] void reportUnsupported(std::string detail)
-{
+[[noreturn]] void reportUnsupported(std::string detail) {
     viper::codegen::x64::phaseAUnsupported(detail.c_str());
 }
 
 /// @brief Adapter module builder that converts IL to backend IR.
 /// @details Encapsulates the conversion logic, maintaining state for value kinds
 ///          and providing helper methods for different instruction categories.
-class ModuleAdapter
-{
+class ModuleAdapter {
   public:
     explicit ModuleAdapter() = default;
 
     /// @brief Convert an IL module to the backend adapter representation.
-    ILModule adapt(const il::core::Module &module)
-    {
+    ILModule adapt(const il::core::Module &module) {
         currentModule_ = &module;
         ILModule result{};
         result.funcs.reserve(module.functions.size());
 
-        for (const auto &func : module.functions)
-        {
+        for (const auto &func : module.functions) {
             result.funcs.push_back(adaptFunction(func));
         }
 
@@ -80,12 +74,10 @@ class ModuleAdapter
     const il::core::Module *currentModule_{nullptr};
 
     /// @brief Look up a global by name.
-    const il::core::Global *findGlobal(const std::string &name) const
-    {
+    const il::core::Global *findGlobal(const std::string &name) const {
         if (!currentModule_)
             return nullptr;
-        for (const auto &g : currentModule_->globals)
-        {
+        for (const auto &g : currentModule_->globals) {
             if (g.name == name)
                 return &g;
         }
@@ -97,11 +89,9 @@ class ModuleAdapter
     //-------------------------------------------------------------------------
 
     /// @brief Map an IL type to the backend adapter value classification.
-    static ILValue::Kind typeToKind(const il::core::Type &type)
-    {
+    static ILValue::Kind typeToKind(const il::core::Type &type) {
         using il::core::Type;
-        switch (type.kind)
-        {
+        switch (type.kind) {
             case Type::Kind::I1:
                 return ILValue::Kind::I1;
             case Type::Kind::I16:
@@ -128,8 +118,7 @@ class ModuleAdapter
     //-------------------------------------------------------------------------
 
     /// @brief Construct an adapter value representing a block label.
-    static ILValue makeLabelValue(std::string name)
-    {
+    static ILValue makeLabelValue(std::string name) {
         ILValue label{};
         label.kind = ILValue::Kind::LABEL;
         label.label = std::move(name);
@@ -140,14 +129,12 @@ class ModuleAdapter
     /// @brief Construct an adapter value representing a local block label.
     /// @details Prefixes the label with ".L" to make it assembly-local, avoiding
     ///          symbol collisions between functions.
-    static ILValue makeBlockLabelValue(const std::string &funcName, std::string name)
-    {
+    static ILValue makeBlockLabelValue(const std::string &funcName, std::string name) {
         return makeLabelValue(".L_" + funcName + "_" + name);
     }
 
     /// @brief Create an immediate adapter value storing a condition code.
-    static ILValue makeCondImmediate(int code)
-    {
+    static ILValue makeCondImmediate(int code) {
         ILValue imm{};
         imm.kind = ILValue::Kind::I64;
         imm.i64 = il::common::integer::narrow_to(
@@ -157,11 +144,9 @@ class ModuleAdapter
     }
 
     /// @brief Translate IL comparison opcodes into backend condition codes.
-    static int condCodeFor(il::core::Opcode op)
-    {
+    static int condCodeFor(il::core::Opcode op) {
         using il::core::Opcode;
-        switch (op)
-        {
+        switch (op) {
             case Opcode::ICmpEq:
             case Opcode::FCmpEQ:
                 return 0;
@@ -199,26 +184,21 @@ class ModuleAdapter
     //-------------------------------------------------------------------------
 
     /// @brief Convert an IL operand into the backend adapter value.
-    ILValue convertValue(const il::core::Value &value, std::optional<ILValue::Kind> hint)
-    {
+    ILValue convertValue(const il::core::Value &value, std::optional<ILValue::Kind> hint) {
         ILValue converted{};
         converted.id = -1;
 
-        switch (value.kind)
-        {
-            case il::core::Value::Kind::Temp:
-            {
+        switch (value.kind) {
+            case il::core::Value::Kind::Temp: {
                 const auto it = valueKinds_.find(value.id);
-                if (it == valueKinds_.end())
-                {
+                if (it == valueKinds_.end()) {
                     reportUnsupported("ssa temp without registered kind in Phase A lowering");
                 }
                 converted.kind = it->second;
                 converted.id = static_cast<int>(value.id);
                 break;
             }
-            case il::core::Value::Kind::ConstInt:
-            {
+            case il::core::Value::Kind::ConstInt: {
                 converted.kind =
                     hint.value_or(value.isBool ? ILValue::Kind::I1 : ILValue::Kind::I64);
                 converted.i64 = value.i64;
@@ -243,8 +223,7 @@ class ModuleAdapter
                 break;
         }
 
-        if (hint && value.kind != il::core::Value::Kind::Temp)
-        {
+        if (hint && value.kind != il::core::Value::Kind::Temp) {
             converted.kind = *hint;
         }
 
@@ -254,11 +233,9 @@ class ModuleAdapter
     /// @brief Append converted operands to an adapter instruction.
     void convertOperands(const il::core::Instr &instr,
                          std::initializer_list<std::optional<ILValue::Kind>> hints,
-                         ILInstr &out)
-    {
+                         ILInstr &out) {
         std::size_t index = 0;
-        for (const auto &operand : instr.operands)
-        {
+        for (const auto &operand : instr.operands) {
             const std::optional<ILValue::Kind> hint =
                 index < hints.size() ? *(hints.begin() + static_cast<std::ptrdiff_t>(index))
                                      : std::optional<ILValue::Kind>{};
@@ -274,33 +251,25 @@ class ModuleAdapter
     /// @brief Record the kind associated with the instruction result.
     ILValue::Kind setResultKind(ILInstr &out,
                                 const il::core::Instr &instr,
-                                const il::core::Type &type)
-    {
+                                const il::core::Type &type) {
         const ILValue::Kind kind = typeToKind(type);
-        if (instr.result)
-        {
+        if (instr.result) {
             out.resultId = static_cast<int>(*instr.result);
             out.resultKind = kind;
             valueKinds_[*instr.result] = kind;
-        }
-        else
-        {
+        } else {
             out.resultKind = kind;
         }
         return kind;
     }
 
     /// @brief Set result kind to a fixed type (for bitwise ops that always produce I64).
-    void setFixedResultKind(ILInstr &out, const il::core::Instr &instr, ILValue::Kind kind)
-    {
-        if (instr.result)
-        {
+    void setFixedResultKind(ILInstr &out, const il::core::Instr &instr, ILValue::Kind kind) {
+        if (instr.result) {
             out.resultId = static_cast<int>(*instr.result);
             out.resultKind = kind;
             valueKinds_[*instr.result] = kind;
-        }
-        else
-        {
+        } else {
             out.resultKind = kind;
         }
     }
@@ -310,8 +279,7 @@ class ModuleAdapter
     //-------------------------------------------------------------------------
 
     /// @brief Adapt an entire IL function.
-    ILFunction adaptFunction(const il::core::Function &func)
-    {
+    ILFunction adaptFunction(const il::core::Function &func) {
         currentFunc_ = &func;
         valueKinds_.clear();
         valueKinds_.reserve(func.valueNames.size() + func.params.size());
@@ -320,15 +288,13 @@ class ModuleAdapter
         adapted.name = func.name;
 
         // Register parameter kinds
-        for (const auto &param : func.params)
-        {
+        for (const auto &param : func.params) {
             valueKinds_.emplace(param.id, typeToKind(param.type));
         }
 
         // Adapt each block
         adapted.blocks.reserve(func.blocks.size());
-        for (const auto &block : func.blocks)
-        {
+        for (const auto &block : func.blocks) {
             adapted.blocks.push_back(adaptBlock(block));
         }
 
@@ -336,16 +302,14 @@ class ModuleAdapter
     }
 
     /// @brief Adapt an IL block.
-    ILBlock adaptBlock(const il::core::BasicBlock &block)
-    {
+    ILBlock adaptBlock(const il::core::BasicBlock &block) {
         ILBlock adapted{};
         adapted.name = block.label;
 
         // Register block parameter kinds
         adapted.paramIds.reserve(block.params.size());
         adapted.paramKinds.reserve(block.params.size());
-        for (const auto &param : block.params)
-        {
+        for (const auto &param : block.params) {
             const ILValue::Kind kind = typeToKind(param.type);
             adapted.paramIds.push_back(static_cast<int>(param.id));
             adapted.paramKinds.push_back(kind);
@@ -353,8 +317,7 @@ class ModuleAdapter
         }
 
         // Adapt each instruction
-        for (const auto &instr : block.instructions)
-        {
+        for (const auto &instr : block.instructions) {
             adaptInstruction(instr, adapted);
         }
 
@@ -366,14 +329,12 @@ class ModuleAdapter
     //-------------------------------------------------------------------------
 
     /// @brief Adapt a single instruction and append to block.
-    void adaptInstruction(const il::core::Instr &instr, ILBlock &block)
-    {
+    void adaptInstruction(const il::core::Instr &instr, ILBlock &block) {
         ILInstr out{};
         out.resultId = -1;
         out.loc = instr.loc;
 
-        switch (instr.op)
-        {
+        switch (instr.op) {
             // Arithmetic operations
             case il::core::Opcode::Add:
             case il::core::Opcode::FAdd:
@@ -635,41 +596,35 @@ class ModuleAdapter
     // Arithmetic Instruction Adapters
     //-------------------------------------------------------------------------
 
-    void adaptBinaryArithmetic(const il::core::Instr &instr, ILInstr &out, const char *opcode)
-    {
+    void adaptBinaryArithmetic(const il::core::Instr &instr, ILInstr &out, const char *opcode) {
         const ILValue::Kind kind = setResultKind(out, instr, instr.type);
         out.opcode = opcode;
         convertOperands(instr, {kind, kind}, out);
     }
 
-    void adaptFDiv(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptFDiv(const il::core::Instr &instr, ILInstr &out) {
         out.opcode = "fdiv";
         out.resultKind = ILValue::Kind::F64;
-        if (instr.result)
-        {
+        if (instr.result) {
             out.resultId = static_cast<int>(*instr.result);
             valueKinds_[*instr.result] = ILValue::Kind::F64;
         }
         convertOperands(instr, {ILValue::Kind::F64, ILValue::Kind::F64}, out);
     }
 
-    void adaptIntDiv(const il::core::Instr &instr, ILInstr &out, const char *opcode)
-    {
+    void adaptIntDiv(const il::core::Instr &instr, ILInstr &out, const char *opcode) {
         setResultKind(out, instr, instr.type);
         out.opcode = opcode;
         convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64}, out);
     }
 
-    void adaptShift(const il::core::Instr &instr, ILInstr &out, const char *opcode)
-    {
+    void adaptShift(const il::core::Instr &instr, ILInstr &out, const char *opcode) {
         const ILValue::Kind kind = setResultKind(out, instr, instr.type);
         out.opcode = opcode;
         convertOperands(instr, {kind, ILValue::Kind::I64}, out);
     }
 
-    void adaptBitwise(const il::core::Instr &instr, ILInstr &out, const char *opcode)
-    {
+    void adaptBitwise(const il::core::Instr &instr, ILInstr &out, const char *opcode) {
         setFixedResultKind(out, instr, ILValue::Kind::I64);
         out.opcode = opcode;
         convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64}, out);
@@ -679,16 +634,14 @@ class ModuleAdapter
     // Comparison Instruction Adapters
     //-------------------------------------------------------------------------
 
-    void adaptIntCompare(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptIntCompare(const il::core::Instr &instr, ILInstr &out) {
         out.opcode = "cmp";
         setFixedResultKind(out, instr, ILValue::Kind::I1);
         convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64}, out);
         out.ops.push_back(makeCondImmediate(condCodeFor(instr.op)));
     }
 
-    void adaptFloatCompareAs(const il::core::Instr &instr, ILInstr &out, const char *opcode)
-    {
+    void adaptFloatCompareAs(const il::core::Instr &instr, ILInstr &out, const char *opcode) {
         out.opcode = opcode;
         setFixedResultKind(out, instr, ILValue::Kind::I1);
         convertOperands(instr, {ILValue::Kind::F64, ILValue::Kind::F64}, out);
@@ -698,14 +651,10 @@ class ModuleAdapter
     // Call Instruction Adapter
     //-------------------------------------------------------------------------
 
-    void adaptCall(const il::core::Instr &instr, ILInstr &out)
-    {
-        if (instr.type.kind != il::core::Type::Kind::Void)
-        {
+    void adaptCall(const il::core::Instr &instr, ILInstr &out) {
+        if (instr.type.kind != il::core::Type::Kind::Void) {
             setResultKind(out, instr, instr.type);
-        }
-        else if (instr.result)
-        {
+        } else if (instr.result) {
             // Some IL files have call instructions with result SSA ids but type set to void.
             // This can happen when the IL parser doesn't correctly infer the return type
             // from extern declarations. In this case, assume PTR as a safe default since
@@ -717,27 +666,21 @@ class ModuleAdapter
         }
         out.opcode = "call";
         out.ops.push_back(makeLabelValue(instr.callee));
-        for (const auto &operand : instr.operands)
-        {
+        for (const auto &operand : instr.operands) {
             out.ops.push_back(convertValue(operand, std::nullopt));
         }
     }
 
-    void adaptCallIndirect(const il::core::Instr &instr, ILInstr &out)
-    {
-        if (instr.type.kind != il::core::Type::Kind::Void)
-        {
+    void adaptCallIndirect(const il::core::Instr &instr, ILInstr &out) {
+        if (instr.type.kind != il::core::Type::Kind::Void) {
             setResultKind(out, instr, instr.type);
-        }
-        else if (instr.result)
-        {
+        } else if (instr.result) {
             out.resultId = static_cast<int>(*instr.result);
             out.resultKind = ILValue::Kind::PTR;
             valueKinds_[*instr.result] = ILValue::Kind::PTR;
         }
         out.opcode = "call.indirect";
-        for (const auto &operand : instr.operands)
-        {
+        for (const auto &operand : instr.operands) {
             out.ops.push_back(convertValue(operand, std::nullopt));
         }
     }
@@ -746,28 +689,24 @@ class ModuleAdapter
     // Constants and Addresses
     //-------------------------------------------------------------------------
 
-    void adaptConstNull(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptConstNull(const il::core::Instr &instr, ILInstr &out) {
         setFixedResultKind(out, instr, ILValue::Kind::PTR);
         out.opcode = "const_null";
     }
 
-    void adaptConstF64(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptConstF64(const il::core::Instr &instr, ILInstr &out) {
         setFixedResultKind(out, instr, ILValue::Kind::F64);
         out.opcode = "const_f64";
         convertOperands(instr, {ILValue::Kind::F64}, out);
     }
 
-    void adaptGAddr(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptGAddr(const il::core::Instr &instr, ILInstr &out) {
         setFixedResultKind(out, instr, ILValue::Kind::PTR);
         out.opcode = "gaddr";
         convertOperands(instr, {std::nullopt}, out);
     }
 
-    void adaptAddrOf(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptAddrOf(const il::core::Instr &instr, ILInstr &out) {
         setFixedResultKind(out, instr, ILValue::Kind::PTR);
         out.opcode = "addr_of";
         convertOperands(instr, {ILValue::Kind::PTR}, out);
@@ -777,34 +716,29 @@ class ModuleAdapter
     // Bounds Check and Switch
     //-------------------------------------------------------------------------
 
-    void adaptIdxChk(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptIdxChk(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "idx_chk";
         convertOperands(instr, {ILValue::Kind::I64, ILValue::Kind::I64, ILValue::Kind::I64}, out);
     }
 
-    void adaptSwitchI32(const il::core::Instr &instr, ILInstr &out, ILBlock &block)
-    {
+    void adaptSwitchI32(const il::core::Instr &instr, ILInstr &out, ILBlock &block) {
         using namespace il::core;
         out.opcode = "switch_i32";
         // Operand 0: scrutinee
-        if (!instr.operands.empty())
-        {
+        if (!instr.operands.empty()) {
             out.ops.push_back(convertValue(instr.operands[0], ILValue::Kind::I64));
         }
         // Case values and labels interleaved: [value0, label0, value1, label1, ...]
         const std::size_t ncases = switchCaseCount(instr);
-        for (std::size_t ci = 0; ci < ncases; ++ci)
-        {
+        for (std::size_t ci = 0; ci < ncases; ++ci) {
             const Value &cval = switchCaseValue(instr, ci);
             out.ops.push_back(convertValue(cval, ILValue::Kind::I64));
             out.ops.push_back(makeBlockLabelValue(currentFunc_->name, switchCaseLabel(instr, ci)));
         }
         // Default label as last operand
         const std::string &defLabel = switchDefaultLabel(instr);
-        if (!defLabel.empty())
-        {
+        if (!defLabel.empty()) {
             out.ops.push_back(makeBlockLabelValue(currentFunc_->name, defLabel));
         }
         // Add terminator edges for block argument passing
@@ -815,24 +749,20 @@ class ModuleAdapter
     // Exception Handling Adapters
     //-------------------------------------------------------------------------
 
-    void adaptEhPush(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptEhPush(const il::core::Instr &instr, ILInstr &out) {
         out.opcode = "eh.push";
         convertOperands(instr, {std::nullopt}, out);
-        if (out.ops.size() > 1)
-        {
+        if (out.ops.size() > 1) {
             out.ops.resize(1);
         }
     }
 
-    void adaptEhPop(ILInstr &out)
-    {
+    void adaptEhPop(ILInstr &out) {
         out.opcode = "eh.pop";
         out.resultKind = ILValue::Kind::I64; // unused
     }
 
-    void adaptEhEntry(ILInstr &out)
-    {
+    void adaptEhEntry(ILInstr &out) {
         out.opcode = "eh.entry";
         out.resultKind = ILValue::Kind::I64; // unused
     }
@@ -841,30 +771,25 @@ class ModuleAdapter
     // Memory Operation Adapters
     //-------------------------------------------------------------------------
 
-    void adaptLoad(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptLoad(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "load";
         convertOperands(instr, {ILValue::Kind::PTR, ILValue::Kind::I64}, out);
-        if (out.ops.size() > 2)
-        {
+        if (out.ops.size() > 2) {
             out.ops.resize(2);
         }
     }
 
-    void adaptStore(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptStore(const il::core::Instr &instr, ILInstr &out) {
         out.opcode = "store";
         convertOperands(instr, {std::nullopt, ILValue::Kind::PTR, ILValue::Kind::I64}, out);
-        if (out.ops.size() > 3)
-        {
+        if (out.ops.size() > 3) {
             out.ops.resize(3);
         }
     }
 
     /// @brief Adapt alloca instruction for stack allocation.
-    void adaptAlloca(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptAlloca(const il::core::Instr &instr, ILInstr &out) {
         setFixedResultKind(out, instr, ILValue::Kind::PTR);
         out.opcode = "alloca";
         // Operand 0 is the size in bytes
@@ -872,8 +797,7 @@ class ModuleAdapter
     }
 
     /// @brief Adapt GEP (get element pointer) instruction.
-    void adaptGEP(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptGEP(const il::core::Instr &instr, ILInstr &out) {
         setFixedResultKind(out, instr, ILValue::Kind::PTR);
         out.opcode = "gep";
         // Operand 0 is the base pointer, operand 1 is the byte offset
@@ -884,58 +808,50 @@ class ModuleAdapter
     // Cast Operation Adapters
     //-------------------------------------------------------------------------
 
-    void adaptZext(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptZext(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "zext";
         convertOperands(instr, {ILValue::Kind::I1}, out);
     }
 
-    void adaptTrunc(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptTrunc(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "trunc";
         convertOperands(instr, {ILValue::Kind::I64}, out);
     }
 
-    void adaptSiToFp(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptSiToFp(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "sitofp";
         convertOperands(instr, {ILValue::Kind::I64}, out);
     }
 
-    void adaptFpToSi(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptFpToSi(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "fptosi";
         convertOperands(instr, {ILValue::Kind::F64}, out);
     }
 
-    void adaptFpToSiChecked(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptFpToSiChecked(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "fptosi_chk";
         convertOperands(instr, {ILValue::Kind::F64}, out);
     }
 
-    void adaptFpToUi(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptFpToUi(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "fptoui";
         convertOperands(instr, {ILValue::Kind::F64}, out);
     }
 
-    void adaptUiToFp(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptUiToFp(const il::core::Instr &instr, ILInstr &out) {
         setResultKind(out, instr, instr.type);
         out.opcode = "uitofp";
         convertOperands(instr, {ILValue::Kind::I64}, out);
     }
 
     /// @brief Adapt narrowing cast (i64 -> i32 etc).
-    void adaptNarrowCast(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptNarrowCast(const il::core::Instr &instr, ILInstr &out) {
         // For now, treat narrow cast as just passing through the lower bits
         // (same as trunc behavior). The checked variant would need to verify
         // the value fits in the smaller type.
@@ -948,11 +864,9 @@ class ModuleAdapter
     // Control Flow Adapters
     //-------------------------------------------------------------------------
 
-    void adaptRet(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptRet(const il::core::Instr &instr, ILInstr &out) {
         out.opcode = "ret";
-        if (!instr.operands.empty())
-        {
+        if (!instr.operands.empty()) {
             const auto returnKind =
                 currentFunc_->retType.kind == il::core::Type::Kind::Void
                     ? std::optional<ILValue::Kind>{}
@@ -961,26 +875,21 @@ class ModuleAdapter
         }
     }
 
-    void adaptBr(const il::core::Instr &instr, ILInstr &out, ILBlock &block)
-    {
+    void adaptBr(const il::core::Instr &instr, ILInstr &out, ILBlock &block) {
         out.opcode = "br";
-        if (!instr.labels.empty())
-        {
+        if (!instr.labels.empty()) {
             out.ops.push_back(makeBlockLabelValue(currentFunc_->name, instr.labels.front()));
         }
         addTerminatorEdges(instr, block);
     }
 
-    void adaptCBr(const il::core::Instr &instr, ILInstr &out, ILBlock &block)
-    {
+    void adaptCBr(const il::core::Instr &instr, ILInstr &out, ILBlock &block) {
         out.opcode = "cbr";
-        if (instr.operands.empty())
-        {
+        if (instr.operands.empty()) {
             reportUnsupported("conditional branch missing condition operand");
         }
         out.ops.push_back(convertValue(instr.operands.front(), ILValue::Kind::I1));
-        for (const auto &label : instr.labels)
-        {
+        for (const auto &label : instr.labels) {
             out.ops.push_back(makeBlockLabelValue(currentFunc_->name, label));
         }
         addTerminatorEdges(instr, block);
@@ -991,27 +900,23 @@ class ModuleAdapter
     //-------------------------------------------------------------------------
 
     /// @brief Adapt const_str instruction to produce a string value.
-    void adaptConstStr(const il::core::Instr &instr, ILInstr &out)
-    {
+    void adaptConstStr(const il::core::Instr &instr, ILInstr &out) {
         setFixedResultKind(out, instr, ILValue::Kind::STR);
         out.opcode = "const_str";
 
         // The operand is a GlobalAddr pointing to the global string constant
-        if (instr.operands.empty())
-        {
+        if (instr.operands.empty()) {
             reportUnsupported("const_str missing operand");
         }
 
         const auto &op = instr.operands.front();
-        if (op.kind != il::core::Value::Kind::GlobalAddr)
-        {
+        if (op.kind != il::core::Value::Kind::GlobalAddr) {
             reportUnsupported("const_str with non-global operand");
         }
 
         // Look up the global to get the actual string content
         const il::core::Global *global = findGlobal(op.str);
-        if (!global)
-        {
+        if (!global) {
             reportUnsupported("const_str references unknown global: " + op.str);
         }
 
@@ -1028,36 +933,28 @@ class ModuleAdapter
     /// @details Handles both SSA temps (via SSA id) and constants (via ILValue
     ///          materialization in emitEdgeCopies). For constants, a sentinel -1
     ///          is stored in argIds and the full ILValue is stored in argValues.
-    void addTerminatorEdges(const il::core::Instr &instr, ILBlock &block)
-    {
+    void addTerminatorEdges(const il::core::Instr &instr, ILBlock &block) {
         const std::size_t succCount = instr.labels.size();
         block.terminatorEdges.reserve(block.terminatorEdges.size() + succCount);
 
-        for (std::size_t idx = 0; idx < succCount; ++idx)
-        {
+        for (std::size_t idx = 0; idx < succCount; ++idx) {
             ILBlock::EdgeArg edge{};
             edge.to = instr.labels[idx];
-            if (idx < instr.brArgs.size())
-            {
-                for (const auto &arg : instr.brArgs[idx])
-                {
+            if (idx < instr.brArgs.size()) {
+                for (const auto &arg : instr.brArgs[idx]) {
                     // Infer the kind hint for the block argument based on
                     // the destination block's parameter types.
                     std::optional<ILValue::Kind> hint;
-                    if (arg.kind == il::core::Value::Kind::ConstInt)
-                    {
+                    if (arg.kind == il::core::Value::Kind::ConstInt) {
                         hint = arg.isBool ? ILValue::Kind::I1 : ILValue::Kind::I64;
                     }
 
                     const ILValue converted = convertValue(arg, hint);
                     edge.argValues.push_back(converted);
 
-                    if (arg.kind == il::core::Value::Kind::Temp)
-                    {
+                    if (arg.kind == il::core::Value::Kind::Temp) {
                         edge.argIds.push_back(static_cast<int>(arg.id));
-                    }
-                    else
-                    {
+                    } else {
                         // Sentinel: constant to be materialized in emitEdgeCopies.
                         edge.argIds.push_back(-1);
                     }
@@ -1073,16 +970,12 @@ class ModuleAdapter
 /// @brief Execute Phase A lowering for the provided pipeline module.
 /// @details Catches unsupported-feature exceptions thrown by the adapter and
 ///          reports them through the diagnostics sink rather than propagating.
-bool LoweringPass::run(Module &module, Diagnostics &diags)
-{
-    try
-    {
+bool LoweringPass::run(Module &module, Diagnostics &diags) {
+    try {
         ModuleAdapter adapter{};
         module.lowered = adapter.adapt(module.il);
         return true;
-    }
-    catch (const std::exception &e)
-    {
+    } catch (const std::exception &e) {
         diags.error(std::string("lowering: ") + e.what());
         return false;
     }

@@ -17,43 +17,37 @@
 
 #include <cassert>
 
-namespace
-{
+namespace {
 
 bool gUsageCalled = false;
 bool gCompileCalled = false;
 
 } // namespace
 
-void usage()
-{
+void usage() {
     gUsageCalled = true;
 }
 
 #include "tools/viper/cmd_front_basic.cpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 void DiagnosticEmitter::printAll(std::ostream &) const {}
 
-bool BasicCompilerResult::succeeded() const
-{
+bool BasicCompilerResult::succeeded() const {
     return false;
 }
 
 BasicCompilerResult compileBasic(const BasicCompilerInput &,
                                  const BasicCompilerOptions &,
-                                 il::support::SourceManager &)
-{
+                                 il::support::SourceManager &) {
     gCompileCalled = true;
     return {};
 }
 
 } // namespace il::frontends::basic
 
-int main()
-{
+int main() {
     char run[] = "-run";
     char source[] = "dummy.bas";
     char breakFlag[] = "--break";

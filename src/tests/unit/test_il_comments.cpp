@@ -18,8 +18,7 @@
 #include <cassert>
 #include <sstream>
 
-int main()
-{
+int main() {
     const char *src = R"(// header line 1
 // header line 2
 il 0.2.0
@@ -32,8 +31,7 @@ entry:
     il::core::Module m;
     std::ostringstream diag;
     auto pe = il::api::v2::parse_text_expected(in, m);
-    if (!pe)
-    {
+    if (!pe) {
         il::support::printDiag(pe.error(), diag);
     }
     assert(pe);

@@ -30,8 +30,7 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -39,25 +38,21 @@ static int tests_passed = 0;
 static int tests_total = 0;
 
 #define TEST(name)                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_total++;                                                                             \
         printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 #define PASS()                                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_passed++;                                                                            \
         printf("ok\n");                                                                            \
     } while (0)
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_tile_properties(void)
-{
+static void test_tile_properties(void) {
     TEST("Tile properties set/get/has");
     void *tm = rt_tilemap_new(4, 4, 16, 16);
     rt_string key = make_str("damage");
@@ -72,8 +67,7 @@ static void test_tile_properties(void)
     PASS();
 }
 
-static void test_tile_property_update(void)
-{
+static void test_tile_property_update(void) {
     TEST("Tile property update overwrites");
     void *tm = rt_tilemap_new(4, 4, 16, 16);
     rt_string key = make_str("hp");
@@ -84,8 +78,7 @@ static void test_tile_property_update(void)
     PASS();
 }
 
-static void test_autotile_basic(void)
-{
+static void test_autotile_basic(void) {
     TEST("Auto-tiling basic neighbor computation");
     void *tm = rt_tilemap_new(5, 1, 16, 16);
     // Place base tile (ID=1) at x=1,2,3 (horizontal strip)
@@ -109,8 +102,7 @@ static void test_autotile_basic(void)
     PASS();
 }
 
-static void test_autotile_isolated(void)
-{
+static void test_autotile_isolated(void) {
     TEST("Auto-tiling isolated cell");
     void *tm = rt_tilemap_new(3, 3, 16, 16);
     rt_tilemap_set_tile(tm, 1, 1, 1);
@@ -125,8 +117,7 @@ static void test_autotile_isolated(void)
     PASS();
 }
 
-static void test_json_save_load(void)
-{
+static void test_json_save_load(void) {
     TEST("JSON save/load round-trip");
     void *tm = rt_tilemap_new(3, 3, 16, 16);
     rt_tilemap_set_tile(tm, 0, 0, 5);
@@ -147,8 +138,7 @@ static void test_json_save_load(void)
     PASS();
 }
 
-static void test_csv_import(void)
-{
+static void test_csv_import(void) {
     TEST("CSV import");
     // Write a test CSV
     const char *csv_path = "/tmp/test_tilemap.csv";
@@ -168,16 +158,14 @@ static void test_csv_import(void)
     PASS();
 }
 
-static void test_load_nonexistent(void)
-{
+static void test_load_nonexistent(void) {
     TEST("Load nonexistent file returns NULL");
     assert(rt_tilemap_load_from_file(make_str("/tmp/nonexistent_tilemap.json")) == NULL);
     assert(rt_tilemap_load_csv(make_str("/tmp/nonexistent.csv"), 16, 16) == NULL);
     PASS();
 }
 
-static void test_clear_autotile(void)
-{
+static void test_clear_autotile(void) {
     TEST("Clear autotile rule");
     void *tm = rt_tilemap_new(3, 1, 16, 16);
     rt_tilemap_set_tile(tm, 0, 0, 1);
@@ -195,8 +183,7 @@ static void test_clear_autotile(void)
     PASS();
 }
 
-int main()
-{
+int main() {
     printf("test_rt_tilemap_io:\n");
     test_tile_properties();
     test_tile_property_update();

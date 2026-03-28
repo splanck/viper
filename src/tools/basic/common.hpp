@@ -19,13 +19,11 @@
 #include <optional>
 #include <string>
 
-namespace il::support
-{
+namespace il::support {
 class SourceManager;
 }
 
-namespace il::tools::basic
-{
+namespace il::tools::basic {
 
 /// @brief Load BASIC source into a buffer and register it with the SourceManager.
 ///

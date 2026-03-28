@@ -23,12 +23,10 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Make arith.
-Instr makeArith(Opcode op, Value lhs, Value rhs, unsigned resultId = 0)
-{
+Instr makeArith(Opcode op, Value lhs, Value rhs, unsigned resultId = 0) {
     Instr instr;
     instr.result = resultId;
     instr.op = op;
@@ -38,8 +36,7 @@ Instr makeArith(Opcode op, Value lhs, Value rhs, unsigned resultId = 0)
 }
 
 /// @brief Make float arith.
-Instr makeFloatArith(Opcode op, Value lhs, Value rhs, unsigned resultId = 0)
-{
+Instr makeFloatArith(Opcode op, Value lhs, Value rhs, unsigned resultId = 0) {
     Instr instr;
     instr.result = resultId;
     instr.op = op;
@@ -51,8 +48,7 @@ Instr makeFloatArith(Opcode op, Value lhs, Value rhs, unsigned resultId = 0)
 } // namespace
 
 // Test that commutative operations produce the same key regardless of operand order
-TEST(ValueKey, CommutativeAddNormalization)
-{
+TEST(ValueKey, CommutativeAddNormalization) {
     Instr a = makeArith(Opcode::Add, Value::temp(1), Value::temp(2));
     Instr b = makeArith(Opcode::Add, Value::temp(2), Value::temp(1));
 
@@ -70,8 +66,7 @@ TEST(ValueKey, CommutativeAddNormalization)
 }
 
 // Test that commutative Mul produces same key
-TEST(ValueKey, CommutativeMulNormalization)
-{
+TEST(ValueKey, CommutativeMulNormalization) {
     Instr a = makeArith(Opcode::Mul, Value::constInt(3), Value::temp(5));
     Instr b = makeArith(Opcode::Mul, Value::temp(5), Value::constInt(3));
 
@@ -84,8 +79,7 @@ TEST(ValueKey, CommutativeMulNormalization)
 }
 
 // Test that non-commutative Sub does NOT normalize
-TEST(ValueKey, NonCommutativeSubNotNormalized)
-{
+TEST(ValueKey, NonCommutativeSubNotNormalized) {
     Instr a = makeArith(Opcode::Sub, Value::temp(1), Value::temp(2));
     Instr b = makeArith(Opcode::Sub, Value::temp(2), Value::temp(1));
 
@@ -100,8 +94,7 @@ TEST(ValueKey, NonCommutativeSubNotNormalized)
 }
 
 // Test that float commutative ops normalize correctly
-TEST(ValueKey, CommutativeFAddNormalization)
-{
+TEST(ValueKey, CommutativeFAddNormalization) {
     Instr a = makeFloatArith(Opcode::FAdd, Value::constFloat(1.5), Value::temp(3));
     Instr b = makeFloatArith(Opcode::FAdd, Value::temp(3), Value::constFloat(1.5));
 
@@ -114,8 +107,7 @@ TEST(ValueKey, CommutativeFAddNormalization)
 }
 
 // Test isCommutativeCSE classifications
-TEST(ValueKey, CommutativeClassifications)
-{
+TEST(ValueKey, CommutativeClassifications) {
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::Add));
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::Mul));
     EXPECT_TRUE(il::transform::isCommutativeCSE(Opcode::And));
@@ -135,8 +127,7 @@ TEST(ValueKey, CommutativeClassifications)
 }
 
 // Test isSafeCSEOpcode classifications
-TEST(ValueKey, SafeCSEClassifications)
-{
+TEST(ValueKey, SafeCSEClassifications) {
     EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::Add));
     EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::Sub));
     EXPECT_TRUE(il::transform::isSafeCSEOpcode(Opcode::Mul));
@@ -153,8 +144,7 @@ TEST(ValueKey, SafeCSEClassifications)
 }
 
 // Test that makeValueKey rejects unsafe opcodes
-TEST(ValueKey, RejectsUnsafeOpcodes)
-{
+TEST(ValueKey, RejectsUnsafeOpcodes) {
     // Load is not safe for CSE
     Instr load;
     load.result = 0;
@@ -173,8 +163,7 @@ TEST(ValueKey, RejectsUnsafeOpcodes)
 }
 
 // Test that makeValueKey rejects instructions without results
-TEST(ValueKey, RejectsNoResult)
-{
+TEST(ValueKey, RejectsNoResult) {
     Instr store;
     store.op = Opcode::Store;
     store.type = Type(Type::Kind::Void);
@@ -182,8 +171,7 @@ TEST(ValueKey, RejectsNoResult)
     EXPECT_FALSE(il::transform::makeValueKey(store).has_value());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

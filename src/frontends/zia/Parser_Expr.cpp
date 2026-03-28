@@ -21,42 +21,35 @@
 
 #include "frontends/zia/Parser.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //===----------------------------------------------------------------------===//
 // Expression Parsing
 //===----------------------------------------------------------------------===//
 
-ExprPtr Parser::parseExpression()
-{
+ExprPtr Parser::parseExpression() {
     return parseAssignment();
 }
 
 /// @brief Clone an lvalue expression for compound assignment desugaring.
 /// @details Only handles lvalue forms: IdentExpr, FieldExpr, IndexExpr, SelfExpr.
-static ExprPtr cloneLvalueExpr(Expr *expr)
-{
+static ExprPtr cloneLvalueExpr(Expr *expr) {
     if (!expr)
         return nullptr;
 
-    switch (expr->kind)
-    {
-        case ExprKind::Ident:
-        {
+    switch (expr->kind) {
+        case ExprKind::Ident: {
             auto *id = static_cast<IdentExpr *>(expr);
             return std::make_unique<IdentExpr>(id->loc, id->name);
         }
         case ExprKind::SelfExpr:
             return std::make_unique<SelfExpr>(expr->loc);
-        case ExprKind::Field:
-        {
+        case ExprKind::Field: {
             auto *field = static_cast<FieldExpr *>(expr);
             return std::make_unique<FieldExpr>(
                 field->loc, cloneLvalueExpr(field->base.get()), field->field);
         }
-        case ExprKind::Index:
-        {
+        case ExprKind::Index: {
             auto *idx = static_cast<IndexExpr *>(expr);
             return std::make_unique<IndexExpr>(
                 idx->loc, cloneLvalueExpr(idx->base.get()), cloneLvalueExpr(idx->index.get()));
@@ -64,13 +57,11 @@ static ExprPtr cloneLvalueExpr(Expr *expr)
         default:
             // For other expression types (e.g., int literals used as index),
             // reconstruct as literal if possible
-            if (expr->kind == ExprKind::IntLiteral)
-            {
+            if (expr->kind == ExprKind::IntLiteral) {
                 auto *lit = static_cast<IntLiteralExpr *>(expr);
                 return std::make_unique<IntLiteralExpr>(lit->loc, lit->value);
             }
-            if (expr->kind == ExprKind::StringLiteral)
-            {
+            if (expr->kind == ExprKind::StringLiteral) {
                 auto *lit = static_cast<StringLiteralExpr *>(expr);
                 return std::make_unique<StringLiteralExpr>(lit->loc, lit->value);
             }
@@ -78,15 +69,13 @@ static ExprPtr cloneLvalueExpr(Expr *expr)
     }
 }
 
-ExprPtr Parser::parseAssignment()
-{
+ExprPtr Parser::parseAssignment() {
     ExprPtr expr = parseTernary();
     if (!expr)
         return nullptr;
 
     Token eqTok;
-    if (match(TokenKind::Equal, &eqTok))
-    {
+    if (match(TokenKind::Equal, &eqTok)) {
         SourceLoc loc = eqTok.loc;
         ExprPtr value = parseAssignment(); // right-associative
         if (!value)
@@ -97,10 +86,8 @@ ExprPtr Parser::parseAssignment()
 
     // Compound assignment operators: +=, -=, *=, /=, %=
     // Desugar: a += b  ->  a = a + b
-    auto compoundOp = [&](TokenKind tk) -> BinaryOp
-    {
-        switch (tk)
-        {
+    auto compoundOp = [&](TokenKind tk) -> BinaryOp {
+        switch (tk) {
             case TokenKind::PlusEqual:
                 return BinaryOp::Add;
             case TokenKind::MinusEqual:
@@ -119,15 +106,13 @@ ExprPtr Parser::parseAssignment()
     Token compTok;
     if (match(TokenKind::PlusEqual, &compTok) || match(TokenKind::MinusEqual, &compTok) ||
         match(TokenKind::StarEqual, &compTok) || match(TokenKind::SlashEqual, &compTok) ||
-        match(TokenKind::PercentEqual, &compTok))
-    {
+        match(TokenKind::PercentEqual, &compTok)) {
         SourceLoc loc = compTok.loc;
         BinaryOp op = compoundOp(compTok.kind);
 
         // Clone the LHS for the read side of the compound operation
         ExprPtr lhsClone = cloneLvalueExpr(expr.get());
-        if (!lhsClone)
-        {
+        if (!lhsClone) {
             error("compound assignment target must be an lvalue");
             return nullptr;
         }
@@ -145,15 +130,13 @@ ExprPtr Parser::parseAssignment()
     return expr;
 }
 
-ExprPtr Parser::parseTernary()
-{
+ExprPtr Parser::parseTernary() {
     ExprPtr expr = parseRange();
     if (!expr)
         return nullptr;
 
     Token qTok;
-    if (match(TokenKind::Question, &qTok))
-    {
+    if (match(TokenKind::Question, &qTok)) {
         SourceLoc loc = qTok.loc;
         ExprPtr thenExpr = parseExpression();
         if (!thenExpr)
@@ -173,14 +156,12 @@ ExprPtr Parser::parseTernary()
     return expr;
 }
 
-ExprPtr Parser::parseRange()
-{
+ExprPtr Parser::parseRange() {
     ExprPtr expr = parseCoalesce();
     if (!expr)
         return nullptr;
 
-    while (check(TokenKind::DotDot) || check(TokenKind::DotDotEqual))
-    {
+    while (check(TokenKind::DotDot) || check(TokenKind::DotDotEqual)) {
         Token opTok = advance();
         bool inclusive = opTok.kind == TokenKind::DotDotEqual;
         SourceLoc loc = opTok.loc;
@@ -197,15 +178,13 @@ ExprPtr Parser::parseRange()
 
 /// @brief Parse a null-coalescing expression (a ?? b).
 /// @return The parsed expression, potentially wrapping a CoalesceExpr.
-ExprPtr Parser::parseCoalesce()
-{
+ExprPtr Parser::parseCoalesce() {
     ExprPtr expr = parseLogicalOr();
     if (!expr)
         return nullptr;
 
     Token opTok;
-    while (match(TokenKind::QuestionQuestion, &opTok))
-    {
+    while (match(TokenKind::QuestionQuestion, &opTok)) {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseLogicalOr();
         if (!right)
@@ -217,15 +196,13 @@ ExprPtr Parser::parseCoalesce()
     return expr;
 }
 
-ExprPtr Parser::parseLogicalOr()
-{
+ExprPtr Parser::parseLogicalOr() {
     ExprPtr expr = parseLogicalAnd();
     if (!expr)
         return nullptr;
 
     Token opTok;
-    while (match(TokenKind::PipePipe, &opTok) || match(TokenKind::KwOr, &opTok))
-    {
+    while (match(TokenKind::PipePipe, &opTok) || match(TokenKind::KwOr, &opTok)) {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseLogicalAnd();
         if (!right)
@@ -237,15 +214,13 @@ ExprPtr Parser::parseLogicalOr()
     return expr;
 }
 
-ExprPtr Parser::parseLogicalAnd()
-{
+ExprPtr Parser::parseLogicalAnd() {
     ExprPtr expr = parseBitwiseOr();
     if (!expr)
         return nullptr;
 
     Token opTok;
-    while (match(TokenKind::AmpAmp, &opTok) || match(TokenKind::KwAnd, &opTok))
-    {
+    while (match(TokenKind::AmpAmp, &opTok) || match(TokenKind::KwAnd, &opTok)) {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseBitwiseOr();
         if (!right)
@@ -257,15 +232,13 @@ ExprPtr Parser::parseLogicalAnd()
     return expr;
 }
 
-ExprPtr Parser::parseBitwiseOr()
-{
+ExprPtr Parser::parseBitwiseOr() {
     ExprPtr expr = parseBitwiseXor();
     if (!expr)
         return nullptr;
 
     Token opTok;
-    while (match(TokenKind::Pipe, &opTok))
-    {
+    while (match(TokenKind::Pipe, &opTok)) {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseBitwiseXor();
         if (!right)
@@ -278,15 +251,13 @@ ExprPtr Parser::parseBitwiseOr()
     return expr;
 }
 
-ExprPtr Parser::parseBitwiseXor()
-{
+ExprPtr Parser::parseBitwiseXor() {
     ExprPtr expr = parseBitwiseAnd();
     if (!expr)
         return nullptr;
 
     Token opTok;
-    while (match(TokenKind::Caret, &opTok))
-    {
+    while (match(TokenKind::Caret, &opTok)) {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseBitwiseAnd();
         if (!right)
@@ -299,15 +270,13 @@ ExprPtr Parser::parseBitwiseXor()
     return expr;
 }
 
-ExprPtr Parser::parseBitwiseAnd()
-{
+ExprPtr Parser::parseBitwiseAnd() {
     ExprPtr expr = parseEquality();
     if (!expr)
         return nullptr;
 
     Token opTok;
-    while (match(TokenKind::Ampersand, &opTok))
-    {
+    while (match(TokenKind::Ampersand, &opTok)) {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseEquality();
         if (!right)
@@ -320,14 +289,12 @@ ExprPtr Parser::parseBitwiseAnd()
     return expr;
 }
 
-ExprPtr Parser::parseEquality()
-{
+ExprPtr Parser::parseEquality() {
     ExprPtr expr = parseComparison();
     if (!expr)
         return nullptr;
 
-    while (check(TokenKind::EqualEqual) || check(TokenKind::NotEqual))
-    {
+    while (check(TokenKind::EqualEqual) || check(TokenKind::NotEqual)) {
         Token opTok = advance();
         BinaryOp op = opTok.kind == TokenKind::EqualEqual ? BinaryOp::Eq : BinaryOp::Ne;
         SourceLoc loc = opTok.loc;
@@ -342,19 +309,16 @@ ExprPtr Parser::parseEquality()
     return expr;
 }
 
-ExprPtr Parser::parseComparison()
-{
+ExprPtr Parser::parseComparison() {
     ExprPtr expr = parseAdditive();
     if (!expr)
         return nullptr;
 
     while (check(TokenKind::Less) || check(TokenKind::LessEqual) || check(TokenKind::Greater) ||
-           check(TokenKind::GreaterEqual))
-    {
+           check(TokenKind::GreaterEqual)) {
         Token opTok = advance();
         BinaryOp op;
-        switch (opTok.kind)
-        {
+        switch (opTok.kind) {
             case TokenKind::Less:
                 op = BinaryOp::Lt;
                 break;
@@ -383,14 +347,12 @@ ExprPtr Parser::parseComparison()
     return expr;
 }
 
-ExprPtr Parser::parseAdditive()
-{
+ExprPtr Parser::parseAdditive() {
     ExprPtr expr = parseMultiplicative();
     if (!expr)
         return nullptr;
 
-    while (check(TokenKind::Plus) || check(TokenKind::Minus))
-    {
+    while (check(TokenKind::Plus) || check(TokenKind::Minus)) {
         Token opTok = advance();
         BinaryOp op = opTok.kind == TokenKind::Plus ? BinaryOp::Add : BinaryOp::Sub;
         SourceLoc loc = opTok.loc;
@@ -405,18 +367,15 @@ ExprPtr Parser::parseAdditive()
     return expr;
 }
 
-ExprPtr Parser::parseMultiplicative()
-{
+ExprPtr Parser::parseMultiplicative() {
     ExprPtr expr = parseUnary();
     if (!expr)
         return nullptr;
 
-    while (check(TokenKind::Star) || check(TokenKind::Slash) || check(TokenKind::Percent))
-    {
+    while (check(TokenKind::Star) || check(TokenKind::Slash) || check(TokenKind::Percent)) {
         Token opTok = advance();
         BinaryOp op;
-        switch (opTok.kind)
-        {
+        switch (opTok.kind) {
             case TokenKind::Star:
                 op = BinaryOp::Mul;
                 break;
@@ -442,10 +401,8 @@ ExprPtr Parser::parseMultiplicative()
     return expr;
 }
 
-ExprPtr Parser::parseUnary()
-{
-    if (++exprDepth_ > kMaxExprDepth)
-    {
+ExprPtr Parser::parseUnary() {
+    if (++exprDepth_ > kMaxExprDepth) {
         --exprDepth_;
         error("expression nesting too deep (limit: 256)");
         return nullptr;
@@ -454,13 +411,11 @@ ExprPtr Parser::parseUnary()
     ExprPtr result;
 
     // await expr -- parsed as a unary prefix like ! or -
-    if (check(TokenKind::KwAwait))
-    {
+    if (check(TokenKind::KwAwait)) {
         Token awaitTok = advance();
         SourceLoc loc = awaitTok.loc;
         ExprPtr operand = parseUnary();
-        if (!operand)
-        {
+        if (!operand) {
             --exprDepth_;
             return nullptr;
         }
@@ -469,12 +424,10 @@ ExprPtr Parser::parseUnary()
     }
 
     if (check(TokenKind::Minus) || check(TokenKind::Bang) || check(TokenKind::Tilde) ||
-        check(TokenKind::KwNot) || check(TokenKind::Ampersand))
-    {
+        check(TokenKind::KwNot) || check(TokenKind::Ampersand)) {
         Token opTok = advance();
         UnaryOp op;
-        switch (opTok.kind)
-        {
+        switch (opTok.kind) {
             case TokenKind::Minus:
                 op = UnaryOp::Neg;
                 break;
@@ -498,8 +451,7 @@ ExprPtr Parser::parseUnary()
         // Special case: handle -9223372036854775808 (INT64_MIN)
         // The literal 9223372036854775808 can't be represented as int64_t,
         // but when negated it becomes INT64_MIN which is valid.
-        if (op == UnaryOp::Neg && check(TokenKind::IntegerLiteral) && peek().requiresNegation)
-        {
+        if (op == UnaryOp::Neg && check(TokenKind::IntegerLiteral) && peek().requiresNegation) {
             advance(); // consume the integer literal
             --exprDepth_;
             // Return INT64_MIN directly as an integer literal
@@ -507,16 +459,13 @@ ExprPtr Parser::parseUnary()
         }
 
         ExprPtr operand = parseUnary();
-        if (!operand)
-        {
+        if (!operand) {
             --exprDepth_;
             return nullptr;
         }
 
         result = std::make_unique<UnaryExpr>(loc, op, std::move(operand));
-    }
-    else
-    {
+    } else {
         result = parsePostfix();
     }
 
@@ -524,8 +473,7 @@ ExprPtr Parser::parseUnary()
     return result;
 }
 
-ExprPtr Parser::parsePostfixAndBinaryFrom(ExprPtr startExpr)
-{
+ExprPtr Parser::parsePostfixAndBinaryFrom(ExprPtr startExpr) {
     // Parse postfix operators on the starting expression
     ExprPtr expr = parsePostfixFrom(std::move(startExpr));
     if (!expr)
@@ -539,74 +487,58 @@ ExprPtr Parser::parsePostfixAndBinaryFrom(ExprPtr startExpr)
 ///          begin with an already-parsed primary expression.
 /// @param expr The left-hand expression to extend with binary operators.
 /// @return The extended expression.
-ExprPtr Parser::parseBinaryFrom(ExprPtr expr)
-{
+ExprPtr Parser::parseBinaryFrom(ExprPtr expr) {
     // Parse multiplicative ops
-    while (true)
-    {
+    while (true) {
         Token opTok;
-        if (match(TokenKind::Star, &opTok))
-        {
+        if (match(TokenKind::Star, &opTok)) {
             SourceLoc loc = opTok.loc;
             ExprPtr right = parseUnary();
             if (!right)
                 return nullptr;
             expr =
                 std::make_unique<BinaryExpr>(loc, BinaryOp::Mul, std::move(expr), std::move(right));
-        }
-        else if (match(TokenKind::Slash, &opTok))
-        {
+        } else if (match(TokenKind::Slash, &opTok)) {
             SourceLoc loc = opTok.loc;
             ExprPtr right = parseUnary();
             if (!right)
                 return nullptr;
             expr =
                 std::make_unique<BinaryExpr>(loc, BinaryOp::Div, std::move(expr), std::move(right));
-        }
-        else if (match(TokenKind::Percent, &opTok))
-        {
+        } else if (match(TokenKind::Percent, &opTok)) {
             SourceLoc loc = opTok.loc;
             ExprPtr right = parseUnary();
             if (!right)
                 return nullptr;
             expr =
                 std::make_unique<BinaryExpr>(loc, BinaryOp::Mod, std::move(expr), std::move(right));
-        }
-        else
-        {
+        } else {
             break;
         }
     }
     // Parse additive ops
-    while (true)
-    {
+    while (true) {
         Token opTok;
-        if (match(TokenKind::Plus, &opTok))
-        {
+        if (match(TokenKind::Plus, &opTok)) {
             SourceLoc loc = opTok.loc;
             ExprPtr right = parseMultiplicative();
             if (!right)
                 return nullptr;
             expr =
                 std::make_unique<BinaryExpr>(loc, BinaryOp::Add, std::move(expr), std::move(right));
-        }
-        else if (match(TokenKind::Minus, &opTok))
-        {
+        } else if (match(TokenKind::Minus, &opTok)) {
             SourceLoc loc = opTok.loc;
             ExprPtr right = parseMultiplicative();
             if (!right)
                 return nullptr;
             expr =
                 std::make_unique<BinaryExpr>(loc, BinaryOp::Sub, std::move(expr), std::move(right));
-        }
-        else
-        {
+        } else {
             break;
         }
     }
     // Parse comparison ops
-    while (true)
-    {
+    while (true) {
         BinaryOp op;
         Token opTok;
         if (match(TokenKind::Less, &opTok))
@@ -627,8 +559,7 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr)
         expr = std::make_unique<BinaryExpr>(loc, op, std::move(expr), std::move(right));
     }
     // Parse equality ops
-    while (true)
-    {
+    while (true) {
         BinaryOp op;
         Token opTok;
         if (match(TokenKind::EqualEqual, &opTok))
@@ -646,8 +577,7 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr)
     }
     // Parse logical and
     Token opTok;
-    while (match(TokenKind::AmpAmp, &opTok) || match(TokenKind::KwAnd, &opTok))
-    {
+    while (match(TokenKind::AmpAmp, &opTok) || match(TokenKind::KwAnd, &opTok)) {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseEquality();
         if (!right)
@@ -655,8 +585,7 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr)
         expr = std::make_unique<BinaryExpr>(loc, BinaryOp::And, std::move(expr), std::move(right));
     }
     // Parse logical or
-    while (match(TokenKind::PipePipe, &opTok) || match(TokenKind::KwOr, &opTok))
-    {
+    while (match(TokenKind::PipePipe, &opTok) || match(TokenKind::KwOr, &opTok)) {
         SourceLoc loc = opTok.loc;
         ExprPtr right = parseLogicalAnd();
         if (!right)
@@ -671,13 +600,10 @@ ExprPtr Parser::parseBinaryFrom(ExprPtr expr)
 ///          and try expressions in a loop until no more postfix operators match.
 /// @param expr The base expression to extend.
 /// @return The expression with all postfix operations applied.
-ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
-{
-    while (true)
-    {
+ExprPtr Parser::parsePostfixFrom(ExprPtr expr) {
+    while (true) {
         Token opTok;
-        if (match(TokenKind::LParen, &opTok))
-        {
+        if (match(TokenKind::LParen, &opTok)) {
             // Function call
             SourceLoc loc = opTok.loc;
             std::vector<CallArg> args = parseCallArgs();
@@ -685,9 +611,7 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
                 return nullptr;
 
             expr = std::make_unique<CallExpr>(loc, std::move(expr), std::move(args));
-        }
-        else if (match(TokenKind::LBracket, &opTok))
-        {
+        } else if (match(TokenKind::LBracket, &opTok)) {
             // Index
             SourceLoc loc = opTok.loc;
             ExprPtr index = parseExpression();
@@ -698,38 +622,28 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
                 return nullptr;
 
             expr = std::make_unique<IndexExpr>(loc, std::move(expr), std::move(index));
-        }
-        else if (match(TokenKind::Dot, &opTok))
-        {
+        } else if (match(TokenKind::Dot, &opTok)) {
             // Field access or tuple index
             SourceLoc loc = opTok.loc;
 
             // Check for tuple index access: tuple.0, tuple.1, etc.
-            if (check(TokenKind::IntegerLiteral))
-            {
+            if (check(TokenKind::IntegerLiteral)) {
                 int64_t index = peek().intValue;
                 advance(); // consume integer literal
                 expr = std::make_unique<TupleIndexExpr>(
                     loc, std::move(expr), static_cast<size_t>(index));
-            }
-            else if (checkIdentifierLike())
-            {
+            } else if (checkIdentifierLike()) {
                 std::string field = peek().text;
                 advance(); // consume identifier
                 expr = std::make_unique<FieldExpr>(loc, std::move(expr), std::move(field));
-            }
-            else
-            {
+            } else {
                 error("expected field name after '.'");
                 return nullptr;
             }
-        }
-        else if (match(TokenKind::QuestionDot, &opTok))
-        {
+        } else if (match(TokenKind::QuestionDot, &opTok)) {
             // Optional chain
             SourceLoc loc = opTok.loc;
-            if (!checkIdentifierLike())
-            {
+            if (!checkIdentifierLike()) {
                 error("expected field name after '?.'");
                 return nullptr;
             }
@@ -737,9 +651,7 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
             advance(); // consume identifier
 
             expr = std::make_unique<OptionalChainExpr>(loc, std::move(expr), std::move(field));
-        }
-        else if (match(TokenKind::KwIs, &opTok))
-        {
+        } else if (match(TokenKind::KwIs, &opTok)) {
             // Type check
             SourceLoc loc = opTok.loc;
             TypePtr type = parseType();
@@ -747,9 +659,7 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
                 return nullptr;
 
             expr = std::make_unique<IsExpr>(loc, std::move(expr), std::move(type));
-        }
-        else if (match(TokenKind::KwAs, &opTok))
-        {
+        } else if (match(TokenKind::KwAs, &opTok)) {
             // Type cast
             SourceLoc loc = opTok.loc;
             TypePtr type = parseType();
@@ -757,15 +667,12 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
                 return nullptr;
 
             expr = std::make_unique<AsExpr>(loc, std::move(expr), std::move(type));
-        }
-        else if (check(TokenKind::Question))
-        {
+        } else if (check(TokenKind::Question)) {
             // Try expression: expr? - propagate null/error
             // Note: This is different from optional type T? or ternary a ? b : c
             const Token &next = peek(1);
             bool nextStartsExpr = false;
-            switch (next.kind)
-            {
+            switch (next.kind) {
                 case TokenKind::Identifier:
                 case TokenKind::IntegerLiteral:
                 case TokenKind::NumberLiteral:
@@ -797,16 +704,12 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
             Token qTok = advance();
             SourceLoc loc = qTok.loc;
             expr = std::make_unique<TryExpr>(loc, std::move(expr));
-        }
-        else if (check(TokenKind::Bang))
-        {
+        } else if (check(TokenKind::Bang)) {
             // Force-unwrap: expr! - asserts non-null, traps if null
             Token bangTok = advance();
             SourceLoc loc = bangTok.loc;
             expr = std::make_unique<ForceUnwrapExpr>(loc, std::move(expr));
-        }
-        else
-        {
+        } else {
             break;
         }
     }
@@ -814,8 +717,7 @@ ExprPtr Parser::parsePostfixFrom(ExprPtr expr)
     return expr;
 }
 
-ExprPtr Parser::parsePostfix()
-{
+ExprPtr Parser::parsePostfix() {
     ExprPtr expr = parsePrimary();
     if (!expr)
         return nullptr;

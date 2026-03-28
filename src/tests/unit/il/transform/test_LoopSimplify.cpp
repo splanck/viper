@@ -34,12 +34,9 @@
 
 using namespace il::core;
 
-namespace
-{
-BasicBlock *findBlock(Function &function, const std::string &label)
-{
-    for (auto &block : function.blocks)
-    {
+namespace {
+BasicBlock *findBlock(Function &function, const std::string &label) {
+    for (auto &block : function.blocks) {
         if (block.label == label)
             return &block;
     }
@@ -48,8 +45,7 @@ BasicBlock *findBlock(Function &function, const std::string &label)
 
 } // namespace
 
-int main()
-{
+int main() {
     Module module;
     Function fn;
     fn.name = "loop_preheader";
@@ -130,9 +126,7 @@ int main()
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fnRef)
-        {
+        "dominators", [](Module &mod, Function &fnRef) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fnRef);
         });
@@ -170,8 +164,7 @@ int main()
     assert(preheaderTerm.op == Opcode::Br);
     assert(preheaderTerm.labels.size() == 1);
     assert(preheaderTerm.labels.front() == function.blocks[1].label);
-    if (!preheader->params.empty())
-    {
+    if (!preheader->params.empty()) {
         assert(preheaderTerm.brArgs.size() == 1);
         assert(preheaderTerm.brArgs.front().size() == preheader->params.size());
         const Value &forwardedValue = preheaderTerm.brArgs.front().front();

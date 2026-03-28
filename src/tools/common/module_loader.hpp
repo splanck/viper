@@ -25,12 +25,10 @@
 #include <string>
 #include <string_view>
 
-namespace il::tools::common
-{
+namespace il::tools::common {
 
 /// @brief Result classifications for attempting to load a module from disk.
-enum class LoadStatus
-{
+enum class LoadStatus {
     Success,    ///< Module loaded successfully.
     FileError,  ///< Input file could not be opened.
     ParseError, ///< Parser reported diagnostics.
@@ -38,41 +36,34 @@ enum class LoadStatus
 };
 
 /// @brief Outcome produced by ::loadModuleFromFile describing the failure mode.
-struct LoadResult
-{
+struct LoadResult {
     LoadStatus status = LoadStatus::Success; ///< High-level status of the load.
     std::optional<il::support::Diag> diag{}; ///< Populated when parsing or verification fails.
     std::string path{};                      ///< Path that was loaded (useful for file errors).
 
     /// @brief Convenience for checking success.
-    [[nodiscard]] bool succeeded() const
-    {
+    [[nodiscard]] bool succeeded() const {
         return status == LoadStatus::Success;
     }
 
     /// @brief Check if the failure was due to file I/O.
-    [[nodiscard]] bool isFileError() const
-    {
+    [[nodiscard]] bool isFileError() const {
         return status == LoadStatus::FileError;
     }
 
     /// @brief Check if the failure was due to parsing.
-    [[nodiscard]] bool isParseError() const
-    {
+    [[nodiscard]] bool isParseError() const {
         return status == LoadStatus::ParseError;
     }
 
     /// @brief Check if the failure was due to verification.
-    [[nodiscard]] bool isVerifyError() const
-    {
+    [[nodiscard]] bool isVerifyError() const {
         return status == LoadStatus::VerifyError;
     }
 
     /// @brief Human-readable description of the status category.
-    [[nodiscard]] const char *statusName() const
-    {
-        switch (status)
-        {
+    [[nodiscard]] const char *statusName() const {
+        switch (status) {
             case LoadStatus::Success:
                 return "success";
             case LoadStatus::FileError:

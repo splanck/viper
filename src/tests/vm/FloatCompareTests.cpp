@@ -22,18 +22,15 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 // Helper to convert double to int64_t bit pattern for Value::constInt
-int64_t doubleBits(double d)
-{
+int64_t doubleBits(double d) {
     int64_t bits;
     std::memcpy(&bits, &d, sizeof(bits));
     return bits;
 }
 
-void buildFloatCompareFunction(Module &module, Opcode op, double lhs, double rhs)
-{
+void buildFloatCompareFunction(Module &module, Opcode op, double lhs, double rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I1), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -76,8 +73,7 @@ void buildFloatCompareFunction(Module &module, Opcode op, double lhs, double rhs
     bb.instructions.push_back(ret);
 }
 
-bool runFloatCompare(Opcode op, double lhs, double rhs)
-{
+bool runFloatCompare(Opcode op, double lhs, double rhs) {
     Module module;
     buildFloatCompareFunction(module, op, lhs, rhs);
     viper::tests::VmFixture fixture;
@@ -88,8 +84,7 @@ bool runFloatCompare(Opcode op, double lhs, double rhs)
 
 } // namespace
 
-int main()
-{
+int main() {
     const double nan = std::numeric_limits<double>::quiet_NaN();
     const double inf = std::numeric_limits<double>::infinity();
     const double negInf = -std::numeric_limits<double>::infinity();

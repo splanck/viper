@@ -47,17 +47,14 @@
 using namespace viper::tests;
 using namespace viper::tools::ilc;
 
-namespace
-{
+namespace {
 
 /// @brief Number of property test iterations.
 /// @details Keep low for CI stability; can be increased for local fuzzing.
 constexpr std::size_t kDefaultIterations = 10;
 
-std::size_t iterationsForPropertyTest()
-{
-    if (const char *env = std::getenv("VIPER_DIFF_ITERATIONS"))
-    {
+std::size_t iterationsForPropertyTest() {
+    if (const char *env = std::getenv("VIPER_DIFF_ITERATIONS")) {
         char *end = nullptr;
         const unsigned long v = std::strtoul(env, &end, 10);
         if (end && *end == '\0' && v > 0)
@@ -69,8 +66,7 @@ std::size_t iterationsForPropertyTest()
 /// @brief Get a stable base seed for reproducible tests.
 /// @details Uses a combination of PID and a counter to ensure unique but
 ///          reproducible seeds across test runs in the same process.
-std::uint64_t getStableBaseSeed()
-{
+std::uint64_t getStableBaseSeed() {
     static std::atomic<std::uint64_t> counter{0};
     // Use PID to differentiate between parallel test processes
     // Use counter to differentiate between test cases within a process
@@ -78,18 +74,15 @@ std::uint64_t getStableBaseSeed()
 }
 
 /// @brief Backend type for differential testing.
-enum class Backend
-{
+enum class Backend {
     None,
     AArch64,
     // X86_64, // Future: add x86-64 backend support
 };
 
 /// @brief Get string name for backend.
-const char *backendName(Backend b)
-{
-    switch (b)
-    {
+const char *backendName(Backend b) {
+    switch (b) {
         case Backend::AArch64:
             return "AArch64";
         case Backend::None:
@@ -99,8 +92,7 @@ const char *backendName(Backend b)
 }
 
 /// @brief Check if ARM64 native execution is available on this host.
-bool isArm64HostAvailable()
-{
+bool isArm64HostAvailable() {
 #if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
     return true;
 #else
@@ -109,8 +101,7 @@ bool isArm64HostAvailable()
 }
 
 /// @brief Check if ARM64 should be forced via compile-time or runtime config.
-bool isArm64Forced()
-{
+bool isArm64Forced() {
 #ifdef VIPER_FORCE_ARM64_DIFF_TEST
     return true;
 #else
@@ -125,14 +116,11 @@ bool isArm64Forced()
 ///   2. Runtime VIPER_DIFF_BACKEND=arm64 -> AArch64
 ///   3. Host is ARM64 -> AArch64
 ///   4. Otherwise -> None (tests will be skipped)
-Backend selectBackend()
-{
-    if (isArm64Forced())
-    {
+Backend selectBackend() {
+    if (isArm64Forced()) {
         return Backend::AArch64;
     }
-    if (isArm64HostAvailable())
-    {
+    if (isArm64HostAvailable()) {
         return Backend::AArch64;
     }
     return Backend::None;
@@ -143,10 +131,8 @@ Backend g_selectedBackend = Backend::None;
 bool g_backendLogged = false;
 
 /// @brief Log backend selection (once per test run).
-void logBackendSelection()
-{
-    if (!g_backendLogged)
-    {
+void logBackendSelection() {
+    if (!g_backendLogged) {
         g_selectedBackend = selectBackend();
         std::cerr << "\n"
                   << "=== VM vs Native Differential Test ===" << "\n"
@@ -159,8 +145,7 @@ void logBackendSelection()
 }
 
 /// @brief Create output directory for test artifacts.
-std::filesystem::path ensureOutputDir()
-{
+std::filesystem::path ensureOutputDir() {
     namespace fs = std::filesystem;
     // Use PID to avoid conflicts when tests run in parallel
     const fs::path dir{"build/test-out/diff-property-" + std::to_string(getpid())};
@@ -169,11 +154,9 @@ std::filesystem::path ensureOutputDir()
 }
 
 /// @brief Write IL source to a file.
-void writeILFile(const std::filesystem::path &path, const std::string &source)
-{
+void writeILFile(const std::filesystem::path &path, const std::string &source) {
     std::ofstream ofs(path);
-    if (!ofs)
-    {
+    if (!ofs) {
         throw std::runtime_error("Failed to write IL file: " + path.string());
     }
     ofs << source;
@@ -181,8 +164,7 @@ void writeILFile(const std::filesystem::path &path, const std::string &source)
 
 /// @brief Run IL module on VM and return result.
 /// @return Exit code from VM execution.
-std::int64_t runOnVm(il::core::Module &module)
-{
+std::int64_t runOnVm(il::core::Module &module) {
     VmFixture fixture;
     return fixture.run(module);
 }
@@ -190,8 +172,7 @@ std::int64_t runOnVm(il::core::Module &module)
 /// @brief Run IL via ARM64 native backend and return exit code.
 /// @param ilPath Path to IL source file.
 /// @return Native execution exit code, or -1 on failure.
-int runOnArm64Native(const std::filesystem::path &ilPath)
-{
+int runOnArm64Native(const std::filesystem::path &ilPath) {
 #if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
     const char *argv[] = {ilPath.c_str(), "-run-native"};
     return cmd_codegen_arm64(2, const_cast<char **>(argv));
@@ -202,15 +183,13 @@ int runOnArm64Native(const std::filesystem::path &ilPath)
 }
 
 /// @brief Check if native backend execution is available.
-bool isNativeAvailable()
-{
+bool isNativeAvailable() {
     logBackendSelection();
     return g_selectedBackend != Backend::None;
 }
 
 /// @brief Result of a differential test run.
-struct DiffTestResult
-{
+struct DiffTestResult {
     bool passed = false;
     std::uint64_t seed = 0;
     std::int64_t vmResult = 0;
@@ -223,8 +202,7 @@ struct DiffTestResult
 DiffTestResult runDifferentialTest(ILGenerator &generator,
                                    const ILGeneratorConfig &config,
                                    const std::filesystem::path &outputDir,
-                                   std::size_t iteration)
-{
+                                   std::size_t iteration) {
     DiffTestResult result;
     result.seed = generator.seed();
 
@@ -234,8 +212,7 @@ DiffTestResult runDifferentialTest(ILGenerator &generator,
 
     // Verify generated module
     auto verifyResult = il::verify::Verifier::verify(genResult.module);
-    if (!verifyResult)
-    {
+    if (!verifyResult) {
         std::ostringstream errStream;
         il::support::printDiag(verifyResult.error(), errStream);
         result.errorMessage = "Generated IL failed verification: " + errStream.str() +
@@ -244,30 +221,23 @@ DiffTestResult runDifferentialTest(ILGenerator &generator,
     }
 
     // Run on VM
-    try
-    {
+    try {
         il::core::Module moduleCopy = genResult.module;
         result.vmResult = runOnVm(moduleCopy);
-    }
-    catch (const std::exception &e)
-    {
+    } catch (const std::exception &e) {
         result.errorMessage = "VM execution failed: " + std::string(e.what());
         return result;
     }
 
     // Run on native backend (if available)
-    if (g_selectedBackend == Backend::AArch64)
-    {
+    if (g_selectedBackend == Backend::AArch64) {
         // Write IL to temp file
         const std::filesystem::path ilPath =
             outputDir / ("iter_" + std::to_string(iteration) + "_seed_" +
                          std::to_string(genResult.seed) + ".il");
-        try
-        {
+        try {
             writeILFile(ilPath, genResult.ilSource);
-        }
-        catch (const std::exception &e)
-        {
+        } catch (const std::exception &e) {
             result.errorMessage = "Failed to write IL file: " + std::string(e.what());
             return result;
         }
@@ -279,8 +249,7 @@ DiffTestResult runDifferentialTest(ILGenerator &generator,
         const int vmExitCode = static_cast<int>(result.vmResult) & 0xFF;
         const int nativeExitCode = result.nativeResult & 0xFF;
 
-        if (vmExitCode != nativeExitCode)
-        {
+        if (vmExitCode != nativeExitCode) {
             std::ostringstream oss;
             oss << "Result mismatch!\n"
                 << "  Seed: " << genResult.seed << "\n"
@@ -304,10 +273,8 @@ DiffTestResult runDifferentialTest(ILGenerator &generator,
 
 } // namespace
 
-TEST(DiffVmNativeProperty, ArithmeticOnly)
-{
-    if (!isNativeAvailable())
-    {
+TEST(DiffVmNativeProperty, ArithmeticOnly) {
+    if (!isNativeAvailable()) {
         VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
                         backendName(g_selectedBackend) + ")");
     }
@@ -327,8 +294,7 @@ TEST(DiffVmNativeProperty, ArithmeticOnly)
     const std::uint64_t baseSeed = getStableBaseSeed();
     const std::size_t iterations = iterationsForPropertyTest();
 
-    for (std::size_t i = 0; i < iterations; ++i)
-    {
+    for (std::size_t i = 0; i < iterations; ++i) {
         ILGenerator generator(baseSeed + i);
         DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
 
@@ -338,10 +304,8 @@ TEST(DiffVmNativeProperty, ArithmeticOnly)
     }
 }
 
-TEST(DiffVmNativeProperty, ArithmeticWithComparisons)
-{
-    if (!isNativeAvailable())
-    {
+TEST(DiffVmNativeProperty, ArithmeticWithComparisons) {
+    if (!isNativeAvailable()) {
         VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
                         backendName(g_selectedBackend) + ")");
     }
@@ -361,8 +325,7 @@ TEST(DiffVmNativeProperty, ArithmeticWithComparisons)
     const std::uint64_t baseSeed = getStableBaseSeed();
     const std::size_t iterations = iterationsForPropertyTest();
 
-    for (std::size_t i = 0; i < iterations; ++i)
-    {
+    for (std::size_t i = 0; i < iterations; ++i) {
         ILGenerator generator(baseSeed + i);
         DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
 
@@ -372,10 +335,8 @@ TEST(DiffVmNativeProperty, ArithmeticWithComparisons)
     }
 }
 
-TEST(DiffVmNativeProperty, BitwiseAndShifts)
-{
-    if (!isNativeAvailable())
-    {
+TEST(DiffVmNativeProperty, BitwiseAndShifts) {
+    if (!isNativeAvailable()) {
         VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
                         backendName(g_selectedBackend) + ")");
     }
@@ -395,8 +356,7 @@ TEST(DiffVmNativeProperty, BitwiseAndShifts)
     const std::uint64_t baseSeed = getStableBaseSeed();
     const std::size_t iterations = iterationsForPropertyTest();
 
-    for (std::size_t i = 0; i < iterations; ++i)
-    {
+    for (std::size_t i = 0; i < iterations; ++i) {
         ILGenerator generator(baseSeed + i);
         DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
 
@@ -406,10 +366,8 @@ TEST(DiffVmNativeProperty, BitwiseAndShifts)
     }
 }
 
-TEST(DiffVmNativeProperty, MixedOperations)
-{
-    if (!isNativeAvailable())
-    {
+TEST(DiffVmNativeProperty, MixedOperations) {
+    if (!isNativeAvailable()) {
         VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
                         backendName(g_selectedBackend) + ")");
     }
@@ -429,8 +387,7 @@ TEST(DiffVmNativeProperty, MixedOperations)
     const std::uint64_t baseSeed = getStableBaseSeed();
     const std::size_t iterations = iterationsForPropertyTest();
 
-    for (std::size_t i = 0; i < iterations; ++i)
-    {
+    for (std::size_t i = 0; i < iterations; ++i) {
         ILGenerator generator(baseSeed + i);
         DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
 
@@ -440,10 +397,8 @@ TEST(DiffVmNativeProperty, MixedOperations)
     }
 }
 
-TEST(DiffVmNativeProperty, ControlFlow)
-{
-    if (!isNativeAvailable())
-    {
+TEST(DiffVmNativeProperty, ControlFlow) {
+    if (!isNativeAvailable()) {
         VIPER_TEST_SKIP(std::string("Native execution not available (backend: ") +
                         backendName(g_selectedBackend) + ")");
     }
@@ -463,8 +418,7 @@ TEST(DiffVmNativeProperty, ControlFlow)
     const std::uint64_t baseSeed = getStableBaseSeed();
     const std::size_t iterations = iterationsForPropertyTest();
 
-    for (std::size_t i = 0; i < iterations; ++i)
-    {
+    for (std::size_t i = 0; i < iterations; ++i) {
         ILGenerator generator(baseSeed + i);
         DiffTestResult result = runDifferentialTest(generator, config, outputDir, i);
 
@@ -474,8 +428,7 @@ TEST(DiffVmNativeProperty, ControlFlow)
     }
 }
 
-TEST(DiffVmNativeProperty, ReproducibilityWithSeed)
-{
+TEST(DiffVmNativeProperty, ReproducibilityWithSeed) {
     constexpr std::uint64_t kTestSeed = 12345678;
 
     ILGeneratorConfig config;
@@ -494,8 +447,7 @@ TEST(DiffVmNativeProperty, ReproducibilityWithSeed)
     ASSERT_EQ(result1.ilSource, result2.ilSource);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

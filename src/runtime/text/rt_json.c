@@ -61,8 +61,7 @@
 /* S-16: Maximum nesting depth before aborting (stack overflow / DoS guard) */
 #define JSON_MAX_DEPTH 200
 
-typedef struct
-{
+typedef struct {
     const char *input;
     size_t len;
     size_t pos;
@@ -70,8 +69,7 @@ typedef struct
     int depth_exceeded; // S-16: set when depth limit hit (unwinds without trap)
 } json_parser;
 
-static void parser_init(json_parser *p, const char *input, size_t len)
-{
+static void parser_init(json_parser *p, const char *input, size_t len) {
     p->input = input;
     p->len = len;
     p->pos = 0;
@@ -79,29 +77,24 @@ static void parser_init(json_parser *p, const char *input, size_t len)
     p->depth_exceeded = 0;
 }
 
-static bool parser_eof(json_parser *p)
-{
+static bool parser_eof(json_parser *p) {
     return p->pos >= p->len;
 }
 
-static char parser_peek(json_parser *p)
-{
+static char parser_peek(json_parser *p) {
     if (p->pos >= p->len)
         return '\0';
     return p->input[p->pos];
 }
 
-static char parser_consume(json_parser *p)
-{
+static char parser_consume(json_parser *p) {
     if (p->pos >= p->len)
         return '\0';
     return p->input[p->pos++];
 }
 
-static void parser_skip_whitespace(json_parser *p)
-{
-    while (!parser_eof(p))
-    {
+static void parser_skip_whitespace(json_parser *p) {
+    while (!parser_eof(p)) {
         char c = parser_peek(p);
         if (c == ' ' || c == '\t' || c == '\n' || c == '\r')
             p->pos++;
@@ -110,20 +103,15 @@ static void parser_skip_whitespace(json_parser *p)
     }
 }
 
-static void parser_error(json_parser *p, const char *msg)
-{
+static void parser_error(json_parser *p, const char *msg) {
     // Calculate line and column for error message
     size_t line = 1;
     size_t col = 1;
-    for (size_t i = 0; i < p->pos && i < p->len; i++)
-    {
-        if (p->input[i] == '\n')
-        {
+    for (size_t i = 0; i < p->pos && i < p->len; i++) {
+        if (p->input[i] == '\n') {
             line++;
             col = 1;
-        }
-        else
-        {
+        } else {
             col++;
         }
     }
@@ -144,10 +132,8 @@ static void *parse_value(json_parser *p);
 //=============================================================================
 
 /// @brief Parse a JSON string (starting after the opening quote).
-static rt_string parse_string(json_parser *p)
-{
-    if (parser_consume(p) != '"')
-    {
+static rt_string parse_string(json_parser *p) {
+    if (parser_consume(p) != '"') {
         parser_error(p, "expected string");
         return rt_string_from_bytes("", 0);
     }
@@ -155,18 +141,15 @@ static rt_string parse_string(json_parser *p)
     size_t cap = 64;
     size_t len = 0;
     char *buf = (char *)malloc(cap);
-    if (!buf)
-    {
+    if (!buf) {
         rt_trap("Json.Parse: memory allocation failed");
         return rt_string_from_bytes("", 0);
     }
 
-    while (!parser_eof(p))
-    {
+    while (!parser_eof(p)) {
         char c = parser_consume(p);
 
-        if (c == '"')
-        {
+        if (c == '"') {
             // End of string
             buf[len] = '\0';
             rt_string result = rt_string_from_bytes(buf, len);
@@ -174,11 +157,9 @@ static rt_string parse_string(json_parser *p)
             return result;
         }
 
-        if (c == '\\')
-        {
+        if (c == '\\') {
             // Escape sequence
-            if (parser_eof(p))
-            {
+            if (parser_eof(p)) {
                 free(buf);
                 parser_error(p, "unexpected end of string");
                 return rt_string_from_bytes("", 0);
@@ -186,8 +167,7 @@ static rt_string parse_string(json_parser *p)
 
             char esc = parser_consume(p);
             char decoded;
-            switch (esc)
-            {
+            switch (esc) {
                 case '"':
                     decoded = '"';
                     break;
@@ -212,19 +192,16 @@ static rt_string parse_string(json_parser *p)
                 case 't':
                     decoded = '\t';
                     break;
-                case 'u':
-                {
+                case 'u': {
                     // Unicode escape: \uXXXX
-                    if (p->pos + 4 > p->len)
-                    {
+                    if (p->pos + 4 > p->len) {
                         free(buf);
                         parser_error(p, "incomplete unicode escape");
                         return rt_string_from_bytes("", 0);
                     }
 
                     unsigned int codepoint = 0;
-                    for (int i = 0; i < 4; i++)
-                    {
+                    for (int i = 0; i < 4; i++) {
                         char hex = parser_consume(p);
                         unsigned int digit;
                         if (hex >= '0' && hex <= '9')
@@ -233,8 +210,7 @@ static rt_string parse_string(json_parser *p)
                             digit = 10 + hex - 'a';
                         else if (hex >= 'A' && hex <= 'F')
                             digit = 10 + hex - 'A';
-                        else
-                        {
+                        else {
                             free(buf);
                             parser_error(p, "invalid unicode escape");
                             return rt_string_from_bytes("", 0);
@@ -244,12 +220,10 @@ static rt_string parse_string(json_parser *p)
 
                     // Handle UTF-16 surrogate pairs for codepoints above U+FFFF.
                     // High surrogate (D800-DBFF) must be followed by \uDC00-\uDFFF.
-                    if (codepoint >= 0xD800 && codepoint <= 0xDBFF)
-                    {
+                    if (codepoint >= 0xD800 && codepoint <= 0xDBFF) {
                         // Expect \u followed by low surrogate
                         if (p->pos + 6 > p->len || parser_peek(p) != '\\' ||
-                            p->input[p->pos + 1] != 'u')
-                        {
+                            p->input[p->pos + 1] != 'u') {
                             free(buf);
                             parser_error(p, "missing low surrogate in unicode escape");
                             return rt_string_from_bytes("", 0);
@@ -258,8 +232,7 @@ static rt_string parse_string(json_parser *p)
                         parser_consume(p); // consume 'u'
 
                         unsigned int low = 0;
-                        for (int i = 0; i < 4; i++)
-                        {
+                        for (int i = 0; i < 4; i++) {
                             char hex = parser_consume(p);
                             unsigned int digit;
                             if (hex >= '0' && hex <= '9')
@@ -268,8 +241,7 @@ static rt_string parse_string(json_parser *p)
                                 digit = 10 + hex - 'a';
                             else if (hex >= 'A' && hex <= 'F')
                                 digit = 10 + hex - 'A';
-                            else
-                            {
+                            else {
                                 free(buf);
                                 parser_error(p, "invalid unicode escape");
                                 return rt_string_from_bytes("", 0);
@@ -277,8 +249,7 @@ static rt_string parse_string(json_parser *p)
                             low = (low << 4) | digit;
                         }
 
-                        if (low < 0xDC00 || low > 0xDFFF)
-                        {
+                        if (low < 0xDC00 || low > 0xDFFF) {
                             free(buf);
                             parser_error(p, "invalid low surrogate in unicode escape");
                             return rt_string_from_bytes("", 0);
@@ -286,9 +257,7 @@ static rt_string parse_string(json_parser *p)
 
                         // Combine surrogates: U+10000 + (hi - D800) * 400 + (lo - DC00)
                         codepoint = 0x10000 + ((codepoint - 0xD800) << 10) + (low - 0xDC00);
-                    }
-                    else if (codepoint >= 0xDC00 && codepoint <= 0xDFFF)
-                    {
+                    } else if (codepoint >= 0xDC00 && codepoint <= 0xDFFF) {
                         // Lone low surrogate is invalid
                         free(buf);
                         parser_error(p, "unexpected low surrogate in unicode escape");
@@ -296,29 +265,22 @@ static rt_string parse_string(json_parser *p)
                     }
 
                     // Encode codepoint as UTF-8
-                    if (codepoint < 0x80)
-                    {
-                        if (len + 1 >= cap)
-                        {
+                    if (codepoint < 0x80) {
+                        if (len + 1 >= cap) {
                             cap *= 2;
                             char *tmp = (char *)realloc(buf, cap);
-                            if (!tmp)
-                            {
+                            if (!tmp) {
                                 free(buf);
                                 rt_trap("Json.Parse: memory allocation failed");
                             }
                             buf = tmp;
                         }
                         buf[len++] = (char)codepoint;
-                    }
-                    else if (codepoint < 0x800)
-                    {
-                        if (len + 2 >= cap)
-                        {
+                    } else if (codepoint < 0x800) {
+                        if (len + 2 >= cap) {
                             cap *= 2;
                             char *tmp = (char *)realloc(buf, cap);
-                            if (!tmp)
-                            {
+                            if (!tmp) {
                                 free(buf);
                                 rt_trap("Json.Parse: memory allocation failed");
                             }
@@ -326,15 +288,11 @@ static rt_string parse_string(json_parser *p)
                         }
                         buf[len++] = (char)(0xC0 | (codepoint >> 6));
                         buf[len++] = (char)(0x80 | (codepoint & 0x3F));
-                    }
-                    else if (codepoint < 0x10000)
-                    {
-                        if (len + 3 >= cap)
-                        {
+                    } else if (codepoint < 0x10000) {
+                        if (len + 3 >= cap) {
                             cap *= 2;
                             char *tmp = (char *)realloc(buf, cap);
-                            if (!tmp)
-                            {
+                            if (!tmp) {
                                 free(buf);
                                 rt_trap("Json.Parse: memory allocation failed");
                             }
@@ -343,16 +301,12 @@ static rt_string parse_string(json_parser *p)
                         buf[len++] = (char)(0xE0 | (codepoint >> 12));
                         buf[len++] = (char)(0x80 | ((codepoint >> 6) & 0x3F));
                         buf[len++] = (char)(0x80 | (codepoint & 0x3F));
-                    }
-                    else
-                    {
+                    } else {
                         // 4-byte UTF-8 for supplementary plane (U+10000 to U+10FFFF)
-                        if (len + 4 >= cap)
-                        {
+                        if (len + 4 >= cap) {
                             cap *= 2;
                             char *tmp = (char *)realloc(buf, cap);
-                            if (!tmp)
-                            {
+                            if (!tmp) {
                                 free(buf);
                                 rt_trap("Json.Parse: memory allocation failed");
                             }
@@ -371,35 +325,27 @@ static rt_string parse_string(json_parser *p)
                     return rt_string_from_bytes("", 0);
             }
 
-            if (len + 1 >= cap)
-            {
+            if (len + 1 >= cap) {
                 cap *= 2;
                 char *tmp = (char *)realloc(buf, cap);
-                if (!tmp)
-                {
+                if (!tmp) {
                     free(buf);
                     rt_trap("Json.Parse: memory allocation failed");
                 }
                 buf = tmp;
             }
             buf[len++] = decoded;
-        }
-        else if ((unsigned char)c < 0x20)
-        {
+        } else if ((unsigned char)c < 0x20) {
             // Control characters not allowed in strings
             free(buf);
             parser_error(p, "control character in string");
             return rt_string_from_bytes("", 0);
-        }
-        else
-        {
+        } else {
             // Regular character
-            if (len + 1 >= cap)
-            {
+            if (len + 1 >= cap) {
                 cap *= 2;
                 char *tmp = (char *)realloc(buf, cap);
-                if (!tmp)
-                {
+                if (!tmp) {
                     free(buf);
                     rt_trap("Json.Parse: memory allocation failed");
                 }
@@ -418,8 +364,7 @@ static rt_string parse_string(json_parser *p)
 // Number Parsing
 //=============================================================================
 
-static void *parse_number(json_parser *p)
-{
+static void *parse_number(json_parser *p) {
     size_t start = p->pos;
 
     // Optional minus sign
@@ -427,27 +372,20 @@ static void *parse_number(json_parser *p)
         parser_consume(p);
 
     // Integer part
-    if (parser_peek(p) == '0')
-    {
+    if (parser_peek(p) == '0') {
         parser_consume(p);
-    }
-    else if (parser_peek(p) >= '1' && parser_peek(p) <= '9')
-    {
+    } else if (parser_peek(p) >= '1' && parser_peek(p) <= '9') {
         while (parser_peek(p) >= '0' && parser_peek(p) <= '9')
             parser_consume(p);
-    }
-    else
-    {
+    } else {
         parser_error(p, "invalid number");
         return rt_box_f64(0.0);
     }
 
     // Fractional part
-    if (parser_peek(p) == '.')
-    {
+    if (parser_peek(p) == '.') {
         parser_consume(p);
-        if (parser_peek(p) < '0' || parser_peek(p) > '9')
-        {
+        if (parser_peek(p) < '0' || parser_peek(p) > '9') {
             parser_error(p, "invalid number: expected digit after decimal point");
             return rt_box_f64(0.0);
         }
@@ -456,13 +394,11 @@ static void *parse_number(json_parser *p)
     }
 
     // Exponent part
-    if (parser_peek(p) == 'e' || parser_peek(p) == 'E')
-    {
+    if (parser_peek(p) == 'e' || parser_peek(p) == 'E') {
         parser_consume(p);
         if (parser_peek(p) == '+' || parser_peek(p) == '-')
             parser_consume(p);
-        if (parser_peek(p) < '0' || parser_peek(p) > '9')
-        {
+        if (parser_peek(p) < '0' || parser_peek(p) > '9') {
             parser_error(p, "invalid number: expected digit in exponent");
             return rt_box_f64(0.0);
         }
@@ -473,8 +409,7 @@ static void *parse_number(json_parser *p)
     // Extract the number string and parse it
     size_t num_len = p->pos - start;
     char *num_str = (char *)malloc(num_len + 1);
-    if (!num_str)
-    {
+    if (!num_str) {
         rt_trap("Json.Parse: memory allocation failed");
         return rt_box_f64(0.0);
     }
@@ -491,18 +426,15 @@ static void *parse_number(json_parser *p)
 // Array Parsing
 //=============================================================================
 
-static void *parse_array(json_parser *p)
-{
+static void *parse_array(json_parser *p) {
     /* S-16: Reject deeply nested documents */
-    if (p->depth >= JSON_MAX_DEPTH)
-    {
+    if (p->depth >= JSON_MAX_DEPTH) {
         p->depth_exceeded = 1;
         return NULL;
     }
     p->depth++;
 
-    if (parser_consume(p) != '[')
-    {
+    if (parser_consume(p) != '[') {
         p->depth--;
         parser_error(p, "expected array");
         return rt_seq_new();
@@ -512,16 +444,14 @@ static void *parse_array(json_parser *p)
     parser_skip_whitespace(p);
 
     // Empty array
-    if (parser_peek(p) == ']')
-    {
+    if (parser_peek(p) == ']') {
         parser_consume(p);
         p->depth--;
         return seq;
     }
 
     // Parse elements
-    while (true)
-    {
+    while (true) {
         parser_skip_whitespace(p);
         void *value = parse_value(p);
         /* S-16: depth limit hit inside nested value — bail out cleanly */
@@ -532,17 +462,12 @@ static void *parse_array(json_parser *p)
         parser_skip_whitespace(p);
         char c = parser_peek(p);
 
-        if (c == ']')
-        {
+        if (c == ']') {
             parser_consume(p);
             break;
-        }
-        else if (c == ',')
-        {
+        } else if (c == ',') {
             parser_consume(p);
-        }
-        else
-        {
+        } else {
             parser_error(p, "expected ',' or ']' in array");
             p->depth--;
             return seq;
@@ -557,18 +482,15 @@ static void *parse_array(json_parser *p)
 // Object Parsing
 //=============================================================================
 
-static void *parse_object(json_parser *p)
-{
+static void *parse_object(json_parser *p) {
     /* S-16: Reject deeply nested documents */
-    if (p->depth >= JSON_MAX_DEPTH)
-    {
+    if (p->depth >= JSON_MAX_DEPTH) {
         p->depth_exceeded = 1;
         return NULL;
     }
     p->depth++;
 
-    if (parser_consume(p) != '{')
-    {
+    if (parser_consume(p) != '{') {
         p->depth--;
         parser_error(p, "expected object");
         return rt_map_new();
@@ -578,19 +500,16 @@ static void *parse_object(json_parser *p)
     parser_skip_whitespace(p);
 
     // Empty object
-    if (parser_peek(p) == '}')
-    {
+    if (parser_peek(p) == '}') {
         parser_consume(p);
         return map;
     }
 
     // Parse key-value pairs
-    while (true)
-    {
+    while (true) {
         parser_skip_whitespace(p);
 
-        if (parser_peek(p) != '"')
-        {
+        if (parser_peek(p) != '"') {
             parser_error(p, "expected string key in object");
             return map;
         }
@@ -598,8 +517,7 @@ static void *parse_object(json_parser *p)
         rt_string key = parse_string(p);
         parser_skip_whitespace(p);
 
-        if (parser_consume(p) != ':')
-        {
+        if (parser_consume(p) != ':') {
             rt_str_release_maybe(key);
             parser_error(p, "expected ':' after key in object");
             return map;
@@ -608,8 +526,7 @@ static void *parse_object(json_parser *p)
         parser_skip_whitespace(p);
         void *value = parse_value(p);
         /* S-16: depth limit hit inside nested value — bail out cleanly */
-        if (p->depth_exceeded)
-        {
+        if (p->depth_exceeded) {
             rt_str_release_maybe(key);
             return map;
         }
@@ -620,17 +537,12 @@ static void *parse_object(json_parser *p)
         parser_skip_whitespace(p);
         char c = parser_peek(p);
 
-        if (c == '}')
-        {
+        if (c == '}') {
             parser_consume(p);
             break;
-        }
-        else if (c == ',')
-        {
+        } else if (c == ',') {
             parser_consume(p);
-        }
-        else
-        {
+        } else {
             parser_error(p, "expected ',' or '}' in object");
             p->depth--;
             return map;
@@ -645,16 +557,14 @@ static void *parse_object(json_parser *p)
 // Value Parsing
 //=============================================================================
 
-static void *parse_value(json_parser *p)
-{
+static void *parse_value(json_parser *p) {
     /* S-16: Propagate depth-exceeded without trapping */
     if (p->depth_exceeded)
         return NULL;
 
     parser_skip_whitespace(p);
 
-    if (parser_eof(p))
-    {
+    if (parser_eof(p)) {
         parser_error(p, "unexpected end of input");
         return NULL;
     }
@@ -662,46 +572,39 @@ static void *parse_value(json_parser *p)
     char c = parser_peek(p);
 
     // String
-    if (c == '"')
-    {
+    if (c == '"') {
         return (void *)parse_string(p);
     }
 
     // Number
-    if (c == '-' || (c >= '0' && c <= '9'))
-    {
+    if (c == '-' || (c >= '0' && c <= '9')) {
         return parse_number(p);
     }
 
     // Array
-    if (c == '[')
-    {
+    if (c == '[') {
         return parse_array(p);
     }
 
     // Object
-    if (c == '{')
-    {
+    if (c == '{') {
         return parse_object(p);
     }
 
     // true
-    if (p->pos + 4 <= p->len && strncmp(p->input + p->pos, "true", 4) == 0)
-    {
+    if (p->pos + 4 <= p->len && strncmp(p->input + p->pos, "true", 4) == 0) {
         p->pos += 4;
         return rt_box_i1(1);
     }
 
     // false
-    if (p->pos + 5 <= p->len && strncmp(p->input + p->pos, "false", 5) == 0)
-    {
+    if (p->pos + 5 <= p->len && strncmp(p->input + p->pos, "false", 5) == 0) {
         p->pos += 5;
         return rt_box_i1(0);
     }
 
     // null
-    if (p->pos + 4 <= p->len && strncmp(p->input + p->pos, "null", 4) == 0)
-    {
+    if (p->pos + 4 <= p->len && strncmp(p->input + p->pos, "null", 4) == 0) {
         p->pos += 4;
         // Return NULL for JSON null
         return NULL;
@@ -715,15 +618,13 @@ static void *parse_value(json_parser *p)
 // String Formatting Helpers
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     char *buf;
     size_t len;
     size_t cap;
 } string_builder;
 
-static void sb_init(string_builder *sb)
-{
+static void sb_init(string_builder *sb) {
     sb->cap = 256;
     sb->len = 0;
     sb->buf = (char *)malloc(sb->cap);
@@ -732,8 +633,7 @@ static void sb_init(string_builder *sb)
     sb->buf[0] = '\0';
 }
 
-static void sb_grow(string_builder *sb, size_t needed)
-{
+static void sb_grow(string_builder *sb, size_t needed) {
     if (sb->len + needed < sb->cap)
         return;
 
@@ -741,16 +641,14 @@ static void sb_grow(string_builder *sb, size_t needed)
         sb->cap *= 2;
 
     char *tmp = (char *)realloc(sb->buf, sb->cap);
-    if (!tmp)
-    {
+    if (!tmp) {
         free(sb->buf);
         rt_trap("Json.Format: memory allocation failed");
     }
     sb->buf = tmp;
 }
 
-static void sb_append(string_builder *sb, const char *s)
-{
+static void sb_append(string_builder *sb, const char *s) {
     size_t slen = strlen(s);
     sb_grow(sb, slen + 1);
     memcpy(sb->buf + sb->len, s, slen);
@@ -758,15 +656,13 @@ static void sb_append(string_builder *sb, const char *s)
     sb->buf[sb->len] = '\0';
 }
 
-static void sb_append_char(string_builder *sb, char c)
-{
+static void sb_append_char(string_builder *sb, char c) {
     sb_grow(sb, 2);
     sb->buf[sb->len++] = c;
     sb->buf[sb->len] = '\0';
 }
 
-static void sb_append_indent(string_builder *sb, int64_t indent, int64_t level)
-{
+static void sb_append_indent(string_builder *sb, int64_t indent, int64_t level) {
     if (indent <= 0)
         return;
 
@@ -777,8 +673,7 @@ static void sb_append_indent(string_builder *sb, int64_t indent, int64_t level)
     sb->buf[sb->len] = '\0';
 }
 
-static rt_string sb_finish(string_builder *sb)
-{
+static rt_string sb_finish(string_builder *sb) {
     rt_string result = rt_string_from_bytes(sb->buf, sb->len);
     free(sb->buf);
     return result;
@@ -788,24 +683,20 @@ static rt_string sb_finish(string_builder *sb)
 // JSON String Escaping
 //=============================================================================
 
-static void format_string(string_builder *sb, rt_string s)
-{
+static void format_string(string_builder *sb, rt_string s) {
     sb_append_char(sb, '"');
 
     const char *str = rt_string_cstr(s);
-    if (!str)
-    {
+    if (!str) {
         sb_append_char(sb, '"');
         return;
     }
 
     size_t len = strlen(str);
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         unsigned char c = (unsigned char)str[i];
 
-        switch (c)
-        {
+        switch (c) {
             case '"':
                 sb_append(sb, "\\\"");
                 break;
@@ -828,15 +719,12 @@ static void format_string(string_builder *sb, rt_string s)
                 sb_append(sb, "\\t");
                 break;
             default:
-                if (c < 0x20)
-                {
+                if (c < 0x20) {
                     // Escape control characters as \uXXXX
                     char esc[8];
                     snprintf(esc, sizeof(esc), "\\u%04x", c);
                     sb_append(sb, esc);
-                }
-                else
-                {
+                } else {
                     sb_append_char(sb, (char)c);
                 }
                 break;
@@ -852,12 +740,10 @@ static void format_string(string_builder *sb, rt_string s)
 
 static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t level);
 
-static void format_array(string_builder *sb, void *seq, int64_t indent, int64_t level)
-{
+static void format_array(string_builder *sb, void *seq, int64_t indent, int64_t level) {
     int64_t len = rt_seq_len(seq);
 
-    if (len == 0)
-    {
+    if (len == 0) {
         sb_append(sb, "[]");
         return;
     }
@@ -866,8 +752,7 @@ static void format_array(string_builder *sb, void *seq, int64_t indent, int64_t 
     if (indent > 0)
         sb_append_char(sb, '\n');
 
-    for (int64_t i = 0; i < len; i++)
-    {
+    for (int64_t i = 0; i < len; i++) {
         if (indent > 0)
             sb_append_indent(sb, indent, level + 1);
 
@@ -885,12 +770,10 @@ static void format_array(string_builder *sb, void *seq, int64_t indent, int64_t 
     sb_append_char(sb, ']');
 }
 
-static void format_object(string_builder *sb, void *map, int64_t indent, int64_t level)
-{
+static void format_object(string_builder *sb, void *map, int64_t indent, int64_t level) {
     int64_t len = rt_map_len(map);
 
-    if (len == 0)
-    {
+    if (len == 0) {
         sb_append(sb, "{}");
         return;
     }
@@ -902,8 +785,7 @@ static void format_object(string_builder *sb, void *map, int64_t indent, int64_t
     void *keys = rt_map_keys(map);
     int64_t keys_len = rt_seq_len(keys);
 
-    for (int64_t i = 0; i < keys_len; i++)
-    {
+    for (int64_t i = 0; i < keys_len; i++) {
         if (indent > 0)
             sb_append_indent(sb, indent, level + 1);
 
@@ -928,18 +810,15 @@ static void format_object(string_builder *sb, void *map, int64_t indent, int64_t
     sb_append_char(sb, '}');
 }
 
-static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t level)
-{
+static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t level) {
     // null
-    if (!obj)
-    {
+    if (!obj) {
         sb_append(sb, "null");
         return;
     }
 
     // Check if it's a string handle (most common case for strings)
-    if (rt_string_is_handle(obj))
-    {
+    if (rt_string_is_handle(obj)) {
         format_string(sb, (rt_string)obj);
         return;
     }
@@ -949,17 +828,14 @@ static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t 
     // RT_MAP_CLASS_ID (3), and boxed primitives have class_id 0.
 
     rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
-    if (hdr && hdr->magic == RT_MAGIC)
-    {
+    if (hdr && hdr->magic == RT_MAGIC) {
         // Check collection types by class_id first
-        if (hdr->class_id == RT_SEQ_CLASS_ID)
-        {
+        if (hdr->class_id == RT_SEQ_CLASS_ID) {
             format_array(sb, obj, indent, level);
             return;
         }
 
-        if (hdr->class_id == RT_MAP_CLASS_ID)
-        {
+        if (hdr->class_id == RT_MAP_CLASS_ID) {
             format_object(sb, obj, indent, level);
             return;
         }
@@ -967,8 +843,7 @@ static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t 
         // Box (class_id == 0) - check its type tag
         int64_t box_type = rt_box_type(obj);
 
-        if (box_type == RT_BOX_I64)
-        {
+        if (box_type == RT_BOX_I64) {
             int64_t val = rt_unbox_i64(obj);
             char buf[32];
             snprintf(buf, sizeof(buf), "%lld", (long long)val);
@@ -976,16 +851,13 @@ static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t 
             return;
         }
 
-        if (box_type == RT_BOX_F64)
-        {
+        if (box_type == RT_BOX_F64) {
             double val = rt_unbox_f64(obj);
-            if (isnan(val))
-            {
+            if (isnan(val)) {
                 sb_append(sb, "null");
                 return;
             }
-            if (isinf(val))
-            {
+            if (isinf(val)) {
                 sb_append(sb, "null");
                 return;
             }
@@ -995,15 +867,13 @@ static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t 
             return;
         }
 
-        if (box_type == RT_BOX_I1)
-        {
+        if (box_type == RT_BOX_I1) {
             int8_t val = (int8_t)rt_unbox_i1(obj);
             sb_append(sb, val ? "true" : "false");
             return;
         }
 
-        if (box_type == RT_BOX_STR)
-        {
+        if (box_type == RT_BOX_STR) {
             rt_string str = rt_unbox_str(obj);
             format_string(sb, str);
             return;
@@ -1052,15 +922,13 @@ static void format_value(string_builder *sb, void *obj, int64_t indent, int64_t 
 /// @see rt_json_parse_object For parsing specifically as object
 /// @see rt_json_parse_array For parsing specifically as array
 /// @see rt_json_format For the inverse operation
-void *rt_json_parse(rt_string text)
-{
+void *rt_json_parse(rt_string text) {
     const char *input = rt_string_cstr(text);
     if (!input)
         return NULL;
 
     size_t len = strlen(input);
-    if (len == 0)
-    {
+    if (len == 0) {
         rt_trap("Json.Parse: empty input");
         return NULL;
     }
@@ -1076,8 +944,7 @@ void *rt_json_parse(rt_string text)
 
     // Check for trailing content
     parser_skip_whitespace(&p);
-    if (!parser_eof(&p))
-    {
+    if (!parser_eof(&p)) {
         parser_error(&p, "unexpected content after JSON value");
     }
 
@@ -1103,18 +970,15 @@ void *rt_json_parse(rt_string text)
 ///
 /// @see rt_json_parse For parsing any JSON value
 /// @see rt_json_parse_array For parsing specifically as array
-void *rt_json_parse_object(rt_string text)
-{
+void *rt_json_parse_object(rt_string text) {
     const char *input = rt_string_cstr(text);
-    if (!input)
-    {
+    if (!input) {
         rt_trap("Json.ParseObject: null input");
         return rt_map_new();
     }
 
     size_t len = strlen(input);
-    if (len == 0)
-    {
+    if (len == 0) {
         rt_trap("Json.ParseObject: empty input");
         return rt_map_new();
     }
@@ -1123,8 +987,7 @@ void *rt_json_parse_object(rt_string text)
     parser_init(&p, input, len);
     parser_skip_whitespace(&p);
 
-    if (parser_peek(&p) != '{')
-    {
+    if (parser_peek(&p) != '{') {
         rt_trap("Json.ParseObject: expected object at root");
         return rt_map_new();
     }
@@ -1132,8 +995,7 @@ void *rt_json_parse_object(rt_string text)
     void *result = parse_object(&p);
 
     parser_skip_whitespace(&p);
-    if (!parser_eof(&p))
-    {
+    if (!parser_eof(&p)) {
         parser_error(&p, "unexpected content after JSON object");
     }
 
@@ -1160,18 +1022,15 @@ void *rt_json_parse_object(rt_string text)
 ///
 /// @see rt_json_parse For parsing any JSON value
 /// @see rt_json_parse_object For parsing specifically as object
-void *rt_json_parse_array(rt_string text)
-{
+void *rt_json_parse_array(rt_string text) {
     const char *input = rt_string_cstr(text);
-    if (!input)
-    {
+    if (!input) {
         rt_trap("Json.ParseArray: null input");
         return rt_seq_new();
     }
 
     size_t len = strlen(input);
-    if (len == 0)
-    {
+    if (len == 0) {
         rt_trap("Json.ParseArray: empty input");
         return rt_seq_new();
     }
@@ -1180,8 +1039,7 @@ void *rt_json_parse_array(rt_string text)
     parser_init(&p, input, len);
     parser_skip_whitespace(&p);
 
-    if (parser_peek(&p) != '[')
-    {
+    if (parser_peek(&p) != '[') {
         rt_trap("Json.ParseArray: expected array at root");
         return rt_seq_new();
     }
@@ -1189,8 +1047,7 @@ void *rt_json_parse_array(rt_string text)
     void *result = parse_array(&p);
 
     parser_skip_whitespace(&p);
-    if (!parser_eof(&p))
-    {
+    if (!parser_eof(&p)) {
         parser_error(&p, "unexpected content after JSON array");
     }
 
@@ -1228,8 +1085,7 @@ void *rt_json_parse_array(rt_string text)
 ///
 /// @see rt_json_format_pretty For human-readable output
 /// @see rt_json_parse For the inverse operation
-rt_string rt_json_format(void *obj)
-{
+rt_string rt_json_format(void *obj) {
     string_builder sb;
     sb_init(&sb);
     format_value(&sb, obj, 0, 0);
@@ -1270,8 +1126,7 @@ rt_string rt_json_format(void *obj)
 /// @note If indent <= 0, behaves like rt_json_format (compact output).
 ///
 /// @see rt_json_format For compact output
-rt_string rt_json_format_pretty(void *obj, int64_t indent)
-{
+rt_string rt_json_format_pretty(void *obj, int64_t indent) {
     if (indent <= 0)
         return rt_json_format(obj);
 
@@ -1303,25 +1158,21 @@ rt_string rt_json_format_pretty(void *obj, int64_t indent)
 /// @see rt_json_parse For parsing with full result
 /// Non-trapping JSON validator — returns 1 if the cursor was advanced past
 /// a valid JSON value, 0 on any syntax error.
-static int validate_value(json_parser *p)
-{
+static int validate_value(json_parser *p) {
     parser_skip_whitespace(p);
     if (parser_eof(p))
         return 0;
 
     char c = parser_peek(p);
 
-    if (c == '"')
-    {
+    if (c == '"') {
         // String: consume opening quote, scan to closing quote handling escapes
         parser_consume(p);
-        while (!parser_eof(p))
-        {
+        while (!parser_eof(p)) {
             char ch = parser_consume(p);
             if (ch == '"')
                 return 1;
-            if (ch == '\\')
-            {
+            if (ch == '\\') {
                 if (parser_eof(p))
                     return 0;
                 parser_consume(p); // skip escaped char
@@ -1330,8 +1181,7 @@ static int validate_value(json_parser *p)
         return 0; // unterminated string
     }
 
-    if (c == '-' || (c >= '0' && c <= '9'))
-    {
+    if (c == '-' || (c >= '0' && c <= '9')) {
         // Number
         if (c == '-')
             parser_consume(p);
@@ -1342,16 +1192,14 @@ static int validate_value(json_parser *p)
             return 0;
         while (!parser_eof(p) && parser_peek(p) >= '0' && parser_peek(p) <= '9')
             parser_consume(p);
-        if (!parser_eof(p) && parser_peek(p) == '.')
-        {
+        if (!parser_eof(p) && parser_peek(p) == '.') {
             parser_consume(p);
             if (parser_eof(p) || !(parser_peek(p) >= '0' && parser_peek(p) <= '9'))
                 return 0;
             while (!parser_eof(p) && parser_peek(p) >= '0' && parser_peek(p) <= '9')
                 parser_consume(p);
         }
-        if (!parser_eof(p) && (parser_peek(p) == 'e' || parser_peek(p) == 'E'))
-        {
+        if (!parser_eof(p) && (parser_peek(p) == 'e' || parser_peek(p) == 'E')) {
             parser_consume(p);
             if (!parser_eof(p) && (parser_peek(p) == '+' || parser_peek(p) == '-'))
                 parser_consume(p);
@@ -1363,17 +1211,14 @@ static int validate_value(json_parser *p)
         return 1;
     }
 
-    if (c == '{')
-    {
+    if (c == '{') {
         parser_consume(p);
         parser_skip_whitespace(p);
-        if (!parser_eof(p) && parser_peek(p) == '}')
-        {
+        if (!parser_eof(p) && parser_peek(p) == '}') {
             parser_consume(p);
             return 1;
         }
-        for (;;)
-        {
+        for (;;) {
             parser_skip_whitespace(p);
             if (parser_eof(p) || parser_peek(p) != '"')
                 return 0;
@@ -1395,17 +1240,14 @@ static int validate_value(json_parser *p)
         }
     }
 
-    if (c == '[')
-    {
+    if (c == '[') {
         parser_consume(p);
         parser_skip_whitespace(p);
-        if (!parser_eof(p) && parser_peek(p) == ']')
-        {
+        if (!parser_eof(p) && parser_peek(p) == ']') {
             parser_consume(p);
             return 1;
         }
-        for (;;)
-        {
+        for (;;) {
             if (!validate_value(p))
                 return 0;
             parser_skip_whitespace(p);
@@ -1420,28 +1262,22 @@ static int validate_value(json_parser *p)
     }
 
     // Keywords: true, false, null
-    if (c == 't')
-    {
-        if (p->pos + 4 <= p->len && strncmp(p->input + p->pos, "true", 4) == 0)
-        {
+    if (c == 't') {
+        if (p->pos + 4 <= p->len && strncmp(p->input + p->pos, "true", 4) == 0) {
             p->pos += 4;
             return 1;
         }
         return 0;
     }
-    if (c == 'f')
-    {
-        if (p->pos + 5 <= p->len && strncmp(p->input + p->pos, "false", 5) == 0)
-        {
+    if (c == 'f') {
+        if (p->pos + 5 <= p->len && strncmp(p->input + p->pos, "false", 5) == 0) {
             p->pos += 5;
             return 1;
         }
         return 0;
     }
-    if (c == 'n')
-    {
-        if (p->pos + 4 <= p->len && strncmp(p->input + p->pos, "null", 4) == 0)
-        {
+    if (c == 'n') {
+        if (p->pos + 4 <= p->len && strncmp(p->input + p->pos, "null", 4) == 0) {
             p->pos += 4;
             return 1;
         }
@@ -1451,8 +1287,7 @@ static int validate_value(json_parser *p)
     return 0;
 }
 
-int8_t rt_json_is_valid(rt_string text)
-{
+int8_t rt_json_is_valid(rt_string text) {
     const char *input = rt_string_cstr(text);
     if (!input || strlen(input) == 0)
         return 0;
@@ -1493,8 +1328,7 @@ int8_t rt_json_is_valid(rt_string text)
 /// @param obj The parsed JSON value.
 ///
 /// @return String describing the type.
-rt_string rt_json_type_of(void *obj)
-{
+rt_string rt_json_type_of(void *obj) {
     if (!obj)
         return rt_string_from_bytes("null", 4);
 
@@ -1503,8 +1337,7 @@ rt_string rt_json_type_of(void *obj)
 
     // Use class_id to distinguish between collections and boxes
     rt_heap_hdr_t *hdr = rt_heap_hdr(obj);
-    if (hdr && hdr->magic == RT_MAGIC)
-    {
+    if (hdr && hdr->magic == RT_MAGIC) {
         if (hdr->class_id == RT_SEQ_CLASS_ID)
             return rt_string_from_bytes("array", 5);
 

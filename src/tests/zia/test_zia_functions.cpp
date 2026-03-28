@@ -18,16 +18,14 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 //===----------------------------------------------------------------------===//
 // Basic Functions
 //===----------------------------------------------------------------------===//
 
 /// @brief Test function with no parameters and no return.
-TEST(ZiaFunctions, VoidNoParams)
-{
+TEST(ZiaFunctions, VoidNoParams) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -49,8 +47,7 @@ func start() {
 }
 
 /// @brief Test function with parameters.
-TEST(ZiaFunctions, WithParameters)
-{
+TEST(ZiaFunctions, WithParameters) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -77,8 +74,7 @@ func start() {
 }
 
 /// @brief Test function with return value (arrow syntax).
-TEST(ZiaFunctions, ReturnValueArrow)
-{
+TEST(ZiaFunctions, ReturnValueArrow) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -114,8 +110,7 @@ func start() {
 }
 
 /// @brief Test function with return value (colon syntax).
-TEST(ZiaFunctions, ReturnValueColon)
-{
+TEST(ZiaFunctions, ReturnValueColon) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -149,8 +144,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test Swift-style parameters (name: Type).
-TEST(ZiaFunctions, SwiftStyleParams)
-{
+TEST(ZiaFunctions, SwiftStyleParams) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -173,8 +167,7 @@ func start() {
 }
 
 /// @brief Test Java-style parameters (Type name).
-TEST(ZiaFunctions, JavaStyleParams)
-{
+TEST(ZiaFunctions, JavaStyleParams) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -201,8 +194,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test recursive function (factorial).
-TEST(ZiaFunctions, Recursion)
-{
+TEST(ZiaFunctions, Recursion) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -227,8 +219,7 @@ func start() {
 }
 
 /// @brief Test mutual recursion.
-TEST(ZiaFunctions, MutualRecursion)
-{
+TEST(ZiaFunctions, MutualRecursion) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -265,8 +256,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test early return.
-TEST(ZiaFunctions, EarlyReturn)
-{
+TEST(ZiaFunctions, EarlyReturn) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -297,8 +287,7 @@ func start() {
 }
 
 /// @brief Test conditional return.
-TEST(ZiaFunctions, ConditionalReturn)
-{
+TEST(ZiaFunctions, ConditionalReturn) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -334,8 +323,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test function taking list parameter.
-TEST(ZiaFunctions, ListParameter)
-{
+TEST(ZiaFunctions, ListParameter) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -363,8 +351,7 @@ func start() {
 }
 
 /// @brief Test function returning list.
-TEST(ZiaFunctions, ListReturn)
-{
+TEST(ZiaFunctions, ListReturn) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -397,8 +384,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test function returning optional.
-TEST(ZiaFunctions, OptionalReturn)
-{
+TEST(ZiaFunctions, OptionalReturn) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -434,8 +420,7 @@ func start() {
 }
 
 /// @brief Test function with optional parameter.
-TEST(ZiaFunctions, OptionalParameter)
-{
+TEST(ZiaFunctions, OptionalParameter) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -466,8 +451,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test function that could take callbacks (simplified without lambda syntax).
-TEST(ZiaFunctions, CallbackPattern)
-{
+TEST(ZiaFunctions, CallbackPattern) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -498,7 +482,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

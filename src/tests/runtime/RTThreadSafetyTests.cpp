@@ -30,8 +30,7 @@
 #include <thread>
 #include <vector>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -39,8 +38,7 @@ extern "C" void vm_trap(const char *msg)
 // Test 1: TLS parser errors are independent across threads
 // ============================================================================
 
-static void test_tls_parser_errors_independent(void)
-{
+static void test_tls_parser_errors_independent(void) {
     // Thread 1 parses valid XML (clears error), thread 2 parses empty XML (sets error).
     // After both finish, thread 2's error must not leak into thread 1's view (TLS).
     bool thread1_no_error = false;
@@ -49,43 +47,37 @@ static void test_tls_parser_errors_independent(void)
     // Use a barrier-like flag to make both threads parse concurrently.
     volatile int go = 0;
 
-    std::thread t1(
-        [&]()
-        {
-            while (!go)
-            {
-            } // wait for go signal
-            // Parse valid XML — should succeed with no error
-            const char *xml = "<root><child/></root>";
-            rt_string s = rt_string_from_bytes(xml, strlen(xml));
-            void *doc = rt_xml_parse(s);
-            assert(doc != NULL && "valid XML must parse");
-            if (rt_obj_release_check0(doc))
-                rt_obj_free(doc);
-            // Check this thread's error state is clear
-            rt_string err = rt_xml_error();
-            thread1_no_error = (err == NULL || rt_str_len(err) == 0);
-            if (err)
-                rt_string_unref(err);
-            rt_string_unref(s);
-        });
+    std::thread t1([&]() {
+        while (!go) {
+        } // wait for go signal
+        // Parse valid XML — should succeed with no error
+        const char *xml = "<root><child/></root>";
+        rt_string s = rt_string_from_bytes(xml, strlen(xml));
+        void *doc = rt_xml_parse(s);
+        assert(doc != NULL && "valid XML must parse");
+        if (rt_obj_release_check0(doc))
+            rt_obj_free(doc);
+        // Check this thread's error state is clear
+        rt_string err = rt_xml_error();
+        thread1_no_error = (err == NULL || rt_str_len(err) == 0);
+        if (err)
+            rt_string_unref(err);
+        rt_string_unref(s);
+    });
 
-    std::thread t2(
-        [&]()
-        {
-            while (!go)
-            {
-            } // wait for go signal
-            // Parse empty XML — should fail and set error
-            rt_string s = rt_string_from_bytes("", 0);
-            void *doc = rt_xml_parse(s);
-            assert(doc == NULL && "empty XML must fail");
-            rt_string err = rt_xml_error();
-            thread2_has_error = (err != NULL && rt_str_len(err) > 0);
-            if (err)
-                rt_string_unref(err);
-            rt_string_unref(s);
-        });
+    std::thread t2([&]() {
+        while (!go) {
+        } // wait for go signal
+        // Parse empty XML — should fail and set error
+        rt_string s = rt_string_from_bytes("", 0);
+        void *doc = rt_xml_parse(s);
+        assert(doc == NULL && "empty XML must fail");
+        rt_string err = rt_xml_error();
+        thread2_has_error = (err != NULL && rt_str_len(err) > 0);
+        if (err)
+            rt_string_unref(err);
+        rt_string_unref(s);
+    });
 
     go = 1; // release both threads
     t1.join();
@@ -101,8 +93,7 @@ static void test_tls_parser_errors_independent(void)
 // Test 2: Main thread assertion detects non-main threads
 // ============================================================================
 
-static void test_main_thread_detection(void)
-{
+static void test_main_thread_detection(void) {
     // Set the main thread to the current (test) thread.
     rt_set_main_thread();
 
@@ -123,8 +114,7 @@ static void test_main_thread_detection(void)
 // Test 3: String interning is thread-safe under concurrent access
 // ============================================================================
 
-static void test_string_intern_concurrent(void)
-{
+static void test_string_intern_concurrent(void) {
     rt_string_intern_drain(); // clean slate
 
     constexpr int kThreads = 4;
@@ -135,32 +125,26 @@ static void test_string_intern_concurrent(void)
     std::vector<std::thread> threads;
     std::vector<std::vector<rt_string>> results(kThreads);
 
-    for (int t = 0; t < kThreads; ++t)
-    {
-        threads.emplace_back(
-            [&, t]()
-            {
-                results[t].resize(kStringsPerThread);
-                for (int i = 0; i < kStringsPerThread; ++i)
-                {
-                    char buf[32];
-                    snprintf(buf, sizeof(buf), "key_%d", i);
-                    rt_string s = rt_string_from_bytes(buf, strlen(buf));
-                    results[t][i] = rt_string_intern(s);
-                    rt_string_unref(s);
-                }
-            });
+    for (int t = 0; t < kThreads; ++t) {
+        threads.emplace_back([&, t]() {
+            results[t].resize(kStringsPerThread);
+            for (int i = 0; i < kStringsPerThread; ++i) {
+                char buf[32];
+                snprintf(buf, sizeof(buf), "key_%d", i);
+                rt_string s = rt_string_from_bytes(buf, strlen(buf));
+                results[t][i] = rt_string_intern(s);
+                rt_string_unref(s);
+            }
+        });
     }
 
     for (auto &th : threads)
         th.join();
 
     // Verify all threads got the same canonical pointer for each key
-    for (int i = 0; i < kStringsPerThread; ++i)
-    {
+    for (int i = 0; i < kStringsPerThread; ++i) {
         rt_string canonical = results[0][i];
-        for (int t = 1; t < kThreads; ++t)
-        {
+        for (int t = 1; t < kThreads; ++t) {
             assert(results[t][i] == canonical &&
                    "all threads must get same canonical pointer for same string");
         }
@@ -181,8 +165,7 @@ static void test_string_intern_concurrent(void)
 
 #include "il/runtime/RuntimeSignatures.hpp"
 
-static void test_atomic_violation_mode(void)
-{
+static void test_atomic_violation_mode(void) {
     using il::runtime::InvariantViolationMode;
 
     // Set to Trap from main thread
@@ -205,8 +188,7 @@ static void test_atomic_violation_mode(void)
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     test_tls_parser_errors_independent();
     test_main_thread_detection();
     test_string_intern_concurrent();

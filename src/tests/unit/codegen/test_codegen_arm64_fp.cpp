@@ -19,23 +19,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -43,8 +40,7 @@ static std::string readFile(const std::string &path)
 }
 
 /// @brief Returns the expected mangled symbol name for a call target.
-static std::string blSym(const std::string &name)
-{
+static std::string blSym(const std::string &name) {
 #if defined(__APPLE__)
     return "bl _" + name;
 #else
@@ -53,8 +49,7 @@ static std::string blSym(const std::string &name)
 }
 
 // Test 1: FP addition - f(x: f64) -> f64 returns x + 1.0
-TEST(Arm64FP, FAddSimple)
-{
+TEST(Arm64FP, FAddSimple) {
     const std::string in = outPath("arm64_fp_fadd.il");
     const std::string out = outPath("arm64_fp_fadd.s");
     // f64 parameters use v0, returns in v0
@@ -77,8 +72,7 @@ TEST(Arm64FP, FAddSimple)
 }
 
 // Test 2: FP subtraction
-TEST(Arm64FP, FSubSimple)
-{
+TEST(Arm64FP, FSubSimple) {
     const std::string in = outPath("arm64_fp_fsub.il");
     const std::string out = outPath("arm64_fp_fsub.s");
     const std::string il = "il 0.1\n"
@@ -95,8 +89,7 @@ TEST(Arm64FP, FSubSimple)
 }
 
 // Test 3: FP multiplication
-TEST(Arm64FP, FMulSimple)
-{
+TEST(Arm64FP, FMulSimple) {
     const std::string in = outPath("arm64_fp_fmul.il");
     const std::string out = outPath("arm64_fp_fmul.s");
     const std::string il = "il 0.1\n"
@@ -113,8 +106,7 @@ TEST(Arm64FP, FMulSimple)
 }
 
 // Test 4: FP division
-TEST(Arm64FP, FDivSimple)
-{
+TEST(Arm64FP, FDivSimple) {
     const std::string in = outPath("arm64_fp_fdiv.il");
     const std::string out = outPath("arm64_fp_fdiv.s");
     const std::string il = "il 0.1\n"
@@ -131,8 +123,7 @@ TEST(Arm64FP, FDivSimple)
 }
 
 // Test 5: Integer to FP conversion (sitofp)
-TEST(Arm64FP, SitofpConversion)
-{
+TEST(Arm64FP, SitofpConversion) {
     const std::string in = outPath("arm64_fp_sitofp.il");
     const std::string out = outPath("arm64_fp_sitofp.s");
     const std::string il = "il 0.1\n"
@@ -152,8 +143,7 @@ TEST(Arm64FP, SitofpConversion)
 }
 
 // Test 6: FP to integer conversion (fptosi)
-TEST(Arm64FP, FptosiConversion)
-{
+TEST(Arm64FP, FptosiConversion) {
     const std::string in = outPath("arm64_fp_fptosi.il");
     const std::string out = outPath("arm64_fp_fptosi.s");
     const std::string il = "il 0.1\n"
@@ -171,8 +161,7 @@ TEST(Arm64FP, FptosiConversion)
 }
 
 // Test 7: FP comparison (fcmp_lt)
-TEST(Arm64FP, FCmpLT)
-{
+TEST(Arm64FP, FCmpLT) {
     const std::string in = outPath("arm64_fp_fcmp_lt.il");
     const std::string out = outPath("arm64_fp_fcmp_lt.s");
     const std::string il = "il 0.1\n"
@@ -193,8 +182,7 @@ TEST(Arm64FP, FCmpLT)
 }
 
 // Test 8: Call an extern FP function and return its result
-TEST(Arm64FP, CallFPExtern)
-{
+TEST(Arm64FP, CallFPExtern) {
     const std::string in = outPath("arm64_fp_call.il");
     const std::string out = outPath("arm64_fp_call.s");
     const std::string il = "il 0.1\n"
@@ -215,8 +203,7 @@ TEST(Arm64FP, CallFPExtern)
 }
 
 // Test 9: Mixed integer and FP call
-TEST(Arm64FP, MixedCall)
-{
+TEST(Arm64FP, MixedCall) {
     const std::string in = outPath("arm64_fp_mixed.il");
     const std::string out = outPath("arm64_fp_mixed.s");
     const std::string il = "il 0.1\n"
@@ -233,8 +220,7 @@ TEST(Arm64FP, MixedCall)
     EXPECT_NE(asmText.find(blSym("mixed")), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

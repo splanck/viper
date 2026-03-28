@@ -42,8 +42,7 @@
 //=============================================================================
 
 /// @brief Per-cell static data.
-typedef struct
-{
+typedef struct {
     int16_t cost;    ///< Movement cost multiplier (100 = normal, 0 = impassable).
     int8_t walkable; ///< 1 = passable, 0 = wall.
 } pf_cell;
@@ -58,8 +57,7 @@ typedef struct
 #define PF_COST_DIAGONAL 141
 
 /// @brief Internal pathfinder structure.
-typedef struct
-{
+typedef struct {
     pf_cell *cells;        ///< width × height cell array.
     int32_t width;         ///< Grid width.
     int32_t height;        ///< Grid height.
@@ -70,14 +68,12 @@ typedef struct
 } rt_pathfinder_impl;
 
 /// @brief Flat index for (x, y) in the grid.
-static inline int32_t pf_idx(const rt_pathfinder_impl *pf, int32_t x, int32_t y)
-{
+static inline int32_t pf_idx(const rt_pathfinder_impl *pf, int32_t x, int32_t y) {
     return y * pf->width + x;
 }
 
 /// @brief Bounds check.
-static inline int8_t pf_in_bounds(const rt_pathfinder_impl *pf, int32_t x, int32_t y)
-{
+static inline int8_t pf_in_bounds(const rt_pathfinder_impl *pf, int32_t x, int32_t y) {
     return x >= 0 && x < pf->width && y >= 0 && y < pf->height;
 }
 
@@ -85,8 +81,7 @@ static inline int8_t pf_in_bounds(const rt_pathfinder_impl *pf, int32_t x, int32
 // GC Finalizer
 //=============================================================================
 
-static void pf_finalizer(void *obj)
-{
+static void pf_finalizer(void *obj) {
     rt_pathfinder_impl *pf = (rt_pathfinder_impl *)obj;
     free(pf->cells);
     pf->cells = NULL;
@@ -97,8 +92,7 @@ static void pf_finalizer(void *obj)
 //=============================================================================
 
 /// @brief Allocate and initialize a pathfinder with given dimensions.
-static rt_pathfinder_impl *pf_alloc(int32_t w, int32_t h)
-{
+static rt_pathfinder_impl *pf_alloc(int32_t w, int32_t h) {
     if (w <= 0 || h <= 0)
         return NULL;
     if (w > PF_MAX_DIM)
@@ -113,8 +107,7 @@ static rt_pathfinder_impl *pf_alloc(int32_t w, int32_t h)
 
     int32_t count = w * h;
     pf->cells = (pf_cell *)malloc((size_t)count * sizeof(pf_cell));
-    if (!pf->cells)
-    {
+    if (!pf->cells) {
         if (rt_obj_release_check0(pf))
             rt_obj_free(pf);
         return NULL;
@@ -128,8 +121,7 @@ static rt_pathfinder_impl *pf_alloc(int32_t w, int32_t h)
     pf->last_found = 0;
 
     // Default: all cells walkable, cost 100
-    for (int32_t i = 0; i < count; i++)
-    {
+    for (int32_t i = 0; i < count; i++) {
         pf->cells[i].walkable = 1;
         pf->cells[i].cost = PF_COST_CARDINAL;
     }
@@ -138,13 +130,11 @@ static rt_pathfinder_impl *pf_alloc(int32_t w, int32_t h)
     return pf;
 }
 
-void *rt_pathfinder_new(int64_t width, int64_t height)
-{
+void *rt_pathfinder_new(int64_t width, int64_t height) {
     return pf_alloc((int32_t)width, (int32_t)height);
 }
 
-void *rt_pathfinder_from_tilemap(void *tilemap)
-{
+void *rt_pathfinder_from_tilemap(void *tilemap) {
     if (!tilemap)
         return NULL;
 
@@ -155,10 +145,8 @@ void *rt_pathfinder_from_tilemap(void *tilemap)
         return NULL;
 
     // Read tile collision: collision type != 0 → non-walkable
-    for (int32_t y = 0; y < h; y++)
-    {
-        for (int32_t x = 0; x < w; x++)
-        {
+    for (int32_t y = 0; y < h; y++) {
+        for (int32_t x = 0; x < w; x++) {
             int64_t tile = rt_tilemap_get_tile(tilemap, x, y);
             int64_t collision = rt_tilemap_get_collision(tilemap, tile);
             pf->cells[pf_idx(pf, x, y)].walkable = (collision == 0) ? 1 : 0;
@@ -168,8 +156,7 @@ void *rt_pathfinder_from_tilemap(void *tilemap)
     return pf;
 }
 
-void *rt_pathfinder_from_grid2d(void *grid)
-{
+void *rt_pathfinder_from_grid2d(void *grid) {
     if (!grid)
         return NULL;
 
@@ -182,10 +169,8 @@ void *rt_pathfinder_from_grid2d(void *grid)
         return NULL;
 
     // Non-zero cells → non-walkable
-    for (int32_t y = 0; y < (int32_t)h; y++)
-    {
-        for (int32_t x = 0; x < (int32_t)w; x++)
-        {
+    for (int32_t y = 0; y < (int32_t)h; y++) {
+        for (int32_t x = 0; x < (int32_t)w; x++) {
             int64_t val = rt_grid2d_get(g, x, y);
             pf->cells[pf_idx(pf, x, y)].walkable = (val == 0) ? 1 : 0;
         }
@@ -198,8 +183,7 @@ void *rt_pathfinder_from_grid2d(void *grid)
 // Configuration
 //=============================================================================
 
-void rt_pathfinder_set_walkable(void *ptr, int64_t x, int64_t y, int8_t walkable)
-{
+void rt_pathfinder_set_walkable(void *ptr, int64_t x, int64_t y, int8_t walkable) {
     if (!ptr)
         return;
     rt_pathfinder_impl *pf = (rt_pathfinder_impl *)ptr;
@@ -208,8 +192,7 @@ void rt_pathfinder_set_walkable(void *ptr, int64_t x, int64_t y, int8_t walkable
     pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].walkable = walkable ? 1 : 0;
 }
 
-int8_t rt_pathfinder_is_walkable(void *ptr, int64_t x, int64_t y)
-{
+int8_t rt_pathfinder_is_walkable(void *ptr, int64_t x, int64_t y) {
     if (!ptr)
         return 0;
     rt_pathfinder_impl *pf = (rt_pathfinder_impl *)ptr;
@@ -218,8 +201,7 @@ int8_t rt_pathfinder_is_walkable(void *ptr, int64_t x, int64_t y)
     return pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].walkable;
 }
 
-void rt_pathfinder_set_cost(void *ptr, int64_t x, int64_t y, int64_t cost)
-{
+void rt_pathfinder_set_cost(void *ptr, int64_t x, int64_t y, int64_t cost) {
     if (!ptr)
         return;
     rt_pathfinder_impl *pf = (rt_pathfinder_impl *)ptr;
@@ -232,8 +214,7 @@ void rt_pathfinder_set_cost(void *ptr, int64_t x, int64_t y, int64_t cost)
     pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].cost = (int16_t)cost;
 }
 
-int64_t rt_pathfinder_get_cost(void *ptr, int64_t x, int64_t y)
-{
+int64_t rt_pathfinder_get_cost(void *ptr, int64_t x, int64_t y) {
     if (!ptr)
         return 0;
     rt_pathfinder_impl *pf = (rt_pathfinder_impl *)ptr;
@@ -242,15 +223,13 @@ int64_t rt_pathfinder_get_cost(void *ptr, int64_t x, int64_t y)
     return pf->cells[pf_idx(pf, (int32_t)x, (int32_t)y)].cost;
 }
 
-void rt_pathfinder_set_diagonal(void *ptr, int8_t allow)
-{
+void rt_pathfinder_set_diagonal(void *ptr, int8_t allow) {
     if (!ptr)
         return;
     ((rt_pathfinder_impl *)ptr)->allow_diagonal = allow ? 1 : 0;
 }
 
-void rt_pathfinder_set_max_steps(void *ptr, int64_t max)
-{
+void rt_pathfinder_set_max_steps(void *ptr, int64_t max) {
     if (!ptr)
         return;
     ((rt_pathfinder_impl *)ptr)->max_steps = (int32_t)(max < 0 ? 0 : max);
@@ -260,23 +239,19 @@ void rt_pathfinder_set_max_steps(void *ptr, int64_t max)
 // Properties
 //=============================================================================
 
-int64_t rt_pathfinder_get_width(void *ptr)
-{
+int64_t rt_pathfinder_get_width(void *ptr) {
     return ptr ? ((rt_pathfinder_impl *)ptr)->width : 0;
 }
 
-int64_t rt_pathfinder_get_height(void *ptr)
-{
+int64_t rt_pathfinder_get_height(void *ptr) {
     return ptr ? ((rt_pathfinder_impl *)ptr)->height : 0;
 }
 
-int64_t rt_pathfinder_get_last_steps(void *ptr)
-{
+int64_t rt_pathfinder_get_last_steps(void *ptr) {
     return ptr ? ((rt_pathfinder_impl *)ptr)->last_steps : 0;
 }
 
-int8_t rt_pathfinder_get_last_found(void *ptr)
-{
+int8_t rt_pathfinder_get_last_found(void *ptr) {
     return ptr ? ((rt_pathfinder_impl *)ptr)->last_found : 0;
 }
 
@@ -285,8 +260,7 @@ int8_t rt_pathfinder_get_last_found(void *ptr)
 //=============================================================================
 
 /// @brief Per-node search state (allocated per search call).
-typedef struct
-{
+typedef struct {
     int32_t g;      ///< Cost from start to this node.
     int32_t f;      ///< g + heuristic (total estimated cost).
     int32_t parent; ///< Parent node index (-1 = start/none).
@@ -295,40 +269,32 @@ typedef struct
 } pf_node;
 
 /// @brief Binary min-heap for the open set (heapified by f-cost).
-typedef struct
-{
+typedef struct {
     int32_t *data;    ///< Array of node indices.
     int32_t count;    ///< Current number of elements.
     int32_t capacity; ///< Allocated capacity.
     pf_node *nodes;   ///< Reference to node array (for f-cost comparison).
 } pf_heap;
 
-static void heap_swap(pf_heap *h, int32_t a, int32_t b)
-{
+static void heap_swap(pf_heap *h, int32_t a, int32_t b) {
     int32_t tmp = h->data[a];
     h->data[a] = h->data[b];
     h->data[b] = tmp;
 }
 
-static void heap_sift_up(pf_heap *h, int32_t i)
-{
-    while (i > 0)
-    {
+static void heap_sift_up(pf_heap *h, int32_t i) {
+    while (i > 0) {
         int32_t parent = (i - 1) / 2;
-        if (h->nodes[h->data[i]].f < h->nodes[h->data[parent]].f)
-        {
+        if (h->nodes[h->data[i]].f < h->nodes[h->data[parent]].f) {
             heap_swap(h, i, parent);
             i = parent;
-        }
-        else
+        } else
             break;
     }
 }
 
-static void heap_sift_down(pf_heap *h, int32_t i)
-{
-    while (1)
-    {
+static void heap_sift_down(pf_heap *h, int32_t i) {
+    while (1) {
         int32_t left = 2 * i + 1;
         int32_t right = 2 * i + 2;
         int32_t smallest = i;
@@ -338,18 +304,15 @@ static void heap_sift_down(pf_heap *h, int32_t i)
         if (right < h->count && h->nodes[h->data[right]].f < h->nodes[h->data[smallest]].f)
             smallest = right;
 
-        if (smallest != i)
-        {
+        if (smallest != i) {
             heap_swap(h, i, smallest);
             i = smallest;
-        }
-        else
+        } else
             break;
     }
 }
 
-static void heap_push(pf_heap *h, int32_t node_idx)
-{
+static void heap_push(pf_heap *h, int32_t node_idx) {
     if (h->count >= h->capacity)
         return; // Should never happen with correct pre-allocation
     h->data[h->count] = node_idx;
@@ -357,14 +320,12 @@ static void heap_push(pf_heap *h, int32_t node_idx)
     h->count++;
 }
 
-static int32_t heap_pop(pf_heap *h)
-{
+static int32_t heap_pop(pf_heap *h) {
     if (h->count == 0)
         return -1;
     int32_t top = h->data[0];
     h->count--;
-    if (h->count > 0)
-    {
+    if (h->count > 0) {
         h->data[0] = h->data[h->count];
         heap_sift_down(h, 0);
     }
@@ -372,21 +333,17 @@ static int32_t heap_pop(pf_heap *h)
 }
 
 /// @brief Compute heuristic from (ax,ay) to (bx,by).
-static int32_t pf_heuristic(int32_t ax, int32_t ay, int32_t bx, int32_t by, int8_t diagonal)
-{
+static int32_t pf_heuristic(int32_t ax, int32_t ay, int32_t bx, int32_t by, int8_t diagonal) {
     int32_t dx = ax > bx ? ax - bx : bx - ax;
     int32_t dy = ay > by ? ay - by : by - ay;
 
-    if (diagonal)
-    {
+    if (diagonal) {
         // Octile distance: max(dx,dy)*100 + (√2-1)*min(dx,dy)*100
         // ≈ max*100 + min*41
         int32_t mn = dx < dy ? dx : dy;
         int32_t mx = dx > dy ? dx : dy;
         return mx * PF_COST_CARDINAL + mn * (PF_COST_DIAGONAL - PF_COST_CARDINAL);
-    }
-    else
-    {
+    } else {
         // Manhattan distance
         return (dx + dy) * PF_COST_CARDINAL;
     }
@@ -401,13 +358,11 @@ static const int32_t dir8_dx[8] = {0, 1, 0, -1, 1, 1, -1, -1};
 static const int32_t dir8_dy[8] = {-1, 0, 1, 0, -1, 1, 1, -1};
 
 /// @brief Build a List[Integer] of interleaved x,y pairs from the parent chain.
-static void *pf_build_path(pf_node *nodes, int32_t goal_idx, int32_t width)
-{
+static void *pf_build_path(pf_node *nodes, int32_t goal_idx, int32_t width) {
     // Count path length
     int32_t len = 0;
     int32_t idx = goal_idx;
-    while (idx >= 0)
-    {
+    while (idx >= 0) {
         len++;
         idx = nodes[idx].parent;
     }
@@ -418,8 +373,7 @@ static void *pf_build_path(pf_node *nodes, int32_t goal_idx, int32_t width)
         return rt_list_new();
 
     idx = goal_idx;
-    for (int32_t i = len - 1; i >= 0; i--)
-    {
+    for (int32_t i = len - 1; i >= 0; i--) {
         int32_t x = idx % width;
         int32_t y = idx / width;
         coords[i * 2] = x;
@@ -429,8 +383,7 @@ static void *pf_build_path(pf_node *nodes, int32_t goal_idx, int32_t width)
 
     // Build List[Integer]
     void *list = rt_list_new();
-    for (int32_t i = 0; i < len; i++)
-    {
+    for (int32_t i = 0; i < len; i++) {
         void *bx = rt_box_i64(coords[i * 2]);
         rt_list_push(list, bx);
         if (bx && rt_obj_release_check0(bx))
@@ -454,8 +407,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
                       int32_t gx,
                       int32_t gy,
                       int8_t cost_only,
-                      int32_t *out_cost)
-{
+                      int32_t *out_cost) {
     pf->last_found = 0;
     pf->last_steps = 0;
     if (out_cost)
@@ -466,8 +418,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
         return cost_only ? NULL : rt_list_new();
 
     // Start == goal
-    if (sx == gx && sy == gy)
-    {
+    if (sx == gx && sy == gy) {
         pf->last_found = 1;
         if (out_cost)
             *out_cost = 0;
@@ -493,8 +444,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
         return cost_only ? NULL : rt_list_new();
 
     // Initialize all nodes
-    for (int32_t i = 0; i < total; i++)
-    {
+    for (int32_t i = 0; i < total; i++) {
         nodes[i].g = INT32_MAX / 2;
         nodes[i].f = INT32_MAX / 2;
         nodes[i].parent = -1;
@@ -509,8 +459,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
     heap.capacity = total;
     heap.nodes = nodes;
 
-    if (!heap.data)
-    {
+    if (!heap.data) {
         free(nodes);
         return cost_only ? NULL : rt_list_new();
     }
@@ -529,8 +478,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
 
     void *result = NULL;
 
-    while (heap.count > 0 && steps < max)
-    {
+    while (heap.count > 0 && steps < max) {
         int32_t cur = heap_pop(&heap);
         if (cur < 0)
             break;
@@ -540,8 +488,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
         steps++;
 
         // Goal reached
-        if (cur == gi)
-        {
+        if (cur == gi) {
             pf->last_found = 1;
             pf->last_steps = steps;
             if (out_cost)
@@ -556,8 +503,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
         int32_t cx = cur % pf->width;
         int32_t cy = cur / pf->width;
 
-        for (int32_t d = 0; d < dir_count; d++)
-        {
+        for (int32_t d = 0; d < dir_count; d++) {
             int32_t nx = cx + dx[d];
             int32_t ny = cy + dy[d];
 
@@ -570,8 +516,7 @@ static void *pf_astar(rt_pathfinder_impl *pf,
 
             // For diagonal moves, check that both cardinal neighbors are walkable
             // (prevents cutting through wall corners)
-            if (d >= 4)
-            {
+            if (d >= 4) {
                 int32_t adj1 = pf_idx(pf, cx + dx[d], cy);
                 int32_t adj2 = pf_idx(pf, cx, cy + dy[d]);
                 if (!pf_in_bounds(pf, cx + dx[d], cy) || !pf->cells[adj1].walkable)
@@ -585,19 +530,15 @@ static void *pf_astar(rt_pathfinder_impl *pf,
             int32_t move_cost = base_cost * pf->cells[ni].cost / PF_COST_CARDINAL;
             int32_t tentative_g = nodes[cur].g + move_cost;
 
-            if (tentative_g < nodes[ni].g)
-            {
+            if (tentative_g < nodes[ni].g) {
                 nodes[ni].g = tentative_g;
                 nodes[ni].f = tentative_g + pf_heuristic(nx, ny, gx, gy, pf->allow_diagonal);
                 nodes[ni].parent = cur;
 
-                if (!nodes[ni].open)
-                {
+                if (!nodes[ni].open) {
                     nodes[ni].open = 1;
                     heap_push(&heap, ni);
-                }
-                else
-                {
+                } else {
                     // Decrease-key: re-sift the node.
                     // Since we don't track heap position, we push a duplicate.
                     // Duplicates with higher f are ignored when popped (already closed).
@@ -618,16 +559,14 @@ static void *pf_astar(rt_pathfinder_impl *pf,
 // Public Pathfinding API
 //=============================================================================
 
-void *rt_pathfinder_find_path(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy)
-{
+void *rt_pathfinder_find_path(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy) {
     if (!ptr)
         return rt_list_new();
     rt_pathfinder_impl *pf = (rt_pathfinder_impl *)ptr;
     return pf_astar(pf, (int32_t)sx, (int32_t)sy, (int32_t)gx, (int32_t)gy, 0, NULL);
 }
 
-int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy)
-{
+int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_t gx, int64_t gy) {
     if (!ptr)
         return -1;
     rt_pathfinder_impl *pf = (rt_pathfinder_impl *)ptr;
@@ -636,8 +575,7 @@ int64_t rt_pathfinder_find_path_length(void *ptr, int64_t sx, int64_t sy, int64_
     return cost;
 }
 
-void *rt_pathfinder_find_nearest(void *ptr, int64_t sx, int64_t sy, int64_t target_value)
-{
+void *rt_pathfinder_find_nearest(void *ptr, int64_t sx, int64_t sy, int64_t target_value) {
     // Simple BFS-based nearest search: expand from start, return first matching cell.
     // This reuses the A* infrastructure but with heuristic=0 (degrades to Dijkstra).
     // For now, implement as a simple BFS since we don't have Grid2D value access here.

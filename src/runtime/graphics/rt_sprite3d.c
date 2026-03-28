@@ -43,8 +43,7 @@ extern void *rt_material3d_new(void);
 extern void rt_material3d_set_texture(void *m, void *tex);
 extern void rt_material3d_set_unlit(void *m, int8_t u);
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     void *texture;
     double position[3];
@@ -54,16 +53,13 @@ typedef struct
     int32_t tex_w, tex_h;
 } rt_sprite3d;
 
-static void sprite3d_finalizer(void *obj)
-{
+static void sprite3d_finalizer(void *obj) {
     (void)obj;
 }
 
-void *rt_sprite3d_new(void *texture)
-{
+void *rt_sprite3d_new(void *texture) {
     rt_sprite3d *s = (rt_sprite3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_sprite3d));
-    if (!s)
-    {
+    if (!s) {
         rt_trap("Sprite3D.New: allocation failed");
         return NULL;
     }
@@ -82,8 +78,7 @@ void *rt_sprite3d_new(void *texture)
     s->tex_h = 0;
 
     /* Try to get texture dimensions */
-    if (texture)
-    {
+    if (texture) {
         s->tex_w = (int32_t)rt_pixels_width(texture);
         s->tex_h = (int32_t)rt_pixels_height(texture);
         s->frame_w = s->tex_w;
@@ -99,8 +94,7 @@ void *rt_sprite3d_new(void *texture)
 /// @param x
 /// @param y
 /// @param z
-void rt_sprite3d_set_position(void *obj, double x, double y, double z)
-{
+void rt_sprite3d_set_position(void *obj, double x, double y, double z) {
     if (!obj)
         return;
     rt_sprite3d *s = (rt_sprite3d *)obj;
@@ -113,8 +107,7 @@ void rt_sprite3d_set_position(void *obj, double x, double y, double z)
 /// @param obj
 /// @param w
 /// @param h
-void rt_sprite3d_set_scale(void *obj, double w, double h)
-{
+void rt_sprite3d_set_scale(void *obj, double w, double h) {
     if (!obj)
         return;
     rt_sprite3d *s = (rt_sprite3d *)obj;
@@ -126,8 +119,7 @@ void rt_sprite3d_set_scale(void *obj, double w, double h)
 /// @param obj
 /// @param ax
 /// @param ay
-void rt_sprite3d_set_anchor(void *obj, double ax, double ay)
-{
+void rt_sprite3d_set_anchor(void *obj, double ax, double ay) {
     if (!obj)
         return;
     rt_sprite3d *s = (rt_sprite3d *)obj;
@@ -141,8 +133,7 @@ void rt_sprite3d_set_anchor(void *obj, double ax, double ay)
 /// @param fy
 /// @param fw
 /// @param fh
-void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_t fh)
-{
+void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_t fh) {
     if (!obj)
         return;
     rt_sprite3d *s = (rt_sprite3d *)obj;
@@ -156,8 +147,7 @@ void rt_sprite3d_set_frame(void *obj, int64_t fx, int64_t fy, int64_t fw, int64_
 /// @param canvas
 /// @param obj
 /// @param camera
-void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera)
-{
+void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera) {
     if (!canvas || !obj || !camera)
         return;
     rt_sprite3d *s = (rt_sprite3d *)obj;
@@ -179,8 +169,7 @@ void rt_canvas3d_draw_sprite3d(void *canvas, void *obj, void *camera)
 
     /* UV from frame rect */
     double u0 = 0.0, v0 = 0.0, u1 = 1.0, v1 = 1.0;
-    if (s->tex_w > 0 && s->tex_h > 0)
-    {
+    if (s->tex_w > 0 && s->tex_h > 0) {
         u0 = (double)s->frame_x / s->tex_w;
         v0 = (double)s->frame_y / s->tex_h;
         u1 = (double)(s->frame_x + s->frame_w) / s->tex_w;

@@ -26,8 +26,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::text
-{
+namespace viper::tui::text {
 /// @brief Rebuild the line index from the provided text snapshot.
 /// @details Clears any existing offsets, reinstates the leading zero entry, and
 ///          performs a single left-to-right scan that records the byte following
@@ -35,14 +34,11 @@ namespace viper::tui::text
 ///          by inserting an offset that points just past the newline so consumers
 ///          can compute line lengths via simple subtraction.
 /// @param text Buffer contents used to initialise the index.
-void LineIndex::reset(std::string_view text)
-{
+void LineIndex::reset(std::string_view text) {
     line_starts_.clear();
     line_starts_.push_back(0);
-    for (std::size_t i = 0; i < text.size(); ++i)
-    {
-        if (text[i] == '\n')
-        {
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '\n') {
             line_starts_.push_back(i + 1);
         }
     }
@@ -58,25 +54,20 @@ void LineIndex::reset(std::string_view text)
 ///             keeping unrelated offsets untouched.
 /// @param pos Byte offset where new text was inserted.
 /// @param text Inserted contents.
-void LineIndex::onInsert(std::size_t pos, std::string_view text)
-{
-    if (text.empty())
-    {
+void LineIndex::onInsert(std::size_t pos, std::string_view text) {
+    if (text.empty()) {
         return;
     }
 
     auto it = std::upper_bound(line_starts_.begin(), line_starts_.end(), pos);
     std::size_t idx = static_cast<std::size_t>(it - line_starts_.begin());
-    for (std::size_t i = idx; i < line_starts_.size(); ++i)
-    {
+    for (std::size_t i = idx; i < line_starts_.size(); ++i) {
         line_starts_[i] += text.size();
     }
 
     std::size_t insert_idx = idx;
-    for (std::size_t i = 0; i < text.size(); ++i)
-    {
-        if (text[i] == '\n')
-        {
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '\n') {
             line_starts_.insert(line_starts_.begin() + insert_idx, pos + i + 1);
             ++insert_idx;
         }
@@ -90,10 +81,8 @@ void LineIndex::onInsert(std::size_t pos, std::string_view text)
 ///          keeping the updates proportional to the number of lines that changed.
 /// @param pos Starting byte offset of the deletion.
 /// @param text Text fragment that was removed (used solely for length).
-void LineIndex::onErase(std::size_t pos, std::string_view text)
-{
-    if (text.empty())
-    {
+void LineIndex::onErase(std::size_t pos, std::string_view text) {
+    if (text.empty()) {
         return;
     }
 
@@ -103,8 +92,7 @@ void LineIndex::onErase(std::size_t pos, std::string_view text)
     std::size_t start_idx = static_cast<std::size_t>(start_it - line_starts_.begin());
     std::size_t end_idx = static_cast<std::size_t>(end_it - line_starts_.begin());
     line_starts_.erase(line_starts_.begin() + start_idx, line_starts_.begin() + end_idx);
-    for (std::size_t i = start_idx; i < line_starts_.size(); ++i)
-    {
+    for (std::size_t i = start_idx; i < line_starts_.size(); ++i) {
         line_starts_[i] -= len;
     }
 }
@@ -113,16 +101,14 @@ void LineIndex::onErase(std::size_t pos, std::string_view text)
 /// @details The count corresponds to the number of lines in the buffer plus the
 ///          sentinel entry.
 /// @return Number of stored offsets.
-std::size_t LineIndex::count() const
-{
+std::size_t LineIndex::count() const {
     return line_starts_.size();
 }
 
 /// @brief Fetch the byte offset where a line begins.
 /// @param line Zero-based line index.
 /// @return Byte offset for @p line; throws if the index is out of range.
-std::size_t LineIndex::start(std::size_t line) const
-{
+std::size_t LineIndex::start(std::size_t line) const {
     return line_starts_.at(line);
 }
 } // namespace viper::tui::text

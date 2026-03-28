@@ -34,41 +34,34 @@
 #include <cstring>
 #include <string>
 
-namespace viper::codegen::x64::binenc
-{
+namespace viper::codegen::x64::binenc {
 
 // === Helper: extract PhysReg from an OpReg operand ===
 
-static PhysReg toPhys(const OpReg &reg)
-{
+static PhysReg toPhys(const OpReg &reg) {
     if (!reg.isPhys)
         VIPER_ICE("virtual register v" + std::to_string(reg.idOrPhys) +
                   " reached x86-64 binary encoder (register allocation bug)");
     return static_cast<PhysReg>(reg.idOrPhys);
 }
 
-static PhysReg regFromOperand(const Operand &op)
-{
+static PhysReg regFromOperand(const Operand &op) {
     return toPhys(std::get<OpReg>(op));
 }
 
-static const OpMem &memFromOperand(const Operand &op)
-{
+static const OpMem &memFromOperand(const Operand &op) {
     return std::get<OpMem>(op);
 }
 
-static int64_t immFromOperand(const Operand &op)
-{
+static int64_t immFromOperand(const Operand &op) {
     return std::get<OpImm>(op).val;
 }
 
-static const OpLabel &labelFromOperand(const Operand &op)
-{
+static const OpLabel &labelFromOperand(const Operand &op) {
     return std::get<OpLabel>(op);
 }
 
-static const OpRipLabel &ripFromOperand(const Operand &op)
-{
+static const OpRipLabel &ripFromOperand(const Operand &op) {
     return std::get<OpRipLabel>(op);
 }
 
@@ -77,8 +70,7 @@ static const OpRipLabel &ripFromOperand(const Operand &op)
 void X64BinaryEncoder::encodeFunction(const MFunction &fn,
                                       objfile::CodeSection &text,
                                       objfile::CodeSection &rodata,
-                                      bool isDarwin)
-{
+                                      bool isDarwin) {
     // Reset per-function state.
     labelOffsets_.clear();
     pendingBranches_.clear();
@@ -88,13 +80,11 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
     text.defineSymbol(symName, objfile::SymbolBinding::Global, objfile::SymbolSection::Text);
 
     // Encode all blocks.
-    for (const auto &block : fn.blocks)
-    {
+    for (const auto &block : fn.blocks) {
         // Record label offset for internal branch resolution.
         labelOffsets_[block.label] = text.currentOffset();
 
-        for (const auto &instr : block.instructions)
-        {
+        for (const auto &instr : block.instructions) {
             if (debugLines_ && instr.loc.hasLine())
                 debugLines_->addEntry(
                     text.currentOffset(), instr.loc.file_id, instr.loc.line, instr.loc.column);
@@ -103,8 +93,7 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
     }
 
     // Resolve pending internal branches.
-    for (const auto &pb : pendingBranches_)
-    {
+    for (const auto &pb : pendingBranches_) {
         auto it = labelOffsets_.find(pb.target);
         assert(it != labelOffsets_.end() && "unresolved internal branch target");
         // rel32 = target - (patchOffset + 4)
@@ -119,13 +108,11 @@ void X64BinaryEncoder::encodeFunction(const MFunction &fn,
 void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
                                          objfile::CodeSection &text,
                                          objfile::CodeSection &rodata,
-                                         bool isDarwin)
-{
+                                         bool isDarwin) {
     const auto &ops = instr.operands;
     const auto op = instr.opcode;
 
-    switch (op)
-    {
+    switch (op) {
         // --- Nullary ---
         case MOpcode::RET:
         case MOpcode::CQO:
@@ -138,8 +125,7 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
             return; // No bytes emitted.
 
         // --- Label definition ---
-        case MOpcode::LABEL:
-        {
+        case MOpcode::LABEL: {
             assert(!ops.empty());
             const auto &label = labelFromOperand(ops[0]);
             labelOffsets_[label.name] = text.currentOffset();
@@ -158,8 +144,7 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
             return;
 
         // --- MOVri (64-bit immediate) ---
-        case MOpcode::MOVri:
-        {
+        case MOpcode::MOVri: {
             PhysReg dst = regFromOperand(ops[0]);
             int64_t imm = immFromOperand(ops[1]);
             encodeMovRI(dst, imm, text);
@@ -177,8 +162,7 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
         case MOpcode::TESTrr:
         case MOpcode::IMULrr:
         case MOpcode::CMOVNErr:
-        case MOpcode::XORrr32:
-        {
+        case MOpcode::XORrr32: {
             PhysReg dst = regFromOperand(ops[0]);
             PhysReg src = regFromOperand(ops[1]);
             encodeRegReg(op, dst, src, text);
@@ -190,8 +174,7 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
         case MOpcode::ANDri:
         case MOpcode::ORri:
         case MOpcode::XORri:
-        case MOpcode::CMPri:
-        {
+        case MOpcode::CMPri: {
             PhysReg dst = regFromOperand(ops[0]);
             int64_t imm = immFromOperand(ops[1]);
             encodeRegImm(op, dst, imm, text);
@@ -201,8 +184,7 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
         // --- Shifts (immediate count) ---
         case MOpcode::SHLri:
         case MOpcode::SHRri:
-        case MOpcode::SARri:
-        {
+        case MOpcode::SARri: {
             PhysReg dst = regFromOperand(ops[0]);
             int64_t count = immFromOperand(ops[1]);
             encodeShiftImm(op, dst, count, text);
@@ -212,8 +194,7 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
         // --- Shifts (CL count) ---
         case MOpcode::SHLrc:
         case MOpcode::SHRrc:
-        case MOpcode::SARrc:
-        {
+        case MOpcode::SARrc: {
             PhysReg dst = regFromOperand(ops[0]);
             // ops[1] is CL register (implicit, not encoded)
             encodeShiftCL(op, dst, text);
@@ -222,15 +203,11 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
 
         // --- Division ---
         case MOpcode::IDIVrm:
-        case MOpcode::DIVrm:
-        {
+        case MOpcode::DIVrm: {
             // Operand can be reg or mem. Pipeline always uses reg after expansion.
-            if (std::holds_alternative<OpReg>(ops[0]))
-            {
+            if (std::holds_alternative<OpReg>(ops[0])) {
                 encodeDiv(op, regFromOperand(ops[0]), text);
-            }
-            else
-            {
+            } else {
                 // Memory operand for div — encode as unary with memory.
                 const auto &mem = memFromOperand(ops[0]);
                 uint8_t ext = (op == MOpcode::IDIVrm) ? 7 : 6;
@@ -263,27 +240,20 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
         }
 
         // --- LEA ---
-        case MOpcode::LEA:
-        {
+        case MOpcode::LEA: {
             PhysReg dst = regFromOperand(ops[0]);
-            if (std::holds_alternative<OpRipLabel>(ops[1]))
-            {
+            if (std::holds_alternative<OpRipLabel>(ops[1])) {
                 encodeLEARip(dst, ripFromOperand(ops[1]), text, rodata, isDarwin);
-            }
-            else if (std::holds_alternative<OpMem>(ops[1]))
-            {
+            } else if (std::holds_alternative<OpMem>(ops[1])) {
                 encodeLEA(dst, memFromOperand(ops[1]), text);
-            }
-            else
-            {
+            } else {
                 assert(false && "LEA with unexpected operand type");
             }
             return;
         }
 
         // --- SETcc ---
-        case MOpcode::SETcc:
-        {
+        case MOpcode::SETcc: {
             int cc = static_cast<int>(immFromOperand(ops[0]));
             PhysReg dst = regFromOperand(ops[1]);
             encodeSETcc(cc, dst, text);
@@ -291,8 +261,7 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
         }
 
         // --- MOVZXrr32 (movzbq) ---
-        case MOpcode::MOVZXrr32:
-        {
+        case MOpcode::MOVZXrr32: {
             PhysReg dst = regFromOperand(ops[0]);
             PhysReg src = regFromOperand(ops[1]);
             encodeMOVZX(dst, src, text);
@@ -308,8 +277,7 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
         case MOpcode::MOVQrx:
-        case MOpcode::MOVSDrr:
-        {
+        case MOpcode::MOVSDrr: {
             PhysReg dst = regFromOperand(ops[0]);
             PhysReg src = regFromOperand(ops[1]);
             encodeSseRegReg(op, dst, src, text);
@@ -347,69 +315,46 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
         }
 
         // --- Branches and calls ---
-        case MOpcode::JMP:
-        {
-            if (std::holds_alternative<OpLabel>(ops[0]))
-            {
+        case MOpcode::JMP: {
+            if (std::holds_alternative<OpLabel>(ops[0])) {
                 encodeBranchLabel(op, labelFromOperand(ops[0]).name, 0, text);
-            }
-            else if (std::holds_alternative<OpReg>(ops[0]))
-            {
+            } else if (std::holds_alternative<OpReg>(ops[0])) {
                 encodeBranchReg(op, regFromOperand(ops[0]), text);
-            }
-            else if (std::holds_alternative<OpMem>(ops[0]))
-            {
+            } else if (std::holds_alternative<OpMem>(ops[0])) {
                 encodeBranchMem(op, memFromOperand(ops[0]), text);
-            }
-            else
-            {
+            } else {
                 assert(false && "JMP with unexpected operand type");
             }
             return;
         }
 
-        case MOpcode::JCC:
-        {
+        case MOpcode::JCC: {
             int cc = static_cast<int>(immFromOperand(ops[0]));
-            if (std::holds_alternative<OpLabel>(ops[1]))
-            {
+            if (std::holds_alternative<OpLabel>(ops[1])) {
                 encodeBranchLabel(op, labelFromOperand(ops[1]).name, cc, text);
-            }
-            else
-            {
+            } else {
                 assert(false && "JCC with non-label target");
             }
             return;
         }
 
-        case MOpcode::CALL:
-        {
-            if (std::holds_alternative<OpLabel>(ops[0]))
-            {
+        case MOpcode::CALL: {
+            if (std::holds_alternative<OpLabel>(ops[0])) {
                 const auto &label = labelFromOperand(ops[0]);
                 // Check if this is an internal function label.
                 auto it = labelOffsets_.find(label.name);
-                if (it != labelOffsets_.end())
-                {
+                if (it != labelOffsets_.end()) {
                     // Internal call — use direct encoding with patch.
                     encodeBranchLabel(op, label.name, 0, text);
-                }
-                else
-                {
+                } else {
                     // External call — generate relocation.
                     encodeCallExternal(label.name, text, isDarwin);
                 }
-            }
-            else if (std::holds_alternative<OpReg>(ops[0]))
-            {
+            } else if (std::holds_alternative<OpReg>(ops[0])) {
                 encodeBranchReg(op, regFromOperand(ops[0]), text);
-            }
-            else if (std::holds_alternative<OpMem>(ops[0]))
-            {
+            } else if (std::holds_alternative<OpMem>(ops[0])) {
                 encodeBranchMem(op, memFromOperand(ops[0]), text);
-            }
-            else
-            {
+            } else {
                 VIPER_ICE("CALL instruction has unexpected operand type in x86-64 binary encoder");
             }
             return;
@@ -421,10 +366,8 @@ void X64BinaryEncoder::encodeInstruction(const MInstr &instr,
 
 // === Nullary instructions ===
 
-void X64BinaryEncoder::encodeNullary(MOpcode op, objfile::CodeSection &cs)
-{
-    switch (op)
-    {
+void X64BinaryEncoder::encodeNullary(MOpcode op, objfile::CodeSection &cs) {
+    switch (op) {
         case MOpcode::RET:
             cs.emit8(0xC3);
             return;
@@ -443,8 +386,10 @@ void X64BinaryEncoder::encodeNullary(MOpcode op, objfile::CodeSection &cs)
 
 // === Reg-Reg GPR ===
 
-void X64BinaryEncoder::encodeRegReg(MOpcode op, PhysReg dst, PhysReg src, objfile::CodeSection &cs)
-{
+void X64BinaryEncoder::encodeRegReg(MOpcode op,
+                                    PhysReg dst,
+                                    PhysReg src,
+                                    objfile::CodeSection &cs) {
     const auto info = regRegOpcode(op);
     const auto hwDst = hwEncode(dst);
     const auto hwSrc = hwEncode(src);
@@ -456,15 +401,13 @@ void X64BinaryEncoder::encodeRegReg(MOpcode op, PhysReg dst, PhysReg src, objfil
     // REX.W for 64-bit; XORrr32 is the only 32-bit reg-reg opcode.
     bool rexW = (op != MOpcode::XORrr32);
 
-    if (needsRex(rexW, regField.rexBit != 0, false, rmField.rexBit != 0))
-    {
+    if (needsRex(rexW, regField.rexBit != 0, false, rmField.rexBit != 0)) {
         cs.emit8(computeRex(rexW, regField.rexBit != 0, false, rmField.rexBit != 0));
     }
 
     // Opcode byte(s).
     cs.emit8(info.primary);
-    if (info.secondary != 0)
-    {
+    if (info.secondary != 0) {
         cs.emit8(info.secondary);
     }
 
@@ -474,26 +417,24 @@ void X64BinaryEncoder::encodeRegReg(MOpcode op, PhysReg dst, PhysReg src, objfil
 
 // === Reg-Imm ALU ===
 
-void X64BinaryEncoder::encodeRegImm(MOpcode op, PhysReg dst, int64_t imm, objfile::CodeSection &cs)
-{
+void X64BinaryEncoder::encodeRegImm(MOpcode op,
+                                    PhysReg dst,
+                                    int64_t imm,
+                                    objfile::CodeSection &cs) {
     const auto hw = hwEncode(dst);
     uint8_t ext = regImmExt(op);
 
     // REX.W prefix.
-    if (needsRex(true, false, false, hw.rexBit != 0))
-    {
+    if (needsRex(true, false, false, hw.rexBit != 0)) {
         cs.emit8(computeRex(true, false, false, hw.rexBit != 0));
     }
 
     // Choose short (83 + imm8) or long (81 + imm32) form.
-    if (imm >= -128 && imm <= 127)
-    {
+    if (imm >= -128 && imm <= 127) {
         cs.emit8(0x83);
         cs.emit8(makeModRM(0b11, ext, hw.bits3));
         cs.emit8(static_cast<uint8_t>(static_cast<int8_t>(imm)));
-    }
-    else
-    {
+    } else {
         assert(imm >= -2147483648LL && imm <= 2147483647LL &&
                "encodeRegImm: immediate exceeds 32-bit range");
         cs.emit8(0x81);
@@ -507,13 +448,11 @@ void X64BinaryEncoder::encodeRegImm(MOpcode op, PhysReg dst, int64_t imm, objfil
 void X64BinaryEncoder::encodeShiftImm(MOpcode op,
                                       PhysReg dst,
                                       int64_t count,
-                                      objfile::CodeSection &cs)
-{
+                                      objfile::CodeSection &cs) {
     const auto hw = hwEncode(dst);
     uint8_t ext = shiftExt(op);
 
-    if (needsRex(true, false, false, hw.rexBit != 0))
-    {
+    if (needsRex(true, false, false, hw.rexBit != 0)) {
         cs.emit8(computeRex(true, false, false, hw.rexBit != 0));
     }
 
@@ -522,13 +461,11 @@ void X64BinaryEncoder::encodeShiftImm(MOpcode op,
     cs.emit8(static_cast<uint8_t>(count & 0x3F)); // Mask to 6 bits for 64-bit mode.
 }
 
-void X64BinaryEncoder::encodeShiftCL(MOpcode op, PhysReg dst, objfile::CodeSection &cs)
-{
+void X64BinaryEncoder::encodeShiftCL(MOpcode op, PhysReg dst, objfile::CodeSection &cs) {
     const auto hw = hwEncode(dst);
     uint8_t ext = shiftExt(op);
 
-    if (needsRex(true, false, false, hw.rexBit != 0))
-    {
+    if (needsRex(true, false, false, hw.rexBit != 0)) {
         cs.emit8(computeRex(true, false, false, hw.rexBit != 0));
     }
 
@@ -538,13 +475,11 @@ void X64BinaryEncoder::encodeShiftCL(MOpcode op, PhysReg dst, objfile::CodeSecti
 
 // === Division ===
 
-void X64BinaryEncoder::encodeDiv(MOpcode op, PhysReg src, objfile::CodeSection &cs)
-{
+void X64BinaryEncoder::encodeDiv(MOpcode op, PhysReg src, objfile::CodeSection &cs) {
     const auto hw = hwEncode(src);
     uint8_t ext = (op == MOpcode::IDIVrm) ? 7 : 6;
 
-    if (needsRex(true, false, false, hw.rexBit != 0))
-    {
+    if (needsRex(true, false, false, hw.rexBit != 0)) {
         cs.emit8(computeRex(true, false, false, hw.rexBit != 0));
     }
 
@@ -554,28 +489,22 @@ void X64BinaryEncoder::encodeDiv(MOpcode op, PhysReg src, objfile::CodeSection &
 
 // === MOVri (64-bit immediate move) ===
 
-void X64BinaryEncoder::encodeMovRI(PhysReg dst, int64_t imm, objfile::CodeSection &cs)
-{
+void X64BinaryEncoder::encodeMovRI(PhysReg dst, int64_t imm, objfile::CodeSection &cs) {
     const auto hw = hwEncode(dst);
 
-    if (imm >= 0 && imm <= 0x7FFFFFFF)
-    {
+    if (imm >= 0 && imm <= 0x7FFFFFFF) {
         // 5-byte form (or 6 with REX.B): B8+rd + imm32 — zero-extends to 64 bits.
         if (hw.rexBit)
             cs.emit8(computeRex(false, false, false, true));
         cs.emit8(static_cast<uint8_t>(0xB8 + hw.bits3));
         cs.emit32LE(static_cast<uint32_t>(imm));
-    }
-    else if (imm >= INT32_MIN && imm < 0)
-    {
+    } else if (imm >= INT32_MIN && imm < 0) {
         // 7-byte form: REX.W + C7 /0 + imm32 — sign-extends to 64 bits.
         cs.emit8(computeRex(true, false, false, hw.rexBit != 0));
         cs.emit8(0xC7);
         cs.emit8(makeModRM(0b11, 0, hw.bits3));
         cs.emit32LE(static_cast<uint32_t>(imm));
-    }
-    else
-    {
+    } else {
         // 10-byte form: REX.W + B8+rd + imm64 — full 64-bit.
         cs.emit8(computeRex(true, false, false, hw.rexBit != 0));
         cs.emit8(static_cast<uint8_t>(0xB8 + hw.bits3));
@@ -592,50 +521,40 @@ void X64BinaryEncoder::emitWithMemOperand(uint8_t reg3,
                                           bool rexW,
                                           uint8_t mandatoryPrefix,
                                           uint8_t opByte1,
-                                          uint8_t opByte2)
-{
+                                          uint8_t opByte2) {
     const auto hwBase = hwEncode(toPhys(mem.base));
     bool hasSIB = mem.hasIndex || hwBase.bits3 == 4; // RSP/R12 encoding needs SIB
 
     // Determine mod bits.
     uint8_t mod;
-    if (mem.disp == 0 && hwBase.bits3 != 5)
-    {
+    if (mem.disp == 0 && hwBase.bits3 != 5) {
         // mod=00: no displacement. (bits3=5 is RBP/R13 — must use mod=01)
         mod = 0b00;
-    }
-    else if (mem.disp >= -128 && mem.disp <= 127)
-    {
+    } else if (mem.disp >= -128 && mem.disp <= 127) {
         mod = 0b01; // disp8
-    }
-    else
-    {
+    } else {
         mod = 0b10; // disp32
     }
 
     // Compute REX bits.
     uint8_t indexRex = 0;
-    if (mem.hasIndex)
-    {
+    if (mem.hasIndex) {
         indexRex = hwEncode(toPhys(mem.index)).rexBit;
     }
 
     // Emit mandatory prefix (SSE).
-    if (mandatoryPrefix != 0)
-    {
+    if (mandatoryPrefix != 0) {
         cs.emit8(mandatoryPrefix);
     }
 
     // Emit REX.
-    if (needsRex(rexW, regRex != 0, indexRex != 0, hwBase.rexBit != 0))
-    {
+    if (needsRex(rexW, regRex != 0, indexRex != 0, hwBase.rexBit != 0)) {
         cs.emit8(computeRex(rexW, regRex != 0, indexRex != 0, hwBase.rexBit != 0));
     }
 
     // Emit opcode.
     cs.emit8(opByte1);
-    if (opByte2 != 0)
-    {
+    if (opByte2 != 0) {
         cs.emit8(opByte2);
     }
 
@@ -644,27 +563,20 @@ void X64BinaryEncoder::emitWithMemOperand(uint8_t reg3,
     cs.emit8(makeModRM(mod, reg3, rm3));
 
     // Emit SIB if needed.
-    if (hasSIB)
-    {
-        if (mem.hasIndex)
-        {
+    if (hasSIB) {
+        if (mem.hasIndex) {
             auto hwIdx = hwEncode(toPhys(mem.index));
             cs.emit8(makeSIB(scaleLog2(mem.scale), hwIdx.bits3, hwBase.bits3));
-        }
-        else
-        {
+        } else {
             // No index — SIB for RSP/R12 base: scale=0, index=RSP(100), base=base.
             cs.emit8(makeSIB(0, 0b100, hwBase.bits3));
         }
     }
 
     // Emit displacement.
-    if (mod == 0b01)
-    {
+    if (mod == 0b01) {
         cs.emit8(static_cast<uint8_t>(static_cast<int8_t>(mem.disp)));
-    }
-    else if (mod == 0b10)
-    {
+    } else if (mod == 0b10) {
         cs.emit32LE(static_cast<uint32_t>(mem.disp));
     }
 }
@@ -674,13 +586,11 @@ void X64BinaryEncoder::emitWithMemOperand(uint8_t reg3,
 void X64BinaryEncoder::encodeMemOp(MOpcode op,
                                    PhysReg reg,
                                    const OpMem &mem,
-                                   objfile::CodeSection &cs)
-{
+                                   objfile::CodeSection &cs) {
     const auto hwReg = hwEncode(reg);
     uint8_t opByte;
 
-    switch (op)
-    {
+    switch (op) {
         case MOpcode::MOVrm:
             opByte = 0x89;
             break; // store
@@ -704,8 +614,7 @@ void X64BinaryEncoder::encodeMemOp(MOpcode op,
 
 // === LEA ===
 
-void X64BinaryEncoder::encodeLEA(PhysReg dst, const OpMem &mem, objfile::CodeSection &cs)
-{
+void X64BinaryEncoder::encodeLEA(PhysReg dst, const OpMem &mem, objfile::CodeSection &cs) {
     const auto hwDst = hwEncode(dst);
     emitWithMemOperand(hwDst.bits3,
                        hwDst.rexBit,
@@ -721,14 +630,12 @@ void X64BinaryEncoder::encodeLEARip(PhysReg dst,
                                     const OpRipLabel &rip,
                                     objfile::CodeSection &text,
                                     objfile::CodeSection &rodata,
-                                    bool isDarwin)
-{
+                                    bool isDarwin) {
     const auto hwDst = hwEncode(dst);
 
     // REX.W + LEA opcode.
     // REX.W prefix.
-    if (needsRex(true, hwDst.rexBit != 0, false, false))
-    {
+    if (needsRex(true, hwDst.rexBit != 0, false, false)) {
         text.emit8(computeRex(true, hwDst.rexBit != 0, false, false));
     }
 
@@ -751,8 +658,7 @@ void X64BinaryEncoder::encodeLEARip(PhysReg dst,
 void X64BinaryEncoder::encodeSseRegReg(MOpcode op,
                                        PhysReg dst,
                                        PhysReg src,
-                                       objfile::CodeSection &cs)
-{
+                                       objfile::CodeSection &cs) {
     const auto info = sseOpcode(op);
     const auto hwDst = hwEncode(dst);
     const auto hwSrc = hwEncode(src);
@@ -761,14 +667,12 @@ void X64BinaryEncoder::encodeSseRegReg(MOpcode op,
     const auto &rmField = info.regIsDst ? hwSrc : hwDst;
 
     // Mandatory prefix BEFORE REX.
-    if (info.prefix != 0)
-    {
+    if (info.prefix != 0) {
         cs.emit8(info.prefix);
     }
 
     // REX (if needed).
-    if (needsRex(info.needsRexW, regField.rexBit != 0, false, rmField.rexBit != 0))
-    {
+    if (needsRex(info.needsRexW, regField.rexBit != 0, false, rmField.rexBit != 0)) {
         cs.emit8(computeRex(info.needsRexW, regField.rexBit != 0, false, rmField.rexBit != 0));
     }
 
@@ -785,8 +689,7 @@ void X64BinaryEncoder::encodeSseRegReg(MOpcode op,
 void X64BinaryEncoder::encodeSseMem(MOpcode op,
                                     PhysReg reg,
                                     const OpMem &mem,
-                                    objfile::CodeSection &cs)
-{
+                                    objfile::CodeSection &cs) {
     const auto info = sseOpcode(op);
     const auto hwReg = hwEncode(reg);
 
@@ -797,15 +700,13 @@ void X64BinaryEncoder::encodeSseMem(MOpcode op,
 
 // === SETcc ===
 
-void X64BinaryEncoder::encodeSETcc(int condCode, PhysReg dst, objfile::CodeSection &cs)
-{
+void X64BinaryEncoder::encodeSETcc(int condCode, PhysReg dst, objfile::CodeSection &cs) {
     const auto hw = hwEncode(dst);
     uint8_t cc = x86CC(condCode);
 
     // SETcc needs REX only if dst is R8-R15 (to access r/m field extension).
     // SETcc does NOT use REX.W.
-    if (needsRex(false, false, false, hw.rexBit != 0))
-    {
+    if (needsRex(false, false, false, hw.rexBit != 0)) {
         cs.emit8(computeRex(false, false, false, hw.rexBit != 0));
     }
 
@@ -817,14 +718,12 @@ void X64BinaryEncoder::encodeSETcc(int condCode, PhysReg dst, objfile::CodeSecti
 
 // === MOVZXrr32 (movzbq) ===
 
-void X64BinaryEncoder::encodeMOVZX(PhysReg dst, PhysReg src, objfile::CodeSection &cs)
-{
+void X64BinaryEncoder::encodeMOVZX(PhysReg dst, PhysReg src, objfile::CodeSection &cs) {
     const auto hwDst = hwEncode(dst);
     const auto hwSrc = hwEncode(src);
 
     // REX.W + 0F B6 + ModR/M(11, dst, src).
-    if (needsRex(true, hwDst.rexBit != 0, false, hwSrc.rexBit != 0))
-    {
+    if (needsRex(true, hwDst.rexBit != 0, false, hwSrc.rexBit != 0)) {
         cs.emit8(computeRex(true, hwDst.rexBit != 0, false, hwSrc.rexBit != 0));
     }
 
@@ -838,24 +737,20 @@ void X64BinaryEncoder::encodeMOVZX(PhysReg dst, PhysReg src, objfile::CodeSectio
 void X64BinaryEncoder::encodeBranchLabel(MOpcode op,
                                          const std::string &label,
                                          int condCode,
-                                         objfile::CodeSection &cs)
-{
+                                         objfile::CodeSection &cs) {
     // --- Short-form relaxation (backward JMP/JCC only) ---
     // Short JMP  = 0xEB + rel8 (2 bytes, saves 3 over near form)
     // Short JCC  = 0x7x + rel8 (2 bytes, saves 4 over near form)
     // Only for backward branches where the target offset is already known and
     // the displacement fits in a signed byte [-128, 127].
-    if (op == MOpcode::JMP || op == MOpcode::JCC)
-    {
+    if (op == MOpcode::JMP || op == MOpcode::JCC) {
         auto it = labelOffsets_.find(label);
-        if (it != labelOffsets_.end())
-        {
+        if (it != labelOffsets_.end()) {
             // Short-form instruction is 2 bytes total: opcode + rel8.
             // IP after instruction = currentOffset + 2.
             auto disp =
                 static_cast<int64_t>(it->second) - static_cast<int64_t>(cs.currentOffset() + 2);
-            if (disp >= -128 && disp <= 127)
-            {
+            if (disp >= -128 && disp <= 127) {
                 if (op == MOpcode::JMP)
                     cs.emit8(0xEB); // JMP rel8
                 else
@@ -869,8 +764,7 @@ void X64BinaryEncoder::encodeBranchLabel(MOpcode op,
     // --- Near-form encoding (JMP rel32 / JCC rel32 / CALL rel32) ---
     size_t patchOffset;
 
-    switch (op)
-    {
+    switch (op) {
         case MOpcode::JMP:
             cs.emit8(0xE9); // JMP rel32
             patchOffset = cs.currentOffset();
@@ -897,14 +791,11 @@ void X64BinaryEncoder::encodeBranchLabel(MOpcode op,
 
     // Check if target is already known (backward branch, near form).
     auto it = labelOffsets_.find(label);
-    if (it != labelOffsets_.end())
-    {
+    if (it != labelOffsets_.end()) {
         auto rel = static_cast<int32_t>(static_cast<int64_t>(it->second) -
                                         static_cast<int64_t>(patchOffset + 4));
         cs.patch32LE(patchOffset, static_cast<uint32_t>(rel));
-    }
-    else
-    {
+    } else {
         // Forward branch — record for later patching.
         pendingBranches_.push_back({patchOffset, label});
     }
@@ -912,14 +803,12 @@ void X64BinaryEncoder::encodeBranchLabel(MOpcode op,
 
 // === Branch/Call indirect via register ===
 
-void X64BinaryEncoder::encodeBranchReg(MOpcode op, PhysReg target, objfile::CodeSection &cs)
-{
+void X64BinaryEncoder::encodeBranchReg(MOpcode op, PhysReg target, objfile::CodeSection &cs) {
     const auto hw = hwEncode(target);
     uint8_t ext = (op == MOpcode::CALL) ? 2 : 4; // /2 for CALL, /4 for JMP
 
     // REX only needed for R8-R15 targets. No REX.W for indirect branch.
-    if (needsRex(false, false, false, hw.rexBit != 0))
-    {
+    if (needsRex(false, false, false, hw.rexBit != 0)) {
         cs.emit8(computeRex(false, false, false, hw.rexBit != 0));
     }
 
@@ -929,8 +818,7 @@ void X64BinaryEncoder::encodeBranchReg(MOpcode op, PhysReg target, objfile::Code
 
 // === Branch/Call indirect via memory ===
 
-void X64BinaryEncoder::encodeBranchMem(MOpcode op, const OpMem &mem, objfile::CodeSection &cs)
-{
+void X64BinaryEncoder::encodeBranchMem(MOpcode op, const OpMem &mem, objfile::CodeSection &cs) {
     uint8_t ext = (op == MOpcode::CALL) ? 2 : 4; // /2 for CALL, /4 for JMP
     emitWithMemOperand(ext,
                        0,
@@ -946,8 +834,7 @@ void X64BinaryEncoder::encodeBranchMem(MOpcode op, const OpMem &mem, objfile::Co
 
 void X64BinaryEncoder::encodeCallExternal(const std::string &name,
                                           objfile::CodeSection &cs,
-                                          bool isDarwin)
-{
+                                          bool isDarwin) {
     std::string symName = isDarwin ? ("_" + name) : name;
     uint32_t symIdx = cs.findOrDeclareSymbol(symName);
 

@@ -31,8 +31,7 @@
 #include <sstream>
 #include <string_view>
 
-namespace il::verify::checker
-{
+namespace il::verify::checker {
 
 using il::core::Extern;
 using il::core::Function;
@@ -40,11 +39,9 @@ using il::core::kindToString;
 using il::core::Type;
 using il::support::Expected;
 
-namespace
-{
+namespace {
 
-enum class RuntimeArrayCallee
-{
+enum class RuntimeArrayCallee {
     None,
     // i32 arrays
     NewI32,
@@ -78,8 +75,7 @@ enum class RuntimeArrayCallee
 ///          the call.
 /// @param callee Runtime helper name extracted from the instruction.
 /// @return Enumerated helper classification.
-RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee)
-{
+RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee) {
     // i32 array helpers
     if (callee == "rt_arr_i32_new")
         return RuntimeArrayCallee::NewI32;
@@ -131,16 +127,14 @@ RuntimeArrayCallee classifyRuntimeArrayCallee(std::string_view callee)
 ///          otherwise the function returns success without modifying state.
 /// @param ctx Verification context describing the current instruction.
 /// @return Empty result on success; structured diagnostic on error.
-Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
-{
+Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx) {
     const RuntimeArrayCallee calleeKind = classifyRuntimeArrayCallee(ctx.instr.callee);
     if (calleeKind == RuntimeArrayCallee::None)
         return {};
 
     // Helper that enforces an exact operand count and emits a descriptive error
     // when the instruction does not provide the required number of arguments.
-    const auto requireArgCount = [&](size_t expected) -> Expected<void>
-    {
+    const auto requireArgCount = [&](size_t expected) -> Expected<void> {
         if (ctx.instr.operands.size() == expected)
             return {};
 
@@ -155,18 +149,15 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
     // Helper used to check operand types against the expected runtime
     // signature, emitting contextual diagnostics when values are missing or of
     // the wrong type.
-    const auto requireOperandType = [&](size_t index, Type::Kind expected, std::string_view role)
-    {
+    const auto requireOperandType = [&](size_t index, Type::Kind expected, std::string_view role) {
         bool missing = false;
         const Type actual = ctx.types.valueType(ctx.instr.operands[index], &missing);
-        if (missing)
-        {
+        if (missing) {
             std::ostringstream ss;
             ss << "@" << ctx.instr.callee << ' ' << role << " operand has unknown type";
             return fail(ctx, ss.str());
         }
-        if (actual.kind != expected)
-        {
+        if (actual.kind != expected) {
             std::ostringstream ss;
             ss << "@" << ctx.instr.callee << ' ' << role << " operand must be "
                << kindToString(expected);
@@ -177,10 +168,8 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
 
     // Helper that verifies the presence and type of the instruction result for
     // helpers expected to return a value.
-    const auto requireResultType = [&](Type::Kind expected) -> Expected<void>
-    {
-        if (!ctx.instr.result)
-        {
+    const auto requireResultType = [&](Type::Kind expected) -> Expected<void> {
+        if (!ctx.instr.result) {
             std::ostringstream ss;
             ss << "@" << ctx.instr.callee << " must produce " << kindToString(expected)
                << " result";
@@ -188,8 +177,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
         }
         // Record the result type so IL parsed from text gets proper type inference.
         ctx.types.recordResult(ctx.instr, Type(expected));
-        if (ctx.instr.type.kind != Type::Kind::Void && ctx.instr.type.kind != expected)
-        {
+        if (ctx.instr.type.kind != Type::Kind::Void && ctx.instr.type.kind != expected) {
             std::ostringstream ss;
             ss << "@" << ctx.instr.callee << " result must be " << kindToString(expected);
             return fail(ctx, ss.str());
@@ -199,16 +187,13 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
 
     // Helper ensuring helpers that should not produce a value remain
     // side-effect only.
-    const auto requireNoResult = [&]() -> Expected<void>
-    {
-        if (ctx.instr.result)
-        {
+    const auto requireNoResult = [&]() -> Expected<void> {
+        if (ctx.instr.result) {
             std::ostringstream ss;
             ss << "@" << ctx.instr.callee << " must not produce a result";
             return fail(ctx, ss.str());
         }
-        if (ctx.instr.type.kind != Type::Kind::Void)
-        {
+        if (ctx.instr.type.kind != Type::Kind::Void) {
             std::ostringstream ss;
             ss << "@" << ctx.instr.callee << " result type must be void";
             return fail(ctx, ss.str());
@@ -216,26 +201,22 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
         return Expected<void>{};
     };
 
-    switch (calleeKind)
-    {
-        case RuntimeArrayCallee::NewI32:
-        {
+    switch (calleeKind) {
+        case RuntimeArrayCallee::NewI32: {
             if (auto result = requireArgCount(1); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::I64, "length"); !result)
                 return result;
             return requireResultType(Type::Kind::Ptr);
         }
-        case RuntimeArrayCallee::LenI32:
-        {
+        case RuntimeArrayCallee::LenI32: {
             if (auto result = requireArgCount(1); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
                 return result;
             return requireResultType(Type::Kind::I64);
         }
-        case RuntimeArrayCallee::GetI32:
-        {
+        case RuntimeArrayCallee::GetI32: {
             if (auto result = requireArgCount(2); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
@@ -244,8 +225,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireResultType(Type::Kind::I64);
         }
-        case RuntimeArrayCallee::SetI32:
-        {
+        case RuntimeArrayCallee::SetI32: {
             if (auto result = requireArgCount(3); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
@@ -256,8 +236,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireNoResult();
         }
-        case RuntimeArrayCallee::ResizeI32:
-        {
+        case RuntimeArrayCallee::ResizeI32: {
             if (auto result = requireArgCount(2); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
@@ -266,16 +245,14 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireResultType(Type::Kind::Ptr);
         }
-        case RuntimeArrayCallee::RetainI32:
-        {
+        case RuntimeArrayCallee::RetainI32: {
             if (auto result = requireArgCount(1); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
                 return result;
             return requireNoResult();
         }
-        case RuntimeArrayCallee::ReleaseI32:
-        {
+        case RuntimeArrayCallee::ReleaseI32: {
             if (auto result = requireArgCount(1); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
@@ -283,24 +260,21 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
             return requireNoResult();
         }
         // String array helpers with string-typed results/operands as needed
-        case RuntimeArrayCallee::NewStr:
-        {
+        case RuntimeArrayCallee::NewStr: {
             if (auto result = requireArgCount(1); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::I64, "length"); !result)
                 return result;
             return requireResultType(Type::Kind::Ptr);
         }
-        case RuntimeArrayCallee::LenStr:
-        {
+        case RuntimeArrayCallee::LenStr: {
             if (auto result = requireArgCount(1); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
                 return result;
             return requireResultType(Type::Kind::I64);
         }
-        case RuntimeArrayCallee::GetStr:
-        {
+        case RuntimeArrayCallee::GetStr: {
             if (auto result = requireArgCount(2); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
@@ -309,8 +283,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireResultType(Type::Kind::Str);
         }
-        case RuntimeArrayCallee::SetStr:
-        {
+        case RuntimeArrayCallee::SetStr: {
             if (auto result = requireArgCount(3); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
@@ -322,8 +295,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireNoResult();
         }
-        case RuntimeArrayCallee::ReleaseStr:
-        {
+        case RuntimeArrayCallee::ReleaseStr: {
             // String array release takes (ptr handle, i64 length) so runtime can
             // release contained elements before freeing the array payload.
             if (auto result = requireArgCount(2); !result)
@@ -335,24 +307,21 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
             return requireNoResult();
         }
         // object arrays mirror i32 shapes, but get/put use ptr for value
-        case RuntimeArrayCallee::NewObj:
-        {
+        case RuntimeArrayCallee::NewObj: {
             if (auto result = requireArgCount(1); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::I64, "length"); !result)
                 return result;
             return requireResultType(Type::Kind::Ptr);
         }
-        case RuntimeArrayCallee::LenObj:
-        {
+        case RuntimeArrayCallee::LenObj: {
             if (auto result = requireArgCount(1); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
                 return result;
             return requireResultType(Type::Kind::I64);
         }
-        case RuntimeArrayCallee::GetObj:
-        {
+        case RuntimeArrayCallee::GetObj: {
             if (auto result = requireArgCount(2); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
@@ -361,8 +330,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireResultType(Type::Kind::Ptr);
         }
-        case RuntimeArrayCallee::PutObj:
-        {
+        case RuntimeArrayCallee::PutObj: {
             if (auto result = requireArgCount(3); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
@@ -373,8 +341,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireNoResult();
         }
-        case RuntimeArrayCallee::ResizeObj:
-        {
+        case RuntimeArrayCallee::ResizeObj: {
             if (auto result = requireArgCount(2); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
@@ -383,8 +350,7 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
                 return result;
             return requireResultType(Type::Kind::Ptr);
         }
-        case RuntimeArrayCallee::ReleaseObj:
-        {
+        case RuntimeArrayCallee::ReleaseObj: {
             if (auto result = requireArgCount(1); !result)
                 return result;
             if (auto result = requireOperandType(0, Type::Kind::Ptr, "handle"); !result)
@@ -410,11 +376,9 @@ Expected<void> checkRuntimeArrayCall(const VerifyCtx &ctx)
 ///          diagnostic is produced.
 /// @param ctx Verification context containing call operands and signature maps.
 /// @return Success when the call matches the signature; otherwise an error.
-Expected<void> checkCall(const VerifyCtx &ctx)
-{
+Expected<void> checkCall(const VerifyCtx &ctx) {
     // Handle direct calls with special runtime array helpers; skip for indirect.
-    if (ctx.instr.op == il::core::Opcode::Call)
-    {
+    if (ctx.instr.op == il::core::Opcode::Call) {
         if (auto result = checkRuntimeArrayCall(ctx); !result)
             return result;
     }
@@ -422,34 +386,25 @@ Expected<void> checkCall(const VerifyCtx &ctx)
     // Resolve callee name and argument slice depending on opcode kind.
     std::string calleeName;
     size_t argStart = 0;
-    if (ctx.instr.op == il::core::Opcode::Call)
-    {
+    if (ctx.instr.op == il::core::Opcode::Call) {
         calleeName = ctx.instr.callee;
         argStart = 0;
-    }
-    else if (ctx.instr.op == il::core::Opcode::CallIndirect)
-    {
+    } else if (ctx.instr.op == il::core::Opcode::CallIndirect) {
         if (ctx.instr.operands.empty())
             return fail(ctx, "call.indirect missing callee operand");
         const auto &calleeVal = ctx.instr.operands[0];
-        if (calleeVal.kind == il::core::Value::Kind::GlobalAddr)
-        {
+        if (calleeVal.kind == il::core::Value::Kind::GlobalAddr) {
             calleeName = calleeVal.str;
             argStart = 1;
-        }
-        else
-        {
+        } else {
             // Pointer-based indirect call (e.g., interface dispatch). Skip static signature checks
             // but still record the result type if the instruction has a result.
-            if (ctx.instr.result && ctx.instr.type.kind != il::core::Type::Kind::Void)
-            {
+            if (ctx.instr.result && ctx.instr.type.kind != il::core::Type::Kind::Void) {
                 ctx.types.recordResult(ctx.instr, ctx.instr.type);
             }
             return {};
         }
-    }
-    else
-    {
+    } else {
         // Not a call; defer to default checker.
         return {};
     }
@@ -465,11 +420,9 @@ Expected<void> checkCall(const VerifyCtx &ctx)
     // If no extern or function declaration, check if it's a known runtime helper.
     // This catches calls to runtime helpers that weren't declared as externs.
     const il::runtime::RuntimeSignature *runtimeSig = nullptr;
-    if (!externSig && !fnSig)
-    {
+    if (!externSig && !fnSig) {
         runtimeSig = il::runtime::findRuntimeSignature(calleeName);
-        if (!runtimeSig)
-        {
+        if (!runtimeSig) {
             // For vararg helpers that may not be in the main registry, allow them
             // if they follow the rt_ naming convention (they're handled specially).
             if (!il::runtime::isVarArgCallee(calleeName))
@@ -490,8 +443,7 @@ Expected<void> checkCall(const VerifyCtx &ctx)
 
     const size_t providedArgs =
         (ctx.instr.operands.size() >= argStart) ? (ctx.instr.operands.size() - argStart) : 0;
-    if (providedArgs != paramCount)
-    {
+    if (providedArgs != paramCount) {
         std::ostringstream ss;
         ss << "call arg count mismatch: @" << calleeName << " expects " << paramCount << " argument"
            << (paramCount == 1 ? "" : "s") << " but got " << providedArgs;
@@ -499,8 +451,7 @@ Expected<void> checkCall(const VerifyCtx &ctx)
     }
 
     // Validate argument types.
-    for (size_t i = 0; i < paramCount; ++i)
-    {
+    for (size_t i = 0; i < paramCount; ++i) {
         Type expected;
         if (externSig)
             expected = externSig->params[i];
@@ -514,8 +465,7 @@ Expected<void> checkCall(const VerifyCtx &ctx)
         const bool strAsPtr = (expected.kind == Type::Kind::Ptr && actualKind == Type::Kind::Str);
         // Accept IL 'ptr' where runtime ABI expects 'str' (for some legacy patterns).
         const bool ptrAsStr = (expected.kind == Type::Kind::Str && actualKind == Type::Kind::Ptr);
-        if (actualKind != expected.kind && !strAsPtr && !ptrAsStr)
-        {
+        if (actualKind != expected.kind && !strAsPtr && !ptrAsStr) {
             std::ostringstream ss;
             ss << "call arg type mismatch: @" << calleeName << " parameter " << i << " expects "
                << kindToString(expected.kind) << " but got " << kindToString(actualKind);
@@ -533,35 +483,26 @@ Expected<void> checkCall(const VerifyCtx &ctx)
         retType = runtimeSig->retType;
 
     // Validate return type consistency.
-    if (retType.kind == Type::Kind::Void)
-    {
+    if (retType.kind == Type::Kind::Void) {
         // Void-returning call should not have a result.
-        if (ctx.instr.result)
-        {
+        if (ctx.instr.result) {
             std::ostringstream ss;
             ss << "call to void @" << calleeName << " must not have a result";
             return fail(ctx, ss.str());
         }
-    }
-    else
-    {
+    } else {
         // Non-void call should have a result.
-        if (!ctx.instr.result)
-        {
+        if (!ctx.instr.result) {
             // Allow discarding results silently - this is common for side-effecting calls.
             // The return value is simply not used.
-        }
-        else
-        {
+        } else {
             // Validate that the declared instruction type matches the return type.
-            if (ctx.instr.type.kind != Type::Kind::Void && ctx.instr.type.kind != retType.kind)
-            {
+            if (ctx.instr.type.kind != Type::Kind::Void && ctx.instr.type.kind != retType.kind) {
                 // Allow str/ptr interchangeability for return types too.
                 const bool strPtrCompat =
                     (ctx.instr.type.kind == Type::Kind::Str && retType.kind == Type::Kind::Ptr) ||
                     (ctx.instr.type.kind == Type::Kind::Ptr && retType.kind == Type::Kind::Str);
-                if (!strPtrCompat)
-                {
+                if (!strPtrCompat) {
                     std::ostringstream ss;
                     ss << "call return type mismatch: @" << calleeName << " returns "
                        << kindToString(retType.kind) << " but instruction declares "
@@ -583,8 +524,7 @@ Expected<void> checkCall(const VerifyCtx &ctx)
 ///          produced trap code.
 /// @param ctx Verification context for the @c trap.kind instruction.
 /// @return Success when the instruction shape is valid; otherwise an error.
-Expected<void> checkTrapKind(const VerifyCtx &ctx)
-{
+Expected<void> checkTrapKind(const VerifyCtx &ctx) {
     if (!ctx.instr.operands.empty())
         return fail(ctx, "trap.kind takes no operands");
 
@@ -598,8 +538,7 @@ Expected<void> checkTrapKind(const VerifyCtx &ctx)
 ///          resulting @c error type in the type lattice.
 /// @param ctx Verification context for the @c trap.err instruction.
 /// @return Success when operand counts and types are correct.
-Expected<void> checkTrapErr(const VerifyCtx &ctx)
-{
+Expected<void> checkTrapErr(const VerifyCtx &ctx) {
     if (ctx.instr.operands.size() != 2)
         return fail(ctx, "trap.err expects code and text operands");
 
@@ -623,8 +562,7 @@ Expected<void> checkTrapErr(const VerifyCtx &ctx)
 /// @param ctx Verification context for the @c trap.from_err instruction.
 /// @return Success when operand and result types satisfy the intrinsic
 ///         contract.
-Expected<void> checkTrapFromErr(const VerifyCtx &ctx)
-{
+Expected<void> checkTrapFromErr(const VerifyCtx &ctx) {
     if (ctx.instr.operands.size() != 1)
         return fail(ctx, "invalid operand count");
 
@@ -632,19 +570,14 @@ Expected<void> checkTrapFromErr(const VerifyCtx &ctx)
         return fail(ctx, "trap.from_err expects i32 type");
 
     const auto &operand = ctx.instr.operands.front();
-    if (operand.kind == il::core::Value::Kind::Temp)
-    {
+    if (operand.kind == il::core::Value::Kind::Temp) {
         if (ctx.types.valueType(operand).kind != Type::Kind::I32)
             return fail(ctx, "trap.from_err operand must be i32");
-    }
-    else if (operand.kind == il::core::Value::Kind::ConstInt)
-    {
+    } else if (operand.kind == il::core::Value::Kind::ConstInt) {
         if (operand.i64 < std::numeric_limits<int32_t>::min() ||
             operand.i64 > std::numeric_limits<int32_t>::max())
             return fail(ctx, "trap.from_err constant out of range");
-    }
-    else
-    {
+    } else {
         return fail(ctx, "trap.from_err operand must be i32");
     }
 

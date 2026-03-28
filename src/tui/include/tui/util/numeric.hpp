@@ -18,8 +18,7 @@
 #include <cstddef>
 #include <limits>
 
-namespace viper::tui::util
-{
+namespace viper::tui::util {
 
 /// @brief Saturating addition for size_t values.
 /// @details Returns the sum of @p base and @p delta when representable,
@@ -28,8 +27,7 @@ namespace viper::tui::util
 /// @param base Starting value.
 /// @param delta Amount to add to @p base.
 /// @return @p base + @p delta when representable, otherwise the saturated limit.
-[[nodiscard]] inline std::size_t clampAdd(std::size_t base, std::size_t delta)
-{
+[[nodiscard]] inline std::size_t clampAdd(std::size_t base, std::size_t delta) {
     const std::size_t max = std::numeric_limits<std::size_t>::max();
     if (max - base < delta)
         return max;

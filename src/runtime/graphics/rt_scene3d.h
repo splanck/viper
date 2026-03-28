@@ -26,51 +26,50 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /* Scene3D */
-    void *rt_scene3d_new(void);
-    void *rt_scene3d_get_root(void *scene);
-    void rt_scene3d_add(void *scene, void *node);
-    void rt_scene3d_remove(void *scene, void *node);
-    void *rt_scene3d_find(void *scene, rt_string name);
-    void rt_scene3d_draw(void *scene, void *canvas3d, void *camera);
-    void rt_scene3d_clear(void *scene);
-    int64_t rt_scene3d_get_node_count(void *scene);
+/* Scene3D */
+void *rt_scene3d_new(void);
+void *rt_scene3d_get_root(void *scene);
+void rt_scene3d_add(void *scene, void *node);
+void rt_scene3d_remove(void *scene, void *node);
+void *rt_scene3d_find(void *scene, rt_string name);
+void rt_scene3d_draw(void *scene, void *canvas3d, void *camera);
+void rt_scene3d_clear(void *scene);
+int64_t rt_scene3d_get_node_count(void *scene);
 
-    /* SceneNode3D */
-    void *rt_scene_node3d_new(void);
-    void rt_scene_node3d_set_position(void *node, double x, double y, double z);
-    void *rt_scene_node3d_get_position(void *node);
-    void rt_scene_node3d_set_rotation(void *node, void *quat);
-    void *rt_scene_node3d_get_rotation(void *node);
-    void rt_scene_node3d_set_scale(void *node, double x, double y, double z);
-    void *rt_scene_node3d_get_scale(void *node);
-    void *rt_scene_node3d_get_world_matrix(void *node);
-    void rt_scene_node3d_add_child(void *node, void *child);
-    void rt_scene_node3d_remove_child(void *node, void *child);
-    int64_t rt_scene_node3d_child_count(void *node);
-    void *rt_scene_node3d_get_child(void *node, int64_t index);
-    void *rt_scene_node3d_get_parent(void *node);
-    void *rt_scene_node3d_find(void *node, rt_string name);
-    void rt_scene_node3d_set_mesh(void *node, void *mesh);
-    void rt_scene_node3d_set_material(void *node, void *material);
-    void rt_scene_node3d_set_visible(void *node, int8_t visible);
-    int8_t rt_scene_node3d_get_visible(void *node);
-    void rt_scene_node3d_set_name(void *node, rt_string name);
-    rt_string rt_scene_node3d_get_name(void *node);
-    void *rt_scene_node3d_get_aabb_min(void *node);
-    void *rt_scene_node3d_get_aabb_max(void *node);
+/* SceneNode3D */
+void *rt_scene_node3d_new(void);
+void rt_scene_node3d_set_position(void *node, double x, double y, double z);
+void *rt_scene_node3d_get_position(void *node);
+void rt_scene_node3d_set_rotation(void *node, void *quat);
+void *rt_scene_node3d_get_rotation(void *node);
+void rt_scene_node3d_set_scale(void *node, double x, double y, double z);
+void *rt_scene_node3d_get_scale(void *node);
+void *rt_scene_node3d_get_world_matrix(void *node);
+void rt_scene_node3d_add_child(void *node, void *child);
+void rt_scene_node3d_remove_child(void *node, void *child);
+int64_t rt_scene_node3d_child_count(void *node);
+void *rt_scene_node3d_get_child(void *node, int64_t index);
+void *rt_scene_node3d_get_parent(void *node);
+void *rt_scene_node3d_find(void *node, rt_string name);
+void rt_scene_node3d_set_mesh(void *node, void *mesh);
+void rt_scene_node3d_set_material(void *node, void *material);
+void rt_scene_node3d_set_visible(void *node, int8_t visible);
+int8_t rt_scene_node3d_get_visible(void *node);
+void rt_scene_node3d_set_name(void *node, rt_string name);
+rt_string rt_scene_node3d_get_name(void *node);
+void *rt_scene_node3d_get_aabb_min(void *node);
+void *rt_scene_node3d_get_aabb_max(void *node);
 
-    /* LOD — Level of Detail */
-    void rt_scene_node3d_add_lod(void *node, double distance, void *mesh);
-    void rt_scene_node3d_clear_lod(void *node);
+/* LOD — Level of Detail */
+void rt_scene_node3d_add_lod(void *node, double distance, void *mesh);
+void rt_scene_node3d_clear_lod(void *node);
 
-    /* Scene3D — frustum culling stats */
-    int64_t rt_scene3d_get_culled_count(void *scene);
-    int64_t rt_scene3d_get_node_count(void *scene);
+/* Scene3D — frustum culling stats */
+int64_t rt_scene3d_get_culled_count(void *scene);
+int64_t rt_scene3d_get_node_count(void *scene);
 
 #ifdef __cplusplus
 }

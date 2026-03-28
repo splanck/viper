@@ -58,10 +58,8 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::basic
-{
-namespace print_stmt
-{
+namespace il::frontends::basic {
+namespace print_stmt {
 struct Context;
 } // namespace print_stmt
 
@@ -70,8 +68,7 @@ struct Context;
 /// AstPrinter walks the Program, Stmt, and Expr nodes to produce a
 /// human-readable dump using an internal Printer helper to manage
 /// indentation.
-class AstPrinter
-{
+class AstPrinter {
   public:
     friend struct print_stmt::Context;
     /// @brief Produce a formatted dump of the given program.
@@ -81,8 +78,7 @@ class AstPrinter
 
   private:
     /// @brief Stateful helper that writes lines with indentation.
-    struct Printer
-    {
+    struct Printer {
         /// Output stream where text is emitted.
         std::ostream &os;
 
@@ -94,8 +90,7 @@ class AstPrinter
         void line(std::string_view text);
 
         /// @brief RAII guard that decreases indentation on destruction.
-        struct Indent
-        {
+        struct Indent {
             /// Printer whose indentation is managed.
             Printer &p;
 
@@ -109,8 +104,7 @@ class AstPrinter
     };
 
     /// @brief Holds formatting preferences for AST emission.
-    struct PrintStyle
-    {
+    struct PrintStyle {
         /// @brief Create a style bound to @p printer.
         explicit PrintStyle(Printer &printer);
 

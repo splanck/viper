@@ -72,8 +72,7 @@
 #include <utility>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /**
  * @brief Recursive descent parser for BASIC source code.
@@ -84,8 +83,7 @@ namespace il::frontends::basic
  * @invariant Source text must remain valid throughout parsing.
  * @invariant Emits diagnostics through the provided DiagnosticEmitter.
  */
-class Parser
-{
+class Parser {
   public:
     /**
      * @brief Construct a parser for BASIC source text.
@@ -154,8 +152,7 @@ class Parser
     std::unordered_map<std::string, int64_t> knownConstInts_{};
     std::unordered_map<std::string, std::string> knownConstStrs_{};
 
-    struct NamedLabelEntry
-    {
+    struct NamedLabelEntry {
         int number = 0;                       ///< Synthesised numeric identifier for the label.
         bool defined = false;                 ///< True once the label definition has been seen.
         il::support::SourceLoc definitionLoc; ///< Location of the defining identifier.
@@ -200,8 +197,7 @@ class Parser
     ClassDecl *currentClass_ = nullptr;
 
     /// @brief Registry that maps statement-leading tokens to parser callbacks.
-    class StatementParserRegistry
-    {
+    class StatementParserRegistry {
       public:
         using NoArgHandler = StmtPtr (Parser::*)();
         using WithLineHandler = StmtPtr (Parser::*)(int);
@@ -234,8 +230,7 @@ class Parser
     static void registerOopParsers(StatementParserRegistry &registry);
 
     /// @brief Result of processing an ADDFILE include.
-    struct AddFileResult
-    {
+    struct AddFileResult {
         bool success{false};                                    ///< True if include succeeded.
         std::unique_ptr<Program> subprog;                       ///< Parsed program from include.
         std::unordered_set<std::string> arrays;                 ///< Arrays from child parser.
@@ -364,23 +359,20 @@ class Parser
     StmtPtr parseSelectCaseStatement();
 
     /// @brief Status information returned by CASE parsing helpers.
-    struct SelectHandlerResult
-    {
+    struct SelectHandlerResult {
         bool handled = false;           ///< True when helper consumed tokens.
         bool emittedDiagnostic = false; ///< True when helper reported errors.
     };
 
     /// @brief Aggregates CASE body collection results.
-    struct SelectBodyResult
-    {
+    struct SelectBodyResult {
         std::vector<StmtPtr> body;                     ///< Statements collected.
         StatementSequencer::TerminatorInfo terminator; ///< Terminator metadata.
         bool emittedDiagnostic = false;                ///< Diagnostics emitted.
     };
 
     /// @brief Captures inline CASE body statements gathered after a colon.
-    struct SelectInlineBodyResult
-    {
+    struct SelectInlineBodyResult {
         std::vector<StmtPtr> body; ///< Statements parsed on the same source line.
         Token terminator;          ///< End-of-line token that closed the inline body.
     };
@@ -388,8 +380,7 @@ class Parser
     using SelectDiagnoseFn =
         std::function<void(il::support::SourceLoc, uint32_t, std::string_view, std::string_view)>;
 
-    struct SelectParseState
-    {
+    struct SelectParseState {
         std::unique_ptr<SelectCaseStmt> stmt;
         SelectDiagnoseFn diagnose;
         il::support::SourceLoc selectLoc;
@@ -398,8 +389,7 @@ class Parser
         bool expectEndSelect = true;
     };
 
-    enum class SelectDispatchAction
-    {
+    enum class SelectDispatchAction {
         None,
         Continue,
         Terminate,
@@ -456,8 +446,7 @@ class Parser
     ///         terminating end-of-line.
     std::pair<std::vector<StmtPtr>, il::support::SourceLoc> parseCaseElseBody();
 
-    struct IfParseState
-    {
+    struct IfParseState {
         std::unique_ptr<IfStmt> stmt;
         int line = 0;
         il::support::SourceLoc loc;

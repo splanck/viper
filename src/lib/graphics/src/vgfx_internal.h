@@ -68,8 +68,7 @@
 /// @invariant mouse_x, mouse_y reflect last known cursor position
 /// @invariant key_state[k] is 1 if key k is pressed, 0 if released
 /// @invariant platform_data is allocated/owned by the platform backend
-struct vgfx_window
-{
+struct vgfx_window {
     //===------------------------------------------------------------------===//
     // Window Properties
     //===------------------------------------------------------------------===//
@@ -497,8 +496,7 @@ int vgfx_internal_peek_event(struct vgfx_window *win, vgfx_event_t *out_event);
 /// @return 1 if (x, y) is in bounds, 0 otherwise
 ///
 /// @post Return value is 1 iff win != NULL && 0 <= x < width && 0 <= y < height
-static inline int vgfx_internal_in_bounds(struct vgfx_window *win, int32_t x, int32_t y)
-{
+static inline int vgfx_internal_in_bounds(struct vgfx_window *win, int32_t x, int32_t y) {
     return (win && x >= 0 && x < win->width && y >= 0 && y < win->height);
 }
 

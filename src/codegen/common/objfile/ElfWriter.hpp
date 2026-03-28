@@ -25,12 +25,10 @@
 
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
 
-namespace viper::codegen::objfile
-{
+namespace viper::codegen::objfile {
 
 /// ELF object file writer for Linux (x86_64 and AArch64).
-class ElfWriter : public ObjectFileWriter
-{
+class ElfWriter : public ObjectFileWriter {
   public:
     explicit ElfWriter(ObjArch arch) : arch_(arch) {}
 

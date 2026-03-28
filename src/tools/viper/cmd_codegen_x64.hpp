@@ -23,8 +23,7 @@
 
 #include <cstddef>
 
-namespace viper::tools::ilc
-{
+namespace viper::tools::ilc {
 
 struct CLI; ///< Forward declaration for future structured CLI integration.
 

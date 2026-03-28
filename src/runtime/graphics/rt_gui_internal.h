@@ -60,8 +60,7 @@
 /// @brief Internal application state for the GUI runtime.
 /// @details Holds the graphics window, root widget, default font, mouse state,
 ///          and close flag. Defined in rt_gui_app.c and shared across split GUI modules.
-typedef struct
-{
+typedef struct {
     vgfx_window_t window;      ///< Underlying graphics window handle.
     vg_widget_t *root;         ///< Root widget container for the UI hierarchy.
     vg_font_t *default_font;   ///< Default font for widgets (lazily loaded).
@@ -86,8 +85,7 @@ extern rt_gui_app_t *s_current_app;
 ///          returned buffer.
 /// @param str Runtime string to convert (may be NULL).
 /// @return Heap-allocated C string, or NULL if str is NULL or allocation fails.
-static inline char *rt_string_to_cstr(rt_string str)
-{
+static inline char *rt_string_to_cstr(rt_string str) {
     if (!str)
         return NULL;
     size_t len = (size_t)rt_str_len(str);

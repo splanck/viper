@@ -36,10 +36,8 @@ using namespace viper::codegen::objfile;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -48,47 +46,39 @@ static void check(bool cond, const char *msg, int line)
 #define CHECK(cond) check((cond), #cond, __LINE__)
 
 // Helper to create a physical register operand.
-static Operand gpr(PhysReg r)
-{
+static Operand gpr(PhysReg r) {
     return makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(r));
 }
 
-static Operand xmm(PhysReg r)
-{
+static Operand xmm(PhysReg r) {
     return makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(r));
 }
 
-static Operand imm(int64_t val)
-{
+static Operand imm(int64_t val) {
     return makeImmOperand(val);
 }
 
-static Operand mem(PhysReg base, int32_t disp)
-{
+static Operand mem(PhysReg base, int32_t disp) {
     return makeMemOperand(makePhysReg(RegClass::GPR, static_cast<uint16_t>(base)), disp);
 }
 
-static Operand memIdx(PhysReg base, PhysReg index, uint8_t scale, int32_t disp)
-{
+static Operand memIdx(PhysReg base, PhysReg index, uint8_t scale, int32_t disp) {
     return makeMemOperand(makePhysReg(RegClass::GPR, static_cast<uint16_t>(base)),
                           makePhysReg(RegClass::GPR, static_cast<uint16_t>(index)),
                           scale,
                           disp);
 }
 
-static Operand label(const std::string &name)
-{
+static Operand label(const std::string &name) {
     return makeLabelOperand(name);
 }
 
-static Operand ripLabel(const std::string &name)
-{
+static Operand ripLabel(const std::string &name) {
     return makeRipLabelOperand(name);
 }
 
 // Helper: encode a single instruction and return the bytes.
-static std::vector<uint8_t> encodeOne(MOpcode op, std::vector<Operand> operands)
-{
+static std::vector<uint8_t> encodeOne(MOpcode op, std::vector<Operand> operands) {
     MFunction fn;
     fn.name = "test";
     MBasicBlock bb;
@@ -105,15 +95,13 @@ static std::vector<uint8_t> encodeOne(MOpcode op, std::vector<Operand> operands)
 // Helper: check bytes match expected hex sequence.
 static bool bytesMatch(const std::vector<uint8_t> &actual,
                        const std::vector<uint8_t> &expected,
-                       size_t offset = 0)
-{
+                       size_t offset = 0) {
     if (offset + expected.size() > actual.size())
         return false;
     return std::memcmp(actual.data() + offset, expected.data(), expected.size()) == 0;
 }
 
-int main()
-{
+int main() {
     // ================================================================
     // 1. Nullary instructions
     // ================================================================
@@ -757,10 +745,8 @@ int main()
 
         // Function symbol should be "_main".
         bool foundMain = false;
-        for (uint32_t i = 0; i < text.symbols().count(); ++i)
-        {
-            if (text.symbols().at(i).name == "_main")
-            {
+        for (uint32_t i = 0; i < text.symbols().count(); ++i) {
+            if (text.symbols().at(i).name == "_main") {
                 foundMain = true;
                 break;
             }
@@ -769,10 +755,8 @@ int main()
 
         // External call should be to "_rt_init".
         bool foundRtInit = false;
-        for (uint32_t i = 0; i < text.symbols().count(); ++i)
-        {
-            if (text.symbols().at(i).name == "_rt_init")
-            {
+        for (uint32_t i = 0; i < text.symbols().count(); ++i) {
+            if (text.symbols().at(i).name == "_rt_init") {
                 foundRtInit = true;
                 break;
             }
@@ -920,8 +904,7 @@ int main()
     // ================================================================
     // Result
     // ================================================================
-    if (gFail == 0)
-    {
+    if (gFail == 0) {
         std::cout << "All X64BinaryEncoder tests passed.\n";
         return EXIT_SUCCESS;
     }

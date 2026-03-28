@@ -34,28 +34,23 @@ using namespace viper::codegen::ra;
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-namespace
-{
+namespace {
 
 /// Simple next-use map for testing.
-struct NextUseMap
-{
+struct NextUseMap {
     std::unordered_map<uint16_t, unsigned> distances;
 
-    unsigned operator()(uint16_t vreg) const
-    {
+    unsigned operator()(uint16_t vreg) const {
         auto it = distances.find(vreg);
         return (it != distances.end()) ? it->second : UINT_MAX;
     }
 };
 
 /// Simple last-use map for testing.
-struct LastUseMap
-{
+struct LastUseMap {
     std::unordered_map<uint16_t, unsigned> times;
 
-    unsigned operator()(uint16_t vreg) const
-    {
+    unsigned operator()(uint16_t vreg) const {
         auto it = times.find(vreg);
         return (it != times.end()) ? it->second : 0;
     }
@@ -67,30 +62,26 @@ struct LastUseMap
 // Furthest-First Victim Selection
 // ===========================================================================
 
-TEST(VictimSelection, FurthestEmpty)
-{
+TEST(VictimSelection, FurthestEmpty) {
     std::vector<uint16_t> active;
     NextUseMap map{};
     EXPECT_EQ(selectFurthestVictim(active, map), 0u);
 }
 
-TEST(VictimSelection, FurthestSingle)
-{
+TEST(VictimSelection, FurthestSingle) {
     std::vector<uint16_t> active = {42};
     NextUseMap map{{{42, 10}}};
     EXPECT_EQ(selectFurthestVictim(active, map), 42u);
 }
 
-TEST(VictimSelection, FurthestPicksMostDistant)
-{
+TEST(VictimSelection, FurthestPicksMostDistant) {
     // v1 at distance 5, v2 at distance 20, v3 at distance 10
     std::vector<uint16_t> active = {1, 2, 3};
     NextUseMap map{{{1, 5}, {2, 20}, {3, 10}}};
     EXPECT_EQ(selectFurthestVictim(active, map), 2u);
 }
 
-TEST(VictimSelection, FurthestNoFutureUse)
-{
+TEST(VictimSelection, FurthestNoFutureUse) {
     // v1 has a use at 5; v2 has no future use (UINT_MAX)
     std::vector<uint16_t> active = {1, 2};
     NextUseMap map{{{1, 5}}};
@@ -98,21 +89,18 @@ TEST(VictimSelection, FurthestNoFutureUse)
     EXPECT_EQ(selectFurthestVictim(active, map), 2u);
 }
 
-TEST(VictimSelection, FurthestTieBreaksToFirst)
-{
+TEST(VictimSelection, FurthestTieBreaksToFirst) {
     // All at same distance → first in active set wins
     std::vector<uint16_t> active = {10, 20, 30};
     NextUseMap map{{{10, 100}, {20, 100}, {30, 100}}};
     EXPECT_EQ(selectFurthestVictim(active, map), 10u);
 }
 
-TEST(VictimSelection, FurthestLargeSet)
-{
+TEST(VictimSelection, FurthestLargeSet) {
     // 100 vregs, one at distance 1000
     std::vector<uint16_t> active;
     NextUseMap map{};
-    for (uint16_t i = 1; i <= 100; ++i)
-    {
+    for (uint16_t i = 1; i <= 100; ++i) {
         active.push_back(i);
         map.distances[i] = i; // distance = vreg id
     }
@@ -124,30 +112,26 @@ TEST(VictimSelection, FurthestLargeSet)
 // LRU Victim Selection
 // ===========================================================================
 
-TEST(VictimSelection, LRUEmpty)
-{
+TEST(VictimSelection, LRUEmpty) {
     std::vector<uint16_t> active;
     LastUseMap map{};
     EXPECT_EQ(selectLRUVictim(active, map), 0u);
 }
 
-TEST(VictimSelection, LRUSingle)
-{
+TEST(VictimSelection, LRUSingle) {
     std::vector<uint16_t> active = {7};
     LastUseMap map{{{7, 42}}};
     EXPECT_EQ(selectLRUVictim(active, map), 7u);
 }
 
-TEST(VictimSelection, LRUPicksOldest)
-{
+TEST(VictimSelection, LRUPicksOldest) {
     // v1 last used at 100, v2 at 5, v3 at 50
     std::vector<uint16_t> active = {1, 2, 3};
     LastUseMap map{{{1, 100}, {2, 5}, {3, 50}}};
     EXPECT_EQ(selectLRUVictim(active, map), 2u);
 }
 
-TEST(VictimSelection, LRUNeverUsed)
-{
+TEST(VictimSelection, LRUNeverUsed) {
     // v1 used at 10; v2 never used (defaults to 0)
     std::vector<uint16_t> active = {1, 2};
     LastUseMap map{{{1, 10}}};
@@ -155,14 +139,11 @@ TEST(VictimSelection, LRUNeverUsed)
     EXPECT_EQ(selectLRUVictim(active, map), 2u);
 }
 
-TEST(VictimSelection, LRUWithLambda)
-{
+TEST(VictimSelection, LRUWithLambda) {
     // Test with a lambda instead of a struct
     std::vector<uint16_t> active = {1, 2, 3};
-    auto getLastUse = [](uint16_t vreg) -> unsigned
-    {
-        switch (vreg)
-        {
+    auto getLastUse = [](uint16_t vreg) -> unsigned {
+        switch (vreg) {
             case 1:
                 return 50;
             case 2:
@@ -176,14 +157,11 @@ TEST(VictimSelection, LRUWithLambda)
     EXPECT_EQ(selectLRUVictim(active, getLastUse), 2u);
 }
 
-TEST(VictimSelection, FurthestWithLambda)
-{
+TEST(VictimSelection, FurthestWithLambda) {
     // Test furthest with a lambda
     std::vector<uint16_t> active = {1, 2, 3};
-    auto getNextUse = [](uint16_t vreg) -> unsigned
-    {
-        switch (vreg)
-        {
+    auto getNextUse = [](uint16_t vreg) -> unsigned {
+        switch (vreg) {
             case 1:
                 return 5;
             case 2:
@@ -197,8 +175,7 @@ TEST(VictimSelection, FurthestWithLambda)
     EXPECT_EQ(selectFurthestVictim(active, getNextUse), 2u);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

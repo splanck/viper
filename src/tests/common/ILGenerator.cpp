@@ -22,34 +22,27 @@
 
 #include <chrono>
 
-namespace viper::tests
-{
+namespace viper::tests {
 
 ILGenerator::ILGenerator()
     : seed_(
           static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count())),
-      rng_(seed_)
-{
-}
+      rng_(seed_) {}
 
 ILGenerator::ILGenerator(std::uint64_t seed) : seed_(seed), rng_(seed) {}
 
-std::int64_t ILGenerator::randomConstant(std::int64_t min, std::int64_t max)
-{
+std::int64_t ILGenerator::randomConstant(std::int64_t min, std::int64_t max) {
     std::uniform_int_distribution<std::int64_t> dist(min, max);
     return dist(rng_);
 }
 
 il::core::Value ILGenerator::randomValue(const std::vector<unsigned> &availableTemps,
                                          std::int64_t minConst,
-                                         std::int64_t maxConst)
-{
+                                         std::int64_t maxConst) {
     // 50% chance to use existing temp if available
-    if (!availableTemps.empty())
-    {
+    if (!availableTemps.empty()) {
         std::uniform_int_distribution<int> coinFlip(0, 1);
-        if (coinFlip(rng_) == 0)
-        {
+        if (coinFlip(rng_) == 0) {
             std::uniform_int_distribution<std::size_t> dist(0, availableTemps.size() - 1);
             return il::core::Value::temp(availableTemps[dist(rng_)]);
         }
@@ -58,24 +51,20 @@ il::core::Value ILGenerator::randomValue(const std::vector<unsigned> &availableT
     // Otherwise generate a constant (avoid 0 for divisor safety)
     std::int64_t val = randomConstant(minConst, maxConst);
     // Avoid division by zero - ensure non-zero constants when used as divisor
-    if (val == 0)
-    {
+    if (val == 0) {
         val = 1;
     }
     return il::core::Value::constInt(val);
 }
 
-std::string ILGenerator::generateBlockLabel(std::size_t index)
-{
-    if (index == 0)
-    {
+std::string ILGenerator::generateBlockLabel(std::size_t index) {
+    if (index == 0) {
         return "entry";
     }
     return "bb" + std::to_string(index);
 }
 
-ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config)
-{
+ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config) {
     using namespace il::core;
 
     ILGeneratorResult result;
@@ -116,8 +105,7 @@ ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config)
         categories.push_back(3);
 
     // Generate instructions
-    for (std::size_t i = 0; i < numInstructions; ++i)
-    {
+    for (std::size_t i = 0; i < numInstructions; ++i) {
         Instr instr;
         instr.result = nextTemp++;
         instr.loc = {1, 1, 1};
@@ -128,8 +116,7 @@ ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config)
 
         bool producesI1 = false;
 
-        switch (category)
-        {
+        switch (category) {
             case 0: // arithmetic
                 instr.op = randomChoice(kArithOps);
                 instr.type = Type(Type::Kind::I64);
@@ -156,16 +143,14 @@ ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config)
         // For overflow-checked arithmetic, use only constants to prevent chain overflow.
         // Temps can grow unboundedly, causing overflow when chained.
         if (instr.op == Opcode::IAddOvf || instr.op == Opcode::ISubOvf ||
-            instr.op == Opcode::IMulOvf)
-        {
+            instr.op == Opcode::IMulOvf) {
             lhs = Value::constInt(randomConstant(config.minConstant, config.maxConstant));
             rhs = Value::constInt(randomConstant(config.minConstant, config.maxConstant));
         }
 
         // For division, ensure non-zero divisor (use constants only to avoid runtime div-by-zero)
         // Also avoid MIN_INT64 / -1 which overflows
-        if (instr.op == Opcode::SDivChk0 || instr.op == Opcode::UDivChk0)
-        {
+        if (instr.op == Opcode::SDivChk0 || instr.op == Opcode::UDivChk0) {
             // Use small constants for both operands to avoid overflow
             lhs = Value::constInt(randomConstant(config.minConstant, config.maxConstant));
             std::int64_t divisor = randomConstant(1, 10); // positive only
@@ -174,14 +159,12 @@ ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config)
 
         // For shifts, ensure shift amount is in valid range (0-63)
         // and use non-negative values for the shifted operand to avoid edge cases
-        if (instr.op == Opcode::Shl || instr.op == Opcode::LShr || instr.op == Opcode::AShr)
-        {
+        if (instr.op == Opcode::Shl || instr.op == Opcode::LShr || instr.op == Opcode::AShr) {
             std::int64_t shiftAmt = randomConstant(0, 63);
             rhs = Value::constInt(shiftAmt);
             // For LShr/AShr, use non-negative LHS to avoid edge cases with negative constants
             if ((instr.op == Opcode::LShr || instr.op == Opcode::AShr) &&
-                lhs.kind == Value::Kind::ConstInt && lhs.i64 < 0)
-            {
+                lhs.kind == Value::Kind::ConstInt && lhs.i64 < 0) {
                 lhs = Value::constInt(std::abs(lhs.i64) % 10000);
             }
         }
@@ -190,8 +173,7 @@ ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config)
         entry.instructions.push_back(instr);
 
         // Only add i64 results to available temps (not comparisons)
-        if (!producesI1)
-        {
+        if (!producesI1) {
             availableTemps.push_back(*instr.result);
         }
     }
@@ -203,12 +185,9 @@ ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config)
     ret.loc = {1, 1, 1};
 
     // Return the last computed i64 value or a constant
-    if (!availableTemps.empty())
-    {
+    if (!availableTemps.empty()) {
         ret.operands = {Value::temp(availableTemps.back())};
-    }
-    else
-    {
+    } else {
         ret.operands = {Value::constInt(42)};
     }
     entry.instructions.push_back(ret);
@@ -229,8 +208,7 @@ ILGeneratorResult ILGenerator::generate(const ILGeneratorConfig &config)
     return result;
 }
 
-std::string printILToString(const il::core::Module &module)
-{
+std::string printILToString(const il::core::Module &module) {
     return il::io::Serializer::toString(module, il::io::Serializer::Mode::Pretty);
 }
 

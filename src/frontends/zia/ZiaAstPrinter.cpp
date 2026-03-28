@@ -18,38 +18,32 @@
 
 #include <sstream>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
-namespace
-{
+namespace {
 
 // ---------------------------------------------------------------------------
 // Printer helper -- manages indentation and line output.
 // ---------------------------------------------------------------------------
 
-struct Printer
-{
+struct Printer {
     std::ostream &os;
     int indent = 0;
 
     /// @brief Write @p text on a new line, honoured by current indentation.
-    void line(const std::string &text)
-    {
+    void line(const std::string &text) {
         for (int i = 0; i < indent; ++i)
             os << "  ";
         os << text << '\n';
     }
 
     /// @brief Increase indentation by one level.
-    void push()
-    {
+    void push() {
         ++indent;
     }
 
     /// @brief Decrease indentation by one level.
-    void pop()
-    {
+    void pop() {
         --indent;
     }
 };
@@ -68,8 +62,7 @@ static void printType(const TypeNode &type, Printer &p);
 // ---------------------------------------------------------------------------
 
 /// @brief Format a source location as "(line:col)".
-static std::string locStr(const SourceLoc &loc)
-{
+static std::string locStr(const SourceLoc &loc) {
     std::ostringstream s;
     s << "(" << loc.line << ":" << loc.column << ")";
     return s.str();
@@ -79,10 +72,8 @@ static std::string locStr(const SourceLoc &loc)
 // Operator name helpers
 // ---------------------------------------------------------------------------
 
-static const char *binaryOpName(BinaryOp op)
-{
-    switch (op)
-    {
+static const char *binaryOpName(BinaryOp op) {
+    switch (op) {
         case BinaryOp::Add:
             return "+";
         case BinaryOp::Sub:
@@ -121,10 +112,8 @@ static const char *binaryOpName(BinaryOp op)
     return "?";
 }
 
-static const char *unaryOpName(UnaryOp op)
-{
-    switch (op)
-    {
+static const char *unaryOpName(UnaryOp op) {
+    switch (op) {
         case UnaryOp::Neg:
             return "-";
         case UnaryOp::Not:
@@ -141,23 +130,18 @@ static const char *unaryOpName(UnaryOp op)
 // Type printing
 // ---------------------------------------------------------------------------
 
-static void printType(const TypeNode &type, Printer &p)
-{
-    switch (type.kind)
-    {
-        case TypeKind::Named:
-        {
+static void printType(const TypeNode &type, Printer &p) {
+    switch (type.kind) {
+        case TypeKind::Named: {
             const auto &n = static_cast<const NamedType &>(type);
             p.line("NamedType \"" + n.name + "\" " + locStr(n.loc));
             break;
         }
-        case TypeKind::Generic:
-        {
+        case TypeKind::Generic: {
             const auto &g = static_cast<const GenericType &>(type);
             p.line("GenericType \"" + g.name + "\" " + locStr(g.loc));
             p.push();
-            for (const auto &arg : g.args)
-            {
+            for (const auto &arg : g.args) {
                 if (arg)
                     printType(*arg, p);
                 else
@@ -166,8 +150,7 @@ static void printType(const TypeNode &type, Printer &p)
             p.pop();
             break;
         }
-        case TypeKind::Optional:
-        {
+        case TypeKind::Optional: {
             const auto &o = static_cast<const OptionalType &>(type);
             p.line("OptionalType " + locStr(o.loc));
             p.push();
@@ -178,17 +161,14 @@ static void printType(const TypeNode &type, Printer &p)
             p.pop();
             break;
         }
-        case TypeKind::Function:
-        {
+        case TypeKind::Function: {
             const auto &f = static_cast<const FunctionType &>(type);
             p.line("FunctionType " + locStr(f.loc));
             p.push();
-            if (!f.params.empty())
-            {
+            if (!f.params.empty()) {
                 p.line("Params:");
                 p.push();
-                for (const auto &param : f.params)
-                {
+                for (const auto &param : f.params) {
                     if (param)
                         printType(*param, p);
                     else
@@ -196,8 +176,7 @@ static void printType(const TypeNode &type, Printer &p)
                 }
                 p.pop();
             }
-            if (f.returnType)
-            {
+            if (f.returnType) {
                 p.line("ReturnType:");
                 p.push();
                 printType(*f.returnType, p);
@@ -206,13 +185,11 @@ static void printType(const TypeNode &type, Printer &p)
             p.pop();
             break;
         }
-        case TypeKind::Tuple:
-        {
+        case TypeKind::Tuple: {
             const auto &t = static_cast<const TupleType &>(type);
             p.line("TupleType " + locStr(t.loc));
             p.push();
-            for (const auto &elem : t.elements)
-            {
+            for (const auto &elem : t.elements) {
                 if (elem)
                     printType(*elem, p);
                 else
@@ -221,8 +198,7 @@ static void printType(const TypeNode &type, Printer &p)
             p.pop();
             break;
         }
-        case TypeKind::FixedArray:
-        {
+        case TypeKind::FixedArray: {
             const auto &fa = static_cast<const FixedArrayType &>(type);
             p.line("FixedArrayType [" + std::to_string(fa.count) + "] " + locStr(fa.loc));
             p.push();
@@ -240,10 +216,8 @@ static void printType(const TypeNode &type, Printer &p)
 // Pattern printing (for match arms)
 // ---------------------------------------------------------------------------
 
-static void printPattern(const MatchArm::Pattern &pat, Printer &p)
-{
-    switch (pat.kind)
-    {
+static void printPattern(const MatchArm::Pattern &pat, Printer &p) {
+    switch (pat.kind) {
         case MatchArm::Pattern::Kind::Wildcard:
             p.line("WildcardPattern");
             break;
@@ -261,8 +235,7 @@ static void printPattern(const MatchArm::Pattern &pat, Printer &p)
             break;
         case MatchArm::Pattern::Kind::Constructor:
             p.line("ConstructorPattern \"" + pat.binding + "\"");
-            if (!pat.subpatterns.empty())
-            {
+            if (!pat.subpatterns.empty()) {
                 p.push();
                 for (const auto &sub : pat.subpatterns)
                     printPattern(sub, p);
@@ -271,8 +244,7 @@ static void printPattern(const MatchArm::Pattern &pat, Printer &p)
             break;
         case MatchArm::Pattern::Kind::Tuple:
             p.line("TuplePattern");
-            if (!pat.subpatterns.empty())
-            {
+            if (!pat.subpatterns.empty()) {
                 p.push();
                 for (const auto &sub : pat.subpatterns)
                     printPattern(sub, p);
@@ -290,8 +262,7 @@ static void printPattern(const MatchArm::Pattern &pat, Printer &p)
             break;
         case MatchArm::Pattern::Kind::Or:
             p.line("OrPattern");
-            if (!pat.subpatterns.empty())
-            {
+            if (!pat.subpatterns.empty()) {
                 p.push();
                 for (const auto &sub : pat.subpatterns)
                     printPattern(sub, p);
@@ -299,8 +270,7 @@ static void printPattern(const MatchArm::Pattern &pat, Printer &p)
             }
             break;
     }
-    if (pat.guard)
-    {
+    if (pat.guard) {
         p.push();
         p.line("Guard:");
         p.push();
@@ -310,12 +280,10 @@ static void printPattern(const MatchArm::Pattern &pat, Printer &p)
     }
 }
 
-static void printMatchArms(const std::vector<MatchArm> &arms, Printer &p)
-{
+static void printMatchArms(const std::vector<MatchArm> &arms, Printer &p) {
     p.line("Arms:");
     p.push();
-    for (const auto &arm : arms)
-    {
+    for (const auto &arm : arms) {
         p.line("MatchArm");
         p.push();
         p.line("Pattern:");
@@ -338,70 +306,58 @@ static void printMatchArms(const std::vector<MatchArm> &arms, Printer &p)
 // Expression printing
 // ---------------------------------------------------------------------------
 
-static void printExpr(const Expr &expr, Printer &p)
-{
-    switch (expr.kind)
-    {
+static void printExpr(const Expr &expr, Printer &p) {
+    switch (expr.kind) {
         // -- Literals -------------------------------------------------------
-        case ExprKind::IntLiteral:
-        {
+        case ExprKind::IntLiteral: {
             const auto &e = static_cast<const IntLiteralExpr &>(expr);
             p.line("IntLiteral " + std::to_string(e.value) + " " + locStr(e.loc));
             break;
         }
-        case ExprKind::NumberLiteral:
-        {
+        case ExprKind::NumberLiteral: {
             const auto &e = static_cast<const NumberLiteralExpr &>(expr);
             std::ostringstream val;
             val << e.value;
             p.line("NumberLiteral " + val.str() + " " + locStr(e.loc));
             break;
         }
-        case ExprKind::StringLiteral:
-        {
+        case ExprKind::StringLiteral: {
             const auto &e = static_cast<const StringLiteralExpr &>(expr);
             p.line("StringLiteral \"" + e.value + "\" " + locStr(e.loc));
             break;
         }
-        case ExprKind::BoolLiteral:
-        {
+        case ExprKind::BoolLiteral: {
             const auto &e = static_cast<const BoolLiteralExpr &>(expr);
             p.line(std::string("BoolLiteral ") + (e.value ? "true" : "false") + " " +
                    locStr(e.loc));
             break;
         }
-        case ExprKind::NullLiteral:
-        {
+        case ExprKind::NullLiteral: {
             p.line("NullLiteral " + locStr(expr.loc));
             break;
         }
-        case ExprKind::UnitLiteral:
-        {
+        case ExprKind::UnitLiteral: {
             p.line("UnitLiteral " + locStr(expr.loc));
             break;
         }
 
         // -- Names ----------------------------------------------------------
-        case ExprKind::Ident:
-        {
+        case ExprKind::Ident: {
             const auto &e = static_cast<const IdentExpr &>(expr);
             p.line("IdentExpr \"" + e.name + "\" " + locStr(e.loc));
             break;
         }
-        case ExprKind::SelfExpr:
-        {
+        case ExprKind::SelfExpr: {
             p.line("SelfExpr " + locStr(expr.loc));
             break;
         }
-        case ExprKind::SuperExpr:
-        {
+        case ExprKind::SuperExpr: {
             p.line("SuperExpr " + locStr(expr.loc));
             break;
         }
 
         // -- Operators ------------------------------------------------------
-        case ExprKind::Binary:
-        {
+        case ExprKind::Binary: {
             const auto &e = static_cast<const BinaryExpr &>(expr);
             p.line(std::string("BinaryExpr (") + binaryOpName(e.op) + ") " + locStr(e.loc));
             p.push();
@@ -416,8 +372,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Unary:
-        {
+        case ExprKind::Unary: {
             const auto &e = static_cast<const UnaryExpr &>(expr);
             p.line(std::string("UnaryExpr (") + unaryOpName(e.op) + ") " + locStr(e.loc));
             p.push();
@@ -428,8 +383,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Ternary:
-        {
+        case ExprKind::Ternary: {
             const auto &e = static_cast<const TernaryExpr &>(expr);
             p.line("TernaryExpr " + locStr(e.loc));
             p.push();
@@ -457,8 +411,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Call:
-        {
+        case ExprKind::Call: {
             const auto &e = static_cast<const CallExpr &>(expr);
             p.line("CallExpr " + locStr(e.loc));
             p.push();
@@ -469,12 +422,10 @@ static void printExpr(const Expr &expr, Printer &p)
             else
                 p.line("<null>");
             p.pop();
-            if (!e.args.empty())
-            {
+            if (!e.args.empty()) {
                 p.line("Args:");
                 p.push();
-                for (const auto &arg : e.args)
-                {
+                for (const auto &arg : e.args) {
                     if (arg.name)
                         p.line("NamedArg \"" + *arg.name + "\":");
                     else
@@ -491,8 +442,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Index:
-        {
+        case ExprKind::Index: {
             const auto &e = static_cast<const IndexExpr &>(expr);
             p.line("IndexExpr " + locStr(e.loc));
             p.push();
@@ -513,8 +463,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Field:
-        {
+        case ExprKind::Field: {
             const auto &e = static_cast<const FieldExpr &>(expr);
             p.line("FieldExpr \"" + e.field + "\" " + locStr(e.loc));
             p.push();
@@ -525,8 +474,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::OptionalChain:
-        {
+        case ExprKind::OptionalChain: {
             const auto &e = static_cast<const OptionalChainExpr &>(expr);
             p.line("OptionalChainExpr \"" + e.field + "\" " + locStr(e.loc));
             p.push();
@@ -537,8 +485,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Coalesce:
-        {
+        case ExprKind::Coalesce: {
             const auto &e = static_cast<const CoalesceExpr &>(expr);
             p.line("CoalesceExpr " + locStr(e.loc));
             p.push();
@@ -553,8 +500,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Is:
-        {
+        case ExprKind::Is: {
             const auto &e = static_cast<const IsExpr &>(expr);
             p.line("IsExpr " + locStr(e.loc));
             p.push();
@@ -575,8 +521,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::As:
-        {
+        case ExprKind::As: {
             const auto &e = static_cast<const AsExpr &>(expr);
             p.line("AsExpr " + locStr(e.loc));
             p.push();
@@ -597,8 +542,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Range:
-        {
+        case ExprKind::Range: {
             const auto &e = static_cast<const RangeExpr &>(expr);
             p.line(std::string("RangeExpr ") + (e.inclusive ? "..=" : "..") + " " + locStr(e.loc));
             p.push();
@@ -619,8 +563,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Try:
-        {
+        case ExprKind::Try: {
             const auto &e = static_cast<const TryExpr &>(expr);
             p.line("TryExpr " + locStr(e.loc));
             p.push();
@@ -631,8 +574,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::ForceUnwrap:
-        {
+        case ExprKind::ForceUnwrap: {
             const auto &e = static_cast<const ForceUnwrapExpr &>(expr);
             p.line("ForceUnwrapExpr " + locStr(e.loc));
             p.push();
@@ -643,8 +585,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Await:
-        {
+        case ExprKind::Await: {
             const auto &e = static_cast<const AwaitExpr &>(expr);
             p.line("AwaitExpr " + locStr(e.loc));
             p.push();
@@ -657,8 +598,7 @@ static void printExpr(const Expr &expr, Printer &p)
         }
 
         // -- Construction ---------------------------------------------------
-        case ExprKind::New:
-        {
+        case ExprKind::New: {
             const auto &e = static_cast<const NewExpr &>(expr);
             p.line("NewExpr " + locStr(e.loc));
             p.push();
@@ -669,12 +609,10 @@ static void printExpr(const Expr &expr, Printer &p)
             else
                 p.line("<null>");
             p.pop();
-            if (!e.args.empty())
-            {
+            if (!e.args.empty()) {
                 p.line("Args:");
                 p.push();
-                for (const auto &arg : e.args)
-                {
+                for (const auto &arg : e.args) {
                     if (arg.name)
                         p.line("NamedArg \"" + *arg.name + "\":");
                     else
@@ -691,13 +629,11 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::StructLiteral:
-        {
+        case ExprKind::StructLiteral: {
             const auto &e = static_cast<const StructLiteralExpr &>(expr);
             p.line("StructLiteralExpr \"" + e.typeName + "\" " + locStr(e.loc));
             p.push();
-            for (const auto &field : e.fields)
-            {
+            for (const auto &field : e.fields) {
                 p.line("Field \"" + field.name + "\" " + locStr(field.loc) + ":");
                 p.push();
                 if (field.value)
@@ -709,20 +645,16 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Lambda:
-        {
+        case ExprKind::Lambda: {
             const auto &e = static_cast<const LambdaExpr &>(expr);
             p.line("LambdaExpr " + locStr(e.loc));
             p.push();
-            if (!e.params.empty())
-            {
+            if (!e.params.empty()) {
                 p.line("Params:");
                 p.push();
-                for (const auto &param : e.params)
-                {
+                for (const auto &param : e.params) {
                     std::string paramStr = "LambdaParam \"" + param.name + "\"";
-                    if (param.type)
-                    {
+                    if (param.type) {
                         p.line(paramStr);
                         p.push();
                         p.line("Type:");
@@ -730,27 +662,22 @@ static void printExpr(const Expr &expr, Printer &p)
                         printType(*param.type, p);
                         p.pop();
                         p.pop();
-                    }
-                    else
-                    {
+                    } else {
                         p.line(paramStr);
                     }
                 }
                 p.pop();
             }
-            if (e.returnType)
-            {
+            if (e.returnType) {
                 p.line("ReturnType:");
                 p.push();
                 printType(*e.returnType, p);
                 p.pop();
             }
-            if (!e.captures.empty())
-            {
+            if (!e.captures.empty()) {
                 p.line("Captures:");
                 p.push();
-                for (const auto &cap : e.captures)
-                {
+                for (const auto &cap : e.captures) {
                     p.line("Capture \"" + cap.name + "\"");
                 }
                 p.pop();
@@ -765,13 +692,11 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::ListLiteral:
-        {
+        case ExprKind::ListLiteral: {
             const auto &e = static_cast<const ListLiteralExpr &>(expr);
             p.line("ListLiteralExpr " + locStr(e.loc));
             p.push();
-            for (const auto &elem : e.elements)
-            {
+            for (const auto &elem : e.elements) {
                 if (elem)
                     printExpr(*elem, p);
                 else
@@ -780,13 +705,11 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::MapLiteral:
-        {
+        case ExprKind::MapLiteral: {
             const auto &e = static_cast<const MapLiteralExpr &>(expr);
             p.line("MapLiteralExpr " + locStr(e.loc));
             p.push();
-            for (const auto &entry : e.entries)
-            {
+            for (const auto &entry : e.entries) {
                 p.line("Entry:");
                 p.push();
                 p.line("Key:");
@@ -808,13 +731,11 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::SetLiteral:
-        {
+        case ExprKind::SetLiteral: {
             const auto &e = static_cast<const SetLiteralExpr &>(expr);
             p.line("SetLiteralExpr " + locStr(e.loc));
             p.push();
-            for (const auto &elem : e.elements)
-            {
+            for (const auto &elem : e.elements) {
                 if (elem)
                     printExpr(*elem, p);
                 else
@@ -823,13 +744,11 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Tuple:
-        {
+        case ExprKind::Tuple: {
             const auto &e = static_cast<const TupleExpr &>(expr);
             p.line("TupleExpr " + locStr(e.loc));
             p.push();
-            for (const auto &elem : e.elements)
-            {
+            for (const auto &elem : e.elements) {
                 if (elem)
                     printExpr(*elem, p);
                 else
@@ -838,8 +757,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::TupleIndex:
-        {
+        case ExprKind::TupleIndex: {
             const auto &e = static_cast<const TupleIndexExpr &>(expr);
             p.line("TupleIndexExpr ." + std::to_string(e.index) + " " + locStr(e.loc));
             p.push();
@@ -852,8 +770,7 @@ static void printExpr(const Expr &expr, Printer &p)
         }
 
         // -- Control flow expressions ---------------------------------------
-        case ExprKind::If:
-        {
+        case ExprKind::If: {
             const auto &e = static_cast<const IfExpr &>(expr);
             p.line("IfExpr " + locStr(e.loc));
             p.push();
@@ -881,8 +798,7 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Match:
-        {
+        case ExprKind::Match: {
             const auto &e = static_cast<const MatchExpr &>(expr);
             p.line("MatchExpr " + locStr(e.loc));
             p.push();
@@ -897,17 +813,14 @@ static void printExpr(const Expr &expr, Printer &p)
             p.pop();
             break;
         }
-        case ExprKind::Block:
-        {
+        case ExprKind::Block: {
             const auto &e = static_cast<const BlockExpr &>(expr);
             p.line("BlockExpr " + locStr(e.loc));
             p.push();
-            if (!e.statements.empty())
-            {
+            if (!e.statements.empty()) {
                 p.line("Statements:");
                 p.push();
-                for (const auto &stmt : e.statements)
-                {
+                for (const auto &stmt : e.statements) {
                     if (stmt)
                         printStmt(*stmt, p);
                     else
@@ -932,17 +845,13 @@ static void printExpr(const Expr &expr, Printer &p)
 // Statement printing
 // ---------------------------------------------------------------------------
 
-static void printStmt(const Stmt &stmt, Printer &p)
-{
-    switch (stmt.kind)
-    {
-        case StmtKind::Block:
-        {
+static void printStmt(const Stmt &stmt, Printer &p) {
+    switch (stmt.kind) {
+        case StmtKind::Block: {
             const auto &s = static_cast<const BlockStmt &>(stmt);
             p.line("BlockStmt " + locStr(s.loc));
             p.push();
-            for (const auto &child : s.statements)
-            {
+            for (const auto &child : s.statements) {
                 if (child)
                     printStmt(*child, p);
                 else
@@ -951,8 +860,7 @@ static void printStmt(const Stmt &stmt, Printer &p)
             p.pop();
             break;
         }
-        case StmtKind::Expr:
-        {
+        case StmtKind::Expr: {
             const auto &s = static_cast<const ExprStmt &>(stmt);
             p.line("ExprStmt " + locStr(s.loc));
             p.push();
@@ -963,22 +871,19 @@ static void printStmt(const Stmt &stmt, Printer &p)
             p.pop();
             break;
         }
-        case StmtKind::Var:
-        {
+        case StmtKind::Var: {
             const auto &s = static_cast<const VarStmt &>(stmt);
             std::string header = (s.isFinal ? "FinalStmt" : "VarStmt");
             header += " \"" + s.name + "\" " + locStr(s.loc);
             p.line(header);
             p.push();
-            if (s.type)
-            {
+            if (s.type) {
                 p.line("Type:");
                 p.push();
                 printType(*s.type, p);
                 p.pop();
             }
-            if (s.initializer)
-            {
+            if (s.initializer) {
                 p.line("Initializer:");
                 p.push();
                 printExpr(*s.initializer, p);
@@ -987,8 +892,7 @@ static void printStmt(const Stmt &stmt, Printer &p)
             p.pop();
             break;
         }
-        case StmtKind::If:
-        {
+        case StmtKind::If: {
             const auto &s = static_cast<const IfStmt &>(stmt);
             p.line("IfStmt " + locStr(s.loc));
             p.push();
@@ -1006,8 +910,7 @@ static void printStmt(const Stmt &stmt, Printer &p)
             else
                 p.line("<null>");
             p.pop();
-            if (s.elseBranch)
-            {
+            if (s.elseBranch) {
                 p.line("Else:");
                 p.push();
                 printStmt(*s.elseBranch, p);
@@ -1016,8 +919,7 @@ static void printStmt(const Stmt &stmt, Printer &p)
             p.pop();
             break;
         }
-        case StmtKind::While:
-        {
+        case StmtKind::While: {
             const auto &s = static_cast<const WhileStmt &>(stmt);
             p.line("WhileStmt " + locStr(s.loc));
             p.push();
@@ -1038,27 +940,23 @@ static void printStmt(const Stmt &stmt, Printer &p)
             p.pop();
             break;
         }
-        case StmtKind::For:
-        {
+        case StmtKind::For: {
             const auto &s = static_cast<const ForStmt &>(stmt);
             p.line("ForStmt " + locStr(s.loc));
             p.push();
-            if (s.init)
-            {
+            if (s.init) {
                 p.line("Init:");
                 p.push();
                 printStmt(*s.init, p);
                 p.pop();
             }
-            if (s.condition)
-            {
+            if (s.condition) {
                 p.line("Condition:");
                 p.push();
                 printExpr(*s.condition, p);
                 p.pop();
             }
-            if (s.update)
-            {
+            if (s.update) {
                 p.line("Update:");
                 p.push();
                 printExpr(*s.update, p);
@@ -1074,8 +972,7 @@ static void printStmt(const Stmt &stmt, Printer &p)
             p.pop();
             break;
         }
-        case StmtKind::ForIn:
-        {
+        case StmtKind::ForIn: {
             const auto &s = static_cast<const ForInStmt &>(stmt);
             std::string header = "ForInStmt \"" + s.variable + "\"";
             if (s.isTuple)
@@ -1083,15 +980,13 @@ static void printStmt(const Stmt &stmt, Printer &p)
             header += " " + locStr(s.loc);
             p.line(header);
             p.push();
-            if (s.variableType)
-            {
+            if (s.variableType) {
                 p.line("VariableType:");
                 p.push();
                 printType(*s.variableType, p);
                 p.pop();
             }
-            if (s.isTuple && s.secondVariableType)
-            {
+            if (s.isTuple && s.secondVariableType) {
                 p.line("SecondVariableType:");
                 p.push();
                 printType(*s.secondVariableType, p);
@@ -1114,30 +1009,25 @@ static void printStmt(const Stmt &stmt, Printer &p)
             p.pop();
             break;
         }
-        case StmtKind::Return:
-        {
+        case StmtKind::Return: {
             const auto &s = static_cast<const ReturnStmt &>(stmt);
             p.line("ReturnStmt " + locStr(s.loc));
-            if (s.value)
-            {
+            if (s.value) {
                 p.push();
                 printExpr(*s.value, p);
                 p.pop();
             }
             break;
         }
-        case StmtKind::Break:
-        {
+        case StmtKind::Break: {
             p.line("BreakStmt " + locStr(stmt.loc));
             break;
         }
-        case StmtKind::Continue:
-        {
+        case StmtKind::Continue: {
             p.line("ContinueStmt " + locStr(stmt.loc));
             break;
         }
-        case StmtKind::Guard:
-        {
+        case StmtKind::Guard: {
             const auto &s = static_cast<const GuardStmt &>(stmt);
             p.line("GuardStmt " + locStr(s.loc));
             p.push();
@@ -1158,8 +1048,7 @@ static void printStmt(const Stmt &stmt, Printer &p)
             p.pop();
             break;
         }
-        case StmtKind::Match:
-        {
+        case StmtKind::Match: {
             const auto &s = static_cast<const MatchStmt &>(stmt);
             p.line("MatchStmt " + locStr(s.loc));
             p.push();
@@ -1174,8 +1063,7 @@ static void printStmt(const Stmt &stmt, Printer &p)
             p.pop();
             break;
         }
-        case StmtKind::Try:
-        {
+        case StmtKind::Try: {
             const auto &s = static_cast<const TryStmt &>(stmt);
             std::string desc = "TryStmt " + locStr(s.loc);
             if (!s.catchTypeName.empty())
@@ -1183,8 +1071,7 @@ static void printStmt(const Stmt &stmt, Printer &p)
             p.line(desc);
             break;
         }
-        case StmtKind::Throw:
-        {
+        case StmtKind::Throw: {
             const auto &s = static_cast<const ThrowStmt &>(stmt);
             p.line("ThrowStmt " + locStr(s.loc));
             break;
@@ -1196,26 +1083,22 @@ static void printStmt(const Stmt &stmt, Printer &p)
 // Helpers for printing common declaration parts
 // ---------------------------------------------------------------------------
 
-static void printParams(const std::vector<Param> &params, Printer &p)
-{
+static void printParams(const std::vector<Param> &params, Printer &p) {
     if (params.empty())
         return;
     p.line("Params:");
     p.push();
-    for (const auto &param : params)
-    {
+    for (const auto &param : params) {
         std::string header = "Param \"" + param.name + "\"";
         p.line(header);
         p.push();
-        if (param.type)
-        {
+        if (param.type) {
             p.line("Type:");
             p.push();
             printType(*param.type, p);
             p.pop();
         }
-        if (param.defaultValue)
-        {
+        if (param.defaultValue) {
             p.line("Default:");
             p.push();
             printExpr(*param.defaultValue, p);
@@ -1226,13 +1109,11 @@ static void printParams(const std::vector<Param> &params, Printer &p)
     p.pop();
 }
 
-static void printGenericParams(const std::vector<std::string> &genericParams, Printer &p)
-{
+static void printGenericParams(const std::vector<std::string> &genericParams, Printer &p) {
     if (genericParams.empty())
         return;
     std::string gp = "GenericParams: [";
-    for (size_t i = 0; i < genericParams.size(); ++i)
-    {
+    for (size_t i = 0; i < genericParams.size(); ++i) {
         if (i > 0)
             gp += ", ";
         gp += genericParams[i];
@@ -1243,13 +1124,11 @@ static void printGenericParams(const std::vector<std::string> &genericParams, Pr
 
 static void printGenericParamsWithConstraints(const std::vector<std::string> &genericParams,
                                               const std::vector<std::string> &constraints,
-                                              Printer &p)
-{
+                                              Printer &p) {
     if (genericParams.empty())
         return;
     std::string gp = "GenericParams: [";
-    for (size_t i = 0; i < genericParams.size(); ++i)
-    {
+    for (size_t i = 0; i < genericParams.size(); ++i) {
         if (i > 0)
             gp += ", ";
         gp += genericParams[i];
@@ -1260,13 +1139,11 @@ static void printGenericParamsWithConstraints(const std::vector<std::string> &ge
     p.line(gp);
 }
 
-static void printInterfaces(const std::vector<std::string> &interfaces, Printer &p)
-{
+static void printInterfaces(const std::vector<std::string> &interfaces, Printer &p) {
     if (interfaces.empty())
         return;
     std::string ifaces = "Implements: [";
-    for (size_t i = 0; i < interfaces.size(); ++i)
-    {
+    for (size_t i = 0; i < interfaces.size(); ++i) {
         if (i > 0)
             ifaces += ", ";
         ifaces += interfaces[i];
@@ -1275,15 +1152,12 @@ static void printInterfaces(const std::vector<std::string> &interfaces, Printer 
     p.line(ifaces);
 }
 
-static void printVisibility(Visibility vis, Printer &p)
-{
+static void printVisibility(Visibility vis, Printer &p) {
     p.line(vis == Visibility::Public ? "Visibility: public" : "Visibility: private");
 }
 
-static void printBody(const StmtPtr &body, Printer &p)
-{
-    if (body)
-    {
+static void printBody(const StmtPtr &body, Printer &p) {
+    if (body) {
         p.line("Body:");
         p.push();
         printStmt(*body, p);
@@ -1291,10 +1165,8 @@ static void printBody(const StmtPtr &body, Printer &p)
     }
 }
 
-static void printReturnType(const TypePtr &retType, Printer &p)
-{
-    if (retType)
-    {
+static void printReturnType(const TypePtr &retType, Printer &p) {
+    if (retType) {
         p.line("ReturnType:");
         p.push();
         printType(*retType, p);
@@ -1302,14 +1174,12 @@ static void printReturnType(const TypePtr &retType, Printer &p)
     }
 }
 
-static void printMembers(const std::vector<DeclPtr> &members, Printer &p)
-{
+static void printMembers(const std::vector<DeclPtr> &members, Printer &p) {
     if (members.empty())
         return;
     p.line("Members:");
     p.push();
-    for (const auto &member : members)
-    {
+    for (const auto &member : members) {
         if (member)
             printDecl(*member, p);
         else
@@ -1322,12 +1192,9 @@ static void printMembers(const std::vector<DeclPtr> &members, Printer &p)
 // Declaration printing
 // ---------------------------------------------------------------------------
 
-static void printDecl(const Decl &decl, Printer &p)
-{
-    switch (decl.kind)
-    {
-        case DeclKind::Module:
-        {
+static void printDecl(const Decl &decl, Printer &p) {
+    switch (decl.kind) {
+        case DeclKind::Module: {
             // Module is handled by the top-level dump() -- but support it here
             // for completeness.
             const auto &d = static_cast<const ModuleDecl &>(decl);
@@ -1335,8 +1202,7 @@ static void printDecl(const Decl &decl, Printer &p)
             p.push();
             for (const auto &bind : d.binds)
                 printDecl(bind, p);
-            for (const auto &child : d.declarations)
-            {
+            for (const auto &child : d.declarations) {
                 if (child)
                     printDecl(*child, p);
                 else
@@ -1345,8 +1211,7 @@ static void printDecl(const Decl &decl, Printer &p)
             p.pop();
             break;
         }
-        case DeclKind::Bind:
-        {
+        case DeclKind::Bind: {
             const auto &d = static_cast<const BindDecl &>(decl);
             std::string header = "BindDecl \"" + d.path + "\"";
             if (!d.alias.empty())
@@ -1355,12 +1220,10 @@ static void printDecl(const Decl &decl, Printer &p)
                 header += " (namespace)";
             header += " " + locStr(d.loc);
             p.line(header);
-            if (!d.specificItems.empty())
-            {
+            if (!d.specificItems.empty()) {
                 p.push();
                 std::string items = "Items: [";
-                for (size_t i = 0; i < d.specificItems.size(); ++i)
-                {
+                for (size_t i = 0; i < d.specificItems.size(); ++i) {
                     if (i > 0)
                         items += ", ";
                     items += d.specificItems[i];
@@ -1371,8 +1234,7 @@ static void printDecl(const Decl &decl, Printer &p)
             }
             break;
         }
-        case DeclKind::Value:
-        {
+        case DeclKind::Value: {
             const auto &d = static_cast<const ValueDecl &>(decl);
             p.line("ValueDecl \"" + d.name + "\" " + locStr(d.loc));
             p.push();
@@ -1382,8 +1244,7 @@ static void printDecl(const Decl &decl, Printer &p)
             p.pop();
             break;
         }
-        case DeclKind::Entity:
-        {
+        case DeclKind::Entity: {
             const auto &d = static_cast<const EntityDecl &>(decl);
             std::string header = "EntityDecl \"" + d.name + "\"";
             if (!d.baseClass.empty())
@@ -1397,8 +1258,7 @@ static void printDecl(const Decl &decl, Printer &p)
             p.pop();
             break;
         }
-        case DeclKind::Interface:
-        {
+        case DeclKind::Interface: {
             const auto &d = static_cast<const InterfaceDecl &>(decl);
             p.line("InterfaceDecl \"" + d.name + "\" " + locStr(d.loc));
             p.push();
@@ -1407,8 +1267,7 @@ static void printDecl(const Decl &decl, Printer &p)
             p.pop();
             break;
         }
-        case DeclKind::Function:
-        {
+        case DeclKind::Function: {
             const auto &d = static_cast<const FunctionDecl &>(decl);
             std::string header = "FunctionDecl \"" + d.name + "\"";
             if (d.isAsync)
@@ -1426,8 +1285,7 @@ static void printDecl(const Decl &decl, Printer &p)
             p.pop();
             break;
         }
-        case DeclKind::Field:
-        {
+        case DeclKind::Field: {
             const auto &d = static_cast<const FieldDecl &>(decl);
             std::string header = "FieldDecl \"" + d.name + "\"";
             if (d.isFinal)
@@ -1438,15 +1296,13 @@ static void printDecl(const Decl &decl, Printer &p)
             p.line(header);
             p.push();
             printVisibility(d.visibility, p);
-            if (d.type)
-            {
+            if (d.type) {
                 p.line("Type:");
                 p.push();
                 printType(*d.type, p);
                 p.pop();
             }
-            if (d.initializer)
-            {
+            if (d.initializer) {
                 p.line("Initializer:");
                 p.push();
                 printExpr(*d.initializer, p);
@@ -1455,8 +1311,7 @@ static void printDecl(const Decl &decl, Printer &p)
             p.pop();
             break;
         }
-        case DeclKind::Method:
-        {
+        case DeclKind::Method: {
             const auto &d = static_cast<const MethodDecl &>(decl);
             std::string header = "MethodDecl \"" + d.name + "\"";
             if (d.isOverride)
@@ -1472,8 +1327,7 @@ static void printDecl(const Decl &decl, Printer &p)
             p.pop();
             break;
         }
-        case DeclKind::Constructor:
-        {
+        case DeclKind::Constructor: {
             const auto &d = static_cast<const ConstructorDecl &>(decl);
             p.line("ConstructorDecl " + locStr(d.loc));
             p.push();
@@ -1483,22 +1337,19 @@ static void printDecl(const Decl &decl, Printer &p)
             p.pop();
             break;
         }
-        case DeclKind::GlobalVar:
-        {
+        case DeclKind::GlobalVar: {
             const auto &d = static_cast<const GlobalVarDecl &>(decl);
             std::string header = (d.isFinal ? "GlobalFinalDecl" : "GlobalVarDecl");
             header += " \"" + d.name + "\" " + locStr(d.loc);
             p.line(header);
             p.push();
-            if (d.type)
-            {
+            if (d.type) {
                 p.line("Type:");
                 p.push();
                 printType(*d.type, p);
                 p.pop();
             }
-            if (d.initializer)
-            {
+            if (d.initializer) {
                 p.line("Initializer:");
                 p.push();
                 printExpr(*d.initializer, p);
@@ -1507,13 +1358,11 @@ static void printDecl(const Decl &decl, Printer &p)
             p.pop();
             break;
         }
-        case DeclKind::Namespace:
-        {
+        case DeclKind::Namespace: {
             const auto &d = static_cast<const NamespaceDecl &>(decl);
             p.line("NamespaceDecl \"" + d.name + "\" " + locStr(d.loc));
             p.push();
-            for (const auto &child : d.declarations)
-            {
+            for (const auto &child : d.declarations) {
                 if (child)
                     printDecl(*child, p);
                 else
@@ -1522,26 +1371,21 @@ static void printDecl(const Decl &decl, Printer &p)
             p.pop();
             break;
         }
-        case DeclKind::Property:
-        {
+        case DeclKind::Property: {
             const auto &d = static_cast<const PropertyDecl &>(decl);
             p.line("PropertyDecl \"" + d.name + "\" " + locStr(d.loc));
             break;
         }
-        case DeclKind::Destructor:
-        {
+        case DeclKind::Destructor: {
             p.line("DestructorDecl " + locStr(decl.loc));
             break;
         }
-        case DeclKind::Enum:
-        {
+        case DeclKind::Enum: {
             const auto &d = static_cast<const EnumDecl &>(decl);
             p.line("EnumDecl \"" + d.name + "\" " + locStr(d.loc));
-            if (!d.variants.empty())
-            {
+            if (!d.variants.empty()) {
                 p.push();
-                for (const auto &v : d.variants)
-                {
+                for (const auto &v : d.variants) {
                     std::string vstr = "Variant \"" + v.name + "\"";
                     if (v.explicitValue.has_value())
                         vstr += " = " + std::to_string(v.explicitValue.value());
@@ -1561,8 +1405,7 @@ static void printDecl(const Decl &decl, Printer &p)
 // Public interface
 // ---------------------------------------------------------------------------
 
-std::string ZiaAstPrinter::dump(const ModuleDecl &module)
-{
+std::string ZiaAstPrinter::dump(const ModuleDecl &module) {
     std::ostringstream os;
     Printer p{os};
     printDecl(module, p);

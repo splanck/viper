@@ -59,17 +59,14 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Numeric BASIC scalar types.
 /// @details INTEGER and LONG are integral; SINGLE and DOUBLE are floating-point.
-class TypeRules
-{
+class TypeRules {
   public:
     /// @brief Available numeric types ordered by promotion lattice.
-    enum class NumericType
-    {
+    enum class NumericType {
         Integer, ///< 16-bit signed integer.
         Long,    ///< 32-bit signed integer.
         Single,  ///< 32-bit IEEE-754 floating-point.
@@ -77,8 +74,7 @@ class TypeRules
     };
 
     /// @brief Structured information describing a numeric type error.
-    struct TypeError
-    {
+    struct TypeError {
         std::string code;    ///< Project-defined diagnostic code.
         std::string message; ///< Human-readable explanation.
     };

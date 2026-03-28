@@ -57,8 +57,7 @@
 ///          Window handle, XImage for blitting, and WM protocol atoms.
 ///
 /// @invariant display != NULL implies window != 0 && gc != NULL
-typedef struct
-{
+typedef struct {
     Display *display;      ///< X11 connection to server
     int screen;            ///< Screen number
     Window window;         ///< Native X11 window handle
@@ -105,29 +104,24 @@ typedef struct
 ///            - Arrows: VGFX_KEY_LEFT/RIGHT/UP/DOWN
 ///            - Enter/Return: VGFX_KEY_ENTER
 ///            - Escape: VGFX_KEY_ESCAPE
-static vgfx_key_t translate_keysym(KeySym keysym)
-{
+static vgfx_key_t translate_keysym(KeySym keysym) {
     /* Lowercase letters (convert to uppercase) */
-    if (keysym >= XK_a && keysym <= XK_z)
-    {
+    if (keysym >= XK_a && keysym <= XK_z) {
         return (vgfx_key_t)('A' + (keysym - XK_a));
     }
 
     /* Uppercase letters */
-    if (keysym >= XK_A && keysym <= XK_Z)
-    {
+    if (keysym >= XK_A && keysym <= XK_Z) {
         return (vgfx_key_t)keysym;
     }
 
     /* Digits 0-9 */
-    if (keysym >= XK_0 && keysym <= XK_9)
-    {
+    if (keysym >= XK_0 && keysym <= XK_9) {
         return (vgfx_key_t)keysym;
     }
 
     /* Special keys */
-    switch (keysym)
-    {
+    switch (keysym) {
         case XK_space:
             return VGFX_KEY_SPACE;
         case XK_Return:
@@ -172,12 +166,10 @@ static vgfx_key_t translate_keysym(KeySym keysym)
 ///       event handlers or resize handler on Linux.
 ///
 /// @return Scale factor ≥ 1.0
-float vgfx_platform_get_display_scale(void)
-{
+float vgfx_platform_get_display_scale(void) {
     /* Priority 1: GDK_SCALE env var (GNOME/Mutter on Wayland and X11) */
     const char *gdk = getenv("GDK_SCALE");
-    if (gdk)
-    {
+    if (gdk) {
         float s = strtof(gdk, NULL);
         if (s >= 1.0f)
             return s;
@@ -185,8 +177,7 @@ float vgfx_platform_get_display_scale(void)
 
     /* Priority 2: QT_SCALE_FACTOR (KDE Plasma) */
     const char *qt = getenv("QT_SCALE_FACTOR");
-    if (qt)
-    {
+    if (qt) {
         float s = strtof(qt, NULL);
         if (s >= 1.0f)
             return s;
@@ -196,16 +187,13 @@ float vgfx_platform_get_display_scale(void)
      * Open a temporary display connection just for this query so we don't
      * interfere with the window's own Display connection (opened later). */
     Display *dpy = XOpenDisplay(NULL);
-    if (dpy)
-    {
+    if (dpy) {
         float scale = 1.0f;
         const char *rms = XResourceManagerString(dpy);
-        if (rms)
-        {
+        if (rms) {
             /* Search for "Xft.dpi:\t96" or "Xft.dpi: 192" etc. */
             const char *pos = strstr(rms, "Xft.dpi:");
-            if (pos)
-            {
+            if (pos) {
                 pos += 8; /* skip "Xft.dpi:" */
                 while (*pos == ' ' || *pos == '\t')
                     pos++;
@@ -241,15 +229,13 @@ float vgfx_platform_get_display_scale(void)
 ///            - Can be closed (intercepts WM_DELETE_WINDOW)
 ///            - Receives keyboard and mouse input
 ///            - 32-bit depth for direct RGBA rendering
-int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_t *params)
-{
+int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_t *params) {
     if (!win || !params)
         return 0;
 
     /* Allocate platform data structure */
     vgfx_x11_data *x11 = (vgfx_x11_data *)calloc(1, sizeof(vgfx_x11_data));
-    if (!x11)
-    {
+    if (!x11) {
         vgfx_internal_set_error(VGFX_ERR_ALLOC, "Failed to allocate X11 platform data");
         return 0;
     }
@@ -261,8 +247,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 
     /* Open connection to X server */
     x11->display = XOpenDisplay(NULL);
-    if (!x11->display)
-    {
+    if (!x11->display) {
         free(x11);
         win->platform_data = NULL;
         vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to open X11 display");
@@ -277,14 +262,11 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
      * depth conversion.  Fall back to the default visual (usually 24-bit)
      * which still works — the alpha byte in each 32-bpp pixel is ignored. */
     XVisualInfo vinfo;
-    if (XMatchVisualInfo(x11->display, x11->screen, 32, TrueColor, &vinfo))
-    {
+    if (XMatchVisualInfo(x11->display, x11->screen, 32, TrueColor, &vinfo)) {
         x11->visual = vinfo.visual;
         x11->depth = 32;
         x11->colormap = XCreateColormap(x11->display, root, x11->visual, AllocNone);
-    }
-    else
-    {
+    } else {
         x11->visual = DefaultVisual(x11->display, x11->screen);
         x11->depth = DefaultDepth(x11->display, x11->screen);
         x11->colormap = DefaultColormap(x11->display, x11->screen);
@@ -310,8 +292,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
                                 CWBackPixel | CWBorderPixel | CWColormap | CWEventMask,
                                 &attrs);
 
-    if (!x11->window)
-    {
+    if (!x11->window) {
         XCloseDisplay(x11->display);
         free(x11);
         win->platform_data = NULL;
@@ -325,8 +306,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 
     /* Set window size hints (prevents resizing if not resizable) */
     XSizeHints *size_hints = XAllocSizeHints();
-    if (size_hints)
-    {
+    if (size_hints) {
         size_hints->flags = PSize | PMinSize | PMaxSize;
         size_hints->width = params->width;
         size_hints->height = params->height;
@@ -368,8 +348,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 
     /* Create graphics context */
     x11->gc = XCreateGC(x11->display, x11->window, 0, NULL);
-    if (!x11->gc)
-    {
+    if (!x11->gc) {
         XDestroyWindow(x11->display, x11->window);
         XCloseDisplay(x11->display);
         free(x11);
@@ -386,8 +365,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
      * draw code, keeping macOS/Windows unaffected. */
     x11->ximage_buf_size = params->height * win->stride;
     x11->ximage_buf = (uint8_t *)calloc(1, x11->ximage_buf_size);
-    if (!x11->ximage_buf)
-    {
+    if (!x11->ximage_buf) {
         XFreeGC(x11->display, x11->gc);
         XDestroyWindow(x11->display, x11->window);
         XCloseDisplay(x11->display);
@@ -409,8 +387,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
                                win->stride /* bytes_per_line */
     );
 
-    if (!x11->ximage)
-    {
+    if (!x11->ximage) {
         free(x11->ximage_buf);
         XFreeGC(x11->display, x11->gc);
         XDestroyWindow(x11->display, x11->window);
@@ -440,8 +417,7 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 /// @pre  win != NULL
 /// @post platform_data freed and set to NULL
 /// @post X11 window destroyed and display connection closed (if existed)
-void vgfx_platform_destroy_window(struct vgfx_window *win)
-{
+void vgfx_platform_destroy_window(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
 
@@ -449,8 +425,7 @@ void vgfx_platform_destroy_window(struct vgfx_window *win)
 
     /* Destroy XImage — set data to NULL to prevent XDestroyImage from
      * freeing our ximage_buf (we manage it separately). */
-    if (x11->ximage)
-    {
+    if (x11->ximage) {
         x11->ximage->data = NULL;
         XDestroyImage(x11->ximage);
         x11->ximage = NULL;
@@ -461,29 +436,25 @@ void vgfx_platform_destroy_window(struct vgfx_window *win)
     x11->ximage_buf = NULL;
 
     /* Free graphics context */
-    if (x11->gc)
-    {
+    if (x11->gc) {
         XFreeGC(x11->display, x11->gc);
         x11->gc = NULL;
     }
 
     /* Free colormap if we created one (not the default) */
-    if (x11->colormap && x11->colormap != DefaultColormap(x11->display, x11->screen))
-    {
+    if (x11->colormap && x11->colormap != DefaultColormap(x11->display, x11->screen)) {
         XFreeColormap(x11->display, x11->colormap);
         x11->colormap = 0;
     }
 
     /* Destroy window */
-    if (x11->window)
-    {
+    if (x11->window) {
         XDestroyWindow(x11->display, x11->window);
         x11->window = 0;
     }
 
     /* Close display connection */
-    if (x11->display)
-    {
+    if (x11->display) {
         XCloseDisplay(x11->display);
         x11->display = NULL;
     }
@@ -516,8 +487,7 @@ void vgfx_platform_destroy_window(struct vgfx_window *win)
 /// @post All pending XEvents processed and translated
 /// @post win->key_state and win->mouse_* updated to reflect current input state
 /// @post Corresponding vgfx_event_t enqueued for each XEvent
-int vgfx_platform_process_events(struct vgfx_window *win)
-{
+int vgfx_platform_process_events(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
 
@@ -526,22 +496,18 @@ int vgfx_platform_process_events(struct vgfx_window *win)
         return 0;
 
     /* Process all pending events without blocking */
-    while (XPending(x11->display) > 0)
-    {
+    while (XPending(x11->display) > 0) {
         XEvent event;
         XNextEvent(x11->display, &event);
 
         int64_t timestamp = vgfx_platform_now_ms();
 
-        switch (event.type)
-        {
-            case KeyPress:
-            {
+        switch (event.type) {
+            case KeyPress: {
                 KeySym keysym = XLookupKeysym(&event.xkey, 0);
                 vgfx_key_t key = translate_keysym(keysym);
 
-                if (key != VGFX_KEY_UNKNOWN && key < 512)
-                {
+                if (key != VGFX_KEY_UNKNOWN && key < 512) {
                     int is_repeat = win->key_state[key]; /* Already pressed = repeat */
                     win->key_state[key] = 1;             /* Update input state */
 
@@ -553,19 +519,16 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 break;
             }
 
-            case KeyRelease:
-            {
+            case KeyRelease: {
                 /* X11 generates repeated KeyRelease/KeyPress pairs for key repeat.
                  * We detect true release by checking if there's an immediate KeyPress. */
-                if (XEventsQueued(x11->display, QueuedAfterReading))
-                {
+                if (XEventsQueued(x11->display, QueuedAfterReading)) {
                     XEvent next_event;
                     XPeekEvent(x11->display, &next_event);
 
                     /* If next event is KeyPress for same key, it's a repeat - ignore release */
                     if (next_event.type == KeyPress && next_event.xkey.time == event.xkey.time &&
-                        next_event.xkey.keycode == event.xkey.keycode)
-                    {
+                        next_event.xkey.keycode == event.xkey.keycode) {
                         break; /* Ignore this release event */
                     }
                 }
@@ -573,8 +536,7 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 KeySym keysym = XLookupKeysym(&event.xkey, 0);
                 vgfx_key_t key = translate_keysym(keysym);
 
-                if (key != VGFX_KEY_UNKNOWN && key < 512)
-                {
+                if (key != VGFX_KEY_UNKNOWN && key < 512) {
                     win->key_state[key] = 0; /* Update input state */
 
                     vgfx_event_t vgfx_event = {.type = VGFX_EVENT_KEY_UP,
@@ -585,8 +547,7 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 break;
             }
 
-            case MotionNotify:
-            {
+            case MotionNotify: {
                 int32_t x = event.xmotion.x;
                 int32_t y = event.xmotion.y;
 
@@ -600,8 +561,7 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 break;
             }
 
-            case ButtonPress:
-            {
+            case ButtonPress: {
                 int32_t x = event.xbutton.x;
                 int32_t y = event.xbutton.y;
 
@@ -612,20 +572,13 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                  *   Button4/5 = Scroll wheel (ignored in v1)
                  */
                 vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
-                if (event.xbutton.button == Button1)
-                {
+                if (event.xbutton.button == Button1) {
                     button = VGFX_MOUSE_LEFT;
-                }
-                else if (event.xbutton.button == Button2)
-                {
+                } else if (event.xbutton.button == Button2) {
                     button = VGFX_MOUSE_MIDDLE;
-                }
-                else if (event.xbutton.button == Button3)
-                {
+                } else if (event.xbutton.button == Button3) {
                     button = VGFX_MOUSE_RIGHT;
-                }
-                else if (event.xbutton.button == Button4 || event.xbutton.button == Button5)
-                {
+                } else if (event.xbutton.button == Button4 || event.xbutton.button == Button5) {
                     /* X11 scroll wheel: Button4 = up, Button5 = down */
                     float dy = (event.xbutton.button == Button4) ? -1.0f : 1.0f;
                     vgfx_event_t scroll_event = {
@@ -634,14 +587,11 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                         .data.scroll = {.delta_x = 0.0f, .delta_y = dy, .x = x, .y = y}};
                     vgfx_internal_enqueue_event(win, &scroll_event);
                     break;
-                }
-                else
-                {
+                } else {
                     break; /* Ignore extra buttons */
                 }
 
-                if (button < 8)
-                {
+                if (button < 8) {
                     win->mouse_button_state[button] = 1; /* Update input state */
                 }
 
@@ -652,31 +602,22 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 break;
             }
 
-            case ButtonRelease:
-            {
+            case ButtonRelease: {
                 int32_t x = event.xbutton.x;
                 int32_t y = event.xbutton.y;
 
                 vgfx_mouse_button_t button = VGFX_MOUSE_LEFT;
-                if (event.xbutton.button == Button1)
-                {
+                if (event.xbutton.button == Button1) {
                     button = VGFX_MOUSE_LEFT;
-                }
-                else if (event.xbutton.button == Button2)
-                {
+                } else if (event.xbutton.button == Button2) {
                     button = VGFX_MOUSE_MIDDLE;
-                }
-                else if (event.xbutton.button == Button3)
-                {
+                } else if (event.xbutton.button == Button3) {
                     button = VGFX_MOUSE_RIGHT;
-                }
-                else
-                {
+                } else {
                     break; /* Ignore scroll wheel and extra buttons */
                 }
 
-                if (button < 8)
-                {
+                if (button < 8) {
                     win->mouse_button_state[button] = 0; /* Update input state */
                 }
 
@@ -687,11 +628,9 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 break;
             }
 
-            case ClientMessage:
-            {
+            case ClientMessage: {
                 /* Handle WM_DELETE_WINDOW (window close button clicked) */
-                if ((Atom)event.xclient.data.l[0] == x11->wm_delete_window)
-                {
+                if ((Atom)event.xclient.data.l[0] == x11->wm_delete_window) {
                     x11->close_requested = 1;
                     win->close_requested = 1;
 
@@ -699,13 +638,11 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                     vgfx_internal_enqueue_event(win, &vgfx_event);
                 }
                 /* XDND: drag entered our window */
-                else if (event.xclient.message_type == x11->xdnd_enter)
-                {
+                else if (event.xclient.message_type == x11->xdnd_enter) {
                     x11->xdnd_source = (Window)event.xclient.data.l[0];
                 }
                 /* XDND: drag positioned over our window — accept */
-                else if (event.xclient.message_type == x11->xdnd_position)
-                {
+                else if (event.xclient.message_type == x11->xdnd_position) {
                     XEvent reply = {0};
                     reply.type = ClientMessage;
                     reply.xclient.window = x11->xdnd_source;
@@ -719,8 +656,7 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                     XFlush(x11->display);
                 }
                 /* XDND: drop completed — request selection data */
-                else if (event.xclient.message_type == x11->xdnd_drop)
-                {
+                else if (event.xclient.message_type == x11->xdnd_drop) {
                     XConvertSelection(x11->display,
                                       x11->xdnd_selection,
                                       x11->text_uri_list,
@@ -731,11 +667,9 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 break;
             }
 
-            case SelectionNotify:
-            {
+            case SelectionNotify: {
                 /* XDND: received selection data (file paths as text/uri-list) */
-                if (event.xselection.property == x11->xdnd_selection)
-                {
+                if (event.xselection.property == x11->xdnd_selection) {
                     Atom actual_type;
                     int actual_format;
                     unsigned long nitems, bytes_after;
@@ -752,13 +686,11 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                                        &nitems,
                                        &bytes_after,
                                        &data);
-                    if (data && nitems > 0)
-                    {
+                    if (data && nitems > 0) {
                         /* Parse text/uri-list: one URI per line, skip comments (#) */
                         char *text = (char *)data;
                         char *line = text;
-                        while (line && *line)
-                        {
+                        while (line && *line) {
                             char *eol = strchr(line, '\n');
                             if (eol)
                                 *eol = '\0';
@@ -767,8 +699,7 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                             if (llen > 0 && line[llen - 1] == '\r')
                                 line[llen - 1] = '\0';
                             /* Skip comments and empty lines */
-                            if (line[0] != '#' && line[0] != '\0')
-                            {
+                            if (line[0] != '#' && line[0] != '\0') {
                                 /* Strip file:// prefix */
                                 const char *path = line;
                                 if (strncmp(path, "file://", 7) == 0)
@@ -806,25 +737,22 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 break;
             }
 
-            case FocusIn:
-            {
+            case FocusIn: {
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_GAINED, .time_ms = timestamp};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
                 break;
             }
 
-            case FocusOut:
-            {
+            case FocusOut: {
                 vgfx_event_t vgfx_event = {.type = VGFX_EVENT_FOCUS_LOST, .time_ms = timestamp};
                 vgfx_internal_enqueue_event(win, &vgfx_event);
                 break;
             }
 
-            case ConfigureNotify:
-            {
+            case ConfigureNotify: {
                 /* Window resized - note: full resize support not in v1 */
-                if (event.xconfigure.width != x11->width || event.xconfigure.height != x11->height)
-                {
+                if (event.xconfigure.width != x11->width ||
+                    event.xconfigure.height != x11->height) {
                     x11->width = event.xconfigure.width;
                     x11->height = event.xconfigure.height;
 
@@ -837,8 +765,7 @@ int vgfx_platform_process_events(struct vgfx_window *win)
                 break;
             }
 
-            case Expose:
-            {
+            case Expose: {
                 /* Window needs redraw - just note it, vgfx_present will handle */
                 break;
             }
@@ -864,8 +791,7 @@ int vgfx_platform_process_events(struct vgfx_window *win)
 /// @pre  win->pixels != NULL (framebuffer valid)
 /// @pre  win->platform_data != NULL
 /// @post Framebuffer contents visible in X11 window
-int vgfx_platform_present(struct vgfx_window *win)
-{
+int vgfx_platform_present(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
 
@@ -880,8 +806,7 @@ int vgfx_platform_present(struct vgfx_window *win)
         const uint32_t *src = (const uint32_t *)win->pixels;
         uint32_t *dst = (uint32_t *)x11->ximage_buf;
         const int pixel_count = win->width * win->height;
-        for (int i = 0; i < pixel_count; ++i)
-        {
+        for (int i = 0; i < pixel_count; ++i) {
             const uint32_t px = src[i];
             /* px on LE: byte[0]=R, byte[1]=G, byte[2]=B, byte[3]=A
              *           = 0xAABBGGRR as uint32_t
@@ -919,8 +844,7 @@ int vgfx_platform_present(struct vgfx_window *win)
 /// @return Milliseconds since arbitrary epoch (monotonic)
 ///
 /// @post Return value >= previous calls within the same process
-int64_t vgfx_platform_now_ms(void)
-{
+int64_t vgfx_platform_now_ms(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
@@ -931,10 +855,8 @@ int64_t vgfx_platform_now_ms(void)
 ///          returns immediately without sleeping.  Used for FPS limiting.
 ///
 /// @param ms Duration to sleep in milliseconds
-void vgfx_platform_sleep_ms(int32_t ms)
-{
-    if (ms > 0)
-    {
+void vgfx_platform_sleep_ms(int32_t ms) {
+    if (ms > 0) {
         struct timespec ts;
         ts.tv_sec = ms / 1000;
         ts.tv_nsec = (ms % 1000) * 1000000;
@@ -951,8 +873,7 @@ void vgfx_platform_sleep_ms(int32_t ms)
 ///
 /// @param win   Pointer to the window structure
 /// @param title New title string (UTF-8)
-void vgfx_platform_set_title(struct vgfx_window *win, const char *title)
-{
+void vgfx_platform_set_title(struct vgfx_window *win, const char *title) {
     if (!win || !win->platform_data || !title)
         return;
 
@@ -973,8 +894,7 @@ void vgfx_platform_set_title(struct vgfx_window *win, const char *title)
 /// @param win        Pointer to the window structure
 /// @param fullscreen 1 for fullscreen, 0 for windowed
 /// @return 1 on success, 0 on failure
-int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen)
-{
+int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen) {
     if (!win || !win->platform_data)
         return 0;
 
@@ -1016,8 +936,7 @@ int vgfx_platform_set_fullscreen(struct vgfx_window *win, int fullscreen)
 ///
 /// @param win Pointer to the window structure
 /// @return 1 if fullscreen, 0 if windowed
-int vgfx_platform_is_fullscreen(struct vgfx_window *win)
-{
+int vgfx_platform_is_fullscreen(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
 
@@ -1056,10 +975,8 @@ int vgfx_platform_is_fullscreen(struct vgfx_window *win)
     /* Check if _NET_WM_STATE_FULLSCREEN is in the list */
     int is_fullscreen = 0;
     Atom *atoms = (Atom *)data;
-    for (unsigned long i = 0; i < nitems; i++)
-    {
-        if (atoms[i] == wm_fullscreen)
-        {
+    for (unsigned long i = 0; i < nitems; i++) {
+        if (atoms[i] == wm_fullscreen) {
             is_fullscreen = 1;
             break;
         }
@@ -1070,8 +987,7 @@ int vgfx_platform_is_fullscreen(struct vgfx_window *win)
 }
 
 /// @brief Send a _NET_WM_STATE client message to the window manager.
-static void x11_send_wm_state(vgfx_x11_data *x11, int action, Atom atom1, Atom atom2)
-{
+static void x11_send_wm_state(vgfx_x11_data *x11, int action, Atom atom1, Atom atom2) {
     // action: 0 = remove, 1 = add, 2 = toggle
     XEvent event;
     memset(&event, 0, sizeof(event));
@@ -1091,20 +1007,17 @@ static void x11_send_wm_state(vgfx_x11_data *x11, int action, Atom atom1, Atom a
     XFlush(x11->display);
 }
 
-void vgfx_platform_minimize(struct vgfx_window *win)
-{
+void vgfx_platform_minimize(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
-    if (x11->display && x11->window)
-    {
+    if (x11->display && x11->window) {
         XIconifyWindow(x11->display, x11->window, x11->screen);
         XFlush(x11->display);
     }
 }
 
-void vgfx_platform_maximize(struct vgfx_window *win)
-{
+void vgfx_platform_maximize(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
@@ -1115,8 +1028,7 @@ void vgfx_platform_maximize(struct vgfx_window *win)
     x11_send_wm_state(x11, 1, hz, vt);
 }
 
-void vgfx_platform_restore(struct vgfx_window *win)
-{
+void vgfx_platform_restore(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
@@ -1131,8 +1043,7 @@ void vgfx_platform_restore(struct vgfx_window *win)
     XFlush(x11->display);
 }
 
-int32_t vgfx_platform_is_minimized(struct vgfx_window *win)
-{
+int32_t vgfx_platform_is_minimized(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
@@ -1160,10 +1071,8 @@ int32_t vgfx_platform_is_minimized(struct vgfx_window *win)
         return 0;
     int found = 0;
     Atom *atoms = (Atom *)data;
-    for (unsigned long i = 0; i < nitems; i++)
-    {
-        if (atoms[i] == hidden)
-        {
+    for (unsigned long i = 0; i < nitems; i++) {
+        if (atoms[i] == hidden) {
             found = 1;
             break;
         }
@@ -1172,8 +1081,7 @@ int32_t vgfx_platform_is_minimized(struct vgfx_window *win)
     return found;
 }
 
-int32_t vgfx_platform_is_maximized(struct vgfx_window *win)
-{
+int32_t vgfx_platform_is_maximized(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return 0;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
@@ -1201,10 +1109,8 @@ int32_t vgfx_platform_is_maximized(struct vgfx_window *win)
         return 0;
     int found = 0;
     Atom *atoms = (Atom *)data;
-    for (unsigned long i = 0; i < nitems; i++)
-    {
-        if (atoms[i] == hz)
-        {
+    for (unsigned long i = 0; i < nitems; i++) {
+        if (atoms[i] == hz) {
             found = 1;
             break;
         }
@@ -1213,10 +1119,8 @@ int32_t vgfx_platform_is_maximized(struct vgfx_window *win)
     return found;
 }
 
-void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t *out_y)
-{
-    if (!win || !win->platform_data)
-    {
+void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t *out_y) {
+    if (!win || !win->platform_data) {
         if (out_x)
             *out_x = 0;
         if (out_y)
@@ -1237,45 +1141,38 @@ void vgfx_platform_get_position(struct vgfx_window *win, int32_t *out_x, int32_t
         *out_y = (int32_t)y;
 }
 
-void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y)
-{
+void vgfx_platform_set_position(struct vgfx_window *win, int32_t x, int32_t y) {
     if (!win || !win->platform_data)
         return;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
-    if (x11->display && x11->window)
-    {
+    if (x11->display && x11->window) {
         XMoveWindow(x11->display, x11->window, (int)x, (int)y);
         XFlush(x11->display);
     }
 }
 
-void vgfx_platform_focus(struct vgfx_window *win)
-{
+void vgfx_platform_focus(struct vgfx_window *win) {
     if (!win || !win->platform_data)
         return;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
-    if (x11->display && x11->window)
-    {
+    if (x11->display && x11->window) {
         XSetInputFocus(x11->display, x11->window, RevertToParent, CurrentTime);
         XFlush(x11->display);
     }
 }
 
-int32_t vgfx_platform_is_focused(struct vgfx_window *win)
-{
+int32_t vgfx_platform_is_focused(struct vgfx_window *win) {
     if (!win)
         return 0;
     return win->is_focused;
 }
 
-void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent)
-{
+void vgfx_platform_set_prevent_close(struct vgfx_window *win, int32_t prevent) {
     if (win)
         win->prevent_close = prevent;
 }
 
-void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type)
-{
+void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type) {
     if (!win || !win->platform_data)
         return;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
@@ -1284,8 +1181,7 @@ void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type)
 
     // Map cursor type to X11 cursor font constant
     unsigned int shape;
-    switch (cursor_type)
-    {
+    switch (cursor_type) {
         case 1:
             shape = 58;
             break; // XC_hand2
@@ -1311,21 +1207,17 @@ void vgfx_platform_set_cursor(struct vgfx_window *win, int32_t cursor_type)
     XFlush(x11->display);
 }
 
-void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible)
-{
+void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible) {
     if (!win || !win->platform_data)
         return;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
     if (!x11->display || !x11->window)
         return;
 
-    if (visible)
-    {
+    if (visible) {
         // Restore default cursor
         XUndefineCursor(x11->display, x11->window);
-    }
-    else
-    {
+    } else {
         // Create invisible blank cursor
         Pixmap blank = XCreatePixmap(x11->display, x11->window, 1, 1, 1);
         XColor dummy;
@@ -1338,8 +1230,7 @@ void vgfx_platform_set_cursor_visible(struct vgfx_window *win, int32_t visible)
     XFlush(x11->display);
 }
 
-void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h)
-{
+void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int32_t *out_h) {
     if (out_w)
         *out_w = 0;
     if (out_h)
@@ -1356,8 +1247,7 @@ void vgfx_platform_get_monitor_size(struct vgfx_window *win, int32_t *out_w, int
         *out_h = (int32_t)DisplayHeight(x11->display, screen);
 }
 
-void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h)
-{
+void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h) {
     if (!win || !win->platform_data)
         return;
     vgfx_x11_data *x11 = (vgfx_x11_data *)win->platform_data;
@@ -1371,26 +1261,22 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
 // Clipboard (stub — X11 clipboard requires ICCCM selection protocol)
 // ============================================================================
 
-int vgfx_clipboard_has_format(vgfx_clipboard_format_t format)
-{
+int vgfx_clipboard_has_format(vgfx_clipboard_format_t format) {
     (void)format;
     return 0;
 }
 
-char *vgfx_clipboard_get_text(void)
-{
+char *vgfx_clipboard_get_text(void) {
     return NULL;
 }
 
-void vgfx_clipboard_set_text(const char *text)
-{
+void vgfx_clipboard_set_text(const char *text) {
     (void)text;
 }
 
 void vgfx_clipboard_clear(void) {}
 
-void *vgfx_get_native_view(vgfx_window_t window)
-{
+void *vgfx_get_native_view(vgfx_window_t window) {
     if (!window)
         return NULL;
     vgfx_x11_data *x11 = (vgfx_x11_data *)window->platform_data;
@@ -1399,8 +1285,7 @@ void *vgfx_get_native_view(vgfx_window_t window)
     return (void *)(uintptr_t)x11->window; /* X11 Window is unsigned long */
 }
 
-void *vgfx_get_native_display(vgfx_window_t window)
-{
+void *vgfx_get_native_display(vgfx_window_t window) {
     if (!window)
         return NULL;
     vgfx_x11_data *x11 = (vgfx_x11_data *)window->platform_data;

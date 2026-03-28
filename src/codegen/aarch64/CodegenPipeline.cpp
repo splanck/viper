@@ -38,43 +38,35 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
-namespace
-{
+namespace {
 
 using viper::codegen::common::LinkContext;
 
 /// @brief Dump all MIR functions to the provided stream with a header tag.
-static void dumpMir(const passes::AArch64Module &module, const char *tag, std::ostream &os)
-{
-    for (const auto &fn : module.mir)
-    {
+static void dumpMir(const passes::AArch64Module &module, const char *tag, std::ostream &os) {
+    for (const auto &fn : module.mir) {
         os << "=== MIR " << tag << ": " << fn.name << " ===\n";
         os << toString(fn) << "\n";
     }
 }
 
-static bool writeTextFile(const std::string &path, const std::string &text, std::ostream &err)
-{
+static bool writeTextFile(const std::string &path, const std::string &text, std::ostream &err) {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out)
-    {
+    if (!out) {
         err << "error: unable to open '" << path << "' for writing\n";
         return false;
     }
     out << text;
-    if (!out)
-    {
+    if (!out) {
         err << "error: failed to write file '" << path << "'\n";
         return false;
     }
     return true;
 }
 
-static std::vector<std::string> systemAssemblerArgs()
-{
+static std::vector<std::string> systemAssemblerArgs() {
 #if defined(__APPLE__)
     return {"cc", "-arch", "arm64"};
 #elif defined(_WIN32)
@@ -87,8 +79,7 @@ static std::vector<std::string> systemAssemblerArgs()
 static int linkToExe(const std::string &asmPath,
                      const std::string &exePath,
                      std::ostream &out,
-                     std::ostream &err)
-{
+                     std::ostream &err) {
     using namespace viper::codegen::common;
 
     LinkContext ctx;
@@ -128,8 +119,7 @@ static int linkToExe(const std::string &asmPath,
     linkCmd.push_back(exePath);
 
     const RunResult rr = run_process(linkCmd);
-    if (rr.exit_code == -1)
-    {
+    if (rr.exit_code == -1) {
         err << "error: failed to launch system linker command\n";
         return -1;
     }
@@ -146,8 +136,7 @@ static int linkObjToExe(const std::string &objPath,
                         const std::string &exePath,
                         const LinkContext &ctx,
                         std::ostream &out,
-                        std::ostream &err)
-{
+                        std::ostream &err) {
     using namespace viper::codegen::common;
 
 #if defined(__APPLE__)
@@ -183,8 +172,7 @@ static int linkObjToExe(const std::string &objPath,
     linkCmd.push_back(exePath);
 
     const RunResult rr = run_process(linkCmd);
-    if (rr.exit_code == -1)
-    {
+    if (rr.exit_code == -1) {
         err << "error: failed to launch system linker command\n";
         return -1;
     }
@@ -197,13 +185,10 @@ static int linkObjToExe(const std::string &objPath,
     return rr.exit_code == 0 ? 0 : 1;
 }
 
-static void applyDarwinAsmFixups(std::string &asmText, const il::core::Module &mod)
-{
-    auto replace_all = [](std::string &hay, const std::string &from, const std::string &to)
-    {
+static void applyDarwinAsmFixups(std::string &asmText, const il::core::Module &mod) {
+    auto replace_all = [](std::string &hay, const std::string &from, const std::string &to) {
         std::size_t pos = 0;
-        while ((pos = hay.find(from, pos)) != std::string::npos)
-        {
+        while ((pos = hay.find(from, pos)) != std::string::npos) {
             hay.replace(pos, from.size(), to);
             pos += to.size();
         }
@@ -212,8 +197,7 @@ static void applyDarwinAsmFixups(std::string &asmText, const il::core::Module &m
     replace_all(asmText, "\n.globl main\n", "\n.globl _main\n");
     replace_all(asmText, "\nmain:\n", "\n_main:\n");
 
-    for (const auto &fn : mod.functions)
-    {
+    for (const auto &fn : mod.functions) {
         const std::string &name = fn.name;
         if (name == "main")
             continue;
@@ -235,19 +219,16 @@ static void applyDarwinAsmFixups(std::string &asmText, const il::core::Module &m
                                    "rt_memset",
                                    "rt_const_cstr",
                                    "rt_print_str"};
-    for (const char *rtfn : runtime_funcs)
-    {
+    for (const char *rtfn : runtime_funcs) {
         replace_all(asmText, std::string(" bl ") + rtfn + "\n", std::string(" bl _") + rtfn + "\n");
     }
 
-    for (const auto &ex : mod.externs)
-    {
+    for (const auto &ex : mod.externs) {
         if (ex.name.rfind("rt_", 0) == 0)
             continue;
 
         const std::string from = std::string(" bl ") + ex.name + "\n";
-        if (ex.name.rfind("Viper.Console.", 0) == 0)
-        {
+        if (ex.name.rfind("Viper.Console.", 0) == 0) {
             const std::string suffix = ex.name.substr(std::string("Viper.Console.").size());
             std::string rt_equiv;
             if (suffix == "PrintStr")
@@ -260,9 +241,7 @@ static void applyDarwinAsmFixups(std::string &asmText, const il::core::Module &m
                 replace_all(asmText, from, std::string(" bl _") + rt_equiv + "\n");
             else
                 replace_all(asmText, from, std::string(" bl _") + ex.name + "\n");
-        }
-        else
-        {
+        } else {
             replace_all(asmText, from, std::string(" bl _") + ex.name + "\n");
         }
     }
@@ -270,14 +249,12 @@ static void applyDarwinAsmFixups(std::string &asmText, const il::core::Module &m
     replace_all(asmText, " bl rt_", " bl _rt_");
 }
 
-static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel)
-{
+static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel) {
     if (optimizeLevel < 1)
         return true;
 
     constexpr std::size_t kLargeModuleIlOptThreshold = 100000;
-    auto totalInstructionCount = [](const il::core::Module &module)
-    {
+    auto totalInstructionCount = [](const il::core::Module &module) {
         std::size_t totalInstrs = 0;
         for (const auto &fn : module.functions)
             for (const auto &bb : fn.blocks)
@@ -287,16 +264,14 @@ static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel)
 
     il::transform::PassManager ilpm;
     const std::size_t totalInstrs = totalInstructionCount(mod);
-    if (totalInstrs > kLargeModuleIlOptThreshold)
-    {
+    if (totalInstrs > kLargeModuleIlOptThreshold) {
         // Huge frontend-built modules such as sqldb spend disproportionate
         // time in the IL optimizer. Skip IL-level optimization entirely here
         // and rely on backend codegen cleanup so native demo builds do not
         // appear hung for minutes.
         return true;
     }
-    if (optimizeLevel >= 2)
-    {
+    if (optimizeLevel >= 2) {
         ilpm.registerPipeline("codegen-O2",
                               {"loop-simplify", "loop-rotate",  "indvars",           "loop-unroll",
                                "simplify-cfg",  "sccp",         "check-opt",         "eh-opt",
@@ -320,8 +295,7 @@ static bool runIlOptimizations(il::core::Module &mod, int optimizeLevel)
     return ilpm.runPipeline(mod, "codegen-O1");
 }
 
-static const TargetInfo &hostAArch64Target()
-{
+static const TargetInfo &hostAArch64Target() {
 #if defined(_WIN32)
     return windowsTarget();
 #elif defined(__APPLE__)
@@ -335,31 +309,25 @@ static const TargetInfo &hostAArch64Target()
 
 bool runCodegenPipeline(passes::AArch64Module &module,
                         const PipelineOptions &opts,
-                        std::ostream &diagOut)
-{
+                        std::ostream &diagOut) {
     passes::Diagnostics diags;
 
     {
         passes::LoweringPass pass;
-        if (!pass.run(module, diags))
-        {
+        if (!pass.run(module, diags)) {
             diags.flush(diagOut);
             return false;
         }
     }
 
-    for (auto &fn : module.mir)
-    {
+    for (auto &fn : module.mir) {
         fn.isLeaf = true;
-        for (const auto &bb : fn.blocks)
-        {
+        for (const auto &bb : fn.blocks) {
             if (bb.name.find(".Ltrap_") == 0)
                 continue;
 
-            for (const auto &mi : bb.instrs)
-            {
-                if (mi.opc == MOpcode::Bl || mi.opc == MOpcode::Blr)
-                {
+            for (const auto &mi : bb.instrs) {
+                if (mi.opc == MOpcode::Bl || mi.opc == MOpcode::Blr) {
                     fn.isLeaf = false;
                     break;
                 }
@@ -374,8 +342,7 @@ bool runCodegenPipeline(passes::AArch64Module &module,
 
     {
         passes::RegAllocPass pass;
-        if (!pass.run(module, diags))
-        {
+        if (!pass.run(module, diags)) {
             diags.flush(diagOut);
             return false;
         }
@@ -386,8 +353,7 @@ bool runCodegenPipeline(passes::AArch64Module &module,
 
     {
         passes::PeepholePass pass;
-        if (!pass.run(module, diags))
-        {
+        if (!pass.run(module, diags)) {
             diags.flush(diagOut);
             return false;
         }
@@ -398,8 +364,7 @@ bool runCodegenPipeline(passes::AArch64Module &module,
 
     {
         passes::SchedulerPass sched;
-        if (!sched.run(module, diags))
-        {
+        if (!sched.run(module, diags)) {
             diags.flush(diagOut);
             return false;
         }
@@ -407,18 +372,15 @@ bool runCodegenPipeline(passes::AArch64Module &module,
 
     {
         passes::EmitPass pass;
-        if (!pass.run(module, diags))
-        {
+        if (!pass.run(module, diags)) {
             diags.flush(diagOut);
             return false;
         }
     }
 
-    if (opts.useBinaryEmit)
-    {
+    if (opts.useBinaryEmit) {
         passes::BinaryEmitPass pass;
-        if (!pass.run(module, diags))
-        {
+        if (!pass.run(module, diags)) {
             diags.flush(diagOut);
             return false;
         }
@@ -430,39 +392,34 @@ bool runCodegenPipeline(passes::AArch64Module &module,
 
 CodegenPipeline::CodegenPipeline(Options opts) : opts_(std::move(opts)) {}
 
-PipelineResult CodegenPipeline::run()
-{
+PipelineResult CodegenPipeline::run() {
     PipelineResult result{};
     std::ostringstream out;
     std::ostringstream err;
 
     il::core::Module mod;
     const auto load = il::tools::common::loadModuleFromFile(opts_.input_il_path, mod, err);
-    if (!load.succeeded())
-    {
+    if (!load.succeeded()) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
         return result;
     }
-    if (!il::tools::common::verifyModule(mod, err))
-    {
+    if (!il::tools::common::verifyModule(mod, err)) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
         return result;
     }
 
-    if (!runIlOptimizations(mod, opts_.optimize))
-    {
+    if (!runIlOptimizations(mod, opts_.optimize)) {
         err << "error: failed to run AArch64 IL optimization pipeline\n";
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
         return result;
     }
-    if (opts_.optimize >= 1 && !il::tools::common::verifyModule(mod, err))
-    {
+    if (opts_.optimize >= 1 && !il::tools::common::verifyModule(mod, err)) {
         err << "error: IL verification failed after optimization\n";
         result.exit_code = 1;
         result.stdout_text = out.str();
@@ -470,8 +427,7 @@ PipelineResult CodegenPipeline::run()
         return result;
     }
 
-    if (opts_.run_native)
-    {
+    if (opts_.run_native) {
 #if !(defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__)))
         err << "error: --run-native is only supported on macOS arm64 hosts\n";
         result.exit_code = 1;
@@ -492,8 +448,7 @@ PipelineResult CodegenPipeline::run()
     pipeOpts.dumpMirAfterRA = opts_.dump_mir_after_ra;
     pipeOpts.useBinaryEmit = opts_.assembler_mode == AssemblerMode::Native;
 
-    if (!runCodegenPipeline(pipelineModule, pipeOpts, err))
-    {
+    if (!runCodegenPipeline(pipelineModule, pipeOpts, err)) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
@@ -502,8 +457,7 @@ PipelineResult CodegenPipeline::run()
 
     std::string asmText = pipelineModule.assembly;
     std::string asmPath = opts_.output_asm_path;
-    if (asmPath.empty())
-    {
+    if (asmPath.empty()) {
         std::filesystem::path p(opts_.input_il_path);
         p.replace_extension(".s");
         asmPath = p.string();
@@ -512,10 +466,8 @@ PipelineResult CodegenPipeline::run()
     if (ti.abiFormat == ABIFormat::Darwin && (!opts_.output_obj_path.empty() || opts_.run_native))
         applyDarwinAsmFixups(asmText, mod);
 
-    if (opts_.emit_asm)
-    {
-        if (!writeTextFile(asmPath, asmText, err))
-        {
+    if (opts_.emit_asm) {
+        if (!writeTextFile(asmPath, asmText, err)) {
             result.exit_code = 1;
             result.stdout_text = out.str();
             result.stderr_text = err.str();
@@ -523,10 +475,8 @@ PipelineResult CodegenPipeline::run()
         }
     }
 
-    if (opts_.output_obj_path.empty() && !opts_.run_native)
-    {
-        if (!opts_.emit_asm && !writeTextFile(asmPath, asmText, err))
-        {
+    if (opts_.output_obj_path.empty() && !opts_.run_native) {
+        if (!opts_.emit_asm && !writeTextFile(asmPath, asmText, err)) {
             result.exit_code = 1;
             result.stdout_text = out.str();
             result.stderr_text = err.str();
@@ -537,25 +487,20 @@ PipelineResult CodegenPipeline::run()
         return result;
     }
 
-    if (opts_.assembler_mode == AssemblerMode::Native && pipelineModule.binaryText)
-    {
+    if (opts_.assembler_mode == AssemblerMode::Native && pipelineModule.binaryText) {
         std::filesystem::path objPath;
         bool outputIsObj = false;
         if (!opts_.output_obj_path.empty() &&
-            std::filesystem::path(opts_.output_obj_path).extension() == ".o")
-        {
+            std::filesystem::path(opts_.output_obj_path).extension() == ".o") {
             objPath = opts_.output_obj_path;
             outputIsObj = true;
-        }
-        else
-        {
+        } else {
             objPath = std::filesystem::path(opts_.input_il_path).replace_extension(".o");
         }
 
         using namespace viper::codegen::objfile;
         auto writer = createObjectFileWriter(detectHostFormat(), ObjArch::AArch64);
-        if (!writer)
-        {
+        if (!writer) {
             err << "error: no native object file writer for this platform\n";
             result.exit_code = 1;
             result.stdout_text = out.str();
@@ -567,8 +512,7 @@ PipelineResult CodegenPipeline::run()
         if (!writer->write(objPath.string(),
                            pipelineModule.binaryTextSections,
                            *pipelineModule.binaryRodata,
-                           err))
-        {
+                           err)) {
             err << "error: failed to write object file '" << objPath.string() << "'\n";
             result.exit_code = 1;
             result.stdout_text = out.str();
@@ -576,16 +520,14 @@ PipelineResult CodegenPipeline::run()
             return result;
         }
 
-        if (outputIsObj)
-        {
+        if (outputIsObj) {
             result.stdout_text = out.str();
             result.stderr_text = err.str();
             return result;
         }
 
         std::unordered_set<std::string> extSymbols;
-        for (const auto &sym : pipelineModule.binaryText->symbols())
-        {
+        for (const auto &sym : pipelineModule.binaryText->symbols()) {
             if (sym.binding == viper::codegen::objfile::SymbolBinding::External)
                 extSymbols.insert(sym.name);
         }
@@ -593,8 +535,7 @@ PipelineResult CodegenPipeline::run()
         LinkContext ctx;
         if (const int rc =
                 viper::codegen::common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);
-            rc != 0)
-        {
+            rc != 0) {
             result.exit_code = 1;
             result.stdout_text = out.str();
             result.stderr_text = err.str();
@@ -607,8 +548,7 @@ PipelineResult CodegenPipeline::run()
                 : std::filesystem::path(opts_.output_obj_path);
 
         int lrc = 0;
-        if (opts_.link_mode == LinkMode::Native)
-        {
+        if (opts_.link_mode == LinkMode::Native) {
             viper::codegen::linker::NativeLinkerOptions linkOpts;
             linkOpts.objPath = objPath.string();
             linkOpts.exePath = exe.string();
@@ -630,15 +570,13 @@ PipelineResult CodegenPipeline::run()
                 RtComponent::Oop,
                 RtComponent::Base,
             };
-            for (auto comp : allComponents)
-            {
+            for (auto comp : allComponents) {
                 auto arPath = runtimeArchivePath(ctx.buildDir, archiveNameForComponent(comp));
                 if (fileExists(arPath))
                     linkOpts.archivePaths.push_back(arPath.string());
             }
 
-            auto addIfExists = [&](const std::filesystem::path &p)
-            {
+            auto addIfExists = [&](const std::filesystem::path &p) {
                 if (fileExists(p))
                     linkOpts.archivePaths.push_back(p.string());
             };
@@ -647,28 +585,23 @@ PipelineResult CodegenPipeline::run()
             addIfExists(ctx.buildDir / "lib" / "libviperaud.a");
 
             lrc = viper::codegen::linker::nativeLink(linkOpts, out, err);
-        }
-        else
-        {
+        } else {
             lrc = linkObjToExe(objPath.string(), exe.string(), ctx, out, err);
         }
 
-        if (!outputIsObj)
-        {
+        if (!outputIsObj) {
             std::error_code ec;
             std::filesystem::remove(objPath, ec);
         }
 
-        if (lrc != 0)
-        {
+        if (lrc != 0) {
             result.exit_code = 1;
             result.stdout_text = out.str();
             result.stderr_text = err.str();
             return result;
         }
 
-        if (opts_.run_native)
-        {
+        if (opts_.run_native) {
             const int rc = viper::codegen::common::runExecutable(exe.string(), out, err);
             result.exit_code = rc == -1 ? 1 : rc;
         }
@@ -678,19 +611,16 @@ PipelineResult CodegenPipeline::run()
         return result;
     }
 
-    if (!opts_.emit_asm && !writeTextFile(asmPath, asmText, err))
-    {
+    if (!opts_.emit_asm && !writeTextFile(asmPath, asmText, err)) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
         return result;
     }
 
-    if (!opts_.output_obj_path.empty() && !opts_.run_native)
-    {
+    if (!opts_.output_obj_path.empty() && !opts_.run_native) {
         const std::string &outPath = opts_.output_obj_path;
-        if (std::filesystem::path(outPath).extension() == ".o")
-        {
+        if (std::filesystem::path(outPath).extension() == ".o") {
             const int arc = viper::codegen::common::invokeAssembler(
                 systemAssemblerArgs(), asmPath, outPath, out, err);
             result.exit_code = arc == 0 ? 0 : 1;
@@ -700,8 +630,7 @@ PipelineResult CodegenPipeline::run()
         }
 
         const int lrc = linkToExe(asmPath, outPath, out, err);
-        if (lrc == 0 && !opts_.emit_asm)
-        {
+        if (lrc == 0 && !opts_.emit_asm) {
             std::error_code ec;
             std::filesystem::remove(asmPath, ec);
         }
@@ -716,22 +645,19 @@ PipelineResult CodegenPipeline::run()
             ? std::filesystem::path(opts_.input_il_path).replace_extension("")
             : std::filesystem::path(opts_.output_obj_path);
 
-    if (linkToExe(asmPath, exe.string(), out, err) != 0)
-    {
+    if (linkToExe(asmPath, exe.string(), out, err) != 0) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
         return result;
     }
 
-    if (!opts_.emit_asm)
-    {
+    if (!opts_.emit_asm) {
         std::error_code ec;
         std::filesystem::remove(asmPath, ec);
     }
 
-    if (opts_.run_native)
-    {
+    if (opts_.run_native) {
         const int rc = viper::codegen::common::runExecutable(exe.string(), out, err);
         result.exit_code = rc == -1 ? 1 : rc;
     }

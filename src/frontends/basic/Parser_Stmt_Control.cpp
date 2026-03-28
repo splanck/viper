@@ -32,8 +32,7 @@
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/Parser_Stmt_ControlHelpers.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Install the control-flow statement handlers required by BASIC.
 ///
@@ -46,8 +45,7 @@ namespace il::frontends::basic
 ///          remains with `Parser`.
 ///
 /// @param registry Mutable registry that records keyword-to-parser mappings.
-void Parser::registerControlFlowParsers(StatementParserRegistry &registry)
-{
+void Parser::registerControlFlowParsers(StatementParserRegistry &registry) {
     registry.registerHandler(TokenKind::KeywordIf, &Parser::parseIfStatement);
     registry.registerHandler(TokenKind::KeywordSelect, &Parser::parseSelectCaseStatement);
     registry.registerHandler(TokenKind::KeywordWhile, &Parser::parseWhileStatement);
@@ -72,8 +70,7 @@ void Parser::registerControlFlowParsers(StatementParserRegistry &registry)
 /// END TRY
 ///
 /// At least one of CATCH or FINALLY must be present.
-StmtPtr Parser::parseTryCatchStatement()
-{
+StmtPtr Parser::parseTryCatchStatement() {
     auto locTry = peek().loc;
     consume(); // TRY
 
@@ -83,16 +80,9 @@ StmtPtr Parser::parseTryCatchStatement()
 
     // Collect TRY body until CATCH, FINALLY, or END TRY
     auto ctx = statementSequencer();
-    enum class Term
-    {
-        None,
-        Catch,
-        Finally,
-        EndTry
-    } term = Term::None;
+    enum class Term { None, Catch, Finally, EndTry } term = Term::None;
     auto termInfo = ctx.collectStatements(
-        [&](int, il::support::SourceLoc)
-        {
+        [&](int, il::support::SourceLoc) {
             if (at(TokenKind::KeywordCatch))
                 return true;
             if (at(TokenKind::KeywordFinally))
@@ -101,22 +91,16 @@ StmtPtr Parser::parseTryCatchStatement()
                 return true;
             return false;
         },
-        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
-        {
-            if (at(TokenKind::KeywordCatch))
-            {
+        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
+            if (at(TokenKind::KeywordCatch)) {
                 term = Term::Catch;
                 node->header.end = peek().loc;
                 consume(); // CATCH
-            }
-            else if (at(TokenKind::KeywordFinally))
-            {
+            } else if (at(TokenKind::KeywordFinally)) {
                 term = Term::Finally;
                 node->header.end = peek().loc;
                 consume(); // FINALLY
-            }
-            else if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry)
-            {
+            } else if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry) {
                 term = Term::EndTry;
                 node->header.end = peek().loc;
                 consume(); // END
@@ -126,19 +110,16 @@ StmtPtr Parser::parseTryCatchStatement()
         node->tryBody);
 
     // Must have at least CATCH or FINALLY
-    if (term == Term::EndTry || term == Term::None)
-    {
+    if (term == Term::EndTry || term == Term::None) {
         emitError("B3201", termInfo.loc, "TRY requires CATCH or FINALLY block");
         // We saw END TRY or EOF — return the node with just TRY body to keep progress.
         return node;
     }
 
     // If we have CATCH, parse it
-    if (term == Term::Catch)
-    {
+    if (term == Term::Catch) {
         // Optional catch variable
-        if (at(TokenKind::Identifier))
-        {
+        if (at(TokenKind::Identifier)) {
             node->catchVar = CanonicalizeIdent(peek().lexeme);
             consume();
         }
@@ -150,23 +131,18 @@ StmtPtr Parser::parseTryCatchStatement()
         bool sawFinally = false;
         bool sawEndTry = false;
         ctx.collectStatements(
-            [&](int, il::support::SourceLoc)
-            {
+            [&](int, il::support::SourceLoc) {
                 if (at(TokenKind::KeywordFinally))
                     return true;
                 if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry)
                     return true;
                 return false;
             },
-            [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
-            {
-                if (at(TokenKind::KeywordFinally))
-                {
+            [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
+                if (at(TokenKind::KeywordFinally)) {
                     sawFinally = true;
                     consume(); // FINALLY
-                }
-                else if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry)
-                {
+                } else if (at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry) {
                     sawEndTry = true;
                     consume(); // END
                     consume(); // TRY
@@ -174,43 +150,36 @@ StmtPtr Parser::parseTryCatchStatement()
             },
             node->catchBody);
 
-        if (sawFinally)
-        {
+        if (sawFinally) {
             term = Term::Finally;
-        }
-        else if (sawEndTry)
-        {
+        } else if (sawEndTry) {
             // Done - CATCH only, no FINALLY
             return node;
-        }
-        else
-        {
+        } else {
             emitError("B3202", locTry, "missing END TRY to terminate TRY/CATCH");
             return node;
         }
     }
 
     // If we have FINALLY (either directly after TRY or after CATCH), parse it
-    if (term == Term::Finally)
-    {
+    if (term == Term::Finally) {
         // Optional line breaks before FINALLY body
         ctx.skipLineBreaks();
 
         // Collect FINALLY body until END TRY
         bool sawEndTry = false;
         ctx.collectStatements(
-            [&](int, il::support::SourceLoc)
-            { return at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry; },
-            [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
-            {
+            [&](int, il::support::SourceLoc) {
+                return at(TokenKind::KeywordEnd) && peek(1).kind == TokenKind::KeywordTry;
+            },
+            [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
                 sawEndTry = true;
                 consume(); // END
                 consume(); // TRY
             },
             node->finallyBody);
 
-        if (!sawEndTry)
-        {
+        if (!sawEndTry) {
             emitError("B3202", locTry, "missing END TRY to terminate TRY/FINALLY");
         }
     }

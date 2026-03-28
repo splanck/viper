@@ -108,22 +108,17 @@
 #include "il/core/Global.hpp"
 #include "il/core/Module.hpp"
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
-std::string RodataPool::makeLabel(std::size_t index)
-{
+std::string RodataPool::makeLabel(std::size_t index) {
     return std::string("L.str.") + std::to_string(index);
 }
 
-std::string RodataPool::escapeAsciz(std::string_view bytes)
-{
+std::string RodataPool::escapeAsciz(std::string_view bytes) {
     std::string s;
     s.reserve(bytes.size());
-    for (unsigned char c : bytes)
-    {
-        switch (c)
-        {
+    for (unsigned char c : bytes) {
+        switch (c) {
             case '"':
             case '\\':
                 s.push_back('\\');
@@ -136,12 +131,9 @@ std::string RodataPool::escapeAsciz(std::string_view bytes)
                 s += "\\t";
                 break;
             default:
-                if (c >= 32 && c < 127)
-                {
+                if (c >= 32 && c < 127) {
                     s.push_back(static_cast<char>(c));
-                }
-                else
-                {
+                } else {
                     static const char hex[] = "0123456789ABCDEF";
                     s += "\\x";
                     s.push_back(hex[c >> 4]);
@@ -152,33 +144,26 @@ std::string RodataPool::escapeAsciz(std::string_view bytes)
     return s;
 }
 
-void RodataPool::addString(const std::string &ilName, const std::string &bytes)
-{
+void RodataPool::addString(const std::string &ilName, const std::string &bytes) {
     auto it = contentToLabel_.find(bytes);
-    if (it == contentToLabel_.end())
-    {
+    if (it == contentToLabel_.end()) {
         const std::string label = makeLabel(ordered_.size());
         contentToLabel_.emplace(bytes, label);
         ordered_.emplace_back(label, bytes);
         nameToLabel_[ilName] = label;
-    }
-    else
-    {
+    } else {
         nameToLabel_[ilName] = it->second;
     }
 }
 
-void RodataPool::buildFromModule(const il::core::Module &mod)
-{
-    for (const auto &g : mod.globals)
-    {
+void RodataPool::buildFromModule(const il::core::Module &mod) {
+    for (const auto &g : mod.globals) {
         if (g.type.kind == il::core::Type::Kind::Str)
             addString(g.name, g.init);
     }
 }
 
-void RodataPool::emit(std::ostream &os) const
-{
+void RodataPool::emit(std::ostream &os) const {
     if (ordered_.empty())
         return;
 #if defined(__APPLE__)
@@ -186,8 +171,7 @@ void RodataPool::emit(std::ostream &os) const
 #else
     os << ".section .rodata\n";
 #endif
-    for (const auto &pair : ordered_)
-    {
+    for (const auto &pair : ordered_) {
         const std::string &label = pair.first;
         const std::string &bytes = pair.second;
         os << label << ":\n";

@@ -14,8 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-vg_spinner_t *vg_spinner_create(vg_widget_t *parent)
-{
+vg_spinner_t *vg_spinner_create(vg_widget_t *parent) {
     vg_spinner_t *spinner = calloc(1, sizeof(vg_spinner_t));
     if (!spinner)
         return NULL;
@@ -33,8 +32,7 @@ vg_spinner_t *vg_spinner_create(vg_widget_t *parent)
 
     // Allocate text buffer
     spinner->text_buffer = malloc(64);
-    if (spinner->text_buffer)
-    {
+    if (spinner->text_buffer) {
         snprintf(spinner->text_buffer, 64, "%.0f", spinner->value);
     }
 
@@ -46,31 +44,25 @@ vg_spinner_t *vg_spinner_create(vg_widget_t *parent)
     spinner->border_color = 0xFF5A5A5A;
     spinner->button_color = 0xFF4A4A4A;
 
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &spinner->base);
     }
 
     return spinner;
 }
 
-static void update_text_buffer(vg_spinner_t *spinner)
-{
+static void update_text_buffer(vg_spinner_t *spinner) {
     if (!spinner || !spinner->text_buffer)
         return;
-    if (spinner->decimal_places <= 0)
-    {
+    if (spinner->decimal_places <= 0) {
         snprintf(spinner->text_buffer, 64, "%.0f", spinner->value);
-    }
-    else
-    {
+    } else {
         snprintf(spinner->text_buffer, 64, "%.*f", spinner->decimal_places, spinner->value);
     }
 }
 
 /// @brief Spinner set value.
-void vg_spinner_set_value(vg_spinner_t *spinner, double value)
-{
+void vg_spinner_set_value(vg_spinner_t *spinner, double value) {
     if (!spinner)
         return;
 
@@ -84,21 +76,18 @@ void vg_spinner_set_value(vg_spinner_t *spinner, double value)
     spinner->value = value;
     update_text_buffer(spinner);
 
-    if (old != value && spinner->on_change)
-    {
+    if (old != value && spinner->on_change) {
         spinner->on_change(&spinner->base, value, spinner->on_change_data);
     }
 }
 
 /// @brief Spinner get value.
-double vg_spinner_get_value(vg_spinner_t *spinner)
-{
+double vg_spinner_get_value(vg_spinner_t *spinner) {
     return spinner ? spinner->value : 0;
 }
 
 /// @brief Spinner set range.
-void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val)
-{
+void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val) {
     if (!spinner)
         return;
     spinner->min_value = min_val;
@@ -108,16 +97,14 @@ void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val)
 }
 
 /// @brief Spinner set step.
-void vg_spinner_set_step(vg_spinner_t *spinner, double step)
-{
+void vg_spinner_set_step(vg_spinner_t *spinner, double step) {
     if (!spinner)
         return;
     spinner->step = step > 0 ? step : 1;
 }
 
 /// @brief Spinner set decimals.
-void vg_spinner_set_decimals(vg_spinner_t *spinner, int decimals)
-{
+void vg_spinner_set_decimals(vg_spinner_t *spinner, int decimals) {
     if (!spinner)
         return;
     spinner->decimal_places = decimals > 0 ? decimals : 0;
@@ -125,8 +112,7 @@ void vg_spinner_set_decimals(vg_spinner_t *spinner, int decimals)
 }
 
 /// @brief Spinner set font.
-void vg_spinner_set_font(vg_spinner_t *spinner, vg_font_t *font, float size)
-{
+void vg_spinner_set_font(vg_spinner_t *spinner, vg_font_t *font, float size) {
     if (!spinner)
         return;
     spinner->font = font;
@@ -136,8 +122,7 @@ void vg_spinner_set_font(vg_spinner_t *spinner, vg_font_t *font, float size)
 /// @brief Spinner set on change.
 void vg_spinner_set_on_change(vg_spinner_t *spinner,
                               vg_spinner_callback_t callback,
-                              void *user_data)
-{
+                              void *user_data) {
     if (!spinner)
         return;
     spinner->on_change = callback;

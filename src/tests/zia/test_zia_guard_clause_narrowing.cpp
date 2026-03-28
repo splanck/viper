@@ -24,12 +24,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Guard clause with return narrows optional to non-optional.
-TEST(ZiaGuardClause, NullCheckReturnNarrows)
-{
+TEST(ZiaGuardClause, NullCheckReturnNarrows) {
     const std::string src = R"(
 module Test;
 
@@ -60,11 +58,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for NullCheckReturnNarrows:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -74,8 +70,7 @@ func start() {
 }
 
 /// @brief Multiple guard clauses in sequence.
-TEST(ZiaGuardClause, MultipleGuardClauses)
-{
+TEST(ZiaGuardClause, MultipleGuardClauses) {
     const std::string src = R"(
 module Test;
 
@@ -117,11 +112,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for MultipleGuardClauses:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -131,8 +124,7 @@ func start() {
 }
 
 /// @brief Guard-clause narrowing must also lower optional primitives as non-optional values.
-TEST(ZiaGuardClause, PrimitiveOptionalGuardNarrowsForLowering)
-{
+TEST(ZiaGuardClause, PrimitiveOptionalGuardNarrowsForLowering) {
     const std::string src = R"(
 module Test;
 
@@ -156,11 +148,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for PrimitiveOptionalGuardNarrowsForLowering:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -171,8 +161,7 @@ func start() {
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

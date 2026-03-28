@@ -39,8 +39,7 @@
 #include <string_view>
 #include <vector>
 
-int main()
-{
+int main() {
     using il::core::Opcode;
     using il::core::Type;
     using il::core::Value;
@@ -68,8 +67,7 @@ int main()
     auto callBridge = [&](const std::string &name,
                           std::vector<Slot> arguments,
                           Type::Kind resultKind,
-                          std::initializer_list<Type::Kind> argKinds)
-    {
+                          std::initializer_list<Type::Kind> argKinds) {
         for (Type::Kind arg : argKinds)
             markKind(arg);
         markKind(resultKind);

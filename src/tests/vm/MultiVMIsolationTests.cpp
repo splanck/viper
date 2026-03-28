@@ -20,16 +20,14 @@
 #include <fstream>
 #include <string>
 
-static std::string makeTempPath(const char *tag)
-{
+static std::string makeTempPath(const char *tag) {
     namespace fs = std::filesystem;
     auto dir = fs::temp_directory_path();
     auto path = dir / (std::string("viper_multivm_") + tag + ".txt");
     return path.string();
 }
 
-TEST(MultiVMIsolation, RNG_IsolatedPerContext)
-{
+TEST(MultiVMIsolation, RNG_IsolatedPerContext) {
     RtContext a{}, b{};
     rt_context_init(&a);
     rt_context_init(&b);
@@ -76,8 +74,7 @@ TEST(MultiVMIsolation, RNG_IsolatedPerContext)
     rt_context_cleanup(&b);
 }
 
-TEST(MultiVMIsolation, Modvar_IsolatedPerContext)
-{
+TEST(MultiVMIsolation, Modvar_IsolatedPerContext) {
     RtContext a{}, b{};
     rt_context_init(&a);
     rt_context_init(&b);
@@ -107,8 +104,7 @@ TEST(MultiVMIsolation, Modvar_IsolatedPerContext)
     rt_context_cleanup(&b);
 }
 
-TEST(MultiVMIsolation, FileChannels_IsolatedPerContext)
-{
+TEST(MultiVMIsolation, FileChannels_IsolatedPerContext) {
     RtContext a{}, b{};
     rt_context_init(&a);
     rt_context_init(&b);
@@ -154,8 +150,7 @@ TEST(MultiVMIsolation, FileChannels_IsolatedPerContext)
     rt_context_cleanup(&b);
 }
 
-TEST(MultiVMIsolation, Args_IsolatedPerContext)
-{
+TEST(MultiVMIsolation, Args_IsolatedPerContext) {
     RtContext a{}, b{};
     rt_context_init(&a);
     rt_context_init(&b);
@@ -223,8 +218,7 @@ static void mock_iface_method_ctx2(void) {}
 static void *itable_ctx1[1] = {(void *)mock_iface_method_ctx1};
 static void *itable_ctx2[1] = {(void *)mock_iface_method_ctx2};
 
-TEST(MultiVMIsolation, TypeRegistry_ClassRegistrationIsolated)
-{
+TEST(MultiVMIsolation, TypeRegistry_ClassRegistrationIsolated) {
     RtContext ctx1{}, ctx2{};
     rt_context_init(&ctx1);
     rt_context_init(&ctx2);
@@ -273,8 +267,7 @@ TEST(MultiVMIsolation, TypeRegistry_ClassRegistrationIsolated)
     rt_context_cleanup(&ctx2);
 }
 
-TEST(MultiVMIsolation, TypeRegistry_TypeIsAIsolated)
-{
+TEST(MultiVMIsolation, TypeRegistry_TypeIsAIsolated) {
     RtContext ctx1{}, ctx2{};
     rt_context_init(&ctx1);
     rt_context_init(&ctx2);
@@ -309,8 +302,7 @@ TEST(MultiVMIsolation, TypeRegistry_TypeIsAIsolated)
     rt_context_cleanup(&ctx2);
 }
 
-TEST(MultiVMIsolation, TypeRegistry_InterfaceBindingIsolated)
-{
+TEST(MultiVMIsolation, TypeRegistry_InterfaceBindingIsolated) {
     RtContext ctx1{}, ctx2{};
     rt_context_init(&ctx1);
     rt_context_init(&ctx2);
@@ -344,8 +336,7 @@ TEST(MultiVMIsolation, TypeRegistry_InterfaceBindingIsolated)
     rt_context_cleanup(&ctx2);
 }
 
-TEST(MultiVMIsolation, TypeRegistry_ItableLookupIsolated)
-{
+TEST(MultiVMIsolation, TypeRegistry_ItableLookupIsolated) {
     RtContext ctx1{}, ctx2{};
     rt_context_init(&ctx1);
     rt_context_init(&ctx2);
@@ -387,8 +378,7 @@ TEST(MultiVMIsolation, TypeRegistry_ItableLookupIsolated)
     rt_context_cleanup(&ctx2);
 }
 
-TEST(MultiVMIsolation, TypeRegistry_ClassInfoFromVptrIsolated)
-{
+TEST(MultiVMIsolation, TypeRegistry_ClassInfoFromVptrIsolated) {
     RtContext ctx1{}, ctx2{};
     rt_context_init(&ctx1);
     rt_context_init(&ctx2);
@@ -428,8 +418,7 @@ TEST(MultiVMIsolation, TypeRegistry_ClassInfoFromVptrIsolated)
     rt_context_cleanup(&ctx2);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

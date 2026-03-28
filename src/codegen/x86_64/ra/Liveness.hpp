@@ -31,8 +31,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::x64::ra
-{
+namespace viper::codegen::x64::ra {
 
 /// @brief CFG-aware liveness analysis over Machine IR blocks.
 ///
@@ -40,8 +39,7 @@ namespace viper::codegen::x64::ra
 ///          gen/kill sets per block, and solves the standard backward dataflow
 ///          equations to produce liveIn/liveOut sets for each block. This replaces
 ///          the conservative "unconditional spill" hack for cross-block vregs.
-class LivenessAnalysis
-{
+class LivenessAnalysis {
   public:
     LivenessAnalysis() = default;
 
@@ -61,8 +59,7 @@ class LivenessAnalysis
     [[nodiscard]] const std::vector<std::size_t> &predecessors(std::size_t blockIdx) const;
 
     /// @brief Number of blocks in the analyzed function.
-    [[nodiscard]] std::size_t numBlocks() const
-    {
+    [[nodiscard]] std::size_t numBlocks() const {
         return succs_.size();
     }
 

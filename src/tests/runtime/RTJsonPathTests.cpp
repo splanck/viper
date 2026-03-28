@@ -15,18 +15,15 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_simple_key()
-{
+static void test_simple_key() {
     // Build: {"name": "Alice"}
     void *obj = rt_map_new();
     rt_map_set(obj, make_str("name"), make_str("Alice"));
@@ -38,8 +35,7 @@ static void test_simple_key()
     rt_string_unref(path);
 }
 
-static void test_dotted_path()
-{
+static void test_dotted_path() {
     // Build: {"user": {"name": "Bob"}}
     void *inner = rt_map_new();
     rt_map_set(inner, make_str("name"), make_str("Bob"));
@@ -53,8 +49,7 @@ static void test_dotted_path()
     rt_string_unref(path);
 }
 
-static void test_bracket_index()
-{
+static void test_bracket_index() {
     // Build: {"items": ["a", "b", "c"]}
     void *arr = rt_seq_new();
     rt_seq_push(arr, make_str("a"));
@@ -70,8 +65,7 @@ static void test_bracket_index()
     rt_string_unref(path);
 }
 
-static void test_has()
-{
+static void test_has() {
     void *obj = rt_map_new();
     rt_map_set(obj, make_str("x"), make_str("1"));
 
@@ -83,8 +77,7 @@ static void test_has()
     rt_string_unref(p2);
 }
 
-static void test_get_or()
-{
+static void test_get_or() {
     void *obj = rt_map_new();
     rt_map_set(obj, make_str("x"), make_str("hello"));
 
@@ -103,8 +96,7 @@ static void test_get_or()
     rt_string_unref(def);
 }
 
-static void test_get_str()
-{
+static void test_get_str() {
     void *obj = rt_map_new();
     rt_map_set(obj, make_str("msg"), make_str("world"));
 
@@ -121,8 +113,7 @@ static void test_get_str()
     rt_string_unref(p2);
 }
 
-static void test_get_int()
-{
+static void test_get_int() {
     void *obj = rt_map_new();
     rt_map_set(obj, make_str("count"), make_str("42"));
 
@@ -131,8 +122,7 @@ static void test_get_int()
     rt_string_unref(p);
 }
 
-static void test_wildcard_query()
-{
+static void test_wildcard_query() {
     // Build: {"users": [{"name": "A"}, {"name": "B"}]}
     void *u1 = rt_map_new();
     rt_map_set(u1, make_str("name"), make_str("A"));
@@ -152,15 +142,13 @@ static void test_wildcard_query()
     rt_string_unref(path);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_jsonpath_get(NULL, NULL) == NULL);
     assert(rt_jsonpath_has(NULL, NULL) == 0);
     assert(rt_jsonpath_get_int(NULL, NULL) == 0);
 }
 
-static void test_get_int_from_parsed_json()
-{
+static void test_get_int_from_parsed_json() {
     // JSON numbers are boxed f64 after parsing — previously crashed
     rt_string json = make_str("{\"ver\":42}");
     void *doc = rt_json_parse(json);
@@ -173,8 +161,7 @@ static void test_get_int_from_parsed_json()
     rt_string_unref(json);
 }
 
-static void test_get_str_from_parsed_json()
-{
+static void test_get_str_from_parsed_json() {
     // Get string value from parsed JSON
     rt_string json = make_str("{\"name\":\"viper\",\"ver\":1}");
     void *doc = rt_json_parse(json);
@@ -196,8 +183,7 @@ static void test_get_str_from_parsed_json()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_simple_key();
     test_dotted_path();
     test_bracket_index();

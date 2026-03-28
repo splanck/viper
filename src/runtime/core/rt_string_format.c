@@ -62,8 +62,7 @@
 ///          4. Trap with a BASIC-style message on overflow or trailing junk.
 /// @param s Runtime string containing the textual representation.
 /// @return Parsed 64-bit integer value.
-int64_t rt_to_int(rt_string s)
-{
+int64_t rt_to_int(rt_string s) {
     if (!s)
         rt_trap("rt_to_int: null");
     const char *p = s->data;
@@ -83,13 +82,11 @@ int64_t rt_to_int(rt_string s)
     errno = 0;
     char *endp = NULL;
     long long v = strtoll(buf, &endp, 10);
-    if (errno == ERANGE)
-    {
+    if (errno == ERANGE) {
         free(buf);
         rt_trap("INPUT: numeric overflow");
     }
-    if (!endp || *endp != '\0')
-    {
+    if (!endp || *endp != '\0') {
         free(buf);
         rt_trap("INPUT: expected numeric value");
     }
@@ -105,14 +102,12 @@ int64_t rt_to_int(rt_string s)
 ///          trap, mirroring INPUT semantics.
 /// @param s Runtime string handle.
 /// @return Parsed floating-point value.
-double rt_to_double(rt_string s)
-{
+double rt_to_double(rt_string s) {
     if (!s)
         rt_trap("rt_to_double: null");
     bool ok = true;
     double value = rt_val_to_double(s->data, &ok);
-    if (!ok)
-    {
+    if (!ok) {
         if (!isfinite(value))
             rt_trap("INPUT: numeric overflow");
         rt_trap("INPUT: expected numeric value");
@@ -127,13 +122,11 @@ double rt_to_double(rt_string s)
 ///          converted to rt_trap messages to preserve BASIC's fatal-error model.
 /// @param v Integer value to format.
 /// @return Fresh runtime string containing the decimal representation.
-rt_string rt_int_to_str(int64_t v)
-{
+rt_string rt_int_to_str(int64_t v) {
     rt_string_builder sb;
     rt_sb_init(&sb);
     rt_sb_status_t status = rt_sb_append_int(&sb, v);
-    if (status != RT_SB_OK)
-    {
+    if (status != RT_SB_OK) {
         const char *msg = "rt_int_to_str: format";
         if (status == RT_SB_ERROR_ALLOC)
             msg = "rt_int_to_str: alloc";
@@ -156,8 +149,7 @@ rt_string rt_int_to_str(int64_t v)
 ///          ownership transfers to the caller.
 /// @param v Floating-point value to format.
 /// @return Newly allocated runtime string containing the formatted value.
-rt_string rt_f64_to_str(double v)
-{
+rt_string rt_f64_to_str(double v) {
     char buf[64];
     rt_format_f64(v, buf, sizeof(buf));
     return rt_string_from_bytes(buf, strlen(buf));
@@ -168,8 +160,7 @@ rt_string rt_f64_to_str(double v)
 ///          that exported @c rt_str_d_alloc directly.
 /// @param v Floating-point value to format.
 /// @return Newly allocated runtime string containing the formatted value.
-rt_string rt_str_d_alloc(double v)
-{
+rt_string rt_str_d_alloc(double v) {
     char buf[64];
     rt_format_f64(v, buf, sizeof(buf));
     return rt_string_from_bytes(buf, strlen(buf));
@@ -180,8 +171,7 @@ rt_string rt_str_d_alloc(double v)
 ///          the same rounding behaviour as other BASIC numeric printers.
 /// @param v Float value to format.
 /// @return Newly allocated runtime string with the formatted value.
-rt_string rt_str_f_alloc(float v)
-{
+rt_string rt_str_f_alloc(float v) {
     char buf[64];
     rt_format_f64((double)v, buf, sizeof(buf));
     return rt_string_from_bytes(buf, strlen(buf));
@@ -193,8 +183,7 @@ rt_string rt_str_f_alloc(float v)
 ///          shared helper keeps zero-padding and sign handling consistent.
 /// @param v Integer value to format.
 /// @return Newly allocated runtime string containing the decimal text.
-rt_string rt_str_i32_alloc(int32_t v)
-{
+rt_string rt_str_i32_alloc(int32_t v) {
     char buf[32];
     rt_str_from_i32(v, buf, sizeof(buf), NULL);
     return rt_string_from_bytes(buf, strlen(buf));
@@ -205,8 +194,7 @@ rt_string rt_str_i32_alloc(int32_t v)
 ///          integer printers, including sign handling and overflow checking.
 /// @param v Integer value to format.
 /// @return Newly allocated runtime string containing the decimal text.
-rt_string rt_str_i16_alloc(int16_t v)
-{
+rt_string rt_str_i16_alloc(int16_t v) {
     char buf[16];
     rt_str_from_i16(v, buf, sizeof(buf), NULL);
     return rt_string_from_bytes(buf, strlen(buf));
@@ -220,14 +208,12 @@ rt_string rt_str_i16_alloc(int16_t v)
 ///          pointers.
 /// @param s Runtime string handle.
 /// @return Parsed floating-point value (possibly infinity on overflow).
-double rt_val(rt_string s)
-{
+double rt_val(rt_string s) {
     if (!s)
         rt_trap("rt_val: null");
     bool ok = true;
     double value = rt_val_to_double(s->data, &ok);
-    if (!ok)
-    {
+    if (!ok) {
         if (!isfinite(value))
             rt_trap("rt_val: overflow");
         return value;
@@ -241,7 +227,6 @@ double rt_val(rt_string s)
 ///          behaviour with the rest of the runtime.
 /// @param v Floating-point value to format.
 /// @return Newly allocated runtime string containing the formatted value.
-rt_string rt_str(double v)
-{
+rt_string rt_str(double v) {
     return rt_f64_to_str(v);
 }

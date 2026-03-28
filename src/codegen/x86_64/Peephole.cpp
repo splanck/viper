@@ -39,8 +39,7 @@
 
 #include <algorithm>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 // Import sub-pass functions into local scope for concise call sites.
 namespace ph = peephole;
@@ -52,12 +51,10 @@ static constexpr std::size_t kMaxIterations = 100;
 
 /// Run per-block rewrite passes (strength reduction, identity elimination,
 /// move folding, DCE). Returns the number of transformations applied.
-static std::size_t runBlockRewrites(MFunction &fn, ph::PeepholeStats &stats)
-{
+static std::size_t runBlockRewrites(MFunction &fn, ph::PeepholeStats &stats) {
     std::size_t before = stats.total();
 
-    for (auto &block : fn.blocks)
-    {
+    for (auto &block : fn.blocks) {
         auto &instrs = block.instructions;
         if (instrs.empty())
             continue;
@@ -66,17 +63,14 @@ static std::size_t runBlockRewrites(MFunction &fn, ph::PeepholeStats &stats)
         ph::RegConstMap knownConsts;
         std::vector<bool> toRemove(instrs.size(), false);
 
-        for (std::size_t i = 0; i < instrs.size(); ++i)
-        {
+        for (std::size_t i = 0; i < instrs.size(); ++i) {
             auto &instr = instrs[i];
 
             // Track constants loaded via MOVri
             ph::updateKnownConsts(instr, knownConsts);
 
-            switch (instr.opcode)
-            {
-                case MOpcode::MOVri:
-                {
+            switch (instr.opcode) {
+                case MOpcode::MOVri: {
                     if (instr.operands.size() != 2)
                         break;
 
@@ -92,8 +86,7 @@ static std::size_t runBlockRewrites(MFunction &fn, ph::PeepholeStats &stats)
                     ++stats.movZeroToXor;
                     break;
                 }
-                case MOpcode::CMPri:
-                {
+                case MOpcode::CMPri: {
                     if (instr.operands.size() != 2)
                         break;
 
@@ -109,8 +102,7 @@ static std::size_t runBlockRewrites(MFunction &fn, ph::PeepholeStats &stats)
             }
 
             // Try arithmetic identity elimination (add #0, shift #0)
-            if (ph::tryArithmeticIdentity(instrs, i, stats))
-            {
+            if (ph::tryArithmeticIdentity(instrs, i, stats)) {
                 toRemove[i] = true;
                 continue;
             }
@@ -120,29 +112,23 @@ static std::size_t runBlockRewrites(MFunction &fn, ph::PeepholeStats &stats)
         }
 
         // Pass 2: Try to fold consecutive moves
-        for (std::size_t i = 0; i + 1 < instrs.size(); ++i)
-        {
+        for (std::size_t i = 0; i + 1 < instrs.size(); ++i) {
             (void)ph::tryFoldConsecutiveMoves(instrs, i, stats);
         }
 
         // Pass 3: Mark identity moves for removal
-        for (std::size_t i = 0; i < instrs.size(); ++i)
-        {
-            if (ph::isIdentityMovRR(instrs[i]))
-            {
+        for (std::size_t i = 0; i < instrs.size(); ++i) {
+            if (ph::isIdentityMovRR(instrs[i])) {
                 toRemove[i] = true;
                 ++stats.identityMovesRemoved;
-            }
-            else if (ph::isIdentityMovSDRR(instrs[i]))
-            {
+            } else if (ph::isIdentityMovSDRR(instrs[i])) {
                 toRemove[i] = true;
                 ++stats.identityMovesRemoved;
             }
         }
 
         // Pass 4: Remove marked instructions
-        if (std::any_of(toRemove.begin(), toRemove.end(), [](bool v) { return v; }))
-        {
+        if (std::any_of(toRemove.begin(), toRemove.end(), [](bool v) { return v; })) {
             ph::removeMarkedInstructions(instrs, toRemove);
         }
 
@@ -153,15 +139,13 @@ static std::size_t runBlockRewrites(MFunction &fn, ph::PeepholeStats &stats)
     return stats.total() - before;
 }
 
-std::size_t runPeepholes(MFunction &fn)
-{
+std::size_t runPeepholes(MFunction &fn) {
     ph::PeepholeStats stats;
 
     // Iterate block rewrites to a fixed point. One rewrite can expose
     // further opportunities (e.g., strength reduction → identity move →
     // DCE), so iterate until no new transformations are found.
-    for (std::size_t iter = 0; iter < kMaxIterations; ++iter)
-    {
+    for (std::size_t iter = 0; iter < kMaxIterations; ++iter) {
         if (runBlockRewrites(fn, stats) == 0)
             break;
     }

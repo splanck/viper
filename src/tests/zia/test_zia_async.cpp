@@ -19,14 +19,11 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Has diag containing.
-bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle)
-{
-    for (const auto &d : diag.diagnostics())
-    {
+bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle) {
+    for (const auto &d : diag.diagnostics()) {
         if (d.message.find(needle) != std::string::npos)
             return true;
     }
@@ -34,8 +31,8 @@ bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle)
 }
 
 /// @brief Compile source.
-CompilerResult compileSource(const std::string &source, const std::string &path = "async_test.zia")
-{
+CompilerResult compileSource(const std::string &source,
+                             const std::string &path = "async_test.zia") {
     SourceManager sm;
     CompilerInput input{.source = source, .path = path};
     CompilerOptions opts{};
@@ -43,10 +40,8 @@ CompilerResult compileSource(const std::string &source, const std::string &path 
 }
 
 /// @brief Has function.
-bool hasFunction(const il::core::Module &mod, const std::string &name)
-{
-    for (const auto &fn : mod.functions)
-    {
+bool hasFunction(const il::core::Module &mod, const std::string &name) {
+    for (const auto &fn : mod.functions) {
         if (fn.name == name)
             return true;
     }
@@ -55,16 +50,12 @@ bool hasFunction(const il::core::Module &mod, const std::string &name)
 
 bool hasDirectCall(const il::core::Module &mod,
                    const std::string &fnName,
-                   const std::string &callee)
-{
-    for (const auto &fn : mod.functions)
-    {
+                   const std::string &callee) {
+    for (const auto &fn : mod.functions) {
         if (fn.name != fnName)
             continue;
-        for (const auto &block : fn.blocks)
-        {
-            for (const auto &instr : block.instructions)
-            {
+        for (const auto &block : fn.blocks) {
+            for (const auto &instr : block.instructions) {
                 if (instr.op == il::core::Opcode::Call && instr.callee == callee)
                     return true;
             }
@@ -74,16 +65,12 @@ bool hasDirectCall(const il::core::Module &mod,
 }
 
 /// @brief Has indirect call.
-bool hasIndirectCall(const il::core::Module &mod, const std::string &fnName)
-{
-    for (const auto &fn : mod.functions)
-    {
+bool hasIndirectCall(const il::core::Module &mod, const std::string &fnName) {
+    for (const auto &fn : mod.functions) {
         if (fn.name != fnName)
             continue;
-        for (const auto &block : fn.blocks)
-        {
-            for (const auto &instr : block.instructions)
-            {
+        for (const auto &block : fn.blocks) {
+            for (const auto &instr : block.instructions) {
                 if (instr.op == il::core::Opcode::CallIndirect)
                     return true;
             }
@@ -92,8 +79,7 @@ bool hasIndirectCall(const il::core::Module &mod, const std::string &fnName)
     return false;
 }
 
-TEST(ZiaAsync, AsyncFunctionLowersToWorkerAndWrapper)
-{
+TEST(ZiaAsync, AsyncFunctionLowersToWorkerAndWrapper) {
     const std::string src = R"(module Test;
 
 /// @brief Fetch data.
@@ -114,8 +100,7 @@ func start() {
     EXPECT_TRUE(hasDirectCall(result.module, "fetchData", "Viper.Threads.Async.Run"));
 }
 
-TEST(ZiaAsync, AwaitUsesFutureGetAndUnboxesKnownPayload)
-{
+TEST(ZiaAsync, AwaitUsesFutureGetAndUnboxesKnownPayload) {
     const std::string src = R"(module Test;
 
 /// @brief Fetch data.
@@ -134,8 +119,7 @@ func start() {
     EXPECT_TRUE(hasDirectCall(result.module, "main", "Viper.Threads.Future.Get"));
 }
 
-TEST(ZiaAsync, AwaitRejectsNonFutureOperands)
-{
+TEST(ZiaAsync, AwaitRejectsNonFutureOperands) {
     const std::string src = R"(module Test;
 
 /// @brief Start.
@@ -149,8 +133,7 @@ func start() {
     EXPECT_TRUE(hasDiagContaining(result.diagnostics, "`await` expects Viper.Threads.Future"));
 }
 
-TEST(ZiaAsync, AsyncWorkerInvokesBodyThroughGeneratedFunction)
-{
+TEST(ZiaAsync, AsyncWorkerInvokesBodyThroughGeneratedFunction) {
     const std::string src = R"(module Test;
 
 /// @brief Add one.
@@ -171,8 +154,7 @@ func start() {
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

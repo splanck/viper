@@ -34,12 +34,10 @@
 using namespace viper::codegen::aarch64;
 using namespace viper::codegen::aarch64::binenc;
 
-namespace
-{
+namespace {
 
 /// Read a LE 32-bit word from bytes at offset.
-uint32_t readWord(const std::vector<uint8_t> &bytes, size_t offset)
-{
+uint32_t readWord(const std::vector<uint8_t> &bytes, size_t offset) {
     return static_cast<uint32_t>(bytes[offset]) | (static_cast<uint32_t>(bytes[offset + 1]) << 8) |
            (static_cast<uint32_t>(bytes[offset + 2]) << 16) |
            (static_cast<uint32_t>(bytes[offset + 3]) << 24);
@@ -47,11 +45,9 @@ uint32_t readWord(const std::vector<uint8_t> &bytes, size_t offset)
 
 /// Count occurrences of StrRegSpImm (0xF9000000-range) instructions.
 /// StrRegSpImm stores a GPR to [sp, #imm] — used for stack-passed args.
-size_t countStackStores(const std::vector<uint8_t> &bytes)
-{
+size_t countStackStores(const std::vector<uint8_t> &bytes) {
     size_t count = 0;
-    for (size_t i = 0; i + 3 < bytes.size(); i += 4)
-    {
+    for (size_t i = 0; i + 3 < bytes.size(); i += 4) {
         uint32_t w = readWord(bytes, i);
         // str Xt, [sp, #imm12] has top bits 0xF9 (unsigned offset) or
         // StrRegSpImm is encoded as str Xt, [sp, #pimm] — check for SP as base
@@ -69,8 +65,7 @@ size_t countStackStores(const std::vector<uint8_t> &bytes)
 // ---------------------------------------------------------------------------
 // Test: isVarArgCallee detects known vararg functions
 // ---------------------------------------------------------------------------
-TEST(AArch64Vararg, IsVarArgCalleeDetection)
-{
+TEST(AArch64Vararg, IsVarArgCalleeDetection) {
     // Known vararg functions should be detected
     EXPECT_TRUE(il::runtime::isVarArgCallee("rt_snprintf"));
     EXPECT_TRUE(il::runtime::isVarArgCallee("rt_sb_printf"));
@@ -83,15 +78,13 @@ TEST(AArch64Vararg, IsVarArgCalleeDetection)
 // ---------------------------------------------------------------------------
 // Test: findRuntimeSignature returns paramTypes for vararg functions
 // ---------------------------------------------------------------------------
-TEST(AArch64Vararg, RuntimeSigNamedParamCount)
-{
+TEST(AArch64Vararg, RuntimeSigNamedParamCount) {
     // For vararg functions with registry entries, paramTypes.size() gives
     // the named parameter count (the boundary for register vs stack args).
     // Note: not all vararg functions have registry entries (some are hardcoded
     // in the isVarArgCallee list). This test checks whichever ones are registered.
     const auto *sig = il::runtime::findRuntimeSignature("rt_snprintf");
-    if (sig)
-    {
+    if (sig) {
         // rt_snprintf(buf, size, fmt, ...) → 3 named params
         EXPECT_GE(sig->paramTypes.size(), 2u);
     }
@@ -99,8 +92,7 @@ TEST(AArch64Vararg, RuntimeSigNamedParamCount)
     // in the hardcoded vararg list only).
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -52,8 +52,7 @@
 #define RT_CAMERA_MAX_PARALLAX 8
 
 /// @brief A single parallax scrolling layer.
-typedef struct
-{
+typedef struct {
     void *pixels;            ///< Pixels buffer to tile across the viewport
     int64_t scroll_factor_x; ///< X scroll % (100 = camera speed, 50 = half, 0 = static)
     int64_t scroll_factor_y; ///< Y scroll % (100 = camera speed, 50 = half, 0 = static)
@@ -62,8 +61,7 @@ typedef struct
 } rt_parallax_layer;
 
 /// @brief Camera implementation structure.
-typedef struct rt_camera_impl
-{
+typedef struct rt_camera_impl {
     int64_t x;          ///< Camera X position (world coordinates)
     int64_t y;          ///< Camera Y position (world coordinates)
     int64_t width;      ///< Viewport width
@@ -81,8 +79,7 @@ typedef struct rt_camera_impl
 } rt_camera_impl;
 
 /// @brief Clamp camera position to bounds.
-static void camera_clamp_bounds(rt_camera_impl *camera)
-{
+static void camera_clamp_bounds(rt_camera_impl *camera) {
     if (!camera->has_bounds)
         return;
 
@@ -100,8 +97,7 @@ static void camera_clamp_bounds(rt_camera_impl *camera)
 // Camera Creation
 //=============================================================================
 
-void *rt_camera_new(int64_t width, int64_t height)
-{
+void *rt_camera_new(int64_t width, int64_t height) {
     if (width <= 0)
         width = 1;
     if (height <= 0)
@@ -133,20 +129,16 @@ void *rt_camera_new(int64_t width, int64_t height)
 // Camera Properties
 //=============================================================================
 
-int64_t rt_camera_get_x(void *camera_ptr)
-{
-    if (!camera_ptr)
-    {
+int64_t rt_camera_get_x(void *camera_ptr) {
+    if (!camera_ptr) {
         rt_trap("Camera.X: null camera");
         return 0;
     }
     return ((rt_camera_impl *)camera_ptr)->x;
 }
 
-void rt_camera_set_x(void *camera_ptr, int64_t x)
-{
-    if (!camera_ptr)
-    {
+void rt_camera_set_x(void *camera_ptr, int64_t x) {
+    if (!camera_ptr) {
         rt_trap("Camera.X: null camera");
         return;
     }
@@ -156,20 +148,16 @@ void rt_camera_set_x(void *camera_ptr, int64_t x)
     camera_clamp_bounds(camera);
 }
 
-int64_t rt_camera_get_y(void *camera_ptr)
-{
-    if (!camera_ptr)
-    {
+int64_t rt_camera_get_y(void *camera_ptr) {
+    if (!camera_ptr) {
         rt_trap("Camera.Y: null camera");
         return 0;
     }
     return ((rt_camera_impl *)camera_ptr)->y;
 }
 
-void rt_camera_set_y(void *camera_ptr, int64_t y)
-{
-    if (!camera_ptr)
-    {
+void rt_camera_set_y(void *camera_ptr, int64_t y) {
+    if (!camera_ptr) {
         rt_trap("Camera.Y: null camera");
         return;
     }
@@ -179,20 +167,16 @@ void rt_camera_set_y(void *camera_ptr, int64_t y)
     camera_clamp_bounds(camera);
 }
 
-int64_t rt_camera_get_zoom(void *camera_ptr)
-{
-    if (!camera_ptr)
-    {
+int64_t rt_camera_get_zoom(void *camera_ptr) {
+    if (!camera_ptr) {
         rt_trap("Camera.Zoom: null camera");
         return 100;
     }
     return ((rt_camera_impl *)camera_ptr)->zoom;
 }
 
-void rt_camera_set_zoom(void *camera_ptr, int64_t zoom)
-{
-    if (!camera_ptr)
-    {
+void rt_camera_set_zoom(void *camera_ptr, int64_t zoom) {
+    if (!camera_ptr) {
         rt_trap("Camera.Zoom: null camera");
         return;
     }
@@ -205,20 +189,16 @@ void rt_camera_set_zoom(void *camera_ptr, int64_t zoom)
     camera->dirty = 1;
 }
 
-int64_t rt_camera_get_rotation(void *camera_ptr)
-{
-    if (!camera_ptr)
-    {
+int64_t rt_camera_get_rotation(void *camera_ptr) {
+    if (!camera_ptr) {
         rt_trap("Camera.Rotation: null camera");
         return 0;
     }
     return ((rt_camera_impl *)camera_ptr)->rotation;
 }
 
-void rt_camera_set_rotation(void *camera_ptr, int64_t degrees)
-{
-    if (!camera_ptr)
-    {
+void rt_camera_set_rotation(void *camera_ptr, int64_t degrees) {
+    if (!camera_ptr) {
         rt_trap("Camera.Rotation: null camera");
         return;
     }
@@ -227,20 +207,16 @@ void rt_camera_set_rotation(void *camera_ptr, int64_t degrees)
     camera->dirty = 1;
 }
 
-int64_t rt_camera_get_width(void *camera_ptr)
-{
-    if (!camera_ptr)
-    {
+int64_t rt_camera_get_width(void *camera_ptr) {
+    if (!camera_ptr) {
         rt_trap("Camera.Width: null camera");
         return 0;
     }
     return ((rt_camera_impl *)camera_ptr)->width;
 }
 
-int64_t rt_camera_get_height(void *camera_ptr)
-{
-    if (!camera_ptr)
-    {
+int64_t rt_camera_get_height(void *camera_ptr) {
+    if (!camera_ptr) {
         rt_trap("Camera.Height: null camera");
         return 0;
     }
@@ -251,10 +227,8 @@ int64_t rt_camera_get_height(void *camera_ptr)
 // Camera Methods
 //=============================================================================
 
-void rt_camera_follow(void *camera_ptr, int64_t x, int64_t y)
-{
-    if (!camera_ptr)
-    {
+void rt_camera_follow(void *camera_ptr, int64_t x, int64_t y) {
+    if (!camera_ptr) {
         rt_trap("Camera.Follow: null camera");
         return;
     }
@@ -268,8 +242,7 @@ void rt_camera_follow(void *camera_ptr, int64_t x, int64_t y)
 }
 
 void rt_camera_world_to_screen(
-    void *camera_ptr, int64_t world_x, int64_t world_y, int64_t *screen_x, int64_t *screen_y)
-{
+    void *camera_ptr, int64_t world_x, int64_t world_y, int64_t *screen_x, int64_t *screen_y) {
     if (!camera_ptr || !screen_x || !screen_y)
         return;
 
@@ -280,16 +253,14 @@ void rt_camera_world_to_screen(
     *screen_y = (world_y - camera->y) * camera->zoom / 100;
 }
 
-int64_t rt_camera_to_screen_x(void *camera_ptr, int64_t world_x)
-{
+int64_t rt_camera_to_screen_x(void *camera_ptr, int64_t world_x) {
     if (!camera_ptr)
         return world_x;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     return (world_x - camera->x) * camera->zoom / 100;
 }
 
-int64_t rt_camera_to_screen_y(void *camera_ptr, int64_t world_y)
-{
+int64_t rt_camera_to_screen_y(void *camera_ptr, int64_t world_y) {
     if (!camera_ptr)
         return world_y;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
@@ -297,8 +268,7 @@ int64_t rt_camera_to_screen_y(void *camera_ptr, int64_t world_y)
 }
 
 void rt_camera_screen_to_world(
-    void *camera_ptr, int64_t screen_x, int64_t screen_y, int64_t *world_x, int64_t *world_y)
-{
+    void *camera_ptr, int64_t screen_x, int64_t screen_y, int64_t *world_x, int64_t *world_y) {
     if (!camera_ptr || !world_x || !world_y)
         return;
 
@@ -309,26 +279,22 @@ void rt_camera_screen_to_world(
     *world_y = screen_y * 100 / camera->zoom + camera->y;
 }
 
-int64_t rt_camera_to_world_x(void *camera_ptr, int64_t screen_x)
-{
+int64_t rt_camera_to_world_x(void *camera_ptr, int64_t screen_x) {
     if (!camera_ptr)
         return screen_x;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     return screen_x * 100 / camera->zoom + camera->x;
 }
 
-int64_t rt_camera_to_world_y(void *camera_ptr, int64_t screen_y)
-{
+int64_t rt_camera_to_world_y(void *camera_ptr, int64_t screen_y) {
     if (!camera_ptr)
         return screen_y;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     return screen_y * 100 / camera->zoom + camera->y;
 }
 
-void rt_camera_move(void *camera_ptr, int64_t dx, int64_t dy)
-{
-    if (!camera_ptr)
-    {
+void rt_camera_move(void *camera_ptr, int64_t dx, int64_t dy) {
+    if (!camera_ptr) {
         rt_trap("Camera.Move: null camera");
         return;
     }
@@ -340,10 +306,8 @@ void rt_camera_move(void *camera_ptr, int64_t dx, int64_t dy)
 }
 
 void rt_camera_set_bounds(
-    void *camera_ptr, int64_t min_x, int64_t min_y, int64_t max_x, int64_t max_y)
-{
-    if (!camera_ptr)
-    {
+    void *camera_ptr, int64_t min_x, int64_t min_y, int64_t max_x, int64_t max_y) {
+    if (!camera_ptr) {
         rt_trap("Camera.SetBounds: null camera");
         return;
     }
@@ -356,10 +320,8 @@ void rt_camera_set_bounds(
     camera_clamp_bounds(camera);
 }
 
-void rt_camera_clear_bounds(void *camera_ptr)
-{
-    if (!camera_ptr)
-    {
+void rt_camera_clear_bounds(void *camera_ptr) {
+    if (!camera_ptr) {
         rt_trap("Camera.ClearBounds: null camera");
         return;
     }
@@ -370,8 +332,7 @@ void rt_camera_clear_bounds(void *camera_ptr)
 // Visibility Culling
 //=============================================================================
 
-int64_t rt_camera_is_visible(void *camera_ptr, int64_t x, int64_t y, int64_t w, int64_t h)
-{
+int64_t rt_camera_is_visible(void *camera_ptr, int64_t x, int64_t y, int64_t w, int64_t h) {
     if (!camera_ptr)
         return 1; // Null camera — conservatively treat as visible
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
@@ -393,15 +354,13 @@ int64_t rt_camera_is_visible(void *camera_ptr, int64_t x, int64_t y, int64_t w, 
 // Dirty Flag — Enables callers to skip re-rendering when camera is stationary
 //=============================================================================
 
-int64_t rt_camera_is_dirty(void *camera_ptr)
-{
+int64_t rt_camera_is_dirty(void *camera_ptr) {
     if (!camera_ptr)
         return 0;
     return ((rt_camera_impl *)camera_ptr)->dirty;
 }
 
-void rt_camera_clear_dirty(void *camera_ptr)
-{
+void rt_camera_clear_dirty(void *camera_ptr) {
     if (!camera_ptr)
         return;
     ((rt_camera_impl *)camera_ptr)->dirty = 0;
@@ -414,18 +373,15 @@ void rt_camera_clear_dirty(void *camera_ptr)
 int64_t rt_camera_add_parallax(void *camera_ptr,
                                void *pixels,
                                int64_t scroll_x_pct,
-                               int64_t scroll_y_pct)
-{
+                               int64_t scroll_y_pct) {
     if (!camera_ptr || !pixels)
         return -1;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     if (camera->parallax_count >= RT_CAMERA_MAX_PARALLAX)
         return -1;
 
-    for (int i = 0; i < RT_CAMERA_MAX_PARALLAX; i++)
-    {
-        if (!camera->parallax[i].active)
-        {
+    for (int i = 0; i < RT_CAMERA_MAX_PARALLAX; i++) {
+        if (!camera->parallax[i].active) {
             camera->parallax[i].pixels = pixels;
             camera->parallax[i].scroll_factor_x = scroll_x_pct;
             camera->parallax[i].scroll_factor_y = scroll_y_pct;
@@ -438,23 +394,20 @@ int64_t rt_camera_add_parallax(void *camera_ptr,
     return -1;
 }
 
-void rt_camera_remove_parallax(void *camera_ptr, int64_t index)
-{
+void rt_camera_remove_parallax(void *camera_ptr, int64_t index) {
     if (!camera_ptr)
         return;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
     if (index < 0 || index >= RT_CAMERA_MAX_PARALLAX)
         return;
-    if (camera->parallax[index].active)
-    {
+    if (camera->parallax[index].active) {
         camera->parallax[index].active = 0;
         camera->parallax[index].pixels = NULL;
         camera->parallax_count--;
     }
 }
 
-void rt_camera_clear_parallax(void *camera_ptr)
-{
+void rt_camera_clear_parallax(void *camera_ptr) {
     if (!camera_ptr)
         return;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
@@ -462,23 +415,20 @@ void rt_camera_clear_parallax(void *camera_ptr)
     camera->parallax_count = 0;
 }
 
-int64_t rt_camera_parallax_count(void *camera_ptr)
-{
+int64_t rt_camera_parallax_count(void *camera_ptr) {
     if (!camera_ptr)
         return 0;
     return ((rt_camera_impl *)camera_ptr)->parallax_count;
 }
 
-int64_t rt_camera_draw_parallax(void *camera_ptr, void *canvas)
-{
+int64_t rt_camera_draw_parallax(void *camera_ptr, void *canvas) {
     if (!camera_ptr || !canvas)
         return 0;
     rt_camera_impl *camera = (rt_camera_impl *)camera_ptr;
 
     int64_t layers_drawn = 0;
 
-    for (int i = 0; i < RT_CAMERA_MAX_PARALLAX; i++)
-    {
+    for (int i = 0; i < RT_CAMERA_MAX_PARALLAX; i++) {
         rt_parallax_layer *layer = &camera->parallax[i];
         if (!layer->active || !layer->pixels)
             continue;
@@ -502,10 +452,8 @@ int64_t rt_camera_draw_parallax(void *camera_ptr, void *canvas)
             start_y -= ph;
 
         /* Tile the pixels across the viewport */
-        for (int64_t ty = start_y; ty < camera->height; ty += ph)
-        {
-            for (int64_t tx = start_x; tx < camera->width; tx += pw)
-            {
+        for (int64_t ty = start_y; ty < camera->height; ty += ph) {
+            for (int64_t tx = start_x; tx < camera->width; tx += pw) {
                 rt_canvas_blit_alpha(canvas, tx, ty, layer->pixels);
             }
         }

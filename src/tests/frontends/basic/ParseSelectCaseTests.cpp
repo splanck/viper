@@ -25,8 +25,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     {
         const std::string src = "10 SELECT CASE X\n"
                                 "20 CASE 1\n"

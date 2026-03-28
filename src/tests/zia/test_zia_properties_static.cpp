@@ -18,17 +18,14 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-static bool hasFunction(const il::core::Module &mod, const std::string &fnName)
-{
-    for (const auto &fn : mod.functions)
-    {
+static bool hasFunction(const il::core::Module &mod, const std::string &fnName) {
+    for (const auto &fn : mod.functions) {
         if (fn.name == fnName)
             return true;
     }
@@ -37,16 +34,11 @@ static bool hasFunction(const il::core::Module &mod, const std::string &fnName)
 
 static bool hasCallee(const il::core::Module &mod,
                       const std::string &fnName,
-                      const std::string &callee)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+                      const std::string &callee) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call && instr.callee == callee)
                         return true;
                 }
@@ -57,14 +49,10 @@ static bool hasCallee(const il::core::Module &mod,
 }
 
 /// @brief Check if a function has a "self" parameter.
-static bool hasSelfParam(const il::core::Module &mod, const std::string &fnName)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &param : fn.params)
-            {
+static bool hasSelfParam(const il::core::Module &mod, const std::string &fnName) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &param : fn.params) {
                 if (param.name == "self")
                     return true;
             }
@@ -75,10 +63,8 @@ static bool hasSelfParam(const il::core::Module &mod, const std::string &fnName)
 }
 
 /// @brief Check if a global variable exists in the module.
-static bool hasGlobal(const il::core::Module &mod, const std::string &globalName)
-{
-    for (const auto &g : mod.globals)
-    {
+static bool hasGlobal(const il::core::Module &mod, const std::string &globalName) {
+    for (const auto &g : mod.globals) {
         if (g.name == globalName)
             return true;
     }
@@ -90,8 +76,7 @@ static bool hasGlobal(const il::core::Module &mod, const std::string &globalName
 // ============================================================================
 
 /// @brief Test that a property with a getter synthesizes get_PropertyName.
-TEST(ZiaProperties, GetterSynthesized)
-{
+TEST(ZiaProperties, GetterSynthesized) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -115,10 +100,8 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -133,8 +116,7 @@ func start() {
 }
 
 /// @brief Test property with getter and setter.
-TEST(ZiaProperties, GetterAndSetter)
-{
+TEST(ZiaProperties, GetterAndSetter) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -161,10 +143,8 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -178,8 +158,7 @@ func start() {
 }
 
 /// @brief Property access syntax should lower through synthesized getter/setter methods.
-TEST(ZiaProperties, MemberAccessUsesSynthesizedAccessors)
-{
+TEST(ZiaProperties, MemberAccessUsesSynthesizedAccessors) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -212,10 +191,8 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -233,8 +210,7 @@ func start() {
 // ============================================================================
 
 /// @brief Test that static methods don't have self parameter.
-TEST(ZiaStatic, StaticMethodNoSelf)
-{
+TEST(ZiaStatic, StaticMethodNoSelf) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -256,10 +232,8 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -277,8 +251,7 @@ func start() {
 /// @details Static fields don't contribute to the entity's instance size,
 /// and are stored at module level. We verify the entity compiles successfully
 /// with a static field declaration.
-TEST(ZiaStatic, StaticFieldCompiles)
-{
+TEST(ZiaStatic, StaticFieldCompiles) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -297,10 +270,8 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -310,8 +281,7 @@ func start() {
 }
 
 /// @brief Test that non-static methods still have self.
-TEST(ZiaStatic, NonStaticMethodHasSelf)
-{
+TEST(ZiaStatic, NonStaticMethodHasSelf) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -341,7 +311,6 @@ func start() {
 
 } // anonymous namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

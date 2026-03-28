@@ -27,15 +27,13 @@
 
 #include <algorithm>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 using encoding::writeLE32;
 using encoding::writeLE64;
 using encoding::writeULEB128;
 
-namespace
-{
+namespace {
 
 // Bind opcode constants (high 4 bits = opcode, low 4 bits = immediate).
 static constexpr uint8_t BIND_OPCODE_DONE = 0x00;
@@ -66,20 +64,14 @@ void emitBindEntry(std::vector<uint8_t> &bindData,
                    const std::string &symbolName,
                    uint64_t segmentOffset,
                    uint32_t dataSegIndex,
-                   uint32_t dylibOrdinal)
-{
+                   uint32_t dylibOrdinal) {
     // Two-level namespace: set dylib ordinal for this symbol.
     // Ordinal 0 = flat lookup (BIND_SPECIAL_DYLIB_FLAT_LOOKUP, -2).
-    if (dylibOrdinal == 0)
-    {
+    if (dylibOrdinal == 0) {
         bindData.push_back(BIND_OPCODE_SET_DYLIB_SPECIAL_IMM | 0x0E);
-    }
-    else if (dylibOrdinal <= 15)
-    {
+    } else if (dylibOrdinal <= 15) {
         bindData.push_back(BIND_OPCODE_SET_DYLIB_ORDINAL_IMM | (dylibOrdinal & 0x0F));
-    }
-    else
-    {
+    } else {
         bindData.push_back(BIND_OPCODE_SET_DYLIB_ORDINAL_ULEB);
         writeULEB128(bindData, dylibOrdinal);
     }
@@ -102,8 +94,7 @@ void emitBindEntry(std::vector<uint8_t> &bindData,
 
 /// Look up the dylib ordinal for a symbol. Returns 1 (libSystem) as default.
 static uint32_t lookupOrdinal(const std::string &symName,
-                              const std::unordered_map<std::string, uint32_t> &symOrdinals)
-{
+                              const std::unordered_map<std::string, uint32_t> &symOrdinals) {
     auto it = symOrdinals.find(symName);
     return (it != symOrdinals.end()) ? it->second : 1;
 }
@@ -113,11 +104,9 @@ void buildBindOpcodes(std::vector<uint8_t> &bindData,
                       const LinkLayout &layout,
                       uint64_t dataSegVmAddr,
                       uint32_t dataSegIndex,
-                      const std::unordered_map<std::string, uint32_t> &symOrdinals)
-{
+                      const std::unordered_map<std::string, uint32_t> &symOrdinals) {
     // Bind GOT entries for dynamic symbols.
-    for (const auto &ge : gotEntries)
-    {
+    for (const auto &ge : gotEntries) {
         uint64_t offset = ge.gotAddr - dataSegVmAddr;
         uint32_t ordinal = lookupOrdinal(ge.symbolName, symOrdinals);
         emitBindEntry(bindData, ge.symbolName, offset, dataSegIndex, ordinal);
@@ -126,8 +115,7 @@ void buildBindOpcodes(std::vector<uint8_t> &bindData,
     // Bind TLV descriptor thunk fields → _tlv_bootstrap.
     // dyld uses these bind events to discover TLV descriptors and initialize
     // per-image TLS metadata. Without this, _tlv_bootstrap (a fail-stub) aborts.
-    for (const auto &sec : layout.sections)
-    {
+    for (const auto &sec : layout.sections) {
         if (!sec.tls || sec.name != ".tdata")
             continue;
 
@@ -135,8 +123,7 @@ void buildBindOpcodes(std::vector<uint8_t> &bindData,
         // The thunk at byte 0 of each descriptor must be bound to _tlv_bootstrap.
         // _tlv_bootstrap is in libSystem (ordinal 1).
         size_t numDescriptors = sec.data.size() / 24;
-        for (size_t i = 0; i < numDescriptors; ++i)
-        {
+        for (size_t i = 0; i < numDescriptors; ++i) {
             uint64_t descVA = sec.virtualAddr + i * 24;
             uint64_t segOff = descVA - dataSegVmAddr;
             emitBindEntry(bindData, "_tlv_bootstrap", segOff, dataSegIndex, 1);
@@ -146,12 +133,10 @@ void buildBindOpcodes(std::vector<uint8_t> &bindData,
     // Bind data-pointer references to dynamic symbols (e.g., ObjC classrefs,
     // superrefs, protocol refs). These are Abs64 relocations whose target is an
     // external symbol — the linker writes 0 and dyld fills the actual pointer.
-    for (const auto &be : layout.bindEntries)
-    {
+    for (const auto &be : layout.bindEntries) {
         const auto &sec = layout.sections[be.sectionIndex];
         uint64_t addr = sec.virtualAddr + be.offset;
-        if (addr >= dataSegVmAddr)
-        {
+        if (addr >= dataSegVmAddr) {
             uint64_t segOff = addr - dataSegVmAddr;
             uint32_t ordinal = lookupOrdinal(be.symbolName, symOrdinals);
             emitBindEntry(bindData, be.symbolName, segOff, dataSegIndex, ordinal);
@@ -164,16 +149,14 @@ void buildBindOpcodes(std::vector<uint8_t> &bindData,
 void buildRebaseOpcodes(std::vector<uint8_t> &rebaseData,
                         const LinkLayout &layout,
                         uint64_t dataSegVmAddr,
-                        uint32_t dataSegIndex)
-{
+                        uint32_t dataSegIndex) {
     if (layout.rebaseEntries.empty())
         return;
 
     // Collect segment-relative offsets for all rebase locations in __DATA.
     std::vector<uint64_t> offsets;
     offsets.reserve(layout.rebaseEntries.size());
-    for (const auto &entry : layout.rebaseEntries)
-    {
+    for (const auto &entry : layout.rebaseEntries) {
         const auto &sec = layout.sections[entry.sectionIndex];
         uint64_t addr = sec.virtualAddr + entry.offset;
         if (addr >= dataSegVmAddr)
@@ -185,8 +168,7 @@ void buildRebaseOpcodes(std::vector<uint8_t> &rebaseData,
     rebaseData.push_back(REBASE_OPCODE_SET_TYPE_IMM | REBASE_TYPE_POINTER);
 
     size_t i = 0;
-    while (i < offsets.size())
-    {
+    while (i < offsets.size()) {
         // Count consecutive pointers (each 8 bytes apart).
         size_t runLen = 1;
         while (i + runLen < offsets.size() && offsets[i + runLen] == offsets[i] + runLen * 8)
@@ -198,8 +180,7 @@ void buildRebaseOpcodes(std::vector<uint8_t> &rebaseData,
 
         // Rebase the run of consecutive pointers (max 15 per opcode).
         size_t remaining = runLen;
-        while (remaining > 0)
-        {
+        while (remaining > 0) {
             uint8_t count = static_cast<uint8_t>(std::min<size_t>(remaining, 15));
             rebaseData.push_back(REBASE_OPCODE_DO_REBASE_IMM_TIMES | count);
             remaining -= count;
@@ -217,27 +198,25 @@ void buildSymtab(std::vector<uint8_t> &symtabData,
                  const std::unordered_set<std::string> &dynSyms,
                  const std::unordered_map<std::string, uint32_t> &symOrdinals,
                  uint32_t &nExtDef,
-                 uint32_t &nUndef)
-{
+                 uint32_t &nUndef) {
     strtabData.push_back(0); // String table starts with NUL.
 
-    auto addString = [&](const std::string &s) -> uint32_t
-    {
+    auto addString = [&](const std::string &s) -> uint32_t {
         uint32_t off = static_cast<uint32_t>(strtabData.size());
         strtabData.insert(strtabData.end(), s.begin(), s.end());
         strtabData.push_back(0);
         return off;
     };
 
-    auto writeNlist = [&](uint32_t strx, uint8_t type, uint8_t sect, uint16_t desc, uint64_t value)
-    {
-        writeLE32(symtabData, strx);
-        symtabData.push_back(type);
-        symtabData.push_back(sect);
-        symtabData.push_back(static_cast<uint8_t>(desc));
-        symtabData.push_back(static_cast<uint8_t>(desc >> 8));
-        writeLE64(symtabData, value);
-    };
+    auto writeNlist =
+        [&](uint32_t strx, uint8_t type, uint8_t sect, uint16_t desc, uint64_t value) {
+            writeLE32(symtabData, strx);
+            symtabData.push_back(type);
+            symtabData.push_back(sect);
+            symtabData.push_back(static_cast<uint8_t>(desc));
+            symtabData.push_back(static_cast<uint8_t>(desc >> 8));
+            writeLE64(symtabData, value);
+        };
 
     // External defined: _main.
     nExtDef = 0;
@@ -245,8 +224,7 @@ void buildSymtab(std::vector<uint8_t> &symtabData,
         auto it = layout.globalSyms.find("main");
         if (it == layout.globalSyms.end())
             it = layout.globalSyms.find("_main");
-        if (it != layout.globalSyms.end())
-        {
+        if (it != layout.globalSyms.end()) {
             uint32_t strx = addString("_main");
             writeNlist(strx, N_EXT | N_SECT, 1, 0, it->second.resolvedAddr);
             nExtDef++;
@@ -260,8 +238,7 @@ void buildSymtab(std::vector<uint8_t> &symtabData,
     nUndef = 0;
     std::vector<std::string> sortedDyn(dynSyms.begin(), dynSyms.end());
     std::sort(sortedDyn.begin(), sortedDyn.end());
-    for (const auto &sym : sortedDyn)
-    {
+    for (const auto &sym : sortedDyn) {
         if (sym.size() > 6 && sym.substr(0, 6) == "__got_")
             continue;
         uint32_t strx = addString(machoMangle(sym));

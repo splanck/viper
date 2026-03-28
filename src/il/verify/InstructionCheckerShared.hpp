@@ -45,8 +45,7 @@
 #include <string>
 #include <string_view>
 
-namespace il::verify::checker
-{
+namespace il::verify::checker {
 
 using il::core::Type;
 using il::support::Expected;
@@ -56,8 +55,7 @@ using il::support::makeError;
 /// @param ctx Verification context providing function, block, and instruction.
 /// @param message Human-readable text describing the issue.
 /// @return Fully formatted diagnostic string.
-inline std::string formatDiag(const VerifyCtx &ctx, std::string_view message)
-{
+inline std::string formatDiag(const VerifyCtx &ctx, std::string_view message) {
     return formatInstrDiag(ctx.fn, ctx.block, ctx.instr, message);
 }
 
@@ -65,8 +63,7 @@ inline std::string formatDiag(const VerifyCtx &ctx, std::string_view message)
 /// @param ctx Verification context that supplies diagnostic metadata.
 /// @param message Human-readable text describing the issue.
 /// @return Expected holding a diagnostic error populated with @p message.
-inline Expected<void> fail(const VerifyCtx &ctx, std::string message)
-{
+inline Expected<void> fail(const VerifyCtx &ctx, std::string message) {
     return Expected<void>(makeError(ctx.instr.loc, formatDiag(ctx, message)));
 }
 
@@ -75,8 +72,7 @@ inline Expected<void> fail(const VerifyCtx &ctx, std::string message)
 /// @param ctx Verification context that supplies diagnostic metadata.
 /// @param message Human-readable text describing the issue.
 /// @return Expected<T> holding a diagnostic error populated with @p message.
-template <typename T> inline Expected<T> failWith(const VerifyCtx &ctx, std::string message)
-{
+template <typename T> inline Expected<T> failWith(const VerifyCtx &ctx, std::string message) {
     return Expected<T>(makeError(ctx.instr.loc, formatDiag(ctx, message)));
 }
 

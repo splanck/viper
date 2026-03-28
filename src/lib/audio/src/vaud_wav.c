@@ -55,20 +55,17 @@
 //===----------------------------------------------------------------------===//
 
 /// @brief Read a 16-bit little-endian value from a buffer.
-static inline uint16_t read_u16_le(const uint8_t *p)
-{
+static inline uint16_t read_u16_le(const uint8_t *p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
 /// @brief Read a 32-bit little-endian value from a buffer.
-static inline uint32_t read_u32_le(const uint8_t *p)
-{
+static inline uint32_t read_u32_le(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
 /// @brief Convert 8-bit unsigned sample to 16-bit signed.
-static inline int16_t u8_to_s16(uint8_t sample)
-{
+static inline int16_t u8_to_s16(uint8_t sample) {
     return (int16_t)((sample - 128) << 8);
 }
 
@@ -81,14 +78,11 @@ static inline int16_t u8_to_s16(uint8_t sample)
 /// @param left Output: left channel sample.
 /// @param right Output: right channel sample.
 static inline void decode_pcm_frame(
-    const uint8_t *src, int32_t bits_per_sample, int32_t channels, int16_t *left, int16_t *right)
-{
-    if (bits_per_sample == 8)
-    {
+    const uint8_t *src, int32_t bits_per_sample, int32_t channels, int16_t *left, int16_t *right) {
+    if (bits_per_sample == 8) {
         *left = u8_to_s16(src[0]);
         *right = (channels == 2) ? u8_to_s16(src[1]) : *left;
-    }
-    else /* 16-bit */
+    } else /* 16-bit */
     {
         *left = (int16_t)read_u16_le(src);
         *right = (channels == 2) ? (int16_t)read_u16_le(src + 2) : *left;
@@ -100,8 +94,7 @@ static inline void decode_pcm_frame(
 //===----------------------------------------------------------------------===//
 
 /// @brief WAV format information extracted from header.
-typedef struct
-{
+typedef struct {
     int32_t sample_rate;
     int32_t channels;
     int32_t bits_per_sample;
@@ -114,24 +107,20 @@ typedef struct
 /// @param size Size of data in bytes.
 /// @param info Output: parsed format information.
 /// @return 1 on success, 0 on failure.
-static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *info)
-{
-    if (size < 44)
-    {
+static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *info) {
+    if (size < 44) {
         vaud_set_error(VAUD_ERR_FORMAT, "WAV file too small");
         return 0;
     }
 
     /* Check RIFF header */
-    if (read_u32_le(data) != WAV_RIFF_ID)
-    {
+    if (read_u32_le(data) != WAV_RIFF_ID) {
         vaud_set_error(VAUD_ERR_FORMAT, "Not a RIFF file");
         return 0;
     }
 
     /* Check WAVE format */
-    if (read_u32_le(data + 8) != WAV_WAVE_ID)
-    {
+    if (read_u32_le(data + 8) != WAV_WAVE_ID) {
         vaud_set_error(VAUD_ERR_FORMAT, "Not a WAVE file");
         return 0;
     }
@@ -141,15 +130,12 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
     int found_fmt = 0;
     int found_data = 0;
 
-    while (offset + 8 <= size)
-    {
+    while (offset + 8 <= size) {
         uint32_t chunk_id = read_u32_le(data + offset);
         uint32_t chunk_size = read_u32_le(data + offset + 4);
 
-        if (chunk_id == WAV_FMT_ID)
-        {
-            if (chunk_size < 16 || offset + 8 + chunk_size > size)
-            {
+        if (chunk_id == WAV_FMT_ID) {
+            if (chunk_size < 16 || offset + 8 + chunk_size > size) {
                 vaud_set_error(VAUD_ERR_FORMAT, "Invalid fmt chunk");
                 return 0;
             }
@@ -157,8 +143,7 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
             const uint8_t *fmt = data + offset + 8;
             uint16_t audio_format = read_u16_le(fmt);
 
-            if (audio_format != WAV_FORMAT_PCM)
-            {
+            if (audio_format != WAV_FORMAT_PCM) {
                 vaud_set_error(VAUD_ERR_FORMAT, "Only PCM format is supported");
                 return 0;
             }
@@ -168,28 +153,23 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
             info->bits_per_sample = read_u16_le(fmt + 14);
 
             /* H-7: guard against division-by-zero in resampling (malformed file) */
-            if (info->sample_rate <= 0 || info->sample_rate > 384000)
-            {
+            if (info->sample_rate <= 0 || info->sample_rate > 384000) {
                 vaud_set_error(VAUD_ERR_FORMAT, "Invalid WAV sample rate");
                 return 0;
             }
 
-            if (info->channels < 1 || info->channels > 2)
-            {
+            if (info->channels < 1 || info->channels > 2) {
                 vaud_set_error(VAUD_ERR_FORMAT, "Only mono and stereo supported");
                 return 0;
             }
 
-            if (info->bits_per_sample != 8 && info->bits_per_sample != 16)
-            {
+            if (info->bits_per_sample != 8 && info->bits_per_sample != 16) {
                 vaud_set_error(VAUD_ERR_FORMAT, "Only 8-bit and 16-bit PCM supported");
                 return 0;
             }
 
             found_fmt = 1;
-        }
-        else if (chunk_id == WAV_DATA_ID)
-        {
+        } else if (chunk_id == WAV_DATA_ID) {
             info->data_offset = (int64_t)(offset + 8);
             info->data_size = (int64_t)chunk_size;
             found_data = 1;
@@ -204,14 +184,12 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
             break;
     }
 
-    if (!found_fmt)
-    {
+    if (!found_fmt) {
         vaud_set_error(VAUD_ERR_FORMAT, "Missing fmt chunk");
         return 0;
     }
 
-    if (!found_data)
-    {
+    if (!found_data) {
         vaud_set_error(VAUD_ERR_FORMAT, "Missing data chunk");
         return 0;
     }
@@ -232,16 +210,14 @@ static int parse_wav_header(const uint8_t *data, size_t size, vaud_wav_info *inf
 static int convert_pcm_to_stereo_s16(const uint8_t *data,
                                      const vaud_wav_info *info,
                                      int16_t **out_samples,
-                                     int64_t *out_frames)
-{
+                                     int64_t *out_frames) {
     int32_t bytes_per_sample = info->bits_per_sample / 8;
     int32_t bytes_per_frame = bytes_per_sample * info->channels;
     int64_t frame_count = info->data_size / bytes_per_frame;
 
     /* Allocate output buffer (always stereo) */
     int16_t *samples = (int16_t *)malloc((size_t)(frame_count * 2 * sizeof(int16_t)));
-    if (!samples)
-    {
+    if (!samples) {
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate sample buffer");
         return 0;
     }
@@ -249,8 +225,7 @@ static int convert_pcm_to_stereo_s16(const uint8_t *data,
     const uint8_t *src = data + info->data_offset;
     int16_t *dst = samples;
 
-    for (int64_t i = 0; i < frame_count; i++)
-    {
+    for (int64_t i = 0; i < frame_count; i++) {
         int16_t left, right;
         decode_pcm_frame(src, info->bits_per_sample, info->channels, &left, &right);
         *dst++ = left;
@@ -271,18 +246,15 @@ int vaud_wav_load_file(const char *path,
                        int16_t **out_samples,
                        int64_t *out_frames,
                        int32_t *out_sample_rate,
-                       int32_t *out_channels)
-{
-    if (!path || !out_samples || !out_frames || !out_sample_rate || !out_channels)
-    {
+                       int32_t *out_channels) {
+    if (!path || !out_samples || !out_frames || !out_sample_rate || !out_channels) {
         vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL parameter");
         return 0;
     }
 
     /* Open file */
     FILE *file = fopen(path, "rb");
-    if (!file)
-    {
+    if (!file) {
         vaud_set_error(VAUD_ERR_FILE, "Failed to open WAV file");
         return 0;
     }
@@ -301,8 +273,7 @@ int vaud_wav_load_file(const char *path,
 
     /* Read entire file */
     uint8_t *data = (uint8_t *)malloc((size_t)file_size);
-    if (!data)
-    {
+    if (!data) {
         fclose(file);
         vaud_set_error(VAUD_ERR_ALLOC, "Failed to allocate file buffer");
         return 0;
@@ -311,8 +282,7 @@ int vaud_wav_load_file(const char *path,
     size_t read_size = fread(data, 1, (size_t)file_size, file);
     fclose(file);
 
-    if (read_size != (size_t)file_size)
-    {
+    if (read_size != (size_t)file_size) {
         free(data);
         vaud_set_error(VAUD_ERR_FILE, "Failed to read WAV file");
         return 0;
@@ -330,31 +300,26 @@ int vaud_wav_load_mem(const void *data,
                       int16_t **out_samples,
                       int64_t *out_frames,
                       int32_t *out_sample_rate,
-                      int32_t *out_channels)
-{
-    if (!data || !out_samples || !out_frames || !out_sample_rate || !out_channels)
-    {
+                      int32_t *out_channels) {
+    if (!data || !out_samples || !out_frames || !out_sample_rate || !out_channels) {
         vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL parameter");
         return 0;
     }
 
     /* Parse header */
     vaud_wav_info info;
-    if (!parse_wav_header((const uint8_t *)data, size, &info))
-    {
+    if (!parse_wav_header((const uint8_t *)data, size, &info)) {
         return 0;
     }
 
     /* Verify data is within bounds */
-    if (info.data_offset + info.data_size > (int64_t)size)
-    {
+    if (info.data_offset + info.data_size > (int64_t)size) {
         vaud_set_error(VAUD_ERR_FORMAT, "Data chunk extends beyond file");
         return 0;
     }
 
     /* Convert to internal format */
-    if (!convert_pcm_to_stereo_s16((const uint8_t *)data, &info, out_samples, out_frames))
-    {
+    if (!convert_pcm_to_stereo_s16((const uint8_t *)data, &info, out_samples, out_frames)) {
         return 0;
     }
 
@@ -370,19 +335,16 @@ int vaud_wav_open_stream(const char *path,
                          int64_t *out_frames,
                          int32_t *out_sample_rate,
                          int32_t *out_channels,
-                         int32_t *out_bits)
-{
+                         int32_t *out_bits) {
     if (!path || !out_file || !out_data_offset || !out_data_size || !out_frames ||
-        !out_sample_rate || !out_channels || !out_bits)
-    {
+        !out_sample_rate || !out_channels || !out_bits) {
         vaud_set_error(VAUD_ERR_INVALID_PARAM, "NULL parameter");
         return 0;
     }
 
     /* Open file */
     FILE *file = fopen(path, "rb");
-    if (!file)
-    {
+    if (!file) {
         vaud_set_error(VAUD_ERR_FILE, "Failed to open music file");
         return 0;
     }
@@ -390,8 +352,7 @@ int vaud_wav_open_stream(const char *path,
     /* Read header (first 256 bytes should be enough for any WAV header) */
     uint8_t header[256];
     size_t header_size = fread(header, 1, sizeof(header), file);
-    if (header_size < 44)
-    {
+    if (header_size < 44) {
         fclose(file);
         vaud_set_error(VAUD_ERR_FORMAT, "WAV file too small");
         return 0;
@@ -399,8 +360,7 @@ int vaud_wav_open_stream(const char *path,
 
     /* Parse header */
     vaud_wav_info info;
-    if (!parse_wav_header(header, header_size, &info))
-    {
+    if (!parse_wav_header(header, header_size, &info)) {
         fclose(file);
         return 0;
     }
@@ -425,8 +385,7 @@ int vaud_wav_open_stream(const char *path,
 }
 
 int32_t vaud_wav_read_frames(
-    void *file, int16_t *samples, int32_t frames, int32_t channels, int32_t bits_per_sample)
-{
+    void *file, int16_t *samples, int32_t frames, int32_t channels, int32_t bits_per_sample) {
     if (!file || !samples || frames <= 0)
         return 0;
 
@@ -447,8 +406,7 @@ int32_t vaud_wav_read_frames(
     const uint8_t *src = temp;
     int16_t *dst = samples;
 
-    for (int32_t i = 0; i < frames_read; i++)
-    {
+    for (int32_t i = 0; i < frames_read; i++) {
         int16_t left, right;
         decode_pcm_frame(src, bits_per_sample, channels, &left, &right);
         *dst++ = left;
@@ -464,8 +422,7 @@ int32_t vaud_wav_read_frames(
 // Resampling
 //===----------------------------------------------------------------------===//
 
-int64_t vaud_resample_output_frames(int64_t in_frames, int32_t in_rate, int32_t out_rate)
-{
+int64_t vaud_resample_output_frames(int64_t in_frames, int32_t in_rate, int32_t out_rate) {
     if (in_rate == out_rate)
         return in_frames;
     return (in_frames * out_rate + in_rate - 1) / in_rate;
@@ -477,30 +434,26 @@ void vaud_resample(const int16_t *input,
                    int16_t *output,
                    int64_t out_frames,
                    int32_t out_rate,
-                   int32_t channels)
-{
+                   int32_t channels) {
     if (!input || !output || in_frames <= 0 || out_frames <= 0)
         return;
 
     /* Simple linear interpolation resampler */
     double ratio = (double)in_rate / (double)out_rate;
 
-    for (int64_t out_idx = 0; out_idx < out_frames; out_idx++)
-    {
+    for (int64_t out_idx = 0; out_idx < out_frames; out_idx++) {
         double in_pos = out_idx * ratio;
         int64_t in_idx = (int64_t)in_pos;
         double frac = in_pos - in_idx;
 
         /* Clamp to valid range */
-        if (in_idx >= in_frames - 1)
-        {
+        if (in_idx >= in_frames - 1) {
             in_idx = in_frames - 1;
             frac = 0.0;
         }
 
         /* Interpolate each channel */
-        for (int32_t ch = 0; ch < channels; ch++)
-        {
+        for (int32_t ch = 0; ch < channels; ch++) {
             int16_t s0 = input[in_idx * channels + ch];
             int16_t s1 = (in_idx + 1 < in_frames) ? input[(in_idx + 1) * channels + ch] : s0;
             int32_t interp = (int32_t)(s0 * (1.0 - frac) + s1 * frac);

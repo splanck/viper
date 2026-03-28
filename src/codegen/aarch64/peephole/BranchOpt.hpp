@@ -30,8 +30,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::aarch64::peephole
-{
+namespace viper::codegen::aarch64::peephole {
 
 /// @brief Invert AArch64 condition code string.
 [[nodiscard]] const char *invertCondition(const char *cond) noexcept;

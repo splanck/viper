@@ -18,8 +18,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -28,8 +27,7 @@ static void test_result(const char *name, bool passed)
 // Pattern Matching Tests
 //=============================================================================
 
-static void test_glob_match()
-{
+static void test_glob_match() {
     printf("Testing Glob.Match:\n");
 
     // Test 1: Literal match
@@ -123,8 +121,7 @@ static void test_glob_match()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Glob Tests ===\n\n");
 
     test_glob_match();

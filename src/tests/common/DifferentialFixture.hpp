@@ -25,12 +25,10 @@
 
 #include <string>
 
-namespace viper::tests
-{
+namespace viper::tests {
 
 /// @brief Result of a differential comparison between VM and native execution.
-struct DiffResult
-{
+struct DiffResult {
     bool matched = false;     ///< True if VM and native produced identical results.
     int64_t vmExit = 0;       ///< VM exit code.
     int64_t nativeExit = 0;   ///< Native exit code.
@@ -52,8 +50,7 @@ struct DiffResult
 /// auto result = viper::tests::diffVmNative(mod);
 /// EXPECT_TRUE(result.matched);
 /// ```
-inline DiffResult diffVmNative(il::core::Module &module)
-{
+inline DiffResult diffVmNative(il::core::Module &module) {
     DiffResult result;
 
     VmFixture vm;

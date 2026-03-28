@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,8 +43,7 @@ static std::string readFile(const std::string &path)
 }
 
 // Test 1: Simple subtraction of two parameters
-TEST(Arm64SubMul, SubSimple)
-{
+TEST(Arm64SubMul, SubSimple) {
     const std::string in = outPath("arm64_sub_simple.il");
     const std::string out = outPath("arm64_sub_simple.s");
     const std::string il = "il 0.1\n"
@@ -66,8 +62,7 @@ TEST(Arm64SubMul, SubSimple)
 }
 
 // Test 2: Subtraction with immediate
-TEST(Arm64SubMul, SubImmediate)
-{
+TEST(Arm64SubMul, SubImmediate) {
     const std::string in = outPath("arm64_sub_imm.il");
     const std::string out = outPath("arm64_sub_imm.s");
     const std::string il = "il 0.1\n"
@@ -86,8 +81,7 @@ TEST(Arm64SubMul, SubImmediate)
 }
 
 // Test 3: Simple multiplication of two parameters
-TEST(Arm64SubMul, MulSimple)
-{
+TEST(Arm64SubMul, MulSimple) {
     const std::string in = outPath("arm64_mul_simple.il");
     const std::string out = outPath("arm64_mul_simple.s");
     const std::string il = "il 0.1\n"
@@ -105,8 +99,7 @@ TEST(Arm64SubMul, MulSimple)
 }
 
 // Test 4: Multiplication by power of 2 (could be optimized to shift)
-TEST(Arm64SubMul, MulPowerOf2)
-{
+TEST(Arm64SubMul, MulPowerOf2) {
     const std::string in = outPath("arm64_mul_pow2.il");
     const std::string out = outPath("arm64_mul_pow2.s");
     const std::string il = "il 0.1\n"
@@ -126,8 +119,7 @@ TEST(Arm64SubMul, MulPowerOf2)
 }
 
 // Test 5: Multiply-accumulate pattern (a + b*c)
-TEST(Arm64SubMul, MulAccumulate)
-{
+TEST(Arm64SubMul, MulAccumulate) {
     const std::string in = outPath("arm64_mul_acc.il");
     const std::string out = outPath("arm64_mul_acc.s");
     const std::string il = "il 0.1\n"
@@ -149,8 +141,7 @@ TEST(Arm64SubMul, MulAccumulate)
 }
 
 // Test 6: Chained subtraction
-TEST(Arm64SubMul, SubChained)
-{
+TEST(Arm64SubMul, SubChained) {
     const std::string in = outPath("arm64_sub_chain.il");
     const std::string out = outPath("arm64_sub_chain.s");
     const std::string il = "il 0.1\n"
@@ -168,8 +159,7 @@ TEST(Arm64SubMul, SubChained)
     std::size_t subCount = 0;
     std::size_t pos = 0;
     while ((pos = asmText.find("sub x", pos)) != std::string::npos ||
-           (pos = asmText.find("subs x", pos)) != std::string::npos)
-    {
+           (pos = asmText.find("subs x", pos)) != std::string::npos) {
         ++subCount;
         pos += 5;
     }
@@ -177,8 +167,7 @@ TEST(Arm64SubMul, SubChained)
 }
 
 // Test 7: Mixed arithmetic (a*b - c)
-TEST(Arm64SubMul, MixedArith)
-{
+TEST(Arm64SubMul, MixedArith) {
     const std::string in = outPath("arm64_mixed_arith.il");
     const std::string out = outPath("arm64_mixed_arith.s");
     const std::string il = "il 0.1\n"
@@ -199,8 +188,7 @@ TEST(Arm64SubMul, MixedArith)
 }
 
 // Test 8: Negation via subtraction from zero
-TEST(Arm64SubMul, Negate)
-{
+TEST(Arm64SubMul, Negate) {
     const std::string in = outPath("arm64_negate.il");
     const std::string out = outPath("arm64_negate.s");
     const std::string il = "il 0.1\n"
@@ -219,8 +207,7 @@ TEST(Arm64SubMul, Negate)
     EXPECT_TRUE(hasNegate);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

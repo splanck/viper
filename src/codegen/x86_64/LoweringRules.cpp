@@ -30,11 +30,9 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
-namespace
-{
+namespace {
 
 /// @brief Match thunk that forwards to a declarative lowering rule.
 /// @details Wraps the @ref viper::codegen::x64::lowering::kLoweringRuleTable
@@ -44,8 +42,7 @@ namespace
 /// @tparam Index Entry within the lowering table to query.
 /// @param instr IL instruction presented to the rule.
 /// @return True when the instruction satisfies the rule's predicate.
-template <std::size_t Index> bool matchRuleThunk(const IL::Instr &instr)
-{
+template <std::size_t Index> bool matchRuleThunk(const IL::Instr &instr) {
     return matchesRuleSpec(lowering::kLoweringRuleTable[Index], instr);
 }
 
@@ -56,8 +53,7 @@ template <std::size_t Index> bool matchRuleThunk(const IL::Instr &instr)
 /// @tparam Index Entry within the lowering table to invoke.
 /// @param instr IL instruction being lowered.
 /// @param builder Machine IR builder receiving the emitted instructions.
-template <std::size_t Index> void emitRuleThunk(const IL::Instr &instr, MIRBuilder &builder)
-{
+template <std::size_t Index> void emitRuleThunk(const IL::Instr &instr, MIRBuilder &builder) {
     lowering::kLoweringRuleTable[Index].emit(instr, builder);
 }
 
@@ -70,8 +66,7 @@ template <std::size_t Index> void emitRuleThunk(const IL::Instr &instr, MIRBuild
 /// @param Unnamed Sequence object carrying the indices.
 /// @return Reference to the lazily initialised registry.
 template <std::size_t... Indices>
-const std::vector<LoweringRule> &makeRules(std::index_sequence<Indices...>)
-{
+const std::vector<LoweringRule> &makeRules(std::index_sequence<Indices...>) {
     static const std::vector<LoweringRule> rules{
         LoweringRule{&matchRuleThunk<Indices>,
                      &emitRuleThunk<Indices>,
@@ -84,8 +79,7 @@ const std::vector<LoweringRule> &makeRules(std::index_sequence<Indices...>)
 ///          with an index sequence spanning the declarative rule table.  Later
 ///          invocations reuse the cached vector.
 /// @return Reference to the static lowering rule registry.
-const std::vector<LoweringRule> &buildRules()
-{
+const std::vector<LoweringRule> &buildRules() {
     static const auto &rules =
         makeRules(std::make_index_sequence<lowering::kLoweringRuleTable.size()>{});
     return rules;
@@ -97,8 +91,7 @@ const std::vector<LoweringRule> &buildRules()
 /// @details Forwards to @ref buildRules so callers always receive the cached
 ///          registry constructed from the declarative rule table.
 /// @return Reference to the lowering rule registry.
-const std::vector<LoweringRule> &viper_get_lowering_rules()
-{
+const std::vector<LoweringRule> &viper_get_lowering_rules() {
     return buildRules();
 }
 
@@ -110,11 +103,9 @@ const std::vector<LoweringRule> &viper_get_lowering_rules()
 ///          structures.
 /// @param instr IL instruction that needs a lowering rule.
 /// @return Pointer to the matching rule or nullptr when no rule applies.
-const LoweringRule *viper_select_rule(const IL::Instr &instr)
-{
+const LoweringRule *viper_select_rule(const IL::Instr &instr) {
     const auto *spec = lookupRuleSpec(instr);
-    if (!spec)
-    {
+    if (!spec) {
         return nullptr;
     }
 

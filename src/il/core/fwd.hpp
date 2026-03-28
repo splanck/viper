@@ -18,8 +18,7 @@
 
 #pragma once
 
-namespace il::core
-{
+namespace il::core {
 /// @brief Forward declaration for the module-level IL container.
 struct Module;
 /// @brief Forward declaration for an IL function definition.

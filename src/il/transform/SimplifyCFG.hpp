@@ -33,8 +33,7 @@
 
 #include <string_view>
 
-namespace il::transform
-{
+namespace il::transform {
 
 class AnalysisManager;
 
@@ -43,11 +42,9 @@ class AnalysisManager;
 /// \details The pass focuses on canonicalising branching and block structure so
 /// subsequent optimisations can operate on a predictable CFG. The scaffold keeps
 /// statistics about the transformations performed once they are implemented.
-struct SimplifyCFG
-{
+struct SimplifyCFG {
     /// \brief Aggregated statistics from a pass invocation.
-    struct Stats
-    {
+    struct Stats {
         size_t cbrToBr = 0;            ///< Number of conditional branches simplified.
         size_t emptyBlocksRemoved = 0; ///< Count of empty blocks eliminated.
         size_t predsMerged = 0;        ///< Predecessor edge merges performed.
@@ -58,8 +55,7 @@ struct SimplifyCFG
     };
 
     /// \brief Per-run context shared across helper routines.
-    struct SimplifyCFGPassContext
-    {
+    struct SimplifyCFGPassContext {
         /// \brief Construct a pass context for simplifying a function.
         /// \param function The function to simplify.
         /// \param module Parent module (may be null if unavailable).
@@ -97,15 +93,13 @@ struct SimplifyCFG
 
     /// \brief Provide the module containing functions processed by this pass.
     /// \param module Pointer to the parent module; may be null when unavailable.
-    void setModule(const il::core::Module *module)
-    {
+    void setModule(const il::core::Module *module) {
         module_ = module;
     }
 
     /// \brief Provide the active analysis manager so the pass can invalidate caches.
     /// \param manager Pointer to the analysis manager driving the pipeline; may be null.
-    void setAnalysisManager(AnalysisManager *manager)
-    {
+    void setAnalysisManager(AnalysisManager *manager) {
         analysisManager_ = manager;
     }
 

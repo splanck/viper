@@ -53,8 +53,7 @@ extern void rt_trap(const char *msg);
 /// @param bytes Number of payload bytes to allocate.
 /// @return Pointer to the freshly zeroed payload, or @c NULL when the heap
 ///         cannot satisfy the request.
-static inline void *alloc_payload(size_t bytes)
-{
+static inline void *alloc_payload(size_t bytes) {
     size_t len = bytes;
     size_t cap = bytes;
     return rt_heap_alloc(RT_HEAP_OBJECT, RT_ELEM_NONE, 1, len, cap);
@@ -67,11 +66,9 @@ static inline void *alloc_payload(size_t bytes)
 /// @param class_id Runtime class identifier supplied by the caller (unused).
 /// @param byte_size Requested payload size in bytes.
 /// @return Pointer to zeroed storage when successful; otherwise @c NULL.
-void *rt_obj_new_i64(int64_t class_id, int64_t byte_size)
-{
+void *rt_obj_new_i64(int64_t class_id, int64_t byte_size) {
     void *payload = alloc_payload((size_t)byte_size);
-    if (!payload)
-    {
+    if (!payload) {
         char buf[128];
         snprintf(buf,
                  sizeof(buf),
@@ -94,8 +91,7 @@ void *rt_obj_new_i64(int64_t class_id, int64_t byte_size)
 ///
 /// @param p Object payload pointer (may be NULL).
 /// @return The class ID, or 0 if p is NULL or not a valid object.
-int64_t rt_obj_class_id(void *p)
-{
+int64_t rt_obj_class_id(void *p) {
     if (!p)
         return 0;
     rt_heap_hdr_t *hdr = rt_heap_hdr(p);
@@ -110,8 +106,7 @@ int64_t rt_obj_class_id(void *p)
 /// keeping the allocation alive for reuse.
 ///
 /// @param p Object payload pointer whose refcount is currently zero.
-void rt_obj_resurrect(void *p)
-{
+void rt_obj_resurrect(void *p) {
     if (!p)
         return;
     rt_heap_hdr_t *hdr = rt_heap_hdr(p);
@@ -146,8 +141,7 @@ void rt_obj_resurrect(void *p)
 /// @note Ignored for NULL pointers or non-object heap allocations.
 /// @note Finalizer runs before the object memory is freed.
 /// @note Only one finalizer per object; setting replaces any previous.
-void rt_obj_set_finalizer(void *p, rt_obj_finalizer_t fn)
-{
+void rt_obj_set_finalizer(void *p, rt_obj_finalizer_t fn) {
     if (!p)
         return;
     rt_heap_hdr_t *hdr = rt_heap_hdr(p);
@@ -165,12 +159,10 @@ void rt_obj_set_finalizer(void *p, rt_obj_finalizer_t fn)
 ///          heap subsystem.
 /// @param p Object payload pointer returned by @ref rt_obj_new_i64 or another
 ///          heap-managed API.
-void rt_obj_retain_maybe(void *p)
-{
+void rt_obj_retain_maybe(void *p) {
     if (!p)
         return;
-    if (rt_string_is_handle(p))
-    {
+    if (rt_string_is_handle(p)) {
         rt_str_retain_maybe((rt_string)p);
         return;
     }
@@ -183,12 +175,10 @@ void rt_obj_retain_maybe(void *p)
 ///          simplify call sites that blindly forward optional objects.
 /// @param p Object payload pointer managed by the runtime heap.
 /// @return Non-zero when the retain count dropped to zero; otherwise zero.
-int32_t rt_obj_release_check0(void *p)
-{
+int32_t rt_obj_release_check0(void *p) {
     if (!p)
         return 0;
-    if (rt_string_is_handle(p))
-    {
+    if (rt_string_is_handle(p)) {
         rt_str_release_maybe((rt_string)p);
         return 0;
     }
@@ -202,19 +192,16 @@ int32_t rt_obj_release_check0(void *p)
 ///          BASIC string API while keeping the payload valid for user-defined
 ///          destructors until this helper runs.
 /// @param p Object payload pointer; ignored when @c NULL.
-void rt_obj_free(void *p)
-{
+void rt_obj_free(void *p) {
     if (!p)
         return;
-    if (rt_string_is_handle(p))
-    {
+    if (rt_string_is_handle(p)) {
         rt_str_release_maybe((rt_string)p);
         return;
     }
     rt_heap_hdr_t *hdr = rt_heap_hdr(p);
     if (hdr && (rt_heap_kind_t)hdr->kind == RT_HEAP_OBJECT &&
-        __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0 && hdr->finalizer)
-    {
+        __atomic_load_n(&hdr->refcnt, __ATOMIC_RELAXED) == 0 && hdr->finalizer) {
         rt_heap_finalizer_t fin = hdr->finalizer;
         hdr->finalizer = NULL;
         fin(p);
@@ -244,8 +231,7 @@ void rt_obj_free(void *p)
 /// @return 1 if a and b point to the same memory address, 0 otherwise.
 ///
 /// @note NULL == NULL returns 1.
-int64_t rt_obj_reference_equals(void *a, void *b)
-{
+int64_t rt_obj_reference_equals(void *a, void *b) {
     return a == b ? 1 : 0;
 }
 
@@ -268,8 +254,7 @@ int64_t rt_obj_reference_equals(void *a, void *b)
 ///
 /// @note Default implementation is reference equality.
 /// @note Derived classes may override to provide value-based equality.
-int64_t rt_obj_equals(void *self, void *other)
-{
+int64_t rt_obj_equals(void *self, void *other) {
     return self == other ? 1 : 0;
 }
 
@@ -290,8 +275,7 @@ int64_t rt_obj_equals(void *self, void *other)
 ///
 /// @note Derived classes should override if overriding Equals.
 /// @note Two equal objects (by Equals) must return the same hash code.
-int64_t rt_obj_get_hash_code(void *self)
-{
+int64_t rt_obj_get_hash_code(void *self) {
     uintptr_t v = (uintptr_t)self;
     return (int64_t)v;
 }
@@ -313,8 +297,7 @@ int64_t rt_obj_get_hash_code(void *self)
 ///
 /// @note Returns "Object" if type metadata is unavailable.
 /// @note Does not include memory address for deterministic test output.
-rt_string rt_obj_to_string(void *self)
-{
+rt_string rt_obj_to_string(void *self) {
     if (!self)
         return rt_string_from_bytes("<null>", 6);
 
@@ -324,27 +307,22 @@ rt_string rt_obj_to_string(void *self)
 
     // Check if the object is a boxed value and auto-unbox for display.
     rt_heap_hdr_t *hdr = (rt_heap_hdr_t *)((uint8_t *)self - sizeof(rt_heap_hdr_t));
-    if (hdr->magic == RT_MAGIC && hdr->elem_kind == RT_ELEM_BOX)
-    {
+    if (hdr->magic == RT_MAGIC && hdr->elem_kind == RT_ELEM_BOX) {
         int64_t tag = rt_box_type(self);
-        if (tag == RT_BOX_STR)
-        {
+        if (tag == RT_BOX_STR) {
             return rt_unbox_str(self);
         }
-        if (tag == RT_BOX_I64)
-        {
+        if (tag == RT_BOX_I64) {
             char buf[32];
             int n = snprintf(buf, sizeof(buf), "%lld", (long long)rt_unbox_i64(self));
             return rt_string_from_bytes(buf, (size_t)n);
         }
-        if (tag == RT_BOX_F64)
-        {
+        if (tag == RT_BOX_F64) {
             char buf[32];
             int n = snprintf(buf, sizeof(buf), "%.15g", rt_unbox_f64(self));
             return rt_string_from_bytes(buf, (size_t)n);
         }
-        if (tag == RT_BOX_I1)
-        {
+        if (tag == RT_BOX_I1) {
             int64_t v = rt_unbox_i1(self);
             return v ? rt_string_from_bytes("True", 4) : rt_string_from_bytes("False", 5);
         }
@@ -368,8 +346,7 @@ rt_string rt_obj_to_string(void *self)
 /// @brief Get the qualified type name of an object.
 /// @param self Object to query (may be NULL).
 /// @return A string containing the class qualified name, or "<null>".
-rt_string rt_obj_type_name(void *self)
-{
+rt_string rt_obj_type_name(void *self) {
     if (!self)
         return rt_string_from_bytes("<null>", 6);
     rt_object *obj = (rt_object *)self;
@@ -386,8 +363,7 @@ rt_string rt_obj_type_name(void *self)
 /// @brief Get the numeric type ID of an object.
 /// @param self Object to query (may be NULL).
 /// @return The type ID, or 0 if self is NULL.
-int64_t rt_obj_type_id(void *self)
-{
+int64_t rt_obj_type_id(void *self) {
     if (!self)
         return 0;
     return rt_obj_class_id(self);
@@ -396,8 +372,7 @@ int64_t rt_obj_type_id(void *self)
 /// @brief Check if an object reference is null.
 /// @param self Object to test.
 /// @return 1 if self is NULL, 0 otherwise.
-int64_t rt_obj_is_null(void *self)
-{
+int64_t rt_obj_is_null(void *self) {
     return self == NULL ? 1 : 0;
 }
 
@@ -425,8 +400,7 @@ int64_t rt_obj_is_null(void *self)
 /// @note The caller is responsible for ensuring the target remains valid
 ///       while the weak reference is in use.
 /// @note Future versions may track weak references for automatic zeroing.
-void rt_weak_store(void **addr, void *value)
-{
+void rt_weak_store(void **addr, void *value) {
     if (!addr)
         return;
     // Store without incrementing reference count
@@ -454,8 +428,7 @@ void rt_weak_store(void **addr, void *value)
 ///          been freed. The caller must ensure the target is still valid
 ///          through other means (e.g., knowing the object lifetime).
 /// @note Future versions may validate the object is still alive.
-void *rt_weak_load(void **addr)
-{
+void *rt_weak_load(void **addr) {
     if (!addr)
         return NULL;
     // For now, just return the value

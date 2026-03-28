@@ -22,14 +22,12 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen
-{
+namespace viper::codegen {
 
 /// @brief Runtime library components for selective linking.
 /// @details Native backends use these to determine which runtime archives
 ///          to link based on symbols referenced in generated assembly.
-enum class RtComponent
-{
+enum class RtComponent {
     Base,        ///< Core runtime (always linked)
     Arrays,      ///< Array operations (rt_arr_*)
     Oop,         ///< Object-oriented features (rt_obj_*, rt_type_*, etc.)
@@ -48,10 +46,10 @@ enum class RtComponent
 /// @param sym The symbol name (e.g., "rt_list_add", "rt_grid2d_new").
 /// @return The component if recognized, std::nullopt otherwise.
 /// @note Keep this in sync with src/runtime/CMakeLists.txt library organization.
-inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym)
-{
-    auto starts = [&](std::string_view prefix) -> bool
-    { return sym.size() >= prefix.size() && sym.substr(0, prefix.size()) == prefix; };
+inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym) {
+    auto starts = [&](std::string_view prefix) -> bool {
+        return sym.size() >= prefix.size() && sym.substr(0, prefix.size()) == prefix;
+    };
 
     // Arrays component
     if (starts("rt_arr_"))
@@ -72,8 +70,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_frozenset_") || starts("rt_frozenmap_") || starts("rt_lrucache_") ||
         starts("rt_multimap_") || starts("rt_orderedmap_") || starts("rt_sparsearray_") ||
         starts("rt_weakmap_") || starts("rt_pqueue_") || starts("rt_trie_") ||
-        starts("rt_unionfind_") || starts("rt_convert_") ||
-        starts("rt_inputmanager_") || starts("rt_inputaction_"))
+        starts("rt_unionfind_") || starts("rt_convert_") || starts("rt_inputmanager_") ||
+        starts("rt_inputaction_"))
         return RtComponent::Collections;
 
     // Game component (game dev utilities — lives in src/runtime/game/)
@@ -83,8 +81,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
         starts("rt_collision_") || starts("rt_objpool_") || starts("rt_screenfx_") ||
         starts("rt_pathfollow_") || starts("rt_quadtree_") || starts("rt_debugoverlay_") ||
         starts("rt_gameui_") || starts("rt_pathfinder_") || starts("rt_dialogue_") ||
-        starts("rt_lighting2d_") || starts("rt_platformer_ctrl_") ||
-        starts("rt_achievement_") || starts("rt_typewriter_"))
+        starts("rt_lighting2d_") || starts("rt_platformer_ctrl_") || starts("rt_achievement_") ||
+        starts("rt_typewriter_"))
         return RtComponent::Game;
 
     // Text component
@@ -194,10 +192,8 @@ inline std::optional<RtComponent> componentForRuntimeSymbol(std::string_view sym
 /// @brief Get the static library archive name for a runtime component.
 /// @param comp The runtime component.
 /// @return Library base name (e.g., "viper_rt_collections").
-inline std::string_view archiveNameForComponent(RtComponent comp)
-{
-    switch (comp)
-    {
+inline std::string_view archiveNameForComponent(RtComponent comp) {
+    switch (comp) {
         case RtComponent::Base:
             return "viper_rt_base";
         case RtComponent::Arrays:
@@ -233,12 +229,10 @@ inline std::string_view archiveNameForComponent(RtComponent comp)
 /// @return Ordered list of required components (with dependencies resolved).
 ///         Base is always included first.
 template <typename SymbolRange>
-inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &symbols)
-{
+inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &symbols) {
     // Classify symbols into components.
     std::unordered_set<int> needed;
-    for (const auto &sym : symbols)
-    {
+    for (const auto &sym : symbols) {
         const auto comp = componentForRuntimeSymbol(sym);
         if (comp)
             needed.insert(static_cast<int>(*comp));
@@ -282,8 +276,7 @@ inline std::vector<RtComponent> resolveRequiredComponents(const SymbolRange &sym
         RtComponent::Audio,
         RtComponent::Network,
     };
-    for (auto c : order)
-    {
+    for (auto c : order) {
         if (has(c))
             result.push_back(c);
     }

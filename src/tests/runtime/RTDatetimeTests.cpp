@@ -24,14 +24,12 @@
 #include <stdio.h>
 #include <string.h>
 
-static void check(const char *label, int ok)
-{
+static void check(const char *label, int ok) {
     printf("  %-50s %s\n", label, ok ? "PASS" : "FAIL");
     assert(ok);
 }
 
-static int str_contains(rt_string s, const char *needle)
-{
+static int str_contains(rt_string s, const char *needle) {
     const char *cstr = rt_string_cstr(s);
     if (!cstr)
         return 0;
@@ -42,16 +40,14 @@ static int str_contains(rt_string s, const char *needle)
 // (Verified with: date -d "2025-01-15 10:30:45 UTC" +%s)
 static const int64_t kRef = 1736937045LL;
 
-static void test_components(void)
-{
+static void test_components(void) {
     // rt_datetime_* decomposes via localtime (not gmtime).  Only year is
     // guaranteed stable across all UTC offsets for this mid-January timestamp.
     printf("rt_datetime component extraction (ts=%lld):\n", (long long)kRef);
     check("year == 2025", rt_datetime_year(kRef) == 2025);
 }
 
-static void test_to_iso(void)
-{
+static void test_to_iso(void) {
     printf("rt_datetime_to_iso:\n");
     rt_string iso = rt_datetime_to_iso(kRef);
     check("iso non-empty", rt_str_len(iso) > 0);
@@ -66,8 +62,7 @@ static void test_to_iso(void)
     rt_string_unref(epoch_iso);
 }
 
-static void test_now(void)
-{
+static void test_now(void) {
     printf("rt_datetime_now:\n");
     int64_t ts = rt_datetime_now();
     // Must be after 2020-01-01 (ts=1577836800) and before 2100-01-01 (ts=4102444800)
@@ -79,8 +74,7 @@ static void test_now(void)
     check("now_ms >= now * 1000", ms >= ts * 1000LL);
 }
 
-int main(void)
-{
+int main(void) {
     printf("=== RTDatetimeTests ===\n");
     test_components();
     test_to_iso();

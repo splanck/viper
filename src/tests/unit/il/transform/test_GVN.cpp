@@ -32,15 +32,12 @@
 
 using namespace il::core;
 
-static il::transform::AnalysisRegistry makeRegistry()
-{
+static il::transform::AnalysisRegistry makeRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fn) { return il::transform::buildCFG(mod, fn); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fn)
-        {
+        "dominators", [](Module &mod, Function &fn) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
@@ -49,8 +46,7 @@ static il::transform::AnalysisRegistry makeRegistry()
     return registry;
 }
 
-static void test_cse_cross_block()
-{
+static void test_cse_cross_block() {
     Module M;
     Function F;
     F.name = "gvn_cse";
@@ -135,8 +131,7 @@ static void test_cse_cross_block()
     // (id==2)
 }
 
-static void test_redundant_load_elim()
-{
+static void test_redundant_load_elim() {
     Module M;
     Function F;
     F.name = "gvn_rle";
@@ -223,8 +218,7 @@ static void test_redundant_load_elim()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_cse_cross_block();
     test_redundant_load_elim();
     return 0;

@@ -19,16 +19,14 @@
 
 #include "frontends/basic/ast/NodeFwd.hpp"
 
-namespace il::frontends::basic::lower
-{
+namespace il::frontends::basic::lower {
 
 namespace AST = ::il::frontends::basic;
 
 /// @brief Shared visitor interface for lowering helpers.
 /// @details Implementations forward to AST-specific visitors while keeping
 ///          the Lowerer orchestration decoupled from concrete traversal logic.
-struct AstVisitor
-{
+struct AstVisitor {
     virtual ~AstVisitor() = default;
 
     /// @brief Visit an expression node and translate it through the bound

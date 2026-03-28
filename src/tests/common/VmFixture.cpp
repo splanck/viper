@@ -22,16 +22,13 @@
 #include <cassert>
 #include <cstdio>
 
-namespace viper::tests
-{
-int64_t VmFixture::run(il::core::Module &module) const
-{
+namespace viper::tests {
+int64_t VmFixture::run(il::core::Module &module) const {
     il::vm::VM vm(module);
     return vm.run();
 }
 
-VmTrapResult VmFixture::runExpectingTrap(il::core::Module &module) const
-{
+VmTrapResult VmFixture::runExpectingTrap(il::core::Module &module) const {
     ChildResult child = runModuleIsolated(module);
 
     VmTrapResult result{};
@@ -42,11 +39,9 @@ VmTrapResult VmFixture::runExpectingTrap(il::core::Module &module) const
     return result;
 }
 
-std::string VmFixture::captureTrap(il::core::Module &module) const
-{
+std::string VmFixture::captureTrap(il::core::Module &module) const {
     const VmTrapResult trap = runExpectingTrap(module);
-    if (!trap.trapped())
-    {
+    if (!trap.trapped()) {
         std::fprintf(stderr,
                      "captureTrap: expected trap but child %s (exitCode=%d)\n"
                      "  stderr: %s\n",

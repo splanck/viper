@@ -23,8 +23,7 @@
 
 #include "codegen/x86_64/passes/LegalizePass.hpp"
 
-namespace viper::codegen::x64::passes
-{
+namespace viper::codegen::x64::passes {
 
 /// @brief Verify that lowering produced an adapter module before flagging legalisation.
 /// @details Emits a descriptive diagnostic when lowering has not populated the
@@ -34,10 +33,8 @@ namespace viper::codegen::x64::passes
 /// @param module Backend pipeline state being mutated.
 /// @param diags  Diagnostics sink used to report ordering problems.
 /// @return @c true when legalisation conditions are satisfied.
-bool LegalizePass::run(Module &module, Diagnostics &diags)
-{
-    if (!module.lowered)
-    {
+bool LegalizePass::run(Module &module, Diagnostics &diags) {
+    if (!module.lowered) {
         diags.error("legalize: lowering has not produced an adapter module");
         return false;
     }

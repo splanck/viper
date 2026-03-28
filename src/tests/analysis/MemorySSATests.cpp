@@ -45,38 +45,31 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-static void verifyOrDie(const Module &module)
-{
+static void verifyOrDie(const Module &module) {
     auto verifyResult = il::verify::Verifier::verify(module);
-    if (!verifyResult)
-    {
+    if (!verifyResult) {
         il::support::printDiag(verifyResult.error(), std::cerr);
         ASSERT_TRUE(false && "Module verification failed");
     }
 }
 
 /// Build an AnalysisRegistry wired with BasicAA and MemorySSA.
-il::transform::AnalysisRegistry makeRegistry()
-{
+il::transform::AnalysisRegistry makeRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<viper::analysis::BasicAA>(
         "basic-aa",
         [](Module &mod, Function &fnRef) { return viper::analysis::BasicAA(mod, fnRef); });
     registry.registerFunctionAnalysis<viper::analysis::MemorySSA>(
-        "memory-ssa",
-        [](Module &mod, Function &fnRef)
-        {
+        "memory-ssa", [](Module &mod, Function &fnRef) {
             viper::analysis::BasicAA aa(mod, fnRef);
             return viper::analysis::computeMemorySSA(fnRef, aa);
         });
     return registry;
 }
 
-size_t countStores(const Function &fn)
-{
+size_t countStores(const Function &fn) {
     size_t count = 0;
     for (const auto &block : fn.blocks)
         for (const auto &instr : block.instructions)
@@ -86,8 +79,7 @@ size_t countStores(const Function &fn)
 }
 
 // Helper: insert a Store instruction at the end of a block.
-void addStore(BasicBlock &block, unsigned ptrId, int64_t val, Type::Kind kind = Type::Kind::I64)
-{
+void addStore(BasicBlock &block, unsigned ptrId, int64_t val, Type::Kind kind = Type::Kind::I64) {
     Instr store;
     store.op = Opcode::Store;
     store.type = Type(kind);
@@ -100,8 +92,7 @@ void addStore(BasicBlock &block, unsigned ptrId, int64_t val, Type::Kind kind = 
 void addLoad(BasicBlock &block,
              unsigned resultId,
              unsigned ptrId,
-             Type::Kind kind = Type::Kind::I64)
-{
+             Type::Kind kind = Type::Kind::I64) {
     Instr load;
     load.result = resultId;
     load.op = Opcode::Load;
@@ -111,8 +102,7 @@ void addLoad(BasicBlock &block,
 }
 
 // Helper: insert an external call (not in module or runtime registry → ModRef).
-void addCall(BasicBlock &block, std::string callee)
-{
+void addCall(BasicBlock &block, std::string callee) {
     Instr call;
     call.op = Opcode::Call;
     call.type = Type(Type::Kind::Void);
@@ -143,8 +133,7 @@ void addCall(BasicBlock &block, std::string callee)
 // blockReadsFrom() returns true for the ModRef call.
 // runMemorySSADSE correctly eliminates it.
 // -------------------------------------------------------------------------
-TEST(MemorySSA, EliminatesDeadStoreWithCallBarrier)
-{
+TEST(MemorySSA, EliminatesDeadStoreWithCallBarrier) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -224,8 +213,7 @@ TEST(MemorySSA, EliminatesDeadStoreWithCallBarrier)
 //
 // Neither store should be eliminated.
 // -------------------------------------------------------------------------
-TEST(MemorySSA, PreservesLiveStoreWithInterveningLoad)
-{
+TEST(MemorySSA, PreservesLiveStoreWithInterveningLoad) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -284,8 +272,7 @@ TEST(MemorySSA, PreservesLiveStoreWithInterveningLoad)
 //     store %ptr, 2        ← kills first store
 //     ret
 // -------------------------------------------------------------------------
-TEST(MemorySSA, EliminatesSimpleCrossBlockDeadStore)
-{
+TEST(MemorySSA, EliminatesSimpleCrossBlockDeadStore) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -340,8 +327,7 @@ TEST(MemorySSA, EliminatesSimpleCrossBlockDeadStore)
 // Since %ptr escapes, the store might be observed by the call's callee.
 // MemorySSA must conservatively preserve it.
 // -------------------------------------------------------------------------
-TEST(MemorySSA, PreservesStoreToEscapingAlloca)
-{
+TEST(MemorySSA, PreservesStoreToEscapingAlloca) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -403,8 +389,7 @@ TEST(MemorySSA, PreservesStoreToEscapingAlloca)
 // Directly inspects the MemorySSA result to check that Store instructions
 // produce MemoryDef nodes and Load instructions produce MemoryUse nodes.
 // -------------------------------------------------------------------------
-TEST(MemorySSA, AssignsDefAndUseNodes)
-{
+TEST(MemorySSA, AssignsDefAndUseNodes) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -459,8 +444,7 @@ TEST(MemorySSA, AssignsDefAndUseNodes)
     // The important thing is def1 is NOT dead (has a Use).
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

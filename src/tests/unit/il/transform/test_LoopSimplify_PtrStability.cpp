@@ -35,13 +35,10 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-BasicBlock *findBlock(Function &function, const std::string &label)
-{
-    for (auto &block : function.blocks)
-    {
+BasicBlock *findBlock(Function &function, const std::string &label) {
+    for (auto &block : function.blocks) {
         if (block.label == label)
             return &block;
     }
@@ -52,8 +49,7 @@ BasicBlock *findBlock(Function &function, const std::string &label)
 BasicBlock makeSimpleBlock(const std::string &label,
                            const std::string &target,
                            unsigned &nextId,
-                           Function &fn)
-{
+                           Function &fn) {
     BasicBlock block;
     block.label = label;
 
@@ -74,8 +70,7 @@ BasicBlock makeCondBlock(const std::string &label,
                          const std::string &trueTarget,
                          const std::string &falseTarget,
                          unsigned &nextId,
-                         Function &fn)
-{
+                         Function &fn) {
     BasicBlock block;
     block.label = label;
 
@@ -95,8 +90,7 @@ BasicBlock makeCondBlock(const std::string &label,
 
 } // namespace
 
-int main()
-{
+int main() {
     // Test 1: Many blocks to force reallocation during preheader insertion
     {
         Module module;
@@ -203,8 +197,7 @@ int main()
 
         // Add many dummy blocks that aren't part of the loop.
         // These fill up the vector to make reallocation more likely.
-        for (size_t i = 0; i < numDummyBlocks; ++i)
-        {
+        for (size_t i = 0; i < numDummyBlocks; ++i) {
             BasicBlock dummy;
             dummy.label = "dummy_" + std::to_string(i);
             // These blocks are unreachable but fill up the vector
@@ -226,16 +219,14 @@ int main()
             "cfg",
             [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
         registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-            "dominators",
-            [](Module &mod, Function &fnRef)
-            {
+            "dominators", [](Module &mod, Function &fnRef) {
                 viper::analysis::CFGContext ctx(mod);
                 return viper::analysis::computeDominatorTree(ctx, fnRef);
             });
         registry.registerFunctionAnalysis<il::transform::LoopInfo>(
-            "loop-info",
-            [](Module &mod, Function &fnRef)
-            { return il::transform::computeLoopInfo(mod, fnRef); });
+            "loop-info", [](Module &mod, Function &fnRef) {
+                return il::transform::computeLoopInfo(mod, fnRef);
+            });
 
         il::transform::AnalysisManager analysisManager(module, registry);
 
@@ -392,8 +383,7 @@ int main()
         fn.blocks.push_back(std::move(exitBlock));
 
         // Add dummy blocks to make reallocation likely
-        for (size_t i = 0; i < 100; ++i)
-        {
+        for (size_t i = 0; i < 100; ++i) {
             BasicBlock dummy;
             dummy.label = "dummy_" + std::to_string(i);
             Instr trap;
@@ -413,16 +403,14 @@ int main()
             "cfg",
             [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
         registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-            "dominators",
-            [](Module &mod, Function &fnRef)
-            {
+            "dominators", [](Module &mod, Function &fnRef) {
                 viper::analysis::CFGContext ctx(mod);
                 return viper::analysis::computeDominatorTree(ctx, fnRef);
             });
         registry.registerFunctionAnalysis<il::transform::LoopInfo>(
-            "loop-info",
-            [](Module &mod, Function &fnRef)
-            { return il::transform::computeLoopInfo(mod, fnRef); });
+            "loop-info", [](Module &mod, Function &fnRef) {
+                return il::transform::computeLoopInfo(mod, fnRef);
+            });
 
         il::transform::AnalysisManager analysisManager(module, registry);
 

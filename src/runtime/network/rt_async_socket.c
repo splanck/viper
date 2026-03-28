@@ -56,22 +56,19 @@ static LONG pool_init_state = 0;
 #else
 static pthread_once_t pool_once = PTHREAD_ONCE_INIT;
 
-static void init_default_pool(void)
-{
+static void init_default_pool(void) {
     default_pool = rt_threadpool_new(4);
 }
 #endif
 
-static void *get_default_pool(void)
-{
+static void *get_default_pool(void) {
 #ifdef _WIN32
     if (pool_init_state == 2)
         return default_pool;
     LONG prev = InterlockedCompareExchange(&pool_init_state, 1, 0);
     if (prev == 2)
         return default_pool;
-    if (prev == 1)
-    {
+    if (prev == 1) {
         while (pool_init_state != 2)
             Sleep(0);
         return default_pool;
@@ -89,15 +86,13 @@ static void *get_default_pool(void)
 // Async Connect
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     char *host;
     int64_t port;
     void *promise;
 } connect_args_t;
 
-static void async_connect_worker(void *arg)
-{
+static void async_connect_worker(void *arg) {
     connect_args_t *a = (connect_args_t *)arg;
     rt_string host = rt_string_from_bytes(a->host, strlen(a->host));
     void *tcp = rt_tcp_connect(host, a->port);
@@ -108,8 +103,7 @@ static void async_connect_worker(void *arg)
 }
 
 /// @brief Async connect.
-void *rt_async_connect(rt_string host, int64_t port)
-{
+void *rt_async_connect(rt_string host, int64_t port) {
     const char *h = rt_string_cstr(host);
     if (!h)
         rt_trap("AsyncSocket: NULL host");
@@ -132,15 +126,13 @@ void *rt_async_connect(rt_string host, int64_t port)
 // Async Send
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *tcp;
     void *data;
     void *promise;
 } send_args_t;
 
-static void async_send_worker(void *arg)
-{
+static void async_send_worker(void *arg) {
     send_args_t *a = (send_args_t *)arg;
     int64_t sent = rt_tcp_send(a->tcp, a->data);
     // Resolve with boxed integer (use pointer-sized value)
@@ -149,8 +141,7 @@ static void async_send_worker(void *arg)
 }
 
 /// @brief Async send.
-void *rt_async_send(void *tcp, void *data)
-{
+void *rt_async_send(void *tcp, void *data) {
     if (!tcp || !data)
         rt_trap("AsyncSocket: NULL arg");
 
@@ -172,15 +163,13 @@ void *rt_async_send(void *tcp, void *data)
 // Async Recv
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *tcp;
     int64_t max_bytes;
     void *promise;
 } recv_args_t;
 
-static void async_recv_worker(void *arg)
-{
+static void async_recv_worker(void *arg) {
     recv_args_t *a = (recv_args_t *)arg;
     void *data = rt_tcp_recv(a->tcp, a->max_bytes);
     rt_promise_set(a->promise, data);
@@ -188,8 +177,7 @@ static void async_recv_worker(void *arg)
 }
 
 /// @brief Async recv.
-void *rt_async_recv(void *tcp, int64_t max_bytes)
-{
+void *rt_async_recv(void *tcp, int64_t max_bytes) {
     if (!tcp)
         rt_trap("AsyncSocket: NULL tcp");
 
@@ -211,15 +199,13 @@ void *rt_async_recv(void *tcp, int64_t max_bytes)
 // Async HTTP
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     char *url;
     char *body; // NULL for GET
     void *promise;
 } http_args_t;
 
-static void async_http_get_worker(void *arg)
-{
+static void async_http_get_worker(void *arg) {
     http_args_t *a = (http_args_t *)arg;
     rt_string url = rt_string_from_bytes(a->url, strlen(a->url));
     rt_string result = rt_http_get(url);
@@ -230,8 +216,7 @@ static void async_http_get_worker(void *arg)
 }
 
 /// @brief Async http get.
-void *rt_async_http_get(rt_string url)
-{
+void *rt_async_http_get(rt_string url) {
     const char *u = rt_string_cstr(url);
     if (!u)
         rt_trap("AsyncSocket: NULL URL");
@@ -250,8 +235,7 @@ void *rt_async_http_get(rt_string url)
     return future;
 }
 
-static void async_http_post_worker(void *arg)
-{
+static void async_http_post_worker(void *arg) {
     http_args_t *a = (http_args_t *)arg;
     rt_string url = rt_string_from_bytes(a->url, strlen(a->url));
     rt_string body =
@@ -266,8 +250,7 @@ static void async_http_post_worker(void *arg)
 }
 
 /// @brief Async http post.
-void *rt_async_http_post(rt_string url, rt_string body)
-{
+void *rt_async_http_post(rt_string url, rt_string body) {
     const char *u = rt_string_cstr(url);
     const char *b = rt_string_cstr(body);
     if (!u)

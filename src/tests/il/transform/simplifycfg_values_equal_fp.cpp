@@ -21,8 +21,7 @@
 #include <cstdint>
 #include <limits>
 
-TEST(IL, SimplifyCFGValuesEqualFP)
-{
+TEST(IL, SimplifyCFGValuesEqualFP) {
     using il::core::Value;
     using il::transform::simplify_cfg::valuesEqual;
 
@@ -46,8 +45,7 @@ TEST(IL, SimplifyCFGValuesEqualFP)
     ASSERT_FALSE(valuesEqual(quietNanA, infin));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

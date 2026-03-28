@@ -23,8 +23,7 @@
 #include <cstdlib>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -33,8 +32,7 @@ extern "C" void vm_trap(const char *msg)
 // ============================================================================
 
 /// Loading a nonexistent PNG returns NULL without leaking GC objects.
-static void test_load_png_nonexistent_no_leak()
-{
+static void test_load_png_nonexistent_no_leak() {
     int64_t before = rt_gc_tracked_count();
 
     const char *path = "/nonexistent/path/file.png";
@@ -51,8 +49,7 @@ static void test_load_png_nonexistent_no_leak()
 }
 
 /// Loading a file that isn't a PNG (bad signature) returns NULL without leaking.
-static void test_load_png_bad_signature_no_leak()
-{
+static void test_load_png_bad_signature_no_leak() {
     // Create a temp file with non-PNG content
     char tmpfile[] = "/tmp/viper_test_bad_png_XXXXXX";
     int fd = mkstemp(tmpfile);
@@ -76,8 +73,7 @@ static void test_load_png_bad_signature_no_leak()
 
 /// Loading a truncated PNG (valid signature, incomplete data) returns NULL
 /// without leaking comp_bytes or raw_bytes.
-static void test_load_png_truncated_no_leak()
-{
+static void test_load_png_truncated_no_leak() {
     // Create a temp file with just the PNG signature + truncated IHDR
     char tmpfile[] = "/tmp/viper_test_trunc_png_XXXXXX";
     int fd = mkstemp(tmpfile);
@@ -104,8 +100,7 @@ static void test_load_png_truncated_no_leak()
 
 /// Repeated failed PNG loads don't accumulate GC objects (regression test for
 /// the comp_bytes/raw_bytes leak fixed in this changeset).
-static void test_load_png_repeated_failures_stable()
-{
+static void test_load_png_repeated_failures_stable() {
     char tmpfile[] = "/tmp/viper_test_repeat_png_XXXXXX";
     int fd = mkstemp(tmpfile);
     assert(fd >= 0);
@@ -122,8 +117,7 @@ static void test_load_png_repeated_failures_stable()
     int64_t baseline = rt_gc_tracked_count();
 
     // Do 100 failed loads — tracked count should not grow
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         r = rt_pixels_load_png(s);
         assert(r == nullptr);
     }
@@ -141,8 +135,7 @@ static void test_load_png_repeated_failures_stable()
 // ============================================================================
 
 /// Loading a nonexistent BMP returns NULL without leaking file handles.
-static void test_load_bmp_nonexistent_no_leak()
-{
+static void test_load_bmp_nonexistent_no_leak() {
     const char *path = "/nonexistent/path/file.bmp";
     rt_string s = rt_string_from_bytes(path, strlen(path));
     void *result = rt_pixels_load_bmp(s);
@@ -152,8 +145,7 @@ static void test_load_bmp_nonexistent_no_leak()
 }
 
 /// Loading a truncated BMP (valid magic, incomplete headers) returns NULL.
-static void test_load_bmp_truncated_no_leak()
-{
+static void test_load_bmp_truncated_no_leak() {
     char tmpfile[] = "/tmp/viper_test_trunc_bmp_XXXXXX";
     int fd = mkstemp(tmpfile);
     assert(fd >= 0);
@@ -174,8 +166,7 @@ static void test_load_bmp_truncated_no_leak()
 // ============================================================================
 
 /// A successful PNG save+load roundtrip doesn't leak GC objects.
-static void test_png_roundtrip_no_leak()
-{
+static void test_png_roundtrip_no_leak() {
     // Create a small pixel buffer
     void *p = rt_pixels_new(4, 4);
     assert(p != nullptr);
@@ -223,8 +214,7 @@ static void test_png_roundtrip_no_leak()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     // PNG error paths
     test_load_png_nonexistent_no_leak();
     test_load_png_bad_signature_no_leak();

@@ -20,18 +20,14 @@
 
 #include "tools/lsp-common/McpHandler.hpp"
 
-namespace viper::server
-{
+namespace viper::server {
 
 McpHandler::McpHandler(ICompilerBridge &bridge, const ServerConfig &config)
-    : bridge_(bridge), config_(config)
-{
-}
+    : bridge_(bridge), config_(config) {}
 
 // --- Request dispatch ---
 
-std::string McpHandler::handleRequest(const JsonRpcRequest &req)
-{
+std::string McpHandler::handleRequest(const JsonRpcRequest &req) {
     if (req.method == "initialize")
         return handleInitialize(req);
 
@@ -55,8 +51,7 @@ std::string McpHandler::handleRequest(const JsonRpcRequest &req)
 
 // --- Lifecycle ---
 
-std::string McpHandler::handleInitialize(const JsonRpcRequest &req)
-{
+std::string McpHandler::handleInitialize(const JsonRpcRequest &req) {
     auto result = JsonValue::object({
         {"protocolVersion", JsonValue("2024-11-05")},
         {"capabilities", JsonValue::object({{"tools", JsonValue::object({})}})},
@@ -69,8 +64,7 @@ std::string McpHandler::handleInitialize(const JsonRpcRequest &req)
 
 // --- tools/list ---
 
-std::string McpHandler::handleToolsList(const JsonRpcRequest &req)
-{
+std::string McpHandler::handleToolsList(const JsonRpcRequest &req) {
     auto result = JsonValue::object({{"tools", buildToolDefinitions()}});
     return buildResponse(req.id, result);
 }
@@ -78,8 +72,7 @@ std::string McpHandler::handleToolsList(const JsonRpcRequest &req)
 // --- Tool schema helpers ---
 
 /// Build a JSON Schema property definition: {type, description}
-static JsonValue schemaProp(const char *type, const char *desc)
-{
+static JsonValue schemaProp(const char *type, const char *desc) {
     return JsonValue::object({{"type", JsonValue(type)}, {"description", JsonValue(desc)}});
 }
 
@@ -87,8 +80,7 @@ static JsonValue schemaProp(const char *type, const char *desc)
 static JsonValue toolDef(const std::string &name,
                          const std::string &desc,
                          JsonValue::ObjectType properties,
-                         std::vector<std::string> required = {})
-{
+                         std::vector<std::string> required = {}) {
     JsonValue::ArrayType reqArr;
     reqArr.reserve(required.size());
     for (auto &r : required)
@@ -100,8 +92,7 @@ static JsonValue toolDef(const std::string &name,
     });
 
     // Only add "required" if non-empty
-    if (!reqArr.empty())
-    {
+    if (!reqArr.empty()) {
         auto schemaObj = schema.asObject();
         schemaObj.push_back({"required", JsonValue(std::move(reqArr))});
         schema = JsonValue(std::move(schemaObj));
@@ -114,8 +105,7 @@ static JsonValue toolDef(const std::string &name,
     });
 }
 
-JsonValue McpHandler::buildToolDefinitions() const
-{
+JsonValue McpHandler::buildToolDefinitions() const {
     JsonValue::ArrayType tools;
     const std::string &prefix = config_.toolPrefix;
     const std::string &lang = config_.langLabel;
@@ -232,16 +222,14 @@ JsonValue McpHandler::buildToolDefinitions() const
 // --- tools/call dispatch ---
 
 /// @brief Build an MCP text content response.
-static JsonValue textContent(const std::string &text)
-{
+static JsonValue textContent(const std::string &text) {
     return JsonValue::array({JsonValue::object({
         {"type", JsonValue("text")},
         {"text", JsonValue(text)},
     })});
 }
 
-std::string McpHandler::handleToolsCall(const JsonRpcRequest &req)
-{
+std::string McpHandler::handleToolsCall(const JsonRpcRequest &req) {
     const auto *nameProp = req.params.get("name");
     if (!nameProp)
         return buildError(req.id, kInvalidParams, "Missing 'name' in tools/call");
@@ -286,8 +274,7 @@ std::string McpHandler::handleToolsCall(const JsonRpcRequest &req)
 
 // --- Tool implementations ---
 
-JsonValue McpHandler::callCheck(const JsonValue &args)
-{
+JsonValue McpHandler::callCheck(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
@@ -295,8 +282,7 @@ JsonValue McpHandler::callCheck(const JsonValue &args)
 
     JsonValue::ArrayType diagArr;
     diagArr.reserve(diags.size());
-    for (const auto &d : diags)
-    {
+    for (const auto &d : diags) {
         diagArr.push_back(JsonValue::object({
             {"severity", JsonValue(d.severity)},
             {"message", JsonValue(d.message)},
@@ -309,8 +295,7 @@ JsonValue McpHandler::callCheck(const JsonValue &args)
     return textContent(JsonValue(std::move(diagArr)).toCompactString());
 }
 
-JsonValue McpHandler::callCompile(const JsonValue &args)
-{
+JsonValue McpHandler::callCompile(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
@@ -318,8 +303,7 @@ JsonValue McpHandler::callCompile(const JsonValue &args)
 
     JsonValue::ArrayType diagArr;
     diagArr.reserve(result.diagnostics.size());
-    for (const auto &d : result.diagnostics)
-    {
+    for (const auto &d : result.diagnostics) {
         diagArr.push_back(JsonValue::object({
             {"severity", JsonValue(d.severity)},
             {"message", JsonValue(d.message)},
@@ -335,8 +319,7 @@ JsonValue McpHandler::callCompile(const JsonValue &args)
     return textContent(obj.toCompactString());
 }
 
-JsonValue McpHandler::callCompletions(const JsonValue &args)
-{
+JsonValue McpHandler::callCompletions(const JsonValue &args) {
     std::string source = args["source"].asString();
     int line = static_cast<int>(args["line"].asInt());
     int col = static_cast<int>(args["col"].asInt());
@@ -346,8 +329,7 @@ JsonValue McpHandler::callCompletions(const JsonValue &args)
 
     JsonValue::ArrayType arr;
     arr.reserve(items.size());
-    for (const auto &item : items)
-    {
+    for (const auto &item : items) {
         arr.push_back(JsonValue::object({
             {"label", JsonValue(item.label)},
             {"insertText", JsonValue(item.insertText)},
@@ -359,8 +341,7 @@ JsonValue McpHandler::callCompletions(const JsonValue &args)
     return textContent(JsonValue(std::move(arr)).toCompactString());
 }
 
-JsonValue McpHandler::callHover(const JsonValue &args)
-{
+JsonValue McpHandler::callHover(const JsonValue &args) {
     std::string source = args["source"].asString();
     int line = static_cast<int>(args["line"].asInt());
     int col = static_cast<int>(args["col"].asInt());
@@ -370,8 +351,7 @@ JsonValue McpHandler::callHover(const JsonValue &args)
     return textContent(result.empty() ? "(no type information)" : result);
 }
 
-JsonValue McpHandler::callSymbols(const JsonValue &args)
-{
+JsonValue McpHandler::callSymbols(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
@@ -379,8 +359,7 @@ JsonValue McpHandler::callSymbols(const JsonValue &args)
 
     JsonValue::ArrayType arr;
     arr.reserve(syms.size());
-    for (const auto &s : syms)
-    {
+    for (const auto &s : syms) {
         arr.push_back(JsonValue::object({
             {"name", JsonValue(s.name)},
             {"kind", JsonValue(s.kind)},
@@ -391,8 +370,7 @@ JsonValue McpHandler::callSymbols(const JsonValue &args)
     return textContent(JsonValue(std::move(arr)).toCompactString());
 }
 
-JsonValue McpHandler::callDumpIL(const JsonValue &args)
-{
+JsonValue McpHandler::callDumpIL(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
     bool optimized = args.has("optimized") ? args["optimized"].asBool() : false;
@@ -400,30 +378,26 @@ JsonValue McpHandler::callDumpIL(const JsonValue &args)
     return textContent(bridge_.dumpIL(source, path, optimized));
 }
 
-JsonValue McpHandler::callDumpAst(const JsonValue &args)
-{
+JsonValue McpHandler::callDumpAst(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     return textContent(bridge_.dumpAst(source, path));
 }
 
-JsonValue McpHandler::callDumpTokens(const JsonValue &args)
-{
+JsonValue McpHandler::callDumpTokens(const JsonValue &args) {
     std::string source = args["source"].asString();
     std::string path = args.has("path") ? args["path"].asString() : "untitled" + config_.defaultExt;
 
     return textContent(bridge_.dumpTokens(source, path));
 }
 
-JsonValue McpHandler::callRuntimeClasses(const JsonValue & /*args*/)
-{
+JsonValue McpHandler::callRuntimeClasses(const JsonValue & /*args*/) {
     auto classes = bridge_.runtimeClasses();
 
     JsonValue::ArrayType arr;
     arr.reserve(classes.size());
-    for (const auto &cls : classes)
-    {
+    for (const auto &cls : classes) {
         arr.push_back(JsonValue::object({
             {"qname", JsonValue(cls.qname)},
             {"propertyCount", JsonValue(cls.propertyCount)},
@@ -434,15 +408,13 @@ JsonValue McpHandler::callRuntimeClasses(const JsonValue & /*args*/)
     return textContent(JsonValue(std::move(arr)).toCompactString());
 }
 
-JsonValue McpHandler::callRuntimeMembers(const JsonValue &args)
-{
+JsonValue McpHandler::callRuntimeMembers(const JsonValue &args) {
     std::string className = args["className"].asString();
     auto members = bridge_.runtimeMembers(className);
 
     JsonValue::ArrayType arr;
     arr.reserve(members.size());
-    for (const auto &m : members)
-    {
+    for (const auto &m : members) {
         arr.push_back(JsonValue::object({
             {"name", JsonValue(m.name)},
             {"memberKind", JsonValue(m.memberKind)},
@@ -453,15 +425,13 @@ JsonValue McpHandler::callRuntimeMembers(const JsonValue &args)
     return textContent(JsonValue(std::move(arr)).toCompactString());
 }
 
-JsonValue McpHandler::callRuntimeSearch(const JsonValue &args)
-{
+JsonValue McpHandler::callRuntimeSearch(const JsonValue &args) {
     std::string keyword = args["keyword"].asString();
     auto results = bridge_.runtimeSearch(keyword);
 
     JsonValue::ArrayType arr;
     arr.reserve(results.size());
-    for (const auto &r : results)
-    {
+    for (const auto &r : results) {
         arr.push_back(JsonValue::object({
             {"name", JsonValue(r.name)},
             {"memberKind", JsonValue(r.memberKind)},

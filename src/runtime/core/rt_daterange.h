@@ -28,70 +28,69 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Create a date range from start and end timestamps.
-    /// @param start Start timestamp in seconds.
-    /// @param end End timestamp in seconds.
-    /// @return Date range object.
-    void *rt_daterange_new(int64_t start, int64_t end);
+/// @brief Create a date range from start and end timestamps.
+/// @param start Start timestamp in seconds.
+/// @param end End timestamp in seconds.
+/// @return Date range object.
+void *rt_daterange_new(int64_t start, int64_t end);
 
-    /// @brief Get start timestamp.
-    /// @param range Date range object.
-    /// @return Start timestamp in seconds.
-    int64_t rt_daterange_start(void *range);
+/// @brief Get start timestamp.
+/// @param range Date range object.
+/// @return Start timestamp in seconds.
+int64_t rt_daterange_start(void *range);
 
-    /// @brief Get end timestamp.
-    /// @param range Date range object.
-    /// @return End timestamp in seconds.
-    int64_t rt_daterange_end(void *range);
+/// @brief Get end timestamp.
+/// @param range Date range object.
+/// @return End timestamp in seconds.
+int64_t rt_daterange_end(void *range);
 
-    /// @brief Check if a timestamp falls within the range (inclusive).
-    /// @param range Date range object.
-    /// @param timestamp Timestamp to check.
-    /// @return 1 if contained, 0 otherwise.
-    int8_t rt_daterange_contains(void *range, int64_t timestamp);
+/// @brief Check if a timestamp falls within the range (inclusive).
+/// @param range Date range object.
+/// @param timestamp Timestamp to check.
+/// @return 1 if contained, 0 otherwise.
+int8_t rt_daterange_contains(void *range, int64_t timestamp);
 
-    /// @brief Check if two ranges overlap.
-    /// @param range First date range.
-    /// @param other Second date range.
-    /// @return 1 if they overlap, 0 otherwise.
-    int8_t rt_daterange_overlaps(void *range, void *other);
+/// @brief Check if two ranges overlap.
+/// @param range First date range.
+/// @param other Second date range.
+/// @return 1 if they overlap, 0 otherwise.
+int8_t rt_daterange_overlaps(void *range, void *other);
 
-    /// @brief Get the intersection of two ranges.
-    /// @param range First date range.
-    /// @param other Second date range.
-    /// @return Intersection range, or NULL if no overlap.
-    void *rt_daterange_intersection(void *range, void *other);
+/// @brief Get the intersection of two ranges.
+/// @param range First date range.
+/// @param other Second date range.
+/// @return Intersection range, or NULL if no overlap.
+void *rt_daterange_intersection(void *range, void *other);
 
-    /// @brief Get the union of two ranges.
-    /// @details Returns NULL if ranges are not contiguous or overlapping.
-    /// @param range First date range.
-    /// @param other Second date range.
-    /// @return Union range, or NULL if not contiguous.
-    void *rt_daterange_union_range(void *range, void *other);
+/// @brief Get the union of two ranges.
+/// @details Returns NULL if ranges are not contiguous or overlapping.
+/// @param range First date range.
+/// @param other Second date range.
+/// @return Union range, or NULL if not contiguous.
+void *rt_daterange_union_range(void *range, void *other);
 
-    /// @brief Get the number of days in the range.
-    /// @param range Date range object.
-    /// @return Number of days (rounded down).
-    int64_t rt_daterange_days(void *range);
+/// @brief Get the number of days in the range.
+/// @param range Date range object.
+/// @return Number of days (rounded down).
+int64_t rt_daterange_days(void *range);
 
-    /// @brief Get the number of hours in the range.
-    /// @param range Date range object.
-    /// @return Number of hours (rounded down).
-    int64_t rt_daterange_hours(void *range);
+/// @brief Get the number of hours in the range.
+/// @param range Date range object.
+/// @return Number of hours (rounded down).
+int64_t rt_daterange_hours(void *range);
 
-    /// @brief Get the duration of the range in seconds.
-    /// @param range Date range object.
-    /// @return Duration in seconds.
-    int64_t rt_daterange_duration(void *range);
+/// @brief Get the duration of the range in seconds.
+/// @param range Date range object.
+/// @return Duration in seconds.
+int64_t rt_daterange_duration(void *range);
 
-    /// @brief Format range as a string.
-    /// @param range Date range object.
-    /// @return String like "2025-01-01 00:00 - 2025-01-31 23:59".
-    rt_string rt_daterange_to_string(void *range);
+/// @brief Format range as a string.
+/// @param range Date range object.
+/// @return String like "2025-01-01 00:00 - 2025-01-31 23:59".
+rt_string rt_daterange_to_string(void *range);
 
 #ifdef __cplusplus
 }

@@ -20,56 +20,43 @@
 #include <cctype>
 #include <sstream>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 TypeResolver::TypeResolver(const NamespaceRegistry &ns, const UsingContext &uc)
-    : registry_(ns), using_(uc)
-{
-}
+    : registry_(ns), using_(uc) {}
 
-std::string TypeResolver::toLower(const std::string &str)
-{
+std::string TypeResolver::toLower(const std::string &str) {
     std::string result;
     result.reserve(str.size());
-    for (char c : str)
-    {
+    for (char c : str) {
         result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
     }
     return result;
 }
 
-std::string TypeResolver::joinPath(const std::vector<std::string> &segments)
-{
+std::string TypeResolver::joinPath(const std::vector<std::string> &segments) {
     if (segments.empty())
         return "";
 
     std::string result = segments[0];
-    for (size_t i = 1; i < segments.size(); ++i)
-    {
+    for (size_t i = 1; i < segments.size(); ++i) {
         result += ".";
         result += segments[i];
     }
     return result;
 }
 
-std::vector<std::string> TypeResolver::splitPath(std::string_view path)
-{
+std::vector<std::string> TypeResolver::splitPath(std::string_view path) {
     std::vector<std::string> segments;
     std::string current;
 
-    for (char c : path)
-    {
-        if (c == '.')
-        {
-            if (!current.empty())
-            {
+    for (char c : path) {
+        if (c == '.') {
+            if (!current.empty()) {
                 segments.push_back(current);
                 current.clear();
             }
-        }
-        else
-        {
+        } else {
             current.push_back(c);
         }
     }
@@ -81,12 +68,10 @@ std::vector<std::string> TypeResolver::splitPath(std::string_view path)
 }
 
 std::string TypeResolver::tryResolveInNamespace(const std::string &ns,
-                                                std::string_view typeName) const
-{
+                                                std::string_view typeName) const {
     std::string candidate = ns.empty() ? std::string(typeName) : (ns + "." + std::string(typeName));
 
-    if (registry_.typeExists(candidate))
-    {
+    if (registry_.typeExists(candidate)) {
         // Return the canonical spelling from registry.
         auto kind = registry_.getTypeKind(candidate);
         // We need to get the canonical name; for now return the candidate
@@ -98,10 +83,8 @@ std::string TypeResolver::tryResolveInNamespace(const std::string &ns,
     return "";
 }
 
-TypeResolver::Kind TypeResolver::convertKind(NamespaceRegistry::TypeKind nsk)
-{
-    switch (nsk)
-    {
+TypeResolver::Kind TypeResolver::convertKind(NamespaceRegistry::TypeKind nsk) {
+    switch (nsk) {
         case NamespaceRegistry::TypeKind::Class:
             return Kind::Class;
         case NamespaceRegistry::TypeKind::Interface:
@@ -113,19 +96,16 @@ TypeResolver::Kind TypeResolver::convertKind(NamespaceRegistry::TypeKind nsk)
 }
 
 TypeResolver::Result TypeResolver::resolve(std::string_view name,
-                                           const std::vector<std::string> &currentNsChain) const
-{
+                                           const std::vector<std::string> &currentNsChain) const {
     Result result;
 
     // Check if name contains '.'.
     bool isQualified = name.find('.') != std::string_view::npos;
 
-    if (isQualified)
-    {
+    if (isQualified) {
         // Qualified name handling.
         auto segments = splitPath(name);
-        if (segments.empty())
-        {
+        if (segments.empty()) {
             // Malformed name.
             return result;
         }
@@ -133,8 +113,7 @@ TypeResolver::Result TypeResolver::resolve(std::string_view name,
         std::string firstSegment = segments[0];
 
         // Check if first segment is an alias.
-        if (using_.hasAlias(firstSegment))
-        {
+        if (using_.hasAlias(firstSegment)) {
             // Expand alias.
             std::string aliasedNs = using_.resolveAlias(firstSegment);
 
@@ -146,8 +125,7 @@ TypeResolver::Result TypeResolver::resolve(std::string_view name,
 
             std::string expandedPath = joinPath(expandedSegments);
 
-            if (registry_.typeExists(expandedPath))
-            {
+            if (registry_.typeExists(expandedPath)) {
                 result.found = true;
                 result.qname = expandedPath;
                 result.kind = convertKind(registry_.getTypeKind(expandedPath));
@@ -160,8 +138,7 @@ TypeResolver::Result TypeResolver::resolve(std::string_view name,
 
         // Treat as fully-qualified name.
         std::string nameStr(name);
-        if (registry_.typeExists(nameStr))
-        {
+        if (registry_.typeExists(nameStr)) {
             result.found = true;
             result.qname = nameStr;
             result.kind = convertKind(registry_.getTypeKind(nameStr));
@@ -176,14 +153,12 @@ TypeResolver::Result TypeResolver::resolve(std::string_view name,
     std::vector<std::string> candidates;
 
     // Try current namespace chain walk-up: A.B.C.T → A.B.T → A.T → T.
-    for (int depth = static_cast<int>(currentNsChain.size()); depth >= 0; --depth)
-    {
+    for (int depth = static_cast<int>(currentNsChain.size()); depth >= 0; --depth) {
         std::vector<std::string> nsSegments(currentNsChain.begin(), currentNsChain.begin() + depth);
         std::string ns = joinPath(nsSegments);
 
         std::string resolved = tryResolveInNamespace(ns, name);
-        if (!resolved.empty())
-        {
+        if (!resolved.empty()) {
             result.found = true;
             result.qname = resolved;
             result.kind = convertKind(registry_.getTypeKind(resolved));
@@ -192,24 +167,20 @@ TypeResolver::Result TypeResolver::resolve(std::string_view name,
     }
 
     // Try USING imports in declaration order.
-    for (const auto &import : using_.imports())
-    {
+    for (const auto &import : using_.imports()) {
         std::string resolved = tryResolveInNamespace(import.ns, name);
-        if (!resolved.empty())
-        {
+        if (!resolved.empty()) {
             candidates.push_back(resolved);
         }
     }
 
     // Check candidate count.
-    if (candidates.empty())
-    {
+    if (candidates.empty()) {
         // Not found.
         return result;
     }
 
-    if (candidates.size() == 1)
-    {
+    if (candidates.size() == 1) {
         // Found unique match.
         result.found = true;
         result.qname = candidates[0];
@@ -218,9 +189,9 @@ TypeResolver::Result TypeResolver::resolve(std::string_view name,
     }
 
     // Ambiguous: sort candidates case-insensitively for stable diagnostics.
-    std::sort(candidates.begin(),
-              candidates.end(),
-              [](const std::string &a, const std::string &b) { return toLower(a) < toLower(b); });
+    std::sort(candidates.begin(), candidates.end(), [](const std::string &a, const std::string &b) {
+        return toLower(a) < toLower(b);
+    });
 
     result.found = false;
     result.contenders = std::move(candidates);

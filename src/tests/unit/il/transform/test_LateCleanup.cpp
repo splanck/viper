@@ -35,14 +35,11 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Find a block by label in a function.
-BasicBlock *findBlock(Function &function, const std::string &label)
-{
-    for (auto &block : function.blocks)
-    {
+BasicBlock *findBlock(Function &function, const std::string &label) {
+    for (auto &block : function.blocks) {
         if (block.label == label)
             return &block;
     }
@@ -50,13 +47,10 @@ BasicBlock *findBlock(Function &function, const std::string &label)
 }
 
 /// @brief Count instructions with a given opcode in a function.
-size_t countOpcode(const Function &function, Opcode op)
-{
+size_t countOpcode(const Function &function, Opcode op) {
     size_t count = 0;
-    for (const auto &block : function.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : function.blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == op)
                 ++count;
         }
@@ -64,8 +58,7 @@ size_t countOpcode(const Function &function, Opcode op)
     return count;
 }
 
-il::transform::AnalysisRegistry createRegistry()
-{
+il::transform::AnalysisRegistry createRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
@@ -74,8 +67,7 @@ il::transform::AnalysisRegistry createRegistry()
 
 /// Test 1: SimplifyCFG removes unreachable blocks
 /// Run SimplifyCFG directly (without module verification) to test basic cleanup.
-void test_simplifycfg_unreachable_block_removal()
-{
+void test_simplifycfg_unreachable_block_removal() {
     Module module;
     Function fn;
     fn.name = "test_unreachable";
@@ -129,8 +121,7 @@ void test_simplifycfg_unreachable_block_removal()
 /// Test 2: DCE removes dead loads
 /// Note: The current DCE is "trivial" - it only removes dead loads/stores/allocas
 /// and unused block parameters, not general dead instructions like adds.
-void test_dce_dead_load_elimination()
-{
+void test_dce_dead_load_elimination() {
     Module module;
     Function fn;
     fn.name = "test_dead_load";
@@ -191,8 +182,7 @@ void test_dce_dead_load_elimination()
 
 /// Test 3: Empty forwarding block elimination
 /// A function with an empty block that just forwards to another.
-void test_simplifycfg_empty_forwarding_block()
-{
+void test_simplifycfg_empty_forwarding_block() {
     Module module;
     Function fn;
     fn.name = "test_forward";
@@ -259,8 +249,7 @@ void test_simplifycfg_empty_forwarding_block()
 
 /// Test 4: LateCleanup pass integration test
 /// This test uses the full pass manager integration without module verification.
-void test_late_cleanup_integration()
-{
+void test_late_cleanup_integration() {
     Module module;
     Function fn;
     fn.name = "test_combined";
@@ -329,8 +318,7 @@ void test_late_cleanup_integration()
 
 } // namespace
 
-int main()
-{
+int main() {
     test_simplifycfg_unreachable_block_removal();
     test_dce_dead_load_elimination();
     test_simplifycfg_empty_forwarding_block();

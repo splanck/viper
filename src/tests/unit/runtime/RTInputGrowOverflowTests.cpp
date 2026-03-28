@@ -21,8 +21,7 @@
 #include <cstdlib>
 #include <limits>
 
-int main()
-{
+int main() {
     size_t cap = (std::numeric_limits<size_t>::max() / 2) + 1;
     char *buf = (char *)rt_alloc(1);
     assert(buf != nullptr);

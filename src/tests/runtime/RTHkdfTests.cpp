@@ -22,17 +22,14 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Convert a hex string to bytes.
-static void hex_to_bytes(const char *hex, uint8_t *out, size_t len)
-{
-    for (size_t i = 0; i < len; i++)
-    {
+static void hex_to_bytes(const char *hex, uint8_t *out, size_t len) {
+    for (size_t i = 0; i < len; i++) {
         unsigned int b;
         sscanf(hex + 2 * i, "%02x", &b);
         out[i] = (uint8_t)b;
@@ -43,8 +40,7 @@ static void hex_to_bytes(const char *hex, uint8_t *out, size_t len)
 // HKDF-Extract Tests (RFC 5869 Test Case 1)
 //=============================================================================
 
-static void test_hkdf_extract_rfc5869_case1()
-{
+static void test_hkdf_extract_rfc5869_case1() {
     printf("Testing HKDF-Extract (RFC 5869 Case 1):\n");
 
     // IKM  = 0x0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b (22 octets)
@@ -72,8 +68,7 @@ static void test_hkdf_extract_rfc5869_case1()
 // HKDF-Expand Tests (RFC 5869 Test Case 1)
 //=============================================================================
 
-static void test_hkdf_expand_rfc5869_case1()
-{
+static void test_hkdf_expand_rfc5869_case1() {
     printf("Testing HKDF-Expand (RFC 5869 Case 1):\n");
 
     // PRK from extract step above
@@ -104,8 +99,7 @@ static void test_hkdf_expand_rfc5869_case1()
 // HKDF-Extract with NULL salt (uses zero salt)
 //=============================================================================
 
-static void test_hkdf_extract_null_salt()
-{
+static void test_hkdf_extract_null_salt() {
     printf("Testing HKDF-Extract with NULL salt:\n");
 
     uint8_t ikm[22];
@@ -130,8 +124,7 @@ static void test_hkdf_extract_null_salt()
 // HKDF repeatability (proves secure_zero doesn't corrupt)
 //=============================================================================
 
-static void test_hkdf_repeatability()
-{
+static void test_hkdf_repeatability() {
     printf("Testing HKDF repeatability (secure_zero safety):\n");
 
     uint8_t ikm[32];
@@ -146,8 +139,7 @@ static void test_hkdf_repeatability()
 
     // Run HKDF extract + expand multiple times
     uint8_t results[4][64];
-    for (int trial = 0; trial < 4; trial++)
-    {
+    for (int trial = 0; trial < 4; trial++) {
         uint8_t prk[32];
         rt_hkdf_extract(salt, 16, ikm, 32, prk);
         rt_hkdf_expand(prk, info, 8, results[trial], 64);
@@ -155,10 +147,8 @@ static void test_hkdf_repeatability()
 
     // All results should be identical
     bool all_match = true;
-    for (int trial = 1; trial < 4; trial++)
-    {
-        if (memcmp(results[0], results[trial], 64) != 0)
-        {
+    for (int trial = 1; trial < 4; trial++) {
+        if (memcmp(results[0], results[trial], 64) != 0) {
             all_match = false;
             break;
         }
@@ -176,8 +166,7 @@ static void test_hkdf_repeatability()
 // HMAC-SHA256 correctness (ensures secure_zero in rt_hmac_sha256 is safe)
 //=============================================================================
 
-static void test_hmac_sha256_after_secure_zero()
-{
+static void test_hmac_sha256_after_secure_zero() {
     printf("Testing HMAC-SHA256 correctness (post secure_zero):\n");
 
     // RFC 4231 Test Case 2: key = "Jefe", data = "what do ya want for nothing?"
@@ -202,8 +191,7 @@ static void test_hmac_sha256_after_secure_zero()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== HKDF / Secure-Zero Tests ===\n\n");
 
     test_hkdf_extract_rfc5869_case1();

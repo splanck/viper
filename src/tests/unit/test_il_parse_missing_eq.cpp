@@ -18,8 +18,7 @@
 #include <cassert>
 #include <sstream>
 
-int main()
-{
+int main() {
     const char *src = R"(il 0.2.0
 func @main() -> i64 {
 entry:
@@ -30,8 +29,7 @@ entry:
     il::core::Module m;
     std::ostringstream diag;
     auto pe = il::api::v2::parse_text_expected(in, m);
-    if (!pe)
-    {
+    if (!pe) {
         il::support::printDiag(pe.error(), diag);
     }
     assert(!pe);

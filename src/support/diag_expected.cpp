@@ -28,8 +28,7 @@
 
 #include "diag_expected.hpp"
 
-namespace il::support
-{
+namespace il::support {
 /// @brief Construct an Expected<void> that stores a diagnostic error state.
 ///
 /// @details The constructor moves the provided diagnostic into the optional
@@ -50,8 +49,7 @@ Expected<void>::Expected(Diag diag) : error_(std::move(diag)) {}
 ///          diagnostic via @ref error().
 ///
 /// @return True if the instance holds no diagnostic (success), otherwise false.
-bool Expected<void>::hasValue() const
-{
+bool Expected<void>::hasValue() const {
     return !error_.has_value();
 }
 
@@ -61,8 +59,7 @@ bool Expected<void>::hasValue() const
 ///          conditionals such as `if (auto ok = doThing())`.  The conversion is
 ///          explicit enough to avoid accidental narrowing yet terse enough to be
 ///          pleasant in control flow.
-Expected<void>::operator bool() const
-{
+Expected<void>::operator bool() const {
     return hasValue();
 }
 
@@ -75,13 +72,11 @@ Expected<void>::operator bool() const
 ///          text, and locations without copying.
 ///
 /// @return Reference to the stored diagnostic payload.
-const Diag &Expected<void>::error() const &
-{
+const Diag &Expected<void>::error() const & {
     return *error_;
 }
 
-namespace detail
-{
+namespace detail {
 /// @brief Map a diagnostic severity to a lowercase string used for printing.
 ///
 /// @details The helper keeps the conversion in one location so diagnostic
@@ -93,10 +88,8 @@ namespace detail
 ///
 /// @param severity Severity enumeration value to translate.
 /// @return Null-terminated string naming the severity level.
-const char *diagSeverityToString(Severity severity)
-{
-    switch (severity)
-    {
+const char *diagSeverityToString(Severity severity) {
+    switch (severity) {
         case Severity::Note:
             return "note";
         case Severity::Warning:
@@ -120,8 +113,7 @@ const char *diagSeverityToString(Severity severity)
 /// @param loc Source location that triggered the diagnostic, or unknown.
 /// @param msg Human-readable description of the problem.
 /// @return Diagnostic populated with error severity and provided context.
-Diag makeError(SourceLoc loc, std::string msg)
-{
+Diag makeError(SourceLoc loc, std::string msg) {
     return Diag{Severity::Error, std::move(msg), loc, {}};
 }
 
@@ -136,8 +128,7 @@ Diag makeError(SourceLoc loc, std::string msg)
 /// @param code Diagnostic code for programmatic identification.
 /// @param msg Human-readable description of the problem.
 /// @return Diagnostic populated with error severity, code, and provided context.
-Diag makeErrorWithCode(SourceLoc loc, std::string code, std::string msg)
-{
+Diag makeErrorWithCode(SourceLoc loc, std::string code, std::string msg) {
     return Diag{Severity::Error, std::move(msg), loc, std::move(code)};
 }
 
@@ -161,19 +152,14 @@ Diag makeErrorWithCode(SourceLoc loc, std::string code, std::string msg)
 /// @param diag Diagnostic to render.
 /// @param os Output stream receiving the textual representation.
 /// @param sm Optional source manager for mapping file identifiers to paths.
-void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm)
-{
-    if (sm && diag.loc.file_id != 0)
-    {
+void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm) {
+    if (sm && diag.loc.file_id != 0) {
         auto path = sm->getPath(diag.loc.file_id);
-        if (!path.empty())
-        {
+        if (!path.empty()) {
             os << path;
-            if (diag.loc.line != 0)
-            {
+            if (diag.loc.line != 0) {
                 os << ':' << diag.loc.line;
-                if (diag.loc.column != 0)
-                {
+                if (diag.loc.column != 0) {
                     os << ':' << diag.loc.column;
                 }
             }
@@ -181,18 +167,15 @@ void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm)
         }
     }
     os << detail::diagSeverityToString(diag.severity);
-    if (!diag.code.empty())
-    {
+    if (!diag.code.empty()) {
         os << '[' << diag.code << ']';
     }
     os << ": " << diag.message << '\n';
 
     // Source snippet with caret marker
-    if (sm && diag.loc.file_id != 0 && diag.loc.line != 0)
-    {
+    if (sm && diag.loc.file_id != 0 && diag.loc.line != 0) {
         auto srcLine = sm->getLine(diag.loc.file_id, diag.loc.line);
-        if (!srcLine.empty())
-        {
+        if (!srcLine.empty()) {
             // Line number gutter
             std::string lineNumStr = std::to_string(diag.loc.line);
             std::string gutter(lineNumStr.size(), ' ');
@@ -200,12 +183,10 @@ void printDiag(const Diag &diag, std::ostream &os, const SourceManager *sm)
             os << ' ' << lineNumStr << " | " << srcLine << '\n';
 
             // Caret line
-            if (diag.loc.column != 0 && diag.loc.column <= srcLine.size() + 1)
-            {
+            if (diag.loc.column != 0 && diag.loc.column <= srcLine.size() + 1) {
                 os << ' ' << gutter << " | ";
                 // Preserve leading whitespace (tabs/spaces) for alignment
-                for (uint32_t i = 1; i < diag.loc.column; ++i)
-                {
+                for (uint32_t i = 1; i < diag.loc.column; ++i) {
                     if (i <= srcLine.size() && srcLine[i - 1] == '\t')
                         os << '\t';
                     else

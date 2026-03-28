@@ -29,8 +29,7 @@
 #endif
 
 // ── Test: loadSourceBuffer rejects files > 256 MB ───────────────────────────
-static void test_source_too_large()
-{
+static void test_source_too_large() {
 #if !defined(_WIN32)
     const char *path = "/tmp/viper_large_source_test.vpr";
 
@@ -68,8 +67,7 @@ static void test_source_too_large()
 #endif
 }
 
-int main()
-{
+int main() {
     test_source_too_large();
     printf("  PASS: loadSourceBuffer rejects file > 256 MB\n");
 

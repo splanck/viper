@@ -25,8 +25,7 @@
 
 #include "il/core/Linkage.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
@@ -34,10 +33,8 @@ using namespace runtime;
 // Global Variable Declaration Lowering
 //=============================================================================
 
-std::string Lowerer::getModvarAddrHelper(Type::Kind kind)
-{
-    switch (kind)
-    {
+std::string Lowerer::getModvarAddrHelper(Type::Kind kind) {
+    switch (kind) {
         case Type::Kind::I64:
             return "rt_modvar_addr_i64";
         case Type::Kind::F64:
@@ -52,8 +49,7 @@ std::string Lowerer::getModvarAddrHelper(Type::Kind kind)
     }
 }
 
-Lowerer::Value Lowerer::getGlobalVarAddr(const std::string &name, TypeRef type)
-{
+Lowerer::Value Lowerer::getGlobalVarAddr(const std::string &name, TypeRef type) {
     std::string globalName = getStringGlobal(name);
     Value nameStr = emitConstStr(globalName);
 
@@ -65,8 +61,7 @@ Lowerer::Value Lowerer::getGlobalVarAddr(const std::string &name, TypeRef type)
     return addr;
 }
 
-void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
-{
+void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     // Use qualified name for globals inside namespaces
@@ -74,53 +69,45 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
 
     // Resolve the type
     TypeRef type = decl.type ? sema_.resolveType(decl.type.get()) : nullptr;
-    if (!type && decl.initializer)
-    {
+    if (!type && decl.initializer) {
         type = sema_.typeOf(decl.initializer.get());
     }
 
     // Try to inline literal initializers as constants (only for final declarations)
     // Mutable variables must use runtime storage even with literal initializers
-    if (decl.isFinal && decl.initializer)
-    {
+    if (decl.isFinal && decl.initializer) {
         Expr *init = decl.initializer.get();
         bool inlinedAsConstant = false;
 
         // Handle integer literals
-        if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
-        {
+        if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init)) {
             globalConstants_[qualifiedName] = Value::constInt(intLit->value);
             inlinedAsConstant = true;
         }
         // Handle number (float) literals
-        else if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
-        {
+        else if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init)) {
             globalConstants_[qualifiedName] = Value::constFloat(numLit->value);
             inlinedAsConstant = true;
         }
         // Handle boolean literals
-        else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
-        {
+        else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init)) {
             globalConstants_[qualifiedName] = Value::constBool(boolLit->value);
             inlinedAsConstant = true;
         }
         // Handle string literals
-        else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init))
-        {
+        else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init)) {
             std::string label = stringTable_.intern(strLit->value);
             globalConstants_[qualifiedName] = Value::constStr(label);
             inlinedAsConstant = true;
         }
         // Fold constant-expression initializers (e.g. `0 - 2147483647`, `-1`,
         // `2 * 1024`) that are not direct literals (BUG-FE-011).
-        else if (auto folded = tryFoldNumericConstant(init))
-        {
+        else if (auto folded = tryFoldNumericConstant(init)) {
             globalConstants_[qualifiedName] = *folded;
             inlinedAsConstant = true;
         }
 
-        if (inlinedAsConstant)
-        {
+        if (inlinedAsConstant) {
             return;
         }
 
@@ -131,33 +118,27 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
     }
 
     // For mutable variables, register for runtime storage
-    if (!decl.isFinal && type)
-    {
+    if (!decl.isFinal && type) {
         globalVariables_[qualifiedName] = type;
 
         // Store literal initializer values for module init
-        if (decl.initializer)
-        {
+        if (decl.initializer) {
             Expr *init = decl.initializer.get();
 
             // Handle integer literals
-            if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
-            {
+            if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init)) {
                 globalInitializers_[qualifiedName] = Value::constInt(intLit->value);
             }
             // Handle number (float) literals
-            else if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init))
-            {
+            else if (auto *numLit = dynamic_cast<NumberLiteralExpr *>(init)) {
                 globalInitializers_[qualifiedName] = Value::constFloat(numLit->value);
             }
             // Handle boolean literals
-            else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
-            {
+            else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init)) {
                 globalInitializers_[qualifiedName] = Value::constBool(boolLit->value);
             }
             // Handle string literals
-            else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init))
-            {
+            else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init)) {
                 std::string label = stringTable_.intern(strLit->value);
                 globalInitializers_[qualifiedName] = Value::constStr(label);
             }
@@ -169,8 +150,7 @@ void Lowerer::lowerGlobalVarDecl(GlobalVarDecl &decl)
 // Function Declaration Lowering
 //=============================================================================
 
-void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
-{
+void Lowerer::lowerFunctionDecl(FunctionDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     // Skip generic functions - they will be instantiated when called
@@ -179,8 +159,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 
     // Determine return type from sema's resolved declaration signature.
     TypeRef funcType = sema_.getFunctionType(&decl);
-    if (!funcType)
-    {
+    if (!funcType) {
         std::vector<TypeRef> fallbackParamTypes;
         fallbackParamTypes.reserve(decl.params.size());
         for (const auto &param : decl.params)
@@ -201,8 +180,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     const auto cachedParamTypes = funcType && funcType->kind == TypeKindSem::Function
                                       ? funcType->paramTypes()
                                       : std::vector<TypeRef>{};
-    for (size_t i = 0; i < decl.params.size(); ++i)
-    {
+    for (size_t i = 0; i < decl.params.size(); ++i) {
         TypeRef paramType =
             i < cachedParamTypes.size()
                 ? cachedParamTypes[i]
@@ -220,10 +198,8 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     TypeRef declaredReturnType =
         decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
 
-    if (decl.isAsync)
-    {
-        auto resetLoweringState = [&]()
-        {
+    if (decl.isAsync) {
+        auto resetLoweringState = [&]() {
             blockMgr_.reset(nullptr);
             locals_.clear();
             slots_.clear();
@@ -235,13 +211,11 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
             currentReturnType_ = nullptr;
         };
 
-        auto emitAsyncImplicitReturn = [&](TypeRef payloadType)
-        {
+        auto emitAsyncImplicitReturn = [&](TypeRef payloadType) {
             if (isTerminated())
                 return;
 
-            if (!payloadType || payloadType->kind == TypeKindSem::Void)
-            {
+            if (!payloadType || payloadType->kind == TypeKindSem::Void) {
                 for (const auto &owned : asyncOwnedValues_)
                     emitManagedRelease(owned, /*isString=*/false);
                 asyncOwnedValues_.clear();
@@ -252,8 +226,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 
             Type payloadIlType = mapType(payloadType);
             Value defaultValue;
-            switch (payloadIlType.kind)
-            {
+            switch (payloadIlType.kind) {
                 case Type::Kind::I1:
                     defaultValue = Value::constBool(false);
                     break;
@@ -311,8 +284,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
         const auto &workerParams = currentFunc_->blocks[workerEntryIdx].params;
         Value envPtr = Value::temp(workerParams[0].id);
 
-        for (size_t i = 0; i < decl.params.size(); ++i)
-        {
+        for (size_t i = 0; i < decl.params.size(); ++i) {
             TypeRef paramType =
                 i < cachedParamTypes.size()
                     ? cachedParamTypes[i]
@@ -363,8 +335,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
         Value wrapperEnv =
             emitCallRet(Type(Type::Kind::Ptr), "rt_obj_new_i64", {Value::constInt(0), envSize});
 
-        for (size_t i = 0; i < decl.params.size() && i < wrapperParams.size(); ++i)
-        {
+        for (size_t i = 0; i < decl.params.size() && i < wrapperParams.size(); ++i) {
             TypeRef paramType =
                 i < cachedParamTypes.size()
                     ? cachedParamTypes[i]
@@ -375,12 +346,9 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 
             Value storedValue = paramValue;
             if (paramType &&
-                (paramType->kind == TypeKindSem::Value || ilParamType.kind != Type::Kind::Ptr))
-            {
+                (paramType->kind == TypeKindSem::Value || ilParamType.kind != Type::Kind::Ptr)) {
                 storedValue = emitBoxValue(paramValue, ilParamType, paramType);
-            }
-            else
-            {
+            } else {
                 emitCall("rt_obj_retain_maybe", {storedValue});
             }
 
@@ -409,8 +377,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
         currentFunc_->linkage = il::core::Linkage::Export;
 
     // Foreign (import) functions have no body -- just a declaration.
-    if (decl.isForeign)
-    {
+    if (decl.isForeign) {
         currentFunc_ = nullptr;
         currentReturnType_ = nullptr;
         return;
@@ -431,8 +398,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     // Define parameters using slot-based storage for cross-block SSA correctness
     // This ensures parameters are accessible in all basic blocks (if, while, guard, etc.)
     const auto &blockParams = currentFunc_->blocks[entryIdx].params;
-    for (size_t i = 0; i < decl.params.size() && i < blockParams.size(); ++i)
-    {
+    for (size_t i = 0; i < decl.params.size() && i < blockParams.size(); ++i) {
         TypeRef paramType =
             i < cachedParamTypes.size()
                 ? cachedParamTypes[i]
@@ -449,16 +415,13 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     // Emit interface itable init call at start of start() (before any user code)
     // The __zia_iface_init function is emitted later by emitItableInit(); if no
     // interfaces have implementors, it emits a trivial ret-void stub.
-    if (decl.name == "start" && !interfaceTypes_.empty())
-    {
+    if (decl.name == "start" && !interfaceTypes_.empty()) {
         emitCall("__zia_iface_init", {});
     }
 
     // Emit global variable initializations at start of start() (Zia entry point)
-    if (decl.name == "start" && !globalInitializers_.empty())
-    {
-        for (const auto &[name, initValue] : globalInitializers_)
-        {
+    if (decl.name == "start" && !globalInitializers_.empty()) {
+        for (const auto &[name, initValue] : globalInitializers_) {
             auto typeIt = globalVariables_.find(name);
             if (typeIt == globalVariables_.end())
                 continue;
@@ -471,8 +434,7 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
 
             // Handle string values specially - need to emit conststr to get address
             Value valueToStore = initValue;
-            if (ilType.kind == Type::Kind::Str && initValue.kind == Value::Kind::ConstStr)
-            {
+            if (ilType.kind == Type::Kind::Str && initValue.kind == Value::Kind::ConstStr) {
                 valueToStore = emitConstStr(initValue.str);
             }
 
@@ -482,24 +444,18 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     }
 
     // Lower function body
-    if (decl.body)
-    {
+    if (decl.body) {
         lowerStmt(decl.body.get());
     }
 
     // Add implicit return if needed (Bug #5 fix: use correct default value for each type)
-    if (!isTerminated())
-    {
-        if (ilReturnType.kind == Type::Kind::Void)
-        {
+    if (!isTerminated()) {
+        if (ilReturnType.kind == Type::Kind::Void) {
             emitRetVoid();
-        }
-        else
-        {
+        } else {
             // Emit correct default value based on return type
             Value defaultValue;
-            switch (ilReturnType.kind)
-            {
+            switch (ilReturnType.kind) {
                 case Type::Kind::I1:
                     defaultValue = Value::constBool(false);
                     break;
@@ -529,8 +485,8 @@ void Lowerer::lowerFunctionDecl(FunctionDecl &decl)
     currentReturnType_ = nullptr;
 }
 
-void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName, FunctionDecl *decl)
-{
+void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName,
+                                                FunctionDecl *decl) {
     // Push substitution context so type parameters resolve correctly
     bool pushedContext = sema_.pushSubstitutionContext(mangledName);
 
@@ -543,8 +499,7 @@ void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName, 
     // Build parameter list
     std::vector<il::core::Param> params;
     params.reserve(decl->params.size());
-    for (const auto &param : decl->params)
-    {
+    for (const auto &param : decl->params) {
         TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
         params.push_back({param.name, mapType(paramType)});
     }
@@ -568,8 +523,7 @@ void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName, 
 
     // Define parameters using slot-based storage
     const auto &blockParams = currentFunc_->blocks[entryIdx].params;
-    for (size_t i = 0; i < decl->params.size() && i < blockParams.size(); ++i)
-    {
+    for (size_t i = 0; i < decl->params.size() && i < blockParams.size(); ++i) {
         TypeRef paramType =
             decl->params[i].type ? sema_.resolveType(decl->params[i].type.get()) : types::unknown();
         Type ilParamType = mapType(paramType);
@@ -581,23 +535,17 @@ void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName, 
     }
 
     // Lower function body
-    if (decl->body)
-    {
+    if (decl->body) {
         lowerStmt(decl->body.get());
     }
 
     // Add implicit return if needed
-    if (!isTerminated())
-    {
-        if (ilReturnType.kind == Type::Kind::Void)
-        {
+    if (!isTerminated()) {
+        if (ilReturnType.kind == Type::Kind::Void) {
             emitRetVoid();
-        }
-        else
-        {
+        } else {
             Value defaultValue;
-            switch (ilReturnType.kind)
-            {
+            switch (ilReturnType.kind) {
                 case Type::Kind::I1:
                     defaultValue = Value::constBool(false);
                     break;
@@ -624,8 +572,7 @@ void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName, 
     }
 
     // Pop substitution context
-    if (pushedContext)
-    {
+    if (pushedContext) {
         sema_.popTypeParams();
     }
 
@@ -637,8 +584,7 @@ void Lowerer::lowerGenericFunctionInstantiation(const std::string &mangledName, 
 // Value and Entity Declaration Lowering
 //=============================================================================
 
-void Lowerer::lowerValueDecl(ValueDecl &decl)
-{
+void Lowerer::lowerValueDecl(ValueDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     // Skip uninstantiated generic types - they're lowered during instantiation
@@ -648,22 +594,19 @@ void Lowerer::lowerValueDecl(ValueDecl &decl)
     std::string qualifiedName = qualifyName(decl.name);
 
     // BUG-FE-006 fix: Layout may already be registered by the pre-pass.
-    if (valueTypes_.find(qualifiedName) == valueTypes_.end())
-    {
+    if (valueTypes_.find(qualifiedName) == valueTypes_.end()) {
         registerValueLayout(decl);
     }
 
     const ValueTypeInfo &storedInfo = valueTypes_[qualifiedName];
 
     // Lower all methods using qualified type name
-    for (auto *method : storedInfo.methods)
-    {
+    for (auto *method : storedInfo.methods) {
         lowerMethodDecl(*method, qualifiedName, false);
     }
 }
 
-void Lowerer::lowerEntityDecl(EntityDecl &decl)
-{
+void Lowerer::lowerEntityDecl(EntityDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     // Skip uninstantiated generic types - they're lowered during instantiation
@@ -675,29 +618,24 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl)
     // BUG-FE-006 fix: Layout may already be registered by the pre-pass.
     // If not registered yet (e.g., in pending generic instantiation), do it now.
     auto it = entityTypes_.find(qualifiedName);
-    if (it == entityTypes_.end())
-    {
+    if (it == entityTypes_.end()) {
         registerEntityLayout(decl);
     }
 
     EntityTypeInfo &storedInfo = entityTypes_[qualifiedName];
 
     // Register module-level globals for static fields
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Field)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Field) {
             auto *field = static_cast<FieldDecl *>(member.get());
-            if (field->isStatic)
-            {
+            if (field->isStatic) {
                 TypeRef fieldType =
                     field->type ? sema_.resolveType(field->type.get()) : types::unknown();
                 std::string globalName = qualifiedName + "." + field->name;
                 globalVariables_[globalName] = fieldType;
 
                 // Store literal initializer if present
-                if (field->initializer)
-                {
+                if (field->initializer) {
                     Expr *init = field->initializer.get();
                     if (auto *intLit = dynamic_cast<IntLiteralExpr *>(init))
                         globalInitializers_[globalName] = Value::constInt(intLit->value);
@@ -713,26 +651,21 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl)
     }
 
     // Lower all methods (so they are defined before vtable references them)
-    for (auto *method : storedInfo.methods)
-    {
+    for (auto *method : storedInfo.methods) {
         lowerMethodDecl(*method, qualifiedName, true);
     }
 
     // Lower property declarations as synthesized get_/set_ methods
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Property)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Property) {
             auto *prop = static_cast<PropertyDecl *>(member.get());
             lowerPropertyDecl(*prop, qualifiedName, true);
         }
     }
 
     // Lower destructor declaration (at most one per entity)
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Destructor)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Destructor) {
             auto *dtor = static_cast<DestructorDecl *>(member.get());
             lowerDestructorDecl(*dtor, qualifiedName);
             break; // at most one destructor
@@ -740,14 +673,12 @@ void Lowerer::lowerEntityDecl(EntityDecl &decl)
     }
 
     // Emit vtable global (array of function pointers)
-    if (!storedInfo.vtable.empty())
-    {
+    if (!storedInfo.vtable.empty()) {
         emitVtable(storedInfo);
     }
 }
 
-void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl)
-{
+void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     // Use qualified name for interfaces inside namespaces
@@ -759,10 +690,8 @@ void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl)
     info.ifaceId = nextIfaceId_++;
 
     size_t slotIdx = 0;
-    for (auto &member : decl.members)
-    {
-        if (member->kind == DeclKind::Method)
-        {
+    for (auto &member : decl.members) {
+        if (member->kind == DeclKind::Method) {
             auto *method = static_cast<MethodDecl *>(member.get());
             info.methodMap[method->name] = method;
             info.methods.push_back(method);
@@ -780,21 +709,17 @@ void Lowerer::lowerInterfaceDecl(InterfaceDecl &decl)
 // Method Declaration Lowering
 //=============================================================================
 
-void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isEntity)
-{
+void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, bool isEntity) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     // Find the type info
-    if (isEntity)
-    {
+    if (isEntity) {
         auto it = entityTypes_.find(typeName);
         if (it == entityTypes_.end())
             return;
         currentEntityType_ = &it->second;
         currentValueType_ = nullptr;
-    }
-    else
-    {
+    } else {
         const ValueTypeInfo *valueInfo = getOrCreateValueTypeInfo(typeName);
         if (!valueInfo)
             return;
@@ -808,17 +733,13 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
         methodType = sema_.getMethodType(typeName, decl.name);
     std::vector<TypeRef> cachedParamTypes;
     TypeRef returnType = types::voidType();
-    if (methodType && methodType->kind == TypeKindSem::Function)
-    {
+    if (methodType && methodType->kind == TypeKindSem::Function) {
         cachedParamTypes = methodType->paramTypes();
         returnType = methodType->returnType();
-    }
-    else
-    {
+    } else {
         // Fallback to direct resolution for non-generic types
         returnType = decl.returnType ? sema_.resolveType(decl.returnType.get()) : types::voidType();
-        for (const auto &param : decl.params)
-        {
+        for (const auto &param : decl.params) {
             TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
             cachedParamTypes.push_back(paramType);
         }
@@ -828,13 +749,11 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
     // Build parameter list: self (ptr) + declared params (unless static)
     std::vector<il::core::Param> params;
     params.reserve(decl.params.size() + (decl.isStatic ? 0 : 1));
-    if (!decl.isStatic)
-    {
+    if (!decl.isStatic) {
         params.push_back({"self", Type(Type::Kind::Ptr)});
     }
 
-    for (size_t i = 0; i < decl.params.size(); ++i)
-    {
+    for (size_t i = 0; i < decl.params.size(); ++i) {
         // Use cached param type if available, otherwise resolve from AST
         TypeRef paramType = (i < cachedParamTypes.size()) ? cachedParamTypes[i] : types::unknown();
         params.push_back({decl.params[i].name, mapType(paramType)});
@@ -862,8 +781,7 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
 
     // Define parameters using slot-based storage for cross-block SSA correctness
     const auto &blockParams = currentFunc_->blocks[entryIdx].params;
-    if (!decl.isStatic && !blockParams.empty())
-    {
+    if (!decl.isStatic && !blockParams.empty()) {
         // 'self' is first block param - store in slot
         createSlot("self", Type(Type::Kind::Ptr));
         storeToSlot("self", Value::temp(blockParams[0].id), Type(Type::Kind::Ptr));
@@ -871,11 +789,9 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
 
     // Define other parameters using slot-based storage
     size_t paramOffset = decl.isStatic ? 0 : 1;
-    for (size_t i = 0; i < decl.params.size(); ++i)
-    {
+    for (size_t i = 0; i < decl.params.size(); ++i) {
         // Block param i+offset corresponds to method param i (after self if not static)
-        if (i + paramOffset < blockParams.size())
-        {
+        if (i + paramOffset < blockParams.size()) {
             // Use cached param type if available
             TypeRef paramType =
                 (i < cachedParamTypes.size()) ? cachedParamTypes[i] : types::unknown();
@@ -890,24 +806,18 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
     }
 
     // Lower method body
-    if (decl.body)
-    {
+    if (decl.body) {
         lowerStmt(decl.body.get());
     }
 
     // Add implicit return if needed (Bug #5 fix: use correct default value for each type)
-    if (!isTerminated())
-    {
-        if (ilReturnType.kind == Type::Kind::Void)
-        {
+    if (!isTerminated()) {
+        if (ilReturnType.kind == Type::Kind::Void) {
             emitRetVoid();
-        }
-        else
-        {
+        } else {
             // Emit correct default value based on return type
             Value defaultValue;
-            switch (ilReturnType.kind)
-            {
+            switch (ilReturnType.kind) {
                 case Type::Kind::I1:
                     defaultValue = Value::constBool(false);
                     break;
@@ -943,16 +853,14 @@ void Lowerer::lowerMethodDecl(MethodDecl &decl, const std::string &typeName, boo
 // Property Declaration Lowering
 //=============================================================================
 
-void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName, bool isEntity)
-{
+void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName, bool isEntity) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     TypeRef propType = decl.type ? sema_.resolveType(decl.type.get()) : types::unknown();
     Type ilPropType = mapType(propType);
 
     // Set current entity/value type context
-    if (isEntity)
-    {
+    if (isEntity) {
         auto it = entityTypes_.find(typeName);
         if (it == entityTypes_.end())
             return;
@@ -981,8 +889,7 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
         setBlock(entryIdx);
 
         const auto &blockParams = currentFunc_->blocks[entryIdx].params;
-        if (!decl.isStatic && !blockParams.empty())
-        {
+        if (!decl.isStatic && !blockParams.empty()) {
             createSlot("self", Type(Type::Kind::Ptr));
             storeToSlot("self", Value::temp(blockParams[0].id), Type(Type::Kind::Ptr));
         }
@@ -992,11 +899,9 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
             lowerStmt(decl.getterBody.get());
 
         // Add implicit return if needed
-        if (!isTerminated())
-        {
+        if (!isTerminated()) {
             Value defaultValue;
-            switch (ilPropType.kind)
-            {
+            switch (ilPropType.kind) {
                 case Type::Kind::I1:
                     defaultValue = Value::constBool(false);
                     break;
@@ -1027,8 +932,7 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
     }
 
     // --- Synthesize setter: set_PropertyName(self: Ptr, value: Type) -> Void ---
-    if (decl.setterBody)
-    {
+    if (decl.setterBody) {
         std::string setterName = typeName + ".set_" + decl.name;
 
         std::vector<il::core::Param> params;
@@ -1050,14 +954,12 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
 
         const auto &blockParams = currentFunc_->blocks[entryIdx].params;
         size_t paramIdx = 0;
-        if (!decl.isStatic && paramIdx < blockParams.size())
-        {
+        if (!decl.isStatic && paramIdx < blockParams.size()) {
             createSlot("self", Type(Type::Kind::Ptr));
             storeToSlot("self", Value::temp(blockParams[paramIdx].id), Type(Type::Kind::Ptr));
             ++paramIdx;
         }
-        if (paramIdx < blockParams.size())
-        {
+        if (paramIdx < blockParams.size()) {
             createSlot(decl.setterParam, ilPropType);
             storeToSlot(decl.setterParam, Value::temp(blockParams[paramIdx].id), ilPropType);
             localTypes_[decl.setterParam] = propType;
@@ -1067,8 +969,7 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
         lowerStmt(decl.setterBody.get());
 
         // Add implicit return void
-        if (!isTerminated())
-        {
+        if (!isTerminated()) {
             emitRetVoid();
         }
 
@@ -1085,8 +986,7 @@ void Lowerer::lowerPropertyDecl(PropertyDecl &decl, const std::string &typeName,
 // Destructor Declaration Lowering
 //=============================================================================
 
-void Lowerer::lowerDestructorDecl(DestructorDecl &decl, const std::string &typeName)
-{
+void Lowerer::lowerDestructorDecl(DestructorDecl &decl, const std::string &typeName) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     auto it = entityTypes_.find(typeName);
@@ -1114,8 +1014,7 @@ void Lowerer::lowerDestructorDecl(DestructorDecl &decl, const std::string &typeN
     setBlock(entryIdx);
 
     const auto &blockParams = currentFunc_->blocks[entryIdx].params;
-    if (!blockParams.empty())
-    {
+    if (!blockParams.empty()) {
         createSlot("self", Type(Type::Kind::Ptr));
         storeToSlot("self", Value::temp(blockParams[0].id), Type(Type::Kind::Ptr));
     }
@@ -1125,22 +1024,17 @@ void Lowerer::lowerDestructorDecl(DestructorDecl &decl, const std::string &typeN
         lowerStmt(decl.body.get());
 
     // Release reference-typed fields (Str and Ptr)
-    if (!isTerminated())
-    {
+    if (!isTerminated()) {
         Value selfPtr = loadFromSlot("self", Type(Type::Kind::Ptr));
         const EntityTypeInfo &info = *currentEntityType_;
 
-        for (const auto &field : info.fields)
-        {
+        for (const auto &field : info.fields) {
             Type ilFieldType = mapType(field.type);
-            if (ilFieldType.kind == Type::Kind::Str)
-            {
+            if (ilFieldType.kind == Type::Kind::Str) {
                 Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field.offset));
                 Value fieldValue = emitLoad(fieldAddr, Type(Type::Kind::Str));
                 emitManagedRelease(fieldValue, /*isString=*/true);
-            }
-            else if (ilFieldType.kind == Type::Kind::Ptr)
-            {
+            } else if (ilFieldType.kind == Type::Kind::Ptr) {
                 Value fieldAddr = emitGEP(selfPtr, static_cast<int64_t>(field.offset));
                 Value fieldValue = emitLoad(fieldAddr, Type(Type::Kind::Ptr));
                 emitManagedRelease(fieldValue, /*isString=*/false);

@@ -40,8 +40,7 @@ extern void *rt_pixels_new(int64_t width, int64_t height);
 // Render target allocation
 //=============================================================================
 
-static vgfx3d_rendertarget_t *rt_alloc(int32_t w, int32_t h)
-{
+static vgfx3d_rendertarget_t *rt_alloc(int32_t w, int32_t h) {
     vgfx3d_rendertarget_t *rt = (vgfx3d_rendertarget_t *)calloc(1, sizeof(vgfx3d_rendertarget_t));
     if (!rt)
         return NULL;
@@ -56,8 +55,7 @@ static vgfx3d_rendertarget_t *rt_alloc(int32_t w, int32_t h)
     rt->color_buf = (uint8_t *)malloc(color_size);
     rt->depth_buf = (float *)malloc(depth_size);
 
-    if (!rt->color_buf || !rt->depth_buf)
-    {
+    if (!rt->color_buf || !rt->depth_buf) {
         free(rt->color_buf);
         free(rt->depth_buf);
         free(rt);
@@ -73,8 +71,7 @@ static vgfx3d_rendertarget_t *rt_alloc(int32_t w, int32_t h)
     return rt;
 }
 
-static void rt_free(vgfx3d_rendertarget_t *rt)
-{
+static void rt_free(vgfx3d_rendertarget_t *rt) {
     if (!rt)
         return;
     free(rt->color_buf);
@@ -86,28 +83,23 @@ static void rt_free(vgfx3d_rendertarget_t *rt)
 // Runtime type
 //=============================================================================
 
-static void rt_rendertarget3d_finalize(void *obj)
-{
+static void rt_rendertarget3d_finalize(void *obj) {
     rt_rendertarget3d *rtd = (rt_rendertarget3d *)obj;
-    if (rtd->target)
-    {
+    if (rtd->target) {
         rt_free(rtd->target);
         rtd->target = NULL;
     }
 }
 
-void *rt_rendertarget3d_new(int64_t width, int64_t height)
-{
-    if (width <= 0 || height <= 0 || width > 8192 || height > 8192)
-    {
+void *rt_rendertarget3d_new(int64_t width, int64_t height) {
+    if (width <= 0 || height <= 0 || width > 8192 || height > 8192) {
         rt_trap("RenderTarget3D.New: dimensions must be 1-8192");
         return NULL;
     }
 
     rt_rendertarget3d *rtd =
         (rt_rendertarget3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_rendertarget3d));
-    if (!rtd)
-    {
+    if (!rtd) {
         rt_trap("RenderTarget3D.New: memory allocation failed");
         return NULL;
     }
@@ -117,8 +109,7 @@ void *rt_rendertarget3d_new(int64_t width, int64_t height)
     rtd->height = height;
     rtd->target = rt_alloc((int32_t)width, (int32_t)height);
 
-    if (!rtd->target)
-    {
+    if (!rtd->target) {
         rt_trap("RenderTarget3D.New: buffer allocation failed");
         return NULL;
     }
@@ -127,18 +118,15 @@ void *rt_rendertarget3d_new(int64_t width, int64_t height)
     return rtd;
 }
 
-int64_t rt_rendertarget3d_get_width(void *obj)
-{
+int64_t rt_rendertarget3d_get_width(void *obj) {
     return obj ? ((rt_rendertarget3d *)obj)->width : 0;
 }
 
-int64_t rt_rendertarget3d_get_height(void *obj)
-{
+int64_t rt_rendertarget3d_get_height(void *obj) {
     return obj ? ((rt_rendertarget3d *)obj)->height : 0;
 }
 
-void *rt_rendertarget3d_as_pixels(void *obj)
-{
+void *rt_rendertarget3d_as_pixels(void *obj) {
     if (!obj)
         return NULL;
     rt_rendertarget3d *rtd = (rt_rendertarget3d *)obj;
@@ -150,8 +138,7 @@ void *rt_rendertarget3d_as_pixels(void *obj)
         return NULL;
 
     /* Copy render target RGBA bytes → Pixels 0xRRGGBBAA uint32_t */
-    typedef struct
-    {
+    typedef struct {
         int64_t w;
         int64_t h;
         uint32_t *data;
@@ -163,10 +150,8 @@ void *rt_rendertarget3d_as_pixels(void *obj)
     int32_t h = rtd->target->height;
     int32_t stride = rtd->target->stride;
 
-    for (int32_t y = 0; y < h; y++)
-    {
-        for (int32_t x = 0; x < w; x++)
-        {
+    for (int32_t y = 0; y < h; y++) {
+        for (int32_t x = 0; x < w; x++) {
             const uint8_t *src = &rtd->target->color_buf[y * stride + x * 4];
             pv->data[y * pv->w + x] = ((uint32_t)src[0] << 24) | ((uint32_t)src[1] << 16) |
                                       ((uint32_t)src[2] << 8) | (uint32_t)src[3];
@@ -183,8 +168,7 @@ void *rt_rendertarget3d_as_pixels(void *obj)
 /// @brief Bind an offscreen render target. All subsequent Begin/DrawMesh/End
 /// calls render to the target instead of the window. The active backend
 /// (Metal, software, etc.) handles RTT natively — no backend switching needed.
-void rt_canvas3d_set_render_target(void *canvas, void *target)
-{
+void rt_canvas3d_set_render_target(void *canvas, void *target) {
     if (!canvas || !target)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;
@@ -196,8 +180,7 @@ void rt_canvas3d_set_render_target(void *canvas, void *target)
 }
 
 /// @brief Unbind the render target. Subsequent rendering goes to the window.
-void rt_canvas3d_reset_render_target(void *canvas)
-{
+void rt_canvas3d_reset_render_target(void *canvas) {
     if (!canvas)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas;

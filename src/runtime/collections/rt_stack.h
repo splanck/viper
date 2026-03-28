@@ -30,63 +30,62 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Create a new empty stack with default capacity.
-    /// @return Opaque pointer to the new Stack object.
-    void *rt_stack_new(void);
+/// @brief Create a new empty stack with default capacity.
+/// @return Opaque pointer to the new Stack object.
+void *rt_stack_new(void);
 
-    /// @brief Get the number of elements on the stack.
-    /// @param obj Opaque Stack object pointer.
-    /// @return Number of elements currently on the stack.
-    int64_t rt_stack_len(void *obj);
+/// @brief Get the number of elements on the stack.
+/// @param obj Opaque Stack object pointer.
+/// @return Number of elements currently on the stack.
+int64_t rt_stack_len(void *obj);
 
-    /// @brief Check if the stack is empty.
-    /// @param obj Opaque Stack object pointer.
-    /// @return 1 if empty, 0 otherwise.
-    int8_t rt_stack_is_empty(void *obj);
+/// @brief Check if the stack is empty.
+/// @param obj Opaque Stack object pointer.
+/// @return 1 if empty, 0 otherwise.
+int8_t rt_stack_is_empty(void *obj);
 
-    /// @brief Push an element onto the top of the stack.
-    /// @param obj Opaque Stack object pointer.
-    /// @param elem Element to push.
-    void rt_stack_push(void *obj, void *elem);
+/// @brief Push an element onto the top of the stack.
+/// @param obj Opaque Stack object pointer.
+/// @param elem Element to push.
+void rt_stack_push(void *obj, void *elem);
 
-    /// @brief Pop and return the top element from the stack.
-    /// @param obj Opaque Stack object pointer.
-    /// @return The removed element; traps if empty.
-    void *rt_stack_pop(void *obj);
+/// @brief Pop and return the top element from the stack.
+/// @param obj Opaque Stack object pointer.
+/// @return The removed element; traps if empty.
+void *rt_stack_pop(void *obj);
 
-    /// @brief Return the top element without removing it.
-    /// @param obj Opaque Stack object pointer.
-    /// @return The top element; traps if empty.
-    void *rt_stack_peek(void *obj);
+/// @brief Return the top element without removing it.
+/// @param obj Opaque Stack object pointer.
+/// @return The top element; traps if empty.
+void *rt_stack_peek(void *obj);
 
-    /// @brief Remove all elements from the stack.
-    /// @param obj Opaque Stack object pointer.
-    void rt_stack_clear(void *obj);
+/// @brief Remove all elements from the stack.
+/// @param obj Opaque Stack object pointer.
+void rt_stack_clear(void *obj);
 
-    /// @brief Check if the stack contains a given element (pointer equality).
-    /// @param obj Opaque Stack object pointer.
-    /// @param elem Element to search for.
-    /// @return 1 if found, 0 otherwise.
-    int8_t rt_stack_has(void *obj, void *elem);
+/// @brief Check if the stack contains a given element (pointer equality).
+/// @param obj Opaque Stack object pointer.
+/// @param elem Element to search for.
+/// @return 1 if found, 0 otherwise.
+int8_t rt_stack_has(void *obj, void *elem);
 
-    /// @brief Convert the stack to a List (bottom-to-top order).
-    /// @param obj Opaque Stack object pointer.
-    /// @return New List containing all elements.
-    void *rt_stack_to_list(void *obj);
+/// @brief Convert the stack to a List (bottom-to-top order).
+/// @param obj Opaque Stack object pointer.
+/// @return New List containing all elements.
+void *rt_stack_to_list(void *obj);
 
-    /// @brief Pop the top element, or return NULL if empty (no trap).
-    /// @param obj Opaque Stack object pointer.
-    /// @return The removed element, or NULL if empty.
-    void *rt_stack_try_pop(void *obj);
+/// @brief Pop the top element, or return NULL if empty (no trap).
+/// @param obj Opaque Stack object pointer.
+/// @return The removed element, or NULL if empty.
+void *rt_stack_try_pop(void *obj);
 
-    /// @brief Create a shallow copy of the stack.
-    /// @param obj Source Stack pointer.
-    /// @return New stack with same elements in same order.
-    void *rt_stack_clone(void *obj);
+/// @brief Create a shallow copy of the stack.
+/// @param obj Source Stack pointer.
+/// @return New stack with same elements in same order.
+void *rt_stack_clone(void *obj);
 
 #ifdef __cplusplus
 }

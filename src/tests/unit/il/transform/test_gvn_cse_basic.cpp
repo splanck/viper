@@ -30,18 +30,14 @@
 #include "tests/TestHarness.hpp"
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-il::transform::AnalysisRegistry makeRegistry()
-{
+il::transform::AnalysisRegistry makeRegistry() {
     il::transform::AnalysisRegistry registry;
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fn) { return il::transform::buildCFG(mod, fn); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fn)
-        {
+        "dominators", [](Module &mod, Function &fn) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fn);
         });
@@ -50,8 +46,7 @@ il::transform::AnalysisRegistry makeRegistry()
     return registry;
 }
 
-void runGVN(Module &M, Function &F)
-{
+void runGVN(Module &M, Function &F) {
     il::transform::AnalysisRegistry registry = makeRegistry();
     il::transform::AnalysisManager manager(M, registry);
     il::transform::GVN gvn;
@@ -60,8 +55,7 @@ void runGVN(Module &M, Function &F)
 
 } // namespace
 
-TEST(GVNCSE, EarlyCSE_WithinBlock_Commutative)
-{
+TEST(GVNCSE, EarlyCSE_WithinBlock_Commutative) {
     Module M;
     Function F;
     F.name = "cse_block";
@@ -114,8 +108,7 @@ TEST(GVNCSE, EarlyCSE_WithinBlock_Commutative)
     EXPECT_EQ(finalRet.operands[0].id, keptId);
 }
 
-TEST(GVNCSE, GVN_CommutativeAcrossBlocks)
-{
+TEST(GVNCSE, GVN_CommutativeAcrossBlocks) {
     Module M;
     Function F;
     F.name = "gvn_dom";
@@ -178,8 +171,7 @@ TEST(GVNCSE, GVN_CommutativeAcrossBlocks)
     EXPECT_EQ(retInstr.operands[0].id, *entryBlock.instructions[0].result);
 }
 
-TEST(GVNCSE, GVN_LoadsRespectBasicAA_NoClobber)
-{
+TEST(GVNCSE, GVN_LoadsRespectBasicAA_NoClobber) {
     Module M;
     Function F;
     F.name = "gvn_loads";
@@ -237,8 +229,7 @@ TEST(GVNCSE, GVN_LoadsRespectBasicAA_NoClobber)
     EXPECT_EQ(retInstr.operands[0].id, *B.instructions[2].result);
 }
 
-TEST(GVNCSE, GVN_LoadsClobberedByStore)
-{
+TEST(GVNCSE, GVN_LoadsClobberedByStore) {
     Module M;
     Function F;
     F.name = "gvn_loads_clobber";
@@ -302,8 +293,7 @@ TEST(GVNCSE, GVN_LoadsClobberedByStore)
     EXPECT_EQ(retInstr.operands[0].id, *B.instructions[4].result);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

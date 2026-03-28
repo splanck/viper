@@ -21,8 +21,7 @@
 #include "tui/widgets/label.hpp"
 #include "tui/render/text.hpp"
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 
 /// @brief Construct a label with static text and a borrowed theme.
 /// @details Stores the provided string by value and keeps a reference to the
@@ -34,8 +33,7 @@ Label::Label(std::string text, const style::Theme &theme) : text_(std::move(text
 /// @details Uses the renderText utility to paint the text, clipping to the
 ///          widget rectangle.  Characters beyond the available width are truncated
 ///          so the widget never wraps implicitly.
-void Label::paint(render::ScreenBuffer &sb)
-{
+void Label::paint(render::ScreenBuffer &sb) {
     const auto &st = theme_.style(style::Role::Normal);
     render::renderText(sb, rect_.y, rect_.x, rect_.w, text_, st);
 }

@@ -30,11 +30,9 @@ static int tests_run = 0;
 static int tests_failed = 0;
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+        if (!(cond)) {                                                                             \
             tests_failed++;                                                                        \
             fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                        \
         }                                                                                          \
@@ -44,8 +42,7 @@ static int tests_failed = 0;
 // Helpers
 // ---------------------------------------------------------------------------
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
@@ -54,15 +51,13 @@ static rt_string make_str(const char *s)
 // Validates that the fix did not break correct allocation and use.
 // ---------------------------------------------------------------------------
 
-static void test_bloomfilter_new_returns_non_null(void)
-{
+static void test_bloomfilter_new_returns_non_null(void) {
     void *bf = rt_bloomfilter_new(100, 0.01);
     ASSERT(bf != NULL);
     ASSERT(rt_bloomfilter_count(bf) == 0);
 }
 
-static void test_bloomfilter_add_and_query(void)
-{
+static void test_bloomfilter_add_and_query(void) {
     void *bf = rt_bloomfilter_new(50, 0.05);
     ASSERT(bf != NULL);
 
@@ -81,8 +76,7 @@ static void test_bloomfilter_add_and_query(void)
     (void)rt_bloomfilter_might_contain(bf, absent);
 }
 
-static void test_bloomfilter_clear_resets_count(void)
-{
+static void test_bloomfilter_clear_resets_count(void) {
     void *bf = rt_bloomfilter_new(20, 0.01);
     ASSERT(bf != NULL);
 
@@ -95,8 +89,7 @@ static void test_bloomfilter_clear_resets_count(void)
     ASSERT(rt_bloomfilter_might_contain(bf, s) == 0);
 }
 
-static void test_bloomfilter_edge_params_clamped(void)
-{
+static void test_bloomfilter_edge_params_clamped(void) {
     // expected_items < 1 is clamped to 1; fpr out-of-range is clamped.
     void *bf1 = rt_bloomfilter_new(0, 0.01);
     ASSERT(bf1 != NULL);
@@ -112,16 +105,14 @@ static void test_bloomfilter_edge_params_clamped(void)
 // R-10: rt_defaultmap_new / dm_resize normal-path tests
 // ---------------------------------------------------------------------------
 
-static void test_defaultmap_new_returns_non_null(void)
-{
+static void test_defaultmap_new_returns_non_null(void) {
     rt_string def = make_str("default");
     void *m = rt_defaultmap_new(def);
     ASSERT(m != NULL);
     ASSERT(rt_defaultmap_len(m) == 0);
 }
 
-static void test_defaultmap_get_returns_default_for_missing_key(void)
-{
+static void test_defaultmap_get_returns_default_for_missing_key(void) {
     rt_string def = make_str("DEFAULT");
     void *m = rt_defaultmap_new(def);
     ASSERT(m != NULL);
@@ -132,8 +123,7 @@ static void test_defaultmap_get_returns_default_for_missing_key(void)
     ASSERT(got == (void *)def);
 }
 
-static void test_defaultmap_set_and_get(void)
-{
+static void test_defaultmap_set_and_get(void) {
     rt_string def = make_str("def");
     void *m = rt_defaultmap_new(def);
     ASSERT(m != NULL);
@@ -149,8 +139,7 @@ static void test_defaultmap_set_and_get(void)
     ASSERT(got == (void *)v);
 }
 
-static void test_defaultmap_resize_via_many_inserts(void)
-{
+static void test_defaultmap_resize_via_many_inserts(void) {
     // Insert more than 12 entries (75% of initial capacity 16) to trigger dm_resize.
     rt_string def = make_str("0");
     void *m = rt_defaultmap_new(def);
@@ -159,8 +148,7 @@ static void test_defaultmap_resize_via_many_inserts(void)
     char key_buf[16];
     char val_buf[16];
     int count = 20;
-    for (int i = 0; i < count; i++)
-    {
+    for (int i = 0; i < count; i++) {
         snprintf(key_buf, sizeof(key_buf), "k%d", i);
         snprintf(val_buf, sizeof(val_buf), "v%d", i);
         rt_string k = make_str(key_buf);
@@ -177,8 +165,7 @@ static void test_defaultmap_resize_via_many_inserts(void)
     ASSERT(rt_defaultmap_has(m, k19) == 1);
 }
 
-static void test_defaultmap_remove(void)
-{
+static void test_defaultmap_remove(void) {
     rt_string def = make_str("def");
     void *m = rt_defaultmap_new(def);
     ASSERT(m != NULL);
@@ -198,15 +185,13 @@ static void test_defaultmap_remove(void)
 // R-01: rt_weak_store / rt_weak_load null-check tests
 // ---------------------------------------------------------------------------
 
-static void test_weak_load_null_addr_returns_null(void)
-{
+static void test_weak_load_null_addr_returns_null(void) {
     // After the fix, rt_weak_load(NULL) must return NULL, not crash.
     void *result = rt_weak_load(NULL);
     ASSERT(result == NULL);
 }
 
-static void test_weak_store_and_load_valid_addr(void)
-{
+static void test_weak_store_and_load_valid_addr(void) {
     void *slot = NULL;
     void *sentinel = (void *)(uintptr_t)0xDEAD;
 
@@ -217,8 +202,7 @@ static void test_weak_store_and_load_valid_addr(void)
     ASSERT(loaded == sentinel);
 }
 
-static void test_weak_store_clears_to_null(void)
-{
+static void test_weak_store_clears_to_null(void) {
     void *slot = (void *)(uintptr_t)0x1234;
     rt_weak_store(&slot, NULL);
     ASSERT(slot == NULL);
@@ -231,16 +215,14 @@ static void test_weak_store_clears_to_null(void)
 // R-03: rt_concqueue_enqueue normal-path tests
 // ---------------------------------------------------------------------------
 
-static void test_concqueue_new_is_empty(void)
-{
+static void test_concqueue_new_is_empty(void) {
     void *q = rt_concqueue_new();
     ASSERT(q != NULL);
     ASSERT(rt_concqueue_len(q) == 0);
     ASSERT(rt_concqueue_is_empty(q) == 1);
 }
 
-static void test_concqueue_enqueue_increases_len(void)
-{
+static void test_concqueue_enqueue_increases_len(void) {
     void *q = rt_concqueue_new();
     ASSERT(q != NULL);
 
@@ -254,8 +236,7 @@ static void test_concqueue_enqueue_increases_len(void)
     ASSERT(rt_concqueue_len(q) == 2);
 }
 
-static void test_concqueue_fifo_order(void)
-{
+static void test_concqueue_fifo_order(void) {
     void *q = rt_concqueue_new();
     ASSERT(q != NULL);
 
@@ -279,8 +260,7 @@ static void test_concqueue_fifo_order(void)
     ASSERT(rt_concqueue_is_empty(q) == 1);
 }
 
-static void test_concqueue_try_dequeue_empty_returns_null(void)
-{
+static void test_concqueue_try_dequeue_empty_returns_null(void) {
     void *q = rt_concqueue_new();
     ASSERT(q != NULL);
 
@@ -288,8 +268,7 @@ static void test_concqueue_try_dequeue_empty_returns_null(void)
     ASSERT(result == NULL);
 }
 
-static void test_concqueue_clear_empties_queue(void)
-{
+static void test_concqueue_clear_empties_queue(void) {
     void *q = rt_concqueue_new();
     ASSERT(q != NULL);
 
@@ -307,8 +286,7 @@ static void test_concqueue_clear_empties_queue(void)
 // Entry point
 // ---------------------------------------------------------------------------
 
-int main(void)
-{
+int main(void) {
     // R-09: bloomfilter
     test_bloomfilter_new_returns_non_null();
     test_bloomfilter_add_and_query();

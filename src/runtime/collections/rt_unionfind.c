@@ -45,8 +45,7 @@
 // Internal structure
 // ---------------------------------------------------------------------------
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     int64_t *parent; // Parent array (path-compressed)
     int64_t *rank;   // Rank array (for union by rank)
@@ -59,8 +58,7 @@ typedef struct
 // Finalizer
 // ---------------------------------------------------------------------------
 
-static void unionfind_finalizer(void *obj)
-{
+static void unionfind_finalizer(void *obj) {
     rt_unionfind_impl *uf = (rt_unionfind_impl *)obj;
     free(uf->parent);
     free(uf->rank);
@@ -74,8 +72,7 @@ static void unionfind_finalizer(void *obj)
 // Constructor
 // ---------------------------------------------------------------------------
 
-void *rt_unionfind_new(int64_t n)
-{
+void *rt_unionfind_new(int64_t n) {
     if (n < 1)
         n = 1;
     if ((uint64_t)n > SIZE_MAX / sizeof(int64_t))
@@ -85,8 +82,7 @@ void *rt_unionfind_new(int64_t n)
     uf->parent = (int64_t *)malloc((size_t)n * sizeof(int64_t));
     uf->rank = (int64_t *)calloc((size_t)n, sizeof(int64_t));
     uf->size = (int64_t *)malloc((size_t)n * sizeof(int64_t));
-    if (!uf->parent || !uf->rank || !uf->size)
-    {
+    if (!uf->parent || !uf->rank || !uf->size) {
         free(uf->parent);
         free(uf->rank);
         free(uf->size);
@@ -97,8 +93,7 @@ void *rt_unionfind_new(int64_t n)
     uf->n = n;
     uf->sets = n;
 
-    for (int64_t i = 0; i < n; i++)
-    {
+    for (int64_t i = 0; i < n; i++) {
         uf->parent[i] = i;
         uf->size[i] = 1;
     }
@@ -115,8 +110,7 @@ void *rt_unionfind_new(int64_t n)
 /// @param uf_ptr
 /// @param x
 /// @return Result value.
-int64_t rt_unionfind_find(void *uf_ptr, int64_t x)
-{
+int64_t rt_unionfind_find(void *uf_ptr, int64_t x) {
     if (!uf_ptr)
         return -1;
     rt_unionfind_impl *uf = (rt_unionfind_impl *)uf_ptr;
@@ -130,8 +124,7 @@ int64_t rt_unionfind_find(void *uf_ptr, int64_t x)
         root = uf->parent[root];
 
     // Compress path
-    while (uf->parent[x] != root)
-    {
+    while (uf->parent[x] != root) {
         int64_t next = uf->parent[x];
         uf->parent[x] = root;
         x = next;
@@ -149,8 +142,7 @@ int64_t rt_unionfind_find(void *uf_ptr, int64_t x)
 /// @param x
 /// @param y
 /// @return Result value.
-int64_t rt_unionfind_union(void *uf_ptr, int64_t x, int64_t y)
-{
+int64_t rt_unionfind_union(void *uf_ptr, int64_t x, int64_t y) {
     if (!uf_ptr)
         return 0;
     rt_unionfind_impl *uf = (rt_unionfind_impl *)uf_ptr;
@@ -162,8 +154,7 @@ int64_t rt_unionfind_union(void *uf_ptr, int64_t x, int64_t y)
         return 0;
 
     // Union by rank
-    if (uf->rank[rx] < uf->rank[ry])
-    {
+    if (uf->rank[rx] < uf->rank[ry]) {
         int64_t tmp = rx;
         rx = ry;
         ry = tmp;
@@ -188,8 +179,7 @@ int64_t rt_unionfind_union(void *uf_ptr, int64_t x, int64_t y)
 /// @param x
 /// @param y
 /// @return Result value.
-int8_t rt_unionfind_connected(void *uf_ptr, int64_t x, int64_t y)
-{
+int8_t rt_unionfind_connected(void *uf_ptr, int64_t x, int64_t y) {
     if (!uf_ptr)
         return false;
     int64_t rx = rt_unionfind_find(uf_ptr, x);
@@ -200,8 +190,7 @@ int8_t rt_unionfind_connected(void *uf_ptr, int64_t x, int64_t y)
 /// @brief Perform unionfind count operation.
 /// @param uf_ptr
 /// @return Result value.
-int64_t rt_unionfind_count(void *uf_ptr)
-{
+int64_t rt_unionfind_count(void *uf_ptr) {
     if (!uf_ptr)
         return 0;
     return ((rt_unionfind_impl *)uf_ptr)->sets;
@@ -211,8 +200,7 @@ int64_t rt_unionfind_count(void *uf_ptr)
 /// @param uf_ptr
 /// @param x
 /// @return Result value.
-int64_t rt_unionfind_set_size(void *uf_ptr, int64_t x)
-{
+int64_t rt_unionfind_set_size(void *uf_ptr, int64_t x) {
     if (!uf_ptr)
         return 0;
     int64_t root = rt_unionfind_find(uf_ptr, x);
@@ -223,14 +211,12 @@ int64_t rt_unionfind_set_size(void *uf_ptr, int64_t x)
 
 /// @brief Perform unionfind reset operation.
 /// @param uf_ptr
-void rt_unionfind_reset(void *uf_ptr)
-{
+void rt_unionfind_reset(void *uf_ptr) {
     if (!uf_ptr)
         return;
     rt_unionfind_impl *uf = (rt_unionfind_impl *)uf_ptr;
 
-    for (int64_t i = 0; i < uf->n; i++)
-    {
+    for (int64_t i = 0; i < uf->n; i++) {
         uf->parent[i] = i;
         uf->rank[i] = 0;
         uf->size[i] = 1;

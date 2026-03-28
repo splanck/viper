@@ -22,20 +22,17 @@
 #include <stdio.h>
 #include <string.h>
 
-static void check(const char *label, int ok)
-{
+static void check(const char *label, int ok) {
     printf("  %-50s %s\n", label, ok ? "PASS" : "FAIL");
     assert(ok);
 }
 
-static void bi_release(void *bi)
-{
+static void bi_release(void *bi) {
     if (bi && rt_obj_release_check0(bi))
         rt_obj_free(bi);
 }
 
-static int str_eq_c(rt_string s, const char *expected)
-{
+static int str_eq_c(rt_string s, const char *expected) {
     size_t elen = strlen(expected);
     rt_string exp = rt_string_from_bytes(expected, elen);
     int result = rt_str_eq(s, exp);
@@ -43,8 +40,7 @@ static int str_eq_c(rt_string s, const char *expected)
     return result;
 }
 
-static void test_from_i64(void)
-{
+static void test_from_i64(void) {
     printf("rt_bigint_from_i64 / rt_bigint_to_i64:\n");
     void *zero = rt_bigint_zero();
     check("zero to_i64 == 0", rt_bigint_to_i64(zero) == 0);
@@ -65,8 +61,7 @@ static void test_from_i64(void)
     bi_release(large);
 }
 
-static void test_to_str(void)
-{
+static void test_to_str(void) {
     printf("rt_bigint_to_str:\n");
     void *bi = rt_bigint_from_i64(123456789LL);
     rt_string s = rt_bigint_to_str(bi);
@@ -95,8 +90,7 @@ static void test_to_str(void)
     bi_release(ff);
 }
 
-static void test_from_str(void)
-{
+static void test_from_str(void) {
     printf("rt_bigint_from_str:\n");
     rt_string s = rt_string_from_bytes("999999999999999999", 18);
     void *bi = rt_bigint_from_str(s);
@@ -115,8 +109,7 @@ static void test_from_str(void)
     bi_release(huge);
 }
 
-static void test_arithmetic(void)
-{
+static void test_arithmetic(void) {
     printf("rt_bigint arithmetic:\n");
     void *a = rt_bigint_from_i64(100LL);
     void *b = rt_bigint_from_i64(37LL);
@@ -153,8 +146,7 @@ static void test_arithmetic(void)
     bi_release(a);
 }
 
-static void test_comparison(void)
-{
+static void test_comparison(void) {
     printf("rt_bigint comparison:\n");
     void *a = rt_bigint_from_i64(10LL);
     void *b = rt_bigint_from_i64(20LL);
@@ -170,8 +162,7 @@ static void test_comparison(void)
     bi_release(a);
 }
 
-int main(void)
-{
+int main(void) {
     printf("=== RTBigintTests ===\n");
     test_from_i64();
     test_to_str();

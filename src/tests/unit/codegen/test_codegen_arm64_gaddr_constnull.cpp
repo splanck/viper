@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,8 +43,7 @@ static std::string readFile(const std::string &path)
 }
 
 // Test 1: Global string address (gaddr produces ptr to global)
-TEST(Arm64GaddrNull, GlobalAddress)
-{
+TEST(Arm64GaddrNull, GlobalAddress) {
     const std::string in = outPath("arm64_gaddr.il");
     const std::string out = outPath("arm64_gaddr.s");
     // Use string global since parser currently only supports str type
@@ -69,8 +65,7 @@ TEST(Arm64GaddrNull, GlobalAddress)
 }
 
 // Test 2: const_null returns null pointer
-TEST(Arm64GaddrNull, ConstNull)
-{
+TEST(Arm64GaddrNull, ConstNull) {
     const std::string in = outPath("arm64_constnull.il");
     const std::string out = outPath("arm64_constnull.s");
     const std::string il = "il 0.1\n"
@@ -92,8 +87,7 @@ TEST(Arm64GaddrNull, ConstNull)
 }
 
 // Test 3: Load from pointer (via alloca since integer globals not yet supported)
-TEST(Arm64GaddrNull, LoadFromPointer)
-{
+TEST(Arm64GaddrNull, LoadFromPointer) {
     const std::string in = outPath("arm64_load_ptr.il");
     const std::string out = outPath("arm64_load_ptr.s");
     const std::string il = "il 0.1\n"
@@ -114,8 +108,7 @@ TEST(Arm64GaddrNull, LoadFromPointer)
 }
 
 // Test 4: Store to pointer
-TEST(Arm64GaddrNull, StoreToPointer)
-{
+TEST(Arm64GaddrNull, StoreToPointer) {
     const std::string in = outPath("arm64_store_ptr.il");
     const std::string out = outPath("arm64_store_ptr.s");
     const std::string il = "il 0.1\n"
@@ -135,8 +128,7 @@ TEST(Arm64GaddrNull, StoreToPointer)
 }
 
 // Test 5: Compare pointer with null
-TEST(Arm64GaddrNull, CmpWithNull)
-{
+TEST(Arm64GaddrNull, CmpWithNull) {
     const std::string in = outPath("arm64_cmp_null.il");
     const std::string out = outPath("arm64_cmp_null.s");
     const std::string il = "il 0.1\n"
@@ -161,8 +153,7 @@ TEST(Arm64GaddrNull, CmpWithNull)
 }
 
 // Test 6: Multiple string globals
-TEST(Arm64GaddrNull, MultipleGlobals)
-{
+TEST(Arm64GaddrNull, MultipleGlobals) {
     const std::string in = outPath("arm64_multi_global.il");
     const std::string out = outPath("arm64_multi_global.s");
     const std::string il = "il 0.1\n"
@@ -181,8 +172,7 @@ TEST(Arm64GaddrNull, MultipleGlobals)
     // Should have multiple adrp
     std::size_t adrpCount = 0;
     std::size_t pos = 0;
-    while ((pos = asmText.find("adrp x", pos)) != std::string::npos)
-    {
+    while ((pos = asmText.find("adrp x", pos)) != std::string::npos) {
         ++adrpCount;
         pos += 6;
     }
@@ -190,8 +180,7 @@ TEST(Arm64GaddrNull, MultipleGlobals)
 }
 
 // Test 7: String constant address
-TEST(Arm64GaddrNull, StringConstant)
-{
+TEST(Arm64GaddrNull, StringConstant) {
     const std::string in = outPath("arm64_str_const.il");
     const std::string out = outPath("arm64_str_const.s");
     const std::string il = "il 0.1\n"
@@ -209,8 +198,7 @@ TEST(Arm64GaddrNull, StringConstant)
     EXPECT_FALSE(asmText.empty());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

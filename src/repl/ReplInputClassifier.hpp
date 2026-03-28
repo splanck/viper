@@ -22,12 +22,10 @@
 
 #include <string>
 
-namespace viper::repl
-{
+namespace viper::repl {
 
 /// @brief Classification of a REPL input line or accumulated input.
-enum class InputKind
-{
+enum class InputKind {
     Complete,    ///< Input is syntactically complete; ready to compile.
     Incomplete,  ///< Input has unclosed brackets/blocks; needs continuation.
     MetaCommand, ///< Input starts with '.' (e.g., .help, .quit).
@@ -37,8 +35,7 @@ enum class InputKind
 /// @brief Classifies REPL input for the Zia language.
 /// @details Tracks bracket depth ({, (, [) and detects unclosed blocks.
 ///          Handles string literals (braces inside strings are ignored).
-class ReplInputClassifier
-{
+class ReplInputClassifier {
   public:
     /// @brief Classify Zia input (bracket depth tracking).
     /// @param input The accumulated REPL input (may span multiple lines).

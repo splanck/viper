@@ -33,8 +33,7 @@
 #include <string_view>
 #include <vector>
 
-namespace il::runtime
-{
+namespace il::runtime {
 
 /// @brief Trim ASCII whitespace from both ends of the provided view.
 /// @details Strips leading and trailing spaces, tabs, and newlines from the

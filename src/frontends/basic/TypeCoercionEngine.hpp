@@ -42,8 +42,7 @@
 #include <optional>
 #include <string_view>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // Forward declarations
 class Lowerer;
@@ -53,8 +52,7 @@ class Lowerer;
 /// Provides a unified interface for converting values between BASIC types
 /// during IL lowering. Consolidates conversion logic to ensure consistent
 /// semantics across the frontend.
-class TypeCoercionEngine
-{
+class TypeCoercionEngine {
   public:
     using Value = il::core::Value;
     using Type = il::core::Type;

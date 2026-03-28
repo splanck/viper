@@ -13,18 +13,15 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_heading()
-{
+static void test_heading() {
     rt_string md = make_str("# Hello World");
     rt_string html = rt_markdown_to_html(md);
     assert(strstr(rt_string_cstr(html), "<h1>") != NULL);
@@ -32,44 +29,38 @@ static void test_heading()
     assert(strstr(rt_string_cstr(html), "</h1>") != NULL);
 }
 
-static void test_heading_levels()
-{
+static void test_heading_levels() {
     rt_string md = make_str("## Second\n### Third");
     rt_string html = rt_markdown_to_html(md);
     assert(strstr(rt_string_cstr(html), "<h2>Second</h2>") != NULL);
     assert(strstr(rt_string_cstr(html), "<h3>Third</h3>") != NULL);
 }
 
-static void test_bold()
-{
+static void test_bold() {
     rt_string md = make_str("This is **bold** text");
     rt_string html = rt_markdown_to_html(md);
     assert(strstr(rt_string_cstr(html), "<strong>bold</strong>") != NULL);
 }
 
-static void test_italic()
-{
+static void test_italic() {
     rt_string md = make_str("This is *italic* text");
     rt_string html = rt_markdown_to_html(md);
     assert(strstr(rt_string_cstr(html), "<em>italic</em>") != NULL);
 }
 
-static void test_inline_code()
-{
+static void test_inline_code() {
     rt_string md = make_str("Use `printf` here");
     rt_string html = rt_markdown_to_html(md);
     assert(strstr(rt_string_cstr(html), "<code>printf</code>") != NULL);
 }
 
-static void test_link()
-{
+static void test_link() {
     rt_string md = make_str("Visit [Google](https://google.com) now");
     rt_string html = rt_markdown_to_html(md);
     assert(strstr(rt_string_cstr(html), "<a href=\"https://google.com\">Google</a>") != NULL);
 }
 
-static void test_list()
-{
+static void test_list() {
     rt_string md = make_str("- Item 1\n- Item 2\n- Item 3");
     rt_string html = rt_markdown_to_html(md);
     assert(strstr(rt_string_cstr(html), "<ul>") != NULL);
@@ -78,15 +69,13 @@ static void test_list()
     assert(strstr(rt_string_cstr(html), "</ul>") != NULL);
 }
 
-static void test_paragraph()
-{
+static void test_paragraph() {
     rt_string md = make_str("Hello world");
     rt_string html = rt_markdown_to_html(md);
     assert(strstr(rt_string_cstr(html), "<p>Hello world</p>") != NULL);
 }
 
-static void test_code_block()
-{
+static void test_code_block() {
     rt_string md = make_str("```\nint x = 5;\nreturn x;\n```");
     rt_string html = rt_markdown_to_html(md);
     assert(strstr(rt_string_cstr(html), "<pre><code>") != NULL);
@@ -94,8 +83,7 @@ static void test_code_block()
     assert(strstr(rt_string_cstr(html), "</code></pre>") != NULL);
 }
 
-static void test_to_text()
-{
+static void test_to_text() {
     rt_string md = make_str("# Title\n**bold** and *italic*\n[link](http://x.com)");
     rt_string text = rt_markdown_to_text(md);
     const char *t = rt_string_cstr(text);
@@ -108,8 +96,7 @@ static void test_to_text()
     assert(strstr(t, "link") != NULL);
 }
 
-static void test_extract_links()
-{
+static void test_extract_links() {
     rt_string md = make_str("See [A](http://a.com) and [B](http://b.com)");
     void *links = rt_markdown_extract_links(md);
     assert(rt_seq_len(links) == 2);
@@ -117,8 +104,7 @@ static void test_extract_links()
     assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(links, 1)), "http://b.com") == 0);
 }
 
-static void test_extract_headings()
-{
+static void test_extract_headings() {
     rt_string md = make_str("# First\nText\n## Second\nMore text\n### Third");
     void *headings = rt_markdown_extract_headings(md);
     assert(rt_seq_len(headings) == 3);
@@ -127,8 +113,7 @@ static void test_extract_headings()
     assert(strcmp(rt_string_cstr((rt_string)rt_seq_get(headings, 2)), "Third") == 0);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     rt_string html = rt_markdown_to_html(NULL);
     assert(strlen(rt_string_cstr(html)) == 0);
 
@@ -143,8 +128,7 @@ static void test_null_safety()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_heading();
     test_heading_levels();
     test_bold();

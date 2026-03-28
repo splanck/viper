@@ -19,8 +19,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -29,8 +28,7 @@ static void test_result(const char *name, bool passed)
 // Creation Tests
 //=============================================================================
 
-static void test_duration_creation()
-{
+static void test_duration_creation() {
     printf("Testing Duration creation:\n");
 
     // Test 1: FromMillis
@@ -84,8 +82,7 @@ static void test_duration_creation()
 // Total Conversion Tests
 //=============================================================================
 
-static void test_duration_totals()
-{
+static void test_duration_totals() {
     printf("Testing Duration total conversions:\n");
 
     int64_t d = rt_duration_create(1, 2, 30, 45, 500);
@@ -132,8 +129,7 @@ static void test_duration_totals()
 // Component Tests
 //=============================================================================
 
-static void test_duration_components()
-{
+static void test_duration_components() {
     printf("Testing Duration components:\n");
 
     // 1 day, 2 hours, 30 minutes, 45 seconds, 500 ms
@@ -157,8 +153,7 @@ static void test_duration_components()
 // Operation Tests
 //=============================================================================
 
-static void test_duration_operations()
-{
+static void test_duration_operations() {
     printf("Testing Duration operations:\n");
 
     int64_t d1 = rt_duration_from_seconds(100);
@@ -184,8 +179,7 @@ static void test_duration_operations()
 // Formatting Tests
 //=============================================================================
 
-static void test_duration_formatting()
-{
+static void test_duration_formatting() {
     printf("Testing Duration formatting:\n");
 
     // Test 1: Simple duration
@@ -237,8 +231,7 @@ static void test_duration_formatting()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Duration Tests ===\n\n");
 
     test_duration_creation();

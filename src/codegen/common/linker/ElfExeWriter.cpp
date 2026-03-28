@@ -23,11 +23,9 @@
 #include <cstring>
 #include <fstream>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
-namespace
-{
+namespace {
 
 static constexpr uint16_t ET_EXEC = 2;
 static constexpr uint16_t EM_X86_64 = 62;
@@ -52,8 +50,7 @@ static constexpr uint32_t SHF_ALLOC = 0x2;
 static constexpr uint32_t SHF_WRITE = 0x1;
 static constexpr uint32_t SHF_EXECINSTR = 0x4;
 
-struct Elf64_Ehdr
-{
+struct Elf64_Ehdr {
     uint8_t e_ident[16] = {};
     uint16_t e_type = 0;
     uint16_t e_machine = 0;
@@ -70,8 +67,7 @@ struct Elf64_Ehdr
     uint16_t e_shstrndx = 0;
 };
 
-struct Elf64_Phdr
-{
+struct Elf64_Phdr {
     uint32_t p_type = 0;
     uint32_t p_flags = 0;
     uint64_t p_offset = 0;
@@ -82,8 +78,7 @@ struct Elf64_Phdr
     uint64_t p_align = 0;
 };
 
-struct Elf64_Shdr
-{
+struct Elf64_Shdr {
     uint32_t sh_name = 0;
     uint32_t sh_type = 0;
     uint64_t sh_flags = 0;
@@ -101,11 +96,9 @@ struct Elf64_Shdr
 bool writeElfExe(const std::string &path,
                  const LinkLayout &layout,
                  LinkArch arch,
-                 std::ostream &err)
-{
+                 std::ostream &err) {
     std::ofstream f(path, std::ios::binary);
-    if (!f)
-    {
+    if (!f) {
         err << "error: cannot open '" << path << "' for writing\n";
         return false;
     }
@@ -119,12 +112,10 @@ bool writeElfExe(const std::string &path,
     // Determine number of LOAD segments (one per alloc output section with data).
     std::vector<size_t> loadableIndices;
     std::vector<size_t> nonAllocIndices;
-    for (size_t i = 0; i < layout.sections.size(); ++i)
-    {
+    for (size_t i = 0; i < layout.sections.size(); ++i) {
         if (layout.sections[i].data.empty())
             continue;
-        if (!layout.sections[i].alloc)
-        {
+        if (!layout.sections[i].alloc) {
             nonAllocIndices.push_back(i);
             continue;
         }
@@ -141,8 +132,7 @@ bool writeElfExe(const std::string &path,
         static_cast<uint16_t>(loadableIndices.size() + nonAllocIndices.size() + 3);
 
     // Compute file offsets for each segment.
-    struct SegmentInfo
-    {
+    struct SegmentInfo {
         size_t layoutIdx;
         size_t fileOffset;
         uint64_t vaddr;
@@ -155,14 +145,12 @@ bool writeElfExe(const std::string &path,
 
     size_t filePos = alignUp(ehdrSize + phdrTableSize, pageSize);
 
-    for (size_t idx : loadableIndices)
-    {
+    for (size_t idx : loadableIndices) {
         const auto &sec = layout.sections[idx];
         filePos = alignUp(filePos, pageSize);
 
         // W^X: reject sections that are both writable and executable.
-        if (sec.executable && sec.writable)
-        {
+        if (sec.executable && sec.writable) {
             err << "error: section '" << sec.name
                 << "' is both writable and executable (W^X violation)\n";
             return false;
@@ -185,16 +173,14 @@ bool writeElfExe(const std::string &path,
 
     // Add names for alloc sections.
     std::vector<uint32_t> loadableNameOffsets;
-    for (size_t idx : loadableIndices)
-    {
+    for (size_t idx : loadableIndices) {
         loadableNameOffsets.push_back(static_cast<uint32_t>(shstrtab.size()));
         shstrtab += layout.sections[idx].name;
         shstrtab.push_back('\0');
     }
     // Add names for non-alloc sections (debug).
     std::vector<uint32_t> nonAllocNameOffsets;
-    for (size_t idx : nonAllocIndices)
-    {
+    for (size_t idx : nonAllocIndices) {
         nonAllocNameOffsets.push_back(static_cast<uint32_t>(shstrtab.size()));
         shstrtab += layout.sections[idx].name;
         shstrtab.push_back('\0');
@@ -208,15 +194,13 @@ bool writeElfExe(const std::string &path,
     shstrtab.push_back('\0');
 
     // Non-alloc section data placed after all loadable segment data.
-    struct NonAllocInfo
-    {
+    struct NonAllocInfo {
         size_t layoutIdx;
         size_t fileOffset;
     };
 
     std::vector<NonAllocInfo> nonAllocInfo;
-    for (size_t idx : nonAllocIndices)
-    {
+    for (size_t idx : nonAllocIndices) {
         const auto &sec = layout.sections[idx];
         filePos = alignUp(filePos, sec.alignment);
         nonAllocInfo.push_back({idx, filePos});
@@ -250,8 +234,7 @@ bool writeElfExe(const std::string &path,
     f.write(reinterpret_cast<const char *>(&ehdr), sizeof(ehdr));
 
     // Write program headers.
-    for (const auto &seg : segments)
-    {
+    for (const auto &seg : segments) {
         Elf64_Phdr phdr{};
         phdr.p_type = PT_LOAD;
         phdr.p_flags = seg.flags;
@@ -273,12 +256,10 @@ bool writeElfExe(const std::string &path,
     }
 
     // Write segment data (page-aligned).
-    for (const auto &seg : segments)
-    {
+    for (const auto &seg : segments) {
         // Pad to file offset.
         auto cur = static_cast<size_t>(f.tellp());
-        if (cur < seg.fileOffset)
-        {
+        if (cur < seg.fileOffset) {
             std::vector<char> pad(seg.fileOffset - cur, 0);
             f.write(pad.data(), static_cast<std::streamsize>(pad.size()));
         }
@@ -288,11 +269,9 @@ bool writeElfExe(const std::string &path,
     }
 
     // Write non-alloc section data (debug sections).
-    for (const auto &na : nonAllocInfo)
-    {
+    for (const auto &na : nonAllocInfo) {
         auto cur = static_cast<size_t>(f.tellp());
-        if (cur < na.fileOffset)
-        {
+        if (cur < na.fileOffset) {
             std::vector<char> pad(na.fileOffset - cur, 0);
             f.write(pad.data(), static_cast<std::streamsize>(pad.size()));
         }
@@ -304,8 +283,7 @@ bool writeElfExe(const std::string &path,
     // Write .shstrtab.
     {
         auto cur = static_cast<size_t>(f.tellp());
-        if (cur < shstrtabOff)
-        {
+        if (cur < shstrtabOff) {
             std::vector<char> pad(shstrtabOff - cur, 0);
             f.write(pad.data(), static_cast<std::streamsize>(pad.size()));
         }
@@ -315,8 +293,7 @@ bool writeElfExe(const std::string &path,
     // Write section headers.
     {
         auto cur = static_cast<size_t>(f.tellp());
-        if (cur < shdrsOff)
-        {
+        if (cur < shdrsOff) {
             std::vector<char> pad(shdrsOff - cur, 0);
             f.write(pad.data(), static_cast<std::streamsize>(pad.size()));
         }
@@ -329,8 +306,7 @@ bool writeElfExe(const std::string &path,
     }
 
     // Section headers for alloc output sections.
-    for (size_t li = 0; li < loadableIndices.size(); ++li)
-    {
+    for (size_t li = 0; li < loadableIndices.size(); ++li) {
         size_t i = loadableIndices[li];
         const auto &sec = layout.sections[i];
         Elf64_Shdr shdr{};
@@ -344,10 +320,8 @@ bool writeElfExe(const std::string &path,
         shdr.sh_addr = sec.virtualAddr;
 
         // Find file offset.
-        for (const auto &seg : segments)
-        {
-            if (seg.layoutIdx == i)
-            {
+        for (const auto &seg : segments) {
+            if (seg.layoutIdx == i) {
                 shdr.sh_offset = seg.fileOffset;
                 break;
             }
@@ -358,8 +332,7 @@ bool writeElfExe(const std::string &path,
     }
 
     // Section headers for non-alloc output sections (debug).
-    for (size_t ni = 0; ni < nonAllocIndices.size(); ++ni)
-    {
+    for (size_t ni = 0; ni < nonAllocIndices.size(); ++ni) {
         const auto &sec = layout.sections[nonAllocIndices[ni]];
         Elf64_Shdr shdr{};
         shdr.sh_name = nonAllocNameOffsets[ni];
@@ -392,8 +365,7 @@ bool writeElfExe(const std::string &path,
         f.write(reinterpret_cast<const char *>(&shdr), sizeof(shdr));
     }
 
-    if (!f)
-    {
+    if (!f) {
         err << "error: write failed to '" << path << "'\n";
         return false;
     }

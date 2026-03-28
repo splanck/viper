@@ -45,8 +45,7 @@ using namespace il::vm;
 static constexpr il::support::SourceLoc kLoc{1, 1, 0};
 
 /// @brief Fail a test with a message and return 1.
-static int fail(const char *testName, const char *msg, long long got = -1)
-{
+static int fail(const char *testName, const char *msg, long long got = -1) {
     if (got != -1)
         std::fprintf(stderr, "[FAIL] %s: %s (got %lld)\n", testName, msg, got);
     else
@@ -60,8 +59,7 @@ static int fail(const char *testName, const char *msg, long long got = -1)
 /// @details Runs a counting loop that passes an I64 counter through a block
 /// param.  The flat params/paramsSet vectors must correctly stage and transfer
 /// the updated value on every back-edge.
-static int test_flat_params_correctness()
-{
+static int test_flat_params_correctness() {
     static const char *kName = "test_flat_params_correctness";
     constexpr int64_t kLimit = 7;
 
@@ -167,8 +165,7 @@ static int test_flat_params_correctness()
 /// @details Calls a switch function twice on the same VM.  After the first
 /// call the switch cache must be non-empty; after the second call the size
 /// must be identical — confirming that entries were reused rather than rebuilt.
-static int test_switch_cache_persistence()
-{
+static int test_switch_cache_persistence() {
     static const char *kName = "test_switch_cache_persistence";
 
     Module module;
@@ -238,8 +235,7 @@ static int test_switch_cache_persistence()
         return fail(kName, "second call: expected 0", r2.i64);
 
     const size_t cacheAfterSecond = VMTestHook::switchCacheSize(vm);
-    if (cacheAfterSecond != cacheAfterFirst)
-    {
+    if (cacheAfterSecond != cacheAfterFirst) {
         std::fprintf(stderr,
                      "[FAIL] %s: cache size changed (%zu → %zu); "
                      "entries were rebuilt instead of reused\n",
@@ -258,8 +254,7 @@ static int test_switch_cache_persistence()
 /// runs a function with several instructions.  Verifies that:
 ///   a) ExecState::config.pollCallback is non-null (trampoline installed)
 ///   b) The callback fires at least once during execution
-static int test_poll_callback_trampoline()
-{
+static int test_poll_callback_trampoline() {
     static const char *kName = "test_poll_callback_trampoline";
 
     Module module;
@@ -273,20 +268,16 @@ static int test_poll_callback_trampoline()
         // Each one adds a constant to the previous result.
         unsigned prev = 0;
         bool first = true;
-        for (int i = 1; i <= 6; ++i)
-        {
+        for (int i = 1; i <= 6; ++i) {
             Instr add;
             add.result = builder.reserveTempId();
             add.op = Opcode::Add;
             add.type = Type(Type::Kind::I64);
             add.loc = kLoc;
-            if (first)
-            {
+            if (first) {
                 add.operands.push_back(Value::constInt(0));
                 first = false;
-            }
-            else
-            {
+            } else {
                 add.operands.push_back(Value::temp(prev));
             }
             add.operands.push_back(Value::constInt(i));
@@ -307,13 +298,10 @@ static int test_poll_callback_trampoline()
 
     VM vm(module);
     // Poll every 2 instructions; function has 6 adds + 1 ret = 7 instructions
-    VMTestHook::setPoll(vm,
-                        2,
-                        [&callCount](VM &) -> bool
-                        {
-                            ++callCount;
-                            return true; // continue execution
-                        });
+    VMTestHook::setPoll(vm, 2, [&callCount](VM &) -> bool {
+        ++callCount;
+        return true; // continue execution
+    });
 
     // Verify that the trampoline fn ptr is installed in a fresh ExecState
     {
@@ -341,8 +329,7 @@ static int test_poll_callback_trampoline()
 /// @details Builds an add-two-params function.  After prepareExecution the
 /// block cache must be non-null and the add instruction's operands must be
 /// resolved as Kind::Reg.  Running the function must return the correct sum.
-static int test_exec_cache_reg_operands()
-{
+static int test_exec_cache_reg_operands() {
     static const char *kName = "test_exec_cache_reg_operands";
 
     Module module;
@@ -396,8 +383,7 @@ static int test_exec_cache_reg_operands()
         return fail(kName, "blockCache is null after prepareExecution");
 
     // entry block has 2 instructions: add + ret
-    if (bc->instrOpOffset.size() != 2)
-    {
+    if (bc->instrOpOffset.size() != 2) {
         std::fprintf(stderr,
                      "[FAIL] %s: expected 2 instrOpOffset entries, got %zu\n",
                      kName,
@@ -428,8 +414,7 @@ static int test_exec_cache_reg_operands()
 // ============================================================================
 /// @details Verifies that ConstInt operands become Kind::ImmI64 with the
 /// correct numeric payload.
-static int test_exec_cache_imm_operands()
-{
+static int test_exec_cache_imm_operands() {
     static const char *kName = "test_exec_cache_imm_operands";
 
     Module module;
@@ -486,8 +471,7 @@ static int test_exec_cache_imm_operands()
 // ============================================================================
 // main
 // ============================================================================
-int main()
-{
+int main() {
     int failures = 0;
     failures += test_flat_params_correctness();
     failures += test_switch_cache_persistence();

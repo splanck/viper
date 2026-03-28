@@ -24,8 +24,7 @@
 
 using namespace il::frontends::basic;
 
-static il::core::Module lowerSnippet(const std::string &src)
-{
+static il::core::Module lowerSnippet(const std::string &src) {
     il::support::SourceManager sm;
     uint32_t fid = sm.addFile("end_in_sub.bas");
     Parser parser(src, fid);
@@ -35,8 +34,7 @@ static il::core::Module lowerSnippet(const std::string &src)
     return lowerer.lowerProgram(*program);
 }
 
-int main()
-{
+int main() {
     const std::string src = "10 SUB ShowTitle\n"
                             "20 PRINT \"q to quit\"\n"
                             "30 END\n"

@@ -18,21 +18,18 @@
 #include <fstream>
 #include <sstream>
 
-namespace viper::codegen::common
-{
+namespace viper::codegen::common {
 
 // =========================================================================
 // Pure utilities
 // =========================================================================
 
-bool fileExists(const std::filesystem::path &path)
-{
+bool fileExists(const std::filesystem::path &path) {
     std::error_code ec;
     return std::filesystem::exists(path, ec);
 }
 
-bool readFileToString(const std::filesystem::path &path, std::string &dst)
-{
+bool readFileToString(const std::filesystem::path &path, std::string &dst) {
     std::ifstream in(path, std::ios::binary);
     if (!in)
         return false;
@@ -42,14 +39,11 @@ bool readFileToString(const std::filesystem::path &path, std::string &dst)
     return true;
 }
 
-std::optional<std::filesystem::path> findBuildDir()
-{
+std::optional<std::filesystem::path> findBuildDir() {
     std::error_code ec;
     std::filesystem::path cur = std::filesystem::current_path(ec);
-    if (!ec)
-    {
-        for (int depth = 0; depth < 8; ++depth)
-        {
+    if (!ec) {
+        for (int depth = 0; depth < 8; ++depth) {
             if (fileExists(cur / "CMakeCache.txt"))
                 return cur;
             if (!cur.has_parent_path())
@@ -65,27 +59,24 @@ std::optional<std::filesystem::path> findBuildDir()
     return std::nullopt;
 }
 
-std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text)
-{
+std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text) {
     auto isIdent = [](unsigned char c) -> bool { return std::isalnum(c) || c == '_'; };
     // Namespace-qualified symbols also contain dots.
-    auto isNsIdent = [](unsigned char c) -> bool
-    { return std::isalnum(c) || c == '_' || c == '.'; };
+    auto isNsIdent = [](unsigned char c) -> bool {
+        return std::isalnum(c) || c == '_' || c == '.';
+    };
 
     std::unordered_set<std::string> symbols;
 
     // Pass 1: Scan for rt_* symbols (existing logic).
-    for (std::size_t i = 0; i + 3 < text.size(); ++i)
-    {
+    for (std::size_t i = 0; i + 3 < text.size(); ++i) {
         std::size_t start = std::string_view::npos;
         std::size_t boundary = std::string_view::npos;
-        if (text[i] == 'r' && text[i + 1] == 't' && text[i + 2] == '_')
-        {
+        if (text[i] == 'r' && text[i + 1] == 't' && text[i + 2] == '_') {
             start = i;
             boundary = (start == 0) ? std::string_view::npos : (start - 1);
-        }
-        else if (text[i] == '_' && text[i + 1] == 'r' && text[i + 2] == 't' && text[i + 3] == '_')
-        {
+        } else if (text[i] == '_' && text[i + 1] == 'r' && text[i + 2] == 't' &&
+                   text[i + 3] == '_') {
             start = i + 1;
             boundary = (i == 0) ? std::string_view::npos : (i - 1);
         }
@@ -109,18 +100,14 @@ std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text)
     // These appear as _Viper.Terminal.PrintStr or Viper.Collections.List.Add
     // in the emitted assembly.
     static constexpr std::string_view kViperPrefix = "Viper.";
-    for (std::size_t i = 0; i + kViperPrefix.size() < text.size(); ++i)
-    {
+    for (std::size_t i = 0; i + kViperPrefix.size() < text.size(); ++i) {
         // Match "Viper." or "_Viper." at a word boundary.
         std::size_t start = std::string_view::npos;
-        if (text.substr(i, kViperPrefix.size()) == kViperPrefix)
-        {
+        if (text.substr(i, kViperPrefix.size()) == kViperPrefix) {
             if (i == 0 || !isIdent(static_cast<unsigned char>(text[i - 1])))
                 start = i;
-        }
-        else if (text[i] == '_' && i + 1 + kViperPrefix.size() <= text.size() &&
-                 text.substr(i + 1, kViperPrefix.size()) == kViperPrefix)
-        {
+        } else if (text[i] == '_' && i + 1 + kViperPrefix.size() <= text.size() &&
+                   text.substr(i + 1, kViperPrefix.size()) == kViperPrefix) {
             if (i == 0 || !isIdent(static_cast<unsigned char>(text[i - 1])))
                 start = i + 1; // Skip the leading underscore
         }
@@ -142,8 +129,7 @@ std::unordered_set<std::string> parseRuntimeSymbols(std::string_view text)
 }
 
 std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
-                                         std::string_view libBaseName)
-{
+                                         std::string_view libBaseName) {
 #ifdef _WIN32
     // MSVC/Clang-CL static libraries use .lib; MinGW uses .a (prefix lib).
     // Default to the MSVC convention when building on Windows.
@@ -160,8 +146,7 @@ std::filesystem::path runtimeArchivePath(const std::filesystem::path &buildDir,
 // Link context
 // =========================================================================
 
-bool hasComponent(const LinkContext &ctx, RtComponent c)
-{
+bool hasComponent(const LinkContext &ctx, RtComponent c) {
     for (auto rc : ctx.requiredComponents)
         if (rc == c)
             return true;
@@ -174,16 +159,14 @@ bool hasComponent(const LinkContext &ctx, RtComponent c)
 static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbols,
                                    LinkContext &ctx,
                                    std::ostream &out,
-                                   std::ostream &err)
-{
+                                   std::ostream &err) {
     ctx.requiredComponents = resolveRequiredComponents(symbols);
 
     const std::optional<std::filesystem::path> buildDirOpt = findBuildDir();
     ctx.buildDir = buildDirOpt.value_or(std::filesystem::path{});
 
     ctx.requiredArchives.clear();
-    for (auto comp : ctx.requiredComponents)
-    {
+    for (auto comp : ctx.requiredComponents) {
         auto name = archiveNameForComponent(comp);
         ctx.requiredArchives.emplace_back(std::string(name),
                                           runtimeArchivePath(ctx.buildDir, name));
@@ -191,21 +174,17 @@ static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbol
 
     // Build missing targets if we have a build directory.
     std::vector<std::string> missingTargets;
-    if (!ctx.buildDir.empty())
-    {
-        for (const auto &[tgt, path] : ctx.requiredArchives)
-        {
+    if (!ctx.buildDir.empty()) {
+        for (const auto &[tgt, path] : ctx.requiredArchives) {
             if (!fileExists(path))
                 missingTargets.push_back(tgt);
         }
-        if (hasComponent(ctx, RtComponent::Graphics))
-        {
+        if (hasComponent(ctx, RtComponent::Graphics)) {
             const std::filesystem::path gfxLib = ctx.buildDir / "lib" / "libvipergfx.a";
             if (!fileExists(gfxLib))
                 missingTargets.push_back("vipergfx");
         }
-        if (!missingTargets.empty())
-        {
+        if (!missingTargets.empty()) {
             std::vector<std::string> cmd = {"cmake", "--build", ctx.buildDir.string(), "--target"};
             cmd.insert(cmd.end(), missingTargets.begin(), missingTargets.end());
             const RunResult build = run_process(cmd);
@@ -215,8 +194,7 @@ static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbol
             if (!build.err.empty())
                 err << build.err;
 #endif
-            if (build.exit_code != 0)
-            {
+            if (build.exit_code != 0) {
                 err << "error: failed to build required runtime libraries in '"
                     << ctx.buildDir.string() << "'\n";
                 return 1;
@@ -230,11 +208,9 @@ static int resolveAndBuildArchives(const std::unordered_set<std::string> &symbol
 int prepareLinkContext(const std::string &asmPath,
                        LinkContext &ctx,
                        std::ostream &out,
-                       std::ostream &err)
-{
+                       std::ostream &err) {
     std::string asmText;
-    if (!readFileToString(asmPath, asmText))
-    {
+    if (!readFileToString(asmPath, asmText)) {
         err << "error: unable to read '" << asmPath << "' for runtime library selection\n";
         return 1;
     }
@@ -246,15 +222,12 @@ int prepareLinkContext(const std::string &asmPath,
 int prepareLinkContextFromSymbols(const std::unordered_set<std::string> &symbols,
                                   LinkContext &ctx,
                                   std::ostream &out,
-                                  std::ostream &err)
-{
+                                  std::ostream &err) {
     return resolveAndBuildArchives(symbols, ctx, out, err);
 }
 
-void appendArchives(const LinkContext &ctx, std::vector<std::string> &cmd)
-{
-    for (auto it = ctx.requiredComponents.rbegin(); it != ctx.requiredComponents.rend(); ++it)
-    {
+void appendArchives(const LinkContext &ctx, std::vector<std::string> &cmd) {
+    for (auto it = ctx.requiredComponents.rbegin(); it != ctx.requiredComponents.rend(); ++it) {
         const std::filesystem::path path =
             runtimeArchivePath(ctx.buildDir, archiveNameForComponent(*it));
         if (fileExists(path))
@@ -264,8 +237,7 @@ void appendArchives(const LinkContext &ctx, std::vector<std::string> &cmd)
 
 void appendGraphicsLibs(const LinkContext &ctx,
                         std::vector<std::string> &cmd,
-                        const std::vector<std::string> &frameworks)
-{
+                        const std::vector<std::string> &frameworks) {
     if (!hasComponent(ctx, RtComponent::Graphics))
         return;
 
@@ -281,13 +253,10 @@ void appendGraphicsLibs(const LinkContext &ctx,
     // because libviper_rt_graphics calls vg_* from vipergui, which in turn
     // calls the lower-level drawing APIs in vipergfx.
     std::filesystem::path guiLib, gfxLib;
-    if (!ctx.buildDir.empty())
-    {
+    if (!ctx.buildDir.empty()) {
         guiLib = ctx.buildDir / "src" / "lib" / "gui" / guiLibName;
         gfxLib = ctx.buildDir / "lib" / gfxLibName;
-    }
-    else
-    {
+    } else {
         guiLib = std::filesystem::path("src") / "lib" / "gui" / guiLibName;
         gfxLib = std::filesystem::path("lib") / gfxLibName;
     }
@@ -296,8 +265,7 @@ void appendGraphicsLibs(const LinkContext &ctx,
     if (fileExists(gfxLib))
         cmd.push_back(gfxLib.string());
 
-    for (const auto &fw : frameworks)
-    {
+    for (const auto &fw : frameworks) {
         cmd.push_back("-framework");
         cmd.push_back(fw);
     }
@@ -307,8 +275,7 @@ void appendGraphicsLibs(const LinkContext &ctx,
 #endif
 }
 
-void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd)
-{
+void appendAudioLibs(const LinkContext &ctx, std::vector<std::string> &cmd) {
     if (!hasComponent(ctx, RtComponent::Audio))
         return;
 
@@ -344,8 +311,7 @@ int invokeAssembler(const std::vector<std::string> &ccArgs,
                     const std::string &asmPath,
                     const std::string &objPath,
                     std::ostream &out,
-                    std::ostream &err)
-{
+                    std::ostream &err) {
     std::vector<std::string> cmd = ccArgs;
     cmd.push_back("-c");
     cmd.push_back(asmPath);
@@ -353,8 +319,7 @@ int invokeAssembler(const std::vector<std::string> &ccArgs,
     cmd.push_back(objPath);
 
     const RunResult rr = run_process(cmd);
-    if (rr.exit_code == -1)
-    {
+    if (rr.exit_code == -1) {
         err << "error: failed to launch system assembler command\n";
         return -1;
     }
@@ -367,11 +332,9 @@ int invokeAssembler(const std::vector<std::string> &ccArgs,
     return rr.exit_code == 0 ? 0 : 1;
 }
 
-int runExecutable(const std::string &exePath, std::ostream &out, std::ostream &err)
-{
+int runExecutable(const std::string &exePath, std::ostream &out, std::ostream &err) {
     const RunResult rr = run_process({exePath});
-    if (rr.exit_code == -1)
-    {
+    if (rr.exit_code == -1) {
         err << "error: failed to execute '" << exePath << "'\n";
         return -1;
     }

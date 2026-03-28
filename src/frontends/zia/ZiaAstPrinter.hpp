@@ -42,12 +42,10 @@
 #include "frontends/zia/AST.hpp"
 #include <string>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 /// @brief Produces a human-readable dump of a Zia AST module.
-class ZiaAstPrinter
-{
+class ZiaAstPrinter {
   public:
     /// @brief Dump the entire module declaration tree.
     /// @param module The root module declaration to print.

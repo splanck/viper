@@ -44,8 +44,7 @@ extern void rt_canvas3d_add_temp_buffer(void *canvas, void *buffer);
  * Internal types
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     float pos[3];
     float vel[3];
     float color[4]; /* current RGBA */
@@ -54,8 +53,7 @@ typedef struct
     float max_life;
 } vgfx3d_particle_t;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     vgfx3d_particle_t *particles;
     int32_t count;
@@ -89,8 +87,7 @@ static rt_particles3d *s_current_ps = NULL;
  * xorshift32 PRNG (per-instance, deterministic)
  *=========================================================================*/
 
-static uint32_t xorshift32(void)
-{
+static uint32_t xorshift32(void) {
     uint32_t x = s_current_ps->prng_state;
     x ^= x << 13;
     x ^= x >> 17;
@@ -100,14 +97,12 @@ static uint32_t xorshift32(void)
 }
 
 /// @brief Random float in [0, 1).
-static float randf(void)
-{
+static float randf(void) {
     return (float)(xorshift32() & 0x00FFFFFF) / (float)0x01000000;
 }
 
 /// @brief Random float in [lo, hi].
-static float rand_range(double lo, double hi)
-{
+static float rand_range(double lo, double hi) {
     return (float)(lo + randf() * (hi - lo));
 }
 
@@ -115,8 +110,7 @@ static float rand_range(double lo, double hi)
  * Helpers
  *=========================================================================*/
 
-static void unpack_color(int64_t packed, float *rgb)
-{
+static void unpack_color(int64_t packed, float *rgb) {
     rgb[0] = (float)((packed >> 16) & 0xFF) / 255.0f;
     rgb[1] = (float)((packed >> 8) & 0xFF) / 255.0f;
     rgb[2] = (float)(packed & 0xFF) / 255.0f;
@@ -124,10 +118,8 @@ static void unpack_color(int64_t packed, float *rgb)
 
 /// @brief Generate a random direction within a cone of half-angle `spread`
 ///        around the given direction vector.
-static void random_cone_dir(const double *dir, double spread, float *out)
-{
-    if (spread <= 0.0)
-    {
+static void random_cone_dir(const double *dir, double spread, float *out) {
+    if (spread <= 0.0) {
         out[0] = (float)dir[0];
         out[1] = (float)dir[1];
         out[2] = (float)dir[2];
@@ -141,14 +133,11 @@ static void random_cone_dir(const double *dir, double spread, float *out)
     /* Build a coordinate frame around dir */
     float d[3] = {(float)dir[0], (float)dir[1], (float)dir[2]};
     float dlen = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
-    if (dlen > 1e-6f)
-    {
+    if (dlen > 1e-6f) {
         d[0] /= dlen;
         d[1] /= dlen;
         d[2] /= dlen;
-    }
-    else
-    {
+    } else {
         d[0] = 0;
         d[1] = 1;
         d[2] = 0;
@@ -156,14 +145,11 @@ static void random_cone_dir(const double *dir, double spread, float *out)
 
     /* Find a perpendicular vector */
     float perp[3];
-    if (fabsf(d[1]) < 0.9f)
-    {
+    if (fabsf(d[1]) < 0.9f) {
         perp[0] = 0;
         perp[1] = 1;
         perp[2] = 0;
-    }
-    else
-    {
+    } else {
         perp[0] = 1;
         perp[1] = 0;
         perp[2] = 0;
@@ -173,8 +159,7 @@ static void random_cone_dir(const double *dir, double spread, float *out)
     float ry = d[2] * perp[0] - d[0] * perp[2];
     float rz = d[0] * perp[1] - d[1] * perp[0];
     float rlen = sqrtf(rx * rx + ry * ry + rz * rz);
-    if (rlen > 1e-6f)
-    {
+    if (rlen > 1e-6f) {
         rx /= rlen;
         ry /= rlen;
         rz /= rlen;
@@ -194,8 +179,7 @@ static void random_cone_dir(const double *dir, double spread, float *out)
 
     /* Normalize */
     float olen = sqrtf(out[0] * out[0] + out[1] * out[1] + out[2] * out[2]);
-    if (olen > 1e-6f)
-    {
+    if (olen > 1e-6f) {
         out[0] /= olen;
         out[1] /= olen;
         out[2] /= olen;
@@ -206,31 +190,26 @@ static void random_cone_dir(const double *dir, double spread, float *out)
  * Lifecycle
  *=========================================================================*/
 
-static void rt_particles3d_finalize(void *obj)
-{
+static void rt_particles3d_finalize(void *obj) {
     rt_particles3d *ps = (rt_particles3d *)obj;
     free(ps->particles);
     ps->particles = NULL;
 }
 
-void *rt_particles3d_new(int64_t max_particles)
-{
-    if (max_particles <= 0 || max_particles > 100000)
-    {
+void *rt_particles3d_new(int64_t max_particles) {
+    if (max_particles <= 0 || max_particles > 100000) {
         rt_trap("Particles3D.New: max_particles must be 1-100000");
         return NULL;
     }
     rt_particles3d *ps = (rt_particles3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_particles3d));
-    if (!ps)
-    {
+    if (!ps) {
         rt_trap("Particles3D.New: memory allocation failed");
         return NULL;
     }
 
     ps->vptr = NULL;
     ps->particles = (vgfx3d_particle_t *)calloc((size_t)max_particles, sizeof(vgfx3d_particle_t));
-    if (!ps->particles)
-    {
+    if (!ps->particles) {
         rt_trap("Particles3D.New: out of memory");
         return NULL;
     }
@@ -277,8 +256,7 @@ void *rt_particles3d_new(int64_t max_particles)
  * Configuration
  *=========================================================================*/
 
-void rt_particles3d_set_position(void *o, double x, double y, double z)
-{
+void rt_particles3d_set_position(void *o, double x, double y, double z) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
@@ -287,14 +265,12 @@ void rt_particles3d_set_position(void *o, double x, double y, double z)
     p->position[2] = z;
 }
 
-void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, double spread)
-{
+void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, double spread) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
     double len = sqrt(dx * dx + dy * dy + dz * dz);
-    if (len > 1e-8)
-    {
+    if (len > 1e-8) {
         p->emit_dir[0] = dx / len;
         p->emit_dir[1] = dy / len;
         p->emit_dir[2] = dz / len;
@@ -302,8 +278,7 @@ void rt_particles3d_set_direction(void *o, double dx, double dy, double dz, doub
     p->emit_spread = spread;
 }
 
-void rt_particles3d_set_speed(void *o, double mn, double mx)
-{
+void rt_particles3d_set_speed(void *o, double mn, double mx) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
@@ -311,8 +286,7 @@ void rt_particles3d_set_speed(void *o, double mn, double mx)
     p->speed_max = mx;
 }
 
-void rt_particles3d_set_lifetime(void *o, double mn, double mx)
-{
+void rt_particles3d_set_lifetime(void *o, double mn, double mx) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
@@ -320,8 +294,7 @@ void rt_particles3d_set_lifetime(void *o, double mn, double mx)
     p->life_max = mx;
 }
 
-void rt_particles3d_set_size(void *o, double s, double e)
-{
+void rt_particles3d_set_size(void *o, double s, double e) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
@@ -329,8 +302,7 @@ void rt_particles3d_set_size(void *o, double s, double e)
     p->size_end = e;
 }
 
-void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz)
-{
+void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
@@ -339,8 +311,7 @@ void rt_particles3d_set_gravity(void *o, double gx, double gy, double gz)
     p->gravity[2] = gz;
 }
 
-void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec)
-{
+void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
@@ -348,8 +319,7 @@ void rt_particles3d_set_color(void *o, int64_t sc, int64_t ec)
     unpack_color(ec, p->color_end);
 }
 
-void rt_particles3d_set_alpha(void *o, double sa, double ea)
-{
+void rt_particles3d_set_alpha(void *o, double sa, double ea) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
@@ -357,36 +327,31 @@ void rt_particles3d_set_alpha(void *o, double sa, double ea)
     p->alpha_end = ea;
 }
 
-void rt_particles3d_set_rate(void *o, double r)
-{
+void rt_particles3d_set_rate(void *o, double r) {
     if (!o)
         return;
     ((rt_particles3d *)o)->rate = r;
 }
 
-void rt_particles3d_set_additive(void *o, int8_t a)
-{
+void rt_particles3d_set_additive(void *o, int8_t a) {
     if (!o)
         return;
     ((rt_particles3d *)o)->additive_blend = a;
 }
 
-void rt_particles3d_set_texture(void *o, void *tex)
-{
+void rt_particles3d_set_texture(void *o, void *tex) {
     if (!o)
         return;
     ((rt_particles3d *)o)->texture = tex;
 }
 
-void rt_particles3d_set_emitter_shape(void *o, int64_t s)
-{
+void rt_particles3d_set_emitter_shape(void *o, int64_t s) {
     if (!o)
         return;
     ((rt_particles3d *)o)->emitter_shape = (int32_t)s;
 }
 
-void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz)
-{
+void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz) {
     if (!o)
         return;
     rt_particles3d *p = (rt_particles3d *)o;
@@ -399,33 +364,28 @@ void rt_particles3d_set_emitter_size(void *o, double sx, double sy, double sz)
  * Playback
  *=========================================================================*/
 
-void rt_particles3d_start(void *o)
-{
+void rt_particles3d_start(void *o) {
     if (o)
         ((rt_particles3d *)o)->emitting = 1;
 }
 
-void rt_particles3d_stop(void *o)
-{
+void rt_particles3d_stop(void *o) {
     if (o)
         ((rt_particles3d *)o)->emitting = 0;
 }
 
-void rt_particles3d_clear(void *o)
-{
+void rt_particles3d_clear(void *o) {
     if (!o)
         return;
     ((rt_particles3d *)o)->count = 0;
     ((rt_particles3d *)o)->accumulator = 0.0;
 }
 
-int64_t rt_particles3d_get_count(void *o)
-{
+int64_t rt_particles3d_get_count(void *o) {
     return o ? ((rt_particles3d *)o)->count : 0;
 }
 
-int8_t rt_particles3d_get_emitting(void *o)
-{
+int8_t rt_particles3d_get_emitting(void *o) {
     return o ? ((rt_particles3d *)o)->emitting : 0;
 }
 
@@ -433,8 +393,7 @@ int8_t rt_particles3d_get_emitting(void *o)
  * Spawning
  *=========================================================================*/
 
-static void spawn_particle(rt_particles3d *ps)
-{
+static void spawn_particle(rt_particles3d *ps) {
     if (ps->count >= ps->max_particles)
         return;
     vgfx3d_particle_t *p = &ps->particles[ps->count++];
@@ -452,8 +411,7 @@ static void spawn_particle(rt_particles3d *ps)
         p->pos[0] += r * sinf(phi) * cosf(theta);
         p->pos[1] += r * cosf(phi);
         p->pos[2] += r * sinf(phi) * sinf(theta);
-    }
-    else if (ps->emitter_shape == 2) /* box */
+    } else if (ps->emitter_shape == 2) /* box */
     {
         p->pos[0] += (randf() - 0.5f) * 2.0f * (float)ps->emitter_size[0];
         p->pos[1] += (randf() - 0.5f) * 2.0f * (float)ps->emitter_size[1];
@@ -482,8 +440,7 @@ static void spawn_particle(rt_particles3d *ps)
     p->color[3] = (float)ps->alpha_start;
 }
 
-void rt_particles3d_burst(void *o, int64_t count)
-{
+void rt_particles3d_burst(void *o, int64_t count) {
     if (!o || count <= 0)
         return;
     rt_particles3d *ps = (rt_particles3d *)o;
@@ -495,8 +452,7 @@ void rt_particles3d_burst(void *o, int64_t count)
  * Update (Euler integration + lifetime + interpolation)
  *=========================================================================*/
 
-void rt_particles3d_update(void *o, double delta_time)
-{
+void rt_particles3d_update(void *o, double delta_time) {
     if (!o || delta_time <= 0.0)
         return;
     rt_particles3d *ps = (rt_particles3d *)o;
@@ -504,12 +460,10 @@ void rt_particles3d_update(void *o, double delta_time)
     float dt = (float)delta_time;
 
     /* Update alive particles */
-    for (int32_t i = 0; i < ps->count;)
-    {
+    for (int32_t i = 0; i < ps->count;) {
         vgfx3d_particle_t *p = &ps->particles[i];
         p->life -= dt;
-        if (p->life <= 0.0f)
-        {
+        if (p->life <= 0.0f) {
             /* Kill: swap with last alive particle (O(1) unstable removal) */
             ps->particles[i] = ps->particles[--ps->count];
             continue;
@@ -535,11 +489,9 @@ void rt_particles3d_update(void *o, double delta_time)
     }
 
     /* Spawn new particles */
-    if (ps->emitting && ps->rate > 0.0)
-    {
+    if (ps->emitting && ps->rate > 0.0) {
         ps->accumulator += ps->rate * delta_time;
-        while (ps->accumulator >= 1.0)
-        {
+        while (ps->accumulator >= 1.0) {
             spawn_particle(ps);
             ps->accumulator -= 1.0;
         }
@@ -550,8 +502,7 @@ void rt_particles3d_update(void *o, double delta_time)
  * Billboard rendering (batched single draw call)
  *=========================================================================*/
 
-void rt_particles3d_draw(void *o, void *canvas3d, void *camera)
-{
+void rt_particles3d_draw(void *o, void *canvas3d, void *camera) {
     if (!o || !canvas3d || !camera)
         return;
     rt_particles3d *ps = (rt_particles3d *)o;
@@ -567,19 +518,16 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera)
     float up[3] = {(float)cam->view[4], (float)cam->view[5], (float)cam->view[6]};
 
     /* Sort particles back-to-front for alpha blend (skip for additive) */
-    if (!ps->additive_blend)
-    {
+    if (!ps->additive_blend) {
         float cam_pos[3] = {(float)cam->eye[0], (float)cam->eye[1], (float)cam->eye[2]};
         /* Simple insertion sort (stable, good for nearly-sorted data) */
-        for (int32_t i = 1; i < ps->count; i++)
-        {
+        for (int32_t i = 1; i < ps->count; i++) {
             vgfx3d_particle_t key = ps->particles[i];
             float ki_dist = (key.pos[0] - cam_pos[0]) * (key.pos[0] - cam_pos[0]) +
                             (key.pos[1] - cam_pos[1]) * (key.pos[1] - cam_pos[1]) +
                             (key.pos[2] - cam_pos[2]) * (key.pos[2] - cam_pos[2]);
             int32_t j = i - 1;
-            while (j >= 0)
-            {
+            while (j >= 0) {
                 vgfx3d_particle_t *pj = &ps->particles[j];
                 float dj = (pj->pos[0] - cam_pos[0]) * (pj->pos[0] - cam_pos[0]) +
                            (pj->pos[1] - cam_pos[1]) * (pj->pos[1] - cam_pos[1]) +
@@ -598,15 +546,13 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera)
     uint32_t idx_count = (uint32_t)ps->count * 6;
     vgfx3d_vertex_t *verts = (vgfx3d_vertex_t *)calloc(vert_count, sizeof(vgfx3d_vertex_t));
     uint32_t *indices = (uint32_t *)malloc(idx_count * sizeof(uint32_t));
-    if (!verts || !indices)
-    {
+    if (!verts || !indices) {
         free(verts);
         free(indices);
         return;
     }
 
-    for (int32_t i = 0; i < ps->count; i++)
-    {
+    for (int32_t i = 0; i < ps->count; i++) {
         vgfx3d_particle_t *p = &ps->particles[i];
         float hs = p->size * 0.5f;
         uint32_t base = (uint32_t)i * 4;
@@ -615,8 +561,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera)
         float cx = p->pos[0], cy = p->pos[1], cz = p->pos[2];
 
         /* v0 = bottom-left, v1 = bottom-right, v2 = top-right, v3 = top-left */
-        for (int vi = 0; vi < 4; vi++)
-        {
+        for (int vi = 0; vi < 4; vi++) {
             float rs = (vi == 1 || vi == 2) ? hs : -hs;
             float us = (vi == 2 || vi == 3) ? hs : -hs;
             vgfx3d_vertex_t *v = &verts[base + vi];
@@ -671,8 +616,7 @@ void rt_particles3d_draw(void *o, void *canvas3d, void *camera)
     extern void rt_material3d_set_texture(void *m, void *tex);
     extern void *rt_mat4_identity(void);
 
-    if (!ps->cached_material)
-    {
+    if (!ps->cached_material) {
         ps->cached_material = rt_material3d_new();
         rt_material3d_set_color(ps->cached_material, 1.0, 1.0, 1.0);
         rt_material3d_set_unlit(ps->cached_material, 1);

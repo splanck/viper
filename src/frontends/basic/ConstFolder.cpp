@@ -29,25 +29,21 @@
 #include <optional>
 #include <utility>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 namespace cf = il::frontends::basic::constfold;
 
-namespace
-{
+namespace {
 
 /// @brief AST visitor that performs in-place constant folding for BASIC.
 /// @details Traverses expressions and statements, eagerly rewriting literal
 ///          subtrees into canonical nodes.  The pass threads context via member
 ///          pointers so nested visits can replace the current expression or
 ///          statement without returning large structures.
-class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
-{
+class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor {
   public:
     /// @brief Fold all procedures and top-level statements in a program.
     /// @param prog Program whose AST will be mutated in place.
-    void run(Program &prog)
-    {
+    void run(Program &prog) {
         for (auto &decl : prog.procs)
             foldStmt(decl);
         for (auto &stmt : prog.main)
@@ -57,8 +53,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
   private:
     /// @brief Recursively fold an expression tree and update the current slot.
     /// @param expr Expression pointer reference that may be replaced with a literal.
-    void foldExpr(ExprPtr &expr)
-    {
+    void foldExpr(ExprPtr &expr) {
         if (!expr)
             return;
         ExprPtr *prev = currentExpr_;
@@ -69,8 +64,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
 
     /// @brief Recursively fold a statement subtree.
     /// @param stmt Statement pointer reference that may be rewritten.
-    void foldStmt(StmtPtr &stmt)
-    {
+    void foldStmt(StmtPtr &stmt) {
         if (!stmt)
             return;
         StmtPtr *prev = currentStmt_;
@@ -81,59 +75,51 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
 
     /// @brief Access the expression slot currently being rewritten.
     /// @return Reference to the pointer tracked by the visitor.
-    ExprPtr &exprSlot()
-    {
+    ExprPtr &exprSlot() {
         return *currentExpr_;
     }
 
     /// @brief Replace the active expression with an integer literal node.
     /// @param v Integer value assigned to the replacement literal.
     /// @param loc Source location propagated to the new node.
-    void replaceWithInt(long long v, il::support::SourceLoc loc)
-    {
+    void replaceWithInt(long long v, il::support::SourceLoc loc) {
         exprSlot() = makeIntExpr(v, loc);
     }
 
     /// @brief Replace the active expression with a boolean literal node.
     /// @param v Boolean value assigned to the replacement literal.
     /// @param loc Source location propagated to the new node.
-    void replaceWithBool(bool v, il::support::SourceLoc loc)
-    {
+    void replaceWithBool(bool v, il::support::SourceLoc loc) {
         exprSlot() = makeBoolExpr(v, loc);
     }
 
     /// @brief Replace the active expression with a string literal node.
     /// @param s String payload for the replacement literal.
     /// @param loc Source location propagated to the new node.
-    void replaceWithStr(std::string_view s, il::support::SourceLoc loc)
-    {
+    void replaceWithStr(std::string_view s, il::support::SourceLoc loc) {
         exprSlot() = makeStrExpr(s, loc);
     }
 
     /// @brief Replace the active expression with a floating-point literal node.
     /// @param v Floating-point value assigned to the replacement literal.
     /// @param loc Source location propagated to the new node.
-    void replaceWithFloat(double v, il::support::SourceLoc loc)
-    {
+    void replaceWithFloat(double v, il::support::SourceLoc loc) {
         exprSlot() = makeFloatExpr(v, loc);
     }
 
     /// @brief Replace the active expression with an arbitrary expression node.
     /// @param replacement Newly constructed expression that becomes current.
-    void replaceWithExpr(ExprPtr replacement)
-    {
+    void replaceWithExpr(ExprPtr replacement) {
         exprSlot() = std::move(replacement);
     }
 
     /// @brief Fold LEN builtin calls when the argument is a literal.
     /// @param expr Builtin call expression being visited.
     /// @return @c true when the expression was replaced with a constant.
-    bool tryFoldLen(BuiltinCallExpr &expr)
-    {
+    bool tryFoldLen(BuiltinCallExpr &expr) {
         if (expr.args.size() != 1 || !expr.args[0])
             return false;
-        if (auto folded = cf::foldLenLiteral(*expr.args[0]))
-        {
+        if (auto folded = cf::foldLenLiteral(*expr.args[0])) {
             folded->loc = expr.loc;
             replaceWithExpr(std::move(folded));
             return true;
@@ -144,12 +130,10 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @brief Fold MID builtin calls when all operands are literal.
     /// @param expr Builtin call expression being visited.
     /// @return @c true when the expression was replaced with a constant.
-    bool tryFoldMid(BuiltinCallExpr &expr)
-    {
+    bool tryFoldMid(BuiltinCallExpr &expr) {
         if (expr.args.size() != 3 || !expr.args[0] || !expr.args[1] || !expr.args[2])
             return false;
-        if (auto folded = cf::foldMidLiteral(*expr.args[0], *expr.args[1], *expr.args[2]))
-        {
+        if (auto folded = cf::foldMidLiteral(*expr.args[0], *expr.args[1], *expr.args[2])) {
             folded->loc = expr.loc;
             replaceWithExpr(std::move(folded));
             return true;
@@ -160,12 +144,10 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @brief Fold LEFT builtin calls when both operands are literal.
     /// @param expr Builtin call expression being visited.
     /// @return @c true when the expression was replaced with a constant.
-    bool tryFoldLeft(BuiltinCallExpr &expr)
-    {
+    bool tryFoldLeft(BuiltinCallExpr &expr) {
         if (expr.args.size() != 2 || !expr.args[0] || !expr.args[1])
             return false;
-        if (auto folded = cf::foldLeftLiteral(*expr.args[0], *expr.args[1]))
-        {
+        if (auto folded = cf::foldLeftLiteral(*expr.args[0], *expr.args[1])) {
             folded->loc = expr.loc;
             replaceWithExpr(std::move(folded));
             return true;
@@ -176,12 +158,10 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @brief Fold RIGHT builtin calls when both operands are literal.
     /// @param expr Builtin call expression being visited.
     /// @return @c true when the expression was replaced with a constant.
-    bool tryFoldRight(BuiltinCallExpr &expr)
-    {
+    bool tryFoldRight(BuiltinCallExpr &expr) {
         if (expr.args.size() != 2 || !expr.args[0] || !expr.args[1])
             return false;
-        if (auto folded = cf::foldRightLiteral(*expr.args[0], *expr.args[1]))
-        {
+        if (auto folded = cf::foldRightLiteral(*expr.args[0], *expr.args[1])) {
             folded->loc = expr.loc;
             replaceWithExpr(std::move(folded));
             return true;
@@ -192,12 +172,10 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @brief Fold VAL builtin calls when the argument is a literal string.
     /// @param expr Builtin call expression being visited.
     /// @return @c true when the expression was replaced with a numeric constant.
-    bool tryFoldVal(BuiltinCallExpr &expr)
-    {
+    bool tryFoldVal(BuiltinCallExpr &expr) {
         if (expr.args.size() != 1 || !expr.args[0])
             return false;
-        if (auto folded = cf::foldValLiteral(*expr.args[0]))
-        {
+        if (auto folded = cf::foldValLiteral(*expr.args[0])) {
             folded->loc = expr.loc;
             replaceWithExpr(std::move(folded));
             return true;
@@ -208,12 +186,10 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @brief Fold INT builtin calls for literal numeric arguments.
     /// @param expr Builtin call expression being visited.
     /// @return @c true when the expression was replaced with a constant.
-    bool tryFoldInt(BuiltinCallExpr &expr)
-    {
+    bool tryFoldInt(BuiltinCallExpr &expr) {
         if (expr.args.size() != 1 || !expr.args[0])
             return false;
-        if (auto folded = cf::foldIntLiteral(*expr.args[0]))
-        {
+        if (auto folded = cf::foldIntLiteral(*expr.args[0])) {
             folded->loc = expr.loc;
             replaceWithExpr(std::move(folded));
             return true;
@@ -224,12 +200,10 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @brief Fold FIX builtin calls for literal numeric arguments.
     /// @param expr Builtin call expression being visited.
     /// @return @c true when the expression was replaced with a constant.
-    bool tryFoldFix(BuiltinCallExpr &expr)
-    {
+    bool tryFoldFix(BuiltinCallExpr &expr) {
         if (expr.args.size() != 1 || !expr.args[0])
             return false;
-        if (auto folded = cf::foldFixLiteral(*expr.args[0]))
-        {
+        if (auto folded = cf::foldFixLiteral(*expr.args[0])) {
             folded->loc = expr.loc;
             replaceWithExpr(std::move(folded));
             return true;
@@ -240,13 +214,11 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @brief Fold ROUND builtin calls when arguments are literal.
     /// @param expr Builtin call expression being visited.
     /// @return @c true when the expression was replaced with a rounded constant.
-    bool tryFoldRound(BuiltinCallExpr &expr)
-    {
+    bool tryFoldRound(BuiltinCallExpr &expr) {
         if (expr.args.empty() || !expr.args[0])
             return false;
         const Expr *digits = (expr.args.size() >= 2 && expr.args[1]) ? expr.args[1].get() : nullptr;
-        if (auto folded = cf::foldRoundLiteral(*expr.args[0], digits))
-        {
+        if (auto folded = cf::foldRoundLiteral(*expr.args[0], digits)) {
             folded->loc = expr.loc;
             replaceWithExpr(std::move(folded));
             return true;
@@ -257,12 +229,10 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @brief Fold STR builtin calls when the argument is literal numeric.
     /// @param expr Builtin call expression being visited.
     /// @return @c true when the expression was replaced with a string literal.
-    bool tryFoldStr(BuiltinCallExpr &expr)
-    {
+    bool tryFoldStr(BuiltinCallExpr &expr) {
         if (expr.args.size() != 1 || !expr.args[0])
             return false;
-        if (auto folded = cf::foldStrLiteral(*expr.args[0]))
-        {
+        if (auto folded = cf::foldStrLiteral(*expr.args[0])) {
             folded->loc = expr.loc;
             replaceWithExpr(std::move(folded));
             return true;
@@ -273,12 +243,10 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @brief Fold CHR$ builtin calls when the argument is a literal integer.
     /// @param expr Builtin call expression being visited.
     /// @return @c true when the expression was replaced with a string literal.
-    bool tryFoldChr(BuiltinCallExpr &expr)
-    {
+    bool tryFoldChr(BuiltinCallExpr &expr) {
         if (expr.args.size() != 1 || !expr.args[0])
             return false;
-        if (auto folded = cf::foldChrLiteral(*expr.args[0]))
-        {
+        if (auto folded = cf::foldChrLiteral(*expr.args[0])) {
             folded->loc = expr.loc;
             replaceWithExpr(std::move(folded));
             return true;
@@ -286,8 +254,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
         return false;
     }
 
-    struct BuiltinDispatchEntry
-    {
+    struct BuiltinDispatchEntry {
         BuiltinCallExpr::Builtin builtin;
         bool (ConstFolderPass::*folder)(BuiltinCallExpr &);
     };
@@ -322,8 +289,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(VarExpr &) override {}
 
     /// @brief Fold array index expressions before evaluating bounds.
-    void visit(ArrayExpr &expr) override
-    {
+    void visit(ArrayExpr &expr) override {
         foldExpr(expr.index);
     }
 
@@ -334,22 +300,18 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(UBoundExpr &) override {}
 
     /// @brief Fold unary operations when the operand collapses to a literal.
-    void visit(UnaryExpr &expr) override
-    {
+    void visit(UnaryExpr &expr) override {
         foldExpr(expr.expr);
-        switch (expr.op)
-        {
+        switch (expr.op) {
             case UnaryExpr::Op::LogicalNot:
-                if (auto replacement = cf::fold_logical_not(*expr.expr))
-                {
+                if (auto replacement = cf::fold_logical_not(*expr.expr)) {
                     replacement->loc = expr.loc;
                     replaceWithExpr(std::move(replacement));
                 }
                 break;
             case UnaryExpr::Op::Plus:
             case UnaryExpr::Op::Negate:
-                if (auto replacement = cf::fold_unary_arith(expr.op, *expr.expr))
-                {
+                if (auto replacement = cf::fold_unary_arith(expr.op, *expr.expr)) {
                     replacement->loc = expr.loc;
                     replaceWithExpr(std::move(replacement));
                 }
@@ -358,29 +320,22 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     }
 
     /// @brief Fold binary operations by evaluating literal operands and applying shortcuts.
-    void visit(BinaryExpr &expr) override
-    {
+    void visit(BinaryExpr &expr) override {
         foldExpr(expr.lhs);
 
-        if (auto *lhsBool = as<BoolExpr>(*expr.lhs))
-        {
-            if (auto shortCircuit = cf::try_short_circuit(expr.op, *lhsBool))
-            {
+        if (auto *lhsBool = as<BoolExpr>(*expr.lhs)) {
+            if (auto shortCircuit = cf::try_short_circuit(expr.op, *lhsBool)) {
                 replaceWithBool(*shortCircuit, expr.loc);
                 return;
             }
 
-            if (cf::is_short_circuit(expr.op))
-            {
+            if (cf::is_short_circuit(expr.op)) {
                 ExprPtr rhs = std::move(expr.rhs);
                 foldExpr(rhs);
-                if (auto folded = cf::fold_boolean_binary(*lhsBool, expr.op, *rhs))
-                {
+                if (auto folded = cf::fold_boolean_binary(*lhsBool, expr.op, *rhs)) {
                     folded->loc = expr.loc;
                     replaceWithExpr(std::move(folded));
-                }
-                else
-                {
+                } else {
                     replaceWithExpr(std::move(rhs));
                 }
                 return;
@@ -389,30 +344,25 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
 
         foldExpr(expr.rhs);
 
-        if (auto folded = cf::fold_boolean_binary(*expr.lhs, expr.op, *expr.rhs))
-        {
+        if (auto folded = cf::fold_boolean_binary(*expr.lhs, expr.op, *expr.rhs)) {
             folded->loc = expr.loc;
             replaceWithExpr(std::move(folded));
             return;
         }
 
-        if (auto folded = cf::fold_expr(expr))
-        {
+        if (auto folded = cf::fold_expr(expr)) {
             (*folded)->loc = expr.loc;
             replaceWithExpr(std::move(*folded));
         }
     }
 
     /// @brief Fold builtin function calls whose arguments are literal values.
-    void visit(BuiltinCallExpr &expr) override
-    {
+    void visit(BuiltinCallExpr &expr) override {
         for (auto &arg : expr.args)
             foldExpr(arg);
 
-        for (const auto &entry : kBuiltinDispatch)
-        {
-            if (entry.builtin == expr.builtin)
-            {
+        for (const auto &entry : kBuiltinDispatch) {
+            if (entry.builtin == expr.builtin) {
                 if ((this->*entry.folder)(expr))
                     return;
                 break;
@@ -424,8 +374,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(CallExpr &) override {}
 
     /// @brief Fold constructor arguments to expose more literal values downstream.
-    void visit(NewExpr &expr) override
-    {
+    void visit(NewExpr &expr) override {
         for (auto &arg : expr.args)
             foldExpr(arg);
     }
@@ -434,28 +383,24 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(MeExpr &) override {}
 
     /// @brief Fold the receiver of member accesses before further lowering.
-    void visit(MemberAccessExpr &expr) override
-    {
+    void visit(MemberAccessExpr &expr) override {
         foldExpr(expr.base);
     }
 
     /// @brief Fold the receiver and arguments of method invocations.
-    void visit(MethodCallExpr &expr) override
-    {
+    void visit(MethodCallExpr &expr) override {
         foldExpr(expr.base);
         for (auto &arg : expr.args)
             foldExpr(arg);
     }
 
     /// @brief Fold inside IS expression (value only; type is metadata).
-    void visit(IsExpr &expr) override
-    {
+    void visit(IsExpr &expr) override {
         foldExpr(expr.value);
     }
 
     /// @brief Fold inside AS expression (value only; type is metadata).
-    void visit(AsExpr &expr) override
-    {
+    void visit(AsExpr &expr) override {
         foldExpr(expr.value);
     }
 
@@ -467,18 +412,15 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(LabelStmt &) override {}
 
     /// @brief Fold expressions embedded in PRINT statement items.
-    void visit(PrintStmt &stmt) override
-    {
-        for (auto &item : stmt.items)
-        {
+    void visit(PrintStmt &stmt) override {
+        for (auto &item : stmt.items) {
             if (item.kind == PrintItem::Kind::Expr)
                 foldExpr(item.expr);
         }
     }
 
     /// @brief Fold channel and argument expressions for PRINT # statements.
-    void visit(PrintChStmt &stmt) override
-    {
+    void visit(PrintChStmt &stmt) override {
         foldExpr(stmt.channelExpr);
         for (auto &arg : stmt.args)
             foldExpr(arg);
@@ -488,20 +430,17 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(BeepStmt &) override {}
 
     /// @brief Fold arguments within CALL statements while leaving target intact.
-    void visit(CallStmt &stmt) override
-    {
+    void visit(CallStmt &stmt) override {
         if (!stmt.call)
             return;
 
-        if (auto *ce = as<CallExpr>(*stmt.call))
-        {
+        if (auto *ce = as<CallExpr>(*stmt.call)) {
             for (auto &arg : ce->args)
                 foldExpr(arg);
             return;
         }
 
-        if (auto *me = as<MethodCallExpr>(*stmt.call))
-        {
+        if (auto *me = as<MethodCallExpr>(*stmt.call)) {
             if (me->base)
                 foldExpr(me->base);
             for (auto &arg : me->args)
@@ -520,8 +459,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(AltScreenStmt &) override {}
 
     /// @brief Fold the foreground/background expressions for COLOR statements.
-    void visit(ColorStmt &stmt) override
-    {
+    void visit(ColorStmt &stmt) override {
         foldExpr(stmt.fg);
         foldExpr(stmt.bg);
     }
@@ -529,35 +467,30 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     /// @brief Fold the millisecond duration in SLEEP statements.
     /// @details The runtime clamps negatives; folding only simplifies literal
     ///          arithmetic in the duration expression, leaving semantics to lowering/runtime.
-    void visit(SleepStmt &stmt) override
-    {
+    void visit(SleepStmt &stmt) override {
         foldExpr(stmt.ms);
     }
 
     /// @brief Fold cursor position expressions for LOCATE statements.
-    void visit(LocateStmt &stmt) override
-    {
+    void visit(LocateStmt &stmt) override {
         foldExpr(stmt.row);
         foldExpr(stmt.col);
     }
 
     /// @brief Fold both the target and assigned expression in LET statements.
-    void visit(LetStmt &stmt) override
-    {
+    void visit(LetStmt &stmt) override {
         foldExpr(stmt.target);
         foldExpr(stmt.expr);
     }
 
     /// @brief Fold initializer expressions in CONST statements.
-    void visit(ConstStmt &stmt) override
-    {
+    void visit(ConstStmt &stmt) override {
         if (stmt.initializer)
             foldExpr(stmt.initializer);
     }
 
     /// @brief Fold array size expressions in DIM statements when present.
-    void visit(DimStmt &stmt) override
-    {
+    void visit(DimStmt &stmt) override {
         if (stmt.isArray && stmt.size)
             foldExpr(stmt.size);
     }
@@ -569,15 +502,13 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(SharedStmt &) override {}
 
     /// @brief Fold new bounds in REDIM statements when present.
-    void visit(ReDimStmt &stmt) override
-    {
+    void visit(ReDimStmt &stmt) override {
         if (stmt.size)
             foldExpr(stmt.size);
     }
 
     /// @brief Fold expressions in SWAP statements when present.
-    void visit(SwapStmt &stmt) override
-    {
+    void visit(SwapStmt &stmt) override {
         if (stmt.lhs)
             foldExpr(stmt.lhs);
         if (stmt.rhs)
@@ -588,12 +519,10 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(RandomizeStmt &) override {}
 
     /// @brief Fold predicates and branch bodies within IF statements.
-    void visit(IfStmt &stmt) override
-    {
+    void visit(IfStmt &stmt) override {
         foldExpr(stmt.cond);
         foldStmt(stmt.then_branch);
-        for (auto &elseif : stmt.elseifs)
-        {
+        for (auto &elseif : stmt.elseifs) {
             foldExpr(elseif.cond);
             foldStmt(elseif.then_branch);
         }
@@ -601,8 +530,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     }
 
     /// @brief Fold selectors and arms inside SELECT CASE statements.
-    void visit(SelectCaseStmt &stmt) override
-    {
+    void visit(SelectCaseStmt &stmt) override {
         foldExpr(stmt.selector);
         for (auto &arm : stmt.arms)
             for (auto &bodyStmt : arm.body)
@@ -612,16 +540,14 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     }
 
     /// @brief Fold loop predicates and bodies for WHILE statements.
-    void visit(WhileStmt &stmt) override
-    {
+    void visit(WhileStmt &stmt) override {
         foldExpr(stmt.cond);
         for (auto &bodyStmt : stmt.body)
             foldStmt(bodyStmt);
     }
 
     /// @brief Fold DO loop conditions (when present) and bodies.
-    void visit(DoStmt &stmt) override
-    {
+    void visit(DoStmt &stmt) override {
         if (stmt.cond)
             foldExpr(stmt.cond);
         for (auto &bodyStmt : stmt.body)
@@ -629,8 +555,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     }
 
     /// @brief Fold range and body expressions for FOR loops.
-    void visit(ForStmt &stmt) override
-    {
+    void visit(ForStmt &stmt) override {
         foldExpr(stmt.start);
         foldExpr(stmt.end);
         if (stmt.step)
@@ -640,8 +565,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     }
 
     /// @brief Fold body expressions for FOR EACH loops.
-    void visit(ForEachStmt &stmt) override
-    {
+    void visit(ForEachStmt &stmt) override {
         for (auto &bodyStmt : stmt.body)
             foldStmt(bodyStmt);
     }
@@ -659,8 +583,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(GosubStmt &) override {}
 
     /// @brief Fold OPEN statement operands such as path and channel.
-    void visit(OpenStmt &stmt) override
-    {
+    void visit(OpenStmt &stmt) override {
         if (stmt.pathExpr)
             foldExpr(stmt.pathExpr);
         if (stmt.channelExpr)
@@ -668,15 +591,13 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     }
 
     /// @brief Fold channel expressions in CLOSE statements.
-    void visit(CloseStmt &stmt) override
-    {
+    void visit(CloseStmt &stmt) override {
         if (stmt.channelExpr)
             foldExpr(stmt.channelExpr);
     }
 
     /// @brief Fold channel and offset expressions in SEEK statements.
-    void visit(SeekStmt &stmt) override
-    {
+    void visit(SeekStmt &stmt) override {
         if (stmt.channelExpr)
             foldExpr(stmt.channelExpr);
         if (stmt.positionExpr)
@@ -693,8 +614,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(EndStmt &) override {}
 
     /// @brief Fold prompts within INPUT statements when literal.
-    void visit(InputStmt &stmt) override
-    {
+    void visit(InputStmt &stmt) override {
         if (stmt.prompt)
             foldExpr(stmt.prompt);
     }
@@ -703,8 +623,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(InputChStmt &) override {}
 
     /// @brief Fold channel and destination expressions in LINE INPUT #.
-    void visit(LineInputChStmt &stmt) override
-    {
+    void visit(LineInputChStmt &stmt) override {
         foldExpr(stmt.channelExpr);
         foldExpr(stmt.targetVar);
     }
@@ -719,42 +638,36 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(SubDecl &) override {}
 
     /// @brief Recursively fold every statement within a statement list.
-    void visit(StmtList &stmt) override
-    {
+    void visit(StmtList &stmt) override {
         for (auto &child : stmt.stmts)
             foldStmt(child);
     }
 
     /// @brief Fold the target expression of DELETE statements.
-    void visit(DeleteStmt &stmt) override
-    {
+    void visit(DeleteStmt &stmt) override {
         foldExpr(stmt.target);
     }
 
     /// @brief Fold the body statements of constructors.
-    void visit(ConstructorDecl &stmt) override
-    {
+    void visit(ConstructorDecl &stmt) override {
         for (auto &bodyStmt : stmt.body)
             foldStmt(bodyStmt);
     }
 
     /// @brief Fold the body statements of destructors.
-    void visit(DestructorDecl &stmt) override
-    {
+    void visit(DestructorDecl &stmt) override {
         for (auto &bodyStmt : stmt.body)
             foldStmt(bodyStmt);
     }
 
     /// @brief Fold the body statements of method declarations.
-    void visit(MethodDecl &stmt) override
-    {
+    void visit(MethodDecl &stmt) override {
         for (auto &bodyStmt : stmt.body)
             foldStmt(bodyStmt);
     }
 
     /// @brief Fold every member statement within class declarations.
-    void visit(ClassDecl &stmt) override
-    {
+    void visit(ClassDecl &stmt) override {
         for (auto &member : stmt.members)
             foldStmt(member);
     }
@@ -763,8 +676,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
     void visit(TypeDecl &) override {}
 
     /// @brief Fold members inside INTERFACE declarations.
-    void visit(InterfaceDecl &stmt) override
-    {
+    void visit(InterfaceDecl &stmt) override {
         for (auto &member : stmt.members)
             foldStmt(member);
     }
@@ -781,8 +693,7 @@ class ConstFolderPass : public MutExprVisitor, public MutStmtVisitor
 
 /// @brief Perform constant folding across an entire BASIC program.
 /// @param prog Program to mutate; expressions are folded in place.
-void foldConstants(Program &prog)
-{
+void foldConstants(Program &prog) {
     ConstFolderPass pass;
     pass.run(prog);
 }

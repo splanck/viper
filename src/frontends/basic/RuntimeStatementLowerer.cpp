@@ -44,17 +44,14 @@ using namespace il::core;
 using il::runtime::RuntimeFeature;
 using AstType = ::il::frontends::basic::Type;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-static std::optional<std::string> runtimeCtorClassQNameFromName(std::string_view calleeName)
-{
+static std::optional<std::string> runtimeCtorClassQNameFromName(std::string_view calleeName) {
     if (calleeName.empty())
         return std::nullopt;
 
     const auto &classes = il::runtime::runtimeClassCatalog();
-    for (const auto &klass : classes)
-    {
+    for (const auto &klass : classes) {
         if (!klass.ctor)
             continue;
         if (string_utils::iequals(calleeName, klass.ctor))
@@ -69,12 +66,10 @@ static std::optional<std::string> runtimeCtorClassQNameFromName(std::string_view
         return std::nullopt;
 
     std::string qname(calleeName.substr(0, lastDot));
-    for (const auto &klass : classes)
-    {
+    for (const auto &klass : classes) {
         if (!string_utils::iequals(qname, klass.qname))
             continue;
-        for (const auto &method : klass.methods)
-        {
+        for (const auto &method : klass.methods) {
             if (!method.name || !method.signature)
                 continue;
             if (!string_utils::iequals(method.name, "New"))
@@ -89,8 +84,7 @@ static std::optional<std::string> runtimeCtorClassQNameFromName(std::string_view
     return std::nullopt;
 }
 
-static std::optional<std::string> runtimeCtorClassQNameFrom(const CallExpr &expr)
-{
+static std::optional<std::string> runtimeCtorClassQNameFrom(const CallExpr &expr) {
     std::string calleeName;
     if (!expr.calleeQualified.empty())
         calleeName = JoinDots(expr.calleeQualified);
@@ -100,8 +94,7 @@ static std::optional<std::string> runtimeCtorClassQNameFrom(const CallExpr &expr
     return runtimeCtorClassQNameFromName(calleeName);
 }
 
-static std::optional<std::string> runtimeCtorClassQNameFrom(const MethodCallExpr &expr)
-{
+static std::optional<std::string> runtimeCtorClassQNameFrom(const MethodCallExpr &expr) {
     if (!expr.base)
         return std::nullopt;
     auto baseQName = runtimeClassQNameFrom(*expr.base);
@@ -122,52 +115,38 @@ RuntimeStatementLowerer::RuntimeStatementLowerer(Lowerer &lowerer) : lowerer_(lo
 ///          helper-triggered diagnostics point at the @c LET statement.
 ///
 /// @param stmt Parsed @c LET statement.
-void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
-{
+void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
     Lowerer::RVal value = lowerer_.lowerExpr(*stmt.expr);
-    if (auto *var = as<const VarExpr>(*stmt.target))
-    {
+    if (auto *var = as<const VarExpr>(*stmt.target)) {
         auto storage = lowerer_.resolveVariableStorage(var->name, stmt.loc);
         assert(storage && "LET target should have storage");
         if (!storage)
             return; // Safety: skip if storage lookup fails in Release builds.
-        if (stmt.expr && !storage->isField)
-        {
+        if (stmt.expr && !storage->isField) {
             std::string className;
             bool authoritative = false; // NEW / ctor: always override
-            if (const auto *alloc = as<const NewExpr>(*stmt.expr))
-            {
+            if (const auto *alloc = as<const NewExpr>(*stmt.expr)) {
                 className = alloc->className;
                 authoritative = true;
-            }
-            else if (const auto *call = as<const CallExpr>(*stmt.expr))
-            {
-                if (auto qname = runtimeCtorClassQNameFrom(*call))
-                {
+            } else if (const auto *call = as<const CallExpr>(*stmt.expr)) {
+                if (auto qname = runtimeCtorClassQNameFrom(*call)) {
                     className = *qname;
                     authoritative = true;
-                }
-                else
+                } else
                     className = lowerer_.resolveObjectClass(*stmt.expr);
-            }
-            else
-            {
+            } else {
                 className = lowerer_.resolveObjectClass(*stmt.expr);
             }
-            if (className.empty())
-            {
-                if (const auto *mcall = as<const MethodCallExpr>(*stmt.expr))
-                {
-                    if (auto qname = runtimeCtorClassQNameFrom(*mcall))
-                    {
+            if (className.empty()) {
+                if (const auto *mcall = as<const MethodCallExpr>(*stmt.expr)) {
+                    if (auto qname = runtimeCtorClassQNameFrom(*mcall)) {
                         className = *qname;
                         authoritative = true;
                     }
                 }
             }
-            if (!className.empty())
-            {
+            if (!className.empty()) {
                 // Don't override a DIM-declared class type with an inferred one.
                 // Only authoritative sources (NEW, constructors) may override.
                 // DIM AS OBJECT is generic — always allow refinement.
@@ -175,8 +154,7 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                 bool isGenericObj =
                     existing.isObject && string_utils::iequals(existing.objectClass, "object");
                 if (authoritative || !existing.isObject || existing.objectClass.empty() ||
-                    isGenericObj)
-                {
+                    isGenericObj) {
                     lowerer_.setSymbolObjectType(var->name, className);
                 }
             }
@@ -184,43 +162,34 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
         // Invariant: Slot typing must be refreshed from symbols/sema on each use
         // to avoid stale kinds when crossing complex control flow (e.g., SELECT CASE). (BUG-076)
         Lowerer::SlotType slotInfo = lowerer_.getSlotType(var->name);
-        if (slotInfo.isArray)
-        {
+        if (slotInfo.isArray) {
             lowerer_.storeArray(storage->pointer,
                                 value.value,
                                 /*elementType*/ AstType::I64,
                                 /*isObjectArray*/ slotInfo.isObject);
-        }
-        else
-        {
+        } else {
             assignScalarSlot(slotInfo, storage->pointer, std::move(value), stmt.loc);
         }
-    }
-    else if (auto *mc = as<const MethodCallExpr>(*stmt.target))
-    {
+    } else if (auto *mc = as<const MethodCallExpr>(*stmt.target)) {
         // Handle array field assignment (obj.arrayField(index) = value). (BUG-056)
         // Only handle simple base forms we can resolve (VarExpr or ME).
-        if (mc->base)
-        {
+        if (mc->base) {
             std::string baseName;
             if (auto *v = as<const VarExpr>(*mc->base))
                 baseName = v->name;
             else if (is<MeExpr>(*mc->base))
                 baseName = "ME";
-            if (!baseName.empty())
-            {
+            if (!baseName.empty()) {
                 // Compute array handle from object field
                 const auto *baseSym = lowerer_.findSymbol(baseName);
-                if (baseSym && baseSym->slotId)
-                {
+                if (baseSym && baseSym->slotId) {
                     lowerer_.curLoc = stmt.loc;
                     Value selfPtr = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr),
                                                       Value::temp(*baseSym->slotId));
                     std::string klass = lowerer_.getSlotType(baseName).objectClass;
-                    if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(klass))
-                    {
-                        if (const Lowerer::ClassLayout::Field *fld = layout->findField(mc->method))
-                        {
+                    if (const Lowerer::ClassLayout *layout = lowerer_.findClassLayout(klass)) {
+                        if (const Lowerer::ClassLayout::Field *fld =
+                                layout->findField(mc->method)) {
                             lowerer_.curLoc = stmt.loc;
                             Value fieldPtr = lowerer_.emitBinary(
                                 Opcode::GEP,
@@ -234,8 +203,7 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             // (BUG-094)
                             std::vector<Value> indices;
                             indices.reserve(mc->args.size());
-                            for (const auto &arg : mc->args)
-                            {
+                            for (const auto &arg : mc->args) {
                                 Lowerer::RVal idx = lowerer_.lowerExpr(*arg);
                                 idx = lowerer_.coerceToI64(std::move(idx), stmt.loc);
                                 indices.push_back(idx.value);
@@ -243,15 +211,11 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
 
                             // Compute flattened index for multi-dimensional arrays
                             Value index = Value::constInt(0);
-                            if (!indices.empty())
-                            {
-                                if (indices.size() == 1)
-                                {
+                            if (!indices.empty()) {
+                                if (indices.size() == 1) {
                                     index = indices[0];
-                                }
-                                else if (fld->isArray && !fld->arrayExtents.empty() &&
-                                         fld->arrayExtents.size() == indices.size())
-                                {
+                                } else if (fld->isArray && !fld->arrayExtents.empty() &&
+                                           fld->arrayExtents.size() == indices.size()) {
                                     // Multi-dimensional: compute row-major flattened index
                                     // For extents [E0, E1, ..., E_{N-1}] and indices [i0, i1, ...,
                                     // i_{N-1}]: flat = i0*L1*L2*...*L_{N-1} + i1*L2*...*L_{N-1} +
@@ -272,8 +236,7 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                                         indices[0],
                                         Value::constInt(stride));
 
-                                    for (size_t k = 1; k < indices.size(); ++k)
-                                    {
+                                    for (size_t k = 1; k < indices.size(); ++k) {
                                         stride = 1;
                                         for (size_t i = k + 1; i < lengths.size(); ++i)
                                             stride *= lengths[i];
@@ -290,9 +253,7 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                                             index,
                                             term);
                                     }
-                                }
-                                else
-                                {
+                                } else {
                                     // Fallback: use first index only
                                     index = indices[0];
                                 }
@@ -303,24 +264,19 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
 
                             // Bounds check (select len helper based on element kind)
                             Value len;
-                            if (fld->type == ::il::frontends::basic::Type::Str)
-                            {
+                            if (fld->type == ::il::frontends::basic::Type::Str) {
                                 lowerer_.requireArrayStrLen();
                                 len =
                                     lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
                                                          "rt_arr_str_len",
                                                          {arrHandle});
-                            }
-                            else if (isMemberObjectArray)
-                            {
+                            } else if (isMemberObjectArray) {
                                 lowerer_.requireArrayObjLen();
                                 len =
                                     lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
                                                          "rt_arr_obj_len",
                                                          {arrHandle});
-                            }
-                            else
-                            {
+                            } else {
                                 lowerer_.requireArrayI64Len();
                                 len =
                                     lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
@@ -365,28 +321,21 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             ctx.setCurrent(ok);
 
                             // Perform the store
-                            if (fld->type == ::il::frontends::basic::Type::Str)
-                            {
+                            if (fld->type == ::il::frontends::basic::Type::Str) {
                                 lowerer_.requireArrayStrPut();
                                 lowerer_.emitCall("rt_arr_str_put",
                                                   {arrHandle, index, value.value});
-                            }
-                            else if (isMemberObjectArray)
-                            {
+                            } else if (isMemberObjectArray) {
                                 lowerer_.requireArrayObjPut();
                                 lowerer_.emitCall("rt_arr_obj_put",
                                                   {arrHandle, index, value.value});
-                            }
-                            else if (fld->type == ::il::frontends::basic::Type::F64)
-                            {
+                            } else if (fld->type == ::il::frontends::basic::Type::F64) {
                                 lowerer_.requireArrayF64Set();
                                 Lowerer::RVal coerced =
                                     lowerer_.ensureF64(std::move(value), stmt.loc);
                                 lowerer_.emitCall("rt_arr_f64_set",
                                                   {arrHandle, index, coerced.value});
-                            }
-                            else
-                            {
+                            } else {
                                 lowerer_.requireArrayI64Set();
                                 Lowerer::RVal coerced =
                                     lowerer_.ensureI64(std::move(value), stmt.loc);
@@ -400,24 +349,18 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
             }
         }
         // Fallback: not a supported lvalue form; do nothing here (analyzer should have errored).
-    }
-    else if (auto *call = as<const CallExpr>(*stmt.target))
-    {
+    } else if (auto *call = as<const CallExpr>(*stmt.target)) {
         // CallExpr can be an implicit field array access (e.g., items(i) inside a method).
         // Check if this refers to a field array in the current class. (BUG-089)
-        if (lowerer_.isFieldInScope(call->callee))
-        {
-            if (const auto *scope = lowerer_.activeFieldScope(); scope && scope->layout)
-            {
-                if (const Lowerer::ClassLayout::Field *fld = scope->layout->findField(call->callee))
-                {
-                    if (fld->isArray)
-                    {
+        if (lowerer_.isFieldInScope(call->callee)) {
+            if (const auto *scope = lowerer_.activeFieldScope(); scope && scope->layout) {
+                if (const Lowerer::ClassLayout::Field *fld =
+                        scope->layout->findField(call->callee)) {
+                    if (fld->isArray) {
                         // This is a field array access. Lower it inline similar to MethodCallExpr
                         // handling. Get the ME pointer and compute the field array handle
                         const auto *selfInfo = lowerer_.findSymbol("ME");
-                        if (selfInfo && selfInfo->slotId)
-                        {
+                        if (selfInfo && selfInfo->slotId) {
                             lowerer_.curLoc = stmt.loc;
                             Value selfPtr =
                                 lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr),
@@ -433,8 +376,7 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
 
                             // Lower the index
                             Value index = Value::constInt(0);
-                            if (!call->args.empty() && call->args[0])
-                            {
+                            if (!call->args.empty() && call->args[0]) {
                                 Lowerer::RVal idx = lowerer_.lowerExpr(*call->args[0]);
                                 idx = lowerer_.coerceToI64(std::move(idx), stmt.loc);
                                 index = idx.value;
@@ -446,24 +388,19 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
 
                             // Bounds check
                             Value len;
-                            if (fld->type == ::il::frontends::basic::Type::Str)
-                            {
+                            if (fld->type == ::il::frontends::basic::Type::Str) {
                                 lowerer_.requireArrayStrLen();
                                 len =
                                     lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
                                                          "rt_arr_str_len",
                                                          {arrHandle});
-                            }
-                            else if (isMemberObjectArray)
-                            {
+                            } else if (isMemberObjectArray) {
                                 lowerer_.requireArrayObjLen();
                                 len =
                                     lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
                                                          "rt_arr_obj_len",
                                                          {arrHandle});
-                            }
-                            else
-                            {
+                            } else {
                                 lowerer_.requireArrayI64Len();
                                 len =
                                     lowerer_.emitCallRet(il::core::Type(il::core::Type::Kind::I64),
@@ -509,28 +446,21 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             ctx.setCurrent(ok);
 
                             // Perform the actual assignment
-                            if (fld->type == ::il::frontends::basic::Type::Str)
-                            {
+                            if (fld->type == ::il::frontends::basic::Type::Str) {
                                 lowerer_.requireArrayStrPut();
                                 lowerer_.emitCall("rt_arr_str_put",
                                                   {arrHandle, index, value.value});
-                            }
-                            else if (isMemberObjectArray)
-                            {
+                            } else if (isMemberObjectArray) {
                                 lowerer_.requireArrayObjPut();
                                 lowerer_.emitCall("rt_arr_obj_put",
                                                   {arrHandle, index, value.value});
-                            }
-                            else if (fld->type == ::il::frontends::basic::Type::F64)
-                            {
+                            } else if (fld->type == ::il::frontends::basic::Type::F64) {
                                 lowerer_.requireArrayF64Set();
                                 Lowerer::RVal coerced =
                                     lowerer_.ensureF64(std::move(value), stmt.loc);
                                 lowerer_.emitCall("rt_arr_f64_set",
                                                   {arrHandle, index, coerced.value});
-                            }
-                            else
-                            {
+                            } else {
                                 lowerer_.requireArrayI64Set();
                                 Lowerer::RVal coerced =
                                     lowerer_.ensureI64(std::move(value), stmt.loc);
@@ -544,44 +474,31 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
             }
         }
         // Not a field array; fall through (analyzer should have errored)
-    }
-    else if (auto *arr = as<const ArrayExpr>(*stmt.target))
-    {
+    } else if (auto *arr = as<const ArrayExpr>(*stmt.target)) {
         assignArrayElement(*arr, std::move(value), stmt.loc);
-    }
-    else if (auto *member = as<const MemberAccessExpr>(*stmt.target))
-    {
-        if (auto access = lowerer_.resolveMemberField(*member))
-        {
+    } else if (auto *member = as<const MemberAccessExpr>(*stmt.target)) {
+        if (auto access = lowerer_.resolveMemberField(*member)) {
             Lowerer::SlotType slotInfo;
             slotInfo.type = access->ilType;
             slotInfo.isArray = false;
             slotInfo.isBoolean = (access->astType == ::il::frontends::basic::Type::Bool);
             slotInfo.isObject =
                 !access->objectClassName.empty(); // Object fields use pointer semantics (BUG-082)
-            if (slotInfo.isObject)
-            {
+            if (slotInfo.isObject) {
                 slotInfo.objectClass = access->objectClassName;
             }
             assignScalarSlot(slotInfo, access->ptr, std::move(value), stmt.loc);
-        }
-        else
-        {
+        } else {
             // Runtime class property setter via catalog (e.g., Viper.String)
             {
                 auto &pidx = runtimePropertyIndex();
 
-                if (member->base)
-                {
-                    if (auto qClass = runtimeClassQNameFrom(*member->base))
-                    {
+                if (member->base) {
+                    if (auto qClass = runtimeClassQNameFrom(*member->base)) {
                         auto prop = pidx.find(*qClass, member->member);
-                        if (prop)
-                        {
-                            if (prop->readonly || prop->setter.empty())
-                            {
-                                if (auto *em = lowerer_.diagnosticEmitter())
-                                {
+                        if (prop) {
+                            if (prop->readonly || prop->setter.empty()) {
+                                if (auto *em = lowerer_.diagnosticEmitter()) {
                                     std::string msg = "property '" + member->member + "' on '" +
                                                       *qClass + "' is read-only";
                                     em->emit(il::support::Severity::Error,
@@ -615,15 +532,11 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                 }
                 if (qClass.empty() && baseVal.type.kind == Lowerer::Type::Kind::Str)
                     qClass = std::string(il::runtime::RTCLASS_STRING);
-                if (!qClass.empty())
-                {
+                if (!qClass.empty()) {
                     auto prop = pidx.find(qClass, member->member);
-                    if (prop)
-                    {
-                        if (prop->readonly || prop->setter.empty())
-                        {
-                            if (auto *em = lowerer_.diagnosticEmitter())
-                            {
+                    if (prop) {
+                        if (prop->readonly || prop->setter.empty()) {
+                            if (auto *em = lowerer_.diagnosticEmitter()) {
                                 std::string msg = "property '" + member->member + "' on '" +
                                                   qClass + "' is read-only";
                                 em->emit(il::support::Severity::Error,
@@ -645,9 +558,7 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                             v = lowerer_.coerceToI64(std::move(v), stmt.loc);
                         lowerer_.emitCall(prop->setter, {baseVal.value, v.value});
                         return;
-                    }
-                    else if (auto *em = lowerer_.diagnosticEmitter())
-                    {
+                    } else if (auto *em = lowerer_.diagnosticEmitter()) {
                         std::string msg =
                             "no such property '" + member->member + "' on '" + qClass + "'";
                         em->emit(il::support::Severity::Error,
@@ -665,16 +576,13 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
             // store @Class::field
 
             std::string className = lowerer_.resolveObjectClass(*member->base);
-            if (!className.empty())
-            {
+            if (!className.empty()) {
                 std::string qname = lowerer_.qualify(className);
                 std::string setter = std::string("set_") + member->member;
                 // Overload resolution for instance setter with one user arg (value)
-                auto mapIlToAst = [](Lowerer::Type t) -> ::il::frontends::basic::Type
-                {
+                auto mapIlToAst = [](Lowerer::Type t) -> ::il::frontends::basic::Type {
                     using K = Lowerer::Type::Kind;
-                    switch (t.kind)
-                    {
+                    switch (t.kind) {
                         case K::F64:
                             return ::il::frontends::basic::Type::F64;
                         case K::Str:
@@ -693,12 +601,9 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                                                                argTypes,
                                                                lowerer_.currentClass(),
                                                                lowerer_.diagnosticEmitter(),
-                                                               stmt.loc))
-                {
+                                                               stmt.loc)) {
                     setter = resolved->methodName;
-                }
-                else if (lowerer_.diagnosticEmitter())
-                {
+                } else if (lowerer_.diagnosticEmitter()) {
                     return;
                 }
                 std::string callee = mangleMethod(qname, setter);
@@ -708,26 +613,21 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                 return;
             }
 
-            if (const auto *v = as<const VarExpr>(*member->base))
-            {
+            if (const auto *v = as<const VarExpr>(*member->base)) {
                 // If a symbol with this name exists (local/param/global), treat as instance, not
                 // static
-                if (const auto *sym = lowerer_.findSymbol(v->name); sym && sym->slotId)
-                {
+                if (const auto *sym = lowerer_.findSymbol(v->name); sym && sym->slotId) {
                     // analyzer should have already errored if not a property/field; nothing more to
                     // do here
                     return;
                 }
                 std::string qname = lowerer_.resolveQualifiedClassCasing(lowerer_.qualify(v->name));
-                if (const ClassInfo *ci = lowerer_.oopIndex_.findClass(qname))
-                {
+                if (const ClassInfo *ci = lowerer_.oopIndex_.findClass(qname)) {
                     // Prefer static property setter when present
                     std::string setter = std::string("set_") + member->member;
-                    auto mapIlToAst = [](Lowerer::Type t) -> ::il::frontends::basic::Type
-                    {
+                    auto mapIlToAst = [](Lowerer::Type t) -> ::il::frontends::basic::Type {
                         using K = Lowerer::Type::Kind;
-                        switch (t.kind)
-                        {
+                        switch (t.kind) {
                             case K::F64:
                                 return ::il::frontends::basic::Type::F64;
                             case K::Str:
@@ -746,27 +646,21 @@ void RuntimeStatementLowerer::lowerLet(const LetStmt &stmt)
                                                                    argTypes,
                                                                    lowerer_.currentClass(),
                                                                    lowerer_.diagnosticEmitter(),
-                                                                   stmt.loc))
-                    {
+                                                                   stmt.loc)) {
                         setter = resolved->methodName;
-                    }
-                    else if (lowerer_.diagnosticEmitter())
-                    {
+                    } else if (lowerer_.diagnosticEmitter()) {
                         return;
                     }
                     auto it = ci->methods.find(setter);
-                    if (it != ci->methods.end() && it->second.isStatic)
-                    {
+                    if (it != ci->methods.end() && it->second.isStatic) {
                         std::string callee = mangleMethod(ci->qualifiedName, setter);
                         lowerer_.emitCall(callee, {value.value});
                         return;
                     }
 
                     // Otherwise store into a static field global
-                    for (const auto &sf : ci->staticFields)
-                    {
-                        if (sf.name == member->member)
-                        {
+                    for (const auto &sf : ci->staticFields) {
+                        if (sf.name == member->member) {
                             Lowerer::Type ilTy = sf.objectClassName.empty()
                                                      ? type_conv::astToIlType(sf.type)
                                                      : Lowerer::Type(Lowerer::Type::Kind::Ptr);

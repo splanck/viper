@@ -19,8 +19,7 @@
 #include "frontends/basic/Lowerer.hpp"
 #include "frontends/basic/SemanticAnalyzer.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Construct a symbol tracker bound to a lowerer.
 /// @details Stores the lowerer reference and the flag controlling whether
@@ -28,17 +27,14 @@ namespace il::frontends::basic
 /// @param lowerer Lowering engine used to record symbol references.
 /// @param trackCrossProc Whether to track cross-procedure globals.
 ProcedureSymbolTracker::ProcedureSymbolTracker(Lowerer &lowerer, bool trackCrossProc) noexcept
-    : lowerer_(lowerer), trackCrossProc_(trackCrossProc)
-{
-}
+    : lowerer_(lowerer), trackCrossProc_(trackCrossProc) {}
 
 /// @brief Determine whether a symbol should be skipped by the tracker.
 /// @details Skips empty names and implicit field references to avoid polluting
 ///          symbol usage sets with non-variable identifiers.
 /// @param name Symbol name to inspect.
 /// @return True when tracking should be skipped for @p name.
-bool ProcedureSymbolTracker::shouldSkip(std::string_view name) const
-{
+bool ProcedureSymbolTracker::shouldSkip(std::string_view name) const {
     if (name.empty())
         return true;
     if (lowerer_.isFieldInScope(name))
@@ -50,8 +46,7 @@ bool ProcedureSymbolTracker::shouldSkip(std::string_view name) const
 /// @details Marks the symbol as referenced and, when enabled, updates the
 ///          cross-procedure global set.
 /// @param name Symbol name to record.
-void ProcedureSymbolTracker::trackScalar(std::string_view name)
-{
+void ProcedureSymbolTracker::trackScalar(std::string_view name) {
     if (shouldSkip(name))
         return;
     lowerer_.markSymbolReferenced(name);
@@ -62,8 +57,7 @@ void ProcedureSymbolTracker::trackScalar(std::string_view name)
 /// @details Marks the symbol as referenced, flags it as an array, and optionally
 ///          updates cross-procedure global tracking.
 /// @param name Array symbol name to record.
-void ProcedureSymbolTracker::trackArray(std::string_view name)
-{
+void ProcedureSymbolTracker::trackArray(std::string_view name) {
     if (shouldSkip(name))
         return;
     lowerer_.markSymbolReferenced(name);
@@ -76,8 +70,7 @@ void ProcedureSymbolTracker::trackArray(std::string_view name)
 ///          @p isArray flag.
 /// @param name Symbol name to record.
 /// @param isArray Whether the symbol should be treated as an array.
-void ProcedureSymbolTracker::track(std::string_view name, bool isArray)
-{
+void ProcedureSymbolTracker::track(std::string_view name, bool isArray) {
     if (isArray)
         trackArray(name);
     else
@@ -90,8 +83,7 @@ void ProcedureSymbolTracker::track(std::string_view name, bool isArray)
 ///          and marks it as a cross-procedure global if referenced from a
 ///          non-main procedure (or during early scans).
 /// @param name Symbol name to inspect.
-void ProcedureSymbolTracker::trackCrossProcGlobalIfNeeded(std::string_view name)
-{
+void ProcedureSymbolTracker::trackCrossProcGlobalIfNeeded(std::string_view name) {
     if (!trackCrossProc_)
         return;
 
@@ -107,8 +99,7 @@ void ProcedureSymbolTracker::trackCrossProcGlobalIfNeeded(std::string_view name)
     // 2. fn->name != "main" (inside a procedure other than @main)
     // This ensures module-level symbols used in procedures get runtime-backed storage.
     const auto *fn = lowerer_.context().function();
-    if (fn == nullptr || fn->name != "main")
-    {
+    if (fn == nullptr || fn->name != "main") {
         // Construct the string once and reuse for both checks
         std::string nameStr(name);
         if (sema->isModuleLevelSymbol(nameStr))
@@ -120,8 +111,7 @@ void ProcedureSymbolTracker::trackCrossProcGlobalIfNeeded(std::string_view name)
 /// @details Looks at the active function in the lowering context and returns
 ///          true only when it is present and named "main".
 /// @return True when lowering is currently within the main procedure.
-bool ProcedureSymbolTracker::isInMain() const
-{
+bool ProcedureSymbolTracker::isInMain() const {
     const auto *fn = lowerer_.context().function();
     return fn != nullptr && fn->name == "main";
 }

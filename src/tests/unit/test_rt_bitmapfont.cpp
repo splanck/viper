@@ -31,8 +31,7 @@
 #include <cstring>
 
 // Trap handler for runtime
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -118,8 +117,7 @@ static const char *test_bdf_content = "STARTFONT 2.1\n"
                                       "ENDFONT\n";
 
 /// @brief Write the test BDF content to a temporary file.
-static const char *create_test_bdf(void)
-{
+static const char *create_test_bdf(void) {
     static char path[256];
     snprintf(path, sizeof(path), "%s", "/tmp/viper_test_font.bdf");
     FILE *f = fopen(path, "w");
@@ -134,8 +132,7 @@ static const char *create_test_bdf(void)
 // Helper: create a minimal PSF v2 font file on disk for testing
 //=============================================================================
 
-static const char *create_test_psf(void)
-{
+static const char *create_test_psf(void) {
     static char path[256];
     snprintf(path, sizeof(path), "%s", "/tmp/viper_test_font.psf");
     FILE *f = fopen(path, "wb");
@@ -194,21 +191,18 @@ static int tests_passed = 0;
 static int tests_total = 0;
 
 #define TEST(name)                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_total++;                                                                             \
         printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 
 #define PASS()                                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_passed++;                                                                            \
         printf("ok\n");                                                                            \
     } while (0)
 
-static void test_bdf_load_valid(void)
-{
+static void test_bdf_load_valid(void) {
     TEST("BDF load valid font");
     const char *path = create_test_bdf();
     assert(path);
@@ -232,8 +226,7 @@ static void test_bdf_load_valid(void)
     PASS();
 }
 
-static void test_bdf_text_width(void)
-{
+static void test_bdf_text_width(void) {
     TEST("BDF text width measurement");
     const char *path = create_test_bdf();
     rt_string rpath = rt_const_cstr(path);
@@ -255,8 +248,7 @@ static void test_bdf_text_width(void)
     PASS();
 }
 
-static void test_bdf_text_height(void)
-{
+static void test_bdf_text_height(void) {
     TEST("BDF text height");
     const char *path = create_test_bdf();
     rt_string rpath = rt_const_cstr(path);
@@ -268,8 +260,7 @@ static void test_bdf_text_height(void)
     PASS();
 }
 
-static void test_bdf_load_invalid(void)
-{
+static void test_bdf_load_invalid(void) {
     TEST("BDF load nonexistent file returns NULL");
     rt_string bad_path = rt_const_cstr("/tmp/nonexistent_font_abc123.bdf");
     void *font = rt_bitmapfont_load_bdf(bad_path);
@@ -277,8 +268,7 @@ static void test_bdf_load_invalid(void)
     PASS();
 }
 
-static void test_bdf_null_input(void)
-{
+static void test_bdf_null_input(void) {
     TEST("BDF NULL input safety");
     // NULL path should return NULL
     void *font = rt_bitmapfont_load_bdf(NULL);
@@ -295,8 +285,7 @@ static void test_bdf_null_input(void)
     PASS();
 }
 
-static void test_psf_load_valid(void)
-{
+static void test_psf_load_valid(void) {
     TEST("PSF v2 load valid font");
     const char *path = create_test_psf();
     assert(path);
@@ -316,8 +305,7 @@ static void test_psf_load_valid(void)
     PASS();
 }
 
-static void test_psf_load_invalid(void)
-{
+static void test_psf_load_invalid(void) {
     TEST("PSF load nonexistent file returns NULL");
     rt_string bad_path = rt_const_cstr("/tmp/nonexistent_font_xyz789.psf");
     void *font = rt_bitmapfont_load_psf(bad_path);
@@ -325,8 +313,7 @@ static void test_psf_load_invalid(void)
     PASS();
 }
 
-static void test_psf_load_bad_magic(void)
-{
+static void test_psf_load_bad_magic(void) {
     TEST("PSF load file with bad magic returns NULL");
     // Create a file with wrong magic bytes
     const char *path = "/tmp/viper_test_bad_magic.psf";
@@ -342,8 +329,7 @@ static void test_psf_load_bad_magic(void)
     PASS();
 }
 
-static void test_fallback_glyph(void)
-{
+static void test_fallback_glyph(void) {
     TEST("Text width with unmapped codepoints uses fallback");
     const char *path = create_test_bdf();
     rt_string rpath = rt_const_cstr(path);
@@ -360,8 +346,7 @@ static void test_fallback_glyph(void)
     PASS();
 }
 
-static void test_destroy_safety(void)
-{
+static void test_destroy_safety(void) {
     TEST("Destroy NULL font is safe");
     rt_bitmapfont_destroy(NULL); // Should not crash
     PASS();
@@ -371,8 +356,7 @@ static void test_destroy_safety(void)
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("test_rt_bitmapfont:\n");
 
     test_bdf_load_valid();

@@ -47,8 +47,7 @@ extern void rt_seq_set(void *, int64_t, void *);
 /// @details Replaces the linear congruential generator state in the current
 ///          VM's context with the provided seed so that future calls to
 ///          @ref rt_rnd produce the same deterministic sequence.
-void rt_randomize_u64(uint64_t seed)
-{
+void rt_randomize_u64(uint64_t seed) {
     RtContext *ctx = rt_get_current_context();
     if (!ctx)
         ctx = rt_legacy_context();
@@ -59,8 +58,7 @@ void rt_randomize_u64(uint64_t seed)
 /// @details Casts the argument to an unsigned representation before updating
 ///          the current VM's RNG state so that negative seeds map to the
 ///          expected bit patterns produced by the BASIC runtime.
-void rt_randomize_i64(long long seed)
-{
+void rt_randomize_i64(long long seed) {
     RtContext *ctx = rt_get_current_context();
     if (!ctx)
         ctx = rt_legacy_context();
@@ -73,8 +71,7 @@ void rt_randomize_i64(long long seed)
 ///          extracts the top 53 bits, and scales them into IEEE 754 double
 ///          range.  The algorithm mirrors the VM implementation so identical
 ///          seeds yield identical sequences across VM instances.
-double rt_rnd(void)
-{
+double rt_rnd(void) {
     RtContext *ctx = rt_get_current_context();
     if (!ctx)
         ctx = rt_legacy_context();
@@ -87,8 +84,7 @@ double rt_rnd(void)
 /// @details Advances the linear congruential generator and returns the result
 ///          modulo max to produce an integer in the range [0, max).  When max
 ///          is non-positive, returns 0.
-long long rt_rand_int(long long max)
-{
+long long rt_rand_int(long long max) {
     if (max <= 0)
         return 0;
     RtContext *ctx = rt_get_current_context();
@@ -107,18 +103,15 @@ long long rt_rand_int(long long max)
 
 /// @brief Generate a random integer in the range [min, max] (inclusive).
 /// @details Swaps bounds if inverted, then uses the core LCG.
-long long rt_rand_range(long long min, long long max)
-{
-    if (min > max)
-    {
+long long rt_rand_range(long long min, long long max) {
+    if (min > max) {
         long long tmp = min;
         min = max;
         max = tmp;
     }
     // Use unsigned arithmetic to avoid signed overflow when max - min == LLONG_MAX
     unsigned long long urange = (unsigned long long)max - (unsigned long long)min + 1ULL;
-    if (urange == 0)
-    {
+    if (urange == 0) {
         // Full range (overflow wrapped to 0) — return any random value
         return (long long)rt_rand_int(0);
     }
@@ -129,8 +122,7 @@ long long rt_rand_range(long long min, long long max)
 /// @details Uses the Box-Muller transform: given two uniform U1, U2 in (0,1),
 ///          Z = sqrt(-2*ln(U1)) * cos(2*pi*U2) is standard normal N(0,1).
 ///          Then scale/shift to N(mean, stddev^2).
-double rt_rand_gaussian(double mean, double stddev)
-{
+double rt_rand_gaussian(double mean, double stddev) {
     if (stddev <= 0.0)
         return mean;
 
@@ -153,8 +145,7 @@ double rt_rand_gaussian(double mean, double stddev)
 /// @brief Generate a random number from an exponential distribution.
 /// @details Uses inverse transform sampling: X = -ln(1-U)/lambda where U is
 ///          uniform [0,1). This produces Exp(lambda) with mean 1/lambda.
-double rt_rand_exponential(double lambda)
-{
+double rt_rand_exponential(double lambda) {
     if (lambda <= 0.0)
         return 0.0;
 
@@ -168,8 +159,7 @@ double rt_rand_exponential(double lambda)
 
 /// @brief Simulate a dice roll (1 to sides inclusive).
 /// @details Returns a uniform random integer in [1, sides].
-long long rt_rand_dice(long long sides)
-{
+long long rt_rand_dice(long long sides) {
     if (sides <= 0)
         return 1;
     return 1 + rt_rand_int(sides);
@@ -177,8 +167,7 @@ long long rt_rand_dice(long long sides)
 
 /// @brief Generate a random boolean with given probability.
 /// @details Returns 1 with probability p, 0 with probability 1-p.
-long long rt_rand_chance(double probability)
-{
+long long rt_rand_chance(double probability) {
     if (probability <= 0.0)
         return 0;
     if (probability >= 1.0)
@@ -191,8 +180,7 @@ long long rt_rand_chance(double probability)
 ///          object. This enables `NEW Viper.Math.Random(seed)` in frontends.
 ///          The Random class uses global state, so this is equivalent to calling
 ///          Random.Seed(seed) and returning a handle.
-void *rt_random_new(long long seed)
-{
+void *rt_random_new(long long seed) {
     // Seed the global RNG
     rt_randomize_i64(seed);
 
@@ -202,28 +190,24 @@ void *rt_random_new(long long seed)
 }
 
 // Instance method wrappers that accept and ignore receiver
-double rt_rnd_method(void *self)
-{
+double rt_rnd_method(void *self) {
     (void)self;
     return rt_rnd();
 }
 
-long long rt_rand_int_method(void *self, long long max)
-{
+long long rt_rand_int_method(void *self, long long max) {
     (void)self;
     return rt_rand_int(max);
 }
 
-void rt_randomize_i64_method(void *self, long long seed)
-{
+void rt_randomize_i64_method(void *self, long long seed) {
     (void)self;
     rt_randomize_i64(seed);
 }
 
 /// @brief Shuffle elements in a Seq randomly (Fisher-Yates algorithm).
 /// @details Uses the current RNG state for deterministic shuffling.
-void rt_rand_shuffle(void *seq)
-{
+void rt_rand_shuffle(void *seq) {
     if (!seq)
         return;
 
@@ -232,11 +216,9 @@ void rt_rand_shuffle(void *seq)
         return;
 
     // Fisher-Yates shuffle
-    for (int64_t i = n - 1; i > 0; i--)
-    {
+    for (int64_t i = n - 1; i > 0; i--) {
         int64_t j = rt_rand_int(i + 1);
-        if (i != j)
-        {
+        if (i != j) {
             // Retain tmp before swap to prevent use-after-free when Seq owns elements.
             // rt_seq_set releases the old value at i (which is tmp); retaining prevents
             // premature deallocation before tmp is stored at j.

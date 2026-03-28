@@ -29,10 +29,8 @@
 
 #include "il/runtime/signatures/Registry.hpp"
 
-namespace il::runtime::signatures
-{
-namespace
-{
+namespace il::runtime::signatures {
+namespace {
 using Kind = SigParam::Kind;
 }
 
@@ -51,8 +49,7 @@ using Kind = SigParam::Kind;
 ///          Each call to @ref register_signature simply appends metadata to the
 ///          global registry; consumers that snapshot the registry after
 ///          registration obtain a process-wide view of the runtime string ABI.
-void register_string_signatures()
-{
+void register_string_signatures() {
     register_signature(make_signature("rt_str_len", {Kind::Ptr}, {Kind::I64}, true, true));
     register_signature(
         make_signature("rt_str_substr", {Kind::Ptr, Kind::I64, Kind::I64}, {Kind::Ptr}));

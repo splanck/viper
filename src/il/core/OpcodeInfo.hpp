@@ -23,23 +23,20 @@
 #include <string>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 
 /// @brief Sentinel value representing variadic operand arity.
 inline constexpr uint8_t kVariadicOperandCount = std::numeric_limits<uint8_t>::max();
 
 /// @brief Result arity expectation for an opcode.
-enum class ResultArity : uint8_t
-{
+enum class ResultArity : uint8_t {
     None = 0,       ///< Instruction never produces a result.
     One = 1,        ///< Instruction must produce exactly one result.
     Optional = 0xFF ///< Instruction may omit or provide a result.
 };
 
 /// @brief Type category requirement for operands or results.
-enum class TypeCategory : uint8_t
-{
+enum class TypeCategory : uint8_t {
     None,      ///< Unused slot or no constraint.
     Void,      ///< Void type (primarily for annotations).
     I1,        ///< Boolean integer type.
@@ -60,8 +57,7 @@ enum class TypeCategory : uint8_t
 /// @details Designed for analyses that need conservative read/write flags
 ///          without performing full alias modelling.  Unknown values should be
 ///          treated as both reading and writing memory by consumers.
-enum class MemoryEffects : uint8_t
-{
+enum class MemoryEffects : uint8_t {
     None,      ///< Instruction is known to avoid memory reads and writes.
     Read,      ///< Instruction only reads memory.
     Write,     ///< Instruction only writes memory.
@@ -70,8 +66,7 @@ enum class MemoryEffects : uint8_t
 };
 
 /// @brief Identifier describing VM dispatch strategy for an opcode.
-enum class VMDispatch : uint8_t
-{
+enum class VMDispatch : uint8_t {
     None, ///< No interpreter handler implemented yet.
     Alloca,
     Load,
@@ -159,8 +154,7 @@ enum class VMDispatch : uint8_t
 inline constexpr size_t kMaxOperandCategories = 3;
 
 /// @brief Describes how the textual parser should interpret an operand slot.
-enum class OperandParseKind : uint8_t
-{
+enum class OperandParseKind : uint8_t {
     None,          ///< No token expected in this slot.
     Value,         ///< Parse a general value operand.
     TypeImmediate, ///< Parse a type literal influencing the instruction type.
@@ -174,15 +168,13 @@ enum class OperandParseKind : uint8_t
 inline constexpr size_t kMaxOperandParseEntries = 4;
 
 /// @brief Declarative description of how to parse an opcode's tokens.
-struct OperandParseSpec
-{
+struct OperandParseSpec {
     OperandParseKind kind; ///< Kind of token expected at this position.
     const char *role;      ///< Human-readable role used for diagnostics (optional).
 };
 
 /// @brief Static description of an opcode signature and behaviour.
-struct OpcodeInfo
-{
+struct OpcodeInfo {
     const char *name;        ///< Canonical mnemonic.
     ResultArity resultArity; ///< Expected result arity.
     TypeCategory resultType; ///< Result type constraint, if any.
@@ -216,8 +208,7 @@ MemoryEffects memoryEffects(Opcode op) noexcept;
 /// @brief Determine whether an opcode is known to read from memory.
 /// @param op Opcode to query.
 /// @return True if @p op may read memory.
-inline bool hasMemoryRead(Opcode op) noexcept
-{
+inline bool hasMemoryRead(Opcode op) noexcept {
     using il::core::MemoryEffects;
     const auto me = memoryEffects(op);
     return me == MemoryEffects::Read || me == MemoryEffects::ReadWrite ||
@@ -227,8 +218,7 @@ inline bool hasMemoryRead(Opcode op) noexcept
 /// @brief Determine whether an opcode is known to write to memory.
 /// @param op Opcode to query.
 /// @return True if @p op may write memory.
-inline bool hasMemoryWrite(Opcode op) noexcept
-{
+inline bool hasMemoryWrite(Opcode op) noexcept {
     using il::core::MemoryEffects;
     const auto me = memoryEffects(op);
     return me == MemoryEffects::Write || me == MemoryEffects::ReadWrite ||

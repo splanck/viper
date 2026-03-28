@@ -47,12 +47,10 @@
 // TabBar Widget
 //=============================================================================
 
-void *rt_tabbar_new(void *parent)
-{
+void *rt_tabbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     vg_tabbar_t *tabbar = vg_tabbar_create((vg_widget_t *)parent);
-    if (tabbar)
-    {
+    if (tabbar) {
         rt_gui_ensure_default_font();
         if (s_current_app && s_current_app->default_font)
             vg_tabbar_set_font(
@@ -61,8 +59,7 @@ void *rt_tabbar_new(void *parent)
     return tabbar;
 }
 
-void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable)
-{
+void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable) {
     RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return NULL;
@@ -75,11 +72,9 @@ void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable)
 /// @brief Perform tabbar remove tab operation.
 /// @param tabbar
 /// @param tab
-void rt_tabbar_remove_tab(void *tabbar, void *tab)
-{
+void rt_tabbar_remove_tab(void *tabbar, void *tab) {
     RT_ASSERT_MAIN_THREAD();
-    if (tabbar && tab)
-    {
+    if (tabbar && tab) {
         vg_tabbar_remove_tab((vg_tabbar_t *)tabbar, (vg_tab_t *)tab);
     }
 }
@@ -87,11 +82,9 @@ void rt_tabbar_remove_tab(void *tabbar, void *tab)
 /// @brief Perform tabbar set active operation.
 /// @param tabbar
 /// @param tab
-void rt_tabbar_set_active(void *tabbar, void *tab)
-{
+void rt_tabbar_set_active(void *tabbar, void *tab) {
     RT_ASSERT_MAIN_THREAD();
-    if (tabbar)
-    {
+    if (tabbar) {
         vg_tabbar_set_active((vg_tabbar_t *)tabbar, (vg_tab_t *)tab);
     }
 }
@@ -99,8 +92,7 @@ void rt_tabbar_set_active(void *tabbar, void *tab)
 /// @brief Perform tab set title operation.
 /// @param tab
 /// @param title
-void rt_tab_set_title(void *tab, rt_string title)
-{
+void rt_tab_set_title(void *tab, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
     if (!tab)
         return;
@@ -112,17 +104,14 @@ void rt_tab_set_title(void *tab, rt_string title)
 /// @brief Perform tab set modified operation.
 /// @param tab
 /// @param modified
-void rt_tab_set_modified(void *tab, int64_t modified)
-{
+void rt_tab_set_modified(void *tab, int64_t modified) {
     RT_ASSERT_MAIN_THREAD();
-    if (tab)
-    {
+    if (tab) {
         vg_tab_set_modified((vg_tab_t *)tab, modified != 0);
     }
 }
 
-void *rt_tabbar_get_active(void *tabbar)
-{
+void *rt_tabbar_get_active(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
     return tabbar ? ((vg_tabbar_t *)tabbar)->active_tab : NULL;
 }
@@ -130,8 +119,7 @@ void *rt_tabbar_get_active(void *tabbar)
 /// @brief Perform tabbar get active index operation.
 /// @param tabbar
 /// @return Result value.
-int64_t rt_tabbar_get_active_index(void *tabbar)
-{
+int64_t rt_tabbar_get_active_index(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return -1;
@@ -142,14 +130,12 @@ int64_t rt_tabbar_get_active_index(void *tabbar)
 /// @brief Perform tabbar was changed operation.
 /// @param tabbar
 /// @return Result value.
-int64_t rt_tabbar_was_changed(void *tabbar)
-{
+int64_t rt_tabbar_was_changed(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return 0;
     vg_tabbar_t *tb = (vg_tabbar_t *)tabbar;
-    if (tb->active_tab != tb->prev_active_tab)
-    {
+    if (tb->active_tab != tb->prev_active_tab) {
         tb->prev_active_tab = tb->active_tab;
         return 1;
     }
@@ -159,8 +145,7 @@ int64_t rt_tabbar_was_changed(void *tabbar)
 /// @brief Perform tabbar get tab count operation.
 /// @param tabbar
 /// @return Result value.
-int64_t rt_tabbar_get_tab_count(void *tabbar)
-{
+int64_t rt_tabbar_get_tab_count(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
     return tabbar ? ((vg_tabbar_t *)tabbar)->tab_count : 0;
 }
@@ -168,8 +153,7 @@ int64_t rt_tabbar_get_tab_count(void *tabbar)
 /// @brief Perform tabbar was close clicked operation.
 /// @param tabbar
 /// @return Result value.
-int64_t rt_tabbar_was_close_clicked(void *tabbar)
-{
+int64_t rt_tabbar_was_close_clicked(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return 0;
@@ -179,8 +163,7 @@ int64_t rt_tabbar_was_close_clicked(void *tabbar)
 /// @brief Perform tabbar get close clicked index operation.
 /// @param tabbar
 /// @return Result value.
-int64_t rt_tabbar_get_close_clicked_index(void *tabbar)
-{
+int64_t rt_tabbar_get_close_clicked_index(void *tabbar) {
     RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return -1;
@@ -192,8 +175,7 @@ int64_t rt_tabbar_get_close_clicked_index(void *tabbar)
     return index;
 }
 
-void *rt_tabbar_get_tab_at(void *tabbar, int64_t index)
-{
+void *rt_tabbar_get_tab_at(void *tabbar, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (!tabbar)
         return NULL;
@@ -203,11 +185,9 @@ void *rt_tabbar_get_tab_at(void *tabbar, int64_t index)
 /// @brief Perform tabbar set auto close operation.
 /// @param tabbar
 /// @param auto_close
-void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close)
-{
+void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close) {
     RT_ASSERT_MAIN_THREAD();
-    if (tabbar)
-    {
+    if (tabbar) {
         ((vg_tabbar_t *)tabbar)->auto_close = auto_close != 0;
     }
 }
@@ -216,8 +196,7 @@ void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close)
 // SplitPane Widget
 //=============================================================================
 
-void *rt_splitpane_new(void *parent, int64_t horizontal)
-{
+void *rt_splitpane_new(void *parent, int64_t horizontal) {
     RT_ASSERT_MAIN_THREAD();
     vg_split_direction_t direction = horizontal ? VG_SPLIT_HORIZONTAL : VG_SPLIT_VERTICAL;
     return vg_splitpane_create((vg_widget_t *)parent, direction);
@@ -226,11 +205,9 @@ void *rt_splitpane_new(void *parent, int64_t horizontal)
 /// @brief Perform splitpane set position operation.
 /// @param split
 /// @param position
-void rt_splitpane_set_position(void *split, double position)
-{
+void rt_splitpane_set_position(void *split, double position) {
     RT_ASSERT_MAIN_THREAD();
-    if (split)
-    {
+    if (split) {
         vg_splitpane_set_position((vg_splitpane_t *)split, (float)position);
     }
 }
@@ -239,24 +216,21 @@ void rt_splitpane_set_position(void *split, double position)
 /// @brief Perform splitpane get position operation.
 /// @param split
 /// @return Result value.
-double rt_splitpane_get_position(void *split)
-{
+double rt_splitpane_get_position(void *split) {
     RT_ASSERT_MAIN_THREAD();
     if (!split)
         return 0.5;
     return (double)vg_splitpane_get_position((vg_splitpane_t *)split);
 }
 
-void *rt_splitpane_get_first(void *split)
-{
+void *rt_splitpane_get_first(void *split) {
     RT_ASSERT_MAIN_THREAD();
     if (!split)
         return NULL;
     return vg_splitpane_get_first((vg_splitpane_t *)split);
 }
 
-void *rt_splitpane_get_second(void *split)
-{
+void *rt_splitpane_get_second(void *split) {
     RT_ASSERT_MAIN_THREAD();
     if (!split)
         return NULL;
@@ -267,15 +241,12 @@ void *rt_splitpane_get_second(void *split)
 // CodeEditor Widget
 //=============================================================================
 
-void *rt_codeeditor_new(void *parent)
-{
+void *rt_codeeditor_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     vg_codeeditor_t *editor = vg_codeeditor_create((vg_widget_t *)parent);
-    if (editor && s_current_app)
-    {
+    if (editor && s_current_app) {
         rt_gui_ensure_default_font();
-        if (s_current_app->default_font)
-        {
+        if (s_current_app->default_font) {
             vg_codeeditor_set_font(
                 editor, s_current_app->default_font, s_current_app->default_font_size);
         }
@@ -286,8 +257,7 @@ void *rt_codeeditor_new(void *parent)
 /// @brief Perform codeeditor set text operation.
 /// @param editor
 /// @param text
-void rt_codeeditor_set_text(void *editor, rt_string text)
-{
+void rt_codeeditor_set_text(void *editor, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return;
@@ -299,8 +269,7 @@ void rt_codeeditor_set_text(void *editor, rt_string text)
 /// @brief Perform codeeditor get text operation.
 /// @param editor
 /// @return Result value.
-rt_string rt_codeeditor_get_text(void *editor)
-{
+rt_string rt_codeeditor_get_text(void *editor) {
     RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return rt_str_empty();
@@ -315,8 +284,7 @@ rt_string rt_codeeditor_get_text(void *editor)
 /// @brief Perform codeeditor get selected text operation.
 /// @param editor
 /// @return Result value.
-rt_string rt_codeeditor_get_selected_text(void *editor)
-{
+rt_string rt_codeeditor_get_selected_text(void *editor) {
     RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return rt_str_empty();
@@ -332,11 +300,9 @@ rt_string rt_codeeditor_get_selected_text(void *editor)
 /// @param editor
 /// @param line
 /// @param col
-void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col)
-{
+void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col) {
     RT_ASSERT_MAIN_THREAD();
-    if (editor)
-    {
+    if (editor) {
         vg_codeeditor_set_cursor((vg_codeeditor_t *)editor, (int)line, (int)col);
     }
 }
@@ -344,11 +310,9 @@ void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col)
 /// @brief Perform codeeditor scroll to line operation.
 /// @param editor
 /// @param line
-void rt_codeeditor_scroll_to_line(void *editor, int64_t line)
-{
+void rt_codeeditor_scroll_to_line(void *editor, int64_t line) {
     RT_ASSERT_MAIN_THREAD();
-    if (editor)
-    {
+    if (editor) {
         vg_codeeditor_scroll_to_line((vg_codeeditor_t *)editor, (int)line);
     }
 }
@@ -356,8 +320,7 @@ void rt_codeeditor_scroll_to_line(void *editor, int64_t line)
 /// @brief Perform codeeditor get line count operation.
 /// @param editor
 /// @return Result value.
-int64_t rt_codeeditor_get_line_count(void *editor)
-{
+int64_t rt_codeeditor_get_line_count(void *editor) {
     RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return 0;
@@ -367,8 +330,7 @@ int64_t rt_codeeditor_get_line_count(void *editor)
 /// @brief Perform codeeditor is modified operation.
 /// @param editor
 /// @return Result value.
-int64_t rt_codeeditor_is_modified(void *editor)
-{
+int64_t rt_codeeditor_is_modified(void *editor) {
     RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return 0;
@@ -377,11 +339,9 @@ int64_t rt_codeeditor_is_modified(void *editor)
 
 /// @brief Perform codeeditor clear modified operation.
 /// @param editor
-void rt_codeeditor_clear_modified(void *editor)
-{
+void rt_codeeditor_clear_modified(void *editor) {
     RT_ASSERT_MAIN_THREAD();
-    if (editor)
-    {
+    if (editor) {
         vg_codeeditor_clear_modified((vg_codeeditor_t *)editor);
     }
 }
@@ -390,11 +350,9 @@ void rt_codeeditor_clear_modified(void *editor)
 /// @param editor
 /// @param font
 /// @param size
-void rt_codeeditor_set_font(void *editor, void *font, double size)
-{
+void rt_codeeditor_set_font(void *editor, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (editor)
-    {
+    if (editor) {
         vg_codeeditor_set_font((vg_codeeditor_t *)editor, (vg_font_t *)font, (float)size);
     }
 }
@@ -402,8 +360,7 @@ void rt_codeeditor_set_font(void *editor, void *font, double size)
 /// @brief Perform codeeditor get font size operation.
 /// @param editor
 /// @return Result value.
-double rt_codeeditor_get_font_size(void *editor)
-{
+double rt_codeeditor_get_font_size(void *editor) {
     RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return 14.0;
@@ -420,14 +377,12 @@ double rt_codeeditor_get_font_size(void *editor)
 /// @brief Perform codeeditor set font size operation.
 /// @param editor
 /// @param size
-void rt_codeeditor_set_font_size(void *editor, double size)
-{
+void rt_codeeditor_set_font_size(void *editor, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (!editor)
         return;
     vg_codeeditor_t *ed = (vg_codeeditor_t *)editor;
-    if (size > 0.0)
-    {
+    if (size > 0.0) {
         // Store physical pixels — multiply logical pt size by HiDPI scale.
         float _s = (s_current_app && s_current_app->window)
                        ? vgfx_window_get_scale(s_current_app->window)
@@ -445,8 +400,7 @@ void rt_codeeditor_set_font_size(void *editor, double size)
 //=============================================================================
 
 /// @brief Perform theme apply hidpi scale operation.
-void rt_theme_apply_hidpi_scale(void)
-{
+void rt_theme_apply_hidpi_scale(void) {
     if (!s_current_app || !s_current_app->window)
         return;
     float _s = vgfx_window_get_scale(s_current_app->window);
@@ -475,16 +429,14 @@ void rt_theme_apply_hidpi_scale(void)
 }
 
 /// @brief Perform theme set dark operation.
-void rt_theme_set_dark(void)
-{
+void rt_theme_set_dark(void) {
     RT_ASSERT_MAIN_THREAD();
     vg_theme_set_current(vg_theme_dark());
     rt_theme_apply_hidpi_scale();
 }
 
 /// @brief Perform theme set light operation.
-void rt_theme_set_light(void)
-{
+void rt_theme_set_light(void) {
     RT_ASSERT_MAIN_THREAD();
     vg_theme_set_current(vg_theme_light());
     rt_theme_apply_hidpi_scale();
@@ -492,8 +444,7 @@ void rt_theme_set_light(void)
 
 /// @brief Perform theme get name operation.
 /// @return Result value.
-rt_string rt_theme_get_name(void)
-{
+rt_string rt_theme_get_name(void) {
     RT_ASSERT_MAIN_THREAD();
     // Query the vg layer directly rather than maintaining a shadow variable.
     vg_theme_t *current = vg_theme_get_current();
@@ -505,14 +456,12 @@ rt_string rt_theme_get_name(void)
 // Layout Functions
 //=============================================================================
 
-void *rt_vbox_new(void)
-{
+void *rt_vbox_new(void) {
     RT_ASSERT_MAIN_THREAD();
     return vg_vbox_create(0.0f);
 }
 
-void *rt_hbox_new(void)
-{
+void *rt_hbox_new(void) {
     RT_ASSERT_MAIN_THREAD();
     return vg_hbox_create(0.0f);
 }
@@ -520,8 +469,7 @@ void *rt_hbox_new(void)
 /// @brief Perform container set spacing operation.
 /// @param container
 /// @param spacing
-void rt_container_set_spacing(void *container, double spacing)
-{
+void rt_container_set_spacing(void *container, double spacing) {
     RT_ASSERT_MAIN_THREAD();
     if (!container)
         return;
@@ -534,11 +482,9 @@ void rt_container_set_spacing(void *container, double spacing)
 /// @brief Perform container set padding operation.
 /// @param container
 /// @param padding
-void rt_container_set_padding(void *container, double padding)
-{
+void rt_container_set_padding(void *container, double padding) {
     RT_ASSERT_MAIN_THREAD();
-    if (container)
-    {
+    if (container) {
         vg_widget_set_padding((vg_widget_t *)container, (float)padding);
     }
 }
@@ -550,8 +496,7 @@ void rt_container_set_padding(void *container, double padding)
 /// @brief Perform widget is hovered operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_is_hovered(void *widget)
-{
+int64_t rt_widget_is_hovered(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
@@ -561,8 +506,7 @@ int64_t rt_widget_is_hovered(void *widget)
 /// @brief Perform widget is pressed operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_is_pressed(void *widget)
-{
+int64_t rt_widget_is_pressed(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
@@ -572,8 +516,7 @@ int64_t rt_widget_is_pressed(void *widget)
 /// @brief Perform widget is focused operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_is_focused(void *widget)
-{
+int64_t rt_widget_is_focused(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
@@ -585,8 +528,7 @@ static vg_widget_t *g_last_clicked_widget = NULL;
 
 /// @brief Set the last clicked value.
 /// @param widget
-void rt_gui_set_last_clicked(void *widget)
-{
+void rt_gui_set_last_clicked(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     g_last_clicked_widget = (vg_widget_t *)widget;
 }
@@ -594,8 +536,7 @@ void rt_gui_set_last_clicked(void *widget)
 /// @brief Perform widget was clicked operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_was_clicked(void *widget)
-{
+int64_t rt_widget_was_clicked(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     if (!widget)
         return 0;
@@ -606,11 +547,9 @@ int64_t rt_widget_was_clicked(void *widget)
 /// @param widget
 /// @param x
 /// @param y
-void rt_widget_set_position(void *widget, int64_t x, int64_t y)
-{
+void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
-    if (widget)
-    {
+    if (widget) {
         vg_widget_t *w = (vg_widget_t *)widget;
         w->x = (float)x;
         w->y = (float)y;
@@ -621,8 +560,7 @@ void rt_widget_set_position(void *widget, int64_t x, int64_t y)
 // Dropdown Widget
 //=============================================================================
 
-void *rt_dropdown_new(void *parent)
-{
+void *rt_dropdown_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     return vg_dropdown_create((vg_widget_t *)parent);
 }
@@ -631,8 +569,7 @@ void *rt_dropdown_new(void *parent)
 /// @param dropdown
 /// @param text
 /// @return Result value.
-int64_t rt_dropdown_add_item(void *dropdown, rt_string text)
-{
+int64_t rt_dropdown_add_item(void *dropdown, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!dropdown)
         return -1;
@@ -645,22 +582,18 @@ int64_t rt_dropdown_add_item(void *dropdown, rt_string text)
 /// @brief Perform dropdown remove item operation.
 /// @param dropdown
 /// @param index
-void rt_dropdown_remove_item(void *dropdown, int64_t index)
-{
+void rt_dropdown_remove_item(void *dropdown, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (dropdown)
-    {
+    if (dropdown) {
         vg_dropdown_remove_item((vg_dropdown_t *)dropdown, (int)index);
     }
 }
 
 /// @brief Perform dropdown clear operation.
 /// @param dropdown
-void rt_dropdown_clear(void *dropdown)
-{
+void rt_dropdown_clear(void *dropdown) {
     RT_ASSERT_MAIN_THREAD();
-    if (dropdown)
-    {
+    if (dropdown) {
         vg_dropdown_clear((vg_dropdown_t *)dropdown);
     }
 }
@@ -668,11 +601,9 @@ void rt_dropdown_clear(void *dropdown)
 /// @brief Perform dropdown set selected operation.
 /// @param dropdown
 /// @param index
-void rt_dropdown_set_selected(void *dropdown, int64_t index)
-{
+void rt_dropdown_set_selected(void *dropdown, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
-    if (dropdown)
-    {
+    if (dropdown) {
         vg_dropdown_set_selected((vg_dropdown_t *)dropdown, (int)index);
     }
 }
@@ -680,8 +611,7 @@ void rt_dropdown_set_selected(void *dropdown, int64_t index)
 /// @brief Perform dropdown get selected operation.
 /// @param dropdown
 /// @return Result value.
-int64_t rt_dropdown_get_selected(void *dropdown)
-{
+int64_t rt_dropdown_get_selected(void *dropdown) {
     RT_ASSERT_MAIN_THREAD();
     if (!dropdown)
         return -1;
@@ -691,8 +621,7 @@ int64_t rt_dropdown_get_selected(void *dropdown)
 /// @brief Perform dropdown get selected text operation.
 /// @param dropdown
 /// @return Result value.
-rt_string rt_dropdown_get_selected_text(void *dropdown)
-{
+rt_string rt_dropdown_get_selected_text(void *dropdown) {
     RT_ASSERT_MAIN_THREAD();
     if (!dropdown)
         return rt_str_empty();
@@ -705,8 +634,7 @@ rt_string rt_dropdown_get_selected_text(void *dropdown)
 /// @brief Perform dropdown set placeholder operation.
 /// @param dropdown
 /// @param placeholder
-void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder)
-{
+void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder) {
     RT_ASSERT_MAIN_THREAD();
     if (!dropdown)
         return;
@@ -719,8 +647,7 @@ void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder)
 // Slider Widget
 //=============================================================================
 
-void *rt_slider_new(void *parent, int64_t horizontal)
-{
+void *rt_slider_new(void *parent, int64_t horizontal) {
     RT_ASSERT_MAIN_THREAD();
     vg_slider_orientation_t orient = horizontal ? VG_SLIDER_HORIZONTAL : VG_SLIDER_VERTICAL;
     return vg_slider_create((vg_widget_t *)parent, orient);
@@ -729,11 +656,9 @@ void *rt_slider_new(void *parent, int64_t horizontal)
 /// @brief Perform slider set value operation.
 /// @param slider
 /// @param value
-void rt_slider_set_value(void *slider, double value)
-{
+void rt_slider_set_value(void *slider, double value) {
     RT_ASSERT_MAIN_THREAD();
-    if (slider)
-    {
+    if (slider) {
         vg_slider_set_value((vg_slider_t *)slider, (float)value);
     }
 }
@@ -741,8 +666,7 @@ void rt_slider_set_value(void *slider, double value)
 /// @brief Perform slider get value operation.
 /// @param slider
 /// @return Result value.
-double rt_slider_get_value(void *slider)
-{
+double rt_slider_get_value(void *slider) {
     RT_ASSERT_MAIN_THREAD();
     if (!slider)
         return 0.0;
@@ -753,11 +677,9 @@ double rt_slider_get_value(void *slider)
 /// @param slider
 /// @param min_val
 /// @param max_val
-void rt_slider_set_range(void *slider, double min_val, double max_val)
-{
+void rt_slider_set_range(void *slider, double min_val, double max_val) {
     RT_ASSERT_MAIN_THREAD();
-    if (slider)
-    {
+    if (slider) {
         vg_slider_set_range((vg_slider_t *)slider, (float)min_val, (float)max_val);
     }
 }
@@ -765,11 +687,9 @@ void rt_slider_set_range(void *slider, double min_val, double max_val)
 /// @brief Perform slider set step operation.
 /// @param slider
 /// @param step
-void rt_slider_set_step(void *slider, double step)
-{
+void rt_slider_set_step(void *slider, double step) {
     RT_ASSERT_MAIN_THREAD();
-    if (slider)
-    {
+    if (slider) {
         vg_slider_set_step((vg_slider_t *)slider, (float)step);
     }
 }
@@ -778,8 +698,7 @@ void rt_slider_set_step(void *slider, double step)
 // ProgressBar Widget
 //=============================================================================
 
-void *rt_progressbar_new(void *parent)
-{
+void *rt_progressbar_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     return vg_progressbar_create((vg_widget_t *)parent);
 }
@@ -787,11 +706,9 @@ void *rt_progressbar_new(void *parent)
 /// @brief Perform progressbar set value operation.
 /// @param progress
 /// @param value
-void rt_progressbar_set_value(void *progress, double value)
-{
+void rt_progressbar_set_value(void *progress, double value) {
     RT_ASSERT_MAIN_THREAD();
-    if (progress)
-    {
+    if (progress) {
         vg_progressbar_set_value((vg_progressbar_t *)progress, (float)value);
     }
 }
@@ -799,8 +716,7 @@ void rt_progressbar_set_value(void *progress, double value)
 /// @brief Perform progressbar get value operation.
 /// @param progress
 /// @return Result value.
-double rt_progressbar_get_value(void *progress)
-{
+double rt_progressbar_get_value(void *progress) {
     RT_ASSERT_MAIN_THREAD();
     if (!progress)
         return 0.0;
@@ -811,14 +727,12 @@ double rt_progressbar_get_value(void *progress)
 // ListBox Widget
 //=============================================================================
 
-void *rt_listbox_new(void *parent)
-{
+void *rt_listbox_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     return vg_listbox_create((vg_widget_t *)parent);
 }
 
-void *rt_listbox_add_item(void *listbox, rt_string text)
-{
+void *rt_listbox_add_item(void *listbox, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!listbox)
         return NULL;
@@ -831,22 +745,18 @@ void *rt_listbox_add_item(void *listbox, rt_string text)
 /// @brief Perform listbox remove item operation.
 /// @param listbox
 /// @param item
-void rt_listbox_remove_item(void *listbox, void *item)
-{
+void rt_listbox_remove_item(void *listbox, void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (listbox && item)
-    {
+    if (listbox && item) {
         vg_listbox_remove_item((vg_listbox_t *)listbox, (vg_listbox_item_t *)item);
     }
 }
 
 /// @brief Perform listbox clear operation.
 /// @param listbox
-void rt_listbox_clear(void *listbox)
-{
+void rt_listbox_clear(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
-    if (listbox)
-    {
+    if (listbox) {
         vg_listbox_clear((vg_listbox_t *)listbox);
     }
 }
@@ -854,17 +764,14 @@ void rt_listbox_clear(void *listbox)
 /// @brief Perform listbox select operation.
 /// @param listbox
 /// @param item
-void rt_listbox_select(void *listbox, void *item)
-{
+void rt_listbox_select(void *listbox, void *item) {
     RT_ASSERT_MAIN_THREAD();
-    if (listbox)
-    {
+    if (listbox) {
         vg_listbox_select((vg_listbox_t *)listbox, (vg_listbox_item_t *)item);
     }
 }
 
-void *rt_listbox_get_selected(void *listbox)
-{
+void *rt_listbox_get_selected(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
     if (!listbox)
         return NULL;
@@ -874,8 +781,7 @@ void *rt_listbox_get_selected(void *listbox)
 /// @brief Perform listbox get count operation.
 /// @param listbox
 /// @return Result value.
-int64_t rt_listbox_get_count(void *listbox)
-{
+int64_t rt_listbox_get_count(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
     if (!listbox)
         return 0;
@@ -886,8 +792,7 @@ int64_t rt_listbox_get_count(void *listbox)
 /// @brief Perform listbox get selected index operation.
 /// @param listbox
 /// @return Result value.
-int64_t rt_listbox_get_selected_index(void *listbox)
-{
+int64_t rt_listbox_get_selected_index(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
     if (!listbox)
         return -1;
@@ -900,8 +805,7 @@ int64_t rt_listbox_get_selected_index(void *listbox)
 /// @brief Perform listbox select index operation.
 /// @param listbox
 /// @param index
-void rt_listbox_select_index(void *listbox, int64_t index)
-{
+void rt_listbox_select_index(void *listbox, int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (!listbox || index < 0)
         return;
@@ -911,8 +815,7 @@ void rt_listbox_select_index(void *listbox, int64_t index)
 /// @brief Perform listbox was selection changed operation.
 /// @param listbox
 /// @return Result value.
-int64_t rt_listbox_was_selection_changed(void *listbox)
-{
+int64_t rt_listbox_was_selection_changed(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
     if (!listbox)
         return 0;
@@ -920,8 +823,7 @@ int64_t rt_listbox_was_selection_changed(void *listbox)
 
     // Per-instance selection tracking using prev_selected field
     // (matches the pattern used by rt_tabbar_was_changed / prev_active_tab).
-    if (lb->selected != lb->prev_selected)
-    {
+    if (lb->selected != lb->prev_selected) {
         lb->prev_selected = lb->selected;
         return 1;
     }
@@ -931,8 +833,7 @@ int64_t rt_listbox_was_selection_changed(void *listbox)
 /// @brief Perform listbox item get text operation.
 /// @param item
 /// @return Result value.
-rt_string rt_listbox_item_get_text(void *item)
-{
+rt_string rt_listbox_item_get_text(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return rt_str_empty();
@@ -945,8 +846,7 @@ rt_string rt_listbox_item_get_text(void *item)
 /// @brief Perform listbox item set text operation.
 /// @param item
 /// @param text
-void rt_listbox_item_set_text(void *item, rt_string text)
-{
+void rt_listbox_item_set_text(void *item, rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
@@ -960,8 +860,7 @@ void rt_listbox_item_set_text(void *item, rt_string text)
 /// @brief Perform listbox item set data operation.
 /// @param item
 /// @param data
-void rt_listbox_item_set_data(void *item, rt_string data)
-{
+void rt_listbox_item_set_data(void *item, rt_string data) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return;
@@ -975,8 +874,7 @@ void rt_listbox_item_set_data(void *item, rt_string data)
 /// @brief Perform listbox item get data operation.
 /// @param item
 /// @return Result value.
-rt_string rt_listbox_item_get_data(void *item)
-{
+rt_string rt_listbox_item_get_data(void *item) {
     RT_ASSERT_MAIN_THREAD();
     if (!item)
         return rt_str_empty();
@@ -991,11 +889,9 @@ rt_string rt_listbox_item_get_data(void *item)
 /// @param listbox
 /// @param font
 /// @param size
-void rt_listbox_set_font(void *listbox, void *font, double size)
-{
+void rt_listbox_set_font(void *listbox, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
-    if (listbox)
-    {
+    if (listbox) {
         vg_listbox_set_font((vg_listbox_t *)listbox, (vg_font_t *)font, (float)size);
     }
 }
@@ -1004,25 +900,21 @@ void rt_listbox_set_font(void *listbox, void *font, double size)
 // RadioButton Widget
 //=============================================================================
 
-void *rt_radiogroup_new(void)
-{
+void *rt_radiogroup_new(void) {
     RT_ASSERT_MAIN_THREAD();
     return vg_radiogroup_create();
 }
 
 /// @brief Perform radiogroup destroy operation.
 /// @param group
-void rt_radiogroup_destroy(void *group)
-{
+void rt_radiogroup_destroy(void *group) {
     RT_ASSERT_MAIN_THREAD();
-    if (group)
-    {
+    if (group) {
         vg_radiogroup_destroy((vg_radiogroup_t *)group);
     }
 }
 
-void *rt_radiobutton_new(void *parent, rt_string text, void *group)
-{
+void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
     RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
     vg_radiobutton_t *radio =
@@ -1034,8 +926,7 @@ void *rt_radiobutton_new(void *parent, rt_string text, void *group)
 /// @brief Perform radiobutton is selected operation.
 /// @param radio
 /// @return Result value.
-int64_t rt_radiobutton_is_selected(void *radio)
-{
+int64_t rt_radiobutton_is_selected(void *radio) {
     RT_ASSERT_MAIN_THREAD();
     if (!radio)
         return 0;
@@ -1045,11 +936,9 @@ int64_t rt_radiobutton_is_selected(void *radio)
 /// @brief Perform radiobutton set selected operation.
 /// @param radio
 /// @param selected
-void rt_radiobutton_set_selected(void *radio, int64_t selected)
-{
+void rt_radiobutton_set_selected(void *radio, int64_t selected) {
     RT_ASSERT_MAIN_THREAD();
-    if (radio)
-    {
+    if (radio) {
         vg_radiobutton_set_selected((vg_radiobutton_t *)radio, selected != 0);
     }
 }
@@ -1058,8 +947,7 @@ void rt_radiobutton_set_selected(void *radio, int64_t selected)
 // Spinner Widget
 //=============================================================================
 
-void *rt_spinner_new(void *parent)
-{
+void *rt_spinner_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     return vg_spinner_create((vg_widget_t *)parent);
 }
@@ -1067,11 +955,9 @@ void *rt_spinner_new(void *parent)
 /// @brief Perform spinner set value operation.
 /// @param spinner
 /// @param value
-void rt_spinner_set_value(void *spinner, double value)
-{
+void rt_spinner_set_value(void *spinner, double value) {
     RT_ASSERT_MAIN_THREAD();
-    if (spinner)
-    {
+    if (spinner) {
         vg_spinner_set_value((vg_spinner_t *)spinner, value);
     }
 }
@@ -1079,8 +965,7 @@ void rt_spinner_set_value(void *spinner, double value)
 /// @brief Perform spinner get value operation.
 /// @param spinner
 /// @return Result value.
-double rt_spinner_get_value(void *spinner)
-{
+double rt_spinner_get_value(void *spinner) {
     RT_ASSERT_MAIN_THREAD();
     if (!spinner)
         return 0.0;
@@ -1091,11 +976,9 @@ double rt_spinner_get_value(void *spinner)
 /// @param spinner
 /// @param min_val
 /// @param max_val
-void rt_spinner_set_range(void *spinner, double min_val, double max_val)
-{
+void rt_spinner_set_range(void *spinner, double min_val, double max_val) {
     RT_ASSERT_MAIN_THREAD();
-    if (spinner)
-    {
+    if (spinner) {
         vg_spinner_set_range((vg_spinner_t *)spinner, min_val, max_val);
     }
 }
@@ -1103,11 +986,9 @@ void rt_spinner_set_range(void *spinner, double min_val, double max_val)
 /// @brief Perform spinner set step operation.
 /// @param spinner
 /// @param step
-void rt_spinner_set_step(void *spinner, double step)
-{
+void rt_spinner_set_step(void *spinner, double step) {
     RT_ASSERT_MAIN_THREAD();
-    if (spinner)
-    {
+    if (spinner) {
         vg_spinner_set_step((vg_spinner_t *)spinner, step);
     }
 }
@@ -1115,11 +996,9 @@ void rt_spinner_set_step(void *spinner, double step)
 /// @brief Perform spinner set decimals operation.
 /// @param spinner
 /// @param decimals
-void rt_spinner_set_decimals(void *spinner, int64_t decimals)
-{
+void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
     RT_ASSERT_MAIN_THREAD();
-    if (spinner)
-    {
+    if (spinner) {
         vg_spinner_set_decimals((vg_spinner_t *)spinner, (int)decimals);
     }
 }
@@ -1128,8 +1007,7 @@ void rt_spinner_set_decimals(void *spinner, int64_t decimals)
 // Image Widget
 //=============================================================================
 
-void *rt_image_new(void *parent)
-{
+void *rt_image_new(void *parent) {
     RT_ASSERT_MAIN_THREAD();
     return vg_image_create((vg_widget_t *)parent);
 }
@@ -1139,22 +1017,18 @@ void *rt_image_new(void *parent)
 /// @param pixels
 /// @param width
 /// @param height
-void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height)
-{
+void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
-    if (image && pixels)
-    {
+    if (image && pixels) {
         vg_image_set_pixels((vg_image_t *)image, (const uint8_t *)pixels, (int)width, (int)height);
     }
 }
 
 /// @brief Perform image clear operation.
 /// @param image
-void rt_image_clear(void *image)
-{
+void rt_image_clear(void *image) {
     RT_ASSERT_MAIN_THREAD();
-    if (image)
-    {
+    if (image) {
         vg_image_clear((vg_image_t *)image);
     }
 }
@@ -1162,11 +1036,9 @@ void rt_image_clear(void *image)
 /// @brief Perform image set scale mode operation.
 /// @param image
 /// @param mode
-void rt_image_set_scale_mode(void *image, int64_t mode)
-{
+void rt_image_set_scale_mode(void *image, int64_t mode) {
     RT_ASSERT_MAIN_THREAD();
-    if (image)
-    {
+    if (image) {
         vg_image_set_scale_mode((vg_image_t *)image, (vg_image_scale_t)mode);
     }
 }
@@ -1174,11 +1046,9 @@ void rt_image_set_scale_mode(void *image, int64_t mode)
 /// @brief Perform image set opacity operation.
 /// @param image
 /// @param opacity
-void rt_image_set_opacity(void *image, double opacity)
-{
+void rt_image_set_opacity(void *image, double opacity) {
     RT_ASSERT_MAIN_THREAD();
-    if (image)
-    {
+    if (image) {
         vg_image_set_opacity((vg_image_t *)image, (float)opacity);
     }
 }
@@ -1187,8 +1057,7 @@ void rt_image_set_opacity(void *image, double opacity)
 // FloatingPanel Widget
 //=============================================================================
 
-void *rt_floatingpanel_new(void *root)
-{
+void *rt_floatingpanel_new(void *root) {
     RT_ASSERT_MAIN_THREAD();
     return vg_floatingpanel_create((vg_widget_t *)root);
 }
@@ -1197,8 +1066,7 @@ void *rt_floatingpanel_new(void *root)
 /// @param panel
 /// @param x
 /// @param y
-void rt_floatingpanel_set_position(void *panel, double x, double y)
-{
+void rt_floatingpanel_set_position(void *panel, double x, double y) {
     RT_ASSERT_MAIN_THREAD();
     if (panel)
         vg_floatingpanel_set_position((vg_floatingpanel_t *)panel, (float)x, (float)y);
@@ -1208,8 +1076,7 @@ void rt_floatingpanel_set_position(void *panel, double x, double y)
 /// @param panel
 /// @param w
 /// @param h
-void rt_floatingpanel_set_size(void *panel, double w, double h)
-{
+void rt_floatingpanel_set_size(void *panel, double w, double h) {
     RT_ASSERT_MAIN_THREAD();
     if (panel)
         vg_floatingpanel_set_size((vg_floatingpanel_t *)panel, (float)w, (float)h);
@@ -1218,8 +1085,7 @@ void rt_floatingpanel_set_size(void *panel, double w, double h)
 /// @brief Perform floatingpanel set visible operation.
 /// @param panel
 /// @param visible
-void rt_floatingpanel_set_visible(void *panel, int64_t visible)
-{
+void rt_floatingpanel_set_visible(void *panel, int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
     if (panel)
         vg_floatingpanel_set_visible((vg_floatingpanel_t *)panel, (int)visible);
@@ -1228,8 +1094,7 @@ void rt_floatingpanel_set_visible(void *panel, int64_t visible)
 /// @brief Perform floatingpanel add child operation.
 /// @param panel
 /// @param child
-void rt_floatingpanel_add_child(void *panel, void *child)
-{
+void rt_floatingpanel_add_child(void *panel, void *child) {
     RT_ASSERT_MAIN_THREAD();
     if (panel && child)
         vg_floatingpanel_add_child((vg_floatingpanel_t *)panel, (vg_widget_t *)child);
@@ -1237,14 +1102,12 @@ void rt_floatingpanel_add_child(void *panel, void *child)
 
 #else /* !VIPER_ENABLE_GRAPHICS */
 
-void *rt_tabbar_new(void *parent)
-{
+void *rt_tabbar_new(void *parent) {
     (void)parent;
     return NULL;
 }
 
-void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable)
-{
+void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable) {
     (void)tabbar;
     (void)title;
     (void)closable;
@@ -1254,8 +1117,7 @@ void *rt_tabbar_add_tab(void *tabbar, rt_string title, int64_t closable)
 /// @brief Perform tabbar remove tab operation.
 /// @param tabbar
 /// @param tab
-void rt_tabbar_remove_tab(void *tabbar, void *tab)
-{
+void rt_tabbar_remove_tab(void *tabbar, void *tab) {
     (void)tabbar;
     (void)tab;
 }
@@ -1263,8 +1125,7 @@ void rt_tabbar_remove_tab(void *tabbar, void *tab)
 /// @brief Perform tabbar set active operation.
 /// @param tabbar
 /// @param tab
-void rt_tabbar_set_active(void *tabbar, void *tab)
-{
+void rt_tabbar_set_active(void *tabbar, void *tab) {
     (void)tabbar;
     (void)tab;
 }
@@ -1272,8 +1133,7 @@ void rt_tabbar_set_active(void *tabbar, void *tab)
 /// @brief Perform tab set title operation.
 /// @param tab
 /// @param title
-void rt_tab_set_title(void *tab, rt_string title)
-{
+void rt_tab_set_title(void *tab, rt_string title) {
     (void)tab;
     (void)title;
 }
@@ -1281,14 +1141,12 @@ void rt_tab_set_title(void *tab, rt_string title)
 /// @brief Perform tab set modified operation.
 /// @param tab
 /// @param modified
-void rt_tab_set_modified(void *tab, int64_t modified)
-{
+void rt_tab_set_modified(void *tab, int64_t modified) {
     (void)tab;
     (void)modified;
 }
 
-void *rt_tabbar_get_active(void *tabbar)
-{
+void *rt_tabbar_get_active(void *tabbar) {
     (void)tabbar;
     return NULL;
 }
@@ -1296,8 +1154,7 @@ void *rt_tabbar_get_active(void *tabbar)
 /// @brief Perform tabbar get active index operation.
 /// @param tabbar
 /// @return Result value.
-int64_t rt_tabbar_get_active_index(void *tabbar)
-{
+int64_t rt_tabbar_get_active_index(void *tabbar) {
     (void)tabbar;
     return -1;
 }
@@ -1305,8 +1162,7 @@ int64_t rt_tabbar_get_active_index(void *tabbar)
 /// @brief Perform tabbar was changed operation.
 /// @param tabbar
 /// @return Result value.
-int64_t rt_tabbar_was_changed(void *tabbar)
-{
+int64_t rt_tabbar_was_changed(void *tabbar) {
     (void)tabbar;
     return 0;
 }
@@ -1314,8 +1170,7 @@ int64_t rt_tabbar_was_changed(void *tabbar)
 /// @brief Perform tabbar get tab count operation.
 /// @param tabbar
 /// @return Result value.
-int64_t rt_tabbar_get_tab_count(void *tabbar)
-{
+int64_t rt_tabbar_get_tab_count(void *tabbar) {
     (void)tabbar;
     return 0;
 }
@@ -1323,8 +1178,7 @@ int64_t rt_tabbar_get_tab_count(void *tabbar)
 /// @brief Perform tabbar was close clicked operation.
 /// @param tabbar
 /// @return Result value.
-int64_t rt_tabbar_was_close_clicked(void *tabbar)
-{
+int64_t rt_tabbar_was_close_clicked(void *tabbar) {
     (void)tabbar;
     return 0;
 }
@@ -1332,14 +1186,12 @@ int64_t rt_tabbar_was_close_clicked(void *tabbar)
 /// @brief Perform tabbar get close clicked index operation.
 /// @param tabbar
 /// @return Result value.
-int64_t rt_tabbar_get_close_clicked_index(void *tabbar)
-{
+int64_t rt_tabbar_get_close_clicked_index(void *tabbar) {
     (void)tabbar;
     return -1;
 }
 
-void *rt_tabbar_get_tab_at(void *tabbar, int64_t index)
-{
+void *rt_tabbar_get_tab_at(void *tabbar, int64_t index) {
     (void)tabbar;
     (void)index;
     return NULL;
@@ -1348,14 +1200,12 @@ void *rt_tabbar_get_tab_at(void *tabbar, int64_t index)
 /// @brief Perform tabbar set auto close operation.
 /// @param tabbar
 /// @param auto_close
-void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close)
-{
+void rt_tabbar_set_auto_close(void *tabbar, int64_t auto_close) {
     (void)tabbar;
     (void)auto_close;
 }
 
-void *rt_splitpane_new(void *parent, int64_t horizontal)
-{
+void *rt_splitpane_new(void *parent, int64_t horizontal) {
     (void)parent;
     (void)horizontal;
     return NULL;
@@ -1364,8 +1214,7 @@ void *rt_splitpane_new(void *parent, int64_t horizontal)
 /// @brief Perform splitpane set position operation.
 /// @param split
 /// @param position
-void rt_splitpane_set_position(void *split, double position)
-{
+void rt_splitpane_set_position(void *split, double position) {
     (void)split;
     (void)position;
 }
@@ -1373,26 +1222,22 @@ void rt_splitpane_set_position(void *split, double position)
 /// @brief Perform splitpane get position operation.
 /// @param split
 /// @return Result value.
-double rt_splitpane_get_position(void *split)
-{
+double rt_splitpane_get_position(void *split) {
     (void)split;
     return 0.5;
 }
 
-void *rt_splitpane_get_first(void *split)
-{
+void *rt_splitpane_get_first(void *split) {
     (void)split;
     return NULL;
 }
 
-void *rt_splitpane_get_second(void *split)
-{
+void *rt_splitpane_get_second(void *split) {
     (void)split;
     return NULL;
 }
 
-void *rt_codeeditor_new(void *parent)
-{
+void *rt_codeeditor_new(void *parent) {
     (void)parent;
     return NULL;
 }
@@ -1400,8 +1245,7 @@ void *rt_codeeditor_new(void *parent)
 /// @brief Perform codeeditor set text operation.
 /// @param editor
 /// @param text
-void rt_codeeditor_set_text(void *editor, rt_string text)
-{
+void rt_codeeditor_set_text(void *editor, rt_string text) {
     (void)editor;
     (void)text;
 }
@@ -1409,8 +1253,7 @@ void rt_codeeditor_set_text(void *editor, rt_string text)
 /// @brief Perform codeeditor get text operation.
 /// @param editor
 /// @return Result value.
-rt_string rt_codeeditor_get_text(void *editor)
-{
+rt_string rt_codeeditor_get_text(void *editor) {
     (void)editor;
     return rt_str_empty();
 }
@@ -1418,8 +1261,7 @@ rt_string rt_codeeditor_get_text(void *editor)
 /// @brief Perform codeeditor get selected text operation.
 /// @param editor
 /// @return Result value.
-rt_string rt_codeeditor_get_selected_text(void *editor)
-{
+rt_string rt_codeeditor_get_selected_text(void *editor) {
     (void)editor;
     return rt_str_empty();
 }
@@ -1428,8 +1270,7 @@ rt_string rt_codeeditor_get_selected_text(void *editor)
 /// @param editor
 /// @param line
 /// @param col
-void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col)
-{
+void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col) {
     (void)editor;
     (void)line;
     (void)col;
@@ -1438,8 +1279,7 @@ void rt_codeeditor_set_cursor(void *editor, int64_t line, int64_t col)
 /// @brief Perform codeeditor scroll to line operation.
 /// @param editor
 /// @param line
-void rt_codeeditor_scroll_to_line(void *editor, int64_t line)
-{
+void rt_codeeditor_scroll_to_line(void *editor, int64_t line) {
     (void)editor;
     (void)line;
 }
@@ -1447,8 +1287,7 @@ void rt_codeeditor_scroll_to_line(void *editor, int64_t line)
 /// @brief Perform codeeditor get line count operation.
 /// @param editor
 /// @return Result value.
-int64_t rt_codeeditor_get_line_count(void *editor)
-{
+int64_t rt_codeeditor_get_line_count(void *editor) {
     (void)editor;
     return 0;
 }
@@ -1456,16 +1295,14 @@ int64_t rt_codeeditor_get_line_count(void *editor)
 /// @brief Perform codeeditor is modified operation.
 /// @param editor
 /// @return Result value.
-int64_t rt_codeeditor_is_modified(void *editor)
-{
+int64_t rt_codeeditor_is_modified(void *editor) {
     (void)editor;
     return 0;
 }
 
 /// @brief Perform codeeditor clear modified operation.
 /// @param editor
-void rt_codeeditor_clear_modified(void *editor)
-{
+void rt_codeeditor_clear_modified(void *editor) {
     (void)editor;
 }
 
@@ -1473,8 +1310,7 @@ void rt_codeeditor_clear_modified(void *editor)
 /// @param editor
 /// @param font
 /// @param size
-void rt_codeeditor_set_font(void *editor, void *font, double size)
-{
+void rt_codeeditor_set_font(void *editor, void *font, double size) {
     (void)editor;
     (void)font;
     (void)size;
@@ -1483,8 +1319,7 @@ void rt_codeeditor_set_font(void *editor, void *font, double size)
 /// @brief Perform codeeditor get font size operation.
 /// @param editor
 /// @return Result value.
-double rt_codeeditor_get_font_size(void *editor)
-{
+double rt_codeeditor_get_font_size(void *editor) {
     (void)editor;
     return 14.0;
 }
@@ -1492,8 +1327,7 @@ double rt_codeeditor_get_font_size(void *editor)
 /// @brief Perform codeeditor set font size operation.
 /// @param editor
 /// @param size
-void rt_codeeditor_set_font_size(void *editor, double size)
-{
+void rt_codeeditor_set_font_size(void *editor, double size) {
     (void)editor;
     (void)size;
 }
@@ -1506,26 +1340,22 @@ void rt_theme_set_light(void) {}
 
 /// @brief Perform theme get name operation.
 /// @return Result value.
-rt_string rt_theme_get_name(void)
-{
+rt_string rt_theme_get_name(void) {
     return rt_string_from_bytes("dark", 4);
 }
 
-void *rt_vbox_new(void)
-{
+void *rt_vbox_new(void) {
     return NULL;
 }
 
-void *rt_hbox_new(void)
-{
+void *rt_hbox_new(void) {
     return NULL;
 }
 
 /// @brief Perform container set spacing operation.
 /// @param container
 /// @param spacing
-void rt_container_set_spacing(void *container, double spacing)
-{
+void rt_container_set_spacing(void *container, double spacing) {
     (void)container;
     (void)spacing;
 }
@@ -1533,8 +1363,7 @@ void rt_container_set_spacing(void *container, double spacing)
 /// @brief Perform container set padding operation.
 /// @param container
 /// @param padding
-void rt_container_set_padding(void *container, double padding)
-{
+void rt_container_set_padding(void *container, double padding) {
     (void)container;
     (void)padding;
 }
@@ -1542,8 +1371,7 @@ void rt_container_set_padding(void *container, double padding)
 /// @brief Perform widget is hovered operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_is_hovered(void *widget)
-{
+int64_t rt_widget_is_hovered(void *widget) {
     (void)widget;
     return 0;
 }
@@ -1551,8 +1379,7 @@ int64_t rt_widget_is_hovered(void *widget)
 /// @brief Perform widget is pressed operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_is_pressed(void *widget)
-{
+int64_t rt_widget_is_pressed(void *widget) {
     (void)widget;
     return 0;
 }
@@ -1560,24 +1387,21 @@ int64_t rt_widget_is_pressed(void *widget)
 /// @brief Perform widget is focused operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_is_focused(void *widget)
-{
+int64_t rt_widget_is_focused(void *widget) {
     (void)widget;
     return 0;
 }
 
 /// @brief Set the last clicked value.
 /// @param widget
-void rt_gui_set_last_clicked(void *widget)
-{
+void rt_gui_set_last_clicked(void *widget) {
     (void)widget;
 }
 
 /// @brief Perform widget was clicked operation.
 /// @param widget
 /// @return Result value.
-int64_t rt_widget_was_clicked(void *widget)
-{
+int64_t rt_widget_was_clicked(void *widget) {
     (void)widget;
     return 0;
 }
@@ -1586,15 +1410,13 @@ int64_t rt_widget_was_clicked(void *widget)
 /// @param widget
 /// @param x
 /// @param y
-void rt_widget_set_position(void *widget, int64_t x, int64_t y)
-{
+void rt_widget_set_position(void *widget, int64_t x, int64_t y) {
     (void)widget;
     (void)x;
     (void)y;
 }
 
-void *rt_dropdown_new(void *parent)
-{
+void *rt_dropdown_new(void *parent) {
     (void)parent;
     return NULL;
 }
@@ -1603,8 +1425,7 @@ void *rt_dropdown_new(void *parent)
 /// @param dropdown
 /// @param text
 /// @return Result value.
-int64_t rt_dropdown_add_item(void *dropdown, rt_string text)
-{
+int64_t rt_dropdown_add_item(void *dropdown, rt_string text) {
     (void)dropdown;
     (void)text;
     return -1;
@@ -1613,24 +1434,21 @@ int64_t rt_dropdown_add_item(void *dropdown, rt_string text)
 /// @brief Perform dropdown remove item operation.
 /// @param dropdown
 /// @param index
-void rt_dropdown_remove_item(void *dropdown, int64_t index)
-{
+void rt_dropdown_remove_item(void *dropdown, int64_t index) {
     (void)dropdown;
     (void)index;
 }
 
 /// @brief Perform dropdown clear operation.
 /// @param dropdown
-void rt_dropdown_clear(void *dropdown)
-{
+void rt_dropdown_clear(void *dropdown) {
     (void)dropdown;
 }
 
 /// @brief Perform dropdown set selected operation.
 /// @param dropdown
 /// @param index
-void rt_dropdown_set_selected(void *dropdown, int64_t index)
-{
+void rt_dropdown_set_selected(void *dropdown, int64_t index) {
     (void)dropdown;
     (void)index;
 }
@@ -1638,8 +1456,7 @@ void rt_dropdown_set_selected(void *dropdown, int64_t index)
 /// @brief Perform dropdown get selected operation.
 /// @param dropdown
 /// @return Result value.
-int64_t rt_dropdown_get_selected(void *dropdown)
-{
+int64_t rt_dropdown_get_selected(void *dropdown) {
     (void)dropdown;
     return -1;
 }
@@ -1647,8 +1464,7 @@ int64_t rt_dropdown_get_selected(void *dropdown)
 /// @brief Perform dropdown get selected text operation.
 /// @param dropdown
 /// @return Result value.
-rt_string rt_dropdown_get_selected_text(void *dropdown)
-{
+rt_string rt_dropdown_get_selected_text(void *dropdown) {
     (void)dropdown;
     return rt_str_empty();
 }
@@ -1656,14 +1472,12 @@ rt_string rt_dropdown_get_selected_text(void *dropdown)
 /// @brief Perform dropdown set placeholder operation.
 /// @param dropdown
 /// @param placeholder
-void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder)
-{
+void rt_dropdown_set_placeholder(void *dropdown, rt_string placeholder) {
     (void)dropdown;
     (void)placeholder;
 }
 
-void *rt_slider_new(void *parent, int64_t horizontal)
-{
+void *rt_slider_new(void *parent, int64_t horizontal) {
     (void)parent;
     (void)horizontal;
     return NULL;
@@ -1672,8 +1486,7 @@ void *rt_slider_new(void *parent, int64_t horizontal)
 /// @brief Perform slider set value operation.
 /// @param slider
 /// @param value
-void rt_slider_set_value(void *slider, double value)
-{
+void rt_slider_set_value(void *slider, double value) {
     (void)slider;
     (void)value;
 }
@@ -1681,8 +1494,7 @@ void rt_slider_set_value(void *slider, double value)
 /// @brief Perform slider get value operation.
 /// @param slider
 /// @return Result value.
-double rt_slider_get_value(void *slider)
-{
+double rt_slider_get_value(void *slider) {
     (void)slider;
     return 0.0;
 }
@@ -1691,8 +1503,7 @@ double rt_slider_get_value(void *slider)
 /// @param slider
 /// @param min_val
 /// @param max_val
-void rt_slider_set_range(void *slider, double min_val, double max_val)
-{
+void rt_slider_set_range(void *slider, double min_val, double max_val) {
     (void)slider;
     (void)min_val;
     (void)max_val;
@@ -1701,14 +1512,12 @@ void rt_slider_set_range(void *slider, double min_val, double max_val)
 /// @brief Perform slider set step operation.
 /// @param slider
 /// @param step
-void rt_slider_set_step(void *slider, double step)
-{
+void rt_slider_set_step(void *slider, double step) {
     (void)slider;
     (void)step;
 }
 
-void *rt_progressbar_new(void *parent)
-{
+void *rt_progressbar_new(void *parent) {
     (void)parent;
     return NULL;
 }
@@ -1716,8 +1525,7 @@ void *rt_progressbar_new(void *parent)
 /// @brief Perform progressbar set value operation.
 /// @param progress
 /// @param value
-void rt_progressbar_set_value(void *progress, double value)
-{
+void rt_progressbar_set_value(void *progress, double value) {
     (void)progress;
     (void)value;
 }
@@ -1725,20 +1533,17 @@ void rt_progressbar_set_value(void *progress, double value)
 /// @brief Perform progressbar get value operation.
 /// @param progress
 /// @return Result value.
-double rt_progressbar_get_value(void *progress)
-{
+double rt_progressbar_get_value(void *progress) {
     (void)progress;
     return 0.0;
 }
 
-void *rt_listbox_new(void *parent)
-{
+void *rt_listbox_new(void *parent) {
     (void)parent;
     return NULL;
 }
 
-void *rt_listbox_add_item(void *listbox, rt_string text)
-{
+void *rt_listbox_add_item(void *listbox, rt_string text) {
     (void)listbox;
     (void)text;
     return NULL;
@@ -1747,30 +1552,26 @@ void *rt_listbox_add_item(void *listbox, rt_string text)
 /// @brief Perform listbox remove item operation.
 /// @param listbox
 /// @param item
-void rt_listbox_remove_item(void *listbox, void *item)
-{
+void rt_listbox_remove_item(void *listbox, void *item) {
     (void)listbox;
     (void)item;
 }
 
 /// @brief Perform listbox clear operation.
 /// @param listbox
-void rt_listbox_clear(void *listbox)
-{
+void rt_listbox_clear(void *listbox) {
     (void)listbox;
 }
 
 /// @brief Perform listbox select operation.
 /// @param listbox
 /// @param item
-void rt_listbox_select(void *listbox, void *item)
-{
+void rt_listbox_select(void *listbox, void *item) {
     (void)listbox;
     (void)item;
 }
 
-void *rt_listbox_get_selected(void *listbox)
-{
+void *rt_listbox_get_selected(void *listbox) {
     (void)listbox;
     return NULL;
 }
@@ -1778,8 +1579,7 @@ void *rt_listbox_get_selected(void *listbox)
 /// @brief Perform listbox get count operation.
 /// @param listbox
 /// @return Result value.
-int64_t rt_listbox_get_count(void *listbox)
-{
+int64_t rt_listbox_get_count(void *listbox) {
     (void)listbox;
     return 0;
 }
@@ -1787,8 +1587,7 @@ int64_t rt_listbox_get_count(void *listbox)
 /// @brief Perform listbox get selected index operation.
 /// @param listbox
 /// @return Result value.
-int64_t rt_listbox_get_selected_index(void *listbox)
-{
+int64_t rt_listbox_get_selected_index(void *listbox) {
     (void)listbox;
     return -1;
 }
@@ -1796,8 +1595,7 @@ int64_t rt_listbox_get_selected_index(void *listbox)
 /// @brief Perform listbox select index operation.
 /// @param listbox
 /// @param index
-void rt_listbox_select_index(void *listbox, int64_t index)
-{
+void rt_listbox_select_index(void *listbox, int64_t index) {
     (void)listbox;
     (void)index;
 }
@@ -1805,8 +1603,7 @@ void rt_listbox_select_index(void *listbox, int64_t index)
 /// @brief Perform listbox was selection changed operation.
 /// @param listbox
 /// @return Result value.
-int64_t rt_listbox_was_selection_changed(void *listbox)
-{
+int64_t rt_listbox_was_selection_changed(void *listbox) {
     (void)listbox;
     return 0;
 }
@@ -1814,8 +1611,7 @@ int64_t rt_listbox_was_selection_changed(void *listbox)
 /// @brief Perform listbox item get text operation.
 /// @param item
 /// @return Result value.
-rt_string rt_listbox_item_get_text(void *item)
-{
+rt_string rt_listbox_item_get_text(void *item) {
     (void)item;
     return rt_str_empty();
 }
@@ -1823,8 +1619,7 @@ rt_string rt_listbox_item_get_text(void *item)
 /// @brief Perform listbox item set text operation.
 /// @param item
 /// @param text
-void rt_listbox_item_set_text(void *item, rt_string text)
-{
+void rt_listbox_item_set_text(void *item, rt_string text) {
     (void)item;
     (void)text;
 }
@@ -1832,8 +1627,7 @@ void rt_listbox_item_set_text(void *item, rt_string text)
 /// @brief Perform listbox item set data operation.
 /// @param item
 /// @param data
-void rt_listbox_item_set_data(void *item, rt_string data)
-{
+void rt_listbox_item_set_data(void *item, rt_string data) {
     (void)item;
     (void)data;
 }
@@ -1841,8 +1635,7 @@ void rt_listbox_item_set_data(void *item, rt_string data)
 /// @brief Perform listbox item get data operation.
 /// @param item
 /// @return Result value.
-rt_string rt_listbox_item_get_data(void *item)
-{
+rt_string rt_listbox_item_get_data(void *item) {
     (void)item;
     return rt_str_empty();
 }
@@ -1851,27 +1644,23 @@ rt_string rt_listbox_item_get_data(void *item)
 /// @param listbox
 /// @param font
 /// @param size
-void rt_listbox_set_font(void *listbox, void *font, double size)
-{
+void rt_listbox_set_font(void *listbox, void *font, double size) {
     (void)listbox;
     (void)font;
     (void)size;
 }
 
-void *rt_radiogroup_new(void)
-{
+void *rt_radiogroup_new(void) {
     return NULL;
 }
 
 /// @brief Perform radiogroup destroy operation.
 /// @param group
-void rt_radiogroup_destroy(void *group)
-{
+void rt_radiogroup_destroy(void *group) {
     (void)group;
 }
 
-void *rt_radiobutton_new(void *parent, rt_string text, void *group)
-{
+void *rt_radiobutton_new(void *parent, rt_string text, void *group) {
     (void)parent;
     (void)text;
     (void)group;
@@ -1881,8 +1670,7 @@ void *rt_radiobutton_new(void *parent, rt_string text, void *group)
 /// @brief Perform radiobutton is selected operation.
 /// @param radio
 /// @return Result value.
-int64_t rt_radiobutton_is_selected(void *radio)
-{
+int64_t rt_radiobutton_is_selected(void *radio) {
     (void)radio;
     return 0;
 }
@@ -1890,14 +1678,12 @@ int64_t rt_radiobutton_is_selected(void *radio)
 /// @brief Perform radiobutton set selected operation.
 /// @param radio
 /// @param selected
-void rt_radiobutton_set_selected(void *radio, int64_t selected)
-{
+void rt_radiobutton_set_selected(void *radio, int64_t selected) {
     (void)radio;
     (void)selected;
 }
 
-void *rt_spinner_new(void *parent)
-{
+void *rt_spinner_new(void *parent) {
     (void)parent;
     return NULL;
 }
@@ -1905,8 +1691,7 @@ void *rt_spinner_new(void *parent)
 /// @brief Perform spinner set value operation.
 /// @param spinner
 /// @param value
-void rt_spinner_set_value(void *spinner, double value)
-{
+void rt_spinner_set_value(void *spinner, double value) {
     (void)spinner;
     (void)value;
 }
@@ -1914,8 +1699,7 @@ void rt_spinner_set_value(void *spinner, double value)
 /// @brief Perform spinner get value operation.
 /// @param spinner
 /// @return Result value.
-double rt_spinner_get_value(void *spinner)
-{
+double rt_spinner_get_value(void *spinner) {
     (void)spinner;
     return 0.0;
 }
@@ -1924,8 +1708,7 @@ double rt_spinner_get_value(void *spinner)
 /// @param spinner
 /// @param min_val
 /// @param max_val
-void rt_spinner_set_range(void *spinner, double min_val, double max_val)
-{
+void rt_spinner_set_range(void *spinner, double min_val, double max_val) {
     (void)spinner;
     (void)min_val;
     (void)max_val;
@@ -1934,8 +1717,7 @@ void rt_spinner_set_range(void *spinner, double min_val, double max_val)
 /// @brief Perform spinner set step operation.
 /// @param spinner
 /// @param step
-void rt_spinner_set_step(void *spinner, double step)
-{
+void rt_spinner_set_step(void *spinner, double step) {
     (void)spinner;
     (void)step;
 }
@@ -1943,14 +1725,12 @@ void rt_spinner_set_step(void *spinner, double step)
 /// @brief Perform spinner set decimals operation.
 /// @param spinner
 /// @param decimals
-void rt_spinner_set_decimals(void *spinner, int64_t decimals)
-{
+void rt_spinner_set_decimals(void *spinner, int64_t decimals) {
     (void)spinner;
     (void)decimals;
 }
 
-void *rt_image_new(void *parent)
-{
+void *rt_image_new(void *parent) {
     (void)parent;
     return NULL;
 }
@@ -1960,8 +1740,7 @@ void *rt_image_new(void *parent)
 /// @param pixels
 /// @param width
 /// @param height
-void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height)
-{
+void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t height) {
     (void)image;
     (void)pixels;
     (void)width;
@@ -1970,16 +1749,14 @@ void rt_image_set_pixels(void *image, void *pixels, int64_t width, int64_t heigh
 
 /// @brief Perform image clear operation.
 /// @param image
-void rt_image_clear(void *image)
-{
+void rt_image_clear(void *image) {
     (void)image;
 }
 
 /// @brief Perform image set scale mode operation.
 /// @param image
 /// @param mode
-void rt_image_set_scale_mode(void *image, int64_t mode)
-{
+void rt_image_set_scale_mode(void *image, int64_t mode) {
     (void)image;
     (void)mode;
 }
@@ -1987,14 +1764,12 @@ void rt_image_set_scale_mode(void *image, int64_t mode)
 /// @brief Perform image set opacity operation.
 /// @param image
 /// @param opacity
-void rt_image_set_opacity(void *image, double opacity)
-{
+void rt_image_set_opacity(void *image, double opacity) {
     (void)image;
     (void)opacity;
 }
 
-void *rt_floatingpanel_new(void *root)
-{
+void *rt_floatingpanel_new(void *root) {
     (void)root;
     return NULL;
 }
@@ -2003,8 +1778,7 @@ void *rt_floatingpanel_new(void *root)
 /// @param panel
 /// @param x
 /// @param y
-void rt_floatingpanel_set_position(void *panel, double x, double y)
-{
+void rt_floatingpanel_set_position(void *panel, double x, double y) {
     (void)panel;
     (void)x;
     (void)y;
@@ -2014,8 +1788,7 @@ void rt_floatingpanel_set_position(void *panel, double x, double y)
 /// @param panel
 /// @param w
 /// @param h
-void rt_floatingpanel_set_size(void *panel, double w, double h)
-{
+void rt_floatingpanel_set_size(void *panel, double w, double h) {
     (void)panel;
     (void)w;
     (void)h;
@@ -2024,8 +1797,7 @@ void rt_floatingpanel_set_size(void *panel, double w, double h)
 /// @brief Perform floatingpanel set visible operation.
 /// @param panel
 /// @param visible
-void rt_floatingpanel_set_visible(void *panel, int64_t visible)
-{
+void rt_floatingpanel_set_visible(void *panel, int64_t visible) {
     (void)panel;
     (void)visible;
 }
@@ -2033,8 +1805,7 @@ void rt_floatingpanel_set_visible(void *panel, int64_t visible)
 /// @brief Perform floatingpanel add child operation.
 /// @param panel
 /// @param child
-void rt_floatingpanel_add_child(void *panel, void *child)
-{
+void rt_floatingpanel_add_child(void *panel, void *child) {
     (void)panel;
     (void)child;
 }

@@ -44,14 +44,12 @@
 
 using namespace il::core;
 
-namespace il::verify
-{
+namespace il::verify {
 using il::support::Diag;
 using il::support::Expected;
 using il::support::makeError;
 
-namespace
-{
+namespace {
 
 /// @brief Identify whether an opcode belongs to the resume-family terminators.
 ///
@@ -62,8 +60,7 @@ namespace
 ///
 /// @param op Opcode under classification.
 /// @return @c true when the opcode is resume.same/next/label.
-bool isResumeOpcode(Opcode op)
-{
+bool isResumeOpcode(Opcode op) {
     return op == Opcode::ResumeSame || op == Opcode::ResumeNext || op == Opcode::ResumeLabel;
 }
 
@@ -74,10 +71,8 @@ bool isResumeOpcode(Opcode op)
 ///
 /// @param op Opcode under inspection.
 /// @return @c true when @p op accesses error metadata.
-bool isErrAccessOpcode(Opcode op)
-{
-    switch (op)
-    {
+bool isErrAccessOpcode(Opcode op) {
+    switch (op) {
         case Opcode::ErrGetKind:
         case Opcode::ErrGetCode:
         case Opcode::ErrGetIp:
@@ -96,8 +91,7 @@ bool isErrAccessOpcode(Opcode op)
 ///
 /// @param instr Instruction being analysed.
 /// @return @c true when the instruction is the runtime array release helper.
-bool isRuntimeArrayRelease(const Instr &instr)
-{
+bool isRuntimeArrayRelease(const Instr &instr) {
     return instr.op == Opcode::Call && instr.callee == "rt_arr_i32_release";
 }
 
@@ -125,9 +119,7 @@ Expected<void> verifyInstruction_E(const Function &fn,
 ///
 /// @param externs Map from extern names to their declarations.
 FunctionVerifier::FunctionVerifier(const ExternMap &externs)
-    : externs_(externs), strategies_(makeDefaultInstructionStrategies())
-{
-}
+    : externs_(externs), strategies_(makeDefaultInstructionStrategies()) {}
 
 /// @brief Verify every function in a module for structural correctness.
 ///
@@ -139,12 +131,10 @@ FunctionVerifier::FunctionVerifier(const ExternMap &externs)
 /// @param module Module containing functions to verify.
 /// @param sink Diagnostic sink receiving instruction-level messages.
 /// @return Empty Expected on success or the first failure diagnostic.
-Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink)
-{
+Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink) {
     functionMap_.clear();
 
-    for (const auto &fn : module.functions)
-    {
+    for (const auto &fn : module.functions) {
         if (!functionMap_.emplace(fn.name, &fn).second)
             return Expected<void>{makeError({}, "duplicate function @" + fn.name)};
     }
@@ -166,11 +156,9 @@ Expected<void> FunctionVerifier::run(const Module &module, DiagSink &sink)
 /// @param fn Function being verified.
 /// @param sink Diagnostic sink for detailed messages.
 /// @return Success or a diagnostic describing the first failure.
-Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &sink)
-{
+Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &sink) {
     // Import-linkage functions are declarations with no body; skip body verification.
-    if (fn.linkage == Linkage::Import)
-    {
+    if (fn.linkage == Linkage::Import) {
         if (!fn.blocks.empty())
             return Expected<void>{
                 makeError({}, formatFunctionDiag(fn, "import function must not have a body"))};
@@ -185,12 +173,10 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     if (!isEntry)
         return Expected<void>{makeError({}, formatFunctionDiag(fn, "first block must be entry"))};
 
-    if (auto it = externs_.find(fn.name); it != externs_.end())
-    {
+    if (auto it = externs_.find(fn.name); it != externs_.end()) {
         const Extern *ext = it->second;
         bool sigOk = ext->retType.kind == fn.retType.kind && ext->params.size() == fn.params.size();
-        if (sigOk)
-        {
+        if (sigOk) {
             for (size_t i = 0; i < ext->params.size(); ++i)
                 if (ext->params[i].kind != fn.params[i].type.kind)
                     sigOk = false;
@@ -204,8 +190,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     std::unordered_set<std::string> labels;
     BlockMap blockMap;
     blockMap.reserve(fn.blocks.size());
-    for (const auto &bb : fn.blocks)
-    {
+    for (const auto &bb : fn.blocks) {
         if (!labels.insert(bb.label).second)
             return Expected<void>{
                 /// @brief Handles error condition.
@@ -217,8 +202,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     handlerInfo_.clear();
 
     std::unordered_map<unsigned, Type> temps;
-    for (const auto &param : fn.params)
-    {
+    for (const auto &param : fn.params) {
         temps[param.id] = param.type;
     }
 
@@ -232,25 +216,19 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     // still detect within-block use-before-def errors.
     std::unordered_map<unsigned, const BasicBlock *> definingBlock;
 
-    for (const auto &bb : fn.blocks)
-    {
+    for (const auto &bb : fn.blocks) {
         // Block parameters define temporaries
-        for (const auto &param : bb.params)
-        {
-            if (temps.find(param.id) == temps.end())
-            {
+        for (const auto &param : bb.params) {
+            if (temps.find(param.id) == temps.end()) {
                 temps[param.id] = param.type;
                 definingBlock[param.id] = &bb;
             }
         }
 
         // Instructions with results define temporaries
-        for (const auto &instr : bb.instructions)
-        {
-            if (instr.result.has_value())
-            {
-                if (temps.find(*instr.result) == temps.end())
-                {
+        for (const auto &instr : bb.instructions) {
+            if (instr.result.has_value()) {
+                if (temps.find(*instr.result) == temps.end()) {
                     temps[*instr.result] = instr.type;
                     definingBlock[*instr.result] = &bb;
                 }
@@ -261,8 +239,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     // ===== PASS 2: Full verification with complete type info =====
     // Collect EhPush targets and label references during single pass over blocks.
     // This avoids two additional O(blocks × instructions) traversals.
-    struct EhPushCheck
-    {
+    struct EhPushCheck {
         const BasicBlock *bb;
         const Instr *instr;
         std::string target;
@@ -271,14 +248,12 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     std::vector<EhPushCheck> ehPushChecks;
     std::vector<std::string> labelRefs;
 
-    for (const auto &bb : fn.blocks)
-    {
+    for (const auto &bb : fn.blocks) {
         if (auto result = verifyBlock(fn, bb, blockMap, temps, definingBlock, sink); !result)
             return result;
 
         // Collect EhPush targets and all label references in single pass
-        for (const auto &instr : bb.instructions)
-        {
+        for (const auto &instr : bb.instructions) {
             if (instr.op == Opcode::EhPush && !instr.labels.empty())
                 ehPushChecks.push_back({&bb, &instr, instr.labels.front()});
 
@@ -288,10 +263,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     }
 
     // Validate EhPush targets exist in handlerInfo_ (populated during verifyBlock)
-    for (const auto &check : ehPushChecks)
-    {
-        if (handlerInfo_.find(check.target) == handlerInfo_.end())
-        {
+    for (const auto &check : ehPushChecks) {
+        if (handlerInfo_.find(check.target) == handlerInfo_.end()) {
             std::ostringstream message;
             message << "eh.push target ^" << check.target << " must name a handler block";
             return Expected<void>{makeError(
@@ -300,8 +273,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     }
 
     // Validate all label references exist
-    for (const auto &label : labelRefs)
-    {
+    for (const auto &label : labelRefs) {
         if (!labels.contains(label))
             return Expected<void>{makeError({}, formatFunctionDiag(fn, "unknown label " + label))};
     }
@@ -314,14 +286,11 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
 
         // Build CFG predecessor map from the block map.
         std::unordered_map<const BasicBlock *, std::vector<const BasicBlock *>> preds;
-        for (const auto &blk : fn.blocks)
-        {
-            for (const auto &instr : blk.instructions)
-            {
+        for (const auto &blk : fn.blocks) {
+            for (const auto &instr : blk.instructions) {
                 if (!isTerminator(instr.op))
                     continue;
-                for (const auto &label : instr.labels)
-                {
+                for (const auto &label : instr.labels) {
                     if (auto it = blockMap.find(label); it != blockMap.end())
                         preds[it->second].push_back(&blk);
                 }
@@ -334,8 +303,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         {
             std::unordered_set<const BasicBlock *> visited;
 
-            struct Frame
-            {
+            struct Frame {
                 const BasicBlock *bb;
                 bool childrenPushed;
             };
@@ -343,30 +311,23 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
             std::vector<Frame> stack;
             stack.push_back({entry, false});
             visited.insert(entry);
-            while (!stack.empty())
-            {
+            while (!stack.empty()) {
                 auto &top = stack.back();
-                if (!top.childrenPushed)
-                {
+                if (!top.childrenPushed) {
                     top.childrenPushed = true;
                     // Push successors
-                    for (const auto &instr : top.bb->instructions)
-                    {
+                    for (const auto &instr : top.bb->instructions) {
                         if (!isTerminator(instr.op))
                             continue;
-                        for (const auto &label : instr.labels)
-                        {
-                            if (auto it = blockMap.find(label); it != blockMap.end())
-                            {
+                        for (const auto &label : instr.labels) {
+                            if (auto it = blockMap.find(label); it != blockMap.end()) {
                                 if (visited.insert(it->second).second)
                                     stack.push_back({it->second, false});
                             }
                         }
                         break;
                     }
-                }
-                else
-                {
+                } else {
                     rpo.push_back(top.bb);
                     stack.pop_back();
                 }
@@ -385,12 +346,10 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         std::unordered_map<const BasicBlock *, const BasicBlock *> idom;
         idom[entry] = entry;
 
-        auto intersect = [&](const BasicBlock *b1, const BasicBlock *b2) -> const BasicBlock *
-        {
+        auto intersect = [&](const BasicBlock *b1, const BasicBlock *b2) -> const BasicBlock * {
             auto finger1 = b1;
             auto finger2 = b2;
-            while (finger1 != finger2)
-            {
+            while (finger1 != finger2) {
                 while (rpoIndex[finger1] > rpoIndex[finger2])
                     finger1 = idom[finger1];
                 while (rpoIndex[finger2] > rpoIndex[finger1])
@@ -400,11 +359,9 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         };
 
         bool changed = true;
-        while (changed)
-        {
+        while (changed) {
             changed = false;
-            for (const auto *bb : rpo)
-            {
+            for (const auto *bb : rpo) {
                 if (bb == entry)
                     continue;
                 auto predIt = preds.find(bb);
@@ -413,10 +370,8 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
 
                 // Pick first processed predecessor as initial idom.
                 const BasicBlock *newIdom = nullptr;
-                for (const auto *p : predIt->second)
-                {
-                    if (idom.contains(p))
-                    {
+                for (const auto *p : predIt->second) {
+                    if (idom.contains(p)) {
                         newIdom = p;
                         break;
                     }
@@ -425,15 +380,13 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                     continue;
 
                 // Intersect with remaining processed predecessors.
-                for (const auto *p : predIt->second)
-                {
+                for (const auto *p : predIt->second) {
                     if (p == newIdom || !idom.contains(p))
                         continue;
                     newIdom = intersect(p, newIdom);
                 }
 
-                if (idom[bb] != newIdom)
-                {
+                if (idom[bb] != newIdom) {
                     idom[bb] = newIdom;
                     changed = true;
                 }
@@ -441,13 +394,11 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         }
 
         // dominates(A, B): walk B's idom chain up to entry looking for A.
-        auto dominates = [&](const BasicBlock *A, const BasicBlock *B) -> bool
-        {
+        auto dominates = [&](const BasicBlock *A, const BasicBlock *B) -> bool {
             if (A == B)
                 return true;
             const BasicBlock *cur = B;
-            while (cur != entry)
-            {
+            while (cur != entry) {
                 auto it = idom.find(cur);
                 if (it == idom.end() || it->second == cur)
                     return false;
@@ -459,22 +410,18 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
         };
 
         // Check every operand use: the defining block must dominate the using block.
-        for (const auto &blk : fn.blocks)
-        {
+        for (const auto &blk : fn.blocks) {
             if (!reachable.contains(&blk))
                 continue;
-            for (const auto &instr : blk.instructions)
-            {
-                auto checkValue = [&](const Value &op)
-                {
+            for (const auto &instr : blk.instructions) {
+                auto checkValue = [&](const Value &op) {
                     if (op.kind != Value::Kind::Temp)
                         return;
                     auto defIt = definingBlock.find(op.id);
                     if (defIt == definingBlock.end())
                         return;
 
-                    if (!reachable.contains(defIt->second))
-                    {
+                    if (!reachable.contains(defIt->second)) {
                         std::ostringstream msg;
                         msg << "use of %" << op.id << " defined in unreachable block ^"
                             << defIt->second->label;
@@ -483,8 +430,7 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
                         return;
                     }
 
-                    if (defIt->second != &blk && !dominates(defIt->second, &blk))
-                    {
+                    if (defIt->second != &blk && !dominates(defIt->second, &blk)) {
                         std::ostringstream msg;
                         msg << "use of %" << op.id << " in ^" << blk.label
                             << " not dominated by definition in ^" << defIt->second->label;
@@ -508,27 +454,20 @@ Expected<void> FunctionVerifier::verifyFunction(const Function &fn, DiagSink &si
     // deallocated when the function returns.
     {
         std::unordered_set<unsigned> allocaIds;
-        for (const auto &blk : fn.blocks)
-        {
-            for (const auto &instr : blk.instructions)
-            {
+        for (const auto &blk : fn.blocks) {
+            for (const auto &instr : blk.instructions) {
                 if (instr.op == Opcode::Alloca && instr.result)
                     allocaIds.insert(*instr.result);
             }
         }
 
-        if (!allocaIds.empty())
-        {
-            for (const auto &blk : fn.blocks)
-            {
-                for (const auto &instr : blk.instructions)
-                {
+        if (!allocaIds.empty()) {
+            for (const auto &blk : fn.blocks) {
+                for (const auto &instr : blk.instructions) {
                     if (instr.op != Opcode::Ret)
                         continue;
-                    for (const auto &op : instr.operands)
-                    {
-                        if (op.kind == Value::Kind::Temp && allocaIds.contains(op.id))
-                        {
+                    for (const auto &op : instr.operands) {
+                        if (op.kind == Value::Kind::Temp && allocaIds.contains(op.id)) {
                             std::ostringstream msg;
                             msg << "returning alloca-derived pointer %" << op.id;
                             sink.report(il::support::Diag{
@@ -565,19 +504,16 @@ Expected<void> FunctionVerifier::verifyBlock(
     const BlockMap &blockMap,
     std::unordered_map<unsigned, Type> &temps,
     const std::unordered_map<unsigned, const BasicBlock *> &definingBlock,
-    DiagSink &sink)
-{
+    DiagSink &sink) {
     // Initialize defined set with definitions from OTHER blocks.
     // This allows cross-block uses to pass verification even when the defining
     // block appears later in declaration order (which is valid after SimplifyCFG).
     // Within-block definitions are added incrementally to detect within-block
     // use-before-def errors.
     std::unordered_set<unsigned> defined;
-    for (const auto &entry : temps)
-    {
+    for (const auto &entry : temps) {
         auto it = definingBlock.find(entry.first);
-        if (it == definingBlock.end() || it->second != &bb)
-        {
+        if (it == definingBlock.end() || it->second != &bb) {
             // Definition is from another block or a function parameter
             defined.insert(entry.first);
         }
@@ -599,8 +535,7 @@ Expected<void> FunctionVerifier::verifyBlock(
 
     std::unordered_set<unsigned> released;
 
-    for (const auto &instr : bb.instructions)
-    {
+    for (const auto &instr : bb.instructions) {
         if (auto result = types.ensureOperandsDefined_E(fn, bb, instr); !result)
             return result;
 
@@ -610,38 +545,31 @@ Expected<void> FunctionVerifier::verifyBlock(
                 formatInstrDiag(
                     fn, bb, instr, "eh.entry only allowed as first instruction of handler block"))};
 
-        if (isResumeOpcode(instr.op))
-        {
+        if (isResumeOpcode(instr.op)) {
             if (!handlerSignature)
                 return Expected<void>{makeError(
                     instr.loc,
                     formatInstrDiag(fn, bb, instr, "resume.* only allowed in handler block"))};
             if (instr.operands.empty() || instr.operands[0].kind != Value::Kind::Temp ||
-                instr.operands[0].id != handlerSignature->resumeTokenParam)
-            {
+                instr.operands[0].id != handlerSignature->resumeTokenParam) {
                 return Expected<void>{makeError(
                     instr.loc,
                     formatInstrDiag(fn, bb, instr, "resume.* must use handler %tok parameter"))};
             }
         }
 
-        if (isErrAccessOpcode(instr.op))
-        {
-            if (!handlerSignature)
-            {
+        if (isErrAccessOpcode(instr.op)) {
+            if (!handlerSignature) {
                 return Expected<void>{makeError(
                     instr.loc,
                     formatInstrDiag(fn, bb, instr, "err.get_* only allowed in handler block"))};
             }
         }
 
-        if (isRuntimeArrayRelease(instr))
-        {
-            if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp)
-            {
+        if (isRuntimeArrayRelease(instr)) {
+            if (!instr.operands.empty() && instr.operands[0].kind == Value::Kind::Temp) {
                 const unsigned id = instr.operands[0].id;
-                if (released.contains(id))
-                {
+                if (released.contains(id)) {
                     std::ostringstream message;
                     message << "double release of %" << id;
                     return Expected<void>{
@@ -649,11 +577,8 @@ Expected<void> FunctionVerifier::verifyBlock(
                         makeError(instr.loc, formatInstrDiag(fn, bb, instr, message.str()))};
                 }
             }
-        }
-        else
-        {
-            const auto checkValue = [&](const Value &value) -> Expected<void>
-            {
+        } else {
+            const auto checkValue = [&](const Value &value) -> Expected<void> {
                 if (value.kind != Value::Kind::Temp)
                     return Expected<void>{};
                 const unsigned id = value.id;
@@ -680,8 +605,7 @@ Expected<void> FunctionVerifier::verifyBlock(
             return result;
 
         if (isRuntimeArrayRelease(instr) && !instr.operands.empty() &&
-            instr.operands[0].kind == Value::Kind::Temp)
-        {
+            instr.operands[0].kind == Value::Kind::Temp) {
             released.insert(instr.operands[0].id);
         }
 
@@ -720,14 +644,12 @@ Expected<void> FunctionVerifier::verifyInstruction(const Function &fn,
                                                    const Instr &instr,
                                                    const BlockMap &blockMap,
                                                    TypeInference &types,
-                                                   DiagSink &sink)
-{
+                                                   DiagSink &sink) {
     VerifyCtx ctx{sink, types, externs_, functionMap_, fn, bb, instr};
     if (auto result = verifyOpcodeSignature_E(ctx); !result)
         return result;
 
-    for (const auto &strategy : strategies_)
-    {
+    for (const auto &strategy : strategies_) {
         if (!strategy->matches(instr))
             continue;
         return strategy->verify(fn, bb, instr, blockMap, externs_, functionMap_, types, sink);
@@ -745,8 +667,8 @@ Expected<void> FunctionVerifier::verifyInstruction(const Function &fn,
 /// @param fn Function associated with the diagnostic.
 /// @param message Additional context appended after the name.
 /// @return Human-readable string describing the function context.
-std::string FunctionVerifier::formatFunctionDiag(const Function &fn, std::string_view message) const
-{
+std::string FunctionVerifier::formatFunctionDiag(const Function &fn,
+                                                 std::string_view message) const {
     std::ostringstream oss;
     oss << fn.name;
     if (!message.empty())

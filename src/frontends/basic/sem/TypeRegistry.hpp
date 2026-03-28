@@ -23,34 +23,29 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::runtime
-{
+namespace il::runtime {
 struct RuntimeClass; // fwd decl
 }
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 class NamespaceRegistry;
 
 /// @brief Category for built-in external types to seed via legacy catalog.
-enum class ExternalTypeCategory
-{
+enum class ExternalTypeCategory {
     Class,
     Interface,
 };
 
 /// @brief Catalog entry describing a built-in external type (legacy seed).
-struct BuiltinExternalType
-{
+struct BuiltinExternalType {
     const char *qualifiedName;
     ExternalTypeCategory category;
     const char *tag;
 };
 
 /// @brief Type classification for TypeRegistry entries.
-enum class TypeKind
-{
+enum class TypeKind {
     Unknown,
     BuiltinExternalType,  // Legacy name kept for compatibility with existing tests
     BuiltinExternalClass, // Preferred name for runtime class entries
@@ -59,8 +54,7 @@ enum class TypeKind
 /// @brief Registry of known type names discovered from the runtime class catalog.
 /// @details Provides case-insensitive lookup. BASIC alias "STRING" resolves to
 ///          the same entry as "Viper.String".
-class TypeRegistry
-{
+class TypeRegistry {
   public:
     /// @brief Register all runtime classes as BuiltinExternalType entries.
     void seedRuntimeClasses(const std::vector<il::runtime::RuntimeClass> &classes);

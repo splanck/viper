@@ -50,8 +50,7 @@
 ///          default definition is a no-op.
 #ifndef VIPER_VM_DISPATCH_BEFORE
 #define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE)                                                       \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
     } while (0)
 #endif
 
@@ -63,15 +62,11 @@
 ///          via the runtime config. Override to inject custom instrumentation.
 #ifndef VIPER_VM_DISPATCH_AFTER
 #define VIPER_VM_DISPATCH_AFTER(ST, OPCODE)                                                        \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         const auto &cfg = (ST).config;                                                             \
-        if (cfg.interruptEveryN) [[unlikely]]                                                      \
-        {                                                                                          \
-            if ((++(ST).pollTick % cfg.interruptEveryN) == 0)                                      \
-            {                                                                                      \
-                if (cfg.pollCallback && !(cfg.pollCallback((ST).vm())))                            \
-                {                                                                                  \
+        if (cfg.interruptEveryN) [[unlikely]] {                                                    \
+            if ((++(ST).pollTick % cfg.interruptEveryN) == 0) {                                    \
+                if (cfg.pollCallback && !(cfg.pollCallback((ST).vm()))) {                          \
                     (ST).requestPause();                                                           \
                 }                                                                                  \
             }                                                                                      \
@@ -109,8 +104,7 @@
 #if VIPER_VM_OPCOUNTS
 #undef VIPER_VM_DISPATCH_BEFORE
 #define VIPER_VM_DISPATCH_BEFORE(ST, OPCODE)                                                       \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         if ((ST).config.enableOpcodeCounts)                                                        \
             ++((ST).vm()->opCounts_[static_cast<size_t>(OPCODE)]);                                 \
     } while (0)

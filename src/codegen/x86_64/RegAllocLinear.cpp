@@ -37,8 +37,7 @@
 #include "ra/Allocator.hpp"
 #include "ra/LiveIntervals.hpp"
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 /// @brief Run the linear-scan register allocator over a function.
 /// @details The orchestration follows three clear steps:
@@ -60,8 +59,7 @@ namespace viper::codegen::x64
 /// @param target Target lowering information describing available registers and
 ///               register classes.
 /// @return Summary of the allocation, including spill slot usage.
-AllocationResult allocate(MFunction &func, const TargetInfo &target)
-{
+AllocationResult allocate(MFunction &func, const TargetInfo &target) {
     ra::LiveIntervals intervals{};
     intervals.run(func);
 

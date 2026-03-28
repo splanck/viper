@@ -18,13 +18,11 @@
 
 #include "codegen/aarch64/passes/PassManager.hpp"
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
 /// @brief Lower all IL functions in AArch64Module::ilMod to MIR, storing
 ///        results in AArch64Module::mir.
-class LoweringPass final : public Pass
-{
+class LoweringPass final : public Pass {
   public:
     /// @brief Run the lowering pass for all functions in the IL module.
     /// @param module Module state; ilMod and ti must be non-null.

@@ -59,8 +59,7 @@
 #include <type_traits>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 //===----------------------------------------------------------------------===//
 // Expression utilities
@@ -71,8 +70,7 @@ namespace il::frontends::basic
 template <typename T> struct ExprKindTraits;
 
 #define EXPR_KIND_TRAIT(Type, KindValue)                                                           \
-    template <> struct ExprKindTraits<Type>                                                        \
-    {                                                                                              \
+    template <> struct ExprKindTraits<Type> {                                                      \
         static constexpr Expr::Kind kind = Expr::Kind::KindValue;                                  \
     };
 
@@ -111,8 +109,7 @@ EXPR_KIND_TRAIT(AsExpr, As)
 ///     // use intExpr.value
 /// }
 /// ```
-template <typename T> [[nodiscard]] constexpr bool is(const Expr &expr) noexcept
-{
+template <typename T> [[nodiscard]] constexpr bool is(const Expr &expr) noexcept {
     static_assert(std::is_base_of_v<Expr, T>, "T must be derived from Expr");
     return expr.kind() == ExprKindTraits<T>::kind;
 }
@@ -131,15 +128,13 @@ template <typename T> [[nodiscard]] constexpr bool is(const Expr &expr) noexcept
 ///     // use intExpr->value
 /// }
 /// ```
-template <typename T> [[nodiscard]] constexpr T *as(const Expr &expr) noexcept
-{
+template <typename T> [[nodiscard]] constexpr T *as(const Expr &expr) noexcept {
     using BaseT = std::remove_cv_t<std::remove_pointer_t<T>>;
     static_assert(std::is_base_of_v<Expr, BaseT>, "T must be derived from Expr");
     static_assert(std::is_const_v<T> || std::is_pointer_v<T>,
                   "T must be const or pointer to const");
 
-    if (expr.kind() == ExprKindTraits<BaseT>::kind)
-    {
+    if (expr.kind() == ExprKindTraits<BaseT>::kind) {
         return static_cast<T *>(&const_cast<Expr &>(const_cast<Expr &>(expr)));
     }
     return nullptr;
@@ -150,13 +145,11 @@ template <typename T> [[nodiscard]] constexpr T *as(const Expr &expr) noexcept
 /// @tparam T Target expression type (non-const).
 /// @param expr Expression to cast.
 /// @return Pointer to T if kind matches, nullptr otherwise.
-template <typename T> [[nodiscard]] constexpr T *as(Expr &expr) noexcept
-{
+template <typename T> [[nodiscard]] constexpr T *as(Expr &expr) noexcept {
     using BaseT = std::remove_cv_t<std::remove_pointer_t<T>>;
     static_assert(std::is_base_of_v<Expr, BaseT>, "T must be derived from Expr");
 
-    if (expr.kind() == ExprKindTraits<BaseT>::kind)
-    {
+    if (expr.kind() == ExprKindTraits<BaseT>::kind) {
         return static_cast<T *>(&expr);
     }
     return nullptr;
@@ -176,15 +169,13 @@ template <typename T> [[nodiscard]] constexpr T *as(Expr &expr) noexcept
 ///     const auto& intExpr = cast<IntExpr>(expr);  // Safe: kind checked above
 /// }
 /// ```
-template <typename T> [[nodiscard]] constexpr T &cast(Expr &expr) noexcept
-{
+template <typename T> [[nodiscard]] constexpr T &cast(Expr &expr) noexcept {
     static_assert(std::is_base_of_v<Expr, T>, "T must be derived from Expr");
     return static_cast<T &>(expr);
 }
 
 /// @brief Unchecked cast to a specific expression type (const version).
-template <typename T> [[nodiscard]] constexpr const T &cast(const Expr &expr) noexcept
-{
+template <typename T> [[nodiscard]] constexpr const T &cast(const Expr &expr) noexcept {
     static_assert(std::is_base_of_v<Expr, T>, "T must be derived from Expr");
     return static_cast<const T &>(expr);
 }
@@ -197,8 +188,7 @@ template <typename T> [[nodiscard]] constexpr const T &cast(const Expr &expr) no
 template <typename T> struct StmtKindTraits;
 
 #define STMT_KIND_TRAIT(Type, KindValue)                                                           \
-    template <> struct StmtKindTraits<Type>                                                        \
-    {                                                                                              \
+    template <> struct StmtKindTraits<Type> {                                                      \
         static constexpr Stmt::Kind kind = Stmt::Kind::KindValue;                                  \
     };
 
@@ -305,48 +295,41 @@ STMT_KIND_TRAIT(NamespaceDecl, NamespaceDecl)
 /// @tparam T Target statement type.
 /// @param stmt Statement to check.
 /// @return True if stmt is of type T.
-template <typename T> [[nodiscard]] constexpr bool is(const Stmt &stmt) noexcept
-{
+template <typename T> [[nodiscard]] constexpr bool is(const Stmt &stmt) noexcept {
     static_assert(std::is_base_of_v<Stmt, T>, "T must be derived from Stmt");
     return stmt.stmtKind() == StmtKindTraits<T>::kind;
 }
 
 /// @brief Safely cast a statement to a specific type (const version).
-template <typename T> [[nodiscard]] constexpr T *as(const Stmt &stmt) noexcept
-{
+template <typename T> [[nodiscard]] constexpr T *as(const Stmt &stmt) noexcept {
     using BaseT = std::remove_cv_t<std::remove_pointer_t<T>>;
     static_assert(std::is_base_of_v<Stmt, BaseT>, "T must be derived from Stmt");
 
-    if (stmt.stmtKind() == StmtKindTraits<BaseT>::kind)
-    {
+    if (stmt.stmtKind() == StmtKindTraits<BaseT>::kind) {
         return static_cast<T *>(&const_cast<Stmt &>(const_cast<Stmt &>(stmt)));
     }
     return nullptr;
 }
 
 /// @brief Safely cast a statement to a specific type (non-const version).
-template <typename T> [[nodiscard]] constexpr T *as(Stmt &stmt) noexcept
-{
+template <typename T> [[nodiscard]] constexpr T *as(Stmt &stmt) noexcept {
     using BaseT = std::remove_cv_t<std::remove_pointer_t<T>>;
     static_assert(std::is_base_of_v<Stmt, BaseT>, "T must be derived from Stmt");
 
-    if (stmt.stmtKind() == StmtKindTraits<BaseT>::kind)
-    {
+    if (stmt.stmtKind() == StmtKindTraits<BaseT>::kind) {
         return static_cast<T *>(&stmt);
     }
     return nullptr;
 }
 
 /// @brief Unchecked cast to a specific statement type.
-template <typename T> [[nodiscard]] constexpr T &cast(Stmt &stmt) noexcept
-{
+template <typename T> [[nodiscard]] constexpr T &cast(Stmt &stmt) noexcept {
     static_assert(std::is_base_of_v<Stmt, T>, "T must be derived from Stmt");
     return static_cast<T &>(stmt);
 }
 
 /// @brief Unchecked cast to a specific statement type (const version).
-template <typename T> [[nodiscard]] constexpr const T &cast(const Stmt &stmt) noexcept
-{
+template <typename T> [[nodiscard]] constexpr const T &cast(const Stmt &stmt) noexcept {
     static_assert(std::is_base_of_v<Stmt, T>, "T must be derived from Stmt");
     return static_cast<const T &>(stmt);
 }
@@ -371,8 +354,7 @@ template <typename T> [[nodiscard]] constexpr const T &cast(const Stmt &stmt) no
 /// // After:
 /// auto expr = makeIntExpr(42, loc);
 /// ```
-[[nodiscard]] inline ExprPtr makeIntExpr(long long value, il::support::SourceLoc loc)
-{
+[[nodiscard]] inline ExprPtr makeIntExpr(long long value, il::support::SourceLoc loc) {
     auto expr = std::make_unique<IntExpr>();
     expr->loc = loc;
     expr->value = value;
@@ -384,8 +366,7 @@ template <typename T> [[nodiscard]] constexpr const T &cast(const Stmt &stmt) no
 /// @param value Boolean value for the literal.
 /// @param loc Source location for diagnostics.
 /// @return Unique pointer to the newly created BoolExpr.
-[[nodiscard]] inline ExprPtr makeBoolExpr(bool value, il::support::SourceLoc loc)
-{
+[[nodiscard]] inline ExprPtr makeBoolExpr(bool value, il::support::SourceLoc loc) {
     auto expr = std::make_unique<BoolExpr>();
     expr->loc = loc;
     expr->value = value;
@@ -397,8 +378,7 @@ template <typename T> [[nodiscard]] constexpr const T &cast(const Stmt &stmt) no
 /// @param value Floating-point value for the literal.
 /// @param loc Source location for diagnostics.
 /// @return Unique pointer to the newly created FloatExpr.
-[[nodiscard]] inline ExprPtr makeFloatExpr(double value, il::support::SourceLoc loc)
-{
+[[nodiscard]] inline ExprPtr makeFloatExpr(double value, il::support::SourceLoc loc) {
     auto expr = std::make_unique<FloatExpr>();
     expr->loc = loc;
     expr->value = value;
@@ -410,8 +390,7 @@ template <typename T> [[nodiscard]] constexpr const T &cast(const Stmt &stmt) no
 /// @param value String value for the literal.
 /// @param loc Source location for diagnostics.
 /// @return Unique pointer to the newly created StringExpr.
-[[nodiscard]] inline ExprPtr makeStrExpr(std::string_view value, il::support::SourceLoc loc)
-{
+[[nodiscard]] inline ExprPtr makeStrExpr(std::string_view value, il::support::SourceLoc loc) {
     auto expr = std::make_unique<StringExpr>();
     expr->loc = loc;
     expr->value = value;
@@ -429,15 +408,12 @@ template <typename T> [[nodiscard]] constexpr const T &cast(const Stmt &stmt) no
 /// @param expr Expression to traverse.
 /// @param out Vector to accumulate name segments.
 /// @return True if the expression forms a valid qualified name, false otherwise.
-inline bool collectQualifiedSegments(const Expr &expr, std::vector<std::string> &out)
-{
-    if (auto *var = as<const VarExpr>(expr))
-    {
+inline bool collectQualifiedSegments(const Expr &expr, std::vector<std::string> &out) {
+    if (auto *var = as<const VarExpr>(expr)) {
         out.push_back(var->name);
         return true;
     }
-    if (auto *mem = as<const MemberAccessExpr>(expr))
-    {
+    if (auto *mem = as<const MemberAccessExpr>(expr)) {
         if (!mem->base)
             return false;
         if (!collectQualifiedSegments(*mem->base, out))
@@ -454,16 +430,14 @@ inline bool collectQualifiedSegments(const Expr &expr, std::vector<std::string> 
 ///          starts with "Viper" (case-insensitive), nullopt otherwise.
 /// @param expr Expression to analyze.
 /// @return Qualified class name (e.g., "Viper.String") or nullopt.
-[[nodiscard]] inline std::optional<std::string> runtimeClassQNameFrom(const Expr &expr)
-{
+[[nodiscard]] inline std::optional<std::string> runtimeClassQNameFrom(const Expr &expr) {
     std::vector<std::string> parts;
     if (!collectQualifiedSegments(expr, parts))
         return std::nullopt;
     if (parts.empty() || !string_utils::iequals(parts.front(), "Viper"))
         return std::nullopt;
     std::string qname;
-    for (size_t i = 0; i < parts.size(); ++i)
-    {
+    for (size_t i = 0; i < parts.size(); ++i) {
         if (i)
             qname.push_back('.');
         qname += parts[i];

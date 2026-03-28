@@ -28,8 +28,7 @@ using namespace il::core;
 using il::runtime::RuntimeFeature;
 using AstType = ::il::frontends::basic::Type;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Assign a value to a scalar slot with BASIC-compatible coercions.
 ///
@@ -46,34 +45,27 @@ namespace il::frontends::basic
 void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo,
                                                Lowerer::Value slot,
                                                Lowerer::RVal value,
-                                               il::support::SourceLoc loc)
-{
+                                               il::support::SourceLoc loc) {
     LocationScope location(lowerer_, loc);
     il::core::Type targetTy = slotInfo.type;
     bool isStr = targetTy.kind == il::core::Type::Kind::Str;
     bool isF64 = targetTy.kind == il::core::Type::Kind::F64;
     bool isBool = slotInfo.isBoolean;
 
-    if (!isStr && !isF64 && !isBool && value.type.kind == il::core::Type::Kind::I1)
-    {
+    if (!isStr && !isF64 && !isBool && value.type.kind == il::core::Type::Kind::I1) {
         value = lowerer_.coerceToI64(std::move(value), loc);
     }
-    if (isF64 && value.type.kind == il::core::Type::Kind::I64)
-    {
+    if (isF64 && value.type.kind == il::core::Type::Kind::I64) {
         value = lowerer_.coerceToF64(std::move(value), loc);
-    }
-    else if (!isStr && !isF64 && !isBool && value.type.kind == il::core::Type::Kind::F64)
-    {
+    } else if (!isStr && !isF64 && !isBool && value.type.kind == il::core::Type::Kind::F64) {
         value = lowerer_.coerceToI64(std::move(value), loc);
     }
 
-    if (targetTy.kind == il::core::Type::Kind::I1 && value.type.kind != il::core::Type::Kind::I1)
-    {
+    if (targetTy.kind == il::core::Type::Kind::I1 && value.type.kind != il::core::Type::Kind::I1) {
         value = lowerer_.coerceToBool(std::move(value), loc);
     }
 
-    if (isStr)
-    {
+    if (isStr) {
         lowerer_.requireStrReleaseMaybe();
         Value oldValue = lowerer_.emitLoad(targetTy, slot);
         lowerer_.emitCall("rt_str_release_maybe", {oldValue});
@@ -81,8 +73,7 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
         lowerer_.emitCall("rt_str_retain_maybe", {value.value});
     }
 
-    else if (slotInfo.isObject)
-    {
+    else if (slotInfo.isObject) {
         lowerer_.requestHelper(RuntimeFeature::ObjReleaseChk0);
         lowerer_.requestHelper(RuntimeFeature::ObjFree);
         lowerer_.requestHelper(RuntimeFeature::ObjRetainMaybe);
@@ -94,8 +85,7 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
         ProcedureContext &ctx = lowerer_.context();
         Function *func = ctx.function();
         BasicBlock *origin = ctx.current();
-        if (func && origin)
-        {
+        if (func && origin) {
             std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
             BlockNamer *blockNamer = ctx.blockNames().namer();
             std::string base = "obj_assign";
@@ -116,16 +106,12 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
             lowerer_.emitCBr(shouldDestroy, destroyBlk, contBlk);
 
             ctx.setCurrent(destroyBlk);
-            if (!slotInfo.objectClass.empty())
-            {
+            if (!slotInfo.objectClass.empty()) {
                 std::string dtor = mangleClassDtor(slotInfo.objectClass);
                 bool haveDtor = false;
-                if (lowerer_.mod)
-                {
-                    for (const auto &fn : lowerer_.mod->functions)
-                    {
-                        if (fn.name == dtor)
-                        {
+                if (lowerer_.mod) {
+                    for (const auto &fn : lowerer_.mod->functions) {
+                        if (fn.name == dtor) {
                             haveDtor = true;
                             break;
                         }
@@ -160,8 +146,7 @@ void RuntimeStatementLowerer::assignScalarSlot(const Lowerer::SlotType &slotInfo
 /// @param loc    Source location for diagnostics and helper invocations.
 void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
                                                  Lowerer::RVal value,
-                                                 il::support::SourceLoc loc)
-{
+                                                 il::support::SourceLoc loc) {
     LocationScope location(lowerer_, loc);
 
     Lowerer::ArrayAccess access =
@@ -181,13 +166,10 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
 
     // For implicit field arrays, recompute base as ME.<field> to ensure we are
     // storing into the instance field array even when the name is unqualified.
-    if (isImplicitFieldArray)
-    {
-        if (const auto *scope = lowerer_.activeFieldScope(); scope && scope->layout)
-        {
+    if (isImplicitFieldArray) {
+        if (const auto *scope = lowerer_.activeFieldScope(); scope && scope->layout) {
             const auto *selfInfo = lowerer_.findSymbol("ME");
-            if (selfInfo && selfInfo->slotId)
-            {
+            if (selfInfo && selfInfo->slotId) {
                 lowerer_.curLoc = loc;
                 Value selfPtr = lowerer_.emitLoad(il::core::Type(il::core::Type::Kind::Ptr),
                                                   Value::temp(*selfInfo->slotId));
@@ -210,29 +192,23 @@ void RuntimeStatementLowerer::assignArrayElement(const ArrayExpr &target,
     // resolution across scopes: a string RHS must use string array helpers,
     // an object (ptr) RHS must use object array helpers; otherwise numeric.
     if (value.type.kind == il::core::Type::Kind::Str || (info && info->type == AstType::Str) ||
-        (fieldInfo.isField && fieldInfo.elementAstType == ::il::frontends::basic::Type::Str))
-    {
+        (fieldInfo.isField && fieldInfo.elementAstType == ::il::frontends::basic::Type::Str)) {
         // String array: use rt_arr_str_put (handles retain/release)
         // Pass the string handle directly - the C runtime expects rt_string by value.
         lowerer_.emitCall("rt_arr_str_put", {access.base, access.index, value.value});
-    }
-    else if (value.type.kind == il::core::Type::Kind::Ptr ||
-             (!isMemberArray && info && info->isObject) || fieldInfo.isObjectArray)
-    {
+    } else if (value.type.kind == il::core::Type::Kind::Ptr ||
+               (!isMemberArray && info && info->isObject) || fieldInfo.isObjectArray) {
         // Object arrays (including member object arrays) use rt_arr_obj_put (BUG-089)
         lowerer_.requireArrayObjPut();
         lowerer_.emitCall("rt_arr_obj_put", {access.base, access.index, value.value});
-    }
-    else if ((info && info->type == AstType::F64) ||
-             (fieldInfo.isField && fieldInfo.elementAstType == ::il::frontends::basic::Type::F64))
-    {
+    } else if ((info && info->type == AstType::F64) ||
+               (fieldInfo.isField &&
+                fieldInfo.elementAstType == ::il::frontends::basic::Type::F64)) {
         // Float array (SINGLE/DOUBLE): use rt_arr_f64_set
         Lowerer::RVal coerced = lowerer_.ensureF64(std::move(value), loc);
         lowerer_.requireArrayF64Set();
         lowerer_.emitCall("rt_arr_f64_set", {access.base, access.index, coerced.value});
-    }
-    else
-    {
+    } else {
         // Integer/numeric array: use rt_arr_i64_set (all Viper integers are 64-bit)
         // Runtime ABI: rt_arr_i64_set expects its value operand as i64.
         // Always normalize the RHS to i64 (handles i1/i16/i32/f64).

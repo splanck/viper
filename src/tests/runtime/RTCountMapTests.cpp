@@ -18,24 +18,20 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
 
-static void test_new_empty()
-{
+static void test_new_empty() {
     void *cm = rt_countmap_new();
     assert(cm != NULL);
     assert(rt_countmap_len(cm) == 0);
@@ -43,8 +39,7 @@ static void test_new_empty()
     assert(rt_countmap_total(cm) == 0);
 }
 
-static void test_inc()
-{
+static void test_inc() {
     void *cm = rt_countmap_new();
     rt_string k = make_str("apple");
 
@@ -59,8 +54,7 @@ static void test_inc()
     rt_string_unref(k);
 }
 
-static void test_inc_by()
-{
+static void test_inc_by() {
     void *cm = rt_countmap_new();
     rt_string k = make_str("banana");
 
@@ -71,8 +65,7 @@ static void test_inc_by()
     rt_string_unref(k);
 }
 
-static void test_dec()
-{
+static void test_dec() {
     void *cm = rt_countmap_new();
     rt_string k = make_str("cherry");
 
@@ -91,8 +84,7 @@ static void test_dec()
     rt_string_unref(k);
 }
 
-static void test_set()
-{
+static void test_set() {
     void *cm = rt_countmap_new();
     rt_string k = make_str("date");
 
@@ -113,8 +105,7 @@ static void test_set()
     rt_string_unref(k);
 }
 
-static void test_has()
-{
+static void test_has() {
     void *cm = rt_countmap_new();
     rt_string k = make_str("elderberry");
 
@@ -125,8 +116,7 @@ static void test_has()
     rt_string_unref(k);
 }
 
-static void test_multiple_keys()
-{
+static void test_multiple_keys() {
     void *cm = rt_countmap_new();
     rt_string a = make_str("a");
     rt_string b = make_str("b");
@@ -147,8 +137,7 @@ static void test_multiple_keys()
     rt_string_unref(c);
 }
 
-static void test_keys()
-{
+static void test_keys() {
     void *cm = rt_countmap_new();
     rt_string a = make_str("x");
     rt_string b = make_str("y");
@@ -163,8 +152,7 @@ static void test_keys()
     rt_string_unref(b);
 }
 
-static void test_most_common()
-{
+static void test_most_common() {
     void *cm = rt_countmap_new();
     rt_string a = make_str("rare");
     rt_string b = make_str("common");
@@ -190,8 +178,7 @@ static void test_most_common()
     rt_string_unref(c);
 }
 
-static void test_remove()
-{
+static void test_remove() {
     void *cm = rt_countmap_new();
     rt_string k = make_str("fig");
 
@@ -206,8 +193,7 @@ static void test_remove()
     rt_string_unref(k);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *cm = rt_countmap_new();
     rt_string a = make_str("g1");
     rt_string b = make_str("g2");
@@ -224,8 +210,7 @@ static void test_clear()
     rt_string_unref(b);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_countmap_len(NULL) == 0);
     assert(rt_countmap_is_empty(NULL) == 1);
     assert(rt_countmap_total(NULL) == 0);
@@ -234,8 +219,7 @@ static void test_null_safety()
     assert(rt_countmap_remove(NULL, NULL) == 0);
 }
 
-int main()
-{
+int main() {
     test_new_empty();
     test_inc();
     test_inc_by();

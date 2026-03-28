@@ -17,12 +17,10 @@
 
 #include "codegen/x86_64/passes/PassManager.hpp"
 
-namespace viper::codegen::x64::passes
-{
+namespace viper::codegen::x64::passes {
 
 /// \brief Placeholder pass used to gate later emission on prior legalisation.
-class RegAllocPass final : public Pass
-{
+class RegAllocPass final : public Pass {
   public:
     /// @brief Run the register allocation pass: assign physical registers to virtual registers.
     /// @param module The codegen module containing MIR functions with virtual registers.

@@ -19,31 +19,26 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static void rt_release_obj(void *p)
-{
+static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
 }
 
-static void *new_obj()
-{
+static void *new_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
 }
 
-static rt_string make_key(const char *text)
-{
+static rt_string make_key(const char *text) {
     return rt_string_from_bytes(text, strlen(text));
 }
 
-static void test_new()
-{
+static void test_new() {
     void *mm = rt_multimap_new();
     assert(mm != nullptr);
     assert(rt_multimap_len(mm) == 0);
@@ -52,8 +47,7 @@ static void test_new()
     rt_release_obj(mm);
 }
 
-static void test_put_and_get()
-{
+static void test_put_and_get() {
     void *mm = rt_multimap_new();
     rt_string k = make_key("color");
     void *v1 = new_obj();
@@ -85,8 +79,7 @@ static void test_put_and_get()
     rt_release_obj(mm);
 }
 
-static void test_multiple_keys()
-{
+static void test_multiple_keys() {
     void *mm = rt_multimap_new();
     rt_string k1 = make_key("fruit");
     rt_string k2 = make_key("veggie");
@@ -111,8 +104,7 @@ static void test_multiple_keys()
     rt_release_obj(mm);
 }
 
-static void test_remove_all()
-{
+static void test_remove_all() {
     void *mm = rt_multimap_new();
     rt_string k = make_key("key");
     void *v1 = new_obj();
@@ -136,8 +128,7 @@ static void test_remove_all()
     rt_release_obj(mm);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *mm = rt_multimap_new();
     rt_string k1 = make_key("a");
     rt_string k2 = make_key("b");
@@ -157,8 +148,7 @@ static void test_clear()
     rt_release_obj(mm);
 }
 
-static void test_keys()
-{
+static void test_keys() {
     void *mm = rt_multimap_new();
     rt_string k1 = make_key("x");
     rt_string k2 = make_key("y");
@@ -177,8 +167,7 @@ static void test_keys()
     rt_release_obj(mm);
 }
 
-static void test_get_missing_returns_empty_seq()
-{
+static void test_get_missing_returns_empty_seq() {
     void *mm = rt_multimap_new();
     rt_string k = make_key("missing");
     void *vals = rt_multimap_get(mm, k);
@@ -190,8 +179,7 @@ static void test_get_missing_returns_empty_seq()
     rt_release_obj(mm);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     rt_string k = make_key("test");
     assert(rt_multimap_len(NULL) == 0);
     assert(rt_multimap_key_count(NULL) == 0);
@@ -205,8 +193,7 @@ static void test_null_safety()
     rt_string_unref(k);
 }
 
-int main()
-{
+int main() {
     test_new();
     test_put_and_get();
     test_multiple_keys();

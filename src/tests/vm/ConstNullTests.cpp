@@ -23,10 +23,8 @@
 using namespace il::core;
 using il::vm::Slot;
 
-namespace
-{
-Slot runConstNull(Type::Kind kind)
-{
+namespace {
+Slot runConstNull(Type::Kind kind) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -53,8 +51,7 @@ Slot runConstNull(Type::Kind kind)
 }
 } // namespace
 
-int main()
-{
+int main() {
     {
         Slot result = runConstNull(Type::Kind::I1);
         assert(result.i64 == 0);

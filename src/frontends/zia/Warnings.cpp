@@ -14,16 +14,14 @@
 #include <cstdio>
 #include <cstring>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //=============================================================================
 // Warning Code/Name Tables
 //=============================================================================
 
 /// @brief Entry in the warning info table.
-struct WarningInfo
-{
+struct WarningInfo {
     WarningCode code;
     const char *codeStr; ///< e.g., "W001"
     const char *name;    ///< e.g., "unused-variable"
@@ -57,38 +55,32 @@ static_assert(sizeof(kWarningTable) / sizeof(kWarningTable[0]) == kWarningCodeCo
               "kWarningTable must have exactly kWarningCodeCount entries");
 
 /// @brief Look up a WarningInfo by code value. Returns nullptr if out of range.
-static const WarningInfo *lookupInfo(WarningCode code)
-{
+static const WarningInfo *lookupInfo(WarningCode code) {
     auto idx = static_cast<uint16_t>(code);
     if (idx < 1 || idx > kWarningCodeCount)
         return nullptr;
     return &kWarningTable[idx - 1];
 }
 
-const char *warningCodeStr(WarningCode code)
-{
+const char *warningCodeStr(WarningCode code) {
     const auto *info = lookupInfo(code);
     return info ? info->codeStr : "W???";
 }
 
-const char *warningName(WarningCode code)
-{
+const char *warningName(WarningCode code) {
     const auto *info = lookupInfo(code);
     return info ? info->name : "unknown";
 }
 
-std::optional<WarningCode> parseWarningCode(std::string_view name)
-{
+std::optional<WarningCode> parseWarningCode(std::string_view name) {
     // Try matching by code string (e.g., "W001")
-    for (const auto &entry : kWarningTable)
-    {
+    for (const auto &entry : kWarningTable) {
         if (name == entry.codeStr)
             return entry.code;
     }
 
     // Try matching by slug name (e.g., "unused-variable")
-    for (const auto &entry : kWarningTable)
-    {
+    for (const auto &entry : kWarningTable) {
         if (name == entry.name)
             return entry.code;
     }
@@ -100,8 +92,7 @@ std::optional<WarningCode> parseWarningCode(std::string_view name)
 // Warning Policy
 //=============================================================================
 
-bool WarningPolicy::isEnabled(WarningCode code) const
-{
+bool WarningPolicy::isEnabled(WarningCode code) const {
     // Explicitly disabled always wins
     if (disabled.count(code))
         return false;
@@ -114,8 +105,7 @@ bool WarningPolicy::isEnabled(WarningCode code) const
     return defaultEnabled().count(code) > 0;
 }
 
-const std::unordered_set<WarningCode> &WarningPolicy::defaultEnabled()
-{
+const std::unordered_set<WarningCode> &WarningPolicy::defaultEnabled() {
     // Conservative set — these catch common real bugs without being noisy.
     // W002 (unreachable), W003 (narrowing), W004 (shadowing), W006 (empty loop),
     // W007 (assign-in-cond), W011 (redundant bool), W013 (empty body),

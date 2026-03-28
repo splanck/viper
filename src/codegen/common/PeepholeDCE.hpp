@@ -33,8 +33,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::common
-{
+namespace viper::codegen::common {
 
 /// @brief Template-based dead code elimination for machine IR basic blocks.
 ///
@@ -81,8 +80,7 @@ namespace viper::codegen::common
 /// @tparam Traits Target-specific type providing the required interface.
 /// @param instrs  Mutable instruction vector to compact in place.
 /// @return Number of dead instructions removed.
-template <typename Traits> std::size_t runBlockDCE(std::vector<typename Traits::MInstr> &instrs)
-{
+template <typename Traits> std::size_t runBlockDCE(std::vector<typename Traits::MInstr> &instrs) {
     using MInstr = typename Traits::MInstr;
     using RegKey = typename Traits::RegKey;
 
@@ -95,8 +93,7 @@ template <typename Traits> std::size_t runBlockDCE(std::vector<typename Traits::
     std::size_t iterCount = 0;
 
     // Outer loop: repeat until fixed point when requested by Traits.
-    while (changed && iterCount++ < kMaxDCEIterations)
-    {
+    while (changed && iterCount++ < kMaxDCEIterations) {
         changed = false;
 
         std::unordered_set<RegKey> liveRegs;
@@ -108,14 +105,12 @@ template <typename Traits> std::size_t runBlockDCE(std::vector<typename Traits::
         std::vector<bool> toRemove(instrs.size(), false);
 
         // Backward scan: process instructions from last to first.
-        for (std::size_t i = instrs.size(); i > 0; --i)
-        {
+        for (std::size_t i = instrs.size(); i > 0; --i) {
             const std::size_t idx = i - 1;
             const auto &instr = instrs[idx];
 
             // Instructions with side effects are always kept.
-            if (Traits::hasSideEffects(instr))
-            {
+            if (Traits::hasSideEffects(instr)) {
                 // At label/branch-target boundaries, conservatively assume
                 // all allocatable registers may be live.
                 if (Traits::isLabelOrBranchTarget(instr))
@@ -127,16 +122,14 @@ template <typename Traits> std::size_t runBlockDCE(std::vector<typename Traits::
 
             // Try to obtain the register defined by this instruction.
             auto defKey = Traits::getDefRegKey(instr);
-            if (!defKey.has_value())
-            {
+            if (!defKey.has_value()) {
                 // No definition — keep and collect uses.
                 Traits::collectUsedRegKeys(instr, liveRegs);
                 continue;
             }
 
             // If the defined register is not live, the instruction is dead.
-            if (liveRegs.find(*defKey) == liveRegs.end())
-            {
+            if (liveRegs.find(*defKey) == liveRegs.end()) {
                 toRemove[idx] = true;
                 changed = true;
                 continue;
@@ -149,8 +142,7 @@ template <typename Traits> std::size_t runBlockDCE(std::vector<typename Traits::
         }
 
         // Compact the instruction vector.
-        if (changed)
-        {
+        if (changed) {
             std::size_t removed =
                 static_cast<std::size_t>(std::count(toRemove.begin(), toRemove.end(), true));
             removeMarkedInstructions(instrs, toRemove);

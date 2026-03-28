@@ -24,8 +24,7 @@ using namespace il::frontends::basic;
 using namespace il::support;
 
 /// @brief Compile source and return the diagnostic output.
-static std::string compileToDiagnostics(const std::string &source)
-{
+static std::string compileToDiagnostics(const std::string &source) {
     SourceManager sm;
     BasicCompilerOptions options{};
     BasicCompilerInput input{source, "test.bas"};
@@ -37,8 +36,7 @@ static std::string compileToDiagnostics(const std::string &source)
 }
 
 /// @brief Test that FOR loop with array element control variable emits error.
-static void test_for_array_element_ctrl()
-{
+static void test_for_array_element_ctrl() {
     // FOR arr(i) = 1 TO 10 should produce an error since array element
     // control variables are not yet supported.
     const std::string src = "DIM arr(10) AS INTEGER\n"
@@ -51,8 +49,7 @@ static void test_for_array_element_ctrl()
     std::string diag = compileToDiagnostics(src);
 
     // Debug output on failure
-    if (diag.find("FOR control variable") == std::string::npos)
-    {
+    if (diag.find("FOR control variable") == std::string::npos) {
         fprintf(stderr, "test_for_array_element_ctrl - Actual output:\n%s\n", diag.c_str());
     }
 
@@ -64,8 +61,7 @@ static void test_for_array_element_ctrl()
 }
 
 /// @brief Test that FOR loop with 2D array element control variable emits error.
-static void test_for_2d_array_element_ctrl()
-{
+static void test_for_2d_array_element_ctrl() {
     // FOR matrix(i, j) = 1 TO 10 should produce the same error.
     const std::string src = "DIM matrix(5, 5) AS INTEGER\n"
                             "DIM i AS INTEGER\n"
@@ -79,8 +75,7 @@ static void test_for_2d_array_element_ctrl()
     std::string diag = compileToDiagnostics(src);
 
     // Debug output on failure
-    if (diag.find("FOR control variable") == std::string::npos)
-    {
+    if (diag.find("FOR control variable") == std::string::npos) {
         fprintf(stderr, "test_for_2d_array_element_ctrl - Actual output:\n%s\n", diag.c_str());
     }
 
@@ -92,8 +87,7 @@ static void test_for_2d_array_element_ctrl()
 }
 
 /// @brief Test that normal FOR loop with simple variable still works.
-static void test_for_simple_variable_works()
-{
+static void test_for_simple_variable_works() {
     // FOR i = 1 TO 5 should compile without errors.
     const std::string src = "DIM i AS INTEGER\n"
                             "FOR i = 1 TO 5\n"
@@ -111,8 +105,7 @@ static void test_for_simple_variable_works()
 }
 
 /// @brief Test that FOR loop with object field control variable still works.
-static void test_for_member_field_works()
-{
+static void test_for_member_field_works() {
     // FOR obj.field = 1 TO 5 should compile without errors.
     const std::string src = "CLASS Counter\n"
                             "    PUBLIC value AS INTEGER\n"
@@ -133,8 +126,7 @@ static void test_for_member_field_works()
     auto result = compileBasic(input, options, sm);
 
     // Debug output on failure
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::ostringstream oss;
         result.emitter->printAll(oss);
         fprintf(
@@ -146,8 +138,7 @@ static void test_for_member_field_works()
     assert(result.emitter->errorCount() == 0);
 }
 
-int main()
-{
+int main() {
     test_for_array_element_ctrl();
     test_for_2d_array_element_ctrl();
     test_for_simple_variable_works();

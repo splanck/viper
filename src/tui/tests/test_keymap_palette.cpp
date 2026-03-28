@@ -37,8 +37,7 @@ using viper::tui::ui::Event;
 using viper::tui::widgets::CommandPalette;
 using viper::tui::widgets::Label;
 
-TEST(TUI, KeymapPalette)
-{
+TEST(TUI, KeymapPalette) {
     Theme theme;
     Keymap km;
 
@@ -109,8 +108,7 @@ TEST(TUI, KeymapPalette)
     ASSERT_TRUE(save_fired);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

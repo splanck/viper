@@ -18,12 +18,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that an empty start function compiles.
-TEST(ZiaBasic, EmptyStartFunction)
-{
+TEST(ZiaBasic, EmptyStartFunction) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -36,11 +34,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for EmptyStartFunction:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -49,10 +45,8 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool hasMain = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
             hasMain = true;
             break;
         }
@@ -61,8 +55,7 @@ func start() {
 }
 
 /// @brief Test that the compiler produces an entry block.
-TEST(ZiaBasic, ProducesEntryBlock)
-{
+TEST(ZiaBasic, ProducesEntryBlock) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -78,10 +71,8 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool foundMainWithBlocks = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main" && !fn.blocks.empty())
-        {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main" && !fn.blocks.empty()) {
             foundMainWithBlocks = true;
             break;
         }
@@ -90,8 +81,7 @@ func start() {
 }
 
 /// @brief Test that Hello World compiles and calls Viper.Terminal.Say.
-TEST(ZiaBasic, HelloWorld)
-{
+TEST(ZiaBasic, HelloWorld) {
     SourceManager sm;
     const std::string source = R"(
 module Hello;
@@ -109,17 +99,13 @@ func start() {
 
     bool hasMain = false;
     bool foundCall = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
             hasMain = true;
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
-                    if (instr.op == il::core::Opcode::Call && instr.callee == "Viper.Terminal.Say")
-                    {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
+                    if (instr.op == il::core::Opcode::Call &&
+                        instr.callee == "Viper.Terminal.Say") {
                         foundCall = true;
                     }
                 }
@@ -131,8 +117,7 @@ func start() {
 }
 
 /// @brief Test that variables are handled correctly.
-TEST(ZiaBasic, VariableDeclaration)
-{
+TEST(ZiaBasic, VariableDeclaration) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -147,11 +132,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for VariableDeclaration:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -160,10 +143,8 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool hasMain = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
             hasMain = true;
             break;
         }
@@ -172,8 +153,7 @@ func start() {
 }
 
 /// @brief Test that function calls work.
-TEST(ZiaBasic, FunctionCall)
-{
+TEST(ZiaBasic, FunctionCall) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -195,8 +175,7 @@ func start() {
 
     bool hasMain = false;
     bool hasGreet = false;
-    for (const auto &fn : result.module.functions)
-    {
+    for (const auto &fn : result.module.functions) {
         if (fn.name == "main")
             hasMain = true;
         if (fn.name == "greet")
@@ -208,8 +187,7 @@ func start() {
 
 /// @brief Bug #22: Terminal functions should be recognized.
 /// Updated after Bug #31 fix to use correct runtime function names.
-TEST(ZiaBasic, TerminalFunctionsRecognized)
-{
+TEST(ZiaBasic, TerminalFunctionsRecognized) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -234,11 +212,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for TerminalFunctionsRecognized:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -249,7 +225,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

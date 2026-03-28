@@ -23,18 +23,14 @@
 
 #include <sstream>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Escape XML special characters in a string value.
-static std::string xmlEscape(const std::string &s)
-{
+static std::string xmlEscape(const std::string &s) {
     std::string result;
     result.reserve(s.size());
-    for (char c : s)
-    {
-        switch (c)
-        {
+    for (char c : s) {
+        switch (c) {
             case '&':
                 result += "&amp;";
                 break;
@@ -55,8 +51,7 @@ static std::string xmlEscape(const std::string &s)
     return result;
 }
 
-std::string generatePlist(const PlistParams &params)
-{
+std::string generatePlist(const PlistParams &params) {
     std::ostringstream os;
 
     os << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
@@ -88,8 +83,7 @@ std::string generatePlist(const PlistParams &params)
        << "  <string>" << "??" << "??" << "</string>\n";
 
     // Icon
-    if (!params.iconFile.empty())
-    {
+    if (!params.iconFile.empty()) {
         os << "  <key>CFBundleIconFile</key>\n"
            << "  <string>" << xmlEscape(params.iconFile) << "</string>\n";
     }
@@ -104,12 +98,10 @@ std::string generatePlist(const PlistParams &params)
        << "  <true/>\n";
 
     // File associations
-    if (!params.fileAssociations.empty())
-    {
+    if (!params.fileAssociations.empty()) {
         os << "  <key>CFBundleDocumentTypes</key>\n"
            << "  <array>\n";
-        for (const auto &fa : params.fileAssociations)
-        {
+        for (const auto &fa : params.fileAssociations) {
             os << "    <dict>\n";
             // Extension (strip leading dot)
             std::string ext = fa.extension;
@@ -127,12 +119,10 @@ std::string generatePlist(const PlistParams &params)
     }
 
     // UTExportedTypeDeclarations for custom file types
-    if (!params.fileAssociations.empty())
-    {
+    if (!params.fileAssociations.empty()) {
         os << "  <key>UTExportedTypeDeclarations</key>\n"
            << "  <array>\n";
-        for (const auto &fa : params.fileAssociations)
-        {
+        for (const auto &fa : params.fileAssociations) {
             std::string ext = fa.extension;
             if (!ext.empty() && ext[0] == '.')
                 ext = ext.substr(1);
@@ -149,8 +139,7 @@ std::string generatePlist(const PlistParams &params)
                << "      <dict>\n";
             os << "        <key>public.filename-extension</key>\n"
                << "        <array><string>" << xmlEscape(ext) << "</string></array>\n";
-            if (!fa.mimeType.empty())
-            {
+            if (!fa.mimeType.empty()) {
                 os << "        <key>public.mime-type</key>\n"
                    << "        <string>" << xmlEscape(fa.mimeType) << "</string>\n";
             }
@@ -166,8 +155,7 @@ std::string generatePlist(const PlistParams &params)
     return os.str();
 }
 
-std::string generatePkgInfo()
-{
+std::string generatePkgInfo() {
     return "APPL????";
 }
 

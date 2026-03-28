@@ -44,8 +44,7 @@ static vg_widget_vtable_t g_commandpalette_vtable = {.destroy = commandpalette_d
 //=============================================================================
 
 /// Simple fuzzy match score - returns 0 for no match, higher for better match
-static int fuzzy_match_score(const char *pattern, const char *text)
-{
+static int fuzzy_match_score(const char *pattern, const char *text) {
     if (!pattern || !text)
         return 0;
     if (!pattern[0])
@@ -57,34 +56,28 @@ static int fuzzy_match_score(const char *pattern, const char *text)
     bool consecutive = true;
     int last_match_pos = -1;
 
-    while (*p && *t)
-    {
+    while (*p && *t) {
         char pc = (char)tolower((unsigned char)*p);
         char tc = (char)tolower((unsigned char)*t);
 
-        if (pc == tc)
-        {
+        if (pc == tc) {
             // Found a match
             score += consecutive ? 10 : 5;
 
             // Bonus for matching at word boundaries
-            if (t == text || *(t - 1) == ' ' || *(t - 1) == '_' || *(t - 1) == '-')
-            {
+            if (t == text || *(t - 1) == ' ' || *(t - 1) == '_' || *(t - 1) == '-') {
                 score += 15;
             }
 
             // Bonus for consecutive matches
-            if ((int)(t - text) == last_match_pos + 1)
-            {
+            if ((int)(t - text) == last_match_pos + 1) {
                 score += 5;
             }
 
             last_match_pos = (int)(t - text);
             p++;
             consecutive = true;
-        }
-        else
-        {
+        } else {
             consecutive = false;
         }
         t++;
@@ -96,16 +89,14 @@ static int fuzzy_match_score(const char *pattern, const char *text)
 
     // Bonus for shorter text (more specific match)
     int len = (int)strlen(text);
-    if (len > 0)
-    {
+    if (len > 0) {
         score += 100 / len;
     }
 
     return score;
 }
 
-static void filter_commands(vg_commandpalette_t *palette)
-{
+static void filter_commands(vg_commandpalette_t *palette) {
     if (!palette)
         return;
 
@@ -114,19 +105,16 @@ static void filter_commands(vg_commandpalette_t *palette)
     // Get query from search input
     const char *query = palette->current_query;
 
-    for (size_t i = 0; i < palette->command_count; i++)
-    {
+    for (size_t i = 0; i < palette->command_count; i++) {
         vg_command_t *cmd = palette->commands[i];
         if (!cmd || !cmd->enabled)
             continue;
 
         // Check if matches
         int score = fuzzy_match_score(query, cmd->label);
-        if (score > 0 || !query || !query[0])
-        {
+        if (score > 0 || !query || !query[0]) {
             // Add to filtered list
-            if (palette->filtered_count >= palette->filtered_capacity)
-            {
+            if (palette->filtered_count >= palette->filtered_capacity) {
                 size_t new_cap = palette->filtered_capacity * 2;
                 if (new_cap < 32)
                     new_cap = 32;
@@ -150,8 +138,7 @@ static void filter_commands(vg_commandpalette_t *palette)
 // CommandPalette Implementation
 //=============================================================================
 
-vg_commandpalette_t *vg_commandpalette_create(void)
-{
+vg_commandpalette_t *vg_commandpalette_create(void) {
     vg_commandpalette_t *palette = calloc(1, sizeof(vg_commandpalette_t));
     if (!palette)
         return NULL;
@@ -177,8 +164,7 @@ vg_commandpalette_t *vg_commandpalette_create(void)
     return palette;
 }
 
-static void free_command(vg_command_t *cmd)
-{
+static void free_command(vg_command_t *cmd) {
     if (!cmd)
         return;
     free(cmd->id);
@@ -189,12 +175,10 @@ static void free_command(vg_command_t *cmd)
     free(cmd);
 }
 
-static void commandpalette_destroy(vg_widget_t *widget)
-{
+static void commandpalette_destroy(vg_widget_t *widget) {
     vg_commandpalette_t *palette = (vg_commandpalette_t *)widget;
 
-    for (size_t i = 0; i < palette->command_count; i++)
-    {
+    for (size_t i = 0; i < palette->command_count; i++) {
         free_command(palette->commands[i]);
     }
     free(palette->commands);
@@ -203,8 +187,7 @@ static void commandpalette_destroy(vg_widget_t *widget)
 }
 
 /// @brief Commandpalette destroy.
-void vg_commandpalette_destroy(vg_commandpalette_t *palette)
-{
+void vg_commandpalette_destroy(vg_commandpalette_t *palette) {
     if (!palette)
         return;
     vg_widget_destroy(&palette->base);
@@ -212,8 +195,7 @@ void vg_commandpalette_destroy(vg_commandpalette_t *palette)
 
 static void commandpalette_measure(vg_widget_t *widget,
                                    float available_width,
-                                   float available_height)
-{
+                                   float available_height) {
     vg_commandpalette_t *palette = (vg_commandpalette_t *)widget;
     (void)available_width;
     (void)available_height;
@@ -228,8 +210,7 @@ static void commandpalette_measure(vg_widget_t *widget,
     widget->measured_height = search_height + visible * palette->item_height;
 }
 
-static void commandpalette_paint(vg_widget_t *widget, void *canvas)
-{
+static void commandpalette_paint(vg_widget_t *widget, void *canvas) {
     vg_commandpalette_t *palette = (vg_commandpalette_t *)widget;
     (void)canvas;
 
@@ -249,21 +230,18 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas)
     if (visible > palette->max_visible)
         visible = palette->max_visible;
 
-    for (size_t i = 0; i < visible; i++)
-    {
+    for (size_t i = 0; i < visible; i++) {
         vg_command_t *cmd = palette->filtered[i];
         if (!cmd)
             continue;
 
         // Draw item background
-        if ((int)i == palette->selected_index)
-        {
+        if ((int)i == palette->selected_index) {
             (void)palette->selected_bg;
         }
 
         // Draw label and shortcut
-        if (palette->font && cmd->label)
-        {
+        if (palette->font && cmd->label) {
             vg_font_draw_text(canvas,
                               palette->font,
                               palette->font_size,
@@ -272,8 +250,7 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas)
                               cmd->label,
                               palette->text_color);
 
-            if (cmd->shortcut)
-            {
+            if (cmd->shortcut) {
                 // Draw shortcut right-aligned
                 vg_font_draw_text(canvas,
                                   palette->font,
@@ -289,17 +266,14 @@ static void commandpalette_paint(vg_widget_t *widget, void *canvas)
     }
 }
 
-static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_commandpalette_t *palette = (vg_commandpalette_t *)widget;
 
     if (!palette->is_visible)
         return false;
 
-    if (event->type == VG_EVENT_KEY_DOWN)
-    {
-        switch (event->key.key)
-        {
+    if (event->type == VG_EVENT_KEY_DOWN) {
+        switch (event->key.key) {
             case VG_KEY_ESCAPE:
                 vg_commandpalette_hide(palette);
                 return true;
@@ -309,16 +283,14 @@ static bool commandpalette_handle_event(vg_widget_t *widget, vg_event_t *event)
                 return true;
 
             case VG_KEY_UP:
-                if (palette->selected_index > 0)
-                {
+                if (palette->selected_index > 0) {
                     palette->selected_index--;
                     palette->base.needs_paint = true;
                 }
                 return true;
 
             case VG_KEY_DOWN:
-                if (palette->selected_index < (int)palette->filtered_count - 1)
-                {
+                if (palette->selected_index < (int)palette->filtered_count - 1) {
                     palette->selected_index++;
                     palette->base.needs_paint = true;
                 }
@@ -337,8 +309,7 @@ vg_command_t *vg_commandpalette_add_command(vg_commandpalette_t *palette,
                                             const char *label,
                                             const char *shortcut,
                                             void (*action)(vg_command_t *, void *),
-                                            void *user_data)
-{
+                                            void *user_data) {
     if (!palette || !id || !label)
         return NULL;
 
@@ -355,14 +326,12 @@ vg_command_t *vg_commandpalette_add_command(vg_commandpalette_t *palette,
     cmd->enabled = true;
 
     // Add to array
-    if (palette->command_count >= palette->command_capacity)
-    {
+    if (palette->command_count >= palette->command_capacity) {
         size_t new_cap = palette->command_capacity * 2;
         if (new_cap < 32)
             new_cap = 32;
         vg_command_t **new_cmds = realloc(palette->commands, new_cap * sizeof(vg_command_t *));
-        if (!new_cmds)
-        {
+        if (!new_cmds) {
             free_command(cmd);
             return NULL;
         }
@@ -373,8 +342,7 @@ vg_command_t *vg_commandpalette_add_command(vg_commandpalette_t *palette,
     palette->commands[palette->command_count++] = cmd;
 
     // Re-filter if visible
-    if (palette->is_visible)
-    {
+    if (palette->is_visible) {
         filter_commands(palette);
     }
 
@@ -382,25 +350,20 @@ vg_command_t *vg_commandpalette_add_command(vg_commandpalette_t *palette,
 }
 
 /// @brief Commandpalette remove command.
-void vg_commandpalette_remove_command(vg_commandpalette_t *palette, const char *id)
-{
+void vg_commandpalette_remove_command(vg_commandpalette_t *palette, const char *id) {
     if (!palette || !id)
         return;
 
-    for (size_t i = 0; i < palette->command_count; i++)
-    {
-        if (palette->commands[i] && strcmp(palette->commands[i]->id, id) == 0)
-        {
+    for (size_t i = 0; i < palette->command_count; i++) {
+        if (palette->commands[i] && strcmp(palette->commands[i]->id, id) == 0) {
             free_command(palette->commands[i]);
             // Shift remaining
-            for (size_t j = i; j < palette->command_count - 1; j++)
-            {
+            for (size_t j = i; j < palette->command_count - 1; j++) {
                 palette->commands[j] = palette->commands[j + 1];
             }
             palette->command_count--;
 
-            if (palette->is_visible)
-            {
+            if (palette->is_visible) {
                 filter_commands(palette);
             }
             return;
@@ -408,15 +371,12 @@ void vg_commandpalette_remove_command(vg_commandpalette_t *palette, const char *
     }
 }
 
-vg_command_t *vg_commandpalette_get_command(vg_commandpalette_t *palette, const char *id)
-{
+vg_command_t *vg_commandpalette_get_command(vg_commandpalette_t *palette, const char *id) {
     if (!palette || !id)
         return NULL;
 
-    for (size_t i = 0; i < palette->command_count; i++)
-    {
-        if (palette->commands[i] && strcmp(palette->commands[i]->id, id) == 0)
-        {
+    for (size_t i = 0; i < palette->command_count; i++) {
+        if (palette->commands[i] && strcmp(palette->commands[i]->id, id) == 0) {
             return palette->commands[i];
         }
     }
@@ -424,8 +384,7 @@ vg_command_t *vg_commandpalette_get_command(vg_commandpalette_t *palette, const 
 }
 
 /// @brief Commandpalette show.
-void vg_commandpalette_show(vg_commandpalette_t *palette)
-{
+void vg_commandpalette_show(vg_commandpalette_t *palette) {
     if (!palette)
         return;
 
@@ -442,39 +401,32 @@ void vg_commandpalette_show(vg_commandpalette_t *palette)
 }
 
 /// @brief Commandpalette hide.
-void vg_commandpalette_hide(vg_commandpalette_t *palette)
-{
+void vg_commandpalette_hide(vg_commandpalette_t *palette) {
     if (!palette)
         return;
 
     palette->is_visible = false;
     palette->base.visible = false;
 
-    if (palette->on_dismiss)
-    {
+    if (palette->on_dismiss) {
         palette->on_dismiss(palette, palette->user_data);
     }
 }
 
 /// @brief Commandpalette toggle.
-void vg_commandpalette_toggle(vg_commandpalette_t *palette)
-{
+void vg_commandpalette_toggle(vg_commandpalette_t *palette) {
     if (!palette)
         return;
 
-    if (palette->is_visible)
-    {
+    if (palette->is_visible) {
         vg_commandpalette_hide(palette);
-    }
-    else
-    {
+    } else {
         vg_commandpalette_show(palette);
     }
 }
 
 /// @brief Commandpalette execute selected.
-void vg_commandpalette_execute_selected(vg_commandpalette_t *palette)
-{
+void vg_commandpalette_execute_selected(vg_commandpalette_t *palette) {
     if (!palette)
         return;
     if (palette->selected_index < 0 || palette->selected_index >= (int)palette->filtered_count)
@@ -485,14 +437,12 @@ void vg_commandpalette_execute_selected(vg_commandpalette_t *palette)
         return;
 
     // Execute action
-    if (cmd->action)
-    {
+    if (cmd->action) {
         cmd->action(cmd, cmd->user_data);
     }
 
     // Notify callback
-    if (palette->on_execute)
-    {
+    if (palette->on_execute) {
         palette->on_execute(palette, cmd, palette->user_data);
     }
 
@@ -506,8 +456,7 @@ void vg_commandpalette_set_callbacks(vg_commandpalette_t *palette,
                                                         vg_command_t *,
                                                         void *),
                                      void (*on_dismiss)(vg_commandpalette_t *, void *),
-                                     void *user_data)
-{
+                                     void *user_data) {
     if (!palette)
         return;
 
@@ -517,8 +466,7 @@ void vg_commandpalette_set_callbacks(vg_commandpalette_t *palette,
 }
 
 /// @brief Commandpalette set font.
-void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, float size)
-{
+void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, float size) {
     if (!palette)
         return;
 
@@ -528,8 +476,7 @@ void vg_commandpalette_set_font(vg_commandpalette_t *palette, vg_font_t *font, f
 }
 
 /// @brief Commandpalette clear.
-void vg_commandpalette_clear(vg_commandpalette_t *palette)
-{
+void vg_commandpalette_clear(vg_commandpalette_t *palette) {
     if (!palette)
         return;
 

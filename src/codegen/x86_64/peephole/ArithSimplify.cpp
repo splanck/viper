@@ -23,34 +23,30 @@
 
 #include "ArithSimplify.hpp"
 
-namespace viper::codegen::x64::peephole
-{
+namespace viper::codegen::x64::peephole {
 
-void rewriteToXor(MInstr &instr, Operand regOperand)
-{
+void rewriteToXor(MInstr &instr, Operand regOperand) {
     instr.opcode = MOpcode::XORrr32;
     instr.operands.clear();
     instr.operands.push_back(regOperand);
     instr.operands.push_back(regOperand);
 }
 
-void rewriteToTest(MInstr &instr, Operand regOperand)
-{
+void rewriteToTest(MInstr &instr, Operand regOperand) {
     instr.opcode = MOpcode::TESTrr;
     instr.operands.clear();
     instr.operands.push_back(regOperand);
     instr.operands.push_back(regOperand);
 }
 
-bool tryArithmeticIdentity(const std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
-{
+bool tryArithmeticIdentity(const std::vector<MInstr> &instrs,
+                           std::size_t idx,
+                           PeepholeStats &stats) {
     const auto &instr = instrs[idx];
-    switch (instr.opcode)
-    {
+    switch (instr.opcode) {
         case MOpcode::ADDri:
             // add reg, #0 -> no-op (but sets flags: ZF=1 iff reg==0, CF=0, OF=0)
-            if (instr.operands.size() == 2 && isZeroImm(instr.operands[1]))
-            {
+            if (instr.operands.size() == 2 && isZeroImm(instr.operands[1])) {
                 if (nextInstrReadsFlags(instrs, idx))
                     return false;
                 ++stats.arithmeticIdentities;
@@ -61,8 +57,7 @@ bool tryArithmeticIdentity(const std::vector<MInstr> &instrs, std::size_t idx, P
         case MOpcode::ORri:
         case MOpcode::XORri:
             // or reg, #0 -> no-op | xor reg, #0 -> no-op (but sets flags)
-            if (instr.operands.size() == 2 && isZeroImm(instr.operands[1]))
-            {
+            if (instr.operands.size() == 2 && isZeroImm(instr.operands[1])) {
                 if (nextInstrReadsFlags(instrs, idx))
                     return false;
                 ++stats.arithmeticIdentities;
@@ -72,11 +67,9 @@ bool tryArithmeticIdentity(const std::vector<MInstr> &instrs, std::size_t idx, P
 
         case MOpcode::ANDri:
             // and reg, #-1 -> no-op (AND with all-ones is identity, but sets flags)
-            if (instr.operands.size() == 2)
-            {
+            if (instr.operands.size() == 2) {
                 const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
-                if (imm && imm->val == -1)
-                {
+                if (imm && imm->val == -1) {
                     if (nextInstrReadsFlags(instrs, idx))
                         return false;
                     ++stats.arithmeticIdentities;
@@ -89,8 +82,7 @@ bool tryArithmeticIdentity(const std::vector<MInstr> &instrs, std::size_t idx, P
         case MOpcode::SHRri:
         case MOpcode::SARri:
             // shift by 0 -> no-op (but sets flags)
-            if (instr.operands.size() == 2 && isZeroImm(instr.operands[1]))
-            {
+            if (instr.operands.size() == 2 && isZeroImm(instr.operands[1])) {
                 if (nextInstrReadsFlags(instrs, idx))
                     return false;
                 ++stats.arithmeticIdentities;
@@ -107,8 +99,7 @@ bool tryArithmeticIdentity(const std::vector<MInstr> &instrs, std::size_t idx, P
 bool tryStrengthReduction(std::vector<MInstr> &instrs,
                           std::size_t idx,
                           const RegConstMap &knownConsts,
-                          PeepholeStats &stats)
-{
+                          PeepholeStats &stats) {
     auto &instr = instrs[idx];
     if (instr.opcode != MOpcode::IMULrr)
         return false;

@@ -33,16 +33,14 @@
 #include "tui/render/screen.hpp"
 #include "tui/term/term_io.hpp"
 
-namespace viper::tui::render
-{
+namespace viper::tui::render {
 
 /// @brief Converts ScreenBuffer diffs into ANSI escape sequences for terminal output.
 /// @details The final stage of the TUI rendering pipeline. Computes differential
 ///          updates by processing DiffSpan records from the ScreenBuffer, emitting
 ///          only the escape sequences needed to update changed cells. Tracks cursor
 ///          position and active style to minimize redundant output.
-class Renderer
-{
+class Renderer {
   public:
     /// @brief Construct renderer targeting a TermIO.
     /// @param tio Terminal I/O sink used for writes and flushes.

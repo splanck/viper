@@ -21,13 +21,11 @@
 
 #if SIZE_MAX < INT64_MAX
 
-static void call_alloc_too_large()
-{
+static void call_alloc_too_large() {
     rt_alloc((int64_t)SIZE_MAX + 1);
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
@@ -39,8 +37,7 @@ int main(int argc, char *argv[])
 
 #else
 
-int main()
-{
+int main() {
     return 0;
 }
 

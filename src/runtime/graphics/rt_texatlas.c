@@ -49,14 +49,12 @@ extern int64_t rt_pixels_height(void *pixels);
 #define TEXATLAS_NAME_LEN 32
 #define TEXATLAS_HASH_SIZE 1024
 
-typedef struct
-{
+typedef struct {
     char name[TEXATLAS_NAME_LEN];
     int64_t x, y, w, h;
 } texatlas_region;
 
-typedef struct
-{
+typedef struct {
     void *pixels; // Retained backing Pixels
     texatlas_region regions[TEXATLAS_MAX_REGIONS];
     int32_t region_count;
@@ -67,30 +65,25 @@ typedef struct
 // Helpers
 //=============================================================================
 
-static texatlas_impl *get_impl(void *atlas)
-{
+static texatlas_impl *get_impl(void *atlas) {
     return (texatlas_impl *)atlas;
 }
 
-static uint32_t hash_name(const char *name)
-{
+static uint32_t hash_name(const char *name) {
     uint32_t h = 2166136261u;
-    while (*name)
-    {
+    while (*name) {
         h ^= (uint8_t)*name++;
         h *= 16777619u;
     }
     return h;
 }
 
-static int find_region(texatlas_impl *impl, const char *name)
-{
+static int find_region(texatlas_impl *impl, const char *name) {
     if (!impl || !name || !*name)
         return -1;
 
     uint32_t h = hash_name(name);
-    for (int probe = 0; probe < TEXATLAS_HASH_SIZE; ++probe)
-    {
+    for (int probe = 0; probe < TEXATLAS_HASH_SIZE; ++probe) {
         int32_t entry = impl->region_slots[(h + (uint32_t)probe) & (TEXATLAS_HASH_SIZE - 1)];
         if (entry == 0)
             return -1;
@@ -101,15 +94,12 @@ static int find_region(texatlas_impl *impl, const char *name)
     return -1;
 }
 
-static void bind_region_slot(texatlas_impl *impl, int idx)
-{
+static void bind_region_slot(texatlas_impl *impl, int idx) {
     const char *name = impl->regions[idx].name;
     uint32_t h = hash_name(name);
-    for (int probe = 0; probe < TEXATLAS_HASH_SIZE; ++probe)
-    {
+    for (int probe = 0; probe < TEXATLAS_HASH_SIZE; ++probe) {
         int32_t *slot = &impl->region_slots[(h + (uint32_t)probe) & (TEXATLAS_HASH_SIZE - 1)];
-        if (*slot == 0 || *slot == idx + 1)
-        {
+        if (*slot == 0 || *slot == idx + 1) {
             *slot = idx + 1;
             return;
         }
@@ -122,20 +112,16 @@ static void bind_region_slot(texatlas_impl *impl, int idx)
 // Lifecycle
 //=============================================================================
 
-static void texatlas_finalize(void *obj)
-{
+static void texatlas_finalize(void *obj) {
     texatlas_impl *impl = get_impl(obj);
-    if (impl->pixels)
-    {
+    if (impl->pixels) {
         rt_heap_release(impl->pixels);
         impl->pixels = NULL;
     }
 }
 
-void *rt_texatlas_new(void *pixels)
-{
-    if (!pixels)
-    {
+void *rt_texatlas_new(void *pixels) {
+    if (!pixels) {
         rt_trap("TextureAtlas.New: null pixels");
         return NULL;
     }
@@ -150,10 +136,8 @@ void *rt_texatlas_new(void *pixels)
     return impl;
 }
 
-void *rt_texatlas_load_grid(void *pixels, int64_t frame_w, int64_t frame_h)
-{
-    if (!pixels || frame_w <= 0 || frame_h <= 0)
-    {
+void *rt_texatlas_load_grid(void *pixels, int64_t frame_w, int64_t frame_h) {
+    if (!pixels || frame_w <= 0 || frame_h <= 0) {
         rt_trap("TextureAtlas.LoadGrid: invalid arguments");
         return NULL;
     }
@@ -169,10 +153,8 @@ void *rt_texatlas_load_grid(void *pixels, int64_t frame_w, int64_t frame_h)
     int64_t rows = img_h / frame_h;
 
     int idx = 0;
-    for (int64_t row = 0; row < rows && idx < TEXATLAS_MAX_REGIONS; row++)
-    {
-        for (int64_t col = 0; col < cols && idx < TEXATLAS_MAX_REGIONS; col++)
-        {
+    for (int64_t row = 0; row < rows && idx < TEXATLAS_MAX_REGIONS; row++) {
+        for (int64_t col = 0; col < cols && idx < TEXATLAS_MAX_REGIONS; col++) {
             texatlas_region *r = &impl->regions[idx];
             snprintf(r->name, TEXATLAS_NAME_LEN, "%d", idx);
             r->x = col * frame_w;
@@ -198,8 +180,7 @@ void *rt_texatlas_load_grid(void *pixels, int64_t frame_w, int64_t frame_h)
 /// @param y
 /// @param w
 /// @param h
-void rt_texatlas_add(void *atlas, void *name, int64_t x, int64_t y, int64_t w, int64_t h)
-{
+void rt_texatlas_add(void *atlas, void *name, int64_t x, int64_t y, int64_t w, int64_t h) {
     if (!atlas || !name)
         return;
 
@@ -207,31 +188,25 @@ void rt_texatlas_add(void *atlas, void *name, int64_t x, int64_t y, int64_t w, i
     const char *cname = rt_string_cstr(name);
     if (!cname)
         return;
-    if (strlen(cname) >= TEXATLAS_NAME_LEN)
-    {
+    if (strlen(cname) >= TEXATLAS_NAME_LEN) {
         rt_trap("TextureAtlas.Add: name too long (max 31 bytes)");
         return;
     }
-    if (w <= 0 || h <= 0)
-    {
+    if (w <= 0 || h <= 0) {
         rt_trap("TextureAtlas.Add: width/height must be positive");
         return;
     }
 
     // Overwrite if name already exists
     int existing = find_region(impl, cname);
-    if (existing < 0 && impl->region_count >= TEXATLAS_MAX_REGIONS)
-    {
+    if (existing < 0 && impl->region_count >= TEXATLAS_MAX_REGIONS) {
         rt_trap("TextureAtlas.Add: region limit exceeded (512)");
         return;
     }
     texatlas_region *r;
-    if (existing >= 0)
-    {
+    if (existing >= 0) {
         r = &impl->regions[existing];
-    }
-    else
-    {
+    } else {
         r = &impl->regions[impl->region_count];
         impl->region_count++;
     }
@@ -249,8 +224,7 @@ void rt_texatlas_add(void *atlas, void *name, int64_t x, int64_t y, int64_t w, i
 /// @param atlas
 /// @param name
 /// @return Result value.
-int8_t rt_texatlas_has(void *atlas, void *name)
-{
+int8_t rt_texatlas_has(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
     texatlas_impl *impl = get_impl(atlas);
@@ -264,8 +238,7 @@ int8_t rt_texatlas_has(void *atlas, void *name)
 /// @param atlas
 /// @param name
 /// @return Result value.
-int64_t rt_texatlas_get_x(void *atlas, void *name)
-{
+int64_t rt_texatlas_get_x(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
     texatlas_impl *impl = get_impl(atlas);
@@ -280,8 +253,7 @@ int64_t rt_texatlas_get_x(void *atlas, void *name)
 /// @param atlas
 /// @param name
 /// @return Result value.
-int64_t rt_texatlas_get_y(void *atlas, void *name)
-{
+int64_t rt_texatlas_get_y(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
     texatlas_impl *impl = get_impl(atlas);
@@ -296,8 +268,7 @@ int64_t rt_texatlas_get_y(void *atlas, void *name)
 /// @param atlas
 /// @param name
 /// @return Result value.
-int64_t rt_texatlas_get_w(void *atlas, void *name)
-{
+int64_t rt_texatlas_get_w(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
     texatlas_impl *impl = get_impl(atlas);
@@ -312,8 +283,7 @@ int64_t rt_texatlas_get_w(void *atlas, void *name)
 /// @param atlas
 /// @param name
 /// @return Result value.
-int64_t rt_texatlas_get_h(void *atlas, void *name)
-{
+int64_t rt_texatlas_get_h(void *atlas, void *name) {
     if (!atlas || !name)
         return 0;
     texatlas_impl *impl = get_impl(atlas);
@@ -324,8 +294,7 @@ int64_t rt_texatlas_get_h(void *atlas, void *name)
     return idx >= 0 ? impl->regions[idx].h : 0;
 }
 
-void *rt_texatlas_get_pixels(void *atlas)
-{
+void *rt_texatlas_get_pixels(void *atlas) {
     if (!atlas)
         return NULL;
     return get_impl(atlas)->pixels;
@@ -334,8 +303,7 @@ void *rt_texatlas_get_pixels(void *atlas)
 /// @brief Perform texatlas region count operation.
 /// @param atlas
 /// @return Result value.
-int64_t rt_texatlas_region_count(void *atlas)
-{
+int64_t rt_texatlas_region_count(void *atlas) {
     if (!atlas)
         return 0;
     return get_impl(atlas)->region_count;
@@ -348,8 +316,7 @@ int64_t rt_texatlas_region_count(void *atlas)
 // These are thin wrappers that resolve the named region and delegate to
 // the existing rt_spritebatch_draw_region function.
 
-void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name, int64_t x, int64_t y)
-{
+void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name, int64_t x, int64_t y) {
     if (!batch || !atlas || !name)
         return;
 
@@ -366,8 +333,7 @@ void rt_spritebatch_draw_atlas(void *batch, void *atlas, void *name, int64_t x, 
 }
 
 void rt_spritebatch_draw_atlas_scaled(
-    void *batch, void *atlas, void *name, int64_t x, int64_t y, int64_t scale)
-{
+    void *batch, void *atlas, void *name, int64_t x, int64_t y, int64_t scale) {
     if (!batch || !atlas || !name)
         return;
 
@@ -391,8 +357,7 @@ void rt_spritebatch_draw_atlas_ex(void *batch,
                                   int64_t y,
                                   int64_t scale,
                                   int64_t rotation,
-                                  int64_t depth)
-{
+                                  int64_t depth) {
     if (!batch || !atlas || !name)
         return;
 
@@ -410,14 +375,12 @@ void rt_spritebatch_draw_atlas_ex(void *batch,
 #else /* !VIPER_ENABLE_GRAPHICS */
 
 // Stubs when graphics is disabled
-void *rt_texatlas_new(void *pixels)
-{
+void *rt_texatlas_new(void *pixels) {
     (void)pixels;
     return 0;
 }
 
-void *rt_texatlas_load_grid(void *p, int64_t w, int64_t h)
-{
+void *rt_texatlas_load_grid(void *p, int64_t w, int64_t h) {
     (void)p;
     (void)w;
     (void)h;
@@ -431,8 +394,7 @@ void *rt_texatlas_load_grid(void *p, int64_t w, int64_t h)
 /// @param y
 /// @param w
 /// @param h
-void rt_texatlas_add(void *a, void *n, int64_t x, int64_t y, int64_t w, int64_t h)
-{
+void rt_texatlas_add(void *a, void *n, int64_t x, int64_t y, int64_t w, int64_t h) {
     (void)a;
     (void)n;
     (void)x;
@@ -445,8 +407,7 @@ void rt_texatlas_add(void *a, void *n, int64_t x, int64_t y, int64_t w, int64_t 
 /// @param a
 /// @param n
 /// @return Result value.
-int8_t rt_texatlas_has(void *a, void *n)
-{
+int8_t rt_texatlas_has(void *a, void *n) {
     (void)a;
     (void)n;
     return 0;
@@ -456,8 +417,7 @@ int8_t rt_texatlas_has(void *a, void *n)
 /// @param a
 /// @param n
 /// @return Result value.
-int64_t rt_texatlas_get_x(void *a, void *n)
-{
+int64_t rt_texatlas_get_x(void *a, void *n) {
     (void)a;
     (void)n;
     return 0;
@@ -467,8 +427,7 @@ int64_t rt_texatlas_get_x(void *a, void *n)
 /// @param a
 /// @param n
 /// @return Result value.
-int64_t rt_texatlas_get_y(void *a, void *n)
-{
+int64_t rt_texatlas_get_y(void *a, void *n) {
     (void)a;
     (void)n;
     return 0;
@@ -478,8 +437,7 @@ int64_t rt_texatlas_get_y(void *a, void *n)
 /// @param a
 /// @param n
 /// @return Result value.
-int64_t rt_texatlas_get_w(void *a, void *n)
-{
+int64_t rt_texatlas_get_w(void *a, void *n) {
     (void)a;
     (void)n;
     return 0;
@@ -489,15 +447,13 @@ int64_t rt_texatlas_get_w(void *a, void *n)
 /// @param a
 /// @param n
 /// @return Result value.
-int64_t rt_texatlas_get_h(void *a, void *n)
-{
+int64_t rt_texatlas_get_h(void *a, void *n) {
     (void)a;
     (void)n;
     return 0;
 }
 
-void *rt_texatlas_get_pixels(void *a)
-{
+void *rt_texatlas_get_pixels(void *a) {
     (void)a;
     return 0;
 }
@@ -505,8 +461,7 @@ void *rt_texatlas_get_pixels(void *a)
 /// @brief Perform texatlas region count operation.
 /// @param a
 /// @return Result value.
-int64_t rt_texatlas_region_count(void *a)
-{
+int64_t rt_texatlas_region_count(void *a) {
     (void)a;
     return 0;
 }
@@ -517,8 +472,7 @@ int64_t rt_texatlas_region_count(void *a)
 /// @param n
 /// @param x
 /// @param y
-void rt_spritebatch_draw_atlas(void *b, void *a, void *n, int64_t x, int64_t y)
-{
+void rt_spritebatch_draw_atlas(void *b, void *a, void *n, int64_t x, int64_t y) {
     (void)b;
     (void)a;
     (void)n;
@@ -533,8 +487,7 @@ void rt_spritebatch_draw_atlas(void *b, void *a, void *n, int64_t x, int64_t y)
 /// @param x
 /// @param y
 /// @param s
-void rt_spritebatch_draw_atlas_scaled(void *b, void *a, void *n, int64_t x, int64_t y, int64_t s)
-{
+void rt_spritebatch_draw_atlas_scaled(void *b, void *a, void *n, int64_t x, int64_t y, int64_t s) {
     (void)b;
     (void)a;
     (void)n;
@@ -553,8 +506,7 @@ void rt_spritebatch_draw_atlas_scaled(void *b, void *a, void *n, int64_t x, int6
 /// @param r
 /// @param d
 void rt_spritebatch_draw_atlas_ex(
-    void *b, void *a, void *n, int64_t x, int64_t y, int64_t s, int64_t r, int64_t d)
-{
+    void *b, void *a, void *n, int64_t x, int64_t y, int64_t s, int64_t r, int64_t d) {
     (void)b;
     (void)a;
     (void)n;

@@ -35,22 +35,18 @@
 
 using namespace il::core;
 
-namespace viper::passes
-{
-namespace
-{
+namespace viper::passes {
+namespace {
 constexpr unsigned kMaxSROAFields = 8;
 constexpr unsigned kMaxSROAAllocaSize = 128;
 
-struct SROAField
-{
+struct SROAField {
     Type type{};
     unsigned size = 0;
     unsigned allocaId = 0;
 };
 
-struct SROACandidate
-{
+struct SROACandidate {
     BasicBlock *block = nullptr;
     std::size_t allocaIndex = 0;
     unsigned baseId = 0;
@@ -60,10 +56,8 @@ struct SROACandidate
     std::unordered_map<unsigned, SROAField> fields; // offset -> field info
 };
 
-static bool isPromotableScalarType(const Type &type)
-{
-    switch (type.kind)
-    {
+static bool isPromotableScalarType(const Type &type) {
+    switch (type.kind) {
         case Type::Kind::I1:
         case Type::Kind::I16:
         case Type::Kind::I32:
@@ -75,10 +69,8 @@ static bool isPromotableScalarType(const Type &type)
     }
 }
 
-static std::optional<unsigned> scalarSize(const Type &type)
-{
-    switch (type.kind)
-    {
+static std::optional<unsigned> scalarSize(const Type &type) {
+    switch (type.kind) {
         case Type::Kind::I1:
             return 1;
         case Type::Kind::I16:
@@ -93,8 +85,7 @@ static std::optional<unsigned> scalarSize(const Type &type)
     }
 }
 
-static std::optional<unsigned> constOffset(const Value &v)
-{
+static std::optional<unsigned> constOffset(const Value &v) {
     if (v.kind != Value::Kind::ConstInt || v.i64 < 0)
         return std::nullopt;
     if (v.i64 > static_cast<int64_t>(UINT_MAX))
@@ -102,8 +93,7 @@ static std::optional<unsigned> constOffset(const Value &v)
     return static_cast<unsigned>(v.i64);
 }
 
-static void ensureValueName(Function &F, unsigned id, const std::string &name)
-{
+static void ensureValueName(Function &F, unsigned id, const std::string &name) {
     if (name.empty())
         return;
     if (F.valueNames.size() <= id)
@@ -111,8 +101,7 @@ static void ensureValueName(Function &F, unsigned id, const std::string &name)
     F.valueNames[id] = name;
 }
 
-struct AllocaInfo
-{
+struct AllocaInfo {
     BasicBlock *block{nullptr};
     unsigned id{0};
     Type type{};
@@ -123,14 +112,12 @@ struct AllocaInfo
     std::vector<BasicBlock *> useBlocks; ///< Blocks (other than defining) containing uses.
 };
 
-struct VarState
-{
+struct VarState {
     Type type{};
     std::unordered_map<BasicBlock *, Value> defs;
 };
 
-struct BlockState
-{
+struct BlockState {
     bool sealed = false;
     unsigned totalPreds = 0;
     unsigned seenPreds = 0;
@@ -155,8 +142,7 @@ using LabelIndexCache =
 ///
 /// @param F Function to analyze.
 /// @return Map from temp ids to their @c AllocaInfo metadata.
-static AllocaMap collectAllocas(Function &F)
-{
+static AllocaMap collectAllocas(Function &F) {
     AllocaMap infos;
     infos.reserve(F.valueNames.size());
     // Collect allocas from ALL blocks. The promotion filter in mem2reg() uses
@@ -168,8 +154,7 @@ static AllocaMap collectAllocas(Function &F)
 
     for (auto &B : F.blocks)
         for (auto &I : B.instructions)
-            for (std::size_t oi = 0; oi < I.operands.size(); ++oi)
-            {
+            for (std::size_t oi = 0; oi < I.operands.size(); ++oi) {
                 Value &Op = I.operands[oi];
                 if (Op.kind != Value::Kind::Temp)
                     continue;
@@ -177,30 +162,24 @@ static AllocaMap collectAllocas(Function &F)
                 if (it == infos.end())
                     continue;
                 AllocaInfo &AI = it->second;
-                if (&B != AI.block)
-                {
+                if (&B != AI.block) {
                     AI.singleBlock = false;
                     AI.useBlocks.push_back(&B);
                 }
-                if (I.op == Opcode::Store && oi == 0)
-                {
+                if (I.op == Opcode::Store && oi == 0) {
                     AI.hasStore = true;
                     // Check type consistency: if type was already set and differs, mark
                     // inconsistent
                     if (AI.type.kind != Type::Kind::Void && AI.type.kind != I.type.kind)
                         AI.typeConsistent = false;
                     AI.type = I.type;
-                }
-                else if (I.op == Opcode::Load && oi == 0)
-                {
+                } else if (I.op == Opcode::Load && oi == 0) {
                     // Check type consistency: if type was already set and differs, mark
                     // inconsistent
                     if (AI.type.kind != Type::Kind::Void && AI.type.kind != I.type.kind)
                         AI.typeConsistent = false;
                     AI.type = I.type;
-                }
-                else
-                {
+                } else {
                     AI.addressTaken = true;
                 }
             }
@@ -222,8 +201,7 @@ static AllocaMap collectAllocas(Function &F)
 /// @return Index of the block parameter.
 /// @sideeffect May append to @p B->params and update @p blocks.
 static unsigned ensureParam(
-    BasicBlock *B, unsigned varId, VarMap &vars, BlockMap &blocks, unsigned &nextId)
-{
+    BasicBlock *B, unsigned varId, VarMap &vars, BlockMap &blocks, unsigned &nextId) {
     BlockState &BS = blocks[B];
     auto it = BS.params.find(varId);
     if (it != BS.params.end())
@@ -260,31 +238,25 @@ static void addIncoming(BasicBlock *B,
                         VarMap &vars,
                         BlockMap &blocks,
                         unsigned &nextId,
-                        LabelIndexCache *idxCache)
-{
+                        LabelIndexCache *idxCache) {
     unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
     Instr &term = Pred->instructions.back();
     std::size_t target = 0;
-    if (idxCache && term.labels.size() >= 6)
-    {
+    if (idxCache && term.labels.size() >= 6) {
         auto &map = (*idxCache)[&term];
-        if (map.empty())
-        {
+        if (map.empty()) {
             for (std::size_t i = 0; i < term.labels.size(); ++i)
                 map.emplace(term.labels[i], i);
         }
         auto it = map.find(B->label);
         if (it != map.end())
             target = it->second;
-        else
-        {
+        else {
             for (target = 0; target < term.labels.size(); ++target)
                 if (term.labels[target] == B->label)
                     break;
         }
-    }
-    else
-    {
+    } else {
         for (target = 0; target < term.labels.size(); ++target)
             if (term.labels[target] == B->label)
                 break;
@@ -328,18 +300,15 @@ static Value readFromPreds(Function &F,
                            BlockMap &blocks,
                            unsigned &nextId,
                            const analysis::CFGContext &ctx,
-                           LabelIndexCache *idxCache)
-{
+                           LabelIndexCache *idxCache) {
     auto preds = analysis::predecessors(ctx, *B);
-    if (preds.empty())
-    {
+    if (preds.empty()) {
         const Type &ty = vars[varId].type;
         return ty.kind == Type::Kind::F64 ? Value::constFloat(0.0) : Value::constInt(0);
     }
     unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
     Value paramVal = Value::temp(B->params[pIdx].id);
-    for (auto *P : preds)
-    {
+    for (auto *P : preds) {
         Value arg = renameUses(F, P, varId, vars, blocks, nextId, ctx);
         addIncoming(B, varId, P, arg, vars, blocks, nextId, idxCache);
     }
@@ -367,14 +336,12 @@ static Value renameUses(Function &F,
                         VarMap &vars,
                         BlockMap &blocks,
                         unsigned &nextId,
-                        const analysis::CFGContext &ctx)
-{
+                        const analysis::CFGContext &ctx) {
     VarState &VS = vars[varId];
     if (auto it = VS.defs.find(B); it != VS.defs.end())
         return it->second;
     BlockState &BS = blocks[B];
-    if (!BS.sealed)
-    {
+    if (!BS.sealed) {
         unsigned pIdx = ensureParam(B, varId, vars, blocks, nextId);
         Value v = Value::temp(B->params[pIdx].id);
         VS.defs[B] = v;
@@ -411,13 +378,11 @@ static void sealBlocks(Function &F,
                        BlockMap &blocks,
                        unsigned &nextId,
                        const analysis::CFGContext &ctx,
-                       LabelIndexCache *idxCache)
-{
+                       LabelIndexCache *idxCache) {
     BlockState &BS = blocks[B];
     if (BS.sealed)
         return;
-    for (unsigned varId : BS.incomplete)
-    {
+    for (unsigned varId : BS.incomplete) {
         Value v = readFromPreds(F, B, varId, vars, blocks, nextId, ctx, idxCache);
         if (!vars[varId].defs.contains(B))
             vars[varId].defs[B] = v;
@@ -439,12 +404,10 @@ static void sealBlocks(Function &F,
 static void promoteVariables(Function &F,
                              const AllocaMap &infos,
                              Mem2RegStats *stats,
-                             const analysis::CFGContext &ctx)
-{
+                             const analysis::CFGContext &ctx) {
     VarMap vars;
     vars.reserve(infos.size());
-    for (auto &[id, AI] : infos)
-    {
+    for (auto &[id, AI] : infos) {
         if (AI.addressTaken || !AI.hasStore || !AI.typeConsistent)
             continue;
         if (!isPromotableScalarType(AI.type))
@@ -460,8 +423,7 @@ static void promoteVariables(Function &F,
 
     unsigned nextId = viper::il::nextTempId(F);
 
-    if (std::getenv("VIPER_MEM2REG_TRACE"))
-    {
+    if (std::getenv("VIPER_MEM2REG_TRACE")) {
         std::cerr << "[mem2reg] " << F.name << ": promoting " << vars.size()
                   << " vars, nextId=" << nextId << "\n";
         for (auto &[id, vs] : vars)
@@ -470,8 +432,7 @@ static void promoteVariables(Function &F,
 
     BlockMap blocks;
     blocks.reserve(F.blocks.size());
-    for (auto &B : F.blocks)
-    {
+    for (auto &B : F.blocks) {
         BlockState bs;
         bs.totalPreds = analysis::predecessors(ctx, B).size();
         bs.sealed = bs.totalPreds == 0;
@@ -481,30 +442,25 @@ static void promoteVariables(Function &F,
     std::queue<BasicBlock *> work;
     std::unordered_set<BasicBlock *> queued;
     queued.reserve(F.blocks.size());
-    if (!F.blocks.empty())
-    {
+    if (!F.blocks.empty()) {
         work.push(&F.blocks.front());
         queued.insert(&F.blocks.front());
     }
 
     LabelIndexCache idxCache;
 
-    while (!work.empty())
-    {
+    while (!work.empty()) {
         BasicBlock *B = work.front();
         work.pop();
 
-        for (std::size_t i = 0; i < B->instructions.size();)
-        {
+        for (std::size_t i = 0; i < B->instructions.size();) {
             Instr &I = B->instructions[i];
-            if (I.op == Opcode::Alloca && I.result && vars.contains(*I.result))
-            {
+            if (I.op == Opcode::Alloca && I.result && vars.contains(*I.result)) {
                 B->instructions.erase(B->instructions.begin() + i);
                 continue;
             }
             if (I.op == Opcode::Load && I.operands.size() &&
-                I.operands[0].kind == Value::Kind::Temp && vars.contains(I.operands[0].id))
-            {
+                I.operands[0].kind == Value::Kind::Temp && vars.contains(I.operands[0].id)) {
                 unsigned varId = I.operands[0].id;
                 Value v = renameUses(F, B, varId, vars, blocks, nextId, ctx);
                 if (I.result)
@@ -515,8 +471,7 @@ static void promoteVariables(Function &F,
                 continue;
             }
             if (I.op == Opcode::Store && I.operands.size() > 1 &&
-                I.operands[0].kind == Value::Kind::Temp && vars.contains(I.operands[0].id))
-            {
+                I.operands[0].kind == Value::Kind::Temp && vars.contains(I.operands[0].id)) {
                 unsigned varId = I.operands[0].id;
                 vars[varId].defs[B] = I.operands[1];
                 B->instructions.erase(B->instructions.begin() + i);
@@ -528,12 +483,10 @@ static void promoteVariables(Function &F,
         }
 
         auto succs = analysis::successors(ctx, *B);
-        for (auto *S : succs)
-        {
+        for (auto *S : succs) {
             BlockState &SS = blocks[S];
             SS.seenPreds++;
-            if (!queued.contains(S))
-            {
+            if (!queued.contains(S)) {
                 work.push(S);
                 queued.insert(S);
             }
@@ -545,18 +498,15 @@ static void promoteVariables(Function &F,
 
 } // namespace
 
-static bool runSROA(Function &F)
-{
+static bool runSROA(Function &F) {
     std::unordered_map<unsigned, SROACandidate> candidates;
     // Map temp id directly to candidate pointer to avoid two-step lookup.
     // Previously: owner[temp] -> baseId, then candidates[baseId] -> candidate
     // Now: owner[temp] -> candidate pointer (single lookup)
     std::unordered_map<unsigned, SROACandidate *> owner;
 
-    for (auto &B : F.blocks)
-    {
-        for (std::size_t idx = 0; idx < B.instructions.size(); ++idx)
-        {
+    for (auto &B : F.blocks) {
+        for (std::size_t idx = 0; idx < B.instructions.size(); ++idx) {
             Instr &I = B.instructions[idx];
             if (I.op != Opcode::Alloca || !I.result || I.operands.empty())
                 continue;
@@ -581,38 +531,27 @@ static bool runSROA(Function &F)
     if (candidates.empty())
         return false;
 
-    for (auto &B : F.blocks)
-    {
-        for (auto &I : B.instructions)
-        {
+    for (auto &B : F.blocks) {
+        for (auto &I : B.instructions) {
             if (I.op == Opcode::GEP && I.operands.size() >= 2 &&
-                I.operands[0].kind == Value::Kind::Temp)
-            {
+                I.operands[0].kind == Value::Kind::Temp) {
                 auto ownIt = owner.find(I.operands[0].id);
-                if (ownIt != owner.end())
-                {
+                if (ownIt != owner.end()) {
                     SROACandidate *cand = ownIt->second;
-                    if (cand->ok)
-                    {
+                    if (cand->ok) {
                         auto offOpt = constOffset(I.operands[1]);
-                        if (!offOpt || !I.result)
-                        {
+                        if (!offOpt || !I.result) {
                             cand->ok = false;
-                        }
-                        else
-                        {
+                        } else {
                             // Get the base offset of the source operand to handle chained GEPs
                             // e.g., gep %3, %2, 4 where %2 = gep %1, 8 should have offset 8+4=12
                             auto baseOffIt = cand->offsets.find(I.operands[0].id);
                             unsigned baseOffset =
                                 (baseOffIt != cand->offsets.end()) ? baseOffIt->second : 0;
                             unsigned totalOffset = baseOffset + *offOpt;
-                            if (totalOffset > cand->allocSize)
-                            {
+                            if (totalOffset > cand->allocSize) {
                                 cand->ok = false;
-                            }
-                            else
-                            {
+                            } else {
                                 owner[*I.result] = cand;
                                 cand->offsets[*I.result] = totalOffset;
                             }
@@ -621,8 +560,7 @@ static bool runSROA(Function &F)
                 }
             }
 
-            auto classifyUse = [&](const Value &v, Instr &Inst, std::size_t operandIdx)
-            {
+            auto classifyUse = [&](const Value &v, Instr &Inst, std::size_t operandIdx) {
                 if (v.kind != Value::Kind::Temp)
                     return;
                 auto ownIt = owner.find(v.id);
@@ -632,40 +570,32 @@ static bool runSROA(Function &F)
                 if (!cand.ok)
                     return;
 
-                if (Inst.op == Opcode::Load || Inst.op == Opcode::Store)
-                {
-                    if (Inst.operands.empty() || operandIdx != 0)
-                    {
+                if (Inst.op == Opcode::Load || Inst.op == Opcode::Store) {
+                    if (Inst.operands.empty() || operandIdx != 0) {
                         cand.ok = false;
                         return;
                     }
                     auto offIt = cand.offsets.find(v.id);
-                    if (offIt == cand.offsets.end())
-                    {
+                    if (offIt == cand.offsets.end()) {
                         cand.ok = false;
                         return;
                     }
                     Type accessType = Inst.type;
-                    if (!isPromotableScalarType(accessType))
-                    {
+                    if (!isPromotableScalarType(accessType)) {
                         cand.ok = false;
                         return;
                     }
                     auto szOpt = scalarSize(accessType);
-                    if (!szOpt || offIt->second + *szOpt > cand.allocSize)
-                    {
+                    if (!szOpt || offIt->second + *szOpt > cand.allocSize) {
                         cand.ok = false;
                         return;
                     }
 
                     SROAField &field = cand.fields[offIt->second];
-                    if (field.size == 0)
-                    {
+                    if (field.size == 0) {
                         field.type = accessType;
                         field.size = *szOpt;
-                    }
-                    else if (field.type.kind != accessType.kind)
-                    {
+                    } else if (field.type.kind != accessType.kind) {
                         cand.ok = false;
                     }
                     return;
@@ -686,10 +616,8 @@ static bool runSROA(Function &F)
         }
     }
 
-    for (auto &[id, cand] : candidates)
-    {
-        if (!cand.ok || cand.fields.empty() || cand.fields.size() > kMaxSROAFields)
-        {
+    for (auto &[id, cand] : candidates) {
+        if (!cand.ok || cand.fields.empty() || cand.fields.size() > kMaxSROAFields) {
             cand.ok = false;
             continue;
         }
@@ -698,15 +626,13 @@ static bool runSROA(Function &F)
         ordered.reserve(cand.fields.size());
         for (auto &[off, field] : cand.fields)
             ordered.emplace_back(off, &field);
-        std::sort(ordered.begin(),
-                  ordered.end(),
-                  [](const auto &a, const auto &b) { return a.first < b.first; });
+        std::sort(ordered.begin(), ordered.end(), [](const auto &a, const auto &b) {
+            return a.first < b.first;
+        });
 
         unsigned end = 0;
-        for (const auto &[off, field] : ordered)
-        {
-            if (field->size == 0 || off < end || off + field->size > cand.allocSize)
-            {
+        for (const auto &[off, field] : ordered) {
+            if (field->size == 0 || off < end || off + field->size > cand.allocSize) {
                 cand.ok = false;
                 break;
             }
@@ -717,16 +643,13 @@ static bool runSROA(Function &F)
     bool changed = false;
     unsigned nextId = viper::il::nextTempId(F);
 
-    for (auto &[id, cand] : candidates)
-    {
+    for (auto &[id, cand] : candidates) {
         if (!cand.ok)
             continue;
 
         BasicBlock &B = *cand.block;
-        auto findAllocaIndex = [&]() -> std::size_t
-        {
-            for (std::size_t i = 0; i < B.instructions.size(); ++i)
-            {
+        auto findAllocaIndex = [&]() -> std::size_t {
+            for (std::size_t i = 0; i < B.instructions.size(); ++i) {
                 Instr &I = B.instructions[i];
                 if (I.op == Opcode::Alloca && I.result && *I.result == cand.baseId)
                     return i;
@@ -742,8 +665,7 @@ static bool runSROA(Function &F)
         offsetToAlloca.reserve(cand.fields.size());
 
         std::size_t fieldIdx = 0;
-        for (auto &entry : cand.fields)
-        {
+        for (auto &entry : cand.fields) {
             Instr alloc;
             alloc.op = Opcode::Alloca;
             alloc.type = Type(Type::Kind::Ptr);
@@ -765,10 +687,8 @@ static bool runSROA(Function &F)
             ++nextId;
         }
 
-        for (auto &Blk : F.blocks)
-        {
-            for (auto &I : Blk.instructions)
-            {
+        for (auto &Blk : F.blocks) {
+            for (auto &I : Blk.instructions) {
                 if ((I.op != Opcode::Load && I.op != Opcode::Store) || I.operands.empty())
                     continue;
 
@@ -787,25 +707,19 @@ static bool runSROA(Function &F)
             }
         }
 
-        for (auto &Blk : F.blocks)
-        {
-            for (std::size_t i = 0; i < Blk.instructions.size();)
-            {
+        for (auto &Blk : F.blocks) {
+            for (std::size_t i = 0; i < Blk.instructions.size();) {
                 Instr &I = Blk.instructions[i];
                 bool erase = false;
 
                 if (I.op == Opcode::GEP && I.result && cand.offsets.contains(*I.result) &&
-                    *I.result != cand.baseId)
-                {
+                    *I.result != cand.baseId) {
                     erase = true;
-                }
-                else if (I.op == Opcode::Alloca && I.result && *I.result == cand.baseId)
-                {
+                } else if (I.op == Opcode::Alloca && I.result && *I.result == cand.baseId) {
                     erase = true;
                 }
 
-                if (erase)
-                {
+                if (erase) {
                     Blk.instructions.erase(Blk.instructions.begin() + static_cast<long>(i));
                     changed = true;
                     continue;
@@ -830,11 +744,9 @@ static bool runSROA(Function &F)
 /// @param stats Optional statistics collector receiving totals for promoted
 ///              variables and removed loads/stores.
 /// @sideeffect Mutates functions within the module.
-void mem2reg(Module &M, Mem2RegStats *stats)
-{
+void mem2reg(Module &M, Mem2RegStats *stats) {
     analysis::CFGContext cfg(M);
-    for (auto &F : M.functions)
-    {
+    for (auto &F : M.functions) {
         runSROA(F);
 
         AllocaMap infos = collectAllocas(F);
@@ -843,10 +755,8 @@ void mem2reg(Module &M, Mem2RegStats *stats)
         // allocas with cross-block uses, to avoid the overhead for simple cases.
         BasicBlock *entryBlock = F.blocks.empty() ? nullptr : &F.blocks.front();
         bool needDomTree = false;
-        for (const auto &[id, info] : infos)
-        {
-            if (!info.singleBlock && info.block != entryBlock)
-            {
+        for (const auto &[id, info] : infos) {
+            if (!info.singleBlock && info.block != entryBlock) {
                 needDomTree = true;
                 break;
             }
@@ -856,8 +766,7 @@ void mem2reg(Module &M, Mem2RegStats *stats)
             domTree = viper::analysis::computeDominatorTree(cfg, F);
 
         AllocaMap promotable;
-        for (auto &[id, info] : infos)
-        {
+        for (auto &[id, info] : infos) {
             if (info.addressTaken || !info.hasStore || !info.typeConsistent)
                 continue;
             if (!isPromotableScalarType(info.type))
@@ -865,13 +774,10 @@ void mem2reg(Module &M, Mem2RegStats *stats)
             // For non-entry-block allocas with multi-block uses: only promote if
             // the defining block dominates every block that contains a use.
             // Single-block allocas are always safe (no cross-block SSA needed).
-            if (!info.singleBlock && info.block != entryBlock && domTree)
-            {
+            if (!info.singleBlock && info.block != entryBlock && domTree) {
                 bool dominated = true;
-                for (BasicBlock *useBlk : info.useBlocks)
-                {
-                    if (!domTree->dominates(info.block, useBlk))
-                    {
+                for (BasicBlock *useBlk : info.useBlocks) {
+                    if (!domTree->dominates(info.block, useBlk)) {
                         dominated = false;
                         break;
                     }

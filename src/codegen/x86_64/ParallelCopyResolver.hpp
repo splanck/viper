@@ -21,8 +21,7 @@
 #include "codegen/common/ParallelCopyResolver.hpp"
 #include "codegen/x86_64/TargetX64.hpp"
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 /// @brief x86-64 specialisation of CopyPair (source/destination register pair).
 using CopyPair = viper::codegen::common::CopyPair<RegClass>;
@@ -32,8 +31,7 @@ using CopyEmitter = viper::codegen::common::CopyEmitter<RegClass>;
 /// @brief Resolve a set of parallel register copies into a safe sequential order.
 /// @param pairs The parallel copy pairs to resolve (consumed by move).
 /// @param E The emitter callback used to output each sequential move instruction.
-inline void resolveParallelCopies(std::vector<CopyPair> pairs, CopyEmitter &E)
-{
+inline void resolveParallelCopies(std::vector<CopyPair> pairs, CopyEmitter &E) {
     viper::codegen::common::resolveParallelCopies<RegClass>(std::move(pairs), E);
 }
 

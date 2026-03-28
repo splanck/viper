@@ -64,8 +64,7 @@
 #include "frontends/zia/Sema.hpp"     // Sema (+ Symbol, TypeRef via transitive includes)
 #include <memory>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 // ModuleDecl is defined in AST_Decl.hpp, which Sema.hpp includes transitively
 // via AST.hpp. No extra include needed.
@@ -93,8 +92,7 @@ namespace il::frontends::zia
 /// This ensures:
 /// - `sema` (holds `&diagnostics`) is destroyed before `diagnostics`.
 /// - `ast`  (pointed into by `sema`) is destroyed before `ast` is freed.
-struct AnalysisResult
-{
+struct AnalysisResult {
     /// @brief Diagnostics accumulated during parsing and semantic analysis.
     /// @note Declared first so it is destroyed last (after sema and ast).
     il::support::DiagnosticEngine diagnostics{};
@@ -114,8 +112,7 @@ struct AnalysisResult
     uint32_t fileId{0};
 
     /// @brief True if any errors were reported during parsing or sema.
-    [[nodiscard]] bool hasErrors() const
-    {
+    [[nodiscard]] bool hasErrors() const {
         return diagnostics.errorCount() > 0;
     }
 };

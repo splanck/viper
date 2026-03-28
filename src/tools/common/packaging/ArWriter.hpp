@@ -26,12 +26,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Writes ar archives (used as .deb outer container).
-class ArWriter
-{
+class ArWriter {
   public:
     /// @brief Add a member to the archive.
     /// @param name Member name (max 15 chars, will be "/" terminated).
@@ -64,8 +62,7 @@ class ArWriter
     void finishToFile(const std::string &path) const;
 
   private:
-    struct Member
-    {
+    struct Member {
         std::string name;
         std::vector<uint8_t> data;
         uint32_t mtime;

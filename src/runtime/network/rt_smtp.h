@@ -22,19 +22,17 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    void *rt_smtp_new(rt_string host, int64_t port);
-    void rt_smtp_set_auth(void *client, rt_string username, rt_string password);
-    void rt_smtp_set_tls(void *client, int8_t enable);
-    int8_t rt_smtp_send(
-        void *client, rt_string from, rt_string to, rt_string subject, rt_string body);
-    int8_t rt_smtp_send_html(
-        void *client, rt_string from, rt_string to, rt_string subject, rt_string html_body);
-    rt_string rt_smtp_last_error(void *client);
-    void rt_smtp_close(void *client);
+void *rt_smtp_new(rt_string host, int64_t port);
+void rt_smtp_set_auth(void *client, rt_string username, rt_string password);
+void rt_smtp_set_tls(void *client, int8_t enable);
+int8_t rt_smtp_send(void *client, rt_string from, rt_string to, rt_string subject, rt_string body);
+int8_t rt_smtp_send_html(
+    void *client, rt_string from, rt_string to, rt_string subject, rt_string html_body);
+rt_string rt_smtp_last_error(void *client);
+void rt_smtp_close(void *client);
 
 #ifdef __cplusplus
 }

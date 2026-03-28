@@ -24,16 +24,14 @@
 
 #include "il/transform/PassRegistry.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Perform loop-invariant code motion for trivially safe instructions.
 /// @details Hoists instructions whose operands are loop-invariant, whose opcode
 ///          is side-effect free and non-trapping, and (for loads) only when the
 ///          loop contains no memory writes (based on BasicAA/modref metadata).
 ///          Assumes LoopSimplify has provided a dedicated preheader/latch.
-class LICM : public FunctionPass
-{
+class LICM : public FunctionPass {
   public:
     /// @brief Identifier used when registering the pass.
     std::string_view id() const override;

@@ -33,16 +33,13 @@ extern double rt_vec3_x(void *v);
 extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
-void *rt_light3d_new_directional(void *direction, double r, double g, double b)
-{
-    if (!direction)
-    {
+void *rt_light3d_new_directional(void *direction, double r, double g, double b) {
+    if (!direction) {
         rt_trap("Light3D.NewDirectional: direction must not be null");
         return NULL;
     }
     rt_light3d *light = (rt_light3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_light3d));
-    if (!light)
-    {
+    if (!light) {
         rt_trap("Light3D.NewDirectional: memory allocation failed");
         return NULL;
     }
@@ -60,16 +57,13 @@ void *rt_light3d_new_directional(void *direction, double r, double g, double b)
     return light;
 }
 
-void *rt_light3d_new_point(void *position, double r, double g, double b, double attenuation)
-{
-    if (!position)
-    {
+void *rt_light3d_new_point(void *position, double r, double g, double b, double attenuation) {
+    if (!position) {
         rt_trap("Light3D.NewPoint: position must not be null");
         return NULL;
     }
     rt_light3d *light = (rt_light3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_light3d));
-    if (!light)
-    {
+    if (!light) {
         rt_trap("Light3D.NewPoint: memory allocation failed");
         return NULL;
     }
@@ -87,11 +81,9 @@ void *rt_light3d_new_point(void *position, double r, double g, double b, double 
     return light;
 }
 
-void *rt_light3d_new_ambient(double r, double g, double b)
-{
+void *rt_light3d_new_ambient(double r, double g, double b) {
     rt_light3d *light = (rt_light3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_light3d));
-    if (!light)
-    {
+    if (!light) {
         rt_trap("Light3D.NewAmbient: memory allocation failed");
         return NULL;
     }
@@ -110,8 +102,7 @@ void *rt_light3d_new_ambient(double r, double g, double b)
 /// @brief Perform light3d set intensity operation.
 /// @param obj
 /// @param intensity
-void rt_light3d_set_intensity(void *obj, double intensity)
-{
+void rt_light3d_set_intensity(void *obj, double intensity) {
     if (!obj)
         return;
     ((rt_light3d *)obj)->intensity = intensity;
@@ -122,8 +113,7 @@ void rt_light3d_set_intensity(void *obj, double intensity)
 /// @param r
 /// @param g
 /// @param b
-void rt_light3d_set_color(void *obj, double r, double g, double b)
-{
+void rt_light3d_set_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;
     rt_light3d *l = (rt_light3d *)obj;

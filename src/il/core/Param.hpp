@@ -26,15 +26,13 @@
 #include "il/core/Type.hpp"
 #include <string>
 
-namespace il::core
-{
+namespace il::core {
 
 /// @brief Attribute container associated with a parameter value.
 /// @details Attributes convey aliasing and lifetime guarantees that future
 ///          optimisation passes may exploit when reasoning about calls and
 ///          aggregate construction.
-struct ParamAttrs
-{
+struct ParamAttrs {
     /// @brief Parameter is guaranteed not to alias any other pointer argument.
     bool noalias = false;
 
@@ -47,8 +45,7 @@ struct ParamAttrs
 
 /// @brief Describes a function or basic block parameter.
 /// Holds the metadata required to reference and type-check a parameter.
-struct Param
-{
+struct Param {
     /// @brief Name used for diagnostics and debugging.
     /// Owned by the Param and stored by value; may be empty for unnamed parameters.
     std::string name;
@@ -67,43 +64,37 @@ struct Param
 
     /// @brief Mark whether the parameter is @c noalias.
     /// @param value True if the parameter cannot alias other pointer arguments.
-    void setNoAlias(bool value)
-    {
+    void setNoAlias(bool value) {
         Attrs.noalias = value;
     }
 
     /// @brief Query whether the parameter carries the @c noalias attribute.
     /// @return True when @ref setNoAlias enabled the attribute.
-    [[nodiscard]] bool isNoAlias() const
-    {
+    [[nodiscard]] bool isNoAlias() const {
         return Attrs.noalias;
     }
 
     /// @brief Mark whether the parameter is @c nocapture.
     /// @param value True when the parameter will not be captured beyond the callee.
-    void setNoCapture(bool value)
-    {
+    void setNoCapture(bool value) {
         Attrs.nocapture = value;
     }
 
     /// @brief Query whether the parameter carries the @c nocapture attribute.
     /// @return True when @ref setNoCapture enabled the attribute.
-    [[nodiscard]] bool isNoCapture() const
-    {
+    [[nodiscard]] bool isNoCapture() const {
         return Attrs.nocapture;
     }
 
     /// @brief Mark whether the parameter is @c nonnull.
     /// @param value True if the parameter value is guaranteed non-null.
-    void setNonNull(bool value)
-    {
+    void setNonNull(bool value) {
         Attrs.nonnull = value;
     }
 
     /// @brief Query whether the parameter carries the @c nonnull attribute.
     /// @return True when @ref setNonNull enabled the attribute.
-    [[nodiscard]] bool isNonNull() const
-    {
+    [[nodiscard]] bool isNonNull() const {
         return Attrs.nonnull;
     }
 };

@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,8 +43,7 @@ static std::string readFile(const std::string &path)
 }
 
 /// @brief Returns the expected mangled symbol name for a call target.
-static std::string blSym(const std::string &name)
-{
+static std::string blSym(const std::string &name) {
 #if defined(__APPLE__)
     return "bl _" + name;
 #else
@@ -56,8 +52,7 @@ static std::string blSym(const std::string &name)
 }
 
 // Test 1: eh.push with balanced unwind state
-TEST(Arm64EH, EhPush)
-{
+TEST(Arm64EH, EhPush) {
     const std::string in = outPath("arm64_eh_push.il");
     const std::string out = outPath("arm64_eh_push.s");
     const std::string il = "il 0.1\n"
@@ -82,8 +77,7 @@ TEST(Arm64EH, EhPush)
 }
 
 // Test 2: eh.pop - pop error handler
-TEST(Arm64EH, EhPop)
-{
+TEST(Arm64EH, EhPop) {
     const std::string in = outPath("arm64_eh_pop.il");
     const std::string out = outPath("arm64_eh_pop.s");
     const std::string il = "il 0.1\n"
@@ -104,8 +98,7 @@ TEST(Arm64EH, EhPop)
 }
 
 // Test 3: trap instruction
-TEST(Arm64EH, Trap)
-{
+TEST(Arm64EH, Trap) {
     const std::string in = outPath("arm64_eh_trap.il");
     const std::string out = outPath("arm64_eh_trap.s");
     const std::string il = "il 0.1\n"
@@ -122,8 +115,7 @@ TEST(Arm64EH, Trap)
 }
 
 // Test 4: trap with error code
-TEST(Arm64EH, TrapFromErr)
-{
+TEST(Arm64EH, TrapFromErr) {
     const std::string in = outPath("arm64_eh_trap_err.il");
     const std::string out = outPath("arm64_eh_trap_err.s");
     const std::string il = "il 0.1\n"
@@ -140,8 +132,7 @@ TEST(Arm64EH, TrapFromErr)
 }
 
 // Test 5: resume.same - resume at same point
-TEST(Arm64EH, ResumeSame)
-{
+TEST(Arm64EH, ResumeSame) {
     const std::string in = outPath("arm64_eh_resume_same.il");
     const std::string out = outPath("arm64_eh_resume_same.s");
     const std::string il = "il 0.1\n"
@@ -161,8 +152,7 @@ TEST(Arm64EH, ResumeSame)
 }
 
 // Test 6: resume.next - resume at next point
-TEST(Arm64EH, ResumeNext)
-{
+TEST(Arm64EH, ResumeNext) {
     const std::string in = outPath("arm64_eh_resume_next.il");
     const std::string out = outPath("arm64_eh_resume_next.s");
     const std::string il = "il 0.1\n"
@@ -185,8 +175,7 @@ TEST(Arm64EH, ResumeNext)
 }
 
 // Test 7: Full try-catch pattern
-TEST(Arm64EH, TryCatchPattern)
-{
+TEST(Arm64EH, TryCatchPattern) {
     const std::string in = outPath("arm64_eh_try_catch.il");
     const std::string out = outPath("arm64_eh_try_catch.s");
     const std::string il = "il 0.1\n"
@@ -210,8 +199,7 @@ TEST(Arm64EH, TryCatchPattern)
 }
 
 // Test 8: Nested exception handlers
-TEST(Arm64EH, NestedHandlers)
-{
+TEST(Arm64EH, NestedHandlers) {
     const std::string in = outPath("arm64_eh_nested.il");
     const std::string out = outPath("arm64_eh_nested.s");
     const std::string il = "il 0.1\n"
@@ -237,8 +225,7 @@ TEST(Arm64EH, NestedHandlers)
     EXPECT_FALSE(asmText.empty());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

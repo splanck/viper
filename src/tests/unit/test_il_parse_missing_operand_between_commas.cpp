@@ -19,8 +19,7 @@
 #include <cassert>
 #include <sstream>
 
-int main()
-{
+int main() {
     constexpr const char *kProgram = R"(il 0.2.0
 func @main() -> void {
 entry:

@@ -52,19 +52,16 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
+namespace il::transform {
 
-namespace
-{
+namespace {
 /// @brief Find a basic block by label within a function.
 /// @details Delegates to the shared IL utility and returns nullptr when the
 ///          label is not present.
 /// @param function Function containing the blocks.
 /// @param label Label to search for.
 /// @return Pointer to the matching block, or nullptr if not found.
-BasicBlock *findBlock(Function &function, const std::string &label)
-{
+BasicBlock *findBlock(Function &function, const std::string &label) {
     return viper::il::findBlock(function, label);
 }
 
@@ -76,21 +73,17 @@ BasicBlock *findBlock(Function &function, const std::string &label)
 /// @param loop Loop metadata describing membership.
 /// @param header Loop header block.
 /// @return Pointer to the unique preheader block, or nullptr if ambiguous.
-BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &header)
-{
+BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &header) {
     BasicBlock *preheader = nullptr;
-    for (auto &block : function.blocks)
-    {
+    for (auto &block : function.blocks) {
         if (loop.contains(block.label))
             continue;
         if (!block.terminated || block.instructions.empty())
             continue;
         const Instr &term = block.instructions.back();
         bool targetsHeader = false;
-        for (const auto &label : term.labels)
-        {
-            if (label == header.label)
-            {
+        for (const auto &label : term.labels) {
+            if (label == header.label) {
                 targetsHeader = true;
                 break;
             }
@@ -111,10 +104,8 @@ BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &head
 /// @param B Block to scan.
 /// @param tempId Temporary id to locate.
 /// @return Pointer to the defining instruction, or nullptr if not found.
-Instr *findInstrByResult(BasicBlock &B, unsigned tempId)
-{
-    for (auto &I : B.instructions)
-    {
+Instr *findInstrByResult(BasicBlock &B, unsigned tempId) {
+    for (auto &I : B.instructions) {
         if (I.result && *I.result == tempId)
             return &I;
     }
@@ -128,13 +119,10 @@ Instr *findInstrByResult(BasicBlock &B, unsigned tempId)
 /// @param F Function to scan.
 /// @param tempId Temporary id to count.
 /// @return Number of occurrences of @p tempId.
-size_t countTempUses(Function &F, unsigned tempId)
-{
+size_t countTempUses(Function &F, unsigned tempId) {
     size_t uses = 0;
-    for (auto &B : F.blocks)
-    {
-        for (auto &I : B.instructions)
-        {
+    for (auto &B : F.blocks) {
+        for (auto &I : B.instructions) {
             for (auto &Op : I.operands)
                 if (Op.kind == Value::Kind::Temp && Op.id == tempId)
                     ++uses;
@@ -154,8 +142,7 @@ size_t countTempUses(Function &F, unsigned tempId)
 /// @param term Terminator instruction to inspect.
 /// @param target Label to locate in @p term.labels.
 /// @return Index of the label, or std::nullopt if not found.
-std::optional<size_t> labelIndex(const Instr &term, const std::string &target)
-{
+std::optional<size_t> labelIndex(const Instr &term, const std::string &target) {
     for (size_t i = 0; i < term.labels.size(); ++i)
         if (term.labels[i] == target)
             return i;
@@ -166,8 +153,7 @@ std::optional<size_t> labelIndex(const Instr &term, const std::string &target)
 /// @details Captures which header parameter is the induction variable, the
 ///          constant step per iteration, and the latch parameter id that feeds
 ///          the backedge update.
-struct IndVar
-{
+struct IndVar {
     size_t headerParamIndex{}; ///< Index into header.params for the IV.
     int step{};                ///< Step per iteration (+C or -C).
     unsigned latchParamId{};   ///< Temp id of the corresponding latch param.
@@ -183,8 +169,7 @@ struct IndVar
 /// @param H Loop header block.
 /// @param L Loop latch block.
 /// @return IndVar description on success; std::nullopt if no match.
-std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L)
-{
+std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L) {
     if (!L.terminated || L.instructions.empty())
         return std::nullopt;
     const Instr &LTerm = L.instructions.back();
@@ -198,8 +183,7 @@ std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L)
         return std::nullopt;
 
     // For each header param, see if backedge argument is (add/sub latchParam, const)
-    for (size_t i = 0; i < argsToH.size(); ++i)
-    {
+    for (size_t i = 0; i < argsToH.size(); ++i) {
         const Value &arg = argsToH[i];
         if (arg.kind != Value::Kind::Temp)
             continue;
@@ -213,14 +197,11 @@ std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L)
         const Value &B = upd->operands.size() > 1 ? upd->operands[1] : Value::constInt(0);
         const Value *var = nullptr;
         const Value *cst = nullptr;
-        if (A.kind == Value::Kind::Temp && B.kind == Value::Kind::ConstInt)
-        {
+        if (A.kind == Value::Kind::Temp && B.kind == Value::Kind::ConstInt) {
             var = &A;
             cst = &B;
-        }
-        else if (upd->op == Opcode::Add && B.kind == Value::Kind::Temp &&
-                 A.kind == Value::Kind::ConstInt)
-        {
+        } else if (upd->op == Opcode::Add && B.kind == Value::Kind::Temp &&
+                   A.kind == Value::Kind::ConstInt) {
             var = &B;
             cst = &A;
         }
@@ -229,10 +210,8 @@ std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L)
         // Identify latch param id corresponding to this var temp id
         unsigned latchParamId = 0;
         bool matchedLatchParam = false;
-        for (const auto &p : L.params)
-        {
-            if (p.id == var->id)
-            {
+        for (const auto &p : L.params) {
+            if (p.id == var->id) {
                 latchParamId = p.id;
                 matchedLatchParam = true;
                 break;
@@ -252,18 +231,15 @@ std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L)
             return std::nullopt;
         // Find which latch param corresponds to which header param
         int headerParamIdx = -1;
-        for (size_t k = 0; k < L.params.size(); ++k)
-        {
+        for (size_t k = 0; k < L.params.size(); ++k) {
             if (L.params[k].id != latchParamId)
                 continue;
             const Value &fromH = argsToL[k];
             if (fromH.kind != Value::Kind::Temp)
                 return std::nullopt;
             // That temp id should be one of header params
-            for (size_t hp = 0; hp < H.params.size(); ++hp)
-            {
-                if (H.params[hp].id == fromH.id)
-                {
+            for (size_t hp = 0; hp < H.params.size(); ++hp) {
+                if (H.params[hp].id == fromH.id) {
                     headerParamIdx = static_cast<int>(hp);
                     break;
                 }
@@ -288,8 +264,7 @@ std::optional<IndVar> detectIndVar(Function &F, BasicBlock &H, BasicBlock &L)
 /// @brief Matched address expression in the loop header.
 /// @details Captures the add instruction result, the constant stride, the base
 ///          value, and the multiply result id so it can be validated and removed.
-struct AddrExpr
-{
+struct AddrExpr {
     unsigned addrId{};  ///< Temp id of the `base + i * stride` add result.
     long long stride{}; ///< Constant stride used in the multiply.
     Value base;         ///< Base value added to the scaled induction variable.
@@ -304,10 +279,8 @@ struct AddrExpr
 /// @param H Loop header block to scan.
 /// @param indVarId Temp id of the induction variable header parameter.
 /// @return Address expression match on success; std::nullopt if no match.
-std::optional<AddrExpr> findAddrExpr(Function &F, BasicBlock &H, unsigned indVarId)
-{
-    for (size_t idx = 0; idx < H.instructions.size(); ++idx)
-    {
+std::optional<AddrExpr> findAddrExpr(Function &F, BasicBlock &H, unsigned indVarId) {
+    for (size_t idx = 0; idx < H.instructions.size(); ++idx) {
         Instr &I = H.instructions[idx];
         if (!I.result || I.op != Opcode::Add)
             continue;
@@ -316,30 +289,24 @@ std::optional<AddrExpr> findAddrExpr(Function &F, BasicBlock &H, unsigned indVar
         Value B = I.operands.size() > 1 ? I.operands[1] : Value::constInt(0);
         Value *base = nullptr;
         unsigned mulId = 0;
-        if (A.kind == Value::Kind::Temp)
-        {
+        if (A.kind == Value::Kind::Temp) {
             Instr *mulI = findInstrByResult(H, A.id);
-            if (mulI && mulI->op == Opcode::Mul)
-            {
+            if (mulI && mulI->op == Opcode::Mul) {
                 // Check mul is (indVar * const)
                 const Value &M0 = mulI->operands[0];
                 const Value &M1 = mulI->operands[1];
                 const Value *var = nullptr;
                 const Value *cst = nullptr;
                 if (M0.kind == Value::Kind::Temp && M0.id == indVarId &&
-                    M1.kind == Value::Kind::ConstInt)
-                {
+                    M1.kind == Value::Kind::ConstInt) {
                     var = &M0;
                     cst = &M1;
-                }
-                else if (M1.kind == Value::Kind::Temp && M1.id == indVarId &&
-                         M0.kind == Value::Kind::ConstInt)
-                {
+                } else if (M1.kind == Value::Kind::Temp && M1.id == indVarId &&
+                           M0.kind == Value::Kind::ConstInt) {
                     var = &M1;
                     cst = &M0;
                 }
-                if (var && cst)
-                {
+                if (var && cst) {
                     base = &B;
                     mulId = *mulI->result;
                     // Ensure mul is only used by this add
@@ -349,29 +316,23 @@ std::optional<AddrExpr> findAddrExpr(Function &F, BasicBlock &H, unsigned indVar
                 }
             }
         }
-        if (B.kind == Value::Kind::Temp)
-        {
+        if (B.kind == Value::Kind::Temp) {
             Instr *mulI = findInstrByResult(H, B.id);
-            if (mulI && mulI->op == Opcode::Mul)
-            {
+            if (mulI && mulI->op == Opcode::Mul) {
                 const Value &M0 = mulI->operands[0];
                 const Value &M1 = mulI->operands[1];
                 const Value *var = nullptr;
                 const Value *cst = nullptr;
                 if (M0.kind == Value::Kind::Temp && M0.id == indVarId &&
-                    M1.kind == Value::Kind::ConstInt)
-                {
+                    M1.kind == Value::Kind::ConstInt) {
                     var = &M0;
                     cst = &M1;
-                }
-                else if (M1.kind == Value::Kind::Temp && M1.id == indVarId &&
-                         M0.kind == Value::Kind::ConstInt)
-                {
+                } else if (M1.kind == Value::Kind::Temp && M1.id == indVarId &&
+                           M0.kind == Value::Kind::ConstInt) {
                     var = &M1;
                     cst = &M0;
                 }
-                if (var && cst)
-                {
+                if (var && cst) {
                     base = &A;
                     mulId = *mulI->result;
                     if (countTempUses(F, mulId) != 1)
@@ -389,8 +350,7 @@ std::optional<AddrExpr> findAddrExpr(Function &F, BasicBlock &H, unsigned indVar
 /// @brief Return the unique identifier for the IndVarSimplify pass.
 /// @details Used by the pass registry and pipeline definitions.
 /// @return The canonical pass id string "indvars".
-std::string_view IndVarSimplify::id() const
-{
+std::string_view IndVarSimplify::id() const {
     return "indvars";
 }
 
@@ -409,8 +369,7 @@ std::string_view IndVarSimplify::id() const
 /// @param function Function to optimize in place.
 /// @param analysis Analysis manager supplying loop and dominance info.
 /// @return Preserved analysis set; conservative invalidation on change.
-PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analysis)
-{
+PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analysis) {
     // Analyses
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
     (void)analysis.getFunctionResult<il::transform::CFGInfo>(kAnalysisCFG, function);
@@ -422,8 +381,7 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
 
     bool changed = false;
 
-    for (const Loop &loop : loopInfo.loops())
-    {
+    for (const Loop &loop : loopInfo.loops()) {
         BasicBlock *header = findBlock(function, loop.headerLabel);
         if (!header)
             continue;
@@ -539,23 +497,18 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
         useInfo.replaceAllUses(addrExpr->addrId, Value::temp(addrParamId));
         // Erase the add and its mul if dead (single-use guaranteed earlier)
         // Remove add first
-        for (size_t i = 0; i < header->instructions.size(); ++i)
-        {
+        for (size_t i = 0; i < header->instructions.size(); ++i) {
             Instr &I = header->instructions[i];
-            if (I.result && *I.result == addrExpr->addrId)
-            {
+            if (I.result && *I.result == addrExpr->addrId) {
                 header->instructions.erase(header->instructions.begin() + i);
                 break;
             }
         }
         // Now mul if unused
-        if (countTempUses(function, addrExpr->mulId) == 0)
-        {
-            for (size_t i = 0; i < header->instructions.size(); ++i)
-            {
+        if (countTempUses(function, addrExpr->mulId) == 0) {
+            for (size_t i = 0; i < header->instructions.size(); ++i) {
                 Instr &I = header->instructions[i];
-                if (I.result && *I.result == addrExpr->mulId)
-                {
+                if (I.result && *I.result == addrExpr->mulId) {
                     header->instructions.erase(header->instructions.begin() + i);
                     break;
                 }
@@ -576,8 +529,7 @@ PreservedAnalyses IndVarSimplify::run(Function &function, AnalysisManager &analy
 /// @details Associates the "indvars" identifier with a factory that constructs
 ///          a new @ref IndVarSimplify instance.
 /// @param registry Pass registry to update.
-void registerIndVarSimplifyPass(PassRegistry &registry)
-{
+void registerIndVarSimplifyPass(PassRegistry &registry) {
     registry.registerFunctionPass("indvars", []() { return std::make_unique<IndVarSimplify>(); });
 }
 

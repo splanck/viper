@@ -25,12 +25,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-static void ensure_missing_open_sets_file_not_found(void)
-{
+static void ensure_missing_open_sets_file_not_found(void) {
     char path[] = "/tmp/viper_io_missingXXXXXX";
     int fd = mkstemp(path);
-    if (fd >= 0)
-    {
+    if (fd >= 0) {
         close(fd);
         unlink(path);
     }
@@ -44,8 +42,7 @@ static void ensure_missing_open_sets_file_not_found(void)
     assert(err.code != 0);
 }
 
-static void ensure_read_byte_reports_eof(void)
-{
+static void ensure_read_byte_reports_eof(void) {
     char path[] = "/tmp/viper_io_emptyXXXXXX";
     int fd = mkstemp(path);
     assert(fd >= 0);
@@ -70,8 +67,7 @@ static void ensure_read_byte_reports_eof(void)
     unlink(path);
 }
 
-static void ensure_read_line_reports_eof(void)
-{
+static void ensure_read_line_reports_eof(void) {
     char path[] = "/tmp/viper_io_lineXXXXXX";
     int fd = mkstemp(path);
     assert(fd >= 0);
@@ -97,8 +93,7 @@ static void ensure_read_line_reports_eof(void)
     unlink(path);
 }
 
-static void ensure_read_line_trims_crlf(void)
-{
+static void ensure_read_line_trims_crlf(void) {
     char path[] = "/tmp/viper_io_crlfXXXXXX";
     int fd = mkstemp(path);
     assert(fd >= 0);
@@ -130,8 +125,7 @@ static void ensure_read_line_trims_crlf(void)
     unlink(path);
 }
 
-static void ensure_invalid_handle_surfaces_ioerror(void)
-{
+static void ensure_invalid_handle_surfaces_ioerror(void) {
     RtFile file;
     rt_file_init(&file);
     file.fd = -1;
@@ -143,8 +137,7 @@ static void ensure_invalid_handle_surfaces_ioerror(void)
     assert(err.code != 0);
 }
 
-static void ensure_seek_out_of_range_reports_invalid_operation(void)
-{
+static void ensure_seek_out_of_range_reports_invalid_operation(void) {
 #if (defined(OFF_MAX) && (OFF_MAX < INT64_MAX)) || (defined(OFF_MIN) && (OFF_MIN > INT64_MIN))
     char path[] = "/tmp/viper_io_seek_rangeXXXXXX";
     int fd = mkstemp(path);
@@ -179,8 +172,7 @@ static void ensure_seek_out_of_range_reports_invalid_operation(void)
 }
 
 /// @brief Execute all IO error-path unit checks.
-int main(void)
-{
+int main(void) {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
     printf("Test skipped: POSIX temp paths not available on Windows\n");

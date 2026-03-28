@@ -56,16 +56,14 @@ extern void rt_trap(const char *msg);
 #define POOL_MAX_ENTRIES 128
 #define POOL_IDLE_TIMEOUT_SEC 60
 
-typedef struct
-{
+typedef struct {
     void *tcp;        // TCP connection object
     char *key;        // "host:port" key
     time_t last_used; // When connection was returned to pool
     bool in_use;      // Currently checked out
 } pooled_entry_t;
 
-typedef struct
-{
+typedef struct {
     pooled_entry_t entries[POOL_MAX_ENTRIES];
     int count;
     int max_size;
@@ -77,15 +75,12 @@ typedef struct
 // Helpers
 //=============================================================================
 
-static void make_key(const char *host, int port, char *buf, size_t buf_len)
-{
+static void make_key(const char *host, int port, char *buf, size_t buf_len) {
     snprintf(buf, buf_len, "%s:%d", host, port);
 }
 
-static void close_entry(pooled_entry_t *entry)
-{
-    if (entry->tcp)
-    {
+static void close_entry(pooled_entry_t *entry) {
+    if (entry->tcp) {
         rt_tcp_close(entry->tcp);
         entry->tcp = NULL;
     }
@@ -98,8 +93,7 @@ static void close_entry(pooled_entry_t *entry)
 // Finalizer
 //=============================================================================
 
-static void rt_connpool_finalize(void *obj)
-{
+static void rt_connpool_finalize(void *obj) {
     if (!obj)
         return;
     rt_connpool_impl *pool = (rt_connpool_impl *)obj;
@@ -113,8 +107,7 @@ static void rt_connpool_finalize(void *obj)
 // Public API
 //=============================================================================
 
-void *rt_connpool_new(int64_t max_size)
-{
+void *rt_connpool_new(int64_t max_size) {
     rt_connpool_impl *pool =
         (rt_connpool_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_connpool_impl));
     if (!pool)
@@ -128,8 +121,7 @@ void *rt_connpool_new(int64_t max_size)
     return pool;
 }
 
-void *rt_connpool_acquire(void *obj, rt_string host, int64_t port)
-{
+void *rt_connpool_acquire(void *obj, rt_string host, int64_t port) {
     if (!obj)
         rt_trap("ConnectionPool: NULL pool");
 
@@ -145,11 +137,9 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port)
 
     // Evict expired idle connections
     time_t now = time(NULL);
-    for (int i = 0; i < pool->count; i++)
-    {
+    for (int i = 0; i < pool->count; i++) {
         if (!pool->entries[i].in_use &&
-            difftime(now, pool->entries[i].last_used) > POOL_IDLE_TIMEOUT_SEC)
-        {
+            difftime(now, pool->entries[i].last_used) > POOL_IDLE_TIMEOUT_SEC) {
             close_entry(&pool->entries[i]);
             // Swap with last
             pool->entries[i] = pool->entries[pool->count - 1];
@@ -160,21 +150,16 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port)
     }
 
     // Look for an idle connection with matching key
-    for (int i = 0; i < pool->count; i++)
-    {
+    for (int i = 0; i < pool->count; i++) {
         if (!pool->entries[i].in_use && pool->entries[i].key &&
-            strcmp(pool->entries[i].key, key) == 0)
-        {
+            strcmp(pool->entries[i].key, key) == 0) {
             // Check if still open
-            if (rt_tcp_is_open(pool->entries[i].tcp))
-            {
+            if (rt_tcp_is_open(pool->entries[i].tcp)) {
                 pool->entries[i].in_use = true;
                 void *tcp = pool->entries[i].tcp;
                 POOL_MUTEX_UNLOCK(&pool->lock);
                 return tcp;
-            }
-            else
-            {
+            } else {
                 // Connection died; remove it
                 close_entry(&pool->entries[i]);
                 pool->entries[i] = pool->entries[pool->count - 1];
@@ -195,15 +180,13 @@ void *rt_connpool_acquire(void *obj, rt_string host, int64_t port)
 /// @brief Perform connpool release operation.
 /// @param obj
 /// @param conn
-void rt_connpool_release(void *obj, void *conn)
-{
+void rt_connpool_release(void *obj, void *conn) {
     if (!obj || !conn)
         return;
 
     rt_connpool_impl *pool = (rt_connpool_impl *)obj;
 
-    if (!rt_tcp_is_open(conn))
-    {
+    if (!rt_tcp_is_open(conn)) {
         rt_tcp_close(conn);
         return;
     }
@@ -211,10 +194,8 @@ void rt_connpool_release(void *obj, void *conn)
     POOL_MUTEX_LOCK(&pool->lock);
 
     // Find the entry for this connection (if it was tracked)
-    for (int i = 0; i < pool->count; i++)
-    {
-        if (pool->entries[i].tcp == conn)
-        {
+    for (int i = 0; i < pool->count; i++) {
+        if (pool->entries[i].tcp == conn) {
             pool->entries[i].in_use = false;
             pool->entries[i].last_used = time(NULL);
             POOL_MUTEX_UNLOCK(&pool->lock);
@@ -223,8 +204,7 @@ void rt_connpool_release(void *obj, void *conn)
     }
 
     // Not tracked — add it if there's space
-    if (pool->count < pool->max_size)
-    {
+    if (pool->count < pool->max_size) {
         pooled_entry_t *entry = &pool->entries[pool->count++];
         entry->tcp = conn;
         // Build key from connection properties
@@ -247,8 +227,7 @@ void rt_connpool_release(void *obj, void *conn)
 
 /// @brief Perform connpool clear operation.
 /// @param obj
-void rt_connpool_clear(void *obj)
-{
+void rt_connpool_clear(void *obj) {
     if (!obj)
         return;
     rt_connpool_impl *pool = (rt_connpool_impl *)obj;
@@ -263,8 +242,7 @@ void rt_connpool_clear(void *obj)
 /// @brief Perform connpool size operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_connpool_size(void *obj)
-{
+int64_t rt_connpool_size(void *obj) {
     if (!obj)
         return 0;
     rt_connpool_impl *pool = (rt_connpool_impl *)obj;
@@ -278,16 +256,14 @@ int64_t rt_connpool_size(void *obj)
 /// @brief Perform connpool available operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_connpool_available(void *obj)
-{
+int64_t rt_connpool_available(void *obj) {
     if (!obj)
         return 0;
     rt_connpool_impl *pool = (rt_connpool_impl *)obj;
 
     POOL_MUTEX_LOCK(&pool->lock);
     int64_t n = 0;
-    for (int i = 0; i < pool->count; i++)
-    {
+    for (int i = 0; i < pool->count; i++) {
         if (!pool->entries[i].in_use)
             n++;
     }

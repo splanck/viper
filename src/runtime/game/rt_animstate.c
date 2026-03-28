@@ -39,8 +39,7 @@ extern void rt_trap(const char *msg);
 
 #define ANIMSTATE_MAX_CLIPS 32
 
-typedef struct
-{
+typedef struct {
     int64_t state_id;
     int64_t start_frame;
     int64_t end_frame;
@@ -49,8 +48,7 @@ typedef struct
     int8_t valid;
 } anim_clip_t;
 
-typedef struct
-{
+typedef struct {
     anim_clip_t clips[ANIMSTATE_MAX_CLIPS];
     int32_t clip_count;
 
@@ -75,26 +73,21 @@ typedef struct
 // Helpers
 //=============================================================================
 
-static animstate_impl *get(void *asm_)
-{
+static animstate_impl *get(void *asm_) {
     return (animstate_impl *)asm_;
 }
 
-static int find_clip(animstate_impl *a, int64_t state_id)
-{
-    for (int i = 0; i < a->clip_count; i++)
-    {
+static int find_clip(animstate_impl *a, int64_t state_id) {
+    for (int i = 0; i < a->clip_count; i++) {
         if (a->clips[i].valid && a->clips[i].state_id == state_id)
             return i;
     }
     return -1;
 }
 
-static void apply_clip(animstate_impl *a, int clip_idx)
-{
+static void apply_clip(animstate_impl *a, int clip_idx) {
     a->active_clip_idx = clip_idx;
-    if (clip_idx < 0)
-    {
+    if (clip_idx < 0) {
         a->playing = 0;
         return;
     }
@@ -109,8 +102,7 @@ static void apply_clip(animstate_impl *a, int clip_idx)
 // Creation
 //=============================================================================
 
-void *rt_animstate_new(void)
-{
+void *rt_animstate_new(void) {
     animstate_impl *a = (animstate_impl *)rt_obj_new_i64(0, (int64_t)sizeof(animstate_impl));
     if (!a)
         return NULL;
@@ -130,18 +122,15 @@ void rt_animstate_add_state(void *asm_,
                             int64_t start_frame,
                             int64_t end_frame,
                             int64_t frame_duration,
-                            int8_t loop)
-{
+                            int8_t loop) {
     if (!asm_)
         return;
     animstate_impl *a = get(asm_);
 
     // Overwrite existing
     int idx = find_clip(a, state_id);
-    if (idx < 0)
-    {
-        if (a->clip_count >= ANIMSTATE_MAX_CLIPS)
-        {
+    if (idx < 0) {
+        if (a->clip_count >= ANIMSTATE_MAX_CLIPS) {
             rt_trap("AnimStateMachine.AddState: limit exceeded (32)");
             return;
         }
@@ -161,8 +150,7 @@ void rt_animstate_add_state(void *asm_,
 /// @param asm_
 /// @param state_id
 /// @return Result value.
-int8_t rt_animstate_set_initial(void *asm_, int64_t state_id)
-{
+int8_t rt_animstate_set_initial(void *asm_, int64_t state_id) {
     if (!asm_)
         return 0;
     animstate_impl *a = get(asm_);
@@ -187,8 +175,7 @@ int8_t rt_animstate_set_initial(void *asm_, int64_t state_id)
 /// @param asm_
 /// @param state_id
 /// @return Result value.
-int8_t rt_animstate_transition(void *asm_, int64_t state_id)
-{
+int8_t rt_animstate_transition(void *asm_, int64_t state_id) {
     if (!asm_)
         return 0;
     animstate_impl *a = get(asm_);
@@ -212,8 +199,7 @@ int8_t rt_animstate_transition(void *asm_, int64_t state_id)
 
 /// @brief Perform animstate update operation.
 /// @param asm_
-void rt_animstate_update(void *asm_)
-{
+void rt_animstate_update(void *asm_) {
     if (!asm_)
         return;
     animstate_impl *a = get(asm_);
@@ -227,39 +213,25 @@ void rt_animstate_update(void *asm_)
 
     anim_clip_t *c = &a->clips[a->active_clip_idx];
     a->frame_counter++;
-    if (a->frame_counter >= c->frame_duration)
-    {
+    if (a->frame_counter >= c->frame_duration) {
         a->frame_counter = 0;
 
-        if (c->start_frame <= c->end_frame)
-        {
+        if (c->start_frame <= c->end_frame) {
             // Forward clip
-            if (a->current_frame < c->end_frame)
-            {
+            if (a->current_frame < c->end_frame) {
                 a->current_frame++;
-            }
-            else if (c->loop)
-            {
+            } else if (c->loop) {
                 a->current_frame = c->start_frame;
-            }
-            else
-            {
+            } else {
                 a->anim_finished = 1;
             }
-        }
-        else
-        {
+        } else {
             // Reverse clip (start > end)
-            if (a->current_frame > c->end_frame)
-            {
+            if (a->current_frame > c->end_frame) {
                 a->current_frame--;
-            }
-            else if (c->loop)
-            {
+            } else if (c->loop) {
                 a->current_frame = c->start_frame;
-            }
-            else
-            {
+            } else {
                 a->anim_finished = 1;
             }
         }
@@ -268,8 +240,7 @@ void rt_animstate_update(void *asm_)
 
 /// @brief Perform animstate clear flags operation.
 /// @param asm_
-void rt_animstate_clear_flags(void *asm_)
-{
+void rt_animstate_clear_flags(void *asm_) {
     if (!asm_)
         return;
     animstate_impl *a = get(asm_);
@@ -284,64 +255,56 @@ void rt_animstate_clear_flags(void *asm_)
 /// @brief Perform animstate current state operation.
 /// @param asm_
 /// @return Result value.
-int64_t rt_animstate_current_state(void *asm_)
-{
+int64_t rt_animstate_current_state(void *asm_) {
     return asm_ ? get(asm_)->current_state : -1;
 }
 
 /// @brief Perform animstate previous state operation.
 /// @param asm_
 /// @return Result value.
-int64_t rt_animstate_previous_state(void *asm_)
-{
+int64_t rt_animstate_previous_state(void *asm_) {
     return asm_ ? get(asm_)->previous_state : -1;
 }
 
 /// @brief Perform animstate just entered operation.
 /// @param asm_
 /// @return Result value.
-int8_t rt_animstate_just_entered(void *asm_)
-{
+int8_t rt_animstate_just_entered(void *asm_) {
     return asm_ ? get(asm_)->just_entered : 0;
 }
 
 /// @brief Perform animstate just exited operation.
 /// @param asm_
 /// @return Result value.
-int8_t rt_animstate_just_exited(void *asm_)
-{
+int8_t rt_animstate_just_exited(void *asm_) {
     return asm_ ? get(asm_)->just_exited : 0;
 }
 
 /// @brief Perform animstate frames in state operation.
 /// @param asm_
 /// @return Result value.
-int64_t rt_animstate_frames_in_state(void *asm_)
-{
+int64_t rt_animstate_frames_in_state(void *asm_) {
     return asm_ ? get(asm_)->frames_in_state : 0;
 }
 
 /// @brief Perform animstate current frame operation.
 /// @param asm_
 /// @return Result value.
-int64_t rt_animstate_current_frame(void *asm_)
-{
+int64_t rt_animstate_current_frame(void *asm_) {
     return asm_ ? get(asm_)->current_frame : 0;
 }
 
 /// @brief Perform animstate is anim finished operation.
 /// @param asm_
 /// @return Result value.
-int8_t rt_animstate_is_anim_finished(void *asm_)
-{
+int8_t rt_animstate_is_anim_finished(void *asm_) {
     return asm_ ? get(asm_)->anim_finished : 0;
 }
 
 /// @brief Perform animstate progress operation.
 /// @param asm_
 /// @return Result value.
-int64_t rt_animstate_progress(void *asm_)
-{
+int64_t rt_animstate_progress(void *asm_) {
     if (!asm_)
         return 0;
     animstate_impl *a = get(asm_);
@@ -353,8 +316,7 @@ int64_t rt_animstate_progress(void *asm_)
     if (total == 0)
         return 100;
     int64_t elapsed = a->current_frame - c->start_frame;
-    if (total < 0)
-    {
+    if (total < 0) {
         total = -total;
         elapsed = -elapsed;
     }

@@ -28,8 +28,7 @@
 #include <ostream>
 #include <string>
 
-namespace il::tools::verify
-{
+namespace il::tools::verify {
 /// @brief Execute the il-verify CLI workflow with injectable streams and source manager.
 /// @param argc Argument count supplied by the caller.
 /// @param argv Argument vector containing the program name and input path.
@@ -38,28 +37,23 @@ namespace il::tools::verify
 /// @param sm Source manager used to resolve diagnostics during verification.
 /// @return Zero on success; non-zero on argument, overflow, parse, or verification failure.
 int runCLI(
-    int argc, char **argv, std::ostream &out, std::ostream &err, il::support::SourceManager &sm)
-{
-    if (argc == 2 && std::string(argv[1]) == "--version")
-    {
+    int argc, char **argv, std::ostream &out, std::ostream &err, il::support::SourceManager &sm) {
+    if (argc == 2 && std::string(argv[1]) == "--version") {
         out << "IL v" << VIPER_IL_VERSION_STR << "\n";
         return 0;
     }
-    if (argc != 2)
-    {
+    if (argc != 2) {
         err << "Usage: il-verify <file.il>\n";
         return 1;
     }
 
     il::core::Module m;
-    if (sm.addFile(argv[1]) == 0)
-    {
+    if (sm.addFile(argv[1]) == 0) {
         return 1;
     }
 
     auto result = il::tools::common::loadAndVerifyModule(argv[1], m, &sm, err, "cannot open ");
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         return 1;
     }
     out << "OK\n";
@@ -85,8 +79,7 @@ int runCLI(
 /// @return Zero on success or when printing the version banner; otherwise one
 ///         to signal argument, I/O, parse, or verification failures.
 #ifndef VIPER_IL_VERIFY_SKIP_MAIN
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     il::support::SourceManager sm;
     return il::tools::verify::runCLI(argc, argv, std::cout, std::cerr, sm);
 }

@@ -26,12 +26,10 @@
 #include <string>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 
 /// @brief External function declaration.
-struct Extern
-{
+struct Extern {
     /// @brief Identifier of the external function.
     /// @invariant Unique among externs in a module and non-empty.
     /// @ownership String data is owned by this struct and lives for the

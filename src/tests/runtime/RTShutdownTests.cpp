@@ -33,8 +33,7 @@
 // Prevent process exit on trap during tests.
 static int g_trap_count = 0;
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     (void)msg;
     g_trap_count++;
 }
@@ -45,27 +44,23 @@ static int g_fin_a_count = 0;
 static int g_fin_b_count = 0;
 static int g_fin_c_count = 0;
 
-static void finalizer_a(void *obj)
-{
+static void finalizer_a(void *obj) {
     (void)obj;
     g_fin_a_count++;
 }
 
-static void finalizer_b(void *obj)
-{
+static void finalizer_b(void *obj) {
     (void)obj;
     g_fin_b_count++;
 }
 
-static void finalizer_c(void *obj)
-{
+static void finalizer_c(void *obj) {
     (void)obj;
     g_fin_c_count++;
 }
 
 // No-op GC traverse (objects have no child references)
-static void noop_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx)
-{
+static void noop_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx) {
     (void)obj;
     (void)visitor;
     (void)ctx;
@@ -73,8 +68,7 @@ static void noop_traverse(void *obj, rt_gc_visitor_t visitor, void *ctx)
 
 // ── Test: rt_gc_run_all_finalizers invokes all finalizers ────────────────────
 
-static void test_gc_finalizer_sweep()
-{
+static void test_gc_finalizer_sweep() {
     printf("  test_gc_finalizer_sweep ... ");
 
     g_fin_a_count = 0;
@@ -123,8 +117,7 @@ static void test_gc_finalizer_sweep()
 
 // ── Test: double-finalization prevention ────────────────────────────────────
 
-static void test_gc_no_double_finalize()
-{
+static void test_gc_no_double_finalize() {
     printf("  test_gc_no_double_finalize ... ");
 
     g_fin_a_count = 0;
@@ -149,8 +142,7 @@ static void test_gc_no_double_finalize()
 
 // ── Test: sweep on empty GC table ───────────────────────────────────────────
 
-static void test_gc_sweep_empty()
-{
+static void test_gc_sweep_empty() {
     printf("  test_gc_sweep_empty ... ");
 
     // Should be a safe no-op
@@ -164,8 +156,7 @@ static void test_gc_sweep_empty()
 
 // ── Test: objects without finalizers are skipped ─────────────────────────────
 
-static void test_gc_sweep_no_finalizer()
-{
+static void test_gc_sweep_no_finalizer() {
     printf("  test_gc_sweep_no_finalizer ... ");
 
     g_fin_a_count = 0;
@@ -194,8 +185,7 @@ static void test_gc_sweep_no_finalizer()
 
 // ── Test: legacy context shutdown ───────────────────────────────────────────
 
-static void test_legacy_context_shutdown()
-{
+static void test_legacy_context_shutdown() {
     printf("  test_legacy_context_shutdown ... ");
 
     // Force legacy context initialization
@@ -210,8 +200,7 @@ static void test_legacy_context_shutdown()
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
-int main()
-{
+int main() {
     printf("RTShutdownTests:\n");
 
     test_gc_finalizer_sweep();

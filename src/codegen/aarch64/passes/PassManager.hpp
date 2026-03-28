@@ -29,8 +29,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
 /// @brief Mutable state threaded through the AArch64 code-generation passes.
 ///
@@ -39,8 +38,7 @@ namespace viper::codegen::aarch64::passes
 ///   - RegAllocPass  : assigns physical registers in mir
 ///   - PeepholePass  : applies peephole optimisations to mir
 ///   - EmitPass      : produces assembly text in assembly
-struct AArch64Module
-{
+struct AArch64Module {
     const il::core::Module *ilMod = nullptr; ///< Non-owning pointer to the IL module.
     const TargetInfo *ti = nullptr;          ///< Non-owning pointer to the target info.
     std::vector<MFunction> mir;              ///< MIR functions, populated by LoweringPass.

@@ -59,8 +59,7 @@
 #include <cstdint>
 #include <string>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //=============================================================================
 /// @brief Enumeration of all token kinds recognized by the Zia lexer.
@@ -76,8 +75,7 @@ namespace il::frontends::zia
 /// @note The order of enumerators is significant for documentation but not
 ///       for functionality. Token comparison uses the enum values directly.
 //=============================================================================
-enum class TokenKind
-{
+enum class TokenKind {
     //=========================================================================
     /// @name Special Tokens
     /// @brief Tokens that indicate lexer state rather than source content.
@@ -693,8 +691,7 @@ const char *tokenKindToString(TokenKind kind);
 /// }
 /// @endcode
 //=============================================================================
-struct Token
-{
+struct Token {
     /// @brief The kind of token this represents.
     /// @details Defaults to Eof, indicating no token has been read.
     TokenKind kind = TokenKind::Eof;
@@ -743,8 +740,7 @@ struct Token
     /// }
     /// @endcode
     //=========================================================================
-    bool is(TokenKind k) const
-    {
+    bool is(TokenKind k) const {
         return kind == k;
     }
 
@@ -765,8 +761,7 @@ struct Token
     /// }
     /// @endcode
     //=========================================================================
-    template <typename... Kinds> bool isOneOf(Kinds... kinds) const
-    {
+    template <typename... Kinds> bool isOneOf(Kinds... kinds) const {
         return (is(kinds) || ...);
     }
 

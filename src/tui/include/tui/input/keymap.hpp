@@ -39,8 +39,7 @@
 #include "tui/term/input.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::input
-{
+namespace viper::tui::input {
 
 using CommandId = std::string;
 
@@ -49,8 +48,7 @@ using CommandId = std::string;
 /// @details Used as the key in binding maps. Two KeyChords are equal if all three
 ///          fields match. The codepoint field is used for character-based shortcuts
 ///          (e.g., Ctrl+S where codepoint = 's').
-struct KeyChord
-{
+struct KeyChord {
     term::KeyEvent::Code code{term::KeyEvent::Code::Unknown};
     unsigned mods{0};
     uint32_t codepoint{0};
@@ -58,8 +56,7 @@ struct KeyChord
     bool operator==(const KeyChord &other) const;
 };
 
-struct KeyChordHash
-{
+struct KeyChordHash {
     std::size_t operator()(const KeyChord &kc) const;
 };
 
@@ -67,8 +64,7 @@ struct KeyChordHash
 /// @details Commands are the targets of key bindings. The id is used for programmatic
 ///          lookup, the name is displayed in the command palette, and the action
 ///          callback is invoked when the command is triggered.
-struct Command
-{
+struct Command {
     CommandId id{};
     std::string name{};
     std::function<void()> action{};
@@ -79,8 +75,7 @@ struct Command
 ///          identifiers. Supports both global bindings (active regardless of focus)
 ///          and widget-specific bindings (active only when a particular widget has focus).
 ///          Widget bindings take priority over global bindings when both match.
-class Keymap
-{
+class Keymap {
   public:
     /// @brief Register a new command with the keymap.
     /// @details Adds a command entry with a unique identifier, display name, and

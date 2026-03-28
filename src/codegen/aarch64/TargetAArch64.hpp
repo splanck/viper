@@ -38,8 +38,7 @@
 ///
 /// The definitions follow the AAPCS64 (ARM 64-bit Procedure Call Standard)
 /// and target macOS/Darwin, though most definitions are platform-independent.
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Physical register identifiers for AArch64.
 ///
@@ -74,8 +73,7 @@ namespace viper::codegen::aarch64
 ///
 /// @see RegClass for distinguishing GPR vs FPR
 /// @see isGPR(), isFPR() for register class queries
-enum class PhysReg
-{
+enum class PhysReg {
     X0,
     X1,
     X2,
@@ -151,8 +149,7 @@ enum class PhysReg
 ///
 /// @note AArch64 has a clean separation between GPR and FPR - there are no
 ///       instructions that use both classes in a single operand position.
-enum class RegClass
-{
+enum class RegClass {
     GPR, ///< General-purpose registers (X0-X30, SP)
     FPR  ///< Floating-point/SIMD registers (V0-V31 / D0-D31)
 };
@@ -207,26 +204,22 @@ inline constexpr PhysReg kScratchFPR = PhysReg::V16;
 ///  - Linux:   No prefix; ELF format; .type/.size directives required.
 ///  - Windows: No prefix; PE/COFF format; no ELF .type/.size directives.
 ///             Register conventions are identical to Linux AAPCS64.
-enum class ABIFormat
-{
+enum class ABIFormat {
     Darwin,  ///< macOS/iOS; symbols prefixed with '_', Mach-O format.
     Linux,   ///< Linux ELF; no symbol prefix, .type/.size required.
     Windows, ///< Windows ARM64; no symbol prefix, PE/COFF format (no .type/.size).
 };
 
-struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs, kMaxFPRArgs>
-{
+struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs, kMaxFPRArgs> {
     ABIFormat abiFormat = ABIFormat::Darwin;
 
     /// @brief Returns true when emitting Linux ELF assembly.
-    [[nodiscard]] bool isLinux() const noexcept
-    {
+    [[nodiscard]] bool isLinux() const noexcept {
         return abiFormat == ABIFormat::Linux;
     }
 
     /// @brief Returns true when emitting Windows ARM64 PE/COFF assembly.
-    [[nodiscard]] bool isWindows() const noexcept
-    {
+    [[nodiscard]] bool isWindows() const noexcept {
         return abiFormat == ABIFormat::Windows;
     }
 };
@@ -241,8 +234,7 @@ struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, kMaxGPRArgs,
 /// according to the ARM Architecture Procedure Call Standard for 64-bit (AAPCS64).
 ///
 /// @invariant The TargetInfo reference must remain valid for the lifetime of this object.
-class CallingConvention
-{
+class CallingConvention {
   public:
     explicit CallingConvention(const TargetInfo &ti) noexcept : ti_(ti) {}
 
@@ -253,8 +245,7 @@ class CallingConvention
     /// @brief Get the register for an integer argument at the given index.
     /// @param index Zero-based argument index.
     /// @return The physical register, or std::nullopt if passed on stack.
-    [[nodiscard]] std::optional<PhysReg> getIntArgReg(std::size_t index) const noexcept
-    {
+    [[nodiscard]] std::optional<PhysReg> getIntArgReg(std::size_t index) const noexcept {
         if (index < ti_.intArgOrder.size())
             return ti_.intArgOrder[index];
         return std::nullopt;
@@ -263,34 +254,29 @@ class CallingConvention
     /// @brief Get the register for a floating-point argument at the given index.
     /// @param index Zero-based argument index.
     /// @return The physical register, or std::nullopt if passed on stack.
-    [[nodiscard]] std::optional<PhysReg> getFPArgReg(std::size_t index) const noexcept
-    {
+    [[nodiscard]] std::optional<PhysReg> getFPArgReg(std::size_t index) const noexcept {
         if (index < ti_.f64ArgOrder.size())
             return ti_.f64ArgOrder[index];
         return std::nullopt;
     }
 
     /// @brief Check if an integer argument at the given index is passed in a register.
-    [[nodiscard]] bool isIntArgInReg(std::size_t index) const noexcept
-    {
+    [[nodiscard]] bool isIntArgInReg(std::size_t index) const noexcept {
         return index < ti_.intArgOrder.size();
     }
 
     /// @brief Check if a floating-point argument at the given index is passed in a register.
-    [[nodiscard]] bool isFPArgInReg(std::size_t index) const noexcept
-    {
+    [[nodiscard]] bool isFPArgInReg(std::size_t index) const noexcept {
         return index < ti_.f64ArgOrder.size();
     }
 
     /// @brief Get the maximum number of integer arguments passed in registers.
-    [[nodiscard]] std::size_t maxIntArgsInRegs() const noexcept
-    {
+    [[nodiscard]] std::size_t maxIntArgsInRegs() const noexcept {
         return ti_.intArgOrder.size();
     }
 
     /// @brief Get the maximum number of FP arguments passed in registers.
-    [[nodiscard]] std::size_t maxFPArgsInRegs() const noexcept
-    {
+    [[nodiscard]] std::size_t maxFPArgsInRegs() const noexcept {
         return ti_.f64ArgOrder.size();
     }
 
@@ -299,14 +285,12 @@ class CallingConvention
     // =========================================================================
 
     /// @brief Get the register used for returning integer values.
-    [[nodiscard]] PhysReg getIntReturnReg() const noexcept
-    {
+    [[nodiscard]] PhysReg getIntReturnReg() const noexcept {
         return ti_.intReturnReg;
     }
 
     /// @brief Get the register used for returning floating-point values.
-    [[nodiscard]] PhysReg getFPReturnReg() const noexcept
-    {
+    [[nodiscard]] PhysReg getFPReturnReg() const noexcept {
         return ti_.f64ReturnReg;
     }
 
@@ -315,14 +299,12 @@ class CallingConvention
     // =========================================================================
 
     /// @brief Get the required stack alignment in bytes.
-    [[nodiscard]] unsigned getStackAlignment() const noexcept
-    {
+    [[nodiscard]] unsigned getStackAlignment() const noexcept {
         return ti_.stackAlignment;
     }
 
     /// @brief Get the size of a stack slot in bytes.
-    [[nodiscard]] static constexpr int getSlotSize() noexcept
-    {
+    [[nodiscard]] static constexpr int getSlotSize() noexcept {
         return kSlotSizeBytes;
     }
 
@@ -376,16 +358,14 @@ class CallingConvention
 /// @brief Check if an immediate fits in an unsigned 12-bit field (0-4095).
 ///
 /// Used for add/sub immediate instructions without shift.
-[[nodiscard]] constexpr bool isUImm12(long long imm) noexcept
-{
+[[nodiscard]] constexpr bool isUImm12(long long imm) noexcept {
     return imm >= 0 && imm <= 4095;
 }
 
 /// @brief Check if an immediate fits in a signed 9-bit field (-256 to 255).
 ///
 /// Used for unscaled load/store addressing modes.
-[[nodiscard]] constexpr bool isSImm9(long long imm) noexcept
-{
+[[nodiscard]] constexpr bool isSImm9(long long imm) noexcept {
     return imm >= -256 && imm <= 255;
 }
 
@@ -394,16 +374,14 @@ class CallingConvention
 /// For 64-bit loads/stores, immediate must be a multiple of 8 in range [0, 32760].
 /// @param imm The immediate offset.
 /// @param scale Scale factor (8 for 64-bit, 4 for 32-bit, etc.).
-[[nodiscard]] constexpr bool isScaledUImm12(long long imm, int scale) noexcept
-{
+[[nodiscard]] constexpr bool isScaledUImm12(long long imm, int scale) noexcept {
     if (imm < 0 || imm % scale != 0)
         return false;
     return (imm / scale) <= 4095;
 }
 
 /// @brief Check if an immediate is valid for shift instructions (0-63 for 64-bit).
-[[nodiscard]] constexpr bool isValidShiftAmount(long long imm) noexcept
-{
+[[nodiscard]] constexpr bool isValidShiftAmount(long long imm) noexcept {
     return imm >= 0 && imm <= 63;
 }
 
@@ -412,8 +390,7 @@ class CallingConvention
 /// AArch64 mov immediate can encode values where at most one 16-bit chunk
 /// is non-zero, or the value can be represented as an inverted bitmask.
 /// For simplicity, this checks if the value fits in 16 bits or can use movz/movn.
-[[nodiscard]] constexpr bool isSimpleMovImm(long long imm) noexcept
-{
+[[nodiscard]] constexpr bool isSimpleMovImm(long long imm) noexcept {
     // Positive values that fit in an unsigned 16-bit immediate (MOVZ Xd, #imm16).
     if (imm >= 0 && imm <= 0xFFFF)
         return true;
@@ -426,8 +403,7 @@ class CallingConvention
 /// @brief Check if an immediate requires a multi-instruction sequence.
 ///
 /// Returns true if the immediate cannot be encoded in a single mov instruction.
-[[nodiscard]] constexpr bool needsWideImmSequence(long long imm) noexcept
-{
+[[nodiscard]] constexpr bool needsWideImmSequence(long long imm) noexcept {
     return !isSimpleMovImm(imm);
 }
 
@@ -446,8 +422,7 @@ class CallingConvention
 ///
 /// @param imm The immediate value to test (interpreted as unsigned 64-bit).
 /// @return true if @p imm can be used directly as a logical immediate operand.
-[[nodiscard]] inline bool isLogicalImmediate(uint64_t imm) noexcept
-{
+[[nodiscard]] inline bool isLogicalImmediate(uint64_t imm) noexcept {
     // 0 and ~0 are never valid logical immediates.
     if (imm == 0 || imm == ~uint64_t(0))
         return false;
@@ -456,8 +431,7 @@ class CallingConvention
     // For each size N: check whether imm is a consistent replication of an
     // N-bit chunk, and whether that chunk is a contiguous run of 1-bits
     // (possibly rotated to wrap from MSB to LSB).
-    for (int N : {2, 4, 8, 16, 32, 64})
-    {
+    for (int N : {2, 4, 8, 16, 32, 64}) {
         const uint64_t mask = (N == 64) ? ~uint64_t(0) : ((uint64_t(1) << N) - 1);
         const uint64_t elem = imm & mask;
 
@@ -466,8 +440,7 @@ class CallingConvention
             continue;
 
         // Verify all N-bit chunks of imm are identical to elem.
-        if (N < 64)
-        {
+        if (N < 64) {
             uint64_t replicated = elem;
             for (int shift = N; shift < 64; shift += N)
                 replicated |= (elem << shift);

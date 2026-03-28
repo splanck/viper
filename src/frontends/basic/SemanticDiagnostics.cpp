@@ -24,8 +24,7 @@
 #include <string>
 #include <utility>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Construct the helper that forwards diagnostics to @p emitter.
 /// @details Stores a reference to the provided emitter so later convenience
@@ -43,8 +42,7 @@ void SemanticDiagnostics::emit(il::support::Severity sev,
                                std::string code,
                                il::support::SourceLoc loc,
                                uint32_t length,
-                               std::string message)
-{
+                               std::string message) {
     emitter_.emit(sev, std::move(code), loc, length, std::move(message));
 }
 
@@ -61,8 +59,7 @@ void SemanticDiagnostics::emit(il::support::Severity sev,
 void SemanticDiagnostics::emit(diag::BasicDiag diag,
                                il::support::SourceLoc loc,
                                uint32_t length,
-                               std::initializer_list<diag::Replacement> replacements)
-{
+                               std::initializer_list<diag::Replacement> replacements) {
     auto message = diag::formatMessage(diag, replacements);
     emit(
         diag::getSeverity(diag), std::string(diag::getCode(diag)), loc, length, std::move(message));
@@ -72,16 +69,14 @@ void SemanticDiagnostics::emit(diag::BasicDiag diag,
 /// @details Pass-through convenience wrapper over
 ///          `DiagnosticEmitter::errorCount()` that keeps semantic analysis
 ///          consumers decoupled from the emitter API.
-size_t SemanticDiagnostics::errorCount() const
-{
+size_t SemanticDiagnostics::errorCount() const {
     return emitter_.errorCount();
 }
 
 /// @brief Retrieve the number of warning diagnostics recorded so far.
 /// @details Mirrors @ref errorCount by forwarding to the underlying emitter to
 ///          keep count queries consistent and centralised.
-size_t SemanticDiagnostics::warningCount() const
-{
+size_t SemanticDiagnostics::warningCount() const {
     return emitter_.warningCount();
 }
 
@@ -91,17 +86,14 @@ size_t SemanticDiagnostics::warningCount() const
 ///          manipulation steps so diagnostic emission sites remain concise and
 ///          uniform.
 std::string SemanticDiagnostics::formatNonBooleanCondition(std::string_view typeName,
-                                                           std::string_view exprText)
-{
+                                                           std::string_view exprText) {
     std::string message(NonBooleanConditionMessage);
     const auto replace =
-        [](std::string &subject, std::string_view placeholder, std::string_view value)
-    {
-        if (auto pos = subject.find(placeholder); pos != std::string::npos)
-        {
-            subject.replace(pos, placeholder.size(), value);
-        }
-    };
+        [](std::string &subject, std::string_view placeholder, std::string_view value) {
+            if (auto pos = subject.find(placeholder); pos != std::string::npos) {
+                subject.replace(pos, placeholder.size(), value);
+            }
+        };
     replace(message, "{type}", typeName);
     replace(message, "{expr}", exprText);
     return message;
@@ -116,8 +108,7 @@ void SemanticDiagnostics::emitNonBooleanCondition(std::string code,
                                                   il::support::SourceLoc loc,
                                                   uint32_t length,
                                                   std::string_view typeName,
-                                                  std::string_view exprText)
-{
+                                                  std::string_view exprText) {
     emit(il::support::Severity::Error,
          std::move(code),
          loc,
@@ -128,8 +119,7 @@ void SemanticDiagnostics::emitNonBooleanCondition(std::string code,
 /// @brief Access the underlying diagnostic emitter.
 /// @details Provides mutable access for scenarios where clients need more than
 ///          the thin wrappers supplied here (for example, to install listeners).
-DiagnosticEmitter &SemanticDiagnostics::emitter()
-{
+DiagnosticEmitter &SemanticDiagnostics::emitter() {
     return emitter_;
 }
 

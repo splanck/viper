@@ -22,8 +22,7 @@
 #include <assert.h>
 #include <stdint.h>
 
-int main(void)
-{
+int main(void) {
     // Use a string longer than RT_SSO_MAX_LEN (32) to ensure heap allocation
     static const char *long_str =
         "this_string_is_long_enough_to_bypass_small_string_optimization_and_use_heap";

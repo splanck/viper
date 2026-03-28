@@ -18,24 +18,20 @@
 #include <algorithm>
 #include <cctype>
 
-namespace il::frontends::common
-{
+namespace il::frontends::common {
 
-namespace
-{
+namespace {
 
 /// @brief Parse a signature string to extract return type and argument types.
 /// @param sig Signature like "i64(str,i64)" or "void(obj)"
 /// @return Pair of return type string and vector of arg type strings.
 std::pair<std::string_view, std::vector<std::string_view>> parseSignatureString(
-    std::string_view sig)
-{
+    std::string_view sig) {
     std::vector<std::string_view> argTypes;
 
     // Find the opening paren
     auto parenPos = sig.find('(');
-    if (parenPos == std::string_view::npos)
-    {
+    if (parenPos == std::string_view::npos) {
         return {sig, argTypes};
     }
 
@@ -43,8 +39,7 @@ std::pair<std::string_view, std::vector<std::string_view>> parseSignatureString(
 
     // Find closing paren
     auto closePos = sig.find(')', parenPos);
-    if (closePos == std::string_view::npos)
-    {
+    if (closePos == std::string_view::npos) {
         return {returnType, argTypes};
     }
 
@@ -52,8 +47,7 @@ std::pair<std::string_view, std::vector<std::string_view>> parseSignatureString(
 
     // Parse comma-separated args
     size_t start = 0;
-    while (start < argsStr.size())
-    {
+    while (start < argsStr.size()) {
         // Skip whitespace
         while (start < argsStr.size() && std::isspace(argsStr[start]))
             ++start;
@@ -71,8 +65,7 @@ std::pair<std::string_view, std::vector<std::string_view>> parseSignatureString(
         while (typeEnd > start && std::isspace(argsStr[typeEnd - 1]))
             --typeEnd;
 
-        if (typeEnd > start)
-        {
+        if (typeEnd > start) {
             argTypes.push_back(argsStr.substr(start, typeEnd - start));
         }
 
@@ -84,8 +77,7 @@ std::pair<std::string_view, std::vector<std::string_view>> parseSignatureString(
 
 } // namespace
 
-RuntimeReturnKind RuntimeRegistry::typeToReturnKind(std::string_view typeAbbrev)
-{
+RuntimeReturnKind RuntimeRegistry::typeToReturnKind(std::string_view typeAbbrev) {
     if (typeAbbrev == "void")
         return RuntimeReturnKind::Void;
     if (typeAbbrev == "i64" || typeAbbrev == "i32" || typeAbbrev == "i16" || typeAbbrev == "i8")
@@ -103,8 +95,7 @@ RuntimeReturnKind RuntimeRegistry::typeToReturnKind(std::string_view typeAbbrev)
     return RuntimeReturnKind::Unknown;
 }
 
-RuntimeArgKind RuntimeRegistry::typeToArgKind(std::string_view typeAbbrev)
-{
+RuntimeArgKind RuntimeRegistry::typeToArgKind(std::string_view typeAbbrev) {
     if (typeAbbrev == "i64" || typeAbbrev == "i32" || typeAbbrev == "i16" || typeAbbrev == "i8")
         return RuntimeArgKind::Integer;
     if (typeAbbrev == "i1")
@@ -120,40 +111,33 @@ RuntimeArgKind RuntimeRegistry::typeToArgKind(std::string_view typeAbbrev)
     return RuntimeArgKind::Object; // Default to object for unknown
 }
 
-RuntimeReturnKind RuntimeRegistry::parseReturnKind(std::string_view signature)
-{
+RuntimeReturnKind RuntimeRegistry::parseReturnKind(std::string_view signature) {
     auto [retType, _] = parseSignatureString(signature);
     return typeToReturnKind(retType);
 }
 
-const RuntimeRegistry &RuntimeRegistry::instance()
-{
+const RuntimeRegistry &RuntimeRegistry::instance() {
     static const RuntimeRegistry registry;
     return registry;
 }
 
-RuntimeRegistry::RuntimeRegistry()
-{
+RuntimeRegistry::RuntimeRegistry() {
     buildFunctionIndex();
     buildClassIndex();
 }
 
-void RuntimeRegistry::buildFunctionIndex()
-{
+void RuntimeRegistry::buildFunctionIndex() {
     // Build from RuntimeNameMap (canonical -> rt_* symbol)
-    for (const auto &alias : runtime::kRuntimeNameAliases)
-    {
+    for (const auto &alias : runtime::kRuntimeNameAliases) {
         RuntimeFunctionInfo info;
         info.canonicalName = alias.canonical;
         info.runtimeSymbol = alias.runtime;
 
         // Try to find signature from RuntimeSignatures
-        if (auto sig = runtime::findRuntimeSignature(alias.runtime))
-        {
+        if (auto sig = runtime::findRuntimeSignature(alias.runtime)) {
             // Build signature string from the parsed signature
             std::string sigStr;
-            switch (sig->retType.kind)
-            {
+            switch (sig->retType.kind) {
                 case core::Type::Kind::Void:
                     sigStr = "void";
                     break;
@@ -186,11 +170,9 @@ void RuntimeRegistry::buildFunctionIndex()
             info.returnKind = typeToReturnKind(sigStr);
 
             // Parse argument kinds
-            for (const auto &paramType : sig->paramTypes)
-            {
+            for (const auto &paramType : sig->paramTypes) {
                 std::string_view argStr;
-                switch (paramType.kind)
-                {
+                switch (paramType.kind) {
                     case core::Type::Kind::I1:
                         argStr = "i1";
                         break;
@@ -214,9 +196,7 @@ void RuntimeRegistry::buildFunctionIndex()
                 }
                 info.argKinds.push_back(typeToArgKind(argStr));
             }
-        }
-        else
-        {
+        } else {
             // Default to object return for unregistered
             info.returnKind = RuntimeReturnKind::Object;
         }
@@ -226,13 +206,11 @@ void RuntimeRegistry::buildFunctionIndex()
     }
 }
 
-void RuntimeRegistry::buildClassIndex()
-{
+void RuntimeRegistry::buildClassIndex() {
     // Build from RuntimeClasses catalog
     const auto &catalog = runtime::runtimeClassCatalog();
 
-    for (const auto &cls : catalog)
-    {
+    for (const auto &cls : catalog) {
         RuntimeClassInfo info;
         info.name = cls.qname;
         info.constructor = cls.ctor ? cls.ctor : "";
@@ -245,59 +223,48 @@ void RuntimeRegistry::buildClassIndex()
 }
 
 std::optional<RuntimeFunctionInfo> RuntimeRegistry::findFunction(
-    std::string_view canonicalName) const
-{
+    std::string_view canonicalName) const {
     auto it = functionIndex_.find(canonicalName);
-    if (it != functionIndex_.end())
-    {
+    if (it != functionIndex_.end()) {
         return it->second;
     }
     return std::nullopt;
 }
 
-std::optional<RuntimeClassInfo> RuntimeRegistry::findClass(std::string_view className) const
-{
+std::optional<RuntimeClassInfo> RuntimeRegistry::findClass(std::string_view className) const {
     auto it = classIndex_.find(className);
-    if (it != classIndex_.end())
-    {
+    if (it != classIndex_.end()) {
         return it->second;
     }
     return std::nullopt;
 }
 
-bool RuntimeRegistry::hasFunction(std::string_view canonicalName) const
-{
+bool RuntimeRegistry::hasFunction(std::string_view canonicalName) const {
     return functionIndex_.find(canonicalName) != functionIndex_.end();
 }
 
-bool RuntimeRegistry::hasClass(std::string_view className) const
-{
+bool RuntimeRegistry::hasClass(std::string_view className) const {
     return classIndex_.find(className) != classIndex_.end();
 }
 
-RuntimeReturnKind RuntimeRegistry::getReturnKind(std::string_view canonicalName) const
-{
+RuntimeReturnKind RuntimeRegistry::getReturnKind(std::string_view canonicalName) const {
     auto it = functionIndex_.find(canonicalName);
-    if (it != functionIndex_.end())
-    {
+    if (it != functionIndex_.end()) {
         return it->second.returnKind;
     }
     return RuntimeReturnKind::Unknown;
 }
 
 std::optional<std::string_view> RuntimeRegistry::getRuntimeSymbol(
-    std::string_view canonicalName) const
-{
+    std::string_view canonicalName) const {
     return runtime::mapCanonicalRuntimeName(canonicalName);
 }
 
-const std::vector<std::string_view> &RuntimeRegistry::allFunctionNames() const
-{
+const std::vector<std::string_view> &RuntimeRegistry::allFunctionNames() const {
     return allFunctions_;
 }
 
-const std::vector<std::string_view> &RuntimeRegistry::allClassNames() const
-{
+const std::vector<std::string_view> &RuntimeRegistry::allClassNames() const {
     return allClasses_;
 }
 

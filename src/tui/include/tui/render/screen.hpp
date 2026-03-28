@@ -35,14 +35,12 @@
 #include <cstdint>
 #include <vector>
 
-namespace viper::tui::render
-{
+namespace viper::tui::render {
 /// @brief 32-bit RGBA color value for terminal cell styling.
 /// @details Represents a color with red, green, blue, and alpha channels.
 ///          Alpha defaults to 255 (fully opaque). Used for both foreground
 ///          and background colors in the Style struct.
-struct RGBA
-{
+struct RGBA {
     uint8_t r{0};
     uint8_t g{0};
     uint8_t b{0};
@@ -56,8 +54,7 @@ bool operator!=(const RGBA &a, const RGBA &b);
 /// @details Can be combined with bitwise OR to apply multiple attributes
 ///          simultaneously (e.g., Bold | Italic for bold italic text).
 ///          These map to standard ANSI/VT text attribute codes.
-enum Attr : uint16_t
-{
+enum Attr : uint16_t {
     AttrNone = 0,
     Bold = 1 << 0,
     Faint = 1 << 1,
@@ -73,8 +70,7 @@ enum Attr : uint16_t
 /// @details Contains foreground color, background color, and text attribute flags.
 ///          Styles are compared for equality during diff computation to minimize
 ///          terminal escape sequence output.
-struct Style
-{
+struct Style {
     RGBA fg{};
     RGBA bg{};
     uint16_t attrs{0};
@@ -88,8 +84,7 @@ bool operator!=(const Style &a, const Style &b);
 ///          as a UTF-32 code point to support the full Unicode range. Width indicates
 ///          how many terminal columns the character occupies (1 for most characters,
 ///          2 for wide CJK characters, 0 for combining marks).
-struct Cell
-{
+struct Cell {
     char32_t ch{U' '};
     Style style{};
     uint8_t width{1};
@@ -103,14 +98,12 @@ bool operator!=(const Cell &a, const Cell &b);
 ///          Widgets paint into the buffer via at(), and the Renderer uses
 ///          snapshotPrev()/computeDiff() to emit only the changed portions
 ///          to the terminal, minimizing I/O overhead.
-class ScreenBuffer
-{
+class ScreenBuffer {
   public:
     /// @brief Describes a contiguous horizontal span of changed cells within a row.
     /// @details Used by computeDiff() to report regions that need to be redrawn.
     ///          The Renderer iterates these spans to emit targeted ANSI sequences.
-    struct DiffSpan
-    {
+    struct DiffSpan {
         int row{0};
         int x0{0};
         int x1{0};

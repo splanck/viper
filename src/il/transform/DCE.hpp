@@ -22,8 +22,7 @@
 
 #include "il/core/fwd.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// \brief Eliminate trivial dead code and unused block parameters.
 /// \param M Module to simplify in place.

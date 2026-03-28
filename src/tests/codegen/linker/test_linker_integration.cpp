@@ -44,10 +44,8 @@ using namespace viper::codegen::linker;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -57,8 +55,7 @@ static void check(bool cond, const char *msg, int line)
 
 // ─── ELF structures for parsing output ───────────────────────────────────
 
-struct Elf64_Ehdr
-{
+struct Elf64_Ehdr {
     uint8_t e_ident[16];
     uint16_t e_type;
     uint16_t e_machine;
@@ -75,8 +72,7 @@ struct Elf64_Ehdr
     uint16_t e_shstrndx;
 };
 
-struct Elf64_Phdr
-{
+struct Elf64_Phdr {
     uint32_t p_type;
     uint32_t p_flags;
     uint64_t p_offset;
@@ -87,8 +83,7 @@ struct Elf64_Phdr
     uint64_t p_align;
 };
 
-struct Elf64_Shdr
-{
+struct Elf64_Shdr {
     uint32_t sh_name;
     uint32_t sh_type;
     uint64_t sh_flags;
@@ -108,8 +103,7 @@ static constexpr uint32_t PF_R = 4;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
-static std::vector<uint8_t> readFile(const std::string &path)
-{
+static std::vector<uint8_t> readFile(const std::string &path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f)
         return {};
@@ -120,28 +114,24 @@ static std::vector<uint8_t> readFile(const std::string &path)
     return data;
 }
 
-static std::string tmpPath(const std::string &name)
-{
+static std::string tmpPath(const std::string &name) {
     auto dir = std::filesystem::temp_directory_path() / "viper_linker_integ";
     std::filesystem::create_directories(dir);
     return (dir / name).string();
 }
 
-static void cleanupTmp()
-{
+static void cleanupTmp() {
     std::error_code ec;
     std::filesystem::remove_all(std::filesystem::temp_directory_path() / "viper_linker_integ", ec);
 }
 
-static uint32_t readLE32(const uint8_t *p)
-{
+static uint32_t readLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
 /// Create a simple ObjFile with named sections and symbols.
-static ObjFile makeSimpleObj(const std::string &name)
-{
+static ObjFile makeSimpleObj(const std::string &name) {
     ObjFile obj;
     obj.name = name;
     obj.format = ObjFileFormat::ELF;
@@ -159,8 +149,7 @@ static size_t addSection(ObjFile &obj,
                          const std::vector<uint8_t> &data,
                          bool exec,
                          bool write,
-                         uint32_t align = 4)
-{
+                         uint32_t align = 4) {
     ObjSection sec;
     sec.name = name;
     sec.data = data;
@@ -174,8 +163,7 @@ static size_t addSection(ObjFile &obj,
 }
 
 /// Add a global symbol to an ObjFile and return its index.
-static size_t addGlobalSym(ObjFile &obj, const std::string &name, uint32_t secIdx, size_t offset)
-{
+static size_t addGlobalSym(ObjFile &obj, const std::string &name, uint32_t secIdx, size_t offset) {
     ObjSymbol sym;
     sym.name = name;
     sym.binding = ObjSymbol::Global;
@@ -187,8 +175,7 @@ static size_t addGlobalSym(ObjFile &obj, const std::string &name, uint32_t secId
 }
 
 /// Add an undefined symbol to an ObjFile and return its index.
-static size_t addUndefSym(ObjFile &obj, const std::string &name)
-{
+static size_t addUndefSym(ObjFile &obj, const std::string &name) {
     ObjSymbol sym;
     sym.name = name;
     sym.binding = ObjSymbol::Undefined;
@@ -199,8 +186,7 @@ static size_t addUndefSym(ObjFile &obj, const std::string &name)
 
 /// Add a relocation to a section.
 static void addReloc(
-    ObjFile &obj, size_t secIdx, size_t offset, uint32_t type, uint32_t symIdx, int64_t addend)
-{
+    ObjFile &obj, size_t secIdx, size_t offset, uint32_t type, uint32_t symIdx, int64_t addend) {
     ObjReloc rel;
     rel.offset = offset;
     rel.type = type;
@@ -211,8 +197,7 @@ static void addReloc(
 
 // ─── Pipeline runner ─────────────────────────────────────────────────────
 
-struct PipelineResult
-{
+struct PipelineResult {
     bool ok;
     std::string errors;
     LinkLayout layout;
@@ -223,8 +208,7 @@ struct PipelineResult
 /// Run the full linker pipeline: resolve → merge → relocate.
 static PipelineResult runPipeline(std::vector<ObjFile> objects,
                                   LinkPlatform platform = LinkPlatform::Linux,
-                                  LinkArch arch = LinkArch::X86_64)
-{
+                                  LinkArch arch = LinkArch::X86_64) {
     PipelineResult result;
     std::ostringstream err;
 
@@ -233,16 +217,14 @@ static PipelineResult runPipeline(std::vector<ObjFile> objects,
     std::vector<Archive> archives; // Empty — no archives.
     result.ok =
         resolveSymbols(objects, archives, globalSyms, result.allObjects, result.dynamicSyms, err);
-    if (!result.ok)
-    {
+    if (!result.ok) {
         result.errors = err.str();
         return result;
     }
 
     // Step 2: Merge sections and assign VAs.
     result.ok = mergeSections(result.allObjects, platform, arch, result.layout, err);
-    if (!result.ok)
-    {
+    if (!result.ok) {
         result.errors = err.str();
         return result;
     }
@@ -251,17 +233,14 @@ static PipelineResult runPipeline(std::vector<ObjFile> objects,
     result.layout.globalSyms = globalSyms;
 
     // Resolve symbol addresses from the layout.
-    for (auto &[name, entry] : result.layout.globalSyms)
-    {
+    for (auto &[name, entry] : result.layout.globalSyms) {
         if (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic)
             continue;
         // Find the output section containing this symbol's input chunk.
-        for (const auto &outSec : result.layout.sections)
-        {
-            for (const auto &chunk : outSec.chunks)
-            {
-                if (chunk.inputObjIndex == entry.objIndex && chunk.inputSecIndex == entry.secIndex)
-                {
+        for (const auto &outSec : result.layout.sections) {
+            for (const auto &chunk : outSec.chunks) {
+                if (chunk.inputObjIndex == entry.objIndex &&
+                    chunk.inputSecIndex == entry.secIndex) {
                     entry.resolvedAddr = outSec.virtualAddr + chunk.outputOffset + entry.offset;
                     break;
                 }
@@ -277,8 +256,7 @@ static PipelineResult runPipeline(std::vector<ObjFile> objects,
     // Step 3: Apply relocations.
     result.ok =
         applyRelocations(result.allObjects, result.layout, result.dynamicSyms, platform, arch, err);
-    if (!result.ok)
-    {
+    if (!result.ok) {
         result.errors = err.str();
         return result;
     }
@@ -293,8 +271,7 @@ static PipelineResult runPipeline(std::vector<ObjFile> objects,
 /// Object A: main calls helper (PC-relative relocation).
 /// Object B: defines helper.
 /// Pipeline: resolve → merge → relocate → write ELF → verify.
-static void testTwoObjectLink()
-{
+static void testTwoObjectLink() {
     // Object A: main function (8 bytes) with a CALL to "helper".
     // x86-64 CALL is E8 xx xx xx xx (5 bytes); we put the relocation at offset 1.
     auto objA = makeSimpleObj("main.o");
@@ -332,17 +309,14 @@ static void testTwoObjectLink()
     // should be patched to the PC-relative offset to helper.
     // Find the .text output section.
     const OutputSection *textSec = nullptr;
-    for (const auto &sec : result.layout.sections)
-    {
-        if (sec.executable && !sec.data.empty())
-        {
+    for (const auto &sec : result.layout.sections) {
+        if (sec.executable && !sec.data.empty()) {
             textSec = &sec;
             break;
         }
     }
     CHECK(textSec != nullptr);
-    if (textSec)
-    {
+    if (textSec) {
         // The relocation at offset 1 in the first chunk should be patched.
         // PCRel32: value = S + A - P = helper_addr + (-4) - (main_addr + 1)
         uint64_t S = helperIt->second.resolvedAddr;
@@ -374,8 +348,7 @@ static void testTwoObjectLink()
 }
 
 /// Test 2: Multi-section link — .text + .rodata + .data across two objects.
-static void testMultiSectionLink()
-{
+static void testMultiSectionLink() {
     // Object A: .text (code) + .rodata (string constant).
     auto objA = makeSimpleObj("a.o");
     std::vector<uint8_t> codeA = {0x48, 0x8B, 0x05, 0x00, 0x00, 0x00, 0x00, 0xC3};
@@ -399,22 +372,16 @@ static void testMultiSectionLink()
 
     // Verify sections were created with correct properties.
     bool hasText = false, hasRodata = false, hasData = false;
-    for (const auto &sec : result.layout.sections)
-    {
-        if (sec.executable && !sec.data.empty())
-        {
+    for (const auto &sec : result.layout.sections) {
+        if (sec.executable && !sec.data.empty()) {
             hasText = true;
             // .text should contain code from both objects.
             CHECK(sec.data.size() >= codeA.size() + textB.size());
-        }
-        else if (!sec.writable && !sec.executable && !sec.data.empty())
-        {
+        } else if (!sec.writable && !sec.executable && !sec.data.empty()) {
             hasRodata = true;
             // .rodata should contain the greeting string.
             CHECK(sec.data.size() >= rodataA.size());
-        }
-        else if (sec.writable && !sec.data.empty())
-        {
+        } else if (sec.writable && !sec.data.empty()) {
             hasData = true;
             // .data should contain the counter.
             CHECK(sec.data.size() >= dataB.size());
@@ -439,10 +406,8 @@ static void testMultiSectionLink()
     bool hasRxLoad = false, hasRoLoad = false, hasRwLoad = false;
     std::vector<Elf64_Phdr> phdrs(ehdr.e_phnum);
     std::memcpy(phdrs.data(), elfData.data() + ehdr.e_phoff, ehdr.e_phnum * sizeof(Elf64_Phdr));
-    for (const auto &ph : phdrs)
-    {
-        if (ph.p_type == PT_LOAD)
-        {
+    for (const auto &ph : phdrs) {
+        if (ph.p_type == PT_LOAD) {
             ++loadCount;
             if ((ph.p_flags & PF_X) && (ph.p_flags & PF_R))
                 hasRxLoad = true;
@@ -459,8 +424,7 @@ static void testMultiSectionLink()
 }
 
 /// Test 3: Symbol resolution — strong overrides weak.
-static void testWeakSymbolResolution()
-{
+static void testWeakSymbolResolution() {
     // Object A: defines "handler" as weak.
     auto objA = makeSimpleObj("weak.o");
     std::vector<uint8_t> weakCode = {0xC3, 0x90, 0x90, 0x90}; // ret; nop; nop; nop
@@ -493,8 +457,7 @@ static void testWeakSymbolResolution()
 }
 
 /// Test 4: Multiply-defined strong symbol — should produce error.
-static void testMultiplyDefinedError()
-{
+static void testMultiplyDefinedError() {
     auto objA = makeSimpleObj("a.o");
     addSection(objA, ".text", {0xC3, 0x90, 0x90, 0x90}, true, false);
     addGlobalSym(objA, "main", 1, 0);
@@ -509,8 +472,7 @@ static void testMultiplyDefinedError()
 }
 
 /// Test 5: Section data integrity — bytes survive the full pipeline.
-static void testDataIntegrity()
-{
+static void testDataIntegrity() {
     auto obj = makeSimpleObj("data.o");
 
     // .text with specific byte pattern.
@@ -528,16 +490,12 @@ static void testDataIntegrity()
     CHECK(result.ok);
 
     // Verify .text data survived pipeline (no relocations to modify it).
-    for (const auto &sec : result.layout.sections)
-    {
-        if (sec.executable)
-        {
+    for (const auto &sec : result.layout.sections) {
+        if (sec.executable) {
             CHECK(sec.data.size() >= code.size());
             for (size_t i = 0; i < code.size(); ++i)
                 CHECK(sec.data[i] == code[i]);
-        }
-        else if (!sec.writable && !sec.data.empty())
-        {
+        } else if (!sec.writable && !sec.data.empty()) {
             CHECK(sec.data.size() >= rodata.size());
             for (size_t i = 0; i < rodata.size(); ++i)
                 CHECK(sec.data[i] == rodata[i]);
@@ -558,10 +516,8 @@ static void testDataIntegrity()
     std::memcpy(phdrs.data(), elfData.data() + ehdr.e_phoff, ehdr.e_phnum * sizeof(Elf64_Phdr));
 
     // Find the executable PT_LOAD and verify its bytes.
-    for (const auto &ph : phdrs)
-    {
-        if (ph.p_type == PT_LOAD && (ph.p_flags & PF_X))
-        {
+    for (const auto &ph : phdrs) {
+        if (ph.p_type == PT_LOAD && (ph.p_flags & PF_X)) {
             CHECK(elfData.size() >= ph.p_offset + code.size());
             for (size_t i = 0; i < code.size(); ++i)
                 CHECK(elfData[ph.p_offset + i] == code[i]);
@@ -570,8 +526,7 @@ static void testDataIntegrity()
 }
 
 /// Test 6: Page-aligned VA assignment — sections on page boundaries.
-static void testPageAlignedVAs()
-{
+static void testPageAlignedVAs() {
     auto objA = makeSimpleObj("a.o");
     addSection(objA, ".text", std::vector<uint8_t>(100, 0x90), true, false);
     addGlobalSym(objA, "main", 1, 0);
@@ -583,18 +538,15 @@ static void testPageAlignedVAs()
     CHECK(result.ok);
 
     // Verify sections have page-aligned virtual addresses.
-    for (const auto &sec : result.layout.sections)
-    {
-        if (!sec.data.empty())
-        {
+    for (const auto &sec : result.layout.sections) {
+        if (!sec.data.empty()) {
             CHECK(sec.virtualAddr % result.layout.pageSize == 0);
         }
     }
 }
 
 /// Test 7: Entry point ends up in ELF header correctly.
-static void testEntryPointInElf()
-{
+static void testEntryPointInElf() {
     auto obj = makeSimpleObj("entry.o");
     // main starts at offset 4 within .text (skip 4 bytes of preamble).
     std::vector<uint8_t> code = {0x90, 0x90, 0x90, 0x90, 0xC3, 0x90, 0x90, 0x90};
@@ -621,8 +573,7 @@ static void testEntryPointInElf()
 
 // ─── Main ────────────────────────────────────────────────────────────────
 
-int main()
-{
+int main() {
     testTwoObjectLink();
     testMultiSectionLink();
     testWeakSymbolResolution();
@@ -633,8 +584,7 @@ int main()
 
     cleanupTmp();
 
-    if (gFail > 0)
-    {
+    if (gFail > 0) {
         std::cerr << gFail << " check(s) FAILED\n";
         return 1;
     }

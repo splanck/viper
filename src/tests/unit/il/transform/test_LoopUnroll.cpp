@@ -39,27 +39,21 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-BasicBlock *findBlock(Function &function, const std::string &label)
-{
-    for (auto &block : function.blocks)
-    {
+BasicBlock *findBlock(Function &function, const std::string &label) {
+    for (auto &block : function.blocks) {
         if (block.label == label)
             return &block;
     }
     return nullptr;
 }
 
-void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry)
-{
+void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry) {
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fnRef)
-        {
+        "dominators", [](Module &mod, Function &fnRef) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fnRef);
         });
@@ -75,8 +69,7 @@ void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry)
 }
 
 /// @brief Test that a simple for(i=0; i<4; i++) loop gets unrolled.
-void testSimpleCountedLoop()
-{
+void testSimpleCountedLoop() {
     Module module;
     Function fn;
     fn.name = "test_unroll";
@@ -227,14 +220,11 @@ void testSimpleCountedLoop()
     assert(verifyResult && "Module should still be valid after LoopUnroll");
 }
 
-void setupAnalysisRegistry2(il::transform::AnalysisRegistry &registry)
-{
+void setupAnalysisRegistry2(il::transform::AnalysisRegistry &registry) {
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fnRef)
-        {
+        "dominators", [](Module &mod, Function &fnRef) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fnRef);
         });
@@ -250,8 +240,7 @@ void setupAnalysisRegistry2(il::transform::AnalysisRegistry &registry)
 }
 
 /// @brief Test that loops exceeding trip count threshold are not unrolled.
-void testTripCountThreshold()
-{
+void testTripCountThreshold() {
     Module module;
     Function fn;
     fn.name = "test_large_loop";
@@ -346,8 +335,7 @@ void testTripCountThreshold()
 
 } // namespace
 
-int main()
-{
+int main() {
     testSimpleCountedLoop();
     testTripCountThreshold();
     return 0;

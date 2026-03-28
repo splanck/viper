@@ -58,8 +58,7 @@
 #endif
 
 /// Internal particle structure.
-struct particle
-{
+struct particle {
     double x, y;       ///< Position.
     double vx, vy;     ///< Velocity.
     double size;       ///< Current size.
@@ -71,8 +70,7 @@ struct particle
 };
 
 /// Internal emitter structure.
-struct rt_particle_emitter_impl
-{
+struct rt_particle_emitter_impl {
     struct particle *particles; ///< Particle array.
     int64_t max_particles;      ///< Maximum particles.
     int64_t active_count;       ///< Number of active particles.
@@ -100,31 +98,26 @@ struct rt_particle_emitter_impl
 };
 
 /// Simple random number generator (internal).
-static double rand_double(struct rt_particle_emitter_impl *e)
-{
+static double rand_double(struct rt_particle_emitter_impl *e) {
     e->rand_state = e->rand_state * 6364136223846793005ULL + 1442695040888963407ULL;
     return (double)(e->rand_state >> 33) / (double)(1ULL << 31);
 }
 
 /// Random double in range [min, max].
-static double rand_range(struct rt_particle_emitter_impl *e, double min, double max)
-{
+static double rand_range(struct rt_particle_emitter_impl *e, double min, double max) {
     return min + rand_double(e) * (max - min);
 }
 
 /// Random int64 in range [min, max].
-static int64_t rand_range_i64(struct rt_particle_emitter_impl *e, int64_t min, int64_t max)
-{
+static int64_t rand_range_i64(struct rt_particle_emitter_impl *e, int64_t min, int64_t max) {
     if (min >= max)
         return min;
     return min + (int64_t)(rand_double(e) * (double)(max - min + 1));
 }
 
-static void particle_emitter_finalizer(void *obj)
-{
+static void particle_emitter_finalizer(void *obj) {
     struct rt_particle_emitter_impl *e = (struct rt_particle_emitter_impl *)obj;
-    if (e && e->particles)
-    {
+    if (e && e->particles) {
         free(e->particles);
         e->particles = NULL;
     }
@@ -133,8 +126,7 @@ static void particle_emitter_finalizer(void *obj)
 /// @brief Emit emitter new.
 /// @param max_particles
 /// @return Result value.
-rt_particle_emitter rt_particle_emitter_new(int64_t max_particles)
-{
+rt_particle_emitter rt_particle_emitter_new(int64_t max_particles) {
     if (max_particles < 1)
         max_particles = 1;
     if (max_particles > RT_PARTICLE_MAX)
@@ -144,8 +136,7 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles)
         0, (int64_t)sizeof(struct rt_particle_emitter_impl));
 
     e->particles = calloc((size_t)max_particles, sizeof(struct particle));
-    if (!e->particles)
-    {
+    if (!e->particles) {
         rt_obj_free(e);
         return NULL;
     }
@@ -182,8 +173,7 @@ rt_particle_emitter rt_particle_emitter_new(int64_t max_particles)
 
 /// @brief Emit emitter destroy.
 /// @param emitter
-void rt_particle_emitter_destroy(rt_particle_emitter emitter)
-{
+void rt_particle_emitter_destroy(rt_particle_emitter emitter) {
     if (!emitter)
         return;
     if (emitter->particles)
@@ -194,8 +184,7 @@ void rt_particle_emitter_destroy(rt_particle_emitter emitter)
 /// @param emitter
 /// @param x
 /// @param y
-void rt_particle_emitter_set_position(rt_particle_emitter emitter, double x, double y)
-{
+void rt_particle_emitter_set_position(rt_particle_emitter emitter, double x, double y) {
     if (!emitter)
         return;
     emitter->x = x;
@@ -205,24 +194,21 @@ void rt_particle_emitter_set_position(rt_particle_emitter emitter, double x, dou
 /// @brief Emit emitter x.
 /// @param emitter
 /// @return Result value.
-double rt_particle_emitter_x(rt_particle_emitter emitter)
-{
+double rt_particle_emitter_x(rt_particle_emitter emitter) {
     return emitter ? emitter->x : 0.0;
 }
 
 /// @brief Emit emitter y.
 /// @param emitter
 /// @return Result value.
-double rt_particle_emitter_y(rt_particle_emitter emitter)
-{
+double rt_particle_emitter_y(rt_particle_emitter emitter) {
     return emitter ? emitter->y : 0.0;
 }
 
 /// @brief Emit emitter set rate.
 /// @param emitter
 /// @param rate
-void rt_particle_emitter_set_rate(rt_particle_emitter emitter, double rate)
-{
+void rt_particle_emitter_set_rate(rt_particle_emitter emitter, double rate) {
     if (!emitter)
         return;
     if (rate < 0.0)
@@ -233,15 +219,13 @@ void rt_particle_emitter_set_rate(rt_particle_emitter emitter, double rate)
 /// @brief Emit emitter rate.
 /// @param emitter
 /// @return Result value.
-double rt_particle_emitter_rate(rt_particle_emitter emitter)
-{
+double rt_particle_emitter_rate(rt_particle_emitter emitter) {
     return emitter ? emitter->rate : 0.0;
 }
 
 void rt_particle_emitter_set_lifetime(rt_particle_emitter emitter,
                                       int64_t min_frames,
-                                      int64_t max_frames)
-{
+                                      int64_t max_frames) {
     if (!emitter)
         return;
     if (min_frames < 1)
@@ -256,8 +240,7 @@ void rt_particle_emitter_set_velocity(rt_particle_emitter emitter,
                                       double min_speed,
                                       double max_speed,
                                       double min_angle,
-                                      double max_angle)
-{
+                                      double max_angle) {
     if (!emitter)
         return;
     if (min_speed < 0.0)
@@ -274,8 +257,7 @@ void rt_particle_emitter_set_velocity(rt_particle_emitter emitter,
 /// @param emitter
 /// @param gx
 /// @param gy
-void rt_particle_emitter_set_gravity(rt_particle_emitter emitter, double gx, double gy)
-{
+void rt_particle_emitter_set_gravity(rt_particle_emitter emitter, double gx, double gy) {
     if (!emitter)
         return;
     emitter->gx = gx;
@@ -285,8 +267,7 @@ void rt_particle_emitter_set_gravity(rt_particle_emitter emitter, double gx, dou
 /// @brief Emit emitter set color.
 /// @param emitter
 /// @param color
-void rt_particle_emitter_set_color(rt_particle_emitter emitter, int64_t color)
-{
+void rt_particle_emitter_set_color(rt_particle_emitter emitter, int64_t color) {
     if (!emitter)
         return;
     emitter->color = color;
@@ -296,8 +277,7 @@ void rt_particle_emitter_set_color(rt_particle_emitter emitter, int64_t color)
 /// @param emitter
 /// @param min_size
 /// @param max_size
-void rt_particle_emitter_set_size(rt_particle_emitter emitter, double min_size, double max_size)
-{
+void rt_particle_emitter_set_size(rt_particle_emitter emitter, double min_size, double max_size) {
     if (!emitter)
         return;
     if (min_size < 0.1)
@@ -311,8 +291,7 @@ void rt_particle_emitter_set_size(rt_particle_emitter emitter, double min_size, 
 /// @brief Emit emitter set fade out.
 /// @param emitter
 /// @param fade_out
-void rt_particle_emitter_set_fade_out(rt_particle_emitter emitter, int8_t fade_out)
-{
+void rt_particle_emitter_set_fade_out(rt_particle_emitter emitter, int8_t fade_out) {
     if (!emitter)
         return;
     emitter->fade_out = fade_out ? 1 : 0;
@@ -321,8 +300,7 @@ void rt_particle_emitter_set_fade_out(rt_particle_emitter emitter, int8_t fade_o
 /// @brief Emit emitter set shrink.
 /// @param emitter
 /// @param shrink
-void rt_particle_emitter_set_shrink(rt_particle_emitter emitter, int8_t shrink)
-{
+void rt_particle_emitter_set_shrink(rt_particle_emitter emitter, int8_t shrink) {
     if (!emitter)
         return;
     emitter->shrink = shrink ? 1 : 0;
@@ -330,8 +308,7 @@ void rt_particle_emitter_set_shrink(rt_particle_emitter emitter, int8_t shrink)
 
 /// @brief Emit emitter start.
 /// @param emitter
-void rt_particle_emitter_start(rt_particle_emitter emitter)
-{
+void rt_particle_emitter_start(rt_particle_emitter emitter) {
     if (!emitter)
         return;
     emitter->emitting = 1;
@@ -339,8 +316,7 @@ void rt_particle_emitter_start(rt_particle_emitter emitter)
 
 /// @brief Emit emitter stop.
 /// @param emitter
-void rt_particle_emitter_stop(rt_particle_emitter emitter)
-{
+void rt_particle_emitter_stop(rt_particle_emitter emitter) {
     if (!emitter)
         return;
     emitter->emitting = 0;
@@ -349,44 +325,37 @@ void rt_particle_emitter_stop(rt_particle_emitter emitter)
 /// @brief Emit emitter is emitting.
 /// @param emitter
 /// @return Result value.
-int8_t rt_particle_emitter_is_emitting(rt_particle_emitter emitter)
-{
+int8_t rt_particle_emitter_is_emitting(rt_particle_emitter emitter) {
     return emitter ? emitter->emitting : 0;
 }
 
 /// @brief Emit emitter fade out.
 /// @param emitter
 /// @return Result value.
-int8_t rt_particle_emitter_fade_out(rt_particle_emitter emitter)
-{
+int8_t rt_particle_emitter_fade_out(rt_particle_emitter emitter) {
     return emitter ? emitter->fade_out : 0;
 }
 
 /// @brief Emit emitter shrink.
 /// @param emitter
 /// @return Result value.
-int8_t rt_particle_emitter_shrink(rt_particle_emitter emitter)
-{
+int8_t rt_particle_emitter_shrink(rt_particle_emitter emitter) {
     return emitter ? emitter->shrink : 0;
 }
 
 /// @brief Emit emitter color.
 /// @param emitter
 /// @return Result value.
-int64_t rt_particle_emitter_color(rt_particle_emitter emitter)
-{
+int64_t rt_particle_emitter_color(rt_particle_emitter emitter) {
     return emitter ? emitter->color : 0;
 }
 
 /// Emit a single particle.
-static void emit_one(struct rt_particle_emitter_impl *e)
-{
+static void emit_one(struct rt_particle_emitter_impl *e) {
     // Find an inactive slot (O(n) linear scan; could be optimized with a free-list
     // for high-emission-rate systems near capacity)
-    for (int64_t i = 0; i < e->max_particles; i++)
-    {
-        if (!e->particles[i].active)
-        {
+    for (int64_t i = 0; i < e->max_particles; i++) {
+        if (!e->particles[i].active) {
             struct particle *p = &e->particles[i];
 
             p->x = e->x;
@@ -413,29 +382,24 @@ static void emit_one(struct rt_particle_emitter_impl *e)
 /// @brief Emit emitter burst.
 /// @param emitter
 /// @param count
-void rt_particle_emitter_burst(rt_particle_emitter emitter, int64_t count)
-{
+void rt_particle_emitter_burst(rt_particle_emitter emitter, int64_t count) {
     if (!emitter || count < 1)
         return;
-    for (int64_t i = 0; i < count && emitter->active_count < emitter->max_particles; i++)
-    {
+    for (int64_t i = 0; i < count && emitter->active_count < emitter->max_particles; i++) {
         emit_one(emitter);
     }
 }
 
 /// @brief Emit emitter update.
 /// @param emitter
-void rt_particle_emitter_update(rt_particle_emitter emitter)
-{
+void rt_particle_emitter_update(rt_particle_emitter emitter) {
     if (!emitter)
         return;
 
     // Emit new particles if emitting
-    if (emitter->emitting)
-    {
+    if (emitter->emitting) {
         emitter->rate_accumulator += emitter->rate;
-        while (emitter->rate_accumulator >= 1.0 && emitter->active_count < emitter->max_particles)
-        {
+        while (emitter->rate_accumulator >= 1.0 && emitter->active_count < emitter->max_particles) {
             emit_one(emitter);
             emitter->rate_accumulator -= 1.0;
         }
@@ -443,8 +407,7 @@ void rt_particle_emitter_update(rt_particle_emitter emitter)
 
     // Update existing particles
     emitter->active_count = 0;
-    for (int64_t i = 0; i < emitter->max_particles; i++)
-    {
+    for (int64_t i = 0; i < emitter->max_particles; i++) {
         struct particle *p = &emitter->particles[i];
         if (!p->active)
             continue;
@@ -458,20 +421,16 @@ void rt_particle_emitter_update(rt_particle_emitter emitter)
         p->vy += emitter->gy;
 
         // Shrink if enabled
-        if (emitter->shrink && p->max_life > 0)
-        {
+        if (emitter->shrink && p->max_life > 0) {
             double life_ratio = (double)p->life / (double)p->max_life;
             p->size = p->start_size * life_ratio;
         }
 
         // Decrease lifetime
         p->life--;
-        if (p->life <= 0)
-        {
+        if (p->life <= 0) {
             p->active = 0;
-        }
-        else
-        {
+        } else {
             emitter->active_count++;
         }
     }
@@ -480,19 +439,16 @@ void rt_particle_emitter_update(rt_particle_emitter emitter)
 /// @brief Emit emitter count.
 /// @param emitter
 /// @return Result value.
-int64_t rt_particle_emitter_count(rt_particle_emitter emitter)
-{
+int64_t rt_particle_emitter_count(rt_particle_emitter emitter) {
     return emitter ? emitter->active_count : 0;
 }
 
 /// @brief Emit emitter clear.
 /// @param emitter
-void rt_particle_emitter_clear(rt_particle_emitter emitter)
-{
+void rt_particle_emitter_clear(rt_particle_emitter emitter) {
     if (!emitter)
         return;
-    for (int64_t i = 0; i < emitter->max_particles; i++)
-    {
+    for (int64_t i = 0; i < emitter->max_particles; i++) {
         emitter->particles[i].active = 0;
     }
     emitter->active_count = 0;
@@ -504,21 +460,18 @@ int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
                                double *out_x,
                                double *out_y,
                                double *out_size,
-                               int64_t *out_color)
-{
+                               int64_t *out_color) {
     if (!emitter)
         return 0;
 
     // Find the Nth active particle
     int64_t found = 0;
-    for (int64_t i = 0; i < emitter->max_particles; i++)
-    {
+    for (int64_t i = 0; i < emitter->max_particles; i++) {
         struct particle *p = &emitter->particles[i];
         if (!p->active)
             continue;
 
-        if (found == index)
-        {
+        if (found == index) {
             if (out_x)
                 *out_x = p->x;
             if (out_y)
@@ -527,11 +480,9 @@ int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
                 *out_size = p->size;
 
             // Calculate color with fade
-            if (out_color)
-            {
+            if (out_color) {
                 int64_t color = p->color;
-                if (emitter->fade_out && p->max_life > 0)
-                {
+                if (emitter->fade_out && p->max_life > 0) {
                     double life_ratio = (double)p->life / (double)p->max_life;
                     int64_t base_alpha = (color >> 24) & 0xFF;
                     int64_t new_alpha = (int64_t)(base_alpha * life_ratio);
@@ -549,15 +500,13 @@ int8_t rt_particle_emitter_get(rt_particle_emitter emitter,
 int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
                                            void *pixels,
                                            int64_t offset_x,
-                                           int64_t offset_y)
-{
+                                           int64_t offset_y) {
     if (!emitter || !pixels)
         return 0;
 
     int64_t drawn = 0;
 
-    for (int64_t i = 0; i < emitter->max_particles; i++)
-    {
+    for (int64_t i = 0; i < emitter->max_particles; i++) {
         struct particle *p = &emitter->particles[i];
         if (!p->active)
             continue;
@@ -567,14 +516,11 @@ int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
         int64_t base_alpha = (color >> 24) & 0xFF;
         if (base_alpha == 0)
             base_alpha = 255; /* Color.RGB() returns 0x00RRGGBB — treat 0 alpha as opaque */
-        if (emitter->fade_out && p->max_life > 0)
-        {
+        if (emitter->fade_out && p->max_life > 0) {
             double life_ratio = (double)p->life / (double)p->max_life;
             int64_t new_alpha = (int64_t)(base_alpha * life_ratio);
             color = (color & 0x00FFFFFF) | (new_alpha << 24);
-        }
-        else
-        {
+        } else {
             color = (color & 0x00FFFFFF) | (base_alpha << 24);
         }
 
@@ -604,23 +550,20 @@ int64_t rt_particle_emitter_draw_to_pixels(rt_particle_emitter emitter,
 /// @param emitter
 /// @param canvas
 /// @return Result value.
-int64_t rt_particle_emitter_draw(rt_particle_emitter emitter, void *canvas)
-{
+int64_t rt_particle_emitter_draw(rt_particle_emitter emitter, void *canvas) {
     return rt_particle_emitter_draw_at(emitter, canvas, 0, 0);
 }
 
 int64_t rt_particle_emitter_draw_at(rt_particle_emitter emitter,
                                     void *canvas,
                                     int64_t offset_x,
-                                    int64_t offset_y)
-{
+                                    int64_t offset_y) {
     if (!emitter || !canvas)
         return 0;
 
     int64_t drawn = 0;
 
-    for (int64_t i = 0; i < emitter->max_particles; i++)
-    {
+    for (int64_t i = 0; i < emitter->max_particles; i++) {
         struct particle *p = &emitter->particles[i];
         if (!p->active)
             continue;
@@ -630,8 +573,7 @@ int64_t rt_particle_emitter_draw_at(rt_particle_emitter emitter,
         int64_t alpha = (color >> 24) & 0xFF;
         if (alpha == 0)
             alpha = 255; /* Color.RGB() returns 0x00RRGGBB — treat 0 alpha as opaque */
-        if (emitter->fade_out && p->max_life > 0)
-        {
+        if (emitter->fade_out && p->max_life > 0) {
             double life_ratio = (double)p->life / (double)p->max_life;
             alpha = (int64_t)(alpha * life_ratio);
         }

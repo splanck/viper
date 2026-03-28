@@ -31,8 +31,7 @@
 #include <utility>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Lower a BASIC @c NEW expression into IL runtime calls.
 ///
@@ -44,17 +43,14 @@ namespace il::frontends::basic
 ///
 /// @param expr AST node representing the @c NEW expression.
 /// @return Runtime value describing the allocated object pointer.
-Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
-{
+Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr) {
     curLoc = expr.loc;
 
     // Runtime class ctor mapping via catalog (e.g., Viper.String.FromStr)
     {
         std::string qname = qualify(expr.className);
-        if (const auto *c = il::runtime::findRuntimeClassByQName(qname))
-        {
-            if (c->ctor && std::string(c->ctor).size())
-            {
+        if (const auto *c = il::runtime::findRuntimeClassByQName(qname)) {
+            if (c->ctor && std::string(c->ctor).size()) {
                 // BUG-023 fix: Look up ctor signature for argument type coercion
                 const auto *ctorDesc = il::runtime::findRuntimeDescriptor(c->ctor);
                 const std::vector<il::core::Type> *ctorExpectedTypes = nullptr;
@@ -63,23 +59,20 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
 
                 std::vector<Value> args;
                 args.reserve(expr.args.size());
-                for (size_t i = 0; i < expr.args.size(); ++i)
-                {
+                for (size_t i = 0; i < expr.args.size(); ++i) {
                     const auto &a = expr.args[i];
                     RVal v = a ? lowerExpr(*a) : RVal{Value::constInt(0), Type(Type::Kind::I64)};
                     // Coerce argument type if needed
-                    if (ctorExpectedTypes && i < ctorExpectedTypes->size())
-                    {
+                    if (ctorExpectedTypes && i < ctorExpectedTypes->size()) {
                         auto expected = (*ctorExpectedTypes)[i];
                         // String→Ptr coercion (str passed where obj expected)
-                        if (expected.kind == Type::Kind::Ptr && v.type.kind == Type::Kind::Str)
-                        {
+                        if (expected.kind == Type::Kind::Ptr && v.type.kind == Type::Kind::Str) {
                             // Strings are already pointer-compatible in IL
                             v.type = Type(Type::Kind::Ptr);
                         }
                         // I64→F64 coercion
-                        else if (expected.kind == Type::Kind::F64 && v.type.kind == Type::Kind::I64)
-                        {
+                        else if (expected.kind == Type::Kind::F64 &&
+                                 v.type.kind == Type::Kind::I64) {
                             v = coerceToF64(std::move(v), expr.loc);
                         }
                     }
@@ -95,31 +88,25 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
     }
 
     // Minimal runtime type bridging: NEW Viper.Text.StringBuilder()
-    if (FrontendOptions::enableRuntimeTypeBridging())
-    {
-        if (expr.args.empty())
-        {
+    if (FrontendOptions::enableRuntimeTypeBridging()) {
+        if (expr.args.empty()) {
             // Match fully-qualified type
             bool isQualified = false;
-            if (!expr.qualifiedType.empty())
-            {
+            if (!expr.qualifiedType.empty()) {
                 const auto &q = expr.qualifiedType;
                 if (q.size() == 3 && string_utils::iequals(q[0], "Viper") &&
                     string_utils::iequals(q[1], "Text") &&
-                    string_utils::iequals(q[2], "StringBuilder"))
-                {
+                    string_utils::iequals(q[2], "StringBuilder")) {
                     isQualified = true;
                 }
             }
             // Fallback: check dot-joined className
-            if (!isQualified)
-            {
+            if (!isQualified) {
                 if (string_utils::iequals(expr.className,
                                           std::string(il::runtime::RTCLASS_STRINGBUILDER)))
                     isQualified = true;
             }
-            if (isQualified)
-            {
+            if (isQualified) {
                 // Emit direct call to the canonical Text ctor that returns an object pointer.
                 const char *ctorCanonical = "Viper.Text.StringBuilder.New";
                 if (builder)
@@ -131,8 +118,7 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
     }
     std::size_t objectSize = 0;
     std::int64_t classId = 0;
-    if (auto layoutIt = classLayouts_.find(expr.className); layoutIt != classLayouts_.end())
-    {
+    if (auto layoutIt = classLayouts_.find(expr.className); layoutIt != classLayouts_.end()) {
         objectSize = layoutIt->second.size;
         classId = layoutIt->second.classId;
     }
@@ -147,11 +133,9 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
         {Value::constInt(classId), Value::constInt(static_cast<long long>(objectSize))});
 
     // Pre-initialize vptr from canonical per-class vtable pointer via registry
-    if (oopIndex_.findClass(qualify(expr.className)))
-    {
+    if (oopIndex_.findClass(qualify(expr.className))) {
         auto itLayout = classLayouts_.find(expr.className);
-        if (itLayout != classLayouts_.end())
-        {
+        if (itLayout != classLayouts_.end()) {
             const long long typeId = (long long)itLayout->second.classId;
             Value vtblPtr = emitCallRet(
                 Type(Type::Kind::Ptr), "rt_get_class_vtable", {Value::constInt(typeId)});
@@ -167,21 +151,18 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
     // BUG-OOP-007 fix: Look up constructor signature for argument coercion
     std::vector<::il::frontends::basic::Type> ctorParamTypes;
     std::string qname = qualify(expr.className);
-    if (const ClassInfo *ci = oopIndex_.findClass(qname))
-    {
+    if (const ClassInfo *ci = oopIndex_.findClass(qname)) {
         for (const auto &p : ci->ctorParams)
             ctorParamTypes.push_back(p.type);
     }
 
-    for (std::size_t i = 0; i < expr.args.size(); ++i)
-    {
+    for (std::size_t i = 0; i < expr.args.size(); ++i) {
         const auto &arg = expr.args[i];
         if (!arg)
             continue;
         RVal lowered = lowerExpr(*arg);
         // BUG-OOP-007 fix: Coerce argument to match constructor parameter type
-        if (i < ctorParamTypes.size())
-        {
+        if (i < ctorParamTypes.size()) {
             auto astTy = ctorParamTypes[i];
             if (astTy == ::il::frontends::basic::Type::Bool)
                 lowered = coerceToBool(std::move(lowered), expr.loc);
@@ -202,8 +183,7 @@ Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr)
 // OopLoweringContext-aware implementations
 // -------------------------------------------------------------------------
 
-Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr, OopLoweringContext &ctx)
-{
+Lowerer::RVal Lowerer::lowerNewExpr(const NewExpr &expr, OopLoweringContext &ctx) {
     // Pre-cache the class info for the constructor target.
     // This benefits subsequent lookups during vtable initialization.
     (void)ctx.findClassInfo(qualify(expr.className));

@@ -17,8 +17,7 @@
 
 #include "frontends/common/ScopeTracker.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Backward-compatible alias for the shared scope tracker.
 /// @details The aliased type tracks scope nesting and symbol visibility during

@@ -33,12 +33,10 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// Build a simple module with redundant arithmetic for optimizer testing.
-Module buildTestModule()
-{
+Module buildTestModule() {
     Module mod;
     Function fn;
     fn.name = "test_fn";
@@ -86,8 +84,7 @@ Module buildTestModule()
 
 } // namespace
 
-TEST(PipelineInteractions, ReassociateThenConstFold)
-{
+TEST(PipelineInteractions, ReassociateThenConstFold) {
     Module mod = buildTestModule();
     il::transform::reassociate(mod);
     il::transform::constFold(mod);
@@ -95,8 +92,7 @@ TEST(PipelineInteractions, ReassociateThenConstFold)
     EXPECT_FALSE(mod.functions[0].blocks.empty());
 }
 
-TEST(PipelineInteractions, ConstFoldThenReassociate)
-{
+TEST(PipelineInteractions, ConstFoldThenReassociate) {
     Module mod = buildTestModule();
     il::transform::constFold(mod);
     il::transform::reassociate(mod);
@@ -104,8 +100,7 @@ TEST(PipelineInteractions, ConstFoldThenReassociate)
     EXPECT_FALSE(mod.functions[0].blocks.empty());
 }
 
-TEST(PipelineInteractions, EHOptThenDCE)
-{
+TEST(PipelineInteractions, EHOptThenDCE) {
     Module mod = buildTestModule();
     il::transform::ehOpt(mod);
     il::transform::dce(mod);
@@ -113,8 +108,7 @@ TEST(PipelineInteractions, EHOptThenDCE)
     EXPECT_FALSE(mod.functions[0].blocks.empty());
 }
 
-TEST(PipelineInteractions, AllPassesSequential)
-{
+TEST(PipelineInteractions, AllPassesSequential) {
     Module mod = buildTestModule();
     il::transform::reassociate(mod);
     il::transform::constFold(mod);
@@ -124,8 +118,7 @@ TEST(PipelineInteractions, AllPassesSequential)
     EXPECT_FALSE(mod.functions[0].blocks.empty());
 }
 
-TEST(PipelineInteractions, DCEThenConstFold)
-{
+TEST(PipelineInteractions, DCEThenConstFold) {
     Module mod = buildTestModule();
     il::transform::dce(mod);
     il::transform::constFold(mod);
@@ -133,8 +126,7 @@ TEST(PipelineInteractions, DCEThenConstFold)
     EXPECT_FALSE(mod.functions[0].blocks.empty());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -21,8 +21,7 @@
 #include "frontends/zia/Lowerer.hpp"
 #include "frontends/zia/RuntimeNames.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
@@ -34,8 +33,7 @@ static constexpr int kClosureEnvOffset = 8;
 // Lambda Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
-{
+LowerResult Lowerer::lowerLambda(LambdaExpr *expr) {
     // Generate unique lambda function name (per-instance counter, not static)
     std::string lambdaName = "__lambda_" + std::to_string(lambdaCounter_++);
 
@@ -44,12 +42,9 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
 
     // Determine return type (inferred as the body's type if not specified)
     TypeRef returnType = types::unknown();
-    if (expr->returnType)
-    {
+    if (expr->returnType) {
         returnType = sema_.resolveType(expr->returnType.get());
-    }
-    else
-    {
+    } else {
         returnType = sema_.typeOf(expr->body.get());
     }
     Type ilReturnType = mapType(returnType);
@@ -58,16 +53,14 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     std::vector<il::core::Param> params;
     params.reserve(expr->params.size() + 1);
     params.push_back({"__env", Type(Type::Kind::Ptr)});
-    for (const auto &param : expr->params)
-    {
+    for (const auto &param : expr->params) {
         TypeRef paramType = param.type ? sema_.resolveType(param.type.get()) : types::unknown();
         params.push_back({param.name, mapType(paramType)});
     }
 
     // Collect info about captured variables before switching contexts
     // We need to capture their current values/slot pointers
-    struct CaptureInfo
-    {
+    struct CaptureInfo {
         std::string name;
         Value value;
         Type type;
@@ -76,10 +69,8 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     };
 
     std::vector<CaptureInfo> captureInfos;
-    if (hasCaptures)
-    {
-        for (const auto &cap : expr->captures)
-        {
+    if (hasCaptures) {
+        for (const auto &cap : expr->captures) {
             CaptureInfo info;
             info.name = cap.name;
             info.isSlot = false;
@@ -92,25 +83,19 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
 
             // Look up the variable in current scope
             auto slotIt = slots_.find(cap.name);
-            if (slotIt != slots_.end())
-            {
+            if (slotIt != slots_.end()) {
                 // Load from slot to capture by value
                 info.type = varType ? mapType(varType) : Type(Type::Kind::I64);
                 info.semType = varType;
                 info.value = loadFromSlot(cap.name, info.type);
                 info.isSlot = true;
-            }
-            else
-            {
+            } else {
                 auto localIt = locals_.find(cap.name);
-                if (localIt != locals_.end())
-                {
+                if (localIt != locals_.end()) {
                     info.value = localIt->second;
                     info.type = varType ? mapType(varType) : Type(Type::Kind::I64);
                     info.semType = varType;
-                }
-                else
-                {
+                } else {
                     // Not found - might be a global or error
                     info.value = Value::constInt(0);
                     info.type = Type(Type::Kind::I64);
@@ -125,12 +110,9 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     TypeRef savedReturnType = currentReturnType_;
     unsigned savedNextTemp = builder_->saveTempId();
     size_t savedFuncIdx = static_cast<size_t>(-1);
-    if (currentFunc_)
-    {
-        for (size_t i = 0; i < module_->functions.size(); ++i)
-        {
-            if (&module_->functions[i] == currentFunc_)
-            {
+    if (currentFunc_) {
+        for (size_t i = 0; i < module_->functions.size(); ++i) {
+            if (&module_->functions[i] == currentFunc_) {
                 savedFuncIdx = i;
                 break;
             }
@@ -162,14 +144,12 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     // Load captured variables from the environment struct if we have captures
     const auto &blockParams = currentFunc_->blocks[entryIdx].params;
     // First parameter is always __env (may be null for no-capture lambdas)
-    if (hasCaptures)
-    {
+    if (hasCaptures) {
         Value envPtr = Value::temp(blockParams[0].id);
 
         // Load each captured variable from the environment
         size_t offset = 0;
-        for (size_t i = 0; i < captureInfos.size(); ++i)
-        {
+        for (size_t i = 0; i < captureInfos.size(); ++i) {
             const auto &info = captureInfos[i];
 
             // GEP to get field address within env struct
@@ -189,11 +169,9 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     }
 
     // Define user parameters as locals (skip __env at index 0)
-    for (size_t i = 0; i < expr->params.size(); ++i)
-    {
+    for (size_t i = 0; i < expr->params.size(); ++i) {
         size_t paramIdx = i + 1; // Skip __env
-        if (paramIdx < blockParams.size())
-        {
+        if (paramIdx < blockParams.size()) {
             TypeRef paramType = expr->params[i].type ? sema_.resolveType(expr->params[i].type.get())
                                                      : types::unknown();
             Type ilParamType = mapType(paramType);
@@ -205,42 +183,30 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
 
     // Lower the body - handle both block expressions and simple expressions
     LowerResult bodyResult{Value::constInt(0), Type(Type::Kind::Void)};
-    if (auto *blockExpr = dynamic_cast<BlockExpr *>(expr->body.get()))
-    {
+    if (auto *blockExpr = dynamic_cast<BlockExpr *>(expr->body.get())) {
         // Lower each statement in the block
-        for (auto &stmt : blockExpr->statements)
-        {
+        for (auto &stmt : blockExpr->statements) {
             lowerStmt(stmt.get());
         }
         // The block may have a final value expression
-        if (blockExpr->value)
-        {
+        if (blockExpr->value) {
             bodyResult = lowerExpr(blockExpr->value.get());
         }
-    }
-    else
-    {
+    } else {
         bodyResult = lowerExpr(expr->body.get());
     }
 
     // Return the body result
-    if (ilReturnType.kind == Type::Kind::Void)
-    {
-        if (!blockMgr_.isTerminated())
-        {
+    if (ilReturnType.kind == Type::Kind::Void) {
+        if (!blockMgr_.isTerminated()) {
             emitRetVoid();
         }
-    }
-    else
-    {
-        if (!blockMgr_.isTerminated())
-        {
+    } else {
+        if (!blockMgr_.isTerminated()) {
             Value returnValue = bodyResult.value;
-            if (returnType && returnType->kind == TypeKindSem::Optional)
-            {
+            if (returnType && returnType->kind == TypeKindSem::Optional) {
                 TypeRef bodyType = sema_.typeOf(expr->body.get());
-                if (!bodyType || bodyType->kind != TypeKindSem::Optional)
-                {
+                if (!bodyType || bodyType->kind != TypeKindSem::Optional) {
                     TypeRef innerType = returnType->innerType();
                     if (innerType)
                         returnValue = emitOptionalWrap(bodyResult.value, innerType);
@@ -251,17 +217,14 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
     }
 
     // Restore context (use saved index to get fresh pointer after potential vector reallocation)
-    if (savedFuncIdx != static_cast<size_t>(-1))
-    {
+    if (savedFuncIdx != static_cast<size_t>(-1)) {
         currentFunc_ = &module_->functions[savedFuncIdx];
         blockMgr_.reset(currentFunc_);
         blockMgr_.setNextBlockId(savedNextBlockId);
         blockMgr_.setBlock(savedBlockIdx);
         builder_->restoreTempId(savedNextTemp);
         builder_->restoreFunction(currentFunc_);
-    }
-    else
-    {
+    } else {
         currentFunc_ = nullptr;
     }
     locals_ = std::move(savedLocals);
@@ -278,11 +241,9 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
 
     // Allocate environment if we have captures
     Value envPtr = Value::null(); // null for no captures
-    if (hasCaptures)
-    {
+    if (hasCaptures) {
         size_t envSize = 0;
-        for (const auto &info : captureInfos)
-        {
+        for (const auto &info : captureInfos) {
             envSize += getILTypeSize(info.type);
         }
 
@@ -292,8 +253,7 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
 
         // Store captured values into the environment
         size_t offset = 0;
-        for (const auto &info : captureInfos)
-        {
+        for (const auto &info : captureInfos) {
             Value fieldAddr = emitGEP(envPtr, static_cast<int64_t>(offset));
             emitStore(fieldAddr, info.value, info.type);
             offset += getILTypeSize(info.type);
@@ -318,17 +278,14 @@ LowerResult Lowerer::lowerLambda(LambdaExpr *expr)
 // Block Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerBlockExpr(BlockExpr *expr)
-{
+LowerResult Lowerer::lowerBlockExpr(BlockExpr *expr) {
     // Lower each statement in the block
-    for (auto &stmt : expr->statements)
-    {
+    for (auto &stmt : expr->statements) {
         lowerStmt(stmt.get());
     }
 
     // If there's a trailing value expression, lower it and return
-    if (expr->value)
-    {
+    if (expr->value) {
         return lowerExpr(expr->value.get());
     }
 
@@ -340,8 +297,7 @@ LowerResult Lowerer::lowerBlockExpr(BlockExpr *expr)
 // As (Type Cast) Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerAs(AsExpr *expr)
-{
+LowerResult Lowerer::lowerAs(AsExpr *expr) {
     // Lower the source value expression
     auto source = lowerExpr(expr->value.get());
 
@@ -352,10 +308,8 @@ LowerResult Lowerer::lowerAs(AsExpr *expr)
 
     // Numeric conversions require actual IL conversion instructions to avoid
     // raw bit reinterpretation (e.g., f64 bits read as i64 -> garbage).
-    if (sourceType && targetType)
-    {
-        if (sourceType->kind == TypeKindSem::Number && targetType->kind == TypeKindSem::Integer)
-        {
+    if (sourceType && targetType) {
+        if (sourceType->kind == TypeKindSem::Number && targetType->kind == TypeKindSem::Integer) {
             // f64 -> i64: checked truncation (traps on NaN/overflow)
             unsigned convId = nextTempId();
             il::core::Instr conv;
@@ -367,8 +321,7 @@ LowerResult Lowerer::lowerAs(AsExpr *expr)
             blockMgr_.currentBlock()->instructions.push_back(conv);
             return {Value::temp(convId), conv.type};
         }
-        if (sourceType->kind == TypeKindSem::Integer && targetType->kind == TypeKindSem::Number)
-        {
+        if (sourceType->kind == TypeKindSem::Integer && targetType->kind == TypeKindSem::Number) {
             // i64 -> f64: widening (may lose precision for values > 2^53)
             unsigned convId = nextTempId();
             il::core::Instr conv;
@@ -380,8 +333,7 @@ LowerResult Lowerer::lowerAs(AsExpr *expr)
             blockMgr_.currentBlock()->instructions.push_back(conv);
             return {Value::temp(convId), conv.type};
         }
-        if (sourceType->kind == TypeKindSem::Integer && targetType->kind == TypeKindSem::Byte)
-        {
+        if (sourceType->kind == TypeKindSem::Integer && targetType->kind == TypeKindSem::Byte) {
             // i64 -> i32 (byte): checked narrowing (traps on overflow)
             unsigned convId = nextTempId();
             il::core::Instr conv;
@@ -393,8 +345,7 @@ LowerResult Lowerer::lowerAs(AsExpr *expr)
             blockMgr_.currentBlock()->instructions.push_back(conv);
             return {Value::temp(convId), conv.type};
         }
-        if (sourceType->kind == TypeKindSem::Byte && targetType->kind == TypeKindSem::Integer)
-        {
+        if (sourceType->kind == TypeKindSem::Byte && targetType->kind == TypeKindSem::Integer) {
             // i32 -> i64: zero-extend widening
             Value widened = widenByteToInteger(source.value);
             return {widened, Type(Type::Kind::I64)};
@@ -411,23 +362,20 @@ LowerResult Lowerer::lowerAs(AsExpr *expr)
 // Is Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerIsExpr(IsExpr *expr)
-{
+LowerResult Lowerer::lowerIsExpr(IsExpr *expr) {
     // Lower the value being tested
     auto source = lowerExpr(expr->value.get());
 
     // Resolve the target type name
     TypeRef targetType = sema_.resolveType(expr->type.get());
-    if (!targetType)
-    {
+    if (!targetType) {
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
     // Look up the entity type info for the target type
     std::string targetName = targetType->name;
     auto it = entityTypes_.find(targetName);
-    if (it == entityTypes_.end())
-    {
+    if (it == entityTypes_.end()) {
         // Not an entity type -- fall back to false
         diag_.report(
             {il::support::Severity::Warning,

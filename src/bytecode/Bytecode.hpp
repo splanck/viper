@@ -36,8 +36,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::bytecode
-{
+namespace viper::bytecode {
 
 /// @brief Magic number for bytecode modules: "VBC\x01".
 /// @details Stored in little-endian byte order at the beginning of every
@@ -75,8 +74,7 @@ constexpr uint32_t kMaxStackSize = 1024;
 ///          - 0xC0-0xCF  Exception handling
 ///          - 0xD0-0xDF  Debug operations
 ///          - 0xE0-0xEF  String operations
-enum class BCOpcode : uint8_t
-{
+enum class BCOpcode : uint8_t {
     // Stack Operations (0x00-0x0F)
     NOP = 0x00,  ///< No operation.
     DUP = 0x01,  ///< Duplicate top-of-stack (TOS).
@@ -245,8 +243,7 @@ const char *opcodeName(BCOpcode op);
 ///          and verifier use this to identify block boundaries.
 /// @param op The opcode to test.
 /// @return True if the opcode ends a basic block; false otherwise.
-inline constexpr bool isTerminator(BCOpcode op)
-{
+inline constexpr bool isTerminator(BCOpcode op) {
     return op == BCOpcode::JUMP || op == BCOpcode::JUMP_IF_TRUE || op == BCOpcode::JUMP_IF_FALSE ||
            op == BCOpcode::JUMP_LONG || op == BCOpcode::SWITCH || op == BCOpcode::RETURN ||
            op == BCOpcode::RETURN_VOID || op == BCOpcode::TAIL_CALL || op == BCOpcode::TRAP ||
@@ -261,10 +258,8 @@ inline constexpr bool isTerminator(BCOpcode op)
 ///          exception handler coverage.
 /// @param op The opcode to test.
 /// @return True if the opcode may raise a trap; false otherwise.
-inline constexpr bool canTrap(BCOpcode op)
-{
-    switch (op)
-    {
+inline constexpr bool canTrap(BCOpcode op) {
+    switch (op) {
         case BCOpcode::ADD_I64_OVF:
         case BCOpcode::SUB_I64_OVF:
         case BCOpcode::MUL_I64_OVF:
@@ -297,8 +292,7 @@ inline constexpr bool canTrap(BCOpcode op)
 /// @details Produces the encoding [opcode:8][0:24].
 /// @param op The opcode to encode.
 /// @return The 32-bit encoded instruction word.
-inline constexpr uint32_t encodeOp(BCOpcode op)
-{
+inline constexpr uint32_t encodeOp(BCOpcode op) {
     return static_cast<uint32_t>(op);
 }
 
@@ -307,8 +301,7 @@ inline constexpr uint32_t encodeOp(BCOpcode op)
 /// @param op   The opcode to encode.
 /// @param arg0 The 8-bit unsigned argument (e.g., local slot index).
 /// @return The 32-bit encoded instruction word.
-inline constexpr uint32_t encodeOp8(BCOpcode op, uint8_t arg0)
-{
+inline constexpr uint32_t encodeOp8(BCOpcode op, uint8_t arg0) {
     return static_cast<uint32_t>(op) | (static_cast<uint32_t>(arg0) << 8);
 }
 
@@ -318,8 +311,7 @@ inline constexpr uint32_t encodeOp8(BCOpcode op, uint8_t arg0)
 /// @param op   The opcode to encode.
 /// @param arg0 The signed 8-bit argument (e.g., small immediate).
 /// @return The 32-bit encoded instruction word.
-inline constexpr uint32_t encodeOpI8(BCOpcode op, int8_t arg0)
-{
+inline constexpr uint32_t encodeOpI8(BCOpcode op, int8_t arg0) {
     return static_cast<uint32_t>(op) | (static_cast<uint32_t>(static_cast<uint8_t>(arg0)) << 8);
 }
 
@@ -329,8 +321,7 @@ inline constexpr uint32_t encodeOpI8(BCOpcode op, int8_t arg0)
 /// @param arg0 First 8-bit unsigned argument.
 /// @param arg1 Second 8-bit unsigned argument.
 /// @return The 32-bit encoded instruction word.
-inline constexpr uint32_t encodeOp88(BCOpcode op, uint8_t arg0, uint8_t arg1)
-{
+inline constexpr uint32_t encodeOp88(BCOpcode op, uint8_t arg0, uint8_t arg1) {
     return static_cast<uint32_t>(op) | (static_cast<uint32_t>(arg0) << 8) |
            (static_cast<uint32_t>(arg1) << 16);
 }
@@ -341,8 +332,7 @@ inline constexpr uint32_t encodeOp88(BCOpcode op, uint8_t arg0, uint8_t arg1)
 /// @param op   The opcode to encode.
 /// @param arg0 The 16-bit unsigned argument (e.g., wide local index, pool index).
 /// @return The 32-bit encoded instruction word.
-inline constexpr uint32_t encodeOp16(BCOpcode op, uint16_t arg0)
-{
+inline constexpr uint32_t encodeOp16(BCOpcode op, uint16_t arg0) {
     return static_cast<uint32_t>(op) | (static_cast<uint32_t>(arg0) << 8);
 }
 
@@ -352,8 +342,7 @@ inline constexpr uint32_t encodeOp16(BCOpcode op, uint16_t arg0)
 /// @param op   The opcode to encode.
 /// @param arg0 The signed 16-bit argument (e.g., branch offset).
 /// @return The 32-bit encoded instruction word.
-inline constexpr uint32_t encodeOpI16(BCOpcode op, int16_t arg0)
-{
+inline constexpr uint32_t encodeOpI16(BCOpcode op, int16_t arg0) {
     return static_cast<uint32_t>(op) | (static_cast<uint32_t>(static_cast<uint16_t>(arg0)) << 8);
 }
 
@@ -363,8 +352,7 @@ inline constexpr uint32_t encodeOpI16(BCOpcode op, int16_t arg0)
 /// @param arg0 First 8-bit unsigned argument.
 /// @param arg1 Second 16-bit unsigned argument.
 /// @return The 32-bit encoded instruction word.
-inline constexpr uint32_t encodeOp8_16(BCOpcode op, uint8_t arg0, uint16_t arg1)
-{
+inline constexpr uint32_t encodeOp8_16(BCOpcode op, uint8_t arg0, uint16_t arg1) {
     return static_cast<uint32_t>(op) | (static_cast<uint32_t>(arg0) << 8) |
            (static_cast<uint32_t>(arg1) << 16);
 }
@@ -375,8 +363,7 @@ inline constexpr uint32_t encodeOp8_16(BCOpcode op, uint8_t arg0, uint16_t arg1)
 /// @param op   The opcode to encode.
 /// @param arg0 The 24-bit unsigned argument (e.g., long jump offset).
 /// @return The 32-bit encoded instruction word.
-inline constexpr uint32_t encodeOp24(BCOpcode op, uint32_t arg0)
-{
+inline constexpr uint32_t encodeOp24(BCOpcode op, uint32_t arg0) {
     return static_cast<uint32_t>(op) | ((arg0 & 0xFFFFFF) << 8);
 }
 
@@ -386,8 +373,7 @@ inline constexpr uint32_t encodeOp24(BCOpcode op, uint32_t arg0)
 /// @param op   The opcode to encode.
 /// @param arg0 The signed 24-bit argument (e.g., signed long jump offset).
 /// @return The 32-bit encoded instruction word.
-inline constexpr uint32_t encodeOpI24(BCOpcode op, int32_t arg0)
-{
+inline constexpr uint32_t encodeOpI24(BCOpcode op, int32_t arg0) {
     return static_cast<uint32_t>(op) | ((static_cast<uint32_t>(arg0) & 0xFFFFFF) << 8);
 }
 
@@ -398,72 +384,63 @@ inline constexpr uint32_t encodeOpI24(BCOpcode op, int32_t arg0)
 /// @brief Extract the opcode from a 32-bit instruction word.
 /// @param instr The encoded instruction word.
 /// @return The BCOpcode stored in bits 0-7.
-inline constexpr BCOpcode decodeOpcode(uint32_t instr)
-{
+inline constexpr BCOpcode decodeOpcode(uint32_t instr) {
     return static_cast<BCOpcode>(instr & 0xFF);
 }
 
 /// @brief Extract the first unsigned 8-bit argument (bits 8-15).
 /// @param instr The encoded instruction word.
 /// @return The unsigned 8-bit value in the arg0 field.
-inline constexpr uint8_t decodeArg8_0(uint32_t instr)
-{
+inline constexpr uint8_t decodeArg8_0(uint32_t instr) {
     return static_cast<uint8_t>((instr >> 8) & 0xFF);
 }
 
 /// @brief Extract the first signed 8-bit argument (bits 8-15).
 /// @param instr The encoded instruction word.
 /// @return The signed 8-bit value in the arg0 field.
-inline constexpr int8_t decodeArgI8_0(uint32_t instr)
-{
+inline constexpr int8_t decodeArgI8_0(uint32_t instr) {
     return static_cast<int8_t>((instr >> 8) & 0xFF);
 }
 
 /// @brief Extract the second unsigned 8-bit argument (bits 16-23).
 /// @param instr The encoded instruction word.
 /// @return The unsigned 8-bit value in the arg1 field.
-inline constexpr uint8_t decodeArg8_1(uint32_t instr)
-{
+inline constexpr uint8_t decodeArg8_1(uint32_t instr) {
     return static_cast<uint8_t>((instr >> 16) & 0xFF);
 }
 
 /// @brief Extract the third unsigned 8-bit argument (bits 24-31).
 /// @param instr The encoded instruction word.
 /// @return The unsigned 8-bit value in the arg2 field.
-inline constexpr uint8_t decodeArg8_2(uint32_t instr)
-{
+inline constexpr uint8_t decodeArg8_2(uint32_t instr) {
     return static_cast<uint8_t>((instr >> 24) & 0xFF);
 }
 
 /// @brief Extract a 16-bit unsigned argument from bits 8-23.
 /// @param instr The encoded instruction word.
 /// @return The unsigned 16-bit value spanning arg0 and arg1 fields.
-inline constexpr uint16_t decodeArg16(uint32_t instr)
-{
+inline constexpr uint16_t decodeArg16(uint32_t instr) {
     return static_cast<uint16_t>((instr >> 8) & 0xFFFF);
 }
 
 /// @brief Extract a 16-bit signed argument from bits 8-23.
 /// @param instr The encoded instruction word.
 /// @return The signed 16-bit value spanning arg0 and arg1 fields.
-inline constexpr int16_t decodeArgI16(uint32_t instr)
-{
+inline constexpr int16_t decodeArgI16(uint32_t instr) {
     return static_cast<int16_t>((instr >> 8) & 0xFFFF);
 }
 
 /// @brief Extract the second 16-bit unsigned argument from bits 16-31.
 /// @param instr The encoded instruction word.
 /// @return The unsigned 16-bit value in the upper half of the argument space.
-inline constexpr uint16_t decodeArg16_1(uint32_t instr)
-{
+inline constexpr uint16_t decodeArg16_1(uint32_t instr) {
     return static_cast<uint16_t>((instr >> 16) & 0xFFFF);
 }
 
 /// @brief Extract a 24-bit unsigned argument from bits 8-31.
 /// @param instr The encoded instruction word.
 /// @return The unsigned 24-bit value occupying the full argument space.
-inline constexpr uint32_t decodeArg24(uint32_t instr)
-{
+inline constexpr uint32_t decodeArg24(uint32_t instr) {
     return (instr >> 8) & 0xFFFFFF;
 }
 
@@ -472,12 +449,10 @@ inline constexpr uint32_t decodeArg24(uint32_t instr)
 ///          is sign-extended to a full 32-bit signed integer.
 /// @param instr The encoded instruction word.
 /// @return The sign-extended 24-bit signed value.
-inline constexpr int32_t decodeArgI24(uint32_t instr)
-{
+inline constexpr int32_t decodeArgI24(uint32_t instr) {
     uint32_t raw = (instr >> 8) & 0xFFFFFF;
     // Sign extend from 24-bit
-    if (raw & 0x800000)
-    {
+    if (raw & 0x800000) {
         return static_cast<int32_t>(raw | 0xFF000000);
     }
     return static_cast<int32_t>(raw);
@@ -499,8 +474,7 @@ inline constexpr int32_t decodeArgI24(uint32_t instr)
 ///          consumes the value. There is no runtime type tag; type safety is ensured
 ///          at compile time by the bytecode compiler.
 /// @invariant sizeof(BCSlot) == 8 (enforced by static_assert).
-union BCSlot
-{
+union BCSlot {
     int64_t i64; ///< Integer representation (also booleans, unsigned values).
     double f64;  ///< IEEE-754 double-precision floating-point representation.
     void *ptr;   ///< Pointer representation (objects, strings, memory addresses).
@@ -523,31 +497,27 @@ union BCSlot
     /// @brief Create a BCSlot from a 64-bit integer value.
     /// @param v The integer value.
     /// @return A new BCSlot with the i64 field set.
-    static BCSlot fromInt(int64_t v)
-    {
+    static BCSlot fromInt(int64_t v) {
         return BCSlot(v);
     }
 
     /// @brief Create a BCSlot from a double-precision floating-point value.
     /// @param v The double value.
     /// @return A new BCSlot with the f64 field set.
-    static BCSlot fromFloat(double v)
-    {
+    static BCSlot fromFloat(double v) {
         return BCSlot(v);
     }
 
     /// @brief Create a BCSlot from a pointer value.
     /// @param v The pointer value (may be nullptr).
     /// @return A new BCSlot with the ptr field set.
-    static BCSlot fromPtr(void *v)
-    {
+    static BCSlot fromPtr(void *v) {
         return BCSlot(v);
     }
 
     /// @brief Create a BCSlot holding a null pointer.
     /// @return A new BCSlot with ptr set to nullptr.
-    static BCSlot null()
-    {
+    static BCSlot null() {
         return BCSlot(static_cast<void *>(nullptr));
     }
 };

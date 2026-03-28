@@ -29,10 +29,8 @@
 #include <iostream>
 #include <string_view>
 
-namespace il::vm
-{
-namespace
-{
+namespace il::vm {
+namespace {
 [[maybe_unused]] constexpr bool kDebugBreakpoints = false;
 } // namespace
 
@@ -46,8 +44,7 @@ namespace
 ///
 /// @param p Path string to normalise; modified in place.
 /// @return Canonical path with redundant segments removed.
-std::string DebugCtrl::normalizePath(std::string p)
-{
+std::string DebugCtrl::normalizePath(std::string p) {
     std::replace(p.begin(), p.end(), '\\', '/');
 
     if (p.empty())
@@ -62,8 +59,7 @@ std::string DebugCtrl::normalizePath(std::string p)
 #ifdef _WIN32
     // Match the source manager's lowercasing on Windows for case-insensitive
     // path comparisons.
-    for (char &ch : generic)
-    {
+    for (char &ch : generic) {
         if (ch >= 'A' && ch <= 'Z')
             ch = static_cast<char>(ch - 'A' + 'a');
     }
@@ -81,8 +77,7 @@ std::string DebugCtrl::normalizePath(std::string p)
 ///
 /// @param path Original path supplied by the user; consumed by the function.
 /// @return Pair of canonical path and basename strings.
-std::pair<std::string, std::string> DebugCtrl::normalizePathWithBase(std::string path)
-{
+std::pair<std::string, std::string> DebugCtrl::normalizePathWithBase(std::string path) {
     std::string normFile = normalizePath(std::move(path));
     size_t pos = normFile.find_last_of('/');
     std::string base = (pos == std::string::npos) ? normFile : normFile.substr(pos + 1);
@@ -97,8 +92,7 @@ std::pair<std::string, std::string> DebugCtrl::normalizePathWithBase(std::string
 ///
 /// @param label Block label text.
 /// @return Interned symbol suitable for set membership queries.
-il::support::Symbol DebugCtrl::internLabel(std::string_view label)
-{
+il::support::Symbol DebugCtrl::internLabel(std::string_view label) {
     return interner_.intern(label);
 }
 
@@ -108,8 +102,7 @@ il::support::Symbol DebugCtrl::internLabel(std::string_view label)
 ///          are harmless because the underlying container is idempotent.
 ///
 /// @param sym Interned symbol identifying the target block.
-void DebugCtrl::addBreak(il::support::Symbol sym)
-{
+void DebugCtrl::addBreak(il::support::Symbol sym) {
     if (sym)
         breaks_.insert(sym);
 }
@@ -122,8 +115,7 @@ void DebugCtrl::addBreak(il::support::Symbol sym)
 ///
 /// @param blk Block currently under execution.
 /// @return @c true when a breakpoint has been registered for @p blk.
-bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
-{
+bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const {
     il::support::Symbol sym = interner_.intern(blk.label);
     return breaks_.contains(sym);
 }
@@ -136,8 +128,7 @@ bool DebugCtrl::shouldBreak(const il::core::BasicBlock &blk) const
 ///
 /// @param file Source file path supplied by the user.
 /// @param line One-based line number that should trigger a breakpoint.
-void DebugCtrl::addBreakSrcLine(std::string file, uint32_t line)
-{
+void DebugCtrl::addBreakSrcLine(std::string file, uint32_t line) {
     auto [normFile, base] = normalizePathWithBase(std::move(file));
     const size_t idx = srcLineBPs_.size();
     srcLineBPs_.push_back({std::move(normFile), std::move(base), line});
@@ -147,8 +138,7 @@ void DebugCtrl::addBreakSrcLine(std::string file, uint32_t line)
 /// @brief Query whether any source-level breakpoints exist.
 ///
 /// @return @c true when the controller holds at least one source breakpoint.
-bool DebugCtrl::hasSrcLineBPs() const
-{
+bool DebugCtrl::hasSrcLineBPs() const {
     return !srcLineBPs_.empty();
 }
 
@@ -159,16 +149,14 @@ bool DebugCtrl::hasSrcLineBPs() const
 ///          back into canonical paths when evaluating breakpoints.
 ///
 /// @param sm Source manager responsible for path resolution.
-void DebugCtrl::setSourceManager(const il::support::SourceManager *sm)
-{
+void DebugCtrl::setSourceManager(const il::support::SourceManager *sm) {
     sm_ = sm;
 }
 
 /// @brief Access the source manager previously provided to the debugger.
 ///
 /// @return Pointer installed via @ref setSourceManager or @c nullptr when unset.
-const il::support::SourceManager *DebugCtrl::getSourceManager() const
-{
+const il::support::SourceManager *DebugCtrl::getSourceManager() const {
     return sm_;
 }
 
@@ -182,8 +170,7 @@ const il::support::SourceManager *DebugCtrl::getSourceManager() const
 ///
 /// @param I Instruction currently being executed.
 /// @return @c true when a matching breakpoint is found.
-bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
-{
+bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const {
     if (!sm_ || srcLineBPs_.empty() || !I.loc.hasFile() || !I.loc.hasLine())
         return false;
 
@@ -193,10 +180,8 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
         return false;
 
     std::string_view pathView = sm_->getPath(fileId);
-    if (pathView.empty())
-    {
-        if constexpr (kDebugBreakpoints)
-        {
+    if (pathView.empty()) {
+        if constexpr (kDebugBreakpoints) {
             std::cerr << "[DEBUG][DebugCtrl] unresolved file id " << fileId
                       << " while checking breakpoint for line " << line << "\n";
         }
@@ -209,11 +194,9 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
         return false;
 
     auto [normFile, base] = normalizePathWithBase(std::string(pathView));
-    for (const size_t bpIdx : lineIt->second)
-    {
+    for (const size_t bpIdx : lineIt->second) {
         const auto &bp = srcLineBPs_[bpIdx];
-        if (normFile == bp.normFile || base == bp.base)
-        {
+        if (normFile == bp.normFile || base == bp.base) {
             lastHitSrc_ = std::make_pair(fileId, line);
             return true;
         }
@@ -230,8 +213,7 @@ bool DebugCtrl::shouldBreakOn(const il::core::Instr &I) const
 ///
 /// @param name Identifier of the variable to track.
 /// @return Watch ID (>= 1) for use with fast-path methods, or 0 on failure.
-uint32_t DebugCtrl::addWatch(std::string_view name)
-{
+uint32_t DebugCtrl::addWatch(std::string_view name) {
     il::support::Symbol sym = interner_.intern(name);
     if (!sym)
         return 0;
@@ -243,8 +225,7 @@ uint32_t DebugCtrl::addWatch(std::string_view name)
 
     // Allocate new watch entry
     const uint32_t id = static_cast<uint32_t>(watchEntries_.size());
-    if (id == 0)
-    {
+    if (id == 0) {
         // Reserve index 0 as "not watched" sentinel
         watchEntries_.emplace_back();
     }
@@ -262,8 +243,7 @@ uint32_t DebugCtrl::addWatch(std::string_view name)
 ///
 /// @param sym Interned symbol to check.
 /// @return Watch ID if watched, or 0 if not watched.
-uint32_t DebugCtrl::getWatchId(il::support::Symbol sym) const noexcept
-{
+uint32_t DebugCtrl::getWatchId(il::support::Symbol sym) const noexcept {
     auto it = symbolToWatchId_.find(sym);
     return (it != symbolToWatchId_.end()) ? it->second : 0;
 }
@@ -287,8 +267,7 @@ void DebugCtrl::onStore(std::string_view name,
                         double f64,
                         std::string_view fn,
                         std::string_view blk,
-                        size_t ip)
-{
+                        size_t ip) {
     il::support::Symbol sym = interner_.intern(name);
     const uint32_t watchId = getWatchId(sym);
     if (watchId == 0)
@@ -319,16 +298,14 @@ void DebugCtrl::onStoreById(uint32_t watchId,
                             double f64,
                             std::string_view fn,
                             std::string_view blk,
-                            size_t ip)
-{
+                            size_t ip) {
     if (watchId == 0 || watchId >= watchEntries_.size())
         return;
 
     WatchEntry &w = watchEntries_[watchId];
     if (ty != il::core::Type::Kind::I1 && ty != il::core::Type::Kind::I16 &&
         ty != il::core::Type::Kind::I32 && ty != il::core::Type::Kind::I64 &&
-        ty != il::core::Type::Kind::F64)
-    {
+        ty != il::core::Type::Kind::F64) {
         std::cerr << "[WATCH] " << name << "=[unsupported]  (fn=@" << fn << " blk=" << blk
                   << " ip=#" << ip << ")\n";
         return;
@@ -336,28 +313,22 @@ void DebugCtrl::onStoreById(uint32_t watchId,
     const bool typeChanged = w.hasValue && w.type != ty;
     bool changed = !w.hasValue || typeChanged;
 
-    auto isIntegerKind = [](il::core::Type::Kind kind)
-    {
+    auto isIntegerKind = [](il::core::Type::Kind kind) {
         return kind == il::core::Type::Kind::I1 || kind == il::core::Type::Kind::I16 ||
                kind == il::core::Type::Kind::I32 || kind == il::core::Type::Kind::I64;
     };
 
-    if (!changed)
-    {
-        if (ty == il::core::Type::Kind::F64)
-        {
+    if (!changed) {
+        if (ty == il::core::Type::Kind::F64) {
             if (w.type == il::core::Type::Kind::F64 && w.f64 != f64)
                 changed = true;
-        }
-        else if (isIntegerKind(ty))
-        {
+        } else if (isIntegerKind(ty)) {
             if (isIntegerKind(w.type) && w.i64 != i64)
                 changed = true;
         }
     }
 
-    if (changed)
-    {
+    if (changed) {
         std::cerr << "[WATCH] " << name << "=" << il::core::kindToString(ty) << ":";
         if (ty == il::core::Type::Kind::F64)
             std::cerr << f64;
@@ -366,14 +337,11 @@ void DebugCtrl::onStoreById(uint32_t watchId,
         std::cerr << "  (fn=@" << fn << " blk=" << blk << " ip=#" << ip << ")\n";
     }
 
-    if (ty == il::core::Type::Kind::F64)
-    {
+    if (ty == il::core::Type::Kind::F64) {
         if (typeChanged)
             w.i64 = 0;
         w.f64 = f64;
-    }
-    else
-    {
+    } else {
         if (typeChanged)
             w.f64 = 0.0;
         w.i64 = i64;
@@ -387,8 +355,7 @@ void DebugCtrl::onStoreById(uint32_t watchId,
 ///
 /// @details Clearing the cache allows the debugger to stop again on the same
 ///          line, for example after the user single-steps past it.
-void DebugCtrl::resetLastHit()
-{
+void DebugCtrl::resetLastHit() {
     lastHitSrc_.reset();
 }
 
@@ -399,8 +366,7 @@ void DebugCtrl::resetLastHit()
 ///          subsequent onMemWrite() calls will re-sort before binary search.
 ///
 /// @return Internal watch ID for the new entry.
-uint32_t DebugCtrl::addMemWatch(const void *addr, std::size_t size, std::string tag)
-{
+uint32_t DebugCtrl::addMemWatch(const void *addr, std::size_t size, std::string tag) {
     if (!addr || size == 0)
         return 0;
     const auto start = reinterpret_cast<std::uintptr_t>(addr);
@@ -415,12 +381,9 @@ uint32_t DebugCtrl::addMemWatch(const void *addr, std::size_t size, std::string 
 ///
 /// @details Searches for the matching entry and removes it, marking the vector
 ///          as potentially unsorted if the removal affects ordering.
-bool DebugCtrl::removeMemWatch(const void *addr, std::size_t size, std::string_view tag)
-{
-    for (auto it = memWatches_.begin(); it != memWatches_.end(); ++it)
-    {
-        if (it->addr == addr && it->size == size && it->tag == tag)
-        {
+bool DebugCtrl::removeMemWatch(const void *addr, std::size_t size, std::string_view tag) {
+    for (auto it = memWatches_.begin(); it != memWatches_.end(); ++it) {
+        if (it->addr == addr && it->size == size && it->tag == tag) {
             memWatches_.erase(it);
             // Removal from sorted vector preserves sorting unless we erased from the middle
             // For simplicity, just mark as potentially unsorted
@@ -431,13 +394,11 @@ bool DebugCtrl::removeMemWatch(const void *addr, std::size_t size, std::string_v
     return false;
 }
 
-bool DebugCtrl::hasMemWatches() const noexcept
-{
+bool DebugCtrl::hasMemWatches() const noexcept {
     return !memWatches_.empty();
 }
 
-bool DebugCtrl::hasVarWatches() const noexcept
-{
+bool DebugCtrl::hasVarWatches() const noexcept {
     return !symbolToWatchId_.empty();
 }
 
@@ -447,8 +408,7 @@ bool DebugCtrl::hasVarWatches() const noexcept
 ///          sorts ranges by start address and uses binary search to find the
 ///          first potentially intersecting range, then scans forward.  This
 ///          gives O(log n + k) complexity where k is the number of intersections.
-void DebugCtrl::onMemWrite(const void *addr, std::size_t size)
-{
+void DebugCtrl::onMemWrite(const void *addr, std::size_t size) {
     if (memWatches_.empty() || !addr || size == 0)
         return;
 
@@ -457,10 +417,8 @@ void DebugCtrl::onMemWrite(const void *addr, std::size_t size)
 
     // For small watch sets, linear scan is faster than sort + binary search
     constexpr std::size_t kLinearThreshold = 8;
-    if (memWatches_.size() < kLinearThreshold)
-    {
-        for (const auto &w : memWatches_)
-        {
+    if (memWatches_.size() < kLinearThreshold) {
+        for (const auto &w : memWatches_) {
             const bool intersects = !(writeEnd <= w.start || w.end <= writeStart);
             if (intersects)
                 memEvents_.push_back(MemWatchHit{addr, size, w.tag});
@@ -469,8 +427,7 @@ void DebugCtrl::onMemWrite(const void *addr, std::size_t size)
     }
 
     // Sort by start address if needed
-    if (!memWatchesSorted_)
-    {
+    if (!memWatchesSorted_) {
         std::sort(memWatches_.begin(),
                   memWatches_.end(),
                   [](const MemWatchRange &a, const MemWatchRange &b) { return a.start < b.start; });
@@ -486,8 +443,7 @@ void DebugCtrl::onMemWrite(const void *addr, std::size_t size)
                          [](const MemWatchRange &r, std::uintptr_t val) { return r.end <= val; });
 
     // Scan forward while ranges could still intersect
-    for (; it != memWatches_.end() && it->start < writeEnd; ++it)
-    {
+    for (; it != memWatches_.end() && it->start < writeEnd; ++it) {
         const bool intersects = !(writeEnd <= it->start || it->end <= writeStart);
         if (intersects)
             memEvents_.push_back(MemWatchHit{addr, size, it->tag});
@@ -495,8 +451,7 @@ void DebugCtrl::onMemWrite(const void *addr, std::size_t size)
 }
 
 /// @brief Drain pending memory watch hit events for external consumption.
-std::vector<MemWatchHit> DebugCtrl::drainMemWatchEvents()
-{
+std::vector<MemWatchHit> DebugCtrl::drainMemWatchEvents() {
     std::vector<MemWatchHit> out;
     out.swap(memEvents_);
     return out;

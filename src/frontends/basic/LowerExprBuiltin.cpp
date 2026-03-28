@@ -34,8 +34,7 @@
 #include <string_view>
 #include <utility>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 using il::core::BasicBlock;
 using il::core::Function;
 using il::core::Opcode;
@@ -43,16 +42,14 @@ using il::core::Value;
 using IlType = il::core::Type;
 using IlKind = IlType::Kind;
 
-namespace
-{
+namespace {
 constexpr std::string_view kDiagMissingBuiltinEmitter = "B4004";
 
 /// @brief Translate a builtin enumerator into its dense table index.
 ///
 /// @param builtin Builtin enumerator value.
 /// @return Zero-based index suitable for array access.
-constexpr std::size_t builtinIndex(BuiltinCallExpr::Builtin builtin) noexcept
-{
+constexpr std::size_t builtinIndex(BuiltinCallExpr::Builtin builtin) noexcept {
     return static_cast<std::size_t>(builtin);
 }
 
@@ -62,8 +59,7 @@ constexpr std::size_t builtinIndex(BuiltinCallExpr::Builtin builtin) noexcept
 ///          overrides entries for builtins that require bespoke lowering logic.
 ///
 /// @return Array of emitter function pointers aligned with the builtin enum.
-constexpr auto makeBuiltinEmitterTable()
-{
+constexpr auto makeBuiltinEmitterTable() {
     using Lowering = BuiltinExprLowering;
     std::array<Lowering::EmitFn, builtinIndex(BuiltinCallExpr::Builtin::Err) + 1> table{};
     table.fill(&Lowering::emitRuleDrivenBuiltin);
@@ -90,8 +86,7 @@ BuiltinExprLowering::BuiltinExprLowering(Lowerer &lowerer) noexcept : lowerer_(&
 ///
 /// @param expr AST node describing the builtin invocation.
 /// @return Lowered r-value representing the builtin's result.
-Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
-{
+Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr) {
     Lowerer &self = *lowerer_;
     const auto idx = builtinIndex(expr.builtin);
     EmitFn emitter = idx < kBuiltinEmitters.size() ? kBuiltinEmitters[idx] : nullptr;
@@ -112,8 +107,7 @@ Lowerer::RVal BuiltinExprLowering::lower(const BuiltinCallExpr &expr)
 /// @param call AST node representing the builtin invocation.
 /// @return Lowered r-value implementing the builtin semantics.
 Lowerer::RVal BuiltinExprLowering::emitRuleDrivenBuiltin(Lowerer &lowerer,
-                                                         const BuiltinCallExpr &call)
-{
+                                                         const BuiltinCallExpr &call) {
     return lower::common::lowerBuiltinCall(lowerer, call);
 }
 
@@ -128,8 +122,7 @@ Lowerer::RVal BuiltinExprLowering::emitRuleDrivenBuiltin(Lowerer &lowerer,
 /// @param lowerer Owning lowering engine.
 /// @param expr AST node describing the builtin invocation.
 /// @return Lowered r-value representing the file length.
-Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr)
-{
+Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr) {
     lowerer.requireLofCh();
     if (expr.args.empty() || !expr.args[0])
         return {Value::constInt(0), IlType(IlKind::I64)};
@@ -159,8 +152,7 @@ Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const Builti
     Lowerer::ProcedureContext &ctx = lowerer.context();
     Function *func = ctx.function();
     BasicBlock *origin = ctx.current();
-    if (func && origin)
-    {
+    if (func && origin) {
         std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
         Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
         std::string failLbl =
@@ -215,8 +207,7 @@ Lowerer::RVal BuiltinExprLowering::emitLofBuiltin(Lowerer &lowerer, const Builti
 /// @param lowerer Owning lowering engine.
 /// @param expr AST node describing the builtin invocation.
 /// @return Lowered r-value representing the EOF flag.
-Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr)
-{
+Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr) {
     lowerer.requireEofCh();
     if (expr.args.empty() || !expr.args[0])
         return {Value::constInt(0), IlType(IlKind::I64)};
@@ -249,8 +240,7 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
     Lowerer::ProcedureContext &ctx = lowerer.context();
     Function *func = ctx.function();
     BasicBlock *origin = ctx.current();
-    if (func && origin)
-    {
+    if (func && origin) {
         std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
         Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
         std::string failLbl =
@@ -312,8 +302,7 @@ Lowerer::RVal BuiltinExprLowering::emitEofBuiltin(Lowerer &lowerer, const Builti
 /// @param lowerer Owning lowering engine.
 /// @param expr AST node describing the builtin invocation.
 /// @return Lowered r-value representing the current file position.
-Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr)
-{
+Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr) {
     lowerer.requireLocCh();
     if (expr.args.empty() || !expr.args[0])
         return {Value::constInt(0), IlType(IlKind::I64)};
@@ -343,8 +332,7 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
     Lowerer::ProcedureContext &ctx = lowerer.context();
     Function *func = ctx.function();
     BasicBlock *origin = ctx.current();
-    if (func && origin)
-    {
+    if (func && origin) {
         std::size_t originIdx = static_cast<std::size_t>(origin - &func->blocks[0]);
         Lowerer::BlockNamer *blockNamer = ctx.blockNames().namer();
         std::string failLbl =
@@ -396,16 +384,14 @@ Lowerer::RVal BuiltinExprLowering::emitLocBuiltin(Lowerer &lowerer, const Builti
 /// @param lowerer Owning lowering engine.
 /// @param expr AST node describing the builtin invocation.
 /// @return Lowered r-value representing the error code as I64.
-Lowerer::RVal BuiltinExprLowering::emitErrBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr)
-{
+Lowerer::RVal BuiltinExprLowering::emitErrBuiltin(Lowerer &lowerer, const BuiltinCallExpr &expr) {
     Lowerer::ProcedureContext &ctx = lowerer.context();
     Function *func = ctx.function();
     BasicBlock *current = ctx.current();
 
     // Check if we're in a handler block by looking for Error parameter
     if (func && current && !current->params.empty() &&
-        current->params[0].type.kind == IlKind::Error)
-    {
+        current->params[0].type.kind == IlKind::Error) {
         // We're in a handler block, extract error code from %err parameter
         unsigned errId = current->params[0].id;
 
@@ -454,10 +440,8 @@ Lowerer::RVal BuiltinExprLowering::emitErrBuiltin(Lowerer &lowerer, const Builti
 /// @param expr AST node describing the builtin invocation.
 /// @return Placeholder integer result.
 Lowerer::RVal BuiltinExprLowering::emitUnsupportedBuiltin(Lowerer &lowerer,
-                                                          const BuiltinCallExpr &expr)
-{
-    if (auto *diag = lowerer.diagnosticEmitter())
-    {
+                                                          const BuiltinCallExpr &expr) {
+    if (auto *diag = lowerer.diagnosticEmitter()) {
         // This path should never trigger when the registry is complete, but provide a
         // diagnostic so accidental omissions still surface during lowering.
         lowerer.curLoc = expr.loc;
@@ -475,8 +459,7 @@ Lowerer::RVal BuiltinExprLowering::emitUnsupportedBuiltin(Lowerer &lowerer,
 ///
 /// @param expr Builtin call expression awaiting lowering.
 /// @return Resulting lowered value.
-Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &expr)
-{
+Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &expr) {
     BuiltinExprLowering lowering(*this);
     return lowering.lower(expr);
 }
@@ -486,8 +469,7 @@ Lowerer::RVal Lowerer::lowerBuiltinCall(const BuiltinCallExpr &expr)
 /// @param lowerer Lowering engine to use for emission.
 /// @param expr Builtin call expression awaiting lowering.
 /// @return Result of the lowering operation.
-Lowerer::RVal lowerBuiltinCall(Lowerer &lowerer, const BuiltinCallExpr &expr)
-{
+Lowerer::RVal lowerBuiltinCall(Lowerer &lowerer, const BuiltinCallExpr &expr) {
     BuiltinExprLowering lowering(lowerer);
     return lowering.lower(expr);
 }

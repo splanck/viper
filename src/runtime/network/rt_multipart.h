@@ -22,36 +22,35 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Create a new multipart form-data builder.
-    void *rt_multipart_new(void);
+/// @brief Create a new multipart form-data builder.
+void *rt_multipart_new(void);
 
-    /// @brief Add a text field to the multipart body.
-    void *rt_multipart_add_field(void *mp, rt_string name, rt_string value);
+/// @brief Add a text field to the multipart body.
+void *rt_multipart_add_field(void *mp, rt_string name, rt_string value);
 
-    /// @brief Add a file attachment to the multipart body.
-    void *rt_multipart_add_file(void *mp, rt_string name, rt_string filename, void *data);
+/// @brief Add a file attachment to the multipart body.
+void *rt_multipart_add_file(void *mp, rt_string name, rt_string filename, void *data);
 
-    /// @brief Get the Content-Type header value (includes boundary).
-    rt_string rt_multipart_content_type(void *mp);
+/// @brief Get the Content-Type header value (includes boundary).
+rt_string rt_multipart_content_type(void *mp);
 
-    /// @brief Build the complete multipart body as Bytes.
-    void *rt_multipart_build(void *mp);
+/// @brief Build the complete multipart body as Bytes.
+void *rt_multipart_build(void *mp);
 
-    /// @brief Get the number of parts.
-    int64_t rt_multipart_count(void *mp);
+/// @brief Get the number of parts.
+int64_t rt_multipart_count(void *mp);
 
-    /// @brief Parse a multipart body given content-type and body bytes.
-    void *rt_multipart_parse(rt_string content_type, void *body);
+/// @brief Parse a multipart body given content-type and body bytes.
+void *rt_multipart_parse(rt_string content_type, void *body);
 
-    /// @brief Get a field value by name from a parsed multipart.
-    rt_string rt_multipart_get_field(void *mp, rt_string name);
+/// @brief Get a field value by name from a parsed multipart.
+rt_string rt_multipart_get_field(void *mp, rt_string name);
 
-    /// @brief Get a file's data by name from a parsed multipart.
-    void *rt_multipart_get_file(void *mp, rt_string name);
+/// @brief Get a file's data by name from a parsed multipart.
+void *rt_multipart_get_file(void *mp, rt_string name);
 
 #ifdef __cplusplus
 }

@@ -75,8 +75,7 @@ using il::frontends::basic::runtimeMethodIndex;
 /// - Correct return type (String)
 /// - Correct parameter types (Int, Int)
 ///
-TEST(RuntimeMethodIndexBasic, StringSubstringTarget)
-{
+TEST(RuntimeMethodIndexBasic, StringSubstringTarget) {
     // Seed the index (delegates to RuntimeRegistry internally)
     runtimeMethodIndex().seed();
 
@@ -102,8 +101,7 @@ TEST(RuntimeMethodIndexBasic, StringSubstringTarget)
 /// Also tests that static functions (like ReferenceEquals) are NOT found
 /// through the instance method index.
 ///
-TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets)
-{
+TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets) {
     // Seed the index (delegates to RuntimeRegistry internally)
     runtimeMethodIndex().seed();
 
@@ -129,8 +127,7 @@ TEST(RuntimeMethodIndexBasic, ObjectMethodsTargets)
 }
 
 /// @brief Test entry point.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

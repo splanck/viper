@@ -17,29 +17,24 @@
 #include "frontends/zia/Sema.hpp"
 #include <cassert>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //=============================================================================
 // Type Parameter Substitution Implementation
 //=============================================================================
 
-void Sema::pushTypeParams(const std::map<std::string, TypeRef> &substitutions)
-{
+void Sema::pushTypeParams(const std::map<std::string, TypeRef> &substitutions) {
     typeParamStack_.push_back(substitutions);
 }
 
-void Sema::popTypeParams()
-{
+void Sema::popTypeParams() {
     assert(!typeParamStack_.empty() && "Unbalanced type param stack");
     typeParamStack_.pop_back();
 }
 
-TypeRef Sema::lookupTypeParam(const std::string &name) const
-{
+TypeRef Sema::lookupTypeParam(const std::string &name) const {
     // Search from innermost to outermost scope
-    for (auto it = typeParamStack_.rbegin(); it != typeParamStack_.rend(); ++it)
-    {
+    for (auto it = typeParamStack_.rbegin(); it != typeParamStack_.rend(); ++it) {
         auto found = it->find(name);
         if (found != it->end())
             return found->second;
@@ -47,63 +42,53 @@ TypeRef Sema::lookupTypeParam(const std::string &name) const
     return nullptr; // Not found - remains unsubstituted
 }
 
-TypeRef Sema::substituteTypeParams(TypeRef type) const
-{
+TypeRef Sema::substituteTypeParams(TypeRef type) const {
     if (!type || typeParamStack_.empty())
         return type;
 
     // If this is a type parameter, look it up
-    if (type->kind == TypeKindSem::TypeParam)
-    {
+    if (type->kind == TypeKindSem::TypeParam) {
         if (auto subst = lookupTypeParam(type->name))
             return subst;
         return type;
     }
 
     // For generic types with type arguments, substitute each argument
-    if (!type->typeArgs.empty())
-    {
+    if (!type->typeArgs.empty()) {
         std::vector<TypeRef> newArgs;
         newArgs.reserve(type->typeArgs.size());
         bool changed = false;
-        for (const auto &arg : type->typeArgs)
-        {
+        for (const auto &arg : type->typeArgs) {
             TypeRef substArg = substituteTypeParams(arg);
             if (substArg != arg)
                 changed = true;
             newArgs.push_back(substArg);
         }
-        if (changed)
-        {
+        if (changed) {
             return std::make_shared<ViperType>(type->kind, type->name, newArgs);
         }
     }
 
     // For function types, substitute return and param types
-    if (type->kind == TypeKindSem::Function)
-    {
+    if (type->kind == TypeKindSem::Function) {
         TypeRef newReturn = substituteTypeParams(type->returnType());
         std::vector<TypeRef> newParams;
         bool changed = (newReturn != type->returnType());
-        for (const auto &p : type->paramTypes())
-        {
+        for (const auto &p : type->paramTypes()) {
             TypeRef substParam = substituteTypeParams(p);
             if (substParam != p)
                 changed = true;
             newParams.push_back(substParam);
         }
-        if (changed)
-        {
+        if (changed) {
             return types::function(newParams, newReturn);
         }
     }
 
     // For optional types, substitute inner type
-    if (type->kind == TypeKindSem::Optional)
-    {
+    if (type->kind == TypeKindSem::Optional) {
         TypeRef inner = substituteTypeParams(type->innerType());
-        if (inner != type->innerType())
-        {
+        if (inner != type->innerType()) {
             return types::optional(inner);
         }
     }
@@ -111,11 +96,9 @@ TypeRef Sema::substituteTypeParams(TypeRef type) const
     return type;
 }
 
-std::string Sema::mangleGenericName(const std::string &base, const std::vector<TypeRef> &args)
-{
+std::string Sema::mangleGenericName(const std::string &base, const std::vector<TypeRef> &args) {
     std::string result = base;
-    for (const auto &arg : args)
-    {
+    for (const auto &arg : args) {
         result += "$";
         if (arg && !arg->name.empty())
             result += arg->name;
@@ -127,15 +110,12 @@ std::string Sema::mangleGenericName(const std::string &base, const std::vector<T
     return result;
 }
 
-void Sema::registerGenericType(const std::string &name, Decl *decl)
-{
+void Sema::registerGenericType(const std::string &name, Decl *decl) {
     genericTypeDecls_[name] = decl;
 }
 
-std::vector<std::string> Sema::getGenericParams(const Decl *decl)
-{
-    switch (decl->kind)
-    {
+std::vector<std::string> Sema::getGenericParams(const Decl *decl) {
+    switch (decl->kind) {
         case DeclKind::Value:
             return static_cast<const ValueDecl *>(decl)->genericParams;
         case DeclKind::Entity:
@@ -149,13 +129,10 @@ std::vector<std::string> Sema::getGenericParams(const Decl *decl)
     }
 }
 
-TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
-{
+TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName) {
     // Create the instantiated type based on declaration kind
-    switch (decl->kind)
-    {
-        case DeclKind::Value:
-        {
+    switch (decl->kind) {
+        case DeclKind::Value: {
             auto *valueDecl = static_cast<ValueDecl *>(decl);
             // Create the instantiated value type
             auto instantiated = std::make_shared<ViperType>(TypeKindSem::Value, mangledName);
@@ -165,22 +142,17 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
             valueDecls_[mangledName] = valueDecl;
 
             // Analyze members with substitutions active
-            for (const auto &member : valueDecl->members)
-            {
-                if (member->kind == DeclKind::Field)
-                {
+            for (const auto &member : valueDecl->members) {
+                if (member->kind == DeclKind::Field) {
                     auto *field = static_cast<FieldDecl *>(member.get());
                     TypeRef fieldType = resolveTypeNode(field->type.get());
                     std::string key = mangledName + "." + field->name;
                     fieldTypes_[key] = fieldType;
                     memberVisibility_[key] = field->visibility;
-                }
-                else if (member->kind == DeclKind::Method)
-                {
+                } else if (member->kind == DeclKind::Method) {
                     auto *method = static_cast<MethodDecl *>(member.get());
                     std::vector<TypeRef> paramTypes;
-                    for (const auto &param : method->params)
-                    {
+                    for (const auto &param : method->params) {
                         paramTypes.push_back(resolveTypeNode(param.type.get()));
                     }
                     TypeRef returnType = method->returnType
@@ -198,8 +170,7 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
 
             return instantiated;
         }
-        case DeclKind::Entity:
-        {
+        case DeclKind::Entity: {
             auto *entityDecl = static_cast<EntityDecl *>(decl);
             auto instantiated = std::make_shared<ViperType>(TypeKindSem::Entity, mangledName);
 
@@ -210,22 +181,17 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
             if (!entityDecl->baseClass.empty())
                 types::registerEntityInheritance(mangledName, entityDecl->baseClass);
 
-            for (const auto &member : entityDecl->members)
-            {
-                if (member->kind == DeclKind::Field)
-                {
+            for (const auto &member : entityDecl->members) {
+                if (member->kind == DeclKind::Field) {
                     auto *field = static_cast<FieldDecl *>(member.get());
                     TypeRef fieldType = resolveTypeNode(field->type.get());
                     std::string key = mangledName + "." + field->name;
                     fieldTypes_[key] = fieldType;
                     memberVisibility_[key] = field->visibility;
-                }
-                else if (member->kind == DeclKind::Method)
-                {
+                } else if (member->kind == DeclKind::Method) {
                     auto *method = static_cast<MethodDecl *>(member.get());
                     std::vector<TypeRef> paramTypes;
-                    for (const auto &param : method->params)
-                    {
+                    for (const auto &param : method->params) {
                         paramTypes.push_back(resolveTypeNode(param.type.get()));
                     }
                     TypeRef returnType = method->returnType
@@ -250,20 +216,17 @@ TypeRef Sema::analyzeGenericTypeBody(Decl *decl, const std::string &mangledName)
 
 TypeRef Sema::instantiateGenericType(const std::string &name,
                                      const std::vector<TypeRef> &args,
-                                     SourceLoc loc)
-{
+                                     SourceLoc loc) {
     // Check cache first
     std::string mangledName = mangleGenericName(name, args);
     auto cached = genericInstances_.find(mangledName);
-    if (cached != genericInstances_.end())
-    {
+    if (cached != genericInstances_.end()) {
         return cached->second;
     }
 
     // Find original generic declaration
     auto declIt = genericTypeDecls_.find(name);
-    if (declIt == genericTypeDecls_.end())
-    {
+    if (declIt == genericTypeDecls_.end()) {
         error(loc, "Unknown generic type: " + name);
         return types::unknown();
     }
@@ -271,8 +234,7 @@ TypeRef Sema::instantiateGenericType(const std::string &name,
     // Get generic parameters
     const auto &genericParams = getGenericParams(declIt->second);
 
-    if (args.size() != genericParams.size())
-    {
+    if (args.size() != genericParams.size()) {
         error(loc,
               "Generic type " + name + " expects " + std::to_string(genericParams.size()) +
                   " type arguments, got " + std::to_string(args.size()));
@@ -281,8 +243,7 @@ TypeRef Sema::instantiateGenericType(const std::string &name,
 
     // Build substitution map
     std::map<std::string, TypeRef> substitutions;
-    for (size_t i = 0; i < genericParams.size(); ++i)
-    {
+    for (size_t i = 0; i < genericParams.size(); ++i) {
         substitutions[genericParams[i]] = args[i];
     }
 
@@ -296,60 +257,48 @@ TypeRef Sema::instantiateGenericType(const std::string &name,
     return instantiated;
 }
 
-void Sema::registerGenericFunction(const std::string &name, FunctionDecl *decl)
-{
+void Sema::registerGenericFunction(const std::string &name, FunctionDecl *decl) {
     genericFunctionDecls_[name] = decl;
 }
 
-bool Sema::isGenericFunction(const std::string &name) const
-{
+bool Sema::isGenericFunction(const std::string &name) const {
     return genericFunctionDecls_.count(name) > 0;
 }
 
-FunctionDecl *Sema::getGenericFunction(const std::string &name) const
-{
+FunctionDecl *Sema::getGenericFunction(const std::string &name) const {
     auto it = genericFunctionDecls_.find(name);
     return it != genericFunctionDecls_.end() ? it->second : nullptr;
 }
 
-FunctionDecl *Sema::getFunctionDecl(const std::string &name) const
-{
+FunctionDecl *Sema::getFunctionDecl(const std::string &name) const {
     auto it = functionDecls_.find(name);
     return it != functionDecls_.end() ? it->second : nullptr;
 }
 
-std::vector<FunctionDecl *> Sema::getFunctionOverloads(const std::string &name) const
-{
+std::vector<FunctionDecl *> Sema::getFunctionOverloads(const std::string &name) const {
     auto it = functionOverloads_.find(name);
     if (it == functionOverloads_.end())
         return {};
     return it->second;
 }
 
-bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceName) const
-{
+bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceName) const {
     if (!type)
         return false;
 
     // Check if the type is an entity type
-    if (type->kind == TypeKindSem::Entity)
-    {
-        if (auto *entityDecl = lookupEntityDeclForType(type->name))
-        {
-            for (const auto &iface : entityDecl->interfaces)
-            {
+    if (type->kind == TypeKindSem::Entity) {
+        if (auto *entityDecl = lookupEntityDeclForType(type->name)) {
+            for (const auto &iface : entityDecl->interfaces) {
                 if (iface == interfaceName)
                     return true;
             }
         }
     }
     // Check if the type is a value type
-    else if (type->kind == TypeKindSem::Value)
-    {
-        if (auto *valueDecl = lookupValueDeclForType(type->name))
-        {
-            for (const auto &iface : valueDecl->interfaces)
-            {
+    else if (type->kind == TypeKindSem::Value) {
+        if (auto *valueDecl = lookupValueDeclForType(type->name)) {
+            for (const auto &iface : valueDecl->interfaces) {
                 if (iface == interfaceName)
                     return true;
             }
@@ -361,20 +310,17 @@ bool Sema::typeImplementsInterface(TypeRef type, const std::string &interfaceNam
 
 TypeRef Sema::instantiateGenericFunction(const std::string &name,
                                          const std::vector<TypeRef> &args,
-                                         SourceLoc loc)
-{
+                                         SourceLoc loc) {
     // Check cache first
     std::string mangledName = mangleGenericName(name, args);
     auto cached = genericFunctionInstances_.find(mangledName);
-    if (cached != genericFunctionInstances_.end())
-    {
+    if (cached != genericFunctionInstances_.end()) {
         return cached->second;
     }
 
     // Find original generic declaration
     auto declIt = genericFunctionDecls_.find(name);
-    if (declIt == genericFunctionDecls_.end())
-    {
+    if (declIt == genericFunctionDecls_.end()) {
         error(loc, "Unknown generic function: " + name);
         return types::unknown();
     }
@@ -382,8 +328,7 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
     FunctionDecl *funcDecl = declIt->second;
 
     // Check argument count
-    if (args.size() != funcDecl->genericParams.size())
-    {
+    if (args.size() != funcDecl->genericParams.size()) {
         error(loc,
               "Generic function " + name + " expects " +
                   std::to_string(funcDecl->genericParams.size()) + " type arguments, got " +
@@ -392,18 +337,15 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
     }
 
     // Validate constraints
-    for (size_t i = 0; i < args.size(); ++i)
-    {
+    for (size_t i = 0; i < args.size(); ++i) {
         // Check if this type parameter has a constraint
         if (i < funcDecl->genericParamConstraints.size() &&
-            !funcDecl->genericParamConstraints[i].empty())
-        {
+            !funcDecl->genericParamConstraints[i].empty()) {
             const std::string &constraintName = funcDecl->genericParamConstraints[i];
             TypeRef argType = args[i];
 
             // Check if the type implements the required interface
-            if (!typeImplementsInterface(argType, constraintName))
-            {
+            if (!typeImplementsInterface(argType, constraintName)) {
                 error(loc,
                       "Type '" + (argType ? argType->name : "unknown") +
                           "' does not implement interface '" + constraintName +
@@ -415,8 +357,7 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
 
     // Build substitution map
     std::map<std::string, TypeRef> substitutions;
-    for (size_t i = 0; i < funcDecl->genericParams.size(); ++i)
-    {
+    for (size_t i = 0; i < funcDecl->genericParams.size(); ++i) {
         substitutions[funcDecl->genericParams[i]] = args[i];
     }
 
@@ -425,8 +366,7 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
 
     // Build parameter types with substitution
     std::vector<TypeRef> paramTypes;
-    for (const auto &param : funcDecl->params)
-    {
+    for (const auto &param : funcDecl->params) {
         TypeRef paramType = param.type ? resolveTypeNode(param.type.get()) : types::unknown();
         paramTypes.push_back(paramType);
     }
@@ -455,8 +395,7 @@ TypeRef Sema::instantiateGenericFunction(const std::string &name,
     return instantiatedType;
 }
 
-bool Sema::pushSubstitutionContext(const std::string &mangledName)
-{
+bool Sema::pushSubstitutionContext(const std::string &mangledName) {
     // Check if this is an instantiated generic (contains $)
     size_t dollarPos = mangledName.find('$');
     if (dollarPos == std::string::npos)
@@ -466,16 +405,12 @@ bool Sema::pushSubstitutionContext(const std::string &mangledName)
     std::string baseName = mangledName.substr(0, dollarPos);
     std::vector<std::string> typeArgNames;
     size_t pos = dollarPos;
-    while (pos != std::string::npos)
-    {
+    while (pos != std::string::npos) {
         size_t nextDollar = mangledName.find('$', pos + 1);
-        if (nextDollar == std::string::npos)
-        {
+        if (nextDollar == std::string::npos) {
             typeArgNames.push_back(mangledName.substr(pos + 1));
             break;
-        }
-        else
-        {
+        } else {
             typeArgNames.push_back(mangledName.substr(pos + 1, nextDollar - pos - 1));
             pos = nextDollar;
         }
@@ -484,19 +419,13 @@ bool Sema::pushSubstitutionContext(const std::string &mangledName)
     // Look up the generic declaration (could be a type or function)
     std::vector<std::string> genericParams;
     auto typeIt = genericTypeDecls_.find(baseName);
-    if (typeIt != genericTypeDecls_.end())
-    {
+    if (typeIt != genericTypeDecls_.end()) {
         genericParams = getGenericParams(typeIt->second);
-    }
-    else
-    {
+    } else {
         auto funcIt = genericFunctionDecls_.find(baseName);
-        if (funcIt != genericFunctionDecls_.end())
-        {
+        if (funcIt != genericFunctionDecls_.end()) {
             genericParams = funcIt->second->genericParams;
-        }
-        else
-        {
+        } else {
             return false;
         }
     }
@@ -506,8 +435,7 @@ bool Sema::pushSubstitutionContext(const std::string &mangledName)
 
     // Resolve type arguments and build substitution map
     std::map<std::string, TypeRef> substitutions;
-    for (size_t i = 0; i < genericParams.size(); ++i)
-    {
+    for (size_t i = 0; i < genericParams.size(); ++i) {
         // Resolve the type argument by name
         TypeRef argType = resolveNamedType(typeArgNames[i]);
         if (!argType)

@@ -18,12 +18,10 @@
 
 #include <cassert>
 
-int main()
-{
+int main() {
     const auto &handlers = il::vm::VM::getOpcodeHandlers();
 
-    for (size_t idx = 0; idx < il::core::kNumOpcodes; ++idx)
-    {
+    for (size_t idx = 0; idx < il::core::kNumOpcodes; ++idx) {
         const auto &info = il::core::kOpcodeTable[idx];
         if (info.vmDispatch == il::core::VMDispatch::None)
             continue;

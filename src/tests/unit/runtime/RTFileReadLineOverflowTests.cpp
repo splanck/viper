@@ -27,8 +27,7 @@ extern "C" bool rt_file_line_buffer_try_grow_for_test(char **buffer,
                                                       size_t len,
                                                       RtError *out_err);
 
-int main()
-{
+int main() {
     size_t cap = (std::numeric_limits<size_t>::max() / 2) + 1;
     size_t len = cap - 1;
     char *buffer = static_cast<char *>(std::malloc(1));

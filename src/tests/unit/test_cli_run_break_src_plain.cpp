@@ -26,19 +26,16 @@
 #include <system_error>
 #include <vector>
 
-namespace
-{
+namespace {
 
 int runWithArgs(const std::string &file,
                 const std::string &flag,
                 const std::string &spec,
-                std::string &stderrText)
-{
+                std::string &stderrText) {
     std::vector<std::string> argStorage = {file, flag, spec};
     std::vector<char *> argv;
     argv.reserve(argStorage.size());
-    for (auto &arg : argStorage)
-    {
+    for (auto &arg : argStorage) {
         argv.push_back(arg.data());
     }
 
@@ -56,13 +53,11 @@ int runWithArgs(const std::string &file,
 
 static bool gUsageCalled = false;
 
-void usage()
-{
+void usage() {
     gUsageCalled = true;
 }
 
-int main()
-{
+int main() {
     const std::filesystem::path tmpDir =
         std::filesystem::temp_directory_path() / "viper_cli_break_plain";
     std::error_code ec;

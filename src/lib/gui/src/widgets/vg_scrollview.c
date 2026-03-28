@@ -42,12 +42,10 @@ static vg_widget_vtable_t g_scrollview_vtable = {.destroy = scrollview_destroy,
 // Helper Functions
 //=============================================================================
 
-static void calculate_content_size(vg_scrollview_t *scroll)
-{
+static void calculate_content_size(vg_scrollview_t *scroll) {
     vg_widget_t *base = &scroll->base;
 
-    if (scroll->content_width > 0 && scroll->content_height > 0)
-    {
+    if (scroll->content_width > 0 && scroll->content_height > 0) {
         // Use explicit content size
         return;
     }
@@ -56,8 +54,7 @@ static void calculate_content_size(vg_scrollview_t *scroll)
     float max_right = 0;
     float max_bottom = 0;
 
-    VG_FOREACH_VISIBLE_CHILD(base, child)
-    {
+    VG_FOREACH_VISIBLE_CHILD(base, child) {
         float right = child->x + child->width;
         float bottom = child->y + child->height;
 
@@ -67,29 +64,24 @@ static void calculate_content_size(vg_scrollview_t *scroll)
             max_bottom = bottom;
     }
 
-    if (scroll->content_width <= 0)
-    {
+    if (scroll->content_width <= 0) {
         scroll->content_width = max_right;
     }
-    if (scroll->content_height <= 0)
-    {
+    if (scroll->content_height <= 0) {
         scroll->content_height = max_bottom;
     }
 }
 
-static void clamp_scroll(vg_scrollview_t *scroll)
-{
+static void clamp_scroll(vg_scrollview_t *scroll) {
     vg_widget_t *base = &scroll->base;
 
     float max_scroll_x = scroll->content_width - base->width;
     float max_scroll_y = scroll->content_height - base->height;
 
-    if (scroll->show_v_scrollbar)
-    {
+    if (scroll->show_v_scrollbar) {
         max_scroll_x += scroll->scrollbar_width;
     }
-    if (scroll->show_h_scrollbar)
-    {
+    if (scroll->show_h_scrollbar) {
         max_scroll_y += scroll->scrollbar_width;
     }
 
@@ -112,8 +104,7 @@ static void clamp_scroll(vg_scrollview_t *scroll)
 // ScrollView Implementation
 //=============================================================================
 
-vg_scrollview_t *vg_scrollview_create(vg_widget_t *parent)
-{
+vg_scrollview_t *vg_scrollview_create(vg_widget_t *parent) {
     vg_scrollview_t *scroll = calloc(1, sizeof(vg_scrollview_t));
     if (!scroll)
         return NULL;
@@ -150,47 +141,39 @@ vg_scrollview_t *vg_scrollview_create(vg_widget_t *parent)
     scroll->drag_offset = 0;
 
     // Add to parent
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &scroll->base);
     }
 
     return scroll;
 }
 
-static void scrollview_destroy(vg_widget_t *widget)
-{
+static void scrollview_destroy(vg_widget_t *widget) {
     // No special cleanup needed
     (void)widget;
 }
 
-static void scrollview_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void scrollview_measure(vg_widget_t *widget, float available_width, float available_height) {
     // ScrollView takes all available space by default
     widget->measured_width = available_width > 0 ? available_width : 200;
     widget->measured_height = available_height > 0 ? available_height : 200;
 
     // Apply constraints
-    if (widget->constraints.preferred_width > 0)
-    {
+    if (widget->constraints.preferred_width > 0) {
         widget->measured_width = widget->constraints.preferred_width;
     }
-    if (widget->constraints.preferred_height > 0)
-    {
+    if (widget->constraints.preferred_height > 0) {
         widget->measured_height = widget->constraints.preferred_height;
     }
-    if (widget->measured_width < widget->constraints.min_width)
-    {
+    if (widget->measured_width < widget->constraints.min_width) {
         widget->measured_width = widget->constraints.min_width;
     }
-    if (widget->measured_height < widget->constraints.min_height)
-    {
+    if (widget->measured_height < widget->constraints.min_height) {
         widget->measured_height = widget->constraints.min_height;
     }
 }
 
-static void scrollview_arrange(vg_widget_t *widget, float x, float y, float width, float height)
-{
+static void scrollview_arrange(vg_widget_t *widget, float x, float y, float width, float height) {
     vg_scrollview_t *scroll = (vg_scrollview_t *)widget;
 
     widget->x = x;
@@ -205,8 +188,7 @@ static void scrollview_arrange(vg_widget_t *widget, float x, float y, float widt
     bool needs_h = (scroll->direction & VG_SCROLL_HORIZONTAL) && scroll->content_width > width;
     bool needs_v = (scroll->direction & VG_SCROLL_VERTICAL) && scroll->content_height > height;
 
-    if (scroll->auto_hide_scrollbars)
-    {
+    if (scroll->auto_hide_scrollbars) {
         scroll->show_h_scrollbar = needs_h;
         scroll->show_v_scrollbar = needs_v;
     }
@@ -215,11 +197,9 @@ static void scrollview_arrange(vg_widget_t *widget, float x, float y, float widt
     clamp_scroll(scroll);
 
     // Arrange children at their positions minus scroll offset
-    VG_FOREACH_VISIBLE_CHILD(widget, child)
-    {
+    VG_FOREACH_VISIBLE_CHILD(widget, child) {
         // Measure child
-        if (child->vtable && child->vtable->measure)
-        {
+        if (child->vtable && child->vtable->measure) {
             child->vtable->measure(child, scroll->content_width, scroll->content_height);
         }
 
@@ -229,12 +209,9 @@ static void scrollview_arrange(vg_widget_t *widget, float x, float y, float widt
         float child_w = child->measured_width;
         float child_h = child->measured_height;
 
-        if (child->vtable && child->vtable->arrange)
-        {
+        if (child->vtable && child->vtable->arrange) {
             child->vtable->arrange(child, child_x, child_y, child_w, child_h);
-        }
-        else
-        {
+        } else {
             child->x = child_x;
             child->y = child_y;
             child->width = child_w;
@@ -243,17 +220,14 @@ static void scrollview_arrange(vg_widget_t *widget, float x, float y, float widt
     }
 }
 
-static void scrollview_paint(vg_widget_t *widget, void *canvas)
-{
+static void scrollview_paint(vg_widget_t *widget, void *canvas) {
     vg_scrollview_t *scroll = (vg_scrollview_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
 
     // Draw children (clipping would be done by canvas)
     // Children are already positioned with scroll offset
-    VG_FOREACH_VISIBLE_CHILD(widget, child)
-    {
-        if (child->vtable && child->vtable->paint)
-        {
+    VG_FOREACH_VISIBLE_CHILD(widget, child) {
+        if (child->vtable && child->vtable->paint) {
             child->vtable->paint(child, canvas);
         }
     }
@@ -265,8 +239,7 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas)
         widget->height - (scroll->show_h_scrollbar ? scroll->scrollbar_width : 0);
 
     // Vertical scrollbar
-    if (scroll->show_v_scrollbar && scroll->content_height > content_area_height)
-    {
+    if (scroll->show_v_scrollbar && scroll->content_height > content_area_height) {
         float track_x = widget->x + widget->width - scroll->scrollbar_width;
         float track_y = widget->y;
         float track_height = content_area_height;
@@ -287,8 +260,7 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas)
             visible_ratio = 1.0f;
 
         float thumb_height = track_height * visible_ratio;
-        if (thumb_height < theme->scrollbar.min_thumb_size)
-        {
+        if (thumb_height < theme->scrollbar.min_thumb_size) {
             thumb_height = theme->scrollbar.min_thumb_size;
         }
 
@@ -309,8 +281,7 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas)
     }
 
     // Horizontal scrollbar
-    if (scroll->show_h_scrollbar && scroll->content_width > content_area_width)
-    {
+    if (scroll->show_h_scrollbar && scroll->content_width > content_area_width) {
         float track_x = widget->x;
         float track_y = widget->y + widget->height - scroll->scrollbar_width;
         float track_width = content_area_width;
@@ -331,8 +302,7 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas)
             visible_ratio = 1.0f;
 
         float thumb_width = track_width * visible_ratio;
-        if (thumb_width < theme->scrollbar.min_thumb_size)
-        {
+        if (thumb_width < theme->scrollbar.min_thumb_size) {
             thumb_width = theme->scrollbar.min_thumb_size;
         }
 
@@ -353,22 +323,18 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas)
     }
 }
 
-static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_scrollview_t *scroll = (vg_scrollview_t *)widget;
 
-    if (event->type == VG_EVENT_MOUSE_WHEEL)
-    {
+    if (event->type == VG_EVENT_MOUSE_WHEEL) {
         // Scroll content
         float delta_x = event->wheel.delta_x * 20.0f;
         float delta_y = event->wheel.delta_y * 20.0f;
 
-        if (scroll->direction & VG_SCROLL_HORIZONTAL)
-        {
+        if (scroll->direction & VG_SCROLL_HORIZONTAL) {
             scroll->scroll_x -= delta_x;
         }
-        if (scroll->direction & VG_SCROLL_VERTICAL)
-        {
+        if (scroll->direction & VG_SCROLL_VERTICAL) {
             scroll->scroll_y -= delta_y;
         }
 
@@ -378,8 +344,7 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event)
         return true;
     }
 
-    if (event->type == VG_EVENT_MOUSE_DOWN)
-    {
+    if (event->type == VG_EVENT_MOUSE_DOWN) {
         // Check if clicking on scrollbar
         float content_area_width =
             widget->width - (scroll->show_v_scrollbar ? scroll->scrollbar_width : 0);
@@ -387,16 +352,15 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event)
             widget->height - (scroll->show_h_scrollbar ? scroll->scrollbar_width : 0);
 
         // Vertical scrollbar area
-        if (scroll->show_v_scrollbar && event->mouse.x >= widget->width - scroll->scrollbar_width)
-        {
+        if (scroll->show_v_scrollbar && event->mouse.x >= widget->width - scroll->scrollbar_width) {
             scroll->v_scrollbar_dragging = true;
             scroll->drag_offset = event->mouse.y;
             return true;
         }
 
         // Horizontal scrollbar area
-        if (scroll->show_h_scrollbar && event->mouse.y >= widget->height - scroll->scrollbar_width)
-        {
+        if (scroll->show_h_scrollbar &&
+            event->mouse.y >= widget->height - scroll->scrollbar_width) {
             scroll->h_scrollbar_dragging = true;
             scroll->drag_offset = event->mouse.x;
             return true;
@@ -406,26 +370,22 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event)
         (void)content_area_height;
     }
 
-    if (event->type == VG_EVENT_MOUSE_UP)
-    {
+    if (event->type == VG_EVENT_MOUSE_UP) {
         scroll->v_scrollbar_dragging = false;
         scroll->h_scrollbar_dragging = false;
     }
 
-    if (event->type == VG_EVENT_MOUSE_MOVE)
-    {
+    if (event->type == VG_EVENT_MOUSE_MOVE) {
         float content_area_height =
             widget->height - (scroll->show_h_scrollbar ? scroll->scrollbar_width : 0);
         float content_area_width =
             widget->width - (scroll->show_v_scrollbar ? scroll->scrollbar_width : 0);
 
-        if (scroll->v_scrollbar_dragging)
-        {
+        if (scroll->v_scrollbar_dragging) {
             float delta = event->mouse.y - scroll->drag_offset;
             float track_height = content_area_height;
             float scroll_range = scroll->content_height - content_area_height;
-            if (scroll_range > 0)
-            {
+            if (scroll_range > 0) {
                 scroll->scroll_y += delta * (scroll_range / track_height);
                 clamp_scroll(scroll);
                 scroll->drag_offset = event->mouse.y;
@@ -435,13 +395,11 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event)
             return true;
         }
 
-        if (scroll->h_scrollbar_dragging)
-        {
+        if (scroll->h_scrollbar_dragging) {
             float delta = event->mouse.x - scroll->drag_offset;
             float track_width = content_area_width;
             float scroll_range = scroll->content_width - content_area_width;
-            if (scroll_range > 0)
-            {
+            if (scroll_range > 0) {
                 scroll->scroll_x += delta * (scroll_range / track_width);
                 clamp_scroll(scroll);
                 scroll->drag_offset = event->mouse.x;
@@ -461,8 +419,7 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event)
             scroll->show_h_scrollbar && event->mouse.y >= widget->height - scroll->scrollbar_width;
 
         if (was_h_hover != scroll->h_scrollbar_hovered ||
-            was_v_hover != scroll->v_scrollbar_hovered)
-        {
+            was_v_hover != scroll->v_scrollbar_hovered) {
             widget->needs_paint = true;
         }
     }
@@ -474,8 +431,7 @@ static bool scrollview_handle_event(vg_widget_t *widget, vg_event_t *event)
 // ScrollView API
 //=============================================================================
 
-void vg_scrollview_set_scroll(vg_scrollview_t *scroll, float x, float y)
-{
+void vg_scrollview_set_scroll(vg_scrollview_t *scroll, float x, float y) {
     if (!scroll)
         return;
 
@@ -487,8 +443,7 @@ void vg_scrollview_set_scroll(vg_scrollview_t *scroll, float x, float y)
 }
 
 /// @brief Scrollview get scroll.
-void vg_scrollview_get_scroll(vg_scrollview_t *scroll, float *out_x, float *out_y)
-{
+void vg_scrollview_get_scroll(vg_scrollview_t *scroll, float *out_x, float *out_y) {
     if (!scroll)
         return;
 
@@ -499,8 +454,7 @@ void vg_scrollview_get_scroll(vg_scrollview_t *scroll, float *out_x, float *out_
 }
 
 /// @brief Scrollview set content size.
-void vg_scrollview_set_content_size(vg_scrollview_t *scroll, float width, float height)
-{
+void vg_scrollview_set_content_size(vg_scrollview_t *scroll, float width, float height) {
     if (!scroll)
         return;
 
@@ -512,8 +466,7 @@ void vg_scrollview_set_content_size(vg_scrollview_t *scroll, float width, float 
 }
 
 /// @brief Scrollview scroll to widget.
-void vg_scrollview_scroll_to_widget(vg_scrollview_t *scroll, vg_widget_t *child)
-{
+void vg_scrollview_scroll_to_widget(vg_scrollview_t *scroll, vg_widget_t *child) {
     if (!scroll || !child)
         return;
 
@@ -536,21 +489,15 @@ void vg_scrollview_scroll_to_widget(vg_scrollview_t *scroll, vg_widget_t *child)
     float child_y = child->y + scroll->scroll_y;
 
     // Scroll to make child visible
-    if (child_x < scroll->scroll_x)
-    {
+    if (child_x < scroll->scroll_x) {
         scroll->scroll_x = child_x;
-    }
-    else if (child_x + child->width > scroll->scroll_x + content_area_width)
-    {
+    } else if (child_x + child->width > scroll->scroll_x + content_area_width) {
         scroll->scroll_x = child_x + child->width - content_area_width;
     }
 
-    if (child_y < scroll->scroll_y)
-    {
+    if (child_y < scroll->scroll_y) {
         scroll->scroll_y = child_y;
-    }
-    else if (child_y + child->height > scroll->scroll_y + content_area_height)
-    {
+    } else if (child_y + child->height > scroll->scroll_y + content_area_height) {
         scroll->scroll_y = child_y + child->height - content_area_height;
     }
 
@@ -560,8 +507,7 @@ void vg_scrollview_scroll_to_widget(vg_scrollview_t *scroll, vg_widget_t *child)
 }
 
 /// @brief Scrollview set direction.
-void vg_scrollview_set_direction(vg_scrollview_t *scroll, vg_scroll_direction_t direction)
-{
+void vg_scrollview_set_direction(vg_scrollview_t *scroll, vg_scroll_direction_t direction) {
     if (!scroll)
         return;
 

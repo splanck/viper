@@ -17,15 +17,13 @@
 
 #include "tests/TestHarness.hpp"
 
-TEST(TUI, WinVt)
-{
+TEST(TUI, WinVt) {
 #ifdef _WIN32
     viper::tui::TerminalSession session;
 #endif
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

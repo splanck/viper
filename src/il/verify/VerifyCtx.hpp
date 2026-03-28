@@ -40,20 +40,17 @@
 #include <string>
 #include <unordered_map>
 
-namespace il::core
-{
+namespace il::core {
 struct Extern;
 }
 
-namespace il::verify
-{
+namespace il::verify {
 
 class DiagSink;
 class TypeInference;
 
 /// @brief Bundles shared verifier state when validating a single instruction.
-struct VerifyCtx
-{
+struct VerifyCtx {
     DiagSink &diags;      ///< Diagnostic sink used for warnings and errors.
     TypeInference &types; ///< Type inference table tracking temporaries.
     const std::unordered_map<std::string, const il::core::Extern *>

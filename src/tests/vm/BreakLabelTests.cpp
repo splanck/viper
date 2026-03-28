@@ -19,10 +19,8 @@
 #include <iostream>
 #include <string>
 
-int main(int argc, char **argv)
-{
-    if (argc != 3)
-    {
+int main(int argc, char **argv) {
+    if (argc != 3) {
         std::cerr << "usage: BreakLabelTests <ilc> <il file>\n";
         return 1;
     }
@@ -42,18 +40,15 @@ int main(int argc, char **argv)
 #endif
     std::ifstream out(outFile);
     std::string line;
-    if (!std::getline(out, line))
-    {
+    if (!std::getline(out, line)) {
         std::cerr << "no break output\n";
         return 1;
     }
-    if (line != "[BREAK] fn=@main blk=L3 reason=label")
-    {
+    if (line != "[BREAK] fn=@main blk=L3 reason=label") {
         std::cerr << "unexpected break line: " << line << "\n";
         return 1;
     }
-    if (std::getline(out, line))
-    {
+    if (std::getline(out, line)) {
         std::cerr << "extra output\n";
         return 1;
     }

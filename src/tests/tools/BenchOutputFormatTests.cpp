@@ -25,8 +25,7 @@
 #include <string>
 #include <vector>
 
-namespace
-{
+namespace {
 // Simple IL module that returns 42
 const char kModuleSource[] = R"(il 0.1
 
@@ -40,8 +39,7 @@ entry:
 // Stubbed usage() to satisfy linkage when embedding cmd_bench.cpp in the test.
 void usage() {}
 
-int main()
-{
+int main() {
     namespace fs = std::filesystem;
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -57,8 +55,7 @@ int main()
     // Build argv: <file.il> -n 1 --table
     std::vector<std::string> args = {pathStr, "-n", "1", "--table"};
     std::vector<char *> argv;
-    for (auto &a : args)
-    {
+    for (auto &a : args) {
         argv.push_back(a.data());
     }
 

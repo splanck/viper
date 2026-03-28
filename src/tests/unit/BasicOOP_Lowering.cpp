@@ -29,8 +29,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 constexpr std::string_view kLoweringSnippet = R"BASIC(
 10 CLASS Klass
 20   value AS INTEGER
@@ -51,20 +50,17 @@ constexpr std::string_view kLoweringSnippet = R"BASIC(
 170 END
 )BASIC";
 
-[[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name)
-{
+[[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name) {
     const auto &externs = module.externs;
-    return std::any_of(externs.begin(),
-                       externs.end(),
-                       [&](const il::core::Extern &ext) { return ext.name == name; });
+    return std::any_of(externs.begin(), externs.end(), [&](const il::core::Extern &ext) {
+        return ext.name == name;
+    });
 }
 
-[[nodiscard]] bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs)
-{
+[[nodiscard]] bool equalsIgnoreCase(std::string_view lhs, std::string_view rhs) {
     if (lhs.size() != rhs.size())
         return false;
-    for (std::size_t i = 0; i < lhs.size(); ++i)
-    {
+    for (std::size_t i = 0; i < lhs.size(); ++i) {
         const unsigned char lc = static_cast<unsigned char>(lhs[i]);
         const unsigned char rc = static_cast<unsigned char>(rhs[i]);
         if (std::tolower(lc) != std::tolower(rc))
@@ -73,20 +69,16 @@ constexpr std::string_view kLoweringSnippet = R"BASIC(
     return true;
 }
 
-[[nodiscard]] bool hasFunction(const il::core::Module &module, std::string_view name)
-{
+[[nodiscard]] bool hasFunction(const il::core::Module &module, std::string_view name) {
     const auto &functions = module.functions;
-    return std::any_of(functions.begin(),
-                       functions.end(),
-                       [&](const il::core::Function &fn)
-                       { return equalsIgnoreCase(fn.name, name); });
+    return std::any_of(functions.begin(), functions.end(), [&](const il::core::Function &fn) {
+        return equalsIgnoreCase(fn.name, name);
+    });
 }
 
 [[nodiscard]] const il::core::Function *findFunctionCaseInsensitive(const il::core::Module &module,
-                                                                    std::string_view name)
-{
-    for (const auto &fn : module.functions)
-    {
+                                                                    std::string_view name) {
+    for (const auto &fn : module.functions) {
         if (equalsIgnoreCase(fn.name, name))
             return &fn;
     }
@@ -94,8 +86,7 @@ constexpr std::string_view kLoweringSnippet = R"BASIC(
 }
 } // namespace
 
-TEST(BasicOOPLoweringTest, EmitsRuntimeHelpersAndClassMembers)
-{
+TEST(BasicOOPLoweringTest, EmitsRuntimeHelpersAndClassMembers) {
     SourceManager sourceManager;
     BasicCompilerInput input{kLoweringSnippet, "basic_oop.bas"};
     BasicCompilerOptions options{};
@@ -114,8 +105,7 @@ TEST(BasicOOPLoweringTest, EmitsRuntimeHelpersAndClassMembers)
     EXPECT_TRUE(hasFunction(module, "Klass.inc"));
 }
 
-TEST(BasicOOPLoweringTest, StoresMemberAssignmentIntoField)
-{
+TEST(BasicOOPLoweringTest, StoresMemberAssignmentIntoField) {
     const std::string src = "10 CLASS C\n"
                             "20   v AS INTEGER\n"
                             "30   SUB Set7()\n"
@@ -138,22 +128,17 @@ TEST(BasicOOPLoweringTest, StoresMemberAssignmentIntoField)
     std::unordered_map<unsigned, long long> gepOffsets;
     bool sawStore = false;
     bool storeUsesOffset = false;
-    for (const auto &block : set7->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : set7->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
-                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
-            {
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt) {
                 gepOffsets.emplace(*instr.result, instr.operands[1].i64);
             }
             if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
                 instr.operands[1].kind == il::core::Value::Kind::ConstInt &&
-                instr.operands[1].i64 == 7)
-            {
+                instr.operands[1].i64 == 7) {
                 sawStore = true;
-                if (instr.operands[0].kind == il::core::Value::Kind::Temp)
-                {
+                if (instr.operands[0].kind == il::core::Value::Kind::Temp) {
                     auto it = gepOffsets.find(instr.operands[0].id);
                     // Field offset is 8 (after vptr at offset 0)
                     if (it != gepOffsets.end() && it->second == 8)
@@ -170,8 +155,7 @@ TEST(BasicOOPLoweringTest, StoresMemberAssignmentIntoField)
     EXPECT_TRUE(storeUsesOffset);
 }
 
-TEST(BasicOOPLoweringTest, StoresImplicitMemberAssignmentIntoField)
-{
+TEST(BasicOOPLoweringTest, StoresImplicitMemberAssignmentIntoField) {
     const std::string src = "10 CLASS C\n"
                             "20   v AS INTEGER\n"
                             "30   SUB Set7()\n"
@@ -194,22 +178,17 @@ TEST(BasicOOPLoweringTest, StoresImplicitMemberAssignmentIntoField)
     std::unordered_map<unsigned, long long> gepOffsets;
     bool sawStore = false;
     bool storeUsesOffset = false;
-    for (const auto &block : set7->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : set7->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
-                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
-            {
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt) {
                 gepOffsets.emplace(*instr.result, instr.operands[1].i64);
             }
             if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
                 instr.operands[1].kind == il::core::Value::Kind::ConstInt &&
-                instr.operands[1].i64 == 7)
-            {
+                instr.operands[1].i64 == 7) {
                 sawStore = true;
-                if (instr.operands[0].kind == il::core::Value::Kind::Temp)
-                {
+                if (instr.operands[0].kind == il::core::Value::Kind::Temp) {
                     auto it = gepOffsets.find(instr.operands[0].id);
                     // Field offset is 8 (after vptr at offset 0)
                     if (it != gepOffsets.end() && it->second == 8)
@@ -226,8 +205,7 @@ TEST(BasicOOPLoweringTest, StoresImplicitMemberAssignmentIntoField)
     EXPECT_TRUE(storeUsesOffset);
 }
 
-TEST(BasicOOPLoweringTest, LoadsMemberAccessFromField)
-{
+TEST(BasicOOPLoweringTest, LoadsMemberAccessFromField) {
     const std::string src = "10 CLASS C\n"
                             "20   v AS INTEGER\n"
                             "30   SUB Show()\n"
@@ -250,22 +228,17 @@ TEST(BasicOOPLoweringTest, LoadsMemberAccessFromField)
 
     std::unordered_map<unsigned, long long> gepOffsets;
     bool sawLoad = false;
-    for (const auto &block : showFn->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : showFn->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
-                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
-            {
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt) {
                 gepOffsets.emplace(*instr.result, instr.operands[1].i64);
             }
             if (instr.op == il::core::Opcode::Load && !instr.operands.empty() &&
-                instr.operands[0].kind == il::core::Value::Kind::Temp)
-            {
+                instr.operands[0].kind == il::core::Value::Kind::Temp) {
                 auto it = gepOffsets.find(instr.operands[0].id);
                 // Field offset is 8 (after vptr at offset 0)
-                if (it != gepOffsets.end() && it->second == 8)
-                {
+                if (it != gepOffsets.end() && it->second == 8) {
                     sawLoad = true;
                     break;
                 }
@@ -278,8 +251,7 @@ TEST(BasicOOPLoweringTest, LoadsMemberAccessFromField)
     EXPECT_TRUE(sawLoad);
 }
 
-TEST(BasicOOPLoweringTest, MemberFieldAccessibleAcrossMethods)
-{
+TEST(BasicOOPLoweringTest, MemberFieldAccessibleAcrossMethods) {
     const std::string src = "10 CLASS R\n"
                             "20   a AS INTEGER\n"
                             "30   SUB Set(v AS INTEGER)\n"
@@ -309,18 +281,14 @@ TEST(BasicOOPLoweringTest, MemberFieldAccessibleAcrossMethods)
 
     std::unordered_map<unsigned, long long> gepOffsets;
     bool sawFieldStore = false;
-    for (const auto &block : setFn->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : setFn->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
-                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
-            {
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt) {
                 gepOffsets.emplace(*instr.result, instr.operands[1].i64);
             }
             if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 1 &&
-                instr.operands[0].kind == il::core::Value::Kind::Temp)
-            {
+                instr.operands[0].kind == il::core::Value::Kind::Temp) {
                 auto it = gepOffsets.find(instr.operands[0].id);
                 // Field offset is 8 (after vptr at offset 0)
                 if (it != gepOffsets.end() && it->second == 8)
@@ -338,29 +306,23 @@ TEST(BasicOOPLoweringTest, MemberFieldAccessibleAcrossMethods)
     bool sawFieldLoad = false;
     bool sawReturnFromLoad = false;
     unsigned loadedTemp = 0;
-    for (const auto &block : getFn->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : getFn->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
-                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
-            {
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt) {
                 gepOffsets.emplace(*instr.result, instr.operands[1].i64);
             }
             if (instr.op == il::core::Opcode::Load && !instr.operands.empty() &&
-                instr.operands[0].kind == il::core::Value::Kind::Temp && instr.result)
-            {
+                instr.operands[0].kind == il::core::Value::Kind::Temp && instr.result) {
                 auto it = gepOffsets.find(instr.operands[0].id);
                 // Field offset is 8 (after vptr at offset 0)
-                if (it != gepOffsets.end() && it->second == 8)
-                {
+                if (it != gepOffsets.end() && it->second == 8) {
                     sawFieldLoad = true;
                     loadedTemp = *instr.result;
                 }
             }
             if (instr.op == il::core::Opcode::Ret && !instr.operands.empty() &&
-                instr.operands[0].kind == il::core::Value::Kind::Temp)
-            {
+                instr.operands[0].kind == il::core::Value::Kind::Temp) {
                 if (sawFieldLoad && instr.operands[0].id == loadedTemp)
                     sawReturnFromLoad = true;
             }
@@ -371,8 +333,7 @@ TEST(BasicOOPLoweringTest, MemberFieldAccessibleAcrossMethods)
     EXPECT_TRUE(sawReturnFromLoad);
 }
 
-TEST(BasicOOPLoweringTest, MemberAccessOutsideMethodsStoresAndLoads)
-{
+TEST(BasicOOPLoweringTest, MemberAccessOutsideMethodsStoresAndLoads) {
     const std::string src = "10 CLASS D\n"
                             "20   v AS INTEGER\n"
                             "30 END CLASS\n"
@@ -396,28 +357,23 @@ TEST(BasicOOPLoweringTest, MemberAccessOutsideMethodsStoresAndLoads)
     std::unordered_map<unsigned, long long> gepOffsets;
     bool sawStore = false;
     bool sawLoad = false;
-    for (const auto &block : mainFn->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : mainFn->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
-                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
-            {
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt) {
                 gepOffsets.emplace(*instr.result, instr.operands[1].i64);
             }
             if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
                 instr.operands[0].kind == il::core::Value::Kind::Temp &&
                 instr.operands[1].kind == il::core::Value::Kind::ConstInt &&
-                instr.operands[1].i64 == 9)
-            {
+                instr.operands[1].i64 == 9) {
                 auto it = gepOffsets.find(instr.operands[0].id);
                 // Field offset is 8 (after vptr at offset 0)
                 if (it != gepOffsets.end() && it->second == 8)
                     sawStore = true;
             }
             if (instr.op == il::core::Opcode::Load && !instr.operands.empty() &&
-                instr.operands[0].kind == il::core::Value::Kind::Temp)
-            {
+                instr.operands[0].kind == il::core::Value::Kind::Temp) {
                 auto it = gepOffsets.find(instr.operands[0].id);
                 // Field offset is 8 (after vptr at offset 0)
                 if (it != gepOffsets.end() && it->second == 8)
@@ -430,8 +386,7 @@ TEST(BasicOOPLoweringTest, MemberAccessOutsideMethodsStoresAndLoads)
     EXPECT_TRUE(sawLoad);
 }
 
-TEST(BasicOOPLoweringTest, MemberAccessStringFieldRetainsReferences)
-{
+TEST(BasicOOPLoweringTest, MemberAccessStringFieldRetainsReferences) {
     const std::string src = "10 CLASS P\n"
                             "20   name AS STRING\n"
                             "30 END CLASS\n"
@@ -454,10 +409,8 @@ TEST(BasicOOPLoweringTest, MemberAccessStringFieldRetainsReferences)
 
     bool sawRetain = false;
     bool sawRelease = false;
-    for (const auto &block : mainFn->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : mainFn->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op != il::core::Opcode::Call)
                 continue;
             if (equalsIgnoreCase(instr.callee, "rt_str_retain_maybe"))
@@ -471,8 +424,7 @@ TEST(BasicOOPLoweringTest, MemberAccessStringFieldRetainsReferences)
     EXPECT_TRUE(sawRelease);
 }
 
-TEST(BasicOOPLoweringTest, BareFieldNameBindsToInstance)
-{
+TEST(BasicOOPLoweringTest, BareFieldNameBindsToInstance) {
     const std::string src = "10 CLASS C\n"
                             "20   v AS INTEGER\n"
                             "30   SUB Inc()\n"
@@ -495,26 +447,21 @@ TEST(BasicOOPLoweringTest, BareFieldNameBindsToInstance)
     std::unordered_map<unsigned, long long> gepOffsets;
     bool sawLoad = false;
     bool sawStore = false;
-    for (const auto &block : incFn->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : incFn->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == il::core::Opcode::GEP && instr.result && instr.operands.size() >= 2 &&
-                instr.operands[1].kind == il::core::Value::Kind::ConstInt)
-            {
+                instr.operands[1].kind == il::core::Value::Kind::ConstInt) {
                 gepOffsets.emplace(*instr.result, instr.operands[1].i64);
             }
             if (instr.op == il::core::Opcode::Load && !instr.operands.empty() &&
-                instr.operands[0].kind == il::core::Value::Kind::Temp)
-            {
+                instr.operands[0].kind == il::core::Value::Kind::Temp) {
                 auto it = gepOffsets.find(instr.operands[0].id);
                 // Field offset is 8 (after vptr at offset 0)
                 if (it != gepOffsets.end() && it->second == 8)
                     sawLoad = true;
             }
             if (instr.op == il::core::Opcode::Store && !instr.operands.empty() &&
-                instr.operands[0].kind == il::core::Value::Kind::Temp)
-            {
+                instr.operands[0].kind == il::core::Value::Kind::Temp) {
                 auto it = gepOffsets.find(instr.operands[0].id);
                 // Field offset is 8 (after vptr at offset 0)
                 if (it != gepOffsets.end() && it->second == 8)
@@ -527,8 +474,7 @@ TEST(BasicOOPLoweringTest, BareFieldNameBindsToInstance)
     EXPECT_TRUE(sawStore);
 }
 
-TEST(BasicOOPLoweringTest, MethodParametersForwardedToCallee)
-{
+TEST(BasicOOPLoweringTest, MethodParametersForwardedToCallee) {
     const std::string src = "10 CLASS D\n"
                             "20   SUB Echo(v AS INTEGER)\n"
                             "30     PRINT v\n"
@@ -555,11 +501,9 @@ TEST(BasicOOPLoweringTest, MethodParametersForwardedToCallee)
 
     bool sawSelfStore = false;
     bool sawParamStore = false;
-    if (!method->blocks.empty())
-    {
+    if (!method->blocks.empty()) {
         const auto &entry = method->blocks.front();
-        for (const auto &instr : entry.instructions)
-        {
+        for (const auto &instr : entry.instructions) {
             if (instr.op != il::core::Opcode::Store || instr.operands.size() < 2)
                 continue;
             if (instr.operands[1].kind != il::core::Value::Kind::Temp)
@@ -577,10 +521,8 @@ TEST(BasicOOPLoweringTest, MethodParametersForwardedToCallee)
     ASSERT_NE(mainFn, nullptr);
 
     bool validatedCall = false;
-    for (const auto &block : mainFn->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : mainFn->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op != il::core::Opcode::Call)
                 continue;
             if (!equalsIgnoreCase(instr.callee, "D.Echo"))
@@ -594,8 +536,7 @@ TEST(BasicOOPLoweringTest, MethodParametersForwardedToCallee)
     EXPECT_TRUE(validatedCall);
 }
 
-TEST(BasicOOPLoweringTest, MethodFunctionEmitsReturnValue)
-{
+TEST(BasicOOPLoweringTest, MethodFunctionEmitsReturnValue) {
     const std::string src = "10 CLASS M\n"
                             "20   FUNCTION Twice(n AS INTEGER) AS INTEGER\n"
                             "30     RETURN n + n\n"
@@ -619,12 +560,9 @@ TEST(BasicOOPLoweringTest, MethodFunctionEmitsReturnValue)
     EXPECT_EQ(method->retType.kind, il::core::Type::Kind::I64);
 
     bool sawRetWithValue = false;
-    for (const auto &block : method->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
-            if (instr.op == il::core::Opcode::Ret && !instr.operands.empty())
-            {
+    for (const auto &block : method->blocks) {
+        for (const auto &instr : block.instructions) {
+            if (instr.op == il::core::Opcode::Ret && !instr.operands.empty()) {
                 sawRetWithValue = true;
                 break;
             }
@@ -637,16 +575,13 @@ TEST(BasicOOPLoweringTest, MethodFunctionEmitsReturnValue)
     const il::core::Function *mainFn = findFunctionCaseInsensitive(module, "main");
     ASSERT_NE(mainFn, nullptr);
     bool sawCallResult = false;
-    for (const auto &block : mainFn->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : mainFn->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op != il::core::Opcode::Call)
                 continue;
             if (!equalsIgnoreCase(instr.callee, "M.Twice"))
                 continue;
-            if (instr.result.has_value())
-            {
+            if (instr.result.has_value()) {
                 sawCallResult = true;
                 break;
             }
@@ -657,8 +592,7 @@ TEST(BasicOOPLoweringTest, MethodFunctionEmitsReturnValue)
     EXPECT_TRUE(sawCallResult);
 }
 
-TEST(BasicOOPLoweringTest, MethodFunctionSuffixReturnTypes)
-{
+TEST(BasicOOPLoweringTest, MethodFunctionSuffixReturnTypes) {
     const std::string src = "10 CLASS P\n"
                             "20   FUNCTION Hello$()\n"
                             "30     RETURN \"hi\"\n"
@@ -702,22 +636,15 @@ TEST(BasicOOPLoweringTest, MethodFunctionSuffixReturnTypes)
     bool sawHelloCall = false;
     bool sawHalfCall = false;
     bool sawCountCall = false;
-    for (const auto &block : mainFn->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : mainFn->blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op != il::core::Opcode::Call)
                 continue;
-            if (equalsIgnoreCase(instr.callee, "P.Hello$"))
-            {
+            if (equalsIgnoreCase(instr.callee, "P.Hello$")) {
                 sawHelloCall = instr.result.has_value();
-            }
-            else if (equalsIgnoreCase(instr.callee, "P.Half#"))
-            {
+            } else if (equalsIgnoreCase(instr.callee, "P.Half#")) {
                 sawHalfCall = instr.result.has_value();
-            }
-            else if (equalsIgnoreCase(instr.callee, "P.Count%"))
-            {
+            } else if (equalsIgnoreCase(instr.callee, "P.Count%")) {
                 sawCountCall = instr.result.has_value();
             }
         }
@@ -728,8 +655,7 @@ TEST(BasicOOPLoweringTest, MethodFunctionSuffixReturnTypes)
     EXPECT_TRUE(sawCountCall);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

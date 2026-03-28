@@ -21,11 +21,9 @@
 #include <sstream>
 #include <utility>
 
-namespace il::support
-{
+namespace il::support {
 /// @brief Sink that accumulates diagnostic text for later conversion.
-struct DiagCapture
-{
+struct DiagCapture {
     /// @brief Accumulated diagnostic text from legacy helpers.
     std::ostringstream ss;
 
@@ -53,8 +51,7 @@ Expected<void> capture_to_expected_impl(bool ok, DiagCapture &capture);
 /// This function must remain inline because it is a template instantiated with
 /// arbitrary functors across translation units; moving it to a source file
 /// would break those instantiations.
-template <class F> inline Expected<void> capture_to_expected(F &&legacyCall)
-{
+template <class F> inline Expected<void> capture_to_expected(F &&legacyCall) {
     DiagCapture capture;
     bool ok = std::forward<F>(legacyCall)(capture.ss);
     return capture_to_expected_impl(ok, capture);

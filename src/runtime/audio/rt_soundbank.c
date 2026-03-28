@@ -37,15 +37,13 @@
 #define BANK_MAX_ENTRIES 64
 #define BANK_NAME_LEN 32
 
-typedef struct
-{
+typedef struct {
     char name[BANK_NAME_LEN];
     void *sound; /* retained rt_sound wrapper */
     int in_use;
 } bank_entry_t;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     bank_entry_t entries[BANK_MAX_ENTRIES];
     int count;
@@ -56,11 +54,9 @@ typedef struct
 //===----------------------------------------------------------------------===//
 
 /// @brief Copy an rt_string name into a fixed buffer, truncating if needed.
-static void copy_name(char *dst, rt_string name)
-{
+static void copy_name(char *dst, rt_string name) {
     const char *src = rt_string_cstr(name);
-    if (!src)
-    {
+    if (!src) {
         dst[0] = '\0';
         return;
     }
@@ -72,10 +68,8 @@ static void copy_name(char *dst, rt_string name)
 }
 
 /// @brief Find an entry by name. Returns index or -1.
-static int find_entry(const rt_soundbank_impl *bank, const char *name)
-{
-    for (int i = 0; i < BANK_MAX_ENTRIES; i++)
-    {
+static int find_entry(const rt_soundbank_impl *bank, const char *name) {
+    for (int i = 0; i < BANK_MAX_ENTRIES; i++) {
         if (bank->entries[i].in_use && strcmp(bank->entries[i].name, name) == 0)
             return i;
     }
@@ -83,10 +77,8 @@ static int find_entry(const rt_soundbank_impl *bank, const char *name)
 }
 
 /// @brief Find a free slot. Returns index or -1.
-static int find_free(const rt_soundbank_impl *bank)
-{
-    for (int i = 0; i < BANK_MAX_ENTRIES; i++)
-    {
+static int find_free(const rt_soundbank_impl *bank) {
+    for (int i = 0; i < BANK_MAX_ENTRIES; i++) {
         if (!bank->entries[i].in_use)
             return i;
     }
@@ -94,10 +86,8 @@ static int find_free(const rt_soundbank_impl *bank)
 }
 
 /// @brief Release a sound reference in an entry.
-static void release_entry(bank_entry_t *entry)
-{
-    if (entry->sound)
-    {
+static void release_entry(bank_entry_t *entry) {
+    if (entry->sound) {
         if (rt_obj_release_check0(entry->sound))
             rt_obj_free(entry->sound);
         entry->sound = NULL;
@@ -110,14 +100,12 @@ static void release_entry(bank_entry_t *entry)
 // Finalizer
 //===----------------------------------------------------------------------===//
 
-static void rt_soundbank_finalize(void *obj)
-{
+static void rt_soundbank_finalize(void *obj) {
     if (!obj)
         return;
 
     rt_soundbank_impl *bank = (rt_soundbank_impl *)obj;
-    for (int i = 0; i < BANK_MAX_ENTRIES; i++)
-    {
+    for (int i = 0; i < BANK_MAX_ENTRIES; i++) {
         if (bank->entries[i].in_use)
             release_entry(&bank->entries[i]);
     }
@@ -127,8 +115,7 @@ static void rt_soundbank_finalize(void *obj)
 // Public API
 //===----------------------------------------------------------------------===//
 
-void *rt_soundbank_new(void)
-{
+void *rt_soundbank_new(void) {
     rt_soundbank_impl *bank =
         (rt_soundbank_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_soundbank_impl));
     if (!bank)
@@ -142,8 +129,7 @@ void *rt_soundbank_new(void)
     return bank;
 }
 
-int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path)
-{
+int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path) {
     if (!bank_ptr || !name || !path)
         return 0;
 
@@ -160,16 +146,12 @@ int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path)
 
     /* Check if name already exists — replace */
     int idx = find_entry(bank, namebuf);
-    if (idx >= 0)
-    {
+    if (idx >= 0) {
         release_entry(&bank->entries[idx]);
         bank->count--;
-    }
-    else
-    {
+    } else {
         idx = find_free(bank);
-        if (idx < 0)
-        {
+        if (idx < 0) {
             /* Bank full — free the loaded sound */
             if (rt_obj_release_check0(sound))
                 rt_obj_free(sound);
@@ -186,8 +168,7 @@ int64_t rt_soundbank_register(void *bank_ptr, rt_string name, rt_string path)
     return 1;
 }
 
-int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound)
-{
+int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound) {
     if (!bank_ptr || !name || !sound)
         return 0;
 
@@ -198,13 +179,10 @@ int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound)
 
     /* Check if name already exists — replace */
     int idx = find_entry(bank, namebuf);
-    if (idx >= 0)
-    {
+    if (idx >= 0) {
         release_entry(&bank->entries[idx]);
         bank->count--;
-    }
-    else
-    {
+    } else {
         idx = find_free(bank);
         if (idx < 0)
             return 0; /* Bank full */
@@ -221,8 +199,7 @@ int64_t rt_soundbank_register_sound(void *bank_ptr, rt_string name, void *sound)
     return 1;
 }
 
-int64_t rt_soundbank_play(void *bank_ptr, rt_string name)
-{
+int64_t rt_soundbank_play(void *bank_ptr, rt_string name) {
     if (!bank_ptr || !name)
         return -1;
 
@@ -237,8 +214,7 @@ int64_t rt_soundbank_play(void *bank_ptr, rt_string name)
     return rt_sound_play(bank->entries[idx].sound);
 }
 
-int64_t rt_soundbank_play_ex(void *bank_ptr, rt_string name, int64_t volume, int64_t pan)
-{
+int64_t rt_soundbank_play_ex(void *bank_ptr, rt_string name, int64_t volume, int64_t pan) {
     if (!bank_ptr || !name)
         return -1;
 
@@ -253,8 +229,7 @@ int64_t rt_soundbank_play_ex(void *bank_ptr, rt_string name, int64_t volume, int
     return rt_sound_play_ex(bank->entries[idx].sound, volume, pan);
 }
 
-int64_t rt_soundbank_has(void *bank_ptr, rt_string name)
-{
+int64_t rt_soundbank_has(void *bank_ptr, rt_string name) {
     if (!bank_ptr || !name)
         return 0;
 
@@ -265,8 +240,7 @@ int64_t rt_soundbank_has(void *bank_ptr, rt_string name)
     return find_entry(bank, namebuf) >= 0 ? 1 : 0;
 }
 
-void *rt_soundbank_get(void *bank_ptr, rt_string name)
-{
+void *rt_soundbank_get(void *bank_ptr, rt_string name) {
     if (!bank_ptr || !name)
         return NULL;
 
@@ -283,8 +257,7 @@ void *rt_soundbank_get(void *bank_ptr, rt_string name)
     return sound;
 }
 
-void rt_soundbank_remove(void *bank_ptr, rt_string name)
-{
+void rt_soundbank_remove(void *bank_ptr, rt_string name) {
     if (!bank_ptr || !name)
         return;
 
@@ -300,22 +273,19 @@ void rt_soundbank_remove(void *bank_ptr, rt_string name)
     bank->count--;
 }
 
-void rt_soundbank_clear(void *bank_ptr)
-{
+void rt_soundbank_clear(void *bank_ptr) {
     if (!bank_ptr)
         return;
 
     rt_soundbank_impl *bank = (rt_soundbank_impl *)bank_ptr;
-    for (int i = 0; i < BANK_MAX_ENTRIES; i++)
-    {
+    for (int i = 0; i < BANK_MAX_ENTRIES; i++) {
         if (bank->entries[i].in_use)
             release_entry(&bank->entries[i]);
     }
     bank->count = 0;
 }
 
-int64_t rt_soundbank_count(void *bank_ptr)
-{
+int64_t rt_soundbank_count(void *bank_ptr) {
     if (!bank_ptr)
         return 0;
 

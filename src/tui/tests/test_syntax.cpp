@@ -24,18 +24,15 @@
 
 using viper::tui::syntax::SyntaxRuleSet;
 
-TEST(TUI, Syntax)
-{
+TEST(TUI, Syntax) {
     SyntaxRuleSet rules;
     bool ok = rules.loadFromFile(SYNTAX_JSON);
     ASSERT_TRUE(ok);
     std::vector<std::string> lines = {"{", "  \"key\": true", "}"};
     std::string dump;
-    for (std::size_t i = 0; i < lines.size(); ++i)
-    {
+    for (std::size_t i = 0; i < lines.size(); ++i) {
         const auto &sp = rules.spans(i, lines[i]);
-        for (const auto &s : sp)
-        {
+        for (const auto &s : sp) {
             char buf[64];
             std::snprintf(buf,
                           sizeof(buf),
@@ -76,8 +73,7 @@ TEST(TUI, Syntax)
     fs::remove(truncatedMapPath);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

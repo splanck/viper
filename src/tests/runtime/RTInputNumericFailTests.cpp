@@ -19,18 +19,15 @@
 #include <cassert>
 #include <string>
 
-static void call_input_12abc()
-{
+static void call_input_12abc() {
     rt_to_double(rt_const_cstr("12abc"));
 }
 
-static void call_input_7_5foo()
-{
+static void call_input_7_5foo() {
     rt_to_double(rt_const_cstr("7.5foo"));
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

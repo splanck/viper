@@ -19,48 +19,41 @@
 #include <csetjmp>
 #include <cstring>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 static int g_finalizer_calls = 0;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
 
-static void rt_release_obj(void *p)
-{
+static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
 }
 
-static void *new_obj()
-{
+static void *new_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
 }
 
-static void count_finalizer(void *)
-{
+static void count_finalizer(void *) {
     ++g_finalizer_calls;
 }
 
-static rt_string make_key(const char *text)
-{
+static rt_string make_key(const char *text) {
     assert(text != nullptr);
     return rt_string_from_bytes(text, strlen(text));
 }
 
-static void test_remove_frees_last_reference_without_invalid_free()
-{
+static void test_remove_frees_last_reference_without_invalid_free() {
     void *map = rt_map_new();
     assert(map != nullptr);
 
@@ -79,8 +72,7 @@ static void test_remove_frees_last_reference_without_invalid_free()
     rt_release_obj(map);
 }
 
-static void test_overwrite_frees_old_last_reference_without_invalid_free()
-{
+static void test_overwrite_frees_old_last_reference_without_invalid_free() {
     void *map = rt_map_new();
     assert(map != nullptr);
 
@@ -103,8 +95,7 @@ static void test_overwrite_frees_old_last_reference_without_invalid_free()
     rt_release_obj(map);
 }
 
-static void test_free_runs_map_finalizer_and_releases_values()
-{
+static void test_free_runs_map_finalizer_and_releases_values() {
     void *map = rt_map_new();
     assert(map != nullptr);
 
@@ -123,8 +114,7 @@ static void test_free_runs_map_finalizer_and_releases_values()
     assert(g_finalizer_calls == 1);
 }
 
-int main()
-{
+int main() {
     test_remove_frees_last_reference_without_invalid_free();
     test_overwrite_frees_old_last_reference_without_invalid_free();
     test_free_runs_map_finalizer_and_releases_values();

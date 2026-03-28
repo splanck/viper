@@ -21,8 +21,7 @@
 #include <optional>
 #include <string>
 
-TEST(IL, SimplifyCFGBypassParams)
-{
+TEST(IL, SimplifyCFGBypassParams) {
     using namespace il::core;
 
     Module module;
@@ -54,10 +53,8 @@ TEST(IL, SimplifyCFGBypassParams)
     ASSERT_EQ(stats.emptyBlocksRemoved, 1);
 
     const auto findBlock = [](const Function &function,
-                              const std::string &label) -> const BasicBlock *
-    {
-        for (const auto &block : function.blocks)
-        {
+                              const std::string &label) -> const BasicBlock * {
+        for (const auto &block : function.blocks) {
             if (block.label == label)
                 return &block;
         }
@@ -83,8 +80,7 @@ TEST(IL, SimplifyCFGBypassParams)
     ASSERT_EQ(exitBlock->params.size(), 1);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

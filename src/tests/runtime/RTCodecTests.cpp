@@ -18,8 +18,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -28,8 +27,7 @@ static void test_result(const char *name, bool passed)
 // URL Encoding Tests
 //=============================================================================
 
-static void test_url_encode_basic()
-{
+static void test_url_encode_basic() {
     printf("Testing Codec.UrlEncode basic:\n");
 
     // Empty string
@@ -63,8 +61,7 @@ static void test_url_encode_basic()
     printf("\n");
 }
 
-static void test_url_decode_basic()
-{
+static void test_url_decode_basic() {
     printf("Testing Codec.UrlDecode basic:\n");
 
     // Empty string
@@ -118,8 +115,7 @@ static void test_url_decode_basic()
     printf("\n");
 }
 
-static void test_url_roundtrip()
-{
+static void test_url_roundtrip() {
     printf("Testing URL encode/decode roundtrip:\n");
 
     const char *test_strings[] = {"",
@@ -132,13 +128,11 @@ static void test_url_roundtrip()
                                   NULL};
 
     bool all_passed = true;
-    for (int i = 0; test_strings[i] != NULL; i++)
-    {
+    for (int i = 0; test_strings[i] != NULL; i++) {
         rt_string original = rt_const_cstr(test_strings[i]);
         rt_string encoded = rt_codec_url_encode(original);
         rt_string decoded = rt_codec_url_decode(encoded);
-        if (strcmp(rt_string_cstr(original), rt_string_cstr(decoded)) != 0)
-        {
+        if (strcmp(rt_string_cstr(original), rt_string_cstr(decoded)) != 0) {
             all_passed = false;
             break;
         }
@@ -152,8 +146,7 @@ static void test_url_roundtrip()
 // Base64 Encoding Tests
 //=============================================================================
 
-static void test_base64_encode()
-{
+static void test_base64_encode() {
     printf("Testing Codec.Base64Enc:\n");
 
     // Empty string
@@ -191,8 +184,7 @@ static void test_base64_encode()
     printf("\n");
 }
 
-static void test_base64_decode()
-{
+static void test_base64_decode() {
     printf("Testing Codec.Base64Dec:\n");
 
     // Empty string
@@ -230,8 +222,7 @@ static void test_base64_decode()
     printf("\n");
 }
 
-static void test_base64_roundtrip()
-{
+static void test_base64_roundtrip() {
     printf("Testing Base64 encode/decode roundtrip:\n");
 
     // Note: Codec functions work on C strings (no embedded nulls)
@@ -247,13 +238,11 @@ static void test_base64_roundtrip()
                                   NULL};
 
     bool all_passed = true;
-    for (int i = 0; test_strings[i] != NULL; i++)
-    {
+    for (int i = 0; test_strings[i] != NULL; i++) {
         rt_string original = rt_string_from_bytes(test_strings[i], strlen(test_strings[i]));
         rt_string encoded = rt_codec_base64_enc(original);
         rt_string decoded = rt_codec_base64_dec(encoded);
-        if (strcmp(rt_string_cstr(original), rt_string_cstr(decoded)) != 0)
-        {
+        if (strcmp(rt_string_cstr(original), rt_string_cstr(decoded)) != 0) {
             all_passed = false;
             break;
         }
@@ -267,8 +256,7 @@ static void test_base64_roundtrip()
 // Hex Encoding Tests
 //=============================================================================
 
-static void test_hex_encode()
-{
+static void test_hex_encode() {
     printf("Testing Codec.HexEnc:\n");
 
     // Empty string
@@ -293,8 +281,7 @@ static void test_hex_encode()
     printf("\n");
 }
 
-static void test_hex_decode()
-{
+static void test_hex_decode() {
     printf("Testing Codec.HexDec:\n");
 
     // Empty string
@@ -323,8 +310,7 @@ static void test_hex_decode()
     printf("\n");
 }
 
-static void test_hex_roundtrip()
-{
+static void test_hex_roundtrip() {
     printf("Testing Hex encode/decode roundtrip:\n");
 
     // Note: Codec functions work on C strings (no embedded nulls)
@@ -332,13 +318,11 @@ static void test_hex_roundtrip()
     const char *test_strings[] = {"", "a", "ab", "Hello, World!", "\x01\x02\xFF", NULL};
 
     bool all_passed = true;
-    for (int i = 0; test_strings[i] != NULL; i++)
-    {
+    for (int i = 0; test_strings[i] != NULL; i++) {
         rt_string original = rt_string_from_bytes(test_strings[i], strlen(test_strings[i]));
         rt_string encoded = rt_codec_hex_enc(original);
         rt_string decoded = rt_codec_hex_dec(encoded);
-        if (strcmp(rt_string_cstr(original), rt_string_cstr(decoded)) != 0)
-        {
+        if (strcmp(rt_string_cstr(original), rt_string_cstr(decoded)) != 0) {
             all_passed = false;
             break;
         }
@@ -352,8 +336,7 @@ static void test_hex_roundtrip()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Codec Tests ===\n\n");
 
     // URL encoding tests

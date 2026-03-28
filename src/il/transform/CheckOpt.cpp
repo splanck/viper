@@ -36,16 +36,12 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
-namespace
-{
+namespace il::transform {
+namespace {
 
 /// @brief Check if an opcode is a check operation that can be optimized.
-bool isCheckOpcode(Opcode op)
-{
-    switch (op)
-    {
+bool isCheckOpcode(Opcode op) {
+    switch (op) {
         case Opcode::IdxChk:
         case Opcode::SDivChk0:
         case Opcode::UDivChk0:
@@ -65,14 +61,12 @@ bool isCheckOpcode(Opcode op)
 }
 
 /// @brief Check if an opcode is an overflow-checked arithmetic operation.
-bool isOverflowOpcode(Opcode op)
-{
+bool isOverflowOpcode(Opcode op) {
     return op == Opcode::IAddOvf || op == Opcode::ISubOvf || op == Opcode::IMulOvf;
 }
 
 /// @brief Check if a signed addition of two constants overflows.
-bool addOverflows(int64_t a, int64_t b)
-{
+bool addOverflows(int64_t a, int64_t b) {
     if (b > 0 && a > std::numeric_limits<int64_t>::max() - b)
         return true;
     if (b < 0 && a < std::numeric_limits<int64_t>::min() - b)
@@ -81,8 +75,7 @@ bool addOverflows(int64_t a, int64_t b)
 }
 
 /// @brief Check if a signed subtraction of two constants overflows.
-bool subOverflows(int64_t a, int64_t b)
-{
+bool subOverflows(int64_t a, int64_t b) {
     if (b < 0 && a > std::numeric_limits<int64_t>::max() + b)
         return true;
     if (b > 0 && a < std::numeric_limits<int64_t>::min() + b)
@@ -91,8 +84,7 @@ bool subOverflows(int64_t a, int64_t b)
 }
 
 /// @brief Check if a signed multiplication of two constants overflows.
-bool mulOverflows(int64_t a, int64_t b)
-{
+bool mulOverflows(int64_t a, int64_t b) {
     if (a == 0 || b == 0)
         return false;
     if (a == -1)
@@ -110,8 +102,7 @@ bool mulOverflows(int64_t a, int64_t b)
 ///        not to overflow at compile time.
 /// @param instr The overflow instruction to evaluate.
 /// @return True when the instruction was rewritten to a plain op.
-bool tryConstantFoldOverflow(Instr &instr)
-{
+bool tryConstantFoldOverflow(Instr &instr) {
     if (instr.operands.size() < 2)
         return false;
 
@@ -122,8 +113,7 @@ bool tryConstantFoldOverflow(Instr &instr)
         return false;
 
     bool overflows = false;
-    switch (instr.op)
-    {
+    switch (instr.op) {
         case Opcode::IAddOvf:
             overflows = addOverflows(lhs.i64, rhs.i64);
             break;
@@ -148,21 +138,18 @@ bool tryConstantFoldOverflow(Instr &instr)
 /// @brief Key representing a check condition for redundancy detection.
 /// @details Two checks with the same key test the same condition. Uses the
 ///          shared valueEquals() helper for consistent value comparison.
-struct CheckKey
-{
+struct CheckKey {
     Opcode op;
     Type type;
     std::vector<Value> operands;
 
-    bool operator==(const CheckKey &other) const
-    {
+    bool operator==(const CheckKey &other) const {
         if (op != other.op || operands.size() != other.operands.size())
             return false;
         // Type comparison (only relevant for typed checks like IdxChk)
         if (type.kind != other.type.kind)
             return false;
-        for (size_t i = 0; i < operands.size(); ++i)
-        {
+        for (size_t i = 0; i < operands.size(); ++i) {
             if (!valueEquals(operands[i], other.operands[i]))
                 return false;
         }
@@ -173,14 +160,11 @@ struct CheckKey
 /// @brief Hash functor for CheckKey using shared value hashing.
 /// @details Combines opcode and type with each operand hash using the
 ///          shared valueHash() helper for consistency.
-struct CheckKeyHash
-{
-    size_t operator()(const CheckKey &key) const
-    {
+struct CheckKeyHash {
+    size_t operator()(const CheckKey &key) const {
         size_t h = static_cast<size_t>(key.op);
         h ^= static_cast<size_t>(key.type.kind) << 8;
-        for (const auto &v : key.operands)
-        {
+        for (const auto &v : key.operands) {
             h ^= valueHash(v) + kHashPhiMix + (h << 6) + (h >> 2);
         }
         return h;
@@ -188,8 +172,7 @@ struct CheckKeyHash
 };
 
 /// @brief Build a CheckKey from an instruction.
-CheckKey makeCheckKey(const Instr &instr)
-{
+CheckKey makeCheckKey(const Instr &instr) {
     CheckKey key;
     key.op = instr.op;
     key.type = instr.type;
@@ -216,14 +199,11 @@ CheckKey makeCheckKey(const Instr &instr)
 ///        this is set to the value that should replace all uses of the result
 ///        (the pass-through value of the check).
 /// @return True when the check condition is statically guaranteed to succeed.
-bool isCheckTriviallyTrue(const Instr &instr, Value &replacementOut)
-{
+bool isCheckTriviallyTrue(const Instr &instr, Value &replacementOut) {
     auto isConstInt = [](const Value &v) { return v.kind == Value::Kind::ConstInt; };
 
-    switch (instr.op)
-    {
-        case Opcode::IdxChk:
-        {
+    switch (instr.op) {
+        case Opcode::IdxChk: {
             // idx.chk index lo hi — passes when lo <= index < hi
             if (instr.operands.size() < 3)
                 return false;
@@ -232,8 +212,7 @@ bool isCheckTriviallyTrue(const Instr &instr, Value &replacementOut)
             const Value &hi = instr.operands[2];
             if (!isConstInt(index) || !isConstInt(lo) || !isConstInt(hi))
                 return false;
-            if (lo.i64 <= index.i64 && index.i64 < hi.i64)
-            {
+            if (lo.i64 <= index.i64 && index.i64 < hi.i64) {
                 replacementOut = index; // result is the index value
                 return true;
             }
@@ -245,8 +224,7 @@ bool isCheckTriviallyTrue(const Instr &instr, Value &replacementOut)
 }
 
 /// @brief Information about a dominating check instruction.
-struct DominatingCheck
-{
+struct DominatingCheck {
     BasicBlock *block;
     std::optional<unsigned> resultId;
 };
@@ -256,8 +234,7 @@ struct DominatingCheck
 /// @param label The block label to search for.
 /// @return Pointer to the block, or nullptr if not found.
 BasicBlock *findBlock(const std::unordered_map<std::string, BasicBlock *> &blockMap,
-                      const std::string &label)
-{
+                      const std::string &label) {
     auto it = blockMap.find(label);
     return it != blockMap.end() ? it->second : nullptr;
 }
@@ -271,21 +248,17 @@ BasicBlock *findBlock(const std::unordered_map<std::string, BasicBlock *> &block
 /// @param loop The loop to find the preheader for.
 /// @param header The loop's header block.
 /// @return Pointer to the preheader block, or nullptr if not canonical.
-BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &header)
-{
+BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &header) {
     BasicBlock *preheader = nullptr;
-    for (auto &block : function.blocks)
-    {
+    for (auto &block : function.blocks) {
         if (loop.contains(block.label))
             continue;
         if (!block.terminated || block.instructions.empty())
             continue;
         const Instr &term = block.instructions.back();
         bool targetsHeader = false;
-        for (const auto &label : term.labels)
-        {
-            if (label == header.label)
-            {
+        for (const auto &label : term.labels) {
+            if (label == header.label) {
                 targetsHeader = true;
                 break;
             }
@@ -307,15 +280,15 @@ BasicBlock *findPreheader(Function &function, const Loop &loop, BasicBlock &head
 /// @param loop The loop whose invariants are being computed.
 /// @param function The function containing the loop.
 /// @param invariants Output set to populate with invariant temporary IDs.
-void seedInvariants(const Loop &loop, Function &function, std::unordered_set<unsigned> &invariants)
-{
+void seedInvariants(const Loop &loop,
+                    Function &function,
+                    std::unordered_set<unsigned> &invariants) {
     // Function parameters are always invariant
     for (const auto &param : function.params)
         invariants.insert(param.id);
 
     // Values defined in blocks outside the loop are invariant
-    for (auto &block : function.blocks)
-    {
+    for (auto &block : function.blocks) {
         if (loop.contains(block.label))
             continue;
         for (const auto &param : block.params)
@@ -332,17 +305,14 @@ void seedInvariants(const Loop &loop, Function &function, std::unordered_set<uns
 /// @param instr The instruction to check.
 /// @param invariants Set of known loop-invariant temporary IDs.
 /// @return True if all operands are loop-invariant.
-bool operandsInvariant(const Instr &instr, const std::unordered_set<unsigned> &invariants)
-{
-    auto isInvariantValue = [&invariants](const Value &value)
-    {
+bool operandsInvariant(const Instr &instr, const std::unordered_set<unsigned> &invariants) {
+    auto isInvariantValue = [&invariants](const Value &value) {
         if (value.kind != Value::Kind::Temp)
             return true; // Constants are always invariant
         return invariants.contains(value.id);
     };
 
-    for (const auto &operand : instr.operands)
-    {
+    for (const auto &operand : instr.operands) {
         if (!isInvariantValue(operand))
             return false;
     }
@@ -356,8 +326,7 @@ bool operandsInvariant(const Instr &instr, const std::unordered_set<unsigned> &i
 /// @param block The block containing the instruction.
 /// @param loop The loop being analyzed.
 /// @return True if instructions in this block are guaranteed to execute.
-bool isGuaranteedToExecute(const BasicBlock &block, const Loop &loop)
-{
+bool isGuaranteedToExecute(const BasicBlock &block, const Loop &loop) {
     // Conservative: only hoist from header where check must execute on loop entry
     return block.label == loop.headerLabel;
 }
@@ -370,17 +339,13 @@ bool isGuaranteedToExecute(const BasicBlock &block, const Loop &loop)
 /// @param function The function containing the loop.
 /// @return True if the loop contains any EH-sensitive operations.
 bool loopHasEHSensitiveOps(const Loop &loop,
-                           const std::unordered_map<std::string, BasicBlock *> &blockMap)
-{
-    for (const auto &label : loop.blockLabels)
-    {
+                           const std::unordered_map<std::string, BasicBlock *> &blockMap) {
+    for (const auto &label : loop.blockLabels) {
         BasicBlock *block = findBlock(blockMap, label);
         if (!block)
             continue;
-        for (const auto &instr : block->instructions)
-        {
-            switch (instr.op)
-            {
+        for (const auto &instr : block->instructions) {
+            switch (instr.op) {
                 case Opcode::ResumeSame:
                 case Opcode::ResumeNext:
                 case Opcode::ResumeLabel:
@@ -399,13 +364,11 @@ bool loopHasEHSensitiveOps(const Loop &loop,
 
 } // namespace
 
-std::string_view CheckOpt::id() const
-{
+std::string_view CheckOpt::id() const {
     return "check-opt";
 }
 
-PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
-{
+PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis) {
     if (function.blocks.empty())
         return PreservedAnalyses::all();
 
@@ -430,10 +393,8 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     // evaluate whether the operation overflows. If not, demote to the plain
     // (unchecked) opcode — this eliminates trap-generating code and enables
     // further constant folding downstream.
-    for (auto &block : function.blocks)
-    {
-        for (auto &instr : block.instructions)
-        {
+    for (auto &block : function.blocks) {
+        for (auto &instr : block.instructions) {
             if (isOverflowOpcode(instr.op) && tryConstantFoldOverflow(instr))
                 changed = true;
         }
@@ -453,8 +414,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     // We scan each block for CBr instructions on signed comparisons, propagate
     // range constraints to the target blocks, and demote overflow ops to plain
     // ops when the range proves safety.
-    for (auto &block : function.blocks)
-    {
+    for (auto &block : function.blocks) {
         if (block.instructions.empty())
             continue;
 
@@ -468,10 +428,8 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
             continue;
 
         const Instr *cmpInstr = nullptr;
-        for (const auto &instr : block.instructions)
-        {
-            if (instr.result && *instr.result == condVal.id)
-            {
+        for (const auto &instr : block.instructions) {
+            if (instr.result && *instr.result == condVal.id) {
                 cmpInstr = &instr;
                 break;
             }
@@ -507,8 +465,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
             continue;
         BasicBlock *targetBlock = tgtIt->second;
 
-        for (auto &instr : targetBlock->instructions)
-        {
+        for (auto &instr : targetBlock->instructions) {
             if (instr.op != Opcode::ISubOvf)
                 continue;
             if (instr.operands.size() < 2)
@@ -528,14 +485,11 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
             // Check: lowerBound - K >= INT64_MIN (subtraction can't overflow)
             // Since lowerBound >= C+1 and K is small (typically 1 or 2),
             // this is almost always safe.
-            if (K >= 0 && lowerBound >= std::numeric_limits<int64_t>::min() + K)
-            {
+            if (K >= 0 && lowerBound >= std::numeric_limits<int64_t>::min() + K) {
                 // x >= lowerBound, K >= 0 → x - K >= lowerBound - K >= INT64_MIN → safe
                 instr.op = Opcode::Sub;
                 changed = true;
-            }
-            else if (K < 0 && lowerBound <= std::numeric_limits<int64_t>::max() + K)
-            {
+            } else if (K < 0 && lowerBound <= std::numeric_limits<int64_t>::max() + K) {
                 // x >= lowerBound, K < 0 → x - K = x + |K| → check x + |K| <= INT64_MAX
                 instr.op = Opcode::Sub;
                 changed = true;
@@ -552,13 +506,11 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     std::unordered_map<CheckKey, unsigned, CheckKeyHash> depthCount;
     std::vector<std::pair<BasicBlock *, size_t>> toErase;
 
-    std::function<void(BasicBlock *)> visit = [&](BasicBlock *block)
-    {
+    std::function<void(BasicBlock *)> visit = [&](BasicBlock *block) {
         if (!block)
             return;
         std::vector<CheckKey> added;
-        for (size_t idx = 0; idx < block->instructions.size(); ++idx)
-        {
+        for (size_t idx = 0; idx < block->instructions.size(); ++idx) {
             Instr &instr = block->instructions[idx];
             if (!isCheckOpcode(instr.op))
                 continue;
@@ -575,32 +527,25 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
             // produce a type mismatch that the verifier rejects.  In that
             // case fall through to the dominance-based check instead.
             Value trivialReplacement;
-            if (isCheckTriviallyTrue(instr, trivialReplacement))
-            {
-                if (instr.result && useInfo.hasUses(*instr.result))
-                {
+            if (isCheckTriviallyTrue(instr, trivialReplacement)) {
+                if (instr.result && useInfo.hasUses(*instr.result)) {
                     // Check whether the replacement type matches the result type.
                     // ConstInt values type as I64; if the instruction result is
                     // narrower we cannot safely substitute without a type error.
                     const bool replacementIsI64ConstInt =
                         trivialReplacement.kind == Value::Kind::ConstInt &&
                         !trivialReplacement.isBool;
-                    if (replacementIsI64ConstInt && instr.type.kind != Type::Kind::I64)
-                    {
+                    if (replacementIsI64ConstInt && instr.type.kind != Type::Kind::I64) {
                         // Type mismatch — fall through to dominance-based check.
                         // The dominance check can still replace with a same-typed
                         // Temp if a dominating occurrence already holds the result.
-                    }
-                    else
-                    {
+                    } else {
                         useInfo.replaceAllUses(*instr.result, trivialReplacement);
                         toErase.push_back({block, idx});
                         changed = true;
                         continue;
                     }
-                }
-                else
-                {
+                } else {
                     // Result is either absent or has no live uses — safe to erase
                     // without substitution regardless of type.
                     toErase.push_back({block, idx});
@@ -611,17 +556,13 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
 
             CheckKey key = makeCheckKey(instr);
             auto it = available.find(key);
-            if (it != available.end() && domTree.dominates(it->second.block, block))
-            {
-                if (instr.result && it->second.resultId)
-                {
+            if (it != available.end() && domTree.dominates(it->second.block, block)) {
+                if (instr.result && it->second.resultId) {
                     useInfo.replaceAllUses(*instr.result, Value::temp(*it->second.resultId));
                 }
                 toErase.push_back({block, idx});
                 changed = true;
-            }
-            else
-            {
+            } else {
                 available[key] = DominatingCheck{block, instr.result};
                 ++depthCount[key];
                 added.push_back(key);
@@ -629,19 +570,15 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
         }
 
         auto childIt = domTree.children.find(block);
-        if (childIt != domTree.children.end())
-        {
+        if (childIt != domTree.children.end()) {
             for (auto *child : childIt->second)
                 visit(child);
         }
 
-        for (const auto &k : added)
-        {
+        for (const auto &k : added) {
             auto cntIt = depthCount.find(k);
-            if (cntIt != depthCount.end())
-            {
-                if (--cntIt->second == 0)
-                {
+            if (cntIt != depthCount.end()) {
+                if (--cntIt->second == 0) {
                     depthCount.erase(cntIt);
                     available.erase(k);
                 }
@@ -651,8 +588,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
 
     visit(&function.blocks.front());
 
-    for (auto it = toErase.rbegin(); it != toErase.rend(); ++it)
-    {
+    for (auto it = toErase.rbegin(); it != toErase.rend(); ++it) {
         BasicBlock *block = it->first;
         size_t idx = it->second;
         block->instructions.erase(block->instructions.begin() + static_cast<std::ptrdiff_t>(idx));
@@ -664,8 +600,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     // For each loop, identify checks whose operands are loop-invariant and
     // hoist them to the preheader.
 
-    for (const Loop &loop : loopInfo.loops())
-    {
+    for (const Loop &loop : loopInfo.loops()) {
         BasicBlock *header = findBlock(blockMap, loop.headerLabel);
         if (!header)
             continue;
@@ -685,8 +620,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
         // (enabling cascading hoists in a single pass)
 
         // Process each block in the loop
-        for (const std::string &blockLabel : loop.blockLabels)
-        {
+        for (const std::string &blockLabel : loop.blockLabels) {
             BasicBlock *block = findBlock(blockMap, blockLabel);
             if (!block)
                 continue;
@@ -695,12 +629,10 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
             if (!isGuaranteedToExecute(*block, loop))
                 continue;
 
-            for (size_t idx = 0; idx < block->instructions.size();)
-            {
+            for (size_t idx = 0; idx < block->instructions.size();) {
                 Instr &instr = block->instructions[idx];
 
-                if (!isCheckOpcode(instr.op) || !operandsInvariant(instr, invariants))
-                {
+                if (!isCheckOpcode(instr.op) || !operandsInvariant(instr, invariants)) {
                     ++idx;
                     continue;
                 }
@@ -745,8 +677,7 @@ PreservedAnalyses CheckOpt::run(Function &function, AnalysisManager &analysis)
     return preserved;
 }
 
-void registerCheckOptPass(PassRegistry &registry)
-{
+void registerCheckOptPass(PassRegistry &registry) {
     registry.registerFunctionPass("check-opt", []() { return std::make_unique<CheckOpt>(); });
 }
 

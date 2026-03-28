@@ -22,8 +22,7 @@
 
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
 
-namespace viper::codegen::x64::passes
-{
+namespace viper::codegen::x64::passes {
 
 /// @brief Ensure legalisation ran before marking the module as register-allocated.
 /// @details The pass checks the @p module bookkeeping flags and emits a
@@ -33,10 +32,8 @@ namespace viper::codegen::x64::passes
 /// @param module Backend pipeline state to update.
 /// @param diags  Diagnostics sink for reporting ordering mistakes.
 /// @return @c true when register allocation can be considered complete.
-bool RegAllocPass::run(Module &module, Diagnostics &diags)
-{
-    if (!module.legalised)
-    {
+bool RegAllocPass::run(Module &module, Diagnostics &diags) {
+    if (!module.legalised) {
         diags.error("regalloc: legalisation must run before register allocation");
         return false;
     }

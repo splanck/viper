@@ -25,8 +25,7 @@
 
 using namespace il::core;
 
-namespace il::vm
-{
+namespace il::vm {
 /// @brief Expose the lazily materialised opcode → handler mapping shared across
 ///        all VM instances.
 /// @details Delegates to @ref detail::getOpcodeHandlers(), which consults the
@@ -36,16 +35,13 @@ namespace il::vm
 ///          process-wide table initialised on first use so subsequent calls incur
 ///          no rebuild cost.
 /// @return Reference to the canonical opcode handler table.
-const VM::OpcodeHandlerTable &VM::getOpcodeHandlers()
-{
+const VM::OpcodeHandlerTable &VM::getOpcodeHandlers() {
     return detail::getOpcodeHandlers();
 }
 } // namespace il::vm
 
-namespace il::vm::detail
-{
-namespace memory
-{
+namespace il::vm::detail {
+namespace memory {
 /// @brief Handle load opcodes by delegating to the shared implementation.
 /// @details Obtains the current execution state via
 ///          @ref VMAccess::currentExecState and forwards the VM, frame, and
@@ -65,8 +61,7 @@ VM::ExecResult handleLoad(VM &vm,
                           const Instr &in,
                           const VM::BlockMap &blocks,
                           const BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleLoadImpl(vm, state, fr, in, blocks, bb, ip);
 }
@@ -88,15 +83,13 @@ VM::ExecResult handleStore(VM &vm,
                            const Instr &in,
                            const VM::BlockMap &blocks,
                            const BasicBlock *&bb,
-                           size_t &ip)
-{
+                           size_t &ip) {
     VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleStoreImpl(vm, state, fr, in, blocks, bb, ip);
 }
 } // namespace memory
 
-namespace integer
-{
+namespace integer {
 /// @brief Dispatch integer addition by binding the current execution state.
 /// @details Fetches the thread-local execution state and passes it to
 ///          @ref handleAddImpl so arithmetic semantics remain centralised.
@@ -115,8 +108,7 @@ VM::ExecResult handleAdd(VM &vm,
                          const Instr &in,
                          const VM::BlockMap &blocks,
                          const BasicBlock *&bb,
-                         size_t &ip)
-{
+                         size_t &ip) {
     VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleAddImpl(vm, state, fr, in, blocks, bb, ip);
 }
@@ -138,8 +130,7 @@ VM::ExecResult handleSub(VM &vm,
                          const Instr &in,
                          const VM::BlockMap &blocks,
                          const BasicBlock *&bb,
-                         size_t &ip)
-{
+                         size_t &ip) {
     VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleSubImpl(vm, state, fr, in, blocks, bb, ip);
 }
@@ -160,8 +151,7 @@ VM::ExecResult handleMul(VM &vm,
                          const Instr &in,
                          const VM::BlockMap &blocks,
                          const BasicBlock *&bb,
-                         size_t &ip)
-{
+                         size_t &ip) {
     VMAccess::ExecState *state = VMAccess::currentExecState(vm);
     return handleMulImpl(vm, state, fr, in, blocks, bb, ip);
 }
@@ -172,8 +162,7 @@ VM::ExecResult handleMul(VM &vm,
 ///          dispatch table stays consistent with the IL definition without
 ///          repeatedly expanding Opcode.def at build time.
 /// @return Reference to the cached opcode handler table.
-const VM::OpcodeHandlerTable &getOpcodeHandlers()
-{
+const VM::OpcodeHandlerTable &getOpcodeHandlers() {
     return generated::opcodeHandlers();
 }
 

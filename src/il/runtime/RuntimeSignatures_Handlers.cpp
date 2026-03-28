@@ -29,10 +29,8 @@
 #include <cstdint>
 #include <limits>
 
-namespace il::runtime
-{
-namespace
-{
+namespace il::runtime {
+namespace {
 
 constexpr const char kTestBridgeMutatedText[] = "bridge-mutated";
 
@@ -43,8 +41,7 @@ constexpr const char kTestBridgeMutatedText[] = "bridge-mutated";
 ///          models these builtins as returning 32-bit signed integers.  The
 ///          bridge narrows the runtime result using saturation so overflow
 ///          produces INT32_MAX/INT32_MIN instead of wrapping.
-int32_t clampRuntimeOffset(int64_t value)
-{
+int32_t clampRuntimeOffset(int64_t value) {
     if (value > std::numeric_limits<int32_t>::max())
         return std::numeric_limits<int32_t>::max();
     if (value < std::numeric_limits<int32_t>::min())
@@ -58,13 +55,11 @@ int32_t clampRuntimeOffset(int64_t value)
 // File I/O adapters
 // ============================================================================
 
-int32_t rt_lof_ch_i32(int32_t channel)
-{
+int32_t rt_lof_ch_i32(int32_t channel) {
     return clampRuntimeOffset(rt_lof_ch(channel));
 }
 
-int32_t rt_loc_ch_i32(int32_t channel)
-{
+int32_t rt_loc_ch_i32(int32_t channel) {
     return clampRuntimeOffset(rt_loc_ch(channel));
 }
 
@@ -72,15 +67,13 @@ int32_t rt_loc_ch_i32(int32_t channel)
 // Debug/test adapters
 // ============================================================================
 
-void trapFromRuntimeString(void **args, void * /*result*/)
-{
+void trapFromRuntimeString(void **args, void * /*result*/) {
     rt_string str = args ? *reinterpret_cast<rt_string *>(args[0]) : nullptr;
     const char *msg = (str && str->data) ? str->data : "trap";
     rt_trap(msg);
 }
 
-void testMutateStringNoStack(void **args, void * /*result*/)
-{
+void testMutateStringNoStack(void **args, void * /*result*/) {
     if (!args)
         return;
     auto *slot = reinterpret_cast<rt_string *>(args[0]);
@@ -95,8 +88,7 @@ void testMutateStringNoStack(void **args, void * /*result*/)
 // Integer array adapters
 // ============================================================================
 
-void invokeRtArrI32New(void **args, void *result)
-{
+void invokeRtArrI32New(void **args, void *result) {
     const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
     const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
     int32_t *arr = rt_arr_i32_new(len);
@@ -104,8 +96,7 @@ void invokeRtArrI32New(void **args, void *result)
         *reinterpret_cast<void **>(result) = arr;
 }
 
-void invokeRtArrI32Len(void **args, void *result)
-{
+void invokeRtArrI32Len(void **args, void *result) {
     const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
     int32_t *arr = arrPtr ? *reinterpret_cast<int32_t *const *>(arrPtr) : nullptr;
     const size_t len = rt_arr_i32_len(arr);
@@ -113,8 +104,7 @@ void invokeRtArrI32Len(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
 }
 
-void invokeRtArrI32Get(void **args, void *result)
-{
+void invokeRtArrI32Get(void **args, void *result) {
     const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     int32_t *arr = arrPtr ? *reinterpret_cast<int32_t *const *>(arrPtr) : nullptr;
@@ -124,8 +114,7 @@ void invokeRtArrI32Get(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
 }
 
-void invokeRtArrI32Set(void **args, void * /*result*/)
-{
+void invokeRtArrI32Set(void **args, void * /*result*/) {
     const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     const auto valPtr = args ? reinterpret_cast<const int64_t *>(args[2]) : nullptr;
@@ -135,8 +124,7 @@ void invokeRtArrI32Set(void **args, void * /*result*/)
     rt_arr_i32_set(arr, idx, value);
 }
 
-void invokeRtArrI32Resize(void **args, void *result)
-{
+void invokeRtArrI32Resize(void **args, void *result) {
     const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
     const auto newLenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     int32_t *arr = arrPtr ? *reinterpret_cast<int32_t **>(arrPtr) : nullptr;
@@ -155,8 +143,7 @@ void invokeRtArrI32Resize(void **args, void *result)
 // I64 (LONG) array adapters
 // ============================================================================
 
-void invokeRtArrI64New(void **args, void *result)
-{
+void invokeRtArrI64New(void **args, void *result) {
     const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
     const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
     int64_t *arr = rt_arr_i64_new(len);
@@ -164,8 +151,7 @@ void invokeRtArrI64New(void **args, void *result)
         *reinterpret_cast<void **>(result) = arr;
 }
 
-void invokeRtArrI64Len(void **args, void *result)
-{
+void invokeRtArrI64Len(void **args, void *result) {
     const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
     int64_t *arr = arrPtr ? *reinterpret_cast<int64_t *const *>(arrPtr) : nullptr;
     const size_t len = rt_arr_i64_len(arr);
@@ -173,8 +159,7 @@ void invokeRtArrI64Len(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
 }
 
-void invokeRtArrI64Get(void **args, void *result)
-{
+void invokeRtArrI64Get(void **args, void *result) {
     const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     int64_t *arr = arrPtr ? *reinterpret_cast<int64_t *const *>(arrPtr) : nullptr;
@@ -184,8 +169,7 @@ void invokeRtArrI64Get(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = value;
 }
 
-void invokeRtArrI64Set(void **args, void * /*result*/)
-{
+void invokeRtArrI64Set(void **args, void * /*result*/) {
     const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     const auto valPtr = args ? reinterpret_cast<const int64_t *>(args[2]) : nullptr;
@@ -195,8 +179,7 @@ void invokeRtArrI64Set(void **args, void * /*result*/)
     rt_arr_i64_set(arr, idx, value);
 }
 
-void invokeRtArrI64Resize(void **args, void *result)
-{
+void invokeRtArrI64Resize(void **args, void *result) {
     const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
     const auto newLenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     int64_t *arr = arrPtr ? *reinterpret_cast<int64_t **>(arrPtr) : nullptr;
@@ -215,8 +198,7 @@ void invokeRtArrI64Resize(void **args, void *result)
 // F64 (SINGLE/DOUBLE) array adapters
 // ============================================================================
 
-void invokeRtArrF64New(void **args, void *result)
-{
+void invokeRtArrF64New(void **args, void *result) {
     const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
     const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
     double *arr = rt_arr_f64_new(len);
@@ -224,8 +206,7 @@ void invokeRtArrF64New(void **args, void *result)
         *reinterpret_cast<void **>(result) = arr;
 }
 
-void invokeRtArrF64Len(void **args, void *result)
-{
+void invokeRtArrF64Len(void **args, void *result) {
     const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
     double *arr = arrPtr ? *reinterpret_cast<double *const *>(arrPtr) : nullptr;
     const size_t len = rt_arr_f64_len(arr);
@@ -233,8 +214,7 @@ void invokeRtArrF64Len(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
 }
 
-void invokeRtArrF64Get(void **args, void *result)
-{
+void invokeRtArrF64Get(void **args, void *result) {
     const auto arrPtr = args ? reinterpret_cast<void *const *>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     double *arr = arrPtr ? *reinterpret_cast<double *const *>(arrPtr) : nullptr;
@@ -244,8 +224,7 @@ void invokeRtArrF64Get(void **args, void *result)
         *reinterpret_cast<double *>(result) = value;
 }
 
-void invokeRtArrF64Set(void **args, void * /*result*/)
-{
+void invokeRtArrF64Set(void **args, void * /*result*/) {
     const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     const auto valPtr = args ? reinterpret_cast<const double *>(args[2]) : nullptr;
@@ -255,8 +234,7 @@ void invokeRtArrF64Set(void **args, void * /*result*/)
     rt_arr_f64_set(arr, idx, value);
 }
 
-void invokeRtArrF64Resize(void **args, void *result)
-{
+void invokeRtArrF64Resize(void **args, void *result) {
     const auto arrPtr = args ? reinterpret_cast<void **>(args[0]) : nullptr;
     const auto newLenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     double *arr = arrPtr ? *reinterpret_cast<double **>(arrPtr) : nullptr;
@@ -275,8 +253,7 @@ void invokeRtArrF64Resize(void **args, void *result)
 // Object array adapters
 // ============================================================================
 
-void invokeRtArrObjNew(void **args, void *result)
-{
+void invokeRtArrObjNew(void **args, void *result) {
     const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
     const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
     void **arr = rt_arr_obj_new(len);
@@ -284,8 +261,7 @@ void invokeRtArrObjNew(void **args, void *result)
         *reinterpret_cast<void **>(result) = arr;
 }
 
-void invokeRtArrObjLen(void **args, void *result)
-{
+void invokeRtArrObjLen(void **args, void *result) {
     const auto arrPtr = args ? reinterpret_cast<void ***>(args[0]) : nullptr;
     void **arr = arrPtr ? *arrPtr : nullptr;
     const size_t len = rt_arr_obj_len(arr);
@@ -293,8 +269,7 @@ void invokeRtArrObjLen(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(len);
 }
 
-void invokeRtArrObjGet(void **args, void *result)
-{
+void invokeRtArrObjGet(void **args, void *result) {
     const auto arrPtr = args ? reinterpret_cast<void ***>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     void **arr = arrPtr ? *arrPtr : nullptr;
@@ -304,8 +279,7 @@ void invokeRtArrObjGet(void **args, void *result)
         *reinterpret_cast<void **>(result) = ptr;
 }
 
-void invokeRtArrObjPut(void **args, void * /*result*/)
-{
+void invokeRtArrObjPut(void **args, void * /*result*/) {
     const auto arrPtr = args ? reinterpret_cast<void ***>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     const auto valPtr = args ? reinterpret_cast<void **>(args[2]) : nullptr;
@@ -315,8 +289,7 @@ void invokeRtArrObjPut(void **args, void * /*result*/)
     rt_arr_obj_put(arr, idx, val);
 }
 
-void invokeRtArrObjResize(void **args, void *result)
-{
+void invokeRtArrObjResize(void **args, void *result) {
     const auto arrPtr = args ? reinterpret_cast<void ***>(args[0]) : nullptr;
     const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     void **arr = arrPtr ? *arrPtr : nullptr;
@@ -330,8 +303,7 @@ void invokeRtArrObjResize(void **args, void *result)
 // String array adapters
 // ============================================================================
 
-void invokeRtArrStrAlloc(void **args, void *result)
-{
+void invokeRtArrStrAlloc(void **args, void *result) {
     const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
     const size_t len = lenPtr ? static_cast<size_t>(*lenPtr) : 0;
     rt_string *arr = rt_arr_str_alloc(len);
@@ -339,8 +311,7 @@ void invokeRtArrStrAlloc(void **args, void *result)
         *reinterpret_cast<void **>(result) = arr;
 }
 
-void invokeRtArrStrRelease(void **args, void * /*result*/)
-{
+void invokeRtArrStrRelease(void **args, void * /*result*/) {
     // Param 0 is a pointer-typed IL value; args[0] points to storage containing the pointer.
     rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
     const auto sizePtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
@@ -348,8 +319,7 @@ void invokeRtArrStrRelease(void **args, void * /*result*/)
     rt_arr_str_release(arr, size);
 }
 
-void invokeRtArrStrGet(void **args, void *result)
-{
+void invokeRtArrStrGet(void **args, void *result) {
     // Param 0 (ptr): args[0] -> storage holding the array payload pointer
     rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
@@ -359,8 +329,7 @@ void invokeRtArrStrGet(void **args, void *result)
         *reinterpret_cast<rt_string *>(result) = value;
 }
 
-void invokeRtArrStrPut(void **args, void * /*result*/)
-{
+void invokeRtArrStrPut(void **args, void * /*result*/) {
     // Param 0 (ptr): args[0] -> storage holding the array payload pointer
     rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
@@ -370,8 +339,7 @@ void invokeRtArrStrPut(void **args, void * /*result*/)
     rt_arr_str_put(arr, idx, value);
 }
 
-void invokeRtArrStrLen(void **args, void *result)
-{
+void invokeRtArrStrLen(void **args, void *result) {
     // Param 0 (ptr): args[0] -> storage holding the array payload pointer
     rt_string *arr = args ? *reinterpret_cast<rt_string **>(args[0]) : nullptr;
     const size_t len = rt_arr_str_len(arr);
@@ -383,8 +351,7 @@ void invokeRtArrStrLen(void **args, void *result)
 // Bounds checking
 // ============================================================================
 
-void invokeRtArrOobPanic(void **args, void * /*result*/)
-{
+void invokeRtArrOobPanic(void **args, void * /*result*/) {
     const auto idxPtr = args ? reinterpret_cast<const int64_t *>(args[0]) : nullptr;
     const auto lenPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     const size_t idx = idxPtr ? static_cast<size_t>(*idxPtr) : 0;
@@ -396,8 +363,7 @@ void invokeRtArrOobPanic(void **args, void * /*result*/)
 // Conversion adapters
 // ============================================================================
 
-void invokeRtCintFromDouble(void **args, void *result)
-{
+void invokeRtCintFromDouble(void **args, void *result) {
     const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
     const auto okPtr = args ? reinterpret_cast<bool *const *>(args[1]) : nullptr;
     const double x = xPtr ? *xPtr : 0.0;
@@ -407,8 +373,7 @@ void invokeRtCintFromDouble(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
 }
 
-void invokeRtClngFromDouble(void **args, void *result)
-{
+void invokeRtClngFromDouble(void **args, void *result) {
     const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
     const auto okPtr = args ? reinterpret_cast<bool *const *>(args[1]) : nullptr;
     const double x = xPtr ? *xPtr : 0.0;
@@ -418,8 +383,7 @@ void invokeRtClngFromDouble(void **args, void *result)
         *reinterpret_cast<int64_t *>(result) = static_cast<int64_t>(value);
 }
 
-void invokeRtCsngFromDouble(void **args, void *result)
-{
+void invokeRtCsngFromDouble(void **args, void *result) {
     const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
     const auto okPtr = args ? reinterpret_cast<bool *const *>(args[1]) : nullptr;
     const double x = xPtr ? *xPtr : 0.0;
@@ -429,8 +393,7 @@ void invokeRtCsngFromDouble(void **args, void *result)
         *reinterpret_cast<double *>(result) = static_cast<double>(value);
 }
 
-void invokeRtStrFAlloc(void **args, void *result)
-{
+void invokeRtStrFAlloc(void **args, void *result) {
     const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
     const float value = xPtr ? static_cast<float>(*xPtr) : 0.0f;
     rt_string str = rt_str_f_alloc(value);
@@ -438,8 +401,7 @@ void invokeRtStrFAlloc(void **args, void *result)
         *reinterpret_cast<rt_string *>(result) = str;
 }
 
-void invokeRtRoundEven(void **args, void *result)
-{
+void invokeRtRoundEven(void **args, void *result) {
     const auto xPtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
     const auto digitsPtr = args ? reinterpret_cast<const int64_t *>(args[1]) : nullptr;
     const double x = xPtr ? *xPtr : 0.0;
@@ -449,8 +411,7 @@ void invokeRtRoundEven(void **args, void *result)
         *reinterpret_cast<double *>(result) = rounded;
 }
 
-void invokeRtPowF64Chkdom(void **args, void *result)
-{
+void invokeRtPowF64Chkdom(void **args, void *result) {
     const auto basePtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
     const auto expPtr = args ? reinterpret_cast<const double *>(args[1]) : nullptr;
     const auto okPtrPtr = args ? reinterpret_cast<bool *const *>(args[2]) : nullptr;
@@ -462,16 +423,14 @@ void invokeRtPowF64Chkdom(void **args, void *result)
         *reinterpret_cast<double *>(result) = value;
 }
 
-void vmInvokeRtPow(void **args, void *result)
-{
+void vmInvokeRtPow(void **args, void *result) {
     const auto basePtr = args ? reinterpret_cast<const double *>(args[0]) : nullptr;
     const auto expPtr = args ? reinterpret_cast<const double *>(args[1]) : nullptr;
     const double base = basePtr ? *basePtr : 0.0;
     const double exponent = expPtr ? *expPtr : 0.0;
     bool ok = true;
     const double value = rt_pow_f64_chkdom(base, exponent, &ok);
-    if (!ok)
-    {
+    if (!ok) {
         rt_trap("Pow: domain error or overflow");
         return;
     }

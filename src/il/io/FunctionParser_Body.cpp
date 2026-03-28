@@ -24,11 +24,9 @@
 #include <sstream>
 #include <unordered_set>
 
-namespace il::io::detail
-{
+namespace il::io::detail {
 
-namespace
-{
+namespace {
 
 /// @brief Normalises diagnostics captured from instruction parsing.
 ///
@@ -44,8 +42,7 @@ namespace
 /// pending branch bookkeeping, and capture diagnostic locations.
 /// @return Empty on success; otherwise, a diagnostic normalised via
 /// stripCapturedDiagMessage().
-Expected<void> parseInstructionShim_E(const std::string &line, ParserState &st)
-{
+Expected<void> parseInstructionShim_E(const std::string &line, ParserState &st) {
     std::ostringstream capture;
     if (parseInstruction(line, st, capture))
         return {};
@@ -53,8 +50,7 @@ Expected<void> parseInstructionShim_E(const std::string &line, ParserState &st)
     return Expected<void>{makeError(st.curLoc, std::move(message))};
 }
 
-Expected<void> expect(parser_impl::ParserState &state, TokenKind want, std::string_view what)
-{
+Expected<void> expect(parser_impl::ParserState &state, TokenKind want, std::string_view what) {
     if (state.ts && state.ts->kind() == want)
         return {};
 
@@ -67,13 +63,11 @@ Expected<void> expect(parser_impl::ParserState &state, TokenKind want, std::stri
     return lineError<void>(state.lineNo(), oss.str());
 }
 
-bool peekIs(const parser_impl::ParserState &state, TokenKind kind)
-{
+bool peekIs(const parser_impl::ParserState &state, TokenKind kind) {
     return state.ts && state.ts->kind() == kind;
 }
 
-bool consumeIf(parser_impl::ParserState &state, TokenKind kind)
-{
+bool consumeIf(parser_impl::ParserState &state, TokenKind kind) {
     if (!peekIs(state, kind))
         return false;
     state.ts->advance();
@@ -81,20 +75,17 @@ bool consumeIf(parser_impl::ParserState &state, TokenKind kind)
     return true;
 }
 
-void recoverTo(parser_impl::ParserState &state, TokenKind boundary)
-{
+void recoverTo(parser_impl::ParserState &state, TokenKind boundary) {
     if (!state.ts)
         return;
-    while (state.ts->kind() != TokenKind::End && state.ts->kind() != boundary)
-    {
+    while (state.ts->kind() != TokenKind::End && state.ts->kind() != boundary) {
         if (!state.ts->advance())
             break;
     }
     state.refresh();
 }
 
-Expected<void> parseLocDirective(parser_impl::ParserState &state)
-{
+Expected<void> parseLocDirective(parser_impl::ParserState &state) {
     if (!state.ts)
         return lineError<void>(state.lineNo(), "malformed .loc directive");
 
@@ -113,8 +104,7 @@ Expected<void> parseLocDirective(parser_impl::ParserState &state)
     return {};
 }
 
-Expected<void> parseBlock(parser_impl::ParserState &state)
-{
+Expected<void> parseBlock(parser_impl::ParserState &state) {
     if (!state.ts)
         return lineError<void>(state.lineNo(), "missing block label");
     std::string blockHeader = state.ts->line();
@@ -125,14 +115,12 @@ Expected<void> parseBlock(parser_impl::ParserState &state)
     return result;
 }
 
-std::string_view extractOpcode(std::string_view line)
-{
+std::string_view extractOpcode(std::string_view line) {
     line = trimView(line);
     if (line.empty())
         return line;
     size_t eq = line.find('=');
-    if (eq != std::string_view::npos)
-    {
+    if (eq != std::string_view::npos) {
         line.remove_prefix(eq + 1);
         line = trimView(line);
     }
@@ -142,19 +130,16 @@ std::string_view extractOpcode(std::string_view line)
     return line.substr(0, space);
 }
 
-Expected<void> parseGenericInstr(parser_impl::ParserState &state, std::string_view)
-{
+Expected<void> parseGenericInstr(parser_impl::ParserState &state, std::string_view) {
     if (!state.ts || !state.legacy)
         return lineError<void>(state.lineNo(), "unexpected instruction context");
     return parseInstructionShim_E(state.ts->line(), *state.legacy);
 }
 
-Expected<void> parseInstr(parser_impl::ParserState &state)
-{
+Expected<void> parseInstr(parser_impl::ParserState &state) {
     using Handler = Expected<void> (*)(parser_impl::ParserState &, std::string_view);
 
-    struct Dispatch
-    {
+    struct Dispatch {
         std::string_view opcode;
         Handler handler;
     };
@@ -166,25 +151,21 @@ Expected<void> parseInstr(parser_impl::ParserState &state)
     }};
 
     std::string_view opcode = state.ts ? extractOpcode(state.ts->line()) : std::string_view{};
-    for (const auto &entry : kDispatchTable)
-    {
+    for (const auto &entry : kDispatchTable) {
         if (entry.opcode.empty() || entry.opcode == opcode)
             return entry.handler(state, opcode);
     }
     return kDispatchTable.back().handler(state, opcode);
 }
 
-Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state)
-{
+Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state) {
     state.ts = &stream;
     state.refresh();
 
-    while (stream.advance())
-    {
+    while (stream.advance()) {
         state.refresh();
 
-        if (stream.kind() == TokenKind::CloseBrace)
-        {
+        if (stream.kind() == TokenKind::CloseBrace) {
             state.fn = nullptr;
             state.cur = nullptr;
             state.loc = {};
@@ -192,11 +173,9 @@ Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state)
             break;
         }
 
-        if (stream.kind() == TokenKind::BlockLabel)
-        {
+        if (stream.kind() == TokenKind::BlockLabel) {
             auto blockResult = parseBlock(state);
-            if (!blockResult)
-            {
+            if (!blockResult) {
                 recoverTo(state, TokenKind::BlockLabel);
                 return blockResult;
             }
@@ -206,11 +185,9 @@ Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state)
         if (!state.cur)
             return expect(state, TokenKind::BlockLabel, "block label before instructions");
 
-        if (stream.kind() == TokenKind::LocDirective)
-        {
+        if (stream.kind() == TokenKind::LocDirective) {
             auto locResult = parseLocDirective(state);
-            if (!locResult)
-            {
+            if (!locResult) {
                 recoverTo(state, TokenKind::BlockLabel);
                 return locResult;
             }
@@ -218,16 +195,14 @@ Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state)
         }
 
         auto instrResult = parseInstr(state);
-        if (!instrResult)
-        {
+        if (!instrResult) {
             recoverTo(state, TokenKind::BlockLabel);
             return instrResult;
         }
         state.refresh();
     }
 
-    if (state.fn)
-    {
+    if (state.fn) {
         state.fn = nullptr;
         state.cur = nullptr;
         state.loc = {};
@@ -235,8 +210,7 @@ Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state)
         return lineError<void>(state.lineNo(), "unexpected end of file; missing '}'");
     }
 
-    if (!state.legacy->pendingBrs.empty())
-    {
+    if (!state.legacy->pendingBrs.empty()) {
         const auto &unresolved = state.legacy->pendingBrs.front();
         std::ostringstream oss;
         oss << "unknown block '" << unresolved.label << "'";
@@ -254,11 +228,9 @@ Expected<void> parseBody(TokenStream &stream, parser_impl::ParserState &state)
 
 Expected<Param> parseBlockParam(const std::string &paramText,
                                 ParserState &st,
-                                std::unordered_set<std::string> &localNames)
-{
+                                std::unordered_set<std::string> &localNames) {
     std::string q = trim(paramText);
-    if (q.empty())
-    {
+    if (q.empty()) {
         std::ostringstream oss;
         oss << "line " << st.lineNo << ": bad param";
         if (!paramText.empty())
@@ -289,8 +261,7 @@ Expected<Param> parseBlockParam(const std::string &paramText,
     if (!ok || ty.kind == Type::Kind::Void)
         return lineError<Param>(st.lineNo, "unknown param type");
 
-    if (!localNames.insert(nm).second)
-    {
+    if (!localNames.insert(nm).second) {
         std::ostringstream oss;
         oss << "duplicate parameter name '%" << nm << "'";
         return lineError<Param>(st.lineNo, oss.str());
@@ -299,12 +270,10 @@ Expected<Param> parseBlockParam(const std::string &paramText,
     // For entry block parameters that shadow function parameters, reuse the
     // existing ID from the function parameter. This ensures that references
     // to the parameter in instructions use the correct ID.
-    if (st.curFn->blocks.empty())
-    {
+    if (st.curFn->blocks.empty()) {
         // This is the entry block - check if this param shadows a function param
         auto it = st.tempIds.find(nm);
-        if (it != st.tempIds.end())
-        {
+        if (it != st.tempIds.end()) {
             // Reuse the function param ID
             return Param{nm, ty, it->second};
         }
@@ -323,8 +292,7 @@ Expected<Param> parseBlockParam(const std::string &paramText,
 Expected<void> parseBlockParamList(const std::string &work,
                                    size_t lp,
                                    ParserState &st,
-                                   std::vector<Param> &bparams)
-{
+                                   std::vector<Param> &bparams) {
     size_t rp = work.find(')', lp);
     if (rp == std::string::npos)
         return lineError<void>(st.lineNo, "mismatched ')'");
@@ -334,8 +302,7 @@ Expected<void> parseBlockParamList(const std::string &work,
     std::string piece;
     std::unordered_set<std::string> localNames;
 
-    while (std::getline(pss, piece, ','))
-    {
+    while (std::getline(pss, piece, ',')) {
         auto param = parseBlockParam(piece, st, localNames);
         if (!param)
             return Expected<void>{param.error()};
@@ -345,18 +312,15 @@ Expected<void> parseBlockParamList(const std::string &work,
     return {};
 }
 
-Expected<void> resolvePendingBranches(const std::string &label, size_t paramCount, ParserState &st)
-{
-    for (auto it = st.pendingBrs.begin(); it != st.pendingBrs.end();)
-    {
-        if (it->label == label)
-        {
+Expected<void> resolvePendingBranches(const std::string &label,
+                                      size_t paramCount,
+                                      ParserState &st) {
+    for (auto it = st.pendingBrs.begin(); it != st.pendingBrs.end();) {
+        if (it->label == label) {
             if (it->args != paramCount)
                 return lineError<void>(it->line, "bad arg count");
             it = st.pendingBrs.erase(it);
-        }
-        else
-        {
+        } else {
             ++it;
         }
     }
@@ -367,8 +331,7 @@ Expected<void> resolvePendingBranches(const std::string &label, size_t paramCoun
 // Public API
 // ============================================================================
 
-Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
-{
+Expected<void> parseBlockHeader(const std::string &header, ParserState &st) {
     std::string work = trim(header);
     if (work.rfind("handler ", 0) == 0)
         work = trim(work.substr(8));
@@ -381,16 +344,14 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
     if (label.empty())
         return lineError<void>(st.lineNo, "missing block label");
 
-    if (st.blockParamCount.find(label) != st.blockParamCount.end())
-    {
+    if (st.blockParamCount.find(label) != st.blockParamCount.end()) {
         std::ostringstream oss;
         oss << "duplicate block '" << label << "'";
         return lineError<void>(st.lineNo, oss.str());
     }
 
     std::vector<Param> bparams;
-    if (lp != std::string::npos)
-    {
+    if (lp != std::string::npos) {
         auto paramsResult = parseBlockParamList(work, lp, st, bparams);
         if (!paramsResult)
             return paramsResult;
@@ -403,8 +364,7 @@ Expected<void> parseBlockHeader(const std::string &header, ParserState &st)
     return resolvePendingBranches(label, bparams.size(), st);
 }
 
-Expected<void> parseFunction(std::istream &is, std::string &header, ParserState &st)
-{
+Expected<void> parseFunction(std::istream &is, std::string &header, ParserState &st) {
     auto headerResult = parseFunctionHeader(header, st);
     if (!headerResult)
         return headerResult;

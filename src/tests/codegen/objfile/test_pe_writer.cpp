@@ -34,31 +34,26 @@
 
 using namespace viper::codegen::linker;
 
-namespace
-{
+namespace {
 
 /// Read a complete file into a byte vector.
-std::vector<uint8_t> readBinaryFile(const std::string &path)
-{
+std::vector<uint8_t> readBinaryFile(const std::string &path) {
     std::ifstream ifs(path, std::ios::binary);
     return {std::istreambuf_iterator<char>(ifs), {}};
 }
 
-uint16_t readU16(const std::vector<uint8_t> &data, size_t offset)
-{
+uint16_t readU16(const std::vector<uint8_t> &data, size_t offset) {
     return static_cast<uint16_t>(data[offset]) | (static_cast<uint16_t>(data[offset + 1]) << 8);
 }
 
-uint32_t readU32(const std::vector<uint8_t> &data, size_t offset)
-{
+uint32_t readU32(const std::vector<uint8_t> &data, size_t offset) {
     return static_cast<uint32_t>(data[offset]) | (static_cast<uint32_t>(data[offset + 1]) << 8) |
            (static_cast<uint32_t>(data[offset + 2]) << 16) |
            (static_cast<uint32_t>(data[offset + 3]) << 24);
 }
 
 /// Create a minimal link layout with one text section.
-LinkLayout makeMinimalLayout()
-{
+LinkLayout makeMinimalLayout() {
     LinkLayout layout;
 
     OutputSection text;
@@ -76,8 +71,7 @@ LinkLayout makeMinimalLayout()
 
 } // namespace
 
-TEST(PeWriter, ProducesDosStub)
-{
+TEST(PeWriter, ProducesDosStub) {
     auto layout = makeMinimalLayout();
     std::ostringstream err;
     std::string path = "build/test-out/pe_test_dos.exe";
@@ -94,8 +88,7 @@ TEST(PeWriter, ProducesDosStub)
     EXPECT_EQ(data[1], 'Z');
 }
 
-TEST(PeWriter, PeSignatureAtElfanew)
-{
+TEST(PeWriter, PeSignatureAtElfanew) {
     auto layout = makeMinimalLayout();
     std::ostringstream err;
     std::string path = "build/test-out/pe_test_sig.exe";
@@ -116,8 +109,7 @@ TEST(PeWriter, PeSignatureAtElfanew)
     EXPECT_EQ(data[peOffset + 3], 0);
 }
 
-TEST(PeWriter, CoffHeaderMachineX64)
-{
+TEST(PeWriter, CoffHeaderMachineX64) {
     auto layout = makeMinimalLayout();
     std::ostringstream err;
     std::string path = "build/test-out/pe_test_coff.exe";
@@ -136,8 +128,7 @@ TEST(PeWriter, CoffHeaderMachineX64)
     EXPECT_EQ(machine, 0x8664);
 }
 
-TEST(PeWriter, OptionalHeaderPE32Plus)
-{
+TEST(PeWriter, OptionalHeaderPE32Plus) {
     auto layout = makeMinimalLayout();
     std::ostringstream err;
     std::string path = "build/test-out/pe_test_opt.exe";
@@ -157,8 +148,7 @@ TEST(PeWriter, OptionalHeaderPE32Plus)
     EXPECT_EQ(magic, 0x020b);
 }
 
-TEST(PeWriter, EmptyImportsSucceeds)
-{
+TEST(PeWriter, EmptyImportsSucceeds) {
     auto layout = makeMinimalLayout();
     std::ostringstream err;
     std::string path = "build/test-out/pe_test_empty_imports.exe";
@@ -169,8 +159,7 @@ TEST(PeWriter, EmptyImportsSucceeds)
     EXPECT_TRUE(err.str().empty());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -21,8 +21,7 @@
 
 using namespace viper::codegen::aarch64;
 
-static std::string emit(const MInstr &mi)
-{
+static std::string emit(const MInstr &mi) {
     auto &ti = darwinTarget();
     AsmEmitter emit{ti};
     MFunction fn{};
@@ -34,8 +33,7 @@ static std::string emit(const MInstr &mi)
     return os.str();
 }
 
-TEST(AArch64MIR, BitwiseRR)
-{
+TEST(AArch64MIR, BitwiseRR) {
     {
         auto text = emit(MInstr{MOpcode::AndRRR,
                                 {MOperand::regOp(PhysReg::X0),
@@ -59,8 +57,7 @@ TEST(AArch64MIR, BitwiseRR)
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

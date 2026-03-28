@@ -32,8 +32,7 @@
 
 // Disable all Windows debug/error dialogs so tests exit cleanly.
 // Call VIPER_DISABLE_ABORT_DIALOG() at the start of main() in test executables.
-static inline void viper_disable_abort_dialog_(void)
-{
+static inline void viper_disable_abort_dialog_(void) {
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 #ifdef _DEBUG
@@ -68,16 +67,14 @@ static inline void viper_disable_abort_dialog_(void)
 #endif
 
 // usleep replacement using Windows Sleep (note: Sleep takes milliseconds)
-static inline int usleep(unsigned int usec)
-{
+static inline int usleep(unsigned int usec) {
     Sleep(usec / 1000);
     return 0;
 }
 
 // nanosleep replacement using Windows Sleep
 // Note: struct timespec is defined in UCRT's time.h
-static inline int nanosleep(const struct timespec *req, struct timespec *rem)
-{
+static inline int nanosleep(const struct timespec *req, struct timespec *rem) {
     (void)rem;
     DWORD ms = (DWORD)(req->tv_sec * 1000 + req->tv_nsec / 1000000);
     Sleep(ms);
@@ -95,68 +92,55 @@ static inline int nanosleep(const struct timespec *req, struct timespec *rem)
 // wrapper functions instead for C++, and macros for C.
 #ifdef __cplusplus
 // C++ inline wrappers that don't conflict with member functions
-static inline int posix_close(int fd)
-{
+static inline int posix_close(int fd) {
     return _close(fd);
 }
 
-static inline int posix_read(int fd, void *buf, unsigned int count)
-{
+static inline int posix_read(int fd, void *buf, unsigned int count) {
     return _read(fd, buf, count);
 }
 
-static inline int posix_write(int fd, const void *buf, unsigned int count)
-{
+static inline int posix_write(int fd, const void *buf, unsigned int count) {
     return _write(fd, buf, count);
 }
 
-static inline int posix_unlink(const char *path)
-{
+static inline int posix_unlink(const char *path) {
     return _unlink(path);
 }
 
-static inline int posix_rmdir(const char *path)
-{
+static inline int posix_rmdir(const char *path) {
     return _rmdir(path);
 }
 
-static inline char *posix_getcwd(char *buf, int size)
-{
+static inline char *posix_getcwd(char *buf, int size) {
     return _getcwd(buf, size);
 }
 
-static inline int posix_chdir(const char *path)
-{
+static inline int posix_chdir(const char *path) {
     return _chdir(path);
 }
 
-static inline int posix_access(const char *path, int mode)
-{
+static inline int posix_access(const char *path, int mode) {
     return _access(path, mode);
 }
 
-static inline int posix_isatty(int fd)
-{
+static inline int posix_isatty(int fd) {
     return _isatty(fd);
 }
 
-static inline int posix_fileno(FILE *stream)
-{
+static inline int posix_fileno(FILE *stream) {
     return _fileno(stream);
 }
 
-static inline int posix_dup(int fd)
-{
+static inline int posix_dup(int fd) {
     return _dup(fd);
 }
 
-static inline int posix_dup2(int fd1, int fd2)
-{
+static inline int posix_dup2(int fd1, int fd2) {
     return _dup2(fd1, fd2);
 }
 
-static inline int posix_getpid()
-{
+static inline int posix_getpid() {
     return _getpid();
 }
 
@@ -171,29 +155,25 @@ static inline int posix_getpid()
 #define fileno _fileno
 #define getpid _getpid
 
-static inline int posix_pipe(int fds[2])
-{
+static inline int posix_pipe(int fds[2]) {
     return _pipe(fds, 4096, _O_BINARY);
 }
 
 // Standalone pipe function for C++ (don't use macro to avoid std::pair conflicts)
 #ifndef pipe
-static inline int pipe(int fds[2])
-{
+static inline int pipe(int fds[2]) {
     return _pipe(fds, 4096, _O_BINARY);
 }
 #endif
 
 // setenv/unsetenv replacements for Windows
-static inline int setenv(const char *name, const char *value, int overwrite)
-{
+static inline int setenv(const char *name, const char *value, int overwrite) {
     if (!overwrite && getenv(name) != NULL)
         return 0;
     return _putenv_s(name, value);
 }
 
-static inline int unsetenv(const char *name)
-{
+static inline int unsetenv(const char *name) {
     return _putenv_s(name, "");
 }
 #else
@@ -236,8 +216,7 @@ typedef SSIZE_T ssize_t;
 #endif
 
 // mkstemp implementation for Windows
-static inline int mkstemp(char *tpl)
-{
+static inline int mkstemp(char *tpl) {
     if (_mktemp_s(tpl, strlen(tpl) + 1) != 0)
         return -1;
     int fd = -1;

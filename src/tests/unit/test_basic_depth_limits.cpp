@@ -18,14 +18,11 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Check whether any diagnostic message contains @p needle.
-bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle)
-{
-    for (const auto &d : diag.diagnostics())
-    {
+bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle) {
+    for (const auto &d : diag.diagnostics()) {
         if (d.message.find(needle) != std::string::npos)
             return true;
     }
@@ -33,8 +30,7 @@ bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle)
 }
 
 /// @brief Compile BASIC source and return the result.
-BasicCompilerResult compileBASIC(const std::string &source)
-{
+BasicCompilerResult compileBASIC(const std::string &source) {
     SourceManager sm;
     BasicCompilerInput input{source, "depth_test.bas"};
     BasicCompilerOptions opts{};
@@ -46,8 +42,7 @@ BasicCompilerResult compileBASIC(const std::string &source)
 //===----------------------------------------------------------------------===//
 
 /// @brief 513 nested IF statements must trigger the depth limit.
-TEST(BasicDepthLimits, DeepIfExceedsLimit)
-{
+TEST(BasicDepthLimits, DeepIfExceedsLimit) {
     // Generate BASIC with line numbers:
     //   10 IF 1 THEN
     //   20 IF 1 THEN
@@ -57,15 +52,13 @@ TEST(BasicDepthLimits, DeepIfExceedsLimit)
     //   ...
     std::string src;
     int lineNum = 10;
-    for (int i = 0; i < 513; i++)
-    {
+    for (int i = 0; i < 513; i++) {
         src += std::to_string(lineNum) + " IF 1 THEN\n";
         lineNum += 10;
     }
     src += std::to_string(lineNum) + " LET X = 1\n";
     lineNum += 10;
-    for (int i = 0; i < 513; i++)
-    {
+    for (int i = 0; i < 513; i++) {
         src += std::to_string(lineNum) + " END IF\n";
         lineNum += 10;
     }
@@ -76,19 +69,16 @@ TEST(BasicDepthLimits, DeepIfExceedsLimit)
 }
 
 /// @brief 50 nested IF statements must succeed (well below limit).
-TEST(BasicDepthLimits, ModerateIfSucceeds)
-{
+TEST(BasicDepthLimits, ModerateIfSucceeds) {
     std::string src;
     int lineNum = 10;
-    for (int i = 0; i < 50; i++)
-    {
+    for (int i = 0; i < 50; i++) {
         src += std::to_string(lineNum) + " IF 1 THEN\n";
         lineNum += 10;
     }
     src += std::to_string(lineNum) + " LET X = 1\n";
     lineNum += 10;
-    for (int i = 0; i < 50; i++)
-    {
+    for (int i = 0; i < 50; i++) {
         src += std::to_string(lineNum) + " END IF\n";
         lineNum += 10;
     }
@@ -102,8 +92,7 @@ TEST(BasicDepthLimits, ModerateIfSucceeds)
 //===----------------------------------------------------------------------===//
 
 /// @brief 600 nested parenthesized expressions must trigger the depth limit.
-TEST(BasicDepthLimits, DeepExpressionExceedsLimit)
-{
+TEST(BasicDepthLimits, DeepExpressionExceedsLimit) {
     std::string expr;
     for (int i = 0; i < 600; i++)
         expr += "(";
@@ -119,8 +108,7 @@ TEST(BasicDepthLimits, DeepExpressionExceedsLimit)
 }
 
 /// @brief 50 nested parenthesized expressions must succeed.
-TEST(BasicDepthLimits, ModerateExpressionSucceeds)
-{
+TEST(BasicDepthLimits, ModerateExpressionSucceeds) {
     std::string expr;
     for (int i = 0; i < 50; i++)
         expr += "(";
@@ -139,20 +127,17 @@ TEST(BasicDepthLimits, ModerateExpressionSucceeds)
 //===----------------------------------------------------------------------===//
 
 /// @brief Depth counters reset between independent compilations.
-TEST(BasicDepthLimits, CounterResetsAcrossCompilations)
-{
+TEST(BasicDepthLimits, CounterResetsAcrossCompilations) {
     // First: compile something that hits the limit
     std::string deep;
     int lineNum = 10;
-    for (int i = 0; i < 513; i++)
-    {
+    for (int i = 0; i < 513; i++) {
         deep += std::to_string(lineNum) + " IF 1 THEN\n";
         lineNum += 10;
     }
     deep += std::to_string(lineNum) + " LET X = 1\n";
     lineNum += 10;
-    for (int i = 0; i < 513; i++)
-    {
+    for (int i = 0; i < 513; i++) {
         deep += std::to_string(lineNum) + " END IF\n";
         lineNum += 10;
     }
@@ -167,7 +152,6 @@ TEST(BasicDepthLimits, CounterResetsAcrossCompilations)
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

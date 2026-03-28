@@ -29,24 +29,19 @@
 #include <string_view>
 #include <utility>
 
-namespace il::support
-{
-struct SourceManagerTestAccess
-{
-    static void setNextFileId(SourceManager &sm, uint64_t next)
-    {
+namespace il::support {
+struct SourceManagerTestAccess {
+    static void setNextFileId(SourceManager &sm, uint64_t next) {
         sm.next_file_id_ = next;
     }
 
-    static size_t storedPathCount(const SourceManager &sm)
-    {
+    static size_t storedPathCount(const SourceManager &sm) {
         return sm.files_.size();
     }
 };
 } // namespace il::support
 
-int main()
-{
+int main() {
     // String interner uniqueness and lookup
     il::support::StringInterner interner;
     auto a = interner.intern("hello");
@@ -60,8 +55,7 @@ int main()
     std::string_view cachedView = stableInterner.lookup(stableSym);
     const char *cachedData = cachedView.data();
     const size_t cachedSize = cachedView.size();
-    for (int i = 0; i < 1024; ++i)
-    {
+    for (int i = 0; i < 1024; ++i) {
         stableInterner.intern("padding_" + std::to_string(i));
         std::string_view probe = stableInterner.lookup(stableSym);
         assert(probe.data() == cachedData);
@@ -207,8 +201,7 @@ int main()
         assert(growArena.chunkCount() >= 2);
 
         // Test create<T>()
-        struct TestStruct
-        {
+        struct TestStruct {
             int a;
             double b;
 
@@ -228,14 +221,12 @@ int main()
     {
         static int destructorCount = 0;
 
-        struct TrackedObj
-        {
+        struct TrackedObj {
             int *counter;
 
             TrackedObj(int *c) : counter(c) {}
 
-            ~TrackedObj()
-            {
+            ~TrackedObj() {
                 ++(*counter);
             }
         };

@@ -26,12 +26,10 @@
 #include <optional>
 #include <vector>
 
-namespace viper::codegen::x64::passes
-{
+namespace viper::codegen::x64::passes {
 
 /// \brief Mutable state threaded through the code-generation passes.
-struct Module
-{
+struct Module {
     il::core::Module il;                        ///< Original IL module loaded from disk.
     std::optional<ILModule> lowered;            ///< Adapter module produced by lowering.
     bool legalised = false;                     ///< Flag toggled once legalisation completes.

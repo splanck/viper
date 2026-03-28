@@ -22,8 +22,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     // Program defines a simple class with a zero-arg SUB, then calls it both
     // with and without parentheses to exercise parser behavior.
     const std::string src = "10 CLASS C\n"
@@ -47,14 +46,10 @@ int main()
     // The main sequence contains: DIM, LET, CallStmt, CallStmt, END (plus any implicit labels).
     bool sawParenless = false;
     bool sawParened = false;
-    for (const auto &stmt : program->main)
-    {
-        if (auto *callStmt = dynamic_cast<CallStmt *>(stmt.get()))
-        {
-            if (auto *m = dynamic_cast<MethodCallExpr *>(callStmt->call.get()))
-            {
-                if (m->method == "INC")
-                {
+    for (const auto &stmt : program->main) {
+        if (auto *callStmt = dynamic_cast<CallStmt *>(stmt.get())) {
+            if (auto *m = dynamic_cast<MethodCallExpr *>(callStmt->call.get())) {
+                if (m->method == "INC") {
                     // We don't distinguish the two syntactic forms in AST here,
                     // but seeing two method-call statements for INC verifies both were accepted.
                     // Flip flags in order of first/second sighting.

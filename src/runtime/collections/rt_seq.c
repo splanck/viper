@@ -80,8 +80,7 @@
 /// the elements. When owns_elements=1, the Seq retains elements on push and
 /// releases them on finalize/clear/set-replace, enabling automatic lifetime
 /// management via reference counting.
-typedef struct rt_seq_impl
-{
+typedef struct rt_seq_impl {
     int64_t len;          ///< Number of elements currently in the sequence
     int64_t cap;          ///< Current capacity (allocated slots)
     void **items;         ///< Array of element pointers
@@ -102,21 +101,18 @@ typedef struct rt_seq_impl
 ///
 /// @see rt_seq_clear For removing elements without finalization
 /// @brief Release a single element via the object API (safe for strings and objects).
-static void seq_release_element(void *val)
-{
+static void seq_release_element(void *val) {
     if (!val)
         return;
     if (rt_obj_release_check0(val))
         rt_obj_free(val);
 }
 
-static void rt_seq_finalize(void *obj)
-{
+static void rt_seq_finalize(void *obj) {
     if (!obj)
         return;
     rt_seq_impl *seq = (rt_seq_impl *)obj;
-    if (seq->owns_elements && seq->items)
-    {
+    if (seq->owns_elements && seq->items) {
         for (int64_t i = 0; i < seq->len; i++)
             seq_release_element(seq->items[i]);
     }
@@ -144,22 +140,19 @@ static void rt_seq_finalize(void *obj)
 /// @note Never shrinks the capacity - only grows when needed.
 ///
 /// @see rt_seq_push For the primary user of this function
-static void seq_ensure_capacity(rt_seq_impl *seq, int64_t needed)
-{
+static void seq_ensure_capacity(rt_seq_impl *seq, int64_t needed) {
     if (needed <= seq->cap)
         return;
 
     int64_t new_cap = seq->cap;
-    while (new_cap < needed)
-    {
+    while (new_cap < needed) {
         if (new_cap > INT64_MAX / SEQ_GROWTH_FACTOR)
             rt_trap("Seq: capacity overflow");
         new_cap *= SEQ_GROWTH_FACTOR;
     }
 
     void **new_items = realloc(seq->items, (size_t)new_cap * sizeof(void *));
-    if (!new_items)
-    {
+    if (!new_items) {
         rt_trap("Seq: memory allocation failed");
     }
 
@@ -201,11 +194,9 @@ static void seq_ensure_capacity(rt_seq_impl *seq, int64_t needed)
 /// @see rt_seq_push For adding elements
 /// @see rt_seq_get For accessing elements
 /// @see rt_seq_finalize For cleanup behavior
-void *rt_seq_new(void)
-{
+void *rt_seq_new(void) {
     rt_seq_impl *seq = (rt_seq_impl *)rt_obj_new_i64(RT_SEQ_CLASS_ID, (int64_t)sizeof(rt_seq_impl));
-    if (!seq)
-    {
+    if (!seq) {
         rt_trap("Seq: memory allocation failed");
     }
 
@@ -214,8 +205,7 @@ void *rt_seq_new(void)
     seq->items = malloc((size_t)SEQ_DEFAULT_CAP * sizeof(void *));
     rt_obj_set_finalizer(seq, rt_seq_finalize);
 
-    if (!seq->items)
-    {
+    if (!seq->items) {
         if (rt_obj_release_check0(seq))
             rt_obj_free(seq);
         rt_trap("Seq: memory allocation failed");
@@ -255,14 +245,12 @@ void *rt_seq_new(void)
 ///
 /// @see rt_seq_new For creating with default capacity (16)
 /// @see rt_seq_cap For querying the current capacity
-void *rt_seq_with_capacity(int64_t cap)
-{
+void *rt_seq_with_capacity(int64_t cap) {
     if (cap < 1)
         cap = 1;
 
     rt_seq_impl *seq = (rt_seq_impl *)rt_obj_new_i64(RT_SEQ_CLASS_ID, (int64_t)sizeof(rt_seq_impl));
-    if (!seq)
-    {
+    if (!seq) {
         rt_trap("Seq: memory allocation failed");
     }
 
@@ -271,8 +259,7 @@ void *rt_seq_with_capacity(int64_t cap)
     seq->items = malloc((size_t)cap * sizeof(void *));
     rt_obj_set_finalizer(seq, rt_seq_finalize);
 
-    if (!seq->items)
-    {
+    if (!seq->items) {
         if (rt_obj_release_check0(seq))
             rt_obj_free(seq);
         rt_trap("Seq: memory allocation failed");
@@ -292,8 +279,7 @@ void *rt_seq_with_capacity(int64_t cap)
 ///
 /// @note Must be called before any elements are pushed. Changing ownership
 ///       mode on a non-empty Seq may cause leaks or double-frees.
-void rt_seq_set_owns_elements(void *obj, int8_t owns)
-{
+void rt_seq_set_owns_elements(void *obj, int8_t owns) {
     if (!obj)
         return;
     ((rt_seq_impl *)obj)->owns_elements = owns;
@@ -312,8 +298,7 @@ void rt_seq_set_owns_elements(void *obj, int8_t owns)
 ///
 /// @see rt_seq_cap For the allocated capacity
 /// @see rt_seq_is_empty For a boolean check
-int64_t rt_seq_len(void *obj)
-{
+int64_t rt_seq_len(void *obj) {
     if (!obj)
         return 0;
     return ((rt_seq_impl *)obj)->len;
@@ -337,8 +322,7 @@ int64_t rt_seq_len(void *obj)
 ///
 /// @see rt_seq_len For the number of actual elements
 /// @see rt_seq_with_capacity For pre-allocating capacity
-int64_t rt_seq_cap(void *obj)
-{
+int64_t rt_seq_cap(void *obj) {
     if (!obj)
         return 0;
     return ((rt_seq_impl *)obj)->cap;
@@ -359,8 +343,7 @@ int64_t rt_seq_cap(void *obj)
 ///
 /// @see rt_seq_len For the exact count
 /// @see rt_seq_clear For removing all elements
-int8_t rt_seq_is_empty(void *obj)
-{
+int8_t rt_seq_is_empty(void *obj) {
     if (!obj)
         return 1;
     return ((rt_seq_impl *)obj)->len == 0 ? 1 : 0;
@@ -397,15 +380,13 @@ int8_t rt_seq_is_empty(void *obj)
 /// @see rt_seq_set For modifying an element
 /// @see rt_seq_first For getting the first element
 /// @see rt_seq_last For getting the last element
-void *rt_seq_get(void *obj, int64_t idx)
-{
+void *rt_seq_get(void *obj, int64_t idx) {
     if (!obj)
         rt_trap("Seq.Get: null sequence");
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
-    if (idx < 0 || idx >= seq->len)
-    {
+    if (idx < 0 || idx >= seq->len) {
         rt_trap("Seq.Get: index out of bounds");
     }
 
@@ -421,8 +402,7 @@ void *rt_seq_get(void *obj, int64_t idx)
 /// @param obj Opaque Seq object pointer.
 /// @param idx Index of element to retrieve.
 /// @return String element at the index (raw rt_string pointer).
-struct rt_string_impl *rt_seq_get_str(void *obj, int64_t idx)
-{
+struct rt_string_impl *rt_seq_get_str(void *obj, int64_t idx) {
     return (struct rt_string_impl *)rt_seq_get(obj, idx);
 }
 
@@ -453,20 +433,17 @@ struct rt_string_impl *rt_seq_get_str(void *obj, int64_t idx)
 ///
 /// @see rt_seq_get For reading an element
 /// @see rt_seq_push For adding new elements
-void rt_seq_set(void *obj, int64_t idx, void *val)
-{
+void rt_seq_set(void *obj, int64_t idx, void *val) {
     if (!obj)
         rt_trap("Seq.Set: null sequence");
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
-    if (idx < 0 || idx >= seq->len)
-    {
+    if (idx < 0 || idx >= seq->len) {
         rt_trap("Seq.Set: index out of bounds");
     }
 
-    if (seq->owns_elements)
-    {
+    if (seq->owns_elements) {
         if (val)
             rt_obj_retain_maybe(val);
         seq_release_element(seq->items[idx]);
@@ -506,8 +483,7 @@ void rt_seq_set(void *obj, int64_t idx, void *val)
 /// @see rt_seq_pop For removing from the end
 /// @see rt_seq_insert For inserting at arbitrary positions
 /// @see rt_seq_push_all For appending multiple elements
-void rt_seq_push(void *obj, void *val)
-{
+void rt_seq_push(void *obj, void *val) {
     if (!obj)
         rt_trap("Seq.Push: null sequence");
 
@@ -522,8 +498,7 @@ void rt_seq_push(void *obj, void *val)
     seq->len++;
 }
 
-void rt_seq_push_raw(void *obj, void *val)
-{
+void rt_seq_push_raw(void *obj, void *val) {
     if (!obj)
         rt_trap("Seq.Push: null sequence");
 
@@ -574,8 +549,7 @@ void rt_seq_push_raw(void *obj, void *val)
 ///
 /// @see rt_seq_push For adding single elements
 /// @see rt_seq_clone For creating a copy of a Seq
-void rt_seq_push_all(void *obj, void *other)
-{
+void rt_seq_push_all(void *obj, void *other) {
     if (!obj)
         rt_trap("Seq.PushAll: null sequence");
     if (!other)
@@ -587,13 +561,11 @@ void rt_seq_push_all(void *obj, void *other)
     if (src->len <= 0)
         return;
 
-    if (seq == src)
-    {
+    if (seq == src) {
         int64_t original_len = seq->len;
         seq_ensure_capacity(seq, original_len + original_len);
         memcpy(&seq->items[original_len], seq->items, (size_t)original_len * sizeof(void *));
-        if (seq->owns_elements)
-        {
+        if (seq->owns_elements) {
             for (int64_t i = 0; i < original_len; i++)
                 if (seq->items[i])
                     rt_obj_retain_maybe(seq->items[i]);
@@ -604,8 +576,7 @@ void rt_seq_push_all(void *obj, void *other)
 
     seq_ensure_capacity(seq, seq->len + src->len);
     memcpy(&seq->items[seq->len], src->items, (size_t)src->len * sizeof(void *));
-    if (seq->owns_elements)
-    {
+    if (seq->owns_elements) {
         for (int64_t i = 0; i < src->len; i++)
             if (src->items[i])
                 rt_obj_retain_maybe(src->items[i]);
@@ -649,15 +620,13 @@ void rt_seq_push_all(void *obj, void *other)
 /// @see rt_seq_push For the inverse operation
 /// @see rt_seq_peek For viewing without removing
 /// @see rt_seq_is_empty For checking before pop
-void *rt_seq_pop(void *obj)
-{
+void *rt_seq_pop(void *obj) {
     if (!obj)
         rt_trap("Seq.Pop: null sequence");
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
-    if (seq->len == 0)
-    {
+    if (seq->len == 0) {
         rt_trap("Seq.Pop: sequence is empty");
     }
 
@@ -697,15 +666,13 @@ void *rt_seq_pop(void *obj)
 /// @see rt_seq_pop For removing while retrieving
 /// @see rt_seq_last Alias for this function
 /// @see rt_seq_first For viewing the first element
-void *rt_seq_peek(void *obj)
-{
+void *rt_seq_peek(void *obj) {
     if (!obj)
         rt_trap("Seq.Peek: null sequence");
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
-    if (seq->len == 0)
-    {
+    if (seq->len == 0) {
         rt_trap("Seq.Peek: sequence is empty");
     }
 
@@ -740,15 +707,13 @@ void *rt_seq_peek(void *obj)
 ///
 /// @see rt_seq_last For viewing the last element
 /// @see rt_seq_get For accessing by arbitrary index
-void *rt_seq_first(void *obj)
-{
+void *rt_seq_first(void *obj) {
     if (!obj)
         rt_trap("Seq.First: null sequence");
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
-    if (seq->len == 0)
-    {
+    if (seq->len == 0) {
         rt_trap("Seq.First: sequence is empty");
     }
 
@@ -784,15 +749,13 @@ void *rt_seq_first(void *obj)
 /// @see rt_seq_first For viewing the first element
 /// @see rt_seq_peek Alias for this function
 /// @see rt_seq_get For accessing by arbitrary index
-void *rt_seq_last(void *obj)
-{
+void *rt_seq_last(void *obj) {
     if (!obj)
         rt_trap("Seq.Last: null sequence");
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
-    if (seq->len == 0)
-    {
+    if (seq->len == 0) {
         rt_trap("Seq.Last: sequence is empty");
     }
 
@@ -838,23 +801,20 @@ void *rt_seq_last(void *obj)
 ///
 /// @see rt_seq_push For appending to the end (O(1))
 /// @see rt_seq_remove For removing at an index
-void rt_seq_insert(void *obj, int64_t idx, void *val)
-{
+void rt_seq_insert(void *obj, int64_t idx, void *val) {
     if (!obj)
         rt_trap("Seq.Insert: null sequence");
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
-    if (idx < 0 || idx > seq->len)
-    {
+    if (idx < 0 || idx > seq->len) {
         rt_trap("Seq.Insert: index out of bounds");
     }
 
     seq_ensure_capacity(seq, seq->len + 1);
 
     // Shift elements to the right
-    if (idx < seq->len)
-    {
+    if (idx < seq->len) {
         memmove(&seq->items[idx + 1], &seq->items[idx], (size_t)(seq->len - idx) * sizeof(void *));
     }
 
@@ -901,23 +861,20 @@ void rt_seq_insert(void *obj, int64_t idx, void *val)
 ///
 /// @see rt_seq_pop For removing from the end (O(1))
 /// @see rt_seq_insert For inserting at an index
-void *rt_seq_remove(void *obj, int64_t idx)
-{
+void *rt_seq_remove(void *obj, int64_t idx) {
     if (!obj)
         rt_trap("Seq.Remove: null sequence");
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
-    if (idx < 0 || idx >= seq->len)
-    {
+    if (idx < 0 || idx >= seq->len) {
         rt_trap("Seq.Remove: index out of bounds");
     }
 
     void *val = seq->items[idx];
 
     // Shift elements to the left
-    if (idx < seq->len - 1)
-    {
+    if (idx < seq->len - 1) {
         memmove(
             &seq->items[idx], &seq->items[idx + 1], (size_t)(seq->len - idx - 1) * sizeof(void *));
     }
@@ -959,13 +916,11 @@ void *rt_seq_remove(void *obj, int64_t idx)
 ///
 /// @see rt_seq_finalize For complete cleanup (including the array)
 /// @see rt_seq_is_empty For checking if empty
-void rt_seq_clear(void *obj)
-{
+void rt_seq_clear(void *obj) {
     if (!obj)
         return;
     rt_seq_impl *seq = (rt_seq_impl *)obj;
-    if (seq->owns_elements && seq->items)
-    {
+    if (seq->owns_elements && seq->items) {
         for (int64_t i = 0; i < seq->len; i++)
             seq_release_element(seq->items[i]);
     }
@@ -1005,17 +960,14 @@ void rt_seq_clear(void *obj)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_has For boolean membership check
-int64_t rt_seq_find(void *obj, void *val)
-{
+int64_t rt_seq_find(void *obj, void *val) {
     if (!obj)
         return -1;
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
-    for (int64_t i = 0; i < seq->len; i++)
-    {
-        if (rt_box_equal(seq->items[i], val))
-        {
+    for (int64_t i = 0; i < seq->len; i++) {
+        if (rt_box_equal(seq->items[i], val)) {
             return i;
         }
     }
@@ -1047,8 +999,7 @@ int64_t rt_seq_find(void *obj, void *val)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_find For getting the index of the element
-int8_t rt_seq_has(void *obj, void *val)
-{
+int8_t rt_seq_has(void *obj, void *val) {
     return rt_seq_find(obj, val) >= 0 ? 1 : 0;
 }
 
@@ -1084,15 +1035,13 @@ int8_t rt_seq_has(void *obj, void *val)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_shuffle For randomizing order
-void rt_seq_reverse(void *obj)
-{
+void rt_seq_reverse(void *obj) {
     if (!obj)
         return;
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
-    for (int64_t i = 0; i < seq->len / 2; i++)
-    {
+    for (int64_t i = 0; i < seq->len / 2; i++) {
         int64_t j = seq->len - 1 - i;
         void *tmp = seq->items[i];
         seq->items[i] = seq->items[j];
@@ -1139,8 +1088,7 @@ void rt_seq_reverse(void *obj)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_reverse For reversing order
-void rt_seq_shuffle(void *obj)
-{
+void rt_seq_shuffle(void *obj) {
     if (!obj)
         return;
 
@@ -1148,8 +1096,7 @@ void rt_seq_shuffle(void *obj)
     if (seq->len <= 1)
         return;
 
-    for (int64_t i = seq->len - 1; i > 0; --i)
-    {
+    for (int64_t i = seq->len - 1; i > 0; --i) {
         int64_t j = (int64_t)rt_rand_int((long long)(i + 1));
         void *tmp = seq->items[i];
         seq->items[i] = seq->items[j];
@@ -1201,8 +1148,7 @@ void rt_seq_shuffle(void *obj)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_clone For copying the entire Seq
-void *rt_seq_slice(void *obj, int64_t start, int64_t end)
-{
+void *rt_seq_slice(void *obj, int64_t start, int64_t end) {
     if (!obj)
         return rt_seq_new();
 
@@ -1213,8 +1159,7 @@ void *rt_seq_slice(void *obj, int64_t start, int64_t end)
         start = 0;
     if (end > seq->len)
         end = seq->len;
-    if (start >= end)
-    {
+    if (start >= end) {
         return rt_seq_new();
     }
 
@@ -1267,8 +1212,7 @@ void *rt_seq_slice(void *obj, int64_t start, int64_t end)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_slice For copying a subset
-void *rt_seq_clone(void *obj)
-{
+void *rt_seq_clone(void *obj) {
     if (!obj)
         return rt_seq_new();
 
@@ -1290,8 +1234,7 @@ void rt_seq_sort_by(void *obj, int64_t (*cmp)(void *, void *));
 /// @param a First element pointer.
 /// @param b Second element pointer.
 /// @return Negative if a < b, zero if equal, positive if a > b.
-static int64_t seq_default_compare(void *a, void *b)
-{
+static int64_t seq_default_compare(void *a, void *b) {
     // If both are NULL, they're equal
     if (!a && !b)
         return 0;
@@ -1302,8 +1245,7 @@ static int64_t seq_default_compare(void *a, void *b)
         return 1;
 
     // Check if elements are strings using the runtime string checker
-    if (rt_string_is_handle(a) && rt_string_is_handle(b))
-    {
+    if (rt_string_is_handle(a) && rt_string_is_handle(b)) {
         return rt_str_cmp((rt_string)a, (rt_string)b);
     }
 
@@ -1329,40 +1271,32 @@ static void seq_merge(void **items,
                       int64_t left,
                       int64_t mid,
                       int64_t right,
-                      int64_t (*cmp)(void *, void *))
-{
+                      int64_t (*cmp)(void *, void *)) {
     int64_t i = left;
     int64_t j = mid + 1;
     int64_t k = left;
 
     // Merge the two halves
-    while (i <= mid && j <= right)
-    {
-        if (cmp(items[i], items[j]) <= 0)
-        {
+    while (i <= mid && j <= right) {
+        if (cmp(items[i], items[j]) <= 0) {
             temp[k++] = items[i++];
-        }
-        else
-        {
+        } else {
             temp[k++] = items[j++];
         }
     }
 
     // Copy remaining elements from left half
-    while (i <= mid)
-    {
+    while (i <= mid) {
         temp[k++] = items[i++];
     }
 
     // Copy remaining elements from right half
-    while (j <= right)
-    {
+    while (j <= right) {
         temp[k++] = items[j++];
     }
 
     // Copy back to original array
-    for (int64_t x = left; x <= right; x++)
-    {
+    for (int64_t x = left; x <= right; x++) {
         items[x] = temp[x];
     }
 }
@@ -1374,8 +1308,7 @@ static void seq_merge(void **items,
 /// @param right End index (inclusive).
 /// @param cmp Comparison function.
 static void seq_merge_sort(
-    void **items, void **temp, int64_t left, int64_t right, int64_t (*cmp)(void *, void *))
-{
+    void **items, void **temp, int64_t left, int64_t right, int64_t (*cmp)(void *, void *)) {
     if (left >= right)
         return;
 
@@ -1418,8 +1351,7 @@ static void seq_merge_sort(
 ///
 /// @see rt_seq_sort_desc For descending order
 /// @see rt_seq_sort_by For custom comparison
-void rt_seq_sort(void *obj)
-{
+void rt_seq_sort(void *obj) {
     rt_seq_sort_by(obj, seq_default_compare);
 }
 
@@ -1457,8 +1389,7 @@ void rt_seq_sort(void *obj)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_sort For default ascending sort
-void rt_seq_sort_by(void *obj, int64_t (*cmp)(void *, void *))
-{
+void rt_seq_sort_by(void *obj, int64_t (*cmp)(void *, void *)) {
     if (!obj)
         return;
 
@@ -1474,8 +1405,7 @@ void rt_seq_sort_by(void *obj, int64_t (*cmp)(void *, void *))
 
     // Allocate temporary buffer for merge sort
     void **temp = (void **)malloc((size_t)seq->len * sizeof(void *));
-    if (!temp)
-    {
+    if (!temp) {
         rt_trap("Seq.Sort: memory allocation failed");
         return;
     }
@@ -1487,8 +1417,7 @@ void rt_seq_sort_by(void *obj, int64_t (*cmp)(void *, void *))
 }
 
 /// @brief Comparison function for descending sort.
-static int64_t seq_compare_desc(void *a, void *b)
-{
+static int64_t seq_compare_desc(void *a, void *b) {
     return -seq_default_compare(a, b);
 }
 
@@ -1515,8 +1444,7 @@ static int64_t seq_compare_desc(void *a, void *b)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_sort For ascending order
-void rt_seq_sort_desc(void *obj)
-{
+void rt_seq_sort_desc(void *obj) {
     rt_seq_sort_by(obj, seq_compare_desc);
 }
 
@@ -1555,8 +1483,7 @@ void rt_seq_sort_desc(void *obj)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_reject For the inverse operation
-void *rt_seq_keep(void *obj, int8_t (*pred)(void *))
-{
+void *rt_seq_keep(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
         return rt_seq_new();
 
@@ -1566,10 +1493,8 @@ void *rt_seq_keep(void *obj, int8_t (*pred)(void *))
     rt_seq_impl *seq = (rt_seq_impl *)obj;
     void *result = rt_seq_new();
 
-    for (int64_t i = 0; i < seq->len; i++)
-    {
-        if (pred(seq->items[i]))
-        {
+    for (int64_t i = 0; i < seq->len; i++) {
+        if (pred(seq->items[i])) {
             rt_seq_push(result, seq->items[i]);
         }
     }
@@ -1606,8 +1531,7 @@ void *rt_seq_keep(void *obj, int8_t (*pred)(void *))
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_keep For the inverse operation
-void *rt_seq_reject(void *obj, int8_t (*pred)(void *))
-{
+void *rt_seq_reject(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
         return rt_seq_new();
 
@@ -1617,10 +1541,8 @@ void *rt_seq_reject(void *obj, int8_t (*pred)(void *))
     rt_seq_impl *seq = (rt_seq_impl *)obj;
     void *result = rt_seq_new();
 
-    for (int64_t i = 0; i < seq->len; i++)
-    {
-        if (!pred(seq->items[i]))
-        {
+    for (int64_t i = 0; i < seq->len; i++) {
+        if (!pred(seq->items[i])) {
             rt_seq_push(result, seq->items[i]);
         }
     }
@@ -1655,8 +1577,7 @@ void *rt_seq_reject(void *obj, int8_t (*pred)(void *))
 /// @note O(n) time complexity.
 /// @note The transform function must return a valid object pointer.
 /// @note Thread safety: Not thread-safe.
-void *rt_seq_apply(void *obj, void *(*fn)(void *))
-{
+void *rt_seq_apply(void *obj, void *(*fn)(void *)) {
     if (!obj)
         return rt_seq_new();
 
@@ -1666,8 +1587,7 @@ void *rt_seq_apply(void *obj, void *(*fn)(void *))
     rt_seq_impl *seq = (rt_seq_impl *)obj;
     void *result = rt_seq_with_capacity(seq->len);
 
-    for (int64_t i = 0; i < seq->len; i++)
-    {
+    for (int64_t i = 0; i < seq->len; i++) {
         rt_seq_push(result, fn(seq->items[i]));
     }
 
@@ -1705,17 +1625,14 @@ void *rt_seq_apply(void *obj, void *(*fn)(void *))
 ///
 /// @see rt_seq_any For checking if any element matches
 /// @see rt_seq_none For checking if no elements match
-int8_t rt_seq_all(void *obj, int8_t (*pred)(void *))
-{
+int8_t rt_seq_all(void *obj, int8_t (*pred)(void *)) {
     if (!obj || !pred)
         return 1;
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
-    for (int64_t i = 0; i < seq->len; i++)
-    {
-        if (!pred(seq->items[i]))
-        {
+    for (int64_t i = 0; i < seq->len; i++) {
+        if (!pred(seq->items[i])) {
             return 0;
         }
     }
@@ -1753,17 +1670,14 @@ int8_t rt_seq_all(void *obj, int8_t (*pred)(void *))
 ///
 /// @see rt_seq_all For checking if all elements match
 /// @see rt_seq_none For checking if no elements match
-int8_t rt_seq_any(void *obj, int8_t (*pred)(void *))
-{
+int8_t rt_seq_any(void *obj, int8_t (*pred)(void *)) {
     if (!obj || !pred)
         return 0;
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
 
-    for (int64_t i = 0; i < seq->len; i++)
-    {
-        if (pred(seq->items[i]))
-        {
+    for (int64_t i = 0; i < seq->len; i++) {
+        if (pred(seq->items[i])) {
             return 1;
         }
     }
@@ -1798,8 +1712,7 @@ int8_t rt_seq_any(void *obj, int8_t (*pred)(void *))
 ///
 /// @see rt_seq_all For checking if all elements match
 /// @see rt_seq_any For checking if any element matches
-int8_t rt_seq_none(void *obj, int8_t (*pred)(void *))
-{
+int8_t rt_seq_none(void *obj, int8_t (*pred)(void *)) {
     return !rt_seq_any(obj, pred);
 }
 
@@ -1826,8 +1739,7 @@ int8_t rt_seq_none(void *obj, int8_t (*pred)(void *))
 ///
 /// @note O(n) time complexity.
 /// @note Thread safety: Not thread-safe.
-int64_t rt_seq_count_where(void *obj, int8_t (*pred)(void *))
-{
+int64_t rt_seq_count_where(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
         return 0;
 
@@ -1837,10 +1749,8 @@ int64_t rt_seq_count_where(void *obj, int8_t (*pred)(void *))
         return seq->len;
 
     int64_t count = 0;
-    for (int64_t i = 0; i < seq->len; i++)
-    {
-        if (pred(seq->items[i]))
-        {
+    for (int64_t i = 0; i < seq->len; i++) {
+        if (pred(seq->items[i])) {
             count++;
         }
     }
@@ -1872,8 +1782,7 @@ int64_t rt_seq_count_where(void *obj, int8_t (*pred)(void *))
 ///
 /// @note O(n) worst case, but short-circuits on first match.
 /// @note Thread safety: Not thread-safe.
-void *rt_seq_find_where(void *obj, int8_t (*pred)(void *))
-{
+void *rt_seq_find_where(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
         return NULL;
 
@@ -1885,10 +1794,8 @@ void *rt_seq_find_where(void *obj, int8_t (*pred)(void *))
     if (!pred)
         return seq->items[0];
 
-    for (int64_t i = 0; i < seq->len; i++)
-    {
-        if (pred(seq->items[i]))
-        {
+    for (int64_t i = 0; i < seq->len; i++) {
+        if (pred(seq->items[i])) {
             return seq->items[i];
         }
     }
@@ -1918,8 +1825,7 @@ void *rt_seq_find_where(void *obj, int8_t (*pred)(void *))
 ///
 /// @see rt_seq_drop For skipping elements
 /// @see rt_seq_slice For arbitrary ranges
-void *rt_seq_take(void *obj, int64_t n)
-{
+void *rt_seq_take(void *obj, int64_t n) {
     if (!obj || n <= 0)
         return rt_seq_new();
 
@@ -1953,8 +1859,7 @@ void *rt_seq_take(void *obj, int64_t n)
 ///
 /// @see rt_seq_take For taking elements
 /// @see rt_seq_slice For arbitrary ranges
-void *rt_seq_drop(void *obj, int64_t n)
-{
+void *rt_seq_drop(void *obj, int64_t n) {
     if (!obj)
         return rt_seq_new();
 
@@ -1998,8 +1903,7 @@ void *rt_seq_drop(void *obj, int64_t n)
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_drop_while For the inverse operation
-void *rt_seq_take_while(void *obj, int8_t (*pred)(void *))
-{
+void *rt_seq_take_while(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
         return rt_seq_new();
 
@@ -2009,10 +1913,8 @@ void *rt_seq_take_while(void *obj, int8_t (*pred)(void *))
     rt_seq_impl *seq = (rt_seq_impl *)obj;
     void *result = rt_seq_new();
 
-    for (int64_t i = 0; i < seq->len; i++)
-    {
-        if (!pred(seq->items[i]))
-        {
+    for (int64_t i = 0; i < seq->len; i++) {
+        if (!pred(seq->items[i])) {
             break;
         }
         rt_seq_push(result, seq->items[i]);
@@ -2050,8 +1952,7 @@ void *rt_seq_take_while(void *obj, int8_t (*pred)(void *))
 /// @note Thread safety: Not thread-safe.
 ///
 /// @see rt_seq_take_while For the inverse operation
-void *rt_seq_drop_while(void *obj, int8_t (*pred)(void *))
-{
+void *rt_seq_drop_while(void *obj, int8_t (*pred)(void *)) {
     if (!obj)
         return rt_seq_new();
 
@@ -2062,8 +1963,7 @@ void *rt_seq_drop_while(void *obj, int8_t (*pred)(void *))
 
     // Find the first non-matching element
     int64_t start = 0;
-    while (start < seq->len && pred(seq->items[start]))
-    {
+    while (start < seq->len && pred(seq->items[start])) {
         start++;
     }
 
@@ -2099,16 +1999,14 @@ void *rt_seq_drop_while(void *obj, int8_t (*pred)(void *))
 ///
 /// @note O(n) time complexity.
 /// @note Thread safety: Not thread-safe.
-void *rt_seq_fold(void *obj, void *init, void *(*fn)(void *, void *))
-{
+void *rt_seq_fold(void *obj, void *init, void *(*fn)(void *, void *)) {
     if (!obj || !fn)
         return init;
 
     rt_seq_impl *seq = (rt_seq_impl *)obj;
     void *acc = init;
 
-    for (int64_t i = 0; i < seq->len; i++)
-    {
+    for (int64_t i = 0; i < seq->len; i++) {
         acc = fn(acc, seq->items[i]);
     }
 

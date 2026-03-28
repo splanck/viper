@@ -26,14 +26,11 @@
 #include "frontends/basic/lower/BuiltinCommon.hpp"
 #include "frontends/basic/lower/builtins/Registrars.hpp"
 
-namespace il::frontends::basic::lower::builtins
-{
+namespace il::frontends::basic::lower::builtins {
 
-namespace
-{
+namespace {
 /// @brief Lower TIMER builtin using the generic rule-driven path.
-Lowerer::RVal lowerTimerBuiltin(BuiltinLowerContext &ctx)
-{
+Lowerer::RVal lowerTimerBuiltin(BuiltinLowerContext &ctx) {
     return lower::lowerGenericBuiltin(ctx);
 }
 } // namespace
@@ -44,8 +41,7 @@ Lowerer::RVal lowerTimerBuiltin(BuiltinLowerContext &ctx)
 ///          Nevertheless the shared registry expects every domain to expose a
 ///          registrar.  Calling this function registers any I/O-related builtins
 ///          that can use the generic lowering path.
-void registerIoBuiltins()
-{
+void registerIoBuiltins() {
     using Builtin = BuiltinCallExpr::Builtin;
     // Register TIMER builtin to use the generic lowering path
     register_builtin(getBuiltinInfo(Builtin::Timer).name, &lowerTimerBuiltin);

@@ -24,30 +24,23 @@
 #include <cstdint>
 #include <optional>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 class Lowerer;
 
 /// @brief Selects how overflow should be handled for arithmetic helpers.
-enum class OverflowPolicy
-{
+enum class OverflowPolicy {
     Checked, ///< Emit overflow-checking arithmetic.
     Wrap     ///< Emit wrapping arithmetic.
 };
 
 /// @brief Indicates whether widening preserves signedness or zero-extends.
-enum class Signedness
-{
-    Signed,
-    Unsigned
-};
+enum class Signedness { Signed, Unsigned };
 
 /// @brief Facade that centralises common IL emission patterns for the BASIC front end.
 /// @invariant Each helper assumes the caller prepared the Lowerer with an active block.
 /// @ownership Does not own IR objects; borrows the Lowerer state for instruction emission.
-class Emit
-{
+class Emit {
   public:
     using Value = il::core::Value;
     using Type = il::core::Type;

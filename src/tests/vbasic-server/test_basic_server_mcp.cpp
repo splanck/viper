@@ -34,22 +34,19 @@ static const ServerConfig kBasicConfig{
 /// Helper: build a JsonRpcRequest from method, params, and id.
 static JsonRpcRequest makeReq(const std::string &method,
                               JsonValue params = JsonValue::object({}),
-                              JsonValue id = JsonValue(1))
-{
+                              JsonValue id = JsonValue(1)) {
     return {method, std::move(params), std::move(id)};
 }
 
 /// Helper: parse a JSON-RPC response string and return the parsed JSON.
-static JsonValue parseResponse(const std::string &resp)
-{
+static JsonValue parseResponse(const std::string &resp) {
     EXPECT_TRUE(!resp.empty());
     return JsonValue::parse(resp);
 }
 
 // ===== Lifecycle =====
 
-TEST(BasicMcp, Initialize)
-{
+TEST(BasicMcp, Initialize) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -63,8 +60,7 @@ TEST(BasicMcp, Initialize)
     EXPECT_TRUE(result["capabilities"].has("tools"));
 }
 
-TEST(BasicMcp, InitializedNotification)
-{
+TEST(BasicMcp, InitializedNotification) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -72,8 +68,7 @@ TEST(BasicMcp, InitializedNotification)
     EXPECT_TRUE(resp.empty());
 }
 
-TEST(BasicMcp, Ping)
-{
+TEST(BasicMcp, Ping) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -82,8 +77,7 @@ TEST(BasicMcp, Ping)
     EXPECT_TRUE(resp.has("result"));
 }
 
-TEST(BasicMcp, UnknownMethod)
-{
+TEST(BasicMcp, UnknownMethod) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -94,8 +88,7 @@ TEST(BasicMcp, UnknownMethod)
 
 // ===== tools/list =====
 
-TEST(BasicMcp, ToolsListReturns11Tools)
-{
+TEST(BasicMcp, ToolsListReturns11Tools) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -104,8 +97,7 @@ TEST(BasicMcp, ToolsListReturns11Tools)
     EXPECT_EQ(tools.size(), 11u);
 }
 
-TEST(BasicMcp, ToolsListHasAllBasicTools)
-{
+TEST(BasicMcp, ToolsListHasAllBasicTools) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -126,11 +118,9 @@ TEST(BasicMcp, ToolsListHasAllBasicTools)
         "basic/runtime-search",
     };
 
-    for (const auto &name : expected)
-    {
+    for (const auto &name : expected) {
         bool found = false;
-        for (const auto &tool : tools)
-        {
+        for (const auto &tool : tools) {
             if (tool["name"].asString() == name)
                 found = true;
         }
@@ -138,8 +128,7 @@ TEST(BasicMcp, ToolsListHasAllBasicTools)
     }
 }
 
-TEST(BasicMcp, ToolsListDescriptionsUseBasicLabel)
-{
+TEST(BasicMcp, ToolsListDescriptionsUseBasicLabel) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -147,10 +136,8 @@ TEST(BasicMcp, ToolsListDescriptionsUseBasicLabel)
     auto tools = resp["result"]["tools"].asArray();
 
     // The check tool description should mention "Viper BASIC"
-    for (const auto &tool : tools)
-    {
-        if (tool["name"].asString() == "basic/check")
-        {
+    for (const auto &tool : tools) {
+        if (tool["name"].asString() == "basic/check") {
             auto desc = tool["description"].asString();
             EXPECT_TRUE(desc.find("Viper BASIC") != std::string::npos);
         }
@@ -159,8 +146,7 @@ TEST(BasicMcp, ToolsListDescriptionsUseBasicLabel)
 
 // ===== tools/call =====
 
-TEST(BasicMcp, ToolsCallCheck)
-{
+TEST(BasicMcp, ToolsCallCheck) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -178,8 +164,7 @@ TEST(BasicMcp, ToolsCallCheck)
     EXPECT_EQ(content.at(0)["type"].asString(), "text");
 }
 
-TEST(BasicMcp, ToolsCallCompile)
-{
+TEST(BasicMcp, ToolsCallCompile) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -196,8 +181,7 @@ TEST(BasicMcp, ToolsCallCompile)
     EXPECT_TRUE(parsed["succeeded"].asBool());
 }
 
-TEST(BasicMcp, ToolsCallDumpTokens)
-{
+TEST(BasicMcp, ToolsCallDumpTokens) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -213,8 +197,7 @@ TEST(BasicMcp, ToolsCallDumpTokens)
     EXPECT_TRUE(!text.empty());
 }
 
-TEST(BasicMcp, ToolsCallRuntimeClasses)
-{
+TEST(BasicMcp, ToolsCallRuntimeClasses) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -228,8 +211,7 @@ TEST(BasicMcp, ToolsCallRuntimeClasses)
     EXPECT_TRUE(parsed.size() > 0u);
 }
 
-TEST(BasicMcp, ToolsCallUnknownTool)
-{
+TEST(BasicMcp, ToolsCallUnknownTool) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -241,8 +223,7 @@ TEST(BasicMcp, ToolsCallUnknownTool)
     EXPECT_TRUE(resp.has("error"));
 }
 
-TEST(BasicMcp, ToolsCallMissingName)
-{
+TEST(BasicMcp, ToolsCallMissingName) {
     BasicCompilerBridge bridge;
     McpHandler handler(bridge, kBasicConfig);
 
@@ -251,8 +232,7 @@ TEST(BasicMcp, ToolsCallMissingName)
     EXPECT_EQ(resp["error"]["code"].asInt(), kInvalidParams);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

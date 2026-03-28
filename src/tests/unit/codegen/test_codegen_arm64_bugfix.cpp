@@ -18,24 +18,21 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
 /// Bug #3: void main should exit with code 0, not whatever was in x0.
-TEST(Arm64Bugfix, VoidMainExitZero)
-{
+TEST(Arm64Bugfix, VoidMainExitZero) {
     const std::string in = outPath("arm64_bugfix_void_main.il");
     // A void main that calls a runtime function leaving a non-zero value in x0.
     // Before the fix, this would exit with whatever rt_term_say left in x0.
@@ -56,8 +53,7 @@ TEST(Arm64Bugfix, VoidMainExitZero)
 
 /// Bug #1: Boolean return values should be masked to i1 (0 or 1).
 /// Tests that a runtime function returning bool is correctly captured.
-TEST(Arm64Bugfix, BoolReturnMasked)
-{
+TEST(Arm64Bugfix, BoolReturnMasked) {
     const std::string in = outPath("arm64_bugfix_bool_return.il");
     // Calls rt_str_eq which returns bool (i1). If the masking works,
     // the comparison and conditional branch should function correctly.
@@ -98,8 +94,7 @@ TEST(Arm64Bugfix, BoolReturnMasked)
 /// future uses AFTER the critical GEP, so they all have finite next-use
 /// distances and are not selected as spill victims — only the AddFpImm result
 /// has UINT_MAX distance (no use after AddRI), making the eviction deterministic.
-TEST(Arm64Bugfix, AddFpImmDirtyFlagUnderPressure)
-{
+TEST(Arm64Bugfix, AddFpImmDirtyFlagUnderPressure) {
     // Build IL with 22 live temporaries + alloca + GEP store at offset 24.
     // The 22 temps all have future uses (stores after field 3), so only the
     // AddFpImm result vreg (no future use past the AddRI) has UINT_MAX distance
@@ -128,8 +123,7 @@ TEST(Arm64Bugfix, AddFpImmDirtyFlagUnderPressure)
     // instead of the AddFpImm result).
     // Offsets: 0,8,16,32,40,...,176 — skipping 24 which holds the sentinel.
     int offset = 0;
-    for (int i = 0; i < 22; ++i)
-    {
+    for (int i = 0; i < 22; ++i) {
         if (offset == 24)
             offset += 8; // skip offset 24 (sentinel slot)
         il += "  %q" + std::to_string(i) + " = gep %base, " + std::to_string(offset) + "\n";
@@ -149,8 +143,7 @@ TEST(Arm64Bugfix, AddFpImmDirtyFlagUnderPressure)
     ASSERT_EQ(rc, 42);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

@@ -20,31 +20,26 @@
 #include <string_view>
 #include <vector>
 
-namespace
-{
+namespace {
 
 bool gUsageCalled = false;
 
-struct TempFile
-{
+struct TempFile {
     std::filesystem::path path;
 
-    explicit TempFile(std::string_view suffix)
-    {
+    explicit TempFile(std::string_view suffix) {
         path = std::filesystem::temp_directory_path() /
                std::filesystem::path("il_opt_pipeline-" + std::string(suffix));
     }
 
-    ~TempFile()
-    {
+    ~TempFile() {
         std::error_code ec;
         std::filesystem::remove(path, ec);
     }
 };
 
 /// @brief Read file.
-std::string readFile(const std::filesystem::path &p)
-{
+std::string readFile(const std::filesystem::path &p) {
     std::ifstream ifs(p);
     return std::string(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
 }
@@ -52,13 +47,11 @@ std::string readFile(const std::filesystem::path &p)
 } // namespace
 
 /// @brief Usage.
-void usage()
-{
+void usage() {
     gUsageCalled = true;
 }
 
-int main()
-{
+int main() {
     // Input with a promotable alloca
     TempFile input{".il"};
     {

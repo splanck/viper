@@ -39,10 +39,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace
-{
-static bool traceEnabled()
-{
+namespace {
+static bool traceEnabled() {
     static const bool enabled = std::getenv("VIPER_DCE_TRACE") != nullptr;
     return enabled;
 }
@@ -52,8 +50,7 @@ static bool traceEnabled()
 /// @details If both operands are ConstInt and the operation does not overflow,
 ///          the instruction's only "side effect" (trapping) provably cannot
 ///          fire, so removing the instruction is semantics-preserving.
-static bool isDeadOverflowOp(const il::core::Instr &instr)
-{
+static bool isDeadOverflowOp(const il::core::Instr &instr) {
     using il::core::Opcode;
     using il::core::Value;
 
@@ -68,8 +65,7 @@ static bool isDeadOverflowOp(const il::core::Instr &instr)
     const long long lhs = instr.operands[0].i64;
     const long long rhs = instr.operands[1].i64;
     long long result{};
-    switch (instr.op)
-    {
+    switch (instr.op) {
         case Opcode::IAddOvf:
             return !__builtin_add_overflow(lhs, rhs, &result);
         case Opcode::ISubOvf:
@@ -85,8 +81,7 @@ static bool isDeadOverflowOp(const il::core::Instr &instr)
 
 using namespace il::core;
 
-namespace il::transform
-{
+namespace il::transform {
 /// @brief Count how many times each temporary identifier is referenced.
 ///
 /// @details Determines the maximum SSA id and uses an indexed vector for
@@ -96,14 +91,12 @@ namespace il::transform
 ///
 /// @param F Function whose temporaries are inspected.
 /// @return Vector indexed by temp id with use counts.
-static std::vector<size_t> countUses(Function &F)
-{
+static std::vector<size_t> countUses(Function &F) {
     // Compute maximum SSA id encountered across params, block params, and results
     unsigned maxId = 0;
     for (auto &p : F.params)
         maxId = std::max(maxId, p.id);
-    for (auto &B : F.blocks)
-    {
+    for (auto &B : F.blocks) {
         for (auto &p : B.params)
             maxId = std::max(maxId, p.id);
         for (auto &I : B.instructions)
@@ -118,16 +111,13 @@ static std::vector<size_t> countUses(Function &F)
         for (auto &p : B.params)
             (void)uses[p.id];
 
-    auto touch = [&](unsigned id)
-    {
+    auto touch = [&](unsigned id) {
         if (id < uses.size())
             uses[id]++;
     };
 
-    for (auto &B : F.blocks)
-    {
-        for (auto &I : B.instructions)
-        {
+    for (auto &B : F.blocks) {
+        for (auto &I : B.instructions) {
             for (auto &Op : I.operands)
                 if (Op.kind == Value::Kind::Temp)
                     touch(Op.id);
@@ -163,24 +153,18 @@ static std::vector<size_t> countUses(Function &F)
 /// without re-running expensive analyses.
 ///
 /// @param M Module simplified in place.
-void dce(Module &M)
-{
-    for (auto &F : M.functions)
-    {
-        if (traceEnabled() && F.name == "main")
-        {
+void dce(Module &M) {
+    for (auto &F : M.functions) {
+        if (traceEnabled() && F.name == "main") {
             std::cerr << "[dce] === BEFORE DCE for " << F.name << " ===\n";
-            for (auto &B : F.blocks)
-            {
+            for (auto &B : F.blocks) {
                 std::cerr << B.label << ":\n";
-                for (auto &I : B.instructions)
-                {
+                for (auto &I : B.instructions) {
                     std::cerr << "  ";
                     if (I.result)
                         std::cerr << "%" << *I.result << " = ";
                     std::cerr << toString(I.op);
-                    for (auto &op : I.operands)
-                    {
+                    for (auto &op : I.operands) {
                         std::cerr << " ";
                         if (op.kind == Value::Kind::Temp)
                             std::cerr << "%t" << op.id;
@@ -219,10 +203,8 @@ void dce(Module &M)
 
         // Pass 1: Collect all alloca result IDs.
         for (auto &B : F.blocks)
-            for (auto &I : B.instructions)
-            {
-                if (I.op == Opcode::Alloca && I.result)
-                {
+            for (auto &I : B.instructions) {
+                if (I.op == Opcode::Alloca && I.result) {
                     allocaObserved[*I.result] = false;
                     if (traceEnabled())
                         std::cerr << "[dce] tracking alloca %" << *I.result << " in " << F.name
@@ -232,13 +214,11 @@ void dce(Module &M)
 
         // Pass 2: Mark allocas as observed based on their uses.
         for (auto &B : F.blocks)
-            for (auto &I : B.instructions)
-            {
+            for (auto &I : B.instructions) {
                 // Mark as observed if loaded from directly
                 if (I.op == Opcode::Load && !I.operands.empty() &&
                     I.operands[0].kind == Value::Kind::Temp &&
-                    allocaObserved.count(I.operands[0].id))
-                {
+                    allocaObserved.count(I.operands[0].id)) {
                     allocaObserved[I.operands[0].id] = true;
                     if (traceEnabled())
                         std::cerr << "[dce] marking %" << I.operands[0].id
@@ -247,20 +227,16 @@ void dce(Module &M)
                 // Mark as observed if used by GEP (GEP computes derived pointer)
                 if (I.op == Opcode::GEP && !I.operands.empty() &&
                     I.operands[0].kind == Value::Kind::Temp &&
-                    allocaObserved.count(I.operands[0].id))
-                {
+                    allocaObserved.count(I.operands[0].id)) {
                     allocaObserved[I.operands[0].id] = true;
                     if (traceEnabled())
                         std::cerr << "[dce] marking %" << I.operands[0].id
                                   << " as observed (gep) in " << F.name << "\n";
                 }
                 // Mark as observed if passed to a function call (the callee may read from it)
-                if ((I.op == Opcode::Call || I.op == Opcode::CallIndirect) && !I.operands.empty())
-                {
-                    for (auto &op : I.operands)
-                    {
-                        if (op.kind == Value::Kind::Temp && allocaObserved.count(op.id))
-                        {
+                if ((I.op == Opcode::Call || I.op == Opcode::CallIndirect) && !I.operands.empty()) {
+                    for (auto &op : I.operands) {
+                        if (op.kind == Value::Kind::Temp && allocaObserved.count(op.id)) {
                             allocaObserved[op.id] = true;
                             if (traceEnabled())
                                 std::cerr << "[dce] marking %" << op.id
@@ -273,8 +249,7 @@ void dce(Module &M)
                 // alloca rather than passed directly to a call or GEP.
                 if (I.op == Opcode::Store && I.operands.size() > 1 &&
                     I.operands[1].kind == Value::Kind::Temp &&
-                    allocaObserved.count(I.operands[1].id))
-                {
+                    allocaObserved.count(I.operands[1].id)) {
                     allocaObserved[I.operands[1].id] = true;
                     if (traceEnabled())
                         std::cerr << "[dce] marking %" << I.operands[1].id
@@ -283,20 +258,16 @@ void dce(Module &M)
                 // Mark as observed if returned — a returned alloca escapes the function.
                 if (I.op == Opcode::Ret && !I.operands.empty() &&
                     I.operands[0].kind == Value::Kind::Temp &&
-                    allocaObserved.count(I.operands[0].id))
-                {
+                    allocaObserved.count(I.operands[0].id)) {
                     allocaObserved[I.operands[0].id] = true;
                     if (traceEnabled())
                         std::cerr << "[dce] marking %" << I.operands[0].id
                                   << " as observed (ret) in " << F.name << "\n";
                 }
                 // Mark as observed if used as a branch argument.
-                for (const auto &argList : I.brArgs)
-                {
-                    for (const auto &v : argList)
-                    {
-                        if (v.kind == Value::Kind::Temp && allocaObserved.count(v.id))
-                        {
+                for (const auto &argList : I.brArgs) {
+                    for (const auto &v : argList) {
+                        if (v.kind == Value::Kind::Temp && allocaObserved.count(v.id)) {
                             allocaObserved[v.id] = true;
                             if (traceEnabled())
                                 std::cerr << "[dce] marking %" << v.id
@@ -307,13 +278,10 @@ void dce(Module &M)
             }
 
         // Remove dead loads/stores/allocas
-        for (auto &B : F.blocks)
-        {
-            for (std::size_t i = 0; i < B.instructions.size();)
-            {
+        for (auto &B : F.blocks) {
+            for (std::size_t i = 0; i < B.instructions.size();) {
                 Instr &I = B.instructions[i];
-                if (I.op == Opcode::Load && I.result && uses[*I.result] == 0)
-                {
+                if (I.op == Opcode::Load && I.result && uses[*I.result] == 0) {
                     if (traceEnabled())
                         std::cerr << "[dce] removing dead load %" << *I.result << " in " << F.name
                                   << ":" << B.label << "\n";
@@ -323,8 +291,7 @@ void dce(Module &M)
                 if (I.op == Opcode::Store && !I.operands.empty() &&
                     I.operands[0].kind == Value::Kind::Temp &&
                     allocaObserved.find(I.operands[0].id) != allocaObserved.end() &&
-                    !allocaObserved[I.operands[0].id])
-                {
+                    !allocaObserved[I.operands[0].id]) {
                     if (traceEnabled())
                         std::cerr << "[dce] removing dead store to %" << I.operands[0].id << " in "
                                   << F.name << ":" << B.label << "\n";
@@ -333,8 +300,7 @@ void dce(Module &M)
                 }
                 if (I.op == Opcode::Alloca && I.result &&
                     allocaObserved.find(*I.result) != allocaObserved.end() &&
-                    !allocaObserved[*I.result])
-                {
+                    !allocaObserved[*I.result]) {
                     if (traceEnabled())
                         std::cerr << "[dce] removing dead alloca %" << *I.result << " in " << F.name
                                   << ":" << B.label << "\n";
@@ -345,11 +311,9 @@ void dce(Module &M)
                 // A call is safe to remove if:
                 // 1. It produces a result that is never used
                 // 2. The callee is marked pure (no observable side effects)
-                if (I.op == Opcode::Call && I.result && uses[*I.result] == 0)
-                {
+                if (I.op == Opcode::Call && I.result && uses[*I.result] == 0) {
                     const CallEffects effects = classifyCallEffects(I);
-                    if (effects.canEliminateIfUnused())
-                    {
+                    if (effects.canEliminateIfUnused()) {
                         if (traceEnabled())
                             std::cerr << "[dce] removing pure call %" << *I.result << " = "
                                       << I.callee << " in " << F.name << ":" << B.label << "\n";
@@ -362,8 +326,7 @@ void dce(Module &M)
                 // the result and propagates the constant, but leaves the
                 // instruction because hasSideEffects=true.  Since we can verify
                 // the trap cannot fire, removing the dead instruction is safe.
-                if (I.result && uses[*I.result] == 0 && isDeadOverflowOp(I))
-                {
+                if (I.result && uses[*I.result] == 0 && isDeadOverflowOp(I)) {
                     if (traceEnabled())
                         std::cerr << "[dce] removing dead overflow op %" << *I.result << " = "
                                   << toString(I.op) << " in " << F.name << ":" << B.label << "\n";
@@ -389,14 +352,11 @@ void dce(Module &M)
             if (totalLabels)
                 predEdges.reserve(totalLabels);
         }
-        for (auto &PB : F.blocks)
-        {
-            for (auto &I : PB.instructions)
-            {
+        for (auto &PB : F.blocks) {
+            for (auto &I : PB.instructions) {
                 if (I.op != Opcode::Br && I.op != Opcode::CBr && I.op != Opcode::SwitchI32)
                     continue;
-                for (size_t l = 0; l < I.labels.size(); ++l)
-                {
+                for (size_t l = 0; l < I.labels.size(); ++l) {
                     predEdges[I.labels[l]].emplace_back(&I, l);
                 }
             }
@@ -413,8 +373,7 @@ void dce(Module &M)
         // 2. Compact B.params in one pass using the keep list.
         // 3. For each predecessor edge, compact brArgs[succIdx] in one pass.
         // This reduces the complexity to O(#params + #preds) per block.
-        for (auto &B : F.blocks)
-        {
+        for (auto &B : F.blocks) {
             const size_t numParams = B.params.size();
             if (numParams == 0)
                 continue;
@@ -434,8 +393,7 @@ void dce(Module &M)
             // not match F.params.
             std::unordered_set<unsigned> funcParamIds;
             size_t entryAbiParamCount = 0;
-            if (&B == &F.blocks.front())
-            {
+            if (&B == &F.blocks.front()) {
                 for (const auto &fp : F.params)
                     funcParamIds.insert(fp.id);
                 entryAbiParamCount = F.params.size();
@@ -444,19 +402,16 @@ void dce(Module &M)
             // Identify which param indices to keep.
             std::vector<size_t> keepIndices;
             keepIndices.reserve(numParams);
-            for (size_t i = 0; i < numParams; ++i)
-            {
+            for (size_t i = 0; i < numParams; ++i) {
                 const unsigned id = B.params[i].id;
                 // Always keep the entry-block prefix that corresponds to the
                 // function signature. Preserve ID matches too so serialized IL
                 // and hand-written modules keep the old fast path.
-                if (i < entryAbiParamCount || funcParamIds.count(id))
-                {
+                if (i < entryAbiParamCount || funcParamIds.count(id)) {
                     keepIndices.push_back(i);
                     continue;
                 }
-                if (id < uses.size() && uses[id] == 0)
-                {
+                if (id < uses.size() && uses[id] == 0) {
                     if (traceEnabled())
                         std::cerr << "[dce] removing unused block param %" << id << " from "
                                   << B.label << "\n";
@@ -480,10 +435,8 @@ void dce(Module &M)
 
             // Compact predecessor brArgs for each edge targeting this block.
             auto it = predEdges.find(B.label);
-            if (it != predEdges.end())
-            {
-                for (auto &[term, succIdx] : it->second)
-                {
+            if (it != predEdges.end()) {
+                for (auto &[term, succIdx] : it->second) {
                     if (term->brArgs.size() <= succIdx)
                         continue;
                     auto &args = term->brArgs[succIdx];

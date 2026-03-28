@@ -13,31 +13,25 @@
 #include <string>
 #include <vector>
 
-struct RunResult
-{
+struct RunResult {
     int exit_code;
     std::string out;
     std::string err;
 };
 
 // Simple process runner using system()
-static RunResult run_process(const std::vector<std::string> &args)
-{
+static RunResult run_process(const std::vector<std::string> &args) {
     RunResult result;
 
     // Build command string
     std::string cmd;
-    for (const auto &arg : args)
-    {
+    for (const auto &arg : args) {
         if (!cmd.empty())
             cmd += " ";
         // Simple quoting - may need improvement for complex cases
-        if (arg.find(' ') != std::string::npos)
-        {
+        if (arg.find(' ') != std::string::npos) {
             cmd += "\"" + arg + "\"";
-        }
-        else
-        {
+        } else {
             cmd += arg;
         }
     }
@@ -50,8 +44,7 @@ static RunResult run_process(const std::vector<std::string> &args)
 
     // Run command
     result.exit_code = std::system(cmd.c_str());
-    if (result.exit_code != -1)
-    {
+    if (result.exit_code != -1) {
         result.exit_code = WEXITSTATUS(result.exit_code);
     }
 
@@ -74,8 +67,7 @@ static RunResult run_process(const std::vector<std::string> &args)
 }
 
 // Only run these tests on macOS ARM64 or when ARM64_E2E_TESTS is set
-static bool shouldRunARM64Tests()
-{
+static bool shouldRunARM64Tests() {
 #ifdef __APPLE__
 #ifdef __aarch64__
     return true;
@@ -84,19 +76,16 @@ static bool shouldRunARM64Tests()
     return std::getenv("ARM64_E2E_TESTS") != nullptr;
 }
 
-static std::string getBuildDir()
-{
+static std::string getBuildDir() {
     // Assume we're running from the build directory
     return ".";
 }
 
-static bool fileExists(const std::string &path)
-{
+static bool fileExists(const std::string &path) {
     return std::filesystem::exists(path);
 }
 
-static bool writeFile(const std::string &path, const std::string &content)
-{
+static bool writeFile(const std::string &path, const std::string &content) {
     std::ofstream out(path);
     if (!out)
         return false;
@@ -104,10 +93,8 @@ static bool writeFile(const std::string &path, const std::string &content)
     return out.good();
 }
 
-TEST(ARM64E2E, MinimalPrintTest)
-{
-    if (!shouldRunARM64Tests())
-    {
+TEST(ARM64E2E, MinimalPrintTest) {
+    if (!shouldRunARM64Tests()) {
         // Skip test silently if not on ARM64
         return;
     }
@@ -116,8 +103,7 @@ TEST(ARM64E2E, MinimalPrintTest)
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
     const std::string ilc = buildDir + "/src/tools/viper/viper";
 
-    if (!fileExists(vbasic) || !fileExists(ilc))
-    {
+    if (!fileExists(vbasic) || !fileExists(ilc)) {
         return;
     }
 
@@ -142,10 +128,8 @@ TEST(ARM64E2E, MinimalPrintTest)
     EXPECT_NE(rr.exit_code, -1); // Program crashed
 }
 
-TEST(ARM64E2E, ArrayOperationsTest)
-{
-    if (!shouldRunARM64Tests())
-    {
+TEST(ARM64E2E, ArrayOperationsTest) {
+    if (!shouldRunARM64Tests()) {
         return;
     }
 
@@ -153,8 +137,7 @@ TEST(ARM64E2E, ArrayOperationsTest)
     const std::string vbasic = buildDir + "/src/tools/vbasic/vbasic";
     const std::string ilc = buildDir + "/src/tools/viper/viper";
 
-    if (!fileExists(vbasic) || !fileExists(ilc))
-    {
+    if (!fileExists(vbasic) || !fileExists(ilc)) {
         return;
     }
 
@@ -182,10 +165,8 @@ TEST(ARM64E2E, ArrayOperationsTest)
 }
 
 // Test that Frogger compiles to assembly (may not link/run yet)
-TEST(ARM64E2E, FroggerCompilesToAsm)
-{
-    if (!shouldRunARM64Tests())
-    {
+TEST(ARM64E2E, FroggerCompilesToAsm) {
+    if (!shouldRunARM64Tests()) {
         return;
     }
 
@@ -194,13 +175,11 @@ TEST(ARM64E2E, FroggerCompilesToAsm)
     const std::string ilc = buildDir + "/src/tools/viper/viper";
     const std::string froggerBas = "../examples/games/frogger-basic/frogger.bas";
 
-    if (!fileExists(vbasic) || !fileExists(ilc))
-    {
+    if (!fileExists(vbasic) || !fileExists(ilc)) {
         return;
     }
 
-    if (!fileExists(froggerBas))
-    {
+    if (!fileExists(froggerBas)) {
         return;
     }
 
@@ -228,10 +207,8 @@ TEST(ARM64E2E, FroggerCompilesToAsm)
 }
 
 // Test that vTris compiles to assembly
-TEST(ARM64E2E, VtrisCompilesToAsm)
-{
-    if (!shouldRunARM64Tests())
-    {
+TEST(ARM64E2E, VtrisCompilesToAsm) {
+    if (!shouldRunARM64Tests()) {
         return;
     }
 
@@ -240,13 +217,11 @@ TEST(ARM64E2E, VtrisCompilesToAsm)
     const std::string ilc = buildDir + "/src/tools/viper/viper";
     const std::string vtrisBas = "../examples/games/vtris/vtris.bas";
 
-    if (!fileExists(vbasic) || !fileExists(ilc))
-    {
+    if (!fileExists(vbasic) || !fileExists(ilc)) {
         return;
     }
 
-    if (!fileExists(vtrisBas))
-    {
+    if (!fileExists(vtrisBas)) {
         return;
     }
 
@@ -264,8 +239,7 @@ TEST(ARM64E2E, VtrisCompilesToAsm)
     EXPECT_TRUE(fileExists(asmFile)); // vTris assembly not generated
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

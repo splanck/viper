@@ -30,10 +30,8 @@
 
 #include "il/runtime/signatures/Registry.hpp"
 
-namespace il::runtime::signatures
-{
-namespace
-{
+namespace il::runtime::signatures {
+namespace {
 using Kind = SigParam::Kind;
 }
 
@@ -52,8 +50,7 @@ using Kind = SigParam::Kind;
 ///          simplifies diffing when new helpers join a category.  Each call to
 ///          @ref register_signature appends metadata consumed later by runtime
 ///          verification passes.
-void register_math_signatures()
-{
+void register_math_signatures() {
     register_signature(make_signature("rt_cint_from_double", {Kind::F64, Kind::Ptr}, {Kind::I64}));
     register_signature(make_signature("rt_clng_from_double", {Kind::F64, Kind::Ptr}, {Kind::I64}));
     register_signature(make_signature("rt_csng_from_double", {Kind::F64, Kind::Ptr}, {Kind::F64}));

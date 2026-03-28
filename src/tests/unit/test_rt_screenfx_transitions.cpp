@@ -31,8 +31,7 @@
 #include <cstdio>
 
 // Trap handler
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -40,15 +39,13 @@ static int tests_passed = 0;
 static int tests_total = 0;
 
 #define TEST(name)                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_total++;                                                                             \
         printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 
 #define PASS()                                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_passed++;                                                                            \
         printf("ok\n");                                                                            \
     } while (0)
@@ -57,8 +54,7 @@ static int tests_total = 0;
 // Wipe tests
 //=============================================================================
 
-static void test_wipe_starts_active(void)
-{
+static void test_wipe_starts_active(void) {
     TEST("Wipe starts as active");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_wipe(fx, 0, 0x000000, 500);
@@ -67,8 +63,7 @@ static void test_wipe_starts_active(void)
     PASS();
 }
 
-static void test_wipe_completes(void)
-{
+static void test_wipe_completes(void) {
     TEST("Wipe completes after duration");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_wipe(fx, 0, 0x000000, 500);
@@ -78,8 +73,7 @@ static void test_wipe_completes(void)
     PASS();
 }
 
-static void test_wipe_progress_midway(void)
-{
+static void test_wipe_progress_midway(void) {
     TEST("Wipe progress at midpoint");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_wipe(fx, 0, 0x000000, 1000);
@@ -89,11 +83,9 @@ static void test_wipe_progress_midway(void)
     PASS();
 }
 
-static void test_wipe_all_directions(void)
-{
+static void test_wipe_all_directions(void) {
     TEST("Wipe works in all 4 directions");
-    for (int dir = 0; dir <= 3; dir++)
-    {
+    for (int dir = 0; dir <= 3; dir++) {
         rt_screenfx fx = rt_screenfx_new();
         rt_screenfx_wipe(fx, dir, 0xFF0000, 100);
         assert(rt_screenfx_is_active(fx) == 1);
@@ -103,8 +95,7 @@ static void test_wipe_all_directions(void)
     PASS();
 }
 
-static void test_wipe_invalid_direction(void)
-{
+static void test_wipe_invalid_direction(void) {
     TEST("Wipe invalid direction defaults to LEFT");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_wipe(fx, 99, 0x000000, 100); // Invalid direction
@@ -118,8 +109,7 @@ static void test_wipe_invalid_direction(void)
 // Circle tests
 //=============================================================================
 
-static void test_circle_in_lifecycle(void)
-{
+static void test_circle_in_lifecycle(void) {
     TEST("CircleIn starts active and completes");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_circle_in(fx, 160, 120, 0x000000, 1000);
@@ -131,8 +121,7 @@ static void test_circle_in_lifecycle(void)
     PASS();
 }
 
-static void test_circle_out_lifecycle(void)
-{
+static void test_circle_out_lifecycle(void) {
     TEST("CircleOut starts active and completes");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_circle_out(fx, 160, 120, 0x000000, 500);
@@ -143,8 +132,7 @@ static void test_circle_out_lifecycle(void)
     PASS();
 }
 
-static void test_circle_type_active(void)
-{
+static void test_circle_type_active(void) {
     TEST("CircleIn reports correct type");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_circle_in(fx, 100, 100, 0x000000, 500);
@@ -157,8 +145,7 @@ static void test_circle_type_active(void)
 // Dissolve tests
 //=============================================================================
 
-static void test_dissolve_lifecycle(void)
-{
+static void test_dissolve_lifecycle(void) {
     TEST("Dissolve starts active and completes");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_dissolve(fx, 0x000000, 1000);
@@ -173,8 +160,7 @@ static void test_dissolve_lifecycle(void)
     PASS();
 }
 
-static void test_dissolve_type(void)
-{
+static void test_dissolve_type(void) {
     TEST("Dissolve reports correct type");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_dissolve(fx, 0xFFFFFF, 200);
@@ -186,8 +172,7 @@ static void test_dissolve_type(void)
 // Pixelate tests
 //=============================================================================
 
-static void test_pixelate_lifecycle(void)
-{
+static void test_pixelate_lifecycle(void) {
     TEST("Pixelate starts active and completes");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_pixelate(fx, 16, 500);
@@ -198,8 +183,7 @@ static void test_pixelate_lifecycle(void)
     PASS();
 }
 
-static void test_pixelate_min_block(void)
-{
+static void test_pixelate_min_block(void) {
     TEST("Pixelate clamps block size >= 2");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_pixelate(fx, 0, 100); // 0 → clamped to 2
@@ -211,8 +195,7 @@ static void test_pixelate_min_block(void)
 // Multiple effects / interaction tests
 //=============================================================================
 
-static void test_multiple_transitions(void)
-{
+static void test_multiple_transitions(void) {
     TEST("Multiple transitions can run concurrently");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_wipe(fx, 0, 0xFF0000, 500);
@@ -228,8 +211,7 @@ static void test_multiple_transitions(void)
     PASS();
 }
 
-static void test_transition_with_existing_effects(void)
-{
+static void test_transition_with_existing_effects(void) {
     TEST("Transitions coexist with shake/fade");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_shake(fx, 1000, 500, 1000);
@@ -239,8 +221,7 @@ static void test_transition_with_existing_effects(void)
     PASS();
 }
 
-static void test_cancel_all_clears_transitions(void)
-{
+static void test_cancel_all_clears_transitions(void) {
     TEST("CancelAll clears transitions too");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_wipe(fx, 0, 0x000000, 1000);
@@ -254,8 +235,7 @@ static void test_cancel_all_clears_transitions(void)
 // NULL safety / edge cases
 //=============================================================================
 
-static void test_null_safety(void)
-{
+static void test_null_safety(void) {
     TEST("NULL safety for all transition functions");
     rt_screenfx_wipe(NULL, 0, 0, 100);
     rt_screenfx_circle_in(NULL, 0, 0, 0, 100);
@@ -268,8 +248,7 @@ static void test_null_safety(void)
     PASS();
 }
 
-static void test_zero_duration(void)
-{
+static void test_zero_duration(void) {
     TEST("Zero duration is rejected (no-op)");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_wipe(fx, 0, 0x000000, 0);
@@ -277,8 +256,7 @@ static void test_zero_duration(void)
     PASS();
 }
 
-static void test_draw_null_canvas(void)
-{
+static void test_draw_null_canvas(void) {
     TEST("Draw with NULL canvas is no-op");
     rt_screenfx fx = rt_screenfx_new();
     rt_screenfx_wipe(fx, 0, 0x000000, 100);
@@ -286,16 +264,14 @@ static void test_draw_null_canvas(void)
     PASS();
 }
 
-static void test_is_finished_initially(void)
-{
+static void test_is_finished_initially(void) {
     TEST("New ScreenFX is finished (no effects)");
     rt_screenfx fx = rt_screenfx_new();
     assert(rt_screenfx_is_finished(fx) == 1);
     PASS();
 }
 
-static void test_transition_progress_no_transition(void)
-{
+static void test_transition_progress_no_transition(void) {
     TEST("TransitionProgress returns 0 when no transition active");
     rt_screenfx fx = rt_screenfx_new();
     assert(rt_screenfx_get_transition_progress(fx) == 0);
@@ -310,8 +286,7 @@ static void test_transition_progress_no_transition(void)
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("test_rt_screenfx_transitions:\n");
 
     // Wipe

@@ -28,12 +28,9 @@
 
 #include "tui/util/unicode.hpp"
 
-namespace viper::tui::util
-{
-namespace
-{
-struct Range
-{
+namespace viper::tui::util {
+namespace {
+struct Range {
     char32_t first;
     char32_t last;
 };
@@ -60,16 +57,12 @@ constexpr Range wide_ranges[] = {{0x1100, 0x115F},
 ///          common terminal behaviour.
 /// @param cp Unicode scalar value to classify.
 /// @return @c 0 for combining marks, @c 2 for full-width glyphs, otherwise @c 1.
-int char_width(char32_t cp)
-{
-    if (cp >= 0x0300 && cp <= 0x036F)
-    {
+int char_width(char32_t cp) {
+    if (cp >= 0x0300 && cp <= 0x036F) {
         return 0;
     }
-    for (auto r : wide_ranges)
-    {
-        if (cp >= r.first && cp <= r.last)
-        {
+    for (auto r : wide_ranges) {
+        if (cp >= r.first && cp <= r.last) {
             return 2;
         }
     }
@@ -88,66 +81,50 @@ int char_width(char32_t cp)
 /// @param in UTF-8 encoded byte span to convert.
 /// @return UTF-32 string containing decoded scalar values with replacement
 ///         characters substituted for malformed regions.
-std::u32string decode_utf8(std::string_view in)
-{
+std::u32string decode_utf8(std::string_view in) {
     std::u32string out;
-    for (size_t i = 0; i < in.size();)
-    {
+    for (size_t i = 0; i < in.size();) {
         unsigned char c = static_cast<unsigned char>(in[i]);
         char32_t cp = 0;
         int len = 0;
-        if (c < 0x80)
-        {
+        if (c < 0x80) {
             cp = c;
             len = 1;
-        }
-        else if ((c & 0xE0) == 0xC0)
-        {
+        } else if ((c & 0xE0) == 0xC0) {
             cp = c & 0x1F;
             len = 2;
-        }
-        else if ((c & 0xF0) == 0xE0)
-        {
+        } else if ((c & 0xF0) == 0xE0) {
             cp = c & 0x0F;
             len = 3;
-        }
-        else if ((c & 0xF8) == 0xF0)
-        {
+        } else if ((c & 0xF8) == 0xF0) {
             cp = c & 0x07;
             len = 4;
-        }
-        else
-        {
+        } else {
             out.push_back(0xFFFD);
             ++i;
             continue;
         }
-        if (i + static_cast<size_t>(len) > in.size())
-        {
+        if (i + static_cast<size_t>(len) > in.size()) {
             out.push_back(0xFFFD);
             break;
         }
         bool ok = true;
-        for (int j = 1; j < len; ++j)
-        {
+        for (int j = 1; j < len; ++j) {
             unsigned char cc = static_cast<unsigned char>(in[i + j]);
-            if ((cc & 0xC0) != 0x80)
-            {
+            if ((cc & 0xC0) != 0x80) {
                 ok = false;
                 break;
             }
             cp = (cp << 6) | (cc & 0x3F);
         }
-        if (!ok)
-        {
+        if (!ok) {
             out.push_back(0xFFFD);
             ++i;
             continue;
         }
         bool overlong =
             (len == 2 && cp < 0x80) || (len == 3 && cp < 0x800) || (len == 4 && cp < 0x10000);
-        if (overlong || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF))
-        {
+        if (overlong || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
             out.push_back(0xFFFD);
             ++i;
             continue;

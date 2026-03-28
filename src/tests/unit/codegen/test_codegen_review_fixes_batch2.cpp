@@ -32,8 +32,7 @@ using namespace viper::codegen::x64;
 // Fix 18: ISel SUB negation must not overflow for INT64_MIN
 // ---------------------------------------------------------------------------
 
-TEST(CodegenReviewBatch2, SubNegationGuardsIntMin)
-{
+TEST(CodegenReviewBatch2, SubNegationGuardsIntMin) {
     // Build a tiny MFunction with a single block containing SUBrr with
     // INT64_MIN as the immediate operand.  After ISel::lowerArithmetic the
     // instruction must remain SUBrr (since negating INT64_MIN would be UB).
@@ -67,14 +66,12 @@ TEST(CodegenReviewBatch2, SubNegationGuardsIntMin)
     // The immediate value must be unchanged
     const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
     EXPECT_TRUE(imm != nullptr);
-    if (imm)
-    {
+    if (imm) {
         EXPECT_EQ(imm->val, intMin);
     }
 }
 
-TEST(CodegenReviewBatch2, SubNegationWorksForNormalValues)
-{
+TEST(CodegenReviewBatch2, SubNegationWorksForNormalValues) {
     // Verify that normal SUBrr with non-INT64_MIN immediates still get
     // converted to ADDri with negated value.
     auto &target = sysvTarget();
@@ -100,14 +97,12 @@ TEST(CodegenReviewBatch2, SubNegationWorksForNormalValues)
 
     const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
     EXPECT_TRUE(imm != nullptr);
-    if (imm)
-    {
+    if (imm) {
         EXPECT_EQ(imm->val, -42);
     }
 }
 
-TEST(CodegenReviewBatch2, SubNegationIntMaxWorks)
-{
+TEST(CodegenReviewBatch2, SubNegationIntMaxWorks) {
     // INT64_MAX negation is valid (-INT64_MAX = INT64_MIN + 1), verify it works
     auto &target = sysvTarget();
     ISel isel{target};
@@ -131,8 +126,7 @@ TEST(CodegenReviewBatch2, SubNegationIntMaxWorks)
 
     const auto *imm = std::get_if<OpImm>(&instr.operands[1]);
     EXPECT_TRUE(imm != nullptr);
-    if (imm)
-    {
+    if (imm) {
         EXPECT_EQ(imm->val, -intMax);
     }
 }
@@ -143,8 +137,7 @@ TEST(CodegenReviewBatch2, SubNegationIntMaxWorks)
 // Verified by code inspection: the constant in LowerILToMIR.cpp was changed
 // from 48 to 16.  The following test documents the expected ABI layout.
 
-TEST(CodegenReviewBatch2, SysVStackParamBaseOffset)
-{
+TEST(CodegenReviewBatch2, SysVStackParamBaseOffset) {
     // SysV AMD64 ABI stack layout after push rbp; mov rbp, rsp:
     //   [rbp + 0]  = saved rbp
     //   [rbp + 8]  = return address
@@ -160,8 +153,7 @@ TEST(CodegenReviewBatch2, SysVStackParamBaseOffset)
     EXPECT_EQ(sysvStackArgBase, 16);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

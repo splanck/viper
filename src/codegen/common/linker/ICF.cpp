@@ -30,18 +30,14 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
-namespace
-{
+namespace {
 
 /// FNV-1a hash over a byte range.
-uint64_t fnv1a(const uint8_t *data, size_t len)
-{
+uint64_t fnv1a(const uint8_t *data, size_t len) {
     uint64_t h = 14695981039346656037ULL;
-    for (size_t i = 0; i < len; ++i)
-    {
+    for (size_t i = 0; i < len; ++i) {
         h ^= data[i];
         h *= 1099511628211ULL;
     }
@@ -49,10 +45,8 @@ uint64_t fnv1a(const uint8_t *data, size_t len)
 }
 
 /// Mix an integer into an FNV-1a hash.
-uint64_t fnv1aMix(uint64_t h, uint64_t val)
-{
-    for (int i = 0; i < 8; ++i)
-    {
+uint64_t fnv1aMix(uint64_t h, uint64_t val) {
+    for (int i = 0; i < 8; ++i) {
         h ^= static_cast<uint8_t>(val >> (i * 8));
         h *= 1099511628211ULL;
     }
@@ -60,21 +54,18 @@ uint64_t fnv1aMix(uint64_t h, uint64_t val)
 }
 
 /// Normalized relocation signature for identity comparison.
-struct RelocSig
-{
+struct RelocSig {
     size_t offset;
     uint32_t type;
     std::string targetName;
     int64_t addend;
 
-    bool operator==(const RelocSig &o) const
-    {
+    bool operator==(const RelocSig &o) const {
         return offset == o.offset && type == o.type && targetName == o.targetName &&
                addend == o.addend;
     }
 
-    bool operator<(const RelocSig &o) const
-    {
+    bool operator<(const RelocSig &o) const {
         if (offset != o.offset)
             return offset < o.offset;
         if (type != o.type)
@@ -86,8 +77,7 @@ struct RelocSig
 };
 
 /// ICF candidate: a per-function .text section.
-struct Candidate
-{
+struct Candidate {
     size_t objIdx;
     size_t secIdx;
     std::string funcSymName; ///< The Global symbol this section defines.
@@ -96,12 +86,10 @@ struct Candidate
 };
 
 /// Build sorted relocation signatures for a section.
-std::vector<RelocSig> buildRelocSigs(const ObjFile &obj, const ObjSection &sec)
-{
+std::vector<RelocSig> buildRelocSigs(const ObjFile &obj, const ObjSection &sec) {
     std::vector<RelocSig> sigs;
     sigs.reserve(sec.relocs.size());
-    for (const auto &rel : sec.relocs)
-    {
+    for (const auto &rel : sec.relocs) {
         RelocSig sig;
         sig.offset = rel.offset;
         sig.type = rel.type;
@@ -116,15 +104,12 @@ std::vector<RelocSig> buildRelocSigs(const ObjFile &obj, const ObjSection &sec)
 }
 
 /// Compute a combined hash of section bytes and relocation signatures.
-uint64_t hashCandidate(const ObjSection &sec, const std::vector<RelocSig> &sigs)
-{
+uint64_t hashCandidate(const ObjSection &sec, const std::vector<RelocSig> &sigs) {
     uint64_t h = fnv1a(sec.data.data(), sec.data.size());
-    for (const auto &sig : sigs)
-    {
+    for (const auto &sig : sigs) {
         h = fnv1aMix(h, sig.offset);
         h = fnv1aMix(h, sig.type);
-        for (char c : sig.targetName)
-        {
+        for (char c : sig.targetName) {
             h ^= static_cast<uint8_t>(c);
             h *= 1099511628211ULL;
         }
@@ -136,8 +121,7 @@ uint64_t hashCandidate(const ObjSection &sec, const std::vector<RelocSig> &sigs)
 /// Check if two candidates are truly identical (not just hash-equal).
 bool candidatesIdentical(const std::vector<ObjFile> &objects,
                          const Candidate &a,
-                         const Candidate &b)
-{
+                         const Candidate &b) {
     const auto &secA = objects[a.objIdx].sections[a.secIdx];
     const auto &secB = objects[b.objIdx].sections[b.secIdx];
 
@@ -150,8 +134,7 @@ bool candidatesIdentical(const std::vector<ObjFile> &objects,
     // Compare relocation signatures.
     if (a.sigs.size() != b.sigs.size())
         return false;
-    for (size_t i = 0; i < a.sigs.size(); ++i)
-    {
+    for (size_t i = 0; i < a.sigs.size(); ++i) {
         if (!(a.sigs[i] == b.sigs[i]))
             return false;
     }
@@ -161,8 +144,7 @@ bool candidatesIdentical(const std::vector<ObjFile> &objects,
 } // namespace
 
 size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
-                         std::unordered_map<std::string, GlobalSymEntry> &globalSyms)
-{
+                         std::unordered_map<std::string, GlobalSymEntry> &globalSyms) {
     // Step 1: Identify address-taken functions.
     // A function is address-taken if any Abs64/Abs32 data relocation references it.
     // Relocation type classification: we check the raw type values. On x86-64,
@@ -170,17 +152,14 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
     // R_AARCH64_ABS64=257 and R_AARCH64_ABS32=258. We check all data/rodata
     // sections for relocations pointing to .text symbols.
     std::unordered_set<std::string> addressTaken;
-    for (size_t oi = 0; oi < allObjects.size(); ++oi)
-    {
+    for (size_t oi = 0; oi < allObjects.size(); ++oi) {
         const auto &obj = allObjects[oi];
-        for (size_t si = 1; si < obj.sections.size(); ++si)
-        {
+        for (size_t si = 1; si < obj.sections.size(); ++si) {
             const auto &sec = obj.sections[si];
             // Only scan data/rodata sections (non-executable, allocatable).
             if (sec.executable || sec.data.empty())
                 continue;
-            for (const auto &rel : sec.relocs)
-            {
+            for (const auto &rel : sec.relocs) {
                 if (rel.symIndex >= obj.symbols.size())
                     continue;
                 const auto &targetSym = obj.symbols[rel.symIndex];
@@ -197,11 +176,9 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
 
     // Step 2: Scan for ICF candidates — per-function .text.* sections.
     std::vector<Candidate> candidates;
-    for (size_t oi = 0; oi < allObjects.size(); ++oi)
-    {
+    for (size_t oi = 0; oi < allObjects.size(); ++oi) {
         const auto &obj = allObjects[oi];
-        for (size_t si = 1; si < obj.sections.size(); ++si)
-        {
+        for (size_t si = 1; si < obj.sections.size(); ++si) {
             const auto &sec = obj.sections[si];
             if (!sec.executable || sec.data.empty())
                 continue;
@@ -214,11 +191,9 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
             // Find the Global symbol at offset 0.
             std::string funcName;
             bool hasGlobalAtZero = false;
-            for (size_t sym_i = 1; sym_i < obj.symbols.size(); ++sym_i)
-            {
+            for (size_t sym_i = 1; sym_i < obj.symbols.size(); ++sym_i) {
                 const auto &sym = obj.symbols[sym_i];
-                if (sym.sectionIndex == si && sym.binding == ObjSymbol::Global && sym.offset == 0)
-                {
+                if (sym.sectionIndex == si && sym.binding == ObjSymbol::Global && sym.offset == 0) {
                     funcName = sym.name;
                     hasGlobalAtZero = true;
                     break;
@@ -252,16 +227,14 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
 
     // Step 4: Within each hash group, find identical clusters and fold.
     size_t folded = 0;
-    for (auto &[hash, indices] : hashGroups)
-    {
+    for (auto &[hash, indices] : hashGroups) {
         if (indices.size() < 2)
             continue;
 
         // Track which candidates have already been folded.
         std::vector<bool> processed(indices.size(), false);
 
-        for (size_t i = 0; i < indices.size(); ++i)
-        {
+        for (size_t i = 0; i < indices.size(); ++i) {
             if (processed[i])
                 continue;
 
@@ -270,12 +243,10 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
             std::vector<size_t> cluster; // indices into `indices`
             cluster.push_back(i);
 
-            for (size_t j = i + 1; j < indices.size(); ++j)
-            {
+            for (size_t j = i + 1; j < indices.size(); ++j) {
                 if (processed[j])
                     continue;
-                if (candidatesIdentical(allObjects, canonical, candidates[indices[j]]))
-                {
+                if (candidatesIdentical(allObjects, canonical, candidates[indices[j]])) {
                     cluster.push_back(j);
                     processed[j] = true;
                 }
@@ -286,14 +257,12 @@ size_t foldIdenticalCode(std::vector<ObjFile> &allObjects,
 
             // Fold: redirect all non-canonical symbols to canonical's section.
             const auto &canonCand = candidates[indices[cluster[0]]];
-            for (size_t k = 1; k < cluster.size(); ++k)
-            {
+            for (size_t k = 1; k < cluster.size(); ++k) {
                 const auto &foldCand = candidates[indices[cluster[k]]];
 
                 // Redirect globalSyms entry for the folded function.
                 auto it = globalSyms.find(foldCand.funcSymName);
-                if (it != globalSyms.end())
-                {
+                if (it != globalSyms.end()) {
                     it->second.objIndex = canonCand.objIdx;
                     it->second.secIndex = static_cast<uint32_t>(canonCand.secIdx);
                     it->second.offset = 0;

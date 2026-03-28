@@ -30,8 +30,7 @@
 using namespace il::core;
 using namespace il::transform;
 
-namespace
-{
+namespace {
 
 /// Build a minimal module: one function returning add(3, 5).
 /// Uses raw construction matching the SCCP test pattern, which is known valid
@@ -41,8 +40,7 @@ namespace
 ///     entry:
 ///       t0 = add i64 3, 5
 ///       ret t0
-Module buildConstantAddModule()
-{
+Module buildConstantAddModule() {
     Module module;
     Function fn;
     fn.name = "test_add";
@@ -83,48 +81,42 @@ Module buildConstantAddModule()
 // The canonical O1 pipeline must include SCCP.
 // The old Zia frontend O1 pipeline (simplify-cfg, mem2reg, peephole, dce)
 // omitted SCCP entirely — this test guards against that regression.
-TEST(CanonicalPipeline, O1PipelineContainsSCCP)
-{
+TEST(CanonicalPipeline, O1PipelineContainsSCCP) {
     PassManager pm;
     const PassManager::Pipeline *pipeline = pm.getPipeline("O1");
     ASSERT_NE(pipeline, nullptr);
 
     bool found = false;
     for (const auto &id : *pipeline)
-        if (id == "sccp")
-        {
+        if (id == "sccp") {
             found = true;
             break;
         }
     EXPECT_TRUE(found);
 }
 
-TEST(CanonicalPipeline, O1PipelineContainsInline)
-{
+TEST(CanonicalPipeline, O1PipelineContainsInline) {
     PassManager pm;
     const PassManager::Pipeline *pipeline = pm.getPipeline("O1");
     ASSERT_NE(pipeline, nullptr);
 
     bool found = false;
     for (const auto &id : *pipeline)
-        if (id == "inline")
-        {
+        if (id == "inline") {
             found = true;
             break;
         }
     EXPECT_TRUE(found);
 }
 
-TEST(CanonicalPipeline, O1PipelineExcludesLICM)
-{
+TEST(CanonicalPipeline, O1PipelineExcludesLICM) {
     PassManager pm;
     const PassManager::Pipeline *pipeline = pm.getPipeline("O1");
     ASSERT_NE(pipeline, nullptr);
 
     bool found = false;
     for (const auto &id : *pipeline)
-        if (id == "licm")
-        {
+        if (id == "licm") {
             found = true;
             break;
         }
@@ -133,15 +125,13 @@ TEST(CanonicalPipeline, O1PipelineExcludesLICM)
 
 // The canonical O2 pipeline must include SCCP, inline, loop-unroll, check-opt.
 // The old Zia frontend O2 pipeline excluded all of these.
-TEST(CanonicalPipeline, O2PipelineContainsKeyPasses)
-{
+TEST(CanonicalPipeline, O2PipelineContainsKeyPasses) {
     PassManager pm;
     const PassManager::Pipeline *pipeline = pm.getPipeline("O2");
     ASSERT_NE(pipeline, nullptr);
 
     bool hasSccp = false, hasInline = false, hasLoopUnroll = false, hasCheckOpt = false;
-    for (const auto &id : *pipeline)
-    {
+    for (const auto &id : *pipeline) {
         if (id == "sccp")
             hasSccp = true;
         if (id == "inline")
@@ -157,8 +147,7 @@ TEST(CanonicalPipeline, O2PipelineContainsKeyPasses)
     EXPECT_TRUE(hasCheckOpt);
 }
 
-TEST(CanonicalPipeline, O2PipelineExcludesUnsafePasses)
-{
+TEST(CanonicalPipeline, O2PipelineExcludesUnsafePasses) {
     PassManager pm;
     const PassManager::Pipeline *pipeline = pm.getPipeline("O2");
     ASSERT_NE(pipeline, nullptr);
@@ -166,8 +155,7 @@ TEST(CanonicalPipeline, O2PipelineExcludesUnsafePasses)
     bool hasMem2Reg = false;
     bool hasLICM = false;
     bool hasPeephole = false;
-    for (const auto &id : *pipeline)
-    {
+    for (const auto &id : *pipeline) {
         if (id == "mem2reg")
             hasMem2Reg = true;
         if (id == "licm")
@@ -181,8 +169,7 @@ TEST(CanonicalPipeline, O2PipelineExcludesUnsafePasses)
 }
 
 // runPipeline returns true for all registered canonical pipeline IDs.
-TEST(CanonicalPipeline, RunPipelineSucceedsForRegisteredIds)
-{
+TEST(CanonicalPipeline, RunPipelineSucceedsForRegisteredIds) {
     // A trivially valid module — one void function with a bare Ret.
     Module module;
     Function fn;
@@ -212,8 +199,7 @@ TEST(CanonicalPipeline, RunPipelineSucceedsForRegisteredIds)
 
 // SCCP folds a constant integer addition to a constant.
 // The canonical O1/O2 pipelines run SCCP; the old custom pipelines did not.
-TEST(CanonicalPipeline, SCCPFoldsConstantAdd)
-{
+TEST(CanonicalPipeline, SCCPFoldsConstantAdd) {
     Module module = buildConstantAddModule();
 
     // Run SCCP directly — this is what runPipeline("O1") does as part of its
@@ -233,8 +219,7 @@ TEST(CanonicalPipeline, SCCPFoldsConstantAdd)
 }
 
 /// @brief Main.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -40,27 +40,15 @@
 // Internal Structure
 //=============================================================================
 
-typedef enum
-{
-    RESULT_OK = 0,
-    RESULT_ERR = 1
-} ResultVariant;
+typedef enum { RESULT_OK = 0, RESULT_ERR = 1 } ResultVariant;
 
-typedef enum
-{
-    VALUE_PTR = 0,
-    VALUE_STR = 1,
-    VALUE_I64 = 2,
-    VALUE_F64 = 3
-} ValueType;
+typedef enum { VALUE_PTR = 0, VALUE_STR = 1, VALUE_I64 = 2, VALUE_F64 = 3 } ValueType;
 
-typedef struct
-{
+typedef struct {
     ResultVariant variant;
     ValueType value_type;
 
-    union
-    {
+    union {
         void *ptr;
         rt_string str;
         int64_t i64;
@@ -72,19 +60,15 @@ typedef struct
 // Result Finalizer
 //=============================================================================
 
-static void result_finalizer(void *obj)
-{
+static void result_finalizer(void *obj) {
     Result *r = (Result *)obj;
     if (!r)
         return;
-    if (r->value_type == VALUE_PTR && r->value.ptr)
-    {
+    if (r->value_type == VALUE_PTR && r->value.ptr) {
         if (rt_obj_release_check0(r->value.ptr))
             rt_obj_free(r->value.ptr);
         r->value.ptr = NULL;
-    }
-    else if (r->value_type == VALUE_STR && r->value.str)
-    {
+    } else if (r->value_type == VALUE_STR && r->value.str) {
         rt_str_release_maybe(r->value.str);
         r->value.str = NULL;
     }
@@ -94,8 +78,7 @@ static void result_finalizer(void *obj)
 // Result Creation
 //=============================================================================
 
-void *rt_result_ok(void *value)
-{
+void *rt_result_ok(void *value) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
     r->value_type = VALUE_PTR;
@@ -104,8 +87,7 @@ void *rt_result_ok(void *value)
     return r;
 }
 
-void *rt_result_ok_str(rt_string value)
-{
+void *rt_result_ok_str(rt_string value) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
     r->value_type = VALUE_STR;
@@ -114,8 +96,7 @@ void *rt_result_ok_str(rt_string value)
     return r;
 }
 
-void *rt_result_ok_i64(int64_t value)
-{
+void *rt_result_ok_i64(int64_t value) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
     r->value_type = VALUE_I64;
@@ -124,8 +105,7 @@ void *rt_result_ok_i64(int64_t value)
     return r;
 }
 
-void *rt_result_ok_f64(double value)
-{
+void *rt_result_ok_f64(double value) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_OK;
     r->value_type = VALUE_F64;
@@ -134,8 +114,7 @@ void *rt_result_ok_f64(double value)
     return r;
 }
 
-void *rt_result_err(void *error)
-{
+void *rt_result_err(void *error) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_ERR;
     r->value_type = VALUE_PTR;
@@ -144,8 +123,7 @@ void *rt_result_err(void *error)
     return r;
 }
 
-void *rt_result_err_str(rt_string message)
-{
+void *rt_result_err_str(rt_string message) {
     Result *r = (Result *)rt_obj_new_i64(0, (int64_t)sizeof(Result));
     r->variant = RESULT_ERR;
     r->value_type = VALUE_STR;
@@ -161,8 +139,7 @@ void *rt_result_err_str(rt_string message)
 /// @brief Perform result is ok operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_result_is_ok(void *obj)
-{
+int8_t rt_result_is_ok(void *obj) {
     if (!obj)
         return 0;
     Result *r = (Result *)obj;
@@ -172,8 +149,7 @@ int8_t rt_result_is_ok(void *obj)
 /// @brief Perform result is err operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_result_is_err(void *obj)
-{
+int8_t rt_result_is_err(void *obj) {
     if (!obj)
         return 0;
     Result *r = (Result *)obj;
@@ -186,13 +162,11 @@ int8_t rt_result_is_err(void *obj)
 
 extern void rt_trap(const char *msg);
 
-static void trap_with_message(const char *msg)
-{
+static void trap_with_message(const char *msg) {
     rt_trap(msg);
 }
 
-void *rt_result_unwrap(void *obj)
-{
+void *rt_result_unwrap(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Result");
     Result *r = (Result *)obj;
@@ -204,8 +178,7 @@ void *rt_result_unwrap(void *obj)
 /// @brief Perform result unwrap str operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_result_unwrap_str(void *obj)
-{
+rt_string rt_result_unwrap_str(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Result");
     Result *r = (Result *)obj;
@@ -219,8 +192,7 @@ rt_string rt_result_unwrap_str(void *obj)
 /// @brief Perform result unwrap i64 operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_result_unwrap_i64(void *obj)
-{
+int64_t rt_result_unwrap_i64(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Result");
     Result *r = (Result *)obj;
@@ -234,8 +206,7 @@ int64_t rt_result_unwrap_i64(void *obj)
 /// @brief Perform result unwrap f64 operation.
 /// @param obj
 /// @return Result value.
-double rt_result_unwrap_f64(void *obj)
-{
+double rt_result_unwrap_f64(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Result");
     Result *r = (Result *)obj;
@@ -246,8 +217,7 @@ double rt_result_unwrap_f64(void *obj)
     return r->value.f64;
 }
 
-void *rt_result_unwrap_or(void *obj, void *def)
-{
+void *rt_result_unwrap_or(void *obj, void *def) {
     if (!obj)
         return def;
     Result *r = (Result *)obj;
@@ -260,8 +230,7 @@ void *rt_result_unwrap_or(void *obj, void *def)
 /// @param obj
 /// @param def
 /// @return Result value.
-rt_string rt_result_unwrap_or_str(void *obj, rt_string def)
-{
+rt_string rt_result_unwrap_or_str(void *obj, rt_string def) {
     if (!obj)
         return def;
     Result *r = (Result *)obj;
@@ -276,8 +245,7 @@ rt_string rt_result_unwrap_or_str(void *obj, rt_string def)
 /// @param obj
 /// @param def
 /// @return Result value.
-int64_t rt_result_unwrap_or_i64(void *obj, int64_t def)
-{
+int64_t rt_result_unwrap_or_i64(void *obj, int64_t def) {
     if (!obj)
         return def;
     Result *r = (Result *)obj;
@@ -292,8 +260,7 @@ int64_t rt_result_unwrap_or_i64(void *obj, int64_t def)
 /// @param obj
 /// @param def
 /// @return Result value.
-double rt_result_unwrap_or_f64(void *obj, double def)
-{
+double rt_result_unwrap_or_f64(void *obj, double def) {
     if (!obj)
         return def;
     Result *r = (Result *)obj;
@@ -304,8 +271,7 @@ double rt_result_unwrap_or_f64(void *obj, double def)
     return r->value.f64;
 }
 
-void *rt_result_unwrap_err(void *obj)
-{
+void *rt_result_unwrap_err(void *obj) {
     if (!obj)
         trap_with_message("UnwrapErr called on NULL Result");
     Result *r = (Result *)obj;
@@ -317,8 +283,7 @@ void *rt_result_unwrap_err(void *obj)
 /// @brief Perform result unwrap err str operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_result_unwrap_err_str(void *obj)
-{
+rt_string rt_result_unwrap_err_str(void *obj) {
     if (!obj)
         trap_with_message("UnwrapErr called on NULL Result");
     Result *r = (Result *)obj;
@@ -329,8 +294,7 @@ rt_string rt_result_unwrap_err_str(void *obj)
     return r->value.str;
 }
 
-void *rt_result_ok_value(void *obj)
-{
+void *rt_result_ok_value(void *obj) {
     if (!obj)
         return NULL;
     Result *r = (Result *)obj;
@@ -339,8 +303,7 @@ void *rt_result_ok_value(void *obj)
     return r->value.ptr;
 }
 
-void *rt_result_err_value(void *obj)
-{
+void *rt_result_err_value(void *obj) {
     if (!obj)
         return NULL;
     Result *r = (Result *)obj;
@@ -353,34 +316,28 @@ void *rt_result_err_value(void *obj)
 // Expect
 //=============================================================================
 
-void *rt_result_expect(void *obj, rt_string msg)
-{
+void *rt_result_expect(void *obj, rt_string msg) {
     const char *msg_str = msg ? rt_string_cstr(msg) : "assertion failed";
-    if (!obj)
-    {
+    if (!obj) {
         fprintf(stderr, "Result expect: %s (NULL Result)\n", msg_str);
         abort();
     }
     Result *r = (Result *)obj;
-    if (r->variant != RESULT_OK)
-    {
+    if (r->variant != RESULT_OK) {
         fprintf(stderr, "Result expect: %s\n", msg_str);
         abort();
     }
     return r->value.ptr;
 }
 
-void *rt_result_expect_err(void *obj, rt_string msg)
-{
+void *rt_result_expect_err(void *obj, rt_string msg) {
     const char *msg_str = msg ? rt_string_cstr(msg) : "assertion failed";
-    if (!obj)
-    {
+    if (!obj) {
         fprintf(stderr, "Result expect_err: %s (NULL Result)\n", msg_str);
         abort();
     }
     Result *r = (Result *)obj;
-    if (r->variant != RESULT_ERR)
-    {
+    if (r->variant != RESULT_ERR) {
         fprintf(stderr, "Result expect_err: %s\n", msg_str);
         abort();
     }
@@ -391,8 +348,7 @@ void *rt_result_expect_err(void *obj, rt_string msg)
 // Transformation
 //=============================================================================
 
-void *rt_result_map(void *obj, void *(*fn)(void *))
-{
+void *rt_result_map(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return obj;
     Result *r = (Result *)obj;
@@ -400,8 +356,7 @@ void *rt_result_map(void *obj, void *(*fn)(void *))
         return obj;
 
     // For pointer values, apply the function
-    if (r->value_type == VALUE_PTR)
-    {
+    if (r->value_type == VALUE_PTR) {
         void *new_val = fn(r->value.ptr);
         return rt_result_ok(new_val);
     }
@@ -409,47 +364,41 @@ void *rt_result_map(void *obj, void *(*fn)(void *))
     return obj;
 }
 
-void *rt_result_map_err(void *obj, void *(*fn)(void *))
-{
+void *rt_result_map_err(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return obj;
     Result *r = (Result *)obj;
     if (r->variant != RESULT_ERR)
         return obj;
 
-    if (r->value_type == VALUE_PTR)
-    {
+    if (r->value_type == VALUE_PTR) {
         void *new_val = fn(r->value.ptr);
         return rt_result_err(new_val);
     }
     return obj;
 }
 
-void *rt_result_and_then(void *obj, void *(*fn)(void *))
-{
+void *rt_result_and_then(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return obj;
     Result *r = (Result *)obj;
     if (r->variant != RESULT_OK)
         return obj;
 
-    if (r->value_type == VALUE_PTR)
-    {
+    if (r->value_type == VALUE_PTR) {
         return fn(r->value.ptr);
     }
     return obj;
 }
 
-void *rt_result_or_else(void *obj, void *(*fn)(void *))
-{
+void *rt_result_or_else(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return obj;
     Result *r = (Result *)obj;
     if (r->variant != RESULT_ERR)
         return obj;
 
-    if (r->value_type == VALUE_PTR)
-    {
+    if (r->value_type == VALUE_PTR) {
         return fn(r->value.ptr);
     }
     return obj;
@@ -463,8 +412,7 @@ void *rt_result_or_else(void *obj, void *(*fn)(void *))
 /// @param a
 /// @param b
 /// @return Result value.
-int8_t rt_result_equals(void *a, void *b)
-{
+int8_t rt_result_equals(void *a, void *b) {
     if (a == b)
         return 1;
     if (!a || !b)
@@ -478,8 +426,7 @@ int8_t rt_result_equals(void *a, void *b)
     if (ra->value_type != rb->value_type)
         return 0;
 
-    switch (ra->value_type)
-    {
+    switch (ra->value_type) {
         case VALUE_PTR:
             return ra->value.ptr == rb->value.ptr ? 1 : 0;
         case VALUE_STR:
@@ -494,18 +441,15 @@ int8_t rt_result_equals(void *a, void *b)
 }
 
 /// @note to_string output is truncated to 256 characters for long string values.
-rt_string rt_result_to_string(void *obj)
-{
+rt_string rt_result_to_string(void *obj) {
     if (!obj)
         return rt_const_cstr("Result(null)");
 
     Result *r = (Result *)obj;
     char buf[256];
 
-    if (r->variant == RESULT_OK)
-    {
-        switch (r->value_type)
-        {
+    if (r->variant == RESULT_OK) {
+        switch (r->value_type) {
             case VALUE_PTR:
                 snprintf(buf, sizeof(buf), "Ok(%p)", r->value.ptr);
                 break;
@@ -519,11 +463,8 @@ rt_string rt_result_to_string(void *obj)
                 snprintf(buf, sizeof(buf), "Ok(%g)", r->value.f64);
                 break;
         }
-    }
-    else
-    {
-        switch (r->value_type)
-        {
+    } else {
+        switch (r->value_type) {
             case VALUE_PTR:
                 snprintf(buf, sizeof(buf), "Err(%p)", r->value.ptr);
                 break;

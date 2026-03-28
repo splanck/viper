@@ -27,19 +27,16 @@
 #include <cstdlib>
 #include <string>
 
-namespace
-{
+namespace {
 constexpr const char *kFirstFunction = "first_fn";
 constexpr const char *kFirstBlock = "first_block";
 
-void childTrap(bool includeMetadata, bool primeContext)
-{
+void childTrap(bool includeMetadata, bool primeContext) {
     il::core::Module module;
     il::vm::VM vm(module);
     il::vm::ActiveVMGuard guard(&vm);
 
-    if (primeContext)
-    {
+    if (primeContext) {
         auto &ctx = il::vm::VMTestHook::runtimeContext(vm);
         ctx.function = kFirstFunction;
         ctx.block = kFirstBlock;
@@ -57,8 +54,7 @@ void childTrap(bool includeMetadata, bool primeContext)
     // Since the trap terminates the process via _Exit (which skips atexit),
     // we manually simulate the clearing and report the context state BEFORE
     // the actual trap fires, so the parent can verify the clearing logic.
-    if (primeContext && fn.empty() && block.empty())
-    {
+    if (primeContext && fn.empty() && block.empty()) {
         auto &ctx = il::vm::VMTestHook::runtimeContext(vm);
         ctx.function.clear();
         ctx.block.clear();
@@ -73,8 +69,7 @@ void childTrap(bool includeMetadata, bool primeContext)
 }
 } // namespace
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

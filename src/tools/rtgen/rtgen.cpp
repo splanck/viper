@@ -47,8 +47,7 @@ namespace fs = std::filesystem;
 // Data Structures
 //===----------------------------------------------------------------------===//
 
-struct RuntimeFunc
-{
+struct RuntimeFunc {
     std::string id;        // Unique identifier (e.g., "PrintStr")
     std::string c_symbol;  // C runtime symbol (e.g., "rt_print_str")
     std::string canonical; // Canonical Viper.* name (e.g., "Viper.Console.PrintStr")
@@ -56,29 +55,25 @@ struct RuntimeFunc
     std::string lowering;  // Lowering kind: "always" or "" (default: manual)
 };
 
-struct RuntimeAlias
-{
+struct RuntimeAlias {
     std::string canonical; // Alias canonical name
     std::string target_id; // Target function id
 };
 
-struct RuntimeProperty
-{
+struct RuntimeProperty {
     std::string name;      // Property name (e.g., "Length")
     std::string type;      // Property type (e.g., "i64")
     std::string getter_id; // Getter function id (or canonical name)
     std::string setter_id; // Setter function id or "none"
 };
 
-struct RuntimeMethod
-{
+struct RuntimeMethod {
     std::string name;      // Method name (e.g., "Substring")
     std::string signature; // Signature without receiver (e.g., "str(i64,i64)")
     std::string target_id; // Target function id (or canonical name)
 };
 
-struct RuntimeClass
-{
+struct RuntimeClass {
     std::string name;                   // Class name (e.g., "Viper.String")
     std::string type_id;                // Type ID suffix (e.g., "String")
     std::string layout;                 // Layout type (e.g., "opaque*", "obj")
@@ -87,14 +82,12 @@ struct RuntimeClass
     std::vector<RuntimeMethod> methods; // Methods
 };
 
-struct CSignature
-{
+struct CSignature {
     std::string returnType;
     std::vector<std::string> argTypes;
 };
 
-struct DescriptorFields
-{
+struct DescriptorFields {
     std::string signatureId;
     std::string spec;
     std::string handler;
@@ -108,8 +101,7 @@ struct DescriptorFields
 // Parser State
 //===----------------------------------------------------------------------===//
 
-struct ParseState
-{
+struct ParseState {
     std::vector<RuntimeFunc> functions;
     std::vector<RuntimeAlias> aliases;
     std::vector<RuntimeClass> classes;
@@ -124,14 +116,12 @@ struct ParseState
     int line_num = 0;
     std::string filename;
 
-    void error(const std::string &msg) const
-    {
+    void error(const std::string &msg) const {
         std::cerr << filename << ":" << line_num << ": error: " << msg << "\n";
         std::exit(1);
     }
 
-    void warning(const std::string &msg) const
-    {
+    void warning(const std::string &msg) const {
         std::cerr << filename << ":" << line_num << ": warning: " << msg << "\n";
     }
 };
@@ -140,8 +130,7 @@ struct ParseState
 // String Utilities
 //===----------------------------------------------------------------------===//
 
-static std::string trim(std::string_view sv)
-{
+static std::string trim(std::string_view sv) {
     auto is_space = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
     while (!sv.empty() && is_space(sv.front()))
         sv.remove_prefix(1);
@@ -150,17 +139,14 @@ static std::string trim(std::string_view sv)
     return std::string(sv);
 }
 
-static std::vector<std::string> split(std::string_view sv, char delim)
-{
+static std::vector<std::string> split(std::string_view sv, char delim) {
     std::vector<std::string> result;
     size_t start = 0;
     bool in_quotes = false;
     int paren_depth = 0;
 
-    for (size_t i = 0; i <= sv.size(); ++i)
-    {
-        if (i < sv.size())
-        {
+    for (size_t i = 0; i <= sv.size(); ++i) {
+        if (i < sv.size()) {
             if (sv[i] == '"' && (i == 0 || sv[i - 1] != '\\'))
                 in_quotes = !in_quotes;
             else if (!in_quotes && sv[i] == '(')
@@ -169,8 +155,7 @@ static std::vector<std::string> split(std::string_view sv, char delim)
                 paren_depth--;
         }
 
-        if (i == sv.size() || (!in_quotes && paren_depth == 0 && sv[i] == delim))
-        {
+        if (i == sv.size() || (!in_quotes && paren_depth == 0 && sv[i] == delim)) {
             if (i > start)
                 result.push_back(trim(sv.substr(start, i - start)));
             start = i + 1;
@@ -179,8 +164,7 @@ static std::vector<std::string> split(std::string_view sv, char delim)
     return result;
 }
 
-static std::vector<std::string> splitTopLevel(std::string_view sv, char delim)
-{
+static std::vector<std::string> splitTopLevel(std::string_view sv, char delim) {
     std::vector<std::string> result;
     size_t start = 0;
     bool in_quotes = false;
@@ -189,14 +173,11 @@ static std::vector<std::string> splitTopLevel(std::string_view sv, char delim)
     int brace_depth = 0;
     int bracket_depth = 0;
 
-    for (size_t i = 0; i <= sv.size(); ++i)
-    {
-        if (i < sv.size())
-        {
+    for (size_t i = 0; i <= sv.size(); ++i) {
+        if (i < sv.size()) {
             if (sv[i] == '"' && (i == 0 || sv[i - 1] != '\\'))
                 in_quotes = !in_quotes;
-            else if (!in_quotes)
-            {
+            else if (!in_quotes) {
                 if (sv[i] == '(')
                     paren_depth++;
                 else if (sv[i] == ')')
@@ -217,8 +198,7 @@ static std::vector<std::string> splitTopLevel(std::string_view sv, char delim)
         }
 
         if (i == sv.size() || (!in_quotes && paren_depth == 0 && angle_depth == 0 &&
-                               brace_depth == 0 && bracket_depth == 0 && sv[i] == delim))
-        {
+                               brace_depth == 0 && bracket_depth == 0 && sv[i] == delim)) {
             if (i > start)
                 result.push_back(trim(sv.substr(start, i - start)));
             start = i + 1;
@@ -227,21 +207,18 @@ static std::vector<std::string> splitTopLevel(std::string_view sv, char delim)
     return result;
 }
 
-static bool startsWith(std::string_view sv, std::string_view prefix)
-{
+static bool startsWith(std::string_view sv, std::string_view prefix) {
     return sv.size() >= prefix.size() && sv.substr(0, prefix.size()) == prefix;
 }
 
-static std::string_view stripPrefix(std::string_view sv, std::string_view prefix)
-{
+static std::string_view stripPrefix(std::string_view sv, std::string_view prefix) {
     if (startsWith(sv, prefix))
         return sv.substr(prefix.size());
     return sv;
 }
 
 // Trim a string_view in place
-static std::string_view trimView(std::string_view sv)
-{
+static std::string_view trimView(std::string_view sv) {
     auto is_space = [](char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\r'; };
     while (!sv.empty() && is_space(sv.front()))
         sv.remove_prefix(1);
@@ -250,16 +227,14 @@ static std::string_view trimView(std::string_view sv)
     return sv;
 }
 
-static std::string stripQuotes(std::string_view sv)
-{
+static std::string stripQuotes(std::string_view sv) {
     std::string s = trim(sv);
     if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
         return s.substr(1, s.size() - 2);
     return s;
 }
 
-static std::string stripParamName(std::string_view sv)
-{
+static std::string stripParamName(std::string_view sv) {
     std::string param = trim(sv);
     if (param.empty() || param == "void")
         return param;
@@ -279,8 +254,7 @@ static std::string stripParamName(std::string_view sv)
 }
 
 // Extract content between parentheses: "FOO(a, b, c)" -> "a, b, c"
-static std::optional<std::string> extractParens(std::string_view line, std::string_view macro)
-{
+static std::optional<std::string> extractParens(std::string_view line, std::string_view macro) {
     if (!startsWith(line, macro))
         return std::nullopt;
     line = stripPrefix(line, macro);
@@ -294,8 +268,7 @@ static std::optional<std::string> extractParens(std::string_view line, std::stri
     int depth = 1;
     bool in_quotes = false;
     size_t i = 0;
-    for (; i < line.size() && depth > 0; ++i)
-    {
+    for (; i < line.size() && depth > 0; ++i) {
         if (line[i] == '"' && (i == 0 || line[i - 1] != '\\'))
             in_quotes = !in_quotes;
         else if (!in_quotes && line[i] == '(')
@@ -312,12 +285,10 @@ static std::optional<std::string> extractParens(std::string_view line, std::stri
 // Parser
 //===----------------------------------------------------------------------===//
 
-static void parseRtFunc(ParseState &state, const std::string &args)
-{
+static void parseRtFunc(ParseState &state, const std::string &args) {
     // RT_FUNC(id, c_symbol, canonical, signature [, lowering])
     auto parts = split(args, ',');
-    if (parts.size() < 4 || parts.size() > 5)
-    {
+    if (parts.size() < 4 || parts.size() > 5) {
         state.error(
             "RT_FUNC requires 4-5 arguments: id, c_symbol, canonical, signature [, lowering]");
     }
@@ -349,12 +320,10 @@ static void parseRtFunc(ParseState &state, const std::string &args)
     state.functions.push_back(std::move(func));
 }
 
-static void parseRtAlias(ParseState &state, const std::string &args)
-{
+static void parseRtAlias(ParseState &state, const std::string &args) {
     // RT_ALIAS(canonical, target_id)
     auto parts = split(args, ',');
-    if (parts.size() != 2)
-    {
+    if (parts.size() != 2) {
         state.error("RT_ALIAS requires 2 arguments: canonical, target_id");
     }
 
@@ -378,15 +347,13 @@ static void parseRtAlias(ParseState &state, const std::string &args)
     state.aliases.push_back(std::move(alias));
 }
 
-static void parseRtClassBegin(ParseState &state, const std::string &args)
-{
+static void parseRtClassBegin(ParseState &state, const std::string &args) {
     // RT_CLASS_BEGIN(name, type_id, layout, ctor_id)
     if (state.current_class.has_value())
         state.error("Nested RT_CLASS_BEGIN not allowed");
 
     auto parts = split(args, ',');
-    if (parts.size() != 4)
-    {
+    if (parts.size() != 4) {
         state.error("RT_CLASS_BEGIN requires 4 arguments: name, type_id, layout, ctor_id");
     }
 
@@ -397,8 +364,7 @@ static void parseRtClassBegin(ParseState &state, const std::string &args)
     cls.ctor_id = parts[3];
 
     // Remove quotes from all string fields
-    auto stripQuotes = [](std::string &s)
-    {
+    auto stripQuotes = [](std::string &s) {
         if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
             s = s.substr(1, s.size() - 2);
     };
@@ -409,15 +375,13 @@ static void parseRtClassBegin(ParseState &state, const std::string &args)
     state.current_class = std::move(cls);
 }
 
-static void parseRtProp(ParseState &state, const std::string &args)
-{
+static void parseRtProp(ParseState &state, const std::string &args) {
     // RT_PROP(name, type, getter_id, setter_id_or_none)
     if (!state.current_class.has_value())
         state.error("RT_PROP outside of RT_CLASS_BEGIN/END block");
 
     auto parts = split(args, ',');
-    if (parts.size() != 4)
-    {
+    if (parts.size() != 4) {
         state.error("RT_PROP requires 4 arguments: name, type, getter_id, setter_id");
     }
 
@@ -428,8 +392,7 @@ static void parseRtProp(ParseState &state, const std::string &args)
     prop.setter_id = parts[3];
 
     // Remove quotes from all string fields
-    auto stripQuotes = [](std::string &s)
-    {
+    auto stripQuotes = [](std::string &s) {
         if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
             s = s.substr(1, s.size() - 2);
     };
@@ -441,15 +404,13 @@ static void parseRtProp(ParseState &state, const std::string &args)
     state.current_class->props.push_back(std::move(prop));
 }
 
-static void parseRtMethod(ParseState &state, const std::string &args)
-{
+static void parseRtMethod(ParseState &state, const std::string &args) {
     // RT_METHOD(name, signature, target_id)
     if (!state.current_class.has_value())
         state.error("RT_METHOD outside of RT_CLASS_BEGIN/END block");
 
     auto parts = split(args, ',');
-    if (parts.size() != 3)
-    {
+    if (parts.size() != 3) {
         state.error("RT_METHOD requires 3 arguments: name, signature, target_id");
     }
 
@@ -459,8 +420,7 @@ static void parseRtMethod(ParseState &state, const std::string &args)
     method.target_id = parts[2];
 
     // Remove quotes from all string fields
-    auto stripQuotes = [](std::string &s)
-    {
+    auto stripQuotes = [](std::string &s) {
         if (s.size() >= 2 && s.front() == '"' && s.back() == '"')
             s = s.substr(1, s.size() - 2);
     };
@@ -471,8 +431,7 @@ static void parseRtMethod(ParseState &state, const std::string &args)
     state.current_class->methods.push_back(std::move(method));
 }
 
-static void parseRtClassEnd(ParseState &state)
-{
+static void parseRtClassEnd(ParseState &state) {
     if (!state.current_class.has_value())
         state.error("RT_CLASS_END without matching RT_CLASS_BEGIN");
 
@@ -480,8 +439,7 @@ static void parseRtClassEnd(ParseState &state)
     state.current_class.reset();
 }
 
-static void parseLine(ParseState &state, const std::string &line)
-{
+static void parseLine(ParseState &state, const std::string &line) {
     std::string trimmed = trim(line);
 
     // Skip empty lines and comments
@@ -489,57 +447,40 @@ static void parseLine(ParseState &state, const std::string &line)
         return;
 
     // Parse macros
-    if (auto args = extractParens(trimmed, "RT_FUNC"))
-    {
+    if (auto args = extractParens(trimmed, "RT_FUNC")) {
         parseRtFunc(state, *args);
-    }
-    else if (auto args = extractParens(trimmed, "RT_ALIAS"))
-    {
+    } else if (auto args = extractParens(trimmed, "RT_ALIAS")) {
         parseRtAlias(state, *args);
-    }
-    else if (auto args = extractParens(trimmed, "RT_CLASS_BEGIN"))
-    {
+    } else if (auto args = extractParens(trimmed, "RT_CLASS_BEGIN")) {
         parseRtClassBegin(state, *args);
-    }
-    else if (auto args = extractParens(trimmed, "RT_PROP"))
-    {
+    } else if (auto args = extractParens(trimmed, "RT_PROP")) {
         parseRtProp(state, *args);
-    }
-    else if (auto args = extractParens(trimmed, "RT_METHOD"))
-    {
+    } else if (auto args = extractParens(trimmed, "RT_METHOD")) {
         parseRtMethod(state, *args);
-    }
-    else if (trimmed == "RT_CLASS_END()")
-    {
+    } else if (trimmed == "RT_CLASS_END()") {
         parseRtClassEnd(state);
-    }
-    else
-    {
+    } else {
         state.error("Unknown directive: " + trimmed);
     }
 }
 
-static ParseState parseFile(const fs::path &path)
-{
+static ParseState parseFile(const fs::path &path) {
     ParseState state;
     state.filename = path.string();
 
     std::ifstream in(path);
-    if (!in)
-    {
+    if (!in) {
         std::cerr << "error: cannot open " << path << "\n";
         std::exit(1);
     }
 
     std::string line;
-    while (std::getline(in, line))
-    {
+    while (std::getline(in, line)) {
         state.line_num++;
         parseLine(state, line);
     }
 
-    if (state.current_class.has_value())
-    {
+    if (state.current_class.has_value()) {
         state.error("Unclosed RT_CLASS_BEGIN (missing RT_CLASS_END)");
     }
 
@@ -551,8 +492,7 @@ static ParseState parseFile(const fs::path &path)
 //===----------------------------------------------------------------------===//
 
 /// @brief Map IL type to C type for DirectHandler template.
-static std::string ilTypeToCType(const std::string &ilType)
-{
+static std::string ilTypeToCType(const std::string &ilType) {
     if (ilType == "str")
         return "rt_string";
     if (ilType == "i64")
@@ -578,8 +518,7 @@ static std::string ilTypeToCType(const std::string &ilType)
 }
 
 /// @brief Map IL type to signature string format.
-static std::string ilTypeToSigType(const std::string &ilType)
-{
+static std::string ilTypeToSigType(const std::string &ilType) {
     // Handle optional return types (trailing '?') — at the IL level, optional
     // reference types keep their inner type (null pointer = none).
     if (!ilType.empty() && ilType.back() == '?')
@@ -595,20 +534,17 @@ static std::string ilTypeToSigType(const std::string &ilType)
 }
 
 /// @brief Parse a signature like "str(i64,str)" into return type and arg types.
-struct ParsedSignature
-{
+struct ParsedSignature {
     std::string returnType;
     std::vector<std::string> argTypes;
 };
 
-static ParsedSignature parseSignature(const std::string &sig)
-{
+static ParsedSignature parseSignature(const std::string &sig) {
     ParsedSignature result;
 
     // Find the opening paren
     size_t parenPos = sig.find('(');
-    if (parenPos == std::string::npos)
-    {
+    if (parenPos == std::string::npos) {
         result.returnType = sig;
         return result;
     }
@@ -617,31 +553,26 @@ static ParsedSignature parseSignature(const std::string &sig)
 
     // Extract args between parens
     size_t closePos = sig.rfind(')');
-    if (closePos == std::string::npos || closePos <= parenPos + 1)
-    {
+    if (closePos == std::string::npos || closePos <= parenPos + 1) {
         return result; // No args
     }
 
     std::string argsStr = sig.substr(parenPos + 1, closePos - parenPos - 1);
-    if (argsStr.empty())
-    {
+    if (argsStr.empty()) {
         return result; // Empty args "()"
     }
 
     // Split by comma
     size_t start = 0;
-    for (size_t i = 0; i <= argsStr.size(); ++i)
-    {
-        if (i == argsStr.size() || argsStr[i] == ',')
-        {
+    for (size_t i = 0; i <= argsStr.size(); ++i) {
+        if (i == argsStr.size() || argsStr[i] == ',') {
             std::string arg = argsStr.substr(start, i - start);
             // Trim whitespace
             while (!arg.empty() && (arg.front() == ' ' || arg.front() == '\t'))
                 arg.erase(0, 1);
             while (!arg.empty() && (arg.back() == ' ' || arg.back() == '\t'))
                 arg.pop_back();
-            if (!arg.empty())
-            {
+            if (!arg.empty()) {
                 result.argTypes.push_back(arg);
             }
             start = i + 1;
@@ -655,19 +586,16 @@ static ParsedSignature parseSignature(const std::string &sig)
 // Runtime signature helpers
 //===----------------------------------------------------------------------===//
 
-static std::vector<std::string> parseRtSigNames(const fs::path &path)
-{
+static std::vector<std::string> parseRtSigNames(const fs::path &path) {
     std::ifstream in(path);
-    if (!in)
-    {
+    if (!in) {
         std::cerr << "error: cannot read " << path << "\n";
         std::exit(1);
     }
 
     std::vector<std::string> names;
     std::string line;
-    while (std::getline(in, line))
-    {
+    while (std::getline(in, line)) {
         std::string_view view = trimView(line);
         if (!startsWith(view, "SIG"))
             continue;
@@ -683,11 +611,9 @@ static std::vector<std::string> parseRtSigNames(const fs::path &path)
     return names;
 }
 
-static std::vector<std::string> parseRtSigSymbols(const fs::path &path)
-{
+static std::vector<std::string> parseRtSigSymbols(const fs::path &path) {
     std::ifstream in(path);
-    if (!in)
-    {
+    if (!in) {
         std::cerr << "error: cannot read " << path << "\n";
         std::exit(1);
     }
@@ -695,8 +621,7 @@ static std::vector<std::string> parseRtSigSymbols(const fs::path &path)
     std::string contents((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     const std::string marker = "kRtSigSymbolNames";
     size_t start = contents.find(marker);
-    if (start == std::string::npos)
-    {
+    if (start == std::string::npos) {
         return {};
     }
 
@@ -711,13 +636,10 @@ static std::vector<std::string> parseRtSigSymbols(const fs::path &path)
     std::vector<std::string> symbols;
     std::string current;
     bool in_quotes = false;
-    for (size_t i = 0; i < block.size(); ++i)
-    {
+    for (size_t i = 0; i < block.size(); ++i) {
         char c = block[i];
-        if (c == '"' && (i == 0 || block[i - 1] != '\\'))
-        {
-            if (in_quotes)
-            {
+        if (c == '"' && (i == 0 || block[i - 1] != '\\')) {
+            if (in_quotes) {
                 symbols.push_back(current);
                 current.clear();
             }
@@ -730,72 +652,60 @@ static std::vector<std::string> parseRtSigSymbols(const fs::path &path)
     return symbols;
 }
 
-static std::unordered_map<std::string, std::string> buildRtSigMap(const fs::path &runtimeDir)
-{
+static std::unordered_map<std::string, std::string> buildRtSigMap(const fs::path &runtimeDir) {
     const fs::path sigsPath = runtimeDir / "RuntimeSigs.def";
     const fs::path dataPath = runtimeDir / "RuntimeSignaturesData.hpp";
     std::vector<std::string> sigNames = parseRtSigNames(sigsPath);
     std::vector<std::string> sigSymbols = parseRtSigSymbols(dataPath);
 
-    if (sigNames.size() != sigSymbols.size())
-    {
+    if (sigNames.size() != sigSymbols.size()) {
         std::cerr << "error: RuntimeSigs.def and RuntimeSignaturesData.hpp mismatch\n";
         std::exit(1);
     }
 
     std::unordered_map<std::string, std::string> result;
-    for (size_t i = 0; i < sigNames.size(); ++i)
-    {
+    for (size_t i = 0; i < sigNames.size(); ++i) {
         result[sigSymbols[i]] = "RtSig::" + sigNames[i];
     }
     return result;
 }
 
-static std::string buildSigSpecExpr(const std::string &sigId)
-{
+static std::string buildSigSpecExpr(const std::string &sigId) {
     return "data::kRtSigSpecs[static_cast<std::size_t>(" + sigId + ")]";
 }
 
-static std::string stripComments(const std::string &input)
-{
+static std::string stripComments(const std::string &input) {
     std::string out;
     out.reserve(input.size());
     bool in_line = false;
     bool in_block = false;
 
-    for (size_t i = 0; i < input.size(); ++i)
-    {
+    for (size_t i = 0; i < input.size(); ++i) {
         char c = input[i];
         char next = (i + 1 < input.size()) ? input[i + 1] : '\0';
 
-        if (in_line)
-        {
-            if (c == '\n')
-            {
+        if (in_line) {
+            if (c == '\n') {
                 in_line = false;
                 out.push_back(c);
             }
             continue;
         }
 
-        if (in_block)
-        {
-            if (c == '*' && next == '/')
-            {
+        if (in_block) {
+            if (c == '*' && next == '/') {
                 in_block = false;
                 ++i;
             }
             continue;
         }
 
-        if (c == '/' && next == '/')
-        {
+        if (c == '/' && next == '/') {
             in_line = true;
             ++i;
             continue;
         }
-        if (c == '/' && next == '*')
-        {
+        if (c == '/' && next == '*') {
             in_block = true;
             ++i;
             continue;
@@ -806,13 +716,11 @@ static std::string stripComments(const std::string &input)
     return out;
 }
 
-static std::string stripPreprocessor(const std::string &input)
-{
+static std::string stripPreprocessor(const std::string &input) {
     std::ostringstream out;
     std::istringstream in(input);
     std::string line;
-    while (std::getline(in, line))
-    {
+    while (std::getline(in, line)) {
         std::string_view trimmed = trimView(line);
         if (!trimmed.empty() && trimmed.front() == '#')
             continue;
@@ -822,16 +730,14 @@ static std::string stripPreprocessor(const std::string &input)
 }
 
 static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
-    const fs::path &runtimeDir)
-{
+    const fs::path &runtimeDir) {
     std::unordered_map<std::string, CSignature> result;
     if (!fs::exists(runtimeDir))
         return result;
 
     std::regex proto(R"(([\w\s\*]+?)\s+(rt_[A-Za-z0-9_]+)\s*\(([^;{}]*)\)\s*;)");
 
-    for (const auto &entry : fs::recursive_directory_iterator(runtimeDir))
-    {
+    for (const auto &entry : fs::recursive_directory_iterator(runtimeDir)) {
         if (!entry.is_regular_file())
             continue;
         const fs::path path = entry.path();
@@ -847,8 +753,8 @@ static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
         contents = stripComments(contents);
         contents = stripPreprocessor(contents);
 
-        for (std::sregex_iterator it(contents.begin(), contents.end(), proto), end; it != end; ++it)
-        {
+        for (std::sregex_iterator it(contents.begin(), contents.end(), proto), end; it != end;
+             ++it) {
             std::string retType = trim((*it)[1].str());
             std::string funcName = (*it)[2].str();
             std::string argsStr = (*it)[3].str();
@@ -859,8 +765,7 @@ static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
             CSignature sig;
             sig.returnType = retType;
             std::vector<std::string> args = splitTopLevel(argsStr, ',');
-            for (const auto &arg : args)
-            {
+            for (const auto &arg : args) {
                 std::string type = stripParamName(arg);
                 if (type.empty() || type == "void")
                     continue;
@@ -878,16 +783,14 @@ static std::unordered_map<std::string, CSignature> loadRuntimeCSignatures(
 // Code Generation
 //===----------------------------------------------------------------------===//
 
-struct RuntimeEntry
-{
+struct RuntimeEntry {
     std::string name;
     std::string c_symbol;
     std::string signature;
     std::string lowering; // "always" or "" (default: manual)
 };
 
-static std::string fileHeader(const std::string &filename, const std::string &purpose)
-{
+static std::string fileHeader(const std::string &filename, const std::string &purpose) {
     std::ostringstream out;
     out << "//===----------------------------------------------------------------------===//\n";
     out << "//\n";
@@ -903,22 +806,18 @@ static std::string fileHeader(const std::string &filename, const std::string &pu
     return out.str();
 }
 
-static std::string buildDirectHandlerExpr(const std::string &c_symbol, const CSignature &sig)
-{
+static std::string buildDirectHandlerExpr(const std::string &c_symbol, const CSignature &sig) {
     std::string args = "&" + c_symbol + ", " + sig.returnType;
-    for (const auto &arg : sig.argTypes)
-    {
+    for (const auto &arg : sig.argTypes) {
         args += ", " + arg;
     }
     return "&DirectHandler<" + args + ">::invoke";
 }
 
 static std::string buildConsumingStringHandlerExpr(const std::string &c_symbol,
-                                                   const CSignature &sig)
-{
+                                                   const CSignature &sig) {
     std::string args = "&" + c_symbol + ", " + sig.returnType;
-    for (const auto &arg : sig.argTypes)
-    {
+    for (const auto &arg : sig.argTypes) {
         args += ", " + arg;
     }
     return "&ConsumingStringHandler<" + args + ">::invoke";
@@ -927,8 +826,7 @@ static std::string buildConsumingStringHandlerExpr(const std::string &c_symbol,
 /// @brief Check if a runtime function consumes its string arguments.
 /// @details Functions like rt_str_concat release their string arguments after use,
 ///          so the VM must retain them before the call to prevent use-after-free.
-static bool needsConsumingStringHandler(const std::string &c_symbol)
-{
+static bool needsConsumingStringHandler(const std::string &c_symbol) {
     // rt_str_concat releases both of its string arguments after use
     return c_symbol == "rt_str_concat";
 }
@@ -936,23 +834,18 @@ static bool needsConsumingStringHandler(const std::string &c_symbol)
 static DescriptorFields buildDefaultDescriptor(
     const RuntimeEntry &entry,
     const std::unordered_map<std::string, CSignature> &cSignatures,
-    const std::unordered_map<std::string, std::string> &rtSigMap)
-{
+    const std::unordered_map<std::string, std::string> &rtSigMap) {
     DescriptorFields fields;
 
     auto sigIt = rtSigMap.find(entry.c_symbol);
-    if (sigIt != rtSigMap.end())
-    {
+    if (sigIt != rtSigMap.end()) {
         fields.signatureId = sigIt->second;
         fields.spec = buildSigSpecExpr(fields.signatureId);
-    }
-    else
-    {
+    } else {
         fields.signatureId = "std::nullopt";
         ParsedSignature parsed = parseSignature(entry.signature);
         std::string sigStr = ilTypeToSigType(parsed.returnType) + "(";
-        for (size_t i = 0; i < parsed.argTypes.size(); ++i)
-        {
+        for (size_t i = 0; i < parsed.argTypes.size(); ++i) {
             if (i > 0)
                 sigStr += ", ";
             sigStr += ilTypeToSigType(parsed.argTypes[i]);
@@ -963,14 +856,11 @@ static DescriptorFields buildDefaultDescriptor(
 
     auto cSigIt = cSignatures.find(entry.c_symbol);
     bool useConsumingHandler = needsConsumingStringHandler(entry.c_symbol);
-    if (cSigIt != cSignatures.end())
-    {
+    if (cSigIt != cSignatures.end()) {
         fields.handler = useConsumingHandler
                              ? buildConsumingStringHandlerExpr(entry.c_symbol, cSigIt->second)
                              : buildDirectHandlerExpr(entry.c_symbol, cSigIt->second);
-    }
-    else
-    {
+    } else {
         ParsedSignature parsed = parseSignature(entry.signature);
         CSignature fallback;
         fallback.returnType = ilTypeToCType(parsed.returnType);
@@ -991,8 +881,7 @@ static DescriptorFields buildDefaultDescriptor(
 static void emitDescriptorRow(std::ostream &out,
                               const std::string &name,
                               const DescriptorFields &fields,
-                              int indent = 4)
-{
+                              int indent = 4) {
     std::string pad(static_cast<size_t>(indent), ' ');
     out << pad << "DescriptorRow{\"" << name << "\",\n";
     out << pad << "              " << fields.signatureId << ",\n";
@@ -1004,12 +893,10 @@ static void emitDescriptorRow(std::ostream &out,
     out << pad << "              " << fields.trapClass << "},\n";
 }
 
-static void generateNameMap(const ParseState &state, const fs::path &outDir)
-{
+static void generateNameMap(const ParseState &state, const fs::path &outDir) {
     fs::path outPath = outDir / "RuntimeNameMap.inc";
     std::ofstream out(outPath);
-    if (!out)
-    {
+    if (!out) {
         std::cerr << "error: cannot write " << outPath << "\n";
         std::exit(1);
     }
@@ -1018,17 +905,14 @@ static void generateNameMap(const ParseState &state, const fs::path &outDir)
                       "Canonical Viper.* to C rt_* symbol mapping for native codegen.");
 
     // Emit primary mappings
-    for (const auto &func : state.functions)
-    {
+    for (const auto &func : state.functions) {
         out << "RUNTIME_NAME_ALIAS(\"" << func.canonical << "\", \"" << func.c_symbol << "\")\n";
     }
 
     // Emit aliases
-    for (const auto &alias : state.aliases)
-    {
+    for (const auto &alias : state.aliases) {
         auto it = state.func_by_id.find(alias.target_id);
-        if (it != state.func_by_id.end())
-        {
+        if (it != state.func_by_id.end()) {
             const auto &target = state.functions[it->second];
             out << "RUNTIME_NAME_ALIAS(\"" << alias.canonical << "\", \"" << target.c_symbol
                 << "\")\n";
@@ -1038,40 +922,31 @@ static void generateNameMap(const ParseState &state, const fs::path &outDir)
     std::cout << "  Generated " << outPath << "\n";
 }
 
-static void generateClasses(const ParseState &state, const fs::path &outDir)
-{
+static void generateClasses(const ParseState &state, const fs::path &outDir) {
     fs::path outPath = outDir / "RuntimeClasses.inc";
     std::ofstream out(outPath);
-    if (!out)
-    {
+    if (!out) {
         std::cerr << "error: cannot write " << outPath << "\n";
         std::exit(1);
     }
 
     out << fileHeader("RuntimeClasses.inc", "Runtime class catalog with properties and methods.");
 
-    for (const auto &cls : state.classes)
-    {
+    for (const auto &cls : state.classes) {
         out << "RUNTIME_CLASS(\n";
         out << "    \"" << cls.name << "\",\n";
         out << "    RTCLS_" << cls.type_id << ",\n";
         out << "    \"" << cls.layout << "\",\n";
 
         // Constructor - resolve to canonical name
-        if (cls.ctor_id.empty() || cls.ctor_id == "none")
-        {
+        if (cls.ctor_id.empty() || cls.ctor_id == "none") {
             out << "    \"\",\n";
-        }
-        else
-        {
+        } else {
             // Look up canonical name from id
             auto it = state.func_by_id.find(cls.ctor_id);
-            if (it != state.func_by_id.end())
-            {
+            if (it != state.func_by_id.end()) {
                 out << "    \"" << state.functions[it->second].canonical << "\",\n";
-            }
-            else
-            {
+            } else {
                 // Assume it's already a canonical name
                 out << "    \"" << cls.ctor_id << "\",\n";
             }
@@ -1079,8 +954,7 @@ static void generateClasses(const ParseState &state, const fs::path &outDir)
 
         // Properties
         out << "    RUNTIME_PROPS(";
-        for (size_t i = 0; i < cls.props.size(); ++i)
-        {
+        for (size_t i = 0; i < cls.props.size(); ++i) {
             const auto &prop = cls.props[i];
             if (i > 0)
                 out << ",\n                  ";
@@ -1088,24 +962,19 @@ static void generateClasses(const ParseState &state, const fs::path &outDir)
             // Resolve getter canonical name
             std::string getter_canonical = prop.getter_id;
             auto git = state.func_by_id.find(prop.getter_id);
-            if (git != state.func_by_id.end())
-            {
+            if (git != state.func_by_id.end()) {
                 getter_canonical = state.functions[git->second].canonical;
             }
 
             out << "RUNTIME_PROP(\"" << prop.name << "\", \"" << prop.type << "\", \""
                 << getter_canonical << "\", ";
 
-            if (prop.setter_id == "none" || prop.setter_id.empty())
-            {
+            if (prop.setter_id == "none" || prop.setter_id.empty()) {
                 out << "nullptr";
-            }
-            else
-            {
+            } else {
                 std::string setter_canonical = prop.setter_id;
                 auto sit = state.func_by_id.find(prop.setter_id);
-                if (sit != state.func_by_id.end())
-                {
+                if (sit != state.func_by_id.end()) {
                     setter_canonical = state.functions[sit->second].canonical;
                 }
                 out << "\"" << setter_canonical << "\"";
@@ -1116,8 +985,7 @@ static void generateClasses(const ParseState &state, const fs::path &outDir)
 
         // Methods
         out << "    RUNTIME_METHODS(";
-        for (size_t i = 0; i < cls.methods.size(); ++i)
-        {
+        for (size_t i = 0; i < cls.methods.size(); ++i) {
             const auto &method = cls.methods[i];
             if (i > 0)
                 out << ",\n                    ";
@@ -1125,8 +993,7 @@ static void generateClasses(const ParseState &state, const fs::path &outDir)
             // Resolve target canonical name
             std::string target_canonical = method.target_id;
             auto mit = state.func_by_id.find(method.target_id);
-            if (mit != state.func_by_id.end())
-            {
+            if (mit != state.func_by_id.end()) {
                 target_canonical = state.functions[mit->second].canonical;
             }
 
@@ -1141,14 +1008,12 @@ static void generateClasses(const ParseState &state, const fs::path &outDir)
 
 static void generateSignatures(const ParseState &state,
                                const fs::path &outDir,
-                               const fs::path &inputPath)
-{
+                               const fs::path &inputPath) {
     fs::path outPath = outDir / "RuntimeSignatures.inc";
     const fs::path runtimeDir = inputPath.parent_path();
 
     std::ofstream out(outPath);
-    if (!out)
-    {
+    if (!out) {
         std::cerr << "error: cannot write " << outPath << "\n";
         std::exit(1);
     }
@@ -1166,14 +1031,12 @@ static void generateSignatures(const ParseState &state,
     entries.reserve(state.functions.size() + state.aliases.size());
 
     std::unordered_map<std::string, const RuntimeFunc *> cSymbolToFunc;
-    for (const auto &func : state.functions)
-    {
+    for (const auto &func : state.functions) {
         entries.emplace(func.canonical,
                         RuntimeEntry{func.canonical, func.c_symbol, func.signature, func.lowering});
         cSymbolToFunc[func.c_symbol] = &func;
     }
-    for (const auto &alias : state.aliases)
-    {
+    for (const auto &alias : state.aliases) {
         auto it = state.func_by_id.find(alias.target_id);
         if (it == state.func_by_id.end())
             continue;
@@ -1191,8 +1054,7 @@ static void generateSignatures(const ParseState &state,
     for (const auto &alias : state.aliases)
         orderedNames.push_back(alias.canonical);
 
-    for (const auto &name : orderedNames)
-    {
+    for (const auto &name : orderedNames) {
         auto entryIt = entries.find(name);
         if (entryIt == entries.end())
             continue;
@@ -1209,11 +1071,9 @@ static void generateSignatures(const ParseState &state,
 static std::unordered_set<std::string> knownClassNames;
 
 /// @brief Map IL return type to Zia types:: expression.
-static std::string ilTypeToZiaType(const std::string &ilType, const std::string &canonical)
-{
+static std::string ilTypeToZiaType(const std::string &ilType, const std::string &canonical) {
     // Handle optional return types (trailing '?')
-    if (!ilType.empty() && ilType.back() == '?')
-    {
+    if (!ilType.empty() && ilType.back() == '?') {
         std::string inner = ilType.substr(0, ilType.size() - 1);
         return "types::optional(" + ilTypeToZiaType(inner, canonical) + ")";
     }
@@ -1228,8 +1088,7 @@ static std::string ilTypeToZiaType(const std::string &ilType, const std::string 
         return "types::boolean()";
     if (ilType == "void")
         return "types::voidType()";
-    if (ilType == "obj" || ilType == "ptr")
-    {
+    if (ilType == "obj" || ilType == "ptr") {
         // Explicit return type overrides for functions that return objects
         // from a different namespace than their own.
         static const std::unordered_map<std::string, std::string> returnTypeOverrides = {
@@ -1270,29 +1129,25 @@ static std::string ilTypeToZiaType(const std::string &ilType, const std::string 
         // e.g., "Viper.GUI.App.New" -> runtimeClass("Viper.GUI.App")
         // e.g., "Viper.Graphics.Pixels.LoadBmp" -> runtimeClass("Viper.Graphics.Pixels")
         size_t lastDot = canonical.rfind('.');
-        if (lastDot != std::string::npos)
-        {
+        if (lastDot != std::string::npos) {
             std::string method = canonical.substr(lastDot + 1);
             // Check for factory method patterns (exact matches or prefixes)
             bool isFactory = (method == "New" || method == "Clone" || method == "Copy" ||
                               method == "Zero" || method == "Range");
             // Also check for prefix patterns like Open*, Load*, From*, etc.
-            if (!isFactory)
-            {
+            if (!isFactory) {
                 isFactory = (method.rfind("Open", 0) == 0 || method.rfind("Load", 0) == 0 ||
                              method.rfind("From", 0) == 0 || method.rfind("Parse", 0) == 0 ||
                              method.rfind("Read", 0) == 0 || method.rfind("Decode", 0) == 0 ||
                              method.rfind("Create", 0) == 0);
             }
-            if (isFactory)
-            {
+            if (isFactory) {
                 std::string className = canonical.substr(0, lastDot);
                 return "types::runtimeClass(\"" + className + "\")";
             }
             // For any method on a known runtime class that returns obj,
             // infer the class type (e.g., Vec2.Add returns Vec2).
-            if (!knownClassNames.empty())
-            {
+            if (!knownClassNames.empty()) {
                 std::string className = canonical.substr(0, lastDot);
                 if (knownClassNames.count(className))
                     return "types::runtimeClass(\"" + className + "\")";
@@ -1304,8 +1159,7 @@ static std::string ilTypeToZiaType(const std::string &ilType, const std::string 
     return "types::ptr()";
 }
 
-static void generateZiaExterns(const ParseState &state, const fs::path &outDir)
-{
+static void generateZiaExterns(const ParseState &state, const fs::path &outDir) {
     // Populate known class names for type inference
     knownClassNames.clear();
     for (const auto &cls : state.classes)
@@ -1313,8 +1167,7 @@ static void generateZiaExterns(const ParseState &state, const fs::path &outDir)
 
     fs::path outPath = outDir / "ZiaRuntimeExterns.inc";
     std::ofstream out(outPath);
-    if (!out)
-    {
+    if (!out) {
         std::cerr << "error: cannot write " << outPath << "\n";
         std::exit(1);
     }
@@ -1329,8 +1182,7 @@ static void generateZiaExterns(const ParseState &state, const fs::path &outDir)
     out << "// " << std::string(75, '=') << "\n";
     out << "// RUNTIME CLASS TYPE REGISTRATIONS\n";
     out << "// " << std::string(75, '=') << "\n";
-    for (const auto &cls : state.classes)
-    {
+    for (const auto &cls : state.classes) {
         out << "typeRegistry_[\"" << cls.name << "\"] = types::runtimeClass(\"" << cls.name
             << "\");\n";
     }
@@ -1339,27 +1191,23 @@ static void generateZiaExterns(const ParseState &state, const fs::path &outDir)
     // Group functions by namespace for readability
     std::map<std::string, std::vector<const RuntimeFunc *>> byNamespace;
 
-    for (const auto &func : state.functions)
-    {
+    for (const auto &func : state.functions) {
         // Extract namespace: "Viper.GUI.App.New" -> "Viper.GUI"
         size_t firstDot = func.canonical.find('.');
         size_t secondDot = func.canonical.find('.', firstDot + 1);
         std::string ns = "Other";
-        if (secondDot != std::string::npos)
-        {
+        if (secondDot != std::string::npos) {
             ns = func.canonical.substr(0, secondDot);
         }
         byNamespace[ns].push_back(&func);
     }
 
-    for (const auto &[ns, funcs] : byNamespace)
-    {
+    for (const auto &[ns, funcs] : byNamespace) {
         out << "// " << std::string(75, '=') << "\n";
         out << "// " << ns << "\n";
         out << "// " << std::string(75, '=') << "\n";
 
-        for (const auto *func : funcs)
-        {
+        for (const auto *func : funcs) {
             ParsedSignature sig = parseSignature(func->signature);
             std::string ziaType = ilTypeToZiaType(sig.returnType, func->canonical);
             out << "defineExternFunction(\"" << func->canonical << "\", " << ziaType << ");\n";
@@ -1368,17 +1216,14 @@ static void generateZiaExterns(const ParseState &state, const fs::path &outDir)
     }
 
     // Also emit aliases
-    if (!state.aliases.empty())
-    {
+    if (!state.aliases.empty()) {
         out << "// " << std::string(75, '=') << "\n";
         out << "// ALIASES\n";
         out << "// " << std::string(75, '=') << "\n";
 
-        for (const auto &alias : state.aliases)
-        {
+        for (const auto &alias : state.aliases) {
             auto it = state.func_by_id.find(alias.target_id);
-            if (it != state.func_by_id.end())
-            {
+            if (it != state.func_by_id.end()) {
                 const auto &target = state.functions[it->second];
                 ParsedSignature sig = parseSignature(target.signature);
                 std::string ziaType = ilTypeToZiaType(sig.returnType, alias.canonical);
@@ -1394,12 +1239,10 @@ static void generateZiaExterns(const ParseState &state, const fs::path &outDir)
 /// @brief Convert a canonical name to a C++ constant identifier.
 /// @details "Viper.String.Concat" -> "kStringConcat"
 ///          "Viper.Time.DateTime.Now" -> "kTimeDateTimeNow"
-static std::string canonicalToIdentifier(const std::string &canonical)
-{
+static std::string canonicalToIdentifier(const std::string &canonical) {
     // Skip "Viper." prefix
     std::string name = canonical;
-    if (name.substr(0, 6) == "Viper.")
-    {
+    if (name.substr(0, 6) == "Viper.") {
         name = name.substr(6);
     }
 
@@ -1407,25 +1250,16 @@ static std::string canonicalToIdentifier(const std::string &canonical)
     std::string result = "k";
     bool capitalizeNext = true;
 
-    for (char c : name)
-    {
-        if (c == '.')
-        {
+    for (char c : name) {
+        if (c == '.') {
             capitalizeNext = true;
-        }
-        else if (c == '_')
-        {
+        } else if (c == '_') {
             capitalizeNext = true;
-        }
-        else
-        {
-            if (capitalizeNext)
-            {
+        } else {
+            if (capitalizeNext) {
                 result += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
                 capitalizeNext = false;
-            }
-            else
-            {
+            } else {
                 result += c;
             }
         }
@@ -1434,12 +1268,10 @@ static std::string canonicalToIdentifier(const std::string &canonical)
     return result;
 }
 
-static void generateFrontendNames(const ParseState &state, const fs::path &outDir)
-{
+static void generateFrontendNames(const ParseState &state, const fs::path &outDir) {
     fs::path outPath = outDir / "RuntimeNames.hpp";
     std::ofstream out(outPath);
-    if (!out)
-    {
+    if (!out) {
         std::cerr << "error: cannot write " << outPath << "\n";
         std::exit(1);
     }
@@ -1466,33 +1298,28 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
     std::map<std::string, std::vector<const RuntimeFunc *>> byNamespace;
     std::set<std::string> emittedIdentifiers; // Track duplicates
 
-    for (const auto &func : state.functions)
-    {
+    for (const auto &func : state.functions) {
         // Extract namespace: "Viper.String.Concat" -> "Viper.String"
         size_t lastDot = func.canonical.rfind('.');
         std::string ns = "Other";
-        if (lastDot != std::string::npos)
-        {
+        if (lastDot != std::string::npos) {
             ns = func.canonical.substr(0, lastDot);
         }
         byNamespace[ns].push_back(&func);
     }
 
-    for (const auto &[ns, funcs] : byNamespace)
-    {
+    for (const auto &[ns, funcs] : byNamespace) {
         out << "// " << std::string(75, '=') << "\n";
         out << "// " << ns << "\n";
         out << "// " << std::string(75, '=') << "\n\n";
 
-        for (const auto *func : funcs)
-        {
+        for (const auto *func : funcs) {
             std::string id = canonicalToIdentifier(func->canonical);
 
             // Handle duplicate identifiers by appending a suffix
             std::string uniqueId = id;
             int suffix = 2;
-            while (emittedIdentifiers.count(uniqueId))
-            {
+            while (emittedIdentifiers.count(uniqueId)) {
                 uniqueId = id + std::to_string(suffix++);
             }
             emittedIdentifiers.insert(uniqueId);
@@ -1504,21 +1331,18 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
     }
 
     // Also emit aliases
-    if (!state.aliases.empty())
-    {
+    if (!state.aliases.empty()) {
         out << "// " << std::string(75, '=') << "\n";
         out << "// ALIASES\n";
         out << "// " << std::string(75, '=') << "\n\n";
 
-        for (const auto &alias : state.aliases)
-        {
+        for (const auto &alias : state.aliases) {
             std::string id = canonicalToIdentifier(alias.canonical);
 
             // Handle duplicate identifiers
             std::string uniqueId = id;
             int suffix = 2;
-            while (emittedIdentifiers.count(uniqueId))
-            {
+            while (emittedIdentifiers.count(uniqueId)) {
                 uniqueId = id + std::to_string(suffix++);
             }
             emittedIdentifiers.insert(uniqueId);
@@ -1538,17 +1362,14 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
 // Main
 //===----------------------------------------------------------------------===//
 
-static void printUsage(const char *prog)
-{
+static void printUsage(const char *prog) {
     std::cerr << "Usage: " << prog << " <input.def> <output_dir>\n";
     std::cerr << "\n";
     std::cerr << "Generates runtime registry .inc files from runtime.def\n";
 }
 
-int main(int argc, char **argv)
-{
-    if (argc != 3)
-    {
+int main(int argc, char **argv) {
+    if (argc != 3) {
         printUsage(argv[0]);
         return 1;
     }
@@ -1556,15 +1377,13 @@ int main(int argc, char **argv)
     fs::path inputPath = argv[1];
     fs::path outputDir = argv[2];
 
-    if (!fs::exists(inputPath))
-    {
+    if (!fs::exists(inputPath)) {
         std::cerr << "error: input file not found: " << inputPath << "\n";
         return 1;
     }
 
     // Create output directory if needed
-    if (!fs::exists(outputDir))
-    {
+    if (!fs::exists(outputDir)) {
         fs::create_directories(outputDir);
     }
 

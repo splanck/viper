@@ -42,8 +42,7 @@ extern double rt_vec3_z(void *v);
  * RayHit3D — result of ray-mesh intersection
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     double distance;
     double point[3];
     double normal[3];
@@ -61,8 +60,7 @@ typedef struct
 #define EPSILON 1e-8
 
 double rt_ray3d_intersect_triangle(
-    void *origin, void *dir, void *v0_obj, void *v1_obj, void *v2_obj)
-{
+    void *origin, void *dir, void *v0_obj, void *v1_obj, void *v2_obj) {
     if (!origin || !dir || !v0_obj || !v1_obj || !v2_obj)
         return -1.0;
 
@@ -121,8 +119,7 @@ double rt_ray3d_intersect_triangle(
 /// @param aabb_min
 /// @param aabb_max
 /// @return Result value.
-double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aabb_max)
-{
+double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aabb_max) {
     if (!origin || !dir || !aabb_min || !aabb_max)
         return -1.0;
 
@@ -139,20 +136,15 @@ double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aa
     double mn[3] = {mnx, mny, mnz};
     double mx[3] = {mxx, mxy, mxz};
 
-    for (int i = 0; i < 3; i++)
-    {
-        if (fabs(d[i]) < EPSILON)
-        {
+    for (int i = 0; i < 3; i++) {
+        if (fabs(d[i]) < EPSILON) {
             if (o[i] < mn[i] || o[i] > mx[i])
                 return -1.0;
-        }
-        else
-        {
+        } else {
             inv[i] = 1.0 / d[i];
             double t1 = (mn[i] - o[i]) * inv[i];
             double t2 = (mx[i] - o[i]) * inv[i];
-            if (t1 > t2)
-            {
+            if (t1 > t2) {
                 double tmp = t1;
                 t1 = t2;
                 t2 = tmp;
@@ -179,8 +171,7 @@ double rt_ray3d_intersect_aabb(void *origin, void *dir, void *aabb_min, void *aa
 /// @param center
 /// @param radius
 /// @return Result value.
-double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double radius)
-{
+double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double radius) {
     if (!origin || !dir || !center)
         return -1.0;
 
@@ -212,8 +203,7 @@ double rt_ray3d_intersect_sphere(void *origin, void *dir, void *center, double r
  * Ray-mesh intersection (iterate triangles, AABB early-out)
  *=========================================================================*/
 
-void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *transform_obj)
-{
+void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *transform_obj) {
     if (!origin || !dir || !mesh_obj)
         return NULL;
 
@@ -232,8 +222,7 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
     int64_t best_tri = -1;
     double best_normal[3] = {0, 1, 0};
 
-    for (uint32_t i = 0; i + 2 < m->index_count; i += 3)
-    {
+    for (uint32_t i = 0; i + 2 < m->index_count; i += 3) {
         uint32_t i0 = m->indices[i], i1 = m->indices[i + 1], i2 = m->indices[i + 2];
         if (i0 >= m->vertex_count || i1 >= m->vertex_count || i2 >= m->vertex_count)
             continue;
@@ -246,10 +235,8 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
                cz = m->vertices[i2].pos[2];
 
         /* If there's a transform, apply it to vertex positions */
-        if (has_transform)
-        {
-            typedef struct
-            {
+        if (has_transform) {
+            typedef struct {
                 double m[16];
             } mat4_view;
 
@@ -297,8 +284,7 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
             continue;
         double t = (e2x * qx + e2y * qy + e2z * qz) * inv_det;
 
-        if (t >= 0.0 && t < best_t)
-        {
+        if (t >= 0.0 && t < best_t) {
             best_t = t;
             best_tri = (int64_t)(i / 3);
             /* Face normal from cross product */
@@ -307,8 +293,7 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
             best_normal[2] = e1x * e2y - e1y * e2x;
             double nlen = sqrt(best_normal[0] * best_normal[0] + best_normal[1] * best_normal[1] +
                                best_normal[2] * best_normal[2]);
-            if (nlen > 1e-8)
-            {
+            if (nlen > 1e-8) {
                 best_normal[0] /= nlen;
                 best_normal[1] /= nlen;
                 best_normal[2] /= nlen;
@@ -343,8 +328,7 @@ void *rt_ray3d_intersect_mesh(void *origin, void *dir, void *mesh_obj, void *tra
 /// @param min_b
 /// @param max_b
 /// @return Result value.
-int8_t rt_aabb3d_overlaps(void *min_a, void *max_a, void *min_b, void *max_b)
-{
+int8_t rt_aabb3d_overlaps(void *min_a, void *max_a, void *min_b, void *max_b) {
     if (!min_a || !max_a || !min_b || !max_b)
         return 0;
 
@@ -356,8 +340,7 @@ int8_t rt_aabb3d_overlaps(void *min_a, void *max_a, void *min_b, void *max_b)
     return (a0 <= b3 && a3 >= b0 && a1 <= b4 && a4 >= b1 && a2 <= b5 && a5 >= b2) ? 1 : 0;
 }
 
-void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b)
-{
+void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b) {
     if (!min_a || !max_a || !min_b || !max_b)
         return rt_vec3_new(0, 0, 0);
 
@@ -379,18 +362,13 @@ void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b)
     double ax = fabs(ox), ay = fabs(oy), az = fabs(oz);
     double ca = (a0 + a3) * 0.5, cb;
 
-    if (ax <= ay && ax <= az)
-    {
+    if (ax <= ay && ax <= az) {
         cb = (b0 + b3) * 0.5;
         return rt_vec3_new(ca < cb ? -ox : ox, 0, 0);
-    }
-    else if (ay <= az)
-    {
+    } else if (ay <= az) {
         cb = (b1 + b4) * 0.5;
         return rt_vec3_new(0, ca < cb ? -oy : oy, 0);
-    }
-    else
-    {
+    } else {
         cb = (b2 + b5) * 0.5;
         return rt_vec3_new(0, 0, ca < cb ? -oz : oz);
     }
@@ -403,21 +381,18 @@ void *rt_aabb3d_penetration(void *min_a, void *max_a, void *min_b, void *max_b)
 /// @brief Perform ray3d hit distance operation.
 /// @param hit
 /// @return Result value.
-double rt_ray3d_hit_distance(void *hit)
-{
+double rt_ray3d_hit_distance(void *hit) {
     return hit ? ((rt_rayhit3d *)hit)->distance : -1.0;
 }
 
-void *rt_ray3d_hit_point(void *hit)
-{
+void *rt_ray3d_hit_point(void *hit) {
     if (!hit)
         return rt_vec3_new(0, 0, 0);
     rt_rayhit3d *h = (rt_rayhit3d *)hit;
     return rt_vec3_new(h->point[0], h->point[1], h->point[2]);
 }
 
-void *rt_ray3d_hit_normal(void *hit)
-{
+void *rt_ray3d_hit_normal(void *hit) {
     if (!hit)
         return rt_vec3_new(0, 1, 0);
     rt_rayhit3d *h = (rt_rayhit3d *)hit;
@@ -427,8 +402,7 @@ void *rt_ray3d_hit_normal(void *hit)
 /// @brief Perform ray3d hit triangle operation.
 /// @param hit
 /// @return Result value.
-int64_t rt_ray3d_hit_triangle(void *hit)
-{
+int64_t rt_ray3d_hit_triangle(void *hit) {
     return hit ? ((rt_rayhit3d *)hit)->triangle_index : -1;
 }
 
@@ -442,8 +416,7 @@ int64_t rt_ray3d_hit_triangle(void *hit)
 /// @param center_b
 /// @param radius_b
 /// @return Result value.
-int8_t rt_sphere3d_overlaps(void *center_a, double radius_a, void *center_b, double radius_b)
-{
+int8_t rt_sphere3d_overlaps(void *center_a, double radius_a, void *center_b, double radius_b) {
     if (!center_a || !center_b)
         return 0;
     double dx = rt_vec3_x(center_b) - rt_vec3_x(center_a);
@@ -454,8 +427,7 @@ int8_t rt_sphere3d_overlaps(void *center_a, double radius_a, void *center_b, dou
     return dist_sq < r_sum * r_sum ? 1 : 0;
 }
 
-void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, double radius_b)
-{
+void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, double radius_b) {
     if (!center_a || !center_b)
         return rt_vec3_new(0, 0, 0);
     double dx = rt_vec3_x(center_b) - rt_vec3_x(center_a);
@@ -470,8 +442,7 @@ void *rt_sphere3d_penetration(void *center_a, double radius_a, void *center_b, d
     return rt_vec3_new(dx * inv_dist * depth, dy * inv_dist * depth, dz * inv_dist * depth);
 }
 
-void *rt_aabb3d_closest_point(void *aabb_min, void *aabb_max, void *point)
-{
+void *rt_aabb3d_closest_point(void *aabb_min, void *aabb_max, void *point) {
     if (!aabb_min || !aabb_max || !point)
         return rt_vec3_new(0, 0, 0);
     double px = rt_vec3_x(point), py = rt_vec3_y(point), pz = rt_vec3_z(point);
@@ -489,8 +460,7 @@ void *rt_aabb3d_closest_point(void *aabb_min, void *aabb_max, void *point)
 /// @param center
 /// @param radius
 /// @return Result value.
-int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, double radius)
-{
+int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, double radius) {
     if (!aabb_min || !aabb_max || !center)
         return 0;
     void *closest = rt_aabb3d_closest_point(aabb_min, aabb_max, center);
@@ -500,8 +470,7 @@ int8_t rt_aabb3d_sphere_overlaps(void *aabb_min, void *aabb_max, void *center, d
     return (dx * dx + dy * dy + dz * dz) < radius * radius ? 1 : 0;
 }
 
-void *rt_segment3d_closest_point(void *seg_a, void *seg_b, void *point)
-{
+void *rt_segment3d_closest_point(void *seg_a, void *seg_b, void *point) {
     if (!seg_a || !seg_b || !point)
         return rt_vec3_new(0, 0, 0);
     double ax = rt_vec3_x(seg_a), ay = rt_vec3_y(seg_a), az = rt_vec3_z(seg_a);
@@ -520,8 +489,7 @@ void *rt_segment3d_closest_point(void *seg_a, void *seg_b, void *point)
 }
 
 int8_t rt_capsule3d_sphere_overlaps(
-    void *cap_a, void *cap_b, double cap_radius, void *sphere_center, double sphere_radius)
-{
+    void *cap_a, void *cap_b, double cap_radius, void *sphere_center, double sphere_radius) {
     if (!cap_a || !cap_b || !sphere_center)
         return 0;
     void *closest = rt_segment3d_closest_point(cap_a, cap_b, sphere_center);
@@ -533,8 +501,7 @@ int8_t rt_capsule3d_sphere_overlaps(
 }
 
 int8_t rt_capsule3d_aabb_overlaps(
-    void *cap_a, void *cap_b, double radius, void *aabb_min, void *aabb_max)
-{
+    void *cap_a, void *cap_b, double radius, void *aabb_min, void *aabb_max) {
     if (!cap_a || !cap_b || !aabb_min || !aabb_max)
         return 0;
     /* Test: closest point on capsule segment to closest point on AABB */

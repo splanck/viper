@@ -21,8 +21,7 @@
 //=============================================================================
 
 vg_event_t vg_event_mouse(
-    vg_event_type_t type, float x, float y, vg_mouse_button_t button, uint32_t modifiers)
-{
+    vg_event_type_t type, float x, float y, vg_mouse_button_t button, uint32_t modifiers) {
     vg_event_t event;
     memset(&event, 0, sizeof(event));
 
@@ -38,8 +37,10 @@ vg_event_t vg_event_mouse(
     return event;
 }
 
-vg_event_t vg_event_key(vg_event_type_t type, vg_key_t key, uint32_t codepoint, uint32_t modifiers)
-{
+vg_event_t vg_event_key(vg_event_type_t type,
+                        vg_key_t key,
+                        uint32_t codepoint,
+                        uint32_t modifiers) {
     vg_event_t event;
     memset(&event, 0, sizeof(event));
 
@@ -57,11 +58,9 @@ vg_event_t vg_event_key(vg_event_type_t type, vg_key_t key, uint32_t codepoint, 
 //=============================================================================
 
 // Translate vgfx key codes to vg key codes (they use different numbering for special keys)
-static vg_key_t translate_vgfx_key(int vgfx_key)
-{
+static vg_key_t translate_vgfx_key(int vgfx_key) {
     // Printable ASCII keys are the same
-    if (vgfx_key >= ' ' && vgfx_key <= '~')
-    {
+    if (vgfx_key >= ' ' && vgfx_key <= '~') {
         return (vg_key_t)vgfx_key;
     }
 
@@ -69,8 +68,7 @@ static vg_key_t translate_vgfx_key(int vgfx_key)
     // VGFX: ESCAPE=256, ENTER=257, LEFT=258, RIGHT=259, UP=260, DOWN=261, BACKSPACE=262,
     // DELETE=263, TAB=264, HOME=265, END=266 VG:   ESCAPE=256, ENTER=257, TAB=258, BACKSPACE=259,
     // DELETE=261, RIGHT=262, LEFT=263, DOWN=264, UP=265, HOME=268, END=269
-    switch (vgfx_key)
-    {
+    switch (vgfx_key) {
         case 256:
             return VG_KEY_ESCAPE; // VGFX_KEY_ESCAPE
         case 257:
@@ -98,8 +96,7 @@ static vg_key_t translate_vgfx_key(int vgfx_key)
     }
 }
 
-vg_event_t vg_event_from_platform(void *platform_event)
-{
+vg_event_t vg_event_from_platform(void *platform_event) {
     vg_event_t event;
     memset(&event, 0, sizeof(event));
 
@@ -108,8 +105,7 @@ vg_event_t vg_event_from_platform(void *platform_event)
 
     vgfx_event_t *pe = (vgfx_event_t *)platform_event;
 
-    switch (pe->type)
-    {
+    switch (pe->type) {
         case VGFX_EVENT_KEY_DOWN:
             event.type = VG_EVENT_KEY_DOWN;
             event.key.key = translate_vgfx_key(pe->data.key.key);
@@ -178,23 +174,20 @@ vg_event_t vg_event_from_platform(void *platform_event)
 // Event Dispatch
 //=============================================================================
 
-bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event)
-{
+bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event) {
     if (!root || !event)
         return false;
 
     // Find target widget for mouse events
     if (event->type == VG_EVENT_MOUSE_MOVE || event->type == VG_EVENT_MOUSE_DOWN ||
         event->type == VG_EVENT_MOUSE_UP || event->type == VG_EVENT_CLICK ||
-        event->type == VG_EVENT_DOUBLE_CLICK || event->type == VG_EVENT_MOUSE_WHEEL)
-    {
+        event->type == VG_EVENT_DOUBLE_CLICK || event->type == VG_EVENT_MOUSE_WHEEL) {
         // Check if a widget has captured input (e.g., open dropdown menu).
         // When capture is active, all mouse events route to the captured widget
         // regardless of hit testing. This allows dropdown menus to receive clicks
         // even though the dropdown renders outside the menubar's widget bounds.
         vg_widget_t *capture = vg_widget_get_input_capture();
-        if (capture)
-        {
+        if (capture) {
             event->target = capture;
 
             // Convert to capture-widget-relative coordinates
@@ -206,8 +199,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event)
             // For MOUSE_UP, we need to synthesize a CLICK event because
             // vg_event_send()'s CLICK generation depends on contains_point(),
             // which fails for dropdown clicks outside the widget bounds.
-            if (event->type == VG_EVENT_MOUSE_UP)
-            {
+            if (event->type == VG_EVENT_MOUSE_UP) {
                 // Send MOUSE_UP first
                 if (capture->vtable && capture->vtable->handle_event)
                     capture->vtable->handle_event(capture, event);
@@ -233,13 +225,11 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event)
 
         vg_widget_t *target =
             vg_widget_hit_test(hit_root, event->mouse.screen_x, event->mouse.screen_y);
-        if (!target && modal && modal->visible)
-        {
+        if (!target && modal && modal->visible) {
             // Click landed outside the modal dialog: swallow the event silently.
             return true;
         }
-        if (target)
-        {
+        if (target) {
             event->target = target;
 
             // Convert to target-relative coordinates
@@ -256,14 +246,11 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event)
     // Keyboard events: route to captured widget first (for menu keyboard navigation),
     // then to focused widget, then to root.
     if (event->type == VG_EVENT_KEY_DOWN || event->type == VG_EVENT_KEY_UP ||
-        event->type == VG_EVENT_KEY_CHAR)
-    {
+        event->type == VG_EVENT_KEY_CHAR) {
         vg_widget_t *capture = vg_widget_get_input_capture();
-        if (capture)
-        {
+        if (capture) {
             event->target = capture;
-            if (capture->vtable && capture->vtable->handle_event)
-            {
+            if (capture->vtable && capture->vtable->handle_event) {
                 if (capture->vtable->handle_event(capture, event))
                     return true;
             }
@@ -275,14 +262,11 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event)
         // When a modal is active, redirect keyboard events to the modal if the
         // focused widget is outside the modal's subtree.
         vg_widget_t *modal_kb = vg_widget_get_modal_root();
-        if (modal_kb && modal_kb->visible && focused)
-        {
+        if (modal_kb && modal_kb->visible && focused) {
             // Walk the parent chain to test if focused is inside the modal
             bool inside = false;
-            for (vg_widget_t *w = focused; w; w = w->parent)
-            {
-                if (w == modal_kb)
-                {
+            for (vg_widget_t *w = focused; w; w = w->parent) {
+                if (w == modal_kb) {
                     inside = true;
                     break;
                 }
@@ -291,8 +275,7 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event)
                 focused = modal_kb;
         }
 
-        if (focused)
-        {
+        if (focused) {
             event->target = focused;
             return vg_event_send(focused, event);
         }
@@ -307,42 +290,32 @@ bool vg_event_dispatch(vg_widget_t *root, vg_event_t *event)
     return vg_event_send(root, event);
 }
 
-bool vg_event_send(vg_widget_t *widget, vg_event_t *event)
-{
+bool vg_event_send(vg_widget_t *widget, vg_event_t *event) {
     if (!widget || !event)
         return false;
 
     // Handle common state changes for mouse events
-    if (event->type == VG_EVENT_MOUSE_ENTER)
-    {
+    if (event->type == VG_EVENT_MOUSE_ENTER) {
         widget->state |= VG_STATE_HOVERED;
         widget->needs_paint = true;
-    }
-    else if (event->type == VG_EVENT_MOUSE_LEAVE)
-    {
+    } else if (event->type == VG_EVENT_MOUSE_LEAVE) {
         widget->state &= ~(VG_STATE_HOVERED | VG_STATE_PRESSED);
         widget->needs_paint = true;
-    }
-    else if (event->type == VG_EVENT_MOUSE_DOWN)
-    {
+    } else if (event->type == VG_EVENT_MOUSE_DOWN) {
         widget->state |= VG_STATE_PRESSED;
         widget->needs_paint = true;
         // Set focus on click if widget can accept focus
-        if (widget->vtable && widget->vtable->can_focus && widget->vtable->can_focus(widget))
-        {
+        if (widget->vtable && widget->vtable->can_focus && widget->vtable->can_focus(widget)) {
             vg_widget_set_focus(widget);
         }
-    }
-    else if (event->type == VG_EVENT_MOUSE_UP)
-    {
+    } else if (event->type == VG_EVENT_MOUSE_UP) {
         bool was_pressed = (widget->state & VG_STATE_PRESSED) != 0;
         widget->state &= ~VG_STATE_PRESSED;
         widget->needs_paint = true;
 
         // Generate click event if mouse was pressed on this widget
         if (was_pressed &&
-            vg_widget_contains_point(widget, event->mouse.screen_x, event->mouse.screen_y))
-        {
+            vg_widget_contains_point(widget, event->mouse.screen_x, event->mouse.screen_y)) {
             vg_event_t click_event = *event;
             click_event.type = VG_EVENT_CLICK;
             vg_event_send(widget, &click_event);
@@ -350,10 +323,8 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event)
     }
 
     // Call widget's event handler
-    if (widget->vtable && widget->vtable->handle_event)
-    {
-        if (widget->vtable->handle_event(widget, event))
-        {
+    if (widget->vtable && widget->vtable->handle_event) {
+        if (widget->vtable->handle_event(widget, event)) {
             event->handled = true;
             return true;
         }
@@ -361,12 +332,9 @@ bool vg_event_send(vg_widget_t *widget, vg_event_t *event)
 
     // Bubble up the parent chain iteratively (avoids stack overflow on deep trees)
     vg_widget_t *current = widget->parent;
-    while (!event->handled && current)
-    {
-        if (current->vtable && current->vtable->handle_event)
-        {
-            if (current->vtable->handle_event(current, event))
-            {
+    while (!event->handled && current) {
+        if (current->vtable && current->vtable->handle_event) {
+            if (current->vtable->handle_event(current, event)) {
                 event->handled = true;
                 return true;
             }

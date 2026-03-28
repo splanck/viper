@@ -29,8 +29,7 @@ using viper::tests::VmFixture;
 // Test: Trap instruction produces correct diagnostics (DomainError)
 //===----------------------------------------------------------------------===//
 
-static int testTrapInstruction()
-{
+static int testTrapInstruction() {
     Module m;
     il::build::IRBuilder b(m);
     auto &fn = b.startFunction("main", Type(Type::Kind::I64), {});
@@ -53,13 +52,11 @@ static int testTrapInstruction()
     VmFixture fixture;
     const std::string out = fixture.captureTrap(m);
 
-    if (out.find("line 42") == std::string::npos)
-    {
+    if (out.find("line 42") == std::string::npos) {
         std::fprintf(stderr, "FAIL testTrapInstruction: missing 'line 42' in: %s\n", out.c_str());
         return 1;
     }
-    if (out.find("DomainError") == std::string::npos)
-    {
+    if (out.find("DomainError") == std::string::npos) {
         std::fprintf(
             stderr, "FAIL testTrapInstruction: missing 'DomainError' in: %s\n", out.c_str());
         return 1;
@@ -73,8 +70,7 @@ static int testTrapInstruction()
 // Test: Division by zero produces correct trap kind
 //===----------------------------------------------------------------------===//
 
-static int testDivideByZeroTrap()
-{
+static int testDivideByZeroTrap() {
     Module m;
     il::build::IRBuilder b(m);
     auto &fn = b.startFunction("main", Type(Type::Kind::I64), {});
@@ -119,14 +115,12 @@ static int testDivideByZeroTrap()
     VmFixture fixture;
     const std::string out = fixture.captureTrap(m);
 
-    if (out.find("DivideByZero") == std::string::npos)
-    {
+    if (out.find("DivideByZero") == std::string::npos) {
         std::fprintf(
             stderr, "FAIL testDivideByZeroTrap: missing 'DivideByZero' in: %s\n", out.c_str());
         return 1;
     }
-    if (out.find("line 100") == std::string::npos)
-    {
+    if (out.find("line 100") == std::string::npos) {
         std::fprintf(stderr, "FAIL testDivideByZeroTrap: missing 'line 100' in: %s\n", out.c_str());
         return 1;
     }
@@ -139,8 +133,7 @@ static int testDivideByZeroTrap()
 // Test: Overflow trap produces correct kind
 //===----------------------------------------------------------------------===//
 
-static int testOverflowTrap()
-{
+static int testOverflowTrap() {
     Module m;
     il::build::IRBuilder b(m);
     auto &fn = b.startFunction("main", Type(Type::Kind::I64), {});
@@ -185,13 +178,11 @@ static int testOverflowTrap()
     VmFixture fixture;
     const std::string out = fixture.captureTrap(m);
 
-    if (out.find("Overflow") == std::string::npos)
-    {
+    if (out.find("Overflow") == std::string::npos) {
         std::fprintf(stderr, "FAIL testOverflowTrap: missing 'Overflow' in: %s\n", out.c_str());
         return 1;
     }
-    if (out.find("line 200") == std::string::npos)
-    {
+    if (out.find("line 200") == std::string::npos) {
         std::fprintf(stderr, "FAIL testOverflowTrap: missing 'line 200' in: %s\n", out.c_str());
         return 1;
     }
@@ -204,8 +195,7 @@ static int testOverflowTrap()
 // Test: Bounds check trap (idx.chk)
 //===----------------------------------------------------------------------===//
 
-static int testBoundsTrap()
-{
+static int testBoundsTrap() {
     Module m;
     il::build::IRBuilder b(m);
     auto &fn = b.startFunction("main", Type(Type::Kind::I64), {});
@@ -251,13 +241,11 @@ static int testBoundsTrap()
     VmFixture fixture;
     const std::string out = fixture.captureTrap(m);
 
-    if (out.find("Bounds") == std::string::npos)
-    {
+    if (out.find("Bounds") == std::string::npos) {
         std::fprintf(stderr, "FAIL testBoundsTrap: missing 'Bounds' in: %s\n", out.c_str());
         return 1;
     }
-    if (out.find("line 300") == std::string::npos)
-    {
+    if (out.find("line 300") == std::string::npos) {
         std::fprintf(stderr, "FAIL testBoundsTrap: missing 'line 300' in: %s\n", out.c_str());
         return 1;
     }
@@ -270,8 +258,7 @@ static int testBoundsTrap()
 // Test: Successful execution produces no trap
 //===----------------------------------------------------------------------===//
 
-static int testSuccessfulExecutionNoTrap()
-{
+static int testSuccessfulExecutionNoTrap() {
     Module m;
     il::build::IRBuilder b(m);
     auto &fn = b.startFunction("main", Type(Type::Kind::I64), {});
@@ -294,8 +281,7 @@ static int testSuccessfulExecutionNoTrap()
 
     VmFixture fixture;
     int64_t result = fixture.run(m);
-    if (result != 42)
-    {
+    if (result != 42) {
         std::fprintf(stderr,
                      "FAIL testSuccessfulExecutionNoTrap: expected 42, got %lld\n",
                      static_cast<long long>(result));
@@ -310,8 +296,7 @@ static int testSuccessfulExecutionNoTrap()
 // Main
 //===----------------------------------------------------------------------===//
 
-int main()
-{
+int main() {
     std::printf("Running trap invariant tests...\n");
 
     int failures = 0;
@@ -321,8 +306,7 @@ int main()
     failures += testBoundsTrap();
     failures += testSuccessfulExecutionNoTrap();
 
-    if (failures > 0)
-    {
+    if (failures > 0) {
         std::fprintf(stderr, "%d trap invariant test(s) FAILED.\n", failures);
         return 1;
     }

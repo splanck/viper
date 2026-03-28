@@ -26,16 +26,14 @@
 #include <cstdint>
 #include <unordered_map>
 
-namespace viper::codegen::x64::ra
-{
+namespace viper::codegen::x64::ra {
 
 /// @brief Sentinel value indicating an uninitialised virtual register slot.
 inline constexpr uint16_t kInvalidVReg = UINT16_MAX;
 
 /// @brief Half-open interval describing the lifetime of a virtual register.
 /// @invariant `start` <= `end` and both are measured in instruction indices.
-struct LiveInterval
-{
+struct LiveInterval {
     uint16_t vreg{kInvalidVReg}; ///< Virtual register identifier (kInvalidVReg if uninitialised).
     RegClass cls{RegClass::GPR}; ///< Register class constraining allocation.
     std::size_t start{0U};       ///< Index of the first instruction touching the vreg.
@@ -43,8 +41,7 @@ struct LiveInterval
 };
 
 /// @brief Result of the local live interval analysis over a machine function.
-class LiveIntervals
-{
+class LiveIntervals {
   public:
     LiveIntervals() = default;
 

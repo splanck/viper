@@ -29,30 +29,26 @@
 #include <string_view>
 #include <vector>
 
-namespace il::vm
-{
+namespace il::vm {
 
 using StringRef = std::string_view;
 using ViperString = ::rt_string;
 
 /// @brief Indicates whether a string view is guaranteed to be null-terminated.
-enum class AssumeNullTerminated : bool
-{
+enum class AssumeNullTerminated : bool {
     No = false,
     Yes = true,
 };
 
 union Slot;
 
-namespace detail
-{
+namespace detail {
 /// @brief Check whether a runtime-provided string length fits within @p limit.
 /// @param length Length reported by the runtime as a signed 64-bit value.
 /// @param limit Maximum representable size for the destination view type.
 /// @return True when @p length is non-negative and does not exceed @p limit.
 /// @note Constexpr for compile-time validation when possible.
-[[nodiscard]] constexpr bool lengthWithinLimit(int64_t length, uint64_t limit) noexcept
-{
+[[nodiscard]] constexpr bool lengthWithinLimit(int64_t length, uint64_t limit) noexcept {
     return length >= 0 && static_cast<uint64_t>(length) <= limit;
 }
 } // namespace detail
@@ -63,23 +59,20 @@ namespace detail
 inline constexpr uint64_t kMaxBridgeStringBytes =
     static_cast<uint64_t>(std::numeric_limits<int32_t>::max());
 
-struct ResultBuffers
-{
+struct ResultBuffers {
     int64_t i64 = 0;
     double f64 = 0.0;
     ViperString str = nullptr;
     void *ptr = nullptr;
 };
 
-struct PowStatus
-{
+struct PowStatus {
     bool active{false};
     bool ok{true};
     bool *ptr{nullptr};
 };
 
-struct PowTrapOutcome
-{
+struct PowTrapOutcome {
     bool triggered{false};
     TrapKind kind{TrapKind::RuntimeError};
     std::string message;
@@ -121,8 +114,7 @@ StringRef fromViperString(const ViperString &str);
 /// @param kind The value kind to check.
 /// @return True for ConstInt, ConstFloat, and NullPtr; false otherwise.
 /// @note Constexpr for use in static assertions and compile-time checks.
-[[nodiscard]] constexpr bool isConstantScalar(il::core::Value::Kind kind) noexcept
-{
+[[nodiscard]] constexpr bool isConstantScalar(il::core::Value::Kind kind) noexcept {
     using Kind = il::core::Value::Kind;
     return kind == Kind::ConstInt || kind == Kind::ConstFloat || kind == Kind::NullPtr;
 }
@@ -130,8 +122,7 @@ StringRef fromViperString(const ViperString &str);
 /// @brief Check if a Value represents a constant that can be converted to a scalar.
 /// @param value The value to check.
 /// @return True if the value's kind is a constant scalar.
-[[nodiscard]] inline bool isConstantScalar(const il::core::Value &value) noexcept
-{
+[[nodiscard]] inline bool isConstantScalar(const il::core::Value &value) noexcept {
     return isConstantScalar(value.kind);
 }
 
@@ -189,8 +180,7 @@ inline constexpr std::size_t kMaxStackMarshalArgs = 12;
 /// @details Uses inline storage for small argument counts to avoid heap
 ///          allocation on every runtime call. Falls back to heap for large
 ///          argument lists (rare in practice).
-struct MarshalledArgs
-{
+struct MarshalledArgs {
     /// @brief Inline storage for common argument counts.
     std::array<void *, kMaxStackMarshalArgs> inlineBuffer{};
 
@@ -204,26 +194,22 @@ struct MarshalledArgs
     bool usingHeap{false};
 
     /// @brief Get pointer to the argument array.
-    [[nodiscard]] void **data() noexcept
-    {
+    [[nodiscard]] void **data() noexcept {
         return usingHeap ? heapBuffer.data() : inlineBuffer.data();
     }
 
     /// @brief Get const pointer to the argument array.
-    [[nodiscard]] void *const *data() const noexcept
-    {
+    [[nodiscard]] void *const *data() const noexcept {
         return usingHeap ? heapBuffer.data() : inlineBuffer.data();
     }
 
     /// @brief Check if empty.
-    [[nodiscard]] bool empty() const noexcept
-    {
+    [[nodiscard]] bool empty() const noexcept {
         return count == 0;
     }
 
     /// @brief Get number of arguments.
-    [[nodiscard]] std::size_t size() const noexcept
-    {
+    [[nodiscard]] std::size_t size() const noexcept {
         return count;
     }
 };
@@ -273,8 +259,7 @@ Slot assignCallResult(const il::runtime::RuntimeSignature &signature, const Resu
 //===----------------------------------------------------------------------===//
 
 /// @brief Result of marshalling validation checks.
-struct MarshalValidation
-{
+struct MarshalValidation {
     bool ok{true};            ///< True when all checks pass.
     std::string errorMessage; ///< Diagnostic message when validation fails.
 };

@@ -30,27 +30,21 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-static void verifyOrDie(const Module &module)
-{
+static void verifyOrDie(const Module &module) {
     auto verifyResult = il::verify::Verifier::verify(module);
-    if (!verifyResult)
-    {
+    if (!verifyResult) {
         il::support::printDiag(verifyResult.error(), std::cerr);
         ASSERT_TRUE(false && "Module verification failed");
     }
 }
 
-void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry)
-{
+void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry) {
     registry.registerFunctionAnalysis<il::transform::CFGInfo>(
         "cfg", [](Module &mod, Function &fnRef) { return il::transform::buildCFG(mod, fnRef); });
     registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-        "dominators",
-        [](Module &mod, Function &fnRef)
-        {
+        "dominators", [](Module &mod, Function &fnRef) {
             viper::analysis::CFGContext ctx(mod);
             return viper::analysis::computeDominatorTree(ctx, fnRef);
         });
@@ -62,13 +56,10 @@ void setupAnalysisRegistry(il::transform::AnalysisRegistry &registry)
         [](Module &mod, Function &fnRef) { return viper::analysis::BasicAA(mod, fnRef); });
 }
 
-size_t countStores(const Function &fn)
-{
+size_t countStores(const Function &fn) {
     size_t count = 0;
-    for (const auto &block : fn.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == Opcode::Store)
                 ++count;
         }
@@ -78,8 +69,7 @@ size_t countStores(const Function &fn)
 
 } // namespace
 
-TEST(IL, testIntraBlockDSE)
-{
+TEST(IL, testIntraBlockDSE) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -132,8 +122,7 @@ TEST(IL, testIntraBlockDSE)
     ASSERT_EQ(storesAfter, 1);
 }
 
-TEST(IL, testStoreReadBeforeOverwrite)
-{
+TEST(IL, testStoreReadBeforeOverwrite) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -195,8 +184,7 @@ TEST(IL, testStoreReadBeforeOverwrite)
     ASSERT_EQ(storesAfter, 2);
 }
 
-TEST(IL, testDifferentLocations)
-{
+TEST(IL, testDifferentLocations) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -258,8 +246,7 @@ TEST(IL, testDifferentLocations)
     ASSERT_EQ(storesAfter, 2);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

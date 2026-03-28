@@ -31,8 +31,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Resolve symbols across object files and archives.
 /// @param objects       Initial object files (user's compiled code).

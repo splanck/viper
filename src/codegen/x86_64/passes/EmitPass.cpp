@@ -26,8 +26,7 @@
 #include <string>
 #include <utility>
 
-namespace viper::codegen::x64::passes
-{
+namespace viper::codegen::x64::passes {
 
 /// @brief Construct the emit pass with backend configuration.
 /// @details Stores @p options by value so the pass can outlive the caller's
@@ -49,22 +48,18 @@ EmitPass::EmitPass(CodegenOptions options) noexcept : options_(std::move(options
 /// @param module Code generation module containing lowering outputs.
 /// @param diags Diagnostics sink that records emission failures.
 /// @return True when assembly emission succeeds without diagnostics.
-bool EmitPass::run(Module &module, Diagnostics &diags)
-{
-    if (!module.registersAllocated)
-    {
+bool EmitPass::run(Module &module, Diagnostics &diags) {
+    if (!module.registersAllocated) {
         diags.error("emit: register allocation has not completed");
         return false;
     }
-    if (!module.lowered)
-    {
+    if (!module.lowered) {
         diags.error("emit: lowering artefact missing prior to emission");
         return false;
     }
 
     CodegenResult result = emitModuleToAssembly(*module.lowered, options_);
-    if (!result.errors.empty())
-    {
+    if (!result.errors.empty()) {
         std::string message = "error: x64 codegen failed:\n";
         message += result.errors;
         message.push_back('\n');

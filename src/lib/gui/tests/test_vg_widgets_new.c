@@ -32,8 +32,7 @@ static int g_failed = 0;
 
 #define TEST(name) static void test_##name(void)
 #define RUN(name)                                                                                  \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("  %-55s", #name "...");                                                            \
         fflush(stdout);                                                                            \
         test_##name();                                                                             \
@@ -43,10 +42,8 @@ static int g_failed = 0;
     } while (0)
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             printf("FAIL\n  (%s:%d: %s)\n", __FILE__, __LINE__, #cond);                            \
             g_failed++;                                                                            \
             return;                                                                                \
@@ -63,16 +60,14 @@ static int g_failed = 0;
 // Group E1 — vg_slider (vtable implementation)
 //=============================================================================
 
-TEST(slider_create_vtable_set)
-{
+TEST(slider_create_vtable_set) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
     ASSERT_NEQ(s->base.vtable, NULL); // vtable must be assigned by create
     vg_widget_destroy(&s->base);
 }
 
-TEST(slider_default_orientation)
-{
+TEST(slider_default_orientation) {
     vg_slider_t *h = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(h);
     ASSERT_EQ(h->orientation, VG_SLIDER_HORIZONTAL);
@@ -84,8 +79,7 @@ TEST(slider_default_orientation)
     vg_widget_destroy(&v->base);
 }
 
-TEST(slider_set_get_value)
-{
+TEST(slider_set_get_value) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
     vg_slider_set_range(s, 0.0f, 100.0f);
@@ -94,8 +88,7 @@ TEST(slider_set_get_value)
     vg_widget_destroy(&s->base);
 }
 
-TEST(slider_clamp_below_min)
-{
+TEST(slider_clamp_below_min) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
     vg_slider_set_range(s, 10.0f, 90.0f);
@@ -104,8 +97,7 @@ TEST(slider_clamp_below_min)
     vg_widget_destroy(&s->base);
 }
 
-TEST(slider_clamp_above_max)
-{
+TEST(slider_clamp_above_max) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
     vg_slider_set_range(s, 10.0f, 90.0f);
@@ -114,8 +106,7 @@ TEST(slider_clamp_above_max)
     vg_widget_destroy(&s->base);
 }
 
-TEST(slider_step_snapping)
-{
+TEST(slider_step_snapping) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
     vg_slider_set_range(s, 0.0f, 10.0f);
@@ -131,24 +122,21 @@ TEST(slider_step_snapping)
 // Group E2 — vg_progressbar (vtable implementation)
 //=============================================================================
 
-TEST(progressbar_create_vtable_set)
-{
+TEST(progressbar_create_vtable_set) {
     vg_progressbar_t *pb = vg_progressbar_create(NULL);
     ASSERT_NOT_NULL(pb);
     ASSERT_NEQ(pb->base.vtable, NULL);
     vg_widget_destroy(&pb->base);
 }
 
-TEST(progressbar_default_zero)
-{
+TEST(progressbar_default_zero) {
     vg_progressbar_t *pb = vg_progressbar_create(NULL);
     ASSERT_NOT_NULL(pb);
     ASSERT_EQ(vg_progressbar_get_value(pb), 0.0f);
     vg_widget_destroy(&pb->base);
 }
 
-TEST(progressbar_set_value)
-{
+TEST(progressbar_set_value) {
     vg_progressbar_t *pb = vg_progressbar_create(NULL);
     ASSERT_NOT_NULL(pb);
     vg_progressbar_set_value(pb, 0.75f);
@@ -156,8 +144,7 @@ TEST(progressbar_set_value)
     vg_widget_destroy(&pb->base);
 }
 
-TEST(progressbar_clamp_below_zero)
-{
+TEST(progressbar_clamp_below_zero) {
     vg_progressbar_t *pb = vg_progressbar_create(NULL);
     ASSERT_NOT_NULL(pb);
     vg_progressbar_set_value(pb, -0.5f);
@@ -165,8 +152,7 @@ TEST(progressbar_clamp_below_zero)
     vg_widget_destroy(&pb->base);
 }
 
-TEST(progressbar_clamp_above_one)
-{
+TEST(progressbar_clamp_above_one) {
     vg_progressbar_t *pb = vg_progressbar_create(NULL);
     ASSERT_NOT_NULL(pb);
     vg_progressbar_set_value(pb, 1.5f);
@@ -174,8 +160,7 @@ TEST(progressbar_clamp_above_one)
     vg_widget_destroy(&pb->base);
 }
 
-TEST(progressbar_style_change)
-{
+TEST(progressbar_style_change) {
     vg_progressbar_t *pb = vg_progressbar_create(NULL);
     ASSERT_NOT_NULL(pb);
     vg_progressbar_set_style(pb, VG_PROGRESS_INDETERMINATE);
@@ -189,16 +174,14 @@ TEST(progressbar_style_change)
 // Group E3 — vg_listbox (vtable implementation)
 //=============================================================================
 
-TEST(listbox_create_vtable_set)
-{
+TEST(listbox_create_vtable_set) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     ASSERT_NEQ(lb->base.vtable, NULL);
     vg_widget_destroy(&lb->base);
 }
 
-TEST(listbox_add_items_count)
-{
+TEST(listbox_add_items_count) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_add_item(lb, "Alpha", NULL);
@@ -208,8 +191,7 @@ TEST(listbox_add_items_count)
     vg_widget_destroy(&lb->base);
 }
 
-TEST(listbox_no_initial_selection)
-{
+TEST(listbox_no_initial_selection) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_add_item(lb, "Item", NULL);
@@ -217,8 +199,7 @@ TEST(listbox_no_initial_selection)
     vg_widget_destroy(&lb->base);
 }
 
-TEST(listbox_select_item)
-{
+TEST(listbox_select_item) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_item_t *item = vg_listbox_add_item(lb, "Item", NULL);
@@ -228,8 +209,7 @@ TEST(listbox_select_item)
     vg_widget_destroy(&lb->base);
 }
 
-TEST(listbox_remove_item)
-{
+TEST(listbox_remove_item) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_add_item(lb, "A", NULL);
@@ -240,8 +220,7 @@ TEST(listbox_remove_item)
     vg_widget_destroy(&lb->base);
 }
 
-TEST(listbox_remove_clears_selection)
-{
+TEST(listbox_remove_clears_selection) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_item_t *item = vg_listbox_add_item(lb, "X", NULL);
@@ -252,8 +231,7 @@ TEST(listbox_remove_clears_selection)
     vg_widget_destroy(&lb->base);
 }
 
-TEST(listbox_clear_empties_list)
-{
+TEST(listbox_clear_empties_list) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_add_item(lb, "A", NULL);
@@ -271,8 +249,7 @@ TEST(listbox_clear_empties_list)
 // Group D-other — vg_breadcrumb max_items (new feature)
 //=============================================================================
 
-TEST(breadcrumb_push_pop_basic)
-{
+TEST(breadcrumb_push_pop_basic) {
     vg_breadcrumb_t *bc = vg_breadcrumb_create();
     ASSERT_NOT_NULL(bc);
     vg_breadcrumb_push(bc, "Root", NULL);
@@ -283,8 +260,7 @@ TEST(breadcrumb_push_pop_basic)
     vg_breadcrumb_destroy(bc);
 }
 
-TEST(breadcrumb_clear_resets)
-{
+TEST(breadcrumb_clear_resets) {
     vg_breadcrumb_t *bc = vg_breadcrumb_create();
     ASSERT_NOT_NULL(bc);
     vg_breadcrumb_push(bc, "A", NULL);
@@ -295,8 +271,7 @@ TEST(breadcrumb_clear_resets)
     vg_breadcrumb_destroy(bc);
 }
 
-TEST(breadcrumb_max_items_sliding_window)
-{
+TEST(breadcrumb_max_items_sliding_window) {
     vg_breadcrumb_t *bc = vg_breadcrumb_create();
     ASSERT_NOT_NULL(bc);
     vg_breadcrumb_set_max_items(bc, 3);
@@ -312,8 +287,7 @@ TEST(breadcrumb_max_items_sliding_window)
     vg_breadcrumb_destroy(bc);
 }
 
-TEST(breadcrumb_set_max_trims_existing)
-{
+TEST(breadcrumb_set_max_trims_existing) {
     vg_breadcrumb_t *bc = vg_breadcrumb_create();
     ASSERT_NOT_NULL(bc);
     vg_breadcrumb_push(bc, "A", NULL);
@@ -329,8 +303,7 @@ TEST(breadcrumb_set_max_trims_existing)
     vg_breadcrumb_destroy(bc);
 }
 
-TEST(breadcrumb_separator_change)
-{
+TEST(breadcrumb_separator_change) {
     vg_breadcrumb_t *bc = vg_breadcrumb_create();
     ASSERT_NOT_NULL(bc);
     ASSERT_NOT_NULL(bc->separator); // Default is ">"
@@ -345,8 +318,7 @@ TEST(breadcrumb_separator_change)
 // Group D-other — vg_commandpalette clear (new feature)
 //=============================================================================
 
-TEST(commandpalette_create_basic)
-{
+TEST(commandpalette_create_basic) {
     vg_commandpalette_t *p = vg_commandpalette_create();
     ASSERT_NOT_NULL(p);
     ASSERT_EQ((int)p->command_count, 0);
@@ -354,8 +326,7 @@ TEST(commandpalette_create_basic)
     vg_commandpalette_destroy(p);
 }
 
-TEST(commandpalette_add_and_find)
-{
+TEST(commandpalette_add_and_find) {
     vg_commandpalette_t *p = vg_commandpalette_create();
     ASSERT_NOT_NULL(p);
     vg_command_t *cmd =
@@ -367,8 +338,7 @@ TEST(commandpalette_add_and_find)
     vg_commandpalette_destroy(p);
 }
 
-TEST(commandpalette_remove_command)
-{
+TEST(commandpalette_remove_command) {
     vg_commandpalette_t *p = vg_commandpalette_create();
     vg_commandpalette_add_command(p, "a", "A", NULL, NULL, NULL);
     vg_commandpalette_add_command(p, "b", "B", NULL, NULL, NULL);
@@ -380,8 +350,7 @@ TEST(commandpalette_remove_command)
     vg_commandpalette_destroy(p);
 }
 
-TEST(commandpalette_clear_all)
-{
+TEST(commandpalette_clear_all) {
     vg_commandpalette_t *p = vg_commandpalette_create();
     vg_commandpalette_add_command(p, "x", "X", NULL, NULL, NULL);
     vg_commandpalette_add_command(p, "y", "Y", NULL, NULL, NULL);
@@ -394,8 +363,7 @@ TEST(commandpalette_clear_all)
     vg_commandpalette_destroy(p);
 }
 
-TEST(commandpalette_show_hide_toggle)
-{
+TEST(commandpalette_show_hide_toggle) {
     vg_commandpalette_t *p = vg_commandpalette_create();
     ASSERT(!p->is_visible);
     vg_commandpalette_show(p);
@@ -413,8 +381,7 @@ TEST(commandpalette_show_hide_toggle)
 // Group D-menu — menu management (new functions)
 //=============================================================================
 
-TEST(menu_remove_item_updates_count)
-{
+TEST(menu_remove_item_updates_count) {
     vg_menubar_t *bar = vg_menubar_create(NULL);
     ASSERT_NOT_NULL(bar);
     vg_menu_t *menu = vg_menubar_add_menu(bar, "File");
@@ -430,8 +397,7 @@ TEST(menu_remove_item_updates_count)
     vg_widget_destroy(&bar->base);
 }
 
-TEST(menu_clear_empties_list)
-{
+TEST(menu_clear_empties_list) {
     vg_menubar_t *bar = vg_menubar_create(NULL);
     vg_menu_t *menu = vg_menubar_add_menu(bar, "Edit");
     vg_menu_add_item(menu, "Cut", NULL, NULL, NULL);
@@ -445,8 +411,7 @@ TEST(menu_clear_empties_list)
     vg_widget_destroy(&bar->base);
 }
 
-TEST(menubar_remove_menu_updates_count)
-{
+TEST(menubar_remove_menu_updates_count) {
     vg_menubar_t *bar = vg_menubar_create(NULL);
     vg_menu_t *file = vg_menubar_add_menu(bar, "File");
     vg_menubar_add_menu(bar, "Edit");
@@ -463,8 +428,7 @@ TEST(menubar_remove_menu_updates_count)
 // Group D-editor — vg_codeeditor new dynamic array fields
 //=============================================================================
 
-TEST(codeeditor_highlight_spans_init_zero)
-{
+TEST(codeeditor_highlight_spans_init_zero) {
     vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(ed);
     ASSERT_EQ(ed->highlight_span_count, 0);
@@ -473,8 +437,7 @@ TEST(codeeditor_highlight_spans_init_zero)
     vg_widget_destroy(&ed->base);
 }
 
-TEST(codeeditor_gutter_icons_init_zero)
-{
+TEST(codeeditor_gutter_icons_init_zero) {
     vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(ed);
     ASSERT_EQ(ed->gutter_icon_count, 0);
@@ -483,8 +446,7 @@ TEST(codeeditor_gutter_icons_init_zero)
     vg_widget_destroy(&ed->base);
 }
 
-TEST(codeeditor_fold_regions_init_zero)
-{
+TEST(codeeditor_fold_regions_init_zero) {
     vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(ed);
     ASSERT_EQ(ed->fold_region_count, 0);
@@ -493,8 +455,7 @@ TEST(codeeditor_fold_regions_init_zero)
     vg_widget_destroy(&ed->base);
 }
 
-TEST(codeeditor_extra_cursors_init_zero)
-{
+TEST(codeeditor_extra_cursors_init_zero) {
     vg_codeeditor_t *ed = vg_codeeditor_create(NULL);
     ASSERT_NOT_NULL(ed);
     ASSERT_EQ(ed->extra_cursor_count, 0);
@@ -507,8 +468,7 @@ TEST(codeeditor_extra_cursors_init_zero)
 // Entry Point
 //=============================================================================
 
-int main(void)
-{
+int main(void) {
     printf("=== VG Widget New Features Tests ===\n\n");
 
     printf("Group E1 — Slider vtable:\n");

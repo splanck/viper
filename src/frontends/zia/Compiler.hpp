@@ -81,12 +81,10 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 /// @brief Input parameters describing the source to compile.
-struct CompilerInput
-{
+struct CompilerInput {
     /// @brief Zia source code to compile.
     std::string_view source;
 
@@ -98,8 +96,7 @@ struct CompilerInput
 };
 
 /// @brief Aggregated result of compiling Zia source.
-struct CompilerResult
-{
+struct CompilerResult {
     /// @brief Diagnostics accumulated during compilation.
     il::support::DiagnosticEngine diagnostics{};
 

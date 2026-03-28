@@ -19,23 +19,19 @@
 #include <sstream>
 #include <unordered_set>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-static bool isIdentChar(char c)
-{
+static bool isIdentChar(char c) {
     return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
 }
 
 /// @brief Map a Symbol::Kind to the corresponding CompletionKind.
-static CompletionKind kindFromSymbol(const Symbol &sym)
-{
-    switch (sym.kind)
-    {
+static CompletionKind kindFromSymbol(const Symbol &sym) {
+    switch (sym.kind) {
         case Symbol::Kind::Variable:
             return CompletionKind::Variable;
         case Symbol::Kind::Parameter:
@@ -56,16 +52,14 @@ static CompletionKind kindFromSymbol(const Symbol &sym)
 }
 
 /// @brief Build a human-readable detail string for a symbol's type.
-static std::string typeDetail(const TypeRef &type)
-{
+static std::string typeDetail(const TypeRef &type) {
     if (!type)
         return {};
     return type->name.empty() ? type->toString() : type->name;
 }
 
 /// @brief Convert a CompletionItem to its tab-delimited serialized form.
-static std::string serializeItem(const CompletionItem &item)
-{
+static std::string serializeItem(const CompletionItem &item) {
     return item.label + '\t' + item.insertText + '\t' +
            std::to_string(static_cast<int>(item.kind)) + '\t' + item.detail + '\n';
 }
@@ -74,8 +68,7 @@ static std::string serializeItem(const CompletionItem &item)
 // serialize
 // ---------------------------------------------------------------------------
 
-std::string serialize(const std::vector<CompletionItem> &items)
-{
+std::string serialize(const std::vector<CompletionItem> &items) {
     std::string out;
     out.reserve(items.size() * 40);
     for (const auto &item : items)
@@ -87,11 +80,9 @@ std::string serialize(const std::vector<CompletionItem> &items)
 // FNV-1a hash
 // ---------------------------------------------------------------------------
 
-uint64_t CompletionEngine::fnv1a(std::string_view data)
-{
+uint64_t CompletionEngine::fnv1a(std::string_view data) {
     uint64_t h = 14695981039346656037ULL;
-    for (unsigned char c : data)
-    {
+    for (unsigned char c : data) {
         h ^= c;
         h *= 1099511628211ULL;
     }
@@ -145,8 +136,7 @@ static const char *const kKeywords[] = {
     nullptr,
 };
 
-struct SnippetData
-{
+struct SnippetData {
     const char *label;
     const char *insertText;
 };
@@ -170,8 +160,7 @@ CompletionEngine::CompletionEngine() : sm_(std::make_unique<il::support::SourceM
 
 CompletionEngine::~CompletionEngine() = default;
 
-void CompletionEngine::clearCache()
-{
+void CompletionEngine::clearCache() {
     cache_.hash = 0;
     cache_.filePath.clear();
     cache_.result = nullptr;
@@ -185,17 +174,14 @@ void CompletionEngine::clearCache()
 
 CompletionEngine::Context CompletionEngine::extractContext(std::string_view src,
                                                            int line,
-                                                           int col) const
-{
+                                                           int col) const {
     Context ctx;
 
     // Find the start of the requested line (1-based).
     size_t lineStart = 0;
     int curLine = 1;
-    for (size_t i = 0; i < src.size() && curLine < line; ++i)
-    {
-        if (src[i] == '\n')
-        {
+    for (size_t i = 0; i < src.size() && curLine < line; ++i) {
+        if (src[i] == '\n') {
             ++curLine;
             lineStart = i + 1;
         }
@@ -216,8 +202,7 @@ CompletionEngine::Context CompletionEngine::extractContext(std::string_view src,
     int prefixLen = 0;
     for (int i = static_cast<int>(lineUpToCursor.size()) - 1;
          i >= 0 && isIdentChar(lineUpToCursor[i]);
-         --i)
-    {
+         --i) {
         ++prefixLen;
     }
     ctx.prefix = std::string(lineUpToCursor.substr(lineUpToCursor.size() - prefixLen));
@@ -227,8 +212,7 @@ CompletionEngine::Context CompletionEngine::extractContext(std::string_view src,
     int triggerPos = static_cast<int>(lineUpToCursor.size()) - prefixLen - 1;
 
     // ── Step 2: detect trigger ───────────────────────────────────────────────
-    if (triggerPos >= 0 && lineUpToCursor[triggerPos] == '.')
-    {
+    if (triggerPos >= 0 && lineUpToCursor[triggerPos] == '.') {
         ctx.trigger = TriggerKind::MemberAccess;
 
         // Collect the expression to the left of '.': scan backward through
@@ -236,24 +220,19 @@ CompletionEngine::Context CompletionEngine::extractContext(std::string_view src,
         int exprEnd = triggerPos;
         int exprStart = exprEnd - 1;
         while (exprStart >= 0 &&
-               (isIdentChar(lineUpToCursor[exprStart]) || lineUpToCursor[exprStart] == '.'))
-        {
+               (isIdentChar(lineUpToCursor[exprStart]) || lineUpToCursor[exprStart] == '.')) {
             --exprStart;
         }
         ++exprStart;
-        if (exprStart < exprEnd)
-        {
+        if (exprStart < exprEnd) {
             ctx.triggerExpr = std::string(lineUpToCursor.substr(exprStart, exprEnd - exprStart));
         }
-    }
-    else
-    {
+    } else {
         // Check for keyword triggers by looking at the word just before the prefix.
         // We need at least 4 chars before to match "new " or "return ".
         std::string_view before = lineUpToCursor.substr(0, lineUpToCursor.size() - prefixLen);
 
-        auto endsWith = [](std::string_view sv, const char *suffix) -> bool
-        {
+        auto endsWith = [](std::string_view sv, const char *suffix) -> bool {
             size_t n = std::strlen(suffix);
             return sv.size() >= n && sv.substr(sv.size() - n) == suffix;
         };
@@ -275,24 +254,19 @@ CompletionEngine::Context CompletionEngine::extractContext(std::string_view src,
 // Type resolution for dotted expressions
 // ---------------------------------------------------------------------------
 
-TypeRef CompletionEngine::resolveExprType(const Sema &sema, const std::string &expr) const
-{
+TypeRef CompletionEngine::resolveExprType(const Sema &sema, const std::string &expr) const {
     if (expr.empty())
         return nullptr;
 
     // Split on '.'
     std::vector<std::string> parts;
     std::string token;
-    for (char c : expr)
-    {
-        if (c == '.')
-        {
+    for (char c : expr) {
+        if (c == '.') {
             if (!token.empty())
                 parts.push_back(token);
             token.clear();
-        }
-        else
-        {
+        } else {
             token += c;
         }
     }
@@ -305,10 +279,8 @@ TypeRef CompletionEngine::resolveExprType(const Sema &sema, const std::string &e
     // Look up the first part in global symbols.
     TypeRef current;
     auto globals = sema.getGlobalSymbols();
-    for (const auto &sym : globals)
-    {
-        if (sym.name == parts[0])
-        {
+    for (const auto &sym : globals) {
+        if (sym.name == parts[0]) {
             current = sym.type;
             // For Type symbols, the symbol's *type* is a metatype — the actual
             // instance type is what we need for member access.  Use as-is;
@@ -317,14 +289,12 @@ TypeRef CompletionEngine::resolveExprType(const Sema &sema, const std::string &e
         }
     }
 
-    if (!current)
-    {
+    if (!current) {
         // parts[0] not found as a Zia symbol. Try alias expansion:
         // e.g. "GUI.Canvas" → alias "GUI" resolves to "Viper.GUI"
         //      → reconstruct qname "Viper.GUI.Canvas"
         std::string ns = sema.resolveModuleAlias(parts[0]);
-        if (!ns.empty() && parts.size() > 1)
-        {
+        if (!ns.empty() && parts.size() > 1) {
             std::string fullQname = ns;
             for (size_t i = 1; i < parts.size(); ++i)
                 fullQname += "." + parts[i];
@@ -340,13 +310,11 @@ TypeRef CompletionEngine::resolveExprType(const Sema &sema, const std::string &e
     }
 
     // Walk remaining parts.
-    for (size_t i = 1; i < parts.size(); ++i)
-    {
+    for (size_t i = 1; i < parts.size(); ++i) {
         // When current is a Module type (from a namespace alias like "bind GUI = Viper.GUI"),
         // getMembersOf returns nothing useful.  Instead, reconstruct the full class qname by
         // appending the remaining parts to the module's namespace name.
-        if (current->kind == TypeKindSem::Module && !current->name.empty())
-        {
+        if (current->kind == TypeKindSem::Module && !current->name.empty()) {
             std::string fullQname = current->name;
             for (size_t j = i; j < parts.size(); ++j)
                 fullQname += "." + parts[j];
@@ -357,10 +325,8 @@ TypeRef CompletionEngine::resolveExprType(const Sema &sema, const std::string &e
 
         auto members = sema.getMembersOf(current);
         bool found = false;
-        for (const auto &mem : members)
-        {
-            if (mem.name == parts[i])
-            {
+        for (const auto &mem : members) {
+            if (mem.name == parts[i]) {
                 // For method symbols, the type is a function type; we want the
                 // return type for further member chaining.
                 if (mem.type && mem.type->kind == TypeKindSem::Function)
@@ -382,11 +348,9 @@ TypeRef CompletionEngine::resolveExprType(const Sema &sema, const std::string &e
 // Providers
 // ---------------------------------------------------------------------------
 
-std::vector<CompletionItem> CompletionEngine::provideKeywords(const std::string &prefix) const
-{
+std::vector<CompletionItem> CompletionEngine::provideKeywords(const std::string &prefix) const {
     std::vector<CompletionItem> items;
-    for (int i = 0; kKeywords[i]; ++i)
-    {
+    for (int i = 0; kKeywords[i]; ++i) {
         CompletionItem item;
         item.label = kKeywords[i];
         item.insertText = kKeywords[i];
@@ -398,11 +362,9 @@ std::vector<CompletionItem> CompletionEngine::provideKeywords(const std::string 
     return items;
 }
 
-std::vector<CompletionItem> CompletionEngine::provideSnippets(const std::string &prefix) const
-{
+std::vector<CompletionItem> CompletionEngine::provideSnippets(const std::string &prefix) const {
     std::vector<CompletionItem> items;
-    for (int i = 0; kSnippets[i].label; ++i)
-    {
+    for (int i = 0; kSnippets[i].label; ++i) {
         CompletionItem item;
         item.label = kSnippets[i].label;
         item.insertText = kSnippets[i].insertText;
@@ -416,12 +378,10 @@ std::vector<CompletionItem> CompletionEngine::provideSnippets(const std::string 
 }
 
 std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(const Sema &sema,
-                                                                  const std::string &prefix) const
-{
+                                                                  const std::string &prefix) const {
     std::vector<CompletionItem> items;
     auto globals = sema.getGlobalSymbols();
-    for (const auto &sym : globals)
-    {
+    for (const auto &sym : globals) {
         CompletionItem item;
         item.label = sym.name;
         item.insertText = sym.name;
@@ -435,8 +395,7 @@ std::vector<CompletionItem> CompletionEngine::provideScopeSymbols(const Sema &se
 }
 
 std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sema &sema,
-                                                                       const Context &ctx) const
-{
+                                                                       const Context &ctx) const {
     std::vector<CompletionItem> items;
     if (ctx.triggerExpr.empty())
         return items;
@@ -445,15 +404,12 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
     std::vector<std::string> parts;
     {
         std::string tok;
-        for (char c : ctx.triggerExpr)
-        {
-            if (c == '.')
-            {
+        for (char c : ctx.triggerExpr) {
+            if (c == '.') {
                 if (!tok.empty())
                     parts.push_back(tok);
                 tok.clear();
-            }
-            else
+            } else
                 tok += c;
         }
         if (!tok.empty())
@@ -466,10 +422,8 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
     // e.g. "GUI"        → resolves to "Viper.GUI"
     //      "GUI.Canvas" → parts[0]="GUI" → alias → reconstruct "Viper.GUI.Canvas"
     std::string resolved = sema.resolveModuleAlias(parts[0]);
-    if (!resolved.empty())
-    {
-        if (parts.size() == 1)
-        {
+    if (!resolved.empty()) {
+        if (parts.size() == 1) {
             // User typed e.g. "Math." or "GUI." after a namespace alias.
             // Case A: the resolved path IS a class (e.g. "Viper.Math" with Sqrt/Abs/…).
             auto rtMembers = provideRuntimeMembers(sema, resolved, ctx.prefix);
@@ -510,8 +464,7 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
         return items;
 
     auto members = sema.getMembersOf(type);
-    for (const auto &sym : members)
-    {
+    for (const auto &sym : members) {
         CompletionItem item;
         item.label = sym.name;
         item.insertText = sym.name;
@@ -525,12 +478,10 @@ std::vector<CompletionItem> CompletionEngine::provideMemberCompletions(const Sem
 }
 
 std::vector<CompletionItem> CompletionEngine::provideTypeNames(const Sema &sema,
-                                                               const std::string &prefix) const
-{
+                                                               const std::string &prefix) const {
     std::vector<CompletionItem> items;
     auto names = sema.getTypeNames();
-    for (auto &name : names)
-    {
+    for (auto &name : names) {
         CompletionItem item;
         item.label = name;
         item.insertText = name;
@@ -542,14 +493,11 @@ std::vector<CompletionItem> CompletionEngine::provideTypeNames(const Sema &sema,
     return items;
 }
 
-std::vector<CompletionItem> CompletionEngine::provideModuleMembers(const Sema &sema,
-                                                                   const std::string &moduleAlias,
-                                                                   const std::string &prefix) const
-{
+std::vector<CompletionItem> CompletionEngine::provideModuleMembers(
+    const Sema &sema, const std::string &moduleAlias, const std::string &prefix) const {
     std::vector<CompletionItem> items;
     auto exports = sema.getModuleExports(moduleAlias);
-    for (const auto &sym : exports)
-    {
+    for (const auto &sym : exports) {
         CompletionItem item;
         item.label = sym.name;
         item.insertText = sym.name;
@@ -563,12 +511,10 @@ std::vector<CompletionItem> CompletionEngine::provideModuleMembers(const Sema &s
 }
 
 std::vector<CompletionItem> CompletionEngine::provideRuntimeMembers(
-    const Sema &sema, const std::string &fullClassName, const std::string &prefix) const
-{
+    const Sema &sema, const std::string &fullClassName, const std::string &prefix) const {
     std::vector<CompletionItem> items;
     auto members = sema.getRuntimeMembers(fullClassName);
-    for (const auto &sym : members)
-    {
+    for (const auto &sym : members) {
         CompletionItem item;
         item.label = sym.name;
         item.insertText = sym.name;
@@ -586,12 +532,10 @@ std::vector<CompletionItem> CompletionEngine::provideRuntimeMembers(
 }
 
 std::vector<CompletionItem> CompletionEngine::provideNamespaceMembers(
-    const Sema &sema, const std::string &nsPrefix, const std::string &prefix) const
-{
+    const Sema &sema, const std::string &nsPrefix, const std::string &prefix) const {
     std::vector<CompletionItem> items;
     auto classNames = sema.getNamespaceClasses(nsPrefix);
-    for (auto &name : classNames)
-    {
+    for (auto &name : classNames) {
         CompletionItem item;
         item.label = name;
         item.insertText = name;
@@ -608,21 +552,18 @@ std::vector<CompletionItem> CompletionEngine::provideNamespaceMembers(
 // ---------------------------------------------------------------------------
 
 void CompletionEngine::filterByPrefix(std::vector<CompletionItem> &items,
-                                      const std::string &prefix) const
-{
+                                      const std::string &prefix) const {
     if (prefix.empty())
         return;
 
     items.erase(
         std::remove_if(items.begin(),
                        items.end(),
-                       [&](const CompletionItem &item)
-                       {
+                       [&](const CompletionItem &item) {
                            // Case-insensitive prefix match.
                            if (item.label.size() < prefix.size())
                                return true;
-                           for (size_t i = 0; i < prefix.size(); ++i)
-                           {
+                           for (size_t i = 0; i < prefix.size(); ++i) {
                                if (std::tolower(static_cast<unsigned char>(item.label[i])) !=
                                    std::tolower(static_cast<unsigned char>(prefix[i])))
                                    return true;
@@ -632,20 +573,17 @@ void CompletionEngine::filterByPrefix(std::vector<CompletionItem> &items,
         items.end());
 }
 
-void CompletionEngine::rank(std::vector<CompletionItem> &items, const std::string &prefix) const
-{
-    if (prefix.empty())
-    {
-        std::stable_sort(items.begin(),
-                         items.end(),
-                         [](const CompletionItem &a, const CompletionItem &b)
-                         { return a.sortPriority < b.sortPriority; });
+void CompletionEngine::rank(std::vector<CompletionItem> &items, const std::string &prefix) const {
+    if (prefix.empty()) {
+        std::stable_sort(
+            items.begin(), items.end(), [](const CompletionItem &a, const CompletionItem &b) {
+                return a.sortPriority < b.sortPriority;
+            });
         return;
     }
 
     // Score: 0 = exact, 1 = prefix (case-sensitive), 2 = prefix (insensitive), 3 = other.
-    auto score = [&](const CompletionItem &item) -> int
-    {
+    auto score = [&](const CompletionItem &item) -> int {
         if (item.label == prefix)
             return 0;
         if (item.label.size() >= prefix.size() && item.label.substr(0, prefix.size()) == prefix)
@@ -653,25 +591,22 @@ void CompletionEngine::rank(std::vector<CompletionItem> &items, const std::strin
         return 2;
     };
 
-    std::stable_sort(items.begin(),
-                     items.end(),
-                     [&](const CompletionItem &a, const CompletionItem &b)
-                     {
-                         int sa = score(a), sb = score(b);
-                         if (sa != sb)
-                             return sa < sb;
-                         return a.sortPriority < b.sortPriority;
-                     });
+    std::stable_sort(
+        items.begin(), items.end(), [&](const CompletionItem &a, const CompletionItem &b) {
+            int sa = score(a), sb = score(b);
+            if (sa != sb)
+                return sa < sb;
+            return a.sortPriority < b.sortPriority;
+        });
 }
 
-void CompletionEngine::deduplicate(std::vector<CompletionItem> &items) const
-{
+void CompletionEngine::deduplicate(std::vector<CompletionItem> &items) const {
     std::unordered_set<std::string> seen;
-    items.erase(std::remove_if(items.begin(),
-                               items.end(),
-                               [&](const CompletionItem &item)
-                               { return !seen.insert(item.label).second; }),
-                items.end());
+    items.erase(
+        std::remove_if(items.begin(),
+                       items.end(),
+                       [&](const CompletionItem &item) { return !seen.insert(item.label).second; }),
+        items.end());
 }
 
 // ---------------------------------------------------------------------------
@@ -679,12 +614,10 @@ void CompletionEngine::deduplicate(std::vector<CompletionItem> &items) const
 // ---------------------------------------------------------------------------
 
 std::vector<CompletionItem> CompletionEngine::complete(
-    std::string_view source, int line, int col, std::string_view filePath, int maxResults)
-{
+    std::string_view source, int line, int col, std::string_view filePath, int maxResults) {
     // ── Cache lookup ─────────────────────────────────────────────────────────
     uint64_t hash = fnv1a(source);
-    if (hash != cache_.hash || cache_.filePath != filePath || !cache_.result)
-    {
+    if (hash != cache_.hash || cache_.filePath != filePath || !cache_.result) {
         cache_.hash = 0;
         cache_.filePath.clear();
         cache_.result = nullptr;
@@ -700,8 +633,7 @@ std::vector<CompletionItem> CompletionEngine::complete(
         CompilerOptions opts{};
 
         cache_.result = parseAndAnalyze(input, opts, *sm_);
-        if (cache_.result)
-        {
+        if (cache_.result) {
             cache_.hash = hash;
             cache_.filePath = pathStr;
         }
@@ -716,10 +648,8 @@ std::vector<CompletionItem> CompletionEngine::complete(
     std::vector<CompletionItem> items;
     bool hasSema = cache_.result && cache_.result->sema;
 
-    switch (ctx.trigger)
-    {
-        case TriggerKind::MemberAccess:
-        {
+    switch (ctx.trigger) {
+        case TriggerKind::MemberAccess: {
             if (!hasSema)
                 break;
             const Sema &sema = *cache_.result->sema;
@@ -731,8 +661,7 @@ std::vector<CompletionItem> CompletionEngine::complete(
             break;
         }
 
-        case TriggerKind::AfterNew:
-        {
+        case TriggerKind::AfterNew: {
             if (!hasSema)
                 break;
             const Sema &sema = *cache_.result->sema;
@@ -741,8 +670,7 @@ std::vector<CompletionItem> CompletionEngine::complete(
             break;
         }
 
-        case TriggerKind::AfterColon:
-        {
+        case TriggerKind::AfterColon: {
             if (!hasSema)
                 break;
             const Sema &sema = *cache_.result->sema;
@@ -750,8 +678,7 @@ std::vector<CompletionItem> CompletionEngine::complete(
             items.insert(items.end(), types.begin(), types.end());
             // Built-in type keywords
             auto kws = provideKeywords(ctx.prefix);
-            for (auto &kw : kws)
-            {
+            for (auto &kw : kws) {
                 // Filter to just type keywords.
                 static const char *const typeKws[] = {
                     "Integer",
@@ -768,8 +695,7 @@ std::vector<CompletionItem> CompletionEngine::complete(
                 };
                 bool isType = false;
                 for (int i = 0; typeKws[i]; ++i)
-                    if (kw.label == typeKws[i])
-                    {
+                    if (kw.label == typeKws[i]) {
                         isType = true;
                         break;
                     }
@@ -780,11 +706,9 @@ std::vector<CompletionItem> CompletionEngine::complete(
         }
 
         case TriggerKind::AfterReturn:
-        case TriggerKind::CtrlSpace:
-        {
+        case TriggerKind::CtrlSpace: {
             // Scope symbols and type names require sema.
-            if (hasSema)
-            {
+            if (hasSema) {
                 const Sema &sema = *cache_.result->sema;
                 auto scope = provideScopeSymbols(sema, ctx.prefix);
                 items.insert(items.end(), scope.begin(), scope.end());

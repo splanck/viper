@@ -53,12 +53,10 @@
 #include <ostream>
 #include <string_view>
 
-namespace il::frontends::basic::intrinsics
-{
+namespace il::frontends::basic::intrinsics {
 
 /// @brief Type of parameter or return value for a BASIC intrinsic.
-enum class Type
-{
+enum class Type {
     Int,    ///< 64-bit integer.
     Float,  ///< 64-bit floating point.
     String, ///< BASIC string.
@@ -66,15 +64,13 @@ enum class Type
 };
 
 /// @brief Parameter descriptor.
-struct Param
-{
+struct Param {
     Type type;     ///< Parameter type.
     bool optional; ///< True if the parameter is optional.
 };
 
 /// @brief Intrinsic function descriptor.
-struct Intrinsic
-{
+struct Intrinsic {
     std::string_view name;  ///< BASIC name including $ suffix.
     Type returnType;        ///< Return type.
     const Param *params;    ///< Pointer to ordered parameter descriptors.

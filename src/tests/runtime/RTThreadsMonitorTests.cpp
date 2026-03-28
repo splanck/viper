@@ -22,13 +22,11 @@
 #include <thread>
 #include <vector>
 
-static void call_enter_null()
-{
+static void call_enter_null() {
     rt_monitor_enter(nullptr);
 }
 
-static void test_pause_all_fifo()
-{
+static void test_pause_all_fifo() {
     int obj_storage = 0;
     void *obj = &obj_storage;
 
@@ -45,25 +43,21 @@ static void test_pause_all_fifo()
     threads.reserve(kThreads);
 
     rt_monitor_enter(obj);
-    for (int i = 0; i < kThreads; ++i)
-    {
-        threads.emplace_back(
-            [&, i]()
+    for (int i = 0; i < kThreads; ++i) {
+        threads.emplace_back([&, i]() {
+            rt_monitor_enter(obj);
+            stage[i].store(1, std::memory_order_release);
+            rt_monitor_wait(obj);
             {
-                rt_monitor_enter(obj);
-                stage[i].store(1, std::memory_order_release);
-                rt_monitor_wait(obj);
-                {
-                    std::lock_guard<std::mutex> lock(resumed_mu);
-                    resumed.push_back(i);
-                }
-                rt_monitor_exit(obj);
-            });
+                std::lock_guard<std::mutex> lock(resumed_mu);
+                resumed.push_back(i);
+            }
+            rt_monitor_exit(obj);
+        });
 
         rt_monitor_exit(obj);
 
-        while (stage[i].load(std::memory_order_acquire) != 1)
-        {
+        while (stage[i].load(std::memory_order_acquire) != 1) {
             std::this_thread::yield();
         }
 
@@ -83,8 +77,7 @@ static void test_pause_all_fifo()
         assert(resumed[static_cast<size_t>(i)] == i);
 }
 
-static void test_wait_for_timeout()
-{
+static void test_wait_for_timeout() {
     int obj_storage = 0;
     void *obj = &obj_storage;
     rt_monitor_enter(obj);
@@ -93,8 +86,7 @@ static void test_wait_for_timeout()
     rt_monitor_exit(obj);
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

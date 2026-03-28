@@ -25,12 +25,10 @@
 #define IL_VM_ERR_BRIDGE_RESTORE_EOF 1
 #endif
 
-namespace il::vm
-{
+namespace il::vm {
 
 /// @brief Legacy runtime error codes forwarded through the VM bridge.
-enum class ErrCode : int32_t
-{
+enum class ErrCode : int32_t {
     Err_None = 0,
     Err_FileNotFound = 1,
     Err_EOF = 2,

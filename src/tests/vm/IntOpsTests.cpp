@@ -23,10 +23,8 @@
 
 using namespace il::core;
 
-namespace
-{
-void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs, int64_t rhs)
-{
+namespace {
+void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs, int64_t rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -49,8 +47,7 @@ void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs
     bb.instructions.push_back(ret);
 }
 
-void buildUnaryFunction(Module &module, Opcode op, Type::Kind type, int64_t operand)
-{
+void buildUnaryFunction(Module &module, Opcode op, Type::Kind type, int64_t operand) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -73,14 +70,12 @@ void buildUnaryFunction(Module &module, Opcode op, Type::Kind type, int64_t oper
 }
 } // namespace
 
-int main()
-{
+int main() {
     using viper::tests::VmFixture;
 
     VmFixture fixture;
 
-    const struct
-    {
+    const struct {
         int64_t lhs;
         int64_t rhs;
         int64_t expected;
@@ -90,8 +85,7 @@ int main()
         {-3, -2, -1},
     };
 
-    for (const auto &sample : sremCases)
-    {
+    for (const auto &sample : sremCases) {
         Module module;
         buildBinaryFunction(module, Opcode::SRemChk0, Type::Kind::I32, sample.lhs, sample.rhs);
         const int64_t value = fixture.run(module);

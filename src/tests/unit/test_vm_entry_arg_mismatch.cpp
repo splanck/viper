@@ -26,10 +26,8 @@
 
 using namespace il::core;
 
-namespace
-{
-bool trapHeaderMatches(const std::string &diag, std::string_view function, std::string_view kind)
-{
+namespace {
+bool trapHeaderMatches(const std::string &diag, std::string_view function, std::string_view kind) {
     std::string_view view(diag);
     if (const auto newline = view.find('\n'); newline != std::string_view::npos)
         view = view.substr(0, newline);
@@ -79,8 +77,7 @@ bool trapHeaderMatches(const std::string &diag, std::string_view function, std::
 }
 } // namespace
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 
@@ -106,12 +103,10 @@ int main(int argc, char *argv[])
 
     // Capture: too many args
     {
-        auto result = viper::tests::runIsolated(
-            [&]()
-            {
-                il::vm::VM vm(module);
-                il::vm::VMTestHook::run(vm, tooManyFn, {slot});
-            });
+        auto result = viper::tests::runIsolated([&]() {
+            il::vm::VM vm(module);
+            il::vm::VMTestHook::run(vm, tooManyFn, {slot});
+        });
         assert(result.trapped());
         assert(trapHeaderMatches(result.stderrText, "too_many_args", "InvalidOperation"));
         assert(result.stderrText.find("argument count mismatch") != std::string::npos);
@@ -119,12 +114,10 @@ int main(int argc, char *argv[])
 
     // Capture: too few args
     {
-        auto result = viper::tests::runIsolated(
-            [&]()
-            {
-                il::vm::VM vm(module);
-                il::vm::VMTestHook::run(vm, tooFewFn, {});
-            });
+        auto result = viper::tests::runIsolated([&]() {
+            il::vm::VM vm(module);
+            il::vm::VMTestHook::run(vm, tooFewFn, {});
+        });
         assert(result.trapped());
         assert(trapHeaderMatches(result.stderrText, "too_few_args", "InvalidOperation"));
         assert(result.stderrText.find("argument count mismatch") != std::string::npos);

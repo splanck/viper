@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,10 +43,8 @@ static std::string readFile(const std::string &path)
 }
 
 // Test all unsigned comparison operators
-TEST(Arm64UnsignedCmp, AllComparisons)
-{
-    struct Case
-    {
+TEST(Arm64UnsignedCmp, AllComparisons) {
+    struct Case {
         const char *op;
         const char *expectedCond; // May have alternatives
     } cases[] = {
@@ -59,8 +54,7 @@ TEST(Arm64UnsignedCmp, AllComparisons)
         {"ucmp_ge", "hs"}, // unsigned greater or equal -> hs (higher or same) or cs
     };
 
-    for (const auto &c : cases)
-    {
+    for (const auto &c : cases) {
         std::string in = std::string("arm64_") + c.op + ".il";
         std::string out = std::string("arm64_") + c.op + ".s";
         std::string il = std::string("il 0.1\n"
@@ -88,8 +82,7 @@ TEST(Arm64UnsignedCmp, AllComparisons)
 }
 
 // Test: ucmp in conditional branch
-TEST(Arm64UnsignedCmp, BranchOnUcmp)
-{
+TEST(Arm64UnsignedCmp, BranchOnUcmp) {
     const std::string in = outPath("arm64_ucmp_branch.il");
     const std::string out = outPath("arm64_ucmp_branch.s");
     const std::string il = "il 0.1\n"
@@ -115,8 +108,7 @@ TEST(Arm64UnsignedCmp, BranchOnUcmp)
 }
 
 // Test: ucmp vs scmp difference (same values, different results for negatives)
-TEST(Arm64UnsignedCmp, UcmpVsScmp)
-{
+TEST(Arm64UnsignedCmp, UcmpVsScmp) {
     // Test with unsigned comparison
     {
         const std::string in = outPath("arm64_ucmp_neg.il");
@@ -157,8 +149,7 @@ TEST(Arm64UnsignedCmp, UcmpVsScmp)
 }
 
 // Test: ucmp with immediate
-TEST(Arm64UnsignedCmp, UcmpImmediate)
-{
+TEST(Arm64UnsignedCmp, UcmpImmediate) {
     const std::string in = outPath("arm64_ucmp_imm.il");
     const std::string out = outPath("arm64_ucmp_imm.s");
     const std::string il = "il 0.1\n"
@@ -177,8 +168,7 @@ TEST(Arm64UnsignedCmp, UcmpImmediate)
 }
 
 // Test: Chained unsigned comparisons (bounds check pattern)
-TEST(Arm64UnsignedCmp, BoundsCheck)
-{
+TEST(Arm64UnsignedCmp, BoundsCheck) {
     const std::string in = outPath("arm64_ucmp_bounds.il");
     const std::string out = outPath("arm64_ucmp_bounds.s");
     // Check if index is in bounds: 0 <= idx < len
@@ -199,10 +189,8 @@ TEST(Arm64UnsignedCmp, BoundsCheck)
 }
 
 // Test: ucmp_eq and ucmp_ne (same as icmp_eq/ne for these)
-TEST(Arm64UnsignedCmp, EqualityComparisons)
-{
-    struct Case
-    {
+TEST(Arm64UnsignedCmp, EqualityComparisons) {
+    struct Case {
         const char *op;
         const char *cond;
     } cases[] = {
@@ -210,8 +198,7 @@ TEST(Arm64UnsignedCmp, EqualityComparisons)
         {"icmp_ne", "ne"},
     };
 
-    for (const auto &c : cases)
-    {
+    for (const auto &c : cases) {
         std::string in = std::string("arm64_") + c.op + "_u.il";
         std::string out = std::string("arm64_") + c.op + "_u.s";
         std::string il = std::string("il 0.1\n"
@@ -233,8 +220,7 @@ TEST(Arm64UnsignedCmp, EqualityComparisons)
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

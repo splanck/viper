@@ -55,8 +55,7 @@ static inline void rt_net_init_wsa(void) {}
 // Port Checking
 //=============================================================================
 
-int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms)
-{
+int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms) {
     rt_net_init_wsa();
 
     const char *host_ptr = rt_string_cstr(host);
@@ -99,8 +98,7 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
     int result = connect(sock, res->ai_addr, (int)res->ai_addrlen);
     freeaddrinfo(res);
 
-    if (result == 0)
-    {
+    if (result == 0) {
         CLOSE_SOCKET(sock);
         return 1; // Connected immediately
     }
@@ -115,8 +113,7 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
     tv.tv_usec = (long)((timeout_ms % 1000) * 1000);
 
     int ready = select((int)(sock + 1), NULL, &write_fds, NULL, &tv);
-    if (ready > 0)
-    {
+    if (ready > 0) {
         int so_error = 0;
         socklen_t len = sizeof(so_error);
         getsockopt(sock, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len);
@@ -128,8 +125,7 @@ int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms
     return 0;
 }
 
-int64_t rt_netutils_get_free_port(void)
-{
+int64_t rt_netutils_get_free_port(void) {
     rt_net_init_wsa();
 
     socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -147,15 +143,13 @@ int64_t rt_netutils_get_free_port(void)
     addr.sin_addr.s_addr = htonl(0x7f000001); // 127.0.0.1
     addr.sin_port = 0;                        // OS assigns a free port
 
-    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) != 0)
-    {
+    if (bind(sock, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         CLOSE_SOCKET(sock);
         return 0;
     }
 
     socklen_t len = sizeof(addr);
-    if (getsockname(sock, (struct sockaddr *)&addr, &len) != 0)
-    {
+    if (getsockname(sock, (struct sockaddr *)&addr, &len) != 0) {
         CLOSE_SOCKET(sock);
         return 0;
     }
@@ -170,8 +164,7 @@ int64_t rt_netutils_get_free_port(void)
 //=============================================================================
 
 /// @brief Parse an IPv4 address string to a uint32_t in host byte order.
-static bool parse_ipv4_addr(const char *str, uint32_t *out)
-{
+static bool parse_ipv4_addr(const char *str, uint32_t *out) {
     struct in_addr addr;
     if (inet_pton(AF_INET, str, &addr) != 1)
         return false;
@@ -179,8 +172,7 @@ static bool parse_ipv4_addr(const char *str, uint32_t *out)
     return true;
 }
 
-int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr)
-{
+int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr) {
     const char *ip_str = rt_string_cstr(ip);
     const char *cidr_str = rt_string_cstr(cidr);
     if (!ip_str || !cidr_str)
@@ -190,8 +182,7 @@ int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr)
     char network[64];
     int prefix_len = 32;
     const char *slash = strchr(cidr_str, '/');
-    if (slash)
-    {
+    if (slash) {
         size_t net_len = (size_t)(slash - cidr_str);
         if (net_len >= sizeof(network))
             return 0;
@@ -200,9 +191,7 @@ int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr)
         prefix_len = atoi(slash + 1);
         if (prefix_len < 0 || prefix_len > 32)
             return 0;
-    }
-    else
-    {
+    } else {
         size_t len = strlen(cidr_str);
         if (len >= sizeof(network))
             return 0;
@@ -222,8 +211,7 @@ int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr)
     return (ip_val & mask) == (net_val & mask) ? 1 : 0;
 }
 
-int8_t rt_netutils_is_private_ip(rt_string ip)
-{
+int8_t rt_netutils_is_private_ip(rt_string ip) {
     const char *ip_str = rt_string_cstr(ip);
     if (!ip_str)
         return 0;
@@ -250,8 +238,7 @@ int8_t rt_netutils_is_private_ip(rt_string ip)
     return 0;
 }
 
-rt_string rt_netutils_local_ipv4(void)
-{
+rt_string rt_netutils_local_ipv4(void) {
     rt_net_init_wsa();
 
     // Create a UDP socket and "connect" to a public IP to determine
@@ -271,16 +258,14 @@ rt_string rt_netutils_local_ipv4(void)
     dest.sin_port = htons(53); // DNS port (arbitrary)
     inet_pton(AF_INET, "8.8.8.8", &dest.sin_addr);
 
-    if (connect(sock, (struct sockaddr *)&dest, sizeof(dest)) != 0)
-    {
+    if (connect(sock, (struct sockaddr *)&dest, sizeof(dest)) != 0) {
         CLOSE_SOCKET(sock);
         return rt_string_from_bytes("127.0.0.1", 9);
     }
 
     struct sockaddr_in local_addr;
     socklen_t len = sizeof(local_addr);
-    if (getsockname(sock, (struct sockaddr *)&local_addr, &len) != 0)
-    {
+    if (getsockname(sock, (struct sockaddr *)&local_addr, &len) != 0) {
         CLOSE_SOCKET(sock);
         return rt_string_from_bytes("127.0.0.1", 9);
     }

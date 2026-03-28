@@ -26,8 +26,7 @@
 
 /// Build a simple recursive function that computes factorial(n).
 /// This exercises the buffer pooling by making many recursive calls.
-static void buildFactorial(il::core::Module &m)
-{
+static void buildFactorial(il::core::Module &m) {
     using namespace il::core;
 
     // extern function for return is not needed, we use Ret opcode
@@ -124,8 +123,7 @@ static void buildFactorial(il::core::Module &m)
 }
 
 /// Build main function that calls factorial(10).
-static void buildMain(il::core::Module &m)
-{
+static void buildMain(il::core::Module &m) {
     using namespace il::core;
 
     Function fn;
@@ -190,8 +188,7 @@ static void buildMain(il::core::Module &m)
     m.functions.push_back(std::move(fn));
 }
 
-int main()
-{
+int main() {
     using namespace il::core;
 
     Module m;
@@ -203,8 +200,7 @@ int main()
     int64_t res = vm.run();
 
     // factorial(10) = 3628800, so result should be 0 if correct
-    if (res != 0)
-    {
+    if (res != 0) {
         std::cerr << "FAIL: factorial(10) returned wrong value, exit code: " << res << "\n";
         return 1;
     }

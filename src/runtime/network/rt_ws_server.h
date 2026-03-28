@@ -22,22 +22,21 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    void *rt_ws_server_new(int64_t port);
-    void rt_ws_server_start(void *server);
-    void rt_ws_server_stop(void *server);
-    void rt_ws_server_broadcast(void *server, rt_string message);
-    void rt_ws_server_broadcast_bytes(void *server, void *data);
-    int64_t rt_ws_server_client_count(void *server);
-    int64_t rt_ws_server_port(void *server);
-    int8_t rt_ws_server_is_running(void *server);
-    void *rt_ws_server_accept(void *server);
-    rt_string rt_ws_server_client_recv(void *client);
-    void rt_ws_server_client_send(void *client, rt_string message);
-    void rt_ws_server_client_close(void *client);
+void *rt_ws_server_new(int64_t port);
+void rt_ws_server_start(void *server);
+void rt_ws_server_stop(void *server);
+void rt_ws_server_broadcast(void *server, rt_string message);
+void rt_ws_server_broadcast_bytes(void *server, void *data);
+int64_t rt_ws_server_client_count(void *server);
+int64_t rt_ws_server_port(void *server);
+int8_t rt_ws_server_is_running(void *server);
+void *rt_ws_server_accept(void *server);
+rt_string rt_ws_server_client_recv(void *client);
+void rt_ws_server_client_send(void *client, rt_string message);
+void rt_ws_server_client_close(void *client);
 
 #ifdef __cplusplus
 }

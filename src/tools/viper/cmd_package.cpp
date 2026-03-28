@@ -41,25 +41,16 @@
 #include <string>
 
 // Forward declarations of compile functions (defined in cmd_run.cpp)
-namespace
-{
+namespace {
 
 using namespace il::tools::common;
 using namespace il::support;
 namespace fs = std::filesystem;
 
-enum class PackageTarget
-{
-    MacOS,
-    Linux,
-    Windows,
-    Tarball,
-    Auto
-};
+enum class PackageTarget { MacOS, Linux, Windows, Tarball, Auto };
 
 /// @brief Print usage information for `viper package`.
-void packageUsage()
-{
+void packageUsage() {
     std::cerr
         << "Usage: viper package [project] [options]\n"
         << "\n"
@@ -112,8 +103,7 @@ void packageUsage()
         << "  Tarball:  .tar.gz portable archive\n";
 }
 
-struct PackageArgs
-{
+struct PackageArgs {
     std::string target;
     PackageTarget platformTarget{PackageTarget::Auto};
     std::string outputPath;
@@ -122,8 +112,7 @@ struct PackageArgs
     bool verbose{false};
 };
 
-PackageTarget detectHostPlatform()
-{
+PackageTarget detectHostPlatform() {
 #if defined(__APPLE__)
     return PackageTarget::MacOS;
 #elif defined(__linux__)
@@ -135,10 +124,8 @@ PackageTarget detectHostPlatform()
 #endif
 }
 
-std::string platformName(PackageTarget t)
-{
-    switch (t)
-    {
+std::string platformName(PackageTarget t) {
+    switch (t) {
         case PackageTarget::MacOS:
             return "macos";
         case PackageTarget::Linux:
@@ -152,10 +139,8 @@ std::string platformName(PackageTarget t)
     }
 }
 
-std::string platformExtension(PackageTarget t)
-{
-    switch (t)
-    {
+std::string platformExtension(PackageTarget t) {
+    switch (t) {
         case PackageTarget::MacOS:
             return ".zip";
         case PackageTarget::Linux:
@@ -169,13 +154,10 @@ std::string platformExtension(PackageTarget t)
     }
 }
 
-bool parsePackageArgs(int argc, char **argv, PackageArgs &args)
-{
-    for (int i = 0; i < argc; i++)
-    {
+bool parsePackageArgs(int argc, char **argv, PackageArgs &args) {
+    for (int i = 0; i < argc; i++) {
         std::string arg = argv[i];
-        if (arg == "--target" && i + 1 < argc)
-        {
+        if (arg == "--target" && i + 1 < argc) {
             std::string val = argv[++i];
             if (val == "macos")
                 args.platformTarget = PackageTarget::MacOS;
@@ -185,52 +167,34 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args)
                 args.platformTarget = PackageTarget::Windows;
             else if (val == "tarball")
                 args.platformTarget = PackageTarget::Tarball;
-            else
-            {
+            else {
                 std::cerr << "error: unknown target '" << val
                           << "'; expected macos, linux, windows, or tarball\n";
                 return false;
             }
-        }
-        else if (arg == "--arch" && i + 1 < argc)
-        {
+        } else if (arg == "--arch" && i + 1 < argc) {
             args.archOverride = argv[++i];
-            if (args.archOverride != "x64" && args.archOverride != "arm64")
-            {
+            if (args.archOverride != "x64" && args.archOverride != "arm64") {
                 std::cerr << "error: unknown arch '" << args.archOverride
                           << "'; expected x64 or arm64\n";
                 return false;
             }
-        }
-        else if (arg == "-o" && i + 1 < argc)
-        {
+        } else if (arg == "-o" && i + 1 < argc) {
             args.outputPath = argv[++i];
-        }
-        else if (arg == "--dry-run")
-        {
+        } else if (arg == "--dry-run") {
             args.dryRun = true;
-        }
-        else if (arg == "--verbose" || arg == "-v")
-        {
+        } else if (arg == "--verbose" || arg == "-v") {
             args.verbose = true;
-        }
-        else if (arg == "--help" || arg == "-h")
-        {
+        } else if (arg == "--help" || arg == "-h") {
             packageUsage();
             return false;
-        }
-        else if (arg[0] == '-')
-        {
+        } else if (arg[0] == '-') {
             std::cerr << "error: unknown option '" << arg << "'\n";
             packageUsage();
             return false;
-        }
-        else if (args.target.empty())
-        {
+        } else if (args.target.empty()) {
             args.target = arg;
-        }
-        else
-        {
+        } else {
             std::cerr << "error: unexpected argument '" << arg << "'\n";
             return false;
         }
@@ -251,8 +215,7 @@ bool parsePackageArgs(int argc, char **argv, PackageArgs &args)
 // duplicate the pattern. For now, we use the same resolveProject + compileToNative
 // pipeline that cmdBuild uses.
 
-int cmdPackage(int argc, char **argv)
-{
+int cmdPackage(int argc, char **argv) {
     using namespace il::tools::common;
     namespace fs = std::filesystem;
 
@@ -262,8 +225,7 @@ int cmdPackage(int argc, char **argv)
 
     // Resolve project
     auto project = resolveProject(args.target);
-    if (!project)
-    {
+    if (!project) {
         SourceManager sm;
         il::support::printDiag(project.error(), std::cerr, &sm);
         return 1;
@@ -272,8 +234,7 @@ int cmdPackage(int argc, char **argv)
     ProjectConfig &proj = project.value();
 
     // Check that package config is present
-    if (!proj.packageConfig.hasPackageConfig())
-    {
+    if (!proj.packageConfig.hasPackageConfig()) {
         std::cerr << "warning: no package-* directives in viper.project; "
                   << "using defaults\n";
     }
@@ -285,20 +246,16 @@ int cmdPackage(int argc, char **argv)
     // Validate version string (warn on clearly invalid formats)
     {
         bool validVersion = !proj.version.empty();
-        if (validVersion)
-        {
-            for (char c : proj.version)
-            {
+        if (validVersion) {
+            for (char c : proj.version) {
                 if (!std::isdigit(static_cast<unsigned char>(c)) && c != '.' && c != '-' &&
-                    c != '+' && !std::isalpha(static_cast<unsigned char>(c)))
-                {
+                    c != '+' && !std::isalpha(static_cast<unsigned char>(c))) {
                     validVersion = false;
                     break;
                 }
             }
         }
-        if (!validVersion)
-        {
+        if (!validVersion) {
             std::cerr << "warning: version '" << proj.version
                       << "' may be invalid; expected format like '1.0.0' or '1.0.0-beta'\n";
         }
@@ -307,40 +264,33 @@ int cmdPackage(int argc, char **argv)
     // Determine architecture
     viper::tools::TargetArch arch = viper::tools::detectHostArch();
     std::string archStr;
-    if (!args.archOverride.empty())
-    {
+    if (!args.archOverride.empty()) {
         arch = (args.archOverride == "arm64") ? viper::tools::TargetArch::ARM64
                                               : viper::tools::TargetArch::X64;
         archStr = args.archOverride;
-    }
-    else
-    {
+    } else {
         archStr = (arch == viper::tools::TargetArch::ARM64) ? "arm64" : "x64";
     }
 
     // Dry-run mode: list what would be packaged, then exit
-    if (args.dryRun)
-    {
+    if (args.dryRun) {
         std::cerr << "Dry run: " << displayName << " for " << platformName(args.platformTarget)
                   << " (" << archStr << ")\n";
         std::cerr << "  Output: " << args.outputPath << "\n";
         std::cerr << "  Executable: " << proj.name << "\n";
-        if (!proj.packageConfig.iconPath.empty())
-        {
+        if (!proj.packageConfig.iconPath.empty()) {
             fs::path iconPath = fs::path(proj.rootDir) / proj.packageConfig.iconPath;
             std::cerr << "  Icon: " << proj.packageConfig.iconPath;
             if (!fs::exists(iconPath))
                 std::cerr << " [NOT FOUND]";
             std::cerr << "\n";
         }
-        for (const auto &asset : proj.packageConfig.assets)
-        {
+        for (const auto &asset : proj.packageConfig.assets) {
             fs::path assetPath = fs::path(proj.rootDir) / asset.sourcePath;
             std::cerr << "  Asset: " << asset.sourcePath << " -> " << asset.targetPath;
             if (!fs::exists(assetPath))
                 std::cerr << " [NOT FOUND]";
-            else if (fs::is_directory(assetPath))
-            {
+            else if (fs::is_directory(assetPath)) {
                 size_t count = 0;
                 for (auto &e : fs::recursive_directory_iterator(assetPath))
                     if (e.is_regular_file())
@@ -353,8 +303,7 @@ int cmdPackage(int argc, char **argv)
             std::cerr << "  File assoc: " << assoc.extension << " (" << assoc.description << ")\n";
         if (!proj.packageConfig.category.empty())
             std::cerr << "  Category: " << proj.packageConfig.category << "\n";
-        if (!proj.packageConfig.depends.empty())
-        {
+        if (!proj.packageConfig.depends.empty()) {
             std::cerr << "  Depends:";
             for (const auto &d : proj.packageConfig.depends)
                 std::cerr << " " << d;
@@ -399,22 +348,19 @@ int cmdPackage(int argc, char **argv)
         buildArgv.push_back(dashO.data());
         buildArgv.push_back(tempBinaryPath.data());
         int rc = cmdBuild(static_cast<int>(buildArgv.size()), buildArgv.data());
-        if (rc != 0)
-        {
+        if (rc != 0) {
             std::cerr << "error: compilation failed\n";
             return 1;
         }
     }
 
-    if (!fs::exists(tempBinaryPath))
-    {
+    if (!fs::exists(tempBinaryPath)) {
         std::cerr << "error: compiled binary not found at " << tempBinaryPath << "\n";
         return 1;
     }
 
     // Step 2: Determine output path
-    if (args.outputPath.empty())
-    {
+    if (args.outputPath.empty()) {
         args.outputPath = proj.name + "-" + proj.version + "-" + platformName(args.platformTarget) +
                           "-" + archStr + platformExtension(args.platformTarget);
     }
@@ -423,8 +369,7 @@ int cmdPackage(int argc, char **argv)
     std::cerr << "Packaging " << displayName << " for " << platformName(args.platformTarget) << " ("
               << archStr << ")...\n";
 
-    if (args.verbose)
-    {
+    if (args.verbose) {
         auto binSize = fs::file_size(tempBinaryPath);
         std::cerr << "  Binary: " << tempBinaryPath << " (" << binSize << " bytes)\n";
         std::cerr << "  Output: " << args.outputPath << "\n";
@@ -434,12 +379,9 @@ int cmdPackage(int argc, char **argv)
             std::cerr << "  Asset: " << asset.sourcePath << " -> " << asset.targetPath << "\n";
     }
 
-    try
-    {
-        switch (args.platformTarget)
-        {
-            case PackageTarget::MacOS:
-            {
+    try {
+        switch (args.platformTarget) {
+            case PackageTarget::MacOS: {
                 viper::pkg::MacOSBuildParams params;
                 params.projectName = proj.name;
                 params.version = proj.version;
@@ -450,8 +392,7 @@ int cmdPackage(int argc, char **argv)
                 viper::pkg::buildMacOSPackage(params);
                 break;
             }
-            case PackageTarget::Linux:
-            {
+            case PackageTarget::Linux: {
                 viper::pkg::LinuxBuildParams lparams;
                 lparams.projectName = proj.name;
                 lparams.version = proj.version;
@@ -464,8 +405,7 @@ int cmdPackage(int argc, char **argv)
                 viper::pkg::buildDebPackage(lparams);
                 break;
             }
-            case PackageTarget::Windows:
-            {
+            case PackageTarget::Windows: {
                 viper::pkg::WindowsBuildParams wparams;
                 wparams.projectName = proj.name;
                 wparams.version = proj.version;
@@ -477,8 +417,7 @@ int cmdPackage(int argc, char **argv)
                 viper::pkg::buildWindowsPackage(wparams);
                 break;
             }
-            case PackageTarget::Tarball:
-            {
+            case PackageTarget::Tarball: {
                 viper::pkg::LinuxBuildParams tparams;
                 tparams.projectName = proj.name;
                 tparams.version = proj.version;
@@ -493,9 +432,7 @@ int cmdPackage(int argc, char **argv)
             default:
                 break;
         }
-    }
-    catch (const std::exception &e)
-    {
+    } catch (const std::exception &e) {
         std::cerr << "error: packaging failed: " << e.what() << "\n";
         std::error_code ec;
         fs::remove(tempBinaryPath, ec);
@@ -504,11 +441,9 @@ int cmdPackage(int argc, char **argv)
 
     // Step 4: Verify the generated package
     std::error_code ec;
-    if (fs::exists(args.outputPath))
-    {
+    if (fs::exists(args.outputPath)) {
         std::ifstream pkgFile(args.outputPath, std::ios::binary | std::ios::ate);
-        if (pkgFile)
-        {
+        if (pkgFile) {
             auto pkgSize = pkgFile.tellg();
             pkgFile.seekg(0);
             std::vector<uint8_t> pkgData(static_cast<size_t>(pkgSize));
@@ -517,8 +452,7 @@ int cmdPackage(int argc, char **argv)
 
             std::ostringstream verifyErr;
             bool valid = true;
-            switch (args.platformTarget)
-            {
+            switch (args.platformTarget) {
                 case PackageTarget::MacOS:
                     valid = viper::pkg::verifyZip(pkgData, verifyErr);
                     break;
@@ -531,8 +465,7 @@ int cmdPackage(int argc, char **argv)
                 default:
                     break; // Tarball: no structural verification needed
             }
-            if (!valid)
-            {
+            if (!valid) {
                 std::cerr << "error: package verification failed:\n" << verifyErr.str();
                 fs::remove(args.outputPath, ec);
                 fs::remove(tempBinaryPath, ec);
@@ -547,8 +480,7 @@ int cmdPackage(int argc, char **argv)
     fs::remove(tempBinaryPath, ec);
 
     std::cerr << "Package created: " << args.outputPath;
-    if (args.verbose && fs::exists(args.outputPath))
-    {
+    if (args.verbose && fs::exists(args.outputPath)) {
         auto pkgSize = fs::file_size(args.outputPath);
         std::cerr << " (" << pkgSize << " bytes)";
     }

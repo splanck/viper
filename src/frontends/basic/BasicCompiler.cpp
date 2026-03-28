@@ -38,18 +38,14 @@
 #include "viper/il/IO.hpp"
 #include <iostream>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-namespace
-{
+namespace {
 /// @brief Print every token from the BASIC source to stderr.
-void dumpTokenStream(std::string_view source, uint32_t fileId)
-{
+void dumpTokenStream(std::string_view source, uint32_t fileId) {
     Lexer lexer(source, fileId);
     std::cerr << "=== BASIC Token Stream ===\n";
-    for (;;)
-    {
+    for (;;) {
         Token tok = lexer.next();
         std::cerr << tok.loc.line << ':' << tok.loc.column << '\t' << tokenKindToString(tok.kind);
         if (!tok.lexeme.empty())
@@ -73,8 +69,7 @@ void dumpTokenStream(std::string_view source, uint32_t fileId)
 ///
 /// @return True when compilation completed without recorded errors; otherwise
 ///         false.
-[[nodiscard]] bool BasicCompilerResult::succeeded() const
-{
+[[nodiscard]] bool BasicCompilerResult::succeeded() const {
     return emitter && emitter->errorCount() == 0;
 }
 
@@ -103,21 +98,18 @@ void dumpTokenStream(std::string_view source, uint32_t fileId)
 /// @return Aggregated compilation result containing diagnostics and the module.
 BasicCompilerResult compileBasic(const BasicCompilerInput &input,
                                  const BasicCompilerOptions &options,
-                                 il::support::SourceManager &sm)
-{
+                                 il::support::SourceManager &sm) {
     BasicCompilerResult result{};
     result.emitter = std::make_unique<DiagnosticEmitter>(result.diagnostics, sm);
 
     uint32_t fileId = input.fileId.value_or(0);
-    if (fileId == 0)
-    {
+    if (fileId == 0) {
         std::string path = input.path.empty() ? std::string{"<input>"} : std::string{input.path};
         fileId = sm.addFile(std::move(path));
     }
     result.fileId = fileId;
 
-    if (fileId == 0)
-    {
+    if (fileId == 0) {
         result.emitter->emit(il::support::Severity::Error,
                              "B0005",
                              {},
@@ -129,8 +121,7 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     result.emitter->addSource(fileId, std::string{input.source});
 
     // Dump token stream before parsing if requested.
-    if (options.dumpTokens)
-    {
+    if (options.dumpTokens) {
         dumpTokenStream(input.source, fileId);
     }
 
@@ -147,14 +138,12 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     Parser parser(
         input.source, fileId, result.emitter.get(), &sm, &includeStack, /*suppress*/ false);
     auto program = parser.parseProgram();
-    if (!program)
-    {
+    if (!program) {
         return result;
     }
 
     // Dump AST after parsing.
-    if (options.dumpAst)
-    {
+    if (options.dumpAst) {
         AstPrinter printer;
         std::cerr << "=== AST after parsing ===\n" << printer.dump(*program) << "=== End AST ===\n";
     }
@@ -169,8 +158,7 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     SemanticAnalyzer sema(*result.emitter);
     sema.analyze(*program);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         return result;
     }
 
@@ -180,8 +168,7 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
     result.module = lower.lower(*program);
 
     // Dump IL after lowering, before optimization.
-    if (options.dumpIL)
-    {
+    if (options.dumpIL) {
         std::cerr << "=== IL after lowering ===\n";
         io::Serializer::write(result.module, std::cerr);
         std::cerr << "=== End IL ===\n";

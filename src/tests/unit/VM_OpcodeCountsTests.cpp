@@ -24,8 +24,7 @@
 
 using namespace il::core;
 
-static Module build_count_module()
-{
+static Module build_count_module() {
     Module m;
     il::build::IRBuilder b(m);
     // main() -> i64: t0 = add 1,2; t1 = sub t0,1; t2 = mul t1,2; ret t2
@@ -70,16 +69,14 @@ static Module build_count_module()
     return m;
 }
 
-static uint64_t sumCounts(const std::array<uint64_t, il::core::kNumOpcodes> &arr)
-{
+static uint64_t sumCounts(const std::array<uint64_t, il::core::kNumOpcodes> &arr) {
     uint64_t s = 0;
     for (uint64_t v : arr)
         s += v;
     return s;
 }
 
-int main()
-{
+int main() {
     Module m = build_count_module();
 
     // Scenario 1: counting enabled (default) -> known bins increment.

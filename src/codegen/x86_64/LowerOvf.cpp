@@ -30,19 +30,14 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
-namespace
-{
+namespace {
 
 /// @brief Locate a basic block index using its label, if present.
-[[nodiscard]] std::optional<std::size_t> findBlock(const MFunction &fn, const std::string &label)
-{
-    for (std::size_t idx = 0; idx < fn.blocks.size(); ++idx)
-    {
-        if (fn.blocks[idx].label == label)
-        {
+[[nodiscard]] std::optional<std::size_t> findBlock(const MFunction &fn, const std::string &label) {
+    for (std::size_t idx = 0; idx < fn.blocks.size(); ++idx) {
+        if (fn.blocks[idx].label == label) {
             return idx;
         }
     }
@@ -50,8 +45,7 @@ namespace
 }
 
 /// @brief Produce a shallow copy of a Machine IR operand.
-[[nodiscard]] Operand cloneOp(const Operand &operand)
-{
+[[nodiscard]] Operand cloneOp(const Operand &operand) {
     return operand;
 }
 
@@ -65,20 +59,16 @@ namespace
 ///          condition to a shared trap block. The trap block calls rt_trap.
 ///
 /// @param fn Machine IR function being rewritten in place.
-void lowerOverflowOps(MFunction &fn)
-{
+void lowerOverflowOps(MFunction &fn) {
     const std::string trapLabel = ".Ltrap_ovf_" + fn.name;
     std::optional<std::size_t> trapIndex{};
 
-    auto ensureTrapBlock = [&]() -> std::size_t
-    {
-        if (trapIndex)
-        {
+    auto ensureTrapBlock = [&]() -> std::size_t {
+        if (trapIndex) {
             return *trapIndex;
         }
 
-        if (auto existing = findBlock(fn, trapLabel))
-        {
+        if (auto existing = findBlock(fn, trapLabel)) {
             trapIndex = *existing;
             return *trapIndex;
         }
@@ -97,13 +87,10 @@ void lowerOverflowOps(MFunction &fn)
 
     // Pre-scan: if any overflow pseudo exists, create the trap block up front
     // so that fn.blocks is not reallocated while we hold references into it.
-    for (const auto &block : fn.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.opcode == MOpcode::ADDOvfrr || instr.opcode == MOpcode::SUBOvfrr ||
-                instr.opcode == MOpcode::IMULOvfrr)
-            {
+                instr.opcode == MOpcode::IMULOvfrr) {
                 ensureTrapBlock();
                 goto rewrite; // trap block created, proceed to rewriting
             }
@@ -114,15 +101,12 @@ void lowerOverflowOps(MFunction &fn)
 rewrite:
     // The trap block index is now stable — fn.blocks will not reallocate.
     const std::size_t blockCount = fn.blocks.size() - 1U; // exclude the trap block
-    for (std::size_t blockIdx = 0; blockIdx < blockCount; ++blockIdx)
-    {
+    for (std::size_t blockIdx = 0; blockIdx < blockCount; ++blockIdx) {
         auto &block = fn.blocks[blockIdx];
-        for (std::size_t i = 0; i < block.instructions.size(); ++i)
-        {
+        for (std::size_t i = 0; i < block.instructions.size(); ++i) {
             const MInstr &instr = block.instructions[i];
             MOpcode realOpc;
-            switch (instr.opcode)
-            {
+            switch (instr.opcode) {
                 case MOpcode::ADDOvfrr:
                     realOpc = MOpcode::ADDrr;
                     break;
@@ -136,16 +120,14 @@ rewrite:
                     continue;
             }
 
-            if (instr.operands.size() < 2U)
-            {
+            if (instr.operands.size() < 2U) {
                 continue;
             }
 
             // Clone operands from the pseudo instruction
             std::vector<Operand> realOps;
             realOps.reserve(instr.operands.size());
-            for (const auto &op : instr.operands)
-            {
+            for (const auto &op : instr.operands) {
                 realOps.push_back(cloneOp(op));
             }
 

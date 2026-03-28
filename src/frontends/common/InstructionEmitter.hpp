@@ -31,14 +31,12 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::common
-{
+namespace il::frontends::common {
 
 /// @brief Common instruction emission helpers for language frontends.
 /// @details Provides methods for emitting IL instructions that are shared
 ///          across all language frontends.
-class InstructionEmitter
-{
+class InstructionEmitter {
   public:
     using Type = il::core::Type;
     using Value = il::core::Value;
@@ -56,27 +54,22 @@ class InstructionEmitter
     InstructionEmitter(il::build::IRBuilder *builder,
                        BasicBlock **currentBlock,
                        Function *currentFunc)
-        : builder_(builder), currentBlock_(currentBlock), currentFunc_(currentFunc)
-    {
-    }
+        : builder_(builder), currentBlock_(currentBlock), currentFunc_(currentFunc) {}
 
     /// @brief Bind to new context.
-    void bind(il::build::IRBuilder *builder, BasicBlock **currentBlock, Function *currentFunc)
-    {
+    void bind(il::build::IRBuilder *builder, BasicBlock **currentBlock, Function *currentFunc) {
         builder_ = builder;
         currentBlock_ = currentBlock;
         currentFunc_ = currentFunc;
     }
 
     /// @brief Set the current source location for emitted instructions.
-    void setLocation(il::support::SourceLoc loc)
-    {
+    void setLocation(il::support::SourceLoc loc) {
         currentLoc_ = loc;
     }
 
     /// @brief Get the current source location.
-    [[nodiscard]] il::support::SourceLoc location() const noexcept
-    {
+    [[nodiscard]] il::support::SourceLoc location() const noexcept {
         return currentLoc_;
     }
 
@@ -87,8 +80,7 @@ class InstructionEmitter
     /// @brief Emit a stack allocation.
     /// @param size Size in bytes to allocate.
     /// @return Pointer value to the allocated memory.
-    [[nodiscard]] Value emitAlloca(int64_t size)
-    {
+    [[nodiscard]] Value emitAlloca(int64_t size) {
         unsigned id = nextTempId();
         il::core::Instr instr;
         instr.result = id;
@@ -104,8 +96,7 @@ class InstructionEmitter
     /// @param ty Type to load.
     /// @param addr Address to load from.
     /// @return Loaded value.
-    [[nodiscard]] Value emitLoad(Type ty, Value addr)
-    {
+    [[nodiscard]] Value emitLoad(Type ty, Value addr) {
         unsigned id = nextTempId();
         il::core::Instr instr;
         instr.result = id;
@@ -121,8 +112,7 @@ class InstructionEmitter
     /// @param ty Type being stored.
     /// @param addr Address to store to.
     /// @param val Value to store.
-    void emitStore(Type ty, Value addr, Value val)
-    {
+    void emitStore(Type ty, Value addr, Value val) {
         il::core::Instr instr;
         instr.op = Opcode::Store;
         instr.type = ty;
@@ -142,8 +132,7 @@ class InstructionEmitter
     /// @param lhs Left operand.
     /// @param rhs Right operand.
     /// @return Result value.
-    [[nodiscard]] Value emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
-    {
+    [[nodiscard]] Value emitBinary(Opcode op, Type ty, Value lhs, Value rhs) {
         unsigned id = nextTempId();
         il::core::Instr instr;
         instr.result = id;
@@ -161,8 +150,7 @@ class InstructionEmitter
     /// @param ty Result type.
     /// @param val Operand.
     /// @return Result value.
-    [[nodiscard]] Value emitUnary(Opcode op, Type ty, Value val)
-    {
+    [[nodiscard]] Value emitUnary(Opcode op, Type ty, Value val) {
         unsigned id = nextTempId();
         il::core::Instr instr;
         instr.result = id;
@@ -179,26 +167,22 @@ class InstructionEmitter
     // =========================================================================
 
     /// @brief Emit signed integer to floating-point conversion.
-    [[nodiscard]] Value emitSitofp(Value intVal)
-    {
+    [[nodiscard]] Value emitSitofp(Value intVal) {
         return emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), intVal);
     }
 
     /// @brief Emit floating-point to signed integer conversion.
-    [[nodiscard]] Value emitFptosi(Value floatVal)
-    {
+    [[nodiscard]] Value emitFptosi(Value floatVal) {
         return emitUnary(Opcode::Fptosi, Type(Type::Kind::I64), floatVal);
     }
 
     /// @brief Emit zero-extend from i1 to i64.
-    [[nodiscard]] Value emitZext1(Value boolVal)
-    {
+    [[nodiscard]] Value emitZext1(Value boolVal) {
         return emitUnary(Opcode::Zext1, Type(Type::Kind::I64), boolVal);
     }
 
     /// @brief Emit truncate from i64 to i1.
-    [[nodiscard]] Value emitTrunc1(Value intVal)
-    {
+    [[nodiscard]] Value emitTrunc1(Value intVal) {
         return emitUnary(Opcode::Trunc1, Type(Type::Kind::I1), intVal);
     }
 
@@ -213,8 +197,7 @@ class InstructionEmitter
     /// @return Return value.
     [[nodiscard]] Value emitCallRet(Type retTy,
                                     const std::string &callee,
-                                    const std::vector<Value> &args)
-    {
+                                    const std::vector<Value> &args) {
         unsigned id = nextTempId();
         il::core::Instr instr;
         instr.result = id;
@@ -230,8 +213,7 @@ class InstructionEmitter
     /// @brief Emit a void function call.
     /// @param callee Name of the function to call.
     /// @param args Arguments to pass.
-    void emitCall(const std::string &callee, const std::vector<Value> &args)
-    {
+    void emitCall(const std::string &callee, const std::vector<Value> &args) {
         il::core::Instr instr;
         instr.op = Opcode::Call;
         instr.type = Type(Type::Kind::Void);
@@ -244,8 +226,7 @@ class InstructionEmitter
     /// @brief Emit an indirect call with return value.
     [[nodiscard]] Value emitCallIndirectRet(Type retTy,
                                             Value callee,
-                                            const std::vector<Value> &args)
-    {
+                                            const std::vector<Value> &args) {
         unsigned id = nextTempId();
         il::core::Instr instr;
         instr.result = id;
@@ -260,8 +241,7 @@ class InstructionEmitter
     }
 
     /// @brief Emit a void indirect call.
-    void emitCallIndirect(Value callee, const std::vector<Value> &args)
-    {
+    void emitCallIndirect(Value callee, const std::vector<Value> &args) {
         il::core::Instr instr;
         instr.op = Opcode::CallIndirect;
         instr.type = Type(Type::Kind::Void);
@@ -278,8 +258,7 @@ class InstructionEmitter
 
     /// @brief Emit an unconditional branch (by block index).
     /// @param targetIdx Index of the target block.
-    void emitBr(std::size_t targetIdx)
-    {
+    void emitBr(std::size_t targetIdx) {
         il::core::Instr instr;
         instr.op = Opcode::Br;
         instr.type = Type(Type::Kind::Void);
@@ -292,8 +271,7 @@ class InstructionEmitter
 
     /// @brief Emit an unconditional branch (by block pointer).
     /// @param target Pointer to the target block.
-    void emitBr(BasicBlock *target)
-    {
+    void emitBr(BasicBlock *target) {
         il::core::Instr instr;
         instr.op = Opcode::Br;
         instr.type = Type(Type::Kind::Void);
@@ -308,8 +286,7 @@ class InstructionEmitter
     /// @param cond Condition value (i1).
     /// @param trueIdx Index of the true target block.
     /// @param falseIdx Index of the false target block.
-    void emitCBr(Value cond, std::size_t trueIdx, std::size_t falseIdx)
-    {
+    void emitCBr(Value cond, std::size_t trueIdx, std::size_t falseIdx) {
         il::core::Instr instr;
         instr.op = Opcode::CBr;
         instr.type = Type(Type::Kind::Void);
@@ -327,8 +304,7 @@ class InstructionEmitter
     /// @param cond Condition value (i1).
     /// @param trueTarget Pointer to the true target block.
     /// @param falseTarget Pointer to the false target block.
-    void emitCBr(Value cond, BasicBlock *trueTarget, BasicBlock *falseTarget)
-    {
+    void emitCBr(Value cond, BasicBlock *trueTarget, BasicBlock *falseTarget) {
         il::core::Instr instr;
         instr.op = Opcode::CBr;
         instr.type = Type(Type::Kind::Void);
@@ -344,8 +320,7 @@ class InstructionEmitter
 
     /// @brief Emit a return with value.
     /// @param val Value to return.
-    void emitRet(Value val)
-    {
+    void emitRet(Value val) {
         il::core::Instr instr;
         instr.op = Opcode::Ret;
         instr.type = Type(Type::Kind::Void);
@@ -356,8 +331,7 @@ class InstructionEmitter
     }
 
     /// @brief Emit a void return.
-    void emitRetVoid()
-    {
+    void emitRetVoid() {
         il::core::Instr instr;
         instr.op = Opcode::Ret;
         instr.type = Type(Type::Kind::Void);
@@ -374,8 +348,7 @@ class InstructionEmitter
     /// @param base Base pointer.
     /// @param offset Byte offset.
     /// @return Pointer value at base + offset.
-    [[nodiscard]] Value emitGep(Value base, Value offset)
-    {
+    [[nodiscard]] Value emitGep(Value base, Value offset) {
         unsigned id = nextTempId();
         il::core::Instr instr;
         instr.result = id;
@@ -394,8 +367,7 @@ class InstructionEmitter
     /// @brief Emit a constant string reference.
     /// @param globalName Name of the global string.
     /// @return String value.
-    [[nodiscard]] Value emitConstStr(const std::string &globalName)
-    {
+    [[nodiscard]] Value emitConstStr(const std::string &globalName) {
         unsigned id = nextTempId();
         il::core::Instr instr;
         instr.result = id;
@@ -413,8 +385,7 @@ class InstructionEmitter
 
     /// @brief Emit an EH push instruction (by block index).
     /// @param handlerBlockIdx Index of the handler block.
-    void emitEhPush(std::size_t handlerBlockIdx)
-    {
+    void emitEhPush(std::size_t handlerBlockIdx) {
         il::core::Instr instr;
         instr.op = Opcode::EhPush;
         instr.type = Type(Type::Kind::Void);
@@ -425,8 +396,7 @@ class InstructionEmitter
 
     /// @brief Emit an EH push instruction (by block pointer).
     /// @param handler Pointer to the handler block.
-    void emitEhPush(BasicBlock *handler)
-    {
+    void emitEhPush(BasicBlock *handler) {
         il::core::Instr instr;
         instr.op = Opcode::EhPush;
         instr.type = Type(Type::Kind::Void);
@@ -436,8 +406,7 @@ class InstructionEmitter
     }
 
     /// @brief Emit an EH pop instruction.
-    void emitEhPop()
-    {
+    void emitEhPop() {
         il::core::Instr instr;
         instr.op = Opcode::EhPop;
         instr.type = Type(Type::Kind::Void);
@@ -447,8 +416,7 @@ class InstructionEmitter
 
     /// @brief Emit a resume-same instruction.
     /// @param resumeTok Resume token from handler.
-    void emitResumeSame(Value resumeTok)
-    {
+    void emitResumeSame(Value resumeTok) {
         il::core::Instr instr;
         instr.op = Opcode::ResumeSame;
         instr.type = Type(Type::Kind::Void);
@@ -461,8 +429,7 @@ class InstructionEmitter
     /// @brief Emit a resume-label instruction (by block index).
     /// @param resumeTok Resume token from handler.
     /// @param targetBlockIdx Index of the target block.
-    void emitResumeLabel(Value resumeTok, std::size_t targetBlockIdx)
-    {
+    void emitResumeLabel(Value resumeTok, std::size_t targetBlockIdx) {
         il::core::Instr instr;
         instr.op = Opcode::ResumeLabel;
         instr.type = Type(Type::Kind::Void);
@@ -478,8 +445,7 @@ class InstructionEmitter
     // =========================================================================
 
     /// @brief Emit a trap instruction.
-    void emitTrap()
-    {
+    void emitTrap() {
         il::core::Instr instr;
         instr.op = Opcode::Trap;
         instr.type = Type(Type::Kind::Void);
@@ -491,29 +457,25 @@ class InstructionEmitter
     /// @brief Emit an integer constant.
     /// @param value The integer value.
     /// @return Constant value.
-    [[nodiscard]] static Value emitConstI64(std::int64_t value)
-    {
+    [[nodiscard]] static Value emitConstI64(std::int64_t value) {
         return Value::constInt(value);
     }
 
     /// @brief Emit a floating-point constant.
     /// @param value The floating-point value.
     /// @return Constant value.
-    [[nodiscard]] static Value emitConstF64(double value)
-    {
+    [[nodiscard]] static Value emitConstF64(double value) {
         return Value::constFloat(value);
     }
 
     /// @brief Reserve the next temp ID from the builder.
-    [[nodiscard]] unsigned nextTempId()
-    {
+    [[nodiscard]] unsigned nextTempId() {
         return builder_->reserveTempId();
     }
 
   private:
     /// @brief Get the current block.
-    [[nodiscard]] BasicBlock *block() const
-    {
+    [[nodiscard]] BasicBlock *block() const {
         return *currentBlock_;
     }
 

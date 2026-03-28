@@ -29,8 +29,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -38,8 +37,7 @@ extern "C" void vm_trap(const char *msg)
 // Construction
 // ============================================================================
 
-static void test_new_empty(void)
-{
+static void test_new_empty(void) {
     int64_t *list = rt_list_i64_new(0);
     assert(list != nullptr);
     assert(rt_list_i64_len(list) == 0);
@@ -49,8 +47,7 @@ static void test_new_empty(void)
     printf("test_new_empty: PASSED\n");
 }
 
-static void test_new_with_cap(void)
-{
+static void test_new_with_cap(void) {
     int64_t *list = rt_list_i64_new(64);
     assert(list != nullptr);
     assert(rt_list_i64_len(list) == 0);
@@ -64,8 +61,7 @@ static void test_new_with_cap(void)
 // Push — basic
 // ============================================================================
 
-static void test_push_basic(void)
-{
+static void test_push_basic(void) {
     int64_t *list = rt_list_i64_new(4);
     assert(list != nullptr);
 
@@ -90,15 +86,13 @@ static void test_push_basic(void)
 // Push — growth (forces buffer reallocation)
 // ============================================================================
 
-static void test_push_growth(void)
-{
+static void test_push_growth(void) {
     // Start with capacity 4 to trigger multiple growth steps.
     int64_t *list = rt_list_i64_new(4);
     assert(list != nullptr);
 
     const int N = 200;
-    for (int i = 0; i < N; i++)
-    {
+    for (int i = 0; i < N; i++) {
         int rc = rt_list_i64_push(&list, (int64_t)i * 3);
         assert(rc == 0);
     }
@@ -118,8 +112,7 @@ static void test_push_growth(void)
 // Pop
 // ============================================================================
 
-static void test_pop_order(void)
-{
+static void test_pop_order(void) {
     int64_t *list = rt_list_i64_new(4);
     assert(list != nullptr);
 
@@ -138,8 +131,7 @@ static void test_pop_order(void)
     printf("test_pop_order: PASSED\n");
 }
 
-static void test_pop_preserves_other_elements(void)
-{
+static void test_pop_preserves_other_elements(void) {
     int64_t *list = rt_list_i64_new(8);
     assert(list != nullptr);
 
@@ -162,8 +154,7 @@ static void test_pop_preserves_other_elements(void)
 // Peek
 // ============================================================================
 
-static void test_peek(void)
-{
+static void test_peek(void) {
     int64_t *list = rt_list_i64_new(4);
     assert(list != nullptr);
 
@@ -183,8 +174,7 @@ static void test_peek(void)
 // Set (bounds-checked write)
 // ============================================================================
 
-static void test_set(void)
-{
+static void test_set(void) {
     int64_t *list = rt_list_i64_new(4);
     assert(list != nullptr);
 
@@ -205,8 +195,7 @@ static void test_set(void)
 // Refcounting
 // ============================================================================
 
-static void test_retain_release(void)
-{
+static void test_retain_release(void) {
     int64_t *list = rt_list_i64_new(4);
     assert(list != nullptr);
 
@@ -230,8 +219,7 @@ static void test_retain_release(void)
 // Negative values and edge values
 // ============================================================================
 
-static void test_edge_values(void)
-{
+static void test_edge_values(void) {
     int64_t *list = rt_list_i64_new(4);
     assert(list != nullptr);
 
@@ -253,8 +241,7 @@ static void test_edge_values(void)
 // Entry point
 // ============================================================================
 
-int main(void)
-{
+int main(void) {
     printf("=== rt_list_i64 Tests ===\n\n");
 
     test_new_empty();

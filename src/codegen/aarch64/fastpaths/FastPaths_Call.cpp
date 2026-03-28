@@ -24,17 +24,14 @@
 #include "FastPathsInternal.hpp"
 #include "codegen/aarch64/LoweringContext.hpp"
 
-namespace viper::codegen::aarch64::fastpaths
-{
+namespace viper::codegen::aarch64::fastpaths {
 
 using il::core::Opcode;
 
-namespace
-{
+namespace {
 
 /// @brief Move descriptor for register-to-register marshalling.
-struct Move
-{
+struct Move {
     PhysReg dst;
     PhysReg src;
 };
@@ -47,13 +44,11 @@ const PhysReg scratchPool[kScratchPoolSize] = {kScratchGPR, PhysReg::X10};
 bool isParamTemp(const il::core::BasicBlock &bb,
                  const std::array<PhysReg, kMaxGPRArgs> &argOrder,
                  const il::core::Value &v,
-                 unsigned &outIdx)
-{
+                 unsigned &outIdx) {
     if (v.kind != il::core::Value::Kind::Temp)
         return false;
     int p = indexOfParam(bb, v.id);
-    if (p >= 0)
-    {
+    if (p >= 0) {
         outIdx = static_cast<unsigned>(p);
         return true;
     }
@@ -66,11 +61,9 @@ bool computeTempTo(const il::core::Instr &prod,
                    PhysReg dstReg,
                    const il::core::BasicBlock &bb,
                    const std::array<PhysReg, kMaxGPRArgs> &argOrder,
-                   MBasicBlock &bbMir)
-{
+                   MBasicBlock &bbMir) {
     // RR emit helper
-    auto rr_emit = [&](MOpcode opc, unsigned p0, unsigned p1)
-    {
+    auto rr_emit = [&](MOpcode opc, unsigned p0, unsigned p1) {
         const PhysReg r0 = argOrder[p0];
         const PhysReg r1 = argOrder[p1];
         bbMir.instrs.push_back(
@@ -78,8 +71,7 @@ bool computeTempTo(const il::core::Instr &prod,
     };
 
     // RI emit helper
-    auto ri_emit = [&](MOpcode opc, unsigned p0, long long imm)
-    {
+    auto ri_emit = [&](MOpcode opc, unsigned p0, long long imm) {
         const PhysReg r0 = argOrder[p0];
         bbMir.instrs.push_back(
             MInstr{opc, {MOperand::regOp(dstReg), MOperand::regOp(r0), MOperand::immOp(imm)}});
@@ -88,18 +80,15 @@ bool computeTempTo(const il::core::Instr &prod,
     // RR patterns: both operands are entry params
     if (prod.op == Opcode::Add || prod.op == Opcode::IAddOvf || prod.op == Opcode::Sub ||
         prod.op == Opcode::ISubOvf || prod.op == Opcode::Mul || prod.op == Opcode::IMulOvf ||
-        prod.op == Opcode::And || prod.op == Opcode::Or || prod.op == Opcode::Xor)
-    {
+        prod.op == Opcode::And || prod.op == Opcode::Or || prod.op == Opcode::Xor) {
         if (prod.operands.size() != 2)
             return false;
         if (prod.operands[0].kind == il::core::Value::Kind::Temp &&
-            prod.operands[1].kind == il::core::Value::Kind::Temp)
-        {
+            prod.operands[1].kind == il::core::Value::Kind::Temp) {
             int i0 = indexOfParam(bb, prod.operands[0].id);
             int i1 = indexOfParam(bb, prod.operands[1].id);
             if (i0 >= 0 && i1 >= 0 && static_cast<std::size_t>(i0) < kMaxGPRArgs &&
-                static_cast<std::size_t>(i1) < kMaxGPRArgs)
-            {
+                static_cast<std::size_t>(i1) < kMaxGPRArgs) {
                 MOpcode opc = MOpcode::AddRRR;
                 if (prod.op == Opcode::Add)
                     opc = MOpcode::AddRRR;
@@ -128,17 +117,14 @@ bool computeTempTo(const il::core::Instr &prod,
     // RI patterns: param + imm for add/sub/shift
     if (prod.op == Opcode::Shl || prod.op == Opcode::LShr || prod.op == Opcode::AShr ||
         prod.op == Opcode::Add || prod.op == Opcode::IAddOvf || prod.op == Opcode::Sub ||
-        prod.op == Opcode::ISubOvf)
-    {
+        prod.op == Opcode::ISubOvf) {
         if (prod.operands.size() != 2)
             return false;
         const auto &o0 = prod.operands[0];
         const auto &o1 = prod.operands[1];
-        if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::ConstInt)
-        {
+        if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::ConstInt) {
             int ip = indexOfParam(bb, o0.id);
-            if (ip >= 0 && static_cast<std::size_t>(ip) < kMaxGPRArgs)
-            {
+            if (ip >= 0 && static_cast<std::size_t>(ip) < kMaxGPRArgs) {
                 if (prod.op == Opcode::Shl)
                     ri_emit(MOpcode::LslRI, static_cast<unsigned>(ip), o1.i64);
                 else if (prod.op == Opcode::LShr)
@@ -155,10 +141,8 @@ bool computeTempTo(const il::core::Instr &prod,
                     ri_emit(MOpcode::SubOvfRI, static_cast<unsigned>(ip), o1.i64);
                 return true;
             }
-        }
-        else if (o1.kind == il::core::Value::Kind::Temp &&
-                 o0.kind == il::core::Value::Kind::ConstInt)
-        {
+        } else if (o1.kind == il::core::Value::Kind::Temp &&
+                   o0.kind == il::core::Value::Kind::ConstInt) {
             // Only commutative ops (add) can swap operands.
             // Shifts are NOT commutative: `const << param` != `param << const`.
             // Sub with const first is also not supported.
@@ -166,8 +150,7 @@ bool computeTempTo(const il::core::Instr &prod,
                 prod.op == Opcode::Sub || prod.op == Opcode::ISubOvf)
                 return false;
             int ip = indexOfParam(bb, o1.id);
-            if (ip >= 0 && static_cast<std::size_t>(ip) < kMaxGPRArgs)
-            {
+            if (ip >= 0 && static_cast<std::size_t>(ip) < kMaxGPRArgs) {
                 if (prod.op == Opcode::Add)
                     ri_emit(MOpcode::AddRI, static_cast<unsigned>(ip), o0.i64);
                 else if (prod.op == Opcode::IAddOvf)
@@ -181,8 +164,7 @@ bool computeTempTo(const il::core::Instr &prod,
     if (prod.op == Opcode::ICmpEq || prod.op == Opcode::ICmpNe || prod.op == Opcode::SCmpLT ||
         prod.op == Opcode::SCmpLE || prod.op == Opcode::SCmpGT || prod.op == Opcode::SCmpGE ||
         prod.op == Opcode::UCmpLT || prod.op == Opcode::UCmpLE || prod.op == Opcode::UCmpGT ||
-        prod.op == Opcode::UCmpGE)
-    {
+        prod.op == Opcode::UCmpGE) {
         if (prod.operands.size() != 2)
             return false;
         const auto &o0 = prod.operands[0];
@@ -190,13 +172,11 @@ bool computeTempTo(const il::core::Instr &prod,
         const char *cc = lookupCondition(prod.op);
         if (!cc)
             return false;
-        if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::Temp)
-        {
+        if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::Temp) {
             int i0 = indexOfParam(bb, o0.id);
             int i1 = indexOfParam(bb, o1.id);
             if (i0 >= 0 && i1 >= 0 && static_cast<std::size_t>(i0) < kMaxGPRArgs &&
-                static_cast<std::size_t>(i1) < kMaxGPRArgs)
-            {
+                static_cast<std::size_t>(i1) < kMaxGPRArgs) {
                 const PhysReg r0 = argOrder[i0];
                 const PhysReg r1 = argOrder[i1];
                 bbMir.instrs.push_back(
@@ -206,11 +186,9 @@ bool computeTempTo(const il::core::Instr &prod,
                 return true;
             }
         }
-        if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::ConstInt)
-        {
+        if (o0.kind == il::core::Value::Kind::Temp && o1.kind == il::core::Value::Kind::ConstInt) {
             int i0 = indexOfParam(bb, o0.id);
-            if (i0 >= 0 && static_cast<std::size_t>(i0) < kMaxGPRArgs)
-            {
+            if (i0 >= 0 && static_cast<std::size_t>(i0) < kMaxGPRArgs) {
                 const PhysReg r0 = argOrder[i0];
                 bbMir.instrs.push_back(
                     MInstr{MOpcode::CmpRI, {MOperand::regOp(r0), MOperand::immOp(o1.i64)}});
@@ -225,8 +203,7 @@ bool computeTempTo(const il::core::Instr &prod,
 
 } // namespace
 
-std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
-{
+std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx) {
     if (ctx.fn.blocks.empty())
         return std::nullopt;
 
@@ -253,19 +230,15 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
 
     // Check for floating-point arguments (requires vreg-based lowering)
     bool hasFloatArg = false;
-    for (const auto &arg : binI.operands)
-    {
-        if (arg.kind == il::core::Value::Kind::ConstFloat)
-        {
+    for (const auto &arg : binI.operands) {
+        if (arg.kind == il::core::Value::Kind::ConstFloat) {
             hasFloatArg = true;
             break;
         }
-        if (arg.kind == il::core::Value::Kind::Temp)
-        {
+        if (arg.kind == il::core::Value::Kind::Temp) {
             int p = indexOfParam(bb, arg.id);
             if (p >= 0 && p < static_cast<int>(bb.params.size()) &&
-                bb.params[static_cast<std::size_t>(p)].type.kind == il::core::Type::Kind::F64)
-            {
+                bb.params[static_cast<std::size_t>(p)].type.kind == il::core::Type::Kind::F64) {
                 hasFloatArg = true;
                 break;
             }
@@ -278,29 +251,25 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
     // parameters to their alloca slots (those stores happen in the generic lowering at
     // LowerILToMIR.cpp:220-320). We must emit those stores here first so that the
     // alloca slots contain valid data when the loads execute.
-    if (binI.operands.size() > ctx.ti.intArgOrder.size() || hasFloatArg)
-    {
+    if (binI.operands.size() > ctx.ti.intArgOrder.size() || hasFloatArg) {
         // Emit param→alloca stores: for each IL `store TYPE, %alloca, %param`,
         // emit the corresponding MIR store from the ABI register to the alloca's
         // FP-relative frame slot.
         std::size_t gprIdx = 0;
         std::size_t fprIdx = 0;
         std::size_t stackArgIdx = 0;
-        for (std::size_t pi = 0; pi < bb.params.size(); ++pi)
-        {
+        for (std::size_t pi = 0; pi < bb.params.size(); ++pi) {
             const auto &param = bb.params[pi];
             const bool isFP = param.type.kind == il::core::Type::Kind::F64;
 
             // Find the alloca ID for this param from the IL store instructions
             unsigned allocaId = 0;
             bool foundAlloca = false;
-            for (const auto &instr : bb.instructions)
-            {
+            for (const auto &instr : bb.instructions) {
                 if (instr.op == il::core::Opcode::Store && instr.operands.size() >= 2 &&
                     instr.operands[0].kind == il::core::Value::Kind::Temp &&
                     instr.operands[1].kind == il::core::Value::Kind::Temp &&
-                    instr.operands[1].id == param.id)
-                {
+                    instr.operands[1].id == param.id) {
                     allocaId = instr.operands[0].id;
                     foundAlloca = true;
                     break;
@@ -311,17 +280,13 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
 
             const int offset = ctx.fb.localOffset(allocaId);
 
-            if (isFP)
-            {
-                if (fprIdx < ctx.ti.f64ArgOrder.size())
-                {
+            if (isFP) {
+                if (fprIdx < ctx.ti.f64ArgOrder.size()) {
                     bbMir.instrs.push_back(MInstr{
                         MOpcode::StrFprFpImm,
                         {MOperand::regOp(ctx.ti.f64ArgOrder[fprIdx]), MOperand::immOp(offset)}});
                     ++fprIdx;
-                }
-                else
-                {
+                } else {
                     // FP stack arg: load from caller stack, store to alloca
                     const int callerOff = 16 + static_cast<int>(stackArgIdx) * 8;
                     ++stackArgIdx;
@@ -332,18 +297,13 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
                         MInstr{MOpcode::StrFprFpImm,
                                {MOperand::regOp(kScratchFPR), MOperand::immOp(offset)}});
                 }
-            }
-            else
-            {
-                if (gprIdx < ctx.ti.intArgOrder.size())
-                {
+            } else {
+                if (gprIdx < ctx.ti.intArgOrder.size()) {
                     bbMir.instrs.push_back(MInstr{
                         MOpcode::StrRegFpImm,
                         {MOperand::regOp(ctx.ti.intArgOrder[gprIdx]), MOperand::immOp(offset)}});
                     ++gprIdx;
-                }
-                else
-                {
+                } else {
                     // GPR stack arg: load from caller stack, store to alloca
                     const int callerOff = 16 + static_cast<int>(stackArgIdx) * 8;
                     ++stackArgIdx;
@@ -362,8 +322,7 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
         std::unordered_map<unsigned, RegClass> tempRegClass;
         uint16_t nextVRegId = 1;
         if (lowerCallWithArgs(
-                binI, bb, ctx.ti, ctx.fb, bbMir, seq, tempVReg, tempRegClass, nextVRegId))
-        {
+                binI, bb, ctx.ti, ctx.fb, bbMir, seq, tempVReg, tempRegClass, nextVRegId)) {
             for (auto &mi : seq.prefix)
                 bbMir.instrs.push_back(std::move(mi));
             bbMir.instrs.push_back(std::move(seq.call));
@@ -397,37 +356,27 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
     const std::size_t nRegArgs = (nargs < nReg) ? nargs : nReg;
     const std::size_t nStackArgs = (nargs > nReg) ? (nargs - nReg) : 0;
 
-    for (std::size_t i = 0; i < nRegArgs; ++i)
-    {
+    for (std::size_t i = 0; i < nRegArgs; ++i) {
         const PhysReg dst = ctx.argOrder[i];
         const auto &arg = binI.operands[i];
-        if (arg.kind == il::core::Value::Kind::ConstInt)
-        {
+        if (arg.kind == il::core::Value::Kind::ConstInt) {
             immLoads.emplace_back(dst, arg.i64);
-        }
-        else
-        {
+        } else {
             unsigned pIdx = 0;
-            if (isParamTemp(bb, ctx.argOrder, arg, pIdx) && pIdx < ctx.argOrder.size())
-            {
+            if (isParamTemp(bb, ctx.argOrder, arg, pIdx) && pIdx < ctx.argOrder.size()) {
                 const PhysReg src = ctx.argOrder[pIdx];
                 if (src != dst)
                     moves.push_back(Move{dst, src});
-            }
-            else
-            {
+            } else {
                 // Attempt to compute temp into a scratch then marshal it
-                if (arg.kind == il::core::Value::Kind::Temp && scratchUsed < kScratchPoolSize)
-                {
-                    auto it = std::find_if(bb.instructions.begin(),
-                                           bb.instructions.end(),
-                                           [&](const il::core::Instr &I)
-                                           { return I.result && *I.result == arg.id; });
-                    if (it != bb.instructions.end())
-                    {
+                if (arg.kind == il::core::Value::Kind::Temp && scratchUsed < kScratchPoolSize) {
+                    auto it = std::find_if(
+                        bb.instructions.begin(),
+                        bb.instructions.end(),
+                        [&](const il::core::Instr &I) { return I.result && *I.result == arg.id; });
+                    if (it != bb.instructions.end()) {
                         const PhysReg dstScratch = scratchPool[scratchUsed];
-                        if (computeTempTo(*it, dstScratch, bb, ctx.argOrder, bbMir))
-                        {
+                        if (computeTempTo(*it, dstScratch, bb, ctx.argOrder, bbMir)) {
                             tempRegs.emplace_back(i, dstScratch);
                             ++scratchUsed;
                             continue;
@@ -444,41 +393,33 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
         return std::nullopt;
 
     // Include temp-reg moves into overall move list
-    for (auto &tr : tempRegs)
-    {
+    for (auto &tr : tempRegs) {
         const PhysReg dstArg = ctx.argOrder[tr.first];
         if (dstArg != tr.second)
             moves.push_back(Move{dstArg, tr.second});
     }
 
     // Resolve reg moves with scratch X9 to break cycles
-    auto hasDst = [&](PhysReg r)
-    {
+    auto hasDst = [&](PhysReg r) {
         for (auto &m : moves)
             if (m.dst == r)
                 return true;
         return false;
     };
 
-    while (!moves.empty())
-    {
+    while (!moves.empty()) {
         bool progressed = false;
-        for (auto it = moves.begin(); it != moves.end();)
-        {
-            if (!hasDst(it->src))
-            {
+        for (auto it = moves.begin(); it != moves.end();) {
+            if (!hasDst(it->src)) {
                 bbMir.instrs.push_back(
                     MInstr{MOpcode::MovRR, {MOperand::regOp(it->dst), MOperand::regOp(it->src)}});
                 it = moves.erase(it);
                 progressed = true;
-            }
-            else
-            {
+            } else {
                 ++it;
             }
         }
-        if (!progressed)
-        {
+        if (!progressed) {
             // Break cycle using scratch register
             const PhysReg cycleSrc = moves.front().src;
             bbMir.instrs.push_back(
@@ -495,21 +436,17 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
             MInstr{MOpcode::MovRI, {MOperand::regOp(pr.first), MOperand::immOp(pr.second)}});
 
     // Stack args: allocate area, materialize values, store at [sp, #offset]
-    if (nStackArgs > 0)
-    {
+    if (nStackArgs > 0) {
         long long frameBytes = static_cast<long long>(nStackArgs) * kSlotSizeBytes;
         if (frameBytes % kStackAlignment != 0LL)
             frameBytes += kSlotSizeBytes;
         ctx.fb.setMaxOutgoingBytes(static_cast<int>(frameBytes));
 
-        for (std::size_t i = nReg; i < nargs; ++i)
-        {
+        for (std::size_t i = nReg; i < nargs; ++i) {
             const auto &arg = binI.operands[i];
             PhysReg valReg = kScratchGPR;
-            if (arg.kind == il::core::Value::Kind::ConstInt)
-            {
-                if (scratchUsed >= kScratchPoolSize)
-                {
+            if (arg.kind == il::core::Value::Kind::ConstInt) {
+                if (scratchUsed >= kScratchPoolSize) {
                     supported = false;
                     break;
                 }
@@ -517,36 +454,27 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
                 bbMir.instrs.push_back(
                     MInstr{MOpcode::MovRI, {MOperand::regOp(tmp), MOperand::immOp(arg.i64)}});
                 valReg = tmp;
-            }
-            else if (arg.kind == il::core::Value::Kind::Temp)
-            {
+            } else if (arg.kind == il::core::Value::Kind::Temp) {
                 unsigned pIdx = 0;
-                if (isParamTemp(bb, ctx.argOrder, arg, pIdx) && pIdx < ctx.argOrder.size())
-                {
+                if (isParamTemp(bb, ctx.argOrder, arg, pIdx) && pIdx < ctx.argOrder.size()) {
                     valReg = ctx.argOrder[pIdx];
-                }
-                else
-                {
-                    if (scratchUsed >= kScratchPoolSize)
-                    {
+                } else {
+                    if (scratchUsed >= kScratchPoolSize) {
                         supported = false;
                         break;
                     }
                     valReg = scratchPool[scratchUsed++];
-                    auto it = std::find_if(bb.instructions.begin(),
-                                           bb.instructions.end(),
-                                           [&](const il::core::Instr &I)
-                                           { return I.result && *I.result == arg.id; });
+                    auto it = std::find_if(
+                        bb.instructions.begin(),
+                        bb.instructions.end(),
+                        [&](const il::core::Instr &I) { return I.result && *I.result == arg.id; });
                     if (it == bb.instructions.end() ||
-                        !computeTempTo(*it, valReg, bb, ctx.argOrder, bbMir))
-                    {
+                        !computeTempTo(*it, valReg, bb, ctx.argOrder, bbMir)) {
                         supported = false;
                         break;
                     }
                 }
-            }
-            else
-            {
+            } else {
                 supported = false;
                 break;
             }
@@ -555,8 +483,7 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx)
                 MInstr{MOpcode::StrRegSpImm, {MOperand::regOp(valReg), MOperand::immOp(off)}});
         }
 
-        if (!supported)
-        {
+        if (!supported) {
             // Cannot handle these stack args in the fast path — fall back to
             // generic vreg-based lowering instead of emitting a bare Ret
             // (which would silently skip the call).

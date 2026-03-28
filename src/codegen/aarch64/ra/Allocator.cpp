@@ -29,15 +29,13 @@
 #include <cassert>
 #include <climits>
 
-namespace viper::codegen::aarch64::ra
-{
+namespace viper::codegen::aarch64::ra {
 
 // =========================================================================
 // Construction
 // =========================================================================
 
-LinearAllocator::LinearAllocator(MFunction &fn, const TargetInfo &ti) : fn_(fn), ti_(ti), fb_(fn)
-{
+LinearAllocator::LinearAllocator(MFunction &fn, const TargetInfo &ti) : fn_(fn), ti_(ti), fb_(fn) {
     pools_.build(ti);
     liveness_.run(fn);
 }
@@ -46,12 +44,10 @@ LinearAllocator::LinearAllocator(MFunction &fn, const TargetInfo &ti) : fn_(fn),
 // Entry point
 // =========================================================================
 
-AllocationResult LinearAllocator::run()
-{
+AllocationResult LinearAllocator::run() {
     blockExitStates_.resize(fn_.blocks.size());
 
-    for (std::size_t bi = 0; bi < fn_.blocks.size(); ++bi)
-    {
+    for (std::size_t bi = 0; bi < fn_.blocks.size(); ++bi) {
         currentBlockIdx_ = bi;
         restoreFromPredecessor(bi);
         allocateBlock(fn_.blocks[bi]);
@@ -72,8 +68,7 @@ AllocationResult LinearAllocator::run()
 // Cross-block register persistence
 // =========================================================================
 
-void LinearAllocator::restoreFromPredecessor(std::size_t bi)
-{
+void LinearAllocator::restoreFromPredecessor(std::size_t bi) {
     const auto &preds = liveness_.predecessors(bi);
     if (preds.size() != 1)
         return;
@@ -84,8 +79,7 @@ void LinearAllocator::restoreFromPredecessor(std::size_t bi)
 
     const auto &es = blockExitStates_[pred];
 
-    for (const auto &kv : es.gpr)
-    {
+    for (const auto &kv : es.gpr) {
         const uint16_t vid = kv.first;
         const PhysReg phys = kv.second;
 
@@ -99,8 +93,7 @@ void LinearAllocator::restoreFromPredecessor(std::size_t bi)
         st.phys = phys;
     }
 
-    for (const auto &kv : es.fpr)
-    {
+    for (const auto &kv : es.fpr) {
         const uint16_t vid = kv.first;
         const PhysReg phys = kv.second;
 
@@ -119,20 +112,17 @@ void LinearAllocator::restoreFromPredecessor(std::size_t bi)
 // Next-use analysis
 // =========================================================================
 
-void LinearAllocator::computeNextUses(const MBasicBlock &bb)
-{
+void LinearAllocator::computeNextUses(const MBasicBlock &bb) {
     usePositionsGPR_.clear();
     usePositionsFPR_.clear();
     callPositions_.clear();
 
     unsigned idx = 0;
-    for (const auto &mi : bb.instrs)
-    {
+    for (const auto &mi : bb.instrs) {
         if (isCall(mi.opc))
             callPositions_.push_back(idx);
 
-        for (const auto &op : mi.ops)
-        {
+        for (const auto &op : mi.ops) {
             if (op.kind != MOperand::Kind::Reg || op.reg.isPhys)
                 continue;
             if (op.reg.cls == RegClass::GPR)
@@ -144,18 +134,15 @@ void LinearAllocator::computeNextUses(const MBasicBlock &bb)
     }
 }
 
-bool LinearAllocator::nextUseAfterCall(uint16_t vreg, RegClass cls) const
-{
+bool LinearAllocator::nextUseAfterCall(uint16_t vreg, RegClass cls) const {
     const auto &map = (cls == RegClass::GPR) ? usePositionsGPR_ : usePositionsFPR_;
     auto it = map.find(vreg);
     if (it == map.end() || it->second.empty())
         return false;
 
     unsigned lastUse = 0;
-    for (auto posIt = it->second.rbegin(); posIt != it->second.rend(); ++posIt)
-    {
-        if (*posIt > currentInstrIdx_)
-        {
+    for (auto posIt = it->second.rbegin(); posIt != it->second.rend(); ++posIt) {
+        if (*posIt > currentInstrIdx_) {
             lastUse = *posIt;
             break;
         }
@@ -163,16 +150,14 @@ bool LinearAllocator::nextUseAfterCall(uint16_t vreg, RegClass cls) const
     if (lastUse == 0)
         return false;
 
-    for (unsigned callIdx : callPositions_)
-    {
+    for (unsigned callIdx : callPositions_) {
         if (callIdx > currentInstrIdx_ && callIdx < lastUse)
             return true;
     }
     return false;
 }
 
-unsigned LinearAllocator::getNextUseDistance(uint16_t vreg, RegClass cls) const
-{
+unsigned LinearAllocator::getNextUseDistance(uint16_t vreg, RegClass cls) const {
     const auto &map = (cls == RegClass::GPR) ? usePositionsGPR_ : usePositionsFPR_;
     auto it = map.find(vreg);
     if (it == map.end())
@@ -189,14 +174,12 @@ unsigned LinearAllocator::getNextUseDistance(uint16_t vreg, RegClass cls) const
 // Spilling
 // =========================================================================
 
-void LinearAllocator::spillVictim(RegClass cls, uint16_t id, std::vector<MInstr> &prefix)
-{
+void LinearAllocator::spillVictim(RegClass cls, uint16_t id, std::vector<MInstr> &prefix) {
     auto &st = (cls == RegClass::GPR) ? gprStates_[id] : fprStates_[id];
     if (!st.hasPhys)
         return;
 
-    if (st.dirty)
-    {
+    if (st.dirty) {
         const auto &posMap = (cls == RegClass::GPR) ? usePositionsGPR_ : usePositionsFPR_;
         unsigned trueLastUse = st.lastUse;
         auto posIt = posMap.find(id);
@@ -219,16 +202,13 @@ void LinearAllocator::spillVictim(RegClass cls, uint16_t id, std::vector<MInstr>
     st.spilled = true;
 }
 
-uint16_t LinearAllocator::selectLRUVictim(RegClass cls)
-{
+uint16_t LinearAllocator::selectLRUVictim(RegClass cls) {
     auto &states = (cls == RegClass::GPR) ? gprStates_ : fprStates_;
     uint16_t victim = UINT16_MAX;
     unsigned oldestUse = UINT_MAX;
 
-    for (auto &kv : states)
-    {
-        if (kv.second.hasPhys && kv.second.lastUse < oldestUse)
-        {
+    for (auto &kv : states) {
+        if (kv.second.hasPhys && kv.second.lastUse < oldestUse) {
             oldestUse = kv.second.lastUse;
             victim = kv.first;
         }
@@ -236,20 +216,17 @@ uint16_t LinearAllocator::selectLRUVictim(RegClass cls)
     return victim;
 }
 
-uint16_t LinearAllocator::selectFurthestVictim(RegClass cls)
-{
+uint16_t LinearAllocator::selectFurthestVictim(RegClass cls) {
     auto &states = (cls == RegClass::GPR) ? gprStates_ : fprStates_;
     uint16_t victim = UINT16_MAX;
     unsigned furthestDist = 0;
 
-    for (auto &kv : states)
-    {
+    for (auto &kv : states) {
         if (!kv.second.hasPhys)
             continue;
 
         unsigned dist = getNextUseDistance(kv.first, cls);
-        if (dist > furthestDist)
-        {
+        if (dist > furthestDist) {
             furthestDist = dist;
             victim = kv.first;
         }
@@ -261,18 +238,14 @@ uint16_t LinearAllocator::selectFurthestVictim(RegClass cls)
     return victim;
 }
 
-void LinearAllocator::maybeSpillForPressure(RegClass cls, std::vector<MInstr> &prefix)
-{
-    if (cls == RegClass::GPR)
-    {
+void LinearAllocator::maybeSpillForPressure(RegClass cls, std::vector<MInstr> &prefix) {
+    if (cls == RegClass::GPR) {
         if (!pools_.gprFree.empty())
             return;
         uint16_t victim = selectFurthestVictim(RegClass::GPR);
         if (victim != UINT16_MAX)
             spillVictim(RegClass::GPR, victim, prefix);
-    }
-    else
-    {
+    } else {
         if (!pools_.fprFree.empty())
             return;
         uint16_t victim = selectFurthestVictim(RegClass::FPR);
@@ -290,10 +263,8 @@ void LinearAllocator::materialize(MReg &r,
                                   bool isDef,
                                   std::vector<MInstr> &prefix,
                                   std::vector<MInstr> &suffix,
-                                  std::vector<PhysReg> &scratch)
-{
-    if (r.isPhys)
-    {
+                                  std::vector<PhysReg> &scratch) {
+    if (r.isPhys) {
         trackCalleeSavedPhys(static_cast<PhysReg>(r.idOrPhys));
         return;
     }
@@ -304,14 +275,12 @@ void LinearAllocator::materialize(MReg &r,
     if (isUse || isDef)
         st.lastUse = currentInstrIdx_;
 
-    if (st.spilled)
-    {
+    if (st.spilled) {
         handleSpilledOperand(r, isFPR, isUse, isDef, prefix, suffix, scratch);
         return;
     }
 
-    if (!st.hasPhys)
-    {
+    if (!st.hasPhys) {
         assignNewPhysReg(st, r.idOrPhys, isFPR);
     }
 
@@ -328,13 +297,11 @@ void LinearAllocator::handleSpilledOperand(MReg &r,
                                            bool isDef,
                                            std::vector<MInstr> &prefix,
                                            std::vector<MInstr> &suffix,
-                                           std::vector<PhysReg> &scratch)
-{
+                                           std::vector<PhysReg> &scratch) {
     PhysReg tmp = isFPR ? pools_.takeFPR() : pools_.takeGPR();
     const int off = fb_.ensureSpill(r.idOrPhys);
 
-    if (isUse)
-    {
+    if (isUse) {
         if (isFPR)
             prefix.push_back(
                 MInstr{MOpcode::LdrFprFpImm, {MOperand::regOp(tmp), MOperand::immOp(off)}});
@@ -342,8 +309,7 @@ void LinearAllocator::handleSpilledOperand(MReg &r,
             prefix.push_back(makeLdrFp(tmp, off));
     }
 
-    if (isDef)
-    {
+    if (isDef) {
         if (isFPR)
             suffix.push_back(
                 MInstr{MOpcode::StrFprFpImm, {MOperand::regOp(tmp), MOperand::immOp(off)}});
@@ -356,15 +322,11 @@ void LinearAllocator::handleSpilledOperand(MReg &r,
     scratch.push_back(tmp);
 }
 
-void LinearAllocator::assignNewPhysReg(VState &st, uint16_t vregId, bool isFPR)
-{
+void LinearAllocator::assignNewPhysReg(VState &st, uint16_t vregId, bool isFPR) {
     PhysReg phys;
-    if (isFPR)
-    {
+    if (isFPR) {
         phys = pools_.takeFPR();
-    }
-    else
-    {
+    } else {
         if (!fn_.isLeaf && nextUseAfterCall(vregId, RegClass::GPR))
             phys = pools_.takeGPRPreferCalleeSaved(ti_);
         else
@@ -374,45 +336,33 @@ void LinearAllocator::assignNewPhysReg(VState &st, uint16_t vregId, bool isFPR)
     st.hasPhys = true;
     st.phys = phys;
 
-    if (!isFPR)
-    {
+    if (!isFPR) {
         if (std::find(ti_.calleeSavedGPR.begin(), ti_.calleeSavedGPR.end(), phys) !=
-            ti_.calleeSavedGPR.end())
-        {
+            ti_.calleeSavedGPR.end()) {
             pools_.calleeUsed[static_cast<std::size_t>(phys)] = true;
         }
-    }
-    else
-    {
+    } else {
         if (std::find(ti_.calleeSavedFPR.begin(), ti_.calleeSavedFPR.end(), phys) !=
-            ti_.calleeSavedFPR.end())
-        {
+            ti_.calleeSavedFPR.end()) {
             pools_.calleeUsedFPR[static_cast<std::size_t>(phys)] = true;
         }
     }
 }
 
-void LinearAllocator::trackCalleeSavedPhys(PhysReg pr)
-{
-    if (isGPR(pr))
-    {
+void LinearAllocator::trackCalleeSavedPhys(PhysReg pr) {
+    if (isGPR(pr)) {
         if (std::find(ti_.calleeSavedGPR.begin(), ti_.calleeSavedGPR.end(), pr) !=
-            ti_.calleeSavedGPR.end())
-        {
+            ti_.calleeSavedGPR.end()) {
             pools_.calleeUsed[static_cast<std::size_t>(pr)] = true;
         }
     }
 }
 
-bool LinearAllocator::isCalleeSaved(PhysReg pr, RegClass cls) const noexcept
-{
-    if (cls == RegClass::GPR)
-    {
+bool LinearAllocator::isCalleeSaved(PhysReg pr, RegClass cls) const noexcept {
+    if (cls == RegClass::GPR) {
         return std::find(ti_.calleeSavedGPR.begin(), ti_.calleeSavedGPR.end(), pr) !=
                ti_.calleeSavedGPR.end();
-    }
-    else
-    {
+    } else {
         return std::find(ti_.calleeSavedFPR.begin(), ti_.calleeSavedFPR.end(), pr) !=
                ti_.calleeSavedFPR.end();
     }
@@ -422,8 +372,7 @@ bool LinearAllocator::isCalleeSaved(PhysReg pr, RegClass cls) const noexcept
 // Block allocation
 // =========================================================================
 
-void LinearAllocator::allocateBlock(MBasicBlock &bb)
-{
+void LinearAllocator::allocateBlock(MBasicBlock &bb) {
     fb_.beginNewBlock();
 
     computeNextUses(bb);
@@ -432,17 +381,14 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb)
     std::vector<MInstr> rewritten;
     rewritten.reserve(bb.instrs.size());
 
-    for (auto &ins : bb.instrs)
-    {
-        if (isSpAdj(ins.opc) || isBranch(ins.opc))
-        {
+    for (auto &ins : bb.instrs) {
+        if (isSpAdj(ins.opc) || isBranch(ins.opc)) {
             rewritten.push_back(ins);
             ++currentInstrIdx_;
             continue;
         }
 
-        if (isCall(ins.opc))
-        {
+        if (isCall(ins.opc)) {
             handleCall(ins, rewritten);
             ++currentInstrIdx_;
             continue;
@@ -452,37 +398,30 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb)
         ++currentInstrIdx_;
     }
 
-    if (!rewritten.empty())
-    {
+    if (!rewritten.empty()) {
         std::vector<MInstr> endSpills;
         const std::size_t bi = currentBlockIdx_;
         const auto &loGPR = liveness_.liveOutGPR(bi);
         const auto &loFPR = liveness_.liveOutFPR(bi);
 
-        if (bi < blockExitStates_.size())
-        {
+        if (bi < blockExitStates_.size()) {
             auto &es = blockExitStates_[bi];
-            for (auto vid : loGPR)
-            {
+            for (auto vid : loGPR) {
                 auto it = gprStates_.find(vid);
                 if (it != gprStates_.end() && it->second.hasPhys)
                     es.gpr[vid] = it->second.phys;
             }
-            for (auto vid : loFPR)
-            {
+            for (auto vid : loFPR) {
                 auto it = fprStates_.find(vid);
                 if (it != fprStates_.end() && it->second.hasPhys)
                     es.fpr[vid] = it->second.phys;
             }
         }
 
-        for (auto vid : loGPR)
-        {
+        for (auto vid : loGPR) {
             auto it = gprStates_.find(vid);
-            if (it != gprStates_.end() && it->second.hasPhys)
-            {
-                if (it->second.dirty)
-                {
+            if (it != gprStates_.end() && it->second.hasPhys) {
+                if (it->second.dirty) {
                     const int off = fb_.ensureSpill(vid);
                     endSpills.push_back(makeStrFp(it->second.phys, off));
                     it->second.dirty = false;
@@ -492,13 +431,10 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb)
                 it->second.spilled = true;
             }
         }
-        for (auto vid : loFPR)
-        {
+        for (auto vid : loFPR) {
             auto it = fprStates_.find(vid);
-            if (it != fprStates_.end() && it->second.hasPhys)
-            {
-                if (it->second.dirty)
-                {
+            if (it != fprStates_.end() && it->second.hasPhys) {
+                if (it->second.dirty) {
                     const int off = fb_.ensureSpill(vid);
                     endSpills.push_back(
                         MInstr{MOpcode::StrFprFpImm,
@@ -510,13 +446,10 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb)
                 it->second.spilled = true;
             }
         }
-        if (!endSpills.empty())
-        {
+        if (!endSpills.empty()) {
             std::size_t insertPos = rewritten.size();
-            for (std::size_t i = rewritten.size(); i-- > 0;)
-            {
-                if (isTerminator(rewritten[i].opc))
-                {
+            for (std::size_t i = rewritten.size(); i-- > 0;) {
+                if (isTerminator(rewritten[i].opc)) {
                     insertPos = i;
                     break;
                 }
@@ -529,44 +462,32 @@ void LinearAllocator::allocateBlock(MBasicBlock &bb)
     bb.instrs = std::move(rewritten);
 }
 
-void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten)
-{
+void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten) {
     bool isArrayObjGet = false;
-    if (!ins.ops.empty() && ins.ops[0].kind == MOperand::Kind::Label)
-    {
+    if (!ins.ops.empty() && ins.ops[0].kind == MOperand::Kind::Label) {
         if (ins.ops[0].label == "rt_arr_obj_get")
             isArrayObjGet = true;
     }
 
     std::vector<MInstr> preCall;
-    for (auto &kv : gprStates_)
-    {
-        if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, RegClass::GPR))
-        {
+    for (auto &kv : gprStates_) {
+        if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, RegClass::GPR)) {
             unsigned dist = getNextUseDistance(kv.first, RegClass::GPR);
-            if (dist == UINT_MAX)
-            {
+            if (dist == UINT_MAX) {
                 pools_.releaseGPR(kv.second.phys, ti_);
                 kv.second.hasPhys = false;
-            }
-            else
-            {
+            } else {
                 spillVictim(RegClass::GPR, kv.first, preCall);
             }
         }
     }
-    for (auto &kv : fprStates_)
-    {
-        if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, RegClass::FPR))
-        {
+    for (auto &kv : fprStates_) {
+        if (kv.second.hasPhys && !isCalleeSaved(kv.second.phys, RegClass::FPR)) {
             unsigned dist = getNextUseDistance(kv.first, RegClass::FPR);
-            if (dist == UINT_MAX)
-            {
+            if (dist == UINT_MAX) {
                 pools_.releaseFPR(kv.second.phys, ti_);
                 kv.second.hasPhys = false;
-            }
-            else
-            {
+            } else {
                 spillVictim(RegClass::FPR, kv.first, preCall);
             }
         }
@@ -578,14 +499,12 @@ void LinearAllocator::handleCall(MInstr &ins, std::vector<MInstr> &rewritten)
         pendingGetBarrier_ = true;
 }
 
-void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewritten)
-{
+void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewritten) {
     const bool isPhiStore = (ins.opc == MOpcode::PhiStoreGPR || ins.opc == MOpcode::PhiStoreFPR);
     uint16_t phiSrcVreg = 0;
     bool phiSrcIsFPR = false;
     if (isPhiStore && !ins.ops.empty() && ins.ops[0].kind == MOperand::Kind::Reg &&
-        !ins.ops[0].reg.isPhys)
-    {
+        !ins.ops[0].reg.isPhys) {
         phiSrcVreg = ins.ops[0].reg.idOrPhys;
         phiSrcIsFPR = (ins.ops[0].reg.cls == RegClass::FPR);
     }
@@ -593,41 +512,33 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
     std::vector<MInstr> prefix;
     bool applyGetBarrier = false;
     uint16_t getBarrierDstVreg = 0;
-    if (pendingGetBarrier_ && ins.opc == MOpcode::MovRR && ins.ops.size() >= 2)
-    {
+    if (pendingGetBarrier_ && ins.opc == MOpcode::MovRR && ins.ops.size() >= 2) {
         const auto &dst = ins.ops[0];
         const auto &src = ins.ops[1];
         if (dst.kind == MOperand::Kind::Reg && !dst.reg.isPhys && src.kind == MOperand::Kind::Reg &&
-            src.reg.isPhys && static_cast<PhysReg>(src.reg.idOrPhys) == PhysReg::X0)
-        {
+            src.reg.isPhys && static_cast<PhysReg>(src.reg.idOrPhys) == PhysReg::X0) {
             applyGetBarrier = true;
             getBarrierDstVreg = dst.reg.idOrPhys;
             pendingGetBarrier_ = false;
-        }
-        else
-        {
+        } else {
             pendingGetBarrier_ = false;
         }
     }
     std::vector<MInstr> suffix;
     std::vector<PhysReg> scratch;
 
-    for (std::size_t i = 0; i < ins.ops.size(); ++i)
-    {
+    for (std::size_t i = 0; i < ins.ops.size(); ++i) {
         auto &op = ins.ops[i];
         auto [isUse, isDef] = operandRoles(ins, i);
-        if (op.kind == MOperand::Kind::Reg)
-        {
+        if (op.kind == MOperand::Kind::Reg) {
             maybeSpillForPressure(op.reg.cls, prefix);
             materialize(op.reg, isUse, isDef, prefix, suffix, scratch);
         }
     }
 
-    if (applyGetBarrier)
-    {
+    if (applyGetBarrier) {
         auto it = gprStates_.find(getBarrierDstVreg);
-        if (it != gprStates_.end() && it->second.hasPhys)
-        {
+        if (it != gprStates_.end() && it->second.hasPhys) {
             const int off = fb_.ensureSpill(getBarrierDstVreg);
             suffix.push_back(makeStrFp(it->second.phys, off));
             pools_.releaseGPR(it->second.phys, ti_);
@@ -636,8 +547,7 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
         }
     }
 
-    if (isPhiStore)
-    {
+    if (isPhiStore) {
         auto &states = phiSrcIsFPR ? fprStates_ : gprStates_;
         auto it = states.find(phiSrcVreg);
         if (it != states.end())
@@ -658,19 +568,14 @@ void LinearAllocator::allocateInstruction(MInstr &ins, std::vector<MInstr> &rewr
 // Cleanup
 // =========================================================================
 
-void LinearAllocator::releaseScratch(std::vector<PhysReg> &scratch)
-{
-    for (auto pr : scratch)
-    {
-        if (isGPR(pr))
-        {
+void LinearAllocator::releaseScratch(std::vector<PhysReg> &scratch) {
+    for (auto pr : scratch) {
+        if (isGPR(pr)) {
             if (std::find(ti_.calleeSavedGPR.begin(), ti_.calleeSavedGPR.end(), pr) !=
                 ti_.calleeSavedGPR.end())
                 pools_.calleeUsed[static_cast<std::size_t>(pr)] = true;
             pools_.releaseGPR(pr, ti_);
-        }
-        else
-        {
+        } else {
             if (std::find(ti_.calleeSavedFPR.begin(), ti_.calleeSavedFPR.end(), pr) !=
                 ti_.calleeSavedFPR.end())
                 pools_.calleeUsedFPR[static_cast<std::size_t>(pr)] = true;
@@ -679,35 +584,27 @@ void LinearAllocator::releaseScratch(std::vector<PhysReg> &scratch)
     }
 }
 
-void LinearAllocator::releaseBlockState()
-{
-    for (auto &kv : gprStates_)
-    {
-        if (kv.second.hasPhys)
-        {
+void LinearAllocator::releaseBlockState() {
+    for (auto &kv : gprStates_) {
+        if (kv.second.hasPhys) {
             pools_.releaseGPR(kv.second.phys, ti_);
             kv.second.hasPhys = false;
         }
     }
-    for (auto &kv : fprStates_)
-    {
-        if (kv.second.hasPhys)
-        {
+    for (auto &kv : fprStates_) {
+        if (kv.second.hasPhys) {
             pools_.releaseFPR(kv.second.phys, ti_);
             kv.second.hasPhys = false;
         }
     }
 }
 
-void LinearAllocator::recordCalleeSavedUsage()
-{
-    for (auto r : ti_.calleeSavedGPR)
-    {
+void LinearAllocator::recordCalleeSavedUsage() {
+    for (auto r : ti_.calleeSavedGPR) {
         if (pools_.calleeUsed[static_cast<std::size_t>(r)])
             fn_.savedGPRs.push_back(r);
     }
-    for (auto r : ti_.calleeSavedFPR)
-    {
+    for (auto r : ti_.calleeSavedFPR) {
         if (pools_.calleeUsedFPR[static_cast<std::size_t>(r)])
             fn_.savedFPRs.push_back(r);
     }

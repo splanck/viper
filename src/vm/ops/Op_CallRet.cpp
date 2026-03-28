@@ -42,8 +42,7 @@
 // SmallArgBuffer: Uses SmallVector<Slot, 8> to avoid heap allocation for most function
 // calls (those with <=8 arguments). The APIs now accept std::span<const Slot>.
 
-namespace il::vm::detail::control
-{
+namespace il::vm::detail::control {
 /// @brief Finalise a function by propagating the return value and signalling exit.
 ///
 /// @details Return instructions optionally carry a single operand that is
@@ -65,8 +64,7 @@ VM::ExecResult handleRet(VM &vm,
                          const il::core::Instr &in,
                          const VM::BlockMap &blocks,
                          const il::core::BasicBlock *&bb,
-                         size_t &ip)
-{
+                         size_t &ip) {
     (void)vm;
     (void)blocks;
     (void)bb;
@@ -107,8 +105,7 @@ VM::ExecResult handleCall(VM &vm,
                           const il::core::Instr &in,
                           const VM::BlockMap &blocks,
                           const il::core::BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     (void)blocks;
     (void)ip;
 
@@ -127,15 +124,12 @@ VM::ExecResult handleCall(VM &vm,
 
     const auto &fnMap = VMAccess::functionMap(vm);
     auto it = fnMap.find(in.callee);
-    if (it != fnMap.end())
-    {
+    if (it != fnMap.end()) {
         // Tail-call optimisation: call immediately followed by ret
 #if defined(VIPER_VM_TAILCALL) && VIPER_VM_TAILCALL
-        if (bb && (ip + 1) < bb->instructions.size())
-        {
+        if (bb && (ip + 1) < bb->instructions.size()) {
             const auto &nextInstr = bb->instructions[ip + 1];
-            if (nextInstr.op == il::core::Opcode::Ret)
-            {
+            if (nextInstr.op == il::core::Opcode::Ret) {
                 // Only apply TCO if return types are compatible:
                 // - If ret has no operand, callee must return void
                 // - If ret has operand, callee must return non-void (value will be propagated)
@@ -145,8 +139,7 @@ VM::ExecResult handleCall(VM &vm,
                 const bool compatibleReturn = (retHasOperand == !calleeReturnsVoid);
 
                 if (compatibleReturn &&
-                    il::vm::tryTailCall(vm, it->second, std::span<const Slot>{args}))
-                {
+                    il::vm::tryTailCall(vm, it->second, std::span<const Slot>{args})) {
                     VM::ExecResult r{};
                     r.jumped = true; // prevent ip++ so entry ip=0 is executed
                     return r;
@@ -155,9 +148,7 @@ VM::ExecResult handleCall(VM &vm,
         }
 #endif
         out = VMAccess::callFunction(vm, *it->second, args);
-    }
-    else
-    {
+    } else {
         // =========================================================================
         // FAST PATH: Direct calls for hot runtime functions
         // =========================================================================
@@ -167,8 +158,7 @@ VM::ExecResult handleCall(VM &vm,
         // Uses a static hash map for O(1) lookup instead of sequential string
         // comparisons.
 
-        enum class FastPathId : uint8_t
-        {
+        enum class FastPathId : uint8_t {
             InkeyStr,
             TermLocate,
             TermColor,
@@ -180,12 +170,10 @@ VM::ExecResult handleCall(VM &vm,
             TermCursorVisible
         };
 
-        struct SvHash
-        {
+        struct SvHash {
             using is_transparent = void;
 
-            size_t operator()(std::string_view sv) const
-            {
+            size_t operator()(std::string_view sv) const {
                 return std::hash<std::string_view>{}(sv);
             }
         };
@@ -203,11 +191,9 @@ VM::ExecResult handleCall(VM &vm,
         };
 
         auto fpIt = kFastPathMap.find(std::string_view(in.callee));
-        if (fpIt != kFastPathMap.end())
-        {
+        if (fpIt != kFastPathMap.end()) {
             bool handled = true;
-            switch (fpIt->second)
-            {
+            switch (fpIt->second) {
                 case FastPathId::InkeyStr:
                     out.str = rt_inkey_str();
                     break;
@@ -253,8 +239,7 @@ VM::ExecResult handleCall(VM &vm,
                         handled = false;
                     break;
             }
-            if (handled)
-            {
+            if (handled) {
                 ops::storeResult(fr, in, out);
                 return {};
             }
@@ -269,8 +254,7 @@ VM::ExecResult handleCall(VM &vm,
 
         // Build bindings and original values lazily only for runtime calls
         // Use SmallVector to avoid heap allocation for typical argument counts
-        struct ArgBinding
-        {
+        struct ArgBinding {
             Slot *reg = nullptr;
             uint8_t *stackPtr = nullptr;
         };
@@ -283,14 +267,12 @@ VM::ExecResult handleCall(VM &vm,
         uint8_t *const stackBegin = fr.stack.data();
         uint8_t *const stackEnd = stackBegin + fr.stack.size();
 
-        for (size_t i = 0; i < in.operands.size(); ++i)
-        {
+        for (size_t i = 0; i < in.operands.size(); ++i) {
             const auto &op = in.operands[i];
             ArgBinding binding{};
             if (op.kind == il::core::Value::Kind::Temp && op.id < fr.regs.size())
                 binding.reg = &fr.regs[op.id];
-            if (args[i].ptr)
-            {
+            if (args[i].ptr) {
                 auto *ptr = static_cast<uint8_t *>(args[i].ptr);
                 if (ptr >= stackBegin && ptr < stackEnd)
                     binding.stackPtr = ptr;
@@ -307,11 +289,9 @@ VM::ExecResult handleCall(VM &vm,
                                   blockLabel);
 
         const auto *signature = il::runtime::findRuntimeSignature(in.callee);
-        if (signature)
-        {
+        if (signature) {
             const size_t paramCount = std::min(args.size(), signature->paramTypes.size());
-            for (size_t index = 0; index < paramCount; ++index)
-            {
+            for (size_t index = 0; index < paramCount; ++index) {
                 // Compare slots using bitwise equality (safe for all types)
                 if (args[index].bitwiseEquals(originalArgs[index]))
                     continue;
@@ -320,31 +300,24 @@ VM::ExecResult handleCall(VM &vm,
                 const ArgBinding &binding = bindings[index];
                 const bool releaseTempStr = (kind == il::core::Type::Kind::Str);
 
-                auto assignRegister = [&](Slot *destination)
-                {
+                auto assignRegister = [&](Slot *destination) {
                     if (!destination)
                         return;
-                    if (kind == il::core::Type::Kind::Str)
-                    {
+                    if (kind == il::core::Type::Kind::Str) {
                         rt_str_release_maybe(destination->str);
                         Slot stored = args[index];
                         rt_str_retain_maybe(stored.str);
                         *destination = stored;
-                    }
-                    else
-                    {
+                    } else {
                         *destination = args[index];
                     }
                 };
 
                 assignRegister(binding.reg);
 
-                if (binding.stackPtr)
-                {
-                    auto copyWidthForKind = [](il::core::Type::Kind k) -> size_t
-                    {
-                        switch (k)
-                        {
+                if (binding.stackPtr) {
+                    auto copyWidthForKind = [](il::core::Type::Kind k) -> size_t {
+                        switch (k) {
                             case il::core::Type::Kind::I1:
                                 return sizeof(uint8_t);
                             case il::core::Type::Kind::I16:
@@ -368,16 +341,14 @@ VM::ExecResult handleCall(VM &vm,
                     };
 
                     const size_t width = copyWidthForKind(kind);
-                    if (width != 0 && binding.stackPtr >= stackBegin && binding.stackPtr < stackEnd)
-                    {
+                    if (width != 0 && binding.stackPtr >= stackBegin &&
+                        binding.stackPtr < stackEnd) {
                         const auto stackPtrAddr =
                             reinterpret_cast<std::uintptr_t>(binding.stackPtr);
                         const auto stackEndAddr = reinterpret_cast<std::uintptr_t>(stackEnd);
-                        if (stackEndAddr - stackPtrAddr >= width)
-                        {
+                        if (stackEndAddr - stackPtrAddr >= width) {
                             Slot &mutated = args[index];
-                            if (kind == il::core::Type::Kind::Str)
-                            {
+                            if (kind == il::core::Type::Kind::Str) {
                                 // Avoid strict-aliasing UB: copy via memcpy
                                 rt_string current{};
                                 std::memcpy(&current, binding.stackPtr, sizeof(current));
@@ -385,17 +356,14 @@ VM::ExecResult handleCall(VM &vm,
                                 rt_string incoming = mutated.str;
                                 rt_str_retain_maybe(incoming);
                                 std::memcpy(binding.stackPtr, &incoming, sizeof(incoming));
-                            }
-                            else if (void *src = il::vm::slotToArgPointer(mutated, kind))
-                            {
+                            } else if (void *src = il::vm::slotToArgPointer(mutated, kind)) {
                                 std::memcpy(binding.stackPtr, src, width);
                             }
                         }
                     }
                 }
 
-                if (releaseTempStr)
-                {
+                if (releaseTempStr) {
                     rt_str_release_maybe(args[index].str);
                     args[index].str = nullptr;
                 }
@@ -423,8 +391,7 @@ VM::ExecResult handleCallIndirect(VM &vm,
                                   const il::core::Instr &in,
                                   const VM::BlockMap &blocks,
                                   const il::core::BasicBlock *&bb,
-                                  size_t &ip)
-{
+                                  size_t &ip) {
     (void)blocks;
     (void)ip;
 
@@ -439,12 +406,10 @@ VM::ExecResult handleCallIndirect(VM &vm,
     const bool isStringResult = (in.type.kind == il::core::Type::Kind::Str);
     ScopedSlotStringGuard outGuard(out.str, isStringResult);
 
-    if (calleeVal.kind == il::core::Value::Kind::GlobalAddr)
-    {
+    if (calleeVal.kind == il::core::Value::Kind::GlobalAddr) {
         std::string calleeName = calleeVal.str;
         il::support::SmallVector<Slot, 8> args;
-        if (in.operands.size() > 1)
-        {
+        if (in.operands.size() > 1) {
             args.reserve(in.operands.size() - 1);
             for (size_t i = 1; i < in.operands.size(); ++i)
                 args.push_back(VMAccess::eval(vm, fr, in.operands[i]));
@@ -452,12 +417,9 @@ VM::ExecResult handleCallIndirect(VM &vm,
 
         const auto &fnMap = VMAccess::functionMap(vm);
         auto it = fnMap.find(calleeName);
-        if (it != fnMap.end())
-        {
+        if (it != fnMap.end()) {
             out = VMAccess::callFunction(vm, *it->second, args);
-        }
-        else
-        {
+        } else {
             const std::string functionName = fr.func ? fr.func->name : std::string{};
             const std::string blockLabel = bb ? bb->label : std::string{};
             out = RuntimeBridge::call(VMAccess::runtimeContext(vm),
@@ -467,13 +429,10 @@ VM::ExecResult handleCallIndirect(VM &vm,
                                       functionName,
                                       blockLabel);
         }
-    }
-    else
-    {
+    } else {
         // Pointer-based indirect call
         Slot callee = VMAccess::eval(vm, fr, calleeVal);
-        if (!callee.ptr)
-        {
+        if (!callee.ptr) {
             const std::string blockLabel = bb ? bb->label : std::string{};
             RuntimeBridge::trap(TrapKind::InvalidOperation,
                                 "null indirect callee",
@@ -483,8 +442,7 @@ VM::ExecResult handleCallIndirect(VM &vm,
         }
         const auto *fn = reinterpret_cast<const il::core::Function *>(callee.ptr);
         il::support::SmallVector<Slot, 8> args;
-        if (in.operands.size() > 1)
-        {
+        if (in.operands.size() > 1) {
             args.reserve(in.operands.size() - 1);
             for (size_t i = 1; i < in.operands.size(); ++i)
                 args.push_back(VMAccess::eval(vm, fr, in.operands[i]));

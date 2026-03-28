@@ -55,8 +55,7 @@
 // Name mangling utilities
 #include "frontends/common/NameMangler.hpp"
 
-namespace il::frontends::common
-{
+namespace il::frontends::common {
 
 // Convenience type aliases that frontends can use
 

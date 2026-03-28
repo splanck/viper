@@ -31,8 +31,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::aarch64::peephole
-{
+namespace viper::codegen::aarch64::peephole {
 
 // Bring the shared compaction helper into this namespace scope.
 using viper::codegen::common::removeMarkedInstructions;
@@ -40,22 +39,19 @@ using viper::codegen::common::removeMarkedInstructions;
 // ---- Register query helpers ------------------------------------------------
 
 /// @brief Check if an operand is a physical register.
-[[nodiscard]] inline bool isPhysReg(const MOperand &op) noexcept
-{
+[[nodiscard]] inline bool isPhysReg(const MOperand &op) noexcept {
     return op.kind == MOperand::Kind::Reg && op.reg.isPhys;
 }
 
 /// @brief Check if two register operands refer to the same physical register.
-[[nodiscard]] inline bool samePhysReg(const MOperand &a, const MOperand &b) noexcept
-{
+[[nodiscard]] inline bool samePhysReg(const MOperand &a, const MOperand &b) noexcept {
     if (!isPhysReg(a) || !isPhysReg(b))
         return false;
     return a.reg.cls == b.reg.cls && a.reg.idOrPhys == b.reg.idOrPhys;
 }
 
 /// @brief Check if a register is an argument-passing register (x0-x7).
-[[nodiscard]] inline bool isArgReg(const MOperand &reg) noexcept
-{
+[[nodiscard]] inline bool isArgReg(const MOperand &reg) noexcept {
     if (!isPhysReg(reg) || reg.reg.cls != RegClass::GPR)
         return false;
     const auto pr = static_cast<PhysReg>(reg.reg.idOrPhys);
@@ -63,8 +59,7 @@ using viper::codegen::common::removeMarkedInstructions;
 }
 
 /// @brief Check if a register is an ABI register (GPR x0-x7 or FPR v0-v7).
-[[nodiscard]] inline bool isABIReg(const MOperand &reg) noexcept
-{
+[[nodiscard]] inline bool isABIReg(const MOperand &reg) noexcept {
     if (!isPhysReg(reg))
         return false;
     const auto pr = static_cast<PhysReg>(reg.reg.idOrPhys);
@@ -76,14 +71,12 @@ using viper::codegen::common::removeMarkedInstructions;
 }
 
 /// @brief Check if an operand is an immediate with a given value.
-[[nodiscard]] inline bool isImmValue(const MOperand &op, long long value) noexcept
-{
+[[nodiscard]] inline bool isImmValue(const MOperand &op, long long value) noexcept {
     return op.kind == MOperand::Kind::Imm && op.imm == value;
 }
 
 /// @brief Get a unique key for a physical register (for use in maps).
-[[nodiscard]] inline uint32_t regKey(const MOperand &op) noexcept
-{
+[[nodiscard]] inline uint32_t regKey(const MOperand &op) noexcept {
     if (op.kind != MOperand::Kind::Reg || !op.reg.isPhys)
         return UINT32_MAX;
     return (static_cast<uint32_t>(op.reg.cls) << 16) | op.reg.idOrPhys;
@@ -97,13 +90,11 @@ using viper::codegen::common::removeMarkedInstructions;
 ///          operands. A table-driven approach was considered, but each opcode
 ///          group has different operand-index semantics (e.g., LDP defines
 ///          ops[0] AND ops[1]) making a simple "dest is ops[0]" table insufficient.
-[[nodiscard]] inline bool definesReg(const MInstr &instr, const MOperand &reg) noexcept
-{
+[[nodiscard]] inline bool definesReg(const MInstr &instr, const MOperand &reg) noexcept {
     if (!isPhysReg(reg))
         return false;
 
-    switch (instr.opc)
-    {
+    switch (instr.opc) {
         // --- Moves and conversions (dest = ops[0]) ---
         case MOpcode::MovRR:
         case MOpcode::MovRI:
@@ -211,13 +202,11 @@ using viper::codegen::common::removeMarkedInstructions;
 }
 
 /// @brief Check if an instruction uses a given physical register as a source.
-[[nodiscard]] inline bool usesReg(const MInstr &instr, const MOperand &reg) noexcept
-{
+[[nodiscard]] inline bool usesReg(const MInstr &instr, const MOperand &reg) noexcept {
     if (!isPhysReg(reg))
         return false;
 
-    switch (instr.opc)
-    {
+    switch (instr.opc) {
         case MOpcode::MovRR:
         case MOpcode::FMovRR:
         case MOpcode::FMovGR:
@@ -322,8 +311,7 @@ using viper::codegen::common::removeMarkedInstructions;
 
         case MOpcode::MSubRRRR:
         case MOpcode::MAddRRRR:
-            for (std::size_t i = 1; i < instr.ops.size() && i <= 3; ++i)
-            {
+            for (std::size_t i = 1; i < instr.ops.size() && i <= 3; ++i) {
                 if (samePhysReg(instr.ops[i], reg))
                     return true;
             }
@@ -366,10 +354,8 @@ using viper::codegen::common::removeMarkedInstructions;
 
 /// @brief Classify an operand as use, def, or both.
 [[nodiscard]] inline std::pair<bool, bool> classifyOperand(const MInstr &instr,
-                                                           std::size_t idx) noexcept
-{
-    switch (instr.opc)
-    {
+                                                           std::size_t idx) noexcept {
+    switch (instr.opc) {
         case MOpcode::MovRR:
         case MOpcode::MovRI:
         case MOpcode::FMovRR:
@@ -513,17 +499,14 @@ using viper::codegen::common::removeMarkedInstructions;
 using RegConstMap = std::unordered_map<uint16_t, long long>;
 
 /// @brief Update register constant tracking based on an instruction.
-inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
-{
+inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts) {
     if (instr.opc == MOpcode::MovRI && instr.ops.size() == 2 && isPhysReg(instr.ops[0]) &&
-        instr.ops[1].kind == MOperand::Kind::Imm)
-    {
+        instr.ops[1].kind == MOperand::Kind::Imm) {
         knownConsts[instr.ops[0].reg.idOrPhys] = instr.ops[1].imm;
         return;
     }
 
-    switch (instr.opc)
-    {
+    switch (instr.opc) {
         case MOpcode::MovRR:
         case MOpcode::AddRRR:
         case MOpcode::SubRRR:
@@ -568,8 +551,7 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
             break;
     }
 
-    if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr)
-    {
+    if (instr.opc == MOpcode::Bl || instr.opc == MOpcode::Blr) {
         for (uint16_t i = 0; i <= 18; ++i)
             knownConsts.erase(i);
     }
@@ -577,8 +559,7 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
 
 /// @brief Get constant value for a register if known.
 [[nodiscard]] inline std::optional<long long> getConstValue(const MOperand &reg,
-                                                            const RegConstMap &knownConsts)
-{
+                                                            const RegConstMap &knownConsts) {
     if (!isPhysReg(reg) || reg.reg.cls != RegClass::GPR)
         return std::nullopt;
     auto it = knownConsts.find(reg.reg.idOrPhys);
@@ -590,10 +571,8 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
 // ---- Side-effect / def queries ---------------------------------------------
 
 /// @brief Check if an instruction has side effects and cannot be removed.
-[[nodiscard]] inline bool hasSideEffects(const MInstr &instr) noexcept
-{
-    switch (instr.opc)
-    {
+[[nodiscard]] inline bool hasSideEffects(const MInstr &instr) noexcept {
+    switch (instr.opc) {
         case MOpcode::StrRegFpImm:
         case MOpcode::StrFprFpImm:
         case MOpcode::StrRegBaseImm:
@@ -630,8 +609,7 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
         case MOpcode::MovRI:
         case MOpcode::FMovRR:
         case MOpcode::FMovRI:
-        case MOpcode::FMovGR:
-        {
+        case MOpcode::FMovGR: {
             if (instr.ops.empty())
                 return false;
             const auto &dst = instr.ops[0];
@@ -651,10 +629,8 @@ inline void updateKnownConsts(const MInstr &instr, RegConstMap &knownConsts)
 }
 
 /// @brief Get the physical register defined by an instruction, if any.
-[[nodiscard]] inline std::optional<MOperand> getDefinedReg(const MInstr &instr) noexcept
-{
-    switch (instr.opc)
-    {
+[[nodiscard]] inline std::optional<MOperand> getDefinedReg(const MInstr &instr) noexcept {
+    switch (instr.opc) {
         case MOpcode::MovRR:
         case MOpcode::MovRI:
         case MOpcode::FMovRR:

@@ -27,11 +27,9 @@ using viper::analysis::AliasResult;
 using viper::analysis::BasicAA;
 using viper::analysis::ModRefResult;
 
-namespace
-{
+namespace {
 
-Instr makeAlloca(unsigned id)
-{
+Instr makeAlloca(unsigned id) {
     Instr instr;
     instr.result = id;
     instr.op = Opcode::Alloca;
@@ -40,8 +38,7 @@ Instr makeAlloca(unsigned id)
     return instr;
 }
 
-Instr makeCall(std::string callee)
-{
+Instr makeCall(std::string callee) {
     Instr instr;
     instr.op = Opcode::Call;
     instr.callee = std::move(callee);
@@ -50,8 +47,7 @@ Instr makeCall(std::string callee)
 
 } // namespace
 
-int main()
-{
+int main() {
     Module module;
     il::build::IRBuilder builder(module);
 

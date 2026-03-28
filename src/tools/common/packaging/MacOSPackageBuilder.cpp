@@ -34,15 +34,13 @@
 
 namespace fs = std::filesystem;
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 //=============================================================================
 // MacOS Package Builder
 //=============================================================================
 
-void buildMacOSPackage(const MacOSBuildParams &params)
-{
+void buildMacOSPackage(const MacOSBuildParams &params) {
     const auto &pkg = params.pkgConfig;
     std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
 
@@ -71,18 +69,14 @@ void buildMacOSPackage(const MacOSBuildParams &params)
 
     // Icon (ICNS from source PNG)
     std::string iconFileName;
-    if (!pkg.iconPath.empty())
-    {
+    if (!pkg.iconPath.empty()) {
         fs::path iconSrc = fs::path(params.projectRoot) / pkg.iconPath;
-        if (fs::exists(iconSrc))
-        {
+        if (fs::exists(iconSrc)) {
             auto srcImage = pngRead(iconSrc.string());
             auto icnsData = generateIcns(srcImage);
             iconFileName = execName;
             zip.addFile(resourcesPrefix + execName + ".icns", icnsData.data(), icnsData.size());
-        }
-        else
-        {
+        } else {
             std::cerr << "warning: package-icon '" << pkg.iconPath
                       << "' not found, skipping icon generation\n";
         }
@@ -100,45 +94,35 @@ void buildMacOSPackage(const MacOSBuildParams &params)
     zip.addFileString(contentsPrefix + "Info.plist", generatePlist(plistParams));
 
     // Assets
-    for (const auto &asset : pkg.assets)
-    {
+    for (const auto &asset : pkg.assets) {
         fs::path srcPath = fs::path(params.projectRoot) / asset.sourcePath;
         std::string targetDir = asset.targetPath;
         if (targetDir == ".")
             targetDir = "";
 
-        if (!fs::exists(srcPath))
-        {
+        if (!fs::exists(srcPath)) {
             std::cerr << "warning: asset '" << asset.sourcePath << "' not found, skipping\n";
             continue;
         }
 
-        if (fs::is_directory(srcPath))
-        {
+        if (fs::is_directory(srcPath)) {
             // Recurse directory (symlink-safe)
-            safeDirectoryIterate(srcPath,
-                                 params.projectRoot,
-                                 [&](const fs::directory_entry &entry)
-                                 {
-                                     auto relPath = fs::relative(entry.path(), srcPath).string();
-                                     std::string zipPath = resourcesPrefix;
-                                     if (!targetDir.empty())
-                                         zipPath += targetDir + "/";
-                                     zipPath += relPath;
+            safeDirectoryIterate(
+                srcPath, params.projectRoot, [&](const fs::directory_entry &entry) {
+                    auto relPath = fs::relative(entry.path(), srcPath).string();
+                    std::string zipPath = resourcesPrefix;
+                    if (!targetDir.empty())
+                        zipPath += targetDir + "/";
+                    zipPath += relPath;
 
-                                     if (entry.is_directory())
-                                     {
-                                         zip.addDirectory(zipPath);
-                                     }
-                                     else if (entry.is_regular_file())
-                                     {
-                                         auto data = readFile(entry.path().string());
-                                         zip.addFile(zipPath, data.data(), data.size());
-                                     }
-                                 });
-        }
-        else if (fs::is_regular_file(srcPath))
-        {
+                    if (entry.is_directory()) {
+                        zip.addDirectory(zipPath);
+                    } else if (entry.is_regular_file()) {
+                        auto data = readFile(entry.path().string());
+                        zip.addFile(zipPath, data.data(), data.size());
+                    }
+                });
+        } else if (fs::is_regular_file(srcPath)) {
             auto data = readFile(srcPath.string());
             std::string zipPath = resourcesPrefix;
             if (!targetDir.empty())

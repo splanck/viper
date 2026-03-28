@@ -114,8 +114,7 @@
 ///
 /// @see rt_dir_make For creating directories
 /// @see rt_file_exists For checking file existence
-int64_t rt_dir_exists(rt_string path)
-{
+int64_t rt_dir_exists(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         return 0;
@@ -176,28 +175,23 @@ int64_t rt_dir_exists(rt_string path)
 /// @see rt_dir_make_all For creating nested directories
 /// @see rt_dir_exists For checking if directory exists
 /// @see rt_dir_remove For removing directories
-void rt_dir_make(rt_string path)
-{
+void rt_dir_make(rt_string path) {
     const char *cpath = NULL;
-    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
-    {
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath) {
         rt_trap("Dir.Make: invalid path");
         return;
     }
 
 #ifdef _WIN32
-    if (_mkdir(cpath) != 0 && errno != EEXIST)
-    {
+    if (_mkdir(cpath) != 0 && errno != EEXIST) {
         rt_trap("Dir.Make: failed to create directory");
     }
 #elif defined(__viperdos__)
-    if (mkdir(cpath, 0755) != 0 && errno != EEXIST)
-    {
+    if (mkdir(cpath, 0755) != 0 && errno != EEXIST) {
         rt_trap("Dir.Make: failed to create directory");
     }
 #else
-    if (mkdir(cpath, 0755) != 0 && errno != EEXIST)
-    {
+    if (mkdir(cpath, 0755) != 0 && errno != EEXIST) {
         rt_trap("Dir.Make: failed to create directory");
     }
 #endif
@@ -251,11 +245,9 @@ void rt_dir_make(rt_string path)
 ///
 /// @see rt_dir_make For creating a single directory
 /// @see rt_dir_remove_all For recursively removing directories
-void rt_dir_make_all(rt_string path)
-{
+void rt_dir_make_all(rt_string path) {
     const char *cpath = NULL;
-    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
-    {
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath) {
         rt_trap("Dir.MakeAll: invalid path");
         return;
     }
@@ -266,48 +258,40 @@ void rt_dir_make_all(rt_string path)
 
     // Make a mutable copy
     char *tmp = (char *)malloc(len + 1);
-    if (!tmp)
-    {
+    if (!tmp) {
         rt_trap("Dir.MakeAll: out of memory");
         return;
     }
     memcpy(tmp, cpath, len + 1);
 
     // Remove trailing separators
-    while (len > 0 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\'))
-    {
+    while (len > 0 && (tmp[len - 1] == '/' || tmp[len - 1] == '\\')) {
         tmp[--len] = '\0';
     }
 
     // Create each level
-    for (char *p = tmp + 1; *p; p++)
-    {
-        if (*p == '/' || *p == '\\')
-        {
+    for (char *p = tmp + 1; *p; p++) {
+        if (*p == '/' || *p == '\\') {
             char sep = *p;
             *p = '\0';
 
             // Check if this level exists
             struct stat st;
-            if (stat(tmp, &st) != 0)
-            {
+            if (stat(tmp, &st) != 0) {
 #ifdef _WIN32
-                if (_mkdir(tmp) != 0 && errno != EEXIST)
-                {
+                if (_mkdir(tmp) != 0 && errno != EEXIST) {
                     free(tmp);
                     rt_trap("Dir.MakeAll: failed to create intermediate directory");
                     return;
                 }
 #elif defined(__viperdos__)
-                if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
-                {
+                if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
                     free(tmp);
                     rt_trap("Dir.MakeAll: failed to create intermediate directory");
                     return;
                 }
 #else
-                if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
-                {
+                if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
                     free(tmp);
                     rt_trap("Dir.MakeAll: failed to create intermediate directory");
                     return;
@@ -321,25 +305,21 @@ void rt_dir_make_all(rt_string path)
 
     // Create the final directory
     struct stat st;
-    if (stat(tmp, &st) != 0)
-    {
+    if (stat(tmp, &st) != 0) {
 #ifdef _WIN32
-        if (_mkdir(tmp) != 0 && errno != EEXIST)
-        {
+        if (_mkdir(tmp) != 0 && errno != EEXIST) {
             free(tmp);
             rt_trap("Dir.MakeAll: failed to create directory");
             return;
         }
 #elif defined(__viperdos__)
-        if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
-        {
+        if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
             free(tmp);
             rt_trap("Dir.MakeAll: failed to create directory");
             return;
         }
 #else
-        if (mkdir(tmp, 0755) != 0 && errno != EEXIST)
-        {
+        if (mkdir(tmp, 0755) != 0 && errno != EEXIST) {
             free(tmp);
             rt_trap("Dir.MakeAll: failed to create directory");
             return;
@@ -390,28 +370,23 @@ void rt_dir_make_all(rt_string path)
 /// @see rt_dir_remove_all For removing directories with contents
 /// @see rt_dir_make For creating directories
 /// @see rt_dir_exists For checking if directory exists
-void rt_dir_remove(rt_string path)
-{
+void rt_dir_remove(rt_string path) {
     const char *cpath = NULL;
-    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
-    {
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath) {
         rt_trap("Dir.Remove: invalid path");
         return;
     }
 
 #ifdef _WIN32
-    if (_rmdir(cpath) != 0)
-    {
+    if (_rmdir(cpath) != 0) {
         rt_trap("Dir.Remove: failed to remove directory");
     }
 #elif defined(__viperdos__)
-    if (rmdir(cpath) != 0)
-    {
+    if (rmdir(cpath) != 0) {
         rt_trap("Dir.Remove: failed to remove directory");
     }
 #else
-    if (rmdir(cpath) != 0)
-    {
+    if (rmdir(cpath) != 0) {
         rt_trap("Dir.Remove: failed to remove directory");
     }
 #endif
@@ -426,8 +401,7 @@ void rt_dir_remove(rt_string path)
 ///
 /// @note Errors are silently ignored (best-effort deletion).
 /// @note Not part of the public API.
-static void delete_file(const char *path)
-{
+static void delete_file(const char *path) {
 #ifdef _WIN32
     (void)_unlink(path);
 #elif defined(__viperdos__)
@@ -491,11 +465,9 @@ static void delete_file(const char *path)
 ///
 /// @see rt_dir_remove For removing empty directories only
 /// @see rt_dir_make_all For creating nested directories
-void rt_dir_remove_all(rt_string path)
-{
+void rt_dir_remove_all(rt_string path) {
     const char *cpath = NULL;
-    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
-    {
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath) {
         rt_trap("Dir.RemoveAll: invalid path");
         return;
     }
@@ -506,30 +478,25 @@ void rt_dir_remove_all(rt_string path)
     snprintf(pattern, PATH_MAX, "%s\\*", cpath);
 
     HANDLE h = FindFirstFileA(pattern, &fd);
-    if (h == INVALID_HANDLE_VALUE)
-    {
+    if (h == INVALID_HANDLE_VALUE) {
         // Directory might be empty or not exist
         _rmdir(cpath);
         return;
     }
 
-    do
-    {
+    do {
         if (strcmp(fd.cFileName, ".") == 0 || strcmp(fd.cFileName, "..") == 0)
             continue;
 
         char full_path[PATH_MAX];
         snprintf(full_path, PATH_MAX, "%s\\%s", cpath, fd.cFileName);
 
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-        {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
             // Recurse into subdirectory
             rt_string sub = rt_string_from_bytes(full_path, strlen(full_path));
             rt_dir_remove_all(sub);
             rt_string_unref(sub);
-        }
-        else
-        {
+        } else {
             delete_file(full_path);
         }
     } while (FindNextFileA(h, &fd));
@@ -545,15 +512,13 @@ void rt_dir_remove_all(rt_string path)
 
 #if !defined(_WIN32)
     DIR *dir = opendir(cpath);
-    if (!dir)
-    {
+    if (!dir) {
         rmdir(cpath);
         return;
     }
 
     struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL)
-    {
+    while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
             continue;
 
@@ -564,14 +529,11 @@ void rt_dir_remove_all(rt_string path)
         /* Use lstat() so we do not follow symlinks into other trees.
            A symlink pointing to a directory reports S_ISLNK, not S_ISDIR,
            so delete_file() will call unlink() on the symlink itself. */
-        if (lstat(full_path, &st) == 0 && S_ISDIR(st.st_mode))
-        {
+        if (lstat(full_path, &st) == 0 && S_ISDIR(st.st_mode)) {
             rt_string sub = rt_string_from_bytes(full_path, strlen(full_path));
             rt_dir_remove_all(sub);
             rt_string_unref(sub);
-        }
-        else
-        {
+        } else {
             delete_file(full_path);
         }
     }
@@ -634,8 +596,7 @@ void rt_dir_remove_all(rt_string path)
 /// @see rt_dir_files For listing only files
 /// @see rt_dir_dirs For listing only subdirectories
 /// @see rt_dir_entries_seq For trapping version
-void *rt_dir_list(rt_string path)
-{
+void *rt_dir_list(rt_string path) {
     void *result = rt_seq_new();
 
     const char *cpath = NULL;
@@ -651,10 +612,8 @@ void *rt_dir_list(rt_string path)
     if (h == INVALID_HANDLE_VALUE)
         return result;
 
-    do
-    {
-        if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0)
-        {
+    do {
+        if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0) {
             rt_string name = rt_string_from_bytes(fd.cFileName, strlen(fd.cFileName));
             rt_seq_push(result, (void *)name);
         }
@@ -668,10 +627,8 @@ void *rt_dir_list(rt_string path)
         return result;
 
     struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL)
-    {
-        if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0)
-        {
+    while ((ent = readdir(dir)) != NULL) {
+        if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0) {
             rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
             rt_seq_push(result, (void *)name);
         }
@@ -703,8 +660,7 @@ void *rt_dir_list(rt_string path)
 /// @note Same behavior as rt_dir_list.
 ///
 /// @see rt_dir_list For implementation details
-void *rt_dir_list_seq(rt_string path)
-{
+void *rt_dir_list_seq(rt_string path) {
     return rt_dir_list(path);
 }
 
@@ -747,8 +703,7 @@ void *rt_dir_list_seq(rt_string path)
 /// @see rt_dir_list For non-trapping version
 /// @see rt_dir_files For listing only files
 /// @see rt_dir_dirs For listing only subdirectories
-void *rt_dir_entries_seq(rt_string path)
-{
+void *rt_dir_entries_seq(rt_string path) {
     const char *cpath = NULL;
     if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
         rt_trap("Viper.IO.Dir.Entries: invalid directory path");
@@ -776,18 +731,15 @@ void *rt_dir_entries_seq(rt_string path)
     snprintf(pattern, PATH_MAX, "%s\\*", cpath);
 
     HANDLE h = FindFirstFileA(pattern, &fd);
-    if (h == INVALID_HANDLE_VALUE)
-    {
+    if (h == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
         if (err == ERROR_FILE_NOT_FOUND)
             return result;
         rt_trap("Viper.IO.Dir.Entries: failed to open directory");
     }
 
-    do
-    {
-        if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0)
-        {
+    do {
+        if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0) {
             rt_string name = rt_string_from_bytes(fd.cFileName, strlen(fd.cFileName));
             rt_seq_push(result, (void *)name);
         }
@@ -801,10 +753,8 @@ void *rt_dir_entries_seq(rt_string path)
         rt_trap("Viper.IO.Dir.Entries: failed to open directory");
 
     struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL)
-    {
-        if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0)
-        {
+    while ((ent = readdir(dir)) != NULL) {
+        if (strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0) {
             rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
             rt_seq_push(result, (void *)name);
         }
@@ -865,8 +815,7 @@ void *rt_dir_entries_seq(rt_string path)
 /// @see rt_dir_dirs For listing only subdirectories
 /// @see rt_dir_list For listing all entries
 /// @see rt_dir_files_seq For wrapper version
-void *rt_dir_files(rt_string path)
-{
+void *rt_dir_files(rt_string path) {
     void *result = rt_seq_new();
 
     const char *cpath = NULL;
@@ -882,10 +831,8 @@ void *rt_dir_files(rt_string path)
     if (h == INVALID_HANDLE_VALUE)
         return result;
 
-    do
-    {
-        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
-        {
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             rt_string name = rt_string_from_bytes(fd.cFileName, strlen(fd.cFileName));
             rt_seq_push(result, (void *)name);
         }
@@ -899,16 +846,14 @@ void *rt_dir_files(rt_string path)
         return result;
 
     struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL)
-    {
+    while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
             continue;
 
         char full[PATH_MAX];
         snprintf(full, PATH_MAX, "%s/%s", cpath, ent->d_name);
         struct stat st;
-        if (stat(full, &st) == 0 && S_ISREG(st.st_mode))
-        {
+        if (stat(full, &st) == 0 && S_ISREG(st.st_mode)) {
             rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
             rt_seq_push(result, (void *)name);
         }
@@ -938,8 +883,7 @@ void *rt_dir_files(rt_string path)
 /// @note Delegates to rt_dir_files.
 ///
 /// @see rt_dir_files For implementation details
-void *rt_dir_files_seq(rt_string path)
-{
+void *rt_dir_files_seq(rt_string path) {
     return rt_dir_files(path);
 }
 
@@ -993,8 +937,7 @@ void *rt_dir_files_seq(rt_string path)
 /// @see rt_dir_files For listing only files
 /// @see rt_dir_list For listing all entries
 /// @see rt_dir_dirs_seq For wrapper version
-void *rt_dir_dirs(rt_string path)
-{
+void *rt_dir_dirs(rt_string path) {
     void *result = rt_seq_new();
 
     const char *cpath = NULL;
@@ -1010,11 +953,9 @@ void *rt_dir_dirs(rt_string path)
     if (h == INVALID_HANDLE_VALUE)
         return result;
 
-    do
-    {
+    do {
         if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && strcmp(fd.cFileName, ".") != 0 &&
-            strcmp(fd.cFileName, "..") != 0)
-        {
+            strcmp(fd.cFileName, "..") != 0) {
             rt_string name = rt_string_from_bytes(fd.cFileName, strlen(fd.cFileName));
             rt_seq_push(result, (void *)name);
         }
@@ -1028,16 +969,14 @@ void *rt_dir_dirs(rt_string path)
         return result;
 
     struct dirent *ent;
-    while ((ent = readdir(dir)) != NULL)
-    {
+    while ((ent = readdir(dir)) != NULL) {
         if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
             continue;
 
         char full[PATH_MAX];
         snprintf(full, PATH_MAX, "%s/%s", cpath, ent->d_name);
         struct stat st;
-        if (stat(full, &st) == 0 && S_ISDIR(st.st_mode))
-        {
+        if (stat(full, &st) == 0 && S_ISDIR(st.st_mode)) {
             rt_string name = rt_string_from_bytes(ent->d_name, strlen(ent->d_name));
             rt_seq_push(result, (void *)name);
         }
@@ -1067,8 +1006,7 @@ void *rt_dir_dirs(rt_string path)
 /// @note Delegates to rt_dir_dirs.
 ///
 /// @see rt_dir_dirs For implementation details
-void *rt_dir_dirs_seq(rt_string path)
-{
+void *rt_dir_dirs_seq(rt_string path) {
     return rt_dir_dirs(path);
 }
 
@@ -1111,20 +1049,17 @@ void *rt_dir_dirs_seq(rt_string path)
 ///
 /// @see rt_dir_set_current For changing the working directory
 /// @see rt_path_absolute For converting relative paths to absolute
-rt_string rt_dir_current(void)
-{
+rt_string rt_dir_current(void) {
     char buffer[PATH_MAX];
 
 #ifdef _WIN32
-    if (_getcwd(buffer, PATH_MAX) == NULL)
-    {
+    if (_getcwd(buffer, PATH_MAX) == NULL) {
         rt_trap("Dir.Current: failed to get current directory");
         return rt_str_empty();
     }
 #else
     // Unix and ViperDOS: use POSIX getcwd.
-    if (getcwd(buffer, PATH_MAX) == NULL)
-    {
+    if (getcwd(buffer, PATH_MAX) == NULL) {
         rt_trap("Dir.Current: failed to get current directory");
         return rt_str_empty();
     }
@@ -1179,28 +1114,23 @@ rt_string rt_dir_current(void)
 ///
 /// @see rt_dir_current For getting the current working directory
 /// @see rt_dir_exists For checking if directory exists before changing
-void rt_dir_set_current(rt_string path)
-{
+void rt_dir_set_current(rt_string path) {
     const char *cpath = NULL;
-    if (!rt_file_path_from_vstr(path, &cpath) || !cpath)
-    {
+    if (!rt_file_path_from_vstr(path, &cpath) || !cpath) {
         rt_trap("Dir.SetCurrent: invalid path");
         return;
     }
 
 #ifdef _WIN32
-    if (_chdir(cpath) != 0)
-    {
+    if (_chdir(cpath) != 0) {
         rt_trap("Dir.SetCurrent: failed to change directory");
     }
 #elif defined(__viperdos__)
-    if (chdir(cpath) != 0)
-    {
+    if (chdir(cpath) != 0) {
         rt_trap("Dir.SetCurrent: failed to change directory");
     }
 #else
-    if (chdir(cpath) != 0)
-    {
+    if (chdir(cpath) != 0) {
         rt_trap("Dir.SetCurrent: failed to change directory");
     }
 #endif
@@ -1266,25 +1196,21 @@ void rt_dir_set_current(rt_string path)
 /// @see rt_dir_make For creating directories
 /// @see rt_dir_remove For removing directories
 /// @see rt_file_move For moving files
-void rt_dir_move(rt_string src, rt_string dst)
-{
+void rt_dir_move(rt_string src, rt_string dst) {
     const char *csrc = NULL;
     const char *cdst = NULL;
 
-    if (!rt_file_path_from_vstr(src, &csrc) || !csrc)
-    {
+    if (!rt_file_path_from_vstr(src, &csrc) || !csrc) {
         rt_trap("Dir.Move: invalid source path");
         return;
     }
 
-    if (!rt_file_path_from_vstr(dst, &cdst) || !cdst)
-    {
+    if (!rt_file_path_from_vstr(dst, &cdst) || !cdst) {
         rt_trap("Dir.Move: invalid destination path");
         return;
     }
 
-    if (rename(csrc, cdst) != 0)
-    {
+    if (rename(csrc, cdst) != 0) {
         rt_trap("Dir.Move: failed to move directory");
     }
 }

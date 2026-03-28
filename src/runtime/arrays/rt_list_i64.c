@@ -47,8 +47,7 @@
 ///          has not been exhausted.
 /// @param init_cap Desired initial capacity in elements; 0 defaults to 8.
 /// @return List payload pointer (element 0 address), or NULL on failure.
-int64_t *rt_list_i64_new(size_t init_cap)
-{
+int64_t *rt_list_i64_new(size_t init_cap) {
     size_t cap = init_cap ? init_cap : RT_LIST_I64_MIN_CAP;
     return (int64_t *)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_I64, sizeof(int64_t), 0, cap);
 }
@@ -61,8 +60,7 @@ int64_t *rt_list_i64_new(size_t init_cap)
 /// @param list_inout Non-null pointer to the list payload; updated on realloc.
 /// @param val Value to append.
 /// @return 0 on success; -1 when the slow-path allocation fails.
-int rt_list_i64_push(int64_t **list_inout, int64_t val)
-{
+int rt_list_i64_push(int64_t **list_inout, int64_t val) {
     assert(list_inout && *list_inout);
 
     int64_t *arr = *list_inout;
@@ -70,8 +68,7 @@ int rt_list_i64_push(int64_t **list_inout, int64_t val)
     size_t len = hdr->len;
     size_t cap = hdr->cap;
 
-    if (len < cap)
-    {
+    if (len < cap) {
         // Fast path: capacity available — no allocation needed.
         arr[len] = val;
         rt_heap_set_len(arr, len + 1);
@@ -102,8 +99,7 @@ int rt_list_i64_push(int64_t **list_inout, int64_t val)
 ///          in the header; does not release capacity.
 /// @param list_inout Non-null pointer to the list payload.
 /// @return Value of the removed element.
-int64_t rt_list_i64_pop(int64_t **list_inout)
-{
+int64_t rt_list_i64_pop(int64_t **list_inout) {
     assert(list_inout && *list_inout);
 
     int64_t *arr = *list_inout;
@@ -122,8 +118,7 @@ int64_t rt_list_i64_pop(int64_t **list_inout)
 /// @details Traps via rt_arr_oob_panic when the list is empty.
 /// @param list Non-null list payload pointer.
 /// @return Value of the last element.
-int64_t rt_list_i64_peek(int64_t *list)
-{
+int64_t rt_list_i64_peek(int64_t *list) {
     assert(list);
 
     rt_heap_hdr_t *hdr = rt_heap_hdr(list);

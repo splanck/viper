@@ -28,8 +28,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-int main()
-{
+int main() {
     using namespace il::core;
     using il::verify::TypeInference;
     using il::verify::verifyBr_E;
@@ -164,8 +163,7 @@ int main()
 
     std::unordered_map<unsigned, Type> fixtureTemps;
     std::unordered_set<unsigned> fixtureDefined;
-    for (const auto &param : fixtureEntry.params)
-    {
+    for (const auto &param : fixtureEntry.params) {
         fixtureTemps[param.id] = param.type;
         fixtureDefined.insert(param.id);
     }

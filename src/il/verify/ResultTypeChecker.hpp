@@ -39,12 +39,10 @@
 
 #include <string_view>
 
-namespace il::verify::detail
-{
+namespace il::verify::detail {
 
 /// @brief Ensures an instruction's result matches opcode metadata expectations.
-class ResultTypeChecker
-{
+class ResultTypeChecker {
   public:
     ResultTypeChecker(const VerifyCtx &ctx, const InstructionSpec &spec);
 

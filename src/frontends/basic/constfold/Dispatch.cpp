@@ -33,21 +33,18 @@
 #include <cassert>
 #include <optional>
 
-namespace il::frontends::basic::constfold
-{
+namespace il::frontends::basic::constfold {
 std::optional<Constant> fold_arith(AST::BinaryExpr::Op, const Constant &, const Constant &);
 std::optional<Constant> fold_numeric_logic(AST::BinaryExpr::Op, const Constant &, const Constant &);
 std::optional<Constant> fold_compare(AST::BinaryExpr::Op, const Constant &, const Constant &);
 std::optional<Constant> fold_strings(AST::BinaryExpr::Op, const Constant &, const Constant &);
 std::optional<Constant> fold_cast(AST::BinaryExpr::Op, const Constant &, const Constant &);
 
-namespace
-{
+namespace {
 /// @brief Determine whether a literal kind carries numeric semantics.
 /// @param kind Literal classification to inspect.
 /// @return True when the literal represents an integer or floating-point value.
-bool is_numeric(LiteralKind kind)
-{
+bool is_numeric(LiteralKind kind) {
     return kind == LiteralKind::Int || kind == LiteralKind::Float;
 }
 
@@ -60,8 +57,7 @@ bool is_numeric(LiteralKind kind)
 ///          convenient.  Non-numeric expressions yield @c std::nullopt.
 /// @param expr Expression candidate to inspect.
 /// @return Numeric summary or empty optional when conversion fails.
-std::optional<NumericValue> numeric_from_expr(const AST::Expr &expr)
-{
+std::optional<NumericValue> numeric_from_expr(const AST::Expr &expr) {
     if (const auto *i = as<const IntExpr>(expr))
         return NumericValue{false, static_cast<double>(i->value), i->value};
     if (const auto *f = as<const FloatExpr>(expr))
@@ -77,15 +73,13 @@ std::optional<NumericValue> numeric_from_expr(const AST::Expr &expr)
 /// @param lhs Left-hand numeric operand.
 /// @param rhs Right-hand numeric operand.
 /// @return Promoted numeric representation suitable for folding.
-NumericValue promote_numeric(const NumericValue &lhs, const NumericValue &rhs)
-{
+NumericValue promote_numeric(const NumericValue &lhs, const NumericValue &rhs) {
     if (lhs.isFloat || rhs.isFloat)
         return NumericValue{true, lhs.isFloat ? lhs.f : static_cast<double>(lhs.i), lhs.i};
     return lhs;
 }
 
-namespace
-{
+namespace {
 
 /// @brief Summarise an AST literal into the internal @ref Constant form.
 /// @details Handles integers, floats, booleans, and strings by populating the
@@ -93,17 +87,14 @@ namespace
 ///          @c std::nullopt so callers know folding cannot proceed.
 /// @param expr Expression to inspect.
 /// @return Populated constant or empty optional when @p expr is not a literal.
-std::optional<Constant> extract_constant(const AST::Expr &expr)
-{
-    if (const auto *i = as<const IntExpr>(expr))
-    {
+std::optional<Constant> extract_constant(const AST::Expr &expr) {
+    if (const auto *i = as<const IntExpr>(expr)) {
         Constant c;
         c.kind = LiteralKind::Int;
         c.numeric = NumericValue{false, static_cast<double>(i->value), i->value};
         return c;
     }
-    if (const auto *f = as<const FloatExpr>(expr))
-    {
+    if (const auto *f = as<const FloatExpr>(expr)) {
         Constant c;
         c.kind = LiteralKind::Float;
         c.numeric = NumericValue{true, f->value, static_cast<long long>(f->value)};
@@ -111,8 +102,7 @@ std::optional<Constant> extract_constant(const AST::Expr &expr)
     }
     if (const auto *b = as<const BoolExpr>(expr))
         return make_bool_constant(b->value);
-    if (const auto *s = as<const StringExpr>(expr))
-    {
+    if (const auto *s = as<const StringExpr>(expr)) {
         Constant c;
         c.kind = LiteralKind::String;
         c.stringValue = s->value;
@@ -128,31 +118,25 @@ std::optional<Constant> extract_constant(const AST::Expr &expr)
 ///          subtree with the materialised literal.
 /// @param constant Folded constant value to materialise.
 /// @return Newly allocated AST expression representing @p constant.
-AST::ExprPtr materialize_constant(const Constant &constant)
-{
-    switch (constant.kind)
-    {
-        case LiteralKind::Int:
-        {
+AST::ExprPtr materialize_constant(const Constant &constant) {
+    switch (constant.kind) {
+        case LiteralKind::Int: {
             auto out = std::make_unique<::il::frontends::basic::IntExpr>();
             out->value = constant.numeric.i;
             return out;
         }
-        case LiteralKind::Float:
-        {
+        case LiteralKind::Float: {
             auto out = std::make_unique<::il::frontends::basic::FloatExpr>();
             out->value = constant.numeric.isFloat ? constant.numeric.f
                                                   : static_cast<double>(constant.numeric.i);
             return out;
         }
-        case LiteralKind::Bool:
-        {
+        case LiteralKind::Bool: {
             auto out = std::make_unique<AST::BoolExpr>();
             out->value = constant.boolValue;
             return out;
         }
-        case LiteralKind::String:
-        {
+        case LiteralKind::String: {
             auto out = std::make_unique<::il::frontends::basic::StringExpr>();
             out->value = constant.stringValue;
             return out;
@@ -173,10 +157,8 @@ AST::ExprPtr materialize_constant(const Constant &constant)
 /// @param lhs Literal kind of the left operand.
 /// @param rhs Literal kind of the right operand.
 /// @return Selected fold domain or empty optional when no fold applies.
-std::optional<FoldKind> deduce_kind(AST::BinaryExpr::Op op, LiteralKind lhs, LiteralKind rhs)
-{
-    switch (op)
-    {
+std::optional<FoldKind> deduce_kind(AST::BinaryExpr::Op op, LiteralKind lhs, LiteralKind rhs) {
+    switch (op) {
         case AST::BinaryExpr::Op::Add:
             if (lhs == LiteralKind::String && rhs == LiteralKind::String)
                 return FoldKind::Strings;
@@ -214,12 +196,10 @@ std::optional<FoldKind> deduce_kind(AST::BinaryExpr::Op op, LiteralKind lhs, Lit
 /// @param lhs First constant to compare.
 /// @param rhs Second constant to compare.
 /// @return True when the constants represent identical values.
-bool same_constant(const Constant &lhs, const Constant &rhs)
-{
+bool same_constant(const Constant &lhs, const Constant &rhs) {
     if (lhs.kind != rhs.kind)
         return false;
-    switch (lhs.kind)
-    {
+    switch (lhs.kind) {
         case LiteralKind::Int:
         case LiteralKind::Float:
             return lhs.numeric.isFloat == rhs.numeric.isFloat && lhs.numeric.i == rhs.numeric.i &&
@@ -248,10 +228,8 @@ bool same_constant(const Constant &lhs, const Constant &rhs)
 std::optional<Constant> dispatch_fold(FoldKind kind,
                                       AST::BinaryExpr::Op op,
                                       const Constant &lhs,
-                                      const Constant &rhs)
-{
-    switch (kind)
-    {
+                                      const Constant &rhs) {
+    switch (kind) {
         case FoldKind::Arith:
             return fold_arith(op, lhs, rhs);
         case FoldKind::Logical:
@@ -274,8 +252,7 @@ std::optional<Constant> dispatch_fold(FoldKind kind,
 ///          confirm the helper succeeds.  The actual AST is not mutated.
 /// @param expr Candidate expression to analyse.
 /// @return True when folding would succeed.
-bool can_fold(const AST::Expr &expr)
-{
+bool can_fold(const AST::Expr &expr) {
     const auto *binary = as<const BinaryExpr>(expr);
     if (!binary)
         return false;
@@ -296,8 +273,7 @@ bool can_fold(const AST::Expr &expr)
 ///          order.
 /// @param expr Expression to fold.
 /// @return New AST node containing the folded value or empty optional on failure.
-std::optional<AST::ExprPtr> fold_expr(const AST::Expr &expr)
-{
+std::optional<AST::ExprPtr> fold_expr(const AST::Expr &expr) {
     const auto *binary = as<const BinaryExpr>(expr);
     if (!binary)
         return std::nullopt;
@@ -313,11 +289,9 @@ std::optional<AST::ExprPtr> fold_expr(const AST::Expr &expr)
 
     auto folded = dispatch_fold(*kind, binary->op, *lhs, *rhs);
 #ifdef VIPER_CONSTFOLD_ASSERTS
-    if (folded)
-    {
+    if (folded) {
         if (*kind == FoldKind::Arith &&
-            (binary->op == AST::BinaryExpr::Op::Add || binary->op == AST::BinaryExpr::Op::Mul))
-        {
+            (binary->op == AST::BinaryExpr::Op::Add || binary->op == AST::BinaryExpr::Op::Mul)) {
             auto swapped = dispatch_fold(*kind, binary->op, *rhs, *lhs);
             if (swapped)
                 assert(same_constant(*folded, *swapped));
@@ -325,8 +299,7 @@ std::optional<AST::ExprPtr> fold_expr(const AST::Expr &expr)
         if (*kind == FoldKind::Logical && (binary->op == AST::BinaryExpr::Op::LogicalAnd ||
                                            binary->op == AST::BinaryExpr::Op::LogicalAndShort ||
                                            binary->op == AST::BinaryExpr::Op::LogicalOr ||
-                                           binary->op == AST::BinaryExpr::Op::LogicalOrShort))
-        {
+                                           binary->op == AST::BinaryExpr::Op::LogicalOrShort)) {
             auto swapped = dispatch_fold(*kind, binary->op, *rhs, *lhs);
             if (swapped)
                 assert(same_constant(*folded, *swapped));

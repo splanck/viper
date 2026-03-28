@@ -24,8 +24,7 @@
 #include <utility>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Consume an optional line label after a line break.
 /// @details If a line break is present, advances the sequencer past it and then
@@ -35,43 +34,36 @@ namespace il::frontends::basic
 ///          constructs. Any consumed label is recorded for later diagnostics.
 /// @param ctx Statement sequencer to advance past line breaks.
 /// @param followerKinds Token kinds that may legally follow the optional label.
-inline void Parser::skipOptionalLineLabelAfterBreak(StatementSequencer &ctx,
-                                                    std::initializer_list<TokenKind> followerKinds)
-{
+inline void Parser::skipOptionalLineLabelAfterBreak(
+    StatementSequencer &ctx, std::initializer_list<TokenKind> followerKinds) {
     if (!at(TokenKind::EndOfLine))
         return;
 
     ctx.skipLineBreaks();
 
-    auto matchesFollowers = [&](TokenKind candidate)
-    {
+    auto matchesFollowers = [&](TokenKind candidate) {
         if (followerKinds.size() == 0)
             return true;
-        for (auto follower : followerKinds)
-        {
+        for (auto follower : followerKinds) {
             if (candidate == follower)
                 return true;
         }
         return false;
     };
 
-    if (at(TokenKind::Number))
-    {
+    if (at(TokenKind::Number)) {
         Token numberTok = peek();
-        if (matchesFollowers(peek(1).kind))
-        {
+        if (matchesFollowers(peek(1).kind)) {
             noteNumericLabelUsage(std::atoi(numberTok.lexeme.c_str()));
             consume();
         }
         return;
     }
 
-    if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::Colon)
-    {
+    if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::Colon) {
         Token labelTok = peek();
         TokenKind afterColon = peek(2).kind;
-        if (matchesFollowers(afterColon))
-        {
+        if (matchesFollowers(afterColon)) {
             consume();
             consume();
             int labelNumber = ensureLabelNumber(labelTok.lexeme);
@@ -87,8 +79,7 @@ inline void Parser::skipOptionalLineLabelAfterBreak(StatementSequencer &ctx,
 /// @param line Source line number associated with the IF/ELSEIF header.
 /// @param ctx Statement sequencer used for line-break handling.
 /// @return Parsed statement node, or null when no statement is present.
-inline StmtPtr Parser::parseIfBranchBody(int line, StatementSequencer &ctx)
-{
+inline StmtPtr Parser::parseIfBranchBody(int line, StatementSequencer &ctx) {
     skipOptionalLineLabelAfterBreak(ctx);
     auto stmt = parseStatement(line);
     if (stmt)
@@ -96,8 +87,7 @@ inline StmtPtr Parser::parseIfBranchBody(int line, StatementSequencer &ctx)
     return stmt;
 }
 
-namespace parser_helpers
-{
+namespace parser_helpers {
 
 /// @brief Build a StmtList node from a sequence of branch statements.
 /// @details Returns null for empty branches; otherwise constructs a StmtList,
@@ -109,17 +99,14 @@ namespace parser_helpers
 /// @return StmtList node or null if the branch is empty.
 inline StmtPtr buildBranchList(int line,
                                il::support::SourceLoc defaultLoc,
-                               std::vector<StmtPtr> &&stmts)
-{
+                               std::vector<StmtPtr> &&stmts) {
     if (stmts.empty())
         return nullptr;
     auto list = std::make_unique<StmtList>();
     list->line = line;
     il::support::SourceLoc listLoc = defaultLoc;
-    for (const auto &bodyStmt : stmts)
-    {
-        if (bodyStmt)
-        {
+    for (const auto &bodyStmt : stmts) {
+        if (bodyStmt) {
             listLoc = bodyStmt->loc;
             break;
         }
@@ -140,8 +127,7 @@ inline StmtPtr buildBranchList(int line,
 inline std::vector<StmtPtr> collectBranchStatements(
     StatementSequencer &ctx,
     const StatementSequencer::TerminatorPredicate &predicate,
-    const StatementSequencer::TerminatorConsumer &consumer)
-{
+    const StatementSequencer::TerminatorConsumer &consumer) {
     std::vector<StmtPtr> stmts;
     ctx.collectStatements(predicate, consumer, stmts);
     return stmts;

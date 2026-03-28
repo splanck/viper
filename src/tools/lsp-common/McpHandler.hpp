@@ -26,8 +26,7 @@
 
 #include <string>
 
-namespace viper::server
-{
+namespace viper::server {
 
 /// @brief MCP protocol handler.
 ///
@@ -40,8 +39,7 @@ namespace viper::server
 /// 2. Client sends `initialized` (notification) → no response
 /// 3. Client sends `tools/list` → server returns tool definitions
 /// 4. Client sends `tools/call` → server dispatches to ICompilerBridge, returns result
-class McpHandler
-{
+class McpHandler {
   public:
     /// @brief Construct a handler that dispatches to the given bridge.
     /// @param bridge The compiler bridge (must outlive this handler).

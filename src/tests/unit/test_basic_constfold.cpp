@@ -26,8 +26,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     // int + float promotes to float
     {
         std::string src = "10 LET X = 1 + 2.5\n20 END\n";

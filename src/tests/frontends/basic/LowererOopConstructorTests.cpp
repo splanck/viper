@@ -27,25 +27,19 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-const il::core::Function *findFunction(const il::core::Module &module, const std::string &name)
-{
-    for (const auto &fn : module.functions)
-    {
+const il::core::Function *findFunction(const il::core::Module &module, const std::string &name) {
+    for (const auto &fn : module.functions) {
         if (fn.name == name)
             return &fn;
     }
     return nullptr;
 }
 
-bool functionCallsCtor(const il::core::Function &fn, const std::string &ctorName)
-{
-    for (const auto &block : fn.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+bool functionCallsCtor(const il::core::Function &fn, const std::string &ctorName) {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == il::core::Opcode::Call && instr.callee == ctorName)
                 return true;
         }
@@ -55,8 +49,7 @@ bool functionCallsCtor(const il::core::Function &fn, const std::string &ctorName
 
 } // namespace
 
-int main()
-{
+int main() {
     const std::string src = "10 CLASS C\n"
                             "20   v AS INTEGER\n"
                             "30   SUB SET()\n"

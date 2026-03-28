@@ -19,8 +19,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -29,8 +28,7 @@ static void test_result(const char *name, bool passed)
 // Password Hash Format Tests
 //=============================================================================
 
-static void test_password_hash_format()
-{
+static void test_password_hash_format() {
     printf("Testing Password.Hash format:\n");
 
     // Test 1: Hash produces valid format "PBKDF2$iterations$salt_b64$hash_b64"
@@ -44,8 +42,7 @@ static void test_password_hash_format()
 
         // Count $ delimiters (should be exactly 3)
         int count = 0;
-        for (const char *p = hash_str; *p; p++)
-        {
+        for (const char *p = hash_str; *p; p++) {
             if (*p == '$')
                 count++;
         }
@@ -90,8 +87,7 @@ static void test_password_hash_format()
 // Password Verification Tests
 //=============================================================================
 
-static void test_password_verify()
-{
+static void test_password_verify() {
     printf("Testing Password.Verify:\n");
 
     // Test 1: Correct password verifies
@@ -153,8 +149,7 @@ static void test_password_verify()
 // Invalid Input Tests
 //=============================================================================
 
-static void test_password_invalid_input()
-{
+static void test_password_invalid_input() {
     printf("Testing Password invalid inputs:\n");
 
     // Test 1: Invalid hash format returns 0
@@ -188,8 +183,7 @@ static void test_password_invalid_input()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Password Tests ===\n\n");
 
     test_password_hash_format();

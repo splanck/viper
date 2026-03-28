@@ -22,8 +22,7 @@
 
 using viper::tui::text::TextBuffer;
 
-TEST(TUI, TextBuffer)
-{
+TEST(TUI, TextBuffer) {
     TextBuffer buf;
     buf.load("hello\nworld");
     ASSERT_EQ(buf.getLine(0), "hello");
@@ -62,59 +61,45 @@ TEST(TUI, TextBuffer)
     ASSERT_EQ(buf.getLine(0), "bye, there");
 
     std::size_t visited = 0;
-    buf.forEachLine(
-        [&](std::size_t lineNo, const TextBuffer::LineView &view)
-        {
-            std::string reconstructed;
-            std::size_t segments = 0;
-            view.forEachSegment(
-                [&](std::string_view segment)
-                {
-                    reconstructed.append(segment);
-                    ++segments;
-                    return true;
-                });
-
-            if (lineNo == 0)
-            {
-                ASSERT_EQ(reconstructed, "bye, there");
-                ASSERT_TRUE(segments >= 2);
-            }
-            else if (lineNo == 1)
-            {
-                ASSERT_EQ(reconstructed, "beautiful");
-            }
-            else if (lineNo == 2)
-            {
-                ASSERT_EQ(reconstructed, "world");
-            }
-
-            ++visited;
+    buf.forEachLine([&](std::size_t lineNo, const TextBuffer::LineView &view) {
+        std::string reconstructed;
+        std::size_t segments = 0;
+        view.forEachSegment([&](std::string_view segment) {
+            reconstructed.append(segment);
+            ++segments;
             return true;
         });
+
+        if (lineNo == 0) {
+            ASSERT_EQ(reconstructed, "bye, there");
+            ASSERT_TRUE(segments >= 2);
+        } else if (lineNo == 1) {
+            ASSERT_EQ(reconstructed, "beautiful");
+        } else if (lineNo == 2) {
+            ASSERT_EQ(reconstructed, "world");
+        }
+
+        ++visited;
+        return true;
+    });
     ASSERT_EQ(visited, buf.lineCount());
 
     visited = 0;
-    buf.forEachLine(
-        [&](std::size_t lineNo, const TextBuffer::LineView &)
-        {
-            ++visited;
-            return lineNo < 1;
-        });
+    buf.forEachLine([&](std::size_t lineNo, const TextBuffer::LineView &) {
+        ++visited;
+        return lineNo < 1;
+    });
     ASSERT_EQ(visited, 2);
 
     std::size_t segmentVisits = 0;
-    buf.lineView(0).forEachSegment(
-        [&](std::string_view)
-        {
-            ++segmentVisits;
-            return false;
-        });
+    buf.lineView(0).forEachSegment([&](std::string_view) {
+        ++segmentVisits;
+        return false;
+    });
     ASSERT_EQ(segmentVisits, 1);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

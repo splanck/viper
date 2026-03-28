@@ -17,16 +17,14 @@
 #include <assert.h>
 #include <string.h>
 
-static void assert_mode_literal(int32_t mode, const char *expected)
-{
+static void assert_mode_literal(int32_t mode, const char *expected) {
     const char *mode_literal = rt_file_mode_string(mode);
     assert(mode_literal != NULL);
     assert(strcmp(mode_literal, expected) == 0);
 }
 
 /// @brief Entry point for verifying mode-to-string mapping invariants.
-int main(void)
-{
+int main(void) {
     assert_mode_literal(RT_F_INPUT, "r");
     assert_mode_literal(RT_F_OUTPUT, "w");
     assert_mode_literal(RT_F_APPEND, "a");

@@ -21,8 +21,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     // Variable reference
     {
         std::string src = "10 LET Y = X\n20 END\n";

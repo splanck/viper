@@ -30,22 +30,19 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 /// @brief Check if a symbol name exists in a vector of symbols.
-static bool hasSymbolNamed(const std::vector<Symbol> &syms, const std::string &name)
-{
+static bool hasSymbolNamed(const std::vector<Symbol> &syms, const std::string &name) {
     return std::any_of(syms.begin(), syms.end(), [&](const Symbol &s) { return s.name == name; });
 }
 
 /// @brief Check if a string exists in a vector of strings.
-static bool hasName(const std::vector<std::string> &names, const std::string &name)
-{
+static bool hasName(const std::vector<std::string> &names, const std::string &name) {
     return std::find(names.begin(), names.end(), name) != names.end();
 }
 
@@ -53,8 +50,7 @@ static bool hasName(const std::vector<std::string> &names, const std::string &na
 // parseAndAnalyze — basic smoke tests
 // ---------------------------------------------------------------------------
 
-TEST(ZiaCompletion, ParseAndAnalyze_SuccessfulSource)
-{
+TEST(ZiaCompletion, ParseAndAnalyze_SuccessfulSource) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -73,8 +69,7 @@ func greet() {
     EXPECT_FALSE(ar->hasErrors());
 }
 
-TEST(ZiaCompletion, ParseAndAnalyze_WithSyntaxErrors_StillReturnsSema)
-{
+TEST(ZiaCompletion, ParseAndAnalyze_WithSyntaxErrors_StillReturnsSema) {
     SourceManager sm;
     // Missing closing brace — parser error.
     const std::string source = R"(
@@ -94,8 +89,7 @@ func broken( {
     EXPECT_TRUE(ar->hasErrors());
 }
 
-TEST(ZiaCompletion, ParseAndAnalyze_EmptySource)
-{
+TEST(ZiaCompletion, ParseAndAnalyze_EmptySource) {
     SourceManager sm;
     const std::string source = "module Test;\n";
     CompilerInput input{.source = source, .path = "empty.zia"};
@@ -112,8 +106,7 @@ TEST(ZiaCompletion, ParseAndAnalyze_EmptySource)
 // getGlobalSymbols
 // ---------------------------------------------------------------------------
 
-TEST(ZiaCompletion, GetGlobalSymbols_IncludesTopLevelFunction)
-{
+TEST(ZiaCompletion, GetGlobalSymbols_IncludesTopLevelFunction) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -132,8 +125,7 @@ func add(a: Integer, b: Integer) -> Integer {
     EXPECT_TRUE(hasSymbolNamed(globals, "add"));
 }
 
-TEST(ZiaCompletion, GetGlobalSymbols_IncludesEntityConstructor)
-{
+TEST(ZiaCompletion, GetGlobalSymbols_IncludesEntityConstructor) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -158,8 +150,7 @@ entity Dog {
 // getTypeNames
 // ---------------------------------------------------------------------------
 
-TEST(ZiaCompletion, GetTypeNames_ReturnsEntityNames)
-{
+TEST(ZiaCompletion, GetTypeNames_ReturnsEntityNames) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -188,8 +179,7 @@ value Point {
 // getMembersOf — user-defined types
 // ---------------------------------------------------------------------------
 
-TEST(ZiaCompletion, GetMembersOf_EntityFieldsAndMethods)
-{
+TEST(ZiaCompletion, GetMembersOf_EntityFieldsAndMethods) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -211,10 +201,8 @@ entity Box {
     // Look up the Box entity type via global symbols.
     auto globals = ar->sema->getGlobalSymbols();
     const Symbol *boxSym = nullptr;
-    for (const auto &s : globals)
-    {
-        if (s.name == "Box")
-        {
+    for (const auto &s : globals) {
+        if (s.name == "Box") {
             boxSym = &s;
             break;
         }
@@ -231,8 +219,7 @@ entity Box {
 // getRuntimeMembers — runtime classes
 // ---------------------------------------------------------------------------
 
-TEST(ZiaCompletion, GetRuntimeMembers_StringClass)
-{
+TEST(ZiaCompletion, GetRuntimeMembers_StringClass) {
     SourceManager sm;
     const std::string source = "module Test;\n";
     CompilerInput input{.source = source, .path = "test.zia"};
@@ -250,8 +237,7 @@ TEST(ZiaCompletion, GetRuntimeMembers_StringClass)
                 hasSymbolNamed(members, "Substring") || members.size() > 2);
 }
 
-TEST(ZiaCompletion, GetRuntimeMembers_UnknownClass_ReturnsEmpty)
-{
+TEST(ZiaCompletion, GetRuntimeMembers_UnknownClass_ReturnsEmpty) {
     SourceManager sm;
     const std::string source = "module Test;\n";
     CompilerInput input{.source = source, .path = "test.zia"};
@@ -268,8 +254,7 @@ TEST(ZiaCompletion, GetRuntimeMembers_UnknownClass_ReturnsEmpty)
 // getBoundModuleNames
 // ---------------------------------------------------------------------------
 
-TEST(ZiaCompletion, GetBoundModuleNames_WithBindAlias)
-{
+TEST(ZiaCompletion, GetBoundModuleNames_WithBindAlias) {
     SourceManager sm;
     // bind with alias
     const std::string source = R"(
@@ -291,8 +276,7 @@ func compute() -> Number {
     EXPECT_TRUE(hasName(names, "Math"));
 }
 
-TEST(ZiaCompletion, FindSymbolAtPosition_IgnoresOutOfScopeShadow)
-{
+TEST(ZiaCompletion, FindSymbolAtPosition_IgnoresOutOfScopeShadow) {
     SourceManager sm;
     const std::string source = R"(module Test;
 
@@ -318,7 +302,6 @@ func start() {
 
 } // anonymous namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

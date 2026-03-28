@@ -36,8 +36,7 @@ using namespace il::core;
 
 static Function makeExportFunc(const std::string &name,
                                Type retType,
-                               std::vector<Param> params = {})
-{
+                               std::vector<Param> params = {}) {
     Function fn;
     fn.name = name;
     fn.retType = retType;
@@ -48,8 +47,7 @@ static Function makeExportFunc(const std::string &name,
     entry.label = "entry";
     Instr ret;
     ret.op = Opcode::Ret;
-    if (retType.kind != Type::Kind::Void)
-    {
+    if (retType.kind != Type::Kind::Void) {
         ret.type = retType;
         ret.operands.push_back(Value::constInt(1));
     }
@@ -60,8 +58,7 @@ static Function makeExportFunc(const std::string &name,
 
 static Function makeImportFunc(const std::string &name,
                                Type retType,
-                               std::vector<Param> params = {})
-{
+                               std::vector<Param> params = {}) {
     Function fn;
     fn.name = name;
     fn.retType = retType;
@@ -74,8 +71,7 @@ static Function makeImportFunc(const std::string &name,
 // Tests
 // ---------------------------------------------------------------------------
 
-TEST(InteropThunks, ReturnI1ToI64ThunkGenerated)
-{
+TEST(InteropThunks, ReturnI1ToI64ThunkGenerated) {
     // Export returns i1 (Zia), Import expects i64 (BASIC).
     Module exportMod;
     exportMod.functions.push_back(makeExportFunc("isReady", Type(Type::Kind::I1)));
@@ -94,16 +90,14 @@ TEST(InteropThunks, ReturnI1ToI64ThunkGenerated)
     // Thunk should have a body with Zext1 conversion.
     ASSERT_FALSE(thunks[0].thunk.blocks.empty());
     bool hasZext = false;
-    for (const auto &instr : thunks[0].thunk.blocks[0].instructions)
-    {
+    for (const auto &instr : thunks[0].thunk.blocks[0].instructions) {
         if (instr.op == Opcode::Zext1)
             hasZext = true;
     }
     EXPECT_TRUE(hasZext);
 }
 
-TEST(InteropThunks, ReturnI64ToI1ThunkGenerated)
-{
+TEST(InteropThunks, ReturnI64ToI1ThunkGenerated) {
     // Export returns i64 (BASIC), Import expects i1 (Zia).
     Module exportMod;
     exportMod.functions.push_back(makeExportFunc("isValid", Type(Type::Kind::I64)));
@@ -117,16 +111,14 @@ TEST(InteropThunks, ReturnI64ToI1ThunkGenerated)
 
     // Thunk should have ICmpNe conversion.
     bool hasIcmp = false;
-    for (const auto &instr : thunks[0].thunk.blocks[0].instructions)
-    {
+    for (const auto &instr : thunks[0].thunk.blocks[0].instructions) {
         if (instr.op == Opcode::ICmpNe)
             hasIcmp = true;
     }
     EXPECT_TRUE(hasIcmp);
 }
 
-TEST(InteropThunks, ParamI64ToI1ThunkGenerated)
-{
+TEST(InteropThunks, ParamI64ToI1ThunkGenerated) {
     // Export expects i1 param (Zia), Import passes i64 param (BASIC).
     Module exportMod;
     exportMod.functions.push_back(makeExportFunc(
@@ -141,16 +133,14 @@ TEST(InteropThunks, ParamI64ToI1ThunkGenerated)
 
     // Thunk should have ICmpNe to convert i64 param to i1.
     bool hasIcmp = false;
-    for (const auto &instr : thunks[0].thunk.blocks[0].instructions)
-    {
+    for (const auto &instr : thunks[0].thunk.blocks[0].instructions) {
         if (instr.op == Opcode::ICmpNe)
             hasIcmp = true;
     }
     EXPECT_TRUE(hasIcmp);
 }
 
-TEST(InteropThunks, NoThunkWhenTypesMatch)
-{
+TEST(InteropThunks, NoThunkWhenTypesMatch) {
     // Both use i64 — no mismatch, no thunk needed.
     Module exportMod;
     exportMod.functions.push_back(makeExportFunc("compute", Type(Type::Kind::I64)));
@@ -162,8 +152,7 @@ TEST(InteropThunks, NoThunkWhenTypesMatch)
     EXPECT_TRUE(thunks.empty());
 }
 
-TEST(InteropThunks, NoThunkForNonImportFunctions)
-{
+TEST(InteropThunks, NoThunkForNonImportFunctions) {
     // Only Internal and Export functions — no thunks.
     Module exportMod;
     exportMod.functions.push_back(makeExportFunc("foo", Type(Type::Kind::I1)));
@@ -175,7 +164,6 @@ TEST(InteropThunks, NoThunkForNonImportFunctions)
     EXPECT_TRUE(thunks.empty());
 }
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

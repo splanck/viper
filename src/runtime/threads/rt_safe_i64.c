@@ -41,23 +41,19 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
-typedef struct RtSafeI64Win
-{
+typedef struct RtSafeI64Win {
     volatile LONG64 value;
 } RtSafeI64Win;
 
-static RtSafeI64Win *require_safe_win(void *obj, const char *what)
-{
-    if (!obj)
-    {
+static RtSafeI64Win *require_safe_win(void *obj, const char *what) {
+    if (!obj) {
         rt_trap(what ? what : "SafeI64: null object");
         return NULL;
     }
     return (RtSafeI64Win *)obj;
 }
 
-void *rt_safe_i64_new(int64_t initial)
-{
+void *rt_safe_i64_new(int64_t initial) {
     RtSafeI64Win *cell =
         (RtSafeI64Win *)rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtSafeI64Win));
     if (!cell)
@@ -68,8 +64,7 @@ void *rt_safe_i64_new(int64_t initial)
     return cell;
 }
 
-int64_t rt_safe_i64_get(void *obj)
-{
+int64_t rt_safe_i64_get(void *obj) {
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Get: null object");
     if (!cell)
         return 0;
@@ -77,16 +72,14 @@ int64_t rt_safe_i64_get(void *obj)
     return (int64_t)InterlockedCompareExchange64(&cell->value, 0, 0);
 }
 
-void rt_safe_i64_set(void *obj, int64_t value)
-{
+void rt_safe_i64_set(void *obj, int64_t value) {
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Set: null object");
     if (!cell)
         return;
     InterlockedExchange64(&cell->value, (LONG64)value);
 }
 
-int64_t rt_safe_i64_add(void *obj, int64_t delta)
-{
+int64_t rt_safe_i64_add(void *obj, int64_t delta) {
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.Add: null object");
     if (!cell)
         return 0;
@@ -94,8 +87,7 @@ int64_t rt_safe_i64_add(void *obj, int64_t delta)
     return (int64_t)InterlockedExchangeAdd64(&cell->value, (LONG64)delta) + delta;
 }
 
-int64_t rt_safe_i64_compare_exchange(void *obj, int64_t expected, int64_t desired)
-{
+int64_t rt_safe_i64_compare_exchange(void *obj, int64_t expected, int64_t desired) {
     RtSafeI64Win *cell = require_safe_win(obj, "SafeI64.CompareExchange: null object");
     if (!cell)
         return 0;
@@ -109,8 +101,7 @@ int64_t rt_safe_i64_compare_exchange(void *obj, int64_t expected, int64_t desire
 ///
 /// Just holds a single int64 value. Thread safety is provided by using the
 /// object's address as a monitor key (implicit monitor association).
-typedef struct RtSafeI64
-{
+typedef struct RtSafeI64 {
     int64_t value; ///< The stored value.
 } RtSafeI64;
 
@@ -120,10 +111,8 @@ typedef struct RtSafeI64
 /// @param what Error message context for trap.
 ///
 /// @return The cast pointer, or NULL after trapping.
-static RtSafeI64 *require_safe(void *obj, const char *what)
-{
-    if (!obj)
-    {
+static RtSafeI64 *require_safe(void *obj, const char *what) {
+    if (!obj) {
         rt_trap(what ? what : "SafeI64: null object");
         return NULL;
     }
@@ -150,8 +139,7 @@ static RtSafeI64 *require_safe(void *obj, const char *what)
 ///
 /// @see rt_safe_i64_get For reading the value
 /// @see rt_safe_i64_set For writing the value
-void *rt_safe_i64_new(int64_t initial)
-{
+void *rt_safe_i64_new(int64_t initial) {
     RtSafeI64 *cell = (RtSafeI64 *)rt_obj_new_i64(/*class_id=*/0, (int64_t)sizeof(RtSafeI64));
     if (!cell)
         rt_trap("SafeI64.New: alloc failed");
@@ -177,8 +165,7 @@ void *rt_safe_i64_new(int64_t initial)
 ///
 /// @note Thread-safe.
 /// @note Traps if obj is NULL.
-int64_t rt_safe_i64_get(void *obj)
-{
+int64_t rt_safe_i64_get(void *obj) {
     RtSafeI64 *cell = require_safe(obj, "SafeI64.Get: null object");
     if (!cell)
         return 0;
@@ -203,8 +190,7 @@ int64_t rt_safe_i64_get(void *obj)
 ///
 /// @note Thread-safe.
 /// @note Traps if obj is NULL.
-void rt_safe_i64_set(void *obj, int64_t value)
-{
+void rt_safe_i64_set(void *obj, int64_t value) {
     RtSafeI64 *cell = require_safe(obj, "SafeI64.Set: null object");
     if (!cell)
         return;
@@ -239,8 +225,7 @@ void rt_safe_i64_set(void *obj, int64_t value)
 /// @note Thread-safe.
 /// @note Traps if obj is NULL.
 /// @note Overflow follows standard signed integer semantics.
-int64_t rt_safe_i64_add(void *obj, int64_t delta)
-{
+int64_t rt_safe_i64_add(void *obj, int64_t delta) {
     RtSafeI64 *cell = require_safe(obj, "SafeI64.Add: null object");
     if (!cell)
         return 0;
@@ -287,8 +272,7 @@ int64_t rt_safe_i64_add(void *obj, int64_t delta)
 /// @note Thread-safe.
 /// @note Traps if obj is NULL.
 /// @note This is the building block for many lock-free algorithms.
-int64_t rt_safe_i64_compare_exchange(void *obj, int64_t expected, int64_t desired)
-{
+int64_t rt_safe_i64_compare_exchange(void *obj, int64_t expected, int64_t desired) {
     RtSafeI64 *cell = require_safe(obj, "SafeI64.CompareExchange: null object");
     if (!cell)
         return 0;

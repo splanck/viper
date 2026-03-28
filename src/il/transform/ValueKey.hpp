@@ -31,24 +31,20 @@
 #include <tuple>
 #include <vector>
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Hash a Value by kind and payload for use in expression keys.
-struct ValueHash
-{
+struct ValueHash {
     size_t operator()(const il::core::Value &v) const noexcept;
 };
 
 /// @brief Equality on Value payloads (ignores name metadata).
-struct ValueEq
-{
+struct ValueEq {
     bool operator()(const il::core::Value &a, const il::core::Value &b) const noexcept;
 };
 
 /// @brief Normalised key describing a pure instruction.
-struct ValueKey
-{
+struct ValueKey {
     il::core::Opcode op;
     il::core::Type::Kind type;
     std::vector<il::core::Value> operands;
@@ -56,8 +52,7 @@ struct ValueKey
     bool operator==(const ValueKey &o) const noexcept;
 };
 
-struct ValueKeyHash
-{
+struct ValueKeyHash {
     size_t operator()(const ValueKey &k) const noexcept;
 };
 

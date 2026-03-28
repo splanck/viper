@@ -32,27 +32,22 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
-std::string readFile(const std::filesystem::path &path)
-{
+namespace {
+std::string readFile(const std::filesystem::path &path) {
     std::ifstream in(path);
-    if (!in)
-    {
+    if (!in) {
         return {};
     }
     return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
 
-std::filesystem::path fixturePath()
-{
+std::filesystem::path fixturePath() {
     auto path = std::filesystem::path(__FILE__).parent_path();
     path /= "subroutines_gosub_inline_case.bas";
     return std::filesystem::absolute(path);
 }
 
-const StringExpr *firstStringArg(const PrintStmt *print)
-{
+const StringExpr *firstStringArg(const PrintStmt *print) {
     assert(print);
     assert(!print->items.empty());
     const auto &item = print->items.front();
@@ -60,63 +55,48 @@ const StringExpr *firstStringArg(const PrintStmt *print)
     return dynamic_cast<const StringExpr *>(item.expr.get());
 }
 
-bool matchesLabel(const CaseArm &arm, std::string_view value)
-{
-    for (const auto &label : arm.str_labels)
-    {
-        if (label == value)
-        {
+bool matchesLabel(const CaseArm &arm, std::string_view value) {
+    for (const auto &label : arm.str_labels) {
+        if (label == value) {
             return true;
         }
     }
     return false;
 }
 
-void collectGosubStatements(const Stmt &stmt, int &count)
-{
-    if (const auto *gosub = dynamic_cast<const GosubStmt *>(&stmt))
-    {
+void collectGosubStatements(const Stmt &stmt, int &count) {
+    if (const auto *gosub = dynamic_cast<const GosubStmt *>(&stmt)) {
         ++count;
         assert(gosub->targetLine == 1'000'000);
         return;
     }
 
-    if (const auto *list = dynamic_cast<const StmtList *>(&stmt))
-    {
-        for (const auto &child : list->stmts)
-        {
-            if (child)
-            {
+    if (const auto *list = dynamic_cast<const StmtList *>(&stmt)) {
+        for (const auto &child : list->stmts) {
+            if (child) {
                 collectGosubStatements(*child, count);
             }
         }
     }
 }
 
-void findSelectCase(const Stmt &stmt, const SelectCaseStmt *&select)
-{
-    if (select)
-    {
+void findSelectCase(const Stmt &stmt, const SelectCaseStmt *&select) {
+    if (select) {
         return;
     }
 
-    if (const auto *selectStmt = dynamic_cast<const SelectCaseStmt *>(&stmt))
-    {
+    if (const auto *selectStmt = dynamic_cast<const SelectCaseStmt *>(&stmt)) {
         select = selectStmt;
         return;
     }
 
-    if (const auto *list = dynamic_cast<const StmtList *>(&stmt))
-    {
-        for (const auto &child : list->stmts)
-        {
-            if (!child)
-            {
+    if (const auto *list = dynamic_cast<const StmtList *>(&stmt)) {
+        for (const auto &child : list->stmts) {
+            if (!child) {
                 continue;
             }
             findSelectCase(*child, select);
-            if (select)
-            {
+            if (select) {
                 break;
             }
         }
@@ -124,8 +104,7 @@ void findSelectCase(const Stmt &stmt, const SelectCaseStmt *&select)
 }
 } // namespace
 
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: __FILE__ path resolution differs, causing fixture lookup issues
     printf("Test skipped: Path handling differs on Windows\n");
@@ -145,10 +124,8 @@ int main()
 
     int gosubCount = 0;
     const SelectCaseStmt *select = nullptr;
-    for (const auto &stmt : program->main)
-    {
-        if (!stmt)
-        {
+    for (const auto &stmt : program->main) {
+        if (!stmt) {
             continue;
         }
         collectGosubStatements(*stmt, gosubCount);
@@ -182,12 +159,9 @@ int main()
     assert(elseLiteral);
     assert(elseLiteral->value == "???");
 
-    const auto evaluateCase = [&](std::string_view value)
-    {
-        for (const auto &arm : select->arms)
-        {
-            if (matchesLabel(arm, value))
-            {
+    const auto evaluateCase = [&](std::string_view value) {
+        for (const auto &arm : select->arms) {
+            if (matchesLabel(arm, value)) {
                 const auto *armPrint = dynamic_cast<PrintStmt *>(arm.body[0].get());
                 const auto *armLiteral = firstStringArg(armPrint);
                 assert(armLiteral);

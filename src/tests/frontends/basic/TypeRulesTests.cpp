@@ -19,8 +19,7 @@
 
 using il::frontends::basic::TypeRules;
 
-int main()
-{
+int main() {
     using NumericType = TypeRules::NumericType;
 
     assert(TypeRules::resultType('/', NumericType::Integer, NumericType::Integer) ==

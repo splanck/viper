@@ -21,39 +21,33 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Create a Bytes object from raw data.
-static void *make_bytes(const uint8_t *data, size_t len)
-{
+static void *make_bytes(const uint8_t *data, size_t len) {
     void *bytes = rt_bytes_new((int64_t)len);
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         rt_bytes_set(bytes, (int64_t)i, data[i]);
     }
     return bytes;
 }
 
 /// @brief Create a Bytes object from a C string.
-static void *make_bytes_str(const char *str)
-{
+static void *make_bytes_str(const char *str) {
     return make_bytes((const uint8_t *)str, strlen(str));
 }
 
 /// @brief Compare two Bytes objects for equality.
-static bool bytes_equal(void *a, void *b)
-{
+static bool bytes_equal(void *a, void *b) {
     int64_t len_a = rt_bytes_len(a);
     int64_t len_b = rt_bytes_len(b);
     if (len_a != len_b)
         return false;
 
-    for (int64_t i = 0; i < len_a; i++)
-    {
+    for (int64_t i = 0; i < len_a; i++) {
         if (rt_bytes_get(a, i) != rt_bytes_get(b, i))
             return false;
     }
@@ -64,8 +58,7 @@ static bool bytes_equal(void *a, void *b)
 // Password-Based Encryption Tests
 //=============================================================================
 
-static void test_password_encrypt_decrypt_roundtrip()
-{
+static void test_password_encrypt_decrypt_roundtrip() {
     printf("Testing Cipher password-based encrypt/decrypt:\n");
 
     // Test 1: Basic roundtrip
@@ -102,8 +95,7 @@ static void test_password_encrypt_decrypt_roundtrip()
     {
         const size_t size = 10000;
         void *plain = rt_bytes_new((int64_t)size);
-        for (size_t i = 0; i < size; i++)
-        {
+        for (size_t i = 0; i < size; i++) {
             rt_bytes_set(plain, (int64_t)i, (int64_t)(i % 256));
         }
         rt_string password = rt_const_cstr("large-data-password");
@@ -133,8 +125,7 @@ static void test_password_encrypt_decrypt_roundtrip()
 // Key-Based Encryption Tests
 //=============================================================================
 
-static void test_key_based_encrypt_decrypt()
-{
+static void test_key_based_encrypt_decrypt() {
     printf("Testing Cipher key-based encrypt/decrypt:\n");
 
     // Test 1: Generate key and roundtrip
@@ -173,8 +164,7 @@ static void test_key_based_encrypt_decrypt()
 // Key Derivation Tests
 //=============================================================================
 
-static void test_key_derivation()
-{
+static void test_key_derivation() {
     printf("Testing Cipher key derivation:\n");
 
     // Test 1: DeriveKey produces consistent keys
@@ -233,8 +223,7 @@ static void test_key_derivation()
 // Randomness Tests
 //=============================================================================
 
-static void test_encryption_randomness()
-{
+static void test_encryption_randomness() {
     printf("Testing Cipher encryption randomness:\n");
 
     // Same plaintext and password should produce different ciphertext each time
@@ -267,15 +256,13 @@ static void test_encryption_randomness()
 // Edge Cases
 //=============================================================================
 
-static void test_edge_cases()
-{
+static void test_edge_cases() {
     printf("Testing Cipher edge cases:\n");
 
     // Test binary data (all byte values)
     {
         void *plain = rt_bytes_new(256);
-        for (int i = 0; i < 256; i++)
-        {
+        for (int i = 0; i < 256; i++) {
             rt_bytes_set(plain, i, i);
         }
         rt_string password = rt_const_cstr("binary-test");
@@ -305,8 +292,7 @@ static void test_edge_cases()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Cipher Tests ===\n\n");
 
     test_password_encrypt_decrypt_roundtrip();

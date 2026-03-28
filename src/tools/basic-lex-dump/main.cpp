@@ -45,19 +45,16 @@ using il::tools::basic::loadBasicSource;
 /// @param argc Argument count supplied by the C runtime.
 /// @param argv Argument vector supplied by the C runtime.
 /// @return Zero on success, non-zero when the file cannot be loaded.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     std::string src;
     SourceManager sm;
     std::optional<std::uint32_t> fileId = loadBasicSource(argc == 2 ? argv[1] : nullptr, src, sm);
-    if (!fileId)
-    {
+    if (!fileId) {
         return 1;
     }
 
     Lexer lex(src, *fileId);
-    for (Token t = lex.next();; t = lex.next())
-    {
+    for (Token t = lex.next();; t = lex.next()) {
         std::cout << t.loc.line << ":" << t.loc.column << " " << tokenKindToString(t.kind);
         if (t.kind == TokenKind::Number || t.kind == TokenKind::String ||
             t.kind == TokenKind::Identifier)

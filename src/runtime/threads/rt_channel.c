@@ -43,8 +43,7 @@
 //=============================================================================
 
 /// @brief Channel implementation.
-typedef struct channel_impl
-{
+typedef struct channel_impl {
     void *monitor;             ///< Monitor for synchronization.
     void **buffer;             ///< Ring buffer for items.
     int64_t capacity;          ///< Buffer capacity.
@@ -68,21 +67,17 @@ extern void rt_trap(const char *msg);
 // Channel Management
 //=============================================================================
 
-static void channel_finalizer(void *obj)
-{
+static void channel_finalizer(void *obj) {
     channel_impl *ch = (channel_impl *)obj;
     if (!ch)
         return;
 
     // Release all items in the buffer
-    if (ch->buffer)
-    {
-        for (int64_t i = 0; i < ch->count; i++)
-        {
+    if (ch->buffer) {
+        for (int64_t i = 0; i < ch->count; i++) {
             int64_t idx = (ch->head + i) % ch->capacity;
             void *item = ch->buffer[idx];
-            if (item)
-            {
+            if (item) {
                 if (rt_obj_release_check0(item))
                     rt_obj_free(item);
             }
@@ -91,15 +86,13 @@ static void channel_finalizer(void *obj)
     }
 
     // Release monitor
-    if (ch->monitor)
-    {
+    if (ch->monitor) {
         if (rt_obj_release_check0(ch->monitor))
             rt_obj_free(ch->monitor);
     }
 }
 
-void *rt_channel_new(int64_t capacity)
-{
+void *rt_channel_new(int64_t capacity) {
     // Minimum capacity of 1 for buffered channels
     // Capacity of 0 means synchronous (unbuffered) channel
     if (capacity < 0)
@@ -117,15 +110,13 @@ void *rt_channel_new(int64_t capacity)
     rt_obj_set_finalizer(ch, channel_finalizer);
 
     ch->monitor = rt_obj_new_i64(0, 1); // Create a monitor object
-    if (!ch->monitor)
-    {
+    if (!ch->monitor) {
         rt_obj_free(ch);
         return NULL;
     }
 
     ch->buffer = (void **)calloc((size_t)buffer_size, sizeof(void *));
-    if (!ch->buffer)
-    {
+    if (!ch->buffer) {
         if (rt_obj_release_check0(ch->monitor))
             rt_obj_free(ch->monitor);
         rt_obj_free(ch);
@@ -147,10 +138,8 @@ void *rt_channel_new(int64_t capacity)
 // Public API - Send Operations
 //=============================================================================
 
-void rt_channel_send(void *channel, void *item)
-{
-    if (!channel)
-    {
+void rt_channel_send(void *channel, void *item) {
+    if (!channel) {
         rt_trap("Channel.Send: nil channel");
         return;
     }
@@ -160,26 +149,22 @@ void rt_channel_send(void *channel, void *item)
     rt_monitor_enter(ch->monitor);
 
     // Check if closed
-    if (ch->closed)
-    {
+    if (ch->closed) {
         rt_monitor_exit(ch->monitor);
         rt_trap("Channel.Send: send on closed channel");
         return;
     }
 
     // Handle synchronous channel (capacity 0)
-    if (ch->capacity == 0)
-    {
+    if (ch->capacity == 0) {
         // Wait for a receiver
         ch->waiting_senders++;
-        while (ch->waiting_receivers == 0 && !ch->closed)
-        {
+        while (ch->waiting_receivers == 0 && !ch->closed) {
             rt_monitor_wait(ch->monitor);
         }
         ch->waiting_senders--;
 
-        if (ch->closed)
-        {
+        if (ch->closed) {
             rt_monitor_exit(ch->monitor);
             rt_trap("Channel.Send: send on closed channel");
             return;
@@ -199,15 +184,13 @@ void rt_channel_send(void *channel, void *item)
     }
 
     // Wait for space in buffered channel
-    while (ch->count >= ch->capacity && !ch->closed)
-    {
+    while (ch->count >= ch->capacity && !ch->closed) {
         ch->waiting_senders++;
         rt_monitor_wait(ch->monitor);
         ch->waiting_senders--;
     }
 
-    if (ch->closed)
-    {
+    if (ch->closed) {
         rt_monitor_exit(ch->monitor);
         rt_trap("Channel.Send: send on closed channel");
         return;
@@ -221,16 +204,14 @@ void rt_channel_send(void *channel, void *item)
     ch->count++;
 
     // Signal waiting receivers
-    if (ch->waiting_receivers > 0)
-    {
+    if (ch->waiting_receivers > 0) {
         rt_monitor_pause(ch->monitor);
     }
 
     rt_monitor_exit(ch->monitor);
 }
 
-int8_t rt_channel_try_send(void *channel, void *item)
-{
+int8_t rt_channel_try_send(void *channel, void *item) {
     if (!channel)
         return 0;
 
@@ -239,30 +220,25 @@ int8_t rt_channel_try_send(void *channel, void *item)
     rt_monitor_enter(ch->monitor);
 
     // Check if closed or full
-    if (ch->closed || (ch->capacity > 0 && ch->count >= ch->capacity))
-    {
+    if (ch->closed || (ch->capacity > 0 && ch->count >= ch->capacity)) {
         rt_monitor_exit(ch->monitor);
         return 0;
     }
 
     // For synchronous channel, need a waiting receiver
-    if (ch->capacity == 0 && ch->waiting_receivers == 0)
-    {
+    if (ch->capacity == 0 && ch->waiting_receivers == 0) {
         rt_monitor_exit(ch->monitor);
         return 0;
     }
 
     // Same logic as blocking send
-    if (ch->capacity == 0)
-    {
+    if (ch->capacity == 0) {
         if (item)
             rt_obj_retain_maybe(item);
         ch->buffer[0] = item;
         ch->count = 1;
         rt_monitor_pause(ch->monitor);
-    }
-    else
-    {
+    } else {
         if (item)
             rt_obj_retain_maybe(item);
         ch->buffer[ch->tail] = item;
@@ -276,8 +252,7 @@ int8_t rt_channel_try_send(void *channel, void *item)
     return 1;
 }
 
-int8_t rt_channel_send_for(void *channel, void *item, int64_t ms)
-{
+int8_t rt_channel_send_for(void *channel, void *item, int64_t ms) {
     if (!channel)
         return 0;
 
@@ -288,20 +263,16 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms)
 
     rt_monitor_enter(ch->monitor);
 
-    if (ch->closed)
-    {
+    if (ch->closed) {
         rt_monitor_exit(ch->monitor);
         return 0;
     }
 
     // Handle synchronous channel
-    if (ch->capacity == 0)
-    {
+    if (ch->capacity == 0) {
         ch->waiting_senders++;
-        while (ch->waiting_receivers == 0 && !ch->closed)
-        {
-            if (!rt_monitor_wait_for(ch->monitor, ms))
-            {
+        while (ch->waiting_receivers == 0 && !ch->closed) {
+            if (!rt_monitor_wait_for(ch->monitor, ms)) {
                 ch->waiting_senders--;
                 rt_monitor_exit(ch->monitor);
                 return 0;
@@ -309,8 +280,7 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms)
         }
         ch->waiting_senders--;
 
-        if (ch->closed)
-        {
+        if (ch->closed) {
             rt_monitor_exit(ch->monitor);
             return 0;
         }
@@ -325,20 +295,17 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms)
     }
 
     // Buffered channel
-    while (ch->count >= ch->capacity && !ch->closed)
-    {
+    while (ch->count >= ch->capacity && !ch->closed) {
         ch->waiting_senders++;
         int8_t signaled = rt_monitor_wait_for(ch->monitor, ms);
         ch->waiting_senders--;
-        if (!signaled)
-        {
+        if (!signaled) {
             rt_monitor_exit(ch->monitor);
             return 0;
         }
     }
 
-    if (ch->closed)
-    {
+    if (ch->closed) {
         rt_monitor_exit(ch->monitor);
         return 0;
     }
@@ -359,10 +326,8 @@ int8_t rt_channel_send_for(void *channel, void *item, int64_t ms)
 // Public API - Receive Operations
 //=============================================================================
 
-void *rt_channel_recv(void *channel)
-{
-    if (!channel)
-    {
+void *rt_channel_recv(void *channel) {
+    if (!channel) {
         rt_trap("Channel.Recv: nil channel");
         return NULL;
     }
@@ -372,8 +337,7 @@ void *rt_channel_recv(void *channel)
     rt_monitor_enter(ch->monitor);
 
     // Handle synchronous channel
-    if (ch->capacity == 0)
-    {
+    if (ch->capacity == 0) {
         ch->waiting_receivers++;
 
         // Signal any waiting senders
@@ -381,14 +345,12 @@ void *rt_channel_recv(void *channel)
             rt_monitor_pause(ch->monitor);
 
         // Wait for item
-        while (ch->count == 0 && !ch->closed)
-        {
+        while (ch->count == 0 && !ch->closed) {
             rt_monitor_wait(ch->monitor);
         }
         ch->waiting_receivers--;
 
-        if (ch->count == 0)
-        {
+        if (ch->count == 0) {
             // Closed and empty
             rt_monitor_exit(ch->monitor);
             return NULL;
@@ -407,15 +369,13 @@ void *rt_channel_recv(void *channel)
     }
 
     // Buffered channel - wait for item
-    while (ch->count == 0 && !ch->closed)
-    {
+    while (ch->count == 0 && !ch->closed) {
         ch->waiting_receivers++;
         rt_monitor_wait(ch->monitor);
         ch->waiting_receivers--;
     }
 
-    if (ch->count == 0)
-    {
+    if (ch->count == 0) {
         // Closed and empty
         rt_monitor_exit(ch->monitor);
         return NULL;
@@ -428,8 +388,7 @@ void *rt_channel_recv(void *channel)
     ch->count--;
 
     // Signal waiting senders
-    if (ch->waiting_senders > 0)
-    {
+    if (ch->waiting_senders > 0) {
         rt_monitor_pause(ch->monitor);
     }
 
@@ -437,8 +396,7 @@ void *rt_channel_recv(void *channel)
     return item; // Already retained by sender
 }
 
-int8_t rt_channel_try_recv(void *channel, void **out)
-{
+int8_t rt_channel_try_recv(void *channel, void **out) {
     if (!channel)
         return 0;
 
@@ -447,10 +405,8 @@ int8_t rt_channel_try_recv(void *channel, void **out)
     rt_monitor_enter(ch->monitor);
 
     // For synchronous channel, need a waiting sender
-    if (ch->capacity == 0)
-    {
-        if (ch->count == 0)
-        {
+    if (ch->capacity == 0) {
+        if (ch->count == 0) {
             rt_monitor_exit(ch->monitor);
             return 0;
         }
@@ -470,8 +426,7 @@ int8_t rt_channel_try_recv(void *channel, void **out)
         return 1;
     }
 
-    if (ch->count == 0)
-    {
+    if (ch->count == 0) {
         rt_monitor_exit(ch->monitor);
         return 0;
     }
@@ -492,8 +447,7 @@ int8_t rt_channel_try_recv(void *channel, void **out)
     return 1;
 }
 
-int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms)
-{
+int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms) {
     if (!channel)
         return 0;
 
@@ -505,16 +459,13 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms)
     rt_monitor_enter(ch->monitor);
 
     // Handle synchronous channel
-    if (ch->capacity == 0)
-    {
+    if (ch->capacity == 0) {
         ch->waiting_receivers++;
         if (ch->waiting_senders > 0)
             rt_monitor_pause(ch->monitor);
 
-        while (ch->count == 0 && !ch->closed)
-        {
-            if (!rt_monitor_wait_for(ch->monitor, ms))
-            {
+        while (ch->count == 0 && !ch->closed) {
+            if (!rt_monitor_wait_for(ch->monitor, ms)) {
                 ch->waiting_receivers--;
                 rt_monitor_exit(ch->monitor);
                 return 0;
@@ -522,8 +473,7 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms)
         }
         ch->waiting_receivers--;
 
-        if (ch->count == 0)
-        {
+        if (ch->count == 0) {
             rt_monitor_exit(ch->monitor);
             return 0;
         }
@@ -544,20 +494,17 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms)
     }
 
     // Buffered channel
-    while (ch->count == 0 && !ch->closed)
-    {
+    while (ch->count == 0 && !ch->closed) {
         ch->waiting_receivers++;
         int8_t signaled = rt_monitor_wait_for(ch->monitor, ms);
         ch->waiting_receivers--;
-        if (!signaled)
-        {
+        if (!signaled) {
             rt_monitor_exit(ch->monitor);
             return 0;
         }
     }
 
-    if (ch->count == 0)
-    {
+    if (ch->count == 0) {
         rt_monitor_exit(ch->monitor);
         return 0;
     }
@@ -582,8 +529,7 @@ int8_t rt_channel_recv_for(void *channel, void **out, int64_t ms)
 // Public API - Close
 //=============================================================================
 
-void rt_channel_close(void *channel)
-{
+void rt_channel_close(void *channel) {
     if (!channel)
         return;
 
@@ -591,8 +537,7 @@ void rt_channel_close(void *channel)
 
     rt_monitor_enter(ch->monitor);
 
-    if (ch->closed)
-    {
+    if (ch->closed) {
         rt_monitor_exit(ch->monitor);
         return; // Already closed
     }
@@ -609,8 +554,7 @@ void rt_channel_close(void *channel)
 // Public API - Properties
 //=============================================================================
 
-int64_t rt_channel_get_len(void *channel)
-{
+int64_t rt_channel_get_len(void *channel) {
     if (!channel)
         return 0;
 
@@ -623,8 +567,7 @@ int64_t rt_channel_get_len(void *channel)
     return len;
 }
 
-int64_t rt_channel_get_cap(void *channel)
-{
+int64_t rt_channel_get_cap(void *channel) {
     if (!channel)
         return 0;
 
@@ -632,8 +575,7 @@ int64_t rt_channel_get_cap(void *channel)
     return ch->capacity;
 }
 
-int8_t rt_channel_get_is_closed(void *channel)
-{
+int8_t rt_channel_get_is_closed(void *channel) {
     if (!channel)
         return 1;
 
@@ -641,8 +583,7 @@ int8_t rt_channel_get_is_closed(void *channel)
     return ch->closed;
 }
 
-int8_t rt_channel_get_is_empty(void *channel)
-{
+int8_t rt_channel_get_is_empty(void *channel) {
     if (!channel)
         return 1;
 
@@ -655,8 +596,7 @@ int8_t rt_channel_get_is_empty(void *channel)
     return empty;
 }
 
-int8_t rt_channel_get_is_full(void *channel)
-{
+int8_t rt_channel_get_is_full(void *channel) {
     if (!channel)
         return 0;
 

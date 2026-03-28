@@ -18,8 +18,7 @@
 #include <cstdio>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -28,8 +27,7 @@ static void test_result(const char *name, bool passed)
 // Null safety tests (no canvas created — just verify no crash)
 //=============================================================================
 
-static void test_set_title_null_canvas()
-{
+static void test_set_title_null_canvas() {
     printf("\nTesting set_title with NULL canvas:\n");
 
     // Should not crash with NULL canvas
@@ -41,8 +39,7 @@ static void test_set_title_null_canvas()
     test_result("set_title(NULL, NULL) does not crash", true);
 }
 
-static void test_fullscreen_null_canvas()
-{
+static void test_fullscreen_null_canvas() {
     printf("\nTesting fullscreen/windowed with NULL canvas:\n");
 
     rt_canvas_fullscreen(nullptr);
@@ -56,14 +53,12 @@ static void test_fullscreen_null_canvas()
 // Functional tests (requires mock graphics backend)
 //=============================================================================
 
-static void test_canvas_title()
-{
+static void test_canvas_title() {
     printf("\nTesting canvas set_title:\n");
 
     rt_string title = rt_const_cstr("Test Window");
     void *canvas = rt_canvas_new(title, 320, 240);
-    if (!canvas)
-    {
+    if (!canvas) {
         printf("  (skipped - canvas creation not available)\n");
         return;
     }
@@ -77,14 +72,12 @@ static void test_canvas_title()
     test_result("set_title with empty string succeeds", true);
 }
 
-static void test_canvas_fullscreen_windowed()
-{
+static void test_canvas_fullscreen_windowed() {
     printf("\nTesting canvas fullscreen/windowed:\n");
 
     rt_string title = rt_const_cstr("FS Test");
     void *canvas = rt_canvas_new(title, 320, 240);
-    if (!canvas)
-    {
+    if (!canvas) {
         printf("  (skipped - canvas creation not available)\n");
         return;
     }
@@ -109,8 +102,7 @@ static void test_canvas_fullscreen_windowed()
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== Canvas Window Management Tests ===\n");
 
     // Null safety tests (always run)

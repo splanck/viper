@@ -22,8 +22,7 @@
 #include "frontends/basic/lower/MemberArrayResolver.hpp"
 #include "frontends/basic/Lowerer.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Resolve member array field information for a variable name.
 ///
@@ -53,24 +52,20 @@ namespace il::frontends::basic
 ///
 /// @param name Variable name to resolve.
 /// @return MemberArrayInfo with resolution results.
-MemberArrayInfo Lowerer::resolveMemberArrayField(std::string_view name) const
-{
+MemberArrayInfo Lowerer::resolveMemberArrayField(std::string_view name) const {
     MemberArrayInfo info;
 
     const bool isDotted = name.find('.') != std::string_view::npos;
 
-    if (isDotted)
-    {
+    if (isDotted) {
         // Phase 1: Dotted member array (e.g., player.inventory)
         info.isDottedAccess = true;
         std::size_t dot = name.find('.');
         std::string baseName(name.substr(0, dot));
         std::string fieldName(name.substr(dot + 1));
         std::string klass = getSlotType(baseName).objectClass;
-        if (const ClassLayout *layout = findClassLayout(klass))
-        {
-            if (const ClassLayout::Field *fld = layout->findField(fieldName))
-            {
+        if (const ClassLayout *layout = findClassLayout(klass)) {
+            if (const ClassLayout::Field *fld = layout->findField(fieldName)) {
                 info.isField = true;
                 info.isArray = fld->isArray;
                 info.elementAstType = fld->type;
@@ -79,25 +74,19 @@ MemberArrayInfo Lowerer::resolveMemberArrayField(std::string_view name) const
                     info.elementClassName = fld->objectClassName;
             }
         }
-    }
-    else
-    {
+    } else {
         // Phase 2: Implicit field array inside a method (BUG-058)
         // Only applies when a field scope is active.
-        if (isFieldInScope(name))
-        {
+        if (isFieldInScope(name)) {
             // BUG-108: Local variables/parameters shadow implicit field arrays.
             // A local symbol with a materialized slot takes precedence.
             const SymbolInfo *localSym = findSymbol(name);
             bool localShadows = localSym && localSym->slotId.has_value();
 
-            if (!localShadows)
-            {
+            if (!localShadows) {
                 const FieldScope *scope = activeFieldScope();
-                if (scope && scope->layout)
-                {
-                    if (const ClassLayout::Field *fld = scope->layout->findField(name))
-                    {
+                if (scope && scope->layout) {
+                    if (const ClassLayout::Field *fld = scope->layout->findField(name)) {
                         info.isField = true;
                         info.isArray = fld->isArray;
                         info.elementAstType = fld->type;

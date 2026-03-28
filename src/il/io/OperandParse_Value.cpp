@@ -32,10 +32,8 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::il::io
-{
-namespace
-{
+namespace viper::il::io {
+namespace {
 using ::il::core::Value;
 using ::il::io::detail::ParserState;
 using ::il::support::Expected;
@@ -49,8 +47,7 @@ using viper::parse::Cursor;
 /// @param ctx Parser context carrying the current line number.
 /// @param message Diagnostic text produced by the caller.
 /// @return Message decorated with line information.
-std::string formatLineMessage(Context &ctx, std::string message)
-{
+std::string formatLineMessage(Context &ctx, std::string message) {
     return ::il::io::formatLineDiag(ctx.state.lineNo, std::move(message));
 }
 
@@ -63,8 +60,7 @@ std::string formatLineMessage(Context &ctx, std::string message)
 /// @param state Parser state describing the failing location.
 /// @param message Human-readable diagnostic text.
 /// @return Expected error populated with the formatted diagnostic.
-template <class T> Expected<T> makeSyntaxError(ParserState &state, std::string message)
-{
+template <class T> Expected<T> makeSyntaxError(ParserState &state, std::string message) {
     return Expected<T>{::il::io::makeLineErrorDiag(state.curLoc, state.lineNo, std::move(message))};
 }
 
@@ -73,8 +69,7 @@ template <class T> Expected<T> makeSyntaxError(ParserState &state, std::string m
 ///          tokens without advancing the underlying cursor.  Mutating the
 ///          `std::string_view` keeps the helper allocation-free.
 /// @param text View that will be advanced past any leading whitespace.
-void skipSpace(std::string_view &text)
-{
+void skipSpace(std::string_view &text) {
     size_t consumed = 0;
     while (consumed < text.size() && std::isspace(static_cast<unsigned char>(text[consumed])))
         ++consumed;
@@ -95,18 +90,15 @@ Expected<Value> parseSymbolOperand(std::string_view &text, Context &ctx);
 /// @param cur Cursor describing the unparsed portion of the operand list.
 /// @param ctx Parser context managing diagnostics and instruction state.
 /// @return Parse result containing the resolved value or an error diagnostic.
-ParseResult parseValueOperand(Cursor &cur, Context &ctx)
-{
+ParseResult parseValueOperand(Cursor &cur, Context &ctx) {
     std::string_view remaining = cur.remaining();
     skipSpace(remaining);
     if (remaining.empty())
         return syntaxError(ctx, "missing operand");
 
-    if (remaining.front() == '@')
-    {
+    if (remaining.front() == '@') {
         auto symbol = parseSymbolOperand(remaining, ctx);
-        if (!symbol)
-        {
+        if (!symbol) {
             ParseResult result;
             result.status = ::il::support::Expected<void>(symbol.error());
             return result;
@@ -124,8 +116,7 @@ ParseResult parseValueOperand(Cursor &cur, Context &ctx)
 
     Value operand;
     auto consumed = parseValueTokenComponents(remaining, operand, ctx);
-    if (!consumed)
-    {
+    if (!consumed) {
         ParseResult result;
         result.status = ::il::support::Expected<void>(consumed.error());
         return result;

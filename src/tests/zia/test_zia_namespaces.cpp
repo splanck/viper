@@ -17,12 +17,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that a simple namespace declaration compiles.
-TEST(ZiaNamespaces, BasicNamespaceDeclaration)
-{
+TEST(ZiaNamespaces, BasicNamespaceDeclaration) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -41,11 +39,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for BasicNamespaceDeclaration:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -55,11 +51,9 @@ func start() {
 
     // Check that the namespaced function exists with qualified name
     bool hasQualifiedFunc = false;
-    for (const auto &fn : result.module.functions)
-    {
+    for (const auto &fn : result.module.functions) {
         if (fn.name.find("MyLib") != std::string::npos &&
-            fn.name.find("helper") != std::string::npos)
-        {
+            fn.name.find("helper") != std::string::npos) {
             hasQualifiedFunc = true;
             break;
         }
@@ -68,8 +62,7 @@ func start() {
 }
 
 /// @brief Test nested namespace declaration.
-TEST(ZiaNamespaces, NestedNamespace)
-{
+TEST(ZiaNamespaces, NestedNamespace) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -90,11 +83,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for NestedNamespace:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -104,12 +95,10 @@ func start() {
 
     // Check that the nested function has the full qualified name
     bool hasNestedFunc = false;
-    for (const auto &fn : result.module.functions)
-    {
+    for (const auto &fn : result.module.functions) {
         if (fn.name.find("Outer") != std::string::npos &&
             fn.name.find("Inner") != std::string::npos &&
-            fn.name.find("nested") != std::string::npos)
-        {
+            fn.name.find("nested") != std::string::npos) {
             hasNestedFunc = true;
             break;
         }
@@ -118,8 +107,7 @@ func start() {
 }
 
 /// @brief Test dotted namespace name (MyLib.Internal).
-TEST(ZiaNamespaces, DottedNamespaceName)
-{
+TEST(ZiaNamespaces, DottedNamespaceName) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -138,11 +126,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for DottedNamespaceName:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -152,12 +138,10 @@ func start() {
 
     // Check that the function has the dotted qualified name
     bool hasDottedFunc = false;
-    for (const auto &fn : result.module.functions)
-    {
+    for (const auto &fn : result.module.functions) {
         if (fn.name.find("MyLib") != std::string::npos &&
             fn.name.find("Internal") != std::string::npos &&
-            fn.name.find("secret") != std::string::npos)
-        {
+            fn.name.find("secret") != std::string::npos) {
             hasDottedFunc = true;
             break;
         }
@@ -166,8 +150,7 @@ func start() {
 }
 
 /// @brief Test entity inside namespace.
-TEST(ZiaNamespaces, EntityInNamespace)
-{
+TEST(ZiaNamespaces, EntityInNamespace) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -194,11 +177,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for EntityInNamespace:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -209,11 +190,9 @@ func start() {
     // Entity methods are named EntityName.method (namespace is not in the IL name).
     // Verify the entity's method exists in the output module.
     bool hasEntityMethod = false;
-    for (const auto &fn : result.module.functions)
-    {
+    for (const auto &fn : result.module.functions) {
         if (fn.name.find("Parser") != std::string::npos &&
-            fn.name.find("getValue") != std::string::npos)
-        {
+            fn.name.find("getValue") != std::string::npos) {
             hasEntityMethod = true;
             break;
         }
@@ -222,8 +201,7 @@ func start() {
 }
 
 /// @brief Test global variable inside namespace.
-TEST(ZiaNamespaces, GlobalVarInNamespace)
-{
+TEST(ZiaNamespaces, GlobalVarInNamespace) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -240,11 +218,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for GlobalVarInNamespace:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -254,8 +230,7 @@ func start() {
 }
 
 /// @brief Test value type inside namespace.
-TEST(ZiaNamespaces, ValueTypeInNamespace)
-{
+TEST(ZiaNamespaces, ValueTypeInNamespace) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -275,11 +250,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for ValueTypeInNamespace:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -289,8 +262,7 @@ func start() {
 }
 
 /// @brief Test interface inside namespace.
-TEST(ZiaNamespaces, InterfaceInNamespace)
-{
+TEST(ZiaNamespaces, InterfaceInNamespace) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -309,11 +281,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for InterfaceInNamespace:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -323,8 +293,7 @@ func start() {
 }
 
 /// @brief Test calling a function from a namespace.
-TEST(ZiaNamespaces, CallNamespacedFunction)
-{
+TEST(ZiaNamespaces, CallNamespacedFunction) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -349,11 +318,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for CallNamespacedFunction:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -364,15 +331,12 @@ func start() {
     // Verify both namespaced functions exist
     bool hasAdd = false;
     bool hasMultiply = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name.find("Math") != std::string::npos && fn.name.find("add") != std::string::npos)
-        {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name.find("Math") != std::string::npos && fn.name.find("add") != std::string::npos) {
             hasAdd = true;
         }
         if (fn.name.find("Math") != std::string::npos &&
-            fn.name.find("multiply") != std::string::npos)
-        {
+            fn.name.find("multiply") != std::string::npos) {
             hasMultiply = true;
         }
     }
@@ -381,8 +345,7 @@ func start() {
 }
 
 /// @brief Test calling a nested namespaced function.
-TEST(ZiaNamespaces, CallNestedNamespacedFunction)
-{
+TEST(ZiaNamespaces, CallNestedNamespacedFunction) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -404,11 +367,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for CallNestedNamespacedFunction:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -419,7 +380,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

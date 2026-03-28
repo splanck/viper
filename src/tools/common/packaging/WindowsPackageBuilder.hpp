@@ -30,12 +30,10 @@
 
 #include <string>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Parameters for building a Windows self-extracting installer.
-struct WindowsBuildParams
-{
+struct WindowsBuildParams {
     std::string projectName;    ///< Project name (used for display name fallback).
     std::string version;        ///< Version string (e.g. "1.2.0").
     std::string executablePath; ///< Path to compiled native .exe binary.

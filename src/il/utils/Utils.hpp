@@ -17,16 +17,14 @@
 
 #include <string_view>
 
-namespace il::core
-{
+namespace il::core {
 struct Instr;
 struct BasicBlock;
 struct Function;
 struct Value;
 } // namespace il::core
 
-namespace viper::il
-{
+namespace viper::il {
 
 using Instruction = ::il::core::Instr;
 using Block = ::il::core::BasicBlock;

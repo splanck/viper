@@ -30,8 +30,7 @@
 using il::support::Expected;
 using il::support::makeError;
 
-namespace il::verify::detail
-{
+namespace il::verify::detail {
 
 /// @brief Construct a checker bound to a verification context and opcode metadata.
 ///
@@ -43,9 +42,7 @@ namespace il::verify::detail
 /// @param ctx Verification context describing the instruction under inspection.
 /// @param info Opcode metadata supplying operand bounds.
 OperandCountChecker::OperandCountChecker(const VerifyCtx &ctx, const InstructionSpec &spec)
-    : ctx_(ctx), spec_(spec)
-{
-}
+    : ctx_(ctx), spec_(spec) {}
 
 /// @brief Validate the operand count for the bound instruction.
 ///
@@ -57,30 +54,23 @@ OperandCountChecker::OperandCountChecker(const VerifyCtx &ctx, const Instruction
 ///          explains the expected cardinality.
 ///
 /// @return Empty success on validity; otherwise a structured diagnostic.
-Expected<void> OperandCountChecker::run() const
-{
+Expected<void> OperandCountChecker::run() const {
     const auto &instr = ctx_.instr;
     const size_t operandCount = instr.operands.size();
     const bool variadicOperands = il::core::isVariadicOperandCount(spec_.numOperandsMax);
     if (operandCount < spec_.numOperandsMin ||
-        (!variadicOperands && operandCount > spec_.numOperandsMax))
-    {
+        (!variadicOperands && operandCount > spec_.numOperandsMax)) {
         std::ostringstream ss;
         ss << "invalid operand count: ";
-        if (spec_.numOperandsMin == spec_.numOperandsMax && !variadicOperands)
-        {
+        if (spec_.numOperandsMin == spec_.numOperandsMax && !variadicOperands) {
             ss << "expected " << static_cast<unsigned>(spec_.numOperandsMin) << " operand";
             if (spec_.numOperandsMin != 1)
                 ss << 's';
-        }
-        else if (variadicOperands)
-        {
+        } else if (variadicOperands) {
             ss << "expected at least " << static_cast<unsigned>(spec_.numOperandsMin) << " operand";
             if (spec_.numOperandsMin != 1)
                 ss << 's';
-        }
-        else
-        {
+        } else {
             ss << "expected between " << static_cast<unsigned>(spec_.numOperandsMin) << " and "
                << static_cast<unsigned>(spec_.numOperandsMax) << " operands";
         }
@@ -100,8 +90,7 @@ Expected<void> OperandCountChecker::run() const
 ///
 /// @param message Human-readable detail describing the operand mismatch.
 /// @return Expected error containing the formatted diagnostic payload.
-Expected<void> OperandCountChecker::report(std::string_view message) const
-{
+Expected<void> OperandCountChecker::report(std::string_view message) const {
     return Expected<void>{
         makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};
 }

@@ -26,15 +26,13 @@
 
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 struct BasicBlock;
 struct Function;
 struct Instr;
 } // namespace il::core
 
-namespace il::verify
-{
+namespace il::verify {
 class TypeInference;
 
 /// @brief Verify an unconditional branch terminator against the target signature.

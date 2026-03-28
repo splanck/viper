@@ -15,11 +15,9 @@
 #include <algorithm>
 #include <cctype>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-namespace
-{
+namespace {
 
 /// @brief Case-insensitive ASCII string comparison for BASIC identifiers.
 /// @details BASIC is a case-insensitive language, so class/field/method lookups
@@ -29,12 +27,10 @@ namespace
 /// @param a First string to compare.
 /// @param b Second string to compare.
 /// @return True if strings match case-insensitively; false otherwise.
-bool iequals(std::string_view a, std::string_view b)
-{
+bool iequals(std::string_view a, std::string_view b) {
     if (a.size() != b.size())
         return false;
-    for (std::size_t i = 0; i < a.size(); ++i)
-    {
+    for (std::size_t i = 0; i < a.size(); ++i) {
         if (std::toupper(static_cast<unsigned char>(a[i])) !=
             std::toupper(static_cast<unsigned char>(b[i])))
             return false;
@@ -52,11 +48,9 @@ bool iequals(std::string_view a, std::string_view b)
 ///          case without performing map insertions.
 /// @param name Class identifier to locate.
 /// @return Pointer to the associated @ref ClassInfo or @c nullptr when absent.
-ClassInfo *OopIndex::findClass(const std::string &name)
-{
+ClassInfo *OopIndex::findClass(const std::string &name) {
     // Case-insensitive lookup - BASIC identifiers are case-insensitive
-    for (auto &kv : classes_)
-    {
+    for (auto &kv : classes_) {
         if (iequals(kv.first, name))
             return &kv.second;
     }
@@ -70,11 +64,9 @@ ClassInfo *OopIndex::findClass(const std::string &name)
 ///          metadata.
 /// @param name Class identifier to locate.
 /// @return Pointer to the stored @ref ClassInfo or @c nullptr when absent.
-const ClassInfo *OopIndex::findClass(const std::string &name) const
-{
+const ClassInfo *OopIndex::findClass(const std::string &name) const {
     // Case-insensitive lookup - BASIC identifiers are case-insensitive
-    for (const auto &kv : classes_)
-    {
+    for (const auto &kv : classes_) {
         if (iequals(kv.first, name))
             return &kv.second;
     }
@@ -86,22 +78,19 @@ const ClassInfo *OopIndex::findClass(const std::string &name) const
 // =============================================================================
 
 const ClassInfo::FieldInfo *OopIndex::findField(const std::string &className,
-                                                std::string_view fieldName) const
-{
+                                                std::string_view fieldName) const {
     const ClassInfo *info = findClass(className);
     if (!info)
         return nullptr;
 
     // Search instance fields (case-insensitive)
-    for (const auto &field : info->fields)
-    {
+    for (const auto &field : info->fields) {
         if (iequals(field.name, fieldName))
             return &field;
     }
 
     // Search static fields (case-insensitive)
-    for (const auto &field : info->staticFields)
-    {
+    for (const auto &field : info->staticFields) {
         if (iequals(field.name, fieldName))
             return &field;
     }
@@ -110,21 +99,17 @@ const ClassInfo::FieldInfo *OopIndex::findField(const std::string &className,
 }
 
 const ClassInfo::FieldInfo *OopIndex::findFieldInHierarchy(const std::string &className,
-                                                           std::string_view fieldName) const
-{
+                                                           std::string_view fieldName) const {
     const ClassInfo *cur = findClass(className);
-    while (cur)
-    {
+    while (cur) {
         // Search instance fields
-        for (const auto &field : cur->fields)
-        {
+        for (const auto &field : cur->fields) {
             if (iequals(field.name, fieldName))
                 return &field;
         }
 
         // Search static fields
-        for (const auto &field : cur->staticFields)
-        {
+        for (const auto &field : cur->staticFields) {
             if (iequals(field.name, fieldName))
                 return &field;
         }
@@ -142,8 +127,7 @@ const ClassInfo::FieldInfo *OopIndex::findFieldInHierarchy(const std::string &cl
 // =============================================================================
 
 const ClassInfo::MethodInfo *OopIndex::findMethod(const std::string &className,
-                                                  std::string_view methodName) const
-{
+                                                  std::string_view methodName) const {
     const ClassInfo *info = findClass(className);
     if (!info)
         return nullptr;
@@ -157,11 +141,9 @@ const ClassInfo::MethodInfo *OopIndex::findMethod(const std::string &className,
 }
 
 const ClassInfo::MethodInfo *OopIndex::findMethodInHierarchy(const std::string &className,
-                                                             std::string_view methodName) const
-{
+                                                             std::string_view methodName) const {
     const ClassInfo *cur = findClass(className);
-    while (cur)
-    {
+    while (cur) {
         // Heterogeneous lookup - no temporary std::string allocation
         auto it = cur->methods.find(methodName);
         if (it != cur->methods.end())
@@ -181,8 +163,7 @@ const ClassInfo::MethodInfo *OopIndex::findMethodInHierarchy(const std::string &
 
 int getVirtualSlot(const OopIndex &index,
                    const std::string &qualifiedClass,
-                   const std::string &methodName)
-{
+                   const std::string &methodName) {
     // BUG-OOP-002/003 fix: Walk the inheritance hierarchy to find virtual methods
     const ClassInfo::MethodInfo *mi = index.findMethodInHierarchy(qualifiedClass, methodName);
     if (!mi)

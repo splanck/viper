@@ -18,8 +18,7 @@
 #include "frontends/basic/IoStatementLowerer.hpp"
 #include "frontends/basic/Lowerer.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Lower a PRINT# argument into its runtime string representation.
 /// @details Implemented in `IoStatementLowerer.cpp`. The helper converts either
@@ -49,8 +48,7 @@ Value buildPrintChWriteRecord(IoStatementLowerer &self, const PrintChStmt &stmt)
 /// @details Delegates to @ref IoStatementLowerer::lowerOpen to perform channel
 ///          normalization, argument coercions, and runtime helper emission.
 /// @param stmt Parsed OPEN statement.
-void Lowerer::lowerOpen(const OpenStmt &stmt)
-{
+void Lowerer::lowerOpen(const OpenStmt &stmt) {
     ioStmtLowerer_->lowerOpen(stmt);
 }
 
@@ -58,8 +56,7 @@ void Lowerer::lowerOpen(const OpenStmt &stmt)
 /// @details Delegates to @ref IoStatementLowerer::lowerClose to emit runtime
 ///          calls that close file channels and handle errors.
 /// @param stmt Parsed CLOSE statement.
-void Lowerer::lowerClose(const CloseStmt &stmt)
-{
+void Lowerer::lowerClose(const CloseStmt &stmt) {
     ioStmtLowerer_->lowerClose(stmt);
 }
 
@@ -67,8 +64,7 @@ void Lowerer::lowerClose(const CloseStmt &stmt)
 /// @details Delegates to @ref IoStatementLowerer::lowerSeek to normalize the
 ///          channel and emit the runtime seek helper.
 /// @param stmt Parsed SEEK statement.
-void Lowerer::lowerSeek(const SeekStmt &stmt)
-{
+void Lowerer::lowerSeek(const SeekStmt &stmt) {
     ioStmtLowerer_->lowerSeek(stmt);
 }
 
@@ -76,8 +72,7 @@ void Lowerer::lowerSeek(const SeekStmt &stmt)
 /// @details Delegates to @ref IoStatementLowerer::lowerPrint to emit console
 ///          output with BASIC's formatting and separator rules.
 /// @param stmt Parsed PRINT statement.
-void Lowerer::lowerPrint(const PrintStmt &stmt)
-{
+void Lowerer::lowerPrint(const PrintStmt &stmt) {
     ioStmtLowerer_->lowerPrint(stmt);
 }
 
@@ -85,8 +80,7 @@ void Lowerer::lowerPrint(const PrintStmt &stmt)
 /// @details Delegates to @ref IoStatementLowerer::lowerPrintCh to format output
 ///          records and emit file-channel runtime calls.
 /// @param stmt Parsed PRINT# statement.
-void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
-{
+void Lowerer::lowerPrintCh(const PrintChStmt &stmt) {
     ioStmtLowerer_->lowerPrintCh(stmt);
 }
 
@@ -94,8 +88,7 @@ void Lowerer::lowerPrintCh(const PrintChStmt &stmt)
 /// @details Delegates to @ref IoStatementLowerer::lowerInput to read from the
 ///          console and assign parsed values to variables.
 /// @param stmt Parsed INPUT statement.
-void Lowerer::lowerInput(const InputStmt &stmt)
-{
+void Lowerer::lowerInput(const InputStmt &stmt) {
     ioStmtLowerer_->lowerInput(stmt);
 }
 
@@ -103,8 +96,7 @@ void Lowerer::lowerInput(const InputStmt &stmt)
 /// @details Delegates to @ref IoStatementLowerer::lowerInputCh to read values
 ///          from a file channel and assign them to variables.
 /// @param stmt Parsed INPUT# statement.
-void Lowerer::lowerInputCh(const InputChStmt &stmt)
-{
+void Lowerer::lowerInputCh(const InputChStmt &stmt) {
     ioStmtLowerer_->lowerInputCh(stmt);
 }
 
@@ -112,8 +104,7 @@ void Lowerer::lowerInputCh(const InputChStmt &stmt)
 /// @details Delegates to @ref IoStatementLowerer::lowerLineInputCh to read a
 ///          full line from a file channel into a string variable.
 /// @param stmt Parsed LINE INPUT# statement.
-void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
-{
+void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt) {
     ioStmtLowerer_->lowerLineInputCh(stmt);
 }
 
@@ -127,8 +118,7 @@ void Lowerer::lowerLineInputCh(const LineInputChStmt &stmt)
 /// @return Lowered string plus an optional runtime feature dependency.
 Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr,
                                                            RVal value,
-                                                           bool quoteStrings)
-{
+                                                           bool quoteStrings) {
     return ::il::frontends::basic::lowerPrintChArgToString(
         *ioStmtLowerer_, expr, value, quoteStrings);
 }
@@ -139,8 +129,7 @@ Lowerer::PrintChArgString Lowerer::lowerPrintChArgToString(const Expr &expr,
 ///          record value used by file output routines.
 /// @param stmt Parsed PRINT# statement.
 /// @return Runtime string value representing the formatted record.
-Value Lowerer::buildPrintChWriteRecord(const PrintChStmt &stmt)
-{
+Value Lowerer::buildPrintChWriteRecord(const PrintChStmt &stmt) {
     return ::il::frontends::basic::buildPrintChWriteRecord(*ioStmtLowerer_, stmt);
 }
 

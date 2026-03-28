@@ -20,14 +20,12 @@
 #include <unordered_set>
 #include <vector>
 
-namespace il::runtime
-{
+namespace il::runtime {
 struct RuntimeDescriptor; // fwd decl to avoid including runtime headers here
 struct RuntimeClass;      // fwd decl for class catalog seeding
 } // namespace il::runtime
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Records declared namespaces and their types with case-insensitive lookups.
 ///
@@ -39,20 +37,17 @@ namespace il::frontends::basic
 ///
 /// @invariant All namespace and type names use case-insensitive comparison.
 /// @invariant Canonical (first-seen) spellings are preserved for error messages.
-class NamespaceRegistry
-{
+class NamespaceRegistry {
   public:
     /// @brief Type discriminator for registered types.
-    enum class TypeKind
-    {
+    enum class TypeKind {
         None,      ///< Type not found or namespace-only.
         Class,     ///< Registered class type.
         Interface, ///< Registered interface type.
     };
 
     /// @brief Information about a registered namespace.
-    struct NamespaceInfo
-    {
+    struct NamespaceInfo {
         /// Fully-qualified namespace path in canonical casing, e.g., "A.B.C".
         std::string full;
 

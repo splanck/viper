@@ -27,8 +27,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic::lower::common
-{
+namespace il::frontends::basic::lower::common {
 
 /// @brief Construct a helper that shares lowering utilities across emitters.
 /// @details Stores a pointer to the owning @ref Lowerer so each helper method
@@ -42,8 +41,7 @@ CommonLowering::CommonLowering(Lowerer &lowerer) noexcept : lowerer_(&lowerer) {
 ///          centralises the type construction so all emission sites agree on the
 ///          representation.
 /// @return IL type descriptor for a 1-bit integer.
-CommonLowering::Type CommonLowering::ilBoolTy() const
-{
+CommonLowering::Type CommonLowering::ilBoolTy() const {
     return Type(Type::Kind::I1);
 }
 
@@ -53,8 +51,7 @@ CommonLowering::Type CommonLowering::ilBoolTy() const
 ///          consistent opcode pattern.
 /// @param v Boolean literal to encode.
 /// @return Value referencing the emitted constant.
-CommonLowering::Value CommonLowering::emitBoolConst(bool v)
-{
+CommonLowering::Value CommonLowering::emitBoolConst(bool v) {
     return emitUnary(Opcode::Trunc1, ilBoolTy(), Value::constInt(v ? 1 : 0));
 }
 
@@ -75,8 +72,7 @@ CommonLowering::Value CommonLowering::emitBoolFromBranches(
     const std::function<void(Value)> &emitElse,
     std::string_view thenLabelBase,
     std::string_view elseLabelBase,
-    std::string_view joinLabelBase)
-{
+    std::string_view joinLabelBase) {
     auto &ctx = lowerer_->context();
     Value slot = emitAlloca(1);
 
@@ -112,8 +108,7 @@ CommonLowering::Value CommonLowering::emitBoolFromBranches(
 ///          diagnostics.
 /// @param bytes Number of bytes to allocate.
 /// @return Value referencing the allocated pointer temporary.
-CommonLowering::Value CommonLowering::emitAlloca(int bytes)
-{
+CommonLowering::Value CommonLowering::emitAlloca(int bytes) {
     unsigned id = lowerer_->nextTempId();
     Instr in;
     in.result = id;
@@ -134,8 +129,7 @@ CommonLowering::Value CommonLowering::emitAlloca(int bytes)
 /// @param ty Type of the value being loaded.
 /// @param addr Pointer operand describing the load address.
 /// @return Value representing the loaded temporary.
-CommonLowering::Value CommonLowering::emitLoad(Type ty, Value addr)
-{
+CommonLowering::Value CommonLowering::emitLoad(Type ty, Value addr) {
     unsigned id = lowerer_->nextTempId();
     Instr in;
     in.result = id;
@@ -156,8 +150,7 @@ CommonLowering::Value CommonLowering::emitLoad(Type ty, Value addr)
 /// @param ty Type of the value to store.
 /// @param addr Destination pointer.
 /// @param val Value being written.
-void CommonLowering::emitStore(Type ty, Value addr, Value val)
-{
+void CommonLowering::emitStore(Type ty, Value addr, Value val) {
     Instr in;
     in.op = Opcode::Store;
     in.type = ty;
@@ -177,8 +170,7 @@ void CommonLowering::emitStore(Type ty, Value addr, Value val)
 /// @param lhs Left-hand operand value.
 /// @param rhs Right-hand operand value.
 /// @return Value referencing the resulting temporary.
-CommonLowering::Value CommonLowering::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
-{
+CommonLowering::Value CommonLowering::emitBinary(Opcode op, Type ty, Value lhs, Value rhs) {
     unsigned id = lowerer_->nextTempId();
     Instr in;
     in.result = id;
@@ -200,8 +192,7 @@ CommonLowering::Value CommonLowering::emitBinary(Opcode op, Type ty, Value lhs, 
 /// @param ty Result type of the operation.
 /// @param val Operand value consumed by the operation.
 /// @return Value referencing the resulting temporary.
-CommonLowering::Value CommonLowering::emitUnary(Opcode op, Type ty, Value val)
-{
+CommonLowering::Value CommonLowering::emitUnary(Opcode op, Type ty, Value val) {
     unsigned id = lowerer_->nextTempId();
     Instr in;
     in.result = id;
@@ -220,8 +211,7 @@ CommonLowering::Value CommonLowering::emitUnary(Opcode op, Type ty, Value val)
 ///          constant values, improving readability.
 /// @param v Literal integer to materialise.
 /// @return Value representing the constant.
-CommonLowering::Value CommonLowering::emitConstI64(std::int64_t v) const
-{
+CommonLowering::Value CommonLowering::emitConstI64(std::int64_t v) const {
     return Value::constInt(v);
 }
 
@@ -230,8 +220,7 @@ CommonLowering::Value CommonLowering::emitConstI64(std::int64_t v) const
 ///          integer arithmetic required by BASIC semantics.
 /// @param val Boolean operand to extend.
 /// @return 64-bit integer value containing the zero-extended operand.
-CommonLowering::Value CommonLowering::emitZext1ToI64(Value val)
-{
+CommonLowering::Value CommonLowering::emitZext1ToI64(Value val) {
     return emitUnary(Opcode::Zext1, Type(Type::Kind::I64), val);
 }
 
@@ -241,8 +230,7 @@ CommonLowering::Value CommonLowering::emitZext1ToI64(Value val)
 /// @param lhs Left-hand operand.
 /// @param rhs Right-hand operand.
 /// @return Value representing the subtraction result.
-CommonLowering::Value CommonLowering::emitISub(Value lhs, Value rhs)
-{
+CommonLowering::Value CommonLowering::emitISub(Value lhs, Value rhs) {
     return emitBinary(Opcode::ISubOvf, Type(Type::Kind::I64), lhs, rhs);
 }
 
@@ -252,10 +240,8 @@ CommonLowering::Value CommonLowering::emitISub(Value lhs, Value rhs)
 ///          constant when lowering occurs outside of a block.
 /// @param b1 Boolean operand to translate.
 /// @return Integer value encoding the BASIC logical semantics.
-CommonLowering::Value CommonLowering::emitBasicLogicalI64(Value b1)
-{
-    if (lowerer_->context().current() == nullptr)
-    {
+CommonLowering::Value CommonLowering::emitBasicLogicalI64(Value b1) {
+    if (lowerer_->context().current() == nullptr) {
         if (b1.kind == Value::Kind::ConstInt)
             return Value::constInt(b1.i64 != 0 ? -1 : 0);
         return Value::constInt(0);
@@ -272,8 +258,7 @@ CommonLowering::Value CommonLowering::emitBasicLogicalI64(Value b1)
 /// @param ty Result type of the negation.
 /// @param val Operand to negate.
 /// @return Value capturing the negated result.
-CommonLowering::Value CommonLowering::emitCheckedNeg(Type ty, Value val)
-{
+CommonLowering::Value CommonLowering::emitCheckedNeg(Type ty, Value val) {
     return emitBinary(Opcode::ISubOvf, ty, Value::constInt(0), val);
 }
 
@@ -282,8 +267,7 @@ CommonLowering::Value CommonLowering::emitCheckedNeg(Type ty, Value val)
 ///          marks the current block as terminated to prevent additional
 ///          instructions from being emitted accidentally.
 /// @param target Destination block for the branch.
-void CommonLowering::emitBr(BasicBlock *target)
-{
+void CommonLowering::emitBr(BasicBlock *target) {
     BasicBlock *block = lowerer_->context().current();
     assert(block && "emitBr requires an active block");
 
@@ -307,8 +291,7 @@ void CommonLowering::emitBr(BasicBlock *target)
 /// @param cond Boolean condition controlling the branch.
 /// @param t Destination taken when the condition evaluates to true.
 /// @param f Destination taken when the condition evaluates to false.
-void CommonLowering::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
-{
+void CommonLowering::emitCBr(Value cond, BasicBlock *t, BasicBlock *f) {
     Instr in;
     in.op = Opcode::CBr;
     in.type = Type(Type::Kind::Void);
@@ -337,8 +320,7 @@ void CommonLowering::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
 /// @return Value referencing the call result.
 CommonLowering::Value CommonLowering::emitCallRet(Type ty,
                                                   const std::string &callee,
-                                                  const std::vector<Value> &args)
-{
+                                                  const std::vector<Value> &args) {
     unsigned id = lowerer_->nextTempId();
     Instr in;
     in.result = id;
@@ -358,8 +340,7 @@ CommonLowering::Value CommonLowering::emitCallRet(Type ty,
 ///          and callee name to the active block.
 /// @param callee Mangled name of the function to invoke.
 /// @param args Argument values to pass to the callee.
-void CommonLowering::emitCall(const std::string &callee, const std::vector<Value> &args)
-{
+void CommonLowering::emitCall(const std::string &callee, const std::vector<Value> &args) {
     Instr in;
     in.op = Opcode::Call;
     in.type = Type(Type::Kind::Void);
@@ -373,8 +354,7 @@ void CommonLowering::emitCall(const std::string &callee, const std::vector<Value
 
 CommonLowering::Value CommonLowering::emitCallIndirectRet(Type ty,
                                                           Value callee,
-                                                          const std::vector<Value> &args)
-{
+                                                          const std::vector<Value> &args) {
     unsigned id = lowerer_->nextTempId();
     Instr in;
     in.result = id;
@@ -391,8 +371,7 @@ CommonLowering::Value CommonLowering::emitCallIndirectRet(Type ty,
     return Value::temp(id);
 }
 
-void CommonLowering::emitCallIndirect(Value callee, const std::vector<Value> &args)
-{
+void CommonLowering::emitCallIndirect(Value callee, const std::vector<Value> &args) {
     Instr in;
     in.op = Opcode::CallIndirect;
     in.type = Type(Type::Kind::Void);
@@ -412,8 +391,7 @@ void CommonLowering::emitCallIndirect(Value callee, const std::vector<Value> &ar
 ///          string type.
 /// @param globalName Name of the global constant string symbol.
 /// @return Value referencing the emitted constant.
-CommonLowering::Value CommonLowering::emitConstStr(const std::string &globalName)
-{
+CommonLowering::Value CommonLowering::emitConstStr(const std::string &globalName) {
     unsigned id = lowerer_->nextTempId();
     Instr in;
     in.result = id;
@@ -433,8 +411,7 @@ CommonLowering::Value CommonLowering::emitConstStr(const std::string &globalName
 ///          on the owning @ref Lowerer.
 /// @param base Human-readable stem for the label.
 /// @return Unique label string safe to assign to a new block.
-std::string CommonLowering::makeBlockLabel(std::string_view base) const
-{
+std::string CommonLowering::makeBlockLabel(std::string_view base) const {
     auto &ctx = lowerer_->context();
     if (auto *blockNamer = ctx.blockNames().namer())
         return blockNamer->generic(std::string(base));

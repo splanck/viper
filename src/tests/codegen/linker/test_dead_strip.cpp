@@ -30,10 +30,8 @@ using namespace viper::codegen::linker;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -44,8 +42,7 @@ static void check(bool cond, const char *msg, int line)
 /// Helper: create a minimal ObjFile with named sections.
 static ObjFile makeObj(const std::string &name,
                        const std::vector<std::string> &secNames,
-                       size_t dataSize = 16)
-{
+                       size_t dataSize = 16) {
     ObjFile obj;
     obj.name = name;
     obj.format = ObjFileFormat::ELF;
@@ -53,8 +50,7 @@ static ObjFile makeObj(const std::string &name,
     // Section 0: null.
     obj.sections.push_back({});
 
-    for (const auto &sn : secNames)
-    {
+    for (const auto &sn : secNames) {
         ObjSection sec;
         sec.name = sn;
         sec.data.resize(dataSize, 0xCC);
@@ -76,8 +72,7 @@ static ObjFile makeObj(const std::string &name,
 static void addSymbol(ObjFile &obj,
                       const std::string &name,
                       uint32_t secIdx,
-                      ObjSymbol::Binding binding = ObjSymbol::Global)
-{
+                      ObjSymbol::Binding binding = ObjSymbol::Global) {
     ObjSymbol sym;
     sym.name = name;
     sym.sectionIndex = secIdx;
@@ -86,8 +81,7 @@ static void addSymbol(ObjFile &obj,
 }
 
 /// Helper: add a relocation in a section that references a symbol.
-static void addReloc(ObjFile &obj, size_t secIdx, uint32_t symIdx)
-{
+static void addReloc(ObjFile &obj, size_t secIdx, uint32_t symIdx) {
     ObjReloc rel;
     rel.offset = 0;
     rel.type = 2; // R_X86_64_PC32 (doesn't matter for dead strip, only symIndex)
@@ -96,8 +90,7 @@ static void addReloc(ObjFile &obj, size_t secIdx, uint32_t symIdx)
     obj.sections[secIdx].relocs.push_back(rel);
 }
 
-int main()
-{
+int main() {
     // --- User sections are always live ---
     {
         auto user = makeObj("user.o", {".text", ".data"});
@@ -251,8 +244,7 @@ int main()
     }
 
     // --- Result ---
-    if (gFail == 0)
-    {
+    if (gFail == 0) {
         std::cout << "All DeadStripPass tests passed.\n";
         return EXIT_SUCCESS;
     }

@@ -21,12 +21,10 @@
 
 #include "codegen/aarch64/passes/PassManager.hpp"
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
 /// @brief Encode all MIR functions into machine code bytes.
-class BinaryEmitPass final : public Pass
-{
+class BinaryEmitPass final : public Pass {
   public:
     /// @brief Run the binary emission pass.
     /// @param module Module state; mir must have physical registers assigned.

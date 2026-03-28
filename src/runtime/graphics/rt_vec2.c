@@ -70,10 +70,8 @@
 static _Thread_local void *vec2_pool_buf_[VEC2_POOL_CAPACITY];
 static _Thread_local int vec2_pool_top_ = 0;
 
-static void vec2_pool_return(void *p)
-{
-    if (vec2_pool_top_ < VEC2_POOL_CAPACITY)
-    {
+static void vec2_pool_return(void *p) {
+    if (vec2_pool_top_ < VEC2_POOL_CAPACITY) {
         rt_obj_resurrect(p);                       // refcount 0 → 1
         rt_obj_set_finalizer(p, vec2_pool_return); // re-arm for next cycle
         vec2_pool_buf_[vec2_pool_top_++] = p;
@@ -88,8 +86,7 @@ static void vec2_pool_return(void *p)
 /// with reference counting support.
 ///
 /// @note Vec2 is immutable - all operations create new instances.
-typedef struct
-{
+typedef struct {
     double x; ///< X component (horizontal axis, positive = right)
     double y; ///< Y component (vertical axis, positive = up in math, down in screen coords)
 } ViperVec2;
@@ -105,20 +102,15 @@ typedef struct
 /// @return Pointer to the newly allocated Vec2. Traps on allocation failure.
 ///
 /// @note This is an internal function - use rt_vec2_new() for public API.
-static ViperVec2 *vec2_alloc(double x, double y)
-{
+static ViperVec2 *vec2_alloc(double x, double y) {
     ViperVec2 *v;
-    if (vec2_pool_top_ > 0)
-    {
+    if (vec2_pool_top_ > 0) {
         // Fast path: reuse a pooled object (no heap allocation).
         v = (ViperVec2 *)vec2_pool_buf_[--vec2_pool_top_];
-    }
-    else
-    {
+    } else {
         // Slow path: heap-allocate a fresh object and arm the pool finalizer.
         v = (ViperVec2 *)rt_obj_new_i64(0, (int64_t)sizeof(ViperVec2));
-        if (!v)
-        {
+        if (!v) {
             rt_trap("Vec2: memory allocation failed");
             return NULL; // Unreachable after trap
         }
@@ -155,8 +147,7 @@ static ViperVec2 *vec2_alloc(double x, double y)
 ///
 /// @see rt_vec2_zero For creating a zero vector
 /// @see rt_vec2_one For creating a unit vector (1, 1)
-void *rt_vec2_new(double x, double y)
-{
+void *rt_vec2_new(double x, double y) {
     return vec2_alloc(x, y);
 }
 
@@ -187,8 +178,7 @@ void *rt_vec2_new(double x, double y)
 ///
 /// @see rt_vec2_one For a unit vector
 /// @see rt_vec2_len For checking if a vector is zero-length
-void *rt_vec2_zero(void)
-{
+void *rt_vec2_zero(void) {
     return vec2_alloc(0.0, 0.0);
 }
 
@@ -220,8 +210,7 @@ void *rt_vec2_zero(void)
 ///
 /// @see rt_vec2_zero For a zero vector
 /// @see rt_vec2_norm For creating unit vectors
-void *rt_vec2_one(void)
-{
+void *rt_vec2_one(void) {
     return vec2_alloc(1.0, 1.0);
 }
 
@@ -254,10 +243,8 @@ void *rt_vec2_one(void)
 ///
 /// @see rt_vec2_y For the Y component
 /// @see rt_vec2_new For creating vectors with specific components
-double rt_vec2_x(void *v)
-{
-    if (!v)
-    {
+double rt_vec2_x(void *v) {
+    if (!v) {
         rt_trap("Vec2.X: null vector");
         return 0.0;
     }
@@ -290,10 +277,8 @@ double rt_vec2_x(void *v)
 ///
 /// @see rt_vec2_x For the X component
 /// @see rt_vec2_new For creating vectors with specific components
-double rt_vec2_y(void *v)
-{
-    if (!v)
-    {
+double rt_vec2_y(void *v) {
+    if (!v) {
         rt_trap("Vec2.Y: null vector");
         return 0.0;
     }
@@ -342,10 +327,8 @@ double rt_vec2_y(void *v)
 ///
 /// @see rt_vec2_sub For vector subtraction
 /// @see rt_vec2_mul For scalar multiplication
-void *rt_vec2_add(void *a, void *b)
-{
-    if (!a || !b)
-    {
+void *rt_vec2_add(void *a, void *b) {
+    if (!a || !b) {
         rt_trap("Vec2.Add: null vector");
         return NULL;
     }
@@ -382,10 +365,8 @@ void *rt_vec2_add(void *a, void *b)
 ///
 /// @see rt_vec2_add For vector addition
 /// @see rt_vec2_neg For vector negation
-void *rt_vec2_sub(void *a, void *b)
-{
-    if (!a || !b)
-    {
+void *rt_vec2_sub(void *a, void *b) {
+    if (!a || !b) {
         rt_trap("Vec2.Sub: null vector");
         return NULL;
     }
@@ -429,10 +410,8 @@ void *rt_vec2_sub(void *a, void *b)
 ///
 /// @see rt_vec2_div For scalar division
 /// @see rt_vec2_norm For getting a unit vector
-void *rt_vec2_mul(void *v, double s)
-{
-    if (!v)
-    {
+void *rt_vec2_mul(void *v, double s) {
+    if (!v) {
         rt_trap("Vec2.Mul: null vector");
         return NULL;
     }
@@ -469,15 +448,12 @@ void *rt_vec2_mul(void *v, double s)
 ///
 /// @see rt_vec2_mul For scalar multiplication
 /// @see rt_vec2_norm For normalizing to unit length
-void *rt_vec2_div(void *v, double s)
-{
-    if (!v)
-    {
+void *rt_vec2_div(void *v, double s) {
+    if (!v) {
         rt_trap("Vec2.Div: null vector");
         return NULL;
     }
-    if (s == 0.0)
-    {
+    if (s == 0.0) {
         rt_trap("Vec2.Div: division by zero");
         return NULL;
     }
@@ -523,10 +499,8 @@ void *rt_vec2_div(void *v, double s)
 ///
 /// @see rt_vec2_mul For scalar multiplication
 /// @see rt_vec2_sub For vector subtraction
-void *rt_vec2_neg(void *v)
-{
-    if (!v)
-    {
+void *rt_vec2_neg(void *v) {
+    if (!v) {
         rt_trap("Vec2.Neg: null vector");
         return NULL;
     }
@@ -590,10 +564,8 @@ void *rt_vec2_neg(void *v)
 ///
 /// @see rt_vec2_cross For the 2D cross product
 /// @see rt_vec2_angle For getting the angle of a vector
-double rt_vec2_dot(void *a, void *b)
-{
-    if (!a || !b)
-    {
+double rt_vec2_dot(void *a, void *b) {
+    if (!a || !b) {
         rt_trap("Vec2.Dot: null vector");
         return 0.0;
     }
@@ -656,12 +628,10 @@ double rt_vec2_dot(void *a, void *b)
 ///
 /// @see rt_vec2_dot For the dot product
 /// @see rt_vec3_cross For the 3D cross product (returns a vector)
-double rt_vec2_cross(void *a, void *b)
-{
+double rt_vec2_cross(void *a, void *b) {
     // 2D cross product returns the scalar z-component of the 3D cross product
     // (treating vectors as 3D with z=0): a.x * b.y - a.y * b.x
-    if (!a || !b)
-    {
+    if (!a || !b) {
         rt_trap("Vec2.Cross: null vector");
         return 0.0;
     }
@@ -714,10 +684,8 @@ double rt_vec2_cross(void *a, void *b)
 ///
 /// @see rt_vec2_len For the actual length
 /// @see rt_vec2_dist For distance between two points
-double rt_vec2_len_sq(void *v)
-{
-    if (!v)
-    {
+double rt_vec2_len_sq(void *v) {
+    if (!v) {
         rt_trap("Vec2.LenSq: null vector");
         return 0.0;
     }
@@ -770,8 +738,7 @@ double rt_vec2_len_sq(void *v)
 ///
 /// @see rt_vec2_len_sq For squared length (faster for comparisons)
 /// @see rt_vec2_norm For getting a unit-length vector
-double rt_vec2_len(void *v)
-{
+double rt_vec2_len(void *v) {
     return sqrt(rt_vec2_len_sq(v));
 }
 
@@ -823,10 +790,8 @@ double rt_vec2_len(void *v)
 ///
 /// @see rt_vec2_len For the length of a single vector
 /// @see rt_vec2_sub For the difference vector between two points
-double rt_vec2_dist(void *a, void *b)
-{
-    if (!a || !b)
-    {
+double rt_vec2_dist(void *a, void *b) {
+    if (!a || !b) {
         rt_trap("Vec2.Dist: null vector");
         return 0.0;
     }
@@ -887,16 +852,13 @@ double rt_vec2_dist(void *a, void *b)
 ///
 /// @see rt_vec2_len For getting the length
 /// @see rt_vec2_div For manual normalization
-void *rt_vec2_norm(void *v)
-{
-    if (!v)
-    {
+void *rt_vec2_norm(void *v) {
+    if (!v) {
         rt_trap("Vec2.Norm: null vector");
         return NULL;
     }
     double len = rt_vec2_len(v);
-    if (len == 0.0)
-    {
+    if (len == 0.0) {
         // Return zero vector for zero-length input
         return vec2_alloc(0.0, 0.0);
     }
@@ -950,10 +912,8 @@ void *rt_vec2_norm(void *v)
 ///
 /// @see rt_vec2_add For vector addition
 /// @see rt_vec2_sub For vector subtraction
-void *rt_vec2_lerp(void *a, void *b, double t)
-{
-    if (!a || !b)
-    {
+void *rt_vec2_lerp(void *a, void *b, double t) {
+    if (!a || !b) {
         rt_trap("Vec2.Lerp: null vector");
         return NULL;
     }
@@ -1016,10 +976,8 @@ void *rt_vec2_lerp(void *a, void *b, double t)
 ///
 /// @see rt_vec2_rotate For rotating a vector by an angle
 /// @see rt_vec2_norm For getting the direction as a unit vector
-double rt_vec2_angle(void *v)
-{
-    if (!v)
-    {
+double rt_vec2_angle(void *v) {
+    if (!v) {
         rt_trap("Vec2.Angle: null vector");
         return 0.0;
     }
@@ -1079,10 +1037,8 @@ double rt_vec2_angle(void *v)
 ///
 /// @see rt_vec2_angle For getting the current angle of a vector
 /// @see rt_vec2_norm For unit vectors (often used with rotation)
-void *rt_vec2_rotate(void *v, double angle)
-{
-    if (!v)
-    {
+void *rt_vec2_rotate(void *v, double angle) {
+    if (!v) {
         rt_trap("Vec2.Rotate: null vector");
         return NULL;
     }

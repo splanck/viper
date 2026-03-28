@@ -41,18 +41,15 @@
 ///          using the C locale, and ensures the output is null-terminated even
 ///          when truncated.  The return value reports the number of characters
 ///          written excluding the terminator.
-size_t rt_i64_to_cstr(int64_t value, char *buffer, size_t capacity)
-{
+size_t rt_i64_to_cstr(int64_t value, char *buffer, size_t capacity) {
     if (!buffer || capacity == 0)
         return 0;
     int written = rt_snprintf(buffer, capacity, "%" PRId64, (int64_t)value);
-    if (written < 0)
-    {
+    if (written < 0) {
         buffer[0] = '\0';
         return 0;
     }
-    if ((size_t)written >= capacity)
-    {
+    if ((size_t)written >= capacity) {
         buffer[capacity - 1] = '\0';
         return capacity - 1;
     }
@@ -63,18 +60,15 @@ size_t rt_i64_to_cstr(int64_t value, char *buffer, size_t capacity)
 /// @details Mirrors @ref rt_i64_to_cstr but prints the value using the unsigned
 ///          conversion specifier.  The function always leaves the buffer
 ///          null-terminated and reports the number of characters produced.
-size_t rt_u64_to_cstr(uint64_t value, char *buffer, size_t capacity)
-{
+size_t rt_u64_to_cstr(uint64_t value, char *buffer, size_t capacity) {
     if (!buffer || capacity == 0)
         return 0;
     int written = rt_snprintf(buffer, capacity, "%" PRIu64, (uint64_t)value);
-    if (written < 0)
-    {
+    if (written < 0) {
         buffer[0] = '\0';
         return 0;
     }
-    if ((size_t)written >= capacity)
-    {
+    if ((size_t)written >= capacity) {
         buffer[capacity - 1] = '\0';
         return capacity - 1;
     }

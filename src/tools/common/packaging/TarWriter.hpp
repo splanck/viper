@@ -27,12 +27,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Writes USTAR tar archives.
-class TarWriter
-{
+class TarWriter {
   public:
     /// @brief Add a regular file to the archive.
     /// @param path File path within the archive (e.g. "./usr/bin/hello").
@@ -75,8 +73,7 @@ class TarWriter
     std::vector<uint8_t> finish() const;
 
   private:
-    struct Entry
-    {
+    struct Entry {
         std::string path;
         std::string linkTarget;
         std::vector<uint8_t> data;

@@ -19,8 +19,7 @@
 #include <cstdio>
 #include <ctime>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -28,8 +27,7 @@ extern "C" void vm_trap(const char *msg)
 // Basic Creation Tests
 // ============================================================================
 
-static void test_new_countdown()
-{
+static void test_new_countdown() {
     void *cd = rt_countdown_new(1000);
     assert(cd != nullptr);
     assert(rt_countdown_interval(cd) == 1000);
@@ -41,8 +39,7 @@ static void test_new_countdown()
     printf("test_new_countdown: PASSED\n");
 }
 
-static void test_new_zero_interval()
-{
+static void test_new_zero_interval() {
     void *cd = rt_countdown_new(0);
     assert(cd != nullptr);
     assert(rt_countdown_interval(cd) == 0);
@@ -53,8 +50,7 @@ static void test_new_zero_interval()
     printf("test_new_zero_interval: PASSED\n");
 }
 
-static void test_new_negative_interval()
-{
+static void test_new_negative_interval() {
     // Negative intervals should be clamped to 0
     void *cd = rt_countdown_new(-100);
     assert(cd != nullptr);
@@ -67,8 +63,7 @@ static void test_new_negative_interval()
 // Start/Stop Tests
 // ============================================================================
 
-static void test_start_stop()
-{
+static void test_start_stop() {
     void *cd = rt_countdown_new(1000);
 
     // Initially stopped
@@ -97,8 +92,7 @@ static void test_start_stop()
 // Elapsed Time Tests
 // ============================================================================
 
-static void test_elapsed_time()
-{
+static void test_elapsed_time() {
     void *cd = rt_countdown_new(100);
 
     // Elapsed should be 0 before starting
@@ -126,8 +120,7 @@ static void test_elapsed_time()
 // Reset Tests
 // ============================================================================
 
-static void test_reset()
-{
+static void test_reset() {
     void *cd = rt_countdown_new(1000);
 
     // Start and accumulate some time
@@ -151,8 +144,7 @@ static void test_reset()
 // Interval Tests
 // ============================================================================
 
-static void test_set_interval()
-{
+static void test_set_interval() {
     void *cd = rt_countdown_new(1000);
 
     assert(rt_countdown_interval(cd) == 1000);
@@ -171,8 +163,7 @@ static void test_set_interval()
 // Expiration Tests
 // ============================================================================
 
-static void test_expiration()
-{
+static void test_expiration() {
     // Create countdown with very short interval (20ms)
     void *cd = rt_countdown_new(20);
 
@@ -195,8 +186,7 @@ static void test_expiration()
 // Accumulation Tests
 // ============================================================================
 
-static void test_accumulation()
-{
+static void test_accumulation() {
     void *cd = rt_countdown_new(1000);
 
     // Start and run for 10ms
@@ -224,8 +214,7 @@ static void test_accumulation()
 // Wait Tests
 // ============================================================================
 
-static void test_wait_short()
-{
+static void test_wait_short() {
     // Create countdown with 50ms interval
     void *cd = rt_countdown_new(50);
 
@@ -238,8 +227,7 @@ static void test_wait_short()
     printf("test_wait_short: PASSED\n");
 }
 
-static void test_wait_already_running()
-{
+static void test_wait_already_running() {
     // Create countdown with 50ms interval
     void *cd = rt_countdown_new(50);
 
@@ -255,8 +243,7 @@ static void test_wait_already_running()
     printf("test_wait_already_running: PASSED\n");
 }
 
-static void test_wait_already_expired()
-{
+static void test_wait_already_expired() {
     // Create countdown with 0ms interval (immediately expired)
     void *cd = rt_countdown_new(0);
 
@@ -272,8 +259,7 @@ static void test_wait_already_expired()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Viper.Time.Countdown Tests ===\n\n");
 
     // Basic creation

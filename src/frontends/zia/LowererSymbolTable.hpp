@@ -27,169 +27,137 @@
 #include <string>
 #include <unordered_map>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
-class LowererSymbolTable
-{
+class LowererSymbolTable {
   public:
     using Value = il::core::Value;
 
     LowererSymbolTable() = default;
 
-    void defineLocal(const std::string &name, Value value)
-    {
+    void defineLocal(const std::string &name, Value value) {
         locals_[name] = value;
     }
 
-    Value *lookupLocal(const std::string &name)
-    {
+    Value *lookupLocal(const std::string &name) {
         auto it = locals_.find(name);
         return it != locals_.end() ? &it->second : nullptr;
     }
 
-    const std::unordered_map<std::string, Value> &locals() const
-    {
+    const std::unordered_map<std::string, Value> &locals() const {
         return locals_;
     }
 
-    std::unordered_map<std::string, Value> &locals()
-    {
+    std::unordered_map<std::string, Value> &locals() {
         return locals_;
     }
 
-    void clearLocals()
-    {
+    void clearLocals() {
         locals_.clear();
     }
 
-    void setLocalType(const std::string &name, TypeRef type)
-    {
+    void setLocalType(const std::string &name, TypeRef type) {
         localTypes_[name] = type;
     }
 
-    TypeRef lookupLocalType(const std::string &name) const
-    {
+    TypeRef lookupLocalType(const std::string &name) const {
         auto it = localTypes_.find(name);
         return it != localTypes_.end() ? it->second : nullptr;
     }
 
-    const std::unordered_map<std::string, TypeRef> &localTypes() const
-    {
+    const std::unordered_map<std::string, TypeRef> &localTypes() const {
         return localTypes_;
     }
 
-    std::unordered_map<std::string, TypeRef> &localTypes()
-    {
+    std::unordered_map<std::string, TypeRef> &localTypes() {
         return localTypes_;
     }
 
-    void clearLocalTypes()
-    {
+    void clearLocalTypes() {
         localTypes_.clear();
     }
 
-    void registerSlot(const std::string &name, Value slot)
-    {
+    void registerSlot(const std::string &name, Value slot) {
         slots_[name] = slot;
     }
 
-    Value *lookupSlot(const std::string &name)
-    {
+    Value *lookupSlot(const std::string &name) {
         auto it = slots_.find(name);
         return it != slots_.end() ? &it->second : nullptr;
     }
 
-    void removeSlot(const std::string &name)
-    {
+    void removeSlot(const std::string &name) {
         slots_.erase(name);
     }
 
-    const std::unordered_map<std::string, Value> &slots() const
-    {
+    const std::unordered_map<std::string, Value> &slots() const {
         return slots_;
     }
 
-    std::unordered_map<std::string, Value> &slots()
-    {
+    std::unordered_map<std::string, Value> &slots() {
         return slots_;
     }
 
-    void clearSlots()
-    {
+    void clearSlots() {
         slots_.clear();
     }
 
-    void defineGlobalConstant(const std::string &name, Value value)
-    {
+    void defineGlobalConstant(const std::string &name, Value value) {
         globalConstants_[name] = value;
     }
 
-    const Value *lookupGlobalConstant(const std::string &name) const
-    {
+    const Value *lookupGlobalConstant(const std::string &name) const {
         auto it = globalConstants_.find(name);
         return it != globalConstants_.end() ? &it->second : nullptr;
     }
 
-    bool hasGlobalConstant(const std::string &name) const
-    {
+    bool hasGlobalConstant(const std::string &name) const {
         return globalConstants_.count(name) > 0;
     }
 
-    std::unordered_map<std::string, Value> &globalConstants()
-    {
+    std::unordered_map<std::string, Value> &globalConstants() {
         return globalConstants_;
     }
 
-    const std::unordered_map<std::string, Value> &globalConstants() const
-    {
+    const std::unordered_map<std::string, Value> &globalConstants() const {
         return globalConstants_;
     }
 
-    void defineGlobalVariable(const std::string &name, TypeRef type)
-    {
+    void defineGlobalVariable(const std::string &name, TypeRef type) {
         globalVariables_[name] = type;
     }
 
-    TypeRef lookupGlobalVariable(const std::string &name) const
-    {
+    TypeRef lookupGlobalVariable(const std::string &name) const {
         auto it = globalVariables_.find(name);
         return it != globalVariables_.end() ? it->second : nullptr;
     }
 
-    std::unordered_map<std::string, TypeRef> &globalVariables()
-    {
+    std::unordered_map<std::string, TypeRef> &globalVariables() {
         return globalVariables_;
     }
 
-    const std::unordered_map<std::string, TypeRef> &globalVariables() const
-    {
+    const std::unordered_map<std::string, TypeRef> &globalVariables() const {
         return globalVariables_;
     }
 
-    void defineGlobalInitializer(const std::string &name, Value value)
-    {
+    void defineGlobalInitializer(const std::string &name, Value value) {
         globalInitializers_[name] = value;
     }
 
-    const Value *lookupGlobalInitializer(const std::string &name) const
-    {
+    const Value *lookupGlobalInitializer(const std::string &name) const {
         auto it = globalInitializers_.find(name);
         return it != globalInitializers_.end() ? &it->second : nullptr;
     }
 
-    std::unordered_map<std::string, Value> &globalInitializers()
-    {
+    std::unordered_map<std::string, Value> &globalInitializers() {
         return globalInitializers_;
     }
 
-    const std::unordered_map<std::string, Value> &globalInitializers() const
-    {
+    const std::unordered_map<std::string, Value> &globalInitializers() const {
         return globalInitializers_;
     }
 
-    void clearFunctionScope()
-    {
+    void clearFunctionScope() {
         locals_.clear();
         localTypes_.clear();
         slots_.clear();

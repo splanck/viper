@@ -27,8 +27,7 @@
 /// @brief Tracks mapping from file ids to paths and source locations.
 /// @invariant File id 0 is invalid.
 /// @ownership Owns stored file path strings.
-namespace il::support
-{
+namespace il::support {
 
 inline constexpr std::string_view kSourceManagerFileIdOverflowMessage =
     "source manager exhausted file identifier space";
@@ -38,8 +37,7 @@ struct SourceManagerTestAccess;
 /// Maintains the mapping between numeric file identifiers and their
 /// corresponding filesystem paths. Clients can register files and look up
 /// paths by identifier.
-class SourceManager
-{
+class SourceManager {
   public:
     /// @brief Register file path @p path and return its id.
     /// @param path File system path.

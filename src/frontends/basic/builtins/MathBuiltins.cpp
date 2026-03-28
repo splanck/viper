@@ -25,10 +25,8 @@
 
 #include <cstddef>
 
-namespace il::frontends::basic::builtins
-{
-namespace
-{
+namespace il::frontends::basic::builtins {
+namespace {
 using B = BuiltinCallExpr::Builtin;
 
 /// @brief Convert a builtin enumerator into the corresponding table index.
@@ -39,8 +37,7 @@ using B = BuiltinCallExpr::Builtin;
 ///
 /// @param b Builtin whose ordinal should be translated.
 /// @return Zero-based index pointing to the builtin entry.
-constexpr std::size_t idx(B b) noexcept
-{
+constexpr std::size_t idx(B b) noexcept {
     return static_cast<std::size_t>(b);
 }
 
@@ -54,8 +51,7 @@ constexpr std::size_t idx(B b) noexcept
 ///          operand-specific validation logic such as the ABS handler.
 ///
 /// @param infos Mutable span whose slots correspond to builtin ordinals.
-void registerMathBuiltinInfos(std::span<BuiltinInfo> infos)
-{
+void registerMathBuiltinInfos(std::span<BuiltinInfo> infos) {
     infos[idx(B::Int)] = {"INT", nullptr};
     infos[idx(B::Fix)] = {"FIX", nullptr};
     infos[idx(B::Round)] = {"ROUND", nullptr};
@@ -84,8 +80,7 @@ void registerMathBuiltinInfos(std::span<BuiltinInfo> infos)
 ///          program's runtime manifest.
 ///
 /// @param rules Span that receives the per-builtin scanning descriptors.
-void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
-{
+void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules) {
     using ResultSpec = BuiltinScanRule::ResultSpec;
     using Feature = BuiltinScanRule::Feature;
 
@@ -293,8 +288,7 @@ void registerMathBuiltinScanRules(std::span<BuiltinScanRule> rules)
 ///          units.
 ///
 /// @param rules Span that receives fully-specified lowering instructions.
-void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules)
-{
+void registerMathBuiltinLoweringRules(std::span<BuiltinLoweringRule> rules) {
     using LowerRule = BuiltinLoweringRule;
     using ResultSpec = LowerRule::ResultSpec;
     using Variant = LowerRule::Variant;

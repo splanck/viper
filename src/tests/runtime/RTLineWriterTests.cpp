@@ -19,28 +19,23 @@
 #include <cstdlib>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
 static const char *test_file = "/tmp/viper_linewriter_test.txt";
 
-static rt_string make_string(const char *s)
-{
+static rt_string make_string(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void cleanup_test_file()
-{
+static void cleanup_test_file() {
     remove(test_file);
 }
 
-static char *read_file_contents(size_t *out_len)
-{
+static char *read_file_contents(size_t *out_len) {
     FILE *fp = fopen(test_file, "rb");
-    if (!fp)
-    {
+    if (!fp) {
         *out_len = 0;
         return nullptr;
     }
@@ -58,8 +53,7 @@ static char *read_file_contents(size_t *out_len)
     return buf;
 }
 
-static void test_open_close()
-{
+static void test_open_close() {
     cleanup_test_file();
 
     rt_string path = make_string(test_file);
@@ -73,8 +67,7 @@ static void test_open_close()
     cleanup_test_file();
 }
 
-static void test_write_string()
-{
+static void test_write_string() {
     cleanup_test_file();
 
     rt_string path = make_string(test_file);
@@ -100,8 +93,7 @@ static void test_write_string()
     cleanup_test_file();
 }
 
-static void test_write_ln()
-{
+static void test_write_ln() {
     cleanup_test_file();
 
     rt_string path = make_string(test_file);
@@ -132,8 +124,7 @@ static void test_write_ln()
     cleanup_test_file();
 }
 
-static void test_write_char()
-{
+static void test_write_char() {
     cleanup_test_file();
 
     rt_string path = make_string(test_file);
@@ -160,8 +151,7 @@ static void test_write_char()
     cleanup_test_file();
 }
 
-static void test_append_mode()
-{
+static void test_append_mode() {
     cleanup_test_file();
 
     // Create initial file
@@ -193,8 +183,7 @@ static void test_append_mode()
     cleanup_test_file();
 }
 
-static void test_custom_newline()
-{
+static void test_custom_newline() {
     cleanup_test_file();
 
     rt_string path = make_string(test_file);
@@ -230,8 +219,7 @@ static void test_custom_newline()
     cleanup_test_file();
 }
 
-static void test_unix_newline()
-{
+static void test_unix_newline() {
     cleanup_test_file();
 
     rt_string path = make_string(test_file);
@@ -261,8 +249,7 @@ static void test_unix_newline()
     cleanup_test_file();
 }
 
-static void test_flush()
-{
+static void test_flush() {
     cleanup_test_file();
 
     rt_string path = make_string(test_file);
@@ -288,8 +275,7 @@ static void test_flush()
     cleanup_test_file();
 }
 
-static void test_write_ln_empty()
-{
+static void test_write_ln_empty() {
     cleanup_test_file();
 
     rt_string path = make_string(test_file);
@@ -320,8 +306,7 @@ static void test_write_ln_empty()
     cleanup_test_file();
 }
 
-static void test_overwrite_existing()
-{
+static void test_overwrite_existing() {
     cleanup_test_file();
 
     // Create initial file with content
@@ -353,8 +338,7 @@ static void test_overwrite_existing()
     cleanup_test_file();
 }
 
-static void test_mixed_write_methods()
-{
+static void test_mixed_write_methods() {
     cleanup_test_file();
 
     rt_string path = make_string(test_file);
@@ -389,8 +373,7 @@ static void test_mixed_write_methods()
     cleanup_test_file();
 }
 
-static void test_null_handling()
-{
+static void test_null_handling() {
     // Null operations should not crash
     rt_linewriter_close(nullptr);
     rt_linewriter_flush(nullptr);
@@ -401,8 +384,7 @@ static void test_null_handling()
     assert(rt_str_len(nl) > 0);
 }
 
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
     printf("Test skipped: POSIX temp paths not available on Windows\n");

@@ -22,8 +22,7 @@ using viper::tui::config::loadFromFile;
 using viper::tui::render::RGBA;
 using viper::tui::term::KeyEvent;
 
-TEST(TUI, Config)
-{
+TEST(TUI, Config) {
     Config cfg;
     bool ok = loadFromFile(CONFIG_INI, cfg);
     ASSERT_TRUE(ok);
@@ -37,10 +36,8 @@ TEST(TUI, Config)
 
     // Keymap binding
     bool found_save = false;
-    for (const auto &b : cfg.keymap_global)
-    {
-        if (b.command == "save")
-        {
+    for (const auto &b : cfg.keymap_global) {
+        if (b.command == "save") {
             found_save = true;
             ASSERT_TRUE((b.chord.mods & KeyEvent::Ctrl) != 0);
             ASSERT_TRUE(b.chord.codepoint == 'S' || b.chord.codepoint == 's');
@@ -56,8 +53,7 @@ TEST(TUI, Config)
     ASSERT_TRUE(cfg_bad.editor.soft_wrap);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

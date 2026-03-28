@@ -35,8 +35,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 
 /// @brief Construct a tree node with the provided label string.
 /// @details Nodes start collapsed with no children and no parent reference.
@@ -49,8 +48,7 @@ TreeNode::TreeNode(std::string lbl) : label(std::move(lbl)) {}
 ///          navigation and rebuilds can track ancestry.
 /// @param child Node to adopt as the final child.
 /// @return Raw pointer to the stored child to aid fluent tree construction.
-TreeNode *TreeNode::add(std::unique_ptr<TreeNode> child)
-{
+TreeNode *TreeNode::add(std::unique_ptr<TreeNode> child) {
     child->parent = this;
     children.push_back(std::move(child));
     return children.back().get();
@@ -62,15 +60,13 @@ TreeNode *TreeNode::add(std::unique_ptr<TreeNode> child)
 ///          the visible cache.  This ensures the widget paints valid content on
 ///          the very first frame.
 TreeView::TreeView(std::vector<std::unique_ptr<TreeNode>> roots, const style::Theme &theme)
-    : roots_(std::move(roots)), theme_(theme)
-{
+    : roots_(std::move(roots)), theme_(theme) {
     rebuild();
 }
 
 /// @brief Tree views require focus to drive expansion and navigation via keyboard.
 /// @return Always true so focus-based navigation can interact with the widget.
-bool TreeView::wantsFocus() const
-{
+bool TreeView::wantsFocus() const {
     return true;
 }
 
@@ -82,12 +78,10 @@ bool TreeView::wantsFocus() const
 ///          width.  Styling uses the accent role for markers and the normal role
 ///          for text, keeping selection obvious while retaining theme control.
 /// @param sb Screen buffer receiving the rendered characters.
-void TreeView::paint(render::ScreenBuffer &sb)
-{
+void TreeView::paint(render::ScreenBuffer &sb) {
     const auto &sel = theme_.style(style::Role::Accent);
     const auto &nor = theme_.style(style::Role::Normal);
-    for (std::size_t i = 0; i < visible_.size() && static_cast<int>(i) < rect_.h; ++i)
-    {
+    for (std::size_t i = 0; i < visible_.size() && static_cast<int>(i) < rect_.h; ++i) {
         auto *node = visible_[i];
         int y = rect_.y + static_cast<int>(i);
         int x = rect_.x;
@@ -96,30 +90,24 @@ void TreeView::paint(render::ScreenBuffer &sb)
         csel.style = sel;
         x += 1;
         int d = depth(node);
-        for (int k = 0; k < d * 2 && k + x < rect_.x + rect_.w; ++k)
-        {
+        for (int k = 0; k < d * 2 && k + x < rect_.x + rect_.w; ++k) {
             auto &cell = sb.at(y, x + k);
             cell.ch = U' ';
             cell.style = nor;
         }
         x += d * 2;
-        if (x < rect_.x + rect_.w)
-        {
+        if (x < rect_.x + rect_.w) {
             auto &mark = sb.at(y, x);
             mark.ch = node->children.empty() ? U' ' : (node->expanded ? U'-' : U'+');
             mark.style = sel;
             ++x;
         }
         int maxw = rect_.x + rect_.w - x;
-        for (int j = 0; j < maxw; ++j)
-        {
+        for (int j = 0; j < maxw; ++j) {
             auto &cell = sb.at(y, x + j);
-            if (j < static_cast<int>(node->label.size()))
-            {
+            if (j < static_cast<int>(node->label.size())) {
                 cell.ch = static_cast<char32_t>(node->label[j]);
-            }
-            else
-            {
+            } else {
                 cell.ch = U' ';
             }
             cell.style = nor;
@@ -138,61 +126,46 @@ void TreeView::paint(render::ScreenBuffer &sb)
 ///          reflects the latest structure.
 /// @param ev UI event containing the key input.
 /// @return True when the event was consumed and state potentially changed.
-bool TreeView::onEvent(const ui::Event &ev)
-{
-    if (visible_.empty())
-    {
+bool TreeView::onEvent(const ui::Event &ev) {
+    if (visible_.empty()) {
         return false;
     }
     const auto &k = ev.key;
-    if (k.code == term::KeyEvent::Code::Up)
-    {
-        if (cursor_ > 0)
-        {
+    if (k.code == term::KeyEvent::Code::Up) {
+        if (cursor_ > 0) {
             --cursor_;
         }
         return true;
     }
-    if (k.code == term::KeyEvent::Code::Down)
-    {
-        if (cursor_ + 1 < static_cast<int>(visible_.size()))
-        {
+    if (k.code == term::KeyEvent::Code::Down) {
+        if (cursor_ + 1 < static_cast<int>(visible_.size())) {
             ++cursor_;
         }
         return true;
     }
     auto *node = visible_[cursor_];
-    if (k.code == term::KeyEvent::Code::Right)
-    {
-        if (!node->children.empty() && !node->expanded)
-        {
+    if (k.code == term::KeyEvent::Code::Right) {
+        if (!node->children.empty() && !node->expanded) {
             node->expanded = true;
             rebuild();
         }
         return true;
     }
-    if (k.code == term::KeyEvent::Code::Left)
-    {
-        if (node->expanded)
-        {
+    if (k.code == term::KeyEvent::Code::Left) {
+        if (node->expanded) {
             node->expanded = false;
             rebuild();
-        }
-        else if (node->parent)
-        {
+        } else if (node->parent) {
             auto *p = node->parent;
             auto it = std::find(visible_.begin(), visible_.end(), p);
-            if (it != visible_.end())
-            {
+            if (it != visible_.end()) {
                 cursor_ = static_cast<int>(it - visible_.begin());
             }
         }
         return true;
     }
-    if (k.code == term::KeyEvent::Code::Enter)
-    {
-        if (!node->children.empty())
-        {
+    if (k.code == term::KeyEvent::Code::Enter) {
+        if (!node->children.empty()) {
             node->expanded = !node->expanded;
             rebuild();
         }
@@ -205,10 +178,8 @@ bool TreeView::onEvent(const ui::Event &ev)
 /// @details Returns `nullptr` when the tree has no visible nodes.  The pointer
 ///          remains valid as long as the tree structure is unchanged.
 /// @return Pointer to the active node or nullptr when no selection exists.
-TreeNode *TreeView::current() const
-{
-    if (visible_.empty())
-    {
+TreeNode *TreeView::current() const {
+    if (visible_.empty()) {
         return nullptr;
     }
     return visible_[cursor_];
@@ -220,33 +191,26 @@ TreeNode *TreeView::current() const
 ///          preserves natural left-to-right iteration.  The cursor is clamped to
 ///          the new bounds to maintain a valid selection.  This method is called
 ///          eagerly from the constructor and whenever expansion state toggles.
-void TreeView::rebuild()
-{
+void TreeView::rebuild() {
     visible_.clear();
     std::vector<TreeNode *> stack;
-    for (auto &r : roots_)
-    {
+    for (auto &r : roots_) {
         stack.push_back(r.get());
-        while (!stack.empty())
-        {
+        while (!stack.empty()) {
             TreeNode *n = stack.back();
             stack.pop_back();
             visible_.push_back(n);
-            if (n->expanded)
-            {
-                for (auto it = n->children.rbegin(); it != n->children.rend(); ++it)
-                {
+            if (n->expanded) {
+                for (auto it = n->children.rbegin(); it != n->children.rend(); ++it) {
                     stack.push_back(it->get());
                 }
             }
         }
     }
-    if (cursor_ >= static_cast<int>(visible_.size()))
-    {
+    if (cursor_ >= static_cast<int>(visible_.size())) {
         cursor_ = static_cast<int>(visible_.size()) - 1;
     }
-    if (cursor_ < 0)
-    {
+    if (cursor_ < 0) {
         cursor_ = 0;
     }
 }
@@ -256,11 +220,9 @@ void TreeView::rebuild()
 ///          hops on the way.  Used exclusively for indentation when painting.
 /// @param n Node whose depth should be calculated.
 /// @return Zero for root nodes, otherwise the ancestor count.
-int TreeView::depth(TreeNode *n)
-{
+int TreeView::depth(TreeNode *n) {
     int d = 0;
-    while (n->parent)
-    {
+    while (n->parent) {
         n = n->parent;
         ++d;
     }

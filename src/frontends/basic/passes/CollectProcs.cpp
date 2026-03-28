@@ -27,21 +27,17 @@
 
 #include <functional>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-void CollectProcedures(Program &prog)
-{
+void CollectProcedures(Program &prog) {
     std::vector<std::string> nsStack;
 
     // Helper to set fields on a procedure declaration.
-    auto stripSuffix = [](std::string_view name) -> std::string_view
-    {
+    auto stripSuffix = [](std::string_view name) -> std::string_view {
         if (name.empty())
             return name;
         char last = name.back();
-        switch (last)
-        {
+        switch (last) {
             case '$':
             case '#':
             case '!':
@@ -53,8 +49,7 @@ void CollectProcedures(Program &prog)
         }
     };
 
-    auto assignProcIdentity = [&](auto &decl)
-    {
+    auto assignProcIdentity = [&](auto &decl) {
         decl.namespacePath = nsStack; // copy canonical segments
 
         // Build canonical qualified name: nsStack.join('.') + optional '.' + proc ident
@@ -62,17 +57,13 @@ void CollectProcedures(Program &prog)
         std::string procCanon = CanonicalizeIdent(stripSuffix(decl.name));
 
         std::string qn;
-        if (!nsQual.empty())
-        {
+        if (!nsQual.empty()) {
             qn = nsQual;
-            if (!procCanon.empty())
-            {
+            if (!procCanon.empty()) {
                 qn.push_back('.');
                 qn += procCanon;
             }
-        }
-        else
-        {
+        } else {
             qn = procCanon;
         }
         decl.qualifiedName = std::move(qn);
@@ -80,20 +71,15 @@ void CollectProcedures(Program &prog)
 
     // Recursive DFS over statement lists.
     std::function<void(std::vector<StmtPtr> &)> scan;
-    scan = [&](std::vector<StmtPtr> &stmts)
-    {
-        for (auto &stmtPtr : stmts)
-        {
+    scan = [&](std::vector<StmtPtr> &stmts) {
+        for (auto &stmtPtr : stmts) {
             if (!stmtPtr)
                 continue;
-            switch (stmtPtr->stmtKind())
-            {
-                case Stmt::Kind::NamespaceDecl:
-                {
+            switch (stmtPtr->stmtKind()) {
+                case Stmt::Kind::NamespaceDecl: {
                     auto &ns = static_cast<NamespaceDecl &>(*stmtPtr);
                     // Push canonicalized segments
-                    for (const auto &seg : ns.path)
-                    {
+                    for (const auto &seg : ns.path) {
                         std::string canon = CanonicalizeIdent(seg);
                         if (!canon.empty())
                             nsStack.push_back(std::move(canon));
@@ -109,14 +95,12 @@ void CollectProcedures(Program &prog)
                         nsStack.clear();
                     break;
                 }
-                case Stmt::Kind::FunctionDecl:
-                {
+                case Stmt::Kind::FunctionDecl: {
                     auto &fn = static_cast<FunctionDecl &>(*stmtPtr);
                     assignProcIdentity(fn);
                     break;
                 }
-                case Stmt::Kind::SubDecl:
-                {
+                case Stmt::Kind::SubDecl: {
                     auto &sub = static_cast<SubDecl &>(*stmtPtr);
                     assignProcIdentity(sub);
                     break;

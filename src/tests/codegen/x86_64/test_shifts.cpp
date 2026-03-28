@@ -19,20 +19,16 @@
 #include <iostream>
 #include <string>
 
-namespace viper::codegen::x64
-{
-namespace
-{
-[[nodiscard]] ILValue makeI64Param(int id) noexcept
-{
+namespace viper::codegen::x64 {
+namespace {
+[[nodiscard]] ILValue makeI64Param(int id) noexcept {
     ILValue value{};
     value.kind = ILValue::Kind::I64;
     value.id = id;
     return value;
 }
 
-[[nodiscard]] ILValue makeI64Const(int64_t val) noexcept
-{
+[[nodiscard]] ILValue makeI64Const(int64_t val) noexcept {
     ILValue constant{};
     constant.kind = ILValue::Kind::I64;
     constant.id = -1;
@@ -40,16 +36,14 @@ namespace
     return constant;
 }
 
-[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept
-{
+[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept {
     ILValue ref{};
     ref.kind = kind;
     ref.id = id;
     return ref;
 }
 
-[[nodiscard]] ILModule makeShiftModule()
-{
+[[nodiscard]] ILModule makeShiftModule() {
     ILValue x = makeI64Param(0);
     ILValue s = makeI64Param(1);
 
@@ -107,23 +101,20 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makeShiftModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
 
-    if (!result.errors.empty())
-    {
+    if (!result.errors.empty()) {
         std::cerr << result.errors;
         return EXIT_FAILURE;
     }
 
     if (result.asmText.find("shlq $3, ") == std::string::npos ||
         result.asmText.find("sarq %cl, ") == std::string::npos ||
-        result.asmText.find("shrq %cl, ") == std::string::npos)
-    {
+        result.asmText.find("shrq %cl, ") == std::string::npos) {
         std::cerr << "Unexpected shift assembly:\n" << result.asmText;
         return EXIT_FAILURE;
     }

@@ -26,22 +26,17 @@
 #include <string_view>
 #include <vector>
 
-namespace il::frontends::basic
-{
-namespace lower
-{
+namespace il::frontends::basic {
+namespace lower {
 class BuiltinLowerContext;
 } // namespace lower
 
 /// @brief Declarative scan rule describing runtime requirements for a builtin.
-struct BuiltinScanRule
-{
+struct BuiltinScanRule {
     /// @brief How the builtin's result type should be computed.
-    struct ResultSpec
-    {
+    struct ResultSpec {
         /// @brief Result strategy used during scanning.
-        enum class Kind
-        {
+        enum class Kind {
             Fixed,   ///< Always yields the @ref type supplied below.
             FromArg, ///< Mirrors the type inferred for a specific argument.
         } kind{Kind::Fixed};
@@ -51,8 +46,7 @@ struct BuiltinScanRule
     } result{};
 
     /// @brief How scanning should traverse the builtin's argument list.
-    enum class ArgTraversal
-    {
+    enum class ArgTraversal {
         All,      ///< Visit every provided argument in order.
         Explicit, ///< Visit only the indexes listed in @ref explicitArgs.
     } traversal{ArgTraversal::All};
@@ -61,18 +55,15 @@ struct BuiltinScanRule
     std::vector<std::size_t> explicitArgs{};
 
     /// @brief Runtime feature toggles evaluated after scanning arguments.
-    struct Feature
-    {
+    struct Feature {
         /// @brief Which Lowerer helper should be invoked for the feature.
-        enum class Action
-        {
+        enum class Action {
             Request, ///< Call Lowerer::requestHelper.
             Track,   ///< Call Lowerer::trackRuntime.
         } action{Action::Request};
 
         /// @brief Conditional guard controlling whether the feature fires.
-        enum class Condition
-        {
+        enum class Condition {
             Always,         ///< Unconditionally perform the action.
             IfArgPresent,   ///< Fire when the argument at @ref argIndex exists.
             IfArgMissing,   ///< Fire when the argument at @ref argIndex is absent.
@@ -93,14 +84,11 @@ struct BuiltinScanRule
 const BuiltinScanRule &getBuiltinScanRule(BuiltinCallExpr::Builtin b);
 
 /// @brief Declarative lowering rule describing runtime invocation for a builtin.
-struct BuiltinLoweringRule
-{
+struct BuiltinLoweringRule {
     /// @brief Result strategy mirroring @ref BuiltinScanRule::ResultSpec.
-    struct ResultSpec
-    {
+    struct ResultSpec {
         /// @brief How the result type is determined at lowering time.
-        enum class Kind
-        {
+        enum class Kind {
             Fixed,   ///< Always use the supplied @ref type.
             FromArg, ///< Mirror the type of an argument index.
         } kind{Kind::Fixed};
@@ -110,11 +98,9 @@ struct BuiltinLoweringRule
     };
 
     /// @brief Runtime helper invocation tracking used during lowering.
-    struct Feature
-    {
+    struct Feature {
         /// @brief Which runtime tracking API to invoke.
-        enum class Action
-        {
+        enum class Action {
             Request, ///< Call @ref Lowerer::requestHelper.
             Track,   ///< Call @ref Lowerer::trackRuntime.
         } action{Action::Request};
@@ -124,11 +110,9 @@ struct BuiltinLoweringRule
     };
 
     /// @brief Transformation applied to an argument prior to emission.
-    struct ArgTransform
-    {
+    struct ArgTransform {
         /// @brief Specific adjustment performed on the argument value.
-        enum class Kind
-        {
+        enum class Kind {
             EnsureI64,  ///< Invoke @ref Lowerer::ensureI64.
             EnsureF64,  ///< Invoke @ref Lowerer::ensureF64.
             EnsureI32,  ///< Invoke @ref Lowerer::ensureI64 followed by a narrow to i32.
@@ -142,13 +126,11 @@ struct BuiltinLoweringRule
     };
 
     /// @brief Argument description for runtime emission.
-    struct Argument
-    {
+    struct Argument {
         std::size_t index{0};                   ///< Index into BuiltinCallExpr::args.
         std::vector<ArgTransform> transforms{}; ///< Transformations to apply before use.
 
-        struct DefaultValue
-        {
+        struct DefaultValue {
             Lowerer::ExprType type{Lowerer::ExprType::I64}; ///< Expression type of the default.
             double f64{0.0};                                ///< Floating default payload.
             std::int64_t i64{0};                            ///< Integer default payload.
@@ -158,11 +140,9 @@ struct BuiltinLoweringRule
     };
 
     /// @brief Variant describing how to materialize the builtin call.
-    struct Variant
-    {
+    struct Variant {
         /// @brief Selection predicate for the variant.
-        enum class Condition
-        {
+        enum class Condition {
             Always,        ///< Applies unconditionally.
             IfArgPresent,  ///< Applies when argument exists.
             IfArgMissing,  ///< Applies when argument is absent.
@@ -176,8 +156,7 @@ struct BuiltinLoweringRule
         std::optional<std::size_t> callLocArg{}; ///< Optional argument providing emission location.
 
         /// @brief Lowering strategy for the variant.
-        enum class Kind
-        {
+        enum class Kind {
             CallRuntime, ///< Call a runtime helper.
             EmitUnary,   ///< Emit a unary opcode.
             Custom,      ///< Reserved for bespoke handlers.
@@ -195,15 +174,13 @@ struct BuiltinLoweringRule
 };
 
 /// @brief Metadata for a BASIC built-in function.
-struct BuiltinInfo
-{
+struct BuiltinInfo {
     const char *name;                          ///< BASIC source spelling.
     SemanticAnalyzer::BuiltinAnalyzer analyze; ///< Optional semantic handler.
 };
 
 /// @brief Argument count constraints for a builtin.
-struct BuiltinArity
-{
+struct BuiltinArity {
     std::size_t minArgs; ///< Minimum required arguments.
     std::size_t maxArgs; ///< Maximum allowed arguments.
 };
@@ -232,8 +209,7 @@ BuiltinHandler find_builtin(std::string_view name);
 /// @brief Lightweight result kind derived from builtin descriptor metadata.
 /// @details Only returns a concrete kind for builtins with fixed result
 ///          categories; builtins whose result depends on arguments yield Unknown.
-enum class BuiltinResultKind : std::uint8_t
-{
+enum class BuiltinResultKind : std::uint8_t {
     Unknown = 0, ///< Result type depends on arguments or is not determinable.
     Int,         ///< Always produces an integer result.
     Float,       ///< Always produces a floating-point result.
@@ -248,8 +224,7 @@ BuiltinResultKind getBuiltinFixedResult(BuiltinCallExpr::Builtin b);
 // Semantic signature view (registry-driven) ----------------------------------
 
 /// @brief Bitmask describing which BASIC type categories are accepted for an argument.
-enum class BuiltinArgTypeMask : std::uint8_t
-{
+enum class BuiltinArgTypeMask : std::uint8_t {
     None = 0,                          ///< No type accepted (sentinel).
     Int = 1U << 0U,                    ///< Integer types (INTEGER, LONG).
     Float = 1U << 1U,                  ///< Floating-point types (SINGLE, DOUBLE).
@@ -262,8 +237,7 @@ enum class BuiltinArgTypeMask : std::uint8_t
 /// @brief Per-argument specification in a semantic signature view.
 /// @details Describes whether an argument is optional and which type categories
 ///          are accepted by the builtin for that argument position.
-struct SemanticArgSpecView
-{
+struct SemanticArgSpecView {
     bool optional{false};                                ///< True when the argument may be omitted.
     BuiltinArgTypeMask allowed{BuiltinArgTypeMask::Any}; ///< Accepted type categories.
 };
@@ -271,8 +245,7 @@ struct SemanticArgSpecView
 /// @brief Registry-backed semantic signature describing arity and argument types.
 /// @details Provides a lightweight view over the builtin's argument constraints
 ///          for use during semantic analysis. The args pointer references static data.
-struct SemanticSignatureView
-{
+struct SemanticSignatureView {
     std::size_t minArgs{0};                   ///< Minimum required argument count.
     std::size_t maxArgs{0};                   ///< Maximum allowed argument count.
     const SemanticArgSpecView *args{nullptr}; ///< Per-argument specifications (static storage).

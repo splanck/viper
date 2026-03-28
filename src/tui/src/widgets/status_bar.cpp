@@ -23,29 +23,24 @@
 
 #include <algorithm>
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 /// @brief Construct a status bar with initial left and right text segments.
 /// @details Stores references to the immutable theme while taking ownership of
 ///          the text strings.  The constructor does not perform any rendering;
 ///          paint operations occur later via @ref paint.
 StatusBar::StatusBar(std::string left, std::string right, const style::Theme &theme)
-    : left_(std::move(left)), right_(std::move(right)), theme_(theme)
-{
-}
+    : left_(std::move(left)), right_(std::move(right)), theme_(theme) {}
 
 /// @brief Replace the left-hand message displayed by the status bar.
 /// @details The string is copied into the widget's storage so the caller may
 ///          discard or reuse the argument immediately.
-void StatusBar::setLeft(std::string left)
-{
+void StatusBar::setLeft(std::string left) {
     left_ = std::move(left);
 }
 
 /// @brief Replace the right-hand message displayed by the status bar.
 /// @details Mirrors @ref setLeft while targeting the right-aligned segment.
-void StatusBar::setRight(std::string right)
-{
+void StatusBar::setRight(std::string right) {
     right_ = std::move(right);
 }
 
@@ -54,8 +49,7 @@ void StatusBar::setRight(std::string right)
 ///          widget's origin, and paints the right string aligned to the widget's
 ///          far edge.  Strings longer than the available space are clipped to
 ///          avoid wrapping artefacts.
-void StatusBar::paint(render::ScreenBuffer &sb)
-{
+void StatusBar::paint(render::ScreenBuffer &sb) {
     const auto &st = theme_.style(style::Role::Normal);
     int y = rect_.y + rect_.h - 1;
     // Clear the row with spaces

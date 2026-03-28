@@ -21,8 +21,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Represents file-scoped USING directives with deterministic order.
 ///
@@ -32,12 +31,10 @@ namespace il::frontends::basic
 ///
 /// @invariant Import order matches source declaration order.
 /// @invariant Alias lookups are case-insensitive.
-class UsingContext
-{
+class UsingContext {
   public:
     /// @brief Represents a single USING directive.
-    struct Import
-    {
+    struct Import {
         /// Namespace path being imported (e.g., "Foo.Bar").
         std::string ns;
 
@@ -58,8 +55,7 @@ class UsingContext
 
     /// @brief Retrieve all imports in declaration order.
     /// @return Read-only reference to the import vector.
-    [[nodiscard]] const std::vector<Import> &imports() const noexcept
-    {
+    [[nodiscard]] const std::vector<Import> &imports() const noexcept {
         return imports_;
     }
 

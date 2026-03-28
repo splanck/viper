@@ -41,8 +41,7 @@ static vg_widget_vtable_t g_tooltip_vtable = {.destroy = tooltip_destroy,
 
 static vg_tooltip_manager_t g_tooltip_manager = {0};
 
-vg_tooltip_manager_t *vg_tooltip_manager_get(void)
-{
+vg_tooltip_manager_t *vg_tooltip_manager_get(void) {
     return &g_tooltip_manager;
 }
 
@@ -50,8 +49,7 @@ vg_tooltip_manager_t *vg_tooltip_manager_get(void)
 // Tooltip Implementation
 //=============================================================================
 
-vg_tooltip_t *vg_tooltip_create(void)
-{
+vg_tooltip_t *vg_tooltip_create(void) {
     vg_tooltip_t *tooltip = calloc(1, sizeof(vg_tooltip_t));
     if (!tooltip)
         return NULL;
@@ -82,28 +80,24 @@ vg_tooltip_t *vg_tooltip_create(void)
     return tooltip;
 }
 
-static void tooltip_destroy(vg_widget_t *widget)
-{
+static void tooltip_destroy(vg_widget_t *widget) {
     vg_tooltip_t *tooltip = (vg_tooltip_t *)widget;
     free(tooltip->text);
 }
 
 /// @brief Tooltip destroy.
-void vg_tooltip_destroy(vg_tooltip_t *tooltip)
-{
+void vg_tooltip_destroy(vg_tooltip_t *tooltip) {
     if (!tooltip)
         return;
     vg_widget_destroy(&tooltip->base);
 }
 
-static void tooltip_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void tooltip_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_tooltip_t *tooltip = (vg_tooltip_t *)widget;
     (void)available_width;
     (void)available_height;
 
-    if (!tooltip->text || !tooltip->font)
-    {
+    if (!tooltip->text || !tooltip->font) {
         widget->measured_width = 0;
         widget->measured_height = 0;
         return;
@@ -113,8 +107,7 @@ static void tooltip_measure(vg_widget_t *widget, float available_width, float av
     vg_font_measure_text(tooltip->font, tooltip->font_size, tooltip->text, &metrics);
 
     float text_width = metrics.width;
-    if (text_width > tooltip->max_width - tooltip->padding * 2)
-    {
+    if (text_width > tooltip->max_width - tooltip->padding * 2) {
         text_width = tooltip->max_width - tooltip->padding * 2;
     }
 
@@ -122,8 +115,7 @@ static void tooltip_measure(vg_widget_t *widget, float available_width, float av
     widget->measured_height = metrics.height + tooltip->padding * 2;
 }
 
-static void tooltip_paint(vg_widget_t *widget, void *canvas)
-{
+static void tooltip_paint(vg_widget_t *widget, void *canvas) {
     vg_tooltip_t *tooltip = (vg_tooltip_t *)widget;
 
     if (!tooltip->is_visible || !tooltip->text)
@@ -134,8 +126,7 @@ static void tooltip_paint(vg_widget_t *widget, void *canvas)
     (void)tooltip->border_color;
 
     // Draw text
-    if (tooltip->font && tooltip->text[0])
-    {
+    if (tooltip->font && tooltip->text[0]) {
         float text_x = widget->x + tooltip->padding;
         float text_y = widget->y + tooltip->padding;
 
@@ -150,8 +141,7 @@ static void tooltip_paint(vg_widget_t *widget, void *canvas)
 }
 
 /// @brief Tooltip set text.
-void vg_tooltip_set_text(vg_tooltip_t *tooltip, const char *text)
-{
+void vg_tooltip_set_text(vg_tooltip_t *tooltip, const char *text) {
     if (!tooltip)
         return;
 
@@ -161,8 +151,7 @@ void vg_tooltip_set_text(vg_tooltip_t *tooltip, const char *text)
 }
 
 /// @brief Tooltip show at.
-void vg_tooltip_show_at(vg_tooltip_t *tooltip, int x, int y)
-{
+void vg_tooltip_show_at(vg_tooltip_t *tooltip, int x, int y) {
     if (!tooltip)
         return;
 
@@ -174,8 +163,7 @@ void vg_tooltip_show_at(vg_tooltip_t *tooltip, int x, int y)
 }
 
 /// @brief Tooltip hide.
-void vg_tooltip_hide(vg_tooltip_t *tooltip)
-{
+void vg_tooltip_hide(vg_tooltip_t *tooltip) {
     if (!tooltip)
         return;
 
@@ -184,8 +172,7 @@ void vg_tooltip_hide(vg_tooltip_t *tooltip)
 }
 
 /// @brief Tooltip set anchor.
-void vg_tooltip_set_anchor(vg_tooltip_t *tooltip, vg_widget_t *anchor)
-{
+void vg_tooltip_set_anchor(vg_tooltip_t *tooltip, vg_widget_t *anchor) {
     if (!tooltip)
         return;
 
@@ -197,8 +184,7 @@ void vg_tooltip_set_anchor(vg_tooltip_t *tooltip, vg_widget_t *anchor)
 void vg_tooltip_set_timing(vg_tooltip_t *tooltip,
                            uint32_t show_delay_ms,
                            uint32_t hide_delay_ms,
-                           uint32_t duration_ms)
-{
+                           uint32_t duration_ms) {
     if (!tooltip)
         return;
 
@@ -211,17 +197,14 @@ void vg_tooltip_set_timing(vg_tooltip_t *tooltip,
 // Tooltip Manager Implementation
 //=============================================================================
 
-void vg_tooltip_manager_update(vg_tooltip_manager_t *mgr, uint64_t now_ms)
-{
+void vg_tooltip_manager_update(vg_tooltip_manager_t *mgr, uint64_t now_ms) {
     if (!mgr)
         return;
 
     // Check if pending show should trigger
-    if (mgr->pending_show && mgr->hovered_widget)
-    {
+    if (mgr->pending_show && mgr->hovered_widget) {
         // For now, just show immediately (delay handled elsewhere)
-        if (mgr->active_tooltip)
-        {
+        if (mgr->active_tooltip) {
             vg_tooltip_show_at(mgr->active_tooltip, mgr->cursor_x, mgr->cursor_y);
             mgr->pending_show = false;
         }
@@ -229,27 +212,23 @@ void vg_tooltip_manager_update(vg_tooltip_manager_t *mgr, uint64_t now_ms)
 
     // Check auto-hide
     if (mgr->active_tooltip && mgr->active_tooltip->is_visible &&
-        mgr->active_tooltip->duration_ms > 0)
-    {
+        mgr->active_tooltip->duration_ms > 0) {
         // Auto-hide logic would go here
         (void)now_ms;
     }
 }
 
 /// @brief Tooltip manager on hover.
-void vg_tooltip_manager_on_hover(vg_tooltip_manager_t *mgr, vg_widget_t *widget, int x, int y)
-{
+void vg_tooltip_manager_on_hover(vg_tooltip_manager_t *mgr, vg_widget_t *widget, int x, int y) {
     if (!mgr)
         return;
 
     mgr->cursor_x = x;
     mgr->cursor_y = y;
 
-    if (widget != mgr->hovered_widget)
-    {
+    if (widget != mgr->hovered_widget) {
         // Widget changed
-        if (mgr->active_tooltip)
-        {
+        if (mgr->active_tooltip) {
             vg_tooltip_hide(mgr->active_tooltip);
         }
 
@@ -260,13 +239,11 @@ void vg_tooltip_manager_on_hover(vg_tooltip_manager_t *mgr, vg_widget_t *widget,
 }
 
 /// @brief Tooltip manager on leave.
-void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr)
-{
+void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr) {
     if (!mgr)
         return;
 
-    if (mgr->active_tooltip)
-    {
+    if (mgr->active_tooltip) {
         vg_tooltip_hide(mgr->active_tooltip);
     }
 
@@ -275,21 +252,18 @@ void vg_tooltip_manager_on_leave(vg_tooltip_manager_t *mgr)
 }
 
 /// @brief Widget set tooltip text.
-void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text)
-{
+void vg_widget_set_tooltip_text(vg_widget_t *widget, const char *text) {
     if (!widget)
         return;
 
     // Create tooltip if needed
     vg_tooltip_manager_t *mgr = vg_tooltip_manager_get();
 
-    if (!mgr->active_tooltip)
-    {
+    if (!mgr->active_tooltip) {
         mgr->active_tooltip = vg_tooltip_create();
     }
 
-    if (mgr->active_tooltip)
-    {
+    if (mgr->active_tooltip) {
         vg_tooltip_set_text(mgr->active_tooltip, text);
     }
 }

@@ -24,23 +24,19 @@
 
 using namespace il::frontends::basic;
 
-namespace
-{
+namespace {
 
-struct BenchOut
-{
+struct BenchOut {
     double ms;
     int64_t exitCode;
 };
 
-BenchOut runBasic(const std::string &src)
-{
+BenchOut runBasic(const std::string &src) {
     il::support::SourceManager sm;
     BasicCompilerOptions opts{};
     BasicCompilerInput input{src, "bench.bas"};
     auto result = compileBasic(input, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "compile failed\n";
         return {0.0, -1};
     }
@@ -53,8 +49,7 @@ BenchOut runBasic(const std::string &src)
     return {ms, code};
 }
 
-std::string programLen(size_t iters)
-{
+std::string programLen(size_t iters) {
     // Sum Len(s) over N iterations
     return "10 DIM s AS STRING\n"
            "20 LET s = \"abcd\"\n"
@@ -67,8 +62,7 @@ std::string programLen(size_t iters)
            "70 PRINT x\n";
 }
 
-std::string programProp(size_t iters)
-{
+std::string programProp(size_t iters) {
     // Sum s.Length over N iterations
     return "10 DIM s AS STRING\n"
            "20 LET s = \"abcd\"\n"
@@ -83,8 +77,7 @@ std::string programProp(size_t iters)
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     size_t iters = 2'000'000; // tune as needed for environment
     if (argc >= 2)
         iters = static_cast<size_t>(std::strtoull(argv[1], nullptr, 10));

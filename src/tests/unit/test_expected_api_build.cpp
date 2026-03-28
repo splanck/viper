@@ -18,8 +18,7 @@
 #include "il/api/expected_api.hpp"
 #include "il/core/Module.hpp"
 
-int main()
-{
+int main() {
     il::core::Module module;
     std::istringstream fake_stream("");
     auto parse_result = il::api::v2::parse_text_expected(fake_stream, module);

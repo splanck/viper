@@ -25,15 +25,13 @@
 
 #include "tui/style/theme.hpp"
 
-namespace viper::tui::style
-{
+namespace viper::tui::style {
 /// @brief Construct the default Viper TUI theme.
 /// @details Initialises each semantic role—normal, accent, disabled, and
 ///          selection—with hand-picked RGBA tuples tuned for readability in
 ///          dark terminals.  Values are stored directly inside the @ref Theme so
 ///          subsequent lookups require only a reference return.
-Theme::Theme()
-{
+Theme::Theme() {
     normal_.fg = {255, 255, 255, 255};
     normal_.bg = {0, 0, 0, 255};
 
@@ -53,10 +51,8 @@ Theme::Theme()
 ///          remain resilient to future enum additions.
 /// @param r Semantic role identifying the desired palette entry.
 /// @return Reference to the immutable style describing colours for @p r.
-const render::Style &Theme::style(Role r) const
-{
-    switch (r)
-    {
+const render::Style &Theme::style(Role r) const {
+    switch (r) {
         case Role::Accent:
             return accent_;
         case Role::Disabled:

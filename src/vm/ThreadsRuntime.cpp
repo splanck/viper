@@ -34,10 +34,8 @@
 
 #include <cstdint>
 
-namespace il::vm
-{
-namespace
-{
+namespace il::vm {
+namespace {
 
 using il::runtime::signatures::make_signature;
 using il::runtime::signatures::SigParam;
@@ -45,8 +43,7 @@ using il::runtime::signatures::SigParam;
 /// @brief Payload passed to the thread entry trampoline.
 /// @details Captures the module, program state, entry function, and user arg
 ///          so a new VM can be created and invoked on the target function.
-struct VmThreadStartPayload
-{
+struct VmThreadStartPayload {
     const il::core::Module *module = nullptr;
     std::shared_ptr<VM::ProgramState> program;
     const il::core::Function *entry = nullptr;
@@ -56,8 +53,7 @@ struct VmThreadStartPayload
 /// @brief Payload passed to VM-backed Async.Run worker threads.
 /// @details Extends the basic thread payload with a promise reference owned by
 ///          the worker thread until it resolves the asynchronous result.
-struct VmAsyncRunPayload
-{
+struct VmAsyncRunPayload {
     const il::core::Module *module = nullptr;
     std::shared_ptr<VM::ProgramState> program;
     const il::core::Function *entry = nullptr;
@@ -70,31 +66,25 @@ struct VmAsyncRunPayload
 ///          state, and invokes the entry function. Any unexpected exception
 ///          aborts the runtime to avoid silent thread failures.
 /// @param raw Opaque pointer to a @ref VmThreadStartPayload.
-extern "C" void vm_thread_entry_trampoline(void *raw)
-{
+extern "C" void vm_thread_entry_trampoline(void *raw) {
     VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
-    if (!payload || !payload->module || !payload->entry)
-    {
+    if (!payload || !payload->module || !payload->entry) {
         delete payload;
         rt_abort("Thread.Start: invalid entry");
     }
 
-    try
-    {
+    try {
         VM vm(*payload->module, payload->program);
 
         il::support::SmallVector<Slot, 2> args;
-        if (payload->entry->params.size() == 1)
-        {
+        if (payload->entry->params.size() == 1) {
             Slot s{};
             s.ptr = payload->arg;
             args.push_back(s);
         }
 
         detail::VMAccess::callFunction(vm, *payload->entry, args);
-    }
-    catch (...)
-    {
+    } catch (...) {
         rt_abort("Thread.Start: unhandled exception");
     }
 
@@ -107,13 +97,11 @@ extern "C" void vm_thread_entry_trampoline(void *raw)
 /// @param module Module containing candidate functions.
 /// @param entry Raw pointer supplied by the runtime.
 /// @return Pointer to the matching function, or nullptr if invalid.
-static const il::core::Function *resolveEntryFunction(const il::core::Module &module, void *entry)
-{
+static const il::core::Function *resolveEntryFunction(const il::core::Module &module, void *entry) {
     if (!entry)
         return nullptr;
     const auto *candidate = static_cast<const il::core::Function *>(entry);
-    for (const auto &fn : module.functions)
-    {
+    for (const auto &fn : module.functions) {
         if (&fn == candidate)
             return &fn;
     }
@@ -125,8 +113,7 @@ static const il::core::Function *resolveEntryFunction(const il::core::Module &mo
 ///          parameters or a single pointer parameter. Violations trap with a
 ///          diagnostic message.
 /// @param fn Function to validate.
-static void validateEntrySignature(const il::core::Function &fn)
-{
+static void validateEntrySignature(const il::core::Function &fn) {
     using Kind = il::core::Type::Kind;
     if (fn.retType.kind != Kind::Void)
         rt_trap("Thread.Start: invalid entry signature");
@@ -140,8 +127,7 @@ static void validateEntrySignature(const il::core::Function &fn)
 /// @brief Validate the signature of an Async.Run worker entry function.
 /// @details Async worker trampolines lowered from Zia async functions must
 ///          return an object pointer and accept exactly one environment pointer.
-static void validateAsyncEntrySignature(const il::core::Function &fn)
-{
+static void validateAsyncEntrySignature(const il::core::Function &fn) {
     using Kind = il::core::Type::Kind;
     if (fn.retType.kind != Kind::Ptr)
         rt_trap("Async.Run: invalid entry signature");
@@ -157,8 +143,7 @@ static void validateAsyncEntrySignature(const il::core::Function &fn)
 ///          forwards directly to @ref rt_thread_start.
 /// @param args Argument array provided by the runtime bridge.
 /// @param result Optional out-parameter to receive the thread handle.
-static void threads_thread_start_handler(void **args, void *result)
-{
+static void threads_thread_start_handler(void **args, void *result) {
     void *entry = nullptr;
     void *arg = nullptr;
     if (args && args[0])
@@ -170,8 +155,7 @@ static void threads_thread_start_handler(void **args, void *result)
         rt_trap("Thread.Start: null entry");
 
     VM *parentVm = activeVMInstance();
-    if (!parentVm)
-    {
+    if (!parentVm) {
         void *thread = rt_thread_start(entry, arg);
         if (result)
             *reinterpret_cast<void **>(result) = thread;
@@ -190,8 +174,7 @@ static void threads_thread_start_handler(void **args, void *result)
 
     auto *payload = new VmThreadStartPayload{&module, std::move(program), entryFn, arg};
     void *thread = rt_thread_start(reinterpret_cast<void *>(&vm_thread_entry_trampoline), payload);
-    if (!thread)
-    {
+    if (!thread) {
         delete payload;
         rt_trap("Thread.Start: failed to create thread");
     }
@@ -204,31 +187,25 @@ static void threads_thread_start_handler(void **args, void *result)
 ///          setjmp/longjmp recovery point so traps are captured instead of
 ///          terminating the process.
 /// @param raw Opaque pointer to a @ref VmThreadStartPayload.
-extern "C" void vm_thread_safe_entry_trampoline(void *raw)
-{
+extern "C" void vm_thread_safe_entry_trampoline(void *raw) {
     VmThreadStartPayload *payload = static_cast<VmThreadStartPayload *>(raw);
-    if (!payload || !payload->module || !payload->entry)
-    {
+    if (!payload || !payload->module || !payload->entry) {
         delete payload;
         rt_abort("Thread.StartSafe: invalid entry");
     }
 
-    try
-    {
+    try {
         VM vm(*payload->module, payload->program);
 
         il::support::SmallVector<Slot, 2> args;
-        if (payload->entry->params.size() == 1)
-        {
+        if (payload->entry->params.size() == 1) {
             Slot s{};
             s.ptr = payload->arg;
             args.push_back(s);
         }
 
         detail::VMAccess::callFunction(vm, *payload->entry, args);
-    }
-    catch (...)
-    {
+    } catch (...) {
         // Trap was intercepted by setjmp in the caller (safe_thread_entry).
         // If not, this is an unexpected exception.  Cannot re-throw from
         // extern "C" linkage (UB / MSVC C4297), so abort.
@@ -243,8 +220,7 @@ extern "C" void vm_thread_safe_entry_trampoline(void *raw)
 /// @brief Runtime bridge handler for Viper.Threads.Thread.StartSafe.
 /// @details Like threads_thread_start_handler but uses the safe entry trampoline
 ///          that wraps execution in trap recovery via setjmp/longjmp.
-static void threads_thread_start_safe_handler(void **args, void *result)
-{
+static void threads_thread_start_safe_handler(void **args, void *result) {
     void *entry = nullptr;
     void *arg = nullptr;
     if (args && args[0])
@@ -256,8 +232,7 @@ static void threads_thread_start_safe_handler(void **args, void *result)
         rt_trap("Thread.StartSafe: null entry");
 
     VM *parentVm = activeVMInstance();
-    if (!parentVm)
-    {
+    if (!parentVm) {
         void *thread = rt_thread_start_safe(entry, arg);
         if (result)
             *reinterpret_cast<void **>(result) = thread;
@@ -277,8 +252,7 @@ static void threads_thread_start_safe_handler(void **args, void *result)
     auto *payload = new VmThreadStartPayload{&module, std::move(program), entryFn, arg};
     void *thread =
         rt_thread_start_safe(reinterpret_cast<void *>(&vm_thread_safe_entry_trampoline), payload);
-    if (!thread)
-    {
+    if (!thread) {
         delete payload;
         rt_trap("Thread.StartSafe: failed to create thread");
     }
@@ -289,17 +263,14 @@ static void threads_thread_start_safe_handler(void **args, void *result)
 /// @brief Async worker trampoline for VM-backed Async.Run.
 /// @details Executes the IL worker function in a child VM, then resolves the
 ///          promise with the returned object pointer.
-extern "C" void vm_async_run_entry_trampoline(void *raw)
-{
+extern "C" void vm_async_run_entry_trampoline(void *raw) {
     VmAsyncRunPayload *payload = static_cast<VmAsyncRunPayload *>(raw);
-    if (!payload || !payload->module || !payload->entry || !payload->promise)
-    {
+    if (!payload || !payload->module || !payload->entry || !payload->promise) {
         delete payload;
         rt_abort("Async.Run: invalid entry");
     }
 
-    try
-    {
+    try {
         VM vm(*payload->module, payload->program);
 
         il::support::SmallVector<Slot, 2> args;
@@ -309,9 +280,7 @@ extern "C" void vm_async_run_entry_trampoline(void *raw)
 
         Slot result = detail::VMAccess::callFunction(vm, *payload->entry, args);
         rt_promise_set(payload->promise, result.ptr);
-    }
-    catch (...)
-    {
+    } catch (...) {
         rt_promise_set_error(payload->promise, rt_const_cstr("Async.Run: unhandled exception"));
     }
 
@@ -324,8 +293,7 @@ extern "C" void vm_async_run_entry_trampoline(void *raw)
 /// @details Uses the native runtime helper outside the VM, but when an IL
 ///          function pointer is supplied from VM execution it spawns a child VM
 ///          and resolves a Future with that worker's returned object.
-static void threads_async_run_handler(void **args, void *result)
-{
+static void threads_async_run_handler(void **args, void *result) {
     void *entry = nullptr;
     void *arg = nullptr;
     if (args && args[0])
@@ -337,8 +305,7 @@ static void threads_async_run_handler(void **args, void *result)
         rt_trap("Async.Run: null entry");
 
     VM *parentVm = activeVMInstance();
-    if (!parentVm)
-    {
+    if (!parentVm) {
         void *future = rt_async_run(entry, arg);
         if (result)
             *reinterpret_cast<void **>(result) = future;
@@ -361,8 +328,7 @@ static void threads_async_run_handler(void **args, void *result)
     auto *payload = new VmAsyncRunPayload{&module, std::move(program), entryFn, arg, promise};
     void *thread =
         rt_thread_start(reinterpret_cast<void *>(&vm_async_run_entry_trampoline), payload);
-    if (!thread)
-    {
+    if (!thread) {
         delete payload;
         rt_promise_set_error(promise, rt_const_cstr("Async.Run: failed to create thread"));
         if (result)
@@ -384,8 +350,7 @@ static void threads_async_run_handler(void **args, void *result)
 ///          handlers so they use the VM trampoline when invoked from managed code.
 ///          When the BytecodeVM is linked, its unified handlers overwrite these
 ///          registrations via a static initializer.
-void registerThreadsRuntimeExternals()
-{
+void registerThreadsRuntimeExternals() {
     {
         ExternDesc ext;
         ext.name = il::runtime::names::kThreadsThreadStart;

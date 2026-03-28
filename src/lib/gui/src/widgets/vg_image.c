@@ -13,8 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-vg_image_t *vg_image_create(vg_widget_t *parent)
-{
+vg_image_t *vg_image_create(vg_widget_t *parent) {
     vg_image_t *image = calloc(1, sizeof(vg_image_t));
     if (!image)
         return NULL;
@@ -28,8 +27,7 @@ vg_image_t *vg_image_create(vg_widget_t *parent)
     image->opacity = 1.0f;
     image->bg_color = 0x00000000; // Transparent
 
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &image->base);
     }
 
@@ -37,8 +35,7 @@ vg_image_t *vg_image_create(vg_widget_t *parent)
 }
 
 /// @brief Image set pixels.
-void vg_image_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, int height)
-{
+void vg_image_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, int height) {
     if (!image)
         return;
 
@@ -62,8 +59,7 @@ void vg_image_set_pixels(vg_image_t *image, const uint8_t *pixels, int width, in
     image->img_height = height;
 }
 
-bool vg_image_load_file(vg_image_t *image, const char *path)
-{
+bool vg_image_load_file(vg_image_t *image, const char *path) {
     if (!image || !path)
         return false;
 
@@ -74,8 +70,7 @@ bool vg_image_load_file(vg_image_t *image, const char *path)
 }
 
 /// @brief Image clear.
-void vg_image_clear(vg_image_t *image)
-{
+void vg_image_clear(vg_image_t *image) {
     if (!image)
         return;
     free(image->pixels);
@@ -85,16 +80,14 @@ void vg_image_clear(vg_image_t *image)
 }
 
 /// @brief Image set scale mode.
-void vg_image_set_scale_mode(vg_image_t *image, vg_image_scale_t mode)
-{
+void vg_image_set_scale_mode(vg_image_t *image, vg_image_scale_t mode) {
     if (!image)
         return;
     image->scale_mode = mode;
 }
 
 /// @brief Image set opacity.
-void vg_image_set_opacity(vg_image_t *image, float opacity)
-{
+void vg_image_set_opacity(vg_image_t *image, float opacity) {
     if (!image)
         return;
     if (opacity < 0)

@@ -31,8 +31,7 @@
 #include "frontends/basic/ast/ExprNodes.hpp"
 #include <cassert>
 
-namespace il::frontends::basic::constfold
-{
+namespace il::frontends::basic::constfold {
 /// @brief Attempt to fold a unary NOT expression when the operand is literal.
 /// @details Handles both boolean and integer representations, ensuring that
 ///          integer literals follow BASIC's zero/non-zero truthiness rules.
@@ -40,16 +39,13 @@ namespace il::frontends::basic::constfold
 ///          caller can leave the expression untouched.
 /// @param operand Candidate operand to fold.
 /// @return Folded expression node or @c nullptr when folding is not possible.
-AST::ExprPtr fold_logical_not(const AST::Expr &operand)
-{
-    if (const auto *boolExpr = as<const BoolExpr>(operand))
-    {
+AST::ExprPtr fold_logical_not(const AST::Expr &operand) {
+    if (const auto *boolExpr = as<const BoolExpr>(operand)) {
         auto out = std::make_unique<BoolExpr>();
         out->value = !boolExpr->value;
         return out;
     }
-    if (auto numeric = numeric_from_expr(operand))
-    {
+    if (auto numeric = numeric_from_expr(operand)) {
         if (numeric->isFloat)
             return nullptr;
         auto out = std::make_unique<::il::frontends::basic::BoolExpr>();
@@ -67,10 +63,8 @@ AST::ExprPtr fold_logical_not(const AST::Expr &operand)
 /// @param op Logical operator under consideration.
 /// @param lhs Literal boolean expression on the left-hand side.
 /// @return Folded boolean result when short-circuiting applies.
-std::optional<bool> try_short_circuit(AST::BinaryExpr::Op op, const AST::BoolExpr &lhs)
-{
-    switch (op)
-    {
+std::optional<bool> try_short_circuit(AST::BinaryExpr::Op op, const AST::BoolExpr &lhs) {
+    switch (op) {
         case AST::BinaryExpr::Op::LogicalAndShort:
             if (!lhs.value)
                 return false;
@@ -88,8 +82,7 @@ std::optional<bool> try_short_circuit(AST::BinaryExpr::Op op, const AST::BoolExp
 /// @brief Determine whether an operator participates in short-circuit logic.
 /// @param op Operator from the BASIC AST.
 /// @return @c true when @p op is a short-circuiting AND/OR variant.
-bool is_short_circuit(AST::BinaryExpr::Op op)
-{
+bool is_short_circuit(AST::BinaryExpr::Op op) {
     return op == AST::BinaryExpr::Op::LogicalAndShort || op == AST::BinaryExpr::Op::LogicalOrShort;
 }
 
@@ -103,16 +96,16 @@ bool is_short_circuit(AST::BinaryExpr::Op op)
 /// @param op Binary logical opcode.
 /// @param rhs Right-hand operand.
 /// @return New boolean literal expression or @c nullptr when folding fails.
-AST::ExprPtr fold_boolean_binary(const AST::Expr &lhs, AST::BinaryExpr::Op op, const AST::Expr &rhs)
-{
+AST::ExprPtr fold_boolean_binary(const AST::Expr &lhs,
+                                 AST::BinaryExpr::Op op,
+                                 const AST::Expr &rhs) {
     const auto *lhsBool = as<const BoolExpr>(lhs);
     const auto *rhsBool = as<const BoolExpr>(rhs);
     if (!lhsBool || !rhsBool)
         return nullptr;
 
     auto out = std::make_unique<BoolExpr>();
-    switch (op)
-    {
+    switch (op) {
         case AST::BinaryExpr::Op::LogicalAnd:
         case AST::BinaryExpr::Op::LogicalAndShort:
             out->value = lhsBool->value && rhsBool->value;
@@ -136,8 +129,7 @@ AST::ExprPtr fold_boolean_binary(const AST::Expr &lhs, AST::BinaryExpr::Op op, c
 /// @return Integer constant representing the folded logical result.
 std::optional<Constant> fold_numeric_logic(AST::BinaryExpr::Op op,
                                            const Constant &lhs,
-                                           const Constant &rhs)
-{
+                                           const Constant &rhs) {
     if ((lhs.kind != LiteralKind::Int && lhs.kind != LiteralKind::Float) ||
         (rhs.kind != LiteralKind::Int && rhs.kind != LiteralKind::Float))
         return std::nullopt;
@@ -148,8 +140,7 @@ std::optional<Constant> fold_numeric_logic(AST::BinaryExpr::Op op,
         return std::nullopt;
 
     bool result = false;
-    switch (op)
-    {
+    switch (op) {
         case AST::BinaryExpr::Op::LogicalAnd:
         case AST::BinaryExpr::Op::LogicalAndShort:
             result = (left.i != 0) && (right.i != 0);
@@ -163,8 +154,7 @@ std::optional<Constant> fold_numeric_logic(AST::BinaryExpr::Op op,
     }
 #ifdef VIPER_CONSTFOLD_ASSERTS
     if (op == AST::BinaryExpr::Op::LogicalAnd || op == AST::BinaryExpr::Op::LogicalAndShort ||
-        op == AST::BinaryExpr::Op::LogicalOr || op == AST::BinaryExpr::Op::LogicalOrShort)
-    {
+        op == AST::BinaryExpr::Op::LogicalOr || op == AST::BinaryExpr::Op::LogicalOrShort) {
         bool swapped =
             (op == AST::BinaryExpr::Op::LogicalAnd || op == AST::BinaryExpr::Op::LogicalAndShort)
                 ? (right.i != 0 && left.i != 0)

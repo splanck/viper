@@ -29,8 +29,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // =============================================================================
 // LoweringContext Construction
@@ -52,9 +51,7 @@ ProcedureLowering::LoweringContext::LoweringContext(Lowerer &lowerer,
                                                     const std::vector<StmtPtr> &body,
                                                     const Lowerer::ProcedureConfig &config)
     : lowerer(lowerer), symbols(symbols), builder(builder), emitter(emitter), name(std::move(name)),
-      params(params), body(body), config(config)
-{
-}
+      params(params), body(body), config(config) {}
 
 // =============================================================================
 // Symbol Table Accessors
@@ -67,8 +64,7 @@ ProcedureLowering::LoweringContext::LoweringContext(Lowerer &lowerer,
 ///          recorded usage, mirroring BASIC's default variable semantics.
 /// @param name BASIC identifier whose symbol information is requested.
 /// @return Reference to the mutable symbol record.
-Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
-{
+Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name) {
     return symbolTable_.define(name);
 }
 
@@ -77,8 +73,7 @@ Lowerer::SymbolInfo &Lowerer::ensureSymbol(std::string_view name)
 ///          allowing callers to treat unknown symbols as implicitly typed.
 /// @param name Identifier to probe.
 /// @return Mutable symbol metadata or @c nullptr when absent.
-Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
-{
+Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name) {
     return symbolTable_.lookup(name);
 }
 
@@ -87,8 +82,7 @@ Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name)
 ///          correctness for call sites that only need to inspect metadata.
 /// @param name Identifier to probe.
 /// @return Const symbol metadata or @c nullptr when absent.
-const Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name) const
-{
+const Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name) const {
     return symbolTable_.lookup(name);
 }
 
@@ -99,8 +93,7 @@ const Lowerer::SymbolInfo *Lowerer::findSymbol(std::string_view name) const
 ///          cleared when @ref markArray executes.
 /// @param name Identifier whose type is being fixed.
 /// @param type AST-declared type for the symbol.
-void Lowerer::setSymbolType(std::string_view name, AstType type)
-{
+void Lowerer::setSymbolType(std::string_view name, AstType type) {
     auto &info = ensureSymbol(name);
     info.type = type;
     info.hasType = true;
@@ -116,8 +109,7 @@ void Lowerer::setSymbolType(std::string_view name, AstType type)
 ///          runtime dispatch.
 /// @param name Identifier being classified as an object.
 /// @param className Fully qualified BASIC class identifier.
-void Lowerer::setSymbolObjectType(std::string_view name, std::string className)
-{
+void Lowerer::setSymbolObjectType(std::string_view name, std::string className) {
     if (name.empty())
         return;
     auto &info = ensureSymbol(name);
@@ -132,13 +124,11 @@ void Lowerer::setSymbolObjectType(std::string_view name, std::string className)
 ///          storage width.  Empty names are ignored because they arise from
 ///          parse errors handled elsewhere.
 /// @param name Identifier encountered during AST traversal.
-void Lowerer::markSymbolReferenced(std::string_view name)
-{
+void Lowerer::markSymbolReferenced(std::string_view name) {
     if (name.empty())
         return;
     auto &info = ensureSymbol(name);
-    if (!info.hasType)
-    {
+    if (!info.hasType) {
         info.type = inferVariableTypeForLowering(*this, name);
         info.hasType = true;
         info.isBoolean = !info.isArray && info.type == AstType::Bool;
@@ -151,8 +141,7 @@ void Lowerer::markSymbolReferenced(std::string_view name)
 ///          flag because arrays are always pointer typed regardless of element
 ///          suffixes.
 /// @param name Identifier representing an array value.
-void Lowerer::markArray(std::string_view name)
-{
+void Lowerer::markArray(std::string_view name) {
     if (name.empty())
         return;
     auto &info = ensureSymbol(name);
@@ -165,8 +154,7 @@ void Lowerer::markArray(std::string_view name)
 /// @details STATIC variables persist across procedure calls using module-level
 ///          runtime storage with procedure-qualified names.
 /// @param name Identifier representing a static variable.
-void Lowerer::markStatic(std::string_view name)
-{
+void Lowerer::markStatic(std::string_view name) {
     if (name.empty())
         return;
     auto &info = ensureSymbol(name);
@@ -181,8 +169,7 @@ void Lowerer::markStatic(std::string_view name)
 /// @details Enables implicit field access within class methods by establishing
 ///          the class layout context.
 /// @param className Fully qualified class name whose fields become accessible.
-void Lowerer::pushFieldScope(const std::string &className)
-{
+void Lowerer::pushFieldScope(const std::string &className) {
     const ClassLayout *layout = nullptr;
     if (auto it = classLayouts_.find(className); it != classLayouts_.end())
         layout = &it->second;
@@ -190,23 +177,20 @@ void Lowerer::pushFieldScope(const std::string &className)
 }
 
 /// @brief Pop the current field scope after class method lowering completes.
-void Lowerer::popFieldScope()
-{
+void Lowerer::popFieldScope() {
     symbolTable_.popFieldScope();
 }
 
 /// @brief Query the active field scope for implicit field resolution.
 /// @return Pointer to the active field scope or nullptr if none.
-const Lowerer::FieldScope *Lowerer::activeFieldScope() const
-{
+const Lowerer::FieldScope *Lowerer::activeFieldScope() const {
     return symbolTable_.activeFieldScope();
 }
 
 /// @brief Check whether a name refers to a field in the current scope.
 /// @param name Identifier to check.
 /// @return True if the name matches a field in the active class layout.
-bool Lowerer::isFieldInScope(std::string_view name) const
-{
+bool Lowerer::isFieldInScope(std::string_view name) const {
     return symbolTable_.isFieldInScope(name);
 }
 
@@ -216,8 +200,7 @@ bool Lowerer::isFieldInScope(std::string_view name) const
 ///          symbols entirely.  This prevents leakage of declaration information
 ///          from one procedure into the next without discarding the shared pool
 ///          of literal strings.
-void Lowerer::resetSymbolState()
-{
+void Lowerer::resetSymbolState() {
     symbolTable_.resetForNewProcedure();
 }
 

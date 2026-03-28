@@ -29,16 +29,15 @@
 #include "rt_error.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Canonical success error record shared across the runtime.
-    /// @details Initialises the discriminant to @ref Err_None and clears the
-    ///          auxiliary payload.  Because the object resides in static
-    ///          storage, every consumer observes the same address when checking
-    ///          for pointer identity or performing atomic replacements.
-    const RtError RT_ERROR_NONE = {Err_None, 0};
+/// @brief Canonical success error record shared across the runtime.
+/// @details Initialises the discriminant to @ref Err_None and clears the
+///          auxiliary payload.  Because the object resides in static
+///          storage, every consumer observes the same address when checking
+///          for pointer identity or performing atomic replacements.
+const RtError RT_ERROR_NONE = {Err_None, 0};
 
 #ifdef __cplusplus
 }

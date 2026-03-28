@@ -54,8 +54,7 @@
 #include <utility>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 struct Module;
 struct Function;
 struct BasicBlock;
@@ -64,8 +63,7 @@ struct Extern;
 struct Type;
 } // namespace il::core
 
-namespace il::verify
-{
+namespace il::verify {
 
 class TypeInference;
 
@@ -123,8 +121,7 @@ class TypeInference;
  * @see TypeInference for the type checking context
  * @see BlockMap for control flow graph representation
  */
-class FunctionVerifier
-{
+class FunctionVerifier {
   public:
     /// @brief Map from extern function names to their declarations.
     ///
@@ -188,8 +185,7 @@ class FunctionVerifier
      * @see ArithmeticStrategy for an example implementation
      * @see ControlFlowStrategy for branching instruction verification
      */
-    class InstructionStrategy
-    {
+    class InstructionStrategy {
       public:
         /// @brief Virtual destructor for proper polymorphic cleanup.
         virtual ~InstructionStrategy() = default;

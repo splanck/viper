@@ -33,11 +33,9 @@
 #include <optional>
 #include <sstream>
 
-namespace il::tools::basic
-{
+namespace il::tools::basic {
 
-namespace
-{
+namespace {
 #ifdef VIPER_BASIC_TOOL_USAGE
 constexpr const char *kUsageMessage = VIPER_BASIC_TOOL_USAGE;
 #else
@@ -70,17 +68,14 @@ constexpr const char *kUsageMessage = VIPER_BASIC_TOOL_USAGE;
 /// @return File identifier when the load succeeds; `std::nullopt` on error.
 std::optional<std::uint32_t> loadBasicSource(const char *path,
                                              std::string &buffer,
-                                             il::support::SourceManager &sm)
-{
-    if (path == nullptr)
-    {
+                                             il::support::SourceManager &sm) {
+    if (path == nullptr) {
         std::cerr << kUsageMessage;
         return std::nullopt;
     }
 
     std::ifstream in(path, std::ios::binary);
-    if (!in)
-    {
+    if (!in) {
         std::cerr << "cannot open " << path << "\n";
         return std::nullopt;
     }
@@ -90,28 +85,23 @@ std::optional<std::uint32_t> loadBasicSource(const char *path,
     auto fileSize = in.tellg();
     in.seekg(0, std::ios::beg);
     constexpr auto kMaxSourceSize = static_cast<std::streamoff>(256ULL * 1024 * 1024);
-    if (fileSize < 0 || fileSize > kMaxSourceSize)
-    {
+    if (fileSize < 0 || fileSize > kMaxSourceSize) {
         std::cerr << "source file too large: " << path << " (limit: 256 MB)\n";
         return std::nullopt;
     }
 
     std::string contents;
-    try
-    {
+    try {
         std::ostringstream ss;
         ss << in.rdbuf();
         contents = ss.str();
-    }
-    catch (const std::bad_alloc &)
-    {
+    } catch (const std::bad_alloc &) {
         std::cerr << "out of memory reading " << path << "\n";
         return std::nullopt;
     }
 
     std::uint32_t fileId = sm.addFile(path);
-    if (fileId == 0)
-    {
+    if (fileId == 0) {
         std::cerr << "cannot register " << path << "\n";
         return std::nullopt;
     }

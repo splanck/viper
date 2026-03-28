@@ -26,10 +26,8 @@ using namespace viper::codegen::objfile;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -37,8 +35,7 @@ static void check(bool cond, const char *msg, int line)
 
 #define CHECK(cond) check((cond), #cond, __LINE__)
 
-int main()
-{
+int main() {
     // --- Initial state: null entry at index 0 ---
     {
         SymbolTable st;
@@ -128,8 +125,7 @@ int main()
     }
 
     // --- Result ---
-    if (gFail == 0)
-    {
+    if (gFail == 0) {
         std::cout << "All SymbolTable tests passed.\n";
         return EXIT_SUCCESS;
     }

@@ -33,8 +33,7 @@
 // Fix 24: Peephole MUL→SHL must not transform when flags are consumed
 // ===========================================================================
 
-TEST(CodegenReviewBatch3, MulToShlSkipsWhenFlagsConsumed)
-{
+TEST(CodegenReviewBatch3, MulToShlSkipsWhenFlagsConsumed) {
     // Build an MFunction with:
     //   mov rcx, #8          (load constant 8 = 2^3)
     //   imul rax, rcx        (multiply by power-of-2)
@@ -68,10 +67,8 @@ TEST(CodegenReviewBatch3, MulToShlSkipsWhenFlagsConsumed)
 
     // The IMUL should NOT have been converted to SHL because the JCC reads flags
     bool foundIMUL = false;
-    for (const auto &b : fn.blocks)
-    {
-        for (const auto &instr : b.instructions)
-        {
+    for (const auto &b : fn.blocks) {
+        for (const auto &instr : b.instructions) {
             if (instr.opcode == MOpcode::IMULrr)
                 foundIMUL = true;
         }
@@ -79,8 +76,7 @@ TEST(CodegenReviewBatch3, MulToShlSkipsWhenFlagsConsumed)
     EXPECT_TRUE(foundIMUL);
 }
 
-TEST(CodegenReviewBatch3, MulToShlWorksWhenFlagsNotConsumed)
-{
+TEST(CodegenReviewBatch3, MulToShlWorksWhenFlagsNotConsumed) {
     // Build an MFunction with:
     //   mov rcx, #8          (load constant 8 = 2^3)
     //   imul rax, rcx        (multiply by power-of-2)
@@ -118,10 +114,8 @@ TEST(CodegenReviewBatch3, MulToShlWorksWhenFlagsNotConsumed)
 
     // The IMUL SHOULD have been converted to SHL because CMP overwrites flags
     bool foundSHL = false;
-    for (const auto &b : fn.blocks)
-    {
-        for (const auto &instr : b.instructions)
-        {
+    for (const auto &b : fn.blocks) {
+        for (const auto &instr : b.instructions) {
             if (instr.opcode == MOpcode::SHLri)
                 foundSHL = true;
         }
@@ -129,8 +123,7 @@ TEST(CodegenReviewBatch3, MulToShlWorksWhenFlagsNotConsumed)
     EXPECT_TRUE(foundSHL);
 }
 
-TEST(CodegenReviewBatch3, MulToShlSkipsAtLabel)
-{
+TEST(CodegenReviewBatch3, MulToShlSkipsAtLabel) {
     // If a LABEL appears between IMUL and any flag consumer, we must
     // conservatively skip the transformation (another block might branch
     // there expecting IMUL's flag state).
@@ -158,10 +151,8 @@ TEST(CodegenReviewBatch3, MulToShlSkipsAtLabel)
 
     // IMUL should NOT be converted to SHL due to the LABEL barrier
     bool foundIMUL = false;
-    for (const auto &b : fn.blocks)
-    {
-        for (const auto &instr : b.instructions)
-        {
+    for (const auto &b : fn.blocks) {
+        for (const auto &instr : b.instructions) {
             if (instr.opcode == MOpcode::IMULrr)
                 foundIMUL = true;
         }
@@ -173,8 +164,7 @@ TEST(CodegenReviewBatch3, MulToShlSkipsAtLabel)
 // Fix 25: AArch64 label sanitization
 // ===========================================================================
 
-TEST(CodegenReviewBatch3, AArch64LabelSanitizesHyphens)
-{
+TEST(CodegenReviewBatch3, AArch64LabelSanitizesHyphens) {
     // Verify that block labels containing hyphens are sanitized to prevent
     // the assembler from parsing them as subtraction operators.
     using namespace viper::codegen::aarch64;
@@ -210,8 +200,7 @@ TEST(CodegenReviewBatch3, AArch64LabelSanitizesHyphens)
     EXPECT_TRUE(output.find(".Ltrap-cast-overflow:") == std::string::npos);
 }
 
-TEST(CodegenReviewBatch3, AArch64BranchTargetsSanitized)
-{
+TEST(CodegenReviewBatch3, AArch64BranchTargetsSanitized) {
     // Verify that branch targets referencing hyphenated labels are also sanitized.
     using namespace viper::codegen::aarch64;
 
@@ -242,8 +231,7 @@ TEST(CodegenReviewBatch3, AArch64BranchTargetsSanitized)
     EXPECT_TRUE(output.find(".Ltarget_block:") != std::string::npos);
 }
 
-TEST(CodegenReviewBatch3, AArch64BCondTargetSanitized)
-{
+TEST(CodegenReviewBatch3, AArch64BCondTargetSanitized) {
     // Verify conditional branch targets are also sanitized.
     using namespace viper::codegen::aarch64;
 
@@ -278,8 +266,7 @@ TEST(CodegenReviewBatch3, AArch64BCondTargetSanitized)
     EXPECT_TRUE(output.find(".Leq_target:") != std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

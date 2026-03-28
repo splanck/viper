@@ -47,10 +47,8 @@
 #include <sys/wait.h>
 #endif
 
-namespace viper::codegen::x64
-{
-namespace
-{
+namespace viper::codegen::x64 {
+namespace {
 
 /// @brief Platform-specific C compiler command.
 /// @details On Windows, `cc` isn't available, so we use `clang` instead.
@@ -63,8 +61,7 @@ constexpr const char *kCcCommand = "cc";
 
 constexpr std::size_t kLargeModuleIlOptThreshold = 100000;
 
-std::size_t totalInstructionCount(const il::core::Module &module)
-{
+std::size_t totalInstructionCount(const il::core::Module &module) {
     std::size_t totalInstrs = 0;
     for (const auto &fn : module.functions)
         for (const auto &bb : fn.blocks)
@@ -78,21 +75,17 @@ std::size_t totalInstructionCount(const il::core::Module &module)
 ///          codes irrespective of platform.
 /// @param status Raw status returned by @ref run_process or waitpid.
 /// @return Normalised exit code suitable for user display.
-int normaliseStatus(int status)
-{
-    if (status == -1)
-    {
+int normaliseStatus(int status) {
+    if (status == -1) {
         return -1;
     }
 #if defined(_WIN32)
     return status;
 #else
-    if (WIFEXITED(status))
-    {
+    if (WIFEXITED(status)) {
         return WEXITSTATUS(status);
     }
-    if (WIFSIGNALED(status))
-    {
+    if (WIFSIGNALED(status)) {
         return 128 + WTERMSIG(status);
     }
     return status;
@@ -105,16 +98,13 @@ int normaliseStatus(int status)
 ///          behaviour.
 /// @param opts Pipeline configuration specifying the IL input path.
 /// @return Filesystem location for the generated assembly file.
-std::filesystem::path deriveAssemblyPath(const CodegenPipeline::Options &opts)
-{
+std::filesystem::path deriveAssemblyPath(const CodegenPipeline::Options &opts) {
     std::filesystem::path assembly = std::filesystem::path(opts.input_il_path);
-    if (assembly.empty())
-    {
+    if (assembly.empty()) {
         return std::filesystem::path("out.s");
     }
     assembly.replace_extension(".s");
-    if (assembly.filename().empty())
-    {
+    if (assembly.filename().empty()) {
         assembly = assembly.parent_path() / "out.s";
     }
     return assembly;
@@ -126,11 +116,9 @@ std::filesystem::path deriveAssemblyPath(const CodegenPipeline::Options &opts)
 ///          On Windows, adds the .exe extension.
 /// @param opts Pipeline configuration describing the IL input.
 /// @return Filesystem path for the linked executable.
-std::filesystem::path deriveExecutablePath(const CodegenPipeline::Options &opts)
-{
+std::filesystem::path deriveExecutablePath(const CodegenPipeline::Options &opts) {
     std::filesystem::path exe = std::filesystem::path(opts.input_il_path);
-    if (exe.empty())
-    {
+    if (exe.empty()) {
 #if defined(_WIN32)
         return std::filesystem::path("a.exe");
 #else
@@ -138,8 +126,7 @@ std::filesystem::path deriveExecutablePath(const CodegenPipeline::Options &opts)
 #endif
     }
     exe.replace_extension("");
-    if (exe.filename().empty() || exe.filename() == ".")
-    {
+    if (exe.filename().empty() || exe.filename() == ".") {
 #if defined(_WIN32)
         return exe.parent_path() / "a.exe";
 #else
@@ -162,17 +149,14 @@ std::filesystem::path deriveExecutablePath(const CodegenPipeline::Options &opts)
 /// @return @c true when the file was written successfully.
 bool writeAssemblyFile(const std::filesystem::path &path,
                        const std::string &text,
-                       std::ostream &err)
-{
+                       std::ostream &err) {
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    if (!out)
-    {
+    if (!out) {
         err << "error: unable to open '" << path.string() << "' for writing\n";
         return false;
     }
     out << text;
-    if (!out)
-    {
+    if (!out) {
         err << "error: failed to write assembly to '" << path.string() << "'\n";
         return false;
     }
@@ -184,8 +168,7 @@ bool writeAssemblyFile(const std::filesystem::path &path,
 ///          passed through run_process. This helper ensures backslashes are used.
 /// @param path Original path to normalize.
 /// @return String with platform-native path separators.
-std::string toNativePath(const std::filesystem::path &path)
-{
+std::string toNativePath(const std::filesystem::path &path) {
     std::filesystem::path native = path;
     native.make_preferred();
     return native.string();
@@ -203,30 +186,25 @@ std::string toNativePath(const std::filesystem::path &path)
 int invokeAssembler(const std::filesystem::path &asmPath,
                     const std::filesystem::path &objPath,
                     std::ostream &out,
-                    std::ostream &err)
-{
+                    std::ostream &err) {
     const RunResult assemble =
         run_process({kCcCommand, "-c", toNativePath(asmPath), "-o", toNativePath(objPath)});
-    if (assemble.exit_code == -1)
-    {
+    if (assemble.exit_code == -1) {
         err << "error: failed to launch system assembler command\n";
         return -1;
     }
 
-    if (!assemble.out.empty())
-    {
+    if (!assemble.out.empty()) {
         out << assemble.out;
     }
 #if defined(_WIN32)
-    if (!assemble.err.empty())
-    {
+    if (!assemble.err.empty()) {
         err << assemble.err;
     }
 #endif
 
     const int exitCode = normaliseStatus(assemble.exit_code);
-    if (exitCode != 0)
-    {
+    if (exitCode != 0) {
         err << "error: " << kCcCommand << " (assemble) exited with status " << exitCode << "\n";
     }
     return exitCode;
@@ -247,8 +225,7 @@ int linkWithContext(const std::filesystem::path &inputPath,
                     std::size_t stackSize,
                     const common::LinkContext &ctx,
                     std::ostream &out,
-                    std::ostream &err)
-{
+                    std::ostream &err) {
     using RtComponent = viper::codegen::RtComponent;
 
     std::vector<std::string> cmd = {kCcCommand};
@@ -294,26 +271,22 @@ int linkWithContext(const std::filesystem::path &inputPath,
     cmd.push_back(exePath.string());
 
     const RunResult link = run_process(cmd);
-    if (link.exit_code == -1)
-    {
+    if (link.exit_code == -1) {
         err << "error: failed to launch system linker command\n";
         return -1;
     }
 
-    if (!link.out.empty())
-    {
+    if (!link.out.empty()) {
         out << link.out;
     }
 #if defined(_WIN32)
-    if (!link.err.empty())
-    {
+    if (!link.err.empty()) {
         err << link.err;
     }
 #endif
 
     const int exitCode = normaliseStatus(link.exit_code);
-    if (exitCode != 0)
-    {
+    if (exitCode != 0) {
         err << "error: " << kCcCommand << " exited with status " << exitCode << "\n";
     }
     return exitCode;
@@ -331,26 +304,22 @@ int invokeLinker(const std::filesystem::path &asmPath,
                  const std::filesystem::path &exePath,
                  std::size_t stackSize,
                  std::ostream &out,
-                 std::ostream &err)
-{
+                 std::ostream &err) {
 #if defined(_WIN32)
     // Windows: Simple approach - find build dir and link all runtime libraries.
     // Windows does not use LinkContext/symbol scanning — it links ALL archives.
-    auto fileExists = [](const std::filesystem::path &path) -> bool
-    {
+    auto fileExists = [](const std::filesystem::path &path) -> bool {
         std::error_code ec;
         return std::filesystem::exists(path, ec);
     };
 
-    auto findBuildDir = [&]() -> std::optional<std::filesystem::path>
-    {
+    auto findBuildDir = [&]() -> std::optional<std::filesystem::path> {
         std::error_code ec;
         std::filesystem::path cur = std::filesystem::current_path(ec);
         if (ec)
             return std::nullopt;
         const std::size_t maxDepth = 10;
-        for (std::size_t i = 0; i < maxDepth && !cur.empty(); ++i)
-        {
+        for (std::size_t i = 0; i < maxDepth && !cur.empty(); ++i) {
             const std::filesystem::path cmake_cache = cur / "build" / "CMakeCache.txt";
             if (std::filesystem::exists(cmake_cache, ec))
                 return cur / "build";
@@ -369,18 +338,15 @@ int invokeLinker(const std::filesystem::path &asmPath,
     // MSVC multi-config builds put outputs in Release/ or Debug/ subdirectories
     bool foundDebugRtLib = false; // BUG-018: track whether libs are Debug-built
     auto findRuntimeArchive =
-        [&](std::string_view libBaseName) -> std::optional<std::filesystem::path>
-    {
+        [&](std::string_view libBaseName) -> std::optional<std::filesystem::path> {
         const std::string libFile = std::string(libBaseName) + ".lib";
-        if (!buildDir.empty())
-        {
+        if (!buildDir.empty()) {
             // Try Release first, then Debug, then direct path
             const std::filesystem::path releasePath = buildDir / "src/runtime/Release" / libFile;
             if (fileExists(releasePath))
                 return releasePath;
             const std::filesystem::path debugPath = buildDir / "src/runtime/Debug" / libFile;
-            if (fileExists(debugPath))
-            {
+            if (fileExists(debugPath)) {
                 foundDebugRtLib = true;
                 return debugPath;
             }
@@ -411,19 +377,17 @@ int invokeLinker(const std::filesystem::path &asmPath,
                                                   "viper_rt_oop",
                                                   "viper_rt_audio",
                                                   "viper_rt_base"};
-    for (const auto &lib : rtLibs)
-    {
+    for (const auto &lib : rtLibs) {
         const auto pathOpt = findRuntimeArchive(lib);
         if (pathOpt.has_value())
             cmd.push_back(toNativePath(*pathOpt));
     }
 
     // Find and link vipergfx, vipergui, and viperaud libraries
-    auto findLibArchive = [&](std::string_view libBaseName) -> std::optional<std::filesystem::path>
-    {
+    auto findLibArchive =
+        [&](std::string_view libBaseName) -> std::optional<std::filesystem::path> {
         const std::string libFile = std::string(libBaseName) + ".lib";
-        if (!buildDir.empty())
-        {
+        if (!buildDir.empty()) {
             // Try Release first, then Debug, then direct path under lib/
             const std::filesystem::path releasePath = buildDir / "lib/Release" / libFile;
             if (fileExists(releasePath))
@@ -435,8 +399,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
             if (fileExists(directPath))
                 return directPath;
             // Also check src/lib/ subdirectories (vipergui lives under src/lib/gui/)
-            for (const auto &subdir : {"gui", "graphics", "audio"})
-            {
+            for (const auto &subdir : {"gui", "graphics", "audio"}) {
                 const std::filesystem::path srcRelease =
                     buildDir / "src/lib" / subdir / "Release" / libFile;
                 if (fileExists(srcRelease))
@@ -457,8 +420,7 @@ int invokeLinker(const std::filesystem::path &asmPath,
     // vipergui must come before vipergfx: runtime calls vg_* from vipergui,
     // which in turn calls the lower-level drawing APIs in vipergfx.
     const std::vector<std::string_view> backendLibs = {"vipergui", "vipergfx", "viperaud"};
-    for (const auto &lib : backendLibs)
-    {
+    for (const auto &lib : backendLibs) {
         const auto pathOpt = findLibArchive(lib);
         if (pathOpt.has_value())
             cmd.push_back(toNativePath(*pathOpt));
@@ -466,17 +428,14 @@ int invokeLinker(const std::filesystem::path &asmPath,
 
     // Add Windows CRT and system libraries
     // BUG-018: Match CRT variant (Debug vs Release) to how runtime libs were built
-    if (foundDebugRtLib)
-    {
+    if (foundDebugRtLib) {
         cmd.push_back("-lmsvcrtd");
         cmd.push_back("-lucrtd");
         cmd.push_back("-lvcruntimed");
         // Suppress LNK4098: the debug CRT conflicts with the static release CRT
         // that clang links by default.
         cmd.push_back("-Wl,/NODEFAULTLIB:libcmt");
-    }
-    else
-    {
+    } else {
         cmd.push_back("-lmsvcrt");
         cmd.push_back("-lucrt");
         cmd.push_back("-lvcruntime");
@@ -497,24 +456,20 @@ int invokeLinker(const std::filesystem::path &asmPath,
     cmd.push_back(toNativePath(exePath));
 
     const RunResult link = run_process(cmd);
-    if (link.exit_code == -1)
-    {
+    if (link.exit_code == -1) {
         err << "error: failed to launch system linker command\n";
         return -1;
     }
 
-    if (!link.out.empty())
-    {
+    if (!link.out.empty()) {
         out << link.out;
     }
-    if (!link.err.empty())
-    {
+    if (!link.err.empty()) {
         err << link.err;
     }
 
     const int exitCode = normaliseStatus(link.exit_code);
-    if (exitCode != 0)
-    {
+    if (exitCode != 0) {
         err << "error: " << kCcCommand << " exited with status " << exitCode << "\n";
     }
     return exitCode;
@@ -538,21 +493,17 @@ int invokeLinker(const std::filesystem::path &asmPath,
 /// @param out     Stream receiving program stdout.
 /// @param err     Stream receiving program stderr.
 /// @return Normalised process exit code (-1 when the process could not be started).
-int runExecutable(const std::filesystem::path &exePath, std::ostream &out, std::ostream &err)
-{
+int runExecutable(const std::filesystem::path &exePath, std::ostream &out, std::ostream &err) {
     const RunResult run = run_process({toNativePath(exePath)});
-    if (run.exit_code == -1)
-    {
+    if (run.exit_code == -1) {
         err << "error: failed to execute '" << exePath.string() << "'\n";
         return -1;
     }
-    if (!run.out.empty())
-    {
+    if (!run.out.empty()) {
         out << run.out;
     }
 #if defined(_WIN32)
-    if (!run.err.empty())
-    {
+    if (!run.err.empty()) {
         err << run.err;
     }
 #endif
@@ -573,23 +524,20 @@ CodegenPipeline::CodegenPipeline(Options opts) : opts_(std::move(opts)) {}
 ///          runs the resulting executable. All diagnostics are aggregated into
 ///          the returned @ref PipelineResult.
 /// @return Struct summarising exit code, stdout, and stderr output.
-PipelineResult CodegenPipeline::run()
-{
+PipelineResult CodegenPipeline::run() {
     PipelineResult result{0, "", ""};
     std::ostringstream out;
     std::ostringstream err;
 
     il::core::Module module;
     const auto loadResult = il::tools::common::loadModuleFromFile(opts_.input_il_path, module, err);
-    if (!loadResult.succeeded())
-    {
+    if (!loadResult.succeeded()) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
         return result;
     }
-    if (!il::tools::common::verifyModule(module, err))
-    {
+    if (!il::tools::common::verifyModule(module, err)) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
@@ -600,15 +548,12 @@ PipelineResult CodegenPipeline::run()
     // Keep these pipelines aligned with the currently safe canonical O1/O2
     // policies: mem2reg, LICM, and IL peephole remain disabled here too until
     // their rehab pipelines are proven sound.
-    if (opts_.optimize >= 1)
-    {
+    if (opts_.optimize >= 1) {
         il::transform::PassManager ilpm;
         const std::size_t totalInstrs = totalInstructionCount(module);
-        if (totalInstrs <= kLargeModuleIlOptThreshold)
-        {
+        if (totalInstrs <= kLargeModuleIlOptThreshold) {
             bool ok = true;
-            if (opts_.optimize >= 2)
-            {
+            if (opts_.optimize >= 2) {
                 ilpm.registerPipeline(
                     "codegen-O2",
                     {"loop-simplify", "loop-rotate",  "indvars",           "loop-unroll",
@@ -618,9 +563,7 @@ PipelineResult CodegenPipeline::run()
                      "simplify-cfg",  "gvn",          "reassociate",       "earlycse",
                      "dse",           "dce",          "late-cleanup"});
                 ok = ilpm.runPipeline(module, "codegen-O2");
-            }
-            else
-            {
+            } else {
                 ilpm.registerPipeline("codegen-O1",
                                       {"simplify-cfg",
                                        "sccp",
@@ -634,8 +577,7 @@ PipelineResult CodegenPipeline::run()
                 ok = ilpm.runPipeline(module, "codegen-O1");
             }
 
-            if (!ok)
-            {
+            if (!ok) {
                 err << "error: failed to run x86-64 IL optimization pipeline\n";
                 result.exit_code = 1;
                 result.stdout_text = out.str();
@@ -644,8 +586,7 @@ PipelineResult CodegenPipeline::run()
             }
         }
         // Re-verify IL after optimization to catch optimizer bugs early.
-        if (!il::tools::common::verifyModule(module, err))
-        {
+        if (!il::tools::common::verifyModule(module, err)) {
             err << "error: IL verification failed after optimization\n";
             result.exit_code = 1;
             result.stdout_text = out.str();
@@ -665,8 +606,7 @@ PipelineResult CodegenPipeline::run()
     manager.addPass(std::make_unique<passes::LegalizePass>());
     manager.addPass(std::make_unique<passes::RegAllocPass>());
 
-    if (useNativeAsm)
-    {
+    if (useNativeAsm) {
 #if defined(__APPLE__)
         constexpr bool isDarwin = true;
 #else
@@ -675,16 +615,13 @@ PipelineResult CodegenPipeline::run()
         CodegenOptions codegenOpts{};
         codegenOpts.optimizeLevel = opts_.optimize;
         manager.addPass(std::make_unique<passes::BinaryEmitPass>(isDarwin, codegenOpts));
-    }
-    else
-    {
+    } else {
         CodegenOptions codegenOpts{};
         codegenOpts.optimizeLevel = opts_.optimize;
         manager.addPass(std::make_unique<passes::EmitPass>(codegenOpts));
     }
 
-    if (!manager.run(pipelineModule, diagnostics))
-    {
+    if (!manager.run(pipelineModule, diagnostics)) {
         diagnostics.flush(err);
         result.exit_code = 1;
         result.stdout_text = out.str();
@@ -695,10 +632,8 @@ PipelineResult CodegenPipeline::run()
     diagnostics.flush(err);
 
     // --- Native assembler path: write .o directly via ObjectFileWriter ---
-    if (useNativeAsm)
-    {
-        if (!pipelineModule.binaryText)
-        {
+    if (useNativeAsm) {
+        if (!pipelineModule.binaryText) {
             err << "error: binary emit pass did not produce machine code\n";
             result.exit_code = 1;
             result.stdout_text = out.str();
@@ -708,16 +643,14 @@ PipelineResult CodegenPipeline::run()
 
         // If user requested assembly text output via -S, we still need text emit.
         // Fall through to the text path by also running text emit.
-        if (opts_.emit_asm && !opts_.output_asm_path.empty())
-        {
+        if (opts_.emit_asm && !opts_.output_asm_path.empty()) {
             // For -S with --native-asm, we don't produce .s — just stop after .o.
             // Users should use --system-asm if they want assembly text.
             err << "warning: -S is not supported with --native-asm; ignoring -S\n";
         }
 
         // Determine object file path.
-        auto looksLikeObjectFile = [](const std::string &path) -> bool
-        {
+        auto looksLikeObjectFile = [](const std::string &path) -> bool {
             const std::size_t dotPos = path.rfind('.');
             if (dotPos == std::string::npos)
                 return false;
@@ -730,12 +663,9 @@ PipelineResult CodegenPipeline::run()
 
         // Derive .o path from IL path.
         std::filesystem::path objPath;
-        if (wantsObjectOnly)
-        {
+        if (wantsObjectOnly) {
             objPath = opts_.output_obj_path;
-        }
-        else
-        {
+        } else {
             objPath = std::filesystem::path(opts_.input_il_path);
             objPath.replace_extension(".o");
         }
@@ -745,8 +675,7 @@ PipelineResult CodegenPipeline::run()
         // would pick the host arch (e.g. arm64 on Apple Silicon).
         auto writer =
             objfile::createObjectFileWriter(objfile::detectHostFormat(), objfile::ObjArch::X86_64);
-        if (!writer)
-        {
+        if (!writer) {
             err << "error: no native object file writer for this platform\n";
             result.exit_code = 1;
             result.stdout_text = out.str();
@@ -761,16 +690,14 @@ PipelineResult CodegenPipeline::run()
         if (!writer->write(objPath.string(),
                            pipelineModule.binaryTextSections,
                            *pipelineModule.binaryRodata,
-                           err))
-        {
+                           err)) {
             result.exit_code = 1;
             result.stdout_text = out.str();
             result.stderr_text = err.str();
             return result;
         }
 
-        if (wantsObjectOnly)
-        {
+        if (wantsObjectOnly) {
             result.exit_code = 0;
             result.stdout_text = out.str();
             result.stderr_text = err.str();
@@ -791,16 +718,14 @@ PipelineResult CodegenPipeline::run()
 #else
         {
             std::unordered_set<std::string> extSymbols;
-            for (const auto &sym : pipelineModule.binaryText->symbols())
-            {
+            for (const auto &sym : pipelineModule.binaryText->symbols()) {
                 if (sym.binding == objfile::SymbolBinding::External)
                     extSymbols.insert(sym.name);
             }
 
             common::LinkContext ctx;
             if (const int rc = common::prepareLinkContextFromSymbols(extSymbols, ctx, out, err);
-                rc != 0)
-            {
+                rc != 0) {
                 result.exit_code = 1;
                 result.stdout_text = out.str();
                 result.stderr_text = err.str();
@@ -810,8 +735,7 @@ PipelineResult CodegenPipeline::run()
             linkExit = linkWithContext(objPath, exePath, opts_.stack_size, ctx, out, err);
         }
 #endif
-        if (linkExit != 0)
-        {
+        if (linkExit != 0) {
             result.exit_code = linkExit == -1 ? 1 : linkExit;
             result.stdout_text = out.str();
             result.stderr_text = err.str();
@@ -824,8 +748,7 @@ PipelineResult CodegenPipeline::run()
             std::filesystem::remove(objPath, ec);
         }
 
-        if (!opts_.run_native)
-        {
+        if (!opts_.run_native) {
             result.exit_code = 0;
             result.stdout_text = out.str();
             result.stderr_text = err.str();
@@ -840,8 +763,7 @@ PipelineResult CodegenPipeline::run()
     }
 
     // --- System assembler path (existing): text assembly → cc -c → .o ---
-    if (!pipelineModule.codegenResult)
-    {
+    if (!pipelineModule.codegenResult) {
         err << "error: emit pass did not produce assembly output\n";
         result.exit_code = 1;
         result.stdout_text = out.str();
@@ -854,8 +776,7 @@ PipelineResult CodegenPipeline::run()
     const std::filesystem::path asmPath = opts_.output_asm_path.empty()
                                               ? deriveAssemblyPath(opts_)
                                               : std::filesystem::path(opts_.output_asm_path);
-    if (!writeAssemblyFile(asmPath, asmText, err))
-    {
+    if (!writeAssemblyFile(asmPath, asmText, err)) {
         result.exit_code = 1;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
@@ -864,8 +785,7 @@ PipelineResult CodegenPipeline::run()
 
     // If user requested assembly output via -S with a specific path, stop here.
     // Don't try to assemble or link - just emit the assembly file.
-    if (opts_.emit_asm && !opts_.output_asm_path.empty())
-    {
+    if (opts_.emit_asm && !opts_.output_asm_path.empty()) {
         result.exit_code = 0;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
@@ -874,8 +794,7 @@ PipelineResult CodegenPipeline::run()
 
     // Check if -o path looks like an executable (ends with .exe or has no extension)
     // vs an object file (ends with .o or .obj)
-    auto looksLikeObjectFile = [](const std::string &path) -> bool
-    {
+    auto looksLikeObjectFile = [](const std::string &path) -> bool {
         const std::size_t dotPos = path.rfind('.');
         if (dotPos == std::string::npos)
             return false; // No extension - treat as executable
@@ -885,20 +804,15 @@ PipelineResult CodegenPipeline::run()
 
     const bool wantsObjectOnly = !opts_.output_obj_path.empty() && !opts_.run_native &&
                                  looksLikeObjectFile(opts_.output_obj_path);
-    if (wantsObjectOnly)
-    {
+    if (wantsObjectOnly) {
         const std::filesystem::path objPath(opts_.output_obj_path);
         const int assembleExit = invokeAssembler(asmPath, objPath, out, err);
-        if (assembleExit != 0)
-        {
+        if (assembleExit != 0) {
             result.exit_code = assembleExit == -1 ? 1 : assembleExit;
-        }
-        else
-        {
+        } else {
             result.exit_code = 0;
             // Clean up intermediate assembly after successful object file creation.
-            if (!opts_.emit_asm)
-            {
+            if (!opts_.emit_asm) {
                 std::error_code ec;
                 std::filesystem::remove(asmPath, ec);
             }
@@ -911,8 +825,7 @@ PipelineResult CodegenPipeline::run()
     // Link to executable if: running native, no output path specified, or output looks like .exe
     const bool needsExecutable = opts_.run_native || opts_.output_obj_path.empty() ||
                                  !looksLikeObjectFile(opts_.output_obj_path);
-    if (!needsExecutable)
-    {
+    if (!needsExecutable) {
         result.exit_code = 0;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
@@ -923,8 +836,7 @@ PipelineResult CodegenPipeline::run()
                                               ? deriveExecutablePath(opts_)
                                               : std::filesystem::path(opts_.output_obj_path);
     const int linkExit = invokeLinker(asmPath, exePath, opts_.stack_size, out, err);
-    if (linkExit != 0)
-    {
+    if (linkExit != 0) {
         result.exit_code = linkExit == -1 ? 1 : linkExit;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
@@ -933,14 +845,12 @@ PipelineResult CodegenPipeline::run()
 
     // Clean up the intermediate assembly file after successful linking,
     // unless the user explicitly requested assembly output via -S.
-    if (!opts_.emit_asm)
-    {
+    if (!opts_.emit_asm) {
         std::error_code ec;
         std::filesystem::remove(asmPath, ec);
     }
 
-    if (!opts_.run_native)
-    {
+    if (!opts_.run_native) {
         result.exit_code = 0;
         result.stdout_text = out.str();
         result.stderr_text = err.str();
@@ -948,12 +858,9 @@ PipelineResult CodegenPipeline::run()
     }
 
     const int runExit = runExecutable(exePath, out, err);
-    if (runExit == -1)
-    {
+    if (runExit == -1) {
         result.exit_code = 1;
-    }
-    else
-    {
+    } else {
         result.exit_code = runExit;
     }
     result.stdout_text = out.str();

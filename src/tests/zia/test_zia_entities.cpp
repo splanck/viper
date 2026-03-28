@@ -18,16 +18,14 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 //===----------------------------------------------------------------------===//
 // Basic Entity Definition
 //===----------------------------------------------------------------------===//
 
 /// @brief Test basic entity with fields.
-TEST(ZiaEntities, BasicFields)
-{
+TEST(ZiaEntities, BasicFields) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -54,8 +52,7 @@ func start() {
 }
 
 /// @brief Test entity with methods.
-TEST(ZiaEntities, BasicMethods)
-{
+TEST(ZiaEntities, BasicMethods) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -95,8 +92,7 @@ func start() {
 }
 
 /// @brief Test entity with method parameters.
-TEST(ZiaEntities, MethodWithParameters)
-{
+TEST(ZiaEntities, MethodWithParameters) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -138,8 +134,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test expose visibility modifier on entity members.
-TEST(ZiaEntities, Visibility)
-{
+TEST(ZiaEntities, Visibility) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -177,8 +172,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test self reference in methods.
-TEST(ZiaEntities, SelfReference)
-{
+TEST(ZiaEntities, SelfReference) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -218,8 +212,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test entity composition (alternative to inheritance).
-TEST(ZiaEntities, EntityComposition)
-{
+TEST(ZiaEntities, EntityComposition) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -264,8 +257,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test entity with various field types.
-TEST(ZiaEntities, VariousFieldTypes)
-{
+TEST(ZiaEntities, VariousFieldTypes) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -308,8 +300,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test entity containing list of entities.
-TEST(ZiaEntities, EntityLists)
-{
+TEST(ZiaEntities, EntityLists) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -366,8 +357,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test entity field initialization with defaults.
-TEST(ZiaEntities, FieldDefaults)
-{
+TEST(ZiaEntities, FieldDefaults) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -400,8 +390,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test arrow return type syntax.
-TEST(ZiaEntities, ArrowReturnType)
-{
+TEST(ZiaEntities, ArrowReturnType) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -431,8 +420,7 @@ func start() {
 }
 
 /// @brief Test colon return type syntax (Bug #43 fix).
-TEST(ZiaEntities, ColonReturnType)
-{
+TEST(ZiaEntities, ColonReturnType) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -469,8 +457,7 @@ func start() {
 /// This regression test verifies that the 'as' operator correctly lowers
 /// to IL. Previously, ExprKind::As was missing from lowerExpr(), causing
 /// casts to return 0 instead of the actual value.
-TEST(ZiaEntities, AsCastWithListElements)
-{
+TEST(ZiaEntities, AsCastWithListElements) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -528,16 +515,14 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         for (const auto &d : result.diagnostics.diagnostics())
             std::cerr << "  " << d.message << "\n";
     }
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaEntities, InheritanceOverridesAndDerivedSetup)
-{
+TEST(ZiaEntities, InheritanceOverridesAndDerivedSetup) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -590,8 +575,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaEntities, CrossInheritanceOverloadFamiliesCompile)
-{
+TEST(ZiaEntities, CrossInheritanceOverloadFamiliesCompile) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -659,8 +643,7 @@ func start() {
     CompilerOptions opts{};
 
     auto result = compile(input, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         for (const auto &d : result.diagnostics.diagnostics())
             std::cerr << "  " << d.message << "\n";
     }
@@ -668,8 +651,7 @@ func start() {
 }
 
 /// @brief Test basic 'as' cast without list (direct entity cast).
-TEST(ZiaEntities, AsCastBasic)
-{
+TEST(ZiaEntities, AsCastBasic) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -702,7 +684,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

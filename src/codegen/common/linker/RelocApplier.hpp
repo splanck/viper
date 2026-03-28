@@ -30,8 +30,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Apply all relocations across merged sections.
 /// @param objects      All object files.

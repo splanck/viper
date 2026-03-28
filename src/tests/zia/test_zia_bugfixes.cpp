@@ -21,16 +21,14 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 //===----------------------------------------------------------------------===//
 // Bug #38: Module-Level Mutable Variables
 //===----------------------------------------------------------------------===//
 
 /// @brief Test module-level mutable variables can be read and written.
-TEST(ZiaBugFixes, Bug38_ModuleLevelMutableVariables)
-{
+TEST(ZiaBugFixes, Bug38_ModuleLevelMutableVariables) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -54,8 +52,7 @@ func start() {
 }
 
 /// @brief Test module-level mutable variables without initializer.
-TEST(ZiaBugFixes, Bug38_ModuleLevelVarNoInitializer)
-{
+TEST(ZiaBugFixes, Bug38_ModuleLevelVarNoInitializer) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -85,8 +82,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test module-level entity variables can store and retrieve objects.
-TEST(ZiaBugFixes, Bug39_ModuleLevelEntityVariables)
-{
+TEST(ZiaBugFixes, Bug39_ModuleLevelEntityVariables) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -121,8 +117,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test `and` keyword works as logical AND.
-TEST(ZiaBugFixes, Bug42_AndKeyword)
-{
+TEST(ZiaBugFixes, Bug42_AndKeyword) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -146,8 +141,7 @@ func start() {
 }
 
 /// @brief Test `or` keyword works as logical OR.
-TEST(ZiaBugFixes, Bug42_OrKeyword)
-{
+TEST(ZiaBugFixes, Bug42_OrKeyword) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -169,8 +163,7 @@ func start() {
 }
 
 /// @brief Test `not` keyword works as logical NOT.
-TEST(ZiaBugFixes, Bug42_NotKeyword)
-{
+TEST(ZiaBugFixes, Bug42_NotKeyword) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -191,8 +184,7 @@ func start() {
 }
 
 /// @brief Test combined `and`, `or`, `not` operators.
-TEST(ZiaBugFixes, Bug42_CombinedBooleanKeywords)
-{
+TEST(ZiaBugFixes, Bug42_CombinedBooleanKeywords) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -225,8 +217,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test colon return type syntax in functions.
-TEST(ZiaBugFixes, Bug43_ColonReturnTypeFunction)
-{
+TEST(ZiaBugFixes, Bug43_ColonReturnTypeFunction) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -248,8 +239,7 @@ func start() {
 }
 
 /// @brief Test colon return type syntax in entity methods.
-TEST(ZiaBugFixes, Bug43_ColonReturnTypeMethod)
-{
+TEST(ZiaBugFixes, Bug43_ColonReturnTypeMethod) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -285,8 +275,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test qualified type names parse correctly (dot-separated identifiers).
-TEST(ZiaBugFixes, Bug44_QualifiedTypeNames)
-{
+TEST(ZiaBugFixes, Bug44_QualifiedTypeNames) {
     SourceManager sm;
     // Test that qualified type names with dots are parsed correctly
     // Uses List[Integer] which is the supported generic syntax
@@ -317,8 +306,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Calling a non-existent method on an entity field should fail compilation.
-TEST(ZiaBugFixes, BugFE007_NonExistentEntityMethodError)
-{
+TEST(ZiaBugFixes, BugFE007_NonExistentEntityMethodError) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -354,8 +342,7 @@ func start() {
 }
 
 /// @brief Calling a valid method on an entity field should compile successfully.
-TEST(ZiaBugFixes, BugFE007_ValidEntityFieldMethodDispatch)
-{
+TEST(ZiaBugFixes, BugFE007_ValidEntityFieldMethodDispatch) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -397,8 +384,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Functions with 15+ locals and complex control flow should compile.
-TEST(ZiaBugFixes, BugFE005_ManyLocalsComplexControlFlow)
-{
+TEST(ZiaBugFixes, BugFE005_ManyLocalsComplexControlFlow) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -462,8 +448,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief List.add() on a function parameter should compile correctly.
-TEST(ZiaBugFixes, BugFE006_ListParamMethodCalls)
-{
+TEST(ZiaBugFixes, BugFE006_ListParamMethodCalls) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -505,8 +490,7 @@ func start() {
 
 /// @brief Entity field chain List.add() should compile when entity B is declared
 ///        AFTER entity A (forward reference pattern).
-TEST(ZiaBugFixes, BugFE006_EntityFieldChainListAdd_ForwardRef)
-{
+TEST(ZiaBugFixes, BugFE006_EntityFieldChainListAdd_ForwardRef) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -543,8 +527,7 @@ func start() {
 
 /// @brief Entity field chain List.add() should compile when entity B is declared
 ///        BEFORE entity A (normal declaration order).
-TEST(ZiaBugFixes, BugFE006_EntityFieldChainListAdd_NormalOrder)
-{
+TEST(ZiaBugFixes, BugFE006_EntityFieldChainListAdd_NormalOrder) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -580,8 +563,7 @@ func start() {
 }
 
 /// @brief Multiple entity field chains with different collection types.
-TEST(ZiaBugFixes, BugFE006_EntityFieldChainMultipleCollections)
-{
+TEST(ZiaBugFixes, BugFE006_EntityFieldChainMultipleCollections) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -625,8 +607,7 @@ func start() {
 }
 
 /// @brief Entity field chain accessing an entity-typed field (not just List).
-TEST(ZiaBugFixes, BugFE006_EntityFieldChainEntityField_ForwardRef)
-{
+TEST(ZiaBugFixes, BugFE006_EntityFieldChainEntityField_ForwardRef) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -675,8 +656,7 @@ func start() {
 /// @brief Test that entity methods can reference `final` constants defined later
 /// in the same file. This was a bug where the single-pass lowering processed
 /// entity methods before later `final` declarations, causing them to resolve to 0.
-TEST(ZiaBugFixes, FinalConstantForwardReference)
-{
+TEST(ZiaBugFixes, FinalConstantForwardReference) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -706,20 +686,14 @@ func start() {
 
     // Verify the constant was inlined correctly by checking the IL output
     // The entity method should use const 42, not 0
-    if (result.succeeded())
-    {
+    if (result.succeeded()) {
         auto &mod = result.module;
         bool found42 = false;
-        for (auto &fn : mod.functions)
-        {
-            for (auto &bb : fn.blocks)
-            {
-                for (auto &instr : bb.instructions)
-                {
-                    for (auto &op : instr.operands)
-                    {
-                        if (op.kind == il::core::Value::Kind::ConstInt && op.i64 == 42)
-                        {
+        for (auto &fn : mod.functions) {
+            for (auto &bb : fn.blocks) {
+                for (auto &instr : bb.instructions) {
+                    for (auto &op : instr.operands) {
+                        if (op.kind == il::core::Value::Kind::ConstInt && op.i64 == 42) {
                             found42 = true;
                         }
                     }
@@ -731,8 +705,7 @@ func start() {
 }
 
 /// @brief Test that multiple finals defined after an entity all resolve correctly.
-TEST(ZiaBugFixes, MultipleFinalConstantsForwardReference)
-{
+TEST(ZiaBugFixes, MultipleFinalConstantsForwardReference) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -768,8 +741,7 @@ func start() {
 /// compile. Previously the sema returned the function type instead of the return
 /// type for runtime class method calls, causing the outer call to see a Function
 /// type as the base instead of the actual Ptr return type.
-TEST(ZiaBugFixes, BugFE008_ChainedRuntimeMethodCalls)
-{
+TEST(ZiaBugFixes, BugFE008_ChainedRuntimeMethodCalls) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -792,8 +764,7 @@ func start() {
 }
 
 /// @brief Multiple levels of chained runtime method calls should compile.
-TEST(ZiaBugFixes, BugFE008_MultipleChainedCalls)
-{
+TEST(ZiaBugFixes, BugFE008_MultipleChainedCalls) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -823,8 +794,7 @@ func start() {
 /// Previously, emitUnbox for I1 declared the call return type as I1 but
 /// the runtime function rt_unbox_i1 actually returns i64, causing a type
 /// mismatch in the generated IL.
-TEST(ZiaBugFixes, BugFE009_ListBooleanGetInCondition)
-{
+TEST(ZiaBugFixes, BugFE009_ListBooleanGetInCondition) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -848,8 +818,7 @@ func start() {
 }
 
 /// @brief List[Boolean].get(i) should be usable in logical AND/OR expressions.
-TEST(ZiaBugFixes, BugFE009_ListBooleanGetInLogicalExpr)
-{
+TEST(ZiaBugFixes, BugFE009_ListBooleanGetInLogicalExpr) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -883,8 +852,7 @@ func start() {
 /// was inferred from a cross-class function return. For example, a function
 /// returning obj typed as Viper.Network.Tcp should still allow Bytes methods
 /// when the variable is actually Bytes.
-TEST(ZiaBugFixes, BugFE010_CrossClassPtrMethodFallback)
-{
+TEST(ZiaBugFixes, BugFE010_CrossClassPtrMethodFallback) {
     SourceManager sm;
     // We test with Bytes methods called on a Ptr-typed variable.
     // The key is that the method should resolve via cross-class fallback.
@@ -921,8 +889,7 @@ namespace fs = std::filesystem;
 
 static fs::path writeFileFE011(const fs::path &dir,
                                const std::string &name,
-                               const std::string &contents)
-{
+                               const std::string &contents) {
     fs::create_directories(dir);
     fs::path path = dir / name;
     std::ofstream out(path);
@@ -933,8 +900,7 @@ static fs::path writeFileFE011(const fs::path &dir,
 /// @brief A `final` constant with a non-literal initializer (e.g., a BinaryExpr
 /// like `0 - 2147483647`) must be constant-folded so that the resulting IL uses
 /// the correct value rather than constInt(0).
-TEST(ZiaBugFixes, BugFE011_NonLiteralFinalFoldsToCorrectValue)
-{
+TEST(ZiaBugFixes, BugFE011_NonLiteralFinalFoldsToCorrectValue) {
     SourceManager sm;
     // `final SENTINEL = 0 - 2147483647` is a BinaryExpr, not an IntLiteralExpr.
     // Before the fix, this resolved to constInt(0) everywhere it was referenced.
@@ -957,22 +923,16 @@ func start() {
     auto result = compile(input, opts, sm);
     EXPECT_TRUE(result.succeeded());
 
-    if (result.succeeded())
-    {
+    if (result.succeeded()) {
         // The IL must contain -2147483647 (= 0 - 2147483647) and 15 (= 255 & 15).
         // Before the fix, both would appear as 0.
         bool foundSentinel = false;
         bool foundMask = false;
-        for (auto &fn : result.module.functions)
-        {
-            for (auto &bb : fn.blocks)
-            {
-                for (auto &instr : bb.instructions)
-                {
-                    for (auto &op : instr.operands)
-                    {
-                        if (op.kind == il::core::Value::Kind::ConstInt)
-                        {
+        for (auto &fn : result.module.functions) {
+            for (auto &bb : fn.blocks) {
+                for (auto &instr : bb.instructions) {
+                    for (auto &op : instr.operands) {
+                        if (op.kind == il::core::Value::Kind::ConstInt) {
                             if (op.i64 == -2147483647LL)
                                 foundSentinel = true;
                             if (op.i64 == 15LL)
@@ -990,8 +950,7 @@ func start() {
 
 /// @brief Non-literal final constants exported from a bound module must resolve
 /// to their computed value when referenced from the importing module.
-TEST(ZiaBugFixes, BugFE011_CrossModuleNonLiteralFinalConstant)
-{
+TEST(ZiaBugFixes, BugFE011_CrossModuleNonLiteralFinalConstant) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_fe011_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
     const fs::path dir = tempRoot / "cross_module_final";
@@ -1023,17 +982,12 @@ func start() {
     auto result = compile(input, opts, sm);
     EXPECT_TRUE(result.succeeded());
 
-    if (result.succeeded())
-    {
+    if (result.succeeded()) {
         bool foundSentinel = false;
-        for (auto &fn : result.module.functions)
-        {
-            for (auto &bb : fn.blocks)
-            {
-                for (auto &instr : bb.instructions)
-                {
-                    for (auto &op : instr.operands)
-                    {
+        for (auto &fn : result.module.functions) {
+            for (auto &bb : fn.blocks) {
+                for (auto &instr : bb.instructions) {
+                    for (auto &op : instr.operands) {
                         if (op.kind == il::core::Value::Kind::ConstInt && op.i64 == -2147483647LL)
                             foundSentinel = true;
                     }
@@ -1053,8 +1007,7 @@ func start() {
 /// @brief Viper.Terminal now exposes Int(i64) -> str so that integer-to-string
 /// conversion is available in any module that binds Viper.Terminal, without
 /// also requiring `bind Viper.Fmt`.
-TEST(ZiaBugFixes, ZIA007_TerminalIntConversion)
-{
+TEST(ZiaBugFixes, ZIA007_TerminalIntConversion) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1074,8 +1027,7 @@ func start() {
 }
 
 /// @brief Int() in Terminal should work alongside Say() in the same expression.
-TEST(ZiaBugFixes, ZIA007_TerminalIntInConcatenation)
-{
+TEST(ZiaBugFixes, ZIA007_TerminalIntInConcatenation) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1100,8 +1052,7 @@ func start() {
 
 /// @brief `var items: List[Integer] = []` must produce a typed list so that
 /// arithmetic on elements retrieved via .get() compiles without error.
-TEST(ZiaBugFixes, ZIA006_EmptyListTypeAnnotation)
-{
+TEST(ZiaBugFixes, ZIA006_EmptyListTypeAnnotation) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1124,8 +1075,7 @@ func start() {
 
 /// @brief Empty List[String] annotation must propagate, allowing .length() on
 /// the populated list.
-TEST(ZiaBugFixes, ZIA006_EmptyStringListAnnotation)
-{
+TEST(ZiaBugFixes, ZIA006_EmptyStringListAnnotation) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1150,8 +1100,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief `for x in -1..2` should iterate -1, 0, 1 (sum = 0).
-TEST(ZiaBugFixes, ZIA003_NegativeRangeForLoop)
-{
+TEST(ZiaBugFixes, ZIA003_NegativeRangeForLoop) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1173,8 +1122,7 @@ func start() {
 }
 
 /// @brief Nested negative ranges (double-nested direction loop) must work.
-TEST(ZiaBugFixes, ZIA003_NestedNegativeRanges)
-{
+TEST(ZiaBugFixes, ZIA003_NestedNegativeRanges) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1203,8 +1151,7 @@ func start() {
 
 /// @brief `var x = if cond { a } else { b }` must compile and produce the
 /// correct value in both branches.
-TEST(ZiaBugFixes, ZIA004_IfExpression)
-{
+TEST(ZiaBugFixes, ZIA004_IfExpression) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1229,8 +1176,7 @@ func start() {
 }
 
 /// @brief Nested if-expressions and if-expressions inside larger expressions.
-TEST(ZiaBugFixes, ZIA004_IfExpressionNested)
-{
+TEST(ZiaBugFixes, ZIA004_IfExpressionNested) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1258,8 +1204,7 @@ func start() {
 
 /// @brief `var p = Point { x = 3, y = 4 }` must compile and field values must
 /// be correctly set.
-TEST(ZiaBugFixes, ZIA001_StructLiteralInit)
-{
+TEST(ZiaBugFixes, ZIA001_StructLiteralInit) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1287,8 +1232,7 @@ func start() {
 }
 
 /// @brief Struct literal with all fields omitting some (only named fields set).
-TEST(ZiaBugFixes, ZIA001_StructLiteralPartialFields)
-{
+TEST(ZiaBugFixes, ZIA001_StructLiteralPartialFields) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1321,8 +1265,7 @@ func start() {
 
 /// @brief An entity with an `Integer[N]` field must compile; individual elements
 /// must be readable and writable via subscript syntax.
-TEST(ZiaBugFixes, ZIA002_FixedSizeArrayField)
-{
+TEST(ZiaBugFixes, ZIA002_FixedSizeArrayField) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1352,8 +1295,7 @@ func start() {
 }
 
 /// @brief Fixed-size array field with element arithmetic.
-TEST(ZiaBugFixes, ZIA002_FixedSizeArrayArithmetic)
-{
+TEST(ZiaBugFixes, ZIA002_FixedSizeArrayArithmetic) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1386,8 +1328,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test that Viper.String.Split returns a typed Seq[String] and compiles without errors.
-TEST(ZiaBugFixes, SeqReturnType_StrSplit_Compiles)
-{
+TEST(ZiaBugFixes, SeqReturnType_StrSplit_Compiles) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1415,8 +1356,7 @@ func start() {
 }
 
 /// @brief Test for-in iteration over Viper.String.Split result (Seq[String]).
-TEST(ZiaBugFixes, SeqForIn_StrSplit_Compiles)
-{
+TEST(ZiaBugFixes, SeqForIn_StrSplit_Compiles) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1437,8 +1377,7 @@ func start() {
 }
 
 /// @brief Test that calling an unknown method on an untyped obj emits a diagnostic.
-TEST(ZiaBugFixes, SeqUntypedObj_MethodCallError)
-{
+TEST(ZiaBugFixes, SeqUntypedObj_MethodCallError) {
     SourceManager sm;
     // The `Viper.IO.Dir.Files` function returns ptr (rt_list), not seq<str>.
     // Calling .length() on its result (a raw obj/ptr with no class name) should
@@ -1462,8 +1401,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaBugFixes, DuplicateTopLevelDefinitionsAreRejected)
-{
+TEST(ZiaBugFixes, DuplicateTopLevelDefinitionsAreRejected) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -1478,10 +1416,8 @@ func greet() {}
 
     EXPECT_FALSE(result.succeeded());
     bool sawDuplicate = false;
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
-        if (d.message.find("Duplicate definition of 'greet'") != std::string::npos)
-        {
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.message.find("Duplicate definition of 'greet'") != std::string::npos) {
             sawDuplicate = true;
             break;
         }
@@ -1491,7 +1427,6 @@ func greet() {}
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

@@ -21,8 +21,7 @@
 #include "tests/TestHarness.hpp"
 #include <optional>
 
-TEST(IL, SimplifyCFGPassManagerCFGInvalidation)
-{
+TEST(IL, SimplifyCFGPassManagerCFGInvalidation) {
     using namespace il::core;
 
     Module module;
@@ -50,9 +49,7 @@ TEST(IL, SimplifyCFGPassManagerCFGInvalidation)
 
     int cfgComputeCount = 0;
     pm.registerFunctionAnalysis<il::transform::CFGInfo>(
-        "cfg",
-        [&cfgComputeCount](Module &moduleRef, Function &fnRef)
-        {
+        "cfg", [&cfgComputeCount](Module &moduleRef, Function &fnRef) {
             ++cfgComputeCount;
             return il::transform::buildCFG(moduleRef, fnRef);
         });
@@ -60,8 +57,7 @@ TEST(IL, SimplifyCFGPassManagerCFGInvalidation)
     bool seedRan = false;
     pm.registerFunctionPass(
         "seed-cfg-cache",
-        [&seedRan, &cfgComputeCount](Function &function, il::transform::AnalysisManager &analysis)
-        {
+        [&seedRan, &cfgComputeCount](Function &function, il::transform::AnalysisManager &analysis) {
             il::transform::CFGInfo &first =
                 analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function);
             il::transform::CFGInfo &second =
@@ -75,17 +71,17 @@ TEST(IL, SimplifyCFGPassManagerCFGInvalidation)
     pm.addSimplifyCFG();
 
     bool checkRan = false;
-    pm.registerFunctionPass(
-        "verify-cfg-recomputed",
-        [&checkRan, &cfgComputeCount](Function &function, il::transform::AnalysisManager &analysis)
-        {
-            il::transform::CFGInfo &cfg =
-                analysis.getFunctionResult<il::transform::CFGInfo>("cfg", function);
-            (void)cfg;
-            checkRan = true;
-            ASSERT_EQ(cfgComputeCount, 2);
-            return il::transform::PreservedAnalyses::all();
-        });
+    pm.registerFunctionPass("verify-cfg-recomputed",
+                            [&checkRan, &cfgComputeCount](
+                                Function &function, il::transform::AnalysisManager &analysis) {
+                                il::transform::CFGInfo &cfg =
+                                    analysis.getFunctionResult<il::transform::CFGInfo>("cfg",
+                                                                                       function);
+                                (void)cfg;
+                                checkRan = true;
+                                ASSERT_EQ(cfgComputeCount, 2);
+                                return il::transform::PreservedAnalyses::all();
+                            });
 
     pm.registerPipeline("simplifycfg-cfg-invalidation",
                         {"seed-cfg-cache", "simplify-cfg", "verify-cfg-recomputed"});
@@ -100,8 +96,7 @@ TEST(IL, SimplifyCFGPassManagerCFGInvalidation)
     ASSERT_TRUE(terminator.op != il::core::Opcode::CBr);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -17,14 +17,12 @@
 
 #include <cstdint>
 
-namespace il::support
-{
+namespace il::support {
 
 /// @brief Represents an absolute position within a source file.
 /// @invariant file_id == 0 indicates an unknown location.
 /// @ownership Value type with no owned resources.
-struct SourceLoc
-{
+struct SourceLoc {
     /// @brief Identifier assigned by SourceManager; 0 denotes invalid location.
     uint32_t file_id = 0;
 
@@ -38,20 +36,17 @@ struct SourceLoc
     [[nodiscard]] bool isValid() const;
 
     /// @brief Determine whether a concrete file identifier is attached.
-    [[nodiscard]] bool hasFile() const
-    {
+    [[nodiscard]] bool hasFile() const {
         return file_id != 0;
     }
 
     /// @brief Determine whether a 1-based line number is available.
-    [[nodiscard]] bool hasLine() const
-    {
+    [[nodiscard]] bool hasLine() const {
         return line != 0;
     }
 
     /// @brief Determine whether a 1-based column number is available.
-    [[nodiscard]] bool hasColumn() const
-    {
+    [[nodiscard]] bool hasColumn() const {
         return column != 0;
     }
 };
@@ -60,8 +55,7 @@ struct SourceLoc
 /// @invariant When valid, both @ref begin and @ref end originate from the same
 ///            file and @ref begin precedes @ref end.
 /// @ownership Value type with no owned resources.
-struct SourceRange
-{
+struct SourceRange {
     /// @brief Starting position of the range; invalid when @ref isValid
     ///        returns false.
     SourceLoc begin{};

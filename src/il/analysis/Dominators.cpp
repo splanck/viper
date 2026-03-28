@@ -28,8 +28,7 @@
 #include <limits>
 #include <unordered_set>
 
-namespace viper::analysis
-{
+namespace viper::analysis {
 
 /// @brief Return the immediate dominator for a block.
 /// @details Performs a map lookup against the cached immediate dominator table.
@@ -40,8 +39,7 @@ namespace viper::analysis
 /// @return Immediate dominator of @p B or `nullptr` if @p B is the entry block.
 /// @invariant The dominator tree has been previously computed for the
 /// containing function.
-il::core::Block *DomTree::immediateDominator(il::core::Block *B) const
-{
+il::core::Block *DomTree::immediateDominator(il::core::Block *B) const {
     auto it = idom.find(B);
     return it == idom.end() ? nullptr : it->second;
 }
@@ -56,14 +54,12 @@ il::core::Block *DomTree::immediateDominator(il::core::Block *B) const
 /// @return `true` if @p A dominates @p B, otherwise `false`.
 /// @invariant Both blocks belong to the same function and the dominator tree
 /// is fully built.
-bool DomTree::dominates(il::core::Block *A, il::core::Block *B) const
-{
+bool DomTree::dominates(il::core::Block *A, il::core::Block *B) const {
     if (!A || !B)
         return false;
     if (A == B)
         return true;
-    while (B)
-    {
+    while (B) {
         auto it = idom.find(B);
         if (it == idom.end())
             return false;
@@ -85,8 +81,7 @@ bool DomTree::dominates(il::core::Block *A, il::core::Block *B) const
 /// @return A fully populated dominator tree with parent and child links.
 /// @invariant The function must have a valid control-flow graph with a
 /// single entry block.
-DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F)
-{
+DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F) {
     DomTree DT;
     auto rpo = reversePostOrder(ctx, F);
     if (rpo.empty())
@@ -100,19 +95,15 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F)
     DT.idom[entry] = nullptr;
 
     bool changed = true;
-    while (changed)
-    {
+    while (changed) {
         changed = false;
-        for (std::size_t i = 1; i < rpo.size(); ++i)
-        {
+        for (std::size_t i = 1; i < rpo.size(); ++i) {
             il::core::Block *b = rpo[i];
             auto preds = predecessors(ctx, *b);
 
             il::core::Block *newIdom = nullptr;
-            for (auto *p : preds)
-            {
-                if (DT.idom.contains(p))
-                {
+            for (auto *p : preds) {
+                if (DT.idom.contains(p)) {
                     newIdom = p;
                     break;
                 }
@@ -123,19 +114,15 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F)
             // Intersect two dominance paths by advancing along the dominator
             // chain using block visit indexes until the nearest common
             // ancestor is located.
-            auto intersect = [&](il::core::Block *b1, il::core::Block *b2)
-            {
-                while (b1 != b2)
-                {
-                    while (index[b1] > index[b2])
-                    {
+            auto intersect = [&](il::core::Block *b1, il::core::Block *b2) {
+                while (b1 != b2) {
+                    while (index[b1] > index[b2]) {
                         auto it = DT.idom.find(b1);
                         if (it == DT.idom.end() || !it->second)
                             return b2; // Broken idom chain — bail to other branch
                         b1 = it->second;
                     }
-                    while (index[b2] > index[b1])
-                    {
+                    while (index[b2] > index[b1]) {
                         auto it = DT.idom.find(b2);
                         if (it == DT.idom.end() || !it->second)
                             return b1; // Broken idom chain — bail to other branch
@@ -145,29 +132,24 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F)
                 return b1;
             };
 
-            for (auto *p : preds)
-            {
+            for (auto *p : preds) {
                 if (p == newIdom || !DT.idom.contains(p))
                     continue;
                 newIdom = intersect(p, newIdom);
             }
 
             auto existingIt = DT.idom.find(b);
-            if (existingIt == DT.idom.end())
-            {
+            if (existingIt == DT.idom.end()) {
                 DT.idom.emplace(b, newIdom);
                 changed = true;
-            }
-            else if (existingIt->second != newIdom)
-            {
+            } else if (existingIt->second != newIdom) {
                 existingIt->second = newIdom;
                 changed = true;
             }
         }
     }
 
-    for (auto &[blk, id] : DT.idom)
-    {
+    for (auto &[blk, id] : DT.idom) {
         if (id)
             DT.children[id].push_back(blk);
     }
@@ -176,8 +158,7 @@ DomTree computeDominatorTree(const CFGContext &ctx, il::core::Function &F)
 }
 
 /// @brief Return the immediate post-dominator of block @p B.
-il::core::Block *PostDomTree::immediatePostDominator(il::core::Block *B) const
-{
+il::core::Block *PostDomTree::immediatePostDominator(il::core::Block *B) const {
     auto it = ipostdom.find(B);
     return it == ipostdom.end() ? nullptr : it->second;
 }
@@ -185,14 +166,12 @@ il::core::Block *PostDomTree::immediatePostDominator(il::core::Block *B) const
 /// @brief Check whether block @p A post-dominates block @p B.
 /// @details Walks up the post-dominator chain from @p B until reaching the
 ///          virtual exit (nullptr) or finding @p A.
-bool PostDomTree::postDominates(il::core::Block *A, il::core::Block *B) const
-{
+bool PostDomTree::postDominates(il::core::Block *A, il::core::Block *B) const {
     if (!A || !B)
         return false;
     if (A == B)
         return true;
-    while (B)
-    {
+    while (B) {
         auto it = ipostdom.find(B);
         if (it == ipostdom.end())
             return false;
@@ -210,8 +189,7 @@ bool PostDomTree::postDominates(il::core::Block *A, il::core::Block *B) const
 /// @c ipostdom = nullptr, representing the virtual exit node.  All other
 /// blocks are processed in reverse-post-order of the reversed CFG, which
 /// is obtained by reversing the post-order DFS from the exit blocks.
-PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &F)
-{
+PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &F) {
     PostDomTree PDT;
     if (F.blocks.empty())
         return PDT;
@@ -230,11 +208,9 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
     std::unordered_set<il::core::Block *> visited;
     visited.reserve(F.blocks.size());
 
-    std::function<void(il::core::Block *)> dfs = [&](il::core::Block *b)
-    {
+    std::function<void(il::core::Block *)> dfs = [&](il::core::Block *b) {
         visited.insert(b);
-        for (auto *pred : predecessors(ctx, *b))
-        {
+        for (auto *pred : predecessors(ctx, *b)) {
             if (!visited.count(pred))
                 dfs(pred);
         }
@@ -242,14 +218,12 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
     };
 
     // Start the DFS from all exit blocks (successors of the virtual exit).
-    for (auto &bb : F.blocks)
-    {
+    for (auto &bb : F.blocks) {
         if (successors(ctx, bb).empty() && !visited.count(&bb))
             dfs(&bb);
     }
     // Handle blocks not reachable from any exit (e.g., infinite-loop bodies).
-    for (auto &bb : F.blocks)
-    {
+    for (auto &bb : F.blocks) {
         if (!visited.count(&bb))
             dfs(&bb);
     }
@@ -271,8 +245,7 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
     for (std::size_t i = 0; i < rpo_rev.size(); ++i)
         index[rpo_rev[i]] = i + 1;
 
-    auto getIdx = [&](il::core::Block *b) -> std::size_t
-    {
+    auto getIdx = [&](il::core::Block *b) -> std::size_t {
         if (!b)
             return 0; // virtual exit
         auto it = index.find(b);
@@ -284,8 +257,7 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
     //
     // Exit blocks' immediate post-dominator is the virtual exit (nullptr).
     // -------------------------------------------------------------------------
-    for (auto &bb : F.blocks)
-    {
+    for (auto &bb : F.blocks) {
         if (successors(ctx, bb).empty())
             PDT.ipostdom[&bb] = nullptr;
     }
@@ -297,19 +269,15 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
     // its successors' immediate post-dominators (successors in the original CFG
     // = predecessors in the reversed CFG).
     // -------------------------------------------------------------------------
-    auto intersect = [&](il::core::Block *b1, il::core::Block *b2) -> il::core::Block *
-    {
-        while (b1 != b2)
-        {
-            while (getIdx(b1) > getIdx(b2))
-            {
+    auto intersect = [&](il::core::Block *b1, il::core::Block *b2) -> il::core::Block * {
+        while (b1 != b2) {
+            while (getIdx(b1) > getIdx(b2)) {
                 auto it = PDT.ipostdom.find(b1);
                 if (it == PDT.ipostdom.end())
                     break;
                 b1 = it->second;
             }
-            while (getIdx(b2) > getIdx(b1))
-            {
+            while (getIdx(b2) > getIdx(b1)) {
                 auto it = PDT.ipostdom.find(b2);
                 if (it == PDT.ipostdom.end())
                     break;
@@ -320,11 +288,9 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
     };
 
     bool changed = true;
-    while (changed)
-    {
+    while (changed) {
         changed = false;
-        for (auto *b : rpo_rev)
-        {
+        for (auto *b : rpo_rev) {
             // Exit blocks are already initialised and never change.
             if (successors(ctx, *b).empty())
                 continue;
@@ -333,10 +299,8 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
 
             // Find the first already-processed successor as the initial candidate.
             il::core::Block *newIdom = nullptr;
-            for (auto *s : succs)
-            {
-                if (PDT.ipostdom.count(s))
-                {
+            for (auto *s : succs) {
+                if (PDT.ipostdom.count(s)) {
                     newIdom = s;
                     break;
                 }
@@ -345,21 +309,17 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
                 continue; // No processed successor yet; defer.
 
             // Intersect all processed successors.
-            for (auto *s : succs)
-            {
+            for (auto *s : succs) {
                 if (s == newIdom || !PDT.ipostdom.count(s))
                     continue;
                 newIdom = intersect(s, newIdom);
             }
 
             auto existingIt = PDT.ipostdom.find(b);
-            if (existingIt == PDT.ipostdom.end())
-            {
+            if (existingIt == PDT.ipostdom.end()) {
                 PDT.ipostdom.emplace(b, newIdom);
                 changed = true;
-            }
-            else if (existingIt->second != newIdom)
-            {
+            } else if (existingIt->second != newIdom) {
                 existingIt->second = newIdom;
                 changed = true;
             }
@@ -369,8 +329,7 @@ PostDomTree computePostDominatorTree(const CFGContext &ctx, il::core::Function &
     // -------------------------------------------------------------------------
     // Step 5: Build child lists.
     // -------------------------------------------------------------------------
-    for (auto &[blk, ipd] : PDT.ipostdom)
-    {
+    for (auto &[blk, ipd] : PDT.ipostdom) {
         if (ipd)
             PDT.children[ipd].push_back(blk);
     }

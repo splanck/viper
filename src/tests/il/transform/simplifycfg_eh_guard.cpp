@@ -26,8 +26,7 @@
 
 #include "tests/TestHarness.hpp"
 
-TEST(IL, SimplifyCFGEhGuard)
-{
+TEST(IL, SimplifyCFGEhGuard) {
     using namespace il::core;
 
     Module module;
@@ -96,8 +95,7 @@ TEST(IL, SimplifyCFGEhGuard)
     ASSERT_EQ(resultPush.labels.front(), "handler");
 
     bool foundHandler = false;
-    for (const auto &block : resultFn.blocks)
-    {
+    for (const auto &block : resultFn.blocks) {
         if (block.label != "handler")
             continue;
 
@@ -122,8 +120,7 @@ TEST(IL, SimplifyCFGEhGuard)
     ASSERT_EQ(stats.unreachableRemoved, 0);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

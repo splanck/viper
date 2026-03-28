@@ -23,18 +23,15 @@
 #include <thread>
 #include <vector>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
-static void *new_obj()
-{
+static void *new_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
@@ -44,8 +41,7 @@ static void *new_obj()
 // Basic operations
 // ============================================================================
 
-static void test_new()
-{
+static void test_new() {
     void *m = rt_concmap_new();
     assert(m != nullptr);
     assert(rt_concmap_len(m) == 0);
@@ -53,8 +49,7 @@ static void test_new()
     printf("test_new: PASSED\n");
 }
 
-static void test_set_get()
-{
+static void test_set_get() {
     void *m = rt_concmap_new();
     void *val = new_obj();
     rt_concmap_set(m, make_str("hello"), val);
@@ -68,16 +63,14 @@ static void test_set_get()
     printf("test_set_get: PASSED\n");
 }
 
-static void test_get_missing()
-{
+static void test_get_missing() {
     void *m = rt_concmap_new();
     void *result = rt_concmap_get(m, make_str("missing"));
     assert(result == nullptr);
     printf("test_get_missing: PASSED\n");
 }
 
-static void test_get_or()
-{
+static void test_get_or() {
     void *m = rt_concmap_new();
     void *def = new_obj();
 
@@ -92,8 +85,7 @@ static void test_get_or()
     printf("test_get_or: PASSED\n");
 }
 
-static void test_has()
-{
+static void test_has() {
     void *m = rt_concmap_new();
     assert(rt_concmap_has(m, make_str("key")) == 0);
 
@@ -104,8 +96,7 @@ static void test_has()
     printf("test_has: PASSED\n");
 }
 
-static void test_update()
-{
+static void test_update() {
     void *m = rt_concmap_new();
     void *v1 = new_obj();
     void *v2 = new_obj();
@@ -119,8 +110,7 @@ static void test_update()
     printf("test_update: PASSED\n");
 }
 
-static void test_remove()
-{
+static void test_remove() {
     void *m = rt_concmap_new();
     rt_concmap_set(m, make_str("key"), new_obj());
     assert(rt_concmap_len(m) == 1);
@@ -136,8 +126,7 @@ static void test_remove()
     printf("test_remove: PASSED\n");
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *m = rt_concmap_new();
     rt_concmap_set(m, make_str("a"), new_obj());
     rt_concmap_set(m, make_str("b"), new_obj());
@@ -151,8 +140,7 @@ static void test_clear()
     printf("test_clear: PASSED\n");
 }
 
-static void test_set_if_missing()
-{
+static void test_set_if_missing() {
     void *m = rt_concmap_new();
     void *v1 = new_obj();
     void *v2 = new_obj();
@@ -168,8 +156,7 @@ static void test_set_if_missing()
     printf("test_set_if_missing: PASSED\n");
 }
 
-static void test_keys_values()
-{
+static void test_keys_values() {
     void *m = rt_concmap_new();
     rt_concmap_set(m, make_str("a"), new_obj());
     rt_concmap_set(m, make_str("b"), new_obj());
@@ -183,15 +170,13 @@ static void test_keys_values()
     printf("test_keys_values: PASSED\n");
 }
 
-static void test_many_entries()
-{
+static void test_many_entries() {
     void *m = rt_concmap_new();
     char buf[32];
     void *vals[100];
 
     /* Insert enough to trigger resize */
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         snprintf(buf, sizeof(buf), "key_%d", i);
         vals[i] = new_obj();
         rt_concmap_set(m, make_str(buf), vals[i]);
@@ -199,8 +184,7 @@ static void test_many_entries()
     assert(rt_concmap_len(m) == 100);
 
     /* Verify all retrievable */
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         snprintf(buf, sizeof(buf), "key_%d", i);
         void *val = rt_concmap_get(m, make_str(buf));
         assert(val == vals[i]);
@@ -213,17 +197,14 @@ static void test_many_entries()
 // Concurrency tests
 // ============================================================================
 
-static void test_concurrent_writes()
-{
+static void test_concurrent_writes() {
     void *m = rt_concmap_new();
     const int N = 100;
     const int T = 4;
 
-    auto worker = [&](int thread_id)
-    {
+    auto worker = [&](int thread_id) {
         char buf[64];
-        for (int i = 0; i < N; i++)
-        {
+        for (int i = 0; i < N; i++) {
             snprintf(buf, sizeof(buf), "t%d_key_%d", thread_id, i);
             void *val = rt_obj_new_i64(0, 8);
             rt_concmap_set(m, rt_const_cstr(buf), val);
@@ -231,12 +212,10 @@ static void test_concurrent_writes()
     };
 
     std::vector<std::thread> threads;
-    for (int t = 0; t < T; t++)
-    {
+    for (int t = 0; t < T; t++) {
         threads.emplace_back(worker, t);
     }
-    for (auto &th : threads)
-    {
+    for (auto &th : threads) {
         th.join();
     }
 
@@ -244,33 +223,27 @@ static void test_concurrent_writes()
     printf("test_concurrent_writes: PASSED\n");
 }
 
-static void test_concurrent_read_write()
-{
+static void test_concurrent_read_write() {
     void *m = rt_concmap_new();
 
     /* Pre-populate */
-    for (int i = 0; i < 50; i++)
-    {
+    for (int i = 0; i < 50; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
         rt_concmap_set(m, rt_const_cstr(buf), new_obj());
     }
 
     /* Readers and writers running concurrently */
-    auto writer = [&]()
-    {
-        for (int i = 50; i < 100; i++)
-        {
+    auto writer = [&]() {
+        for (int i = 50; i < 100; i++) {
             char buf[32];
             snprintf(buf, sizeof(buf), "key_%d", i);
             rt_concmap_set(m, rt_const_cstr(buf), rt_obj_new_i64(0, 8));
         }
     };
 
-    auto reader = [&]()
-    {
-        for (int i = 0; i < 50; i++)
-        {
+    auto reader = [&]() {
+        for (int i = 0; i < 50; i++) {
             char buf[32];
             snprintf(buf, sizeof(buf), "key_%d", i);
             /* Value may or may not be present during writes, but should not crash */
@@ -290,25 +263,21 @@ static void test_concurrent_read_write()
     printf("test_concurrent_read_write: PASSED\n");
 }
 
-static void test_concurrent_set_if_missing()
-{
+static void test_concurrent_set_if_missing() {
     void *m = rt_concmap_new();
     const int T = 4;
 
     /* All threads try to set the same key — only one should succeed */
-    auto worker = [&](int thread_id)
-    {
+    auto worker = [&](int thread_id) {
         void *val = rt_obj_new_i64(0, 8);
         rt_concmap_set_if_missing(m, rt_const_cstr("shared_key"), val);
     };
 
     std::vector<std::thread> threads;
-    for (int t = 0; t < T; t++)
-    {
+    for (int t = 0; t < T; t++) {
         threads.emplace_back(worker, t);
     }
-    for (auto &th : threads)
-    {
+    for (auto &th : threads) {
         th.join();
     }
 
@@ -320,8 +289,7 @@ static void test_concurrent_set_if_missing()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== ConcurrentMap Tests ===\n\n");
 
     /* Basic operations */

@@ -31,8 +31,7 @@
 #include <cmath>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -40,21 +39,18 @@ static int tests_passed = 0;
 static int tests_total = 0;
 
 #define TEST(name)                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_total++;                                                                             \
         printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 
 #define PASS()                                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_passed++;                                                                            \
         printf("ok\n");                                                                            \
     } while (0)
 
-static double dist_between(void *a, void *b)
-{
+static double dist_between(void *a, void *b) {
     double ax = rt_physics2d_body_x(a);
     double ay = rt_physics2d_body_y(a);
     double bx = rt_physics2d_body_x(b);
@@ -77,8 +73,7 @@ static double dist_between(void *a, void *b)
 // Tests
 //=============================================================================
 
-static void test_distance_joint_creation(void)
-{
+static void test_distance_joint_creation(void) {
     TEST("Distance joint creation");
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     void *b = rt_physics2d_body_new(100, 0, 10, 10, 1.0);
@@ -92,8 +87,7 @@ static void test_distance_joint_creation(void)
     PASS();
 }
 
-static void test_distance_joint_converges(void)
-{
+static void test_distance_joint_converges(void) {
     TEST("Distance joint converges toward target");
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     void *b = rt_physics2d_body_new(200, 0, 10, 10, 1.0);
@@ -112,8 +106,7 @@ static void test_distance_joint_converges(void)
     PASS();
 }
 
-static void test_spring_joint_creation(void)
-{
+static void test_spring_joint_creation(void) {
     TEST("Spring joint creation");
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     void *b = rt_physics2d_body_new(100, 0, 10, 10, 1.0);
@@ -125,8 +118,7 @@ static void test_spring_joint_creation(void)
     PASS();
 }
 
-static void test_rope_joint_slack(void)
-{
+static void test_rope_joint_slack(void) {
     TEST("Rope joint allows slack");
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 0.0);  // static
     void *b = rt_physics2d_body_new(20, 0, 10, 10, 1.0); // dynamic
@@ -145,8 +137,7 @@ static void test_rope_joint_slack(void)
     PASS();
 }
 
-static void test_rope_joint_clamps(void)
-{
+static void test_rope_joint_clamps(void) {
     TEST("Rope joint clamps distance");
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 0.0);   // static
     void *b = rt_physics2d_body_new(200, 0, 10, 10, 1.0); // dynamic, far away
@@ -164,8 +155,7 @@ static void test_rope_joint_clamps(void)
     PASS();
 }
 
-static void test_hinge_joint_angle(void)
-{
+static void test_hinge_joint_angle(void) {
     TEST("Hinge joint angle");
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     void *b = rt_physics2d_body_new(100, 0, 10, 10, 1.0);
@@ -177,8 +167,7 @@ static void test_hinge_joint_angle(void)
     PASS();
 }
 
-static void test_circle_body(void)
-{
+static void test_circle_body(void) {
     TEST("Circle body creation");
     void *c = rt_physics2d_circle_body_new(50.0, 50.0, 25.0, 1.0);
     assert(c != NULL);
@@ -188,8 +177,7 @@ static void test_circle_body(void)
     PASS();
 }
 
-static void test_aabb_body_not_circle(void)
-{
+static void test_aabb_body_not_circle(void) {
     TEST("AABB body is not circle");
     void *b = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     assert(rt_physics2d_body_is_circle(b) == 0);
@@ -197,8 +185,7 @@ static void test_aabb_body_not_circle(void)
     PASS();
 }
 
-static void test_world_joint_count(void)
-{
+static void test_world_joint_count(void) {
     TEST("World joint count management");
     void *w = rt_physics2d_world_new(0.0, 0.0);
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
@@ -218,8 +205,7 @@ static void test_world_joint_count(void)
     PASS();
 }
 
-static void test_null_body_safety(void)
-{
+static void test_null_body_safety(void) {
     TEST("NULL body returns NULL joint");
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     assert(rt_physics2d_distance_joint_new(NULL, a, 50.0) == NULL);
@@ -231,8 +217,7 @@ static void test_null_body_safety(void)
     PASS();
 }
 
-static void test_negative_params_clamped(void)
-{
+static void test_negative_params_clamped(void) {
     TEST("Negative parameters clamped to 0");
     void *a = rt_physics2d_body_new(0, 0, 10, 10, 1.0);
     void *b = rt_physics2d_body_new(50, 0, 10, 10, 1.0);
@@ -246,16 +231,14 @@ static void test_negative_params_clamped(void)
     PASS();
 }
 
-static void test_circle_body_min_radius(void)
-{
+static void test_circle_body_min_radius(void) {
     TEST("Circle body minimum radius");
     void *c = rt_physics2d_circle_body_new(0, 0, -5.0, 1.0);
     assert(rt_physics2d_body_radius(c) == 1.0); // Clamped to 1.0
     PASS();
 }
 
-int main()
-{
+int main() {
     printf("test_rt_physics_joints:\n");
 
     test_distance_joint_creation();

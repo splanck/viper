@@ -17,8 +17,7 @@
 #include <cassert>
 #include <limits.h>
 
-int main()
-{
+int main() {
     rt_string s1 = rt_const_cstr("ABCD");
     rt_string s2 = rt_const_cstr("BC");
     assert(rt_str_index_of(s1, s2) == 2);

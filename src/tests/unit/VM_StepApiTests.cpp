@@ -23,8 +23,7 @@
 
 using namespace il::core;
 
-static Module build_simple_module(uint32_t fileId)
-{
+static Module build_simple_module(uint32_t fileId) {
     Module m;
     il::build::IRBuilder b(m);
 
@@ -68,8 +67,7 @@ static Module build_simple_module(uint32_t fileId)
     return m;
 }
 
-int main()
-{
+int main() {
     il::support::SourceManager sm;
     const auto fileId = sm.addFile("/tmp/examples/step.il");
 

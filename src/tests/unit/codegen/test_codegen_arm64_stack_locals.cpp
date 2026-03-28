@@ -28,8 +28,7 @@ using namespace viper::codegen::aarch64;
 using namespace il;
 
 /// @brief Returns the expected mangled symbol name on Darwin.
-static std::string mangledSym(const std::string &name)
-{
+static std::string mangledSym(const std::string &name) {
 #if defined(__APPLE__)
     return "_" + name;
 #else
@@ -46,8 +45,7 @@ static std::string mangledSym(const std::string &name)
 ///   %2 = load i64, i64* %1
 ///   ret i64 %2
 /// }
-static il::core::Function buildTestFunction()
-{
+static il::core::Function buildTestFunction() {
     il::core::Function fn;
     fn.name = "test_local";
     fn.retType = core::Type(core::Type::Kind::I64);
@@ -100,8 +98,7 @@ static il::core::Function buildTestFunction()
     return fn;
 }
 
-TEST(AArch64Codegen, StackLocals_AllocaLoadStore)
-{
+TEST(AArch64Codegen, StackLocals_AllocaLoadStore) {
     auto &ti = darwinTarget();
     LowerILToMIR lowerer{ti};
     AsmEmitter emitter{ti};
@@ -143,8 +140,7 @@ TEST(AArch64Codegen, StackLocals_AllocaLoadStore)
     EXPECT_NE(asmText.find("ret"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

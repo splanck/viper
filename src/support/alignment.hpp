@@ -19,8 +19,7 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace il::support
-{
+namespace il::support {
 
 /// @brief Round a value up to the next multiple of alignment.
 /// @details Computes the smallest value >= n that is a multiple of alignment.
@@ -30,8 +29,7 @@ namespace il::support
 /// @param n Value to align.
 /// @param alignment Alignment boundary (must be power of two).
 /// @return Smallest value >= n that is a multiple of alignment.
-template <typename T> [[nodiscard]] constexpr T alignUp(T n, T alignment) noexcept
-{
+template <typename T> [[nodiscard]] constexpr T alignUp(T n, T alignment) noexcept {
     static_assert(std::is_integral_v<T>, "alignUp requires an integral type");
     return (n + alignment - 1) & ~(alignment - 1);
 }
@@ -41,8 +39,7 @@ template <typename T> [[nodiscard]] constexpr T alignUp(T n, T alignment) noexce
 /// @param n Value to check.
 /// @param alignment Alignment boundary (must be power of two).
 /// @return true if n is a multiple of alignment.
-template <typename T> [[nodiscard]] constexpr bool isAligned(T n, T alignment) noexcept
-{
+template <typename T> [[nodiscard]] constexpr bool isAligned(T n, T alignment) noexcept {
     static_assert(std::is_integral_v<T>, "isAligned requires an integral type");
     return (n & (alignment - 1)) == 0;
 }

@@ -19,12 +19,9 @@
 #include <iostream>
 #include <string>
 
-namespace viper::codegen::x64
-{
-namespace
-{
-[[nodiscard]] ILModule makePiLiteralModule()
-{
+namespace viper::codegen::x64 {
+namespace {
+[[nodiscard]] ILModule makePiLiteralModule() {
     ILValue literal{};
     literal.kind = ILValue::Kind::F64;
     literal.id = -1;
@@ -47,28 +44,23 @@ namespace
     return module;
 }
 
-[[nodiscard]] bool rodataContainsF64Label(const std::string &asmText)
-{
+[[nodiscard]] bool rodataContainsF64Label(const std::string &asmText) {
     const std::size_t rodataPos = asmText.find(".section .rodata");
-    if (rodataPos == std::string::npos)
-    {
+    if (rodataPos == std::string::npos) {
         return false;
     }
     const std::size_t labelPos = asmText.find(".LC_f64_", rodataPos);
     return labelPos != std::string::npos;
 }
 
-[[nodiscard]] bool textLoadsF64Literal(const std::string &asmText)
-{
+[[nodiscard]] bool textLoadsF64Literal(const std::string &asmText) {
     const std::size_t textPos = asmText.find(".text");
-    if (textPos == std::string::npos)
-    {
+    if (textPos == std::string::npos) {
         return false;
     }
 
     const std::size_t movsdPos = asmText.find("movsd", textPos);
-    if (movsdPos == std::string::npos)
-    {
+    if (movsdPos == std::string::npos) {
         return false;
     }
 
@@ -83,21 +75,18 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makePiLiteralModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
 
-    if (!result.errors.empty())
-    {
+    if (!result.errors.empty()) {
         std::cerr << "Unexpected errors during codegen\n";
         return EXIT_FAILURE;
     }
 
-    if (!rodataContainsF64Label(result.asmText) || !textLoadsF64Literal(result.asmText))
-    {
+    if (!rodataContainsF64Label(result.asmText) || !textLoadsF64Literal(result.asmText)) {
         std::cerr << "Assembly missing expected f64 literal patterns:\n" << result.asmText;
         return EXIT_FAILURE;
     }

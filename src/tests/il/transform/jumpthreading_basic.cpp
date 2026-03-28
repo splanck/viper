@@ -25,23 +25,18 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-static void verifyOrDie(const Module &module)
-{
+static void verifyOrDie(const Module &module) {
     auto verifyResult = il::verify::Verifier::verify(module);
-    if (!verifyResult)
-    {
+    if (!verifyResult) {
         il::support::printDiag(verifyResult.error(), std::cerr);
         ASSERT_TRUE(false && "Module verification failed");
     }
 }
 
-BasicBlock *findBlock(Function &function, const std::string &label)
-{
-    for (auto &block : function.blocks)
-    {
+BasicBlock *findBlock(Function &function, const std::string &label) {
+    for (auto &block : function.blocks) {
         if (block.label == label)
             return &block;
     }
@@ -50,8 +45,7 @@ BasicBlock *findBlock(Function &function, const std::string &label)
 
 } // namespace
 
-TEST(IL, testBasicJumpThreading)
-{
+TEST(IL, testBasicJumpThreading) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -110,14 +104,12 @@ TEST(IL, testBasicJumpThreading)
     ASSERT_TRUE(entryAfter != nullptr);
 
     const Instr &term = entryAfter->instructions.back();
-    if (term.op == Opcode::Br && !term.labels.empty())
-    {
+    if (term.op == Opcode::Br && !term.labels.empty()) {
         ASSERT_TRUE(term.labels[0] == "target1" || term.labels[0] == "mid");
     }
 }
 
-TEST(IL, testJumpThreadingFalseBranch)
-{
+TEST(IL, testJumpThreadingFalseBranch) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -175,14 +167,12 @@ TEST(IL, testJumpThreadingFalseBranch)
     ASSERT_TRUE(entryAfter != nullptr);
 
     const Instr &term = entryAfter->instructions.back();
-    if (term.op == Opcode::Br && !term.labels.empty())
-    {
+    if (term.op == Opcode::Br && !term.labels.empty()) {
         ASSERT_TRUE(term.labels[0] == "target2" || term.labels[0] == "mid");
     }
 }
 
-TEST(IL, testJumpThreadingWithArgs)
-{
+TEST(IL, testJumpThreadingWithArgs) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -239,8 +229,7 @@ TEST(IL, testJumpThreadingWithArgs)
     // (since condition is true, takes first branch which passes val=42)
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

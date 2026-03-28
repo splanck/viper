@@ -38,8 +38,7 @@
 //=============================================================================
 
 /// @brief Verify that a new spritebatch has expected initial state.
-static void test_spritebatch_initial_state(void)
-{
+static void test_spritebatch_initial_state(void) {
     void *batch = rt_spritebatch_new(0);
     assert(batch != NULL);
     assert(rt_spritebatch_count(batch) == 0);
@@ -48,8 +47,7 @@ static void test_spritebatch_initial_state(void)
 }
 
 /// @brief Verify begin resets count and sets active flag.
-static void test_spritebatch_begin_resets_state(void)
-{
+static void test_spritebatch_begin_resets_state(void) {
     void *batch = rt_spritebatch_new(4);
     assert(batch != NULL);
 
@@ -60,8 +58,7 @@ static void test_spritebatch_begin_resets_state(void)
 
 /// @brief Verify that adding pixels items increments count correctly.
 /// rt_spritebatch_draw_pixels only stores a reference, no canvas needed.
-static void test_spritebatch_item_count(void)
-{
+static void test_spritebatch_item_count(void) {
     void *batch = rt_spritebatch_new(4);
     assert(batch != NULL);
 
@@ -82,8 +79,7 @@ static void test_spritebatch_item_count(void)
 
 /// @brief Verify that adding more items than initial capacity triggers growth.
 /// This exercises the ensure_capacity realloc path (Bug R-17 fix).
-static void test_spritebatch_capacity_growth(void)
-{
+static void test_spritebatch_capacity_growth(void) {
     // Start with capacity 2 so we force a realloc quickly.
     void *batch = rt_spritebatch_new(2);
     assert(batch != NULL);
@@ -94,8 +90,7 @@ static void test_spritebatch_capacity_growth(void)
     rt_spritebatch_begin(batch);
 
     int64_t n = 64;
-    for (int64_t i = 0; i < n; i++)
-    {
+    for (int64_t i = 0; i < n; i++) {
         rt_spritebatch_draw_pixels(batch, pixels, i * 5, 0);
     }
 
@@ -104,8 +99,7 @@ static void test_spritebatch_capacity_growth(void)
 }
 
 /// @brief Verify that a second begin resets count (items from prior batch gone).
-static void test_spritebatch_begin_clears_previous(void)
-{
+static void test_spritebatch_begin_clears_previous(void) {
     void *batch = rt_spritebatch_new(8);
     assert(batch != NULL);
 
@@ -124,8 +118,7 @@ static void test_spritebatch_begin_clears_previous(void)
 }
 
 /// @brief Verify that draw_region also increments count.
-static void test_spritebatch_draw_region_increments_count(void)
-{
+static void test_spritebatch_draw_region_increments_count(void) {
     void *batch = rt_spritebatch_new(8);
     assert(batch != NULL);
 
@@ -143,8 +136,7 @@ static void test_spritebatch_draw_region_increments_count(void)
 //=============================================================================
 
 /// @brief Verify basic region add and retrieval.
-static void test_spritesheet_add_and_find(void)
-{
+static void test_spritesheet_add_and_find(void) {
     void *atlas = rt_pixels_new(64, 64);
     assert(atlas != NULL);
 
@@ -159,8 +151,7 @@ static void test_spritesheet_add_and_find(void)
 
 /// @brief Add enough regions to force multiple doublings of the internal arrays.
 /// This exercises the two-realloc path in ensure_cap (Bug R-18 fix).
-static void test_spritesheet_many_regions_survive_realloc(void)
-{
+static void test_spritesheet_many_regions_survive_realloc(void) {
     // SS_INITIAL_CAP is 16; adding 100 regions forces ~3 doublings.
     void *atlas = rt_pixels_new(256, 256);
     assert(atlas != NULL);
@@ -171,8 +162,7 @@ static void test_spritesheet_many_regions_survive_realloc(void)
     char name_buf[32];
     int64_t total = 100;
 
-    for (int64_t i = 0; i < total; i++)
-    {
+    for (int64_t i = 0; i < total; i++) {
         // snprintf into local buffer; rt_const_cstr borrows the pointer
         // so we must use it immediately before the buffer changes.
         int written = snprintf(name_buf, sizeof(name_buf), "region_%lld", (long long)i);
@@ -190,8 +180,7 @@ static void test_spritesheet_many_regions_survive_realloc(void)
 }
 
 /// @brief Updating an existing region does not increase the count.
-static void test_spritesheet_update_existing_region(void)
-{
+static void test_spritesheet_update_existing_region(void) {
     void *atlas = rt_pixels_new(64, 64);
     assert(atlas != NULL);
 
@@ -209,8 +198,7 @@ static void test_spritesheet_update_existing_region(void)
 }
 
 /// @brief Removing a region decrements the count.
-static void test_spritesheet_remove_region(void)
-{
+static void test_spritesheet_remove_region(void) {
     void *atlas = rt_pixels_new(32, 32);
     assert(atlas != NULL);
 
@@ -231,8 +219,7 @@ static void test_spritesheet_remove_region(void)
 }
 
 /// @brief Width and height accessors reflect the atlas dimensions.
-static void test_spritesheet_dimensions(void)
-{
+static void test_spritesheet_dimensions(void) {
     void *atlas = rt_pixels_new(128, 64);
     assert(atlas != NULL);
 
@@ -248,8 +235,7 @@ static void test_spritesheet_dimensions(void)
 //=============================================================================
 
 /// @brief A freshly created scene has a root node with zero children.
-static void test_scene_initial_state(void)
-{
+static void test_scene_initial_state(void) {
     void *scene = rt_scene_new();
     assert(scene != NULL);
 
@@ -259,8 +245,7 @@ static void test_scene_initial_state(void)
 }
 
 /// @brief Adding nodes to the scene increments the root's child count.
-static void test_scene_add_nodes(void)
-{
+static void test_scene_add_nodes(void) {
     void *scene = rt_scene_new();
     assert(scene != NULL);
 
@@ -280,8 +265,7 @@ static void test_scene_add_nodes(void)
 }
 
 /// @brief Removing a node from the scene decrements the child count.
-static void test_scene_remove_node(void)
-{
+static void test_scene_remove_node(void) {
     void *scene = rt_scene_new();
     assert(scene != NULL);
 
@@ -301,8 +285,7 @@ static void test_scene_remove_node(void)
 }
 
 /// @brief rt_scene_clear removes all nodes from the scene.
-static void test_scene_clear(void)
-{
+static void test_scene_clear(void) {
     void *scene = rt_scene_new();
     assert(scene != NULL);
 
@@ -318,8 +301,7 @@ static void test_scene_clear(void)
 }
 
 /// @brief rt_scene_find locates a named node in the hierarchy.
-static void test_scene_find_by_name(void)
-{
+static void test_scene_find_by_name(void) {
     void *scene = rt_scene_new();
     assert(scene != NULL);
 
@@ -336,8 +318,7 @@ static void test_scene_find_by_name(void)
 }
 
 /// @brief Verify parent/child linkage is maintained.
-static void test_scene_node_hierarchy(void)
-{
+static void test_scene_node_hierarchy(void) {
     void *parent = rt_scene_node_new();
     void *child_a = rt_scene_node_new();
     void *child_b = rt_scene_node_new();
@@ -355,8 +336,7 @@ static void test_scene_node_hierarchy(void)
 }
 
 /// @brief Detaching a child clears its parent pointer.
-static void test_scene_node_detach(void)
-{
+static void test_scene_node_detach(void) {
     void *parent = rt_scene_node_new();
     void *child = rt_scene_node_new();
     assert(parent != NULL);
@@ -373,8 +353,7 @@ static void test_scene_node_detach(void)
 /// @brief rt_scene_node_count returns the number of visible nodes with sprites.
 /// This internally calls rt_seq_new and must release it (Bug R-16 fix).
 /// Calling it many times validates that the seq is properly released each time.
-static void test_scene_node_count_no_leak(void)
-{
+static void test_scene_node_count_no_leak(void) {
     void *scene = rt_scene_new();
     assert(scene != NULL);
 
@@ -385,8 +364,7 @@ static void test_scene_node_count_no_leak(void)
     // Call rt_scene_node_count many times to amplify any per-call leak.
     // A correct implementation releases the temporary seq on every call.
     // This does not crash and does not grow memory unboundedly if fixed.
-    for (int i = 0; i < 1000; i++)
-    {
+    for (int i = 0; i < 1000; i++) {
         int64_t count = rt_scene_node_count(scene);
         // Nodes have no sprites, so visible-node count is 0.
         assert(count == 0);
@@ -394,8 +372,7 @@ static void test_scene_node_count_no_leak(void)
 }
 
 /// @brief Verify world transform computation is correct.
-static void test_scene_node_world_transform(void)
-{
+static void test_scene_node_world_transform(void) {
     void *parent = rt_scene_node_new();
     void *child = rt_scene_node_new();
     assert(parent != NULL);
@@ -413,8 +390,7 @@ static void test_scene_node_world_transform(void)
 }
 
 /// @brief Verify that node visibility can be toggled.
-static void test_scene_node_visibility(void)
-{
+static void test_scene_node_visibility(void) {
     void *node = rt_scene_node_new();
     assert(node != NULL);
 
@@ -431,8 +407,7 @@ static void test_scene_node_visibility(void)
 // Entry point
 //=============================================================================
 
-int main(void)
-{
+int main(void) {
     // SpriteBatch tests (Bug R-17)
     test_spritebatch_initial_state();
     test_spritebatch_begin_resets_state();

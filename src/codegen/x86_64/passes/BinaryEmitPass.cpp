@@ -22,30 +22,23 @@
 #include <string>
 #include <utility>
 
-namespace viper::codegen::x64::passes
-{
+namespace viper::codegen::x64::passes {
 
 BinaryEmitPass::BinaryEmitPass(bool isDarwin, CodegenOptions options) noexcept
-    : isDarwin_(isDarwin), options_(std::move(options))
-{
-}
+    : isDarwin_(isDarwin), options_(std::move(options)) {}
 
-bool BinaryEmitPass::run(Module &module, Diagnostics &diags)
-{
-    if (!module.registersAllocated)
-    {
+bool BinaryEmitPass::run(Module &module, Diagnostics &diags) {
+    if (!module.registersAllocated) {
         diags.error("binary emit: register allocation has not completed");
         return false;
     }
-    if (!module.lowered)
-    {
+    if (!module.lowered) {
         diags.error("binary emit: lowering artefact missing prior to emission");
         return false;
     }
 
     BinaryEmitResult result = emitModuleToBinary(*module.lowered, options_, isDarwin_);
-    if (!result.errors.empty())
-    {
+    if (!result.errors.empty()) {
         std::string message = "error: x64 binary codegen failed:\n";
         message += result.errors;
         message.push_back('\n');

@@ -23,22 +23,18 @@
 #include <string>
 #include <vector>
 
-namespace il::tools::verify
-{
+namespace il::tools::verify {
 int runCLI(
     int argc, char **argv, std::ostream &out, std::ostream &err, il::support::SourceManager &sm);
 } // namespace il::tools::verify
 
-namespace
-{
-std::filesystem::path repoRoot()
-{
+namespace {
+std::filesystem::path repoRoot() {
     const auto sourcePath = std::filesystem::absolute(std::filesystem::path(__FILE__));
     return sourcePath.parent_path().parent_path().parent_path();
 }
 
-int testMissingFileError()
-{
+int testMissingFileError() {
     char exeName[] = "il-verify";
     char pathArg[] = "/definitely/not/present.il";
     char *argv[] = {exeName, pathArg};
@@ -59,8 +55,7 @@ int testMissingFileError()
     return 0;
 }
 
-int testParseError()
-{
+int testParseError() {
     const auto root = repoRoot();
     std::string pathStr = (root / "tests/il/parse/mismatched_paren.il").string();
     std::vector<char> pathStorage(pathStr.begin(), pathStr.end());
@@ -85,8 +80,7 @@ int testParseError()
     return 0;
 }
 
-int testVerifyError()
-{
+int testVerifyError() {
     const auto root = repoRoot();
     std::string pathStr = (root / "tests/il/negatives/unbalanced_eh.il").string();
     std::vector<char> pathStorage(pathStr.begin(), pathStr.end());
@@ -111,8 +105,7 @@ int testVerifyError()
     return 0;
 }
 
-int testSuccess()
-{
+int testSuccess() {
     const auto root = repoRoot();
     std::string pathStr = (root / "tests/data/loop.il").string();
     std::vector<char> pathStorage(pathStr.begin(), pathStr.end());
@@ -137,8 +130,7 @@ int testSuccess()
     return 0;
 }
 
-int testVersionFlag()
-{
+int testVersionFlag() {
     char exeName[] = "il-verify";
     char versionArg[] = "--version";
     char *argv[] = {exeName, versionArg};
@@ -159,8 +151,7 @@ int testVersionFlag()
     return 0;
 }
 
-int testUsageError()
-{
+int testUsageError() {
     char exeName[] = "il-verify";
     char *argv[] = {exeName};
 
@@ -181,8 +172,7 @@ int testUsageError()
 }
 } // namespace
 
-int main()
-{
+int main() {
     int result = 0;
     result |= testMissingFileError();
     result |= testParseError();

@@ -18,15 +18,13 @@
 
 #include "frontends/basic/Lowerer.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Helper for lowering BASIC logical binary expressions.
 /// @details Encapsulates the logic for short-circuit and eager logical
 ///          operators. Short-circuit forms build explicit control flow while
 ///          eager forms emit bitwise operations on BASIC's logical word type.
-struct LogicalExprLowering
-{
+struct LogicalExprLowering {
     /// @brief Bind the logical lowering helper to a lowerer instance.
     /// @param lowerer Active lowering engine used to emit IL.
     explicit LogicalExprLowering(Lowerer &lowerer) noexcept;

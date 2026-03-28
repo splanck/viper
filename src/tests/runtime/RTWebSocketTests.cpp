@@ -25,20 +25,17 @@
 #include <thread>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Extract the value of "Sec-WebSocket-Key:" from raw HTTP headers buffer.
 /// Writes at most max_len-1 characters to out and NUL-terminates. Returns true on success.
-static bool extract_ws_key(const char *headers, char *out, size_t max_len)
-{
+static bool extract_ws_key(const char *headers, char *out, size_t max_len) {
     // Case-insensitive search for "Sec-WebSocket-Key:" header
     const char *p = headers;
-    while ((p = strstr(p, "\r\n")) != NULL)
-    {
+    while ((p = strstr(p, "\r\n")) != NULL) {
         p += 2; // skip CRLF
 #ifdef _WIN32
         if (_strnicmp(p, "Sec-WebSocket-Key:", 18) == 0)
@@ -64,8 +61,7 @@ static bool extract_ws_key(const char *headers, char *out, size_t max_len)
 }
 
 /// @brief Build and send a valid WebSocket 101 response using the client's key.
-static void ws_send_handshake(void *client, const char *headers_buf)
-{
+static void ws_send_handshake(void *client, const char *headers_buf) {
     char ws_key[128] = {0};
     char *accept = NULL;
 
@@ -73,8 +69,7 @@ static void ws_send_handshake(void *client, const char *headers_buf)
         accept = rt_ws_compute_accept_key(ws_key);
 
     char response[512];
-    if (accept)
-    {
+    if (accept) {
         snprintf(response,
                  sizeof(response),
                  "HTTP/1.1 101 Switching Protocols\r\n"
@@ -84,9 +79,7 @@ static void ws_send_handshake(void *client, const char *headers_buf)
                  "\r\n",
                  accept);
         free(accept);
-    }
-    else
-    {
+    } else {
         // Fallback (shouldn't happen in tests)
         snprintf(response,
                  sizeof(response),
@@ -109,11 +102,9 @@ static std::atomic<bool> ws_server_failed{false};
 
 /// @brief Accept a TCP connection and perform a minimal WS handshake,
 ///        then sit idle (never send data) so recv_for can time out.
-static void ws_silent_server_thread(int port)
-{
+static void ws_silent_server_thread(int port) {
     void *server = rt_tcp_server_listen(port);
-    if (!server)
-    {
+    if (!server) {
         printf("  WARNING: Could not create server on port %d\n", port);
         ws_server_failed = true;
         ws_server_ready = true;
@@ -125,8 +116,7 @@ static void ws_silent_server_thread(int port)
 
     // Accept one client
     void *client = rt_tcp_server_accept_for(server, 5000);
-    if (!client)
-    {
+    if (!client) {
         rt_tcp_server_close(server);
         return;
     }
@@ -134,14 +124,12 @@ static void ws_silent_server_thread(int port)
     // Read the HTTP upgrade request (consume all of it)
     char buf[4096];
     int total = 0;
-    while (total < (int)sizeof(buf) - 1)
-    {
+    while (total < (int)sizeof(buf) - 1) {
         rt_string line = rt_tcp_recv_str(client, 1);
         if (!line)
             break;
         const char *c = rt_string_cstr(line);
-        if (c)
-        {
+        if (c) {
             buf[total] = c[0];
             total++;
         }
@@ -165,11 +153,9 @@ static void ws_silent_server_thread(int port)
 
 /// @brief Accept a TCP connection and perform a minimal WS handshake,
 ///        then echo one message back.
-static void ws_echo_server_thread(int port)
-{
+static void ws_echo_server_thread(int port) {
     void *server = rt_tcp_server_listen(port);
-    if (!server)
-    {
+    if (!server) {
         printf("  WARNING: Could not create server on port %d\n", port);
         ws_server_failed = true;
         ws_server_ready = true;
@@ -180,8 +166,7 @@ static void ws_echo_server_thread(int port)
     ws_server_ready = true;
 
     void *client = rt_tcp_server_accept_for(server, 5000);
-    if (!client)
-    {
+    if (!client) {
         rt_tcp_server_close(server);
         return;
     }
@@ -189,14 +174,12 @@ static void ws_echo_server_thread(int port)
     // Read the HTTP upgrade request
     char buf[4096];
     int total = 0;
-    while (total < (int)sizeof(buf) - 1)
-    {
+    while (total < (int)sizeof(buf) - 1) {
         rt_string line = rt_tcp_recv_str(client, 1);
         if (!line)
             break;
         const char *c = rt_string_cstr(line);
-        if (c)
-        {
+        if (c) {
             buf[total] = c[0];
             total++;
         }
@@ -212,15 +195,13 @@ static void ws_echo_server_thread(int port)
     // Read one WebSocket frame from client (text message)
     // Frame format: [FIN+opcode] [MASK+len] [4-byte mask] [masked payload]
     void *hdr_bytes = rt_tcp_recv(client, 2);
-    if (hdr_bytes && rt_bytes_len(hdr_bytes) == 2)
-    {
+    if (hdr_bytes && rt_bytes_len(hdr_bytes) == 2) {
         // We have the header - read mask key and payload
         uint8_t len_byte = rt_bytes_get(hdr_bytes, 1) & 0x7F;
         void *mask_bytes = rt_tcp_recv(client, 4);
         void *payload = rt_tcp_recv(client, len_byte);
 
-        if (mask_bytes && payload)
-        {
+        if (mask_bytes && payload) {
             // Unmask payload
             uint8_t mask[4];
             for (int i = 0; i < 4; i++)
@@ -263,8 +244,7 @@ static void ws_echo_server_thread(int port)
 ///   Client key : "dGhlIHNhbXBsZSBub25jZQ=="
 ///   Expected   : "s3pPLMBiTxaQ9kYGzzhZRbK+xoo="
 /// This pins the SHA-1 + base64 implementation against the standard.
-static void test_ws_accept_key_rfc_example()
-{
+static void test_ws_accept_key_rfc_example() {
     printf("\nTesting WebSocket accept key (RFC 6455 §1.3 vector):\n");
 
     const char *client_key = "dGhlIHNhbXBsZSBub25jZQ==";
@@ -277,16 +257,14 @@ static void test_ws_accept_key_rfc_example()
     char *accept = rt_ws_compute_accept_key(client_key);
 
     test_result("accept key is not NULL", accept != NULL);
-    if (accept)
-    {
+    if (accept) {
         test_result("RFC 6455 §1.3 accept key matches", strcmp(accept, expected_accept) == 0);
         free(accept);
     }
 }
 
 /// @brief Test that rt_ws_compute_accept_key is NULL-safe.
-static void test_ws_accept_key_null_safe()
-{
+static void test_ws_accept_key_null_safe() {
     printf("\nTesting WebSocket accept key NULL safety:\n");
 
     char *result = rt_ws_compute_accept_key(NULL);
@@ -298,13 +276,11 @@ static void test_ws_accept_key_null_safe()
 //=============================================================================
 
 /// @brief Test that recv_for returns NULL when timeout expires.
-static void test_ws_recv_for_timeout()
-{
+static void test_ws_recv_for_timeout() {
     printf("\nTesting WebSocket recv_for timeout:\n");
 
     const int port = (int)rt_netutils_get_free_port();
-    if (port <= 0)
-    {
+    if (port <= 0) {
         printf("  SKIP: local bind unavailable in this environment\n");
         return;
     }
@@ -315,8 +291,7 @@ static void test_ws_recv_for_timeout()
 
     while (!ws_server_ready)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    if (ws_server_failed)
-    {
+    if (ws_server_failed) {
         server.join();
         printf("  SKIP: local bind unavailable in this environment\n");
         return;
@@ -347,13 +322,11 @@ static void test_ws_recv_for_timeout()
 }
 
 /// @brief Test that recv_bytes_for returns NULL when timeout expires.
-static void test_ws_recv_bytes_for_timeout()
-{
+static void test_ws_recv_bytes_for_timeout() {
     printf("\nTesting WebSocket recv_bytes_for timeout:\n");
 
     const int port = (int)rt_netutils_get_free_port();
-    if (port <= 0)
-    {
+    if (port <= 0) {
         printf("  SKIP: local bind unavailable in this environment\n");
         return;
     }
@@ -364,8 +337,7 @@ static void test_ws_recv_bytes_for_timeout()
 
     while (!ws_server_ready)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    if (ws_server_failed)
-    {
+    if (ws_server_failed) {
         server.join();
         printf("  SKIP: local bind unavailable in this environment\n");
         return;
@@ -394,13 +366,11 @@ static void test_ws_recv_bytes_for_timeout()
 }
 
 /// @brief Test that connect_for works for successful fast connections.
-static void test_ws_connect_for_success()
-{
+static void test_ws_connect_for_success() {
     printf("\nTesting WebSocket connect_for (success case):\n");
 
     const int port = (int)rt_netutils_get_free_port();
-    if (port <= 0)
-    {
+    if (port <= 0) {
         printf("  SKIP: local bind unavailable in this environment\n");
         return;
     }
@@ -411,8 +381,7 @@ static void test_ws_connect_for_success()
 
     while (!ws_server_ready)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    if (ws_server_failed)
-    {
+    if (ws_server_failed) {
         server.join();
         printf("  SKIP: local bind unavailable in this environment\n");
         return;
@@ -436,13 +405,10 @@ static void test_ws_connect_for_success()
     // Send a message and receive echo
     rt_ws_send(ws, rt_const_cstr("hello"));
     rt_string reply = rt_ws_recv_for(ws, 2000);
-    if (reply)
-    {
+    if (reply) {
         const char *r = rt_string_cstr(reply);
         test_result("Echo reply is 'hello'", r != nullptr && strcmp(r, "hello") == 0);
-    }
-    else
-    {
+    } else {
         test_result("Echo reply received", false);
     }
 
@@ -451,8 +417,7 @@ static void test_ws_connect_for_success()
 }
 
 /// @brief Test recv_for and recv_bytes_for with NULL object.
-static void test_ws_null_object()
-{
+static void test_ws_null_object() {
     printf("\nTesting WebSocket timeout functions with NULL:\n");
 
     rt_string msg = rt_ws_recv_for(nullptr, 100);
@@ -466,8 +431,7 @@ static void test_ws_null_object()
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== WebSocket Tests ===\n");
 
     // CS-5: Sec-WebSocket-Accept key computation

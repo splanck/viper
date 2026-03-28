@@ -22,8 +22,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-TEST(BasicDisposeTest, DisposeNullNoTrap)
-{
+TEST(BasicDisposeTest, DisposeNullNoTrap) {
     constexpr const char *src = R"BASIC(
 CLASS C
   DESTRUCTOR
@@ -52,8 +51,7 @@ END
     (void)fx.run(module);
 }
 
-TEST(BasicDisposeTest, DoubleDisposeTriggersTrap)
-{
+TEST(BasicDisposeTest, DoubleDisposeTriggersTrap) {
     constexpr const char *src = R"BASIC(
 CLASS C
   DESTRUCTOR
@@ -85,8 +83,7 @@ END
     EXPECT_TRUE(trap.exited);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

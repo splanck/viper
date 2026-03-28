@@ -24,12 +24,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Exhaustive match with wildcard compiles cleanly.
-TEST(ZiaMatchExhaustiveness, WildcardIsExhaustive)
-{
+TEST(ZiaMatchExhaustiveness, WildcardIsExhaustive) {
     const std::string src = R"(
 module Test;
 
@@ -55,8 +53,7 @@ func start() {
 
     // No W019 warning should be present
     bool hasW019 = false;
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
+    for (const auto &d : result.diagnostics.diagnostics()) {
         if (d.message.find("Non-exhaustive") != std::string::npos)
             hasW019 = true;
     }
@@ -64,8 +61,7 @@ func start() {
 }
 
 /// @brief Non-exhaustive match on String emits W019 warning.
-TEST(ZiaMatchExhaustiveness, NonExhaustiveStringWarning)
-{
+TEST(ZiaMatchExhaustiveness, NonExhaustiveStringWarning) {
     const std::string src = R"(
 module Test;
 
@@ -89,8 +85,7 @@ func start() {
     // Should still compile (warning, not error for String type)
     // Check that W019 warning is present
     bool hasW019 = false;
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
+    for (const auto &d : result.diagnostics.diagnostics()) {
         if (d.message.find("Non-exhaustive") != std::string::npos)
             hasW019 = true;
     }
@@ -98,8 +93,7 @@ func start() {
 }
 
 /// @brief Boolean match covering both cases is exhaustive.
-TEST(ZiaMatchExhaustiveness, BooleanFullCoverage)
-{
+TEST(ZiaMatchExhaustiveness, BooleanFullCoverage) {
     const std::string src = R"(
 module Test;
 
@@ -125,8 +119,7 @@ func start() {
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

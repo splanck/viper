@@ -41,8 +41,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::aarch64::fastpaths
-{
+namespace viper::codegen::aarch64::fastpaths {
 
 //===----------------------------------------------------------------------===//
 // Common Constants
@@ -58,8 +57,7 @@ extern thread_local unsigned trapLabelCounter;
 
 /// @brief Context for fast-path lowering operations.
 /// @details Groups commonly-used references and lambdas for convenient access.
-struct FastPathContext
-{
+struct FastPathContext {
     const il::core::Function &fn;
     const TargetInfo &ti;
     FrameBuilder &fb;
@@ -75,13 +73,10 @@ struct FastPathContext
                     const TargetInfo &ti,
                     FrameBuilder &fb,
                     MFunction &mf)
-        : fn(fn), ti(ti), fb(fb), mf(mf), argOrder(ti.intArgOrder)
-    {
-    }
+        : fn(fn), ti(ti), fb(fb), mf(mf), argOrder(ti.intArgOrder) {}
 
     /// @brief Get the MIR output block at the given index.
-    MBasicBlock &bbOut(std::size_t idx)
-    {
+    MBasicBlock &bbOut(std::size_t idx) {
         return mf.blocks[idx];
     }
 
@@ -91,13 +86,10 @@ struct FastPathContext
     /// @return The physical register if @p val is a parameter within GPR arg limits, nullopt
     /// otherwise.
     [[nodiscard]] std::optional<PhysReg> getValueReg(const il::core::BasicBlock &bb,
-                                                     const il::core::Value &val) const
-    {
-        if (val.kind == il::core::Value::Kind::Temp)
-        {
+                                                     const il::core::Value &val) const {
+        if (val.kind == il::core::Value::Kind::Temp) {
             int pIdx = indexOfParam(bb, val.id);
-            if (pIdx >= 0 && static_cast<std::size_t>(pIdx) < kMaxGPRArgs)
-            {
+            if (pIdx >= 0 && static_cast<std::size_t>(pIdx) < kMaxGPRArgs) {
                 return argOrder[static_cast<size_t>(pIdx)];
             }
         }
@@ -140,8 +132,7 @@ std::optional<MFunction> tryCallFastPaths(FastPathContext &ctx);
 /// @brief Result of single-block fast-path validation.
 /// @details Provides references to the front block and output MIR block if
 ///          validation succeeds, allowing callers to avoid repeated lookups.
-struct SingleBlockFastPathSetup
-{
+struct SingleBlockFastPathSetup {
     const il::core::BasicBlock &bb; ///< Reference to the single block.
     MBasicBlock &bbMir;             ///< Reference to the output MIR block.
 };
@@ -155,8 +146,7 @@ struct SingleBlockFastPathSetup
 /// @param requireParams If true, block must have at least one parameter.
 /// @return Setup struct if valid, nullopt otherwise.
 [[nodiscard]] inline std::optional<SingleBlockFastPathSetup> validateSingleBlockFastPath(
-    FastPathContext &ctx, std::size_t minInstrs = 2, bool requireParams = true)
-{
+    FastPathContext &ctx, std::size_t minInstrs = 2, bool requireParams = true) {
     if (ctx.fn.blocks.empty())
         return std::nullopt;
     if (ctx.fn.blocks.size() != 1)
@@ -172,12 +162,9 @@ struct SingleBlockFastPathSetup
 }
 
 /// @brief Check if a basic block has side effects that prevent fast-path.
-[[nodiscard]] inline bool hasSideEffects(const il::core::BasicBlock &bb)
-{
-    for (const auto &instr : bb.instructions)
-    {
-        switch (instr.op)
-        {
+[[nodiscard]] inline bool hasSideEffects(const il::core::BasicBlock &bb) {
+    for (const auto &instr : bb.instructions) {
+        switch (instr.op) {
             case il::core::Opcode::Ret:
             case il::core::Opcode::Br:
             case il::core::Opcode::CBr:

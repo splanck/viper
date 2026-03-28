@@ -26,12 +26,10 @@
 #include <string>
 #include <vector>
 
-namespace il::link
-{
+namespace il::link {
 
 /// @brief Result of linking multiple IL modules.
-struct LinkResult
-{
+struct LinkResult {
     /// @brief The merged module (valid only when errors is empty).
     il::core::Module module;
 
@@ -40,8 +38,7 @@ struct LinkResult
     std::vector<std::string> errors;
 
     /// @brief Check if linking succeeded.
-    [[nodiscard]] bool succeeded() const
-    {
+    [[nodiscard]] bool succeeded() const {
         return errors.empty();
     }
 };

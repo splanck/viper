@@ -20,16 +20,13 @@
 
 #include <cctype>
 
-namespace il::runtime
-{
-namespace
-{
+namespace il::runtime {
+namespace {
 
 /// @brief Determine whether a character is considered whitespace by the parser.
 /// @param ch Character to inspect.
 /// @return True when @p ch is a space, tab, carriage return, or newline.
-constexpr bool isWhitespace(char ch)
-{
+constexpr bool isWhitespace(char ch) {
     return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r';
 }
 
@@ -38,8 +35,7 @@ constexpr bool isWhitespace(char ch)
 ///          a case-insensitive match for select aliases (e.g. `bool`).
 /// @param token Token to translate.
 /// @return Parsed kind or @ref il::core::Type::Kind::Error when unknown.
-il::core::Type::Kind parseKindToken(std::string_view token)
-{
+il::core::Type::Kind parseKindToken(std::string_view token) {
     using Kind = il::core::Type::Kind;
     token = trim(token);
     // Optional types (trailing '?') map to Ptr at the IL level (nullable pointer)
@@ -77,8 +73,7 @@ il::core::Type::Kind parseKindToken(std::string_view token)
 /// @brief Strip leading and trailing ASCII whitespace from a string view.
 /// @param text View to trim.
 /// @return View referencing the trimmed range of @p text.
-std::string_view trim(std::string_view text)
-{
+std::string_view trim(std::string_view text) {
     while (!text.empty() && isWhitespace(text.front()))
         text.remove_prefix(1);
     while (!text.empty() && isWhitespace(text.back()))
@@ -91,43 +86,32 @@ std::string_view trim(std::string_view text)
 ///          removes empty tokens created by redundant commas.
 /// @param text Slice containing the comma-separated list between parentheses.
 /// @return Sequence of trimmed tokens.
-std::vector<std::string_view> splitTypeList(std::string_view text)
-{
+std::vector<std::string_view> splitTypeList(std::string_view text) {
     std::vector<std::string_view> tokens;
     std::size_t start = 0;
     int depth = 0;
-    for (std::size_t i = 0; i < text.size(); ++i)
-    {
+    for (std::size_t i = 0; i < text.size(); ++i) {
         const char ch = text[i];
-        if (ch == '(')
-        {
+        if (ch == '(') {
             ++depth;
-        }
-        else if (ch == ')')
-        {
+        } else if (ch == ')') {
             if (depth > 0)
                 --depth;
-        }
-        else if (ch == ',' && depth == 0)
-        {
+        } else if (ch == ',' && depth == 0) {
             tokens.push_back(trim(text.substr(start, i - start)));
             start = i + 1;
         }
     }
 
-    if (start < text.size())
-    {
+    if (start < text.size()) {
         tokens.push_back(trim(text.substr(start)));
-    }
-    else if (!text.empty())
-    {
+    } else if (!text.empty()) {
         tokens.emplace_back();
     }
 
     std::vector<std::string_view> filtered;
     filtered.reserve(tokens.size());
-    for (auto token : tokens)
-    {
+    for (auto token : tokens) {
         if (!token.empty())
             filtered.push_back(token);
     }
@@ -141,8 +125,7 @@ std::vector<std::string_view> splitTypeList(std::string_view text)
 ///          lists.
 /// @param spec Textual specification such as "i32(i32,i32)".
 /// @return Structured signature describing the runtime call ABI.
-RuntimeSignature parseSignatureSpec(std::string_view spec)
-{
+RuntimeSignature parseSignatureSpec(std::string_view spec) {
     RuntimeSignature signature;
     spec = trim(spec);
     const auto open = spec.find('(');
@@ -154,8 +137,7 @@ RuntimeSignature parseSignatureSpec(std::string_view spec)
     signature.retType = il::core::Type(parseKindToken(retToken));
 
     const auto paramsSlice = spec.substr(open + 1, close - open - 1);
-    if (!paramsSlice.empty())
-    {
+    if (!paramsSlice.empty()) {
         const auto tokens = splitTypeList(paramsSlice);
         signature.paramTypes.reserve(tokens.size());
         for (auto token : tokens)

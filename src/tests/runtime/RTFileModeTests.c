@@ -18,8 +18,7 @@
 #include <stdbool.h>
 
 /// @brief Validate flag bits produced by parsing representative mode strings.
-int main(void)
-{
+int main(void) {
 #ifdef _WIN32
     int flags = 0;
     assert(rt_file_mode_to_flags("rb+", RT_F_BINARY, &flags));

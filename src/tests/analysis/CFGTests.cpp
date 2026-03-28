@@ -18,8 +18,7 @@
 #include <algorithm>
 #include <cassert>
 
-int main()
-{
+int main() {
     using namespace il::core;
     using viper::analysis::predecessors;
     using viper::analysis::successors;

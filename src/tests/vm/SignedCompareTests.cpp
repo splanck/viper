@@ -20,10 +20,8 @@
 
 using namespace il::core;
 
-namespace
-{
-void buildSignedCompareFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs)
-{
+namespace {
+void buildSignedCompareFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I1), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -46,8 +44,7 @@ void buildSignedCompareFunction(Module &module, Opcode op, int64_t lhs, int64_t 
     bb.instructions.push_back(ret);
 }
 
-bool runSignedCompare(Opcode op, int64_t lhs, int64_t rhs)
-{
+bool runSignedCompare(Opcode op, int64_t lhs, int64_t rhs) {
     Module module;
     buildSignedCompareFunction(module, op, lhs, rhs);
     viper::tests::VmFixture fixture;
@@ -58,8 +55,7 @@ bool runSignedCompare(Opcode op, int64_t lhs, int64_t rhs)
 
 } // namespace
 
-int main()
-{
+int main() {
     const int64_t minVal = std::numeric_limits<int64_t>::min();
     const int64_t maxVal = std::numeric_limits<int64_t>::max();
 

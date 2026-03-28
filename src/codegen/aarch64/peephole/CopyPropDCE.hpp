@@ -29,8 +29,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::aarch64::peephole
-{
+namespace viper::codegen::aarch64::peephole {
 
 /// @brief Perform copy propagation within a basic block.
 std::size_t propagateCopies(std::vector<MInstr> &instrs, PeepholeStats &stats);

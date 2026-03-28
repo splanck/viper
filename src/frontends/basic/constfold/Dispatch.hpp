@@ -25,11 +25,9 @@
 #include <optional>
 #include <string>
 
-namespace il::frontends::basic::constfold
-{
+namespace il::frontends::basic::constfold {
 
-namespace AST
-{
+namespace AST {
 using ::il::frontends::basic::BinaryExpr;
 using ::il::frontends::basic::BoolExpr;
 using ::il::frontends::basic::Expr;
@@ -38,16 +36,14 @@ using ::il::frontends::basic::UnaryExpr;
 } // namespace AST
 
 /// @brief Numeric literal representation shared by folding helpers.
-struct NumericValue
-{
+struct NumericValue {
     bool isFloat = false;
     double f = 0.0;
     long long i = 0;
 };
 
 /// @brief Literal categories understood by the dispatcher.
-enum class LiteralKind
-{
+enum class LiteralKind {
     Int,
     Float,
     Bool,
@@ -56,8 +52,7 @@ enum class LiteralKind
 };
 
 /// @brief Result container emitted by folding helpers.
-struct Constant
-{
+struct Constant {
     LiteralKind kind = LiteralKind::Invalid;
     NumericValue numeric{};
     bool boolValue = false;
@@ -65,8 +60,7 @@ struct Constant
 };
 
 /// @brief Domains handled by the constant-fold dispatcher.
-enum class FoldKind
-{
+enum class FoldKind {
     Arith,
     Logical,
     Compare,

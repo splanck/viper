@@ -27,12 +27,10 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 void ArWriter::addMember(
-    const std::string &name, const uint8_t *data, size_t size, uint32_t mtime, uint32_t mode)
-{
+    const std::string &name, const uint8_t *data, size_t size, uint32_t mtime, uint32_t mode) {
     Member m;
     m.name = name;
     m.data.assign(data, data + size);
@@ -44,26 +42,22 @@ void ArWriter::addMember(
 void ArWriter::addMemberString(const std::string &name,
                                const std::string &content,
                                uint32_t mtime,
-                               uint32_t mode)
-{
+                               uint32_t mode) {
     addMember(name, reinterpret_cast<const uint8_t *>(content.data()), content.size(), mtime, mode);
 }
 
 void ArWriter::addMemberVec(const std::string &name,
                             const std::vector<uint8_t> &data,
                             uint32_t mtime,
-                            uint32_t mode)
-{
+                            uint32_t mode) {
     addMember(name, data.data(), data.size(), mtime, mode);
 }
 
-namespace
-{
+namespace {
 
 // Write a right-padded field to buf. Field is exactly `width` bytes, padded
 // with spaces.
-void writeField(uint8_t *buf, const std::string &value, size_t width)
-{
+void writeField(uint8_t *buf, const std::string &value, size_t width) {
     size_t len = std::min(value.size(), width);
     std::memcpy(buf, value.data(), len);
     std::memset(buf + len, ' ', width - len);
@@ -71,8 +65,7 @@ void writeField(uint8_t *buf, const std::string &value, size_t width)
 
 } // namespace
 
-std::vector<uint8_t> ArWriter::finish() const
-{
+std::vector<uint8_t> ArWriter::finish() const {
     std::vector<uint8_t> out;
 
     // Estimate size: 8 (magic) + per member (60 header + data + pad)
@@ -85,8 +78,7 @@ std::vector<uint8_t> ArWriter::finish() const
     const char *magic = "!<arch>\n";
     out.insert(out.end(), magic, magic + 8);
 
-    for (const auto &m : members_)
-    {
+    for (const auto &m : members_) {
         uint8_t hdr[60];
         std::memset(hdr, ' ', 60);
 
@@ -126,8 +118,7 @@ std::vector<uint8_t> ArWriter::finish() const
     return out;
 }
 
-void ArWriter::finishToFile(const std::string &path) const
-{
+void ArWriter::finishToFile(const std::string &path) const {
     auto data = finish();
     std::ofstream f(path, std::ios::binary);
     if (!f)

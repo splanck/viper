@@ -41,27 +41,15 @@
 // Internal Structure
 //=============================================================================
 
-typedef enum
-{
-    OPTION_SOME = 0,
-    OPTION_NONE = 1
-} OptionVariant;
+typedef enum { OPTION_SOME = 0, OPTION_NONE = 1 } OptionVariant;
 
-typedef enum
-{
-    VALUE_PTR = 0,
-    VALUE_STR = 1,
-    VALUE_I64 = 2,
-    VALUE_F64 = 3
-} ValueType;
+typedef enum { VALUE_PTR = 0, VALUE_STR = 1, VALUE_I64 = 2, VALUE_F64 = 3 } ValueType;
 
-typedef struct
-{
+typedef struct {
     OptionVariant variant;
     ValueType value_type;
 
-    union
-    {
+    union {
         void *ptr;
         rt_string str;
         int64_t i64;
@@ -73,19 +61,15 @@ typedef struct
 // Option Finalizer
 //=============================================================================
 
-static void option_finalizer(void *obj)
-{
+static void option_finalizer(void *obj) {
     Option *o = (Option *)obj;
     if (!o || o->variant != OPTION_SOME)
         return;
-    if (o->value_type == VALUE_PTR && o->value.ptr)
-    {
+    if (o->value_type == VALUE_PTR && o->value.ptr) {
         if (rt_obj_release_check0(o->value.ptr))
             rt_obj_free(o->value.ptr);
         o->value.ptr = NULL;
-    }
-    else if (o->value_type == VALUE_STR && o->value.str)
-    {
+    } else if (o->value_type == VALUE_STR && o->value.str) {
         rt_str_release_maybe(o->value.str);
         o->value.str = NULL;
     }
@@ -95,8 +79,7 @@ static void option_finalizer(void *obj)
 // Option Creation
 //=============================================================================
 
-void *rt_option_some(void *value)
-{
+void *rt_option_some(void *value) {
     Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
 
     o->variant = OPTION_SOME;
@@ -106,8 +89,7 @@ void *rt_option_some(void *value)
     return o;
 }
 
-void *rt_option_some_str(rt_string value)
-{
+void *rt_option_some_str(rt_string value) {
     Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
 
     o->variant = OPTION_SOME;
@@ -117,8 +99,7 @@ void *rt_option_some_str(rt_string value)
     return o;
 }
 
-void *rt_option_some_i64(int64_t value)
-{
+void *rt_option_some_i64(int64_t value) {
     Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
 
     o->variant = OPTION_SOME;
@@ -128,8 +109,7 @@ void *rt_option_some_i64(int64_t value)
     return o;
 }
 
-void *rt_option_some_f64(double value)
-{
+void *rt_option_some_f64(double value) {
     Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
 
     o->variant = OPTION_SOME;
@@ -139,8 +119,7 @@ void *rt_option_some_f64(double value)
     return o;
 }
 
-void *rt_option_none(void)
-{
+void *rt_option_none(void) {
     Option *o = (Option *)rt_obj_new_i64(0, (int64_t)sizeof(Option));
 
     o->variant = OPTION_NONE;
@@ -157,8 +136,7 @@ void *rt_option_none(void)
 /// @brief Perform option is some operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_option_is_some(void *obj)
-{
+int8_t rt_option_is_some(void *obj) {
     if (!obj)
         return 0;
     Option *o = (Option *)obj;
@@ -168,8 +146,7 @@ int8_t rt_option_is_some(void *obj)
 /// @brief Perform option is none operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_option_is_none(void *obj)
-{
+int8_t rt_option_is_none(void *obj) {
     if (!obj)
         return 1; // Treat NULL as None
     Option *o = (Option *)obj;
@@ -182,13 +159,11 @@ int8_t rt_option_is_none(void *obj)
 
 extern void rt_trap(const char *msg);
 
-static void trap_with_message(const char *msg)
-{
+static void trap_with_message(const char *msg) {
     rt_trap(msg);
 }
 
-void *rt_option_unwrap(void *obj)
-{
+void *rt_option_unwrap(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Option");
     Option *o = (Option *)obj;
@@ -200,8 +175,7 @@ void *rt_option_unwrap(void *obj)
 /// @brief Perform option unwrap str operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_option_unwrap_str(void *obj)
-{
+rt_string rt_option_unwrap_str(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Option");
     Option *o = (Option *)obj;
@@ -215,8 +189,7 @@ rt_string rt_option_unwrap_str(void *obj)
 /// @brief Perform option unwrap i64 operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_option_unwrap_i64(void *obj)
-{
+int64_t rt_option_unwrap_i64(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Option");
     Option *o = (Option *)obj;
@@ -230,8 +203,7 @@ int64_t rt_option_unwrap_i64(void *obj)
 /// @brief Perform option unwrap f64 operation.
 /// @param obj
 /// @return Result value.
-double rt_option_unwrap_f64(void *obj)
-{
+double rt_option_unwrap_f64(void *obj) {
     if (!obj)
         trap_with_message("Unwrap called on NULL Option");
     Option *o = (Option *)obj;
@@ -242,8 +214,7 @@ double rt_option_unwrap_f64(void *obj)
     return o->value.f64;
 }
 
-void *rt_option_unwrap_or(void *obj, void *def)
-{
+void *rt_option_unwrap_or(void *obj, void *def) {
     if (!obj)
         return def;
     Option *o = (Option *)obj;
@@ -256,8 +227,7 @@ void *rt_option_unwrap_or(void *obj, void *def)
 /// @param obj
 /// @param def
 /// @return Result value.
-rt_string rt_option_unwrap_or_str(void *obj, rt_string def)
-{
+rt_string rt_option_unwrap_or_str(void *obj, rt_string def) {
     if (!obj)
         return def;
     Option *o = (Option *)obj;
@@ -272,8 +242,7 @@ rt_string rt_option_unwrap_or_str(void *obj, rt_string def)
 /// @param obj
 /// @param def
 /// @return Result value.
-int64_t rt_option_unwrap_or_i64(void *obj, int64_t def)
-{
+int64_t rt_option_unwrap_or_i64(void *obj, int64_t def) {
     if (!obj)
         return def;
     Option *o = (Option *)obj;
@@ -288,8 +257,7 @@ int64_t rt_option_unwrap_or_i64(void *obj, int64_t def)
 /// @param obj
 /// @param def
 /// @return Result value.
-double rt_option_unwrap_or_f64(void *obj, double def)
-{
+double rt_option_unwrap_or_f64(void *obj, double def) {
     if (!obj)
         return def;
     Option *o = (Option *)obj;
@@ -300,8 +268,7 @@ double rt_option_unwrap_or_f64(void *obj, double def)
     return o->value.f64;
 }
 
-void *rt_option_value(void *obj)
-{
+void *rt_option_value(void *obj) {
     if (!obj)
         return NULL;
     Option *o = (Option *)obj;
@@ -314,16 +281,13 @@ void *rt_option_value(void *obj)
 // Expect
 //=============================================================================
 
-void *rt_option_expect(void *obj, rt_string msg)
-{
-    if (!obj)
-    {
+void *rt_option_expect(void *obj, rt_string msg) {
+    if (!obj) {
         fprintf(stderr, "Option expect: %s (NULL Option)\n", rt_string_cstr(msg));
         abort();
     }
     Option *o = (Option *)obj;
-    if (o->variant != OPTION_SOME)
-    {
+    if (o->variant != OPTION_SOME) {
         fprintf(stderr, "Option expect: %s\n", rt_string_cstr(msg));
         abort();
     }
@@ -334,39 +298,34 @@ void *rt_option_expect(void *obj, rt_string msg)
 // Transformation
 //=============================================================================
 
-void *rt_option_map(void *obj, void *(*fn)(void *))
-{
+void *rt_option_map(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return rt_option_none();
     Option *o = (Option *)obj;
     if (o->variant != OPTION_SOME)
         return rt_option_none();
 
-    if (o->value_type == VALUE_PTR)
-    {
+    if (o->value_type == VALUE_PTR) {
         void *new_val = fn(o->value.ptr);
         return rt_option_some(new_val);
     }
     return obj;
 }
 
-void *rt_option_and_then(void *obj, void *(*fn)(void *))
-{
+void *rt_option_and_then(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return rt_option_none();
     Option *o = (Option *)obj;
     if (o->variant != OPTION_SOME)
         return rt_option_none();
 
-    if (o->value_type == VALUE_PTR)
-    {
+    if (o->value_type == VALUE_PTR) {
         return fn(o->value.ptr);
     }
     return obj;
 }
 
-void *rt_option_or_else(void *obj, void *(*fn)(void))
-{
+void *rt_option_or_else(void *obj, void *(*fn)(void)) {
     if (!obj)
         return fn ? fn() : rt_option_none();
     Option *o = (Option *)obj;
@@ -375,16 +334,14 @@ void *rt_option_or_else(void *obj, void *(*fn)(void))
     return fn ? fn() : rt_option_none();
 }
 
-void *rt_option_filter(void *obj, int8_t (*pred)(void *))
-{
+void *rt_option_filter(void *obj, int8_t (*pred)(void *)) {
     if (!obj || !pred)
         return rt_option_none();
     Option *o = (Option *)obj;
     if (o->variant != OPTION_SOME)
         return rt_option_none();
 
-    if (o->value_type == VALUE_PTR && pred(o->value.ptr))
-    {
+    if (o->value_type == VALUE_PTR && pred(o->value.ptr)) {
         return obj;
     }
     return rt_option_none();
@@ -394,15 +351,12 @@ void *rt_option_filter(void *obj, int8_t (*pred)(void *))
 // Conversion
 //=============================================================================
 
-void *rt_option_ok_or(void *obj, void *err)
-{
+void *rt_option_ok_or(void *obj, void *err) {
     if (!obj)
         return rt_result_err(err);
     Option *o = (Option *)obj;
-    if (o->variant == OPTION_SOME)
-    {
-        switch (o->value_type)
-        {
+    if (o->variant == OPTION_SOME) {
+        switch (o->value_type) {
             case VALUE_PTR:
                 return rt_result_ok(o->value.ptr);
             case VALUE_STR:
@@ -416,15 +370,12 @@ void *rt_option_ok_or(void *obj, void *err)
     return rt_result_err(err);
 }
 
-void *rt_option_ok_or_str(void *obj, rt_string err)
-{
+void *rt_option_ok_or_str(void *obj, rt_string err) {
     if (!obj)
         return rt_result_err_str(err);
     Option *o = (Option *)obj;
-    if (o->variant == OPTION_SOME)
-    {
-        switch (o->value_type)
-        {
+    if (o->variant == OPTION_SOME) {
+        switch (o->value_type) {
             case VALUE_PTR:
                 return rt_result_ok(o->value.ptr);
             case VALUE_STR:
@@ -446,16 +397,14 @@ void *rt_option_ok_or_str(void *obj, rt_string err)
 /// @param a
 /// @param b
 /// @return Result value.
-int8_t rt_option_equals(void *a, void *b)
-{
+int8_t rt_option_equals(void *a, void *b) {
     if (a == b)
         return 1;
 
     // Both NULL = equal (both "None-like")
     if (!a && !b)
         return 1;
-    if (!a || !b)
-    {
+    if (!a || !b) {
         // One NULL, one not - check if the non-NULL is None
         Option *non_null = a ? (Option *)a : (Option *)b;
         return non_null->variant == OPTION_NONE ? 1 : 0;
@@ -472,8 +421,7 @@ int8_t rt_option_equals(void *a, void *b)
     if (oa->value_type != ob->value_type)
         return 0;
 
-    switch (oa->value_type)
-    {
+    switch (oa->value_type) {
         case VALUE_PTR:
             return oa->value.ptr == ob->value.ptr ? 1 : 0;
         case VALUE_STR:
@@ -489,21 +437,18 @@ int8_t rt_option_equals(void *a, void *b)
 /// @brief Perform option to string operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_option_to_string(void *obj)
-{
+rt_string rt_option_to_string(void *obj) {
     if (!obj)
         return rt_const_cstr("None");
 
     Option *o = (Option *)obj;
     char buf[256];
 
-    if (o->variant == OPTION_NONE)
-    {
+    if (o->variant == OPTION_NONE) {
         return rt_const_cstr("None");
     }
 
-    switch (o->value_type)
-    {
+    switch (o->value_type) {
         case VALUE_PTR:
             snprintf(buf, sizeof(buf), "Some(%p)", o->value.ptr);
             break;

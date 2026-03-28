@@ -36,14 +36,12 @@
 #include <memory>
 #include <vector>
 
-namespace viper::tui
-{
+namespace viper::tui {
 /// @brief Top-level TUI application that drives the widget tree, focus ring, and rendering loop.
 /// @details Manages the complete lifecycle of a terminal UI session: event
 ///          queueing, focus-aware dispatch, layout computation, and differential
 ///          screen rendering. Can operate headlessly for testing.
-class App
-{
+class App {
   public:
     /// @brief Construct app with root widget and terminal I/O.
     /// @param root   The root widget tree. Ownership is transferred to App. Must not be null.

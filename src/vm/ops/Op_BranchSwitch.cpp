@@ -41,8 +41,7 @@
 #include <variant>
 #include <vector>
 
-namespace
-{
+namespace {
 using il::vm::detail::control::inline_impl::getOrBuildSwitchCache;
 using il::vm::detail::control::inline_impl::lookupDense;
 using il::vm::detail::control::inline_impl::lookupHashed;
@@ -64,10 +63,8 @@ thread_local SwitchMode g_switchMode =
 ///          helper is used by switch caching to emit backend selection traces.
 ///
 /// @return @c true when `VIPER_DEBUG_VM` is non-empty.
-bool isVmDebugLoggingEnabled()
-{
-    static const bool enabled = []
-    {
+bool isVmDebugLoggingEnabled() {
+    static const bool enabled = [] {
         if (const char *flag = std::getenv("VIPER_DEBUG_VM"))
             return flag[0] != '\0';
         return false;
@@ -82,10 +79,8 @@ bool isVmDebugLoggingEnabled()
 ///
 /// @param kind Cache backend that will service switch lookups.
 /// @return Printable backend name.
-const char *switchCacheKindName(SwitchCacheEntry::Kind kind)
-{
-    switch (kind)
-    {
+const char *switchCacheKindName(SwitchCacheEntry::Kind kind) {
+    switch (kind) {
         case SwitchCacheEntry::Dense:
             return "Dense";
         case SwitchCacheEntry::Sorted:
@@ -99,8 +94,7 @@ const char *switchCacheKindName(SwitchCacheEntry::Kind kind)
 }
 } // namespace
 
-namespace viper::vm
-{
+namespace viper::vm {
 /// @brief Retrieve the current switch backend selection policy.
 ///
 /// @details The policy defaults to automatic selection but can be overridden by
@@ -108,25 +102,21 @@ namespace viper::vm
 ///          @ref getOrBuildSwitchCache constructs cache entries.
 ///
 /// @return The active switch mode.
-SwitchMode getSwitchMode()
-{
+SwitchMode getSwitchMode() {
     return g_switchMode;
 }
 
 /// @brief Override the switch backend selection policy used by handlers.
 ///
 /// @param mode New selection policy.
-void setSwitchMode(SwitchMode mode)
-{
+void setSwitchMode(SwitchMode mode) {
     g_switchMode = mode;
 }
 } // namespace viper::vm
 
-namespace il::vm::detail::control
-{
+namespace il::vm::detail::control {
 
-namespace
-{
+namespace {
 /// @brief Metadata extracted from a switch instruction for cache construction.
 } // namespace
 
@@ -153,10 +143,8 @@ VM::ExecResult branchToTarget(VM &vm,
                               size_t idx,
                               const VM::BlockMap &blocks,
                               const il::core::BasicBlock *&bb,
-                              size_t &ip)
-{
-    if (idx >= in.labels.size())
-    {
+                              size_t &ip) {
+    if (idx >= in.labels.size()) {
         const std::string blockLabel = bb ? bb->label : std::string();
         RuntimeBridge::trap(TrapKind::InvalidOperation,
                             "branch target index out of range",
@@ -200,8 +188,7 @@ VM::ExecResult handleSwitchI32(VM &vm,
                                const il::core::Instr &in,
                                const VM::BlockMap &blocks,
                                const il::core::BasicBlock *&bb,
-                               size_t &ip)
-{
+                               size_t &ip) {
     const auto scrutineeScalar = il::vm::ops::common::eval_scrutinee(fr, in);
     const int32_t sel = scrutineeScalar.value;
 
@@ -216,36 +203,28 @@ VM::ExecResult handleSwitchI32(VM &vm,
 #if defined(VIPER_VM_DEBUG_SWITCH_LINEAR)
     (void)forceLinear;
     const size_t caseCount = switchCaseCount(in);
-    for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
-    {
+    for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx) {
         const il::core::Value &caseValue = switchCaseValue(in, caseIdx);
         const int32_t caseSel = static_cast<int32_t>(caseValue.i64);
-        if (caseSel == sel)
-        {
+        if (caseSel == sel) {
             idx = static_cast<int32_t>(caseIdx + 1);
             break;
         }
     }
 #else
-    if (forceLinear)
-    {
+    if (forceLinear) {
         const size_t caseCount = switchCaseCount(in);
-        for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx)
-        {
+        for (size_t caseIdx = 0; caseIdx < caseCount; ++caseIdx) {
             const il::core::Value &caseValue = switchCaseValue(in, caseIdx);
             const int32_t caseSel = static_cast<int32_t>(caseValue.i64);
-            if (caseSel == sel)
-            {
+            if (caseSel == sel) {
                 idx = static_cast<int32_t>(caseIdx + 1);
                 break;
             }
         }
-    }
-    else
-    {
+    } else {
         std::visit(
-            [&](auto &backend)
-            {
+            [&](auto &backend) {
                 using BackendT = std::decay_t<decltype(backend)>;
                 if constexpr (std::is_same_v<BackendT, DenseJumpTable>)
                     idx = lookupDense(backend, sel, entry.defaultIdx);
@@ -260,8 +239,7 @@ VM::ExecResult handleSwitchI32(VM &vm,
 
     il::support::SmallVector<il::vm::ops::common::Case, 16> cases;
     cases.reserve(in.labels.size());
-    auto makeTarget = [&](size_t labelIndex)
-    {
+    auto makeTarget = [&](size_t labelIndex) {
         il::vm::ops::common::Target target{};
         target.vm = &vm;
         target.instr = &in;
@@ -272,8 +250,7 @@ VM::ExecResult handleSwitchI32(VM &vm,
         return target;
     };
 
-    for (size_t labelIndex = 0; labelIndex < in.labels.size(); ++labelIndex)
-    {
+    for (size_t labelIndex = 0; labelIndex < in.labels.size(); ++labelIndex) {
         cases.push_back(il::vm::ops::common::Case::exact(
             il::vm::ops::common::Scalar{static_cast<int32_t>(labelIndex)}, makeTarget(labelIndex)));
     }
@@ -282,8 +259,7 @@ VM::ExecResult handleSwitchI32(VM &vm,
     auto selected =
         il::vm::ops::common::select_case(il::vm::ops::common::Scalar{idx}, cases, invalid);
 
-    if (!selected.valid())
-    {
+    if (!selected.valid()) {
         VM::ExecResult result{};
         result.returned = true;
         RuntimeBridge::trap(TrapKind::InvalidOperation,
@@ -311,8 +287,7 @@ VM::ExecResult handleBr(VM &vm,
                         const il::core::Instr &in,
                         const VM::BlockMap &blocks,
                         const il::core::BasicBlock *&bb,
-                        size_t &ip)
-{
+                        size_t &ip) {
     return branchToTarget(vm, fr, in, 0, blocks, bb, ip);
 }
 
@@ -327,8 +302,7 @@ VM::ExecResult handleCBr(VM &vm,
                          const il::core::Instr &in,
                          const VM::BlockMap &blocks,
                          const il::core::BasicBlock *&bb,
-                         size_t &ip)
-{
+                         size_t &ip) {
     const bool cond = il::vm::internal::readOperand<bool>(vm, fr, in, 0);
     const size_t targetIdx = cond ? 0 : 1;
     return branchToTarget(vm, fr, in, targetIdx, blocks, bb, ip);

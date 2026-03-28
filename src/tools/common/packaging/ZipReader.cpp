@@ -26,49 +26,40 @@
 
 #include <cstring>
 
-extern "C"
-{
-    uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
+extern "C" {
+uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
 }
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
-namespace
-{
+namespace {
 
-uint16_t rdLE16(const uint8_t *p)
-{
+uint16_t rdLE16(const uint8_t *p) {
     return static_cast<uint16_t>(p[0] | (p[1] << 8));
 }
 
-uint32_t rdLE32(const uint8_t *p)
-{
+uint32_t rdLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
 } // namespace
 
-ZipReader::ZipReader(const uint8_t *data, size_t len) : data_(data), len_(len)
-{
+ZipReader::ZipReader(const uint8_t *data, size_t len) : data_(data), len_(len) {
     if (!data || len < 22)
         throw ZipReadError("ZIP: buffer too small");
     parseCentralDirectory();
 }
 
-void ZipReader::parseCentralDirectory()
-{
+void ZipReader::parseCentralDirectory() {
     // Scan backwards for EOCD signature 0x06054B50
     // EOCD can have up to 65535 bytes of comment, so search range is limited
     size_t searchStart = (len_ > 65557) ? len_ - 65557 : 0;
     size_t eocdOff = 0;
     bool found = false;
 
-    for (size_t i = len_ - 22; i >= searchStart; --i)
-    {
-        if (rdLE32(data_ + i) == 0x06054B50)
-        {
+    for (size_t i = len_ - 22; i >= searchStart; --i) {
+        if (rdLE32(data_ + i) == 0x06054B50) {
             eocdOff = i;
             found = true;
             break;
@@ -88,8 +79,7 @@ void ZipReader::parseCentralDirectory()
 
     // Parse central directory entries
     size_t pos = cdOffset;
-    for (uint16_t i = 0; i < totalEntries; ++i)
-    {
+    for (uint16_t i = 0; i < totalEntries; ++i) {
         if (pos + 46 > len_)
             throw ZipReadError("ZIP: central directory entry truncated");
 
@@ -117,18 +107,15 @@ void ZipReader::parseCentralDirectory()
     }
 }
 
-const ZipEntry *ZipReader::find(const std::string &name) const
-{
-    for (const auto &e : entries_)
-    {
+const ZipEntry *ZipReader::find(const std::string &name) const {
+    for (const auto &e : entries_) {
         if (e.name == name)
             return &e;
     }
     return nullptr;
 }
 
-std::vector<uint8_t> ZipReader::extract(const ZipEntry &entry) const
-{
+std::vector<uint8_t> ZipReader::extract(const ZipEntry &entry) const {
     // Navigate to local file header
     size_t lhOff = entry.localHeaderOffset;
     if (lhOff + 30 > len_)
@@ -146,24 +133,18 @@ std::vector<uint8_t> ZipReader::extract(const ZipEntry &entry) const
 
     std::vector<uint8_t> result;
 
-    if (entry.method == 0)
-    {
+    if (entry.method == 0) {
         // Stored — direct copy
         result.assign(data_ + dataOff, data_ + dataOff + entry.compressedSize);
-    }
-    else if (entry.method == 8)
-    {
+    } else if (entry.method == 8) {
         // DEFLATE
         result = inflate(data_ + dataOff, entry.compressedSize);
-    }
-    else
-    {
+    } else {
         throw ZipReadError("ZIP: unsupported compression method " + std::to_string(entry.method));
     }
 
     // Verify CRC-32 (skip for directories which have crc=0 and size=0)
-    if (entry.uncompressedSize > 0)
-    {
+    if (entry.uncompressedSize > 0) {
         uint32_t actualCrc = rt_crc32_compute(result.data(), result.size());
         if (actualCrc != entry.crc32)
             throw ZipReadError("ZIP: CRC-32 mismatch for '" + entry.name + "'");

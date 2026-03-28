@@ -22,8 +22,7 @@
 
 #include "codegen/aarch64/passes/PassManager.hpp"
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
 /// @brief Post-RA instruction scheduler using list scheduling with AArch64 latencies.
 ///
@@ -32,8 +31,7 @@ namespace viper::codegen::aarch64::passes
 /// algorithm that prioritises instructions on the critical path.  The schedule
 /// reduces load-use stalls (ldr latency ~4 cycles on Apple Silicon) by moving
 /// independent instructions between a load and its first use.
-class SchedulerPass final : public Pass
-{
+class SchedulerPass final : public Pass {
   public:
     /// @brief Apply post-RA scheduling to every basic block in every function.
     /// @param module Module state; mir must have physical registers assigned.

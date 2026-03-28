@@ -28,19 +28,15 @@ using viper::tui::ui::Event;
 using viper::tui::ui::VStack;
 using viper::tui::ui::Widget;
 
-struct FocusWidget : Widget
-{
+struct FocusWidget : Widget {
     bool flag{false};
 
-    bool wantsFocus() const override
-    {
+    bool wantsFocus() const override {
         return true;
     }
 
-    bool onEvent(const Event &ev) override
-    {
-        if (ev.key.code == KeyEvent::Code::Enter)
-        {
+    bool onEvent(const Event &ev) override {
+        if (ev.key.code == KeyEvent::Code::Enter) {
             flag = !flag;
             return true;
         }
@@ -48,8 +44,7 @@ struct FocusWidget : Widget
     }
 };
 
-TEST(TUI, Focus)
-{
+TEST(TUI, Focus) {
     auto root = std::make_unique<VStack>();
     auto w1 = std::make_unique<FocusWidget>();
     auto w2 = std::make_unique<FocusWidget>();
@@ -89,8 +84,7 @@ TEST(TUI, Focus)
     ASSERT_FALSE(p1->flag);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

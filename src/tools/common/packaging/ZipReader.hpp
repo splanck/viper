@@ -28,12 +28,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief A single entry in a ZIP archive.
-struct ZipEntry
-{
+struct ZipEntry {
     std::string name;
     uint32_t compressedSize;
     uint32_t uncompressedSize;
@@ -43,15 +41,13 @@ struct ZipEntry
 };
 
 /// @brief Error thrown on invalid ZIP data.
-class ZipReadError : public std::runtime_error
-{
+class ZipReadError : public std::runtime_error {
   public:
     using std::runtime_error::runtime_error;
 };
 
 /// @brief Read-only ZIP archive backed by an in-memory buffer.
-class ZipReader
-{
+class ZipReader {
   public:
     /// @brief Open a ZIP from a memory buffer.
     /// @param data Pointer to ZIP data (caller-owned, must stay alive).
@@ -60,8 +56,7 @@ class ZipReader
     ZipReader(const uint8_t *data, size_t len);
 
     /// @brief List all entries in the archive.
-    const std::vector<ZipEntry> &entries() const
-    {
+    const std::vector<ZipEntry> &entries() const {
         return entries_;
     }
 

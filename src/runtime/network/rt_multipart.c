@@ -36,8 +36,7 @@ extern void rt_trap(const char *msg);
 
 #define MAX_PARTS 128
 
-typedef struct
-{
+typedef struct {
     char *name;
     char *filename; // NULL for text fields
     uint8_t *data;
@@ -45,8 +44,7 @@ typedef struct
     int is_file;
 } multipart_part_t;
 
-typedef struct
-{
+typedef struct {
     char boundary[64];
     multipart_part_t parts[MAX_PARTS];
     int part_count;
@@ -56,8 +54,7 @@ typedef struct
 // Internal Helpers
 //=============================================================================
 
-static void generate_boundary(char *buf, size_t buf_len)
-{
+static void generate_boundary(char *buf, size_t buf_len) {
     static const char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     uint8_t random[32];
     rt_crypto_random_bytes(random, sizeof(random));
@@ -70,21 +67,18 @@ static void generate_boundary(char *buf, size_t buf_len)
     buf[len] = '\0';
 }
 
-typedef struct
-{
+typedef struct {
     int64_t len;
     uint8_t *data;
 } bytes_impl;
 
-static inline uint8_t *bytes_data(void *obj)
-{
+static inline uint8_t *bytes_data(void *obj) {
     if (!obj)
         return NULL;
     return ((bytes_impl *)obj)->data;
 }
 
-static inline int64_t bytes_len_impl(void *obj)
-{
+static inline int64_t bytes_len_impl(void *obj) {
     if (!obj)
         return 0;
     return ((bytes_impl *)obj)->len;
@@ -94,13 +88,11 @@ static inline int64_t bytes_len_impl(void *obj)
 // Finalizer
 //=============================================================================
 
-static void rt_multipart_finalize(void *obj)
-{
+static void rt_multipart_finalize(void *obj) {
     if (!obj)
         return;
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
-    for (int i = 0; i < mp->part_count; i++)
-    {
+    for (int i = 0; i < mp->part_count; i++) {
         free(mp->parts[i].name);
         free(mp->parts[i].filename);
         free(mp->parts[i].data);
@@ -111,8 +103,7 @@ static void rt_multipart_finalize(void *obj)
 // Public API — Builder
 //=============================================================================
 
-void *rt_multipart_new(void)
-{
+void *rt_multipart_new(void) {
     rt_multipart_impl *mp =
         (rt_multipart_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_multipart_impl));
     if (!mp)
@@ -123,8 +114,7 @@ void *rt_multipart_new(void)
     return mp;
 }
 
-void *rt_multipart_add_field(void *obj, rt_string name, rt_string value)
-{
+void *rt_multipart_add_field(void *obj, rt_string name, rt_string value) {
     if (!obj)
         rt_trap("Multipart: NULL object");
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
@@ -147,8 +137,7 @@ void *rt_multipart_add_field(void *obj, rt_string name, rt_string value)
     return obj;
 }
 
-void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void *data)
-{
+void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void *data) {
     if (!obj)
         rt_trap("Multipart: NULL object");
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
@@ -175,8 +164,7 @@ void *rt_multipart_add_file(void *obj, rt_string name, rt_string filename, void 
 /// @brief Perform multipart content type operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_multipart_content_type(void *obj)
-{
+rt_string rt_multipart_content_type(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
@@ -186,8 +174,7 @@ rt_string rt_multipart_content_type(void *obj)
     return rt_string_from_bytes(buf, strlen(buf));
 }
 
-void *rt_multipart_build(void *obj)
-{
+void *rt_multipart_build(void *obj) {
     if (!obj)
         return rt_bytes_new(0);
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
@@ -195,8 +182,7 @@ void *rt_multipart_build(void *obj)
     // Calculate total size
     size_t total = 0;
     size_t blen = strlen(mp->boundary);
-    for (int i = 0; i < mp->part_count; i++)
-    {
+    for (int i = 0; i < mp->part_count; i++) {
         total += 2 + blen + 2; // --boundary\r\n
         total += 256;          // headers (generous estimate)
         total += mp->parts[i].data_len;
@@ -209,16 +195,14 @@ void *rt_multipart_build(void *obj)
         return rt_bytes_new(0);
 
     size_t pos = 0;
-    for (int i = 0; i < mp->part_count; i++)
-    {
+    for (int i = 0; i < mp->part_count; i++) {
         multipart_part_t *part = &mp->parts[i];
 
         // Boundary
         pos += (size_t)snprintf((char *)buf + pos, total - pos, "--%s\r\n", mp->boundary);
 
         // Headers
-        if (part->is_file)
-        {
+        if (part->is_file) {
             pos += (size_t)snprintf((char *)buf + pos,
                                     total - pos,
                                     "Content-Disposition: form-data; name=\"%s\"; "
@@ -226,9 +210,7 @@ void *rt_multipart_build(void *obj)
                                     "Content-Type: application/octet-stream\r\n\r\n",
                                     part->name,
                                     part->filename);
-        }
-        else
-        {
+        } else {
             pos += (size_t)snprintf((char *)buf + pos,
                                     total - pos,
                                     "Content-Disposition: form-data; name=\"%s\"\r\n\r\n",
@@ -236,8 +218,7 @@ void *rt_multipart_build(void *obj)
         }
 
         // Data
-        if (part->data_len > 0 && pos + part->data_len <= total)
-        {
+        if (part->data_len > 0 && pos + part->data_len <= total) {
             memcpy(buf + pos, part->data, part->data_len);
             pos += part->data_len;
         }
@@ -256,8 +237,7 @@ void *rt_multipart_build(void *obj)
 /// @brief Perform multipart count operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_multipart_count(void *obj)
-{
+int64_t rt_multipart_count(void *obj) {
     if (!obj)
         return 0;
     return ((rt_multipart_impl *)obj)->part_count;
@@ -267,8 +247,7 @@ int64_t rt_multipart_count(void *obj)
 // Public API — Parser
 //=============================================================================
 
-void *rt_multipart_parse(rt_string content_type, void *body)
-{
+void *rt_multipart_parse(rt_string content_type, void *body) {
     if (!body)
         return rt_multipart_new();
 
@@ -284,17 +263,14 @@ void *rt_multipart_parse(rt_string content_type, void *body)
 
     // Strip quotes if present
     char boundary[128] = {0};
-    if (*bnd == '"')
-    {
+    if (*bnd == '"') {
         bnd++;
         const char *end = strchr(bnd, '"');
         size_t len = end ? (size_t)(end - bnd) : strlen(bnd);
         if (len >= sizeof(boundary))
             len = sizeof(boundary) - 1;
         memcpy(boundary, bnd, len);
-    }
-    else
-    {
+    } else {
         size_t len = 0;
         while (bnd[len] && bnd[len] != ';' && bnd[len] != ' ' && bnd[len] != '\r' &&
                bnd[len] != '\n')
@@ -332,8 +308,7 @@ void *rt_multipart_parse(rt_string content_type, void *body)
     if (!p)
         return mp;
 
-    while (p && p < s_end && mp->part_count < MAX_PARTS)
-    {
+    while (p && p < s_end && mp->part_count < MAX_PARTS) {
         p += dlen;
         if (*p == '-' && *(p + 1) == '-')
             break; // End boundary
@@ -353,12 +328,10 @@ void *rt_multipart_parse(rt_string content_type, void *body)
         char part_filename[256] = {0};
         int is_file = 0;
 
-        if (name_start && name_start < headers_end)
-        {
+        if (name_start && name_start < headers_end) {
             name_start += 6;
             const char *name_end = strchr(name_start, '"');
-            if (name_end)
-            {
+            if (name_end) {
                 size_t nlen = (size_t)(name_end - name_start);
                 if (nlen >= sizeof(part_name))
                     nlen = sizeof(part_name) - 1;
@@ -367,12 +340,10 @@ void *rt_multipart_parse(rt_string content_type, void *body)
         }
 
         const char *fn_start = strstr(p, "filename=\"");
-        if (fn_start && fn_start < headers_end)
-        {
+        if (fn_start && fn_start < headers_end) {
             fn_start += 10;
             const char *fn_end = strchr(fn_start, '"');
-            if (fn_end)
-            {
+            if (fn_end) {
                 size_t fnlen = (size_t)(fn_end - fn_start);
                 if (fnlen >= sizeof(part_filename))
                     fnlen = sizeof(part_filename) - 1;
@@ -416,8 +387,7 @@ void *rt_multipart_parse(rt_string content_type, void *body)
 /// @param obj
 /// @param name
 /// @return Result value.
-rt_string rt_multipart_get_field(void *obj, rt_string name)
-{
+rt_string rt_multipart_get_field(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
@@ -425,18 +395,15 @@ rt_string rt_multipart_get_field(void *obj, rt_string name)
     if (!n)
         return rt_string_from_bytes("", 0);
 
-    for (int i = 0; i < mp->part_count; i++)
-    {
-        if (!mp->parts[i].is_file && mp->parts[i].name && strcmp(mp->parts[i].name, n) == 0)
-        {
+    for (int i = 0; i < mp->part_count; i++) {
+        if (!mp->parts[i].is_file && mp->parts[i].name && strcmp(mp->parts[i].name, n) == 0) {
             return rt_string_from_bytes((const char *)mp->parts[i].data, mp->parts[i].data_len);
         }
     }
     return rt_string_from_bytes("", 0);
 }
 
-void *rt_multipart_get_file(void *obj, rt_string name)
-{
+void *rt_multipart_get_file(void *obj, rt_string name) {
     if (!obj)
         return rt_bytes_new(0);
     rt_multipart_impl *mp = (rt_multipart_impl *)obj;
@@ -444,10 +411,8 @@ void *rt_multipart_get_file(void *obj, rt_string name)
     if (!n)
         return rt_bytes_new(0);
 
-    for (int i = 0; i < mp->part_count; i++)
-    {
-        if (mp->parts[i].is_file && mp->parts[i].name && strcmp(mp->parts[i].name, n) == 0)
-        {
+    for (int i = 0; i < mp->part_count; i++) {
+        if (mp->parts[i].is_file && mp->parts[i].name && strcmp(mp->parts[i].name, n) == 0) {
             void *result = rt_bytes_new((int64_t)mp->parts[i].data_len);
             if (mp->parts[i].data_len > 0)
                 memcpy(bytes_data(result), mp->parts[i].data, mp->parts[i].data_len);

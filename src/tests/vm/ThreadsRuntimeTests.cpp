@@ -11,8 +11,7 @@
 
 #include <cassert>
 
-int main()
-{
+int main() {
 #if defined(_WIN32)
     // Viper.Threads is currently not implemented for Windows targets.
     return 0;

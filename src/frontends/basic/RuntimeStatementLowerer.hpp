@@ -37,13 +37,11 @@
 #include "frontends/basic/AST.hpp"
 #include "frontends/basic/Lowerer.hpp"
 
-namespace il::support
-{
+namespace il::support {
 struct SourceLoc;
 }
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Handles lowering of BASIC runtime statements to IL runtime calls.
 ///
@@ -60,8 +58,7 @@ namespace il::frontends::basic
 /// @invariant All methods operate on the Lowerer's active procedure context
 /// @invariant The lowerer's current block is valid and not terminated before calls
 /// @ownership Borrows Lowerer reference; does not own AST, IR, or runtime state
-class RuntimeStatementLowerer
-{
+class RuntimeStatementLowerer {
   public:
     /// @brief Construct a runtime statement lowerer bound to a Lowerer instance.
     /// @param lowerer Parent lowerer providing context and helper methods

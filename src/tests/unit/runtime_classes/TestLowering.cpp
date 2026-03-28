@@ -19,23 +19,18 @@
 
 #include <string>
 
-namespace
-{
+namespace {
 constexpr const char *kSrc = R"BASIC(
 10 PRINT ("abcd").Length
 20 END
 )BASIC";
 
-static int countCallsTo(const il::core::Module &M, const std::string &name)
-{
+static int countCallsTo(const il::core::Module &M, const std::string &name) {
     using namespace il::core;
     int count = 0;
-    for (const auto &fn : M.functions)
-    {
-        for (const auto &bb : fn.blocks)
-        {
-            for (const auto &ins : bb.instructions)
-            {
+    for (const auto &fn : M.functions) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &ins : bb.instructions) {
                 if (ins.op == Opcode::Call && ins.callee == name)
                     ++count;
             }
@@ -45,8 +40,7 @@ static int countCallsTo(const il::core::Module &M, const std::string &name)
 }
 } // namespace
 
-TEST(RuntimeClassLowering, StringLiteralLengthLowersToStringsLen)
-{
+TEST(RuntimeClassLowering, StringLiteralLengthLowersToStringsLen) {
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     std::string src(kSrc);
@@ -57,8 +51,7 @@ TEST(RuntimeClassLowering, StringLiteralLengthLowersToStringsLen)
     EXPECT_EQ(countCallsTo(result.module, "Viper.String.get_Length"), 1);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

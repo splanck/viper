@@ -52,10 +52,8 @@
 static _Thread_local void *vec3_pool_buf_[VEC3_POOL_CAPACITY];
 static _Thread_local int vec3_pool_top_ = 0;
 
-static void vec3_pool_return(void *p)
-{
-    if (vec3_pool_top_ < VEC3_POOL_CAPACITY)
-    {
+static void vec3_pool_return(void *p) {
+    if (vec3_pool_top_ < VEC3_POOL_CAPACITY) {
         rt_obj_resurrect(p);
         rt_obj_set_finalizer(p, vec3_pool_return);
         vec3_pool_buf_[vec3_pool_top_++] = p;
@@ -69,8 +67,7 @@ static void vec3_pool_return(void *p)
 /// with reference counting support.
 ///
 /// @note Vec3 is immutable - all operations create new instances.
-typedef struct
-{
+typedef struct {
     double x; ///< X component (horizontal axis, positive = right)
     double y; ///< Y component (vertical axis, positive = up)
     double z; ///< Z component (depth axis, positive = toward viewer in RH coords)
@@ -88,18 +85,13 @@ typedef struct
 /// @return Pointer to the newly allocated Vec3. Traps on allocation failure.
 ///
 /// @note This is an internal function - use rt_vec3_new() for public API.
-static ViperVec3 *vec3_alloc(double x, double y, double z)
-{
+static ViperVec3 *vec3_alloc(double x, double y, double z) {
     ViperVec3 *v;
-    if (vec3_pool_top_ > 0)
-    {
+    if (vec3_pool_top_ > 0) {
         v = (ViperVec3 *)vec3_pool_buf_[--vec3_pool_top_];
-    }
-    else
-    {
+    } else {
         v = (ViperVec3 *)rt_obj_new_i64(0, (int64_t)sizeof(ViperVec3));
-        if (!v)
-        {
+        if (!v) {
             rt_trap("Vec3: memory allocation failed");
             return NULL; // Unreachable after trap
         }
@@ -139,8 +131,7 @@ static ViperVec3 *vec3_alloc(double x, double y, double z)
 ///
 /// @see rt_vec3_zero For creating a zero vector
 /// @see rt_vec3_one For creating a unit vector (1, 1, 1)
-void *rt_vec3_new(double x, double y, double z)
-{
+void *rt_vec3_new(double x, double y, double z) {
     return vec3_alloc(x, y, z);
 }
 
@@ -168,8 +159,7 @@ void *rt_vec3_new(double x, double y, double z)
 ///
 /// @see rt_vec3_one For a unit vector
 /// @see rt_vec3_len For checking if a vector is zero-length
-void *rt_vec3_zero(void)
-{
+void *rt_vec3_zero(void) {
     return vec3_alloc(0.0, 0.0, 0.0);
 }
 
@@ -200,8 +190,7 @@ void *rt_vec3_zero(void)
 ///
 /// @see rt_vec3_zero For a zero vector
 /// @see rt_vec3_norm For creating unit vectors
-void *rt_vec3_one(void)
-{
+void *rt_vec3_one(void) {
     return vec3_alloc(1.0, 1.0, 1.0);
 }
 
@@ -229,10 +218,8 @@ void *rt_vec3_one(void)
 ///
 /// @see rt_vec3_y For the Y component
 /// @see rt_vec3_z For the Z component
-double rt_vec3_x(void *v)
-{
-    if (!v)
-    {
+double rt_vec3_x(void *v) {
+    if (!v) {
         rt_trap("Vec3.X: null vector");
         return 0.0;
     }
@@ -264,10 +251,8 @@ double rt_vec3_x(void *v)
 ///
 /// @see rt_vec3_x For the X component
 /// @see rt_vec3_z For the Z component
-double rt_vec3_y(void *v)
-{
-    if (!v)
-    {
+double rt_vec3_y(void *v) {
+    if (!v) {
         rt_trap("Vec3.Y: null vector");
         return 0.0;
     }
@@ -299,10 +284,8 @@ double rt_vec3_y(void *v)
 ///
 /// @see rt_vec3_x For the X component
 /// @see rt_vec3_y For the Y component
-double rt_vec3_z(void *v)
-{
-    if (!v)
-    {
+double rt_vec3_z(void *v) {
+    if (!v) {
         rt_trap("Vec3.Z: null vector");
         return 0.0;
     }
@@ -337,10 +320,8 @@ double rt_vec3_z(void *v)
 /// @note Traps with "Vec3.Add: null vector" if either operand is NULL.
 ///
 /// @see rt_vec3_sub For vector subtraction
-void *rt_vec3_add(void *a, void *b)
-{
-    if (!a || !b)
-    {
+void *rt_vec3_add(void *a, void *b) {
+    if (!a || !b) {
         rt_trap("Vec3.Add: null vector");
         return NULL;
     }
@@ -375,10 +356,8 @@ void *rt_vec3_add(void *a, void *b)
 /// @note Traps with "Vec3.Sub: null vector" if either operand is NULL.
 ///
 /// @see rt_vec3_add For vector addition
-void *rt_vec3_sub(void *a, void *b)
-{
-    if (!a || !b)
-    {
+void *rt_vec3_sub(void *a, void *b) {
+    if (!a || !b) {
         rt_trap("Vec3.Sub: null vector");
         return NULL;
     }
@@ -414,10 +393,8 @@ void *rt_vec3_sub(void *a, void *b)
 /// @note Traps with "Vec3.Mul: null vector" if v is NULL.
 ///
 /// @see rt_vec3_div For scalar division
-void *rt_vec3_mul(void *v, double s)
-{
-    if (!v)
-    {
+void *rt_vec3_mul(void *v, double s) {
+    if (!v) {
         rt_trap("Vec3.Mul: null vector");
         return NULL;
     }
@@ -450,15 +427,12 @@ void *rt_vec3_mul(void *v, double s)
 ///
 /// @see rt_vec3_mul For scalar multiplication
 /// @see rt_vec3_norm For normalizing to unit length
-void *rt_vec3_div(void *v, double s)
-{
-    if (!v)
-    {
+void *rt_vec3_div(void *v, double s) {
+    if (!v) {
         rt_trap("Vec3.Div: null vector");
         return NULL;
     }
-    if (s == 0.0)
-    {
+    if (s == 0.0) {
         rt_trap("Vec3.Div: division by zero");
         return NULL;
     }
@@ -489,10 +463,8 @@ void *rt_vec3_div(void *v, double s)
 /// @note Equivalent to v.Mul(-1)
 ///
 /// @see rt_vec3_mul For scalar multiplication
-void *rt_vec3_neg(void *v)
-{
-    if (!v)
-    {
+void *rt_vec3_neg(void *v) {
+    if (!v) {
         rt_trap("Vec3.Neg: null vector");
         return NULL;
     }
@@ -540,10 +512,8 @@ void *rt_vec3_neg(void *v)
 /// @note Traps with "Vec3.Dot: null vector" if either operand is NULL.
 ///
 /// @see rt_vec3_cross For the cross product
-double rt_vec3_dot(void *a, void *b)
-{
-    if (!a || !b)
-    {
+double rt_vec3_dot(void *a, void *b) {
+    if (!a || !b) {
         rt_trap("Vec3.Dot: null vector");
         return 0.0;
     }
@@ -610,11 +580,9 @@ double rt_vec3_dot(void *a, void *b)
 ///
 /// @see rt_vec3_dot For the dot product
 /// @see rt_vec2_cross For the 2D cross product (returns scalar)
-void *rt_vec3_cross(void *a, void *b)
-{
+void *rt_vec3_cross(void *a, void *b) {
     // 3D cross product: a × b = (ay*bz - az*by, az*bx - ax*bz, ax*by - ay*bx)
-    if (!a || !b)
-    {
+    if (!a || !b) {
         rt_trap("Vec3.Cross: null vector");
         return NULL;
     }
@@ -662,10 +630,8 @@ void *rt_vec3_cross(void *a, void *b)
 /// @note Traps with "Vec3.LenSq: null vector" if v is NULL.
 ///
 /// @see rt_vec3_len For the actual length
-double rt_vec3_len_sq(void *v)
-{
-    if (!v)
-    {
+double rt_vec3_len_sq(void *v) {
+    if (!v) {
         rt_trap("Vec3.LenSq: null vector");
         return 0.0;
     }
@@ -696,8 +662,7 @@ double rt_vec3_len_sq(void *v)
 ///
 /// @see rt_vec3_len_sq For squared length (faster for comparisons)
 /// @see rt_vec3_norm For getting a unit-length vector
-double rt_vec3_len(void *v)
-{
+double rt_vec3_len(void *v) {
     return sqrt(rt_vec3_len_sq(v));
 }
 
@@ -727,10 +692,8 @@ double rt_vec3_len(void *v)
 /// @note Traps with "Vec3.Dist: null vector" if either point is NULL.
 ///
 /// @see rt_vec3_len For the length of a single vector
-double rt_vec3_dist(void *a, void *b)
-{
-    if (!a || !b)
-    {
+double rt_vec3_dist(void *a, void *b) {
+    if (!a || !b) {
         rt_trap("Vec3.Dist: null vector");
         return 0.0;
     }
@@ -781,16 +744,13 @@ double rt_vec3_dist(void *a, void *b)
 ///
 /// @see rt_vec3_len For getting the length
 /// @see rt_vec3_div For manual normalization
-void *rt_vec3_norm(void *v)
-{
-    if (!v)
-    {
+void *rt_vec3_norm(void *v) {
+    if (!v) {
         rt_trap("Vec3.Norm: null vector");
         return NULL;
     }
     double len = rt_vec3_len(v);
-    if (len == 0.0)
-    {
+    if (len == 0.0) {
         // Return zero vector for zero-length input
         return vec3_alloc(0.0, 0.0, 0.0);
     }
@@ -838,10 +798,8 @@ void *rt_vec3_norm(void *v)
 /// @note Traps with "Vec3.Lerp: null vector" if either vector is NULL.
 ///
 /// @see rt_vec3_add For vector addition
-void *rt_vec3_lerp(void *a, void *b, double t)
-{
-    if (!a || !b)
-    {
+void *rt_vec3_lerp(void *a, void *b, double t) {
+    if (!a || !b) {
         rt_trap("Vec3.Lerp: null vector");
         return NULL;
     }
@@ -854,8 +812,7 @@ void *rt_vec3_lerp(void *a, void *b, double t)
     return vec3_alloc(x, y, z);
 }
 
-void *rt_vec3_reflect(void *v, void *normal)
-{
+void *rt_vec3_reflect(void *v, void *normal) {
     if (!v || !normal)
         return vec3_alloc(0, 0, 0);
     ViperVec3 *vv = (ViperVec3 *)v;
@@ -864,8 +821,7 @@ void *rt_vec3_reflect(void *v, void *normal)
     return vec3_alloc(vv->x - d * n->x, vv->y - d * n->y, vv->z - d * n->z);
 }
 
-void *rt_vec3_project(void *v, void *onto)
-{
+void *rt_vec3_project(void *v, void *onto) {
     if (!v || !onto)
         return vec3_alloc(0, 0, 0);
     ViperVec3 *vv = (ViperVec3 *)v;
@@ -878,8 +834,7 @@ void *rt_vec3_project(void *v, void *onto)
     return vec3_alloc(s * t->x, s * t->y, s * t->z);
 }
 
-void *rt_vec3_clamp_len(void *v, double max_len)
-{
+void *rt_vec3_clamp_len(void *v, double max_len) {
     if (!v || max_len <= 0)
         return vec3_alloc(0, 0, 0);
     ViperVec3 *vv = (ViperVec3 *)v;
@@ -890,8 +845,7 @@ void *rt_vec3_clamp_len(void *v, double max_len)
     return vec3_alloc(vv->x * s, vv->y * s, vv->z * s);
 }
 
-void *rt_vec3_move_towards(void *current, void *target, double max_delta)
-{
+void *rt_vec3_move_towards(void *current, void *target, double max_delta) {
     if (!current || !target)
         return vec3_alloc(0, 0, 0);
     ViperVec3 *c = (ViperVec3 *)current;
@@ -904,8 +858,7 @@ void *rt_vec3_move_towards(void *current, void *target, double max_delta)
     return vec3_alloc(c->x + dx * s, c->y + dy * s, c->z + dz * s);
 }
 
-double rt_vec3_angle(void *a, void *b)
-{
+double rt_vec3_angle(void *a, void *b) {
     if (!a || !b)
         return 0.0;
     ViperVec3 *va = (ViperVec3 *)a;
@@ -922,8 +875,7 @@ double rt_vec3_angle(void *a, void *b)
     return acos(cos_a);
 }
 
-void *rt_vec3_min(void *a, void *b)
-{
+void *rt_vec3_min(void *a, void *b) {
     if (!a || !b)
         return vec3_alloc(0, 0, 0);
     ViperVec3 *va = (ViperVec3 *)a;
@@ -931,8 +883,7 @@ void *rt_vec3_min(void *a, void *b)
     return vec3_alloc(fmin(va->x, vb->x), fmin(va->y, vb->y), fmin(va->z, vb->z));
 }
 
-void *rt_vec3_max(void *a, void *b)
-{
+void *rt_vec3_max(void *a, void *b) {
     if (!a || !b)
         return vec3_alloc(0, 0, 0);
     ViperVec3 *va = (ViperVec3 *)a;

@@ -21,10 +21,8 @@
 
 #include <array>
 
-namespace il::verify
-{
-namespace
-{
+namespace il::verify {
+namespace {
 using il::core::Opcode;
 using Table = std::array<std::optional<OpProps>, static_cast<size_t>(Opcode::Count)>;
 
@@ -32,8 +30,7 @@ using Table = std::array<std::optional<OpProps>, static_cast<size_t>(Opcode::Cou
 /// @details Convenience helper used when initialising the static table so each
 ///          entry records the arity, operand class, result class, and trapping
 ///          behaviour in a compact literal expression.
-constexpr OpProps makeBinary(TypeClass cls, TypeClass result, bool canTrap)
-{
+constexpr OpProps makeBinary(TypeClass cls, TypeClass result, bool canTrap) {
     return OpProps{2, cls, result, canTrap};
 }
 
@@ -42,8 +39,7 @@ constexpr OpProps makeBinary(TypeClass cls, TypeClass result, bool canTrap)
 ///          of opcodes that currently have dedicated verification metadata.
 ///          Additional entries can be added here without modifying the runtime
 ///          lookup logic.
-constexpr Table buildTable()
-{
+constexpr Table buildTable() {
     Table table{};
     table.fill(std::nullopt);
 
@@ -66,26 +62,22 @@ const Table kTable = buildTable();
 /// @brief Retrieve the optional property record for a given opcode.
 /// @details Validates the index before accessing the static table to guard
 ///          against stale enumeration values.
-std::optional<OpProps> lookup(Opcode opcode)
-{
+std::optional<OpProps> lookup(Opcode opcode) {
     const size_t index = static_cast<size_t>(opcode);
     if (index >= kTable.size())
         return std::nullopt;
     return kTable[index];
 }
 
-namespace
-{
+namespace {
 
 /// @brief Translate a core type category into a verifier type class.
 /// @details The verifier operates on a simplified view of types; this helper
 ///          performs the mapping while gracefully handling categories that have
 ///          no direct counterpart.
-constexpr TypeClass mapCategory(il::core::TypeCategory category)
-{
+constexpr TypeClass mapCategory(il::core::TypeCategory category) {
     using il::core::TypeCategory;
-    switch (category)
-    {
+    switch (category) {
         case TypeCategory::I1:
             return TypeClass::I1;
         case TypeCategory::I16:
@@ -124,8 +116,7 @@ constexpr TypeClass mapCategory(il::core::TypeCategory category)
 ///          into @ref OpCheckSpec, capturing operand counts, expected types, and
 ///          side-effect flags.  Returns `std::nullopt` when the opcode is
 ///          outside the known range.
-std::optional<OpCheckSpec> lookupSpec(Opcode opcode)
-{
+std::optional<OpCheckSpec> lookupSpec(Opcode opcode) {
     const size_t index = static_cast<size_t>(opcode);
     if (index >= il::core::kNumOpcodes)
         return std::nullopt;
@@ -147,8 +138,7 @@ std::optional<OpCheckSpec> lookupSpec(Opcode opcode)
 /// @details Consults @ref lookupSpec first so override metadata can refine the
 ///          result, then falls back to @ref il::core::getOpcodeInfo when no
 ///          specialisation exists.
-bool hasSideEffects(Opcode opcode)
-{
+bool hasSideEffects(Opcode opcode) {
     if (const auto spec = lookupSpec(opcode); spec.has_value())
         return spec->hasSideEffects;
     return il::core::getOpcodeInfo(opcode).hasSideEffects;

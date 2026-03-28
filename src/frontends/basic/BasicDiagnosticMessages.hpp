@@ -17,12 +17,10 @@
 
 #include <string_view>
 
-namespace il::frontends::basic::diag
-{
+namespace il::frontends::basic::diag {
 
 /// @brief Compile-time description of a diagnostic message.
-struct Message
-{
+struct Message {
     std::string_view id;   ///< Stable identifier printed by the diagnostic emitter.
     std::string_view text; ///< Primary human-readable message text.
 };

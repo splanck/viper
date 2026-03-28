@@ -27,17 +27,14 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Collect all tokens from source (excluding Eof).
-std::vector<Token> tokenize(const std::string &source)
-{
+std::vector<Token> tokenize(const std::string &source) {
     DiagnosticEngine diag;
     Lexer lexer(source, 0, diag);
     std::vector<Token> tokens;
-    while (true)
-    {
+    while (true) {
         Token tok = lexer.next();
         if (tok.kind == TokenKind::Eof)
             break;
@@ -47,12 +44,10 @@ std::vector<Token> tokenize(const std::string &source)
 }
 
 /// @brief Collect all tokens AND check for diagnostic errors.
-std::vector<Token> tokenizeWithDiags(const std::string &source, DiagnosticEngine &diag)
-{
+std::vector<Token> tokenizeWithDiags(const std::string &source, DiagnosticEngine &diag) {
     Lexer lexer(source, 0, diag);
     std::vector<Token> tokens;
-    while (true)
-    {
+    while (true) {
         Token tok = lexer.next();
         if (tok.kind == TokenKind::Eof)
             break;
@@ -62,10 +57,8 @@ std::vector<Token> tokenizeWithDiags(const std::string &source, DiagnosticEngine
 }
 
 /// @brief Check if any diagnostics have Error severity.
-bool hasErrors(const DiagnosticEngine &diag)
-{
-    for (const auto &d : diag.diagnostics())
-    {
+bool hasErrors(const DiagnosticEngine &diag) {
+    for (const auto &d : diag.diagnostics()) {
         if (d.severity == Severity::Error)
             return true;
     }
@@ -76,24 +69,21 @@ bool hasErrors(const DiagnosticEngine &diag)
 // Number literals — edge cases
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, HexLiteralZero)
-{
+TEST(ZiaLexer, HexLiteralZero) {
     auto tokens = tokenize("0x0");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::IntegerLiteral);
     EXPECT_EQ(tokens[0].intValue, 0);
 }
 
-TEST(ZiaLexer, HexLiteralUpperCase)
-{
+TEST(ZiaLexer, HexLiteralUpperCase) {
     auto tokens = tokenize("0XFF");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::IntegerLiteral);
     EXPECT_EQ(tokens[0].intValue, 255);
 }
 
-TEST(ZiaLexer, HexLiteralMissingDigits)
-{
+TEST(ZiaLexer, HexLiteralMissingDigits) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("0x", diag);
     ASSERT_EQ(tokens.size(), 1u);
@@ -101,24 +91,21 @@ TEST(ZiaLexer, HexLiteralMissingDigits)
     EXPECT_TRUE(hasErrors(diag));
 }
 
-TEST(ZiaLexer, BinaryLiteralBasic)
-{
+TEST(ZiaLexer, BinaryLiteralBasic) {
     auto tokens = tokenize("0b1010");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::IntegerLiteral);
     EXPECT_EQ(tokens[0].intValue, 10);
 }
 
-TEST(ZiaLexer, BinaryLiteralUpperB)
-{
+TEST(ZiaLexer, BinaryLiteralUpperB) {
     auto tokens = tokenize("0B11");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::IntegerLiteral);
     EXPECT_EQ(tokens[0].intValue, 3);
 }
 
-TEST(ZiaLexer, BinaryLiteralMissingDigits)
-{
+TEST(ZiaLexer, BinaryLiteralMissingDigits) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("0b", diag);
     ASSERT_EQ(tokens.size(), 1u);
@@ -126,8 +113,7 @@ TEST(ZiaLexer, BinaryLiteralMissingDigits)
     EXPECT_TRUE(hasErrors(diag));
 }
 
-TEST(ZiaLexer, BinaryLiteralInvalidDigit)
-{
+TEST(ZiaLexer, BinaryLiteralInvalidDigit) {
     // 0b2 — '2' is not a binary digit, so lexer reads "0b" then stops
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("0b2", diag);
@@ -135,37 +121,32 @@ TEST(ZiaLexer, BinaryLiteralInvalidDigit)
     EXPECT_TRUE(hasErrors(diag));
 }
 
-TEST(ZiaLexer, DecimalZero)
-{
+TEST(ZiaLexer, DecimalZero) {
     auto tokens = tokenize("0");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::IntegerLiteral);
     EXPECT_EQ(tokens[0].intValue, 0);
 }
 
-TEST(ZiaLexer, FloatWithExponent)
-{
+TEST(ZiaLexer, FloatWithExponent) {
     auto tokens = tokenize("1e10");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::NumberLiteral);
 }
 
-TEST(ZiaLexer, FloatWithNegativeExponent)
-{
+TEST(ZiaLexer, FloatWithNegativeExponent) {
     auto tokens = tokenize("2.5e-3");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::NumberLiteral);
 }
 
-TEST(ZiaLexer, FloatWithPositiveExponent)
-{
+TEST(ZiaLexer, FloatWithPositiveExponent) {
     auto tokens = tokenize("1.0E+5");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::NumberLiteral);
 }
 
-TEST(ZiaLexer, ExponentMissingDigits)
-{
+TEST(ZiaLexer, ExponentMissingDigits) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("1e", diag);
     ASSERT_EQ(tokens.size(), 1u);
@@ -173,8 +154,7 @@ TEST(ZiaLexer, ExponentMissingDigits)
     EXPECT_TRUE(hasErrors(diag));
 }
 
-TEST(ZiaLexer, ExponentMissingDigitsAfterSign)
-{
+TEST(ZiaLexer, ExponentMissingDigitsAfterSign) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("1e+", diag);
     ASSERT_EQ(tokens.size(), 1u);
@@ -182,8 +162,7 @@ TEST(ZiaLexer, ExponentMissingDigitsAfterSign)
     EXPECT_TRUE(hasErrors(diag));
 }
 
-TEST(ZiaLexer, DecimalDoesNotConsumeRange)
-{
+TEST(ZiaLexer, DecimalDoesNotConsumeRange) {
     // "1..10" should be: integer 1, DotDot, integer 10
     auto tokens = tokenize("1..10");
     ASSERT_EQ(tokens.size(), 3u);
@@ -198,16 +177,14 @@ TEST(ZiaLexer, DecimalDoesNotConsumeRange)
 // String literals — edge cases
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, EmptyString)
-{
+TEST(ZiaLexer, EmptyString) {
     auto tokens = tokenize("\"\"");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::StringLiteral);
     EXPECT_EQ(tokens[0].stringValue, "");
 }
 
-TEST(ZiaLexer, StringEscapeNull)
-{
+TEST(ZiaLexer, StringEscapeNull) {
     auto tokens = tokenize("\"a\\0b\"");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::StringLiteral);
@@ -217,24 +194,21 @@ TEST(ZiaLexer, StringEscapeNull)
     EXPECT_EQ(tokens[0].stringValue[2], 'b');
 }
 
-TEST(ZiaLexer, StringEscapeBackslash)
-{
+TEST(ZiaLexer, StringEscapeBackslash) {
     auto tokens = tokenize("\"\\\\\"");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::StringLiteral);
     EXPECT_EQ(tokens[0].stringValue, "\\");
 }
 
-TEST(ZiaLexer, StringEscapeDollar)
-{
+TEST(ZiaLexer, StringEscapeDollar) {
     auto tokens = tokenize("\"\\$\"");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::StringLiteral);
     EXPECT_EQ(tokens[0].stringValue, "$");
 }
 
-TEST(ZiaLexer, StringInvalidEscape)
-{
+TEST(ZiaLexer, StringInvalidEscape) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("\"\\q\"", diag);
     ASSERT_EQ(tokens.size(), 1u);
@@ -243,32 +217,28 @@ TEST(ZiaLexer, StringInvalidEscape)
     EXPECT_TRUE(hasErrors(diag));
 }
 
-TEST(ZiaLexer, StringHexEscape)
-{
+TEST(ZiaLexer, StringHexEscape) {
     auto tokens = tokenize("\"\\x41\""); // 0x41 = 'A'
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::StringLiteral);
     EXPECT_EQ(tokens[0].stringValue, "A");
 }
 
-TEST(ZiaLexer, StringHexEscapeInvalid)
-{
+TEST(ZiaLexer, StringHexEscapeInvalid) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("\"\\xGG\"", diag);
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_TRUE(hasErrors(diag));
 }
 
-TEST(ZiaLexer, StringUnicodeEscape)
-{
+TEST(ZiaLexer, StringUnicodeEscape) {
     auto tokens = tokenize("\"\\u0041\""); // U+0041 = 'A'
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::StringLiteral);
     EXPECT_EQ(tokens[0].stringValue, "A");
 }
 
-TEST(ZiaLexer, StringUnicodeEscapeTwoByte)
-{
+TEST(ZiaLexer, StringUnicodeEscapeTwoByte) {
     // U+00E9 = 'e' with acute accent, 2-byte UTF-8: 0xC3 0xA9
     auto tokens = tokenize("\"\\u00E9\"");
     ASSERT_EQ(tokens.size(), 1u);
@@ -278,8 +248,7 @@ TEST(ZiaLexer, StringUnicodeEscapeTwoByte)
     EXPECT_EQ(static_cast<unsigned char>(tokens[0].stringValue[1]), 0xA9u);
 }
 
-TEST(ZiaLexer, StringUnicodeEscapeThreeByte)
-{
+TEST(ZiaLexer, StringUnicodeEscapeThreeByte) {
     // U+4E16 = CJK character, 3-byte UTF-8: 0xE4 0xB8 0x96
     auto tokens = tokenize("\"\\u4E16\"");
     ASSERT_EQ(tokens.size(), 1u);
@@ -290,16 +259,14 @@ TEST(ZiaLexer, StringUnicodeEscapeThreeByte)
     EXPECT_EQ(static_cast<unsigned char>(tokens[0].stringValue[2]), 0x96u);
 }
 
-TEST(ZiaLexer, StringUnicodeEscapeTooFewDigits)
-{
+TEST(ZiaLexer, StringUnicodeEscapeTooFewDigits) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("\"\\u00\"", diag);
     // Only 2 hex digits instead of 4
     EXPECT_TRUE(hasErrors(diag));
 }
 
-TEST(ZiaLexer, UnterminatedString)
-{
+TEST(ZiaLexer, UnterminatedString) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("\"hello", diag);
     ASSERT_EQ(tokens.size(), 1u);
@@ -307,23 +274,20 @@ TEST(ZiaLexer, UnterminatedString)
     EXPECT_TRUE(hasErrors(diag));
 }
 
-TEST(ZiaLexer, NewlineInString)
-{
+TEST(ZiaLexer, NewlineInString) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("\"hello\nworld\"", diag);
     EXPECT_TRUE(hasErrors(diag));
     // Should produce Error token for the newline in string
     bool hasError = false;
-    for (const auto &t : tokens)
-    {
+    for (const auto &t : tokens) {
         if (t.kind == TokenKind::Error)
             hasError = true;
     }
     EXPECT_TRUE(hasError);
 }
 
-TEST(ZiaLexer, UnterminatedEscapeAtEof)
-{
+TEST(ZiaLexer, UnterminatedEscapeAtEof) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("\"hello\\", diag);
     ASSERT_EQ(tokens.size(), 1u);
@@ -335,24 +299,21 @@ TEST(ZiaLexer, UnterminatedEscapeAtEof)
 // Triple-quoted strings
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, TripleQuotedBasic)
-{
+TEST(ZiaLexer, TripleQuotedBasic) {
     auto tokens = tokenize("\"\"\"hello\"\"\"");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::StringLiteral);
     EXPECT_EQ(tokens[0].stringValue, "hello");
 }
 
-TEST(ZiaLexer, TripleQuotedMultiline)
-{
+TEST(ZiaLexer, TripleQuotedMultiline) {
     auto tokens = tokenize("\"\"\"line1\nline2\nline3\"\"\"");
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].kind, TokenKind::StringLiteral);
     EXPECT_EQ(tokens[0].stringValue, "line1\nline2\nline3");
 }
 
-TEST(ZiaLexer, TripleQuotedWithSingleQuote)
-{
+TEST(ZiaLexer, TripleQuotedWithSingleQuote) {
     // A single " inside triple-quoted string is fine.
     // Input: """a "b" c""" — the inner double-quotes don't close the string.
     std::string src;
@@ -365,8 +326,7 @@ TEST(ZiaLexer, TripleQuotedWithSingleQuote)
     EXPECT_EQ(tokens[0].stringValue, "a \"b\" c");
 }
 
-TEST(ZiaLexer, UnterminatedTripleQuoted)
-{
+TEST(ZiaLexer, UnterminatedTripleQuoted) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("\"\"\"hello", diag);
     ASSERT_EQ(tokens.size(), 1u);
@@ -378,8 +338,7 @@ TEST(ZiaLexer, UnterminatedTripleQuoted)
 // String interpolation
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, SimpleInterpolation)
-{
+TEST(ZiaLexer, SimpleInterpolation) {
     // "hello ${x} world"
     auto tokens = tokenize("\"hello ${x} world\"");
     // StringStart("hello ${"), Identifier(x), StringEnd("} world\"")
@@ -390,8 +349,7 @@ TEST(ZiaLexer, SimpleInterpolation)
     EXPECT_EQ(tokens[2].kind, TokenKind::StringEnd);
 }
 
-TEST(ZiaLexer, InterpolationWithNestedBraces)
-{
+TEST(ZiaLexer, InterpolationWithNestedBraces) {
     // "result: ${f({1, 2})}" — nested braces inside interpolation
     // The lexer should track brace depth and not close interpolation on inner }
     auto tokens = tokenize("\"result: ${f()}\"");
@@ -403,8 +361,7 @@ TEST(ZiaLexer, InterpolationWithNestedBraces)
     EXPECT_EQ(tokens[4].kind, TokenKind::StringEnd);
 }
 
-TEST(ZiaLexer, MultipleInterpolations)
-{
+TEST(ZiaLexer, MultipleInterpolations) {
     // "a${x}b${y}c"
     auto tokens = tokenize("\"a${x}b${y}c\"");
     // StringStart, x, StringMid, y, StringEnd
@@ -418,8 +375,7 @@ TEST(ZiaLexer, MultipleInterpolations)
     EXPECT_EQ(tokens[4].kind, TokenKind::StringEnd);
 }
 
-TEST(ZiaLexer, InterpolationEscapedDollar)
-{
+TEST(ZiaLexer, InterpolationEscapedDollar) {
     // "\${x}" — escaped dollar sign, no interpolation
     auto tokens = tokenize("\"\\${x}\"");
     ASSERT_EQ(tokens.size(), 1u);
@@ -430,8 +386,7 @@ TEST(ZiaLexer, InterpolationEscapedDollar)
 // Comments
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, LineComment)
-{
+TEST(ZiaLexer, LineComment) {
     auto tokens = tokenize("x // comment\ny");
     ASSERT_EQ(tokens.size(), 2u);
     EXPECT_EQ(tokens[0].kind, TokenKind::Identifier);
@@ -440,39 +395,34 @@ TEST(ZiaLexer, LineComment)
     EXPECT_EQ(tokens[1].text, "y");
 }
 
-TEST(ZiaLexer, BlockComment)
-{
+TEST(ZiaLexer, BlockComment) {
     auto tokens = tokenize("x /* comment */ y");
     ASSERT_EQ(tokens.size(), 2u);
     EXPECT_EQ(tokens[0].text, "x");
     EXPECT_EQ(tokens[1].text, "y");
 }
 
-TEST(ZiaLexer, NestedBlockComment)
-{
+TEST(ZiaLexer, NestedBlockComment) {
     auto tokens = tokenize("x /* outer /* inner */ still outer */ y");
     ASSERT_EQ(tokens.size(), 2u);
     EXPECT_EQ(tokens[0].text, "x");
     EXPECT_EQ(tokens[1].text, "y");
 }
 
-TEST(ZiaLexer, UnterminatedBlockComment)
-{
+TEST(ZiaLexer, UnterminatedBlockComment) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("x /* unterminated", diag);
     EXPECT_TRUE(hasErrors(diag));
 }
 
-TEST(ZiaLexer, UnterminatedNestedBlockComment)
-{
+TEST(ZiaLexer, UnterminatedNestedBlockComment) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("/* outer /* inner */", diag);
     // Only one level closed, outer still open
     EXPECT_TRUE(hasErrors(diag));
 }
 
-TEST(ZiaLexer, EmptyBlockComment)
-{
+TEST(ZiaLexer, EmptyBlockComment) {
     auto tokens = tokenize("x/**/y");
     ASSERT_EQ(tokens.size(), 2u);
     EXPECT_EQ(tokens[0].text, "x");
@@ -483,8 +433,7 @@ TEST(ZiaLexer, EmptyBlockComment)
 // Operators — multi-character disambiguation
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, DotVsDotDotVsDotDotEqual)
-{
+TEST(ZiaLexer, DotVsDotDotVsDotDotEqual) {
     auto tokens = tokenize(". .. ..=");
     ASSERT_EQ(tokens.size(), 3u);
     EXPECT_EQ(tokens[0].kind, TokenKind::Dot);
@@ -492,8 +441,7 @@ TEST(ZiaLexer, DotVsDotDotVsDotDotEqual)
     EXPECT_EQ(tokens[2].kind, TokenKind::DotDotEqual);
 }
 
-TEST(ZiaLexer, QuestionVariants)
-{
+TEST(ZiaLexer, QuestionVariants) {
     auto tokens = tokenize("? ?? ?.");
     ASSERT_EQ(tokens.size(), 3u);
     EXPECT_EQ(tokens[0].kind, TokenKind::Question);
@@ -501,16 +449,14 @@ TEST(ZiaLexer, QuestionVariants)
     EXPECT_EQ(tokens[2].kind, TokenKind::QuestionDot);
 }
 
-TEST(ZiaLexer, ArrowsAndFatArrow)
-{
+TEST(ZiaLexer, ArrowsAndFatArrow) {
     auto tokens = tokenize("-> =>");
     ASSERT_EQ(tokens.size(), 2u);
     EXPECT_EQ(tokens[0].kind, TokenKind::Arrow);
     EXPECT_EQ(tokens[1].kind, TokenKind::FatArrow);
 }
 
-TEST(ZiaLexer, CompoundAssignment)
-{
+TEST(ZiaLexer, CompoundAssignment) {
     auto tokens = tokenize("+= -= *= /= %=");
     ASSERT_EQ(tokens.size(), 5u);
     EXPECT_EQ(tokens[0].kind, TokenKind::PlusEqual);
@@ -520,8 +466,7 @@ TEST(ZiaLexer, CompoundAssignment)
     EXPECT_EQ(tokens[4].kind, TokenKind::PercentEqual);
 }
 
-TEST(ZiaLexer, ComparisonOperators)
-{
+TEST(ZiaLexer, ComparisonOperators) {
     auto tokens = tokenize("== != < <= > >=");
     ASSERT_EQ(tokens.size(), 6u);
     EXPECT_EQ(tokens[0].kind, TokenKind::EqualEqual);
@@ -532,16 +477,14 @@ TEST(ZiaLexer, ComparisonOperators)
     EXPECT_EQ(tokens[5].kind, TokenKind::GreaterEqual);
 }
 
-TEST(ZiaLexer, LogicalOperators)
-{
+TEST(ZiaLexer, LogicalOperators) {
     auto tokens = tokenize("&& ||");
     ASSERT_EQ(tokens.size(), 2u);
     EXPECT_EQ(tokens[0].kind, TokenKind::AmpAmp);
     EXPECT_EQ(tokens[1].kind, TokenKind::PipePipe);
 }
 
-TEST(ZiaLexer, BitwiseOperators)
-{
+TEST(ZiaLexer, BitwiseOperators) {
     auto tokens = tokenize("& | ^ ~");
     ASSERT_EQ(tokens.size(), 4u);
     EXPECT_EQ(tokens[0].kind, TokenKind::Ampersand);
@@ -554,24 +497,20 @@ TEST(ZiaLexer, BitwiseOperators)
 // Keywords
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, AllKeywordsRecognized)
-{
+TEST(ZiaLexer, AllKeywordsRecognized) {
     auto tokens = tokenize("var func entity value interface if else while for in "
                            "return match break continue true false null new self "
                            "super extends implements module bind let guard");
     // All should be keywords, not identifiers
-    for (const auto &tok : tokens)
-    {
+    for (const auto &tok : tokens) {
         EXPECT_TRUE(tok.isKeyword());
     }
 }
 
-TEST(ZiaLexer, KeywordsCaseSensitive)
-{
+TEST(ZiaLexer, KeywordsCaseSensitive) {
     // Uppercase versions should be identifiers, not keywords
     auto tokens = tokenize("Var Func Entity IF ELSE");
-    for (const auto &tok : tokens)
-    {
+    for (const auto &tok : tokens) {
         EXPECT_EQ(tok.kind, TokenKind::Identifier);
     }
 }
@@ -580,8 +519,7 @@ TEST(ZiaLexer, KeywordsCaseSensitive)
 // Identifiers
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, IdentifierStartsWithUnderscore)
-{
+TEST(ZiaLexer, IdentifierStartsWithUnderscore) {
     auto tokens = tokenize("_foo _123 __bar");
     ASSERT_EQ(tokens.size(), 3u);
     EXPECT_EQ(tokens[0].kind, TokenKind::Identifier);
@@ -592,8 +530,7 @@ TEST(ZiaLexer, IdentifierStartsWithUnderscore)
     EXPECT_EQ(tokens[2].text, "__bar");
 }
 
-TEST(ZiaLexer, IdentifierTooLong)
-{
+TEST(ZiaLexer, IdentifierTooLong) {
     // Identifier over 1024 characters should error
     std::string longId(1025, 'a');
     DiagnosticEngine diag;
@@ -607,8 +544,7 @@ TEST(ZiaLexer, IdentifierTooLong)
 // Unexpected characters
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, UnexpectedCharacter)
-{
+TEST(ZiaLexer, UnexpectedCharacter) {
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("`", diag);
     ASSERT_EQ(tokens.size(), 1u);
@@ -616,8 +552,7 @@ TEST(ZiaLexer, UnexpectedCharacter)
     EXPECT_TRUE(hasErrors(diag));
 }
 
-TEST(ZiaLexer, UnexpectedCharacterRecovery)
-{
+TEST(ZiaLexer, UnexpectedCharacterRecovery) {
     // Lexer should recover after unexpected character and continue
     DiagnosticEngine diag;
     auto tokens = tokenizeWithDiags("x ` y", diag);
@@ -632,8 +567,7 @@ TEST(ZiaLexer, UnexpectedCharacterRecovery)
 // Brackets
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, AllBrackets)
-{
+TEST(ZiaLexer, AllBrackets) {
     auto tokens = tokenize("( ) [ ] { }");
     ASSERT_EQ(tokens.size(), 6u);
     EXPECT_EQ(tokens[0].kind, TokenKind::LParen);
@@ -648,8 +582,7 @@ TEST(ZiaLexer, AllBrackets)
 // Punctuation
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, Punctuation)
-{
+TEST(ZiaLexer, Punctuation) {
     auto tokens = tokenize(": ; , @");
     ASSERT_EQ(tokens.size(), 4u);
     EXPECT_EQ(tokens[0].kind, TokenKind::Colon);
@@ -662,20 +595,17 @@ TEST(ZiaLexer, Punctuation)
 // Whitespace handling
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, EmptyInput)
-{
+TEST(ZiaLexer, EmptyInput) {
     auto tokens = tokenize("");
     EXPECT_EQ(tokens.size(), 0u);
 }
 
-TEST(ZiaLexer, WhitespaceOnly)
-{
+TEST(ZiaLexer, WhitespaceOnly) {
     auto tokens = tokenize("   \t\n\r\n   ");
     EXPECT_EQ(tokens.size(), 0u);
 }
 
-TEST(ZiaLexer, CommentOnly)
-{
+TEST(ZiaLexer, CommentOnly) {
     auto tokens = tokenize("// just a comment\n");
     EXPECT_EQ(tokens.size(), 0u);
 }
@@ -684,8 +614,7 @@ TEST(ZiaLexer, CommentOnly)
 // Peek behavior
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, PeekDoesNotConsume)
-{
+TEST(ZiaLexer, PeekDoesNotConsume) {
     DiagnosticEngine diag;
     Lexer lexer("x y", 0, diag);
     const Token &peeked1 = lexer.peek();
@@ -703,8 +632,7 @@ TEST(ZiaLexer, PeekDoesNotConsume)
 // Source location tracking
 //===----------------------------------------------------------------------===//
 
-TEST(ZiaLexer, LocationTracking)
-{
+TEST(ZiaLexer, LocationTracking) {
     DiagnosticEngine diag;
     Lexer lexer("x\ny", 42, diag);
     Token tok1 = lexer.next();
@@ -716,8 +644,7 @@ TEST(ZiaLexer, LocationTracking)
     EXPECT_EQ(tok2.loc.column, 1u);
 }
 
-TEST(ZiaLexer, LocationTrackingColumns)
-{
+TEST(ZiaLexer, LocationTrackingColumns) {
     DiagnosticEngine diag;
     Lexer lexer("abc def", 0, diag);
     Token tok1 = lexer.next();
@@ -728,7 +655,6 @@ TEST(ZiaLexer, LocationTrackingColumns)
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

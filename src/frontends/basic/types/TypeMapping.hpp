@@ -30,8 +30,7 @@
 #include "il/core/Type.hpp"
 #include <optional>
 
-namespace il::frontends::basic::types
-{
+namespace il::frontends::basic::types {
 
 /// @brief Map an IL core type to the corresponding BASIC AST scalar type.
 /// @details Translates IL types (i64, f64, i1, ptr, void) into their BASIC

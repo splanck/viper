@@ -31,15 +31,13 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::tui::text
-{
+namespace viper::tui::text {
 /// @brief Maintains sorted line-start byte offsets for fast line-number access.
 /// @details Tracks newline character positions to enable O(1) lookup of line start
 ///          offsets and O(n) incremental updates on insert/erase where n is the
 ///          number of newlines affected. Used by TextBuffer to implement
 ///          line-based operations without scanning the entire document.
-class LineIndex
-{
+class LineIndex {
   public:
     /// @brief Rebuild the line index from scratch for the given text.
     /// @details Scans the text for newline characters and populates the line_starts_

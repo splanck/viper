@@ -27,53 +27,49 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Render template with Map values.
-    /// @param tmpl Template string with {{key}} placeholders.
-    /// @param values Map with string keys and string values.
-    /// @return New string with placeholders replaced.
-    /// @note Missing keys are left as-is. Traps on null template or values.
-    rt_string rt_template_render(rt_string tmpl, void *values);
+/// @brief Render template with Map values.
+/// @param tmpl Template string with {{key}} placeholders.
+/// @param values Map with string keys and string values.
+/// @return New string with placeholders replaced.
+/// @note Missing keys are left as-is. Traps on null template or values.
+rt_string rt_template_render(rt_string tmpl, void *values);
 
-    /// @brief Render template with Seq values (positional).
-    /// @param tmpl Template string with {{0}} {{1}} etc. placeholders.
-    /// @param values Seq of strings.
-    /// @return New string with placeholders replaced.
-    /// @note Out-of-range indices are left as-is. Traps on null template or values.
-    rt_string rt_template_render_seq(rt_string tmpl, void *values);
+/// @brief Render template with Seq values (positional).
+/// @param tmpl Template string with {{0}} {{1}} etc. placeholders.
+/// @param values Seq of strings.
+/// @return New string with placeholders replaced.
+/// @note Out-of-range indices are left as-is. Traps on null template or values.
+rt_string rt_template_render_seq(rt_string tmpl, void *values);
 
-    /// @brief Render template with custom delimiters.
-    /// @param tmpl Template string with placeholders.
-    /// @param values Map with string keys and string values.
-    /// @param prefix Placeholder prefix (e.g., "$" or "{{").
-    /// @param suffix Placeholder suffix (e.g., "$" or "}}").
-    /// @return New string with placeholders replaced.
-    /// @note Traps on null template, values, prefix, or suffix.
-    rt_string rt_template_render_with(rt_string tmpl,
-                                      void *values,
-                                      rt_string prefix,
-                                      rt_string suffix);
+/// @brief Render template with custom delimiters.
+/// @param tmpl Template string with placeholders.
+/// @param values Map with string keys and string values.
+/// @param prefix Placeholder prefix (e.g., "$" or "{{").
+/// @param suffix Placeholder suffix (e.g., "$" or "}}").
+/// @return New string with placeholders replaced.
+/// @note Traps on null template, values, prefix, or suffix.
+rt_string rt_template_render_with(rt_string tmpl, void *values, rt_string prefix, rt_string suffix);
 
-    /// @brief Check if template contains a placeholder for key.
-    /// @param tmpl Template string.
-    /// @param key Placeholder key to check for.
-    /// @return 1 if template contains {{key}}, 0 otherwise.
-    /// @note Uses default {{ }} delimiters.
-    int8_t rt_template_has(rt_string tmpl, rt_string key);
+/// @brief Check if template contains a placeholder for key.
+/// @param tmpl Template string.
+/// @param key Placeholder key to check for.
+/// @return 1 if template contains {{key}}, 0 otherwise.
+/// @note Uses default {{ }} delimiters.
+int8_t rt_template_has(rt_string tmpl, rt_string key);
 
-    /// @brief Extract all placeholder keys from template.
-    /// @param tmpl Template string.
-    /// @return Bag containing all unique placeholder keys.
-    /// @note Uses default {{ }} delimiters.
-    void *rt_template_keys(rt_string tmpl);
+/// @brief Extract all placeholder keys from template.
+/// @param tmpl Template string.
+/// @return Bag containing all unique placeholder keys.
+/// @note Uses default {{ }} delimiters.
+void *rt_template_keys(rt_string tmpl);
 
-    /// @brief Escape {{ and }} in text for literal output.
-    /// @param text Text to escape.
-    /// @return New string with {{ escaped as {{{{ and }} escaped as }}}}.
-    rt_string rt_template_escape(rt_string text);
+/// @brief Escape {{ and }} in text for literal output.
+/// @param text Text to escape.
+/// @return New string with {{ escaped as {{{{ and }} escaped as }}}}.
+rt_string rt_template_escape(rt_string text);
 
 #ifdef __cplusplus
 }

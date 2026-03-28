@@ -21,25 +21,17 @@
 #include <array>
 #include <cstdlib>
 
-namespace il::frontends::basic
-{
-namespace
-{
-enum class Assoc
-{
-    Left,
-    Right
-};
+namespace il::frontends::basic {
+namespace {
+enum class Assoc { Left, Right };
 
-struct PrefixParselet
-{
+struct PrefixParselet {
     TokenKind kind;
     UnaryExpr::Op op;
     int rbp;
 };
 
-struct InfixParselet
-{
+struct InfixParselet {
     TokenKind kind;
     BinaryExpr::Op op;
     int lbp;
@@ -80,10 +72,8 @@ constexpr std::array<InfixParselet, 18> infixParselets{
 /// @brief Direct-index lookup table mapping TokenKind -> PrefixParselet pointer.
 /// @details Built once at static-init time from the prefixParselets array.
 ///          O(1) lookup replaces the previous linear search.
-const auto &prefixLookup()
-{
-    static const auto table = []
-    {
+const auto &prefixLookup() {
+    static const auto table = [] {
         constexpr auto count = static_cast<size_t>(TokenKind::Count);
         std::array<const PrefixParselet *, count> tbl{};
         tbl.fill(nullptr);
@@ -97,10 +87,8 @@ const auto &prefixLookup()
 /// @brief Direct-index lookup table mapping TokenKind -> InfixParselet pointer.
 /// @details Built once at static-init time from the infixParselets array.
 ///          O(1) lookup replaces the previous linear search.
-const auto &infixLookup()
-{
-    static const auto table = []
-    {
+const auto &infixLookup() {
+    static const auto table = [] {
         constexpr auto count = static_cast<size_t>(TokenKind::Count);
         std::array<const InfixParselet *, count> tbl{};
         tbl.fill(nullptr);
@@ -114,8 +102,7 @@ const auto &infixLookup()
 /// @brief Look up the prefix parselet for a token kind.
 /// @param kind The token kind to search for.
 /// @return Pointer to the matching parselet, or nullptr if not found.
-inline const PrefixParselet *findPrefix(TokenKind kind)
-{
+inline const PrefixParselet *findPrefix(TokenKind kind) {
     auto idx = static_cast<size_t>(kind);
     if (idx >= static_cast<size_t>(TokenKind::Count))
         return nullptr;
@@ -125,8 +112,7 @@ inline const PrefixParselet *findPrefix(TokenKind kind)
 /// @brief Look up the infix parselet for a token kind.
 /// @param kind The token kind to search for.
 /// @return Pointer to the matching parselet, or nullptr if not found.
-inline const InfixParselet *findInfix(TokenKind kind)
-{
+inline const InfixParselet *findInfix(TokenKind kind) {
     auto idx = static_cast<size_t>(kind);
     if (idx >= static_cast<size_t>(TokenKind::Count))
         return nullptr;
@@ -138,8 +124,7 @@ inline const InfixParselet *findInfix(TokenKind kind)
 /// @brief Determine the binding power for an operator token during Pratt parsing.
 /// @param k Token kind to inspect.
 /// @return Numeric precedence; higher values bind more tightly, 0 for non-operators.
-int Parser::precedence(TokenKind k)
-{
+int Parser::precedence(TokenKind k) {
     if (const auto *prefix = findPrefix(k))
         return prefix->rbp;
     if (const auto *infix = findInfix(k))
@@ -154,18 +139,15 @@ int Parser::precedence(TokenKind k)
 /// climb.
 /// @param min_prec Minimum precedence required to continue parsing infix operators.
 /// @return Parsed expression subtree.
-ExprPtr Parser::parseExpression(int min_prec)
-{
+ExprPtr Parser::parseExpression(int min_prec) {
     return parseBinary(min_prec);
 }
 
 /// @brief Parse unary operators before delegating to primary expressions.
 /// @return Parsed unary expression node.
-ExprPtr Parser::parseUnary()
-{
+ExprPtr Parser::parseUnary() {
     const auto tok = peek();
-    if (const auto *prefix = findPrefix(tok.kind))
-    {
+    if (const auto *prefix = findPrefix(tok.kind)) {
         consume();
         auto operand = parseBinary(prefix->rbp);
         auto expr = std::make_unique<UnaryExpr>();
@@ -182,31 +164,25 @@ ExprPtr Parser::parseUnary()
 /// @brief Parse infix operators using Pratt-style precedence climbing.
 /// @param min_prec Minimum precedence required for an operator to bind.
 /// @return Parsed expression node.
-ExprPtr Parser::parseBinary(int min_prec)
-{
-    if (++exprDepth_ > kMaxExprDepth)
-    {
+ExprPtr Parser::parseBinary(int min_prec) {
+    if (++exprDepth_ > kMaxExprDepth) {
         --exprDepth_;
         emitError("B0001", peek(), "expression nesting too deep (limit: 512)");
         return nullptr;
     }
 
-    struct DepthGuard
-    {
+    struct DepthGuard {
         unsigned &d;
 
-        ~DepthGuard()
-        {
+        ~DepthGuard() {
             --d;
         }
     } exprGuard_{exprDepth_};
 
     auto lhs = parseUnary();
-    while (true)
-    {
+    while (true) {
         // Handle IS and AS type operators (precedence 3, same as comparisons)
-        if (peek().kind == TokenKind::KeywordIs && min_prec <= 3)
-        {
+        if (peek().kind == TokenKind::KeywordIs && min_prec <= 3) {
             auto opTok = peek();
             consume(); // IS
             auto isExpr = std::make_unique<IsExpr>();
@@ -217,8 +193,7 @@ ExprPtr Parser::parseBinary(int min_prec)
             lhs = std::move(isExpr);
             continue;
         }
-        if (peek().kind == TokenKind::KeywordAs && min_prec <= 3)
-        {
+        if (peek().kind == TokenKind::KeywordAs && min_prec <= 3) {
             auto opTok = peek();
             consume(); // AS
             auto asExpr = std::make_unique<AsExpr>();
@@ -257,16 +232,13 @@ ExprPtr Parser::parseBinary(int min_prec)
 /// here; the standard library conversion falls back to zero on malformed values, matching BASIC's
 /// permissive semantics.
 /// @return Newly allocated numeric literal expression.
-ExprPtr Parser::parseNumber()
-{
+ExprPtr Parser::parseNumber() {
     auto loc = peek().loc;
     std::string lex = peek().lexeme;
     char suffix = '\0';
-    if (!lex.empty())
-    {
+    if (!lex.empty()) {
         char last = lex.back();
-        switch (last)
-        {
+        switch (last) {
             case '#':
             case '!':
             case '%':
@@ -283,8 +255,7 @@ ExprPtr Parser::parseNumber()
     const bool hasExp = lex.find_first_of("Ee") != std::string::npos;
     const bool isFloatLiteral = hasDot || hasExp || suffix == '!' || suffix == '#';
 
-    if (isFloatLiteral)
-    {
+    if (isFloatLiteral) {
         auto e = makeFloatExpr(std::strtod(lex.c_str(), nullptr), loc);
         auto *floatExpr = static_cast<FloatExpr *>(e.get());
         if (suffix == '!')
@@ -311,8 +282,7 @@ ExprPtr Parser::parseNumber()
 /// TokenKind::String token. In BASIC, backslash has no special meaning - strings are taken
 /// literally. Use CHR$(34) for embedded quotes or the "" (double quote) convention.
 /// @return Newly allocated string literal expression.
-ExprPtr Parser::parseString()
-{
+ExprPtr Parser::parseString() {
     auto loc = peek().loc;
     // In BASIC, strings are taken literally - no escape sequence processing.
     // This matches traditional BASIC behavior where backslash is just a regular character.
@@ -329,30 +299,23 @@ ExprPtr Parser::parseString()
 /// @param builtin Enumerated builtin resolved by lookupBuiltin().
 /// @param loc Source location of the builtin identifier.
 /// @return Newly allocated builtin call expression with parsed arguments.
-ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::SourceLoc loc)
-{
+ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::SourceLoc loc) {
     expect(TokenKind::LParen);
     std::vector<ExprPtr> args;
 
     const auto arity = getBuiltinArity(builtin);
 
-    if (arity.maxArgs == 0)
-    {
+    if (arity.maxArgs == 0) {
         // Zero-argument builtins: RND(), TIMER(), INKEY$(), GETKEY$()
         // Enforce empty argument list at parse time since this is unambiguous
         expect(TokenKind::RParen);
-    }
-    else
-    {
+    } else {
         // All other builtins: parse flexible comma-separated arguments
         // The semantic analyzer will validate arity and provide specific diagnostics
-        if (!at(TokenKind::RParen))
-        {
-            while (true)
-            {
+        if (!at(TokenKind::RParen)) {
+            while (true) {
                 args.push_back(parseExpression());
-                if (at(TokenKind::Comma))
-                {
+                if (at(TokenKind::Comma)) {
                     consume();
                     continue;
                 }
@@ -375,8 +338,7 @@ ExprPtr Parser::parseBuiltinCall(BuiltinCallExpr::Builtin builtin, il::support::
 /// @param name Identifier captured from the token stream.
 /// @param loc Source location of the identifier.
 /// @return Variable reference expression.
-ExprPtr Parser::parseVariableRef(std::string_view name, il::support::SourceLoc loc)
-{
+ExprPtr Parser::parseVariableRef(std::string_view name, il::support::SourceLoc loc) {
     auto v = std::make_unique<VarExpr>();
     v->loc = loc;
     v->name = name;
@@ -391,15 +353,13 @@ ExprPtr Parser::parseVariableRef(std::string_view name, il::support::SourceLoc l
 /// @param name Array identifier.
 /// @param loc Source location of the identifier.
 /// @return Array reference expression with the parsed indices.
-ExprPtr Parser::parseArrayRef(std::string_view name, il::support::SourceLoc loc)
-{
+ExprPtr Parser::parseArrayRef(std::string_view name, il::support::SourceLoc loc) {
     expect(TokenKind::LParen);
 
     // Parse comma-separated indices: arr(i,j,k)
     std::vector<ExprPtr> indexList;
     indexList.push_back(parseExpression());
-    while (at(TokenKind::Comma))
-    {
+    while (at(TokenKind::Comma)) {
         consume(); // ','
         indexList.push_back(parseExpression());
     }
@@ -414,13 +374,10 @@ ExprPtr Parser::parseArrayRef(std::string_view name, il::support::SourceLoc loc)
     // - Populate only the deprecated 'index' field when exactly one index is present.
     // - Do NOT also populate 'indices' with a moved-from pointer, which is UB when accessed.
     // - For multi-dimensional arrays, populate 'indices' and leave 'index' null.
-    if (indexList.size() == 1)
-    {
+    if (indexList.size() == 1) {
         arr->index = std::move(indexList[0]);
         arr->indices.clear();
-    }
-    else
-    {
+    } else {
         arr->indices = std::move(indexList);
     }
 
@@ -435,13 +392,11 @@ ExprPtr Parser::parseArrayRef(std::string_view name, il::support::SourceLoc loc)
 /// Errors encountered by expect() while parsing argument lists are reported before the helper
 /// returns.
 /// @return Expression node representing the chosen form.
-ExprPtr Parser::parseArrayOrVar()
-{
+ExprPtr Parser::parseArrayOrVar() {
     std::string name = peek().lexeme;
     auto loc = peek().loc;
     consume();
-    if (at(TokenKind::LParen))
-    {
+    if (at(TokenKind::LParen)) {
         if (auto b = lookupBuiltin(name))
             return parseBuiltinCall(*b, loc);
 
@@ -450,13 +405,10 @@ ExprPtr Parser::parseArrayOrVar()
 
         expect(TokenKind::LParen);
         std::vector<ExprPtr> args;
-        if (!at(TokenKind::RParen))
-        {
-            while (true)
-            {
+        if (!at(TokenKind::RParen)) {
+            while (true) {
                 args.push_back(parseExpression());
-                if (at(TokenKind::Comma))
-                {
+                if (at(TokenKind::Comma)) {
                     consume();
                     continue;
                 }
@@ -467,15 +419,11 @@ ExprPtr Parser::parseArrayOrVar()
 
         // BUG-102 fix: Check if we're in a class and this call matches a method name.
         // If so, rewrite to a method call on ME.
-        if (currentClass_)
-        {
+        if (currentClass_) {
             // Check if this name matches a method in the current class
-            for (const auto &member : currentClass_->members)
-            {
-                if (auto *method = dynamic_cast<MethodDecl *>(member.get()))
-                {
-                    if (string_utils::iequals(name, method->name))
-                    {
+            for (const auto &member : currentClass_->members) {
+                if (auto *method = dynamic_cast<MethodDecl *>(member.get())) {
+                    if (string_utils::iequals(name, method->name)) {
                         // This is a method call - rewrite to ME.MethodName(args)
                         auto methodCall = std::make_unique<MethodCallExpr>();
                         methodCall->loc = loc;
@@ -508,16 +456,14 @@ ExprPtr Parser::parseArrayOrVar()
 /// literal as error recovery; any diagnostics should already have been issued by the routines that
 /// attempted to parse the unexpected token.
 /// @return Parsed primary expression node, never null.
-ExprPtr Parser::parsePrimary()
-{
+ExprPtr Parser::parsePrimary() {
     if (at(TokenKind::Number))
         return parseNumber();
 
     if (at(TokenKind::String))
         return parseString();
 
-    if (at(TokenKind::KeywordTrue) || at(TokenKind::KeywordFalse))
-    {
+    if (at(TokenKind::KeywordTrue) || at(TokenKind::KeywordFalse)) {
         bool value = at(TokenKind::KeywordTrue);
         auto loc = peek().loc;
         consume();
@@ -527,8 +473,7 @@ ExprPtr Parser::parsePrimary()
     if (at(TokenKind::KeywordNew))
         return parseNewExpression();
 
-    if (at(TokenKind::KeywordMe))
-    {
+    if (at(TokenKind::KeywordMe)) {
         auto expr = std::make_unique<MeExpr>();
         expr->loc = peek().loc;
         consume();
@@ -538,8 +483,7 @@ ExprPtr Parser::parsePrimary()
     // Support BASE-qualified member/method access by parsing BASE as a
     // primary that behaves like an identifier named "BASE". Lowering
     // detects VarExpr{"BASE"} to force direct base-class dispatch.
-    if (at(TokenKind::KeywordBase))
-    {
+    if (at(TokenKind::KeywordBase)) {
         auto v = std::make_unique<VarExpr>();
         v->loc = peek().loc;
         v->name = "BASE";
@@ -549,8 +493,7 @@ ExprPtr Parser::parsePrimary()
 
     // BUG-CARDS-011 fix: Support NOTHING keyword as a null object reference.
     // Lowering detects VarExpr{"NOTHING"} and emits a null pointer.
-    if (at(TokenKind::KeywordNothing))
-    {
+    if (at(TokenKind::KeywordNothing)) {
         auto v = std::make_unique<VarExpr>();
         v->loc = peek().loc;
         v->name = "NOTHING";
@@ -560,8 +503,7 @@ ExprPtr Parser::parsePrimary()
 
     // ADDRESSOF keyword for obtaining function pointers (threading support).
     // Syntax: ADDRESSOF SubOrFunctionName
-    if (at(TokenKind::KeywordAddressOf))
-    {
+    if (at(TokenKind::KeywordAddressOf)) {
         auto loc = peek().loc;
         consume(); // ADDRESSOF
         Token ident = expect(TokenKind::Identifier);
@@ -581,16 +523,13 @@ ExprPtr Parser::parsePrimary()
     // BUG-OOP-041 fix: For soft keywords (FLOOR, COLOR, etc.), only treat as a
     // builtin call if followed by '('. Otherwise treat as a variable reference.
     // This allows using soft keywords as variable names: "IF floor <= 5 THEN"
-    if (!at(TokenKind::Identifier))
-    {
+    if (!at(TokenKind::Identifier)) {
         // Only parse as builtin if this is NOT a soft keyword used as a variable,
         // or if it IS followed by '(' (i.e., actually being called as a function).
         bool isSoftKw = isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier;
         bool hasParenCall = (peek(1).kind == TokenKind::LParen);
-        if (!isSoftKw || hasParenCall)
-        {
-            if (auto builtin = lookupBuiltin(peek().lexeme))
-            {
+        if (!isSoftKw || hasParenCall) {
+            if (auto builtin = lookupBuiltin(peek().lexeme)) {
                 auto loc = peek().loc;
                 consume();
                 return parseBuiltinCall(*builtin, loc);
@@ -601,14 +540,12 @@ ExprPtr Parser::parsePrimary()
     // BUG-OOP-021: Treat soft keywords (COLOR, FLOOR, etc.) as identifiers when
     // they appear in expression context. This allows using them as variable names.
     if (at(TokenKind::Identifier) ||
-        (isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier))
-    {
+        (isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier)) {
         // Attempt to parse a namespace-qualified call within an expression context.
         // This handles forms like A.B.F(...) and accepts single-dot A.F(...) only
         // when 'A' matches a namespace observed so far.
         Token head = peek();
-        if (peek(1).kind == TokenKind::Dot)
-        {
+        if (peek(1).kind == TokenKind::Dot) {
             // Non-destructive probe to see if we have Ident( . Ident )+ '('
             size_t i = 0;
             bool ok = true;
@@ -616,16 +553,14 @@ ExprPtr Parser::parsePrimary()
             // first ident and dot
             if (!(peek(i).kind == TokenKind::Identifier && peek(i + 1).kind == TokenKind::Dot))
                 ok = false;
-            if (ok)
-            {
+            if (ok) {
                 i += 2;
                 // BUG-OOP-040 fix: Use isMemberIdentToken() to allow keyword segments in
                 // dotted namespaces (e.g., Viper.Random.Next, Viper.IO.File.Delete).
                 // Cap probe distance to prevent unbounded token buffering (OOM).
                 constexpr size_t kMaxProbeDistance = 512;
                 while (i < kMaxProbeDistance && isMemberIdentToken(peek(i).kind) &&
-                       peek(i + 1).kind == TokenKind::Dot)
-                {
+                       peek(i + 1).kind == TokenKind::Dot) {
                     sawAdditionalDot = true;
                     i += 2;
                 }
@@ -646,22 +581,19 @@ ExprPtr Parser::parsePrimary()
                 bool isKnownNamespace =
                     std::any_of(knownNamespaces_.begin(),
                                 knownNamespaces_.end(),
-                                [&head](const std::string &ns)
-                                { return string_utils::iequals(head.lexeme, ns); });
-                if (ok && !isKnownNamespace)
-                {
+                                [&head](const std::string &ns) {
+                                    return string_utils::iequals(head.lexeme, ns);
+                                });
+                if (ok && !isKnownNamespace) {
                     ok = false;
                 }
             }
-            if (ok)
-            {
+            if (ok) {
                 auto [segs, startLoc] = parseQualifiedIdentSegments();
                 expect(TokenKind::LParen);
                 std::vector<ExprPtr> args;
-                if (!at(TokenKind::RParen))
-                {
-                    while (true)
-                    {
+                if (!at(TokenKind::RParen)) {
+                    while (true) {
                         args.push_back(parseExpression());
                         if (!at(TokenKind::Comma))
                             break;
@@ -682,8 +614,7 @@ ExprPtr Parser::parsePrimary()
         return parseArrayOrVar();
     }
 
-    if (at(TokenKind::LParen))
-    {
+    if (at(TokenKind::LParen)) {
         consume();
         auto expr = parseExpression();
         expect(TokenKind::RParen);
@@ -695,29 +626,23 @@ ExprPtr Parser::parsePrimary()
 
 /// @brief Parse a NEW expression allocating a class instance.
 /// @return Newly allocated expression node.
-ExprPtr Parser::parseNewExpression()
-{
+ExprPtr Parser::parseNewExpression() {
     auto loc = peek().loc;
     consume();
 
     std::string className;
     std::vector<std::string> qual;
-    if (at(TokenKind::Identifier))
-    {
+    if (at(TokenKind::Identifier)) {
         auto [segs, start] = parseQualifiedIdentSegments();
         (void)start;
-        if (!segs.empty())
-        {
+        if (!segs.empty()) {
             qual = std::move(segs);
-            for (size_t i = 0; i < qual.size(); ++i)
-            {
+            for (size_t i = 0; i < qual.size(); ++i) {
                 if (i)
                     className.push_back('.');
                 className += qual[i];
             }
-        }
-        else
-        {
+        } else {
             Token classTok = expect(TokenKind::Identifier);
             if (classTok.kind == TokenKind::Identifier)
                 className = classTok.lexeme;
@@ -727,13 +652,10 @@ ExprPtr Parser::parseNewExpression()
     // BUG-CARDS-002 fix: Make parentheses optional for NEW expressions.
     // Allow both "NEW ClassName" and "NEW ClassName(args)" syntax.
     std::vector<ExprPtr> args;
-    if (at(TokenKind::LParen))
-    {
+    if (at(TokenKind::LParen)) {
         consume(); // '('
-        if (!at(TokenKind::RParen))
-        {
-            while (true)
-            {
+        if (!at(TokenKind::RParen)) {
+            while (true) {
                 args.push_back(parseExpression());
                 if (!at(TokenKind::Comma))
                     break;
@@ -751,8 +673,7 @@ ExprPtr Parser::parseNewExpression()
     return expr;
 }
 
-std::pair<std::vector<std::string>, il::support::SourceLoc> Parser::parseQualifiedIdentSegments()
-{
+std::pair<std::vector<std::string>, il::support::SourceLoc> Parser::parseQualifiedIdentSegments() {
     std::vector<std::string> segs;
     il::support::SourceLoc startLoc{};
     if (!at(TokenKind::Identifier))
@@ -761,13 +682,11 @@ std::pair<std::vector<std::string>, il::support::SourceLoc> Parser::parseQualifi
     startLoc = first.loc;
     consume();
     segs.push_back(first.lexeme);
-    while (at(TokenKind::Dot))
-    {
+    while (at(TokenKind::Dot)) {
         consume();
         // Allow identifier or keyword segments inside qualified names.
         // This supports forms like Viper.Terminal.Print or Viper.Math.Floor. (BUG-OOP-021)
-        if (isMemberIdentToken(peek().kind))
-        {
+        if (isMemberIdentToken(peek().kind)) {
             Token ident = peek();
             consume();
             segs.push_back(ident.lexeme);
@@ -781,8 +700,7 @@ std::pair<std::vector<std::string>, il::support::SourceLoc> Parser::parseQualifi
 /// @brief Parse LBOUND/UBOUND intrinsic expressions.
 /// @param keyword Token identifying the intrinsic to parse.
 /// @return Parsed intrinsic expression node.
-ExprPtr Parser::parseBoundIntrinsic(TokenKind keyword)
-{
+ExprPtr Parser::parseBoundIntrinsic(TokenKind keyword) {
     auto loc = peek().loc;
     consume();
     expect(TokenKind::LParen);
@@ -792,8 +710,7 @@ ExprPtr Parser::parseBoundIntrinsic(TokenKind keyword)
         name = ident.lexeme;
     expect(TokenKind::RParen);
 
-    if (keyword == TokenKind::KeywordLbound)
-    {
+    if (keyword == TokenKind::KeywordLbound) {
         auto expr = std::make_unique<LBoundExpr>();
         expr->loc = loc;
         expr->name = std::move(name);
@@ -809,8 +726,7 @@ ExprPtr Parser::parseBoundIntrinsic(TokenKind keyword)
 /// @brief Parse LOF/EOF/LOC intrinsic expressions operating on file channels.
 /// @param keyword Token identifying the intrinsic to parse.
 /// @return Parsed intrinsic expression node.
-ExprPtr Parser::parseChannelIntrinsic(TokenKind keyword)
-{
+ExprPtr Parser::parseChannelIntrinsic(TokenKind keyword) {
     auto loc = peek().loc;
     consume();
     expect(TokenKind::LParen);
@@ -821,8 +737,7 @@ ExprPtr Parser::parseChannelIntrinsic(TokenKind keyword)
     auto expr = std::make_unique<BuiltinCallExpr>();
     expr->loc = loc;
     expr->Expr::loc = loc;
-    switch (keyword)
-    {
+    switch (keyword) {
         case TokenKind::KeywordLof:
             expr->builtin = BuiltinCallExpr::Builtin::Lof;
             break;
@@ -840,15 +755,12 @@ ExprPtr Parser::parseChannelIntrinsic(TokenKind keyword)
 /// @brief Parse trailing member access or method call expressions.
 /// @param expr Expression that may receive postfix operators.
 /// @return Expression extended with postfix operations.
-ExprPtr Parser::parsePostfix(ExprPtr expr)
-{
-    while (expr && at(TokenKind::Dot))
-    {
+ExprPtr Parser::parsePostfix(ExprPtr expr) {
+    while (expr && at(TokenKind::Dot)) {
         consume();
         // BUG-OOP-040 fix: Permit keyword tokens as member names in dotted access
         // to support runtime namespaces like Viper.Random.Next().
-        if (!isMemberIdentToken(peek().kind))
-        {
+        if (!isMemberIdentToken(peek().kind)) {
             // Preserve original expectation for diagnostics when not matching.
             Token ident = expect(TokenKind::Identifier);
             (void)ident; // fall through; error already emitted if not identifier
@@ -859,14 +771,11 @@ ExprPtr Parser::parsePostfix(ExprPtr expr)
         if (isMemberIdentToken(ident.kind))
             member = ident.lexeme;
 
-        if (at(TokenKind::LParen))
-        {
+        if (at(TokenKind::LParen)) {
             expect(TokenKind::LParen);
             std::vector<ExprPtr> args;
-            if (!at(TokenKind::RParen))
-            {
-                while (true)
-                {
+            if (!at(TokenKind::RParen)) {
+                while (true) {
                     args.push_back(parseExpression());
                     if (!at(TokenKind::Comma))
                         break;

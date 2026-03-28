@@ -31,15 +31,13 @@
 #include "tui/style/theme.hpp"
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 /// @brief Single-line status display widget with left and right text segments.
 /// @details Renders a horizontal bar spanning the full width of its layout rectangle,
 ///          displaying left-aligned text on the left and right-aligned text on the right.
 ///          Styled using the theme's accent role. Typically placed at the bottom of the
 ///          screen to show file information, cursor position, or mode indicators.
-class StatusBar : public ui::Widget
-{
+class StatusBar : public ui::Widget {
   public:
     /// @brief Construct status bar with initial texts.
     /// @param left Text shown on the left side.

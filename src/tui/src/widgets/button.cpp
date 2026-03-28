@@ -22,8 +22,7 @@
 
 #include <algorithm>
 
-namespace viper::tui::widgets
-{
+namespace viper::tui::widgets {
 /// @brief Construct a button with label text, callback, and theme reference.
 ///
 /// @details The label is stored by value while the click handler and theme are
@@ -31,9 +30,7 @@ namespace viper::tui::widgets
 ///          without owning additional resources.  Callbacks can be empty, in
 ///          which case activation simply performs no action.
 Button::Button(std::string text, OnClick onClick, const style::Theme &theme)
-    : text_(std::move(text)), onClick_(std::move(onClick)), theme_(theme)
-{
-}
+    : text_(std::move(text)), onClick_(std::move(onClick)), theme_(theme) {}
 
 /// @brief Paint the button's border, fill, and label text into the screen buffer.
 ///
@@ -43,8 +40,7 @@ Button::Button(std::string text, OnClick onClick, const style::Theme &theme)
 ///          height allows, the label text is centred vertically and truncated to
 ///          fit horizontally.  All drawing respects the widget's layout
 ///          rectangle, ensuring compatibility with container-managed geometry.
-void Button::paint(render::ScreenBuffer &sb)
-{
+void Button::paint(render::ScreenBuffer &sb) {
     const auto &border = theme_.style(style::Role::Accent);
     const auto &txt = theme_.style(style::Role::Normal);
 
@@ -57,8 +53,7 @@ void Button::paint(render::ScreenBuffer &sb)
     render::drawBox(sb, x0, y0, w, h, &border, &txt, true);
 
     // Minimum height of 3 required to render text inside the border.
-    if (h >= 3)
-    {
+    if (h >= 3) {
         // Text centered vertically while staying inside the border.
         int row = std::clamp(y0 + h / 2, y0 + 1, y0 + h - 2);
         render::renderText(sb, row, x0 + 1, w - 2, text_, txt);
@@ -71,13 +66,10 @@ void Button::paint(render::ScreenBuffer &sb)
 ///          is registered it is invoked immediately, and the event is reported as
 ///          handled.  Other keys fall through so the event system can continue
 ///          propagation to other widgets if needed.
-bool Button::onEvent(const ui::Event &ev)
-{
+bool Button::onEvent(const ui::Event &ev) {
     const auto &k = ev.key;
-    if (k.code == term::KeyEvent::Code::Enter || k.codepoint == U' ')
-    {
-        if (onClick_)
-        {
+    if (k.code == term::KeyEvent::Code::Enter || k.codepoint == U' ') {
+        if (onClick_) {
             onClick_();
         }
         return true;
@@ -90,8 +82,7 @@ bool Button::onEvent(const ui::Event &ev)
 /// @details Buttons need focus to receive keyboard events, so the method
 ///          returns @c true.  Containers consult this when building traversal
 ///          order, ensuring that interactive controls behave as expected.
-bool Button::wantsFocus() const
-{
+bool Button::wantsFocus() const {
     return true;
 }
 

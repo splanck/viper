@@ -35,8 +35,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace il::io::detail
-{
+namespace il::io::detail {
 
 using il::core::Param;
 using il::core::Type;
@@ -55,8 +54,7 @@ using Error = Diag;
 // ============================================================================
 
 /// @brief Classifies lines encountered while parsing an IL function body.
-enum class TokenKind
-{
+enum class TokenKind {
     Skip,         ///< Line was blank or a comment; should be skipped.
     CloseBrace,   ///< Closing brace '}' marking the end of the function body.
     BlockLabel,   ///< A basic block label line (ending with ':').
@@ -72,51 +70,40 @@ enum class TokenKind
 /// @brief Line-based tokenizer for function body parsing.
 /// @details Reads lines from the input stream, skipping comments and blank lines,
 ///          and classifies each line as a block label, instruction, directive, etc.
-class TokenStream
-{
+class TokenStream {
   public:
     TokenStream(std::istream &stream, LegacyParserState &legacy)
-        : stream_(&stream), legacy_(&legacy)
-    {
-    }
+        : stream_(&stream), legacy_(&legacy) {}
 
-    [[nodiscard]] TokenKind kind() const noexcept
-    {
+    [[nodiscard]] TokenKind kind() const noexcept {
         return token_;
     }
 
-    [[nodiscard]] const std::string &line() const noexcept
-    {
+    [[nodiscard]] const std::string &line() const noexcept {
         return line_;
     }
 
-    [[nodiscard]] LegacyParserState &legacy() noexcept
-    {
+    [[nodiscard]] LegacyParserState &legacy() noexcept {
         return *legacy_;
     }
 
-    bool advance()
-    {
-        while (std::getline(*stream_, line_))
-        {
+    bool advance() {
+        while (std::getline(*stream_, line_)) {
             ++legacy_->lineNo;
             line_ = trim(line_);
             if (line_.empty() || line_.rfind("//", 0) == 0)
                 continue;
             if (!line_.empty() && line_.front() == '#')
                 continue;
-            if (!line_.empty() && line_.front() == '}')
-            {
+            if (!line_.empty() && line_.front() == '}') {
                 token_ = TokenKind::CloseBrace;
                 return true;
             }
-            if (!line_.empty() && line_.back() == ':')
-            {
+            if (!line_.empty() && line_.back() == ':') {
                 token_ = TokenKind::BlockLabel;
                 return true;
             }
-            if (line_.rfind(".loc", 0) == 0)
-            {
+            if (line_.rfind(".loc", 0) == 0) {
                 token_ = TokenKind::LocDirective;
                 return true;
             }
@@ -139,12 +126,10 @@ class TokenStream
 // Internal parser state wrapper
 // ============================================================================
 
-namespace parser_impl
-{
+namespace parser_impl {
 
 /// @brief Internal state wrapper that bridges TokenStream with LegacyParserState.
-struct ParserState
-{
+struct ParserState {
     il::core::Module *mod = nullptr;
     il::core::Function *fn = nullptr;
     il::core::BasicBlock *cur = nullptr;
@@ -153,8 +138,7 @@ struct ParserState
     TokenStream *ts = nullptr;
     LegacyParserState *legacy = nullptr;
 
-    void refresh()
-    {
+    void refresh() {
         if (!legacy)
             return;
         mod = &legacy->m;
@@ -163,8 +147,7 @@ struct ParserState
         loc = legacy->curLoc;
     }
 
-    void commit()
-    {
+    void commit() {
         if (!legacy)
             return;
         legacy->curFn = fn;
@@ -172,8 +155,7 @@ struct ParserState
         legacy->curLoc = loc;
     }
 
-    [[nodiscard]] unsigned lineNo() const noexcept
-    {
+    [[nodiscard]] unsigned lineNo() const noexcept {
         return legacy ? legacy->lineNo : 0;
     }
 };
@@ -185,8 +167,7 @@ struct ParserState
 // ============================================================================
 
 /// @brief Parsed function prototype: return type and parameter list.
-struct Prototype
-{
+struct Prototype {
     Type retType;              ///< Declared return type of the function.
     std::vector<Param> params; ///< Ordered parameter list with types and names.
 };
@@ -194,8 +175,7 @@ struct Prototype
 /// @brief Result of parsing a function prototype header line.
 /// @details Contains the parsed prototype and any trailing calling convention
 ///          segment that follows the parameter list.
-struct PrototypeParseResult
-{
+struct PrototypeParseResult {
     Prototype proto;                     ///< Parsed return type and parameters.
     std::string_view callingConvSegment; ///< Trailing text after the parameter list.
 };
@@ -203,20 +183,16 @@ struct PrototypeParseResult
 /// @brief Calling convention annotation parsed from function headers.
 /// @details Currently only the default calling convention is supported.
 ///          Future extensions may add fastcall, stdcall, etc.
-enum class CallingConv
-{
+enum class CallingConv {
     Default, ///< Standard platform calling convention.
 };
 
 /// @brief Parsed function attributes (currently empty).
 /// @details Placeholder for future attribute parsing (nothrow, readonly, etc.).
-struct Attrs
-{
-};
+struct Attrs {};
 
 /// @brief Complete parsed function header including name, prototype, and metadata.
-struct FunctionHeader
-{
+struct FunctionHeader {
     std::string name;           ///< Function identifier.
     Prototype proto;            ///< Return type and parameter list.
     CallingConv cc;             ///< Calling convention annotation.
@@ -234,8 +210,7 @@ struct FunctionHeader
 ///          succeeds, the caller calls discard() to commit. On destruction
 ///          without discard(), the snapshot restores the saved state and removes
 ///          any functions that were added during the failed parse.
-struct ParserSnapshot
-{
+struct ParserSnapshot {
     LegacyParserState &state;      ///< Reference to the parser state being snapshotted.
     il::core::Function *curFn;     ///< Saved current function pointer.
     il::core::BasicBlock *curBB;   ///< Saved current basic block pointer.
@@ -250,12 +225,9 @@ struct ParserSnapshot
     explicit ParserSnapshot(LegacyParserState &st)
         : state(st), curFn(st.curFn), curBB(st.curBB), curLoc(st.curLoc), tempIds(st.tempIds),
           nextTemp(st.nextTemp), blockParamCount(st.blockParamCount), pendingBrs(st.pendingBrs),
-          functionCount(st.m.functions.size())
-    {
-    }
+          functionCount(st.m.functions.size()) {}
 
-    void restore()
-    {
+    void restore() {
         state.curFn = curFn;
         state.curBB = curBB;
         state.curLoc = curLoc;
@@ -267,13 +239,11 @@ struct ParserSnapshot
             state.m.functions.resize(functionCount);
     }
 
-    void discard()
-    {
+    void discard() {
         active = false;
     }
 
-    ~ParserSnapshot()
-    {
+    ~ParserSnapshot() {
         if (active)
             restore();
     }
@@ -284,8 +254,7 @@ struct ParserSnapshot
 // ============================================================================
 
 /// @brief Trim whitespace from a string_view.
-inline std::string_view trimView(std::string_view text)
-{
+inline std::string_view trimView(std::string_view text) {
     size_t begin = 0;
     while (begin < text.size() && std::isspace(static_cast<unsigned char>(text[begin])))
         ++begin;
@@ -296,22 +265,19 @@ inline std::string_view trimView(std::string_view text)
 }
 
 /// @brief Create a line-prefixed error diagnostic.
-template <class T> Expected<T> lineError(unsigned lineNo, const std::string &message)
-{
+template <class T> Expected<T> lineError(unsigned lineNo, const std::string &message) {
     std::ostringstream oss;
     oss << "line " << lineNo << ": " << message;
     return Expected<T>{makeError({}, oss.str())};
 }
 
 /// @brief Get source position from cursor.
-inline SourcePos cursorPos(const Cursor &cur)
-{
+inline SourcePos cursorPos(const Cursor &cur) {
     return cur.pos();
 }
 
 /// @brief Create a syntax error with optional context.
-inline Error makeSyntaxError(SourcePos pos, std::string_view msg, std::string_view near)
-{
+inline Error makeSyntaxError(SourcePos pos, std::string_view msg, std::string_view near) {
     std::ostringstream body;
     body << msg;
     if (!near.empty())
@@ -325,8 +291,7 @@ inline Error makeSyntaxError(SourcePos pos, std::string_view msg, std::string_vi
 /// trailing newlines. This helper strips that prefix and trailing newline/carriage
 /// returns so that downstream diagnostics emitted through @ref
 /// il::support::printDiag are consistent across call sites.
-inline std::string stripCapturedDiagMessage(std::string text)
-{
+inline std::string stripCapturedDiagMessage(std::string text) {
     while (!text.empty() && (text.back() == '\n' || text.back() == '\r'))
         text.pop_back();
     constexpr std::string_view kPrefix = "error: ";
@@ -336,10 +301,8 @@ inline std::string stripCapturedDiagMessage(std::string text)
 }
 
 /// @brief Human-readable description of a token kind.
-inline std::string_view describeTokenKind(TokenKind token)
-{
-    switch (token)
-    {
+inline std::string_view describeTokenKind(TokenKind token) {
+    switch (token) {
         case TokenKind::CloseBrace:
             return "'}'";
         case TokenKind::BlockLabel:
@@ -357,12 +320,10 @@ inline std::string_view describeTokenKind(TokenKind token)
 }
 
 /// @brief Extract the text that caused a parse error.
-inline std::string describeOffendingToken(const parser_impl::ParserState &state)
-{
+inline std::string describeOffendingToken(const parser_impl::ParserState &state) {
     if (!state.ts)
         return "";
-    switch (state.ts->kind())
-    {
+    switch (state.ts->kind()) {
         case TokenKind::CloseBrace:
             return "}";
         case TokenKind::BlockLabel:

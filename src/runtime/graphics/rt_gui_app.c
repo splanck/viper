@@ -54,8 +54,7 @@ static vg_dialog_t *g_active_dialog = NULL;
 
 /// @brief Set the active dialog value.
 /// @param dlg
-void rt_gui_set_active_dialog(void *dlg)
-{
+void rt_gui_set_active_dialog(void *dlg) {
     RT_ASSERT_MAIN_THREAD();
     // Reject nested dialogs — overwriting g_active_dialog would orphan the first.
     if (dlg && g_active_dialog)
@@ -65,15 +64,13 @@ void rt_gui_set_active_dialog(void *dlg)
 
 // Resize callback: called from the platform's windowDidResize: (macOS) to
 // keep the window repainted during the Cocoa live-resize modal loop.
-static void rt_gui_app_resize_render(void *userdata, int32_t w, int32_t h)
-{
+static void rt_gui_app_resize_render(void *userdata, int32_t w, int32_t h) {
     (void)w;
     (void)h;
     rt_gui_app_render(userdata);
 }
 
-void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
-{
+void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
     rt_gui_app_t *app = (rt_gui_app_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_gui_app_t));
     if (!app)
@@ -85,8 +82,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
     params.width = (int32_t)(width < 1 ? 1 : width > INT32_MAX ? INT32_MAX : width);
     params.height = (int32_t)(height < 1 ? 1 : height > INT32_MAX ? INT32_MAX : height);
     char *ctitle = rt_string_to_cstr(title);
-    if (ctitle)
-    {
+    if (ctitle) {
         params.title = ctitle;
     }
     params.resizable = 1;
@@ -94,8 +90,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
     app->window = vgfx_create_window(&params);
     free(ctitle);
 
-    if (!app->window)
-    {
+    if (!app->window) {
         // app is GC-allocated (rt_obj_new_i64) so it will be reclaimed by the
         // collector. Zero the struct so the GC finalizer (if any) sees clean state.
         memset(app, 0, sizeof(rt_gui_app_t));
@@ -119,8 +114,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
     // Guard: only scale once (cumulative scaling produces wrong metrics).
     vg_theme_set_current(vg_theme_dark());
     static int s_theme_scaled = 0;
-    if (!s_theme_scaled)
-    {
+    if (!s_theme_scaled) {
         float _s = app->window ? vgfx_window_get_scale(app->window) : 1.0f;
         if (_s <= 0.0f)
             _s = 1.0f;
@@ -152,8 +146,7 @@ void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
 
 // Ensure the default font is loaded (lazy init on first use).
 /// @brief Perform ensure default font operation.
-void rt_gui_ensure_default_font(void)
-{
+void rt_gui_ensure_default_font(void) {
     RT_ASSERT_MAIN_THREAD();
     if (!s_current_app || s_current_app->default_font)
         return;
@@ -161,8 +154,7 @@ void rt_gui_ensure_default_font(void)
     // Try the embedded JetBrains Mono Regular first (always available).
     s_current_app->default_font =
         vg_font_load(vg_embedded_font_data, (size_t)vg_embedded_font_size);
-    if (s_current_app->default_font)
-    {
+    if (s_current_app->default_font) {
         // Scale the raster size by the HiDPI factor so glyphs are rendered at
         // native resolution (e.g. 28 px on a 2× Retina display for 14 pt text).
         float _scale = s_current_app->window ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
@@ -179,11 +171,9 @@ void rt_gui_ensure_default_font(void)
                                 "C:\\Windows\\Fonts\\consola.ttf",
                                 "C:\\Windows\\Fonts\\cour.ttf",
                                 NULL};
-    for (int i = 0; font_paths[i]; i++)
-    {
+    for (int i = 0; font_paths[i]; i++) {
         s_current_app->default_font = vg_font_load_file(font_paths[i]);
-        if (s_current_app->default_font)
-        {
+        if (s_current_app->default_font) {
             float _scale =
                 s_current_app->window ? vgfx_window_get_scale(s_current_app->window) : 1.0f;
             s_current_app->default_font_size = 14.0f * _scale;
@@ -194,8 +184,7 @@ void rt_gui_ensure_default_font(void)
 
 /// @brief Perform app destroy operation.
 /// @param app_ptr
-void rt_gui_app_destroy(void *app_ptr)
-{
+void rt_gui_app_destroy(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return;
@@ -215,17 +204,14 @@ void rt_gui_app_destroy(void *app_ptr)
 
     free(app->title);
     app->title = NULL;
-    if (app->default_font)
-    {
+    if (app->default_font) {
         vg_font_destroy(app->default_font);
         app->default_font = NULL;
     }
-    if (app->root)
-    {
+    if (app->root) {
         vg_widget_destroy(app->root);
     }
-    if (app->window)
-    {
+    if (app->window) {
         vgfx_destroy_window(app->window);
     }
 }
@@ -233,8 +219,7 @@ void rt_gui_app_destroy(void *app_ptr)
 /// @brief Perform app should close operation.
 /// @param app_ptr
 /// @return Result value.
-int64_t rt_gui_app_should_close(void *app_ptr)
-{
+int64_t rt_gui_app_should_close(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return 1;
@@ -250,8 +235,7 @@ static void render_widget_tree(vgfx_window_t window,
 
 /// @brief Perform app poll operation.
 /// @param app_ptr
-void rt_gui_app_poll(void *app_ptr)
-{
+void rt_gui_app_poll(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return;
@@ -268,8 +252,7 @@ void rt_gui_app_poll(void *app_ptr)
     static vg_widget_t *s_drag_source = NULL;
     static vg_widget_t *s_drag_over_widget = NULL;
 
-    if (s_drag_over_widget)
-    {
+    if (s_drag_over_widget) {
         s_drag_over_widget->_is_drag_over = false;
         s_drag_over_widget = NULL;
     }
@@ -282,83 +265,68 @@ void rt_gui_app_poll(void *app_ptr)
 
     // Poll events
     vgfx_event_t event;
-    while (vgfx_poll_event(app->window, &event))
-    {
-        if (event.type == VGFX_EVENT_CLOSE)
-        {
+    while (vgfx_poll_event(app->window, &event)) {
+        if (event.type == VGFX_EVENT_CLOSE) {
             app->should_close = 1;
             continue;
         }
 
         // File drop events — collect into g_file_drop via helper
-        if (event.type == VGFX_EVENT_FILE_DROP)
-        {
+        if (event.type == VGFX_EVENT_FILE_DROP) {
             rt_gui_file_drop_add(event.data.file_drop.path);
             continue;
         }
 
         // Convert platform event to GUI event and dispatch to widget tree
-        if (app->root)
-        {
+        if (app->root) {
             vg_event_t gui_event = vg_event_from_platform(&event);
 
             // Track mouse position from events
-            if (event.type == VGFX_EVENT_MOUSE_MOVE)
-            {
+            if (event.type == VGFX_EVENT_MOUSE_MOVE) {
                 app->mouse_x = event.data.mouse_move.x;
                 app->mouse_y = event.data.mouse_move.y;
 
                 // Drag-and-drop: update drag-over state during drag
-                if (s_drag_source)
-                {
+                if (s_drag_source) {
                     vg_widget_t *hit =
                         vg_widget_hit_test(app->root, (float)app->mouse_x, (float)app->mouse_y);
                     // Clear previous drag-over
                     if (s_drag_over_widget && s_drag_over_widget != hit)
                         s_drag_over_widget->_is_drag_over = false;
                     // Set new drag-over if target accepts drops
-                    if (hit && hit->is_drop_target && hit != s_drag_source)
-                    {
+                    if (hit && hit->is_drop_target && hit != s_drag_source) {
                         hit->_is_drag_over = true;
                         s_drag_over_widget = hit;
-                    }
-                    else
-                    {
+                    } else {
                         s_drag_over_widget = NULL;
                     }
                 }
             }
 
             // Drag-and-drop: start drag on mouse-down over draggable widget
-            if (event.type == VGFX_EVENT_MOUSE_DOWN && !s_drag_source)
-            {
+            if (event.type == VGFX_EVENT_MOUSE_DOWN && !s_drag_source) {
                 vg_widget_t *hit =
                     vg_widget_hit_test(app->root, (float)app->mouse_x, (float)app->mouse_y);
-                if (hit && hit->draggable)
-                {
+                if (hit && hit->draggable) {
                     s_drag_source = hit;
                     hit->_is_being_dragged = true;
                 }
             }
 
             // Track clicked widget for Button.WasClicked() + complete drag-and-drop
-            if (event.type == VGFX_EVENT_MOUSE_UP)
-            {
+            if (event.type == VGFX_EVENT_MOUSE_UP) {
                 vg_widget_t *hit =
                     vg_widget_hit_test(app->root, (float)app->mouse_x, (float)app->mouse_y);
-                if (hit)
-                {
+                if (hit) {
                     app->last_clicked = hit;
                     // Also set global for rt_widget_was_clicked
                     rt_gui_set_last_clicked(hit);
                 }
 
                 // Drag-and-drop: complete drop on mouse-up
-                if (s_drag_source)
-                {
+                if (s_drag_source) {
                     s_drag_source->_is_being_dragged = false;
-                    if (hit && hit->is_drop_target && hit != s_drag_source)
-                    {
+                    if (hit && hit->is_drop_target && hit != s_drag_source) {
                         // Transfer drag data to drop target
                         free(hit->_drop_received_type);
                         free(hit->_drop_received_data);
@@ -378,18 +346,15 @@ void rt_gui_app_poll(void *app_ptr)
             // If a shortcut matches, set its triggered flag and suppress
             // the KEY_CHAR synthesis (so Ctrl+N doesn't insert 'N').
             int shortcut_matched = 0;
-            if (event.type == VGFX_EVENT_KEY_DOWN)
-            {
+            if (event.type == VGFX_EVENT_KEY_DOWN) {
                 shortcut_matched =
                     rt_shortcuts_check_key(event.data.key.key, event.data.key.modifiers);
             }
 
             // If a modal dialog is open, route all events to it and skip the
             // normal widget tree dispatch (dialog is modal).
-            if (g_active_dialog && g_active_dialog->is_open)
-            {
-                if (g_active_dialog->base.vtable && g_active_dialog->base.vtable->handle_event)
-                {
+            if (g_active_dialog && g_active_dialog->is_open) {
+                if (g_active_dialog->base.vtable && g_active_dialog->base.vtable->handle_event) {
                     g_active_dialog->base.vtable->handle_event(&g_active_dialog->base, &gui_event);
                 }
                 continue;
@@ -401,32 +366,25 @@ void rt_gui_app_poll(void *app_ptr)
             // Synthesize KEY_CHAR event from KEY_DOWN for printable characters.
             // Skip if a shortcut matched (so Ctrl+S doesn't insert 'S').
             // Also skip if modifier keys are held (Ctrl/Cmd+key is not text input).
-            if (event.type == VGFX_EVENT_KEY_DOWN && !shortcut_matched)
-            {
+            if (event.type == VGFX_EVENT_KEY_DOWN && !shortcut_matched) {
                 int key = event.data.key.key;
                 int mods = event.data.key.modifiers;
                 int has_ctrl_cmd = (mods & VGFX_MOD_CTRL) || (mods & VGFX_MOD_CMD);
                 int has_alt = mods & VGFX_MOD_ALT;
 
                 // Only synthesize KEY_CHAR for plain keys or shift+key (not ctrl/cmd/alt)
-                if (!has_ctrl_cmd && !has_alt)
-                {
+                if (!has_ctrl_cmd && !has_alt) {
                     uint32_t codepoint = 0;
 
-                    if (key >= ' ' && key <= '~')
-                    {
+                    if (key >= ' ' && key <= '~') {
                         int has_shift = mods & VGFX_MOD_SHIFT;
-                        if (key >= 'A' && key <= 'Z')
-                        {
+                        if (key >= 'A' && key <= 'Z') {
                             // Letters: shift produces uppercase
                             codepoint = has_shift ? key : key + ('a' - 'A');
-                        }
-                        else if (has_shift)
-                        {
+                        } else if (has_shift) {
                             // US QWERTY shift mapping — non-US layouts may produce wrong
                             // shifted characters. TODO: use platform-level translation.
-                            switch (key)
-                            {
+                            switch (key) {
                                 case '1':
                                     codepoint = '!';
                                     break;
@@ -494,15 +452,12 @@ void rt_gui_app_poll(void *app_ptr)
                                     codepoint = key;
                                     break;
                             }
-                        }
-                        else
-                        {
+                        } else {
                             codepoint = key;
                         }
                     }
 
-                    if (codepoint != 0)
-                    {
+                    if (codepoint != 0) {
                         vg_event_t char_event =
                             vg_event_key(VG_EVENT_KEY_CHAR, (vg_key_t)key, codepoint, 0);
                         vg_event_dispatch(app->root, &char_event);
@@ -515,8 +470,7 @@ void rt_gui_app_poll(void *app_ptr)
 
 /// @brief Perform app render operation.
 /// @param app_ptr
-void rt_gui_app_render(void *app_ptr)
-{
+void rt_gui_app_render(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return;
@@ -533,8 +487,7 @@ void rt_gui_app_render(void *app_ptr)
 
     // Perform layout using the GUI library's proper layout system.
     // This handles VBox/HBox flex, padding, spacing, and widget constraints.
-    if (app->root)
-    {
+    if (app->root) {
         vg_widget_layout(app->root, (float)win_w, (float)win_h);
     }
 
@@ -547,16 +500,14 @@ void rt_gui_app_render(void *app_ptr)
     // uses vg_widget_get_screen_bounds() which walks the parent chain from
     // relative coords. If we converted to absolute here, hit testing would
     // double-count parent offsets and fail.
-    if (app->root)
-    {
+    if (app->root) {
         render_widget_tree(app->window, app->root, 0.0f, 0.0f);
     }
 
     // Paint overlays (popups, dropdowns) on top of all other widgets.
     // The widget with input capture is typically the one with an open popup.
     vg_widget_t *capture = vg_widget_get_input_capture();
-    if (capture && capture->vtable && capture->vtable->paint_overlay)
-    {
+    if (capture && capture->vtable && capture->vtable->paint_overlay) {
         // Need to compute absolute position for the overlay
         float abs_x = 0, abs_y = 0;
         vg_widget_get_screen_bounds(capture, &abs_x, &abs_y, NULL, NULL);
@@ -575,15 +526,12 @@ void rt_gui_app_render(void *app_ptr)
     }
 
     // Paint active modal dialog on top of everything else.
-    if (g_active_dialog)
-    {
-        if (g_active_dialog->is_open)
-        {
+    if (g_active_dialog) {
+        if (g_active_dialog->is_open) {
             // Measure on first render so we know the dialog size.
             // Always read measured_width/height (set by measure), not width/height
             // (set by arrange). Reading width before the first arrange would return 0.
-            if (g_active_dialog->base.measured_width < 1.0f)
-            {
+            if (g_active_dialog->base.measured_width < 1.0f) {
                 vg_widget_measure(&g_active_dialog->base, (float)win_w, (float)win_h);
             }
             float dw = g_active_dialog->base.measured_width;
@@ -592,13 +540,10 @@ void rt_gui_app_render(void *app_ptr)
                 &g_active_dialog->base, (win_w - dw) / 2.0f, (win_h - dh) / 2.0f, dw, dh);
 
             // Paint the dialog
-            if (g_active_dialog->base.vtable && g_active_dialog->base.vtable->paint)
-            {
+            if (g_active_dialog->base.vtable && g_active_dialog->base.vtable->paint) {
                 g_active_dialog->base.vtable->paint(&g_active_dialog->base, (void *)app->window);
             }
-        }
-        else
-        {
+        } else {
             // Dialog was closed (button clicked) — free and clear
             vg_widget_destroy(&g_active_dialog->base);
             g_active_dialog = NULL;
@@ -609,8 +554,7 @@ void rt_gui_app_render(void *app_ptr)
     vgfx_update(app->window);
 }
 
-void *rt_gui_app_get_root(void *app_ptr)
-{
+void *rt_gui_app_get_root(void *app_ptr) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return NULL;
@@ -622,8 +566,7 @@ void *rt_gui_app_get_root(void *app_ptr)
 /// @param app_ptr
 /// @param font
 /// @param size
-void rt_gui_app_set_font(void *app_ptr, void *font, double size)
-{
+void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (!app_ptr)
         return;
@@ -641,8 +584,7 @@ void rt_gui_app_set_font(void *app_ptr, void *font, double size)
 static void render_widget_tree(vgfx_window_t window,
                                vg_widget_t *widget,
                                float parent_abs_x,
-                               float parent_abs_y)
-{
+                               float parent_abs_y) {
     if (!widget || !widget->visible)
         return;
 
@@ -659,8 +601,7 @@ static void render_widget_tree(vgfx_window_t window,
     // Delegate to vtable paint if available. All concrete widget types
     // (Label, Button, MenuBar, Toolbar, StatusBar, etc.) have vtable paint.
     // Paint functions use widget->x/y directly (now absolute).
-    if (widget->vtable && widget->vtable->paint)
-    {
+    if (widget->vtable && widget->vtable->paint) {
         widget->vtable->paint(widget, (void *)window);
     }
 
@@ -670,8 +611,7 @@ static void render_widget_tree(vgfx_window_t window,
 
     // Render children — pass our absolute position as their parent offset
     vg_widget_t *child = widget->first_child;
-    while (child)
-    {
+    while (child) {
         render_widget_tree(window, child, abs_x, abs_y);
         child = child->next_sibling;
     }
@@ -683,13 +623,11 @@ rt_gui_app_t *s_current_app = NULL;
 
 /// @brief Set the active dialog value.
 /// @param dlg
-void rt_gui_set_active_dialog(void *dlg)
-{
+void rt_gui_set_active_dialog(void *dlg) {
     (void)dlg;
 }
 
-void *rt_gui_app_new(rt_string title, int64_t width, int64_t height)
-{
+void *rt_gui_app_new(rt_string title, int64_t width, int64_t height) {
     (void)title;
     (void)width;
     (void)height;
@@ -701,36 +639,31 @@ void rt_gui_ensure_default_font(void) {}
 
 /// @brief Perform app destroy operation.
 /// @param app_ptr
-void rt_gui_app_destroy(void *app_ptr)
-{
+void rt_gui_app_destroy(void *app_ptr) {
     (void)app_ptr;
 }
 
 /// @brief Perform app should close operation.
 /// @param app_ptr
 /// @return Result value.
-int64_t rt_gui_app_should_close(void *app_ptr)
-{
+int64_t rt_gui_app_should_close(void *app_ptr) {
     (void)app_ptr;
     return 1;
 }
 
 /// @brief Perform app poll operation.
 /// @param app_ptr
-void rt_gui_app_poll(void *app_ptr)
-{
+void rt_gui_app_poll(void *app_ptr) {
     (void)app_ptr;
 }
 
 /// @brief Perform app render operation.
 /// @param app_ptr
-void rt_gui_app_render(void *app_ptr)
-{
+void rt_gui_app_render(void *app_ptr) {
     (void)app_ptr;
 }
 
-void *rt_gui_app_get_root(void *app_ptr)
-{
+void *rt_gui_app_get_root(void *app_ptr) {
     (void)app_ptr;
     return NULL;
 }
@@ -739,8 +672,7 @@ void *rt_gui_app_get_root(void *app_ptr)
 /// @param app_ptr
 /// @param font
 /// @param size
-void rt_gui_app_set_font(void *app_ptr, void *font, double size)
-{
+void rt_gui_app_set_font(void *app_ptr, void *font, double size) {
     (void)app_ptr;
     (void)font;
     (void)size;

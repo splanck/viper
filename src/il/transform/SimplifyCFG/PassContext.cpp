@@ -24,8 +24,7 @@
 
 #include <cstdio>
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Build a pass context that exposes shared SimplifyCFG services.
 /// @details Captures references to the function, optional module, and the
@@ -39,16 +38,13 @@ SimplifyCFG::SimplifyCFGPassContext::SimplifyCFGPassContext(il::core::Function &
                                                             const il::core::Module *module,
                                                             Stats &stats)
     : function(function), module(module), stats(stats),
-      debugLoggingEnabled_(simplify_cfg::readDebugFlagFromEnv())
-{
-}
+      debugLoggingEnabled_(simplify_cfg::readDebugFlagFromEnv()) {}
 
 /// @brief Query whether debug logging is enabled for the pass.
 /// @details Reads a cached environment-derived flag so that repeated checks are
 /// cheap for hot code paths.
 /// @return @c true when debug logging should emit messages; otherwise @c false.
-bool SimplifyCFG::SimplifyCFGPassContext::isDebugLoggingEnabled() const
-{
+bool SimplifyCFG::SimplifyCFGPassContext::isDebugLoggingEnabled() const {
     return debugLoggingEnabled_;
 }
 
@@ -57,8 +53,7 @@ bool SimplifyCFG::SimplifyCFGPassContext::isDebugLoggingEnabled() const
 /// sends the formatted text to @c stderr. Calls become no-ops when logging is
 /// disabled.
 /// @param message Human-readable payload to print.
-void SimplifyCFG::SimplifyCFGPassContext::logDebug(std::string_view message) const
-{
+void SimplifyCFG::SimplifyCFGPassContext::logDebug(std::string_view message) const {
     if (!isDebugLoggingEnabled())
         return;
 
@@ -75,8 +70,7 @@ void SimplifyCFG::SimplifyCFGPassContext::logDebug(std::string_view message) con
 /// duplicating the heuristics in every transformation.
 /// @param block Block under inspection.
 /// @return @c true when @p block must be preserved for EH correctness.
-bool SimplifyCFG::SimplifyCFGPassContext::isEHSensitive(const il::core::BasicBlock &block) const
-{
+bool SimplifyCFG::SimplifyCFGPassContext::isEHSensitive(const il::core::BasicBlock &block) const {
     return simplify_cfg::isEHSensitiveBlock(block);
 }
 

@@ -32,12 +32,10 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 // Build a module with a single FDiv instruction followed by a Ret
-Module buildFDivModule(double lhs, double rhs)
-{
+Module buildFDivModule(double lhs, double rhs) {
     Module module;
     Function fn;
     fn.name = "fdiv_test";
@@ -71,8 +69,7 @@ Module buildFDivModule(double lhs, double rhs)
 }
 
 // Helper: check whether the FDiv instruction is still present (not folded)
-bool hasFDivInstr(const BasicBlock &bb)
-{
+bool hasFDivInstr(const BasicBlock &bb) {
     for (const auto &instr : bb.instructions)
         if (instr.op == Opcode::FDiv)
             return true;
@@ -82,8 +79,7 @@ bool hasFDivInstr(const BasicBlock &bb)
 } // namespace
 
 // FDiv by zero must NOT be folded — non-finite results are unsafe to propagate
-TEST(SCCP, FDivByZeroNotFolded)
-{
+TEST(SCCP, FDivByZeroNotFolded) {
     Module module = buildFDivModule(1.0, 0.0);
     il::transform::sccp(module);
 
@@ -95,8 +91,7 @@ TEST(SCCP, FDivByZeroNotFolded)
 }
 
 // FDiv -1.0/0.0 must NOT be folded — would produce -inf
-TEST(SCCP, FDivNegByZeroNotFolded)
-{
+TEST(SCCP, FDivNegByZeroNotFolded) {
     Module module = buildFDivModule(-1.0, 0.0);
     il::transform::sccp(module);
 
@@ -107,8 +102,7 @@ TEST(SCCP, FDivNegByZeroNotFolded)
 }
 
 // Normal FDiv folds correctly
-TEST(SCCP, FDivNormalFoldsCorrectly)
-{
+TEST(SCCP, FDivNormalFoldsCorrectly) {
     Module module = buildFDivModule(10.0, 2.0);
     il::transform::sccp(module);
 
@@ -125,8 +119,7 @@ TEST(SCCP, FDivNormalFoldsCorrectly)
 }
 
 // FDiv 0.0/0.0 must NOT be folded — would produce NaN
-TEST(SCCP, FDivZeroByZeroNotFolded)
-{
+TEST(SCCP, FDivZeroByZeroNotFolded) {
     Module module = buildFDivModule(0.0, 0.0);
     il::transform::sccp(module);
 
@@ -137,8 +130,7 @@ TEST(SCCP, FDivZeroByZeroNotFolded)
 }
 
 /// @brief Main.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

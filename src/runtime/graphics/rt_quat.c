@@ -44,19 +44,16 @@
 
 #include <math.h>
 
-typedef struct
-{
+typedef struct {
     double x;
     double y;
     double z;
     double w;
 } ViperQuat;
 
-static ViperQuat *quat_alloc(double x, double y, double z, double w)
-{
+static ViperQuat *quat_alloc(double x, double y, double z, double w) {
     ViperQuat *q = (ViperQuat *)rt_obj_new_i64(0, (int64_t)sizeof(ViperQuat));
-    if (!q)
-    {
+    if (!q) {
         rt_trap("Quat: memory allocation failed");
         return NULL;
     }
@@ -71,20 +68,16 @@ static ViperQuat *quat_alloc(double x, double y, double z, double w)
 // Constructors
 //=============================================================================
 
-void *rt_quat_new(double x, double y, double z, double w)
-{
+void *rt_quat_new(double x, double y, double z, double w) {
     return quat_alloc(x, y, z, w);
 }
 
-void *rt_quat_identity(void)
-{
+void *rt_quat_identity(void) {
     return quat_alloc(0.0, 0.0, 0.0, 1.0);
 }
 
-void *rt_quat_from_axis_angle(void *axis, double angle)
-{
-    if (!axis)
-    {
+void *rt_quat_from_axis_angle(void *axis, double angle) {
+    if (!axis) {
         rt_trap("Quat.FromAxisAngle: null axis");
         return NULL;
     }
@@ -103,8 +96,7 @@ void *rt_quat_from_axis_angle(void *axis, double angle)
     return quat_alloc(ax * s, ay * s, az * s, cos(half));
 }
 
-void *rt_quat_from_euler(double pitch, double yaw, double roll)
-{
+void *rt_quat_from_euler(double pitch, double yaw, double roll) {
     double cp = cos(pitch * 0.5);
     double sp = sin(pitch * 0.5);
     double cy = cos(yaw * 0.5);
@@ -126,10 +118,8 @@ void *rt_quat_from_euler(double pitch, double yaw, double roll)
 /// @brief Perform quat x operation.
 /// @param q
 /// @return Result value.
-double rt_quat_x(void *q)
-{
-    if (!q)
-    {
+double rt_quat_x(void *q) {
+    if (!q) {
         rt_trap("Quat.X: null quaternion");
         return 0.0;
     }
@@ -139,10 +129,8 @@ double rt_quat_x(void *q)
 /// @brief Perform quat y operation.
 /// @param q
 /// @return Result value.
-double rt_quat_y(void *q)
-{
-    if (!q)
-    {
+double rt_quat_y(void *q) {
+    if (!q) {
         rt_trap("Quat.Y: null quaternion");
         return 0.0;
     }
@@ -152,10 +140,8 @@ double rt_quat_y(void *q)
 /// @brief Perform quat z operation.
 /// @param q
 /// @return Result value.
-double rt_quat_z(void *q)
-{
-    if (!q)
-    {
+double rt_quat_z(void *q) {
+    if (!q) {
         rt_trap("Quat.Z: null quaternion");
         return 0.0;
     }
@@ -165,10 +151,8 @@ double rt_quat_z(void *q)
 /// @brief Perform quat w operation.
 /// @param q
 /// @return Result value.
-double rt_quat_w(void *q)
-{
-    if (!q)
-    {
+double rt_quat_w(void *q) {
+    if (!q) {
         rt_trap("Quat.W: null quaternion");
         return 0.0;
     }
@@ -179,10 +163,8 @@ double rt_quat_w(void *q)
 // Operations
 //=============================================================================
 
-void *rt_quat_mul(void *a, void *b)
-{
-    if (!a || !b)
-    {
+void *rt_quat_mul(void *a, void *b) {
+    if (!a || !b) {
         rt_trap("Quat.Mul: null quaternion");
         return NULL;
     }
@@ -195,10 +177,8 @@ void *rt_quat_mul(void *a, void *b)
     return quat_alloc(x, y, z, w);
 }
 
-void *rt_quat_conjugate(void *q)
-{
-    if (!q)
-    {
+void *rt_quat_conjugate(void *q) {
+    if (!q) {
         rt_trap("Quat.Conjugate: null quaternion");
         return NULL;
     }
@@ -206,17 +186,14 @@ void *rt_quat_conjugate(void *q)
     return quat_alloc(-qv->x, -qv->y, -qv->z, qv->w);
 }
 
-void *rt_quat_inverse(void *q)
-{
-    if (!q)
-    {
+void *rt_quat_inverse(void *q) {
+    if (!q) {
         rt_trap("Quat.Inverse: null quaternion");
         return NULL;
     }
     ViperQuat *qv = (ViperQuat *)q;
     double len_sq = qv->x * qv->x + qv->y * qv->y + qv->z * qv->z + qv->w * qv->w;
-    if (len_sq == 0.0)
-    {
+    if (len_sq == 0.0) {
         rt_trap("Quat.Inverse: zero-length quaternion");
         return NULL;
     }
@@ -224,10 +201,8 @@ void *rt_quat_inverse(void *q)
     return quat_alloc(-qv->x * inv, -qv->y * inv, -qv->z * inv, qv->w * inv);
 }
 
-void *rt_quat_norm(void *q)
-{
-    if (!q)
-    {
+void *rt_quat_norm(void *q) {
+    if (!q) {
         rt_trap("Quat.Norm: null quaternion");
         return NULL;
     }
@@ -242,10 +217,8 @@ void *rt_quat_norm(void *q)
 /// @brief Perform quat len operation.
 /// @param q
 /// @return Result value.
-double rt_quat_len(void *q)
-{
-    if (!q)
-    {
+double rt_quat_len(void *q) {
+    if (!q) {
         rt_trap("Quat.Len: null quaternion");
         return 0.0;
     }
@@ -256,10 +229,8 @@ double rt_quat_len(void *q)
 /// @brief Perform quat len sq operation.
 /// @param q
 /// @return Result value.
-double rt_quat_len_sq(void *q)
-{
-    if (!q)
-    {
+double rt_quat_len_sq(void *q) {
+    if (!q) {
         rt_trap("Quat.LenSq: null quaternion");
         return 0.0;
     }
@@ -271,10 +242,8 @@ double rt_quat_len_sq(void *q)
 /// @param a
 /// @param b
 /// @return Result value.
-double rt_quat_dot(void *a, void *b)
-{
-    if (!a || !b)
-    {
+double rt_quat_dot(void *a, void *b) {
+    if (!a || !b) {
         rt_trap("Quat.Dot: null quaternion");
         return 0.0;
     }
@@ -287,10 +256,8 @@ double rt_quat_dot(void *a, void *b)
 // Interpolation
 //=============================================================================
 
-void *rt_quat_slerp(void *a, void *b, double t)
-{
-    if (!a || !b)
-    {
+void *rt_quat_slerp(void *a, void *b, double t) {
+    if (!a || !b) {
         rt_trap("Quat.Slerp: null quaternion");
         return NULL;
     }
@@ -304,8 +271,7 @@ void *rt_quat_slerp(void *a, void *b, double t)
     double by = qb->y;
     double bz = qb->z;
     double bw = qb->w;
-    if (dot < 0.0)
-    {
+    if (dot < 0.0) {
         dot = -dot;
         bx = -bx;
         by = -by;
@@ -314,14 +280,11 @@ void *rt_quat_slerp(void *a, void *b, double t)
     }
 
     double s0, s1;
-    if (dot > 0.9995)
-    {
+    if (dot > 0.9995) {
         /* Nearly identical — use linear interpolation to avoid division by ~0. */
         s0 = 1.0 - t;
         s1 = t;
-    }
-    else
-    {
+    } else {
         double theta = acos(dot);
         double sin_theta = sin(theta);
         s0 = sin((1.0 - t) * theta) / sin_theta;
@@ -332,10 +295,8 @@ void *rt_quat_slerp(void *a, void *b, double t)
         s0 * qa->x + s1 * bx, s0 * qa->y + s1 * by, s0 * qa->z + s1 * bz, s0 * qa->w + s1 * bw);
 }
 
-void *rt_quat_lerp(void *a, void *b, double t)
-{
-    if (!a || !b)
-    {
+void *rt_quat_lerp(void *a, void *b, double t) {
+    if (!a || !b) {
         rt_trap("Quat.Lerp: null quaternion");
         return NULL;
     }
@@ -357,10 +318,8 @@ void *rt_quat_lerp(void *a, void *b, double t)
 // Rotation
 //=============================================================================
 
-void *rt_quat_rotate_vec3(void *q, void *v)
-{
-    if (!q || !v)
-    {
+void *rt_quat_rotate_vec3(void *q, void *v) {
+    if (!q || !v) {
         rt_trap("Quat.RotateVec3: null argument");
         return NULL;
     }
@@ -381,10 +340,8 @@ void *rt_quat_rotate_vec3(void *q, void *v)
     return rt_vec3_new(rx, ry, rz);
 }
 
-void *rt_quat_to_mat4(void *q)
-{
-    if (!q)
-    {
+void *rt_quat_to_mat4(void *q) {
+    if (!q) {
         rt_trap("Quat.ToMat4: null quaternion");
         return NULL;
     }
@@ -426,10 +383,8 @@ void *rt_quat_to_mat4(void *q)
                        1.0);
 }
 
-void *rt_quat_axis(void *q)
-{
-    if (!q)
-    {
+void *rt_quat_axis(void *q) {
+    if (!q) {
         rt_trap("Quat.Axis: null quaternion");
         return NULL;
     }
@@ -444,10 +399,8 @@ void *rt_quat_axis(void *q)
 /// @brief Perform quat angle operation.
 /// @param q
 /// @return Result value.
-double rt_quat_angle(void *q)
-{
-    if (!q)
-    {
+double rt_quat_angle(void *q) {
+    if (!q) {
         rt_trap("Quat.Angle: null quaternion");
         return 0.0;
     }

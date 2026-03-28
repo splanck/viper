@@ -31,13 +31,10 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper
-{
-namespace bytecode
-{
+namespace viper {
+namespace bytecode {
 
-namespace detail
-{
+namespace detail {
 /// @brief Find or add a value to a pool with deduplication.
 /// @details Performs a linear scan for an existing match. If found, returns
 ///          its index; otherwise appends the value and returns the new index.
@@ -49,12 +46,9 @@ namespace detail
 /// @param eq    Equality comparison function.
 /// @return Index of the value in the pool (existing or newly appended).
 template <typename T, typename Eq>
-inline uint32_t findOrAddToPool(std::vector<T> &pool, const T &value, Eq eq)
-{
-    for (size_t i = 0; i < pool.size(); ++i)
-    {
-        if (eq(pool[i], value))
-        {
+inline uint32_t findOrAddToPool(std::vector<T> &pool, const T &value, Eq eq) {
+    for (size_t i = 0; i < pool.size(); ++i) {
+        if (eq(pool[i], value)) {
             return static_cast<uint32_t>(i);
         }
     }
@@ -67,8 +61,7 @@ inline uint32_t findOrAddToPool(std::vector<T> &pool, const T &value, Eq eq)
 /// @brief Debug information about a local variable within a bytecode function.
 /// @details Maps a source-level variable name to its runtime local slot and
 ///          the PC range during which it is live (for debugger display).
-struct LocalVarInfo
-{
+struct LocalVarInfo {
     std::string name;  ///< Original source-level variable name.
     uint32_t localIdx; ///< Index in the function's locals array.
     uint32_t startPc;  ///< First PC where the variable is live (inclusive).
@@ -78,16 +71,14 @@ struct LocalVarInfo
 /// @brief An exception handler range within a bytecode function.
 /// @details Defines a protected PC region and the handler entry point to
 ///          jump to when a trap occurs within that region.
-struct ExceptionRange
-{
+struct ExceptionRange {
     uint32_t startPc;   ///< Range start PC (inclusive).
     uint32_t endPc;     ///< Range end PC (exclusive).
     uint32_t handlerPc; ///< Handler entry point PC.
 };
 
 /// @brief A single case entry in a switch table.
-struct SwitchEntry
-{
+struct SwitchEntry {
     int64_t value;     ///< The case value to match against.
     uint32_t targetPc; ///< Target PC when this case matches.
 };
@@ -96,8 +87,7 @@ struct SwitchEntry
 /// @details Contains a default target and a list of case entries. The VM
 ///          performs a linear scan or binary search over entries to find
 ///          a matching case value.
-struct SwitchTable
-{
+struct SwitchTable {
     uint32_t defaultPc;               ///< Default target PC when no case matches.
     std::vector<SwitchEntry> entries; ///< Ordered list of case entries.
 };
@@ -105,8 +95,7 @@ struct SwitchTable
 /// @brief A compiled bytecode function ready for execution.
 /// @details Contains the bytecode instruction stream, local/stack sizing info,
 ///          exception handler ranges, switch tables, and optional debug metadata.
-struct BytecodeFunction
-{
+struct BytecodeFunction {
     std::string name;    ///< Fully qualified function name.
     uint32_t numParams;  ///< Number of parameters (mapped to first N locals).
     uint32_t numLocals;  ///< Total local slots (parameters + temporaries).
@@ -131,8 +120,7 @@ struct BytecodeFunction
 /// @brief Reference to a native/runtime function callable from bytecode.
 /// @details Stores the name and signature information needed to locate and
 ///          invoke a native function through the RuntimeBridge or registered handlers.
-struct NativeFuncRef
-{
+struct NativeFuncRef {
     std::string name;    ///< Function name (e.g., "Viper.Terminal.Say").
     uint32_t paramCount; ///< Number of parameters the function expects.
     bool hasReturn;      ///< True if the function returns a value.
@@ -141,8 +129,7 @@ struct NativeFuncRef
 /// @brief Information about a global variable in the bytecode module.
 /// @details Globals are laid out as contiguous BCSlot entries. Each GlobalInfo
 ///          describes the name, size, alignment, and optional initial data.
-struct GlobalInfo
-{
+struct GlobalInfo {
     std::string name;              ///< Fully qualified global variable name.
     uint32_t size;                 ///< Size of the global in bytes.
     uint32_t align;                ///< Alignment requirement in bytes.
@@ -150,8 +137,7 @@ struct GlobalInfo
 };
 
 /// @brief Source file reference for debug information.
-struct SourceFileInfo
-{
+struct SourceFileInfo {
     std::string path;  ///< File path of the source file.
     uint32_t checksum; ///< Optional checksum for validation (0 if unused).
 };
@@ -165,8 +151,7 @@ struct SourceFileInfo
 ///          Constant pool entries are deduplicated: adding the same value twice
 ///          returns the same pool index. Function and native function references
 ///          are indexed by name for O(1) lookup.
-struct BytecodeModule
-{
+struct BytecodeModule {
     // Header
     uint32_t magic;   ///< Module magic number (must equal kBytecodeModuleMagic).
     uint32_t version; ///< Bytecode format version (must equal kBytecodeVersion).
@@ -201,11 +186,9 @@ struct BytecodeModule
     /// @brief Find a compiled function by its fully qualified name.
     /// @param name The function name to search for.
     /// @return Pointer to the BytecodeFunction if found; nullptr otherwise.
-    const BytecodeFunction *findFunction(const std::string &name) const
-    {
+    const BytecodeFunction *findFunction(const std::string &name) const {
         auto it = functionIndex.find(name);
-        if (it != functionIndex.end())
-        {
+        if (it != functionIndex.end()) {
             return &functions[it->second];
         }
         return nullptr;
@@ -214,8 +197,7 @@ struct BytecodeModule
     /// @brief Add a compiled function to the module and update the name index.
     /// @param fn The BytecodeFunction to add (moved into the module).
     /// @return The index of the newly added function in the functions vector.
-    uint32_t addFunction(BytecodeFunction fn)
-    {
+    uint32_t addFunction(BytecodeFunction fn) {
         uint32_t idx = static_cast<uint32_t>(functions.size());
         functionIndex[fn.name] = idx;
         functions.push_back(std::move(fn));
@@ -225,8 +207,7 @@ struct BytecodeModule
     /// @brief Add a 64-bit integer constant to the pool, deduplicating by value.
     /// @param value The integer constant to add.
     /// @return The pool index of the (possibly pre-existing) constant.
-    uint32_t addI64(int64_t value)
-    {
+    uint32_t addI64(int64_t value) {
         return detail::findOrAddToPool(i64Pool, value, std::equal_to<int64_t>{});
     }
 
@@ -236,10 +217,8 @@ struct BytecodeModule
     ///          representations are stored separately while +0.0 and -0.0 remain distinct.
     /// @param value The double constant to add.
     /// @return The pool index of the (possibly pre-existing) constant.
-    uint32_t addF64(double value)
-    {
-        auto bitwiseEq = [](double a, double b)
-        {
+    uint32_t addF64(double value) {
+        auto bitwiseEq = [](double a, double b) {
             uint64_t *pa = reinterpret_cast<uint64_t *>(&a);
             uint64_t *pb = reinterpret_cast<uint64_t *>(&b);
             return *pa == *pb;
@@ -250,8 +229,7 @@ struct BytecodeModule
     /// @brief Add a string constant to the pool, deduplicating by value.
     /// @param value The string constant to add.
     /// @return The pool index of the (possibly pre-existing) string.
-    uint32_t addString(const std::string &value)
-    {
+    uint32_t addString(const std::string &value) {
         return detail::findOrAddToPool(stringPool, value, std::equal_to<std::string>{});
     }
 
@@ -262,11 +240,9 @@ struct BytecodeModule
     /// @param paramCount Number of parameters the function expects.
     /// @param hasReturn  True if the function returns a value.
     /// @return The index of the native function reference.
-    uint32_t addNativeFunc(const std::string &name, uint32_t paramCount, bool hasReturn)
-    {
+    uint32_t addNativeFunc(const std::string &name, uint32_t paramCount, bool hasReturn) {
         auto it = nativeFuncIndex.find(name);
-        if (it != nativeFuncIndex.end())
-        {
+        if (it != nativeFuncIndex.end()) {
             return it->second;
         }
         uint32_t idx = static_cast<uint32_t>(nativeFuncs.size());

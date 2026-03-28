@@ -22,8 +22,7 @@
 #include <string>
 #include <string_view>
 
-namespace asmfmt
-{
+namespace asmfmt {
 
 /// \brief Escape a run of ASCII characters for use within an .ascii directive.
 /// \param bytes Input bytes assumed to be printable ASCII.
@@ -46,8 +45,7 @@ namespace asmfmt
 [[nodiscard]] std::string format_rip_label(std::string_view name);
 
 /// \brief Describe an x86-64 memory operand.
-struct MemAddr
-{
+struct MemAddr {
     int base{-1};          ///< Encoded base register; negative for virtual regs.
     int index{-1};         ///< Encoded index register; negative when absent.
     std::uint8_t scale{1}; ///< Scaling factor applied to the index register.

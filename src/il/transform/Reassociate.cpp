@@ -25,21 +25,17 @@
 #include "il/core/Module.hpp"
 #include "il/core/Value.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Check if an opcode is commutative and associative for integers.
 /// @details Only includes operations where reassociation is provably correct:
 ///          plain integer arithmetic (no overflow checks) and bitwise ops.
-bool isReassociable(Opcode op)
-{
-    switch (op)
-    {
+bool isReassociable(Opcode op) {
+    switch (op) {
         case Opcode::Add:
         case Opcode::Mul:
         case Opcode::And:
@@ -55,10 +51,8 @@ bool isReassociable(Opcode op)
 /// @details Constants get the lowest rank (sorted last in descending order)
 ///          so that `a + 1` and `1 + a` both become `a + 1` (temp first).
 ///          Among temporaries, higher IDs rank higher for a stable sort.
-int operandRank(const Value &v)
-{
-    switch (v.kind)
-    {
+int operandRank(const Value &v) {
+    switch (v.kind) {
         case Value::Kind::Temp:
             return static_cast<int>(v.id) + 1000; // High rank → sorted first
         case Value::Kind::ConstInt:
@@ -76,8 +70,7 @@ int operandRank(const Value &v)
 
 /// @brief Canonicalize operand order for a single instruction.
 /// @return True if the operand order was changed.
-bool canonicalizeOperands(Instr &I)
-{
+bool canonicalizeOperands(Instr &I) {
     if (I.operands.size() != 2)
         return false;
     if (!isReassociable(I.op))
@@ -88,8 +81,7 @@ bool canonicalizeOperands(Instr &I)
 
     // Sort by descending rank: higher-ranked operand first.
     // This puts temporaries before constants.
-    if (rank0 < rank1)
-    {
+    if (rank0 < rank1) {
         std::swap(I.operands[0], I.operands[1]);
         return true;
     }
@@ -98,14 +90,10 @@ bool canonicalizeOperands(Instr &I)
 
 } // namespace
 
-void reassociate(Module &M)
-{
-    for (auto &F : M.functions)
-    {
-        for (auto &B : F.blocks)
-        {
-            for (auto &I : B.instructions)
-            {
+void reassociate(Module &M) {
+    for (auto &F : M.functions) {
+        for (auto &B : F.blocks) {
+            for (auto &I : B.instructions) {
                 canonicalizeOperands(I);
             }
         }

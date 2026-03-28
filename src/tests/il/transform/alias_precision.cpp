@@ -37,21 +37,16 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-struct AnalysisSetup
-{
+struct AnalysisSetup {
     il::transform::AnalysisRegistry registry;
 
-    AnalysisSetup()
-    {
+    AnalysisSetup() {
         registry.registerFunctionAnalysis<il::transform::CFGInfo>(
             "cfg", [](Module &mod, Function &fn) { return il::transform::buildCFG(mod, fn); });
         registry.registerFunctionAnalysis<viper::analysis::DomTree>(
-            "dominators",
-            [](Module &mod, Function &fn)
-            {
+            "dominators", [](Module &mod, Function &fn) {
                 viper::analysis::CFGContext ctx(mod);
                 return viper::analysis::computeDominatorTree(ctx, fn);
             });
@@ -64,11 +59,9 @@ struct AnalysisSetup
     }
 };
 
-static void verifyOrDie(const Module &module)
-{
+static void verifyOrDie(const Module &module) {
     auto verifyResult = il::verify::Verifier::verify(module);
-    if (!verifyResult)
-    {
+    if (!verifyResult) {
         il::support::printDiag(verifyResult.error(), std::cerr);
         ASSERT_TRUE(false && "Module verification failed");
     }
@@ -76,8 +69,7 @@ static void verifyOrDie(const Module &module)
 
 } // namespace
 
-TEST(IL, testDSENoElimOnDisjointFields)
-{
+TEST(IL, testDSENoElimOnDisjointFields) {
     Module m;
     il::build::IRBuilder b(m);
     Function &fn = b.startFunction("dse_disjoint", Type(Type::Kind::Void), {});
@@ -137,8 +129,7 @@ TEST(IL, testDSENoElimOnDisjointFields)
     ASSERT_EQ(entry.instructions.size(), 6);
 }
 
-TEST(IL, testLICMLoadHoistWithDisjointStore)
-{
+TEST(IL, testLICMLoadHoistWithDisjointStore) {
     Module m;
     il::build::IRBuilder b(m);
     Function &fn = b.startFunction("licm_alias", Type(Type::Kind::Void), {});
@@ -239,17 +230,14 @@ TEST(IL, testLICMLoadHoistWithDisjointStore)
               << std::endl;
 
     bool loopHasMod = false;
-    if (!loopInfo.loops().empty())
-    {
-        for (const auto &label : loopInfo.loops().front().blockLabels)
-        {
-            auto it = std::find_if(fn.blocks.begin(),
-                                   fn.blocks.end(),
-                                   [&](const BasicBlock &blk) { return blk.label == label; });
+    if (!loopInfo.loops().empty()) {
+        for (const auto &label : loopInfo.loops().front().blockLabels) {
+            auto it = std::find_if(fn.blocks.begin(), fn.blocks.end(), [&](const BasicBlock &blk) {
+                return blk.label == label;
+            });
             if (it == fn.blocks.end())
                 continue;
-            for (const auto &ins : it->instructions)
-            {
+            for (const auto &ins : it->instructions) {
                 auto me = memoryEffects(ins.op);
                 if (me == MemoryEffects::Write || me == MemoryEffects::ReadWrite ||
                     me == MemoryEffects::Unknown)
@@ -277,8 +265,7 @@ TEST(IL, testLICMLoadHoistWithDisjointStore)
     ASSERT_TRUE(loadInPre && !loadInHeader && "load should be hoisted to preheader");
 }
 
-TEST(IL, testLICMReadonlyCallNotHoistedAcrossModCall)
-{
+TEST(IL, testLICMReadonlyCallNotHoistedAcrossModCall) {
     Module m;
     il::build::IRBuilder b(m);
 
@@ -393,8 +380,7 @@ TEST(IL, testLICMReadonlyCallNotHoistedAcrossModCall)
     BasicBlock *preheader = nullptr;
     BasicBlock *entryBlock = nullptr;
     BasicBlock *loopHeader = nullptr;
-    for (auto &block : fn.blocks)
-    {
+    for (auto &block : fn.blocks) {
         if (block.label == "entry")
             entryBlock = &block;
         else if (block.label == "loop.preheader")
@@ -419,8 +405,7 @@ TEST(IL, testLICMReadonlyCallNotHoistedAcrossModCall)
     ASSERT_TRUE(callInLoop);
 }
 
-TEST(IL, testLICMLoadNotHoistedPastLaterStoreAfterModCall)
-{
+TEST(IL, testLICMLoadNotHoistedPastLaterStoreAfterModCall) {
     Module m;
     il::build::IRBuilder b(m);
 
@@ -526,8 +511,7 @@ TEST(IL, testLICMLoadNotHoistedPastLaterStoreAfterModCall)
 
     BasicBlock *preheader = nullptr;
     BasicBlock *loopHeader = nullptr;
-    for (auto &block : fn.blocks)
-    {
+    for (auto &block : fn.blocks) {
         if (block.label == "entry")
             preheader = &block;
         else if (block.label == "loop.preheader")
@@ -550,8 +534,7 @@ TEST(IL, testLICMLoadNotHoistedPastLaterStoreAfterModCall)
     ASSERT_TRUE(loadInLoop);
 }
 
-TEST(IL, testGVNRedundantLoadSameField)
-{
+TEST(IL, testGVNRedundantLoadSameField) {
     Module m;
     il::build::IRBuilder b(m);
     Function &fn = b.startFunction("gvn_alias", Type(Type::Kind::I64), {});
@@ -629,8 +612,7 @@ TEST(IL, testGVNRedundantLoadSameField)
 }
 
 /// @brief Main.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

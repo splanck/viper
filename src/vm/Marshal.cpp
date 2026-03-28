@@ -33,15 +33,12 @@
 #include <limits>
 #include <string>
 
-namespace il::vm
-{
+namespace il::vm {
 
-namespace
-{
+namespace {
 using il::core::Type;
 
-struct KindAccessors
-{
+struct KindAccessors {
     using SlotAccessor = void *(*)(Slot &);
     using ResultAccessor = void *(*)(ResultBuffers &);
     using ResultAssigner = void (*)(Slot &, const ResultBuffers &);
@@ -66,36 +63,30 @@ constexpr std::array<Type::Kind, 10> kSupportedKinds = {
 
 static_assert(kSupportedKinds.size() == 10, "update kind accessors when Type::Kind grows");
 
-constexpr void *nullResultBuffer(ResultBuffers &)
-{
+constexpr void *nullResultBuffer(ResultBuffers &) {
     return nullptr;
 }
 
 constexpr void assignNoop(Slot &, const ResultBuffers &) {}
 
-template <auto Member> constexpr void *slotMemberAccessor(Slot &slot)
-{
+template <auto Member> constexpr void *slotMemberAccessor(Slot &slot) {
     return static_cast<void *>(&(slot.*Member));
 }
 
-template <auto Member> constexpr void *bufferMemberAccessor(ResultBuffers &buffers)
-{
+template <auto Member> constexpr void *bufferMemberAccessor(ResultBuffers &buffers) {
     return static_cast<void *>(&(buffers.*Member));
 }
 
 template <auto SlotMember, auto BufferMember>
-constexpr void assignFromBuffer(Slot &slot, const ResultBuffers &buffers)
-{
+constexpr void assignFromBuffer(Slot &slot, const ResultBuffers &buffers) {
     slot.*SlotMember = buffers.*BufferMember;
 }
 
-constexpr KindAccessors makeVoidAccessors()
-{
+constexpr KindAccessors makeVoidAccessors() {
     return KindAccessors{nullptr, &nullResultBuffer, &assignNoop};
 }
 
-template <auto SlotMember, auto BufferMember> constexpr KindAccessors makeAccessors()
-{
+template <auto SlotMember, auto BufferMember> constexpr KindAccessors makeAccessors() {
     return KindAccessors{
         &slotMemberAccessor<SlotMember>,
         &bufferMemberAccessor<BufferMember>,
@@ -103,8 +94,7 @@ template <auto SlotMember, auto BufferMember> constexpr KindAccessors makeAccess
     };
 }
 
-constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = []
-{
+constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = [] {
     std::array<KindAccessors, kSupportedKinds.size()> table{};
     table[static_cast<size_t>(Type::Kind::Void)] = makeVoidAccessors();
     table[static_cast<size_t>(Type::Kind::I1)] = makeAccessors<&Slot::i64, &ResultBuffers::i64>();
@@ -119,8 +109,7 @@ constexpr std::array<KindAccessors, kSupportedKinds.size()> kKindAccessors = []
     return table;
 }();
 
-const KindAccessors &dispatchFor(Type::Kind kind)
-{
+const KindAccessors &dispatchFor(Type::Kind kind) {
     const auto index = static_cast<size_t>(kind);
     assert(index < kKindAccessors.size() && "invalid type kind");
     return kKindAccessors[index];
@@ -144,8 +133,7 @@ const KindAccessors &dispatchFor(Type::Kind kind)
 /// @param assumeNullTerminated When Yes, skip embedded NUL check (fast path).
 /// @return Runtime handle suitable for passing to C helpers; may be null when
 ///         @p text lacks backing storage.
-ViperString toViperString(StringRef text, AssumeNullTerminated assumeNullTerminated)
-{
+ViperString toViperString(StringRef text, AssumeNullTerminated assumeNullTerminated) {
     if (text.data() == nullptr)
         return nullptr;
     if (text.empty())
@@ -158,8 +146,7 @@ ViperString toViperString(StringRef text, AssumeNullTerminated assumeNullTermina
     // Check for embedded NUL using memchr (often optimized with SIMD)
     // This is faster than string_view::find on many platforms
     const void *nulPos = std::memchr(text.data(), '\0', text.size());
-    if (nulPos != nullptr)
-    {
+    if (nulPos != nullptr) {
         // String contains embedded NUL - must use byte copy
         return rt_string_from_bytes(text.data(), text.size());
     }
@@ -179,24 +166,20 @@ ViperString toViperString(StringRef text, AssumeNullTerminated assumeNullTermina
 /// @param str Runtime string handle to translate.
 /// @return Non-owning view of the runtime string's contents, or an empty view
 ///         when the handle is null.
-StringRef fromViperString(const ViperString &str)
-{
+StringRef fromViperString(const ViperString &str) {
     if (!str)
         return {};
     const char *data = rt_string_cstr(str);
     if (!data)
         return {};
     const int64_t length = rt_str_len(str);
-    if (length < 0)
-    {
+    if (length < 0) {
         RuntimeBridge::trap(
             TrapKind::DomainError, "rt_string reported negative length", {}, "", "");
         return {};
     }
-    if (!detail::lengthWithinLimit(length, kMaxBridgeStringBytes))
-    {
-        if (RuntimeBridge::hasActiveVm())
-        {
+    if (!detail::lengthWithinLimit(length, kMaxBridgeStringBytes)) {
+        if (RuntimeBridge::hasActiveVm()) {
             RuntimeBridge::trap(
                 TrapKind::DomainError, "rt_string length exceeds bridge limit", {}, "", "");
         }
@@ -221,16 +204,13 @@ StringRef fromViperString(const ViperString &str)
 //
 //===----------------------------------------------------------------------===//
 
-namespace
-{
+namespace {
 /// @brief Convert Value::Kind to a diagnostic string.
 /// @param kind The value kind to describe.
 /// @return Human-readable name for error messages.
-constexpr const char *valueKindToString(il::core::Value::Kind kind) noexcept
-{
+constexpr const char *valueKindToString(il::core::Value::Kind kind) noexcept {
     using Kind = il::core::Value::Kind;
-    switch (kind)
-    {
+    switch (kind) {
         case Kind::Temp:
             return "Temp";
         case Kind::ConstInt:
@@ -248,8 +228,7 @@ constexpr const char *valueKindToString(il::core::Value::Kind kind) noexcept
 }
 } // namespace
 
-int64_t toI64(const il::core::Value &value)
-{
+int64_t toI64(const il::core::Value &value) {
     using Kind = il::core::Value::Kind;
 
     // Precondition: value must be a constant scalar.
@@ -258,8 +237,7 @@ int64_t toI64(const il::core::Value &value)
     assert(isConstantScalar(value) &&
            "toI64 requires a constant scalar value (ConstInt, ConstFloat, or NullPtr)");
 
-    switch (value.kind)
-    {
+    switch (value.kind) {
         case Kind::ConstInt:
             return static_cast<int64_t>(value.i64);
         case Kind::ConstFloat:
@@ -277,8 +255,7 @@ int64_t toI64(const il::core::Value &value)
     }
 }
 
-double toF64(const il::core::Value &value)
-{
+double toF64(const il::core::Value &value) {
     using Kind = il::core::Value::Kind;
 
     // Precondition: value must be a constant scalar.
@@ -287,8 +264,7 @@ double toF64(const il::core::Value &value)
     assert(isConstantScalar(value) &&
            "toF64 requires a constant scalar value (ConstInt, ConstFloat, or NullPtr)");
 
-    switch (value.kind)
-    {
+    switch (value.kind) {
         case Kind::ConstFloat:
             return value.f64;
         case Kind::ConstInt:
@@ -306,11 +282,9 @@ double toF64(const il::core::Value &value)
     }
 }
 
-void *slotToArgPointer(Slot &slot, il::core::Type::Kind kind)
-{
+void *slotToArgPointer(Slot &slot, il::core::Type::Kind kind) {
     const auto &entry = dispatchFor(kind);
-    if (!entry.slotAccessor)
-    {
+    if (!entry.slotAccessor) {
         RuntimeBridge::trap(
             TrapKind::InvalidOperation, diag::formatUnsupportedKind("argument", kind), {}, "", "");
         return nullptr;
@@ -318,11 +292,9 @@ void *slotToArgPointer(Slot &slot, il::core::Type::Kind kind)
     return entry.slotAccessor(slot);
 }
 
-void *resultBufferFor(il::core::Type::Kind kind, ResultBuffers &buffers)
-{
+void *resultBufferFor(il::core::Type::Kind kind, ResultBuffers &buffers) {
     const auto &entry = dispatchFor(kind);
-    if (!entry.resultAccessor)
-    {
+    if (!entry.resultAccessor) {
         RuntimeBridge::trap(
             TrapKind::InvalidOperation, diag::formatUnsupportedKind("return", kind), {}, "", "");
         return nullptr;
@@ -330,11 +302,9 @@ void *resultBufferFor(il::core::Type::Kind kind, ResultBuffers &buffers)
     return entry.resultAccessor(buffers);
 }
 
-void assignResult(Slot &slot, il::core::Type::Kind kind, const ResultBuffers &buffers)
-{
+void assignResult(Slot &slot, il::core::Type::Kind kind, const ResultBuffers &buffers) {
     const auto &entry = dispatchFor(kind);
-    if (!entry.assignResult)
-    {
+    if (!entry.assignResult) {
         RuntimeBridge::trap(TrapKind::InvalidOperation,
                             diag::formatUnsupportedKind("assign return", kind),
                             {},
@@ -357,22 +327,18 @@ static void marshalArgumentsCore(const il::runtime::RuntimeSignature &sig,
                                  std::span<Slot> args,
                                  PowStatus &powStatus,
                                  OutputArray &output,
-                                 std::size_t totalArgs)
-{
+                                 std::size_t totalArgs) {
     (void)totalArgs; // Used for documentation/debugging
 
-    for (size_t i = 0; i < sig.paramTypes.size(); ++i)
-    {
+    for (size_t i = 0; i < sig.paramTypes.size(); ++i) {
         auto kind = sig.paramTypes[i].kind;
         Slot &slot = args[i];
         output[i] = slotToArgPointer(slot, kind);
     }
 
     size_t hiddenIndex = sig.paramTypes.size();
-    for (const auto &hidden : sig.hiddenParams)
-    {
-        switch (hidden.kind)
-        {
+    for (const auto &hidden : sig.hiddenParams) {
+        switch (hidden.kind) {
             case il::runtime::RuntimeHiddenParamKind::None:
                 output[hiddenIndex++] = nullptr;
                 break;
@@ -391,19 +357,15 @@ static void marshalArgumentsCore(const il::runtime::RuntimeSignature &sig,
 void marshalArgumentsInline(const il::runtime::RuntimeSignature &sig,
                             std::span<Slot> args,
                             PowStatus &powStatus,
-                            MarshalledArgs &result)
-{
+                            MarshalledArgs &result) {
     const std::size_t totalArgs = sig.paramTypes.size() + sig.hiddenParams.size();
     result.count = totalArgs;
 
-    if (totalArgs <= kMaxStackMarshalArgs)
-    {
+    if (totalArgs <= kMaxStackMarshalArgs) {
         // Fast path: use inline storage (no heap allocation)
         result.usingHeap = false;
         marshalArgumentsCore(sig, args, powStatus, result.inlineBuffer, totalArgs);
-    }
-    else
-    {
+    } else {
         // Slow path: fall back to heap allocation for large argument lists
         result.usingHeap = true;
         result.heapBuffer.resize(totalArgs);
@@ -413,8 +375,7 @@ void marshalArgumentsInline(const il::runtime::RuntimeSignature &sig,
 
 std::vector<void *> marshalArguments(const il::runtime::RuntimeSignature &sig,
                                      std::span<Slot> args,
-                                     PowStatus &powStatus)
-{
+                                     PowStatus &powStatus) {
     const std::size_t totalArgs = sig.paramTypes.size() + sig.hiddenParams.size();
     std::vector<void *> rawArgs(totalArgs);
     marshalArgumentsCore(sig, args, powStatus, rawArgs, totalArgs);
@@ -424,48 +385,38 @@ std::vector<void *> marshalArguments(const il::runtime::RuntimeSignature &sig,
 PowTrapOutcome classifyPowTrap(const il::runtime::RuntimeDescriptor &desc,
                                const PowStatus &powStatus,
                                std::span<const Slot> args,
-                               const ResultBuffers &buffers)
-{
+                               const ResultBuffers &buffers) {
     PowTrapOutcome outcome{};
     if (desc.trapClass != il::runtime::RuntimeTrapClass::PowDomainOverflow || !powStatus.active)
         return outcome;
 
     bool okStatus = powStatus.ok;
-    if (powStatus.ptr)
-    {
-        if (powStatus.ptr == &powStatus.ok)
-        {
+    if (powStatus.ptr) {
+        if (powStatus.ptr == &powStatus.ok) {
             okStatus = powStatus.ok;
-        }
-        else
-        {
+        } else {
             okStatus = *powStatus.ptr;
         }
     }
 
-    if (!okStatus)
-    {
+    if (!okStatus) {
         const double base = !args.empty() ? args[0].f64 : 0.0;
         const double exp = (args.size() > 1) ? args[1].f64 : 0.0;
         const bool expIntegral = std::isfinite(exp) && (exp == std::trunc(exp));
         const bool domainError = (base < 0.0) && !expIntegral;
 
         outcome.triggered = true;
-        if (domainError)
-        {
+        if (domainError) {
             outcome.kind = TrapKind::DomainError;
             outcome.message = "rt_pow_f64_chkdom: negative base with fractional exponent";
-        }
-        else
-        {
+        } else {
             outcome.kind = TrapKind::Overflow;
             outcome.message = "rt_pow_f64_chkdom: overflow";
         }
         return outcome;
     }
 
-    if (desc.signature.retType.kind == il::core::Type::Kind::F64 && !std::isfinite(buffers.f64))
-    {
+    if (desc.signature.retType.kind == il::core::Type::Kind::F64 && !std::isfinite(buffers.f64)) {
         outcome.triggered = true;
         outcome.kind = TrapKind::Overflow;
         outcome.message = "rt_pow_f64_chkdom: overflow";
@@ -474,8 +425,8 @@ PowTrapOutcome classifyPowTrap(const il::runtime::RuntimeDescriptor &desc,
     return outcome;
 }
 
-Slot assignCallResult(const il::runtime::RuntimeSignature &signature, const ResultBuffers &buffers)
-{
+Slot assignCallResult(const il::runtime::RuntimeSignature &signature,
+                      const ResultBuffers &buffers) {
     Slot destination{};
     assignResult(destination, signature.retType.kind, buffers);
     return destination;
@@ -486,19 +437,16 @@ Slot assignCallResult(const il::runtime::RuntimeSignature &signature, const Resu
 //===----------------------------------------------------------------------===//
 
 MarshalValidation validateMarshalArity(const il::runtime::RuntimeDescriptor &desc,
-                                       std::size_t argCount)
-{
+                                       std::size_t argCount) {
     return validateMarshalArity(desc.signature, argCount, desc.name);
 }
 
 MarshalValidation validateMarshalArity(const il::runtime::RuntimeSignature &sig,
                                        std::size_t argCount,
-                                       std::string_view calleeName)
-{
+                                       std::string_view calleeName) {
     MarshalValidation result;
     const auto expected = sig.paramTypes.size();
-    if (argCount != expected)
-    {
+    if (argCount != expected) {
         result.ok = false;
         result.errorMessage.reserve(calleeName.size() + 64);
         result.errorMessage.append(calleeName);
@@ -514,23 +462,18 @@ MarshalValidation validateMarshalArity(const il::runtime::RuntimeSignature &sig,
 
 MarshalValidation validateMarshalArgs(const il::runtime::RuntimeDescriptor &desc,
                                       std::span<const Slot> args,
-                                      bool checkNullPointers)
-{
+                                      bool checkNullPointers) {
     // First check arity
     MarshalValidation result = validateMarshalArity(desc, args.size());
     if (!result.ok)
         return result;
 
     // Optionally validate pointer arguments
-    if (checkNullPointers)
-    {
+    if (checkNullPointers) {
         const auto &sig = desc.signature;
-        for (std::size_t i = 0; i < sig.paramTypes.size() && i < args.size(); ++i)
-        {
-            if (sig.paramTypes[i].kind == il::core::Type::Kind::Ptr)
-            {
-                if (args[i].ptr == nullptr)
-                {
+        for (std::size_t i = 0; i < sig.paramTypes.size() && i < args.size(); ++i) {
+            if (sig.paramTypes[i].kind == il::core::Type::Kind::Ptr) {
+                if (args[i].ptr == nullptr) {
                     result.ok = false;
                     result.errorMessage.reserve(desc.name.size() + 48);
                     result.errorMessage.append(desc.name);
@@ -549,8 +492,7 @@ std::vector<void *> marshalArgumentsValidated(const il::runtime::RuntimeDescript
                                               std::span<Slot> args,
                                               PowStatus &powStatus,
                                               MarshalValidation &validation,
-                                              bool checkNullPointers)
-{
+                                              bool checkNullPointers) {
     // Validate before marshalling to avoid out-of-bounds access
     validation = validateMarshalArgs(
         desc, std::span<const Slot>{args.data(), args.size()}, checkNullPointers);

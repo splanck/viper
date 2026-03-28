@@ -19,8 +19,7 @@
 #include <limits>
 #include <string>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Minimum legal integer value for SELECT CASE labels.
 /// @details Matches the signed 32-bit lower bound enforced by the BASIC frontend.
@@ -36,8 +35,7 @@ inline constexpr int64_t kCaseLabelMax = static_cast<int64_t>(std::numeric_limit
 ///          diagnostics consistent.
 /// @param raw The original CASE label value before range checking.
 /// @return A formatted message suitable for diagnostic emission.
-inline std::string makeSelectCaseLabelRangeMessage(int64_t raw)
-{
+inline std::string makeSelectCaseLabelRangeMessage(int64_t raw) {
     std::string msg = "CASE label ";
     msg += std::to_string(raw);
     msg += " is outside 32-bit signed range";

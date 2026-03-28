@@ -25,18 +25,14 @@
 #include <unordered_set>
 #include <utility>
 
-namespace il::io::detail
-{
+namespace il::io::detail {
 
-namespace
-{
+namespace {
 
 /// @brief Parse a single parameter from "type %name" or "%name: type" syntax.
-Expected<Param> parseParameterToken(const std::string &rawParam, unsigned lineNo)
-{
+Expected<Param> parseParameterToken(const std::string &rawParam, unsigned lineNo) {
     std::string trimmed = trim(rawParam);
-    if (trimmed.empty())
-    {
+    if (trimmed.empty()) {
         std::ostringstream oss;
         oss << "malformed parameter";
         if (!rawParam.empty())
@@ -50,17 +46,14 @@ Expected<Param> parseParameterToken(const std::string &rawParam, unsigned lineNo
     std::string ty;
     std::string nm;
     size_t colon = trimmed.find(':');
-    if (colon != std::string::npos)
-    {
+    if (colon != std::string::npos) {
         std::string left = trim(trimmed.substr(0, colon));
         std::string right = trim(trimmed.substr(colon + 1));
         if (left.empty() || right.empty())
             return lineError<Param>(lineNo, "malformed parameter");
         nm = std::move(left);
         ty = std::move(right);
-    }
-    else
-    {
+    } else {
         std::stringstream ps(trimmed);
         ps >> ty >> nm;
     }
@@ -81,8 +74,7 @@ Expected<Param> parseParameterToken(const std::string &rawParam, unsigned lineNo
 }
 
 /// @brief Parse the function symbol name from "@name(" syntax.
-Expected<std::string> parseSymbolName(Cursor &cur)
-{
+Expected<std::string> parseSymbolName(Cursor &cur) {
     cur.skipWs();
     if (cur.atEnd())
         return Expected<std::string>{
@@ -108,8 +100,7 @@ Expected<std::string> parseSymbolName(Cursor &cur)
 /// @brief Parse the function prototype: "(params) -> rettype".
 /// @param cur Cursor positioned after the function name.
 /// @param isImport When true, the prototype has no opening brace (import declaration).
-Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false)
-{
+Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false) {
     cur.skipWs();
     if (cur.atEnd())
         return Expected<PrototypeParseResult>{
@@ -126,12 +117,10 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
     cur.seek(rp + 1);
 
     std::vector<Param> params;
-    if (!paramsStr.empty())
-    {
+    if (!paramsStr.empty()) {
         std::stringstream pss(paramsStr);
         std::string piece;
-        while (std::getline(pss, piece, ','))
-        {
+        while (std::getline(pss, piece, ',')) {
             auto param = parseParameterToken(piece, cur.line());
             if (!param)
                 return Expected<PrototypeParseResult>{param.error()};
@@ -141,8 +130,7 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
 
     size_t gapStart = cur.offset();
     size_t arrow = cur.view().find("->", gapStart);
-    if (arrow == std::string_view::npos)
-    {
+    if (arrow == std::string_view::npos) {
         if (trimView(cur.view().substr(gapStart)).empty())
             return Expected<PrototypeParseResult>{
                 makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
@@ -156,8 +144,7 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
         return Expected<PrototypeParseResult>{
             makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
 
-    if (isImport)
-    {
+    if (isImport) {
         // Import declarations have no body — return type is the rest of the line.
         std::string retRaw(trimView(cur.view().substr(cur.offset())));
         bool retOk = true;
@@ -169,8 +156,7 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
     }
 
     size_t brace = cur.view().find('{', cur.offset());
-    if (brace == std::string_view::npos)
-    {
+    if (brace == std::string_view::npos) {
         if (trimView(cur.view().substr(cur.offset())).empty())
             return Expected<PrototypeParseResult>{
                 makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
@@ -190,8 +176,7 @@ Expected<PrototypeParseResult> parsePrototype(Cursor &cur, bool isImport = false
 }
 
 /// @brief Parse an optional calling convention specifier.
-Expected<CallingConv> parseCallingConv(std::string_view segment, unsigned lineNo)
-{
+Expected<CallingConv> parseCallingConv(std::string_view segment, unsigned lineNo) {
     segment = trimView(segment);
     if (segment.empty())
         return CallingConv::Default;
@@ -200,8 +185,7 @@ Expected<CallingConv> parseCallingConv(std::string_view segment, unsigned lineNo
         {"default", CallingConv::Default},
     }};
 
-    for (const auto &entry : kCallingConvs)
-    {
+    for (const auto &entry : kCallingConvs) {
         if (segment == entry.first)
             return entry.second;
     }
@@ -212,8 +196,7 @@ Expected<CallingConv> parseCallingConv(std::string_view segment, unsigned lineNo
 }
 
 /// @brief Parse function attributes before the opening brace.
-Expected<Attrs> parseAttributes(Cursor &cur)
-{
+Expected<Attrs> parseAttributes(Cursor &cur) {
     cur.skipWs();
     if (cur.atEnd())
         return Expected<Attrs>{makeSyntaxError(cursorPos(cur), "unexpected end of header", {})};
@@ -223,8 +206,7 @@ Expected<Attrs> parseAttributes(Cursor &cur)
 }
 
 /// @brief Parse an optional source location directive.
-Expected<il::support::SourceLoc> parseOptionalLoc(Cursor &cur)
-{
+Expected<il::support::SourceLoc> parseOptionalLoc(Cursor &cur) {
     cur.skipWs();
     return il::support::SourceLoc{};
 }
@@ -235,8 +217,7 @@ Expected<il::support::SourceLoc> parseOptionalLoc(Cursor &cur)
 // Public API
 // ============================================================================
 
-Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
-{
+Expected<void> parseFunctionHeader(const std::string &header, ParserState &st) {
     ParserSnapshot snapshot{st};
     Cursor cursor{header, SourcePos{st.lineNo, 0}};
 
@@ -247,8 +228,7 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
     {
         // Find the '@' that starts the function name.
         size_t atPos = header.find('@');
-        if (atPos != std::string::npos && atPos >= 5)
-        {
+        if (atPos != std::string::npos && atPos >= 5) {
             // Extract text between "func " and "@"
             std::string_view between = trimView(std::string_view(header).substr(4, atPos - 4));
             if (between == "export")
@@ -278,8 +258,7 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
             return Expected<void>{cc.error()};
         fh.cc = cc.value();
     }
-    if (!isImport)
-    {
+    if (!isImport) {
         auto attrs = parseAttributes(cursor);
         if (!attrs)
             return Expected<void>{attrs.error()};
@@ -292,10 +271,8 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
         fh.loc = loc.value();
     }
 
-    for (const auto &fn : st.m.functions)
-    {
-        if (fn.name == fh.name)
-        {
+    for (const auto &fn : st.m.functions) {
+        if (fn.name == fh.name) {
             std::ostringstream oss;
             oss << "duplicate function '@" << fh.name << "'";
             return lineError<void>(st.lineNo, oss.str());
@@ -303,10 +280,8 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
     }
 
     std::unordered_set<std::string> seenParams;
-    for (const auto &param : fh.proto.params)
-    {
-        if (!seenParams.insert(param.name).second)
-        {
+    for (const auto &param : fh.proto.params) {
+        if (!seenParams.insert(param.name).second) {
             std::ostringstream oss;
             oss << "duplicate parameter name '%" << param.name << "'";
             return lineError<void>(st.lineNo, oss.str());
@@ -316,8 +291,7 @@ Expected<void> parseFunctionHeader(const std::string &header, ParserState &st)
     st.curLoc = fh.loc;
     st.tempIds.clear();
     unsigned nextId = 0;
-    for (auto &param : fh.proto.params)
-    {
+    for (auto &param : fh.proto.params) {
         param.id = nextId;
         st.tempIds[param.name] = nextId;
         ++nextId;

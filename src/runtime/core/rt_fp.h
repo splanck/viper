@@ -26,22 +26,21 @@
 #include <stdbool.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Compute base^exp while tracking domain/overflow conditions.
-    /// @param base Input base promoted to f64.
-    /// @param exp Input exponent promoted to f64.
-    /// @param ok Output flag set to false when DomainError or Overflow should trap.
-    /// @return Power result when @p ok is true; unspecified when false.
-    double rt_pow_f64_chkdom(double base, double exp, bool *ok);
+/// @brief Compute base^exp while tracking domain/overflow conditions.
+/// @param base Input base promoted to f64.
+/// @param exp Input exponent promoted to f64.
+/// @param ok Output flag set to false when DomainError or Overflow should trap.
+/// @return Power result when @p ok is true; unspecified when false.
+double rt_pow_f64_chkdom(double base, double exp, bool *ok);
 
-    /// @brief Simple 2-arg pow for IL calling convention (no domain checks).
-    double rt_math_pow(double base, double exponent);
+/// @brief Simple 2-arg pow for IL calling convention (no domain checks).
+double rt_math_pow(double base, double exponent);
 
-    /// @brief 2-arg pow with BASIC domain checking for native codegen.
-    double rt_pow_f64(double base, double exponent);
+/// @brief 2-arg pow with BASIC domain checking for native codegen.
+double rt_pow_f64(double base, double exponent);
 
 #ifdef __cplusplus
 }

@@ -23,8 +23,7 @@
 
 using namespace il::frontends::basic;
 
-namespace
-{
+namespace {
 constexpr const char *kSrc = R"BASIC(
 10 CLASS Person
 20 END CLASS
@@ -38,12 +37,11 @@ constexpr const char *kSrc = R"BASIC(
 )BASIC";
 
 static const il::core::Function *findFunctionCaseInsensitive(const il::core::Module &m,
-                                                             std::string_view name)
-{
-    auto ieq = [](char a, char b)
-    { return std::tolower((unsigned char)a) == std::tolower((unsigned char)b); };
-    auto eq = [&](std::string_view a, std::string_view b)
-    {
+                                                             std::string_view name) {
+    auto ieq = [](char a, char b) {
+        return std::tolower((unsigned char)a) == std::tolower((unsigned char)b);
+    };
+    auto eq = [&](std::string_view a, std::string_view b) {
         if (a.size() != b.size())
             return false;
         for (size_t i = 0; i < a.size(); ++i)
@@ -58,8 +56,7 @@ static const il::core::Function *findFunctionCaseInsensitive(const il::core::Mod
 }
 } // namespace
 
-TEST(BasicClassReturn, ReturnUsesPtrLoad)
-{
+TEST(BasicClassReturn, ReturnUsesPtrLoad) {
     il::support::SourceManager sm;
     BasicCompilerInput input{kSrc, "class_return.bas"};
     BasicCompilerOptions opts{};
@@ -76,17 +73,14 @@ TEST(BasicClassReturn, ReturnUsesPtrLoad)
     // Find a Ret, then locate the defining instruction for its operand, and ensure it is a Load
     // Ptr.
     bool foundPtrLoadRet = false;
-    for (const auto &bb : fn->blocks)
-    {
+    for (const auto &bb : fn->blocks) {
         // Build a quick map from result temp id -> instruction index within the block
         std::unordered_map<unsigned, const il::core::Instr *> defByTemp;
-        for (const auto &ins : bb.instructions)
-        {
+        for (const auto &ins : bb.instructions) {
             if (ins.result)
                 defByTemp[*ins.result] = &ins;
         }
-        for (const auto &ins : bb.instructions)
-        {
+        for (const auto &ins : bb.instructions) {
             if (ins.op != il::core::Opcode::Ret || ins.operands.size() != 1)
                 continue;
             const auto &op = ins.operands[0];
@@ -96,8 +90,7 @@ TEST(BasicClassReturn, ReturnUsesPtrLoad)
             if (it == defByTemp.end())
                 continue;
             const il::core::Instr *def = it->second;
-            if (def->op == il::core::Opcode::Load && def->type.kind == il::core::Type::Kind::Ptr)
-            {
+            if (def->op == il::core::Opcode::Load && def->type.kind == il::core::Type::Kind::Ptr) {
                 foundPtrLoadRet = true;
                 break;
             }
@@ -109,8 +102,7 @@ TEST(BasicClassReturn, ReturnUsesPtrLoad)
     EXPECT_TRUE(foundPtrLoadRet);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

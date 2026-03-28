@@ -38,33 +38,27 @@
 
 using namespace il::core;
 
-namespace il::vm
-{
+namespace il::vm {
 
 void registerThreadsRuntimeExternals();
 
-namespace
-{
+namespace {
 
 /// @brief RAII helper that forces the process-wide numeric locale to "C".
 /// @details The VM relies on deterministic decimal formatting for diagnostics
 ///          and trace output.  Constructing this static initializer once per
 ///          process sets the locale early so subsequent numeric prints remain
 ///          stable regardless of the host environment.
-struct NumericLocaleInitializer
-{
-    NumericLocaleInitializer()
-    {
+struct NumericLocaleInitializer {
+    NumericLocaleInitializer() {
         std::setlocale(LC_NUMERIC, "C");
     }
 };
 
 [[maybe_unused]] const NumericLocaleInitializer kNumericLocaleInitializer{};
 
-struct ThreadsRuntimeInitializer
-{
-    ThreadsRuntimeInitializer()
-    {
+struct ThreadsRuntimeInitializer {
+    ThreadsRuntimeInitializer() {
         registerThreadsRuntimeExternals();
     }
 };
@@ -76,12 +70,9 @@ struct ThreadsRuntimeInitializer
 ///          execution occurs. In release builds this catches configuration
 ///          errors early; in debug builds it complements the existing assert-
 ///          based validation.
-struct RuntimeDescriptorChecker
-{
-    RuntimeDescriptorChecker()
-    {
-        if (!il::runtime::selfCheckRuntimeDescriptors())
-        {
+struct RuntimeDescriptorChecker {
+    RuntimeDescriptorChecker() {
+        if (!il::runtime::selfCheckRuntimeDescriptors()) {
             std::fprintf(stderr, "[FATAL] Runtime descriptor self-check failed\n");
             std::abort();
         }
@@ -94,26 +85,22 @@ struct RuntimeDescriptorChecker
 /// @details Enables the RuntimeSignatures layer to route invariant violations through
 ///          the VM's trap mechanism when a VM is active. When no VM is active, the
 ///          handler returns false and the violation falls back to abort behavior.
-struct InvariantTrapHandlerRegistrar
-{
-    InvariantTrapHandlerRegistrar()
-    {
-        il::runtime::setInvariantTrapHandler(
-            [](const char *message) -> bool
-            {
-                // Check if there's an active VM that can handle the trap.
-                if (!RuntimeBridge::hasActiveVm())
-                    return false;
-
-                // Route through the RuntimeBridge trap mechanism.
-                // This will invoke vm_raise() if a VM is active, which may throw
-                // TrapDispatchSignal for exception handler dispatch.
-                RuntimeBridge::trap(TrapKind::RuntimeError, message, {}, {}, {});
-
-                // If we reach here, the trap was not caught (shouldn't happen with RuntimeError).
-                // Return false to fall back to abort.
+struct InvariantTrapHandlerRegistrar {
+    InvariantTrapHandlerRegistrar() {
+        il::runtime::setInvariantTrapHandler([](const char *message) -> bool {
+            // Check if there's an active VM that can handle the trap.
+            if (!RuntimeBridge::hasActiveVm())
                 return false;
-            });
+
+            // Route through the RuntimeBridge trap mechanism.
+            // This will invoke vm_raise() if a VM is active, which may throw
+            // TrapDispatchSignal for exception handler dispatch.
+            RuntimeBridge::trap(TrapKind::RuntimeError, message, {}, {}, {});
+
+            // If we reach here, the trap was not caught (shouldn't happen with RuntimeError).
+            // Return false to fall back to abort.
+            return false;
+        });
     }
 };
 
@@ -127,10 +114,8 @@ struct InvariantTrapHandlerRegistrar
 ///
 /// @return @c true when debugging output should be emitted.
 /// @note Inline candidate for better performance in hot paths.
-inline bool isVmDebugLoggingEnabled() noexcept
-{
-    static const bool enabled = []
-    {
+inline bool isVmDebugLoggingEnabled() noexcept {
+    static const bool enabled = [] {
         if (const char *flag = std::getenv("VIPER_DEBUG_VM"))
             return flag[0] != '\0';
         return false;
@@ -147,10 +132,8 @@ inline bool isVmDebugLoggingEnabled() noexcept
 /// @param kind Dispatch strategy currently active.
 /// @return Human-readable dispatch name used in debug logs.
 /// @note Constexpr for compile-time evaluation when possible.
-constexpr const char *dispatchKindName(VM::DispatchKind kind) noexcept
-{
-    switch (kind)
-    {
+constexpr const char *dispatchKindName(VM::DispatchKind kind) noexcept {
+    switch (kind) {
         case VM::DispatchKind::FnTable:
             return "FnTable";
         case VM::DispatchKind::Switch:
@@ -181,8 +164,7 @@ VM::VM(const Module &m,
        DebugScript *script,
        std::size_t stackBytes)
     : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms),
-      stackBytes_(stackBytes ? stackBytes : Frame::kDefaultStackSize)
-{
+      stackBytes_(stackBytes ? stackBytes : Frame::kDefaultStackSize) {
     debug.setSourceManager(tc.sm);
     init(nullptr);
 }
@@ -195,22 +177,18 @@ VM::VM(const Module &m,
        DebugScript *script,
        std::size_t stackBytes)
     : mod(m), tracer(tc), debug(std::move(dbg)), script(script), maxSteps(ms),
-      stackBytes_(stackBytes ? stackBytes : Frame::kDefaultStackSize)
-{
+      stackBytes_(stackBytes ? stackBytes : Frame::kDefaultStackSize) {
     debug.setSourceManager(tc.sm);
     init(std::move(program));
 }
 
-void VM::init(std::shared_ptr<ProgramState> program)
-{
+void VM::init(std::shared_ptr<ProgramState> program) {
     // Runtime overrides via environment -------------------------------------
-    if (const char *envCounts = std::getenv("VIPER_ENABLE_OPCOUNTS"))
-    {
+    if (const char *envCounts = std::getenv("VIPER_ENABLE_OPCOUNTS")) {
         std::string v{envCounts};
-        std::transform(v.begin(),
-                       v.end(),
-                       v.begin(),
-                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::transform(v.begin(), v.end(), v.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
         // Accept 1/true/on to enable; 0/false/off to disable.
         if (v == "0" || v == "false" || v == "off")
             enableOpcodeCounts = false;
@@ -218,8 +196,7 @@ void VM::init(std::shared_ptr<ProgramState> program)
             enableOpcodeCounts = true;
         // Other values are ignored, preserving the build-time default.
     }
-    if (const char *envEvery = std::getenv("VIPER_INTERRUPT_EVERY_N"))
-    {
+    if (const char *envEvery = std::getenv("VIPER_INTERRUPT_EVERY_N")) {
         char *end = nullptr;
         unsigned long n = std::strtoul(envEvery, &end, 10);
         if (end && *end == '\0')
@@ -228,13 +205,11 @@ void VM::init(std::shared_ptr<ProgramState> program)
 
     const char *switchModeEnv = std::getenv("VIPER_SWITCH_MODE");
     viper::vm::SwitchMode mode = viper::vm::SwitchMode::Auto;
-    if (switchModeEnv != nullptr)
-    {
+    if (switchModeEnv != nullptr) {
         std::string rawMode{switchModeEnv};
-        std::transform(rawMode.begin(),
-                       rawMode.end(),
-                       rawMode.begin(),
-                       [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        std::transform(rawMode.begin(), rawMode.end(), rawMode.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
 
         if (rawMode == "dense")
             mode = viper::vm::SwitchMode::Dense;
@@ -255,8 +230,7 @@ void VM::init(std::shared_ptr<ProgramState> program)
 #endif
     DispatchKind selectedDispatch = defaultDispatch;
 
-    if (const char *dispatchEnv = std::getenv("VIPER_DISPATCH"))
-    {
+    if (const char *dispatchEnv = std::getenv("VIPER_DISPATCH")) {
         std::string rawDispatch{dispatchEnv};
         std::transform(rawDispatch.begin(),
                        rawDispatch.end(),
@@ -267,8 +241,7 @@ void VM::init(std::shared_ptr<ProgramState> program)
             selectedDispatch = DispatchKind::FnTable;
         else if (rawDispatch == "switch")
             selectedDispatch = DispatchKind::Switch;
-        else if (rawDispatch == "threaded")
-        {
+        else if (rawDispatch == "threaded") {
 #if VIPER_THREADING_SUPPORTED
             selectedDispatch = DispatchKind::Threaded;
 #else
@@ -279,32 +252,25 @@ void VM::init(std::shared_ptr<ProgramState> program)
 
     dispatchKind = selectedDispatch;
 
-    if (isVmDebugLoggingEnabled())
-    {
+    if (isVmDebugLoggingEnabled()) {
         std::fprintf(stderr, "[DEBUG][VM] dispatch kind: %s\n", dispatchKindName(dispatchKind));
     }
 
     // Cache pointer to opcode handler table once.
     handlerTable_ = &VM::getOpcodeHandlers();
 
-    if (program)
-    {
+    if (program) {
         programState_ = std::move(program);
         // CONC-009: verify maps were fully populated before sharing across threads.
         assert(programState_->initComplete.load(std::memory_order_acquire) &&
                "ProgramState shared to worker thread before init completed");
-        if (!programState_->module)
-        {
+        if (!programState_->module) {
             programState_->module = &mod;
-        }
-        else if (programState_->module != &mod)
-        {
+        } else if (programState_->module != &mod) {
             std::fprintf(stderr, "VM: fatal: thread program state module mismatch\n");
             std::abort();
         }
-    }
-    else
-    {
+    } else {
         programState_ = std::make_shared<ProgramState>();
         programState_->module = &mod;
         programState_->rtContext = std::shared_ptr<RtContext>(new RtContext(), RtContextDeleter{});
@@ -313,10 +279,8 @@ void VM::init(std::shared_ptr<ProgramState> program)
         programState_->strMap.reserve(mod.globals.size());
         programState_->mutableGlobalMap.reserve(mod.globals.size());
 
-        for (const auto &g : mod.globals)
-        {
-            if (g.type.kind == il::core::Type::Kind::Str)
-            {
+        for (const auto &g : mod.globals) {
+            if (g.type.kind == il::core::Type::Kind::Str) {
                 programState_->strMap[g.name] =
                     ViperStringHandle(toViperString(g.init, AssumeNullTerminated::Yes));
                 continue;
@@ -326,8 +290,7 @@ void VM::init(std::shared_ptr<ProgramState> program)
             if (g.type.kind == il::core::Type::Kind::I1)
                 size = 1;
             void *storage = std::calloc(1, size);
-            if (!storage)
-            {
+            if (!storage) {
                 std::fprintf(stderr, "VM: fatal: failed to allocate mutable global storage\n");
                 std::abort();
             }
@@ -351,8 +314,7 @@ void VM::init(std::shared_ptr<ProgramState> program)
         size_t estimate = 0;
         for (const auto &f : mod.functions)
             for (const auto &block : f.blocks)
-                for (const auto &instr : block.instructions)
-                {
+                for (const auto &instr : block.instructions) {
                     for (const auto &operand : instr.operands)
                         if (operand.kind == Value::Kind::ConstStr)
                             ++estimate;
@@ -364,19 +326,13 @@ void VM::init(std::shared_ptr<ProgramState> program)
         if (estimate)
             inlineLiteralCache.reserve(estimate);
     }
-    for (const auto &f : mod.functions)
-    {
-        for (const auto &block : f.blocks)
-        {
-            for (const auto &instr : block.instructions)
-            {
+    for (const auto &f : mod.functions) {
+        for (const auto &block : f.blocks) {
+            for (const auto &instr : block.instructions) {
                 // Check all instruction operands for string constants
-                for (const auto &operand : instr.operands)
-                {
-                    if (operand.kind == Value::Kind::ConstStr)
-                    {
-                        if (inlineLiteralCache.find(operand.str) == inlineLiteralCache.end())
-                        {
+                for (const auto &operand : instr.operands) {
+                    if (operand.kind == Value::Kind::ConstStr) {
+                        if (inlineLiteralCache.find(operand.str) == inlineLiteralCache.end()) {
                             if (operand.str.find('\0') == std::string::npos)
                                 inlineLiteralCache[operand.str] =
                                     ViperStringHandle(rt_const_cstr(operand.str.c_str()));
@@ -388,14 +344,10 @@ void VM::init(std::shared_ptr<ProgramState> program)
                 }
 
                 // Check branch arguments for string constants
-                for (const auto &brArgList : instr.brArgs)
-                {
-                    for (const auto &brArg : brArgList)
-                    {
-                        if (brArg.kind == Value::Kind::ConstStr)
-                        {
-                            if (inlineLiteralCache.find(brArg.str) == inlineLiteralCache.end())
-                            {
+                for (const auto &brArgList : instr.brArgs) {
+                    for (const auto &brArg : brArgList) {
+                        if (brArg.kind == Value::Kind::ConstStr) {
+                            if (inlineLiteralCache.find(brArg.str) == inlineLiteralCache.end()) {
                                 if (brArg.str.find('\0') == std::string::npos)
                                     inlineLiteralCache[brArg.str] =
                                         ViperStringHandle(rt_const_cstr(brArg.str.c_str()));
@@ -429,8 +381,7 @@ void VM::init(std::shared_ptr<ProgramState> program)
 /// @details Updates tracingActive_, memWatchActive_, and varWatchActive_
 ///          based on the current tracer and debug controller state.
 ///          Call this after changing trace config or adding/removing watches.
-void VM::refreshDebugFlags()
-{
+void VM::refreshDebugFlags() {
     tracingActive_ = tracer.isEnabled();
     memWatchActive_ = debug.hasMemWatches();
     varWatchActive_ = debug.hasVarWatches();
@@ -440,10 +391,8 @@ void VM::refreshDebugFlags()
 // Buffer Pool Management
 //===----------------------------------------------------------------------===//
 
-std::vector<uint8_t> VM::acquireStackBuffer(size_t size)
-{
-    if (!stackBufferPool_.empty())
-    {
+std::vector<uint8_t> VM::acquireStackBuffer(size_t size) {
+    if (!stackBufferPool_.empty()) {
         auto buf = std::move(stackBufferPool_.back());
         stackBufferPool_.pop_back();
         buf.resize(size);
@@ -452,10 +401,8 @@ std::vector<uint8_t> VM::acquireStackBuffer(size_t size)
     return std::vector<uint8_t>(size);
 }
 
-void VM::releaseStackBuffer(std::vector<uint8_t> &&buf)
-{
-    if (stackBufferPool_.size() < kStackBufferPoolSize)
-    {
+void VM::releaseStackBuffer(std::vector<uint8_t> &&buf) {
+    if (stackBufferPool_.size() < kStackBufferPoolSize) {
         // Clear but keep capacity for reuse
         buf.clear();
         stackBufferPool_.push_back(std::move(buf));
@@ -463,10 +410,8 @@ void VM::releaseStackBuffer(std::vector<uint8_t> &&buf)
     // Otherwise let buffer be deallocated
 }
 
-std::vector<Slot> VM::acquireRegFile(size_t size)
-{
-    if (!regFilePool_.empty())
-    {
+std::vector<Slot> VM::acquireRegFile(size_t size) {
+    if (!regFilePool_.empty()) {
         auto regs = std::move(regFilePool_.back());
         regFilePool_.pop_back();
         regs.resize(size);
@@ -475,21 +420,17 @@ std::vector<Slot> VM::acquireRegFile(size_t size)
     return std::vector<Slot>(size);
 }
 
-void VM::releaseRegFile(std::vector<Slot> &&regs)
-{
-    if (regFilePool_.size() < kRegisterFilePoolSize)
-    {
+void VM::releaseRegFile(std::vector<Slot> &&regs) {
+    if (regFilePool_.size() < kRegisterFilePoolSize) {
         regs.clear();
         regFilePool_.push_back(std::move(regs));
     }
 }
 
-void VM::releaseFrameBuffers(Frame &fr)
-{
+void VM::releaseFrameBuffers(Frame &fr) {
     // Release any owned string values before pooling the register file.
     // Each regIsStr[i] == 1 indicates regs[i].str was retained by storeResult.
-    for (size_t i = 0; i < fr.regIsStr.size(); ++i)
-    {
+    for (size_t i = 0; i < fr.regIsStr.size(); ++i) {
         if (fr.regIsStr[i])
             rt_str_release_maybe(fr.regs[i].str);
     }
@@ -507,8 +448,7 @@ void VM::releaseFrameBuffers(Frame &fr)
 ///          IL is immutable after parsing so the cached map remains valid.
 /// @param fn Function whose blocks should be mapped.
 /// @return Const reference to the cached BlockMap.
-const VM::BlockMap &VM::getOrBuildBlockMap(const Function &fn)
-{
+const VM::BlockMap &VM::getOrBuildBlockMap(const Function &fn) {
     auto it = fnBlockMapCache_.find(&fn);
     if (it != fnBlockMapCache_.end())
         return it->second;
@@ -530,15 +470,13 @@ const VM::BlockMap &VM::getOrBuildBlockMap(const Function &fn)
 /// @param args   Argument slots for the function's entry block.
 /// @param bb     Set to the entry basic block of @p fn.
 /// @return Fully initialised frame ready to run.
-Frame VM::setupFrame(const Function &fn, std::span<const Slot> args, const BasicBlock *&bb)
-{
+Frame VM::setupFrame(const Function &fn, std::span<const Slot> args, const BasicBlock *&bb) {
     Frame fr;
     fr.func = &fn;
     // Pre-size register file to the function's SSA value count. This mirrors
     // the number of temporaries and parameters required by @p fn and avoids
     // incremental growth during execution.
-    if (isVmDebugLoggingEnabled())
-    {
+    if (isVmDebugLoggingEnabled()) {
         std::fprintf(stderr,
                      "[SETUP] fn=%s valueNames=%zu params=%zu blocks=%zu\n",
                      fn.name.c_str(),
@@ -554,8 +492,7 @@ Frame VM::setupFrame(const Function &fn, std::span<const Slot> args, const Basic
     const size_t regCount = maxSsaId + 1;
     fr.regs = acquireRegFile(regCount);
 
-    if (isVmDebugLoggingEnabled())
-    {
+    if (isVmDebugLoggingEnabled()) {
         std::fprintf(stderr,
                      "[SETUP] maxSsaId=%zu regCount=%zu valueNames=%zu\n",
                      maxSsaId,
@@ -575,11 +512,9 @@ Frame VM::setupFrame(const Function &fn, std::span<const Slot> args, const Basic
     fr.resumeState = {};
     // Block map is cached at VM level (getOrBuildBlockMap) — no per-call rebuild.
     bb = fn.blocks.empty() ? nullptr : &fn.blocks.front();
-    if (bb)
-    {
+    if (bb) {
         const auto &params = bb->params;
-        if (args.size() != params.size())
-        {
+        if (args.size() != params.size()) {
             RuntimeBridge::trap(
                 TrapKind::InvalidOperation,
                 diag::formatArgumentCountMismatch(fn.name, params.size(), args.size()),
@@ -587,13 +522,11 @@ Frame VM::setupFrame(const Function &fn, std::span<const Slot> args, const Basic
                 fn.name,
                 bb->label);
         }
-        for (size_t i = 0; i < params.size() && i < args.size(); ++i)
-        {
+        for (size_t i = 0; i < params.size() && i < args.size(); ++i) {
             const auto id = params[i].id;
             assert(id < fr.params.size());
             const bool isStringParam = params[i].type.kind == Type::Kind::Str;
-            if (isStringParam)
-            {
+            if (isStringParam) {
                 if (fr.paramsSet[id])
                     rt_str_release_maybe(fr.params[id].str);
 
@@ -619,8 +552,7 @@ Frame VM::setupFrame(const Function &fn, std::span<const Slot> args, const Basic
 /// @param fn   Function to execute.
 /// @param args Arguments passed to the function's entry block.
 /// @return Fully initialised execution state ready for the interpreter loop.
-VM::ExecState VM::prepareExecution(const Function &fn, std::span<const Slot> args)
-{
+VM::ExecState VM::prepareExecution(const Function &fn, std::span<const Slot> args) {
     ExecState st{};
     st.owner = this;
     st.blocks = &getOrBuildBlockMap(fn);

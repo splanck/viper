@@ -27,15 +27,12 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
-                          std::unordered_map<std::string, GlobalSymEntry> &globalSyms)
-{
+                          std::unordered_map<std::string, GlobalSymEntry> &globalSyms) {
     // Location of a string occurrence: (object index, symbol index).
-    struct SymLoc
-    {
+    struct SymLoc {
         size_t objIdx;
         size_t symIdx;
     };
@@ -44,11 +41,9 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
     // Key = string content (including NUL terminator), Value = list of occurrences.
     std::unordered_map<std::string, std::vector<SymLoc>> contentMap;
 
-    for (size_t oi = 0; oi < allObjects.size(); ++oi)
-    {
+    for (size_t oi = 0; oi < allObjects.size(); ++oi) {
         auto &obj = allObjects[oi];
-        for (size_t si = 1; si < obj.symbols.size(); ++si)
-        {
+        for (size_t si = 1; si < obj.symbols.size(); ++si) {
             const auto &sym = obj.symbols[si];
 
             // Only LOCAL symbols with a valid section reference.
@@ -101,8 +96,7 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
     size_t dedupCounter = 0;
     size_t eliminated = 0;
 
-    for (auto &[content, locs] : contentMap)
-    {
+    for (auto &[content, locs] : contentMap) {
         if (locs.size() < 2)
             continue;
 
@@ -124,8 +118,7 @@ size_t deduplicateStrings(std::vector<ObjFile> &allObjects,
         globalSyms[synthName] = entry;
 
         // Rename all occurrences (including canonical) to the synthetic name.
-        for (const auto &loc : locs)
-        {
+        for (const auto &loc : locs) {
             auto &sym = allObjects[loc.objIdx].symbols[loc.symIdx];
             sym.name = synthName;
             sym.binding = ObjSymbol::Global;

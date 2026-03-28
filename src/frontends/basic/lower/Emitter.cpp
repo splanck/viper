@@ -27,8 +27,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic::lower
-{
+namespace il::frontends::basic::lower {
 
 
 /// @brief Construct an emitter bound to the enclosing lowering context.
@@ -46,8 +45,7 @@ Emitter::Emitter(Lowerer &lowerer) noexcept : lowerer_(lowerer), common_(lowerer
 ///          @c i1 slots.  This accessor centralises the construction of the
 ///          @ref il::core::Type instance so all call sites agree on the
 ///          representation and avoid repeating the `Type::Kind::I1` literal.
-Emitter::Type Emitter::ilBoolTy() const
-{
+Emitter::Type Emitter::ilBoolTy() const {
     return common_.ilBoolTy();
 }
 
@@ -59,8 +57,7 @@ Emitter::Type Emitter::ilBoolTy() const
 ///
 /// @param v Whether the emitted literal should be @c true.
 /// @return SSA value representing the boolean constant.
-Emitter::Value Emitter::emitBoolConst(bool v)
-{
+Emitter::Value Emitter::emitBoolConst(bool v) {
     return common_.emitBoolConst(v);
 }
 
@@ -83,8 +80,7 @@ Emitter::Value Emitter::emitBoolFromBranches(const std::function<void(Value)> &e
                                              const std::function<void(Value)> &emitElse,
                                              std::string_view thenLabelBase,
                                              std::string_view elseLabelBase,
-                                             std::string_view joinLabelBase)
-{
+                                             std::string_view joinLabelBase) {
     return common_.emitBoolFromBranches(
         emitThen, emitElse, thenLabelBase, elseLabelBase, joinLabelBase);
 }
@@ -98,8 +94,7 @@ Emitter::Value Emitter::emitBoolFromBranches(const std::function<void(Value)> &e
 ///
 /// @param bytes Number of bytes to reserve in the current frame.
 /// @return SSA pointer referencing the allocated storage.
-Emitter::Value Emitter::emitAlloca(int bytes)
-{
+Emitter::Value Emitter::emitAlloca(int bytes) {
     return common_.emitAlloca(bytes);
 }
 
@@ -113,8 +108,7 @@ Emitter::Value Emitter::emitAlloca(int bytes)
 /// @param ty IL type describing the loaded value.
 /// @param addr Address operand from which to load.
 /// @return SSA value representing the loaded result.
-Emitter::Value Emitter::emitLoad(Type ty, Value addr)
-{
+Emitter::Value Emitter::emitLoad(Type ty, Value addr) {
     return common_.emitLoad(ty, addr);
 }
 
@@ -127,8 +121,7 @@ Emitter::Value Emitter::emitLoad(Type ty, Value addr)
 /// @param ty IL type describing the stored value.
 /// @param addr Destination pointer.
 /// @param val Value to write to memory.
-void Emitter::emitStore(Type ty, Value addr, Value val)
-{
+void Emitter::emitStore(Type ty, Value addr, Value val) {
     common_.emitStore(ty, addr, val);
 }
 
@@ -144,8 +137,7 @@ void Emitter::emitStore(Type ty, Value addr, Value val)
 /// @param lhs Left operand value.
 /// @param rhs Right operand value.
 /// @return SSA value produced by the emitted instruction.
-Emitter::Value Emitter::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
-{
+Emitter::Value Emitter::emitBinary(Opcode op, Type ty, Value lhs, Value rhs) {
     return common_.emitBinary(op, ty, lhs, rhs);
 }
 
@@ -159,8 +151,7 @@ Emitter::Value Emitter::emitBinary(Opcode op, Type ty, Value lhs, Value rhs)
 /// @param ty Result type to apply to the instruction.
 /// @param val Operand consumed by the opcode.
 /// @return SSA value representing the instruction result.
-Emitter::Value Emitter::emitUnary(Opcode op, Type ty, Value val)
-{
+Emitter::Value Emitter::emitUnary(Opcode op, Type ty, Value val) {
     return common_.emitUnary(op, ty, val);
 }
 
@@ -171,8 +162,7 @@ Emitter::Value Emitter::emitUnary(Opcode op, Type ty, Value val)
 ///
 /// @param v Literal value to encode.
 /// @return SSA value referring to the constant literal.
-Emitter::Value Emitter::emitConstI64(std::int64_t v)
-{
+Emitter::Value Emitter::emitConstI64(std::int64_t v) {
     return common_.emitConstI64(v);
 }
 
@@ -183,8 +173,7 @@ Emitter::Value Emitter::emitConstI64(std::int64_t v)
 ///
 /// @param val Boolean SSA value to extend.
 /// @return 64-bit integer SSA value.
-Emitter::Value Emitter::emitZext1ToI64(Value val)
-{
+Emitter::Value Emitter::emitZext1ToI64(Value val) {
     return common_.emitZext1ToI64(val);
 }
 
@@ -196,8 +185,7 @@ Emitter::Value Emitter::emitZext1ToI64(Value val)
 /// @param lhs Left operand.
 /// @param rhs Right operand.
 /// @return SSA value with the subtraction result.
-Emitter::Value Emitter::emitISub(Value lhs, Value rhs)
-{
+Emitter::Value Emitter::emitISub(Value lhs, Value rhs) {
     return common_.emitISub(lhs, rhs);
 }
 
@@ -211,8 +199,7 @@ Emitter::Value Emitter::emitISub(Value lhs, Value rhs)
 ///
 /// @param b1 Boolean SSA value or constant.
 /// @return 64-bit integer representing the logical mask.
-Emitter::Value Emitter::emitBasicLogicalI64(Value b1)
-{
+Emitter::Value Emitter::emitBasicLogicalI64(Value b1) {
     return common_.emitBasicLogicalI64(b1);
 }
 
@@ -225,8 +212,7 @@ Emitter::Value Emitter::emitBasicLogicalI64(Value b1)
 /// @param ty Result type describing the negated value.
 /// @param val Operand to negate.
 /// @return SSA value representing the negation result.
-Emitter::Value Emitter::emitCheckedNeg(Type ty, Value val)
-{
+Emitter::Value Emitter::emitCheckedNeg(Type ty, Value val) {
     return common_.emitCheckedNeg(ty, val);
 }
 
@@ -238,8 +224,7 @@ Emitter::Value Emitter::emitCheckedNeg(Type ty, Value val)
 ///          from being appended inadvertently.
 ///
 /// @param target Destination block that becomes the active successor.
-void Emitter::emitBr(BasicBlock *target)
-{
+void Emitter::emitBr(BasicBlock *target) {
     common_.emitBr(target);
 }
 
@@ -252,8 +237,7 @@ void Emitter::emitBr(BasicBlock *target)
 /// @param cond Boolean SSA value that selects the true or false branch.
 /// @param t Block executed when @p cond evaluates to true.
 /// @param f Block executed when @p cond evaluates to false.
-void Emitter::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
-{
+void Emitter::emitCBr(Value cond, BasicBlock *t, BasicBlock *f) {
     common_.emitCBr(cond, t, f);
 }
 
@@ -270,8 +254,7 @@ void Emitter::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
 /// @return SSA value bound to the call's result.
 Emitter::Value Emitter::emitCallRet(Type ty,
                                     const std::string &callee,
-                                    const std::vector<Value> &args)
-{
+                                    const std::vector<Value> &args) {
     return common_.emitCallRet(ty, callee, args);
 }
 
@@ -283,18 +266,15 @@ Emitter::Value Emitter::emitCallRet(Type ty,
 ///
 /// @param callee Name of the function to invoke.
 /// @param args Argument list forwarded to the callee.
-void Emitter::emitCall(const std::string &callee, const std::vector<Value> &args)
-{
+void Emitter::emitCall(const std::string &callee, const std::vector<Value> &args) {
     common_.emitCall(callee, args);
 }
 
-Emitter::Value Emitter::emitCallIndirectRet(Type ty, Value callee, const std::vector<Value> &args)
-{
+Emitter::Value Emitter::emitCallIndirectRet(Type ty, Value callee, const std::vector<Value> &args) {
     return common_.emitCallIndirectRet(ty, callee, args);
 }
 
-void Emitter::emitCallIndirect(Value callee, const std::vector<Value> &args)
-{
+void Emitter::emitCallIndirect(Value callee, const std::vector<Value> &args) {
     common_.emitCallIndirect(callee, args);
 }
 
@@ -306,8 +286,7 @@ void Emitter::emitCallIndirect(Value callee, const std::vector<Value> &args)
 ///
 /// @param globalName Mangled name of the global string literal.
 /// @return SSA value representing the runtime handle.
-Emitter::Value Emitter::emitConstStr(const std::string &globalName)
-{
+Emitter::Value Emitter::emitConstStr(const std::string &globalName) {
     return common_.emitConstStr(globalName);
 }
 
@@ -320,26 +299,20 @@ Emitter::Value Emitter::emitConstStr(const std::string &globalName)
 ///
 /// @param slot Pointer to the stack slot storing the array reference.
 /// @param value New array handle to record.
-void Emitter::storeArray(Value slot, Value value, AstType elementType, bool isObjectArray)
-{
-    if (elementType == AstType::Str)
-    {
+void Emitter::storeArray(Value slot, Value value, AstType elementType, bool isObjectArray) {
+    if (elementType == AstType::Str) {
         // String array: no retain needed (rt_arr_str_alloc returns unretained)
         Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
         lowerer_.requireArrayStrRelease();
         emitCall("rt_arr_str_release", {oldValue, Value::constInt(0)});
         emitStore(Type(Type::Kind::Ptr), slot, value);
-    }
-    else if (isObjectArray)
-    {
+    } else if (isObjectArray) {
         // Object array: allocator returns owned handle; just release previous
         Value oldValue = emitLoad(Type(Type::Kind::Ptr), slot);
         lowerer_.requireArrayObjRelease();
         emitCall("rt_arr_obj_release", {oldValue});
         emitStore(Type(Type::Kind::Ptr), slot, value);
-    }
-    else if (elementType == AstType::F64)
-    {
+    } else if (elementType == AstType::F64) {
         // Float array (SINGLE/DOUBLE): use f64 retain/release
         lowerer_.requireArrayF64Retain();
         emitCall("rt_arr_f64_retain", {value});
@@ -347,9 +320,7 @@ void Emitter::storeArray(Value slot, Value value, AstType elementType, bool isOb
         lowerer_.requireArrayF64Release();
         emitCall("rt_arr_f64_release", {oldValue});
         emitStore(Type(Type::Kind::Ptr), slot, value);
-    }
-    else
-    {
+    } else {
         // Integer/numeric array (all Viper integers are 64-bit)
         lowerer_.requireArrayI64Retain();
         emitCall("rt_arr_i64_retain", {value});
@@ -371,44 +342,32 @@ void Emitter::storeArray(Value slot, Value value, AstType elementType, bool isOb
 bool Emitter::emitArrayRelease(Value handle,
                                const SymbolInfo &info,
                                ArrayReleaseState &state,
-                               bool skipObjectArrays)
-{
-    if (info.type == AstType::Str)
-    {
-        if (!state.requestedStr)
-        {
+                               bool skipObjectArrays) {
+    if (info.type == AstType::Str) {
+        if (!state.requestedStr) {
             lowerer_.requireArrayStrRelease();
             state.requestedStr = true;
         }
         emitCall("rt_arr_str_release", {handle, Value::constInt(0)});
-    }
-    else if (info.isObject)
-    {
+    } else if (info.isObject) {
         // BUG-086 fix: Object arrays don't have array-level reference counting
         // for parameters. Skip release when requested.
         if (skipObjectArrays)
             return false;
-        if (!state.requestedObj)
-        {
+        if (!state.requestedObj) {
             lowerer_.requireArrayObjRelease();
             state.requestedObj = true;
         }
         emitCall("rt_arr_obj_release", {handle});
-    }
-    else if (info.type == AstType::F64)
-    {
-        if (!state.requestedF64)
-        {
+    } else if (info.type == AstType::F64) {
+        if (!state.requestedF64) {
             lowerer_.requireArrayF64Release();
             state.requestedF64 = true;
         }
         emitCall("rt_arr_f64_release", {handle});
-    }
-    else
-    {
+    } else {
         // Integer/numeric array (all Viper integers are 64-bit)
-        if (!state.requestedI64)
-        {
+        if (!state.requestedI64) {
             lowerer_.requireArrayI64Release();
             state.requestedI64 = true;
         }
@@ -417,11 +376,9 @@ bool Emitter::emitArrayRelease(Value handle,
     return true;
 }
 
-void Emitter::releaseArrayLocals(const std::unordered_set<std::string> &paramNames)
-{
+void Emitter::releaseArrayLocals(const std::unordered_set<std::string> &paramNames) {
     ArrayReleaseState state;
-    for (auto &[name, info] : lowerer_.symbols)
-    {
+    for (auto &[name, info] : lowerer_.symbols) {
         if (!info.referenced || !info.slotId || !info.isArray)
             continue;
         if (paramNames.contains(name))
@@ -441,13 +398,11 @@ void Emitter::releaseArrayLocals(const std::unordered_set<std::string> &paramNam
 ///          processed.
 ///
 /// @param paramNames Parameter names that should be released.
-void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNames)
-{
+void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNames) {
     if (paramNames.empty())
         return;
     ArrayReleaseState state;
-    for (auto &[name, info] : lowerer_.symbols)
-    {
+    for (auto &[name, info] : lowerer_.symbols) {
         if (!info.referenced || !info.slotId || !info.isArray)
             continue;
         if (!paramNames.contains(name))
@@ -461,22 +416,19 @@ void Emitter::releaseArrayParams(const std::unordered_set<std::string> &paramNam
     }
 }
 
-void Emitter::deferReleaseStr(Value v)
-{
+void Emitter::deferReleaseStr(Value v) {
     if (v.kind != Value::Kind::Temp)
         return;
     deferredTemps_.push_back(TempRelease{v, /*isString=*/true, {}});
 }
 
-void Emitter::deferReleaseObj(Value v, const std::string &className)
-{
+void Emitter::deferReleaseObj(Value v, const std::string &className) {
     if (v.kind != Value::Kind::Temp)
         return;
     deferredTemps_.push_back(TempRelease{v, /*isString=*/false, className});
 }
 
-void Emitter::releaseDeferredTemps()
-{
+void Emitter::releaseDeferredTemps() {
     if (deferredTemps_.empty())
         return;
 
@@ -485,23 +437,20 @@ void Emitter::releaseDeferredTemps()
     // Clear the deferred temps to prevent them from accumulating, but don't emit.
     auto &ctx = lowerer_.context();
     BasicBlock *current = ctx.current();
-    if (current && current->terminated)
-    {
+    if (current && current->terminated) {
         deferredTemps_.clear();
         return;
     }
 
     // Deduplicate by temporary id so repeated uses do not double release.
     std::unordered_set<unsigned> seen;
-    for (const auto &t : deferredTemps_)
-    {
+    for (const auto &t : deferredTemps_) {
         if (t.v.kind != Value::Kind::Temp)
             continue;
         if (!seen.insert(t.v.id).second)
             continue;
 
-        if (t.isString)
-        {
+        if (t.isString) {
             lowerer_.requireStrReleaseMaybe();
             lowerer_.emitCall("rt_str_release_maybe", {t.v});
             continue;
@@ -522,13 +471,10 @@ void Emitter::releaseDeferredTemps()
         // Create destroy and continue blocks.
         std::string destroyLabel;
         std::string contLabel;
-        if (auto *bn = ctx.blockNames().namer())
-        {
+        if (auto *bn = ctx.blockNames().namer()) {
             destroyLabel = bn->generic("obj_epilogue_dtor");
             contLabel = bn->generic("obj_epilogue_cont");
-        }
-        else
-        {
+        } else {
             destroyLabel = lowerer_.mangler.block("obj_epilogue_dtor");
             contLabel = lowerer_.mangler.block("obj_epilogue_cont");
         }
@@ -545,17 +491,13 @@ void Emitter::releaseDeferredTemps()
         lowerer_.emitCBr(needDtor, destroyBlk, contBlk);
 
         ctx.setCurrent(destroyBlk);
-        if (!t.className.empty())
-        {
+        if (!t.className.empty()) {
             // Call destructor if present in module
             std::string dtor = mangleClassDtor(t.className);
             bool haveDtor = false;
-            if (auto *mod = lowerer_.mod)
-            {
-                for (const auto &f : mod->functions)
-                {
-                    if (f.name == dtor)
-                    {
+            if (auto *mod = lowerer_.mod) {
+                for (const auto &f : mod->functions) {
+                    if (f.name == dtor) {
                         haveDtor = true;
                         break;
                     }
@@ -575,8 +517,7 @@ void Emitter::releaseDeferredTemps()
 /// @brief Clear accumulated deferred temps without emitting releases.
 /// @details Used at procedure entry to prevent leaking cleanup code from
 ///          module-level initialization or prior procedures (BUG-063 fix).
-void Emitter::clearDeferredTemps()
-{
+void Emitter::clearDeferredTemps() {
     deferredTemps_.clear();
 }
 
@@ -589,8 +530,7 @@ void Emitter::clearDeferredTemps()
 ///          @c null back into the slot.
 ///
 /// @param paramNames Names of parameters that remain owned by the caller.
-void Emitter::releaseObjectSlot(SymbolInfo &info)
-{
+void Emitter::releaseObjectSlot(SymbolInfo &info) {
     if (!lowerer_.builder || !info.slotId)
         return;
     auto &ctx = lowerer_.context();
@@ -635,16 +575,12 @@ void Emitter::releaseObjectSlot(SymbolInfo &info)
 
     ctx.setCurrent(destroyBlk);
     lowerer_.curLoc = {};
-    if (!info.objectClass.empty())
-    {
+    if (!info.objectClass.empty()) {
         std::string dtor = mangleClassDtor(info.objectClass);
         bool haveDtor = false;
-        if (lowerer_.mod)
-        {
-            for (const auto &fn : lowerer_.mod->functions)
-            {
-                if (fn.name == dtor)
-                {
+        if (lowerer_.mod) {
+            for (const auto &fn : lowerer_.mod->functions) {
+                if (fn.name == dtor) {
                     haveDtor = true;
                     break;
                 }
@@ -661,10 +597,8 @@ void Emitter::releaseObjectSlot(SymbolInfo &info)
     emitStore(Type(Type::Kind::Ptr), slot, Value::null());
 }
 
-void Emitter::releaseObjectLocals(const std::unordered_set<std::string> &paramNames)
-{
-    for (auto &[name, info] : lowerer_.symbols)
-    {
+void Emitter::releaseObjectLocals(const std::unordered_set<std::string> &paramNames) {
+    for (auto &[name, info] : lowerer_.symbols) {
         if (!info.referenced || !info.isObject)
             continue;
         // BUG-086 fix: Object arrays have isObject=true but should be released
@@ -689,13 +623,11 @@ void Emitter::releaseObjectLocals(const std::unordered_set<std::string> &paramNa
 ///          execution.
 ///
 /// @param paramNames Parameter names eligible for release.
-void Emitter::releaseObjectParams(const std::unordered_set<std::string> &paramNames)
-{
+void Emitter::releaseObjectParams(const std::unordered_set<std::string> &paramNames) {
     if (paramNames.empty())
         return;
 
-    for (auto &[name, info] : lowerer_.symbols)
-    {
+    for (auto &[name, info] : lowerer_.symbols) {
         if (!info.referenced || !info.isObject)
             continue;
         // BUG-086 fix: Object arrays have isObject=true but should be released
@@ -720,8 +652,7 @@ void Emitter::releaseObjectParams(const std::unordered_set<std::string> &paramNa
 /// @details Appends a `trap` opcode and marks the current block as terminated
 ///          so no further instructions are emitted.  Used when lowering runtime
 ///          error paths.
-void Emitter::emitTrap()
-{
+void Emitter::emitTrap() {
     Instr in;
     in.op = Opcode::Trap;
     in.type = Type(Type::Kind::Void);
@@ -739,8 +670,7 @@ void Emitter::emitTrap()
 ///          semantics.
 ///
 /// @param errCode SSA value describing the runtime error token.
-void Emitter::emitTrapFromErr(Value errCode)
-{
+void Emitter::emitTrapFromErr(Value errCode) {
     Instr in;
     in.op = Opcode::TrapFromErr;
     in.type = Type(Type::Kind::I32);
@@ -759,8 +689,7 @@ void Emitter::emitTrapFromErr(Value errCode)
 ///          block.
 ///
 /// @param handler Exception handler block to push.
-void Emitter::emitEhPush(BasicBlock *handler)
-{
+void Emitter::emitEhPush(BasicBlock *handler) {
     assert(handler && "emitEhPush requires a handler block");
     Instr in;
     in.op = Opcode::EhPush;
@@ -776,8 +705,7 @@ void Emitter::emitEhPush(BasicBlock *handler)
 ///
 /// @details Appends an `eh.pop` instruction, leaving block termination unchanged
 ///          because control returns to the caller.
-void Emitter::emitEhPop()
-{
+void Emitter::emitEhPop() {
     Instr in;
     in.op = Opcode::EhPop;
     in.type = Type(Type::Kind::Void);
@@ -792,8 +720,7 @@ void Emitter::emitEhPop()
 /// @details Checks the lowering context to determine whether a handler is
 ///          active.  When present the routine emits @ref emitEhPop so returns do
 ///          not leak handler state.
-void Emitter::emitEhPopForReturn()
-{
+void Emitter::emitEhPopForReturn() {
     if (!lowerer_.context().errorHandlers().active())
         return;
     emitEhPop();
@@ -804,8 +731,7 @@ void Emitter::emitEhPopForReturn()
 /// @details Emits a pop instruction when necessary and resets the handler state
 ///          tracked by @ref Lowerer::ErrorHandlers so subsequent statements do
 ///          not assume a handler remains in effect.
-void Emitter::clearActiveErrorHandler()
-{
+void Emitter::clearActiveErrorHandler() {
     auto &ctx = lowerer_.context();
     if (ctx.errorHandlers().active())
         emitEhPop();
@@ -823,8 +749,7 @@ void Emitter::clearActiveErrorHandler()
 ///
 /// @param targetLine BASIC source line number associated with the handler.
 /// @return Pointer to the handler block ready for use.
-Emitter::BasicBlock *Emitter::ensureErrorHandlerBlock(int targetLine)
-{
+Emitter::BasicBlock *Emitter::ensureErrorHandlerBlock(int targetLine) {
     auto &ctx = lowerer_.context();
     Function *func = ctx.function();
     assert(func && "ensureErrorHandlerBlock requires an active function");
@@ -864,8 +789,7 @@ Emitter::BasicBlock *Emitter::ensureErrorHandlerBlock(int targetLine)
 ///          terminates the block.
 ///
 /// @param v SSA value returned to the caller.
-void Emitter::emitRet(Value v)
-{
+void Emitter::emitRet(Value v) {
     emitEhPopForReturn();
     Instr in;
     in.op = Opcode::Ret;
@@ -883,8 +807,7 @@ void Emitter::emitRet(Value v)
 /// @details Mirrors @ref emitRet but without an operand, ensuring the active
 ///          block terminates cleanly after popping any outstanding error
 ///          handlers.
-void Emitter::emitRetVoid()
-{
+void Emitter::emitRetVoid() {
     emitEhPopForReturn();
     Instr in;
     in.op = Opcode::Ret;

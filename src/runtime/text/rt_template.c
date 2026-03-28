@@ -48,8 +48,7 @@
 extern void rt_trap(const char *msg);
 
 /// @brief Safely cast strlen() result to int, trapping on overflow.
-static int safe_strlen_int(const char *s)
-{
+static int safe_strlen_int(const char *s) {
     size_t n = strlen(s);
     if (n > (size_t)INT_MAX)
         rt_trap("Template: string too long");
@@ -61,29 +60,25 @@ static int safe_strlen_int(const char *s)
 //=============================================================================
 
 /// Skip whitespace and return new position
-static int skip_whitespace(const char *s, int pos, int len)
-{
+static int skip_whitespace(const char *s, int pos, int len) {
     while (pos < len && isspace((unsigned char)s[pos]))
         pos++;
     return pos;
 }
 
 /// Reverse skip whitespace (find end of non-whitespace)
-static int rskip_whitespace(const char *s, int start, int end)
-{
+static int rskip_whitespace(const char *s, int start, int end) {
     while (end > start && isspace((unsigned char)s[end - 1]))
         end--;
     return end;
 }
 
 /// Find substring starting at pos, return position or -1
-static int find_at(const char *text, int text_len, const char *needle, int needle_len, int start)
-{
+static int find_at(const char *text, int text_len, const char *needle, int needle_len, int start) {
     if (needle_len == 0 || start + needle_len > text_len)
         return -1;
 
-    for (int i = start; i <= text_len - needle_len; i++)
-    {
+    for (int i = start; i <= text_len - needle_len; i++) {
         if (memcmp(text + i, needle, needle_len) == 0)
             return i;
     }
@@ -91,14 +86,12 @@ static int find_at(const char *text, int text_len, const char *needle, int needl
 }
 
 /// Parse integer from string, return -1 if not a valid non-negative integer
-static int64_t parse_index(const char *s, int len)
-{
+static int64_t parse_index(const char *s, int len) {
     if (len == 0)
         return -1;
 
     int64_t result = 0;
-    for (int i = 0; i < len; i++)
-    {
+    for (int i = 0; i < len; i++) {
         if (!isdigit((unsigned char)s[i]))
             return -1;
         result = result * 10 + (s[i] - '0');
@@ -114,23 +107,19 @@ static void append_literal_unescaped(rt_string_builder *sb,
                                      const char *prefix,
                                      int prefix_len,
                                      const char *suffix,
-                                     int suffix_len)
-{
+                                     int suffix_len) {
     int i = 0;
-    while (i < len)
-    {
+    while (i < len) {
         if (prefix_len > 0 && i + prefix_len * 2 <= len &&
             memcmp(text + i, prefix, prefix_len) == 0 &&
-            memcmp(text + i + prefix_len, prefix, prefix_len) == 0)
-        {
+            memcmp(text + i + prefix_len, prefix, prefix_len) == 0) {
             rt_sb_append_bytes(sb, prefix, prefix_len);
             i += prefix_len * 2;
             continue;
         }
         if (suffix_len > 0 && i + suffix_len * 2 <= len &&
             memcmp(text + i, suffix, suffix_len) == 0 &&
-            memcmp(text + i + suffix_len, suffix, suffix_len) == 0)
-        {
+            memcmp(text + i + suffix_len, suffix, suffix_len) == 0) {
             rt_sb_append_bytes(sb, suffix, suffix_len);
             i += suffix_len * 2;
             continue;
@@ -153,22 +142,18 @@ static rt_string render_internal(const char *tmpl,
                                  const char *prefix,
                                  int prefix_len,
                                  const char *suffix,
-                                 int suffix_len)
-{
+                                 int suffix_len) {
     // Create string builder for result
     rt_string_builder sb;
     rt_sb_init(&sb);
 
     int pos = 0;
-    while (pos < tmpl_len)
-    {
+    while (pos < tmpl_len) {
         // Find next placeholder start
         int start = find_at(tmpl, tmpl_len, prefix, prefix_len, pos);
-        if (start < 0)
-        {
+        if (start < 0) {
             // No more placeholders, append rest of template
-            if (pos < tmpl_len)
-            {
+            if (pos < tmpl_len) {
                 append_literal_unescaped(
                     &sb, tmpl + pos, tmpl_len - pos, prefix, prefix_len, suffix, suffix_len);
             }
@@ -176,15 +161,13 @@ static rt_string render_internal(const char *tmpl,
         }
 
         // Append text before placeholder
-        if (start > pos)
-        {
+        if (start > pos) {
             append_literal_unescaped(
                 &sb, tmpl + pos, start - pos, prefix, prefix_len, suffix, suffix_len);
         }
 
         if (start + prefix_len * 2 <= tmpl_len &&
-            memcmp(tmpl + start + prefix_len, prefix, prefix_len) == 0)
-        {
+            memcmp(tmpl + start + prefix_len, prefix, prefix_len) == 0) {
             // Escaped prefix - emit literal and skip
             rt_sb_append_bytes(&sb, prefix, prefix_len);
             pos = start + prefix_len * 2;
@@ -195,8 +178,7 @@ static rt_string render_internal(const char *tmpl,
         int key_start = start + prefix_len;
         int end = find_at(tmpl, tmpl_len, suffix, suffix_len, key_start);
 
-        if (end < 0)
-        {
+        if (end < 0) {
             // No closing delimiter, append rest as-is
             append_literal_unescaped(
                 &sb, tmpl + start, tmpl_len - start, prefix, prefix_len, suffix, suffix_len);
@@ -210,8 +192,7 @@ static rt_string render_internal(const char *tmpl,
         int key_len = trimmed_end - trimmed_start;
 
         // Handle empty key - leave as literal
-        if (key_len == 0)
-        {
+        if (key_len == 0) {
             rt_sb_append_bytes(&sb, tmpl + start, end + suffix_len - start);
             pos = end + suffix_len;
             continue;
@@ -221,58 +202,44 @@ static rt_string render_internal(const char *tmpl,
         void *boxed_value = NULL;
         bool found = false;
 
-        if (use_seq)
-        {
+        if (use_seq) {
             // Parse index for Seq lookup
             int64_t idx = parse_index(tmpl + trimmed_start, key_len);
-            if (idx >= 0 && idx < rt_seq_len(values))
-            {
+            if (idx >= 0 && idx < rt_seq_len(values)) {
                 boxed_value = rt_seq_get(values, idx);
                 found = true;
             }
-        }
-        else
-        {
+        } else {
             // Map lookup
             rt_string key = rt_string_from_bytes(tmpl + trimmed_start, key_len);
-            if (rt_map_has(values, key))
-            {
+            if (rt_map_has(values, key)) {
                 boxed_value = rt_map_get(values, key);
                 found = true;
             }
         }
 
-        if (found && boxed_value)
-        {
+        if (found && boxed_value) {
             // Handle both boxed strings and raw rt_string handles
             // Map may store either depending on how Set was called
-            if (rt_string_is_handle(boxed_value))
-            {
+            if (rt_string_is_handle(boxed_value)) {
                 // Raw rt_string pointer (not boxed)
                 rt_string value = (rt_string)boxed_value;
                 const char *val_str = rt_string_cstr(value);
-                if (val_str)
-                {
+                if (val_str) {
                     rt_sb_append_cstr(&sb, val_str);
                 }
-            }
-            else if (rt_box_type(boxed_value) == RT_BOX_STR)
-            {
+            } else if (rt_box_type(boxed_value) == RT_BOX_STR) {
                 // Boxed string - unbox to get the actual string
                 rt_string value = rt_unbox_str(boxed_value);
-                if (value)
-                {
+                if (value) {
                     const char *val_str = rt_string_cstr(value);
-                    if (val_str)
-                    {
+                    if (val_str) {
                         rt_sb_append_cstr(&sb, val_str);
                     }
                     rt_string_unref(value); // Release the retained string from unbox
                 }
             }
-        }
-        else
-        {
+        } else {
             // Key not found, leave placeholder as-is
             rt_sb_append_bytes(&sb, tmpl + start, end + suffix_len - start);
         }
@@ -282,12 +249,9 @@ static rt_string render_internal(const char *tmpl,
 
     // Build result string
     rt_string result;
-    if (sb.len == 0)
-    {
+    if (sb.len == 0) {
         result = rt_const_cstr("");
-    }
-    else
-    {
+    } else {
         result = rt_string_from_bytes(sb.data, sb.len);
     }
     rt_sb_free(&sb);
@@ -298,8 +262,7 @@ static rt_string render_internal(const char *tmpl,
 // Public API
 //=============================================================================
 
-rt_string rt_template_render(rt_string tmpl, void *values)
-{
+rt_string rt_template_render(rt_string tmpl, void *values) {
     if (!tmpl)
         rt_trap("Template.Render: template is null");
     if (!values)
@@ -314,8 +277,7 @@ rt_string rt_template_render(rt_string tmpl, void *values)
     return render_internal(tmpl_str, tmpl_len, values, false, "{{", 2, "}}", 2);
 }
 
-rt_string rt_template_render_seq(rt_string tmpl, void *values)
-{
+rt_string rt_template_render_seq(rt_string tmpl, void *values) {
     if (!tmpl)
         rt_trap("Template.RenderSeq: template is null");
     if (!values)
@@ -330,8 +292,10 @@ rt_string rt_template_render_seq(rt_string tmpl, void *values)
     return render_internal(tmpl_str, tmpl_len, values, true, "{{", 2, "}}", 2);
 }
 
-rt_string rt_template_render_with(rt_string tmpl, void *values, rt_string prefix, rt_string suffix)
-{
+rt_string rt_template_render_with(rt_string tmpl,
+                                  void *values,
+                                  rt_string prefix,
+                                  rt_string suffix) {
     if (!tmpl)
         rt_trap("Template.RenderWith: template is null");
     if (!values)
@@ -366,8 +330,7 @@ rt_string rt_template_render_with(rt_string tmpl, void *values, rt_string prefix
         tmpl_str, tmpl_len, values, false, prefix_str, prefix_len, suffix_str, suffix_len);
 }
 
-int8_t rt_template_has(rt_string tmpl, rt_string key)
-{
+int8_t rt_template_has(rt_string tmpl, rt_string key) {
     if (!tmpl)
         return 0;
     if (!key)
@@ -388,8 +351,7 @@ int8_t rt_template_has(rt_string tmpl, rt_string key)
         return 0;
 
     int pos = 0;
-    while (pos < tmpl_len)
-    {
+    while (pos < tmpl_len) {
         int start = find_at(tmpl_str, tmpl_len, "{{", 2, pos);
         if (start < 0)
             break;
@@ -406,8 +368,7 @@ int8_t rt_template_has(rt_string tmpl, rt_string key)
 
         // Compare with target key
         if (placeholder_key_len == key_len &&
-            memcmp(tmpl_str + trimmed_start, key_str, key_len) == 0)
-        {
+            memcmp(tmpl_str + trimmed_start, key_str, key_len) == 0) {
             return 1;
         }
 
@@ -417,8 +378,7 @@ int8_t rt_template_has(rt_string tmpl, rt_string key)
     return 0;
 }
 
-void *rt_template_keys(rt_string tmpl)
-{
+void *rt_template_keys(rt_string tmpl) {
     void *bag = rt_bag_new();
 
     if (!tmpl)
@@ -431,8 +391,7 @@ void *rt_template_keys(rt_string tmpl)
     int tmpl_len = safe_strlen_int(tmpl_str);
 
     int pos = 0;
-    while (pos < tmpl_len)
-    {
+    while (pos < tmpl_len) {
         int start = find_at(tmpl_str, tmpl_len, "{{", 2, pos);
         if (start < 0)
             break;
@@ -448,8 +407,7 @@ void *rt_template_keys(rt_string tmpl)
         int key_len = trimmed_end - trimmed_start;
 
         // Add non-empty keys to bag
-        if (key_len > 0)
-        {
+        if (key_len > 0) {
             rt_string key = rt_string_from_bytes(tmpl_str + trimmed_start, key_len);
             rt_bag_add(bag, key);
         }
@@ -460,8 +418,7 @@ void *rt_template_keys(rt_string tmpl)
     return bag;
 }
 
-rt_string rt_template_escape(rt_string text)
-{
+rt_string rt_template_escape(rt_string text) {
     if (!text)
         return rt_const_cstr("");
 
@@ -473,11 +430,9 @@ rt_string rt_template_escape(rt_string text)
 
     // Count {{ and }} occurrences
     int escape_count = 0;
-    for (int i = 0; i < txt_len - 1; i++)
-    {
+    for (int i = 0; i < txt_len - 1; i++) {
         if ((txt_str[i] == '{' && txt_str[i + 1] == '{') ||
-            (txt_str[i] == '}' && txt_str[i + 1] == '}'))
-        {
+            (txt_str[i] == '}' && txt_str[i + 1] == '}')) {
             escape_count++;
             i++; // Skip second char of pair
         }
@@ -493,12 +448,9 @@ rt_string rt_template_escape(rt_string text)
         rt_trap("Template.Escape: out of memory");
 
     int j = 0;
-    for (int i = 0; i < txt_len; i++)
-    {
-        if (i < txt_len - 1)
-        {
-            if (txt_str[i] == '{' && txt_str[i + 1] == '{')
-            {
+    for (int i = 0; i < txt_len; i++) {
+        if (i < txt_len - 1) {
+            if (txt_str[i] == '{' && txt_str[i + 1] == '{') {
                 // Escape {{ as {{{{
                 result[j++] = '{';
                 result[j++] = '{';
@@ -507,8 +459,7 @@ rt_string rt_template_escape(rt_string text)
                 i++; // Skip second {
                 continue;
             }
-            if (txt_str[i] == '}' && txt_str[i + 1] == '}')
-            {
+            if (txt_str[i] == '}' && txt_str[i + 1] == '}') {
                 // Escape }} as }}}}
                 result[j++] = '}';
                 result[j++] = '}';

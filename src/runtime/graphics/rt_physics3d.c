@@ -48,8 +48,7 @@ extern double rt_vec3_z(void *v);
  * Body3D
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     double position[3];
     double velocity[3];
@@ -70,16 +69,14 @@ typedef struct
     double ground_normal[3];
 } rt_body3d;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     double gravity[3];
     rt_body3d *bodies[PH3D_MAX_BODIES];
     int32_t body_count;
 } rt_world3d;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     rt_body3d *body;
     rt_world3d *world;
@@ -93,27 +90,22 @@ typedef struct
  * Collision detection helpers
  *=========================================================================*/
 
-static void body_aabb(const rt_body3d *b, double *mn, double *mx)
-{
-    if (b->shape == PH3D_SHAPE_AABB)
-    {
+static void body_aabb(const rt_body3d *b, double *mn, double *mx) {
+    if (b->shape == PH3D_SHAPE_AABB) {
         mn[0] = b->position[0] - b->half_extents[0];
         mn[1] = b->position[1] - b->half_extents[1];
         mn[2] = b->position[2] - b->half_extents[2];
         mx[0] = b->position[0] + b->half_extents[0];
         mx[1] = b->position[1] + b->half_extents[1];
         mx[2] = b->position[2] + b->half_extents[2];
-    }
-    else if (b->shape == PH3D_SHAPE_SPHERE)
-    {
+    } else if (b->shape == PH3D_SHAPE_SPHERE) {
         mn[0] = b->position[0] - b->radius;
         mn[1] = b->position[1] - b->radius;
         mn[2] = b->position[2] - b->radius;
         mx[0] = b->position[0] + b->radius;
         mx[1] = b->position[1] + b->radius;
         mx[2] = b->position[2] + b->radius;
-    }
-    else /* capsule */
+    } else /* capsule */
     {
         double hh = b->height * 0.5;
         mn[0] = b->position[0] - b->radius;
@@ -127,8 +119,7 @@ static void body_aabb(const rt_body3d *b, double *mn, double *mx)
 
 /// @brief Test collision between two bodies. Returns 1 if colliding.
 /// Sets normal (A→B push direction) and depth.
-static int test_collision(const rt_body3d *a, const rt_body3d *b, double *normal, double *depth)
-{
+static int test_collision(const rt_body3d *a, const rt_body3d *b, double *normal, double *depth) {
     /* Broad phase: AABB overlap test */
     double amn[3], amx[3], bmn[3], bmx[3];
     body_aabb(a, amn, amx);
@@ -149,18 +140,13 @@ static int test_collision(const rt_body3d *a, const rt_body3d *b, double *normal
      * Normal points from A toward B — matches impulse formula convention
      * where a.vel -= j*n pushes A away from B. */
     normal[0] = normal[1] = normal[2] = 0;
-    if (ox <= oy && ox <= oz)
-    {
+    if (ox <= oy && ox <= oz) {
         *depth = ox;
         normal[0] = (a->position[0] < b->position[0]) ? 1.0 : -1.0;
-    }
-    else if (oy <= oz)
-    {
+    } else if (oy <= oz) {
         *depth = oy;
         normal[1] = (a->position[1] < b->position[1]) ? 1.0 : -1.0;
-    }
-    else
-    {
+    } else {
         *depth = oz;
         normal[2] = (a->position[2] < b->position[2]) ? 1.0 : -1.0;
     }
@@ -168,8 +154,7 @@ static int test_collision(const rt_body3d *a, const rt_body3d *b, double *normal
 }
 
 /// @brief Apply impulse-based collision response between two bodies.
-static void resolve_collision(rt_body3d *a, rt_body3d *b, const double *n, double depth)
-{
+static void resolve_collision(rt_body3d *a, rt_body3d *b, const double *n, double depth) {
     double rv = (b->velocity[0] - a->velocity[0]) * n[0] +
                 (b->velocity[1] - a->velocity[1]) * n[1] + (b->velocity[2] - a->velocity[2]) * n[2];
     if (rv > 0)
@@ -200,8 +185,7 @@ static void resolve_collision(rt_body3d *a, rt_body3d *b, const double *n, doubl
         double ty = rvy - rv_n * n[1];
         double tz = rvz - rv_n * n[2];
         double tlen = sqrt(tx * tx + ty * ty + tz * tz);
-        if (tlen > 1e-8)
-        {
+        if (tlen > 1e-8) {
             tx /= tlen;
             ty /= tlen;
             tz /= tlen;
@@ -232,16 +216,13 @@ static void resolve_collision(rt_body3d *a, rt_body3d *b, const double *n, doubl
  * World3D
  *=========================================================================*/
 
-static void world3d_finalizer(void *obj)
-{
+static void world3d_finalizer(void *obj) {
     (void)obj; /* bodies are GC-managed */
 }
 
-void *rt_world3d_new(double gx, double gy, double gz)
-{
+void *rt_world3d_new(double gx, double gy, double gz) {
     rt_world3d *w = (rt_world3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_world3d));
-    if (!w)
-    {
+    if (!w) {
         rt_trap("Physics3D.World.New: allocation failed");
         return NULL;
     }
@@ -255,15 +236,13 @@ void *rt_world3d_new(double gx, double gy, double gz)
     return w;
 }
 
-void rt_world3d_step(void *obj, double dt)
-{
+void rt_world3d_step(void *obj, double dt) {
     if (!obj || dt <= 0)
         return;
     rt_world3d *w = (rt_world3d *)obj;
 
     /* Phase 1: Integration (symplectic Euler) */
-    for (int32_t i = 0; i < w->body_count; i++)
-    {
+    for (int32_t i = 0; i < w->body_count; i++) {
         rt_body3d *b = w->bodies[i];
         if (!b || b->is_static || b->inv_mass == 0)
             continue;
@@ -281,10 +260,8 @@ void rt_world3d_step(void *obj, double dt)
     }
 
     /* Phase 2: Collision detection + response */
-    for (int32_t i = 0; i < w->body_count; i++)
-    {
-        for (int32_t j = i + 1; j < w->body_count; j++)
-        {
+    for (int32_t i = 0; i < w->body_count; i++) {
+        for (int32_t j = i + 1; j < w->body_count; j++) {
             rt_body3d *a = w->bodies[i], *b = w->bodies[j];
             if (!a || !b)
                 continue;
@@ -310,15 +287,12 @@ void rt_world3d_step(void *obj, double dt)
             /* Ground detection: normal points A→B.
              * n[1] > 0.7: A→B is upward → B rests on A → B is grounded.
              * n[1] < -0.7: A→B is downward → A rests on B → A is grounded. */
-            if (normal[1] > 0.7)
-            {
+            if (normal[1] > 0.7) {
                 b->is_grounded = 1;
                 b->ground_normal[0] = normal[0];
                 b->ground_normal[1] = normal[1];
                 b->ground_normal[2] = normal[2];
-            }
-            else if (normal[1] < -0.7)
-            {
+            } else if (normal[1] < -0.7) {
                 a->is_grounded = 1;
                 a->ground_normal[0] = -normal[0];
                 a->ground_normal[1] = -normal[1];
@@ -328,28 +302,23 @@ void rt_world3d_step(void *obj, double dt)
     }
 }
 
-void rt_world3d_add(void *obj, void *body)
-{
+void rt_world3d_add(void *obj, void *body) {
     if (!obj || !body)
         return;
     rt_world3d *w = (rt_world3d *)obj;
-    if (w->body_count >= PH3D_MAX_BODIES)
-    {
+    if (w->body_count >= PH3D_MAX_BODIES) {
         rt_trap("Physics3D: max body limit (256) exceeded");
         return;
     }
     w->bodies[w->body_count++] = (rt_body3d *)body;
 }
 
-void rt_world3d_remove(void *obj, void *body)
-{
+void rt_world3d_remove(void *obj, void *body) {
     if (!obj || !body)
         return;
     rt_world3d *w = (rt_world3d *)obj;
-    for (int32_t i = 0; i < w->body_count; i++)
-    {
-        if (w->bodies[i] == body)
-        {
+    for (int32_t i = 0; i < w->body_count; i++) {
+        if (w->bodies[i] == body) {
             w->bodies[i] = w->bodies[--w->body_count];
             w->bodies[w->body_count] = NULL;
             return;
@@ -357,13 +326,11 @@ void rt_world3d_remove(void *obj, void *body)
     }
 }
 
-int64_t rt_world3d_body_count(void *obj)
-{
+int64_t rt_world3d_body_count(void *obj) {
     return obj ? ((rt_world3d *)obj)->body_count : 0;
 }
 
-void rt_world3d_set_gravity(void *obj, double gx, double gy, double gz)
-{
+void rt_world3d_set_gravity(void *obj, double gx, double gy, double gz) {
     if (!obj)
         return;
     rt_world3d *w = (rt_world3d *)obj;
@@ -376,16 +343,13 @@ void rt_world3d_set_gravity(void *obj, double gx, double gy, double gz)
  * Body3D
  *=========================================================================*/
 
-static void body3d_finalizer(void *obj)
-{
+static void body3d_finalizer(void *obj) {
     (void)obj;
 }
 
-static void *make_body(int32_t shape, double mass)
-{
+static void *make_body(int32_t shape, double mass) {
     rt_body3d *b = (rt_body3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_body3d));
-    if (!b)
-    {
+    if (!b) {
         rt_trap("Physics3D.Body.New: allocation failed");
         return NULL;
     }
@@ -402,11 +366,9 @@ static void *make_body(int32_t shape, double mass)
     return b;
 }
 
-void *rt_body3d_new_aabb(double hx, double hy, double hz, double mass)
-{
+void *rt_body3d_new_aabb(double hx, double hy, double hz, double mass) {
     rt_body3d *b = (rt_body3d *)make_body(PH3D_SHAPE_AABB, mass);
-    if (b)
-    {
+    if (b) {
         b->half_extents[0] = hx;
         b->half_extents[1] = hy;
         b->half_extents[2] = hz;
@@ -414,29 +376,24 @@ void *rt_body3d_new_aabb(double hx, double hy, double hz, double mass)
     return b;
 }
 
-void *rt_body3d_new_sphere(double radius, double mass)
-{
+void *rt_body3d_new_sphere(double radius, double mass) {
     rt_body3d *b = (rt_body3d *)make_body(PH3D_SHAPE_SPHERE, mass);
     if (b)
         b->radius = radius;
     return b;
 }
 
-void *rt_body3d_new_capsule(double radius, double height, double mass)
-{
+void *rt_body3d_new_capsule(double radius, double height, double mass) {
     rt_body3d *b = (rt_body3d *)make_body(PH3D_SHAPE_CAPSULE, mass);
-    if (b)
-    {
+    if (b) {
         b->radius = radius;
         b->height = height;
     }
     return b;
 }
 
-void rt_body3d_set_position(void *o, double x, double y, double z)
-{
-    if (o)
-    {
+void rt_body3d_set_position(void *o, double x, double y, double z) {
+    if (o) {
         rt_body3d *b = (rt_body3d *)o;
         b->position[0] = x;
         b->position[1] = y;
@@ -444,18 +401,15 @@ void rt_body3d_set_position(void *o, double x, double y, double z)
     }
 }
 
-void *rt_body3d_get_position(void *o)
-{
+void *rt_body3d_get_position(void *o) {
     if (!o)
         return rt_vec3_new(0, 0, 0);
     rt_body3d *b = (rt_body3d *)o;
     return rt_vec3_new(b->position[0], b->position[1], b->position[2]);
 }
 
-void rt_body3d_set_velocity(void *o, double x, double y, double z)
-{
-    if (o)
-    {
+void rt_body3d_set_velocity(void *o, double x, double y, double z) {
+    if (o) {
         rt_body3d *b = (rt_body3d *)o;
         b->velocity[0] = x;
         b->velocity[1] = y;
@@ -463,18 +417,15 @@ void rt_body3d_set_velocity(void *o, double x, double y, double z)
     }
 }
 
-void *rt_body3d_get_velocity(void *o)
-{
+void *rt_body3d_get_velocity(void *o) {
     if (!o)
         return rt_vec3_new(0, 0, 0);
     rt_body3d *b = (rt_body3d *)o;
     return rt_vec3_new(b->velocity[0], b->velocity[1], b->velocity[2]);
 }
 
-void rt_body3d_apply_force(void *o, double fx, double fy, double fz)
-{
-    if (o)
-    {
+void rt_body3d_apply_force(void *o, double fx, double fy, double fz) {
+    if (o) {
         rt_body3d *b = (rt_body3d *)o;
         b->force[0] += fx;
         b->force[1] += fy;
@@ -482,10 +433,8 @@ void rt_body3d_apply_force(void *o, double fx, double fy, double fz)
     }
 }
 
-void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz)
-{
-    if (o)
-    {
+void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz) {
+    if (o) {
         rt_body3d *b = (rt_body3d *)o;
         b->velocity[0] += ix * b->inv_mass;
         b->velocity[1] += iy * b->inv_mass;
@@ -493,54 +442,44 @@ void rt_body3d_apply_impulse(void *o, double ix, double iy, double iz)
     }
 }
 
-void rt_body3d_set_restitution(void *o, double r)
-{
+void rt_body3d_set_restitution(void *o, double r) {
     if (o)
         ((rt_body3d *)o)->restitution = r;
 }
 
-double rt_body3d_get_restitution(void *o)
-{
+double rt_body3d_get_restitution(void *o) {
     return o ? ((rt_body3d *)o)->restitution : 0;
 }
 
-void rt_body3d_set_friction(void *o, double f)
-{
+void rt_body3d_set_friction(void *o, double f) {
     if (o)
         ((rt_body3d *)o)->friction = f;
 }
 
-double rt_body3d_get_friction(void *o)
-{
+double rt_body3d_get_friction(void *o) {
     return o ? ((rt_body3d *)o)->friction : 0;
 }
 
-void rt_body3d_set_collision_layer(void *o, int64_t l)
-{
+void rt_body3d_set_collision_layer(void *o, int64_t l) {
     if (o)
         ((rt_body3d *)o)->collision_layer = l;
 }
 
-int64_t rt_body3d_get_collision_layer(void *o)
-{
+int64_t rt_body3d_get_collision_layer(void *o) {
     return o ? ((rt_body3d *)o)->collision_layer : 0;
 }
 
-void rt_body3d_set_collision_mask(void *o, int64_t m)
-{
+void rt_body3d_set_collision_mask(void *o, int64_t m) {
     if (o)
         ((rt_body3d *)o)->collision_mask = m;
 }
 
-int64_t rt_body3d_get_collision_mask(void *o)
-{
+int64_t rt_body3d_get_collision_mask(void *o) {
     return o ? ((rt_body3d *)o)->collision_mask : 0;
 }
 
-void rt_body3d_set_static(void *o, int8_t s)
-{
-    if (o)
-    {
+void rt_body3d_set_static(void *o, int8_t s) {
+    if (o) {
         rt_body3d *b = (rt_body3d *)o;
         b->is_static = s;
         if (s)
@@ -550,37 +489,31 @@ void rt_body3d_set_static(void *o, int8_t s)
     }
 }
 
-int8_t rt_body3d_is_static(void *o)
-{
+int8_t rt_body3d_is_static(void *o) {
     return o ? ((rt_body3d *)o)->is_static : 0;
 }
 
-void rt_body3d_set_trigger(void *o, int8_t t)
-{
+void rt_body3d_set_trigger(void *o, int8_t t) {
     if (o)
         ((rt_body3d *)o)->is_trigger = t;
 }
 
-int8_t rt_body3d_is_trigger(void *o)
-{
+int8_t rt_body3d_is_trigger(void *o) {
     return o ? ((rt_body3d *)o)->is_trigger : 0;
 }
 
-int8_t rt_body3d_is_grounded(void *o)
-{
+int8_t rt_body3d_is_grounded(void *o) {
     return o ? ((rt_body3d *)o)->is_grounded : 0;
 }
 
-void *rt_body3d_get_ground_normal(void *o)
-{
+void *rt_body3d_get_ground_normal(void *o) {
     if (!o)
         return rt_vec3_new(0, 1, 0);
     rt_body3d *b = (rt_body3d *)o;
     return rt_vec3_new(b->ground_normal[0], b->ground_normal[1], b->ground_normal[2]);
 }
 
-double rt_body3d_get_mass(void *o)
-{
+double rt_body3d_get_mass(void *o) {
     return o ? ((rt_body3d *)o)->mass : 0;
 }
 
@@ -588,16 +521,13 @@ double rt_body3d_get_mass(void *o)
  * Character Controller
  *=========================================================================*/
 
-static void character3d_finalizer(void *obj)
-{
+static void character3d_finalizer(void *obj) {
     (void)obj;
 }
 
-void *rt_character3d_new(double radius, double height, double mass)
-{
+void *rt_character3d_new(double radius, double height, double mass) {
     rt_character3d *c = (rt_character3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_character3d));
-    if (!c)
-    {
+    if (!c) {
         rt_trap("Physics3D.Character.New: allocation failed");
         return NULL;
     }
@@ -612,8 +542,7 @@ void *rt_character3d_new(double radius, double height, double mass)
     return c;
 }
 
-void rt_character3d_move(void *obj, void *velocity_vec, double dt)
-{
+void rt_character3d_move(void *obj, void *velocity_vec, double dt) {
     if (!obj || !velocity_vec || dt <= 0)
         return;
     rt_character3d *ctrl = (rt_character3d *)obj;
@@ -634,45 +563,38 @@ void rt_character3d_move(void *obj, void *velocity_vec, double dt)
     ctrl->is_grounded = body->is_grounded;
 }
 
-void rt_character3d_set_step_height(void *o, double h)
-{
+void rt_character3d_set_step_height(void *o, double h) {
     if (o)
         ((rt_character3d *)o)->step_height = h;
 }
 
-double rt_character3d_get_step_height(void *o)
-{
+double rt_character3d_get_step_height(void *o) {
     return o ? ((rt_character3d *)o)->step_height : 0.3;
 }
 
-void rt_character3d_set_slope_limit(void *o, double degrees)
-{
+void rt_character3d_set_slope_limit(void *o, double degrees) {
     if (o)
         ((rt_character3d *)o)->slope_limit_cos = cos(degrees * 3.14159265358979323846 / 180.0);
 }
 
-int8_t rt_character3d_is_grounded(void *o)
-{
+int8_t rt_character3d_is_grounded(void *o) {
     return o ? ((rt_character3d *)o)->is_grounded : 0;
 }
 
-int8_t rt_character3d_just_landed(void *o)
-{
+int8_t rt_character3d_just_landed(void *o) {
     if (!o)
         return 0;
     rt_character3d *c = (rt_character3d *)o;
     return c->is_grounded && !c->was_grounded;
 }
 
-void *rt_character3d_get_position(void *o)
-{
+void *rt_character3d_get_position(void *o) {
     if (!o)
         return rt_vec3_new(0, 0, 0);
     return rt_body3d_get_position(((rt_character3d *)o)->body);
 }
 
-void rt_character3d_set_position(void *o, double x, double y, double z)
-{
+void rt_character3d_set_position(void *o, double x, double y, double z) {
     if (o)
         rt_body3d_set_position(((rt_character3d *)o)->body, x, y, z);
 }
@@ -683,8 +605,7 @@ void rt_character3d_set_position(void *o, double x, double y, double z)
 
 #define TRG3D_MAX_TRACKED 64
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     double bounds_min[3];
     double bounds_max[3];
@@ -696,16 +617,13 @@ typedef struct
     int32_t exit_count;
 } rt_trigger3d;
 
-static void trigger3d_finalizer(void *obj)
-{
+static void trigger3d_finalizer(void *obj) {
     (void)obj;
 }
 
-void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, double z1)
-{
+void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, double z1) {
     rt_trigger3d *t = (rt_trigger3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_trigger3d));
-    if (!t)
-    {
+    if (!t) {
         rt_trap("Trigger3D.New: allocation failed");
         return NULL;
     }
@@ -721,8 +639,7 @@ void *rt_trigger3d_new(double x0, double y0, double z0, double x1, double y1, do
 }
 
 /// @brief Test if a Vec3 point is inside the trigger AABB.
-int8_t rt_trigger3d_contains(void *obj, void *point)
-{
+int8_t rt_trigger3d_contains(void *obj, void *point) {
     if (!obj || !point)
         return 0;
     rt_trigger3d *t = (rt_trigger3d *)obj;
@@ -734,8 +651,7 @@ int8_t rt_trigger3d_contains(void *obj, void *point)
 }
 
 /// @brief Find or insert a body in the tracked list. Returns index or -1 if full.
-static int32_t trigger3d_find_or_add(rt_trigger3d *t, void *body)
-{
+static int32_t trigger3d_find_or_add(rt_trigger3d *t, void *body) {
     for (int32_t i = 0; i < t->tracked_count; i++)
         if (t->tracked_bodies[i] == body)
             return i;
@@ -750,16 +666,14 @@ static int32_t trigger3d_find_or_add(rt_trigger3d *t, void *body)
 
 /// @brief Check all bodies in a Physics3D world against this trigger.
 /// Computes enter/exit counts by comparing current vs. previous frame.
-void rt_trigger3d_update(void *obj, void *world_obj)
-{
+void rt_trigger3d_update(void *obj, void *world_obj) {
     if (!obj || !world_obj)
         return;
     rt_trigger3d *t = (rt_trigger3d *)obj;
     rt_world3d *w = (rt_world3d *)world_obj;
 
     /* Swap current → previous */
-    for (int32_t i = 0; i < t->tracked_count; i++)
-    {
+    for (int32_t i = 0; i < t->tracked_count; i++) {
         t->was_inside[i] = t->is_inside[i];
         t->is_inside[i] = 0;
     }
@@ -767,8 +681,7 @@ void rt_trigger3d_update(void *obj, void *world_obj)
     t->exit_count = 0;
 
     /* Test every body in the world */
-    for (int32_t i = 0; i < w->body_count; i++)
-    {
+    for (int32_t i = 0; i < w->body_count; i++) {
         rt_body3d *b = w->bodies[i];
         if (!b)
             continue;
@@ -792,19 +705,16 @@ void rt_trigger3d_update(void *obj, void *world_obj)
     }
 }
 
-int64_t rt_trigger3d_get_enter_count(void *obj)
-{
+int64_t rt_trigger3d_get_enter_count(void *obj) {
     return obj ? ((rt_trigger3d *)obj)->enter_count : 0;
 }
 
-int64_t rt_trigger3d_get_exit_count(void *obj)
-{
+int64_t rt_trigger3d_get_exit_count(void *obj) {
     return obj ? ((rt_trigger3d *)obj)->exit_count : 0;
 }
 
 void rt_trigger3d_set_bounds(
-    void *obj, double x0, double y0, double z0, double x1, double y1, double z1)
-{
+    void *obj, double x0, double y0, double z0, double x1, double y1, double z1) {
     if (!obj)
         return;
     rt_trigger3d *t = (rt_trigger3d *)obj;

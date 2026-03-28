@@ -26,53 +26,52 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    //=========================================================================
-    // YAML Parsing
-    //=========================================================================
+//=========================================================================
+// YAML Parsing
+//=========================================================================
 
-    /// @brief Parse YAML string into a Viper value.
-    /// @param text YAML text to parse.
-    /// @return Parsed value: Map (mapping), Seq (sequence), String, or boxed number/bool/null.
-    /// @note Traps on invalid YAML with descriptive error message.
-    void *rt_yaml_parse(rt_string text);
+/// @brief Parse YAML string into a Viper value.
+/// @param text YAML text to parse.
+/// @return Parsed value: Map (mapping), Seq (sequence), String, or boxed number/bool/null.
+/// @note Traps on invalid YAML with descriptive error message.
+void *rt_yaml_parse(rt_string text);
 
-    /// @brief Get the last parse error message.
-    /// @return Error message string, or empty string if no error.
-    rt_string rt_yaml_error(void);
+/// @brief Get the last parse error message.
+/// @return Error message string, or empty string if no error.
+rt_string rt_yaml_error(void);
 
-    /// @brief Check if a string contains valid YAML.
-    /// @param text String to validate.
-    /// @return 1 if valid YAML, 0 otherwise.
-    int8_t rt_yaml_is_valid(rt_string text);
+/// @brief Check if a string contains valid YAML.
+/// @param text String to validate.
+/// @return 1 if valid YAML, 0 otherwise.
+int8_t rt_yaml_is_valid(rt_string text);
 
-    //=========================================================================
-    // YAML Formatting
-    //=========================================================================
+//=========================================================================
+// YAML Formatting
+//=========================================================================
 
-    /// @brief Format a Viper value as YAML.
-    /// @param obj Value to format (Map, Seq, String, boxed number/bool, or null).
-    /// @return Newly allocated YAML string.
-    rt_string rt_yaml_format(void *obj);
+/// @brief Format a Viper value as YAML.
+/// @param obj Value to format (Map, Seq, String, boxed number/bool, or null).
+/// @return Newly allocated YAML string.
+rt_string rt_yaml_format(void *obj);
 
-    /// @brief Format a Viper value as YAML with custom indentation.
-    /// @param obj Value to format.
-    /// @param indent Number of spaces per indentation level (typically 2).
-    /// @return Newly allocated YAML string.
-    rt_string rt_yaml_format_indent(void *obj, int64_t indent);
+/// @brief Format a Viper value as YAML with custom indentation.
+/// @param obj Value to format.
+/// @param indent Number of spaces per indentation level (typically 2).
+/// @return Newly allocated YAML string.
+rt_string rt_yaml_format_indent(void *obj, int64_t indent);
 
-    //=========================================================================
-    // Type Inspection
-    //=========================================================================
+//=========================================================================
+// Type Inspection
+//=========================================================================
 
-    /// @brief Get the YAML type of a parsed value.
-    /// @param obj Parsed YAML value.
-    /// @return String describing the type: "null", "bool", "int", "float", "string", "sequence",
-    /// "mapping".
-    rt_string rt_yaml_type_of(void *obj);
+/// @brief Get the YAML type of a parsed value.
+/// @param obj Parsed YAML value.
+/// @return String describing the type: "null", "bool", "int", "float", "string", "sequence",
+/// "mapping".
+rt_string rt_yaml_type_of(void *obj);
 
 #ifdef __cplusplus
 }

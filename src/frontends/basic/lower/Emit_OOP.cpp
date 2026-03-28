@@ -33,8 +33,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Release object-typed locals that go out of scope at the current point
 ///        in lowering.
@@ -45,8 +44,7 @@ namespace il::frontends::basic
 ///          while hiding the emitter type from most translation units.
 ///
 /// @param paramNames Set of local names that require release operations.
-void Lowerer::releaseObjectLocals(const std::unordered_set<std::string> &paramNames)
-{
+void Lowerer::releaseObjectLocals(const std::unordered_set<std::string> &paramNames) {
     emitter().releaseObjectLocals(paramNames);
 }
 
@@ -58,8 +56,7 @@ void Lowerer::releaseObjectLocals(const std::unordered_set<std::string> &paramNa
 ///          the caller and may have distinct lifetime guarantees.
 ///
 /// @param paramNames Parameter identifiers that should be released.
-void Lowerer::releaseObjectParams(const std::unordered_set<std::string> &paramNames)
-{
+void Lowerer::releaseObjectParams(const std::unordered_set<std::string> &paramNames) {
     emitter().releaseObjectParams(paramNames);
 }
 

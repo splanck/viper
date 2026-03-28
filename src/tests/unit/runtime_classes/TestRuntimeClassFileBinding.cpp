@@ -51,8 +51,7 @@
 /// methods to their canonical extern names. Each method is looked up by
 /// class name, method name, and arity, then the target is verified.
 ///
-TEST(RuntimeClassFileBinding, MethodIndexTargets)
-{
+TEST(RuntimeClassFileBinding, MethodIndexTargets) {
     // Initialize the method index (now delegates to RuntimeRegistry)
     il::frontends::basic::runtimeMethodIndex().seed();
     auto &midx = il::frontends::basic::runtimeMethodIndex();
@@ -79,8 +78,7 @@ TEST(RuntimeClassFileBinding, MethodIndexTargets)
 }
 
 /// @brief Test entry point.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

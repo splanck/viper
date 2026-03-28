@@ -27,21 +27,17 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::aarch64
-{
-namespace
-{
+namespace viper::codegen::aarch64 {
+namespace {
 
 /// @brief Represents a half-open live interval [start, end) for a virtual register.
-struct LiveInterval
-{
+struct LiveInterval {
     unsigned start{0};
     unsigned end{0};
 };
 
 /// @brief Candidate move instruction eligible for coalescing.
-struct CoalesceCandidate
-{
+struct CoalesceCandidate {
     std::size_t blockIdx; ///< Block containing the move.
     std::size_t instrIdx; ///< Index within the block's instruction list.
     uint16_t dstVReg;     ///< Destination virtual register ID.
@@ -52,8 +48,7 @@ struct CoalesceCandidate
 /// @brief Check if an opcode is a virtual-to-virtual register move.
 /// @param opc The machine opcode.
 /// @return True for MovRR or FMovRR.
-static bool isMoveRR(MOpcode opc)
-{
+static bool isMoveRR(MOpcode opc) {
     return opc == MOpcode::MovRR || opc == MOpcode::FMovRR;
 }
 
@@ -65,16 +60,13 @@ static bool isMoveRR(MOpcode opc)
 /// @param fn The machine function.
 /// @return Map from (blockIdx, instrIdx) encoded as a single key to global index.
 static unsigned linearizeFunction(const MFunction &fn,
-                                  std::vector<std::vector<unsigned>> &instrIndex)
-{
+                                  std::vector<std::vector<unsigned>> &instrIndex) {
     instrIndex.clear();
     instrIndex.resize(fn.blocks.size());
     unsigned idx = 0;
-    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi)
-    {
+    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
         instrIndex[bi].resize(fn.blocks[bi].instrs.size());
-        for (std::size_t ii = 0; ii < fn.blocks[bi].instrs.size(); ++ii)
-        {
+        for (std::size_t ii = 0; ii < fn.blocks[bi].instrs.size(); ++ii) {
             instrIndex[bi][ii] = idx++;
         }
     }
@@ -97,20 +89,16 @@ static std::unordered_map<uint16_t, LiveInterval> computeLiveIntervals(
     const MFunction &fn,
     const std::vector<std::vector<unsigned>> &instrIndex,
     unsigned totalInstrs,
-    RegClass cls)
-{
+    RegClass cls) {
     (void)totalInstrs;
     std::unordered_map<uint16_t, LiveInterval> intervals;
 
-    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi)
-    {
-        for (std::size_t ii = 0; ii < fn.blocks[bi].instrs.size(); ++ii)
-        {
+    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
+        for (std::size_t ii = 0; ii < fn.blocks[bi].instrs.size(); ++ii) {
             const auto &mi = fn.blocks[bi].instrs[ii];
             const unsigned pos = instrIndex[bi][ii];
 
-            for (const auto &op : mi.ops)
-            {
+            for (const auto &op : mi.ops) {
                 if (op.kind != MOperand::Kind::Reg)
                     continue;
                 if (op.reg.isPhys)
@@ -120,12 +108,9 @@ static std::unordered_map<uint16_t, LiveInterval> computeLiveIntervals(
 
                 const uint16_t vreg = op.reg.idOrPhys;
                 auto it = intervals.find(vreg);
-                if (it == intervals.end())
-                {
+                if (it == intervals.end()) {
                     intervals[vreg] = LiveInterval{pos, pos + 1};
-                }
-                else
-                {
+                } else {
                     if (pos < it->second.start)
                         it->second.start = pos;
                     if (pos + 1 > it->second.end)
@@ -139,23 +124,17 @@ static std::unordered_map<uint16_t, LiveInterval> computeLiveIntervals(
 }
 
 /// @brief Check if two live intervals overlap.
-static bool interferes(const LiveInterval &a, const LiveInterval &b)
-{
+static bool interferes(const LiveInterval &a, const LiveInterval &b) {
     return a.start < b.end && b.start < a.end;
 }
 
 /// @brief Rewrite all references to oldVReg as newVReg throughout the function.
-static void rewriteVReg(MFunction &fn, RegClass cls, uint16_t oldVReg, uint16_t newVReg)
-{
-    for (auto &bb : fn.blocks)
-    {
-        for (auto &mi : bb.instrs)
-        {
-            for (auto &op : mi.ops)
-            {
+static void rewriteVReg(MFunction &fn, RegClass cls, uint16_t oldVReg, uint16_t newVReg) {
+    for (auto &bb : fn.blocks) {
+        for (auto &mi : bb.instrs) {
+            for (auto &op : mi.ops) {
                 if (op.kind == MOperand::Kind::Reg && !op.reg.isPhys && op.reg.cls == cls &&
-                    op.reg.idOrPhys == oldVReg)
-                {
+                    op.reg.idOrPhys == oldVReg) {
                     op.reg.idOrPhys = newVReg;
                 }
             }
@@ -164,14 +143,11 @@ static void rewriteVReg(MFunction &fn, RegClass cls, uint16_t oldVReg, uint16_t 
 }
 
 /// @brief Collect candidate move instructions for coalescing.
-static std::vector<CoalesceCandidate> collectCandidates(const MFunction &fn)
-{
+static std::vector<CoalesceCandidate> collectCandidates(const MFunction &fn) {
     std::vector<CoalesceCandidate> candidates;
 
-    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi)
-    {
-        for (std::size_t ii = 0; ii < fn.blocks[bi].instrs.size(); ++ii)
-        {
+    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
+        for (std::size_t ii = 0; ii < fn.blocks[bi].instrs.size(); ++ii) {
             const auto &mi = fn.blocks[bi].instrs[ii];
             if (!isMoveRR(mi.opc))
                 continue;
@@ -202,15 +178,13 @@ static std::vector<CoalesceCandidate> collectCandidates(const MFunction &fn)
 
 /// @brief Run one round of coalescing for a given register class.
 /// @return The number of moves coalesced.
-static unsigned coalesceClass(MFunction &fn, RegClass cls)
-{
+static unsigned coalesceClass(MFunction &fn, RegClass cls) {
     unsigned coalesced = 0;
 
     // Recompute intervals and candidates each iteration since coalescing
     // changes live ranges.
     bool changed = true;
-    while (changed)
-    {
+    while (changed) {
         changed = false;
 
         std::vector<std::vector<unsigned>> instrIndex;
@@ -218,8 +192,7 @@ static unsigned coalesceClass(MFunction &fn, RegClass cls)
         auto intervals = computeLiveIntervals(fn, instrIndex, totalInstrs, cls);
         auto candidates = collectCandidates(fn);
 
-        for (const auto &cand : candidates)
-        {
+        for (const auto &cand : candidates) {
             if (cand.cls != cls)
                 continue;
 
@@ -270,19 +243,14 @@ static unsigned coalesceClass(MFunction &fn, RegClass cls)
             // do the intervals still overlap?
             bool safeToCoalesce = false;
 
-            if (srcRange.end <= movePos + 1 && dstRange.start >= movePos)
-            {
+            if (srcRange.end <= movePos + 1 && dstRange.start >= movePos) {
                 // src ends at or right after the move, dst starts at the move.
                 // No conflict after removing the move.
                 safeToCoalesce = true;
-            }
-            else if (!interferes(srcRange, dstRange))
-            {
+            } else if (!interferes(srcRange, dstRange)) {
                 // No overlap at all.
                 safeToCoalesce = true;
-            }
-            else
-            {
+            } else {
                 // Overlap exists beyond the move point. Check if the overlap
                 // region is exactly [movePos, movePos+1).
                 unsigned overlapStart = std::max(srcRange.start, dstRange.start);
@@ -313,18 +281,14 @@ static unsigned coalesceClass(MFunction &fn, RegClass cls)
 }
 
 /// @brief Remove identity moves (MovRR/FMovRR where src == dst vreg).
-static void removeIdentityMoves(MFunction &fn)
-{
-    for (auto &bb : fn.blocks)
-    {
+static void removeIdentityMoves(MFunction &fn) {
+    for (auto &bb : fn.blocks) {
         std::vector<MInstr> filtered;
         filtered.reserve(bb.instrs.size());
-        for (auto &mi : bb.instrs)
-        {
+        for (auto &mi : bb.instrs) {
             if (isMoveRR(mi.opc) && mi.ops.size() >= 2 && mi.ops[0].kind == MOperand::Kind::Reg &&
                 mi.ops[1].kind == MOperand::Kind::Reg && !mi.ops[0].reg.isPhys &&
-                !mi.ops[1].reg.isPhys && mi.ops[0].reg.idOrPhys == mi.ops[1].reg.idOrPhys)
-            {
+                !mi.ops[1].reg.isPhys && mi.ops[0].reg.idOrPhys == mi.ops[1].reg.idOrPhys) {
                 continue; // Skip identity move.
             }
             filtered.push_back(std::move(mi));
@@ -335,8 +299,7 @@ static void removeIdentityMoves(MFunction &fn)
 
 } // namespace
 
-void coalesce(MFunction &fn)
-{
+void coalesce(MFunction &fn) {
     // Coalesce GPR and FPR classes independently.
     coalesceClass(fn, RegClass::GPR);
     coalesceClass(fn, RegClass::FPR);

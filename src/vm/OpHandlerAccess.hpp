@@ -22,17 +22,14 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::vm::detail
-{
-struct VMAccess
-{
+namespace il::vm::detail {
+struct VMAccess {
     using ExecState = VM::ExecState;
 
     /// @brief Retrieve the currently active execution state from the VM stack.
     /// @param vm Virtual machine instance.
     /// @return Pointer to the top execution state, or nullptr if the stack is empty.
-    static inline ExecState *currentExecState(VM &vm)
-    {
+    static inline ExecState *currentExecState(VM &vm) {
         return vm.execStack.empty() ? nullptr : vm.execStack.back();
     }
 
@@ -41,46 +38,40 @@ struct VMAccess
     /// @param fr Active frame containing register state.
     /// @param value IL value to evaluate.
     /// @return Slot containing the evaluated result.
-    static inline Slot eval(VM &vm, Frame &fr, const il::core::Value &value)
-    {
+    static inline Slot eval(VM &vm, Frame &fr, const il::core::Value &value) {
         return vm.eval(fr, value);
     }
 
     /// @brief Access the VM's debug controller for breakpoint and watch management.
     /// @param vm Virtual machine instance.
     /// @return Reference to the debug controller owned by the VM.
-    static inline DebugCtrl &debug(VM &vm)
-    {
+    static inline DebugCtrl &debug(VM &vm) {
         return vm.debug;
     }
 
     /// @brief Fast-path check for active memory watches.
     /// @return True when memory watches are installed.
-    static inline bool hasMemWatchesActive(const VM &vm) noexcept
-    {
+    static inline bool hasMemWatchesActive(const VM &vm) noexcept {
         return vm.memWatchActive_;
     }
 
     /// @brief Fast-path check for active variable watches.
     /// @return True when variable watches are installed.
-    static inline bool hasVarWatchesActive(const VM &vm) noexcept
-    {
+    static inline bool hasVarWatchesActive(const VM &vm) noexcept {
         return vm.varWatchActive_;
     }
 
     /// @brief Access the VM's function name lookup table.
     /// @param vm Virtual machine instance.
     /// @return Const reference to the map from function names to Function pointers.
-    static inline const VM::FnMap &functionMap(const VM &vm)
-    {
+    static inline const VM::FnMap &functionMap(const VM &vm) {
         return vm.fnMap;
     }
 
     /// @brief Access the VM's runtime call context used for trap metadata.
     /// @param vm Virtual machine instance.
     /// @return Reference to the runtime call context owned by the VM.
-    static inline RuntimeCallContext &runtimeContext(VM &vm)
-    {
+    static inline RuntimeCallContext &runtimeContext(VM &vm) {
         return vm.runtimeContext;
     }
 
@@ -91,8 +82,7 @@ struct VMAccess
     /// @return Slot containing the function's return value.
     static inline Slot callFunction(VM &vm,
                                     const il::core::Function &fn,
-                                    std::span<const Slot> args)
-    {
+                                    std::span<const Slot> args) {
         return vm.execFunction(fn, args);
     }
 
@@ -105,8 +95,7 @@ struct VMAccess
     /// @return Fully initialized execution state ready for stepOnce().
     static inline ExecState prepare(VM &vm,
                                     const il::core::Function &fn,
-                                    std::span<const Slot> args)
-    {
+                                    std::span<const Slot> args) {
         return vm.prepareExecution(fn, args);
     }
 
@@ -114,16 +103,14 @@ struct VMAccess
     /// @param vm Virtual machine instance.
     /// @param st Execution state to advance by one instruction.
     /// @return The function's return value when execution completes, or nullopt to continue.
-    static inline std::optional<Slot> stepOnce(VM &vm, ExecState &st)
-    {
+    static inline std::optional<Slot> stepOnce(VM &vm, ExecState &st) {
         return vm.stepOnce(st);
     }
 
     /// @brief Set the maximum instruction count before forced termination.
     /// @param vm Virtual machine instance.
     /// @param max Step limit; 0 disables the limit.
-    static inline void setMaxSteps(VM &vm, uint64_t max)
-    {
+    static inline void setMaxSteps(VM &vm, uint64_t max) {
         vm.maxSteps = max;
     }
 
@@ -131,42 +118,36 @@ struct VMAccess
     /// @param vm Virtual machine instance.
     /// @param everyN Invoke the callback every N instructions; 0 disables polling.
     /// @param cb Callback returning false to request a VM pause.
-    static inline void setPollConfig(VM &vm, uint32_t everyN, std::function<bool(VM &)> cb)
-    {
+    static inline void setPollConfig(VM &vm, uint32_t everyN, std::function<bool(VM &)> cb) {
         vm.pollEveryN_ = everyN;
         vm.pollCallback_ = std::move(cb);
     }
 
     /// @brief Access the last trap state for diagnostic reporting.
-    static inline const VM::TrapState &lastTrapState(const VM &vm)
-    {
+    static inline const VM::TrapState &lastTrapState(const VM &vm) {
         return vm.lastTrap;
     }
 
     /// @brief Read-only access to the execution stack for backtrace construction.
-    static inline const std::vector<ExecState *> &execStack(const VM &vm)
-    {
+    static inline const std::vector<ExecState *> &execStack(const VM &vm) {
         return vm.execStack;
     }
 
     /// @brief Refresh debug fast-path flags after configuration changes.
-    static inline void refreshDebugFlags(VM &vm)
-    {
+    static inline void refreshDebugFlags(VM &vm) {
         vm.refreshDebugFlags();
     }
 
     /// @brief Access the precomputed register count cache.
     /// @details Used by TCO to reuse cached maxSsaId values instead of rescanning.
-    static inline std::unordered_map<const il::core::Function *, size_t> &regCountCache(VM &vm)
-    {
+    static inline std::unordered_map<const il::core::Function *, size_t> &regCountCache(VM &vm) {
         return vm.regCountCache_;
     }
 
     /// @brief Access the VM-level switch dispatch cache.
     /// @details The cache persists across function calls; entries are deterministic
     ///          (keyed by stable @c const @c Instr* and computed from case values).
-    static inline viper::vm::SwitchCache &switchCache(VM &vm)
-    {
+    static inline viper::vm::SwitchCache &switchCache(VM &vm) {
         return vm.switchCache_;
     }
 
@@ -175,8 +156,7 @@ struct VMAccess
     ///          the cache for the entire function on first access.
     static inline const BlockExecCache *blockExecCache(VM &vm,
                                                        const il::core::Function *fn,
-                                                       const il::core::BasicBlock *bb)
-    {
+                                                       const il::core::BasicBlock *bb) {
         return vm.getOrBuildBlockCache(fn, bb);
     }
 
@@ -186,15 +166,13 @@ struct VMAccess
     /// @param vm VM owning the frame.
     /// @param fr Frame whose parameters should be transferred.
     /// @param bb Basic block whose parameter definitions guide the transfer.
-    static inline void transferBlockParams(VM &vm, Frame &fr, const il::core::BasicBlock &bb)
-    {
+    static inline void transferBlockParams(VM &vm, Frame &fr, const il::core::BasicBlock &bb) {
         vm.transferBlockParams(fr, bb);
     }
 
     /// @brief Obtain (or lazily build) the block label map for a function.
     /// @details Delegates to @c VM::getOrBuildBlockMap.
-    static inline const VM::BlockMap &getOrBuildBlockMap(VM &vm, const il::core::Function &fn)
-    {
+    static inline const VM::BlockMap &getOrBuildBlockMap(VM &vm, const il::core::Function &fn) {
         return vm.getOrBuildBlockMap(fn);
     }
 
@@ -212,8 +190,7 @@ struct VMAccess
     /// @param vm VM owning the register count cache.
     /// @param fn Function to compute the maximum SSA ID for.
     /// @return The maximum SSA value ID used by the function.
-    static inline size_t computeMaxSsaId(VM &vm, const il::core::Function &fn)
-    {
+    static inline size_t computeMaxSsaId(VM &vm, const il::core::Function &fn) {
         auto &cache = vm.regCountCache_;
         if (auto it = cache.find(&fn); it != cache.end())
             return it->second;
@@ -226,8 +203,7 @@ struct VMAccess
             maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
 
         // Scan block parameters and instruction results
-        for (const auto &block : fn.blocks)
-        {
+        for (const auto &block : fn.blocks) {
             for (const auto &p : block.params)
                 maxSsaId = std::max(maxSsaId, static_cast<size_t>(p.id));
             for (const auto &instr : block.instructions)

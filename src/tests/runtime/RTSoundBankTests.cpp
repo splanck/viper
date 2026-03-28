@@ -24,13 +24,11 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     (void)msg;
 }
 
-static rt_string S(const char *s)
-{
+static rt_string S(const char *s) {
     return rt_const_cstr(s);
 }
 
@@ -38,8 +36,7 @@ static rt_string S(const char *s)
 // Null Safety
 // ============================================================================
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     // All operations on NULL bank should not crash
     assert(rt_soundbank_has(nullptr, S("x")) == 0);
     assert(rt_soundbank_play(nullptr, S("x")) == -1);
@@ -56,8 +53,7 @@ static void test_null_safety()
 // Creation and Count
 // ============================================================================
 
-static void test_create()
-{
+static void test_create() {
     void *bank = rt_soundbank_new();
     assert(bank != nullptr);
     assert(rt_soundbank_count(bank) == 0);
@@ -69,8 +65,7 @@ static void test_create()
 // Register + Has + Get + Count
 // ============================================================================
 
-static void test_register_sound()
-{
+static void test_register_sound() {
     void *bank = rt_soundbank_new();
 
     // Generate a test sound via Synth (doesn't need Audio.Init)
@@ -96,8 +91,7 @@ static void test_register_sound()
     printf("  test_register_sound: PASSED\n");
 }
 
-static void test_register_overwrite()
-{
+static void test_register_overwrite() {
     void *bank = rt_soundbank_new();
 
     void *snd1 = rt_synth_tone(440, 100, 0);
@@ -121,8 +115,7 @@ static void test_register_overwrite()
 // Remove + Clear
 // ============================================================================
 
-static void test_remove()
-{
+static void test_remove() {
     void *bank = rt_soundbank_new();
 
     rt_soundbank_register_sound(bank, S("a"), rt_synth_tone(440, 50, 0));
@@ -141,8 +134,7 @@ static void test_remove()
     printf("  test_remove: PASSED\n");
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *bank = rt_soundbank_new();
 
     rt_soundbank_register_sound(bank, S("x"), rt_synth_tone(440, 50, 0));
@@ -161,13 +153,11 @@ static void test_clear()
 // Multiple entries
 // ============================================================================
 
-static void test_multiple_entries()
-{
+static void test_multiple_entries() {
     void *bank = rt_soundbank_new();
 
     // Register several sounds
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         char name[8];
         name[0] = 'S';
         name[1] = '0' + (char)i;
@@ -186,31 +176,26 @@ static void test_multiple_entries()
 // Synth Sound Generation
 // ============================================================================
 
-static void test_synth_tone()
-{
+static void test_synth_tone() {
     // Synth.Tone generates a Sound object — verify non-null
     void *snd = rt_synth_tone(440, 100, 0); // sine wave
     // May be NULL if audio not compiled in, but shouldn't crash
     printf("  test_synth_tone: PASSED (snd=%s)\n", snd ? "ok" : "null/no-audio");
 }
 
-static void test_synth_sweep()
-{
+static void test_synth_sweep() {
     void *snd = rt_synth_sweep(880, 220, 200, 0);
     printf("  test_synth_sweep: PASSED (snd=%s)\n", snd ? "ok" : "null/no-audio");
 }
 
-static void test_synth_noise()
-{
+static void test_synth_noise() {
     void *snd = rt_synth_noise(100, 50);
     printf("  test_synth_noise: PASSED (snd=%s)\n", snd ? "ok" : "null/no-audio");
 }
 
-static void test_synth_sfx_presets()
-{
+static void test_synth_sfx_presets() {
     // Test all 6 SFX presets
-    for (int i = 0; i <= 5; i++)
-    {
+    for (int i = 0; i <= 5; i++) {
         void *snd = rt_synth_sfx(i);
         // Should return non-null if audio compiled in, null otherwise
         printf("  test_synth_sfx[%d]: %s\n", i, snd ? "ok" : "null/no-audio");
@@ -221,8 +206,7 @@ static void test_synth_sfx_presets()
     printf("  test_synth_sfx[99]: %s (expected null)\n", bad ? "unexpected" : "null/ok");
 }
 
-static void test_synth_edge_cases()
-{
+static void test_synth_edge_cases() {
     // Zero duration
     void *z = rt_synth_tone(440, 0, 0);
     printf("  test_synth_zero_duration: %s\n", z ? "ok" : "null/ok");
@@ -232,8 +216,7 @@ static void test_synth_edge_cases()
     printf("  test_synth_high_freq: %s\n", h ? "ok" : "null/ok");
 
     // All waveform types
-    for (int w = 0; w <= 3; w++)
-    {
+    for (int w = 0; w <= 3; w++) {
         void *s = rt_synth_tone(440, 50, w);
         printf("  test_synth_waveform[%d]: %s\n", w, s ? "ok" : "null/ok");
     }
@@ -243,8 +226,7 @@ static void test_synth_edge_cases()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== RTSoundBankTests ===\n\n");
 
     printf("--- Null Safety ---\n");

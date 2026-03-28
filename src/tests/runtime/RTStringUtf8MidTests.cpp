@@ -23,14 +23,12 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
@@ -38,8 +36,7 @@ static rt_string make_str(const char *s)
 // Mid (2-arg, 1-based codepoint offset)
 //=============================================================================
 
-static void test_mid_ascii()
-{
+static void test_mid_ascii() {
     printf("Testing Mid (ASCII):\n");
 
     rt_string s = make_str("hello world");
@@ -52,8 +49,7 @@ static void test_mid_ascii()
     printf("\n");
 }
 
-static void test_mid_utf8()
-{
+static void test_mid_utf8() {
     printf("Testing Mid (UTF-8):\n");
 
     // "Hello 世界" — 8 codepoints: H(1) e(2) l(3) l(4) o(5) (6) 世(7) 界(8)
@@ -80,8 +76,7 @@ static void test_mid_utf8()
 // MidLen (3-arg, 1-based codepoint offset + codepoint count)
 //=============================================================================
 
-static void test_midlen_utf8()
-{
+static void test_midlen_utf8() {
     printf("Testing MidLen (UTF-8):\n");
 
     // "Hello 世界!" — 9 codepoints
@@ -110,8 +105,7 @@ static void test_midlen_utf8()
     printf("\n");
 }
 
-static void test_midlen_boundary()
-{
+static void test_midlen_boundary() {
     printf("Testing MidLen boundary cases:\n");
 
     rt_string s = make_str("abc");
@@ -128,8 +122,7 @@ static void test_midlen_boundary()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT String UTF-8 Mid Tests ===\n\n");
 
     test_mid_ascii();

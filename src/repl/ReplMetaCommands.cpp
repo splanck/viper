@@ -23,19 +23,16 @@
 #include <cctype>
 #include <iostream>
 
-namespace viper::repl
-{
+namespace viper::repl {
 
 void ReplMetaCommands::registerCommand(
     const std::string &name,
     const std::string &help,
-    std::function<void(ReplSession &, const std::string &)> handler)
-{
+    std::function<void(ReplSession &, const std::string &)> handler) {
     commands_.push_back({name, help, std::move(handler)});
 }
 
-bool ReplMetaCommands::tryHandle(const std::string &input, ReplSession &session)
-{
+bool ReplMetaCommands::tryHandle(const std::string &input, ReplSession &session) {
     if (input.empty() || input[0] != '.')
         return false;
 
@@ -48,10 +45,9 @@ bool ReplMetaCommands::tryHandle(const std::string &input, ReplSession &session)
     std::string cmdName = input.substr(cmdStart, cmdEnd - cmdStart);
 
     // Convert to lowercase for case-insensitive matching
-    std::transform(cmdName.begin(),
-                   cmdName.end(),
-                   cmdName.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    std::transform(cmdName.begin(), cmdName.end(), cmdName.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
 
     // Extract args (trim leading whitespace)
     std::string args;
@@ -62,10 +58,8 @@ bool ReplMetaCommands::tryHandle(const std::string &input, ReplSession &session)
         args = input.substr(argsStart);
 
     // Find and execute matching command
-    for (const auto &cmd : commands_)
-    {
-        if (cmd.name == cmdName)
-        {
+    for (const auto &cmd : commands_) {
+        if (cmd.name == cmdName) {
             cmd.handler(session, args);
             return true;
         }
@@ -78,8 +72,7 @@ bool ReplMetaCommands::tryHandle(const std::string &input, ReplSession &session)
     return true;
 }
 
-void ReplMetaCommands::printHelp() const
-{
+void ReplMetaCommands::printHelp() const {
     std::cout << colors::bold() << "Available commands:" << colors::reset() << "\n";
 
     // Find max command name length for alignment
@@ -87,8 +80,7 @@ void ReplMetaCommands::printHelp() const
     for (const auto &cmd : commands_)
         maxLen = std::max(maxLen, cmd.name.size());
 
-    for (const auto &cmd : commands_)
-    {
+    for (const auto &cmd : commands_) {
         std::cout << "  " << colors::prompt() << "." << cmd.name << colors::reset();
         // Pad to align descriptions
         for (size_t i = cmd.name.size(); i < maxLen + 2; ++i)

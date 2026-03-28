@@ -21,8 +21,7 @@
 
 #include <sstream>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Add symbols from a single object file into the global table.
 /// @param obj        The object file.
@@ -35,22 +34,18 @@ static bool addObjSymbols(const ObjFile &obj,
                           size_t objIdx,
                           std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                           std::unordered_set<std::string> &undefined,
-                          std::ostream &err)
-{
-    for (size_t i = 1; i < obj.symbols.size(); ++i)
-    {
+                          std::ostream &err) {
+    for (size_t i = 1; i < obj.symbols.size(); ++i) {
         const auto &sym = obj.symbols[i];
         if (sym.name.empty())
             continue;
 
-        if (sym.binding == ObjSymbol::Undefined)
-        {
+        if (sym.binding == ObjSymbol::Undefined) {
             // Only add to undefined set if not already defined.
             auto it = globalSyms.find(sym.name);
             if (it == globalSyms.end() || it->second.binding == GlobalSymEntry::Undefined)
                 undefined.insert(sym.name);
-            if (it == globalSyms.end())
-            {
+            if (it == globalSyms.end()) {
                 GlobalSymEntry e;
                 e.name = sym.name;
                 e.binding = GlobalSymEntry::Undefined;
@@ -64,8 +59,7 @@ static bool addObjSymbols(const ObjFile &obj,
 
         const bool isWeak = (sym.binding == ObjSymbol::Weak);
         auto it = globalSyms.find(sym.name);
-        if (it == globalSyms.end())
-        {
+        if (it == globalSyms.end()) {
             // New symbol.
             GlobalSymEntry e;
             e.name = sym.name;
@@ -75,29 +69,22 @@ static bool addObjSymbols(const ObjFile &obj,
             e.offset = sym.offset;
             globalSyms[sym.name] = std::move(e);
             undefined.erase(sym.name);
-        }
-        else
-        {
+        } else {
             auto &existing = it->second;
-            if (existing.binding == GlobalSymEntry::Undefined)
-            {
+            if (existing.binding == GlobalSymEntry::Undefined) {
                 // Was undefined, now defined.
                 existing.binding = isWeak ? GlobalSymEntry::Weak : GlobalSymEntry::Global;
                 existing.objIndex = objIdx;
                 existing.secIndex = sym.sectionIndex;
                 existing.offset = sym.offset;
                 undefined.erase(sym.name);
-            }
-            else if (existing.binding == GlobalSymEntry::Weak && !isWeak)
-            {
+            } else if (existing.binding == GlobalSymEntry::Weak && !isWeak) {
                 // Strong overrides weak.
                 existing.binding = GlobalSymEntry::Global;
                 existing.objIndex = objIdx;
                 existing.secIndex = sym.sectionIndex;
                 existing.offset = sym.offset;
-            }
-            else if (existing.binding == GlobalSymEntry::Global && !isWeak)
-            {
+            } else if (existing.binding == GlobalSymEntry::Global && !isWeak) {
                 err << "error: multiply defined symbol '" << sym.name << "' in " << obj.name
                     << "\n";
                 return false;
@@ -109,8 +96,7 @@ static bool addObjSymbols(const ObjFile &obj,
 }
 
 /// Known system/dynamic library symbols that won't be in archives.
-static bool isKnownDynamicSymbol(const std::string &name)
-{
+static bool isKnownDynamicSymbol(const std::string &name) {
     // Common C library and platform functions (exact matches).
     static const char *const kDynSymExact[] = {
         // C library
@@ -351,8 +337,7 @@ static bool isKnownDynamicSymbol(const std::string &name)
         "GetLastError",
     };
 
-    for (const char *sym : kDynSymExact)
-    {
+    for (const char *sym : kDynSymExact) {
         if (name == sym)
             return true;
     }
@@ -402,8 +387,7 @@ static bool isKnownDynamicSymbol(const std::string &name)
         "AudioDevice",
     };
 
-    for (const char *prefix : kDynSymPrefixes)
-    {
+    for (const char *prefix : kDynSymPrefixes) {
         size_t plen = 0;
         while (prefix[plen] != '\0')
             ++plen;
@@ -419,14 +403,12 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                     std::unordered_map<std::string, GlobalSymEntry> &globalSyms,
                     std::vector<ObjFile> &allObjects,
                     std::unordered_set<std::string> &dynamicSyms,
-                    std::ostream &err)
-{
+                    std::ostream &err) {
     // Start with initial objects.
     allObjects = initialObjects;
     std::unordered_set<std::string> undefined;
 
-    for (size_t i = 0; i < allObjects.size(); ++i)
-    {
+    for (size_t i = 0; i < allObjects.size(); ++i) {
         if (!addObjSymbols(allObjects[i], i, globalSyms, undefined, err))
             return false;
     }
@@ -436,21 +418,17 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
     constexpr size_t kMaxResolveIterations = 1000;
     size_t iteration = 0;
     bool changed = true;
-    while (changed)
-    {
-        if (++iteration > kMaxResolveIterations)
-        {
+    while (changed) {
+        if (++iteration > kMaxResolveIterations) {
             err << "error: symbol resolution exceeded " << kMaxResolveIterations << " iterations\n";
             return false;
         }
         changed = false;
         // Snapshot undefined set — addObjSymbols modifies it, invalidating iterators.
         std::vector<std::string> undefSnapshot(undefined.begin(), undefined.end());
-        for (size_t ai = 0; ai < archives.size(); ++ai)
-        {
+        for (size_t ai = 0; ai < archives.size(); ++ai) {
             auto &ar = archives[ai];
-            for (const auto &undef : undefSnapshot)
-            {
+            for (const auto &undef : undefSnapshot) {
                 // Mach-O archives use underscore-prefixed symbol names.
                 auto symIt = findWithMachoFallback(ar.symbolIndex, undef);
                 if (symIt == ar.symbolIndex.end())
@@ -473,8 +451,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
                                  memberData.size(),
                                  ar.path + "(" + ar.members[memberIdx].name + ")",
                                  memberObj,
-                                 memberErr))
-                {
+                                 memberErr)) {
                     err << memberErr.str();
                     continue;
                 }
@@ -492,8 +469,7 @@ bool resolveSymbols(const std::vector<ObjFile> &initialObjects,
     // Symbols matching known dynamic patterns are silently accepted.
     // Others are warned — they'll likely be resolved by dyld, but if not,
     // the program will crash at launch with a clear dyld error.
-    for (const auto &undef : undefined)
-    {
+    for (const auto &undef : undefined) {
         auto it = globalSyms.find(undef);
         if (it != globalSyms.end() && it->second.binding != GlobalSymEntry::Undefined)
             continue; // Was resolved during iteration.

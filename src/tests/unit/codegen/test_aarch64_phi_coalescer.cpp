@@ -50,26 +50,22 @@ using namespace viper::tools::ilc;
 // Helpers
 // ---------------------------------------------------------------------------
 
-namespace
-{
+namespace {
 
-static std::string testOut(const std::string &name)
-{
+static std::string testOut(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -77,12 +73,10 @@ static std::string readFile(const std::string &path)
 }
 
 /// Count occurrences of a literal substring in a string.
-static int countSubstr(const std::string &text, const std::string &needle)
-{
+static int countSubstr(const std::string &text, const std::string &needle) {
     int n = 0;
     std::size_t pos = 0;
-    while ((pos = text.find(needle, pos)) != std::string::npos)
-    {
+    while ((pos = text.find(needle, pos)) != std::string::npos) {
         ++n;
         pos += needle.size();
     }
@@ -109,8 +103,7 @@ static int countSubstr(const std::string &text, const std::string &needle)
 //
 // Bound: <= 5 (fails with 6 before fix, passes with 5 after fix).
 //
-TEST(AArch64PhiCoalescer, SinglePhiLoop)
-{
+TEST(AArch64PhiCoalescer, SinglePhiLoop) {
     const std::string in = testOut("phi_coalescer_single.il");
     const std::string out = testOut("phi_coalescer_single.s");
 
@@ -135,8 +128,7 @@ TEST(AArch64PhiCoalescer, SinglePhiLoop)
 
     // Before fix: block-end emits extra str for phi arg %next → 6 str x.
     // After fix:  PhiStoreGPR clears dirty; no block-end store for %next → 5.
-    if (strCount > 5)
-    {
+    if (strCount > 5) {
         std::cerr << "Expected at most 5 'str x' (phi coalescer fix); got " << strCount
                   << "\nAssembly:\n"
                   << asmText << "\n";
@@ -159,8 +151,7 @@ TEST(AArch64PhiCoalescer, SinglePhiLoop)
 // for non-phi-arg vregs): 11.
 // Bound: <= 11 (fails with 13 before fix, passes with 11 after fix).
 //
-TEST(AArch64PhiCoalescer, TwoPhiLoop)
-{
+TEST(AArch64PhiCoalescer, TwoPhiLoop) {
     const std::string in = testOut("phi_coalescer_two.il");
     const std::string out = testOut("phi_coalescer_two.s");
 
@@ -186,8 +177,7 @@ TEST(AArch64PhiCoalescer, TwoPhiLoop)
 
     // Before fix: 2 extra block-end stores for phi arg vregs → ~13 str x.
     // After fix:  PhiStoreGPR removes those 2 extra stores → 11 str x.
-    if (strCount > 11)
-    {
+    if (strCount > 11) {
         std::cerr << "Expected at most 11 'str x'; got " << strCount << "\nAssembly:\n"
                   << asmText << "\n";
     }
@@ -197,8 +187,7 @@ TEST(AArch64PhiCoalescer, TwoPhiLoop)
 // ---------------------------------------------------------------------------
 // Test 3: FPR phi in loop — PhiStoreFPR handled, compilation succeeds.
 // ---------------------------------------------------------------------------
-TEST(AArch64PhiCoalescer, FPRPhiLoop)
-{
+TEST(AArch64PhiCoalescer, FPRPhiLoop) {
     const std::string in = testOut("phi_coalescer_fpr.il");
     const std::string out = testOut("phi_coalescer_fpr.s");
 
@@ -231,8 +220,7 @@ TEST(AArch64PhiCoalescer, FPRPhiLoop)
 // ---------------------------------------------------------------------------
 // Test 4: Loop assembly structure must be preserved after the fix.
 // ---------------------------------------------------------------------------
-TEST(AArch64PhiCoalescer, LoopStructurePreserved)
-{
+TEST(AArch64PhiCoalescer, LoopStructurePreserved) {
     const std::string in = testOut("phi_coalescer_correct.il");
     const std::string out = testOut("phi_coalescer_correct.s");
 
@@ -274,8 +262,7 @@ TEST(AArch64PhiCoalescer, LoopStructurePreserved)
     EXPECT_TRUE(hasCondExit);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

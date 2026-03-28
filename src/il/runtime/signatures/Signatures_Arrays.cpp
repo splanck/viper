@@ -34,10 +34,8 @@
 
 #include "il/runtime/signatures/Registry.hpp"
 
-namespace il::runtime::signatures
-{
-namespace
-{
+namespace il::runtime::signatures {
+namespace {
 using Kind = SigParam::Kind;
 }
 
@@ -55,8 +53,7 @@ using Kind = SigParam::Kind;
 ///          Each call funnels through @ref register_signature, appending a
 ///          @ref Signature entry that downstream verification utilities inspect
 ///          when validating call sites.
-void register_array_signatures()
-{
+void register_array_signatures() {
     register_signature(make_signature("rt_alloc", {Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_arr_i32_new", {Kind::I64}, {Kind::Ptr}));
     register_signature(make_signature("rt_arr_i32_retain", {Kind::Ptr}));

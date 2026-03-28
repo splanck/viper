@@ -48,16 +48,14 @@ extern void rt_trap(const char *msg);
 // Internal structure
 // ---------------------------------------------------------------------------
 
-typedef struct rt_dm_entry
-{
+typedef struct rt_dm_entry {
     char *key;
     size_t key_len;
     void *value;
     struct rt_dm_entry *next;
 } rt_dm_entry;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     rt_dm_entry **buckets;
     int64_t capacity;
@@ -69,11 +67,9 @@ typedef struct
 // Hash helper
 // ---------------------------------------------------------------------------
 
-static uint64_t dm_hash(const char *key, size_t len)
-{
+static uint64_t dm_hash(const char *key, size_t len) {
     uint64_t h = 0xcbf29ce484222325ULL;
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         h ^= (uint64_t)(unsigned char)key[i];
         h *= 0x100000001b3ULL;
     }
@@ -84,8 +80,7 @@ static uint64_t dm_hash(const char *key, size_t len)
 // Resize
 // ---------------------------------------------------------------------------
 
-static void dm_resize(rt_defaultmap_impl *m)
-{
+static void dm_resize(rt_defaultmap_impl *m) {
     if (m->capacity > INT64_MAX / 2)
         return;
     int64_t new_cap = m->capacity * 2;
@@ -93,11 +88,9 @@ static void dm_resize(rt_defaultmap_impl *m)
     if (!new_buckets)
         return;
 
-    for (int64_t i = 0; i < m->capacity; i++)
-    {
+    for (int64_t i = 0; i < m->capacity; i++) {
         rt_dm_entry *e = m->buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_dm_entry *next = e->next;
             uint64_t idx = dm_hash(e->key, e->key_len) % (uint64_t)new_cap;
             e->next = new_buckets[idx];
@@ -115,14 +108,11 @@ static void dm_resize(rt_defaultmap_impl *m)
 // Finalizer
 // ---------------------------------------------------------------------------
 
-static void defaultmap_finalizer(void *obj)
-{
+static void defaultmap_finalizer(void *obj) {
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)obj;
-    for (int64_t i = 0; i < m->capacity; i++)
-    {
+    for (int64_t i = 0; i < m->capacity; i++) {
         rt_dm_entry *e = m->buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_dm_entry *next = e->next;
             free(e->key);
             if (e->value && rt_obj_release_check0(e->value))
@@ -141,14 +131,12 @@ static void defaultmap_finalizer(void *obj)
 // Constructor
 // ---------------------------------------------------------------------------
 
-void *rt_defaultmap_new(void *default_value)
-{
+void *rt_defaultmap_new(void *default_value) {
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)rt_obj_new_i64(0, sizeof(rt_defaultmap_impl));
     m->capacity = 16;
     m->count = 0;
     m->buckets = (rt_dm_entry **)calloc(16, sizeof(rt_dm_entry *));
-    if (!m->buckets)
-    {
+    if (!m->buckets) {
         rt_trap("DefaultMap: memory allocation failed");
         return NULL;
     }
@@ -166,8 +154,7 @@ void *rt_defaultmap_new(void *default_value)
 /// @brief Perform defaultmap len operation.
 /// @param map
 /// @return Result value.
-int64_t rt_defaultmap_len(void *map)
-{
+int64_t rt_defaultmap_len(void *map) {
     if (!map)
         return 0;
     return ((rt_defaultmap_impl *)map)->count;
@@ -177,8 +164,7 @@ int64_t rt_defaultmap_len(void *map)
 // Get (returns default if missing)
 // ---------------------------------------------------------------------------
 
-void *rt_defaultmap_get(void *map, rt_string key)
-{
+void *rt_defaultmap_get(void *map, rt_string key) {
     if (!map || !key)
         return NULL;
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
@@ -190,8 +176,7 @@ void *rt_defaultmap_get(void *map, rt_string key)
 
     uint64_t idx = dm_hash(kstr, klen) % (uint64_t)m->capacity;
     rt_dm_entry *e = m->buckets[idx];
-    while (e)
-    {
+    while (e) {
         if (e->key_len == klen && memcmp(e->key, kstr, klen) == 0)
             return e->value;
         e = e->next;
@@ -207,8 +192,7 @@ void *rt_defaultmap_get(void *map, rt_string key)
 /// @param map
 /// @param key
 /// @param value
-void rt_defaultmap_set(void *map, rt_string key, void *value)
-{
+void rt_defaultmap_set(void *map, rt_string key, void *value) {
     if (!map || !key)
         return;
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
@@ -220,10 +204,8 @@ void rt_defaultmap_set(void *map, rt_string key, void *value)
 
     uint64_t idx = dm_hash(kstr, klen) % (uint64_t)m->capacity;
     rt_dm_entry *e = m->buckets[idx];
-    while (e)
-    {
-        if (e->key_len == klen && memcmp(e->key, kstr, klen) == 0)
-        {
+    while (e) {
+        if (e->key_len == klen && memcmp(e->key, kstr, klen) == 0) {
             if (value)
                 rt_obj_retain_maybe(value);
             if (e->value && rt_obj_release_check0(e->value))
@@ -235,8 +217,7 @@ void rt_defaultmap_set(void *map, rt_string key, void *value)
     }
 
     // Resize check
-    if (m->count * 4 >= m->capacity * 3)
-    {
+    if (m->count * 4 >= m->capacity * 3) {
         dm_resize(m);
         idx = dm_hash(kstr, klen) % (uint64_t)m->capacity;
     }
@@ -266,8 +247,7 @@ void rt_defaultmap_set(void *map, rt_string key, void *value)
 /// @param map
 /// @param key
 /// @return Result value.
-int64_t rt_defaultmap_has(void *map, rt_string key)
-{
+int64_t rt_defaultmap_has(void *map, rt_string key) {
     if (!map || !key)
         return 0;
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
@@ -279,8 +259,7 @@ int64_t rt_defaultmap_has(void *map, rt_string key)
 
     uint64_t idx = dm_hash(kstr, klen) % (uint64_t)m->capacity;
     rt_dm_entry *e = m->buckets[idx];
-    while (e)
-    {
+    while (e) {
         if (e->key_len == klen && memcmp(e->key, kstr, klen) == 0)
             return 1;
         e = e->next;
@@ -292,8 +271,7 @@ int64_t rt_defaultmap_has(void *map, rt_string key)
 /// @param map
 /// @param key
 /// @return Result value.
-int8_t rt_defaultmap_remove(void *map, rt_string key)
-{
+int8_t rt_defaultmap_remove(void *map, rt_string key) {
     if (!map || !key)
         return 0;
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
@@ -305,11 +283,9 @@ int8_t rt_defaultmap_remove(void *map, rt_string key)
 
     uint64_t idx = dm_hash(kstr, klen) % (uint64_t)m->capacity;
     rt_dm_entry **pp = &m->buckets[idx];
-    while (*pp)
-    {
+    while (*pp) {
         rt_dm_entry *e = *pp;
-        if (e->key_len == klen && memcmp(e->key, kstr, klen) == 0)
-        {
+        if (e->key_len == klen && memcmp(e->key, kstr, klen) == 0) {
             *pp = e->next;
             free(e->key);
             if (e->value && rt_obj_release_check0(e->value))
@@ -327,19 +303,16 @@ int8_t rt_defaultmap_remove(void *map, rt_string key)
 // Keys
 // ---------------------------------------------------------------------------
 
-void *rt_defaultmap_keys(void *map)
-{
+void *rt_defaultmap_keys(void *map) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
     if (!map)
         return seq;
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
 
-    for (int64_t i = 0; i < m->capacity; i++)
-    {
+    for (int64_t i = 0; i < m->capacity; i++) {
         rt_dm_entry *e = m->buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_string k = rt_string_from_bytes(e->key, e->key_len);
             rt_seq_push(seq, k);
             rt_str_release_maybe(k);
@@ -353,8 +326,7 @@ void *rt_defaultmap_keys(void *map)
 // Get default / Clear
 // ---------------------------------------------------------------------------
 
-void *rt_defaultmap_get_default(void *map)
-{
+void *rt_defaultmap_get_default(void *map) {
     if (!map)
         return NULL;
     return ((rt_defaultmap_impl *)map)->default_value;
@@ -362,17 +334,14 @@ void *rt_defaultmap_get_default(void *map)
 
 /// @brief Perform defaultmap clear operation.
 /// @param map
-void rt_defaultmap_clear(void *map)
-{
+void rt_defaultmap_clear(void *map) {
     if (!map)
         return;
     rt_defaultmap_impl *m = (rt_defaultmap_impl *)map;
 
-    for (int64_t i = 0; i < m->capacity; i++)
-    {
+    for (int64_t i = 0; i < m->capacity; i++) {
         rt_dm_entry *e = m->buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_dm_entry *next = e->next;
             free(e->key);
             if (e->value && rt_obj_release_check0(e->value))
@@ -388,8 +357,7 @@ void rt_defaultmap_clear(void *map)
 /// @brief Perform defaultmap is empty operation.
 /// @param map
 /// @return Result value.
-int8_t rt_defaultmap_is_empty(void *map)
-{
+int8_t rt_defaultmap_is_empty(void *map) {
     if (!map)
         return 1;
     return ((rt_defaultmap_impl *)map)->count == 0 ? 1 : 0;

@@ -20,8 +20,7 @@
 
 #include <cctype>
 
-namespace ilc
-{
+namespace ilc {
 
 /// @brief Determine whether a breakpoint specification targets a source file.
 ///
@@ -35,8 +34,7 @@ namespace ilc
 ///
 /// @param spec Command-line argument to analyse.
 /// @return True when @p spec names a source breakpoint; false otherwise.
-bool isSrcBreakSpec(const std::string &spec)
-{
+bool isSrcBreakSpec(const std::string &spec) {
     // Position of the colon separating file and line.
     auto pos = spec.rfind(':');
     if (pos == std::string::npos || pos + 1 >= spec.size())
@@ -44,8 +42,7 @@ bool isSrcBreakSpec(const std::string &spec)
 
     // Skip whitespace between the colon and the first digit.
     auto linePos = pos + 1;
-    while (linePos < spec.size() && std::isspace(static_cast<unsigned char>(spec[linePos])))
-    {
+    while (linePos < spec.size() && std::isspace(static_cast<unsigned char>(spec[linePos]))) {
         ++linePos;
     }
     if (linePos >= spec.size())
@@ -55,11 +52,9 @@ bool isSrcBreakSpec(const std::string &spec)
     // trailing whitespace after them.
     bool sawDigit = false;
     std::string::size_type i = linePos;
-    for (; i < spec.size(); ++i)
-    {
+    for (; i < spec.size(); ++i) {
         const unsigned char ch = static_cast<unsigned char>(spec[i]);
-        if (std::isdigit(ch))
-        {
+        if (std::isdigit(ch)) {
             sawDigit = true;
             continue;
         }
@@ -69,15 +64,13 @@ bool isSrcBreakSpec(const std::string &spec)
     }
     if (!sawDigit)
         return false;
-    for (; i < spec.size(); ++i)
-    {
+    for (; i < spec.size(); ++i) {
         if (!std::isspace(static_cast<unsigned char>(spec[i])))
             return false;
     }
 
     // Portion before the colon must contain non-whitespace characters.
-    for (std::string::size_type j = 0; j < pos; ++j)
-    {
+    for (std::string::size_type j = 0; j < pos; ++j) {
         if (!std::isspace(static_cast<unsigned char>(spec[j])))
             return true;
     }

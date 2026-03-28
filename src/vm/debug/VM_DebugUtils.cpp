@@ -30,10 +30,8 @@
 #include <iostream>
 #include <string>
 
-namespace il::vm
-{
-namespace
-{
+namespace il::vm {
+namespace {
 using il::core::getOpcodeInfo;
 using il::core::kNumOpcodes;
 } // namespace
@@ -45,11 +43,9 @@ using il::core::kNumOpcodes;
 ///          opcodes.
 /// @param op Opcode enumerator to translate.
 /// @return String mnemonic or numeric placeholder.
-std::string opcodeMnemonic(il::core::Opcode op)
-{
+std::string opcodeMnemonic(il::core::Opcode op) {
     const size_t index = static_cast<size_t>(op);
-    if (index < kNumOpcodes)
-    {
+    if (index < kNumOpcodes) {
         const auto &info = getOpcodeInfo(op);
         if (info.name && info.name[0] != '\0')
             return info.name;
@@ -62,8 +58,7 @@ std::string opcodeMnemonic(il::core::Opcode op)
 ///          available; otherwise @c std::nullopt so callers can distinguish
 ///          between "no trap" and "empty string" cases.
 /// @return Optional string describing the last trap.
-std::optional<std::string> VM::lastTrapMessage() const
-{
+std::optional<std::string> VM::lastTrapMessage() const {
     if (lastTrap.message.empty())
         return std::nullopt;
     return lastTrap.message;
@@ -72,8 +67,7 @@ std::optional<std::string> VM::lastTrapMessage() const
 /// @brief Clear stale trap state before a new execution.
 /// @details Resets lastTrap, trapToken, and runtimeContext message so
 ///          subsequent executions start with a clean slate.
-void VM::clearTrapState()
-{
+void VM::clearTrapState() {
     lastTrap.error = {};
     lastTrap.frame = {};
     lastTrap.message.clear();
@@ -91,8 +85,7 @@ void VM::clearTrapState()
 ///          that debugger output always contains best-effort metadata.
 /// @param error Error descriptor reported by the VM core.
 /// @return Populated frame summary describing the failing execution point.
-FrameInfo VM::buildFrameInfo(const VmError &error) const
-{
+FrameInfo VM::buildFrameInfo(const VmError &error) const {
     FrameInfo frame{};
 
     // Reconstruct context from execStack (always current) with currentContext fallback.
@@ -132,9 +125,9 @@ FrameInfo VM::buildFrameInfo(const VmError &error) const
 
     // Check if any handler is installed
     frame.handlerInstalled =
-        std::any_of(execStack.begin(),
-                    execStack.end(),
-                    [](const ExecState *st) { return st && !st->fr.ehStack.empty(); });
+        std::any_of(execStack.begin(), execStack.end(), [](const ExecState *st) {
+            return st && !st->fr.ehStack.empty();
+        });
     return frame;
 }
 
@@ -146,13 +139,11 @@ FrameInfo VM::buildFrameInfo(const VmError &error) const
 /// @param error Error descriptor raised by the VM.
 /// @param frame Frame information produced by @ref buildFrameInfo.
 /// @return The formatted trap message stored in the VM state.
-std::string VM::recordTrap(const VmError &error, const FrameInfo &frame)
-{
+std::string VM::recordTrap(const VmError &error, const FrameInfo &frame) {
     lastTrap.error = error;
     lastTrap.frame = frame;
     lastTrap.message = vm_format_error(error, frame);
-    if (!runtimeContext.message.empty())
-    {
+    if (!runtimeContext.message.empty()) {
         lastTrap.message += ": ";
         lastTrap.message += runtimeContext.message;
         runtimeContext.message.clear();
@@ -160,14 +151,12 @@ std::string VM::recordTrap(const VmError &error, const FrameInfo &frame)
     return lastTrap.message;
 }
 
-std::vector<FrameInfo> VM::buildBacktrace() const
-{
+std::vector<FrameInfo> VM::buildBacktrace() const {
     std::vector<FrameInfo> frames;
     frames.reserve(execStack.size());
 
     // Walk from top (most recent) to bottom (oldest)
-    for (auto it = execStack.rbegin(); it != execStack.rend(); ++it)
-    {
+    for (auto it = execStack.rbegin(); it != execStack.rend(); ++it) {
         const auto *es = *it;
         if (!es)
             continue;
@@ -177,13 +166,11 @@ std::vector<FrameInfo> VM::buildBacktrace() const
         if (es->fr.func)
             frame.function = es->fr.func->name;
 
-        if (es->bb)
-        {
+        if (es->bb) {
             frame.block = es->bb->label;
             frame.ip = es->ip;
 
-            if (es->ip < es->bb->instructions.size())
-            {
+            if (es->ip < es->bb->instructions.size()) {
                 const auto &instr = es->bb->instructions[es->ip];
                 if (instr.loc.hasLine())
                     frame.line = static_cast<int32_t>(instr.loc.line);
@@ -197,14 +184,12 @@ std::vector<FrameInfo> VM::buildBacktrace() const
     return frames;
 }
 
-void VM::printBacktrace(const std::vector<FrameInfo> &frames)
-{
+void VM::printBacktrace(const std::vector<FrameInfo> &frames) {
     if (frames.empty())
         return;
 
     std::cerr << "Viper backtrace (most recent call first):\n";
-    for (size_t i = 0; i < frames.size(); ++i)
-    {
+    for (size_t i = 0; i < frames.size(); ++i) {
         const auto &f = frames[i];
         std::cerr << "  #" << i << "  @" << (f.function.empty() ? "<unknown>" : f.function);
         if (!f.block.empty())

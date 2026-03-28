@@ -20,16 +20,14 @@
 
 #include "il/runtime/RuntimeSignatures.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Interface for requesting runtime helpers during lowering.
 ///
 /// This interface abstracts the runtime requirement tracking mechanism,
 /// allowing lowering helpers to declare their runtime dependencies without
 /// tight coupling to the Lowerer class.
-class RuntimeHelperRequester
-{
+class RuntimeHelperRequester {
   public:
     virtual ~RuntimeHelperRequester() = default;
 

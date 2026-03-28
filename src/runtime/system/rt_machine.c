@@ -72,8 +72,7 @@
 #endif
 
 /// @brief Helper to create a string from a C string.
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     if (!s)
         return rt_string_from_bytes("", 0);
     return rt_string_from_bytes(s, strlen(s));
@@ -83,8 +82,7 @@ static rt_string make_str(const char *s)
 // Operating System
 // ============================================================================
 
-rt_string rt_machine_os(void)
-{
+rt_string rt_machine_os(void) {
 #if defined(_WIN32)
     return make_str("windows");
 #elif defined(__APPLE__)
@@ -98,8 +96,7 @@ rt_string rt_machine_os(void)
 #endif
 }
 
-rt_string rt_machine_os_ver(void)
-{
+rt_string rt_machine_os_ver(void) {
 #ifdef _WIN32
     // Windows version
     OSVERSIONINFOA osvi;
@@ -109,8 +106,7 @@ rt_string rt_machine_os_ver(void)
     // GetVersionExA is deprecated but still works for basic version info
 #pragma warning(push)
 #pragma warning(disable : 4996)
-    if (GetVersionExA(&osvi))
-    {
+    if (GetVersionExA(&osvi)) {
         char buf[64];
         snprintf(buf,
                  sizeof(buf),
@@ -127,14 +123,12 @@ rt_string rt_machine_os_ver(void)
     // macOS version via sysctl
     char ver[64] = {0};
     size_t len = sizeof(ver);
-    if (sysctlbyname("kern.osproductversion", ver, &len, NULL, 0) == 0)
-    {
+    if (sysctlbyname("kern.osproductversion", ver, &len, NULL, 0) == 0) {
         return make_str(ver);
     }
     // Fallback to uname
     struct utsname uts;
-    if (uname(&uts) == 0)
-    {
+    if (uname(&uts) == 0) {
         return make_str(uts.release);
     }
     return make_str("unknown");
@@ -142,21 +136,17 @@ rt_string rt_machine_os_ver(void)
 #elif defined(__linux__)
     // Linux: read /etc/os-release or use uname
     FILE *fp = fopen("/etc/os-release", "r");
-    if (fp)
-    {
+    if (fp) {
         char line[256];
-        while (fgets(line, sizeof(line), fp))
-        {
-            if (strncmp(line, "VERSION_ID=", 11) == 0)
-            {
+        while (fgets(line, sizeof(line), fp)) {
+            if (strncmp(line, "VERSION_ID=", 11) == 0) {
                 fclose(fp);
                 // Remove quotes and newline
                 char *ver = line + 11;
                 size_t vlen = strlen(ver);
                 if (vlen > 0 && ver[vlen - 1] == '\n')
                     ver[--vlen] = '\0';
-                if (vlen >= 2 && ver[0] == '"' && ver[vlen - 1] == '"')
-                {
+                if (vlen >= 2 && ver[0] == '"' && ver[vlen - 1] == '"') {
                     ver[vlen - 1] = '\0';
                     ver++;
                 }
@@ -167,8 +157,7 @@ rt_string rt_machine_os_ver(void)
     }
     // Fallback to uname
     struct utsname uts;
-    if (uname(&uts) == 0)
-    {
+    if (uname(&uts) == 0) {
         return make_str(uts.release);
     }
     return make_str("unknown");
@@ -176,8 +165,7 @@ rt_string rt_machine_os_ver(void)
 #else
     // Unix and ViperDOS: use uname.
     struct utsname uts;
-    if (uname(&uts) == 0)
-    {
+    if (uname(&uts) == 0) {
         return make_str(uts.release);
     }
     return make_str("unknown");
@@ -188,20 +176,17 @@ rt_string rt_machine_os_ver(void)
 // Host and User
 // ============================================================================
 
-rt_string rt_machine_host(void)
-{
+rt_string rt_machine_host(void) {
 #ifdef _WIN32
     char buf[256];
     DWORD len = sizeof(buf);
-    if (GetComputerNameA(buf, &len))
-    {
+    if (GetComputerNameA(buf, &len)) {
         return make_str(buf);
     }
     return make_str("unknown");
 #else
     char buf[256];
-    if (gethostname(buf, sizeof(buf)) == 0)
-    {
+    if (gethostname(buf, sizeof(buf)) == 0) {
         buf[sizeof(buf) - 1] = '\0';
         return make_str(buf);
     }
@@ -209,13 +194,11 @@ rt_string rt_machine_host(void)
 #endif
 }
 
-rt_string rt_machine_user(void)
-{
+rt_string rt_machine_user(void) {
 #ifdef _WIN32
     char buf[256];
     DWORD len = sizeof(buf);
-    if (GetUserNameA(buf, &len))
-    {
+    if (GetUserNameA(buf, &len)) {
         return make_str(buf);
     }
     // Fallback to environment variable
@@ -226,8 +209,7 @@ rt_string rt_machine_user(void)
 #else
     // Try getpwuid first
     struct passwd *pw = getpwuid(getuid());
-    if (pw && pw->pw_name)
-    {
+    if (pw && pw->pw_name) {
         return make_str(pw->pw_name);
     }
     // Fallback to environment variables
@@ -244,8 +226,7 @@ rt_string rt_machine_user(void)
 // Directories
 // ============================================================================
 
-rt_string rt_machine_home(void)
-{
+rt_string rt_machine_home(void) {
 #ifdef _WIN32
     const char *home = getenv("USERPROFILE");
     if (home)
@@ -253,8 +234,7 @@ rt_string rt_machine_home(void)
     // Try HOMEDRIVE + HOMEPATH
     const char *drive = getenv("HOMEDRIVE");
     const char *path = getenv("HOMEPATH");
-    if (drive && path)
-    {
+    if (drive && path) {
         char buf[512];
         snprintf(buf, sizeof(buf), "%s%s", drive, path);
         return make_str(buf);
@@ -266,21 +246,18 @@ rt_string rt_machine_home(void)
         return make_str(home);
     // Fallback to passwd entry
     struct passwd *pw = getpwuid(getuid());
-    if (pw && pw->pw_dir)
-    {
+    if (pw && pw->pw_dir) {
         return make_str(pw->pw_dir);
     }
     return make_str("");
 #endif
 }
 
-rt_string rt_machine_temp(void)
-{
+rt_string rt_machine_temp(void) {
 #ifdef _WIN32
     char buf[512];
     DWORD len = GetTempPathA(sizeof(buf), buf);
-    if (len > 0 && len < sizeof(buf))
-    {
+    if (len > 0 && len < sizeof(buf)) {
         // Remove trailing backslash if present
         if (len > 1 && buf[len - 1] == '\\')
             buf[len - 1] = '\0';
@@ -303,8 +280,7 @@ rt_string rt_machine_temp(void)
 // Hardware Information
 // ============================================================================
 
-int64_t rt_machine_cores(void)
-{
+int64_t rt_machine_cores(void) {
 #ifdef _WIN32
     SYSTEM_INFO sysinfo;
     GetSystemInfo(&sysinfo);
@@ -313,8 +289,7 @@ int64_t rt_machine_cores(void)
 #elif defined(__APPLE__)
     int cores = 0;
     size_t len = sizeof(cores);
-    if (sysctlbyname("hw.logicalcpu", &cores, &len, NULL, 0) == 0)
-    {
+    if (sysctlbyname("hw.logicalcpu", &cores, &len, NULL, 0) == 0) {
         return (int64_t)cores;
     }
     // Fallback
@@ -334,13 +309,11 @@ int64_t rt_machine_cores(void)
 #endif
 }
 
-int64_t rt_machine_mem_total(void)
-{
+int64_t rt_machine_mem_total(void) {
 #ifdef _WIN32
     MEMORYSTATUSEX meminfo;
     meminfo.dwLength = sizeof(meminfo);
-    if (GlobalMemoryStatusEx(&meminfo))
-    {
+    if (GlobalMemoryStatusEx(&meminfo)) {
         return (int64_t)meminfo.ullTotalPhys;
     }
     return 0;
@@ -348,16 +321,14 @@ int64_t rt_machine_mem_total(void)
 #elif defined(__APPLE__)
     int64_t mem = 0;
     size_t len = sizeof(mem);
-    if (sysctlbyname("hw.memsize", &mem, &len, NULL, 0) == 0)
-    {
+    if (sysctlbyname("hw.memsize", &mem, &len, NULL, 0) == 0) {
         return mem;
     }
     return 0;
 
 #elif defined(__linux__)
     struct sysinfo si;
-    if (sysinfo(&si) == 0)
-    {
+    if (sysinfo(&si) == 0) {
         return (int64_t)si.totalram * (int64_t)si.mem_unit;
     }
     return 0;
@@ -366,21 +337,18 @@ int64_t rt_machine_mem_total(void)
     // Generic fallback using sysconf
     long pages = sysconf(_SC_PHYS_PAGES);
     long page_size = sysconf(_SC_PAGE_SIZE);
-    if (pages > 0 && page_size > 0)
-    {
+    if (pages > 0 && page_size > 0) {
         return (int64_t)pages * (int64_t)page_size;
     }
     return 0;
 #endif
 }
 
-int64_t rt_machine_mem_free(void)
-{
+int64_t rt_machine_mem_free(void) {
 #ifdef _WIN32
     MEMORYSTATUSEX meminfo;
     meminfo.dwLength = sizeof(meminfo);
-    if (GlobalMemoryStatusEx(&meminfo))
-    {
+    if (GlobalMemoryStatusEx(&meminfo)) {
         return (int64_t)meminfo.ullAvailPhys;
     }
     return 0;
@@ -392,15 +360,13 @@ int64_t rt_machine_mem_free(void)
     vm_statistics64_data_t vm_stats;
     mach_msg_type_number_t count = sizeof(vm_stats) / sizeof(natural_t);
 
-    if (host_page_size(mach_port, &page_size) != KERN_SUCCESS)
-    {
+    if (host_page_size(mach_port, &page_size) != KERN_SUCCESS) {
         mach_port_deallocate(mach_task_self(), mach_port);
         return 0;
     }
 
     if (host_statistics64(mach_port, HOST_VM_INFO64, (host_info64_t)&vm_stats, &count) !=
-        KERN_SUCCESS)
-    {
+        KERN_SUCCESS) {
         mach_port_deallocate(mach_task_self(), mach_port);
         return 0;
     }
@@ -414,8 +380,7 @@ int64_t rt_machine_mem_free(void)
 
 #elif defined(__linux__)
     struct sysinfo si;
-    if (sysinfo(&si) == 0)
-    {
+    if (sysinfo(&si) == 0) {
         return (int64_t)si.freeram * (int64_t)si.mem_unit;
     }
     return 0;
@@ -424,8 +389,7 @@ int64_t rt_machine_mem_free(void)
     // Generic fallback using sysconf
     long pages = sysconf(_SC_AVPHYS_PAGES);
     long page_size = sysconf(_SC_PAGE_SIZE);
-    if (pages > 0 && page_size > 0)
-    {
+    if (pages > 0 && page_size > 0) {
         return (int64_t)pages * (int64_t)page_size;
     }
     return 0;
@@ -436,21 +400,16 @@ int64_t rt_machine_mem_free(void)
 // Endianness
 // ============================================================================
 
-rt_string rt_machine_endian(void)
-{
+rt_string rt_machine_endian(void) {
     // Detect endianness at runtime
-    union
-    {
+    union {
         uint32_t i;
         char c[4];
     } test = {0x01020304};
 
-    if (test.c[0] == 1)
-    {
+    if (test.c[0] == 1) {
         return make_str("big");
-    }
-    else
-    {
+    } else {
         return make_str("little");
     }
 }

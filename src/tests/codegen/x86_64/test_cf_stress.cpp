@@ -32,47 +32,41 @@
 
 using namespace viper::codegen::x64;
 
-namespace
-{
+namespace {
 
 // ===----------------------------------------------------------------------===
 // Helper functions
 // ===----------------------------------------------------------------------===
 
-[[nodiscard]] ILValue val(int id) noexcept
-{
+[[nodiscard]] ILValue val(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::I64;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue valF(int id) noexcept
-{
+[[nodiscard]] ILValue valF(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::F64;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue valB(int id) noexcept
-{
+[[nodiscard]] ILValue valB(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::I1;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue valP(int id) noexcept
-{
+[[nodiscard]] ILValue valP(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::PTR;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue imm(int64_t v) noexcept
-{
+[[nodiscard]] ILValue imm(int64_t v) noexcept {
     ILValue c{};
     c.kind = ILValue::Kind::I64;
     c.id = -1;
@@ -80,8 +74,7 @@ namespace
     return c;
 }
 
-[[nodiscard]] ILValue lab(const char *name) noexcept
-{
+[[nodiscard]] ILValue lab(const char *name) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::LABEL;
     v.id = -1;
@@ -92,8 +85,7 @@ namespace
 [[nodiscard]] ILInstr makeOp(const char *opc,
                              std::vector<ILValue> ops,
                              int res,
-                             ILValue::Kind k = ILValue::Kind::I64)
-{
+                             ILValue::Kind k = ILValue::Kind::I64) {
     ILInstr instr{};
     instr.opcode = opc;
     instr.ops = std::move(ops);
@@ -104,8 +96,7 @@ namespace
 
 /// Make a "cmp" instruction with explicit condition code as 3rd operand.
 /// This is how the adapter translates ICmpEq/Ne, SCmpLT/LE/GT/GE, UCmpGT/GE/LT/LE.
-[[nodiscard]] ILInstr makeCmp(int lhsId, int rhsId, int condCode, int resId)
-{
+[[nodiscard]] ILInstr makeCmp(int lhsId, int rhsId, int condCode, int resId) {
     ILInstr instr{};
     instr.opcode = "cmp";
     instr.ops = {val(lhsId), val(rhsId), imm(condCode)};
@@ -115,8 +106,7 @@ namespace
 }
 
 /// Make a floating-point comparison instruction.
-[[nodiscard]] ILInstr makeFCmp(const char *cmpOp, int lhsId, int rhsId, int resId)
-{
+[[nodiscard]] ILInstr makeFCmp(const char *cmpOp, int lhsId, int rhsId, int resId) {
     ILInstr instr{};
     instr.opcode = cmpOp;
     instr.ops = {valF(lhsId), valF(rhsId)};
@@ -125,8 +115,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeRet(int id, ILValue::Kind k = ILValue::Kind::I64)
-{
+[[nodiscard]] ILInstr makeRet(int id, ILValue::Kind k = ILValue::Kind::I64) {
     ILInstr instr{};
     instr.opcode = "ret";
     ILValue ref{};
@@ -136,8 +125,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeBr(const char *target)
-{
+[[nodiscard]] ILInstr makeBr(const char *target) {
     ILInstr instr{};
     instr.opcode = "br";
     instr.ops = {lab(target)};
@@ -145,8 +133,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeCbr(int condId, const char *trueTarget, const char *falseTarget)
-{
+[[nodiscard]] ILInstr makeCbr(int condId, const char *trueTarget, const char *falseTarget) {
     ILInstr instr{};
     instr.opcode = "cbr";
     instr.ops = {valB(condId), lab(trueTarget), lab(falseTarget)};
@@ -158,13 +145,11 @@ namespace
 /// Format: ops[0] = scrutinee, then (caseValue, caseLabel) pairs, then default label.
 [[nodiscard]] ILInstr makeSwitch(int scrutId,
                                  const std::vector<std::pair<int64_t, const char *>> &cases,
-                                 const char *defaultLabel)
-{
+                                 const char *defaultLabel) {
     ILInstr instr{};
     instr.opcode = "switch_i32";
     instr.ops.push_back(val(scrutId));
-    for (const auto &[caseVal, caseLab] : cases)
-    {
+    for (const auto &[caseVal, caseLab] : cases) {
         instr.ops.push_back(imm(caseVal));
         instr.ops.push_back(lab(caseLab));
     }
@@ -173,18 +158,15 @@ namespace
     return instr;
 }
 
-[[nodiscard]] std::string compileToAsm(ILModule &m)
-{
+[[nodiscard]] std::string compileToAsm(ILModule &m) {
     const CodegenResult res = emitModuleToAssembly(m, {});
     return res.asmText;
 }
 
-[[nodiscard]] std::size_t countOccurrences(const std::string &text, const std::string &pattern)
-{
+[[nodiscard]] std::size_t countOccurrences(const std::string &text, const std::string &pattern) {
     std::size_t count = 0;
     std::size_t pos = 0;
-    while ((pos = text.find(pattern, pos)) != std::string::npos)
-    {
+    while ((pos = text.find(pattern, pos)) != std::string::npos) {
         ++count;
         pos += pattern.size();
     }
@@ -195,37 +177,30 @@ namespace
 // Test bookkeeping
 // ===----------------------------------------------------------------------===
 
-struct CategoryStats
-{
+struct CategoryStats {
     const char *name;
     int total{0};
     int pass{0};
     int fail{0};
 };
 
-struct TestContext
-{
+struct TestContext {
     std::vector<CategoryStats> categories;
     int currentCat{-1};
     int globalFail{0};
 
-    void beginCategory(const char *name)
-    {
+    void beginCategory(const char *name) {
         categories.push_back({name, 0, 0, 0});
         currentCat = static_cast<int>(categories.size()) - 1;
     }
 
-    void checkAsm(const char *caseName, const std::string &asmText, const std::string &expected)
-    {
+    void checkAsm(const char *caseName, const std::string &asmText, const std::string &expected) {
         auto &cat = categories[static_cast<std::size_t>(currentCat)];
         ++cat.total;
 
-        if (asmText.find(expected) != std::string::npos)
-        {
+        if (asmText.find(expected) != std::string::npos) {
             ++cat.pass;
-        }
-        else
-        {
+        } else {
             ++cat.fail;
             ++globalFail;
             std::cerr << "FAIL [" << cat.name << "] " << caseName << "\n"
@@ -238,18 +213,14 @@ struct TestContext
     void checkCount(const char *caseName,
                     const std::string &asmText,
                     const std::string &pattern,
-                    std::size_t minCount)
-    {
+                    std::size_t minCount) {
         auto &cat = categories[static_cast<std::size_t>(currentCat)];
         ++cat.total;
 
         const std::size_t actual = countOccurrences(asmText, pattern);
-        if (actual >= minCount)
-        {
+        if (actual >= minCount) {
             ++cat.pass;
-        }
-        else
-        {
+        } else {
             ++cat.fail;
             ++globalFail;
             std::cerr << "FAIL [" << cat.name << "] " << caseName << "\n"
@@ -258,13 +229,11 @@ struct TestContext
         }
     }
 
-    void printSummary() const
-    {
+    void printSummary() const {
         std::cout << "\n=== x86-64 Control Flow Stress Test ===\n";
         std::cout << "Category                 Total  Pass  Fail\n";
         int totalAll = 0, passAll = 0, failAll = 0;
-        for (const auto &cat : categories)
-        {
+        for (const auto &cat : categories) {
             std::string padded = cat.name;
             while (padded.size() < 25)
                 padded.push_back(' ');
@@ -285,8 +254,7 @@ struct TestContext
 // ===----------------------------------------------------------------------===
 
 /// Test 1: All 10 integer comparison condition codes.
-void testIntCmpCodes(TestContext &ctx)
-{
+void testIntCmpCodes(TestContext &ctx) {
     ctx.beginCategory("Int cmp codes (10)");
 
     ILValue a = val(0);
@@ -297,21 +265,18 @@ void testIntCmpCodes(TestContext &ctx)
     // 10 comparisons: cmp(a, b, condCode) → result
     // Codes: 0=eq, 1=ne, 2=slt, 3=sle, 4=sgt, 5=sge, 6=ugt, 7=uge, 8=ult, 9=ule
     std::vector<ILInstr> instrs;
-    for (int cc = 0; cc <= 9; ++cc)
-    {
+    for (int cc = 0; cc <= 9; ++cc) {
         instrs.push_back(makeCmp(0, 1, cc, 10 + cc));
     }
 
     // zext each I1 to I64 and chain add to prevent DCE
-    for (int cc = 0; cc <= 9; ++cc)
-    {
+    for (int cc = 0; cc <= 9; ++cc) {
         instrs.push_back(makeOp("zext", {valB(10 + cc)}, 20 + cc));
     }
 
     // Chain adds: 20+21+...+29
     int accum = 20;
-    for (int cc = 1; cc <= 9; ++cc)
-    {
+    for (int cc = 1; cc <= 9; ++cc) {
         instrs.push_back(makeOp("add", {val(accum), val(20 + cc)}, 30 + cc));
         accum = 30 + cc;
     }
@@ -348,8 +313,7 @@ void testIntCmpCodes(TestContext &ctx)
 }
 
 /// Test 2: All 8 float comparison condition codes.
-void testFpCmpCodes(TestContext &ctx)
-{
+void testFpCmpCodes(TestContext &ctx) {
     ctx.beginCategory("FP cmp codes (8)");
 
     const char *fcmpOps[] = {
@@ -364,20 +328,17 @@ void testFpCmpCodes(TestContext &ctx)
     };
 
     std::vector<ILInstr> instrs;
-    for (int i = 0; i < 8; ++i)
-    {
+    for (int i = 0; i < 8; ++i) {
         instrs.push_back(makeFCmp(fcmpOps[i], 0, 1, 10 + i));
     }
 
     // zext each I1 → I64 and chain-add
-    for (int i = 0; i < 8; ++i)
-    {
+    for (int i = 0; i < 8; ++i) {
         instrs.push_back(makeOp("zext", {valB(10 + i)}, 20 + i));
     }
 
     int accum = 20;
-    for (int i = 1; i < 8; ++i)
-    {
+    for (int i = 1; i < 8; ++i) {
         instrs.push_back(makeOp("add", {val(accum), val(20 + i)}, 30 + i));
         accum = 30 + i;
     }
@@ -413,8 +374,7 @@ void testFpCmpCodes(TestContext &ctx)
 }
 
 /// Test 3: Comparison feeding a conditional branch.
-void testCmpFeedsCbr(TestContext &ctx)
-{
+void testCmpFeedsCbr(TestContext &ctx) {
     ctx.beginCategory("Cmp feeds cbr");
 
     // entry: cmp(a, b, 2=slt) → %2, cbr %2, then, else
@@ -469,8 +429,7 @@ void testCmpFeedsCbr(TestContext &ctx)
 // ===----------------------------------------------------------------------===
 
 /// Test 4: Simple if/else (diamond CFG).
-void testDiamondCfg(TestContext &ctx)
-{
+void testDiamondCfg(TestContext &ctx) {
     ctx.beginCategory("Diamond if/else");
 
     // entry: cmp(a, 0) → cbr(then, else)
@@ -530,8 +489,7 @@ void testDiamondCfg(TestContext &ctx)
 }
 
 /// Test 5: While loop with backward branch.
-void testWhileLoop(TestContext &ctx)
-{
+void testWhileLoop(TestContext &ctx) {
     ctx.beginCategory("While loop");
 
     // entry: br(loop_hdr)
@@ -581,8 +539,7 @@ void testWhileLoop(TestContext &ctx)
 }
 
 /// Test 6: Switch statement (switch_i32).
-void testSwitchI32(TestContext &ctx)
-{
+void testSwitchI32(TestContext &ctx) {
     ctx.beginCategory("Switch (switch_i32)");
 
     // entry: switch_i32(%scrutinee, default, 1→case1, 2→case2, 3→case3, 5→case5)
@@ -598,8 +555,7 @@ void testSwitchI32(TestContext &ctx)
     entry.instrs = {
         makeSwitch(0, {{1, "case1"}, {2, "case2"}, {3, "case3"}, {5, "case5"}}, "default_blk")};
 
-    auto makeRetBlock = [](const char *name, int64_t retVal)
-    {
+    auto makeRetBlock = [](const char *name, int64_t retVal) {
         ILBlock blk{};
         blk.name = name;
         ILInstr ret{};
@@ -640,8 +596,7 @@ void testSwitchI32(TestContext &ctx)
 }
 
 /// Test 7: Nested if/else (3 levels deep).
-void testNestedIfElse(TestContext &ctx)
-{
+void testNestedIfElse(TestContext &ctx) {
     ctx.beginCategory("Nested if/else (3)");
 
     // Structure:
@@ -675,8 +630,7 @@ void testNestedIfElse(TestContext &ctx)
         makeCbr(12, "l2_ft", "l2_ff"),
     };
 
-    auto makeLeaf = [](const char *name, int64_t retVal)
-    {
+    auto makeLeaf = [](const char *name, int64_t retVal) {
         ILBlock blk{};
         blk.name = name;
         ILInstr ret{};
@@ -716,8 +670,7 @@ void testNestedIfElse(TestContext &ctx)
 }
 
 /// Test 8: Direct function call.
-void testDirectCall(TestContext &ctx)
-{
+void testDirectCall(TestContext &ctx) {
     ctx.beginCategory("Direct call");
 
     // Callee: add_fn(a, b) → ret a+b
@@ -766,8 +719,7 @@ void testDirectCall(TestContext &ctx)
 // ===----------------------------------------------------------------------===
 
 /// Test 9: Indirect function call.
-void testIndirectCall(TestContext &ctx)
-{
+void testIndirectCall(TestContext &ctx) {
     ctx.beginCategory("Indirect call");
 
     // fn(ptr, x) → call.indirect %ptr(x) → ret result
@@ -797,8 +749,7 @@ void testIndirectCall(TestContext &ctx)
 }
 
 /// Test 10: Empty block fallthrough.
-void testEmptyBlockFallthrough(TestContext &ctx)
-{
+void testEmptyBlockFallthrough(TestContext &ctx) {
     ctx.beginCategory("Empty block fallthru");
 
     // entry: add(a,1) → br(mid)
@@ -837,8 +788,7 @@ void testEmptyBlockFallthrough(TestContext &ctx)
 }
 
 /// Test 11: Both branches of cbr go to the same target.
-void testBothBranchesSameTarget(TestContext &ctx)
-{
+void testBothBranchesSameTarget(TestContext &ctx) {
     ctx.beginCategory("Same-target cbr");
 
     // entry: cmp(a, 0, 1=ne) → cbr(target, target)  — both branches go to same block
@@ -872,8 +822,7 @@ void testBothBranchesSameTarget(TestContext &ctx)
 }
 
 /// Test 12: Comparison after arithmetic (explicit CMP, not flag reuse).
-void testCmpAfterArith(TestContext &ctx)
-{
+void testCmpAfterArith(TestContext &ctx) {
     ctx.beginCategory("Cmp after arith");
 
     // entry: %2 = add(a, b)
@@ -925,8 +874,7 @@ void testCmpAfterArith(TestContext &ctx)
 // Main
 // ===----------------------------------------------------------------------===
 
-int main()
-{
+int main() {
     TestContext ctx;
 
     // Part A: Condition Code Completeness
@@ -949,8 +897,7 @@ int main()
 
     ctx.printSummary();
 
-    if (ctx.globalFail != 0)
-    {
+    if (ctx.globalFail != 0) {
         std::cerr << ctx.globalFail << " test(s) FAILED\n";
         return EXIT_FAILURE;
     }

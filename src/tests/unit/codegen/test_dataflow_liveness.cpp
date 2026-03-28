@@ -30,8 +30,7 @@ using namespace viper::codegen::ra;
 // ---------------------------------------------------------------------------
 // Test: Single block, no successors — trivial case
 // ---------------------------------------------------------------------------
-TEST(DataflowLiveness, SingleBlock)
-{
+TEST(DataflowLiveness, SingleBlock) {
     // CFG: block 0 (no successors)
     // gen = {v1}, kill = {v2}
     std::vector<std::vector<std::size_t>> succs = {{}};
@@ -50,8 +49,7 @@ TEST(DataflowLiveness, SingleBlock)
 // ---------------------------------------------------------------------------
 // Test: Linear chain — block 0 → block 1
 // ---------------------------------------------------------------------------
-TEST(DataflowLiveness, LinearChain)
-{
+TEST(DataflowLiveness, LinearChain) {
     // CFG: 0 → 1
     // Block 0: gen={}, kill={v1} (defines v1)
     // Block 1: gen={v1}, kill={} (uses v1)
@@ -72,8 +70,7 @@ TEST(DataflowLiveness, LinearChain)
 // ---------------------------------------------------------------------------
 // Test: Diamond CFG — block 0 → {1, 2}, both → 3
 // ---------------------------------------------------------------------------
-TEST(DataflowLiveness, Diamond)
-{
+TEST(DataflowLiveness, Diamond) {
     // CFG:  0 → 1, 0 → 2, 1 → 3, 2 → 3
     // Block 0: defines v1, v2
     // Block 1: uses v1
@@ -95,8 +92,7 @@ TEST(DataflowLiveness, Diamond)
 // ---------------------------------------------------------------------------
 // Test: Loop — block 0 → 1 → 0 (back edge)
 // ---------------------------------------------------------------------------
-TEST(DataflowLiveness, SimpleLoop)
-{
+TEST(DataflowLiveness, SimpleLoop) {
     // CFG: 0 → 1, 1 → 0, 1 → 2 (exit)
     // Block 0: uses v1
     // Block 1: defines v1
@@ -116,8 +112,7 @@ TEST(DataflowLiveness, SimpleLoop)
 // ---------------------------------------------------------------------------
 // Test: buildPredecessors helper
 // ---------------------------------------------------------------------------
-TEST(DataflowLiveness, BuildPredecessors)
-{
+TEST(DataflowLiveness, BuildPredecessors) {
     std::vector<std::vector<std::size_t>> succs = {{1, 2}, {3}, {3}, {}};
     auto preds = buildPredecessors(succs);
 
@@ -132,8 +127,7 @@ TEST(DataflowLiveness, BuildPredecessors)
 // ---------------------------------------------------------------------------
 // Test: Convergence — verify iteration count is reasonable
 // ---------------------------------------------------------------------------
-TEST(DataflowLiveness, ConvergesWithinBounds)
-{
+TEST(DataflowLiveness, ConvergesWithinBounds) {
     // 10-block linear chain: 0→1→2→...→9
     // Variable used in block 9, defined in block 0
     // Should converge in ~10 iterations (one per block)
@@ -151,16 +145,14 @@ TEST(DataflowLiveness, ConvergesWithinBounds)
     auto result = solveBackwardDataflow(succs, gen, kill, 1000);
 
     // v42 should be live-out of every block except the last
-    for (std::size_t i = 0; i + 1 < n; ++i)
-    {
+    for (std::size_t i = 0; i + 1 < n; ++i) {
         EXPECT_TRUE(result.liveOut[i].count(42));
     }
     // v42 should NOT be live-in to block 0 (killed there)
     EXPECT_FALSE(result.liveIn[0].count(42));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

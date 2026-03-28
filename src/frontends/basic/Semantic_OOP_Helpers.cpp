@@ -20,29 +20,23 @@
 #include "frontends/basic/StringUtils.hpp"
 #include "frontends/basic/detail/Semantic_OOP_Internal.hpp"
 
-namespace il::frontends::basic::detail
-{
+namespace il::frontends::basic::detail {
 
-namespace
-{
+namespace {
 
 //===----------------------------------------------------------------------===//
 // AST Walkers
 //===----------------------------------------------------------------------===//
 
 /// @brief Walker to detect local variables that shadow class fields.
-class MemberShadowCheckWalker final : public BasicAstWalker<MemberShadowCheckWalker>
-{
+class MemberShadowCheckWalker final : public BasicAstWalker<MemberShadowCheckWalker> {
   public:
     MemberShadowCheckWalker(const std::string &className,
                             const std::unordered_set<std::string> &fields,
                             DiagnosticEmitter *emitter) noexcept
-        : className_(className), fields_(fields), emitter_(emitter)
-    {
-    }
+        : className_(className), fields_(fields), emitter_(emitter) {}
 
-    void before(const DimStmt &stmt)
-    {
+    void before(const DimStmt &stmt) {
         if (!emitter_ || stmt.name.empty())
             return;
         if (!fields_.contains(stmt.name))
@@ -69,20 +63,16 @@ class MemberShadowCheckWalker final : public BasicAstWalker<MemberShadowCheckWal
 };
 
 /// @brief Walker to detect use of 'ME' in static contexts.
-class MeUseWalker : public BasicAstWalker<MeUseWalker>
-{
+class MeUseWalker : public BasicAstWalker<MeUseWalker> {
   public:
     DiagnosticEmitter *em;
     const char *errorCode;
     const char *message;
 
     MeUseWalker(DiagnosticEmitter *e, const char *code, const char *msg)
-        : em(e), errorCode(code), message(msg)
-    {
-    }
+        : em(e), errorCode(code), message(msg) {}
 
-    void visit(const MeExpr &expr)
-    {
+    void visit(const MeExpr &expr) {
         if (!em)
             return;
         em->emit(il::support::Severity::Error, errorCode, expr.loc, 1, message);
@@ -94,14 +84,12 @@ class MeUseWalker : public BasicAstWalker<MeUseWalker>
 //===----------------------------------------------------------------------===//
 
 /// @brief Check if a statement definitely returns a value.
-[[nodiscard]] bool methodMustReturn(const Stmt &stmt)
-{
+[[nodiscard]] bool methodMustReturn(const Stmt &stmt) {
     if (const auto *lst = as<const StmtList>(stmt))
         return !lst->stmts.empty() && methodMustReturn(*lst->stmts.back());
     if (const auto *ret = as<const ReturnStmt>(stmt))
         return ret->value != nullptr;
-    if (const auto *ifs = as<const IfStmt>(stmt))
-    {
+    if (const auto *ifs = as<const IfStmt>(stmt)) {
         if (!ifs->then_branch || !methodMustReturn(*ifs->then_branch))
             return false;
         for (const auto &elifBranch : ifs->elseifs)
@@ -125,8 +113,7 @@ class MeUseWalker : public BasicAstWalker<MeUseWalker>
 void checkMemberShadowing(const std::vector<StmtPtr> &body,
                           const ClassDecl &klass,
                           const std::unordered_set<std::string> &fieldNames,
-                          DiagnosticEmitter *emitter)
-{
+                          DiagnosticEmitter *emitter) {
     if (!emitter || fieldNames.empty())
         return;
 
@@ -139,8 +126,7 @@ void checkMemberShadowing(const std::vector<StmtPtr> &body,
 void checkMeInStaticContext(const std::vector<StmtPtr> &body,
                             DiagnosticEmitter *emitter,
                             const char *errorCode,
-                            const char *message)
-{
+                            const char *message) {
     if (!emitter)
         return;
     MeUseWalker walker(emitter, errorCode, message);
@@ -149,40 +135,32 @@ void checkMeInStaticContext(const std::vector<StmtPtr> &body,
             walker.walkStmt(*s);
 }
 
-bool methodBodyMustReturn(const std::vector<StmtPtr> &stmts)
-{
+bool methodBodyMustReturn(const std::vector<StmtPtr> &stmts) {
     if (stmts.empty())
         return false;
     const StmtPtr &tail = stmts.back();
     return tail && methodMustReturn(*tail);
 }
 
-bool methodHasImplicitReturn(const MethodDecl &method)
-{
-    auto isNameAssign = [&](const Stmt &s) -> bool
-    {
-        if (auto *let = as<const LetStmt>(s))
-        {
-            if (let->target)
-            {
+bool methodHasImplicitReturn(const MethodDecl &method) {
+    auto isNameAssign = [&](const Stmt &s) -> bool {
+        if (auto *let = as<const LetStmt>(s)) {
+            if (let->target) {
                 if (auto *v = as<VarExpr>(*let->target))
                     return string_utils::iequals(v->name, method.name);
             }
         }
         return false;
     };
-    std::function<bool(const Stmt &)> walk = [&](const Stmt &s) -> bool
-    {
+    std::function<bool(const Stmt &)> walk = [&](const Stmt &s) -> bool {
         if (isNameAssign(s))
             return true;
-        if (auto *list = as<const StmtList>(s))
-        {
+        if (auto *list = as<const StmtList>(s)) {
             for (const auto &sp : list->stmts)
                 if (sp && walk(*sp))
                     return true;
         }
-        if (auto *ifs = as<const IfStmt>(s))
-        {
+        if (auto *ifs = as<const IfStmt>(s)) {
             if (ifs->then_branch && walk(*ifs->then_branch))
                 return true;
             for (const auto &e : ifs->elseifs)
@@ -199,8 +177,9 @@ bool methodHasImplicitReturn(const MethodDecl &method)
     return false;
 }
 
-void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, DiagnosticEmitter *emitter)
-{
+void emitMissingReturn(const ClassDecl &klass,
+                       const MethodDecl &method,
+                       DiagnosticEmitter *emitter) {
     if (!emitter)
         return;
     if (!method.ret)
@@ -219,11 +198,9 @@ void emitMissingReturn(const ClassDecl &klass, const MethodDecl &method, Diagnos
     emitter->emit(il::support::Severity::Error, "B1007", method.loc, 3, std::move(msg));
 }
 
-std::string joinQualified(const std::vector<std::string> &segs)
-{
+std::string joinQualified(const std::vector<std::string> &segs) {
     std::string out;
-    for (size_t i = 0; i < segs.size(); ++i)
-    {
+    for (size_t i = 0; i < segs.size(); ++i) {
         if (i)
             out.push_back('.');
         out += segs[i];

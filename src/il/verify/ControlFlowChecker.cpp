@@ -35,8 +35,7 @@
 
 using namespace il::core;
 
-namespace il::verify
-{
+namespace il::verify {
 using il::support::Diag;
 using il::support::Expected;
 using il::support::makeError;
@@ -52,8 +51,7 @@ using VerifyInstrFnExpected =
                                  TypeInference &types,
                                  DiagSink &sink)>;
 
-namespace
-{
+namespace {
 
 /// @brief Validates block parameter declarations against IL structural rules.
 /// @param fn Function owning @p bb; used for diagnostics.
@@ -67,11 +65,9 @@ namespace
 Expected<void> validateBlockParams_impl(const Function &fn,
                                         const BasicBlock &bb,
                                         TypeInference &types,
-                                        std::vector<unsigned> &paramIds)
-{
+                                        std::vector<unsigned> &paramIds) {
     std::unordered_set<std::string> paramNames;
-    for (const auto &param : bb.params)
-    {
+    for (const auto &param : bb.params) {
         if (!paramNames.insert(param.name).second)
             return Expected<void>{
                 makeError({}, formatBlockDiag(fn, bb, "duplicate param %" + param.name))};
@@ -107,10 +103,8 @@ Expected<void> iterateBlockInstructions_impl(
     const std::unordered_map<std::string, const Function *> &funcs,
     TypeInference &types,
     const VerifyInstrFnExpected &verifyInstrFn,
-    DiagSink &sink)
-{
-    for (const auto &instr : bb.instructions)
-    {
+    DiagSink &sink) {
+    for (const auto &instr : bb.instructions) {
         if (auto result = types.ensureOperandsDefined_E(fn, bb, instr); !result)
             return result;
 
@@ -131,16 +125,13 @@ Expected<void> iterateBlockInstructions_impl(
 ///         instructions after a terminator, or is missing a terminator.
 /// @details Implements the "explicit control flow" requirement described in
 ///          docs/il-guide.md#reference: every block ends with exactly one terminator.
-Expected<void> checkBlockTerminators_impl(const Function &fn, const BasicBlock &bb)
-{
+Expected<void> checkBlockTerminators_impl(const Function &fn, const BasicBlock &bb) {
     if (bb.instructions.empty())
         return Expected<void>{makeError({}, formatBlockDiag(fn, bb, "empty block"))};
 
     bool seenTerm = false;
-    for (const auto &instr : bb.instructions)
-    {
-        if (isTerminator(instr.op))
-        {
+    for (const auto &instr : bb.instructions) {
+        if (isTerminator(instr.op)) {
             if (seenTerm)
                 return Expected<void>{
                     makeError(instr.loc, formatInstrDiag(fn, bb, instr, "multiple terminators"))};
@@ -158,8 +149,7 @@ Expected<void> checkBlockTerminators_impl(const Function &fn, const BasicBlock &
     return {};
 }
 
-struct ParsedCapture
-{
+struct ParsedCapture {
     std::vector<std::string> warnings;
     std::vector<std::string> errors;
 };
@@ -173,13 +163,11 @@ struct ParsedCapture
 ///
 /// @param text Aggregated stdout/stderr text captured from a verifier.
 /// @return Categorised diagnostic lists ready for further processing.
-ParsedCapture parseCapturedLines(const std::string &text)
-{
+ParsedCapture parseCapturedLines(const std::string &text) {
     ParsedCapture parsed;
     std::istringstream iss(text);
     std::string line;
-    while (std::getline(iss, line))
-    {
+    while (std::getline(iss, line)) {
         if (!line.empty() && line.back() == '\r')
             line.pop_back();
         if (line.empty())
@@ -201,11 +189,9 @@ ParsedCapture parseCapturedLines(const std::string &text)
 ///
 /// @param messages Collection of message strings to concatenate.
 /// @return Combined message separated by newline characters.
-std::string joinMessages(const std::vector<std::string> &messages)
-{
+std::string joinMessages(const std::vector<std::string> &messages) {
     std::ostringstream oss;
-    for (size_t i = 0; i < messages.size(); ++i)
-    {
+    for (size_t i = 0; i < messages.size(); ++i) {
         if (i != 0)
             oss << '\n';
         oss << messages[i];
@@ -229,8 +215,7 @@ std::string joinMessages(const std::vector<std::string> &messages)
 Expected<void> validateBlockParams_E(const Function &fn,
                                      const BasicBlock &bb,
                                      TypeInference &types,
-                                     std::vector<unsigned> &paramIds)
-{
+                                     std::vector<unsigned> &paramIds) {
     return validateBlockParams_impl(fn, bb, types, paramIds);
 }
 
@@ -259,8 +244,7 @@ Expected<void> iterateBlockInstructions_E(
     const std::unordered_map<std::string, const Function *> &funcs,
     TypeInference &types,
     const VerifyInstrFnExpected &verifyInstrFn,
-    DiagSink &sink)
-{
+    DiagSink &sink) {
     return iterateBlockInstructions_impl(
         fn, bb, blockMap, externs, funcs, types, verifyInstrFn, sink);
 }
@@ -270,8 +254,7 @@ Expected<void> iterateBlockInstructions_E(
 /// @param fn Function owning @p bb.
 /// @param bb Block whose terminator structure is checked.
 /// @return Success or a diagnostic describing missing or duplicate terminators.
-Expected<void> checkBlockTerminators_E(const Function &fn, const BasicBlock &bb)
-{
+Expected<void> checkBlockTerminators_E(const Function &fn, const BasicBlock &bb) {
     return checkBlockTerminators_impl(fn, bb);
 }
 
@@ -279,10 +262,8 @@ Expected<void> checkBlockTerminators_E(const Function &fn, const BasicBlock &bb)
 ///
 /// @param op Opcode to classify.
 /// @return @c true when @p op ends a block per the IL specification.
-bool isTerminator(Opcode op)
-{
-    switch (op)
-    {
+bool isTerminator(Opcode op) {
+    switch (op) {
         case Opcode::Br:
         case Opcode::CBr:
         case Opcode::SwitchI32:
@@ -314,10 +295,8 @@ bool validateBlockParams(const Function &fn,
                          const BasicBlock &bb,
                          TypeInference &types,
                          std::vector<unsigned> &paramIds,
-                         std::ostream &err)
-{
-    if (auto result = validateBlockParams_E(fn, bb, types, paramIds); !result)
-    {
+                         std::ostream &err) {
+    if (auto result = validateBlockParams_E(fn, bb, types, paramIds); !result) {
         il::support::printDiag(result.error(), err);
         return false;
     }
@@ -349,8 +328,7 @@ bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
                               const std::unordered_map<std::string, const Extern *> &externs,
                               const std::unordered_map<std::string, const Function *> &funcs,
                               TypeInference &types,
-                              std::ostream &err)
-{
+                              std::ostream &err) {
     CollectingDiagSink warnings;
     VerifyInstrFnExpected shim =
         [&](const Function &fnRef,
@@ -360,16 +338,14 @@ bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
             const std::unordered_map<std::string, const Extern *> &externsRef,
             const std::unordered_map<std::string, const Function *> &funcsRef,
             TypeInference &typesRef,
-            DiagSink &warningSink) -> Expected<void>
-    {
+            DiagSink &warningSink) -> Expected<void> {
         std::ostringstream capture;
         bool ok = verifyInstrFn(
             fnRef, bbRef, instrRef, blockMapRef, externsRef, funcsRef, typesRef, capture);
         ParsedCapture parsed = parseCapturedLines(capture.str());
         for (const auto &msg : parsed.warnings)
             warningSink.report(Diag{Severity::Warning, msg, instrRef.loc, {}});
-        if (!ok)
-        {
+        if (!ok) {
             std::string message = joinMessages(parsed.errors);
             if (message.empty())
                 message = formatInstrDiag(fnRef, bbRef, instrRef, "verification failed");
@@ -380,8 +356,7 @@ bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
 
     if (auto result =
             iterateBlockInstructions_E(fn, bb, blockMap, externs, funcs, types, shim, warnings);
-        !result)
-    {
+        !result) {
         for (const auto &warning : warnings.diagnostics())
             il::support::printDiag(warning, err);
         il::support::printDiag(result.error(), err);
@@ -399,10 +374,8 @@ bool iterateBlockInstructions(VerifyInstrFn verifyInstrFn,
 /// @param bb Block whose terminator structure is inspected.
 /// @param err Stream receiving formatted diagnostics on failure.
 /// @return @c true when the block satisfies terminator rules; otherwise @c false.
-bool checkBlockTerminators(const Function &fn, const BasicBlock &bb, std::ostream &err)
-{
-    if (auto result = checkBlockTerminators_E(fn, bb); !result)
-    {
+bool checkBlockTerminators(const Function &fn, const BasicBlock &bb, std::ostream &err) {
+    if (auto result = checkBlockTerminators_E(fn, bb); !result) {
         il::support::printDiag(result.error(), err);
         return false;
     }
@@ -423,10 +396,8 @@ bool verifyBr(const Function &fn,
               const Instr &instr,
               const BlockMap &blockMap,
               TypeInference &types,
-              std::ostream &err)
-{
-    if (auto result = verifyBr_E(fn, bb, instr, blockMap, types); !result)
-    {
+              std::ostream &err) {
+    if (auto result = verifyBr_E(fn, bb, instr, blockMap, types); !result) {
         il::support::printDiag(result.error(), err);
         return false;
     }
@@ -447,10 +418,8 @@ bool verifyCBr(const Function &fn,
                const Instr &instr,
                const BlockMap &blockMap,
                TypeInference &types,
-               std::ostream &err)
-{
-    if (auto result = verifyCBr_E(fn, bb, instr, blockMap, types); !result)
-    {
+               std::ostream &err) {
+    if (auto result = verifyCBr_E(fn, bb, instr, blockMap, types); !result) {
         il::support::printDiag(result.error(), err);
         return false;
     }
@@ -469,10 +438,8 @@ bool verifyRet(const Function &fn,
                const BasicBlock &bb,
                const Instr &instr,
                TypeInference &types,
-               std::ostream &err)
-{
-    if (auto result = verifyRet_E(fn, bb, instr, types); !result)
-    {
+               std::ostream &err) {
+    if (auto result = verifyRet_E(fn, bb, instr, types); !result) {
         il::support::printDiag(result.error(), err);
         return false;
     }

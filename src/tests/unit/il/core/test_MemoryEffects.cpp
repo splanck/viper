@@ -28,11 +28,9 @@ using il::core::Opcode;
 using il::core::Type;
 using il::core::Value;
 
-namespace
-{
+namespace {
 
-[[nodiscard]] Function makeProbeFunction()
-{
+[[nodiscard]] Function makeProbeFunction() {
     Function fn;
     fn.name = "memory_effects";
     fn.retType = Type(Type::Kind::Void);
@@ -91,8 +89,7 @@ namespace
 
 } // namespace
 
-TEST(MemoryEffects, ClassifiesRepresentativeOpcodes)
-{
+TEST(MemoryEffects, ClassifiesRepresentativeOpcodes) {
     const Function fn = makeProbeFunction();
     const auto &instructions = fn.blocks.front().instructions;
 
@@ -111,8 +108,7 @@ TEST(MemoryEffects, ClassifiesRepresentativeOpcodes)
     EXPECT_TRUE(hasMemoryWrite(instructions[5].op));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

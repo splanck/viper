@@ -30,15 +30,13 @@
 #include <cstdio>
 #include <cstring>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
@@ -46,32 +44,27 @@ extern "C" void vm_trap(const char *msg)
 }
 
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
         g_last_trap = nullptr;                                                                     \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             expr;                                                                                  \
             assert(false && "Expected trap");                                                      \
         }                                                                                          \
         g_trap_expected = false;                                                                   \
     } while (0)
 
-static rt_string make_key(const char *t)
-{
+static rt_string make_key(const char *t) {
     return rt_string_from_bytes(t, strlen(t));
 }
 
-static void *new_obj()
-{
+static void *new_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
 }
 
-static void rt_release_obj(void *p)
-{
+static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
 }
@@ -79,8 +72,7 @@ static void rt_release_obj(void *p)
 // ---------------------------------------------------------------------------
 // 1. test_new_map_empty
 // ---------------------------------------------------------------------------
-static void test_new_map_empty()
-{
+static void test_new_map_empty() {
     void *map = rt_map_new();
     assert(map != nullptr);
     assert(rt_map_len(map) == 0);
@@ -92,8 +84,7 @@ static void test_new_map_empty()
 // ---------------------------------------------------------------------------
 // 2. test_set_get
 // ---------------------------------------------------------------------------
-static void test_set_get()
-{
+static void test_set_get() {
     void *map = rt_map_new();
     rt_string key = make_key("hello");
     void *val = new_obj();
@@ -114,8 +105,7 @@ static void test_set_get()
 // ---------------------------------------------------------------------------
 // 3. test_overwrite
 // ---------------------------------------------------------------------------
-static void test_overwrite()
-{
+static void test_overwrite() {
     void *map = rt_map_new();
     rt_string key = make_key("k");
     void *val1 = new_obj();
@@ -138,8 +128,7 @@ static void test_overwrite()
 // ---------------------------------------------------------------------------
 // 4. test_has
 // ---------------------------------------------------------------------------
-static void test_has()
-{
+static void test_has() {
     void *map = rt_map_new();
     rt_string key_a = make_key("a");
     rt_string key_b = make_key("b");
@@ -159,8 +148,7 @@ static void test_has()
 // ---------------------------------------------------------------------------
 // 5. test_remove
 // ---------------------------------------------------------------------------
-static void test_remove()
-{
+static void test_remove() {
     void *map = rt_map_new();
     rt_string key = make_key("rm");
     void *val = new_obj();
@@ -182,8 +170,7 @@ static void test_remove()
 // ---------------------------------------------------------------------------
 // 6. test_remove_absent
 // ---------------------------------------------------------------------------
-static void test_remove_absent()
-{
+static void test_remove_absent() {
     void *map = rt_map_new();
     rt_string key = make_key("ghost");
 
@@ -199,8 +186,7 @@ static void test_remove_absent()
 // ---------------------------------------------------------------------------
 // 7. test_get_missing
 // ---------------------------------------------------------------------------
-static void test_get_missing()
-{
+static void test_get_missing() {
     void *map = rt_map_new();
     rt_string key = make_key("nope");
 
@@ -215,8 +201,7 @@ static void test_get_missing()
 // ---------------------------------------------------------------------------
 // 8. test_get_or
 // ---------------------------------------------------------------------------
-static void test_get_or()
-{
+static void test_get_or() {
     void *map = rt_map_new();
     rt_string key_present = make_key("present");
     rt_string key_absent = make_key("absent");
@@ -248,8 +233,7 @@ static void test_get_or()
 // ---------------------------------------------------------------------------
 // 9. test_set_if_missing
 // ---------------------------------------------------------------------------
-static void test_set_if_missing()
-{
+static void test_set_if_missing() {
     void *map = rt_map_new();
     rt_string key = make_key("once");
     void *val1 = new_obj();
@@ -276,8 +260,7 @@ static void test_set_if_missing()
 // ---------------------------------------------------------------------------
 // 10. test_keys_values
 // ---------------------------------------------------------------------------
-static void test_keys_values()
-{
+static void test_keys_values() {
     void *map = rt_map_new();
     rt_string k1 = make_key("alpha");
     rt_string k2 = make_key("beta");
@@ -313,8 +296,7 @@ static void test_keys_values()
 // ---------------------------------------------------------------------------
 // 11. test_typed_int
 // ---------------------------------------------------------------------------
-static void test_typed_int()
-{
+static void test_typed_int() {
     void *map = rt_map_new();
     rt_string key = make_key("count");
     rt_string key_miss = make_key("missing");
@@ -351,8 +333,7 @@ static void test_typed_int()
 // ---------------------------------------------------------------------------
 // 12. test_typed_float
 // ---------------------------------------------------------------------------
-static void test_typed_float()
-{
+static void test_typed_float() {
     void *map = rt_map_new();
     rt_string key = make_key("pi");
     rt_string key_miss = make_key("missing");
@@ -389,8 +370,7 @@ static void test_typed_float()
 // ---------------------------------------------------------------------------
 // 13. test_clear
 // ---------------------------------------------------------------------------
-static void test_clear()
-{
+static void test_clear() {
     void *map = rt_map_new();
     rt_string k1 = make_key("x");
     rt_string k2 = make_key("y");
@@ -418,16 +398,14 @@ static void test_clear()
 // ---------------------------------------------------------------------------
 // 15. test_many_entries
 // ---------------------------------------------------------------------------
-static void test_many_entries()
-{
+static void test_many_entries() {
     void *map = rt_map_new();
     static const int N = 200;
     rt_string keys[N];
     void *vals[N];
 
     // Insert N entries with unique keys.
-    for (int i = 0; i < N; ++i)
-    {
+    for (int i = 0; i < N; ++i) {
         char buf[32];
         snprintf(buf, sizeof(buf), "key_%d", i);
         keys[i] = make_key(buf);
@@ -439,35 +417,30 @@ static void test_many_entries()
     assert(rt_map_is_empty(map) == 0);
 
     // Verify all entries retrievable.
-    for (int i = 0; i < N; ++i)
-    {
+    for (int i = 0; i < N; ++i) {
         void *got = rt_map_get(map, keys[i]);
         assert(got == vals[i]);
         assert(rt_map_has(map, keys[i]) == 1);
     }
 
     // Remove half.
-    for (int i = 0; i < N / 2; ++i)
-    {
+    for (int i = 0; i < N / 2; ++i) {
         int8_t removed = rt_map_remove(map, keys[i]);
         assert(removed == 1);
     }
     assert(rt_map_len(map) == N - N / 2);
 
     // Remaining half still accessible.
-    for (int i = N / 2; i < N; ++i)
-    {
+    for (int i = N / 2; i < N; ++i) {
         assert(rt_map_get(map, keys[i]) == vals[i]);
     }
 
     // Removed half returns NULL.
-    for (int i = 0; i < N / 2; ++i)
-    {
+    for (int i = 0; i < N / 2; ++i) {
         assert(rt_map_get(map, keys[i]) == nullptr);
     }
 
-    for (int i = 0; i < N; ++i)
-    {
+    for (int i = 0; i < N; ++i) {
         rt_string_unref(keys[i]);
         rt_release_obj(vals[i]);
     }
@@ -478,8 +451,7 @@ static void test_many_entries()
 // ---------------------------------------------------------------------------
 // 16. test_null_safety — NULL map ops return safe defaults (no trap).
 // ---------------------------------------------------------------------------
-static void test_null_safety()
-{
+static void test_null_safety() {
     rt_string key = make_key("x");
 
     // rt_map_get with NULL map returns NULL.
@@ -505,8 +477,7 @@ static void test_null_safety()
 // ---------------------------------------------------------------------------
 
 // 17. test_multiple_keys — distinct keys coexist.
-static void test_multiple_keys()
-{
+static void test_multiple_keys() {
     void *map = rt_map_new();
     rt_string k1 = make_key("foo");
     rt_string k2 = make_key("bar");
@@ -534,8 +505,7 @@ static void test_multiple_keys()
 }
 
 // 18. test_clear_then_reuse — map can be populated again after clear.
-static void test_clear_then_reuse()
-{
+static void test_clear_then_reuse() {
     void *map = rt_map_new();
     rt_string k1 = make_key("a");
     rt_string k2 = make_key("b");
@@ -560,8 +530,7 @@ static void test_clear_then_reuse()
 }
 
 // 19. test_get_or_null_default — get_or with NULL default.
-static void test_get_or_null_default()
-{
+static void test_get_or_null_default() {
     void *map = rt_map_new();
     rt_string key = make_key("miss");
 
@@ -574,8 +543,7 @@ static void test_get_or_null_default()
 }
 
 // 20. test_set_if_missing_on_empty — set_if_missing on empty map.
-static void test_set_if_missing_on_empty()
-{
+static void test_set_if_missing_on_empty() {
     void *map = rt_map_new();
     rt_string key = make_key("first");
     void *val = new_obj();
@@ -591,8 +559,7 @@ static void test_set_if_missing_on_empty()
 }
 
 // 21. test_typed_int_negative — negative and zero integers.
-static void test_typed_int_negative()
-{
+static void test_typed_int_negative() {
     void *map = rt_map_new();
     rt_string kn = make_key("neg");
     rt_string kz = make_key("zero");
@@ -610,8 +577,7 @@ static void test_typed_int_negative()
 }
 
 // 22. test_typed_int_large — large int64 values.
-static void test_typed_int_large()
-{
+static void test_typed_int_large() {
     void *map = rt_map_new();
     rt_string key = make_key("big");
 
@@ -625,8 +591,7 @@ static void test_typed_int_large()
 }
 
 // 23. test_remove_then_reinsert — key can be reused after removal.
-static void test_remove_then_reinsert()
-{
+static void test_remove_then_reinsert() {
     void *map = rt_map_new();
     rt_string key = make_key("recycle");
     void *v1 = new_obj();
@@ -648,8 +613,7 @@ static void test_remove_then_reinsert()
 }
 
 // 24. test_keys_empty_map — keys/values on empty map return empty seqs.
-static void test_keys_empty_map()
-{
+static void test_keys_empty_map() {
     void *map = rt_map_new();
 
     void *keys = rt_map_keys(map);
@@ -667,8 +631,7 @@ static void test_keys_empty_map()
 }
 
 // 25. test_is_empty_transitions — is_empty tracks add/remove.
-static void test_is_empty_transitions()
-{
+static void test_is_empty_transitions() {
     void *map = rt_map_new();
     assert(rt_map_is_empty(map) == 1);
 
@@ -690,8 +653,7 @@ static void test_is_empty_transitions()
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
-int main()
-{
+int main() {
     printf("RTMapComprehensiveTests\n");
 
     test_new_map_empty();

@@ -37,10 +37,8 @@ using namespace viper::codegen::objfile;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -49,8 +47,7 @@ static void check(bool cond, const char *msg, int line)
 #define CHECK(cond) check((cond), #cond, __LINE__)
 
 /// Read a complete file into a byte vector.
-static std::vector<uint8_t> readFile(const std::string &path)
-{
+static std::vector<uint8_t> readFile(const std::string &path) {
     std::ifstream ifs(path, std::ios::binary | std::ios::ate);
     if (!ifs)
         return {};
@@ -61,19 +58,16 @@ static std::vector<uint8_t> readFile(const std::string &path)
     return data;
 }
 
-static uint16_t readLE16(const std::vector<uint8_t> &d, size_t off)
-{
+static uint16_t readLE16(const std::vector<uint8_t> &d, size_t off) {
     return static_cast<uint16_t>(d[off]) | (static_cast<uint16_t>(d[off + 1]) << 8);
 }
 
-static uint32_t readLE32(const std::vector<uint8_t> &d, size_t off)
-{
+static uint32_t readLE32(const std::vector<uint8_t> &d, size_t off) {
     return static_cast<uint32_t>(d[off]) | (static_cast<uint32_t>(d[off + 1]) << 8) |
            (static_cast<uint32_t>(d[off + 2]) << 16) | (static_cast<uint32_t>(d[off + 3]) << 24);
 }
 
-static uint64_t readLE64(const std::vector<uint8_t> &d, size_t off)
-{
+static uint64_t readLE64(const std::vector<uint8_t> &d, size_t off) {
     uint64_t val = 0;
     for (int i = 0; i < 8; ++i)
         val |= (static_cast<uint64_t>(d[off + i]) << (i * 8));
@@ -81,11 +75,9 @@ static uint64_t readLE64(const std::vector<uint8_t> &d, size_t off)
 }
 
 /// Extract a C string from the data at given offset.
-static std::string readCStr(const std::vector<uint8_t> &d, size_t off)
-{
+static std::string readCStr(const std::vector<uint8_t> &d, size_t off) {
     std::string s;
-    while (off < d.size() && d[off] != 0)
-    {
+    while (off < d.size() && d[off] != 0) {
         s.push_back(static_cast<char>(d[off]));
         ++off;
     }
@@ -113,8 +105,7 @@ static constexpr size_t kOffLcDysymtab = 312;
 // Test: Minimal Mach-O x86_64
 // =============================================================================
 
-static void testMinimalX64Macho()
-{
+static void testMinimalX64Macho() {
     CodeSection text, rodata;
     text.emit8(0xC3); // ret
     text.defineSymbol("test_func", SymbolBinding::Global, SymbolSection::Text);
@@ -160,8 +151,7 @@ static void testMinimalX64Macho()
 // Test: Minimal Mach-O AArch64
 // =============================================================================
 
-static void testMinimalA64Macho()
-{
+static void testMinimalA64Macho() {
     CodeSection text, rodata;
     text.emit32LE(0xD65F03C0); // ret
     text.defineSymbol("test_func", SymbolBinding::Global, SymbolSection::Text);
@@ -192,8 +182,7 @@ static void testMinimalA64Macho()
 // Test: Load Commands
 // =============================================================================
 
-static void testLoadCommands()
-{
+static void testLoadCommands() {
     CodeSection text, rodata;
     text.emit8(0xC3);
 
@@ -235,8 +224,7 @@ static void testLoadCommands()
 // Test: Section Headers
 // =============================================================================
 
-static void testSectionHeaders()
-{
+static void testSectionHeaders() {
     CodeSection text, rodata;
     text.emit8(0xC3);
     text.emit8(0x90); // nop (2 bytes total)
@@ -288,8 +276,7 @@ static void testSectionHeaders()
 // Test: Symbol Mangling (underscore prefix)
 // =============================================================================
 
-static void testSymbolMangling()
-{
+static void testSymbolMangling() {
     CodeSection text, rodata;
     text.emit8(0xC3);
     text.defineSymbol("my_func", SymbolBinding::Global, SymbolSection::Text);
@@ -314,22 +301,18 @@ static void testSymbolMangling()
     // Check each symbol name has underscore prefix
     bool foundMyFunc = false;
     bool foundExternalFunc = false;
-    for (uint32_t i = 0; i < nsyms; ++i)
-    {
+    for (uint32_t i = 0; i < nsyms; ++i) {
         size_t nlistOff = symOff + i * 16;
         uint32_t strx = readLE32(data, nlistOff);
         std::string name = readCStr(data, strOff + strx);
 
-        if (name == "_my_func")
-        {
+        if (name == "_my_func") {
             foundMyFunc = true;
             // n_type should be N_SECT | N_EXT = 0x0F
             CHECK(data[nlistOff + 4] == 0x0F);
             // n_sect should be 1 (__text)
             CHECK(data[nlistOff + 5] == 1);
-        }
-        else if (name == "_external_func")
-        {
+        } else if (name == "_external_func") {
             foundExternalFunc = true;
             // n_type should be N_UNDF | N_EXT = 0x01
             CHECK(data[nlistOff + 4] == 0x01);
@@ -347,8 +330,7 @@ static void testSymbolMangling()
 // Test: x86_64 Relocations
 // =============================================================================
 
-static void testX64Relocations()
-{
+static void testX64Relocations() {
     CodeSection text, rodata;
 
     // CALL instruction: E8 + 4 zero bytes
@@ -409,8 +391,7 @@ static void testX64Relocations()
 // Test: AArch64 Relocations
 // =============================================================================
 
-static void testA64Relocations()
-{
+static void testA64Relocations() {
     CodeSection text, rodata;
 
     // BL instruction (0x94000000) with A64Call26 relocation.
@@ -459,8 +440,7 @@ static void testA64Relocations()
 // Test: Relocation Descending Order
 // =============================================================================
 
-static void testRelocDescendingOrder()
-{
+static void testRelocDescendingOrder() {
     CodeSection text, rodata;
 
     // Emit two calls at different offsets.
@@ -500,8 +480,7 @@ static void testRelocDescendingOrder()
 // Test: Factory creates Mach-O writer
 // =============================================================================
 
-static void testFactory()
-{
+static void testFactory() {
     auto writer = createObjectFileWriter(ObjFormat::MachO, ObjArch::X86_64);
     CHECK(writer != nullptr);
 
@@ -513,8 +492,7 @@ static void testFactory()
 // Test: Rodata Section
 // =============================================================================
 
-static void testRodataSection()
-{
+static void testRodataSection() {
     CodeSection text, rodata;
     text.emit8(0xC3);
 
@@ -547,8 +525,7 @@ static void testRodataSection()
 // Test: DYSYMTAB ranges
 // =============================================================================
 
-static void testDysymtabRanges()
-{
+static void testDysymtabRanges() {
     CodeSection text, rodata;
     text.emit8(0xC3);
     text.defineSymbol("my_func", SymbolBinding::Global, SymbolSection::Text);
@@ -590,8 +567,7 @@ static void testDysymtabRanges()
 // Main
 // =============================================================================
 
-int main()
-{
+int main() {
     testMinimalX64Macho();
     testMinimalA64Macho();
     testLoadCommands();

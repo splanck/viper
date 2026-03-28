@@ -24,10 +24,8 @@
 #include <sstream>
 #include <string_view>
 
-namespace
-{
-struct TrapKindSymbol
-{
+namespace {
+struct TrapKindSymbol {
     const char *name;
     long long value;
 };
@@ -46,8 +44,7 @@ constexpr std::array<TrapKindSymbol, 10> kTrapKindSymbols = {{
 }};
 } // namespace
 
-namespace il::io
-{
+namespace il::io {
 
 /// @brief Strip leading and trailing ASCII whitespace from the supplied text.
 ///
@@ -58,8 +55,7 @@ namespace il::io
 ///
 /// @param text Input text that may contain leading or trailing whitespace.
 /// @return Copy of @p text without surrounding whitespace characters.
-std::string trim(const std::string &text)
-{
+std::string trim(const std::string &text) {
     size_t begin = 0;
     while (begin < text.size() && std::isspace(static_cast<unsigned char>(text[begin])))
         ++begin;
@@ -78,8 +74,7 @@ std::string trim(const std::string &text)
 ///
 /// @param stream Backing stream positioned at the next token to extract.
 /// @return Token read from @p stream with any trailing comma stripped.
-std::string readToken(std::istringstream &stream)
-{
+std::string readToken(std::istringstream &stream) {
     std::string token;
     stream >> token;
     if (!token.empty() && token.back() == ',')
@@ -91,8 +86,7 @@ std::string readToken(std::istringstream &stream)
 /// @param lineNo Input line number associated with the diagnostic.
 /// @param message Human-readable message body.
 /// @return Combined diagnostic string.
-std::string formatLineDiag(unsigned lineNo, std::string_view message)
-{
+std::string formatLineDiag(unsigned lineNo, std::string_view message) {
     std::ostringstream oss;
     // Use lowercase "line" to match VM and parser diagnostics uniformly.
     oss << "line " << lineNo << ": " << message;
@@ -108,27 +102,23 @@ std::string formatLineDiag(unsigned lineNo, std::string_view message)
 /// @param token Candidate integer literal, e.g. "-42".
 /// @param value Output location for the parsed integer when parsing succeeds.
 /// @return True when @p token represents a valid signed integer literal.
-bool parseIntegerLiteral(const std::string &token, long long &value)
-{
+bool parseIntegerLiteral(const std::string &token, long long &value) {
     // Recognise optional sign
     size_t pos = 0;
     bool negative = false;
-    if (pos < token.size() && (token[pos] == '+' || token[pos] == '-'))
-    {
+    if (pos < token.size() && (token[pos] == '+' || token[pos] == '-')) {
         negative = (token[pos] == '-');
         ++pos;
     }
 
     // Handle 0b/0B binary prefix explicitly for portability.
     if (pos + 2 <= token.size() && token[pos] == '0' &&
-        (token[pos + 1] == 'b' || token[pos + 1] == 'B'))
-    {
+        (token[pos + 1] == 'b' || token[pos + 1] == 'B')) {
         pos += 2;
         if (pos >= token.size())
             return false;
         long long acc = 0;
-        for (; pos < token.size(); ++pos)
-        {
+        for (; pos < token.size(); ++pos) {
             char ch = token[pos];
             if (ch == '_')
                 continue; // allow visual separators in the future (ignored)
@@ -144,17 +134,14 @@ bool parseIntegerLiteral(const std::string &token, long long &value)
         return true;
     }
 
-    try
-    {
+    try {
         size_t idx = 0;
         long long parsed = std::stoll(token, &idx, 0);
         if (idx != token.size())
             return false;
         value = parsed;
         return true;
-    }
-    catch (const std::exception &)
-    {
+    } catch (const std::exception &) {
         return false;
     }
 }
@@ -168,46 +155,37 @@ bool parseIntegerLiteral(const std::string &token, long long &value)
 /// @param token Candidate floating literal, e.g. "3.14" or "1e-3".
 /// @param value Output location for the parsed floating-point value.
 /// @return True when @p token is a valid floating-point literal.
-bool parseFloatLiteral(const std::string &token, double &value)
-{
+bool parseFloatLiteral(const std::string &token, double &value) {
     // Handle well-known spellings for special values explicitly so behaviour is
     // consistent across libstdc++/libc++ and locales.
-    if (!token.empty())
-    {
+    if (!token.empty()) {
         std::string lower;
         lower.reserve(token.size());
-        for (unsigned char ch : token)
-        {
+        for (unsigned char ch : token) {
             lower.push_back(static_cast<char>(std::tolower(ch)));
         }
-        if (lower == "nan")
-        {
+        if (lower == "nan") {
             value = std::numeric_limits<double>::quiet_NaN();
             return true;
         }
-        if (lower == "inf" || lower == "+inf")
-        {
+        if (lower == "inf" || lower == "+inf") {
             value = std::numeric_limits<double>::infinity();
             return true;
         }
-        if (lower == "-inf")
-        {
+        if (lower == "-inf") {
             value = -std::numeric_limits<double>::infinity();
             return true;
         }
     }
 
-    try
-    {
+    try {
         size_t idx = 0;
         double parsed = std::stod(token, &idx);
         if (idx != token.size())
             return false;
         value = parsed;
         return true;
-    }
-    catch (const std::exception &)
-    {
+    } catch (const std::exception &) {
         return false;
     }
 }
@@ -216,12 +194,9 @@ bool parseFloatLiteral(const std::string &token, double &value)
 /// @param token Trap kind name such as "DivideByZero".
 /// @param value Output receiving the numeric trap code on success.
 /// @return True when @p token matches a known trap name.
-bool parseTrapKindToken(const std::string &token, long long &value)
-{
-    for (const auto &entry : kTrapKindSymbols)
-    {
-        if (token == entry.name)
-        {
+bool parseTrapKindToken(const std::string &token, long long &value) {
+    for (const auto &entry : kTrapKindSymbols) {
+        if (token == entry.name) {
             value = entry.value;
             return true;
         }
@@ -232,10 +207,8 @@ bool parseTrapKindToken(const std::string &token, long long &value)
 /// @brief Map a numeric trap code back to its mnemonic name.
 /// @param value Numeric trap kind identifier.
 /// @return Name of the trap kind when recognised; otherwise empty optional.
-std::optional<std::string_view> trapKindTokenFromValue(long long value)
-{
-    for (const auto &entry : kTrapKindSymbols)
-    {
+std::optional<std::string_view> trapKindTokenFromValue(long long value) {
+    for (const auto &entry : kTrapKindSymbols) {
         if (entry.value == value)
             return entry.name;
     }

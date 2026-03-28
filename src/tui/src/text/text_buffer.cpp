@@ -30,8 +30,7 @@
 
 #include <utility>
 
-namespace viper::tui::text
-{
+namespace viper::tui::text {
 /// @brief Create a lightweight view over a contiguous span within the piece table.
 /// @details Stores the referenced table along with the byte offset and length of
 ///          the slice.  Views provide a convenience wrapper so callers can visit
@@ -40,21 +39,17 @@ namespace viper::tui::text
 /// @param offset Starting byte offset within @p table.
 /// @param length Number of bytes covered by the view.
 TextBuffer::LineView::LineView(const PieceTable &table, std::size_t offset, std::size_t length)
-    : table_(table), offset_(offset), length_(length)
-{
-}
+    : table_(table), offset_(offset), length_(length) {}
 
 /// @brief Retrieve the starting byte offset of the view.
 /// @return Offset originally supplied to the constructor.
-std::size_t TextBuffer::LineView::offset() const
-{
+std::size_t TextBuffer::LineView::offset() const {
     return offset_;
 }
 
 /// @brief Retrieve the length of the viewed range in bytes.
 /// @return Number of bytes covered by the view.
-std::size_t TextBuffer::LineView::length() const
-{
+std::size_t TextBuffer::LineView::length() const {
     return length_;
 }
 
@@ -63,8 +58,7 @@ std::size_t TextBuffer::LineView::length() const
 ///          contributing span in document order.  This is primarily used by the
 ///          renderer when painting wrapped lines.
 /// @param fn Callback invoked with segment descriptors.
-void TextBuffer::LineView::forEachSegment(SegmentVisitor fn) const
-{
+void TextBuffer::LineView::forEachSegment(SegmentVisitor fn) const {
     table_.forEachSegment(offset_, length_, fn);
 }
 
@@ -72,8 +66,7 @@ void TextBuffer::LineView::forEachSegment(SegmentVisitor fn) const
 /// @details Delegates to @ref PieceTable::load, rebuilds the @ref LineIndex, and
 ///          clears the undo history so subsequent edits start from a clean slate.
 /// @param text New document contents.
-void TextBuffer::load(std::string text)
-{
+void TextBuffer::load(std::string text) {
     auto change = table_.load(std::move(text));
     line_index_.reset(change.insertedText());
     history_.clear();
@@ -81,8 +74,7 @@ void TextBuffer::load(std::string text)
 
 /// @brief Obtain the size of the document measured in bytes.
 /// @return Total number of bytes represented by the piece table.
-std::size_t TextBuffer::size() const
-{
+std::size_t TextBuffer::size() const {
     return table_.size();
 }
 
@@ -90,8 +82,7 @@ std::size_t TextBuffer::size() const
 /// @details The count is sourced from @ref LineIndex and therefore reflects any
 ///          newline-aware transformations applied by recent edits.
 /// @return Number of tracked line starts.
-std::size_t TextBuffer::lineCount() const
-{
+std::size_t TextBuffer::lineCount() const {
     return line_index_.count();
 }
 
@@ -101,29 +92,23 @@ std::size_t TextBuffer::lineCount() const
 ///          expose sentinel positions for out-of-range queries.
 /// @param lineNo Zero-based line index.
 /// @return Byte offset of the first character in the requested line.
-std::size_t TextBuffer::lineStart(std::size_t lineNo) const
-{
-    if (lineNo >= line_index_.count())
-    {
+std::size_t TextBuffer::lineStart(std::size_t lineNo) const {
+    if (lineNo >= line_index_.count()) {
         return table_.size();
     }
     return line_index_.start(lineNo);
 }
 
-std::size_t TextBuffer::lineEnd(std::size_t lineNo) const
-{
-    if (lineNo >= line_index_.count())
-    {
+std::size_t TextBuffer::lineEnd(std::size_t lineNo) const {
+    if (lineNo >= line_index_.count()) {
         return table_.size();
     }
 
     const std::size_t start = line_index_.start(lineNo);
     const std::size_t nextLine = lineNo + 1;
-    if (nextLine < line_index_.count())
-    {
+    if (nextLine < line_index_.count()) {
         const std::size_t nextStart = line_index_.start(nextLine);
-        if (nextStart > start)
-        {
+        if (nextStart > start) {
             return nextStart - 1;
         }
         return start;
@@ -134,8 +119,7 @@ std::size_t TextBuffer::lineEnd(std::size_t lineNo) const
 /// @brief Convenience alias for @ref lineStart.
 /// @param lineNo Zero-based line index.
 /// @return Byte offset where the line begins.
-std::size_t TextBuffer::lineOffset(std::size_t lineNo) const
-{
+std::size_t TextBuffer::lineOffset(std::size_t lineNo) const {
     return lineStart(lineNo);
 }
 
@@ -144,12 +128,10 @@ std::size_t TextBuffer::lineOffset(std::size_t lineNo) const
 ///          against pathological ranges where the end precedes the start.
 /// @param lineNo Zero-based line index.
 /// @return Length of the line in bytes (excluding the trailing newline).
-std::size_t TextBuffer::lineLength(std::size_t lineNo) const
-{
+std::size_t TextBuffer::lineLength(std::size_t lineNo) const {
     const std::size_t start = lineStart(lineNo);
     const std::size_t end = lineEnd(lineNo);
-    if (end <= start)
-    {
+    if (end <= start) {
         return 0;
     }
     return end - start;
@@ -158,24 +140,21 @@ std::size_t TextBuffer::lineLength(std::size_t lineNo) const
 /// @brief Materialise a @ref LineView for the requested line.
 /// @param lineNo Zero-based line index.
 /// @return Lightweight view describing the selected line's byte range.
-TextBuffer::LineView TextBuffer::lineView(std::size_t lineNo) const
-{
+TextBuffer::LineView TextBuffer::lineView(std::size_t lineNo) const {
     return LineView(table_, lineOffset(lineNo), lineLength(lineNo));
 }
 
 /// @brief Begin an undo transaction.
 /// @details Forwards to @ref EditHistory::beginTxn so multiple edits can be
 ///          coalesced into a single undo step.
-void TextBuffer::beginTxn()
-{
+void TextBuffer::beginTxn() {
     history_.beginTxn();
 }
 
 /// @brief Complete the current undo transaction.
 /// @details Mirrors @ref beginTxn by signalling the edit history that a batch of
 ///          operations is ready to be committed.
-void TextBuffer::endTxn()
-{
+void TextBuffer::endTxn() {
     history_.endTxn();
 }
 
@@ -185,13 +164,12 @@ void TextBuffer::endTxn()
 ///          inserted.  This keeps all helper structures in sync.
 /// @param pos Byte offset where the insertion occurs.
 /// @param text UTF-8 string to insert.
-void TextBuffer::insert(std::size_t pos, std::string_view text)
-{
+void TextBuffer::insert(std::size_t pos, std::string_view text) {
     auto change = table_.insertInternal(pos, text);
-    change.notifyInsert([this](std::size_t changePos, std::string_view inserted)
-                        { line_index_.onInsert(changePos, inserted); });
-    if (change.hasInsert())
-    {
+    change.notifyInsert([this](std::size_t changePos, std::string_view inserted) {
+        line_index_.onInsert(changePos, inserted);
+    });
+    if (change.hasInsert()) {
         history_.recordInsert(change.insertPos(), std::string(change.insertedText()));
     }
 }
@@ -202,13 +180,12 @@ void TextBuffer::insert(std::size_t pos, std::string_view text)
 ///          ignored so the history remains concise.
 /// @param pos Starting byte offset to erase.
 /// @param len Number of bytes to remove.
-void TextBuffer::erase(std::size_t pos, std::size_t len)
-{
+void TextBuffer::erase(std::size_t pos, std::size_t len) {
     auto change = table_.eraseInternal(pos, len);
-    change.notifyErase([this](std::size_t changePos, std::string_view removed)
-                       { line_index_.onErase(changePos, removed); });
-    if (change.hasErase())
-    {
+    change.notifyErase([this](std::size_t changePos, std::string_view removed) {
+        line_index_.onErase(changePos, removed);
+    });
+    if (change.hasErase()) {
         history_.recordErase(change.erasePos(), std::string(change.erasedText()));
     }
 }
@@ -219,24 +196,20 @@ void TextBuffer::erase(std::size_t pos, std::size_t len)
 ///          @ref insert and @ref erase so auxiliary structures observe identical
 ///          callbacks during undo.
 /// @return True when an edit was undone.
-bool TextBuffer::undo()
-{
-    return history_.undo(
-        [this](const EditHistory::Op &op)
-        {
-            if (op.type == EditHistory::OpType::Insert)
-            {
-                auto change = table_.eraseInternal(op.pos, op.text.size());
-                change.notifyErase([this](std::size_t changePos, std::string_view removed)
-                                   { line_index_.onErase(changePos, removed); });
-            }
-            else
-            {
-                auto change = table_.insertInternal(op.pos, op.text);
-                change.notifyInsert([this](std::size_t changePos, std::string_view inserted)
-                                    { line_index_.onInsert(changePos, inserted); });
-            }
-        });
+bool TextBuffer::undo() {
+    return history_.undo([this](const EditHistory::Op &op) {
+        if (op.type == EditHistory::OpType::Insert) {
+            auto change = table_.eraseInternal(op.pos, op.text.size());
+            change.notifyErase([this](std::size_t changePos, std::string_view removed) {
+                line_index_.onErase(changePos, removed);
+            });
+        } else {
+            auto change = table_.insertInternal(op.pos, op.text);
+            change.notifyInsert([this](std::size_t changePos, std::string_view inserted) {
+                line_index_.onInsert(changePos, inserted);
+            });
+        }
+    });
 }
 
 /// @brief Redo the most recently undone edit.
@@ -244,31 +217,26 @@ bool TextBuffer::undo()
 ///          The same callback structure updates the piece table, line index, and
 ///          edit history in lockstep.
 /// @return True when an edit was reapplied.
-bool TextBuffer::redo()
-{
-    return history_.redo(
-        [this](const EditHistory::Op &op)
-        {
-            if (op.type == EditHistory::OpType::Insert)
-            {
-                auto change = table_.insertInternal(op.pos, op.text);
-                change.notifyInsert([this](std::size_t changePos, std::string_view inserted)
-                                    { line_index_.onInsert(changePos, inserted); });
-            }
-            else
-            {
-                auto change = table_.eraseInternal(op.pos, op.text.size());
-                change.notifyErase([this](std::size_t changePos, std::string_view removed)
-                                   { line_index_.onErase(changePos, removed); });
-            }
-        });
+bool TextBuffer::redo() {
+    return history_.redo([this](const EditHistory::Op &op) {
+        if (op.type == EditHistory::OpType::Insert) {
+            auto change = table_.insertInternal(op.pos, op.text);
+            change.notifyInsert([this](std::size_t changePos, std::string_view inserted) {
+                line_index_.onInsert(changePos, inserted);
+            });
+        } else {
+            auto change = table_.eraseInternal(op.pos, op.text.size());
+            change.notifyErase([this](std::size_t changePos, std::string_view removed) {
+                line_index_.onErase(changePos, removed);
+            });
+        }
+    });
 }
 
 /// @brief Materialise the entire buffer as a single string.
 /// @details Forwards to @ref PieceTable::getText using the document bounds.
 /// @return Copy of the buffer contents.
-std::string TextBuffer::str() const
-{
+std::string TextBuffer::str() const {
     return table_.getText(0, table_.size());
 }
 
@@ -278,17 +246,14 @@ std::string TextBuffer::str() const
 ///          string, matching editor expectations.
 /// @param lineNo Zero-based line index.
 /// @return Copy of the requested line.
-std::string TextBuffer::getLine(std::size_t lineNo) const
-{
-    if (lineNo >= line_index_.count())
-    {
+std::string TextBuffer::getLine(std::size_t lineNo) const {
+    if (lineNo >= line_index_.count()) {
         return {};
     }
     std::size_t start = line_index_.start(lineNo);
     std::size_t end =
         (lineNo + 1 < line_index_.count()) ? line_index_.start(lineNo + 1) - 1 : table_.size();
-    if (end < start)
-    {
+    if (end < start) {
         end = start;
     }
     return table_.getText(start, end - start);
@@ -299,14 +264,11 @@ std::string TextBuffer::getLine(std::size_t lineNo) const
 ///          @ref LineView that references, but does not copy, the underlying
 ///          text.  The visitor may terminate early by returning @c false.
 /// @param fn Callback invoked for every line; returns @c false to stop early.
-void TextBuffer::forEachLine(LineVisitor fn) const
-{
+void TextBuffer::forEachLine(LineVisitor fn) const {
     const std::size_t lines = line_index_.count();
-    for (std::size_t line = 0; line < lines; ++line)
-    {
+    for (std::size_t line = 0; line < lines; ++line) {
         LineView view(table_, lineOffset(line), lineLength(line));
-        if (!fn(line, view))
-        {
+        if (!fn(line, view)) {
             break;
         }
     }

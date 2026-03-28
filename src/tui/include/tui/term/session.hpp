@@ -42,8 +42,7 @@
 #include <windows.h>
 #endif
 
-namespace viper::tui
-{
+namespace viper::tui {
 
 /// @brief RAII guard that enters raw terminal mode on construction and restores
 ///        the original terminal settings on destruction.
@@ -51,8 +50,7 @@ namespace viper::tui
 ///          mode, echo, and signal processing). On Windows, enables Virtual
 ///          Terminal Processing for ANSI escape sequence support. The guard is
 ///          non-copyable to prevent double-restoration of terminal state.
-class TerminalSession
-{
+class TerminalSession {
   public:
     /// @brief Enter raw terminal mode, saving the original settings for later restoration.
     TerminalSession();

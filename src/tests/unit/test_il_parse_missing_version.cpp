@@ -20,8 +20,7 @@
 #include <cassert>
 #include <sstream>
 
-int main()
-{
+int main() {
     {
         const char *src = R"(target "x86_64-unknown-unknown")";
         std::istringstream in(src);

@@ -24,19 +24,16 @@
 #include <string>
 #include <string_view>
 
-namespace
-{
-[[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name)
-{
+namespace {
+[[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name) {
     const auto &externs = module.externs;
-    return std::any_of(externs.begin(),
-                       externs.end(),
-                       [&](const il::core::Extern &ext) { return ext.name == name; });
+    return std::any_of(externs.begin(), externs.end(), [&](const il::core::Extern &ext) {
+        return ext.name == name;
+    });
 }
 } // namespace
 
-TEST(BasicTimerLowering, DeclaresTimerExtern)
-{
+TEST(BasicTimerLowering, DeclaresTimerExtern) {
     constexpr std::string_view kSrc = R"BASIC(
 DIM t AS LONG
 t = TIMER()
@@ -47,10 +44,8 @@ t = TIMER()
     il::frontends::basic::BasicCompilerOptions options{};
 
     auto result = il::frontends::basic::compileBasic(input, options, sourceManager);
-    if (!result.succeeded())
-    {
-        if (result.emitter)
-        {
+    if (!result.succeeded()) {
+        if (result.emitter) {
             result.emitter->printAll(std::cerr);
         }
     }
@@ -64,8 +59,7 @@ t = TIMER()
     EXPECT_NE(ilText.find("call @rt_timer_ms"), std::string::npos);
 }
 
-TEST(BasicTimerLowering, TimerInExpression)
-{
+TEST(BasicTimerLowering, TimerInExpression) {
     constexpr std::string_view kSrc = R"BASIC(
 DIM elapsed AS LONG
 elapsed = TIMER() - TIMER()
@@ -76,10 +70,8 @@ elapsed = TIMER() - TIMER()
     il::frontends::basic::BasicCompilerOptions options{};
 
     auto result = il::frontends::basic::compileBasic(input, options, sourceManager);
-    if (!result.succeeded())
-    {
-        if (result.emitter)
-        {
+    if (!result.succeeded()) {
+        if (result.emitter) {
             result.emitter->printAll(std::cerr);
         }
     }
@@ -91,8 +83,7 @@ elapsed = TIMER() - TIMER()
     size_t count = 0;
     size_t pos = 0;
     const std::string pattern = "call @rt_timer_ms";
-    while ((pos = ilText.find(pattern, pos)) != std::string::npos)
-    {
+    while ((pos = ilText.find(pattern, pos)) != std::string::npos) {
         ++count;
         pos += pattern.length();
     }
@@ -100,8 +91,7 @@ elapsed = TIMER() - TIMER()
     EXPECT_EQ(count, 2);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -23,15 +23,13 @@
 #include <cstdio>
 #include <cstring>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
@@ -39,12 +37,10 @@ extern "C" void vm_trap(const char *msg)
 }
 
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
         g_last_trap = nullptr;                                                                     \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             expr;                                                                                  \
             assert(false && "Expected trap did not occur");                                        \
         }                                                                                          \
@@ -55,18 +51,15 @@ extern "C" void vm_trap(const char *msg)
 // Helper
 // ============================================================================
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
-static const char *str_cstr(rt_string s)
-{
+static const char *str_cstr(rt_string s) {
     return rt_string_cstr(s);
 }
 
-static void assert_str_eq(rt_string s, const char *expected)
-{
+static void assert_str_eq(rt_string s, const char *expected) {
     const char *actual = str_cstr(s);
     assert(strcmp(actual, expected) == 0);
 }
@@ -75,8 +68,7 @@ static void assert_str_eq(rt_string s, const char *expected)
 // Validation Tests
 // ============================================================================
 
-static void test_is_valid_basic()
-{
+static void test_is_valid_basic() {
     // Valid JSON - basic structures
     assert(rt_json_is_valid(make_str("null")) == 1);
     assert(rt_json_is_valid(make_str("true")) == 1);
@@ -106,8 +98,7 @@ static void test_is_valid_basic()
     printf("test_is_valid_basic: PASSED\n");
 }
 
-static void test_is_valid_complex()
-{
+static void test_is_valid_complex() {
     // Valid complex structures
     assert(rt_json_is_valid(make_str("[1, 2, 3]")) == 1);
     assert(rt_json_is_valid(make_str("{\"key\": \"value\"}")) == 1);
@@ -122,16 +113,14 @@ static void test_is_valid_complex()
 // Parse Tests
 // ============================================================================
 
-static void test_parse_null()
-{
+static void test_parse_null() {
     void *result = rt_json_parse(make_str("null"));
     assert(result == nullptr);
 
     printf("test_parse_null: PASSED\n");
 }
 
-static void test_parse_bool()
-{
+static void test_parse_bool() {
     void *t = rt_json_parse(make_str("true"));
     assert(t != nullptr);
     assert(rt_unbox_i1(t) == 1);
@@ -143,8 +132,7 @@ static void test_parse_bool()
     printf("test_parse_bool: PASSED\n");
 }
 
-static void test_parse_number()
-{
+static void test_parse_number() {
     void *n1 = rt_json_parse(make_str("42"));
     assert(n1 != nullptr);
     assert(rt_unbox_f64(n1) == 42.0);
@@ -161,8 +149,7 @@ static void test_parse_number()
     printf("test_parse_number: PASSED\n");
 }
 
-static void test_parse_string()
-{
+static void test_parse_string() {
     void *s1 = rt_json_parse(make_str("\"hello\""));
     assert(s1 != nullptr);
     assert_str_eq((rt_string)s1, "hello");
@@ -178,8 +165,7 @@ static void test_parse_string()
     printf("test_parse_string: PASSED\n");
 }
 
-static void test_parse_array()
-{
+static void test_parse_array() {
     void *arr = rt_json_parse(make_str("[1, 2, 3]"));
     assert(arr != nullptr);
     assert(rt_seq_len(arr) == 3);
@@ -202,8 +188,7 @@ static void test_parse_array()
     printf("test_parse_array: PASSED\n");
 }
 
-static void test_parse_object()
-{
+static void test_parse_object() {
     void *obj = rt_json_parse(make_str("{\"name\": \"Alice\", \"age\": 30}"));
     assert(obj != nullptr);
 
@@ -220,8 +205,7 @@ static void test_parse_object()
     printf("test_parse_object: PASSED\n");
 }
 
-static void test_parse_array_only()
-{
+static void test_parse_array_only() {
     void *arr = rt_json_parse_array(make_str("[1, 2]"));
     assert(arr != nullptr);
     assert(rt_seq_len(arr) == 2);
@@ -233,8 +217,7 @@ static void test_parse_array_only()
     printf("test_parse_array_only: PASSED\n");
 }
 
-static void test_parse_object_only()
-{
+static void test_parse_object_only() {
     void *obj = rt_json_parse_object(make_str("{\"a\": 1}"));
     assert(obj != nullptr);
 
@@ -249,16 +232,14 @@ static void test_parse_object_only()
 // Format Tests
 // ============================================================================
 
-static void test_format_null()
-{
+static void test_format_null() {
     rt_string result = rt_json_format(nullptr);
     assert_str_eq(result, "null");
 
     printf("test_format_null: PASSED\n");
 }
 
-static void test_format_bool()
-{
+static void test_format_bool() {
     rt_string t = rt_json_format(rt_box_i1(1));
     assert_str_eq(t, "true");
 
@@ -268,8 +249,7 @@ static void test_format_bool()
     printf("test_format_bool: PASSED\n");
 }
 
-static void test_format_number()
-{
+static void test_format_number() {
     rt_string n1 = rt_json_format(rt_box_f64(42.0));
     // Should contain "42" somewhere in the output
     assert(strstr(str_cstr(n1), "42") != nullptr);
@@ -281,8 +261,7 @@ static void test_format_number()
     printf("test_format_number: PASSED\n");
 }
 
-static void test_format_string()
-{
+static void test_format_string() {
     rt_string s = rt_json_format((void *)make_str("hello"));
     assert_str_eq(s, "\"hello\"");
 
@@ -293,8 +272,7 @@ static void test_format_string()
     printf("test_format_string: PASSED\n");
 }
 
-static void test_format_array()
-{
+static void test_format_array() {
     void *arr = rt_seq_new();
     rt_seq_push(arr, rt_box_f64(1.0));
     rt_seq_push(arr, rt_box_f64(2.0));
@@ -306,8 +284,7 @@ static void test_format_array()
     printf("test_format_array: PASSED\n");
 }
 
-static void test_format_object()
-{
+static void test_format_object() {
     void *obj = rt_map_new();
     rt_map_set(obj, make_str("x"), rt_box_f64(10.0));
 
@@ -320,8 +297,7 @@ static void test_format_object()
     printf("test_format_object: PASSED\n");
 }
 
-static void test_format_pretty()
-{
+static void test_format_pretty() {
     void *arr = rt_seq_new();
     rt_seq_push(arr, rt_box_f64(1.0));
     rt_seq_push(arr, rt_box_f64(2.0));
@@ -338,8 +314,7 @@ static void test_format_pretty()
 // Round-Trip Tests
 // ============================================================================
 
-static void test_roundtrip()
-{
+static void test_roundtrip() {
     // Parse then format should produce equivalent JSON
     const char *json = "{\"name\":\"test\",\"value\":42}";
     void *parsed = rt_json_parse(make_str(json));
@@ -360,8 +335,7 @@ static void test_roundtrip()
 // Type Of Tests
 // ============================================================================
 
-static void test_type_of()
-{
+static void test_type_of() {
     assert_str_eq(rt_json_type_of(nullptr), "null");
     assert_str_eq(rt_json_type_of((void *)make_str("hi")), "string");
     assert_str_eq(rt_json_type_of(rt_box_f64(1.0)), "number");
@@ -375,8 +349,7 @@ static void test_type_of()
 // Error Handling Tests
 // ============================================================================
 
-static void test_parse_invalid_traps()
-{
+static void test_parse_invalid_traps() {
     EXPECT_TRAP(rt_json_parse(make_str("")));
     EXPECT_TRAP(rt_json_parse(make_str("invalid")));
     EXPECT_TRAP(rt_json_parse(make_str("[1,2,]")));
@@ -389,8 +362,7 @@ static void test_parse_invalid_traps()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     // Validation
     test_is_valid_basic();
     test_is_valid_complex();

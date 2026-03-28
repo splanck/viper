@@ -24,18 +24,15 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-bool hasLine(const std::vector<int> &lines, int target)
-{
+bool hasLine(const std::vector<int> &lines, int target) {
     return std::find(lines.begin(), lines.end(), target) != lines.end();
 }
 
 } // namespace
 
-int main()
-{
+int main() {
     const std::string src = "10 DIM FLAG AS BOOLEAN\n"
                             "20 LET I = 3.14\n"
                             "30 LET D# = 1\n"
@@ -54,10 +51,8 @@ int main()
     il::core::Module module = lowerer.lowerProgram(*prog);
 
     const il::core::Function *mainFn = nullptr;
-    for (const auto &fn : module.functions)
-    {
-        if (fn.name == "main")
-        {
+    for (const auto &fn : module.functions) {
+        if (fn.name == "main") {
             mainFn = &fn;
             break;
         }
@@ -69,12 +64,9 @@ int main()
     std::vector<int> truncLines;
     std::vector<int> toDoubleLines;
 
-    for (const auto &block : mainFn->blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
-            switch (instr.op)
-            {
+    for (const auto &block : mainFn->blocks) {
+        for (const auto &instr : block.instructions) {
+            switch (instr.op) {
                 case il::core::Opcode::CastFpToSiRteChk:
                     castChkLines.push_back(instr.loc.line);
                     break;

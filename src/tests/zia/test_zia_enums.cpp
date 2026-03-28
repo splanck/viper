@@ -27,26 +27,20 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 static bool hasCallWithConstIntArg(const il::core::Module &mod,
                                    const std::string &fnName,
                                    const std::string &callee,
-                                   int64_t value)
-{
-    for (const auto &fn : mod.functions)
-    {
+                                   int64_t value) {
+    for (const auto &fn : mod.functions) {
         if (fn.name != fnName)
             continue;
-        for (const auto &block : fn.blocks)
-        {
-            for (const auto &instr : block.instructions)
-            {
+        for (const auto &block : fn.blocks) {
+            for (const auto &instr : block.instructions) {
                 if (instr.op != il::core::Opcode::Call || instr.callee != callee)
                     continue;
-                for (const auto &operand : instr.operands)
-                {
+                for (const auto &operand : instr.operands) {
                     if (operand.kind == il::core::Value::Kind::ConstInt && operand.i64 == value)
                         return true;
                 }
@@ -58,8 +52,7 @@ static bool hasCallWithConstIntArg(const il::core::Module &mod,
 
 // ===== Basic Declaration =====
 
-TEST(ZiaEnums, BasicEnumDeclaration)
-{
+TEST(ZiaEnums, BasicEnumDeclaration) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -80,10 +73,8 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -92,8 +83,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaEnums, ExplicitValues)
-{
+TEST(ZiaEnums, ExplicitValues) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -116,8 +106,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaEnums, AutoIncrementAfterExplicit)
-{
+TEST(ZiaEnums, AutoIncrementAfterExplicit) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -143,8 +132,7 @@ func start() {
 
 // ===== Variant Access =====
 
-TEST(ZiaEnums, VariantAccessInExpression)
-{
+TEST(ZiaEnums, VariantAccessInExpression) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -170,8 +158,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaEnums, EnumComparisonNotEqual)
-{
+TEST(ZiaEnums, EnumComparisonNotEqual) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -198,8 +185,7 @@ func start() {
 
 // ===== Type Safety Errors =====
 
-TEST(ZiaEnums, UnknownVariantError)
-{
+TEST(ZiaEnums, UnknownVariantError) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -221,8 +207,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaEnums, DuplicateVariantError)
-{
+TEST(ZiaEnums, DuplicateVariantError) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -245,8 +230,7 @@ func start() {
 
 // ===== Enum as Function Parameter =====
 
-TEST(ZiaEnums, EnumAsParameter)
-{
+TEST(ZiaEnums, EnumAsParameter) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -274,10 +258,8 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -288,8 +270,7 @@ func start() {
 
 // ===== Enum as Return Type =====
 
-TEST(ZiaEnums, EnumAsReturnType)
-{
+TEST(ZiaEnums, EnumAsReturnType) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -319,8 +300,7 @@ func start() {
 
 // ===== Negative Explicit Values =====
 
-TEST(ZiaEnums, NegativeExplicitValues)
-{
+TEST(ZiaEnums, NegativeExplicitValues) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -345,8 +325,7 @@ func start() {
 
 // ===== Expose Enum =====
 
-TEST(ZiaEnums, ExposeEnum)
-{
+TEST(ZiaEnums, ExposeEnum) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -370,8 +349,7 @@ func start() {
 
 // ===== Multiple Enums in Same Module =====
 
-TEST(ZiaEnums, MultipleEnumsCoexist)
-{
+TEST(ZiaEnums, MultipleEnumsCoexist) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -403,8 +381,7 @@ func start() {
 
 // ===== Match Pattern Integration =====
 
-TEST(ZiaEnums, MatchExhaustiveEnum)
-{
+TEST(ZiaEnums, MatchExhaustiveEnum) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -433,10 +410,8 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -445,8 +420,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaEnums, MatchEnumWithWildcard)
-{
+TEST(ZiaEnums, MatchEnumWithWildcard) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -477,8 +451,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaEnums, MatchEnumNonExhaustiveError)
-{
+TEST(ZiaEnums, MatchEnumNonExhaustiveError) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -507,8 +480,7 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 }
 
-TEST(ZiaEnums, MatchEnumStatement)
-{
+TEST(ZiaEnums, MatchEnumStatement) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -533,10 +505,8 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -545,8 +515,7 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 }
 
-TEST(ZiaEnums, LoweringPreservesAutoIncrementValues)
-{
+TEST(ZiaEnums, LoweringPreservesAutoIncrementValues) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -571,8 +540,7 @@ func start() {
     EXPECT_TRUE(hasCallWithConstIntArg(result.module, "main", "Viper.Terminal.SayInt", 1));
 }
 
-TEST(ZiaEnums, LoweringPreservesExplicitValues)
-{
+TEST(ZiaEnums, LoweringPreservesExplicitValues) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -598,8 +566,7 @@ func start() {
 
 } // anonymous namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

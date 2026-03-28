@@ -27,34 +27,28 @@
 #include <string_view>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 struct CaseArm;
 struct SelectCaseStmt;
 
 /// @brief Canonical representation of SELECT CASE dispatch data.
-struct SelectModel
-{
-    struct NumericLabel
-    {
+struct SelectModel {
+    struct NumericLabel {
         int32_t value = 0;
         size_t armIndex = 0;
         il::support::SourceLoc loc{};
     };
 
-    struct NumericRange
-    {
+    struct NumericRange {
         int32_t lo = 0;
         int32_t hi = 0;
         size_t armIndex = 0;
         il::support::SourceLoc loc{};
     };
 
-    struct NumericRelation
-    {
-        enum class Op
-        {
+    struct NumericRelation {
+        enum class Op {
             LT,
             LE,
             EQ,
@@ -68,8 +62,7 @@ struct SelectModel
         il::support::SourceLoc loc{};
     };
 
-    struct StringLabel
-    {
+    struct StringLabel {
         std::string_view value{};
         size_t armIndex = 0;
         il::support::SourceLoc loc{};
@@ -84,8 +77,7 @@ struct SelectModel
 };
 
 /// @brief Build a normalized SELECT CASE model from parsed AST data.
-class SelectModelBuilder
-{
+class SelectModelBuilder {
   public:
     using DiagnoseFn =
         std::function<void(il::support::SourceLoc, uint32_t, std::string_view, std::string_view)>;

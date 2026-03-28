@@ -13,26 +13,22 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_empty()
-{
+static void test_empty() {
     void *fm = rt_frozenmap_empty();
     assert(fm != NULL);
     assert(rt_frozenmap_len(fm) == 0);
     assert(rt_frozenmap_is_empty(fm) == 1);
 }
 
-static void test_from_seqs()
-{
+static void test_from_seqs() {
     void *keys = rt_seq_new();
     void *vals = rt_seq_new();
 
@@ -46,8 +42,7 @@ static void test_from_seqs()
     assert(rt_frozenmap_is_empty(fm) == 0);
 }
 
-static void test_get()
-{
+static void test_get() {
     void *keys = rt_seq_new();
     void *vals = rt_seq_new();
 
@@ -70,8 +65,7 @@ static void test_get()
     rt_string_unref(missing);
 }
 
-static void test_has()
-{
+static void test_has() {
     void *keys = rt_seq_new();
     void *vals = rt_seq_new();
     rt_seq_push(keys, make_str("a"));
@@ -86,8 +80,7 @@ static void test_has()
     rt_string_unref(b);
 }
 
-static void test_keys_values()
-{
+static void test_keys_values() {
     void *keys = rt_seq_new();
     void *vals = rt_seq_new();
     rt_seq_push(keys, make_str("x"));
@@ -102,8 +95,7 @@ static void test_keys_values()
     assert(rt_seq_len(vs) == 2);
 }
 
-static void test_get_or()
-{
+static void test_get_or() {
     void *keys = rt_seq_new();
     void *vals = rt_seq_new();
     rt_seq_push(keys, make_str("k"));
@@ -125,8 +117,7 @@ static void test_get_or()
     rt_string_unref(m);
 }
 
-static void test_merge()
-{
+static void test_merge() {
     void *k1 = rt_seq_new();
     void *v1 = rt_seq_new();
     rt_seq_push(k1, make_str("a"));
@@ -150,8 +141,7 @@ static void test_merge()
     rt_string_unref(b);
 }
 
-static void test_merge_overwrite()
-{
+static void test_merge_overwrite() {
     void *k1 = rt_seq_new();
     void *v1 = rt_seq_new();
     rt_seq_push(k1, make_str("key"));
@@ -174,8 +164,7 @@ static void test_merge_overwrite()
     rt_string_unref(k);
 }
 
-static void test_equals()
-{
+static void test_equals() {
     void *k1 = rt_seq_new();
     void *v1 = rt_seq_new();
     rt_seq_push(k1, make_str("a"));
@@ -195,8 +184,7 @@ static void test_equals()
     assert(rt_frozenmap_len(fm1) == rt_frozenmap_len(fm2));
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_frozenmap_len(NULL) == 0);
     assert(rt_frozenmap_is_empty(NULL) == 1);
     assert(rt_frozenmap_get(NULL, NULL) == NULL);
@@ -204,8 +192,7 @@ static void test_null_safety()
     assert(rt_frozenmap_equals(NULL, NULL) == 1);
 }
 
-static void test_dedup_keys()
-{
+static void test_dedup_keys() {
     void *keys = rt_seq_new();
     void *vals = rt_seq_new();
     rt_seq_push(keys, make_str("k"));
@@ -223,8 +210,7 @@ static void test_dedup_keys()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_empty();
     test_from_seqs();
     test_get();

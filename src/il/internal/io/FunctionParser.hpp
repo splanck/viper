@@ -21,8 +21,7 @@
 #include <istream>
 #include <string>
 
-namespace il::io::detail
-{
+namespace il::io::detail {
 
 /// @brief Parse a function header introducing parameters and return type.
 [[nodiscard]] il::support::Expected<void> parseFunctionHeader(const std::string &header,

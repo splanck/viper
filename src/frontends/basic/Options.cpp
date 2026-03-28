@@ -17,8 +17,7 @@
 
 #include <atomic>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Allow USING Viper.* imports and references to runtime namespaces.
 static std::atomic<bool> g_enableRuntimeNamespaces{true};
@@ -30,44 +29,38 @@ static std::atomic<bool> g_enableSelectCaseConstLabels{true};
 /// @brief Return whether runtime namespaces are enabled.
 /// @details Uses relaxed atomic load; see `Options.hpp` for the threading model
 ///          and recommended usage pattern.
-bool FrontendOptions::enableRuntimeNamespaces()
-{
+bool FrontendOptions::enableRuntimeNamespaces() {
     return g_enableRuntimeNamespaces.load(std::memory_order_relaxed);
 }
 
 /// @brief Enable or disable runtime namespaces for the current process.
 /// @details Uses relaxed atomic store; callers should configure this before
 ///          launching compilation threads for consistent behavior.
-void FrontendOptions::setEnableRuntimeNamespaces(bool on)
-{
+void FrontendOptions::setEnableRuntimeNamespaces(bool on) {
     g_enableRuntimeNamespaces.store(on, std::memory_order_relaxed);
 }
 
 /// @brief Return whether runtime type bridging is enabled.
 /// @details Uses relaxed atomic load; see `Options.hpp` for the threading model.
-bool FrontendOptions::enableRuntimeTypeBridging()
-{
+bool FrontendOptions::enableRuntimeTypeBridging() {
     return g_enableRuntimeTypeBridging.load(std::memory_order_relaxed);
 }
 
 /// @brief Enable or disable runtime type bridging for this process.
 /// @details Uses relaxed atomic store; should be set during configuration.
-void FrontendOptions::setEnableRuntimeTypeBridging(bool on)
-{
+void FrontendOptions::setEnableRuntimeTypeBridging(bool on) {
     g_enableRuntimeTypeBridging.store(on, std::memory_order_relaxed);
 }
 
 /// @brief Return whether CONST/CHR$ labels are allowed in SELECT CASE.
 /// @details Uses relaxed atomic load; see `Options.hpp` for full semantics.
-bool FrontendOptions::enableSelectCaseConstLabels()
-{
+bool FrontendOptions::enableSelectCaseConstLabels() {
     return g_enableSelectCaseConstLabels.load(std::memory_order_relaxed);
 }
 
 /// @brief Enable or disable CONST/CHR$ labels in SELECT CASE.
 /// @details Uses relaxed atomic store; set before parsing for consistency.
-void FrontendOptions::setEnableSelectCaseConstLabels(bool on)
-{
+void FrontendOptions::setEnableSelectCaseConstLabels(bool on) {
     g_enableSelectCaseConstLabels.store(on, std::memory_order_relaxed);
 }
 

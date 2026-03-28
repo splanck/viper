@@ -24,8 +24,7 @@
 #include <string_view>
 #include <utility>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // NOTE (TRY/CATCH interop):
 // The label-driven ON ERROR/RESUME lowering manipulates ErrorHandlerState
@@ -42,23 +41,17 @@ namespace il::frontends::basic
 ///          through the same sink as lowering diagnostics.  Passing `nullptr`
 ///          detaches the sink and restores the default behaviour.
 /// @param emitter Optional diagnostic sink to receive error reports.
-void Lowerer::setDiagnosticEmitter(DiagnosticEmitter *emitter) noexcept
-{
+void Lowerer::setDiagnosticEmitter(DiagnosticEmitter *emitter) noexcept {
     diagnosticEmitter_ = emitter;
-    if (emitter)
-    {
-        TypeRules::setTypeErrorSink(
-            [emitter](const TypeRules::TypeError &error)
-            {
-                emitter->emit(il::support::Severity::Error,
-                              error.code,
-                              il::support::SourceLoc{},
-                              0,
-                              error.message);
-            });
-    }
-    else
-    {
+    if (emitter) {
+        TypeRules::setTypeErrorSink([emitter](const TypeRules::TypeError &error) {
+            emitter->emit(il::support::Severity::Error,
+                          error.code,
+                          il::support::SourceLoc{},
+                          0,
+                          error.message);
+        });
+    } else {
         TypeRules::setTypeErrorSink({});
     }
 }
@@ -68,8 +61,7 @@ void Lowerer::setDiagnosticEmitter(DiagnosticEmitter *emitter) noexcept
 ///          ownership.  A null result indicates that diagnostics should be
 ///          suppressed or routed elsewhere by the caller.
 /// @return Pointer to the active diagnostic emitter or `nullptr`.
-DiagnosticEmitter *Lowerer::diagnosticEmitter() const noexcept
-{
+DiagnosticEmitter *Lowerer::diagnosticEmitter() const noexcept {
     return diagnosticEmitter_;
 }
 
@@ -79,8 +71,7 @@ DiagnosticEmitter *Lowerer::diagnosticEmitter() const noexcept
 ///          the lowerer to use value-based type inference instead of only
 ///          suffix-based inference. Passing `nullptr` detaches the analyzer.
 /// @param analyzer Optional semantic analyzer providing type information.
-void Lowerer::setSemanticAnalyzer(const SemanticAnalyzer *analyzer) noexcept
-{
+void Lowerer::setSemanticAnalyzer(const SemanticAnalyzer *analyzer) noexcept {
     semanticAnalyzer_ = analyzer;
 }
 
@@ -89,8 +80,7 @@ void Lowerer::setSemanticAnalyzer(const SemanticAnalyzer *analyzer) noexcept
 ///          ownership.  A null result indicates that semantic type information
 ///          is not available.
 /// @return Pointer to the active semantic analyzer or `nullptr`.
-const SemanticAnalyzer *Lowerer::semanticAnalyzer() const noexcept
-{
+const SemanticAnalyzer *Lowerer::semanticAnalyzer() const noexcept {
     return semanticAnalyzer_;
 }
 
@@ -102,24 +92,21 @@ const SemanticAnalyzer *Lowerer::semanticAnalyzer() const noexcept
 /// @details Provides controlled access to the current location so RAII helpers
 ///          and emission utilities can manage location state without friendship.
 /// @return Reference to the mutable source location field.
-il::support::SourceLoc &Lowerer::sourceLocation() noexcept
-{
+il::support::SourceLoc &Lowerer::sourceLocation() noexcept {
     return curLoc;
 }
 
 /// @brief Access the immutable source location for IR emission.
 /// @details Const overload for read-only location queries.
 /// @return Reference to the immutable source location field.
-const il::support::SourceLoc &Lowerer::sourceLocation() const noexcept
-{
+const il::support::SourceLoc &Lowerer::sourceLocation() const noexcept {
     return curLoc;
 }
 
 /// @brief Set the current source location for IR emission.
 /// @details Convenience method for setting the location in a single call.
 /// @param loc New source location to use for subsequent emissions.
-void Lowerer::setSourceLocation(il::support::SourceLoc loc) noexcept
-{
+void Lowerer::setSourceLocation(il::support::SourceLoc loc) noexcept {
     curLoc = loc;
 }
 
@@ -132,8 +119,7 @@ void Lowerer::setSourceLocation(il::support::SourceLoc loc) noexcept
 /// @param channel Lowered r-value representing the channel operand.
 /// @param loc Source location used for any generated instructions.
 /// @return Normalised r-value guaranteed to carry the 32-bit integer type.
-Lowerer::RVal Lowerer::normalizeChannelToI32(RVal channel, il::support::SourceLoc loc)
-{
+Lowerer::RVal Lowerer::normalizeChannelToI32(RVal channel, il::support::SourceLoc loc) {
     if (channel.type.kind == Type::Kind::I32)
         return channel;
 
@@ -158,8 +144,7 @@ Lowerer::RVal Lowerer::normalizeChannelToI32(RVal channel, il::support::SourceLo
 void Lowerer::emitRuntimeErrCheck(Value err,
                                   il::support::SourceLoc loc,
                                   std::string_view labelStem,
-                                  const std::function<void(Value)> &onFailure)
-{
+                                  const std::function<void(Value)> &onFailure) {
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
     BasicBlock *original = ctx.current();

@@ -27,20 +27,19 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Run Zia code completion at the given source position.
-    /// @param source Zia source text (full file contents).
-    /// @param line   1-based line number of the cursor.
-    /// @param col    0-based column number of the cursor.
-    /// @return Tab-delimited completion items: label\tinsertText\tkindInt\tdetail\n
-    ///         Returns an empty string when no completions are available.
-    rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
+/// @brief Run Zia code completion at the given source position.
+/// @param source Zia source text (full file contents).
+/// @param line   1-based line number of the cursor.
+/// @param col    0-based column number of the cursor.
+/// @return Tab-delimited completion items: label\tinsertText\tkindInt\tdetail\n
+///         Returns an empty string when no completions are available.
+rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col);
 
-    /// @brief Flush the cached parse result, forcing a fresh parse on the next call.
-    void rt_zia_completion_clear_cache(void);
+/// @brief Flush the cached parse result, forcing a fresh parse on the next call.
+void rt_zia_completion_clear_cache(void);
 
 #ifdef __cplusplus
 }

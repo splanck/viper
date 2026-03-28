@@ -42,10 +42,8 @@
 #include <utility>
 #include <vector>
 
-namespace il::io::detail
-{
-namespace
-{
+namespace il::io::detail {
+namespace {
 
 using il::core::Instr;
 using il::core::kNumOpcodes;
@@ -69,29 +67,22 @@ using il::support::printDiag;
 /// @param in Fully populated instruction candidate.
 /// @param st Parser state providing location and line information.
 /// @return Empty on success; otherwise, a structured diagnostic.
-Expected<void> validateShape_E(const Instr &in, ParserState &st)
-{
+Expected<void> validateShape_E(const Instr &in, ParserState &st) {
     const auto &info = il::core::getOpcodeInfo(in.op);
     const size_t operandCount = in.operands.size();
     const bool variadic = il::core::isVariadicOperandCount(info.numOperandsMax);
-    if (operandCount < info.numOperandsMin || (!variadic && operandCount > info.numOperandsMax))
-    {
+    if (operandCount < info.numOperandsMin || (!variadic && operandCount > info.numOperandsMax)) {
         std::ostringstream oss;
         oss << info.name << " expects ";
-        if (info.numOperandsMin == info.numOperandsMax)
-        {
+        if (info.numOperandsMin == info.numOperandsMax) {
             oss << static_cast<unsigned>(info.numOperandsMin) << " operand";
             if (info.numOperandsMin != 1)
                 oss << 's';
-        }
-        else if (variadic)
-        {
+        } else if (variadic) {
             oss << "at least " << static_cast<unsigned>(info.numOperandsMin) << " operand";
             if (info.numOperandsMin != 1)
                 oss << 's';
-        }
-        else
-        {
+        } else {
             oss << "between " << static_cast<unsigned>(info.numOperandsMin) << " and "
                 << static_cast<unsigned>(info.numOperandsMax) << " operands";
         }
@@ -99,19 +90,16 @@ Expected<void> validateShape_E(const Instr &in, ParserState &st)
     }
 
     const bool hasResult = in.result.has_value();
-    switch (info.resultArity)
-    {
+    switch (info.resultArity) {
         case ResultArity::None:
-            if (hasResult)
-            {
+            if (hasResult) {
                 std::ostringstream oss;
                 oss << info.name << " does not produce a result";
                 return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
             }
             break;
         case ResultArity::One:
-            if (!hasResult)
-            {
+            if (!hasResult) {
                 std::ostringstream oss;
                 oss << info.name << " requires a result";
                 return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
@@ -122,19 +110,14 @@ Expected<void> validateShape_E(const Instr &in, ParserState &st)
     }
 
     const bool variadicSucc = il::core::isVariadicSuccessorCount(info.numSuccessors);
-    if (variadicSucc)
-    {
-        if (in.labels.empty())
-        {
+    if (variadicSucc) {
+        if (in.labels.empty()) {
             std::ostringstream oss;
             oss << info.name << " expects at least 1 label";
             return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
         }
-    }
-    else
-    {
-        if (in.labels.size() != info.numSuccessors)
-        {
+    } else {
+        if (in.labels.size() != info.numSuccessors) {
             std::ostringstream oss;
             oss << info.name << " expects " << static_cast<unsigned>(info.numSuccessors)
                 << " label";
@@ -144,19 +127,14 @@ Expected<void> validateShape_E(const Instr &in, ParserState &st)
         }
     }
 
-    if (variadicSucc)
-    {
-        if (!in.brArgs.empty() && in.brArgs.size() != in.labels.size())
-        {
+    if (variadicSucc) {
+        if (!in.brArgs.empty() && in.brArgs.size() != in.labels.size()) {
             std::ostringstream oss;
             oss << info.name << " expects branch arguments per label or none";
             return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
         }
-    }
-    else
-    {
-        if (in.brArgs.size() > info.numSuccessors)
-        {
+    } else {
+        if (in.brArgs.size() > info.numSuccessors) {
             std::ostringstream oss;
             oss << info.name << " expects at most " << static_cast<unsigned>(info.numSuccessors)
                 << " branch argument list";
@@ -165,8 +143,7 @@ Expected<void> validateShape_E(const Instr &in, ParserState &st)
             return Expected<void>{makeError(in.loc, formatLineDiag(st.lineNo, oss.str()))};
         }
 
-        if (!in.brArgs.empty() && in.brArgs.size() != info.numSuccessors)
-        {
+        if (!in.brArgs.empty() && in.brArgs.size() != info.numSuccessors) {
             std::ostringstream oss;
             oss << info.name << " expects " << static_cast<unsigned>(info.numSuccessors)
                 << " branch argument list";
@@ -188,14 +165,11 @@ Expected<void> validateShape_E(const Instr &in, ParserState &st)
 ///          during parsing.
 ///
 /// @return Reference to the populated mnemonic lookup table.
-const std::unordered_map<std::string, Opcode> &mnemonicTable()
-{
-    static const std::unordered_map<std::string, Opcode> table = []
-    {
+const std::unordered_map<std::string, Opcode> &mnemonicTable() {
+    static const std::unordered_map<std::string, Opcode> table = [] {
         std::unordered_map<std::string, Opcode> map;
         map.reserve(kNumOpcodes);
-        for (size_t idx = 0; idx < kNumOpcodes; ++idx)
-        {
+        for (size_t idx = 0; idx < kNumOpcodes; ++idx) {
             const auto op = static_cast<Opcode>(idx);
             map.emplace(getOpcodeInfo(op).name, op);
         }
@@ -213,11 +187,9 @@ const std::unordered_map<std::string, Opcode> &mnemonicTable()
 ///
 /// @param info Opcode metadata describing the expected result type.
 /// @param in Instruction receiving the default type.
-void applyDefaultType(const OpcodeInfo &info, Instr &in)
-{
+void applyDefaultType(const OpcodeInfo &info, Instr &in) {
     using Kind = Type::Kind;
-    switch (info.resultType)
-    {
+    switch (info.resultType) {
         case TypeCategory::I1:
             in.type = Type(Kind::I1);
             break;
@@ -263,8 +235,10 @@ void applyDefaultType(const OpcodeInfo &info, Instr &in)
 /// @param in Instruction being populated.
 /// @param st Parser state providing diagnostics, temporaries, and metadata.
 /// @return Success or an error diagnostic describing malformed operands.
-Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &in, ParserState &st)
-{
+Expected<void> parseWithMetadata(Opcode opcode,
+                                 const std::string &rest,
+                                 Instr &in,
+                                 ParserState &st) {
     const auto &info = getOpcodeInfo(opcode);
     in.op = opcode;
     applyDefaultType(info, in);
@@ -273,18 +247,14 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
     const std::string original = rest;
     OperandParser operandParser{st, in};
 
-    for (size_t idx = 0; idx < info.parse.size(); ++idx)
-    {
+    for (size_t idx = 0; idx < info.parse.size(); ++idx) {
         const auto &spec = info.parse[idx];
-        switch (spec.kind)
-        {
+        switch (spec.kind) {
             case OperandParseKind::None:
                 break;
-            case OperandParseKind::TypeImmediate:
-            {
+            case OperandParseKind::TypeImmediate: {
                 std::string token = readToken(ss);
-                if (token.empty())
-                {
+                if (token.empty()) {
                     std::ostringstream oss;
                     oss << "missing " << (spec.role ? spec.role : "type") << " for " << info.name;
                     return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
@@ -296,21 +266,17 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                     return Expected<void>{parsedType.status.error()};
                 break;
             }
-            case OperandParseKind::Value:
-            {
+            case OperandParseKind::Value: {
                 std::string token = readToken(ss);
-                if (token.empty())
-                {
+                if (token.empty()) {
                     const bool readFailed = ss.fail();
-                    if (spec.role)
-                    {
+                    if (spec.role) {
                         std::ostringstream oss;
                         oss << "missing " << spec.role << " for " << info.name;
                         return Expected<void>{
                             il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
                     }
-                    if (readFailed)
-                    {
+                    if (readFailed) {
                         ss.clear();
                         break;
                     }
@@ -320,11 +286,9 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                     in.operands.push_back(std::move(value.value()));
                     break;
                 }
-                if (opcode == Opcode::TrapKind)
-                {
+                if (opcode == Opcode::TrapKind) {
                     long long trapValue = 0;
-                    if (parseTrapKindToken(token, trapValue))
-                    {
+                    if (parseTrapKindToken(token, trapValue)) {
                         in.operands.push_back(Value::constInt(trapValue));
                         break;
                     }
@@ -335,25 +299,21 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                 in.operands.push_back(std::move(value.value()));
                 break;
             }
-            case OperandParseKind::Call:
-            {
+            case OperandParseKind::Call: {
                 auto parsed = operandParser.parseCallOperands(original);
                 if (!parsed)
                     return parsed;
                 return {};
             }
-            case OperandParseKind::CallIndirect:
-            {
+            case OperandParseKind::CallIndirect: {
                 auto parsed = operandParser.parseCallIndirectOperands(original);
                 if (!parsed)
                     return parsed;
                 return {};
             }
-            case OperandParseKind::BranchTarget:
-            {
+            case OperandParseKind::BranchTarget: {
                 size_t branchCount = 0;
-                for (size_t j = idx; j < info.parse.size(); ++j)
-                {
+                for (size_t j = idx; j < info.parse.size(); ++j) {
                     if (info.parse[j].kind == OperandParseKind::BranchTarget)
                         ++branchCount;
                 }
@@ -365,8 +325,7 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
                     return parsed;
                 return {};
             }
-            case OperandParseKind::Switch:
-            {
+            case OperandParseKind::Switch: {
                 std::string remainder;
                 std::getline(ss, remainder);
                 remainder = trim(remainder);
@@ -387,27 +346,22 @@ Expected<void> parseWithMetadata(Opcode opcode, const std::string &rest, Instr &
 /// @param st Parser state mutated to record temporaries and append instructions.
 /// @return Empty on success; otherwise, a diagnostic for malformed syntax,
 /// operands, or shape violations.
-Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
-{
+Expected<void> parseInstruction_E(const std::string &line, ParserState &st) {
     Instr in;
     in.loc = st.curLoc;
     std::string work = line;
     std::optional<Type> annotatedType;
-    if (!work.empty() && work[0] == '%')
-    {
+    if (!work.empty() && work[0] == '%') {
         size_t eq = work.find('=');
-        if (eq == std::string::npos)
-        {
+        if (eq == std::string::npos) {
             return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, "missing '='")};
         }
         std::string res = trim(work.substr(1, eq - 1));
         size_t colon = res.find(':');
-        if (colon != std::string::npos)
-        {
+        if (colon != std::string::npos) {
             std::string tyTok = trim(res.substr(colon + 1));
             res = trim(res.substr(0, colon));
-            if (res.empty())
-            {
+            if (res.empty()) {
                 return Expected<void>{il::io::makeLineErrorDiag(
                     in.loc, st.lineNo, "missing temp name before type annotation")};
             }
@@ -416,16 +370,14 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
             auto parsedType = viper::il::io::parseTypeOperand(annotCursor, annotCtx);
             if (!parsedType.ok())
                 return Expected<void>{parsedType.status.error()};
-            if (in.type.kind == Type::Kind::Void)
-            {
+            if (in.type.kind == Type::Kind::Void) {
                 return Expected<void>{
                     il::io::makeLineErrorDiag(in.loc, st.lineNo, "result type cannot be void")};
             }
             annotatedType = in.type;
         }
         auto [it, inserted] = st.tempIds.emplace(res, st.nextTemp);
-        if (!inserted)
-        {
+        if (!inserted) {
             std::ostringstream oss;
             oss << "duplicate result name '%" << res << "'";
             return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
@@ -446,8 +398,7 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
     rest = trim(rest);
     const auto &table = mnemonicTable();
     auto it = table.find(op);
-    if (it == table.end())
-    {
+    if (it == table.end()) {
         std::ostringstream oss;
         oss << "unknown opcode " << op;
         return Expected<void>{il::io::makeLineErrorDiag(in.loc, st.lineNo, oss.str())};
@@ -480,11 +431,9 @@ Expected<void> parseInstruction_E(const std::string &line, ParserState &st)
 /// @param st Parser state mutated with the decoded instruction.
 /// @param err Stream receiving formatted diagnostics when parsing fails.
 /// @return True on success; false if a diagnostic was emitted.
-bool parseInstruction(const std::string &line, ParserState &st, std::ostream &err)
-{
+bool parseInstruction(const std::string &line, ParserState &st, std::ostream &err) {
     auto r = parseInstruction_E(line, st);
-    if (!r)
-    {
+    if (!r) {
         printDiag(r.error(), err);
         return false;
     }

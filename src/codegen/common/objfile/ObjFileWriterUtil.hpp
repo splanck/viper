@@ -24,19 +24,16 @@
 #include <cstdint>
 #include <vector>
 
-namespace viper::codegen::objfile
-{
+namespace viper::codegen::objfile {
 
 /// Append a 16-bit value in little-endian byte order.
-inline void appendLE16(std::vector<uint8_t> &out, uint16_t val)
-{
+inline void appendLE16(std::vector<uint8_t> &out, uint16_t val) {
     out.push_back(static_cast<uint8_t>(val));
     out.push_back(static_cast<uint8_t>(val >> 8));
 }
 
 /// Append a 32-bit value in little-endian byte order.
-inline void appendLE32(std::vector<uint8_t> &out, uint32_t val)
-{
+inline void appendLE32(std::vector<uint8_t> &out, uint32_t val) {
     out.push_back(static_cast<uint8_t>(val));
     out.push_back(static_cast<uint8_t>(val >> 8));
     out.push_back(static_cast<uint8_t>(val >> 16));
@@ -44,16 +41,14 @@ inline void appendLE32(std::vector<uint8_t> &out, uint32_t val)
 }
 
 /// Append a 64-bit value in little-endian byte order.
-inline void appendLE64(std::vector<uint8_t> &out, uint64_t val)
-{
+inline void appendLE64(std::vector<uint8_t> &out, uint64_t val) {
     for (int i = 0; i < 8; ++i)
         out.push_back(static_cast<uint8_t>(val >> (i * 8)));
 }
 
 /// Round \p val up to the next multiple of \p align.
 /// \p align must be 0 (no-op) or a power of two.
-inline size_t alignUp(size_t val, size_t align)
-{
+inline size_t alignUp(size_t val, size_t align) {
     if (align == 0)
         return val;
     assert((align & (align - 1)) == 0 && "alignUp: alignment must be a power of two");
@@ -62,8 +57,7 @@ inline size_t alignUp(size_t val, size_t align)
 
 /// Pad \p out with zeros until it reaches \p target bytes.
 /// No-op if the buffer is already at or beyond the target.
-inline void padTo(std::vector<uint8_t> &out, size_t target)
-{
+inline void padTo(std::vector<uint8_t> &out, size_t target) {
     if (out.size() < target)
         out.resize(target, 0);
 }

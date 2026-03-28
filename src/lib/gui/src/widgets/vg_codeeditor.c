@@ -63,14 +63,12 @@ static vg_widget_vtable_t g_codeeditor_vtable = {.destroy = codeeditor_destroy,
 // Helper Functions
 //=============================================================================
 
-static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed)
-{
+static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed) {
     if (needed <= editor->line_capacity)
         return true;
 
     int new_capacity = editor->line_capacity;
-    while (new_capacity < needed)
-    {
+    while (new_capacity < needed) {
         new_capacity *= LINE_CAPACITY_GROWTH;
     }
 
@@ -88,16 +86,14 @@ static bool ensure_line_capacity(vg_codeeditor_t *editor, int needed)
     return true;
 }
 
-static bool ensure_text_capacity(vg_code_line_t *line, size_t needed)
-{
+static bool ensure_text_capacity(vg_code_line_t *line, size_t needed) {
     if (needed <= line->capacity)
         return true;
 
     size_t new_capacity = line->capacity;
     if (new_capacity == 0)
         new_capacity = INITIAL_TEXT_CAPACITY;
-    while (new_capacity < needed)
-    {
+    while (new_capacity < needed) {
         new_capacity *= 2;
     }
 
@@ -110,15 +106,12 @@ static bool ensure_text_capacity(vg_code_line_t *line, size_t needed)
     return true;
 }
 
-static void free_line(vg_code_line_t *line)
-{
-    if (line->text)
-    {
+static void free_line(vg_code_line_t *line) {
+    if (line->text) {
         free(line->text);
         line->text = NULL;
     }
-    if (line->colors)
-    {
+    if (line->colors) {
         free(line->colors);
         line->colors = NULL;
     }
@@ -129,8 +122,7 @@ static void free_line(vg_code_line_t *line)
 
 // Ensure the colors array for line_idx is allocated and call the syntax highlighter.
 // Safe to call every frame — realloc only when capacity is insufficient.
-static void highlight_line(vg_codeeditor_t *editor, size_t line_idx)
-{
+static void highlight_line(vg_codeeditor_t *editor, size_t line_idx) {
     if (!editor->syntax_highlighter || line_idx >= (size_t)editor->line_count)
         return;
 
@@ -139,12 +131,10 @@ static void highlight_line(vg_codeeditor_t *editor, size_t line_idx)
         return;
 
     // Grow the colors buffer if needed
-    if (line->colors_capacity < line->length)
-    {
+    if (line->colors_capacity < line->length) {
         size_t new_cap = line->length + 16;
         uint32_t *nc = (uint32_t *)realloc(line->colors, new_cap * sizeof(uint32_t));
-        if (!nc)
-        {
+        if (!nc) {
             // Realloc failed: discard stale buffer so the paint path falls back to
             // monochrome rendering rather than reading past the old capacity.
             free(line->colors);
@@ -160,10 +150,8 @@ static void highlight_line(vg_codeeditor_t *editor, size_t line_idx)
         (vg_widget_t *)editor, (int)line_idx, line->text, line->colors, editor->syntax_data);
 }
 
-static void update_gutter_width(vg_codeeditor_t *editor)
-{
-    if (!editor->show_line_numbers || !editor->font)
-    {
+static void update_gutter_width(vg_codeeditor_t *editor) {
+    if (!editor->show_line_numbers || !editor->font) {
         editor->gutter_width = 0;
         return;
     }
@@ -177,8 +165,7 @@ static void update_gutter_width(vg_codeeditor_t *editor)
 }
 
 // Ensure the cursor line is visible by adjusting scroll position
-static void ensure_cursor_visible(vg_codeeditor_t *editor)
-{
+static void ensure_cursor_visible(vg_codeeditor_t *editor) {
     if (!editor)
         return;
 
@@ -186,13 +173,11 @@ static void ensure_cursor_visible(vg_codeeditor_t *editor)
     float cursor_y = editor->cursor_line * editor->line_height;
 
     // Scroll up if cursor is above visible area
-    if (cursor_y < editor->scroll_y)
-    {
+    if (cursor_y < editor->scroll_y) {
         editor->scroll_y = cursor_y;
     }
     // Scroll down if cursor is below visible area
-    else if (cursor_y + editor->line_height > editor->scroll_y + visible_height)
-    {
+    else if (cursor_y + editor->line_height > editor->scroll_y + visible_height) {
         editor->scroll_y = cursor_y + editor->line_height - visible_height;
     }
 
@@ -213,15 +198,13 @@ static void ensure_cursor_visible(vg_codeeditor_t *editor)
 
 #define HISTORY_INITIAL_CAPACITY 64
 
-static vg_edit_history_t *edit_history_create(void)
-{
+static vg_edit_history_t *edit_history_create(void) {
     vg_edit_history_t *history = calloc(1, sizeof(vg_edit_history_t));
     if (!history)
         return NULL;
 
     history->operations = calloc(HISTORY_INITIAL_CAPACITY, sizeof(vg_edit_op_t *));
-    if (!history->operations)
-    {
+    if (!history->operations) {
         free(history);
         return NULL;
     }
@@ -236,8 +219,7 @@ static vg_edit_history_t *edit_history_create(void)
     return history;
 }
 
-static void edit_op_destroy(vg_edit_op_t *op)
-{
+static void edit_op_destroy(vg_edit_op_t *op) {
     if (!op)
         return;
     free(op->old_text);
@@ -245,13 +227,11 @@ static void edit_op_destroy(vg_edit_op_t *op)
     free(op);
 }
 
-static void edit_history_destroy(vg_edit_history_t *history)
-{
+static void edit_history_destroy(vg_edit_history_t *history) {
     if (!history)
         return;
 
-    for (size_t i = 0; i < history->count; i++)
-    {
+    for (size_t i = 0; i < history->count; i++) {
         edit_op_destroy(history->operations[i]);
     }
     free(history->operations);
@@ -259,13 +239,11 @@ static void edit_history_destroy(vg_edit_history_t *history)
 }
 
 VG_UNUSED
-static void edit_history_clear(vg_edit_history_t *history)
-{
+static void edit_history_clear(vg_edit_history_t *history) {
     if (!history)
         return;
 
-    for (size_t i = 0; i < history->count; i++)
-    {
+    for (size_t i = 0; i < history->count; i++) {
         edit_op_destroy(history->operations[i]);
         history->operations[i] = NULL;
     }
@@ -273,27 +251,23 @@ static void edit_history_clear(vg_edit_history_t *history)
     history->current_index = 0;
 }
 
-static void edit_history_push(vg_edit_history_t *history, vg_edit_op_t *op)
-{
+static void edit_history_push(vg_edit_history_t *history, vg_edit_op_t *op) {
     if (!history || !op)
         return;
 
     // Discard any redo operations
-    for (size_t i = history->current_index; i < history->count; i++)
-    {
+    for (size_t i = history->current_index; i < history->count; i++) {
         edit_op_destroy(history->operations[i]);
         history->operations[i] = NULL;
     }
     history->count = history->current_index;
 
     // Grow capacity if needed
-    if (history->count >= history->capacity)
-    {
+    if (history->count >= history->capacity) {
         size_t new_capacity = history->capacity * 2;
         vg_edit_op_t **new_ops =
             realloc(history->operations, new_capacity * sizeof(vg_edit_op_t *));
-        if (!new_ops)
-        {
+        if (!new_ops) {
             edit_op_destroy(op);
             return;
         }
@@ -302,8 +276,7 @@ static void edit_history_push(vg_edit_history_t *history, vg_edit_op_t *op)
     }
 
     // Set group ID if grouping
-    if (history->is_grouping)
-    {
+    if (history->is_grouping) {
         op->group_id = history->current_group;
     }
 
@@ -311,23 +284,20 @@ static void edit_history_push(vg_edit_history_t *history, vg_edit_op_t *op)
     history->current_index = history->count;
 }
 
-static vg_edit_op_t *edit_history_pop_undo(vg_edit_history_t *history)
-{
+static vg_edit_op_t *edit_history_pop_undo(vg_edit_history_t *history) {
     if (!history || history->current_index == 0)
         return NULL;
     history->current_index--;
     return history->operations[history->current_index];
 }
 
-static vg_edit_op_t *edit_history_peek_undo(vg_edit_history_t *history)
-{
+static vg_edit_op_t *edit_history_peek_undo(vg_edit_history_t *history) {
     if (!history || history->current_index == 0)
         return NULL;
     return history->operations[history->current_index - 1];
 }
 
-static vg_edit_op_t *edit_history_pop_redo(vg_edit_history_t *history)
-{
+static vg_edit_op_t *edit_history_pop_redo(vg_edit_history_t *history) {
     if (!history || history->current_index >= history->count)
         return NULL;
     vg_edit_op_t *op = history->operations[history->current_index];
@@ -336,8 +306,7 @@ static vg_edit_op_t *edit_history_pop_redo(vg_edit_history_t *history)
 }
 
 VG_UNUSED
-static void edit_history_begin_group(vg_edit_history_t *history)
-{
+static void edit_history_begin_group(vg_edit_history_t *history) {
     if (!history)
         return;
     history->is_grouping = true;
@@ -345,8 +314,7 @@ static void edit_history_begin_group(vg_edit_history_t *history)
 }
 
 VG_UNUSED
-static void edit_history_end_group(vg_edit_history_t *history)
-{
+static void edit_history_end_group(vg_edit_history_t *history) {
     if (!history)
         return;
     history->is_grouping = false;
@@ -363,8 +331,7 @@ static vg_edit_op_t *create_edit_op(vg_edit_op_type_t type,
                                     int cursor_line_before,
                                     int cursor_col_before,
                                     int cursor_line_after,
-                                    int cursor_col_after)
-{
+                                    int cursor_col_after) {
     vg_edit_op_t *op = calloc(1, sizeof(vg_edit_op_t));
     if (!op)
         return NULL;
@@ -390,16 +357,14 @@ static vg_edit_op_t *create_edit_op(vg_edit_op_type_t type,
 //=============================================================================
 
 static void normalize_selection(
-    vg_codeeditor_t *editor, int *start_line, int *start_col, int *end_line, int *end_col)
-{
+    vg_codeeditor_t *editor, int *start_line, int *start_col, int *end_line, int *end_col) {
     *start_line = editor->selection.start_line;
     *start_col = editor->selection.start_col;
     *end_line = editor->selection.end_line;
     *end_col = editor->selection.end_col;
 
     // Normalize: start should be before end
-    if (*start_line > *end_line || (*start_line == *end_line && *start_col > *end_col))
-    {
+    if (*start_line > *end_line || (*start_line == *end_line && *start_col > *end_col)) {
         int tmp = *start_line;
         *start_line = *end_line;
         *end_line = tmp;
@@ -413,8 +378,7 @@ static void normalize_selection(
 // CodeEditor Implementation
 //=============================================================================
 
-vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent)
-{
+vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent) {
     vg_codeeditor_t *editor = calloc(1, sizeof(vg_codeeditor_t));
     if (!editor)
         return NULL;
@@ -427,8 +391,7 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent)
 
     // Allocate initial lines
     editor->lines = calloc(INITIAL_LINE_CAPACITY, sizeof(vg_code_line_t));
-    if (!editor->lines)
-    {
+    if (!editor->lines) {
         free(editor);
         return NULL;
     }
@@ -437,8 +400,7 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent)
     // Create first empty line
     editor->line_count = 1;
     editor->lines[0].text = malloc(INITIAL_TEXT_CAPACITY);
-    if (!editor->lines[0].text)
-    {
+    if (!editor->lines[0].text) {
         free(editor->lines);
         free(editor);
         return NULL;
@@ -497,8 +459,7 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent)
 
     // Create undo/redo history
     editor->history = edit_history_create();
-    if (!editor->history)
-    {
+    if (!editor->history) {
         free(editor->lines[0].text);
         free(editor->lines);
         free(editor);
@@ -506,20 +467,17 @@ vg_codeeditor_t *vg_codeeditor_create(vg_widget_t *parent)
     }
 
     // Add to parent
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &editor->base);
     }
 
     return editor;
 }
 
-static void codeeditor_destroy(vg_widget_t *widget)
-{
+static void codeeditor_destroy(vg_widget_t *widget) {
     vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
 
-    for (int i = 0; i < editor->line_count; i++)
-    {
+    for (int i = 0; i < editor->line_count; i++) {
         free_line(&editor->lines[i]);
     }
     free(editor->lines);
@@ -532,25 +490,21 @@ static void codeeditor_destroy(vg_widget_t *widget)
     editor->history = NULL;
 }
 
-static void codeeditor_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void codeeditor_measure(vg_widget_t *widget, float available_width, float available_height) {
     // Code editor fills available space
     widget->measured_width = available_width > 0 ? available_width : 400;
     widget->measured_height = available_height > 0 ? available_height : 300;
 
     // Apply constraints
-    if (widget->measured_width < widget->constraints.min_width)
-    {
+    if (widget->measured_width < widget->constraints.min_width) {
         widget->measured_width = widget->constraints.min_width;
     }
-    if (widget->measured_height < widget->constraints.min_height)
-    {
+    if (widget->measured_height < widget->constraints.min_height) {
         widget->measured_height = widget->constraints.min_height;
     }
 }
 
-static void codeeditor_paint(vg_widget_t *widget, void *canvas)
-{
+static void codeeditor_paint(vg_widget_t *widget, void *canvas) {
     vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
 
     if (!editor->font)
@@ -572,8 +526,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                    editor->bg_color);
 
     // Draw gutter background
-    if (editor->show_line_numbers)
-    {
+    if (editor->show_line_numbers) {
         vgfx_fill_rect((vgfx_window_t)canvas,
                        (int32_t)widget->x,
                        (int32_t)widget->y,
@@ -588,14 +541,12 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
     // Draw visible lines
     for (int i = editor->visible_first_line;
          i < editor->line_count && i < editor->visible_first_line + editor->visible_line_count;
-         i++)
-    {
+         i++) {
         float line_y = widget->y + (i - editor->visible_first_line) * editor->line_height -
                        (editor->scroll_y - editor->visible_first_line * editor->line_height);
 
         // Draw current line highlight
-        if (i == editor->cursor_line && (widget->state & VG_STATE_FOCUSED))
-        {
+        if (i == editor->cursor_line && (widget->state & VG_STATE_FOCUSED)) {
             vgfx_fill_rect((vgfx_window_t)canvas,
                            (int32_t)content_x,
                            (int32_t)line_y,
@@ -605,8 +556,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
         }
 
         // PARTIAL-002: Draw highlight spans on this line (search results, diagnostics)
-        for (int s = 0; s < editor->highlight_span_count; s++)
-        {
+        for (int s = 0; s < editor->highlight_span_count; s++) {
             struct vg_highlight_span *span = &editor->highlight_spans[s];
             if (i < span->start_line || i > span->end_line)
                 continue;
@@ -625,8 +575,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
         }
 
         // Draw line number
-        if (editor->show_line_numbers)
-        {
+        if (editor->show_line_numbers) {
             char line_num[16];
             snprintf(line_num, sizeof(line_num), "%d", i + 1);
             vg_text_metrics_t num_metrics;
@@ -644,8 +593,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                               editor->line_number_color);
 
             // PARTIAL-001: Draw gutter icon for this line (breakpoints, errors, etc.)
-            for (int g = 0; g < editor->gutter_icon_count; g++)
-            {
+            for (int g = 0; g < editor->gutter_icon_count; g++) {
                 struct vg_gutter_icon *icon = &editor->gutter_icons[g];
                 if (icon->line != i)
                     continue;
@@ -659,8 +607,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
         }
 
         // Draw selection on this line
-        if (editor->has_selection && (widget->state & VG_STATE_FOCUSED))
-        {
+        if (editor->has_selection && (widget->state & VG_STATE_FOCUSED)) {
             int sel_start_line = editor->selection.start_line;
             int sel_start_col = editor->selection.start_col;
             int sel_end_line = editor->selection.end_line;
@@ -668,8 +615,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
 
             // Normalize selection
             if (sel_start_line > sel_end_line ||
-                (sel_start_line == sel_end_line && sel_start_col > sel_end_col))
-            {
+                (sel_start_line == sel_end_line && sel_start_col > sel_end_col)) {
                 int tmp = sel_start_line;
                 sel_start_line = sel_end_line;
                 sel_end_line = tmp;
@@ -678,8 +624,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                 sel_end_col = tmp;
             }
 
-            if (i >= sel_start_line && i <= sel_end_line)
-            {
+            if (i >= sel_start_line && i <= sel_end_line) {
                 int col_start = (i == sel_start_line) ? sel_start_col : 0;
                 int col_end = (i == sel_end_line) ? sel_end_col : (int)editor->lines[i].length;
 
@@ -697,15 +642,13 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
         }
 
         // Draw line text
-        if (editor->lines[i].text && editor->lines[i].length > 0)
-        {
+        if (editor->lines[i].text && editor->lines[i].length > 0) {
             float text_y = line_y + font_metrics.ascent;
 
             // Run syntax highlighter (no-op if none registered or colors up-to-date)
             highlight_line(editor, i);
 
-            if (editor->word_wrap && editor->char_width > 0.0f && content_width > 0.0f)
-            {
+            if (editor->word_wrap && editor->char_width > 0.0f && content_width > 0.0f) {
                 /* Word-wrap rendering: break the line into visual sub-rows of
                  * chars_per_row characters each.  Scroll is disabled on the X axis
                  * in wrap mode (horizontal scroll doesn't make sense when lines wrap).
@@ -717,14 +660,11 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                 size_t len = editor->lines[i].length;
                 size_t offset = 0;
                 float sub_y = text_y;
-                while (offset < len)
-                {
+                while (offset < len) {
                     size_t seg_len = (len - offset < (size_t)chars_per_row) ? (len - offset)
                                                                             : (size_t)chars_per_row;
-                    if (editor->lines[i].colors)
-                    {
-                        for (size_t c = 0; c < seg_len; c++)
-                        {
+                    if (editor->lines[i].colors) {
+                        for (size_t c = 0; c < seg_len; c++) {
                             size_t gi = offset + c;
                             uint32_t col = (gi < editor->lines[i].colors_capacity)
                                                ? editor->lines[i].colors[gi]
@@ -738,9 +678,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                                               ch,
                                               col);
                         }
-                    }
-                    else
-                    {
+                    } else {
                         char seg_buf[256];
                         size_t copy_len =
                             seg_len < sizeof(seg_buf) - 1 ? seg_len : sizeof(seg_buf) - 1;
@@ -757,15 +695,11 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                     offset += seg_len;
                     sub_y += editor->line_height;
                 }
-            }
-            else
-            {
+            } else {
                 float text_x = content_x - editor->scroll_x;
-                if (editor->lines[i].colors)
-                {
+                if (editor->lines[i].colors) {
                     // Draw character by character with colors
-                    for (size_t c = 0; c < editor->lines[i].length; c++)
-                    {
+                    for (size_t c = 0; c < editor->lines[i].length; c++) {
                         uint32_t col = (c < editor->lines[i].colors_capacity)
                                            ? editor->lines[i].colors[c]
                                            : editor->text_color;
@@ -778,9 +712,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
                                           ch,
                                           col);
                     }
-                }
-                else
-                {
+                } else {
                     // Draw entire line
                     vg_font_draw_text(canvas,
                                       editor->font,
@@ -795,11 +727,9 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
     }
 
     // Draw cursor
-    if ((widget->state & VG_STATE_FOCUSED) && editor->cursor_visible && !editor->read_only)
-    {
+    if ((widget->state & VG_STATE_FOCUSED) && editor->cursor_visible && !editor->read_only) {
         int visible_cursor_line = editor->cursor_line - editor->visible_first_line;
-        if (visible_cursor_line >= 0 && visible_cursor_line < editor->visible_line_count)
-        {
+        if (visible_cursor_line >= 0 && visible_cursor_line < editor->visible_line_count) {
             float cursor_x = content_x + editor->cursor_col * editor->char_width - editor->scroll_x;
             float cursor_y = widget->y + visible_cursor_line * editor->line_height -
                              (editor->scroll_y - editor->visible_first_line * editor->line_height);
@@ -819,8 +749,7 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
     float total_content_height = editor->line_count * editor->line_height;
     float visible_height = widget->height;
 
-    if (total_content_height > visible_height)
-    {
+    if (total_content_height > visible_height) {
         // Scrollbar track background
         float track_x = widget->x + widget->width - scrollbar_width;
         uint32_t track_color = 0xFF3C3C3C; // Dark gray
@@ -859,21 +788,17 @@ static void codeeditor_paint(vg_widget_t *widget, void *canvas)
 
 // Encode a Unicode codepoint as UTF-8 into buf (must be at least 4 bytes).
 // Returns the number of bytes written, or 0 for invalid codepoints.
-static int encode_utf8(uint32_t cp, char *buf)
-{
-    if (cp < 0x80)
-    {
+static int encode_utf8(uint32_t cp, char *buf) {
+    if (cp < 0x80) {
         buf[0] = (char)cp;
         return 1;
     }
-    if (cp < 0x800)
-    {
+    if (cp < 0x800) {
         buf[0] = (char)(0xC0 | (cp >> 6));
         buf[1] = (char)(0x80 | (cp & 0x3F));
         return 2;
     }
-    if (cp < 0x10000)
-    {
+    if (cp < 0x10000) {
         // Reject UTF-16 surrogates (U+D800–U+DFFF)
         if (cp >= 0xD800 && cp <= 0xDFFF)
             return 0;
@@ -882,8 +807,7 @@ static int encode_utf8(uint32_t cp, char *buf)
         buf[2] = (char)(0x80 | (cp & 0x3F));
         return 3;
     }
-    if (cp <= 0x10FFFF)
-    {
+    if (cp <= 0x10FFFF) {
         buf[0] = (char)(0xF0 | (cp >> 18));
         buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
         buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
@@ -894,8 +818,7 @@ static int encode_utf8(uint32_t cp, char *buf)
 }
 
 // Insert n raw bytes at the current cursor position and advance cursor_col by n.
-static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, size_t n)
-{
+static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, size_t n) {
     if (!n)
         return;
     vg_code_line_t *line = &editor->lines[editor->cursor_line];
@@ -914,8 +837,7 @@ static void insert_bytes(vg_codeeditor_t *editor, const char *bytes, size_t n)
     line->modified = true;
 }
 
-static void insert_char(vg_codeeditor_t *editor, char c)
-{
+static void insert_char(vg_codeeditor_t *editor, char c) {
     vg_code_line_t *line = &editor->lines[editor->cursor_line];
 
     if (!ensure_text_capacity(line, line->length + 2))
@@ -933,8 +855,7 @@ static void insert_char(vg_codeeditor_t *editor, char c)
     line->modified = true;
 }
 
-static void insert_newline(vg_codeeditor_t *editor)
-{
+static void insert_newline(vg_codeeditor_t *editor) {
     if (!ensure_line_capacity(editor, editor->line_count + 1))
         return;
 
@@ -950,22 +871,17 @@ static void insert_newline(vg_codeeditor_t *editor)
     memset(next, 0, sizeof(vg_code_line_t));
     size_t remaining = current->length - editor->cursor_col;
 
-    if (remaining > 0)
-    {
+    if (remaining > 0) {
         next->text = malloc(remaining + 1);
-        if (next->text)
-        {
+        if (next->text) {
             memcpy(next->text, current->text + editor->cursor_col, remaining);
             next->text[remaining] = '\0';
             next->length = remaining;
             next->capacity = remaining + 1;
         }
-    }
-    else
-    {
+    } else {
         next->text = malloc(1);
-        if (next->text)
-        {
+        if (next->text) {
             next->text[0] = '\0';
             next->length = 0;
             next->capacity = 1;
@@ -984,10 +900,8 @@ static void insert_newline(vg_codeeditor_t *editor)
     update_gutter_width(editor);
 }
 
-static void delete_char_backward(vg_codeeditor_t *editor)
-{
-    if (editor->cursor_col > 0)
-    {
+static void delete_char_backward(vg_codeeditor_t *editor) {
+    if (editor->cursor_col > 0) {
         vg_code_line_t *line = &editor->lines[editor->cursor_line];
         memmove(line->text + editor->cursor_col - 1,
                 line->text + editor->cursor_col,
@@ -996,9 +910,7 @@ static void delete_char_backward(vg_codeeditor_t *editor)
         editor->cursor_col--;
         editor->modified = true;
         line->modified = true;
-    }
-    else if (editor->cursor_line > 0)
-    {
+    } else if (editor->cursor_line > 0) {
         // Join with previous line
         vg_code_line_t *current = &editor->lines[editor->cursor_line];
         vg_code_line_t *prev = &editor->lines[editor->cursor_line - 1];
@@ -1029,20 +941,16 @@ static void delete_char_backward(vg_codeeditor_t *editor)
     }
 }
 
-static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
 
-    if (widget->state & VG_STATE_DISABLED)
-    {
+    if (widget->state & VG_STATE_DISABLED) {
         return false;
     }
 
-    switch (event->type)
-    {
+    switch (event->type) {
         case VG_EVENT_MOUSE_UP:
-            if (editor->scrollbar_dragging)
-            {
+            if (editor->scrollbar_dragging) {
                 editor->scrollbar_dragging = false;
                 widget->needs_paint = true;
                 return true;
@@ -1050,8 +958,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
             break;
 
         case VG_EVENT_MOUSE_MOVE:
-            if (editor->scrollbar_dragging)
-            {
+            if (editor->scrollbar_dragging) {
                 float delta = event->mouse.y - editor->scrollbar_drag_offset;
                 float total_ch = editor->line_count * editor->line_height;
                 float vis_h = widget->height;
@@ -1060,8 +967,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                 if (thumb_h < 20.0f)
                     thumb_h = 20.0f;
                 float thumb_travel = vis_h - thumb_h;
-                if (thumb_travel > 0.0f && scroll_range > 0.0f)
-                {
+                if (thumb_travel > 0.0f && scroll_range > 0.0f) {
                     editor->scroll_y =
                         editor->scrollbar_drag_start_scroll + delta * (scroll_range / thumb_travel);
                 }
@@ -1075,16 +981,14 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
             }
             break;
 
-        case VG_EVENT_MOUSE_DOWN:
-        {
+        case VG_EVENT_MOUSE_DOWN: {
             float scrollbar_width = 12.0f;
             float total_content_height = editor->line_count * editor->line_height;
             float visible_height = widget->height;
 
             // Check if click is on scrollbar
             if (total_content_height > visible_height &&
-                event->mouse.x >= widget->width - scrollbar_width)
-            {
+                event->mouse.x >= widget->width - scrollbar_width) {
                 // Calculate thumb position (matches paint code in codeeditor_paint)
                 float thumb_ratio = visible_height / total_content_height;
                 if (thumb_ratio > 1.0f)
@@ -1100,15 +1004,12 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                     scroll_ratio = 1.0f;
                 float thumb_y = scroll_ratio * (visible_height - thumb_height);
 
-                if (event->mouse.y >= thumb_y && event->mouse.y <= thumb_y + thumb_height)
-                {
+                if (event->mouse.y >= thumb_y && event->mouse.y <= thumb_y + thumb_height) {
                     // Click on thumb — start drag
                     editor->scrollbar_dragging = true;
                     editor->scrollbar_drag_offset = event->mouse.y;
                     editor->scrollbar_drag_start_scroll = editor->scroll_y;
-                }
-                else
-                {
+                } else {
                     // Click on track — jump to position
                     float click_ratio = event->mouse.y / visible_height;
                     editor->scroll_y = click_ratio * max_scroll;
@@ -1146,23 +1047,18 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
             return true;
         }
 
-        case VG_EVENT_KEY_DOWN:
-        {
+        case VG_EVENT_KEY_DOWN: {
             // Check for modifier key shortcuts first
             uint32_t mods = event->modifiers;
             bool has_ctrl = (mods & VG_MOD_CTRL) != 0 || (mods & VG_MOD_SUPER) != 0; // Ctrl or Cmd
 
             // Clipboard and editing shortcuts (Ctrl/Cmd + key)
-            if (has_ctrl)
-            {
-                switch (event->key.key)
-                {
+            if (has_ctrl) {
+                switch (event->key.key) {
                     case VG_KEY_C: // Copy
-                        if (editor->has_selection)
-                        {
+                        if (editor->has_selection) {
                             char *text = vg_codeeditor_get_selection(editor);
-                            if (text)
-                            {
+                            if (text) {
                                 vgfx_clipboard_set_text(text);
                                 free(text);
                             }
@@ -1171,11 +1067,9 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                         return true;
 
                     case VG_KEY_X: // Cut
-                        if (!editor->read_only && editor->has_selection)
-                        {
+                        if (!editor->read_only && editor->has_selection) {
                             char *text = vg_codeeditor_get_selection(editor);
-                            if (text)
-                            {
+                            if (text) {
                                 vgfx_clipboard_set_text(text);
                                 free(text);
                                 vg_codeeditor_delete_selection(editor);
@@ -1185,13 +1079,10 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                         return true;
 
                     case VG_KEY_V: // Paste
-                        if (!editor->read_only)
-                        {
+                        if (!editor->read_only) {
                             char *text = vgfx_clipboard_get_text();
-                            if (text)
-                            {
-                                if (editor->has_selection)
-                                {
+                            if (text) {
+                                if (editor->has_selection) {
                                     vg_codeeditor_delete_selection(editor);
                                 }
                                 vg_codeeditor_insert_text(editor, text);
@@ -1202,16 +1093,14 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                         return true;
 
                     case VG_KEY_Z: // Undo
-                        if (!editor->read_only)
-                        {
+                        if (!editor->read_only) {
                             vg_codeeditor_undo(editor);
                         }
                         widget->needs_paint = true;
                         return true;
 
                     case VG_KEY_Y: // Redo
-                        if (!editor->read_only)
-                        {
+                        if (!editor->read_only) {
                             vg_codeeditor_redo(editor);
                         }
                         widget->needs_paint = true;
@@ -1232,11 +1121,9 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                 }
             }
 
-            if (editor->read_only)
-            {
+            if (editor->read_only) {
                 // Navigation only
-                switch (event->key.key)
-                {
+                switch (event->key.key) {
                     case VG_KEY_UP:
                         if (editor->cursor_line > 0)
                             editor->cursor_line--;
@@ -1253,16 +1140,14 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                         if (editor->cursor_col < (int)editor->lines[editor->cursor_line].length)
                             editor->cursor_col++;
                         break;
-                    case VG_KEY_PAGE_UP:
-                    {
+                    case VG_KEY_PAGE_UP: {
                         int visible_lines = (int)(widget->height / editor->line_height);
                         editor->cursor_line -= visible_lines;
                         if (editor->cursor_line < 0)
                             editor->cursor_line = 0;
                         break;
                     }
-                    case VG_KEY_PAGE_DOWN:
-                    {
+                    case VG_KEY_PAGE_DOWN: {
                         int visible_lines = (int)(widget->height / editor->line_height);
                         editor->cursor_line += visible_lines;
                         if (editor->cursor_line >= editor->line_count)
@@ -1277,46 +1162,35 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                 return true;
             }
 
-            switch (event->key.key)
-            {
+            switch (event->key.key) {
                 case VG_KEY_UP:
-                    if (editor->cursor_line > 0)
-                    {
+                    if (editor->cursor_line > 0) {
                         editor->cursor_line--;
-                        if (editor->cursor_col > (int)editor->lines[editor->cursor_line].length)
-                        {
+                        if (editor->cursor_col > (int)editor->lines[editor->cursor_line].length) {
                             editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
                         }
                     }
                     break;
                 case VG_KEY_DOWN:
-                    if (editor->cursor_line < editor->line_count - 1)
-                    {
+                    if (editor->cursor_line < editor->line_count - 1) {
                         editor->cursor_line++;
-                        if (editor->cursor_col > (int)editor->lines[editor->cursor_line].length)
-                        {
+                        if (editor->cursor_col > (int)editor->lines[editor->cursor_line].length) {
                             editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
                         }
                     }
                     break;
                 case VG_KEY_LEFT:
-                    if (editor->cursor_col > 0)
-                    {
+                    if (editor->cursor_col > 0) {
                         editor->cursor_col--;
-                    }
-                    else if (editor->cursor_line > 0)
-                    {
+                    } else if (editor->cursor_line > 0) {
                         editor->cursor_line--;
                         editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
                     }
                     break;
                 case VG_KEY_RIGHT:
-                    if (editor->cursor_col < (int)editor->lines[editor->cursor_line].length)
-                    {
+                    if (editor->cursor_col < (int)editor->lines[editor->cursor_line].length) {
                         editor->cursor_col++;
-                    }
-                    else if (editor->cursor_line < editor->line_count - 1)
-                    {
+                    } else if (editor->cursor_line < editor->line_count - 1) {
                         editor->cursor_line++;
                         editor->cursor_col = 0;
                     }
@@ -1327,8 +1201,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                 case VG_KEY_END:
                     editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
                     break;
-                case VG_KEY_PAGE_UP:
-                {
+                case VG_KEY_PAGE_UP: {
                     int visible_lines = (int)(widget->height / editor->line_height);
                     editor->cursor_line -= visible_lines;
                     if (editor->cursor_line < 0)
@@ -1337,8 +1210,7 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                         editor->cursor_col = (int)editor->lines[editor->cursor_line].length;
                     break;
                 }
-                case VG_KEY_PAGE_DOWN:
-                {
+                case VG_KEY_PAGE_DOWN: {
                     int visible_lines = (int)(widget->height / editor->line_height);
                     editor->cursor_line += visible_lines;
                     if (editor->cursor_line >= editor->line_count)
@@ -1348,12 +1220,9 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                     break;
                 }
                 case VG_KEY_BACKSPACE:
-                    if (editor->has_selection)
-                    {
+                    if (editor->has_selection) {
                         vg_codeeditor_delete_selection(editor);
-                    }
-                    else
-                    {
+                    } else {
                         delete_char_backward(editor);
                     }
                     break;
@@ -1361,15 +1230,11 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
                     insert_newline(editor);
                     break;
                 case VG_KEY_TAB:
-                    if (editor->use_spaces)
-                    {
-                        for (int i = 0; i < editor->tab_width; i++)
-                        {
+                    if (editor->use_spaces) {
+                        for (int i = 0; i < editor->tab_width; i++) {
                             insert_char(editor, ' ');
                         }
-                    }
-                    else
-                    {
+                    } else {
                         insert_char(editor, '\t');
                     }
                     break;
@@ -1386,23 +1251,17 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
             return true;
         }
 
-        case VG_EVENT_KEY_CHAR:
-        {
+        case VG_EVENT_KEY_CHAR: {
             uint32_t cp = event->key.codepoint;
             // Accept all printable codepoints: U+0020–U+10FFFF excluding surrogates.
             bool printable = (cp >= 0x20 && !(cp >= 0xD800 && cp <= 0xDFFF) && cp <= 0x10FFFF);
-            if (!editor->read_only && printable)
-            {
-                if (editor->has_selection)
-                {
+            if (!editor->read_only && printable) {
+                if (editor->has_selection) {
                     vg_codeeditor_delete_selection(editor);
                 }
-                if (cp < 0x80)
-                {
+                if (cp < 0x80) {
                     insert_char(editor, (char)cp);
-                }
-                else
-                {
+                } else {
                     char utf8[4];
                     int n = encode_utf8(cp, utf8);
                     if (n > 0)
@@ -1431,16 +1290,13 @@ static bool codeeditor_handle_event(vg_widget_t *widget, vg_event_t *event)
     return false;
 }
 
-static bool codeeditor_can_focus(vg_widget_t *widget)
-{
+static bool codeeditor_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
-static void codeeditor_on_focus(vg_widget_t *widget, bool gained)
-{
+static void codeeditor_on_focus(vg_widget_t *widget, bool gained) {
     vg_codeeditor_t *editor = (vg_codeeditor_t *)widget;
-    if (gained)
-    {
+    if (gained) {
         editor->cursor_visible = true;
         editor->cursor_blink_time = 0;
     }
@@ -1450,38 +1306,31 @@ static void codeeditor_on_focus(vg_widget_t *widget, bool gained)
 // CodeEditor API
 //=============================================================================
 
-void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text)
-{
+void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text) {
     if (!editor)
         return;
 
     // Clear existing lines
-    for (int i = 0; i < editor->line_count; i++)
-    {
+    for (int i = 0; i < editor->line_count; i++) {
         free_line(&editor->lines[i]);
     }
     editor->line_count = 0;
 
-    if (!text || !text[0])
-    {
+    if (!text || !text[0]) {
         // Create empty line
         if (!ensure_line_capacity(editor, 1))
             return;
         editor->lines[0].text = malloc(1);
-        if (editor->lines[0].text)
-        {
+        if (editor->lines[0].text) {
             editor->lines[0].text[0] = '\0';
             editor->lines[0].length = 0;
             editor->lines[0].capacity = 1;
         }
         editor->line_count = 1;
-    }
-    else
-    {
+    } else {
         // Parse text into lines
         const char *start = text;
-        while (*start)
-        {
+        while (*start) {
             const char *end = strchr(start, '\n');
             size_t len = end ? (size_t)(end - start) : strlen(start);
 
@@ -1490,8 +1339,7 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text)
 
             vg_code_line_t *line = &editor->lines[editor->line_count];
             line->text = malloc(len + 1);
-            if (line->text)
-            {
+            if (line->text) {
                 memcpy(line->text, start, len);
                 line->text[len] = '\0';
                 line->length = len;
@@ -1505,13 +1353,10 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text)
         }
 
         // Ensure at least one line
-        if (editor->line_count == 0)
-        {
-            if (ensure_line_capacity(editor, 1))
-            {
+        if (editor->line_count == 0) {
+            if (ensure_line_capacity(editor, 1)) {
                 editor->lines[0].text = malloc(1);
-                if (editor->lines[0].text)
-                {
+                if (editor->lines[0].text) {
                     editor->lines[0].text[0] = '\0';
                     editor->lines[0].length = 0;
                     editor->lines[0].capacity = 1;
@@ -1533,15 +1378,13 @@ void vg_codeeditor_set_text(vg_codeeditor_t *editor, const char *text)
 }
 
 /// @brief Codeeditor get text.
-char *vg_codeeditor_get_text(vg_codeeditor_t *editor)
-{
+char *vg_codeeditor_get_text(vg_codeeditor_t *editor) {
     if (!editor)
         return NULL;
 
     // Calculate total size
     size_t total = 0;
-    for (int i = 0; i < editor->line_count; i++)
-    {
+    for (int i = 0; i < editor->line_count; i++) {
         total += editor->lines[i].length + 1; // +1 for newline or null
     }
 
@@ -1550,12 +1393,10 @@ char *vg_codeeditor_get_text(vg_codeeditor_t *editor)
         return NULL;
 
     char *p = result;
-    for (int i = 0; i < editor->line_count; i++)
-    {
+    for (int i = 0; i < editor->line_count; i++) {
         memcpy(p, editor->lines[i].text, editor->lines[i].length);
         p += editor->lines[i].length;
-        if (i < editor->line_count - 1)
-        {
+        if (i < editor->line_count - 1) {
             *p++ = '\n';
         }
     }
@@ -1565,8 +1406,7 @@ char *vg_codeeditor_get_text(vg_codeeditor_t *editor)
 }
 
 /// @brief Codeeditor get selection.
-char *vg_codeeditor_get_selection(vg_codeeditor_t *editor)
-{
+char *vg_codeeditor_get_selection(vg_codeeditor_t *editor) {
     if (!editor || !editor->has_selection)
         return NULL;
 
@@ -1576,8 +1416,7 @@ char *vg_codeeditor_get_selection(vg_codeeditor_t *editor)
 
     // Calculate buffer size needed
     size_t total_len = 0;
-    for (int line = start_line; line <= end_line; line++)
-    {
+    for (int line = start_line; line <= end_line; line++) {
         int col_start = (line == start_line) ? start_col : 0;
         int col_end = (line == end_line) ? end_col : (int)editor->lines[line].length;
         total_len += (size_t)(col_end - col_start);
@@ -1591,13 +1430,11 @@ char *vg_codeeditor_get_selection(vg_codeeditor_t *editor)
         return NULL;
 
     char *ptr = result;
-    for (int line = start_line; line <= end_line; line++)
-    {
+    for (int line = start_line; line <= end_line; line++) {
         int col_start = (line == start_line) ? start_col : 0;
         int col_end = (line == end_line) ? end_col : (int)editor->lines[line].length;
         size_t len = (size_t)(col_end - col_start);
-        if (len > 0)
-        {
+        if (len > 0) {
             memcpy(ptr, editor->lines[line].text + col_start, len);
             ptr += len;
         }
@@ -1610,8 +1447,7 @@ char *vg_codeeditor_get_selection(vg_codeeditor_t *editor)
 }
 
 /// @brief Codeeditor set cursor.
-void vg_codeeditor_set_cursor(vg_codeeditor_t *editor, int line, int col)
-{
+void vg_codeeditor_set_cursor(vg_codeeditor_t *editor, int line, int col) {
     if (!editor)
         return;
 
@@ -1631,8 +1467,7 @@ void vg_codeeditor_set_cursor(vg_codeeditor_t *editor, int line, int col)
 }
 
 /// @brief Codeeditor get cursor.
-void vg_codeeditor_get_cursor(vg_codeeditor_t *editor, int *out_line, int *out_col)
-{
+void vg_codeeditor_get_cursor(vg_codeeditor_t *editor, int *out_line, int *out_col) {
     if (!editor)
         return;
     if (out_line)
@@ -1643,8 +1478,7 @@ void vg_codeeditor_get_cursor(vg_codeeditor_t *editor, int *out_line, int *out_c
 
 /// @brief Codeeditor set selection.
 void vg_codeeditor_set_selection(
-    vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col)
-{
+    vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col) {
     if (!editor)
         return;
 
@@ -1659,19 +1493,14 @@ void vg_codeeditor_set_selection(
 }
 
 /// @brief Codeeditor insetext.
-void vg_codeeditor_insert_text(vg_codeeditor_t *editor, const char *text)
-{
+void vg_codeeditor_insert_text(vg_codeeditor_t *editor, const char *text) {
     if (!editor || !text)
         return;
 
-    for (const char *p = text; *p; p++)
-    {
-        if (*p == '\n')
-        {
+    for (const char *p = text; *p; p++) {
+        if (*p == '\n') {
             insert_newline(editor);
-        }
-        else if (*p >= 32)
-        {
+        } else if (*p >= 32) {
             insert_char(editor, *p);
         }
     }
@@ -1679,8 +1508,7 @@ void vg_codeeditor_insert_text(vg_codeeditor_t *editor, const char *text)
 }
 
 /// @brief Codeeditor delete selection.
-void vg_codeeditor_delete_selection(vg_codeeditor_t *editor)
-{
+void vg_codeeditor_delete_selection(vg_codeeditor_t *editor) {
     if (!editor || !editor->has_selection)
         return;
 
@@ -1695,24 +1523,20 @@ void vg_codeeditor_delete_selection(vg_codeeditor_t *editor)
     int cursor_before_line = editor->cursor_line;
     int cursor_before_col = editor->cursor_col;
 
-    if (start_line == end_line)
-    {
+    if (start_line == end_line) {
         // Single line deletion
         vg_code_line_t *line = &editor->lines[start_line];
         memmove(line->text + start_col, line->text + end_col, line->length - end_col + 1);
         line->length -= (end_col - start_col);
         line->modified = true;
-    }
-    else
-    {
+    } else {
         // Multi-line deletion
         vg_code_line_t *first = &editor->lines[start_line];
         vg_code_line_t *last = &editor->lines[end_line];
 
         // Keep the beginning of first line and end of last line
         size_t new_len = start_col + (last->length - end_col);
-        if (!ensure_text_capacity(first, new_len + 1))
-        {
+        if (!ensure_text_capacity(first, new_len + 1)) {
             free(deleted_text);
             return;
         }
@@ -1723,15 +1547,13 @@ void vg_codeeditor_delete_selection(vg_codeeditor_t *editor)
         first->modified = true;
 
         // Free intermediate lines
-        for (int i = start_line + 1; i <= end_line; i++)
-        {
+        for (int i = start_line + 1; i <= end_line; i++) {
             free_line(&editor->lines[i]);
         }
 
         // Move remaining lines up
         int lines_removed = end_line - start_line;
-        if (end_line + 1 < editor->line_count)
-        {
+        if (end_line + 1 < editor->line_count) {
             memmove(&editor->lines[start_line + 1],
                     &editor->lines[end_line + 1],
                     (editor->line_count - end_line - 1) * sizeof(vg_code_line_t));
@@ -1748,8 +1570,7 @@ void vg_codeeditor_delete_selection(vg_codeeditor_t *editor)
     editor->modified = true;
 
     // Record for undo
-    if (editor->history && deleted_text)
-    {
+    if (editor->history && deleted_text) {
         vg_edit_op_t *op = create_edit_op(VG_EDIT_DELETE,
                                           start_line,
                                           start_col,
@@ -1761,8 +1582,7 @@ void vg_codeeditor_delete_selection(vg_codeeditor_t *editor)
                                           cursor_before_col,
                                           start_line,
                                           start_col);
-        if (op)
-        {
+        if (op) {
             edit_history_push(editor->history, op);
         }
     }
@@ -1772,20 +1592,16 @@ void vg_codeeditor_delete_selection(vg_codeeditor_t *editor)
 }
 
 /// @brief Codeeditor scroll to line.
-void vg_codeeditor_scroll_to_line(vg_codeeditor_t *editor, int line)
-{
+void vg_codeeditor_scroll_to_line(vg_codeeditor_t *editor, int line) {
     if (!editor)
         return;
 
     float target_y = line * editor->line_height;
     float visible_height = editor->base.height;
 
-    if (target_y < editor->scroll_y)
-    {
+    if (target_y < editor->scroll_y) {
         editor->scroll_y = target_y;
-    }
-    else if (target_y + editor->line_height > editor->scroll_y + visible_height)
-    {
+    } else if (target_y + editor->line_height > editor->scroll_y + visible_height) {
         editor->scroll_y = target_y + editor->line_height - visible_height;
     }
 
@@ -1795,17 +1611,14 @@ void vg_codeeditor_scroll_to_line(vg_codeeditor_t *editor, int line)
 /// @brief Codeeditor set syntax.
 void vg_codeeditor_set_syntax(vg_codeeditor_t *editor,
                               vg_syntax_callback_t callback,
-                              void *user_data)
-{
+                              void *user_data) {
     if (!editor)
         return;
     editor->syntax_highlighter = callback;
     editor->syntax_data = user_data;
     // Invalidate cached colors so the new highlighter runs on the next paint
-    for (int i = 0; i < editor->line_count; i++)
-    {
-        if (editor->lines[i].colors)
-        {
+    for (int i = 0; i < editor->line_count; i++) {
+        if (editor->lines[i].colors) {
             free(editor->lines[i].colors);
             editor->lines[i].colors = NULL;
             editor->lines[i].colors_capacity = 0;
@@ -1815,8 +1628,7 @@ void vg_codeeditor_set_syntax(vg_codeeditor_t *editor,
 }
 
 // Internal helper: insert text at position without recording to history
-static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, const char *text)
-{
+static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, const char *text) {
     if (!editor || !text || line < 0 || line >= editor->line_count)
         return;
 
@@ -1824,10 +1636,8 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
     int cur_line = line;
     int cur_col = col;
 
-    for (const char *p = text; *p; p++)
-    {
-        if (*p == '\n')
-        {
+    for (const char *p = text; *p; p++) {
+        if (*p == '\n') {
             // Insert newline
             if (!ensure_line_capacity(editor, editor->line_count + 1))
                 return;
@@ -1843,22 +1653,17 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
             memset(next, 0, sizeof(vg_code_line_t));
             size_t remaining = current->length - cur_col;
 
-            if (remaining > 0)
-            {
+            if (remaining > 0) {
                 next->text = malloc(remaining + 1);
-                if (next->text)
-                {
+                if (next->text) {
                     memcpy(next->text, current->text + cur_col, remaining);
                     next->text[remaining] = '\0';
                     next->length = remaining;
                     next->capacity = remaining + 1;
                 }
-            }
-            else
-            {
+            } else {
                 next->text = malloc(1);
-                if (next->text)
-                {
+                if (next->text) {
                     next->text[0] = '\0';
                     next->length = 0;
                     next->capacity = 1;
@@ -1871,9 +1676,7 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
 
             cur_line++;
             cur_col = 0;
-        }
-        else if (*p >= 32 || *p == '\t')
-        {
+        } else if (*p >= 32 || *p == '\t') {
             // Insert character
             vg_code_line_t *ln = &editor->lines[cur_line];
             if (!ensure_text_capacity(ln, ln->length + 2))
@@ -1894,15 +1697,13 @@ static void insert_text_at_internal(vg_codeeditor_t *editor, int line, int col, 
 
 // Internal helper: delete text range without recording to history
 static void delete_text_range_internal(
-    vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col)
-{
+    vg_codeeditor_t *editor, int start_line, int start_col, int end_line, int end_col) {
     if (!editor || start_line < 0 || start_line >= editor->line_count)
         return;
     if (end_line < 0 || end_line >= editor->line_count)
         return;
 
-    if (start_line == end_line)
-    {
+    if (start_line == end_line) {
         // Single line deletion
         vg_code_line_t *line = &editor->lines[start_line];
         if (start_col >= (int)line->length)
@@ -1912,9 +1713,7 @@ static void delete_text_range_internal(
 
         memmove(line->text + start_col, line->text + end_col, line->length - end_col + 1);
         line->length -= (end_col - start_col);
-    }
-    else
-    {
+    } else {
         // Multi-line deletion
         vg_code_line_t *first = &editor->lines[start_line];
         vg_code_line_t *last = &editor->lines[end_line];
@@ -1926,14 +1725,12 @@ static void delete_text_range_internal(
         memcpy(first->text + start_col, last->text + end_col, last->length - end_col + 1);
         first->length = new_len;
 
-        for (int i = start_line + 1; i <= end_line; i++)
-        {
+        for (int i = start_line + 1; i <= end_line; i++) {
             free_line(&editor->lines[i]);
         }
 
         int lines_removed = end_line - start_line;
-        if (end_line + 1 < editor->line_count)
-        {
+        if (end_line + 1 < editor->line_count) {
             memmove(&editor->lines[start_line + 1],
                     &editor->lines[end_line + 1],
                     (editor->line_count - end_line - 1) * sizeof(vg_code_line_t));
@@ -1948,8 +1745,7 @@ static void delete_text_range_internal(
 }
 
 /// @brief Codeeditor undo.
-void vg_codeeditor_undo(vg_codeeditor_t *editor)
-{
+void vg_codeeditor_undo(vg_codeeditor_t *editor) {
     if (!editor || !editor->history)
         return;
 
@@ -1959,10 +1755,8 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor)
 
     // Handle grouped operations
     uint32_t group = op->group_id;
-    do
-    {
-        switch (op->type)
-        {
+    do {
+        switch (op->type) {
             case VG_EDIT_INSERT:
                 // Undo insert = delete the inserted text
                 delete_text_range_internal(
@@ -1987,20 +1781,14 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor)
         editor->cursor_col = op->cursor_col_before;
 
         // Check for more operations in same group
-        if (group != 0)
-        {
+        if (group != 0) {
             vg_edit_op_t *next_op = edit_history_peek_undo(editor->history);
-            if (next_op && next_op->group_id == group)
-            {
+            if (next_op && next_op->group_id == group) {
                 op = edit_history_pop_undo(editor->history);
-            }
-            else
-            {
+            } else {
                 break;
             }
-        }
-        else
-        {
+        } else {
             break;
         }
     } while (op);
@@ -2010,8 +1798,7 @@ void vg_codeeditor_undo(vg_codeeditor_t *editor)
 }
 
 /// @brief Codeeditor redo.
-void vg_codeeditor_redo(vg_codeeditor_t *editor)
-{
+void vg_codeeditor_redo(vg_codeeditor_t *editor) {
     if (!editor || !editor->history)
         return;
 
@@ -2023,10 +1810,8 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor)
     uint32_t group = op->group_id;
 
     // Collect all ops in this group
-    do
-    {
-        switch (op->type)
-        {
+    do {
+        switch (op->type) {
             case VG_EDIT_INSERT:
                 // Redo insert = insert the text again
                 insert_text_at_internal(editor, op->start_line, op->start_col, op->new_text);
@@ -2051,20 +1836,14 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor)
         editor->cursor_col = op->cursor_col_after;
 
         // Check for more operations in same group
-        if (group != 0 && editor->history->current_index < editor->history->count)
-        {
+        if (group != 0 && editor->history->current_index < editor->history->count) {
             vg_edit_op_t *next_op = editor->history->operations[editor->history->current_index];
-            if (next_op && next_op->group_id == group)
-            {
+            if (next_op && next_op->group_id == group) {
                 op = edit_history_pop_redo(editor->history);
-            }
-            else
-            {
+            } else {
                 break;
             }
-        }
-        else
-        {
+        } else {
             break;
         }
     } while (op);
@@ -2073,14 +1852,12 @@ void vg_codeeditor_redo(vg_codeeditor_t *editor)
     editor->base.needs_paint = true;
 }
 
-bool vg_codeeditor_copy(vg_codeeditor_t *editor)
-{
+bool vg_codeeditor_copy(vg_codeeditor_t *editor) {
     if (!editor || !editor->has_selection)
         return false;
 
     char *text = vg_codeeditor_get_selection(editor);
-    if (text)
-    {
+    if (text) {
         vgfx_clipboard_set_text(text);
         free(text);
         return true;
@@ -2088,14 +1865,12 @@ bool vg_codeeditor_copy(vg_codeeditor_t *editor)
     return false;
 }
 
-bool vg_codeeditor_cut(vg_codeeditor_t *editor)
-{
+bool vg_codeeditor_cut(vg_codeeditor_t *editor) {
     if (!editor || editor->read_only || !editor->has_selection)
         return false;
 
     char *text = vg_codeeditor_get_selection(editor);
-    if (text)
-    {
+    if (text) {
         vgfx_clipboard_set_text(text);
         free(text);
         vg_codeeditor_delete_selection(editor);
@@ -2105,16 +1880,13 @@ bool vg_codeeditor_cut(vg_codeeditor_t *editor)
     return false;
 }
 
-bool vg_codeeditor_paste(vg_codeeditor_t *editor)
-{
+bool vg_codeeditor_paste(vg_codeeditor_t *editor) {
     if (!editor || editor->read_only)
         return false;
 
     char *text = vgfx_clipboard_get_text();
-    if (text)
-    {
-        if (editor->has_selection)
-        {
+    if (text) {
+        if (editor->has_selection) {
             vg_codeeditor_delete_selection(editor);
         }
         vg_codeeditor_insert_text(editor, text);
@@ -2126,8 +1898,7 @@ bool vg_codeeditor_paste(vg_codeeditor_t *editor)
 }
 
 /// @brief Codeeditor select all.
-void vg_codeeditor_select_all(vg_codeeditor_t *editor)
-{
+void vg_codeeditor_select_all(vg_codeeditor_t *editor) {
     if (!editor || editor->line_count == 0)
         return;
 
@@ -2140,16 +1911,14 @@ void vg_codeeditor_select_all(vg_codeeditor_t *editor)
 }
 
 /// @brief Codeeditor set font.
-void vg_codeeditor_set_font(vg_codeeditor_t *editor, vg_font_t *font, float size)
-{
+void vg_codeeditor_set_font(vg_codeeditor_t *editor, vg_font_t *font, float size) {
     if (!editor)
         return;
 
     editor->font = font;
     editor->font_size = size > 0 ? size : vg_theme_get_current()->typography.size_normal;
 
-    if (font)
-    {
+    if (font) {
         // Calculate char width (assuming monospace)
         vg_text_metrics_t metrics;
         vg_font_measure_text(font, editor->font_size, "M", &metrics);
@@ -2166,24 +1935,19 @@ void vg_codeeditor_set_font(vg_codeeditor_t *editor, vg_font_t *font, float size
 }
 
 /// @brief Codeeditor get line count.
-int vg_codeeditor_get_line_count(vg_codeeditor_t *editor)
-{
+int vg_codeeditor_get_line_count(vg_codeeditor_t *editor) {
     return editor ? editor->line_count : 0;
 }
 
-bool vg_codeeditor_is_modified(vg_codeeditor_t *editor)
-{
+bool vg_codeeditor_is_modified(vg_codeeditor_t *editor) {
     return editor ? editor->modified : false;
 }
 
 /// @brief Codeeditor clear modified.
-void vg_codeeditor_clear_modified(vg_codeeditor_t *editor)
-{
-    if (editor)
-    {
+void vg_codeeditor_clear_modified(vg_codeeditor_t *editor) {
+    if (editor) {
         editor->modified = false;
-        for (int i = 0; i < editor->line_count; i++)
-        {
+        for (int i = 0; i < editor->line_count; i++) {
             editor->lines[i].modified = false;
         }
     }

@@ -28,15 +28,13 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Build a test module with a call instruction.
 /// @param callee The callee name for the call.
 /// @param useResult Whether the call result is used by ret.
 /// @return Module with a single function containing the call.
-Module buildTestModule(const std::string &callee, bool useResult)
-{
+Module buildTestModule(const std::string &callee, bool useResult) {
     Module m;
     m.version = "0.1.0";
 
@@ -67,13 +65,10 @@ Module buildTestModule(const std::string &callee, bool useResult)
     // Return instruction
     Instr retInstr;
     retInstr.op = Opcode::Ret;
-    if (useResult)
-    {
+    if (useResult) {
         // ret %0 - uses the call result
         retInstr.operands = {Value::temp(0)};
-    }
-    else
-    {
+    } else {
         // ret 0 - does NOT use the call result
         retInstr.operands = {Value::constInt(0)};
     }
@@ -86,8 +81,7 @@ Module buildTestModule(const std::string &callee, bool useResult)
 }
 
 /// @brief Check if a module contains a call to the specified callee.
-bool hasCallTo(const Module &m, const std::string &callee)
-{
+bool hasCallTo(const Module &m, const std::string &callee) {
     for (const auto &f : m.functions)
         for (const auto &b : f.blocks)
             for (const auto &i : b.instructions)
@@ -97,8 +91,7 @@ bool hasCallTo(const Module &m, const std::string &callee)
 }
 
 /// @brief Test: Pure call with unused result should be eliminated.
-void testPureCallEliminated()
-{
+void testPureCallEliminated() {
     // rt_abs_i64 is marked as pure in HelperEffects
     Module m = buildTestModule("rt_abs_i64", false);
     assert(hasCallTo(m, "rt_abs_i64") && "Precondition: call should exist before DCE");
@@ -109,8 +102,7 @@ void testPureCallEliminated()
 }
 
 /// @brief Test: Pure call with used result should be preserved.
-void testPureCallPreservedWhenUsed()
-{
+void testPureCallPreservedWhenUsed() {
     // rt_abs_i64 is pure, but result is used
     Module m = buildTestModule("rt_abs_i64", true);
     assert(hasCallTo(m, "rt_abs_i64") && "Precondition: call should exist before DCE");
@@ -121,8 +113,7 @@ void testPureCallPreservedWhenUsed()
 }
 
 /// @brief Test: Impure call with unused result should be preserved.
-void testImpureCallPreserved()
-{
+void testImpureCallPreserved() {
     // rt_print_i64 is impure (has I/O side effects)
     Module m = buildTestModule("rt_print_i64", false);
     assert(hasCallTo(m, "rt_print_i64") && "Precondition: call should exist before DCE");
@@ -133,8 +124,7 @@ void testImpureCallPreserved()
 }
 
 /// @brief Test: Unknown callee should be conservatively preserved.
-void testUnknownCalleePreserved()
-{
+void testUnknownCalleePreserved() {
     // unknown_function is not in the registry, should be kept
     Module m = buildTestModule("unknown_function", false);
     assert(hasCallTo(m, "unknown_function") && "Precondition: call should exist before DCE");
@@ -145,8 +135,7 @@ void testUnknownCalleePreserved()
 }
 
 /// @brief Test: Readonly call (reads memory) should be preserved.
-void testReadonlyCallPreserved()
-{
+void testReadonlyCallPreserved() {
     // rt_len is readonly (reads string memory) but not pure
     Module m = buildTestModule("rt_str_len", false);
     assert(hasCallTo(m, "rt_str_len") && "Precondition: call should exist before DCE");
@@ -159,13 +148,11 @@ void testReadonlyCallPreserved()
 }
 
 /// @brief Test: Multiple pure math functions are eliminated.
-void testMultiplePureMathEliminated()
-{
+void testMultiplePureMathEliminated() {
     const std::vector<std::string> pureHelpers = {
         "rt_abs_f64", "rt_floor", "rt_ceil", "rt_sin", "rt_cos", "rt_sqrt", "rt_sgn_i64"};
 
-    for (const auto &helper : pureHelpers)
-    {
+    for (const auto &helper : pureHelpers) {
         Module m = buildTestModule(helper, false);
         il::transform::dce(m);
         assert(!hasCallTo(m, helper) &&
@@ -175,8 +162,7 @@ void testMultiplePureMathEliminated()
 
 } // namespace
 
-int main()
-{
+int main() {
     testPureCallEliminated();
     testPureCallPreservedWhenUsed();
     testImpureCallPreserved();

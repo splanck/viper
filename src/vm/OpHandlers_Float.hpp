@@ -28,8 +28,7 @@
 #include "il/core/BasicBlock.hpp"
 #include "il/core/Instr.hpp"
 
-namespace il::vm::detail::floating
-{
+namespace il::vm::detail::floating {
 /// @brief Execute floating-point addition (FAdd).
 /// @details Evaluates both operands as doubles, computes lhs + rhs using host
 ///          IEEE-754 semantics, and stores the result in the destination slot.

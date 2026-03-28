@@ -28,20 +28,17 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// A member within an archive.
-struct ArchiveMember
-{
+struct ArchiveMember {
     std::string name;  ///< Member name (e.g., "foo.o").
     size_t dataOffset; ///< Byte offset of member data within the archive file.
     size_t dataSize;   ///< Size of the member data in bytes.
 };
 
 /// Parsed archive with symbol index and member list.
-struct Archive
-{
+struct Archive {
     std::string path;                                    ///< Path to the archive file.
     std::vector<uint8_t> data;                           ///< Raw archive file contents.
     std::vector<ArchiveMember> members;                  ///< All object file members.

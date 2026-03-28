@@ -25,12 +25,10 @@
 #include <string>
 #include <vector>
 
-namespace il::link
-{
+namespace il::link {
 
 /// @brief Information about a generated boolean thunk.
-struct ThunkInfo
-{
+struct ThunkInfo {
     /// @brief Name of the thunk function.
     std::string thunkName;
 

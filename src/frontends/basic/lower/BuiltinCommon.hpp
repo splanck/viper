@@ -30,16 +30,14 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::basic::lower
-{
+namespace il::frontends::basic::lower {
 /// @brief Shared lowering context for BASIC builtin call emission.
 /// @details Wraps a builtin call expression together with its lowering rule,
 ///          builtin info, and the enclosing Lowerer. Provides convenience APIs
 ///          for argument materialisation, type resolution, IL emission, and
 ///          control-flow synthesis that family-specific handlers use to lower
 ///          individual builtins.
-class BuiltinLowerContext
-{
+class BuiltinLowerContext {
   public:
     /// @brief Construct a context for lowering the given builtin call.
     /// @details Looks up the builtin's info and lowering rule from the registry,
@@ -51,29 +49,25 @@ class BuiltinLowerContext
 
     /// @brief Access the owning Lowerer instance.
     /// @return Reference to the Lowerer driving the lowering process.
-    [[nodiscard]] Lowerer &lowerer() const noexcept
-    {
+    [[nodiscard]] Lowerer &lowerer() const noexcept {
         return *lowerer_;
     }
 
     /// @brief Access the builtin call expression being lowered.
     /// @return Const reference to the BuiltinCallExpr AST node.
-    [[nodiscard]] const BuiltinCallExpr &call() const noexcept
-    {
+    [[nodiscard]] const BuiltinCallExpr &call() const noexcept {
         return *call_;
     }
 
     /// @brief Access the lowering rule describing how to translate this builtin.
     /// @return Const reference to the BuiltinLoweringRule for the builtin.
-    [[nodiscard]] const BuiltinLoweringRule &rule() const noexcept
-    {
+    [[nodiscard]] const BuiltinLoweringRule &rule() const noexcept {
         return *rule_;
     }
 
     /// @brief Access the static builtin info (name, arity, etc.).
     /// @return Const reference to the BuiltinInfo entry.
-    [[nodiscard]] const BuiltinInfo &info() const noexcept
-    {
+    [[nodiscard]] const BuiltinInfo &info() const noexcept {
         return *info_;
     }
 
@@ -212,8 +206,7 @@ class BuiltinLowerContext
     void applyFeatures(const BuiltinLoweringRule::Variant &variant);
 
     /// @brief A pair of basic blocks for guard (bounds-check) patterns.
-    struct BranchPair
-    {
+    struct BranchPair {
         il::core::BasicBlock *cont{nullptr}; ///< Continuation block (check passed).
         il::core::BasicBlock *trap{nullptr}; ///< Trap block (check failed).
     };
@@ -225,8 +218,7 @@ class BuiltinLowerContext
     [[nodiscard]] BranchPair createGuardBlocks(const char *contHint, const char *trapHint);
 
     /// @brief A set of basic blocks for VAL-style numeric conversion patterns.
-    struct ValBlocks
-    {
+    struct ValBlocks {
         il::core::BasicBlock *cont{nullptr};     ///< Success continuation block.
         il::core::BasicBlock *trap{nullptr};     ///< General error trap block.
         il::core::BasicBlock *nan{nullptr};      ///< NaN-detected trap block.

@@ -73,8 +73,7 @@ extern void rt_canvas3d_end(void *obj);
  * SceneNode3D internal structure
  *=========================================================================*/
 
-typedef struct rt_scene_node3d
-{
+typedef struct rt_scene_node3d {
     void *vptr;
 
     /* Local transform */
@@ -108,8 +107,7 @@ typedef struct rt_scene_node3d
     float bsphere_radius;
 
     /* LOD levels (F1) — sorted by distance ascending */
-    struct
-    {
+    struct {
         double distance;
         void *mesh;
     } *lod_levels;
@@ -118,8 +116,7 @@ typedef struct rt_scene_node3d
     int32_t lod_capacity;
 } rt_scene_node3d;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     rt_scene_node3d *root;
     int32_t node_count;
@@ -132,8 +129,10 @@ typedef struct
 
 /// @brief Build a TRS matrix: Translate * Rotate * Scale (row-major).
 /// Quaternion (x,y,z,w) is expanded inline to avoid allocating a Mat4.
-static void build_trs_matrix(const double *pos, const double *quat, const double *scl, double *out)
-{
+static void build_trs_matrix(const double *pos,
+                             const double *quat,
+                             const double *scl,
+                             double *out) {
     double x = quat[0], y = quat[1], z = quat[2], w = quat[3];
     double x2 = x + x, y2 = y + y, z2 = z + z;
     double xx = x * x2, xy = x * y2, xz = x * z2;
@@ -165,8 +164,7 @@ static void build_trs_matrix(const double *pos, const double *quat, const double
 }
 
 /// @brief Multiply two 4x4 row-major matrices: out = a * b.
-static void mat4d_mul(const double *a, const double *b, double *out)
-{
+static void mat4d_mul(const double *a, const double *b, double *out) {
     for (int r = 0; r < 4; r++)
         for (int c = 0; c < 4; c++)
             out[r * 4 + c] = a[r * 4 + 0] * b[0 * 4 + c] + a[r * 4 + 1] * b[1 * 4 + c] +
@@ -174,29 +172,24 @@ static void mat4d_mul(const double *a, const double *b, double *out)
 }
 
 /// @brief Recursively mark a node and all descendants as dirty.
-static void mark_dirty(rt_scene_node3d *node)
-{
+static void mark_dirty(rt_scene_node3d *node) {
     node->world_dirty = 1;
     for (int32_t i = 0; i < node->child_count; i++)
         mark_dirty(node->children[i]);
 }
 
 /// @brief Recompute the world matrix if dirty (recursive up to parent).
-static void recompute_world_matrix(rt_scene_node3d *node)
-{
+static void recompute_world_matrix(rt_scene_node3d *node) {
     if (!node->world_dirty)
         return;
 
     double local[16];
     build_trs_matrix(node->position, node->rotation, node->scale_xyz, local);
 
-    if (node->parent)
-    {
+    if (node->parent) {
         recompute_world_matrix(node->parent);
         mat4d_mul(node->parent->world_matrix, local, node->world_matrix);
-    }
-    else
-    {
+    } else {
         memcpy(node->world_matrix, local, sizeof(double) * 16);
     }
 
@@ -204,22 +197,19 @@ static void recompute_world_matrix(rt_scene_node3d *node)
 }
 
 /// @brief Count nodes in a subtree (including the root).
-static int32_t count_subtree(const rt_scene_node3d *node)
-{
+static int32_t count_subtree(const rt_scene_node3d *node) {
     int32_t n = 1;
     for (int32_t i = 0; i < node->child_count; i++)
         n += count_subtree(node->children[i]);
     return n;
 }
 
-static int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *target)
-{
+static int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *target) {
     if (!root)
         return 0;
     if (root == target)
         return 1;
-    for (int32_t i = 0; i < root->child_count; i++)
-    {
+    for (int32_t i = 0; i < root->child_count; i++) {
         if (node_contains(root->children[i], target))
             return 1;
     }
@@ -229,16 +219,13 @@ static int node_contains(const rt_scene_node3d *root, const rt_scene_node3d *tar
 /// @brief Recursive depth-first search by name.
 extern const char *rt_string_cstr(rt_string s);
 
-static rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target)
-{
-    if (node->name)
-    {
+static rt_scene_node3d *find_by_name(rt_scene_node3d *node, const char *target) {
+    if (node->name) {
         const char *s = rt_string_cstr(node->name);
         if (s && strcmp(s, target) == 0)
             return node;
     }
-    for (int32_t i = 0; i < node->child_count; i++)
-    {
+    for (int32_t i = 0; i < node->child_count; i++) {
         rt_scene_node3d *found = find_by_name(node->children[i], target);
         if (found)
             return found;
@@ -253,8 +240,7 @@ static void draw_node(rt_scene_node3d *node,
                       void *canvas3d,
                       const vgfx3d_frustum_t *frustum,
                       int32_t *culled,
-                      const float *cam_pos)
-{
+                      const float *cam_pos) {
     if (!node->visible)
         return;
 
@@ -263,34 +249,28 @@ static void draw_node(rt_scene_node3d *node,
     int draw_self = 1;
 
     /* Frustum cull: test world-space AABB if the node has a mesh */
-    if (frustum && node->mesh && node->bsphere_radius > 0.0f)
-    {
+    if (frustum && node->mesh && node->bsphere_radius > 0.0f) {
         float world_min[3], world_max[3];
         vgfx3d_transform_aabb(
             node->aabb_min, node->aabb_max, node->world_matrix, world_min, world_max);
-        if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0)
-        {
+        if (vgfx3d_frustum_test_aabb(frustum, world_min, world_max) == 0) {
             draw_self = 0;
             if (culled)
                 (*culled)++;
         }
     }
 
-    if (draw_self && node->mesh && node->material)
-    {
+    if (draw_self && node->mesh && node->material) {
         const double *m = node->world_matrix;
         /* LOD selection: pick mesh by distance from camera */
         void *draw_mesh = node->mesh;
-        if (node->lod_count > 0 && cam_pos)
-        {
+        if (node->lod_count > 0 && cam_pos) {
             float dx = (float)m[3] - cam_pos[0];
             float dy = (float)m[7] - cam_pos[1];
             float dz = (float)m[11] - cam_pos[2];
             float dist = sqrtf(dx * dx + dy * dy + dz * dz);
-            for (int32_t l = node->lod_count - 1; l >= 0; l--)
-            {
-                if (dist >= (float)node->lod_levels[l].distance)
-                {
+            for (int32_t l = node->lod_count - 1; l >= 0; l--) {
+                if (dist >= (float)node->lod_levels[l].distance) {
                     draw_mesh = node->lod_levels[l].mesh;
                     break;
                 }
@@ -307,8 +287,7 @@ static void draw_node(rt_scene_node3d *node,
  * SceneNode3D — lifecycle
  *=========================================================================*/
 
-static void rt_scene_node3d_finalize(void *obj)
-{
+static void rt_scene_node3d_finalize(void *obj) {
     rt_scene_node3d *node = (rt_scene_node3d *)obj;
     free(node->children);
     node->children = NULL;
@@ -318,11 +297,9 @@ static void rt_scene_node3d_finalize(void *obj)
     node->lod_count = 0;
 }
 
-void *rt_scene_node3d_new(void)
-{
+void *rt_scene_node3d_new(void) {
     rt_scene_node3d *node = (rt_scene_node3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_scene_node3d));
-    if (!node)
-    {
+    if (!node) {
         rt_trap("SceneNode3D.New: memory allocation failed");
         return NULL;
     }
@@ -364,8 +341,7 @@ void *rt_scene_node3d_new(void)
  * SceneNode3D — transform
  *=========================================================================*/
 
-void rt_scene_node3d_set_position(void *obj, double x, double y, double z)
-{
+void rt_scene_node3d_set_position(void *obj, double x, double y, double z) {
     if (!obj)
         return;
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
@@ -375,16 +351,14 @@ void rt_scene_node3d_set_position(void *obj, double x, double y, double z)
     mark_dirty(n);
 }
 
-void *rt_scene_node3d_get_position(void *obj)
-{
+void *rt_scene_node3d_get_position(void *obj) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
     return rt_vec3_new(n->position[0], n->position[1], n->position[2]);
 }
 
-void rt_scene_node3d_set_rotation(void *obj, void *quat)
-{
+void rt_scene_node3d_set_rotation(void *obj, void *quat) {
     if (!obj || !quat)
         return;
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
@@ -395,16 +369,14 @@ void rt_scene_node3d_set_rotation(void *obj, void *quat)
     mark_dirty(n);
 }
 
-void *rt_scene_node3d_get_rotation(void *obj)
-{
+void *rt_scene_node3d_get_rotation(void *obj) {
     if (!obj)
         return rt_quat_new(0, 0, 0, 1);
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
     return rt_quat_new(n->rotation[0], n->rotation[1], n->rotation[2], n->rotation[3]);
 }
 
-void rt_scene_node3d_set_scale(void *obj, double x, double y, double z)
-{
+void rt_scene_node3d_set_scale(void *obj, double x, double y, double z) {
     if (!obj)
         return;
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
@@ -414,16 +386,14 @@ void rt_scene_node3d_set_scale(void *obj, double x, double y, double z)
     mark_dirty(n);
 }
 
-void *rt_scene_node3d_get_scale(void *obj)
-{
+void *rt_scene_node3d_get_scale(void *obj) {
     if (!obj)
         return rt_vec3_new(1, 1, 1);
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
     return rt_vec3_new(n->scale_xyz[0], n->scale_xyz[1], n->scale_xyz[2]);
 }
 
-void *rt_scene_node3d_get_world_matrix(void *obj)
-{
+void *rt_scene_node3d_get_world_matrix(void *obj) {
     if (!obj)
         return NULL;
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
@@ -451,8 +421,7 @@ void *rt_scene_node3d_get_world_matrix(void *obj)
  * SceneNode3D — hierarchy
  *=========================================================================*/
 
-void rt_scene_node3d_add_child(void *obj, void *child_obj)
-{
+void rt_scene_node3d_add_child(void *obj, void *child_obj) {
     if (!obj || !child_obj || obj == child_obj)
         return;
     rt_scene_node3d *parent = (rt_scene_node3d *)obj;
@@ -467,8 +436,7 @@ void rt_scene_node3d_add_child(void *obj, void *child_obj)
         rt_scene_node3d_remove_child(child->parent, child);
 
     /* Grow children array if needed */
-    if (parent->child_count >= parent->child_capacity)
-    {
+    if (parent->child_count >= parent->child_capacity) {
         int32_t new_cap =
             parent->child_capacity == 0 ? NODE_INIT_CHILDREN : parent->child_capacity * 2;
         rt_scene_node3d **nc = (rt_scene_node3d **)realloc(
@@ -484,17 +452,14 @@ void rt_scene_node3d_add_child(void *obj, void *child_obj)
     mark_dirty(child);
 }
 
-void rt_scene_node3d_remove_child(void *obj, void *child_obj)
-{
+void rt_scene_node3d_remove_child(void *obj, void *child_obj) {
     if (!obj || !child_obj)
         return;
     rt_scene_node3d *parent = (rt_scene_node3d *)obj;
     rt_scene_node3d *child = (rt_scene_node3d *)child_obj;
 
-    for (int32_t i = 0; i < parent->child_count; i++)
-    {
-        if (parent->children[i] == child)
-        {
+    for (int32_t i = 0; i < parent->child_count; i++) {
+        if (parent->children[i] == child) {
             /* Shift remaining children down */
             for (int32_t j = i; j < parent->child_count - 1; j++)
                 parent->children[j] = parent->children[j + 1];
@@ -506,13 +471,11 @@ void rt_scene_node3d_remove_child(void *obj, void *child_obj)
     }
 }
 
-int64_t rt_scene_node3d_child_count(void *obj)
-{
+int64_t rt_scene_node3d_child_count(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->child_count : 0;
 }
 
-void *rt_scene_node3d_get_child(void *obj, int64_t index)
-{
+void *rt_scene_node3d_get_child(void *obj, int64_t index) {
     if (!obj)
         return NULL;
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
@@ -521,13 +484,11 @@ void *rt_scene_node3d_get_child(void *obj, int64_t index)
     return n->children[index];
 }
 
-void *rt_scene_node3d_get_parent(void *obj)
-{
+void *rt_scene_node3d_get_parent(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->parent : NULL;
 }
 
-void *rt_scene_node3d_find(void *obj, rt_string name)
-{
+void *rt_scene_node3d_find(void *obj, rt_string name) {
     if (!obj || !name)
         return NULL;
     const char *s = rt_string_cstr(name);
@@ -540,16 +501,14 @@ void *rt_scene_node3d_find(void *obj, rt_string name)
  * SceneNode3D — renderable / visibility / name
  *=========================================================================*/
 
-void rt_scene_node3d_set_mesh(void *obj, void *mesh)
-{
+void rt_scene_node3d_set_mesh(void *obj, void *mesh) {
     if (!obj)
         return;
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
     n->mesh = mesh;
 
     /* Compute object-space AABB from mesh vertices */
-    if (mesh)
-    {
+    if (mesh) {
         rt_mesh3d *m = (rt_mesh3d *)mesh;
         vgfx3d_compute_mesh_aabb(
             m->vertices, m->vertex_count, sizeof(vgfx3d_vertex_t), n->aabb_min, n->aabb_max);
@@ -558,55 +517,46 @@ void rt_scene_node3d_set_mesh(void *obj, void *mesh)
         float dy = n->aabb_max[1] - n->aabb_min[1];
         float dz = n->aabb_max[2] - n->aabb_min[2];
         n->bsphere_radius = 0.5f * sqrtf(dx * dx + dy * dy + dz * dz);
-    }
-    else
-    {
+    } else {
         n->aabb_min[0] = n->aabb_min[1] = n->aabb_min[2] = 0.0f;
         n->aabb_max[0] = n->aabb_max[1] = n->aabb_max[2] = 0.0f;
         n->bsphere_radius = 0.0f;
     }
 }
 
-void rt_scene_node3d_set_material(void *obj, void *material)
-{
+void rt_scene_node3d_set_material(void *obj, void *material) {
     if (obj)
         ((rt_scene_node3d *)obj)->material = material;
 }
 
-void rt_scene_node3d_set_visible(void *obj, int8_t visible)
-{
+void rt_scene_node3d_set_visible(void *obj, int8_t visible) {
     if (obj)
         ((rt_scene_node3d *)obj)->visible = visible;
 }
 
-int8_t rt_scene_node3d_get_visible(void *obj)
-{
+int8_t rt_scene_node3d_get_visible(void *obj) {
     return obj ? ((rt_scene_node3d *)obj)->visible : 0;
 }
 
-void rt_scene_node3d_set_name(void *obj, rt_string name)
-{
+void rt_scene_node3d_set_name(void *obj, rt_string name) {
     if (obj)
         ((rt_scene_node3d *)obj)->name = name;
 }
 
-rt_string rt_scene_node3d_get_name(void *obj)
-{
+rt_string rt_scene_node3d_get_name(void *obj) {
     if (obj && ((rt_scene_node3d *)obj)->name)
         return ((rt_scene_node3d *)obj)->name;
     return rt_const_cstr("");
 }
 
-void *rt_scene_node3d_get_aabb_min(void *obj)
-{
+void *rt_scene_node3d_get_aabb_min(void *obj) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
     return rt_vec3_new(n->aabb_min[0], n->aabb_min[1], n->aabb_min[2]);
 }
 
-void *rt_scene_node3d_get_aabb_max(void *obj)
-{
+void *rt_scene_node3d_get_aabb_max(void *obj) {
     if (!obj)
         return rt_vec3_new(0, 0, 0);
     rt_scene_node3d *n = (rt_scene_node3d *)obj;
@@ -617,18 +567,15 @@ void *rt_scene_node3d_get_aabb_max(void *obj)
  * Scene3D
  *=========================================================================*/
 
-static void rt_scene3d_finalize(void *obj)
-{
+static void rt_scene3d_finalize(void *obj) {
     (void)obj;
     /* Root node is GC-managed; its finalizer frees children array.
      * Scene3D itself has no heap-allocated state to free. */
 }
 
-void *rt_scene3d_new(void)
-{
+void *rt_scene3d_new(void) {
     rt_scene3d *s = (rt_scene3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_scene3d));
-    if (!s)
-    {
+    if (!s) {
         rt_trap("Scene3D.New: memory allocation failed");
         return NULL;
     }
@@ -640,13 +587,11 @@ void *rt_scene3d_new(void)
     return s;
 }
 
-void *rt_scene3d_get_root(void *obj)
-{
+void *rt_scene3d_get_root(void *obj) {
     return obj ? ((rt_scene3d *)obj)->root : NULL;
 }
 
-void rt_scene3d_add(void *obj, void *node)
-{
+void rt_scene3d_add(void *obj, void *node) {
     if (!obj)
         return;
     rt_scene3d *s = (rt_scene3d *)obj;
@@ -654,8 +599,7 @@ void rt_scene3d_add(void *obj, void *node)
     s->node_count = count_subtree(s->root);
 }
 
-void rt_scene3d_remove(void *obj, void *node)
-{
+void rt_scene3d_remove(void *obj, void *node) {
     if (!obj || !node)
         return;
     rt_scene3d *s = (rt_scene3d *)obj;
@@ -665,8 +609,7 @@ void rt_scene3d_remove(void *obj, void *node)
     s->node_count = count_subtree(s->root);
 }
 
-void *rt_scene3d_find(void *obj, rt_string name)
-{
+void *rt_scene3d_find(void *obj, rt_string name) {
     if (!obj || !name)
         return NULL;
     const char *str = rt_string_cstr(name);
@@ -677,14 +620,12 @@ void *rt_scene3d_find(void *obj, rt_string name)
 }
 
 /// @brief Helper to convert double[16] to float[16] for frustum extraction.
-static void mat4_d2f_local(const double *src, float *dst)
-{
+static void mat4_d2f_local(const double *src, float *dst) {
     for (int i = 0; i < 16; i++)
         dst[i] = (float)src[i];
 }
 
-void rt_scene3d_draw(void *obj, void *canvas3d, void *camera)
-{
+void rt_scene3d_draw(void *obj, void *canvas3d, void *camera) {
     if (!obj || !canvas3d || !camera)
         return;
     rt_scene3d *s = (rt_scene3d *)obj;
@@ -711,8 +652,7 @@ void rt_scene3d_draw(void *obj, void *canvas3d, void *camera)
     s->last_culled_count = culled;
 }
 
-void rt_scene3d_clear(void *obj)
-{
+void rt_scene3d_clear(void *obj) {
     if (!obj)
         return;
     rt_scene3d *s = (rt_scene3d *)obj;
@@ -723,13 +663,11 @@ void rt_scene3d_clear(void *obj)
     s->node_count = 1; /* just root */
 }
 
-int64_t rt_scene3d_get_node_count(void *obj)
-{
+int64_t rt_scene3d_get_node_count(void *obj) {
     return obj ? ((rt_scene3d *)obj)->node_count : 0;
 }
 
-int64_t rt_scene3d_get_culled_count(void *obj)
-{
+int64_t rt_scene3d_get_culled_count(void *obj) {
     return obj ? ((rt_scene3d *)obj)->last_culled_count : 0;
 }
 
@@ -737,14 +675,12 @@ int64_t rt_scene3d_get_culled_count(void *obj)
  * LOD — Level of Detail per SceneNode3D
  *=========================================================================*/
 
-void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh)
-{
+void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh) {
     if (!obj || !mesh)
         return;
     rt_scene_node3d *node = (rt_scene_node3d *)obj;
 
-    if (node->lod_count >= node->lod_capacity)
-    {
+    if (node->lod_count >= node->lod_capacity) {
         int32_t new_cap = node->lod_capacity < 4 ? 4 : node->lod_capacity * 2;
         void *tmp = realloc(node->lod_levels, (size_t)new_cap * sizeof(node->lod_levels[0]));
         if (!tmp)
@@ -755,10 +691,8 @@ void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh)
 
     /* Insert sorted by distance ascending */
     int32_t pos = node->lod_count;
-    for (int32_t i = 0; i < node->lod_count; i++)
-    {
-        if (distance < node->lod_levels[i].distance)
-        {
+    for (int32_t i = 0; i < node->lod_count; i++) {
+        if (distance < node->lod_levels[i].distance) {
             pos = i;
             break;
         }
@@ -772,8 +706,7 @@ void rt_scene_node3d_add_lod(void *obj, double distance, void *mesh)
     node->lod_count++;
 }
 
-void rt_scene_node3d_clear_lod(void *obj)
-{
+void rt_scene_node3d_clear_lod(void *obj) {
     if (!obj)
         return;
     rt_scene_node3d *node = (rt_scene_node3d *)obj;

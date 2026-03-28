@@ -21,8 +21,7 @@
 ///          lowering step. Helpers mark `fallthrough` when execution can
 ///          reach `after` without an explicit transfer, ensuring callers
 ///          can reason about terminators consistently.
-struct CtrlState
-{
+struct CtrlState {
     BasicBlock *cur{nullptr};   ///< Block left active after lowering.
     BasicBlock *after{nullptr}; ///< Merge/done block if retained.
     bool fallthrough{false};    ///< True when `after` remains reachable.
@@ -30,8 +29,7 @@ struct CtrlState
     /// @brief Check whether the control flow has been terminated.
     /// @return True if no active block remains or the active block already has
     ///         a terminator instruction.
-    [[nodiscard]] bool terminated() const
-    {
+    [[nodiscard]] bool terminated() const {
         return !cur || cur->terminated;
     }
 };

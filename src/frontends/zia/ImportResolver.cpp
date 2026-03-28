@@ -19,33 +19,27 @@
 #include <sstream>
 #include <unordered_set>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 ImportResolver::ImportResolver(il::support::DiagnosticEngine &diag,
                                il::support::SourceManager &sm,
                                WarningSuppressions *warningSuppressions)
-    : diag_(diag), sm_(sm), warningSuppressions_(warningSuppressions)
-{
-}
+    : diag_(diag), sm_(sm), warningSuppressions_(warningSuppressions) {}
 
-bool ImportResolver::resolve(ModuleDecl &module, const std::string &modulePath)
-{
+bool ImportResolver::resolve(ModuleDecl &module, const std::string &modulePath) {
     processedFiles_.clear();
     inProgressFiles_.clear();
     importStack_.clear();
     return processModule(module, modulePath, il::support::SourceLoc{}, 0);
 }
 
-std::string ImportResolver::normalizePath(const std::string &path) const
-{
+std::string ImportResolver::normalizePath(const std::string &path) const {
     namespace fs = std::filesystem;
     return fs::absolute(fs::path(path)).lexically_normal().string();
 }
 
 std::string ImportResolver::resolveImportPath(const std::string &importPath,
-                                              const std::string &importingFile) const
-{
+                                              const std::string &importingFile) const {
     namespace fs = std::filesystem;
 
     fs::path importingDir = fs::path(importingFile).parent_path();
@@ -62,11 +56,9 @@ std::string ImportResolver::resolveImportPath(const std::string &importPath,
 }
 
 std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
-                                                      il::support::SourceLoc importLoc)
-{
+                                                      il::support::SourceLoc importLoc) {
     std::ifstream file(path);
-    if (!file)
-    {
+    if (!file) {
         diag_.report({il::support::Severity::Error,
                       "Failed to open imported file: " + path,
                       importLoc,
@@ -91,16 +83,13 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
 }
 
 void ImportResolver::reportCycle(il::support::SourceLoc importLoc,
-                                 const std::string &normalizedImportPath)
-{
+                                 const std::string &normalizedImportPath) {
     std::string message = "Circular import detected";
 
     auto it = std::find(importStack_.begin(), importStack_.end(), normalizedImportPath);
-    if (it != importStack_.end())
-    {
+    if (it != importStack_.end()) {
         std::string chain;
-        for (auto iter = it; iter != importStack_.end(); ++iter)
-        {
+        for (auto iter = it; iter != importStack_.end(); ++iter) {
             if (!chain.empty())
                 chain += " -> ";
             chain += *iter;
@@ -116,10 +105,8 @@ void ImportResolver::reportCycle(il::support::SourceLoc importLoc,
 bool ImportResolver::processModule(ModuleDecl &module,
                                    const std::string &modulePath,
                                    il::support::SourceLoc viaImportLoc,
-                                   size_t depth)
-{
-    if (depth > kMaxImportDepth)
-    {
+                                   size_t depth) {
+    if (depth > kMaxImportDepth) {
         diag_.report({il::support::Severity::Error,
                       "Import depth exceeds maximum (50). Check for circular imports.",
                       viaImportLoc,
@@ -127,8 +114,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
         return false;
     }
 
-    if (processedFiles_.size() + inProgressFiles_.size() > kMaxImportedFiles)
-    {
+    if (processedFiles_.size() + inProgressFiles_.size() > kMaxImportedFiles) {
         diag_.report({il::support::Severity::Error,
                       "Too many imported files (>" + std::to_string(kMaxImportedFiles) +
                           "). Check for import cycles.",
@@ -141,8 +127,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
     if (processedFiles_.count(normalizedPath) != 0)
         return true;
 
-    if (inProgressFiles_.count(normalizedPath) != 0)
-    {
+    if (inProgressFiles_.count(normalizedPath) != 0) {
         // Circular bind — not an error. The in-progress file's declarations
         // will be included in the final merged AST when its outer processModule
         // call completes. Sema's multi-pass analysis (register types → register
@@ -160,24 +145,20 @@ bool ImportResolver::processModule(ModuleDecl &module,
     std::unordered_set<std::string> seenFileBinds;
     std::unordered_set<std::string> seenNamespaceBinds;
 
-    auto makeNamespaceBindKey = [](const BindDecl &bind)
-    {
+    auto makeNamespaceBindKey = [](const BindDecl &bind) {
         std::string key = bind.path;
         key.push_back('\n');
         key += bind.alias;
         key.push_back('\n');
-        for (const auto &item : bind.specificItems)
-        {
+        for (const auto &item : bind.specificItems) {
             key += item;
             key.push_back('\n');
         }
         return key;
     };
 
-    for (const auto &existingBind : module.binds)
-    {
-        if (existingBind.isNamespaceBind)
-        {
+    for (const auto &existingBind : module.binds) {
+        if (existingBind.isNamespaceBind) {
             seenNamespaceBinds.insert(makeNamespaceBindKey(existingBind));
             continue;
         }
@@ -189,8 +170,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
     // Important: Use index-based iteration because we may add transitive binds
     // to module.binds during processing. Range-based for would cause iterator
     // invalidation when the vector grows.
-    for (size_t i = 0; i < module.binds.size(); ++i)
-    {
+    for (size_t i = 0; i < module.binds.size(); ++i) {
         const auto &bind = module.binds[i];
 
         // Skip namespace binds (e.g., "bind Viper.Terminal;") - they are handled
@@ -204,8 +184,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
         if (processedFiles_.count(normalizedBindPath) != 0)
             continue;
 
-        if (inProgressFiles_.count(normalizedBindPath) != 0)
-        {
+        if (inProgressFiles_.count(normalizedBindPath) != 0) {
             // Circular bind — skip this import. The target file is currently
             // being processed by an outer call and its declarations will be
             // available in the final merged AST. The BindDecl remains in the
@@ -225,13 +204,10 @@ bool ImportResolver::processModule(ModuleDecl &module,
         // (e.g., if main imports game, and game imports utils, then main
         // needs to see the utils bind to resolve game's references to utils).
         // We resolve paths to absolute form to avoid re-resolution issues.
-        for (const auto &transitiveBind : boundModule->binds)
-        {
+        for (const auto &transitiveBind : boundModule->binds) {
             // Namespace binds don't need path resolution - they're handled by Sema
-            if (transitiveBind.isNamespaceBind)
-            {
-                if (seenNamespaceBinds.insert(makeNamespaceBindKey(transitiveBind)).second)
-                {
+            if (transitiveBind.isNamespaceBind) {
+                if (seenNamespaceBinds.insert(makeNamespaceBindKey(transitiveBind)).second) {
                     BindDecl nsBind(transitiveBind.loc, transitiveBind.path);
                     nsBind.alias = transitiveBind.alias;
                     nsBind.isNamespaceBind = true;
@@ -245,8 +221,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
             std::string resolvedPath = resolveImportPath(transitiveBind.path, bindFilePath);
             std::string transitiveNormalizedPath = normalizePath(resolvedPath);
 
-            if (seenFileBinds.insert(transitiveNormalizedPath).second)
-            {
+            if (seenFileBinds.insert(transitiveNormalizedPath).second) {
                 // Store the absolute path so it resolves correctly from any context
                 BindDecl absoluteBind(transitiveBind.loc, transitiveNormalizedPath);
                 absoluteBind.alias = transitiveBind.alias;
@@ -263,8 +238,7 @@ bool ImportResolver::processModule(ModuleDecl &module,
 
     // Now prepend all imported declarations before this module's declarations.
     // This maintains proper dependency order: imports come first in import order.
-    if (!importedDecls.empty())
-    {
+    if (!importedDecls.empty()) {
         std::vector<DeclPtr> combined;
         combined.reserve(importedDecls.size() + module.declarations.size());
         for (auto &decl : importedDecls)

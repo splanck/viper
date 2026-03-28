@@ -44,12 +44,10 @@
 
 /// @brief Perform clipboard set text operation.
 /// @param text
-void rt_clipboard_set_text(rt_string text)
-{
+void rt_clipboard_set_text(rt_string text) {
     RT_ASSERT_MAIN_THREAD();
     char *ctext = rt_string_to_cstr(text);
-    if (ctext)
-    {
+    if (ctext) {
         vgfx_clipboard_set_text(ctext);
         free(ctext);
     }
@@ -57,8 +55,7 @@ void rt_clipboard_set_text(rt_string text)
 
 /// @brief Perform clipboard get text operation.
 /// @return Result value.
-rt_string rt_clipboard_get_text(void)
-{
+rt_string rt_clipboard_get_text(void) {
     RT_ASSERT_MAIN_THREAD();
     char *text = vgfx_clipboard_get_text();
     if (!text)
@@ -70,15 +67,13 @@ rt_string rt_clipboard_get_text(void)
 
 /// @brief Perform clipboard has text operation.
 /// @return Result value.
-int64_t rt_clipboard_has_text(void)
-{
+int64_t rt_clipboard_has_text(void) {
     RT_ASSERT_MAIN_THREAD();
     return vgfx_clipboard_has_format(VGFX_CLIPBOARD_TEXT) ? 1 : 0;
 }
 
 /// @brief Perform clipboard clear operation.
-void rt_clipboard_clear(void)
-{
+void rt_clipboard_clear(void) {
     RT_ASSERT_MAIN_THREAD();
     vgfx_clipboard_clear();
 }
@@ -88,8 +83,7 @@ void rt_clipboard_clear(void)
 //=============================================================================
 
 // Internal shortcut storage
-typedef struct
-{
+typedef struct {
     char *id;
     char *keys;
     char *description;
@@ -109,8 +103,7 @@ static int g_shortcuts_global_enabled = 1;
 static char *g_triggered_shortcut_id = NULL;
 
 // Parse modifier keys from string like "Ctrl+Shift+S"
-static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt, int *key)
-{
+static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt, int *key) {
     *ctrl = 0;
     *shift = 0;
     *alt = 0;
@@ -125,8 +118,7 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
 
     char *saveptr = NULL;
     char *token = rt_strtok_r(copy, "+", &saveptr);
-    while (token)
-    {
+    while (token) {
         // Trim whitespace
         while (*token == ' ')
             token++;
@@ -134,37 +126,24 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
         while (end > token && *end == ' ')
             *end-- = '\0';
 
-        if (strcasecmp(token, "Ctrl") == 0 || strcasecmp(token, "Control") == 0)
-        {
+        if (strcasecmp(token, "Ctrl") == 0 || strcasecmp(token, "Control") == 0) {
             *ctrl = 1;
-        }
-        else if (strcasecmp(token, "Shift") == 0)
-        {
+        } else if (strcasecmp(token, "Shift") == 0) {
             *shift = 1;
-        }
-        else if (strcasecmp(token, "Alt") == 0)
-        {
+        } else if (strcasecmp(token, "Alt") == 0) {
             *alt = 1;
-        }
-        else if (strcasecmp(token, "Cmd") == 0 || strcasecmp(token, "Command") == 0)
-        {
+        } else if (strcasecmp(token, "Cmd") == 0 || strcasecmp(token, "Command") == 0) {
             *ctrl = 1; // Map Cmd to Ctrl for cross-platform
-        }
-        else if (strlen(token) == 1)
-        {
+        } else if (strlen(token) == 1) {
             // Single character key
             *key = toupper(token[0]);
-        }
-        else if (token[0] == 'F' && strlen(token) <= 3)
-        {
+        } else if (token[0] == 'F' && strlen(token) <= 3) {
             // Function key (F1-F12)
             int fnum = atoi(token + 1);
-            if (fnum >= 1 && fnum <= 12)
-            {
+            if (fnum >= 1 && fnum <= 12) {
                 *key = VG_KEY_F1 + (fnum - 1);
             }
-        }
-        else if (strcasecmp(token, "Enter") == 0 || strcasecmp(token, "Return") == 0)
+        } else if (strcasecmp(token, "Enter") == 0 || strcasecmp(token, "Return") == 0)
             *key = VG_KEY_ENTER;
         else if (strcasecmp(token, "Escape") == 0 || strcasecmp(token, "Esc") == 0)
             *key = VG_KEY_ESCAPE;
@@ -199,8 +178,7 @@ static int parse_shortcut_keys(const char *keys, int *ctrl, int *shift, int *alt
 /// @param id
 /// @param keys
 /// @param description
-void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description)
-{
+void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) {
     RT_ASSERT_MAIN_THREAD();
     if (g_shortcut_count >= MAX_SHORTCUTS)
         return;
@@ -209,8 +187,7 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description)
     char *ckeys = rt_string_to_cstr(keys);
     char *cdesc = rt_string_to_cstr(description);
 
-    if (!cid || !ckeys)
-    {
+    if (!cid || !ckeys) {
         free(cid);
         free(ckeys);
         free(cdesc);
@@ -218,10 +195,8 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description)
     }
 
     // Check if already registered and update
-    for (int i = 0; i < g_shortcut_count; i++)
-    {
-        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0)
-        {
+    for (int i = 0; i < g_shortcut_count; i++) {
+        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0) {
             free(g_shortcuts[i].keys);
             free(g_shortcuts[i].description);
             g_shortcuts[i].keys = ckeys;
@@ -253,24 +228,20 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description)
 
 /// @brief Perform shortcuts unregister operation.
 /// @param id
-void rt_shortcuts_unregister(rt_string id)
-{
+void rt_shortcuts_unregister(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     char *cid = rt_string_to_cstr(id);
     if (!cid)
         return;
 
-    for (int i = 0; i < g_shortcut_count; i++)
-    {
-        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0)
-        {
+    for (int i = 0; i < g_shortcut_count; i++) {
+        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0) {
             free(g_shortcuts[i].id);
             free(g_shortcuts[i].keys);
             free(g_shortcuts[i].description);
 
             // Shift remaining shortcuts down
-            for (int j = i; j < g_shortcut_count - 1; j++)
-            {
+            for (int j = i; j < g_shortcut_count - 1; j++) {
                 g_shortcuts[j] = g_shortcuts[j + 1];
             }
             g_shortcut_count--;
@@ -282,11 +253,9 @@ void rt_shortcuts_unregister(rt_string id)
 }
 
 /// @brief Perform shortcuts clear operation.
-void rt_shortcuts_clear(void)
-{
+void rt_shortcuts_clear(void) {
     RT_ASSERT_MAIN_THREAD();
-    for (int i = 0; i < g_shortcut_count; i++)
-    {
+    for (int i = 0; i < g_shortcut_count; i++) {
         free(g_shortcuts[i].id);
         free(g_shortcuts[i].keys);
         free(g_shortcuts[i].description);
@@ -298,8 +267,7 @@ void rt_shortcuts_clear(void)
 /// @brief Perform shortcuts was triggered operation.
 /// @param id
 /// @return Result value.
-int64_t rt_shortcuts_was_triggered(rt_string id)
-{
+int64_t rt_shortcuts_was_triggered(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_shortcuts_global_enabled)
         return 0;
@@ -308,10 +276,8 @@ int64_t rt_shortcuts_was_triggered(rt_string id)
     if (!cid)
         return 0;
 
-    for (int i = 0; i < g_shortcut_count; i++)
-    {
-        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0)
-        {
+    for (int i = 0; i < g_shortcut_count; i++) {
+        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0) {
             free(cid);
             return g_shortcuts[i].triggered ? 1 : 0;
         }
@@ -323,11 +289,9 @@ int64_t rt_shortcuts_was_triggered(rt_string id)
 
 // Clear all shortcut triggered flags (call at start of each frame)
 /// @brief Perform shortcuts clear triggered operation.
-void rt_shortcuts_clear_triggered(void)
-{
+void rt_shortcuts_clear_triggered(void) {
     RT_ASSERT_MAIN_THREAD();
-    for (int i = 0; i < g_shortcut_count; i++)
-    {
+    for (int i = 0; i < g_shortcut_count; i++) {
         g_shortcuts[i].triggered = 0;
     }
     g_triggered_shortcut_id = NULL;
@@ -339,8 +303,7 @@ void rt_shortcuts_clear_triggered(void)
 /// @param key
 /// @param mods
 /// @return Result value.
-int8_t rt_shortcuts_check_key(int key, int mods)
-{
+int8_t rt_shortcuts_check_key(int key, int mods) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_shortcuts_global_enabled)
         return 0;
@@ -357,14 +320,12 @@ int8_t rt_shortcuts_check_key(int key, int mods)
 
     int upper_key = (key >= 'a' && key <= 'z') ? key - ('a' - 'A') : key;
 
-    for (int i = 0; i < g_shortcut_count; i++)
-    {
+    for (int i = 0; i < g_shortcut_count; i++) {
         if (!g_shortcuts[i].enabled || !g_shortcuts[i].parsed_key)
             continue;
 
         if (g_shortcuts[i].parsed_ctrl == has_ctrl && g_shortcuts[i].parsed_shift == has_shift &&
-            g_shortcuts[i].parsed_alt == has_alt && g_shortcuts[i].parsed_key == upper_key)
-        {
+            g_shortcuts[i].parsed_alt == has_alt && g_shortcuts[i].parsed_key == upper_key) {
             g_shortcuts[i].triggered = 1;
             g_triggered_shortcut_id = g_shortcuts[i].id;
             return 1;
@@ -375,11 +336,9 @@ int8_t rt_shortcuts_check_key(int key, int mods)
 
 /// @brief Perform shortcuts get triggered operation.
 /// @return Result value.
-rt_string rt_shortcuts_get_triggered(void)
-{
+rt_string rt_shortcuts_get_triggered(void) {
     RT_ASSERT_MAIN_THREAD();
-    if (g_triggered_shortcut_id)
-    {
+    if (g_triggered_shortcut_id) {
         return rt_string_from_bytes(g_triggered_shortcut_id, strlen(g_triggered_shortcut_id));
     }
     return rt_str_empty();
@@ -388,17 +347,14 @@ rt_string rt_shortcuts_get_triggered(void)
 /// @brief Perform shortcuts set enabled operation.
 /// @param id
 /// @param enabled
-void rt_shortcuts_set_enabled(rt_string id, int64_t enabled)
-{
+void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     char *cid = rt_string_to_cstr(id);
     if (!cid)
         return;
 
-    for (int i = 0; i < g_shortcut_count; i++)
-    {
-        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0)
-        {
+    for (int i = 0; i < g_shortcut_count; i++) {
+        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0) {
             g_shortcuts[i].enabled = enabled != 0;
             break;
         }
@@ -410,17 +366,14 @@ void rt_shortcuts_set_enabled(rt_string id, int64_t enabled)
 /// @brief Perform shortcuts is enabled operation.
 /// @param id
 /// @return Result value.
-int64_t rt_shortcuts_is_enabled(rt_string id)
-{
+int64_t rt_shortcuts_is_enabled(rt_string id) {
     RT_ASSERT_MAIN_THREAD();
     char *cid = rt_string_to_cstr(id);
     if (!cid)
         return 0;
 
-    for (int i = 0; i < g_shortcut_count; i++)
-    {
-        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0)
-        {
+    for (int i = 0; i < g_shortcut_count; i++) {
+        if (g_shortcuts[i].id && strcmp(g_shortcuts[i].id, cid) == 0) {
             free(cid);
             return g_shortcuts[i].enabled ? 1 : 0;
         }
@@ -432,16 +385,14 @@ int64_t rt_shortcuts_is_enabled(rt_string id)
 
 /// @brief Perform shortcuts set global enabled operation.
 /// @param enabled
-void rt_shortcuts_set_global_enabled(int64_t enabled)
-{
+void rt_shortcuts_set_global_enabled(int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
     g_shortcuts_global_enabled = enabled != 0;
 }
 
 /// @brief Perform shortcuts get global enabled operation.
 /// @return Result value.
-int64_t rt_shortcuts_get_global_enabled(void)
-{
+int64_t rt_shortcuts_get_global_enabled(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_shortcuts_global_enabled ? 1 : 0;
 }
@@ -453,8 +404,7 @@ int64_t rt_shortcuts_get_global_enabled(void)
 /// @brief Perform app set title operation.
 /// @param app
 /// @param title
-void rt_app_set_title(void *app, rt_string title)
-{
+void rt_app_set_title(void *app, rt_string title) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
@@ -462,8 +412,7 @@ void rt_app_set_title(void *app, rt_string title)
     if (!gui_app->window)
         return;
     char *cstr = rt_string_to_cstr(title);
-    if (cstr)
-    {
+    if (cstr) {
         vgfx_set_title(gui_app->window, cstr);
         // Store a copy for rt_app_get_title (no vgfx_get_title API exists)
         free(gui_app->title);
@@ -475,8 +424,7 @@ void rt_app_set_title(void *app, rt_string title)
 /// @brief Perform app get title operation.
 /// @param app
 /// @return Result value.
-rt_string rt_app_get_title(void *app)
-{
+rt_string rt_app_get_title(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return rt_str_empty();
@@ -490,14 +438,12 @@ rt_string rt_app_get_title(void *app)
 /// @param app
 /// @param width
 /// @param height
-void rt_app_set_size(void *app, int64_t width, int64_t height)
-{
+void rt_app_set_size(void *app, int64_t width, int64_t height) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
     rt_gui_app_t *gui_app = (rt_gui_app_t *)app;
-    if (gui_app->window)
-    {
+    if (gui_app->window) {
         vgfx_set_window_size(gui_app->window, (int32_t)width, (int32_t)height);
         // Root sizing is handled by vg_widget_layout(root, phys_w, phys_h) in
         // rt_gui_app_render — do not set root fixed size here, as that would
@@ -508,8 +454,7 @@ void rt_app_set_size(void *app, int64_t width, int64_t height)
 /// @brief Perform app get width operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_get_width(void *app)
-{
+int64_t rt_app_get_width(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
@@ -524,8 +469,7 @@ int64_t rt_app_get_width(void *app)
 /// @brief Perform app get height operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_get_height(void *app)
-{
+int64_t rt_app_get_height(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
@@ -541,8 +485,7 @@ int64_t rt_app_get_height(void *app)
 /// @param app
 /// @param x
 /// @param y
-void rt_app_set_position(void *app, int64_t x, int64_t y)
-{
+void rt_app_set_position(void *app, int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
@@ -554,8 +497,7 @@ void rt_app_set_position(void *app, int64_t x, int64_t y)
 /// @brief Perform app get x operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_get_x(void *app)
-{
+int64_t rt_app_get_x(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
@@ -570,8 +512,7 @@ int64_t rt_app_get_x(void *app)
 /// @brief Perform app get y operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_get_y(void *app)
-{
+int64_t rt_app_get_y(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
@@ -585,8 +526,7 @@ int64_t rt_app_get_y(void *app)
 
 /// @brief Perform app minimize operation.
 /// @param app
-void rt_app_minimize(void *app)
-{
+void rt_app_minimize(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
@@ -597,8 +537,7 @@ void rt_app_minimize(void *app)
 
 /// @brief Perform app maximize operation.
 /// @param app
-void rt_app_maximize(void *app)
-{
+void rt_app_maximize(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
@@ -609,8 +548,7 @@ void rt_app_maximize(void *app)
 
 /// @brief Perform app restore operation.
 /// @param app
-void rt_app_restore(void *app)
-{
+void rt_app_restore(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
@@ -622,8 +560,7 @@ void rt_app_restore(void *app)
 /// @brief Perform app is minimized operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_is_minimized(void *app)
-{
+int64_t rt_app_is_minimized(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
@@ -634,8 +571,7 @@ int64_t rt_app_is_minimized(void *app)
 /// @brief Perform app is maximized operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_is_maximized(void *app)
-{
+int64_t rt_app_is_maximized(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
@@ -646,8 +582,7 @@ int64_t rt_app_is_maximized(void *app)
 /// @brief Perform app set fullscreen operation.
 /// @param app
 /// @param fullscreen
-void rt_app_set_fullscreen(void *app, int64_t fullscreen)
-{
+void rt_app_set_fullscreen(void *app, int64_t fullscreen) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
@@ -659,8 +594,7 @@ void rt_app_set_fullscreen(void *app, int64_t fullscreen)
 /// @brief Perform app is fullscreen operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_is_fullscreen(void *app)
-{
+int64_t rt_app_is_fullscreen(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
@@ -670,8 +604,7 @@ int64_t rt_app_is_fullscreen(void *app)
 
 /// @brief Perform app focus operation.
 /// @param app
-void rt_app_focus(void *app)
-{
+void rt_app_focus(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
@@ -683,8 +616,7 @@ void rt_app_focus(void *app)
 /// @brief Perform app is focused operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_is_focused(void *app)
-{
+int64_t rt_app_is_focused(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
@@ -695,8 +627,7 @@ int64_t rt_app_is_focused(void *app)
 /// @brief Perform app set prevent close operation.
 /// @param app
 /// @param prevent
-void rt_app_set_prevent_close(void *app, int64_t prevent)
-{
+void rt_app_set_prevent_close(void *app, int64_t prevent) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
@@ -708,8 +639,7 @@ void rt_app_set_prevent_close(void *app, int64_t prevent)
 /// @brief Perform app was close requested operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_was_close_requested(void *app)
-{
+int64_t rt_app_was_close_requested(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
@@ -720,8 +650,7 @@ int64_t rt_app_was_close_requested(void *app)
 /// @brief Perform app get monitor width operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_get_monitor_width(void *app)
-{
+int64_t rt_app_get_monitor_width(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
@@ -736,8 +665,7 @@ int64_t rt_app_get_monitor_width(void *app)
 /// @brief Perform app get monitor height operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_get_monitor_height(void *app)
-{
+int64_t rt_app_get_monitor_height(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 0;
@@ -753,8 +681,7 @@ int64_t rt_app_get_monitor_height(void *app)
 /// @param app
 /// @param w
 /// @param h
-void rt_app_set_window_size(void *app, int64_t w, int64_t h)
-{
+void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
@@ -770,8 +697,7 @@ void rt_app_set_window_size(void *app, int64_t w, int64_t h)
 /// @brief Perform app get font size operation.
 /// @param app
 /// @return Result value.
-double rt_app_get_font_size(void *app)
-{
+double rt_app_get_font_size(void *app) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return 14.0;
@@ -786,8 +712,7 @@ double rt_app_get_font_size(void *app)
 /// @brief Perform app set font size operation.
 /// @param app
 /// @param size
-void rt_app_set_font_size(void *app, double size)
-{
+void rt_app_set_font_size(void *app, double size) {
     RT_ASSERT_MAIN_THREAD();
     if (!app)
         return;
@@ -809,40 +734,35 @@ void rt_app_set_font_size(void *app, double size)
 
 /// @brief Perform cursor set operation.
 /// @param type
-void rt_cursor_set(int64_t type)
-{
+void rt_cursor_set(int64_t type) {
     RT_ASSERT_MAIN_THREAD();
     if (s_current_app && s_current_app->window)
         vgfx_set_cursor(s_current_app->window, (int32_t)type);
 }
 
 /// @brief Perform cursor reset operation.
-void rt_cursor_reset(void)
-{
+void rt_cursor_reset(void) {
     RT_ASSERT_MAIN_THREAD();
     rt_cursor_set(0); /* VGFX_CURSOR_DEFAULT */
 }
 
 /// @brief Perform cursor set visible operation.
 /// @param visible
-void rt_cursor_set_visible(int64_t visible)
-{
+void rt_cursor_set_visible(int64_t visible) {
     RT_ASSERT_MAIN_THREAD();
     if (s_current_app && s_current_app->window)
         vgfx_set_cursor_visible(s_current_app->window, (int32_t)visible);
 }
 
 /// @note Cursor is global — not per-widget. The widget parameter is reserved for future use.
-void rt_widget_set_cursor(void *widget, int64_t type)
-{
+void rt_widget_set_cursor(void *widget, int64_t type) {
     RT_ASSERT_MAIN_THREAD();
     (void)widget;
     rt_cursor_set(type);
 }
 
 /// @note Cursor is global — not per-widget. The widget parameter is reserved for future use.
-void rt_widget_reset_cursor(void *widget)
-{
+void rt_widget_reset_cursor(void *widget) {
     RT_ASSERT_MAIN_THREAD();
     (void)widget;
     rt_cursor_reset();
@@ -852,22 +772,19 @@ void rt_widget_reset_cursor(void *widget)
 
 /// @brief Perform clipboard set text operation.
 /// @param text
-void rt_clipboard_set_text(rt_string text)
-{
+void rt_clipboard_set_text(rt_string text) {
     (void)text;
 }
 
 /// @brief Perform clipboard get text operation.
 /// @return Result value.
-rt_string rt_clipboard_get_text(void)
-{
+rt_string rt_clipboard_get_text(void) {
     return rt_str_empty();
 }
 
 /// @brief Perform clipboard has text operation.
 /// @return Result value.
-int64_t rt_clipboard_has_text(void)
-{
+int64_t rt_clipboard_has_text(void) {
     return 0;
 }
 
@@ -878,8 +795,7 @@ void rt_clipboard_clear(void) {}
 /// @param id
 /// @param keys
 /// @param description
-void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description)
-{
+void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description) {
     (void)id;
     (void)keys;
     (void)description;
@@ -887,8 +803,7 @@ void rt_shortcuts_register(rt_string id, rt_string keys, rt_string description)
 
 /// @brief Perform shortcuts unregister operation.
 /// @param id
-void rt_shortcuts_unregister(rt_string id)
-{
+void rt_shortcuts_unregister(rt_string id) {
     (void)id;
 }
 
@@ -898,8 +813,7 @@ void rt_shortcuts_clear(void) {}
 /// @brief Perform shortcuts was triggered operation.
 /// @param id
 /// @return Result value.
-int64_t rt_shortcuts_was_triggered(rt_string id)
-{
+int64_t rt_shortcuts_was_triggered(rt_string id) {
     (void)id;
     return 0;
 }
@@ -911,8 +825,7 @@ void rt_shortcuts_clear_triggered(void) {}
 /// @param key
 /// @param mods
 /// @return Result value.
-int8_t rt_shortcuts_check_key(int key, int mods)
-{
+int8_t rt_shortcuts_check_key(int key, int mods) {
     (void)key;
     (void)mods;
     return 0;
@@ -920,16 +833,14 @@ int8_t rt_shortcuts_check_key(int key, int mods)
 
 /// @brief Perform shortcuts get triggered operation.
 /// @return Result value.
-rt_string rt_shortcuts_get_triggered(void)
-{
+rt_string rt_shortcuts_get_triggered(void) {
     return rt_str_empty();
 }
 
 /// @brief Perform shortcuts set enabled operation.
 /// @param id
 /// @param enabled
-void rt_shortcuts_set_enabled(rt_string id, int64_t enabled)
-{
+void rt_shortcuts_set_enabled(rt_string id, int64_t enabled) {
     (void)id;
     (void)enabled;
 }
@@ -937,31 +848,27 @@ void rt_shortcuts_set_enabled(rt_string id, int64_t enabled)
 /// @brief Perform shortcuts is enabled operation.
 /// @param id
 /// @return Result value.
-int64_t rt_shortcuts_is_enabled(rt_string id)
-{
+int64_t rt_shortcuts_is_enabled(rt_string id) {
     (void)id;
     return 0;
 }
 
 /// @brief Perform shortcuts set global enabled operation.
 /// @param enabled
-void rt_shortcuts_set_global_enabled(int64_t enabled)
-{
+void rt_shortcuts_set_global_enabled(int64_t enabled) {
     (void)enabled;
 }
 
 /// @brief Perform shortcuts get global enabled operation.
 /// @return Result value.
-int64_t rt_shortcuts_get_global_enabled(void)
-{
+int64_t rt_shortcuts_get_global_enabled(void) {
     return 0;
 }
 
 /// @brief Perform app set title operation.
 /// @param app
 /// @param title
-void rt_app_set_title(void *app, rt_string title)
-{
+void rt_app_set_title(void *app, rt_string title) {
     (void)app;
     (void)title;
 }
@@ -969,8 +876,7 @@ void rt_app_set_title(void *app, rt_string title)
 /// @brief Perform app get title operation.
 /// @param app
 /// @return Result value.
-rt_string rt_app_get_title(void *app)
-{
+rt_string rt_app_get_title(void *app) {
     (void)app;
     return rt_str_empty();
 }
@@ -979,8 +885,7 @@ rt_string rt_app_get_title(void *app)
 /// @param app
 /// @param width
 /// @param height
-void rt_app_set_size(void *app, int64_t width, int64_t height)
-{
+void rt_app_set_size(void *app, int64_t width, int64_t height) {
     (void)app;
     (void)width;
     (void)height;
@@ -989,8 +894,7 @@ void rt_app_set_size(void *app, int64_t width, int64_t height)
 /// @brief Perform app get width operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_get_width(void *app)
-{
+int64_t rt_app_get_width(void *app) {
     (void)app;
     return 0;
 }
@@ -998,8 +902,7 @@ int64_t rt_app_get_width(void *app)
 /// @brief Perform app get height operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_get_height(void *app)
-{
+int64_t rt_app_get_height(void *app) {
     (void)app;
     return 0;
 }
@@ -1008,8 +911,7 @@ int64_t rt_app_get_height(void *app)
 /// @param app
 /// @param x
 /// @param y
-void rt_app_set_position(void *app, int64_t x, int64_t y)
-{
+void rt_app_set_position(void *app, int64_t x, int64_t y) {
     (void)app;
     (void)x;
     (void)y;
@@ -1018,8 +920,7 @@ void rt_app_set_position(void *app, int64_t x, int64_t y)
 /// @brief Perform app get x operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_get_x(void *app)
-{
+int64_t rt_app_get_x(void *app) {
     (void)app;
     return 0;
 }
@@ -1027,38 +928,33 @@ int64_t rt_app_get_x(void *app)
 /// @brief Perform app get y operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_get_y(void *app)
-{
+int64_t rt_app_get_y(void *app) {
     (void)app;
     return 0;
 }
 
 /// @brief Perform app minimize operation.
 /// @param app
-void rt_app_minimize(void *app)
-{
+void rt_app_minimize(void *app) {
     (void)app;
 }
 
 /// @brief Perform app maximize operation.
 /// @param app
-void rt_app_maximize(void *app)
-{
+void rt_app_maximize(void *app) {
     (void)app;
 }
 
 /// @brief Perform app restore operation.
 /// @param app
-void rt_app_restore(void *app)
-{
+void rt_app_restore(void *app) {
     (void)app;
 }
 
 /// @brief Perform app is minimized operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_is_minimized(void *app)
-{
+int64_t rt_app_is_minimized(void *app) {
     (void)app;
     return 0;
 }
@@ -1066,8 +962,7 @@ int64_t rt_app_is_minimized(void *app)
 /// @brief Perform app is maximized operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_is_maximized(void *app)
-{
+int64_t rt_app_is_maximized(void *app) {
     (void)app;
     return 0;
 }
@@ -1075,8 +970,7 @@ int64_t rt_app_is_maximized(void *app)
 /// @brief Perform app set fullscreen operation.
 /// @param app
 /// @param fullscreen
-void rt_app_set_fullscreen(void *app, int64_t fullscreen)
-{
+void rt_app_set_fullscreen(void *app, int64_t fullscreen) {
     (void)app;
     (void)fullscreen;
 }
@@ -1084,24 +978,21 @@ void rt_app_set_fullscreen(void *app, int64_t fullscreen)
 /// @brief Perform app is fullscreen operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_is_fullscreen(void *app)
-{
+int64_t rt_app_is_fullscreen(void *app) {
     (void)app;
     return 0;
 }
 
 /// @brief Perform app focus operation.
 /// @param app
-void rt_app_focus(void *app)
-{
+void rt_app_focus(void *app) {
     (void)app;
 }
 
 /// @brief Perform app is focused operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_is_focused(void *app)
-{
+int64_t rt_app_is_focused(void *app) {
     (void)app;
     return 0;
 }
@@ -1109,8 +1000,7 @@ int64_t rt_app_is_focused(void *app)
 /// @brief Perform app set prevent close operation.
 /// @param app
 /// @param prevent
-void rt_app_set_prevent_close(void *app, int64_t prevent)
-{
+void rt_app_set_prevent_close(void *app, int64_t prevent) {
     (void)app;
     (void)prevent;
 }
@@ -1118,8 +1008,7 @@ void rt_app_set_prevent_close(void *app, int64_t prevent)
 /// @brief Perform app was close requested operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_was_close_requested(void *app)
-{
+int64_t rt_app_was_close_requested(void *app) {
     (void)app;
     return 0;
 }
@@ -1127,8 +1016,7 @@ int64_t rt_app_was_close_requested(void *app)
 /// @brief Perform app get monitor width operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_get_monitor_width(void *app)
-{
+int64_t rt_app_get_monitor_width(void *app) {
     (void)app;
     return 0;
 }
@@ -1136,8 +1024,7 @@ int64_t rt_app_get_monitor_width(void *app)
 /// @brief Perform app get monitor height operation.
 /// @param app
 /// @return Result value.
-int64_t rt_app_get_monitor_height(void *app)
-{
+int64_t rt_app_get_monitor_height(void *app) {
     (void)app;
     return 0;
 }
@@ -1146,8 +1033,7 @@ int64_t rt_app_get_monitor_height(void *app)
 /// @param app
 /// @param w
 /// @param h
-void rt_app_set_window_size(void *app, int64_t w, int64_t h)
-{
+void rt_app_set_window_size(void *app, int64_t w, int64_t h) {
     (void)app;
     (void)w;
     (void)h;
@@ -1156,8 +1042,7 @@ void rt_app_set_window_size(void *app, int64_t w, int64_t h)
 /// @brief Perform app get font size operation.
 /// @param app
 /// @return Result value.
-double rt_app_get_font_size(void *app)
-{
+double rt_app_get_font_size(void *app) {
     (void)app;
     return 14.0;
 }
@@ -1165,16 +1050,14 @@ double rt_app_get_font_size(void *app)
 /// @brief Perform app set font size operation.
 /// @param app
 /// @param size
-void rt_app_set_font_size(void *app, double size)
-{
+void rt_app_set_font_size(void *app, double size) {
     (void)app;
     (void)size;
 }
 
 /// @brief Perform cursor set operation.
 /// @param type
-void rt_cursor_set(int64_t type)
-{
+void rt_cursor_set(int64_t type) {
     (void)type;
 }
 
@@ -1183,24 +1066,21 @@ void rt_cursor_reset(void) {}
 
 /// @brief Perform cursor set visible operation.
 /// @param visible
-void rt_cursor_set_visible(int64_t visible)
-{
+void rt_cursor_set_visible(int64_t visible) {
     (void)visible;
 }
 
 /// @brief Perform widget set cursor operation.
 /// @param widget
 /// @param type
-void rt_widget_set_cursor(void *widget, int64_t type)
-{
+void rt_widget_set_cursor(void *widget, int64_t type) {
     (void)widget;
     (void)type;
 }
 
 /// @brief Perform widget reset cursor operation.
 /// @param widget
-void rt_widget_reset_cursor(void *widget)
-{
+void rt_widget_reset_cursor(void *widget) {
     (void)widget;
 }
 

@@ -24,8 +24,7 @@
 
 #include <cassert>
 
-int main()
-{
+int main() {
     using namespace il::core;
 
     Module m;

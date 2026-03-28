@@ -14,8 +14,7 @@
 #include "frontends/zia/RuntimeNames.hpp"
 #include "frontends/zia/ZiaLocationScope.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
@@ -23,13 +22,11 @@ using namespace runtime;
 // Statement Lowering
 //=============================================================================
 
-void Lowerer::lowerStmt(Stmt *stmt)
-{
+void Lowerer::lowerStmt(Stmt *stmt) {
     if (!stmt)
         return;
 
-    if (++stmtLowerDepth_ > kMaxLowerDepth)
-    {
+    if (++stmtLowerDepth_ > kMaxLowerDepth) {
         --stmtLowerDepth_;
         if (stmt)
             diag_.report({il::support::Severity::Error,
@@ -39,20 +36,17 @@ void Lowerer::lowerStmt(Stmt *stmt)
         return;
     }
 
-    struct DepthGuard
-    {
+    struct DepthGuard {
         unsigned &d;
 
-        ~DepthGuard()
-        {
+        ~DepthGuard() {
             --d;
         }
     } stmtGuard_{stmtLowerDepth_};
 
     ZiaLocationScope locScope(*this, stmt->loc);
 
-    switch (stmt->kind)
-    {
+    switch (stmt->kind) {
         case StmtKind::Block:
             lowerBlockStmt(static_cast<BlockStmt *>(stmt));
             break;
@@ -102,43 +96,36 @@ void Lowerer::lowerStmt(Stmt *stmt)
     releaseDeferredTemps();
 }
 
-void Lowerer::lowerBlockStmt(BlockStmt *stmt)
-{
-    for (auto &s : stmt->statements)
-    {
+void Lowerer::lowerBlockStmt(BlockStmt *stmt) {
+    for (auto &s : stmt->statements) {
         lowerStmt(s.get());
     }
 }
 
-void Lowerer::lowerExprStmt(ExprStmt *stmt)
-{
+void Lowerer::lowerExprStmt(ExprStmt *stmt) {
     lowerExpr(stmt->expr.get());
 }
 
-void Lowerer::lowerVarStmt(VarStmt *stmt)
-{
+void Lowerer::lowerVarStmt(VarStmt *stmt) {
     Value initValue;
     Type ilType;
     TypeRef varType =
         stmt->type ? sema_.resolveType(stmt->type.get())
                    : (stmt->initializer ? sema_.typeOf(stmt->initializer.get()) : types::unknown());
 
-    if (stmt->initializer)
-    {
+    if (stmt->initializer) {
         auto result = lowerExpr(stmt->initializer.get());
         initValue = result.value;
         ilType = result.type;
 
         // In generic contexts, semantic types may be unknown because generic
         // function bodies aren't fully analyzed. Use the lowered expression type.
-        if (!stmt->type && (!varType || varType->kind == TypeKindSem::Unknown))
-        {
+        if (!stmt->type && (!varType || varType->kind == TypeKindSem::Unknown)) {
             varType = reverseMapType(ilType);
         }
 
         // Handle integer-to-number conversion when declaring Number with Integer initializer
-        if (varType && varType->kind == TypeKindSem::Number && ilType.kind == Type::Kind::I64)
-        {
+        if (varType && varType->kind == TypeKindSem::Number && ilType.kind == Type::Kind::I64) {
             // Convert i64 to f64 using sitofp
             initValue = emitUnary(Opcode::Sitofp, Type(Type::Kind::F64), initValue);
             ilType = Type(Type::Kind::F64);
@@ -146,61 +133,44 @@ void Lowerer::lowerVarStmt(VarStmt *stmt)
 
         // Handle value type copy semantics - deep copy on assignment
         TypeRef initType = sema_.typeOf(stmt->initializer.get());
-        if (initType && initType->kind == TypeKindSem::Value)
-        {
+        if (initType && initType->kind == TypeKindSem::Value) {
             const ValueTypeInfo *info = getOrCreateValueTypeInfo(initType->name);
-            if (info)
-            {
+            if (info) {
                 // Deep copy the value type
                 initValue = emitValueTypeCopy(*info, initValue);
             }
         }
 
-        if (varType && varType->kind == TypeKindSem::Optional)
-        {
+        if (varType && varType->kind == TypeKindSem::Optional) {
             TypeRef optInitType = sema_.typeOf(stmt->initializer.get());
             TypeRef innerType = varType->innerType();
             Type optILType = mapType(varType);
-            if (optInitType && optInitType->kind == TypeKindSem::Optional)
-            {
+            if (optInitType && optInitType->kind == TypeKindSem::Optional) {
                 ilType = optILType;
-            }
-            else if (optInitType && optInitType->kind == TypeKindSem::Unit)
-            {
+            } else if (optInitType && optInitType->kind == TypeKindSem::Unit) {
                 initValue = Value::null();
                 ilType = optILType;
-            }
-            else if (innerType)
-            {
+            } else if (innerType) {
                 initValue = emitOptionalWrap(initValue, innerType);
                 ilType = optILType;
             }
         }
-    }
-    else
-    {
+    } else {
         // Default initialization
         ilType = mapType(varType);
 
         // Special handling for value types - allocate proper stack space
-        if (varType && varType->kind == TypeKindSem::Value)
-        {
+        if (varType && varType->kind == TypeKindSem::Value) {
             const ValueTypeInfo *info = getOrCreateValueTypeInfo(varType->name);
-            if (info)
-            {
+            if (info) {
                 // Allocate and zero-initialize the value type
                 initValue = emitValueTypeAlloc(*info);
-            }
-            else
-            {
+            } else {
                 // Fallback if type info not found
                 initValue = Value::null();
             }
-        }
-        else
-        {
-            switch (ilType.kind)
-            {
+        } else {
+            switch (ilType.kind) {
                 case Type::Kind::I64:
                 case Type::Kind::I32:
                 case Type::Kind::I16:
@@ -224,29 +194,24 @@ void Lowerer::lowerVarStmt(VarStmt *stmt)
     }
 
     // Use slot-based storage for all mutable variables (enables cross-block SSA)
-    if (!stmt->isFinal)
-    {
+    if (!stmt->isFinal) {
         createSlot(stmt->name, ilType);
         storeToSlot(stmt->name, initValue, ilType);
         // The init value is consumed by the slot — don't release it at statement boundary
         consumeDeferred(initValue);
-    }
-    else
-    {
+    } else {
         // Final/immutable variables can use direct SSA values
         defineLocal(stmt->name, initValue);
         // The init value is consumed by the local — don't release it at statement boundary
         consumeDeferred(initValue);
     }
 
-    if (varType)
-    {
+    if (varType) {
         localTypes_[stmt->name] = varType;
     }
 }
 
-void Lowerer::lowerIfStmt(IfStmt *stmt)
-{
+void Lowerer::lowerIfStmt(IfStmt *stmt) {
     size_t thenIdx = createBlock("if_then");
     size_t elseIdx = stmt->elseBranch ? createBlock("if_else") : 0;
     size_t mergeIdx = createBlock("if_end");
@@ -258,30 +223,24 @@ void Lowerer::lowerIfStmt(IfStmt *stmt)
     releaseDeferredTemps();
 
     // Emit branch
-    if (stmt->elseBranch)
-    {
+    if (stmt->elseBranch) {
         emitCBr(cond.value, thenIdx, elseIdx);
-    }
-    else
-    {
+    } else {
         emitCBr(cond.value, thenIdx, mergeIdx);
     }
 
     // Lower then branch
     setBlock(thenIdx);
     lowerStmt(stmt->thenBranch.get());
-    if (!isTerminated())
-    {
+    if (!isTerminated()) {
         emitBr(mergeIdx);
     }
 
     // Lower else branch
-    if (stmt->elseBranch)
-    {
+    if (stmt->elseBranch) {
         setBlock(elseIdx);
         lowerStmt(stmt->elseBranch.get());
-        if (!isTerminated())
-        {
+        if (!isTerminated()) {
             emitBr(mergeIdx);
         }
     }
@@ -289,8 +248,7 @@ void Lowerer::lowerIfStmt(IfStmt *stmt)
     setBlock(mergeIdx);
 }
 
-void Lowerer::lowerWhileStmt(WhileStmt *stmt)
-{
+void Lowerer::lowerWhileStmt(WhileStmt *stmt) {
     size_t condIdx = createBlock("while_cond");
     size_t bodyIdx = createBlock("while_body");
     size_t endIdx = createBlock("while_end");
@@ -310,8 +268,7 @@ void Lowerer::lowerWhileStmt(WhileStmt *stmt)
     // Lower body
     setBlock(bodyIdx);
     lowerStmt(stmt->body.get());
-    if (!isTerminated())
-    {
+    if (!isTerminated()) {
         emitBr(condIdx);
     }
 
@@ -321,8 +278,7 @@ void Lowerer::lowerWhileStmt(WhileStmt *stmt)
     setBlock(endIdx);
 }
 
-void Lowerer::lowerForStmt(ForStmt *stmt)
-{
+void Lowerer::lowerForStmt(ForStmt *stmt) {
     size_t condIdx = createBlock("for_cond");
     size_t bodyIdx = createBlock("for_body");
     size_t updateIdx = createBlock("for_update");
@@ -332,8 +288,7 @@ void Lowerer::lowerForStmt(ForStmt *stmt)
     loopStack_.push(endIdx, updateIdx);
 
     // Lower init
-    if (stmt->init)
-    {
+    if (stmt->init) {
         lowerStmt(stmt->init.get());
     }
 
@@ -342,29 +297,24 @@ void Lowerer::lowerForStmt(ForStmt *stmt)
 
     // Lower condition
     setBlock(condIdx);
-    if (stmt->condition)
-    {
+    if (stmt->condition) {
         auto cond = lowerExpr(stmt->condition.get());
         releaseDeferredTemps(); // Release condition temps before branch
         emitCBr(cond.value, bodyIdx, endIdx);
-    }
-    else
-    {
+    } else {
         emitBr(bodyIdx);
     }
 
     // Lower body
     setBlock(bodyIdx);
     lowerStmt(stmt->body.get());
-    if (!isTerminated())
-    {
+    if (!isTerminated()) {
         emitBr(updateIdx);
     }
 
     // Lower update
     setBlock(updateIdx);
-    if (stmt->update)
-    {
+    if (stmt->update) {
         lowerExpr(stmt->update.get());
     }
     emitBr(condIdx);
@@ -375,8 +325,7 @@ void Lowerer::lowerForStmt(ForStmt *stmt)
     setBlock(endIdx);
 }
 
-void Lowerer::lowerForInStmt(ForInStmt *stmt)
-{
+void Lowerer::lowerForInStmt(ForInStmt *stmt) {
     auto localsBackup = locals_;
     auto slotsBackup = slots_;
     auto localTypesBackup = localTypes_;
@@ -386,20 +335,17 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
     bool reversed = false;
     Expr *stepArgExpr = nullptr;
 
-    while (iterable->kind == ExprKind::Call)
-    {
+    while (iterable->kind == ExprKind::Call) {
         auto *call = static_cast<CallExpr *>(iterable);
         if (call->callee->kind != ExprKind::Field)
             break;
         auto *field = static_cast<FieldExpr *>(call->callee.get());
-        if (field->field == "rev" && call->args.empty())
-        {
+        if (field->field == "rev" && call->args.empty()) {
             reversed = !reversed;
             iterable = field->base.get();
             continue;
         }
-        if (field->field == "step" && call->args.size() == 1)
-        {
+        if (field->field == "step" && call->args.size() == 1) {
             stepArgExpr = call->args[0].value.get();
             iterable = field->base.get();
             continue;
@@ -408,8 +354,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
     }
 
     auto *rangeExpr = dynamic_cast<RangeExpr *>(iterable);
-    if (rangeExpr)
-    {
+    if (rangeExpr) {
         size_t condIdx = createBlock("forin_cond");
         size_t bodyIdx = createBlock("forin_body");
         size_t updateIdx = createBlock("forin_update");
@@ -423,8 +368,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
 
         // Lower step value (default 1)
         Value stepVal = Value::constInt(1);
-        if (stepArgExpr)
-        {
+        if (stepArgExpr) {
             auto stepResult = lowerExpr(stepArgExpr);
             stepVal = stepResult.value;
         }
@@ -440,23 +384,19 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         createSlot(stepVar, Type(Type::Kind::I64));
         storeToSlot(stepVar, stepVal, Type(Type::Kind::I64));
 
-        if (reversed)
-        {
+        if (reversed) {
             // .rev(): iterate from end toward start
             // For exclusive (0..10).rev(): init i = end - 1, bound = start, cond i >= bound
             // For inclusive (0..=10).rev(): init i = end, bound = start, cond i >= bound
             Value initVal = endResult.value;
-            if (!rangeExpr->inclusive)
-            {
+            if (!rangeExpr->inclusive) {
                 Opcode subOp = options_.overflowChecks ? Opcode::ISubOvf : Opcode::Sub;
                 initVal =
                     emitBinary(subOp, Type(Type::Kind::I64), endResult.value, Value::constInt(1));
             }
             storeToSlot(stmt->variable, initVal, Type(Type::Kind::I64));
             storeToSlot(endVar, startResult.value, Type(Type::Kind::I64));
-        }
-        else
-        {
+        } else {
             // Forward: init i = start, bound = end
             storeToSlot(stmt->variable, startResult.value, Type(Type::Kind::I64));
             storeToSlot(endVar, endResult.value, Type(Type::Kind::I64));
@@ -470,17 +410,12 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         Value loopVar = loadFromSlot(stmt->variable, Type(Type::Kind::I64));
         Value endVal = loadFromSlot(endVar, Type(Type::Kind::I64));
         Value cond;
-        if (reversed)
-        {
+        if (reversed) {
             // Reversed: i >= bound
             cond = emitBinary(Opcode::SCmpGE, Type(Type::Kind::I1), loopVar, endVal);
-        }
-        else if (rangeExpr->inclusive)
-        {
+        } else if (rangeExpr->inclusive) {
             cond = emitBinary(Opcode::SCmpLE, Type(Type::Kind::I1), loopVar, endVal);
-        }
-        else
-        {
+        } else {
             cond = emitBinary(Opcode::SCmpLT, Type(Type::Kind::I1), loopVar, endVal);
         }
         emitCBr(cond, bodyIdx, endIdx);
@@ -488,8 +423,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         // Body
         setBlock(bodyIdx);
         lowerStmt(stmt->body.get());
-        if (!isTerminated())
-        {
+        if (!isTerminated()) {
             emitBr(updateIdx);
         }
 
@@ -520,8 +454,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
     }
 
     TypeRef iterableType = sema_.typeOf(stmt->iterable.get());
-    if (!iterableType)
-    {
+    if (!iterableType) {
         locals_ = std::move(localsBackup);
         slots_ = std::move(slotsBackup);
         localTypes_ = std::move(localTypesBackup);
@@ -529,11 +462,9 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
     }
 
     // Tuple destructuring over a tuple value (single iteration)
-    if (stmt->isTuple && iterableType->kind == TypeKindSem::Tuple)
-    {
+    if (stmt->isTuple && iterableType->kind == TypeKindSem::Tuple) {
         const auto &elements = iterableType->tupleElementTypes();
-        if (elements.size() == 2)
-        {
+        if (elements.size() == 2) {
             TypeRef firstType = elements[0];
             TypeRef secondType = elements[1];
             if (stmt->variableType)
@@ -564,8 +495,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
             storeToSlot(stmt->secondVariable, secondVal.value, secondIl);
 
             lowerStmt(stmt->body.get());
-            if (!isTerminated())
-            {
+            if (!isTerminated()) {
                 emitBr(endIdx);
             }
 
@@ -580,8 +510,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
     }
 
     // Collection iteration (List/Map)
-    if (iterableType->kind == TypeKindSem::List)
-    {
+    if (iterableType->kind == TypeKindSem::List) {
         TypeRef elemType = iterableType->elementType();
         if (stmt->variableType)
             elemType = sema_.resolveType(stmt->variableType.get());
@@ -592,17 +521,14 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         // For single binding (for val in list), the variable is the element
         bool hasTupleBinding = stmt->isTuple && !stmt->secondVariable.empty();
 
-        if (hasTupleBinding)
-        {
+        if (hasTupleBinding) {
             // First variable is the index
             createSlot(stmt->variable, Type(Type::Kind::I64));
             localTypes_[stmt->variable] = types::integer();
             // Second variable is the element
             createSlot(stmt->secondVariable, elemIlType);
             localTypes_[stmt->secondVariable] = elemType;
-        }
-        else
-        {
+        } else {
             createSlot(stmt->variable, elemIlType);
             localTypes_[stmt->variable] = elemType;
         }
@@ -639,25 +565,21 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         Value listLoaded = loadFromSlot(listVar, Type(Type::Kind::Ptr));
         Value idxInBody = loadFromSlot(indexVar, Type(Type::Kind::I64));
 
-        if (hasTupleBinding)
-        {
+        if (hasTupleBinding) {
             // Store index in first variable
             storeToSlot(stmt->variable, idxInBody, Type(Type::Kind::I64));
             // Get and store element in second variable
             Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {listLoaded, idxInBody});
             auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
             storeToSlot(stmt->secondVariable, elemValue.value, elemIlType);
-        }
-        else
-        {
+        } else {
             Value boxed = emitCallRet(Type(Type::Kind::Ptr), kListGet, {listLoaded, idxInBody});
             auto elemValue = emitUnboxValue(boxed, elemIlType, elemType);
             storeToSlot(stmt->variable, elemValue.value, elemIlType);
         }
 
         lowerStmt(stmt->body.get());
-        if (!isTerminated())
-        {
+        if (!isTerminated()) {
             emitBr(updateIdx);
         }
 
@@ -684,8 +606,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         return;
     }
 
-    if (iterableType->kind == TypeKindSem::Map)
-    {
+    if (iterableType->kind == TypeKindSem::Map) {
         TypeRef keyType = iterableType->keyType() ? iterableType->keyType() : types::string();
         TypeRef valueType =
             iterableType->valueType() ? iterableType->valueType() : types::unknown();
@@ -700,8 +621,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         createSlot(stmt->variable, keyIlType);
         localTypes_[stmt->variable] = keyType;
 
-        if (stmt->isTuple)
-        {
+        if (stmt->isTuple) {
             createSlot(stmt->secondVariable, valueIlType);
             localTypes_[stmt->secondVariable] = valueType;
         }
@@ -748,8 +668,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         LowerResult keyVal = {keyStrVal, Type(Type::Kind::Str)};
         storeToSlot(stmt->variable, keyVal.value, keyIlType);
 
-        if (stmt->isTuple)
-        {
+        if (stmt->isTuple) {
             // Load map from slot for cross-block SSA
             Value mapLoaded = loadFromSlot(mapVar, Type(Type::Kind::Ptr));
             Value boxed = emitCallRet(Type(Type::Kind::Ptr), kMapGet, {mapLoaded, keyVal.value});
@@ -758,8 +677,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         }
 
         lowerStmt(stmt->body.get());
-        if (!isTerminated())
-        {
+        if (!isTerminated()) {
             emitBr(updateIdx);
         }
 
@@ -791,8 +709,7 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
     // Uses kSeqLen / kSeqGet (not kListCount / kListGet) since rt_seq and rt_list
     // have incompatible internal layouts.
     if (iterableType->kind == TypeKindSem::Ptr && iterableType->name == "Viper.Collections.Seq" &&
-        !iterableType->typeArgs.empty())
-    {
+        !iterableType->typeArgs.empty()) {
         TypeRef elemType = iterableType->typeArgs[0];
         if (stmt->variableType)
             elemType = sema_.resolveType(stmt->variableType.get());
@@ -836,21 +753,17 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
         // seq<str> sequences store raw rt_string pointers directly (not boxed).
         // Use kSeqGetStr which reinterprets void* as rt_string, avoiding rt_unbox_str.
         // For non-string element types, kSeqGet returns a boxed Ptr that needs unboxing.
-        if (elemIlType.kind == Type::Kind::Str)
-        {
+        if (elemIlType.kind == Type::Kind::Str) {
             Value elem = emitCallRet(Type(Type::Kind::Str), kSeqGetStr, {seqLoaded, idxInBody});
             storeToSlot(stmt->variable, elem, Type(Type::Kind::Str));
-        }
-        else
-        {
+        } else {
             Value boxed = emitCallRet(Type(Type::Kind::Ptr), kSeqGet, {seqLoaded, idxInBody});
             auto elemValue = emitUnbox(boxed, elemIlType);
             storeToSlot(stmt->variable, elemValue.value, elemIlType);
         }
 
         lowerStmt(stmt->body.get());
-        if (!isTerminated())
-        {
+        if (!isTerminated()) {
             emitBr(updateIdx);
         }
 
@@ -880,20 +793,16 @@ void Lowerer::lowerForInStmt(ForInStmt *stmt)
     localTypes_ = std::move(localTypesBackup);
 }
 
-void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
-{
-    if (stmt->value)
-    {
+void Lowerer::lowerReturnStmt(ReturnStmt *stmt) {
+    if (stmt->value) {
         auto result = lowerExpr(stmt->value.get());
         Value returnValue = result.value;
 
         // Handle Number -> Integer implicit conversion for return statements
         // This allows returning Viper.Math.Floor() etc. from Integer-returning functions
-        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Integer)
-        {
+        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Integer) {
             TypeRef valueType = sema_.typeOf(stmt->value.get());
-            if (valueType && valueType->kind == TypeKindSem::Number)
-            {
+            if (valueType && valueType->kind == TypeKindSem::Number) {
                 // Emit cast.fp_to_si.rte.chk to convert f64 -> i64 (rounds-to-nearest-even,
                 // overflow-checked)
                 unsigned convId = nextTempId();
@@ -905,9 +814,7 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
                 convInstr.loc = curLoc_;
                 blockMgr_.currentBlock()->instructions.push_back(convInstr);
                 returnValue = Value::temp(convId);
-            }
-            else if (result.type.kind == Type::Kind::Ptr)
-            {
+            } else if (result.type.kind == Type::Kind::Ptr) {
                 // Unbox a boxed obj (e.g., from untyped List.Get()) when returning as Integer.
                 // This occurs when an untyped List holds integers: the runtime boxes them as heap
                 // objects, so List.Get() returns Ptr. The return statement must unbox to i64.
@@ -918,11 +825,9 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
 
         // Handle Integer -> Number implicit conversion for return statements
         // This allows returning integer literals/expressions from Number-returning functions
-        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Number)
-        {
+        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Number) {
             TypeRef valueType = sema_.typeOf(stmt->value.get());
-            if (valueType && valueType->kind == TypeKindSem::Integer)
-            {
+            if (valueType && valueType->kind == TypeKindSem::Integer) {
                 // Emit sitofp to convert i64 -> f64
                 unsigned convId = nextTempId();
                 il::core::Instr convInstr;
@@ -936,28 +841,22 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
             }
         }
 
-        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Optional)
-        {
+        if (currentReturnType_ && currentReturnType_->kind == TypeKindSem::Optional) {
             TypeRef valueType = sema_.typeOf(stmt->value.get());
-            if (!valueType || valueType->kind != TypeKindSem::Optional)
-            {
+            if (!valueType || valueType->kind != TypeKindSem::Optional) {
                 TypeRef innerType = currentReturnType_->innerType();
                 if (innerType)
                     returnValue = emitOptionalWrap(result.value, innerType);
             }
         }
 
-        if (currentAsyncWorker_)
-        {
+        if (currentAsyncWorker_) {
             Type payloadIlType = mapType(currentReturnType_);
             Value futureValue = returnValue;
             if (currentReturnType_ && (currentReturnType_->kind == TypeKindSem::Value ||
-                                       payloadIlType.kind != Type::Kind::Ptr))
-            {
+                                       payloadIlType.kind != Type::Kind::Ptr)) {
                 futureValue = emitBoxValue(returnValue, payloadIlType, currentReturnType_);
-            }
-            else
-            {
+            } else {
                 emitCall("rt_obj_retain_maybe", {futureValue});
             }
 
@@ -977,11 +876,8 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
         consumeDeferred(returnValue);
         releaseDeferredTemps();
         emitRet(returnValue);
-    }
-    else
-    {
-        if (currentAsyncWorker_)
-        {
+    } else {
+        if (currentAsyncWorker_) {
             for (const auto &owned : asyncOwnedValues_)
                 emitManagedRelease(owned, /*isString=*/false);
             asyncOwnedValues_.clear();
@@ -995,15 +891,11 @@ void Lowerer::lowerReturnStmt(ReturnStmt *stmt)
     }
 }
 
-void Lowerer::lowerBreakStmt(BreakStmt * /*stmt*/)
-{
-    if (!loopStack_.empty())
-    {
+void Lowerer::lowerBreakStmt(BreakStmt * /*stmt*/) {
+    if (!loopStack_.empty()) {
         releaseDeferredTemps(); // Release any pending temps before branch
         emitBr(loopStack_.breakTarget());
-    }
-    else
-    {
+    } else {
         // Defensive: semantic analysis should reject this; emit trap for safety.
         il::core::Instr trap;
         trap.op = il::core::Opcode::Trap;
@@ -1013,15 +905,11 @@ void Lowerer::lowerBreakStmt(BreakStmt * /*stmt*/)
     }
 }
 
-void Lowerer::lowerContinueStmt(ContinueStmt * /*stmt*/)
-{
-    if (!loopStack_.empty())
-    {
+void Lowerer::lowerContinueStmt(ContinueStmt * /*stmt*/) {
+    if (!loopStack_.empty()) {
         releaseDeferredTemps(); // Release any pending temps before branch
         emitBr(loopStack_.continueTarget());
-    }
-    else
-    {
+    } else {
         // Defensive: semantic analysis should reject this; emit trap for safety.
         il::core::Instr trap;
         trap.op = il::core::Opcode::Trap;
@@ -1031,8 +919,7 @@ void Lowerer::lowerContinueStmt(ContinueStmt * /*stmt*/)
     }
 }
 
-void Lowerer::lowerGuardStmt(GuardStmt *stmt)
-{
+void Lowerer::lowerGuardStmt(GuardStmt *stmt) {
     size_t elseIdx = createBlock("guard_else");
     size_t contIdx = createBlock("guard_cont");
 
@@ -1053,8 +940,7 @@ void Lowerer::lowerGuardStmt(GuardStmt *stmt)
     setBlock(contIdx);
 }
 
-void Lowerer::lowerMatchStmt(MatchStmt *stmt)
-{
+void Lowerer::lowerMatchStmt(MatchStmt *stmt) {
     if (stmt->arms.empty())
         return;
 
@@ -1072,22 +958,17 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
     // Create blocks for each arm body and the next arm's test
     std::vector<size_t> armBlocks;
     std::vector<size_t> nextTestBlocks;
-    for (size_t i = 0; i < stmt->arms.size(); ++i)
-    {
+    for (size_t i = 0; i < stmt->arms.size(); ++i) {
         armBlocks.push_back(createBlock("match_arm_" + std::to_string(i)));
-        if (i + 1 < stmt->arms.size())
-        {
+        if (i + 1 < stmt->arms.size()) {
             nextTestBlocks.push_back(createBlock("match_test_" + std::to_string(i + 1)));
-        }
-        else
-        {
+        } else {
             nextTestBlocks.push_back(endIdx); // Last arm falls through to end
         }
     }
 
     // Lower each arm
-    for (size_t i = 0; i < stmt->arms.size(); ++i)
-    {
+    for (size_t i = 0; i < stmt->arms.size(); ++i) {
         const auto &arm = stmt->arms[i];
         auto localsBackup = locals_;
         auto slotsBackup = slots_;
@@ -1095,8 +976,7 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
 
         size_t matchBlock = armBlocks[i];
         size_t guardBlock = 0;
-        if (arm.pattern.guard)
-        {
+        if (arm.pattern.guard) {
             guardBlock = createBlock("match_guard_" + std::to_string(i));
             matchBlock = guardBlock;
         }
@@ -1107,8 +987,7 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
         releaseDeferredTemps(); // Release temps before pattern branch
         emitPatternTest(arm.pattern, scrutineeValue, matchBlock, nextTestBlocks[i]);
 
-        if (guardBlock)
-        {
+        if (guardBlock) {
             setBlock(guardBlock);
             // Reload scrutinee from slot in this block for SSA correctness
             Value scrutineeInGuard = loadFromSlot(scrutineeSlot, scrutinee.type);
@@ -1121,34 +1000,27 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
 
         // Lower the arm body (arm.body is an expression)
         setBlock(armBlocks[i]);
-        if (!guardBlock)
-        {
+        if (!guardBlock) {
             // Reload scrutinee from slot in this block for SSA correctness
             Value scrutineeInArm = loadFromSlot(scrutineeSlot, scrutinee.type);
             PatternValue scrutineeValueInArm{scrutineeInArm, scrutineeType};
             emitPatternBindings(arm.pattern, scrutineeValueInArm);
         }
-        if (arm.body)
-        {
+        if (arm.body) {
             // Check if it's a block expression
-            if (auto *blockExpr = dynamic_cast<BlockExpr *>(arm.body.get()))
-            {
+            if (auto *blockExpr = dynamic_cast<BlockExpr *>(arm.body.get())) {
                 // Lower each statement in the block
-                for (auto &blockStmt : blockExpr->statements)
-                {
+                for (auto &blockStmt : blockExpr->statements) {
                     lowerStmt(blockStmt.get());
                 }
-            }
-            else
-            {
+            } else {
                 // It's a regular expression - just evaluate it
                 lowerExpr(arm.body.get());
             }
         }
 
         // Jump to end after arm body (if not already terminated)
-        if (!isTerminated())
-        {
+        if (!isTerminated()) {
             emitBr(endIdx);
         }
 
@@ -1157,8 +1029,7 @@ void Lowerer::lowerMatchStmt(MatchStmt *stmt)
         localTypes_ = std::move(localTypesBackup);
 
         // Set up next test block for pattern matching
-        if (i + 1 < stmt->arms.size())
-        {
+        if (i + 1 < stmt->arms.size()) {
             setBlock(nextTestBlocks[i]);
         }
     }

@@ -23,8 +23,7 @@
 
 #include <variant>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 // -----------------------------------------------------------------------------
 // Operand cloning and copying
@@ -37,8 +36,7 @@ namespace viper::codegen::x64
 ///          movzx after a setcc).
 /// \param operand Operand to copy.
 /// \return A value-equal copy of the operand.
-[[nodiscard]] inline Operand cloneOperand(const Operand &operand)
-{
+[[nodiscard]] inline Operand cloneOperand(const Operand &operand) {
     return operand;
 }
 
@@ -49,32 +47,28 @@ namespace viper::codegen::x64
 /// \brief Determine whether an operand stores an immediate value.
 /// \param operand Operand to classify.
 /// \return True when the operand holds an OpImm payload.
-[[nodiscard]] inline bool isImm(const Operand &operand) noexcept
-{
+[[nodiscard]] inline bool isImm(const Operand &operand) noexcept {
     return std::holds_alternative<OpImm>(operand);
 }
 
 /// \brief Determine whether an operand stores a register.
 /// \param operand Operand to classify.
 /// \return True when the operand holds an OpReg payload.
-[[nodiscard]] inline bool isReg(const Operand &operand) noexcept
-{
+[[nodiscard]] inline bool isReg(const Operand &operand) noexcept {
     return std::holds_alternative<OpReg>(operand);
 }
 
 /// \brief Determine whether an operand stores a memory reference.
 /// \param operand Operand to classify.
 /// \return True when the operand holds an OpMem payload.
-[[nodiscard]] inline bool isMem(const Operand &operand) noexcept
-{
+[[nodiscard]] inline bool isMem(const Operand &operand) noexcept {
     return std::holds_alternative<OpMem>(operand);
 }
 
 /// \brief Determine whether an operand stores a label.
 /// \param operand Operand to classify.
 /// \return True when the operand holds an OpLabel payload.
-[[nodiscard]] inline bool isLabel(const Operand &operand) noexcept
-{
+[[nodiscard]] inline bool isLabel(const Operand &operand) noexcept {
     return std::holds_alternative<OpLabel>(operand);
 }
 
@@ -83,48 +77,42 @@ namespace viper::codegen::x64
 ///          nullable nature of the conversion.
 /// \param operand Operand to reinterpret.
 /// \return Pointer to the OpImm payload or nullptr on mismatch.
-[[nodiscard]] inline OpImm *asImm(Operand &operand) noexcept
-{
+[[nodiscard]] inline OpImm *asImm(Operand &operand) noexcept {
     return std::get_if<OpImm>(&operand);
 }
 
 /// \brief View a const operand as an immediate when possible.
 /// \param operand Operand to reinterpret.
 /// \return Pointer to the OpImm payload or nullptr on mismatch.
-[[nodiscard]] inline const OpImm *asImm(const Operand &operand) noexcept
-{
+[[nodiscard]] inline const OpImm *asImm(const Operand &operand) noexcept {
     return std::get_if<OpImm>(&operand);
 }
 
 /// \brief View a mutable operand as a register reference.
 /// \param operand Operand to reinterpret.
 /// \return Pointer to the OpReg payload or nullptr when not a register.
-[[nodiscard]] inline OpReg *asReg(Operand &operand) noexcept
-{
+[[nodiscard]] inline OpReg *asReg(Operand &operand) noexcept {
     return std::get_if<OpReg>(&operand);
 }
 
 /// \brief View a read-only operand as a register reference.
 /// \param operand Operand to reinterpret.
 /// \return Pointer to the OpReg payload or nullptr when not a register.
-[[nodiscard]] inline const OpReg *asReg(const Operand &operand) noexcept
-{
+[[nodiscard]] inline const OpReg *asReg(const Operand &operand) noexcept {
     return std::get_if<OpReg>(&operand);
 }
 
 /// \brief View a mutable operand as a memory reference.
 /// \param operand Operand to reinterpret.
 /// \return Pointer to the OpMem payload or nullptr when not memory.
-[[nodiscard]] inline OpMem *asMem(Operand &operand) noexcept
-{
+[[nodiscard]] inline OpMem *asMem(Operand &operand) noexcept {
     return std::get_if<OpMem>(&operand);
 }
 
 /// \brief View a read-only operand as a memory reference.
 /// \param operand Operand to reinterpret.
 /// \return Pointer to the OpMem payload or nullptr when not memory.
-[[nodiscard]] inline const OpMem *asMem(const Operand &operand) noexcept
-{
+[[nodiscard]] inline const OpMem *asMem(const Operand &operand) noexcept {
     return std::get_if<OpMem>(&operand);
 }
 
@@ -140,12 +128,10 @@ namespace viper::codegen::x64
 /// \param lhs First operand to compare.
 /// \param rhs Second operand to compare.
 /// \return True when both operands refer to the same register.
-[[nodiscard]] inline bool sameRegister(const Operand &lhs, const Operand &rhs) noexcept
-{
+[[nodiscard]] inline bool sameRegister(const Operand &lhs, const Operand &rhs) noexcept {
     const auto *lhsReg = asReg(lhs);
     const auto *rhsReg = asReg(rhs);
-    if (!lhsReg || !rhsReg)
-    {
+    if (!lhsReg || !rhsReg) {
         return false;
     }
     return lhsReg->isPhys == rhsReg->isPhys && lhsReg->cls == rhsReg->cls &&
@@ -163,8 +149,7 @@ namespace viper::codegen::x64
 /// \param cls Register class describing the operand kind (GPR/XMM).
 /// \param reg Physical register enumerator chosen by the caller.
 /// \return Operand that refers to the requested physical register.
-[[nodiscard]] inline Operand makePhysOperand(RegClass cls, PhysReg reg)
-{
+[[nodiscard]] inline Operand makePhysOperand(RegClass cls, PhysReg reg) {
     return makePhysRegOperand(cls, static_cast<uint16_t>(reg));
 }
 
@@ -174,8 +159,7 @@ namespace viper::codegen::x64
 ///          representation referencing reg in the general purpose register class.
 /// \param reg Physical register serving as the base of an address expression.
 /// \return Register operand pointing at the supplied physical register.
-[[nodiscard]] inline OpReg makePhysBase(PhysReg reg)
-{
+[[nodiscard]] inline OpReg makePhysBase(PhysReg reg) {
     return makePhysReg(RegClass::GPR, static_cast<uint16_t>(reg));
 }
 
@@ -189,12 +173,10 @@ namespace viper::codegen::x64
 /// \param value Base value to round.
 /// \param align Required alignment in bytes (must be > 0).
 /// \return Smallest multiple of align that is greater than or equal to value.
-[[nodiscard]] inline int roundUp(int value, int align)
-{
+[[nodiscard]] inline int roundUp(int value, int align) {
     assert(align > 0 && "alignment must be positive");
     const int remainder = value % align;
-    if (remainder == 0)
-    {
+    if (remainder == 0) {
         return value;
     }
     // For negative values, C++ remainder is negative (e.g., -20 % 16 = -4).
@@ -208,12 +190,10 @@ namespace viper::codegen::x64
 /// \param bytes Requested byte count.
 /// \param align Required alignment in bytes (must be > 0).
 /// \return Smallest multiple of align >= bytes.
-[[nodiscard]] inline std::size_t roundUpSize(std::size_t bytes, std::size_t align)
-{
+[[nodiscard]] inline std::size_t roundUpSize(std::size_t bytes, std::size_t align) {
     assert(align > 0 && "alignment must be positive");
     const std::size_t remainder = bytes % align;
-    if (remainder == 0)
-    {
+    if (remainder == 0) {
         return bytes;
     }
     return bytes + (align - remainder);

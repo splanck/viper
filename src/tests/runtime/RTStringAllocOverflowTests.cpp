@@ -20,13 +20,11 @@
 #include <stdint.h>
 #include <string>
 
-static void call_string_len_overflow()
-{
+static void call_string_len_overflow() {
     rt_string_from_bytes(NULL, SIZE_MAX);
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

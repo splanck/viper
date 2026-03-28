@@ -31,8 +31,7 @@
 #include <cstdlib>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -40,8 +39,7 @@ extern "C" void vm_trap(const char *msg)
 // Helpers
 // ============================================================================
 
-static rt_string make_str(const char *cstr)
-{
+static rt_string make_str(const char *cstr) {
     return rt_string_from_bytes(cstr, strlen(cstr));
 }
 
@@ -49,8 +47,7 @@ static rt_string make_str(const char *cstr)
 // Same content → same pointer
 // ============================================================================
 
-static void test_same_content_same_pointer(void)
-{
+static void test_same_content_same_pointer(void) {
     rt_string_intern_drain(); // clean slate
 
     rt_string s1 = make_str("hello");
@@ -76,8 +73,7 @@ static void test_same_content_same_pointer(void)
 // Different content → different pointers
 // ============================================================================
 
-static void test_different_content_different_pointer(void)
-{
+static void test_different_content_different_pointer(void) {
     rt_string_intern_drain();
 
     rt_string s1 = make_str("foo");
@@ -102,8 +98,7 @@ static void test_different_content_different_pointer(void)
 // Interning the same string twice is idempotent
 // ============================================================================
 
-static void test_intern_idempotent(void)
-{
+static void test_intern_idempotent(void) {
     rt_string_intern_drain();
 
     rt_string s = make_str("viper");
@@ -125,8 +120,7 @@ static void test_intern_idempotent(void)
 // Returned pointer is a valid retained reference
 // ============================================================================
 
-static void test_returned_pointer_is_retained(void)
-{
+static void test_returned_pointer_is_retained(void) {
     rt_string_intern_drain();
 
     rt_string s = make_str("retained");
@@ -145,8 +139,7 @@ static void test_returned_pointer_is_retained(void)
 // Empty string interns correctly
 // ============================================================================
 
-static void test_intern_empty_string(void)
-{
+static void test_intern_empty_string(void) {
     rt_string_intern_drain();
 
     rt_string s1 = make_str("");
@@ -170,16 +163,14 @@ static void test_intern_empty_string(void)
 // Table growth: intern many unique strings to force rehashing
 // ============================================================================
 
-static void test_intern_many_strings(void)
-{
+static void test_intern_many_strings(void) {
     rt_string_intern_drain();
 
     const int N = 512; // more than INTERN_INIT_CAP (256) to force growth
     char buf[32];
     rt_string interned[N];
 
-    for (int i = 0; i < N; i++)
-    {
+    for (int i = 0; i < N; i++) {
         snprintf(buf, sizeof(buf), "string_%d", i);
         rt_string s = make_str(buf);
         interned[i] = rt_string_intern(s);
@@ -187,8 +178,7 @@ static void test_intern_many_strings(void)
     }
 
     // Re-intern each string and verify it matches the canonical copy.
-    for (int i = 0; i < N; i++)
-    {
+    for (int i = 0; i < N; i++) {
         snprintf(buf, sizeof(buf), "string_%d", i);
         rt_string s = make_str(buf);
         rt_string again = rt_string_intern(s);
@@ -208,8 +198,7 @@ static void test_intern_many_strings(void)
 // Drain and re-intern
 // ============================================================================
 
-static void test_drain_and_reintern(void)
-{
+static void test_drain_and_reintern(void) {
     rt_string s = make_str("after_drain");
 
     rt_string i1 = rt_string_intern(s);
@@ -232,8 +221,7 @@ static void test_drain_and_reintern(void)
 // Entry point
 // ============================================================================
 
-int main(void)
-{
+int main(void) {
     printf("=== rt_string_intern Tests ===\n\n");
 
     test_same_content_same_pointer();

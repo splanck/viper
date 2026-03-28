@@ -21,18 +21,15 @@
 
 #include "codegen/aarch64/TargetAArch64.hpp"
 
-namespace viper::codegen::aarch64::ra
-{
+namespace viper::codegen::aarch64::ra {
 
 /// @brief Check if a GPR is available for register allocation.
 /// @param r The physical register to check.
 /// @return True if the register can be allocated to virtual registers.
 /// @details Excludes frame pointer (X29), link register (X30), stack pointer (SP),
 ///          platform reserved (X18), and global scratch register (X9).
-inline bool isAllocatableGPR(PhysReg r)
-{
-    switch (r)
-    {
+inline bool isAllocatableGPR(PhysReg r) {
+    switch (r) {
         case PhysReg::X29:
         case PhysReg::X30:
         case PhysReg::SP:
@@ -49,8 +46,7 @@ inline bool isAllocatableGPR(PhysReg r)
 /// @param r The physical register to check.
 /// @param ti Target information containing the ABI's argument register lists.
 /// @return True if the register is in the integer or floating-point argument order.
-inline bool isArgRegister(PhysReg r, const TargetInfo &ti)
-{
+inline bool isArgRegister(PhysReg r, const TargetInfo &ti) {
     for (auto ar : ti.intArgOrder)
         if (ar == r)
             return true;

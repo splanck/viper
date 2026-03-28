@@ -21,8 +21,7 @@
 
 static void *vtable_dummy[1] = {nullptr};
 
-int main()
-{
+int main() {
     constexpr int TYPE_ID = 1000001;
 
     RtContext ctx;

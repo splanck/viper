@@ -31,24 +31,21 @@
 #include <string>
 #include <vector>
 
-namespace viper::repl
-{
+namespace viper::repl {
 
 /// @brief Zia language REPL adapter.
 /// @details Compiles each REPL input by building a synthetic Zia source file
 ///          from accumulated state (binds, types, functions, global var declarations)
 ///          plus the current input wrapped in func start() { ... }.
 /// @brief Tracked persistent variable for cross-input replay.
-struct PersistentVar
-{
+struct PersistentVar {
     std::string name;           ///< Variable name.
     std::string declStatement;  ///< Full declaration (e.g., "var x = 42").
     std::string lastAssignment; ///< Latest reassignment (e.g., "x = 100"), or empty.
     std::string type;           ///< Inferred or annotated type (e.g., "Integer").
 };
 
-class ZiaReplAdapter : public ReplAdapter
-{
+class ZiaReplAdapter : public ReplAdapter {
   public:
     ZiaReplAdapter();
     ~ZiaReplAdapter() override = default;

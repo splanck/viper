@@ -26,12 +26,10 @@
 
 #include "MachineIR.hpp"
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Statistics from peephole optimization pass.
-struct PeepholeStats
-{
+struct PeepholeStats {
     int identityMovesRemoved{0};    ///< Number of `mov r, r` instructions removed.
     int identityFMovesRemoved{0};   ///< Number of `fmov d, d` instructions removed.
     int consecutiveMovsFolded{0};   ///< Number of consecutive moves folded.
@@ -50,8 +48,7 @@ struct PeepholeStats
     int loopConstsHoisted{0};       ///< Number of MovRI instructions hoisted out of loops.
 
     /// @brief Total number of optimizations applied.
-    [[nodiscard]] int total() const noexcept
-    {
+    [[nodiscard]] int total() const noexcept {
         return identityMovesRemoved + identityFMovesRemoved + consecutiveMovsFolded +
                deadInstructionsRemoved + cmpZeroToTst + arithmeticIdentities + strengthReductions +
                branchesToNextRemoved + blocksReordered + copiesPropagated + cbzFusions +

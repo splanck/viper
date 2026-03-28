@@ -21,28 +21,23 @@
 #include <string>
 #include <string_view>
 
-namespace viper::codegen::x64
-{
-namespace
-{
-[[nodiscard]] ILValue makeParam(int id, ILValue::Kind kind) noexcept
-{
+namespace viper::codegen::x64 {
+namespace {
+[[nodiscard]] ILValue makeParam(int id, ILValue::Kind kind) noexcept {
     ILValue value{};
     value.kind = kind;
     value.id = id;
     return value;
 }
 
-[[nodiscard]] ILInstr makeReturnInstr(const ILValue &value)
-{
+[[nodiscard]] ILInstr makeReturnInstr(const ILValue &value) {
     ILInstr instr{};
     instr.opcode = "ret";
     instr.ops = {value};
     return instr;
 }
 
-[[nodiscard]] ILModule makeReturnModule()
-{
+[[nodiscard]] ILModule makeReturnModule() {
     ILValue i64Param = makeParam(0, ILValue::Kind::I64);
 
     ILBlock i64Entry{};
@@ -76,14 +71,12 @@ namespace
     return module;
 }
 
-[[nodiscard]] bool hasMovRetSequence(std::string_view asmText, const std::regex &movPattern)
-{
+[[nodiscard]] bool hasMovRetSequence(std::string_view asmText, const std::regex &movPattern) {
     std::cmatch match;
     const char *const begin = asmText.data();
     const char *const end = begin + asmText.size();
 
-    if (!std::regex_search(begin, end, match, movPattern))
-    {
+    if (!std::regex_search(begin, end, match, movPattern)) {
         return false;
     }
 
@@ -96,23 +89,20 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makeReturnModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
 
-    if (!result.errors.empty())
-    {
+    if (!result.errors.empty()) {
         std::cerr << "Unexpected errors during codegen\n";
         return EXIT_FAILURE;
     }
 
     const std::regex intPattern{"movq %[^,]+, %rax"};
 
-    if (!hasMovRetSequence(result.asmText, intPattern))
-    {
+    if (!hasMovRetSequence(result.asmText, intPattern)) {
         std::cerr << "Assembly missing expected i64 return move:\n" << result.asmText;
         return EXIT_FAILURE;
     }
@@ -123,8 +113,7 @@ int main()
     // for f64 constant returns; tracked separately from this ABI smoke test.
     const std::regex floatPattern{"movsd [^,]+, %xmm0"};
 
-    if (!hasMovRetSequence(result.asmText, floatPattern))
-    {
+    if (!hasMovRetSequence(result.asmText, floatPattern)) {
         std::cerr << "Assembly missing expected f64 return move:\n" << result.asmText;
         return EXIT_FAILURE;
     }

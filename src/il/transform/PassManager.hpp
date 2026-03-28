@@ -33,8 +33,7 @@
 #include <utility>
 #include <vector>
 
-namespace il::transform
-{
+namespace il::transform {
 
 struct SimplifyCFG;
 
@@ -44,8 +43,7 @@ class PipelineExecutor;
 /// @details The PassManager maintains registries for passes and analyses,
 ///          builds optimization pipelines, and provides debugging features like
 ///          verification and printing between pass executions.
-class PassManager
-{
+class PassManager {
   public:
     using Pipeline = std::vector<std::string>;
 
@@ -54,29 +52,25 @@ class PassManager
 
     /// @brief Get mutable access to the pass registry.
     /// @return Reference to the internal PassRegistry.
-    PassRegistry &passes()
-    {
+    PassRegistry &passes() {
         return passRegistry_;
     }
 
     /// @brief Get const access to the pass registry.
     /// @return Const reference to the internal PassRegistry.
-    const PassRegistry &passes() const
-    {
+    const PassRegistry &passes() const {
         return passRegistry_;
     }
 
     /// @brief Get mutable access to the analysis registry.
     /// @return Reference to the internal AnalysisRegistry.
-    AnalysisRegistry &analyses()
-    {
+    AnalysisRegistry &analyses() {
         return analysisRegistry_;
     }
 
     /// @brief Get const access to the analysis registry.
     /// @return Const reference to the internal AnalysisRegistry.
-    const AnalysisRegistry &analyses() const
-    {
+    const AnalysisRegistry &analyses() const {
         return analysisRegistry_;
     }
 
@@ -85,8 +79,7 @@ class PassManager
     /// @param id Unique identifier for the analysis.
     /// @param fn Function computing the analysis result from a module.
     template <typename Result>
-    void registerModuleAnalysis(const std::string &id, std::function<Result(core::Module &)> fn)
-    {
+    void registerModuleAnalysis(const std::string &id, std::function<Result(core::Module &)> fn) {
         analysisRegistry_.registerModuleAnalysis<Result>(id, std::move(fn));
     }
 
@@ -96,8 +89,7 @@ class PassManager
     /// @param fn Function computing the analysis result from a function.
     template <typename Result>
     void registerFunctionAnalysis(const std::string &id,
-                                  std::function<Result(core::Module &, core::Function &)> fn)
-    {
+                                  std::function<Result(core::Module &, core::Function &)> fn) {
         analysisRegistry_.registerFunctionAnalysis<Result>(id, std::move(fn));
     }
 
@@ -106,8 +98,7 @@ class PassManager
     /// @param factory Function returning a new ModulePass instance.
     void registerModulePass(const std::string &id,
                             PassRegistry::ModulePassFactory factory,
-                            bool parallelSafe = false)
-    {
+                            bool parallelSafe = false) {
         passRegistry_.registerModulePass(id, std::move(factory), parallelSafe);
     }
 
@@ -116,8 +107,7 @@ class PassManager
     /// @param callback Function implementing the pass transformation.
     void registerModulePass(const std::string &id,
                             PassRegistry::ModulePassCallback callback,
-                            bool parallelSafe = false)
-    {
+                            bool parallelSafe = false) {
         passRegistry_.registerModulePass(id, std::move(callback), parallelSafe);
     }
 
@@ -126,8 +116,7 @@ class PassManager
     /// @param fn Function transforming the module (no return value).
     void registerModulePass(const std::string &id,
                             const std::function<void(core::Module &)> &fn,
-                            bool parallelSafe = false)
-    {
+                            bool parallelSafe = false) {
         passRegistry_.registerModulePass(id, fn, parallelSafe);
     }
 
@@ -136,8 +125,7 @@ class PassManager
     /// @param factory Function returning a new FunctionPass instance.
     void registerFunctionPass(const std::string &id,
                               PassRegistry::FunctionPassFactory factory,
-                              bool parallelSafe = false)
-    {
+                              bool parallelSafe = false) {
         passRegistry_.registerFunctionPass(id, std::move(factory), parallelSafe);
     }
 
@@ -146,8 +134,7 @@ class PassManager
     /// @param callback Function implementing the pass transformation.
     void registerFunctionPass(const std::string &id,
                               PassRegistry::FunctionPassCallback callback,
-                              bool parallelSafe = false)
-    {
+                              bool parallelSafe = false) {
         passRegistry_.registerFunctionPass(id, std::move(callback), parallelSafe);
     }
 
@@ -156,8 +143,7 @@ class PassManager
     /// @param fn Function transforming a function (no return value).
     void registerFunctionPass(const std::string &id,
                               const std::function<void(core::Function &)> &fn,
-                              bool parallelSafe = false)
-    {
+                              bool parallelSafe = false) {
         passRegistry_.registerFunctionPass(id, fn, parallelSafe);
     }
 

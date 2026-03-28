@@ -47,8 +47,7 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 //===----------------------------------------------------------------------===//
 /// @name Declaration Nodes
 /// @brief AST nodes representing declarations that introduce named entities.
@@ -59,8 +58,7 @@ namespace il::frontends::zia
 
 /// @brief Enumerates all kinds of declaration nodes.
 /// @details Used for runtime type identification when processing declarations.
-enum class DeclKind
-{
+enum class DeclKind {
     /// @brief Module declaration: the compilation unit.
     /// @see ModuleDecl
     Module,
@@ -120,8 +118,7 @@ enum class DeclKind
 
 /// @brief Member visibility level.
 /// @details Controls access to fields and methods from outside the type.
-enum class Visibility
-{
+enum class Visibility {
     /// @brief Private: only accessible within the type.
     /// @details Default for entity fields to encourage encapsulation.
     Private,
@@ -135,8 +132,7 @@ enum class Visibility
 /// @details Declarations introduce named entities into the program.
 ///
 /// @invariant `kind` correctly identifies the concrete subclass type.
-struct Decl
-{
+struct Decl {
     /// @brief Identifies the concrete declaration kind for downcasting.
     DeclKind kind;
 
@@ -155,8 +151,7 @@ struct Decl
 /// @brief Function parameter specification.
 /// @details Represents one parameter in a function signature, with
 /// name, type, and optional default value.
-struct Param
-{
+struct Param {
     /// @brief Parameter name.
     std::string name;
 
@@ -177,8 +172,7 @@ struct Param
 /// ## Examples
 /// - `T` - Unconstrained type parameter
 /// - `T: Comparable` - Type parameter constrained to Comparable interface
-struct TypeParam
-{
+struct TypeParam {
     /// @brief Type parameter name (e.g., "T", "K", "V").
     std::string name;
 
@@ -203,8 +197,7 @@ struct TypeParam
 ///     return a + b;
 /// }
 /// ```
-struct FunctionDecl : Decl
-{
+struct FunctionDecl : Decl {
     /// @brief Function name.
     std::string name;
 
@@ -250,8 +243,7 @@ struct FunctionDecl : Decl
 /// - `final`: Field cannot be reassigned after construction
 /// - `weak`: For entity types, creates a weak reference (no ref counting)
 /// - `expose`/`hide`: Controls visibility (public/private)
-struct FieldDecl : Decl
-{
+struct FieldDecl : Decl {
     /// @brief Field name.
     std::string name;
 
@@ -290,8 +282,7 @@ struct FieldDecl : Decl
 ///     }
 /// }
 /// ```
-struct MethodDecl : Decl
-{
+struct MethodDecl : Decl {
     /// @brief Method name.
     std::string name;
 
@@ -334,8 +325,7 @@ struct MethodDecl : Decl
 ///     }
 /// }
 /// ```
-struct PropertyDecl : Decl
-{
+struct PropertyDecl : Decl {
     /// @brief Property name.
     std::string name;
 
@@ -378,8 +368,7 @@ struct PropertyDecl : Decl
 ///     }
 /// }
 /// ```
-struct DestructorDecl : Decl
-{
+struct DestructorDecl : Decl {
     /// @brief Destructor body.
     StmtPtr body;
 
@@ -400,8 +389,7 @@ struct DestructorDecl : Decl
 ///     }
 /// }
 /// ```
-struct ConstructorDecl : Decl
-{
+struct ConstructorDecl : Decl {
     /// @brief Constructor parameters.
     std::vector<Param> params;
 
@@ -424,8 +412,7 @@ struct ConstructorDecl : Decl
 /// var globalCounter: Integer = 0;
 /// final MAX_SIZE = 100;
 /// ```
-struct GlobalVarDecl : Decl
-{
+struct GlobalVarDecl : Decl {
     /// @brief Variable name.
     std::string name;
 
@@ -457,8 +444,7 @@ struct GlobalVarDecl : Decl
 ///     func distance(other: Point) -> Number { ... }
 /// }
 /// ```
-struct ValueDecl : Decl
-{
+struct ValueDecl : Decl {
     /// @brief Type name.
     std::string name;
 
@@ -494,8 +480,7 @@ struct ValueDecl : Decl
 ///     }
 /// }
 /// ```
-struct EntityDecl : Decl
-{
+struct EntityDecl : Decl {
     /// @brief Type name.
     std::string name;
 
@@ -528,8 +513,7 @@ struct EntityDecl : Decl
 ///     func getBounds() -> Rect;
 /// }
 /// ```
-struct InterfaceDecl : Decl
-{
+struct InterfaceDecl : Decl {
     /// @brief Interface name.
     std::string name;
 
@@ -558,8 +542,7 @@ struct InterfaceDecl : Decl
 /// - `bind Viper.Terminal;` - Import all symbols from namespace
 /// - `bind Viper.Graphics as G;` - With alias: G.Canvas, G.Sprite
 /// - `bind Viper.Terminal { Say, ReadLine };` - Import specific symbols only
-struct BindDecl : Decl
-{
+struct BindDecl : Decl {
     /// @brief The bind path (file path OR namespace like "Viper.Terminal").
     std::string path;
 
@@ -608,8 +591,7 @@ struct BindDecl : Decl
 /// var p = new MyLib.Parser();
 /// var r = MyLib.parse("input");
 /// ```
-struct NamespaceDecl : Decl
-{
+struct NamespaceDecl : Decl {
     /// @brief Namespace name (can be dotted, e.g., "MyLib.Internal").
     std::string name;
 
@@ -636,8 +618,7 @@ struct NamespaceDecl : Decl
 ///     Alpha,        // value 11
 /// }
 /// ```
-struct EnumVariant
-{
+struct EnumVariant {
     /// @brief Variant name (e.g., "Red", "Green").
     std::string name;
 
@@ -666,8 +647,7 @@ struct EnumVariant
 ///
 /// var d: Direction = Direction.North;
 /// ```
-struct EnumDecl : Decl
-{
+struct EnumDecl : Decl {
     /// @brief Enum type name.
     std::string name;
 
@@ -697,8 +677,7 @@ struct EnumDecl : Decl
 ///
 /// func main() { ... }
 /// ```
-struct ModuleDecl : Decl
-{
+struct ModuleDecl : Decl {
     /// @brief Module name (from `module MyName;` declaration).
     std::string name;
 

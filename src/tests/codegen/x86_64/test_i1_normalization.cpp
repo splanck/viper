@@ -19,20 +19,16 @@
 #include <iostream>
 #include <string>
 
-namespace viper::codegen::x64
-{
-namespace
-{
-[[nodiscard]] ILValue makeParam(int id) noexcept
-{
+namespace viper::codegen::x64 {
+namespace {
+[[nodiscard]] ILValue makeParam(int id) noexcept {
     ILValue value{};
     value.kind = ILValue::Kind::I64;
     value.id = id;
     return value;
 }
 
-[[nodiscard]] ILValue makeConstI64(int64_t value) noexcept
-{
+[[nodiscard]] ILValue makeConstI64(int64_t value) noexcept {
     ILValue constant{};
     constant.kind = ILValue::Kind::I64;
     constant.id = -1;
@@ -40,16 +36,14 @@ namespace
     return constant;
 }
 
-[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept
-{
+[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept {
     ILValue ref{};
     ref.kind = kind;
     ref.id = id;
     return ref;
 }
 
-[[nodiscard]] ILModule makeCmpSelectModule()
-{
+[[nodiscard]] ILModule makeCmpSelectModule() {
     ILValue lhs = makeParam(0);
     ILValue rhs = makeParam(1);
 
@@ -85,26 +79,21 @@ namespace
     return module;
 }
 
-[[nodiscard]] bool hasBooleanNormalizationPattern(const std::string &asmText)
-{
+[[nodiscard]] bool hasBooleanNormalizationPattern(const std::string &asmText) {
     const std::size_t setPos = asmText.find("set");
-    if (setPos == std::string::npos)
-    {
+    if (setPos == std::string::npos) {
         return false;
     }
     const std::size_t movzPos = asmText.find("movz", setPos);
-    if (movzPos == std::string::npos || movzPos <= setPos)
-    {
+    if (movzPos == std::string::npos || movzPos <= setPos) {
         return false;
     }
     const std::size_t movqPos = asmText.find("movq", movzPos);
-    if (movqPos == std::string::npos || movqPos <= movzPos)
-    {
+    if (movqPos == std::string::npos || movqPos <= movzPos) {
         return false;
     }
     const std::size_t raxPos = asmText.find("%rax", movqPos);
-    if (raxPos == std::string::npos || raxPos <= movqPos)
-    {
+    if (raxPos == std::string::npos || raxPos <= movqPos) {
         return false;
     }
     return true;
@@ -113,20 +102,17 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makeCmpSelectModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
 
-    if (!result.errors.empty())
-    {
+    if (!result.errors.empty()) {
         std::cerr << result.errors;
         return EXIT_FAILURE;
     }
-    if (!hasBooleanNormalizationPattern(result.asmText))
-    {
+    if (!hasBooleanNormalizationPattern(result.asmText)) {
         std::cerr << "Unexpected assembly output:\n" << result.asmText;
         return EXIT_FAILURE;
     }

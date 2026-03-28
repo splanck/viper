@@ -30,19 +30,16 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
-struct FieldLayout
-{
+struct FieldLayout {
     std::string name;
     TypeRef type;
     size_t offset;
     size_t size;
 };
 
-struct ValueTypeInfo
-{
+struct ValueTypeInfo {
     std::string name;
     std::vector<FieldLayout> fields;
     std::vector<MethodDecl *> methods;
@@ -50,21 +47,18 @@ struct ValueTypeInfo
     std::unordered_map<std::string, size_t> fieldIndex;
     std::unordered_map<std::string, MethodDecl *> methodMap;
 
-    const FieldLayout *findField(const std::string &n) const
-    {
+    const FieldLayout *findField(const std::string &n) const {
         auto it = fieldIndex.find(n);
         return it != fieldIndex.end() ? &fields[it->second] : nullptr;
     }
 
-    MethodDecl *findMethod(const std::string &n) const
-    {
+    MethodDecl *findMethod(const std::string &n) const {
         auto it = methodMap.find(n);
         return it != methodMap.end() ? it->second : nullptr;
     }
 };
 
-struct EntityTypeInfo
-{
+struct EntityTypeInfo {
     std::string name;
     std::string baseClass;
     std::vector<FieldLayout> fields;
@@ -80,41 +74,35 @@ struct EntityTypeInfo
     std::set<std::string> propertyGetters;
     std::set<std::string> propertySetters;
 
-    const FieldLayout *findField(const std::string &n) const
-    {
+    const FieldLayout *findField(const std::string &n) const {
         auto it = fieldIndex.find(n);
         return it != fieldIndex.end() ? &fields[it->second] : nullptr;
     }
 
-    MethodDecl *findMethod(const std::string &n) const
-    {
+    MethodDecl *findMethod(const std::string &n) const {
         auto it = methodMap.find(n);
         return it != methodMap.end() ? it->second : nullptr;
     }
 
-    size_t findVtableSlot(const std::string &n) const
-    {
+    size_t findVtableSlot(const std::string &n) const {
         auto it = vtableIndex.find(n);
         return it != vtableIndex.end() ? it->second : SIZE_MAX;
     }
 };
 
-struct InterfaceTypeInfo
-{
+struct InterfaceTypeInfo {
     std::string name;
     int ifaceId{-1};
     std::vector<MethodDecl *> methods;
     std::unordered_map<std::string, MethodDecl *> methodMap;
     std::unordered_map<std::string, size_t> slotIndex;
 
-    MethodDecl *findMethod(const std::string &n) const
-    {
+    MethodDecl *findMethod(const std::string &n) const {
         auto it = methodMap.find(n);
         return it != methodMap.end() ? it->second : nullptr;
     }
 
-    size_t findSlot(const std::string &n) const
-    {
+    size_t findSlot(const std::string &n) const {
         auto it = slotIndex.find(n);
         return it != slotIndex.end() ? it->second : SIZE_MAX;
     }

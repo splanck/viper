@@ -20,18 +20,15 @@
 
 #include <cctype>
 
-namespace viper::parse
-{
+namespace viper::parse {
 
-namespace
-{
+namespace {
 /// @brief Determine whether @p ch can appear at the start of an identifier.
 /// @details BASIC identifiers may begin with alphabetic characters, underscores,
 ///          or dots to support qualified names produced by the lowering phase.
 /// @param ch Character to test.
 /// @return True when @p ch is a valid starting character.
-bool isIdentStart(unsigned char ch) noexcept
-{
+bool isIdentStart(unsigned char ch) noexcept {
     return std::isalpha(ch) || ch == '_' || ch == '.';
 }
 
@@ -42,8 +39,7 @@ bool isIdentStart(unsigned char ch) noexcept
 ///          cursor users.
 /// @param ch Character to test.
 /// @return True when @p ch can be part of an identifier body.
-bool isIdentBody(unsigned char ch) noexcept
-{
+bool isIdentBody(unsigned char ch) noexcept {
     return std::isalnum(ch) || ch == '_' || ch == '.' || ch == '$';
 }
 } // namespace
@@ -54,16 +50,13 @@ bool isIdentBody(unsigned char ch) noexcept
 /// @param text Source text to traverse.
 /// @param start Source position representing the beginning of the buffer.
 Cursor::Cursor(std::string_view text, SourcePos start) noexcept
-    : text_(text), index_(0), start_(start), pos_(start)
-{
-}
+    : text_(text), index_(0), start_(start), pos_(start) {}
 
 /// @brief Inspect the current character without advancing.
 /// @details Returns '\0' when the cursor is at the end to simplify callers that
 ///          expect a sentinel terminator.
 /// @return Character at the current cursor position or '\0' at end.
-char Cursor::peek() const noexcept
-{
+char Cursor::peek() const noexcept {
     return atEnd() ? '\0' : text_[index_];
 }
 
@@ -71,23 +64,18 @@ char Cursor::peek() const noexcept
 /// @details Handles newlines by incrementing the line counter and resetting the
 ///          column; other characters simply increment the column.
 /// @param ch Character that was consumed.
-void Cursor::applyAdvance(char ch) noexcept
-{
-    if (ch == '\n')
-    {
+void Cursor::applyAdvance(char ch) noexcept {
+    if (ch == '\n') {
         ++pos_.line;
         pos_.column = 0;
-    }
-    else
-    {
+    } else {
         ++pos_.column;
     }
 }
 
 /// @brief Consume the current character and update the position.
 /// @details Safely returns when already at end-of-input.
-void Cursor::advance() noexcept
-{
+void Cursor::advance() noexcept {
     if (atEnd())
         return;
     const char ch = text_[index_++];
@@ -97,8 +85,7 @@ void Cursor::advance() noexcept
 /// @brief Advance past ASCII whitespace characters.
 /// @details Uses @ref std::isspace to recognise whitespace and stops at the
 ///          first non-whitespace character.
-void Cursor::skipWs() noexcept
-{
+void Cursor::skipWs() noexcept {
     while (!atEnd() && std::isspace(static_cast<unsigned char>(peek())))
         advance();
 }
@@ -108,8 +95,7 @@ void Cursor::skipWs() noexcept
 ///          cursor untouched.
 /// @param c Character to consume.
 /// @return True when the character matched and was consumed.
-bool Cursor::consume(char c) noexcept
-{
+bool Cursor::consume(char c) noexcept {
     if (peek() != c)
         return false;
     advance();
@@ -122,10 +108,8 @@ bool Cursor::consume(char c) noexcept
 ///          character does not match.
 /// @param c Character to consume.
 /// @return True when @p c was consumed.
-bool Cursor::consumeIf(char c) noexcept
-{
-    if (peek() == c)
-    {
+bool Cursor::consumeIf(char c) noexcept {
+    if (peek() == c) {
         advance();
         return true;
     }
@@ -138,8 +122,7 @@ bool Cursor::consumeIf(char c) noexcept
 ///          @p out references the identifier substring.
 /// @param[out] out View that will reference the consumed identifier.
 /// @return True when an identifier was consumed.
-bool Cursor::consumeIdent(std::string_view &out) noexcept
-{
+bool Cursor::consumeIdent(std::string_view &out) noexcept {
     skipWs();
     if (atEnd())
         return false;
@@ -161,8 +144,7 @@ bool Cursor::consumeIdent(std::string_view &out) noexcept
 ///          digits. On failure the cursor rewinds to its original position.
 /// @param[out] out View that references the consumed number literal.
 /// @return True when a number literal was consumed.
-bool Cursor::consumeNumber(std::string_view &out) noexcept
-{
+bool Cursor::consumeNumber(std::string_view &out) noexcept {
     skipWs();
     if (atEnd())
         return false;
@@ -175,8 +157,7 @@ bool Cursor::consumeNumber(std::string_view &out) noexcept
     while (!atEnd() && std::isdigit(static_cast<unsigned char>(peek())))
         advance();
 
-    if (index_ == digitsBegin)
-    {
+    if (index_ == digitsBegin) {
         seek(begin);
         return false;
     }
@@ -190,16 +171,14 @@ bool Cursor::consumeNumber(std::string_view &out) noexcept
 ///          On success the cursor advances past the keyword.
 /// @param kw Keyword that should be matched.
 /// @return True when the keyword was consumed.
-bool Cursor::consumeKeyword(std::string_view kw) noexcept
-{
+bool Cursor::consumeKeyword(std::string_view kw) noexcept {
     skipWs();
     if (kw.empty())
         return false;
     if (text_.substr(index_, kw.size()) != kw)
         return false;
     const std::size_t nextIndex = index_ + kw.size();
-    if (nextIndex < text_.size())
-    {
+    if (nextIndex < text_.size()) {
         const unsigned char next = static_cast<unsigned char>(text_[nextIndex]);
         if (isIdentBody(next))
             return false;
@@ -213,13 +192,11 @@ bool Cursor::consumeKeyword(std::string_view kw) noexcept
 ///          seeking backwards the routine recomputes the position from the start
 ///          of the buffer to keep line/column data accurate.
 /// @param offset Zero-based index into the source buffer.
-void Cursor::seek(std::size_t offset) noexcept
-{
+void Cursor::seek(std::size_t offset) noexcept {
     if (offset > text_.size())
         offset = text_.size();
 
-    if (offset >= index_)
-    {
+    if (offset >= index_) {
         while (index_ < offset)
             advance();
         return;

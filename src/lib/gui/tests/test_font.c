@@ -29,44 +29,36 @@ static int tests_failed = 0;
     fflush(stdout)
 
 #define PASS()                                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("PASS\n");                                                                          \
         tests_passed++;                                                                            \
     } while (0)
 
 #define FAIL(msg)                                                                                  \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("FAIL: %s\n", msg);                                                                 \
         tests_failed++;                                                                            \
     } while (0)
 
 #define ASSERT_TRUE(cond)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             FAIL(#cond " is false");                                                               \
             return;                                                                                \
         }                                                                                          \
     } while (0)
 
 #define ASSERT_EQ(a, b)                                                                            \
-    do                                                                                             \
-    {                                                                                              \
-        if ((a) != (b))                                                                            \
-        {                                                                                          \
+    do {                                                                                           \
+        if ((a) != (b)) {                                                                          \
             FAIL(#a " != " #b);                                                                    \
             return;                                                                                \
         }                                                                                          \
     } while (0)
 
 #define ASSERT_NOT_NULL(ptr)                                                                       \
-    do                                                                                             \
-    {                                                                                              \
-        if ((ptr) == NULL)                                                                         \
-        {                                                                                          \
+    do {                                                                                           \
+        if ((ptr) == NULL) {                                                                       \
             FAIL(#ptr " is NULL");                                                                 \
             return;                                                                                \
         }                                                                                          \
@@ -76,8 +68,7 @@ static int tests_failed = 0;
 // UTF-8 Tests
 //=============================================================================
 
-static void test_utf8_decode_ascii(void)
-{
+static void test_utf8_decode_ascii(void) {
     TEST(utf8_decode_ascii);
 
     const char *str = "Hello";
@@ -90,8 +81,7 @@ static void test_utf8_decode_ascii(void)
     PASS();
 }
 
-static void test_utf8_decode_2byte(void)
-{
+static void test_utf8_decode_2byte(void) {
     TEST(utf8_decode_2byte);
 
     const char *str = "\xC3\xA9"; // é (U+00E9)
@@ -101,8 +91,7 @@ static void test_utf8_decode_2byte(void)
     PASS();
 }
 
-static void test_utf8_decode_3byte(void)
-{
+static void test_utf8_decode_3byte(void) {
     TEST(utf8_decode_3byte);
 
     const char *str = "\xE4\xB8\xAD"; // 中 (U+4E2D)
@@ -112,8 +101,7 @@ static void test_utf8_decode_3byte(void)
     PASS();
 }
 
-static void test_utf8_decode_4byte(void)
-{
+static void test_utf8_decode_4byte(void) {
     TEST(utf8_decode_4byte);
 
     const char *str = "\xF0\x9F\x98\x80"; // 😀 (U+1F600)
@@ -123,8 +111,7 @@ static void test_utf8_decode_4byte(void)
     PASS();
 }
 
-static void test_utf8_strlen(void)
-{
+static void test_utf8_strlen(void) {
     TEST(utf8_strlen);
 
     ASSERT_EQ(vg_utf8_strlen("Hello"), 5);
@@ -135,8 +122,7 @@ static void test_utf8_strlen(void)
     PASS();
 }
 
-static void test_utf8_offset(void)
-{
+static void test_utf8_offset(void) {
     TEST(utf8_offset);
 
     ASSERT_EQ(vg_utf8_offset("Hello", 0), 0);
@@ -155,8 +141,7 @@ static void test_utf8_offset(void)
 // Font Loading Tests (require actual font file)
 //=============================================================================
 
-static void test_font_load_null(void)
-{
+static void test_font_load_null(void) {
     TEST(font_load_null);
 
     vg_font_t *font = vg_font_load(NULL, 0);
@@ -165,8 +150,7 @@ static void test_font_load_null(void)
     PASS();
 }
 
-static void test_font_load_empty(void)
-{
+static void test_font_load_empty(void) {
     TEST(font_load_empty);
 
     uint8_t empty[1] = {0};
@@ -176,8 +160,7 @@ static void test_font_load_empty(void)
     PASS();
 }
 
-static void test_font_destroy_null(void)
-{
+static void test_font_destroy_null(void) {
     TEST(font_destroy_null);
 
     // Should not crash
@@ -191,8 +174,7 @@ static void test_font_destroy_null(void)
 //=============================================================================
 
 #ifdef TEST_FONT_PATH
-static void test_font_load_file(void)
-{
+static void test_font_load_file(void) {
     TEST(font_load_file);
 
     vg_font_t *font = vg_font_load_file(TEST_FONT_PATH);
@@ -242,8 +224,7 @@ static void test_font_load_file(void)
 // Main
 //=============================================================================
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     printf("Viper GUI Font Engine Tests\n");
     printf("============================\n\n");
 

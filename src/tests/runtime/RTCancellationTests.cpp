@@ -10,21 +10,18 @@
 
 #include <cassert>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static void test_basic()
-{
+static void test_basic() {
     void *token = rt_cancellation_new();
     assert(rt_cancellation_is_cancelled(token) == 0);
     rt_cancellation_cancel(token);
     assert(rt_cancellation_is_cancelled(token) == 1);
 }
 
-static void test_reset()
-{
+static void test_reset() {
     void *token = rt_cancellation_new();
     rt_cancellation_cancel(token);
     assert(rt_cancellation_is_cancelled(token) == 1);
@@ -32,8 +29,7 @@ static void test_reset()
     assert(rt_cancellation_is_cancelled(token) == 0);
 }
 
-static void test_linked()
-{
+static void test_linked() {
     void *parent = rt_cancellation_new();
     void *child = rt_cancellation_linked(parent);
 
@@ -44,8 +40,7 @@ static void test_linked()
     assert(rt_cancellation_is_cancelled(child) == 0); // Child itself not cancelled
 }
 
-static void test_linked_self_cancel()
-{
+static void test_linked_self_cancel() {
     void *parent = rt_cancellation_new();
     void *child = rt_cancellation_linked(parent);
 
@@ -54,16 +49,14 @@ static void test_linked_self_cancel()
     assert(rt_cancellation_is_cancelled(parent) == 0); // Parent not affected
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_cancellation_is_cancelled(NULL) == 0);
     assert(rt_cancellation_check(NULL) == 0);
     rt_cancellation_cancel(NULL);
     rt_cancellation_reset(NULL);
 }
 
-int main()
-{
+int main() {
     test_basic();
     test_reset();
     test_linked();

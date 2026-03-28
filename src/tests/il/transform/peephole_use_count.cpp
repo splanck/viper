@@ -30,14 +30,11 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-static void verifyOrDie(const Module &module)
-{
+static void verifyOrDie(const Module &module) {
     auto verifyResult = il::verify::Verifier::verify(module);
-    if (!verifyResult)
-    {
+    if (!verifyResult) {
         il::support::printDiag(verifyResult.error(), std::cerr);
         ASSERT_TRUE(false && "Module verification failed");
     }
@@ -49,8 +46,7 @@ void emitBinOp(BasicBlock &bb,
                Value lhs,
                Value rhs,
                unsigned resultId,
-               Type ty = Type(Type::Kind::I64))
-{
+               Type ty = Type(Type::Kind::I64)) {
     Instr instr;
     instr.op = op;
     instr.result = resultId;
@@ -62,8 +58,7 @@ void emitBinOp(BasicBlock &bb,
 
 } // namespace
 
-TEST(IL, testAddZeroIdentity)
-{
+TEST(IL, testAddZeroIdentity) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -90,8 +85,7 @@ TEST(IL, testAddZeroIdentity)
     ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == temp0);
 }
 
-TEST(IL, testMulOneIdentity)
-{
+TEST(IL, testMulOneIdentity) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -116,8 +110,7 @@ TEST(IL, testMulOneIdentity)
     ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == tempId);
 }
 
-TEST(IL, testShiftZeroIdentity)
-{
+TEST(IL, testShiftZeroIdentity) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -142,8 +135,7 @@ TEST(IL, testShiftZeroIdentity)
     ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == tempId);
 }
 
-TEST(IL, testPlainAddZeroIdentity)
-{
+TEST(IL, testPlainAddZeroIdentity) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -168,8 +160,7 @@ TEST(IL, testPlainAddZeroIdentity)
     ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == base);
 }
 
-TEST(IL, testPlainMulOneIdentity)
-{
+TEST(IL, testPlainMulOneIdentity) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -194,8 +185,7 @@ TEST(IL, testPlainMulOneIdentity)
     ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == base);
 }
 
-TEST(IL, testNoFoldIsubZeroLHS)
-{
+TEST(IL, testNoFoldIsubZeroLHS) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -220,8 +210,7 @@ TEST(IL, testNoFoldIsubZeroLHS)
     ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == subId);
 }
 
-TEST(IL, testMulZeroAnnihilation)
-{
+TEST(IL, testMulZeroAnnihilation) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -247,8 +236,7 @@ TEST(IL, testMulZeroAnnihilation)
     ASSERT_EQ(ret.operands[0].i64, 0);
 }
 
-TEST(IL, testAndZeroAnnihilation)
-{
+TEST(IL, testAndZeroAnnihilation) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -273,8 +261,7 @@ TEST(IL, testAndZeroAnnihilation)
     ASSERT_TRUE(ret.operands[0].kind == Value::Kind::ConstInt && ret.operands[0].i64 == 0);
 }
 
-TEST(IL, testXorSameOperand)
-{
+TEST(IL, testXorSameOperand) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -299,8 +286,7 @@ TEST(IL, testXorSameOperand)
     ASSERT_TRUE(ret.operands[0].kind == Value::Kind::ConstInt && ret.operands[0].i64 == 0);
 }
 
-TEST(IL, testCmpReflexive)
-{
+TEST(IL, testCmpReflexive) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -326,8 +312,7 @@ TEST(IL, testCmpReflexive)
     ASSERT_EQ(ret.operands[0].i64, 1);
 }
 
-TEST(IL, testNoFoldIMulMinusOne)
-{
+TEST(IL, testNoFoldIMulMinusOne) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -352,8 +337,7 @@ TEST(IL, testNoFoldIMulMinusOne)
     ASSERT_TRUE(ret.operands[0].kind == Value::Kind::Temp && ret.operands[0].id == mulId);
 }
 
-TEST(IL, testCBrConstantFold)
-{
+TEST(IL, testCBrConstantFold) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -388,8 +372,7 @@ TEST(IL, testCBrConstantFold)
     ASSERT_TRUE(br.labels.size() == 1 && br.labels[0] == "then");
 }
 
-TEST(IL, testCBrSameTargetFold)
-{
+TEST(IL, testCBrSameTargetFold) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -423,8 +406,7 @@ TEST(IL, testCBrSameTargetFold)
     ASSERT_TRUE(br.operands.empty());
 }
 
-TEST(IL, testLargeFunctionPerformance)
-{
+TEST(IL, testLargeFunctionPerformance) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -437,15 +419,11 @@ TEST(IL, testLargeFunctionPerformance)
     unsigned prevId = builder.reserveTempId();
     emitBinOp(entry, Opcode::IMulOvf, Value::constInt(3), Value::constInt(7), prevId);
 
-    for (size_t i = 0; i < numOps; ++i)
-    {
+    for (size_t i = 0; i < numOps; ++i) {
         unsigned addId = builder.reserveTempId();
-        if (i % 2 == 0)
-        {
+        if (i % 2 == 0) {
             emitBinOp(entry, Opcode::IAddOvf, Value::temp(prevId), Value::constInt(0), addId);
-        }
-        else
-        {
+        } else {
             emitBinOp(entry, Opcode::IAddOvf, Value::temp(prevId), Value::constInt(1), addId);
         }
         prevId = addId;
@@ -471,8 +449,7 @@ TEST(IL, testLargeFunctionPerformance)
     verifyOrDie(module);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

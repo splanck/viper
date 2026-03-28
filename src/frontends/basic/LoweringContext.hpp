@@ -18,28 +18,23 @@
 #include <string>
 #include <unordered_map>
 
-namespace il
-{
+namespace il {
 
-namespace core
-{
+namespace core {
 struct Function;
 } // namespace core
 
-namespace build
-{
+namespace build {
 class IRBuilder;
 } // namespace build
 } // namespace il
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Tracks mappings needed during BASIC lowering.
 /// @invariant Each variable, line, and string literal is unique in its map.
 /// @ownership Holds references to IR structures owned elsewhere.
-class LoweringContext
-{
+class LoweringContext {
   public:
     /// @brief Create a context to lower into @p builder and populate @p func.
     /// @ownership References are non-owning; caller must keep builder and

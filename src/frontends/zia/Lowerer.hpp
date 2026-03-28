@@ -113,8 +113,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //===----------------------------------------------------------------------===//
 /// @name Result Type
@@ -165,8 +164,7 @@ using LowerResult = ::il::frontends::common::ExprResult;
 /// - Optionals of reference types: null pointer represents none
 ///
 /// @invariant sema_ must have successfully analyzed the input module.
-class Lowerer
-{
+class Lowerer {
   public:
     /// @brief IL core type aliases for convenience.
     /// @{
@@ -198,14 +196,12 @@ class Lowerer
     Module lower(ModuleDecl &module);
 
     /// @brief Get the current source location for IL emission.
-    [[nodiscard]] il::support::SourceLoc sourceLocation() const noexcept
-    {
+    [[nodiscard]] il::support::SourceLoc sourceLocation() const noexcept {
         return curLoc_;
     }
 
     /// @brief Set the current source location for IL emission.
-    void setSourceLocation(il::support::SourceLoc loc) noexcept
-    {
+    void setSourceLocation(il::support::SourceLoc loc) noexcept {
         curLoc_ = loc;
     }
 
@@ -367,8 +363,7 @@ class Lowerer
     //=========================================================================
 
     /// @brief A temporary value pending release at statement boundary.
-    struct DeferredRelease
-    {
+    struct DeferredRelease {
         Value value;     ///< The temporary SSA value to release.
         bool isString;   ///< true = rt_str_release_maybe; false = managed object release.
         size_t blockIdx; ///< Block where this temp was defined (for SSA safety).
@@ -422,15 +417,13 @@ class Lowerer
     /// @brief Get a block by index.
     /// @param idx Block index.
     /// @return Reference to the BasicBlock.
-    BasicBlock &getBlock(size_t idx)
-    {
+    BasicBlock &getBlock(size_t idx) {
         return blockMgr_.getBlock(idx);
     }
 
     /// @brief Check if current block is terminated.
     /// @return True if the current block has a terminator.
-    bool isTerminated() const
-    {
+    bool isTerminated() const {
         return blockMgr_.isTerminated();
     }
 
@@ -1190,8 +1183,7 @@ class Lowerer
     /// @{
     //=========================================================================
 
-    struct PatternValue
-    {
+    struct PatternValue {
         Value value;
         TypeRef type;
     };

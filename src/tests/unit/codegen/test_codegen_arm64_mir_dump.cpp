@@ -19,37 +19,31 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
 // Helper to capture stderr during cmd_codegen_arm64 execution
-class StderrCapture
-{
+class StderrCapture {
   public:
-    StderrCapture()
-    {
+    StderrCapture() {
         oldBuf_ = std::cerr.rdbuf(captured_.rdbuf());
     }
 
-    ~StderrCapture()
-    {
+    ~StderrCapture() {
         std::cerr.rdbuf(oldBuf_);
     }
 
-    std::string str() const
-    {
+    std::string str() const {
         return captured_.str();
     }
 
@@ -59,8 +53,7 @@ class StderrCapture
 };
 
 // Test: --dump-mir-before-ra produces MIR output
-TEST(Arm64MIRDump, BeforeRA_ProducesMIROutput)
-{
+TEST(Arm64MIRDump, BeforeRA_ProducesMIROutput) {
     const std::string in = outPath("mir_dump_before.il");
     const std::string out = outPath("mir_dump_before.s");
     const std::string il = "il 0.1\n"
@@ -91,8 +84,7 @@ TEST(Arm64MIRDump, BeforeRA_ProducesMIROutput)
 }
 
 // Test: --dump-mir-after-ra produces output with physical registers
-TEST(Arm64MIRDump, AfterRA_ShowsPhysicalRegs)
-{
+TEST(Arm64MIRDump, AfterRA_ShowsPhysicalRegs) {
     const std::string in = outPath("mir_dump_after.il");
     const std::string out = outPath("mir_dump_after.s");
     const std::string il = "il 0.1\n"
@@ -121,8 +113,7 @@ TEST(Arm64MIRDump, AfterRA_ShowsPhysicalRegs)
 }
 
 // Test: --dump-mir-full produces both before and after RA dumps
-TEST(Arm64MIRDump, Full_ShowsBothPhases)
-{
+TEST(Arm64MIRDump, Full_ShowsBothPhases) {
     const std::string in = outPath("mir_dump_full.il");
     const std::string out = outPath("mir_dump_full.s");
     const std::string il = "il 0.1\n"
@@ -148,8 +139,7 @@ TEST(Arm64MIRDump, Full_ShowsBothPhases)
 }
 
 // Test: MIR dump shows expected opcodes
-TEST(Arm64MIRDump, ShowsExpectedOpcodes)
-{
+TEST(Arm64MIRDump, ShowsExpectedOpcodes) {
     const std::string in = outPath("mir_dump_opcodes.il");
     const std::string out = outPath("mir_dump_opcodes.s");
     const std::string il = "il 0.1\n"
@@ -176,8 +166,7 @@ TEST(Arm64MIRDump, ShowsExpectedOpcodes)
     EXPECT_NE(stderrOutput.find("Ret"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

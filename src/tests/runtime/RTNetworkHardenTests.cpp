@@ -51,16 +51,14 @@ typedef int sock_t;
 #endif
 
 // ── Trap interception ──────────────────────────────────────────────────────
-namespace
-{
+namespace {
 jmp_buf g_trap_jmp;
 const char *g_last_trap = nullptr;
 bool g_trap_expected = false;
 int g_trap_count = 0;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     g_trap_count++;
     if (g_trap_expected)
@@ -74,13 +72,11 @@ extern "C" int rt_trap_get_net_code(void);
 
 /// Expect a trap to fire; capture it and continue.
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
         g_last_trap = nullptr;                                                                     \
         g_trap_count = 0;                                                                          \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             expr;                                                                                  \
             assert(false && "Expected trap did not occur");                                        \
         }                                                                                          \
@@ -89,8 +85,7 @@ extern "C" int rt_trap_get_net_code(void);
 
 // ── Platform init/cleanup ─────────────────────────────────────────────────
 
-static void net_init()
-{
+static void net_init() {
 #if defined(_WIN32)
     WSADATA wsa;
     int rc = WSAStartup(MAKEWORD(2, 2), &wsa);
@@ -98,8 +93,7 @@ static void net_init()
 #endif
 }
 
-static void net_cleanup()
-{
+static void net_cleanup() {
 #if defined(_WIN32)
     WSACleanup();
 #endif
@@ -108,8 +102,7 @@ static void net_cleanup()
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 /// Create a localhost TCP listener on a random port; returns socket and port.
-static sock_t make_listener(int *out_port)
-{
+static sock_t make_listener(int *out_port) {
     sock_t fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd == SOCK_INVALID)
         return SOCK_INVALID;
@@ -123,15 +116,13 @@ static sock_t make_listener(int *out_port)
     addr.sin_port = 0;
 
     int rc = bind(fd, (struct sockaddr *)&addr, sizeof(addr));
-    if (rc != 0)
-    {
+    if (rc != 0) {
         SOCK_CLOSE(fd);
         return SOCK_INVALID;
     }
 
     rc = listen(fd, 1);
-    if (rc != 0)
-    {
+    if (rc != 0) {
         SOCK_CLOSE(fd);
         return SOCK_INVALID;
     }
@@ -148,8 +139,7 @@ static sock_t make_listener(int *out_port)
 }
 
 /// Platform-portable microsecond sleep.
-static void sleep_us(int us)
-{
+static void sleep_us(int us) {
 #if defined(_WIN32)
     Sleep((unsigned)(us / 1000));
 #else
@@ -158,8 +148,7 @@ static void sleep_us(int us)
 }
 
 // ── Scenario 1: Connect to nonexistent host ────────────────────────────────
-static void test_connect_nonexistent_host()
-{
+static void test_connect_nonexistent_host() {
     rt_string host = rt_string_from_bytes("this.host.does.not.exist.invalid", 32);
     EXPECT_TRAP(rt_tcp_connect_for(host, 80, 2000));
 
@@ -172,8 +161,7 @@ static void test_connect_nonexistent_host()
 }
 
 // ── Scenario 2: Connect to a port that refuses ─────────────────────────────
-static void test_connect_refused_port()
-{
+static void test_connect_refused_port() {
     // Port 1 is almost certainly not listening on localhost.
     rt_string host = rt_string_from_bytes("127.0.0.1", 9);
     EXPECT_TRAP(rt_tcp_connect_for(host, 1, 2000));
@@ -188,12 +176,10 @@ static void test_connect_refused_port()
 }
 
 // ── Scenario 3: Send after remote close (SIGPIPE test) ─────────────────────
-static void test_send_after_remote_close()
-{
+static void test_send_after_remote_close() {
     int port = 0;
     sock_t listener = make_listener(&port);
-    if (listener == SOCK_INVALID)
-    {
+    if (listener == SOCK_INVALID) {
         printf("  SKIP: SendAfterRemoteClose → local bind unavailable in this environment\n");
         return;
     }
@@ -217,13 +203,11 @@ static void test_send_after_remote_close()
     // we must NOT crash via SIGPIPE.
     void *data = rt_bytes_new(1024);
     bool trapped = false;
-    for (int attempt = 0; attempt < 20; ++attempt)
-    {
+    for (int attempt = 0; attempt < 20; ++attempt) {
         g_trap_expected = true;
         g_last_trap = nullptr;
         g_trap_count = 0;
-        if (setjmp(g_trap_jmp) == 0)
-        {
+        if (setjmp(g_trap_jmp) == 0) {
             rt_tcp_send(conn, data);
             g_trap_expected = false;
             // Send succeeded (kernel buffered) — wait for RST and retry.
@@ -248,12 +232,10 @@ static void test_send_after_remote_close()
 }
 
 // ── Scenario 4: Recv on a closed connection ────────────────────────────────
-static void test_recv_on_closed_connection()
-{
+static void test_recv_on_closed_connection() {
     int port = 0;
     sock_t listener = make_listener(&port);
-    if (listener == SOCK_INVALID)
-    {
+    if (listener == SOCK_INVALID) {
         printf("  SKIP: RecvOnClosedConnection → local bind unavailable in this environment\n");
         return;
     }
@@ -281,8 +263,7 @@ static void test_recv_on_closed_connection()
 }
 
 // ── Scenario 5: DNS lookup for nonexistent domain ──────────────────────────
-static void test_dns_nonexistent_domain()
-{
+static void test_dns_nonexistent_domain() {
     rt_string domain = rt_string_from_bytes("nonexistent.invalid", 19);
     EXPECT_TRAP(rt_dns_resolve(domain));
 
@@ -298,8 +279,7 @@ static void test_dns_nonexistent_domain()
 // Note: This test is skipped if rt_http_get is not available (link-time check).
 // The HTTP functions wrap rt_tcp_connect which we've already tested, so we
 // verify the URL validation path specifically.
-static void test_http_malformed_url()
-{
+static void test_http_malformed_url() {
     // rt_url_parse traps on empty URLs (the parser is lenient for
     // scheme-less strings, treating them as relative path references).
     rt_string bad_url = rt_string_from_bytes("", 0);
@@ -316,12 +296,10 @@ static void test_http_malformed_url()
 }
 
 // ── Scenario 7: Connection stall mid-transfer (recv timeout) ───────────────
-static void test_connection_stall_mid_transfer()
-{
+static void test_connection_stall_mid_transfer() {
     int port = 0;
     sock_t listener = make_listener(&port);
-    if (listener == SOCK_INVALID)
-    {
+    if (listener == SOCK_INVALID) {
         printf("  SKIP: ConnectionStallMidTransfer → local bind unavailable in this environment\n");
         return;
     }
@@ -361,8 +339,7 @@ static void test_connection_stall_mid_transfer()
 }
 
 // ── Scenario 8: Network unreachable (RFC 5737 TEST-NET) ────────────────────
-static void test_network_unreachable()
-{
+static void test_network_unreachable() {
     // 192.0.2.1 is RFC 5737 TEST-NET-1 — should be unreachable on any real network.
     rt_string host = rt_string_from_bytes("192.0.2.1", 9);
     EXPECT_TRAP(rt_tcp_connect_for(host, 80, 1000));
@@ -376,8 +353,7 @@ static void test_network_unreachable()
 }
 
 // ── Scenario 9: Resolve IPv4 for nonexistent domain ────────────────────────
-static void test_dns_resolve4_nonexistent()
-{
+static void test_dns_resolve4_nonexistent() {
     rt_string domain = rt_string_from_bytes("nohost.invalid", 14);
     EXPECT_TRAP(rt_dns_resolve4(domain));
 
@@ -389,8 +365,7 @@ static void test_dns_resolve4_nonexistent()
 }
 
 // ── Scenario 10: Reverse DNS for non-routable address ──────────────────────
-static void test_dns_reverse_invalid()
-{
+static void test_dns_reverse_invalid() {
     rt_string addr = rt_string_from_bytes("192.0.2.1", 9);
     EXPECT_TRAP(rt_dns_reverse(addr));
 
@@ -402,8 +377,7 @@ static void test_dns_reverse_invalid()
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
-int main()
-{
+int main() {
     net_init();
 
     test_connect_nonexistent_host();

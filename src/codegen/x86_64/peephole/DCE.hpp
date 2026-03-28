@@ -29,8 +29,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::x64::peephole
-{
+namespace viper::codegen::x64::peephole {
 
 /// @brief Run dead code elimination on a basic block.
 /// @return Number of instructions eliminated.

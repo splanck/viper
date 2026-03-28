@@ -26,8 +26,7 @@
 #error "PARSE_ERROR_DIR must be defined"
 #endif
 
-int main()
-{
+int main() {
     const char *path = PARSE_ERROR_DIR "/block_param_extra_commas.il";
     std::ifstream in(path);
     std::stringstream buffer;

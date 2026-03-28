@@ -34,12 +34,10 @@
 using namespace il::core;
 using namespace il::transform;
 
-namespace
-{
+namespace {
 
 /// Build a fibonacci module with the double self-recursion pattern.
-Module buildFibModule()
-{
+Module buildFibModule() {
     Module module;
 
     Function fn;
@@ -192,8 +190,7 @@ Module buildFibModule()
 }
 
 /// Build a function with only one self-recursive call (should NOT transform).
-Module buildSingleRecursionModule()
-{
+Module buildSingleRecursionModule() {
     Module module;
 
     Function fn;
@@ -292,8 +289,7 @@ Module buildSingleRecursionModule()
 }
 
 /// Count self-recursive calls in a function.
-size_t countSelfCalls(const Function &fn)
-{
+size_t countSelfCalls(const Function &fn) {
     size_t count = 0;
     for (const auto &bb : fn.blocks)
         for (const auto &instr : bb.instructions)
@@ -303,8 +299,7 @@ size_t countSelfCalls(const Function &fn)
 }
 
 /// Find a block by label.
-const BasicBlock *findBlock(const Function &fn, const std::string &label)
-{
+const BasicBlock *findBlock(const Function &fn, const std::string &label) {
     for (const auto &bb : fn.blocks)
         if (bb.label == label)
             return &bb;
@@ -314,8 +309,7 @@ const BasicBlock *findBlock(const Function &fn, const std::string &label)
 } // namespace
 
 /// The pass should transform fib's double recursion into single recursion + loop.
-TEST(SiblingRecursion, TransformsFib)
-{
+TEST(SiblingRecursion, TransformsFib) {
     Module module = buildFibModule();
     auto &fn = module.functions[0];
 
@@ -350,10 +344,8 @@ TEST(SiblingRecursion, TransformsFib)
     const auto &entryTerm = entryBlock->instructions.back();
     ASSERT_EQ(entryTerm.op, Opcode::CBr);
     // Find the branch arm targeting "recurse" and check it passes 2 args.
-    for (size_t i = 0; i < entryTerm.labels.size(); ++i)
-    {
-        if (entryTerm.labels[i] == "recurse")
-        {
+    for (size_t i = 0; i < entryTerm.labels.size(); ++i) {
+        if (entryTerm.labels[i] == "recurse") {
             ASSERT_EQ(entryTerm.brArgs[i].size(), 2U);
             // Second arg should be constInt(0).
             EXPECT_EQ(entryTerm.brArgs[i][1].kind, Value::Kind::ConstInt);
@@ -363,8 +355,7 @@ TEST(SiblingRecursion, TransformsFib)
 }
 
 /// Single recursion should NOT be transformed.
-TEST(SiblingRecursion, DoesNotTransformSingleRecursion)
-{
+TEST(SiblingRecursion, DoesNotTransformSingleRecursion) {
     Module module = buildSingleRecursionModule();
     auto &fn = module.functions[0];
 
@@ -381,8 +372,7 @@ TEST(SiblingRecursion, DoesNotTransformSingleRecursion)
 }
 
 /// Transformed fib should produce valid IL that passes the verifier.
-TEST(SiblingRecursion, ProducesValidIL)
-{
+TEST(SiblingRecursion, ProducesValidIL) {
     Module module = buildFibModule();
     auto &fn = module.functions[0];
 
@@ -392,8 +382,7 @@ TEST(SiblingRecursion, ProducesValidIL)
     pass.run(fn, analysis);
 
     auto result = il::verify::Verifier::verify(module);
-    if (!result)
-    {
+    if (!result) {
         std::ostringstream oss;
         il::support::printDiag(result.error(), oss);
         std::cerr << "Verifier failed: " << oss.str() << "\n";
@@ -402,8 +391,7 @@ TEST(SiblingRecursion, ProducesValidIL)
 }
 
 /// Integration test: the O2 pipeline includes sibling-recursion and produces valid IL.
-TEST(SiblingRecursion, O2PipelineIntegration)
-{
+TEST(SiblingRecursion, O2PipelineIntegration) {
     Module module = buildFibModule();
 
     PassManager pm;
@@ -416,8 +404,7 @@ TEST(SiblingRecursion, O2PipelineIntegration)
 }
 
 /// @brief Main.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

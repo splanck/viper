@@ -29,8 +29,7 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::ra
-{
+namespace viper::codegen::ra {
 
 /// @brief Documents the interface a backend must implement for shared RA algorithms.
 ///
@@ -56,8 +55,7 @@ namespace viper::codegen::ra
 ///     Returns the distance (in instruction indices) to the next use of the
 ///     given vreg. Returns UINT_MAX if no future use exists.
 ///
-struct ArchTraitsDocumentation
-{
+struct ArchTraitsDocumentation {
     using RegId = uint16_t;
 
     // Not instantiated — this struct exists only for documentation.
@@ -82,19 +80,16 @@ struct ArchTraitsDocumentation
 /// @return The vreg ID with the furthest next use, or the first element if
 ///         all distances are equal. Returns 0 if the active set is empty.
 template <typename GetNextUse>
-uint16_t selectFurthestVictim(const std::vector<uint16_t> &activeSet, GetNextUse getNextUse)
-{
+uint16_t selectFurthestVictim(const std::vector<uint16_t> &activeSet, GetNextUse getNextUse) {
     if (activeSet.empty())
         return 0;
 
     uint16_t bestVreg = activeSet.front();
     unsigned bestDist = getNextUse(bestVreg);
 
-    for (std::size_t i = 1; i < activeSet.size(); ++i)
-    {
+    for (std::size_t i = 1; i < activeSet.size(); ++i) {
         const unsigned dist = getNextUse(activeSet[i]);
-        if (dist > bestDist)
-        {
+        if (dist > bestDist) {
             bestDist = dist;
             bestVreg = activeSet[i];
         }
@@ -114,19 +109,16 @@ uint16_t selectFurthestVictim(const std::vector<uint16_t> &activeSet, GetNextUse
 /// @param getLastUse Callable providing the last-use position for each vreg.
 /// @return The vreg ID that was used least recently.
 template <typename GetLastUse>
-uint16_t selectLRUVictim(const std::vector<uint16_t> &activeSet, GetLastUse getLastUse)
-{
+uint16_t selectLRUVictim(const std::vector<uint16_t> &activeSet, GetLastUse getLastUse) {
     if (activeSet.empty())
         return 0;
 
     uint16_t bestVreg = activeSet.front();
     unsigned bestTime = getLastUse(bestVreg);
 
-    for (std::size_t i = 1; i < activeSet.size(); ++i)
-    {
+    for (std::size_t i = 1; i < activeSet.size(); ++i) {
         const unsigned time = getLastUse(activeSet[i]);
-        if (time < bestTime)
-        {
+        if (time < bestTime) {
             bestTime = time;
             bestVreg = activeSet[i];
         }

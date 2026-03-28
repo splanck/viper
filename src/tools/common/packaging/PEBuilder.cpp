@@ -32,11 +32,9 @@
 #include <fstream>
 #include <stdexcept>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
-namespace
-{
+namespace {
 
 constexpr uint32_t kFileAlignment = 0x200;
 constexpr uint32_t kSectionAlignment = 0x1000;
@@ -53,21 +51,18 @@ constexpr uint32_t kSectionHeaderSize = 40;
 constexpr uint32_t kNumDataDirectories = 16;
 
 /// @brief Round up to alignment boundary.
-uint32_t alignUp(uint32_t value, uint32_t alignment)
-{
+uint32_t alignUp(uint32_t value, uint32_t alignment) {
     return (value + alignment - 1) & ~(alignment - 1);
 }
 
 /// @brief Write a little-endian uint16_t to a buffer at given offset.
-void putLE16(std::vector<uint8_t> &buf, size_t offset, uint16_t val)
-{
+void putLE16(std::vector<uint8_t> &buf, size_t offset, uint16_t val) {
     buf[offset + 0] = static_cast<uint8_t>(val & 0xFF);
     buf[offset + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
 }
 
 /// @brief Write a little-endian uint32_t to a buffer at given offset.
-void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val)
-{
+void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val) {
     buf[offset + 0] = static_cast<uint8_t>(val & 0xFF);
     buf[offset + 1] = static_cast<uint8_t>((val >> 8) & 0xFF);
     buf[offset + 2] = static_cast<uint8_t>((val >> 16) & 0xFF);
@@ -75,22 +70,19 @@ void putLE32(std::vector<uint8_t> &buf, size_t offset, uint32_t val)
 }
 
 /// @brief Write a little-endian uint64_t to a buffer at given offset.
-void putLE64(std::vector<uint8_t> &buf, size_t offset, uint64_t val)
-{
+void putLE64(std::vector<uint8_t> &buf, size_t offset, uint64_t val) {
     putLE32(buf, offset, static_cast<uint32_t>(val & 0xFFFFFFFF));
     putLE32(buf, offset + 4, static_cast<uint32_t>(val >> 32));
 }
 
 /// @brief Append a little-endian uint16_t.
-void appendLE16(std::vector<uint8_t> &buf, uint16_t val)
-{
+void appendLE16(std::vector<uint8_t> &buf, uint16_t val) {
     buf.push_back(static_cast<uint8_t>(val & 0xFF));
     buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
 }
 
 /// @brief Append a little-endian uint32_t.
-void appendLE32(std::vector<uint8_t> &buf, uint32_t val)
-{
+void appendLE32(std::vector<uint8_t> &buf, uint32_t val) {
     buf.push_back(static_cast<uint8_t>(val & 0xFF));
     buf.push_back(static_cast<uint8_t>((val >> 8) & 0xFF));
     buf.push_back(static_cast<uint8_t>((val >> 16) & 0xFF));
@@ -98,15 +90,13 @@ void appendLE32(std::vector<uint8_t> &buf, uint32_t val)
 }
 
 /// @brief Pad buffer to alignment boundary with zeros.
-void padTo(std::vector<uint8_t> &buf, uint32_t alignment)
-{
+void padTo(std::vector<uint8_t> &buf, uint32_t alignment) {
     size_t aligned = alignUp(static_cast<uint32_t>(buf.size()), alignment);
     buf.resize(aligned, 0);
 }
 
 /// @brief Section descriptor during layout.
-struct SectionLayout
-{
+struct SectionLayout {
     char name[8];
     uint32_t virtualSize;
     uint32_t virtualAddress;
@@ -126,8 +116,7 @@ struct SectionLayout
 ///   5. Import Address Tables: mirrors ILT layout
 ///
 /// Returns: (rdataBytes, importDirRVA, importDirSize, iatRVA, iatSize)
-struct ImportResult
-{
+struct ImportResult {
     std::vector<uint8_t> data;
     uint32_t importDirRVA;
     uint32_t importDirSize;
@@ -135,8 +124,7 @@ struct ImportResult
     uint32_t iatSize;
 };
 
-ImportResult buildImportTables(const std::vector<PEImport> &imports, uint32_t rdataRVA)
-{
+ImportResult buildImportTables(const std::vector<PEImport> &imports, uint32_t rdataRVA) {
     ImportResult result{};
     if (imports.empty())
         return result;
@@ -188,8 +176,7 @@ ImportResult buildImportTables(const std::vector<PEImport> &imports, uint32_t rd
     uint32_t curDllNameOff = dllNameOff;
     uint32_t curIatOff = iatOff;
 
-    for (size_t i = 0; i < imports.size(); i++)
-    {
+    for (size_t i = 0; i < imports.size(); i++) {
         const auto &imp = imports[i];
 
         // IDT entry (20 bytes at idtOff + i*20)
@@ -205,8 +192,7 @@ ImportResult buildImportTables(const std::vector<PEImport> &imports, uint32_t rd
         curDllNameOff += static_cast<uint32_t>(imp.dllName.size() + 1);
 
         // ILT + IAT + Hint/Name entries for this DLL
-        for (const auto &fn : imp.functions)
-        {
+        for (const auto &fn : imp.functions) {
             // Hint/Name entry at curHintOff
             uint32_t hintNameRVA = rdataRVA + curHintOff;
             putLE16(buf, curHintOff, 0); // Hint = 0 (lookup by name)
@@ -250,24 +236,21 @@ ImportResult buildImportTables(const std::vector<PEImport> &imports, uint32_t rd
 ///   - RT_ICON (type 3): one resource per icon image, IDs 1..N
 ///   - RT_GROUP_ICON (type 14): GRPICONDIR header linking to RT_ICONs
 ///   - RT_MANIFEST (type 24): UAC manifest XML
-struct ResourceResult
-{
+struct ResourceResult {
     std::vector<uint8_t> data;
     uint32_t rsrcRVA; // filled in by caller
     uint32_t rsrcSize;
 };
 
 /// @brief A single resource data item to embed.
-struct ResItem
-{
+struct ResItem {
     uint16_t typeId;           ///< RT_ICON=3, RT_GROUP_ICON=14, RT_MANIFEST=24
     uint16_t nameId;           ///< Resource name/ID within the type
     std::vector<uint8_t> data; ///< Raw resource data
 };
 
 /// @brief Parse ICO data into RT_ICON + RT_GROUP_ICON resource items.
-void parseIcoToResources(const std::vector<uint8_t> &ico, std::vector<ResItem> &items)
-{
+void parseIcoToResources(const std::vector<uint8_t> &ico, std::vector<ResItem> &items) {
     if (ico.size() < 6)
         return;
 
@@ -282,8 +265,7 @@ void parseIcoToResources(const std::vector<uint8_t> &ico, std::vector<ResItem> &
     // Copy ICONDIR header (6 bytes)
     grpIcon.insert(grpIcon.end(), ico.begin(), ico.begin() + 6);
 
-    for (uint16_t i = 0; i < count; i++)
-    {
+    for (uint16_t i = 0; i < count; i++) {
         size_t entryOff = 6 + i * 16;
         // ICONDIRENTRY: w(1) h(1) colorCount(1) reserved(1) planes(2) bitCount(2)
         //               sizeInBytes(4) fileOffset(4) = 16 bytes
@@ -302,8 +284,7 @@ void parseIcoToResources(const std::vector<uint8_t> &ico, std::vector<ResItem> &
         grpIcon.push_back(static_cast<uint8_t>((iconId >> 8) & 0xFF));
 
         // Extract the actual icon image data
-        if (imgOffset + imgSize <= ico.size())
-        {
+        if (imgOffset + imgSize <= ico.size()) {
             ResItem icon;
             icon.typeId = 3; // RT_ICON
             icon.nameId = iconId;
@@ -322,8 +303,7 @@ void parseIcoToResources(const std::vector<uint8_t> &ico, std::vector<ResItem> &
 
 ResourceResult buildResourceSection(const std::string &manifest,
                                     const std::vector<uint8_t> &iconData,
-                                    uint32_t rsrcRVA)
-{
+                                    uint32_t rsrcRVA) {
     ResourceResult result{};
 
     // Collect all resource items
@@ -332,8 +312,7 @@ ResourceResult buildResourceSection(const std::string &manifest,
     if (!iconData.empty())
         parseIcoToResources(iconData, items);
 
-    if (!manifest.empty())
-    {
+    if (!manifest.empty()) {
         ResItem man;
         man.typeId = 24; // RT_MANIFEST
         man.nameId = 1;
@@ -345,20 +324,16 @@ ResourceResult buildResourceSection(const std::string &manifest,
         return result;
 
     // Group items by type
-    struct TypeGroup
-    {
+    struct TypeGroup {
         uint16_t typeId;
         std::vector<size_t> itemIndices; // indices into items[]
     };
 
     std::vector<TypeGroup> types;
-    for (size_t i = 0; i < items.size(); i++)
-    {
+    for (size_t i = 0; i < items.size(); i++) {
         bool found = false;
-        for (auto &tg : types)
-        {
-            if (tg.typeId == items[i].typeId)
-            {
+        for (auto &tg : types) {
+            if (tg.typeId == items[i].typeId) {
                 tg.itemIndices.push_back(i);
                 found = true;
                 break;
@@ -369,9 +344,9 @@ ResourceResult buildResourceSection(const std::string &manifest,
     }
 
     // Sort types by ID (Windows requires sorted entries)
-    std::sort(types.begin(),
-              types.end(),
-              [](const TypeGroup &a, const TypeGroup &b) { return a.typeId < b.typeId; });
+    std::sort(types.begin(), types.end(), [](const TypeGroup &a, const TypeGroup &b) {
+        return a.typeId < b.typeId;
+    });
 
     // Calculate layout:
     // Level 1 (Type dir):    16 + types.size()*8
@@ -417,8 +392,7 @@ ResourceResult buildResourceSection(const std::string &manifest,
     std::vector<uint32_t> nameDirOffsets(numTypes);
     std::vector<std::vector<uint32_t>> langDirOffsetsPerType(numTypes);
 
-    for (uint32_t t = 0; t < numTypes; t++)
-    {
+    for (uint32_t t = 0; t < numTypes; t++) {
         nameDirOffsets[t] = off;
         uint32_t numNames = static_cast<uint32_t>(types[t].itemIndices.size());
         putLE16(buf, off + 14, static_cast<uint16_t>(numNames));
@@ -430,10 +404,8 @@ ResourceResult buildResourceSection(const std::string &manifest,
     }
 
     // Level 3: Language directories (one per item)
-    for (uint32_t t = 0; t < numTypes; t++)
-    {
-        for (uint32_t n = 0; n < types[t].itemIndices.size(); n++)
-        {
+    for (uint32_t t = 0; t < numTypes; t++) {
+        for (uint32_t n = 0; n < types[t].itemIndices.size(); n++) {
             langDirOffsetsPerType[t][n] = off;
             putLE16(buf, off + 14, 1);      // 1 language entry
             putLE32(buf, off + 16, 0x0409); // en-US
@@ -451,8 +423,7 @@ ResourceResult buildResourceSection(const std::string &manifest,
     // ─── Fill in offsets ───────────────────────────────────────────────
 
     // Type entries → name directories
-    for (uint32_t t = 0; t < numTypes; t++)
-    {
+    for (uint32_t t = 0; t < numTypes; t++) {
         uint32_t entryOff = typeEntriesOff + t * 8;
         putLE32(buf, entryOff, types[t].typeId);
         putLE32(buf, entryOff + 4, nameDirOffsets[t] | 0x80000000);
@@ -460,11 +431,9 @@ ResourceResult buildResourceSection(const std::string &manifest,
 
     // Name entries → language directories
     uint32_t itemIdx = 0;
-    for (uint32_t t = 0; t < numTypes; t++)
-    {
+    for (uint32_t t = 0; t < numTypes; t++) {
         uint32_t nameEntryOff = nameDirOffsets[t] + 16;
-        for (uint32_t n = 0; n < types[t].itemIndices.size(); n++)
-        {
+        for (uint32_t n = 0; n < types[t].itemIndices.size(); n++) {
             size_t ii = types[t].itemIndices[n];
             putLE32(buf, nameEntryOff, items[ii].nameId);
             putLE32(buf, nameEntryOff + 4, langDirOffsetsPerType[t][n] | 0x80000000);
@@ -472,8 +441,7 @@ ResourceResult buildResourceSection(const std::string &manifest,
         }
 
         // Lang entries → data entries
-        for (uint32_t n = 0; n < types[t].itemIndices.size(); n++)
-        {
+        for (uint32_t n = 0; n < types[t].itemIndices.size(); n++) {
             uint32_t langEntryOff = langDirOffsetsPerType[t][n] + 16 + 4;
             // Point to data entry (no high bit = leaf)
             putLE32(buf, langEntryOff, dataEntryBaseOff + itemIdx * 16);
@@ -483,16 +451,12 @@ ResourceResult buildResourceSection(const std::string &manifest,
 
     // Data entries → data blobs
     uint32_t curBlobOff = dataBlobOff;
-    for (uint32_t i = 0; i < totalItems; i++)
-    {
+    for (uint32_t i = 0; i < totalItems; i++) {
         // Resolve flat index: iterate types in order
         size_t flatIdx = 0;
-        for (uint32_t t = 0; t < numTypes; t++)
-        {
-            for (size_t n = 0; n < types[t].itemIndices.size(); n++)
-            {
-                if (flatIdx == i)
-                {
+        for (uint32_t t = 0; t < numTypes; t++) {
+            for (size_t n = 0; n < types[t].itemIndices.size(); n++) {
+                if (flatIdx == i) {
                     size_t ii = types[t].itemIndices[n];
                     uint32_t deOff = dataEntryBaseOff + i * 16;
                     putLE32(buf, deOff + 0, rsrcRVA + curBlobOff); // RVA
@@ -515,8 +479,7 @@ ResourceResult buildResourceSection(const std::string &manifest,
 
 } // namespace
 
-std::vector<uint8_t> buildPE(const PEBuildParams &params)
-{
+std::vector<uint8_t> buildPE(const PEBuildParams &params) {
     // ─── Section planning ──────────────────────────────────────────────
 
     // Count sections: .text is required; .rdata if imports; .rsrc if manifest
@@ -552,8 +515,7 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params)
     // .rdata section (import tables)
     uint32_t rdataIdx = 0;
     ImportResult importResult{};
-    if (hasRdata)
-    {
+    if (hasRdata) {
         rdataIdx = static_cast<uint32_t>(sections.size());
         SectionLayout s{};
         std::memcpy(s.name, ".rdata\0\0", 8);
@@ -563,12 +525,9 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params)
         for (const auto &sec : sections)
             rdataVA += alignUp(sec.virtualSize, kSectionAlignment);
 
-        if (!params.rdataSection.empty())
-        {
+        if (!params.rdataSection.empty()) {
             s.data = params.rdataSection;
-        }
-        else
-        {
+        } else {
             importResult = buildImportTables(params.imports, rdataVA);
             s.data = importResult.data;
         }
@@ -581,8 +540,7 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params)
     // .rsrc section (manifest)
     uint32_t rsrcIdx = 0;
     ResourceResult rsrcResult{};
-    if (hasRsrc)
-    {
+    if (hasRsrc) {
         rsrcIdx = static_cast<uint32_t>(sections.size());
         SectionLayout s{};
         std::memcpy(s.name, ".rsrc\0\0\0", 8);
@@ -603,8 +561,7 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params)
     // Assign virtual addresses and file offsets
     uint32_t nextVA = headersVirtual;
     uint32_t nextFileOff = headersAligned;
-    for (auto &s : sections)
-    {
+    for (auto &s : sections) {
         s.virtualAddress = nextVA;
         s.rawDataOffset = nextFileOff;
         nextVA += alignUp(s.virtualSize, kSectionAlignment);
@@ -700,20 +657,17 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params)
     uint32_t ddOff = optOff + 112;
     // [0] Export = 0,0 (already zeroed)
     // [1] Import Directory
-    if (hasRdata && !params.imports.empty())
-    {
+    if (hasRdata && !params.imports.empty()) {
         putLE32(pe, ddOff + 1 * 8 + 0, importResult.importDirRVA);
         putLE32(pe, ddOff + 1 * 8 + 4, importResult.importDirSize);
     }
     // [2] Resource Table
-    if (hasRsrc)
-    {
+    if (hasRsrc) {
         putLE32(pe, ddOff + 2 * 8 + 0, sections[rsrcIdx].virtualAddress);
         putLE32(pe, ddOff + 2 * 8 + 4, rsrcResult.rsrcSize);
     }
     // [12] IAT
-    if (hasRdata && !params.imports.empty())
-    {
+    if (hasRdata && !params.imports.empty()) {
         putLE32(pe, ddOff + 12 * 8 + 0, importResult.iatRVA);
         putLE32(pe, ddOff + 12 * 8 + 4, importResult.iatSize);
     }
@@ -721,8 +675,7 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params)
     // ─── Section Headers ───────────────────────────────────────────────
 
     uint32_t secHdrOff = optOff + kOptionalHeaderSize;
-    for (size_t i = 0; i < sections.size(); i++)
-    {
+    for (size_t i = 0; i < sections.size(); i++) {
         const auto &s = sections[i];
         uint32_t off = secHdrOff + static_cast<uint32_t>(i) * kSectionHeaderSize;
 
@@ -740,26 +693,22 @@ std::vector<uint8_t> buildPE(const PEBuildParams &params)
 
     // ─── Section Data ──────────────────────────────────────────────────
 
-    for (const auto &s : sections)
-    {
-        if (!s.data.empty())
-        {
+    for (const auto &s : sections) {
+        if (!s.data.empty()) {
             std::memcpy(pe.data() + s.rawDataOffset, s.data.data(), s.data.size());
         }
     }
 
     // ─── Overlay ───────────────────────────────────────────────────────
 
-    if (!params.overlay.empty())
-    {
+    if (!params.overlay.empty()) {
         pe.insert(pe.end(), params.overlay.begin(), params.overlay.end());
     }
 
     return pe;
 }
 
-void writePEToFile(const std::vector<uint8_t> &pe, const std::string &path)
-{
+void writePEToFile(const std::vector<uint8_t> &pe, const std::string &path) {
     std::ofstream f(path, std::ios::binary);
     if (!f)
         throw std::runtime_error("cannot write PE: " + path);
@@ -768,8 +717,7 @@ void writePEToFile(const std::vector<uint8_t> &pe, const std::string &path)
         throw std::runtime_error("failed to write PE: " + path);
 }
 
-std::string generateUacManifest()
-{
+std::string generateUacManifest() {
     return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
            "<assembly xmlns=\"urn:schemas-microsoft-com:asm.v1\" "
            "manifestVersion=\"1.0\">\n"
@@ -782,8 +730,7 @@ std::string generateUacManifest()
            "</assembly>\n";
 }
 
-std::string generateAsInvokerManifest()
-{
+std::string generateAsInvokerManifest() {
     return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
            "<assembly xmlns=\"urn:schemas-microsoft-com:asm.v1\" "
            "manifestVersion=\"1.0\">\n"

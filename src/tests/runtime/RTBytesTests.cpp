@@ -18,15 +18,13 @@
 #include <csetjmp>
 #include <cstring>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
@@ -34,48 +32,41 @@ extern "C" void vm_trap(const char *msg)
 }
 
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
         g_last_trap = nullptr;                                                                     \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             expr;                                                                                  \
             assert(false && "Expected trap did not occur");                                        \
         }                                                                                          \
         g_trap_expected = false;                                                                   \
     } while (0)
 
-static void test_new_creates_zero_filled_bytes()
-{
+static void test_new_creates_zero_filled_bytes() {
     void *bytes = rt_bytes_new(10);
     assert(bytes != nullptr);
     assert(rt_bytes_len(bytes) == 10);
 
     // Should be zero-filled
-    for (int64_t i = 0; i < 10; ++i)
-    {
+    for (int64_t i = 0; i < 10; ++i) {
         assert(rt_bytes_get(bytes, i) == 0);
     }
 }
 
-static void test_new_with_zero_length()
-{
+static void test_new_with_zero_length() {
     void *bytes = rt_bytes_new(0);
     assert(bytes != nullptr);
     assert(rt_bytes_len(bytes) == 0);
 }
 
-static void test_new_with_negative_length()
-{
+static void test_new_with_negative_length() {
     // Negative length should be clamped to 0
     void *bytes = rt_bytes_new(-5);
     assert(bytes != nullptr);
     assert(rt_bytes_len(bytes) == 0);
 }
 
-static void test_from_str()
-{
+static void test_from_str() {
     rt_string str = rt_string_from_bytes("Hello", 5);
     void *bytes = rt_bytes_from_str(str);
 
@@ -87,8 +78,7 @@ static void test_from_str()
     assert(rt_bytes_get(bytes, 4) == 'o');
 }
 
-static void test_from_hex()
-{
+static void test_from_hex() {
     rt_string hex = rt_string_from_bytes("deadbeef", 8);
     void *bytes = rt_bytes_from_hex(hex);
 
@@ -99,8 +89,7 @@ static void test_from_hex()
     assert(rt_bytes_get(bytes, 3) == 0xEF);
 }
 
-static void test_from_hex_uppercase()
-{
+static void test_from_hex_uppercase() {
     rt_string hex = rt_string_from_bytes("CAFEBABE", 8);
     void *bytes = rt_bytes_from_hex(hex);
 
@@ -111,20 +100,17 @@ static void test_from_hex_uppercase()
     assert(rt_bytes_get(bytes, 3) == 0xBE);
 }
 
-static void test_from_hex_odd_length_traps()
-{
+static void test_from_hex_odd_length_traps() {
     rt_string hex = rt_string_from_bytes("abc", 3);
     EXPECT_TRAP(rt_bytes_from_hex(hex));
 }
 
-static void test_from_hex_invalid_char_traps()
-{
+static void test_from_hex_invalid_char_traps() {
     rt_string hex = rt_string_from_bytes("zzzz", 4);
     EXPECT_TRAP(rt_bytes_from_hex(hex));
 }
 
-static void test_get_set()
-{
+static void test_get_set() {
     void *bytes = rt_bytes_new(4);
 
     rt_bytes_set(bytes, 0, 0xDE);
@@ -138,8 +124,7 @@ static void test_get_set()
     assert(rt_bytes_get(bytes, 3) == 0xEF);
 }
 
-static void test_set_clamps_to_byte()
-{
+static void test_set_clamps_to_byte() {
     void *bytes = rt_bytes_new(2);
 
     // Values should be clamped to 0-255
@@ -150,22 +135,19 @@ static void test_set_clamps_to_byte()
     assert(rt_bytes_get(bytes, 1) == 0xFF);
 }
 
-static void test_get_out_of_bounds_traps()
-{
+static void test_get_out_of_bounds_traps() {
     void *bytes = rt_bytes_new(5);
     EXPECT_TRAP(rt_bytes_get(bytes, 5));
     EXPECT_TRAP(rt_bytes_get(bytes, -1));
 }
 
-static void test_set_out_of_bounds_traps()
-{
+static void test_set_out_of_bounds_traps() {
     void *bytes = rt_bytes_new(5);
     EXPECT_TRAP(rt_bytes_set(bytes, 5, 0));
     EXPECT_TRAP(rt_bytes_set(bytes, -1, 0));
 }
 
-static void test_slice()
-{
+static void test_slice() {
     void *bytes = rt_bytes_new(5);
     for (int64_t i = 0; i < 5; ++i)
         rt_bytes_set(bytes, i, (int64_t)(i + 10));
@@ -177,8 +159,7 @@ static void test_slice()
     assert(rt_bytes_get(slice, 2) == 13);
 }
 
-static void test_slice_clamps_bounds()
-{
+static void test_slice_clamps_bounds() {
     void *bytes = rt_bytes_new(5);
     for (int64_t i = 0; i < 5; ++i)
         rt_bytes_set(bytes, i, (int64_t)(i + 1));
@@ -198,8 +179,7 @@ static void test_slice_clamps_bounds()
     assert(rt_bytes_len(slice3) == 0);
 }
 
-static void test_copy()
-{
+static void test_copy() {
     void *src = rt_bytes_new(5);
     for (int64_t i = 0; i < 5; ++i)
         rt_bytes_set(src, i, (int64_t)(i + 1));
@@ -216,8 +196,7 @@ static void test_copy()
     assert(rt_bytes_get(dst, 6) == 0);
 }
 
-static void test_copy_overlapping()
-{
+static void test_copy_overlapping() {
     // Test that copy handles overlapping regions correctly (memmove)
     void *bytes = rt_bytes_new(10);
     for (int64_t i = 0; i < 10; ++i)
@@ -233,8 +212,7 @@ static void test_copy_overlapping()
     assert(rt_bytes_get(bytes, 4) == 7);
 }
 
-static void test_copy_bounds_check()
-{
+static void test_copy_bounds_check() {
     void *src = rt_bytes_new(5);
     void *dst = rt_bytes_new(5);
 
@@ -245,8 +223,7 @@ static void test_copy_bounds_check()
     EXPECT_TRAP(rt_bytes_copy(dst, 0, src, 0, -1)); // negative count
 }
 
-static void test_to_str()
-{
+static void test_to_str() {
     void *bytes = rt_bytes_new(5);
     rt_bytes_set(bytes, 0, 'H');
     rt_bytes_set(bytes, 1, 'e');
@@ -259,8 +236,7 @@ static void test_to_str()
     assert(strncmp(cstr, "Hello", 5) == 0);
 }
 
-static void test_to_hex()
-{
+static void test_to_hex() {
     void *bytes = rt_bytes_new(4);
     rt_bytes_set(bytes, 0, 0xDE);
     rt_bytes_set(bytes, 1, 0xAD);
@@ -272,8 +248,7 @@ static void test_to_hex()
     assert(strcmp(cstr, "deadbeef") == 0);
 }
 
-static void test_to_base64()
-{
+static void test_to_base64() {
     rt_string input = rt_string_from_bytes("hello", 5);
     void *bytes = rt_bytes_from_str(input);
 
@@ -282,8 +257,7 @@ static void test_to_base64()
     assert(strcmp(cstr, "aGVsbG8=") == 0);
 }
 
-static void test_from_base64_to_str()
-{
+static void test_from_base64_to_str() {
     rt_string b64 = rt_string_from_bytes("aGVsbG8=", 8);
     void *bytes = rt_bytes_from_base64(b64);
 
@@ -292,8 +266,7 @@ static void test_from_base64_to_str()
     assert(strcmp(cstr, "hello") == 0);
 }
 
-static void test_base64_empty_roundtrip()
-{
+static void test_base64_empty_roundtrip() {
     void *bytes = rt_bytes_new(0);
     rt_string b64 = rt_bytes_to_base64(bytes);
     assert(rt_string_cstr(b64)[0] == '\0');
@@ -302,15 +275,13 @@ static void test_base64_empty_roundtrip()
     assert(rt_bytes_len(decoded) == 0);
 }
 
-static void test_from_base64_invalid_chars_traps()
-{
+static void test_from_base64_invalid_chars_traps() {
     rt_string b64 = rt_string_from_bytes("!!!!", 4);
     EXPECT_TRAP(rt_bytes_from_base64(b64));
     assert(g_last_trap && strstr(g_last_trap, "Bytes.FromBase64") != nullptr);
 }
 
-static void test_from_base64_bad_padding_traps()
-{
+static void test_from_base64_bad_padding_traps() {
     rt_string b64 = rt_string_from_bytes("AA=A", 4);
     EXPECT_TRAP(rt_bytes_from_base64(b64));
     assert(g_last_trap && strstr(g_last_trap, "Bytes.FromBase64") != nullptr);
@@ -320,8 +291,7 @@ static void test_from_base64_bad_padding_traps()
     assert(g_last_trap && strstr(g_last_trap, "Bytes.FromBase64") != nullptr);
 }
 
-static void test_hex_roundtrip()
-{
+static void test_hex_roundtrip() {
     // Create bytes, convert to hex, convert back
     void *original = rt_bytes_new(8);
     for (int64_t i = 0; i < 8; ++i)
@@ -335,8 +305,7 @@ static void test_hex_roundtrip()
         assert(rt_bytes_get(restored, i) == rt_bytes_get(original, i));
 }
 
-static void test_fill()
-{
+static void test_fill() {
     void *bytes = rt_bytes_new(10);
     rt_bytes_fill(bytes, 0xAB);
 
@@ -344,8 +313,7 @@ static void test_fill()
         assert(rt_bytes_get(bytes, i) == 0xAB);
 }
 
-static void test_fill_clamps_to_byte()
-{
+static void test_fill_clamps_to_byte() {
     void *bytes = rt_bytes_new(3);
     rt_bytes_fill(bytes, 0x12345); // Should use 0x45
 
@@ -353,8 +321,7 @@ static void test_fill_clamps_to_byte()
         assert(rt_bytes_get(bytes, i) == 0x45);
 }
 
-static void test_find()
-{
+static void test_find() {
     void *bytes = rt_bytes_new(10);
     for (int64_t i = 0; i < 10; ++i)
         rt_bytes_set(bytes, i, (int64_t)(i + 1));
@@ -366,8 +333,7 @@ static void test_find()
     assert(rt_bytes_find(bytes, 0) == -1);  // Not found
 }
 
-static void test_find_with_duplicates()
-{
+static void test_find_with_duplicates() {
     void *bytes = rt_bytes_new(5);
     rt_bytes_set(bytes, 0, 1);
     rt_bytes_set(bytes, 1, 2);
@@ -380,8 +346,7 @@ static void test_find_with_duplicates()
     assert(rt_bytes_find(bytes, 1) == 0);
 }
 
-static void test_clone()
-{
+static void test_clone() {
     void *original = rt_bytes_new(5);
     for (int64_t i = 0; i < 5; ++i)
         rt_bytes_set(original, i, (int64_t)(i + 10));
@@ -399,8 +364,7 @@ static void test_clone()
     assert(rt_bytes_get(clone, 0) == 99);
 }
 
-static void test_null_handling()
-{
+static void test_null_handling() {
     // These should return safe defaults
     assert(rt_bytes_len(nullptr) == 0);
     assert(rt_bytes_find(nullptr, 0) == -1);
@@ -426,15 +390,13 @@ static void test_null_handling()
     rt_bytes_fill(nullptr, 0);
 }
 
-static void test_null_traps()
-{
+static void test_null_traps() {
     EXPECT_TRAP(rt_bytes_get(nullptr, 0));
     EXPECT_TRAP(rt_bytes_set(nullptr, 0, 0));
     EXPECT_TRAP(rt_bytes_copy(nullptr, 0, nullptr, 0, 1));
 }
 
-int main()
-{
+int main() {
     test_new_creates_zero_filled_bytes();
     test_new_with_zero_length();
     test_new_with_negative_length();

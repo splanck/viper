@@ -23,8 +23,7 @@
 #include <cassert>
 #include <sstream>
 
-int main()
-{
+int main() {
     using namespace il::core;
     using il::verify::checkBlockTerminators;
     using il::verify::TypeInference;

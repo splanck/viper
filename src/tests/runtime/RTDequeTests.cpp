@@ -17,8 +17,7 @@
 #include <cstdio>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -27,8 +26,7 @@ static void test_result(const char *name, bool passed)
 // Deque Tests
 //=============================================================================
 
-static void test_deque_creation()
-{
+static void test_deque_creation() {
     printf("Testing Deque Creation:\n");
 
     // Test 1: Create empty deque
@@ -47,8 +45,7 @@ static void test_deque_creation()
     printf("\n");
 }
 
-static void test_deque_front_operations()
-{
+static void test_deque_front_operations() {
     printf("Testing Deque Front Operations:\n");
 
     int a = 1, b = 2, c = 3;
@@ -84,8 +81,7 @@ static void test_deque_front_operations()
     printf("\n");
 }
 
-static void test_deque_back_operations()
-{
+static void test_deque_back_operations() {
     printf("Testing Deque Back Operations:\n");
 
     int a = 1, b = 2, c = 3;
@@ -122,8 +118,7 @@ static void test_deque_back_operations()
     printf("\n");
 }
 
-static void test_deque_mixed_operations()
-{
+static void test_deque_mixed_operations() {
     printf("Testing Deque Mixed Operations:\n");
 
     int a = 1, b = 2, c = 3, d_val = 4;
@@ -152,8 +147,7 @@ static void test_deque_mixed_operations()
     printf("\n");
 }
 
-static void test_deque_random_access()
-{
+static void test_deque_random_access() {
     printf("Testing Deque Random Access:\n");
 
     int a = 1, b = 2, c = 3;
@@ -177,8 +171,7 @@ static void test_deque_random_access()
     printf("\n");
 }
 
-static void test_deque_utility()
-{
+static void test_deque_utility() {
     printf("Testing Deque Utility:\n");
 
     int a = 1, b = 2, c = 3;
@@ -231,8 +224,7 @@ static void test_deque_utility()
     printf("\n");
 }
 
-static void test_deque_wraparound()
-{
+static void test_deque_wraparound() {
     printf("Testing Deque Wraparound:\n");
 
     // Test circular buffer wraparound behavior
@@ -270,8 +262,7 @@ static void test_deque_wraparound()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Deque Tests ===\n\n");
 
     test_deque_creation();

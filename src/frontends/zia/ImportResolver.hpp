@@ -53,8 +53,7 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 /// @brief Resolves and merges Zia imports via recursive file loading.
 ///
@@ -64,8 +63,7 @@ namespace il::frontends::zia
 ///          are allowed — when a file is already being processed (in
 ///          inProgressFiles_), the bind is skipped and the declarations are
 ///          resolved through the outer call's completion.
-class ImportResolver
-{
+class ImportResolver {
   public:
     /// @brief Construct an ImportResolver with shared compiler infrastructure.
     /// @param diag Reference to the diagnostic engine for error/warning reporting.

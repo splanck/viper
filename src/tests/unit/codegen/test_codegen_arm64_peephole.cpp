@@ -25,8 +25,7 @@
 using namespace viper::codegen::aarch64;
 
 /// @brief Test that identity GPR moves (mov r, r) are removed.
-TEST(AArch64Peephole, RemoveIdentityMovRR)
-{
+TEST(AArch64Peephole, RemoveIdentityMovRR) {
     MFunction fn{};
     fn.name = "test_identity_mov";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -57,8 +56,7 @@ TEST(AArch64Peephole, RemoveIdentityMovRR)
 }
 
 /// @brief Test that identity FPR moves (fmov d, d) are removed.
-TEST(AArch64Peephole, RemoveIdentityFMovRR)
-{
+TEST(AArch64Peephole, RemoveIdentityFMovRR) {
     MFunction fn{};
     fn.name = "test_identity_fmov";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -87,8 +85,7 @@ TEST(AArch64Peephole, RemoveIdentityFMovRR)
 
 /// @brief Test that consecutive moves are folded.
 /// mov x1, x2; mov x3, x1 -> mov x3, x2 (if x1 is dead)
-TEST(AArch64Peephole, FoldConsecutiveMoves)
-{
+TEST(AArch64Peephole, FoldConsecutiveMoves) {
     MFunction fn{};
     fn.name = "test_fold_moves";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -122,8 +119,7 @@ TEST(AArch64Peephole, FoldConsecutiveMoves)
 
 /// @brief Test that consecutive moves are NOT folded when the intermediate
 /// register is used later.
-TEST(AArch64Peephole, NoFoldWhenIntermediateLive)
-{
+TEST(AArch64Peephole, NoFoldWhenIntermediateLive) {
     MFunction fn{};
     fn.name = "test_no_fold";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -153,8 +149,7 @@ TEST(AArch64Peephole, NoFoldWhenIntermediateLive)
 }
 
 /// @brief Test mixed identity moves and real operations.
-TEST(AArch64Peephole, MixedOperations)
-{
+TEST(AArch64Peephole, MixedOperations) {
     MFunction fn{};
     fn.name = "test_mixed";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -193,8 +188,7 @@ TEST(AArch64Peephole, MixedOperations)
 }
 
 /// @brief Test that peephole produces correct assembly output.
-TEST(AArch64Peephole, EmittedAssemblyNoIdentityMoves)
-{
+TEST(AArch64Peephole, EmittedAssemblyNoIdentityMoves) {
     auto &ti = darwinTarget();
     AsmEmitter emit{ti};
 
@@ -228,8 +222,7 @@ TEST(AArch64Peephole, EmittedAssemblyNoIdentityMoves)
     // Count occurrences of "mov x0"
     std::size_t movCount = 0;
     std::size_t pos = 0;
-    while ((pos = asmText.find("mov x0", pos)) != std::string::npos)
-    {
+    while ((pos = asmText.find("mov x0", pos)) != std::string::npos) {
         ++movCount;
         pos += 6;
     }
@@ -241,8 +234,7 @@ TEST(AArch64Peephole, EmittedAssemblyNoIdentityMoves)
 }
 
 /// @brief Test statistics are accurate.
-TEST(AArch64Peephole, StatsAccuracy)
-{
+TEST(AArch64Peephole, StatsAccuracy) {
     MFunction fn{};
     fn.name = "test_stats";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -273,8 +265,7 @@ TEST(AArch64Peephole, StatsAccuracy)
 }
 
 /// @brief Test that cmp reg, #0 is converted to tst reg, reg.
-TEST(AArch64Peephole, CmpZeroToTst)
-{
+TEST(AArch64Peephole, CmpZeroToTst) {
     MFunction fn{};
     fn.name = "test_cmp_zero";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -320,8 +311,7 @@ TEST(AArch64Peephole, CmpZeroToTst)
 }
 
 /// @brief Test that add/sub with #0 are converted to mov.
-TEST(AArch64Peephole, ArithmeticIdentityAddSub)
-{
+TEST(AArch64Peephole, ArithmeticIdentityAddSub) {
     MFunction fn{};
     fn.name = "test_arith_identity";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -364,8 +354,7 @@ TEST(AArch64Peephole, ArithmeticIdentityAddSub)
 }
 
 /// @brief Test that shift by #0 is converted to mov.
-TEST(AArch64Peephole, ArithmeticIdentityShift)
-{
+TEST(AArch64Peephole, ArithmeticIdentityShift) {
     MFunction fn{};
     fn.name = "test_shift_identity";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -408,8 +397,7 @@ TEST(AArch64Peephole, ArithmeticIdentityShift)
 }
 
 /// @brief Test that tst instruction emits correct assembly.
-TEST(AArch64Peephole, TstEmitsCorrectly)
-{
+TEST(AArch64Peephole, TstEmitsCorrectly) {
     auto &ti = darwinTarget();
     AsmEmitter emit{ti};
 
@@ -441,8 +429,7 @@ TEST(AArch64Peephole, TstEmitsCorrectly)
 }
 
 /// @brief Test that branches to the next block are removed.
-TEST(AArch64Peephole, RemoveBranchToNextBlock)
-{
+TEST(AArch64Peephole, RemoveBranchToNextBlock) {
     MFunction fn{};
     fn.name = "test_br_next";
 
@@ -489,8 +476,7 @@ TEST(AArch64Peephole, RemoveBranchToNextBlock)
     EXPECT_EQ(fn.blocks[2].instrs[0].opc, MOpcode::Br);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

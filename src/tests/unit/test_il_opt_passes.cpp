@@ -25,45 +25,38 @@
 #include <system_error>
 #include <vector>
 
-namespace
-{
+namespace {
 
 bool gUsageCalled = false;
 std::atomic<unsigned long long> gTempFileCounter{0};
 
-struct TempFile
-{
+struct TempFile {
     std::filesystem::path path;
 
-    explicit TempFile(std::string_view suffix)
-    {
+    explicit TempFile(std::string_view suffix) {
         auto id = gTempFileCounter.fetch_add(1, std::memory_order_relaxed);
         path = std::filesystem::temp_directory_path() /
                std::filesystem::path("il_opt_passes-" + std::to_string(id) + std::string(suffix));
     }
 
-    ~TempFile()
-    {
+    ~TempFile() {
         std::error_code ec;
         std::filesystem::remove(path, ec);
     }
 };
 
-std::string readFile(const std::filesystem::path &p)
-{
+std::string readFile(const std::filesystem::path &p) {
     std::ifstream ifs(p);
     return std::string(std::istreambuf_iterator<char>(ifs), std::istreambuf_iterator<char>());
 }
 
 } // namespace
 
-void usage()
-{
+void usage() {
     gUsageCalled = true;
 }
 
-int main()
-{
+int main() {
     TempFile input{".il"};
     TempFile output{".il"};
 
@@ -90,8 +83,7 @@ int main()
 
     std::vector<char *> argv;
     argv.reserve(storage.size());
-    for (auto &arg : storage)
-    {
+    for (auto &arg : storage) {
         argv.push_back(arg.data());
     }
 

@@ -22,8 +22,7 @@ using viper::tui::term::KeyEvent;
 using viper::tui::term::MouseEvent;
 using viper::tui::term::PasteEvent;
 
-TEST(TUI, InputMousePaste)
-{
+TEST(TUI, InputMousePaste) {
     InputDecoder d;
 
     d.feed("\x1b[<0;10;20M");
@@ -63,8 +62,7 @@ TEST(TUI, InputMousePaste)
     ASSERT_TRUE(me.empty());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

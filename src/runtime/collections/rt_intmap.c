@@ -51,16 +51,14 @@
 #define MAP_LOAD_FACTOR_DEN 4
 
 /// @brief Entry in the integer-keyed hash map (collision chain node).
-typedef struct rt_intmap_entry
-{
+typedef struct rt_intmap_entry {
     int64_t key;                  ///< Integer key.
     void *value;                  ///< Retained reference to the value object.
     struct rt_intmap_entry *next; ///< Next entry in collision chain (or NULL).
 } rt_intmap_entry;
 
 /// @brief IntMap (integer-to-object dictionary) implementation structure.
-typedef struct rt_intmap_impl
-{
+typedef struct rt_intmap_impl {
     void **vptr;               ///< Vtable pointer placeholder (for OOP compatibility).
     rt_intmap_entry **buckets; ///< Array of bucket heads (collision chain pointers).
     size_t capacity;           ///< Number of buckets in the hash table.
@@ -71,10 +69,8 @@ typedef struct rt_intmap_impl
 /// @param head Head of the collision chain.
 /// @param key Integer key to search for.
 /// @return Matching entry or NULL.
-static rt_intmap_entry *find_entry(rt_intmap_entry *head, int64_t key)
-{
-    for (rt_intmap_entry *e = head; e; e = e->next)
-    {
+static rt_intmap_entry *find_entry(rt_intmap_entry *head, int64_t key) {
+    for (rt_intmap_entry *e = head; e; e = e->next) {
         if (e->key == key)
             return e;
     }
@@ -83,10 +79,8 @@ static rt_intmap_entry *find_entry(rt_intmap_entry *head, int64_t key)
 
 /// @brief Free an entry and release its value reference.
 /// @param entry Entry to free (NULL is a no-op).
-static void free_entry(rt_intmap_entry *entry)
-{
-    if (entry)
-    {
+static void free_entry(rt_intmap_entry *entry) {
+    if (entry) {
         if (entry->value && rt_obj_release_check0(entry->value))
             rt_obj_free(entry->value);
         free(entry);
@@ -95,8 +89,7 @@ static void free_entry(rt_intmap_entry *entry)
 
 /// @brief Finalizer callback invoked when an IntMap is garbage collected.
 /// @param obj Pointer to the IntMap object being finalized (NULL is a no-op).
-static void rt_intmap_finalize(void *obj)
-{
+static void rt_intmap_finalize(void *obj) {
     if (!obj)
         return;
     rt_intmap_impl *map = (rt_intmap_impl *)obj;
@@ -112,19 +105,16 @@ static void rt_intmap_finalize(void *obj)
 /// @brief Resize the hash table and rehash all entries.
 /// @param map IntMap to resize.
 /// @param new_capacity New number of buckets.
-static void map_resize(rt_intmap_impl *map, size_t new_capacity)
-{
+static void map_resize(rt_intmap_impl *map, size_t new_capacity) {
     rt_intmap_entry **new_buckets =
         (rt_intmap_entry **)calloc(new_capacity, sizeof(rt_intmap_entry *));
     if (!new_buckets)
         return; // Keep old buckets on allocation failure
 
     // Rehash all entries
-    for (size_t i = 0; i < map->capacity; ++i)
-    {
+    for (size_t i = 0; i < map->capacity; ++i) {
         rt_intmap_entry *entry = map->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_intmap_entry *next = entry->next;
             uint64_t hash = rt_fnv1a(&entry->key, sizeof(entry->key));
             size_t idx = hash % new_capacity;
@@ -141,11 +131,9 @@ static void map_resize(rt_intmap_impl *map, size_t new_capacity)
 
 /// @brief Check if resize is needed and perform it.
 /// @param map IntMap to potentially resize.
-static void maybe_resize(rt_intmap_impl *map)
-{
+static void maybe_resize(rt_intmap_impl *map) {
     // Resize when count * DEN > capacity * NUM (i.e., load factor > NUM/DEN)
-    if (map->count * MAP_LOAD_FACTOR_DEN > map->capacity * MAP_LOAD_FACTOR_NUM)
-    {
+    if (map->count * MAP_LOAD_FACTOR_DEN > map->capacity * MAP_LOAD_FACTOR_NUM) {
         if (map->capacity > SIZE_MAX / 2)
             return;
         map_resize(map, map->capacity * 2);
@@ -154,16 +142,14 @@ static void maybe_resize(rt_intmap_impl *map)
 
 /// @brief Create a new empty IntMap.
 /// @return Pointer to the newly created IntMap object, or NULL on failure.
-void *rt_intmap_new(void)
-{
+void *rt_intmap_new(void) {
     rt_intmap_impl *map = (rt_intmap_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_intmap_impl));
     if (!map)
         return NULL;
 
     map->vptr = NULL;
     map->buckets = (rt_intmap_entry **)calloc(MAP_INITIAL_CAPACITY, sizeof(rt_intmap_entry *));
-    if (!map->buckets)
-    {
+    if (!map->buckets) {
         // Can't trap here, just return partially initialized
         map->capacity = 0;
         map->count = 0;
@@ -179,8 +165,7 @@ void *rt_intmap_new(void)
 /// @brief Return the number of key-value pairs in the IntMap.
 /// @param obj IntMap pointer (NULL returns 0).
 /// @return Entry count.
-int64_t rt_intmap_len(void *obj)
-{
+int64_t rt_intmap_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_intmap_impl *)obj)->count;
@@ -189,8 +174,7 @@ int64_t rt_intmap_len(void *obj)
 /// @brief Check whether the IntMap is empty.
 /// @param obj IntMap pointer (NULL returns 1).
 /// @return 1 if empty, 0 otherwise.
-int8_t rt_intmap_is_empty(void *obj)
-{
+int8_t rt_intmap_is_empty(void *obj) {
     return rt_intmap_len(obj) == 0;
 }
 
@@ -198,8 +182,7 @@ int8_t rt_intmap_is_empty(void *obj)
 /// @param obj IntMap pointer (NULL is a no-op).
 /// @param key Integer key.
 /// @param value Value to store (retained by the IntMap).
-void rt_intmap_set(void *obj, int64_t key, void *value)
-{
+void rt_intmap_set(void *obj, int64_t key, void *value) {
     if (!obj)
         return;
 
@@ -212,8 +195,7 @@ void rt_intmap_set(void *obj, int64_t key, void *value)
 
     // Check if key already exists
     rt_intmap_entry *existing = find_entry(map->buckets[idx], key);
-    if (existing)
-    {
+    if (existing) {
         // Update existing entry
         void *old_value = existing->value;
         rt_obj_retain_maybe(value);
@@ -244,8 +226,7 @@ void rt_intmap_set(void *obj, int64_t key, void *value)
 /// @param obj IntMap pointer (NULL returns NULL).
 /// @param key Integer key.
 /// @return Value pointer or NULL if not found.
-void *rt_intmap_get(void *obj, int64_t key)
-{
+void *rt_intmap_get(void *obj, int64_t key) {
     if (!obj)
         return NULL;
 
@@ -265,8 +246,7 @@ void *rt_intmap_get(void *obj, int64_t key)
 /// @param key Integer key.
 /// @param default_value Fallback value when key is absent.
 /// @return Existing value or default_value.
-void *rt_intmap_get_or(void *obj, int64_t key, void *default_value)
-{
+void *rt_intmap_get_or(void *obj, int64_t key, void *default_value) {
     if (!obj)
         return default_value;
 
@@ -285,8 +265,7 @@ void *rt_intmap_get_or(void *obj, int64_t key, void *default_value)
 /// @param obj IntMap pointer (NULL returns 0).
 /// @param key Integer key.
 /// @return 1 if present, 0 otherwise.
-int8_t rt_intmap_has(void *obj, int64_t key)
-{
+int8_t rt_intmap_has(void *obj, int64_t key) {
     if (!obj)
         return 0;
 
@@ -304,8 +283,7 @@ int8_t rt_intmap_has(void *obj, int64_t key)
 /// @param obj IntMap pointer (NULL returns 0).
 /// @param key Integer key to remove.
 /// @return 1 if removed, 0 if not found.
-int8_t rt_intmap_remove(void *obj, int64_t key)
-{
+int8_t rt_intmap_remove(void *obj, int64_t key) {
     if (!obj)
         return 0;
 
@@ -319,10 +297,8 @@ int8_t rt_intmap_remove(void *obj, int64_t key)
     rt_intmap_entry **prev_ptr = &map->buckets[idx];
     rt_intmap_entry *entry = map->buckets[idx];
 
-    while (entry)
-    {
-        if (entry->key == key)
-        {
+    while (entry) {
+        if (entry->key == key) {
             *prev_ptr = entry->next;
             free_entry(entry);
             map->count--;
@@ -337,17 +313,14 @@ int8_t rt_intmap_remove(void *obj, int64_t key)
 
 /// @brief Remove all entries from the IntMap.
 /// @param obj IntMap pointer (NULL is a no-op).
-void rt_intmap_clear(void *obj)
-{
+void rt_intmap_clear(void *obj) {
     if (!obj)
         return;
 
     rt_intmap_impl *map = (rt_intmap_impl *)obj;
-    for (size_t i = 0; i < map->capacity; ++i)
-    {
+    for (size_t i = 0; i < map->capacity; ++i) {
         rt_intmap_entry *entry = map->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_intmap_entry *next = entry->next;
             free_entry(entry);
             entry = next;
@@ -360,8 +333,7 @@ void rt_intmap_clear(void *obj)
 /// @brief Return all keys as a Seq of boxed integers.
 /// @param obj IntMap pointer (NULL returns empty Seq).
 /// @return New Seq containing all keys as boxed i64 values.
-void *rt_intmap_keys(void *obj)
-{
+void *rt_intmap_keys(void *obj) {
     void *result = rt_seq_new();
     if (!obj)
         return result;
@@ -369,11 +341,9 @@ void *rt_intmap_keys(void *obj)
     rt_intmap_impl *map = (rt_intmap_impl *)obj;
 
     // Iterate through all buckets and entries
-    for (size_t i = 0; i < map->capacity; ++i)
-    {
+    for (size_t i = 0; i < map->capacity; ++i) {
         rt_intmap_entry *entry = map->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             void *boxed = rt_box_i64(entry->key);
             rt_seq_push(result, boxed);
             entry = entry->next;
@@ -386,8 +356,7 @@ void *rt_intmap_keys(void *obj)
 /// @brief Return all values as a Seq.
 /// @param obj IntMap pointer (NULL returns empty Seq).
 /// @return New Seq containing all values.
-void *rt_intmap_values(void *obj)
-{
+void *rt_intmap_values(void *obj) {
     void *result = rt_seq_new();
     if (!obj)
         return result;
@@ -395,11 +364,9 @@ void *rt_intmap_values(void *obj)
     rt_intmap_impl *map = (rt_intmap_impl *)obj;
 
     // Iterate through all buckets and entries
-    for (size_t i = 0; i < map->capacity; ++i)
-    {
+    for (size_t i = 0; i < map->capacity; ++i) {
         rt_intmap_entry *entry = map->buckets[i];
-        while (entry)
-        {
+        while (entry) {
             rt_seq_push(result, entry->value);
             entry = entry->next;
         }

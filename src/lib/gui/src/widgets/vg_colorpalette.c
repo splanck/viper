@@ -66,8 +66,7 @@ static const uint32_t g_standard_16_colors[] = {
 // ColorPalette Implementation
 //=============================================================================
 
-vg_colorpalette_t *vg_colorpalette_create(vg_widget_t *parent)
-{
+vg_colorpalette_t *vg_colorpalette_create(vg_widget_t *parent) {
     vg_colorpalette_t *palette = calloc(1, sizeof(vg_colorpalette_t));
     if (!palette)
         return NULL;
@@ -100,33 +99,30 @@ vg_colorpalette_t *vg_colorpalette_create(vg_widget_t *parent)
     palette->base.constraints.min_height = palette->swatch_size;
 
     // Add to parent
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &palette->base);
     }
 
     return palette;
 }
 
-static void colorpalette_destroy(vg_widget_t *widget)
-{
+static void colorpalette_destroy(vg_widget_t *widget) {
     vg_colorpalette_t *palette = (vg_colorpalette_t *)widget;
-    if (palette->colors)
-    {
+    if (palette->colors) {
         free(palette->colors);
         palette->colors = NULL;
     }
     palette->color_count = 0;
 }
 
-static void colorpalette_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void colorpalette_measure(vg_widget_t *widget,
+                                 float available_width,
+                                 float available_height) {
     vg_colorpalette_t *palette = (vg_colorpalette_t *)widget;
     (void)available_width;
     (void)available_height;
 
-    if (palette->color_count == 0 || palette->columns <= 0)
-    {
+    if (palette->color_count == 0 || palette->columns <= 0) {
         widget->measured_width = palette->swatch_size;
         widget->measured_height = palette->swatch_size;
         return;
@@ -143,38 +139,32 @@ static void colorpalette_measure(vg_widget_t *widget, float available_width, flo
     widget->measured_height = total_height;
 
     // Apply constraints
-    if (widget->constraints.min_width > widget->measured_width)
-    {
+    if (widget->constraints.min_width > widget->measured_width) {
         widget->measured_width = widget->constraints.min_width;
     }
-    if (widget->constraints.min_height > widget->measured_height)
-    {
+    if (widget->constraints.min_height > widget->measured_height) {
         widget->measured_height = widget->constraints.min_height;
     }
-    if (widget->constraints.max_width > 0 && widget->measured_width > widget->constraints.max_width)
-    {
+    if (widget->constraints.max_width > 0 &&
+        widget->measured_width > widget->constraints.max_width) {
         widget->measured_width = widget->constraints.max_width;
     }
     if (widget->constraints.max_height > 0 &&
-        widget->measured_height > widget->constraints.max_height)
-    {
+        widget->measured_height > widget->constraints.max_height) {
         widget->measured_height = widget->constraints.max_height;
     }
 }
 
-static void colorpalette_paint(vg_widget_t *widget, void *canvas)
-{
+static void colorpalette_paint(vg_widget_t *widget, void *canvas) {
     vg_colorpalette_t *palette = (vg_colorpalette_t *)widget;
     (void)canvas;
 
-    if (palette->color_count == 0 || !palette->colors)
-    {
+    if (palette->color_count == 0 || !palette->colors) {
         return;
     }
 
     // Draw each color swatch in the grid
-    for (int i = 0; i < palette->color_count; i++)
-    {
+    for (int i = 0; i < palette->color_count; i++) {
         int col = i % palette->columns;
         int row = i / palette->columns;
 
@@ -189,13 +179,10 @@ static void colorpalette_paint(vg_widget_t *widget, void *canvas)
         (void)swatch_y;
 
         // Draw border (highlight if selected)
-        if (i == palette->selected_index)
-        {
+        if (i == palette->selected_index) {
             // Draw selected border (thicker or different color)
             // Placeholder
-        }
-        else
-        {
+        } else {
             // Draw normal border
             // Placeholder
         }
@@ -203,10 +190,8 @@ static void colorpalette_paint(vg_widget_t *widget, void *canvas)
 }
 
 // Helper to find which swatch was clicked
-static int colorpalette_hit_test_swatch(vg_colorpalette_t *palette, float x, float y)
-{
-    if (palette->color_count == 0 || !palette->colors)
-    {
+static int colorpalette_hit_test_swatch(vg_colorpalette_t *palette, float x, float y) {
+    if (palette->color_count == 0 || !palette->colors) {
         return -1;
     }
 
@@ -214,8 +199,7 @@ static int colorpalette_hit_test_swatch(vg_colorpalette_t *palette, float x, flo
     float local_x = x - palette->base.x;
     float local_y = y - palette->base.y;
 
-    if (local_x < 0 || local_y < 0)
-    {
+    if (local_x < 0 || local_y < 0) {
         return -1;
     }
 
@@ -225,54 +209,45 @@ static int colorpalette_hit_test_swatch(vg_colorpalette_t *palette, float x, flo
     int row = (int)(local_y / cell_size);
 
     // Check if within bounds
-    if (col >= palette->columns)
-    {
+    if (col >= palette->columns) {
         return -1;
     }
 
     // Check if within the actual swatch (not in the gap)
     float cell_x = local_x - col * cell_size;
     float cell_y = local_y - row * cell_size;
-    if (cell_x > palette->swatch_size || cell_y > palette->swatch_size)
-    {
+    if (cell_x > palette->swatch_size || cell_y > palette->swatch_size) {
         return -1; // In the gap
     }
 
     int index = row * palette->columns + col;
-    if (index >= palette->color_count)
-    {
+    if (index >= palette->color_count) {
         return -1;
     }
 
     return index;
 }
 
-static bool colorpalette_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool colorpalette_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_colorpalette_t *palette = (vg_colorpalette_t *)widget;
 
-    if (widget->state & VG_STATE_DISABLED)
-    {
+    if (widget->state & VG_STATE_DISABLED) {
         return false;
     }
 
-    if (event->type == VG_EVENT_MOUSE_DOWN || event->type == VG_EVENT_CLICK)
-    {
+    if (event->type == VG_EVENT_MOUSE_DOWN || event->type == VG_EVENT_CLICK) {
         // Hit test to find which swatch was clicked
         int index = colorpalette_hit_test_swatch(palette, event->mouse.x, event->mouse.y);
-        if (index >= 0)
-        {
+        if (index >= 0) {
             palette->selected_index = index;
             widget->needs_paint = true;
 
             // Call selection callback
-            if (palette->on_select)
-            {
+            if (palette->on_select) {
                 palette->on_select(widget, palette->colors[index], index, palette->on_select_data);
             }
             // Also call widget's generic on_click if set
-            if (widget->on_click)
-            {
+            if (widget->on_click) {
                 widget->on_click(widget, widget->callback_data);
             }
             return true;
@@ -282,8 +257,7 @@ static bool colorpalette_handle_event(vg_widget_t *widget, vg_event_t *event)
     return false;
 }
 
-static bool colorpalette_can_focus(vg_widget_t *widget)
-{
+static bool colorpalette_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
@@ -291,14 +265,12 @@ static bool colorpalette_can_focus(vg_widget_t *widget)
 // ColorPalette API
 //=============================================================================
 
-void vg_colorpalette_set_colors(vg_colorpalette_t *palette, const uint32_t *colors, int count)
-{
+void vg_colorpalette_set_colors(vg_colorpalette_t *palette, const uint32_t *colors, int count) {
     if (!palette)
         return;
 
     // Free existing colors
-    if (palette->colors)
-    {
+    if (palette->colors) {
         free(palette->colors);
         palette->colors = NULL;
     }
@@ -306,11 +278,9 @@ void vg_colorpalette_set_colors(vg_colorpalette_t *palette, const uint32_t *colo
     palette->color_count = 0;
     palette->selected_index = -1;
 
-    if (colors && count > 0)
-    {
+    if (colors && count > 0) {
         palette->colors = malloc(count * sizeof(uint32_t));
-        if (palette->colors)
-        {
+        if (palette->colors) {
             memcpy(palette->colors, colors, count * sizeof(uint32_t));
             palette->color_count = count;
         }
@@ -321,8 +291,7 @@ void vg_colorpalette_set_colors(vg_colorpalette_t *palette, const uint32_t *colo
 }
 
 /// @brief Colorpalette add color.
-void vg_colorpalette_add_color(vg_colorpalette_t *palette, uint32_t color)
-{
+void vg_colorpalette_add_color(vg_colorpalette_t *palette, uint32_t color) {
     if (!palette)
         return;
 
@@ -340,13 +309,11 @@ void vg_colorpalette_add_color(vg_colorpalette_t *palette, uint32_t color)
 }
 
 /// @brief Colorpalette clear.
-void vg_colorpalette_clear(vg_colorpalette_t *palette)
-{
+void vg_colorpalette_clear(vg_colorpalette_t *palette) {
     if (!palette)
         return;
 
-    if (palette->colors)
-    {
+    if (palette->colors) {
         free(palette->colors);
         palette->colors = NULL;
     }
@@ -358,8 +325,7 @@ void vg_colorpalette_clear(vg_colorpalette_t *palette)
 }
 
 /// @brief Colorpalette set columns.
-void vg_colorpalette_set_columns(vg_colorpalette_t *palette, int columns)
-{
+void vg_colorpalette_set_columns(vg_colorpalette_t *palette, int columns) {
     if (!palette || columns <= 0)
         return;
 
@@ -369,13 +335,11 @@ void vg_colorpalette_set_columns(vg_colorpalette_t *palette, int columns)
 }
 
 /// @brief Colorpalette set selected.
-void vg_colorpalette_set_selected(vg_colorpalette_t *palette, int index)
-{
+void vg_colorpalette_set_selected(vg_colorpalette_t *palette, int index) {
     if (!palette)
         return;
 
-    if (index < -1 || index >= palette->color_count)
-    {
+    if (index < -1 || index >= palette->color_count) {
         index = -1;
     }
 
@@ -384,17 +348,15 @@ void vg_colorpalette_set_selected(vg_colorpalette_t *palette, int index)
 }
 
 /// @brief Colorpalette get selected.
-int vg_colorpalette_get_selected(vg_colorpalette_t *palette)
-{
+int vg_colorpalette_get_selected(vg_colorpalette_t *palette) {
     if (!palette)
         return -1;
     return palette->selected_index;
 }
 
-uint32_t vg_colorpalette_get_selected_color(vg_colorpalette_t *palette)
-{
-    if (!palette || palette->selected_index < 0 || palette->selected_index >= palette->color_count)
-    {
+uint32_t vg_colorpalette_get_selected_color(vg_colorpalette_t *palette) {
+    if (!palette || palette->selected_index < 0 ||
+        palette->selected_index >= palette->color_count) {
         return 0;
     }
     return palette->colors[palette->selected_index];
@@ -403,8 +365,7 @@ uint32_t vg_colorpalette_get_selected_color(vg_colorpalette_t *palette)
 /// @brief Colorpalette set on select.
 void vg_colorpalette_set_on_select(vg_colorpalette_t *palette,
                                    vg_colorpalette_callback_t callback,
-                                   void *user_data)
-{
+                                   void *user_data) {
     if (!palette)
         return;
 
@@ -413,8 +374,7 @@ void vg_colorpalette_set_on_select(vg_colorpalette_t *palette,
 }
 
 /// @brief Colorpalette set swatch size.
-void vg_colorpalette_set_swatch_size(vg_colorpalette_t *palette, float size)
-{
+void vg_colorpalette_set_swatch_size(vg_colorpalette_t *palette, float size) {
     if (!palette || size <= 0)
         return;
 
@@ -424,8 +384,7 @@ void vg_colorpalette_set_swatch_size(vg_colorpalette_t *palette, float size)
 }
 
 /// @brief Colorpalette load standard 16.
-void vg_colorpalette_load_standard_16(vg_colorpalette_t *palette)
-{
+void vg_colorpalette_load_standard_16(vg_colorpalette_t *palette) {
     if (!palette)
         return;
 

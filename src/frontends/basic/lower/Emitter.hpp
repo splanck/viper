@@ -27,26 +27,22 @@
 #include <unordered_set>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 struct BasicBlock;
 struct Function;
 } // namespace il::core
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 class Lowerer;
 struct SymbolInfo;
 } // namespace il::frontends::basic
 
-namespace il::frontends::basic::lower
-{
+namespace il::frontends::basic::lower {
 
 /// @brief Centralizes IL emission primitives for BASIC lowering.
 /// @invariant Each helper assumes the caller selected an active basic block.
 /// @ownership Borrows Lowerer state; does not own emitted IR or runtime data.
-class Emitter
-{
+class Emitter {
   public:
     using Type = il::core::Type;
     using Value = il::core::Value;
@@ -275,8 +271,7 @@ class Emitter
     void releaseObjectSlot(SymbolInfo &info);
 
     /// @brief State tracking for array release runtime helper requests.
-    struct ArrayReleaseState
-    {
+    struct ArrayReleaseState {
         bool requestedI64{false};
         bool requestedF64{false};
         bool requestedStr{false};
@@ -294,8 +289,7 @@ class Emitter
                           ArrayReleaseState &state,
                           bool skipObjectArrays);
 
-    struct TempRelease
-    {
+    struct TempRelease {
         Value v;
         bool isString{false};
         std::string className; // optional, for object destructors

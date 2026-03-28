@@ -43,21 +43,18 @@
 
 // --- Helper: create string from substring ---
 
-static rt_string make_str(const char *s, int64_t len)
-{
+static rt_string make_str(const char *s, int64_t len) {
     return rt_string_from_bytes(s, len);
 }
 
 // --- Helper: trim whitespace ---
 
-static void skip_ws(const char **p)
-{
+static void skip_ws(const char **p) {
     while (**p == ' ' || **p == '\t')
         (*p)++;
 }
 
-static void skip_line(const char **p)
-{
+static void skip_line(const char **p) {
     while (**p && **p != '\n')
         (*p)++;
     if (**p == '\n')
@@ -66,8 +63,7 @@ static void skip_line(const char **p)
 
 // --- Helper: parse a bare key (alphanumeric, dash, underscore) ---
 
-static rt_string parse_bare_key(const char **p)
-{
+static rt_string parse_bare_key(const char **p) {
     const char *start = *p;
     while (isalnum((unsigned char)**p) || **p == '-' || **p == '_' || **p == '.')
         (*p)++;
@@ -78,8 +74,7 @@ static rt_string parse_bare_key(const char **p)
 
 // --- Helper: parse a quoted string ---
 
-static rt_string parse_quoted_string(const char **p)
-{
+static rt_string parse_quoted_string(const char **p) {
     char quote = **p;
     (*p)++;
     const char *start = *p;
@@ -93,8 +88,7 @@ static rt_string parse_quoted_string(const char **p)
 
 // --- Helper: parse a value ---
 
-static rt_string parse_value(const char **p)
-{
+static rt_string parse_value(const char **p) {
     skip_ws(p);
 
     // Quoted string
@@ -116,18 +110,15 @@ static rt_string parse_value(const char **p)
 
 // --- Helper: parse an inline array ---
 
-static void *parse_array(const char **p)
-{
+static void *parse_array(const char **p) {
     (*p)++; // skip '['
     void *seq = rt_seq_new();
 
-    while (**p && **p != ']')
-    {
+    while (**p && **p != ']') {
         skip_ws(p);
         if (**p == ']' || **p == '\n')
             break;
-        if (**p == ',')
-        {
+        if (**p == ',') {
             (*p)++;
             continue;
         }
@@ -148,8 +139,7 @@ static _Thread_local int g_toml_had_error = 0;
 
 // --- Public API ---
 
-void *rt_toml_parse(rt_string src)
-{
+void *rt_toml_parse(rt_string src) {
     if (!src)
         return NULL;
 
@@ -158,31 +148,26 @@ void *rt_toml_parse(rt_string src)
     void *root = rt_map_new();
     void *current_section = root;
 
-    while (*p)
-    {
+    while (*p) {
         skip_ws(&p);
 
         // Skip empty lines
-        if (*p == '\n')
-        {
+        if (*p == '\n') {
             p++;
             continue;
         }
 
         // Skip comments
-        if (*p == '#')
-        {
+        if (*p == '#') {
             skip_line(&p);
             continue;
         }
 
         // Section header [section] or [section.subsection]
-        if (*p == '[')
-        {
+        if (*p == '[') {
             p++;
             int is_array = 0;
-            if (*p == '[')
-            {
+            if (*p == '[') {
                 p++;
                 is_array = 1;
             }
@@ -196,20 +181,17 @@ void *rt_toml_parse(rt_string src)
             if (is_array && *p == ']')
                 p++;
 
-            if (section_name)
-            {
+            if (section_name) {
                 // Create nested map for section
                 const char *name_cstr = rt_string_cstr(section_name);
 
                 // Count nesting depth (dots + 1)
                 int depth = 1;
-                for (const char *d = name_cstr; *d; d++)
-                {
+                for (const char *d = name_cstr; *d; d++) {
                     if (*d == '.')
                         depth++;
                 }
-                if (depth > TOML_MAX_DEPTH)
-                {
+                if (depth > TOML_MAX_DEPTH) {
                     g_toml_had_error = 1;
                     skip_line(&p);
                     continue;
@@ -218,12 +200,10 @@ void *rt_toml_parse(rt_string src)
                 // Handle dotted section names
                 void *target = root;
                 const char *dot = strchr(name_cstr, '.');
-                if (dot)
-                {
+                if (dot) {
                     rt_string parent_key = make_str(name_cstr, (int64_t)(dot - name_cstr));
                     void *parent = rt_map_get(root, parent_key);
-                    if (!parent)
-                    {
+                    if (!parent) {
                         parent = rt_map_new();
                         rt_map_set(root, parent_key, parent);
                     }
@@ -234,12 +214,9 @@ void *rt_toml_parse(rt_string src)
                     void *child = rt_map_new();
                     rt_map_set(target, child_key, child);
                     current_section = child;
-                }
-                else
-                {
+                } else {
                     void *section_map = rt_map_get(root, section_name);
-                    if (!section_map)
-                    {
+                    if (!section_map) {
                         section_map = rt_map_new();
                         rt_map_set(root, section_name, section_map);
                     }
@@ -257,8 +234,7 @@ void *rt_toml_parse(rt_string src)
         else
             key = parse_bare_key(&p);
 
-        if (!key)
-        {
+        if (!key) {
             /* S-14: flag malformed line that cannot be parsed as key=value */
             g_toml_had_error = 1;
             skip_line(&p);
@@ -266,8 +242,7 @@ void *rt_toml_parse(rt_string src)
         }
 
         skip_ws(&p);
-        if (*p != '=')
-        {
+        if (*p != '=') {
             /* S-14: flag missing '=' separator */
             g_toml_had_error = 1;
             skip_line(&p);
@@ -277,13 +252,10 @@ void *rt_toml_parse(rt_string src)
         skip_ws(&p);
 
         // Parse value
-        if (*p == '[')
-        {
+        if (*p == '[') {
             void *arr = parse_array(&p);
             rt_map_set(current_section, key, arr);
-        }
-        else
-        {
+        } else {
             rt_string val = parse_value(&p);
             if (val)
                 rt_map_set(current_section, key, val);
@@ -295,8 +267,7 @@ void *rt_toml_parse(rt_string src)
     return root;
 }
 
-int8_t rt_toml_is_valid(rt_string src)
-{
+int8_t rt_toml_is_valid(rt_string src) {
     /* S-14: rt_toml_parse always returns a (partial) map; check error flag */
     void *result = rt_toml_parse(src);
     if (!result || g_toml_had_error)
@@ -304,8 +275,7 @@ int8_t rt_toml_is_valid(rt_string src)
     return 1;
 }
 
-rt_string rt_toml_format(void *map)
-{
+rt_string rt_toml_format(void *map) {
     if (!map)
         return rt_string_from_bytes("", 0);
 
@@ -315,29 +285,25 @@ rt_string rt_toml_format(void *map)
     void *keys = rt_map_keys(map);
     int64_t n = rt_seq_len(keys);
 
-    for (int64_t i = 0; i < n; i++)
-    {
+    for (int64_t i = 0; i < n; i++) {
         rt_string key = (rt_string)rt_seq_get(keys, i);
         void *val = rt_map_get(map, key);
         const char *key_cstr = rt_string_cstr(key);
 
         // Check if value is a sub-map
         void *sub_keys = rt_map_keys(val);
-        if (sub_keys && rt_seq_len(sub_keys) >= 0)
-        {
+        if (sub_keys && rt_seq_len(sub_keys) >= 0) {
             // It's a section - try to format as section
             // But first we need to tell if it's really a map
             // Simple heuristic: try rt_map_len
             int64_t sub_len = rt_map_len(val);
-            if (sub_len > 0)
-            {
+            if (sub_len > 0) {
                 rt_sb_append_cstr(&sb, "[");
                 rt_sb_append_bytes(&sb, key_cstr, strlen(key_cstr));
                 rt_sb_append_cstr(&sb, "]\n");
 
                 void *sub_k = rt_map_keys(val);
-                for (int64_t j = 0; j < rt_seq_len(sub_k); j++)
-                {
+                for (int64_t j = 0; j < rt_seq_len(sub_k); j++) {
                     rt_string sk = (rt_string)rt_seq_get(sub_k, j);
                     void *sv = rt_map_get(val, sk);
                     const char *sk_cstr = rt_string_cstr(sk);
@@ -365,8 +331,7 @@ rt_string rt_toml_format(void *map)
     return result;
 }
 
-void *rt_toml_get(void *root, rt_string key_path)
-{
+void *rt_toml_get(void *root, rt_string key_path) {
     if (!root || !key_path)
         return NULL;
 
@@ -374,18 +339,14 @@ void *rt_toml_get(void *root, rt_string key_path)
     /* S-15: use memcpy to avoid type-punning UB */
     uint64_t magic;
     memcpy(&magic, root, sizeof(magic));
-    if (magic == RT_STRING_MAGIC)
-    {
+    if (magic == RT_STRING_MAGIC) {
         root = rt_toml_parse((rt_string)root);
         if (!root)
             return NULL;
-    }
-    else if (magic == RT_BOX_STR)
-    {
+    } else if (magic == RT_BOX_STR) {
         // Boxed string (from Zia str→ptr conversion) — unbox and parse
         rt_string s = rt_unbox_str(root);
-        if (s)
-        {
+        if (s) {
             root = rt_toml_parse(s);
             if (!root)
                 return NULL;
@@ -395,17 +356,13 @@ void *rt_toml_get(void *root, rt_string key_path)
     const char *path = rt_string_cstr(key_path);
     void *current = root;
 
-    while (*path)
-    {
+    while (*path) {
         const char *dot = strchr(path, '.');
         rt_string key;
-        if (dot)
-        {
+        if (dot) {
             key = make_str(path, (int64_t)(dot - path));
             path = dot + 1;
-        }
-        else
-        {
+        } else {
             key = make_str(path, (int64_t)strlen(path));
             path += strlen(rt_string_cstr(key));
         }
@@ -420,8 +377,7 @@ void *rt_toml_get(void *root, rt_string key_path)
     return current;
 }
 
-rt_string rt_toml_get_str(void *root, rt_string key_path)
-{
+rt_string rt_toml_get_str(void *root, rt_string key_path) {
     void *val = rt_toml_get(root, key_path);
     if (!val)
         return rt_string_from_bytes("", 0);

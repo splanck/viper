@@ -41,17 +41,14 @@
 #include <charconv>
 #include <string_view>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //===----------------------------------------------------------------------===//
 // TokenKind to string conversion
 //===----------------------------------------------------------------------===//
 
-const char *tokenKindToString(TokenKind kind)
-{
-    switch (kind)
-    {
+const char *tokenKindToString(TokenKind kind) {
+    switch (kind) {
         case TokenKind::Eof:
             return "eof";
         case TokenKind::Error:
@@ -260,8 +257,7 @@ const char *tokenKindToString(TokenKind kind)
     return "?";
 }
 
-bool Token::isKeyword() const
-{
+bool Token::isKeyword() const {
     return kind >= TokenKind::KwValue && kind <= TokenKind::KwNot;
 }
 
@@ -269,11 +265,9 @@ bool Token::isKeyword() const
 // Keyword lookup table
 //===----------------------------------------------------------------------===//
 
-namespace
-{
+namespace {
 
-struct KeywordEntry
-{
+struct KeywordEntry {
     std::string_view key;
     TokenKind kind;
 };
@@ -337,26 +331,23 @@ using common::char_utils::isLetter;
 using common::char_utils::isWhitespace;
 
 /// @brief Check if character can start an identifier (letter or underscore).
-inline bool isIdentifierStart(char c)
-{
+inline bool isIdentifierStart(char c) {
     return isLetter(c) || c == '_';
 }
 
 /// @brief Check if character can continue an identifier.
-inline bool isIdentifierContinue(char c)
-{
+inline bool isIdentifierContinue(char c) {
     return isLetter(c) || isDigit(c) || c == '_';
 }
 
 } // anonymous namespace
 
-std::optional<TokenKind> Lexer::lookupKeyword(const std::string &name)
-{
-    auto it = std::lower_bound(kKeywordTable.begin(),
-                               kKeywordTable.end(),
-                               name,
-                               [](const KeywordEntry &entry, const std::string &key)
-                               { return entry.key < key; });
+std::optional<TokenKind> Lexer::lookupKeyword(const std::string &name) {
+    auto it = std::lower_bound(
+        kKeywordTable.begin(),
+        kKeywordTable.end(),
+        name,
+        [](const KeywordEntry &entry, const std::string &key) { return entry.key < key; });
     if (it != kKeywordTable.end() && it->key == name)
         return it->kind;
     return std::nullopt;
@@ -367,53 +358,42 @@ std::optional<TokenKind> Lexer::lookupKeyword(const std::string &name)
 //===----------------------------------------------------------------------===//
 
 Lexer::Lexer(std::string source, uint32_t fileId, il::support::DiagnosticEngine &diag)
-    : source_(std::move(source)), fileId_(fileId), diag_(diag)
-{
-}
+    : source_(std::move(source)), fileId_(fileId), diag_(diag) {}
 
-char Lexer::peekChar() const
-{
+char Lexer::peekChar() const {
     if (pos_ >= source_.size())
         return '\0';
     return source_[pos_];
 }
 
-char Lexer::peekChar(size_t offset) const
-{
+char Lexer::peekChar(size_t offset) const {
     if (pos_ + offset >= source_.size())
         return '\0';
     return source_[pos_ + offset];
 }
 
-char Lexer::getChar()
-{
+char Lexer::getChar() {
     if (pos_ >= source_.size())
         return '\0';
     char c = source_[pos_++];
-    if (c == '\n')
-    {
+    if (c == '\n') {
         ++line_;
         column_ = 1;
-    }
-    else
-    {
+    } else {
         ++column_;
     }
     return c;
 }
 
-bool Lexer::eof() const
-{
+bool Lexer::eof() const {
     return pos_ >= source_.size();
 }
 
-il::support::SourceLoc Lexer::currentLoc() const
-{
+il::support::SourceLoc Lexer::currentLoc() const {
     return il::support::SourceLoc{fileId_, line_, column_};
 }
 
-void Lexer::reportError(il::support::SourceLoc loc, const std::string &message)
-{
+void Lexer::reportError(il::support::SourceLoc loc, const std::string &message) {
     diag_.report(il::support::Diagnostic{
         il::support::Severity::Error,
         message,
@@ -422,20 +402,17 @@ void Lexer::reportError(il::support::SourceLoc loc, const std::string &message)
     });
 }
 
-void Lexer::skipLineComment()
-{
+void Lexer::skipLineComment() {
     // Skip the //
     getChar();
     getChar();
     // Skip until end of line or EOF
-    while (!eof() && peekChar() != '\n')
-    {
+    while (!eof() && peekChar() != '\n') {
         getChar();
     }
 }
 
-bool Lexer::skipBlockComment()
-{
+bool Lexer::skipBlockComment() {
     il::support::SourceLoc startLoc = currentLoc();
 
     // Skip /*
@@ -443,51 +420,41 @@ bool Lexer::skipBlockComment()
     getChar();
 
     int depth = 1; // Support nested comments
-    while (!eof() && depth > 0)
-    {
+    while (!eof() && depth > 0) {
         char c = getChar();
-        if (c == '/' && peekChar() == '*')
-        {
+        if (c == '/' && peekChar() == '*') {
             getChar();
             ++depth;
-        }
-        else if (c == '*' && peekChar() == '/')
-        {
+        } else if (c == '*' && peekChar() == '/') {
             getChar();
             --depth;
         }
     }
 
-    if (depth > 0)
-    {
+    if (depth > 0) {
         reportError(startLoc, "unterminated block comment");
         return false;
     }
     return true;
 }
 
-void Lexer::skipWhitespaceAndComments()
-{
-    while (!eof())
-    {
+void Lexer::skipWhitespaceAndComments() {
+    while (!eof()) {
         char c = peekChar();
 
-        if (isWhitespace(c))
-        {
+        if (isWhitespace(c)) {
             getChar();
             continue;
         }
 
         // Line comment: //
-        if (c == '/' && peekChar(1) == '/')
-        {
+        if (c == '/' && peekChar(1) == '/') {
             skipLineComment();
             continue;
         }
 
         // Block comment: /* ... */
-        if (c == '/' && peekChar(1) == '*')
-        {
+        if (c == '/' && peekChar(1) == '*') {
             skipBlockComment();
             continue;
         }
@@ -496,17 +463,14 @@ void Lexer::skipWhitespaceAndComments()
     }
 }
 
-Token Lexer::lexIdentifierOrKeyword()
-{
+Token Lexer::lexIdentifierOrKeyword() {
     Token tok;
     tok.loc = currentLoc();
     tok.text.reserve(16);
 
     // Consume identifier characters (capped at 1024 to prevent OOM from malicious input)
-    while (!eof() && isIdentifierContinue(peekChar()))
-    {
-        if (tok.text.size() >= 1024)
-        {
+    while (!eof() && isIdentifierContinue(peekChar())) {
+        if (tok.text.size() >= 1024) {
             reportError(tok.loc, "identifier too long (limit: 1024 characters)");
             // Skip remaining identifier characters
             while (!eof() && isIdentifierContinue(peekChar()))
@@ -518,8 +482,7 @@ Token Lexer::lexIdentifierOrKeyword()
     }
 
     // Check if it's a keyword (case-sensitive)
-    if (auto kw = lookupKeyword(tok.text))
-    {
+    if (auto kw = lookupKeyword(tok.text)) {
         tok.kind = *kw;
         return tok;
     }
@@ -528,75 +491,61 @@ Token Lexer::lexIdentifierOrKeyword()
     return tok;
 }
 
-Token Lexer::lexNumber()
-{
+Token Lexer::lexNumber() {
     Token tok;
     tok.loc = currentLoc();
     tok.kind = TokenKind::IntegerLiteral;
 
     // Check for hex (0x) or binary (0b)
-    if (peekChar() == '0')
-    {
+    if (peekChar() == '0') {
         char next = peekChar(1);
-        if (next == 'x' || next == 'X')
-        {
+        if (next == 'x' || next == 'X') {
             // Hex literal
             tok.text.push_back(getChar()); // '0'
             tok.text.push_back(getChar()); // 'x'
 
-            if (!isHexDigit(peekChar()))
-            {
+            if (!isHexDigit(peekChar())) {
                 reportError(tok.loc, "invalid hex literal: expected hex digits after 0x");
                 tok.kind = TokenKind::Error;
                 return tok;
             }
 
-            while (!eof() && isHexDigit(peekChar()))
-            {
+            while (!eof() && isHexDigit(peekChar())) {
                 tok.text.push_back(getChar());
             }
 
             // Parse hex value
             std::string_view hexDigits(tok.text.data() + 2, tok.text.size() - 2);
             auto parsed = common::number_parsing::parseHexLiteral(hexDigits);
-            if (!parsed.valid)
-            {
+            if (!parsed.valid) {
                 if (parsed.overflow)
                     reportError(tok.loc, "hex literal out of range");
                 else
                     reportError(tok.loc, "invalid hex literal");
                 tok.kind = TokenKind::Error;
-            }
-            else
-            {
+            } else {
                 tok.intValue = parsed.intValue;
             }
             return tok;
-        }
-        else if (next == 'b' || next == 'B')
-        {
+        } else if (next == 'b' || next == 'B') {
             // Binary literal
             tok.text.push_back(getChar()); // '0'
             tok.text.push_back(getChar()); // 'b'
 
-            if (peekChar() != '0' && peekChar() != '1')
-            {
+            if (peekChar() != '0' && peekChar() != '1') {
                 reportError(tok.loc, "invalid binary literal: expected binary digits after 0b");
                 tok.kind = TokenKind::Error;
                 return tok;
             }
 
-            while (!eof() && (peekChar() == '0' || peekChar() == '1'))
-            {
+            while (!eof() && (peekChar() == '0' || peekChar() == '1')) {
                 tok.text.push_back(getChar());
             }
 
             // Parse binary value
             uint64_t value = 0;
-            for (size_t i = 2; i < tok.text.size(); ++i)
-            {
-                if (value > (UINT64_MAX >> 1))
-                {
+            for (size_t i = 2; i < tok.text.size(); ++i) {
+                if (value > (UINT64_MAX >> 1)) {
                     reportError(tok.loc, "binary literal out of range");
                     tok.kind = TokenKind::Error;
                     return tok;
@@ -609,69 +558,57 @@ Token Lexer::lexNumber()
     }
 
     // Decimal number
-    while (!eof() && isDigit(peekChar()))
-    {
+    while (!eof() && isDigit(peekChar())) {
         tok.text.push_back(getChar());
     }
 
     // Check for decimal point (but not .. range operator)
-    if (peekChar() == '.' && peekChar(1) != '.')
-    {
+    if (peekChar() == '.' && peekChar(1) != '.') {
         tok.kind = TokenKind::NumberLiteral;
         tok.text.push_back(getChar()); // consume '.'
 
         // Consume fractional part
-        while (!eof() && isDigit(peekChar()))
-        {
+        while (!eof() && isDigit(peekChar())) {
             tok.text.push_back(getChar());
         }
     }
 
     // Check for exponent
     char e = peekChar();
-    if (e == 'e' || e == 'E')
-    {
+    if (e == 'e' || e == 'E') {
         tok.kind = TokenKind::NumberLiteral;
         tok.text.push_back(getChar()); // consume 'e' or 'E'
 
         // Optional sign
         char sign = peekChar();
-        if (sign == '+' || sign == '-')
-        {
+        if (sign == '+' || sign == '-') {
             tok.text.push_back(getChar());
         }
 
         // Exponent digits
-        if (!isDigit(peekChar()))
-        {
+        if (!isDigit(peekChar())) {
             reportError(tok.loc, "invalid numeric literal: expected exponent digits");
             tok.kind = TokenKind::Error;
             return tok;
         }
 
-        while (!eof() && isDigit(peekChar()))
-        {
+        while (!eof() && isDigit(peekChar())) {
             tok.text.push_back(getChar());
         }
     }
 
     // Parse the value
     auto parsed = common::number_parsing::parseDecimalLiteral(tok.text);
-    if (!parsed.valid)
-    {
+    if (!parsed.valid) {
         if (parsed.overflow)
             reportError(tok.loc, "numeric literal out of range");
         else
             reportError(tok.loc, "invalid numeric literal");
         tok.kind = TokenKind::Error;
-    }
-    else if (parsed.isFloat)
-    {
+    } else if (parsed.isFloat) {
         tok.kind = TokenKind::NumberLiteral;
         tok.floatValue = parsed.floatValue;
-    }
-    else
-    {
+    } else {
         tok.kind = TokenKind::IntegerLiteral;
         tok.intValue = parsed.intValue;
         tok.requiresNegation = parsed.requiresNegation;
@@ -686,15 +623,13 @@ Token Lexer::lexNumber()
 // The namespace alias below keeps call sites concise.
 namespace esc = common::escape_sequences;
 
-Token Lexer::lexString()
-{
+Token Lexer::lexString() {
     Token tok;
     tok.loc = currentLoc();
     tok.kind = TokenKind::StringLiteral;
 
     // Check for triple-quoted string
-    if (peekChar() == '"' && peekChar(1) == '"' && peekChar(2) == '"')
-    {
+    if (peekChar() == '"' && peekChar(1) == '"' && peekChar(2) == '"') {
         return lexTripleQuotedString();
     }
 
@@ -703,19 +638,16 @@ Token Lexer::lexString()
     // 16MB cap prevents OOM from malicious input
     static constexpr size_t kMaxStringLength = 16 * 1024 * 1024;
 
-    while (!eof())
-    {
+    while (!eof()) {
         char c = peekChar();
 
         // Check for closing quote
-        if (c == '"')
-        {
+        if (c == '"') {
             tok.text.push_back(getChar());
             return tok;
         }
 
-        if (tok.text.size() >= kMaxStringLength)
-        {
+        if (tok.text.size() >= kMaxStringLength) {
             reportError(tok.loc, "string literal too long (limit: 16MB)");
             // Skip to closing quote or EOF
             while (!eof() && peekChar() != '"')
@@ -727,10 +659,8 @@ Token Lexer::lexString()
         }
 
         // Check for string interpolation: ${
-        if (c == '$' && peekChar(1) == '{')
-        {
-            if (interpolationDepth_ >= 32)
-            {
+        if (c == '$' && peekChar(1) == '{') {
+            if (interpolationDepth_ >= 32) {
                 reportError(tok.loc, "string interpolation nesting too deep (limit: 32)");
                 tok.kind = TokenKind::Error;
                 return tok;
@@ -746,19 +676,16 @@ Token Lexer::lexString()
         }
 
         // Check for newline (error in single-quoted string)
-        if (c == '\n' || c == '\r')
-        {
+        if (c == '\n' || c == '\r') {
             reportError(tok.loc, "newline in string literal");
             tok.kind = TokenKind::Error;
             return tok;
         }
 
         // Check for escape sequence
-        if (c == '\\')
-        {
+        if (c == '\\') {
             tok.text.push_back(getChar()); // consume '\'
-            if (eof())
-            {
+            if (eof()) {
                 reportError(tok.loc, "unterminated escape sequence");
                 tok.kind = TokenKind::Error;
                 return tok;
@@ -767,79 +694,55 @@ Token Lexer::lexString()
             tok.text.push_back(getChar()); // consume the escape character
 
             // Handle unicode escape \uXXXX
-            if (escaped == 'u')
-            {
+            if (escaped == 'u') {
                 // Read 4 hex digits, then delegate to common utility
                 char digits[4];
                 bool valid = true;
-                for (int i = 0; i < 4 && valid; ++i)
-                {
-                    if (eof() || !isHexDigit(peekChar()))
-                    {
+                for (int i = 0; i < 4 && valid; ++i) {
+                    if (eof() || !isHexDigit(peekChar())) {
                         valid = false;
-                    }
-                    else
-                    {
+                    } else {
                         digits[i] = getChar();
                     }
                 }
-                if (valid)
-                {
-                    if (auto utf8 = esc::processUnicodeEscape(digits))
-                    {
+                if (valid) {
+                    if (auto utf8 = esc::processUnicodeEscape(digits)) {
                         for (char ch : *utf8)
                             tok.stringValue.push_back(ch);
-                    }
-                    else
-                    {
+                    } else {
                         reportError(tok.loc, "invalid unicode escape sequence: expected \\uXXXX");
                     }
-                }
-                else
-                {
+                } else {
                     reportError(tok.loc, "invalid unicode escape sequence: expected \\uXXXX");
                 }
                 continue;
             }
 
             // Handle hex escape \xXX
-            if (escaped == 'x')
-            {
+            if (escaped == 'x') {
                 // Read 2 hex digits, then delegate to common utility
-                if (!eof() && isHexDigit(peekChar()))
-                {
+                if (!eof() && isHexDigit(peekChar())) {
                     char high = getChar();
-                    if (!eof() && isHexDigit(peekChar()))
-                    {
+                    if (!eof() && isHexDigit(peekChar())) {
                         char low = getChar();
-                        if (auto hexChar = esc::processHexEscape(high, low))
-                        {
+                        if (auto hexChar = esc::processHexEscape(high, low)) {
                             tok.stringValue.push_back(*hexChar);
-                        }
-                        else
-                        {
+                        } else {
                             reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
                         }
-                    }
-                    else
-                    {
+                    } else {
                         reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
                     }
-                }
-                else
-                {
+                } else {
                     reportError(tok.loc, "invalid hex escape sequence: expected \\xXX");
                 }
                 continue;
             }
 
             // Handle simple escape sequences
-            if (auto escaped_ch = esc::processEscape(escaped))
-            {
+            if (auto escaped_ch = esc::processEscape(escaped)) {
                 tok.stringValue.push_back(*escaped_ch);
-            }
-            else
-            {
+            } else {
                 reportError(tok.loc, std::string("invalid escape sequence: \\") + escaped);
             }
             continue;
@@ -854,29 +757,24 @@ Token Lexer::lexString()
     return tok;
 }
 
-Token Lexer::lexInterpolatedStringContinuation()
-{
+Token Lexer::lexInterpolatedStringContinuation() {
     Token tok;
     tok.loc = currentLoc();
 
     // We just consumed '}' - now continue reading the string
-    while (!eof())
-    {
+    while (!eof()) {
         char c = peekChar();
 
         // Check for closing quote
-        if (c == '"')
-        {
+        if (c == '"') {
             tok.text.push_back(getChar());
             tok.kind = TokenKind::StringEnd;
             return tok;
         }
 
         // Check for another interpolation: ${
-        if (c == '$' && peekChar(1) == '{')
-        {
-            if (interpolationDepth_ >= 32)
-            {
+        if (c == '$' && peekChar(1) == '{') {
+            if (interpolationDepth_ >= 32) {
                 reportError(tok.loc, "string interpolation nesting too deep (limit: 32)");
                 interpolationDepth_ = 0;
                 braceDepth_.clear();
@@ -893,8 +791,7 @@ Token Lexer::lexInterpolatedStringContinuation()
         }
 
         // Check for newline (error in string)
-        if (c == '\n' || c == '\r')
-        {
+        if (c == '\n' || c == '\r') {
             reportError(tok.loc, "newline in string literal");
             interpolationDepth_ = 0;
             braceDepth_.clear();
@@ -903,11 +800,9 @@ Token Lexer::lexInterpolatedStringContinuation()
         }
 
         // Check for escape sequence
-        if (c == '\\')
-        {
+        if (c == '\\') {
             tok.text.push_back(getChar()); // consume '\'
-            if (eof())
-            {
+            if (eof()) {
                 reportError(tok.loc, "unterminated escape sequence");
                 interpolationDepth_ = 0;
                 braceDepth_.clear();
@@ -916,12 +811,9 @@ Token Lexer::lexInterpolatedStringContinuation()
             }
             char escaped = peekChar();
             tok.text.push_back(getChar()); // consume the escape character
-            if (auto escaped_ch = esc::processEscape(escaped))
-            {
+            if (auto escaped_ch = esc::processEscape(escaped)) {
                 tok.stringValue.push_back(*escaped_ch);
-            }
-            else
-            {
+            } else {
                 reportError(tok.loc, std::string("invalid escape sequence: \\") + escaped);
             }
             continue;
@@ -938,8 +830,7 @@ Token Lexer::lexInterpolatedStringContinuation()
     return tok;
 }
 
-Token Lexer::lexTripleQuotedString()
-{
+Token Lexer::lexTripleQuotedString() {
     Token tok;
     tok.loc = currentLoc();
     tok.kind = TokenKind::StringLiteral;
@@ -949,13 +840,11 @@ Token Lexer::lexTripleQuotedString()
     tok.text.push_back(getChar());
     tok.text.push_back(getChar());
 
-    while (!eof())
-    {
+    while (!eof()) {
         char c = peekChar();
 
         // Check for closing """
-        if (c == '"' && peekChar(1) == '"' && peekChar(2) == '"')
-        {
+        if (c == '"' && peekChar(1) == '"' && peekChar(2) == '"') {
             tok.text.push_back(getChar());
             tok.text.push_back(getChar());
             tok.text.push_back(getChar());
@@ -963,19 +852,14 @@ Token Lexer::lexTripleQuotedString()
         }
 
         // Handle escape sequences
-        if (c == '\\')
-        {
+        if (c == '\\') {
             tok.text.push_back(getChar()); // consume '\'
-            if (!eof())
-            {
+            if (!eof()) {
                 char escaped = peekChar();
                 tok.text.push_back(getChar()); // consume the escape character
-                if (auto escaped_ch = esc::processEscape(escaped))
-                {
+                if (auto escaped_ch = esc::processEscape(escaped)) {
                     tok.stringValue.push_back(*escaped_ch);
-                }
-                else
-                {
+                } else {
                     // In triple-quoted, just preserve the backslash
                     tok.stringValue.push_back('\\');
                     tok.stringValue.push_back(escaped);
@@ -993,11 +877,9 @@ Token Lexer::lexTripleQuotedString()
     return tok;
 }
 
-Token Lexer::next()
-{
+Token Lexer::next() {
     // Return cached token if available
-    if (peeked_.has_value())
-    {
+    if (peeked_.has_value()) {
         Token tok = std::move(*peeked_);
         peeked_.reset();
         return tok;
@@ -1005,8 +887,7 @@ Token Lexer::next()
 
     skipWhitespaceAndComments();
 
-    if (eof())
-    {
+    if (eof()) {
         Token tok;
         tok.kind = TokenKind::Eof;
         tok.loc = currentLoc();
@@ -1016,20 +897,17 @@ Token Lexer::next()
     char c = peekChar();
 
     // Identifier or keyword
-    if (isIdentifierStart(c))
-    {
+    if (isIdentifierStart(c)) {
         return lexIdentifierOrKeyword();
     }
 
     // Number
-    if (isDigit(c))
-    {
+    if (isDigit(c)) {
         return lexNumber();
     }
 
     // String literal
-    if (c == '"')
-    {
+    if (c == '"') {
         return lexString();
     }
 
@@ -1037,18 +915,14 @@ Token Lexer::next()
     Token tok;
     tok.loc = currentLoc();
 
-    switch (c)
-    {
+    switch (c) {
         case '+':
             getChar();
-            if (peekChar() == '=')
-            {
+            if (peekChar() == '=') {
                 getChar();
                 tok.kind = TokenKind::PlusEqual;
                 tok.text = "+=";
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Plus;
                 tok.text = "+";
             }
@@ -1056,20 +930,15 @@ Token Lexer::next()
 
         case '-':
             getChar();
-            if (peekChar() == '>')
-            {
+            if (peekChar() == '>') {
                 getChar();
                 tok.kind = TokenKind::Arrow;
                 tok.text = "->";
-            }
-            else if (peekChar() == '=')
-            {
+            } else if (peekChar() == '=') {
                 getChar();
                 tok.kind = TokenKind::MinusEqual;
                 tok.text = "-=";
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Minus;
                 tok.text = "-";
             }
@@ -1077,14 +946,11 @@ Token Lexer::next()
 
         case '*':
             getChar();
-            if (peekChar() == '=')
-            {
+            if (peekChar() == '=') {
                 getChar();
                 tok.kind = TokenKind::StarEqual;
                 tok.text = "*=";
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Star;
                 tok.text = "*";
             }
@@ -1092,14 +958,11 @@ Token Lexer::next()
 
         case '/':
             getChar();
-            if (peekChar() == '=')
-            {
+            if (peekChar() == '=') {
                 getChar();
                 tok.kind = TokenKind::SlashEqual;
                 tok.text = "/=";
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Slash;
                 tok.text = "/";
             }
@@ -1107,14 +970,11 @@ Token Lexer::next()
 
         case '%':
             getChar();
-            if (peekChar() == '=')
-            {
+            if (peekChar() == '=') {
                 getChar();
                 tok.kind = TokenKind::PercentEqual;
                 tok.text = "%=";
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Percent;
                 tok.text = "%";
             }
@@ -1122,14 +982,11 @@ Token Lexer::next()
 
         case '&':
             getChar();
-            if (peekChar() == '&')
-            {
+            if (peekChar() == '&') {
                 getChar();
                 tok.kind = TokenKind::AmpAmp;
                 tok.text = "&&";
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Ampersand;
                 tok.text = "&";
             }
@@ -1137,14 +994,11 @@ Token Lexer::next()
 
         case '|':
             getChar();
-            if (peekChar() == '|')
-            {
+            if (peekChar() == '|') {
                 getChar();
                 tok.kind = TokenKind::PipePipe;
                 tok.text = "||";
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Pipe;
                 tok.text = "|";
             }
@@ -1164,14 +1018,11 @@ Token Lexer::next()
 
         case '!':
             getChar();
-            if (peekChar() == '=')
-            {
+            if (peekChar() == '=') {
                 getChar();
                 tok.kind = TokenKind::NotEqual;
                 tok.text = "!=";
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Bang;
                 tok.text = "!";
             }
@@ -1179,20 +1030,15 @@ Token Lexer::next()
 
         case '=':
             getChar();
-            if (peekChar() == '=')
-            {
+            if (peekChar() == '=') {
                 getChar();
                 tok.kind = TokenKind::EqualEqual;
                 tok.text = "==";
-            }
-            else if (peekChar() == '>')
-            {
+            } else if (peekChar() == '>') {
                 getChar();
                 tok.kind = TokenKind::FatArrow;
                 tok.text = "=>";
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Equal;
                 tok.text = "=";
             }
@@ -1200,14 +1046,11 @@ Token Lexer::next()
 
         case '<':
             getChar();
-            if (peekChar() == '=')
-            {
+            if (peekChar() == '=') {
                 getChar();
                 tok.kind = TokenKind::LessEqual;
                 tok.text = "<=";
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Less;
                 tok.text = "<";
             }
@@ -1215,14 +1058,11 @@ Token Lexer::next()
 
         case '>':
             getChar();
-            if (peekChar() == '=')
-            {
+            if (peekChar() == '=') {
                 getChar();
                 tok.kind = TokenKind::GreaterEqual;
                 tok.text = ">=";
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Greater;
                 tok.text = ">";
             }
@@ -1230,20 +1070,15 @@ Token Lexer::next()
 
         case '?':
             getChar();
-            if (peekChar() == '?')
-            {
+            if (peekChar() == '?') {
                 getChar();
                 tok.kind = TokenKind::QuestionQuestion;
                 tok.text = "??";
-            }
-            else if (peekChar() == '.')
-            {
+            } else if (peekChar() == '.') {
                 getChar();
                 tok.kind = TokenKind::QuestionDot;
                 tok.text = "?.";
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Question;
                 tok.text = "?";
             }
@@ -1251,23 +1086,17 @@ Token Lexer::next()
 
         case '.':
             getChar();
-            if (peekChar() == '.')
-            {
+            if (peekChar() == '.') {
                 getChar();
-                if (peekChar() == '=')
-                {
+                if (peekChar() == '=') {
                     getChar();
                     tok.kind = TokenKind::DotDotEqual;
                     tok.text = "..=";
-                }
-                else
-                {
+                } else {
                     tok.kind = TokenKind::DotDot;
                     tok.text = "..";
                 }
-            }
-            else
-            {
+            } else {
                 tok.kind = TokenKind::Dot;
                 tok.text = ".";
             }
@@ -1326,8 +1155,7 @@ Token Lexer::next()
             tok.text = "{";
             getChar();
             // Track brace depth in interpolation mode
-            if (interpolationDepth_ > 0 && !braceDepth_.empty())
-            {
+            if (interpolationDepth_ > 0 && !braceDepth_.empty()) {
                 braceDepth_.back()++;
             }
             break;
@@ -1335,17 +1163,13 @@ Token Lexer::next()
         case '}':
             getChar();
             // Check if this closes an interpolation
-            if (interpolationDepth_ > 0 && !braceDepth_.empty())
-            {
-                if (braceDepth_.back() == 0)
-                {
+            if (interpolationDepth_ > 0 && !braceDepth_.empty()) {
+                if (braceDepth_.back() == 0) {
                     // This closes the interpolation - continue lexing the string
                     braceDepth_.pop_back();
                     interpolationDepth_--;
                     return lexInterpolatedStringContinuation();
-                }
-                else
-                {
+                } else {
                     // Just a nested brace
                     braceDepth_.back()--;
                 }
@@ -1365,10 +1189,8 @@ Token Lexer::next()
     return tok;
 }
 
-const Token &Lexer::peek()
-{
-    if (!peeked_.has_value())
-    {
+const Token &Lexer::peek() {
+    if (!peeked_.has_value()) {
         peeked_ = next();
     }
     return *peeked_;

@@ -21,8 +21,7 @@
 #include <sstream>
 #include <string>
 
-int main()
-{
+int main() {
     using il::io::detail::parseFunction;
     using il::io::detail::ParserState;
 

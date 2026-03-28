@@ -21,14 +21,12 @@
 
 #include "tui/input/keymap.hpp"
 
-namespace viper::tui::input
-{
+namespace viper::tui::input {
 /// @brief Compare two key chords for matching code, modifiers, and codepoint.
 /// @details Equality requires the same key code, modifier mask, and Unicode
 ///          codepoint.  Treating chords as value types simplifies their use as
 ///          keys in associative containers.
-bool KeyChord::operator==(const KeyChord &other) const
-{
+bool KeyChord::operator==(const KeyChord &other) const {
     return code == other.code && mods == other.mods && codepoint == other.codepoint;
 }
 
@@ -36,8 +34,7 @@ bool KeyChord::operator==(const KeyChord &other) const
 /// @details Mixes the three components into a single size_t value suitable for
 ///          unordered maps.  Bit shifting keeps the fields from overlapping and
 ///          yields stable hashes across architectures.
-std::size_t KeyChordHash::operator()(const KeyChord &kc) const
-{
+std::size_t KeyChordHash::operator()(const KeyChord &kc) const {
     return static_cast<std::size_t>(kc.code) ^ (static_cast<std::size_t>(kc.mods) << 8U) ^
            (static_cast<std::size_t>(kc.codepoint) << 16U);
 }
@@ -46,11 +43,9 @@ std::size_t KeyChordHash::operator()(const KeyChord &kc) const
 /// @details If the identifier already exists the function refreshes the
 ///          metadata and callback.  Otherwise it appends a new command to the
 ///          registry and records its index for quick lookup during dispatch.
-void Keymap::registerCommand(CommandId id, std::string name, std::function<void()> action)
-{
+void Keymap::registerCommand(CommandId id, std::string name, std::function<void()> action) {
     auto it = index_.find(id);
-    if (it != index_.end())
-    {
+    if (it != index_.end()) {
         auto &cmd = commands_[it->second];
         cmd.name = std::move(name);
         cmd.action = std::move(action);
@@ -65,8 +60,7 @@ void Keymap::registerCommand(CommandId id, std::string name, std::function<void(
 /// @brief Associate a key chord with a command across the entire application.
 /// @details Inserts or overwrites the mapping in the global binding table so
 ///          the shortcut applies regardless of widget focus.
-void Keymap::bindGlobal(const KeyChord &kc, const CommandId &id)
-{
+void Keymap::bindGlobal(const KeyChord &kc, const CommandId &id) {
     global_[kc] = id;
 }
 
@@ -74,8 +68,7 @@ void Keymap::bindGlobal(const KeyChord &kc, const CommandId &id)
 /// @details Widget bindings override global shortcuts when the given widget is
 ///          focused, enabling contextual behaviour without affecting other UI
 ///          components.
-void Keymap::bindWidget(ui::Widget *w, const KeyChord &kc, const CommandId &id)
-{
+void Keymap::bindWidget(ui::Widget *w, const KeyChord &kc, const CommandId &id) {
     widget_[w][kc] = id;
 }
 
@@ -83,14 +76,11 @@ void Keymap::bindWidget(ui::Widget *w, const KeyChord &kc, const CommandId &id)
 /// @details Looks up the command in the registry, invokes the stored callback
 ///          when present, and returns whether execution occurred.  Missing or
 ///          unbound commands report false so callers can fall back gracefully.
-bool Keymap::execute(const CommandId &id) const
-{
+bool Keymap::execute(const CommandId &id) const {
     auto it = index_.find(id);
-    if (it != index_.end())
-    {
+    if (it != index_.end()) {
         const auto &cmd = commands_[it->second];
-        if (cmd.action)
-        {
+        if (cmd.action) {
             cmd.action();
             return true;
         }
@@ -102,11 +92,9 @@ bool Keymap::execute(const CommandId &id) const
 /// @details Returns nullptr when the identifier is unknown.  The pointer remains
 ///          valid for the lifetime of the keymap because commands are stored in a
 ///          vector that only grows.
-const Command *Keymap::find(const CommandId &id) const
-{
+const Command *Keymap::find(const CommandId &id) const {
     auto it = index_.find(id);
-    if (it != index_.end())
-    {
+    if (it != index_.end()) {
         return &commands_[it->second];
     }
     return nullptr;
@@ -117,24 +105,19 @@ const Command *Keymap::find(const CommandId &id) const
 ///          focused widget has an override.  If not, it falls back to the global
 ///          bindings.  Successful dispatch executes the associated command and
 ///          returns true; otherwise the event remains unhandled.
-bool Keymap::handle(ui::Widget *w, const term::KeyEvent &key) const
-{
+bool Keymap::handle(ui::Widget *w, const term::KeyEvent &key) const {
     KeyChord kc{key.code, key.mods, key.codepoint};
-    if (w)
-    {
+    if (w) {
         auto wit = widget_.find(w);
-        if (wit != widget_.end())
-        {
+        if (wit != widget_.end()) {
             auto cit = wit->second.find(kc);
-            if (cit != wit->second.end())
-            {
+            if (cit != wit->second.end()) {
                 return execute(cit->second);
             }
         }
     }
     auto git = global_.find(kc);
-    if (git != global_.end())
-    {
+    if (git != global_.end()) {
         return execute(git->second);
     }
     return false;
@@ -144,8 +127,7 @@ bool Keymap::handle(ui::Widget *w, const term::KeyEvent &key) const
 /// @details Exposes the internal vector so UI components can enumerate available
 ///          commands for display purposes.  The reference remains valid as long
 ///          as the keymap outlives the caller.
-const std::vector<Command> &Keymap::commands() const
-{
+const std::vector<Command> &Keymap::commands() const {
     return commands_;
 }
 

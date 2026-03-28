@@ -38,22 +38,19 @@
 // CRIT-1: x86-64 Win64 / SysV shadow space invariants
 // =============================================================================
 
-TEST(CrossPlatformABI, X64SysVShadowSpaceIsZero)
-{
+TEST(CrossPlatformABI, X64SysVShadowSpaceIsZero) {
     // SysV AMD64 has no shadow space — stack args start immediately above the
     // return address after prologue.
     EXPECT_EQ(viper::codegen::x64::sysvTarget().shadowSpace, std::size_t{0});
 }
 
-TEST(CrossPlatformABI, X64Win64ShadowSpaceIs32)
-{
+TEST(CrossPlatformABI, X64Win64ShadowSpaceIs32) {
     // Windows x64 requires 32 bytes of shadow space above the return address.
     // Stack-passed arguments start at RBP+48 (= 32 shadow + 8 saved-RBP + 8 ret addr).
     EXPECT_EQ(viper::codegen::x64::win64Target().shadowSpace, std::size_t{32});
 }
 
-TEST(CrossPlatformABI, X64SysVStackArgOffsetFormula)
-{
+TEST(CrossPlatformABI, X64SysVStackArgOffsetFormula) {
     // Verify the offset formula: shadowSpace + 16 + stackArgIdx*8
     const auto &sysv = viper::codegen::x64::sysvTarget();
     const std::size_t shadowSpace = sysv.shadowSpace; // 0
@@ -65,8 +62,7 @@ TEST(CrossPlatformABI, X64SysVStackArgOffsetFormula)
     EXPECT_EQ(shadowSpace + 16 + 2 * 8, std::size_t{32});
 }
 
-TEST(CrossPlatformABI, X64Win64StackArgOffsetFormula)
-{
+TEST(CrossPlatformABI, X64Win64StackArgOffsetFormula) {
     // Windows x64: shadow space is 32 bytes.
     // First stack arg: offset = 32 + 16 + 0 = 48
     // Second stack arg: offset = 32 + 16 + 8 = 56
@@ -78,8 +74,7 @@ TEST(CrossPlatformABI, X64Win64StackArgOffsetFormula)
     EXPECT_EQ(shadowSpace + 16 + 2 * 8, std::size_t{64});
 }
 
-TEST(CrossPlatformABI, X64Win64RegisterArgOrder)
-{
+TEST(CrossPlatformABI, X64Win64RegisterArgOrder) {
     // Windows x64 integer arg order: RCX, RDX, R8, R9 (4 registers).
     // SysV order: RDI, RSI, RDX, RCX, R8, R9 (6 registers).
     using namespace viper::codegen::x64;
@@ -108,24 +103,21 @@ TEST(CrossPlatformABI, X64Win64RegisterArgOrder)
 
 /// @brief Emit a simple function header using the given target and return it.
 static std::string emitAarch64FunctionHeader(const viper::codegen::aarch64::TargetInfo &ti,
-                                             const std::string &name)
-{
+                                             const std::string &name) {
     viper::codegen::aarch64::AsmEmitter emitter{ti};
     std::ostringstream oss;
     emitter.emitFunctionHeader(oss, name);
     return oss.str();
 }
 
-TEST(CrossPlatformABI, AArch64WindowsTargetExists)
-{
+TEST(CrossPlatformABI, AArch64WindowsTargetExists) {
     // windowsTarget() must return a valid reference without crashing.
     const auto &ti = viper::codegen::aarch64::windowsTarget();
     EXPECT_TRUE(ti.isWindows());
     EXPECT_FALSE(ti.isLinux());
 }
 
-TEST(CrossPlatformABI, AArch64WindowsTargetSameRegistersAsLinux)
-{
+TEST(CrossPlatformABI, AArch64WindowsTargetSameRegistersAsLinux) {
     // Windows ARM64 uses identical AAPCS64 register conventions to Linux.
     const auto &linux_ti = viper::codegen::aarch64::linuxTarget();
     const auto &windows_ti = viper::codegen::aarch64::windowsTarget();
@@ -139,8 +131,7 @@ TEST(CrossPlatformABI, AArch64WindowsTargetSameRegistersAsLinux)
     EXPECT_EQ(windows_ti.stackAlignment, linux_ti.stackAlignment);
 }
 
-TEST(CrossPlatformABI, AArch64WindowsFunctionHeaderNoELFType)
-{
+TEST(CrossPlatformABI, AArch64WindowsFunctionHeaderNoELFType) {
     // PE/COFF does not support ELF .type directives.
     const auto &ti = viper::codegen::aarch64::windowsTarget();
     const std::string out = emitAarch64FunctionHeader(ti, "myfunc");
@@ -149,8 +140,7 @@ TEST(CrossPlatformABI, AArch64WindowsFunctionHeaderNoELFType)
     EXPECT_EQ(out.find(".type"), std::string::npos);
 }
 
-TEST(CrossPlatformABI, AArch64WindowsFunctionHeaderNoUnderscorePrefix)
-{
+TEST(CrossPlatformABI, AArch64WindowsFunctionHeaderNoUnderscorePrefix) {
     // Windows ARM64 does not use underscore-prefixed symbols (unlike Darwin).
     const auto &ti = viper::codegen::aarch64::windowsTarget();
     const std::string out = emitAarch64FunctionHeader(ti, "myfunc");
@@ -160,8 +150,7 @@ TEST(CrossPlatformABI, AArch64WindowsFunctionHeaderNoUnderscorePrefix)
     EXPECT_EQ(out.find("_myfunc"), std::string::npos);
 }
 
-TEST(CrossPlatformABI, AArch64DarwinFunctionHeaderHasUnderscorePrefix)
-{
+TEST(CrossPlatformABI, AArch64DarwinFunctionHeaderHasUnderscorePrefix) {
     // Darwin uses underscore-prefixed symbols.
     const auto &ti = viper::codegen::aarch64::darwinTarget();
     const std::string out = emitAarch64FunctionHeader(ti, "myfunc");
@@ -169,8 +158,7 @@ TEST(CrossPlatformABI, AArch64DarwinFunctionHeaderHasUnderscorePrefix)
     EXPECT_NE(out.find("_myfunc"), std::string::npos);
 }
 
-TEST(CrossPlatformABI, AArch64LinuxFunctionHeaderHasELFType)
-{
+TEST(CrossPlatformABI, AArch64LinuxFunctionHeaderHasELFType) {
     // Linux ELF emits .type for function metadata.
     const auto &ti = viper::codegen::aarch64::linuxTarget();
     const std::string out = emitAarch64FunctionHeader(ti, "myfunc");
@@ -182,8 +170,7 @@ TEST(CrossPlatformABI, AArch64LinuxFunctionHeaderHasELFType)
 // HIGH-4: LinkerSupport archive extension
 // =============================================================================
 
-TEST(CrossPlatformABI, LinkerSupportArchiveExtension)
-{
+TEST(CrossPlatformABI, LinkerSupportArchiveExtension) {
     // On non-Windows platforms, the runtime archive must end in ".a".
     // On Windows, it must end in ".lib".
     const std::filesystem::path path =
@@ -202,15 +189,13 @@ TEST(CrossPlatformABI, LinkerSupportArchiveExtension)
 #endif
 }
 
-TEST(CrossPlatformABI, LinkerSupportArchivePathContainsBaseName)
-{
+TEST(CrossPlatformABI, LinkerSupportArchivePathContainsBaseName) {
     // The archive path must contain the base name regardless of platform.
     const std::filesystem::path path = viper::codegen::common::runtimeArchivePath({}, "my_lib");
     EXPECT_NE(path.string().find("my_lib"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
     return viper_test::run_all_tests();

@@ -23,8 +23,7 @@
 #include <sstream>
 #include <string>
 
-int main()
-{
+int main() {
     const char *src = R"(il 0.1
 func @main() -> i64 {
 entry:

@@ -113,8 +113,7 @@ typedef unsigned short mode_t;
 ///          runtime's signed 32-bit field without overflow.
 /// @param err Errno value produced by the OS.
 /// @return Clamped errno suitable for storage in @ref RtError::code.
-static int32_t rt_file_clamp_errno(int err)
-{
+static int32_t rt_file_clamp_errno(int err) {
     if (err > INT32_MAX)
         return INT32_MAX;
     if (err < INT32_MIN)
@@ -129,12 +128,10 @@ static int32_t rt_file_clamp_errno(int err)
 /// @param err Errno value.
 /// @param fallback Error kind to use when no mapping exists.
 /// @return Runtime error kind describing the failure.
-static enum Err rt_file_err_from_errno(int err, enum Err fallback)
-{
+static enum Err rt_file_err_from_errno(int err, enum Err fallback) {
     if (err == 0)
         return fallback;
-    switch (err)
-    {
+    switch (err) {
         case ENOENT:
             return Err_FileNotFound;
         case EINVAL:
@@ -168,8 +165,7 @@ static enum Err rt_file_err_from_errno(int err, enum Err fallback)
 /// @param out_err Destination error pointer.
 /// @param kind Runtime error classification.
 /// @param err Errno value associated with the failure.
-static void rt_file_set_error(RtError *out_err, enum Err kind, int err)
-{
+static void rt_file_set_error(RtError *out_err, enum Err kind, int err) {
     if (!out_err)
         return;
     out_err->kind = kind;
@@ -179,8 +175,7 @@ static void rt_file_set_error(RtError *out_err, enum Err kind, int err)
 /// @brief Reset an error structure to the success sentinel.
 /// @details Writes @ref RT_ERROR_NONE when the output pointer is non-null.
 /// @param out_err Destination error pointer.
-static void rt_file_set_ok(RtError *out_err)
-{
+static void rt_file_set_ok(RtError *out_err) {
     if (out_err)
         *out_err = RT_ERROR_NONE;
 }
@@ -191,8 +186,7 @@ static void rt_file_set_ok(RtError *out_err)
 ///          narrowing casts by performing bounds checks prior to conversion.
 /// @param offset Proposed byte offset for @ref lseek.
 /// @return `true` when @p offset is representable as @ref off_t; otherwise `false`.
-static bool rt_file_offset_in_range(int64_t offset)
-{
+static bool rt_file_offset_in_range(int64_t offset) {
 #if defined(OFF_MAX) && defined(OFF_MIN)
     if (sizeof(off_t) > sizeof(int64_t))
         return true;
@@ -207,8 +201,7 @@ static bool rt_file_offset_in_range(int64_t offset)
     const int shift = bits - 1;
     if (shift <= 0)
         return offset == 0;
-    if (shift >= 63)
-    {
+    if (shift >= 63) {
         const int64_t max = INT64_MAX;
         const int64_t min = INT64_MIN;
         return offset >= min && offset <= max;
@@ -226,15 +219,12 @@ static bool rt_file_offset_in_range(int64_t offset)
 /// @param file File handle to inspect.
 /// @param out_err Optional error destination.
 /// @return `true` when the descriptor is usable; otherwise `false`.
-static bool rt_file_check_fd(const RtFile *file, RtError *out_err)
-{
-    if (!file)
-    {
+static bool rt_file_check_fd(const RtFile *file, RtError *out_err) {
+    if (!file) {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
         return false;
     }
-    if (file->fd < 0)
-    {
+    if (file->fd < 0) {
         rt_file_set_error(out_err, Err_IOError, EBADF);
         return false;
     }
@@ -251,24 +241,20 @@ static bool rt_file_check_fd(const RtFile *file, RtError *out_err)
 /// @param len Number of bytes currently stored in the buffer.
 /// @param out_err Receives error details when resizing fails.
 /// @return `true` when the buffer was grown successfully; otherwise `false`.
-static bool rt_file_line_buffer_grow(char **buffer, size_t *cap, size_t len, RtError *out_err)
-{
-    if (!buffer || !*buffer || !cap)
-    {
+static bool rt_file_line_buffer_grow(char **buffer, size_t *cap, size_t len, RtError *out_err) {
+    if (!buffer || !*buffer || !cap) {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
         return false;
     }
 
-    if (len == SIZE_MAX)
-    {
+    if (len == SIZE_MAX) {
         free(*buffer);
         *buffer = NULL;
         rt_file_set_error(out_err, Err_RuntimeError, ERANGE);
         return false;
     }
 
-    if (*cap > SIZE_MAX / 2)
-    {
+    if (*cap > SIZE_MAX / 2) {
         free(*buffer);
         *buffer = NULL;
         rt_file_set_error(out_err, Err_RuntimeError, ERANGE);
@@ -276,8 +262,7 @@ static bool rt_file_line_buffer_grow(char **buffer, size_t *cap, size_t len, RtE
     }
 
     size_t new_cap = (*cap) * 2;
-    if (new_cap <= len)
-    {
+    if (new_cap <= len) {
         free(*buffer);
         *buffer = NULL;
         rt_file_set_error(out_err, Err_RuntimeError, ERANGE);
@@ -285,8 +270,7 @@ static bool rt_file_line_buffer_grow(char **buffer, size_t *cap, size_t len, RtE
     }
 
     char *nbuf = (char *)realloc(*buffer, new_cap);
-    if (!nbuf)
-    {
+    if (!nbuf) {
         free(*buffer);
         *buffer = NULL;
         rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
@@ -304,8 +288,10 @@ static bool rt_file_line_buffer_grow(char **buffer, size_t *cap, size_t len, RtE
 /// @param len Logical payload length stored in @p buffer.
 /// @param out_err Receives error details when growth fails.
 /// @return True on successful growth; false when allocation or overflow prevents resizing.
-bool rt_file_line_buffer_try_grow_for_test(char **buffer, size_t *cap, size_t len, RtError *out_err)
-{
+bool rt_file_line_buffer_try_grow_for_test(char **buffer,
+                                           size_t *cap,
+                                           size_t len,
+                                           RtError *out_err) {
     return rt_file_line_buffer_grow(buffer, cap, len, out_err);
 }
 
@@ -313,8 +299,7 @@ bool rt_file_line_buffer_try_grow_for_test(char **buffer, size_t *cap, size_t le
 /// @details Sets the descriptor sentinel to -1 so subsequent operations can
 ///          detect whether the handle has been opened.
 /// @param file Handle to initialise.
-void rt_file_init(RtFile *file)
-{
+void rt_file_init(RtFile *file) {
     if (!file)
         return;
     file->fd = -1;
@@ -331,17 +316,14 @@ void rt_file_init(RtFile *file)
 /// @param out_err Optional error destination.
 /// @return `true` on success; otherwise `false` with @p out_err populated.
 int8_t rt_file_open(
-    RtFile *file, const char *path, const char *mode, int32_t basic_mode, RtError *out_err)
-{
-    if (!file || !path || !mode)
-    {
+    RtFile *file, const char *path, const char *mode, int32_t basic_mode, RtError *out_err) {
+    if (!file || !path || !mode) {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
         return 0;
     }
 
     int flags = 0;
-    if (!rt_file_mode_to_flags(mode, basic_mode, &flags))
-    {
+    if (!rt_file_mode_to_flags(mode, basic_mode, &flags)) {
         file->fd = -1;
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
         return 0;
@@ -350,8 +332,7 @@ int8_t rt_file_open(
     mode_t perms = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH;
     errno = 0;
     int fd = (flags & O_CREAT) ? open(path, flags, perms) : open(path, flags);
-    if (fd < 0)
-    {
+    if (fd < 0) {
         int err = errno ? errno : EIO;
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
         file->fd = -1;
@@ -369,23 +350,19 @@ int8_t rt_file_open(
 /// @param file Handle to close.
 /// @param out_err Optional error destination.
 /// @return `true` when the handle is closed or already closed; otherwise `false`.
-int8_t rt_file_close(RtFile *file, RtError *out_err)
-{
-    if (!file)
-    {
+int8_t rt_file_close(RtFile *file, RtError *out_err) {
+    if (!file) {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
         return 0;
     }
-    if (file->fd < 0)
-    {
+    if (file->fd < 0) {
         rt_file_set_ok(out_err);
         return 1;
     }
 
     errno = 0;
     int rc = close(file->fd);
-    if (rc < 0)
-    {
+    if (rc < 0) {
         int err = errno ? errno : EIO;
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
         return 0;
@@ -404,29 +381,24 @@ int8_t rt_file_close(RtFile *file, RtError *out_err)
 /// @param out_byte Destination for the read byte.
 /// @param out_err Optional error destination.
 /// @return `true` when a byte was read; `false` on EOF or error.
-int8_t rt_file_read_byte(RtFile *file, uint8_t *out_byte, RtError *out_err)
-{
-    if (!out_byte)
-    {
+int8_t rt_file_read_byte(RtFile *file, uint8_t *out_byte, RtError *out_err) {
+    if (!out_byte) {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
         return 0;
     }
     if (!rt_file_check_fd(file, out_err))
         return 0;
 
-    for (;;)
-    {
+    for (;;) {
         uint8_t byte = 0;
         errno = 0;
         ssize_t n = read(file->fd, &byte, 1);
-        if (n == 1)
-        {
+        if (n == 1) {
             *out_byte = byte;
             rt_file_set_ok(out_err);
             return 1;
         }
-        if (n == 0)
-        {
+        if (n == 0) {
             rt_file_set_error(out_err, Err_EOF, 0);
             return 0;
         }
@@ -448,12 +420,10 @@ int8_t rt_file_read_byte(RtFile *file, uint8_t *out_byte, RtError *out_err)
 /// @param out_line Receives the allocated runtime string on success.
 /// @param out_err Optional error destination.
 /// @return `true` on success; `false` on EOF or error.
-int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
-{
+int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err) {
     if (out_line)
         *out_line = NULL;
-    if (!out_line)
-    {
+    if (!out_line) {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
         return 0;
     }
@@ -463,8 +433,7 @@ int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
     size_t cap = 128;
     size_t len = 0;
     char *buffer = (char *)malloc(cap);
-    if (!buffer)
-    {
+    if (!buffer) {
         rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
         return false;
     }
@@ -472,27 +441,22 @@ int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
     bool ok = false;
     rt_string s = NULL;
 
-    for (;;)
-    {
+    for (;;) {
         char ch = 0;
         errno = 0;
         ssize_t n = read(file->fd, &ch, 1);
-        if (n == 1)
-        {
+        if (n == 1) {
             if (ch == '\n')
                 break;
-            if (len == SIZE_MAX || len + 1 >= cap)
-            {
+            if (len == SIZE_MAX || len + 1 >= cap) {
                 if (!rt_file_line_buffer_grow(&buffer, &cap, len, out_err))
                     goto cleanup;
             }
             buffer[len++] = ch;
             continue;
         }
-        if (n == 0)
-        {
-            if (len == 0)
-            {
+        if (n == 0) {
+            if (len == 0) {
                 rt_file_set_error(out_err, Err_EOF, 0);
                 goto cleanup;
             }
@@ -509,11 +473,9 @@ int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
     if (len > 0 && buffer[len - 1] == '\r')
         --len;
 
-    if (len + 1 > cap)
-    {
+    if (len + 1 > cap) {
         char *nbuf = (char *)realloc(buffer, len + 1);
-        if (!nbuf)
-        {
+        if (!nbuf) {
             rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
             goto cleanup;
         }
@@ -522,16 +484,14 @@ int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
     buffer[len] = '\0';
 
     s = (rt_string)calloc(1, sizeof(*s));
-    if (!s)
-    {
+    if (!s) {
         rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
         goto cleanup;
     }
 
     {
         char *payload = (char *)rt_heap_alloc(RT_HEAP_STRING, RT_ELEM_NONE, 1, len, len + 1);
-        if (!payload)
-        {
+        if (!payload) {
             rt_file_set_error(out_err, Err_RuntimeError, ENOMEM);
             goto cleanup;
         }
@@ -548,16 +508,13 @@ int8_t rt_file_read_line(RtFile *file, rt_string *out_line, RtError *out_err)
     ok = true;
 
 cleanup:
-    if (!ok)
-    {
-        if (s)
-        {
+    if (!ok) {
+        if (s) {
             free(s);
             s = NULL;
         }
     }
-    if (buffer)
-    {
+    if (buffer) {
         free(buffer);
         buffer = NULL;
     }
@@ -572,13 +529,11 @@ cleanup:
 /// @param origin One of `SEEK_SET`, `SEEK_CUR`, or `SEEK_END`.
 /// @param out_err Optional error destination.
 /// @return `true` on success; otherwise `false`.
-int8_t rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err)
-{
+int8_t rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err) {
     if (!rt_file_check_fd(file, out_err))
         return 0;
 
-    if (!rt_file_offset_in_range(offset))
-    {
+    if (!rt_file_offset_in_range(offset)) {
         rt_file_set_error(out_err, Err_InvalidOperation, ERANGE);
         return 0;
     }
@@ -586,8 +541,7 @@ int8_t rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err)
     errno = 0;
     int64_t target = offset;
     int64_t pos = lseek(file->fd, target, origin);
-    if (pos == -1)
-    {
+    if (pos == -1) {
         int err = errno ? errno : EIO;
         rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
         return 0;
@@ -606,15 +560,12 @@ int8_t rt_file_seek(RtFile *file, int64_t offset, int origin, RtError *out_err)
 /// @param len Number of bytes to write.
 /// @param out_err Optional error destination.
 /// @return `true` when all bytes are written; otherwise `false`.
-int8_t rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out_err)
-{
-    if (len == 0)
-    {
+int8_t rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out_err) {
+    if (len == 0) {
         rt_file_set_ok(out_err);
         return 1;
     }
-    if (!data)
-    {
+    if (!data) {
         rt_file_set_error(out_err, Err_InvalidOperation, 0);
         return 0;
     }
@@ -622,8 +573,7 @@ int8_t rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out
         return 0;
 
     size_t written = 0;
-    while (written < len)
-    {
+    while (written < len) {
         errno = 0;
         size_t chunk = len - written;
 #if defined(_WIN32)
@@ -632,16 +582,14 @@ int8_t rt_file_write(RtFile *file, const uint8_t *data, size_t len, RtError *out
             chunk = UINT_MAX;
 #endif
         ssize_t n = write(file->fd, data + written, (unsigned int)chunk);
-        if (n < 0)
-        {
+        if (n < 0) {
             if (errno == EINTR)
                 continue;
             int err = errno ? errno : EIO;
             rt_file_set_error(out_err, rt_file_err_from_errno(err, Err_IOError), err);
             return 0;
         }
-        if (n == 0)
-        {
+        if (n == 0) {
             rt_file_set_error(out_err, Err_IOError, EIO);
             return 0;
         }

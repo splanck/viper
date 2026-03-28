@@ -26,13 +26,11 @@ using viper::tui::render::ScreenBuffer;
 using viper::tui::render::Style;
 using viper::tui::term::StringTermIO;
 
-static int countChar(const std::string &s, char c)
-{
+static int countChar(const std::string &s, char c) {
     return static_cast<int>(std::count(s.begin(), s.end(), c));
 }
 
-TEST(TUI, RendererMinimal)
-{
+TEST(TUI, RendererMinimal) {
     StringTermIO tio;
     Renderer r(tio, true);
     ScreenBuffer sb;
@@ -43,8 +41,7 @@ TEST(TUI, RendererMinimal)
     sb.clear(style);
     const char *row0 = "xyz";
     const char *row1 = "uvw";
-    for (int i = 0; i < 3; ++i)
-    {
+    for (int i = 0; i < 3; ++i) {
         sb.at(0, i).ch = row0[i];
         sb.at(1, i).ch = row1[i];
         sb.at(0, i).style = style;
@@ -56,8 +53,7 @@ TEST(TUI, RendererMinimal)
     tio.clear();
 
     const char *row1b = "UVW";
-    for (int i = 0; i < 3; ++i)
-    {
+    for (int i = 0; i < 3; ++i) {
         sb.at(1, i).ch = row1b[i];
     }
     r.draw(sb);
@@ -69,8 +65,7 @@ TEST(TUI, RendererMinimal)
     ASSERT_EQ(out.find('z'), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

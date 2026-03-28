@@ -34,8 +34,7 @@ using il::runtime::signatures::Signature;
 using il::runtime::signatures::SigParam;
 
 // Helper to create a simple void -> i64 signature for test externs
-static Signature makeVoidToI64Sig(const std::string &name)
-{
+static Signature makeVoidToI64Sig(const std::string &name) {
     return make_signature(name, {}, {SigParam::I64});
 }
 
@@ -44,26 +43,22 @@ static Signature makeVoidToI64Sig(const std::string &name)
 //===----------------------------------------------------------------------===//
 
 // Returns 100 - identifies as "global" extern
-static void extern_global_fn(void **args, void *result)
-{
+static void extern_global_fn(void **args, void *result) {
     *static_cast<int64_t *>(result) = 100;
 }
 
 // Returns 200 - identifies as "VM A" extern
-static void extern_vm_a_fn(void **args, void *result)
-{
+static void extern_vm_a_fn(void **args, void *result) {
     *static_cast<int64_t *>(result) = 200;
 }
 
 // Returns 300 - identifies as "VM B" extern
-static void extern_vm_b_fn(void **args, void *result)
-{
+static void extern_vm_b_fn(void **args, void *result) {
     *static_cast<int64_t *>(result) = 300;
 }
 
 // Returns 400 - identifies as "per-VM only" extern (not in global)
-static void extern_per_vm_only_fn(void **args, void *result)
-{
+static void extern_per_vm_only_fn(void **args, void *result) {
     *static_cast<int64_t *>(result) = 400;
 }
 
@@ -71,8 +66,7 @@ static void extern_per_vm_only_fn(void **args, void *result)
 // Tests
 //===----------------------------------------------------------------------===//
 
-TEST(PerVMExternRegistry, CreateAndDestroy)
-{
+TEST(PerVMExternRegistry, CreateAndDestroy) {
     // Verify that we can create and destroy per-VM registries
     ExternRegistryPtr reg = createExternRegistry();
     ASSERT_NE(reg.get(), nullptr);
@@ -93,8 +87,7 @@ TEST(PerVMExternRegistry, CreateAndDestroy)
     // Destroy happens automatically when unique_ptr goes out of scope
 }
 
-TEST(PerVMExternRegistry, TwoVMsWithDifferentExterns)
-{
+TEST(PerVMExternRegistry, TwoVMsWithDifferentExterns) {
     // Create two per-VM registries with different extern implementations
     ExternRegistryPtr regA = createExternRegistry();
     ExternRegistryPtr regB = createExternRegistry();
@@ -123,8 +116,7 @@ TEST(PerVMExternRegistry, TwoVMsWithDifferentExterns)
     EXPECT_EQ(foundB->fn, reinterpret_cast<void *>(extern_vm_b_fn));
 }
 
-TEST(PerVMExternRegistry, VMAssignmentAndRetrieval)
-{
+TEST(PerVMExternRegistry, VMAssignmentAndRetrieval) {
     // Create a VM and assign a per-VM registry
     il::core::Module module;
     VM vm(module);
@@ -144,8 +136,7 @@ TEST(PerVMExternRegistry, VMAssignmentAndRetrieval)
     EXPECT_EQ(vm.externRegistry(), nullptr);
 }
 
-TEST(PerVMExternRegistry, GlobalFallback)
-{
+TEST(PerVMExternRegistry, GlobalFallback) {
     // Register in the global registry
     ExternDesc globalDesc;
     globalDesc.name = "global_only_extern";
@@ -169,8 +160,7 @@ TEST(PerVMExternRegistry, GlobalFallback)
     unregisterExternIn(processGlobalExternRegistry(), "global_only_extern");
 }
 
-TEST(PerVMExternRegistry, PerVMOverridesGlobal)
-{
+TEST(PerVMExternRegistry, PerVMOverridesGlobal) {
     // Register "shared_name" in global registry
     ExternDesc globalDesc;
     globalDesc.name = "shared_name";
@@ -200,8 +190,7 @@ TEST(PerVMExternRegistry, PerVMOverridesGlobal)
     unregisterExternIn(processGlobalExternRegistry(), "shared_name");
 }
 
-TEST(PerVMExternRegistry, UnregisterFromPerVM)
-{
+TEST(PerVMExternRegistry, UnregisterFromPerVM) {
     ExternRegistryPtr reg = createExternRegistry();
 
     ExternDesc desc;
@@ -224,8 +213,7 @@ TEST(PerVMExternRegistry, UnregisterFromPerVM)
     EXPECT_FALSE(unregisterExternIn(*reg, "removable"));
 }
 
-TEST(PerVMExternRegistry, CaseInsensitiveLookup)
-{
+TEST(PerVMExternRegistry, CaseInsensitiveLookup) {
     ExternRegistryPtr reg = createExternRegistry();
 
     ExternDesc desc;
@@ -241,8 +229,7 @@ TEST(PerVMExternRegistry, CaseInsensitiveLookup)
     EXPECT_NE(findExternIn(*reg, "mIxEdCaSe"), nullptr);
 }
 
-TEST(PerVMExternRegistry, MultipleRegistriesIndependent)
-{
+TEST(PerVMExternRegistry, MultipleRegistriesIndependent) {
     // Create three registries: two per-VM and the global
     ExternRegistryPtr regA = createExternRegistry();
     ExternRegistryPtr regB = createExternRegistry();
@@ -284,8 +271,7 @@ TEST(PerVMExternRegistry, MultipleRegistriesIndependent)
     unregisterExternIn(global, "only_in_global");
 }
 
-TEST(PerVMExternRegistry, ActiveVMRegistryResolution)
-{
+TEST(PerVMExternRegistry, ActiveVMRegistryResolution) {
     // This test verifies that currentExternRegistry() routes to the active VM's
     // registry when one is set, and falls back to global otherwise.
 
@@ -339,8 +325,7 @@ TEST(PerVMExternRegistry, ActiveVMRegistryResolution)
     unregisterExternIn(processGlobalExternRegistry(), "routing_test");
 }
 
-TEST(PerVMExternRegistry, ThreadSafeGlobalRegistry)
-{
+TEST(PerVMExternRegistry, ThreadSafeGlobalRegistry) {
     // Verify that concurrent access to the global registry is safe
     constexpr int kNumThreads = 4;
     constexpr int kNumOpsPerThread = 100;
@@ -348,25 +333,20 @@ TEST(PerVMExternRegistry, ThreadSafeGlobalRegistry)
     std::vector<std::thread> threads;
     threads.reserve(kNumThreads);
 
-    for (int t = 0; t < kNumThreads; ++t)
-    {
-        threads.emplace_back(
-            [t]()
-            {
-                for (int i = 0; i < kNumOpsPerThread; ++i)
-                {
-                    std::string name =
-                        "thread_" + std::to_string(t) + "_extern_" + std::to_string(i);
-                    ExternDesc desc;
-                    desc.name = name;
-                    desc.signature = makeVoidToI64Sig(name);
-                    desc.fn = reinterpret_cast<void *>(extern_global_fn);
+    for (int t = 0; t < kNumThreads; ++t) {
+        threads.emplace_back([t]() {
+            for (int i = 0; i < kNumOpsPerThread; ++i) {
+                std::string name = "thread_" + std::to_string(t) + "_extern_" + std::to_string(i);
+                ExternDesc desc;
+                desc.name = name;
+                desc.signature = makeVoidToI64Sig(name);
+                desc.fn = reinterpret_cast<void *>(extern_global_fn);
 
-                    registerExternIn(processGlobalExternRegistry(), desc);
-                    findExternIn(processGlobalExternRegistry(), name);
-                    unregisterExternIn(processGlobalExternRegistry(), name);
-                }
-            });
+                registerExternIn(processGlobalExternRegistry(), desc);
+                findExternIn(processGlobalExternRegistry(), name);
+                unregisterExternIn(processGlobalExternRegistry(), name);
+            }
+        });
     }
 
     for (auto &th : threads)
@@ -380,25 +360,21 @@ TEST(PerVMExternRegistry, ThreadSafeGlobalRegistry)
 //===----------------------------------------------------------------------===//
 
 // Helper to create a void -> f64 signature (different from void -> i64)
-static Signature makeVoidToF64Sig(const std::string &name)
-{
+static Signature makeVoidToF64Sig(const std::string &name) {
     return make_signature(name, {}, {SigParam::F64});
 }
 
 // Helper to create a i64 -> i64 signature
-static Signature makeI64ToI64Sig(const std::string &name)
-{
+static Signature makeI64ToI64Sig(const std::string &name) {
     return make_signature(name, {SigParam::I64}, {SigParam::I64});
 }
 
-TEST(ExternRegistryStrictMode, DefaultDisabled)
-{
+TEST(ExternRegistryStrictMode, DefaultDisabled) {
     ExternRegistryPtr reg = createExternRegistry();
     EXPECT_FALSE(isExternRegistryStrictMode(*reg));
 }
 
-TEST(ExternRegistryStrictMode, EnableDisable)
-{
+TEST(ExternRegistryStrictMode, EnableDisable) {
     ExternRegistryPtr reg = createExternRegistry();
 
     setExternRegistryStrictMode(*reg, true);
@@ -408,8 +384,7 @@ TEST(ExternRegistryStrictMode, EnableDisable)
     EXPECT_FALSE(isExternRegistryStrictMode(*reg));
 }
 
-TEST(ExternRegistryStrictMode, ReRegisterSameSignatureAllowed)
-{
+TEST(ExternRegistryStrictMode, ReRegisterSameSignatureAllowed) {
     ExternRegistryPtr reg = createExternRegistry();
     setExternRegistryStrictMode(*reg, true);
 
@@ -435,8 +410,7 @@ TEST(ExternRegistryStrictMode, ReRegisterSameSignatureAllowed)
     EXPECT_EQ(found->fn, reinterpret_cast<void *>(extern_vm_b_fn));
 }
 
-TEST(ExternRegistryStrictMode, ReRegisterDifferentSignatureFails)
-{
+TEST(ExternRegistryStrictMode, ReRegisterDifferentSignatureFails) {
     ExternRegistryPtr reg = createExternRegistry();
     setExternRegistryStrictMode(*reg, true);
 
@@ -462,8 +436,7 @@ TEST(ExternRegistryStrictMode, ReRegisterDifferentSignatureFails)
     EXPECT_EQ(found->fn, reinterpret_cast<void *>(extern_vm_a_fn));
 }
 
-TEST(ExternRegistryStrictMode, DifferentParamCountFails)
-{
+TEST(ExternRegistryStrictMode, DifferentParamCountFails) {
     ExternRegistryPtr reg = createExternRegistry();
     setExternRegistryStrictMode(*reg, true);
 
@@ -484,8 +457,7 @@ TEST(ExternRegistryStrictMode, DifferentParamCountFails)
     EXPECT_EQ(result2, ExternRegisterResult::SignatureMismatch);
 }
 
-TEST(ExternRegistryStrictMode, NonStrictModeOverwrites)
-{
+TEST(ExternRegistryStrictMode, NonStrictModeOverwrites) {
     ExternRegistryPtr reg = createExternRegistry();
     // Strict mode is OFF by default
 
@@ -512,8 +484,7 @@ TEST(ExternRegistryStrictMode, NonStrictModeOverwrites)
     EXPECT_EQ(found->fn, reinterpret_cast<void *>(extern_vm_b_fn));
 }
 
-TEST(ExternRegistryStrictMode, GlobalRegistryStrictMode)
-{
+TEST(ExternRegistryStrictMode, GlobalRegistryStrictMode) {
     // Save and restore original state
     bool originalStrict = isExternRegistryStrictMode(processGlobalExternRegistry());
 
@@ -542,8 +513,7 @@ TEST(ExternRegistryStrictMode, GlobalRegistryStrictMode)
     setExternRegistryStrictMode(processGlobalExternRegistry(), originalStrict);
 }
 
-TEST(ExternRegistryStrictMode, CaseInsensitiveNameMatching)
-{
+TEST(ExternRegistryStrictMode, CaseInsensitiveNameMatching) {
     ExternRegistryPtr reg = createExternRegistry();
     setExternRegistryStrictMode(*reg, true);
 
@@ -564,8 +534,7 @@ TEST(ExternRegistryStrictMode, CaseInsensitiveNameMatching)
     EXPECT_EQ(result2, ExternRegisterResult::SignatureMismatch);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

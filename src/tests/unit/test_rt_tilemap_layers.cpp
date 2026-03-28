@@ -37,8 +37,7 @@
 #include <cstring>
 
 // Trap handler for runtime
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -50,22 +49,19 @@ static int tests_passed = 0;
 static int tests_total = 0;
 
 #define TEST(name)                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_total++;                                                                             \
         printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 
 #define PASS()                                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_passed++;                                                                            \
         printf("ok\n");                                                                            \
     } while (0)
 
 /// Helper to create an rt_string from a C literal.
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
@@ -73,8 +69,7 @@ static rt_string make_str(const char *s)
 // Tests
 //=============================================================================
 
-static void test_default_single_layer(void)
-{
+static void test_default_single_layer(void) {
     TEST("Default tilemap has 1 layer");
     void *tm = rt_tilemap_new(10, 10, 16, 16);
     assert(tm != NULL);
@@ -89,8 +84,7 @@ static void test_default_single_layer(void)
     PASS();
 }
 
-static void test_add_and_name_layers(void)
-{
+static void test_add_and_name_layers(void) {
     TEST("Add and name layers");
     void *tm = rt_tilemap_new(8, 8, 16, 16);
     assert(tm != NULL);
@@ -113,8 +107,7 @@ static void test_add_and_name_layers(void)
     PASS();
 }
 
-static void test_per_layer_tile_independence(void)
-{
+static void test_per_layer_tile_independence(void) {
     TEST("Per-layer tile independence");
     void *tm = rt_tilemap_new(10, 10, 16, 16);
     rt_string fg = make_str("fg");
@@ -135,8 +128,7 @@ static void test_per_layer_tile_independence(void)
     PASS();
 }
 
-static void test_fill_and_clear_layer(void)
-{
+static void test_fill_and_clear_layer(void) {
     TEST("Fill and clear layer");
     void *tm = rt_tilemap_new(4, 4, 16, 16);
     rt_string l1 = make_str("l1");
@@ -155,8 +147,7 @@ static void test_fill_and_clear_layer(void)
     PASS();
 }
 
-static void test_layer_visibility(void)
-{
+static void test_layer_visibility(void) {
     TEST("Layer visibility toggle");
     void *tm = rt_tilemap_new(4, 4, 16, 16);
     rt_string l1 = make_str("vis");
@@ -176,8 +167,7 @@ static void test_layer_visibility(void)
     PASS();
 }
 
-static void test_collision_layer_designation(void)
-{
+static void test_collision_layer_designation(void) {
     TEST("Collision layer designation");
     void *tm = rt_tilemap_new(10, 10, 16, 16);
     rt_string coll = make_str("collision");
@@ -204,8 +194,7 @@ static void test_collision_layer_designation(void)
     PASS();
 }
 
-static void test_backwards_compatibility(void)
-{
+static void test_backwards_compatibility(void) {
     TEST("Backwards compatibility (single-layer API on layer 0)");
     void *tm = rt_tilemap_new(10, 10, 16, 16);
 
@@ -235,8 +224,7 @@ static void test_backwards_compatibility(void)
     PASS();
 }
 
-static void test_remove_layer(void)
-{
+static void test_remove_layer(void) {
     TEST("Remove layer shifts indices");
     void *tm = rt_tilemap_new(4, 4, 16, 16);
     rt_string l1 = make_str("mid");
@@ -261,8 +249,7 @@ static void test_remove_layer(void)
     PASS();
 }
 
-static void test_cannot_remove_base_layer(void)
-{
+static void test_cannot_remove_base_layer(void) {
     TEST("Cannot remove base layer (layer 0)");
     void *tm = rt_tilemap_new(4, 4, 16, 16);
     rt_tilemap_set_tile(tm, 0, 0, 99);
@@ -273,13 +260,11 @@ static void test_cannot_remove_base_layer(void)
     PASS();
 }
 
-static void test_max_layers(void)
-{
+static void test_max_layers(void) {
     TEST("Maximum 16 layers");
     void *tm = rt_tilemap_new(2, 2, 16, 16);
     // Layer 0 already exists, add 15 more
-    for (int i = 1; i < 16; i++)
-    {
+    for (int i = 1; i < 16; i++) {
         rt_string name = make_str("layer");
         int64_t id = rt_tilemap_add_layer(tm, name);
         assert(id == i);
@@ -293,8 +278,7 @@ static void test_max_layers(void)
     PASS();
 }
 
-static void test_invalid_layer_id(void)
-{
+static void test_invalid_layer_id(void) {
     TEST("Invalid layer ID returns defaults");
     void *tm = rt_tilemap_new(4, 4, 16, 16);
 
@@ -310,8 +294,7 @@ static void test_invalid_layer_id(void)
     PASS();
 }
 
-static void test_null_safety(void)
-{
+static void test_null_safety(void) {
     TEST("NULL tilemap safety");
     assert(rt_tilemap_get_layer_count(NULL) == 0);
     assert(rt_tilemap_get_collision_layer(NULL) == 0);
@@ -330,8 +313,7 @@ static void test_null_safety(void)
     PASS();
 }
 
-static void test_collision_layer_adjusts_on_remove(void)
-{
+static void test_collision_layer_adjusts_on_remove(void) {
     TEST("Collision layer adjusts on layer removal");
     void *tm = rt_tilemap_new(4, 4, 16, 16);
     rt_string l1 = make_str("a");
@@ -349,8 +331,7 @@ static void test_collision_layer_adjusts_on_remove(void)
     PASS();
 }
 
-static void test_collision_layer_resets_on_remove_self(void)
-{
+static void test_collision_layer_resets_on_remove_self(void) {
     TEST("Collision layer resets to 0 when its layer is removed");
     void *tm = rt_tilemap_new(4, 4, 16, 16);
     rt_string l1 = make_str("c");
@@ -369,8 +350,7 @@ static void test_collision_layer_resets_on_remove_self(void)
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("test_rt_tilemap_layers:\n");
 
     test_default_single_layer();

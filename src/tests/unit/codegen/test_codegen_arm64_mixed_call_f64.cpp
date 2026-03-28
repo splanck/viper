@@ -15,16 +15,14 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
@@ -32,8 +30,7 @@ static void writeFile(const std::string &path, const std::string &text)
 
 /// @brief Call rt_parse_num_or("3", 99.0) — should parse "3" and return 3.0.
 /// Verifies f64 return value is correctly read from D0.
-TEST(Arm64MixedCallF64, ParseNumOrValidString)
-{
+TEST(Arm64MixedCallF64, ParseNumOrValidString) {
     const std::string in = outPath("arm64_numor_valid.il");
     const std::string il = "il 0.1\n"
                            "extern @rt_parse_num_or(str, f64) -> f64\n"
@@ -56,8 +53,7 @@ TEST(Arm64MixedCallF64, ParseNumOrValidString)
 /// @brief Call rt_parse_num_or("abc", 42.0) — parse fails, returns default 42.0.
 /// This specifically tests that the f64 default_value argument is correctly
 /// passed in D0 (FPR) rather than X1 (GPR) on AArch64.
-TEST(Arm64MixedCallF64, ParseNumOrInvalidStringReturnsDefault)
-{
+TEST(Arm64MixedCallF64, ParseNumOrInvalidStringReturnsDefault) {
     const std::string in = outPath("arm64_numor_default.il");
     const std::string il = "il 0.1\n"
                            "extern @rt_parse_num_or(str, f64) -> f64\n"
@@ -79,8 +75,7 @@ TEST(Arm64MixedCallF64, ParseNumOrInvalidStringReturnsDefault)
 
 /// @brief Call rt_parse_num_or("", 7.0) — empty string, returns default 7.0.
 /// Tests default value with empty string input.
-TEST(Arm64MixedCallF64, ParseNumOrEmptyStringReturnsDefault)
-{
+TEST(Arm64MixedCallF64, ParseNumOrEmptyStringReturnsDefault) {
     const std::string in = outPath("arm64_numor_empty.il");
     const std::string il = "il 0.1\n"
                            "extern @rt_parse_num_or(str, f64) -> f64\n"
@@ -100,8 +95,7 @@ TEST(Arm64MixedCallF64, ParseNumOrEmptyStringReturnsDefault)
     ASSERT_EQ(rc, 7);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

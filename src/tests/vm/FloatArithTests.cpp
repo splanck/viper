@@ -22,26 +22,22 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 // Helper to convert double to int64_t bit pattern for Value::constInt
-int64_t doubleBits(double d)
-{
+int64_t doubleBits(double d) {
     int64_t bits;
     std::memcpy(&bits, &d, sizeof(bits));
     return bits;
 }
 
 // Helper to convert int64_t back to double
-double bitsToDouble(int64_t bits)
-{
+double bitsToDouble(int64_t bits) {
     double d;
     std::memcpy(&d, &bits, sizeof(d));
     return d;
 }
 
-void buildFloatBinaryFunction(Module &module, Opcode op, double lhs, double rhs)
-{
+void buildFloatBinaryFunction(Module &module, Opcode op, double lhs, double rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -84,8 +80,7 @@ void buildFloatBinaryFunction(Module &module, Opcode op, double lhs, double rhs)
     bb.instructions.push_back(ret);
 }
 
-double runFloatBinary(Opcode op, double lhs, double rhs)
-{
+double runFloatBinary(Opcode op, double lhs, double rhs) {
     Module module;
     buildFloatBinaryFunction(module, op, lhs, rhs);
     viper::tests::VmFixture fixture;
@@ -93,20 +88,17 @@ double runFloatBinary(Opcode op, double lhs, double rhs)
     return bitsToDouble(bits);
 }
 
-bool isNaN(double d)
-{
+bool isNaN(double d) {
     return std::isnan(d);
 }
 
-bool isInf(double d)
-{
+bool isInf(double d) {
     return std::isinf(d);
 }
 
 } // namespace
 
-int main()
-{
+int main() {
     const double nan = std::numeric_limits<double>::quiet_NaN();
     const double inf = std::numeric_limits<double>::infinity();
     const double negInf = -std::numeric_limits<double>::infinity();

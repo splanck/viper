@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,8 +43,7 @@ static std::string readFile(const std::string &path)
 }
 
 /// @brief Returns the expected mangled symbol name for a call target.
-static std::string blSym(const std::string &name)
-{
+static std::string blSym(const std::string &name) {
 #if defined(__APPLE__)
     return "bl _" + name;
 #else
@@ -56,8 +52,7 @@ static std::string blSym(const std::string &name)
 }
 
 // Test 1: Value live across call needs callee-saved or spill
-TEST(Arm64CalleeSaved, ValueAcrossCall)
-{
+TEST(Arm64CalleeSaved, ValueAcrossCall) {
     const std::string in = outPath("arm64_callee_call.il");
     const std::string out = outPath("arm64_callee_call.s");
     const std::string il = "il 0.1\n"
@@ -78,8 +73,7 @@ TEST(Arm64CalleeSaved, ValueAcrossCall)
 }
 
 // Test 2: Multiple values live across call
-TEST(Arm64CalleeSaved, MultipleValuesAcrossCall)
-{
+TEST(Arm64CalleeSaved, MultipleValuesAcrossCall) {
     const std::string in = outPath("arm64_callee_multi.il");
     const std::string out = outPath("arm64_callee_multi.s");
     const std::string il = "il 0.1\n"
@@ -102,8 +96,7 @@ TEST(Arm64CalleeSaved, MultipleValuesAcrossCall)
 }
 
 // Test 3: FP value live across call
-TEST(Arm64CalleeSaved, FPValueAcrossCall)
-{
+TEST(Arm64CalleeSaved, FPValueAcrossCall) {
     const std::string in = outPath("arm64_callee_fp.il");
     const std::string out = outPath("arm64_callee_fp.s");
     const std::string il = "il 0.1\n"
@@ -123,8 +116,7 @@ TEST(Arm64CalleeSaved, FPValueAcrossCall)
 }
 
 // Test 4: Loop with call - accumulator needs preserving
-TEST(Arm64CalleeSaved, LoopWithCall)
-{
+TEST(Arm64CalleeSaved, LoopWithCall) {
     const std::string in = outPath("arm64_callee_loop.il");
     const std::string out = outPath("arm64_callee_loop.s");
     const std::string il = "il 0.1\n"
@@ -150,8 +142,7 @@ TEST(Arm64CalleeSaved, LoopWithCall)
 }
 
 // Test 5: Nested calls
-TEST(Arm64CalleeSaved, NestedCalls)
-{
+TEST(Arm64CalleeSaved, NestedCalls) {
     const std::string in = outPath("arm64_callee_nested.il");
     const std::string out = outPath("arm64_callee_nested.s");
     const std::string il = "il 0.1\n"
@@ -174,8 +165,7 @@ TEST(Arm64CalleeSaved, NestedCalls)
 }
 
 // Test 6: Many values live across call (force use of multiple callee-saved)
-TEST(Arm64CalleeSaved, ManyValuesNeedSave)
-{
+TEST(Arm64CalleeSaved, ManyValuesNeedSave) {
     const std::string in = outPath("arm64_callee_many.il");
     const std::string out = outPath("arm64_callee_many.s");
     const std::string il = "il 0.1\n"
@@ -206,8 +196,7 @@ TEST(Arm64CalleeSaved, ManyValuesNeedSave)
 }
 
 // Test 7: Simple function without calls (may not need callee-saved)
-TEST(Arm64CalleeSaved, NoCalls)
-{
+TEST(Arm64CalleeSaved, NoCalls) {
     const std::string in = outPath("arm64_callee_nocall.il");
     const std::string out = outPath("arm64_callee_nocall.s");
     const std::string il = "il 0.1\n"
@@ -225,8 +214,7 @@ TEST(Arm64CalleeSaved, NoCalls)
 }
 
 // Test 8: Verify prologue/epilogue structure
-TEST(Arm64CalleeSaved, PrologueEpilogue)
-{
+TEST(Arm64CalleeSaved, PrologueEpilogue) {
     const std::string in = outPath("arm64_callee_proepi.il");
     const std::string out = outPath("arm64_callee_proepi.s");
     const std::string il = "il 0.1\n"
@@ -251,8 +239,7 @@ TEST(Arm64CalleeSaved, PrologueEpilogue)
     EXPECT_NE(asmText.find("ret"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

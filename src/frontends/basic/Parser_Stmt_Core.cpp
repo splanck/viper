@@ -36,8 +36,7 @@
 ///          identifier expressions and procedure calls can be resolved without
 ///          backtracking.
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Remember that a procedure declaration introduced @p name.
 /// @details The parser keeps a set of procedure identifiers so later
@@ -45,8 +44,7 @@ namespace il::frontends::basic
 ///          helper inserts the identifier into that set, guaranteeing idempotent
 ///          behaviour across multiple declarations.
 /// @param name Canonical procedure name encountered in the source program.
-void Parser::noteProcedureName(std::string_view name)
-{
+void Parser::noteProcedureName(std::string_view name) {
     knownProcedures_.emplace(name);
 }
 
@@ -58,13 +56,11 @@ void Parser::noteProcedureName(std::string_view name)
 /// @param name Identifier token spelling to probe.
 /// @return True when the parser has previously recorded the name as a
 ///         procedure.
-bool Parser::isKnownProcedureName(const std::string &name) const
-{
+bool Parser::isKnownProcedureName(const std::string &name) const {
     return knownProcedures_.find(name) != knownProcedures_.end();
 }
 
-Parser::StmtResult Parser::parseImplicitLet()
-{
+Parser::StmtResult Parser::parseImplicitLet() {
     if (!isImplicitAssignmentStart())
         return std::nullopt;
 
@@ -80,19 +76,16 @@ Parser::StmtResult Parser::parseImplicitLet()
     return StmtResult(std::move(stmt));
 }
 
-bool Parser::isImplicitAssignmentStart() const
-{
+bool Parser::isImplicitAssignmentStart() const {
     // BUG-OOP-021: Allow soft keywords (COLOR, FLOOR, etc.) as variable names.
     if (!isSoftIdentToken(peek().kind) && !at(TokenKind::KeywordMe))
         return false;
 
     int depth = 0;
     int offset = 1;
-    while (true)
-    {
+    while (true) {
         const Token &tok = peek(offset);
-        if (tok.kind == TokenKind::Equal)
-        {
+        if (tok.kind == TokenKind::Equal) {
             if (depth == 0)
                 return true;
             ++offset;
@@ -101,22 +94,19 @@ bool Parser::isImplicitAssignmentStart() const
         if (tok.kind == TokenKind::EndOfLine || tok.kind == TokenKind::EndOfFile ||
             tok.kind == TokenKind::Colon)
             return false;
-        if (tok.kind == TokenKind::LParen)
-        {
+        if (tok.kind == TokenKind::LParen) {
             ++depth;
             ++offset;
             continue;
         }
-        if (tok.kind == TokenKind::RParen)
-        {
+        if (tok.kind == TokenKind::RParen) {
             if (depth == 0)
                 return false;
             --depth;
             ++offset;
             continue;
         }
-        if (tok.kind == TokenKind::Dot && depth == 0)
-        {
+        if (tok.kind == TokenKind::Dot && depth == 0) {
             ++offset;
             const Token &member = peek(offset);
             // BUG-CARDS-004 + A-071 fix: Accept all keywords as member names after dot
@@ -125,8 +115,7 @@ bool Parser::isImplicitAssignmentStart() const
             ++offset;
             continue;
         }
-        if (depth > 0)
-        {
+        if (depth > 0) {
             ++offset;
             continue;
         }
@@ -147,35 +136,30 @@ bool Parser::isImplicitAssignmentStart() const
 ///        retained to preserve the call signature used by the parser dispatch.
 /// @return Parsed call statement on success, an empty optional when no call is
 ///         present, or a null statement pointer when an error was reported.
-Parser::StmtResult Parser::parseCall(int)
-{
+Parser::StmtResult Parser::parseCall(int) {
     // Allow calls starting with an identifier or OOP receivers like
     // ME.Speak() or BASE.Speak().
     if (!at(TokenKind::Identifier) && !at(TokenKind::KeywordMe) && !at(TokenKind::KeywordBase))
         return std::nullopt;
     const Token identTok = peek();
     const Token nextTok = peek(1);
-    if (nextTok.kind == TokenKind::Dot)
-    {
+    if (nextTok.kind == TokenKind::Dot) {
         // Attempt to parse a namespace-qualified call pattern: Ident( . Ident )+ '('
         // Prefer this interpretation in statement position to surface clearer
         // procedure diagnostics, but avoid misclassifying instance calls like
         // `o.F()` by requiring either multiple qualification segments or that
         // the head identifier is a known namespace.
-        if (at(TokenKind::Identifier))
-        {
+        if (at(TokenKind::Identifier)) {
             // Non-destructive probe for pattern Ident ('.' Ident)+ '('
             size_t i = 0;
-            if (peek(i).kind == TokenKind::Identifier && peek(i + 1).kind == TokenKind::Dot)
-            {
+            if (peek(i).kind == TokenKind::Identifier && peek(i + 1).kind == TokenKind::Dot) {
                 // Advance through segments
                 i += 2; // consumed first ident and dot conceptually
                 bool ok = true;
                 bool sawAdditionalDot = false;
                 // BUG-OOP-040 fix: Use isMemberIdentToken() to allow keyword segments
                 // in dotted namespaces like Viper.Random.Seed() and Viper.IO.File.Delete().
-                while (isMemberIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::Dot)
-                {
+                while (isMemberIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::Dot) {
                     sawAdditionalDot = true;
                     i += 2;
                 }
@@ -184,8 +168,7 @@ Parser::StmtResult Parser::parseCall(int)
                 if (!(isMemberIdentToken(peek(i).kind) && peek(i + 1).kind == TokenKind::LParen))
                     ok = false;
 
-                if (ok)
-                {
+                if (ok) {
                     // BUG-082 fix: Only treat as qualified procedure call if the first identifier
                     // is a known namespace. Otherwise, let the expression parser handle it, which
                     // will correctly distinguish between namespace-qualified calls (Ns.Ns.Proc)
@@ -194,26 +177,18 @@ Parser::StmtResult Parser::parseCall(int)
                     // This fixes cases like game.awayTeam.InitPlayer() which should be parsed
                     // as a MethodCallExpr on MemberAccessExpr, not as a qualified CallExpr.
                     bool treatAsQualified = false;
-                    if (knownNamespaces_.find(identTok.lexeme) != knownNamespaces_.end())
-                    {
+                    if (knownNamespaces_.find(identTok.lexeme) != knownNamespaces_.end()) {
                         treatAsQualified = true;
-                    }
-                    else
-                    {
+                    } else {
                         // When runtime namespaces are enabled, accept multi-segment
                         // dotted calls even if the head is not pre-registered as a
                         // namespace (e.g., Viper.IO.File.*).
-                        if (il::frontends::basic::FrontendOptions::enableRuntimeNamespaces())
-                        {
-                            if (sawAdditionalDot)
-                            {
+                        if (il::frontends::basic::FrontendOptions::enableRuntimeNamespaces()) {
+                            if (sawAdditionalDot) {
                                 treatAsQualified = true;
-                            }
-                            else
-                            {
+                            } else {
                                 // Also accept explicit 'Viper' regardless of registry seeding.
-                                if (identTok.lexeme.size() == 5 || identTok.lexeme.size() == 6)
-                                {
+                                if (identTok.lexeme.size() == 5 || identTok.lexeme.size() == 6) {
                                     std::string head = identTok.lexeme;
                                     for (auto &c : head)
                                         c = static_cast<char>(
@@ -225,16 +200,13 @@ Parser::StmtResult Parser::parseCall(int)
                         }
                     }
 
-                    if (treatAsQualified)
-                    {
+                    if (treatAsQualified) {
                         // Consume the qualified segments for real and parse arguments as a CallExpr
                         auto [segs, startLoc] = parseQualifiedIdentSegments();
                         expect(TokenKind::LParen);
                         std::vector<ExprPtr> args;
-                        if (!at(TokenKind::RParen))
-                        {
-                            while (true)
-                            {
+                        if (!at(TokenKind::RParen)) {
+                            while (true) {
                                 args.push_back(parseExpression());
                                 if (!at(TokenKind::Comma))
                                     break;
@@ -260,23 +232,20 @@ Parser::StmtResult Parser::parseCall(int)
         }
         // Fallback: parse a general expression and accept MethodCallExpr or CallExpr
         auto expr = parseExpression(/*min_prec=*/0);
-        if (expr && (is<MethodCallExpr>(*expr) || is<CallExpr>(*expr)))
-        {
+        if (expr && (is<MethodCallExpr>(*expr) || is<CallExpr>(*expr))) {
             auto stmt = std::make_unique<CallStmt>();
             stmt->loc = identTok.loc;
             stmt->call = std::move(expr);
             return StmtResult(std::move(stmt));
         }
         // Special-case: method SUB calls without parentheses (e.g., obj.Inc)
-        if (expr && is<MemberAccessExpr>(*expr))
-        {
+        if (expr && is<MemberAccessExpr>(*expr)) {
             // Only accept when end-of-statement follows
             const Token &after = peek();
             bool endOfStmt = after.kind == TokenKind::EndOfLine ||
                              after.kind == TokenKind::EndOfFile || after.kind == TokenKind::Colon ||
                              after.kind == TokenKind::Number;
-            if (endOfStmt)
-            {
+            if (endOfStmt) {
                 auto *ma = as<MemberAccessExpr>(*expr);
                 // Synthesize a zero-arg MethodCallExpr
                 auto call = std::make_unique<MethodCallExpr>();
@@ -295,8 +264,7 @@ Parser::StmtResult Parser::parseCall(int)
         resyncAfterError();
         return StmtResult(StmtPtr{});
     }
-    if (nextTok.kind != TokenKind::LParen)
-    {
+    if (nextTok.kind != TokenKind::LParen) {
         // Traditional BASIC allows procedure calls without parentheses
         // for zero-argument procedures. Only allow this when followed by
         // end-of-statement markers (EOL, EOF, :, or line number) and the
@@ -305,10 +273,8 @@ Parser::StmtResult Parser::parseCall(int)
                            nextTok.kind == TokenKind::EndOfFile ||
                            nextTok.kind == TokenKind::Colon || nextTok.kind == TokenKind::Number;
 
-        if (isKnownProcedureName(identTok.lexeme))
-        {
-            if (!isEndOfStmt)
-            {
+        if (isKnownProcedureName(identTok.lexeme)) {
+            if (!isEndOfStmt) {
                 // Not end-of-statement: this is likely an attempt to call with arguments
                 // without parentheses - report error.
                 reportMissingCallParenthesis(identTok, nextTok);
@@ -331,8 +297,7 @@ Parser::StmtResult Parser::parseCall(int)
 
     // Parse full expression to allow array-element method calls like arr(i).Init(...)
     auto expr = parseExpression(/*min_prec=*/0);
-    if (expr && (is<CallExpr>(*expr) || is<MethodCallExpr>(*expr)))
-    {
+    if (expr && (is<CallExpr>(*expr) || is<MethodCallExpr>(*expr))) {
         auto stmt = std::make_unique<CallStmt>();
         stmt->loc = identTok.loc;
         stmt->call = std::move(expr);
@@ -351,8 +316,7 @@ Parser::StmtResult Parser::parseCall(int)
 ///          is positioned at the unexpected token when available.
 /// @param identTok Identifier naming the procedure.
 /// @param nextTok  Token that violated the call syntax.
-void Parser::reportMissingCallParenthesis(const Token &identTok, const Token &nextTok)
-{
+void Parser::reportMissingCallParenthesis(const Token &identTok, const Token &nextTok) {
     auto diagLoc = nextTok.loc.hasLine() ? nextTok.loc : identTok.loc;
     std::string message =
         "expected '(' after procedure name '" + identTok.lexeme + "' in procedure call statement";
@@ -366,8 +330,7 @@ void Parser::reportMissingCallParenthesis(const Token &identTok, const Token &ne
 ///          emitter when available, otherwise it falls back to printing the
 ///          message directly.
 /// @param identTok Identifier token that initiated the failed parse.
-void Parser::reportInvalidCallExpression(const Token &identTok)
-{
+void Parser::reportInvalidCallExpression(const Token &identTok) {
     std::string message = "expected procedure call after identifier '" + identTok.lexeme + "'";
     emitError("B0001", identTok, std::move(message));
 }
@@ -378,8 +341,7 @@ void Parser::reportInvalidCallExpression(const Token &identTok)
 ///          expression.  The resulting @ref LetStmt adopts the source location
 ///          of the keyword so diagnostics can report accurate spans.
 /// @return Newly constructed LET statement node.
-StmtPtr Parser::parseLetStatement()
-{
+StmtPtr Parser::parseLetStatement() {
     auto loc = peek().loc;
     consume();
     auto target = parseLetTarget();
@@ -392,17 +354,13 @@ StmtPtr Parser::parseLetStatement()
     return stmt;
 }
 
-ExprPtr Parser::parseLetTarget()
-{
+ExprPtr Parser::parseLetTarget() {
     ExprPtr base;
     // BUG-OOP-021: Allow soft keywords (COLOR, FLOOR, etc.) as assignment targets.
     if (at(TokenKind::Identifier) ||
-        (isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier))
-    {
+        (isSoftIdentToken(peek().kind) && peek().kind != TokenKind::Identifier)) {
         base = parseArrayOrVar();
-    }
-    else
-    {
+    } else {
         base = parsePrimary();
     }
     return parsePostfix(std::move(base));
@@ -413,17 +371,14 @@ ExprPtr Parser::parseLetTarget()
 ///          and then parses an initializer expression. The type is inferred from
 ///          the identifier suffix or can be explicitly specified with AS.
 /// @return Newly constructed CONST statement node.
-StmtPtr Parser::parseConstStatement()
-{
+StmtPtr Parser::parseConstStatement() {
     auto loc = peek().loc;
     consume(); // CONST keyword
 
-    auto isSoftIdent = [&](TokenKind k)
-    {
+    auto isSoftIdent = [&](TokenKind k) {
         if (k == TokenKind::Identifier)
             return true;
-        switch (k)
-        {
+        switch (k) {
             case TokenKind::KeywordColor:
             case TokenKind::KeywordFloor:
             case TokenKind::KeywordRandom:
@@ -436,8 +391,7 @@ StmtPtr Parser::parseConstStatement()
         }
     };
 
-    if (!isSoftIdent(peek().kind))
-    {
+    if (!isSoftIdent(peek().kind)) {
         emitError("B0001", peek(), "expected identifier after CONST");
         resyncAfterError();
         return std::make_unique<LetStmt>(); // Return dummy statement
@@ -449,8 +403,7 @@ StmtPtr Parser::parseConstStatement()
     Type type = typeFromSuffix(name);
 
     // Check for explicit type with AS keyword
-    if (at(TokenKind::KeywordAs))
-    {
+    if (at(TokenKind::KeywordAs)) {
         consume();
         type = parseTypeKeyword();
     }
@@ -469,26 +422,18 @@ StmtPtr Parser::parseConstStatement()
     // Canonicalize identifier for case-insensitive lookup.
     {
         const std::string canon = CanonicalizeIdent(stmt->name);
-        if (stmt->initializer)
-        {
+        if (stmt->initializer) {
             // First check if the initializer is already a simple literal.
-            if (auto *ie = as<IntExpr>(*stmt->initializer))
-            {
+            if (auto *ie = as<IntExpr>(*stmt->initializer)) {
                 knownConstInts_[canon] = ie->value;
-            }
-            else if (auto *se = as<StringExpr>(*stmt->initializer))
-            {
+            } else if (auto *se = as<StringExpr>(*stmt->initializer)) {
                 knownConstStrs_[canon] = se->value;
             }
             // Try constant folding for binary expressions.
-            else if (auto folded = constfold::fold_expr(*stmt->initializer))
-            {
-                if (auto *ie2 = as<IntExpr>(**folded))
-                {
+            else if (auto folded = constfold::fold_expr(*stmt->initializer)) {
+                if (auto *ie2 = as<IntExpr>(**folded)) {
                     knownConstInts_[canon] = ie2->value;
-                }
-                else if (auto *se2 = as<StringExpr>(**folded))
-                {
+                } else if (auto *se2 = as<StringExpr>(**folded)) {
                     knownConstStrs_[canon] = se2->value;
                 }
             }
@@ -504,13 +449,10 @@ StmtPtr Parser::parseConstStatement()
 ///          back to integer when no suffix is present.
 /// @param name Identifier spelling to inspect.
 /// @return Semantic type dictated by the suffix.
-Type Parser::typeFromSuffix(std::string_view name)
-{
-    if (!name.empty())
-    {
+Type Parser::typeFromSuffix(std::string_view name) {
+    if (!name.empty()) {
         char c = name.back();
-        switch (c)
-        {
+        switch (c) {
             case '#':
             case '!':
                 return Type::F64;
@@ -532,15 +474,12 @@ Type Parser::typeFromSuffix(std::string_view name)
 ///          keyword is present the default integer type is returned so the
 ///          caller can flag the failure separately if desired.
 /// @return Semantic type parsed from the token stream.
-Type Parser::parseTypeKeyword()
-{
-    if (at(TokenKind::KeywordBoolean))
-    {
+Type Parser::parseTypeKeyword() {
+    if (at(TokenKind::KeywordBoolean)) {
         consume();
         return Type::Bool;
     }
-    if (at(TokenKind::Identifier))
-    {
+    if (at(TokenKind::Identifier)) {
         std::string name = peek().lexeme;
         consume();
         std::string upperName = string_utils::to_upper(name);
@@ -563,37 +502,29 @@ Type Parser::parseTypeKeyword()
 ///          from the identifier suffix and records whether array brackets were
 ///          present.
 /// @return Sequence of parameter descriptors discovered in the token stream.
-std::vector<Param> Parser::parseParamList()
-{
+std::vector<Param> Parser::parseParamList() {
     std::vector<Param> params;
     if (!at(TokenKind::LParen))
         return params;
     consume();
-    if (at(TokenKind::RParen))
-    {
+    if (at(TokenKind::RParen)) {
         consume();
         return params;
     }
-    while (true)
-    {
+    while (true) {
         bool sawByRef = false;
-        if (at(TokenKind::KeywordByRef))
-        {
+        if (at(TokenKind::KeywordByRef)) {
             consume();
             sawByRef = true;
-        }
-        else if (at(TokenKind::KeywordByVal))
-        {
+        } else if (at(TokenKind::KeywordByVal)) {
             consume();
             // BYVAL is the default, just consume and continue
         }
 
-        auto isSoftIdent = [&](TokenKind k)
-        {
+        auto isSoftIdent = [&](TokenKind k) {
             if (k == TokenKind::Identifier)
                 return true;
-            switch (k)
-            {
+            switch (k) {
                 case TokenKind::KeywordColor:
                 case TokenKind::KeywordFloor:
                 case TokenKind::KeywordRandom:
@@ -616,18 +547,15 @@ std::vector<Param> Parser::parseParamList()
         p.name = id.lexeme;
         p.type = typeFromSuffix(id.lexeme);
         p.isByRef = sawByRef;
-        if (at(TokenKind::LParen))
-        {
+        if (at(TokenKind::LParen)) {
             consume();
             expect(TokenKind::RParen);
             p.is_array = true;
         }
-        if (at(TokenKind::KeywordAs))
-        {
+        if (at(TokenKind::KeywordAs)) {
             consume();
             // Support primitive types and qualified class names after AS
-            if (at(TokenKind::Identifier))
-            {
+            if (at(TokenKind::Identifier)) {
                 // Determine if this is a primitive keyword or a class name
                 std::string first = peek().lexeme;
                 std::string upper = string_utils::to_upper(first);
@@ -635,12 +563,9 @@ std::vector<Param> Parser::parseParamList()
                     (upper == "INTEGER" || upper == "INT" || upper == "LONG" || upper == "DOUBLE" ||
                      upper == "FLOAT" || upper == "SINGLE" || upper == "STRING" ||
                      upper == "BOOLEAN");
-                if (isPrimitive)
-                {
+                if (isPrimitive) {
                     p.type = parseTypeKeyword();
-                }
-                else
-                {
+                } else {
                     // Parse qualified class name: Ident ('.' Ident)*
                     auto [segs, startLoc] = parseQualifiedIdentSegments();
                     (void)startLoc;
@@ -649,11 +574,9 @@ std::vector<Param> Parser::parseParamList()
                         seg = CanonicalizeIdent(seg);
                     // Join dotted form into objectClass string (lower casing preserved by
                     // Canonicalize)
-                    if (!segs.empty())
-                    {
+                    if (!segs.empty()) {
                         std::string cls;
-                        for (size_t i = 0; i < segs.size(); ++i)
-                        {
+                        for (size_t i = 0; i < segs.size(); ++i) {
                             if (i)
                                 cls.push_back('.');
                             cls += segs[i];
@@ -661,26 +584,19 @@ std::vector<Param> Parser::parseParamList()
                         p.objectClass = std::move(cls);
                         // Ensure IL param type becomes pointer later
                         p.type = Type::I64;
-                    }
-                    else
-                    {
+                    } else {
                         // Fallback: treat as primitive keyword path
                         p.type = parseTypeKeyword();
                     }
                 }
-            }
-            else if (at(TokenKind::KeywordBoolean))
-            {
+            } else if (at(TokenKind::KeywordBoolean)) {
                 p.type = parseTypeKeyword();
-            }
-            else
-            {
+            } else {
                 expect(TokenKind::Identifier);
             }
         }
         params.push_back(std::move(p));
-        if (at(TokenKind::Comma))
-        {
+        if (at(TokenKind::Comma)) {
             consume();
             continue;
         }
@@ -697,13 +613,10 @@ std::vector<Param> Parser::parseParamList()
 ///          of CALL statements, and finally parses the body until the matching
 ///          `END FUNCTION` terminator is reached.
 /// @return Newly constructed function declaration statement.
-StmtPtr Parser::parseFunctionStatement()
-{
+StmtPtr Parser::parseFunctionStatement() {
     auto func = parseFunctionHeader();
-    if (func->explicitRetType != BasicType::Unknown)
-    {
-        switch (func->explicitRetType)
-        {
+    if (func->explicitRetType != BasicType::Unknown) {
+        switch (func->explicitRetType) {
             case BasicType::Int:
                 func->ret = Type::I64;
                 break;
@@ -732,10 +645,8 @@ StmtPtr Parser::parseFunctionStatement()
     // BUG-086 fix: Register array parameters so the parser can distinguish
     // arr(i) from proc(i) when parsing the procedure body.
     std::vector<std::string> arrayParams;
-    for (const auto &param : func->params)
-    {
-        if (param.is_array)
-        {
+    for (const auto &param : func->params) {
+        if (param.is_array) {
             arrays_.insert(param.name);
             arrayParams.push_back(param.name);
         }
@@ -745,8 +656,7 @@ StmtPtr Parser::parseFunctionStatement()
 
     // BUG-086 fix: Remove array parameters from the global set after parsing
     // the procedure body to maintain proper scoping.
-    for (const auto &name : arrayParams)
-    {
+    for (const auto &name : arrayParams) {
         arrays_.erase(name);
     }
 
@@ -759,8 +669,7 @@ StmtPtr Parser::parseFunctionStatement()
 ///          illegal for subroutines).  After recording the procedure name the
 ///          body is parsed until the closing `END SUB` token pair is found.
 /// @return Newly constructed subroutine declaration statement.
-StmtPtr Parser::parseSubStatement()
-{
+StmtPtr Parser::parseSubStatement() {
     auto loc = peek().loc;
     consume();
     Token nameTok = expect(TokenKind::Identifier);
@@ -770,24 +679,19 @@ StmtPtr Parser::parseSubStatement()
     std::vector<std::string> segs;
     if (nameTok.kind == TokenKind::Identifier)
         segs.push_back(nameTok.lexeme);
-    while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier)
-    {
+    while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier) {
         consume(); // '.'
         Token seg = consume();
         segs.push_back(seg.lexeme);
     }
-    if (segs.size() > 1)
-    {
+    if (segs.size() > 1) {
         sub->name = segs.back();
         sub->namespacePath.assign(segs.begin(), segs.end() - 1);
-    }
-    else
-    {
+    } else {
         sub->name = nameTok.lexeme;
     }
     sub->params = parseParamList();
-    if (at(TokenKind::KeywordAs))
-    {
+    if (at(TokenKind::KeywordAs)) {
         Token asTok = consume();
         if (!at(TokenKind::EndOfLine) && !at(TokenKind::EndOfFile))
             consume();
@@ -798,10 +702,8 @@ StmtPtr Parser::parseSubStatement()
     // BUG-086 fix: Register array parameters so the parser can distinguish
     // arr(i) from proc(i) when parsing the procedure body.
     std::vector<std::string> arrayParams;
-    for (const auto &param : sub->params)
-    {
-        if (param.is_array)
-        {
+    for (const auto &param : sub->params) {
+        if (param.is_array) {
             arrays_.insert(param.name);
             arrayParams.push_back(param.name);
         }
@@ -811,8 +713,7 @@ StmtPtr Parser::parseSubStatement()
 
     // BUG-086 fix: Remove array parameters from the global set after parsing
     // the procedure body to maintain proper scoping.
-    for (const auto &name : arrayParams)
-    {
+    for (const auto &name : arrayParams) {
         arrays_.erase(name);
     }
 
@@ -823,25 +724,20 @@ StmtPtr Parser::parseSubStatement()
 /// @details Consumes the EXPORT keyword and delegates to the standard
 ///          FUNCTION or SUB parser, marking the result as exported.
 /// @return Function or sub declaration with export linkage.
-StmtPtr Parser::parseExportStatement()
-{
+StmtPtr Parser::parseExportStatement() {
     consume(); // consume EXPORT
 
-    if (at(TokenKind::KeywordFunction))
-    {
+    if (at(TokenKind::KeywordFunction)) {
         auto stmt = parseFunctionStatement();
-        if (stmt)
-        {
+        if (stmt) {
             auto *fn = static_cast<FunctionDecl *>(stmt.get());
             fn->isExport = true;
         }
         return stmt;
     }
-    if (at(TokenKind::KeywordSub))
-    {
+    if (at(TokenKind::KeywordSub)) {
         auto stmt = parseSubStatement();
-        if (stmt)
-        {
+        if (stmt) {
             auto *sub = static_cast<SubDecl *>(stmt.get());
             sub->isExport = true;
         }
@@ -856,28 +752,22 @@ StmtPtr Parser::parseExportStatement()
 /// @details Consumes DECLARE FOREIGN, then parses the function/sub header
 ///          without a body. The resulting declaration has isForeign=true.
 /// @return Function or sub declaration with import linkage.
-StmtPtr Parser::parseDeclareStatement()
-{
+StmtPtr Parser::parseDeclareStatement() {
     consume(); // consume DECLARE
 
-    if (!at(TokenKind::KeywordForeign))
-    {
+    if (!at(TokenKind::KeywordForeign)) {
         emitError("B4999", peek(), "Expected FOREIGN after DECLARE");
         return nullptr;
     }
     consume(); // consume FOREIGN
 
-    if (at(TokenKind::KeywordFunction))
-    {
+    if (at(TokenKind::KeywordFunction)) {
         auto fn = parseFunctionHeader();
-        if (fn)
-        {
+        if (fn) {
             fn->isForeign = true;
             // Apply explicit return type (same logic as parseFunctionStatement).
-            if (fn->explicitRetType != BasicType::Unknown)
-            {
-                switch (fn->explicitRetType)
-                {
+            if (fn->explicitRetType != BasicType::Unknown) {
+                switch (fn->explicitRetType) {
                     case BasicType::Int:
                         fn->ret = Type::I64;
                         break;
@@ -898,8 +788,7 @@ StmtPtr Parser::parseDeclareStatement()
         }
         return fn;
     }
-    if (at(TokenKind::KeywordSub))
-    {
+    if (at(TokenKind::KeywordSub)) {
         auto loc = peek().loc;
         consume(); // consume SUB
         Token nameTok = expect(TokenKind::Identifier);

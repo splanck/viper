@@ -20,8 +20,7 @@
 #include <optional>
 #include <string>
 
-TEST(IL, SimplifyCFGCbrFold)
-{
+TEST(IL, SimplifyCFGCbrFold) {
     using namespace il::core;
 
     Module module;
@@ -56,10 +55,8 @@ TEST(IL, SimplifyCFGCbrFold)
     ASSERT_EQ(stats.cbrToBr, 1);
 
     const auto findBlock = [](const Function &function,
-                              const std::string &label) -> const BasicBlock *
-    {
-        for (const auto &block : function.blocks)
-        {
+                              const std::string &label) -> const BasicBlock * {
+        for (const auto &block : function.blocks) {
             if (block.label == label)
                 return &block;
         }
@@ -83,8 +80,7 @@ TEST(IL, SimplifyCFGCbrFold)
             ASSERT_TRUE(instr.op != Opcode::CBr);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

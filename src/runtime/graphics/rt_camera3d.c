@@ -40,8 +40,7 @@ extern double rt_vec3_y(void *v);
 extern double rt_vec3_z(void *v);
 
 /* Build perspective projection matrix (matches rt_mat4_perspective) */
-static void build_perspective(double *m, double fov_deg, double aspect, double near, double far)
-{
+static void build_perspective(double *m, double fov_deg, double aspect, double near, double far) {
     memset(m, 0, 16 * sizeof(double));
     double fov_rad = fov_deg * (M_PI / 180.0);
     double f = 1.0 / tan(fov_rad * 0.5);
@@ -56,8 +55,7 @@ static void build_perspective(double *m, double fov_deg, double aspect, double n
 }
 
 /* Build view matrix (matches rt_mat4_look_at) */
-static void build_look_at(double *m, const double *eye, const double *target, const double *up)
-{
+static void build_look_at(double *m, const double *eye, const double *target, const double *up) {
     /* Forward = normalize(eye - target) — right-handed.
      * If eye == target (flen ≈ 0), return identity matrix to avoid
      * producing a degenerate view matrix with NaN/zero rows. */
@@ -65,8 +63,7 @@ static void build_look_at(double *m, const double *eye, const double *target, co
     double fy = eye[1] - target[1];
     double fz = eye[2] - target[2];
     double flen = sqrt(fx * fx + fy * fy + fz * fz);
-    if (flen < 1e-12)
-    {
+    if (flen < 1e-12) {
         /* eye == target: produce identity view matrix */
         memset(m, 0, 16 * sizeof(double));
         m[0] = m[5] = m[10] = m[15] = 1.0;
@@ -83,8 +80,7 @@ static void build_look_at(double *m, const double *eye, const double *target, co
     double ry = up[2] * fx - up[0] * fz;
     double rz = up[0] * fy - up[1] * fx;
     double rlen = sqrt(rx * rx + ry * ry + rz * rz);
-    if (rlen > 1e-12)
-    {
+    if (rlen > 1e-12) {
         rx /= rlen;
         ry /= rlen;
         rz /= rlen;
@@ -111,11 +107,9 @@ static void build_look_at(double *m, const double *eye, const double *target, co
     m[15] = 1.0;
 }
 
-void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val)
-{
+void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val) {
     rt_camera3d *cam = (rt_camera3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_camera3d));
-    if (!cam)
-    {
+    if (!cam) {
         rt_trap("Camera3D.New: memory allocation failed");
         return NULL;
     }
@@ -142,8 +136,7 @@ void *rt_camera3d_new(double fov, double aspect, double near_val, double far_val
     return cam;
 }
 
-void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v)
-{
+void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v) {
     if (!obj || !eye_v || !target_v || !up_v)
         return;
     rt_camera3d *cam = (rt_camera3d *)obj;
@@ -159,8 +152,7 @@ void rt_camera3d_look_at(void *obj, void *eye_v, void *target_v, void *up_v)
     build_look_at(cam->view, eye, target, up);
 }
 
-void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, double pitch)
-{
+void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, double pitch) {
     if (!obj || !target_v)
         return;
     rt_camera3d *cam = (rt_camera3d *)obj;
@@ -195,15 +187,13 @@ void rt_camera3d_orbit(void *obj, void *target_v, double distance, double yaw, d
     build_look_at(cam->view, eye, target, up);
 }
 
-double rt_camera3d_get_fov(void *obj)
-{
+double rt_camera3d_get_fov(void *obj) {
     if (!obj)
         return 0.0;
     return ((rt_camera3d *)obj)->fov;
 }
 
-void rt_camera3d_set_fov(void *obj, double fov)
-{
+void rt_camera3d_set_fov(void *obj, double fov) {
     if (!obj)
         return;
     rt_camera3d *cam = (rt_camera3d *)obj;
@@ -211,16 +201,14 @@ void rt_camera3d_set_fov(void *obj, double fov)
     build_perspective(cam->projection, fov, cam->aspect, cam->near_plane, cam->far_plane);
 }
 
-void *rt_camera3d_get_position(void *obj)
-{
+void *rt_camera3d_get_position(void *obj) {
     if (!obj)
         return NULL;
     rt_camera3d *cam = (rt_camera3d *)obj;
     return rt_vec3_new(cam->eye[0], cam->eye[1], cam->eye[2]);
 }
 
-void rt_camera3d_set_position(void *obj, void *pos)
-{
+void rt_camera3d_set_position(void *obj, void *pos) {
     if (!obj || !pos)
         return;
     rt_camera3d *cam = (rt_camera3d *)obj;
@@ -229,8 +217,7 @@ void rt_camera3d_set_position(void *obj, void *pos)
     cam->eye[2] = rt_vec3_z(pos);
 }
 
-void *rt_camera3d_get_forward(void *obj)
-{
+void *rt_camera3d_get_forward(void *obj) {
     if (!obj)
         return NULL;
     rt_camera3d *cam = (rt_camera3d *)obj;
@@ -238,8 +225,7 @@ void *rt_camera3d_get_forward(void *obj)
     return rt_vec3_new(-cam->view[8], -cam->view[9], -cam->view[10]);
 }
 
-void *rt_camera3d_get_right(void *obj)
-{
+void *rt_camera3d_get_right(void *obj) {
     if (!obj)
         return NULL;
     rt_camera3d *cam = (rt_camera3d *)obj;
@@ -252,8 +238,7 @@ void *rt_camera3d_get_right(void *obj)
 /// Each inv[i] is the cofactor (signed minor) of the transpose, so
 /// the adjugate matrix is built column-by-column. The determinant is
 /// computed from the first row and its cofactors. Returns -1 if singular.
-static int mat4d_invert(const double *m, double *out)
-{
+static int mat4d_invert(const double *m, double *out) {
     double inv[16];
     inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] +
              m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
@@ -298,8 +283,7 @@ static int mat4d_invert(const double *m, double *out)
     return 0;
 }
 
-void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, int64_t sh)
-{
+void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, int64_t sh) {
     if (!obj || sw <= 0 || sh <= 0)
         return rt_vec3_new(0.0, 0.0, -1.0);
 
@@ -330,8 +314,7 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
     world[2] = inv_vp[8] * p[0] + inv_vp[9] * p[1] + inv_vp[10] * p[2] + inv_vp[11] * p[3];
     world[3] = inv_vp[12] * p[0] + inv_vp[13] * p[1] + inv_vp[14] * p[2] + inv_vp[15] * p[3];
 
-    if (fabs(world[3]) > 1e-12)
-    {
+    if (fabs(world[3]) > 1e-12) {
         world[0] /= world[3];
         world[1] /= world[3];
         world[2] /= world[3];
@@ -342,8 +325,7 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
     double dy = world[1] - cam->eye[1];
     double dz = world[2] - cam->eye[2];
     double len = sqrt(dx * dx + dy * dy + dz * dz);
-    if (len > 1e-12)
-    {
+    if (len > 1e-12) {
         dx /= len;
         dy /= len;
         dz /= len;
@@ -356,8 +338,7 @@ void *rt_camera3d_screen_to_ray(void *obj, int64_t sx, int64_t sy, int64_t sw, i
  * FPS camera controller
  *=========================================================================*/
 
-void rt_camera3d_fps_init(void *obj)
-{
+void rt_camera3d_fps_init(void *obj) {
     if (!obj)
         return;
     rt_camera3d *cam = (rt_camera3d *)obj;
@@ -381,8 +362,7 @@ void rt_camera3d_fps_update(void *obj,
                             double move_right,
                             double move_up,
                             double speed,
-                            double dt)
-{
+                            double dt) {
     if (!obj)
         return;
     rt_camera3d *cam = (rt_camera3d *)obj;
@@ -420,24 +400,20 @@ void rt_camera3d_fps_update(void *obj,
     build_look_at(cam->view, cam->eye, target, up);
 }
 
-double rt_camera3d_get_yaw(void *obj)
-{
+double rt_camera3d_get_yaw(void *obj) {
     return obj ? ((rt_camera3d *)obj)->fps_yaw : 0.0;
 }
 
-double rt_camera3d_get_pitch(void *obj)
-{
+double rt_camera3d_get_pitch(void *obj) {
     return obj ? ((rt_camera3d *)obj)->fps_pitch : 0.0;
 }
 
-void rt_camera3d_set_yaw(void *obj, double yaw)
-{
+void rt_camera3d_set_yaw(void *obj, double yaw) {
     if (obj)
         ((rt_camera3d *)obj)->fps_yaw = yaw;
 }
 
-void rt_camera3d_set_pitch(void *obj, double pitch)
-{
+void rt_camera3d_set_pitch(void *obj, double pitch) {
     if (!obj)
         return;
     rt_camera3d *cam = (rt_camera3d *)obj;
@@ -452,10 +428,8 @@ void rt_camera3d_set_pitch(void *obj, double pitch)
  * Camera shake
  *=========================================================================*/
 
-static void apply_shake(rt_camera3d *cam, double dt)
-{
-    if (cam->shake_duration <= 0.0)
-    {
+static void apply_shake(rt_camera3d *cam, double dt) {
+    if (cam->shake_duration <= 0.0) {
         cam->shake_offset[0] = cam->shake_offset[1] = cam->shake_offset[2] = 0.0;
         return;
     }
@@ -477,8 +451,7 @@ static void apply_shake(rt_camera3d *cam, double dt)
     cam->shake_offset[2] = (r1 * r2) * cam->shake_intensity * 0.3;
 }
 
-void rt_camera3d_shake(void *obj, double intensity, double duration, double decay)
-{
+void rt_camera3d_shake(void *obj, double intensity, double duration, double decay) {
     if (!obj)
         return;
     rt_camera3d *cam = (rt_camera3d *)obj;
@@ -492,8 +465,7 @@ void rt_camera3d_shake(void *obj, double intensity, double duration, double deca
  *=========================================================================*/
 
 void rt_camera3d_smooth_follow(
-    void *obj, void *target_pos, double distance, double height, double speed, double dt)
-{
+    void *obj, void *target_pos, double distance, double height, double speed, double dt) {
     if (!obj || !target_pos)
         return;
     rt_camera3d *cam = (rt_camera3d *)obj;
@@ -526,8 +498,7 @@ void rt_camera3d_smooth_follow(
  * Smooth look-at (gradual rotation toward target)
  *=========================================================================*/
 
-void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt)
-{
+void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt) {
     if (!obj || !target)
         return;
     rt_camera3d *cam = (rt_camera3d *)obj;
@@ -540,8 +511,7 @@ void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt
     double dy = rt_vec3_y(target) - cam->eye[1];
     double dz = rt_vec3_z(target) - cam->eye[2];
     double len = sqrt(dx * dx + dy * dy + dz * dz);
-    if (len > 1e-8)
-    {
+    if (len > 1e-8) {
         dx /= len;
         dy /= len;
         dz /= len;
@@ -553,8 +523,7 @@ void rt_camera3d_smooth_look_at(void *obj, void *target, double speed, double dt
                          cur_fwd[1] + (dy - cur_fwd[1]) * t,
                          cur_fwd[2] + (dz - cur_fwd[2]) * t};
     len = sqrt(new_fwd[0] * new_fwd[0] + new_fwd[1] * new_fwd[1] + new_fwd[2] * new_fwd[2]);
-    if (len > 1e-8)
-    {
+    if (len > 1e-8) {
         new_fwd[0] /= len;
         new_fwd[1] /= len;
         new_fwd[2] /= len;

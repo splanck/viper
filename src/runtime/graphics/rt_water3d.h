@@ -22,16 +22,15 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    void *rt_water3d_new(double width, double depth);
-    void rt_water3d_set_height(void *water, double y);
-    void rt_water3d_set_wave_params(void *water, double speed, double amplitude, double frequency);
-    void rt_water3d_set_color(void *water, double r, double g, double b, double alpha);
-    void rt_water3d_update(void *water, double dt);
-    void rt_canvas3d_draw_water(void *canvas, void *water, void *camera);
+void *rt_water3d_new(double width, double depth);
+void rt_water3d_set_height(void *water, double y);
+void rt_water3d_set_wave_params(void *water, double speed, double amplitude, double frequency);
+void rt_water3d_set_color(void *water, double r, double g, double b, double alpha);
+void rt_water3d_update(void *water, double dt);
+void rt_canvas3d_draw_water(void *canvas, void *water, void *camera);
 
 #ifdef __cplusplus
 }

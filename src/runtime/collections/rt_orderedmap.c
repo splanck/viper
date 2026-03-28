@@ -45,8 +45,7 @@
 // Internal structure: doubly-linked list + hash table
 // ---------------------------------------------------------------------------
 
-typedef struct rt_om_entry
-{
+typedef struct rt_om_entry {
     char *key;
     size_t key_len;
     void *value;
@@ -55,8 +54,7 @@ typedef struct rt_om_entry
     struct rt_om_entry *next;      // Insertion order
 } rt_om_entry;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     rt_om_entry **buckets;
     int64_t capacity;
@@ -69,23 +67,19 @@ typedef struct
 // Hash helpers
 // ---------------------------------------------------------------------------
 
-static uint64_t om_hash(const char *key, size_t len)
-{
+static uint64_t om_hash(const char *key, size_t len) {
     uint64_t h = 0xcbf29ce484222325ULL;
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         h ^= (uint64_t)(unsigned char)key[i];
         h *= 0x100000001b3ULL;
     }
     return h;
 }
 
-static rt_om_entry *om_find(rt_orderedmap_impl *m, const char *key, size_t len)
-{
+static rt_om_entry *om_find(rt_orderedmap_impl *m, const char *key, size_t len) {
     uint64_t idx = om_hash(key, len) % (uint64_t)m->capacity;
     rt_om_entry *e = m->buckets[idx];
-    while (e)
-    {
+    while (e) {
         if (e->key_len == len && memcmp(e->key, key, len) == 0)
             return e;
         e = e->hash_next;
@@ -97,8 +91,7 @@ static rt_om_entry *om_find(rt_orderedmap_impl *m, const char *key, size_t len)
 // Resize
 // ---------------------------------------------------------------------------
 
-static void om_resize(rt_orderedmap_impl *m)
-{
+static void om_resize(rt_orderedmap_impl *m) {
     // Guard against integer overflow before doubling.
     if (m->capacity > INT64_MAX / 2)
         rt_trap("OrderedMap: capacity overflow during resize");
@@ -110,8 +103,7 @@ static void om_resize(rt_orderedmap_impl *m)
 
     // Re-hash all entries via insertion-order list
     rt_om_entry *e = m->head;
-    while (e)
-    {
+    while (e) {
         uint64_t idx = om_hash(e->key, e->key_len) % (uint64_t)new_cap;
         e->hash_next = new_buckets[idx];
         new_buckets[idx] = e;
@@ -127,12 +119,10 @@ static void om_resize(rt_orderedmap_impl *m)
 // Finalizer
 // ---------------------------------------------------------------------------
 
-static void orderedmap_finalizer(void *obj)
-{
+static void orderedmap_finalizer(void *obj) {
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)obj;
     rt_om_entry *e = m->head;
-    while (e)
-    {
+    while (e) {
         rt_om_entry *next = e->next;
         free(e->key);
         if (e->value)
@@ -149,8 +139,7 @@ static void orderedmap_finalizer(void *obj)
 // Constructor
 // ---------------------------------------------------------------------------
 
-void *rt_orderedmap_new(void)
-{
+void *rt_orderedmap_new(void) {
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)rt_obj_new_i64(0, sizeof(rt_orderedmap_impl));
     m->capacity = 16;
     m->count = 0;
@@ -169,8 +158,7 @@ void *rt_orderedmap_new(void)
 /// @brief Perform orderedmap len operation.
 /// @param map
 /// @return Result value.
-int64_t rt_orderedmap_len(void *map)
-{
+int64_t rt_orderedmap_len(void *map) {
     if (!map)
         return 0;
     return ((rt_orderedmap_impl *)map)->count;
@@ -179,8 +167,7 @@ int64_t rt_orderedmap_len(void *map)
 /// @brief Perform orderedmap is empty operation.
 /// @param map
 /// @return Result value.
-int64_t rt_orderedmap_is_empty(void *map)
-{
+int64_t rt_orderedmap_is_empty(void *map) {
     if (!map)
         return 1;
     return ((rt_orderedmap_impl *)map)->count == 0 ? 1 : 0;
@@ -194,8 +181,7 @@ int64_t rt_orderedmap_is_empty(void *map)
 /// @param map
 /// @param key
 /// @param value
-void rt_orderedmap_set(void *map, rt_string key, void *value)
-{
+void rt_orderedmap_set(void *map, rt_string key, void *value) {
     if (!map || !key)
         return;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
@@ -207,8 +193,7 @@ void rt_orderedmap_set(void *map, rt_string key, void *value)
 
     // Check for existing key
     rt_om_entry *existing = om_find(m, kstr, klen);
-    if (existing)
-    {
+    if (existing) {
         // Update value in-place (preserves order)
         if (value)
             rt_obj_retain_maybe(value);
@@ -227,8 +212,7 @@ void rt_orderedmap_set(void *map, rt_string key, void *value)
     if (!e)
         rt_trap("OrderedMap: entry allocation failed");
     e->key = (char *)malloc(klen + 1);
-    if (!e->key)
-    {
+    if (!e->key) {
         free(e);
         rt_trap("OrderedMap: key allocation failed");
     }
@@ -259,8 +243,7 @@ void rt_orderedmap_set(void *map, rt_string key, void *value)
 // Get / Has
 // ---------------------------------------------------------------------------
 
-void *rt_orderedmap_get(void *map, rt_string key)
-{
+void *rt_orderedmap_get(void *map, rt_string key) {
     if (!map || !key)
         return NULL;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
@@ -278,8 +261,7 @@ void *rt_orderedmap_get(void *map, rt_string key)
 /// @param map
 /// @param key
 /// @return Result value.
-int64_t rt_orderedmap_has(void *map, rt_string key)
-{
+int64_t rt_orderedmap_has(void *map, rt_string key) {
     if (!map || !key)
         return 0;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
@@ -300,8 +282,7 @@ int64_t rt_orderedmap_has(void *map, rt_string key)
 /// @param map
 /// @param key
 /// @return Result value.
-int8_t rt_orderedmap_remove(void *map, rt_string key)
-{
+int8_t rt_orderedmap_remove(void *map, rt_string key) {
     if (!map || !key)
         return 0;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
@@ -315,11 +296,9 @@ int8_t rt_orderedmap_remove(void *map, rt_string key)
 
     // Remove from hash chain
     rt_om_entry **pp = &m->buckets[idx];
-    while (*pp)
-    {
+    while (*pp) {
         rt_om_entry *e = *pp;
-        if (e->key_len == klen && memcmp(e->key, kstr, klen) == 0)
-        {
+        if (e->key_len == klen && memcmp(e->key, kstr, klen) == 0) {
             *pp = e->hash_next;
 
             // Remove from insertion-order list
@@ -348,8 +327,7 @@ int8_t rt_orderedmap_remove(void *map, rt_string key)
 // Keys / Values
 // ---------------------------------------------------------------------------
 
-void *rt_orderedmap_keys(void *map)
-{
+void *rt_orderedmap_keys(void *map) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
     if (!map)
@@ -357,8 +335,7 @@ void *rt_orderedmap_keys(void *map)
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
     rt_om_entry *e = m->head;
-    while (e)
-    {
+    while (e) {
         rt_string k = rt_string_from_bytes(e->key, e->key_len);
         rt_seq_push(seq, k);
         rt_str_release_maybe(k);
@@ -367,16 +344,14 @@ void *rt_orderedmap_keys(void *map)
     return seq;
 }
 
-void *rt_orderedmap_values(void *map)
-{
+void *rt_orderedmap_values(void *map) {
     void *seq = rt_seq_new();
     if (!map)
         return seq;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
     rt_om_entry *e = m->head;
-    while (e)
-    {
+    while (e) {
         if (e->value)
             rt_seq_push(seq, e->value);
         else
@@ -390,8 +365,7 @@ void *rt_orderedmap_values(void *map)
 /// @param map
 /// @param index
 /// @return Result value.
-rt_string rt_orderedmap_key_at(void *map, int64_t index)
-{
+rt_string rt_orderedmap_key_at(void *map, int64_t index) {
     if (!map)
         return NULL;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
@@ -412,15 +386,13 @@ rt_string rt_orderedmap_key_at(void *map, int64_t index)
 
 /// @brief Perform orderedmap clear operation.
 /// @param map
-void rt_orderedmap_clear(void *map)
-{
+void rt_orderedmap_clear(void *map) {
     if (!map)
         return;
     rt_orderedmap_impl *m = (rt_orderedmap_impl *)map;
 
     rt_om_entry *e = m->head;
-    while (e)
-    {
+    while (e) {
         rt_om_entry *next = e->next;
         free(e->key);
         if (e->value)

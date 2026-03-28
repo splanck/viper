@@ -30,8 +30,7 @@
 
 using viper::tui::util::char_width;
 
-namespace viper::tui::views
-{
+namespace viper::tui::views {
 
 /// @brief Handle a terminal input event and update cursor/selection state.
 /// @details The dispatcher recognises navigation keys and translates them into
@@ -48,15 +47,12 @@ namespace viper::tui::views
 ///          returned to the caller so outer containers can process them.
 /// @param ev UI event describing the received key press.
 /// @return True when the event was handled and should not propagate further.
-bool TextView::onEvent(const ui::Event &ev)
-{
+bool TextView::onEvent(const ui::Event &ev) {
     using Code = term::KeyEvent::Code;
     using Mods = term::KeyEvent::Mods;
     bool shift = (ev.key.mods & Mods::Shift) != 0;
-    switch (ev.key.code)
-    {
-        case Code::Left:
-        {
+    switch (ev.key.code) {
+        case Code::Left: {
             if (cursor_col_ == 0)
                 return true;
             std::string line = buf_.getLine(cursor_row_);
@@ -64,8 +60,7 @@ bool TextView::onEvent(const ui::Event &ev)
             std::size_t i = 0;
             std::size_t c = 0;
             std::size_t prevCol = 0;
-            while (i < curByte)
-            {
+            while (i < curByte) {
                 auto [cp, len] = decodeChar(line, i);
                 prevCol = c;
                 c += static_cast<std::size_t>(char_width(cp));
@@ -76,8 +71,7 @@ bool TextView::onEvent(const ui::Event &ev)
                 top_row_ = cursor_row_;
             return true;
         }
-        case Code::Right:
-        {
+        case Code::Right: {
             std::string line = buf_.getLine(cursor_row_);
             std::size_t lineW = lineWidth(line);
             if (cursor_col_ >= lineW)
@@ -88,21 +82,18 @@ bool TextView::onEvent(const ui::Event &ev)
             setCursor(cursor_row_, newCol, shift, true);
             return true;
         }
-        case Code::Home:
-        {
+        case Code::Home: {
             setCursor(cursor_row_, 0, shift, true);
             if (cursor_row_ < top_row_)
                 top_row_ = cursor_row_;
             return true;
         }
-        case Code::End:
-        {
+        case Code::End: {
             std::string line = buf_.getLine(cursor_row_);
             setCursor(cursor_row_, lineWidth(line), shift, true);
             return true;
         }
-        case Code::Up:
-        {
+        case Code::Up: {
             if (cursor_row_ == 0)
                 return true;
             std::size_t newRow = cursor_row_ - 1;
@@ -114,8 +105,7 @@ bool TextView::onEvent(const ui::Event &ev)
                 top_row_ = cursor_row_;
             return true;
         }
-        case Code::Down:
-        {
+        case Code::Down: {
             std::size_t total = totalLines();
             if (cursor_row_ + 1 >= total)
                 return true;
@@ -128,8 +118,7 @@ bool TextView::onEvent(const ui::Event &ev)
                 top_row_ = cursor_row_ - static_cast<std::size_t>(rect_.h) + 1;
             return true;
         }
-        case Code::PageUp:
-        {
+        case Code::PageUp: {
             std::size_t page = rect_.h > 0 ? static_cast<std::size_t>(rect_.h) : 1;
             std::size_t newRow = cursor_row_ > page ? cursor_row_ - page : 0;
             std::string line = buf_.getLine(newRow);
@@ -139,8 +128,7 @@ bool TextView::onEvent(const ui::Event &ev)
             top_row_ = newRow;
             return true;
         }
-        case Code::PageDown:
-        {
+        case Code::PageDown: {
             std::size_t page = rect_.h > 0 ? static_cast<std::size_t>(rect_.h) : 1;
             std::size_t total = totalLines();
             std::size_t newRow = std::min(cursor_row_ + page, total > 0 ? total - 1 : 0);

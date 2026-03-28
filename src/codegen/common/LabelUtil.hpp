@@ -24,8 +24,7 @@
 /// Assembly language has strict requirements for label names that differ from
 /// high-level language identifiers. This namespace provides functions to transform
 /// IL function names, block labels, and other identifiers into valid assembly labels.
-namespace viper::codegen::common
-{
+namespace viper::codegen::common {
 
 /// @brief Transforms an arbitrary string into a valid assembler label.
 ///
@@ -63,31 +62,23 @@ namespace viper::codegen::common
 /// @note The resulting label is always non-empty due to the 'L' prefix rule.
 /// @see IL function names use Viper.Namespace.Function format which becomes
 ///      Viper_Namespace_Function after sanitization.
-inline std::string sanitizeLabel(std::string_view in, std::string_view suffix = {})
-{
+inline std::string sanitizeLabel(std::string_view in, std::string_view suffix = {}) {
     std::string out;
     out.reserve(in.size() + suffix.size() + 2);
-    for (unsigned char ch : in)
-    {
+    for (unsigned char ch : in) {
         const bool isAlpha = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
         const bool isDigit = (ch >= '0' && ch <= '9');
-        if (isAlpha || isDigit || ch == '_' || ch == '.' || ch == '$')
-        {
+        if (isAlpha || isDigit || ch == '_' || ch == '.' || ch == '$') {
             out.push_back(static_cast<char>(ch));
-        }
-        else if (ch == '-')
-        {
+        } else if (ch == '-') {
             out.push_back('_');
-        }
-        else
-        {
+        } else {
             out.push_back('_');
         }
     }
     if (out.empty() || (out[0] >= '0' && out[0] <= '9'))
         out.insert(out.begin(), 'L');
-    if (!suffix.empty())
-    {
+    if (!suffix.empty()) {
         out.append(suffix);
     }
     return out;

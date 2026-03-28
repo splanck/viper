@@ -19,8 +19,7 @@
 #include "tests/TestHarness.hpp"
 #include <cstdlib>
 
-static void clear_disable()
-{
+static void clear_disable() {
 #if defined(_WIN32)
     _putenv_s("VIPERTUI_DISABLE_OSC52", "");
 #else
@@ -28,8 +27,7 @@ static void clear_disable()
 #endif
 }
 
-static void set_disable()
-{
+static void set_disable() {
 #if defined(_WIN32)
     _putenv_s("VIPERTUI_DISABLE_OSC52", "1");
 #else
@@ -37,8 +35,7 @@ static void set_disable()
 #endif
 }
 
-TEST(TUI, Clipboard)
-{
+TEST(TUI, Clipboard) {
     clear_disable();
     viper::tui::term::StringTermIO tio;
     viper::tui::term::Osc52Clipboard cb(tio);
@@ -65,8 +62,7 @@ TEST(TUI, Clipboard)
     ASSERT_TRUE(mock.paste().empty());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

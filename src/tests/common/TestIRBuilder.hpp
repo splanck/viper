@@ -25,14 +25,12 @@
 #include <optional>
 #include <string>
 
-namespace viper::tests
-{
+namespace viper::tests {
 
 /// @brief Helper that constructs small IL fragments and executes them via the VM.
 /// @invariant Maintains a current insertion block within the synthetic function.
 /// @ownership Owns the module under construction and the VmFixture executing it.
-class TestIRBuilder
-{
+class TestIRBuilder {
   public:
     /// @brief Create a builder targeting a default "main" function returning i64.
     /// @param retType Return type for the generated function (defaults to i64).
@@ -43,8 +41,7 @@ class TestIRBuilder
                            std::string entryLabel = "entry");
 
     /// @brief Retrieve the default source location used by helper methods.
-    [[nodiscard]] static il::support::SourceLoc defaultLoc() noexcept
-    {
+    [[nodiscard]] static il::support::SourceLoc defaultLoc() noexcept {
         return {1, 1, 1};
     }
 
@@ -55,20 +52,17 @@ class TestIRBuilder
     ~TestIRBuilder() = default;
 
     /// @brief Access the underlying module under construction.
-    [[nodiscard]] il::core::Module &module() noexcept
-    {
+    [[nodiscard]] il::core::Module &module() noexcept {
         return module_;
     }
 
     /// @brief Access the synthetic function used for the test program.
-    [[nodiscard]] il::core::Function &function() noexcept
-    {
+    [[nodiscard]] il::core::Function &function() noexcept {
         return *function_;
     }
 
     /// @brief Access the current insertion block.
-    [[nodiscard]] il::core::BasicBlock &block() noexcept
-    {
+    [[nodiscard]] il::core::BasicBlock &block() noexcept {
         return function_->blocks.at(currentBlockIndex_);
     }
 
@@ -119,8 +113,7 @@ class TestIRBuilder
     [[nodiscard]] il::support::SourceLoc loc(uint32_t line = 1, uint32_t column = 1) const;
 
     /// @brief Update the default file identifier used for generated locations.
-    void setFileId(uint32_t fileId)
-    {
+    void setFileId(uint32_t fileId) {
         defaultLoc_.file_id = fileId;
     }
 
@@ -137,8 +130,7 @@ class TestIRBuilder
 
 /// @brief Macro wrapper that instantiates a TestIRBuilder and executes @p BODY.
 #define TEST_WITH_IL(NAME, BODY)                                                                   \
-    int main()                                                                                     \
-    {                                                                                              \
+    int main() {                                                                                   \
         viper::tests::TestIRBuilder NAME;                                                          \
         BODY return 0;                                                                             \
     }

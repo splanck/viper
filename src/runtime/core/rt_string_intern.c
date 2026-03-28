@@ -54,8 +54,7 @@
 #include "../text/rt_hash_util.h"
 
 /// @brief Hash a byte sequence using FNV-1a.
-static uint64_t hash_bytes(const char *data, size_t len)
-{
+static uint64_t hash_bytes(const char *data, size_t len) {
     return rt_fnv1a(data, len);
 }
 
@@ -64,8 +63,7 @@ static uint64_t hash_bytes(const char *data, size_t len)
 // ============================================================================
 
 /// One slot in the intern table.  Deleted/empty slots have str == NULL.
-typedef struct
-{
+typedef struct {
     uint64_t hash; ///< Cached hash to avoid recomputing on probe.
     rt_string str; ///< Retained canonical string; NULL = empty slot.
 } InternSlot;
@@ -80,8 +78,7 @@ static size_t g_count_ = 0;
 static INIT_ONCE g_lock_once_ = INIT_ONCE_STATIC_INIT;
 static CRITICAL_SECTION g_lock_;
 
-static BOOL CALLBACK intern_lock_init_callback(PINIT_ONCE InitOnce, PVOID Param, PVOID *Ctx)
-{
+static BOOL CALLBACK intern_lock_init_callback(PINIT_ONCE InitOnce, PVOID Param, PVOID *Ctx) {
     (void)InitOnce;
     (void)Param;
     (void)Ctx;
@@ -89,26 +86,22 @@ static BOOL CALLBACK intern_lock_init_callback(PINIT_ONCE InitOnce, PVOID Param,
     return TRUE;
 }
 
-static void intern_lock(void)
-{
+static void intern_lock(void) {
     InitOnceExecuteOnce(&g_lock_once_, intern_lock_init_callback, NULL, NULL);
     EnterCriticalSection(&g_lock_);
 }
 
-static void intern_unlock(void)
-{
+static void intern_unlock(void) {
     LeaveCriticalSection(&g_lock_);
 }
 #else
 static pthread_mutex_t g_lock_ = PTHREAD_MUTEX_INITIALIZER;
 
-static void intern_lock(void)
-{
+static void intern_lock(void) {
     pthread_mutex_lock(&g_lock_);
 }
 
-static void intern_unlock(void)
-{
+static void intern_unlock(void) {
     pthread_mutex_unlock(&g_lock_);
 }
 #endif
@@ -117,8 +110,7 @@ static void intern_unlock(void)
 /// @details Called while holding g_lock_.  On allocation failure the table is
 ///          left at the current (high-load) state; correctness is preserved but
 ///          performance may degrade.
-static void intern_ensure_capacity(void)
-{
+static void intern_ensure_capacity(void) {
     // Grow at 5/8 load factor: count*8 >= cap*5.
     if (g_cap_ > 0 && g_count_ * 8 < g_cap_ * 5)
         return;
@@ -129,8 +121,7 @@ static void intern_ensure_capacity(void)
         return; // out of memory — leave table at high load
 
     // Rehash all live entries into the new table.
-    for (size_t i = 0; i < g_cap_; i++)
-    {
+    for (size_t i = 0; i < g_cap_; i++) {
         if (!g_slots_[i].str)
             continue;
 
@@ -151,8 +142,7 @@ static void intern_ensure_capacity(void)
 // ============================================================================
 
 /// @brief Intern @p s, returning the canonical rt_string for its byte content.
-rt_string rt_string_intern(rt_string s)
-{
+rt_string rt_string_intern(rt_string s) {
     if (!s)
         return NULL;
 
@@ -163,19 +153,16 @@ rt_string rt_string_intern(rt_string s)
     intern_lock();
     intern_ensure_capacity();
 
-    if (!g_slots_ || g_cap_ == 0)
-    {
+    if (!g_slots_ || g_cap_ == 0) {
         intern_unlock();
         return s; // Table allocation failed — return input as-is (not interned)
     }
 
     size_t slot = (size_t)(h & (g_cap_ - 1));
-    for (;;)
-    {
+    for (;;) {
         InternSlot *e = &g_slots_[slot];
 
-        if (!e->str)
-        {
+        if (!e->str) {
             // Empty slot: insert s as the canonical copy.
             e->hash = h;
             e->str = rt_string_ref(s); // table holds one reference
@@ -186,11 +173,9 @@ rt_string rt_string_intern(rt_string s)
             return result;
         }
 
-        if (e->hash == h)
-        {
+        if (e->hash == h) {
             size_t entry_len = (size_t)rt_str_len(e->str);
-            if (entry_len == len && memcmp(e->str->data, data, len) == 0)
-            {
+            if (entry_len == len && memcmp(e->str->data, data, len) == 0) {
                 // Hit: return a retained reference to the canonical string.
                 rt_string result = rt_string_ref(e->str);
                 intern_unlock();
@@ -203,14 +188,11 @@ rt_string rt_string_intern(rt_string s)
 }
 
 /// @brief Release all interned strings and free the table.
-void rt_string_intern_drain(void)
-{
+void rt_string_intern_drain(void) {
     intern_lock();
 
-    for (size_t i = 0; i < g_cap_; i++)
-    {
-        if (g_slots_[i].str)
-        {
+    for (size_t i = 0; i < g_cap_; i++) {
+        if (g_slots_[i].str) {
             rt_string_unref(g_slots_[i].str);
             g_slots_[i].str = NULL;
         }

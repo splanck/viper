@@ -48,16 +48,14 @@
 #define CM_LOAD_FACTOR_DEN 4
 #include "rt_hash_util.h"
 
-typedef struct rt_cm_entry
-{
+typedef struct rt_cm_entry {
     char *key;
     size_t key_len;
     int64_t count;
     struct rt_cm_entry *next;
 } rt_cm_entry;
 
-typedef struct rt_countmap_impl
-{
+typedef struct rt_countmap_impl {
     void **vptr;
     rt_cm_entry **buckets;
     size_t capacity;
@@ -65,11 +63,9 @@ typedef struct rt_countmap_impl
     int64_t total; // sum of all counts
 } rt_countmap_impl;
 
-static const char *get_str_data(rt_string s, size_t *out_len)
-{
+static const char *get_str_data(rt_string s, size_t *out_len) {
     const char *cstr = rt_string_cstr(s);
-    if (!cstr)
-    {
+    if (!cstr) {
         *out_len = 0;
         return "";
     }
@@ -77,35 +73,29 @@ static const char *get_str_data(rt_string s, size_t *out_len)
     return cstr;
 }
 
-static rt_cm_entry *find_entry(rt_cm_entry *head, const char *key, size_t key_len)
-{
-    for (rt_cm_entry *e = head; e; e = e->next)
-    {
+static rt_cm_entry *find_entry(rt_cm_entry *head, const char *key, size_t key_len) {
+    for (rt_cm_entry *e = head; e; e = e->next) {
         if (e->key_len == key_len && memcmp(e->key, key, key_len) == 0)
             return e;
     }
     return NULL;
 }
 
-static void free_entry(rt_cm_entry *entry)
-{
+static void free_entry(rt_cm_entry *entry) {
     if (!entry)
         return;
     free(entry->key);
     free(entry);
 }
 
-static void countmap_finalizer(void *obj)
-{
+static void countmap_finalizer(void *obj) {
     rt_countmap_impl *cm = (rt_countmap_impl *)obj;
     if (!cm)
         return;
 
-    for (size_t i = 0; i < cm->capacity; ++i)
-    {
+    for (size_t i = 0; i < cm->capacity; ++i) {
         rt_cm_entry *e = cm->buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_cm_entry *next = e->next;
             free_entry(e);
             e = next;
@@ -114,8 +104,7 @@ static void countmap_finalizer(void *obj)
     free(cm->buckets);
 }
 
-static void resize(rt_countmap_impl *cm)
-{
+static void resize(rt_countmap_impl *cm) {
     if (cm->capacity > SIZE_MAX / 2)
         return;
     size_t new_cap = cm->capacity * 2;
@@ -123,11 +112,9 @@ static void resize(rt_countmap_impl *cm)
     if (!new_buckets)
         return;
 
-    for (size_t i = 0; i < cm->capacity; ++i)
-    {
+    for (size_t i = 0; i < cm->capacity; ++i) {
         rt_cm_entry *e = cm->buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_cm_entry *next = e->next;
             uint64_t h = rt_fnv1a(e->key, e->key_len);
             size_t idx = (size_t)(h % new_cap);
@@ -142,8 +129,7 @@ static void resize(rt_countmap_impl *cm)
     cm->capacity = new_cap;
 }
 
-void *rt_countmap_new(void)
-{
+void *rt_countmap_new(void) {
     rt_countmap_impl *cm = (rt_countmap_impl *)rt_obj_new_i64(0, sizeof(rt_countmap_impl));
     if (!cm)
         return NULL;
@@ -152,8 +138,7 @@ void *rt_countmap_new(void)
     cm->count = 0;
     cm->total = 0;
     cm->buckets = (rt_cm_entry **)calloc(CM_INITIAL_CAPACITY, sizeof(rt_cm_entry *));
-    if (!cm->buckets)
-    {
+    if (!cm->buckets) {
         if (rt_obj_release_check0(cm))
             rt_obj_free(cm);
         return NULL;
@@ -166,8 +151,7 @@ void *rt_countmap_new(void)
 /// @brief Get the count of countmap len.
 /// @param obj
 /// @return Result value.
-int64_t rt_countmap_len(void *obj)
-{
+int64_t rt_countmap_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_countmap_impl *)obj)->count;
@@ -176,8 +160,7 @@ int64_t rt_countmap_len(void *obj)
 /// @brief Get the count of countmap is empty.
 /// @param obj
 /// @return Result value.
-int8_t rt_countmap_is_empty(void *obj)
-{
+int8_t rt_countmap_is_empty(void *obj) {
     return rt_countmap_len(obj) == 0 ? 1 : 0;
 }
 
@@ -185,8 +168,7 @@ int8_t rt_countmap_is_empty(void *obj)
 /// @param obj
 /// @param key
 /// @return Result value.
-int64_t rt_countmap_inc(void *obj, rt_string key)
-{
+int64_t rt_countmap_inc(void *obj, rt_string key) {
     return rt_countmap_inc_by(obj, key, 1);
 }
 
@@ -195,8 +177,7 @@ int64_t rt_countmap_inc(void *obj, rt_string key)
 /// @param key
 /// @param n
 /// @return Result value.
-int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n)
-{
+int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n) {
     if (!obj || n <= 0)
         return 0;
     rt_countmap_impl *cm = (rt_countmap_impl *)obj;
@@ -208,16 +189,14 @@ int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n)
     size_t idx = (size_t)(h % cm->capacity);
 
     rt_cm_entry *e = find_entry(cm->buckets[idx], kdata, klen);
-    if (e)
-    {
+    if (e) {
         e->count += n;
         cm->total += n;
         return e->count;
     }
 
     // New entry
-    if (cm->count * CM_LOAD_FACTOR_DEN >= cm->capacity * CM_LOAD_FACTOR_NUM)
-    {
+    if (cm->count * CM_LOAD_FACTOR_DEN >= cm->capacity * CM_LOAD_FACTOR_NUM) {
         resize(cm);
         idx = (size_t)(h % cm->capacity);
     }
@@ -226,8 +205,7 @@ int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n)
     if (!e)
         return 0;
     e->key = (char *)malloc(klen + 1);
-    if (!e->key)
-    {
+    if (!e->key) {
         free(e);
         return 0;
     }
@@ -246,8 +224,7 @@ int64_t rt_countmap_inc_by(void *obj, rt_string key, int64_t n)
 /// @param obj
 /// @param key
 /// @return Result value.
-int64_t rt_countmap_dec(void *obj, rt_string key)
-{
+int64_t rt_countmap_dec(void *obj, rt_string key) {
     if (!obj)
         return 0;
     rt_countmap_impl *cm = (rt_countmap_impl *)obj;
@@ -259,15 +236,12 @@ int64_t rt_countmap_dec(void *obj, rt_string key)
     size_t idx = (size_t)(h % cm->capacity);
 
     rt_cm_entry **pp = &cm->buckets[idx];
-    while (*pp)
-    {
+    while (*pp) {
         rt_cm_entry *e = *pp;
-        if (e->key_len == klen && memcmp(e->key, kdata, klen) == 0)
-        {
+        if (e->key_len == klen && memcmp(e->key, kdata, klen) == 0) {
             e->count--;
             cm->total--;
-            if (e->count <= 0)
-            {
+            if (e->count <= 0) {
                 *pp = e->next;
                 free_entry(e);
                 cm->count--;
@@ -284,8 +258,7 @@ int64_t rt_countmap_dec(void *obj, rt_string key)
 /// @param obj
 /// @param key
 /// @return Result value.
-int64_t rt_countmap_get(void *obj, rt_string key)
-{
+int64_t rt_countmap_get(void *obj, rt_string key) {
     if (!obj)
         return 0;
     rt_countmap_impl *cm = (rt_countmap_impl *)obj;
@@ -304,8 +277,7 @@ int64_t rt_countmap_get(void *obj, rt_string key)
 /// @param obj
 /// @param key
 /// @param count
-void rt_countmap_set(void *obj, rt_string key, int64_t count)
-{
+void rt_countmap_set(void *obj, rt_string key, int64_t count) {
     if (!obj)
         return;
     rt_countmap_impl *cm = (rt_countmap_impl *)obj;
@@ -317,14 +289,11 @@ void rt_countmap_set(void *obj, rt_string key, int64_t count)
     size_t idx = (size_t)(h % cm->capacity);
 
     // Remove if count <= 0
-    if (count <= 0)
-    {
+    if (count <= 0) {
         rt_cm_entry **pp = &cm->buckets[idx];
-        while (*pp)
-        {
+        while (*pp) {
             rt_cm_entry *e = *pp;
-            if (e->key_len == klen && memcmp(e->key, kdata, klen) == 0)
-            {
+            if (e->key_len == klen && memcmp(e->key, kdata, klen) == 0) {
                 *pp = e->next;
                 cm->total -= e->count;
                 free_entry(e);
@@ -337,16 +306,14 @@ void rt_countmap_set(void *obj, rt_string key, int64_t count)
     }
 
     rt_cm_entry *e = find_entry(cm->buckets[idx], kdata, klen);
-    if (e)
-    {
+    if (e) {
         cm->total += (count - e->count);
         e->count = count;
         return;
     }
 
     // New entry
-    if (cm->count * CM_LOAD_FACTOR_DEN >= cm->capacity * CM_LOAD_FACTOR_NUM)
-    {
+    if (cm->count * CM_LOAD_FACTOR_DEN >= cm->capacity * CM_LOAD_FACTOR_NUM) {
         resize(cm);
         idx = (size_t)(h % cm->capacity);
     }
@@ -355,8 +322,7 @@ void rt_countmap_set(void *obj, rt_string key, int64_t count)
     if (!e)
         return;
     e->key = (char *)malloc(klen + 1);
-    if (!e->key)
-    {
+    if (!e->key) {
         free(e);
         return;
     }
@@ -374,33 +340,28 @@ void rt_countmap_set(void *obj, rt_string key, int64_t count)
 /// @param obj
 /// @param key
 /// @return Result value.
-int8_t rt_countmap_has(void *obj, rt_string key)
-{
+int8_t rt_countmap_has(void *obj, rt_string key) {
     return rt_countmap_get(obj, key) > 0 ? 1 : 0;
 }
 
 /// @brief Get the count of countmap total.
 /// @param obj
 /// @return Result value.
-int64_t rt_countmap_total(void *obj)
-{
+int64_t rt_countmap_total(void *obj) {
     if (!obj)
         return 0;
     return ((rt_countmap_impl *)obj)->total;
 }
 
-void *rt_countmap_keys(void *obj)
-{
+void *rt_countmap_keys(void *obj) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
     if (!obj)
         return seq;
     rt_countmap_impl *cm = (rt_countmap_impl *)obj;
 
-    for (size_t i = 0; i < cm->capacity; ++i)
-    {
-        for (rt_cm_entry *e = cm->buckets[i]; e; e = e->next)
-        {
+    for (size_t i = 0; i < cm->capacity; ++i) {
+        for (rt_cm_entry *e = cm->buckets[i]; e; e = e->next) {
             rt_string k = rt_string_from_bytes(e->key, e->key_len);
             rt_seq_push(seq, (void *)k);
             rt_str_release_maybe(k);
@@ -410,8 +371,7 @@ void *rt_countmap_keys(void *obj)
 }
 
 // Comparison for sorting entries by count descending
-static int cmp_entries_desc(const void *a, const void *b)
-{
+static int cmp_entries_desc(const void *a, const void *b) {
     const rt_cm_entry *ea = *(const rt_cm_entry *const *)a;
     const rt_cm_entry *eb = *(const rt_cm_entry *const *)b;
     if (ea->count > eb->count)
@@ -421,8 +381,7 @@ static int cmp_entries_desc(const void *a, const void *b)
     return 0;
 }
 
-void *rt_countmap_most_common(void *obj, int64_t n)
-{
+void *rt_countmap_most_common(void *obj, int64_t n) {
     void *seq = rt_seq_new();
     rt_seq_set_owns_elements(seq, 1);
     if (!obj || n <= 0)
@@ -440,10 +399,8 @@ void *rt_countmap_most_common(void *obj, int64_t n)
         return seq;
 
     size_t idx = 0;
-    for (size_t i = 0; i < cm->capacity; ++i)
-    {
-        for (rt_cm_entry *e = cm->buckets[i]; e; e = e->next)
-        {
+    for (size_t i = 0; i < cm->capacity; ++i) {
+        for (rt_cm_entry *e = cm->buckets[i]; e; e = e->next) {
             entries[idx++] = e;
         }
     }
@@ -456,8 +413,7 @@ void *rt_countmap_most_common(void *obj, int64_t n)
     if (limit > cm->count)
         limit = cm->count;
 
-    for (size_t i = 0; i < limit; ++i)
-    {
+    for (size_t i = 0; i < limit; ++i) {
         rt_string k = rt_string_from_bytes(entries[i]->key, entries[i]->key_len);
         rt_seq_push(seq, (void *)k);
         rt_str_release_maybe(k);
@@ -471,8 +427,7 @@ void *rt_countmap_most_common(void *obj, int64_t n)
 /// @param obj
 /// @param key
 /// @return Result value.
-int8_t rt_countmap_remove(void *obj, rt_string key)
-{
+int8_t rt_countmap_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
     rt_countmap_impl *cm = (rt_countmap_impl *)obj;
@@ -484,11 +439,9 @@ int8_t rt_countmap_remove(void *obj, rt_string key)
     size_t idx = (size_t)(h % cm->capacity);
 
     rt_cm_entry **pp = &cm->buckets[idx];
-    while (*pp)
-    {
+    while (*pp) {
         rt_cm_entry *e = *pp;
-        if (e->key_len == klen && memcmp(e->key, kdata, klen) == 0)
-        {
+        if (e->key_len == klen && memcmp(e->key, kdata, klen) == 0) {
             *pp = e->next;
             cm->total -= e->count;
             free_entry(e);
@@ -502,17 +455,14 @@ int8_t rt_countmap_remove(void *obj, rt_string key)
 
 /// @brief Get the count of countmap clear.
 /// @param obj
-void rt_countmap_clear(void *obj)
-{
+void rt_countmap_clear(void *obj) {
     if (!obj)
         return;
     rt_countmap_impl *cm = (rt_countmap_impl *)obj;
 
-    for (size_t i = 0; i < cm->capacity; ++i)
-    {
+    for (size_t i = 0; i < cm->capacity; ++i) {
         rt_cm_entry *e = cm->buckets[i];
-        while (e)
-        {
+        while (e) {
             rt_cm_entry *next = e->next;
             free_entry(e);
             e = next;

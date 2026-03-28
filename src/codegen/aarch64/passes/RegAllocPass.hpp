@@ -18,12 +18,10 @@
 
 #include "codegen/aarch64/passes/PassManager.hpp"
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
 /// @brief Run linear-scan register allocation on all MIR functions.
-class RegAllocPass final : public Pass
-{
+class RegAllocPass final : public Pass {
   public:
     /// @brief Run register allocation on all functions in AArch64Module::mir.
     /// @param module Module state; mir must be populated.

@@ -50,15 +50,13 @@ extern void rt_trap(const char *msg);
 // Internal: async_run helper
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *(*callback)(void *);
     void *arg;
     void *promise;
 } async_run_ctx;
 
-static void async_run_entry(void *ctx_ptr)
-{
+static void async_run_entry(void *ctx_ptr) {
     async_run_ctx *ctx = (async_run_ctx *)ctx_ptr;
     void *result = NULL;
     void *promise = ctx->promise;
@@ -71,14 +69,12 @@ static void async_run_entry(void *ctx_ptr)
 }
 
 /// @brief Async run.
-void *rt_async_run(void *callback, void *arg)
-{
+void *rt_async_run(void *callback, void *arg) {
     void *promise;
     void *future;
     async_run_ctx *ctx;
 
-    if (!callback)
-    {
+    if (!callback) {
         rt_trap("Async.Run: nil callback");
         return NULL;
     }
@@ -87,8 +83,7 @@ void *rt_async_run(void *callback, void *arg)
     future = rt_promise_get_future(promise);
 
     ctx = (async_run_ctx *)malloc(sizeof(async_run_ctx));
-    if (!ctx)
-    {
+    if (!ctx) {
         rt_promise_set_error(promise, rt_string_from_bytes("alloc failed", 12));
         return future;
     }
@@ -105,14 +100,12 @@ void *rt_async_run(void *callback, void *arg)
 // Internal: async_all helper
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *futures_seq;
     void *promise;
 } async_all_ctx;
 
-static void async_all_entry(void *ctx_ptr)
-{
+static void async_all_entry(void *ctx_ptr) {
     async_all_ctx *ctx = (async_all_ctx *)ctx_ptr;
     void *futures_seq = ctx->futures_seq;
     void *promise = ctx->promise;
@@ -125,19 +118,15 @@ static void async_all_entry(void *ctx_ptr)
     count = rt_seq_len(futures_seq);
     results = rt_seq_new();
 
-    for (i = 0; i < count; i++)
-    {
+    for (i = 0; i < count; i++) {
         void *f = rt_seq_get(futures_seq, i);
         rt_future_wait(f);
 
-        if (rt_future_is_error(f))
-        {
+        if (rt_future_is_error(f)) {
             rt_string err = rt_future_get_error(f);
             rt_promise_set_error(promise, err);
             return;
-        }
-        else
-        {
+        } else {
             void *val = rt_future_get(f);
             rt_seq_push(results, val);
         }
@@ -147,14 +136,12 @@ static void async_all_entry(void *ctx_ptr)
 }
 
 /// @brief Async all.
-void *rt_async_all(void *futures)
-{
+void *rt_async_all(void *futures) {
     void *promise;
     void *future;
     async_all_ctx *ctx;
 
-    if (!futures || rt_seq_len(futures) == 0)
-    {
+    if (!futures || rt_seq_len(futures) == 0) {
         promise = rt_promise_new();
         future = rt_promise_get_future(promise);
         rt_promise_set(promise, rt_seq_new());
@@ -165,8 +152,7 @@ void *rt_async_all(void *futures)
     future = rt_promise_get_future(promise);
 
     ctx = (async_all_ctx *)malloc(sizeof(async_all_ctx));
-    if (!ctx)
-    {
+    if (!ctx) {
         rt_promise_set_error(promise, rt_string_from_bytes("alloc failed", 12));
         return future;
     }
@@ -182,14 +168,12 @@ void *rt_async_all(void *futures)
 // Internal: async_any helper
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *futures_seq;
     void *promise;
 } async_any_ctx;
 
-static void async_any_entry(void *ctx_ptr)
-{
+static void async_any_entry(void *ctx_ptr) {
     async_any_ctx *ctx = (async_any_ctx *)ctx_ptr;
     void *futures_seq = ctx->futures_seq;
     void *promise = ctx->promise;
@@ -205,20 +189,14 @@ static void async_any_entry(void *ctx_ptr)
        if all futures are abandoned. */
 #define ASYNC_ANY_TIMEOUT_MS 30000
     int64_t elapsed_ms = 0;
-    for (;;)
-    {
+    for (;;) {
         int64_t i;
-        for (i = 0; i < count; i++)
-        {
+        for (i = 0; i < count; i++) {
             void *f = rt_seq_get(futures_seq, i);
-            if (rt_future_is_done(f))
-            {
-                if (rt_future_is_error(f))
-                {
+            if (rt_future_is_done(f)) {
+                if (rt_future_is_error(f)) {
                     rt_promise_set_error(promise, rt_future_get_error(f));
-                }
-                else
-                {
+                } else {
                     void *val = rt_future_get(f);
                     rt_promise_set(promise, val);
                 }
@@ -227,8 +205,7 @@ static void async_any_entry(void *ctx_ptr)
         }
         rt_thread_sleep(1); /* yield to avoid busy-wait */
         elapsed_ms += 1;
-        if (elapsed_ms >= ASYNC_ANY_TIMEOUT_MS)
-        {
+        if (elapsed_ms >= ASYNC_ANY_TIMEOUT_MS) {
             rt_promise_set_error(
                 promise, rt_string_from_bytes("Async.Any: timeout — no future resolved", 39));
             return;
@@ -238,14 +215,12 @@ static void async_any_entry(void *ctx_ptr)
 }
 
 /// @brief Async any.
-void *rt_async_any(void *futures)
-{
+void *rt_async_any(void *futures) {
     void *promise;
     void *future;
     async_any_ctx *ctx;
 
-    if (!futures || rt_seq_len(futures) == 0)
-    {
+    if (!futures || rt_seq_len(futures) == 0) {
         promise = rt_promise_new();
         future = rt_promise_get_future(promise);
         rt_promise_set_error(promise, rt_string_from_bytes("Async.Any: empty futures", 24));
@@ -256,8 +231,7 @@ void *rt_async_any(void *futures)
     future = rt_promise_get_future(promise);
 
     ctx = (async_any_ctx *)malloc(sizeof(async_any_ctx));
-    if (!ctx)
-    {
+    if (!ctx) {
         rt_promise_set_error(promise, rt_string_from_bytes("alloc failed", 12));
         return future;
     }
@@ -273,14 +247,12 @@ void *rt_async_any(void *futures)
 // async_delay
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     int64_t ms;
     void *promise;
 } async_delay_ctx;
 
-static void async_delay_entry(void *ctx_ptr)
-{
+static void async_delay_entry(void *ctx_ptr) {
     async_delay_ctx *ctx = (async_delay_ctx *)ctx_ptr;
     int64_t ms = ctx->ms;
     void *promise = ctx->promise;
@@ -292,8 +264,7 @@ static void async_delay_entry(void *ctx_ptr)
 }
 
 /// @brief Async delay.
-void *rt_async_delay(int64_t ms)
-{
+void *rt_async_delay(int64_t ms) {
     void *promise;
     void *future;
     async_delay_ctx *ctx;
@@ -305,8 +276,7 @@ void *rt_async_delay(int64_t ms)
     future = rt_promise_get_future(promise);
 
     ctx = (async_delay_ctx *)malloc(sizeof(async_delay_ctx));
-    if (!ctx)
-    {
+    if (!ctx) {
         rt_promise_set_error(promise, rt_string_from_bytes("alloc failed", 12));
         return future;
     }
@@ -322,16 +292,14 @@ void *rt_async_delay(int64_t ms)
 // async_map
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *source_future;
     void *(*mapper)(void *, void *);
     void *arg;
     void *promise;
 } async_map_ctx;
 
-static void async_map_entry(void *ctx_ptr)
-{
+static void async_map_entry(void *ctx_ptr) {
     async_map_ctx *ctx = (async_map_ctx *)ctx_ptr;
     void *source = ctx->source_future;
     void *(*mapper)(void *, void *) = ctx->mapper;
@@ -341,12 +309,9 @@ static void async_map_entry(void *ctx_ptr)
 
     rt_future_wait(source);
 
-    if (rt_future_is_error(source))
-    {
+    if (rt_future_is_error(source)) {
         rt_promise_set_error(promise, rt_future_get_error(source));
-    }
-    else
-    {
+    } else {
         void *val = rt_future_get(source);
         void *mapped = mapper(val, arg);
         rt_promise_set(promise, mapped);
@@ -354,14 +319,12 @@ static void async_map_entry(void *ctx_ptr)
 }
 
 /// @brief Async map.
-void *rt_async_map(void *future, void *mapper, void *arg)
-{
+void *rt_async_map(void *future, void *mapper, void *arg) {
     void *promise;
     void *result_future;
     async_map_ctx *ctx;
 
-    if (!future || !mapper)
-    {
+    if (!future || !mapper) {
         rt_trap("Async.Map: nil future or mapper");
         return NULL;
     }
@@ -370,8 +333,7 @@ void *rt_async_map(void *future, void *mapper, void *arg)
     result_future = rt_promise_get_future(promise);
 
     ctx = (async_map_ctx *)malloc(sizeof(async_map_ctx));
-    if (!ctx)
-    {
+    if (!ctx) {
         rt_promise_set_error(promise, rt_string_from_bytes("alloc failed", 12));
         return result_future;
     }
@@ -389,16 +351,14 @@ void *rt_async_map(void *future, void *mapper, void *arg)
 // async_run_cancellable
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *(*callback)(void *, void *);
     void *arg;
     void *token;
     void *promise;
 } async_cancel_ctx;
 
-static void async_cancel_entry(void *ctx_ptr)
-{
+static void async_cancel_entry(void *ctx_ptr) {
     async_cancel_ctx *ctx = (async_cancel_ctx *)ctx_ptr;
     void *(*cb)(void *, void *) = ctx->callback;
     void *arg = ctx->arg;
@@ -409,25 +369,20 @@ static void async_cancel_entry(void *ctx_ptr)
 
     result = cb(arg, token);
 
-    if (token && rt_cancellation_is_cancelled(token))
-    {
+    if (token && rt_cancellation_is_cancelled(token)) {
         rt_promise_set_error(promise, rt_string_from_bytes("cancelled", 9));
-    }
-    else
-    {
+    } else {
         rt_promise_set(promise, result);
     }
 }
 
 /// @brief Async run cancellable.
-void *rt_async_run_cancellable(void *callback, void *arg, void *token)
-{
+void *rt_async_run_cancellable(void *callback, void *arg, void *token) {
     void *promise;
     void *future;
     async_cancel_ctx *ctx;
 
-    if (!callback)
-    {
+    if (!callback) {
         rt_trap("Async.RunCancellable: nil callback");
         return NULL;
     }
@@ -436,8 +391,7 @@ void *rt_async_run_cancellable(void *callback, void *arg, void *token)
     future = rt_promise_get_future(promise);
 
     ctx = (async_cancel_ctx *)malloc(sizeof(async_cancel_ctx));
-    if (!ctx)
-    {
+    if (!ctx) {
         rt_promise_set_error(promise, rt_string_from_bytes("alloc failed", 12));
         return future;
     }

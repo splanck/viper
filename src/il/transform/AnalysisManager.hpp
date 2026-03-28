@@ -35,22 +35,18 @@
 #include <unordered_map>
 #include <utility>
 
-namespace il::transform
-{
+namespace il::transform {
 
 class PreservedAnalyses;
 class AnalysisCacheInvalidator;
 
-namespace detail
-{
-struct ModuleAnalysisRecord
-{
+namespace detail {
+struct ModuleAnalysisRecord {
     std::function<std::any(core::Module &)> compute;
     std::type_index type{typeid(void)};
 };
 
-struct FunctionAnalysisRecord
-{
+struct FunctionAnalysisRecord {
     std::function<std::any(core::Module &, core::Function &)> compute;
     std::type_index type{typeid(void)};
 };
@@ -59,22 +55,19 @@ struct FunctionAnalysisRecord
 using ModuleAnalysisMap = std::unordered_map<std::string, detail::ModuleAnalysisRecord>;
 using FunctionAnalysisMap = std::unordered_map<std::string, detail::FunctionAnalysisRecord>;
 
-struct AnalysisCounts
-{
+struct AnalysisCounts {
     std::size_t moduleComputations = 0;
     std::size_t functionComputations = 0;
 };
 
-class AnalysisRegistry
-{
+class AnalysisRegistry {
   public:
     /// @brief Register a module-level analysis computation.
     /// @tparam Result Concrete analysis result type (must be copy-constructible for @c std::any).
     /// @param id     Unique string identifier used to look up the analysis later.
     /// @param fn     Callable that computes a fresh @c Result from a @c Module.
     template <typename Result>
-    void registerModuleAnalysis(const std::string &id, std::function<Result(core::Module &)> fn)
-    {
+    void registerModuleAnalysis(const std::string &id, std::function<Result(core::Module &)> fn) {
         moduleAnalyses_[id] = detail::ModuleAnalysisRecord{
             [fn = std::move(fn)](core::Module &module) -> std::any { return fn(module); },
             std::type_index(typeid(Result))};
@@ -86,21 +79,19 @@ class AnalysisRegistry
     /// @param fn     Callable that computes a fresh @c Result from a @c Module and @c Function.
     template <typename Result>
     void registerFunctionAnalysis(const std::string &id,
-                                  std::function<Result(core::Module &, core::Function &)> fn)
-    {
+                                  std::function<Result(core::Module &, core::Function &)> fn) {
         functionAnalyses_[id] = detail::FunctionAnalysisRecord{
-            [fn = std::move(fn)](core::Module &module, core::Function &fnRef) -> std::any
-            { return fn(module, fnRef); },
+            [fn = std::move(fn)](core::Module &module, core::Function &fnRef) -> std::any {
+                return fn(module, fnRef);
+            },
             std::type_index(typeid(Result))};
     }
 
-    const ModuleAnalysisMap &moduleAnalyses() const
-    {
+    const ModuleAnalysisMap &moduleAnalyses() const {
         return moduleAnalyses_;
     }
 
-    const FunctionAnalysisMap &functionAnalyses() const
-    {
+    const FunctionAnalysisMap &functionAnalyses() const {
         return functionAnalyses_;
     }
 
@@ -113,8 +104,7 @@ class AnalysisRegistry
 /// @details The AnalysisManager lazily computes analyses on demand, caches results,
 ///          and invalidates stale caches based on PreservedAnalyses information
 ///          from passes. Module and function analyses are tracked separately.
-class AnalysisManager
-{
+class AnalysisManager {
   public:
     /// @brief Construct an AnalysisManager for a module.
     /// @param module Module this manager operates on.
@@ -125,8 +115,7 @@ class AnalysisManager
     /// @tparam Result Type of the analysis result.
     /// @param id Identifier of the analysis to run.
     /// @return Reference to the cached or freshly computed result.
-    template <typename Result> Result &getModuleResult(const std::string &id)
-    {
+    template <typename Result> Result &getModuleResult(const std::string &id) {
         // Fast-path for cache hits under a shared lock to avoid blocking other readers.
         {
             std::shared_lock<std::shared_mutex> lock(mutex_);
@@ -134,8 +123,7 @@ class AnalysisManager
             [[maybe_unused]] auto it = moduleAnalyses_->find(id);
             assert(it != moduleAnalyses_->end() && "unknown module analysis");
             auto cacheIt = moduleCache_.find(id);
-            if (cacheIt != moduleCache_.end() && cacheIt->second.has_value())
-            {
+            if (cacheIt != moduleCache_.end() && cacheIt->second.has_value()) {
                 assert(it->second.type == std::type_index(typeid(Result)) &&
                        "analysis result type mismatch");
                 auto *value = std::any_cast<Result>(&cacheIt->second);
@@ -149,8 +137,7 @@ class AnalysisManager
         auto it = moduleAnalyses_->find(id);
         assert(it != moduleAnalyses_->end() && "unknown module analysis");
         std::any &cache = moduleCache_[id];
-        if (!cache.has_value())
-        {
+        if (!cache.has_value()) {
             cache = it->second.compute(module_);
             ++counts_.moduleComputations;
         }
@@ -166,16 +153,15 @@ class AnalysisManager
     /// @param id Identifier of the analysis to run.
     /// @param fn Function to analyze.
     /// @return Reference to the cached or freshly computed result.
-    template <typename Result> Result &getFunctionResult(const std::string &id, core::Function &fn)
-    {
+    template <typename Result>
+    Result &getFunctionResult(const std::string &id, core::Function &fn) {
         // Shared lock allows concurrent cache hits across functions.
         {
             std::shared_lock<std::shared_mutex> lock(mutex_);
             assert(functionAnalyses_ && "no function analyses registered");
             [[maybe_unused]] auto it = functionAnalyses_->find(id);
 #ifndef NDEBUG
-            if (it == functionAnalyses_->end())
-            {
+            if (it == functionAnalyses_->end()) {
                 std::cerr << "Unknown function analysis '" << id << "'; registered:";
                 for (const auto &entry : *functionAnalyses_)
                     std::cerr << " " << entry.first;
@@ -184,11 +170,9 @@ class AnalysisManager
 #endif
             assert(it != functionAnalyses_->end() && "unknown function analysis");
             auto cacheIt = functionCache_.find(id);
-            if (cacheIt != functionCache_.end())
-            {
+            if (cacheIt != functionCache_.end()) {
                 auto fnIt = cacheIt->second.find(&fn);
-                if (fnIt != cacheIt->second.end() && fnIt->second.has_value())
-                {
+                if (fnIt != cacheIt->second.end() && fnIt->second.has_value()) {
                     assert(it->second.type == std::type_index(typeid(Result)) &&
                            "analysis result type mismatch");
                     auto *value = std::any_cast<Result>(&fnIt->second);
@@ -202,8 +186,7 @@ class AnalysisManager
         assert(functionAnalyses_ && "no function analyses registered");
         auto it = functionAnalyses_->find(id);
 #ifndef NDEBUG
-        if (it == functionAnalyses_->end())
-        {
+        if (it == functionAnalyses_->end()) {
             std::cerr << "Unknown function analysis '" << id << "'; registered:";
             for (const auto &entry : *functionAnalyses_)
                 std::cerr << " " << entry.first;
@@ -212,8 +195,7 @@ class AnalysisManager
 #endif
         assert(it != functionAnalyses_->end() && "unknown function analysis");
         std::any &cache = functionCache_[id][&fn];
-        if (!cache.has_value())
-        {
+        if (!cache.has_value()) {
             cache = it->second.compute(module_, fn);
             ++counts_.functionComputations;
         }
@@ -235,22 +217,19 @@ class AnalysisManager
 
     /// @brief Get mutable access to the module.
     /// @return Reference to the managed module.
-    core::Module &module()
-    {
+    core::Module &module() {
         return module_;
     }
 
     /// @brief Get const access to the module.
     /// @return Const reference to the managed module.
-    const core::Module &module() const
-    {
+    const core::Module &module() const {
         return module_;
     }
 
     /// @brief Snapshot analysis computation counts for diagnostics.
     /// @return Number of module and function analyses computed so far.
-    AnalysisCounts counts() const
-    {
+    AnalysisCounts counts() const {
         std::shared_lock<std::shared_mutex> lock(mutex_);
         return counts_;
     }

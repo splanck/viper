@@ -59,15 +59,13 @@
 #include "frontends/zia/RuntimeNames.hpp"
 #include "frontends/zia/ZiaLocationScope.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
 /// @brief Map a typed-catch error type name to its TrapKind integer value.
 /// @details Returns -1 for "Error" (catch-all) or unrecognised names.
-static int trapKindFromName(const std::string &name)
-{
+static int trapKindFromName(const std::string &name) {
     if (name == "DivideByZero")
         return 0;
     if (name == "Overflow")
@@ -95,8 +93,7 @@ static int trapKindFromName(const std::string &name)
     return -1; // "Error" catch-all or unknown
 }
 
-void Lowerer::lowerTryStmt(TryStmt *stmt)
-{
+void Lowerer::lowerTryStmt(TryStmt *stmt) {
     ZiaLocationScope locScope(*this, stmt->loc);
 
     bool hasFinally = stmt->finallyBody != nullptr;
@@ -123,8 +120,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
 
     // Optional: finally_normal block (only if we have a finally clause)
     size_t finallyNormalIdx = 0;
-    if (hasFinally)
-    {
+    if (hasFinally) {
         finallyNormalIdx = createBlock("finally_normal");
     }
 
@@ -133,8 +129,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
     // can use resume.label. rethrow receives the I32 kind as a branch argument.
     size_t catchBodyIdx = 0;
     size_t rethrowIdx = 0;
-    if (isTypedCatch)
-    {
+    if (isTypedCatch) {
         // catch_body: handler-style block with Error + ResumeTok params
         // Verifier requires params named exactly "err" and "tok"
         std::vector<il::core::Param> catchBodyParams;
@@ -168,8 +163,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
         lowerStmt(stmt->tryBody.get());
 
     // --- On normal exit from try: eh.pop + branch ---
-    if (!isTerminated())
-    {
+    if (!isTerminated()) {
         il::core::Instr ehPopInstr;
         ehPopInstr.op = Opcode::EhPop;
         ehPopInstr.type = Type(Type::Kind::Void);
@@ -194,8 +188,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
         blockMgr_.currentBlock()->instructions.push_back(std::move(ehEntryInstr));
     }
 
-    if (isTypedCatch)
-    {
+    if (isTypedCatch) {
         // --- Typed catch: check trap kind before entering catch body ---
         // All err.get_* must happen in handler block (verifier constraint).
 
@@ -287,8 +280,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
         size_t errBlockIdx = isTypedCatch ? catchBodyIdx : handlerIdx;
         const auto &bp = currentFunc_->blocks[errBlockIdx].params;
 
-        if (!stmt->catchVar.empty() && !bp.empty())
-        {
+        if (!stmt->catchVar.empty() && !bp.empty()) {
             createSlot(stmt->catchVar, Type(Type::Kind::Error));
             storeToSlot(stmt->catchVar, Value::temp(bp[0].id), Type(Type::Kind::Error));
         }
@@ -304,8 +296,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
 
     // Terminate with resume.label to ^after.
     // Use the current block's own %tok param (catch_body's for typed, handler's for non-typed).
-    if (!isTerminated())
-    {
+    if (!isTerminated()) {
         size_t tokBlockIdx = isTypedCatch ? catchBodyIdx : handlerIdx;
         const auto &bp = currentFunc_->blocks[tokBlockIdx].params;
         Value resumeTok = Value::temp(bp[1].id); // %tok / %ctok is second param
@@ -321,8 +312,7 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
     }
 
     // --- Finally normal block (normal path) ---
-    if (hasFinally)
-    {
+    if (hasFinally) {
         setBlock(finallyNormalIdx);
         if (stmt->finallyBody)
             lowerStmt(stmt->finallyBody.get());
@@ -334,13 +324,11 @@ void Lowerer::lowerTryStmt(TryStmt *stmt)
     setBlock(afterIdx);
 }
 
-void Lowerer::lowerThrowStmt(ThrowStmt *stmt)
-{
+void Lowerer::lowerThrowStmt(ThrowStmt *stmt) {
     ZiaLocationScope locScope(*this, stmt->loc);
 
     // Lower the thrown expression
-    if (stmt->value)
-    {
+    if (stmt->value) {
         auto result = lowerExpr(stmt->value.get());
         (void)result; // Value is not used — throw triggers a trap
     }

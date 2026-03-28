@@ -24,8 +24,7 @@
 #include <sstream>
 #include <string>
 
-int main()
-{
+int main() {
     const char *source = R"(il 0.2.0
 
 extern @callee$helper(ptr) -> void
@@ -43,8 +42,7 @@ exit$block:
     std::istringstream in(source);
     il::core::Module module;
     auto parsed = il::api::v2::parse_text_expected(in, module);
-    if (!parsed)
-    {
+    if (!parsed) {
         il::support::printDiag(parsed.error(), std::cerr);
         return 1;
     }

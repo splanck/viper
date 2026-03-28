@@ -35,8 +35,7 @@
 #include <cstdlib>
 #endif
 
-namespace
-{
+namespace {
 
 /// @brief Print the viper version banner and runtime configuration summary.
 ///
@@ -44,8 +43,7 @@ namespace
 ///          deterministic numerics are enabled. The routine is factored out so
 ///          both `main` and future subcommands can reuse it when handling
 ///          `--version` flags.
-void printVersion()
-{
+void printVersion() {
     // Version banner
     std::cout << "viper v" << VIPER_VERSION_STR << "\n";
     if (std::string(VIPER_SNAPSHOT_STR).size())
@@ -57,32 +55,26 @@ void printVersion()
 
 } // namespace
 
-namespace
-{
+namespace {
 // --dump-runtime-descriptors implementation (stable formatting)
-int dumpRuntimeDescriptors()
-{
+int dumpRuntimeDescriptors() {
     using il::runtime::findRuntimeSignatureId;
     using il::runtime::RuntimeDescriptor;
     using il::runtime::runtimeRegistry;
 
     const auto &reg = runtimeRegistry();
 
-    struct Key
-    {
+    struct Key {
         std::optional<il::runtime::RtSig> sig{};
         il::runtime::RuntimeHandler handler{nullptr};
 
-        bool operator==(const Key &o) const noexcept
-        {
+        bool operator==(const Key &o) const noexcept {
             return sig == o.sig && handler == o.handler;
         }
     };
 
-    struct KeyHash
-    {
-        std::size_t operator()(const Key &k) const noexcept
-        {
+    struct KeyHash {
+        std::size_t operator()(const Key &k) const noexcept {
             const std::size_t h1 = k.sig ? static_cast<std::size_t>(*k.sig) : 0x9E3779B97F4A7C15ull;
             const std::size_t h2 = reinterpret_cast<std::size_t>(k.handler);
             return h1 ^ (h2 + 0x9E3779B97F4A7C15ull + (h1 << 6) + (h1 >> 2));
@@ -92,19 +84,16 @@ int dumpRuntimeDescriptors()
     std::unordered_map<Key, std::vector<const RuntimeDescriptor *>, KeyHash> groups;
     groups.reserve(reg.size());
 
-    for (const auto &d : reg)
-    {
+    for (const auto &d : reg) {
         Key k;
         k.sig = findRuntimeSignatureId(d.name);
         k.handler = d.handler;
         groups[k].push_back(&d);
     }
 
-    auto typeListToString = [](const std::vector<il::core::Type> &ts) -> std::string
-    {
+    auto typeListToString = [](const std::vector<il::core::Type> &ts) -> std::string {
         std::ostringstream os;
-        for (size_t i = 0; i < ts.size(); ++i)
-        {
+        for (size_t i = 0; i < ts.size(); ++i) {
             if (i)
                 os << ',';
             os << ts[i].toString();
@@ -113,18 +102,15 @@ int dumpRuntimeDescriptors()
     };
 
     auto effectsToString = [](const il::runtime::RuntimeSignature &s,
-                              il::runtime::RuntimeTrapClass trap) -> std::string
-    {
+                              il::runtime::RuntimeTrapClass trap) -> std::string {
         std::vector<std::string> items;
         items.push_back(s.nothrow ? "NoThrow" : "MayThrow");
         if (s.readonly)
             items.push_back("ReadOnly");
         if (s.pure)
             items.push_back("Pure");
-        if (trap != il::runtime::RuntimeTrapClass::None)
-        {
-            switch (trap)
-            {
+        if (trap != il::runtime::RuntimeTrapClass::None) {
+            switch (trap) {
                 case il::runtime::RuntimeTrapClass::PowDomainOverflow:
                     items.emplace_back("Trap:PowDomainOverflow");
                     break;
@@ -136,8 +122,7 @@ int dumpRuntimeDescriptors()
         if (items.empty())
             return std::string("None");
         std::ostringstream os;
-        for (size_t i = 0; i < items.size(); ++i)
-        {
+        for (size_t i = 0; i < items.size(); ++i) {
             if (i)
                 os << ", ";
             os << items[i];
@@ -154,27 +139,23 @@ int dumpRuntimeDescriptors()
 
     std::vector<std::pair<size_t, std::vector<const RuntimeDescriptor *>>> orderedGroups;
     orderedGroups.reserve(groups.size());
-    for (auto &kv : groups)
-    {
+    for (auto &kv : groups) {
         // sort entries in group by registry order for deterministic alias listing
         auto &vec = kv.second;
         std::sort(vec.begin(), vec.end(), [&](auto *a, auto *b) { return order[a] < order[b]; });
         size_t firstIdx = order[vec.front()];
         orderedGroups.emplace_back(firstIdx, vec);
     }
-    std::sort(orderedGroups.begin(),
-              orderedGroups.end(),
-              [](auto &a, auto &b) { return a.first < b.first; });
+    std::sort(orderedGroups.begin(), orderedGroups.end(), [](auto &a, auto &b) {
+        return a.first < b.first;
+    });
 
-    for (const auto &entry : orderedGroups)
-    {
+    for (const auto &entry : orderedGroups) {
         const auto &vec = entry.second;
         // choose canonical: prefer Viper.* else first
         const RuntimeDescriptor *canonical = vec.front();
-        for (const auto *d : vec)
-        {
-            if (d->name.rfind("Viper.", 0) == 0)
-            {
+        for (const auto *d : vec) {
+            if (d->name.rfind("Viper.", 0) == 0) {
                 canonical = d;
                 break;
             }
@@ -182,8 +163,7 @@ int dumpRuntimeDescriptors()
 
         // collect aliases (rt_* only)
         std::vector<std::string_view> aliases;
-        for (const auto *d : vec)
-        {
+        for (const auto *d : vec) {
             if (d == canonical)
                 continue;
             if (d->name.rfind("rt_", 0) == 0)
@@ -194,14 +174,10 @@ int dumpRuntimeDescriptors()
         std::cout << "NAME: " << canonical->name << "\n";
 
         std::cout << "  ALIASES: ";
-        if (aliases.empty())
-        {
+        if (aliases.empty()) {
             std::cout << "(none)\n";
-        }
-        else
-        {
-            for (size_t i = 0; i < aliases.size(); ++i)
-            {
+        } else {
+            for (size_t i = 0; i < aliases.size(); ++i) {
                 if (i)
                     std::cout << ", ";
                 std::cout << aliases[i];
@@ -218,24 +194,19 @@ int dumpRuntimeDescriptors()
 }
 } // namespace
 
-namespace
-{
+namespace {
 // --dump-runtime-classes implementation (stable formatting)
-int dumpRuntimeClasses()
-{
+int dumpRuntimeClasses() {
     const auto &classes = il::runtime::runtimeClassCatalog();
-    for (const auto &c : classes)
-    {
+    for (const auto &c : classes) {
         std::cout << "CLASS " << (c.qname ? c.qname : "<unnamed>")
                   << " (type: " << (c.layout ? c.layout : "<unknown>") << ")\n";
-        for (const auto &p : c.properties)
-        {
+        for (const auto &p : c.properties) {
             std::cout << "  PROP " << (p.name ? p.name : "<unnamed>") << ": "
                       << (p.type ? p.type : "<type>") << "  \u2192 "
                       << (p.getter ? p.getter : "<getter>") << "\n";
         }
-        for (const auto &m : c.methods)
-        {
+        for (const auto &m : c.methods) {
             std::cout << "  METH " << (m.name ? m.name : "<unnamed>") << "("
                       << (m.signature ? m.signature : "") << ") \u2192 "
                       << (m.target ? m.target : "<target>") << "\n";
@@ -255,8 +226,7 @@ int dumpRuntimeClasses()
 ///             subcommands, mirroring the behaviour of their handlers.
 ///          3. Provide IL and BASIC specific notes, including intrinsic listings
 ///             supplied by the BASIC front end.
-void usage()
-{
+void usage() {
     std::cerr
         << "viper v" << VIPER_VERSION_STR << "\n"
         << "Usage: viper run <target> [options] [-- program-args...]\n"
@@ -307,8 +277,7 @@ void usage()
     std::cerr << "\n";
 }
 
-namespace viper::tools::ilc
-{
+namespace viper::tools::ilc {
 
 /// @brief Adapter invoked by `viper codegen x64` from the top-level driver.
 /// @details The driver hands control to this helper with `argv` still pointing
@@ -319,8 +288,7 @@ namespace viper::tools::ilc
 ///             subcommand.
 /// @param argv Argument vector beginning with the target architecture token.
 /// @return Exit status propagated from @ref cmd_codegen_x64.
-int run_codegen_x64(int argc, char **argv)
-{
+int run_codegen_x64(int argc, char **argv) {
     return cmd_codegen_x64(argc - 1, argv + 1);
 }
 
@@ -339,56 +307,44 @@ int run_codegen_x64(int argc, char **argv)
 ///          2. Handle `--version` by delegating to @ref printVersion.
 ///          3. Dispatch to the matching handler with the remaining arguments.
 ///          4. Fall back to displaying usage when no match exists.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 #ifdef _WIN32
     // Disable Windows abort dialog so runtime panics exit cleanly
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 #endif
 
-    if (argc < 2)
-    {
+    if (argc < 2) {
         usage();
         return 1;
     }
     std::string cmd = argv[1];
-    if (cmd == "--version")
-    {
+    if (cmd == "--version") {
         printVersion();
         return 0;
     }
-    if (cmd == "--dump-runtime-descriptors")
-    {
+    if (cmd == "--dump-runtime-descriptors") {
         return dumpRuntimeDescriptors();
     }
-    if (cmd == "--dump-runtime-classes")
-    {
+    if (cmd == "--dump-runtime-classes") {
         return dumpRuntimeClasses();
     }
-    if (cmd == "run")
-    {
+    if (cmd == "run") {
         return cmdRun(argc - 2, argv + 2);
     }
-    if (cmd == "build")
-    {
+    if (cmd == "build") {
         return cmdBuild(argc - 2, argv + 2);
     }
-    if (cmd == "init")
-    {
+    if (cmd == "init") {
         return cmdInit(argc - 2, argv + 2);
     }
-    if (cmd == "package")
-    {
+    if (cmd == "package") {
         return cmdPackage(argc - 2, argv + 2);
     }
-    if (cmd == "repl")
-    {
+    if (cmd == "repl") {
         return cmdRepl(argc - 2, argv + 2);
     }
-    if (cmd == "help")
-    {
-        if (argc >= 3 && std::string(argv[2]) == "package")
-        {
+    if (cmd == "help") {
+        if (argc >= 3 && std::string(argv[2]) == "package") {
             // Show package-specific help via --help flag
             char helpFlag[] = "--help";
             char *helpArgv[] = {helpFlag};
@@ -398,40 +354,31 @@ int main(int argc, char **argv)
         usage();
         return 0;
     }
-    if (cmd == "-run")
-    {
+    if (cmd == "-run") {
         return cmdRunIL(argc - 2, argv + 2);
     }
-    if (cmd == "il-opt")
-    {
+    if (cmd == "il-opt") {
         return cmdILOpt(argc - 2, argv + 2);
     }
-    if (cmd == "bench")
-    {
+    if (cmd == "bench") {
         return cmdBench(argc - 2, argv + 2);
     }
-    if (cmd == "codegen")
-    {
-        if (argc >= 3)
-        {
-            if (std::string_view(argv[2]) == "x64")
-            {
+    if (cmd == "codegen") {
+        if (argc >= 3) {
+            if (std::string_view(argv[2]) == "x64") {
                 return viper::tools::ilc::run_codegen_x64(argc - 2, argv + 2);
             }
-            if (std::string_view(argv[2]) == "arm64")
-            {
+            if (std::string_view(argv[2]) == "arm64") {
                 return viper::tools::ilc::cmd_codegen_arm64(argc - 3, argv + 3);
             }
         }
         usage();
         return 1;
     }
-    if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "basic")
-    {
+    if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "basic") {
         return cmdFrontBasic(argc - 3, argv + 3);
     }
-    if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "zia")
-    {
+    if (cmd == "front" && argc >= 3 && std::string(argv[2]) == "zia") {
         return cmdFrontZia(argc - 3, argv + 3);
     }
     usage();

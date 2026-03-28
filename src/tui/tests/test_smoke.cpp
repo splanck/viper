@@ -16,8 +16,7 @@
 #include "tui/version.hpp"
 #include <iostream>
 
-int main()
-{
+int main() {
     std::cout << viper::tui::viper_tui_version() << std::endl;
     return 0;
 }

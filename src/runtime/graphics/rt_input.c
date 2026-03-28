@@ -65,8 +65,7 @@
 #define VGFX_KEY_DOWN_VG 261
 
 /// @brief Convert vgfx key code to GLFW-style key code.
-static int64_t vgfx_to_glfw(int64_t vgfx_key)
-{
+static int64_t vgfx_to_glfw(int64_t vgfx_key) {
     // Letters and numbers match directly (ASCII)
     if (vgfx_key >= 'A' && vgfx_key <= 'Z')
         return vgfx_key;
@@ -76,8 +75,7 @@ static int64_t vgfx_to_glfw(int64_t vgfx_key)
         return VIPER_KEY_SPACE;
 
     // Map special keys from vgfx to GLFW
-    switch (vgfx_key)
-    {
+    switch (vgfx_key) {
         case VGFX_KEY_ESCAPE_VG:
             return VIPER_KEY_ESCAPE;
         case VGFX_KEY_ENTER_VG:
@@ -128,8 +126,7 @@ static bool g_initialized;
 // Initialization
 //=============================================================================
 
-void rt_keyboard_init(void)
-{
+void rt_keyboard_init(void) {
     RT_ASSERT_MAIN_THREAD();
     if (g_initialized)
         return;
@@ -144,8 +141,7 @@ void rt_keyboard_init(void)
     g_initialized = true;
 }
 
-void rt_keyboard_begin_frame(void)
-{
+void rt_keyboard_begin_frame(void) {
     RT_ASSERT_MAIN_THREAD();
     // Clear per-frame event lists
     g_pressed_count = 0;
@@ -153,8 +149,7 @@ void rt_keyboard_begin_frame(void)
     g_text_length = 0;
 }
 
-void rt_keyboard_on_key_down(int64_t key)
-{
+void rt_keyboard_on_key_down(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     // Convert vgfx key to GLFW-style
     int64_t glfw_key = vgfx_to_glfw(key);
@@ -163,8 +158,7 @@ void rt_keyboard_on_key_down(int64_t key)
         return;
 
     // Only record press if key wasn't already down
-    if (!g_key_state[glfw_key])
-    {
+    if (!g_key_state[glfw_key]) {
         g_key_state[glfw_key] = true;
 
         if (g_pressed_count < 64)
@@ -175,8 +169,7 @@ void rt_keyboard_on_key_down(int64_t key)
     // Note: caps lock state would need OS query for accurate tracking
 }
 
-void rt_keyboard_on_key_up(int64_t key)
-{
+void rt_keyboard_on_key_up(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     // Convert vgfx key to GLFW-style
     int64_t glfw_key = vgfx_to_glfw(key);
@@ -184,8 +177,7 @@ void rt_keyboard_on_key_up(int64_t key)
     if (glfw_key <= 0 || glfw_key >= VIPER_KEY_MAX)
         return;
 
-    if (g_key_state[glfw_key])
-    {
+    if (g_key_state[glfw_key]) {
         g_key_state[glfw_key] = false;
 
         if (g_released_count < 64)
@@ -193,22 +185,19 @@ void rt_keyboard_on_key_up(int64_t key)
     }
 }
 
-void rt_keyboard_text_input(int32_t ch)
-{
+void rt_keyboard_text_input(int32_t ch) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_text_input_enabled)
         return;
 
     // Simple UTF-8 encoding for ASCII characters
     // Full UTF-8 would require more complex handling
-    if (ch >= 32 && ch < 127 && g_text_length < 255)
-    {
+    if (ch >= 32 && ch < 127 && g_text_length < 255) {
         g_text_buffer[g_text_length++] = (char)ch;
     }
 }
 
-void rt_keyboard_set_canvas(void *canvas)
-{
+void rt_keyboard_set_canvas(void *canvas) {
     RT_ASSERT_MAIN_THREAD();
     g_active_canvas = canvas;
     if (canvas)
@@ -219,8 +208,7 @@ void rt_keyboard_set_canvas(void *canvas)
 // Polling Methods
 //=============================================================================
 
-int8_t rt_keyboard_is_down(int64_t key)
-{
+int8_t rt_keyboard_is_down(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     if (key <= 0 || key >= VIPER_KEY_MAX)
         return 0;
@@ -228,8 +216,7 @@ int8_t rt_keyboard_is_down(int64_t key)
     return g_key_state[key] ? 1 : 0;
 }
 
-int8_t rt_keyboard_is_up(int64_t key)
-{
+int8_t rt_keyboard_is_up(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     if (key <= 0 || key >= VIPER_KEY_MAX)
         return 1;
@@ -237,22 +224,18 @@ int8_t rt_keyboard_is_up(int64_t key)
     return g_key_state[key] ? 0 : 1;
 }
 
-int8_t rt_keyboard_any_down(void)
-{
+int8_t rt_keyboard_any_down(void) {
     RT_ASSERT_MAIN_THREAD();
-    for (int i = 0; i < VIPER_KEY_MAX; i++)
-    {
+    for (int i = 0; i < VIPER_KEY_MAX; i++) {
         if (g_key_state[i])
             return 1;
     }
     return 0;
 }
 
-int64_t rt_keyboard_get_down(void)
-{
+int64_t rt_keyboard_get_down(void) {
     RT_ASSERT_MAIN_THREAD();
-    for (int i = 0; i < VIPER_KEY_MAX; i++)
-    {
+    for (int i = 0; i < VIPER_KEY_MAX; i++) {
         if (g_key_state[i])
             return (int64_t)i;
     }
@@ -263,45 +246,37 @@ int64_t rt_keyboard_get_down(void)
 // Event Methods
 //=============================================================================
 
-int8_t rt_keyboard_was_pressed(int64_t key)
-{
+int8_t rt_keyboard_was_pressed(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    for (int i = 0; i < g_pressed_count; i++)
-    {
+    for (int i = 0; i < g_pressed_count; i++) {
         if (g_pressed_keys[i] == key)
             return 1;
     }
     return 0;
 }
 
-int8_t rt_keyboard_was_released(int64_t key)
-{
+int8_t rt_keyboard_was_released(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
-    for (int i = 0; i < g_released_count; i++)
-    {
+    for (int i = 0; i < g_released_count; i++) {
         if (g_released_keys[i] == key)
             return 1;
     }
     return 0;
 }
 
-void *rt_keyboard_get_pressed(void)
-{
+void *rt_keyboard_get_pressed(void) {
     RT_ASSERT_MAIN_THREAD();
     void *seq = rt_seq_new();
-    for (int i = 0; i < g_pressed_count; i++)
-    {
+    for (int i = 0; i < g_pressed_count; i++) {
         rt_seq_push(seq, rt_box_i64(g_pressed_keys[i]));
     }
     return seq;
 }
 
-void *rt_keyboard_get_released(void)
-{
+void *rt_keyboard_get_released(void) {
     RT_ASSERT_MAIN_THREAD();
     void *seq = rt_seq_new();
-    for (int i = 0; i < g_released_count; i++)
-    {
+    for (int i = 0; i < g_released_count; i++) {
         rt_seq_push(seq, rt_box_i64(g_released_keys[i]));
     }
     return seq;
@@ -311,8 +286,7 @@ void *rt_keyboard_get_released(void)
 // Text Input
 //=============================================================================
 
-rt_string rt_keyboard_get_text(void)
-{
+rt_string rt_keyboard_get_text(void) {
     RT_ASSERT_MAIN_THREAD();
     if (g_text_length == 0)
         return rt_string_from_bytes("", 0);
@@ -320,14 +294,12 @@ rt_string rt_keyboard_get_text(void)
     return rt_string_from_bytes(g_text_buffer, g_text_length);
 }
 
-void rt_keyboard_enable_text_input(void)
-{
+void rt_keyboard_enable_text_input(void) {
     RT_ASSERT_MAIN_THREAD();
     g_text_input_enabled = true;
 }
 
-void rt_keyboard_disable_text_input(void)
-{
+void rt_keyboard_disable_text_input(void) {
     RT_ASSERT_MAIN_THREAD();
     g_text_input_enabled = false;
 }
@@ -336,26 +308,22 @@ void rt_keyboard_disable_text_input(void)
 // Modifier State
 //=============================================================================
 
-int8_t rt_keyboard_shift(void)
-{
+int8_t rt_keyboard_shift(void) {
     RT_ASSERT_MAIN_THREAD();
     return (g_key_state[VIPER_KEY_LSHIFT] || g_key_state[VIPER_KEY_RSHIFT]) ? 1 : 0;
 }
 
-int8_t rt_keyboard_ctrl(void)
-{
+int8_t rt_keyboard_ctrl(void) {
     RT_ASSERT_MAIN_THREAD();
     return (g_key_state[VIPER_KEY_LCTRL] || g_key_state[VIPER_KEY_RCTRL]) ? 1 : 0;
 }
 
-int8_t rt_keyboard_alt(void)
-{
+int8_t rt_keyboard_alt(void) {
     RT_ASSERT_MAIN_THREAD();
     return (g_key_state[VIPER_KEY_LALT] || g_key_state[VIPER_KEY_RALT]) ? 1 : 0;
 }
 
-int8_t rt_keyboard_caps_lock(void)
-{
+int8_t rt_keyboard_caps_lock(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_caps_lock ? 1 : 0;
 }
@@ -364,30 +332,26 @@ int8_t rt_keyboard_caps_lock(void)
 // Key Name Helper
 //=============================================================================
 
-rt_string rt_keyboard_key_name(int64_t key)
-{
+rt_string rt_keyboard_key_name(int64_t key) {
     RT_ASSERT_MAIN_THREAD();
     const char *name = NULL;
 
     // Letters
-    if (key >= VIPER_KEY_A && key <= VIPER_KEY_Z)
-    {
+    if (key >= VIPER_KEY_A && key <= VIPER_KEY_Z) {
         static char letter[2] = {0, 0};
         letter[0] = (char)key;
         return rt_string_from_bytes(letter, 1);
     }
 
     // Numbers
-    if (key >= VIPER_KEY_0 && key <= VIPER_KEY_9)
-    {
+    if (key >= VIPER_KEY_0 && key <= VIPER_KEY_9) {
         static char digit[2] = {0, 0};
         digit[0] = (char)key;
         return rt_string_from_bytes(digit, 1);
     }
 
     // Special keys
-    switch (key)
-    {
+    switch (key) {
         case VIPER_KEY_UNKNOWN:
             name = "Unknown";
             break;
@@ -583,503 +547,403 @@ rt_string rt_keyboard_key_name(int64_t key)
 // Key Code Constant Getters
 //=============================================================================
 
-int64_t rt_keyboard_key_unknown(void)
-{
+int64_t rt_keyboard_key_unknown(void) {
     return VIPER_KEY_UNKNOWN;
 }
 
-int64_t rt_keyboard_key_a(void)
-{
+int64_t rt_keyboard_key_a(void) {
     return VIPER_KEY_A;
 }
 
-int64_t rt_keyboard_key_b(void)
-{
+int64_t rt_keyboard_key_b(void) {
     return VIPER_KEY_B;
 }
 
-int64_t rt_keyboard_key_c(void)
-{
+int64_t rt_keyboard_key_c(void) {
     return VIPER_KEY_C;
 }
 
-int64_t rt_keyboard_key_d(void)
-{
+int64_t rt_keyboard_key_d(void) {
     return VIPER_KEY_D;
 }
 
-int64_t rt_keyboard_key_e(void)
-{
+int64_t rt_keyboard_key_e(void) {
     return VIPER_KEY_E;
 }
 
-int64_t rt_keyboard_key_f(void)
-{
+int64_t rt_keyboard_key_f(void) {
     return VIPER_KEY_F;
 }
 
-int64_t rt_keyboard_key_g(void)
-{
+int64_t rt_keyboard_key_g(void) {
     return VIPER_KEY_G;
 }
 
-int64_t rt_keyboard_key_h(void)
-{
+int64_t rt_keyboard_key_h(void) {
     return VIPER_KEY_H;
 }
 
-int64_t rt_keyboard_key_i(void)
-{
+int64_t rt_keyboard_key_i(void) {
     return VIPER_KEY_I;
 }
 
-int64_t rt_keyboard_key_j(void)
-{
+int64_t rt_keyboard_key_j(void) {
     return VIPER_KEY_J;
 }
 
-int64_t rt_keyboard_key_k(void)
-{
+int64_t rt_keyboard_key_k(void) {
     return VIPER_KEY_K;
 }
 
-int64_t rt_keyboard_key_l(void)
-{
+int64_t rt_keyboard_key_l(void) {
     return VIPER_KEY_L;
 }
 
-int64_t rt_keyboard_key_m(void)
-{
+int64_t rt_keyboard_key_m(void) {
     return VIPER_KEY_M;
 }
 
-int64_t rt_keyboard_key_n(void)
-{
+int64_t rt_keyboard_key_n(void) {
     return VIPER_KEY_N;
 }
 
-int64_t rt_keyboard_key_o(void)
-{
+int64_t rt_keyboard_key_o(void) {
     return VIPER_KEY_O;
 }
 
-int64_t rt_keyboard_key_p(void)
-{
+int64_t rt_keyboard_key_p(void) {
     return VIPER_KEY_P;
 }
 
-int64_t rt_keyboard_key_q(void)
-{
+int64_t rt_keyboard_key_q(void) {
     return VIPER_KEY_Q;
 }
 
-int64_t rt_keyboard_key_r(void)
-{
+int64_t rt_keyboard_key_r(void) {
     return VIPER_KEY_R;
 }
 
-int64_t rt_keyboard_key_s(void)
-{
+int64_t rt_keyboard_key_s(void) {
     return VIPER_KEY_S;
 }
 
-int64_t rt_keyboard_key_t(void)
-{
+int64_t rt_keyboard_key_t(void) {
     return VIPER_KEY_T;
 }
 
-int64_t rt_keyboard_key_u(void)
-{
+int64_t rt_keyboard_key_u(void) {
     return VIPER_KEY_U;
 }
 
-int64_t rt_keyboard_key_v(void)
-{
+int64_t rt_keyboard_key_v(void) {
     return VIPER_KEY_V;
 }
 
-int64_t rt_keyboard_key_w(void)
-{
+int64_t rt_keyboard_key_w(void) {
     return VIPER_KEY_W;
 }
 
-int64_t rt_keyboard_key_x(void)
-{
+int64_t rt_keyboard_key_x(void) {
     return VIPER_KEY_X;
 }
 
-int64_t rt_keyboard_key_y(void)
-{
+int64_t rt_keyboard_key_y(void) {
     return VIPER_KEY_Y;
 }
 
-int64_t rt_keyboard_key_z(void)
-{
+int64_t rt_keyboard_key_z(void) {
     return VIPER_KEY_Z;
 }
 
-int64_t rt_keyboard_key_0(void)
-{
+int64_t rt_keyboard_key_0(void) {
     return VIPER_KEY_0;
 }
 
-int64_t rt_keyboard_key_1(void)
-{
+int64_t rt_keyboard_key_1(void) {
     return VIPER_KEY_1;
 }
 
-int64_t rt_keyboard_key_2(void)
-{
+int64_t rt_keyboard_key_2(void) {
     return VIPER_KEY_2;
 }
 
-int64_t rt_keyboard_key_3(void)
-{
+int64_t rt_keyboard_key_3(void) {
     return VIPER_KEY_3;
 }
 
-int64_t rt_keyboard_key_4(void)
-{
+int64_t rt_keyboard_key_4(void) {
     return VIPER_KEY_4;
 }
 
-int64_t rt_keyboard_key_5(void)
-{
+int64_t rt_keyboard_key_5(void) {
     return VIPER_KEY_5;
 }
 
-int64_t rt_keyboard_key_6(void)
-{
+int64_t rt_keyboard_key_6(void) {
     return VIPER_KEY_6;
 }
 
-int64_t rt_keyboard_key_7(void)
-{
+int64_t rt_keyboard_key_7(void) {
     return VIPER_KEY_7;
 }
 
-int64_t rt_keyboard_key_8(void)
-{
+int64_t rt_keyboard_key_8(void) {
     return VIPER_KEY_8;
 }
 
-int64_t rt_keyboard_key_9(void)
-{
+int64_t rt_keyboard_key_9(void) {
     return VIPER_KEY_9;
 }
 
-int64_t rt_keyboard_key_f1(void)
-{
+int64_t rt_keyboard_key_f1(void) {
     return VIPER_KEY_F1;
 }
 
-int64_t rt_keyboard_key_f2(void)
-{
+int64_t rt_keyboard_key_f2(void) {
     return VIPER_KEY_F2;
 }
 
-int64_t rt_keyboard_key_f3(void)
-{
+int64_t rt_keyboard_key_f3(void) {
     return VIPER_KEY_F3;
 }
 
-int64_t rt_keyboard_key_f4(void)
-{
+int64_t rt_keyboard_key_f4(void) {
     return VIPER_KEY_F4;
 }
 
-int64_t rt_keyboard_key_f5(void)
-{
+int64_t rt_keyboard_key_f5(void) {
     return VIPER_KEY_F5;
 }
 
-int64_t rt_keyboard_key_f6(void)
-{
+int64_t rt_keyboard_key_f6(void) {
     return VIPER_KEY_F6;
 }
 
-int64_t rt_keyboard_key_f7(void)
-{
+int64_t rt_keyboard_key_f7(void) {
     return VIPER_KEY_F7;
 }
 
-int64_t rt_keyboard_key_f8(void)
-{
+int64_t rt_keyboard_key_f8(void) {
     return VIPER_KEY_F8;
 }
 
-int64_t rt_keyboard_key_f9(void)
-{
+int64_t rt_keyboard_key_f9(void) {
     return VIPER_KEY_F9;
 }
 
-int64_t rt_keyboard_key_f10(void)
-{
+int64_t rt_keyboard_key_f10(void) {
     return VIPER_KEY_F10;
 }
 
-int64_t rt_keyboard_key_f11(void)
-{
+int64_t rt_keyboard_key_f11(void) {
     return VIPER_KEY_F11;
 }
 
-int64_t rt_keyboard_key_f12(void)
-{
+int64_t rt_keyboard_key_f12(void) {
     return VIPER_KEY_F12;
 }
 
-int64_t rt_keyboard_key_up(void)
-{
+int64_t rt_keyboard_key_up(void) {
     return VIPER_KEY_UP;
 }
 
-int64_t rt_keyboard_key_down(void)
-{
+int64_t rt_keyboard_key_down(void) {
     return VIPER_KEY_DOWN;
 }
 
-int64_t rt_keyboard_key_left(void)
-{
+int64_t rt_keyboard_key_left(void) {
     return VIPER_KEY_LEFT;
 }
 
-int64_t rt_keyboard_key_right(void)
-{
+int64_t rt_keyboard_key_right(void) {
     return VIPER_KEY_RIGHT;
 }
 
-int64_t rt_keyboard_key_home(void)
-{
+int64_t rt_keyboard_key_home(void) {
     return VIPER_KEY_HOME;
 }
 
-int64_t rt_keyboard_key_end(void)
-{
+int64_t rt_keyboard_key_end(void) {
     return VIPER_KEY_END;
 }
 
-int64_t rt_keyboard_key_pageup(void)
-{
+int64_t rt_keyboard_key_pageup(void) {
     return VIPER_KEY_PAGEUP;
 }
 
-int64_t rt_keyboard_key_pagedown(void)
-{
+int64_t rt_keyboard_key_pagedown(void) {
     return VIPER_KEY_PAGEDOWN;
 }
 
-int64_t rt_keyboard_key_insert(void)
-{
+int64_t rt_keyboard_key_insert(void) {
     return VIPER_KEY_INSERT;
 }
 
-int64_t rt_keyboard_key_delete(void)
-{
+int64_t rt_keyboard_key_delete(void) {
     return VIPER_KEY_DELETE;
 }
 
-int64_t rt_keyboard_key_backspace(void)
-{
+int64_t rt_keyboard_key_backspace(void) {
     return VIPER_KEY_BACKSPACE;
 }
 
-int64_t rt_keyboard_key_tab(void)
-{
+int64_t rt_keyboard_key_tab(void) {
     return VIPER_KEY_TAB;
 }
 
-int64_t rt_keyboard_key_enter(void)
-{
+int64_t rt_keyboard_key_enter(void) {
     return VIPER_KEY_ENTER;
 }
 
-int64_t rt_keyboard_key_space(void)
-{
+int64_t rt_keyboard_key_space(void) {
     return VIPER_KEY_SPACE;
 }
 
-int64_t rt_keyboard_key_escape(void)
-{
+int64_t rt_keyboard_key_escape(void) {
     return VIPER_KEY_ESCAPE;
 }
 
-int64_t rt_keyboard_key_shift(void)
-{
+int64_t rt_keyboard_key_shift(void) {
     return VIPER_KEY_SHIFT;
 }
 
-int64_t rt_keyboard_key_ctrl(void)
-{
+int64_t rt_keyboard_key_ctrl(void) {
     return VIPER_KEY_CTRL;
 }
 
-int64_t rt_keyboard_key_alt(void)
-{
+int64_t rt_keyboard_key_alt(void) {
     return VIPER_KEY_ALT;
 }
 
-int64_t rt_keyboard_key_lshift(void)
-{
+int64_t rt_keyboard_key_lshift(void) {
     return VIPER_KEY_LSHIFT;
 }
 
-int64_t rt_keyboard_key_rshift(void)
-{
+int64_t rt_keyboard_key_rshift(void) {
     return VIPER_KEY_RSHIFT;
 }
 
-int64_t rt_keyboard_key_lctrl(void)
-{
+int64_t rt_keyboard_key_lctrl(void) {
     return VIPER_KEY_LCTRL;
 }
 
-int64_t rt_keyboard_key_rctrl(void)
-{
+int64_t rt_keyboard_key_rctrl(void) {
     return VIPER_KEY_RCTRL;
 }
 
-int64_t rt_keyboard_key_lalt(void)
-{
+int64_t rt_keyboard_key_lalt(void) {
     return VIPER_KEY_LALT;
 }
 
-int64_t rt_keyboard_key_ralt(void)
-{
+int64_t rt_keyboard_key_ralt(void) {
     return VIPER_KEY_RALT;
 }
 
-int64_t rt_keyboard_key_minus(void)
-{
+int64_t rt_keyboard_key_minus(void) {
     return VIPER_KEY_MINUS;
 }
 
-int64_t rt_keyboard_key_equals(void)
-{
+int64_t rt_keyboard_key_equals(void) {
     return VIPER_KEY_EQUALS;
 }
 
-int64_t rt_keyboard_key_lbracket(void)
-{
+int64_t rt_keyboard_key_lbracket(void) {
     return VIPER_KEY_LBRACKET;
 }
 
-int64_t rt_keyboard_key_rbracket(void)
-{
+int64_t rt_keyboard_key_rbracket(void) {
     return VIPER_KEY_RBRACKET;
 }
 
-int64_t rt_keyboard_key_backslash(void)
-{
+int64_t rt_keyboard_key_backslash(void) {
     return VIPER_KEY_BACKSLASH;
 }
 
-int64_t rt_keyboard_key_semicolon(void)
-{
+int64_t rt_keyboard_key_semicolon(void) {
     return VIPER_KEY_SEMICOLON;
 }
 
-int64_t rt_keyboard_key_quote(void)
-{
+int64_t rt_keyboard_key_quote(void) {
     return VIPER_KEY_QUOTE;
 }
 
-int64_t rt_keyboard_key_grave(void)
-{
+int64_t rt_keyboard_key_grave(void) {
     return VIPER_KEY_GRAVE;
 }
 
-int64_t rt_keyboard_key_comma(void)
-{
+int64_t rt_keyboard_key_comma(void) {
     return VIPER_KEY_COMMA;
 }
 
-int64_t rt_keyboard_key_period(void)
-{
+int64_t rt_keyboard_key_period(void) {
     return VIPER_KEY_PERIOD;
 }
 
-int64_t rt_keyboard_key_slash(void)
-{
+int64_t rt_keyboard_key_slash(void) {
     return VIPER_KEY_SLASH;
 }
 
-int64_t rt_keyboard_key_num0(void)
-{
+int64_t rt_keyboard_key_num0(void) {
     return VIPER_KEY_NUM0;
 }
 
-int64_t rt_keyboard_key_num1(void)
-{
+int64_t rt_keyboard_key_num1(void) {
     return VIPER_KEY_NUM1;
 }
 
-int64_t rt_keyboard_key_num2(void)
-{
+int64_t rt_keyboard_key_num2(void) {
     return VIPER_KEY_NUM2;
 }
 
-int64_t rt_keyboard_key_num3(void)
-{
+int64_t rt_keyboard_key_num3(void) {
     return VIPER_KEY_NUM3;
 }
 
-int64_t rt_keyboard_key_num4(void)
-{
+int64_t rt_keyboard_key_num4(void) {
     return VIPER_KEY_NUM4;
 }
 
-int64_t rt_keyboard_key_num5(void)
-{
+int64_t rt_keyboard_key_num5(void) {
     return VIPER_KEY_NUM5;
 }
 
-int64_t rt_keyboard_key_num6(void)
-{
+int64_t rt_keyboard_key_num6(void) {
     return VIPER_KEY_NUM6;
 }
 
-int64_t rt_keyboard_key_num7(void)
-{
+int64_t rt_keyboard_key_num7(void) {
     return VIPER_KEY_NUM7;
 }
 
-int64_t rt_keyboard_key_num8(void)
-{
+int64_t rt_keyboard_key_num8(void) {
     return VIPER_KEY_NUM8;
 }
 
-int64_t rt_keyboard_key_num9(void)
-{
+int64_t rt_keyboard_key_num9(void) {
     return VIPER_KEY_NUM9;
 }
 
-int64_t rt_keyboard_key_numadd(void)
-{
+int64_t rt_keyboard_key_numadd(void) {
     return VIPER_KEY_NUMADD;
 }
 
-int64_t rt_keyboard_key_numsub(void)
-{
+int64_t rt_keyboard_key_numsub(void) {
     return VIPER_KEY_NUMSUB;
 }
 
-int64_t rt_keyboard_key_nummul(void)
-{
+int64_t rt_keyboard_key_nummul(void) {
     return VIPER_KEY_NUMMUL;
 }
 
-int64_t rt_keyboard_key_numdiv(void)
-{
+int64_t rt_keyboard_key_numdiv(void) {
     return VIPER_KEY_NUMDIV;
 }
 
-int64_t rt_keyboard_key_numenter(void)
-{
+int64_t rt_keyboard_key_numenter(void) {
     return VIPER_KEY_NUMENTER;
 }
 
-int64_t rt_keyboard_key_numdot(void)
-{
+int64_t rt_keyboard_key_numdot(void) {
     return VIPER_KEY_NUMDOT;
 }
 
@@ -1124,13 +988,11 @@ static bool g_mouse_initialized = false;
 
 extern int64_t rt_clock_ticks_us(void);
 
-static int64_t get_time_ms(void)
-{
+static int64_t get_time_ms(void) {
     return rt_clock_ticks_us() / 1000;
 }
 
-void rt_mouse_init(void)
-{
+void rt_mouse_init(void) {
     RT_ASSERT_MAIN_THREAD();
     if (g_mouse_initialized)
         return;
@@ -1147,8 +1009,7 @@ void rt_mouse_init(void)
     g_mouse_captured = false;
     g_mouse_canvas = NULL;
 
-    for (int i = 0; i < VIPER_MOUSE_BUTTON_MAX; i++)
-    {
+    for (int i = 0; i < VIPER_MOUSE_BUTTON_MAX; i++) {
         g_mouse_button_state[i] = false;
         g_mouse_button_pressed[i] = false;
         g_mouse_button_released[i] = false;
@@ -1161,8 +1022,7 @@ void rt_mouse_init(void)
     g_mouse_initialized = true;
 }
 
-void rt_mouse_begin_frame(void)
-{
+void rt_mouse_begin_frame(void) {
     RT_ASSERT_MAIN_THREAD();
     // Calculate delta from previous position
     g_mouse_delta_x = g_mouse_x - g_mouse_prev_x;
@@ -1171,8 +1031,7 @@ void rt_mouse_begin_frame(void)
     g_mouse_prev_y = g_mouse_y;
 
     // Reset per-frame event arrays
-    for (int i = 0; i < VIPER_MOUSE_BUTTON_MAX; i++)
-    {
+    for (int i = 0; i < VIPER_MOUSE_BUTTON_MAX; i++) {
         g_mouse_button_pressed[i] = false;
         g_mouse_button_released[i] = false;
         g_mouse_clicked[i] = false;
@@ -1184,55 +1043,47 @@ void rt_mouse_begin_frame(void)
     g_mouse_wheel_y = 0;
 }
 
-void rt_mouse_update_pos(int64_t x, int64_t y)
-{
+void rt_mouse_update_pos(int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     g_mouse_x = x;
     g_mouse_y = y;
 }
 
-void rt_mouse_force_delta(int64_t dx, int64_t dy)
-{
+void rt_mouse_force_delta(int64_t dx, int64_t dy) {
     g_mouse_delta_x = dx;
     g_mouse_delta_y = dy;
 }
 
-void rt_mouse_button_down(int64_t button)
-{
+void rt_mouse_button_down(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return;
 
-    if (!g_mouse_button_state[button])
-    {
+    if (!g_mouse_button_state[button]) {
         g_mouse_button_state[button] = true;
         g_mouse_button_pressed[button] = true;
         g_mouse_press_time[button] = get_time_ms();
     }
 }
 
-void rt_mouse_button_up(int64_t button)
-{
+void rt_mouse_button_up(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return;
 
-    if (g_mouse_button_state[button])
-    {
+    if (g_mouse_button_state[button]) {
         g_mouse_button_state[button] = false;
         g_mouse_button_released[button] = true;
 
         // Check for click (quick press and release)
         int64_t now = get_time_ms();
         int64_t press_duration = now - g_mouse_press_time[button];
-        if (press_duration <= CLICK_MAX_DURATION_MS)
-        {
+        if (press_duration <= CLICK_MAX_DURATION_MS) {
             g_mouse_clicked[button] = true;
 
             // Check for double-click
             int64_t since_last_click = now - g_mouse_last_click_time[button];
-            if (since_last_click <= DOUBLE_CLICK_MAX_INTERVAL_MS)
-            {
+            if (since_last_click <= DOUBLE_CLICK_MAX_INTERVAL_MS) {
                 g_mouse_double_clicked[button] = true;
             }
             g_mouse_last_click_time[button] = now;
@@ -1240,15 +1091,13 @@ void rt_mouse_button_up(int64_t button)
     }
 }
 
-void rt_mouse_update_wheel(int64_t dx, int64_t dy)
-{
+void rt_mouse_update_wheel(int64_t dx, int64_t dy) {
     RT_ASSERT_MAIN_THREAD();
     g_mouse_wheel_x += dx;
     g_mouse_wheel_y += dy;
 }
 
-void rt_mouse_set_canvas(void *canvas)
-{
+void rt_mouse_set_canvas(void *canvas) {
     RT_ASSERT_MAIN_THREAD();
     g_mouse_canvas = canvas;
     if (canvas)
@@ -1259,26 +1108,22 @@ void rt_mouse_set_canvas(void *canvas)
 // Position Methods
 //=============================================================================
 
-int64_t rt_mouse_x(void)
-{
+int64_t rt_mouse_x(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_mouse_x;
 }
 
-int64_t rt_mouse_y(void)
-{
+int64_t rt_mouse_y(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_mouse_y;
 }
 
-int64_t rt_mouse_delta_x(void)
-{
+int64_t rt_mouse_delta_x(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_mouse_delta_x;
 }
 
-int64_t rt_mouse_delta_y(void)
-{
+int64_t rt_mouse_delta_y(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_mouse_delta_y;
 }
@@ -1287,36 +1132,31 @@ int64_t rt_mouse_delta_y(void)
 // Button State (Polling)
 //=============================================================================
 
-int8_t rt_mouse_is_down(int64_t button)
-{
+int8_t rt_mouse_is_down(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_button_state[button] ? 1 : 0;
 }
 
-int8_t rt_mouse_is_up(int64_t button)
-{
+int8_t rt_mouse_is_up(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return 1;
     return g_mouse_button_state[button] ? 0 : 1;
 }
 
-int8_t rt_mouse_left(void)
-{
+int8_t rt_mouse_left(void) {
     RT_ASSERT_MAIN_THREAD();
     return rt_mouse_is_down(VIPER_MOUSE_BUTTON_LEFT);
 }
 
-int8_t rt_mouse_right(void)
-{
+int8_t rt_mouse_right(void) {
     RT_ASSERT_MAIN_THREAD();
     return rt_mouse_is_down(VIPER_MOUSE_BUTTON_RIGHT);
 }
 
-int8_t rt_mouse_middle(void)
-{
+int8_t rt_mouse_middle(void) {
     RT_ASSERT_MAIN_THREAD();
     return rt_mouse_is_down(VIPER_MOUSE_BUTTON_MIDDLE);
 }
@@ -1325,32 +1165,28 @@ int8_t rt_mouse_middle(void)
 // Button Events (Since Last Poll)
 //=============================================================================
 
-int8_t rt_mouse_was_pressed(int64_t button)
-{
+int8_t rt_mouse_was_pressed(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_button_pressed[button] ? 1 : 0;
 }
 
-int8_t rt_mouse_was_released(int64_t button)
-{
+int8_t rt_mouse_was_released(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_button_released[button] ? 1 : 0;
 }
 
-int8_t rt_mouse_was_clicked(int64_t button)
-{
+int8_t rt_mouse_was_clicked(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return 0;
     return g_mouse_clicked[button] ? 1 : 0;
 }
 
-int8_t rt_mouse_was_double_clicked(int64_t button)
-{
+int8_t rt_mouse_was_double_clicked(int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (button < 0 || button >= VIPER_MOUSE_BUTTON_MAX)
         return 0;
@@ -1361,14 +1197,12 @@ int8_t rt_mouse_was_double_clicked(int64_t button)
 // Scroll Wheel
 //=============================================================================
 
-int64_t rt_mouse_wheel_x(void)
-{
+int64_t rt_mouse_wheel_x(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_mouse_wheel_x;
 }
 
-int64_t rt_mouse_wheel_y(void)
-{
+int64_t rt_mouse_wheel_y(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_mouse_wheel_y;
 }
@@ -1377,8 +1211,7 @@ int64_t rt_mouse_wheel_y(void)
 // Cursor Control
 //=============================================================================
 
-void rt_mouse_show(void)
-{
+void rt_mouse_show(void) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_mouse_hidden)
         return;
@@ -1387,8 +1220,7 @@ void rt_mouse_show(void)
     vgfx_show_cursor();
 }
 
-void rt_mouse_hide(void)
-{
+void rt_mouse_hide(void) {
     RT_ASSERT_MAIN_THREAD();
     if (g_mouse_hidden)
         return;
@@ -1397,34 +1229,29 @@ void rt_mouse_hide(void)
     vgfx_hide_cursor();
 }
 
-int8_t rt_mouse_is_hidden(void)
-{
+int8_t rt_mouse_is_hidden(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_mouse_hidden ? 1 : 0;
 }
 
-void rt_mouse_capture(void)
-{
+void rt_mouse_capture(void) {
     RT_ASSERT_MAIN_THREAD();
     g_mouse_captured = true;
     rt_mouse_hide(); /* Hide cursor during capture */
 }
 
-void rt_mouse_release(void)
-{
+void rt_mouse_release(void) {
     RT_ASSERT_MAIN_THREAD();
     g_mouse_captured = false;
     rt_mouse_show(); /* Restore cursor on release */
 }
 
-int8_t rt_mouse_is_captured(void)
-{
+int8_t rt_mouse_is_captured(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_mouse_captured ? 1 : 0;
 }
 
-void rt_mouse_set_pos(int64_t x, int64_t y)
-{
+void rt_mouse_set_pos(int64_t x, int64_t y) {
     RT_ASSERT_MAIN_THREAD();
     g_mouse_x = x;
     g_mouse_y = y;
@@ -1435,27 +1262,22 @@ void rt_mouse_set_pos(int64_t x, int64_t y)
 // Button Constant Getters
 //=============================================================================
 
-int64_t rt_mouse_button_left(void)
-{
+int64_t rt_mouse_button_left(void) {
     return VIPER_MOUSE_BUTTON_LEFT;
 }
 
-int64_t rt_mouse_button_right(void)
-{
+int64_t rt_mouse_button_right(void) {
     return VIPER_MOUSE_BUTTON_RIGHT;
 }
 
-int64_t rt_mouse_button_middle(void)
-{
+int64_t rt_mouse_button_middle(void) {
     return VIPER_MOUSE_BUTTON_MIDDLE;
 }
 
-int64_t rt_mouse_button_x1(void)
-{
+int64_t rt_mouse_button_x1(void) {
     return VIPER_MOUSE_BUTTON_X1;
 }
 
-int64_t rt_mouse_button_x2(void)
-{
+int64_t rt_mouse_button_x2(void) {
     return VIPER_MOUSE_BUTTON_X2;
 }

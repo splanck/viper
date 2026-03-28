@@ -28,12 +28,10 @@
 #include <variant>
 #include <vector>
 
-namespace viper::server
-{
+namespace viper::server {
 
 /// @brief JSON value types.
-enum class JsonType : uint8_t
-{
+enum class JsonType : uint8_t {
     Null,
     Bool,
     Int,
@@ -48,8 +46,7 @@ enum class JsonType : uint8_t
 /// Objects are stored as ordered vectors of (key, value) pairs to preserve
 /// insertion order, which is important for deterministic protocol output.
 /// O(n) key lookup is acceptable since protocol objects are small (<30 keys).
-class JsonValue
-{
+class JsonValue {
   public:
     using ArrayType = std::vector<JsonValue>;
     using ObjectType = std::vector<std::pair<std::string, JsonValue>>;

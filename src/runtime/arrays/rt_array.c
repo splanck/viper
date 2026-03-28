@@ -48,8 +48,7 @@ extern _Noreturn void rt_trap(const char *msg);
 ///          callers can interrogate optional handles without branching.
 /// @param payload Array payload pointer (may be `NULL`).
 /// @return Header describing the allocation, or `NULL` when @p payload is null.
-rt_heap_hdr_t *rt_arr_i32_hdr(const int32_t *payload)
-{
+rt_heap_hdr_t *rt_arr_i32_hdr(const int32_t *payload) {
     return payload ? rt_heap_hdr((void *)(uintptr_t)payload) : NULL;
 }
 
@@ -58,8 +57,7 @@ rt_heap_hdr_t *rt_arr_i32_hdr(const int32_t *payload)
 ///          VM error-handling stack can intercept the condition when available.
 /// @param idx Index that triggered the violation.
 /// @param len Array length used for diagnostics.
-void rt_arr_oob_panic(size_t idx, size_t len)
-{
+void rt_arr_oob_panic(size_t idx, size_t len) {
     char buf[128];
     snprintf(buf, sizeof(buf), "rt_arr_i32: index %zu out of bounds (len=%zu)", idx, len);
     rt_trap(buf);
@@ -75,8 +73,7 @@ RT_ARR_DEFINE_PAYLOAD_BYTES_FN(rt_arr_i32_payload_bytes, int32_t)
 ///          @ref rt_arr_oob_panic which aborts the program.
 /// @param arr Runtime array payload.
 /// @param idx Zero-based index being accessed.
-static void rt_arr_i32_validate_bounds(int32_t *arr, size_t idx)
-{
+static void rt_arr_i32_validate_bounds(int32_t *arr, size_t idx) {
     if (!arr)
         rt_arr_oob_panic(idx, 0);
 
@@ -94,8 +91,7 @@ static void rt_arr_i32_validate_bounds(int32_t *arr, size_t idx)
 ///          logical length and capacity via the heap header.
 /// @param len Requested element count; the capacity matches this value.
 /// @return Pointer to the array payload, or `NULL` when allocation fails.
-int32_t *rt_arr_i32_new(size_t len)
-{
+int32_t *rt_arr_i32_new(size_t len) {
     return (int32_t *)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_I32, sizeof(int32_t), len, len);
 }
 
@@ -103,8 +99,7 @@ int32_t *rt_arr_i32_new(size_t len)
 /// @details Guards against null pointers and validates the heap metadata before
 ///          delegating to @ref rt_heap_retain.
 /// @param arr Array payload pointer.
-void rt_arr_i32_retain(int32_t *arr)
-{
+void rt_arr_i32_retain(int32_t *arr) {
     if (!arr)
         return;
     rt_heap_hdr_t *hdr = rt_arr_i32_hdr(arr);
@@ -116,8 +111,7 @@ void rt_arr_i32_retain(int32_t *arr)
 /// @details Validates the associated heap header prior to delegating to
 ///          @ref rt_heap_release so copy-on-write invariants remain intact.
 /// @param arr Array payload pointer.
-void rt_arr_i32_release(int32_t *arr)
-{
+void rt_arr_i32_release(int32_t *arr) {
     if (!arr)
         return;
     rt_heap_hdr_t *hdr = rt_arr_i32_hdr(arr);
@@ -130,8 +124,7 @@ void rt_arr_i32_release(int32_t *arr)
 ///          references without extra branching.
 /// @param arr Array payload pointer.
 /// @return Number of elements currently in use.
-size_t rt_arr_i32_len(int32_t *arr)
-{
+size_t rt_arr_i32_len(int32_t *arr) {
     if (!arr)
         return 0;
     rt_heap_hdr_t *hdr = rt_arr_i32_hdr(arr);
@@ -142,8 +135,7 @@ size_t rt_arr_i32_len(int32_t *arr)
 /// @brief Retrieve the reserved capacity for the array.
 /// @param arr Array payload pointer.
 /// @return Number of elements that fit without reallocating.
-size_t rt_arr_i32_cap(int32_t *arr)
-{
+size_t rt_arr_i32_cap(int32_t *arr) {
     if (!arr)
         return 0;
     rt_heap_hdr_t *hdr = rt_arr_i32_hdr(arr);
@@ -155,8 +147,7 @@ size_t rt_arr_i32_cap(int32_t *arr)
 /// @param arr Array payload pointer.
 /// @param idx Zero-based index to access.
 /// @return Value stored at the requested index.
-int32_t rt_arr_i32_get(int32_t *arr, size_t idx)
-{
+int32_t rt_arr_i32_get(int32_t *arr, size_t idx) {
     rt_arr_i32_validate_bounds(arr, idx);
     return arr[idx];
 }
@@ -165,8 +156,7 @@ int32_t rt_arr_i32_get(int32_t *arr, size_t idx)
 /// @param arr Array payload pointer.
 /// @param idx Zero-based index to write.
 /// @param value Value to store in the array.
-void rt_arr_i32_set(int32_t *arr, size_t idx, int32_t value)
-{
+void rt_arr_i32_set(int32_t *arr, size_t idx, int32_t value) {
     rt_arr_i32_validate_bounds(arr, idx);
     arr[idx] = value;
 }
@@ -178,8 +168,7 @@ void rt_arr_i32_set(int32_t *arr, size_t idx, int32_t value)
 /// @param dst Destination array payload; must be non-null when @p count > 0.
 /// @param src Source array payload; must be non-null when @p count > 0.
 /// @param count Number of elements to copy.
-void rt_arr_i32_copy_payload(int32_t *dst, const int32_t *src, size_t count)
-{
+void rt_arr_i32_copy_payload(int32_t *dst, const int32_t *src, size_t count) {
     if (count == 0)
         return;
 

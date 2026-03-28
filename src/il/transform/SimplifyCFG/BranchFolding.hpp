@@ -17,8 +17,7 @@
 
 #include "il/transform/SimplifyCFG.hpp"
 
-namespace il::transform::simplify_cfg
-{
+namespace il::transform::simplify_cfg {
 
 /// \brief Replace switches with a single reachable case by an unconditional branch.
 /// \details Examines `switch.i32` terminators; when all but one case are

@@ -30,8 +30,7 @@
 #define RT_PH_MAX_BODIES_STR "256"
 
 /// @brief Internal representation of a single rigid body (AABB or circle).
-typedef struct
-{
+typedef struct {
     void *vptr;              ///< Zia virtual-dispatch pointer (must be first).
     double x, y;             ///< Top-left position (AABB) or center (circle).
     double w, h;             ///< Width and height of the AABB (0 for circles).
@@ -51,8 +50,7 @@ typedef struct
 typedef struct ph_joint ph_joint;
 
 /// @brief Internal representation of a physics world.
-typedef struct
-{
+typedef struct {
     void *vptr;
     double gravity_x;
     double gravity_y;
@@ -63,8 +61,7 @@ typedef struct
 } rt_world_impl;
 
 /// @brief Joint internal representation.
-struct ph_joint
-{
+struct ph_joint {
     void *vptr;   ///< Zia virtual-dispatch pointer (must be first).
     int32_t type; ///< RT_JOINT_DISTANCE, etc.
     void *body_a;

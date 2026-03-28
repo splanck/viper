@@ -12,13 +12,11 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
@@ -38,16 +36,14 @@ static const int64_t FEB_28 = 1735689600 + 58 * 86400;
 // Constructor
 // ---------------------------------------------------------------------------
 
-static void test_new()
-{
+static void test_new() {
     void *r = rt_daterange_new(JAN_1, JAN_31);
     assert(r != NULL);
     assert(rt_daterange_start(r) == JAN_1);
     assert(rt_daterange_end(r) == JAN_31);
 }
 
-static void test_new_swapped()
-{
+static void test_new_swapped() {
     // Should swap start and end if start > end
     void *r = rt_daterange_new(JAN_31, JAN_1);
     assert(rt_daterange_start(r) == JAN_1);
@@ -58,8 +54,7 @@ static void test_new_swapped()
 // Contains
 // ---------------------------------------------------------------------------
 
-static void test_contains()
-{
+static void test_contains() {
     void *r = rt_daterange_new(JAN_1, JAN_31);
     assert(rt_daterange_contains(r, JAN_15) == 1);
     assert(rt_daterange_contains(r, JAN_1) == 1);  // inclusive start
@@ -72,8 +67,7 @@ static void test_contains()
 // Overlaps
 // ---------------------------------------------------------------------------
 
-static void test_overlaps()
-{
+static void test_overlaps() {
     void *jan = rt_daterange_new(JAN_1, JAN_31);
     void *feb = rt_daterange_new(FEB_1, FEB_28);
     void *mid = rt_daterange_new(JAN_15, FEB_1);
@@ -87,8 +81,7 @@ static void test_overlaps()
 // Intersection
 // ---------------------------------------------------------------------------
 
-static void test_intersection()
-{
+static void test_intersection() {
     void *jan = rt_daterange_new(JAN_1, JAN_31);
     void *mid = rt_daterange_new(JAN_15, FEB_28);
     void *result = rt_daterange_intersection(jan, mid);
@@ -98,8 +91,7 @@ static void test_intersection()
     assert(rt_daterange_end(result) == JAN_31);
 }
 
-static void test_intersection_no_overlap()
-{
+static void test_intersection_no_overlap() {
     void *jan = rt_daterange_new(JAN_1, JAN_15);
     void *feb = rt_daterange_new(FEB_1, FEB_28);
     void *result = rt_daterange_intersection(jan, feb);
@@ -110,8 +102,7 @@ static void test_intersection_no_overlap()
 // Union
 // ---------------------------------------------------------------------------
 
-static void test_union()
-{
+static void test_union() {
     void *a = rt_daterange_new(JAN_1, JAN_15);
     void *b = rt_daterange_new(JAN_15, JAN_31);
     void *result = rt_daterange_union_range(a, b);
@@ -121,8 +112,7 @@ static void test_union()
     assert(rt_daterange_end(result) == JAN_31);
 }
 
-static void test_union_gap()
-{
+static void test_union_gap() {
     void *a = rt_daterange_new(JAN_1, JAN_15);
     void *b = rt_daterange_new(FEB_1, FEB_28);
     void *result = rt_daterange_union_range(a, b);
@@ -133,20 +123,17 @@ static void test_union_gap()
 // Duration queries
 // ---------------------------------------------------------------------------
 
-static void test_days()
-{
+static void test_days() {
     void *r = rt_daterange_new(JAN_1, JAN_31);
     assert(rt_daterange_days(r) == 30); // 30 days
 }
 
-static void test_hours()
-{
+static void test_hours() {
     void *r = rt_daterange_new(JAN_1, JAN_1 + 7200); // 2 hours
     assert(rt_daterange_hours(r) == 2);
 }
 
-static void test_duration()
-{
+static void test_duration() {
     void *r = rt_daterange_new(JAN_1, JAN_1 + 3600);
     assert(rt_daterange_duration(r) == 3600);
 }
@@ -155,8 +142,7 @@ static void test_duration()
 // Formatting
 // ---------------------------------------------------------------------------
 
-static void test_to_string()
-{
+static void test_to_string() {
     void *r = rt_daterange_new(JAN_1, JAN_31);
     rt_string s = rt_daterange_to_string(r);
     const char *cstr = rt_string_cstr(s);
@@ -170,8 +156,7 @@ static void test_to_string()
 // Null safety
 // ---------------------------------------------------------------------------
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_daterange_start(NULL) == 0);
     assert(rt_daterange_end(NULL) == 0);
     assert(rt_daterange_contains(NULL, JAN_1) == 0);
@@ -184,8 +169,7 @@ static void test_null_safety()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_new();
     test_new_swapped();
     test_contains();

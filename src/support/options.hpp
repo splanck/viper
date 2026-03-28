@@ -17,15 +17,13 @@
 
 #include <string>
 
-namespace il::support
-{
+namespace il::support {
 
 /// @brief Holds global command-line settings that influence compiler behavior.
 /// These options control tracing, verification, and target architecture.
 /// @invariant Flags are independent booleans.
 /// @ownership Value type.
-struct Options
-{
+struct Options {
     /// @brief Enable verbose tracing of compilation steps.
     bool trace = false;
 

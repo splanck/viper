@@ -30,28 +30,24 @@
 #endif
 
 // -- vm_trap override ---------------------------------------------------------
-namespace
-{
+namespace {
 int g_trap_count = 0;
 std::string g_last_trap;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_trap_count++;
     g_last_trap = msg ? msg : "";
 }
 
-static rt_string make_string(const char *s)
-{
+static rt_string make_string(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
 // -- Test: LineWriter.WriteChar traps on fputc failure ------------------------
 // Strategy: Open a LineWriter to a real file, then replace its internal FILE*
 // with a read-only stream so fputc returns EOF.
-static void test_linewriter_write_char_traps()
-{
+static void test_linewriter_write_char_traps() {
     // Create a valid LineWriter first
     const char *path = "/tmp/viper_diskfull_test_wc.txt";
     void *lw = rt_linewriter_open(make_string(path));
@@ -83,8 +79,7 @@ static void test_linewriter_write_char_traps()
 
 // -- Test: LineWriter.Flush traps on fflush failure ---------------------------
 // Strategy: Same approach -- replace FILE* with a broken stream.
-static void test_linewriter_flush_traps()
-{
+static void test_linewriter_flush_traps() {
     const char *path = "/tmp/viper_diskfull_test_fl.txt";
     void *lw = rt_linewriter_open(make_string(path));
     assert(lw != nullptr);
@@ -116,8 +111,7 @@ static void test_linewriter_flush_traps()
 }
 
 // -- Test: BinFile.Flush traps on fflush failure ------------------------------
-static void test_binfile_flush_traps()
-{
+static void test_binfile_flush_traps() {
     const char *path = "/tmp/viper_diskfull_test_bf.txt";
     void *bf = rt_binfile_open(make_string(path), make_string("w"));
     assert(bf != nullptr);
@@ -142,8 +136,7 @@ static void test_binfile_flush_traps()
     remove(path);
 }
 
-int main()
-{
+int main() {
     test_linewriter_write_char_traps();
     printf("  PASS: LineWriter.WriteChar traps on fputc failure\n");
 

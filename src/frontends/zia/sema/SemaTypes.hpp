@@ -26,8 +26,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //===----------------------------------------------------------------------===//
 /// @name Symbol Information
@@ -47,12 +46,10 @@ namespace il::frontends::zia
 /// - **Method**: Method on a type that can be called on an object
 /// - **Field**: Field in a type that can be accessed on an object
 /// - **Type**: Type declaration (value, entity, interface)
-struct Symbol
-{
+struct Symbol {
     /// @brief The kind of symbol.
     /// @details Determines how the symbol can be used in expressions.
-    enum class Kind
-    {
+    enum class Kind {
         Variable,  ///< Local or global variable
         Parameter, ///< Function/method parameter
         Function,  ///< Global function declaration
@@ -100,8 +97,7 @@ struct Symbol
 /// @brief Snapshot of a symbol definition for position-based hover lookup.
 /// @details Captured during analysis by defineSymbol(). Persists after scopes
 /// are popped, enabling IDE queries for local variables, parameters, and fields.
-struct ScopedSymbol
-{
+struct ScopedSymbol {
     Symbol symbol;         ///< The full symbol metadata (kind, name, type, etc.)
     SourceLoc loc;         ///< Position of the defining declaration/statement
     std::string ownerType; ///< Entity name when inside entity body (empty otherwise)
@@ -130,15 +126,12 @@ struct ScopedSymbol
 ///
 /// @invariant A scope's parent pointer is set at construction and never changes.
 /// @invariant Symbol names are unique within a single scope.
-class Scope
-{
+class Scope {
   public:
     /// @brief Create a scope with an optional parent.
     /// @param parent The enclosing scope, or nullptr for global scope.
     explicit Scope(Scope *parent = nullptr, uint32_t id = 0, size_t depth = 0)
-        : parent_(parent), id_(id), depth_(depth)
-    {
-    }
+        : parent_(parent), id_(id), depth_(depth) {}
 
     /// @brief Define a symbol in this scope.
     /// @param name The symbol name.
@@ -165,28 +158,23 @@ class Scope
 
     /// @brief Get the parent scope.
     /// @return The parent scope, or nullptr for the global scope.
-    Scope *parent() const
-    {
+    Scope *parent() const {
         return parent_;
     }
 
     /// @brief Stable scope identifier assigned by Sema.
-    uint32_t id() const
-    {
+    uint32_t id() const {
         return id_;
     }
 
     /// @brief Lexical nesting depth (0 for global scope).
-    size_t depth() const
-    {
+    size_t depth() const {
         return depth_;
     }
 
     /// @brief Check if any symbol name starts with the given prefix.
-    bool hasSymbolWithPrefix(const std::string &prefix) const
-    {
-        for (const auto &[name, _] : symbols_)
-        {
+    bool hasSymbolWithPrefix(const std::string &prefix) const {
+        for (const auto &[name, _] : symbols_) {
             if (name.rfind(prefix, 0) == 0)
                 return true;
         }
@@ -196,8 +184,7 @@ class Scope
     /// @brief Get all symbols defined in this scope (not ancestors).
     /// @return Const reference to the symbols map.
     /// @details Used by completion tools and unused-variable checks.
-    const std::unordered_map<std::string, Symbol> &getSymbols() const
-    {
+    const std::unordered_map<std::string, Symbol> &getSymbols() const {
         return symbols_;
     }
 

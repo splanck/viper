@@ -35,11 +35,9 @@
 #include <variant>
 #include <vector>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
-namespace
-{
+namespace {
 
 /// @brief Ensure a zero-extension follows a @c setcc instruction.
 ///
@@ -52,39 +50,31 @@ namespace
 ///
 /// @param block Machine basic block containing the @c setcc.
 /// @param index Index of the @c setcc instruction within the block.
-void ensureMovzxAfterSetcc(MBasicBlock &block, std::size_t index)
-{
-    if (index >= block.instructions.size())
-    {
+void ensureMovzxAfterSetcc(MBasicBlock &block, std::size_t index) {
+    if (index >= block.instructions.size()) {
         return;
     }
     auto &setcc = block.instructions[index];
     Operand *destOperand = nullptr;
-    for (auto &operand : setcc.operands)
-    {
-        if (std::holds_alternative<OpReg>(operand))
-        {
+    for (auto &operand : setcc.operands) {
+        if (std::holds_alternative<OpReg>(operand)) {
             destOperand = &operand;
             break;
         }
     }
-    if (!destOperand)
-    {
+    if (!destOperand) {
         return;
     }
 
-    if (const auto *destReg = asReg(*destOperand); destReg && destReg->cls != RegClass::GPR)
-    {
+    if (const auto *destReg = asReg(*destOperand); destReg && destReg->cls != RegClass::GPR) {
         return;
     }
 
-    if (index + 1 < block.instructions.size())
-    {
+    if (index + 1 < block.instructions.size()) {
         auto &next = block.instructions[index + 1];
         if (next.opcode == MOpcode::MOVZXrr32 && next.operands.size() >= 2 &&
             sameRegister(next.operands[0], *destOperand) &&
-            sameRegister(next.operands[1], *destOperand))
-        {
+            sameRegister(next.operands[1], *destOperand)) {
             return;
         }
     }
@@ -105,24 +95,19 @@ void ensureMovzxAfterSetcc(MBasicBlock &block, std::size_t index)
 ///          redundant cases.
 ///
 /// @param instr Instruction to canonicalise in place.
-void canonicaliseCmp(MInstr &instr)
-{
-    if (instr.operands.size() < 2)
-    {
+void canonicaliseCmp(MInstr &instr) {
+    if (instr.operands.size() < 2) {
         return;
     }
-    if (instr.opcode == MOpcode::CMPrr && isImm(instr.operands[1]))
-    {
+    if (instr.opcode == MOpcode::CMPrr && isImm(instr.operands[1])) {
         // Only promote to CMPri when the immediate fits in a sign-extended imm32.
         const auto &imm = std::get<OpImm>(instr.operands[1]);
         if (imm.val >= std::numeric_limits<int32_t>::min() &&
-            imm.val <= std::numeric_limits<int32_t>::max())
-        {
+            imm.val <= std::numeric_limits<int32_t>::max()) {
             instr.opcode = MOpcode::CMPri;
         }
     }
-    if (instr.opcode == MOpcode::CMPri && !isImm(instr.operands[1]))
-    {
+    if (instr.opcode == MOpcode::CMPri && !isImm(instr.operands[1])) {
         instr.opcode = MOpcode::CMPrr;
     }
 }
@@ -135,27 +120,21 @@ void canonicaliseCmp(MInstr &instr)
 ///          replaces the opcode with `add` to keep the IR uniform.
 ///
 /// @param instr Instruction to canonicalise in place.
-void canonicaliseAddSub(MInstr &instr)
-{
-    if (instr.operands.size() < 2)
-    {
+void canonicaliseAddSub(MInstr &instr) {
+    if (instr.operands.size() < 2) {
         return;
     }
-    switch (instr.opcode)
-    {
+    switch (instr.opcode) {
         case MOpcode::ADDrr:
-            if (isImm(instr.operands[1]))
-            {
+            if (isImm(instr.operands[1])) {
                 instr.opcode = MOpcode::ADDri;
             }
             break;
         case MOpcode::SUBrr:
-            if (auto *imm = asImm(instr.operands[1]))
-            {
+            if (auto *imm = asImm(instr.operands[1])) {
                 // Guard against INT64_MIN: negation of the minimum signed value
                 // is undefined behaviour in C++.  Leave the SUB form intact.
-                if (imm->val != std::numeric_limits<int64_t>::min())
-                {
+                if (imm->val != std::numeric_limits<int64_t>::min()) {
                     imm->val = -imm->val;
                     instr.opcode = MOpcode::ADDri;
                 }
@@ -174,22 +153,17 @@ void canonicaliseAddSub(MInstr &instr)
 ///          later peephole passes to recognise zeroing patterns.
 ///
 /// @param instr Instruction to canonicalise in place.
-void canonicaliseBitwise(MInstr &instr)
-{
-    if (instr.operands.size() < 2)
-    {
+void canonicaliseBitwise(MInstr &instr) {
+    if (instr.operands.size() < 2) {
         return;
     }
 
-    const auto convertForm = [&](MOpcode rr, MOpcode ri)
-    {
-        if (instr.opcode == rr && isImm(instr.operands[1]))
-        {
+    const auto convertForm = [&](MOpcode rr, MOpcode ri) {
+        if (instr.opcode == rr && isImm(instr.operands[1])) {
             instr.opcode = ri;
             return true;
         }
-        if (instr.opcode == ri && !isImm(instr.operands[1]))
-        {
+        if (instr.opcode == ri && !isImm(instr.operands[1])) {
             instr.opcode = rr;
             return true;
         }
@@ -200,13 +174,10 @@ void canonicaliseBitwise(MInstr &instr)
     convertForm(MOpcode::ORrr, MOpcode::ORri);
     convertForm(MOpcode::XORrr, MOpcode::XORri);
 
-    if (instr.opcode == MOpcode::XORrr)
-    {
-        if (sameRegister(instr.operands[0], instr.operands[1]))
-        {
+    if (instr.opcode == MOpcode::XORrr) {
+        if (sameRegister(instr.operands[0], instr.operands[1])) {
             const auto *dst = asReg(instr.operands[0]);
-            if (dst && dst->cls == RegClass::GPR)
-            {
+            if (dst && dst->cls == RegClass::GPR) {
                 instr.opcode = MOpcode::XORrr32;
                 instr.operands[1] = cloneOperand(instr.operands[0]);
             }
@@ -214,14 +185,11 @@ void canonicaliseBitwise(MInstr &instr)
         return;
     }
 
-    if (instr.opcode == MOpcode::XORri)
-    {
+    if (instr.opcode == MOpcode::XORri) {
         auto *imm = asImm(instr.operands[1]);
-        if (imm && imm->val == 0)
-        {
+        if (imm && imm->val == 0) {
             const auto *dst = asReg(instr.operands[0]);
-            if (dst && dst->cls == RegClass::GPR)
-            {
+            if (dst && dst->cls == RegClass::GPR) {
                 instr.opcode = MOpcode::XORrr32;
                 instr.operands[1] = cloneOperand(instr.operands[0]);
             }
@@ -241,61 +209,50 @@ void canonicaliseBitwise(MInstr &instr)
 /// @param block Machine basic block undergoing transformation.
 /// @param index Index of the candidate MOV instruction within the block.
 /// @return @c true when the placeholder was replaced.
-bool lowerGprSelect(MBasicBlock &block, std::size_t index)
-{
-    if (index + 2 >= block.instructions.size())
-    {
+bool lowerGprSelect(MBasicBlock &block, std::size_t index) {
+    if (index + 2 >= block.instructions.size()) {
         return false;
     }
 
     auto &movInstr = block.instructions[index];
     if (!((movInstr.opcode == MOpcode::MOVrr || movInstr.opcode == MOpcode::MOVri) &&
-          movInstr.operands.size() >= 3))
-    {
+          movInstr.operands.size() >= 3)) {
         return false;
     }
 
     const auto *destReg = asReg(movInstr.operands[0]);
-    if (!destReg || destReg->cls != RegClass::GPR)
-    {
+    if (!destReg || destReg->cls != RegClass::GPR) {
         return false;
     }
 
     const Operand &falseVal = movInstr.operands[1];
     const Operand &trueVal = movInstr.operands[2];
-    if (std::holds_alternative<OpImm>(trueVal))
-    {
+    if (std::holds_alternative<OpImm>(trueVal)) {
         return false;
     }
 
     auto &testInstr = block.instructions[index + 1];
-    if (testInstr.opcode != MOpcode::TESTrr || testInstr.operands.size() < 2)
-    {
+    if (testInstr.opcode != MOpcode::TESTrr || testInstr.operands.size() < 2) {
         return false;
     }
 
-    if (!sameRegister(testInstr.operands[0], testInstr.operands[1]))
-    {
+    if (!sameRegister(testInstr.operands[0], testInstr.operands[1])) {
         return false;
     }
 
     auto &setccInstr = block.instructions[index + 2];
-    if (setccInstr.opcode != MOpcode::SETcc)
-    {
+    if (setccInstr.opcode != MOpcode::SETcc) {
         return false;
     }
 
     bool destReferenced = false;
-    for (const auto &operand : setccInstr.operands)
-    {
-        if (sameRegister(operand, movInstr.operands[0]))
-        {
+    for (const auto &operand : setccInstr.operands) {
+        if (sameRegister(operand, movInstr.operands[0])) {
             destReferenced = true;
             break;
         }
     }
-    if (!destReferenced)
-    {
+    if (!destReferenced) {
         return false;
     }
 
@@ -334,60 +291,49 @@ bool lowerGprSelect(MBasicBlock &block, std::size_t index)
 /// @param block Machine basic block containing the pattern.
 /// @param index Index of the MOV placeholder inside @p block.
 /// @return @c true when a select pattern was rewritten.
-bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index)
-{
-    if (index + 2 >= block.instructions.size())
-    {
+bool lowerXmmSelect(MFunction &func, MBasicBlock &block, std::size_t index) {
+    if (index + 2 >= block.instructions.size()) {
         return false;
     }
 
     auto &movInstr = block.instructions[index];
-    if (movInstr.opcode != MOpcode::MOVSDrr || movInstr.operands.size() < 3)
-    {
+    if (movInstr.opcode != MOpcode::MOVSDrr || movInstr.operands.size() < 3) {
         return false;
     }
 
     const auto *destReg = asReg(movInstr.operands[0]);
-    if (!destReg || destReg->cls != RegClass::XMM)
-    {
+    if (!destReg || destReg->cls != RegClass::XMM) {
         return false;
     }
 
     const Operand &falseVal = movInstr.operands[1];
     const Operand &trueVal = movInstr.operands[2];
-    if (!std::holds_alternative<OpReg>(falseVal) || !std::holds_alternative<OpReg>(trueVal))
-    {
+    if (!std::holds_alternative<OpReg>(falseVal) || !std::holds_alternative<OpReg>(trueVal)) {
         return false;
     }
 
     auto &testInstr = block.instructions[index + 1];
-    if (testInstr.opcode != MOpcode::TESTrr || testInstr.operands.size() < 2)
-    {
+    if (testInstr.opcode != MOpcode::TESTrr || testInstr.operands.size() < 2) {
         return false;
     }
 
-    if (!sameRegister(testInstr.operands[0], testInstr.operands[1]))
-    {
+    if (!sameRegister(testInstr.operands[0], testInstr.operands[1])) {
         return false;
     }
 
     auto &setccInstr = block.instructions[index + 2];
-    if (setccInstr.opcode != MOpcode::SETcc)
-    {
+    if (setccInstr.opcode != MOpcode::SETcc) {
         return false;
     }
 
     bool destReferenced = false;
-    for (const auto &operand : setccInstr.operands)
-    {
-        if (sameRegister(operand, movInstr.operands[0]))
-        {
+    for (const auto &operand : setccInstr.operands) {
+        if (sameRegister(operand, movInstr.operands[0])) {
             destReferenced = true;
             break;
         }
     }
-    if (!destReferenced)
-    {
+    if (!destReferenced) {
         return false;
     }
 
@@ -437,15 +383,11 @@ ISel::ISel(const TargetInfo &target) noexcept : target_{&target} {}
 ///          expansion.
 ///
 /// @param func Machine function undergoing selection.
-void ISel::lowerArithmetic(MFunction &func) const
-{
+void ISel::lowerArithmetic(MFunction &func) const {
     (void)target_;
-    for (auto &block : func.blocks)
-    {
-        for (auto &instr : block.instructions)
-        {
-            switch (instr.opcode)
-            {
+    for (auto &block : func.blocks) {
+        for (auto &instr : block.instructions) {
+            switch (instr.opcode) {
                 case MOpcode::ADDrr:
                 case MOpcode::ADDri:
                 case MOpcode::SUBrr:
@@ -492,16 +434,12 @@ void ISel::lowerArithmetic(MFunction &func) const
 ///          locally within each block without changing control-flow structure.
 ///
 /// @param func Machine function undergoing selection.
-void ISel::lowerCompareAndBranch(MFunction &func) const
-{
+void ISel::lowerCompareAndBranch(MFunction &func) const {
     (void)target_;
-    for (auto &block : func.blocks)
-    {
-        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
-        {
+    for (auto &block : func.blocks) {
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
             auto &instr = block.instructions[idx];
-            switch (instr.opcode)
-            {
+            switch (instr.opcode) {
                 case MOpcode::CMPrr:
                 case MOpcode::CMPri:
                     canonicaliseCmp(instr);
@@ -530,28 +468,22 @@ void ISel::lowerCompareAndBranch(MFunction &func) const
 ///          zero-extensions.
 ///
 /// @param func Machine function undergoing selection.
-void ISel::lowerSelect(MFunction &func) const
-{
+void ISel::lowerSelect(MFunction &func) const {
     (void)target_;
-    for (auto &block : func.blocks)
-    {
-        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
-        {
-            if (lowerXmmSelect(func, block, idx))
-            {
+    for (auto &block : func.blocks) {
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
+            if (lowerXmmSelect(func, block, idx)) {
                 idx += 6;
                 continue;
             }
 
-            if (lowerGprSelect(block, idx))
-            {
+            if (lowerGprSelect(block, idx)) {
                 idx += 2;
                 continue;
             }
 
             auto &instr = block.instructions[idx];
-            if (instr.opcode == MOpcode::SETcc)
-            {
+            if (instr.opcode == MOpcode::SETcc) {
                 ensureMovzxAfterSetcc(block, idx);
             }
         }
@@ -564,51 +496,43 @@ void ISel::lowerSelect(MFunction &func) const
 ///          into disp(base, index, scale) addressing to reduce instruction count.
 ///          Optimized to use O(1) map lookups instead of O(n) linear scans for
 ///          MOVrr definitions.
-void ISel::foldSibAddressing(MFunction &func) const
-{
+void ISel::foldSibAddressing(MFunction &func) const {
     (void)target_;
 
-    struct ShlInfo
-    {
+    struct ShlInfo {
         std::size_t defIdx{0};
         uint16_t srcVreg{0};
         uint8_t scale{1}; // 2, 4, or 8
     };
 
-    struct AddInfo
-    {
+    struct AddInfo {
         std::size_t defIdx{0};
         uint16_t baseVreg{0};
         uint16_t shiftedVreg{0};
     };
 
     /// @brief MOVrr definition info for O(1) lookup.
-    struct MovInfo
-    {
+    struct MovInfo {
         std::size_t defIdx{0};
         uint16_t srcVreg{0};
         bool srcIsPhys{false};
     };
 
-    for (auto &block : func.blocks)
-    {
+    for (auto &block : func.blocks) {
         std::unordered_map<uint16_t, ShlInfo> shlDefs; // result vreg -> info
         std::unordered_map<uint16_t, AddInfo> addDefs; // result vreg -> info
         std::unordered_map<uint16_t, MovInfo> movDefs; // dest vreg -> info (for O(1) lookup)
         std::unordered_map<uint16_t, std::size_t> useCount;
 
         // First pass: record SHL, ADD, and MOVrr definitions, count uses
-        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
-        {
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
             const auto &instr = block.instructions[idx];
 
             // Record MOVrr for O(1) lookup later (replaces O(n) linear scan)
-            if (instr.opcode == MOpcode::MOVrr && instr.operands.size() >= 2)
-            {
+            if (instr.opcode == MOpcode::MOVrr && instr.operands.size() >= 2) {
                 const auto *dst = asReg(instr.operands[0]);
                 const auto *src = asReg(instr.operands[1]);
-                if (dst && src && !dst->isPhys && dst->cls == RegClass::GPR)
-                {
+                if (dst && src && !dst->isPhys && dst->cls == RegClass::GPR) {
                     MovInfo info{};
                     info.defIdx = idx;
                     info.srcVreg = src->idOrPhys;
@@ -618,15 +542,12 @@ void ISel::foldSibAddressing(MFunction &func) const
             }
 
             // Record SHLri with shift 1, 2, or 3 (scale 2, 4, 8)
-            if (instr.opcode == MOpcode::SHLri && instr.operands.size() >= 2)
-            {
+            if (instr.opcode == MOpcode::SHLri && instr.operands.size() >= 2) {
                 const auto *dst = asReg(instr.operands[0]);
                 const auto *shiftAmt = asImm(instr.operands[1]);
-                if (dst && !dst->isPhys && dst->cls == RegClass::GPR && shiftAmt)
-                {
+                if (dst && !dst->isPhys && dst->cls == RegClass::GPR && shiftAmt) {
                     const int64_t shift = shiftAmt->val;
-                    if (shift >= 1 && shift <= 3)
-                    {
+                    if (shift >= 1 && shift <= 3) {
                         ShlInfo info{};
                         info.defIdx = idx;
                         info.srcVreg = dst->idOrPhys; // SHL is destructive, src == dst
@@ -637,16 +558,13 @@ void ISel::foldSibAddressing(MFunction &func) const
             }
 
             // Record ADDrr where one operand might be from SHL
-            if (instr.opcode == MOpcode::ADDrr && instr.operands.size() >= 2)
-            {
+            if (instr.opcode == MOpcode::ADDrr && instr.operands.size() >= 2) {
                 const auto *dst = asReg(instr.operands[0]);
                 const auto *src = asReg(instr.operands[1]);
                 if (dst && src && !dst->isPhys && !src->isPhys && dst->cls == RegClass::GPR &&
-                    src->cls == RegClass::GPR)
-                {
+                    src->cls == RegClass::GPR) {
                     // Check if src is from a SHL - then dst is base + shifted
-                    if (shlDefs.count(src->idOrPhys))
-                    {
+                    if (shlDefs.count(src->idOrPhys)) {
                         AddInfo info{};
                         info.defIdx = idx;
                         info.baseVreg = dst->idOrPhys;
@@ -657,23 +575,16 @@ void ISel::foldSibAddressing(MFunction &func) const
             }
 
             // Count all vreg uses
-            for (const auto &op : instr.operands)
-            {
-                if (const auto *r = asReg(op))
-                {
-                    if (!r->isPhys)
-                    {
+            for (const auto &op : instr.operands) {
+                if (const auto *r = asReg(op)) {
+                    if (!r->isPhys) {
                         ++useCount[r->idOrPhys];
                     }
-                }
-                else if (const auto *mem = std::get_if<OpMem>(&op))
-                {
-                    if (!mem->base.isPhys)
-                    {
+                } else if (const auto *mem = std::get_if<OpMem>(&op)) {
+                    if (!mem->base.isPhys) {
                         ++useCount[mem->base.idOrPhys];
                     }
-                    if (mem->hasIndex && !mem->index.isPhys)
-                    {
+                    if (mem->hasIndex && !mem->index.isPhys) {
                         ++useCount[mem->index.idOrPhys];
                     }
                 }
@@ -682,34 +593,28 @@ void ISel::foldSibAddressing(MFunction &func) const
 
         // Second pass: find memory operands using ADD results and transform
         std::vector<std::size_t> toErase;
-        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
-        {
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
             auto &instr = block.instructions[idx];
 
-            for (auto &op : instr.operands)
-            {
+            for (auto &op : instr.operands) {
                 auto *mem = std::get_if<OpMem>(&op);
-                if (!mem || mem->hasIndex)
-                {
+                if (!mem || mem->hasIndex) {
                     continue; // Skip if not memory or already has index
                 }
 
-                if (mem->base.isPhys)
-                {
+                if (mem->base.isPhys) {
                     continue;
                 }
 
                 const uint16_t baseId = mem->base.idOrPhys;
                 auto addIt = addDefs.find(baseId);
-                if (addIt == addDefs.end())
-                {
+                if (addIt == addDefs.end()) {
                     continue;
                 }
 
                 const AddInfo &addInfo = addIt->second;
                 auto shlIt = shlDefs.find(addInfo.shiftedVreg);
-                if (shlIt == shlDefs.end())
-                {
+                if (shlIt == shlDefs.end()) {
                     continue;
                 }
 
@@ -718,12 +623,10 @@ void ISel::foldSibAddressing(MFunction &func) const
                 // Check that the ADD result and SHL result are single-use
                 auto addUseIt = useCount.find(baseId);
                 auto shlUseIt = useCount.find(addInfo.shiftedVreg);
-                if (addUseIt == useCount.end() || shlUseIt == useCount.end())
-                {
+                if (addUseIt == useCount.end() || shlUseIt == useCount.end()) {
                     continue;
                 }
-                if (addUseIt->second != 1 || shlUseIt->second != 1)
-                {
+                if (addUseIt->second != 1 || shlUseIt->second != 1) {
                     continue; // Multiple uses - can't fold
                 }
 
@@ -731,8 +634,7 @@ void ISel::foldSibAddressing(MFunction &func) const
                 uint16_t indexVreg = shlInfo.srcVreg;
                 auto movIt = movDefs.find(shlInfo.srcVreg);
                 if (movIt != movDefs.end() && !movIt->second.srcIsPhys &&
-                    movIt->second.defIdx < shlInfo.defIdx)
-                {
+                    movIt->second.defIdx < shlInfo.defIdx) {
                     indexVreg = movIt->second.srcVreg;
                     toErase.push_back(movIt->second.defIdx); // Mark MOV for removal
                 }
@@ -740,14 +642,10 @@ void ISel::foldSibAddressing(MFunction &func) const
                 // Find the original base register before ADD using O(1) map lookup
                 uint16_t realBaseVreg = addInfo.baseVreg;
                 auto baseMovIt = movDefs.find(addInfo.baseVreg);
-                if (baseMovIt != movDefs.end() && baseMovIt->second.defIdx < addInfo.defIdx)
-                {
-                    if (!baseMovIt->second.srcIsPhys)
-                    {
+                if (baseMovIt != movDefs.end() && baseMovIt->second.defIdx < addInfo.defIdx) {
+                    if (!baseMovIt->second.srcIsPhys) {
                         realBaseVreg = baseMovIt->second.srcVreg;
-                    }
-                    else
-                    {
+                    } else {
                         // Base is a physical register - use it directly
                         mem->base.isPhys = true;
                         mem->base.idOrPhys = baseMovIt->second.srcVreg;
@@ -756,8 +654,7 @@ void ISel::foldSibAddressing(MFunction &func) const
                 }
 
                 // Update memory operand with SIB addressing
-                if (!mem->base.isPhys)
-                {
+                if (!mem->base.isPhys) {
                     mem->base.idOrPhys = realBaseVreg;
                 }
                 mem->index.isPhys = false;
@@ -775,10 +672,8 @@ void ISel::foldSibAddressing(MFunction &func) const
         // Erase marked instructions in reverse order
         std::sort(toErase.begin(), toErase.end(), std::greater<std::size_t>());
         toErase.erase(std::unique(toErase.begin(), toErase.end()), toErase.end());
-        for (std::size_t eraseIdx : toErase)
-        {
-            if (eraseIdx < block.instructions.size())
-            {
+        for (std::size_t eraseIdx : toErase) {
+            if (eraseIdx < block.instructions.size()) {
                 block.instructions.erase(block.instructions.begin() +
                                          static_cast<std::ptrdiff_t>(eraseIdx));
             }
@@ -804,14 +699,12 @@ void ISel::foldSibAddressing(MFunction &func) const
 /// one use (the IMUL itself).
 ///
 /// @param func Machine function to transform.
-void ISel::lowerMulToLea(MFunction &func) const
-{
+void ISel::lowerMulToLea(MFunction &func) const {
     (void)target_;
 
     // Map factor values {3, 5, 9} to the SIB scale {2, 4, 8}.
     // scale = factor - 1; LEA [base + index*scale] = base*(1 + scale) = base*factor.
-    auto factorToScale = [](int64_t factor) -> uint8_t
-    {
+    auto factorToScale = [](int64_t factor) -> uint8_t {
         if (factor == 3)
             return 2;
         if (factor == 5)
@@ -821,12 +714,10 @@ void ISel::lowerMulToLea(MFunction &func) const
         return 0; // not a LEA-eligible constant
     };
 
-    for (auto &block : func.blocks)
-    {
+    for (auto &block : func.blocks) {
         // First pass: collect MOVri definitions of eligible constants
         // and count all vreg uses so we can check single-use invariant.
-        struct MovRiDef
-        {
+        struct MovRiDef {
             std::size_t defIdx{0};
             int64_t factor{0};
             uint8_t scale{0}; // precomputed LEA scale
@@ -835,20 +726,16 @@ void ISel::lowerMulToLea(MFunction &func) const
         std::unordered_map<uint16_t, MovRiDef> constDefs; // vreg id → MOVri info
         std::unordered_map<uint16_t, int> useCount;       // vreg id → use count
 
-        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
-        {
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
             const auto &instr = block.instructions[idx];
 
             // Record single-constant MOVri definitions.
-            if (instr.opcode == MOpcode::MOVri && instr.operands.size() >= 2)
-            {
+            if (instr.opcode == MOpcode::MOVri && instr.operands.size() >= 2) {
                 const auto *dst = asReg(instr.operands[0]);
                 const auto *imm = asImm(instr.operands[1]);
-                if (dst && !dst->isPhys && dst->cls == RegClass::GPR && imm)
-                {
+                if (dst && !dst->isPhys && dst->cls == RegClass::GPR && imm) {
                     const uint8_t scale = factorToScale(imm->val);
-                    if (scale != 0)
-                    {
+                    if (scale != 0) {
                         MovRiDef def{};
                         def.defIdx = idx;
                         def.factor = imm->val;
@@ -859,12 +746,9 @@ void ISel::lowerMulToLea(MFunction &func) const
             }
 
             // Count all vreg uses from all operands.
-            for (const auto &op : instr.operands)
-            {
-                if (const auto *r = asReg(op))
-                {
-                    if (!r->isPhys)
-                    {
+            for (const auto &op : instr.operands) {
+                if (const auto *r = asReg(op)) {
+                    if (!r->isPhys) {
                         ++useCount[r->idOrPhys];
                     }
                 }
@@ -874,8 +758,7 @@ void ISel::lowerMulToLea(MFunction &func) const
         // Second pass: find eligible IMULrr and rewrite.
         std::vector<std::size_t> toErase;
 
-        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
-        {
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
             auto &instr = block.instructions[idx];
 
             if (instr.opcode != MOpcode::IMULrr || instr.operands.size() < 2)
@@ -938,10 +821,8 @@ void ISel::lowerMulToLea(MFunction &func) const
         // Erase marked instructions in reverse index order.
         std::sort(toErase.begin(), toErase.end(), std::greater<std::size_t>());
         toErase.erase(std::unique(toErase.begin(), toErase.end()), toErase.end());
-        for (const std::size_t eraseIdx : toErase)
-        {
-            if (eraseIdx < block.instructions.size())
-            {
+        for (const std::size_t eraseIdx : toErase) {
+            if (eraseIdx < block.instructions.size()) {
                 block.instructions.erase(block.instructions.begin() +
                                          static_cast<std::ptrdiff_t>(eraseIdx));
             }
@@ -953,46 +834,33 @@ void ISel::lowerMulToLea(MFunction &func) const
 /// \details For each block, finds LEA-def'd virtual registers with a single use
 ///          as a base in a memory operand and replaces the user with the LEA's
 ///          addressing mode, erasing the defining LEA.
-void ISel::foldLeaIntoMem(MFunction &func) const
-{
+void ISel::foldLeaIntoMem(MFunction &func) const {
     (void)target_;
-    for (auto &block : func.blocks)
-    {
+    for (auto &block : func.blocks) {
         std::unordered_map<uint16_t, std::size_t> leaDefIdx; // vreg id -> instr idx
         std::unordered_map<uint16_t, std::size_t> useCount;  // vreg id -> uses in block
 
         // First pass: record LEA defs and count vreg uses (regs and mem bases/indexes).
-        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
-        {
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
             const auto &instr = block.instructions[idx];
-            if (instr.opcode == MOpcode::LEA && instr.operands.size() >= 2)
-            {
-                if (const auto *dst = asReg(instr.operands[0]))
-                {
-                    if (!dst->isPhys && dst->cls == RegClass::GPR)
-                    {
+            if (instr.opcode == MOpcode::LEA && instr.operands.size() >= 2) {
+                if (const auto *dst = asReg(instr.operands[0])) {
+                    if (!dst->isPhys && dst->cls == RegClass::GPR) {
                         leaDefIdx[dst->idOrPhys] = idx;
                     }
                 }
             }
 
-            for (const auto &op : instr.operands)
-            {
-                if (const auto *r = asReg(op))
-                {
-                    if (!r->isPhys)
-                    {
+            for (const auto &op : instr.operands) {
+                if (const auto *r = asReg(op)) {
+                    if (!r->isPhys) {
                         ++useCount[r->idOrPhys];
                     }
-                }
-                else if (const auto *mem = std::get_if<OpMem>(&op))
-                {
-                    if (!mem->base.isPhys)
-                    {
+                } else if (const auto *mem = std::get_if<OpMem>(&op)) {
+                    if (!mem->base.isPhys) {
                         ++useCount[mem->base.idOrPhys];
                     }
-                    if (mem->hasIndex && !mem->index.isPhys)
-                    {
+                    if (mem->hasIndex && !mem->index.isPhys) {
                         ++useCount[mem->index.idOrPhys];
                     }
                 }
@@ -1000,33 +868,25 @@ void ISel::foldLeaIntoMem(MFunction &func) const
         }
 
         // Second pass: try to fold at use sites and erase the LEA.
-        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx)
-        {
+        for (std::size_t idx = 0; idx < block.instructions.size(); ++idx) {
             auto &instr = block.instructions[idx];
             bool foldedAny = false;
-            for (auto &op : instr.operands)
-            {
-                if (auto *mem = std::get_if<OpMem>(&op))
-                {
+            for (auto &op : instr.operands) {
+                if (auto *mem = std::get_if<OpMem>(&op)) {
                     const OpReg &base = mem->base;
-                    if (!base.isPhys && base.cls == RegClass::GPR)
-                    {
+                    if (!base.isPhys && base.cls == RegClass::GPR) {
                         const uint16_t v = base.idOrPhys;
                         auto defIt = leaDefIdx.find(v);
                         auto useIt = useCount.find(v);
                         if (defIt != leaDefIdx.end() && useIt != useCount.end() &&
-                            useIt->second == 1)
-                        {
+                            useIt->second == 1) {
                             const std::size_t defIndex = defIt->second;
-                            if (defIndex < block.instructions.size())
-                            {
+                            if (defIndex < block.instructions.size()) {
                                 const auto &defInstr = block.instructions[defIndex];
                                 if (defInstr.opcode == MOpcode::LEA &&
-                                    defInstr.operands.size() >= 2)
-                                {
+                                    defInstr.operands.size() >= 2) {
                                     if (const auto *srcMem =
-                                            std::get_if<OpMem>(&defInstr.operands[1]))
-                                    {
+                                            std::get_if<OpMem>(&defInstr.operands[1])) {
                                         // Replace the memory operand with the LEA's addressing
                                         // mode.
                                         *mem = *srcMem;
@@ -1036,8 +896,7 @@ void ISel::foldLeaIntoMem(MFunction &func) const
                                             static_cast<std::ptrdiff_t>(defIndex));
                                         // Adjust current index when the erased def was before this
                                         // instr.
-                                        if (defIndex < idx)
-                                        {
+                                        if (defIndex < idx) {
                                             --idx;
                                         }
                                         foldedAny = true;
@@ -1062,16 +921,12 @@ void ISel::foldLeaIntoMem(MFunction &func) const
 ///          is supposed to replace each one with a TEST+MOV+CMOV sequence.
 ///          If any survive, the assembler silently drops the 3rd operand,
 ///          producing always-false SELECT output.
-void ISel::validateSelectLowering(const MFunction &func) const
-{
-    for (const auto &block : func.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+void ISel::validateSelectLowering(const MFunction &func) const {
+    for (const auto &block : func.blocks) {
+        for (const auto &instr : block.instructions) {
             if ((instr.opcode == MOpcode::MOVri || instr.opcode == MOpcode::MOVrr ||
                  instr.opcode == MOpcode::MOVSDrr) &&
-                instr.operands.size() > 2)
-            {
+                instr.operands.size() > 2) {
                 phaseAUnsupported(("select pseudo survived ISel (opcode=" +
                                    std::to_string(static_cast<int>(instr.opcode)) +
                                    ", operands=" + std::to_string(instr.operands.size()) + ")")

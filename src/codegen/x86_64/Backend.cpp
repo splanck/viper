@@ -45,8 +45,7 @@
 #include <string_view>
 #include <vector>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 /// @brief Lower signed division pseudos into guarded IDIV sequences.
 /// @details Declared here and implemented in @ref LowerDiv.cpp so the backend
@@ -57,8 +56,7 @@ void lowerSignedDivRem(MFunction &fn);
 /// @details Declared here and implemented in @ref LowerOvf.cpp.
 void lowerOverflowOps(MFunction &fn);
 
-namespace
-{
+namespace {
 
 /// @brief Emit a warning message when unsupported syntax options are requested.
 ///
@@ -68,10 +66,8 @@ namespace
 ///
 /// @param options Code-generation options supplied by the caller.
 /// @return Warning string when unsupported options were set; empty view otherwise.
-[[nodiscard]] std::string_view syntaxWarning(const CodegenOptions &options) noexcept
-{
-    if (!options.atandtSyntax)
-    {
+[[nodiscard]] std::string_view syntaxWarning(const CodegenOptions &options) noexcept {
+    if (!options.atandtSyntax) {
         return "Phase A: only AT&T syntax emission is implemented.\n";
     }
     return std::string_view{};
@@ -94,22 +90,17 @@ namespace
 void lowerPendingCalls(MFunction &func,
                        const std::vector<CallLoweringPlan> &plans,
                        const TargetInfo &target,
-                       FrameInfo &frame)
-{
+                       FrameInfo &frame) {
     std::size_t planIndex = 0;
-    for (auto &block : func.blocks)
-    {
+    for (auto &block : func.blocks) {
         std::size_t instrIndex = 0;
-        while (instrIndex < block.instructions.size())
-        {
-            if (block.instructions[instrIndex].opcode != MOpcode::CALL)
-            {
+        while (instrIndex < block.instructions.size()) {
+            if (block.instructions[instrIndex].opcode != MOpcode::CALL) {
                 ++instrIndex;
                 continue;
             }
 
-            if (planIndex >= plans.size())
-            {
+            if (planIndex >= plans.size()) {
                 break;
             }
             const std::size_t beforeSize = block.instructions.size();
@@ -141,8 +132,7 @@ static void runFunctionPipeline(const ILFunction &ilFunc,
                                 const TargetInfo &target,
                                 const CodegenOptions &options,
                                 FrameInfo &frame,
-                                MFunction &machineFunc)
-{
+                                MFunction &machineFunc) {
     machineFunc = lowering.lower(ilFunc);
 
     frame = FrameInfo{};
@@ -167,8 +157,7 @@ static void runFunctionPipeline(const ILFunction &ilFunc,
     insertPrologueEpilogue(machineFunc, target, frame);
 
     // Peephole optimizations run at optimize level 1 or higher
-    if (options.optimizeLevel >= 1)
-    {
+    if (options.optimizeLevel >= 1) {
         runPeepholes(machineFunc);
     }
 }
@@ -184,15 +173,13 @@ static void runFunctionPipeline(const ILFunction &ilFunc,
 /// @param options Backend configuration supplied by the caller.
 /// @return Result structure containing assembly text and diagnostic messages.
 static CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
-                                    const CodegenOptions &options)
-{
+                                    const CodegenOptions &options) {
     CodegenResult result{};
 
     std::ostringstream asmStream{};
     std::ostringstream errorStream{};
 
-    if (const auto warning = syntaxWarning(options); !warning.empty())
-    {
+    if (const auto warning = syntaxWarning(options); !warning.empty()) {
         errorStream << warning;
     }
 
@@ -201,8 +188,7 @@ static CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
     LowerILToMIR lowering{target, roData};
     AsmEmitter emitter{roData};
 
-    for (std::size_t index = 0; index < functions.size(); ++index)
-    {
+    for (std::size_t index = 0; index < functions.size(); ++index) {
         const auto &func = functions[index];
 
         FrameInfo frame{};
@@ -210,8 +196,7 @@ static CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
         runFunctionPipeline(func, lowering, target, options, frame, machineFunc);
 
         emitter.emitFunction(asmStream, machineFunc, target);
-        if (index + 1U < functions.size())
-        {
+        if (index + 1U < functions.size()) {
             asmStream << '\n';
         }
     }
@@ -242,15 +227,13 @@ static CodegenResult emitModuleImpl(const std::vector<ILFunction> &functions,
 /// @param func IL function to translate.
 /// @param options Backend configuration to honour.
 /// @return Assembly text and diagnostics for the provided function.
-CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOptions &options)
-{
+CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOptions &options) {
     CodegenResult result{};
 
     std::ostringstream asmStream{};
     std::ostringstream errorStream{};
 
-    if (const auto warning = syntaxWarning(options); !warning.empty())
-    {
+    if (const auto warning = syntaxWarning(options); !warning.empty()) {
         errorStream << warning;
     }
 
@@ -284,18 +267,15 @@ CodegenResult emitFunctionToAssembly(const ILFunction &func, const CodegenOption
 /// @param mod IL module containing the functions to translate.
 /// @param options Backend configuration supplied by the caller.
 /// @return Assembly text and diagnostics for the entire module.
-CodegenResult emitModuleToAssembly(const ILModule &mod, const CodegenOptions &options)
-{
+CodegenResult emitModuleToAssembly(const ILModule &mod, const CodegenOptions &options) {
     return emitModuleImpl(mod.funcs, options);
 }
 
-BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &opt, bool isDarwin)
-{
+BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &opt, bool isDarwin) {
     BinaryEmitResult result{};
     std::ostringstream errorStream{};
 
-    if (const auto warning = syntaxWarning(opt); !warning.empty())
-    {
+    if (const auto warning = syntaxWarning(opt); !warning.empty()) {
         // Syntax warnings don't apply to binary emission, but keep parity.
     }
 
@@ -309,8 +289,7 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &o
     debugLines.addFile("<source>");
     encoder.setDebugLineTable(&debugLines);
 
-    for (const auto &func : mod.funcs)
-    {
+    for (const auto &func : mod.funcs) {
         FrameInfo frame{};
         MFunction machineFunc{};
         runFunctionPipeline(func, lowering, target, opt, frame, machineFunc);
@@ -327,8 +306,7 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &o
 
     // Emit rodata: string literals and f64 constants from RoDataPool into the
     // rodata CodeSection so they can be referenced via RIP-relative LEA.
-    for (int i = 0; i < static_cast<int>(roData.stringCount()); ++i)
-    {
+    for (int i = 0; i < static_cast<int>(roData.stringCount()); ++i) {
         std::string label = roData.stringLabel(i);
         if (isDarwin)
             label = "_" + label;
@@ -340,8 +318,7 @@ BinaryEmitResult emitModuleToBinary(const ILModule &mod, const CodegenOptions &o
     // Align to 8 before f64 constants.
     if (roData.f64Count() > 0)
         result.rodata.alignTo(8);
-    for (int i = 0; i < static_cast<int>(roData.f64Count()); ++i)
-    {
+    for (int i = 0; i < static_cast<int>(roData.f64Count()); ++i) {
         std::string label = roData.f64Label(i);
         if (isDarwin)
             label = "_" + label;

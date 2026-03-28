@@ -43,8 +43,7 @@ extern void rt_canvas3d_draw_mesh(void *canvas, void *mesh, void *transform, voi
 
 #define TERRAIN_CHUNK_SIZE 16
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     float *heights;
     int32_t width, depth;
@@ -54,8 +53,7 @@ typedef struct
     void *material;
 } rt_terrain3d;
 
-static void terrain3d_finalizer(void *obj)
-{
+static void terrain3d_finalizer(void *obj) {
     rt_terrain3d *t = (rt_terrain3d *)obj;
     free(t->heights);
     free(t->chunk_meshes);
@@ -63,16 +61,13 @@ static void terrain3d_finalizer(void *obj)
     t->chunk_meshes = NULL;
 }
 
-void *rt_terrain3d_new(int64_t width, int64_t depth)
-{
-    if (width < 2 || depth < 2 || width > 4096 || depth > 4096)
-    {
+void *rt_terrain3d_new(int64_t width, int64_t depth) {
+    if (width < 2 || depth < 2 || width > 4096 || depth > 4096) {
         rt_trap("Terrain3D.New: dimensions must be 2-4096");
         return NULL;
     }
     rt_terrain3d *t = (rt_terrain3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_terrain3d));
-    if (!t)
-    {
+    if (!t) {
         rt_trap("Terrain3D.New: allocation failed");
         return NULL;
     }
@@ -91,15 +86,13 @@ void *rt_terrain3d_new(int64_t width, int64_t depth)
     return t;
 }
 
-void rt_terrain3d_set_heightmap(void *obj, void *pixels)
-{
+void rt_terrain3d_set_heightmap(void *obj, void *pixels) {
     if (!obj || !pixels)
         return;
     rt_terrain3d *t = (rt_terrain3d *)obj;
 
     /* Access Pixels internal layout */
-    typedef struct
-    {
+    typedef struct {
         int64_t w;
         int64_t h;
         uint32_t *data;
@@ -110,10 +103,8 @@ void rt_terrain3d_set_heightmap(void *obj, void *pixels)
         return;
 
     int32_t sw = (int32_t)pv->w, sh = (int32_t)pv->h;
-    for (int32_t z = 0; z < t->depth; z++)
-    {
-        for (int32_t x = 0; x < t->width; x++)
-        {
+    for (int32_t z = 0; z < t->depth; z++) {
+        for (int32_t x = 0; x < t->width; x++) {
             int sx = x * sw / t->width;
             int sz = z * sh / t->depth;
             if (sx >= sw)
@@ -131,14 +122,12 @@ void rt_terrain3d_set_heightmap(void *obj, void *pixels)
         t->chunk_meshes[i] = NULL;
 }
 
-void rt_terrain3d_set_material(void *obj, void *material)
-{
+void rt_terrain3d_set_material(void *obj, void *material) {
     if (obj)
         ((rt_terrain3d *)obj)->material = material;
 }
 
-void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz)
-{
+void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz) {
     if (!obj)
         return;
     rt_terrain3d *t = (rt_terrain3d *)obj;
@@ -151,8 +140,7 @@ void rt_terrain3d_set_scale(void *obj, double sx, double sy, double sz)
 }
 
 /// @brief Sample height at grid coordinates (clamped).
-static float sample_height(const rt_terrain3d *t, int32_t x, int32_t z)
-{
+static float sample_height(const rt_terrain3d *t, int32_t x, int32_t z) {
     if (x < 0)
         x = 0;
     if (z < 0)
@@ -164,8 +152,7 @@ static float sample_height(const rt_terrain3d *t, int32_t x, int32_t z)
     return t->heights[z * t->width + x];
 }
 
-double rt_terrain3d_get_height_at(void *obj, double wx, double wz)
-{
+double rt_terrain3d_get_height_at(void *obj, double wx, double wz) {
     if (!obj)
         return 0.0;
     rt_terrain3d *t = (rt_terrain3d *)obj;
@@ -177,23 +164,19 @@ double rt_terrain3d_get_height_at(void *obj, double wx, double wz)
     int ix = (int)floor(hx), iz = (int)floor(hz);
     float fx = (float)(hx - ix), fz = (float)(hz - iz);
 
-    if (ix < 0)
-    {
+    if (ix < 0) {
         ix = 0;
         fx = 0;
     }
-    if (iz < 0)
-    {
+    if (iz < 0) {
         iz = 0;
         fz = 0;
     }
-    if (ix >= t->width - 1)
-    {
+    if (ix >= t->width - 1) {
         ix = t->width - 2;
         fx = 1;
     }
-    if (iz >= t->depth - 1)
-    {
+    if (iz >= t->depth - 1) {
         iz = t->depth - 2;
         fz = 1;
     }
@@ -206,8 +189,7 @@ double rt_terrain3d_get_height_at(void *obj, double wx, double wz)
     return (double)(h * (float)t->scale[1]);
 }
 
-void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz)
-{
+void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz) {
     if (!obj)
         return rt_vec3_new(0, 1, 0);
     rt_terrain3d *t = (rt_terrain3d *)obj;
@@ -227,8 +209,7 @@ void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz)
     double nz = (double)(hD - hU) * t->scale[1];
     double ny = 2.0 * t->scale[0];
     double len = sqrt(nx * nx + ny * ny + nz * nz);
-    if (len > 1e-8)
-    {
+    if (len > 1e-8) {
         nx /= len;
         ny /= len;
         nz /= len;
@@ -238,8 +219,7 @@ void *rt_terrain3d_get_normal_at(void *obj, double wx, double wz)
 }
 
 /// @brief Build mesh for one terrain chunk.
-static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz)
-{
+static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz) {
     void *mesh = rt_mesh3d_new();
     int32_t x0 = cx * TERRAIN_CHUNK_SIZE;
     int32_t z0 = cz * TERRAIN_CHUNK_SIZE;
@@ -257,10 +237,8 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz)
         return mesh;
 
     /* Vertices */
-    for (int32_t dz = 0; dz <= rows; dz++)
-    {
-        for (int32_t dx = 0; dx <= cols; dx++)
-        {
+    for (int32_t dz = 0; dz <= rows; dz++) {
+        for (int32_t dx = 0; dx <= cols; dx++) {
             int32_t ix = x0 + dx, iz = z0 + dz;
             double wx = (double)ix * t->scale[0];
             double wy = (double)sample_height(t, ix, iz) * t->scale[1];
@@ -275,8 +253,7 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz)
             double nz_n = (double)(hD - hU) * t->scale[1];
             double ny = 2.0 * t->scale[0];
             double nlen = sqrt(nx * nx + ny * ny + nz_n * nz_n);
-            if (nlen > 1e-8)
-            {
+            if (nlen > 1e-8) {
                 nx /= nlen;
                 ny /= nlen;
                 nz_n /= nlen;
@@ -291,10 +268,8 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz)
 
     /* Triangles (CCW winding) */
     int32_t row_verts = cols + 1;
-    for (int32_t dz = 0; dz < rows; dz++)
-    {
-        for (int32_t dx = 0; dx < cols; dx++)
-        {
+    for (int32_t dz = 0; dz < rows; dz++) {
+        for (int32_t dx = 0; dx < cols; dx++) {
             int64_t base = (int64_t)(dz * row_verts + dx);
             rt_mesh3d_add_triangle(mesh, base, base + row_verts, base + 1);
             rt_mesh3d_add_triangle(mesh, base + 1, base + row_verts, base + row_verts + 1);
@@ -304,8 +279,7 @@ static void *build_chunk(rt_terrain3d *t, int32_t cx, int32_t cz)
     return mesh;
 }
 
-void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj)
-{
+void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj) {
     if (!canvas_obj || !terrain_obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas_obj;
@@ -315,10 +289,8 @@ void rt_canvas3d_draw_terrain(void *canvas_obj, void *terrain_obj)
 
     void *identity = rt_mat4_identity();
 
-    for (int32_t cz = 0; cz < t->chunks_z; cz++)
-    {
-        for (int32_t cx = 0; cx < t->chunks_x; cx++)
-        {
+    for (int32_t cz = 0; cz < t->chunks_z; cz++) {
+        for (int32_t cx = 0; cx < t->chunks_x; cx++) {
             int32_t idx = cz * t->chunks_x + cx;
             if (!t->chunk_meshes[idx])
                 t->chunk_meshes[idx] = build_chunk(t, cx, cz);

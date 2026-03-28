@@ -26,17 +26,14 @@
 
 using namespace il::core;
 
-namespace
-{
-void addPowExtern(Module &module)
-{
+namespace {
+void addPowExtern(Module &module) {
     il::build::IRBuilder builder(module);
     builder.addExtern(
         "rt_pow_f64_chkdom", Type(Type::Kind::F64), {Type(Type::Kind::F64), Type(Type::Kind::F64)});
 }
 
-void buildPowSuccess(Module &module)
-{
+void buildPowSuccess(Module &module) {
     addPowExtern(module);
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -62,8 +59,7 @@ void buildPowSuccess(Module &module)
     builder.emitRet(std::optional<Value>{convVal}, loc);
 }
 
-void buildPowDomainError(Module &module)
-{
+void buildPowDomainError(Module &module) {
     addPowExtern(module);
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -76,8 +72,7 @@ void buildPowDomainError(Module &module)
     builder.emitRet(std::optional<Value>{Value::constInt(0)}, loc);
 }
 
-void buildPowOverflow(Module &module)
-{
+void buildPowOverflow(Module &module) {
     addPowExtern(module);
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -94,8 +89,7 @@ void buildPowOverflow(Module &module)
 
 } // namespace
 
-int main()
-{
+int main() {
     using viper::tests::VmFixture;
 
     VmFixture fixture;

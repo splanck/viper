@@ -26,11 +26,9 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-void buildShiftFunction(Module &module, Opcode op, int64_t val, int64_t shift)
-{
+void buildShiftFunction(Module &module, Opcode op, int64_t val, int64_t shift) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -53,28 +51,24 @@ void buildShiftFunction(Module &module, Opcode op, int64_t val, int64_t shift)
     bb.instructions.push_back(ret);
 }
 
-int64_t runShift(Opcode op, int64_t val, int64_t shift)
-{
+int64_t runShift(Opcode op, int64_t val, int64_t shift) {
     Module module;
     buildShiftFunction(module, op, val, shift);
     viper::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
-int64_t runAShr(int64_t val, int64_t shift)
-{
+int64_t runAShr(int64_t val, int64_t shift) {
     return runShift(Opcode::AShr, val, shift);
 }
 
-int64_t runLShr(int64_t val, int64_t shift)
-{
+int64_t runLShr(int64_t val, int64_t shift) {
     return runShift(Opcode::LShr, val, shift);
 }
 
 } // namespace
 
-int main()
-{
+int main() {
     const int64_t minVal = std::numeric_limits<int64_t>::min();
     const int64_t maxVal = std::numeric_limits<int64_t>::max();
 

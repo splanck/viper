@@ -20,8 +20,7 @@
 
 using namespace il::frontends::basic;
 
-int main()
-{
+int main() {
     NamespaceRegistry ns;
     seedRuntimeTypeCatalog(ns);
 

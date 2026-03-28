@@ -23,13 +23,11 @@
 #include <optional>
 #include <vector>
 
-namespace il::frontends::common
-{
+namespace il::frontends::common {
 
 /// @brief Context for a single loop during lowering.
 /// @details Tracks the block indices that break and continue should target.
-struct LoopContext
-{
+struct LoopContext {
     std::size_t breakBlockIdx;    ///< Target block for break statements.
     std::size_t continueBlockIdx; ///< Target block for continue statements.
 
@@ -43,27 +41,23 @@ struct LoopContext
 };
 
 /// @brief Manages a stack of loop contexts for nested loop support.
-class LoopContextStack
-{
+class LoopContextStack {
   public:
     /// @brief Push a new loop context onto the stack.
     /// @param ctx The loop context to push.
-    void push(LoopContext ctx)
-    {
+    void push(LoopContext ctx) {
         stack_.push_back(ctx);
     }
 
     /// @brief Push a simple loop context with just break and continue targets.
     /// @param breakIdx Target block index for break.
     /// @param continueIdx Target block index for continue.
-    void push(std::size_t breakIdx, std::size_t continueIdx)
-    {
+    void push(std::size_t breakIdx, std::size_t continueIdx) {
         stack_.push_back({breakIdx, continueIdx, std::nullopt, std::nullopt});
     }
 
     /// @brief Pop the current loop context.
-    void pop()
-    {
+    void pop() {
         if (!stack_.empty())
             stack_.pop_back();
     }
@@ -71,50 +65,43 @@ class LoopContextStack
     /// @brief Get the current (innermost) loop context.
     /// @return Reference to the current context.
     /// @pre !empty()
-    [[nodiscard]] LoopContext &current()
-    {
+    [[nodiscard]] LoopContext &current() {
         return stack_.back();
     }
 
     /// @brief Get the current (innermost) loop context (const).
     /// @return Const reference to the current context.
     /// @pre !empty()
-    [[nodiscard]] const LoopContext &current() const
-    {
+    [[nodiscard]] const LoopContext &current() const {
         return stack_.back();
     }
 
     /// @brief Check if there is an active loop context.
-    [[nodiscard]] bool empty() const noexcept
-    {
+    [[nodiscard]] bool empty() const noexcept {
         return stack_.empty();
     }
 
     /// @brief Get the number of nested loops.
-    [[nodiscard]] std::size_t depth() const noexcept
-    {
+    [[nodiscard]] std::size_t depth() const noexcept {
         return stack_.size();
     }
 
     /// @brief Get the break target for the current loop.
     /// @pre !empty()
-    [[nodiscard]] std::size_t breakTarget() const
-    {
+    [[nodiscard]] std::size_t breakTarget() const {
         return stack_.back().breakBlockIdx;
     }
 
     /// @brief Get the continue target for the current loop.
     /// @details Returns the update block if set, otherwise the continue block.
     /// @pre !empty()
-    [[nodiscard]] std::size_t continueTarget() const
-    {
+    [[nodiscard]] std::size_t continueTarget() const {
         const auto &ctx = stack_.back();
         return ctx.updateBlockIdx.value_or(ctx.continueBlockIdx);
     }
 
     /// @brief Clear all loop contexts.
-    void clear()
-    {
+    void clear() {
         stack_.clear();
     }
 

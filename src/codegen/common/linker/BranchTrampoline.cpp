@@ -27,15 +27,12 @@
 #include <cstdint>
 #include <unordered_map>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
-namespace
-{
+namespace {
 
 /// Write a 32-bit LE value to a byte pointer.
-void writeLE32At(uint8_t *p, uint32_t v)
-{
+void writeLE32At(uint8_t *p, uint32_t v) {
     p[0] = static_cast<uint8_t>(v);
     p[1] = static_cast<uint8_t>(v >> 8);
     p[2] = static_cast<uint8_t>(v >> 16);
@@ -43,24 +40,20 @@ void writeLE32At(uint8_t *p, uint32_t v)
 }
 
 /// Read a 32-bit LE value from a byte pointer.
-uint32_t readLE32At(const uint8_t *p)
-{
+uint32_t readLE32At(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
 /// Encode (objIndex, secIndex) into a single 64-bit key.
-uint64_t makeKey(size_t objIdx, size_t secIdx)
-{
+uint64_t makeKey(size_t objIdx, size_t secIdx) {
     return (static_cast<uint64_t>(objIdx) << 32) | static_cast<uint64_t>(secIdx);
 }
 
 /// Build LocationMap: (objIdx, secIdx) → (outSecIdx, chunkOffset).
-std::unordered_map<uint64_t, std::pair<size_t, size_t>> buildLocMap(const LinkLayout &layout)
-{
+std::unordered_map<uint64_t, std::pair<size_t, size_t>> buildLocMap(const LinkLayout &layout) {
     std::unordered_map<uint64_t, std::pair<size_t, size_t>> map;
-    for (size_t si = 0; si < layout.sections.size(); ++si)
-    {
+    for (size_t si = 0; si < layout.sections.size(); ++si) {
         for (const auto &chunk : layout.sections[si].chunks)
             map[makeKey(chunk.inputObjIndex, chunk.inputSecIndex)] = {si, chunk.outputOffset};
     }
@@ -68,8 +61,7 @@ std::unordered_map<uint64_t, std::pair<size_t, size_t>> buildLocMap(const LinkLa
 }
 
 /// Permission class for VA re-assignment (must match SectionMerger.cpp).
-int permClass(const OutputSection &s)
-{
+int permClass(const OutputSection &s) {
     if (s.executable)
         return 0;
     if (s.tls)
@@ -81,11 +73,9 @@ int permClass(const OutputSection &s)
 
 /// Re-assign VAs for all sections, preserving ordering.
 /// Must match the algorithm in SectionMerger.cpp (lines 365-379).
-void reassignVAs(LinkLayout &layout, LinkPlatform platform, LinkArch arch)
-{
+void reassignVAs(LinkLayout &layout, LinkPlatform platform, LinkArch arch) {
     uint64_t baseAddr;
-    switch (platform)
-    {
+    switch (platform) {
         case LinkPlatform::macOS:
             baseAddr = 0x100000000ULL;
             break;
@@ -101,11 +91,9 @@ void reassignVAs(LinkLayout &layout, LinkPlatform platform, LinkArch arch)
     uint64_t currentAddr = baseAddr + layout.pageSize;
 
     int prevCls = -1;
-    for (auto &sec : layout.sections)
-    {
+    for (auto &sec : layout.sections) {
         int cls = permClass(sec);
-        if (cls != prevCls)
-        {
+        if (cls != prevCls) {
             currentAddr = alignUp(currentAddr, layout.pageSize);
             prevCls = cls;
         }
@@ -116,8 +104,7 @@ void reassignVAs(LinkLayout &layout, LinkPlatform platform, LinkArch arch)
 }
 
 /// Record of an out-of-range branch that needs a trampoline.
-struct OutOfRangeBranch
-{
+struct OutOfRangeBranch {
     size_t objIdx;
     size_t secIdx;
     size_t relocIdx;
@@ -131,8 +118,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
                              LinkLayout &layout,
                              LinkArch arch,
                              LinkPlatform platform,
-                             std::ostream &err)
-{
+                             std::ostream &err) {
     // Only AArch64 needs trampolines.
     if (arch != LinkArch::AArch64)
         return true;
@@ -141,13 +127,11 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     auto locMap = buildLocMap(layout);
 
     // First: resolve all global symbol addresses (same as RelocApplier first pass).
-    for (auto &[name, entry] : layout.globalSyms)
-    {
+    for (auto &[name, entry] : layout.globalSyms) {
         if (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic)
             continue;
         auto it = locMap.find(makeKey(entry.objIndex, entry.secIndex));
-        if (it != locMap.end())
-        {
+        if (it != locMap.end()) {
             entry.resolvedAddr =
                 layout.sections[it->second.first].virtualAddr + it->second.second + entry.offset;
         }
@@ -156,11 +140,9 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     // Scan for out-of-range Branch26 relocations.
     std::vector<OutOfRangeBranch> outOfRange;
 
-    for (size_t oi = 0; oi < objects.size(); ++oi)
-    {
+    for (size_t oi = 0; oi < objects.size(); ++oi) {
         const auto &obj = objects[oi];
-        for (size_t si = 1; si < obj.sections.size(); ++si)
-        {
+        for (size_t si = 1; si < obj.sections.size(); ++si) {
             const auto &sec = obj.sections[si];
             if (sec.relocs.empty() || sec.data.empty())
                 continue;
@@ -173,8 +155,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             const size_t chunkBase = mapIt->second.second;
             const uint64_t secVA = layout.sections[outSecIdx].virtualAddr;
 
-            for (size_t ri = 0; ri < sec.relocs.size(); ++ri)
-            {
+            for (size_t ri = 0; ri < sec.relocs.size(); ++ri) {
                 const auto &rel = sec.relocs[ri];
                 RelocAction action = classifyReloc(obj.format, arch, rel.type);
                 if (action != RelocAction::Branch26)
@@ -212,16 +193,13 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
 
     // Find the .text output section.
     size_t textSecIdx = SIZE_MAX;
-    for (size_t i = 0; i < layout.sections.size(); ++i)
-    {
-        if (layout.sections[i].executable)
-        {
+    for (size_t i = 0; i < layout.sections.size(); ++i) {
+        if (layout.sections[i].executable) {
             textSecIdx = i;
             break;
         }
     }
-    if (textSecIdx == SIZE_MAX)
-    {
+    if (textSecIdx == SIZE_MAX) {
         err << "error: no executable section found for trampoline insertion\n";
         return false;
     }
@@ -233,8 +211,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     // Map: targetSymName → offset within .text where trampoline starts.
     std::unordered_map<std::string, size_t> trampolineOffsets;
 
-    for (const auto &oob : outOfRange)
-    {
+    for (const auto &oob : outOfRange) {
         if (trampolineOffsets.count(oob.targetSymName))
             continue;
 
@@ -263,21 +240,18 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     locMap = buildLocMap(layout);
 
     // Re-resolve global symbol addresses with new VAs.
-    for (auto &[name, entry] : layout.globalSyms)
-    {
+    for (auto &[name, entry] : layout.globalSyms) {
         if (entry.binding == GlobalSymEntry::Undefined || entry.binding == GlobalSymEntry::Dynamic)
             continue;
         auto it = locMap.find(makeKey(entry.objIndex, entry.secIndex));
-        if (it != locMap.end())
-        {
+        if (it != locMap.end()) {
             entry.resolvedAddr =
                 layout.sections[it->second.first].virtualAddr + it->second.second + entry.offset;
         }
     }
 
     // Apply trampoline relocations inline (ADRP + ADD).
-    for (const auto &[symName, tramOff] : trampolineOffsets)
-    {
+    for (const auto &[symName, tramOff] : trampolineOffsets) {
         auto symIt = layout.globalSyms.find(symName);
         if (symIt == layout.globalSyms.end())
             continue;
@@ -293,8 +267,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
             uint64_t pageP = tramVA & ~0xFFFULL;
             int64_t pageDelta = static_cast<int64_t>(pageS) - static_cast<int64_t>(pageP);
             int64_t immHiLo = pageDelta >> 12;
-            if (immHiLo > 0xFFFFF || immHiLo < -0x100000)
-            {
+            if (immHiLo > 0xFFFFF || immHiLo < -0x100000) {
                 err << "error: trampoline ADRP out of range for '" << symName << "'\n";
                 return false;
             }
@@ -316,8 +289,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
     }
 
     // Patch original branches to target their trampolines.
-    for (const auto &oob : outOfRange)
-    {
+    for (const auto &oob : outOfRange) {
         auto mapIt = locMap.find(makeKey(oob.objIdx, static_cast<uint32_t>(oob.secIdx)));
         if (mapIt == locMap.end())
             continue;
@@ -337,8 +309,7 @@ bool insertBranchTrampolines(std::vector<ObjFile> &objects,
         const int64_t disp = static_cast<int64_t>(tramVA) - static_cast<int64_t>(P);
         const int64_t imm26 = disp >> 2;
 
-        if (imm26 > 0x1FFFFFF || imm26 < -0x2000000)
-        {
+        if (imm26 > 0x1FFFFFF || imm26 < -0x2000000) {
             err << "error: trampoline at offset " << tramOff
                 << " is unreachable from branch at VA 0x" << std::hex << P << std::dec
                 << " (.text exceeds 128MB; interleaved trampoline islands not yet supported)\n";

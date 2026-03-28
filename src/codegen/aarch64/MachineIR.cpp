@@ -103,15 +103,12 @@
 
 #include <sstream>
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Map a Machine IR opcode to a descriptive string for diagnostics.
 /// @details Generated from MOpcodeDef.inc — the single source of truth.
-[[nodiscard]] const char *opcodeName(MOpcode opc) noexcept
-{
-    switch (opc)
-    {
+[[nodiscard]] const char *opcodeName(MOpcode opc) noexcept {
+    switch (opc) {
 #define VIPER_MIR_OPCODE(name)                                                                     \
     case MOpcode::name:                                                                            \
         return #name;
@@ -121,10 +118,8 @@ namespace viper::codegen::aarch64
 }
 
 /// @brief Map a register class to the textual suffix used in debug output.
-[[nodiscard]] const char *regClassSuffix(RegClass cls) noexcept
-{
-    switch (cls)
-    {
+[[nodiscard]] const char *regClassSuffix(RegClass cls) noexcept {
+    switch (cls) {
         case RegClass::GPR:
             return "gpr";
         case RegClass::FPR:
@@ -134,16 +129,12 @@ namespace viper::codegen::aarch64
 }
 
 /// @brief Render a register operand as human-readable text.
-std::string toString(const MReg &reg)
-{
+std::string toString(const MReg &reg) {
     std::ostringstream os;
-    if (reg.isPhys)
-    {
+    if (reg.isPhys) {
         const auto phys = static_cast<PhysReg>(reg.idOrPhys);
         os << '@' << regName(phys);
-    }
-    else
-    {
+    } else {
         os << "%v" << static_cast<unsigned>(reg.idOrPhys);
     }
     os << ':' << regClassSuffix(reg.cls);
@@ -151,14 +142,11 @@ std::string toString(const MReg &reg)
 }
 
 /// @brief Render any operand as human-readable text.
-std::string toString(const MOperand &op)
-{
-    switch (op.kind)
-    {
+std::string toString(const MOperand &op) {
+    switch (op.kind) {
         case MOperand::Kind::Reg:
             return toString(op.reg);
-        case MOperand::Kind::Imm:
-        {
+        case MOperand::Kind::Imm: {
             std::ostringstream os;
             os << '#' << op.imm;
             return os.str();
@@ -172,20 +160,15 @@ std::string toString(const MOperand &op)
 }
 
 /// @brief Render an instruction as human-readable text.
-std::string toString(const MInstr &instr)
-{
+std::string toString(const MInstr &instr) {
     std::ostringstream os;
     os << opcodeName(instr.opc);
     bool first = true;
-    for (const auto &op : instr.ops)
-    {
-        if (first)
-        {
+    for (const auto &op : instr.ops) {
+        if (first) {
             os << ' ' << toString(op);
             first = false;
-        }
-        else
-        {
+        } else {
             os << ", " << toString(op);
         }
     }
@@ -193,24 +176,20 @@ std::string toString(const MInstr &instr)
 }
 
 /// @brief Render a basic block as human-readable text.
-std::string toString(const MBasicBlock &block)
-{
+std::string toString(const MBasicBlock &block) {
     std::ostringstream os;
     os << block.name << ":\n";
-    for (const auto &instr : block.instrs)
-    {
+    for (const auto &instr : block.instrs) {
         os << "  " << toString(instr) << '\n';
     }
     return os.str();
 }
 
 /// @brief Render a function as human-readable text.
-std::string toString(const MFunction &func)
-{
+std::string toString(const MFunction &func) {
     std::ostringstream os;
     os << "function " << func.name << '\n';
-    for (const auto &block : func.blocks)
-    {
+    for (const auto &block : func.blocks) {
         os << toString(block);
     }
     return os.str();

@@ -16,8 +16,7 @@
 #include "il/build/IRBuilder.hpp"
 #include <cassert>
 
-int main()
-{
+int main() {
     using namespace il::core;
     Module m;
     il::build::IRBuilder b(m);

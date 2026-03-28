@@ -41,44 +41,37 @@
 #include <string.h>
 
 /// Internal structure for Grid2D.
-struct rt_grid2d_impl
-{
+struct rt_grid2d_impl {
     int64_t width;
     int64_t height;
     int64_t *data; // Row-major storage: data[y * width + x]
 };
 
-static void grid2d_finalizer(void *obj)
-{
+static void grid2d_finalizer(void *obj) {
     struct rt_grid2d_impl *grid = (struct rt_grid2d_impl *)obj;
     free(grid->data);
     grid->data = NULL;
 }
 
-rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value)
-{
-    if (width <= 0 || height <= 0)
-    {
+rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value) {
+    if (width <= 0 || height <= 0) {
         return NULL;
     }
 
     // Check for overflow
-    if (width > INT64_MAX / height)
-    {
+    if (width > INT64_MAX / height) {
         return NULL;
     }
 
     int64_t size = width * height;
 
     struct rt_grid2d_impl *grid = rt_obj_new_i64(0, sizeof(struct rt_grid2d_impl));
-    if (!grid)
-    {
+    if (!grid) {
         return NULL;
     }
 
     grid->data = malloc((size_t)size * sizeof(int64_t));
-    if (!grid->data)
-    {
+    if (!grid->data) {
         if (rt_obj_release_check0(grid))
             rt_obj_free(grid);
         return NULL;
@@ -88,8 +81,7 @@ rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value)
     grid->height = height;
 
     // Fill with default value
-    for (int64_t i = 0; i < size; i++)
-    {
+    for (int64_t i = 0; i < size; i++) {
         grid->data[i] = default_value;
     }
 
@@ -99,8 +91,7 @@ rt_grid2d rt_grid2d_new(int64_t width, int64_t height, int64_t default_value)
 
 /// @brief Perform grid2d destroy operation.
 /// @param grid
-void rt_grid2d_destroy(rt_grid2d grid)
-{
+void rt_grid2d_destroy(rt_grid2d grid) {
     // Object is GC-managed; finalizer frees internal data.
     (void)grid;
 }
@@ -110,12 +101,10 @@ void rt_grid2d_destroy(rt_grid2d grid)
 /// @param x
 /// @param y
 /// @return Result value.
-int64_t rt_grid2d_get(rt_grid2d grid, int64_t x, int64_t y)
-{
+int64_t rt_grid2d_get(rt_grid2d grid, int64_t x, int64_t y) {
     if (!grid)
         return 0;
-    if (x < 0 || x >= grid->width || y < 0 || y >= grid->height)
-    {
+    if (x < 0 || x >= grid->width || y < 0 || y >= grid->height) {
         return 0;
     }
     return grid->data[y * grid->width + x];
@@ -126,12 +115,10 @@ int64_t rt_grid2d_get(rt_grid2d grid, int64_t x, int64_t y)
 /// @param x
 /// @param y
 /// @param value
-void rt_grid2d_set(rt_grid2d grid, int64_t x, int64_t y, int64_t value)
-{
+void rt_grid2d_set(rt_grid2d grid, int64_t x, int64_t y, int64_t value) {
     if (!grid)
         return;
-    if (x < 0 || x >= grid->width || y < 0 || y >= grid->height)
-    {
+    if (x < 0 || x >= grid->width || y < 0 || y >= grid->height) {
         return;
     }
     grid->data[y * grid->width + x] = value;
@@ -140,38 +127,33 @@ void rt_grid2d_set(rt_grid2d grid, int64_t x, int64_t y, int64_t value)
 /// @brief Perform grid2d fill operation.
 /// @param grid
 /// @param value
-void rt_grid2d_fill(rt_grid2d grid, int64_t value)
-{
+void rt_grid2d_fill(rt_grid2d grid, int64_t value) {
     if (!grid)
         return;
 
     int64_t size = grid->width * grid->height;
-    for (int64_t i = 0; i < size; i++)
-    {
+    for (int64_t i = 0; i < size; i++) {
         grid->data[i] = value;
     }
 }
 
 /// @brief Perform grid2d clear operation.
 /// @param grid
-void rt_grid2d_clear(rt_grid2d grid)
-{
+void rt_grid2d_clear(rt_grid2d grid) {
     rt_grid2d_fill(grid, 0);
 }
 
 /// @brief Perform grid2d width operation.
 /// @param grid
 /// @return Result value.
-int64_t rt_grid2d_width(rt_grid2d grid)
-{
+int64_t rt_grid2d_width(rt_grid2d grid) {
     return grid ? grid->width : 0;
 }
 
 /// @brief Perform grid2d height operation.
 /// @param grid
 /// @return Result value.
-int64_t rt_grid2d_height(rt_grid2d grid)
-{
+int64_t rt_grid2d_height(rt_grid2d grid) {
     return grid ? grid->height : 0;
 }
 
@@ -180,8 +162,7 @@ int64_t rt_grid2d_height(rt_grid2d grid)
 /// @param x
 /// @param y
 /// @return Result value.
-int8_t rt_grid2d_in_bounds(rt_grid2d grid, int64_t x, int64_t y)
-{
+int8_t rt_grid2d_in_bounds(rt_grid2d grid, int64_t x, int64_t y) {
     if (!grid)
         return 0;
     return (x >= 0 && x < grid->width && y >= 0 && y < grid->height) ? 1 : 0;
@@ -190,16 +171,14 @@ int8_t rt_grid2d_in_bounds(rt_grid2d grid, int64_t x, int64_t y)
 /// @brief Perform grid2d size operation.
 /// @param grid
 /// @return Result value.
-int64_t rt_grid2d_size(rt_grid2d grid)
-{
+int64_t rt_grid2d_size(rt_grid2d grid) {
     return grid ? grid->width * grid->height : 0;
 }
 
 /// @brief Perform grid2d is empty operation.
 /// @param grid
 /// @return Result value.
-int8_t rt_grid2d_is_empty(rt_grid2d grid)
-{
+int8_t rt_grid2d_is_empty(rt_grid2d grid) {
     if (!grid)
         return 1;
     return (grid->width == 0 || grid->height == 0) ? 1 : 0;
@@ -209,12 +188,10 @@ int8_t rt_grid2d_is_empty(rt_grid2d grid)
 /// @param dest
 /// @param src
 /// @return Result value.
-int8_t rt_grid2d_copy_from(rt_grid2d dest, rt_grid2d src)
-{
+int8_t rt_grid2d_copy_from(rt_grid2d dest, rt_grid2d src) {
     if (!dest || !src)
         return 0;
-    if (dest->width != src->width || dest->height != src->height)
-    {
+    if (dest->width != src->width || dest->height != src->height) {
         return 0;
     }
 
@@ -227,17 +204,14 @@ int8_t rt_grid2d_copy_from(rt_grid2d dest, rt_grid2d src)
 /// @param grid
 /// @param value
 /// @return Result value.
-int64_t rt_grid2d_count(rt_grid2d grid, int64_t value)
-{
+int64_t rt_grid2d_count(rt_grid2d grid, int64_t value) {
     if (!grid)
         return 0;
 
     int64_t count = 0;
     int64_t size = grid->width * grid->height;
-    for (int64_t i = 0; i < size; i++)
-    {
-        if (grid->data[i] == value)
-        {
+    for (int64_t i = 0; i < size; i++) {
+        if (grid->data[i] == value) {
             count++;
         }
     }
@@ -250,17 +224,13 @@ int64_t rt_grid2d_count(rt_grid2d grid, int64_t value)
 /// @param out_x
 /// @param out_y
 /// @return Result value.
-int8_t rt_grid2d_find(rt_grid2d grid, int64_t value, int64_t *out_x, int64_t *out_y)
-{
+int8_t rt_grid2d_find(rt_grid2d grid, int64_t value, int64_t *out_x, int64_t *out_y) {
     if (!grid)
         return 0;
 
-    for (int64_t y = 0; y < grid->height; y++)
-    {
-        for (int64_t x = 0; x < grid->width; x++)
-        {
-            if (grid->data[y * grid->width + x] == value)
-            {
+    for (int64_t y = 0; y < grid->height; y++) {
+        for (int64_t x = 0; x < grid->width; x++) {
+            if (grid->data[y * grid->width + x] == value) {
                 if (out_x)
                     *out_x = x;
                 if (out_y)
@@ -277,17 +247,14 @@ int8_t rt_grid2d_find(rt_grid2d grid, int64_t value, int64_t *out_x, int64_t *ou
 /// @param old_value
 /// @param new_value
 /// @return Result value.
-int64_t rt_grid2d_replace(rt_grid2d grid, int64_t old_value, int64_t new_value)
-{
+int64_t rt_grid2d_replace(rt_grid2d grid, int64_t old_value, int64_t new_value) {
     if (!grid)
         return 0;
 
     int64_t count = 0;
     int64_t size = grid->width * grid->height;
-    for (int64_t i = 0; i < size; i++)
-    {
-        if (grid->data[i] == old_value)
-        {
+    for (int64_t i = 0; i < size; i++) {
+        if (grid->data[i] == old_value) {
             grid->data[i] = new_value;
             count++;
         }

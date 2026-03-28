@@ -23,19 +23,16 @@
 #include <stdio.h>
 #include <string.h>
 
-static void check(const char *label, int ok)
-{
+static void check(const char *label, int ok) {
     printf("  %-50s %s\n", label, ok ? "PASS" : "FAIL");
     assert(ok);
 }
 
-static rt_string S(const char *s)
-{
+static rt_string S(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static int str_eq_c(rt_string s, const char *expected)
-{
+static int str_eq_c(rt_string s, const char *expected) {
     size_t elen = strlen(expected);
     rt_string exp = rt_string_from_bytes(expected, elen);
     int result = rt_str_eq(s, exp);
@@ -43,16 +40,14 @@ static int str_eq_c(rt_string s, const char *expected)
     return result;
 }
 
-static int str_contains_c(rt_string s, const char *needle)
-{
+static int str_contains_c(rt_string s, const char *needle) {
     const char *cstr = rt_string_cstr(s);
     if (!cstr)
         return 0;
     return strstr(cstr, needle) != NULL;
 }
 
-static void test_parse_simple(void)
-{
+static void test_parse_simple(void) {
     printf("rt_xml_parse simple:\n");
     rt_string xml = S("<root><child name=\"hello\">world</child></root>");
     void *doc = rt_xml_parse(xml);
@@ -88,8 +83,7 @@ static void test_parse_simple(void)
     // rt_obj_release_check0 / rt_obj_free must NOT be called on them.
 }
 
-static void test_is_valid(void)
-{
+static void test_is_valid(void) {
     printf("rt_xml_is_valid:\n");
     rt_string valid = S("<a><b/></a>");
     rt_string invalid = S("<a><b></a>");
@@ -99,8 +93,7 @@ static void test_is_valid(void)
     rt_string_unref(invalid);
 }
 
-static void test_create_and_format(void)
-{
+static void test_create_and_format(void) {
     printf("rt_xml create and format:\n");
     rt_string root_tag = S("person");
     void *elem = rt_xml_element(root_tag);
@@ -125,8 +118,7 @@ static void test_create_and_format(void)
     rt_string_unref(formatted);
 }
 
-static void test_escape_unescape(void)
-{
+static void test_escape_unescape(void) {
     printf("rt_xml escape / unescape:\n");
     rt_string special = S("a < b & c > d");
     rt_string escaped = rt_xml_escape(special);
@@ -142,15 +134,13 @@ static void test_escape_unescape(void)
     rt_string_unref(special);
 }
 
-static void test_children(void)
-{
+static void test_children(void) {
     printf("rt_xml children manipulation:\n");
     rt_string parent_tag = S("list");
     void *parent = rt_xml_element(parent_tag);
     rt_string_unref(parent_tag);
 
-    for (int i = 0; i < 3; ++i)
-    {
+    for (int i = 0; i < 3; ++i) {
         rt_string item_tag = S("item");
         void *item = rt_xml_element(item_tag);
         rt_string_unref(item_tag);
@@ -169,8 +159,7 @@ static void test_children(void)
     rt_string_unref(item_tag2);
 }
 
-int main(void)
-{
+int main(void) {
     printf("=== RTXmlTests ===\n");
     test_parse_simple();
     test_is_valid();

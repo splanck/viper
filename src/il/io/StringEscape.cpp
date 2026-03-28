@@ -22,10 +22,8 @@
 #include <cctype>
 #include <string>
 
-namespace il::io
-{
-namespace
-{
+namespace il::io {
+namespace {
 /// @brief Convert a hexadecimal digit into its numeric value.
 /// @details Accepts ASCII digits and lowercase or uppercase alphabetic digits.
 ///          Any other character yields zero; callers should validate input
@@ -34,8 +32,7 @@ namespace
 /// @param c Character representing a single hexadecimal digit.
 /// @return Numeric value in the range [0, 15]; zero when @p c is not a hex
 ///         digit.
-unsigned hexValue(char c)
-{
+unsigned hexValue(char c) {
     if (c >= '0' && c <= '9')
         return static_cast<unsigned>(c - '0');
     if (c >= 'a' && c <= 'f')
@@ -50,8 +47,7 @@ unsigned hexValue(char c)
 ///          used to avoid undefined behaviour on negative char values.
 /// @param c Character to inspect.
 /// @return True when @p c is a hexadecimal digit; false otherwise.
-bool isHex(char c)
-{
+bool isHex(char c) {
     return std::isxdigit(static_cast<unsigned char>(c)) != 0;
 }
 
@@ -68,26 +64,21 @@ bool isHex(char c)
 /// @param error Optional pointer that receives an explanatory message when
 ///              decoding fails.
 /// @return True when decoding succeeds; false and an error message otherwise.
-bool decodeEscapedString(std::string_view input, std::string &output, std::string *error)
-{
+bool decodeEscapedString(std::string_view input, std::string &output, std::string *error) {
     output.clear();
-    for (std::size_t i = 0; i < input.size(); ++i)
-    {
+    for (std::size_t i = 0; i < input.size(); ++i) {
         char c = input[i];
-        if (c != '\\')
-        {
+        if (c != '\\') {
             output.push_back(c);
             continue;
         }
-        if (i + 1 >= input.size())
-        {
+        if (i + 1 >= input.size()) {
             if (error)
                 *error = "unterminated escape sequence";
             return false;
         }
         char next = input[++i];
-        switch (next)
-        {
+        switch (next) {
             case '\\':
                 output.push_back('\\');
                 break;
@@ -106,10 +97,8 @@ bool decodeEscapedString(std::string_view input, std::string &output, std::strin
             case '0':
                 output.push_back('\0');
                 break;
-            case 'x':
-            {
-                if (i + 2 >= input.size() || !isHex(input[i + 1]) || !isHex(input[i + 2]))
-                {
+            case 'x': {
+                if (i + 2 >= input.size() || !isHex(input[i + 1]) || !isHex(input[i + 2])) {
                     if (error)
                         *error = "invalid hex escape";
                     return false;
@@ -122,8 +111,7 @@ bool decodeEscapedString(std::string_view input, std::string &output, std::strin
                 break;
             }
             default:
-                if (error)
-                {
+                if (error) {
                     *error = std::string("unknown escape sequence \\") + next;
                 }
                 return false;

@@ -16,8 +16,7 @@
 #include <cassert>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -25,8 +24,7 @@ extern "C" void vm_trap(const char *msg)
 // Button Constants
 // ============================================================================
 
-static void test_button_constants()
-{
+static void test_button_constants() {
     // Test button constant getters return expected values
     assert(rt_mouse_button_left() == 0);
     assert(rt_mouse_button_right() == 1);
@@ -40,8 +38,7 @@ static void test_button_constants()
 // Initial State
 // ============================================================================
 
-static void test_initial_state()
-{
+static void test_initial_state() {
     rt_mouse_init();
 
     // Position should be at origin initially
@@ -74,8 +71,7 @@ static void test_initial_state()
 // Position Updates
 // ============================================================================
 
-static void test_position_updates()
-{
+static void test_position_updates() {
     rt_mouse_init();
     rt_mouse_begin_frame();
 
@@ -114,8 +110,7 @@ static void test_position_updates()
 // Button State
 // ============================================================================
 
-static void test_button_state()
-{
+static void test_button_state() {
     rt_mouse_init();
     rt_mouse_begin_frame();
 
@@ -145,8 +140,7 @@ static void test_button_state()
 // Click Detection
 // ============================================================================
 
-static void test_click_detection()
-{
+static void test_click_detection() {
     rt_mouse_init();
     rt_mouse_begin_frame();
 
@@ -166,8 +160,7 @@ static void test_click_detection()
 // Scroll Wheel
 // ============================================================================
 
-static void test_scroll_wheel()
-{
+static void test_scroll_wheel() {
     rt_mouse_init();
     rt_mouse_begin_frame();
 
@@ -193,8 +186,7 @@ static void test_scroll_wheel()
 // Cursor Control
 // ============================================================================
 
-static void test_cursor_control()
-{
+static void test_cursor_control() {
     rt_mouse_init();
 
     // Hide cursor
@@ -225,8 +217,7 @@ static void test_cursor_control()
 // Boundary Cases
 // ============================================================================
 
-static void test_boundary_cases()
-{
+static void test_boundary_cases() {
     rt_mouse_init();
 
     // Invalid button indices
@@ -252,8 +243,7 @@ static void test_boundary_cases()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Viper.Input.Mouse Tests ===\n\n");
 
     test_button_constants();

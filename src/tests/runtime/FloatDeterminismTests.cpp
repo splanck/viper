@@ -26,20 +26,16 @@
 #include <sstream>
 #include <string>
 
-namespace
-{
-std::filesystem::path golden_dir()
-{
+namespace {
+std::filesystem::path golden_dir() {
     static const std::filesystem::path dir =
         std::filesystem::path(__FILE__).parent_path().parent_path() / "golden" / "float";
     return dir;
 }
 
-std::string read_text_file(const std::filesystem::path &path)
-{
+std::string read_text_file(const std::filesystem::path &path) {
     std::ifstream stream(path);
-    if (!stream)
-    {
+    if (!stream) {
         std::cerr << "failed to open golden file: " << path << "\n";
         std::abort();
     }
@@ -49,10 +45,8 @@ std::string read_text_file(const std::filesystem::path &path)
     return buffer.str();
 }
 
-std::string build_print_report()
-{
-    struct PrintCase
-    {
+std::string build_print_report() {
+    struct PrintCase {
         const char *label;
         double value;
     };
@@ -69,8 +63,7 @@ std::string build_print_report()
                                               {"-Inf", -std::numeric_limits<double>::infinity()}}};
 
     std::ostringstream out;
-    for (const auto &test : cases)
-    {
+    for (const auto &test : cases) {
         char buffer[64] = {};
         RtError err = RT_ERROR_NONE;
         rt_str_from_double(test.value, buffer, sizeof(buffer), &err);
@@ -81,10 +74,8 @@ std::string build_print_report()
     return out.str();
 }
 
-std::string build_parse_report()
-{
-    struct ParseCase
-    {
+std::string build_parse_report() {
+    struct ParseCase {
         const char *input;
     };
 
@@ -100,8 +91,7 @@ std::string build_parse_report()
                                               {"-Inf"}}};
 
     std::ostringstream out;
-    for (const auto &test : cases)
-    {
+    for (const auto &test : cases) {
         bool ok = true;
         double value = rt_val_to_double(test.input, &ok);
 
@@ -125,8 +115,7 @@ std::string build_parse_report()
 }
 } // namespace
 
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: __FILE__ path handling differs, causing golden file lookup issues
     std::cout << "Test skipped: Golden file paths need Windows adaptation\n";
@@ -136,8 +125,7 @@ int main()
 
     const std::string expected_print = read_text_file(golden / "print.out");
     const std::string actual_print = build_print_report();
-    if (actual_print != expected_print)
-    {
+    if (actual_print != expected_print) {
         std::cerr << "print golden mismatch\nExpected:\n"
                   << expected_print << "\nActual:\n"
                   << actual_print;
@@ -146,8 +134,7 @@ int main()
 
     const std::string expected_parse = read_text_file(golden / "parse.out");
     const std::string actual_parse = build_parse_report();
-    if (actual_parse != expected_parse)
-    {
+    if (actual_parse != expected_parse) {
         std::cerr << "parse golden mismatch\nExpected:\n"
                   << expected_parse << "\nActual:\n"
                   << actual_parse;

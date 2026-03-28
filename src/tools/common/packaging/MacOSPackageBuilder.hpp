@@ -26,12 +26,10 @@
 
 #include <string>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Parameters for building a macOS .app-in-.zip package.
-struct MacOSBuildParams
-{
+struct MacOSBuildParams {
     std::string projectName;    ///< Project name (used for .app name)
     std::string version;        ///< Version string
     std::string executablePath; ///< Path to the compiled native binary

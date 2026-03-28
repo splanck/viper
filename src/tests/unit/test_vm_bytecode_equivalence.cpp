@@ -44,15 +44,13 @@ using namespace viper::bytecode;
 //===----------------------------------------------------------------------===//
 
 /// @brief Run a module on the regular VM (calls "main", returns i64).
-static int64_t runRegularVM(const Module &m)
-{
+static int64_t runRegularVM(const Module &m) {
     il::vm::VM vm(m);
     return vm.run();
 }
 
 /// @brief Compile a module to bytecode and run "main" on the BytecodeVM.
-static BCSlot runBytecodeVM(const Module &m)
-{
+static BCSlot runBytecodeVM(const Module &m) {
     BytecodeCompiler compiler;
     BytecodeModule bcMod = compiler.compile(m);
     BytecodeVM bvm;
@@ -66,8 +64,7 @@ static BCSlot runBytecodeVM(const Module &m)
 // Test 1: Simple integer addition — (17 + 25) = 42
 //===----------------------------------------------------------------------===//
 
-static void test_add_equivalence()
-{
+static void test_add_equivalence() {
     std::cout << "  test_add_equivalence: ";
 
     Module m;
@@ -111,8 +108,7 @@ static void test_add_equivalence()
 
 /// @brief Build a module with a recursive fib function called from main.
 /// main returns fib(10).
-static Module buildFibModule()
-{
+static Module buildFibModule() {
     Module m;
 
     // --- func @fib(i64 %0) -> i64 ---
@@ -260,8 +256,7 @@ static Module buildFibModule()
     return m;
 }
 
-static void test_fib_equivalence()
-{
+static void test_fib_equivalence() {
     std::cout << "  test_fib_equivalence: ";
 
     Module m = buildFibModule();
@@ -280,8 +275,7 @@ static void test_fib_equivalence()
 // Test 3: Conditional branching — abs(-7) = 7
 //===----------------------------------------------------------------------===//
 
-static void test_conditional_equivalence()
-{
+static void test_conditional_equivalence() {
     std::cout << "  test_conditional_equivalence: ";
 
     Module m;
@@ -367,8 +361,7 @@ static void test_conditional_equivalence()
 // Both VMs return the float bits as int64; we compare bit patterns.
 //===----------------------------------------------------------------------===//
 
-static void test_float_equivalence()
-{
+static void test_float_equivalence() {
     std::cout << "  test_float_equivalence: ";
 
     Module m;
@@ -427,8 +420,7 @@ static void test_float_equivalence()
 // Test 5: Multi-step arithmetic — ((5 * 8) - 3) + 1 = 38
 //===----------------------------------------------------------------------===//
 
-static void test_multistep_equivalence()
-{
+static void test_multistep_equivalence() {
     std::cout << "  test_multistep_equivalence: ";
 
     Module m;
@@ -490,8 +482,7 @@ static void test_multistep_equivalence()
 // Main
 //===----------------------------------------------------------------------===//
 
-int main()
-{
+int main() {
     VIPER_DISABLE_ABORT_DIALOG();
     std::cout << "Running VM vs BytecodeVM equivalence tests...\n";
 

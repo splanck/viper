@@ -19,8 +19,7 @@
 
 #include <algorithm>
 
-namespace il::frontends::basic::diagx
-{
+namespace il::frontends::basic::diagx {
 
 /// @brief Report a duplicate procedure definition with both source locations.
 /// @details Emits a single error that names the procedure, lists the original
@@ -33,8 +32,7 @@ namespace il::frontends::basic::diagx
 void ErrorDuplicateProc(DiagnosticEmitter &emitter,
                         std::string_view qname,
                         il::support::SourceLoc first,
-                        il::support::SourceLoc second)
-{
+                        il::support::SourceLoc second) {
     // Compose single actionable message including both definition locations.
     std::string whereFirst = emitter.formatFileLine(first);
     std::string whereSecond = emitter.formatFileLine(second);
@@ -59,19 +57,16 @@ void ErrorDuplicateProc(DiagnosticEmitter &emitter,
 void ErrorUnknownProc(DiagnosticEmitter &emitter,
                       il::support::SourceLoc loc,
                       std::string_view ident,
-                      const std::vector<std::string> &tried)
-{
+                      const std::vector<std::string> &tried) {
     // Canonicalize head identifier if possible to maintain consistency.
     std::string head = CanonicalizeIdent(ident);
     if (head.empty())
         head.assign(ident.begin(), ident.end());
 
     std::string msg = std::string("unknown procedure '") + head + "'";
-    if (!tried.empty())
-    {
+    if (!tried.empty()) {
         msg += " (tried: ";
-        for (std::size_t i = 0; i < tried.size(); ++i)
-        {
+        for (std::size_t i = 0; i < tried.size(); ++i) {
             if (i)
                 msg += ", ";
             msg += tried[i];
@@ -93,8 +88,7 @@ void ErrorUnknownProc(DiagnosticEmitter &emitter,
 /// @param qname Fully-qualified procedure name as written/resolved.
 void ErrorUnknownProcQualified(DiagnosticEmitter &emitter,
                                il::support::SourceLoc loc,
-                               std::string_view qname)
-{
+                               std::string_view qname) {
     emitter.emit(il::support::Severity::Error,
                  "B1006",
                  loc,
@@ -108,20 +102,17 @@ void ErrorUnknownProcQualified(DiagnosticEmitter &emitter,
 /// @param tried Candidate strings to format.
 /// @param limit Maximum number of entries to include before truncating.
 /// @return Parenthesized suffix suitable for appending to an error message.
-static std::string formatTriedList(const std::vector<std::string> &tried, std::size_t limit = 8)
-{
+static std::string formatTriedList(const std::vector<std::string> &tried, std::size_t limit = 8) {
     if (tried.empty())
         return {};
     std::string s = " (tried: ";
     std::size_t n = std::min(tried.size(), limit);
-    for (std::size_t i = 0; i < n; ++i)
-    {
+    for (std::size_t i = 0; i < n; ++i) {
         if (i)
             s += ", ";
         s += tried[i];
     }
-    if (tried.size() > limit)
-    {
+    if (tried.size() > limit) {
         s += ", +" + std::to_string(tried.size() - limit) + " more";
     }
     s += ")";
@@ -139,8 +130,7 @@ static std::string formatTriedList(const std::vector<std::string> &tried, std::s
 void ErrorUnknownProcWithTries(DiagnosticEmitter &emitter,
                                il::support::SourceLoc loc,
                                std::string_view ident,
-                               const std::vector<std::string> &tried)
-{
+                               const std::vector<std::string> &tried) {
     std::string head = CanonicalizeIdent(ident);
     if (head.empty())
         head.assign(ident.begin(), ident.end());
@@ -162,12 +152,10 @@ void ErrorUnknownProcWithTries(DiagnosticEmitter &emitter,
 void ErrorAmbiguousProc(DiagnosticEmitter &emitter,
                         il::support::SourceLoc loc,
                         std::string_view ident,
-                        std::vector<std::string> matches)
-{
+                        std::vector<std::string> matches) {
     std::sort(matches.begin(), matches.end());
     std::string msg = std::string("ambiguous procedure '") + std::string(ident) + "' — matches: ";
-    for (std::size_t i = 0; i < matches.size(); ++i)
-    {
+    for (std::size_t i = 0; i < matches.size(); ++i) {
         if (i)
             msg += ", ";
         msg += matches[i];
@@ -189,8 +177,7 @@ void ErrorAmbiguousProc(DiagnosticEmitter &emitter,
 void ErrorUnknownTypeWithTries(DiagnosticEmitter &emitter,
                                il::support::SourceLoc loc,
                                std::string_view ident,
-                               const std::vector<std::string> &tried)
-{
+                               const std::vector<std::string> &tried) {
     std::string head(ident.begin(), ident.end());
     std::string msg = std::string("unknown type '") + head + "'" + formatTriedList(tried);
     emitter.emit(il::support::Severity::Error,
@@ -208,8 +195,7 @@ void ErrorUnknownTypeWithTries(DiagnosticEmitter &emitter,
 /// @param targetQn Fully-qualified namespace substituted for the alias.
 void NoteAliasExpansion(DiagnosticEmitter &emitter,
                         std::string_view alias,
-                        std::string_view targetQn)
-{
+                        std::string_view targetQn) {
     std::string msg = std::string("alias '") + std::string(alias) + "' -> " + std::string(targetQn);
     emitter.emit(il::support::Severity::Note, "N0001", {}, 0, std::move(msg));
 }
@@ -222,8 +208,7 @@ void NoteAliasExpansion(DiagnosticEmitter &emitter,
 /// @param loc Source location of the user-defined declaration.
 void ErrorBuiltinShadow(DiagnosticEmitter &emitter,
                         std::string_view qname,
-                        il::support::SourceLoc loc)
-{
+                        il::support::SourceLoc loc) {
     // Emit a distinct diagnostic when a user-defined procedure attempts to shadow
     // a builtin extern (seeded from Viper.* runtime registry). Keep the message
     // concise and actionable.

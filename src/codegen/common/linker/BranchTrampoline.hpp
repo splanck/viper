@@ -29,8 +29,7 @@
 #include <ostream>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Insert branch trampolines for out-of-range AArch64 B/BL instructions.
 /// Runs between mergeSections() and applyRelocations() in the link pipeline.

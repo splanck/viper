@@ -29,10 +29,8 @@
 #include <cassert>
 #include <unordered_map>
 
-namespace il::frontends::basic::builtins
-{
-namespace
-{
+namespace il::frontends::basic::builtins {
+namespace {
 using il::runtime::RuntimeFeature;
 
 /// @brief Lower the LEN builtin to a runtime helper invocation.
@@ -47,8 +45,7 @@ using il::runtime::RuntimeFeature;
 /// @param args Array of lowered argument values; unused but required by the
 ///        callback signature.
 /// @return IL value representing the runtime call result.
-Value lowerLen(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerLen(LowerCtx &ctx, ArrayRef<Value> args) {
     (void)args;
     ctx.setResultType(Type(Type::Kind::I64));
     std::vector<Value> callArgs{ctx.argValue(0)};
@@ -67,8 +64,7 @@ Value lowerLen(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param args Pre-lowered argument values (ignored because the context lazily
 ///        materialises them).
 /// @return Runtime call result representing the substring.
-Value lowerMid(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerMid(LowerCtx &ctx, ArrayRef<Value> args) {
     (void)args;
     ctx.setResultType(Type(Type::Kind::Str));
     Value source = ctx.argValue(0);
@@ -87,17 +83,14 @@ Value lowerMid(LowerCtx &ctx, ArrayRef<Value> args)
 
     const char *runtime = nullptr;
     il::support::SourceLoc callLoc = ctx.call().loc;
-    if (hasLength)
-    {
+    if (hasLength) {
         const il::support::SourceLoc lengthLoc = ctx.argLoc(2);
         ctx.ensureI64(2, lengthLoc);
         callArgs.push_back(ctx.argValue(2));
         runtime = "rt_str_mid_len";
         callLoc = lengthLoc;
         ctx.requestHelper(RuntimeFeature::Mid3);
-    }
-    else
-    {
+    } else {
         runtime = "rt_str_mid";
         ctx.requestHelper(RuntimeFeature::Mid2);
     }
@@ -114,8 +107,7 @@ Value lowerMid(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param ctx Active lowering context.
 /// @param args Ignored argument cache required by the callback signature.
 /// @return Value produced by calling the runtime helper.
-Value lowerLeft(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerLeft(LowerCtx &ctx, ArrayRef<Value> args) {
     (void)args;
     ctx.setResultType(Type(Type::Kind::Str));
     Value source = ctx.argValue(0);
@@ -136,8 +128,7 @@ Value lowerLeft(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param ctx Active lowering context.
 /// @param args Unused placeholder complying with the callback signature.
 /// @return Result of invoking the runtime helper.
-Value lowerRight(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerRight(LowerCtx &ctx, ArrayRef<Value> args) {
     (void)args;
     ctx.setResultType(Type(Type::Kind::Str));
     Value source = ctx.argValue(0);
@@ -159,8 +150,7 @@ Value lowerRight(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param ctx Context supplying argument coercions and helper tracking.
 /// @param args Unused placeholder that satisfies the callback signature.
 /// @return Value representing the string produced by the runtime helper.
-Value lowerStr(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerStr(LowerCtx &ctx, ArrayRef<Value> args) {
     (void)args;
     ctx.setResultType(Type(Type::Kind::Str));
     if (!ctx.hasArg(0))
@@ -176,8 +166,7 @@ Value lowerStr(LowerCtx &ctx, ArrayRef<Value> args)
 
     auto narrowInteger = [&](Type::Kind target) { ctx.narrowInt(0, Type(target), argLoc); };
 
-    switch (numericType)
-    {
+    switch (numericType) {
         case TypeRules::NumericType::Integer:
             runtime = "rt_str_i16_alloc";
             feature = RuntimeFeature::StrFromI16;
@@ -217,16 +206,14 @@ Value lowerStr(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param ctx Active lowering context describing the call site.
 /// @param args Ignored placeholder array.
 /// @return Value storing the index returned by the runtime helper.
-Value lowerInstr(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerInstr(LowerCtx &ctx, ArrayRef<Value> args) {
     (void)args;
     ctx.setResultType(Type(Type::Kind::I64));
     std::vector<Value> callArgs;
     const bool hasStart = ctx.hasArg(2);
     const char *runtime = nullptr;
     il::support::SourceLoc callLoc = ctx.call().loc;
-    if (hasStart)
-    {
+    if (hasStart) {
         const il::support::SourceLoc startLoc = ctx.argLoc(0);
         ctx.ensureI64(0, startLoc);
         ctx.addConst(0, -1, startLoc);
@@ -234,9 +221,7 @@ Value lowerInstr(LowerCtx &ctx, ArrayRef<Value> args)
         runtime = "rt_str_instr3";
         callLoc = ctx.argLoc(2);
         ctx.requestHelper(RuntimeFeature::Instr3);
-    }
-    else
-    {
+    } else {
         callArgs = {ctx.argValue(0), ctx.argValue(1)};
         runtime = "rt_str_index_of";
         callLoc = ctx.argLoc(1);
@@ -257,8 +242,7 @@ Value lowerInstr(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param runtime Name of the runtime helper to invoke.
 /// @param feature Runtime capability that must be tracked for the program.
 /// @return Value produced by the selected runtime helper.
-Value lowerTrim(LowerCtx &ctx, ArrayRef<Value> args, const char *runtime, RuntimeFeature feature)
-{
+Value lowerTrim(LowerCtx &ctx, ArrayRef<Value> args, const char *runtime, RuntimeFeature feature) {
     (void)args;
     ctx.setResultType(Type(Type::Kind::Str));
     std::vector<Value> callArgs{ctx.argValue(0)};
@@ -271,8 +255,7 @@ Value lowerTrim(LowerCtx &ctx, ArrayRef<Value> args, const char *runtime, Runtim
 /// @param ctx Active lowering context.
 /// @param args Placeholder argument cache; unused.
 /// @return Runtime call result representing the trimmed string.
-Value lowerLTrim(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerLTrim(LowerCtx &ctx, ArrayRef<Value> args) {
     return lowerTrim(ctx, args, "rt_str_ltrim", RuntimeFeature::Ltrim);
 }
 
@@ -281,8 +264,7 @@ Value lowerLTrim(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param ctx Active lowering context.
 /// @param args Placeholder argument array; unused.
 /// @return String value returned by the runtime helper.
-Value lowerRTrim(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerRTrim(LowerCtx &ctx, ArrayRef<Value> args) {
     return lowerTrim(ctx, args, "rt_str_rtrim", RuntimeFeature::Rtrim);
 }
 
@@ -291,8 +273,7 @@ Value lowerRTrim(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param ctx Active lowering context.
 /// @param args Placeholder argument list; unused.
 /// @return Runtime-produced string result.
-Value lowerTrimBoth(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerTrimBoth(LowerCtx &ctx, ArrayRef<Value> args) {
     return lowerTrim(ctx, args, "rt_str_trim", RuntimeFeature::Trim);
 }
 
@@ -301,8 +282,7 @@ Value lowerTrimBoth(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param ctx Active lowering context.
 /// @param args Placeholder argument span; unused.
 /// @return Upper-cased string emitted by the runtime helper.
-Value lowerUcase(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerUcase(LowerCtx &ctx, ArrayRef<Value> args) {
     return lowerTrim(ctx, args, "rt_str_ucase", RuntimeFeature::Ucase);
 }
 
@@ -311,8 +291,7 @@ Value lowerUcase(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param ctx Active lowering context.
 /// @param args Placeholder argument array; unused.
 /// @return Lower-cased string emitted by the runtime helper.
-Value lowerLcase(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerLcase(LowerCtx &ctx, ArrayRef<Value> args) {
     return lowerTrim(ctx, args, "rt_str_lcase", RuntimeFeature::Lcase);
 }
 
@@ -325,8 +304,7 @@ Value lowerLcase(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param ctx Active lowering context.
 /// @param args Placeholder argument array; unused.
 /// @return Resulting string value provided by the runtime helper.
-Value lowerChr(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerChr(LowerCtx &ctx, ArrayRef<Value> args) {
     (void)args;
     ctx.setResultType(Type(Type::Kind::Str));
     const il::support::SourceLoc loc = ctx.argLoc(0);
@@ -344,8 +322,7 @@ Value lowerChr(LowerCtx &ctx, ArrayRef<Value> args)
 /// @param ctx Active lowering context.
 /// @param args Placeholder argument span; unused.
 /// @return Integer value returned by the runtime helper.
-Value lowerAsc(LowerCtx &ctx, ArrayRef<Value> args)
-{
+Value lowerAsc(LowerCtx &ctx, ArrayRef<Value> args) {
     (void)args;
     ctx.setResultType(Type(Type::Kind::I64));
     std::vector<Value> callArgs{ctx.argValue(0)};
@@ -378,12 +355,10 @@ const std::array<BuiltinSpec, 13> kStringBuiltins = {{{"LEN", 1, 1, &lowerLen},
 ///
 /// @param name Builtin identifier as it appears in BASIC source.
 /// @return Pointer to the builtin specification or `nullptr` if not found.
-const BuiltinSpec *findBuiltin(StringRef name)
-{
+const BuiltinSpec *findBuiltin(StringRef name) {
     // Build the lookup map once on first call using a function-local static.
     // The map stores string_view -> pointer mappings from the static table.
-    static const auto &map = *[]
-    {
+    static const auto &map = *[] {
         auto *m = new std::unordered_map<std::string_view, const BuiltinSpec *>();
         m->reserve(kStringBuiltins.size());
         for (const auto &spec : kStringBuiltins)
@@ -403,23 +378,18 @@ const BuiltinSpec *findBuiltin(StringRef name)
 ///
 /// @param lowerer Owning lowering driver used to materialise IL.
 /// @param call AST node describing the builtin invocation.
-LowerCtx::LowerCtx(Lowerer &lowerer, const BuiltinCallExpr &call) : lowerer_(lowerer), call_(call)
-{
+LowerCtx::LowerCtx(Lowerer &lowerer, const BuiltinCallExpr &call) : lowerer_(lowerer), call_(call) {
     const std::size_t count = call.args.size();
     loweredArgs_.resize(count);
     argValues_.assign(count, Value::constInt(0));
     argLocs_.resize(count);
     hasArg_.resize(count);
-    for (std::size_t i = 0; i < count; ++i)
-    {
+    for (std::size_t i = 0; i < count; ++i) {
         const auto &expr = call.args[i];
-        if (expr)
-        {
+        if (expr) {
             hasArg_[i] = true;
             argLocs_[i] = expr->loc;
-        }
-        else
-        {
+        } else {
             hasArg_[i] = false;
             argLocs_[i] = call.loc;
         }
@@ -428,22 +398,19 @@ LowerCtx::LowerCtx(Lowerer &lowerer, const BuiltinCallExpr &call) : lowerer_(low
 
 /// @brief Retrieve the lowering driver powering this context.
 /// @return Reference to the owning lowering driver.
-Lowerer &LowerCtx::lowerer() const noexcept
-{
+Lowerer &LowerCtx::lowerer() const noexcept {
     return lowerer_;
 }
 
 /// @brief Access the builtin call node being processed.
 /// @return Immutable reference to the builtin call expression.
-const BuiltinCallExpr &LowerCtx::call() const noexcept
-{
+const BuiltinCallExpr &LowerCtx::call() const noexcept {
     return call_;
 }
 
 /// @brief Compute the total number of argument slots available.
 /// @return Number of argument positions recorded on the call.
-std::size_t LowerCtx::argCount() const noexcept
-{
+std::size_t LowerCtx::argCount() const noexcept {
     return call_.args.size();
 }
 
@@ -451,8 +418,7 @@ std::size_t LowerCtx::argCount() const noexcept
 ///
 /// @param idx Zero-based argument index.
 /// @return True when the call expression contains an expression at @p idx.
-bool LowerCtx::hasArg(std::size_t idx) const noexcept
-{
+bool LowerCtx::hasArg(std::size_t idx) const noexcept {
     return idx < hasArg_.size() && hasArg_[idx];
 }
 
@@ -464,8 +430,7 @@ bool LowerCtx::hasArg(std::size_t idx) const noexcept
 ///
 /// @param idx Argument index to inspect.
 /// @return Location of the argument expression or the call site fallback.
-il::support::SourceLoc LowerCtx::argLoc(std::size_t idx) const noexcept
-{
+il::support::SourceLoc LowerCtx::argLoc(std::size_t idx) const noexcept {
     if (idx < argLocs_.size())
         return argLocs_[idx];
     return call_.loc;
@@ -479,8 +444,7 @@ il::support::SourceLoc LowerCtx::argLoc(std::size_t idx) const noexcept
 ///
 /// @param idx Argument index to materialise.
 /// @return Reference to the cached lowering result.
-Lowerer::RVal &LowerCtx::arg(std::size_t idx)
-{
+Lowerer::RVal &LowerCtx::arg(std::size_t idx) {
     return ensureLowered(idx);
 }
 
@@ -492,8 +456,7 @@ Lowerer::RVal &LowerCtx::arg(std::size_t idx)
 ///
 /// @param idx Argument index to inspect.
 /// @return Mutable reference to the cached IL value.
-Value &LowerCtx::argValue(std::size_t idx)
-{
+Value &LowerCtx::argValue(std::size_t idx) {
     ensureLowered(idx);
     assert(idx < argValues_.size());
     return argValues_[idx];
@@ -506,22 +469,19 @@ Value &LowerCtx::argValue(std::size_t idx)
 ///          default-initialised placeholder until accessed.
 ///
 /// @return Lightweight array reference covering the cached values.
-ArrayRef<Value> LowerCtx::values() noexcept
-{
+ArrayRef<Value> LowerCtx::values() noexcept {
     return ArrayRef<Value>(argValues_.data(), argValues_.size());
 }
 
 /// @brief Record the result type that the handler will synthesize.
 /// @param ty Result type chosen by the lowering routine.
-void LowerCtx::setResultType(Type ty) noexcept
-{
+void LowerCtx::setResultType(Type ty) noexcept {
     resultType_ = ty;
 }
 
 /// @brief Query the result type previously recorded by the handler.
 /// @return Type reported by the lowering routine.
-Type LowerCtx::resultType() const noexcept
-{
+Type LowerCtx::resultType() const noexcept {
     return resultType_;
 }
 
@@ -534,8 +494,7 @@ Type LowerCtx::resultType() const noexcept
 /// @param idx Argument index to coerce.
 /// @param loc Source location used for diagnostics should the coercion fail.
 /// @return Reference to the coerced r-value slot.
-Lowerer::RVal &LowerCtx::ensureI64(std::size_t idx, il::support::SourceLoc loc)
-{
+Lowerer::RVal &LowerCtx::ensureI64(std::size_t idx, il::support::SourceLoc loc) {
     Lowerer::RVal &slot = ensureLowered(idx);
     Lowerer::RVal coerced = lowerer_.ensureI64(slot, loc);
     slot = coerced;
@@ -548,8 +507,7 @@ Lowerer::RVal &LowerCtx::ensureI64(std::size_t idx, il::support::SourceLoc loc)
 /// @param idx Argument index to coerce.
 /// @param loc Location used for diagnostics.
 /// @return Reference to the coerced r-value slot.
-Lowerer::RVal &LowerCtx::ensureF64(std::size_t idx, il::support::SourceLoc loc)
-{
+Lowerer::RVal &LowerCtx::ensureF64(std::size_t idx, il::support::SourceLoc loc) {
     Lowerer::RVal &slot = ensureLowered(idx);
     Lowerer::RVal coerced = lowerer_.ensureF64(slot, loc);
     slot = coerced;
@@ -567,8 +525,7 @@ Lowerer::RVal &LowerCtx::ensureF64(std::size_t idx, il::support::SourceLoc loc)
 /// @param idx Argument index to coerce.
 /// @param loc Diagnostic location for conversion failures.
 /// @return Reference to the coerced slot.
-Lowerer::RVal &LowerCtx::coerceToI64(std::size_t idx, il::support::SourceLoc loc)
-{
+Lowerer::RVal &LowerCtx::coerceToI64(std::size_t idx, il::support::SourceLoc loc) {
     Lowerer::RVal &slot = ensureLowered(idx);
     Lowerer::RVal coerced = lowerer_.coerceToI64(slot, loc);
     slot = coerced;
@@ -581,8 +538,7 @@ Lowerer::RVal &LowerCtx::coerceToI64(std::size_t idx, il::support::SourceLoc loc
 /// @param idx Argument index being coerced.
 /// @param loc Location used when reporting conversion diagnostics.
 /// @return Reference to the coerced slot.
-Lowerer::RVal &LowerCtx::coerceToF64(std::size_t idx, il::support::SourceLoc loc)
-{
+Lowerer::RVal &LowerCtx::coerceToF64(std::size_t idx, il::support::SourceLoc loc) {
     Lowerer::RVal &slot = ensureLowered(idx);
     Lowerer::RVal coerced = lowerer_.coerceToF64(slot, loc);
     slot = coerced;
@@ -602,8 +558,7 @@ Lowerer::RVal &LowerCtx::coerceToF64(std::size_t idx, il::support::SourceLoc loc
 /// @return Reference to the mutated slot.
 Lowerer::RVal &LowerCtx::addConst(std::size_t idx,
                                   std::int64_t immediate,
-                                  il::support::SourceLoc loc)
-{
+                                  il::support::SourceLoc loc) {
     Lowerer::RVal &slot = ensureLowered(idx);
     slot.value = lowerer_.emitCommon(loc).add_checked(
         slot.value, Value::constInt(immediate), OverflowPolicy::Checked);
@@ -623,16 +578,13 @@ Lowerer::RVal &LowerCtx::addConst(std::size_t idx,
 /// @param target Target integer type that the runtime expects.
 /// @param loc Diagnostic location associated with the conversion.
 /// @return Reference to the narrowed slot.
-Lowerer::RVal &LowerCtx::narrowInt(std::size_t idx, Type target, il::support::SourceLoc loc)
-{
+Lowerer::RVal &LowerCtx::narrowInt(std::size_t idx, Type target, il::support::SourceLoc loc) {
     Lowerer::RVal &slot = ensureLowered(idx);
-    if (slot.type.kind != target.kind)
-    {
+    if (slot.type.kind != target.kind) {
         Lowerer::RVal coerced = lowerer_.coerceToI64(slot, loc);
         slot = coerced;
         int targetBits = 64;
-        switch (target.kind)
-        {
+        switch (target.kind) {
             case Type::Kind::I1:
                 targetBits = 1;
                 break;
@@ -660,24 +612,21 @@ Lowerer::RVal &LowerCtx::narrowInt(std::size_t idx, Type target, il::support::So
 ///
 /// @param expr AST node to classify.
 /// @return Inferred numeric category used when selecting runtime helpers.
-TypeRules::NumericType LowerCtx::classifyNumericType(const Expr &expr)
-{
+TypeRules::NumericType LowerCtx::classifyNumericType(const Expr &expr) {
     return lowerer_.classifyNumericType(expr);
 }
 
 /// @brief Request that the program imports a specific runtime helper.
 ///
 /// @param feature Runtime capability needed by the lowering routine.
-void LowerCtx::requestHelper(RuntimeFeature feature)
-{
+void LowerCtx::requestHelper(RuntimeFeature feature) {
     lowerer_.requestHelper(feature);
 }
 
 /// @brief Record that a runtime helper was used so manifests remain accurate.
 ///
 /// @param feature Runtime capability that was consumed.
-void LowerCtx::trackRuntime(RuntimeFeature feature)
-{
+void LowerCtx::trackRuntime(RuntimeFeature feature) {
     lowerer_.trackRuntime(feature);
 }
 
@@ -694,8 +643,7 @@ void LowerCtx::trackRuntime(RuntimeFeature feature)
 Value LowerCtx::emitCallRet(Type ty,
                             const char *runtime,
                             const std::vector<Value> &args,
-                            il::support::SourceLoc loc)
-{
+                            il::support::SourceLoc loc) {
     lowerer_.curLoc = loc;
     return lowerer_.emitCallRet(ty, runtime, args);
 }
@@ -708,20 +656,15 @@ Value LowerCtx::emitCallRet(Type ty,
 ///
 /// @param idx Argument index to materialise.
 /// @return Reference to the cached lowering result for the argument.
-Lowerer::RVal &LowerCtx::ensureLowered(std::size_t idx)
-{
+Lowerer::RVal &LowerCtx::ensureLowered(std::size_t idx) {
     assert(idx < loweredArgs_.size());
     auto &slot = loweredArgs_[idx];
-    if (!slot)
-    {
-        if (hasArg(idx))
-        {
+    if (!slot) {
+        if (hasArg(idx)) {
             const auto &expr = call_.args[idx];
             assert(expr && "expected expression for present argument");
             slot = lowerer_.lowerExpr(*expr);
-        }
-        else
-        {
+        } else {
             slot = Lowerer::RVal{Value::constInt(0), Type(Type::Kind::I64)};
         }
         argValues_[idx] = slot->value;
@@ -732,8 +675,7 @@ Lowerer::RVal &LowerCtx::ensureLowered(std::size_t idx)
 /// @brief Synchronise the cached `Value` with the most recent lowered result.
 ///
 /// @param idx Argument index whose cached value should be refreshed.
-void LowerCtx::syncValue(std::size_t idx) noexcept
-{
+void LowerCtx::syncValue(std::size_t idx) noexcept {
     assert(idx < argValues_.size());
     if (idx < loweredArgs_.size() && loweredArgs_[idx])
         argValues_[idx] = loweredArgs_[idx]->value;

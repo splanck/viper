@@ -17,11 +17,9 @@
 
 #include <fstream>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
-ObjFileFormat detectFormat(const uint8_t *data, size_t size)
-{
+ObjFileFormat detectFormat(const uint8_t *data, size_t size) {
     if (size < 4)
         return ObjFileFormat::Unknown;
 
@@ -34,8 +32,7 @@ ObjFileFormat detectFormat(const uint8_t *data, size_t size)
         return ObjFileFormat::MachO;
 
     // COFF: check for known machine types at offset 0.
-    if (size >= 20)
-    {
+    if (size >= 20) {
         const uint16_t machine =
             static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
         if (machine == 0x8664 || machine == 0xAA64)
@@ -46,11 +43,9 @@ ObjFileFormat detectFormat(const uint8_t *data, size_t size)
 }
 
 bool readObjFile(
-    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err)
-{
+    const uint8_t *data, size_t size, const std::string &name, ObjFile &obj, std::ostream &err) {
     const ObjFileFormat fmt = detectFormat(data, size);
-    switch (fmt)
-    {
+    switch (fmt) {
         case ObjFileFormat::ELF:
             return readElfObj(data, size, name, obj, err);
         case ObjFileFormat::MachO:
@@ -64,11 +59,9 @@ bool readObjFile(
     return false;
 }
 
-bool readObjFile(const std::string &path, ObjFile &obj, std::ostream &err)
-{
+bool readObjFile(const std::string &path, ObjFile &obj, std::ostream &err) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
-    if (!f)
-    {
+    if (!f) {
         err << "error: cannot open object file '" << path << "'\n";
         return false;
     }
@@ -76,8 +69,7 @@ bool readObjFile(const std::string &path, ObjFile &obj, std::ostream &err)
     f.seekg(0);
     std::vector<uint8_t> data(fileSize);
     f.read(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(fileSize));
-    if (!f)
-    {
+    if (!f) {
         err << "error: failed to read object file '" << path << "'\n";
         return false;
     }

@@ -57,19 +57,16 @@
 #include <unordered_set>
 #include <vector>
 
-namespace il::build
-{
+namespace il::build {
 class IRBuilder;
 } // namespace il::build
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Tracks runtime helper usage across scanning and lowering.
 /// @invariant Helpers are declared at most once and maintain first-use order.
 /// @ownership Owned by Lowerer; stores transient state per lowering run.
-class RuntimeHelperTracker
-{
+class RuntimeHelperTracker {
   public:
     using RuntimeFeature = il::runtime::RuntimeFeature;
 
@@ -89,8 +86,7 @@ class RuntimeHelperTracker
     void declareRequiredRuntime(build::IRBuilder &b, bool boundsChecks) const;
 
   private:
-    struct RuntimeFeatureHash
-    {
+    struct RuntimeFeatureHash {
         std::size_t operator()(RuntimeFeature f) const;
     };
 
@@ -110,8 +106,7 @@ class RuntimeHelperTracker
     void trackCalleeName(std::string_view name);
 
     /// @brief Enumerate callee names recorded so far.
-    const std::unordered_set<std::string> &usedNames() const
-    {
+    const std::unordered_set<std::string> &usedNames() const {
         return usedNames_;
     }
 };

@@ -19,16 +19,14 @@
 
 #include "support/source_location.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 // Forward declare to allow visitor signatures without including full definition.
 struct NamespaceDecl;
 struct UsingDecl;
 struct UsingStmt;
 
 /// @brief Visitor interface for BASIC statements.
-struct StmtVisitor
-{
+struct StmtVisitor {
     virtual ~StmtVisitor() = default;
     virtual void visit(const LabelStmt &) = 0;
     virtual void visit(const PrintStmt &) = 0;
@@ -97,8 +95,7 @@ struct StmtVisitor
 };
 
 /// @brief Visitor interface for mutable BASIC statements.
-struct MutStmtVisitor
-{
+struct MutStmtVisitor {
     virtual ~MutStmtVisitor() = default;
     virtual void visit(LabelStmt &) = 0;
     virtual void visit(PrintStmt &) = 0;
@@ -167,11 +164,9 @@ struct MutStmtVisitor
 };
 
 /// @brief Base class for all BASIC statements.
-struct Stmt
-{
+struct Stmt {
     /// @brief Discriminator identifying the concrete statement subclass.
-    enum class Kind
-    {
+    enum class Kind {
         Label,
         Print,
         PrintCh,

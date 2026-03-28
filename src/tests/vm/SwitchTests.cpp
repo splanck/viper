@@ -29,25 +29,21 @@
 
 using namespace il::core;
 
-namespace
-{
-struct CaseSpec
-{
+namespace {
+struct CaseSpec {
     std::string label;
     int32_t match;
     int64_t ret;
 };
 
-struct SwitchSpec
-{
+struct SwitchSpec {
     int32_t scrutinee;
     std::string defaultLabel;
     int64_t defaultValue;
     std::vector<CaseSpec> cases;
 };
 
-Instr makeRet(int64_t value)
-{
+Instr makeRet(int64_t value) {
     Instr ret;
     ret.op = Opcode::Ret;
     ret.type = Type(Type::Kind::Void);
@@ -55,8 +51,7 @@ Instr makeRet(int64_t value)
     return ret;
 }
 
-Module buildSwitchModule(const SwitchSpec &spec)
-{
+Module buildSwitchModule(const SwitchSpec &spec) {
     Module module;
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -66,10 +61,8 @@ Module buildSwitchModule(const SwitchSpec &spec)
     for (const auto &cs : spec.cases)
         builder.addBlock(fn, cs.label);
 
-    auto findBlock = [&fn](const std::string &label) -> BasicBlock &
-    {
-        for (auto &block : fn.blocks)
-        {
+    auto findBlock = [&fn](const std::string &label) -> BasicBlock & {
+        for (auto &block : fn.blocks) {
             if (block.label == label)
                 return block;
         }
@@ -91,8 +84,7 @@ Module buildSwitchModule(const SwitchSpec &spec)
     sw.operands.push_back(Value::constInt(spec.scrutinee));
     sw.labels.push_back(spec.defaultLabel);
     sw.brArgs.emplace_back();
-    for (const auto &cs : spec.cases)
-    {
+    for (const auto &cs : spec.cases) {
         sw.operands.push_back(Value::constInt(cs.match));
         sw.labels.push_back(cs.label);
         sw.brArgs.emplace_back();
@@ -102,8 +94,7 @@ Module buildSwitchModule(const SwitchSpec &spec)
 
     defaultBlock.instructions.push_back(makeRet(spec.defaultValue));
     defaultBlock.terminated = true;
-    for (size_t i = 0; i < caseBlocks.size(); ++i)
-    {
+    for (size_t i = 0; i < caseBlocks.size(); ++i) {
         caseBlocks[i]->instructions.push_back(makeRet(spec.cases[i].ret));
         caseBlocks[i]->terminated = true;
     }
@@ -111,8 +102,7 @@ Module buildSwitchModule(const SwitchSpec &spec)
     return module;
 }
 
-int64_t runSwitch(const SwitchSpec &baseSpec, int32_t scrutinee)
-{
+int64_t runSwitch(const SwitchSpec &baseSpec, int32_t scrutinee) {
     SwitchSpec spec = baseSpec;
     spec.scrutinee = scrutinee;
     Module module = buildSwitchModule(spec);
@@ -120,11 +110,9 @@ int64_t runSwitch(const SwitchSpec &baseSpec, int32_t scrutinee)
     return vm.run();
 }
 
-std::string readFile(const std::string &path, bool &found)
-{
+std::string readFile(const std::string &path, bool &found) {
     std::ifstream file(path);
-    if (!file)
-    {
+    if (!file) {
         found = false;
         return {};
     }
@@ -134,8 +122,7 @@ std::string readFile(const std::string &path, bool &found)
     return buffer.str();
 }
 
-std::string switchTraceGolden(bool &found)
-{
+std::string switchTraceGolden(bool &found) {
 #ifdef TESTS_DIR
     const std::string path = std::string(TESTS_DIR) + "/golden/il_opt/switch_basic.out";
 #else
@@ -145,8 +132,7 @@ std::string switchTraceGolden(bool &found)
 }
 } // namespace
 
-int main()
-{
+int main() {
     {
         const SwitchSpec denseBase{
             0,
@@ -201,12 +187,9 @@ int main()
         assert(result == 111);
         bool goldenFound = false;
         const std::string expected = switchTraceGolden(goldenFound);
-        if (goldenFound)
-        {
+        if (goldenFound) {
             assert(err.str() == expected);
-        }
-        else
-        {
+        } else {
             std::cout << "SKIP: switch_basic.out golden file missing\n";
             std::cout << "To create it, save the following trace output:\n";
             std::cout << "---BEGIN---\n" << err.str() << "---END---\n";

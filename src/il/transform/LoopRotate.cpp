@@ -57,29 +57,22 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
-namespace
-{
+namespace il::transform {
+namespace {
 
-size_t findBlockIndex(const Function &function, const std::string &label)
-{
-    for (size_t i = 0; i < function.blocks.size(); ++i)
-    {
+size_t findBlockIndex(const Function &function, const std::string &label) {
+    for (size_t i = 0; i < function.blocks.size(); ++i) {
         if (function.blocks[i].label == label)
             return i;
     }
     return SIZE_MAX;
 }
 
-std::string makeUniqueLabel(const Function &function, const std::string &base)
-{
+std::string makeUniqueLabel(const Function &function, const std::string &base) {
     std::string candidate = base;
     unsigned suffix = 0;
-    auto labelExists = [&](const std::string &label)
-    {
-        for (const auto &block : function.blocks)
-        {
+    auto labelExists = [&](const std::string &label) {
+        for (const auto &block : function.blocks) {
             if (block.label == label)
                 return true;
         }
@@ -96,8 +89,7 @@ std::string makeUniqueLabel(const Function &function, const std::string &base)
 ///          by a cbr terminator. All instructions before the cbr must be pure
 ///          (comparisons, arithmetic, casts) so they can be safely duplicated
 ///          into the latch block.
-bool isRotatableHeader(const BasicBlock &header, const Loop &loop)
-{
+bool isRotatableHeader(const BasicBlock &header, const Loop &loop) {
     if (header.instructions.empty())
         return false;
 
@@ -111,8 +103,7 @@ bool isRotatableHeader(const BasicBlock &header, const Loop &loop)
 
     bool hasInside = false;
     bool hasOutside = false;
-    for (const auto &label : term.labels)
-    {
+    for (const auto &label : term.labels) {
         if (loop.contains(label))
             hasInside = true;
         else
@@ -123,8 +114,7 @@ bool isRotatableHeader(const BasicBlock &header, const Loop &loop)
 
     // All non-terminator instructions must be safe to duplicate:
     // pure value-producing instructions with no side effects.
-    for (size_t i = 0; i + 1 < header.instructions.size(); ++i)
-    {
+    for (size_t i = 0; i + 1 < header.instructions.size(); ++i) {
         const auto &instr = header.instructions[i];
         if (!instr.result.has_value())
             return false;
@@ -151,22 +141,18 @@ bool isRotatableHeader(const BasicBlock &header, const Loop &loop)
 /// @return Cloned instruction with remapped operands and result.
 Instr cloneInstr(const Instr &src,
                  const std::unordered_map<unsigned, unsigned> &remap,
-                 unsigned &nextId)
-{
+                 unsigned &nextId) {
     Instr clone = src;
 
     // Remap result
-    if (clone.result.has_value())
-    {
+    if (clone.result.has_value()) {
         unsigned newId = nextId++;
         clone.result = newId;
     }
 
     // Remap operands
-    for (auto &op : clone.operands)
-    {
-        if (op.kind == Value::Kind::Temp)
-        {
+    for (auto &op : clone.operands) {
+        if (op.kind == Value::Kind::Temp) {
             auto it = remap.find(op.id);
             if (it != remap.end())
                 op.id = it->second;
@@ -178,8 +164,7 @@ Instr cloneInstr(const Instr &src,
 
 /// @brief Attempt to rotate a single loop.
 /// @return True if the loop was rotated.
-bool rotateLoop(Function &function, const Loop &loop)
-{
+bool rotateLoop(Function &function, const Loop &loop) {
     // Require single latch and single exit for safety
     if (loop.latchLabels.size() != 1)
         return false;
@@ -206,15 +191,11 @@ bool rotateLoop(Function &function, const Loop &loop)
     size_t bodyBrArgIdx = SIZE_MAX;
     size_t exitBrArgIdx = SIZE_MAX;
 
-    for (size_t i = 0; i < headerTerm.labels.size(); ++i)
-    {
-        if (loop.contains(headerTerm.labels[i]))
-        {
+    for (size_t i = 0; i < headerTerm.labels.size(); ++i) {
+        if (loop.contains(headerTerm.labels[i])) {
             bodySuccLabel = headerTerm.labels[i];
             bodyBrArgIdx = i;
-        }
-        else
-        {
+        } else {
             exitLabel = headerTerm.labels[i];
             exitBrArgIdx = i;
         }
@@ -247,8 +228,7 @@ bool rotateLoop(Function &function, const Loop &loop)
         latchArgs = latchTerm.brArgs[0];
 
     // Collect outside-loop predecessors of the header (entry edges)
-    struct EntryEdge
-    {
+    struct EntryEdge {
         size_t blockIdx;
         size_t labelIdx;
         std::vector<Value> args;
@@ -256,18 +236,14 @@ bool rotateLoop(Function &function, const Loop &loop)
 
     std::vector<EntryEdge> entryEdges;
 
-    for (size_t bi = 0; bi < function.blocks.size(); ++bi)
-    {
+    for (size_t bi = 0; bi < function.blocks.size(); ++bi) {
         if (loop.contains(function.blocks[bi].label))
             continue;
-        for (auto &instr : function.blocks[bi].instructions)
-        {
+        for (auto &instr : function.blocks[bi].instructions) {
             if (!viper::il::isTerminator(instr))
                 continue;
-            for (size_t li = 0; li < instr.labels.size(); ++li)
-            {
-                if (instr.labels[li] == headerLabel)
-                {
+            for (size_t li = 0; li < instr.labels.size(); ++li) {
+                if (instr.labels[li] == headerLabel) {
                     std::vector<Value> args;
                     if (li < instr.brArgs.size())
                         args = instr.brArgs[li];
@@ -299,8 +275,7 @@ bool rotateLoop(Function &function, const Loop &loop)
 
     // Re-ID the guard's params
     std::unordered_map<unsigned, unsigned> guardRemap;
-    for (auto &param : guard.params)
-    {
+    for (auto &param : guard.params) {
         unsigned newId = nextId++;
         guardRemap[param.id] = newId;
         param.id = newId;
@@ -310,8 +285,7 @@ bool rotateLoop(Function &function, const Loop &loop)
     }
 
     // Clone header instructions into guard, remapping temp references
-    for (const auto &instr : headerInstrs)
-    {
+    for (const auto &instr : headerInstrs) {
         Instr clone = cloneInstr(instr, guardRemap, nextId);
 
         // Update remap with new result ID
@@ -319,15 +293,11 @@ bool rotateLoop(Function &function, const Loop &loop)
             guardRemap[*instr.result] = *clone.result;
 
         // For the cbr terminator, remap its body-successor branch args
-        if (clone.op == Opcode::CBr)
-        {
+        if (clone.op == Opcode::CBr) {
             // Remap branch args to use guard's remapped values
-            for (auto &bundle : clone.brArgs)
-            {
-                for (auto &arg : bundle)
-                {
-                    if (arg.kind == Value::Kind::Temp)
-                    {
+            for (auto &bundle : clone.brArgs) {
+                for (auto &arg : bundle) {
+                    if (arg.kind == Value::Kind::Temp) {
                         auto it = guardRemap.find(arg.id);
                         if (it != guardRemap.end())
                             arg.id = it->second;
@@ -347,8 +317,7 @@ bool rotateLoop(Function &function, const Loop &loop)
 
     // Build remap from header params to latch args
     std::unordered_map<unsigned, unsigned> latchRemap;
-    for (size_t pi = 0; pi < headerParams.size() && pi < latchArgs.size(); ++pi)
-    {
+    for (size_t pi = 0; pi < headerParams.size() && pi < latchArgs.size(); ++pi) {
         if (latchArgs[pi].kind == Value::Kind::Temp)
             latchRemap[headerParams[pi].id] = latchArgs[pi].id;
     }
@@ -359,20 +328,16 @@ bool rotateLoop(Function &function, const Loop &loop)
         latchInstrs.pop_back();
 
     // Clone header instructions into latch
-    for (const auto &instr : headerInstrs)
-    {
+    for (const auto &instr : headerInstrs) {
         Instr clone = cloneInstr(instr, latchRemap, nextId);
 
         if (instr.result.has_value() && clone.result.has_value())
             latchRemap[*instr.result] = *clone.result;
 
-        if (clone.op == Opcode::CBr)
-        {
+        if (clone.op == Opcode::CBr) {
             // Remap cbr operands
-            for (auto &op : clone.operands)
-            {
-                if (op.kind == Value::Kind::Temp)
-                {
+            for (auto &op : clone.operands) {
+                if (op.kind == Value::Kind::Temp) {
                     auto it = latchRemap.find(op.id);
                     if (it != latchRemap.end())
                         op.id = it->second;
@@ -382,33 +347,23 @@ bool rotateLoop(Function &function, const Loop &loop)
             // Redirect: body successor → bodySuccLabel, exit → exitLabel
             // The cbr's body-side should branch to the body successor with latch args
             // The exit-side keeps its target
-            for (size_t li = 0; li < clone.labels.size(); ++li)
-            {
-                if (clone.labels[li] == bodySuccLabel)
-                {
+            for (size_t li = 0; li < clone.labels.size(); ++li) {
+                if (clone.labels[li] == bodySuccLabel) {
                     // Remap body branch args
-                    if (li < clone.brArgs.size())
-                    {
-                        for (auto &arg : clone.brArgs[li])
-                        {
-                            if (arg.kind == Value::Kind::Temp)
-                            {
+                    if (li < clone.brArgs.size()) {
+                        for (auto &arg : clone.brArgs[li]) {
+                            if (arg.kind == Value::Kind::Temp) {
                                 auto it = latchRemap.find(arg.id);
                                 if (it != latchRemap.end())
                                     arg.id = it->second;
                             }
                         }
                     }
-                }
-                else
-                {
+                } else {
                     // Exit branch args
-                    if (li < clone.brArgs.size())
-                    {
-                        for (auto &arg : clone.brArgs[li])
-                        {
-                            if (arg.kind == Value::Kind::Temp)
-                            {
+                    if (li < clone.brArgs.size()) {
+                        for (auto &arg : clone.brArgs[li]) {
+                            if (arg.kind == Value::Kind::Temp) {
                                 auto it = latchRemap.find(arg.id);
                                 if (it != latchRemap.end())
                                     arg.id = it->second;
@@ -424,8 +379,7 @@ bool rotateLoop(Function &function, const Loop &loop)
     function.blocks[latchIdx].terminated = true;
 
     // === Step 3: Redirect entry edges to the guard block ===
-    for (const auto &edge : entryEdges)
-    {
+    for (const auto &edge : entryEdges) {
         auto &instr = function.blocks[edge.blockIdx].instructions.back();
         instr.labels[edge.labelIdx] = guardLabel;
     }
@@ -445,18 +399,15 @@ bool rotateLoop(Function &function, const Loop &loop)
 
 } // namespace
 
-std::string_view LoopRotate::id() const
-{
+std::string_view LoopRotate::id() const {
     return "loop-rotate";
 }
 
-PreservedAnalyses LoopRotate::run(Function &function, AnalysisManager &analysis)
-{
+PreservedAnalyses LoopRotate::run(Function &function, AnalysisManager &analysis) {
     auto &loopInfo = analysis.getFunctionResult<LoopInfo>(kAnalysisLoopInfo, function);
 
     bool changed = false;
-    for (const Loop &loop : loopInfo.loops())
-    {
+    for (const Loop &loop : loopInfo.loops()) {
         // Skip nested loops — only rotate outermost
         if (!loop.parentHeader.empty())
             continue;

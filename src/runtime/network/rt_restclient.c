@@ -28,8 +28,7 @@
 // Internal Structure
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     rt_string base_url;
     void *headers; // Map of default headers
     int64_t timeout_ms;
@@ -41,8 +40,7 @@ typedef struct
 // Finalizer
 //=============================================================================
 
-static void rest_client_finalize(void *obj)
-{
+static void rest_client_finalize(void *obj) {
     if (!obj)
         return;
     rest_client *client = (rest_client *)obj;
@@ -61,8 +59,7 @@ static void rest_client_finalize(void *obj)
 // Helper Functions
 //=============================================================================
 
-static rt_string join_url(rt_string base, rt_string path)
-{
+static rt_string join_url(rt_string base, rt_string path) {
     const char *base_str = rt_string_cstr(base);
     const char *path_str = rt_string_cstr(path);
 
@@ -79,8 +76,7 @@ static rt_string join_url(rt_string base, rt_string path)
         base_len--;
 
     // Remove leading slash from path if present
-    while (path_len > 0 && path_str[0] == '/')
-    {
+    while (path_len > 0 && path_str[0] == '/') {
         path_str++;
         path_len--;
     }
@@ -96,8 +92,7 @@ static rt_string join_url(rt_string base, rt_string path)
         status = rt_sb_append_bytes(&sb, "/", 1);
     if (status == RT_SB_OK)
         status = rt_sb_append_bytes(&sb, path_str, path_len);
-    if (status != RT_SB_OK)
-    {
+    if (status != RT_SB_OK) {
         rt_sb_free(&sb);
         rt_trap("RestClient: memory allocation failed");
     }
@@ -107,8 +102,7 @@ static rt_string join_url(rt_string base, rt_string path)
     return out;
 }
 
-static void *create_request(rest_client *client, rt_string method, rt_string path)
-{
+static void *create_request(rest_client *client, rt_string method, rt_string path) {
     rt_string url = join_url(client->base_url, path);
     void *req = rt_http_req_new(method, url);
     rt_string_unref(url); // Release after use — req copies the C string
@@ -116,12 +110,10 @@ static void *create_request(rest_client *client, rt_string method, rt_string pat
     // Apply default headers
     void *keys = rt_map_keys(client->headers);
     int64_t count = rt_seq_len(keys);
-    for (int64_t i = 0; i < count; i++)
-    {
+    for (int64_t i = 0; i < count; i++) {
         rt_string key = (rt_string)rt_seq_get(keys, i);
         void *val = rt_map_get(client->headers, key);
-        if (val)
-        {
+        if (val) {
             rt_http_req_set_header(req, key, (rt_string)val);
         }
     }
@@ -130,16 +122,14 @@ static void *create_request(rest_client *client, rt_string method, rt_string pat
         rt_obj_free(keys);
 
     // Apply timeout
-    if (client->timeout_ms > 0)
-    {
+    if (client->timeout_ms > 0) {
         rt_http_req_set_timeout(req, client->timeout_ms);
     }
 
     return req;
 }
 
-static void *execute_request(rest_client *client, void *req)
-{
+static void *execute_request(rest_client *client, void *req) {
     void *res = rt_http_req_send(req);
 
     // Release the previous response before taking ownership of the new one (RC-2 fix)
@@ -155,8 +145,7 @@ static void *execute_request(rest_client *client, void *req)
 // Creation and Configuration
 //=============================================================================
 
-void *rt_restclient_new(rt_string base_url)
-{
+void *rt_restclient_new(rt_string base_url) {
     rest_client *client = (rest_client *)rt_obj_new_i64(0, (int64_t)sizeof(rest_client));
     memset(client, 0, sizeof(rest_client));
 
@@ -171,32 +160,28 @@ void *rt_restclient_new(rt_string base_url)
     return client;
 }
 
-rt_string rt_restclient_base_url(void *obj)
-{
+rt_string rt_restclient_base_url(void *obj) {
     if (!obj)
         return rt_const_cstr("");
     rest_client *client = (rest_client *)obj;
     return client->base_url;
 }
 
-void rt_restclient_set_header(void *obj, rt_string name, rt_string value)
-{
+void rt_restclient_set_header(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return;
     rest_client *client = (rest_client *)obj;
     rt_map_set(client->headers, name, (void *)value);
 }
 
-void rt_restclient_del_header(void *obj, rt_string name)
-{
+void rt_restclient_del_header(void *obj, rt_string name) {
     if (!obj)
         return;
     rest_client *client = (rest_client *)obj;
     rt_map_remove(client->headers, name);
 }
 
-void rt_restclient_set_auth_bearer(void *obj, rt_string token)
-{
+void rt_restclient_set_auth_bearer(void *obj, rt_string token) {
     if (!obj)
         return;
 
@@ -211,8 +196,7 @@ void rt_restclient_set_auth_bearer(void *obj, rt_string token)
     rt_sb_status_t status = rt_sb_append_cstr(&sb, "Bearer ");
     if (status == RT_SB_OK)
         status = rt_sb_append_bytes(&sb, tok_str, tok_len);
-    if (status != RT_SB_OK)
-    {
+    if (status != RT_SB_OK) {
         rt_sb_free(&sb);
         rt_trap("RestClient: memory allocation failed");
     }
@@ -223,8 +207,7 @@ void rt_restclient_set_auth_bearer(void *obj, rt_string token)
     rt_string_unref(auth_str);
 }
 
-void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string password)
-{
+void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string password) {
     if (!obj)
         return;
 
@@ -245,8 +228,7 @@ void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string passw
         status = rt_sb_append_bytes(&cred_sb, ":", 1);
     if (status == RT_SB_OK)
         status = rt_sb_append_bytes(&cred_sb, pass_str, pass_len);
-    if (status != RT_SB_OK)
-    {
+    if (status != RT_SB_OK) {
         rt_sb_free(&cred_sb);
         rt_trap("RestClient: memory allocation failed");
     }
@@ -264,8 +246,7 @@ void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string passw
     status = rt_sb_append_cstr(&auth_sb, "Basic ");
     if (status == RT_SB_OK)
         status = rt_sb_append_bytes(&auth_sb, enc_str, enc_len);
-    if (status != RT_SB_OK)
-    {
+    if (status != RT_SB_OK) {
         rt_sb_free(&auth_sb);
         rt_string_unref(encoded);
         rt_trap("RestClient: memory allocation failed");
@@ -278,15 +259,13 @@ void rt_restclient_set_auth_basic(void *obj, rt_string username, rt_string passw
     rt_string_unref(auth_str);
 }
 
-void rt_restclient_clear_auth(void *obj)
-{
+void rt_restclient_clear_auth(void *obj) {
     if (!obj)
         return;
     rt_restclient_del_header(obj, rt_const_cstr("Authorization"));
 }
 
-void rt_restclient_set_timeout(void *obj, int64_t timeout_ms)
-{
+void rt_restclient_set_timeout(void *obj, int64_t timeout_ms) {
     if (!obj)
         return;
     rest_client *client = (rest_client *)obj;
@@ -297,8 +276,7 @@ void rt_restclient_set_timeout(void *obj, int64_t timeout_ms)
 // HTTP Methods - Raw
 //=============================================================================
 
-void *rt_restclient_get(void *obj, rt_string path)
-{
+void *rt_restclient_get(void *obj, rt_string path) {
     if (!obj)
         rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
@@ -307,8 +285,7 @@ void *rt_restclient_get(void *obj, rt_string path)
     return execute_request(client, req);
 }
 
-void *rt_restclient_post(void *obj, rt_string path, rt_string body)
-{
+void *rt_restclient_post(void *obj, rt_string path, rt_string body) {
     if (!obj)
         rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
@@ -318,8 +295,7 @@ void *rt_restclient_post(void *obj, rt_string path, rt_string body)
     return execute_request(client, req);
 }
 
-void *rt_restclient_put(void *obj, rt_string path, rt_string body)
-{
+void *rt_restclient_put(void *obj, rt_string path, rt_string body) {
     if (!obj)
         rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
@@ -329,8 +305,7 @@ void *rt_restclient_put(void *obj, rt_string path, rt_string body)
     return execute_request(client, req);
 }
 
-void *rt_restclient_patch(void *obj, rt_string path, rt_string body)
-{
+void *rt_restclient_patch(void *obj, rt_string path, rt_string body) {
     if (!obj)
         rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
@@ -340,8 +315,7 @@ void *rt_restclient_patch(void *obj, rt_string path, rt_string body)
     return execute_request(client, req);
 }
 
-void *rt_restclient_delete(void *obj, rt_string path)
-{
+void *rt_restclient_delete(void *obj, rt_string path) {
     if (!obj)
         rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
@@ -350,8 +324,7 @@ void *rt_restclient_delete(void *obj, rt_string path)
     return execute_request(client, req);
 }
 
-void *rt_restclient_head(void *obj, rt_string path)
-{
+void *rt_restclient_head(void *obj, rt_string path) {
     if (!obj)
         rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
@@ -364,8 +337,7 @@ void *rt_restclient_head(void *obj, rt_string path)
 // HTTP Methods - JSON Convenience
 //=============================================================================
 
-void *rt_restclient_get_json(void *obj, rt_string path)
-{
+void *rt_restclient_get_json(void *obj, rt_string path) {
     if (!obj)
         rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
@@ -381,8 +353,7 @@ void *rt_restclient_get_json(void *obj, rt_string path)
     return rt_json_parse(body);
 }
 
-void *rt_restclient_post_json(void *obj, rt_string path, void *json_body)
-{
+void *rt_restclient_post_json(void *obj, rt_string path, void *json_body) {
     if (!obj)
         rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
@@ -406,8 +377,7 @@ void *rt_restclient_post_json(void *obj, rt_string path, void *json_body)
     return rt_json_parse(res_body);
 }
 
-void *rt_restclient_put_json(void *obj, rt_string path, void *json_body)
-{
+void *rt_restclient_put_json(void *obj, rt_string path, void *json_body) {
     if (!obj)
         rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
@@ -431,8 +401,7 @@ void *rt_restclient_put_json(void *obj, rt_string path, void *json_body)
     return rt_json_parse(res_body);
 }
 
-void *rt_restclient_patch_json(void *obj, rt_string path, void *json_body)
-{
+void *rt_restclient_patch_json(void *obj, rt_string path, void *json_body) {
     if (!obj)
         rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
@@ -456,8 +425,7 @@ void *rt_restclient_patch_json(void *obj, rt_string path, void *json_body)
     return rt_json_parse(res_body);
 }
 
-void *rt_restclient_delete_json(void *obj, rt_string path)
-{
+void *rt_restclient_delete_json(void *obj, rt_string path) {
     if (!obj)
         rt_trap("RestClient: null client");
     rest_client *client = (rest_client *)obj;
@@ -481,24 +449,21 @@ void *rt_restclient_delete_json(void *obj, rt_string path)
 // Error Handling
 //=============================================================================
 
-int64_t rt_restclient_last_status(void *obj)
-{
+int64_t rt_restclient_last_status(void *obj) {
     if (!obj)
         return 0;
     rest_client *client = (rest_client *)obj;
     return client->last_status;
 }
 
-void *rt_restclient_last_response(void *obj)
-{
+void *rt_restclient_last_response(void *obj) {
     if (!obj)
         return NULL;
     rest_client *client = (rest_client *)obj;
     return client->last_response;
 }
 
-int8_t rt_restclient_last_ok(void *obj)
-{
+int8_t rt_restclient_last_ok(void *obj) {
     if (!obj)
         return 0;
     rest_client *client = (rest_client *)obj;

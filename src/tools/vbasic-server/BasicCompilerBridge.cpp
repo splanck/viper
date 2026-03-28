@@ -35,14 +35,12 @@
 
 #include <cctype>
 
-namespace viper::server
-{
+namespace viper::server {
 
 using namespace il::frontends::basic;
 
 /// @brief Uppercase a string to match BASIC's case-folded identifier convention.
-static std::string toUpperStr(const std::string &s)
-{
+static std::string toUpperStr(const std::string &s) {
     std::string upper;
     upper.reserve(s.size());
     for (char c : s)
@@ -53,25 +51,21 @@ static std::string toUpperStr(const std::string &s)
 // --- Constructor / Destructor ---
 
 BasicCompilerBridge::BasicCompilerBridge()
-    : completionEngine_(std::make_unique<BasicCompletionEngine>())
-{
-}
+    : completionEngine_(std::make_unique<BasicCompletionEngine>()) {}
 
 BasicCompilerBridge::~BasicCompilerBridge() = default;
 
 // --- Analysis ---
 
 std::vector<DiagnosticInfo> BasicCompilerBridge::check(const std::string &source,
-                                                       const std::string &path)
-{
+                                                       const std::string &path) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};
     auto result = parseAndAnalyzeBasic(input, sm);
     return extractDiagnostics(result->diagnostics);
 }
 
-CompileResult BasicCompilerBridge::compile(const std::string &source, const std::string &path)
-{
+CompileResult BasicCompilerBridge::compile(const std::string &source, const std::string &path) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};
     BasicCompilerOptions opts{};
@@ -85,13 +79,11 @@ CompileResult BasicCompilerBridge::compile(const std::string &source, const std:
 std::vector<CompletionInfo> BasicCompilerBridge::completions(const std::string &source,
                                                              int line,
                                                              int col,
-                                                             const std::string &path)
-{
+                                                             const std::string &path) {
     auto items = completionEngine_->complete(source, line, col, path);
     std::vector<CompletionInfo> result;
     result.reserve(items.size());
-    for (const auto &item : items)
-    {
+    for (const auto &item : items) {
         result.push_back({item.label,
                           item.insertText,
                           static_cast<int>(item.kind),
@@ -104,8 +96,7 @@ std::vector<CompletionInfo> BasicCompilerBridge::completions(const std::string &
 std::string BasicCompilerBridge::hover(const std::string &source,
                                        int line,
                                        int col,
-                                       const std::string &path)
-{
+                                       const std::string &path) {
     auto ctx = extractIdentifierAtCursor(source, line, col);
     if (!ctx.valid)
         return "";
@@ -123,11 +114,9 @@ std::string BasicCompilerBridge::hover(const std::string &source,
 
     // Try looking up as a variable
     auto varType = sema.lookupVarType(ident);
-    if (varType)
-    {
+    if (varType) {
         std::string typeStr;
-        switch (*varType)
-        {
+        switch (*varType) {
             case SemanticAnalyzer::Type::Int:
                 typeStr = "INTEGER";
                 break;
@@ -146,8 +135,7 @@ std::string BasicCompilerBridge::hover(const std::string &source,
             case SemanticAnalyzer::Type::ArrayString:
                 typeStr = "STRING()";
                 break;
-            case SemanticAnalyzer::Type::Object:
-            {
+            case SemanticAnalyzer::Type::Object: {
                 auto cls = sema.lookupObjectClassQName(ident);
                 typeStr = cls.value_or("Object");
                 break;
@@ -169,8 +157,7 @@ std::string BasicCompilerBridge::hover(const std::string &source,
     // Try looking up as a procedure
     const auto &procTable = sema.procs();
     auto it = procTable.find(ident);
-    if (it != procTable.end())
-    {
+    if (it != procTable.end()) {
         const auto &sig = it->second;
         std::string md = "```basic\n";
         if (sig.kind == ProcSignature::Kind::Function)
@@ -179,12 +166,10 @@ std::string BasicCompilerBridge::hover(const std::string &source,
             md += "SUB ";
         md += ident;
         md += "(";
-        for (size_t i = 0; i < sig.params.size(); ++i)
-        {
+        for (size_t i = 0; i < sig.params.size(); ++i) {
             if (i > 0)
                 md += ", ";
-            switch (sig.params[i].type)
-            {
+            switch (sig.params[i].type) {
                 case Type::I64:
                     md += "INTEGER";
                     break;
@@ -205,11 +190,9 @@ std::string BasicCompilerBridge::hover(const std::string &source,
                 md += "()";
         }
         md += ")";
-        if (sig.kind == ProcSignature::Kind::Function && sig.retType)
-        {
+        if (sig.kind == ProcSignature::Kind::Function && sig.retType) {
             md += " AS ";
-            switch (*sig.retType)
-            {
+            switch (*sig.retType) {
                 case Type::I64:
                     md += "INTEGER";
                     break;
@@ -233,8 +216,7 @@ std::string BasicCompilerBridge::hover(const std::string &source,
 
     // Try looking up as a class
     const auto *classInfo = sema.oopIndex().findClass(ident);
-    if (classInfo)
-    {
+    if (classInfo) {
         std::string md = "```basic\nCLASS " + classInfo->qualifiedName + "\n```";
         md += "\n\n*" + std::to_string(classInfo->fields.size()) + " fields, " +
               std::to_string(classInfo->methods.size()) + " methods*";
@@ -245,8 +227,7 @@ std::string BasicCompilerBridge::hover(const std::string &source,
 }
 
 std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
-                                                     const std::string &path)
-{
+                                                     const std::string &path) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};
     auto result = parseAndAnalyzeBasic(input, sm);
@@ -257,14 +238,11 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
     std::vector<SymbolInfo> out;
 
     // Variables
-    for (const auto &sym : sema.symbols())
-    {
+    for (const auto &sym : sema.symbols()) {
         std::string typeStr = "unknown";
         auto ty = sema.lookupVarType(sym);
-        if (ty)
-        {
-            switch (*ty)
-            {
+        if (ty) {
+            switch (*ty) {
                 case SemanticAnalyzer::Type::Int:
                     typeStr = "INTEGER";
                     break;
@@ -283,8 +261,7 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
                 case SemanticAnalyzer::Type::ArrayString:
                     typeStr = "STRING()";
                     break;
-                case SemanticAnalyzer::Type::Object:
-                {
+                case SemanticAnalyzer::Type::Object: {
                     auto cls = sema.lookupObjectClassQName(sym);
                     typeStr = cls.value_or("Object");
                     break;
@@ -298,15 +275,13 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
     }
 
     // Procedures
-    for (const auto &[name, sig] : sema.procs())
-    {
+    for (const auto &[name, sig] : sema.procs()) {
         std::string kind = sig.kind == ProcSignature::Kind::Function ? "function" : "function";
         out.push_back({name, kind, "", false, false});
     }
 
     // Classes
-    for (const auto &[name, info] : sema.oopIndex().classes())
-    {
+    for (const auto &[name, info] : sema.oopIndex().classes()) {
         out.push_back({name, "type", info.qualifiedName, false, false});
     }
 
@@ -317,8 +292,7 @@ std::vector<SymbolInfo> BasicCompilerBridge::symbols(const std::string &source,
 
 std::string BasicCompilerBridge::dumpIL(const std::string &source,
                                         const std::string &path,
-                                        bool optimized)
-{
+                                        bool optimized) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};
     BasicCompilerOptions opts{};
@@ -326,8 +300,7 @@ std::string BasicCompilerBridge::dumpIL(const std::string &source,
     // returns a module we can serialize regardless.
 
     auto result = compileBasic(input, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::string err = "Compilation failed:\n";
         for (const auto &d : result.diagnostics.diagnostics())
             err += "  " + d.message + "\n";
@@ -340,8 +313,7 @@ std::string BasicCompilerBridge::dumpIL(const std::string &source,
     return il::io::Serializer::toString(result.module);
 }
 
-std::string BasicCompilerBridge::dumpAst(const std::string &source, const std::string &path)
-{
+std::string BasicCompilerBridge::dumpAst(const std::string &source, const std::string &path) {
     il::support::SourceManager sm;
     BasicCompilerInput input{.source = source, .path = path};
     auto result = parseAndAnalyzeBasic(input, sm);
@@ -352,15 +324,13 @@ std::string BasicCompilerBridge::dumpAst(const std::string &source, const std::s
     return printer.dump(*result->ast);
 }
 
-std::string BasicCompilerBridge::dumpTokens(const std::string &source, const std::string &path)
-{
+std::string BasicCompilerBridge::dumpTokens(const std::string &source, const std::string &path) {
     il::support::SourceManager sm;
     uint32_t fileId = sm.addFile(path);
     Lexer lexer(source, fileId);
 
     std::string out;
-    while (true)
-    {
+    while (true) {
         Token tok = lexer.next();
         if (tok.kind == TokenKind::EndOfFile)
             break;
@@ -370,8 +340,7 @@ std::string BasicCompilerBridge::dumpTokens(const std::string &source, const std
         out += buf;
         out += '\t';
         out += tokenKindToString(tok.kind);
-        if (!tok.lexeme.empty())
-        {
+        if (!tok.lexeme.empty()) {
             out += '\t';
             out += tok.lexeme;
         }

@@ -19,11 +19,9 @@
 #include <cstdint>
 #include <iostream>
 
-namespace
-{
+namespace {
 
-void testVarWatchIdBasedLookup()
-{
+void testVarWatchIdBasedLookup() {
     il::vm::DebugCtrl debug;
 
     // Initially no watches
@@ -55,8 +53,7 @@ void testVarWatchIdBasedLookup()
     std::cout << "[PASS] Variable watch ID-based lookup\n";
 }
 
-void testVarWatchOnStoreById()
-{
+void testVarWatchOnStoreById() {
     il::vm::DebugCtrl debug;
 
     const uint32_t id = debug.addWatch("counter");
@@ -78,8 +75,7 @@ void testVarWatchOnStoreById()
     std::cout << "[PASS] Variable watch onStoreById\n";
 }
 
-void testMemWatchBasic()
-{
+void testMemWatchBasic() {
     il::vm::DebugCtrl debug;
 
     assert(!debug.hasMemWatches());
@@ -118,16 +114,14 @@ void testMemWatchBasic()
     std::cout << "[PASS] Memory watch basic functionality\n";
 }
 
-void testMemWatchSortedLookup()
-{
+void testMemWatchSortedLookup() {
     il::vm::DebugCtrl debug;
 
     // Add many watches to trigger sorted binary search path
     constexpr int kNumWatches = 20;
     int buffers[kNumWatches][10] = {};
 
-    for (int i = 0; i < kNumWatches; ++i)
-    {
+    for (int i = 0; i < kNumWatches; ++i) {
         debug.addMemWatch(&buffers[i][0], sizeof(int) * 10, "buffer" + std::to_string(i));
     }
 
@@ -154,8 +148,7 @@ void testMemWatchSortedLookup()
     std::cout << "[PASS] Memory watch sorted lookup\n";
 }
 
-void testMemWatchRemove()
-{
+void testMemWatchRemove() {
     il::vm::DebugCtrl debug;
 
     int buffer[10] = {};
@@ -179,8 +172,7 @@ void testMemWatchRemove()
     std::cout << "[PASS] Memory watch remove\n";
 }
 
-void testMemWatchOverlapping()
-{
+void testMemWatchOverlapping() {
     il::vm::DebugCtrl debug;
 
     // Create overlapping memory watches
@@ -205,8 +197,7 @@ void testMemWatchOverlapping()
 
 } // namespace
 
-int main()
-{
+int main() {
     std::cerr << "--- Variable Watch Tests ---\n";
     testVarWatchIdBasedLookup();
     testVarWatchOnStoreById();

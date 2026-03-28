@@ -18,8 +18,7 @@
 #include <string>
 #include <string_view>
 
-namespace viper::common
-{
+namespace viper::common {
 
 /// @brief Mangle a qualified name into a safe ASCII linker symbol.
 /// @details Converts to lowercase, replaces dots with underscores, and prefixes

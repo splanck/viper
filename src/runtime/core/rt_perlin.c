@@ -39,35 +39,29 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct rt_perlin_impl
-{
+typedef struct rt_perlin_impl {
     void **vptr;
     uint8_t perm[512]; // Doubled permutation table
 } rt_perlin_impl;
 
-static double fade(double t)
-{
+static double fade(double t) {
     return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 }
 
-static double lerp(double t, double a, double b)
-{
+static double lerp(double t, double a, double b) {
     return a + t * (b - a);
 }
 
-static double grad3(int hash, double x, double y, double z)
-{
+static double grad3(int hash, double x, double y, double z) {
     int h = hash & 15;
     double u = h < 8 ? x : y;
     double v = h < 4 ? y : (h == 12 || h == 14 ? x : z);
     return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
 }
 
-static double grad2(int hash, double x, double y)
-{
+static double grad2(int hash, double x, double y) {
     int h = hash & 3;
-    switch (h)
-    {
+    switch (h) {
         case 0:
             return x + y;
         case 1:
@@ -80,14 +74,12 @@ static double grad2(int hash, double x, double y)
     return 0;
 }
 
-static void rt_perlin_finalize(void *obj)
-{
+static void rt_perlin_finalize(void *obj) {
     // No dynamic allocations beyond the object itself
     (void)obj;
 }
 
-void *rt_perlin_new(int64_t seed)
-{
+void *rt_perlin_new(int64_t seed) {
     rt_perlin_impl *p = (rt_perlin_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_perlin_impl));
     if (!p)
         return NULL;
@@ -100,8 +92,7 @@ void *rt_perlin_new(int64_t seed)
 
     // Fisher-Yates shuffle with seed
     uint64_t s = (uint64_t)seed;
-    for (int i = 255; i > 0; --i)
-    {
+    for (int i = 255; i > 0; --i) {
         // Simple LCG for deterministic shuffle
         s = s * 6364136223846793005ULL + 1442695040888963407ULL;
         int j = (int)((s >> 16) % (uint64_t)(i + 1));
@@ -111,8 +102,7 @@ void *rt_perlin_new(int64_t seed)
     }
 
     // Double the table for wrapping
-    for (int i = 0; i < 256; ++i)
-    {
+    for (int i = 0; i < 256; ++i) {
         p->perm[i] = base[i];
         p->perm[i + 256] = base[i];
     }
@@ -126,8 +116,7 @@ void *rt_perlin_new(int64_t seed)
 /// @param x
 /// @param y
 /// @return Result value.
-double rt_perlin_noise2d(void *obj, double x, double y)
-{
+double rt_perlin_noise2d(void *obj, double x, double y) {
     if (!obj)
         return 0.0;
     rt_perlin_impl *p = (rt_perlin_impl *)obj;
@@ -156,8 +145,7 @@ double rt_perlin_noise2d(void *obj, double x, double y)
 /// @param y
 /// @param z
 /// @return Result value.
-double rt_perlin_noise3d(void *obj, double x, double y, double z)
-{
+double rt_perlin_noise3d(void *obj, double x, double y, double z) {
     if (!obj)
         return 0.0;
     rt_perlin_impl *p = (rt_perlin_impl *)obj;
@@ -201,8 +189,7 @@ double rt_perlin_noise3d(void *obj, double x, double y, double z)
 /// @param octaves
 /// @param persistence
 /// @return Result value.
-double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double persistence)
-{
+double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double persistence) {
     if (!obj || octaves <= 0)
         return 0.0;
 
@@ -211,8 +198,7 @@ double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double
     double amplitude = 1.0;
     double max_value = 0.0;
 
-    for (int64_t i = 0; i < octaves; ++i)
-    {
+    for (int64_t i = 0; i < octaves; ++i) {
         total += rt_perlin_noise2d(obj, x * frequency, y * frequency) * amplitude;
         max_value += amplitude;
         amplitude *= persistence;
@@ -223,8 +209,7 @@ double rt_perlin_octave2d(void *obj, double x, double y, int64_t octaves, double
 }
 
 double rt_perlin_octave3d(
-    void *obj, double x, double y, double z, int64_t octaves, double persistence)
-{
+    void *obj, double x, double y, double z, int64_t octaves, double persistence) {
     if (!obj || octaves <= 0)
         return 0.0;
 
@@ -233,8 +218,7 @@ double rt_perlin_octave3d(
     double amplitude = 1.0;
     double max_value = 0.0;
 
-    for (int64_t i = 0; i < octaves; ++i)
-    {
+    for (int64_t i = 0; i < octaves; ++i) {
         total += rt_perlin_noise3d(obj, x * frequency, y * frequency, z * frequency) * amplitude;
         max_value += amplitude;
         amplitude *= persistence;

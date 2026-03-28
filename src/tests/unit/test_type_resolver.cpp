@@ -23,8 +23,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-void test_fully_qualified_success()
-{
+void test_fully_qualified_success() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -39,8 +38,7 @@ void test_fully_qualified_success()
     assert(result.contenders.empty());
 }
 
-void test_fully_qualified_interface()
-{
+void test_fully_qualified_interface() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -54,8 +52,7 @@ void test_fully_qualified_interface()
     assert(result.kind == TypeResolver::Kind::Interface);
 }
 
-void test_alias_expansion()
-{
+void test_alias_expansion() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -72,8 +69,7 @@ void test_alias_expansion()
     assert(result.kind == TypeResolver::Kind::Class);
 }
 
-void test_current_namespace_chain_walkup()
-{
+void test_current_namespace_chain_walkup() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -100,8 +96,7 @@ void test_current_namespace_chain_walkup()
     assert(r3.qname == "A.ClassInA");
 }
 
-void test_using_order_honored()
-{
+void test_using_order_honored() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -127,8 +122,7 @@ void test_using_order_honored()
     assert(r2.qname == "Second.Other");
 }
 
-void test_ambiguity_sorted_contenders()
-{
+void test_ambiguity_sorted_contenders() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -156,8 +150,7 @@ void test_ambiguity_sorted_contenders()
     assert(result.contenders[1] == "B.Thing");
 }
 
-void test_not_found()
-{
+void test_not_found() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -174,8 +167,7 @@ void test_not_found()
     assert(result.contenders.empty());
 }
 
-void test_namespace_exists_but_type_missing()
-{
+void test_namespace_exists_but_type_missing() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -195,8 +187,7 @@ void test_namespace_exists_but_type_missing()
     assert(reg.namespaceExists("A.B"));
 }
 
-void test_simple_name_in_current_namespace()
-{
+void test_simple_name_in_current_namespace() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -212,8 +203,7 @@ void test_simple_name_in_current_namespace()
     assert(result.kind == TypeResolver::Kind::Class);
 }
 
-void test_case_insensitive_resolution()
-{
+void test_case_insensitive_resolution() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -231,8 +221,7 @@ void test_case_insensitive_resolution()
     assert(r2.qname == "FOOBAR.MYCLASS");
 }
 
-void test_alias_case_insensitive()
-{
+void test_alias_case_insensitive() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -254,8 +243,7 @@ void test_alias_case_insensitive()
     assert(r3.found);
 }
 
-void test_global_type_from_nested_namespace()
-{
+void test_global_type_from_nested_namespace() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -273,8 +261,7 @@ void test_global_type_from_nested_namespace()
     assert(result.qname == "Root.GlobalType");
 }
 
-void test_no_ambiguity_if_current_namespace_wins()
-{
+void test_no_ambiguity_if_current_namespace_wins() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -296,8 +283,7 @@ void test_no_ambiguity_if_current_namespace_wins()
     assert(result.contenders.empty());
 }
 
-void test_multiple_using_different_types()
-{
+void test_multiple_using_different_types() {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -319,8 +305,7 @@ void test_multiple_using_different_types()
     assert(r2.qname == "NS2.TypeB");
 }
 
-int main()
-{
+int main() {
     test_fully_qualified_success();
     test_fully_qualified_interface();
     test_alias_expansion();

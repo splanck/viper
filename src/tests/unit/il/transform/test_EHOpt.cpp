@@ -29,33 +29,28 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-Instr makeSimple(Opcode op)
-{
+Instr makeSimple(Opcode op) {
     Instr i;
     i.op = op;
     return i;
 }
 
-Instr makeEhPush(const std::string &handler)
-{
+Instr makeEhPush(const std::string &handler) {
     Instr i;
     i.op = Opcode::EhPush;
     i.labels.push_back(handler);
     return i;
 }
 
-Instr makeEhPop()
-{
+Instr makeEhPop() {
     Instr i;
     i.op = Opcode::EhPop;
     return i;
 }
 
-Instr makeAdd(unsigned result, unsigned lhs, unsigned rhs)
-{
+Instr makeAdd(unsigned result, unsigned lhs, unsigned rhs) {
     Instr i;
     i.op = Opcode::Add;
     i.result = result;
@@ -64,8 +59,7 @@ Instr makeAdd(unsigned result, unsigned lhs, unsigned rhs)
     return i;
 }
 
-Instr makeCall(const std::string &fn, unsigned result)
-{
+Instr makeCall(const std::string &fn, unsigned result) {
     Instr i;
     i.op = Opcode::Call;
     i.result = result;
@@ -73,8 +67,7 @@ Instr makeCall(const std::string &fn, unsigned result)
     return i;
 }
 
-Instr makeRet(unsigned val)
-{
+Instr makeRet(unsigned val) {
     Instr i;
     i.op = Opcode::Ret;
     i.operands.push_back(Value::temp(val));
@@ -83,8 +76,7 @@ Instr makeRet(unsigned val)
 
 } // namespace
 
-TEST(EHOpt, RemovesDeadPairWithNoThrowingInstructions)
-{
+TEST(EHOpt, RemovesDeadPairWithNoThrowingInstructions) {
     Module mod;
     Function fn;
     fn.name = "test";
@@ -119,15 +111,13 @@ TEST(EHOpt, RemovesDeadPairWithNoThrowingInstructions)
 
     // EhPush and EhPop should be removed; only Add and Ret remain
     const auto &instrs = mod.functions[0].blocks[0].instructions;
-    for (const auto &i : instrs)
-    {
+    for (const auto &i : instrs) {
         EXPECT_NE(i.op, Opcode::EhPush);
         EXPECT_NE(i.op, Opcode::EhPop);
     }
 }
 
-TEST(EHOpt, PreservesPairWithCall)
-{
+TEST(EHOpt, PreservesPairWithCall) {
     Module mod;
     Function fn;
     fn.name = "test";
@@ -162,8 +152,7 @@ TEST(EHOpt, PreservesPairWithCall)
 
     // EhPush and EhPop should be preserved
     bool hasEhPush = false, hasEhPop = false;
-    for (const auto &i : mod.functions[0].blocks[0].instructions)
-    {
+    for (const auto &i : mod.functions[0].blocks[0].instructions) {
         if (i.op == Opcode::EhPush)
             hasEhPush = true;
         if (i.op == Opcode::EhPop)
@@ -173,8 +162,7 @@ TEST(EHOpt, PreservesPairWithCall)
     EXPECT_TRUE(hasEhPop);
 }
 
-TEST(EHOpt, PreservesPairWithCheckedDiv)
-{
+TEST(EHOpt, PreservesPairWithCheckedDiv) {
     Module mod;
     Function fn;
     fn.name = "test";
@@ -215,8 +203,7 @@ TEST(EHOpt, PreservesPairWithCheckedDiv)
     EXPECT_FALSE(changed);
 }
 
-TEST(EHOpt, NoChangeWhenNoPairs)
-{
+TEST(EHOpt, NoChangeWhenNoPairs) {
     Module mod;
     Function fn;
     fn.name = "test";
@@ -242,8 +229,7 @@ TEST(EHOpt, NoChangeWhenNoPairs)
     EXPECT_FALSE(changed);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

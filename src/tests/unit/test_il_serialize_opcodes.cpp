@@ -31,8 +31,7 @@
 #include <utility>
 #include <vector>
 
-int main()
-{
+int main() {
     using namespace il::core;
 
     Module m;
@@ -58,8 +57,7 @@ int main()
 
     unsigned nextTemp = 0;
 
-    auto emitValue = [&](Opcode op, Type type, std::initializer_list<Value> operands) -> Value
-    {
+    auto emitValue = [&](Opcode op, Type type, std::initializer_list<Value> operands) -> Value {
         Instr instr;
         instr.result = nextTemp;
         instr.op = op;
@@ -69,8 +67,7 @@ int main()
         return Value::temp(nextTemp++);
     };
 
-    auto emitVoid = [&](Opcode op, Type type, std::initializer_list<Value> operands)
-    {
+    auto emitVoid = [&](Opcode op, Type type, std::initializer_list<Value> operands) {
         Instr instr;
         instr.op = op;
         instr.type = type;
@@ -79,8 +76,7 @@ int main()
     };
 
     auto emitCall =
-        [&](const std::string &callee, Type type, std::initializer_list<Value> operands) -> Value
-    {
+        [&](const std::string &callee, Type type, std::initializer_list<Value> operands) -> Value {
         Instr instr;
         instr.result = nextTemp;
         instr.op = Opcode::Call;

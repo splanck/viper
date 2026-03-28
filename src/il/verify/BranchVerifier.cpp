@@ -34,13 +34,11 @@
 
 using namespace il::core;
 
-namespace il::verify
-{
+namespace il::verify {
 using il::support::Expected;
 using il::support::makeError;
 
-namespace
-{
+namespace {
 
 /// @brief Validate the argument bundle transferred along a branch edge.
 ///
@@ -63,8 +61,7 @@ Expected<void> verifyBranchArgs(const Function &fn,
                                 const BasicBlock &target,
                                 const std::vector<Value> *args,
                                 std::string_view label,
-                                TypeInference &types)
-{
+                                TypeInference &types) {
     size_t argCount = args ? args->size() : 0;
     if (argCount != target.params.size())
         return Expected<void>{makeError(
@@ -72,8 +69,7 @@ Expected<void> verifyBranchArgs(const Function &fn,
             formatInstrDiag(
                 fn, bb, instr, "branch arg count mismatch for label " + std::string(label)))};
 
-    for (size_t i = 0; i < argCount; ++i)
-    {
+    for (size_t i = 0; i < argCount; ++i) {
         auto argType = types.valueType((*args)[i]);
         // After DCE, branch arguments may reference temps whose definitions
         // were removed. TypeInference returns Void for such undefined temps.
@@ -81,8 +77,7 @@ Expected<void> verifyBranchArgs(const Function &fn,
         // tracks liveness independently of IL types.
         bool compatible =
             (argType.kind == target.params[i].type.kind) || (argType.kind == Type::Kind::Void);
-        if (!compatible)
-        {
+        if (!compatible) {
             return Expected<void>{
                 makeError(instr.loc,
                           formatInstrDiag(
@@ -111,15 +106,13 @@ Expected<void> verifyBr_E(const Function &fn,
                           const BasicBlock &bb,
                           const Instr &instr,
                           const BlockMap &blockMap,
-                          TypeInference &types)
-{
+                          TypeInference &types) {
     bool argsOk = instr.operands.empty() && instr.labels.size() == 1;
     if (!argsOk)
         return Expected<void>{
             makeError(instr.loc, formatInstrDiag(fn, bb, instr, "branch mismatch"))};
 
-    if (auto it = blockMap.find(instr.labels[0]); it != blockMap.end())
-    {
+    if (auto it = blockMap.find(instr.labels[0]); it != blockMap.end()) {
         const BasicBlock &target = *it->second;
         const std::vector<Value> *argsVec = !instr.brArgs.empty() ? &instr.brArgs[0] : nullptr;
         if (auto result = verifyBranchArgs(fn, bb, instr, target, argsVec, instr.labels[0], types);
@@ -147,14 +140,11 @@ Expected<void> verifyCBr_E(const Function &fn,
                            const BasicBlock &bb,
                            const Instr &instr,
                            const BlockMap &blockMap,
-                           TypeInference &types)
-{
+                           TypeInference &types) {
     bool condOk = instr.operands.size() == 1 && instr.labels.size() == 2 &&
                   types.valueType(instr.operands[0]).kind == Type::Kind::I1;
-    if (condOk)
-    {
-        for (size_t t = 0; t < 2; ++t)
-        {
+    if (condOk) {
+        for (size_t t = 0; t < 2; ++t) {
             auto it = blockMap.find(instr.labels[t]);
             if (it == blockMap.end())
                 continue;
@@ -190,28 +180,23 @@ Expected<void> verifySwitchI32_E(const Function &fn,
                                  const BasicBlock &bb,
                                  const Instr &instr,
                                  const BlockMap &blockMap,
-                                 TypeInference &types)
-{
-    if (instr.operands.empty())
-    {
+                                 TypeInference &types) {
+    if (instr.operands.empty()) {
         return Expected<void>{
             makeError(instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 missing scrutinee"))};
     }
 
-    if (types.valueType(switchScrutinee(instr)).kind != Type::Kind::I32)
-    {
+    if (types.valueType(switchScrutinee(instr)).kind != Type::Kind::I32) {
         return Expected<void>{makeError(
             instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 scrutinee must be i32"))};
     }
 
-    if (instr.labels.empty())
-    {
+    if (instr.labels.empty()) {
         return Expected<void>{
             makeError(instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 missing default"))};
     }
 
-    if (instr.brArgs.size() != instr.labels.size())
-    {
+    if (instr.brArgs.size() != instr.labels.size()) {
         return Expected<void>{makeError(
             instr.loc,
             formatInstrDiag(fn, bb, instr, "switch.i32 branch argument vector count mismatch"))};
@@ -222,14 +207,12 @@ Expected<void> verifySwitchI32_E(const Function &fn,
         defaultArgs = &instr.brArgs.front();
 
     const size_t caseCount = switchCaseCount(instr);
-    if (instr.operands.size() != caseCount + 1)
-    {
+    if (instr.operands.size() != caseCount + 1) {
         return Expected<void>{makeError(
             instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 operands mismatch cases"))};
     }
 
-    if (auto it = blockMap.find(switchDefaultLabel(instr)); it != blockMap.end())
-    {
+    if (auto it = blockMap.find(switchDefaultLabel(instr)); it != blockMap.end()) {
         if (auto result = verifyBranchArgs(
                 fn, bb, instr, *it->second, defaultArgs, switchDefaultLabel(instr), types);
             !result)
@@ -239,24 +222,20 @@ Expected<void> verifySwitchI32_E(const Function &fn,
     std::unordered_set<int32_t> seen;
     seen.reserve(caseCount);
 
-    for (size_t idx = 0; idx < caseCount; ++idx)
-    {
+    for (size_t idx = 0; idx < caseCount; ++idx) {
         const Value &caseValue = switchCaseValue(instr, idx);
-        if (caseValue.kind != Value::Kind::ConstInt)
-        {
+        if (caseValue.kind != Value::Kind::ConstInt) {
             return Expected<void>{makeError(
                 instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 case must be const i32"))};
         }
         if (caseValue.i64 < std::numeric_limits<int32_t>::min() ||
-            caseValue.i64 > std::numeric_limits<int32_t>::max())
-        {
+            caseValue.i64 > std::numeric_limits<int32_t>::max()) {
             return Expected<void>{makeError(
                 instr.loc, formatInstrDiag(fn, bb, instr, "switch.i32 case out of i32 range"))};
         }
 
         const int32_t key = static_cast<int32_t>(caseValue.i64);
-        if (!seen.insert(key).second)
-        {
+        if (!seen.insert(key).second) {
             return Expected<void>{
                 makeError(instr.loc, formatInstrDiag(fn, bb, instr, "duplicate switch.i32 case"))};
         }
@@ -291,10 +270,8 @@ Expected<void> verifySwitchI32_E(const Function &fn,
 Expected<void> verifyRet_E(const Function &fn,
                            const BasicBlock &bb,
                            const Instr &instr,
-                           TypeInference &types)
-{
-    if (fn.retType.kind == Type::Kind::Void)
-    {
+                           TypeInference &types) {
+    if (fn.retType.kind == Type::Kind::Void) {
         if (!instr.operands.empty())
             return Expected<void>{
                 makeError(instr.loc, formatInstrDiag(fn, bb, instr, "ret void with value"))};
@@ -306,8 +283,7 @@ Expected<void> verifyRet_E(const Function &fn,
             makeError(instr.loc, formatInstrDiag(fn, bb, instr, "ret value type mismatch"))};
 
     Type actualType = types.valueType(instr.operands[0]);
-    if (actualType.kind != fn.retType.kind)
-    {
+    if (actualType.kind != fn.retType.kind) {
         std::string message = "ret value type mismatch: expected " + fn.retType.toString() +
                               " but got " + actualType.toString();
         return Expected<void>{makeError(instr.loc, formatInstrDiag(fn, bb, instr, message))};

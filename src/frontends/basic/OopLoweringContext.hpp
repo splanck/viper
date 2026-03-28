@@ -20,8 +20,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // Forward declarations to minimize dependencies
 class Lowerer;
@@ -47,8 +46,7 @@ struct Expr;
 ///
 /// @invariant References are borrowed from the Lowerer; context must not outlive it.
 /// @invariant Caches are populated lazily and cleared when the context is destroyed.
-struct OopLoweringContext
-{
+struct OopLoweringContext {
     /// @brief Reference to the main lowering state.
     /// @details Provides access to IL emission, symbol tables, and general lowering utilities.
     /// @invariant Non-owning; the Lowerer must outlive this context.
@@ -70,9 +68,8 @@ struct OopLoweringContext
     /// @brief Create a context for OOP lowering.
     /// @param lowerer Reference to the active lowering state.
     /// @param oopIndex Reference to the OOP metadata index.
-    OopLoweringContext(Lowerer &lowerer, OopIndex &oopIndex) : lowerer(lowerer), oopIndex(oopIndex)
-    {
-    }
+    OopLoweringContext(Lowerer &lowerer, OopIndex &oopIndex)
+        : lowerer(lowerer), oopIndex(oopIndex) {}
 
     // =========================================================================
     // Class Metadata Lookups

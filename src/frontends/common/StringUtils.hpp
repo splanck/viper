@@ -19,8 +19,7 @@
 #include <cctype>
 #include <string_view>
 
-namespace il::frontends::common::string_utils
-{
+namespace il::frontends::common::string_utils {
 
 /// @brief Case-insensitive comparison of two string views.
 /// @details Performs character-by-character comparison ignoring case using
@@ -29,20 +28,14 @@ namespace il::frontends::common::string_utils
 /// @param a First string to compare.
 /// @param b Second string to compare.
 /// @return True if strings are equal ignoring case, false otherwise.
-[[nodiscard]] inline bool iequals(std::string_view a, std::string_view b) noexcept
-{
+[[nodiscard]] inline bool iequals(std::string_view a, std::string_view b) noexcept {
     if (a.size() != b.size())
         return false;
 
-    return std::equal(a.begin(),
-                      a.end(),
-                      b.begin(),
-                      b.end(),
-                      [](char ca, char cb)
-                      {
-                          return std::toupper(static_cast<unsigned char>(ca)) ==
-                                 std::toupper(static_cast<unsigned char>(cb));
-                      });
+    return std::equal(a.begin(), a.end(), b.begin(), b.end(), [](char ca, char cb) {
+        return std::toupper(static_cast<unsigned char>(ca)) ==
+               std::toupper(static_cast<unsigned char>(cb));
+    });
 }
 
 } // namespace il::frontends::common::string_utils

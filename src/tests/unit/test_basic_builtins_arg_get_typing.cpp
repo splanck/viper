@@ -22,8 +22,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     const std::string src = "10 PRINT ARG$(\"x\")\n20 END\n";
     SourceManager sm;
     BasicCompilerOptions opts{};

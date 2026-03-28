@@ -26,8 +26,7 @@
 
 #include "il/core/Linkage.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
@@ -35,13 +34,11 @@ using namespace runtime;
 // Declaration Lowering
 //=============================================================================
 
-void Lowerer::lowerDecl(Decl *decl)
-{
+void Lowerer::lowerDecl(Decl *decl) {
     if (!decl)
         return;
 
-    switch (decl->kind)
-    {
+    switch (decl->kind) {
         case DeclKind::Function:
             lowerFunctionDecl(*static_cast<FunctionDecl *>(decl));
             break;
@@ -68,8 +65,7 @@ void Lowerer::lowerDecl(Decl *decl)
     }
 }
 
-std::string Lowerer::qualifyName(const std::string &name) const
-{
+std::string Lowerer::qualifyName(const std::string &name) const {
     if (namespacePrefix_.empty())
         return name;
     return namespacePrefix_ + "." + name;
@@ -88,8 +84,7 @@ std::string Lowerer::qualifyName(const std::string &name) const
 /// @note Fixes BUG-FE-011: non-literal final constant initializers (such as
 ///       `final X = 0 - 2147483647`) were previously silently dropped, causing
 ///       all references to resolve to constInt(0).
-std::optional<il::core::Value> Lowerer::tryFoldNumericConstant(Expr *init)
-{
+std::optional<il::core::Value> Lowerer::tryFoldNumericConstant(Expr *init) {
     if (!init)
         return std::nullopt;
 
@@ -100,13 +95,10 @@ std::optional<il::core::Value> Lowerer::tryFoldNumericConstant(Expr *init)
     if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
         return Value::constBool(boolLit->value);
 
-    if (auto *unary = dynamic_cast<UnaryExpr *>(init))
-    {
+    if (auto *unary = dynamic_cast<UnaryExpr *>(init)) {
         auto inner = tryFoldNumericConstant(unary->operand.get());
-        if (inner)
-        {
-            if (unary->op == UnaryOp::Neg)
-            {
+        if (inner) {
+            if (unary->op == UnaryOp::Neg) {
                 if (inner->kind == Value::Kind::ConstInt)
                     return Value::constInt(-inner->i64);
                 if (inner->kind == Value::Kind::ConstFloat)
@@ -117,17 +109,14 @@ std::optional<il::core::Value> Lowerer::tryFoldNumericConstant(Expr *init)
         }
     }
 
-    if (auto *binary = dynamic_cast<BinaryExpr *>(init))
-    {
+    if (auto *binary = dynamic_cast<BinaryExpr *>(init)) {
         auto lv = tryFoldNumericConstant(binary->left.get());
         auto rv = tryFoldNumericConstant(binary->right.get());
 
         // Integer x integer
-        if (lv && rv && lv->kind == Value::Kind::ConstInt && rv->kind == Value::Kind::ConstInt)
-        {
+        if (lv && rv && lv->kind == Value::Kind::ConstInt && rv->kind == Value::Kind::ConstInt) {
             long long l = lv->i64, r = rv->i64;
-            switch (binary->op)
-            {
+            switch (binary->op) {
                 case BinaryOp::Add:
                     return Value::constInt(l + r);
                 case BinaryOp::Sub:
@@ -146,11 +135,10 @@ std::optional<il::core::Value> Lowerer::tryFoldNumericConstant(Expr *init)
         }
 
         // Float x float
-        if (lv && rv && lv->kind == Value::Kind::ConstFloat && rv->kind == Value::Kind::ConstFloat)
-        {
+        if (lv && rv && lv->kind == Value::Kind::ConstFloat &&
+            rv->kind == Value::Kind::ConstFloat) {
             double l = lv->f64, r = rv->f64;
-            switch (binary->op)
-            {
+            switch (binary->op) {
                 case BinaryOp::Add:
                     return Value::constFloat(l + r);
                 case BinaryOp::Sub:
@@ -170,15 +158,11 @@ std::optional<il::core::Value> Lowerer::tryFoldNumericConstant(Expr *init)
 // Final Constant Pre-Registration
 //=============================================================================
 
-void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations)
-{
-    for (auto &decl : declarations)
-    {
-        if (decl->kind == DeclKind::GlobalVar)
-        {
+void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations) {
+    for (auto &decl : declarations) {
+        if (decl->kind == DeclKind::GlobalVar) {
             auto *gvar = static_cast<GlobalVarDecl *>(decl.get());
-            if (gvar->isFinal && gvar->initializer)
-            {
+            if (gvar->isFinal && gvar->initializer) {
                 std::string qualifiedName = qualifyName(gvar->name);
                 // Skip if already registered
                 if (globalConstants_.find(qualifiedName) != globalConstants_.end())
@@ -192,8 +176,7 @@ void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations)
                     globalConstants_[qualifiedName] = Value::constFloat(numLit->value);
                 else if (auto *boolLit = dynamic_cast<BoolLiteralExpr *>(init))
                     globalConstants_[qualifiedName] = Value::constBool(boolLit->value);
-                else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init))
-                {
+                else if (auto *strLit = dynamic_cast<StringLiteralExpr *>(init)) {
                     std::string label = stringTable_.intern(strLit->value);
                     globalConstants_[qualifiedName] = Value::constStr(label);
                 }
@@ -201,8 +184,7 @@ void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations)
                 // `-1`, `2 * 1024`) that are not direct literals (BUG-FE-011).
                 else if (auto folded = tryFoldNumericConstant(init))
                     globalConstants_[qualifiedName] = *folded;
-                else
-                {
+                else {
                     // BUG-FE-012: Emit diagnostic for non-constant final initializers
                     // instead of silently dropping them (which causes 0-value fallback).
                     diag_.report({il::support::Severity::Error,
@@ -214,9 +196,7 @@ void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations)
                                   "V3202"});
                 }
             }
-        }
-        else if (decl->kind == DeclKind::Namespace)
-        {
+        } else if (decl->kind == DeclKind::Namespace) {
             auto *ns = static_cast<NamespaceDecl *>(decl.get());
             std::string savedPrefix = namespacePrefix_;
             if (namespacePrefix_.empty())
@@ -235,8 +215,7 @@ void Lowerer::registerAllFinalConstants(std::vector<DeclPtr> &declarations)
 // Namespace and Enum Declaration Lowering
 //=============================================================================
 
-void Lowerer::lowerNamespaceDecl(NamespaceDecl &decl)
-{
+void Lowerer::lowerNamespaceDecl(NamespaceDecl &decl) {
     ZiaLocationScope locScope(*this, decl.loc);
 
     // Save current namespace prefix
@@ -249,8 +228,7 @@ void Lowerer::lowerNamespaceDecl(NamespaceDecl &decl)
         namespacePrefix_ = namespacePrefix_ + "." + decl.name;
 
     // Lower all declarations inside the namespace
-    for (auto &innerDecl : decl.declarations)
-    {
+    for (auto &innerDecl : decl.declarations) {
         lowerDecl(innerDecl.get());
     }
 
@@ -258,13 +236,11 @@ void Lowerer::lowerNamespaceDecl(NamespaceDecl &decl)
     namespacePrefix_ = savedPrefix;
 }
 
-void Lowerer::lowerEnumDecl(EnumDecl &decl)
-{
+void Lowerer::lowerEnumDecl(EnumDecl &decl) {
     // Enums don't produce IL structures -- each variant is an I64 constant.
     // Just register variant values for later lookup during expression lowering.
     int64_t nextValue = 0;
-    for (const auto &variant : decl.variants)
-    {
+    for (const auto &variant : decl.variants) {
         std::string key = qualifyName(decl.name) + "." + variant.name;
         if (variant.explicitValue.has_value())
             nextValue = *variant.explicitValue;

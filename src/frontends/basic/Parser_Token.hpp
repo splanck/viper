@@ -51,10 +51,8 @@ void syncToStmtBoundary();
 ///          This allows them to be treated as identifiers when not in keyword context.
 /// @param k Token kind to test.
 /// @return True if the token can be treated as an identifier in appropriate contexts.
-static bool isSoftIdentToken(TokenKind k)
-{
-    switch (k)
-    {
+static bool isSoftIdentToken(TokenKind k) {
+    switch (k) {
         case TokenKind::Identifier:
         case TokenKind::KeywordColor:
         case TokenKind::KeywordFloor:
@@ -76,8 +74,7 @@ static bool isSoftIdentToken(TokenKind k)
 ///          namespaces like Viper.IO.File.Delete or Viper.Threads.Thread.Sleep.
 /// @param k Token kind to test.
 /// @return True if the token can be treated as an identifier after '.'.
-static bool isMemberIdentToken(TokenKind k)
-{
+static bool isMemberIdentToken(TokenKind k) {
     if (k == TokenKind::Identifier)
         return true;
     const char *spelling = tokenKindToString(k);

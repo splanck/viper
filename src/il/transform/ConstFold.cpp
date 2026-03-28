@@ -41,11 +41,9 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
+namespace il::transform {
 
-namespace
-{
+namespace {
 
 /// @brief Extract a 64-bit integer constant operand.
 /// @details Recognises @ref Value::Kind::ConstInt operands and exposes their
@@ -55,10 +53,8 @@ namespace
 /// @param v Operand to inspect.
 /// @param out Receives the integer payload when recognised.
 /// @return True when @p v carries a constant integer value.
-static bool isConstInt(const Value &v, long long &out)
-{
-    if (v.kind == Value::Kind::ConstInt)
-    {
+static bool isConstInt(const Value &v, long long &out) {
+    if (v.kind == Value::Kind::ConstInt) {
         out = v.i64;
         return true;
     }
@@ -73,15 +69,12 @@ static bool isConstInt(const Value &v, long long &out)
 /// @param v Operand to convert.
 /// @param out Receives the double-precision value when available.
 /// @return True when @p v provides a foldable floating-point payload.
-static bool getConstFloat(const Value &v, double &out)
-{
-    if (v.kind == Value::Kind::ConstFloat)
-    {
+static bool getConstFloat(const Value &v, double &out) {
+    if (v.kind == Value::Kind::ConstFloat) {
         out = v.f64;
         return true;
     }
-    if (v.kind == Value::Kind::ConstInt)
-    {
+    if (v.kind == Value::Kind::ConstInt) {
         out = static_cast<double>(v.i64);
         return true;
     }
@@ -95,8 +88,7 @@ static bool getConstFloat(const Value &v, double &out)
 /// @param a Left-hand integer operand.
 /// @param b Right-hand integer operand.
 /// @return Folded result or empty optional when overflow occurred.
-static std::optional<long long> checkedAdd(long long a, long long b)
-{
+static std::optional<long long> checkedAdd(long long a, long long b) {
     long long result{};
     if (__builtin_add_overflow(a, b, &result))
         return std::nullopt;
@@ -107,8 +99,7 @@ static std::optional<long long> checkedAdd(long long a, long long b)
 /// @param a Left-hand integer operand.
 /// @param b Right-hand integer operand.
 /// @return Folded result or empty optional when overflow occurred.
-static std::optional<long long> checkedSub(long long a, long long b)
-{
+static std::optional<long long> checkedSub(long long a, long long b) {
     long long result{};
     if (__builtin_sub_overflow(a, b, &result))
         return std::nullopt;
@@ -119,8 +110,7 @@ static std::optional<long long> checkedSub(long long a, long long b)
 /// @param a Left-hand integer operand.
 /// @param b Right-hand integer operand.
 /// @return Folded result or empty optional when overflow occurred.
-static std::optional<long long> checkedMul(long long a, long long b)
-{
+static std::optional<long long> checkedMul(long long a, long long b) {
     long long result{};
     if (__builtin_mul_overflow(a, b, &result))
         return std::nullopt;
@@ -136,95 +126,75 @@ static std::optional<long long> checkedMul(long long a, long long b)
 /// @param in Instruction describing the runtime call.
 /// @param out Receives the folded constant on success.
 /// @return True when folding succeeded and @p out contains the result.
-static bool foldCall(const Instr &in, Value &out)
-{
+static bool foldCall(const Instr &in, Value &out) {
     if (in.op != Opcode::Call)
         return false;
     const std::string &c = in.callee;
     if (c == "rt_val" || c == "rt_val_to_double" || c == "rt_int_to_str" || c == "rt_f64_to_str")
         return false;
-    if (c == "rt_abs_i64" && in.operands.size() == 1)
-    {
+    if (c == "rt_abs_i64" && in.operands.size() == 1) {
         long long v;
-        if (isConstInt(in.operands[0], v) && v != std::numeric_limits<long long>::min())
-        {
+        if (isConstInt(in.operands[0], v) && v != std::numeric_limits<long long>::min()) {
             out = Value::constInt(v < 0 ? -v : v);
             return true;
         }
         return false;
     }
     double a;
-    if (c == "rt_abs_f64" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a))
-        {
+    if (c == "rt_abs_f64" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a)) {
             out = Value::constFloat(std::fabs(a));
             return true;
         }
         return false;
     }
-    if (c == "rt_int_floor" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a))
-        {
+    if (c == "rt_int_floor" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a)) {
             out = Value::constFloat(std::floor(a));
             return true;
         }
         return false;
     }
-    if (c == "rt_fix_trunc" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a))
-        {
+    if (c == "rt_fix_trunc" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a)) {
             out = Value::constFloat(std::trunc(a));
             return true;
         }
         return false;
     }
-    if (c == "rt_floor" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a))
-        {
+    if (c == "rt_floor" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a)) {
             out = Value::constFloat(std::floor(a));
             return true;
         }
         return false;
     }
-    if (c == "rt_ceil" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a))
-        {
+    if (c == "rt_ceil" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a)) {
             out = Value::constFloat(std::ceil(a));
             return true;
         }
         return false;
     }
-    if (c == "rt_sqrt" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a) && a >= 0.0)
-        {
+    if (c == "rt_sqrt" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a) && a >= 0.0) {
             out = Value::constFloat(std::sqrt(a));
             return true;
         }
         return false;
     }
     if ((c == "rt_pow_f64_chkdom" || c == "rt_pow_f64" || c == "rt_math_pow") &&
-        in.operands.size() == 2)
-    {
+        in.operands.size() == 2) {
         double base = 0.0;
         double expd = 0.0;
-        if (getConstFloat(in.operands[0], base) && getConstFloat(in.operands[1], expd))
-        {
+        if (getConstFloat(in.operands[0], base) && getConstFloat(in.operands[1], expd)) {
             const bool expIntegral = std::isfinite(expd) && (expd == std::trunc(expd));
-            if (!(base < 0.0 && !expIntegral) && expIntegral)
-            {
+            if (!(base < 0.0 && !expIntegral) && expIntegral) {
                 const double truncated = std::trunc(expd);
-                if (std::fabs(truncated) <= 16.0)
-                {
+                if (std::fabs(truncated) <= 16.0) {
                     const long long exp = static_cast<long long>(truncated);
                     const double value = std::pow(base, static_cast<double>(exp));
-                    if (std::isfinite(value))
-                    {
+                    if (std::isfinite(value)) {
                         out = Value::constFloat(value);
                         return true;
                     }
@@ -233,37 +203,30 @@ static bool foldCall(const Instr &in, Value &out)
         }
         return false;
     }
-    if (c == "rt_round_even" && in.operands.size() == 2)
-    {
+    if (c == "rt_round_even" && in.operands.size() == 2) {
         double value = 0.0;
         long long digits = 0;
-        if (getConstFloat(in.operands[0], value) && isConstInt(in.operands[1], digits))
-        {
-            if (!std::isfinite(value))
-            {
+        if (getConstFloat(in.operands[0], value) && isConstInt(in.operands[1], digits)) {
+            if (!std::isfinite(value)) {
                 out = Value::constFloat(value);
                 return true;
             }
-            if (digits == 0)
-            {
+            if (digits == 0) {
                 out = Value::constFloat(std::nearbyint(value));
                 return true;
             }
             const double digitsAsDouble = static_cast<double>(digits);
-            if (!std::isfinite(digitsAsDouble) || std::fabs(digitsAsDouble) > 308.0)
-            {
+            if (!std::isfinite(digitsAsDouble) || std::fabs(digitsAsDouble) > 308.0) {
                 out = Value::constFloat(value);
                 return true;
             }
             const double factor = std::pow(10.0, digitsAsDouble);
-            if (!std::isfinite(factor) || factor == 0.0)
-            {
+            if (!std::isfinite(factor) || factor == 0.0) {
                 out = Value::constFloat(value);
                 return true;
             }
             const double scaled = value * factor;
-            if (!std::isfinite(scaled))
-            {
+            if (!std::isfinite(scaled)) {
                 out = Value::constFloat(value);
                 return true;
             }
@@ -273,75 +236,59 @@ static bool foldCall(const Instr &in, Value &out)
         }
         return false;
     }
-    if (c == "rt_sin" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a) && a == 0.0)
-        {
+    if (c == "rt_sin" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a) && a == 0.0) {
             out = Value::constFloat(0.0);
             return true;
         }
         return false;
     }
-    if (c == "rt_cos" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a) && a == 0.0)
-        {
+    if (c == "rt_cos" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a) && a == 0.0) {
             out = Value::constFloat(1.0);
             return true;
         }
         return false;
     }
     // Trigonometric functions with constant folding for specific values
-    if (c == "rt_tan" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a) && a == 0.0)
-        {
+    if (c == "rt_tan" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a) && a == 0.0) {
             out = Value::constFloat(0.0);
             return true;
         }
         return false;
     }
-    if (c == "rt_asin" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a) && a == 0.0)
-        {
+    if (c == "rt_asin" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a) && a == 0.0) {
             out = Value::constFloat(0.0);
             return true;
         }
         return false;
     }
-    if (c == "rt_acos" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a) && a == 1.0)
-        {
+    if (c == "rt_acos" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a) && a == 1.0) {
             out = Value::constFloat(0.0);
             return true;
         }
         return false;
     }
-    if (c == "rt_atan" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a) && a == 0.0)
-        {
+    if (c == "rt_atan" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a) && a == 0.0) {
             out = Value::constFloat(0.0);
             return true;
         }
         return false;
     }
     // Log/exp functions
-    if (c == "rt_log" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a) && a == 1.0)
-        {
+    if (c == "rt_log" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a) && a == 1.0) {
             out = Value::constFloat(0.0);
             return true;
         }
         return false;
     }
-    if (c == "rt_exp" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a) && a == 0.0)
-        {
+    if (c == "rt_exp" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a) && a == 0.0) {
             out = Value::constFloat(1.0);
             return true;
         }
@@ -349,19 +296,15 @@ static bool foldCall(const Instr &in, Value &out)
     }
     // Min/max with constant arguments
     double b;
-    if (c == "rt_min_f64" && in.operands.size() == 2)
-    {
-        if (getConstFloat(in.operands[0], a) && getConstFloat(in.operands[1], b))
-        {
+    if (c == "rt_min_f64" && in.operands.size() == 2) {
+        if (getConstFloat(in.operands[0], a) && getConstFloat(in.operands[1], b)) {
             out = Value::constFloat(a < b ? a : b);
             return true;
         }
         return false;
     }
-    if (c == "rt_max_f64" && in.operands.size() == 2)
-    {
-        if (getConstFloat(in.operands[0], a) && getConstFloat(in.operands[1], b))
-        {
+    if (c == "rt_max_f64" && in.operands.size() == 2) {
+        if (getConstFloat(in.operands[0], a) && getConstFloat(in.operands[1], b)) {
             out = Value::constFloat(a > b ? a : b);
             return true;
         }
@@ -369,31 +312,25 @@ static bool foldCall(const Instr &in, Value &out)
     }
     // Integer min/max
     long long ai, bi;
-    if (c == "rt_min_i64" && in.operands.size() == 2)
-    {
-        if (isConstInt(in.operands[0], ai) && isConstInt(in.operands[1], bi))
-        {
+    if (c == "rt_min_i64" && in.operands.size() == 2) {
+        if (isConstInt(in.operands[0], ai) && isConstInt(in.operands[1], bi)) {
             out = Value::constInt(ai < bi ? ai : bi);
             return true;
         }
         return false;
     }
-    if (c == "rt_max_i64" && in.operands.size() == 2)
-    {
-        if (isConstInt(in.operands[0], ai) && isConstInt(in.operands[1], bi))
-        {
+    if (c == "rt_max_i64" && in.operands.size() == 2) {
+        if (isConstInt(in.operands[0], ai) && isConstInt(in.operands[1], bi)) {
             out = Value::constInt(ai > bi ? ai : bi);
             return true;
         }
         return false;
     }
     // Clamp
-    if (c == "rt_clamp_f64" && in.operands.size() == 3)
-    {
+    if (c == "rt_clamp_f64" && in.operands.size() == 3) {
         double val, lo, hi;
         if (getConstFloat(in.operands[0], val) && getConstFloat(in.operands[1], lo) &&
-            getConstFloat(in.operands[2], hi))
-        {
+            getConstFloat(in.operands[2], hi)) {
             if (val < lo)
                 out = Value::constFloat(lo);
             else if (val > hi)
@@ -404,12 +341,10 @@ static bool foldCall(const Instr &in, Value &out)
         }
         return false;
     }
-    if (c == "rt_clamp_i64" && in.operands.size() == 3)
-    {
+    if (c == "rt_clamp_i64" && in.operands.size() == 3) {
         long long val, lo, hi;
         if (isConstInt(in.operands[0], val) && isConstInt(in.operands[1], lo) &&
-            isConstInt(in.operands[2], hi))
-        {
+            isConstInt(in.operands[2], hi)) {
             if (val < lo)
                 out = Value::constInt(lo);
             else if (val > hi)
@@ -421,19 +356,15 @@ static bool foldCall(const Instr &in, Value &out)
         return false;
     }
     // Sign function
-    if (c == "rt_sgn_i64" && in.operands.size() == 1)
-    {
-        if (isConstInt(in.operands[0], ai))
-        {
+    if (c == "rt_sgn_i64" && in.operands.size() == 1) {
+        if (isConstInt(in.operands[0], ai)) {
             out = Value::constInt(ai > 0 ? 1 : (ai < 0 ? -1 : 0));
             return true;
         }
         return false;
     }
-    if (c == "rt_sgn_f64" && in.operands.size() == 1)
-    {
-        if (getConstFloat(in.operands[0], a))
-        {
+    if (c == "rt_sgn_f64" && in.operands.size() == 1) {
+        if (getConstFloat(in.operands[0], a)) {
             out = Value::constFloat(a > 0.0 ? 1.0 : (a < 0.0 ? -1.0 : 0.0));
             return true;
         }
@@ -451,111 +382,81 @@ static bool foldCall(const Instr &in, Value &out)
 ///          replacement instead of O(instructions), then erase the original
 ///          instruction, shrinking the IR without altering observable behaviour.
 /// @param m Module whose functions are to be folded.
-void constFold(Module &m)
-{
+void constFold(Module &m) {
     // Constant folding must be observationally equivalent to VM; where traps would
     // occur at runtime, folding must not change behavior.
-    for (auto &f : m.functions)
-    {
+    for (auto &f : m.functions) {
         // Build use-def chains once per function for O(uses) replacement
         viper::il::UseDefInfo useInfo(f);
 
-        for (auto &b : f.blocks)
-        {
+        for (auto &b : f.blocks) {
             // Collect indices of instructions to erase (process in reverse later)
             std::vector<size_t> toErase;
 
-            for (size_t i = 0; i < b.instructions.size(); ++i)
-            {
+            for (size_t i = 0; i < b.instructions.size(); ++i) {
                 Instr &in = b.instructions[i];
                 if (!in.result)
                     continue;
                 Value repl;
                 bool folded = false;
-                if (in.op == Opcode::Call)
-                {
+                if (in.op == Opcode::Call) {
                     folded = foldCall(in, repl);
-                }
-                else if (in.operands.size() == 1)
-                {
-                    if (in.op == Opcode::CastFpToSiRteChk)
-                    {
+                } else if (in.operands.size() == 1) {
+                    if (in.op == Opcode::CastFpToSiRteChk) {
                         double operand;
-                        if (getConstFloat(in.operands[0], operand) && std::isfinite(operand))
-                        {
+                        if (getConstFloat(in.operands[0], operand) && std::isfinite(operand)) {
                             double rounded = std::nearbyint(operand);
-                            if (std::isfinite(rounded))
-                            {
+                            if (std::isfinite(rounded)) {
                                 constexpr double kMin =
                                     static_cast<double>(std::numeric_limits<long long>::min());
                                 constexpr double kMax =
                                     static_cast<double>(std::numeric_limits<long long>::max());
-                                if (rounded >= kMin && rounded <= kMax)
-                                {
+                                if (rounded >= kMin && rounded <= kMax) {
                                     repl = Value::constInt(static_cast<long long>(rounded));
                                     folded = true;
                                 }
                             }
                         }
                     }
-                }
-                else if (in.operands.size() == 2)
-                {
+                } else if (in.operands.size() == 2) {
                     long long lhs, rhs, res = 0;
-                    if (isConstInt(in.operands[0], lhs) && isConstInt(in.operands[1], rhs))
-                    {
+                    if (isConstInt(in.operands[0], lhs) && isConstInt(in.operands[1], rhs)) {
                         folded = true;
-                        switch (in.op)
-                        {
+                        switch (in.op) {
                             case Opcode::IAddOvf:
-                                if (const auto sum = checkedAdd(lhs, rhs))
-                                {
+                                if (const auto sum = checkedAdd(lhs, rhs)) {
                                     res = *sum;
-                                }
-                                else
-                                {
+                                } else {
                                     folded = false;
                                 }
                                 break;
                             case Opcode::SDivChk0:
                                 if (rhs != 0 &&
-                                    !(lhs == std::numeric_limits<long long>::min() && rhs == -1))
-                                {
+                                    !(lhs == std::numeric_limits<long long>::min() && rhs == -1)) {
                                     res = lhs / rhs;
-                                }
-                                else
-                                {
+                                } else {
                                     folded = false;
                                 }
                                 break;
                             case Opcode::SRemChk0:
                                 if (rhs != 0 &&
-                                    !(lhs == std::numeric_limits<long long>::min() && rhs == -1))
-                                {
+                                    !(lhs == std::numeric_limits<long long>::min() && rhs == -1)) {
                                     res = lhs % rhs;
-                                }
-                                else
-                                {
+                                } else {
                                     folded = false;
                                 }
                                 break;
                             case Opcode::ISubOvf:
-                                if (const auto diff = checkedSub(lhs, rhs))
-                                {
+                                if (const auto diff = checkedSub(lhs, rhs)) {
                                     res = *diff;
-                                }
-                                else
-                                {
+                                } else {
                                     folded = false;
                                 }
                                 break;
                             case Opcode::IMulOvf:
-                                if (const auto prod = checkedMul(lhs, rhs))
-                                {
+                                if (const auto prod = checkedMul(lhs, rhs)) {
                                     res = *prod;
-                                }
-                                else
-                                {
+                                } else {
                                     folded = false;
                                 }
                                 break;
@@ -626,26 +527,20 @@ void constFold(Module &m)
                                 break;
                             // Unsigned division and remainder
                             case Opcode::UDivChk0:
-                                if (rhs != 0)
-                                {
+                                if (rhs != 0) {
                                     res = static_cast<long long>(
                                         static_cast<unsigned long long>(lhs) /
                                         static_cast<unsigned long long>(rhs));
-                                }
-                                else
-                                {
+                                } else {
                                     folded = false;
                                 }
                                 break;
                             case Opcode::URemChk0:
-                                if (rhs != 0)
-                                {
+                                if (rhs != 0) {
                                     res = static_cast<long long>(
                                         static_cast<unsigned long long>(lhs) %
                                         static_cast<unsigned long long>(rhs));
-                                }
-                                else
-                                {
+                                } else {
                                     folded = false;
                                 }
                                 break;
@@ -659,23 +554,19 @@ void constFold(Module &m)
                             in.op != Opcode::SCmpLT && in.op != Opcode::SCmpLE &&
                             in.op != Opcode::SCmpGT && in.op != Opcode::SCmpGE &&
                             in.op != Opcode::UCmpLT && in.op != Opcode::UCmpLE &&
-                            in.op != Opcode::UCmpGT && in.op != Opcode::UCmpGE)
-                        {
+                            in.op != Opcode::UCmpGT && in.op != Opcode::UCmpGE) {
                             repl = Value::constInt(res);
                         }
                     }
                     // Try floating-point folding
-                    if (!folded)
-                    {
+                    if (!folded) {
                         double flhs = 0.0;
                         double frhs = 0.0;
                         if (getConstFloat(in.operands[0], flhs) &&
-                            getConstFloat(in.operands[1], frhs))
-                        {
+                            getConstFloat(in.operands[1], frhs)) {
                             double fres = 0.0;
                             folded = true;
-                            switch (in.op)
-                            {
+                            switch (in.op) {
                                 case Opcode::FAdd:
                                     fres = flhs + frhs;
                                     break;
@@ -718,8 +609,7 @@ void constFold(Module &m)
                             // For arithmetic operations, produce float result
                             if (folded && in.op != Opcode::FCmpEQ && in.op != Opcode::FCmpNE &&
                                 in.op != Opcode::FCmpLT && in.op != Opcode::FCmpLE &&
-                                in.op != Opcode::FCmpGT && in.op != Opcode::FCmpGE)
-                            {
+                                in.op != Opcode::FCmpGT && in.op != Opcode::FCmpGE) {
                                 if (std::isfinite(fres))
                                     repl = Value::constFloat(fres);
                                 else
@@ -728,16 +618,14 @@ void constFold(Module &m)
                         }
                     }
                 }
-                if (folded)
-                {
+                if (folded) {
                     useInfo.replaceAllUses(*in.result, repl);
                     toErase.push_back(i);
                 }
             }
 
             // Erase folded instructions in reverse order to preserve indices
-            for (auto it = toErase.rbegin(); it != toErase.rend(); ++it)
-            {
+            for (auto it = toErase.rbegin(); it != toErase.rend(); ++it) {
                 b.instructions.erase(b.instructions.begin() + static_cast<long>(*it));
             }
         }

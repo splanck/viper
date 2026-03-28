@@ -24,25 +24,21 @@
 #include <stdio.h>
 #include <string.h>
 
-static void check(const char *label, int ok)
-{
+static void check(const char *label, int ok) {
     printf("  %-50s %s\n", label, ok ? "PASS" : "FAIL");
     assert(ok);
 }
 
-static void obj_release(void *obj)
-{
+static void obj_release(void *obj) {
     if (obj && rt_obj_release_check0(obj))
         rt_obj_free(obj);
 }
 
-static rt_string S(const char *s)
-{
+static rt_string S(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_str_roundtrip(void)
-{
+static void test_str_roundtrip(void) {
     printf("rt_aes_encrypt_str / rt_aes_decrypt_str roundtrip:\n");
 
     rt_string plaintext = S("Hello, AES!");
@@ -64,8 +60,7 @@ static void test_str_roundtrip(void)
     rt_string_unref(plaintext);
 }
 
-static void test_empty_str_roundtrip(void)
-{
+static void test_empty_str_roundtrip(void) {
     printf("rt_aes_encrypt_str / rt_aes_decrypt_str with empty string:\n");
 
     rt_string plaintext = rt_string_from_bytes("", 0);
@@ -83,8 +78,7 @@ static void test_empty_str_roundtrip(void)
     rt_string_unref(plaintext);
 }
 
-static void test_raw_aes128_roundtrip(void)
-{
+static void test_raw_aes128_roundtrip(void) {
     printf("rt_aes_encrypt / rt_aes_decrypt AES-128 (from hex keys):\n");
 
     // 16-byte key: 2b7e151628aed2a6abf7158809cf4f3c
@@ -125,10 +119,8 @@ static void test_raw_aes128_roundtrip(void)
     rt_string orig_hex = S("4145532d31323820746573742121212121212121");
     void *orig = rt_bytes_from_hex(orig_hex);
     rt_string_unref(orig_hex);
-    for (int64_t i = 0; i < 20; ++i)
-    {
-        if (rt_bytes_get(decrypted, i) != rt_bytes_get(orig, i))
-        {
+    for (int64_t i = 0; i < 20; ++i) {
+        if (rt_bytes_get(decrypted, i) != rt_bytes_get(orig, i)) {
             match = 0;
             break;
         }
@@ -145,8 +137,7 @@ static void test_raw_aes128_roundtrip(void)
     (void)orig_bytes;
 }
 
-int main(void)
-{
+int main(void) {
     printf("=== RTAesTests ===\n");
     test_str_roundtrip();
     test_empty_str_roundtrip();

@@ -154,8 +154,7 @@
 #endif
 #endif
 
-namespace viper_test
-{
+namespace viper_test {
 
 /// @brief Exception thrown when a test assertion fails.
 ///
@@ -172,8 +171,7 @@ namespace viper_test
 /// ```
 ///
 /// @invariant Once thrown, the test runner will record the failure.
-struct TestFailure final : public std::exception
-{
+struct TestFailure final : public std::exception {
     /// @brief Construct a test failure exception.
     /// @param fatal If true, the test runner will stop executing the current test.
     explicit TestFailure(bool fatal) : fatal(fatal) {}
@@ -183,8 +181,7 @@ struct TestFailure final : public std::exception
 
     /// @brief Return a human-readable description of the failure.
     /// @return "fatal test failure" if fatal, otherwise "test failure".
-    const char *what() const noexcept override
-    {
+    const char *what() const noexcept override {
         return fatal ? "fatal test failure" : "test failure";
     }
 };
@@ -205,8 +202,7 @@ struct TestFailure final : public std::exception
 ///     // ... GPU tests ...
 /// }
 /// ```
-struct TestSkip final : public std::exception
-{
+struct TestSkip final : public std::exception {
     /// @brief Construct a skip exception with an explanatory reason.
     /// @param reason Human-readable explanation for why the test was skipped.
     explicit TestSkip(std::string reason) : reason(std::move(reason)) {}
@@ -216,8 +212,7 @@ struct TestSkip final : public std::exception
 
     /// @brief Return the skip reason.
     /// @return Pointer to the reason string.
-    const char *what() const noexcept override
-    {
+    const char *what() const noexcept override {
         return reason.c_str();
     }
 };
@@ -227,8 +222,7 @@ struct TestSkip final : public std::exception
 /// @details Each test registered via the `TEST()` macro creates a TestCase
 /// containing the suite name (for grouping), test name (for identification),
 /// and a callable that executes the test body.
-struct TestCase
-{
+struct TestCase {
     std::string suite;        ///< Name of the test suite (first TEST argument).
     std::string name;         ///< Name of the individual test (second TEST argument).
     std::function<void()> fn; ///< The test function body to execute.
@@ -242,8 +236,7 @@ struct TestCase
 /// singleton pattern to ensure proper initialization order.
 ///
 /// @return Reference to the global test case vector.
-inline std::vector<TestCase> &registry()
-{
+inline std::vector<TestCase> &registry() {
     static std::vector<TestCase> tests;
     return tests;
 }
@@ -253,29 +246,25 @@ inline std::vector<TestCase> &registry()
 /// @details The `TEST()` macro creates a static instance of this struct,
 /// causing the test to be added to the global registry before main() runs.
 /// This pattern enables automatic test discovery without explicit registration.
-struct TestRegistrar
-{
+struct TestRegistrar {
     /// @brief Register a test case in the global registry.
     ///
     /// @param suiteName Name of the test suite for grouping.
     /// @param testName Name of the individual test.
     /// @param fn Callable that executes the test body.
-    TestRegistrar(std::string suiteName, std::string testName, std::function<void()> fn)
-    {
+    TestRegistrar(std::string suiteName, std::string testName, std::function<void()> fn) {
         registry().push_back({std::move(suiteName), std::move(testName), std::move(fn)});
     }
 };
 
 /// @brief Access the global test filter pattern (empty = run all).
-inline std::string &filter_pattern()
-{
+inline std::string &filter_pattern() {
     static std::string pattern;
     return pattern;
 }
 
 /// @brief Access the global JUnit XML output path (empty = disabled).
-inline std::string &xml_output_path()
-{
+inline std::string &xml_output_path() {
     static std::string path;
     return path;
 }
@@ -284,29 +273,20 @@ inline std::string &xml_output_path()
 ///
 /// @details Supports '*' as wildcard matching zero or more characters.
 /// Pattern is matched against "Suite.TestName".
-inline bool glob_match(std::string_view pattern, std::string_view text)
-{
+inline bool glob_match(std::string_view pattern, std::string_view text) {
     size_t pi = 0, ti = 0;
     size_t starP = std::string_view::npos, starT = 0;
-    while (ti < text.size())
-    {
-        if (pi < pattern.size() && (pattern[pi] == text[ti] || pattern[pi] == '?'))
-        {
+    while (ti < text.size()) {
+        if (pi < pattern.size() && (pattern[pi] == text[ti] || pattern[pi] == '?')) {
             ++pi;
             ++ti;
-        }
-        else if (pi < pattern.size() && pattern[pi] == '*')
-        {
+        } else if (pi < pattern.size() && pattern[pi] == '*') {
             starP = pi++;
             starT = ti;
-        }
-        else if (starP != std::string_view::npos)
-        {
+        } else if (starP != std::string_view::npos) {
             pi = starP + 1;
             ti = ++starT;
-        }
-        else
-        {
+        } else {
             return false;
         }
     }
@@ -316,10 +296,8 @@ inline bool glob_match(std::string_view pattern, std::string_view text)
 }
 
 /// @brief Parse command-line arguments for --filter and --xml flags.
-inline void parse_args(int argc, char **argv)
-{
-    for (int i = 1; i < argc; ++i)
-    {
+inline void parse_args(int argc, char **argv) {
+    for (int i = 1; i < argc; ++i) {
         std::string_view arg(argv[i]);
         if (arg.substr(0, 9) == "--filter=")
             filter_pattern() = std::string(arg.substr(9));
@@ -335,8 +313,7 @@ inline void parse_args(int argc, char **argv)
 ///
 /// @param argc Pointer to argument count.
 /// @param argv Pointer to argument array.
-inline void init(int *argc, char ***argv)
-{
+inline void init(int *argc, char ***argv) {
     if (argc && argv && *argv)
         parse_args(*argc, *argv);
 #ifdef _WIN32
@@ -355,8 +332,7 @@ inline void init(int *argc, char ***argv)
 }
 
 /// @brief Initialize the test framework (overload for direct argv).
-inline void init(int *argc, char **argv)
-{
+inline void init(int *argc, char **argv) {
     if (argc && argv)
         parse_args(*argc, argv);
 #ifdef _WIN32
@@ -377,8 +353,7 @@ inline void init(int *argc, char **argv)
 ///
 /// @details Subclass this and override SetUp()/TearDown() to create shared
 /// test state. Use with the TEST_F macro.
-struct TestFixture
-{
+struct TestFixture {
     virtual ~TestFixture() = default;
 
     virtual void SetUp() {}
@@ -396,8 +371,7 @@ struct TestFixture
 /// @param file Source file where the failure occurred (__FILE__).
 /// @param line Line number where the failure occurred (__LINE__).
 /// @param fatal If true, throw a fatal failure that aborts the test.
-inline void report_failure(std::string_view expr, const char *file, int line, bool fatal)
-{
+inline void report_failure(std::string_view expr, const char *file, int line, bool fatal) {
     std::cerr << file << ":" << line << ": failure\n";
     std::cerr << "  expression: " << expr << "\n";
     throw TestFailure(fatal);
@@ -407,22 +381,18 @@ inline void report_failure(std::string_view expr, const char *file, int line, bo
 template <typename...> using viper_void_t = void;
 
 /// @brief SFINAE helper: detect whether T can be streamed to std::ostream.
-template <typename T, typename = void> struct is_streamable : std::false_type
-{
-};
+template <typename T, typename = void> struct is_streamable : std::false_type {};
 
 template <typename T>
 struct is_streamable<
     T,
     viper_void_t<decltype(std::declval<std::ostream &>() << std::declval<const T &>())>>
-    : std::true_type
-{
-};
+    : std::true_type {};
 
 /// @brief Convert a value to string for failure messages (streamable types).
 template <typename T>
-inline auto value_to_string(const T &val) -> std::enable_if_t<is_streamable<T>::value, std::string>
-{
+inline auto value_to_string(const T &val)
+    -> std::enable_if_t<is_streamable<T>::value, std::string> {
     std::ostringstream oss;
     oss << val;
     return oss.str();
@@ -430,8 +400,7 @@ inline auto value_to_string(const T &val) -> std::enable_if_t<is_streamable<T>::
 
 /// @brief Fallback for non-streamable types — returns a placeholder.
 template <typename T>
-inline auto value_to_string(const T &) -> std::enable_if_t<!is_streamable<T>::value, std::string>
-{
+inline auto value_to_string(const T &) -> std::enable_if_t<!is_streamable<T>::value, std::string> {
     return "<non-printable>";
 }
 
@@ -448,8 +417,7 @@ inline void report_comparison_failure(const char *op,
                                       const char *rhsExpr,
                                       const char *file,
                                       int line,
-                                      bool fatal)
-{
+                                      bool fatal) {
     std::cerr << file << ":" << line << ": failure\n";
     std::cerr << "  expression: " << lhsExpr << " " << op << " " << rhsExpr << "\n";
     std::cerr << "  left value:  " << value_to_string(lhs) << "\n";
@@ -464,8 +432,7 @@ inline void report_contains_failure(const std::string &haystack,
                                     const char *needleExpr,
                                     const char *file,
                                     int line,
-                                    bool fatal)
-{
+                                    bool fatal) {
     std::cerr << file << ":" << line << ": failure\n";
     std::cerr << "  expression: " << haystackExpr << " contains " << needleExpr << "\n";
     std::cerr << "  haystack: \"" << haystack << "\"\n";
@@ -480,8 +447,7 @@ inline void report_contains_failure(const std::string &haystack,
 /// it always throws a TestSkip exception.
 ///
 /// @param reason Human-readable explanation for why the test is being skipped.
-[[noreturn]] inline void skip(std::string reason)
-{
+[[noreturn]] inline void skip(std::string reason) {
     throw TestSkip(std::move(reason));
 }
 
@@ -519,14 +485,11 @@ inline void report_contains_failure(const std::string &haystack,
 ///
 /// @return Number of failed tests (0 indicates all tests passed or were skipped).
 /// @brief Escape a string for XML attribute/text content.
-inline std::string xml_escape(const std::string &s)
-{
+inline std::string xml_escape(const std::string &s) {
     std::string out;
     out.reserve(s.size());
-    for (char c : s)
-    {
-        switch (c)
-        {
+    for (char c : s) {
+        switch (c) {
             case '&':
                 out += "&amp;";
                 break;
@@ -551,37 +514,27 @@ inline std::string xml_escape(const std::string &s)
 }
 
 /// @brief Result of a single test case execution (for JUnit XML reporting).
-struct TestResult
-{
+struct TestResult {
     std::string suite;
     std::string name;
 
-    enum Status
-    {
-        Passed,
-        Failed,
-        Skipped
-    } status = Passed;
+    enum Status { Passed, Failed, Skipped } status = Passed;
 
     std::string message;
 };
 
-inline int run_all_tests()
-{
+inline int run_all_tests() {
     int failures = 0;
     int skips = 0;
     int filtered = 0;
     std::vector<TestResult> results;
     const auto &pattern = filter_pattern();
 
-    for (const auto &t : registry())
-    {
+    for (const auto &t : registry()) {
         // Apply filter if set.
-        if (!pattern.empty())
-        {
+        if (!pattern.empty()) {
             std::string fullName = t.suite + "." + t.name;
-            if (!glob_match(pattern, fullName))
-            {
+            if (!glob_match(pattern, fullName)) {
                 ++filtered;
                 continue;
             }
@@ -591,21 +544,16 @@ inline int run_all_tests()
         result.suite = t.suite;
         result.name = t.name;
 
-        try
-        {
+        try {
             t.fn();
             result.status = TestResult::Passed;
             std::cout << "[  PASSED  ] " << t.suite << "." << t.name << "\n";
-        }
-        catch (const TestSkip &s)
-        {
+        } catch (const TestSkip &s) {
             ++skips;
             result.status = TestResult::Skipped;
             result.message = s.what();
             std::cout << "[ SKIPPED  ] " << t.suite << "." << t.name << ": " << s.what() << "\n";
-        }
-        catch (const TestFailure &f)
-        {
+        } catch (const TestFailure &f) {
             ++failures;
             result.status = TestResult::Failed;
             result.message = f.fatal ? "ASSERT failure" : "EXPECT failure";
@@ -613,23 +561,18 @@ inline int run_all_tests()
             if (!f.fatal)
                 std::cerr << " (non-fatal)";
             std::cerr << "\n";
-            if (f.fatal)
-            {
+            if (f.fatal) {
                 std::cerr << "Stopping due to ASSERT failure.\n";
                 results.push_back(result);
                 break;
             }
-        }
-        catch (const std::exception &e)
-        {
+        } catch (const std::exception &e) {
             ++failures;
             result.status = TestResult::Failed;
             result.message = std::string("unhandled exception: ") + e.what();
             std::cerr << "[  FAILED  ] " << t.suite << "." << t.name
                       << " (unhandled exception: " << e.what() << ")\n";
-        }
-        catch (...)
-        {
+        } catch (...) {
             ++failures;
             result.status = TestResult::Failed;
             result.message = "unknown exception";
@@ -648,31 +591,23 @@ inline int run_all_tests()
 
     // Write JUnit XML if --xml was specified.
     const auto &xmlPath = xml_output_path();
-    if (!xmlPath.empty())
-    {
+    if (!xmlPath.empty()) {
         std::ofstream xml(xmlPath);
-        if (xml.is_open())
-        {
+        if (xml.is_open()) {
             xml << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
             xml << "<testsuites tests=\"" << total << "\" failures=\"" << failures
                 << "\" skipped=\"" << skips << "\">\n";
             xml << "  <testsuite name=\"viper\" tests=\"" << total << "\" failures=\"" << failures
                 << "\" skipped=\"" << skips << "\">\n";
-            for (const auto &r : results)
-            {
+            for (const auto &r : results) {
                 xml << "    <testcase classname=\"" << xml_escape(r.suite) << "\" name=\""
                     << xml_escape(r.name) << "\"";
-                if (r.status == TestResult::Passed)
-                {
+                if (r.status == TestResult::Passed) {
                     xml << " />\n";
-                }
-                else if (r.status == TestResult::Skipped)
-                {
+                } else if (r.status == TestResult::Skipped) {
                     xml << ">\n      <skipped message=\"" << xml_escape(r.message)
                         << "\" />\n    </testcase>\n";
-                }
-                else
-                {
+                } else {
                     xml << ">\n      <failure message=\"" << xml_escape(r.message)
                         << "\" />\n    </testcase>\n";
                 }
@@ -751,21 +686,16 @@ inline int run_all_tests()
 /// }
 /// ```
 #define TEST_F(FixtureClass, TestName)                                                             \
-    class VIPER_TEST_DETAIL_CAT(FixtureClass, TestName) : public FixtureClass                      \
-    {                                                                                              \
+    class VIPER_TEST_DETAIL_CAT(FixtureClass, TestName) : public FixtureClass {                    \
       public:                                                                                      \
         void TestBody();                                                                           \
     };                                                                                             \
-    static void VIPER_TEST_DETAIL_CAT(FixtureClass, TestName##_Run)()                              \
-    {                                                                                              \
+    static void VIPER_TEST_DETAIL_CAT(FixtureClass, TestName##_Run)() {                            \
         VIPER_TEST_DETAIL_CAT(FixtureClass, TestName) fixture;                                     \
         fixture.SetUp();                                                                           \
-        try                                                                                        \
-        {                                                                                          \
+        try {                                                                                      \
             fixture.TestBody();                                                                    \
-        }                                                                                          \
-        catch (...)                                                                                \
-        {                                                                                          \
+        } catch (...) {                                                                            \
             fixture.TearDown();                                                                    \
             throw;                                                                                 \
         }                                                                                          \
@@ -789,8 +719,7 @@ inline int run_all_tests()
 ///
 /// @param expr Expression to evaluate.
 #define EXPECT_TRUE(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         if (!(expr))                                                                               \
             ::viper_test::report_failure(#expr, __FILE__, __LINE__, false);                        \
     } while (false)
@@ -822,8 +751,7 @@ inline int run_all_tests()
 /// @brief Assert that two values are equal using operator== (non-fatal).
 /// On failure, prints both actual values.
 #define EXPECT_EQ(val1, val2)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
@@ -836,8 +764,7 @@ inline int run_all_tests()
 /// @def EXPECT_NE(val1, val2)
 /// @brief Assert that two values are not equal using operator!= (non-fatal).
 #define EXPECT_NE(val1, val2)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
@@ -850,8 +777,7 @@ inline int run_all_tests()
 /// @def EXPECT_GT(val1, val2)
 /// @brief Assert val1 > val2 (non-fatal). Prints both values on failure.
 #define EXPECT_GT(val1, val2)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
@@ -864,8 +790,7 @@ inline int run_all_tests()
 /// @def EXPECT_LT(val1, val2)
 /// @brief Assert val1 < val2 (non-fatal). Prints both values on failure.
 #define EXPECT_LT(val1, val2)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
@@ -878,8 +803,7 @@ inline int run_all_tests()
 /// @def EXPECT_GE(val1, val2)
 /// @brief Assert val1 >= val2 (non-fatal). Prints both values on failure.
 #define EXPECT_GE(val1, val2)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
@@ -892,8 +816,7 @@ inline int run_all_tests()
 /// @def EXPECT_LE(val1, val2)
 /// @brief Assert val1 <= val2 (non-fatal). Prints both values on failure.
 #define EXPECT_LE(val1, val2)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
@@ -906,15 +829,13 @@ inline int run_all_tests()
 /// @def EXPECT_NEAR(val1, val2, epsilon)
 /// @brief Assert |val1 - val2| <= epsilon (non-fatal). For floating-point comparisons.
 #define EXPECT_NEAR(val1, val2, epsilon)                                                           \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
         const auto viper_test_eps_ = (epsilon);                                                    \
         if (std::fabs(static_cast<double>(viper_test_lhs_) -                                       \
                       static_cast<double>(viper_test_rhs_)) >                                      \
-            static_cast<double>(viper_test_eps_))                                                  \
-        {                                                                                          \
+            static_cast<double>(viper_test_eps_)) {                                                \
             std::cerr << __FILE__ << ":" << __LINE__ << ": failure\n";                             \
             std::cerr << "  expression: |" #val1 " - " #val2 "| <= " #epsilon "\n";                \
             std::cerr << "  left value:  " << viper_test_lhs_ << "\n";                             \
@@ -927,8 +848,7 @@ inline int run_all_tests()
 /// @def EXPECT_CONTAINS(haystack, needle)
 /// @brief Assert that haystack string contains needle (non-fatal).
 #define EXPECT_CONTAINS(haystack, needle)                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         const std::string viper_test_h_(haystack);                                                 \
         const std::string viper_test_n_(needle);                                                   \
         if (viper_test_h_.find(viper_test_n_) == std::string::npos)                                \
@@ -939,19 +859,13 @@ inline int run_all_tests()
 /// @def EXPECT_THROWS(expr, ExcType)
 /// @brief Assert that expr throws an exception of type ExcType (non-fatal).
 #define EXPECT_THROWS(expr, ExcType)                                                               \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         bool viper_test_caught_ = false;                                                           \
-        try                                                                                        \
-        {                                                                                          \
+        try {                                                                                      \
             (void)(expr);                                                                          \
-        }                                                                                          \
-        catch (const ExcType &)                                                                    \
-        {                                                                                          \
+        } catch (const ExcType &) {                                                                \
             viper_test_caught_ = true;                                                             \
-        }                                                                                          \
-        catch (...)                                                                                \
-        {                                                                                          \
+        } catch (...) {                                                                            \
         }                                                                                          \
         if (!viper_test_caught_)                                                                   \
             ::viper_test::report_failure(#expr " throws " #ExcType, __FILE__, __LINE__, false);    \
@@ -960,14 +874,10 @@ inline int run_all_tests()
 /// @def EXPECT_NO_THROW(expr)
 /// @brief Assert that expr does not throw any exception (non-fatal).
 #define EXPECT_NO_THROW(expr)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
-        try                                                                                        \
-        {                                                                                          \
+    do {                                                                                           \
+        try {                                                                                      \
             (void)(expr);                                                                          \
-        }                                                                                          \
-        catch (...)                                                                                \
-        {                                                                                          \
+        } catch (...) {                                                                            \
             ::viper_test::report_failure(#expr " should not throw", __FILE__, __LINE__, false);    \
         }                                                                                          \
     } while (false)
@@ -979,8 +889,7 @@ inline int run_all_tests()
 /// @def ASSERT_TRUE(expr)
 /// @brief Assert that an expression evaluates to true (fatal).
 #define ASSERT_TRUE(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         if (!(expr))                                                                               \
             ::viper_test::report_failure(#expr, __FILE__, __LINE__, true);                         \
     } while (false)
@@ -992,8 +901,7 @@ inline int run_all_tests()
 /// @def ASSERT_EQ(val1, val2)
 /// @brief Assert that two values are equal using operator== (fatal). Prints values on failure.
 #define ASSERT_EQ(val1, val2)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
@@ -1006,8 +914,7 @@ inline int run_all_tests()
 /// @def ASSERT_NE(val1, val2)
 /// @brief Assert that two values are not equal using operator!= (fatal).
 #define ASSERT_NE(val1, val2)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
@@ -1020,8 +927,7 @@ inline int run_all_tests()
 /// @def ASSERT_GT(val1, val2)
 /// @brief Assert val1 > val2 (fatal).
 #define ASSERT_GT(val1, val2)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
@@ -1034,8 +940,7 @@ inline int run_all_tests()
 /// @def ASSERT_LT(val1, val2)
 /// @brief Assert val1 < val2 (fatal).
 #define ASSERT_LT(val1, val2)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
@@ -1048,8 +953,7 @@ inline int run_all_tests()
 /// @def ASSERT_GE(val1, val2)
 /// @brief Assert val1 >= val2 (fatal).
 #define ASSERT_GE(val1, val2)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
@@ -1062,8 +966,7 @@ inline int run_all_tests()
 /// @def ASSERT_LE(val1, val2)
 /// @brief Assert val1 <= val2 (fatal).
 #define ASSERT_LE(val1, val2)                                                                      \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         VIPER_TEST_SUPPRESS_SIGN_COMPARE_BEGIN                                                     \
         const auto viper_test_lhs_ = (val1);                                                       \
         const auto viper_test_rhs_ = (val2);                                                       \
@@ -1096,7 +999,6 @@ inline int run_all_tests()
 ///
 /// @param reason Human-readable string explaining why the test is skipped.
 #define VIPER_TEST_SKIP(reason)                                                                    \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         ::viper_test::skip(reason);                                                                \
     } while (false)

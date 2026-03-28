@@ -27,8 +27,7 @@
 #include "vm/OpHandlers_Memory.hpp"
 #include <cassert>
 
-namespace il::vm::detail
-{
+namespace il::vm::detail {
 using memory::handleAddrOf;
 using memory::handleAlloca;
 using memory::handleConstF64;

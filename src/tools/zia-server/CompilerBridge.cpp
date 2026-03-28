@@ -35,17 +35,14 @@
 
 #include <sstream>
 
-namespace viper::server
-{
+namespace viper::server {
 
 using namespace il::frontends::zia;
 
 // --- Helpers ---
 
-static std::string symbolKindStr(Symbol::Kind k)
-{
-    switch (k)
-    {
+static std::string symbolKindStr(Symbol::Kind k) {
+    switch (k) {
         case Symbol::Kind::Variable:
             return "variable";
         case Symbol::Kind::Parameter:
@@ -73,8 +70,7 @@ CompilerBridge::~CompilerBridge() = default;
 // --- Analysis ---
 
 std::vector<DiagnosticInfo> CompilerBridge::check(const std::string &source,
-                                                  const std::string &path)
-{
+                                                  const std::string &path) {
     il::support::SourceManager sm;
     CompilerInput input{.source = source, .path = path};
     CompilerOptions opts{};
@@ -83,8 +79,7 @@ std::vector<DiagnosticInfo> CompilerBridge::check(const std::string &source,
     return extractDiagnostics(result->diagnostics);
 }
 
-CompileResult CompilerBridge::compile(const std::string &source, const std::string &path)
-{
+CompileResult CompilerBridge::compile(const std::string &source, const std::string &path) {
     il::support::SourceManager sm;
     CompilerInput input{.source = source, .path = path};
     CompilerOptions opts{};
@@ -96,8 +91,7 @@ CompileResult CompilerBridge::compile(const std::string &source, const std::stri
 // --- Hover helpers ---
 
 /// @brief Resolved hover information for markdown formatting.
-struct HoverResult
-{
+struct HoverResult {
     std::string name;
     std::string
         kind; ///< "variable","parameter","function","method","field","type","module","runtime-class"
@@ -109,13 +103,12 @@ struct HoverResult
 };
 
 /// @brief Build a human-readable function signature from AST param names + semantic types.
-static std::string buildSignatureFromDecl(const std::vector<Param> &params, const TypeRef &funcType)
-{
+static std::string buildSignatureFromDecl(const std::vector<Param> &params,
+                                          const TypeRef &funcType) {
     auto paramTys = funcType ? funcType->paramTypes() : std::vector<TypeRef>{};
     auto retTy = funcType ? funcType->returnType() : TypeRef{};
     std::string sig = "(";
-    for (size_t i = 0; i < params.size(); ++i)
-    {
+    for (size_t i = 0; i < params.size(); ++i) {
         if (i > 0)
             sig += ", ";
         sig += params[i].name + ": ";
@@ -131,15 +124,13 @@ static std::string buildSignatureFromDecl(const std::vector<Param> &params, cons
 }
 
 /// @brief Build a function signature from just the ViperType (no param names).
-static std::string buildSignatureFromType(const TypeRef &funcType)
-{
+static std::string buildSignatureFromType(const TypeRef &funcType) {
     if (!funcType || funcType->kind != TypeKindSem::Function)
         return "";
     auto paramTys = funcType->paramTypes();
     auto retTy = funcType->returnType();
     std::string sig = "(";
-    for (size_t i = 0; i < paramTys.size(); ++i)
-    {
+    for (size_t i = 0; i < paramTys.size(); ++i) {
         if (i > 0)
             sig += ", ";
         sig += paramTys[i] ? paramTys[i]->toString() : "?";
@@ -152,25 +143,19 @@ static std::string buildSignatureFromType(const TypeRef &funcType)
 
 /// @brief Resolve a hover target using Sema APIs.
 static HoverResult resolveHoverTarget(
-    const AnalysisResult &ar, const Sema &sema, const HoverContext &ctx, int line, int col)
-{
+    const AnalysisResult &ar, const Sema &sema, const HoverContext &ctx, int line, int col) {
     HoverResult result;
 
-    if (!ctx.dotPrefix.empty())
-    {
+    if (!ctx.dotPrefix.empty()) {
         // ── Dotted expression: resolve prefix, then find member ──
         std::vector<std::string> parts;
         std::string token;
-        for (char c : ctx.dotPrefix)
-        {
-            if (c == '.')
-            {
+        for (char c : ctx.dotPrefix) {
+            if (c == '.') {
                 if (!token.empty())
                     parts.push_back(token);
                 token.clear();
-            }
-            else
-            {
+            } else {
                 token += c;
             }
         }
@@ -183,18 +168,15 @@ static HoverResult resolveHoverTarget(
         // Look up first part in globals.
         TypeRef current;
         auto globals = sema.getGlobalSymbols();
-        for (const auto &sym : globals)
-        {
-            if (sym.name == parts[0])
-            {
+        for (const auto &sym : globals) {
+            if (sym.name == parts[0]) {
                 current = sym.type;
                 break;
             }
         }
 
         // Try position-based lookup (locals, params, entity fields).
-        if (!current)
-        {
+        if (!current) {
             auto *scoped = sema.findSymbolAtPosition(
                 parts[0], ar.fileId, static_cast<uint32_t>(line), static_cast<uint32_t>(col));
             if (scoped)
@@ -202,24 +184,20 @@ static HoverResult resolveHoverTarget(
         }
 
         // Try module alias expansion.
-        if (!current)
-        {
+        if (!current) {
             std::string ns = sema.resolveModuleAlias(parts[0]);
-            if (!ns.empty())
-            {
+            if (!ns.empty()) {
                 std::string fullQname = ns;
                 for (size_t i = 1; i < parts.size(); ++i)
                     fullQname += "." + parts[i];
 
                 std::string classQname = fullQname + "." + ctx.identifier;
                 auto classMembers = sema.getRuntimeMembers(classQname);
-                if (!classMembers.empty())
-                {
+                if (!classMembers.empty()) {
                     result.name = classQname;
                     result.kind = "runtime-class";
                     int methods = 0, props = 0;
-                    for (const auto &m : classMembers)
-                    {
+                    for (const auto &m : classMembers) {
                         if (m.kind == Symbol::Kind::Method)
                             ++methods;
                         else
@@ -237,15 +215,13 @@ static HoverResult resolveHoverTarget(
         }
 
         // Handle Module type.
-        if (current && current->kind == TypeKindSem::Module && !current->name.empty())
-        {
+        if (current && current->kind == TypeKindSem::Module && !current->name.empty()) {
             std::string fullQname = current->name;
             for (size_t i = 1; i < parts.size(); ++i)
                 fullQname += "." + parts[i];
 
             std::string classQname = fullQname + "." + ctx.identifier;
-            if (!sema.getRuntimeMembers(classQname).empty())
-            {
+            if (!sema.getRuntimeMembers(classQname).empty()) {
                 result.name = classQname;
                 result.kind = "runtime-class";
                 return result;
@@ -257,16 +233,12 @@ static HoverResult resolveHoverTarget(
         }
 
         // Walk remaining prefix parts via getMembersOf.
-        if (current)
-        {
-            for (size_t i = 1; i < parts.size(); ++i)
-            {
+        if (current) {
+            for (size_t i = 1; i < parts.size(); ++i) {
                 auto members = sema.getMembersOf(current);
                 bool found = false;
-                for (const auto &mem : members)
-                {
-                    if (mem.name == parts[i])
-                    {
+                for (const auto &mem : members) {
+                    if (mem.name == parts[i]) {
                         if (mem.type && mem.type->kind == TypeKindSem::Function)
                             current = mem.type->returnType();
                         else
@@ -291,25 +263,19 @@ static HoverResult resolveHoverTarget(
             ownerName = current->name;
 
         auto members = sema.getMembersOf(current);
-        for (const auto &mem : members)
-        {
-            if (mem.name == ctx.identifier)
-            {
+        for (const auto &mem : members) {
+            if (mem.name == ctx.identifier) {
                 result.name = mem.name;
                 result.kind = symbolKindStr(mem.kind);
                 result.type = mem.type ? mem.type->toString() : "";
                 result.ownerName = ownerName;
                 result.isFinal = mem.isFinal;
                 result.isExtern = mem.isExtern;
-                if (mem.type && mem.type->kind == TypeKindSem::Function)
-                {
-                    if (mem.decl && mem.decl->kind == DeclKind::Method)
-                    {
+                if (mem.type && mem.type->kind == TypeKindSem::Function) {
+                    if (mem.decl && mem.decl->kind == DeclKind::Method) {
                         auto *md = static_cast<MethodDecl *>(mem.decl);
                         result.signature = buildSignatureFromDecl(md->params, mem.type);
-                    }
-                    else
-                    {
+                    } else {
                         result.signature = buildSignatureFromType(mem.type);
                     }
                 }
@@ -326,28 +292,21 @@ static HoverResult resolveHoverTarget(
     {
         auto *scoped = sema.findSymbolAtPosition(
             ctx.identifier, ar.fileId, static_cast<uint32_t>(line), static_cast<uint32_t>(col));
-        if (scoped)
-        {
+        if (scoped) {
             result.name = scoped->symbol.name;
             result.kind = symbolKindStr(scoped->symbol.kind);
             result.type = scoped->symbol.type ? scoped->symbol.type->toString() : "";
             result.isFinal = scoped->symbol.isFinal;
             result.isExtern = scoped->symbol.isExtern;
             result.ownerName = scoped->ownerType;
-            if (scoped->symbol.type && scoped->symbol.type->kind == TypeKindSem::Function)
-            {
-                if (scoped->symbol.decl && scoped->symbol.decl->kind == DeclKind::Method)
-                {
+            if (scoped->symbol.type && scoped->symbol.type->kind == TypeKindSem::Function) {
+                if (scoped->symbol.decl && scoped->symbol.decl->kind == DeclKind::Method) {
                     auto *md = static_cast<MethodDecl *>(scoped->symbol.decl);
                     result.signature = buildSignatureFromDecl(md->params, scoped->symbol.type);
-                }
-                else if (scoped->symbol.decl && scoped->symbol.decl->kind == DeclKind::Function)
-                {
+                } else if (scoped->symbol.decl && scoped->symbol.decl->kind == DeclKind::Function) {
                     auto *fd = static_cast<FunctionDecl *>(scoped->symbol.decl);
                     result.signature = buildSignatureFromDecl(fd->params, scoped->symbol.type);
-                }
-                else
-                {
+                } else {
                     result.signature = buildSignatureFromType(scoped->symbol.type);
                 }
             }
@@ -357,24 +316,18 @@ static HoverResult resolveHoverTarget(
 
     // 1. Global symbols.
     auto globals = sema.getGlobalSymbols();
-    for (const auto &sym : globals)
-    {
-        if (sym.name == ctx.identifier)
-        {
+    for (const auto &sym : globals) {
+        if (sym.name == ctx.identifier) {
             result.name = sym.name;
             result.kind = symbolKindStr(sym.kind);
             result.type = sym.type ? sym.type->toString() : "";
             result.isFinal = sym.isFinal;
             result.isExtern = sym.isExtern;
-            if (sym.type && sym.type->kind == TypeKindSem::Function)
-            {
-                if (sym.decl && sym.decl->kind == DeclKind::Function)
-                {
+            if (sym.type && sym.type->kind == TypeKindSem::Function) {
+                if (sym.decl && sym.decl->kind == DeclKind::Function) {
                     auto *fd = static_cast<FunctionDecl *>(sym.decl);
                     result.signature = buildSignatureFromDecl(fd->params, sym.type);
-                }
-                else
-                {
+                } else {
                     result.signature = buildSignatureFromType(sym.type);
                 }
             }
@@ -384,10 +337,8 @@ static HoverResult resolveHoverTarget(
 
     // 2. User-defined type names.
     auto typeNames = sema.getTypeNames();
-    for (const auto &tn : typeNames)
-    {
-        if (tn == ctx.identifier)
-        {
+    for (const auto &tn : typeNames) {
+        if (tn == ctx.identifier) {
             result.name = tn;
             result.kind = "type";
             result.type = tn;
@@ -397,8 +348,7 @@ static HoverResult resolveHoverTarget(
 
     // 3. Module aliases.
     std::string ns = sema.resolveModuleAlias(ctx.identifier);
-    if (!ns.empty())
-    {
+    if (!ns.empty()) {
         result.name = ctx.identifier;
         result.kind = "module";
         result.type = ns;
@@ -409,28 +359,22 @@ static HoverResult resolveHoverTarget(
 }
 
 /// @brief Format hover info as rich markdown.
-static std::string formatHoverMarkdown(const HoverResult &info)
-{
+static std::string formatHoverMarkdown(const HoverResult &info) {
     std::string md;
 
-    if (info.kind == "function")
-    {
+    if (info.kind == "function") {
         md += "```zia\nfunc " + info.name;
         if (!info.signature.empty())
             md += info.signature;
         md += "\n```";
-    }
-    else if (info.kind == "method")
-    {
+    } else if (info.kind == "method") {
         md += "```zia\nmethod " + info.name;
         if (!info.signature.empty())
             md += info.signature;
         md += "\n```";
         if (!info.ownerName.empty())
             md += "\n\n*Member of `" + info.ownerName + "`*";
-    }
-    else if (info.kind == "variable")
-    {
+    } else if (info.kind == "variable") {
         md += "```zia\n";
         if (info.isFinal)
             md += "final ";
@@ -440,39 +384,27 @@ static std::string formatHoverMarkdown(const HoverResult &info)
         if (!info.type.empty())
             md += ": " + info.type;
         md += "\n```";
-    }
-    else if (info.kind == "parameter")
-    {
+    } else if (info.kind == "parameter") {
         md += "```zia\n" + info.name;
         if (!info.type.empty())
             md += ": " + info.type;
         md += "\n```\n\n*Parameter*";
-    }
-    else if (info.kind == "field")
-    {
+    } else if (info.kind == "field") {
         md += "```zia\nfield " + info.name;
         if (!info.type.empty())
             md += ": " + info.type;
         md += "\n```";
         if (!info.ownerName.empty())
             md += "\n\n*Member of `" + info.ownerName + "`*";
-    }
-    else if (info.kind == "type")
-    {
+    } else if (info.kind == "type") {
         md += "```zia\nentity " + info.name + "\n```";
-    }
-    else if (info.kind == "module")
-    {
+    } else if (info.kind == "module") {
         md += "```zia\nbind " + info.name + " = " + info.type + "\n```\n\n*Module namespace*";
-    }
-    else if (info.kind == "runtime-class")
-    {
+    } else if (info.kind == "runtime-class") {
         md += "```zia\nclass " + info.name + "\n```";
         if (!info.signature.empty())
             md += "\n\n*Runtime class — " + info.signature + "*";
-    }
-    else
-    {
+    } else {
         md += "```zia\n" + info.name;
         if (!info.type.empty())
             md += ": " + info.type;
@@ -487,13 +419,11 @@ static std::string formatHoverMarkdown(const HoverResult &info)
 std::vector<CompletionInfo> CompilerBridge::completions(const std::string &source,
                                                         int line,
                                                         int col,
-                                                        const std::string &path)
-{
+                                                        const std::string &path) {
     auto items = completionEngine_->complete(source, line, col, path);
     std::vector<CompletionInfo> result;
     result.reserve(items.size());
-    for (const auto &item : items)
-    {
+    for (const auto &item : items) {
         result.push_back({item.label,
                           item.insertText,
                           static_cast<int>(item.kind),
@@ -506,8 +436,7 @@ std::vector<CompletionInfo> CompilerBridge::completions(const std::string &sourc
 std::string CompilerBridge::hover(const std::string &source,
                                   int line,
                                   int col,
-                                  const std::string &path)
-{
+                                  const std::string &path) {
     auto ctx = extractIdentifierAtCursor(source, line, col);
     if (!ctx.valid)
         return "";
@@ -527,8 +456,8 @@ std::string CompilerBridge::hover(const std::string &source,
     return formatHoverMarkdown(hoverResult);
 }
 
-std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source, const std::string &path)
-{
+std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source,
+                                                const std::string &path) {
     il::support::SourceManager sm;
     CompilerInput input{.source = source, .path = path};
     CompilerOptions opts{};
@@ -543,8 +472,7 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source, const
     std::vector<SymbolInfo> out;
 
     auto globals = result->sema->getGlobalSymbols();
-    for (const auto &sym : globals)
-    {
+    for (const auto &sym : globals) {
         if (!sym.decl || sym.decl->loc.file_id != mainFileId)
             continue;
         out.push_back({sym.name,
@@ -555,8 +483,7 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source, const
     }
 
     auto types = result->sema->getTypeNames();
-    for (const auto &tn : types)
-    {
+    for (const auto &tn : types) {
         out.push_back({tn, "type", tn, false, false});
     }
 
@@ -567,8 +494,7 @@ std::vector<SymbolInfo> CompilerBridge::symbols(const std::string &source, const
 
 std::string CompilerBridge::dumpIL(const std::string &source,
                                    const std::string &path,
-                                   bool optimized)
-{
+                                   bool optimized) {
     il::support::SourceManager sm;
     CompilerInput input{.source = source, .path = path};
     CompilerOptions opts{};
@@ -576,8 +502,7 @@ std::string CompilerBridge::dumpIL(const std::string &source,
         opts.optLevel = OptLevel::O1;
 
     auto result = il::frontends::zia::compile(input, opts, sm);
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::string err = "Compilation failed:\n";
         for (const auto &d : result.diagnostics.diagnostics())
             err += "  " + d.message + "\n";
@@ -587,8 +512,7 @@ std::string CompilerBridge::dumpIL(const std::string &source,
     return il::io::Serializer::toString(result.module);
 }
 
-std::string CompilerBridge::dumpAst(const std::string &source, const std::string &path)
-{
+std::string CompilerBridge::dumpAst(const std::string &source, const std::string &path) {
     il::support::SourceManager sm;
     CompilerInput input{.source = source, .path = path};
     CompilerOptions opts{};
@@ -601,16 +525,14 @@ std::string CompilerBridge::dumpAst(const std::string &source, const std::string
     return printer.dump(*result->ast);
 }
 
-std::string CompilerBridge::dumpTokens(const std::string &source, const std::string &path)
-{
+std::string CompilerBridge::dumpTokens(const std::string &source, const std::string &path) {
     il::support::DiagnosticEngine diag;
     il::support::SourceManager sm;
     uint32_t fileId = sm.addFile(path);
     Lexer lexer(source, fileId, diag);
 
     std::string out;
-    while (true)
-    {
+    while (true) {
         Token tok = lexer.next();
         if (tok.kind == TokenKind::Eof)
             break;

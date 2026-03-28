@@ -26,14 +26,12 @@
 
 #include "tui/term/key_event.hpp"
 
-namespace viper::tui::ui
-{
+namespace viper::tui::ui {
 /// @brief Generic input event wrapper for the TUI widget system.
 /// @details Encapsulates terminal input data routed through the widget tree.
 ///          Currently wraps a KeyEvent; designed for future extension to include
 ///          mouse, paste, and custom events.
-struct Event
-{
+struct Event {
     term::KeyEvent key{};
 };
 } // namespace viper::tui::ui

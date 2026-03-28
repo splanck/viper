@@ -22,16 +22,15 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    void *rt_sprite3d_new(void *texture);
-    void rt_sprite3d_set_position(void *spr, double x, double y, double z);
-    void rt_sprite3d_set_scale(void *spr, double w, double h);
-    void rt_sprite3d_set_anchor(void *spr, double ax, double ay);
-    void rt_sprite3d_set_frame(void *spr, int64_t fx, int64_t fy, int64_t fw, int64_t fh);
-    void rt_canvas3d_draw_sprite3d(void *canvas, void *sprite, void *camera);
+void *rt_sprite3d_new(void *texture);
+void rt_sprite3d_set_position(void *spr, double x, double y, double z);
+void rt_sprite3d_set_scale(void *spr, double w, double h);
+void rt_sprite3d_set_anchor(void *spr, double ax, double ay);
+void rt_sprite3d_set_frame(void *spr, int64_t fx, int64_t fy, int64_t fw, int64_t fh);
+void rt_canvas3d_draw_sprite3d(void *canvas, void *sprite, void *camera);
 
 #ifdef __cplusplus
 }

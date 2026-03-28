@@ -47,38 +47,32 @@
 #include <windows.h>
 #endif
 
-static RtArgsState *rt_args_state(void)
-{
+static RtArgsState *rt_args_state(void) {
     RtContext *ctx = rt_get_current_context();
     if (!ctx)
         ctx = rt_legacy_context();
     return ctx ? &ctx->args_state : NULL;
 }
 
-static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size)
-{
+static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size) {
     if (!state)
         return 0;
     if (new_size <= state->cap)
         return 1;
     size_t new_cap = state->cap ? state->cap * 2 : 8;
-    while (new_cap < new_size)
-    {
-        if (new_cap > SIZE_MAX / 2)
-        {
+    while (new_cap < new_size) {
+        if (new_cap > SIZE_MAX / 2) {
             rt_trap("rt_args: capacity overflow");
             return 0;
         }
         new_cap *= 2;
     }
-    if (new_cap > SIZE_MAX / sizeof(rt_string))
-    {
+    if (new_cap > SIZE_MAX / sizeof(rt_string)) {
         rt_trap("rt_args: size overflow");
         return 0;
     }
     rt_string *next = (rt_string *)realloc(state->items, new_cap * sizeof(rt_string));
-    if (!next)
-    {
+    if (!next) {
         rt_trap("rt_args: allocation failed");
         return 0;
     }
@@ -95,13 +89,11 @@ static int rt_args_grow_if_needed(RtArgsState *state, size_t new_size)
 ///
 /// @note Internal use - typically not called directly from Viper code.
 /// @note Releases references to all stored strings.
-void rt_args_clear(void)
-{
+void rt_args_clear(void) {
     RtArgsState *state = rt_args_state();
     if (!state)
         return;
-    for (size_t i = 0; i < state->size; ++i)
-    {
+    for (size_t i = 0; i < state->size; ++i) {
         if (state->items[i])
             rt_string_unref(state->items[i]);
         state->items[i] = NULL;
@@ -119,8 +111,7 @@ void rt_args_clear(void)
 /// @note Internal use - arguments are set up by the runtime before main runs.
 /// @note The string is retained (reference count incremented).
 /// @note Traps on allocation failure.
-void rt_args_push(rt_string s)
-{
+void rt_args_push(rt_string s) {
     RtArgsState *state = rt_args_state();
     if (!state)
         return;
@@ -154,8 +145,7 @@ void rt_args_push(rt_string s)
 /// @note O(1) time complexity.
 ///
 /// @see rt_args_get For retrieving individual arguments
-int64_t rt_args_count(void)
-{
+int64_t rt_args_count(void) {
     RtArgsState *state = rt_args_state();
     return state ? (int64_t)state->size : 0;
 }
@@ -185,13 +175,11 @@ int64_t rt_args_count(void)
 /// @note Returns a new reference (caller must manage memory).
 ///
 /// @see rt_args_count For getting the argument count
-rt_string rt_args_get(int64_t index)
-{
+rt_string rt_args_get(int64_t index) {
     RtArgsState *state = rt_args_state();
     if (!state)
         return NULL;
-    if (index < 0 || (size_t)index >= state->size)
-    {
+    if (index < 0 || (size_t)index >= state->size) {
         rt_trap("rt_args_get: index out of range");
         return NULL;
     }
@@ -219,15 +207,13 @@ rt_string rt_args_get(int64_t index)
 ///
 /// @see rt_args_get For individual argument access
 /// @see rt_args_count For argument count
-rt_string rt_cmdline(void)
-{
+rt_string rt_cmdline(void) {
     RtArgsState *state = rt_args_state();
     if (!state || state->size == 0)
         return rt_str_empty();
     rt_string_builder sb;
     rt_sb_init(&sb);
-    for (size_t i = 0; i < state->size; ++i)
-    {
+    for (size_t i = 0; i < state->size; ++i) {
         const char *cstr = rt_string_cstr(state->items[i]);
         if (i > 0)
             (void)rt_sb_append_cstr(&sb, " ");
@@ -246,16 +232,13 @@ rt_string rt_cmdline(void)
 /// @param ctx The context whose arguments should be cleaned up.
 ///
 /// @note Internal use only.
-void rt_args_state_cleanup(RtContext *ctx)
-{
+void rt_args_state_cleanup(RtContext *ctx) {
     if (!ctx)
         return;
 
     RtArgsState *state = &ctx->args_state;
-    if (state->items)
-    {
-        for (size_t i = 0; i < state->size; ++i)
-        {
+    if (state->items) {
+        for (size_t i = 0; i < state->size; ++i) {
             if (state->items[i])
                 rt_string_unref(state->items[i]);
             state->items[i] = NULL;
@@ -286,8 +269,7 @@ void rt_args_state_cleanup(RtContext *ctx)
 ///
 /// @note In native builds, this always returns 1.
 /// @note The VM overrides this to return 0.
-int64_t rt_env_is_native(void)
-{
+int64_t rt_env_is_native(void) {
     // Native runtime library is only linked into AOT binaries, so this path
     // always reports "native". The VM overrides this via its runtime bridge.
     return 1;
@@ -300,16 +282,13 @@ int64_t rt_env_is_native(void)
 /// @param name Runtime string naming the environment variable.
 /// @param context Human-readable operation for diagnostics.
 /// @return Null-terminated name suitable for getenv/setenv.
-static const char *rt_env_require_name(rt_string name, const char *context)
-{
-    if (!name)
-    {
+static const char *rt_env_require_name(rt_string name, const char *context) {
+    if (!name) {
         rt_trap(context ? context : "Environment: variable name is null");
     }
 
     const char *cname = rt_string_cstr(name);
-    if (!cname || cname[0] == '\0')
-    {
+    if (!cname || cname[0] == '\0') {
         rt_trap(context ? context : "Environment: variable name is empty");
     }
     return cname;
@@ -320,39 +299,32 @@ static const char *rt_env_require_name(rt_string name, const char *context)
 ///          variable name must be non-empty; traps on invalid input.
 /// @param name Environment variable to look up.
 /// @return Newly allocated runtime string containing the value or empty when missing.
-rt_string rt_env_get_var(rt_string name)
-{
+rt_string rt_env_get_var(rt_string name) {
     const char *cname =
         rt_env_require_name(name, "Viper.Environment.GetVariable: name must not be empty");
 
 #ifdef _WIN32
     DWORD required = GetEnvironmentVariableA(cname, NULL, 0);
-    if (required == 0)
-    {
-        if (GetLastError() == ERROR_ENVVAR_NOT_FOUND)
-        {
+    if (required == 0) {
+        if (GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
             return rt_str_empty();
         }
         rt_trap("Viper.Environment.GetVariable: failed to query variable");
     }
 
-    if (required <= 1)
-    {
+    if (required <= 1) {
         return rt_str_empty();
     }
 
     char *buffer = (char *)malloc(required);
-    if (!buffer)
-    {
+    if (!buffer) {
         rt_trap("Viper.Environment.GetVariable: allocation failed");
     }
 
     DWORD written = GetEnvironmentVariableA(cname, buffer, required);
-    if (written == 0)
-    {
+    if (written == 0) {
         free(buffer);
-        if (GetLastError() == ERROR_ENVVAR_NOT_FOUND)
-        {
+        if (GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
             return rt_str_empty();
         }
         rt_trap("Viper.Environment.GetVariable: failed to read variable");
@@ -363,8 +335,7 @@ rt_string rt_env_get_var(rt_string name)
     return out;
 #else
     const char *value = getenv(cname);
-    if (!value)
-    {
+    if (!value) {
         return rt_str_empty();
     }
     return rt_string_from_bytes(value, strlen(value));
@@ -376,15 +347,13 @@ rt_string rt_env_get_var(rt_string name)
 ///          0 otherwise. Traps on invalid names.
 /// @param name Environment variable to probe.
 /// @return 1 if present, 0 if missing.
-int64_t rt_env_has_var(rt_string name)
-{
+int64_t rt_env_has_var(rt_string name) {
     const char *cname =
         rt_env_require_name(name, "Viper.Environment.HasVariable: name must not be empty");
 
 #ifdef _WIN32
     DWORD required = GetEnvironmentVariableA(cname, NULL, 0);
-    if (required == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND)
-    {
+    if (required == 0 && GetLastError() == ERROR_ENVVAR_NOT_FOUND) {
         return 0;
     }
     return 1;
@@ -399,8 +368,7 @@ int64_t rt_env_has_var(rt_string name)
 ///          when the underlying platform call fails.
 /// @param name Environment variable to set.
 /// @param value New value (NULL treated as empty string).
-void rt_env_set_var(rt_string name, rt_string value)
-{
+void rt_env_set_var(rt_string name, rt_string value) {
     const char *cname =
         rt_env_require_name(name, "Viper.Environment.SetVariable: name must not be empty");
     const char *cvalue = value ? rt_string_cstr(value) : "";
@@ -413,13 +381,11 @@ void rt_env_set_var(rt_string name, rt_string value)
         rt_trap("Viper.Environment.SetVariable: value must not contain null bytes");
 
 #ifdef _WIN32
-    if (!SetEnvironmentVariableA(cname, cvalue))
-    {
+    if (!SetEnvironmentVariableA(cname, cvalue)) {
         rt_trap("Viper.Environment.SetVariable: failed to set variable");
     }
 #else
-    if (setenv(cname, cvalue, 1) != 0)
-    {
+    if (setenv(cname, cvalue, 1) != 0) {
         rt_trap("Viper.Environment.SetVariable: failed to set variable");
     }
 #endif
@@ -429,7 +395,6 @@ void rt_env_set_var(rt_string name, rt_string value)
 /// @details Delegates to exit so any registered atexit handlers run
 ///          before shutdown. The exit code is truncated to int for compatibility.
 /// @param code Exit status to report.
-void rt_env_exit(int64_t code)
-{
+void rt_env_exit(int64_t code) {
     exit((int)code);
 }

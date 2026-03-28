@@ -24,16 +24,14 @@
 #include <string>
 #include <vector>
 
-namespace
-{
+namespace {
 const char kOverflowModule[] = "il 0.1\n\nfunc @main() -> i64 {\nentry:\n  ret 4294967296\n}\n";
 }
 
 // Stubbed usage() required by cmd_run_il.cpp.
 void usage() {}
 
-int main()
-{
+int main() {
     namespace fs = std::filesystem;
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();

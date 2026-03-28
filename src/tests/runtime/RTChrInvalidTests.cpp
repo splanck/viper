@@ -18,13 +18,11 @@
 #include <cassert>
 #include <string>
 
-static void call_chr_negative()
-{
+static void call_chr_negative() {
     rt_str_chr(-1);
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

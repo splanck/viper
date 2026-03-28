@@ -32,8 +32,7 @@
 
 using namespace il;
 
-namespace
-{
+namespace {
 const char *kSwitchProgram = R"(il 0.1
 func @main(%x:i32) -> i32 {
 entry(%x:i32):
@@ -59,8 +58,7 @@ default(%text:str):
 )";
 } // namespace
 
-int main()
-{
+int main() {
     core::Module module;
     std::istringstream input(kSwitchProgram);
     auto parsed = il::api::v2::parse_text_expected(input, module);
@@ -106,8 +104,7 @@ int main()
     bool checkedCfg = false;
     pm.registerFunctionPass(
         "check-switch-cfg",
-        [&checkedCfg](core::Function &function, transform::AnalysisManager &analysis)
-        {
+        [&checkedCfg](core::Function &function, transform::AnalysisManager &analysis) {
             transform::CFGInfo &cfg =
                 analysis.getFunctionResult<transform::CFGInfo>("cfg", function);
             assert(!function.blocks.empty());
@@ -117,12 +114,11 @@ int main()
             const auto &succList = succIt->second;
             assert(succList.size() == 3);
             std::unordered_set<const core::BasicBlock *> succSet(succList.begin(), succList.end());
-            for (const std::string &label : curEntry.instructions.back().labels)
-            {
-                auto targetIt = std::find_if(function.blocks.begin(),
-                                             function.blocks.end(),
-                                             [&label](const core::BasicBlock &bb)
-                                             { return bb.label == label; });
+            for (const std::string &label : curEntry.instructions.back().labels) {
+                auto targetIt = std::find_if(
+                    function.blocks.begin(),
+                    function.blocks.end(),
+                    [&label](const core::BasicBlock &bb) { return bb.label == label; });
                 assert(targetIt != function.blocks.end());
                 assert(succSet.count(&*targetIt));
             }
@@ -144,12 +140,11 @@ int main()
     for (const auto &args : switchAfter.brArgs)
         assert(args.size() == 1);
 
-    for (const std::string &label : switchAfter.labels)
-    {
+    for (const std::string &label : switchAfter.labels) {
         auto blockIt =
-            std::find_if(fn.blocks.begin(),
-                         fn.blocks.end(),
-                         [&label](const core::BasicBlock &bb) { return bb.label == label; });
+            std::find_if(fn.blocks.begin(), fn.blocks.end(), [&label](const core::BasicBlock &bb) {
+                return bb.label == label;
+            });
         assert(blockIt != fn.blocks.end());
         assert(blockIt->params.size() == 1);
     }

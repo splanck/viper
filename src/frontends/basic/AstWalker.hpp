@@ -19,8 +19,7 @@
 #include "frontends/basic/ast/DeclNodes.hpp"
 #include <type_traits>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Generic recursive AST walker that forwards traversal hooks to @p Derived.
 /// @tparam Derived Concrete walker implementing optional callbacks.
@@ -28,20 +27,17 @@ namespace il::frontends::basic
 /// legacy lowering visitors. Derived classes may override `before`,
 /// `after`, `shouldVisitChildren`, `beforeChild`, and `afterChild` for any
 /// node type; the base implementation provides no-op defaults.
-template <typename Derived> class BasicAstWalker : public ExprVisitor, public StmtVisitor
-{
+template <typename Derived> class BasicAstWalker : public ExprVisitor, public StmtVisitor {
   public:
     /// @brief Visit an expression subtree.
     /// @param expr Root expression to walk.
-    void walkExpr(const Expr &expr)
-    {
+    void walkExpr(const Expr &expr) {
         expr.accept(*static_cast<Derived *>(this));
     }
 
     /// @brief Visit a statement subtree.
     /// @param stmt Root statement to walk.
-    void walkStmt(const Stmt &stmt)
-    {
+    void walkStmt(const Stmt &stmt) {
         stmt.accept(*static_cast<Derived *>(this));
     }
 
@@ -74,8 +70,7 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
     /// @brief Invoke the Derived pre-visit hook when available.
     /// @details Override `Derived::before` to run logic before traversing @p node, such as
     /// updating bookkeeping stacks or allocating temporary state.
-    template <typename Node> void callBefore(const Node &node)
-    {
+    template <typename Node> void callBefore(const Node &node) {
         if constexpr (requires(Derived &d, const Node &n) { d.before(n); })
             static_cast<Derived *>(this)->before(node);
     }
@@ -83,8 +78,7 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
     /// @brief Invoke the Derived post-visit hook when available.
     /// @details Override `Derived::after` to clean up state after all children of @p node
     /// were processed or to record synthesized results.
-    template <typename Node> void callAfter(const Node &node)
-    {
+    template <typename Node> void callAfter(const Node &node) {
         if constexpr (requires(Derived &d, const Node &n) { d.after(n); })
             static_cast<Derived *>(this)->after(node);
     }
@@ -92,8 +86,7 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
     /// @brief Ask Derived whether to traverse the children of @p node.
     /// @details Override `Derived::shouldVisitChildren` to short-circuit traversal for
     /// pruned subtrees or to skip nodes that were already processed elsewhere.
-    template <typename Node> bool callShouldVisit(const Node &node)
-    {
+    template <typename Node> bool callShouldVisit(const Node &node) {
         if constexpr (requires(Derived &d, const Node &n) { d.shouldVisitChildren(n); })
             return static_cast<Derived *>(this)->shouldVisitChildren(node);
         return true;
@@ -103,8 +96,7 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
     /// @details Override `Derived::beforeChild` to observe the parent/child relationship
     /// prior to recursively traversing the child node.
     template <typename Parent, typename Child>
-    void callBeforeChild(const Parent &parent, const Child &child)
-    {
+    void callBeforeChild(const Parent &parent, const Child &child) {
         if constexpr (requires(Derived &d, const Parent &p, const Child &c) {
                           d.beforeChild(p, c);
                       })
@@ -115,57 +107,46 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
     /// @details Override `Derived::afterChild` to perform post-processing that requires
     /// both the parent context and the just-visited child node.
     template <typename Parent, typename Child>
-    void callAfterChild(const Parent &parent, const Child &child)
-    {
+    void callAfterChild(const Parent &parent, const Child &child) {
         if constexpr (requires(Derived &d, const Parent &p, const Child &c) { d.afterChild(p, c); })
             static_cast<Derived *>(this)->afterChild(parent, child);
     }
 
     // Expression visitors --------------------------------------------------
 
-    void visit(const IntExpr &expr) override
-    {
+    void visit(const IntExpr &expr) override {
         callBefore(expr);
         callAfter(expr);
     }
 
-    void visit(const FloatExpr &expr) override
-    {
+    void visit(const FloatExpr &expr) override {
         callBefore(expr);
         callAfter(expr);
     }
 
-    void visit(const StringExpr &expr) override
-    {
+    void visit(const StringExpr &expr) override {
         callBefore(expr);
         callAfter(expr);
     }
 
-    void visit(const BoolExpr &expr) override
-    {
+    void visit(const BoolExpr &expr) override {
         callBefore(expr);
         callAfter(expr);
     }
 
-    void visit(const VarExpr &expr) override
-    {
+    void visit(const VarExpr &expr) override {
         callBefore(expr);
         callAfter(expr);
     }
 
-    void visit(const ArrayExpr &expr) override
-    {
+    void visit(const ArrayExpr &expr) override {
         callBefore(expr);
-        if (callShouldVisit(expr))
-        {
+        if (callShouldVisit(expr)) {
             // For backward compatibility: visit 'index' for single-dim, 'indices' for multi-dim
-            if (expr.index)
-            {
+            if (expr.index) {
                 // Single-dimensional array: visit deprecated 'index' field
                 walker::detail::visitOptionalChild(*this, expr, expr.index);
-            }
-            else
-            {
+            } else {
                 // Multi-dimensional array: visit all indices in 'indices' vector
                 walker::detail::visitChildRange(*this, expr, expr.indices);
             }
@@ -173,118 +154,96 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callAfter(expr);
     }
 
-    void visit(const LBoundExpr &expr) override
-    {
+    void visit(const LBoundExpr &expr) override {
         callBefore(expr);
         callAfter(expr);
     }
 
-    void visit(const UBoundExpr &expr) override
-    {
+    void visit(const UBoundExpr &expr) override {
         callBefore(expr);
         callAfter(expr);
     }
 
-    void visit(const UnaryExpr &expr) override
-    {
+    void visit(const UnaryExpr &expr) override {
         callBefore(expr);
-        if (callShouldVisit(expr))
-        {
+        if (callShouldVisit(expr)) {
             walker::detail::visitOptionalChild(*this, expr, expr.expr);
         }
         callAfter(expr);
     }
 
-    void visit(const BinaryExpr &expr) override
-    {
+    void visit(const BinaryExpr &expr) override {
         callBefore(expr);
-        if (callShouldVisit(expr))
-        {
+        if (callShouldVisit(expr)) {
             walker::detail::visitOptionalChild(*this, expr, expr.lhs);
             walker::detail::visitOptionalChild(*this, expr, expr.rhs);
         }
         callAfter(expr);
     }
 
-    void visit(const BuiltinCallExpr &expr) override
-    {
+    void visit(const BuiltinCallExpr &expr) override {
         callBefore(expr);
-        if (callShouldVisit(expr))
-        {
+        if (callShouldVisit(expr)) {
             walker::detail::visitChildRange(*this, expr, expr.args);
         }
         callAfter(expr);
     }
 
-    void visit(const CallExpr &expr) override
-    {
+    void visit(const CallExpr &expr) override {
         callBefore(expr);
-        if (callShouldVisit(expr))
-        {
+        if (callShouldVisit(expr)) {
             walker::detail::visitChildRange(*this, expr, expr.args);
         }
         callAfter(expr);
     }
 
-    void visit(const NewExpr &expr) override
-    {
+    void visit(const NewExpr &expr) override {
         callBefore(expr);
-        if (callShouldVisit(expr))
-        {
+        if (callShouldVisit(expr)) {
             walker::detail::visitChildRange(*this, expr, expr.args);
         }
         callAfter(expr);
     }
 
-    void visit(const MeExpr &expr) override
-    {
+    void visit(const MeExpr &expr) override {
         callBefore(expr);
         callAfter(expr);
     }
 
-    void visit(const MemberAccessExpr &expr) override
-    {
+    void visit(const MemberAccessExpr &expr) override {
         callBefore(expr);
-        if (callShouldVisit(expr))
-        {
+        if (callShouldVisit(expr)) {
             walker::detail::visitOptionalChild(*this, expr, expr.base);
         }
         callAfter(expr);
     }
 
-    void visit(const MethodCallExpr &expr) override
-    {
+    void visit(const MethodCallExpr &expr) override {
         callBefore(expr);
-        if (callShouldVisit(expr))
-        {
+        if (callShouldVisit(expr)) {
             walker::detail::visitOptionalChild(*this, expr, expr.base);
             walker::detail::visitChildRange(*this, expr, expr.args);
         }
         callAfter(expr);
     }
 
-    void visit(const IsExpr &expr) override
-    {
+    void visit(const IsExpr &expr) override {
         callBefore(expr);
-        if (callShouldVisit(expr))
-        {
+        if (callShouldVisit(expr)) {
             walker::detail::visitOptionalChild(*this, expr, expr.value);
         }
         callAfter(expr);
     }
 
-    void visit(const AsExpr &expr) override
-    {
+    void visit(const AsExpr &expr) override {
         callBefore(expr);
-        if (callShouldVisit(expr))
-        {
+        if (callShouldVisit(expr)) {
             walker::detail::visitOptionalChild(*this, expr, expr.value);
         }
         callAfter(expr);
     }
 
-    void visit(const AddressOfExpr &expr) override
-    {
+    void visit(const AddressOfExpr &expr) override {
         callBefore(expr);
         // ADDRESSOF has no child expressions; the target is just a name string.
         callAfter(expr);
@@ -292,187 +251,152 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
 
     // Statement visitors ---------------------------------------------------
 
-    void visit(const LabelStmt &stmt) override
-    {
+    void visit(const LabelStmt &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const PrintStmt &stmt) override
-    {
+    void visit(const PrintStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitPrintItems(*this, stmt);
         }
         callAfter(stmt);
     }
 
-    void visit(const PrintChStmt &stmt) override
-    {
+    void visit(const PrintChStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.channelExpr);
             walker::detail::visitChildRange(*this, stmt, stmt.args);
         }
         callAfter(stmt);
     }
 
-    void visit(const BeepStmt &stmt) override
-    {
+    void visit(const BeepStmt &stmt) override {
         callBefore(stmt);
         // BEEP has no child expressions.
         callAfter(stmt);
     }
 
-    void visit(const CallStmt &stmt) override
-    {
+    void visit(const CallStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.call);
         }
         callAfter(stmt);
     }
 
-    void visit(const ClsStmt &stmt) override
-    {
+    void visit(const ClsStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             // CLS has no child expressions.
         }
         callAfter(stmt);
     }
 
-    void visit(const ColorStmt &stmt) override
-    {
+    void visit(const ColorStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.fg);
             walker::detail::visitOptionalChild(*this, stmt, stmt.bg);
         }
         callAfter(stmt);
     }
 
-    void visit(const SleepStmt &stmt) override
-    {
+    void visit(const SleepStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.ms);
         }
         callAfter(stmt);
     }
 
-    void visit(const LocateStmt &stmt) override
-    {
+    void visit(const LocateStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.row);
             walker::detail::visitOptionalChild(*this, stmt, stmt.col);
         }
         callAfter(stmt);
     }
 
-    void visit(const CursorStmt &stmt) override
-    {
+    void visit(const CursorStmt &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const AltScreenStmt &stmt) override
-    {
+    void visit(const AltScreenStmt &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const LetStmt &stmt) override
-    {
+    void visit(const LetStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.target);
             walker::detail::visitOptionalChild(*this, stmt, stmt.expr);
         }
         callAfter(stmt);
     }
 
-    void visit(const ConstStmt &stmt) override
-    {
+    void visit(const ConstStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.initializer);
         }
         callAfter(stmt);
     }
 
-    void visit(const DimStmt &stmt) override
-    {
+    void visit(const DimStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.size);
         }
         callAfter(stmt);
     }
 
-    void visit(const StaticStmt &stmt) override
-    {
+    void visit(const StaticStmt &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const SharedStmt &stmt) override
-    {
+    void visit(const SharedStmt &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const ReDimStmt &stmt) override
-    {
+    void visit(const ReDimStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.size);
         }
         callAfter(stmt);
     }
 
-    void visit(const RandomizeStmt &stmt) override
-    {
+    void visit(const RandomizeStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.seed);
         }
         callAfter(stmt);
     }
 
-    void visit(const SwapStmt &stmt) override
-    {
+    void visit(const SwapStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.lhs);
             walker::detail::visitOptionalChild(*this, stmt, stmt.rhs);
         }
         callAfter(stmt);
     }
 
-    void visit(const IfStmt &stmt) override
-    {
+    void visit(const IfStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.cond);
             walker::detail::visitOptionalChild(*this, stmt, stmt.then_branch);
-            for (const auto &elseif : stmt.elseifs)
-            {
+            for (const auto &elseif : stmt.elseifs) {
                 walker::detail::visitOptionalChild(*this, stmt, elseif.cond);
                 walker::detail::visitOptionalChild(*this, stmt, elseif.then_branch);
             }
@@ -481,14 +405,11 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callAfter(stmt);
     }
 
-    void visit(const SelectCaseStmt &stmt) override
-    {
+    void visit(const SelectCaseStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.selector);
-            for (const auto &arm : stmt.arms)
-            {
+            for (const auto &arm : stmt.arms) {
                 walker::detail::visitChildRange(*this, stmt, arm.body);
             }
             walker::detail::visitChildRange(*this, stmt, stmt.elseBody);
@@ -496,55 +417,45 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callAfter(stmt);
     }
 
-    void visit(const TryCatchStmt &stmt) override
-    {
+    void visit(const TryCatchStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitChildRange(*this, stmt, stmt.tryBody);
             walker::detail::visitChildRange(*this, stmt, stmt.catchBody);
         }
         callAfter(stmt);
     }
 
-    void visit(const UsingStmt &stmt) override
-    {
+    void visit(const UsingStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.initExpr);
             walker::detail::visitChildRange(*this, stmt, stmt.body);
         }
         callAfter(stmt);
     }
 
-    void visit(const WhileStmt &stmt) override
-    {
+    void visit(const WhileStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.cond);
             walker::detail::visitChildRange(*this, stmt, stmt.body);
         }
         callAfter(stmt);
     }
 
-    void visit(const DoStmt &stmt) override
-    {
+    void visit(const DoStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.cond);
             walker::detail::visitChildRange(*this, stmt, stmt.body);
         }
         callAfter(stmt);
     }
 
-    void visit(const ForStmt &stmt) override
-    {
+    void visit(const ForStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.start);
             walker::detail::visitOptionalChild(*this, stmt, stmt.end);
             walker::detail::visitOptionalChild(*this, stmt, stmt.step);
@@ -553,238 +464,194 @@ template <typename Derived> class BasicAstWalker : public ExprVisitor, public St
         callAfter(stmt);
     }
 
-    void visit(const ForEachStmt &stmt) override
-    {
+    void visit(const ForEachStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitChildRange(*this, stmt, stmt.body);
         }
         callAfter(stmt);
     }
 
-    void visit(const NextStmt &stmt) override
-    {
+    void visit(const NextStmt &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const ExitStmt &stmt) override
-    {
+    void visit(const ExitStmt &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const GotoStmt &stmt) override
-    {
+    void visit(const GotoStmt &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const GosubStmt &stmt) override
-    {
+    void visit(const GosubStmt &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const OpenStmt &stmt) override
-    {
+    void visit(const OpenStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.pathExpr);
             walker::detail::visitOptionalChild(*this, stmt, stmt.channelExpr);
         }
         callAfter(stmt);
     }
 
-    void visit(const CloseStmt &stmt) override
-    {
+    void visit(const CloseStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.channelExpr);
         }
         callAfter(stmt);
     }
 
-    void visit(const SeekStmt &stmt) override
-    {
+    void visit(const SeekStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.channelExpr);
             walker::detail::visitOptionalChild(*this, stmt, stmt.positionExpr);
         }
         callAfter(stmt);
     }
 
-    void visit(const OnErrorGoto &stmt) override
-    {
+    void visit(const OnErrorGoto &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const Resume &stmt) override
-    {
+    void visit(const Resume &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const EndStmt &stmt) override
-    {
+    void visit(const EndStmt &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const InputStmt &stmt) override
-    {
+    void visit(const InputStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.prompt);
         }
         callAfter(stmt);
     }
 
-    void visit(const InputChStmt &stmt) override
-    {
+    void visit(const InputChStmt &stmt) override {
         callBefore(stmt);
         callAfter(stmt);
     }
 
-    void visit(const LineInputChStmt &stmt) override
-    {
+    void visit(const LineInputChStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.channelExpr);
             walker::detail::visitOptionalChild(*this, stmt, stmt.targetVar);
         }
         callAfter(stmt);
     }
 
-    void visit(const ReturnStmt &stmt) override
-    {
+    void visit(const ReturnStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.value);
         }
         callAfter(stmt);
     }
 
-    void visit(const FunctionDecl &stmt) override
-    {
+    void visit(const FunctionDecl &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitChildRange(*this, stmt, stmt.body);
         }
         callAfter(stmt);
     }
 
-    void visit(const SubDecl &stmt) override
-    {
+    void visit(const SubDecl &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitChildRange(*this, stmt, stmt.body);
         }
         callAfter(stmt);
     }
 
-    void visit(const DeleteStmt &stmt) override
-    {
+    void visit(const DeleteStmt &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitOptionalChild(*this, stmt, stmt.target);
         }
         callAfter(stmt);
     }
 
-    void visit(const ConstructorDecl &stmt) override
-    {
+    void visit(const ConstructorDecl &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::notifyChildRange(*this, stmt, stmt.params);
             walker::detail::visitChildRange(*this, stmt, stmt.body);
         }
         callAfter(stmt);
     }
 
-    void visit(const DestructorDecl &stmt) override
-    {
+    void visit(const DestructorDecl &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitChildRange(*this, stmt, stmt.body);
         }
         callAfter(stmt);
     }
 
-    void visit(const MethodDecl &stmt) override
-    {
+    void visit(const MethodDecl &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::notifyChildRange(*this, stmt, stmt.params);
             walker::detail::visitChildRange(*this, stmt, stmt.body);
         }
         callAfter(stmt);
     }
 
-    void visit(const ClassDecl &stmt) override
-    {
+    void visit(const ClassDecl &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitChildRange(*this, stmt, stmt.members);
         }
         callAfter(stmt);
     }
 
-    void visit(const TypeDecl &stmt) override
-    {
+    void visit(const TypeDecl &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             // TYPE fields are simple declarations without nested AST nodes.
         }
         callAfter(stmt);
     }
 
-    void visit(const EnumDecl &stmt) override
-    {
+    void visit(const EnumDecl &stmt) override {
         callBefore(stmt);
         // ENUM members are compile-time constants without nested AST nodes.
         callAfter(stmt);
     }
 
-    void visit(const InterfaceDecl &stmt) override
-    {
+    void visit(const InterfaceDecl &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitChildRange(*this, stmt, stmt.members);
         }
         callAfter(stmt);
     }
 
-    void visit(const UsingDecl &stmt) override
-    {
+    void visit(const UsingDecl &stmt) override {
         callBefore(stmt);
         // USING has no child statements or expressions to visit.
         callAfter(stmt);
     }
 
-    void visit(const StmtList &stmt) override
-    {
+    void visit(const StmtList &stmt) override {
         callBefore(stmt);
-        if (callShouldVisit(stmt))
-        {
+        if (callShouldVisit(stmt)) {
             walker::detail::visitChildRange(*this, stmt, stmt.stmts);
         }
         callAfter(stmt);

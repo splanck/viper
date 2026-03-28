@@ -60,8 +60,7 @@
 ///
 /// The data array is allocated inline immediately after the structure header
 /// for better cache locality and to avoid a separate heap allocation.
-typedef struct rt_bytes_impl
-{
+typedef struct rt_bytes_impl {
     int64_t len;   ///< Number of bytes stored (0 to INT64_MAX).
     uint8_t *data; ///< Pointer to inline byte storage (immediately follows struct).
 } rt_bytes_impl;
@@ -86,14 +85,12 @@ typedef struct rt_bytes_impl
 /// @note Traps with "Bytes: memory allocation failed" if allocation fails
 ///       or if the length would cause integer overflow.
 /// @note The allocated bytes are zero-initialized.
-static rt_bytes_impl *rt_bytes_alloc(int64_t len)
-{
+static rt_bytes_impl *rt_bytes_alloc(int64_t len) {
     if (len < 0)
         len = 0;
 
     size_t total = sizeof(rt_bytes_impl);
-    if (len > 0)
-    {
+    if (len > 0) {
         if ((uint64_t)len > (uint64_t)SIZE_MAX - total)
             rt_trap("Bytes: memory allocation failed");
         total += (size_t)len;
@@ -131,8 +128,7 @@ static const char b64_chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstu
 ///         - 0-63: The 6-bit value for valid Base64 characters
 ///         - -2: For the padding character '='
 ///         - -1: For any invalid character
-static int b64_digit_value(char c)
-{
+static int b64_digit_value(char c) {
     if (c >= 'A' && c <= 'Z')
         return c - 'A';
     if (c >= 'a' && c <= 'z')
@@ -173,8 +169,7 @@ static int b64_digit_value(char c)
 /// @see rt_bytes_from_str For creating Bytes from a string
 /// @see rt_bytes_from_hex For creating Bytes from hex encoding
 /// @see rt_bytes_from_base64 For creating Bytes from Base64 encoding
-void *rt_bytes_new(int64_t len)
-{
+void *rt_bytes_new(int64_t len) {
     return rt_bytes_alloc(len);
 }
 
@@ -204,8 +199,7 @@ void *rt_bytes_new(int64_t len)
 /// @note The resulting Bytes does NOT include a null terminator.
 ///
 /// @see rt_bytes_to_str For the reverse operation
-void *rt_bytes_from_str(rt_string str)
-{
+void *rt_bytes_from_str(rt_string str) {
     // Use rt_str_len (stored byte count) rather than strlen so that strings
     // containing embedded null bytes (e.g. binary data) are preserved in full.
     // strlen would truncate at the first 0x00 byte (BUG-IO-001).
@@ -254,8 +248,7 @@ void *rt_bytes_from_str(rt_string str)
 ///       contains non-hexadecimal characters.
 ///
 /// @see rt_bytes_to_hex For the reverse operation
-void *rt_bytes_from_hex(rt_string hex)
-{
+void *rt_bytes_from_hex(rt_string hex) {
     const char *hex_str = rt_string_cstr(hex);
     if (!hex_str)
         return rt_bytes_new(0);
@@ -267,8 +260,7 @@ void *rt_bytes_from_hex(rt_string hex)
 
     int64_t len = (int64_t)(hex_len / 2);
     rt_bytes_impl *bytes = rt_bytes_alloc(len);
-    for (int64_t i = 0; i < len; i++)
-    {
+    for (int64_t i = 0; i < len; i++) {
         int hi = rt_hex_digit_value(hex_str[i * 2]);
         int lo = rt_hex_digit_value(hex_str[i * 2 + 1]);
 
@@ -292,8 +284,7 @@ void *rt_bytes_from_hex(rt_string hex)
 /// @return The number of bytes, or 0 if obj is NULL.
 ///
 /// @note O(1) time complexity.
-int64_t rt_bytes_len(void *obj)
-{
+int64_t rt_bytes_len(void *obj) {
     if (!obj)
         return 0;
     return ((rt_bytes_impl *)obj)->len;
@@ -302,8 +293,7 @@ int64_t rt_bytes_len(void *obj)
 /// @brief Check if the byte array is empty (length 0).
 /// @param obj Bytes object pointer.
 /// @return 1 if empty or NULL, 0 otherwise.
-int8_t rt_bytes_is_empty(void *obj)
-{
+int8_t rt_bytes_is_empty(void *obj) {
     if (!obj)
         return 1;
     return ((rt_bytes_impl *)obj)->len == 0 ? 1 : 0;
@@ -333,8 +323,7 @@ int8_t rt_bytes_is_empty(void *obj)
 ///       or >= len.
 ///
 /// @see rt_bytes_set For modifying a byte
-int64_t rt_bytes_get(void *obj, int64_t idx)
-{
+int64_t rt_bytes_get(void *obj, int64_t idx) {
     if (!obj)
         rt_trap("Bytes.Get: null bytes");
 
@@ -373,8 +362,7 @@ int64_t rt_bytes_get(void *obj, int64_t idx)
 ///
 /// @see rt_bytes_get For reading a byte
 /// @see rt_bytes_fill For setting all bytes to the same value
-void rt_bytes_set(void *obj, int64_t idx, int64_t val)
-{
+void rt_bytes_set(void *obj, int64_t idx, int64_t val) {
     if (!obj)
         rt_trap("Bytes.Set: null bytes");
 
@@ -415,8 +403,7 @@ void rt_bytes_set(void *obj, int64_t idx, int64_t val)
 ///
 /// @see rt_bytes_copy For copying bytes between Bytes objects
 /// @see rt_bytes_clone For creating a full copy
-void *rt_bytes_slice(void *obj, int64_t start, int64_t end)
-{
+void *rt_bytes_slice(void *obj, int64_t start, int64_t end) {
     if (!obj)
         return rt_bytes_new(0);
 
@@ -469,8 +456,7 @@ void *rt_bytes_slice(void *obj, int64_t start, int64_t end)
 ///       range exceeds destination bounds.
 ///
 /// @see rt_bytes_slice For extracting bytes as a new object
-void rt_bytes_copy(void *dst, int64_t dst_idx, void *src, int64_t src_idx, int64_t count)
-{
+void rt_bytes_copy(void *dst, int64_t dst_idx, void *src, int64_t src_idx, int64_t count) {
     if (!dst)
         rt_trap("Bytes.Copy: null destination");
     if (!src)
@@ -515,8 +501,7 @@ void rt_bytes_copy(void *dst, int64_t dst_idx, void *src, int64_t src_idx, int64
 /// @note O(n) time complexity where n is the byte count.
 ///
 /// @see rt_bytes_from_str For the reverse operation
-rt_string rt_bytes_to_str(void *obj)
-{
+rt_string rt_bytes_to_str(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -553,8 +538,7 @@ rt_string rt_bytes_to_str(void *obj)
 /// @note Always produces lowercase hex digits (a-f, not A-F).
 ///
 /// @see rt_bytes_from_hex For the reverse operation
-rt_string rt_bytes_to_hex(void *obj)
-{
+rt_string rt_bytes_to_hex(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -595,8 +579,7 @@ rt_string rt_bytes_to_hex(void *obj)
 /// @note No line breaks are inserted (single continuous string).
 ///
 /// @see rt_bytes_from_base64 For the reverse operation
-rt_string rt_bytes_to_base64(void *obj)
-{
+rt_string rt_bytes_to_base64(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -613,8 +596,7 @@ rt_string rt_bytes_to_base64(void *obj)
 
     size_t i = 0;
     size_t o = 0;
-    while (i + 3 <= input_len)
-    {
+    while (i + 3 <= input_len) {
         uint32_t triple = ((uint32_t)bytes->data[i] << 16) | ((uint32_t)bytes->data[i + 1] << 8) |
                           bytes->data[i + 2];
         out[o++] = b64_chars[(triple >> 18) & 0x3F];
@@ -624,25 +606,20 @@ rt_string rt_bytes_to_base64(void *obj)
         i += 3;
     }
 
-    if (i < input_len)
-    {
+    if (i < input_len) {
         uint32_t triple = (uint32_t)bytes->data[i] << 16;
         int two = 0;
-        if (i + 1 < input_len)
-        {
+        if (i + 1 < input_len) {
             triple |= (uint32_t)bytes->data[i + 1] << 8;
             two = 1;
         }
 
         out[o++] = b64_chars[(triple >> 18) & 0x3F];
         out[o++] = b64_chars[(triple >> 12) & 0x3F];
-        if (two)
-        {
+        if (two) {
             out[o++] = b64_chars[(triple >> 6) & 0x3F];
             out[o++] = '=';
-        }
-        else
-        {
+        } else {
             out[o++] = '=';
             out[o++] = '=';
         }
@@ -686,8 +663,7 @@ rt_string rt_bytes_to_base64(void *obj)
 ///       malformed (e.g., '=' in wrong position, non-zero padding bits).
 ///
 /// @see rt_bytes_to_base64 For the reverse operation
-void *rt_bytes_from_base64(rt_string b64)
-{
+void *rt_bytes_from_base64(rt_string b64) {
     const char *b64_str = rt_string_cstr(b64);
     if (!b64_str)
         return rt_bytes_new(0);
@@ -700,15 +676,13 @@ void *rt_bytes_from_base64(rt_string b64)
         rt_trap("Bytes.FromBase64: base64 length must be a multiple of 4");
 
     size_t padding = 0;
-    if (b64_len >= 1 && b64_str[b64_len - 1] == '=')
-    {
+    if (b64_len >= 1 && b64_str[b64_len - 1] == '=') {
         padding = 1;
         if (b64_len >= 2 && b64_str[b64_len - 2] == '=')
             padding = 2;
     }
 
-    for (size_t i = 0; i < b64_len - padding; ++i)
-    {
+    for (size_t i = 0; i < b64_len - padding; ++i) {
         if (b64_str[i] == '=')
             rt_trap("Bytes.FromBase64: invalid padding");
     }
@@ -723,8 +697,7 @@ void *rt_bytes_from_base64(rt_string b64)
     rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)out_len);
 
     size_t out_pos = 0;
-    for (size_t i = 0; i < b64_len; i += 4)
-    {
+    for (size_t i = 0; i < b64_len; i += 4) {
         char c0 = b64_str[i];
         char c1 = b64_str[i + 1];
         char c2 = b64_str[i + 2];
@@ -735,8 +708,7 @@ void *rt_bytes_from_base64(rt_string b64)
         int v2 = b64_digit_value(c2);
         int v3 = b64_digit_value(c3);
 
-        if (v0 < 0 || v1 < 0)
-        {
+        if (v0 < 0 || v1 < 0) {
             if (v0 == -2 || v1 == -2)
                 rt_trap("Bytes.FromBase64: invalid padding");
             rt_trap("Bytes.FromBase64: invalid base64 character");
@@ -745,8 +717,7 @@ void *rt_bytes_from_base64(rt_string b64)
         if (v2 == -1 || v3 == -1)
             rt_trap("Bytes.FromBase64: invalid base64 character");
 
-        if (v2 == -2)
-        {
+        if (v2 == -2) {
             if (v3 != -2 || i + 4 != b64_len)
                 rt_trap("Bytes.FromBase64: invalid padding");
             if ((v1 & 0x0F) != 0)
@@ -757,8 +728,7 @@ void *rt_bytes_from_base64(rt_string b64)
             break;
         }
 
-        if (v3 == -2)
-        {
+        if (v3 == -2) {
             if (i + 4 != b64_len)
                 rt_trap("Bytes.FromBase64: invalid padding");
             if ((v2 & 0x03) != 0)
@@ -806,14 +776,12 @@ void *rt_bytes_from_base64(rt_string b64)
 /// @note Uses memset for efficient bulk memory operations.
 ///
 /// @see rt_bytes_set For setting individual bytes
-void rt_bytes_fill(void *obj, int64_t val)
-{
+void rt_bytes_fill(void *obj, int64_t val) {
     if (!obj)
         return;
 
     rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
-    if (bytes->len > 0 && bytes->data)
-    {
+    if (bytes->len > 0 && bytes->data) {
         memset(bytes->data, (uint8_t)(val & 0xFF), (size_t)bytes->len);
     }
 }
@@ -839,16 +807,14 @@ void rt_bytes_fill(void *obj, int64_t val)
 ///
 /// @note O(n) time complexity in the worst case.
 /// @note Linear search from the beginning; stops at first match.
-int64_t rt_bytes_find(void *obj, int64_t val)
-{
+int64_t rt_bytes_find(void *obj, int64_t val) {
     if (!obj)
         return -1;
 
     rt_bytes_impl *bytes = (rt_bytes_impl *)obj;
     uint8_t byte = (uint8_t)(val & 0xFF);
 
-    for (int64_t i = 0; i < bytes->len; i++)
-    {
+    for (int64_t i = 0; i < bytes->len; i++) {
         if (bytes->data[i] == byte)
             return i;
     }
@@ -878,8 +844,7 @@ int64_t rt_bytes_find(void *obj, int64_t val)
 /// @note O(n) time complexity where n is the byte count.
 ///
 /// @see rt_bytes_slice For copying a portion of the bytes
-void *rt_bytes_clone(void *obj)
-{
+void *rt_bytes_clone(void *obj) {
     if (!obj)
         return rt_bytes_new(0);
 
@@ -905,10 +870,8 @@ void *rt_bytes_clone(void *obj)
 ///         returned buffer when done.
 ///
 /// @note Traps on allocation failure.
-uint8_t *rt_bytes_extract_raw(void *bytes, size_t *out_len)
-{
-    if (!bytes)
-    {
+uint8_t *rt_bytes_extract_raw(void *bytes, size_t *out_len) {
+    if (!bytes) {
         *out_len = 0;
         return NULL;
     }
@@ -932,32 +895,28 @@ uint8_t *rt_bytes_extract_raw(void *bytes, size_t *out_len)
 //=============================================================================
 
 /// @brief Validate offset and size for binary read/write.
-static inline void bytes_check_bounds(rt_bytes_impl *b, int64_t offset, int64_t size)
-{
+static inline void bytes_check_bounds(rt_bytes_impl *b, int64_t offset, int64_t size) {
     if (!b)
         rt_trap("Bytes: null object");
     if (offset < 0 || size < 0 || size > b->len || offset > b->len - size)
         rt_trap("Bytes: binary read/write out of bounds");
 }
 
-int64_t rt_bytes_read_i16le(void *obj, int64_t offset)
-{
+int64_t rt_bytes_read_i16le(void *obj, int64_t offset) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 2);
     uint8_t *d = b->data + offset;
     return (int64_t)((uint16_t)d[0] | ((uint16_t)d[1] << 8));
 }
 
-int64_t rt_bytes_read_i16be(void *obj, int64_t offset)
-{
+int64_t rt_bytes_read_i16be(void *obj, int64_t offset) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 2);
     uint8_t *d = b->data + offset;
     return (int64_t)(((uint16_t)d[0] << 8) | (uint16_t)d[1]);
 }
 
-int64_t rt_bytes_read_i32le(void *obj, int64_t offset)
-{
+int64_t rt_bytes_read_i32le(void *obj, int64_t offset) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
@@ -965,8 +924,7 @@ int64_t rt_bytes_read_i32le(void *obj, int64_t offset)
                      ((uint32_t)d[3] << 24));
 }
 
-int64_t rt_bytes_read_i32be(void *obj, int64_t offset)
-{
+int64_t rt_bytes_read_i32be(void *obj, int64_t offset) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
@@ -974,8 +932,7 @@ int64_t rt_bytes_read_i32be(void *obj, int64_t offset)
                      (uint32_t)d[3]);
 }
 
-int64_t rt_bytes_read_i64le(void *obj, int64_t offset)
-{
+int64_t rt_bytes_read_i64le(void *obj, int64_t offset) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 8);
     uint8_t *d = b->data + offset;
@@ -984,8 +941,7 @@ int64_t rt_bytes_read_i64le(void *obj, int64_t offset)
                      ((uint64_t)d[6] << 48) | ((uint64_t)d[7] << 56));
 }
 
-int64_t rt_bytes_read_i64be(void *obj, int64_t offset)
-{
+int64_t rt_bytes_read_i64be(void *obj, int64_t offset) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 8);
     uint8_t *d = b->data + offset;
@@ -994,8 +950,7 @@ int64_t rt_bytes_read_i64be(void *obj, int64_t offset)
                      ((uint64_t)d[6] << 8) | (uint64_t)d[7]);
 }
 
-void rt_bytes_write_i16le(void *obj, int64_t offset, int64_t value)
-{
+void rt_bytes_write_i16le(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 2);
     uint8_t *d = b->data + offset;
@@ -1003,8 +958,7 @@ void rt_bytes_write_i16le(void *obj, int64_t offset, int64_t value)
     d[1] = (uint8_t)((value >> 8) & 0xFF);
 }
 
-void rt_bytes_write_i16be(void *obj, int64_t offset, int64_t value)
-{
+void rt_bytes_write_i16be(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 2);
     uint8_t *d = b->data + offset;
@@ -1012,8 +966,7 @@ void rt_bytes_write_i16be(void *obj, int64_t offset, int64_t value)
     d[1] = (uint8_t)(value & 0xFF);
 }
 
-void rt_bytes_write_i32le(void *obj, int64_t offset, int64_t value)
-{
+void rt_bytes_write_i32le(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
@@ -1023,8 +976,7 @@ void rt_bytes_write_i32le(void *obj, int64_t offset, int64_t value)
     d[3] = (uint8_t)((value >> 24) & 0xFF);
 }
 
-void rt_bytes_write_i32be(void *obj, int64_t offset, int64_t value)
-{
+void rt_bytes_write_i32be(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 4);
     uint8_t *d = b->data + offset;
@@ -1034,8 +986,7 @@ void rt_bytes_write_i32be(void *obj, int64_t offset, int64_t value)
     d[3] = (uint8_t)(value & 0xFF);
 }
 
-void rt_bytes_write_i64le(void *obj, int64_t offset, int64_t value)
-{
+void rt_bytes_write_i64le(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 8);
     uint8_t *d = b->data + offset;
@@ -1049,8 +1000,7 @@ void rt_bytes_write_i64le(void *obj, int64_t offset, int64_t value)
     d[7] = (uint8_t)((value >> 56) & 0xFF);
 }
 
-void rt_bytes_write_i64be(void *obj, int64_t offset, int64_t value)
-{
+void rt_bytes_write_i64be(void *obj, int64_t offset, int64_t value) {
     rt_bytes_impl *b = (rt_bytes_impl *)obj;
     bytes_check_bounds(b, offset, 8);
     uint8_t *d = b->data + offset;
@@ -1078,8 +1028,7 @@ void rt_bytes_write_i64be(void *obj, int64_t offset, int64_t value)
 /// @param len Length of the data in bytes.
 ///
 /// @return New Bytes object containing a copy of the data.
-void *rt_bytes_from_raw(const uint8_t *data, size_t len)
-{
+void *rt_bytes_from_raw(const uint8_t *data, size_t len) {
     rt_bytes_impl *bytes = rt_bytes_alloc((int64_t)len);
     if (len > 0 && data)
         memcpy(bytes->data, data, len);

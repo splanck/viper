@@ -36,26 +36,21 @@
 
 #include <algorithm>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
-int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ostream &err)
-{
+int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ostream &err) {
     // Step 1: Read the user's object file.
     ObjFile userObj;
-    if (!readObjFile(opts.objPath, userObj, err))
-    {
+    if (!readObjFile(opts.objPath, userObj, err)) {
         err << "error: failed to read object file '" << opts.objPath << "'\n";
         return 1;
     }
 
     // Step 2: Read all archive files.
     std::vector<Archive> archives;
-    for (const auto &arPath : opts.archivePaths)
-    {
+    for (const auto &arPath : opts.archivePaths) {
         Archive ar;
-        if (!readArchive(arPath, ar, err))
-        {
+        if (!readArchive(arPath, ar, err)) {
             err << "warning: failed to read archive '" << arPath << "', skipping\n";
             continue;
         }
@@ -68,25 +63,21 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     std::vector<ObjFile> allObjects;
     std::unordered_set<std::string> dynamicSyms;
 
-    if (!resolveSymbols(initialObjects, archives, globalSyms, allObjects, dynamicSyms, err))
-    {
+    if (!resolveSymbols(initialObjects, archives, globalSyms, allObjects, dynamicSyms, err)) {
         err << "error: symbol resolution failed\n";
         return 1;
     }
     // Step 3.5a: Generate ObjC selector stubs (macOS — objc_msgSend$selector symbols).
     // Must come before dynamic stubs since it moves symbols from dynamicSyms and
     // ensures objc_msgSend itself is in the dynamic set.
-    if (opts.arch == LinkArch::AArch64 && opts.platform == LinkPlatform::macOS)
-    {
+    if (opts.arch == LinkArch::AArch64 && opts.platform == LinkPlatform::macOS) {
         ObjFile objcStubs = generateObjcSelectorStubsAArch64(dynamicSyms);
-        if (!objcStubs.sections.empty())
-        {
+        if (!objcStubs.sections.empty()) {
             const size_t objcIdx = allObjects.size();
             allObjects.push_back(std::move(objcStubs));
 
             const auto &stubs = allObjects[objcIdx];
-            for (size_t i = 1; i < stubs.symbols.size(); ++i)
-            {
+            for (size_t i = 1; i < stubs.symbols.size(); ++i) {
                 const auto &sym = stubs.symbols[i];
                 if (sym.binding == ObjSymbol::Local || sym.binding == ObjSymbol::Undefined)
                     continue;
@@ -102,8 +93,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     }
 
     // Step 3.5b: Generate dynamic symbol stubs (macOS/ELF — needed for shared library imports).
-    if (!dynamicSyms.empty() && opts.arch == LinkArch::AArch64)
-    {
+    if (!dynamicSyms.empty() && opts.arch == LinkArch::AArch64) {
         ObjFile stubObj = generateDynStubsAArch64(dynamicSyms);
         const size_t stubObjIdx = allObjects.size();
         allObjects.push_back(std::move(stubObj));
@@ -111,8 +101,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         // Manually register stub and GOT symbols in globalSyms.
         // This overrides Dynamic entries with Global entries pointing to stubs.
         const auto &stubs = allObjects[stubObjIdx];
-        for (size_t i = 1; i < stubs.symbols.size(); ++i)
-        {
+        for (size_t i = 1; i < stubs.symbols.size(); ++i) {
             const auto &sym = stubs.symbols[i];
             if (sym.binding == ObjSymbol::Local)
                 continue;
@@ -142,14 +131,12 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // so symbols pointing to them would resolve to invalid addresses.
     {
         std::vector<std::string> deadSyms;
-        for (const auto &[name, entry] : globalSyms)
-        {
+        for (const auto &[name, entry] : globalSyms) {
             if (entry.binding == GlobalSymEntry::Dynamic)
                 continue; // Dynamic symbols have no section reference.
             if (entry.objIndex < allObjects.size() &&
                 entry.secIndex < allObjects[entry.objIndex].sections.size() &&
-                allObjects[entry.objIndex].sections[entry.secIndex].data.empty())
-            {
+                allObjects[entry.objIndex].sections[entry.secIndex].data.empty()) {
                 deadSyms.push_back(name);
             }
         }
@@ -160,8 +147,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     // Step 4: Merge sections and compute layout.
     LinkLayout layout;
     layout.globalSyms = std::move(globalSyms);
-    if (!mergeSections(allObjects, opts.platform, opts.arch, layout, err))
-    {
+    if (!mergeSections(allObjects, opts.platform, opts.arch, layout, err)) {
         err << "error: section merging failed\n";
         return 1;
     }
@@ -174,24 +160,20 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
     }
 
     // Step 5.5: Insert branch trampolines for out-of-range AArch64 B/BL instructions.
-    if (!insertBranchTrampolines(allObjects, layout, opts.arch, opts.platform, err))
-    {
+    if (!insertBranchTrampolines(allObjects, layout, opts.arch, opts.platform, err)) {
         err << "error: branch trampoline insertion failed\n";
         return 1;
     }
 
     // Step 6: Apply relocations.
-    if (!applyRelocations(allObjects, layout, dynamicSyms, opts.platform, opts.arch, err))
-    {
+    if (!applyRelocations(allObjects, layout, dynamicSyms, opts.platform, opts.arch, err)) {
         err << "error: relocation application failed\n";
         return 1;
     }
 
     // Step 6.5: Build GOT entry table for the executable writer (needed for bind opcodes).
-    for (const auto &[name, entry] : layout.globalSyms)
-    {
-        if (name.size() > 6 && name.substr(0, 6) == "__got_")
-        {
+    for (const auto &[name, entry] : layout.globalSyms) {
+        if (name.size() > 6 && name.substr(0, 6) == "__got_") {
             GotEntry ge;
             ge.symbolName = name.substr(6); // Remove "__got_" prefix → original symbol name.
             ge.gotAddr = entry.resolvedAddr;
@@ -204,13 +186,11 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
 
     // Step 7: Write executable.
     bool writeOk = false;
-    switch (opts.platform)
-    {
+    switch (opts.platform) {
         case LinkPlatform::Linux:
             writeOk = writeElfExe(opts.exePath, layout, opts.arch, err);
             break;
-        case LinkPlatform::macOS:
-        {
+        case LinkPlatform::macOS: {
             std::vector<DylibImport> dylibs;
             // Always link libSystem.B.dylib on macOS.
             dylibs.push_back({"/usr/lib/libSystem.B.dylib"});
@@ -218,8 +198,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             // Detect required frameworks from dynamic symbol prefixes.
             // Each entry: {list of symbol prefixes, dylib path}.
             // A framework is linked if ANY dynamic symbol starts with one of its prefixes.
-            struct FrameworkRule
-            {
+            struct FrameworkRule {
                 const char *prefixes[10]; // NUL-terminated list of symbol prefixes.
                 const char *exactSyms[3]; // NUL-terminated list of exact-match symbol names.
                 const char *dylibPath;
@@ -272,34 +251,26 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
             // prefix matching. Needed because some C symbols retain underscores
             // after the MachOReader strips the Mach-O mangling prefix (e.g.,
             // __CFConstantStringClassReference, _objc_empty_cache).
-            auto stripUnderscores = [](const std::string &s) -> std::string
-            {
+            auto stripUnderscores = [](const std::string &s) -> std::string {
                 size_t i = 0;
                 while (i < s.size() && s[i] == '_')
                     ++i;
                 return (i > 0) ? s.substr(i) : s;
             };
 
-            for (const auto &rule : kFrameworkRules)
-            {
+            for (const auto &rule : kFrameworkRules) {
                 bool needed = false;
-                for (const auto &sym : dynamicSyms)
-                {
+                for (const auto &sym : dynamicSyms) {
                     const std::string stripped = stripUnderscores(sym);
-                    for (const char *const *p = rule.prefixes; *p; ++p)
-                    {
-                        if (sym.find(*p) == 0 || stripped.find(*p) == 0)
-                        {
+                    for (const char *const *p = rule.prefixes; *p; ++p) {
+                        if (sym.find(*p) == 0 || stripped.find(*p) == 0) {
                             needed = true;
                             break;
                         }
                     }
-                    if (!needed)
-                    {
-                        for (const char *const *e = rule.exactSyms; *e; ++e)
-                        {
-                            if (sym == *e)
-                            {
+                    if (!needed) {
+                        for (const char *const *e = rule.exactSyms; *e; ++e) {
+                            if (sym == *e) {
                                 needed = true;
                                 break;
                             }
@@ -322,14 +293,12 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                 for (size_t di = 0; di < dylibs.size(); ++di)
                     pathToOrdinal[dylibs[di].path] = static_cast<uint32_t>(di + 1);
 
-                for (const auto &sym : dynamicSyms)
-                {
+                for (const auto &sym : dynamicSyms) {
                     // ObjC class/metaclass symbols use flat lookup — they live in
                     // the framework that defines the class, which can't be determined
                     // from the symbol prefix alone (e.g., OBJC_CLASS_$_NSWindow is
                     // in AppKit, not libobjc).
-                    if (sym.find("OBJC_CLASS_$_") == 0 || sym.find("OBJC_METACLASS_$_") == 0)
-                    {
+                    if (sym.find("OBJC_CLASS_$_") == 0 || sym.find("OBJC_METACLASS_$_") == 0) {
                         symOrdinals[sym] = 0; // flat lookup
                         continue;
                     }
@@ -337,13 +306,10 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                     // Try prefix/exact matching against framework rules.
                     bool matched = false;
                     const std::string stripped = stripUnderscores(sym);
-                    for (const auto &rule : kFrameworkRules)
-                    {
+                    for (const auto &rule : kFrameworkRules) {
                         // Try prefix match against both raw and underscore-stripped name.
-                        for (const char *const *p = rule.prefixes; *p; ++p)
-                        {
-                            if (sym.find(*p) == 0 || stripped.find(*p) == 0)
-                            {
+                        for (const char *const *p = rule.prefixes; *p; ++p) {
+                            if (sym.find(*p) == 0 || stripped.find(*p) == 0) {
                                 auto pit = pathToOrdinal.find(rule.dylibPath);
                                 if (pit != pathToOrdinal.end())
                                     symOrdinals[sym] = pit->second;
@@ -351,12 +317,9 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                                 break;
                             }
                         }
-                        if (!matched)
-                        {
-                            for (const char *const *e = rule.exactSyms; *e; ++e)
-                            {
-                                if (sym == *e)
-                                {
+                        if (!matched) {
+                            for (const char *const *e = rule.exactSyms; *e; ++e) {
+                                if (sym == *e) {
                                     auto pit = pathToOrdinal.find(rule.dylibPath);
                                     if (pit != pathToOrdinal.end())
                                         symOrdinals[sym] = pit->second;
@@ -379,8 +342,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
                 opts.exePath, layout, opts.arch, dylibs, dynamicSyms, symOrdinals, err);
             break;
         }
-        case LinkPlatform::Windows:
-        {
+        case LinkPlatform::Windows: {
             std::vector<DllImport> imports;
             imports.push_back({"kernel32.dll", {"ExitProcess"}});
             writeOk = writePeExe(opts.exePath, layout, opts.arch, imports, err);
@@ -388,8 +350,7 @@ int nativeLink(const NativeLinkerOptions &opts, std::ostream & /*out*/, std::ost
         }
     }
 
-    if (!writeOk)
-    {
+    if (!writeOk) {
         err << "error: failed to write executable '" << opts.exePath << "'\n";
         return 1;
     }

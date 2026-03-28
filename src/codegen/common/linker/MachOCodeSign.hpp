@@ -25,8 +25,7 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Build a linker-signed ad-hoc code signature (SuperBlob) for a Mach-O executable.
 /// Returns the complete code signature blob to append to __LINKEDIT.

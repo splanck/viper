@@ -23,26 +23,12 @@
 
 #include <string>
 
-namespace il::core
-{
+namespace il::core {
 
 /// @brief Simple type wrapper for IL primitive types.
-struct Type
-{
+struct Type {
     /// @brief Enumerates primitive IL types.
-    enum class Kind
-    {
-        Void,
-        I1,
-        I16,
-        I32,
-        I64,
-        F64,
-        Ptr,
-        Str,
-        Error,
-        ResumeTok
-    };
+    enum class Kind { Void, I1, I16, I32, I64, F64, Ptr, Str, Error, ResumeTok };
     Kind kind; ///< Discriminator specifying the active kind
 
     /// @brief Construct a type of kind @p k.

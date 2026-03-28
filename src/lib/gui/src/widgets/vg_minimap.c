@@ -41,8 +41,7 @@ static vg_widget_vtable_t g_minimap_vtable = {.destroy = minimap_destroy,
 // Minimap Implementation
 //=============================================================================
 
-vg_minimap_t *vg_minimap_create(vg_codeeditor_t *editor)
-{
+vg_minimap_t *vg_minimap_create(vg_codeeditor_t *editor) {
     vg_minimap_t *minimap = calloc(1, sizeof(vg_minimap_t));
     if (!minimap)
         return NULL;
@@ -65,23 +64,20 @@ vg_minimap_t *vg_minimap_create(vg_codeeditor_t *editor)
     return minimap;
 }
 
-static void minimap_destroy(vg_widget_t *widget)
-{
+static void minimap_destroy(vg_widget_t *widget) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
 
     free(minimap->render_buffer);
 }
 
 /// @brief Minimap destroy.
-void vg_minimap_destroy(vg_minimap_t *minimap)
-{
+void vg_minimap_destroy(vg_minimap_t *minimap) {
     if (!minimap)
         return;
     vg_widget_destroy(&minimap->base);
 }
 
-static void minimap_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void minimap_measure(vg_widget_t *widget, float available_width, float available_height) {
     (void)available_width;
     (void)available_height;
 
@@ -90,8 +86,7 @@ static void minimap_measure(vg_widget_t *widget, float available_width, float av
     widget->measured_height = available_height;
 }
 
-static void render_minimap_buffer(vg_minimap_t *minimap)
-{
+static void render_minimap_buffer(vg_minimap_t *minimap) {
     if (!minimap->editor)
         return;
 
@@ -103,8 +98,7 @@ static void render_minimap_buffer(vg_minimap_t *minimap)
         return;
 
     // Reallocate buffer if needed
-    if (width != minimap->buffer_width || height != minimap->buffer_height)
-    {
+    if (width != minimap->buffer_width || height != minimap->buffer_height) {
         free(minimap->render_buffer);
         minimap->render_buffer = calloc(width * height, 4); // RGBA
         minimap->buffer_width = width;
@@ -119,8 +113,7 @@ static void render_minimap_buffer(vg_minimap_t *minimap)
     uint8_t bg_g = (minimap->bg_color >> 8) & 0xFF;
     uint8_t bg_b = minimap->bg_color & 0xFF;
 
-    for (uint32_t i = 0; i < width * height; i++)
-    {
+    for (uint32_t i = 0; i < width * height; i++) {
         minimap->render_buffer[i * 4 + 0] = bg_r;
         minimap->render_buffer[i * 4 + 1] = bg_g;
         minimap->render_buffer[i * 4 + 2] = bg_b;
@@ -133,8 +126,7 @@ static void render_minimap_buffer(vg_minimap_t *minimap)
     uint8_t text_g = (minimap->text_color >> 8) & 0xFF;
     uint8_t text_b = minimap->text_color & 0xFF;
 
-    for (int line = 0; line < ed->line_count; line++)
-    {
+    for (int line = 0; line < ed->line_count; line++) {
         uint32_t y = (uint32_t)(line * minimap->line_height);
         if (y >= height)
             break;
@@ -144,10 +136,8 @@ static void render_minimap_buffer(vg_minimap_t *minimap)
             continue;
 
         uint32_t x = 0;
-        for (const char *p = text; *p && x < width; p++)
-        {
-            if (*p != ' ' && *p != '\t')
-            {
+        for (const char *p = text; *p && x < width; p++) {
+            if (*p != ' ' && *p != '\t') {
                 // Draw a pixel for this character
                 uint32_t idx = (y * width + x) * 4;
                 minimap->render_buffer[idx + 0] = text_r;
@@ -162,8 +152,7 @@ static void render_minimap_buffer(vg_minimap_t *minimap)
     minimap->buffer_dirty = false;
 }
 
-static void minimap_paint(vg_widget_t *widget, void *canvas)
-{
+static void minimap_paint(vg_widget_t *widget, void *canvas) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
 
     if (!minimap->editor)
@@ -172,20 +161,16 @@ static void minimap_paint(vg_widget_t *widget, void *canvas)
     vgfx_window_t win = (vgfx_window_t)canvas;
 
     // Render buffer if dirty
-    if (minimap->buffer_dirty)
-    {
+    if (minimap->buffer_dirty) {
         render_minimap_buffer(minimap);
     }
 
     // Blit render_buffer pixel-by-pixel (RGBA bytes → 0x00RRGGBB)
-    if (minimap->render_buffer && minimap->buffer_width > 0 && minimap->buffer_height > 0)
-    {
+    if (minimap->render_buffer && minimap->buffer_width > 0 && minimap->buffer_height > 0) {
         uint32_t bw = minimap->buffer_width;
         uint32_t bh = minimap->buffer_height;
-        for (uint32_t py = 0; py < bh; py++)
-        {
-            for (uint32_t px = 0; px < bw; px++)
-            {
+        for (uint32_t py = 0; py < bh; py++) {
+            for (uint32_t px = 0; px < bw; px++) {
                 uint32_t idx = (py * bw + px) * 4;
                 uint32_t color = ((uint32_t)minimap->render_buffer[idx + 0] << 16) |
                                  ((uint32_t)minimap->render_buffer[idx + 1] << 8) |
@@ -196,8 +181,7 @@ static void minimap_paint(vg_widget_t *widget, void *canvas)
     }
 
     // Draw viewport indicator overlay
-    if (minimap->show_viewport && minimap->editor)
-    {
+    if (minimap->show_viewport && minimap->editor) {
         vg_codeeditor_t *ed = minimap->editor;
 
         // Map editor line coordinates to minimap pixel rows
@@ -214,25 +198,21 @@ static void minimap_paint(vg_widget_t *widget, void *canvas)
     }
 }
 
-static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_minimap_t *minimap = (vg_minimap_t *)widget;
 
     if (!minimap->editor)
         return false;
 
-    switch (event->type)
-    {
-        case VG_EVENT_MOUSE_DOWN:
-        {
+    switch (event->type) {
+        case VG_EVENT_MOUSE_DOWN: {
             // Start dragging viewport
             minimap->dragging = true;
             minimap->drag_start_y = (int)event->mouse.y;
 
             // Jump to clicked line
             int clicked_line = (int)(event->mouse.y / minimap->line_height);
-            if (clicked_line >= 0 && clicked_line < minimap->editor->line_count)
-            {
+            if (clicked_line >= 0 && clicked_line < minimap->editor->line_count) {
                 vg_codeeditor_scroll_to_line(minimap->editor, clicked_line);
             }
             return true;
@@ -243,20 +223,17 @@ static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event)
             return true;
 
         case VG_EVENT_MOUSE_MOVE:
-            if (minimap->dragging)
-            {
+            if (minimap->dragging) {
                 // Drag to scroll
                 int delta_y = (int)event->mouse.y - minimap->drag_start_y;
                 int delta_lines = delta_y / (int)minimap->line_height;
                 minimap->drag_start_y = (int)event->mouse.y;
 
-                if (delta_lines != 0)
-                {
+                if (delta_lines != 0) {
                     int new_line = minimap->editor->visible_first_line + delta_lines;
                     if (new_line < 0)
                         new_line = 0;
-                    if (new_line >= minimap->editor->line_count)
-                    {
+                    if (new_line >= minimap->editor->line_count) {
                         new_line = minimap->editor->line_count - 1;
                     }
                     vg_codeeditor_scroll_to_line(minimap->editor, new_line);
@@ -273,8 +250,7 @@ static bool minimap_handle_event(vg_widget_t *widget, vg_event_t *event)
 }
 
 /// @brief Minimap set editor.
-void vg_minimap_set_editor(vg_minimap_t *minimap, vg_codeeditor_t *editor)
-{
+void vg_minimap_set_editor(vg_minimap_t *minimap, vg_codeeditor_t *editor) {
     if (!minimap)
         return;
 
@@ -284,8 +260,7 @@ void vg_minimap_set_editor(vg_minimap_t *minimap, vg_codeeditor_t *editor)
 }
 
 /// @brief Minimap set scale.
-void vg_minimap_set_scale(vg_minimap_t *minimap, float scale)
-{
+void vg_minimap_set_scale(vg_minimap_t *minimap, float scale) {
     if (!minimap)
         return;
 
@@ -300,8 +275,7 @@ void vg_minimap_set_scale(vg_minimap_t *minimap, float scale)
 }
 
 /// @brief Minimap set show viewport.
-void vg_minimap_set_show_viewport(vg_minimap_t *minimap, bool show)
-{
+void vg_minimap_set_show_viewport(vg_minimap_t *minimap, bool show) {
     if (!minimap)
         return;
 
@@ -310,8 +284,7 @@ void vg_minimap_set_show_viewport(vg_minimap_t *minimap, bool show)
 }
 
 /// @brief Minimap invalidate.
-void vg_minimap_invalidate(vg_minimap_t *minimap)
-{
+void vg_minimap_invalidate(vg_minimap_t *minimap) {
     if (!minimap)
         return;
 
@@ -320,8 +293,7 @@ void vg_minimap_invalidate(vg_minimap_t *minimap)
 }
 
 /// @brief Minimap invalidate lines.
-void vg_minimap_invalidate_lines(vg_minimap_t *minimap, uint32_t start_line, uint32_t end_line)
-{
+void vg_minimap_invalidate_lines(vg_minimap_t *minimap, uint32_t start_line, uint32_t end_line) {
     if (!minimap)
         return;
     (void)start_line;

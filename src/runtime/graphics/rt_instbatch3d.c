@@ -37,8 +37,7 @@ extern double rt_mat4_get(void *m, int64_t r, int64_t c);
 
 #define INST_INIT_CAP 64
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     void *mesh;        /* borrowed Mesh3D */
     void *material;    /* borrowed Material3D */
@@ -47,21 +46,18 @@ typedef struct
     int32_t instance_capacity;
 } rt_instbatch3d;
 
-static void instbatch_finalizer(void *obj)
-{
+static void instbatch_finalizer(void *obj) {
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
     free(b->transforms);
     b->transforms = NULL;
     b->instance_count = b->instance_capacity = 0;
 }
 
-void *rt_instbatch3d_new(void *mesh, void *material)
-{
+void *rt_instbatch3d_new(void *mesh, void *material) {
     if (!mesh || !material)
         return NULL;
     rt_instbatch3d *b = (rt_instbatch3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_instbatch3d));
-    if (!b)
-    {
+    if (!b) {
         rt_trap("InstanceBatch3D.New: allocation failed");
         return NULL;
     }
@@ -75,14 +71,12 @@ void *rt_instbatch3d_new(void *mesh, void *material)
     return b;
 }
 
-void rt_instbatch3d_add(void *obj, void *transform)
-{
+void rt_instbatch3d_add(void *obj, void *transform) {
     if (!obj || !transform)
         return;
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
 
-    if (b->instance_count >= b->instance_capacity)
-    {
+    if (b->instance_count >= b->instance_capacity) {
         int32_t new_cap = b->instance_capacity * 2;
         b->transforms = (float *)realloc(b->transforms, (size_t)new_cap * 16 * sizeof(float));
         b->instance_capacity = new_cap;
@@ -97,8 +91,7 @@ void rt_instbatch3d_add(void *obj, void *transform)
     b->instance_count++;
 }
 
-void rt_instbatch3d_remove(void *obj, int64_t index)
-{
+void rt_instbatch3d_remove(void *obj, int64_t index) {
     if (!obj)
         return;
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
@@ -113,8 +106,7 @@ void rt_instbatch3d_remove(void *obj, int64_t index)
     b->instance_count--;
 }
 
-void rt_instbatch3d_set(void *obj, int64_t index, void *transform)
-{
+void rt_instbatch3d_set(void *obj, int64_t index, void *transform) {
     if (!obj || !transform)
         return;
     rt_instbatch3d *b = (rt_instbatch3d *)obj;
@@ -127,22 +119,19 @@ void rt_instbatch3d_set(void *obj, int64_t index, void *transform)
             dst[i * 4 + j] = (float)rt_mat4_get(transform, i, j);
 }
 
-void rt_instbatch3d_clear(void *obj)
-{
+void rt_instbatch3d_clear(void *obj) {
     if (!obj)
         return;
     ((rt_instbatch3d *)obj)->instance_count = 0;
 }
 
-int64_t rt_instbatch3d_count(void *obj)
-{
+int64_t rt_instbatch3d_count(void *obj) {
     return obj ? ((rt_instbatch3d *)obj)->instance_count : 0;
 }
 
 /// @brief Draw all visible instances. Falls back to N individual draw calls
 /// since the software backend doesn't have a native instanced path.
-void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj)
-{
+void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj) {
     if (!canvas_obj || !batch_obj)
         return;
     rt_canvas3d *c = (rt_canvas3d *)canvas_obj;
@@ -160,8 +149,7 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj)
     /* For each instance, issue a draw call with its transform.
      * This is the software fallback — GPU backends could override
      * with true instanced rendering. */
-    for (int32_t i = 0; i < b->instance_count; i++)
-    {
+    for (int32_t i = 0; i < b->instance_count; i++) {
         /* Convert float[16] back to a Mat4 object for DrawMesh */
         float *src = &b->transforms[i * 16];
 
@@ -193,8 +181,7 @@ void rt_canvas3d_draw_instanced(void *canvas_obj, void *batch_obj)
         /* Build light params from pointer array (same as rt_canvas3d_draw_mesh) */
         vgfx3d_light_params_t lp[VGFX3D_MAX_LIGHTS];
         int32_t lc = 0;
-        for (int li = 0; li < VGFX3D_MAX_LIGHTS; li++)
-        {
+        for (int li = 0; li < VGFX3D_MAX_LIGHTS; li++) {
             const rt_light3d *l = c->lights[li];
             if (!l)
                 continue;

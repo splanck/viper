@@ -25,18 +25,15 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-static int findBlockIndex(const il::core::Function &fn, const std::string &label)
-{
-    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
-    {
+static int findBlockIndex(const il::core::Function &fn, const std::string &label) {
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
         if (fn.blocks[i].label == label)
             return static_cast<int>(i);
     }
     return -1;
 }
 
-int main()
-{
+int main() {
     // Construct a SELECT CASE with 4+ arms and CASE ELSE to exercise the bug.
     const std::string src = "10 DIM S$ AS STRING\n"
                             "20 S$ = \"north\"\n"
@@ -65,10 +62,8 @@ int main()
     il::core::Module mod = lowerer.lowerProgram(*prog);
 
     const il::core::Function *mainFn = nullptr;
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == "main")
-        {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == "main") {
             mainFn = &fn;
             break;
         }
@@ -81,8 +76,7 @@ int main()
 
     // Sanity: All SELECT-related blocks are materialized (arms/default/dispatch/end).
     bool sawArm = false, sawDefault = false, sawDispatch = false, sawEnd = false, sawCheck = false;
-    for (const auto &bb : mainFn->blocks)
-    {
+    for (const auto &bb : mainFn->blocks) {
         if (bb.label.find("select_arm") != std::string::npos)
             sawArm = true;
         if (bb.label.find("select_default") != std::string::npos)

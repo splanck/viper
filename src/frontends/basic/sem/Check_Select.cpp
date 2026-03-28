@@ -14,8 +14,7 @@
 
 #include "frontends/basic/sem/Check_SelectDetail.hpp"
 
-namespace il::frontends::basic::sem
-{
+namespace il::frontends::basic::sem {
 
 /// @brief Perform semantic validation for a @c SELECT CASE statement.
 ///
@@ -30,8 +29,7 @@ namespace il::frontends::basic::sem
 ///
 /// @param analyzer Semantic analyzer that owns global statement state.
 /// @param stmt Parsed @c SELECT CASE statement under inspection.
-void analyzeSelectCase(SemanticAnalyzer &analyzer, const SelectCaseStmt &stmt)
-{
+void analyzeSelectCase(SemanticAnalyzer &analyzer, const SelectCaseStmt &stmt) {
     ControlCheckContext context(analyzer);
     const auto selectorInfo = detail::classifySelectCaseSelector(context, stmt);
     if (selectorInfo.fatal)
@@ -42,8 +40,7 @@ void analyzeSelectCase(SemanticAnalyzer &analyzer, const SelectCaseStmt &stmt)
                                                   selectorInfo.selectorIsNumeric,
                                                   !stmt.elseBody.empty());
 
-    for (const auto &arm : stmt.arms)
-    {
+    for (const auto &arm : stmt.arms) {
         if (!detail::validateSelectCaseArm(arm, armCtx))
             return;
         detail::analyzeSelectCaseBody(context, arm.body);
@@ -64,8 +61,7 @@ void analyzeSelectCase(SemanticAnalyzer &analyzer, const SelectCaseStmt &stmt)
 ///
 /// @param analyzer Semantic analyzer providing symbol and diagnostic services.
 /// @param body Sequence of statements that make up the case arm.
-void analyzeSelectCaseBody(SemanticAnalyzer &analyzer, const std::vector<StmtPtr> &body)
-{
+void analyzeSelectCaseBody(SemanticAnalyzer &analyzer, const std::vector<StmtPtr> &body) {
     ControlCheckContext context(analyzer);
     detail::analyzeSelectCaseBody(context, body);
 }

@@ -16,8 +16,7 @@
 #include <stdint.h>
 #include <string.h>
 
-int main()
-{
+int main() {
     // Test IsNull with null pointer
     assert(rt_obj_is_null(NULL) == 1);
 

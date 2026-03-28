@@ -19,18 +19,15 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     if (!s)
         return expected == nullptr || *expected == '\0';
     const char *cstr = rt_string_cstr(s);
@@ -41,8 +38,7 @@ static bool str_eq(rt_string s, const char *expected)
 // Tests
 // ---------------------------------------------------------------------------
 
-static void test_parse_basic()
-{
+static void test_parse_basic() {
     rt_string input = make_str("[database]\n"
                                "host = localhost\n"
                                "port = 5432\n"
@@ -71,8 +67,7 @@ static void test_parse_basic()
     rt_string_unref(input);
 }
 
-static void test_parse_comments()
-{
+static void test_parse_comments() {
     rt_string input = make_str("; This is a comment\n"
                                "# This is also a comment\n"
                                "[section]\n"
@@ -90,8 +85,7 @@ static void test_parse_comments()
     rt_string_unref(input);
 }
 
-static void test_parse_default_section()
-{
+static void test_parse_default_section() {
     rt_string input = make_str("key1 = val1\n"
                                "key2 = val2\n"
                                "[named]\n"
@@ -109,8 +103,7 @@ static void test_parse_default_section()
     rt_string_unref(input);
 }
 
-static void test_parse_whitespace_trimming()
-{
+static void test_parse_whitespace_trimming() {
     rt_string input = make_str("[  section  ]\n"
                                "  key  =  value with spaces  \n");
     void *ini = rt_ini_parse(input);
@@ -126,8 +119,7 @@ static void test_parse_whitespace_trimming()
     rt_string_unref(input);
 }
 
-static void test_has_section()
-{
+static void test_has_section() {
     rt_string input = make_str("[existing]\nfoo = bar\n");
     void *ini = rt_ini_parse(input);
 
@@ -141,8 +133,7 @@ static void test_has_section()
     rt_string_unref(input);
 }
 
-static void test_sections_list()
-{
+static void test_sections_list() {
     rt_string input = make_str("[alpha]\na = 1\n"
                                "[beta]\nb = 2\n");
     void *ini = rt_ini_parse(input);
@@ -153,8 +144,7 @@ static void test_sections_list()
     rt_string_unref(input);
 }
 
-static void test_set_new_key()
-{
+static void test_set_new_key() {
     rt_string input = make_str("[s]\nk1 = v1\n");
     void *ini = rt_ini_parse(input);
 
@@ -173,8 +163,7 @@ static void test_set_new_key()
     rt_string_unref(input);
 }
 
-static void test_set_creates_section()
-{
+static void test_set_creates_section() {
     rt_string input = make_str("");
     void *ini = rt_ini_parse(input);
 
@@ -194,8 +183,7 @@ static void test_set_creates_section()
     rt_string_unref(input);
 }
 
-static void test_remove()
-{
+static void test_remove() {
     rt_string input = make_str("[s]\nk1 = v1\nk2 = v2\n");
     void *ini = rt_ini_parse(input);
 
@@ -212,8 +200,7 @@ static void test_remove()
     rt_string_unref(input);
 }
 
-static void test_remove_nonexistent()
-{
+static void test_remove_nonexistent() {
     rt_string input = make_str("[s]\nk = v\n");
     void *ini = rt_ini_parse(input);
 
@@ -226,8 +213,7 @@ static void test_remove_nonexistent()
     rt_string_unref(input);
 }
 
-static void test_format()
-{
+static void test_format() {
     rt_string input = make_str("[server]\nhost = localhost\nport = 8080\n");
     void *ini = rt_ini_parse(input);
     rt_string formatted = rt_ini_format(ini);
@@ -243,8 +229,7 @@ static void test_format()
     rt_string_unref(input);
 }
 
-static void test_get_missing_returns_empty()
-{
+static void test_get_missing_returns_empty() {
     rt_string input = make_str("[s]\nk = v\n");
     void *ini = rt_ini_parse(input);
 
@@ -259,8 +244,7 @@ static void test_get_missing_returns_empty()
     rt_string_unref(input);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     void *ini = rt_ini_parse(NULL);
     assert(ini != nullptr);       // Should return empty map
     assert(rt_map_len(ini) == 0); // No sections when input is NULL
@@ -279,8 +263,7 @@ static void test_null_safety()
     rt_string_unref(val);
 }
 
-static void test_crlf_line_endings()
-{
+static void test_crlf_line_endings() {
     rt_string input = make_str("[s]\r\nk1 = v1\r\nk2 = v2\r\n");
     void *ini = rt_ini_parse(input);
 
@@ -301,8 +284,7 @@ static void test_crlf_line_endings()
     rt_string_unref(input);
 }
 
-int main()
-{
+int main() {
     test_parse_basic();
     test_parse_comments();
     test_parse_default_section();

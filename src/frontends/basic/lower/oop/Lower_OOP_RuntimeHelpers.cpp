@@ -18,11 +18,9 @@
 #include "frontends/basic/ILTypeUtils.hpp"
 #include "frontends/basic/Lowerer.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-namespace
-{
+namespace {
 using AstType = ::il::frontends::basic::Type;
 using IlType = il::core::Type;
 using Value = il::core::Value;
@@ -38,8 +36,7 @@ OopEmitHelper::OopEmitHelper(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 void OopEmitHelper::emitParamInit(const Param &param,
                                   il::core::Function &fn,
                                   std::size_t paramIdx,
-                                  std::unordered_set<std::string> &paramNames)
-{
+                                  std::unordered_set<std::string> &paramNames) {
     paramNames.insert(param.name);
     lowerer_.registerProcParam(param.name); // BUG-BAS-002 fix
     lowerer_.curLoc = param.loc;
@@ -47,8 +44,7 @@ void OopEmitHelper::emitParamInit(const Param &param,
     // Allocate slot: BOOLEAN uses 1 byte, everything else 8 bytes
     Value slot = lowerer_.emitAlloca((!param.is_array && param.type == AstType::Bool) ? 1 : 8);
 
-    if (param.is_array)
-    {
+    if (param.is_array) {
         lowerer_.markArray(param.name);
         lowerer_.emitStore(IlType(IlType::Kind::Ptr), slot, Value::null());
     }
@@ -69,23 +65,19 @@ void OopEmitHelper::emitParamInit(const Param &param,
                            : type_conv::astToIlType(param.type);
 
     Value incoming = Value::temp(fn.params[paramIdx].id);
-    if (param.is_array)
-    {
+    if (param.is_array) {
         // Object arrays require distinct runtime calls. (BUG-OOP-038)
         bool isObjectArray = !param.objectClass.empty();
         lowerer_.storeArray(slot, incoming, param.type, isObjectArray);
-    }
-    else
+    } else
         lowerer_.emitStore(ilParamTy, slot, incoming);
 }
 
 void OopEmitHelper::emitAllParamInits(const std::vector<Param> &params,
                                       il::core::Function &fn,
                                       std::size_t selfOffset,
-                                      std::unordered_set<std::string> &paramNames)
-{
-    for (std::size_t i = 0; i < params.size(); ++i)
-    {
+                                      std::unordered_set<std::string> &paramNames) {
+    for (std::size_t i = 0; i < params.size(); ++i) {
         emitParamInit(params[i], fn, selfOffset + i, paramNames);
     }
 }
@@ -94,16 +86,14 @@ void OopEmitHelper::emitAllParamInits(const std::vector<Param> &params,
 // Array Field Initialization
 // -------------------------------------------------------------------------
 
-void OopEmitHelper::emitArrayFieldInits(const ClassDecl &klass, unsigned selfSlotId)
-{
+void OopEmitHelper::emitArrayFieldInits(const ClassDecl &klass, unsigned selfSlotId) {
     const ClassLayout *layout = lowerer_.findClassLayout(klass.name);
     if (!layout)
         return;
 
     Value selfPtr = lowerer_.loadSelfPointer(selfSlotId);
 
-    for (const auto &field : klass.fields)
-    {
+    for (const auto &field : klass.fields) {
         if (!field.isArray || field.arrayExtents.empty())
             continue;
 
@@ -121,19 +111,14 @@ void OopEmitHelper::emitArrayFieldInits(const ClassDecl &klass, unsigned selfSlo
 
         // Allocate appropriate array type
         Value handle;
-        if (field.type == AstType::Str)
-        {
+        if (field.type == AstType::Str) {
             lowerer_.requireArrayStrAlloc();
             handle = lowerer_.emitCallRet(IlType(IlType::Kind::Ptr), "rt_arr_str_alloc", {length});
-        }
-        else if (!field.objectClassName.empty())
-        {
+        } else if (!field.objectClassName.empty()) {
             // Object-typed fields use object array allocation. (BUG-089)
             lowerer_.requireArrayObjNew();
             handle = lowerer_.emitCallRet(IlType(IlType::Kind::Ptr), "rt_arr_obj_new", {length});
-        }
-        else
-        {
+        } else {
             lowerer_.requireArrayI64New();
             handle = lowerer_.emitCallRet(IlType(IlType::Kind::Ptr), "rt_arr_i64_new", {length});
         }
@@ -151,9 +136,9 @@ void OopEmitHelper::emitArrayFieldInits(const ClassDecl &klass, unsigned selfSlo
 // Method Epilogue
 // -------------------------------------------------------------------------
 
-void OopEmitHelper::emitMethodEpilogue(const std::unordered_set<std::string> &paramNames,
-                                       const std::unordered_set<std::string> &excludeFromObjRelease)
-{
+void OopEmitHelper::emitMethodEpilogue(
+    const std::unordered_set<std::string> &paramNames,
+    const std::unordered_set<std::string> &excludeFromObjRelease) {
     lowerer_.curLoc = {};
     lowerer_.releaseDeferredTemps();
     lowerer_.releaseObjectLocals(excludeFromObjRelease);
@@ -166,22 +151,17 @@ void OopEmitHelper::emitMethodEpilogue(const std::unordered_set<std::string> &pa
 // -------------------------------------------------------------------------
 
 void OopEmitHelper::emitBodyAndBranchToExit(const std::vector<const Stmt *> &bodyStmts,
-                                            std::size_t exitIdx)
-{
+                                            std::size_t exitIdx) {
     auto &ctx = lowerer_.context();
 
-    if (bodyStmts.empty())
-    {
+    if (bodyStmts.empty()) {
         lowerer_.curLoc = {};
         il::core::Function *func = ctx.function();
         il::core::BasicBlock *exitBlock = &func->blocks[exitIdx];
         lowerer_.emitBr(exitBlock);
-    }
-    else
-    {
+    } else {
         lowerer_.lowerStatementSequence(bodyStmts, /*stopOnTerminated=*/true);
-        if (ctx.current() && !ctx.current()->terminated)
-        {
+        if (ctx.current() && !ctx.current()->terminated) {
             il::core::Function *func = ctx.function();
             il::core::BasicBlock *exitBlock = &func->blocks[exitIdx];
             lowerer_.emitBr(exitBlock);
@@ -195,14 +175,11 @@ void OopEmitHelper::emitBodyAndBranchToExit(const std::vector<const Stmt *> &bod
 
 std::string OopEmitHelper::findImplementorClass(const OopIndex &oopIndex,
                                                 const std::string &startQClass,
-                                                const std::string &methodName)
-{
+                                                const std::string &methodName) {
     const ClassInfo *cur = oopIndex.findClass(startQClass);
-    while (cur)
-    {
+    while (cur) {
         auto itM = cur->methods.find(methodName);
-        if (itM != cur->methods.end())
-        {
+        if (itM != cur->methods.end()) {
             if (!itM->second.isAbstract)
                 return cur->qualifiedName;
         }
@@ -215,18 +192,15 @@ std::string OopEmitHelper::findImplementorClass(const OopIndex &oopIndex,
 
 std::vector<std::string> OopEmitHelper::buildVtableSlotMap(const OopIndex &oopIndex,
                                                            const std::string &classQName,
-                                                           std::size_t &maxSlot)
-{
+                                                           std::size_t &maxSlot) {
     maxSlot = 0;
     bool hasAnyVirtual = false;
 
     // First pass: compute max slot
     {
         const ClassInfo *cur = oopIndex.findClass(classQName);
-        while (cur)
-        {
-            for (const auto &mp : cur->methods)
-            {
+        while (cur) {
+            for (const auto &mp : cur->methods) {
                 const auto &mi = mp.second;
                 if (!mi.isVirtual || mi.slot < 0)
                     continue;
@@ -245,10 +219,8 @@ std::vector<std::string> OopEmitHelper::buildVtableSlotMap(const OopIndex &oopIn
     // Second pass: build slot-to-name mapping
     {
         const ClassInfo *cur = oopIndex.findClass(classQName);
-        while (cur)
-        {
-            for (const auto &mp : cur->methods)
-            {
+        while (cur) {
+            for (const auto &mp : cur->methods) {
                 const auto &mname = mp.first;
                 const auto &mi = mp.second;
                 if (!mi.isVirtual || mi.slot < 0)

@@ -25,8 +25,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     // DIM infers array type information.
     {
         const std::string src = "10 DIM A(5)\n20 END\n";
@@ -168,10 +167,8 @@ int main()
         Lowerer lowerer;
         il::core::Module module = lowerer.lowerProgram(*prog);
         const il::core::Function *mainFn = nullptr;
-        for (const auto &fn : module.functions)
-        {
-            if (fn.name == "main")
-            {
+        for (const auto &fn : module.functions) {
+            if (fn.name == "main") {
                 mainFn = &fn;
                 break;
             }
@@ -179,16 +176,12 @@ int main()
         assert(mainFn);
 
         bool sawStoreZero = false;
-        for (const auto &block : mainFn->blocks)
-        {
-            for (const auto &instr : block.instructions)
-            {
+        for (const auto &block : mainFn->blocks) {
+            for (const auto &instr : block.instructions) {
                 if (instr.op == il::core::Opcode::Store && instr.loc.line == letSourceLine &&
-                    instr.operands.size() == 2)
-                {
+                    instr.operands.size() == 2) {
                     const auto &value = instr.operands[1];
-                    if (value.kind == il::core::Value::Kind::ConstInt && value.i64 == 0)
-                    {
+                    if (value.kind == il::core::Value::Kind::ConstInt && value.i64 == 0) {
                         sawStoreZero = true;
                     }
                 }

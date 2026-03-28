@@ -18,14 +18,12 @@
 #include <cstring>
 
 // Helper to create a runtime string from C string literal
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
 // Helper to compare runtime string with C string
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     if (!s && !expected)
         return true;
     if (!s || !expected)
@@ -38,8 +36,7 @@ static bool str_eq(rt_string s, const char *expected)
 // Replace tests
 //===----------------------------------------------------------------------===//
 
-static void test_replace_basic()
-{
+static void test_replace_basic() {
     rt_string hay = make_str("hello world");
     rt_string needle = make_str("world");
     rt_string repl = make_str("universe");
@@ -48,8 +45,7 @@ static void test_replace_basic()
     assert(str_eq(result, "hello universe"));
 }
 
-static void test_replace_multiple()
-{
+static void test_replace_multiple() {
     rt_string hay = make_str("foo bar foo baz foo");
     rt_string needle = make_str("foo");
     rt_string repl = make_str("qux");
@@ -58,8 +54,7 @@ static void test_replace_multiple()
     assert(str_eq(result, "qux bar qux baz qux"));
 }
 
-static void test_replace_to_empty()
-{
+static void test_replace_to_empty() {
     rt_string hay = make_str("hello world");
     rt_string needle = make_str(" ");
     rt_string repl = make_str("");
@@ -68,8 +63,7 @@ static void test_replace_to_empty()
     assert(str_eq(result, "helloworld"));
 }
 
-static void test_replace_not_found()
-{
+static void test_replace_not_found() {
     rt_string hay = make_str("hello world");
     rt_string needle = make_str("xyz");
     rt_string repl = make_str("abc");
@@ -78,8 +72,7 @@ static void test_replace_not_found()
     assert(str_eq(result, "hello world"));
 }
 
-static void test_replace_empty_needle()
-{
+static void test_replace_empty_needle() {
     rt_string hay = make_str("hello");
     rt_string needle = make_str("");
     rt_string repl = make_str("x");
@@ -92,8 +85,7 @@ static void test_replace_empty_needle()
 // StartsWith/EndsWith/Has tests
 //===----------------------------------------------------------------------===//
 
-static void test_starts_with()
-{
+static void test_starts_with() {
     rt_string str = make_str("hello world");
 
     assert(rt_str_starts_with(str, make_str("hello")) == 1);
@@ -103,8 +95,7 @@ static void test_starts_with()
     assert(rt_str_starts_with(str, str) == 1);
 }
 
-static void test_ends_with()
-{
+static void test_ends_with() {
     rt_string str = make_str("hello world");
 
     assert(rt_str_ends_with(str, make_str("world")) == 1);
@@ -114,8 +105,7 @@ static void test_ends_with()
     assert(rt_str_ends_with(str, str) == 1);
 }
 
-static void test_has()
-{
+static void test_has() {
     rt_string str = make_str("hello world");
 
     assert(rt_str_has(str, make_str("hello")) == 1);
@@ -129,8 +119,7 @@ static void test_has()
 // Count tests
 //===----------------------------------------------------------------------===//
 
-static void test_count()
-{
+static void test_count() {
     rt_string str = make_str("abracadabra");
 
     assert(rt_str_count(str, make_str("a")) == 5);
@@ -139,8 +128,7 @@ static void test_count()
     assert(rt_str_count(str, make_str("")) == 0);
 }
 
-static void test_count_nonoverlapping()
-{
+static void test_count_nonoverlapping() {
     rt_string str = make_str("aaaa");
 
     // Non-overlapping: "aaaa" contains 2 "aa" (positions 0 and 2)
@@ -151,8 +139,7 @@ static void test_count_nonoverlapping()
 // PadLeft/PadRight tests
 //===----------------------------------------------------------------------===//
 
-static void test_pad_left()
-{
+static void test_pad_left() {
     rt_string str = make_str("42");
 
     rt_string result = rt_str_pad_left(str, 5, make_str("0"));
@@ -167,8 +154,7 @@ static void test_pad_left()
     assert(str_eq(wider, "42"));
 }
 
-static void test_pad_right()
-{
+static void test_pad_right() {
     rt_string str = make_str("hi");
 
     rt_string result = rt_str_pad_right(str, 5, make_str("."));
@@ -179,8 +165,7 @@ static void test_pad_right()
     assert(str_eq(no_pad, "hi"));
 }
 
-static void test_pad_empty_pad_char()
-{
+static void test_pad_empty_pad_char() {
     rt_string str = make_str("test");
     rt_string empty_pad = make_str("");
 
@@ -193,8 +178,7 @@ static void test_pad_empty_pad_char()
 // Split/Join tests
 //===----------------------------------------------------------------------===//
 
-static void test_split_basic()
-{
+static void test_split_basic() {
     rt_string str = make_str("a,b,c");
     rt_string delim = make_str(",");
 
@@ -205,8 +189,7 @@ static void test_split_basic()
     assert(str_eq((rt_string)rt_seq_get(seq, 2), "c"));
 }
 
-static void test_split_multichar_delim()
-{
+static void test_split_multichar_delim() {
     rt_string str = make_str("a::b::c");
     rt_string delim = make_str("::");
 
@@ -217,8 +200,7 @@ static void test_split_multichar_delim()
     assert(str_eq((rt_string)rt_seq_get(seq, 2), "c"));
 }
 
-static void test_split_no_delim()
-{
+static void test_split_no_delim() {
     rt_string str = make_str("hello");
     rt_string delim = make_str(",");
 
@@ -227,8 +209,7 @@ static void test_split_no_delim()
     assert(str_eq((rt_string)rt_seq_get(seq, 0), "hello"));
 }
 
-static void test_split_empty_parts()
-{
+static void test_split_empty_parts() {
     rt_string str = make_str(",a,,b,");
     rt_string delim = make_str(",");
 
@@ -241,8 +222,7 @@ static void test_split_empty_parts()
     assert(str_eq((rt_string)rt_seq_get(seq, 4), ""));
 }
 
-static void test_join_basic()
-{
+static void test_join_basic() {
     void *seq = rt_seq_new();
     rt_seq_push(seq, (void *)make_str("a"));
     rt_seq_push(seq, (void *)make_str("b"));
@@ -253,8 +233,7 @@ static void test_join_basic()
     assert(str_eq(result, "a,b,c"));
 }
 
-static void test_join_empty_sep()
-{
+static void test_join_empty_sep() {
     void *seq = rt_seq_new();
     rt_seq_push(seq, (void *)make_str("a"));
     rt_seq_push(seq, (void *)make_str("b"));
@@ -265,8 +244,7 @@ static void test_join_empty_sep()
     assert(str_eq(result, "abc"));
 }
 
-static void test_join_empty_seq()
-{
+static void test_join_empty_seq() {
     void *seq = rt_seq_new();
 
     rt_string sep = make_str(",");
@@ -274,8 +252,7 @@ static void test_join_empty_seq()
     assert(str_eq(result, ""));
 }
 
-static void test_split_join_roundtrip()
-{
+static void test_split_join_roundtrip() {
     rt_string original = make_str("hello:world:test");
     rt_string delim = make_str(":");
 
@@ -289,8 +266,7 @@ static void test_split_join_roundtrip()
 // Repeat tests
 //===----------------------------------------------------------------------===//
 
-static void test_repeat()
-{
+static void test_repeat() {
     rt_string str = make_str("ab");
 
     assert(str_eq(rt_str_repeat(str, 3), "ababab"));
@@ -298,15 +274,13 @@ static void test_repeat()
     assert(str_eq(rt_str_repeat(str, 0), ""));
 }
 
-static void test_repeat_negative()
-{
+static void test_repeat_negative() {
     rt_string str = make_str("test");
 
     assert(str_eq(rt_str_repeat(str, -5), ""));
 }
 
-static void test_repeat_empty()
-{
+static void test_repeat_empty() {
     rt_string str = make_str("");
 
     assert(str_eq(rt_str_repeat(str, 100), ""));
@@ -316,16 +290,14 @@ static void test_repeat_empty()
 // Flip tests
 //===----------------------------------------------------------------------===//
 
-static void test_flip()
-{
+static void test_flip() {
     assert(str_eq(rt_str_flip(make_str("hello")), "olleh"));
     assert(str_eq(rt_str_flip(make_str("a")), "a"));
     assert(str_eq(rt_str_flip(make_str("")), ""));
     assert(str_eq(rt_str_flip(make_str("ab")), "ba"));
 }
 
-static void test_flip_palindrome()
-{
+static void test_flip_palindrome() {
     rt_string str = make_str("racecar");
     assert(str_eq(rt_str_flip(str), "racecar"));
 }
@@ -334,8 +306,7 @@ static void test_flip_palindrome()
 // Cmp tests
 //===----------------------------------------------------------------------===//
 
-static void test_cmp()
-{
+static void test_cmp() {
     assert(rt_str_cmp(make_str("abc"), make_str("abc")) == 0);
     assert(rt_str_cmp(make_str("abc"), make_str("abd")) == -1);
     assert(rt_str_cmp(make_str("abd"), make_str("abc")) == 1);
@@ -343,16 +314,14 @@ static void test_cmp()
     assert(rt_str_cmp(make_str("abc"), make_str("ab")) == 1);
 }
 
-static void test_cmp_nocase()
-{
+static void test_cmp_nocase() {
     assert(rt_str_cmp_nocase(make_str("ABC"), make_str("abc")) == 0);
     assert(rt_str_cmp_nocase(make_str("abc"), make_str("ABC")) == 0);
     assert(rt_str_cmp_nocase(make_str("ABC"), make_str("abd")) == -1);
     assert(rt_str_cmp_nocase(make_str("ABD"), make_str("abc")) == 1);
 }
 
-static void test_cmp_null()
-{
+static void test_cmp_null() {
     assert(rt_str_cmp(NULL, NULL) == 0);
     assert(rt_str_cmp(make_str("a"), NULL) == 1);
     assert(rt_str_cmp(NULL, make_str("a")) == -1);
@@ -362,8 +331,7 @@ static void test_cmp_null()
 // Capitalize tests
 //===----------------------------------------------------------------------===//
 
-static void test_capitalize()
-{
+static void test_capitalize() {
     assert(str_eq(rt_str_capitalize(make_str("hello")), "Hello"));
     assert(str_eq(rt_str_capitalize(make_str("Hello")), "Hello"));
     assert(str_eq(rt_str_capitalize(make_str("a")), "A"));
@@ -375,8 +343,7 @@ static void test_capitalize()
 // Title tests
 //===----------------------------------------------------------------------===//
 
-static void test_title()
-{
+static void test_title() {
     assert(str_eq(rt_str_title(make_str("hello world")), "Hello World"));
     assert(str_eq(rt_str_title(make_str("the quick brown fox")), "The Quick Brown Fox"));
     assert(str_eq(rt_str_title(make_str("already Title Case")), "Already Title Case"));
@@ -389,8 +356,7 @@ static void test_title()
 // RemovePrefix/RemoveSuffix tests
 //===----------------------------------------------------------------------===//
 
-static void test_remove_prefix()
-{
+static void test_remove_prefix() {
     assert(str_eq(rt_str_remove_prefix(make_str("hello world"), make_str("hello ")), "world"));
     assert(str_eq(rt_str_remove_prefix(make_str("hello"), make_str("xyz")), "hello"));
     assert(str_eq(rt_str_remove_prefix(make_str("hello"), make_str("")), "hello"));
@@ -398,8 +364,7 @@ static void test_remove_prefix()
     assert(str_eq(rt_str_remove_prefix(make_str("abc"), make_str("abcdef")), "abc"));
 }
 
-static void test_remove_suffix()
-{
+static void test_remove_suffix() {
     assert(str_eq(rt_str_remove_suffix(make_str("hello world"), make_str(" world")), "hello"));
     assert(str_eq(rt_str_remove_suffix(make_str("hello"), make_str("xyz")), "hello"));
     assert(str_eq(rt_str_remove_suffix(make_str("hello"), make_str("")), "hello"));
@@ -410,8 +375,7 @@ static void test_remove_suffix()
 // LastIndexOf tests
 //===----------------------------------------------------------------------===//
 
-static void test_last_index_of()
-{
+static void test_last_index_of() {
     assert(rt_str_last_index_of(make_str("abcabc"), make_str("abc")) == 4);
     assert(rt_str_last_index_of(make_str("abcabc"), make_str("xyz")) == 0);
     assert(rt_str_last_index_of(make_str("aaa"), make_str("a")) == 3);
@@ -423,8 +387,7 @@ static void test_last_index_of()
 // TrimChar tests
 //===----------------------------------------------------------------------===//
 
-static void test_trim_char()
-{
+static void test_trim_char() {
     assert(str_eq(rt_str_trim_char(make_str("***hello***"), make_str("*")), "hello"));
     assert(str_eq(rt_str_trim_char(make_str("///path///"), make_str("/")), "path"));
     assert(str_eq(rt_str_trim_char(make_str("hello"), make_str("*")), "hello"));
@@ -436,8 +399,7 @@ static void test_trim_char()
 // Slug tests
 //===----------------------------------------------------------------------===//
 
-static void test_slug()
-{
+static void test_slug() {
     assert(str_eq(rt_str_slug(make_str("Hello World!")), "hello-world"));
     assert(str_eq(rt_str_slug(make_str("  The Quick Brown Fox  ")), "the-quick-brown-fox"));
     assert(str_eq(rt_str_slug(make_str("foo--bar  baz")), "foo-bar-baz"));
@@ -450,8 +412,7 @@ static void test_slug()
 // Levenshtein distance tests
 //===----------------------------------------------------------------------===//
 
-static void test_levenshtein()
-{
+static void test_levenshtein() {
     assert(rt_str_levenshtein(make_str("kitten"), make_str("sitting")) == 3);
     assert(rt_str_levenshtein(make_str(""), make_str("abc")) == 3);
     assert(rt_str_levenshtein(make_str("abc"), make_str("")) == 3);
@@ -465,8 +426,7 @@ static void test_levenshtein()
 // Jaro / Jaro-Winkler tests
 //===----------------------------------------------------------------------===//
 
-static void test_jaro()
-{
+static void test_jaro() {
     // Identical strings -> 1.0
     double j1 = rt_str_jaro(make_str("hello"), make_str("hello"));
     assert(j1 > 0.999 && j1 <= 1.0);
@@ -488,8 +448,7 @@ static void test_jaro()
     assert(j5 > 0.94 && j5 < 0.95); // Should be ~0.9444
 }
 
-static void test_jaro_winkler()
-{
+static void test_jaro_winkler() {
     // Identical strings -> 1.0
     double jw1 = rt_str_jaro_winkler(make_str("hello"), make_str("hello"));
     assert(jw1 > 0.999 && jw1 <= 1.0);
@@ -509,8 +468,7 @@ static void test_jaro_winkler()
 // Hamming distance tests
 //===----------------------------------------------------------------------===//
 
-static void test_hamming()
-{
+static void test_hamming() {
     assert(rt_str_hamming(make_str("karolin"), make_str("kathrin")) == 3);
     assert(rt_str_hamming(make_str("abc"), make_str("abc")) == 0);
     assert(rt_str_hamming(make_str("abc"), make_str("xyz")) == 3);
@@ -524,8 +482,7 @@ static void test_hamming()
 // Main
 //===----------------------------------------------------------------------===//
 
-int main()
-{
+int main() {
     // Replace tests
     test_replace_basic();
     test_replace_multiple();

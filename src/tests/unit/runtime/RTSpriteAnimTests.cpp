@@ -12,8 +12,7 @@ static int tests_failed = 0;
 
 #define TEST(name) static void test_##name()
 #define RUN_TEST(name)                                                                             \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("  %s...", #name);                                                                  \
         test_##name();                                                                             \
         printf(" OK\n");                                                                           \
@@ -21,18 +20,15 @@ static int tests_failed = 0;
     } while (0)
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             printf(" FAILED at line %d: %s\n", __LINE__, #cond);                                   \
             tests_failed++;                                                                        \
             return;                                                                                \
         }                                                                                          \
     } while (0)
 
-TEST(create_destroy)
-{
+TEST(create_destroy) {
     rt_spriteanim sa = rt_spriteanim_new();
     ASSERT(sa != NULL);
     ASSERT(rt_spriteanim_is_playing(sa) == 0);
@@ -40,8 +36,7 @@ TEST(create_destroy)
     rt_spriteanim_destroy(sa);
 }
 
-TEST(setup)
-{
+TEST(setup) {
     rt_spriteanim sa = rt_spriteanim_new();
     /// @brief Rt_spriteanim_setup.
     rt_spriteanim_setup(sa, 0, 7, 6); // Frames 0-7, 6 ticks each
@@ -51,8 +46,7 @@ TEST(setup)
     rt_spriteanim_destroy(sa);
 }
 
-TEST(play_stop)
-{
+TEST(play_stop) {
     rt_spriteanim sa = rt_spriteanim_new();
     rt_spriteanim_setup(sa, 0, 3, 4);
 
@@ -65,8 +59,7 @@ TEST(play_stop)
     rt_spriteanim_destroy(sa);
 }
 
-TEST(update_frames)
-{
+TEST(update_frames) {
     rt_spriteanim sa = rt_spriteanim_new();
     /// @brief Rt_spriteanim_setup.
     rt_spriteanim_setup(sa, 0, 3, 2); // 4 frames, 2 ticks each
@@ -85,8 +78,7 @@ TEST(update_frames)
     rt_spriteanim_destroy(sa);
 }
 
-TEST(loop)
-{
+TEST(loop) {
     rt_spriteanim sa = rt_spriteanim_new();
     /// @brief Rt_spriteanim_setup.
     rt_spriteanim_setup(sa, 0, 1, 1); // 2 frames, 1 tick each
@@ -102,8 +94,7 @@ TEST(loop)
     rt_spriteanim_destroy(sa);
 }
 
-TEST(one_shot)
-{
+TEST(one_shot) {
     rt_spriteanim sa = rt_spriteanim_new();
     rt_spriteanim_setup(sa, 0, 1, 1);
     rt_spriteanim_set_loop(sa, 0);
@@ -117,8 +108,7 @@ TEST(one_shot)
     rt_spriteanim_destroy(sa);
 }
 
-TEST(pingpong)
-{
+TEST(pingpong) {
     rt_spriteanim sa = rt_spriteanim_new();
     /// @brief Rt_spriteanim_setup.
     rt_spriteanim_setup(sa, 0, 2, 1); // 3 frames
@@ -138,8 +128,7 @@ TEST(pingpong)
     rt_spriteanim_destroy(sa);
 }
 
-TEST(pause_resume)
-{
+TEST(pause_resume) {
     rt_spriteanim sa = rt_spriteanim_new();
     rt_spriteanim_setup(sa, 0, 3, 2);
     rt_spriteanim_play(sa);
@@ -158,8 +147,7 @@ TEST(pause_resume)
     rt_spriteanim_destroy(sa);
 }
 
-TEST(speed)
-{
+TEST(speed) {
     rt_spriteanim sa = rt_spriteanim_new();
     /// @brief Rt_spriteanim_setup.
     rt_spriteanim_setup(sa, 0, 3, 4); // 4 ticks per frame
@@ -180,8 +168,7 @@ TEST(speed)
     rt_spriteanim_destroy(sa);
 }
 
-TEST(progress)
-{
+TEST(progress) {
     rt_spriteanim sa = rt_spriteanim_new();
     /// @brief Rt_spriteanim_setup.
     rt_spriteanim_setup(sa, 0, 3, 1); // 4 frames (0-3), 1 tick each
@@ -199,8 +186,7 @@ TEST(progress)
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     printf("RTSpriteAnimTests:\n");
     RUN_TEST(create_destroy);
     RUN_TEST(setup);

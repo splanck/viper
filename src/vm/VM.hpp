@@ -78,20 +78,17 @@ struct RtContext;
 #include <unordered_map>
 #include <vector>
 
-namespace il::vm
-{
+namespace il::vm {
 
 class Runner; // fwd for friend declaration of Runner::Impl
 
 class VMContext;
 class DispatchStrategy; // fwd for friend declaration
 
-namespace detail
-{
+namespace detail {
 struct VMAccess; ///< Forward declaration of helper granting opcode handlers internal access
 
-namespace ops
-{
+namespace ops {
 struct OperandDispatcher; ///< Forward declaration of operand evaluation helper
 } // namespace ops
 class FnTableDispatchDriver;
@@ -109,8 +106,7 @@ class DebugScript;
 /// @invariant Only one member is valid based on value type.
 /// @note Slot is designed to be trivially copyable (8 bytes) for efficient
 ///       value semantics in the interpreter dispatch loop.
-union Slot
-{
+union Slot {
     /// @brief Signed integer value.
     int64_t i64;
 
@@ -126,8 +122,7 @@ union Slot
     /// @brief Compare two slots for bitwise equality (type-agnostic).
     /// @note This compares the raw i64 representation. Use only when type is unknown
     ///       or when comparing integral/pointer types.
-    [[nodiscard]] inline bool bitwiseEquals(const Slot &other) const noexcept
-    {
+    [[nodiscard]] inline bool bitwiseEquals(const Slot &other) const noexcept {
         return i64 == other.i64;
     }
 };
@@ -149,11 +144,9 @@ static_assert(std::is_trivially_copyable_v<Slot>, "Slot must be trivially copyab
 ///          @c std::vector<Value> heap indirection for the three most common
 ///          operand kinds.  Cold operands (ConstStr, GlobalAddr, NullPtr)
 ///          are marked @c Kind::Cold and re-evaluated via VM::eval().
-struct alignas(8) ResolvedOp
-{
+struct alignas(8) ResolvedOp {
     /// @brief Discriminant selecting the active payload field.
-    enum class Kind : uint8_t
-    {
+    enum class Kind : uint8_t {
         Reg,    ///< SSA temporary — regId holds the register index
         ImmI64, ///< Integer constant — numVal holds the int64 value
         ImmF64, ///< Float constant — numVal holds the f64 bits (bit-identical)
@@ -174,8 +167,7 @@ static_assert(alignof(ResolvedOp) == 8, "ResolvedOp must be 8-byte aligned");
 ///          instruction @c ip's operands begin.  Operands are laid out
 ///          consecutively so two adjacent loads cover a binary instruction's
 ///          lhs and rhs without any additional indirection.
-struct BlockExecCache
-{
+struct BlockExecCache {
     /// @brief Per-instruction start offset into @c resolvedOps.
     std::vector<uint32_t> instrOpOffset;
     /// @brief Flat array of all pre-resolved operands for the block.
@@ -184,10 +176,8 @@ struct BlockExecCache
 
 /// @brief Call frame storing registers and operand stack.
 /// @invariant Stack pointer @c sp never exceeds @c stack size.
-struct Frame
-{
-    struct HandlerRecord
-    {
+struct Frame {
+    struct HandlerRecord {
         const il::core::BasicBlock *handler = nullptr;
         size_t ipSnapshot = 0;
     };
@@ -195,8 +185,7 @@ struct Frame
     /// @brief Deferred resumption metadata used by trap handlers.
     /// @invariant When @c valid is true, @c block references the faulting block
     ///            and @c nextIp is either @c faultIp + 1 or @c block->instructions.size().
-    struct ResumeState
-    {
+    struct ResumeState {
         const il::core::BasicBlock *block = nullptr;
         size_t faultIp = 0;
         size_t nextIp = 0;
@@ -296,12 +285,10 @@ struct Frame
  * @see ActiveVMGuard for the RAII helper managing thread-local state.
  * @see VMContext for the execution context API used by dispatch strategies.
  */
-class VM
-{
+class VM {
   public:
     /// @brief Dispatch strategy for executing the interpreter loop.
-    enum DispatchKind
-    {
+    enum DispatchKind {
         FnTable,  ///< Use function-table based dispatch through executeOpcode.
         Switch,   ///< Use switch-based inline dispatch.
         Threaded, ///< Use computed goto threaded dispatch when supported.
@@ -334,8 +321,7 @@ class VM
     friend std::string vm_current_trap_message();
 
     /// @brief Result of executing one opcode.
-    struct ExecResult
-    {
+    struct ExecResult {
         /// @brief Whether control transferred to another block.
         bool jumped = false;
 
@@ -353,67 +339,56 @@ class VM
     /// @brief Transparent hash functor supporting heterogeneous lookup with string_view keys.
     /// @details Enables unordered containers to perform lookups without constructing
     ///          a std::string key, avoiding allocation on the hot path.
-    struct TransparentHashSV
-    {
+    struct TransparentHashSV {
         using is_transparent = void;
 
         /// @brief Hash a string_view.
-        size_t operator()(std::string_view sv) const noexcept
-        {
+        size_t operator()(std::string_view sv) const noexcept {
             return std::hash<std::string_view>{}(sv);
         }
 
         /// @brief Hash a std::string by delegating to the string_view overload.
-        size_t operator()(const std::string &s) const noexcept
-        {
+        size_t operator()(const std::string &s) const noexcept {
             return (*this)(std::string_view{s});
         }
 
         /// @brief Hash a C-string by delegating to the string_view overload.
-        size_t operator()(const char *s) const noexcept
-        {
+        size_t operator()(const char *s) const noexcept {
             return (*this)(std::string_view{s});
         }
     };
 
     /// @brief Transparent equality functor supporting heterogeneous lookup with string_view keys.
-    struct TransparentEqualSV
-    {
+    struct TransparentEqualSV {
         using is_transparent = void;
 
         /// @brief Compare two string_views for equality.
-        bool operator()(std::string_view a, std::string_view b) const noexcept
-        {
+        bool operator()(std::string_view a, std::string_view b) const noexcept {
             return a == b;
         }
 
         /// @brief Compare two std::strings for equality.
-        bool operator()(const std::string &a, const std::string &b) const noexcept
-        {
+        bool operator()(const std::string &a, const std::string &b) const noexcept {
             return a == b;
         }
 
         /// @brief Compare a std::string and a string_view for equality.
-        bool operator()(const std::string &a, std::string_view b) const noexcept
-        {
+        bool operator()(const std::string &a, std::string_view b) const noexcept {
             return a == b;
         }
 
         /// @brief Compare a string_view and a std::string for equality.
-        bool operator()(std::string_view a, const std::string &b) const noexcept
-        {
+        bool operator()(std::string_view a, const std::string &b) const noexcept {
             return a == b;
         }
 
         /// @brief Compare a C-string and a string_view for equality.
-        bool operator()(const char *a, std::string_view b) const noexcept
-        {
+        bool operator()(const char *a, std::string_view b) const noexcept {
             return std::string_view{a} == b;
         }
 
         /// @brief Compare a string_view and a C-string for equality.
-        bool operator()(std::string_view a, const char *b) const noexcept
-        {
+        bool operator()(std::string_view a, const char *b) const noexcept {
             return a == std::string_view{b};
         }
     };
@@ -425,8 +400,7 @@ class VM
 
     /// @brief Aggregate execution state for a running function.
     /// @details Moved to public section for dispatch strategy access.
-    struct ExecState
-    {
+    struct ExecState {
         Frame fr;                                 ///< Current frame
         const BlockMap *blocks = nullptr;         ///< Cached block lookup (owned by VM)
         const il::core::BasicBlock *bb = nullptr; ///< Active basic block
@@ -449,8 +423,7 @@ class VM
         bool exitRequested = false; ///< Whether the active loop should exit
 
         // Host polling configuration/state ----------------------------------
-        struct PollConfig
-        {
+        struct PollConfig {
             uint32_t interruptEveryN = 0;
             /// @brief Raw function pointer trampoline for the poll callback.
             /// @details Using a plain fn pointer avoids std::function overhead
@@ -466,14 +439,12 @@ class VM
         VM *owner = nullptr; ///< Owning VM used by callbacks
 
         /// @brief Access the owning VM for this execution state.
-        VM *vm()
-        {
+        VM *vm() {
             return owner;
         }
 
         /// @brief Request the interpreter loop to pause at the next boundary.
-        void requestPause()
-        {
+        void requestPause() {
             Slot s{};
             s.i64 = kDebugPauseSentinel;
             pendingResult = s;
@@ -497,22 +468,19 @@ class VM
     ///          pre-allocated in the VM constructor to avoid heap allocation in
     ///          common cases (HIGH-5 optimization).
     /// @invariant Constructor pushes state; destructor pops if state is still top.
-    struct ExecStackGuard
-    {
+    struct ExecStackGuard {
         VM &vm;
         ExecState *state;
 
         /// @brief Push the execution state onto the VM stack.
-        ExecStackGuard(VM &vmRef, ExecState &stRef) noexcept : vm(vmRef), state(&stRef)
-        {
+        ExecStackGuard(VM &vmRef, ExecState &stRef) noexcept : vm(vmRef), state(&stRef) {
             vm.execStack.push_back(state);
         }
 
         /// @brief Pop the execution state if it is still the active frame.
         /// @note Uses conditional pop to handle cases where the stack may have
         ///       been modified by exception handling during unwinding.
-        ~ExecStackGuard() noexcept
-        {
+        ~ExecStackGuard() noexcept {
             if (!vm.execStack.empty() && vm.execStack.back() == state)
                 vm.execStack.pop_back();
         }
@@ -541,8 +509,7 @@ class VM
     /// @invariant Maps (strMap, mutableGlobalMap) are populated during VM::init() BEFORE any
     ///            worker threads start. After initComplete is set, maps are read-only.
     ///            Concurrent writes to the maps are not thread-safe (CONC-009).
-    struct ProgramState
-    {
+    struct ProgramState {
         const il::core::Module *module = nullptr; ///< Borrowed; must outlive this state.
         std::shared_ptr<RtContext> rtContext;     ///< Shared runtime context for VM threads.
         StrMap strMap;                            ///< Shared global string handles.
@@ -599,14 +566,12 @@ class VM
 
     /// @brief Access the IL module bound to this VM instance.
     /// @return Reference to the module supplied at construction.
-    [[nodiscard]] const il::core::Module &module() const noexcept
-    {
+    [[nodiscard]] const il::core::Module &module() const noexcept {
         return mod;
     }
 
     /// @brief Access the shared program state for this VM instance (if any).
-    [[nodiscard]] std::shared_ptr<ProgramState> programState() const noexcept
-    {
+    [[nodiscard]] std::shared_ptr<ProgramState> programState() const noexcept {
         return programState_;
     }
 
@@ -666,22 +631,19 @@ class VM
 
     /// @brief Check if tracing is active (cheap boolean test).
     /// @return True when tracer.onStep() should be called.
-    [[nodiscard]] bool isTracingActive() const noexcept
-    {
+    [[nodiscard]] bool isTracingActive() const noexcept {
         return tracingActive_;
     }
 
     /// @brief Check if memory watches are active (cheap boolean test).
     /// @return True when memory write callbacks should be invoked.
-    [[nodiscard]] bool hasMemWatchesActive() const noexcept
-    {
+    [[nodiscard]] bool hasMemWatchesActive() const noexcept {
         return memWatchActive_;
     }
 
     /// @brief Check if variable watches are active (cheap boolean test).
     /// @return True when variable store callbacks should be invoked.
-    [[nodiscard]] bool hasVarWatchesActive() const noexcept
-    {
+    [[nodiscard]] bool hasVarWatchesActive() const noexcept {
         return varWatchActive_;
     }
 
@@ -706,8 +668,7 @@ class VM
                            const il::core::Instr &in);
 
     /// @brief Captures instruction context for trap diagnostics.
-    struct TrapContext
-    {
+    struct TrapContext {
         const il::core::Function *function = nullptr; ///< Active function
         const il::core::BasicBlock *block = nullptr;  ///< Active basic block
         size_t instructionIndex = 0;                  ///< Instruction index within block
@@ -739,8 +700,7 @@ class VM
     ///          execution state that should be resumed after catching the signal.
     ///          This mechanism enables ON ERROR GOTO style error handling in
     ///          BASIC programs and try/catch in other frontends.
-    struct TrapDispatchSignal : std::exception
-    {
+    struct TrapDispatchSignal : std::exception {
         /// @brief Construct a signal targeting the given execution state.
         /// @param targetState State to resume after the trap is dispatched.
         explicit TrapDispatchSignal(ExecState *targetState);
@@ -753,15 +713,13 @@ class VM
 
   private:
     /// @brief Last trap recorded by the VM for diagnostic reporting.
-    struct TrapState
-    {
+    struct TrapState {
         VmError error{};     ///< Structured error payload
         FrameInfo frame{};   ///< Captured frame metadata
         std::string message; ///< Formatted diagnostic message
     };
 
-    struct TrapToken
-    {
+    struct TrapToken {
         VmError error{};     ///< Stored error payload for trap.err construction
         std::string message; ///< Message associated with the token
         bool valid = false;  ///< Whether the token contains a constructed error
@@ -772,8 +730,7 @@ class VM
     const il::core::Module &mod;
 
     /// @brief Custom deleter for RtContext that calls rt_context_cleanup before deletion.
-    struct RtContextDeleter
-    {
+    struct RtContextDeleter {
         void operator()(RtContext *ctx) const noexcept;
     };
 
@@ -834,8 +791,7 @@ class VM
     /// @brief Internal driver implementing the selected dispatch mechanism.
     struct DispatchDriver;
 
-    struct DispatchDriverDeleter
-    {
+    struct DispatchDriverDeleter {
         void operator()(DispatchDriver *driver) const;
     };
 
@@ -1131,8 +1087,7 @@ class VM
     ///          the user-supplied @c std::function stored in @c pollCallback_.
     ///          Keeping std::function at VM level (set once) avoids per-instruction
     ///          overhead while the trampoline itself is a trivial indirect call.
-    static bool pollCallbackTrampoline_(VM *vm)
-    {
+    static bool pollCallbackTrampoline_(VM *vm) {
         return vm->pollCallback_(*vm);
     }
 
@@ -1156,15 +1111,13 @@ class VM
     /// @details The registry must outlive the VM. Typically created via
     ///          createExternRegistry() and owned by the embedder.
     /// @note Thread safety: Call only when the VM is not executing.
-    void setExternRegistry(ExternRegistry *registry) noexcept
-    {
+    void setExternRegistry(ExternRegistry *registry) noexcept {
         externRegistry_ = registry;
     }
 
     /// @brief Retrieve the per-VM extern registry, if any.
     /// @return Pointer to the assigned registry, or nullptr if using global only.
-    [[nodiscard]] ExternRegistry *externRegistry() const noexcept
-    {
+    [[nodiscard]] ExternRegistry *externRegistry() const noexcept {
         return externRegistry_;
     }
 };

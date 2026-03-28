@@ -18,8 +18,7 @@
 
 #include "tui/ui/widget.hpp"
 
-namespace viper::tui::ui
-{
+namespace viper::tui::ui {
 /// @brief Record the layout rectangle supplied by a parent container.
 ///
 /// @details The default implementation simply stores the rectangle and does
@@ -28,8 +27,7 @@ namespace viper::tui::ui
 ///          to reference @ref rect_ when painting or dispatching events.  The
 ///          base implementation keeps the behaviour predictable for widgets
 ///          that do not need custom layout logic.
-void Widget::layout(const Rect &r)
-{
+void Widget::layout(const Rect &r) {
     rect_ = r;
 }
 
@@ -50,8 +48,7 @@ void Widget::paint(render::ScreenBuffer &) {}
 ///          that respond to keyboard or mouse input override this method to
 ///          implement the required behaviour while using the return value to
 ///          communicate whether the event stream should stop propagating.
-bool Widget::onEvent(const Event &)
-{
+bool Widget::onEvent(const Event &) {
     return false;
 }
 
@@ -62,8 +59,7 @@ bool Widget::onEvent(const Event &)
 ///          focus manager can route keyboard events to them.  The separation
 ///          keeps passive display elements lightweight while letting interactive
 ///          widgets opt in explicitly.
-bool Widget::wantsFocus() const
-{
+bool Widget::wantsFocus() const {
     return false;
 }
 
@@ -81,8 +77,7 @@ void Widget::onFocusChanged(bool) {}
 ///          stored rectangle is returned verbatim so that derived classes and
 ///          callers can reason about the widget's position when painting or
 ///          handling input.
-Rect Widget::rect() const
-{
+Rect Widget::rect() const {
     return rect_;
 }
 

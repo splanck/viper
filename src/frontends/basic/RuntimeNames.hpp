@@ -17,8 +17,7 @@
 
 #include "il/runtime/RuntimeNames.hpp"
 
-namespace il::frontends::basic::runtime
-{
+namespace il::frontends::basic::runtime {
 
 // Import all generated names into this namespace
 using namespace il::runtime::names;

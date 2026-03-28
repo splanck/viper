@@ -48,8 +48,7 @@
 #include "vm/OpHandlers.hpp"
 #include "vm/VMContext.hpp"
 
-namespace il::vm
-{
+namespace il::vm {
 
 /// @brief Shared dispatch loop that all strategies use.
 /// @details Contains the common execution logic: state setup, instruction
@@ -67,22 +66,19 @@ namespace il::vm
 bool runSharedDispatchLoop(VM &vm,
                            VMContext &context,
                            VM::ExecState &state,
-                           DispatchStrategy &strategy)
-{
+                           DispatchStrategy &strategy) {
     // Cache strategy properties once to avoid virtual call overhead per iteration.
     // These properties are immutable for the lifetime of the strategy object.
     const bool needsTrapCatch = strategy.requiresTrapCatch();
     const bool internalFinalize = strategy.handlesFinalizationInternally();
 
-    while (true)
-    {
+    while (true) {
         // Step 1: Reset per-iteration state
         vm.beginDispatch(state);
 
         // Step 2: Select next instruction
         const il::core::Instr *instr = nullptr;
-        if (!vm.selectInstruction(state, instr)) [[unlikely]]
-        {
+        if (!vm.selectInstruction(state, instr)) [[unlikely]] {
             // Exit or pause requested
             return state.exitRequested;
         }
@@ -93,16 +89,12 @@ bool runSharedDispatchLoop(VM &vm,
         // Step 4: Execute instruction via strategy (with optional trap handling)
         VM::ExecResult exec{};
 
-        if (needsTrapCatch) [[unlikely]]
-        {
+        if (needsTrapCatch) [[unlikely]] {
             // Threaded strategy needs special trap handling
-            try
-            {
+            try {
                 vm.traceInstruction(*instr, state.fr);
                 exec = strategy.executeInstruction(vm, state, *instr);
-            }
-            catch (const VM::TrapDispatchSignal &signal)
-            {
+            } catch (const VM::TrapDispatchSignal &signal) {
                 // Inline trap dispatch handling for efficiency (avoids VMContext indirection)
                 if (signal.target != &state)
                     throw;
@@ -110,29 +102,21 @@ bool runSharedDispatchLoop(VM &vm,
                 // Trap handled, continue to next iteration
                 continue;
             }
-        }
-        else if (internalFinalize) [[likely]]
-        {
+        } else if (internalFinalize) [[likely]] {
             // Switch strategy: inline handlers trace and finalize internally
             exec = strategy.executeInstruction(vm, state, *instr);
-        }
-        else
-        {
+        } else {
             // Function table strategy: trace here, finalize below
             vm.traceInstruction(*instr, state.fr);
             exec = strategy.executeInstruction(vm, state, *instr);
         }
 
         // Step 5: Finalize dispatch and check for exit (skip if already done internally)
-        if (!internalFinalize)
-        {
-            if (vm.finalizeDispatch(state, exec)) [[unlikely]]
-            {
+        if (!internalFinalize) {
+            if (vm.finalizeDispatch(state, exec)) [[unlikely]] {
                 return true;
             }
-        }
-        else if (state.exitRequested) [[unlikely]]
-        {
+        } else if (state.exitRequested) [[unlikely]] {
             // Strategy handled finalization, just check if exit was requested
             return true;
         }
@@ -143,8 +127,7 @@ bool runSharedDispatchLoop(VM &vm,
 // Concrete Strategy Implementations
 //===----------------------------------------------------------------------===//
 
-namespace detail
-{
+namespace detail {
 
 // =============================================================================
 // FnTableStrategy: Function Table Dispatch
@@ -164,18 +147,15 @@ namespace detail
 // =============================================================================
 
 /// @brief Function table dispatch strategy.
-class FnTableStrategy final : public DispatchStrategy
-{
+class FnTableStrategy final : public DispatchStrategy {
   public:
-    Kind getKind() const override
-    {
+    Kind getKind() const override {
         return Kind::FnTable;
     }
 
     VM::ExecResult executeInstruction(VM &vm,
                                       VM::ExecState &state,
-                                      const il::core::Instr &instr) override
-    {
+                                      const il::core::Instr &instr) override {
         // Delegates to VM::executeOpcode() which indexes into the handler table
         // (vm/ops/generated/HandlerTable.hpp) and calls the corresponding handler.
         return vm.executeOpcode(state.fr, instr, *state.blocks, state.bb, state.ip);
@@ -200,33 +180,28 @@ class FnTableStrategy final : public DispatchStrategy
 // =============================================================================
 
 /// @brief Switch-based dispatch strategy.
-class SwitchStrategy final : public DispatchStrategy
-{
+class SwitchStrategy final : public DispatchStrategy {
   public:
-    Kind getKind() const override
-    {
+    Kind getKind() const override {
         return Kind::Switch;
     }
 
     /// @brief Returns @c true because the switch-based dispatcher calls
     ///        finalizeInstruction() inside each generated case block.
-    bool handlesFinalizationInternally() const override
-    {
+    bool handlesFinalizationInternally() const override {
         return true;
     }
 
     VM::ExecResult executeInstruction(VM &vm,
                                       VM::ExecState &state,
-                                      const il::core::Instr &instr) override
-    {
+                                      const il::core::Instr &instr) override {
         // Delegates to VM::dispatchOpcodeSwitch() which uses a switch statement
         // generated from vm/ops/generated/SwitchDispatchImpl.inc. Each case
         // invokes inline_handle_<OpName>() which traces, executes, and finalizes.
         vm.dispatchOpcodeSwitch(state, instr);
 
         // Check if an exit was requested during switch execution
-        if (state.exitRequested)
-        {
+        if (state.exitRequested) {
             VM::ExecResult result{};
             result.returned = true;
             if (state.hasPendingResult)
@@ -267,26 +242,22 @@ class SwitchStrategy final : public DispatchStrategy
 /// @note The actual threaded dispatch implementation is in ThreadedDispatchDriver (VM.cpp)
 ///       because computed gotos require the labels and goto*'s in the same function.
 ///       This class exists for the strategy interface but isn't used directly.
-class ThreadedStrategy final : public DispatchStrategy
-{
+class ThreadedStrategy final : public DispatchStrategy {
   public:
-    Kind getKind() const override
-    {
+    Kind getKind() const override {
         return Kind::Threaded;
     }
 
     /// @brief Returns @c true because the threaded dispatcher's computed-goto loop
     ///        can throw exceptions from within trapping opcodes, requiring the
     ///        shared dispatch loop to install a @c try/catch guard.
-    bool requiresTrapCatch() const override
-    {
+    bool requiresTrapCatch() const override {
         return true;
     }
 
     VM::ExecResult executeInstruction(VM &vm,
                                       VM::ExecState &state,
-                                      const il::core::Instr &instr) override
-    {
+                                      const il::core::Instr &instr) override {
         // Threaded dispatch is handled by ThreadedDispatchDriver in VM.cpp
         // which contains the actual computed goto loop with labels from
         // vm/ops/generated/ThreadedLabels.inc and ThreadedCases.inc.
@@ -303,10 +274,8 @@ class ThreadedStrategy final : public DispatchStrategy
 //===----------------------------------------------------------------------===//
 
 /// @brief Create a dispatch strategy for the given kind.
-std::unique_ptr<DispatchStrategy> createDispatchStrategy(VM::DispatchKind kind)
-{
-    switch (kind)
-    {
+std::unique_ptr<DispatchStrategy> createDispatchStrategy(VM::DispatchKind kind) {
+    switch (kind) {
         case VM::DispatchKind::FnTable:
             return std::make_unique<detail::FnTableStrategy>();
         case VM::DispatchKind::Switch:

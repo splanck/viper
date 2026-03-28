@@ -53,11 +53,9 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
+namespace il::transform {
 
-namespace
-{
+namespace {
 using il::transform::ValueEq;
 using il::transform::ValueHash;
 using il::transform::ValueKey;
@@ -67,14 +65,12 @@ using il::transform::ValueKeyHash;
 /// @details Used to memoize load results for redundant load elimination. The
 ///          size field is optional because some types may not map to a known
 ///          size; in that case the key still differentiates by pointer+type.
-struct LoadKey
-{
+struct LoadKey {
     Value ptr;
     Type::Kind type;
     std::optional<unsigned> size;
 
-    bool operator==(const LoadKey &o) const noexcept
-    {
+    bool operator==(const LoadKey &o) const noexcept {
         ValueEq eq;
         return type == o.type && eq(ptr, o.ptr) && size == o.size;
     }
@@ -83,10 +79,8 @@ struct LoadKey
 /// @brief Hash functor for @ref LoadKey.
 /// @details Combines the pointer hash, type kind, and size (when present) to
 ///          produce a stable hash for unordered maps.
-struct LoadKeyHash
-{
-    size_t operator()(const LoadKey &k) const noexcept
-    {
+struct LoadKeyHash {
+    size_t operator()(const LoadKey &k) const noexcept {
         ValueHash hv;
         size_t h = hv(k.ptr) ^ (static_cast<size_t>(k.type) * 0x9e3779b97f4a7c15ULL);
         if (k.size)
@@ -99,8 +93,7 @@ struct LoadKeyHash
 /// @details Contains value-numbering expressions and memoized loads visible on
 ///          the current dominating path. State is copied when recursing into
 ///          children to preserve path sensitivity.
-struct State
-{
+struct State {
     std::unordered_map<ValueKey, Value, ValueKeyHash> exprs;
     std::unordered_map<LoadKey, Value, LoadKeyHash> loads;
 };
@@ -125,23 +118,19 @@ void visitBlock(Function &F,
                 viper::analysis::BasicAA &AA,
                 viper::il::UseDefInfo &useInfo,
                 State state,
-                bool &changed)
-{
-    for (std::size_t idx = 0; idx < B->instructions.size();)
-    {
+                bool &changed) {
+    for (std::size_t idx = 0; idx < B->instructions.size();) {
         Instr &I = B->instructions[idx];
 
         // Redundant Load Elimination
-        if (I.op == Opcode::Load && I.result && !I.operands.empty())
-        {
+        if (I.op == Opcode::Load && I.result && !I.operands.empty()) {
             const Value &ptr = I.operands[0];
             auto loadSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
             LoadKey key{ptr, I.type.kind, loadSize};
 
             // Try exact match first
             auto it = state.loads.find(key);
-            if (it != state.loads.end())
-            {
+            if (it != state.loads.end()) {
                 useInfo.replaceAllUses(*I.result, it->second);
                 B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                 changed = true;
@@ -150,13 +139,11 @@ void visitBlock(Function &F,
 
             // Otherwise, scan for alias-equivalent entries (MustAlias)
             bool replaced = false;
-            for (const auto &kv : state.loads)
-            {
+            for (const auto &kv : state.loads) {
                 if (kv.first.type != key.type)
                     continue;
                 if (AA.alias(kv.first.ptr, key.ptr, kv.first.size, key.size) ==
-                    viper::analysis::AliasResult::MustAlias)
-                {
+                    viper::analysis::AliasResult::MustAlias) {
                     useInfo.replaceAllUses(*I.result, kv.second);
                     B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                     changed = true;
@@ -174,12 +161,10 @@ void visitBlock(Function &F,
         }
 
         // Memory clobber: stores or other writes invalidate relevant loads
-        if (I.op == Opcode::Store && I.operands.size() >= 2)
-        {
+        if (I.op == Opcode::Store && I.operands.size() >= 2) {
             const Value &stPtr = I.operands[0];
             auto storeSize = viper::analysis::BasicAA::typeSizeBytes(I.type);
-            for (auto it = state.loads.begin(); it != state.loads.end();)
-            {
+            for (auto it = state.loads.begin(); it != state.loads.end();) {
                 if (AA.alias(it->first.ptr, stPtr, it->first.size, storeSize) !=
                     viper::analysis::AliasResult::NoAlias)
                     it = state.loads.erase(it);
@@ -190,12 +175,10 @@ void visitBlock(Function &F,
             continue;
         }
 
-        if (I.op == Opcode::Call || I.op == Opcode::CallIndirect)
-        {
+        if (I.op == Opcode::Call || I.op == Opcode::CallIndirect) {
             auto mr = AA.modRef(I);
             if (mr != viper::analysis::ModRefResult::NoModRef &&
-                mr != viper::analysis::ModRefResult::Ref)
-            {
+                mr != viper::analysis::ModRefResult::Ref) {
                 state.loads.clear();
             }
             ++idx;
@@ -207,8 +190,7 @@ void visitBlock(Function &F,
         {
             using il::core::MemoryEffects;
             auto me = memoryEffects(I.op);
-            if (me == MemoryEffects::Write || me == MemoryEffects::ReadWrite)
-            {
+            if (me == MemoryEffects::Write || me == MemoryEffects::ReadWrite) {
                 state.loads.clear();
                 ++idx;
                 continue;
@@ -216,11 +198,9 @@ void visitBlock(Function &F,
         }
 
         // Pure expression GVN
-        if (auto key = makeValueKey(I))
-        {
+        if (auto key = makeValueKey(I)) {
             auto found = state.exprs.find(*key);
-            if (found != state.exprs.end())
-            {
+            if (found != state.exprs.end()) {
                 useInfo.replaceAllUses(*I.result, found->second);
                 B->instructions.erase(B->instructions.begin() + static_cast<long>(idx));
                 changed = true;
@@ -237,10 +217,8 @@ void visitBlock(Function &F,
 
     // Recurse to children in dominator-tree preorder
     auto it = DT.children.find(B);
-    if (it != DT.children.end())
-    {
-        for (auto *Child : it->second)
-        {
+    if (it != DT.children.end()) {
+        for (auto *Child : it->second) {
             visitBlock(F, Child, DT, AA, useInfo, state, changed);
         }
     }
@@ -251,8 +229,7 @@ void visitBlock(Function &F,
 /// @brief Return the unique identifier for the GVN pass.
 /// @details Used by the pass registry and pipeline definitions.
 /// @return The canonical pass id string "gvn".
-std::string_view GVN::id() const
-{
+std::string_view GVN::id() const {
     return "gvn";
 }
 
@@ -264,8 +241,7 @@ std::string_view GVN::id() const
 /// @param function Function to optimize.
 /// @param analysis Analysis manager used to query required analyses.
 /// @return Preserved analysis set after the transformation.
-PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis)
-{
+PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis) {
     // Query required analyses
     (void)analysis.getFunctionResult<il::transform::CFGInfo>(kAnalysisCFG,
                                                              function); // ensure available
@@ -300,8 +276,7 @@ PreservedAnalyses GVN::run(Function &function, AnalysisManager &analysis)
 /// @details Associates the "gvn" identifier with a factory that constructs
 ///          a new @ref GVN instance.
 /// @param registry Pass registry to update.
-void registerGVNPass(PassRegistry &registry)
-{
+void registerGVNPass(PassRegistry &registry) {
     registry.registerFunctionPass("gvn", []() { return std::make_unique<GVN>(); });
 }
 

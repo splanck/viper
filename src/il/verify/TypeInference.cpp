@@ -30,11 +30,9 @@
 
 using namespace il::core;
 
-namespace il::verify
-{
+namespace il::verify {
 
-namespace
-{
+namespace {
 
 /// @brief Render an instruction's operands and labels into a textual snippet.
 /// @details Concatenates the operands and label targets into a whitespace
@@ -44,8 +42,7 @@ namespace
 ///          site.
 /// @param instr Instruction whose operands should be rendered.
 /// @return Space-delimited string describing operands and successor labels.
-std::string formatOperands(const Instr &instr)
-{
+std::string formatOperands(const Instr &instr) {
     std::ostringstream os;
     for (const auto &op : instr.operands)
         os << " " << toString(op);
@@ -60,8 +57,7 @@ std::string formatOperands(const Instr &instr)
 /// @param instr Instruction being rendered.
 /// @return String containing the printable opcode, result id and operands.
 /// @note Pure helper that only inspects @p instr; it does not depend on verifier state.
-std::string makeSnippet(const Instr &instr)
-{
+std::string makeSnippet(const Instr &instr) {
     std::ostringstream os;
     if (instr.result)
         os << "%" << *instr.result << " = ";
@@ -79,9 +75,7 @@ std::string makeSnippet(const Instr &instr)
 ///       @ref temps_. Both containers are required to outlive the helper.
 TypeInference::TypeInference(std::unordered_map<unsigned, Type> &temps,
                              std::unordered_set<unsigned> &defined)
-    : temps_(temps), defined_(defined)
-{
-}
+    : temps_(temps), defined_(defined) {}
 
 /// @brief Inspect the static type associated with @p value.
 /// @param value Value to query; may reference a temporary or a literal constant.
@@ -90,12 +84,9 @@ TypeInference::TypeInference(std::unordered_map<unsigned, Type> &temps,
 /// @return The inferred type or void when the temporary is unknown.
 /// @note Invariant: queries do not mutate @ref temps_ nor @ref defined_, keeping
 ///       lookup operations side-effect free.
-Type TypeInference::valueType(const Value &value, bool *missing) const
-{
-    switch (value.kind)
-    {
-        case Value::Kind::Temp:
-        {
+Type TypeInference::valueType(const Value &value, bool *missing) const {
+    switch (value.kind) {
+        case Value::Kind::Temp: {
             auto it = temps_.find(value.id);
             if (it != temps_.end())
                 return it->second;
@@ -120,10 +111,8 @@ Type TypeInference::valueType(const Value &value, bool *missing) const
 /// @param kind Enumerator describing the type whose size is requested.
 /// @return Size in bytes or zero if the type has no storage.
 /// @note This helper does not consult or mutate verifier state.
-size_t TypeInference::typeSize(Type::Kind kind)
-{
-    switch (kind)
-    {
+size_t TypeInference::typeSize(Type::Kind kind) {
+    switch (kind) {
         case Type::Kind::I1:
             return 1;
         case Type::Kind::I16:
@@ -149,10 +138,8 @@ size_t TypeInference::typeSize(Type::Kind kind)
 /// @param type Type assigned to the result temporary.
 /// @note Invariant: whenever a result id is tracked in @ref defined_, a matching
 ///       entry exists in @ref temps_ so future queries yield a concrete type.
-void TypeInference::recordResult(const Instr &instr, Type type)
-{
-    if (instr.result)
-    {
+void TypeInference::recordResult(const Instr &instr, Type type) {
+    if (instr.result) {
         temps_[*instr.result] = type;
         defined_.insert(*instr.result);
     }
@@ -170,10 +157,8 @@ void TypeInference::recordResult(const Instr &instr, Type type)
 ///       describe the same set of temporaries; they are only read in this helper.
 il::support::Expected<void> TypeInference::ensureOperandsDefined_E(const Function &fn,
                                                                    const BasicBlock &bb,
-                                                                   const Instr &instr) const
-{
-    for (const auto &op : instr.operands)
-    {
+                                                                   const Instr &instr) const {
+    for (const auto &op : instr.operands) {
         if (op.kind != Value::Kind::Temp)
             continue;
 
@@ -185,8 +170,7 @@ il::support::Expected<void> TypeInference::ensureOperandsDefined_E(const Functio
             continue;
 
         std::string id = std::to_string(op.id);
-        if (missing && undefined)
-        {
+        if (missing && undefined) {
             return il::support::Expected<void>{il::support::makeError(
                 instr.loc,
                 formatInstrDiag(
@@ -211,10 +195,8 @@ il::support::Expected<void> TypeInference::ensureOperandsDefined_E(const Functio
 bool TypeInference::ensureOperandsDefined(const Function &fn,
                                           const BasicBlock &bb,
                                           const Instr &instr,
-                                          std::ostream &err) const
-{
-    if (auto result = ensureOperandsDefined_E(fn, bb, instr); !result)
-    {
+                                          std::ostream &err) const {
+    if (auto result = ensureOperandsDefined_E(fn, bb, instr); !result) {
         il::support::printDiag(result.error(), err);
         return false;
     }
@@ -226,8 +208,7 @@ bool TypeInference::ensureOperandsDefined(const Function &fn,
 /// @param type Type to associate with the definition.
 /// @note Invariant: updates @ref temps_ and @ref defined_ together so readers
 ///       observe a consistent view of available temporaries.
-void TypeInference::addTemp(unsigned id, Type type)
-{
+void TypeInference::addTemp(unsigned id, Type type) {
     temps_[id] = type;
     defined_.insert(id);
 }
@@ -236,8 +217,7 @@ void TypeInference::addTemp(unsigned id, Type type)
 /// @param id Temporary identifier to erase.
 /// @note Invariant: erases the id from both @ref temps_ and @ref defined_ to avoid
 ///       stale entries that could report a definition without a type.
-void TypeInference::removeTemp(unsigned id)
-{
+void TypeInference::removeTemp(unsigned id) {
     temps_.erase(id);
     defined_.erase(id);
 }
@@ -247,8 +227,7 @@ void TypeInference::removeTemp(unsigned id)
 /// @return True when the identifier has been inserted into @ref defined_.
 /// @note Does not consult @ref temps_; callers should still respect the invariant
 ///       that defined ids also have a type mapping.
-bool TypeInference::isDefined(unsigned id) const
-{
+bool TypeInference::isDefined(unsigned id) const {
     return defined_.contains(id);
 }
 

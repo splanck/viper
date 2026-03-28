@@ -24,52 +24,42 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C"
-{
-    extern void *rt_vec3_new(double x, double y, double z);
-    extern double rt_vec3_x(void *v);
-    extern double rt_vec3_y(void *v);
-    extern double rt_vec3_z(void *v);
-    extern void *rt_quat_from_euler(double pitch, double yaw, double roll);
-    extern double rt_quat_x(void *q);
-    extern double rt_quat_y(void *q);
-    extern double rt_quat_z(void *q);
-    extern double rt_quat_w(void *q);
+extern "C" {
+extern void *rt_vec3_new(double x, double y, double z);
+extern double rt_vec3_x(void *v);
+extern double rt_vec3_y(void *v);
+extern double rt_vec3_z(void *v);
+extern void *rt_quat_from_euler(double pitch, double yaw, double roll);
+extern double rt_quat_x(void *q);
+extern double rt_quat_y(void *q);
+extern double rt_quat_z(void *q);
+extern double rt_quat_w(void *q);
 }
 
 static int tests_passed = 0;
 static int tests_run = 0;
 
 #define EXPECT_TRUE(cond, msg)                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+        if (!(cond)) {                                                                             \
             fprintf(stderr, "FAIL: %s\n", msg);                                                    \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
 
 #define EXPECT_NEAR(a, b, eps, msg)                                                                \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (fabs((a) - (b)) > (eps))                                                               \
-        {                                                                                          \
+        if (fabs((a) - (b)) > (eps)) {                                                             \
             fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));    \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
 
-static void test_create_scene_and_node()
-{
+static void test_create_scene_and_node() {
     void *scene = rt_scene3d_new();
     EXPECT_TRUE(scene != nullptr, "Scene3D.New returns non-null");
 
@@ -82,8 +72,7 @@ static void test_create_scene_and_node()
     EXPECT_TRUE(rt_scene3d_get_node_count(scene) == 1, "Initial node count is 1 (root)");
 }
 
-static void test_add_remove_child()
-{
+static void test_add_remove_child() {
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
 
@@ -99,8 +88,7 @@ static void test_add_remove_child()
     EXPECT_TRUE(rt_scene_node3d_get_parent(node) == nullptr, "Removed node has no parent");
 }
 
-static void test_translation_propagation()
-{
+static void test_translation_propagation() {
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
     rt_scene_node3d_set_position(parent, 5.0, 0.0, 0.0);
@@ -112,8 +100,7 @@ static void test_translation_propagation()
     EXPECT_TRUE(wm != nullptr, "GetWorldMatrix returns non-null");
 
     /* Extract translation from row-major Mat4: m[3], m[7], m[11] */
-    typedef struct
-    {
+    typedef struct {
         double m[16];
     } mat4_view;
 
@@ -123,8 +110,7 @@ static void test_translation_propagation()
     EXPECT_NEAR(mv->m[11], 0.0, 0.001, "Child world Z = 0");
 }
 
-static void test_rotation_propagation()
-{
+static void test_rotation_propagation() {
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
 
@@ -138,8 +124,7 @@ static void test_rotation_propagation()
     rt_scene_node3d_set_position(child, 1.0, 0.0, 0.0);
     rt_scene_node3d_add_child(parent, child);
 
-    typedef struct
-    {
+    typedef struct {
         double m[16];
     } mat4_view;
 
@@ -151,16 +136,14 @@ static void test_rotation_propagation()
     EXPECT_NEAR(mv->m[11], -1.0, 0.01, "Rotated child world Z ≈ -1");
 }
 
-static void test_scale_propagation()
-{
+static void test_scale_propagation() {
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
     rt_scene_node3d_set_scale(parent, 2.0, 2.0, 2.0);
     rt_scene_node3d_set_position(child, 1.0, 1.0, 1.0);
     rt_scene_node3d_add_child(parent, child);
 
-    typedef struct
-    {
+    typedef struct {
         double m[16];
     } mat4_view;
 
@@ -171,20 +154,17 @@ static void test_scale_propagation()
     EXPECT_NEAR(mv->m[11], 2.0, 0.001, "Scaled child world Z = 2");
 }
 
-static void test_deep_hierarchy()
-{
+static void test_deep_hierarchy() {
     /* 5-level chain: each node translates +1 in X */
     void *nodes[5];
-    for (int i = 0; i < 5; i++)
-    {
+    for (int i = 0; i < 5; i++) {
         nodes[i] = rt_scene_node3d_new();
         rt_scene_node3d_set_position(nodes[i], 1.0, 0.0, 0.0);
         if (i > 0)
             rt_scene_node3d_add_child(nodes[i - 1], nodes[i]);
     }
 
-    typedef struct
-    {
+    typedef struct {
         double m[16];
     } mat4_view;
 
@@ -192,8 +172,7 @@ static void test_deep_hierarchy()
     EXPECT_NEAR(mv->m[3], 5.0, 0.001, "5-level hierarchy: world X = 5");
 }
 
-static void test_dirty_flag()
-{
+static void test_dirty_flag() {
     void *parent = rt_scene_node3d_new();
     void *child = rt_scene_node3d_new();
     rt_scene_node3d_add_child(parent, child);
@@ -204,8 +183,7 @@ static void test_dirty_flag()
     /* Change parent → child should become dirty and recompute */
     rt_scene_node3d_set_position(parent, 10.0, 0.0, 0.0);
 
-    typedef struct
-    {
+    typedef struct {
         double m[16];
     } mat4_view;
 
@@ -213,8 +191,7 @@ static void test_dirty_flag()
     EXPECT_NEAR(mv->m[3], 10.0, 0.001, "After parent move: child world X updated to 10");
 }
 
-static void test_find_by_name()
-{
+static void test_find_by_name() {
     void *scene = rt_scene3d_new();
     void *n1 = rt_scene_node3d_new();
     void *n2 = rt_scene_node3d_new();
@@ -237,8 +214,7 @@ static void test_find_by_name()
     EXPECT_TRUE(nf == nullptr, "Find nonexistent returns null");
 }
 
-static void test_reparenting()
-{
+static void test_reparenting() {
     void *scene = rt_scene3d_new();
     void *a = rt_scene_node3d_new();
     void *b = rt_scene_node3d_new();
@@ -256,8 +232,7 @@ static void test_reparenting()
     EXPECT_TRUE(rt_scene_node3d_child_count(b) == 1, "B has 1 child after reparent");
 }
 
-static void test_prevent_cycle()
-{
+static void test_prevent_cycle() {
     void *a = rt_scene_node3d_new();
     void *b = rt_scene_node3d_new();
     void *c = rt_scene_node3d_new();
@@ -275,8 +250,7 @@ static void test_prevent_cycle()
     EXPECT_TRUE(rt_scene_node3d_child_count(c) == 0, "Cycle insertion does not add a child");
 }
 
-static void test_visibility()
-{
+static void test_visibility() {
     void *node = rt_scene_node3d_new();
     EXPECT_TRUE(rt_scene_node3d_get_visible(node) == 1, "Default visible = true");
 
@@ -284,8 +258,7 @@ static void test_visibility()
     EXPECT_TRUE(rt_scene_node3d_get_visible(node) == 0, "After set visible=false");
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *scene = rt_scene3d_new();
     void *n1 = rt_scene_node3d_new();
     void *n2 = rt_scene_node3d_new();
@@ -299,8 +272,7 @@ static void test_clear()
                 "Root has 0 children");
 }
 
-static void test_get_child()
-{
+static void test_get_child() {
     void *parent = rt_scene_node3d_new();
     void *c1 = rt_scene_node3d_new();
     void *c2 = rt_scene_node3d_new();
@@ -313,8 +285,7 @@ static void test_get_child()
                 "GetChild(2) out of bounds returns null");
 }
 
-static void test_default_transform()
-{
+static void test_default_transform() {
     void *node = rt_scene_node3d_new();
     void *pos = rt_scene_node3d_get_position(node);
     EXPECT_NEAR(rt_vec3_x(pos), 0.0, 0.001, "Default position X = 0");
@@ -334,17 +305,15 @@ static void test_default_transform()
  * Frustum culling tests
  *=========================================================================*/
 
-extern "C"
-{
-    extern void *rt_mesh3d_new_box(double w, double h, double d);
-    extern void *rt_material3d_new_color(double r, double g, double b);
-    extern void *rt_camera3d_new(double fov, double aspect, double near, double far);
-    extern void rt_camera3d_look_at(void *cam, void *eye, void *target, void *up);
-    extern int64_t rt_scene3d_get_culled_count(void *scene);
+extern "C" {
+extern void *rt_mesh3d_new_box(double w, double h, double d);
+extern void *rt_material3d_new_color(double r, double g, double b);
+extern void *rt_camera3d_new(double fov, double aspect, double near, double far);
+extern void rt_camera3d_look_at(void *cam, void *eye, void *target, void *up);
+extern int64_t rt_scene3d_get_culled_count(void *scene);
 }
 
-static void test_frustum_aabb_inside()
-{
+static void test_frustum_aabb_inside() {
     /* Object at origin, camera looking at it → visible (not culled) */
     void *scene = rt_scene3d_new();
     void *node = rt_scene_node3d_new();
@@ -364,8 +333,7 @@ static void test_frustum_aabb_inside()
     EXPECT_NEAR(rt_vec3_z(amax), 0.5, 0.01, "Box AABB max Z = 0.5");
 }
 
-static void test_frustum_sphere_aabb()
-{
+static void test_frustum_sphere_aabb() {
     /* Sphere AABB should be [-radius, +radius] in all axes */
     void *node = rt_scene_node3d_new();
     extern void *rt_mesh3d_new_sphere(double r, int64_t seg);
@@ -376,8 +344,7 @@ static void test_frustum_sphere_aabb()
     EXPECT_NEAR(rt_vec3_x(amax), 2.0, 0.1, "Sphere AABB max X ≈ 2");
 }
 
-static void test_frustum_plane_aabb()
-{
+static void test_frustum_plane_aabb() {
     /* Plane AABB should match half-extents */
     void *node = rt_scene_node3d_new();
     extern void *rt_mesh3d_new_plane(double sx, double sz);
@@ -393,22 +360,19 @@ static void test_frustum_plane_aabb()
     EXPECT_NEAR(rt_vec3_y(amax), 0.0, 0.01, "Plane AABB max Y = 0");
 }
 
-static void test_frustum_no_mesh_no_aabb()
-{
+static void test_frustum_no_mesh_no_aabb() {
     /* Node without mesh has zero AABB */
     void *node = rt_scene_node3d_new();
     void *amin = rt_scene_node3d_get_aabb_min(node);
     EXPECT_NEAR(rt_vec3_x(amin), 0.0, 0.01, "No-mesh AABB min X = 0");
 }
 
-static void test_frustum_culled_count_initial()
-{
+static void test_frustum_culled_count_initial() {
     void *scene = rt_scene3d_new();
     EXPECT_TRUE(rt_scene3d_get_culled_count(scene) == 0, "Initial culled count = 0");
 }
 
-int main()
-{
+int main() {
     test_create_scene_and_node();
     test_add_remove_child();
     test_translation_propagation();

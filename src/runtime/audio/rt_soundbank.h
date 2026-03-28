@@ -30,67 +30,66 @@
 #include "rt_string.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Create a new empty sound bank.
-    /// @return Opaque sound bank handle.
-    void *rt_soundbank_new(void);
+/// @brief Create a new empty sound bank.
+/// @return Opaque sound bank handle.
+void *rt_soundbank_new(void);
 
-    /// @brief Register a sound from a WAV file under a name.
-    /// @param bank Sound bank handle.
-    /// @param name Name to register under (max 31 chars).
-    /// @param path Path to WAV file.
-    /// @return 1 on success, 0 on failure.
-    int64_t rt_soundbank_register(void *bank, rt_string name, rt_string path);
+/// @brief Register a sound from a WAV file under a name.
+/// @param bank Sound bank handle.
+/// @param name Name to register under (max 31 chars).
+/// @param path Path to WAV file.
+/// @return 1 on success, 0 on failure.
+int64_t rt_soundbank_register(void *bank, rt_string name, rt_string path);
 
-    /// @brief Register an existing sound object under a name.
-    /// @param bank Sound bank handle.
-    /// @param name Name to register under (max 31 chars).
-    /// @param sound Sound object (from Sound.Load or Synth).
-    /// @return 1 on success, 0 on failure.
-    int64_t rt_soundbank_register_sound(void *bank, rt_string name, void *sound);
+/// @brief Register an existing sound object under a name.
+/// @param bank Sound bank handle.
+/// @param name Name to register under (max 31 chars).
+/// @param sound Sound object (from Sound.Load or Synth).
+/// @return 1 on success, 0 on failure.
+int64_t rt_soundbank_register_sound(void *bank, rt_string name, void *sound);
 
-    /// @brief Play a named sound with default settings.
-    /// @param bank Sound bank handle.
-    /// @param name Name of the sound to play.
-    /// @return Voice ID, or -1 on failure.
-    int64_t rt_soundbank_play(void *bank, rt_string name);
+/// @brief Play a named sound with default settings.
+/// @param bank Sound bank handle.
+/// @param name Name of the sound to play.
+/// @return Voice ID, or -1 on failure.
+int64_t rt_soundbank_play(void *bank, rt_string name);
 
-    /// @brief Play a named sound with volume and pan control.
-    /// @param bank Sound bank handle.
-    /// @param name Name of the sound to play.
-    /// @param volume Volume (0-100).
-    /// @param pan Pan (-100 to 100).
-    /// @return Voice ID, or -1 on failure.
-    int64_t rt_soundbank_play_ex(void *bank, rt_string name, int64_t volume, int64_t pan);
+/// @brief Play a named sound with volume and pan control.
+/// @param bank Sound bank handle.
+/// @param name Name of the sound to play.
+/// @param volume Volume (0-100).
+/// @param pan Pan (-100 to 100).
+/// @return Voice ID, or -1 on failure.
+int64_t rt_soundbank_play_ex(void *bank, rt_string name, int64_t volume, int64_t pan);
 
-    /// @brief Check if a name is registered in the bank.
-    /// @param bank Sound bank handle.
-    /// @param name Name to check.
-    /// @return 1 if registered, 0 if not.
-    int64_t rt_soundbank_has(void *bank, rt_string name);
+/// @brief Check if a name is registered in the bank.
+/// @param bank Sound bank handle.
+/// @param name Name to check.
+/// @return 1 if registered, 0 if not.
+int64_t rt_soundbank_has(void *bank, rt_string name);
 
-    /// @brief Get the sound object registered under a name.
-    /// @param bank Sound bank handle.
-    /// @param name Name to look up.
-    /// @return Sound object, or NULL if not found.
-    void *rt_soundbank_get(void *bank, rt_string name);
+/// @brief Get the sound object registered under a name.
+/// @param bank Sound bank handle.
+/// @param name Name to look up.
+/// @return Sound object, or NULL if not found.
+void *rt_soundbank_get(void *bank, rt_string name);
 
-    /// @brief Remove a named entry from the bank.
-    /// @param bank Sound bank handle.
-    /// @param name Name to remove.
-    void rt_soundbank_remove(void *bank, rt_string name);
+/// @brief Remove a named entry from the bank.
+/// @param bank Sound bank handle.
+/// @param name Name to remove.
+void rt_soundbank_remove(void *bank, rt_string name);
 
-    /// @brief Remove all entries from the bank.
-    /// @param bank Sound bank handle.
-    void rt_soundbank_clear(void *bank);
+/// @brief Remove all entries from the bank.
+/// @param bank Sound bank handle.
+void rt_soundbank_clear(void *bank);
 
-    /// @brief Get the number of registered sounds.
-    /// @param bank Sound bank handle.
-    /// @return Number of entries.
-    int64_t rt_soundbank_count(void *bank);
+/// @brief Get the number of registered sounds.
+/// @param bank Sound bank handle.
+/// @return Number of entries.
+int64_t rt_soundbank_count(void *bank);
 
 #ifdef __cplusplus
 }

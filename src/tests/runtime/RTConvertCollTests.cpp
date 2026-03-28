@@ -24,15 +24,13 @@
 #include <cstdio>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Create a new GC-managed object for testing.
-static void *new_obj()
-{
+static void *new_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
@@ -44,8 +42,7 @@ static void *val2 = nullptr;
 static void *val3 = nullptr;
 static void *val4 = nullptr;
 
-static void setup_test_values()
-{
+static void setup_test_values() {
     val1 = new_obj();
     val2 = new_obj();
     val3 = new_obj();
@@ -56,8 +53,7 @@ static void setup_test_values()
 // Seq Conversion Tests
 //=============================================================================
 
-static void test_seq_to_list()
-{
+static void test_seq_to_list() {
     printf("Testing Seq to List:\n");
 
     void *seq = rt_seq_new();
@@ -74,8 +70,7 @@ static void test_seq_to_list()
     printf("\n");
 }
 
-static void test_seq_to_set()
-{
+static void test_seq_to_set() {
     printf("Testing Seq to Set:\n");
 
     void *seq = rt_seq_new();
@@ -92,8 +87,7 @@ static void test_seq_to_set()
     printf("\n");
 }
 
-static void test_seq_to_stack()
-{
+static void test_seq_to_stack() {
     printf("Testing Seq to Stack:\n");
 
     void *seq = rt_seq_new();
@@ -109,8 +103,7 @@ static void test_seq_to_stack()
     printf("\n");
 }
 
-static void test_seq_to_queue()
-{
+static void test_seq_to_queue() {
     printf("Testing Seq to Queue:\n");
 
     void *seq = rt_seq_new();
@@ -126,8 +119,7 @@ static void test_seq_to_queue()
     printf("\n");
 }
 
-static void test_seq_to_deque()
-{
+static void test_seq_to_deque() {
     printf("Testing Seq to Deque:\n");
 
     void *seq = rt_seq_new();
@@ -148,8 +140,7 @@ static void test_seq_to_deque()
 // List Conversion Tests
 //=============================================================================
 
-static void test_list_to_seq()
-{
+static void test_list_to_seq() {
     printf("Testing List to Seq:\n");
 
     void *list = rt_list_new();
@@ -164,8 +155,7 @@ static void test_list_to_seq()
     printf("\n");
 }
 
-static void test_list_to_set()
-{
+static void test_list_to_set() {
     printf("Testing List to Set:\n");
 
     void *list = rt_list_new();
@@ -183,8 +173,7 @@ static void test_list_to_set()
 // Set Conversion Tests
 //=============================================================================
 
-static void test_set_to_seq()
-{
+static void test_set_to_seq() {
     printf("Testing Set to Seq:\n");
 
     void *set = rt_set_new();
@@ -202,8 +191,7 @@ static void test_set_to_seq()
 // Deque Conversion Tests
 //=============================================================================
 
-static void test_deque_to_seq()
-{
+static void test_deque_to_seq() {
     printf("Testing Deque to Seq:\n");
 
     void *deque = rt_deque_new();
@@ -224,8 +212,7 @@ static void test_deque_to_seq()
 // Ring Conversion Tests
 //=============================================================================
 
-static void test_ring_to_seq()
-{
+static void test_ring_to_seq() {
     printf("Testing Ring to Seq:\n");
 
     void *ring = rt_ring_new(4);
@@ -243,8 +230,7 @@ static void test_ring_to_seq()
 // Utility Function Tests
 //=============================================================================
 
-static void test_seq_of()
-{
+static void test_seq_of() {
     printf("Testing rt_seq_of:\n");
 
     void *seq = rt_seq_of(3, val1, val2, val3);
@@ -257,8 +243,7 @@ static void test_seq_of()
     printf("\n");
 }
 
-static void test_list_of()
-{
+static void test_list_of() {
     printf("Testing rt_list_of:\n");
 
     void *list = rt_list_of(2, val1, val2);
@@ -268,8 +253,7 @@ static void test_list_of()
     printf("\n");
 }
 
-static void test_set_of()
-{
+static void test_set_of() {
     printf("Testing rt_set_of:\n");
 
     void *set = rt_set_of(3, val1, val2, val1); // Duplicate
@@ -283,8 +267,7 @@ static void test_set_of()
 // NULL Handling Tests
 //=============================================================================
 
-static void test_null_handling()
-{
+static void test_null_handling() {
     printf("Testing NULL handling:\n");
 
     void *list = rt_seq_to_list(NULL);
@@ -303,8 +286,7 @@ static void test_null_handling()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Collection Conversion Tests ===\n\n");
 
     // Setup test values (GC-managed objects)

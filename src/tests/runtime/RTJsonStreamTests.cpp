@@ -19,13 +19,11 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
@@ -33,8 +31,7 @@ static rt_string make_str(const char *s)
 // Basic token tests
 // ============================================================================
 
-static void test_empty_object()
-{
+static void test_empty_object() {
     void *p = rt_json_stream_new(make_str("{}"));
     assert(p != nullptr);
 
@@ -52,8 +49,7 @@ static void test_empty_object()
     printf("test_empty_object: PASSED\n");
 }
 
-static void test_empty_array()
-{
+static void test_empty_array() {
     void *p = rt_json_stream_new(make_str("[]"));
 
     int64_t tok = rt_json_stream_next(p);
@@ -68,8 +64,7 @@ static void test_empty_array()
     printf("test_empty_array: PASSED\n");
 }
 
-static void test_string_value()
-{
+static void test_string_value() {
     void *p = rt_json_stream_new(make_str("{\"name\": \"Alice\"}"));
 
     int64_t tok = rt_json_stream_next(p);
@@ -91,8 +86,7 @@ static void test_string_value()
     printf("test_string_value: PASSED\n");
 }
 
-static void test_number_value()
-{
+static void test_number_value() {
     void *p = rt_json_stream_new(make_str("[42, 3.14, -7, 1e3]"));
 
     int64_t tok = rt_json_stream_next(p);
@@ -120,8 +114,7 @@ static void test_number_value()
     printf("test_number_value: PASSED\n");
 }
 
-static void test_bool_value()
-{
+static void test_bool_value() {
     void *p = rt_json_stream_new(make_str("[true, false]"));
 
     rt_json_stream_next(p); /* [ */
@@ -137,8 +130,7 @@ static void test_bool_value()
     printf("test_bool_value: PASSED\n");
 }
 
-static void test_null_value()
-{
+static void test_null_value() {
     void *p = rt_json_stream_new(make_str("[null]"));
 
     rt_json_stream_next(p); /* [ */
@@ -149,8 +141,7 @@ static void test_null_value()
     printf("test_null_value: PASSED\n");
 }
 
-static void test_nested_object()
-{
+static void test_nested_object() {
     void *p = rt_json_stream_new(make_str("{\"a\": {\"b\": 1}}"));
 
     int64_t tok = rt_json_stream_next(p);
@@ -182,8 +173,7 @@ static void test_nested_object()
     printf("test_nested_object: PASSED\n");
 }
 
-static void test_array_of_objects()
-{
+static void test_array_of_objects() {
     void *p = rt_json_stream_new(make_str("[{\"x\":1},{\"x\":2}]"));
 
     int64_t tok = rt_json_stream_next(p);
@@ -221,8 +211,7 @@ static void test_array_of_objects()
 // Escape handling
 // ============================================================================
 
-static void test_escape_sequences()
-{
+static void test_escape_sequences() {
     void *p =
         rt_json_stream_new(make_str("[\"line1\\nline2\", \"tab\\there\", \"quote\\\"inside\"]"));
 
@@ -243,8 +232,7 @@ static void test_escape_sequences()
     printf("test_escape_sequences: PASSED\n");
 }
 
-static void test_unicode_escape()
-{
+static void test_unicode_escape() {
     /* \u0041 = 'A' */
     void *p = rt_json_stream_new(make_str("[\"\\u0041\"]"));
 
@@ -260,8 +248,7 @@ static void test_unicode_escape()
 // Skip functionality
 // ============================================================================
 
-static void test_skip_object()
-{
+static void test_skip_object() {
     void *p = rt_json_stream_new(make_str("[{\"a\":1,\"b\":{\"c\":2}}, 99]"));
 
     rt_json_stream_next(p); /* [ */
@@ -279,8 +266,7 @@ static void test_skip_object()
     printf("test_skip_object: PASSED\n");
 }
 
-static void test_skip_array()
-{
+static void test_skip_array() {
     void *p = rt_json_stream_new(make_str("{\"data\":[1,2,3],\"done\":true}"));
 
     rt_json_stream_next(p); /* { */
@@ -306,8 +292,7 @@ static void test_skip_array()
 // has_next / token_type
 // ============================================================================
 
-static void test_has_next()
-{
+static void test_has_next() {
     void *p = rt_json_stream_new(make_str("42"));
 
     assert(rt_json_stream_has_next(p) == 1);
@@ -320,8 +305,7 @@ static void test_has_next()
     printf("test_has_next: PASSED\n");
 }
 
-static void test_token_type_none()
-{
+static void test_token_type_none() {
     void *p = rt_json_stream_new(make_str("{}"));
     assert(rt_json_stream_token_type(p) == RT_JSON_TOK_NONE);
 
@@ -332,8 +316,7 @@ static void test_token_type_none()
 // Error handling
 // ============================================================================
 
-static void test_invalid_json()
-{
+static void test_invalid_json() {
     void *p = rt_json_stream_new(make_str("{invalid}"));
 
     rt_json_stream_next(p); /* { */
@@ -346,8 +329,7 @@ static void test_invalid_json()
     printf("test_invalid_json: PASSED\n");
 }
 
-static void test_unterminated_string()
-{
+static void test_unterminated_string() {
     void *p = rt_json_stream_new(make_str("[\"no closing quote]"));
 
     rt_json_stream_next(p); /* [ */
@@ -361,8 +343,7 @@ static void test_unterminated_string()
 // NULL safety
 // ============================================================================
 
-static void test_null_parser()
-{
+static void test_null_parser() {
     assert(rt_json_stream_next(NULL) == RT_JSON_TOK_ERROR);
     assert(rt_json_stream_token_type(NULL) == RT_JSON_TOK_ERROR);
     assert(rt_json_stream_number_value(NULL) == 0.0);
@@ -377,8 +358,7 @@ static void test_null_parser()
 // Complex JSON
 // ============================================================================
 
-static void test_complex_json()
-{
+static void test_complex_json() {
     const char *json = "{"
                        "  \"users\": ["
                        "    {\"name\": \"Alice\", \"age\": 30, \"active\": true},"
@@ -458,8 +438,7 @@ static void test_complex_json()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== JsonStream Tests ===\n\n");
 
     /* Basic tokens */

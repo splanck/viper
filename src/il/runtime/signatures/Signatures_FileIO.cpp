@@ -31,10 +31,8 @@
 
 #include "il/runtime/signatures/Registry.hpp"
 
-namespace il::runtime::signatures
-{
-namespace
-{
+namespace il::runtime::signatures {
+namespace {
 using Kind = SigParam::Kind;
 }
 
@@ -53,8 +51,7 @@ using Kind = SigParam::Kind;
 ///          By routing every entry through @ref register_signature the mapping
 ///          becomes visible to the verification pipeline without requiring each
 ///          caller to know the registry internals.
-void register_fileio_signatures()
-{
+void register_fileio_signatures() {
     register_signature(make_signature("rt_abort", {Kind::Ptr}));
     register_signature(make_signature("rt_print_str", {Kind::Ptr}));
     register_signature(make_signature("rt_print_i64", {Kind::I64}));

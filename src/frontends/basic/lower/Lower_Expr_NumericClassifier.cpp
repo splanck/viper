@@ -20,8 +20,7 @@
 
 #include <limits>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 using NumericType = TypeRules::NumericType;
 using AstType = ::il::frontends::basic::Type;
@@ -31,20 +30,16 @@ using IlType = il::core::Type;
 /// @details Walks an expression tree to determine its resulting numeric type,
 ///          following QBasic/GW-BASIC type promotion rules. This is used by
 ///          lowering to select the appropriate IL operations and coercions.
-class NumericTypeClassifier final : public ExprVisitor
-{
+class NumericTypeClassifier final : public ExprVisitor {
   public:
     explicit NumericTypeClassifier(Lowerer &lowerer) noexcept : lowerer_(lowerer) {}
 
-    NumericType result() const noexcept
-    {
+    NumericType result() const noexcept {
         return result_;
     }
 
-    void visit(const IntExpr &i) override
-    {
-        switch (i.suffix)
-        {
+    void visit(const IntExpr &i) override {
+        switch (i.suffix) {
             case IntExpr::Suffix::Integer:
                 result_ = NumericType::Integer;
                 return;
@@ -57,45 +52,35 @@ class NumericTypeClassifier final : public ExprVisitor
 
         const long long value = i.value;
         if (value >= std::numeric_limits<int16_t>::min() &&
-            value <= std::numeric_limits<int16_t>::max())
-        {
+            value <= std::numeric_limits<int16_t>::max()) {
             result_ = NumericType::Integer;
-        }
-        else
-        {
+        } else {
             result_ = NumericType::Long;
         }
     }
 
-    void visit(const FloatExpr &f) override
-    {
+    void visit(const FloatExpr &f) override {
         result_ =
             (f.suffix == FloatExpr::Suffix::Single) ? NumericType::Single : NumericType::Double;
     }
 
-    void visit(const StringExpr &) override
-    {
+    void visit(const StringExpr &) override {
         result_ = NumericType::Double;
     }
 
-    void visit(const BoolExpr &) override
-    {
+    void visit(const BoolExpr &) override {
         result_ = NumericType::Integer;
     }
 
-    void visit(const VarExpr &var) override
-    {
+    void visit(const VarExpr &var) override {
         // BUG-019 fix: Check semantic analysis first for CONST float types
         AstType effectiveType = AstType::I64;
         bool hasEffectiveType = false;
 
-        if (lowerer_.semanticAnalyzer())
-        {
-            if (auto semaType = lowerer_.semanticAnalyzer()->lookupVarType(std::string{var.name}))
-            {
+        if (lowerer_.semanticAnalyzer()) {
+            if (auto semaType = lowerer_.semanticAnalyzer()->lookupVarType(std::string{var.name})) {
                 using SemaType = SemanticAnalyzer::Type;
-                switch (*semaType)
-                {
+                switch (*semaType) {
                     case SemaType::Float:
                         effectiveType = AstType::F64;
                         hasEffectiveType = true;
@@ -110,23 +95,17 @@ class NumericTypeClassifier final : public ExprVisitor
             }
         }
 
-        if (const auto *info = lowerer_.findSymbol(var.name))
-        {
-            if (info->hasType && !hasEffectiveType)
-            {
+        if (const auto *info = lowerer_.findSymbol(var.name)) {
+            if (info->hasType && !hasEffectiveType) {
                 effectiveType = info->type;
                 hasEffectiveType = true;
             }
         }
 
-        if (hasEffectiveType)
-        {
-            if (effectiveType == AstType::F64)
-            {
-                if (!var.name.empty())
-                {
-                    switch (var.name.back())
-                    {
+        if (hasEffectiveType) {
+            if (effectiveType == AstType::F64) {
+                if (!var.name.empty()) {
+                    switch (var.name.back()) {
                         case '!':
                             result_ = NumericType::Single;
                             return;
@@ -140,10 +119,8 @@ class NumericTypeClassifier final : public ExprVisitor
                 result_ = NumericType::Double;
                 return;
             }
-            if (!var.name.empty())
-            {
-                switch (var.name.back())
-                {
+            if (!var.name.empty()) {
+                switch (var.name.back()) {
                     case '%':
                         result_ = NumericType::Integer;
                         return;
@@ -158,10 +135,8 @@ class NumericTypeClassifier final : public ExprVisitor
             return;
         }
 
-        if (!var.name.empty())
-        {
-            switch (var.name.back())
-            {
+        if (!var.name.empty()) {
+            switch (var.name.back()) {
                 case '!':
                     result_ = NumericType::Single;
                     return;
@@ -183,25 +158,20 @@ class NumericTypeClassifier final : public ExprVisitor
         result_ = (astTy == AstType::F64) ? NumericType::Double : NumericType::Long;
     }
 
-    void visit(const ArrayExpr &) override
-    {
+    void visit(const ArrayExpr &) override {
         result_ = NumericType::Long;
     }
 
-    void visit(const UnaryExpr &un) override
-    {
-        if (!un.expr)
-        {
+    void visit(const UnaryExpr &un) override {
+        if (!un.expr) {
             result_ = NumericType::Long;
             return;
         }
         result_ = lowerer_.classifyNumericType(*un.expr);
     }
 
-    void visit(const BinaryExpr &bin) override
-    {
-        if (!bin.lhs || !bin.rhs)
-        {
+    void visit(const BinaryExpr &bin) override {
+        if (!bin.lhs || !bin.rhs) {
             result_ = NumericType::Long;
             return;
         }
@@ -209,8 +179,7 @@ class NumericTypeClassifier final : public ExprVisitor
         NumericType lhsTy = lowerer_.classifyNumericType(*bin.lhs);
         NumericType rhsTy = lowerer_.classifyNumericType(*bin.rhs);
 
-        switch (bin.op)
-        {
+        switch (bin.op) {
             case BinaryExpr::Op::Add:
                 result_ = TypeRules::resultType('+', lhsTy, rhsTy);
                 return;
@@ -238,10 +207,8 @@ class NumericTypeClassifier final : public ExprVisitor
         }
     }
 
-    void visit(const BuiltinCallExpr &call) override
-    {
-        switch (call.builtin)
-        {
+    void visit(const BuiltinCallExpr &call) override {
+        switch (call.builtin) {
             case BuiltinCallExpr::Builtin::Cint:
                 result_ = NumericType::Integer;
                 return;
@@ -272,12 +239,9 @@ class NumericTypeClassifier final : public ExprVisitor
                 result_ = NumericType::Double;
                 return;
             case BuiltinCallExpr::Builtin::Str:
-                if (!call.args.empty() && call.args[0])
-                {
+                if (!call.args.empty() && call.args[0]) {
                     result_ = lowerer_.classifyNumericType(*call.args[0]);
-                }
-                else
-                {
+                } else {
                     result_ = NumericType::Long;
                 }
                 return;
@@ -287,22 +251,17 @@ class NumericTypeClassifier final : public ExprVisitor
         }
     }
 
-    void visit(const LBoundExpr &) override
-    {
+    void visit(const LBoundExpr &) override {
         result_ = NumericType::Long;
     }
 
-    void visit(const UBoundExpr &) override
-    {
+    void visit(const UBoundExpr &) override {
         result_ = NumericType::Long;
     }
 
-    void visit(const CallExpr &callExpr) override
-    {
-        if (const auto *sig = lowerer_.findProcSignature(callExpr.callee))
-        {
-            switch (sig->retType.kind)
-            {
+    void visit(const CallExpr &callExpr) override {
+        if (const auto *sig = lowerer_.findProcSignature(callExpr.callee)) {
+            switch (sig->retType.kind) {
                 case IlType::Kind::I16:
                     result_ = NumericType::Integer;
                     return;
@@ -320,34 +279,28 @@ class NumericTypeClassifier final : public ExprVisitor
         result_ = NumericType::Long;
     }
 
-    void visit(const NewExpr &) override
-    {
+    void visit(const NewExpr &) override {
         result_ = NumericType::Long;
     }
 
-    void visit(const MeExpr &) override
-    {
+    void visit(const MeExpr &) override {
         result_ = NumericType::Long;
     }
 
-    void visit(const MemberAccessExpr &) override
-    {
+    void visit(const MemberAccessExpr &) override {
         result_ = NumericType::Long;
     }
 
-    void visit(const MethodCallExpr &) override
-    {
+    void visit(const MethodCallExpr &) override {
         result_ = NumericType::Long;
     }
 
-    void visit(const IsExpr &) override
-    {
+    void visit(const IsExpr &) override {
         // Boolean result
         result_ = NumericType::Long;
     }
 
-    void visit(const AsExpr &as) override
-    {
+    void visit(const AsExpr &as) override {
         // Classify underlying value
         if (as.value)
             result_ = lowerer_.classifyNumericType(*as.value);
@@ -355,8 +308,7 @@ class NumericTypeClassifier final : public ExprVisitor
             result_ = NumericType::Long;
     }
 
-    void visit(const AddressOfExpr &) override
-    {
+    void visit(const AddressOfExpr &) override {
         // ADDRESSOF yields a pointer, not a numeric type. Default to Long.
         result_ = NumericType::Long;
     }
@@ -372,8 +324,7 @@ class NumericTypeClassifier final : public ExprVisitor
 ///          promotion rules.
 /// @param expr Expression to classify.
 /// @return The numeric type category of the expression result.
-TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr)
-{
+TypeRules::NumericType Lowerer::classifyNumericType(const Expr &expr) {
     NumericTypeClassifier classifier(*this);
     expr.accept(classifier);
     return classifier.result();

@@ -31,10 +31,8 @@
 #include <utility>
 #include <vector>
 
-namespace il::frontends::basic::lower
-{
-namespace
-{
+namespace il::frontends::basic::lower {
+namespace {
 using IlType = il::core::Type;
 using IlKind = IlType::Kind;
 using Value = il::core::Value;
@@ -50,8 +48,7 @@ using Emitter = lower::Emitter;
 constexpr const char *kDiagBuiltinCoerceFailed = "B4005";
 constexpr const char *kDiagUnsupportedDefaultValue = "B4006";
 
-enum class CoerceRule : std::uint8_t
-{
+enum class CoerceRule : std::uint8_t {
     Exact,
     PromoteInt,
     PromoteFloat,
@@ -64,20 +61,16 @@ constexpr std::array<TypeKind, 6> kTypeKinds = {
 
 constexpr std::size_t kTypeCount = kTypeKinds.size();
 
-constexpr int typeIndex(TypeKind kind) noexcept
-{
-    for (int i = 0; i < static_cast<int>(kTypeCount); ++i)
-    {
+constexpr int typeIndex(TypeKind kind) noexcept {
+    for (int i = 0; i < static_cast<int>(kTypeCount); ++i) {
         if (kTypeKinds[static_cast<std::size_t>(i)] == kind)
             return i;
     }
     return -1;
 }
 
-constexpr bool isIntegral(TypeKind kind) noexcept
-{
-    switch (kind)
-    {
+constexpr bool isIntegral(TypeKind kind) noexcept {
+    switch (kind) {
         case TypeKind::I1:
         case TypeKind::I16:
         case TypeKind::I32:
@@ -88,10 +81,8 @@ constexpr bool isIntegral(TypeKind kind) noexcept
     }
 }
 
-constexpr int bitWidth(TypeKind kind) noexcept
-{
-    switch (kind)
-    {
+constexpr int bitWidth(TypeKind kind) noexcept {
+    switch (kind) {
         case TypeKind::I1:
             return 1;
         case TypeKind::I16:
@@ -126,10 +117,8 @@ constexpr std::array<std::array<CoerceRule, kTypeCount>, kTypeCount> kCoerce = {
     {{F, F, F, F, F, E}},
 }};
 
-static const char *ruleName(CoerceRule rule) noexcept
-{
-    switch (rule)
-    {
+static const char *ruleName(CoerceRule rule) noexcept {
+    switch (rule) {
         case CoerceRule::Exact:
             return "Exact";
         case CoerceRule::PromoteInt:
@@ -144,8 +133,7 @@ static const char *ruleName(CoerceRule rule) noexcept
     return "Unknown";
 }
 
-static bool canCoerce(TypeKind from, TypeKind to) noexcept
-{
+static bool canCoerce(TypeKind from, TypeKind to) noexcept {
     const int fromIdx = typeIndex(from);
     const int toIdx = typeIndex(to);
     if (fromIdx < 0 || toIdx < 0)
@@ -156,23 +144,19 @@ static bool canCoerce(TypeKind from, TypeKind to) noexcept
 
 static thread_local TypeKind gActiveCoerceFrom = TypeKind::I64;
 
-struct CoerceScope
-{
+struct CoerceScope {
     TypeKind prev;
 
-    explicit CoerceScope(TypeKind from) noexcept : prev(gActiveCoerceFrom)
-    {
+    explicit CoerceScope(TypeKind from) noexcept : prev(gActiveCoerceFrom) {
         gActiveCoerceFrom = from;
     }
 
-    ~CoerceScope()
-    {
+    ~CoerceScope() {
         gActiveCoerceFrom = prev;
     }
 };
 
-static Value narrowFromI64(Value value, TypeKind to, Emitter &emit)
-{
+static Value narrowFromI64(Value value, TypeKind to, Emitter &emit) {
     const int targetBits = bitWidth(to);
     if (targetBits <= 0 || targetBits == 64)
         return value;
@@ -181,8 +165,7 @@ static Value narrowFromI64(Value value, TypeKind to, Emitter &emit)
     return emit.emitUnary(Opcode::CastSiNarrowChk, IlType(to), value);
 }
 
-static Value signExtendToI64(Value value, TypeKind from, Emitter &emit)
-{
+static Value signExtendToI64(Value value, TypeKind from, Emitter &emit) {
     const int fromBits = bitWidth(from);
     if (fromBits <= 0 || fromBits == 64)
         return value;
@@ -197,24 +180,19 @@ static Value signExtendToI64(Value value, TypeKind from, Emitter &emit)
     return emit.emitBinary(Opcode::AShr, IlType(TypeKind::I64), shl, Value::constInt(shift));
 }
 
-static Value applyCoerceRule(CoerceRule rule, const Value &v, TypeKind to, Emitter &emit)
-{
+static Value applyCoerceRule(CoerceRule rule, const Value &v, TypeKind to, Emitter &emit) {
     const TypeKind from = gActiveCoerceFrom;
-    switch (rule)
-    {
+    switch (rule) {
         case CoerceRule::Exact:
             return v;
 
-        case CoerceRule::PromoteInt:
-        {
+        case CoerceRule::PromoteInt: {
             Value widened = isIntegral(from) ? signExtendToI64(v, from, emit) : v;
             return narrowFromI64(widened, to, emit);
         }
 
-        case CoerceRule::PromoteFloat:
-        {
-            if (to == TypeKind::F64)
-            {
+        case CoerceRule::PromoteFloat: {
+            if (to == TypeKind::F64) {
                 Value widened = isIntegral(from) ? signExtendToI64(v, from, emit) : v;
                 return emit.emitUnary(Opcode::CastSiToFp, IlType(TypeKind::F64), widened);
             }
@@ -232,10 +210,8 @@ static Value applyCoerceRule(CoerceRule rule, const Value &v, TypeKind to, Emitt
 }
 
 static void emitCoerceDiagnostic(
-    Lowerer &lowerer, il::support::SourceLoc loc, TypeKind from, TypeKind to, CoerceRule rule)
-{
-    if (auto *diag = lowerer.diagnosticEmitter())
-    {
+    Lowerer &lowerer, il::support::SourceLoc loc, TypeKind from, TypeKind to, CoerceRule rule) {
+    if (auto *diag = lowerer.diagnosticEmitter()) {
         std::string message = "failed to coerce builtin argument from ";
         message += il::core::kindToString(from);
         message += " to ";
@@ -247,8 +223,7 @@ static void emitCoerceDiagnostic(
     }
 }
 
-static IlType typeForKind(BuiltinLowerContext &ctx, TypeKind kind)
-{
+static IlType typeForKind(BuiltinLowerContext &ctx, TypeKind kind) {
     if (kind == TypeKind::I1)
         return ctx.boolType();
     return IlType(kind);
@@ -257,17 +232,14 @@ static IlType typeForKind(BuiltinLowerContext &ctx, TypeKind kind)
 static bool applyBuiltinCoercion(BuiltinLowerContext &ctx,
                                  Lowerer::RVal &slot,
                                  TypeKind to,
-                                 il::support::SourceLoc loc)
-{
+                                 il::support::SourceLoc loc) {
     const TypeKind from = slot.type.kind;
-    if (from == to)
-    {
+    if (from == to) {
         slot.type = typeForKind(ctx, to);
         return true;
     }
 
-    if (!canCoerce(from, to))
-    {
+    if (!canCoerce(from, to)) {
         emitCoerceDiagnostic(ctx.lowerer(), loc, from, to, CoerceRule::Forbid);
         return false;
     }
@@ -301,10 +273,8 @@ Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant);
 BuiltinLowerContext::BuiltinLowerContext(Lowerer &lowerer, const BuiltinCallExpr &call)
     : lowerer_(&lowerer), call_(&call), rule_(&getBuiltinLoweringRule(call.builtin)),
       info_(&getBuiltinInfo(call.builtin)), originalTypes_(call.args.size()),
-      argLocs_(call.args.size()), loweredArgs_(call.args.size()), lowering_(lowerer)
-{
-    for (std::size_t i = 0; i < call.args.size(); ++i)
-    {
+      argLocs_(call.args.size()), loweredArgs_(call.args.size()), lowering_(lowerer) {
+    for (std::size_t i = 0; i < call.args.size(); ++i) {
         const auto &arg = call.args[i];
         if (!arg)
             continue;
@@ -319,8 +289,7 @@ BuiltinLowerContext::BuiltinLowerContext(Lowerer &lowerer, const BuiltinCallExpr
 ///          the argument, making it safe for speculative checks.
 /// @param idx Zero-based argument index to query.
 /// @return True when an argument exists and is non-null.
-bool BuiltinLowerContext::hasArg(std::size_t idx) const noexcept
-{
+bool BuiltinLowerContext::hasArg(std::size_t idx) const noexcept {
     return idx < call_->args.size() && call_->args[idx] != nullptr;
 }
 
@@ -331,8 +300,7 @@ bool BuiltinLowerContext::hasArg(std::size_t idx) const noexcept
 ///          default behaviour.
 /// @param idx Argument index whose type should be queried.
 /// @return Optional expression type reported by the scanner.
-std::optional<Lowerer::ExprType> BuiltinLowerContext::originalType(std::size_t idx) const noexcept
-{
+std::optional<Lowerer::ExprType> BuiltinLowerContext::originalType(std::size_t idx) const noexcept {
     if (idx >= originalTypes_.size())
         return std::nullopt;
     return originalTypes_[idx];
@@ -344,8 +312,7 @@ std::optional<Lowerer::ExprType> BuiltinLowerContext::originalType(std::size_t i
 ///          consistent even for synthesized arguments.
 /// @param idx Argument index whose source location is requested.
 /// @return Source location for diagnostics.
-il::support::SourceLoc BuiltinLowerContext::argLoc(std::size_t idx) const noexcept
-{
+il::support::SourceLoc BuiltinLowerContext::argLoc(std::size_t idx) const noexcept {
     if (idx < argLocs_.size() && argLocs_[idx])
         return *argLocs_[idx];
     return call_->loc;
@@ -358,8 +325,7 @@ il::support::SourceLoc BuiltinLowerContext::argLoc(std::size_t idx) const noexce
 /// @param idx Optional argument index provided by the lowering rule.
 /// @return Source location that should own diagnostics emitted by the variant.
 il::support::SourceLoc BuiltinLowerContext::callLoc(
-    const std::optional<std::size_t> &idx) const noexcept
-{
+    const std::optional<std::size_t> &idx) const noexcept {
     if (idx && *idx < argLocs_.size() && argLocs_[*idx])
         return *argLocs_[*idx];
     return call_->loc;
@@ -371,8 +337,7 @@ il::support::SourceLoc BuiltinLowerContext::callLoc(
 ///          present to catch rule mismatches early.
 /// @param idx Argument index to lower.
 /// @return Reference to the cached lowered argument.
-Lowerer::RVal &BuiltinLowerContext::ensureLowered(std::size_t idx)
-{
+Lowerer::RVal &BuiltinLowerContext::ensureLowered(std::size_t idx) {
     assert(hasArg(idx) && "builtin lowering referenced missing argument");
     auto &slot = loweredArgs_[idx];
     if (!slot)
@@ -386,8 +351,7 @@ Lowerer::RVal &BuiltinLowerContext::ensureLowered(std::size_t idx)
 ///          callers can mutate the stored value if needed.
 /// @param value Lowered value/type pair to append.
 /// @return Reference to the stored synthetic argument.
-Lowerer::RVal &BuiltinLowerContext::appendSynthetic(Lowerer::RVal value)
-{
+Lowerer::RVal &BuiltinLowerContext::appendSynthetic(Lowerer::RVal value) {
     syntheticArgs_.push_back(std::move(value));
     return syntheticArgs_.back();
 }
@@ -399,24 +363,20 @@ Lowerer::RVal &BuiltinLowerContext::appendSynthetic(Lowerer::RVal value)
 ///          assertion in debug builds.
 /// @param spec Argument specification from the lowering rule.
 /// @return Reference to the lowered or synthesized argument slot.
-Lowerer::RVal &BuiltinLowerContext::ensureArgument(const BuiltinLoweringRule::Argument &spec)
-{
+Lowerer::RVal &BuiltinLowerContext::ensureArgument(const BuiltinLoweringRule::Argument &spec) {
     const std::size_t idx = spec.index;
     if (hasArg(idx))
         return ensureLowered(idx);
-    if (spec.defaultValue)
-    {
+    if (spec.defaultValue) {
         const auto &def = *spec.defaultValue;
         Lowerer::RVal value{Value::constInt(def.i64), IlType(IlKind::I64)};
-        switch (def.type)
-        {
+        switch (def.type) {
             case Lowerer::ExprType::F64:
                 value = {Value::constFloat(def.f64), IlType(IlKind::F64)};
                 break;
             case Lowerer::ExprType::Str:
                 // String default values are not implemented; emit diagnostic
-                if (auto *diag = lowerer_->diagnosticEmitter())
-                {
+                if (auto *diag = lowerer_->diagnosticEmitter()) {
                     diag->emit(il::support::Severity::Error,
                                kDiagUnsupportedDefaultValue,
                                call_->loc,
@@ -447,8 +407,7 @@ Lowerer::RVal &BuiltinLowerContext::ensureArgument(const BuiltinLoweringRule::Ar
 /// @param spec Argument description from the lowering rule.
 /// @return Source location for diagnostics.
 il::support::SourceLoc BuiltinLowerContext::selectArgLoc(
-    const BuiltinLoweringRule::Argument &spec) const
-{
+    const BuiltinLoweringRule::Argument &spec) const {
     if (spec.index < argLocs_.size() && argLocs_[spec.index])
         return *argLocs_[spec.index];
     return call_->loc;
@@ -464,14 +423,11 @@ il::support::SourceLoc BuiltinLowerContext::selectArgLoc(
 /// @return Reference to the transformed argument slot.
 Lowerer::RVal &BuiltinLowerContext::applyTransforms(
     const BuiltinLoweringRule::Argument &spec,
-    const std::vector<BuiltinLoweringRule::ArgTransform> &transforms)
-{
+    const std::vector<BuiltinLoweringRule::ArgTransform> &transforms) {
     Lowerer::RVal &slot = ensureArgument(spec);
     il::support::SourceLoc loc = selectArgLoc(spec);
-    for (const auto &transform : transforms)
-    {
-        switch (transform.kind)
-        {
+    for (const auto &transform : transforms) {
+        switch (transform.kind) {
             case TransformKind::EnsureI64:
                 if (!applyBuiltinCoercion(*this, slot, IlKind::I64, loc))
                     return slot;
@@ -513,10 +469,8 @@ Lowerer::RVal &BuiltinLowerContext::applyTransforms(
 /// @param lowerer Lowerer used to access cached IL types.
 /// @param type BASIC expression type classification.
 /// @return Equivalent IL type for code generation.
-IlType BuiltinLowerContext::typeFromExpr(Lowerer &lowerer, Lowerer::ExprType type)
-{
-    switch (type)
-    {
+IlType BuiltinLowerContext::typeFromExpr(Lowerer &lowerer, Lowerer::ExprType type) {
+    switch (type) {
         case Lowerer::ExprType::F64:
             return IlType(IlKind::F64);
         case Lowerer::ExprType::Str:
@@ -535,10 +489,8 @@ IlType BuiltinLowerContext::typeFromExpr(Lowerer &lowerer, Lowerer::ExprType typ
 ///          absent the method gracefully falls back to the fixed type.
 /// @param spec Result specification from the lowering rule.
 /// @return IL type that should be used for the builtin result.
-IlType BuiltinLowerContext::resolveResultType(const BuiltinLoweringRule::ResultSpec &spec)
-{
-    switch (spec.kind)
-    {
+IlType BuiltinLowerContext::resolveResultType(const BuiltinLoweringRule::ResultSpec &spec) {
+    switch (spec.kind) {
         case BuiltinLoweringRule::ResultSpec::Kind::Fixed:
             return typeFromExpr(*lowerer_, spec.type);
         case BuiltinLoweringRule::ResultSpec::Kind::FromArg:
@@ -553,8 +505,7 @@ IlType BuiltinLowerContext::resolveResultType(const BuiltinLoweringRule::ResultS
 /// @details Convenience wrapper that delegates to the rule's stored result
 ///          specification.
 /// @return IL type for the builtin result.
-IlType BuiltinLowerContext::resolveResultType()
-{
+IlType BuiltinLowerContext::resolveResultType() {
     return resolveResultType(rule_->result);
 }
 
@@ -562,8 +513,7 @@ IlType BuiltinLowerContext::resolveResultType()
 /// @details Used when lowering fails or when a variant is missing so downstream
 ///          lowering can continue with a benign placeholder.
 /// @return Pair containing an integer zero constant and its IL type.
-Lowerer::RVal BuiltinLowerContext::makeZeroResult() const
-{
+Lowerer::RVal BuiltinLowerContext::makeZeroResult() const {
     return {Value::constInt(0), IlType(IlKind::I64)};
 }
 
@@ -572,15 +522,12 @@ Lowerer::RVal BuiltinLowerContext::makeZeroResult() const
 ///          the recorded arguments and types. The first matching variant is
 ///          selected, defaulting to the first entry when none match.
 /// @return Pointer to the selected variant or nullptr if none exist.
-const BuiltinLoweringRule::Variant *BuiltinLowerContext::selectVariant() const
-{
+const BuiltinLoweringRule::Variant *BuiltinLowerContext::selectVariant() const {
     const auto &variants = rule_->variants;
     const Variant *selected = nullptr;
-    for (const auto &candidate : variants)
-    {
+    for (const auto &candidate : variants) {
         bool matches = false;
-        switch (candidate.condition)
-        {
+        switch (candidate.condition) {
             case Variant::Condition::Always:
                 matches = true;
                 break;
@@ -599,8 +546,7 @@ const BuiltinLoweringRule::Variant *BuiltinLowerContext::selectVariant() const
                     matches = *originalType(candidate.conditionArg) != candidate.conditionType;
                 break;
         }
-        if (matches)
-        {
+        if (matches) {
             selected = &candidate;
             break;
         }
@@ -616,12 +562,9 @@ const BuiltinLoweringRule::Variant *BuiltinLowerContext::selectVariant() const
 ///          based on the feature action so runtime support code is emitted when
 ///          necessary.
 /// @param variant Variant whose features should be applied.
-void BuiltinLowerContext::applyFeatures(const BuiltinLoweringRule::Variant &variant)
-{
-    for (const auto &feature : variant.features)
-    {
-        switch (feature.action)
-        {
+void BuiltinLowerContext::applyFeatures(const BuiltinLoweringRule::Variant &variant) {
+    for (const auto &feature : variant.features) {
+        switch (feature.action) {
             case FeatureAction::Request:
                 lowerer_->requestHelper(feature.feature);
                 break;
@@ -636,8 +579,7 @@ void BuiltinLowerContext::applyFeatures(const BuiltinLoweringRule::Variant &vari
 /// @details Forwards the location to the underlying lowerer so subsequent IL
 ///          instructions inherit accurate diagnostic information.
 /// @param loc Source location to apply.
-void BuiltinLowerContext::setCurrentLoc(il::support::SourceLoc loc)
-{
+void BuiltinLowerContext::setCurrentLoc(il::support::SourceLoc loc) {
     lowerer_->curLoc = loc;
 }
 
@@ -645,8 +587,7 @@ void BuiltinLowerContext::setCurrentLoc(il::support::SourceLoc loc)
 /// @details Forwards to @ref Lowerer::ilBoolTy so all boolean operations share
 ///          the same type handle.
 /// @return Boolean IL type.
-il::core::Type BuiltinLowerContext::boolType() const
-{
+il::core::Type BuiltinLowerContext::boolType() const {
     return lowering_.ilBoolTy();
 }
 
@@ -659,8 +600,7 @@ il::core::Type BuiltinLowerContext::boolType() const
 /// @return IL value produced by the runtime call.
 il::core::Value BuiltinLowerContext::emitCall(il::core::Type type,
                                               const char *runtime,
-                                              const std::vector<il::core::Value> &args)
-{
+                                              const std::vector<il::core::Value> &args) {
     // Use lowerer_->emitCallRet to ensure runtime tracking happens
     return lowerer_->emitCallRet(type, runtime, args);
 }
@@ -674,8 +614,7 @@ il::core::Value BuiltinLowerContext::emitCall(il::core::Type type,
 /// @return Resulting IL value.
 il::core::Value BuiltinLowerContext::emitUnary(il::core::Opcode opcode,
                                                il::core::Type type,
-                                               il::core::Value value)
-{
+                                               il::core::Value value) {
     return lowering_.emitUnary(opcode, type, value);
 }
 
@@ -690,8 +629,7 @@ il::core::Value BuiltinLowerContext::emitUnary(il::core::Opcode opcode,
 il::core::Value BuiltinLowerContext::emitBinary(il::core::Opcode opcode,
                                                 il::core::Type type,
                                                 il::core::Value lhs,
-                                                il::core::Value rhs)
-{
+                                                il::core::Value rhs) {
     return lowering_.emitBinary(opcode, type, lhs, rhs);
 }
 
@@ -700,8 +638,7 @@ il::core::Value BuiltinLowerContext::emitBinary(il::core::Opcode opcode,
 /// @param type Type of the value being loaded.
 /// @param addr Address to load from.
 /// @return Loaded IL value.
-il::core::Value BuiltinLowerContext::emitLoad(il::core::Type type, il::core::Value addr)
-{
+il::core::Value BuiltinLowerContext::emitLoad(il::core::Type type, il::core::Value addr) {
     return lowering_.emitLoad(type, addr);
 }
 
@@ -710,8 +647,7 @@ il::core::Value BuiltinLowerContext::emitLoad(il::core::Type type, il::core::Val
 ///          helpers that return results via out-parameters.
 /// @param bytes Number of bytes to allocate.
 /// @return IL value representing the address of the allocation.
-il::core::Value BuiltinLowerContext::emitAlloca(int bytes)
-{
+il::core::Value BuiltinLowerContext::emitAlloca(int bytes) {
     return lowering_.emitAlloca(bytes);
 }
 
@@ -723,15 +659,13 @@ il::core::Value BuiltinLowerContext::emitAlloca(int bytes)
 /// @param f Target when @p cond is false.
 void BuiltinLowerContext::emitCBr(il::core::Value cond,
                                   il::core::BasicBlock *t,
-                                  il::core::BasicBlock *f)
-{
+                                  il::core::BasicBlock *f) {
     lowering_.emitCBr(cond, t, f);
 }
 
 /// @brief Emit a trap instruction signalling an unrecoverable error.
 /// @details Defers to the lowerer so diagnostics inherit the current location.
-void BuiltinLowerContext::emitTrap()
-{
+void BuiltinLowerContext::emitTrap() {
     lowerer_->emitTrap();
 }
 
@@ -739,8 +673,7 @@ void BuiltinLowerContext::emitTrap()
 /// @details Allows builtin lowering helpers to continue emitting instructions in
 ///          newly created blocks after control flow splits.
 /// @param block Block that should become current.
-void BuiltinLowerContext::setCurrentBlock(il::core::BasicBlock *block)
-{
+void BuiltinLowerContext::setCurrentBlock(il::core::BasicBlock *block) {
     lowerer_->context().setCurrent(block);
 }
 
@@ -750,8 +683,7 @@ void BuiltinLowerContext::setCurrentBlock(il::core::BasicBlock *block)
 ///          is unavailable.
 /// @param hint Semantic hint that seeds the label.
 /// @return Fresh block label string.
-std::string BuiltinLowerContext::makeBlockLabel(const char *hint)
-{
+std::string BuiltinLowerContext::makeBlockLabel(const char *hint) {
     return lowering_.makeBlockLabel(hint);
 }
 
@@ -764,8 +696,7 @@ std::string BuiltinLowerContext::makeBlockLabel(const char *hint)
 /// @param trapHint Label hint for the failure block.
 /// @return Pair of basic blocks representing success and failure continuations.
 BuiltinLowerContext::BranchPair BuiltinLowerContext::createGuardBlocks(const char *contHint,
-                                                                       const char *trapHint)
-{
+                                                                       const char *trapHint) {
     BranchPair pair{};
     Lowerer::ProcedureContext &procCtx = lowerer_->context();
     il::core::Function *func = procCtx.function();
@@ -780,8 +711,7 @@ BuiltinLowerContext::BranchPair BuiltinLowerContext::createGuardBlocks(const cha
     lowerer_->builder->addBlock(*func, contLabel);
     lowerer_->builder->addBlock(*func, trapLabel);
 
-    const auto findBlock = [&](const std::string &label)
-    {
+    const auto findBlock = [&](const std::string &label) {
         auto it = std::find_if(func->blocks.begin(),
                                func->blocks.end(),
                                [&](const il::core::BasicBlock &bb) { return bb.label == label; });
@@ -790,9 +720,9 @@ BuiltinLowerContext::BranchPair BuiltinLowerContext::createGuardBlocks(const cha
     };
 
     auto originIt =
-        std::find_if(func->blocks.begin(),
-                     func->blocks.end(),
-                     [&](const il::core::BasicBlock &bb) { return bb.label == originLabel; });
+        std::find_if(func->blocks.begin(), func->blocks.end(), [&](const il::core::BasicBlock &bb) {
+            return bb.label == originLabel;
+        });
     assert(originIt != func->blocks.end());
     procCtx.setCurrent(&*originIt);
 
@@ -806,8 +736,7 @@ BuiltinLowerContext::BranchPair BuiltinLowerContext::createGuardBlocks(const cha
 ///          pointers so lowering logic can emit structured control flow around
 ///          conversion traps.
 /// @return Structure containing block pointers for the VAL builtin guards.
-BuiltinLowerContext::ValBlocks BuiltinLowerContext::createValBlocks()
-{
+BuiltinLowerContext::ValBlocks BuiltinLowerContext::createValBlocks() {
     ValBlocks blocks{};
     Lowerer::ProcedureContext &procCtx = lowerer_->context();
     il::core::Function *func = procCtx.function();
@@ -826,8 +755,7 @@ BuiltinLowerContext::ValBlocks BuiltinLowerContext::createValBlocks()
     lowerer_->builder->addBlock(*func, nanLabel);
     lowerer_->builder->addBlock(*func, overflowLabel);
 
-    const auto findBlock = [&](const std::string &label)
-    {
+    const auto findBlock = [&](const std::string &label) {
         auto it = std::find_if(func->blocks.begin(),
                                func->blocks.end(),
                                [&](const il::core::BasicBlock &bb) { return bb.label == label; });
@@ -836,9 +764,9 @@ BuiltinLowerContext::ValBlocks BuiltinLowerContext::createValBlocks()
     };
 
     auto originIt =
-        std::find_if(func->blocks.begin(),
-                     func->blocks.end(),
-                     [&](const il::core::BasicBlock &bb) { return bb.label == originLabel; });
+        std::find_if(func->blocks.begin(), func->blocks.end(), [&](const il::core::BasicBlock &bb) {
+            return bb.label == originLabel;
+        });
     assert(originIt != func->blocks.end());
     procCtx.setCurrent(&*originIt);
 
@@ -853,8 +781,7 @@ BuiltinLowerContext::ValBlocks BuiltinLowerContext::createValBlocks()
 /// @details Emits a sentinel CastFpToSiRteChk instruction with NaN input to
 ///          surface runtime diagnostics, then emits a trap.
 /// @param loc Source location associated with the failing conversion.
-void BuiltinLowerContext::emitConversionTrap(il::support::SourceLoc loc)
-{
+void BuiltinLowerContext::emitConversionTrap(il::support::SourceLoc loc) {
     setCurrentLoc(loc);
     il::core::Value sentinel =
         lowerer_->emitUnary(Opcode::CastFpToSiRteChk,
@@ -871,8 +798,7 @@ void BuiltinLowerContext::emitConversionTrap(il::support::SourceLoc loc)
 ///          progressing.
 /// @param ctx Builtin lowering context.
 /// @return Lowered builtin result.
-Lowerer::RVal lowerGenericBuiltin(BuiltinLowerContext &ctx)
-{
+Lowerer::RVal lowerGenericBuiltin(BuiltinLowerContext &ctx) {
     const Variant *variant = ctx.selectVariant();
     if (!variant)
         return ctx.makeZeroResult();
@@ -894,10 +820,8 @@ Lowerer::RVal lowerGenericBuiltin(BuiltinLowerContext &ctx)
 /// @param ctx Builtin lowering context.
 /// @param variant Variant describing how to lower the builtin.
 /// @return Lowered builtin result.
-Lowerer::RVal emitBuiltinVariant(BuiltinLowerContext &ctx, const Variant &variant)
-{
-    switch (variant.kind)
-    {
+Lowerer::RVal emitBuiltinVariant(BuiltinLowerContext &ctx, const Variant &variant) {
+    switch (variant.kind) {
         case Variant::Kind::CallRuntime:
             return emitCallRuntime(ctx, variant);
         case Variant::Kind::EmitUnary:
@@ -908,8 +832,7 @@ Lowerer::RVal emitBuiltinVariant(BuiltinLowerContext &ctx, const Variant &varian
     return ctx.makeZeroResult();
 }
 
-namespace
-{
+namespace {
 
 /// @brief Emit a variant that calls directly into the runtime library.
 /// @details Lowers all specified arguments, emits the runtime call, and packages
@@ -917,12 +840,10 @@ namespace
 /// @param ctx Builtin lowering context.
 /// @param variant Variant metadata describing arguments and runtime symbol.
 /// @return Lowered builtin result.
-Lowerer::RVal emitCallRuntime(BuiltinLowerContext &ctx, const Variant &variant)
-{
+Lowerer::RVal emitCallRuntime(BuiltinLowerContext &ctx, const Variant &variant) {
     std::vector<Value> callArgs;
     callArgs.reserve(variant.arguments.size());
-    for (const auto &argSpec : variant.arguments)
-    {
+    for (const auto &argSpec : variant.arguments) {
         Lowerer::RVal &argVal = ctx.applyTransforms(argSpec, argSpec.transforms);
         callArgs.push_back(argVal.value);
     }
@@ -938,8 +859,7 @@ Lowerer::RVal emitCallRuntime(BuiltinLowerContext &ctx, const Variant &variant)
 /// @param ctx Builtin lowering context.
 /// @param variant Variant metadata describing the unary operation.
 /// @return Lowered builtin result.
-Lowerer::RVal emitUnary(BuiltinLowerContext &ctx, const Variant &variant)
-{
+Lowerer::RVal emitUnary(BuiltinLowerContext &ctx, const Variant &variant) {
     assert(!variant.arguments.empty() && "unary builtin requires an operand");
     const auto &argSpec = variant.arguments.front();
     Lowerer::RVal &argVal = ctx.applyTransforms(argSpec, argSpec.transforms);
@@ -955,10 +875,8 @@ Lowerer::RVal emitUnary(BuiltinLowerContext &ctx, const Variant &variant)
 /// @param ctx Builtin lowering context.
 /// @param variant Variant metadata accompanying the builtin.
 /// @return Lowered builtin result.
-Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant)
-{
-    switch (ctx.call().builtin)
-    {
+Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant) {
+    switch (ctx.call().builtin) {
         case BuiltinCallExpr::Builtin::Cint:
             return lowerNumericConversion(
                 ctx, variant, IlType(IlKind::I64), "cint_ok", "cint_trap");
@@ -971,8 +889,7 @@ Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant)
         case BuiltinCallExpr::Builtin::Val:
             return lowerValBuiltin(ctx, variant);
         default:
-            if (auto *diag = ctx.lowerer().diagnosticEmitter())
-            {
+            if (auto *diag = ctx.lowerer().diagnosticEmitter()) {
                 ctx.setCurrentLoc(ctx.call().loc);
                 diag->emit(il::support::Severity::Error,
                            "B4003",
@@ -986,11 +903,9 @@ Lowerer::RVal emitCustom(BuiltinLowerContext &ctx, const Variant &variant)
 
 } // namespace
 
-namespace builtins
-{
+namespace builtins {
 
-namespace
-{
+namespace {
 
 using Builtin = BuiltinCallExpr::Builtin;
 
@@ -1000,8 +915,7 @@ using Builtin = BuiltinCallExpr::Builtin;
 ///          the majority of BASIC builtins.
 /// @param ctx Builtin lowering context describing the invocation.
 /// @return Lowered r-value generated by the generic dispatcher.
-Lowerer::RVal lowerDefaultBuiltin(BuiltinLowerContext &ctx)
-{
+Lowerer::RVal lowerDefaultBuiltin(BuiltinLowerContext &ctx) {
     return lowerGenericBuiltin(ctx);
 }
 
@@ -1011,13 +925,10 @@ Lowerer::RVal lowerDefaultBuiltin(BuiltinLowerContext &ctx)
 /// @details Iterates the builtin enumeration and binds @ref lowerDefaultBuiltin
 ///          except for file I/O intrinsics that are emitted through dedicated
 ///          lowering routines elsewhere.
-void registerDefaultBuiltins()
-{
-    for (std::size_t ordinal = 0; ordinal <= static_cast<std::size_t>(Builtin::Err); ++ordinal)
-    {
+void registerDefaultBuiltins() {
+    for (std::size_t ordinal = 0; ordinal <= static_cast<std::size_t>(Builtin::Err); ++ordinal) {
         auto builtin = static_cast<Builtin>(ordinal);
-        switch (builtin)
-        {
+        switch (builtin) {
             case Builtin::Eof:
             case Builtin::Lof:
             case Builtin::Loc:

@@ -32,11 +32,9 @@
 
 #include "viper/il/IRBuilder.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-namespace pipeline_detail
-{
+namespace pipeline_detail {
 /// @brief Translate a BASIC AST type enumeration into an IL core type handle.
 ///
 /// @details Lowering frequently needs to turn semantic types expressed by the
@@ -52,8 +50,7 @@ namespace pipeline_detail
 /// @param ty BASIC type enumeration value.
 /// @return Concrete IL type used during lowering. Defaults to `I64` for
 ///         robustness when the caller passes an unrecognised type.
-il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty)
-{
+il::core::Type coreTypeForAstType(::il::frontends::basic::Type ty) {
     return type_conv::astToIlType(ty);
 }
 } // namespace pipeline_detail
@@ -83,8 +80,7 @@ ProgramLowering::ProgramLowering(Lowerer &lowerer) : lowerer(lowerer) {}
 ///
 /// @param prog AST representing the BASIC program.
 /// @param module IL module receiving the lowered output.
-void ProgramLowering::run(const Program &prog, il::core::Module &module)
-{
+void ProgramLowering::run(const Program &prog, il::core::Module &module) {
     lowerer.mod = &module;
     build::IRBuilder builder(module);
     lowerer.builder = &builder;

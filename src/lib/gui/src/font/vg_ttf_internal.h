@@ -73,8 +73,7 @@
 ///          tables present in the file. Each entry records the table's 4-byte
 ///          tag, a checksum for integrity verification, the byte offset from
 ///          the start of the file, and the table's length in bytes.
-typedef struct ttf_table
-{
+typedef struct ttf_table {
     uint32_t tag; ///< 4-byte table identifier (e.g. 'head', 'cmap') packed as a big-endian uint32.
     uint32_t checksum; ///< Checksum of the table data for integrity verification.
     uint32_t
@@ -93,8 +92,7 @@ typedef struct ttf_table
 ///          encloses all glyphs, and the format used by the 'loca' table to
 ///          index glyph data. Only the fields needed by the rasterizer are
 ///          stored here; the full 54-byte table is not retained.
-typedef struct ttf_head
-{
+typedef struct ttf_head {
     uint16_t units_per_em; ///< Number of font design units per em square (typically 1000 or 2048).
     int16_t x_min;         ///< Minimum x-coordinate across all glyph bounding boxes, in font units.
     int16_t y_min;         ///< Minimum y-coordinate across all glyph bounding boxes, in font units.
@@ -116,8 +114,7 @@ typedef struct ttf_head
 ///          horizontal metric entries in the 'hmtx' table. These values are
 ///          in font design units and must be scaled to pixel size by the
 ///          caller.
-typedef struct ttf_hhea
-{
+typedef struct ttf_hhea {
     int16_t ascent;  ///< Typographic ascent in font units (distance from baseline to top of tallest
                      ///< glyph).
     int16_t descent; ///< Typographic descent in font units (negative; distance from baseline to
@@ -140,8 +137,7 @@ typedef struct ttf_hhea
 ///          tables. Only the glyph count is retained here; the full table
 ///          contains additional maximums for composite glyphs, instruction
 ///          storage, etc., which are not needed by this implementation.
-typedef struct ttf_maxp
-{
+typedef struct ttf_maxp {
     uint16_t num_glyphs; ///< Total number of glyphs in the font (including the .notdef glyph at
                          ///< index 0).
 } ttf_maxp_t;
@@ -158,8 +154,7 @@ typedef struct ttf_maxp
 ///          from the pen position to the left edge of the glyph's bounding box.
 ///          Both values are in font design units and must be scaled to the
 ///          target pixel size.
-typedef struct ttf_hmtx_entry
-{
+typedef struct ttf_hmtx_entry {
     uint16_t advance_width;    ///< Horizontal advance width in font units.
     int16_t left_side_bearing; ///< Left-side bearing (horizontal offset from pen to glyph bbox left
                                ///< edge) in font units.
@@ -177,8 +172,7 @@ typedef struct ttf_hmtx_entry
 ///          to bring the glyphs closer together. The left and right fields are
 ///          glyph indices (not codepoints), and the value is a signed offset
 ///          in font design units.
-typedef struct ttf_kern_pair
-{
+typedef struct ttf_kern_pair {
     uint16_t left;  ///< Glyph index of the left (preceding) glyph in the pair.
     uint16_t right; ///< Glyph index of the right (following) glyph in the pair.
     int16_t value;  ///< Kerning adjustment in font units (negative = move glyphs closer together).
@@ -198,8 +192,7 @@ typedef struct ttf_kern_pair
 ///          This ensures that the same codepoint at different pixel sizes
 ///          occupies separate cache slots. The @c next pointer forms a singly-
 ///          linked list of entries that hash to the same bucket.
-typedef struct vg_cache_entry
-{
+typedef struct vg_cache_entry {
     uint64_t key; ///< Composite key: (size_bits << 32) | codepoint, where size_bits is the IEEE 754
                   ///< representation of the float size.
     struct vg_glyph glyph; ///< The rasterised glyph data (including the alpha-coverage bitmap).
@@ -242,8 +235,7 @@ typedef struct vg_cache_entry
 ///          the VG_CACHE_MAX_MEMORY limit. When the limit is exceeded, the
 ///          entire cache is flushed. The cache is owned by its parent vg_font
 ///          and is destroyed when the font is destroyed.
-typedef struct vg_glyph_cache
-{
+typedef struct vg_glyph_cache {
     vg_cache_entry_t **buckets; ///< Array of bucket head pointers (each bucket is a singly-linked
                                 ///< list of cache entries).
     size_t bucket_count;        ///< Current number of hash buckets (always a power of two).
@@ -267,8 +259,7 @@ typedef struct vg_glyph_cache
 ///
 ///          All heap-allocated members (data, cmap arrays, kern_pairs, cache)
 ///          are freed by vg_font_destroy.
-struct vg_font
-{
+struct vg_font {
     //-- Raw TTF data ----------------------------------------------------------
 
     uint8_t *data;    ///< Pointer to the raw TTF file data buffer.
@@ -340,8 +331,7 @@ struct vg_font
 ///
 /// @param p Pointer to the byte to read.
 /// @return The unsigned 8-bit value at the given position.
-static inline uint8_t ttf_read_u8(const uint8_t *p)
-{
+static inline uint8_t ttf_read_u8(const uint8_t *p) {
     return p[0];
 }
 
@@ -349,8 +339,7 @@ static inline uint8_t ttf_read_u8(const uint8_t *p)
 ///
 /// @param p Pointer to the byte to read.
 /// @return The signed 8-bit value at the given position.
-static inline int8_t ttf_read_i8(const uint8_t *p)
-{
+static inline int8_t ttf_read_i8(const uint8_t *p) {
     return (int8_t)p[0];
 }
 
@@ -363,8 +352,7 @@ static inline int8_t ttf_read_i8(const uint8_t *p)
 ///
 /// @param p Pointer to the first of two bytes to read.
 /// @return The unsigned 16-bit value decoded from big-endian byte order.
-static inline uint16_t ttf_read_u16(const uint8_t *p)
-{
+static inline uint16_t ttf_read_u16(const uint8_t *p) {
     return ((uint16_t)p[0] << 8) | p[1];
 }
 
@@ -375,8 +363,7 @@ static inline uint16_t ttf_read_u16(const uint8_t *p)
 ///
 /// @param p Pointer to the first of two bytes to read.
 /// @return The signed 16-bit value decoded from big-endian byte order.
-static inline int16_t ttf_read_i16(const uint8_t *p)
-{
+static inline int16_t ttf_read_i16(const uint8_t *p) {
     return (int16_t)(((uint16_t)p[0] << 8) | p[1]);
 }
 
@@ -388,8 +375,7 @@ static inline int16_t ttf_read_i16(const uint8_t *p)
 ///
 /// @param p Pointer to the first of four bytes to read.
 /// @return The unsigned 32-bit value decoded from big-endian byte order.
-static inline uint32_t ttf_read_u32(const uint8_t *p)
-{
+static inline uint32_t ttf_read_u32(const uint8_t *p) {
     return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
 }
 
@@ -399,8 +385,7 @@ static inline uint32_t ttf_read_u32(const uint8_t *p)
 ///
 /// @param p Pointer to the first of four bytes to read.
 /// @return The signed 32-bit value decoded from big-endian byte order.
-static inline int32_t ttf_read_i32(const uint8_t *p)
-{
+static inline int32_t ttf_read_i32(const uint8_t *p) {
     return (int32_t)ttf_read_u32(p);
 }
 
@@ -415,8 +400,7 @@ static inline int32_t ttf_read_i32(const uint8_t *p)
 ///
 /// @param p Pointer to the first of two bytes to read.
 /// @return The decoded floating-point value.
-static inline float ttf_read_f2dot14(const uint8_t *p)
-{
+static inline float ttf_read_f2dot14(const uint8_t *p) {
     int16_t val = ttf_read_i16(p);
     return (float)val / 16384.0f;
 }
@@ -432,8 +416,7 @@ static inline float ttf_read_f2dot14(const uint8_t *p)
 ///
 /// @param p Pointer to the first of four bytes to read.
 /// @return The decoded floating-point value.
-static inline float ttf_read_fixed(const uint8_t *p)
-{
+static inline float ttf_read_fixed(const uint8_t *p) {
     int32_t val = ttf_read_i32(p);
     return (float)val / 65536.0f;
 }

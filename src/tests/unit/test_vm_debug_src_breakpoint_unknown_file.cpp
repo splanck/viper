@@ -18,8 +18,7 @@
 #include "viper/vm/debug/Debug.hpp"
 #include <cassert>
 
-int main()
-{
+int main() {
     il::vm::DebugCtrl debug;
     il::support::SourceManager sm;
 

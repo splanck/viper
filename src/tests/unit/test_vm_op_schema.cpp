@@ -20,13 +20,11 @@
 #include <cassert>
 #include <string_view>
 
-int main()
-{
+int main() {
     const auto &schema = il::vm::generated::kOpSchema;
     const auto &handlers = il::vm::generated::opcodeHandlers();
 
-    for (size_t idx = 0; idx < il::core::kNumOpcodes; ++idx)
-    {
+    for (size_t idx = 0; idx < il::core::kNumOpcodes; ++idx) {
         const auto &info = il::core::kOpcodeTable[idx];
         const auto &entry = schema[idx];
         std::string_view mnemonic(entry.mnemonic ? entry.mnemonic : "");
@@ -36,8 +34,7 @@ int main()
         assert(entry.resultType == info.resultType && "result type mismatch");
         assert(entry.operandMin == info.numOperandsMin && "operand min mismatch");
         assert(entry.operandMax == info.numOperandsMax && "operand max mismatch");
-        for (size_t typeIdx = 0; typeIdx < il::core::kMaxOperandCategories; ++typeIdx)
-        {
+        for (size_t typeIdx = 0; typeIdx < il::core::kMaxOperandCategories; ++typeIdx) {
             assert(entry.operandTypes[typeIdx] == info.operandTypes[typeIdx] &&
                    "operand type mismatch");
         }
@@ -48,8 +45,7 @@ int main()
 
         const bool handlerPresent = handlers[idx] != nullptr;
         assert(entry.hasHandler == handlerPresent && "handler presence mismatch");
-        if (info.vmDispatch != il::core::VMDispatch::None)
-        {
+        if (info.vmDispatch != il::core::VMDispatch::None) {
             assert(handlerPresent && "dispatchable opcode missing handler");
         }
     }

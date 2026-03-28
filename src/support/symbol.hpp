@@ -18,14 +18,12 @@
 #include <cstdint>
 #include <functional>
 
-namespace il::support
-{
+namespace il::support {
 
 /// @brief Opaque identifier for interned strings.
 /// @invariant 0 denotes an invalid symbol.
 /// @ownership Value type, no ownership semantics.
-struct Symbol
-{
+struct Symbol {
     uint32_t id = 0;
 
     /// @brief Check whether the symbol is valid (non-zero id).
@@ -46,12 +44,10 @@ bool operator==(Symbol a, Symbol b) noexcept;
 bool operator!=(Symbol a, Symbol b) noexcept;
 } // namespace il::support
 
-namespace std
-{
+namespace std {
 /// @brief Standard hash specialization for Symbol.
 /// @details Enables Symbol to be used as a key in unordered containers.
-template <> struct hash<il::support::Symbol>
-{
+template <> struct hash<il::support::Symbol> {
     /// @brief Compute the hash value for a symbol.
     /// @param s Symbol to hash.
     /// @return Hash value derived from the symbol's id.

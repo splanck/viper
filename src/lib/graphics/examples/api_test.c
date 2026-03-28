@@ -27,8 +27,7 @@
 /// What: Entry point that exercises API calls as a smoke test.
 /// Why:  Quickly reveal ABI or linkage issues in CI.
 /// How:  Calls a representative subset of the API and checks return values.
-int main(void)
-{
+int main(void) {
     printf("=== ViperGFX API Test ===\n");
     printf("Version: %s\n\n", vgfx_version_string());
 
@@ -40,8 +39,7 @@ int main(void)
     params.title = "Test Window";
 
     vgfx_window_t win = vgfx_create_window(&params);
-    if (!win)
-    {
+    if (!win) {
         fprintf(stderr, "FAIL: Window creation failed: %s\n", vgfx_get_last_error());
         return 1;
     }
@@ -51,8 +49,7 @@ int main(void)
     printf("Test 2: Getting window size...\n");
     int32_t w, h;
     vgfx_get_size(win, &w, &h);
-    if (w != 320 || h != 240)
-    {
+    if (w != 320 || h != 240) {
         fprintf(stderr, "FAIL: Expected 320x240, got %dx%d\n", w, h);
         return 1;
     }
@@ -62,8 +59,7 @@ int main(void)
     printf("Test 3: FPS settings...\n");
     vgfx_set_fps(win, 30);
     int32_t fps = vgfx_get_fps(win);
-    if (fps != 30)
-    {
+    if (fps != 30) {
         fprintf(stderr, "FAIL: Expected FPS=30, got %d\n", fps);
         return 1;
     }
@@ -72,13 +68,11 @@ int main(void)
     /* Test 4: Framebuffer access */
     printf("Test 4: Framebuffer access...\n");
     vgfx_framebuffer_t fb;
-    if (!vgfx_get_framebuffer(win, &fb))
-    {
+    if (!vgfx_get_framebuffer(win, &fb)) {
         fprintf(stderr, "FAIL: Get framebuffer failed: %s\n", vgfx_get_last_error());
         return 1;
     }
-    if (!fb.pixels || fb.width != 320 || fb.height != 240 || fb.stride != 1280)
-    {
+    if (!fb.pixels || fb.width != 320 || fb.height != 240 || fb.stride != 1280) {
         fprintf(stderr,
                 "FAIL: Invalid framebuffer (pixels=%p, w=%d, h=%d, stride=%d)\n",
                 (void *)fb.pixels,
@@ -93,8 +87,7 @@ int main(void)
     printf("Test 5: Clear screen...\n");
     vgfx_cls(win, VGFX_BLACK);
     uint8_t *corner_pixel = fb.pixels;
-    if (corner_pixel[0] != 0x00 || corner_pixel[1] != 0x00 || corner_pixel[2] != 0x00)
-    {
+    if (corner_pixel[0] != 0x00 || corner_pixel[1] != 0x00 || corner_pixel[2] != 0x00) {
         fprintf(stderr, "FAIL: Clear failed, pixel (0,0) not black\n");
         return 1;
     }
@@ -104,8 +97,7 @@ int main(void)
     printf("Test 6: Set and verify pixel...\n");
     vgfx_pset(win, 10, 10, VGFX_WHITE);
     uint8_t *pixel = fb.pixels + (10 * fb.stride) + (10 * 4);
-    if (pixel[0] != 0xFF || pixel[1] != 0xFF || pixel[2] != 0xFF || pixel[3] != 0xFF)
-    {
+    if (pixel[0] != 0xFF || pixel[1] != 0xFF || pixel[2] != 0xFF || pixel[3] != 0xFF) {
         fprintf(stderr,
                 "FAIL: Pixel at (10,10) expected RGBA(255,255,255,255), got (%d,%d,%d,%d)\n",
                 pixel[0],
@@ -130,8 +122,7 @@ int main(void)
     vgfx_color_t orange = vgfx_rgb(255, 128, 0);
     uint8_t r, g, b;
     vgfx_color_to_rgb(orange, &r, &g, &b);
-    if (r != 255 || g != 128 || b != 0)
-    {
+    if (r != 255 || g != 128 || b != 0) {
         fprintf(stderr, "FAIL: Color conversion failed, got RGB(%d,%d,%d)\n", r, g, b);
         return 1;
     }
@@ -139,8 +130,7 @@ int main(void)
 
     /* Test 9: Input state (should be all clear) */
     printf("Test 9: Input state...\n");
-    if (vgfx_key_down(win, VGFX_KEY_ESCAPE))
-    {
+    if (vgfx_key_down(win, VGFX_KEY_ESCAPE)) {
         fprintf(stderr, "FAIL: ESC key should not be down\n");
         return 1;
     }
@@ -151,8 +141,7 @@ int main(void)
     /* Test 10: Event queue (should be empty) */
     printf("Test 10: Event queue...\n");
     vgfx_event_t event;
-    if (vgfx_poll_event(win, &event))
-    {
+    if (vgfx_poll_event(win, &event)) {
         fprintf(stderr, "FAIL: Event queue should be empty\n");
         return 1;
     }
@@ -160,8 +149,7 @@ int main(void)
 
     /* Test 11: Update (should succeed even with stub backend) */
     printf("Test 11: Update window...\n");
-    if (!vgfx_update(win))
-    {
+    if (!vgfx_update(win)) {
         fprintf(stderr, "FAIL: Update failed: %s\n", vgfx_get_last_error());
         return 1;
     }

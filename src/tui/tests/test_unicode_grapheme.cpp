@@ -51,8 +51,7 @@ static const char kCombiningGrave[] = "\xCC\x80"; // U+0300
 //===----------------------------------------------------------------------===//
 
 // Test combining marks have zero width.
-void test_combining_marks_width()
-{
+void test_combining_marks_width() {
     // U+0301 COMBINING ACUTE ACCENT
     ASSERT_EQ(char_width(0x0301), 0);
     // U+0300 COMBINING GRAVE ACCENT
@@ -66,8 +65,7 @@ void test_combining_marks_width()
 }
 
 // Test full-width CJK characters have width 2.
-void test_cjk_full_width()
-{
+void test_cjk_full_width() {
     // Common CJK ideographs
     ASSERT_EQ(char_width(0x4E2D), 2); // 中
     ASSERT_EQ(char_width(0x6587), 2); // 文
@@ -84,8 +82,7 @@ void test_cjk_full_width()
 }
 
 // Test ASCII and other characters have width 1.
-void test_normal_width()
-{
+void test_normal_width() {
     ASSERT_EQ(char_width('A'), 1);
     ASSERT_EQ(char_width('z'), 1);
     ASSERT_EQ(char_width(' '), 1);
@@ -99,8 +96,7 @@ void test_normal_width()
 //===----------------------------------------------------------------------===//
 
 // Test decoding base + multiple combining marks.
-void test_decode_multiple_combining()
-{
+void test_decode_multiple_combining() {
     // "e" + combining acute + combining grave = 3 code points
     std::string input = std::string("e") + kCombiningAcute + kCombiningGrave;
     auto s = decode_utf8(input);
@@ -116,8 +112,7 @@ void test_decode_multiple_combining()
 }
 
 // Test decoding mixed ASCII and CJK.
-void test_decode_mixed_ascii_cjk()
-{
+void test_decode_mixed_ascii_cjk() {
     // "a中b文c"
     std::string input = std::string("a") + kCjkZhong + "b" + kCjkWen + "c";
     auto s = decode_utf8(input);
@@ -135,8 +130,7 @@ void test_decode_mixed_ascii_cjk()
 }
 
 // Test CJK string width calculation.
-void test_cjk_string_width()
-{
+void test_cjk_string_width() {
     // "你好" (2 characters, each width 2 = total 4)
     auto s = decode_utf8("\xE4\xBD\xA0\xE5\xA5\xBD");
     ASSERT_EQ(s.size(), 2);
@@ -151,8 +145,7 @@ void test_cjk_string_width()
 //===----------------------------------------------------------------------===//
 
 // Test TextBuffer stores and retrieves Unicode correctly.
-void test_buffer_unicode_storage()
-{
+void test_buffer_unicode_storage() {
     TextBuffer buf;
     // Line with combining mark: "café" where é = e + combining acute
     std::string cafe = std::string("caf") + "e" + kCombiningAcute;
@@ -164,8 +157,7 @@ void test_buffer_unicode_storage()
 }
 
 // Test TextBuffer insert with CJK.
-void test_buffer_insert_cjk()
-{
+void test_buffer_insert_cjk() {
     TextBuffer buf;
     buf.load("ab");
     // Insert 中 between a and b
@@ -175,8 +167,7 @@ void test_buffer_insert_cjk()
 }
 
 // Test TextBuffer erase within CJK character.
-void test_buffer_erase_cjk()
-{
+void test_buffer_erase_cjk() {
     TextBuffer buf;
     std::string aZhongB = std::string("a") + kCjkZhong + "b";
     buf.load(aZhongB);
@@ -186,8 +177,7 @@ void test_buffer_erase_cjk()
 }
 
 // Test TextBuffer erase combining sequence as unit.
-void test_buffer_erase_combining()
-{
+void test_buffer_erase_combining() {
     TextBuffer buf;
     std::string aeAcuteB = std::string("a") + "e" + kCombiningAcute + "b";
     buf.load(aeAcuteB);
@@ -201,8 +191,7 @@ void test_buffer_erase_combining()
 //===----------------------------------------------------------------------===//
 
 // Test cursor navigation over CJK (full-width) characters.
-void test_view_cursor_cjk()
-{
+void test_view_cursor_cjk() {
     Theme theme;
     TextBuffer buf;
     // "a中b" = a(1) + 中(2) + b(1) = 4 display columns
@@ -241,8 +230,7 @@ void test_view_cursor_cjk()
 }
 
 // Test cursor navigation over combining marks.
-void test_view_cursor_combining()
-{
+void test_view_cursor_combining() {
     Theme theme;
     TextBuffer buf;
     // "aéb" where é = e + combining acute
@@ -272,8 +260,7 @@ void test_view_cursor_combining()
 }
 
 // Test moveCursorToOffset with CJK content.
-void test_view_move_to_offset_cjk()
-{
+void test_view_move_to_offset_cjk() {
     Theme theme;
     TextBuffer buf;
     // "中文" = two CJK chars, 6 bytes, 4 display columns
@@ -297,8 +284,7 @@ void test_view_move_to_offset_cjk()
 }
 
 // Test End key with mixed-width line.
-void test_view_end_key_mixed()
-{
+void test_view_end_key_mixed() {
     Theme theme;
     TextBuffer buf;
     // "a中b" = 4 display columns
@@ -315,8 +301,7 @@ void test_view_end_key_mixed()
 }
 
 // Test Home key resets to column 0.
-void test_view_home_key()
-{
+void test_view_home_key() {
     Theme theme;
     TextBuffer buf;
     std::string aZhongB = std::string("a") + kCjkZhong + "b";
@@ -342,8 +327,7 @@ void test_view_home_key()
 //===----------------------------------------------------------------------===//
 
 // Test rendering CJK characters to screen buffer.
-void test_render_cjk()
-{
+void test_render_cjk() {
     Theme theme;
     TextBuffer buf;
     buf.load(kCjkZhong); // 中
@@ -362,8 +346,7 @@ void test_render_cjk()
 }
 
 // Test rendering combining mark sequence.
-void test_render_combining()
-{
+void test_render_combining() {
     Theme theme;
     TextBuffer buf;
     // "é" = e + combining acute
@@ -387,8 +370,7 @@ void test_render_combining()
 }
 
 // Test rendering mixed ASCII and CJK.
-void test_render_mixed()
-{
+void test_render_mixed() {
     Theme theme;
     TextBuffer buf;
     std::string aZhongB = std::string("a") + kCjkZhong + "b";
@@ -418,8 +400,7 @@ void test_render_mixed()
 //===----------------------------------------------------------------------===//
 
 // Test vertical navigation with varying line widths.
-void test_view_vertical_nav_mixed()
-{
+void test_view_vertical_nav_mixed() {
     Theme theme;
     TextBuffer buf;
     // Line 0: "中文" (4 columns)
@@ -451,8 +432,7 @@ void test_view_vertical_nav_mixed()
 }
 
 // Test selection with CJK characters.
-void test_view_selection_cjk()
-{
+void test_view_selection_cjk() {
     Theme theme;
     TextBuffer buf;
     std::string aZhongB = std::string("a") + kCjkZhong + "b";
@@ -493,8 +473,7 @@ void test_view_selection_cjk()
 // Main
 //===----------------------------------------------------------------------===//
 
-TEST(TUI, UnicodeGrapheme)
-{
+TEST(TUI, UnicodeGrapheme) {
     // char_width tests
     test_combining_marks_width();
     test_cjk_full_width();
@@ -528,8 +507,7 @@ TEST(TUI, UnicodeGrapheme)
     test_view_selection_cjk();
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

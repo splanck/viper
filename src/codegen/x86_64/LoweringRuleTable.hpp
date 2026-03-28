@@ -28,8 +28,7 @@
 /// This namespace contains all x86-64 specific code generation infrastructure,
 /// including instruction lowering, register allocation, and assembly emission.
 /// The code generator follows the System V AMD64 ABI for Unix-like systems.
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 struct ILInstr;
 class MIRBuilder;
@@ -62,8 +61,7 @@ class MIRBuilder;
 ///
 /// @see kLoweringRuleTable for the complete set of lowering rules
 /// @see MIRBuilder for the MIR construction interface
-namespace lowering
-{
+namespace lowering {
 
 /// @brief Emits x86-64 MIR for IL `add` instruction (integer addition).
 ///
@@ -449,8 +447,7 @@ void emitGEP(const ILInstr &instr, MIRBuilder &builder);
 /// ```
 ///
 /// @see RuleSpec::flags for usage in rule definitions
-enum class RuleFlags : std::uint8_t
-{
+enum class RuleFlags : std::uint8_t {
     /// @brief No special matching behavior; opcode must match exactly.
     None = 0,
 
@@ -468,8 +465,7 @@ enum class RuleFlags : std::uint8_t
 /// @param lhs The left-hand flag value.
 /// @param rhs The right-hand flag value.
 /// @return The combined flags.
-constexpr RuleFlags operator|(RuleFlags lhs, RuleFlags rhs) noexcept
-{
+constexpr RuleFlags operator|(RuleFlags lhs, RuleFlags rhs) noexcept {
     return static_cast<RuleFlags>(static_cast<std::uint8_t>(lhs) | static_cast<std::uint8_t>(rhs));
 }
 
@@ -477,8 +473,7 @@ constexpr RuleFlags operator|(RuleFlags lhs, RuleFlags rhs) noexcept
 /// @param lhs The left-hand flag value.
 /// @param rhs The right-hand flag value.
 /// @return The flags present in both operands.
-constexpr RuleFlags operator&(RuleFlags lhs, RuleFlags rhs) noexcept
-{
+constexpr RuleFlags operator&(RuleFlags lhs, RuleFlags rhs) noexcept {
     return static_cast<RuleFlags>(static_cast<std::uint8_t>(lhs) & static_cast<std::uint8_t>(rhs));
 }
 
@@ -486,8 +481,7 @@ constexpr RuleFlags operator&(RuleFlags lhs, RuleFlags rhs) noexcept
 /// @param flags The flags value to test.
 /// @param flag The specific flag to check for.
 /// @return True if the flag is set, false otherwise.
-constexpr bool hasFlag(RuleFlags flags, RuleFlags flag) noexcept
-{
+constexpr bool hasFlag(RuleFlags flags, RuleFlags flag) noexcept {
     return (flags & flag) != RuleFlags::None;
 }
 
@@ -508,8 +502,7 @@ constexpr bool hasFlag(RuleFlags flags, RuleFlags flag) noexcept
 /// require an exact match.
 ///
 /// @see OperandShape for combining patterns into instruction-level constraints
-enum class OperandKindPattern : std::uint8_t
-{
+enum class OperandKindPattern : std::uint8_t {
     /// @brief Matches any operand kind (value, label, or immediate).
     /// Use this for operands where the emit function handles all cases.
     Any,
@@ -558,8 +551,7 @@ enum class OperandKindPattern : std::uint8_t
 /// This matches instructions with exactly 2 operands, both of which must be values.
 ///
 /// @see RuleSpec for the complete rule definition structure
-struct OperandShape
-{
+struct OperandShape {
     /// @brief Minimum number of operands required for a match.
     std::uint8_t minArity{0};
 
@@ -612,8 +604,7 @@ struct OperandShape
 ///
 /// @see kLoweringRuleTable for the complete set of rules
 /// @see matchesRuleSpec() for the matching implementation
-struct RuleSpec
-{
+struct RuleSpec {
     /// @brief The IL opcode string to match.
     /// If RuleFlags::Prefix is set, this is a prefix (e.g., "icmp_" matches "icmp_eq").
     /// Otherwise, this must match the instruction's opcode exactly.

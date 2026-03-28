@@ -18,8 +18,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -27,16 +26,14 @@ extern "C" void vm_trap(const char *msg)
 // SetRGB / GetRGB
 // ============================================================================
 
-static void test_setrgb_getrgb_roundtrip()
-{
+static void test_setrgb_getrgb_roundtrip() {
     void *p = rt_pixels_new(10, 10);
     rt_pixels_set_rgb(p, 5, 5, 0x112233);
     assert(rt_pixels_get_rgb(p, 5, 5) == 0x112233);
     printf("test_setrgb_getrgb_roundtrip: PASSED\n");
 }
 
-static void test_setrgb_stores_full_alpha()
-{
+static void test_setrgb_stores_full_alpha() {
     // SetRGB should store 0xRRGGBBFF (alpha = 255)
     void *p = rt_pixels_new(4, 4);
     rt_pixels_set_rgb(p, 2, 2, 0xFF0000); // red
@@ -45,8 +42,7 @@ static void test_setrgb_stores_full_alpha()
     printf("test_setrgb_stores_full_alpha: PASSED\n");
 }
 
-static void test_getrgb_discards_alpha()
-{
+static void test_getrgb_discards_alpha() {
     // GetRGB should return 0x00RRGGBB regardless of stored alpha
     void *p = rt_pixels_new(4, 4);
     rt_pixels_set(p, 1, 1, 0xABCDEF42); // raw RGBA with alpha 0x42
@@ -59,8 +55,7 @@ static void test_getrgb_discards_alpha()
 // DrawLine
 // ============================================================================
 
-static void test_drawline_horizontal()
-{
+static void test_drawline_horizontal() {
     void *p = rt_pixels_new(20, 20);
     rt_pixels_draw_line(p, 0, 10, 19, 10, 0xFF0000); // red horizontal line
     for (int64_t x = 0; x < 20; x++)
@@ -71,8 +66,7 @@ static void test_drawline_horizontal()
     printf("test_drawline_horizontal: PASSED\n");
 }
 
-static void test_drawline_vertical()
-{
+static void test_drawline_vertical() {
     void *p = rt_pixels_new(20, 20);
     rt_pixels_draw_line(p, 5, 0, 5, 19, 0x00FF00); // green vertical line
     for (int64_t y = 0; y < 20; y++)
@@ -82,8 +76,7 @@ static void test_drawline_vertical()
     printf("test_drawline_vertical: PASSED\n");
 }
 
-static void test_drawline_endpoints_set()
-{
+static void test_drawline_endpoints_set() {
     void *p = rt_pixels_new(30, 30);
     rt_pixels_draw_line(p, 2, 3, 27, 18, 0x0000FF);
     // Start and end pixels must be set
@@ -96,8 +89,7 @@ static void test_drawline_endpoints_set()
 // DrawBox
 // ============================================================================
 
-static void test_drawbox_fills_all_pixels()
-{
+static void test_drawbox_fills_all_pixels() {
     void *p = rt_pixels_new(20, 20);
     rt_pixels_draw_box(p, 2, 3, 5, 4, 0xAABBCC); // 5x4 box at (2,3)
     for (int64_t y = 3; y < 7; y++)
@@ -111,8 +103,7 @@ static void test_drawbox_fills_all_pixels()
     printf("test_drawbox_fills_all_pixels: PASSED\n");
 }
 
-static void test_drawbox_clipped()
-{
+static void test_drawbox_clipped() {
     // Box extending beyond buffer — no crash, only in-bounds pixels set
     void *p = rt_pixels_new(10, 10);
     rt_pixels_draw_box(p, 8, 8, 100, 100, 0x123456);
@@ -125,8 +116,7 @@ static void test_drawbox_clipped()
 // DrawFrame
 // ============================================================================
 
-static void test_drawframe_outline_only()
-{
+static void test_drawframe_outline_only() {
     void *p = rt_pixels_new(10, 10);
     rt_pixels_draw_frame(p, 1, 1, 7, 7, 0xFF8800);
     // Corners must be set
@@ -144,8 +134,7 @@ static void test_drawframe_outline_only()
 // DrawDisc
 // ============================================================================
 
-static void test_drawdisc_center_set()
-{
+static void test_drawdisc_center_set() {
     void *p = rt_pixels_new(30, 30);
     rt_pixels_draw_disc(p, 15, 15, 8, 0x00FF00);
     assert(rt_pixels_get_rgb(p, 15, 15) == 0x00FF00); // center
@@ -153,8 +142,7 @@ static void test_drawdisc_center_set()
     printf("test_drawdisc_center_set: PASSED\n");
 }
 
-static void test_drawdisc_outside_clear()
-{
+static void test_drawdisc_outside_clear() {
     void *p = rt_pixels_new(30, 30);
     rt_pixels_draw_disc(p, 15, 15, 5, 0xFF0000);
     // Point clearly outside the disc (radius 5 from center 15,15)
@@ -167,8 +155,7 @@ static void test_drawdisc_outside_clear()
 // DrawRing
 // ============================================================================
 
-static void test_drawring_outline_set_interior_clear()
-{
+static void test_drawring_outline_set_interior_clear() {
     void *p = rt_pixels_new(40, 40);
     rt_pixels_draw_ring(p, 20, 20, 8, 0x8800FF);
     // A point on the ring (approximately at (20, 20-8) = (20, 12))
@@ -184,8 +171,7 @@ static void test_drawring_outline_set_interior_clear()
 // DrawEllipse
 // ============================================================================
 
-static void test_drawellipse_interior_set()
-{
+static void test_drawellipse_interior_set() {
     void *p = rt_pixels_new(40, 40);
     rt_pixels_draw_ellipse(p, 20, 20, 10, 5, 0x00AAFF);
     assert(rt_pixels_get_rgb(p, 20, 20) == 0x00AAFF); // center
@@ -199,8 +185,7 @@ static void test_drawellipse_interior_set()
 // DrawEllipseFrame
 // ============================================================================
 
-static void test_drawellipseframe_outline_set()
-{
+static void test_drawellipseframe_outline_set() {
     void *p = rt_pixels_new(40, 40);
     rt_pixels_draw_ellipse_frame(p, 20, 20, 10, 5, 0xFF5500);
     // Top of ellipse (20, 20-5) = (20, 15)
@@ -214,8 +199,7 @@ static void test_drawellipseframe_outline_set()
 // FloodFill
 // ============================================================================
 
-static void test_floodfill_fills_region()
-{
+static void test_floodfill_fills_region() {
     void *p = rt_pixels_new(10, 10);
     // Clear canvas is all black (0x000000FF internally, RGB = 0x000000)
     // Fill with red starting from center
@@ -227,8 +211,7 @@ static void test_floodfill_fills_region()
     printf("test_floodfill_fills_region: PASSED\n");
 }
 
-static void test_floodfill_respects_boundary()
-{
+static void test_floodfill_respects_boundary() {
     void *p = rt_pixels_new(20, 20);
     // Draw a white box border at (5,5) 10x10
     rt_pixels_draw_frame(p, 5, 5, 10, 10, 0xFFFFFF);
@@ -243,8 +226,7 @@ static void test_floodfill_respects_boundary()
     printf("test_floodfill_respects_boundary: PASSED\n");
 }
 
-static void test_floodfill_noop_when_same_color()
-{
+static void test_floodfill_noop_when_same_color() {
     void *p = rt_pixels_new(5, 5);
     rt_pixels_draw_box(p, 0, 0, 5, 5, 0xFF0000);
     // Fill with same color — should do nothing, no crash
@@ -257,8 +239,7 @@ static void test_floodfill_noop_when_same_color()
 // DrawThickLine
 // ============================================================================
 
-static void test_drawthickline_width()
-{
+static void test_drawthickline_width() {
     void *p = rt_pixels_new(40, 40);
     // Horizontal thick line with thickness 7 at y=20
     rt_pixels_draw_thick_line(p, 0, 20, 39, 20, 7, 0x804020);
@@ -275,8 +256,7 @@ static void test_drawthickline_width()
 // DrawTriangle
 // ============================================================================
 
-static void test_drawtriangle_interior()
-{
+static void test_drawtriangle_interior() {
     void *p = rt_pixels_new(30, 30);
     // Right triangle with vertices at (5,5), (25,5), (5,25)
     rt_pixels_draw_triangle(p, 5, 5, 25, 5, 5, 25, 0x00CC00);
@@ -293,8 +273,7 @@ static void test_drawtriangle_interior()
 // DrawBezier
 // ============================================================================
 
-static void test_drawbezier_endpoints()
-{
+static void test_drawbezier_endpoints() {
     void *p = rt_pixels_new(40, 40);
     // Bezier from (2,2) to (37,2) with control at (20,37)
     rt_pixels_draw_bezier(p, 2, 2, 20, 37, 37, 2, 0xCC0000);
@@ -307,8 +286,7 @@ static void test_drawbezier_endpoints()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     // SetRGB / GetRGB
     test_setrgb_getrgb_roundtrip();
     test_setrgb_stores_full_alpha();

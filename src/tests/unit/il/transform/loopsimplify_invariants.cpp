@@ -19,8 +19,7 @@
 using namespace il::core;
 using il::transform::Loop;
 
-TEST(LoopSimplify, LoopInfoCapturesLatchesAndExits)
-{
+TEST(LoopSimplify, LoopInfoCapturesLatchesAndExits) {
     Module M;
     Function F;
     F.name = "loops";
@@ -136,8 +135,7 @@ TEST(LoopSimplify, LoopInfoCapturesLatchesAndExits)
 }
 
 /// @brief Main.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

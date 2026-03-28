@@ -27,12 +27,10 @@ using namespace il::frontends::zia;
 using namespace il::support;
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Helper: compile Zia source and return the result.
-CompilerResult compileSource(SourceManager &sm, const std::string &source)
-{
+CompilerResult compileSource(SourceManager &sm, const std::string &source) {
     CompilerInput input{.source = source, .path = "<test>"};
     CompilerOptions opts{};
     return compile(input, opts, sm);
@@ -40,17 +38,13 @@ CompilerResult compileSource(SourceManager &sm, const std::string &source)
 
 /// @brief Count how many times a callee appears as a Call instruction
 ///        in the named function within the compiled module.
-int countCallsTo(const Module &mod, const std::string &funcName, const std::string &calleeName)
-{
+int countCallsTo(const Module &mod, const std::string &funcName, const std::string &calleeName) {
     int count = 0;
-    for (const auto &fn : mod.functions)
-    {
+    for (const auto &fn : mod.functions) {
         if (fn.name != funcName)
             continue;
-        for (const auto &block : fn.blocks)
-        {
-            for (const auto &instr : block.instructions)
-            {
+        for (const auto &block : fn.blocks) {
+            for (const auto &instr : block.instructions) {
                 if (instr.op == Opcode::Call && instr.callee == calleeName)
                     ++count;
             }
@@ -61,24 +55,18 @@ int countCallsTo(const Module &mod, const std::string &funcName, const std::stri
 
 /// @brief Check that a Load of Str type is followed by rt_str_retain_maybe
 ///        in the named function.
-bool hasRetainAfterStrLoad(const Module &mod, const std::string &funcName)
-{
-    for (const auto &fn : mod.functions)
-    {
+bool hasRetainAfterStrLoad(const Module &mod, const std::string &funcName) {
+    for (const auto &fn : mod.functions) {
         if (fn.name != funcName)
             continue;
-        for (const auto &block : fn.blocks)
-        {
+        for (const auto &block : fn.blocks) {
             const auto &instrs = block.instructions;
-            for (size_t i = 0; i + 1 < instrs.size(); ++i)
-            {
-                if (instrs[i].op == Opcode::Load && instrs[i].type.kind == Type::Kind::Str)
-                {
+            for (size_t i = 0; i + 1 < instrs.size(); ++i) {
+                if (instrs[i].op == Opcode::Load && instrs[i].type.kind == Type::Kind::Str) {
                     // The next instruction should be a Call to
                     // rt_str_retain_maybe
                     if (instrs[i + 1].op == Opcode::Call &&
-                        instrs[i + 1].callee == "rt_str_retain_maybe")
-                    {
+                        instrs[i + 1].callee == "rt_str_retain_maybe") {
                         return true;
                     }
                 }
@@ -93,8 +81,7 @@ bool hasRetainAfterStrLoad(const Module &mod, const std::string &funcName)
 //===----------------------------------------------------------------------===//
 
 /// @brief Entity with String field — reading field should emit retain.
-TEST(ZiaEntityStringField, EntityFieldReadEmitsRetain)
-{
+TEST(ZiaEntityStringField, EntityFieldReadEmitsRetain) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -120,8 +107,7 @@ func start() {
 
 /// @brief Verify retain is emitted when entity string field is used directly
 ///        in concatenation (the actual crash scenario from BUG-ADV-001).
-TEST(ZiaEntityStringField, FieldConcatEmitsRetain)
-{
+TEST(ZiaEntityStringField, FieldConcatEmitsRetain) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -154,8 +140,7 @@ func start() {
 }
 
 /// @brief Value type with String field — also needs retain.
-TEST(ZiaEntityStringField, ValueTypeFieldReadEmitsRetain)
-{
+TEST(ZiaEntityStringField, ValueTypeFieldReadEmitsRetain) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -182,8 +167,7 @@ func start() {
 }
 
 /// @brief Nested entity string field access should also emit retain.
-TEST(ZiaEntityStringField, NestedEntityFieldRetain)
-{
+TEST(ZiaEntityStringField, NestedEntityFieldRetain) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -213,8 +197,7 @@ func start() {
 }
 
 /// @brief Non-string fields should NOT emit rt_str_retain_maybe.
-TEST(ZiaEntityStringField, NonStringFieldNoRetain)
-{
+TEST(ZiaEntityStringField, NonStringFieldNoRetain) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -241,7 +224,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

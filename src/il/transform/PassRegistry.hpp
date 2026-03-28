@@ -31,8 +31,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace il::transform
-{
+namespace il::transform {
 
 class AnalysisManager;
 
@@ -43,8 +42,7 @@ class AnalysisManager;
 ///          separately so module passes can opt-in to preserving per-function
 ///          results (e.g. CFG, dominators) when they leave those structures
 ///          untouched.
-class PreservedAnalyses
-{
+class PreservedAnalyses {
   public:
     /// @brief Create a PreservedAnalyses indicating all analyses are preserved.
     /// @return PreservedAnalyses object preserving all module and function analyses.
@@ -143,8 +141,7 @@ class PreservedAnalyses
 /// @details Module passes can modify any function, global, or extern declaration
 ///          within the module. They receive the full AnalysisManager for querying
 ///          cached analysis results.
-class ModulePass
-{
+class ModulePass {
   public:
     virtual ~ModulePass() = default;
 
@@ -162,8 +159,7 @@ class ModulePass
 /// @brief Base class for transformation passes operating on individual functions.
 /// @details Function passes transform one function at a time and can query
 ///          analyses at both function and module scope.
-class FunctionPass
-{
+class FunctionPass {
   public:
     virtual ~FunctionPass() = default;
 
@@ -178,16 +174,10 @@ class FunctionPass
     virtual PreservedAnalyses run(core::Function &function, AnalysisManager &analysis) = 0;
 };
 
-namespace detail
-{
-enum class PassKind
-{
-    Module,
-    Function
-};
+namespace detail {
+enum class PassKind { Module, Function };
 
-struct PassFactory
-{
+struct PassFactory {
     PassKind kind;
     std::function<std::unique_ptr<ModulePass>()> makeModule;
     std::function<std::unique_ptr<FunctionPass>()> makeFunction;
@@ -199,8 +189,7 @@ struct PassFactory
 /// @details Stores factories and callbacks for module and function passes,
 ///          enabling dynamic pass lookup and instantiation at pipeline
 ///          construction time.
-class PassRegistry
-{
+class PassRegistry {
   public:
     using ModulePassFactory = std::function<std::unique_ptr<ModulePass>()>;
     using FunctionPassFactory = std::function<std::unique_ptr<FunctionPass>()>;

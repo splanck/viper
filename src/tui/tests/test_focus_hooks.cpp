@@ -21,25 +21,21 @@
 using viper::tui::ui::FocusManager;
 using viper::tui::ui::Widget;
 
-struct HookWidget : Widget
-{
+struct HookWidget : Widget {
     bool focused{false};
     int calls{0};
 
-    bool wantsFocus() const override
-    {
+    bool wantsFocus() const override {
         return true;
     }
 
-    void onFocusChanged(bool f) override
-    {
+    void onFocusChanged(bool f) override {
         focused = f;
         ++calls;
     }
 };
 
-TEST(TUI, FocusHooks)
-{
+TEST(TUI, FocusHooks) {
     FocusManager fm;
     HookWidget a{};
     HookWidget b{};
@@ -66,8 +62,7 @@ TEST(TUI, FocusHooks)
     ASSERT_EQ(fm.current(), &b);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -29,12 +29,10 @@ using viper::analysis::AliasResult;
 using viper::analysis::BasicAA;
 using viper::analysis::ModRefResult;
 
-namespace
-{
+namespace {
 
 /// @brief Make alloca.
-Instr makeAlloca(unsigned id)
-{
+Instr makeAlloca(unsigned id) {
     Instr instr;
     instr.result = id;
     instr.op = Opcode::Alloca;
@@ -44,8 +42,7 @@ Instr makeAlloca(unsigned id)
 }
 
 /// @brief Make call.
-Instr makeCall(std::string callee)
-{
+Instr makeCall(std::string callee) {
     Instr instr;
     instr.op = Opcode::Call;
     instr.callee = std::move(callee);
@@ -57,8 +54,7 @@ Instr makeCall(std::string callee)
 // Test that module-level function attributes take priority over runtime
 // signatures. The fix changed computeCalleeEffect from OR-merging to
 // a priority cascade where module definitions are authoritative.
-TEST(BasicAA, ModuleFunctionOverridesRuntimeSignature)
-{
+TEST(BasicAA, ModuleFunctionOverridesRuntimeSignature) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -104,8 +100,7 @@ TEST(BasicAA, ModuleFunctionOverridesRuntimeSignature)
 }
 
 // Test that when a module function is marked pure, modRef returns NoModRef
-TEST(BasicAA, ModulePureFunctionReturnsNoModRef)
-{
+TEST(BasicAA, ModulePureFunctionReturnsNoModRef) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -135,8 +130,7 @@ TEST(BasicAA, ModulePureFunctionReturnsNoModRef)
 }
 
 // Test that a module function marked readonly returns Ref
-TEST(BasicAA, ModuleReadonlyFunctionReturnsRef)
-{
+TEST(BasicAA, ModuleReadonlyFunctionReturnsRef) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -166,8 +160,7 @@ TEST(BasicAA, ModuleReadonlyFunctionReturnsRef)
 }
 
 // Test that instruction-level pure attribute is respected
-TEST(BasicAA, InstrPureAttrReturnsNoModRef)
-{
+TEST(BasicAA, InstrPureAttrReturnsNoModRef) {
     Module module;
     Function fn;
     fn.name = "test_fn";
@@ -190,8 +183,7 @@ TEST(BasicAA, InstrPureAttrReturnsNoModRef)
 }
 
 // Test that non-call instructions return ModRef (conservative)
-TEST(BasicAA, NonCallReturnsModRef)
-{
+TEST(BasicAA, NonCallReturnsModRef) {
     Module module;
     Function fn;
     fn.name = "test_fn";
@@ -214,8 +206,7 @@ TEST(BasicAA, NonCallReturnsModRef)
 }
 
 // Test distinct allocas are NoAlias
-TEST(BasicAA, DistinctAllocasNoAlias)
-{
+TEST(BasicAA, DistinctAllocasNoAlias) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -242,8 +233,7 @@ TEST(BasicAA, DistinctAllocasNoAlias)
 }
 
 // Test alloca vs global is NoAlias
-TEST(BasicAA, AllocaVsGlobalNoAlias)
-{
+TEST(BasicAA, AllocaVsGlobalNoAlias) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -266,8 +256,7 @@ TEST(BasicAA, AllocaVsGlobalNoAlias)
     EXPECT_EQ(aa.alias(Value::temp(idA), Value::global("some_global")), AliasResult::NoAlias);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

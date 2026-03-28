@@ -13,25 +13,21 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_new()
-{
+static void test_new() {
     void *bf = rt_bloomfilter_new(100, 0.01);
     assert(bf != NULL);
     assert(rt_bloomfilter_count(bf) == 0);
 }
 
-static void test_add_and_check()
-{
+static void test_add_and_check() {
     void *bf = rt_bloomfilter_new(100, 0.01);
     rt_string s1 = make_str("hello");
     rt_string s2 = make_str("world");
@@ -47,8 +43,7 @@ static void test_add_and_check()
     rt_string_unref(s2);
 }
 
-static void test_definitely_not_present()
-{
+static void test_definitely_not_present() {
     void *bf = rt_bloomfilter_new(100, 0.01);
     rt_string s1 = make_str("alpha");
     rt_string s2 = make_str("beta");
@@ -68,14 +63,12 @@ static void test_definitely_not_present()
     rt_string_unref(s3);
 }
 
-static void test_many_items()
-{
+static void test_many_items() {
     void *bf = rt_bloomfilter_new(1000, 0.01);
     char buf[32];
 
     // Add 500 items
-    for (int i = 0; i < 500; i++)
-    {
+    for (int i = 0; i < 500; i++) {
         snprintf(buf, sizeof(buf), "item_%d", i);
         rt_string s = make_str(buf);
         rt_bloomfilter_add(bf, s);
@@ -85,8 +78,7 @@ static void test_many_items()
     assert(rt_bloomfilter_count(bf) == 500);
 
     // Verify all added items are found
-    for (int i = 0; i < 500; i++)
-    {
+    for (int i = 0; i < 500; i++) {
         snprintf(buf, sizeof(buf), "item_%d", i);
         rt_string s = make_str(buf);
         assert(rt_bloomfilter_might_contain(bf, s) == 1);
@@ -94,8 +86,7 @@ static void test_many_items()
     }
 }
 
-static void test_fpr()
-{
+static void test_fpr() {
     void *bf = rt_bloomfilter_new(100, 0.01);
     assert(rt_bloomfilter_fpr(bf) == 0.0); // Empty filter
 
@@ -106,8 +97,7 @@ static void test_fpr()
     rt_string_unref(s);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *bf = rt_bloomfilter_new(100, 0.01);
     rt_string s = make_str("test");
     rt_bloomfilter_add(bf, s);
@@ -120,8 +110,7 @@ static void test_clear()
     rt_string_unref(s);
 }
 
-static void test_merge()
-{
+static void test_merge() {
     void *a = rt_bloomfilter_new(100, 0.01);
     void *b = rt_bloomfilter_new(100, 0.01);
 
@@ -140,8 +129,7 @@ static void test_merge()
     rt_string_unref(s2);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_bloomfilter_count(NULL) == 0);
     assert(rt_bloomfilter_might_contain(NULL, NULL) == 0);
     assert(rt_bloomfilter_fpr(NULL) == 0.0);
@@ -149,8 +137,7 @@ static void test_null_safety()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_new();
     test_add_and_check();
     test_definitely_not_present();

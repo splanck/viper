@@ -38,8 +38,7 @@
 ///          not in the current API).
 ///
 /// @return Zero after printing the serialized module to stdout.
-int main()
-{
+int main() {
     il::core::Module m;
     il::build::IRBuilder builder(m);
     builder.addExtern("rt_print_str",

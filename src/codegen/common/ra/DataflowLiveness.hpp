@@ -38,13 +38,11 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::ra
-{
+namespace viper::codegen::ra {
 
 /// @brief Result of backward dataflow liveness analysis.
 /// @tparam VregId Type used to identify virtual registers (typically uint16_t).
-template <typename VregId = uint16_t> struct DataflowResult
-{
+template <typename VregId = uint16_t> struct DataflowResult {
     std::vector<std::unordered_set<VregId>> liveIn;
     std::vector<std::unordered_set<VregId>> liveOut;
 };
@@ -66,8 +64,7 @@ template <typename VregId = uint16_t>
 DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::size_t>> &succs,
                                              const std::vector<std::unordered_set<VregId>> &gen,
                                              const std::vector<std::unordered_set<VregId>> &kill,
-                                             std::size_t maxIter = 1000)
-{
+                                             std::size_t maxIter = 1000) {
     const std::size_t n = succs.size();
     assert(gen.size() == n && kill.size() == n);
 
@@ -78,10 +75,8 @@ DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::
     bool changed = true;
     std::size_t iteration = 0;
 
-    while (changed)
-    {
-        if (++iteration > maxIter)
-        {
+    while (changed) {
+        if (++iteration > maxIter) {
             VIPER_ICE("liveness dataflow did not converge after " + std::to_string(maxIter) +
                       " iterations");
         }
@@ -89,8 +84,7 @@ DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::
 
         // Process blocks in reverse order for faster convergence on
         // forward-flowing programs.
-        for (std::size_t i = n; i-- > 0;)
-        {
+        for (std::size_t i = n; i-- > 0;) {
             // liveOut[i] = union of liveIn[s] for all successors s
             std::unordered_set<VregId> newOut;
             for (std::size_t s : succs[i])
@@ -103,8 +97,7 @@ DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::
                 if (kill[i].count(v) == 0)
                     newIn.insert(v);
 
-            if (newOut != result.liveOut[i] || newIn != result.liveIn[i])
-            {
+            if (newOut != result.liveOut[i] || newIn != result.liveIn[i]) {
                 result.liveOut[i] = std::move(newOut);
                 result.liveIn[i] = std::move(newIn);
                 changed = true;
@@ -124,8 +117,7 @@ DataflowResult<VregId> solveBackwardDataflow(const std::vector<std::vector<std::
 /// @param succs Per-block successor indices.
 /// @return Per-block predecessor indices.
 inline std::vector<std::vector<std::size_t>> buildPredecessors(
-    const std::vector<std::vector<std::size_t>> &succs)
-{
+    const std::vector<std::vector<std::size_t>> &succs) {
     std::vector<std::vector<std::size_t>> preds(succs.size());
     for (std::size_t i = 0; i < succs.size(); ++i)
         for (std::size_t s : succs[i])

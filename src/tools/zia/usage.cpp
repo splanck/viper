@@ -13,18 +13,15 @@
 #include "viper/version.hpp"
 #include <iostream>
 
-namespace zia
-{
+namespace zia {
 
-void printVersion()
-{
+void printVersion() {
     std::cout << "zia v" << VIPER_VERSION_STR << "\n";
     std::cout << "Zia Compiler\n";
     std::cout << "IL version: " << VIPER_IL_VERSION_STR << "\n";
 }
 
-void printUsage()
-{
+void printUsage() {
     std::cerr << "zia v" << VIPER_VERSION_STR << " - Zia Compiler\n"
               << "\n"
               << "Usage: zia [options] <file.zia>\n"

@@ -41,23 +41,19 @@
 
 /* -- 32-bit helpers (int / long) ----------------------------------------- */
 
-static __forceinline long rt__atomic_load_32(volatile long *p)
-{
+static __forceinline long rt__atomic_load_32(volatile long *p) {
     return _InterlockedOr(p, 0);
 }
 
-static __forceinline void rt__atomic_store_32(volatile long *p, long v)
-{
+static __forceinline void rt__atomic_store_32(volatile long *p, long v) {
     _InterlockedExchange(p, v);
 }
 
-static __forceinline long rt__atomic_fetch_add_32(volatile long *p, long v)
-{
+static __forceinline long rt__atomic_fetch_add_32(volatile long *p, long v) {
     return _InterlockedExchangeAdd(p, v);
 }
 
-static __forceinline int rt__atomic_cas_32(volatile long *p, long *expected, long desired)
-{
+static __forceinline int rt__atomic_cas_32(volatile long *p, long *expected, long desired) {
     long old = _InterlockedCompareExchange(p, desired, *expected);
     if (old == *expected)
         return 1;
@@ -67,18 +63,15 @@ static __forceinline int rt__atomic_cas_32(volatile long *p, long *expected, lon
 
 /* -- 64-bit helpers (long long / int64_t) -------------------------------- */
 
-static __forceinline long long rt__atomic_load_64(volatile long long *p)
-{
+static __forceinline long long rt__atomic_load_64(volatile long long *p) {
     return _InterlockedOr64(p, 0);
 }
 
-static __forceinline void rt__atomic_store_64(volatile long long *p, long long v)
-{
+static __forceinline void rt__atomic_store_64(volatile long long *p, long long v) {
     _InterlockedExchange64(p, v);
 }
 
-static __forceinline long long rt__atomic_fetch_add_64(volatile long long *p, long long v)
-{
+static __forceinline long long rt__atomic_fetch_add_64(volatile long long *p, long long v) {
     return _InterlockedExchangeAdd64(p, v);
 }
 

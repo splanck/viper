@@ -16,8 +16,7 @@
 
 #include "support/source_location.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 class Lowerer;
 
@@ -25,8 +24,7 @@ class Lowerer;
 /// @details Automatically sets Lowerer::curLoc_ to a new location on
 ///          construction and restores the previous location on destruction.
 /// @invariant Restores original location on scope exit.
-class ZiaLocationScope
-{
+class ZiaLocationScope {
   public:
     ZiaLocationScope(Lowerer &lowerer, il::support::SourceLoc loc);
     ~ZiaLocationScope();

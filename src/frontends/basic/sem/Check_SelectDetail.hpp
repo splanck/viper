@@ -25,15 +25,13 @@
 #include <string>
 #include <unordered_set>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Holds the classification result of a SELECT CASE selector expression.
 /// @details After evaluating the selector expression's type, this struct records
 ///          whether the selector is string-typed or numeric-typed, and whether a
 ///          fatal type error was detected (e.g. selector is Bool or Unknown).
-struct SemanticAnalyzer::SelectCaseSelectorInfo
-{
+struct SemanticAnalyzer::SelectCaseSelectorInfo {
     bool selectorIsString = false;  ///< True if the selector evaluates to a String type.
     bool selectorIsNumeric = false; ///< True if the selector evaluates to an Int type.
     bool fatal = false;             ///< True if the selector type is unsupported (error emitted).
@@ -43,11 +41,9 @@ struct SemanticAnalyzer::SelectCaseSelectorInfo
 /// @details Tracks which label values and ranges have been seen so far, enabling
 ///          detection of duplicate labels, overlapping ranges, multiple CASE ELSE
 ///          clauses, and mixed numeric/string label types across arms.
-struct SemanticAnalyzer::SelectCaseArmContext
-{
+struct SemanticAnalyzer::SelectCaseArmContext {
     /// @brief Classification of label types seen in CASE arms.
-    enum class LabelKind
-    {
+    enum class LabelKind {
         None,    ///< No labels seen yet.
         Numeric, ///< Numeric integer labels (CASE 1, CASE 1 TO 5, CASE IS > 3).
         String,  ///< String literals (CASE "hello").
@@ -56,8 +52,7 @@ struct SemanticAnalyzer::SelectCaseArmContext
     /// @brief Represents a half-open or closed interval derived from a relational CASE label.
     /// @details Used to detect overlapping relational conditions like CASE IS > 5
     ///          and CASE IS < 10 which together cover all values.
-    struct RelInterval
-    {
+    struct RelInterval {
         bool hasLo = false; ///< True if the interval has a finite lower bound.
         int64_t lo = 0;     ///< Lower bound value (inclusive), valid only if hasLo is true.
         bool hasHi = false; ///< True if the interval has a finite upper bound.
@@ -74,9 +69,7 @@ struct SemanticAnalyzer::SelectCaseArmContext
                          bool selectorIsNumericIn,
                          bool hasElseBody) noexcept
         : de(diagnostics), selectorIsString(selectorIsStringIn),
-          selectorIsNumeric(selectorIsNumericIn), caseElseCount(hasElseBody ? 1 : 0)
-    {
-    }
+          selectorIsNumeric(selectorIsNumericIn), caseElseCount(hasElseBody ? 1 : 0) {}
 
     SemanticDiagnostics &de;                      ///< Diagnostic sink for error reporting.
     bool selectorIsString = false;                ///< True if selector type is String.
@@ -93,10 +86,8 @@ struct SemanticAnalyzer::SelectCaseArmContext
 
 } // namespace il::frontends::basic
 
-namespace il::frontends::basic::sem::detail
-{
-namespace
-{
+namespace il::frontends::basic::sem::detail {
+namespace {
 using il::frontends::basic::kCaseLabelMax;
 using il::frontends::basic::kCaseLabelMin;
 
@@ -110,8 +101,7 @@ using RelInterval = SemanticAnalyzer::SelectCaseArmContext::RelInterval;
 ///          covered by other arms.
 /// @param arm The CASE arm to inspect.
 /// @return True if the arm has no labels of any kind (i.e. it is CASE ELSE).
-inline bool isCaseElseArm(const CaseArm &arm)
-{
+inline bool isCaseElseArm(const CaseArm &arm) {
     return arm.labels.empty() && arm.ranges.empty() && arm.rels.empty() && arm.str_labels.empty();
 }
 
@@ -119,8 +109,7 @@ inline bool isCaseElseArm(const CaseArm &arm)
 /// @param lo The inclusive lower bound of the range.
 /// @param hi The inclusive upper bound of the range.
 /// @return A RelInterval representing [lo, hi].
-inline RelInterval makeRangeInterval(int32_t lo, int32_t hi)
-{
+inline RelInterval makeRangeInterval(int32_t lo, int32_t hi) {
     RelInterval interval;
     interval.hasLo = true;
     interval.lo = static_cast<int64_t>(lo);
@@ -136,11 +125,9 @@ inline RelInterval makeRangeInterval(int32_t lo, int32_t hi)
 /// @param op The relational comparison operator (LT, LE, EQ, GE, GT).
 /// @param rhs The integer value on the right-hand side of the comparison.
 /// @return A RelInterval representing the set of values matching the condition.
-inline RelInterval makeRelInterval(CaseArm::CaseRel::Op op, int32_t rhs)
-{
+inline RelInterval makeRelInterval(CaseArm::CaseRel::Op op, int32_t rhs) {
     RelInterval interval;
-    switch (op)
-    {
+    switch (op) {
         case CaseArm::CaseRel::Op::LT:
             interval.hasHi = true;
             interval.hi = static_cast<int64_t>(rhs) - 1;
@@ -174,8 +161,7 @@ inline RelInterval makeRelInterval(CaseArm::CaseRel::Op op, int32_t rhs)
 /// @param lhs The first interval to test.
 /// @param rhs The second interval to test.
 /// @return True if the intervals share at least one integer value.
-inline bool intervalsOverlap(const RelInterval &lhs, const RelInterval &rhs)
-{
+inline bool intervalsOverlap(const RelInterval &lhs, const RelInterval &rhs) {
     const int64_t lo = std::max(lhs.hasLo ? lhs.lo : std::numeric_limits<int64_t>::min(),
                                 rhs.hasLo ? rhs.lo : std::numeric_limits<int64_t>::min());
     const int64_t hi = std::min(lhs.hasHi ? lhs.hi : std::numeric_limits<int64_t>::max(),
@@ -187,8 +173,7 @@ inline bool intervalsOverlap(const RelInterval &lhs, const RelInterval &rhs)
 /// @param interval The interval to test against.
 /// @param value The integer value to check for membership.
 /// @return True if the value falls within the interval's bounds.
-inline bool intervalContains(const RelInterval &interval, int32_t value)
-{
+inline bool intervalContains(const RelInterval &interval, int32_t value) {
     if (interval.hasLo && static_cast<int64_t>(value) < interval.lo)
         return false;
     if (interval.hasHi && static_cast<int64_t>(value) > interval.hi)
@@ -199,8 +184,7 @@ inline bool intervalContains(const RelInterval &interval, int32_t value)
 /// @brief Emit an overlapping-range diagnostic for a CASE arm.
 /// @param ctx The arm validation context containing the diagnostic sink.
 /// @param arm The CASE arm where the overlap was detected.
-inline void emitOverlap(ArmContext &ctx, const CaseArm &arm)
-{
+inline void emitOverlap(ArmContext &ctx, const CaseArm &arm) {
     std::string msg(diag::ERR_SelectCase_OverlappingRange.text);
     ctx.de.emit(il::support::Severity::Error,
                 std::string(diag::ERR_SelectCase_OverlappingRange.id),
@@ -216,25 +200,23 @@ inline void emitOverlap(ArmContext &ctx, const CaseArm &arm)
 /// @param arm The CASE arm being validated (used for source location in diagnostics).
 /// @param interval The new interval to check for collisions.
 /// @return True if a collision was detected (diagnostic already emitted).
-inline bool checkIntervalCollision(ArmContext &ctx, const CaseArm &arm, const RelInterval &interval)
-{
-    const auto collidesRange = std::any_of(
-        ctx.seenRanges.begin(),
-        ctx.seenRanges.end(),
-        [&](const auto &seen)
-        { return intervalsOverlap(interval, makeRangeInterval(seen.first, seen.second)); });
-    if (collidesRange)
-    {
+inline bool checkIntervalCollision(ArmContext &ctx,
+                                   const CaseArm &arm,
+                                   const RelInterval &interval) {
+    const auto collidesRange =
+        std::any_of(ctx.seenRanges.begin(), ctx.seenRanges.end(), [&](const auto &seen) {
+            return intervalsOverlap(interval, makeRangeInterval(seen.first, seen.second));
+        });
+    if (collidesRange) {
         emitOverlap(ctx, arm);
         return true;
     }
 
     const auto collidesLabel =
-        std::any_of(ctx.seenLabels.begin(),
-                    ctx.seenLabels.end(),
-                    [&](int32_t label) { return intervalContains(interval, label); });
-    if (collidesLabel)
-    {
+        std::any_of(ctx.seenLabels.begin(), ctx.seenLabels.end(), [&](int32_t label) {
+            return intervalContains(interval, label);
+        });
+    if (collidesLabel) {
         emitOverlap(ctx, arm);
         return true;
     }
@@ -243,8 +225,7 @@ inline bool checkIntervalCollision(ArmContext &ctx, const CaseArm &arm, const Re
         std::any_of(ctx.seenRelIntervals.begin(),
                     ctx.seenRelIntervals.end(),
                     [&](const RelInterval &seen) { return intervalsOverlap(interval, seen); });
-    if (collidesRel)
-    {
+    if (collidesRel) {
         emitOverlap(ctx, arm);
         return true;
     }
@@ -257,8 +238,7 @@ inline bool checkIntervalCollision(ArmContext &ctx, const CaseArm &arm, const Re
 ///          diagnostic if more than one CASE ELSE arm has been seen.
 /// @param ctx The arm validation context tracking the CASE ELSE count.
 /// @param arm The CASE arm identified as CASE ELSE (for source location).
-inline void noteCaseElse(ArmContext &ctx, const CaseArm &arm)
-{
+inline void noteCaseElse(ArmContext &ctx, const CaseArm &arm) {
     ++ctx.caseElseCount;
     if (ctx.caseElseCount <= 1)
         return;
@@ -276,8 +256,7 @@ inline void noteCaseElse(ArmContext &ctx, const CaseArm &arm)
 ///          via the reportedMixedLabelTypes flag.
 /// @param ctx The arm validation context.
 /// @param arm The CASE arm where the mixed types were detected.
-inline void reportMixedLabelTypes(ArmContext &ctx, const CaseArm &arm)
-{
+inline void reportMixedLabelTypes(ArmContext &ctx, const CaseArm &arm) {
     if (ctx.reportedMixedLabelTypes)
         return;
 
@@ -296,12 +275,10 @@ inline void reportMixedLabelTypes(ArmContext &ctx, const CaseArm &arm)
 /// @param ctx The arm validation context.
 /// @param kind The label kind of the current arm (Numeric or String).
 /// @param arm The CASE arm being validated (for diagnostic source location).
-inline void trackArmLabelKind(ArmContext &ctx, LabelKind kind, const CaseArm &arm)
-{
+inline void trackArmLabelKind(ArmContext &ctx, LabelKind kind, const CaseArm &arm) {
     if (kind == LabelKind::None || ctx.reportedMixedLabelTypes)
         return;
-    if (ctx.seenArmLabelKind == LabelKind::None)
-    {
+    if (ctx.seenArmLabelKind == LabelKind::None) {
         ctx.seenArmLabelKind = kind;
         return;
     }
@@ -317,8 +294,7 @@ inline void trackArmLabelKind(ArmContext &ctx, LabelKind kind, const CaseArm &ar
 inline void emitRangeBoundError(ArmContext &ctx,
                                 const CaseArm &arm,
                                 const char *which,
-                                int64_t value)
-{
+                                int64_t value) {
     std::string msg = "CASE range ";
     msg += which;
     msg += " bound ";
@@ -338,21 +314,17 @@ inline void emitRangeBoundError(ArmContext &ctx,
 /// @param rawLo The raw 64-bit lower bound from the parser.
 /// @param rawHi The raw 64-bit upper bound from the parser.
 /// @return True if both bounds are valid and lo <= hi.
-inline bool validateRangeBounds(ArmContext &ctx, const CaseArm &arm, int64_t rawLo, int64_t rawHi)
-{
+inline bool validateRangeBounds(ArmContext &ctx, const CaseArm &arm, int64_t rawLo, int64_t rawHi) {
     bool valid = true;
-    if (rawLo < kCaseLabelMin || rawLo > kCaseLabelMax)
-    {
+    if (rawLo < kCaseLabelMin || rawLo > kCaseLabelMax) {
         emitRangeBoundError(ctx, arm, "lower", rawLo);
         valid = false;
     }
-    if (rawHi < kCaseLabelMin || rawHi > kCaseLabelMax)
-    {
+    if (rawHi < kCaseLabelMin || rawHi > kCaseLabelMax) {
         emitRangeBoundError(ctx, arm, "upper", rawHi);
         valid = false;
     }
-    if (rawLo > rawHi)
-    {
+    if (rawLo > rawHi) {
         std::string msg(diag::ERR_SelectCase_InvalidRange.text);
         ctx.de.emit(il::support::Severity::Error,
                     std::string(diag::ERR_SelectCase_InvalidRange.id),
@@ -369,8 +341,7 @@ inline bool validateRangeBounds(ArmContext &ctx, const CaseArm &arm, int64_t raw
 /// @param ctx The arm validation context with the diagnostic sink.
 /// @param raw The raw 64-bit label value to check.
 /// @return True if the value was out of range (diagnostic was emitted).
-inline bool emitOutOfRangeLabel(const CaseArm &arm, ArmContext &ctx, int64_t raw)
-{
+inline bool emitOutOfRangeLabel(const CaseArm &arm, ArmContext &ctx, int64_t raw) {
     if (raw >= kCaseLabelMin && raw <= kCaseLabelMax)
         return false;
 
@@ -387,8 +358,7 @@ inline bool emitOutOfRangeLabel(const CaseArm &arm, ArmContext &ctx, int64_t raw
 /// @param ctx The arm validation context with the diagnostic sink.
 /// @param arm The CASE arm containing the duplicate (for source location).
 /// @param label Human-readable representation of the duplicate label value.
-inline void emitDuplicateLabel(ArmContext &ctx, const CaseArm &arm, std::string label)
-{
+inline void emitDuplicateLabel(ArmContext &ctx, const CaseArm &arm, std::string label) {
     std::string msg(diag::ERR_SelectCase_DuplicateLabel.text);
     msg += ": ";
     msg += std::move(label);
@@ -409,22 +379,19 @@ inline void emitDuplicateLabel(ArmContext &ctx, const CaseArm &arm, std::string 
 /// @param stmt The SELECT CASE statement containing the selector expression.
 /// @return A SelectCaseSelectorInfo describing the selector classification.
 inline SemanticAnalyzer::SelectCaseSelectorInfo classifySelectCaseSelector(
-    ControlCheckContext &context, const SelectCaseStmt &stmt)
-{
+    ControlCheckContext &context, const SelectCaseStmt &stmt) {
     SemanticAnalyzer::SelectCaseSelectorInfo info;
     if (!stmt.selector)
         return info;
 
     using Type = SemanticAnalyzer::Type;
     const Type selectorType = context.evaluateExpr(*stmt.selector);
-    if (selectorType == Type::Int)
-    {
+    if (selectorType == Type::Int) {
         context.markImplicitConversion(*stmt.selector, Type::Int);
         info.selectorIsNumeric = true;
         return info;
     }
-    if (selectorType == Type::String)
-    {
+    if (selectorType == Type::String) {
         info.selectorIsString = true;
         return info;
     }
@@ -447,10 +414,8 @@ inline SemanticAnalyzer::SelectCaseSelectorInfo classifySelectCaseSelector(
 /// @param arm The CASE arm containing string labels to validate.
 /// @param ctx The arm validation context tracking seen labels and types.
 /// @return Always returns true (validation errors are reported via diagnostics).
-inline bool validateSelectCaseStringArm(const CaseArm &arm, ArmContext &ctx)
-{
-    if (ctx.selectorIsNumeric)
-    {
+inline bool validateSelectCaseStringArm(const CaseArm &arm, ArmContext &ctx) {
+    if (ctx.selectorIsNumeric) {
         std::string msg(diag::ERR_SelectCase_StringLabelSelector.text);
         ctx.de.emit(il::support::Severity::Error,
                     std::string(diag::ERR_SelectCase_StringLabelSelector.id),
@@ -460,8 +425,7 @@ inline bool validateSelectCaseStringArm(const CaseArm &arm, ArmContext &ctx)
     }
 
     trackArmLabelKind(ctx, LabelKind::String, arm);
-    for (const auto &label : arm.str_labels)
-    {
+    for (const auto &label : arm.str_labels) {
         if (ctx.seenStringLabels.insert(label).second)
             continue;
         emitDuplicateLabel(ctx, arm, '"' + label + '"');
@@ -476,10 +440,8 @@ inline bool validateSelectCaseStringArm(const CaseArm &arm, ArmContext &ctx)
 /// @param arm The CASE arm containing numeric labels to validate.
 /// @param ctx The arm validation context tracking seen labels, ranges, and intervals.
 /// @return Always returns true (validation errors are reported via diagnostics).
-inline bool validateSelectCaseNumericArm(const CaseArm &arm, ArmContext &ctx)
-{
-    if (ctx.selectorIsString)
-    {
+inline bool validateSelectCaseNumericArm(const CaseArm &arm, ArmContext &ctx) {
+    if (ctx.selectorIsString) {
         std::string msg(diag::ERR_SelectCase_StringSelectorLabels.text);
         ctx.de.emit(il::support::Severity::Error,
                     std::string(diag::ERR_SelectCase_StringSelectorLabels.id),
@@ -490,8 +452,7 @@ inline bool validateSelectCaseNumericArm(const CaseArm &arm, ArmContext &ctx)
 
     trackArmLabelKind(ctx, LabelKind::Numeric, arm);
 
-    for (const auto &[rawLo, rawHi] : arm.ranges)
-    {
+    for (const auto &[rawLo, rawHi] : arm.ranges) {
         if (!validateRangeBounds(ctx, arm, rawLo, rawHi))
             continue;
 
@@ -503,8 +464,7 @@ inline bool validateSelectCaseNumericArm(const CaseArm &arm, ArmContext &ctx)
         ctx.seenRanges.emplace_back(static_cast<int32_t>(rawLo), static_cast<int32_t>(rawHi));
     }
 
-    for (int64_t rawLabel : arm.labels)
-    {
+    for (int64_t rawLabel : arm.labels) {
         if (emitOutOfRangeLabel(arm, ctx, rawLabel))
             continue;
 
@@ -513,8 +473,7 @@ inline bool validateSelectCaseNumericArm(const CaseArm &arm, ArmContext &ctx)
             emitDuplicateLabel(ctx, arm, std::to_string(label));
     }
 
-    for (const auto &rel : arm.rels)
-    {
+    for (const auto &rel : arm.rels) {
         if (emitOutOfRangeLabel(arm, ctx, rel.rhs))
             continue;
 
@@ -523,8 +482,7 @@ inline bool validateSelectCaseNumericArm(const CaseArm &arm, ArmContext &ctx)
         if (checkIntervalCollision(ctx, arm, interval))
             continue;
 
-        if (rel.op == CaseArm::CaseRel::Op::EQ)
-        {
+        if (rel.op == CaseArm::CaseRel::Op::EQ) {
             if (auto [_, inserted] = ctx.seenLabels.insert(rhs); !inserted)
                 emitDuplicateLabel(ctx, arm, std::to_string(rel.rhs));
             continue;
@@ -543,10 +501,8 @@ inline bool validateSelectCaseNumericArm(const CaseArm &arm, ArmContext &ctx)
 /// @param arm The CASE arm to validate.
 /// @param ctx The arm validation context tracking cumulative label state.
 /// @return True on success (errors are reported via diagnostics but do not halt).
-inline bool validateSelectCaseArm(const CaseArm &arm, ArmContext &ctx)
-{
-    if (isCaseElseArm(arm))
-    {
+inline bool validateSelectCaseArm(const CaseArm &arm, ArmContext &ctx) {
+    if (isCaseElseArm(arm)) {
         noteCaseElse(ctx, arm);
         return true;
     }
@@ -569,11 +525,9 @@ inline bool validateSelectCaseArm(const CaseArm &arm, ArmContext &ctx)
 ///          analysis, and closes the scope on return.
 /// @param context The control-flow check context for scope and statement analysis.
 /// @param body The list of statements within the CASE arm body.
-inline void analyzeSelectCaseBody(ControlCheckContext &context, const std::vector<StmtPtr> &body)
-{
+inline void analyzeSelectCaseBody(ControlCheckContext &context, const std::vector<StmtPtr> &body) {
     auto scope = context.pushScope();
-    for (const auto &child : body)
-    {
+    for (const auto &child : body) {
         if (!child)
             continue;
         context.visitStmt(*child);

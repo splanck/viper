@@ -24,12 +24,10 @@ using namespace il::support;
 
 namespace fs = std::filesystem;
 
-namespace
-{
+namespace {
 
 /// @brief Helper: compile with a specific warning policy.
-CompilerResult compileWithPolicy(const std::string &source, WarningPolicy policy = {})
-{
+CompilerResult compileWithPolicy(const std::string &source, WarningPolicy policy = {}) {
     SourceManager sm;
     CompilerInput input{.source = source, .path = "test.zia"};
     CompilerOptions opts{};
@@ -38,10 +36,8 @@ CompilerResult compileWithPolicy(const std::string &source, WarningPolicy policy
 }
 
 /// @brief Check if any diagnostic has the given code.
-bool hasWarningCode(const CompilerResult &r, const char *code)
-{
-    for (const auto &d : r.diagnostics.diagnostics())
-    {
+bool hasWarningCode(const CompilerResult &r, const char *code) {
+    for (const auto &d : r.diagnostics.diagnostics()) {
         if (d.code == code)
             return true;
     }
@@ -49,19 +45,16 @@ bool hasWarningCode(const CompilerResult &r, const char *code)
 }
 
 /// @brief Count diagnostics with the given code.
-size_t countWarningCode(const CompilerResult &r, const char *code)
-{
+size_t countWarningCode(const CompilerResult &r, const char *code) {
     size_t n = 0;
-    for (const auto &d : r.diagnostics.diagnostics())
-    {
+    for (const auto &d : r.diagnostics.diagnostics()) {
         if (d.code == code)
             n++;
     }
     return n;
 }
 
-void writeFile(const fs::path &path, const std::string &contents)
-{
+void writeFile(const fs::path &path, const std::string &contents) {
     fs::create_directories(path.parent_path());
     std::ofstream out(path);
     out << contents;
@@ -71,8 +64,7 @@ void writeFile(const fs::path &path, const std::string &contents)
 // W001: Unused Variable
 //=============================================================================
 
-TEST(ZiaWarnings, W001_UnusedVariable)
-{
+TEST(ZiaWarnings, W001_UnusedVariable) {
     auto r = compileWithPolicy(R"(
 module T;
 func start() {
@@ -83,8 +75,7 @@ func start() {
     EXPECT_TRUE(hasWarningCode(r, "W001"));
 }
 
-TEST(ZiaWarnings, W001_UsedVariable_NoWarning)
-{
+TEST(ZiaWarnings, W001_UsedVariable_NoWarning) {
     auto r = compileWithPolicy(R"(
 module T;
 bind IO = Viper.Terminal;
@@ -97,8 +88,7 @@ func start() {
     EXPECT_FALSE(hasWarningCode(r, "W001"));
 }
 
-TEST(ZiaWarnings, W001_DiscardVariable_NoWarning)
-{
+TEST(ZiaWarnings, W001_DiscardVariable_NoWarning) {
     auto r = compileWithPolicy(R"(
 module T;
 func start() {
@@ -113,8 +103,7 @@ func start() {
 // W002: Unreachable Code
 //=============================================================================
 
-TEST(ZiaWarnings, W002_UnreachableAfterReturn)
-{
+TEST(ZiaWarnings, W002_UnreachableAfterReturn) {
     WarningPolicy policy;
     policy.enableAll = true; // W002 is -Wall only
     auto r = compileWithPolicy(R"(
@@ -133,8 +122,7 @@ func start() { }
 // W003: Implicit Narrowing
 //=============================================================================
 
-TEST(ZiaWarnings, W003_ImplicitNarrowing)
-{
+TEST(ZiaWarnings, W003_ImplicitNarrowing) {
     WarningPolicy policy;
     policy.enableAll = true; // W003 is -Wall only
     auto r = compileWithPolicy(R"(
@@ -151,8 +139,7 @@ func start() {
 // W004: Variable Shadowing
 //=============================================================================
 
-TEST(ZiaWarnings, W004_VariableShadowing)
-{
+TEST(ZiaWarnings, W004_VariableShadowing) {
     WarningPolicy policy;
     policy.enableAll = true; // W004 is -Wall only
     auto r = compileWithPolicy(R"(
@@ -172,8 +159,7 @@ func start() {
 // W005: Float Equality
 //=============================================================================
 
-TEST(ZiaWarnings, W005_FloatEquality)
-{
+TEST(ZiaWarnings, W005_FloatEquality) {
     auto r = compileWithPolicy(R"(
 module T;
 func start() {
@@ -190,8 +176,7 @@ func start() {
 // W006: Empty Loop Body
 //=============================================================================
 
-TEST(ZiaWarnings, W006_EmptyWhileBody)
-{
+TEST(ZiaWarnings, W006_EmptyWhileBody) {
     WarningPolicy policy;
     policy.enableAll = true; // W006 is -Wall only
     auto r = compileWithPolicy(R"(
@@ -208,8 +193,7 @@ func start() {
 // W007: Assignment in Condition
 //=============================================================================
 
-TEST(ZiaWarnings, W007_AssignmentInCondition)
-{
+TEST(ZiaWarnings, W007_AssignmentInCondition) {
     WarningPolicy policy;
     policy.enableAll = true; // W007 is -Wall only
     // Note: this will also trigger a type error since assignment returns
@@ -229,8 +213,7 @@ func start() {
 // W008: Missing Return
 //=============================================================================
 
-TEST(ZiaWarnings, W008_MissingReturn)
-{
+TEST(ZiaWarnings, W008_MissingReturn) {
     auto r = compileWithPolicy(R"(
 module T;
 func foo(): Integer {
@@ -241,8 +224,7 @@ func start() { }
     EXPECT_TRUE(hasWarningCode(r, "W008"));
 }
 
-TEST(ZiaWarnings, W008_HasReturn_NoWarning)
-{
+TEST(ZiaWarnings, W008_HasReturn_NoWarning) {
     auto r = compileWithPolicy(R"(
 module T;
 func foo(): Integer {
@@ -258,8 +240,7 @@ func start() { }
 // W009: Self-Assignment
 //=============================================================================
 
-TEST(ZiaWarnings, W009_SelfAssignment)
-{
+TEST(ZiaWarnings, W009_SelfAssignment) {
     auto r = compileWithPolicy(R"(
 module T;
 func start() {
@@ -275,8 +256,7 @@ func start() {
 // W010: Division By Zero
 //=============================================================================
 
-TEST(ZiaWarnings, W010_DivisionByZero)
-{
+TEST(ZiaWarnings, W010_DivisionByZero) {
     auto r = compileWithPolicy(R"(
 module T;
 func start() {
@@ -291,8 +271,7 @@ func start() {
 // W011: Redundant Bool Comparison
 //=============================================================================
 
-TEST(ZiaWarnings, W011_RedundantBoolComparison)
-{
+TEST(ZiaWarnings, W011_RedundantBoolComparison) {
     WarningPolicy policy;
     policy.enableAll = true; // W011 is -Wall only
     auto r = compileWithPolicy(R"(
@@ -310,8 +289,7 @@ func start() {
 // W013: Empty Body
 //=============================================================================
 
-TEST(ZiaWarnings, W013_EmptyIfBody)
-{
+TEST(ZiaWarnings, W013_EmptyIfBody) {
     WarningPolicy policy;
     policy.enableAll = true; // W013 is -Wall only
     auto r = compileWithPolicy(R"(
@@ -328,8 +306,7 @@ func start() {
 // W014: Unused Result
 //=============================================================================
 
-TEST(ZiaWarnings, W014_UnusedResult)
-{
+TEST(ZiaWarnings, W014_UnusedResult) {
     WarningPolicy policy;
     policy.enableAll = true; // W014 is -Wall only
     auto r = compileWithPolicy(R"(
@@ -349,8 +326,7 @@ func start() {
 // W015: Uninitialized Variable (migrated from V3001)
 //=============================================================================
 
-TEST(ZiaWarnings, W015_UninitializedVariable)
-{
+TEST(ZiaWarnings, W015_UninitializedVariable) {
     auto r = compileWithPolicy(R"(
 module T;
 bind IO = Viper.Terminal;
@@ -367,8 +343,7 @@ func start() {
 // Infrastructure Tests
 //=============================================================================
 
-TEST(ZiaWarnings, WerrorMakesWarningAnError)
-{
+TEST(ZiaWarnings, WerrorMakesWarningAnError) {
     WarningPolicy policy;
     policy.warningsAsErrors = true;
     auto r = compileWithPolicy(R"(
@@ -384,8 +359,7 @@ func start() {
     EXPECT_FALSE(r.succeeded());
 }
 
-TEST(ZiaWarnings, WnoDisablesSpecificWarning)
-{
+TEST(ZiaWarnings, WnoDisablesSpecificWarning) {
     WarningPolicy policy;
     policy.disabled.insert(WarningCode::W010_DivisionByZero);
     auto r = compileWithPolicy(R"(
@@ -399,8 +373,7 @@ func start() {
     EXPECT_FALSE(hasWarningCode(r, "W010"));
 }
 
-TEST(ZiaWarnings, SuppressPragmaDisablesWarning)
-{
+TEST(ZiaWarnings, SuppressPragmaDisablesWarning) {
     auto r = compileWithPolicy(R"(
 module T;
 func start() {
@@ -412,8 +385,7 @@ func start() {
     EXPECT_FALSE(hasWarningCode(r, "W010"));
 }
 
-TEST(ZiaWarnings, SuppressPragmaByName)
-{
+TEST(ZiaWarnings, SuppressPragmaByName) {
     auto r = compileWithPolicy(R"(
 module T;
 func start() {
@@ -425,8 +397,7 @@ func start() {
     EXPECT_FALSE(hasWarningCode(r, "W010"));
 }
 
-TEST(ZiaWarnings, WallEnablesAllWarnings)
-{
+TEST(ZiaWarnings, WallEnablesAllWarnings) {
     // Without -Wall, W002 (unreachable) is not enabled
     auto r1 = compileWithPolicy(R"(
 module T;
@@ -453,8 +424,7 @@ func start() { }
     EXPECT_TRUE(hasWarningCode(r2, "W002"));
 }
 
-TEST(ZiaWarnings, DefaultPolicyEnablesConservativeSet)
-{
+TEST(ZiaWarnings, DefaultPolicyEnablesConservativeSet) {
     // W010 (division by zero) should be enabled by default
     auto r = compileWithPolicy(R"(
 module T;
@@ -465,8 +435,7 @@ func start() {
     EXPECT_TRUE(hasWarningCode(r, "W010"));
 }
 
-TEST(ZiaWarnings, ParseWarningCode_NumericAndName)
-{
+TEST(ZiaWarnings, ParseWarningCode_NumericAndName) {
     auto c1 = parseWarningCode("W001");
     EXPECT_TRUE(c1.has_value());
     EXPECT_EQ(*c1, WarningCode::W001_UnusedVariable);
@@ -479,8 +448,7 @@ TEST(ZiaWarnings, ParseWarningCode_NumericAndName)
     EXPECT_FALSE(c3.has_value());
 }
 
-TEST(ZiaWarnings, ParseAndAnalyze_HonorsInlineSuppressions)
-{
+TEST(ZiaWarnings, ParseAndAnalyze_HonorsInlineSuppressions) {
     SourceManager sm;
     WarningPolicy policy;
     policy.enableAll = true;
@@ -500,16 +468,14 @@ func demo() -> Integer {
     EXPECT_FALSE(ar->hasErrors());
 
     bool sawW002 = false;
-    for (const auto &d : ar->diagnostics.diagnostics())
-    {
+    for (const auto &d : ar->diagnostics.diagnostics()) {
         if (d.code == "W002")
             sawW002 = true;
     }
     EXPECT_FALSE(sawW002);
 }
 
-TEST(ZiaWarnings, ImportedFileSuppressionsAreHonored)
-{
+TEST(ZiaWarnings, ImportedFileSuppressionsAreHonored) {
     const fs::path tempRoot =
         fs::temp_directory_path() / "zia_warning_tests" / "imported_suppressions";
     fs::remove_all(tempRoot);
@@ -539,8 +505,7 @@ func start() {})");
 // W017: XOR Confusion (^ is bitwise XOR, not exponentiation)
 // =============================================================================
 
-TEST(ZiaWarnings, W017_XorConfusion)
-{
+TEST(ZiaWarnings, W017_XorConfusion) {
     WarningPolicy policy;
     policy.enableAll = true;
     auto r = compileWithPolicy(R"(
@@ -559,8 +524,7 @@ func start() {
 // W018: Bitwise AND Confusion (& is bitwise AND, not concatenation)
 // =============================================================================
 
-TEST(ZiaWarnings, W018_BitwiseAndConfusion)
-{
+TEST(ZiaWarnings, W018_BitwiseAndConfusion) {
     WarningPolicy policy;
     policy.enableAll = true;
     auto r = compileWithPolicy(R"(
@@ -577,7 +541,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

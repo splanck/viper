@@ -20,8 +20,7 @@
 #include <cstdint>
 #include <string>
 
-extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
-{
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
     constexpr size_t kMaxInputSize = 16 * 1024;
     if (size > kMaxInputSize)
         return 0;

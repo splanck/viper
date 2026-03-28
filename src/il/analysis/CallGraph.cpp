@@ -27,15 +27,12 @@
 #include <stack>
 #include <unordered_set>
 
-namespace viper::analysis
-{
+namespace viper::analysis {
 
-namespace
-{
+namespace {
 
 /// @brief State for Tarjan's iterative SCC algorithm.
-struct TarjanState
-{
+struct TarjanState {
     std::unordered_map<std::string, unsigned> index;
     std::unordered_map<std::string, unsigned> lowlink;
     std::unordered_set<std::string> onStack;
@@ -56,12 +53,10 @@ void tarjanDFS(const std::string &start,
                const std::unordered_map<std::string, std::vector<std::string>> &edges,
                const std::unordered_set<std::string> &allFunctions,
                TarjanState &state,
-               std::vector<std::vector<std::string>> &sccs)
-{
+               std::vector<std::vector<std::string>> &sccs) {
     // Iterative DFS using an explicit worklist.
     // Each stack frame records: (node, edge_iterator_index).
-    struct Frame
-    {
+    struct Frame {
         std::string node;
         std::size_t edgeIdx; // index into the callee list for this node
     };
@@ -74,19 +69,16 @@ void tarjanDFS(const std::string &start,
     state.stack.push(start);
     state.onStack.insert(start);
 
-    while (!callStack.empty())
-    {
+    while (!callStack.empty()) {
         Frame &frame = callStack.back();
         const std::string &v = frame.node;
 
         auto edgeIt = edges.find(v);
         bool advanced = false;
 
-        if (edgeIt != edges.end())
-        {
+        if (edgeIt != edges.end()) {
             const auto &callees = edgeIt->second;
-            while (frame.edgeIdx < callees.size())
-            {
+            while (frame.edgeIdx < callees.size()) {
                 const std::string &w = callees[frame.edgeIdx];
                 ++frame.edgeIdx;
 
@@ -94,8 +86,7 @@ void tarjanDFS(const std::string &start,
                 if (allFunctions.find(w) == allFunctions.end())
                     continue;
 
-                if (state.index.find(w) == state.index.end())
-                {
+                if (state.index.find(w) == state.index.end()) {
                     // Tree edge: recurse into w.
                     state.index[w] = state.nextIndex;
                     state.lowlink[w] = state.nextIndex;
@@ -105,23 +96,18 @@ void tarjanDFS(const std::string &start,
                     callStack.push_back({w, 0});
                     advanced = true;
                     break;
-                }
-                else if (state.onStack.count(w))
-                {
+                } else if (state.onStack.count(w)) {
                     // Back edge: update lowlink.
                     state.lowlink[v] = std::min(state.lowlink[v], state.index[w]);
                 }
             }
         }
 
-        if (!advanced)
-        {
+        if (!advanced) {
             // All successors processed: check if v is an SCC root.
-            if (state.lowlink[v] == state.index[v])
-            {
+            if (state.lowlink[v] == state.index[v]) {
                 std::vector<std::string> scc;
-                while (true)
-                {
+                while (true) {
                     std::string w = state.stack.top();
                     state.stack.pop();
                     state.onStack.erase(w);
@@ -135,8 +121,7 @@ void tarjanDFS(const std::string &start,
             // and becomes dangling after pop_back().
             const unsigned vLowlink = state.lowlink[v];
             callStack.pop_back();
-            if (!callStack.empty())
-            {
+            if (!callStack.empty()) {
                 // Propagate lowlink upward to the parent frame.
                 const std::string &parent = callStack.back().node;
                 state.lowlink[parent] = std::min(state.lowlink[parent], vLowlink);
@@ -147,8 +132,7 @@ void tarjanDFS(const std::string &start,
 
 } // namespace
 
-bool CallGraph::isRecursive(const std::string &fn) const
-{
+bool CallGraph::isRecursive(const std::string &fn) const {
     auto it = sccIndex.find(fn);
     if (it == sccIndex.end())
         return false;
@@ -175,8 +159,7 @@ bool CallGraph::isRecursive(const std::string &fn) const
 ///          produce SCCs in reverse topological order.
 /// @param module Module to scan; the IL is not modified.
 /// @return Call graph with edges, call counts, and SCCs.
-CallGraph buildCallGraph(il::core::Module &module)
-{
+CallGraph buildCallGraph(il::core::Module &module) {
     CallGraph cg;
 
     // Collect all function names first (needed to filter external edges in SCC).
@@ -186,14 +169,10 @@ CallGraph buildCallGraph(il::core::Module &module)
         allFunctions.insert(fn.name);
 
     // Build edge set and call counts.
-    for (auto &fn : module.functions)
-    {
-        for (auto &B : fn.blocks)
-        {
-            for (auto &I : B.instructions)
-            {
-                if (I.op == il::core::Opcode::Call && !I.callee.empty())
-                {
+    for (auto &fn : module.functions) {
+        for (auto &B : fn.blocks) {
+            for (auto &I : B.instructions) {
+                if (I.op == il::core::Opcode::Call && !I.callee.empty()) {
                     ++cg.callCounts[I.callee];
                     cg.edges[fn.name].push_back(I.callee);
                 }
@@ -206,8 +185,7 @@ CallGraph buildCallGraph(il::core::Module &module)
     state.index.reserve(module.functions.size());
     state.lowlink.reserve(module.functions.size());
 
-    for (const auto &fn : module.functions)
-    {
+    for (const auto &fn : module.functions) {
         if (state.index.find(fn.name) == state.index.end())
             tarjanDFS(fn.name, cg.edges, allFunctions, state, cg.sccs);
     }

@@ -27,8 +27,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 using pipeline_detail::coreTypeForAstType;
 
@@ -43,39 +42,29 @@ using pipeline_detail::coreTypeForAstType;
 ///          later lowering logic can allocate the appropriate slots without
 ///          inspecting the AST again.
 /// @param prog Program whose declarations should be indexed.
-void ProcedureLowering::collectProcedureSignatures(const Program &prog)
-{
+void ProcedureLowering::collectProcedureSignatures(const Program &prog) {
     lowerer.procSignatures.clear();
     lowerer.procNameAliases.clear();
 
     // Local helpers to reduce duplication when constructing and registering
     // procedure signatures from AST declarations.
-    auto buildSig = [&](il::core::Type ret, const auto &params)
-    {
+    auto buildSig = [&](il::core::Type ret, const auto &params) {
         Lowerer::ProcedureSignature sig;
         sig.retType = ret;
         sig.paramTypes.reserve(params.size());
         sig.byRefFlags.reserve(params.size());
-        for (const auto &p : params)
-        {
+        for (const auto &p : params) {
             // BUG-060 fix: Handle object-typed parameters
             il::core::Type ty;
-            if (p.is_array)
-            {
+            if (p.is_array) {
                 ty = il::core::Type(il::core::Type::Kind::Ptr);
-            }
-            else if (!p.objectClass.empty())
-            {
+            } else if (!p.objectClass.empty()) {
                 // Object parameter - use Ptr type
                 ty = il::core::Type(il::core::Type::Kind::Ptr);
-            }
-            else if (p.isByRef)
-            {
+            } else if (p.isByRef) {
                 // BYREF scalar/string/bool pass pointer to storage
                 ty = il::core::Type(il::core::Type::Kind::Ptr);
-            }
-            else
-            {
+            } else {
                 ty = coreTypeForAstType(p.type);
             }
             sig.paramTypes.push_back(ty);
@@ -85,32 +74,27 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
     };
 
     auto registerSig =
-        [&](const std::string &unqual, const std::string &qual, Lowerer::ProcedureSignature sig)
-    {
-        const bool hasQual = !qual.empty();
-        const std::string &key = hasQual ? qual : unqual;
-        lowerer.procSignatures.emplace(key, std::move(sig));
-        // Map canonical unqualified name to the resolved key used for emission
-        // BUG-BAS-001 fix: Strip type suffix before canonicalizing
-        std::string canon = CanonicalizeIdent(StripTypeSuffix(unqual));
-        if (!canon.empty())
-            lowerer.procNameAliases.emplace(canon, key);
-    };
+        [&](const std::string &unqual, const std::string &qual, Lowerer::ProcedureSignature sig) {
+            const bool hasQual = !qual.empty();
+            const std::string &key = hasQual ? qual : unqual;
+            lowerer.procSignatures.emplace(key, std::move(sig));
+            // Map canonical unqualified name to the resolved key used for emission
+            // BUG-BAS-001 fix: Strip type suffix before canonicalizing
+            std::string canon = CanonicalizeIdent(StripTypeSuffix(unqual));
+            if (!canon.empty())
+                lowerer.procNameAliases.emplace(canon, key);
+        };
 
     // Process top-level procedure declarations
-    for (const auto &decl : prog.procs)
-    {
-        if (auto *fn = as<const FunctionDecl>(*decl))
-        {
+    for (const auto &decl : prog.procs) {
+        if (auto *fn = as<const FunctionDecl>(*decl)) {
             il::core::Type retTy =
                 (!fn->explicitClassRetQname.empty())
                     ? il::core::Type(il::core::Type::Kind::Ptr)
                     : lowerer.functionRetTypeFromHint(fn->name, fn->explicitRetType);
             auto sig = buildSig(retTy, fn->params);
             registerSig(fn->name, fn->qualifiedName, std::move(sig));
-        }
-        else if (auto *sub = as<const SubDecl>(*decl))
-        {
+        } else if (auto *sub = as<const SubDecl>(*decl)) {
             auto sig = buildSig(il::core::Type(il::core::Type::Kind::Void), sub->params);
             registerSig(sub->name, sub->qualifiedName, std::move(sig));
         }
@@ -118,19 +102,15 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
 
     // Also scan namespace blocks in main for nested procedures.
     std::function<void(const std::vector<StmtPtr> &)> scan;
-    scan = [&](const std::vector<StmtPtr> &stmts)
-    {
-        for (const auto &stmtPtr : stmts)
-        {
+    scan = [&](const std::vector<StmtPtr> &stmts) {
+        for (const auto &stmtPtr : stmts) {
             if (!stmtPtr)
                 continue;
-            switch (stmtPtr->stmtKind())
-            {
+            switch (stmtPtr->stmtKind()) {
                 case Stmt::Kind::NamespaceDecl:
                     scan(static_cast<const NamespaceDecl &>(*stmtPtr).body);
                     break;
-                case Stmt::Kind::FunctionDecl:
-                {
+                case Stmt::Kind::FunctionDecl: {
                     const auto &fn = static_cast<const FunctionDecl &>(*stmtPtr);
                     il::core::Type retTy =
                         (!fn.explicitClassRetQname.empty())
@@ -140,8 +120,7 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
                     registerSig(fn.name, fn.qualifiedName, std::move(sig));
                     break;
                 }
-                case Stmt::Kind::SubDecl:
-                {
+                case Stmt::Kind::SubDecl: {
                     const auto &sub = static_cast<const SubDecl &>(*stmtPtr);
                     auto sig = buildSig(il::core::Type(il::core::Type::Kind::Void), sub.params);
                     registerSig(sub.name, sub.qualifiedName, std::move(sig));
@@ -165,8 +144,7 @@ void ProcedureLowering::collectProcedureSignatures(const Program &prog)
 ///          qualified names for namespace functions.
 /// @param name Raw procedure name like "MyModule.Helper$"
 /// @return Canonical qualified name like "mymodule.helper"
-static std::string CanonicalizeQualifiedName(std::string_view name)
-{
+static std::string CanonicalizeQualifiedName(std::string_view name) {
     if (name.empty())
         return std::string{};
 
@@ -186,25 +164,20 @@ static std::string CanonicalizeQualifiedName(std::string_view name)
 ///          re-traversing the AST.
 /// @param name Name of the procedure whose signature is requested.
 /// @return Pointer to the cached signature or @c nullptr when unknown.
-const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string &name) const
-{
+const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string &name) const {
     auto it = procSignatures.find(name);
-    if (it == procSignatures.end())
-    {
+    if (it == procSignatures.end()) {
         auto aliasIt = procNameAliases.find(name);
-        if (aliasIt != procNameAliases.end())
-        {
+        if (aliasIt != procNameAliases.end()) {
             auto it2 = procSignatures.find(aliasIt->second);
             if (it2 != procSignatures.end())
                 return &it2->second;
         }
         // Try case-insensitive alias: canonicalize key (simple identifiers)
         std::string canon = CanonicalizeIdent(name);
-        if (!canon.empty())
-        {
+        if (!canon.empty()) {
             auto itAlias2 = procNameAliases.find(canon);
-            if (itAlias2 != procNameAliases.end())
-            {
+            if (itAlias2 != procNameAliases.end()) {
                 auto it3 = procSignatures.find(itAlias2->second);
                 if (it3 != procSignatures.end())
                     return &it3->second;
@@ -212,8 +185,7 @@ const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string 
         }
         // BUG-BAS-001 fix: Try canonicalizing as qualified name (handles dots and suffixes)
         std::string qualCanon = CanonicalizeQualifiedName(name);
-        if (!qualCanon.empty())
-        {
+        if (!qualCanon.empty()) {
             auto it4 = procSignatures.find(qualCanon);
             if (it4 != procSignatures.end())
                 return &it4->second;
@@ -228,8 +200,7 @@ const Lowerer::ProcedureSignature *Lowerer::findProcSignature(const std::string 
 ///          the exact IL function identifier used during emission.
 /// @param name Procedure name as written in the source.
 /// @return Canonical IL name or the original name if no alias exists.
-std::string Lowerer::resolveCalleeName(const std::string &name) const
-{
+std::string Lowerer::resolveCalleeName(const std::string &name) const {
     auto it = procNameAliases.find(name);
     if (it != procNameAliases.end())
         return it->second;
@@ -242,8 +213,7 @@ std::string Lowerer::resolveCalleeName(const std::string &name) const
 
 /// @brief Forward signature collection to the procedure lowering helper.
 /// @param prog Program containing declarations to index.
-void Lowerer::collectProcedureSignatures(const Program &prog)
-{
+void Lowerer::collectProcedureSignatures(const Program &prog) {
     procedureLowering->collectProcedureSignatures(prog);
 }
 

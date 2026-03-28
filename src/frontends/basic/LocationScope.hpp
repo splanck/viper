@@ -17,8 +17,7 @@
 
 #include "support/source_location.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 class Lowerer;
 
@@ -38,8 +37,7 @@ class Lowerer;
 ///     emitCallRet(Type(Type::Kind::Void), "rt_bell", {});
 /// } // curLoc is automatically restored here
 /// @endcode
-class LocationScope
-{
+class LocationScope {
   public:
     /// @brief Construct a location scope that sets Lowerer::curLoc.
     /// @param lowerer The lowerer instance whose curLoc will be managed.

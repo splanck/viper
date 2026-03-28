@@ -29,8 +29,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::aarch64::peephole
-{
+namespace viper::codegen::aarch64::peephole {
 
 /// @brief Try to merge consecutive ldr/str into ldp/stp.
 [[nodiscard]] bool tryLdpStpMerge(std::vector<MInstr> &instrs,

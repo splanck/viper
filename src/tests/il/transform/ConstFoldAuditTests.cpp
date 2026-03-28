@@ -36,14 +36,11 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-static void verifyOrDie(const Module &module)
-{
+static void verifyOrDie(const Module &module) {
     auto result = il::verify::Verifier::verify(module);
-    if (!result)
-    {
+    if (!result) {
         il::support::printDiag(result.error(), std::cerr);
         ASSERT_TRUE(false && "Module verification failed");
     }
@@ -55,8 +52,7 @@ static void emitBinOp(BasicBlock &bb,
                       Value lhs,
                       Value rhs,
                       unsigned resultId,
-                      Type ty = Type(Type::Kind::I64))
-{
+                      Type ty = Type(Type::Kind::I64)) {
     Instr instr;
     instr.op = op;
     instr.result = resultId;
@@ -67,8 +63,7 @@ static void emitBinOp(BasicBlock &bb,
 }
 
 /// Emit a unary operation instruction into a basic block.
-static void emitUnaryOp(BasicBlock &bb, Opcode op, Value operand, unsigned resultId, Type ty)
-{
+static void emitUnaryOp(BasicBlock &bb, Opcode op, Value operand, unsigned resultId, Type ty) {
     Instr instr;
     instr.op = op;
     instr.result = resultId;
@@ -79,8 +74,7 @@ static void emitUnaryOp(BasicBlock &bb, Opcode op, Value operand, unsigned resul
 
 /// Run SCCP + constFold on a module with pre-verification, returning serialized
 /// IL for inspection.
-static std::string optimizeAndSerialize(Module &module)
-{
+static std::string optimizeAndSerialize(Module &module) {
     verifyOrDie(module);
     il::transform::sccp(module);
     il::transform::constFold(module);
@@ -92,8 +86,7 @@ static std::string optimizeAndSerialize(Module &module)
 
 /// Run SCCP + constFold WITHOUT pre-verification (for internal/unchecked
 /// opcodes that the verifier rejects in user-facing IL).
-static std::string optimizeNoVerify(Module &module)
-{
+static std::string optimizeNoVerify(Module &module) {
     il::transform::sccp(module);
     il::transform::constFold(module);
 
@@ -103,8 +96,7 @@ static std::string optimizeNoVerify(Module &module)
 }
 
 /// Check that the ret instruction's first operand is a constant integer.
-static bool retIsConstInt(const BasicBlock &entry, long long expected)
-{
+static bool retIsConstInt(const BasicBlock &entry, long long expected) {
     const Instr &ret = entry.instructions.back();
     if (ret.op != Opcode::Ret || ret.operands.empty())
         return false;
@@ -113,8 +105,7 @@ static bool retIsConstInt(const BasicBlock &entry, long long expected)
 }
 
 /// Check that the ret instruction's first operand is a constant float.
-static bool retIsConstFloat(const BasicBlock &entry, double expected)
-{
+static bool retIsConstFloat(const BasicBlock &entry, double expected) {
     const Instr &ret = entry.instructions.back();
     if (ret.op != Opcode::Ret || ret.operands.empty())
         return false;
@@ -123,8 +114,7 @@ static bool retIsConstFloat(const BasicBlock &entry, double expected)
 }
 
 /// Check that the ret instruction's first operand is a constant bool.
-static bool retIsConstBool(const BasicBlock &entry, bool expected)
-{
+static bool retIsConstBool(const BasicBlock &entry, bool expected) {
     const Instr &ret = entry.instructions.back();
     if (ret.op != Opcode::Ret || ret.operands.empty())
         return false;
@@ -133,8 +123,7 @@ static bool retIsConstBool(const BasicBlock &entry, bool expected)
 }
 
 /// Check that the given opcode still exists as an instruction (was NOT folded).
-static bool hasInstr(const BasicBlock &entry, Opcode op)
-{
+static bool hasInstr(const BasicBlock &entry, Opcode op) {
     for (const auto &instr : entry.instructions)
         if (instr.op == op)
             return true;
@@ -147,8 +136,7 @@ static bool hasInstr(const BasicBlock &entry, Opcode op)
 // A. Integer arithmetic folding (checked variants — verifier-safe)
 // ---------------------------------------------------------------------------
 
-TEST(ConstFoldAudit, IntegerAddOvf)
-{
+TEST(ConstFoldAudit, IntegerAddOvf) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -164,8 +152,7 @@ TEST(ConstFoldAudit, IntegerAddOvf)
     EXPECT_TRUE(retIsConstInt(entry, 7));
 }
 
-TEST(ConstFoldAudit, IntegerSubOvf)
-{
+TEST(ConstFoldAudit, IntegerSubOvf) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -181,8 +168,7 @@ TEST(ConstFoldAudit, IntegerSubOvf)
     EXPECT_TRUE(retIsConstInt(entry, 7));
 }
 
-TEST(ConstFoldAudit, IntegerMulOvf)
-{
+TEST(ConstFoldAudit, IntegerMulOvf) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -198,8 +184,7 @@ TEST(ConstFoldAudit, IntegerMulOvf)
     EXPECT_TRUE(retIsConstInt(entry, 42));
 }
 
-TEST(ConstFoldAudit, OverflowAddNotFolded)
-{
+TEST(ConstFoldAudit, OverflowAddNotFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -226,8 +211,7 @@ TEST(ConstFoldAudit, OverflowAddNotFolded)
 // They appear in optimized IL after CheckOpt strips safety checks.
 // ---------------------------------------------------------------------------
 
-TEST(ConstFoldAudit, SDivFolded)
-{
+TEST(ConstFoldAudit, SDivFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -243,8 +227,7 @@ TEST(ConstFoldAudit, SDivFolded)
     EXPECT_TRUE(retIsConstInt(entry, 3));
 }
 
-TEST(ConstFoldAudit, UDivFolded)
-{
+TEST(ConstFoldAudit, UDivFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -260,8 +243,7 @@ TEST(ConstFoldAudit, UDivFolded)
     EXPECT_TRUE(retIsConstInt(entry, 5));
 }
 
-TEST(ConstFoldAudit, SRemFolded)
-{
+TEST(ConstFoldAudit, SRemFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -277,8 +259,7 @@ TEST(ConstFoldAudit, SRemFolded)
     EXPECT_TRUE(retIsConstInt(entry, 1));
 }
 
-TEST(ConstFoldAudit, SDivByZeroNotFolded)
-{
+TEST(ConstFoldAudit, SDivByZeroNotFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -295,8 +276,7 @@ TEST(ConstFoldAudit, SDivByZeroNotFolded)
     EXPECT_FALSE(retIsConstInt(entry, 0));
 }
 
-TEST(ConstFoldAudit, SDivMinByNeg1NotFolded)
-{
+TEST(ConstFoldAudit, SDivMinByNeg1NotFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -318,8 +298,7 @@ TEST(ConstFoldAudit, SDivMinByNeg1NotFolded)
 }
 
 // Also test the checked variants fold correctly when safe
-TEST(ConstFoldAudit, SDivChk0Folded)
-{
+TEST(ConstFoldAudit, SDivChk0Folded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -335,8 +314,7 @@ TEST(ConstFoldAudit, SDivChk0Folded)
     EXPECT_TRUE(retIsConstInt(entry, 3));
 }
 
-TEST(ConstFoldAudit, URemChk0Folded)
-{
+TEST(ConstFoldAudit, URemChk0Folded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -356,8 +334,7 @@ TEST(ConstFoldAudit, URemChk0Folded)
 // B. Float arithmetic folding
 // ---------------------------------------------------------------------------
 
-TEST(ConstFoldAudit, FloatAdd)
-{
+TEST(ConstFoldAudit, FloatAdd) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::F64), {});
@@ -378,8 +355,7 @@ TEST(ConstFoldAudit, FloatAdd)
     EXPECT_TRUE(retIsConstFloat(entry, 4.0));
 }
 
-TEST(ConstFoldAudit, FloatMul)
-{
+TEST(ConstFoldAudit, FloatMul) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::F64), {});
@@ -400,8 +376,7 @@ TEST(ConstFoldAudit, FloatMul)
     EXPECT_TRUE(retIsConstFloat(entry, 6.0));
 }
 
-TEST(ConstFoldAudit, FloatDivByZeroNotFolded)
-{
+TEST(ConstFoldAudit, FloatDivByZeroNotFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::F64), {});
@@ -427,8 +402,7 @@ TEST(ConstFoldAudit, FloatDivByZeroNotFolded)
 // B2. ConstF64 propagation through SCCP (ISSUE-2)
 // ---------------------------------------------------------------------------
 
-TEST(ConstFoldAudit, ConstF64Propagation)
-{
+TEST(ConstFoldAudit, ConstF64Propagation) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::F64), {});
@@ -454,8 +428,7 @@ TEST(ConstFoldAudit, ConstF64Propagation)
 // C. Comparison folding
 // ---------------------------------------------------------------------------
 
-TEST(ConstFoldAudit, IntegerCmpEq)
-{
+TEST(ConstFoldAudit, IntegerCmpEq) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I1), {});
@@ -472,8 +445,7 @@ TEST(ConstFoldAudit, IntegerCmpEq)
     EXPECT_TRUE(retIsConstBool(entry, true));
 }
 
-TEST(ConstFoldAudit, SignedCmpLT)
-{
+TEST(ConstFoldAudit, SignedCmpLT) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I1), {});
@@ -490,8 +462,7 @@ TEST(ConstFoldAudit, SignedCmpLT)
     EXPECT_TRUE(retIsConstBool(entry, true));
 }
 
-TEST(ConstFoldAudit, FloatCmpEq)
-{
+TEST(ConstFoldAudit, FloatCmpEq) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I1), {});
@@ -516,8 +487,7 @@ TEST(ConstFoldAudit, FloatCmpEq)
 // C2. FCmpOrd / FCmpUno (ISSUE-7)
 // ---------------------------------------------------------------------------
 
-TEST(ConstFoldAudit, FCmpOrdBothFinite)
-{
+TEST(ConstFoldAudit, FCmpOrdBothFinite) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I1), {});
@@ -538,8 +508,7 @@ TEST(ConstFoldAudit, FCmpOrdBothFinite)
     EXPECT_TRUE(retIsConstBool(entry, true));
 }
 
-TEST(ConstFoldAudit, FCmpUnoBothFinite)
-{
+TEST(ConstFoldAudit, FCmpUnoBothFinite) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I1), {});
@@ -560,8 +529,7 @@ TEST(ConstFoldAudit, FCmpUnoBothFinite)
     EXPECT_TRUE(retIsConstBool(entry, false));
 }
 
-TEST(ConstFoldAudit, FCmpOrdWithNaN)
-{
+TEST(ConstFoldAudit, FCmpOrdWithNaN) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I1), {});
@@ -582,8 +550,7 @@ TEST(ConstFoldAudit, FCmpOrdWithNaN)
     EXPECT_TRUE(retIsConstBool(entry, false));
 }
 
-TEST(ConstFoldAudit, FCmpUnoWithNaN)
-{
+TEST(ConstFoldAudit, FCmpUnoWithNaN) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I1), {});
@@ -608,8 +575,7 @@ TEST(ConstFoldAudit, FCmpUnoWithNaN)
 // D. Shift folding
 // ---------------------------------------------------------------------------
 
-TEST(ConstFoldAudit, ShlFolded)
-{
+TEST(ConstFoldAudit, ShlFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -625,8 +591,7 @@ TEST(ConstFoldAudit, ShlFolded)
     EXPECT_TRUE(retIsConstInt(entry, 8));
 }
 
-TEST(ConstFoldAudit, LShrFolded)
-{
+TEST(ConstFoldAudit, LShrFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -642,8 +607,7 @@ TEST(ConstFoldAudit, LShrFolded)
     EXPECT_TRUE(retIsConstInt(entry, 4));
 }
 
-TEST(ConstFoldAudit, ShlBy64NotFolded)
-{
+TEST(ConstFoldAudit, ShlBy64NotFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -660,8 +624,7 @@ TEST(ConstFoldAudit, ShlBy64NotFolded)
     EXPECT_TRUE(hasInstr(entry, Opcode::Shl));
 }
 
-TEST(ConstFoldAudit, ShlByNegativeNotFolded)
-{
+TEST(ConstFoldAudit, ShlByNegativeNotFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -682,8 +645,7 @@ TEST(ConstFoldAudit, ShlByNegativeNotFolded)
 // E. Type conversion folding
 // ---------------------------------------------------------------------------
 
-TEST(ConstFoldAudit, SitofpFolded)
-{
+TEST(ConstFoldAudit, SitofpFolded) {
     // Sitofp is an internal opcode (verifier requires CastSiToFp)
     Module module;
     il::build::IRBuilder builder(module);
@@ -700,8 +662,7 @@ TEST(ConstFoldAudit, SitofpFolded)
     EXPECT_TRUE(retIsConstFloat(entry, 42.0));
 }
 
-TEST(ConstFoldAudit, FptosiTruncation)
-{
+TEST(ConstFoldAudit, FptosiTruncation) {
     // Fptosi is an internal opcode (verifier requires CastFpToSiRteChk)
     Module module;
     il::build::IRBuilder builder(module);
@@ -719,8 +680,7 @@ TEST(ConstFoldAudit, FptosiTruncation)
     EXPECT_TRUE(retIsConstInt(entry, 3));
 }
 
-TEST(ConstFoldAudit, FptosiNegative)
-{
+TEST(ConstFoldAudit, FptosiNegative) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -737,8 +697,7 @@ TEST(ConstFoldAudit, FptosiNegative)
     EXPECT_TRUE(retIsConstInt(entry, -3));
 }
 
-TEST(ConstFoldAudit, CastSiToFpFolded)
-{
+TEST(ConstFoldAudit, CastSiToFpFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::F64), {});
@@ -754,8 +713,7 @@ TEST(ConstFoldAudit, CastSiToFpFolded)
     EXPECT_TRUE(retIsConstFloat(entry, -7.0));
 }
 
-TEST(ConstFoldAudit, CastFpToSiRteChkFolded)
-{
+TEST(ConstFoldAudit, CastFpToSiRteChkFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -776,8 +734,7 @@ TEST(ConstFoldAudit, CastFpToSiRteChkFolded)
 // F. Boolean folding
 // ---------------------------------------------------------------------------
 
-TEST(ConstFoldAudit, Zext1Folded)
-{
+TEST(ConstFoldAudit, Zext1Folded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -793,8 +750,7 @@ TEST(ConstFoldAudit, Zext1Folded)
     EXPECT_TRUE(retIsConstInt(entry, 1));
 }
 
-TEST(ConstFoldAudit, Trunc1Folded)
-{
+TEST(ConstFoldAudit, Trunc1Folded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I1), {});
@@ -815,8 +771,7 @@ TEST(ConstFoldAudit, Trunc1Folded)
 // G. Runtime call folding (requires constfold pass — ISSUE-1)
 // ---------------------------------------------------------------------------
 
-TEST(ConstFoldAudit, RuntimeAbsI64Folded)
-{
+TEST(ConstFoldAudit, RuntimeAbsI64Folded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -847,8 +802,7 @@ TEST(ConstFoldAudit, RuntimeAbsI64Folded)
     EXPECT_TRUE(retIsConstInt(entry, 5));
 }
 
-TEST(ConstFoldAudit, RuntimeSqrtFolded)
-{
+TEST(ConstFoldAudit, RuntimeSqrtFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::F64), {});
@@ -878,8 +832,7 @@ TEST(ConstFoldAudit, RuntimeSqrtFolded)
     EXPECT_TRUE(retIsConstFloat(entry, 2.0));
 }
 
-TEST(ConstFoldAudit, RuntimeFloorFolded)
-{
+TEST(ConstFoldAudit, RuntimeFloorFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::F64), {});
@@ -913,8 +866,7 @@ TEST(ConstFoldAudit, RuntimeFloorFolded)
 // H. Edge cases — overflow and trap preservation
 // ---------------------------------------------------------------------------
 
-TEST(ConstFoldAudit, IMulOvfNotFolded)
-{
+TEST(ConstFoldAudit, IMulOvfNotFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -935,8 +887,7 @@ TEST(ConstFoldAudit, IMulOvfNotFolded)
     EXPECT_TRUE(hasInstr(entry, Opcode::IMulOvf));
 }
 
-TEST(ConstFoldAudit, SDivChk0ByZeroNotFolded)
-{
+TEST(ConstFoldAudit, SDivChk0ByZeroNotFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -957,8 +908,7 @@ TEST(ConstFoldAudit, SDivChk0ByZeroNotFolded)
 // I. Bitwise operations
 // ---------------------------------------------------------------------------
 
-TEST(ConstFoldAudit, AndFolded)
-{
+TEST(ConstFoldAudit, AndFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -974,8 +924,7 @@ TEST(ConstFoldAudit, AndFolded)
     EXPECT_TRUE(retIsConstInt(entry, 0x0F));
 }
 
-TEST(ConstFoldAudit, XorFolded)
-{
+TEST(ConstFoldAudit, XorFolded) {
     Module module;
     il::build::IRBuilder builder(module);
     Function &fn = builder.startFunction("test", Type(Type::Kind::I64), {});
@@ -991,8 +940,7 @@ TEST(ConstFoldAudit, XorFolded)
     EXPECT_TRUE(retIsConstInt(entry, 0x55));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

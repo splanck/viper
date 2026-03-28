@@ -15,15 +15,13 @@
 
 #include <ostream>
 
-namespace viper::tools
-{
+namespace viper::tools {
 
 /// @brief Print shared CLI option descriptions to an output stream.
 /// @details Outputs the standard option descriptions used by all frontend tools.
 ///          This ensures consistency across vbasic and zia help text.
 /// @param os Output stream to write to (typically std::cerr).
-inline void printSharedOptions(std::ostream &os)
-{
+inline void printSharedOptions(std::ostream &os) {
     os << "  -o, --output FILE              Output file for IL\n"
        << "  --emit-il                      Emit IL instead of running\n"
        << "  --trace[=il|src]               Enable execution tracing\n"

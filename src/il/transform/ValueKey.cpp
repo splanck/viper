@@ -20,16 +20,14 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Hash a Value based on its kind and payload.
 /// @details Delegates to the shared valueHash() helper in il::core for
 ///          consistent hashing across the codebase.
 /// @param v Value to hash.
 /// @return Hash code suitable for unordered containers.
-size_t ValueHash::operator()(const Value &v) const noexcept
-{
+size_t ValueHash::operator()(const Value &v) const noexcept {
     return valueHash(v);
 }
 
@@ -39,8 +37,7 @@ size_t ValueHash::operator()(const Value &v) const noexcept
 /// @param a First value to compare.
 /// @param b Second value to compare.
 /// @return True if both values represent the same payload; false otherwise.
-bool ValueEq::operator()(const Value &a, const Value &b) const noexcept
-{
+bool ValueEq::operator()(const Value &a, const Value &b) const noexcept {
     return valueEquals(a, b);
 }
 
@@ -50,13 +47,11 @@ bool ValueEq::operator()(const Value &a, const Value &b) const noexcept
 ///          matched by payload rather than by metadata.
 /// @param o Other key to compare against.
 /// @return True if both keys describe the same normalized expression.
-bool ValueKey::operator==(const ValueKey &o) const noexcept
-{
+bool ValueKey::operator==(const ValueKey &o) const noexcept {
     if (op != o.op || type != o.type || operands.size() != o.operands.size())
         return false;
     ValueEq eq;
-    for (std::size_t i = 0; i < operands.size(); ++i)
-    {
+    for (std::size_t i = 0; i < operands.size(); ++i) {
         if (!eq(operands[i], o.operands[i]))
             return false;
     }
@@ -69,12 +64,10 @@ bool ValueKey::operator==(const ValueKey &o) const noexcept
 ///          The hash is stable across runs as long as ValueHash is stable.
 /// @param k Key to hash.
 /// @return Hash code suitable for unordered containers.
-size_t ValueKeyHash::operator()(const ValueKey &k) const noexcept
-{
+size_t ValueKeyHash::operator()(const ValueKey &k) const noexcept {
     size_t h = static_cast<size_t>(k.op) * 1099511628211ULL ^ static_cast<size_t>(k.type);
     ValueHash hv;
-    for (const auto &v : k.operands)
-    {
+    for (const auto &v : k.operands) {
         h ^= hv(v) + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
     }
     return h;
@@ -86,10 +79,8 @@ size_t ValueKeyHash::operator()(const ValueKey &k) const noexcept
 ///          Only opcodes proven commutative in IL semantics are included.
 /// @param op Opcode to test.
 /// @return True if operand order does not affect the result; false otherwise.
-bool isCommutativeCSE(Opcode op) noexcept
-{
-    switch (op)
-    {
+bool isCommutativeCSE(Opcode op) noexcept {
+    switch (op) {
         case Opcode::Add:
         case Opcode::Mul:
         case Opcode::IAddOvf:
@@ -118,10 +109,8 @@ bool isCommutativeCSE(Opcode op) noexcept
 ///          never introduces new trapping paths.
 /// @param op Opcode to test.
 /// @return True if the opcode is safe for value-based CSE; false otherwise.
-bool isSafeCSEOpcode(Opcode op) noexcept
-{
-    switch (op)
-    {
+bool isSafeCSEOpcode(Opcode op) noexcept {
+    switch (op) {
         case Opcode::Add:
         case Opcode::Sub:
         case Opcode::Mul:
@@ -168,8 +157,7 @@ bool isSafeCSEOpcode(Opcode op) noexcept
 ///          uses payload values to provide a stable ordering.
 /// @param instr Instruction providing the operand list.
 /// @return A new operand vector, possibly reordered, for key construction.
-static std::vector<Value> normaliseOperands(const Instr &instr)
-{
+static std::vector<Value> normaliseOperands(const Instr &instr) {
     std::vector<Value> ops = instr.operands;
     if (ops.size() < 2)
         return ops;
@@ -177,18 +165,14 @@ static std::vector<Value> normaliseOperands(const Instr &instr)
     if (!isCommutativeCSE(instr.op))
         return ops;
 
-    auto rank = [](const Value &v) -> std::tuple<int, unsigned long long, std::string>
-    {
-        switch (v.kind)
-        {
+    auto rank = [](const Value &v) -> std::tuple<int, unsigned long long, std::string> {
+        switch (v.kind) {
             case Value::Kind::Temp:
                 return {3, v.id, {}};
             case Value::Kind::ConstInt:
                 return {2, static_cast<unsigned long long>(v.i64 ^ (v.isBool ? 1u : 0u)), {}};
-            case Value::Kind::ConstFloat:
-            {
-                union
-                {
+            case Value::Kind::ConstFloat: {
+                union {
                     double d;
                     unsigned long long u;
                 } u{};
@@ -218,8 +202,7 @@ static std::vector<Value> normaliseOperands(const Instr &instr)
 ///          expressions map to the same key for CSE/GVN.
 /// @param instr Instruction to analyze.
 /// @return Populated ValueKey when eligible; std::nullopt otherwise.
-std::optional<ValueKey> makeValueKey(const Instr &instr)
-{
+std::optional<ValueKey> makeValueKey(const Instr &instr) {
     const auto &meta = getOpcodeInfo(instr.op);
     if (meta.isTerminator)
         return std::nullopt;

@@ -59,8 +59,7 @@
 ///
 /// @note Callers must check for NULL before calling the returned pointer.
 /// @note O(1) time complexity (array index lookup).
-void *rt_get_vfunc(const rt_object *obj, uint32_t slot)
-{
+void *rt_get_vfunc(const rt_object *obj, uint32_t slot) {
     if (!obj || !obj->vptr)
         return (void *)0;
 

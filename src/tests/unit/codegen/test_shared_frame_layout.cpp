@@ -40,8 +40,7 @@ using namespace viper::codegen::common;
 // FrameLayout via AArch64 FrameBuilder
 // ===========================================================================
 
-TEST(SharedFrameLayout, FrameBuilderImplementsInterface)
-{
+TEST(SharedFrameLayout, FrameBuilderImplementsInterface) {
     MFunction fn{};
     fn.name = "test_func";
     FrameBuilder builder(fn);
@@ -52,8 +51,7 @@ TEST(SharedFrameLayout, FrameBuilderImplementsInterface)
     EXPECT_TRUE(true);
 }
 
-TEST(SharedFrameLayout, AddLocalViaInterface)
-{
+TEST(SharedFrameLayout, AddLocalViaInterface) {
     MFunction fn{};
     fn.name = "test_func";
     FrameBuilder builder(fn);
@@ -64,8 +62,7 @@ TEST(SharedFrameLayout, AddLocalViaInterface)
     EXPECT_LT(offset, 0); // Negative offset (below FP)
 }
 
-TEST(SharedFrameLayout, SpillViaInterface)
-{
+TEST(SharedFrameLayout, SpillViaInterface) {
     MFunction fn{};
     fn.name = "test_func";
     FrameBuilder builder(fn);
@@ -79,8 +76,7 @@ TEST(SharedFrameLayout, SpillViaInterface)
     EXPECT_EQ(spillOff, spillOff2);
 }
 
-TEST(SharedFrameLayout, FinalizeViaInterface)
-{
+TEST(SharedFrameLayout, FinalizeViaInterface) {
     MFunction fn{};
     fn.name = "test_func";
     FrameBuilder builder(fn);
@@ -98,8 +94,7 @@ TEST(SharedFrameLayout, FinalizeViaInterface)
     EXPECT_GE(total, 24);
 }
 
-TEST(SharedFrameLayout, DifferentLocalsGetDifferentOffsets)
-{
+TEST(SharedFrameLayout, DifferentLocalsGetDifferentOffsets) {
     MFunction fn{};
     fn.name = "test_func";
     FrameBuilder builder(fn);
@@ -117,8 +112,7 @@ TEST(SharedFrameLayout, DifferentLocalsGetDifferentOffsets)
 // CallLoweringPlan shared struct
 // ===========================================================================
 
-TEST(SharedCallPlan, BasicConstruction)
-{
+TEST(SharedCallPlan, BasicConstruction) {
     CallLoweringPlan plan{};
     plan.callee = "rt_print_i64";
     plan.args.push_back({CallArgClass::GPR, 1, false, 0});
@@ -130,8 +124,7 @@ TEST(SharedCallPlan, BasicConstruction)
     EXPECT_EQ(plan.args[0].cls, CallArgClass::GPR);
 }
 
-TEST(SharedCallPlan, VarArgPlan)
-{
+TEST(SharedCallPlan, VarArgPlan) {
     CallLoweringPlan plan{};
     plan.callee = "rt_snprintf";
     plan.isVarArg = true;
@@ -146,8 +139,7 @@ TEST(SharedCallPlan, VarArgPlan)
     EXPECT_EQ(plan.args.size(), 4u);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

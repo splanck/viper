@@ -17,12 +17,10 @@
 
 #include "frontends/basic/SemanticAnalyzer_Stmts_Shared.hpp"
 
-namespace il::frontends::basic::semantic_analyzer_detail
-{
+namespace il::frontends::basic::semantic_analyzer_detail {
 
 /// @brief Context wrapper for control-flow statement analysis helpers.
-class ControlStmtContext : public StmtShared
-{
+class ControlStmtContext : public StmtShared {
   public:
     using LoopGuard = StmtShared::LoopGuard;
     using ForLoopGuard = StmtShared::ForLoopGuard;

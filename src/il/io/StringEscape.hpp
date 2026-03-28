@@ -25,8 +25,7 @@
 #include <string>
 #include <string_view>
 
-namespace il::io
-{
+namespace il::io {
 
 /// @brief Decode common C-style escape sequences from @p input.
 /// @param input String containing escape sequences like `\n`, `\t`, `\\`, `\"`, or `\xNN`.
@@ -38,14 +37,11 @@ bool decodeEscapedString(std::string_view input, std::string &output, std::strin
 /// @brief Encode control characters in @p input using C-style escape sequences.
 /// @param input Raw UTF-8 string to encode.
 /// @return Escaped representation safe for inclusion in IL text.
-inline std::string encodeEscapedString(std::string_view input)
-{
+inline std::string encodeEscapedString(std::string_view input) {
     std::string out;
     out.reserve(input.size());
-    for (unsigned char c : input)
-    {
-        switch (c)
-        {
+    for (unsigned char c : input) {
+        switch (c) {
             case '\\':
                 out.append("\\\\");
                 break;
@@ -65,14 +61,11 @@ inline std::string encodeEscapedString(std::string_view input)
                 out.append("\\0");
                 break;
             default:
-                if (c < 0x20 || c == 0x7F || c >= 0x80)
-                {
+                if (c < 0x20 || c == 0x7F || c >= 0x80) {
                     char buf[5];
                     std::snprintf(buf, sizeof(buf), "\\x%02X", c);
                     out.append(buf);
-                }
-                else
-                {
+                } else {
                     out.push_back(static_cast<char>(c));
                 }
                 break;

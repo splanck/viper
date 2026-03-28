@@ -24,16 +24,14 @@
 #include <string>
 #include <vector>
 
-namespace
-{
+namespace {
 const char kModuleSource[] = "il 0.1\n\nfunc @helper() -> i64 {\nentry:\n  ret 0\n}\n";
 }
 
 // Stubbed usage() to satisfy linkage when embedding cmd_run_il.cpp in the test.
 void usage() {}
 
-int main()
-{
+int main() {
     namespace fs = std::filesystem;
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();

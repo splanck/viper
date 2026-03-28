@@ -21,12 +21,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Compile Zia source and run in VM, returning the exit code.
-int64_t compileAndRun(const std::string &source)
-{
+int64_t compileAndRun(const std::string &source) {
     SourceManager sm;
     CompilerInput input{.source = source, .path = "stress.zia"};
     CompilerOptions opts{};
@@ -44,8 +42,7 @@ int64_t compileAndRun(const std::string &source)
 //===----------------------------------------------------------------------===//
 
 /// @brief Allocate many entity objects in a loop to test allocation pressure.
-TEST(VMEntityStress, AllocateManyEntities)
-{
+TEST(VMEntityStress, AllocateManyEntities) {
     const std::string source = R"(
 module Test;
 
@@ -69,8 +66,7 @@ func start() {
 }
 
 /// @brief Entity with List field — allocate and populate in a loop.
-TEST(VMEntityStress, EntityWithListFieldStress)
-{
+TEST(VMEntityStress, EntityWithListFieldStress) {
     const std::string source = R"(
 module Test;
 
@@ -95,8 +91,7 @@ func start() {
 }
 
 /// @brief Chained entity allocation — entities referencing other entities.
-TEST(VMEntityStress, ChainedEntityAllocation)
-{
+TEST(VMEntityStress, ChainedEntityAllocation) {
     const std::string source = R"(
 module Test;
 
@@ -124,8 +119,7 @@ func start() {
 }
 
 /// @brief Multiple entity types allocated in interleaved pattern.
-TEST(VMEntityStress, InterleavedMultiEntityAlloc)
-{
+TEST(VMEntityStress, InterleavedMultiEntityAlloc) {
     const std::string source = R"(
 module Test;
 
@@ -163,8 +157,7 @@ func start() {
 }
 
 /// @brief Entity with multiple List fields — forward reference stress.
-TEST(VMEntityStress, ForwardRefEntityFieldChainStress)
-{
+TEST(VMEntityStress, ForwardRefEntityFieldChainStress) {
     const std::string source = R"(
 module Test;
 
@@ -200,7 +193,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

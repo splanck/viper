@@ -17,13 +17,12 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    void rt_audio3d_set_listener(void *position, void *forward);
-    int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int64_t volume);
-    void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance);
+void rt_audio3d_set_listener(void *position, void *forward);
+int64_t rt_audio3d_play_at(void *sound, void *position, double max_distance, int64_t volume);
+void rt_audio3d_update_voice(int64_t voice, void *position, double max_distance);
 
 #ifdef __cplusplus
 }

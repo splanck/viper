@@ -22,24 +22,21 @@
 #include <string>
 #include <string_view>
 
-namespace
-{
+namespace {
 constexpr std::string_view kSrc = R"BASIC(
 10 DIM s AS Viper.String
 20 PRINT s.Length
 30 END
 )BASIC";
 
-[[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name)
-{
+[[nodiscard]] bool hasExtern(const il::core::Module &module, std::string_view name) {
     const auto &externs = module.externs;
     return std::any_of(
         externs.begin(), externs.end(), [&](const il::core::Extern &e) { return e.name == name; });
 }
 } // namespace
 
-TEST(RuntimePropertyBinding, EmitsViperStringGetterExtern)
-{
+TEST(RuntimePropertyBinding, EmitsViperStringGetterExtern) {
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     std::string source(kSrc);
@@ -49,8 +46,7 @@ TEST(RuntimePropertyBinding, EmitsViperStringGetterExtern)
     EXPECT_TRUE(hasExtern(result.module, "Viper.String.get_Length"));
 }
 
-TEST(RuntimePropertyBinding, EmitsViperStringIsEmptyGetterExtern)
-{
+TEST(RuntimePropertyBinding, EmitsViperStringIsEmptyGetterExtern) {
     il::support::SourceManager sm;
     il::frontends::basic::BasicCompilerOptions opts{};
     const char *kSrcIsEmpty = R"BASIC(
@@ -65,8 +61,7 @@ TEST(RuntimePropertyBinding, EmitsViperStringIsEmptyGetterExtern)
     EXPECT_TRUE(hasExtern(result.module, "Viper.String.get_IsEmpty"));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

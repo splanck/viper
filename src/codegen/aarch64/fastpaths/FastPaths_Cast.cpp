@@ -21,16 +21,14 @@
 
 #include "FastPathsInternal.hpp"
 
-namespace viper::codegen::aarch64::fastpaths
-{
+namespace viper::codegen::aarch64::fastpaths {
 
 using il::core::Opcode;
 
 // Thread-local counter for trap labels (defined in main FastPaths.cpp)
 thread_local unsigned trapLabelCounter = 0;
 
-std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx)
-{
+std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx) {
     if (ctx.fn.blocks.empty())
         return std::nullopt;
 
@@ -54,14 +52,11 @@ std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx)
     // =========================================================================
     // Pattern: zext1/trunc1 %param -> %r; ret %r
     // Both operations mask to lowest bit: and x0, x0, #1
-    if (binI.op == Opcode::Zext1 || binI.op == Opcode::Trunc1)
-    {
+    if (binI.op == Opcode::Zext1 || binI.op == Opcode::Trunc1) {
         const auto &o0 = binI.operands[0];
-        if (o0.kind == il::core::Value::Kind::Temp)
-        {
+        if (o0.kind == il::core::Value::Kind::Temp) {
             int pIdx = indexOfParam(bb, o0.id);
-            if (pIdx >= 0)
-            {
+            if (pIdx >= 0) {
                 PhysReg src = ctx.argOrder[static_cast<std::size_t>(pIdx)];
                 if (src != PhysReg::X0)
                     bbMir.instrs.push_back(MInstr{
@@ -86,8 +81,7 @@ std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx)
     // =========================================================================
     // Pattern: cast.si_narrow.chk %param -> %r; ret %r
     // Emits: sign-extend truncation, compare, trap on mismatch
-    if (binI.op == Opcode::CastSiNarrowChk)
-    {
+    if (binI.op == Opcode::CastSiNarrowChk) {
         // Determine target width from binI.type
         int bits = 64;
         if (binI.type.kind == il::core::Type::Kind::I16)
@@ -99,8 +93,7 @@ std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx)
         const int sh = 64 - bits;
         const auto &o0 = binI.operands[0];
         PhysReg src = PhysReg::X0;
-        if (o0.kind == il::core::Value::Kind::Temp)
-        {
+        if (o0.kind == il::core::Value::Kind::Temp) {
             int pIdx = indexOfParam(bb, o0.id);
             if (pIdx >= 0)
                 src = ctx.argOrder[static_cast<std::size_t>(pIdx)];
@@ -116,8 +109,7 @@ std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx)
                 MInstr{MOpcode::MovRR, {MOperand::regOp(PhysReg::X0), MOperand::regOp(src)}});
 
         // tmp = (x0 << sh) >> sh  (sign-extended truncation)
-        if (sh > 0)
-        {
+        if (sh > 0) {
             bbMir.instrs.push_back(MInstr{
                 MOpcode::LslRI,
                 {MOperand::regOp(PhysReg::X0), MOperand::regOp(PhysReg::X0), MOperand::immOp(sh)}});
@@ -153,14 +145,11 @@ std::optional<MFunction> tryCastFastPaths(FastPathContext &ctx)
     // Emits: frintn (round to nearest even), fcvtzs (convert to int)
     // Note: Per IL spec, .rte = round-to-even, .chk = trap on overflow only.
     //       Overflow checking is handled by the runtime for extreme values.
-    if (binI.op == Opcode::CastFpToSiRteChk)
-    {
+    if (binI.op == Opcode::CastFpToSiRteChk) {
         const auto &o0 = binI.operands[0];
-        if (o0.kind == il::core::Value::Kind::Temp)
-        {
+        if (o0.kind == il::core::Value::Kind::Temp) {
             int pIdx = indexOfParam(bb, o0.id);
-            if (pIdx >= 0)
-            {
+            if (pIdx >= 0) {
                 const PhysReg s = ctx.ti.f64ArgOrder[static_cast<std::size_t>(pIdx)];
                 if (s != PhysReg::V0)
                     bbMir.instrs.push_back(MInstr{

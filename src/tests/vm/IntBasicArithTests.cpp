@@ -20,10 +20,8 @@
 
 using namespace il::core;
 
-namespace
-{
-void buildBinaryFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs)
-{
+namespace {
+void buildBinaryFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -46,8 +44,7 @@ void buildBinaryFunction(Module &module, Opcode op, int64_t lhs, int64_t rhs)
     bb.instructions.push_back(ret);
 }
 
-int64_t runBinary(Opcode op, int64_t lhs, int64_t rhs)
-{
+int64_t runBinary(Opcode op, int64_t lhs, int64_t rhs) {
     Module module;
     buildBinaryFunction(module, op, lhs, rhs);
     viper::tests::VmFixture fixture;
@@ -56,8 +53,7 @@ int64_t runBinary(Opcode op, int64_t lhs, int64_t rhs)
 
 } // namespace
 
-int main()
-{
+int main() {
     const int64_t minVal = std::numeric_limits<int64_t>::min();
     const int64_t maxVal = std::numeric_limits<int64_t>::max();
 

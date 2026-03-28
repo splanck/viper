@@ -33,8 +33,7 @@ using namespace il::support;
 
 // ── test_namespace_registry.cpp ──
 
-TEST(NsRegistry, TestRegisterNamespaceMergesRepeatedBlocks)
-{
+TEST(NsRegistry, TestRegisterNamespaceMergesRepeatedBlocks) {
     NamespaceRegistry reg;
 
     // Register the same namespace multiple times with different casings.
@@ -53,8 +52,7 @@ TEST(NsRegistry, TestRegisterNamespaceMergesRepeatedBlocks)
     ASSERT_TRUE(info->full == "A.B");
 }
 
-TEST(NsRegistry, TestRegisterClassCreatesFqName)
-{
+TEST(NsRegistry, TestRegisterClassCreatesFqName) {
     NamespaceRegistry reg;
 
     reg.registerNamespace("Foo.Bar");
@@ -76,8 +74,7 @@ TEST(NsRegistry, TestRegisterClassCreatesFqName)
     ASSERT_TRUE(info->classes.count("Foo.Bar.MyClass") == 1);
 }
 
-TEST(NsRegistry, TestRegisterInterfaceCreatesFqName)
-{
+TEST(NsRegistry, TestRegisterInterfaceCreatesFqName) {
     NamespaceRegistry reg;
 
     reg.registerNamespace("A.B");
@@ -99,8 +96,7 @@ TEST(NsRegistry, TestRegisterInterfaceCreatesFqName)
     ASSERT_TRUE(info->interfaces.count("A.B.IFoo") == 1);
 }
 
-TEST(NsRegistry, TestNamespaceExistsCaseInsensitive)
-{
+TEST(NsRegistry, TestNamespaceExistsCaseInsensitive) {
     NamespaceRegistry reg;
 
     reg.registerNamespace("MyNamespace");
@@ -115,8 +111,7 @@ TEST(NsRegistry, TestNamespaceExistsCaseInsensitive)
     ASSERT_TRUE(!reg.namespaceExists("Other"));
 }
 
-TEST(NsRegistry, TestTypeExistsCaseInsensitive)
-{
+TEST(NsRegistry, TestTypeExistsCaseInsensitive) {
     NamespaceRegistry reg;
 
     reg.registerClass("NS", "MyClass");
@@ -136,8 +131,7 @@ TEST(NsRegistry, TestTypeExistsCaseInsensitive)
     ASSERT_TRUE(!reg.typeExists("NS.Other"));
 }
 
-TEST(NsRegistry, TestGetTypeKindPositiveNegative)
-{
+TEST(NsRegistry, TestGetTypeKindPositiveNegative) {
     NamespaceRegistry reg;
 
     reg.registerClass("A", "C1");
@@ -156,8 +150,7 @@ TEST(NsRegistry, TestGetTypeKindPositiveNegative)
     ASSERT_TRUE(reg.getTypeKind("NonExistent.Type") == NamespaceRegistry::TypeKind::None);
 }
 
-TEST(NsRegistry, TestCanonicalSpellingPreserved)
-{
+TEST(NsRegistry, TestCanonicalSpellingPreserved) {
     NamespaceRegistry reg;
 
     // First registration uses mixed case.
@@ -181,8 +174,7 @@ TEST(NsRegistry, TestCanonicalSpellingPreserved)
     ASSERT_TRUE(info->classes.count("FooBar.BazQux.AnotherClass") == 1);
 }
 
-TEST(NsRegistry, TestInfoReturnsNullForNonexistentNamespace)
-{
+TEST(NsRegistry, TestInfoReturnsNullForNonexistentNamespace) {
     NamespaceRegistry reg;
 
     reg.registerNamespace("Exists");
@@ -196,8 +188,7 @@ TEST(NsRegistry, TestInfoReturnsNullForNonexistentNamespace)
     ASSERT_TRUE(reg.info("doesnotexist") == nullptr);
 }
 
-TEST(NsRegistry, TestRegisterClassCreatesNamespaceImplicitly)
-{
+TEST(NsRegistry, TestRegisterClassCreatesNamespaceImplicitly) {
     NamespaceRegistry reg;
 
     // Register a class without explicitly registering the namespace first.
@@ -212,8 +203,7 @@ TEST(NsRegistry, TestRegisterClassCreatesNamespaceImplicitly)
     ASSERT_TRUE(reg.getTypeKind("implicit.ns.testclass") == NamespaceRegistry::TypeKind::Class);
 }
 
-TEST(NsRegistry, TestRegisterInterfaceCreatesNamespaceImplicitly)
-{
+TEST(NsRegistry, TestRegisterInterfaceCreatesNamespaceImplicitly) {
     NamespaceRegistry reg;
 
     // Register an interface without explicitly registering the namespace first.
@@ -228,8 +218,7 @@ TEST(NsRegistry, TestRegisterInterfaceCreatesNamespaceImplicitly)
     ASSERT_TRUE(reg.getTypeKind("auto.created.itest") == NamespaceRegistry::TypeKind::Interface);
 }
 
-TEST(NsRegistry, TestMultipleTypesInSameNamespace)
-{
+TEST(NsRegistry, TestMultipleTypesInSameNamespace) {
     NamespaceRegistry reg;
 
     reg.registerNamespace("MyNS");
@@ -250,8 +239,7 @@ TEST(NsRegistry, TestMultipleTypesInSameNamespace)
 }
 
 // ── test_namespace_diagnostics.cpp ──
-std::string getFirstDiagnostic(const std::string &source)
-{
+std::string getFirstDiagnostic(const std::string &source) {
     SourceManager sm;
     uint32_t fileId = sm.addFile("test.bas");
 
@@ -272,12 +260,10 @@ std::string getFirstDiagnostic(const std::string &source)
     // Extract just the error message part (after the location).
     // Handle both "error: msg" and "error[code]: msg" formats.
     size_t errorPos = output.find("error");
-    if (errorPos != std::string::npos)
-    {
+    if (errorPos != std::string::npos) {
         // Find the colon-space that precedes the message
         size_t colonSpace = output.find(": ", errorPos);
-        if (colonSpace != std::string::npos)
-        {
+        if (colonSpace != std::string::npos) {
             size_t msgStart = colonSpace + 2; // Skip ": "
             size_t msgEnd = output.find('\n', msgStart);
             return output.substr(msgStart, msgEnd - msgStart);
@@ -289,8 +275,7 @@ std::string getFirstDiagnostic(const std::string &source)
 // Test E_NS_001: "namespace not found: '{ns}'"
 
 
-TEST(NsDiagnostics, TestNs001ExactMessage)
-{
+TEST(NsDiagnostics, TestNs001ExactMessage) {
     std::string source = R"(
 100 USING NonExistent
 )";
@@ -301,8 +286,7 @@ TEST(NsDiagnostics, TestNs001ExactMessage)
 }
 
 // Test E_NS_002: "type '{type}' not found in namespace '{ns}'"
-TEST(NsDiagnostics, TestNs002ExactMessage)
-{
+TEST(NsDiagnostics, TestNs002ExactMessage) {
     std::string source = R"(
 100 NAMESPACE NS1
 110 END NAMESPACE
@@ -316,8 +300,7 @@ TEST(NsDiagnostics, TestNs002ExactMessage)
 }
 
 // Test E_NS_003: "ambiguous reference to '{type}' (found in: ...)"
-TEST(NsDiagnostics, TestNs003ExactMessage)
-{
+TEST(NsDiagnostics, TestNs003ExactMessage) {
     // This test is tricky because USING must come before NAMESPACE
     // We can't test cross-file ambiguity easily in a single file
     // So we'll just verify the format is correct if we can trigger it
@@ -327,8 +310,7 @@ TEST(NsDiagnostics, TestNs003ExactMessage)
 }
 
 // Test E_NS_004: "duplicate alias: '{alias}' already defined"
-TEST(NsDiagnostics, TestNs004ExactMessage)
-{
+TEST(NsDiagnostics, TestNs004ExactMessage) {
     // This test cannot be easily written due to USING placement constraints
     // USING must come before NAMESPACE, so we cannot test duplicate aliases
     // referencing namespaces defined in the same file.
@@ -336,8 +318,7 @@ TEST(NsDiagnostics, TestNs004ExactMessage)
 }
 
 // Phase 2: USING may appear at file scope after declarations; ensure no error
-TEST(NsDiagnostics, TestNs005FileScopeAllowsUsingAfterDecl)
-{
+TEST(NsDiagnostics, TestNs005FileScopeAllowsUsingAfterDecl) {
     std::string source = R"(
 100 NAMESPACE A
 110 END NAMESPACE
@@ -349,8 +330,7 @@ TEST(NsDiagnostics, TestNs005FileScopeAllowsUsingAfterDecl)
 }
 
 // Test E_NS_006: "cannot resolve type: '{type}'"
-TEST(NsDiagnostics, TestNs006ExactMessage)
-{
+TEST(NsDiagnostics, TestNs006ExactMessage) {
     std::string source = R"(
 100 CLASS MyClass : NonExistentType
 110 END CLASS
@@ -362,8 +342,7 @@ TEST(NsDiagnostics, TestNs006ExactMessage)
 }
 
 // Test E_NS_007: "alias '{alias}' conflicts with namespace name"
-TEST(NsDiagnostics, TestNs007ExactMessage)
-{
+TEST(NsDiagnostics, TestNs007ExactMessage) {
     // This test cannot be easily written due to USING placement constraints
     // USING must come before NAMESPACE, so we cannot test aliases that
     // conflict with namespaces defined in the same file.
@@ -371,8 +350,7 @@ TEST(NsDiagnostics, TestNs007ExactMessage)
 }
 
 // Phase 2: USING may appear inside namespace blocks; no error expected here.
-TEST(NsDiagnostics, TestNs008ScopedUsingAllowed)
-{
+TEST(NsDiagnostics, TestNs008ScopedUsingAllowed) {
     std::string source = R"(
 100 NAMESPACE A
 110 END NAMESPACE
@@ -386,8 +364,7 @@ TEST(NsDiagnostics, TestNs008ScopedUsingAllowed)
 }
 
 // Test E_NS_009: "reserved root namespace 'Viper' cannot be declared or imported"
-TEST(NsDiagnostics, TestNs009ExactMessage)
-{
+TEST(NsDiagnostics, TestNs009ExactMessage) {
     std::string source = R"(
 100 NAMESPACE Viper
 110 END NAMESPACE
@@ -398,16 +375,14 @@ TEST(NsDiagnostics, TestNs009ExactMessage)
 }
 
 // Test that contender list is comma-separated
-TEST(NsDiagnostics, TestContenderListFormat)
-{
+TEST(NsDiagnostics, TestContenderListFormat) {
     // This would require a scenario where we can trigger E_NS_003
     // Due to USING constraints, this is difficult to test in a unit test
     // The implementation already ensures comma-separation at lines 234, 277
 }
 
 // Test that diagnostics include proper location information
-TEST(NsDiagnostics, TestDiagnosticLocations)
-{
+TEST(NsDiagnostics, TestDiagnosticLocations) {
     std::string source = R"(
 100 USING NonExistent
 )";
@@ -434,8 +409,7 @@ TEST(NsDiagnostics, TestDiagnosticLocations)
 }
 
 // ── test_namespace_integration.cpp ──
-size_t runPipeline(const std::string &source, bool shouldLower = true)
-{
+size_t runPipeline(const std::string &source, bool shouldLower = true) {
     SourceManager sm;
     uint32_t fileId = sm.addFile("test.bas");
 
@@ -453,8 +427,7 @@ size_t runPipeline(const std::string &source, bool shouldLower = true)
     size_t errorCount = emitter.errorCount();
 
     // Lower to IL if no errors and lowering is requested
-    if (errorCount == 0 && shouldLower)
-    {
+    if (errorCount == 0 && shouldLower) {
         Lowerer lowerer;
         lowerer.setDiagnosticEmitter(&emitter);
         auto module = lowerer.lowerProgram(*program);
@@ -469,8 +442,7 @@ size_t runPipeline(const std::string &source, bool shouldLower = true)
 }
 
 // Helper to check for specific diagnostic in output.
-bool hasDiagnostic(const std::string &source, const std::string &expectedMsg)
-{
+bool hasDiagnostic(const std::string &source, const std::string &expectedMsg) {
     SourceManager sm;
     uint32_t fileId = sm.addFile("test.bas");
 
@@ -493,8 +465,7 @@ bool hasDiagnostic(const std::string &source, const std::string &expectedMsg)
 // (a) Base/Derived across namespaces (success)
 
 
-TEST(NsIntegration, TestCrossNamespaceInheritanceSuccess)
-{
+TEST(NsIntegration, TestCrossNamespaceInheritanceSuccess) {
     std::string source = R"(
 100 NAMESPACE Lib.Core
 110   CLASS BaseClass
@@ -515,8 +486,7 @@ TEST(NsIntegration, TestCrossNamespaceInheritanceSuccess)
 // (b) Interface implementation across namespaces (success)
 // Note: Current parser may not support INTERFACE/IMPLEMENTS yet,
 // so we use CLASS inheritance as a proxy for cross-namespace type references.
-TEST(NsIntegration, TestCrossNamespaceTypeReferenceSuccess)
-{
+TEST(NsIntegration, TestCrossNamespaceTypeReferenceSuccess) {
     std::string source = R"(
 100 NAMESPACE System.Collections
 110   CLASS Container
@@ -533,8 +503,7 @@ TEST(NsIntegration, TestCrossNamespaceTypeReferenceSuccess)
 }
 
 // (c) USING + unqualified usage (success)
-TEST(NsIntegration, TestUsingUnqualifiedUsageSuccess)
-{
+TEST(NsIntegration, TestUsingUnqualifiedUsageSuccess) {
     std::string source = R"(
 100 NAMESPACE Graphics
 110   CLASS Shape
@@ -551,8 +520,7 @@ TEST(NsIntegration, TestUsingUnqualifiedUsageSuccess)
 }
 
 // (d) Ambiguity across two USINGs (E_NS_003; stable contenders)
-TEST(NsIntegration, TestAmbiguityTwoUsings)
-{
+TEST(NsIntegration, TestAmbiguityTwoUsings) {
     // Due to USING placement constraints, this is difficult to test
     // in a way that triggers E_NS_003. The scenario would require:
     // - Two namespaces with same type name
@@ -572,8 +540,7 @@ TEST(NsIntegration, TestAmbiguityTwoUsings)
 
 // NOTE: TestUsingAfterDeclError also disabled (E_NS_005 not enforced in Phase 2)
 
-TEST(NsIntegration, TestNestedNamespaceFullQualification)
-{
+TEST(NsIntegration, TestNestedNamespaceFullQualification) {
     std::string source = R"(
 100 NAMESPACE Outer.Middle.Inner
 110   CLASS DeepClass
@@ -590,8 +557,7 @@ TEST(NsIntegration, TestNestedNamespaceFullQualification)
 }
 
 // Additional scenario: Same-namespace type resolution
-TEST(NsIntegration, TestSameNamespaceResolution)
-{
+TEST(NsIntegration, TestSameNamespaceResolution) {
     std::string source = R"(
 100 NAMESPACE MyApp
 110   CLASS BaseType
@@ -606,8 +572,7 @@ TEST(NsIntegration, TestSameNamespaceResolution)
 }
 
 // Additional scenario: Type not found in namespace (E_NS_002 or old B2101)
-TEST(NsIntegration, TestTypeNotFoundInNamespace)
-{
+TEST(NsIntegration, TestTypeNotFoundInNamespace) {
     std::string source = R"(
 100 NAMESPACE Lib
 110 END NAMESPACE
@@ -620,8 +585,7 @@ TEST(NsIntegration, TestTypeNotFoundInNamespace)
 }
 
 // Additional scenario: Reserved namespace Viper (E_NS_009)
-TEST(NsIntegration, TestReservedNamespaceViper)
-{
+TEST(NsIntegration, TestReservedNamespaceViper) {
     std::string source = R"(
 100 NAMESPACE Viper.Core
 110   CLASS MyClass
@@ -636,8 +600,7 @@ TEST(NsIntegration, TestReservedNamespaceViper)
 }
 
 // Additional scenario: Multiple types in namespace
-TEST(NsIntegration, TestMultipleTypesInNamespace)
-{
+TEST(NsIntegration, TestMultipleTypesInNamespace) {
     std::string source = R"(
 100 NAMESPACE Collections
 110   CLASS List
@@ -660,8 +623,7 @@ TEST(NsIntegration, TestMultipleTypesInNamespace)
 }
 
 // Additional scenario: Case-insensitive namespace references
-TEST(NsIntegration, TestCaseInsensitiveNamespaceRefs)
-{
+TEST(NsIntegration, TestCaseInsensitiveNamespaceRefs) {
     std::string source = R"(
 100 NAMESPACE FooBar
 110   CLASS MyClass
@@ -677,8 +639,7 @@ TEST(NsIntegration, TestCaseInsensitiveNamespaceRefs)
 }
 
 // Additional scenario: Lowering preserves namespace qualification
-TEST(NsIntegration, TestLoweringPreservesQualification)
-{
+TEST(NsIntegration, TestLoweringPreservesQualification) {
     std::string source = R"(
 100 NAMESPACE Lib
 110   CLASS Resource
@@ -717,15 +678,13 @@ TEST(NsIntegration, TestLoweringPreservesQualification)
 }
 
 // ── test_ns_registry_builder.cpp ──
-Program makeProgram(std::vector<StmtPtr> stmts)
-{
+Program makeProgram(std::vector<StmtPtr> stmts) {
     Program prog;
     prog.main = std::move(stmts);
     return prog;
 }
 
-TEST(NsRegistryBuilder, TestEmptyProgram)
-{
+TEST(NsRegistryBuilder, TestEmptyProgram) {
     NamespaceRegistry reg;
     UsingContext uc;
     Program prog;
@@ -736,8 +695,7 @@ TEST(NsRegistryBuilder, TestEmptyProgram)
     ASSERT_TRUE(uc.imports().empty());
 }
 
-TEST(NsRegistryBuilder, TestSingleNamespace)
-{
+TEST(NsRegistryBuilder, TestSingleNamespace) {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -754,8 +712,7 @@ TEST(NsRegistryBuilder, TestSingleNamespace)
     ASSERT_TRUE(reg.namespaceExists("MyNamespace"));
 }
 
-TEST(NsRegistryBuilder, TestNestedNamespace)
-{
+TEST(NsRegistryBuilder, TestNestedNamespace) {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -772,8 +729,7 @@ TEST(NsRegistryBuilder, TestNestedNamespace)
     ASSERT_TRUE(reg.namespaceExists("A.B.C"));
 }
 
-TEST(NsRegistryBuilder, TestClassInNamespace)
-{
+TEST(NsRegistryBuilder, TestClassInNamespace) {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -797,8 +753,7 @@ TEST(NsRegistryBuilder, TestClassInNamespace)
     ASSERT_TRUE(reg.getTypeKind("MyNamespace.MyClass") == NamespaceRegistry::TypeKind::Class);
 }
 
-TEST(NsRegistryBuilder, TestInterfaceInNamespace)
-{
+TEST(NsRegistryBuilder, TestInterfaceInNamespace) {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -822,8 +777,7 @@ TEST(NsRegistryBuilder, TestInterfaceInNamespace)
     ASSERT_TRUE(reg.getTypeKind("MyNamespace.IFoo") == NamespaceRegistry::TypeKind::Interface);
 }
 
-TEST(NsRegistryBuilder, TestMultipleNamespaces)
-{
+TEST(NsRegistryBuilder, TestMultipleNamespaces) {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -846,8 +800,7 @@ TEST(NsRegistryBuilder, TestMultipleNamespaces)
     ASSERT_TRUE(reg.namespaceExists("NS2"));
 }
 
-TEST(NsRegistryBuilder, TestMergedNamespace)
-{
+TEST(NsRegistryBuilder, TestMergedNamespace) {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -883,8 +836,7 @@ TEST(NsRegistryBuilder, TestMergedNamespace)
     ASSERT_TRUE(reg.typeExists("MyNS.ClassB"));
 }
 
-TEST(NsRegistryBuilder, TestUsingDirective)
-{
+TEST(NsRegistryBuilder, TestUsingDirective) {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -904,8 +856,7 @@ TEST(NsRegistryBuilder, TestUsingDirective)
     ASSERT_TRUE(uc.imports()[0].alias.empty());
 }
 
-TEST(NsRegistryBuilder, TestUsingDirectiveWithAlias)
-{
+TEST(NsRegistryBuilder, TestUsingDirectiveWithAlias) {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -927,8 +878,7 @@ TEST(NsRegistryBuilder, TestUsingDirectiveWithAlias)
     ASSERT_TRUE(uc.resolveAlias("SC") == "System.Collections");
 }
 
-TEST(NsRegistryBuilder, TestMultipleUsingDirectives)
-{
+TEST(NsRegistryBuilder, TestMultipleUsingDirectives) {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -954,8 +904,7 @@ TEST(NsRegistryBuilder, TestMultipleUsingDirectives)
     ASSERT_TRUE(uc.imports()[1].ns == "NS2");
 }
 
-TEST(NsRegistryBuilder, TestGlobalClass)
-{
+TEST(NsRegistryBuilder, TestGlobalClass) {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -974,8 +923,7 @@ TEST(NsRegistryBuilder, TestGlobalClass)
     ASSERT_TRUE(reg.getTypeKind("GlobalClass") == NamespaceRegistry::TypeKind::Class);
 }
 
-TEST(NsRegistryBuilder, TestComplexNestedStructure)
-{
+TEST(NsRegistryBuilder, TestComplexNestedStructure) {
     NamespaceRegistry reg;
     UsingContext uc;
 
@@ -1010,8 +958,7 @@ TEST(NsRegistryBuilder, TestComplexNestedStructure)
 }
 
 // ── test_ns_resolve_pass.cpp ──
-size_t parseAndAnalyze(const std::string &source, DiagnosticEngine &de, bool verbose = false)
-{
+size_t parseAndAnalyze(const std::string &source, DiagnosticEngine &de, bool verbose = false) {
     SourceManager sm;
     uint32_t fileId = sm.addFile("test.bas");
 
@@ -1025,8 +972,7 @@ size_t parseAndAnalyze(const std::string &source, DiagnosticEngine &de, bool ver
     SemanticAnalyzer analyzer(emitter);
     analyzer.analyze(*program);
 
-    if (verbose && emitter.errorCount() > 0)
-    {
+    if (verbose && emitter.errorCount() > 0) {
         std::cerr << "Semantic errors: " << emitter.errorCount() << std::endl;
         de.printAll(std::cerr, &sm);
     }
@@ -1037,8 +983,7 @@ size_t parseAndAnalyze(const std::string &source, DiagnosticEngine &de, bool ver
 // Test: Cross-namespace base class resolution (fully qualified)
 
 
-TEST(NsResolvePass, TestCrossNamespaceQualified)
-{
+TEST(NsResolvePass, TestCrossNamespaceQualified) {
     std::string source = R"(
 100 NAMESPACE NS1
 110   CLASS BaseClass
@@ -1057,8 +1002,7 @@ TEST(NsResolvePass, TestCrossNamespaceQualified)
 }
 
 // Test: Valid resolution in same namespace
-TEST(NsResolvePass, TestSameNamespaceResolution)
-{
+TEST(NsResolvePass, TestSameNamespaceResolution) {
     std::string source = R"(
 100 NAMESPACE MyNS
 110   CLASS BaseClass
@@ -1075,8 +1019,7 @@ TEST(NsResolvePass, TestSameNamespaceResolution)
 }
 
 // Test: Type not found (E_NS_006 or old B2101)
-TEST(NsResolvePass, TestTypeNotFound)
-{
+TEST(NsResolvePass, TestTypeNotFound) {
     std::string source = R"(
 100 CLASS MyClass : NonExistentType
 110 END CLASS
@@ -1088,8 +1031,7 @@ TEST(NsResolvePass, TestTypeNotFound)
 }
 
 // Test: Nested namespace with fully qualified name
-TEST(NsResolvePass, TestNestedNamespace)
-{
+TEST(NsResolvePass, TestNestedNamespace) {
     std::string source = R"(
 100 NAMESPACE Outer.Inner
 110   CLASS BaseClass
@@ -1107,8 +1049,7 @@ TEST(NsResolvePass, TestNestedNamespace)
 
 // ── test_using_context.cpp ──
 
-TEST(UsingContext, TestDeclarationOrderPreserved)
-{
+TEST(UsingContext, TestDeclarationOrderPreserved) {
     UsingContext ctx;
 
     SourceLoc loc1{1, 1, 1};
@@ -1136,8 +1077,7 @@ TEST(UsingContext, TestDeclarationOrderPreserved)
     ASSERT_TRUE(imports[2].loc.line == 3);
 }
 
-TEST(UsingContext, TestResolveAliasCaseInsensitive)
-{
+TEST(UsingContext, TestResolveAliasCaseInsensitive) {
     UsingContext ctx;
 
     SourceLoc loc{1, 1, 1};
@@ -1154,8 +1094,7 @@ TEST(UsingContext, TestResolveAliasCaseInsensitive)
     ASSERT_TRUE(ctx.resolveAlias("").empty());
 }
 
-TEST(UsingContext, TestHasAliasCaseInsensitive)
-{
+TEST(UsingContext, TestHasAliasCaseInsensitive) {
     UsingContext ctx;
 
     SourceLoc loc{1, 1, 1};
@@ -1172,8 +1111,7 @@ TEST(UsingContext, TestHasAliasCaseInsensitive)
     ASSERT_TRUE(!ctx.hasAlias(""));
 }
 
-TEST(UsingContext, TestHasAliasDetectsDuplicates)
-{
+TEST(UsingContext, TestHasAliasDetectsDuplicates) {
     UsingContext ctx;
 
     SourceLoc loc1{1, 1, 1};
@@ -1196,8 +1134,7 @@ TEST(UsingContext, TestHasAliasDetectsDuplicates)
     ASSERT_TRUE(ctx.resolveAlias("alias1") == "Second.NS");
 }
 
-TEST(UsingContext, TestClearRemovesAllImports)
-{
+TEST(UsingContext, TestClearRemovesAllImports) {
     UsingContext ctx;
 
     SourceLoc loc{1, 1, 1};
@@ -1217,8 +1154,7 @@ TEST(UsingContext, TestClearRemovesAllImports)
     ASSERT_TRUE(ctx.resolveAlias("A1").empty());
 }
 
-TEST(UsingContext, TestEmptyAliasNoRegistration)
-{
+TEST(UsingContext, TestEmptyAliasNoRegistration) {
     UsingContext ctx;
 
     SourceLoc loc{1, 1, 1};
@@ -1234,8 +1170,7 @@ TEST(UsingContext, TestEmptyAliasNoRegistration)
     ASSERT_TRUE(ctx.resolveAlias("Some.Namespace").empty());
 }
 
-TEST(UsingContext, TestMultipleImportsSameNamespaceDifferentAliases)
-{
+TEST(UsingContext, TestMultipleImportsSameNamespaceDifferentAliases) {
     UsingContext ctx;
 
     SourceLoc loc1{1, 1, 1};
@@ -1256,8 +1191,7 @@ TEST(UsingContext, TestMultipleImportsSameNamespaceDifferentAliases)
     ASSERT_TRUE(ctx.resolveAlias("ALIAS2") == "Common.NS");
 }
 
-TEST(UsingContext, TestMixedAliasedAndNonAliasedImports)
-{
+TEST(UsingContext, TestMixedAliasedAndNonAliasedImports) {
     UsingContext ctx;
 
     SourceLoc loc{1, 1, 1};
@@ -1280,8 +1214,7 @@ TEST(UsingContext, TestMixedAliasedAndNonAliasedImports)
     ASSERT_TRUE(!ctx.hasAlias("NS4"));
 }
 
-TEST(UsingContext, TestSourceLocationsPreserved)
-{
+TEST(UsingContext, TestSourceLocationsPreserved) {
     UsingContext ctx;
 
     SourceLoc loc1{10, 5, 8};
@@ -1302,8 +1235,7 @@ TEST(UsingContext, TestSourceLocationsPreserved)
     ASSERT_TRUE(imports[1].loc.column == 15);
 }
 
-TEST(UsingContext, TestResolveAliasReturnsEmptyForNonExistent)
-{
+TEST(UsingContext, TestResolveAliasReturnsEmptyForNonExistent) {
     UsingContext ctx;
 
     SourceLoc loc{1, 1, 1};
@@ -1319,8 +1251,7 @@ TEST(UsingContext, TestResolveAliasReturnsEmptyForNonExistent)
 }
 
 // ── test_using_semantics.cpp ──
-size_t parseAndAnalyzeSema(const std::string &source, DiagnosticEngine &de)
-{
+size_t parseAndAnalyzeSema(const std::string &source, DiagnosticEngine &de) {
     SourceManager sm;
     uint32_t fileId = sm.addFile("test.bas");
 
@@ -1340,8 +1271,7 @@ size_t parseAndAnalyzeSema(const std::string &source, DiagnosticEngine &de)
 // Test: USING inside namespace (Phase 2 allows scoped USING inside namespace)
 
 
-TEST(UsingSemantics, TestUsingInsideNamespace)
-{
+TEST(UsingSemantics, TestUsingInsideNamespace) {
     // In Phase 2 we allow USING inside namespace blocks.
     // Use an existing namespace to avoid unknown-namespace diagnostics.
     std::string source2 = R"(
@@ -1358,8 +1288,7 @@ END NAMESPACE
 }
 
 // Test: USING after first decl (Phase 2 allows file-scoped USING anywhere)
-TEST(UsingSemantics, TestUsingAfterDecl)
-{
+TEST(UsingSemantics, TestUsingAfterDecl) {
     std::string source = R"(
 NAMESPACE A
 END NAMESPACE
@@ -1373,8 +1302,7 @@ USING A
 }
 
 // Test: USING after class decl (Phase 2 allows file-scoped USING anywhere)
-TEST(UsingSemantics, TestUsingAfterClass)
-{
+TEST(UsingSemantics, TestUsingAfterClass) {
     std::string source = R"(
 CLASS MyClass
 END CLASS
@@ -1390,8 +1318,7 @@ USING A
 }
 
 // Test: USING NonExistent.Namespace → E_NS_001
-TEST(UsingSemantics, TestUsingNonexistentNamespace)
-{
+TEST(UsingSemantics, TestUsingNonexistentNamespace) {
     std::string source = R"(
 USING NonExistent.Namespace
 )";
@@ -1402,8 +1329,7 @@ USING NonExistent.Namespace
 }
 
 // Test: USING X = A then USING X = B → E_NS_004
-TEST(UsingSemantics, TestDuplicateAlias)
-{
+TEST(UsingSemantics, TestDuplicateAlias) {
     std::string source = R"(
 NAMESPACE A
 END NAMESPACE
@@ -1419,8 +1345,7 @@ USING X = B
 }
 
 // Test: USING alias that equals a namespace name (e.g., "A") → E_NS_007
-TEST(UsingSemantics, TestAliasShadowsNamespace)
-{
+TEST(UsingSemantics, TestAliasShadowsNamespace) {
     std::string source = R"(
 NAMESPACE A
 END NAMESPACE
@@ -1435,8 +1360,7 @@ USING A = B
 }
 
 // Test: NAMESPACE Viper … → E_NS_009
-TEST(UsingSemantics, TestReservedViperNamespace)
-{
+TEST(UsingSemantics, TestReservedViperNamespace) {
     std::string source = R"(
 NAMESPACE Viper
 END NAMESPACE
@@ -1448,8 +1372,7 @@ END NAMESPACE
 }
 
 // Test: USING Viper … → E_NS_009
-TEST(UsingSemantics, TestReservedViperUsing)
-{
+TEST(UsingSemantics, TestReservedViperUsing) {
     std::string source = R"(
 NAMESPACE Viper
 END NAMESPACE
@@ -1462,8 +1385,7 @@ USING Viper
 }
 
 // Test: Valid USING at file scope before declarations
-TEST(UsingSemantics, TestValidUsing)
-{
+TEST(UsingSemantics, TestValidUsing) {
     std::string source = R"(
 100 USING System
 110 NAMESPACE System
@@ -1479,8 +1401,7 @@ TEST(UsingSemantics, TestValidUsing)
 }
 
 // Test: Valid USING with alias
-TEST(UsingSemantics, TestValidUsingWithAlias)
-{
+TEST(UsingSemantics, TestValidUsingWithAlias) {
     std::string source = R"(
 100 USING SC = System.Collections
 110 NAMESPACE System.Collections
@@ -1496,8 +1417,7 @@ TEST(UsingSemantics, TestValidUsingWithAlias)
 }
 
 // Test: Case-insensitive Viper check
-TEST(UsingSemantics, TestReservedViperCaseInsensitive)
-{
+TEST(UsingSemantics, TestReservedViperCaseInsensitive) {
     std::string source = R"(
 NAMESPACE viper
 END NAMESPACE
@@ -1510,8 +1430,7 @@ END NAMESPACE
 
 // ── test_using_compiletime_only.cpp ──
 
-TEST(UsingCompiletimeOnly, TestUsingOnlyProducesNoArtifacts)
-{
+TEST(UsingCompiletimeOnly, TestUsingOnlyProducesNoArtifacts) {
     // First, get baseline IL size for empty program (no USING)
     std::string emptySource = "END\n";
 
@@ -1538,8 +1457,7 @@ TEST(UsingCompiletimeOnly, TestUsingOnlyProducesNoArtifacts)
     // Count baseline functions (should be 2: __mod_init and main)
     size_t baselineFuncs = 0;
     size_t pos = 0;
-    while ((pos = ilEmpty.find("func ", pos)) != std::string::npos)
-    {
+    while ((pos = ilEmpty.find("func ", pos)) != std::string::npos) {
         baselineFuncs++;
         pos += 5;
     }
@@ -1589,8 +1507,7 @@ END
     // Count functions - should be same as baseline
     size_t funcCount = 0;
     pos = 0;
-    while ((pos = il.find("func ", pos)) != std::string::npos)
-    {
+    while ((pos = il.find("func ", pos)) != std::string::npos) {
         funcCount++;
         pos += 5;
     }
@@ -1607,8 +1524,7 @@ END
 
 /// @brief Test that USING with declarations produces correct artifacts.
 /// This is a sanity check that USING works when combined with real code.
-TEST(UsingCompiletimeOnly, TestUsingWithDeclarations)
-{
+TEST(UsingCompiletimeOnly, TestUsingWithDeclarations) {
     std::string source = R"(
 USING Collections
 
@@ -1659,8 +1575,7 @@ END
 }
 
 /// @brief Test empty program (baseline for comparison).
-TEST(UsingCompiletimeOnly, TestEmptyProgramBaseline)
-{
+TEST(UsingCompiletimeOnly, TestEmptyProgramBaseline) {
     std::string source = "END\n";
 
     SourceManager sm;
@@ -1687,8 +1602,7 @@ TEST(UsingCompiletimeOnly, TestEmptyProgramBaseline)
     std::cout << "Empty program IL:\n" << il << "\n";
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

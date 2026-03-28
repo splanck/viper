@@ -32,10 +32,8 @@
 #include <unordered_map>
 #include <utility>
 
-namespace viper::tools::ilc
-{
-namespace
-{
+namespace viper::tools::ilc {
+namespace {
 
 constexpr std::string_view kUsage =
     "usage: ilc codegen x64 <file.il> [-S <file.s>] [-o <a.out>] "
@@ -47,8 +45,7 @@ using viper::tools::ArgvView;
 /// @brief Result bundle produced by @ref parseCompileArgs.
 /// @details Contains the successfully parsed options or a diagnostic string when
 ///          parsing failed.
-struct ParseOutcome
-{
+struct ParseOutcome {
     std::optional<viper::codegen::x64::CodegenPipeline::Options> opts{};
     std::string diagnostics{};
 };
@@ -58,11 +55,9 @@ struct ParseOutcome
 ///          user-friendly diagnostics on failure.
 /// @param args View of the arguments following `codegen x64`.
 /// @return Parsed options or diagnostics describing the failure.
-ParseOutcome parseCompileArgs(const ArgvView &args)
-{
+ParseOutcome parseCompileArgs(const ArgvView &args) {
     ParseOutcome outcome{};
-    if (args.empty())
-    {
+    if (args.empty()) {
         outcome.diagnostics = std::string{kUsage};
         return outcome;
     }
@@ -73,13 +68,10 @@ ParseOutcome parseCompileArgs(const ArgvView &args)
     opts.output_asm_path.clear();
 
     std::ostringstream diag;
-    for (int index = 1; index < args.argc; ++index)
-    {
+    for (int index = 1; index < args.argc; ++index) {
         const std::string_view arg = args.at(index);
-        if (arg == "-S")
-        {
-            if (index + 1 >= args.argc)
-            {
+        if (arg == "-S") {
+            if (index + 1 >= args.argc) {
                 diag << "error: -S requires an output path\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;
@@ -88,10 +80,8 @@ ParseOutcome parseCompileArgs(const ArgvView &args)
             opts.output_asm_path = std::string(args.at(++index));
             continue;
         }
-        if (arg == "-o")
-        {
-            if (index + 1 >= args.argc)
-            {
+        if (arg == "-o") {
+            if (index + 1 >= args.argc) {
                 diag << "error: -o requires an output path\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;
@@ -99,15 +89,12 @@ ParseOutcome parseCompileArgs(const ArgvView &args)
             opts.output_obj_path = std::string(args.at(++index));
             continue;
         }
-        if (arg == "-run-native")
-        {
+        if (arg == "-run-native") {
             opts.run_native = true;
             continue;
         }
-        if (arg == "-O" || arg == "--optimize")
-        {
-            if (index + 1 >= args.argc)
-            {
+        if (arg == "-O" || arg == "--optimize") {
+            if (index + 1 >= args.argc) {
                 diag << "error: -O requires a level (0, 1, 2, or 3)\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;
@@ -115,18 +102,15 @@ ParseOutcome parseCompileArgs(const ArgvView &args)
             opts.optimize = std::atoi(std::string(args.at(++index)).c_str());
             continue;
         }
-        if (arg.size() == 3 && arg[0] == '-' && arg[1] == 'O' && arg[2] >= '0' && arg[2] <= '3')
-        {
+        if (arg.size() == 3 && arg[0] == '-' && arg[1] == 'O' && arg[2] >= '0' && arg[2] <= '3') {
             opts.optimize = arg[2] - '0';
             continue;
         }
-        if (arg.substr(0, 13) == "--stack-size=")
-        {
+        if (arg.substr(0, 13) == "--stack-size=") {
             const std::string sizeStr = std::string(arg.substr(13));
             char *endptr = nullptr;
             const unsigned long long size = std::strtoull(sizeStr.c_str(), &endptr, 10);
-            if (endptr == sizeStr.c_str() || *endptr != '\0')
-            {
+            if (endptr == sizeStr.c_str() || *endptr != '\0') {
                 diag << "error: invalid --stack-size value: " << sizeStr << "\n" << kUsage;
                 outcome.diagnostics = diag.str();
                 return outcome;
@@ -134,13 +118,11 @@ ParseOutcome parseCompileArgs(const ArgvView &args)
             opts.stack_size = static_cast<std::size_t>(size);
             continue;
         }
-        if (arg == "--native-asm")
-        {
+        if (arg == "--native-asm") {
             opts.assembler_mode = viper::codegen::x64::CodegenPipeline::AssemblerMode::Native;
             continue;
         }
-        if (arg == "--system-asm")
-        {
+        if (arg == "--system-asm") {
             opts.assembler_mode = viper::codegen::x64::CodegenPipeline::AssemblerMode::System;
             continue;
         }
@@ -160,35 +142,27 @@ ParseOutcome parseCompileArgs(const ArgvView &args)
 ///          stdout/stderr to the caller.
 /// @param args View over the user-provided arguments.
 /// @return Zero on success; otherwise non-zero to signal failure.
-int handleCompile(const ArgvView &args)
-{
+int handleCompile(const ArgvView &args) {
     const ParseOutcome parsed = parseCompileArgs(args);
-    if (!parsed.opts.has_value())
-    {
-        if (!parsed.diagnostics.empty())
-        {
+    if (!parsed.opts.has_value()) {
+        if (!parsed.diagnostics.empty()) {
             std::cerr << parsed.diagnostics;
         }
         return 1;
     }
 
-    try
-    {
+    try {
         viper::codegen::x64::CodegenPipeline pipeline(*parsed.opts);
         const PipelineResult result = pipeline.run();
 
-        if (!result.stdout_text.empty())
-        {
+        if (!result.stdout_text.empty()) {
             std::cout << result.stdout_text;
         }
-        if (!result.stderr_text.empty())
-        {
+        if (!result.stderr_text.empty()) {
             std::cerr << result.stderr_text;
         }
         return result.exit_code;
-    }
-    catch (const std::exception &e)
-    {
+    } catch (const std::exception &e) {
         std::cerr << "error: " << e.what() << '\n';
         return 2;
     }
@@ -209,18 +183,15 @@ const std::unordered_map<std::string, Handler> kHandlers = {
 /// @param argc Argument count supplied by the CLI harness.
 /// @param argv Argument vector supplied by the CLI harness.
 /// @return Exit code reported by the chosen handler.
-int cmd_codegen_x64(int argc, char **argv)
-{
+int cmd_codegen_x64(int argc, char **argv) {
     const ArgvView args{argc, argv};
-    if (args.empty())
-    {
+    if (args.empty()) {
         std::cerr << kUsage;
         return 1;
     }
 
     const std::string_view token = args.front();
-    if (const auto it = kHandlers.find(std::string(token)); it != kHandlers.end())
-    {
+    if (const auto it = kHandlers.find(std::string(token)); it != kHandlers.end()) {
         return it->second(args.drop_front());
     }
 
@@ -231,8 +202,7 @@ int cmd_codegen_x64(int argc, char **argv)
 /// @details Present for symmetry with other command registration helpers.  The
 ///          current driver wires subcommands manually so the function is a
 ///          no-op.
-void register_codegen_x64_commands(CLI &cli)
-{
+void register_codegen_x64_commands(CLI &cli) {
     (void)cli;
 }
 

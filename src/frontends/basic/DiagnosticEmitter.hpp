@@ -65,14 +65,12 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Formats BASIC diagnostics with error codes and caret ranges.
 /// @invariant Diagnostics are emitted in order and printed with original source line.
 /// @ownership Borrows DiagnosticEngine and SourceManager; copies source text per file id.
-class DiagnosticEmitter
-{
+class DiagnosticEmitter {
   public:
     /// @brief Create emitter forwarding counts to @p de and using @p sm for file paths.
     /// @param de Diagnostic engine collecting counts.
@@ -121,8 +119,7 @@ class DiagnosticEmitter
 
   private:
     /// @brief Diagnostic record captured for later printing.
-    struct Entry
-    {
+    struct Entry {
         il::support::Severity severity; ///< Diagnostic severity.
         std::string code;               ///< Error code like B1001.
         std::string message;            ///< Description text.

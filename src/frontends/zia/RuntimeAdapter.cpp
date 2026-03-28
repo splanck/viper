@@ -42,20 +42,17 @@
 
 #include "frontends/zia/RuntimeAdapter.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //===----------------------------------------------------------------------===//
 // toZiaType Implementation
 //===----------------------------------------------------------------------===//
 
-TypeRef toZiaType(il::runtime::ILScalarType t)
-{
+TypeRef toZiaType(il::runtime::ILScalarType t) {
     // Map each IL scalar type to its Zia semantic equivalent.
     // This switch is exhaustive—the compiler will warn if new
     // ILScalarType values are added but not handled here.
-    switch (t)
-    {
+    switch (t) {
         case il::runtime::ILScalarType::I64:
             // 64-bit signed integer. This is the only integer width at the IL
             // level; Zia's Integer type is semantically equivalent.
@@ -99,8 +96,7 @@ TypeRef toZiaType(il::runtime::ILScalarType t)
 // toZiaParamTypes Implementation
 //===----------------------------------------------------------------------===//
 
-std::vector<TypeRef> toZiaParamTypes(const il::runtime::ParsedSignature &sig)
-{
+std::vector<TypeRef> toZiaParamTypes(const il::runtime::ParsedSignature &sig) {
     // Pre-allocate the result vector to avoid reallocations.
     // The signature's params vector contains one ILScalarType per parameter,
     // excluding the implicit receiver for method calls.
@@ -116,12 +112,10 @@ std::vector<TypeRef> toZiaParamTypes(const il::runtime::ParsedSignature &sig)
     return result;
 }
 
-TypeRef toZiaReturnType(const il::runtime::ParsedSignature &sig)
-{
+TypeRef toZiaReturnType(const il::runtime::ParsedSignature &sig) {
     // When the signature carries an element type (e.g. "seq<str>"), produce a typed
     // Seq type so the lowerer can use kSeqLen/kSeqGet for safe rt_seq iteration.
-    if (!sig.elementTypeName.empty())
-    {
+    if (!sig.elementTypeName.empty()) {
         auto elemScalar = il::runtime::mapILToken(sig.elementTypeName);
         TypeRef elemType = toZiaType(elemScalar);
         return types::seqOf(elemType);

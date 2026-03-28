@@ -35,12 +35,10 @@
 #include <string_view>
 #include <vector>
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Canonical representation of a function's exception-handling graph.
-class EhModel
-{
+class EhModel {
   public:
     /// @brief Build the EH model for @p function.
     /// @param function Function whose EH structure will be analysed.
@@ -48,22 +46,19 @@ class EhModel
 
     /// @brief Access the function used to construct the model.
     /// @return Reference to the underlying function.
-    [[nodiscard]] const il::core::Function &function() const noexcept
-    {
+    [[nodiscard]] const il::core::Function &function() const noexcept {
         return *fn;
     }
 
     /// @brief Retrieve the entry block for the function.
     /// @return Pointer to the entry block or nullptr when no blocks exist.
-    [[nodiscard]] const il::core::BasicBlock *entry() const noexcept
-    {
+    [[nodiscard]] const il::core::BasicBlock *entry() const noexcept {
         return entryBlock;
     }
 
     /// @brief Determine whether the function contains EH-relevant opcodes.
     /// @return True when at least one EH opcode is present.
-    [[nodiscard]] bool hasEhInstructions() const noexcept
-    {
+    [[nodiscard]] bool hasEhInstructions() const noexcept {
         return hasEh;
     }
 
@@ -87,8 +82,7 @@ class EhModel
     /// @return Reference to the label map.
     /// @note The returned map uses string_view keys referencing BasicBlock::label
     ///       strings. The map must not outlive the source Function.
-    [[nodiscard]] const BlockMap &blockMap() const noexcept
-    {
+    [[nodiscard]] const BlockMap &blockMap() const noexcept {
         return blocks;
     }
 

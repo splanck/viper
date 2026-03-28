@@ -28,8 +28,7 @@
 #error "PARSE_ROUNDTRIP_DIR must be defined"
 #endif
 
-int main()
-{
+int main() {
     const char *path = PARSE_ROUNDTRIP_DIR "/extern_whitespace.il";
     std::ifstream input(path);
     assert(input && "failed to open extern_whitespace.il");

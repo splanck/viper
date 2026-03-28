@@ -21,8 +21,7 @@
 
 using namespace il::core;
 
-static il::core::Module build_tail_fact_module()
-{
+static il::core::Module build_tail_fact_module() {
     Module m;
     il::build::IRBuilder b(m);
 
@@ -42,8 +41,7 @@ static il::core::Module build_tail_fact_module()
     BasicBlock *entry = nullptr;
     BasicBlock *retb = nullptr;
     BasicBlock *recb = nullptr;
-    for (auto &bb : fact.blocks)
-    {
+    for (auto &bb : fact.blocks) {
         if (bb.label == "entry")
             entry = &bb;
         else if (bb.label == "retb")
@@ -114,8 +112,7 @@ static il::core::Module build_tail_fact_module()
     return m;
 }
 
-static il::core::Module build_mutual_module()
-{
+static il::core::Module build_mutual_module() {
     Module m;
     il::build::IRBuilder b(m);
     // Register both functions to allow mutual recursion
@@ -128,8 +125,7 @@ static il::core::Module build_mutual_module()
     // Reacquire references after potential vector reallocation
     Function *fRef = nullptr;
     Function *gRef = nullptr;
-    for (auto &fnc : m.functions)
-    {
+    for (auto &fnc : m.functions) {
         if (fnc.name == "f")
             fRef = &fnc;
         else if (fnc.name == "g")
@@ -146,8 +142,7 @@ static il::core::Module build_mutual_module()
     BasicBlock *fe = nullptr;
     BasicBlock *fr = nullptr;
     BasicBlock *fn = nullptr;
-    for (auto &bb : f.blocks)
-    {
+    for (auto &bb : f.blocks) {
         if (bb.label == "entry")
             fe = &bb;
         else if (bb.label == "retb")
@@ -210,8 +205,7 @@ static il::core::Module build_mutual_module()
     BasicBlock *ge = nullptr;
     BasicBlock *gr = nullptr;
     BasicBlock *gn = nullptr;
-    for (auto &bb : g.blocks)
-    {
+    for (auto &bb : g.blocks) {
         if (bb.label == "entry")
             ge = &bb;
         else if (bb.label == "retb")
@@ -275,8 +269,7 @@ static il::core::Module build_mutual_module()
     return m;
 }
 
-int main()
-{
+int main() {
     std::fprintf(stderr, "[TEST] VM_TailCallTests start\n");
     std::fflush(stderr);
     // Tail-recursive factorial should keep depth constant at 1
@@ -289,9 +282,9 @@ int main()
         il::vm::VM vm(m);
         std::fprintf(stderr, "[TEST] VM constructed\n");
         std::fflush(stderr);
-        auto it = std::find_if(m.functions.begin(),
-                               m.functions.end(),
-                               [](const Function &f) { return f.name == "main"; });
+        auto it = std::find_if(m.functions.begin(), m.functions.end(), [](const Function &f) {
+            return f.name == "main";
+        });
         assert(it != m.functions.end());
         std::fprintf(stderr, "[TEST] found main\n");
         std::fflush(stderr);
@@ -299,12 +292,10 @@ int main()
         std::fprintf(stderr, "[TEST] prepared state\n");
         std::fflush(stderr);
         std::size_t maxDepth = 0;
-        while (true)
-        {
+        while (true) {
             maxDepth = std::max(maxDepth, il::vm::VMTestHook::execDepth(vm));
             auto res = il::vm::VMTestHook::step(vm, state);
-            if (res)
-            {
+            if (res) {
                 assert(res->i64 == 120);
                 break;
             }
@@ -320,18 +311,16 @@ int main()
         std::fprintf(stderr, "[TEST] mutual module built\n");
         std::fflush(stderr);
         il::vm::VM vm(m);
-        auto it = std::find_if(m.functions.begin(),
-                               m.functions.end(),
-                               [](const Function &f) { return f.name == "main"; });
+        auto it = std::find_if(m.functions.begin(), m.functions.end(), [](const Function &f) {
+            return f.name == "main";
+        });
         assert(it != m.functions.end());
         auto state = il::vm::VMTestHook::prepare(vm, *it);
         std::size_t maxDepth = 0;
-        while (true)
-        {
+        while (true) {
             maxDepth = std::max(maxDepth, il::vm::VMTestHook::execDepth(vm));
             auto res = il::vm::VMTestHook::step(vm, state);
-            if (res)
-            {
+            if (res) {
                 assert(res->i64 == 1000);
                 break;
             }

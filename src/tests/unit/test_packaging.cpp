@@ -48,19 +48,16 @@ using namespace viper::pkg;
 // ============================================================================
 // Helper: read a little-endian uint16 from a byte buffer
 // ============================================================================
-static uint16_t readLE16(const uint8_t *p)
-{
+static uint16_t readLE16(const uint8_t *p) {
     return static_cast<uint16_t>(p[0] | (p[1] << 8));
 }
 
-static uint32_t readLE32(const uint8_t *p)
-{
+static uint32_t readLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
-static uint32_t readBE32(const uint8_t *p)
-{
+static uint32_t readBE32(const uint8_t *p) {
     return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
 }
@@ -69,16 +66,14 @@ static uint32_t readBE32(const uint8_t *p)
 // DEFLATE Tests
 // ============================================================================
 
-TEST(Deflate, RoundTripEmpty)
-{
+TEST(Deflate, RoundTripEmpty) {
     std::vector<uint8_t> input;
     auto compressed = deflate(input.data(), input.size());
     auto decompressed = inflate(compressed.data(), compressed.size());
     EXPECT_EQ(decompressed.size(), static_cast<size_t>(0));
 }
 
-TEST(Deflate, RoundTripSmall)
-{
+TEST(Deflate, RoundTripSmall) {
     const char *msg = "Hello, VAPS packaging!";
     auto len = std::strlen(msg);
     auto compressed = deflate(reinterpret_cast<const uint8_t *>(msg), len);
@@ -87,8 +82,7 @@ TEST(Deflate, RoundTripSmall)
     EXPECT_TRUE(std::memcmp(decompressed.data(), msg, len) == 0);
 }
 
-TEST(Deflate, RoundTripMixedDataLevel6)
-{
+TEST(Deflate, RoundTripMixedDataLevel6) {
     // Mixed data at compression level 6 (LZ77+Huffman)
     std::vector<uint8_t> input;
     for (int i = 0; i < 500; ++i)
@@ -99,8 +93,7 @@ TEST(Deflate, RoundTripMixedDataLevel6)
     EXPECT_TRUE(std::memcmp(decompressed.data(), input.data(), input.size()) == 0);
 }
 
-TEST(Deflate, RoundTripRepetitiveLevel6)
-{
+TEST(Deflate, RoundTripRepetitiveLevel6) {
     // Highly repetitive data — exercises LZ77 match finding
     std::vector<uint8_t> input(1000, 'A');
     auto compressed = deflate(input.data(), input.size(), 6);
@@ -110,12 +103,10 @@ TEST(Deflate, RoundTripRepetitiveLevel6)
     EXPECT_TRUE(std::memcmp(decompressed.data(), input.data(), input.size()) == 0);
 }
 
-TEST(Deflate, AllLevels)
-{
+TEST(Deflate, AllLevels) {
     const char *msg = "Test data for compression levels 1 through 9 !!!";
     auto len = std::strlen(msg);
-    for (int level = 1; level <= 9; ++level)
-    {
+    for (int level = 1; level <= 9; ++level) {
         auto compressed = deflate(reinterpret_cast<const uint8_t *>(msg), len, level);
         auto decompressed = inflate(compressed.data(), compressed.size());
         EXPECT_EQ(decompressed.size(), len);
@@ -127,8 +118,7 @@ TEST(Deflate, AllLevels)
 // ZIP Tests
 // ============================================================================
 
-TEST(Zip, EmptyArchive)
-{
+TEST(Zip, EmptyArchive) {
     ZipWriter zip;
     auto data = zip.finishToVector();
     // Minimal ZIP: end-of-central-directory record (22 bytes)
@@ -138,8 +128,7 @@ TEST(Zip, EmptyArchive)
     EXPECT_EQ(readLE32(data.data() + eocdOff), static_cast<uint32_t>(0x06054B50));
 }
 
-TEST(Zip, SingleFileLocalHeader)
-{
+TEST(Zip, SingleFileLocalHeader) {
     ZipWriter zip;
     const char *content = "Hello ZIP";
     zip.addFile("test.txt", reinterpret_cast<const uint8_t *>(content), std::strlen(content));
@@ -159,8 +148,7 @@ TEST(Zip, SingleFileLocalHeader)
     EXPECT_TRUE(std::memcmp(data.data() + 30, "test.txt", 8) == 0);
 }
 
-TEST(Zip, DirectoryEntry)
-{
+TEST(Zip, DirectoryEntry) {
     ZipWriter zip;
     zip.addDirectory("mydir/");
     auto data = zip.finishToVector();
@@ -178,8 +166,7 @@ TEST(Zip, DirectoryEntry)
     EXPECT_EQ(readLE32(data.data() + 22), static_cast<uint32_t>(0)); // uncompressed
 }
 
-TEST(Zip, CentralDirectoryPresent)
-{
+TEST(Zip, CentralDirectoryPresent) {
     ZipWriter zip;
     zip.addFileString("a.txt", "alpha");
     zip.addFileString("b.txt", "bravo");
@@ -187,8 +174,7 @@ TEST(Zip, CentralDirectoryPresent)
 
     // Find central directory headers (signature 0x02014B50)
     int centralCount = 0;
-    for (size_t i = 0; i + 4 <= data.size(); ++i)
-    {
+    for (size_t i = 0; i + 4 <= data.size(); ++i) {
         if (readLE32(data.data() + i) == 0x02014B50)
             centralCount++;
     }
@@ -201,18 +187,15 @@ TEST(Zip, CentralDirectoryPresent)
     EXPECT_EQ(readLE16(data.data() + eocdOff + 10), static_cast<uint16_t>(2));
 }
 
-TEST(Zip, UnixPermissionsEncoded)
-{
+TEST(Zip, UnixPermissionsEncoded) {
     ZipWriter zip;
     zip.addFile("exec", reinterpret_cast<const uint8_t *>("x"), 1, 0100755);
     auto data = zip.finishToVector();
 
     // Find central directory header
     size_t cdOff = 0;
-    for (size_t i = 0; i + 4 <= data.size(); ++i)
-    {
-        if (readLE32(data.data() + i) == 0x02014B50)
-        {
+    for (size_t i = 0; i + 4 <= data.size(); ++i) {
+        if (readLE32(data.data() + i) == 0x02014B50) {
             cdOff = i;
             break;
         }
@@ -233,8 +216,7 @@ TEST(Zip, UnixPermissionsEncoded)
 // Tar Tests
 // ============================================================================
 
-TEST(Tar, EmptyArchive)
-{
+TEST(Tar, EmptyArchive) {
     TarWriter tar;
     auto data = tar.finish();
     // Empty tar: just two 512-byte zero blocks = 1024 bytes
@@ -247,8 +229,7 @@ TEST(Tar, EmptyArchive)
     EXPECT_TRUE(allZero);
 }
 
-TEST(Tar, FileHeaderMagic)
-{
+TEST(Tar, FileHeaderMagic) {
     TarWriter tar;
     tar.addFileString("./hello.txt", "Hello");
     auto data = tar.finish();
@@ -261,8 +242,7 @@ TEST(Tar, FileHeaderMagic)
     EXPECT_EQ(data[264], '0');
 }
 
-TEST(Tar, FileNameInHeader)
-{
+TEST(Tar, FileNameInHeader) {
     TarWriter tar;
     tar.addFileString("./usr/bin/test", "content");
     auto data = tar.finish();
@@ -271,8 +251,7 @@ TEST(Tar, FileNameInHeader)
     EXPECT_TRUE(std::memcmp(data.data(), "./usr/bin/test", 14) == 0);
 }
 
-TEST(Tar, FileModeField)
-{
+TEST(Tar, FileModeField) {
     TarWriter tar;
     tar.addFileString("./file", "data", 0755);
     auto data = tar.finish();
@@ -282,8 +261,7 @@ TEST(Tar, FileModeField)
     EXPECT_TRUE(std::memcmp(data.data() + 100, "0000755", 7) == 0);
 }
 
-TEST(Tar, DataAlignment)
-{
+TEST(Tar, DataAlignment) {
     TarWriter tar;
     // Add a file with content not a multiple of 512
     std::string content = "Short";
@@ -294,8 +272,7 @@ TEST(Tar, DataAlignment)
     EXPECT_EQ(data.size(), static_cast<size_t>(2048));
 }
 
-TEST(Tar, DirectoryTypeflag)
-{
+TEST(Tar, DirectoryTypeflag) {
     TarWriter tar;
     tar.addDirectory("./mydir/", 0755);
     auto data = tar.finish();
@@ -308,8 +285,7 @@ TEST(Tar, DirectoryTypeflag)
 // Ar Tests
 // ============================================================================
 
-TEST(Ar, GlobalMagic)
-{
+TEST(Ar, GlobalMagic) {
     ArWriter ar;
     ar.addMemberString("test", "data");
     auto data = ar.finish();
@@ -319,8 +295,7 @@ TEST(Ar, GlobalMagic)
     EXPECT_TRUE(std::memcmp(data.data(), "!<arch>\n", 8) == 0);
 }
 
-TEST(Ar, MemberHeader)
-{
+TEST(Ar, MemberHeader) {
     ArWriter ar;
     ar.addMemberString("hello", "world");
     auto data = ar.finish();
@@ -334,8 +309,7 @@ TEST(Ar, MemberHeader)
     EXPECT_EQ(data[8 + 59], '\n');
 }
 
-TEST(Ar, DebianBinaryOrdering)
-{
+TEST(Ar, DebianBinaryOrdering) {
     // .deb files must have debian-binary as first member
     ArWriter ar;
     ar.addMemberString("debian-binary", "2.0\n");
@@ -351,8 +325,7 @@ TEST(Ar, DebianBinaryOrdering)
 // PE Tests
 // ============================================================================
 
-TEST(PE, DosHeaderMagic)
-{
+TEST(PE, DosHeaderMagic) {
     PEBuildParams params;
     params.textSection = {0xC3}; // ret
     auto pe = buildPE(params);
@@ -363,8 +336,7 @@ TEST(PE, DosHeaderMagic)
     EXPECT_EQ(pe[1], 'Z');
 }
 
-TEST(PE, PESignature)
-{
+TEST(PE, PESignature) {
     PEBuildParams params;
     params.textSection = {0xC3};
     auto pe = buildPE(params);
@@ -377,8 +349,7 @@ TEST(PE, PESignature)
     EXPECT_EQ(pe[0x83], 0);
 }
 
-TEST(PE, MachineAMD64)
-{
+TEST(PE, MachineAMD64) {
     PEBuildParams params;
     params.textSection = {0xC3};
     params.arch = "x64";
@@ -389,8 +360,7 @@ TEST(PE, MachineAMD64)
     EXPECT_EQ(machine, static_cast<uint16_t>(0x8664));
 }
 
-TEST(PE, MachineARM64)
-{
+TEST(PE, MachineARM64) {
     PEBuildParams params;
     params.textSection = {0xC0, 0x03, 0x5F, 0xD6}; // ARM64 ret
     params.arch = "arm64";
@@ -401,8 +371,7 @@ TEST(PE, MachineARM64)
     EXPECT_EQ(machine, static_cast<uint16_t>(0xAA64));
 }
 
-TEST(PE, OptionalHeaderMagic)
-{
+TEST(PE, OptionalHeaderMagic) {
     PEBuildParams params;
     params.textSection = {0xC3};
     auto pe = buildPE(params);
@@ -412,8 +381,7 @@ TEST(PE, OptionalHeaderMagic)
     EXPECT_EQ(magic, static_cast<uint16_t>(0x020B));
 }
 
-TEST(PE, OverlayAppended)
-{
+TEST(PE, OverlayAppended) {
     PEBuildParams params;
     params.textSection = {0xC3};
     std::vector<uint8_t> overlay = {'O', 'V', 'L', 'Y'};
@@ -432,8 +400,7 @@ TEST(PE, OverlayAppended)
 // LNK Tests
 // ============================================================================
 
-TEST(Lnk, HeaderSize)
-{
+TEST(Lnk, HeaderSize) {
     LnkParams params;
     params.targetPath = "C:\\test.exe";
     params.workingDir = "C:\\";
@@ -446,8 +413,7 @@ TEST(Lnk, HeaderSize)
     EXPECT_EQ(readLE32(data.data()), static_cast<uint32_t>(0x4C));
 }
 
-TEST(Lnk, LinkCLSID)
-{
+TEST(Lnk, LinkCLSID) {
     LnkParams params;
     params.targetPath = "C:\\test.exe";
     params.workingDir = "C:\\";
@@ -463,8 +429,7 @@ TEST(Lnk, LinkCLSID)
     EXPECT_EQ(data[19], 0x46);
 }
 
-TEST(Lnk, HasLinkInfoFlag)
-{
+TEST(Lnk, HasLinkInfoFlag) {
     LnkParams params;
     params.targetPath = "C:\\Program Files\\App\\app.exe";
     params.workingDir = "C:\\Program Files\\App";
@@ -479,8 +444,7 @@ TEST(Lnk, HasLinkInfoFlag)
     EXPECT_TRUE((flags & 0x80) != 0); // IsUnicode
 }
 
-TEST(Lnk, LinkInfoContainsLocalBasePath)
-{
+TEST(Lnk, LinkInfoContainsLocalBasePath) {
     LnkParams params;
     params.targetPath = "C:\\MyApp\\app.exe";
     params.workingDir = "C:\\MyApp";
@@ -510,8 +474,7 @@ TEST(Lnk, LinkInfoContainsLocalBasePath)
 // Icon Tests (DEFLATE double-free fixed — full tests now enabled)
 // ============================================================================
 
-TEST(Icon, ImageResizeBasic)
-{
+TEST(Icon, ImageResizeBasic) {
     PkgImage img;
     img.width = 64;
     img.height = 64;
@@ -523,8 +486,7 @@ TEST(Icon, ImageResizeBasic)
     EXPECT_EQ(resized.pixels.size(), static_cast<size_t>(32 * 32 * 4));
 }
 
-TEST(Icon, IcnsMagic)
-{
+TEST(Icon, IcnsMagic) {
     PkgImage img;
     img.width = 32;
     img.height = 32;
@@ -544,8 +506,7 @@ TEST(Icon, IcnsMagic)
     EXPECT_EQ(totalSize, static_cast<uint32_t>(icns.size()));
 }
 
-TEST(Icon, IcoHeader)
-{
+TEST(Icon, IcoHeader) {
     PkgImage img;
     img.width = 32;
     img.height = 32;
@@ -561,8 +522,7 @@ TEST(Icon, IcoHeader)
     EXPECT_GE(count, static_cast<uint16_t>(1));
 }
 
-TEST(Icon, IcoEntryBitCount)
-{
+TEST(Icon, IcoEntryBitCount) {
     PkgImage img;
     img.width = 64;
     img.height = 64;
@@ -581,8 +541,7 @@ TEST(Icon, IcoEntryBitCount)
 // Plist Tests
 // ============================================================================
 
-TEST(Plist, ContainsBundleIdentifier)
-{
+TEST(Plist, ContainsBundleIdentifier) {
     PlistParams params;
     params.executableName = "myapp";
     params.bundleId = "com.example.myapp";
@@ -594,8 +553,7 @@ TEST(Plist, ContainsBundleIdentifier)
     EXPECT_CONTAINS(xml, "com.example.myapp");
 }
 
-TEST(Plist, ContainsBundleExecutable)
-{
+TEST(Plist, ContainsBundleExecutable) {
     PlistParams params;
     params.executableName = "testbin";
     params.bundleId = "com.test";
@@ -607,8 +565,7 @@ TEST(Plist, ContainsBundleExecutable)
     EXPECT_CONTAINS(xml, "testbin");
 }
 
-TEST(Plist, ContainsVersion)
-{
+TEST(Plist, ContainsVersion) {
     PlistParams params;
     params.executableName = "app";
     params.bundleId = "com.test";
@@ -620,8 +577,7 @@ TEST(Plist, ContainsVersion)
     EXPECT_CONTAINS(xml, "3.14.159");
 }
 
-TEST(Plist, PkgInfoContent)
-{
+TEST(Plist, PkgInfoContent) {
     auto pkgInfo = generatePkgInfo();
     EXPECT_EQ(pkgInfo, std::string("APPL????"));
 }
@@ -630,8 +586,7 @@ TEST(Plist, PkgInfoContent)
 // Desktop Entry Tests
 // ============================================================================
 
-TEST(DesktopEntry, ContainsDesktopEntrySection)
-{
+TEST(DesktopEntry, ContainsDesktopEntrySection) {
     DesktopEntryParams params;
     params.name = "MyApp";
     params.execPath = "/usr/bin/myapp";
@@ -642,8 +597,7 @@ TEST(DesktopEntry, ContainsDesktopEntrySection)
     EXPECT_CONTAINS(content, "Type=Application");
 }
 
-TEST(DesktopEntry, ContainsExecAndName)
-{
+TEST(DesktopEntry, ContainsExecAndName) {
     DesktopEntryParams params;
     params.name = "Test App";
     params.execPath = "/usr/bin/testapp";
@@ -657,8 +611,7 @@ TEST(DesktopEntry, ContainsExecAndName)
     EXPECT_CONTAINS(content, "Comment=A test application");
 }
 
-TEST(DesktopEntry, MimeTypeField)
-{
+TEST(DesktopEntry, MimeTypeField) {
     DesktopEntryParams params;
     params.name = "Editor";
     params.execPath = "/usr/bin/editor";
@@ -673,8 +626,7 @@ TEST(DesktopEntry, MimeTypeField)
     EXPECT_CONTAINS(content, "MimeType=text/x-zia;");
 }
 
-TEST(DesktopEntry, CategoryField)
-{
+TEST(DesktopEntry, CategoryField) {
     DesktopEntryParams params;
     params.name = "Game";
     params.execPath = "/usr/bin/game";
@@ -689,8 +641,7 @@ TEST(DesktopEntry, CategoryField)
 // MIME Type XML Tests
 // ============================================================================
 
-TEST(MimeXml, ContainsGlobPattern)
-{
+TEST(MimeXml, ContainsGlobPattern) {
     std::vector<FileAssoc> assocs;
     assocs.push_back({".zia", "Zia Source File", "text/x-zia"});
 
@@ -703,8 +654,7 @@ TEST(MimeXml, ContainsGlobPattern)
 // Verification Tests
 // ============================================================================
 
-TEST(Verify, ZipValid)
-{
+TEST(Verify, ZipValid) {
     ZipWriter zip;
     zip.addFileString("hello.txt", "Hello");
     auto data = zip.finishToVector();
@@ -713,16 +663,14 @@ TEST(Verify, ZipValid)
     EXPECT_TRUE(verifyZip(data, err));
 }
 
-TEST(Verify, ZipInvalidTooSmall)
-{
+TEST(Verify, ZipInvalidTooSmall) {
     std::vector<uint8_t> data = {0x50, 0x4B}; // Just "PK" — too small
     std::ostringstream err;
     EXPECT_FALSE(verifyZip(data, err));
     EXPECT_CONTAINS(err.str(), "too small");
 }
 
-TEST(Verify, DebValid)
-{
+TEST(Verify, DebValid) {
     ArWriter ar;
     ar.addMemberString("debian-binary", "2.0\n");
     ar.addMemberString("control.tar.gz", "ctrl");
@@ -733,16 +681,14 @@ TEST(Verify, DebValid)
     EXPECT_TRUE(verifyDeb(data, err));
 }
 
-TEST(Verify, DebMissingMagic)
-{
+TEST(Verify, DebMissingMagic) {
     std::vector<uint8_t> data = {0, 0, 0, 0, 0, 0, 0, 0};
     std::ostringstream err;
     EXPECT_FALSE(verifyDeb(data, err));
     EXPECT_CONTAINS(err.str(), "ar magic");
 }
 
-TEST(Verify, PEValid)
-{
+TEST(Verify, PEValid) {
     PEBuildParams params;
     params.textSection = {0xC3};
     auto pe = buildPE(params);
@@ -751,8 +697,7 @@ TEST(Verify, PEValid)
     EXPECT_TRUE(verifyPE(pe, err));
 }
 
-TEST(Verify, PEInvalidMagic)
-{
+TEST(Verify, PEInvalidMagic) {
     std::vector<uint8_t> data(200, 0);
     data[0] = 'X'; // Not "MZ"
     std::ostringstream err;
@@ -764,8 +709,7 @@ TEST(Verify, PEInvalidMagic)
 // ZipReader Tests
 // ============================================================================
 
-TEST(ZipReader, RoundTripStoredEntries)
-{
+TEST(ZipReader, RoundTripStoredEntries) {
     // Write a ZIP with stored entries, then read it back
     ZipWriter writer;
     writer.addFileString("hello.txt", "Hello, World!");
@@ -787,8 +731,7 @@ TEST(ZipReader, RoundTripStoredEntries)
     EXPECT_EQ(std::string(nestedData.begin(), nestedData.end()), std::string("Nested content"));
 }
 
-TEST(ZipReader, FindMissingEntry)
-{
+TEST(ZipReader, FindMissingEntry) {
     ZipWriter writer;
     writer.addFileString("a.txt", "alpha");
     auto zipData = writer.finishToVector();
@@ -797,8 +740,7 @@ TEST(ZipReader, FindMissingEntry)
     EXPECT_TRUE(reader.find("nonexistent.txt") == nullptr);
 }
 
-TEST(ZipReader, EmptyArchive)
-{
+TEST(ZipReader, EmptyArchive) {
     ZipWriter writer;
     auto zipData = writer.finishToVector();
 
@@ -806,16 +748,12 @@ TEST(ZipReader, EmptyArchive)
     EXPECT_EQ(reader.entries().size(), static_cast<size_t>(0));
 }
 
-TEST(ZipReader, InvalidDataThrows)
-{
+TEST(ZipReader, InvalidDataThrows) {
     std::vector<uint8_t> garbage = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
     bool threw = false;
-    try
-    {
+    try {
         ZipReader reader(garbage.data(), garbage.size());
-    }
-    catch (const ZipReadError &)
-    {
+    } catch (const ZipReadError &) {
         threw = true;
     }
     EXPECT_TRUE(threw);
@@ -825,8 +763,7 @@ TEST(ZipReader, InvalidDataThrows)
 // InstallerStubGen Tests
 // ============================================================================
 
-TEST(StubGen, PushPopEncoding)
-{
+TEST(StubGen, PushPopEncoding) {
     InstallerStubGen gen;
     gen.push(X64Reg::RBP); // 55
     gen.push(X64Reg::R12); // 41 54
@@ -845,8 +782,7 @@ TEST(StubGen, PushPopEncoding)
     EXPECT_EQ(code[6], static_cast<uint8_t>(0xC3)); // ret
 }
 
-TEST(StubGen, XorRegReg)
-{
+TEST(StubGen, XorRegReg) {
     InstallerStubGen gen;
     gen.xorRegReg(X64Reg::RCX, X64Reg::RCX); // 48 31 C9
     gen.ret();
@@ -858,8 +794,7 @@ TEST(StubGen, XorRegReg)
     EXPECT_EQ(code[2], static_cast<uint8_t>(0xC9)); // ModRM: rcx, rcx
 }
 
-TEST(StubGen, LabelJumpForward)
-{
+TEST(StubGen, LabelJumpForward) {
     InstallerStubGen gen;
     auto lbl = gen.newLabel();
     gen.jmp(lbl); // E9 XX XX XX XX (5 bytes)
@@ -876,8 +811,7 @@ TEST(StubGen, LabelJumpForward)
     EXPECT_EQ(disp, 1); // skip 1 byte (the nop)
 }
 
-TEST(StubGen, EmbedStringW)
-{
+TEST(StubGen, EmbedStringW) {
     InstallerStubGen gen;
     uint32_t off = gen.embedStringW("Hi");
     gen.ret();
@@ -898,8 +832,7 @@ TEST(StubGen, EmbedStringW)
 // InstallerStub Integration Tests
 // ============================================================================
 
-TEST(InstallerStub, GeneratesValidPE)
-{
+TEST(InstallerStub, GeneratesValidPE) {
     auto stub = buildInstallerStub("TestApp", "TestApp", "x64");
 
     // Should produce non-empty .text and imports
@@ -917,8 +850,7 @@ TEST(InstallerStub, GeneratesValidPE)
     EXPECT_TRUE(verifyPE(peBytes, err));
 }
 
-TEST(InstallerStub, UninstallerGeneratesValidPE)
-{
+TEST(InstallerStub, UninstallerGeneratesValidPE) {
     auto stub = buildUninstallerStub("TestApp", "x64");
 
     EXPECT_GT(stub.textSection.size(), static_cast<size_t>(10));
@@ -934,8 +866,7 @@ TEST(InstallerStub, UninstallerGeneratesValidPE)
     EXPECT_TRUE(verifyPE(peBytes, err));
 }
 
-TEST(InstallerStub, ARM64ReturnsPlaceholder)
-{
+TEST(InstallerStub, ARM64ReturnsPlaceholder) {
     auto stub = buildInstallerStub("TestApp", "TestApp", "arm64");
     // ARM64 placeholder is just `ret` = 4 bytes
     EXPECT_EQ(stub.textSection.size(), static_cast<size_t>(4));
@@ -947,8 +878,7 @@ TEST(InstallerStub, ARM64ReturnsPlaceholder)
 // Main
 // ============================================================================
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

@@ -26,14 +26,12 @@
 #include "FastPaths.hpp"
 #include "fastpaths/FastPathsInternal.hpp"
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 std::optional<MFunction> tryFastPaths(const il::core::Function &fn,
                                       const TargetInfo &ti,
                                       FrameBuilder &fb,
-                                      MFunction &mf)
-{
+                                      MFunction &mf) {
     if (fn.blocks.empty())
         return std::nullopt;
 

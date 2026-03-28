@@ -28,11 +28,9 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-Instr makeBinary(Opcode op, unsigned result, Value lhs, Value rhs)
-{
+Instr makeBinary(Opcode op, unsigned result, Value lhs, Value rhs) {
     Instr i;
     i.op = op;
     i.result = result;
@@ -43,8 +41,7 @@ Instr makeBinary(Opcode op, unsigned result, Value lhs, Value rhs)
 
 } // namespace
 
-TEST(Reassociate, SwapsConstBeforeTemp)
-{
+TEST(Reassociate, SwapsConstBeforeTemp) {
     // 1 + %0  →  %0 + 1  (temp should come first)
     Module mod;
     Function fn;
@@ -78,8 +75,7 @@ TEST(Reassociate, SwapsConstBeforeTemp)
     EXPECT_EQ(add.operands[1].kind, Value::Kind::ConstInt);
 }
 
-TEST(Reassociate, DoesNotSwapSubOperands)
-{
+TEST(Reassociate, DoesNotSwapSubOperands) {
     // Sub is not commutative — operands must stay in order
     Module mod;
     Function fn;
@@ -114,8 +110,7 @@ TEST(Reassociate, DoesNotSwapSubOperands)
     EXPECT_EQ(sub.operands[1].kind, Value::Kind::Temp);
 }
 
-TEST(Reassociate, LeavesAlreadyCanonical)
-{
+TEST(Reassociate, LeavesAlreadyCanonical) {
     // %0 + 1 — already canonical, should not change
     Module mod;
     Function fn;
@@ -149,13 +144,11 @@ TEST(Reassociate, LeavesAlreadyCanonical)
     EXPECT_EQ(add.operands[1].kind, Value::Kind::ConstInt);
 }
 
-TEST(Reassociate, CanonicalizesAllCommutativeOps)
-{
+TEST(Reassociate, CanonicalizesAllCommutativeOps) {
     // Test Mul, And, Or, Xor all get canonicalized
     Opcode ops[] = {Opcode::Mul, Opcode::And, Opcode::Or, Opcode::Xor};
 
-    for (auto op : ops)
-    {
+    for (auto op : ops) {
         Module mod;
         Function fn;
         fn.name = "test";
@@ -190,8 +183,7 @@ TEST(Reassociate, CanonicalizesAllCommutativeOps)
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

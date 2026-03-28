@@ -14,25 +14,21 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_new()
-{
+static void test_new() {
     void *sa = rt_sparse_new();
     assert(sa != NULL);
     assert(rt_sparse_len(sa) == 0);
 }
 
-static void test_set_get()
-{
+static void test_set_get() {
     void *sa = rt_sparse_new();
     rt_string v1 = make_str("hello");
     rt_string v2 = make_str("world");
@@ -46,8 +42,7 @@ static void test_set_get()
     assert(rt_sparse_get(sa, 500) == NULL);
 }
 
-static void test_has()
-{
+static void test_has() {
     void *sa = rt_sparse_new();
     rt_sparse_set(sa, 42, make_str("val"));
 
@@ -55,8 +50,7 @@ static void test_has()
     assert(rt_sparse_has(sa, 43) == 0);
 }
 
-static void test_remove()
-{
+static void test_remove() {
     void *sa = rt_sparse_new();
     rt_sparse_set(sa, 10, make_str("ten"));
 
@@ -66,8 +60,7 @@ static void test_remove()
     assert(rt_sparse_remove(sa, 10) == 0);
 }
 
-static void test_negative_indices()
-{
+static void test_negative_indices() {
     void *sa = rt_sparse_new();
     rt_string v = make_str("neg");
     rt_sparse_set(sa, -5, v);
@@ -75,8 +68,7 @@ static void test_negative_indices()
     assert(rt_sparse_has(sa, -5) == 1);
 }
 
-static void test_large_indices()
-{
+static void test_large_indices() {
     void *sa = rt_sparse_new();
     rt_string v = make_str("big");
     rt_sparse_set(sa, 1000000, v);
@@ -84,8 +76,7 @@ static void test_large_indices()
     assert(rt_sparse_len(sa) == 1);
 }
 
-static void test_overwrite()
-{
+static void test_overwrite() {
     void *sa = rt_sparse_new();
     rt_string v1 = make_str("first");
     rt_string v2 = make_str("second");
@@ -97,8 +88,7 @@ static void test_overwrite()
     assert(rt_sparse_get(sa, 5) == v2);
 }
 
-static void test_indices()
-{
+static void test_indices() {
     void *sa = rt_sparse_new();
     rt_sparse_set(sa, 10, make_str("a"));
     rt_sparse_set(sa, 20, make_str("b"));
@@ -107,8 +97,7 @@ static void test_indices()
     assert(rt_seq_len(idx) == 2);
 }
 
-static void test_values()
-{
+static void test_values() {
     void *sa = rt_sparse_new();
     rt_sparse_set(sa, 1, make_str("x"));
     rt_sparse_set(sa, 2, make_str("y"));
@@ -117,8 +106,7 @@ static void test_values()
     assert(rt_seq_len(vals) == 2);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *sa = rt_sparse_new();
     rt_sparse_set(sa, 0, make_str("a"));
     rt_sparse_set(sa, 1, make_str("b"));
@@ -127,12 +115,10 @@ static void test_clear()
     assert(rt_sparse_len(sa) == 0);
 }
 
-static void test_grow()
-{
+static void test_grow() {
     void *sa = rt_sparse_new();
     // Insert enough elements to trigger grow (>70% of 16 = 12)
-    for (int i = 0; i < 20; i++)
-    {
+    for (int i = 0; i < 20; i++) {
         char buf[16];
         snprintf(buf, sizeof(buf), "v%d", i);
         rt_sparse_set(sa, (int64_t)i, make_str(buf));
@@ -140,14 +126,12 @@ static void test_grow()
     assert(rt_sparse_len(sa) == 20);
 
     // Verify all values survived rehash
-    for (int i = 0; i < 20; i++)
-    {
+    for (int i = 0; i < 20; i++) {
         assert(rt_sparse_has(sa, (int64_t)i) == 1);
     }
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_sparse_len(NULL) == 0);
     assert(rt_sparse_get(NULL, 0) == NULL);
     assert(rt_sparse_has(NULL, 0) == 0);
@@ -155,8 +139,7 @@ static void test_null_safety()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_new();
     test_set_get();
     test_has();

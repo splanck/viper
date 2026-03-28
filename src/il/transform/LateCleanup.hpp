@@ -26,16 +26,14 @@
 
 #include "il/transform/PassRegistry.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Aggregate size information collected while running LateCleanup.
 /// @details Captures instruction and block counts before the first iteration,
 ///          after the final iteration, and at each intermediate step.  This
 ///          allows callers to evaluate the effectiveness of the late-cleanup
 ///          fixpoint and to produce diagnostics or pass-pipeline statistics.
-struct LateCleanupStats
-{
+struct LateCleanupStats {
     unsigned iterations = 0;                ///< Number of SimplifyCFG+DCE iterations that executed.
     std::size_t instrBefore = 0;            ///< Total instruction count before the first iteration.
     std::size_t blocksBefore = 0;           ///< Total basic-block count before the first iteration.
@@ -50,13 +48,11 @@ struct LateCleanupStats
 ///          per iteration. This is a cheap cleanup pass designed for the tail
 ///          of optimization pipelines; iteration count is capped to avoid
 ///          unbounded work while still converging on a small fixpoint.
-class LateCleanup : public ModulePass
-{
+class LateCleanup : public ModulePass {
   public:
     /// @brief Optionally attach a stats sink to observe size deltas.
     /// @param stats Struct that will be populated during @ref run.
-    void setStats(LateCleanupStats *stats)
-    {
+    void setStats(LateCleanupStats *stats) {
         stats_ = stats;
     }
 

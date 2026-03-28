@@ -36,8 +36,7 @@ using namespace il::core;
 ///          provenance rules, and constant materialisation honours type-specific
 ///          storage conventions.
 
-namespace il::vm::detail::memory
-{
+namespace il::vm::detail::memory {
 /// @brief Handle the @c alloca opcode by reserving stack storage.
 /// @details Validates the requested size, aligns the stack pointer to
 ///          @c std::max_align_t, zeros the allocated memory, and advances the
@@ -55,20 +54,17 @@ VM::ExecResult handleAlloca(VM &vm,
                             const Instr &in,
                             const VM::BlockMap &blocks,
                             const BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
-    if (in.operands.empty())
-    {
+    if (in.operands.empty()) {
         RuntimeBridge::trap(
             TrapKind::DomainError, "missing allocation size", in.loc, fr.func->name, "");
     }
 
     int64_t bytes = VMAccess::eval(vm, fr, in.operands[0]).i64;
-    if (bytes < 0)
-    {
+    if (bytes < 0) {
         RuntimeBridge::trap(
             TrapKind::DomainError, "negative allocation", in.loc, fr.func->name, "");
     }
@@ -81,8 +77,7 @@ VM::ExecResult handleAlloca(VM &vm,
     // Alignment must be a power of 2 for bitwise operations to work correctly
     static_assert((alignment & (alignment - 1)) == 0, "alignment must be power of 2");
 
-    auto trapOverflow = [&]() -> VM::ExecResult
-    {
+    auto trapOverflow = [&]() -> VM::ExecResult {
         RuntimeBridge::trap(
             TrapKind::Overflow, "stack overflow in alloca", in.loc, fr.func->name, "");
     };
@@ -94,8 +89,7 @@ VM::ExecResult handleAlloca(VM &vm,
     // Formula: (addr + alignment - 1) & ~(alignment - 1)
     // This rounds addr up to the next multiple of alignment
     size_t alignedAddr = addr;
-    if (alignment > 1)
-    {
+    if (alignment > 1) {
         // Check for overflow before adding alignment-1
         if (alignedAddr > std::numeric_limits<size_t>::max() - (alignment - 1))
             return trapOverflow();
@@ -138,8 +132,7 @@ VM::ExecResult handleGEP(VM &vm,
                          const Instr &in,
                          const VM::BlockMap &blocks,
                          const BasicBlock *&bb,
-                         size_t &ip)
-{
+                         size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -147,10 +140,8 @@ VM::ExecResult handleGEP(VM &vm,
     Slot offset = VMAccess::eval(vm, fr, in.operands[1]);
 
     Slot out{};
-    if (base.ptr == nullptr)
-    {
-        if (offset.i64 == 0)
-        {
+    if (base.ptr == nullptr) {
+        if (offset.i64 == 0) {
             out.ptr = nullptr;
             ops::storeResult(fr, in, out);
             return {};
@@ -169,12 +160,9 @@ VM::ExecResult handleGEP(VM &vm,
     // The IL spec permits pointer arithmetic to wrap around address space boundaries.
     // See test_vm_gep_nullptr.cpp for validation of this behavior.
     std::uintptr_t resultAddr = baseAddr;
-    if (delta >= 0)
-    {
+    if (delta >= 0) {
         resultAddr += static_cast<std::uintptr_t>(magnitude);
-    }
-    else
-    {
+    } else {
         resultAddr -= static_cast<std::uintptr_t>(magnitude);
     }
 
@@ -200,8 +188,7 @@ VM::ExecResult handleAddrOf(VM &vm,
                             const Instr &in,
                             const VM::BlockMap &blocks,
                             const BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -228,8 +215,7 @@ VM::ExecResult handleConstStr(VM &vm,
                               const Instr &in,
                               const VM::BlockMap &blocks,
                               const BasicBlock *&bb,
-                              size_t &ip)
-{
+                              size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -254,8 +240,7 @@ VM::ExecResult handleGAddr(VM &vm,
                            const Instr &in,
                            const VM::BlockMap &blocks,
                            const BasicBlock *&bb,
-                           size_t &ip)
-{
+                           size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -280,16 +265,14 @@ VM::ExecResult handleConstNull(VM &vm,
                                const Instr &in,
                                const VM::BlockMap &blocks,
                                const BasicBlock *&bb,
-                               size_t &ip)
-{
+                               size_t &ip) {
     (void)vm;
     (void)blocks;
     (void)bb;
     (void)ip;
 
     Slot out{};
-    switch (in.type.kind)
-    {
+    switch (in.type.kind) {
         case Type::Kind::I1:
         case Type::Kind::I16:
         case Type::Kind::I32:
@@ -333,8 +316,7 @@ VM::ExecResult handleConstF64(VM &vm,
                               const Instr &in,
                               const VM::BlockMap &blocks,
                               const BasicBlock *&bb,
-                              size_t &ip)
-{
+                              size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;

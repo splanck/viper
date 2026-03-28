@@ -24,10 +24,8 @@
 #include <limits>
 #include <vector>
 
-namespace il::frontends::basic::lower
-{
-namespace
-{
+namespace il::frontends::basic::lower {
+namespace {
 using IlType = il::core::Type;
 using IlKind = IlType::Kind;
 using Value = il::core::Value;
@@ -44,8 +42,7 @@ using Opcode = il::core::Opcode;
 /// @param ctx Lowering context providing block builders and runtime hooks.
 /// @param variant Concrete lowering rule chosen for the builtin invocation.
 /// @return Result value paired with its IL type.
-Lowerer::RVal lowerValBuiltin(BuiltinLowerContext &ctx, const Variant &variant)
-{
+Lowerer::RVal lowerValBuiltin(BuiltinLowerContext &ctx, const Variant &variant) {
     assert(!variant.arguments.empty());
     const auto &argSpec = variant.arguments.front();
     Lowerer::RVal &argVal = ctx.applyTransforms(argSpec, argSpec.transforms);
@@ -91,10 +88,8 @@ Lowerer::RVal lowerValBuiltin(BuiltinLowerContext &ctx, const Variant &variant)
 
 } // namespace il::frontends::basic::lower
 
-namespace il::frontends::basic::lower::builtins
-{
-namespace
-{
+namespace il::frontends::basic::lower::builtins {
+namespace {
 using Builtin = BuiltinCallExpr::Builtin;
 namespace string_builtins = il::frontends::basic::builtins;
 
@@ -106,8 +101,7 @@ namespace string_builtins = il::frontends::basic::builtins;
 ///          less common functions still compile.
 /// @param ctx Call-specific lowering context.
 /// @return Lowered value/type pair ready for emission.
-Lowerer::RVal lowerStringBuiltin(BuiltinLowerContext &ctx)
-{
+Lowerer::RVal lowerStringBuiltin(BuiltinLowerContext &ctx) {
     const auto *stringSpec = string_builtins::findBuiltin(ctx.info().name);
     if (!stringSpec)
         return lowerGenericBuiltin(ctx);
@@ -130,8 +124,7 @@ Lowerer::RVal lowerStringBuiltin(BuiltinLowerContext &ctx)
 ///          (LEN, MID$, LEFT$, RIGHT$, INSTR, LTRIM$, RTRIM$, TRIM$, UCASE$,
 ///          LCASE$, CHR$, ASC) are handled by the generic rule-driven lowering
 ///          path in Common.cpp using specifications from builtin_registry.inc.
-void registerStringBuiltins()
-{
+void registerStringBuiltins() {
     // STR$ requires type-based dispatch logic to select the right runtime helper
     register_builtin(getBuiltinInfo(Builtin::Str).name, &lowerStringBuiltin);
     // INKEY$/GETKEY$ are registered for string dispatch but fall through to generic

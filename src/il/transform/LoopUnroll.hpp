@@ -25,12 +25,10 @@
 
 #include "il/transform/PassRegistry.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Configuration parameters for loop unrolling.
-struct LoopUnrollConfig
-{
+struct LoopUnrollConfig {
     /// Maximum trip count for full unrolling (eliminates loop entirely).
     unsigned fullUnrollThreshold = 8;
 
@@ -43,8 +41,7 @@ struct LoopUnrollConfig
 ///          and expose optimization opportunities. The pass identifies loops
 ///          with known trip counts and replicates their bodies, updating
 ///          SSA values appropriately.
-class LoopUnroll : public FunctionPass
-{
+class LoopUnroll : public FunctionPass {
   public:
     explicit LoopUnroll(LoopUnrollConfig config = {}) : config_(config) {}
 

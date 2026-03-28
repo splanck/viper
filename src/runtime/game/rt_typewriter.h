@@ -25,35 +25,34 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    typedef struct rt_typewriter_impl *rt_typewriter;
+typedef struct rt_typewriter_impl *rt_typewriter;
 
-    rt_typewriter rt_typewriter_new(void);
-    void rt_typewriter_destroy(void *tw);
+rt_typewriter rt_typewriter_new(void);
+void rt_typewriter_destroy(void *tw);
 
-    // Start revealing text
-    void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms);
+// Start revealing text
+void rt_typewriter_say(void *tw, const char *text, int64_t rate_ms);
 
-    // Per-frame update — returns 1 on the frame text becomes fully revealed
-    int8_t rt_typewriter_update(void *tw, int64_t dt);
+// Per-frame update — returns 1 on the frame text becomes fully revealed
+int8_t rt_typewriter_update(void *tw, int64_t dt);
 
-    // Skip to end (reveal all)
-    void rt_typewriter_skip(void *tw);
+// Skip to end (reveal all)
+void rt_typewriter_skip(void *tw);
 
-    // Reset (clear text and state)
-    void rt_typewriter_reset(void *tw);
+// Reset (clear text and state)
+void rt_typewriter_reset(void *tw);
 
-    // Queries (return rt_string for Viper runtime compatibility)
-    rt_string rt_typewriter_get_visible_text(void *tw);
-    rt_string rt_typewriter_get_full_text(void *tw);
-    int8_t rt_typewriter_is_active(void *tw);
-    int8_t rt_typewriter_is_complete(void *tw);
-    int64_t rt_typewriter_progress(void *tw);
-    int64_t rt_typewriter_char_count(void *tw);
-    int64_t rt_typewriter_total_chars(void *tw);
+// Queries (return rt_string for Viper runtime compatibility)
+rt_string rt_typewriter_get_visible_text(void *tw);
+rt_string rt_typewriter_get_full_text(void *tw);
+int8_t rt_typewriter_is_active(void *tw);
+int8_t rt_typewriter_is_complete(void *tw);
+int64_t rt_typewriter_progress(void *tw);
+int64_t rt_typewriter_char_count(void *tw);
+int64_t rt_typewriter_total_chars(void *tw);
 
 #ifdef __cplusplus
 }

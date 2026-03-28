@@ -23,12 +23,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::server
-{
+namespace viper::server {
 
 /// @brief Structured diagnostic from a compiler frontend.
-struct DiagnosticInfo
-{
+struct DiagnosticInfo {
     int severity; ///< 0 = note, 1 = warning, 2 = error
     std::string message;
     std::string file;
@@ -38,8 +36,7 @@ struct DiagnosticInfo
 };
 
 /// @brief Symbol information from semantic analysis.
-struct SymbolInfo
-{
+struct SymbolInfo {
     std::string name;
     std::string kind; ///< "variable", "parameter", "function", "method", "field", "type", "module"
     std::string type; ///< Type as string (e.g., "Integer", "List[String]")
@@ -48,8 +45,7 @@ struct SymbolInfo
 };
 
 /// @brief Completion item from a completion engine.
-struct CompletionInfo
-{
+struct CompletionInfo {
     std::string label;
     std::string insertText;
     int kind; ///< Maps to CompletionKind int (0-12)
@@ -58,24 +54,21 @@ struct CompletionInfo
 };
 
 /// @brief Runtime class summary.
-struct RuntimeClassSummary
-{
+struct RuntimeClassSummary {
     std::string qname;
     int propertyCount;
     int methodCount;
 };
 
 /// @brief Runtime member (method or property).
-struct RuntimeMemberInfo
-{
+struct RuntimeMemberInfo {
     std::string name;
     std::string memberKind; ///< "method" or "property"
     std::string signature;  ///< Method signature or property type
 };
 
 /// @brief Full compilation result.
-struct CompileResult
-{
+struct CompileResult {
     bool succeeded;
     std::vector<DiagnosticInfo> diagnostics;
 };

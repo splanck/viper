@@ -17,15 +17,13 @@
 #include <cstdio>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Test that Ticks returns a non-negative value.
-static void test_ticks_positive()
-{
+static void test_ticks_positive() {
     printf("Testing Clock.Ticks positive:\n");
 
     int64_t t = rt_clock_ticks();
@@ -35,8 +33,7 @@ static void test_ticks_positive()
 }
 
 /// @brief Test that Ticks is monotonic.
-static void test_ticks_monotonic()
-{
+static void test_ticks_monotonic() {
     printf("Testing Clock.Ticks monotonic:\n");
 
     int64_t t1 = rt_clock_ticks();
@@ -50,8 +47,7 @@ static void test_ticks_monotonic()
 }
 
 /// @brief Test that TicksUs returns a non-negative value.
-static void test_ticks_us_positive()
-{
+static void test_ticks_us_positive() {
     printf("Testing Clock.TicksUs positive:\n");
 
     int64_t t = rt_clock_ticks_us();
@@ -61,8 +57,7 @@ static void test_ticks_us_positive()
 }
 
 /// @brief Test that TicksUs is monotonic.
-static void test_ticks_us_monotonic()
-{
+static void test_ticks_us_monotonic() {
     printf("Testing Clock.TicksUs monotonic:\n");
 
     int64_t t1 = rt_clock_ticks_us();
@@ -76,8 +71,7 @@ static void test_ticks_us_monotonic()
 }
 
 /// @brief Test that TicksUs has reasonable relationship with Ticks.
-static void test_ticks_us_resolution()
-{
+static void test_ticks_us_resolution() {
     printf("Testing Clock.TicksUs resolution:\n");
 
     int64_t ms = rt_clock_ticks();
@@ -86,13 +80,10 @@ static void test_ticks_us_resolution()
     // TicksUs should be approximately 1000x Ticks (milliseconds vs microseconds)
     // Allow some tolerance for timing jitter (800x to 1200x range)
     // Only test if both values are reasonably large to avoid division issues
-    if (ms > 100 && us > 100000)
-    {
+    if (ms > 100 && us > 100000) {
         int64_t ratio = us / ms;
         test_result("TicksUs ~1000x Ticks", ratio >= 800 && ratio <= 1200);
-    }
-    else
-    {
+    } else {
         // If values are too small, just verify us >= ms
         test_result("TicksUs >= Ticks", us >= ms);
     }
@@ -101,8 +92,7 @@ static void test_ticks_us_resolution()
 }
 
 /// @brief Test that Sleep actually sleeps for approximately the requested time.
-static void test_sleep_duration()
-{
+static void test_sleep_duration() {
     printf("Testing Clock.Sleep duration:\n");
 
     int64_t t1 = rt_clock_ticks();
@@ -121,8 +111,7 @@ static void test_sleep_duration()
 }
 
 /// @brief Test that Sleep handles edge cases.
-static void test_sleep_edge_cases()
-{
+static void test_sleep_edge_cases() {
     printf("Testing Clock.Sleep edge cases:\n");
 
     // Sleep(0) should not block significantly
@@ -143,23 +132,19 @@ static void test_sleep_edge_cases()
 }
 
 /// @brief Test microsecond timing precision.
-static void test_ticks_us_precision()
-{
+static void test_ticks_us_precision() {
     printf("Testing Clock.TicksUs precision:\n");
 
     // Take multiple samples and verify they're increasing
     int64_t samples[5];
-    for (int i = 0; i < 5; i++)
-    {
+    for (int i = 0; i < 5; i++) {
         samples[i] = rt_clock_ticks_us();
     }
 
     // At least some samples should differ (unless system is extremely fast)
     bool has_difference = false;
-    for (int i = 1; i < 5; i++)
-    {
-        if (samples[i] > samples[0])
-        {
+    for (int i = 1; i < 5; i++) {
+        if (samples[i] > samples[0]) {
             has_difference = true;
             break;
         }
@@ -179,8 +164,7 @@ static void test_ticks_us_precision()
 }
 
 /// @brief Entry point for Clock tests.
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: timing tests have platform-specific quirks that need investigation
     printf("Test skipped: Clock tests need Windows-specific calibration\n");

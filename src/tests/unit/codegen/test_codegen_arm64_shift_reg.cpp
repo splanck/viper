@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,8 +43,7 @@ static std::string readFile(const std::string &path)
 }
 
 // Test 1: Logical left shift by register
-TEST(Arm64ShiftReg, ShlByReg)
-{
+TEST(Arm64ShiftReg, ShlByReg) {
     const std::string in = outPath("arm64_shl_reg.il");
     const std::string out = outPath("arm64_shl_reg.s");
     const std::string il = "il 0.1\n"
@@ -67,8 +63,7 @@ TEST(Arm64ShiftReg, ShlByReg)
 }
 
 // Test 2: Logical right shift by register
-TEST(Arm64ShiftReg, LshrByReg)
-{
+TEST(Arm64ShiftReg, LshrByReg) {
     const std::string in = outPath("arm64_lshr_reg.il");
     const std::string out = outPath("arm64_lshr_reg.s");
     const std::string il = "il 0.1\n"
@@ -88,8 +83,7 @@ TEST(Arm64ShiftReg, LshrByReg)
 }
 
 // Test 3: Arithmetic right shift by register
-TEST(Arm64ShiftReg, AshrByReg)
-{
+TEST(Arm64ShiftReg, AshrByReg) {
     const std::string in = outPath("arm64_ashr_reg.il");
     const std::string out = outPath("arm64_ashr_reg.s");
     const std::string il = "il 0.1\n"
@@ -109,8 +103,7 @@ TEST(Arm64ShiftReg, AshrByReg)
 }
 
 // Test 4: Shift where amount comes from computation
-TEST(Arm64ShiftReg, ShiftFromComputation)
-{
+TEST(Arm64ShiftReg, ShiftFromComputation) {
     const std::string in = outPath("arm64_shift_computed.il");
     const std::string out = outPath("arm64_shift_computed.s");
     const std::string il = "il 0.1\n"
@@ -132,8 +125,7 @@ TEST(Arm64ShiftReg, ShiftFromComputation)
 }
 
 // Test 5: All three shift types in one function
-TEST(Arm64ShiftReg, AllShifts)
-{
+TEST(Arm64ShiftReg, AllShifts) {
     const std::string in = outPath("arm64_all_shifts.il");
     const std::string out = outPath("arm64_all_shifts.s");
     const std::string il = "il 0.1\n"
@@ -153,8 +145,7 @@ TEST(Arm64ShiftReg, AllShifts)
 }
 
 // Test 6: Shift with masked amount (common pattern)
-TEST(Arm64ShiftReg, ShiftMaskedAmount)
-{
+TEST(Arm64ShiftReg, ShiftMaskedAmount) {
     const std::string in = outPath("arm64_shift_masked.il");
     const std::string out = outPath("arm64_shift_masked.s");
     // Mask shift amount to 6 bits (0-63 for 64-bit)
@@ -173,8 +164,7 @@ TEST(Arm64ShiftReg, ShiftMaskedAmount)
     EXPECT_FALSE(asmText.empty());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

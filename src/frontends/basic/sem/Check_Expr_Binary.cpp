@@ -35,8 +35,7 @@
 #include <array>
 #include <sstream>
 
-namespace il::frontends::basic::semantic_analyzer_detail
-{
+namespace il::frontends::basic::semantic_analyzer_detail {
 using Type = SemanticAnalyzer::Type;
 
 // Import shared numeric rules to avoid duplication
@@ -50,63 +49,52 @@ namespace nr = numeric_rules;
 /// rule table and makes it trivial to audit whenever new operators are added.
 ///
 /// @return Number of entries required to cover every binary operator.
-constexpr std::size_t exprRuleCount() noexcept
-{
+constexpr std::size_t exprRuleCount() noexcept {
     return static_cast<std::size_t>(BinaryExpr::Op::LogicalOr) + 1;
 }
 
 // Use shared numeric rules - these aliases preserve the original API while
 // delegating to the centralized implementation in NumericRules.hpp.
-constexpr bool isNumericType(Type type) noexcept
-{
+constexpr bool isNumericType(Type type) noexcept {
     return nr::isNumeric(type);
 }
 
-constexpr bool isIntegerType(Type type) noexcept
-{
+constexpr bool isIntegerType(Type type) noexcept {
     return nr::isInteger(type);
 }
 
-constexpr bool isBooleanType(Type type) noexcept
-{
+constexpr bool isBooleanType(Type type) noexcept {
     return nr::isBoolean(type);
 }
 
-constexpr bool isStringType(Type type) noexcept
-{
+constexpr bool isStringType(Type type) noexcept {
     return nr::isString(type);
 }
 
 // Result type functions using shared numeric rules.
 // These wrap the centralized implementations for use in the rule table.
 
-Type numericResult(Type lhs, Type rhs) noexcept
-{
+Type numericResult(Type lhs, Type rhs) noexcept {
     return nr::arithmeticResultType(lhs, rhs);
 }
 
-Type divisionResult(Type lhs, Type rhs) noexcept
-{
+Type divisionResult(Type lhs, Type rhs) noexcept {
     return nr::divisionResultType(lhs, rhs);
 }
 
-Type addResult(Type lhs, Type rhs) noexcept
-{
+Type addResult(Type lhs, Type rhs) noexcept {
     return nr::addResultType(lhs, rhs);
 }
 
-Type powResult(Type lhs, Type rhs) noexcept
-{
+Type powResult(Type lhs, Type rhs) noexcept {
     return nr::powerResultType(lhs, rhs);
 }
 
-Type integerResult(Type lhs, Type rhs) noexcept
-{
+Type integerResult(Type lhs, Type rhs) noexcept {
     return nr::integerOnlyResultType(lhs, rhs);
 }
 
-Type booleanResult(Type lhs, Type rhs) noexcept
-{
+Type booleanResult(Type lhs, Type rhs) noexcept {
     return nr::comparisonResultType(lhs, rhs);
 }
 
@@ -119,8 +107,7 @@ Type booleanResult(Type lhs, Type rhs) noexcept
 ///
 /// @param expr Binary expression under inspection.
 /// @return True when the RHS is an integer or float literal equal to zero.
-bool rhsIsLiteralZero(const BinaryExpr &expr)
-{
+bool rhsIsLiteralZero(const BinaryExpr &expr) {
     if (const auto *ri = as<const IntExpr>(*expr.rhs); ri != nullptr)
         return ri->value == 0;
     if (const auto *rf = as<const FloatExpr>(*expr.rhs); rf != nullptr)
@@ -143,8 +130,7 @@ void validateNumericOperands(sem::ExprCheckContext &context,
                              const BinaryExpr &expr,
                              Type lhs,
                              Type rhs,
-                             std::string_view diagId)
-{
+                             std::string_view diagId) {
     if (!isNumericType(lhs) || !isNumericType(rhs))
         sem::emitOperandTypeMismatch(context.diagnostics(), expr, diagId);
 }
@@ -164,8 +150,7 @@ void validateAddOperands(sem::ExprCheckContext &context,
                          const BinaryExpr &expr,
                          Type lhs,
                          Type rhs,
-                         std::string_view diagId)
-{
+                         std::string_view diagId) {
     // Accept numeric pairs or when either operand is string (concatenation)
     const bool numericOk = isNumericType(lhs) && isNumericType(rhs);
     const bool stringOk = isStringType(lhs) || isStringType(rhs);
@@ -188,8 +173,7 @@ void validateDivisionOperands(sem::ExprCheckContext &context,
                               const BinaryExpr &expr,
                               Type lhs,
                               Type rhs,
-                              std::string_view diagId)
-{
+                              std::string_view diagId) {
     validateNumericOperands(context, expr, lhs, rhs, diagId);
     if (rhsIsLiteralZero(expr))
         sem::emitDivideByZero(context.diagnostics(), expr);
@@ -210,8 +194,7 @@ void validateIntegerOperands(sem::ExprCheckContext &context,
                              const BinaryExpr &expr,
                              Type lhs,
                              Type rhs,
-                             std::string_view diagId)
-{
+                             std::string_view diagId) {
     if (!isIntegerType(lhs) || !isIntegerType(rhs))
         sem::emitOperandTypeMismatch(context.diagnostics(), expr, diagId);
     if (rhsIsLiteralZero(expr))
@@ -233,8 +216,7 @@ void validateComparisonOperands(sem::ExprCheckContext &context,
                                 const BinaryExpr &expr,
                                 Type lhs,
                                 Type rhs,
-                                std::string_view diagId)
-{
+                                std::string_view diagId) {
     // All comparison operators support strings for lexicographic comparison
     const bool numericOk = isNumericType(lhs) && isNumericType(rhs);
     const bool stringOk = isStringType(lhs) && isStringType(rhs);
@@ -260,8 +242,7 @@ void validateLogicalOperands(sem::ExprCheckContext &context,
                              const BinaryExpr &expr,
                              Type lhs,
                              Type rhs,
-                             std::string_view diagId)
-{
+                             std::string_view diagId) {
     if (isBooleanType(lhs) && isBooleanType(rhs))
         return;
 
@@ -274,8 +255,7 @@ void validateLogicalOperands(sem::ExprCheckContext &context,
 
 /// @brief Calculate the common numeric type used for implicit promotions.
 /// @details Delegates to the shared numeric rules implementation.
-SemanticAnalyzer::Type commonNumericType(Type lhs, Type rhs) noexcept
-{
+SemanticAnalyzer::Type commonNumericType(Type lhs, Type rhs) noexcept {
     return nr::promoteNumeric(lhs, rhs);
 }
 
@@ -289,8 +269,7 @@ SemanticAnalyzer::Type commonNumericType(Type lhs, Type rhs) noexcept
 /// @param lhs Type of the left operand.
 /// @param rhs Type of the right operand.
 /// @return Fully formatted diagnostic message string.
-std::string formatLogicalOperandMessage(BinaryExpr::Op op, Type lhs, Type rhs)
-{
+std::string formatLogicalOperandMessage(BinaryExpr::Op op, Type lhs, Type rhs) {
     std::ostringstream oss;
     oss << "Logical operator " << logicalOpName(op) << " requires BOOLEAN operands, got "
         << semanticTypeName(lhs) << " and " << semanticTypeName(rhs) << '.';
@@ -306,8 +285,7 @@ std::string formatLogicalOperandMessage(BinaryExpr::Op op, Type lhs, Type rhs)
 ///
 /// @param op Binary operator whose rule is requested.
 /// @return Reference to the rule describing validation and result semantics.
-const ExprRule &exprRule(BinaryExpr::Op op)
-{
+const ExprRule &exprRule(BinaryExpr::Op op) {
     static constexpr std::array<ExprRule, exprRuleCount()> rules = {{
         {BinaryExpr::Op::Add, &validateAddOperands, &addResult, "B2001"},
         {BinaryExpr::Op::Sub, &validateNumericOperands, &numericResult, "B2001"},
@@ -376,8 +354,7 @@ const ExprRule &exprRule(BinaryExpr::Op op)
 
 } // namespace il::frontends::basic::semantic_analyzer_detail
 
-namespace il::frontends::basic::sem
-{
+namespace il::frontends::basic::sem {
 
 /// @brief Analyse a BASIC binary expression, validating operands and inferring the result.
 ///
@@ -400,8 +377,7 @@ namespace il::frontends::basic::sem
 /// @param expr Binary expression AST node being analysed.
 /// @return Resulting semantic type classification or Unknown when validation
 ///         fails.
-SemanticAnalyzer::Type analyzeBinaryExpr(SemanticAnalyzer &analyzer, const BinaryExpr &expr)
-{
+SemanticAnalyzer::Type analyzeBinaryExpr(SemanticAnalyzer &analyzer, const BinaryExpr &expr) {
     ExprCheckContext context(analyzer);
     using Type = SemanticAnalyzer::Type;
 
@@ -413,14 +389,11 @@ SemanticAnalyzer::Type analyzeBinaryExpr(SemanticAnalyzer &analyzer, const Binar
         rhs = context.evaluate(*expr.rhs);
 
     if (expr.op == BinaryExpr::Op::Add || expr.op == BinaryExpr::Op::Sub ||
-        expr.op == BinaryExpr::Op::Mul)
-    {
+        expr.op == BinaryExpr::Op::Mul) {
         if (semantic_analyzer_detail::isNumericType(lhs) &&
-            semantic_analyzer_detail::isNumericType(rhs))
-        {
+            semantic_analyzer_detail::isNumericType(rhs)) {
             const Type target = semantic_analyzer_detail::commonNumericType(lhs, rhs);
-            if (target == Type::Float)
-            {
+            if (target == Type::Float) {
                 // Promote INT operands to FLOAT when mixing numeric types and
                 // record the implicit conversion so later passes can insert the
                 // cast explicitly during lowering/codegen.
@@ -434,11 +407,9 @@ SemanticAnalyzer::Type analyzeBinaryExpr(SemanticAnalyzer &analyzer, const Binar
 
     // BUG-BASIC-002 fix: Implicit INT() conversion for MOD and IDiv operators.
     // These operators require integer operands, so we truncate floats to integers.
-    if (expr.op == BinaryExpr::Op::Mod || expr.op == BinaryExpr::Op::IDiv)
-    {
+    if (expr.op == BinaryExpr::Op::Mod || expr.op == BinaryExpr::Op::IDiv) {
         if (semantic_analyzer_detail::isNumericType(lhs) &&
-            semantic_analyzer_detail::isNumericType(rhs))
-        {
+            semantic_analyzer_detail::isNumericType(rhs)) {
             // Convert Float operands to Int via implicit truncation
             if (expr.lhs && lhs == Type::Float)
                 context.markImplicitConversion(*expr.lhs, Type::Int);
@@ -453,8 +424,7 @@ SemanticAnalyzer::Type analyzeBinaryExpr(SemanticAnalyzer &analyzer, const Binar
     }
 
     // Implicit STR$ coercion for '+' when one operand is string.
-    if (expr.op == BinaryExpr::Op::Add)
-    {
+    if (expr.op == BinaryExpr::Op::Add) {
         if (lhs == Type::String && rhs != Type::String && rhs != Type::Unknown && expr.rhs)
             context.markImplicitConversion(*expr.rhs, Type::String);
         else if (rhs == Type::String && lhs != Type::String && lhs != Type::Unknown && expr.lhs)

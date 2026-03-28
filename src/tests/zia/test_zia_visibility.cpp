@@ -18,12 +18,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that visibility enforcement works (private members are rejected).
-TEST(ZiaVisibility, VisibilityEnforcement)
-{
+TEST(ZiaVisibility, VisibilityEnforcement) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -47,10 +45,8 @@ func start() {
     EXPECT_FALSE(result.succeeded());
 
     bool foundVisibilityError = false;
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
-        if (d.message.find("private") != std::string::npos)
-        {
+    for (const auto &d : result.diagnostics.diagnostics()) {
+        if (d.message.find("private") != std::string::npos) {
             foundVisibilityError = true;
             EXPECT_EQ(d.code, "V3000");
         }
@@ -59,8 +55,7 @@ func start() {
 }
 
 /// @brief Test that visibility works correctly with exposed members.
-TEST(ZiaVisibility, VisibilityExposed)
-{
+TEST(ZiaVisibility, VisibilityExposed) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -84,11 +79,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for VisibilityExposed:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -99,7 +92,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

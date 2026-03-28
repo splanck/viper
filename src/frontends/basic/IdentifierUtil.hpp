@@ -60,26 +60,20 @@
 #include <string_view>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Canonicalize a single identifier to lowercase ASCII.
 /// @details Validates characters against [A-Za-z0-9_]. On validation failure,
 ///          returns an empty string to signal invalid input to the caller.
 /// @param ident Input identifier text.
 /// @return Lowercased identifier or empty on invalid characters.
-inline std::string CanonicalizeIdent(std::string_view ident)
-{
+inline std::string CanonicalizeIdent(std::string_view ident) {
     std::string out;
     out.reserve(ident.size());
-    for (unsigned char ch : ident)
-    {
-        if (std::isalnum(ch) || ch == '_')
-        {
+    for (unsigned char ch : ident) {
+        if (std::isalnum(ch) || ch == '_') {
             out.push_back(static_cast<char>(std::tolower(ch)));
-        }
-        else
-        {
+        } else {
             return std::string{}; // invalid
         }
     }
@@ -87,18 +81,15 @@ inline std::string CanonicalizeIdent(std::string_view ident)
 }
 
 /// @brief Canonicalize a single identifier (alias of CanonicalizeIdent).
-inline std::string Canon(std::string_view ident)
-{
+inline std::string Canon(std::string_view ident) {
     return CanonicalizeIdent(ident);
 }
 
 /// @brief Join qualified name segments with '.' separators.
 /// @param parts Qualified path segments in declaration order.
 /// @return Dot-joined name; empty when @p parts is empty.
-inline std::string JoinQualified(const std::vector<std::string> &parts)
-{
-    if (parts.empty())
-    {
+inline std::string JoinQualified(const std::vector<std::string> &parts) {
+    if (parts.empty()) {
         return std::string{};
     }
     size_t total = 0;
@@ -106,8 +97,7 @@ inline std::string JoinQualified(const std::vector<std::string> &parts)
         total += p.size();
     std::string out;
     out.reserve(total + (parts.size() - 1));
-    for (size_t i = 0; i < parts.size(); ++i)
-    {
+    for (size_t i = 0; i < parts.size(); ++i) {
         if (i)
             out.push_back('.');
         out.append(parts[i]);
@@ -116,8 +106,7 @@ inline std::string JoinQualified(const std::vector<std::string> &parts)
 }
 
 /// @brief Join qualified name segments with '.' (alias of JoinQualified).
-inline std::string JoinDots(const std::vector<std::string> &parts)
-{
+inline std::string JoinDots(const std::vector<std::string> &parts) {
     return JoinQualified(parts);
 }
 
@@ -126,15 +115,12 @@ inline std::string JoinDots(const std::vector<std::string> &parts)
 ///          segment is invalid, returns an empty string.
 /// @param parts Qualified path segments in declaration order.
 /// @return Lowercased, dot-joined name or empty when validation fails.
-inline std::string CanonicalizeQualified(const std::vector<std::string> &parts)
-{
+inline std::string CanonicalizeQualified(const std::vector<std::string> &parts) {
     std::vector<std::string> canon;
     canon.reserve(parts.size());
-    for (const auto &p : parts)
-    {
+    for (const auto &p : parts) {
         std::string c = CanonicalizeIdent(p);
-        if (c.empty() && !p.empty())
-        {
+        if (c.empty() && !p.empty()) {
             return std::string{};
         }
         canon.emplace_back(std::move(c));
@@ -144,30 +130,23 @@ inline std::string CanonicalizeQualified(const std::vector<std::string> &parts)
 
 /// @brief Canonicalize each segment and join with '.' separators.
 /// @details Equivalent to CanonicalizeQualified.
-inline std::string CanonJoin(const std::vector<std::string> &parts)
-{
+inline std::string CanonJoin(const std::vector<std::string> &parts) {
     return CanonicalizeQualified(parts);
 }
 
 /// @brief Split a dot-joined string into segments (empties ignored).
 /// @param dotted Qualified path like "A.B.C".
 /// @return Vector of non-empty segments in order.
-inline std::vector<std::string> SplitDots(std::string_view dotted)
-{
+inline std::vector<std::string> SplitDots(std::string_view dotted) {
     std::vector<std::string> out;
     std::string cur;
-    for (char ch : dotted)
-    {
-        if (ch == '.')
-        {
-            if (!cur.empty())
-            {
+    for (char ch : dotted) {
+        if (ch == '.') {
+            if (!cur.empty()) {
                 out.emplace_back(std::move(cur));
                 cur.clear();
             }
-        }
-        else
-        {
+        } else {
             cur.push_back(ch);
         }
     }
@@ -181,8 +160,7 @@ inline std::vector<std::string> SplitDots(std::string_view dotted)
 ///          These suffixes denote types in BASIC (Integer, Long, Single, Double, String).
 /// @param ident Input identifier with possible type suffix.
 /// @return Identifier without the type suffix.
-inline std::string StripTypeSuffix(std::string_view ident)
-{
+inline std::string StripTypeSuffix(std::string_view ident) {
     if (ident.empty())
         return std::string{};
     char last = ident.back();

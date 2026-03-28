@@ -17,8 +17,7 @@
 #include "frontends/basic/NameMangler_OOP.hpp"
 #include "frontends/basic/OopIndex.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // =============================================================================
 // Class Metadata Lookups
@@ -29,8 +28,7 @@ namespace il::frontends::basic
 ///          the result for subsequent lookups.
 /// @param className Name of the class to resolve.
 /// @return Pointer to class metadata, or nullptr if not found.
-const ClassInfo *OopLoweringContext::findClassInfo(const std::string &className)
-{
+const ClassInfo *OopLoweringContext::findClassInfo(const std::string &className) {
     // Check cache first
     auto it = classCache.find(className);
     if (it != classCache.end())
@@ -47,8 +45,7 @@ const ClassInfo *OopLoweringContext::findClassInfo(const std::string &className)
 ///          layout query, caching the result for reuse.
 /// @param className Name of the class to resolve.
 /// @return Pointer to class layout, or nullptr if not found.
-const ClassLayout *OopLoweringContext::findClassLayout(const std::string &className)
-{
+const ClassLayout *OopLoweringContext::findClassLayout(const std::string &className) {
     // Check cache first
     auto it = layoutCache.find(className);
     if (it != layoutCache.end())
@@ -69,8 +66,7 @@ const ClassLayout *OopLoweringContext::findClassLayout(const std::string &classN
 ///          uses semantic information to determine the runtime class.
 /// @param expr Expression representing an object instance.
 /// @return Resolved class name, or empty string if unknown.
-std::string OopLoweringContext::resolveObjectClass(const Expr &expr) const
-{
+std::string OopLoweringContext::resolveObjectClass(const Expr &expr) const {
     return lowerer.resolveObjectClass(expr);
 }
 
@@ -82,8 +78,7 @@ std::string OopLoweringContext::resolveObjectClass(const Expr &expr) const
 /// @details Uses the shared OOP name mangler to produce the runtime symbol.
 /// @param className Class name to mangle.
 /// @return Mangled destructor symbol.
-std::string OopLoweringContext::getDestructorName(const std::string &className) const
-{
+std::string OopLoweringContext::getDestructorName(const std::string &className) const {
     return mangleClassDtor(className);
 }
 
@@ -91,8 +86,7 @@ std::string OopLoweringContext::getDestructorName(const std::string &className) 
 /// @details Uses the shared OOP name mangler to produce the runtime symbol.
 /// @param className Class name to mangle.
 /// @return Mangled constructor symbol.
-std::string OopLoweringContext::getConstructorName(const std::string &className) const
-{
+std::string OopLoweringContext::getConstructorName(const std::string &className) const {
     return mangleClassCtor(className);
 }
 
@@ -103,8 +97,7 @@ std::string OopLoweringContext::getConstructorName(const std::string &className)
 /// @param methodName Method name to mangle.
 /// @return Mangled method symbol.
 std::string OopLoweringContext::getMethodName(const std::string &className,
-                                              const std::string &methodName) const
-{
+                                              const std::string &methodName) const {
     return mangleMethod(className, methodName);
 }
 
@@ -116,8 +109,7 @@ std::string OopLoweringContext::getMethodName(const std::string &className,
 /// @details Delegates to the lowerer's namespace qualification helper.
 /// @param className Unqualified class name.
 /// @return Fully-qualified class name.
-std::string OopLoweringContext::qualify(const std::string &className) const
-{
+std::string OopLoweringContext::qualify(const std::string &className) const {
     return lowerer.qualify(className);
 }
 

@@ -40,10 +40,8 @@
 #include <string>
 #include <unordered_map>
 
-namespace il::verify
-{
-namespace
-{
+namespace il::verify {
+namespace {
 
 using checker::checkAddrOf;
 using checker::checkAlloca;
@@ -75,12 +73,10 @@ using StrategyFn = Expected<void> (*)(const VerifyCtx &, const InstructionSpec &
 /// @param ctx Verification context describing the instruction under review.
 /// @param spec Specification entry obtained from the generated opcode table.
 /// @return The type that should be recorded for downstream inference.
-Type resolveResultType(const VerifyCtx &ctx, const InstructionSpec &spec)
-{
+Type resolveResultType(const VerifyCtx &ctx, const InstructionSpec &spec) {
     using il::core::TypeCategory;
 
-    switch (spec.resultType)
-    {
+    switch (spec.resultType) {
         case TypeCategory::None:
         case TypeCategory::Void:
         case TypeCategory::Any:
@@ -101,8 +97,7 @@ Type resolveResultType(const VerifyCtx &ctx, const InstructionSpec &spec)
 /// @param ctx Verification context describing the instruction.
 /// @param spec Specification entry driving strategy selection.
 /// @return Empty on success or a diagnostic-filled error on failure.
-Expected<void> applyDefault(const VerifyCtx &ctx, const InstructionSpec &spec)
-{
+Expected<void> applyDefault(const VerifyCtx &ctx, const InstructionSpec &spec) {
     ctx.types.recordResult(ctx.instr, resolveResultType(ctx, spec));
     return checkDefault(ctx);
 }
@@ -112,8 +107,7 @@ Expected<void> applyDefault(const VerifyCtx &ctx, const InstructionSpec &spec)
 ///          constraints and stack lifetime rules.
 /// @param ctx Verification context for the instruction.
 /// @return Verification success or failure.
-Expected<void> applyAlloca(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyAlloca(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkAlloca(ctx);
 }
 
@@ -122,8 +116,7 @@ Expected<void> applyAlloca(const VerifyCtx &ctx, const InstructionSpec &)
 ///          by the verifier helpers.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyGEP(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyGEP(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkGEP(ctx);
 }
 
@@ -132,8 +125,7 @@ Expected<void> applyGEP(const VerifyCtx &ctx, const InstructionSpec &)
 ///          @ref checker::checkLoad routine.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyLoad(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyLoad(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkLoad(ctx);
 }
 
@@ -142,8 +134,7 @@ Expected<void> applyLoad(const VerifyCtx &ctx, const InstructionSpec &)
 ///          shared checker helper.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyStore(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyStore(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkStore(ctx);
 }
 
@@ -152,8 +143,7 @@ Expected<void> applyStore(const VerifyCtx &ctx, const InstructionSpec &)
 ///          @ref checker::checkAddrOf for detailed diagnostics.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyAddrOf(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyAddrOf(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkAddrOf(ctx);
 }
 
@@ -162,8 +152,7 @@ Expected<void> applyAddrOf(const VerifyCtx &ctx, const InstructionSpec &)
 ///          checker helper.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyConstStr(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyConstStr(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkConstStr(ctx);
 }
 
@@ -171,8 +160,7 @@ Expected<void> applyConstStr(const VerifyCtx &ctx, const InstructionSpec &)
 /// @details Delegates to the shared checker to enforce pointer typing rules.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyConstNull(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyConstNull(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkConstNull(ctx);
 }
 
@@ -181,8 +169,7 @@ Expected<void> applyConstNull(const VerifyCtx &ctx, const InstructionSpec &)
 ///          enforce argument compatibility.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyCall(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyCall(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkCall(ctx);
 }
 
@@ -191,8 +178,7 @@ Expected<void> applyCall(const VerifyCtx &ctx, const InstructionSpec &)
 ///          specification.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyTrapKind(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyTrapKind(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkTrapKind(ctx);
 }
 
@@ -201,8 +187,7 @@ Expected<void> applyTrapKind(const VerifyCtx &ctx, const InstructionSpec &)
 ///          codes.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyTrapFromErr(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyTrapFromErr(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkTrapFromErr(ctx);
 }
 
@@ -211,8 +196,7 @@ Expected<void> applyTrapFromErr(const VerifyCtx &ctx, const InstructionSpec &)
 ///          helper.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyTrapErr(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyTrapErr(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkTrapErr(ctx);
 }
 
@@ -221,8 +205,7 @@ Expected<void> applyTrapErr(const VerifyCtx &ctx, const InstructionSpec &)
 ///          and type annotations follow the runtime contract.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyIdxChk(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyIdxChk(const VerifyCtx &ctx, const InstructionSpec &) {
     return checkIdxChk(ctx);
 }
 
@@ -231,8 +214,7 @@ Expected<void> applyIdxChk(const VerifyCtx &ctx, const InstructionSpec &)
 ///          widths before recording the type for downstream inference.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyCastFpToSiRteChk(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyCastFpToSiRteChk(const VerifyCtx &ctx, const InstructionSpec &) {
     const auto kind = ctx.instr.type.kind;
     if (!detail::isSupportedIntegerWidth(kind))
         return fail(ctx, "cast result must be i16, i32, or i64");
@@ -244,8 +226,7 @@ Expected<void> applyCastFpToSiRteChk(const VerifyCtx &ctx, const InstructionSpec
 /// @details Mirrors @ref applyCastFpToSiRteChk but applies to unsigned targets.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyCastFpToUiRteChk(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyCastFpToUiRteChk(const VerifyCtx &ctx, const InstructionSpec &) {
     const auto kind = ctx.instr.type.kind;
     if (!detail::isSupportedIntegerWidth(kind))
         return fail(ctx, "cast result must be i16, i32, or i64");
@@ -258,8 +239,7 @@ Expected<void> applyCastFpToUiRteChk(const VerifyCtx &ctx, const InstructionSpec
 ///          recording the result.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyCastSiNarrowChk(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyCastSiNarrowChk(const VerifyCtx &ctx, const InstructionSpec &) {
     const auto kind = ctx.instr.type.kind;
     if (!detail::isNarrowingTargetWidth(kind))
         return fail(ctx, "narrowing cast result must be i16 or i32");
@@ -271,8 +251,7 @@ Expected<void> applyCastSiNarrowChk(const VerifyCtx &ctx, const InstructionSpec 
 /// @details Mirrors the signed variant but applies to unsigned conversions.
 /// @param ctx Verification context for the instruction.
 /// @return Success or diagnostic error.
-Expected<void> applyCastUiNarrowChk(const VerifyCtx &ctx, const InstructionSpec &)
-{
+Expected<void> applyCastUiNarrowChk(const VerifyCtx &ctx, const InstructionSpec &) {
     const auto kind = ctx.instr.type.kind;
     if (!detail::isNarrowingTargetWidth(kind))
         return fail(ctx, "narrowing cast result must be i16 or i32");
@@ -286,8 +265,7 @@ Expected<void> applyCastUiNarrowChk(const VerifyCtx &ctx, const InstructionSpec 
 /// @param ctx Verification context for the instruction.
 /// @param spec Specification entry driving strategy selection.
 /// @return Empty on success (warnings do not block verification).
-Expected<void> applyShift(const VerifyCtx &ctx, const InstructionSpec &spec)
-{
+Expected<void> applyShift(const VerifyCtx &ctx, const InstructionSpec &spec) {
     ctx.types.recordResult(ctx.instr, resolveResultType(ctx, spec));
     return checkShift(ctx);
 }
@@ -298,8 +276,7 @@ Expected<void> applyShift(const VerifyCtx &ctx, const InstructionSpec &spec)
 /// @param ctx Verification context for the instruction.
 /// @param spec Specification entry containing the rejection message.
 /// @return Always returns a failure diagnostic.
-Expected<void> applyReject(const VerifyCtx &ctx, const InstructionSpec &spec)
-{
+Expected<void> applyReject(const VerifyCtx &ctx, const InstructionSpec &spec) {
     const char *message = spec.rejectMessage ? spec.rejectMessage : "opcode rejected";
     return fail(ctx, std::string(message));
 }
@@ -336,11 +313,9 @@ static_assert(kStrategyTable.size() == static_cast<size_t>(VerifyStrategy::Count
 /// @param ctx Verification context describing the instruction.
 /// @param spec Specification entry obtained from the opcode table.
 /// @return Success or diagnostic error from the strategy implementation.
-Expected<void> dispatchStrategy(const VerifyCtx &ctx, const InstructionSpec &spec)
-{
+Expected<void> dispatchStrategy(const VerifyCtx &ctx, const InstructionSpec &spec) {
     const size_t index = static_cast<size_t>(spec.strategy);
-    if (index >= kStrategyTable.size())
-    {
+    if (index >= kStrategyTable.size()) {
         ctx.types.recordResult(ctx.instr, resolveResultType(ctx, spec));
         return checkDefault(ctx);
     }
@@ -354,8 +329,7 @@ Expected<void> dispatchStrategy(const VerifyCtx &ctx, const InstructionSpec &spe
 /// @param ctx Verification context describing the instruction.
 /// @param spec Specification entry obtained from the opcode table.
 /// @return Success or diagnostic error when checks fail.
-Expected<void> runStructuralChecks(const VerifyCtx &ctx, const InstructionSpec &spec)
-{
+Expected<void> runStructuralChecks(const VerifyCtx &ctx, const InstructionSpec &spec) {
     detail::OperandCountChecker countChecker(ctx, spec);
     if (auto result = countChecker.run(); !result)
         return result;
@@ -373,8 +347,7 @@ Expected<void> runStructuralChecks(const VerifyCtx &ctx, const InstructionSpec &
 ///          dispatches to the appropriate verification strategy.
 /// @param ctx Verification context describing the instruction.
 /// @return Success or diagnostic error.
-Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
-{
+Expected<void> verifyInstruction_impl(const VerifyCtx &ctx) {
     const InstructionSpec &spec = getInstructionSpec(ctx.instr.op);
     if (auto result = runStructuralChecks(ctx, spec); !result)
         return result;
@@ -391,13 +364,11 @@ Expected<void> verifyInstruction_impl(const VerifyCtx &ctx)
 /// @return Success or diagnostic error.
 Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
                                           const il::core::BasicBlock &bb,
-                                          const il::core::Instr &instr)
-{
+                                          const il::core::Instr &instr) {
     const InstructionSpec &spec = getInstructionSpec(instr.op);
 
     const bool hasResult = instr.result.has_value();
-    switch (spec.resultArity)
-    {
+    switch (spec.resultArity) {
         case il::core::ResultArity::None:
             if (hasResult)
                 return Expected<void>(
@@ -415,25 +386,19 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
     const size_t operandCount = instr.operands.size();
     const bool variadicOperands = il::core::isVariadicOperandCount(spec.numOperandsMax);
     if (operandCount < spec.numOperandsMin ||
-        (!variadicOperands && operandCount > spec.numOperandsMax))
-    {
+        (!variadicOperands && operandCount > spec.numOperandsMax)) {
         std::string message;
-        if (spec.numOperandsMin == spec.numOperandsMax && !variadicOperands)
-        {
+        if (spec.numOperandsMin == spec.numOperandsMax && !variadicOperands) {
             message = "expected " + std::to_string(static_cast<unsigned>(spec.numOperandsMin)) +
                       " operand";
             if (spec.numOperandsMin != 1)
                 message += 's';
-        }
-        else if (variadicOperands)
-        {
+        } else if (variadicOperands) {
             message = "expected at least " +
                       std::to_string(static_cast<unsigned>(spec.numOperandsMin)) + " operand";
             if (spec.numOperandsMin != 1)
                 message += 's';
-        }
-        else
-        {
+        } else {
             message = "expected between " +
                       std::to_string(static_cast<unsigned>(spec.numOperandsMin)) + " and " +
                       std::to_string(static_cast<unsigned>(spec.numOperandsMax)) + " operands";
@@ -442,16 +407,12 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
     }
 
     const bool variadicSucc = il::core::isVariadicSuccessorCount(spec.numSuccessors);
-    if (variadicSucc)
-    {
+    if (variadicSucc) {
         if (instr.labels.empty())
             return Expected<void>(makeError(
                 instr.loc, formatInstrDiag(fn, bb, instr, "expected at least 1 successor")));
-    }
-    else
-    {
-        if (instr.labels.size() != spec.numSuccessors)
-        {
+    } else {
+        if (instr.labels.size() != spec.numSuccessors) {
             std::string message = "expected " +
                                   std::to_string(static_cast<unsigned>(spec.numSuccessors)) +
                                   " successor";
@@ -461,20 +422,15 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
         }
     }
 
-    if (variadicSucc)
-    {
-        if (!instr.brArgs.empty() && instr.brArgs.size() != instr.labels.size())
-        {
+    if (variadicSucc) {
+        if (!instr.brArgs.empty() && instr.brArgs.size() != instr.labels.size()) {
             return Expected<void>(makeError(
                 instr.loc,
                 formatInstrDiag(
                     fn, bb, instr, "expected branch argument bundle per successor or none")));
         }
-    }
-    else
-    {
-        if (instr.brArgs.size() > spec.numSuccessors)
-        {
+    } else {
+        if (instr.brArgs.size() > spec.numSuccessors) {
             std::string message = "expected at most " +
                                   std::to_string(static_cast<unsigned>(spec.numSuccessors)) +
                                   " branch argument bundle";
@@ -496,16 +452,14 @@ Expected<void> verifyOpcodeSignature_impl(const il::core::Function &fn,
 /// @brief Public Expected-returning wrapper for instruction verification.
 /// @param ctx Verification context describing the instruction.
 /// @return Success or diagnostic error.
-Expected<void> verifyInstruction_E(const VerifyCtx &ctx)
-{
+Expected<void> verifyInstruction_E(const VerifyCtx &ctx) {
     return verifyInstruction_impl(ctx);
 }
 
 /// @brief Wrapper that verifies structure using the data stored in @p ctx.
 /// @param ctx Verification context describing the instruction.
 /// @return Success or diagnostic error.
-Expected<void> verifyOpcodeSignature_E(const VerifyCtx &ctx)
-{
+Expected<void> verifyOpcodeSignature_E(const VerifyCtx &ctx) {
     return verifyOpcodeSignature_impl(ctx.fn, ctx.block, ctx.instr);
 }
 
@@ -527,8 +481,7 @@ Expected<void> verifyInstruction_E(
     const std::unordered_map<std::string, const il::core::Extern *> &externs,
     const std::unordered_map<std::string, const il::core::Function *> &funcs,
     TypeInference &types,
-    DiagSink &sink)
-{
+    DiagSink &sink) {
     VerifyCtx ctx{sink, types, externs, funcs, fn, bb, instr};
     return verifyInstruction_impl(ctx);
 }
@@ -540,8 +493,7 @@ Expected<void> verifyInstruction_E(
 /// @return Success or diagnostic error.
 Expected<void> verifyOpcodeSignature_E(const il::core::Function &fn,
                                        const il::core::BasicBlock &bb,
-                                       const il::core::Instr &instr)
-{
+                                       const il::core::Instr &instr) {
     return verifyOpcodeSignature_impl(fn, bb, instr);
 }
 
@@ -556,10 +508,8 @@ Expected<void> verifyOpcodeSignature_E(const il::core::Function &fn,
 bool verifyOpcodeSignature(const il::core::Function &fn,
                            const il::core::BasicBlock &bb,
                            const il::core::Instr &instr,
-                           std::ostream &err)
-{
-    if (auto result = verifyOpcodeSignature_E(fn, bb, instr); !result)
-    {
+                           std::ostream &err) {
+    if (auto result = verifyOpcodeSignature_E(fn, bb, instr); !result) {
         il::support::printDiag(result.error(), err);
         return false;
     }
@@ -583,11 +533,9 @@ bool verifyInstruction(const il::core::Function &fn,
                        const std::unordered_map<std::string, const il::core::Extern *> &externs,
                        const std::unordered_map<std::string, const il::core::Function *> &funcs,
                        TypeInference &types,
-                       std::ostream &err)
-{
+                       std::ostream &err) {
     CollectingDiagSink sink;
-    if (auto result = verifyInstruction_E(fn, bb, instr, externs, funcs, types, sink); !result)
-    {
+    if (auto result = verifyInstruction_E(fn, bb, instr, externs, funcs, types, sink); !result) {
         for (const auto &warning : sink.diagnostics())
             il::support::printDiag(warning, err);
         il::support::printDiag(result.error(), err);
@@ -606,8 +554,7 @@ bool verifyInstruction(const il::core::Function &fn,
 /// @return Success or diagnostic error.
 Expected<void> verifyOpcodeSignature_expected(const il::core::Function &fn,
                                               const il::core::BasicBlock &bb,
-                                              const il::core::Instr &instr)
-{
+                                              const il::core::Instr &instr) {
     return verifyOpcodeSignature_E(fn, bb, instr);
 }
 
@@ -627,8 +574,7 @@ Expected<void> verifyInstruction_expected(
     const std::unordered_map<std::string, const il::core::Extern *> &externs,
     const std::unordered_map<std::string, const il::core::Function *> &funcs,
     TypeInference &types,
-    DiagSink &sink)
-{
+    DiagSink &sink) {
     return verifyInstruction_E(fn, bb, instr, externs, funcs, types, sink);
 }
 

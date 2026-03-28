@@ -28,12 +28,10 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Dynamic library import for Mach-O linking.
-struct DylibImport
-{
+struct DylibImport {
     std::string path; ///< Dylib path (e.g., "/usr/lib/libSystem.B.dylib").
 };
 

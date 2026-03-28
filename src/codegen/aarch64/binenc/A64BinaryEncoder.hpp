@@ -37,13 +37,11 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen
-{
+namespace viper::codegen {
 class DebugLineTable;
 }
 
-namespace viper::codegen::aarch64::binenc
-{
+namespace viper::codegen::aarch64::binenc {
 
 using viper::codegen::DebugLineTable;
 
@@ -57,13 +55,11 @@ using viper::codegen::DebugLineTable;
 /// synthesized from MFunction::savedGPRs/savedFPRs/localFrameSize (not from
 /// MIR instructions). Internal branches are resolved via patching. External
 /// symbols generate Relocation entries.
-class A64BinaryEncoder
-{
+class A64BinaryEncoder {
   public:
     /// Set the debug line table for recording address→line mappings.
     /// @param table Pointer to the DebugLineTable (null disables recording).
-    void setDebugLineTable(DebugLineTable *table)
-    {
+    void setDebugLineTable(DebugLineTable *table) {
         debugLines_ = table;
     }
 
@@ -113,15 +109,13 @@ class A64BinaryEncoder
                                objfile::CodeSection &cs);
 
     /// Emit a single 32-bit instruction word.
-    void emit32(uint32_t word, objfile::CodeSection &cs)
-    {
+    void emit32(uint32_t word, objfile::CodeSection &cs) {
         cs.emit32LE(word);
     }
 
     // === Internal branch resolution ===
 
-    struct PendingBranch
-    {
+    struct PendingBranch {
         size_t offset;      ///< Byte offset in CodeSection of the instruction.
         std::string target; ///< Target label name.
         MOpcode kind;       ///< Branch type (Br/BCond/Cbz/Cbnz/Bl).

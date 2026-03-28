@@ -18,12 +18,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that lambda with block body compiles.
-TEST(ZiaLambda, LambdaWithBlockBody)
-{
+TEST(ZiaLambda, LambdaWithBlockBody) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -39,11 +37,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for LambdaWithBlockBody:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -52,10 +48,8 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool foundLambdaFunc = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name.find("lambda") != std::string::npos)
-        {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name.find("lambda") != std::string::npos) {
             foundLambdaFunc = true;
             break;
         }
@@ -65,7 +59,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

@@ -45,8 +45,7 @@ static int g_failed = 0;
 
 #define TEST(name) static void test_##name(void)
 #define RUN(name)                                                                                  \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         printf("  %-60s", #name "...");                                                            \
         fflush(stdout);                                                                            \
         test_##name();                                                                             \
@@ -56,10 +55,8 @@ static int g_failed = 0;
     } while (0)
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             printf("FAIL\n  (%s:%d: %s)\n", __FILE__, __LINE__, #cond);                            \
             g_failed++;                                                                            \
             return;                                                                                \
@@ -77,8 +74,7 @@ static int g_failed = 0;
 // Helper: build a key-down event
 //=============================================================================
 
-static vg_event_t make_key_down(vg_key_t key, uint32_t mods)
-{
+static vg_event_t make_key_down(vg_key_t key, uint32_t mods) {
     vg_event_t ev;
     memset(&ev, 0, sizeof(ev));
     ev.type = VG_EVENT_KEY_DOWN;
@@ -87,16 +83,14 @@ static vg_event_t make_key_down(vg_key_t key, uint32_t mods)
     return ev;
 }
 
-static vg_event_t make_click(void)
-{
+static vg_event_t make_click(void) {
     vg_event_t ev;
     memset(&ev, 0, sizeof(ev));
     ev.type = VG_EVENT_CLICK;
     return ev;
 }
 
-static vg_event_t make_mouse_down(float screen_x, float screen_y)
-{
+static vg_event_t make_mouse_down(float screen_x, float screen_y) {
     vg_event_t ev;
     memset(&ev, 0, sizeof(ev));
     ev.type = VG_EVENT_MOUSE_DOWN;
@@ -105,8 +99,7 @@ static vg_event_t make_mouse_down(float screen_x, float screen_y)
     return ev;
 }
 
-static vg_event_t make_mouse_wheel(float delta_y)
-{
+static vg_event_t make_mouse_wheel(float delta_y) {
     vg_event_t ev;
     memset(&ev, 0, sizeof(ev));
     ev.type = VG_EVENT_MOUSE_WHEEL;
@@ -120,15 +113,13 @@ static vg_event_t make_mouse_wheel(float delta_y)
 
 static int g_button_clicked = 0;
 
-static void button_click_cb(vg_widget_t *w, void *data)
-{
+static void button_click_cb(vg_widget_t *w, void *data) {
     (void)w;
     (void)data;
     g_button_clicked++;
 }
 
-TEST(button_can_focus)
-{
+TEST(button_can_focus) {
     vg_button_t *btn = vg_button_create(NULL, "OK");
     ASSERT_NOT_NULL(btn);
     ASSERT_NOT_NULL(btn->base.vtable->can_focus);
@@ -136,8 +127,7 @@ TEST(button_can_focus)
     vg_widget_destroy(&btn->base);
 }
 
-TEST(button_space_activates)
-{
+TEST(button_space_activates) {
     vg_button_t *btn = vg_button_create(NULL, "OK");
     ASSERT_NOT_NULL(btn);
     vg_button_set_on_click(btn, button_click_cb, NULL);
@@ -151,8 +141,7 @@ TEST(button_space_activates)
     vg_widget_destroy(&btn->base);
 }
 
-TEST(button_enter_activates)
-{
+TEST(button_enter_activates) {
     vg_button_t *btn = vg_button_create(NULL, "OK");
     ASSERT_NOT_NULL(btn);
     vg_button_set_on_click(btn, button_click_cb, NULL);
@@ -166,8 +155,7 @@ TEST(button_enter_activates)
     vg_widget_destroy(&btn->base);
 }
 
-TEST(button_other_key_does_nothing)
-{
+TEST(button_other_key_does_nothing) {
     vg_button_t *btn = vg_button_create(NULL, "OK");
     ASSERT_NOT_NULL(btn);
     vg_button_set_on_click(btn, button_click_cb, NULL);
@@ -180,8 +168,7 @@ TEST(button_other_key_does_nothing)
     vg_widget_destroy(&btn->base);
 }
 
-TEST(button_click_still_works)
-{
+TEST(button_click_still_works) {
     vg_button_t *btn = vg_button_create(NULL, "OK");
     ASSERT_NOT_NULL(btn);
     vg_button_set_on_click(btn, button_click_cb, NULL);
@@ -199,8 +186,7 @@ TEST(button_click_still_works)
 // BUG-GUI-004 — Slider focus + keyboard navigation
 //=============================================================================
 
-TEST(slider_can_focus)
-{
+TEST(slider_can_focus) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
     ASSERT_NOT_NULL(s->base.vtable->can_focus);
@@ -208,8 +194,7 @@ TEST(slider_can_focus)
     vg_widget_destroy(&s->base);
 }
 
-TEST(slider_right_key_increases_value)
-{
+TEST(slider_right_key_increases_value) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
     vg_slider_set_range(s, 0.0f, 100.0f);
@@ -223,8 +208,7 @@ TEST(slider_right_key_increases_value)
     vg_widget_destroy(&s->base);
 }
 
-TEST(slider_left_key_decreases_value)
-{
+TEST(slider_left_key_decreases_value) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
     vg_slider_set_range(s, 0.0f, 100.0f);
@@ -237,8 +221,7 @@ TEST(slider_left_key_decreases_value)
     vg_widget_destroy(&s->base);
 }
 
-TEST(slider_home_jumps_to_min)
-{
+TEST(slider_home_jumps_to_min) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
     vg_slider_set_range(s, 10.0f, 200.0f);
@@ -251,8 +234,7 @@ TEST(slider_home_jumps_to_min)
     vg_widget_destroy(&s->base);
 }
 
-TEST(slider_end_jumps_to_max)
-{
+TEST(slider_end_jumps_to_max) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
     vg_slider_set_range(s, 0.0f, 100.0f);
@@ -265,8 +247,7 @@ TEST(slider_end_jumps_to_max)
     vg_widget_destroy(&s->base);
 }
 
-TEST(slider_key_respects_step)
-{
+TEST(slider_key_respects_step) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
     vg_slider_set_range(s, 0.0f, 100.0f);
@@ -280,8 +261,7 @@ TEST(slider_key_respects_step)
     vg_widget_destroy(&s->base);
 }
 
-TEST(slider_clamps_at_max)
-{
+TEST(slider_clamps_at_max) {
     vg_slider_t *s = vg_slider_create(NULL, VG_SLIDER_HORIZONTAL);
     ASSERT_NOT_NULL(s);
     vg_slider_set_range(s, 0.0f, 100.0f);
@@ -298,8 +278,7 @@ TEST(slider_clamps_at_max)
 // BUG-GUI-005 — ListBox focus + keyboard navigation
 //=============================================================================
 
-TEST(listbox_can_focus)
-{
+TEST(listbox_can_focus) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     ASSERT_NOT_NULL(lb->base.vtable->can_focus);
@@ -307,8 +286,7 @@ TEST(listbox_can_focus)
     vg_widget_destroy(&lb->base);
 }
 
-TEST(listbox_down_key_selects_next)
-{
+TEST(listbox_down_key_selects_next) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_add_item(lb, "Item 0", NULL);
@@ -330,8 +308,7 @@ TEST(listbox_down_key_selects_next)
     vg_widget_destroy(&lb->base);
 }
 
-TEST(listbox_up_key_selects_prev)
-{
+TEST(listbox_up_key_selects_prev) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_add_item(lb, "A", NULL);
@@ -349,8 +326,7 @@ TEST(listbox_up_key_selects_prev)
     vg_widget_destroy(&lb->base);
 }
 
-TEST(listbox_home_key_selects_first)
-{
+TEST(listbox_home_key_selects_first) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_add_item(lb, "X", NULL);
@@ -368,8 +344,7 @@ TEST(listbox_home_key_selects_first)
     vg_widget_destroy(&lb->base);
 }
 
-TEST(listbox_end_key_selects_last)
-{
+TEST(listbox_end_key_selects_last) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_add_item(lb, "P", NULL);
@@ -387,8 +362,7 @@ TEST(listbox_end_key_selects_last)
     vg_widget_destroy(&lb->base);
 }
 
-TEST(listbox_clamps_at_ends)
-{
+TEST(listbox_clamps_at_ends) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_add_item(lb, "Only", NULL);
@@ -414,8 +388,7 @@ TEST(listbox_clamps_at_ends)
 // BUG-GUI-007 — TextInput Shift+select and Ctrl+word-jump
 //=============================================================================
 
-TEST(textinput_shift_left_extends_selection)
-{
+TEST(textinput_shift_left_extends_selection) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
     vg_textinput_set_text(ti, "hello");
@@ -437,8 +410,7 @@ TEST(textinput_shift_left_extends_selection)
     vg_widget_destroy(&ti->base);
 }
 
-TEST(textinput_shift_right_extends_selection)
-{
+TEST(textinput_shift_right_extends_selection) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
     vg_textinput_set_text(ti, "hello");
@@ -456,8 +428,7 @@ TEST(textinput_shift_right_extends_selection)
     vg_widget_destroy(&ti->base);
 }
 
-TEST(textinput_shift_home_selects_to_start)
-{
+TEST(textinput_shift_home_selects_to_start) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
     vg_textinput_set_text(ti, "hello");
@@ -475,8 +446,7 @@ TEST(textinput_shift_home_selects_to_start)
     vg_widget_destroy(&ti->base);
 }
 
-TEST(textinput_shift_end_selects_to_end)
-{
+TEST(textinput_shift_end_selects_to_end) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
     vg_textinput_set_text(ti, "hello");
@@ -494,8 +464,7 @@ TEST(textinput_shift_end_selects_to_end)
     vg_widget_destroy(&ti->base);
 }
 
-TEST(textinput_ctrl_right_jumps_word)
-{
+TEST(textinput_ctrl_right_jumps_word) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
     vg_textinput_set_text(ti, "hello world");
@@ -517,8 +486,7 @@ TEST(textinput_ctrl_right_jumps_word)
     vg_widget_destroy(&ti->base);
 }
 
-TEST(textinput_ctrl_left_jumps_word)
-{
+TEST(textinput_ctrl_left_jumps_word) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
     vg_textinput_set_text(ti, "hello world");
@@ -537,8 +505,7 @@ TEST(textinput_ctrl_left_jumps_word)
     vg_widget_destroy(&ti->base);
 }
 
-TEST(textinput_plain_left_collapses_selection)
-{
+TEST(textinput_plain_left_collapses_selection) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
     vg_textinput_set_text(ti, "hello");
@@ -557,8 +524,7 @@ TEST(textinput_plain_left_collapses_selection)
     vg_widget_destroy(&ti->base);
 }
 
-TEST(textinput_utf8_backspace_removes_whole_codepoint)
-{
+TEST(textinput_utf8_backspace_removes_whole_codepoint) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
     vg_textinput_set_text(ti,
@@ -577,8 +543,7 @@ TEST(textinput_utf8_backspace_removes_whole_codepoint)
     vg_widget_destroy(&ti->base);
 }
 
-TEST(textinput_utf8_selection_extracts_full_character)
-{
+TEST(textinput_utf8_selection_extracts_full_character) {
     vg_textinput_t *ti = vg_textinput_create(NULL);
     ASSERT_NOT_NULL(ti);
     vg_textinput_set_text(ti,
@@ -594,8 +559,7 @@ TEST(textinput_utf8_selection_extracts_full_character)
     vg_widget_destroy(&ti->base);
 }
 
-TEST(listbox_virtual_mouse_selects_index)
-{
+TEST(listbox_virtual_mouse_selects_index) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_set_virtual_mode(lb, true, 100, 20.0f);
@@ -611,8 +575,7 @@ TEST(listbox_virtual_mouse_selects_index)
     vg_widget_destroy(&lb->base);
 }
 
-TEST(listbox_virtual_wheel_clamps_using_total_count)
-{
+TEST(listbox_virtual_wheel_clamps_using_total_count) {
     vg_listbox_t *lb = vg_listbox_create(NULL);
     ASSERT_NOT_NULL(lb);
     vg_listbox_set_virtual_mode(lb, true, 100, 10.0f);
@@ -632,8 +595,7 @@ TEST(listbox_virtual_wheel_clamps_using_total_count)
 // Label word_wrap struct fields accessible (BUG-GUI-001 compile check)
 //=============================================================================
 
-TEST(label_wordwrap_fields_accessible)
-{
+TEST(label_wordwrap_fields_accessible) {
     vg_label_t *lbl = vg_label_create(NULL, "Hello world this is a test");
     ASSERT_NOT_NULL(lbl);
     // Ensure fields exist and have sane defaults
@@ -653,8 +615,7 @@ TEST(label_wordwrap_fields_accessible)
 // main
 //=============================================================================
 
-int main(void)
-{
+int main(void) {
     printf("=== Tier 1 GUI Fix Tests ===\n");
 
     printf("\n-- BUG-GUI-003: Button keyboard activation --\n");

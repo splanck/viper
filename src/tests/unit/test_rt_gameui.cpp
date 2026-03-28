@@ -30,8 +30,7 @@
 #include <cstdio>
 
 // Trap handler for runtime
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -43,15 +42,13 @@ static int tests_passed = 0;
 static int tests_total = 0;
 
 #define TEST(name)                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_total++;                                                                             \
         printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 
 #define PASS()                                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_passed++;                                                                            \
         printf("ok\n");                                                                            \
     } while (0)
@@ -60,8 +57,7 @@ static int tests_total = 0;
 // UILabel tests
 //=============================================================================
 
-static void test_label_creation(void)
-{
+static void test_label_creation(void) {
     TEST("UILabel creation and properties");
     rt_string text = rt_const_cstr("Hello");
     void *label = rt_uilabel_new(10, 20, text, 0xFFFFFF);
@@ -71,8 +67,7 @@ static void test_label_creation(void)
     PASS();
 }
 
-static void test_label_set_pos(void)
-{
+static void test_label_set_pos(void) {
     TEST("UILabel position update");
     rt_string text = rt_const_cstr("Test");
     void *label = rt_uilabel_new(0, 0, text, 0xFFFFFF);
@@ -82,8 +77,7 @@ static void test_label_set_pos(void)
     PASS();
 }
 
-static void test_label_null_safety(void)
-{
+static void test_label_null_safety(void) {
     TEST("UILabel NULL safety");
     assert(rt_uilabel_get_x(NULL) == 0);
     assert(rt_uilabel_get_y(NULL) == 0);
@@ -93,8 +87,7 @@ static void test_label_null_safety(void)
     PASS();
 }
 
-static void test_label_draw_null_canvas(void)
-{
+static void test_label_draw_null_canvas(void) {
     TEST("UILabel draw with NULL canvas is no-op");
     rt_string text = rt_const_cstr("Test");
     void *label = rt_uilabel_new(0, 0, text, 0xFFFFFF);
@@ -102,8 +95,7 @@ static void test_label_draw_null_canvas(void)
     PASS();
 }
 
-static void test_label_scale_clamp(void)
-{
+static void test_label_scale_clamp(void) {
     TEST("UILabel scale clamped to >= 1");
     rt_string text = rt_const_cstr("Test");
     void *label = rt_uilabel_new(0, 0, text, 0xFFFFFF);
@@ -117,8 +109,7 @@ static void test_label_scale_clamp(void)
 // UIBar tests
 //=============================================================================
 
-static void test_bar_creation(void)
-{
+static void test_bar_creation(void) {
     TEST("UIBar creation and defaults");
     void *bar = rt_uibar_new(10, 20, 100, 16, 0xFF0000, 0x333333);
     assert(bar != NULL);
@@ -127,8 +118,7 @@ static void test_bar_creation(void)
     PASS();
 }
 
-static void test_bar_value_clamping(void)
-{
+static void test_bar_value_clamping(void) {
     TEST("UIBar value clamping");
     void *bar = rt_uibar_new(0, 0, 100, 16, 0xFF0000, 0x333333);
 
@@ -152,8 +142,7 @@ static void test_bar_value_clamping(void)
     PASS();
 }
 
-static void test_bar_null_safety(void)
-{
+static void test_bar_null_safety(void) {
     TEST("UIBar NULL safety");
     assert(rt_uibar_get_value(NULL) == 0);
     assert(rt_uibar_get_max(NULL) == 0);
@@ -162,8 +151,7 @@ static void test_bar_null_safety(void)
     PASS();
 }
 
-static void test_bar_direction(void)
-{
+static void test_bar_direction(void) {
     TEST("UIBar direction clamping");
     void *bar = rt_uibar_new(0, 0, 100, 16, 0xFF0000, 0x333333);
     rt_uibar_set_direction(bar, 3);  // Valid: top-to-bottom
@@ -177,16 +165,14 @@ static void test_bar_direction(void)
 // UIPanel tests
 //=============================================================================
 
-static void test_panel_creation(void)
-{
+static void test_panel_creation(void) {
     TEST("UIPanel creation");
     void *panel = rt_uipanel_new(10, 20, 200, 150, 0x000000, 180);
     assert(panel != NULL);
     PASS();
 }
 
-static void test_panel_alpha_clamping(void)
-{
+static void test_panel_alpha_clamping(void) {
     TEST("UIPanel alpha clamping");
     void *panel = rt_uipanel_new(0, 0, 100, 100, 0x000000, 300);
     // Alpha should be clamped to 255 internally
@@ -195,8 +181,7 @@ static void test_panel_alpha_clamping(void)
     PASS();
 }
 
-static void test_panel_null_safety(void)
-{
+static void test_panel_null_safety(void) {
     TEST("UIPanel NULL safety");
     rt_uipanel_set_pos(NULL, 0, 0);      // No crash
     rt_uipanel_set_size(NULL, 100, 100); // No crash
@@ -208,16 +193,14 @@ static void test_panel_null_safety(void)
 // UINineSlice tests
 //=============================================================================
 
-static void test_nineslice_null_pixels(void)
-{
+static void test_nineslice_null_pixels(void) {
     TEST("UINineSlice NULL pixels returns NULL");
     void *ns = rt_uinineslice_new(NULL, 8, 8, 8, 8);
     assert(ns == NULL);
     PASS();
 }
 
-static void test_nineslice_draw_null(void)
-{
+static void test_nineslice_draw_null(void) {
     TEST("UINineSlice draw with NULL is no-op");
     rt_uinineslice_draw(NULL, NULL, 0, 0, 100, 100); // No crash
     PASS();
@@ -227,8 +210,7 @@ static void test_nineslice_draw_null(void)
 // UIMenuList tests
 //=============================================================================
 
-static void test_menulist_creation(void)
-{
+static void test_menulist_creation(void) {
     TEST("UIMenuList creation and defaults");
     void *menu = rt_uimenulist_new(10, 20, 24);
     assert(menu != NULL);
@@ -237,8 +219,7 @@ static void test_menulist_creation(void)
     PASS();
 }
 
-static void test_menulist_add_items(void)
-{
+static void test_menulist_add_items(void) {
     TEST("UIMenuList add items");
     void *menu = rt_uimenulist_new(0, 0, 20);
     rt_uimenulist_add_item(menu, rt_const_cstr("Play"));
@@ -248,8 +229,7 @@ static void test_menulist_add_items(void)
     PASS();
 }
 
-static void test_menulist_navigation(void)
-{
+static void test_menulist_navigation(void) {
     TEST("UIMenuList MoveDown/MoveUp navigation");
     void *menu = rt_uimenulist_new(0, 0, 20);
     rt_uimenulist_add_item(menu, rt_const_cstr("A"));
@@ -269,8 +249,7 @@ static void test_menulist_navigation(void)
     PASS();
 }
 
-static void test_menulist_wrap_down(void)
-{
+static void test_menulist_wrap_down(void) {
     TEST("UIMenuList wrap-around down (last → 0)");
     void *menu = rt_uimenulist_new(0, 0, 20);
     rt_uimenulist_add_item(menu, rt_const_cstr("A"));
@@ -283,8 +262,7 @@ static void test_menulist_wrap_down(void)
     PASS();
 }
 
-static void test_menulist_wrap_up(void)
-{
+static void test_menulist_wrap_up(void) {
     TEST("UIMenuList wrap-around up (0 → last)");
     void *menu = rt_uimenulist_new(0, 0, 20);
     rt_uimenulist_add_item(menu, rt_const_cstr("A"));
@@ -297,8 +275,7 @@ static void test_menulist_wrap_up(void)
     PASS();
 }
 
-static void test_menulist_empty_navigation(void)
-{
+static void test_menulist_empty_navigation(void) {
     TEST("UIMenuList empty list navigation is no-op");
     void *menu = rt_uimenulist_new(0, 0, 20);
     rt_uimenulist_move_up(menu);   // No crash, no items
@@ -307,8 +284,7 @@ static void test_menulist_empty_navigation(void)
     PASS();
 }
 
-static void test_menulist_clear(void)
-{
+static void test_menulist_clear(void) {
     TEST("UIMenuList clear resets state");
     void *menu = rt_uimenulist_new(0, 0, 20);
     rt_uimenulist_add_item(menu, rt_const_cstr("A"));
@@ -321,8 +297,7 @@ static void test_menulist_clear(void)
     PASS();
 }
 
-static void test_menulist_set_selected_clamp(void)
-{
+static void test_menulist_set_selected_clamp(void) {
     TEST("UIMenuList set_selected clamps to valid range");
     void *menu = rt_uimenulist_new(0, 0, 20);
     rt_uimenulist_add_item(menu, rt_const_cstr("A"));
@@ -336,8 +311,7 @@ static void test_menulist_set_selected_clamp(void)
     PASS();
 }
 
-static void test_menulist_null_safety(void)
-{
+static void test_menulist_null_safety(void) {
     TEST("UIMenuList NULL safety");
     assert(rt_uimenulist_get_count(NULL) == 0);
     assert(rt_uimenulist_get_selected(NULL) == 0);
@@ -348,8 +322,7 @@ static void test_menulist_null_safety(void)
     PASS();
 }
 
-static void test_menulist_null_text(void)
-{
+static void test_menulist_null_text(void) {
     TEST("UIMenuList AddItem with NULL text is no-op");
     void *menu = rt_uimenulist_new(0, 0, 20);
     rt_uimenulist_add_item(menu, NULL);
@@ -361,8 +334,7 @@ static void test_menulist_null_text(void)
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("test_rt_gameui:\n");
 
     // Label

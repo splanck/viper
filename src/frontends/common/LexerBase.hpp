@@ -25,8 +25,7 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::common::lexer_base
-{
+namespace il::frontends::common::lexer_base {
 
 /// @brief CRTP base class for lexer cursor management.
 /// @details Provides peek(), get(), eof(), and location tracking.
@@ -36,16 +35,14 @@ namespace il::frontends::common::lexer_base
 ///   class MyLexer : public LexerCursor<MyLexer> {
 ///       std::string_view source() const { return src_; }
 ///   };
-template <typename Derived> class LexerCursor
-{
+template <typename Derived> class LexerCursor {
   public:
     /// @brief Construct with initial file ID.
     explicit LexerCursor(uint32_t fileId) : fileId_(fileId) {}
 
     /// @brief Peek at the current character without consuming it.
     /// @return The current character, or '\0' if at end of source.
-    [[nodiscard]] char peek() const
-    {
+    [[nodiscard]] char peek() const {
         auto src = static_cast<const Derived *>(this)->source();
         return pos_ < src.size() ? src[pos_] : '\0';
     }
@@ -53,8 +50,7 @@ template <typename Derived> class LexerCursor
     /// @brief Peek at a character ahead of current position.
     /// @param offset Number of characters ahead to look.
     /// @return The character at offset, or '\0' if beyond end.
-    [[nodiscard]] char peek(std::size_t offset) const
-    {
+    [[nodiscard]] char peek(std::size_t offset) const {
         auto src = static_cast<const Derived *>(this)->source();
         std::size_t idx = pos_ + offset;
         return idx < src.size() ? src[idx] : '\0';
@@ -62,19 +58,15 @@ template <typename Derived> class LexerCursor
 
     /// @brief Consume and return the current character.
     /// @return The consumed character, or '\0' if at end of source.
-    char get()
-    {
+    char get() {
         auto src = static_cast<const Derived *>(this)->source();
         if (pos_ >= src.size())
             return '\0';
         char c = src[pos_++];
-        if (c == '\n')
-        {
+        if (c == '\n') {
             line_++;
             column_ = 1;
-        }
-        else
-        {
+        } else {
             column_++;
         }
         return c;
@@ -82,32 +74,27 @@ template <typename Derived> class LexerCursor
 
     /// @brief Check whether the lexer has reached the end of the source.
     /// @return True if no characters remain, otherwise false.
-    [[nodiscard]] bool eof() const
-    {
+    [[nodiscard]] bool eof() const {
         return pos_ >= static_cast<const Derived *>(this)->source().size();
     }
 
     /// @brief Get the current position in the source.
-    [[nodiscard]] std::size_t position() const noexcept
-    {
+    [[nodiscard]] std::size_t position() const noexcept {
         return pos_;
     }
 
     /// @brief Get the current line number (1-based).
-    [[nodiscard]] uint32_t line() const noexcept
-    {
+    [[nodiscard]] uint32_t line() const noexcept {
         return line_;
     }
 
     /// @brief Get the current column number (1-based).
-    [[nodiscard]] uint32_t column() const noexcept
-    {
+    [[nodiscard]] uint32_t column() const noexcept {
         return column_;
     }
 
     /// @brief Get the file ID.
-    [[nodiscard]] uint32_t fileId() const noexcept
-    {
+    [[nodiscard]] uint32_t fileId() const noexcept {
         return fileId_;
     }
 
@@ -121,10 +108,8 @@ template <typename Derived> class LexerCursor
 /// @brief Skip whitespace characters (space, tab, CR).
 /// @details Advances past horizontal whitespace, leaving newlines in place.
 /// @tparam Lexer A lexer type with peek(), get(), eof() methods.
-template <typename Lexer> inline void skipHorizontalWhitespace(Lexer &lex)
-{
-    while (!lex.eof())
-    {
+template <typename Lexer> inline void skipHorizontalWhitespace(Lexer &lex) {
+    while (!lex.eof()) {
         char c = lex.peek();
         if (c == ' ' || c == '\t' || c == '\r')
             lex.get();
@@ -135,10 +120,8 @@ template <typename Lexer> inline void skipHorizontalWhitespace(Lexer &lex)
 
 /// @brief Skip all whitespace characters including newlines.
 /// @tparam Lexer A lexer type with peek(), get(), eof() methods.
-template <typename Lexer> inline void skipAllWhitespace(Lexer &lex)
-{
-    while (!lex.eof())
-    {
+template <typename Lexer> inline void skipAllWhitespace(Lexer &lex) {
+    while (!lex.eof()) {
         char c = lex.peek();
         if (c == ' ' || c == '\t' || c == '\r' || c == '\n')
             lex.get();
@@ -150,16 +133,14 @@ template <typename Lexer> inline void skipAllWhitespace(Lexer &lex)
 /// @brief Skip a line (until newline or EOF).
 /// @details Consumes characters until a newline is seen (but does not consume the newline).
 /// @tparam Lexer A lexer type with peek(), get(), eof() methods.
-template <typename Lexer> inline void skipToEndOfLine(Lexer &lex)
-{
+template <typename Lexer> inline void skipToEndOfLine(Lexer &lex) {
     while (!lex.eof() && lex.peek() != '\n')
         lex.get();
 }
 
 /// @brief Skip a line including the trailing newline.
 /// @tparam Lexer A lexer type with peek(), get(), eof() methods.
-template <typename Lexer> inline void skipLine(Lexer &lex)
-{
+template <typename Lexer> inline void skipLine(Lexer &lex) {
     while (!lex.eof() && lex.peek() != '\n')
         lex.get();
     if (!lex.eof() && lex.peek() == '\n')

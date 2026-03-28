@@ -23,15 +23,13 @@
 #include "vm/OpHandlers.hpp"
 #include "vm/VM.hpp"
 
-namespace il::vm::generated
-{
+namespace il::vm::generated {
 
 /// @brief Static handler table indexed by opcode enum value.
 /// @details Each entry is a function pointer to the handler for the
 ///          corresponding opcode. The table order MUST match the opcode
 ///          declaration order in Opcode.def.
-inline const VM::OpcodeHandlerTable &opcodeHandlers()
-{
+inline const VM::OpcodeHandlerTable &opcodeHandlers() {
     static const VM::OpcodeHandlerTable table = {
         // =================================================================
         // Arithmetic Operations (Opcode::Add through Opcode::IdxChk)

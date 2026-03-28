@@ -17,18 +17,15 @@
 
 #include <string_view>
 
-namespace il::runtime::signatures
-{
+namespace il::runtime::signatures {
 void register_math_signatures();
 void register_string_signatures();
 } // namespace il::runtime::signatures
 
-namespace
-{
+namespace {
 using il::runtime::signatures::Signature;
 
-const Signature *findSignature(std::string_view name)
-{
+const Signature *findSignature(std::string_view name) {
     for (const auto &signature : il::runtime::signatures::all_signatures())
         if (signature.name == name)
             return &signature;
@@ -36,8 +33,7 @@ const Signature *findSignature(std::string_view name)
 }
 } // namespace
 
-TEST(SignaturesPurity, MathHelpersArePure)
-{
+TEST(SignaturesPurity, MathHelpersArePure) {
     il::runtime::signatures::register_math_signatures();
     const auto *roundEven = findSignature("rt_round_even");
     ASSERT_NE(roundEven, nullptr);
@@ -51,8 +47,7 @@ TEST(SignaturesPurity, MathHelpersArePure)
     EXPECT_TRUE(sinSig->nothrow);
 }
 
-TEST(SignaturesPurity, ReadonlyStringHelpers)
-{
+TEST(SignaturesPurity, ReadonlyStringHelpers) {
     il::runtime::signatures::register_string_signatures();
     const auto *lenSig = findSignature("rt_str_len");
     ASSERT_NE(lenSig, nullptr);
@@ -66,8 +61,7 @@ TEST(SignaturesPurity, ReadonlyStringHelpers)
     EXPECT_TRUE(instrSig->nothrow);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

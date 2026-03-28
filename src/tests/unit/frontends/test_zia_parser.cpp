@@ -27,16 +27,14 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 //===----------------------------------------------------------------------===//
 // Helpers
 //===----------------------------------------------------------------------===//
 
 /// @brief Compile Zia source and return the result.
-CompilerResult compileSource(const std::string &source)
-{
+CompilerResult compileSource(const std::string &source) {
     SourceManager sm;
     CompilerInput input{.source = source, .path = "parser_test.zia"};
     CompilerOptions opts{};
@@ -44,8 +42,7 @@ CompilerResult compileSource(const std::string &source)
 }
 
 /// @brief Compile at O0 to preserve IL structure for inspection.
-CompilerResult compileSourceO0(const std::string &source)
-{
+CompilerResult compileSourceO0(const std::string &source) {
     SourceManager sm;
     CompilerInput input{.source = source, .path = "parser_test.zia"};
     CompilerOptions opts{.optLevel = OptLevel::O0};
@@ -53,10 +50,8 @@ CompilerResult compileSourceO0(const std::string &source)
 }
 
 /// @brief Check whether any diagnostic message contains @p needle.
-bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle)
-{
-    for (const auto &d : diag.diagnostics())
-    {
+bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle) {
+    for (const auto &d : diag.diagnostics()) {
         if (d.message.find(needle) != std::string::npos)
             return true;
     }
@@ -64,16 +59,11 @@ bool hasDiagContaining(const DiagnosticEngine &diag, const std::string &needle)
 }
 
 /// @brief Check if a function in the module contains a specific opcode.
-bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core::Opcode op) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == op)
                         return true;
                 }
@@ -84,16 +74,11 @@ bool hasOpcode(const il::core::Module &mod, const std::string &fnName, il::core:
 }
 
 /// @brief Check if a function in the module contains a Call to a specific callee.
-bool hasCall(const il::core::Module &mod, const std::string &fnName, const std::string &callee)
-{
-    for (const auto &fn : mod.functions)
-    {
-        if (fn.name == fnName)
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+bool hasCall(const il::core::Module &mod, const std::string &fnName, const std::string &callee) {
+    for (const auto &fn : mod.functions) {
+        if (fn.name == fnName) {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Call && instr.callee == callee)
                         return true;
                 }
@@ -104,10 +89,8 @@ bool hasCall(const il::core::Module &mod, const std::string &fnName, const std::
 }
 
 /// @brief Check if a named function exists in the module.
-bool hasFunction(const il::core::Module &mod, const std::string &fnName)
-{
-    for (const auto &fn : mod.functions)
-    {
+bool hasFunction(const il::core::Module &mod, const std::string &fnName) {
+    for (const auto &fn : mod.functions) {
         if (fn.name == fnName)
             return true;
     }
@@ -115,10 +98,8 @@ bool hasFunction(const il::core::Module &mod, const std::string &fnName)
 }
 
 /// @brief Check if any function name contains a given substring.
-bool hasFunctionContaining(const il::core::Module &mod, const std::string &substr)
-{
-    for (const auto &fn : mod.functions)
-    {
+bool hasFunctionContaining(const il::core::Module &mod, const std::string &substr) {
+    for (const auto &fn : mod.functions) {
         if (fn.name.find(substr) != std::string::npos)
             return true;
     }
@@ -126,11 +107,9 @@ bool hasFunctionContaining(const il::core::Module &mod, const std::string &subst
 }
 
 /// @brief Print diagnostics to stderr (for debugging test failures).
-void dumpDiagnostics(const std::string &testName, const CompilerResult &result)
-{
+void dumpDiagnostics(const std::string &testName, const CompilerResult &result) {
     std::cerr << "Diagnostics for " << testName << ":\n";
-    for (const auto &d : result.diagnostics.diagnostics())
-    {
+    for (const auto &d : result.diagnostics.diagnostics()) {
         std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                   << d.message << "\n";
     }
@@ -141,8 +120,7 @@ void dumpDiagnostics(const std::string &testName, const CompilerResult &result)
 //===----------------------------------------------------------------------===//
 
 /// @brief Arithmetic precedence: 1 + 2 * 3 should multiply before adding.
-TEST(ZiaParser, ArithmeticPrecedence)
-{
+TEST(ZiaParser, ArithmeticPrecedence) {
     auto result = compileSourceO0(R"(
 module Test;
 
@@ -160,14 +138,10 @@ func start() {
     // Mul/IMulOvf should appear before Add/IAddOvf in the IL
     bool foundMul = false;
     bool foundAdd = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
                     if (instr.op == il::core::Opcode::Mul || instr.op == il::core::Opcode::IMulOvf)
                         foundMul = true;
                     if (instr.op == il::core::Opcode::Add || instr.op == il::core::Opcode::IAddOvf)
@@ -181,8 +155,7 @@ func start() {
 }
 
 /// @brief Parenthesized expressions override default precedence.
-TEST(ZiaParser, ParenthesizedPrecedence)
-{
+TEST(ZiaParser, ParenthesizedPrecedence) {
     auto result = compileSource(R"(
 module Test;
 
@@ -199,8 +172,7 @@ func start() {
 }
 
 /// @brief Mixed division and modulo with subtraction.
-TEST(ZiaParser, DivModPrecedence)
-{
+TEST(ZiaParser, DivModPrecedence) {
     auto result = compileSource(R"(
 module Test;
 
@@ -221,8 +193,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Chained method calls on an entity instance.
-TEST(ZiaParser, MethodChaining)
-{
+TEST(ZiaParser, MethodChaining) {
     auto result = compileSource(R"(
 module Test;
 
@@ -258,8 +229,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Optional chaining with ?. operator on nullable entity.
-TEST(ZiaParser, OptionalChaining)
-{
+TEST(ZiaParser, OptionalChaining) {
     auto result = compileSource(R"(
 module Test;
 
@@ -289,8 +259,7 @@ func start() {
 }
 
 /// @brief Null coalesce operator ?? with optional types.
-TEST(ZiaParser, NullCoalesceOperator)
-{
+TEST(ZiaParser, NullCoalesceOperator) {
     auto result = compileSource(R"(
 module Test;
 
@@ -317,8 +286,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Match expression used as a value assignment.
-TEST(ZiaParser, MatchExpressionAsValue)
-{
+TEST(ZiaParser, MatchExpressionAsValue) {
     auto result = compileSource(R"(
 module Test;
 
@@ -341,12 +309,9 @@ func start() {
 
     // Verify match arms generate labeled blocks
     bool foundMatchArm = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
                 if (block.label.find("match_arm") != std::string::npos)
                     foundMatchArm = true;
             }
@@ -356,8 +321,7 @@ func start() {
 }
 
 /// @brief Match statement with block bodies.
-TEST(ZiaParser, MatchStatementWithBlocks)
-{
+TEST(ZiaParser, MatchStatementWithBlocks) {
     auto result = compileSource(R"(
 module Test;
 
@@ -382,8 +346,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Lambda with block body and no parameters.
-TEST(ZiaParser, LambdaBlockBodyNoParams)
-{
+TEST(ZiaParser, LambdaBlockBodyNoParams) {
     auto result = compileSource(R"(
 module Test;
 
@@ -402,8 +365,7 @@ func start() {
 }
 
 /// @brief Lambda with typed parameter and block body.
-TEST(ZiaParser, LambdaWithTypedParam)
-{
+TEST(ZiaParser, LambdaWithTypedParam) {
     auto result = compileSource(R"(
 module Test;
 
@@ -426,8 +388,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief If expression used as value in variable initialization.
-TEST(ZiaParser, IfExpressionAsValue)
-{
+TEST(ZiaParser, IfExpressionAsValue) {
     auto result = compileSource(R"(
 module Test;
 
@@ -449,8 +410,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief For-in loop over a list literal.
-TEST(ZiaParser, ForInList)
-{
+TEST(ZiaParser, ForInList) {
     auto result = compileSource(R"(
 module Test;
 
@@ -469,8 +429,7 @@ func start() {
 }
 
 /// @brief For-in loop over an integer range.
-TEST(ZiaParser, ForInRange)
-{
+TEST(ZiaParser, ForInRange) {
     auto result = compileSource(R"(
 module Test;
 
@@ -492,8 +451,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief While loop with break.
-TEST(ZiaParser, WhileLoopWithBreak)
-{
+TEST(ZiaParser, WhileLoopWithBreak) {
     auto result = compileSource(R"(
 module Test;
 
@@ -520,8 +478,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Guard clause: null check with early return enables type narrowing.
-TEST(ZiaParser, GuardNullCheckReturn)
-{
+TEST(ZiaParser, GuardNullCheckReturn) {
     auto result = compileSource(R"(
 module Test;
 
@@ -554,8 +511,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief List literal initialization.
-TEST(ZiaParser, ListLiteral)
-{
+TEST(ZiaParser, ListLiteral) {
     auto result = compileSource(R"(
 module Test;
 
@@ -572,8 +528,7 @@ func start() {
 }
 
 /// @brief Map collection usage.
-TEST(ZiaParser, MapLiteral)
-{
+TEST(ZiaParser, MapLiteral) {
     auto result = compileSource(R"(
 module Test;
 
@@ -593,8 +548,7 @@ func start() {
 }
 
 /// @brief Set literal using brace syntax.
-TEST(ZiaParser, SetLiteral)
-{
+TEST(ZiaParser, SetLiteral) {
     auto result = compileSource(R"(
 module Test;
 
@@ -615,8 +569,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief String interpolation with variable reference.
-TEST(ZiaParser, StringInterpolation)
-{
+TEST(ZiaParser, StringInterpolation) {
     auto result = compileSource(R"(
 module Test;
 
@@ -638,8 +591,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Missing closing brace should produce an error.
-TEST(ZiaParser, ErrorMissingClosingBrace)
-{
+TEST(ZiaParser, ErrorMissingClosingBrace) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -649,8 +601,7 @@ func start() {
 }
 
 /// @brief Missing closing parenthesis should produce an error.
-TEST(ZiaParser, ErrorMissingClosingParen)
-{
+TEST(ZiaParser, ErrorMissingClosingParen) {
     auto result = compileSource(R"(
 module Test;
 func start() {
@@ -661,15 +612,13 @@ func start() {
 }
 
 /// @brief Completely empty input (no module declaration) should fail.
-TEST(ZiaParser, ErrorEmptyInput)
-{
+TEST(ZiaParser, ErrorEmptyInput) {
     auto result = compileSource("");
     EXPECT_FALSE(result.succeeded());
 }
 
 /// @brief Gibberish input should fail gracefully.
-TEST(ZiaParser, ErrorGibberishInput)
-{
+TEST(ZiaParser, ErrorGibberishInput) {
     auto result = compileSource("@@@!!!###$$$");
     EXPECT_FALSE(result.succeeded());
 }
@@ -679,8 +628,7 @@ TEST(ZiaParser, ErrorGibberishInput)
 //===----------------------------------------------------------------------===//
 
 /// @brief All comparison and logical operators parse correctly.
-TEST(ZiaParser, ComparisonAndLogicalOperators)
-{
+TEST(ZiaParser, ComparisonAndLogicalOperators) {
     auto result = compileSource(R"(
 module Test;
 
@@ -716,8 +664,7 @@ func start() {
 }
 
 /// @brief All arithmetic binary operators (+, -, *, /, %) parse correctly.
-TEST(ZiaParser, AllArithmeticOperators)
-{
+TEST(ZiaParser, AllArithmeticOperators) {
     auto result = compileSource(R"(
 module Test;
 
@@ -750,8 +697,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Unary negation and logical not.
-TEST(ZiaParser, UnaryOperators)
-{
+TEST(ZiaParser, UnaryOperators) {
     auto result = compileSource(R"(
 module Test;
 
@@ -774,8 +720,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Entity with fields and methods.
-TEST(ZiaParser, EntityDeclaration)
-{
+TEST(ZiaParser, EntityDeclaration) {
     auto result = compileSource(R"(
 module Test;
 
@@ -808,8 +753,7 @@ func start() {
 }
 
 /// @brief Entity with init constructor.
-TEST(ZiaParser, EntityWithInit)
-{
+TEST(ZiaParser, EntityWithInit) {
     auto result = compileSource(R"(
 module Test;
 
@@ -841,8 +785,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Function with multiple typed parameters and a return value.
-TEST(ZiaParser, MultiParamFunction)
-{
+TEST(ZiaParser, MultiParamFunction) {
     auto result = compileSource(R"(
 module Test;
 
@@ -868,8 +811,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Nested function calls: f(g(h(x))).
-TEST(ZiaParser, NestedFunctionCalls)
-{
+TEST(ZiaParser, NestedFunctionCalls) {
     auto result = compileSource(R"(
 module Test;
 
@@ -905,8 +847,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Range expression in for-in loop with variable bounds.
-TEST(ZiaParser, RangeExpressionVariableBounds)
-{
+TEST(ZiaParser, RangeExpressionVariableBounds) {
     auto result = compileSource(R"(
 module Test;
 
@@ -930,8 +871,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Deeply nested parenthesized expression.
-TEST(ZiaParser, DeeplyNestedParens)
-{
+TEST(ZiaParser, DeeplyNestedParens) {
     auto result = compileSource(R"(
 module Test;
 
@@ -948,8 +888,7 @@ func start() {
 }
 
 /// @brief Multiple statements in a single function body.
-TEST(ZiaParser, MultipleStatements)
-{
+TEST(ZiaParser, MultipleStatements) {
     auto result = compileSource(R"(
 module Test;
 
@@ -971,8 +910,7 @@ func start() {
 }
 
 /// @brief Empty function body parses correctly.
-TEST(ZiaParser, EmptyFunctionBody)
-{
+TEST(ZiaParser, EmptyFunctionBody) {
     auto result = compileSource(R"(
 module Test;
 
@@ -991,8 +929,7 @@ func start() {
 }
 
 /// @brief Boolean literal expressions.
-TEST(ZiaParser, BooleanLiterals)
-{
+TEST(ZiaParser, BooleanLiterals) {
     auto result = compileSource(R"(
 module Test;
 
@@ -1012,8 +949,7 @@ func start() {
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

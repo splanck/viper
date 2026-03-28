@@ -18,28 +18,21 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-namespace
-{
+namespace {
 
-static void ensureNamespaceChain(NamespaceRegistry &registry, const std::string &qualifiedNs)
-{
+static void ensureNamespaceChain(NamespaceRegistry &registry, const std::string &qualifiedNs) {
     if (qualifiedNs.empty())
         return;
     // Register each prefix namespace: Viper -> Viper.System -> Viper.System.Text
     std::vector<std::string> segs;
     std::string cur;
-    for (char c : qualifiedNs)
-    {
-        if (c == '.')
-        {
+    for (char c : qualifiedNs) {
+        if (c == '.') {
             segs.push_back(cur);
             cur.clear();
-        }
-        else
-        {
+        } else {
             cur.push_back(c);
         }
     }
@@ -47,8 +40,7 @@ static void ensureNamespaceChain(NamespaceRegistry &registry, const std::string 
         segs.push_back(cur);
 
     std::string accum;
-    for (std::size_t i = 0; i < segs.size(); ++i)
-    {
+    for (std::size_t i = 0; i < segs.size(); ++i) {
         if (i)
             accum.push_back('.');
         accum += segs[i];
@@ -58,8 +50,7 @@ static void ensureNamespaceChain(NamespaceRegistry &registry, const std::string 
 
 } // namespace
 
-std::string TypeRegistry::toLower(std::string_view s)
-{
+std::string TypeRegistry::toLower(std::string_view s) {
     std::string out;
     out.reserve(s.size());
     for (unsigned char c : s)
@@ -67,10 +58,8 @@ std::string TypeRegistry::toLower(std::string_view s)
     return out;
 }
 
-void TypeRegistry::seedRuntimeClasses(const std::vector<il::runtime::RuntimeClass> &classes)
-{
-    for (const auto &cls : classes)
-    {
+void TypeRegistry::seedRuntimeClasses(const std::vector<il::runtime::RuntimeClass> &classes) {
+    for (const auto &cls : classes) {
         std::string key = toLower(cls.qname);
         kinds_[key] = TypeKind::BuiltinExternalType; // default classification for compatibility
     }
@@ -85,11 +74,9 @@ void TypeRegistry::seedRuntimeClasses(const std::vector<il::runtime::RuntimeClas
     kinds_[toLower("Viper.String")] = TypeKind::BuiltinExternalType;
 }
 
-TypeKind TypeRegistry::kindOf(std::string_view qualifiedName) const
-{
+TypeKind TypeRegistry::kindOf(std::string_view qualifiedName) const {
     std::string key = toLower(qualifiedName);
-    if (key == "string")
-    {
+    if (key == "string") {
         // BASIC alias resolves to Viper.String for compatibility; callers that
         // want the System-qualified name can ask for "Viper.System.String".
         auto it = kinds_.find("viper.string");
@@ -106,14 +93,12 @@ TypeKind TypeRegistry::kindOf(std::string_view qualifiedName) const
     return it->second;
 }
 
-TypeRegistry &runtimeTypeRegistry()
-{
+TypeRegistry &runtimeTypeRegistry() {
     static TypeRegistry reg;
     return reg;
 }
 
-void seedRuntimeTypeCatalog(NamespaceRegistry &registry)
-{
+void seedRuntimeTypeCatalog(NamespaceRegistry &registry) {
     // Seed a minimal catalog of built-in runtime types. Canonical names live
     // under Viper.* and are defined by the runtime class catalog
     // (src/il/runtime/classes/RuntimeClasses.inc).
@@ -128,8 +113,7 @@ void seedRuntimeTypeCatalog(NamespaceRegistry &registry)
         {il::runtime::RTCLASS_LIST.data(), ExternalTypeCategory::Class, "viper.coll:List"},
     };
 
-    for (const auto &entry : kTypes)
-    {
+    for (const auto &entry : kTypes) {
         // Split qualified name into namespace and leaf type name.
         std::string qn(entry.qualifiedName);
         std::size_t lastDot = qn.rfind('.');
@@ -142,8 +126,7 @@ void seedRuntimeTypeCatalog(NamespaceRegistry &registry)
         ensureNamespaceChain(registry, ns);
 
         // Register the type into its namespace.
-        switch (entry.category)
-        {
+        switch (entry.category) {
             case ExternalTypeCategory::Class:
                 registry.registerClass(ns, leaf);
                 break;

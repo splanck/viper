@@ -31,10 +31,8 @@
 #include <limits>
 #include <optional>
 
-namespace il::frontends::basic::constfold
-{
-namespace
-{
+namespace il::frontends::basic::constfold {
+namespace {
 namespace intops = il::common::integer;
 
 constexpr std::size_t kOpCount = static_cast<std::size_t>(AST::BinaryExpr::Op::LogicalOr) + 1;
@@ -49,8 +47,7 @@ using BinOpFn = Value (*)(Value, Value);
 ///          avoid overflow in the comparison itself.
 /// @param v Signed integer candidate from the folding inputs.
 /// @return @c true when @p v is representable as a signed 16-bit value.
-[[nodiscard]] constexpr bool is_i16(long long v) noexcept
-{
+[[nodiscard]] constexpr bool is_i16(long long v) noexcept {
     return v >= static_cast<long long>(std::numeric_limits<std::int16_t>::min()) &&
            v <= static_cast<long long>(std::numeric_limits<std::int16_t>::max());
 }
@@ -63,8 +60,7 @@ using BinOpFn = Value (*)(Value, Value);
 /// @param lhs Left-hand integer operand.
 /// @param rhs Right-hand integer operand.
 /// @return Sum computed with modulo-2^64 semantics.
-[[nodiscard]] long long wrap_add(long long lhs, long long rhs) noexcept
-{
+[[nodiscard]] long long wrap_add(long long lhs, long long rhs) noexcept {
     const auto promoted = intops::promote_binary(lhs, rhs);
     const auto sum =
         static_cast<std::uint64_t>(promoted.lhs) + static_cast<std::uint64_t>(promoted.rhs);
@@ -78,8 +74,7 @@ using BinOpFn = Value (*)(Value, Value);
 /// @param lhs Left-hand integer operand.
 /// @param rhs Right-hand integer operand.
 /// @return Difference computed modulo 2^64.
-[[nodiscard]] long long wrap_sub(long long lhs, long long rhs) noexcept
-{
+[[nodiscard]] long long wrap_sub(long long lhs, long long rhs) noexcept {
     const auto promoted = intops::promote_binary(lhs, rhs);
     const auto diff =
         static_cast<std::uint64_t>(promoted.lhs) - static_cast<std::uint64_t>(promoted.rhs);
@@ -93,8 +88,7 @@ using BinOpFn = Value (*)(Value, Value);
 /// @param lhs Left-hand integer operand.
 /// @param rhs Right-hand integer operand.
 /// @return Product computed modulo 2^64.
-[[nodiscard]] long long wrap_mul(long long lhs, long long rhs) noexcept
-{
+[[nodiscard]] long long wrap_mul(long long lhs, long long rhs) noexcept {
     const auto promoted = intops::promote_binary(lhs, rhs);
     const auto prod =
         static_cast<std::uint64_t>(promoted.lhs) * static_cast<std::uint64_t>(promoted.rhs);
@@ -110,14 +104,12 @@ using BinOpFn = Value (*)(Value, Value);
 /// @param lhs Left-hand operand as a folded @ref Value.
 /// @param rhs Right-hand operand as a folded @ref Value.
 /// @return Folded result or @ref Value::invalid on overflow/domain errors.
-Value fold_add(Value lhs, Value rhs)
-{
+Value fold_add(Value lhs, Value rhs) {
     if (lhs.isFloat() || rhs.isFloat())
         return Value::fromFloat(lhs.asDouble() + rhs.asDouble());
 
     const long long sum = wrap_add(lhs.i, rhs.i);
-    if (is_i16(lhs.i) && is_i16(rhs.i))
-    {
+    if (is_i16(lhs.i) && is_i16(rhs.i)) {
         if (sum < static_cast<long long>(std::numeric_limits<std::int16_t>::min()) ||
             sum > static_cast<long long>(std::numeric_limits<std::int16_t>::max()))
             return Value::invalid();
@@ -133,8 +125,7 @@ Value fold_add(Value lhs, Value rhs)
 /// @param lhs Left-hand operand.
 /// @param rhs Right-hand operand.
 /// @return Folded result or @ref Value::invalid when folding is not possible.
-Value fold_sub(Value lhs, Value rhs)
-{
+Value fold_sub(Value lhs, Value rhs) {
     if (lhs.isFloat() || rhs.isFloat())
         return Value::fromFloat(lhs.asDouble() - rhs.asDouble());
     return Value::fromInt(wrap_sub(lhs.i, rhs.i));
@@ -146,8 +137,7 @@ Value fold_sub(Value lhs, Value rhs)
 /// @param lhs Left-hand operand.
 /// @param rhs Right-hand operand.
 /// @return Folded value or @ref Value::invalid when folding fails.
-Value fold_mul(Value lhs, Value rhs)
-{
+Value fold_mul(Value lhs, Value rhs) {
     if (lhs.isFloat() || rhs.isFloat())
         return Value::fromFloat(lhs.asDouble() * rhs.asDouble());
     return Value::fromInt(wrap_mul(lhs.i, rhs.i));
@@ -160,8 +150,7 @@ Value fold_mul(Value lhs, Value rhs)
 /// @param lhs Left-hand operand.
 /// @param rhs Right-hand operand.
 /// @return Folded floating result or @ref Value::invalid on zero divisor.
-Value fold_div(Value lhs, Value rhs)
-{
+Value fold_div(Value lhs, Value rhs) {
     const double divisor = rhs.asDouble();
     if (divisor == 0.0)
         return Value::invalid();
@@ -175,8 +164,7 @@ Value fold_div(Value lhs, Value rhs)
 /// @param lhs Left-hand operand.
 /// @param rhs Right-hand operand.
 /// @return Folded quotient or @ref Value::invalid on failure.
-Value fold_idiv(Value lhs, Value rhs)
-{
+Value fold_idiv(Value lhs, Value rhs) {
     if (!lhs.isInt() || !rhs.isInt())
         return Value::invalid();
     if (rhs.i == 0)
@@ -190,8 +178,7 @@ Value fold_idiv(Value lhs, Value rhs)
 /// @param lhs Left-hand operand.
 /// @param rhs Right-hand operand.
 /// @return Folded remainder or @ref Value::invalid on failure.
-Value fold_mod(Value lhs, Value rhs)
-{
+Value fold_mod(Value lhs, Value rhs) {
     if (!lhs.isInt() || !rhs.isInt())
         return Value::invalid();
     if (rhs.i == 0)
@@ -204,8 +191,7 @@ Value fold_mod(Value lhs, Value rhs)
 ///          reference the appropriate folding routine or @c nullptr when an
 ///          operation cannot be folded by this domain.
 /// @return Fully initialised dispatch table.
-constexpr std::array<BinOpFn, kOpCount> make_arith_table()
-{
+constexpr std::array<BinOpFn, kOpCount> make_arith_table() {
     std::array<BinOpFn, kOpCount> table{};
     table.fill(nullptr);
     table[static_cast<std::size_t>(AST::BinaryExpr::Op::Add)] = &fold_add;
@@ -225,10 +211,8 @@ constexpr auto kArithFold = make_arith_table();
 ///          yield @c std::nullopt so the caller can refuse the fold.
 /// @param constant Constant descriptor extracted from the AST.
 /// @return Foldable value or empty optional when conversion fails.
-[[nodiscard]] std::optional<Value> makeValueFromConstant(const Constant &constant)
-{
-    if (constant.kind == LiteralKind::Int || constant.kind == LiteralKind::Float)
-    {
+[[nodiscard]] std::optional<Value> makeValueFromConstant(const Constant &constant) {
+    if (constant.kind == LiteralKind::Int || constant.kind == LiteralKind::Float) {
         if (constant.stringValue.empty())
             return makeValue(constant.numeric);
 
@@ -238,8 +222,7 @@ constexpr auto kArithFold = make_arith_table();
         return makeValue(constant.numeric);
     }
 
-    if (constant.kind == LiteralKind::Invalid && !constant.stringValue.empty())
-    {
+    if (constant.kind == LiteralKind::Invalid && !constant.stringValue.empty()) {
         auto parsed = detail::parseNumericLiteral(constant.stringValue);
         if (!parsed.ok)
             return std::nullopt;
@@ -258,8 +241,7 @@ constexpr auto kArithFold = make_arith_table();
 /// @param lhs Left-hand operand after literal extraction.
 /// @param rhs Right-hand operand after literal extraction.
 /// @return Folded value or empty optional when folding is not possible.
-std::optional<Value> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
-{
+std::optional<Value> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs) {
     if (!lhs.valid || !rhs.valid)
         return std::nullopt;
     const auto index = static_cast<std::size_t>(op);
@@ -285,15 +267,12 @@ std::optional<Value> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
 /// @return Folded numeric value or empty optional when folding is unsafe.
 std::optional<NumericValue> fold_numeric(AST::BinaryExpr::Op op,
                                          const NumericValue &lhsRaw,
-                                         const NumericValue &rhsRaw)
-{
+                                         const NumericValue &rhsRaw) {
     auto folded = tryFold(op, makeValue(lhsRaw), makeValue(rhsRaw));
 #ifdef VIPER_CONSTFOLD_ASSERTS
-    if (folded && (op == AST::BinaryExpr::Op::Add || op == AST::BinaryExpr::Op::Mul))
-    {
+    if (folded && (op == AST::BinaryExpr::Op::Add || op == AST::BinaryExpr::Op::Mul)) {
         auto swapped = tryFold(op, makeValue(rhsRaw), makeValue(lhsRaw));
-        if (swapped)
-        {
+        if (swapped) {
             if (folded->isFloat() || swapped->isFloat())
                 assert(folded->asDouble() == swapped->asDouble());
             else
@@ -308,24 +287,19 @@ std::optional<NumericValue> fold_numeric(AST::BinaryExpr::Op op,
 
 } // namespace
 
-AST::ExprPtr fold_unary_arith(AST::UnaryExpr::Op op, const AST::Expr &value)
-{
+AST::ExprPtr fold_unary_arith(AST::UnaryExpr::Op op, const AST::Expr &value) {
     auto numeric = numeric_from_expr(value);
     if (!numeric)
         return nullptr;
 
     NumericValue result = *numeric;
-    switch (op)
-    {
+    switch (op) {
         case AST::UnaryExpr::Op::Plus:
             break;
         case AST::UnaryExpr::Op::Negate:
-            if (result.isFloat)
-            {
+            if (result.isFloat) {
                 result = NumericValue{true, -result.f, static_cast<long long>(-result.f)};
-            }
-            else
-            {
+            } else {
                 auto negated = wrap_sub(0, result.i);
                 result = NumericValue{false, static_cast<double>(negated), negated};
             }
@@ -334,8 +308,7 @@ AST::ExprPtr fold_unary_arith(AST::UnaryExpr::Op op, const AST::Expr &value)
             return nullptr;
     }
 
-    if (result.isFloat)
-    {
+    if (result.isFloat) {
         auto out = std::make_unique<::il::frontends::basic::FloatExpr>();
         out->value = result.f;
         return out;
@@ -345,8 +318,9 @@ AST::ExprPtr fold_unary_arith(AST::UnaryExpr::Op op, const AST::Expr &value)
     return out;
 }
 
-std::optional<Constant> fold_arith(AST::BinaryExpr::Op op, const Constant &lhs, const Constant &rhs)
-{
+std::optional<Constant> fold_arith(AST::BinaryExpr::Op op,
+                                   const Constant &lhs,
+                                   const Constant &rhs) {
     auto lhsValue = makeValueFromConstant(lhs);
     auto rhsValue = makeValueFromConstant(rhs);
     if (!lhsValue || !rhsValue)

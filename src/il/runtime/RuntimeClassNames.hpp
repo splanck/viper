@@ -22,8 +22,7 @@
 
 #include <string_view>
 
-namespace il::runtime
-{
+namespace il::runtime {
 
 /// @brief Canonical runtime class name for Viper.String.
 inline constexpr std::string_view RTCLASS_STRING = "Viper.String";
@@ -70,8 +69,7 @@ inline constexpr std::string_view RTNS_STRINGS = "Viper.String";
 /// @param qname Qualified name to test.
 /// @param expected Expected runtime class name constant.
 /// @return True if the names match exactly; false otherwise.
-inline bool isRuntimeClass(std::string_view qname, std::string_view expected)
-{
+inline bool isRuntimeClass(std::string_view qname, std::string_view expected) {
     return qname == expected;
 }
 

@@ -27,8 +27,7 @@
 ///          generated from Opcode.def to remain the single source of truth for
 ///          semantics such as overflow behaviour.
 
-namespace il::vm::detail::integer
-{
+namespace il::vm::detail::integer {
 /// @brief Execute the @c isub opcode using the canonical subtraction helper.
 /// @details Defers to @ref handleSub from @ref vm::ops so addition overflow and
 ///          diagnostics remain consistent with other subtraction forms.  Control
@@ -46,8 +45,7 @@ VM::ExecResult handleISub(VM &vm,
                           const il::core::Instr &in,
                           const VM::BlockMap &blocks,
                           const il::core::BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     return handleSub(vm, fr, in, blocks, bb, ip);
 }
 
@@ -70,8 +68,7 @@ VM::ExecResult handleIAddOvf(VM &vm,
                              const il::core::Instr &in,
                              const VM::BlockMap &blocks,
                              const il::core::BasicBlock *&bb,
-                             size_t &ip)
-{
+                             size_t &ip) {
     (void)blocks;
     (void)ip;
     return ops::applyBinary(vm, fr, in, OverflowAddOp{in, fr, bb, "integer overflow in iadd.ovf"});
@@ -94,8 +91,7 @@ VM::ExecResult handleISubOvf(VM &vm,
                              const il::core::Instr &in,
                              const VM::BlockMap &blocks,
                              const il::core::BasicBlock *&bb,
-                             size_t &ip)
-{
+                             size_t &ip) {
     (void)blocks;
     (void)ip;
     return ops::applyBinary(vm, fr, in, OverflowSubOp{in, fr, bb, "integer overflow in isub.ovf"});
@@ -119,8 +115,7 @@ VM::ExecResult handleIMulOvf(VM &vm,
                              const il::core::Instr &in,
                              const VM::BlockMap &blocks,
                              const il::core::BasicBlock *&bb,
-                             size_t &ip)
-{
+                             size_t &ip) {
     (void)blocks;
     (void)ip;
     return ops::applyBinary(vm, fr, in, OverflowMulOp{in, fr, bb, "integer overflow in imul.ovf"});
@@ -144,8 +139,7 @@ VM::ExecResult handleSDiv(VM &vm,
                           const il::core::Instr &in,
                           const VM::BlockMap &blocks,
                           const il::core::BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     (void)blocks;
     (void)ip;
     return ops::applyBinary(vm, fr, in, SignedDivWithDispatch{in, fr, bb});
@@ -168,8 +162,7 @@ VM::ExecResult handleUDiv(VM &vm,
                           const il::core::Instr &in,
                           const VM::BlockMap &blocks,
                           const il::core::BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     (void)blocks;
     (void)ip;
     return ops::applyBinary(vm, fr, in, UnsignedDivWithCheck{in, fr, bb, "divide by zero in udiv"});
@@ -192,8 +185,7 @@ VM::ExecResult handleSRem(VM &vm,
                           const il::core::Instr &in,
                           const VM::BlockMap &blocks,
                           const il::core::BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     (void)blocks;
     (void)ip;
     return ops::applyBinary(vm, fr, in, SignedRemWithDispatch{in, fr, bb});
@@ -216,8 +208,7 @@ VM::ExecResult handleURem(VM &vm,
                           const il::core::Instr &in,
                           const VM::BlockMap &blocks,
                           const il::core::BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     (void)blocks;
     (void)ip;
     return ops::applyBinary(vm, fr, in, UnsignedRemWithCheck{in, fr, bb, "divide by zero in urem"});
@@ -240,8 +231,7 @@ VM::ExecResult handleSDivChk0(VM &vm,
                               const il::core::Instr &in,
                               const VM::BlockMap &blocks,
                               const il::core::BasicBlock *&bb,
-                              size_t &ip)
-{
+                              size_t &ip) {
     (void)blocks;
     (void)ip;
     return ops::applyBinary(vm, fr, in, CheckedSignedDivWithDispatch{in, fr, bb});
@@ -264,8 +254,7 @@ VM::ExecResult handleUDivChk0(VM &vm,
                               const il::core::Instr &in,
                               const VM::BlockMap &blocks,
                               const il::core::BasicBlock *&bb,
-                              size_t &ip)
-{
+                              size_t &ip) {
     (void)blocks;
     (void)ip;
     return ops::applyBinary(
@@ -288,8 +277,7 @@ VM::ExecResult handleSRemChk0(VM &vm,
                               const il::core::Instr &in,
                               const VM::BlockMap &blocks,
                               const il::core::BasicBlock *&bb,
-                              size_t &ip)
-{
+                              size_t &ip) {
     (void)blocks;
     (void)ip;
     return ops::applyBinary(vm, fr, in, CheckedSignedRemWithDispatch{in, fr, bb});
@@ -312,8 +300,7 @@ VM::ExecResult handleURemChk0(VM &vm,
                               const il::core::Instr &in,
                               const VM::BlockMap &blocks,
                               const il::core::BasicBlock *&bb,
-                              size_t &ip)
-{
+                              size_t &ip) {
     (void)blocks;
     (void)ip;
     return ops::applyBinary(
@@ -337,8 +324,7 @@ VM::ExecResult handleIdxChk(VM &vm,
                             const il::core::Instr &in,
                             const VM::BlockMap &blocks,
                             const il::core::BasicBlock *&bb,
-                            size_t &ip)
-{
+                            size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -350,38 +336,31 @@ VM::ExecResult handleIdxChk(VM &vm,
     auto trapBounds = []() { vm_raise(TrapKind::Bounds); };
 
     Slot out{};
-    switch (in.type.kind)
-    {
-        case il::core::Type::Kind::I16:
-        {
+    switch (in.type.kind) {
+        case il::core::Type::Kind::I16: {
             const auto [inBounds, normalized] =
                 performBoundsCheck<int16_t>(idxSlot, loSlot, hiSlot);
-            if (!inBounds)
-            {
+            if (!inBounds) {
                 trapBounds();
                 return {};
             }
             out.i64 = normalized;
             break;
         }
-        case il::core::Type::Kind::I32:
-        {
+        case il::core::Type::Kind::I32: {
             const auto [inBounds, normalized] =
                 performBoundsCheck<int32_t>(idxSlot, loSlot, hiSlot);
-            if (!inBounds)
-            {
+            if (!inBounds) {
                 trapBounds();
                 return {};
             }
             out.i64 = normalized;
             break;
         }
-        default:
-        {
+        default: {
             const auto [inBounds, normalized] =
                 performBoundsCheck<int64_t>(idxSlot, loSlot, hiSlot);
-            if (!inBounds)
-            {
+            if (!inBounds) {
                 trapBounds();
                 return {};
             }
@@ -410,8 +389,7 @@ VM::ExecResult handleAnd(VM &vm,
                          const il::core::Instr &in,
                          const VM::BlockMap &blocks,
                          const il::core::BasicBlock *&bb,
-                         size_t &ip)
-{
+                         size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -434,8 +412,7 @@ VM::ExecResult handleOr(VM &vm,
                         const il::core::Instr &in,
                         const VM::BlockMap &blocks,
                         const il::core::BasicBlock *&bb,
-                        size_t &ip)
-{
+                        size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -458,8 +435,7 @@ VM::ExecResult handleXor(VM &vm,
                          const il::core::Instr &in,
                          const VM::BlockMap &blocks,
                          const il::core::BasicBlock *&bb,
-                         size_t &ip)
-{
+                         size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -484,8 +460,7 @@ VM::ExecResult handleShl(VM &vm,
                          const il::core::Instr &in,
                          const VM::BlockMap &blocks,
                          const il::core::BasicBlock *&bb,
-                         size_t &ip)
-{
+                         size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -508,8 +483,7 @@ VM::ExecResult handleLShr(VM &vm,
                           const il::core::Instr &in,
                           const VM::BlockMap &blocks,
                           const il::core::BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;
@@ -533,8 +507,7 @@ VM::ExecResult handleAShr(VM &vm,
                           const il::core::Instr &in,
                           const VM::BlockMap &blocks,
                           const il::core::BasicBlock *&bb,
-                          size_t &ip)
-{
+                          size_t &ip) {
     (void)blocks;
     (void)bb;
     (void)ip;

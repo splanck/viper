@@ -17,8 +17,7 @@
 
 #include "frontends/basic/ast/DeclNodes.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Walk the AST and assign qualified names to procedures inside namespaces.
 /// @details DFS traverses `prog.main`, maintaining a namespace stack from

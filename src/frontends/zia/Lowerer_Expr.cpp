@@ -27,8 +27,7 @@
 #include "frontends/zia/RuntimeNames.hpp"
 #include "frontends/zia/ZiaLocationScope.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 using namespace runtime;
 
@@ -36,13 +35,11 @@ using namespace runtime;
 // Expression Lowering Dispatcher
 //=============================================================================
 
-LowerResult Lowerer::lowerExpr(Expr *expr)
-{
+LowerResult Lowerer::lowerExpr(Expr *expr) {
     if (!expr)
         return {Value::constInt(0), Type(Type::Kind::I64)};
 
-    if (++exprLowerDepth_ > kMaxLowerDepth)
-    {
+    if (++exprLowerDepth_ > kMaxLowerDepth) {
         --exprLowerDepth_;
         diag_.report({il::support::Severity::Error,
                       "expression nesting too deep during lowering (limit: 512)",
@@ -51,20 +48,17 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
         return {Value::constInt(0), Type(Type::Kind::I64)};
     }
 
-    struct DepthGuard
-    {
+    struct DepthGuard {
         unsigned &d;
 
-        ~DepthGuard()
-        {
+        ~DepthGuard() {
             --d;
         }
     } exprGuard_{exprLowerDepth_};
 
     ZiaLocationScope locScope(*this, expr->loc);
 
-    switch (expr->kind)
-    {
+    switch (expr->kind) {
         case ExprKind::IntLiteral:
             return lowerIntLiteral(static_cast<IntLiteralExpr *>(expr));
         case ExprKind::NumberLiteral:
@@ -77,21 +71,17 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
             return lowerNullLiteral(static_cast<NullLiteralExpr *>(expr));
         case ExprKind::Ident:
             return lowerIdent(static_cast<IdentExpr *>(expr));
-        case ExprKind::SelfExpr:
-        {
+        case ExprKind::SelfExpr: {
             Value selfPtr;
-            if (getSelfPtr(selfPtr))
-            {
+            if (getSelfPtr(selfPtr)) {
                 return {selfPtr, Type(Type::Kind::Ptr)};
             }
             return {Value::constInt(0), Type(Type::Kind::Ptr)};
         }
-        case ExprKind::SuperExpr:
-        {
+        case ExprKind::SuperExpr: {
             // Super returns self pointer but is used for dispatching to parent methods
             Value selfPtr;
-            if (getSelfPtr(selfPtr))
-            {
+            if (getSelfPtr(selfPtr)) {
                 return {selfPtr, Type(Type::Kind::Ptr)};
             }
             return {Value::constInt(0), Type(Type::Kind::Ptr)};
@@ -153,22 +143,18 @@ LowerResult Lowerer::lowerExpr(Expr *expr)
 // Identifier Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerIdent(IdentExpr *expr)
-{
+LowerResult Lowerer::lowerIdent(IdentExpr *expr) {
     auto semaType = sema_.typeOf(expr);
-    auto resolveIdentType = [&](TypeRef fallback) -> TypeRef
-    {
+    auto resolveIdentType = [&](TypeRef fallback) -> TypeRef {
         if (semaType && semaType->kind != TypeKindSem::Unknown &&
             semaType->kind != TypeKindSem::Any)
             return semaType;
         return fallback;
     };
     auto lowerStoredValue =
-        [&](Value storedValue, TypeRef storageType, TypeRef useType) -> LowerResult
-    {
+        [&](Value storedValue, TypeRef storageType, TypeRef useType) -> LowerResult {
         if (storageType && storageType->kind == TypeKindSem::Optional && useType &&
-            useType->kind != TypeKindSem::Optional)
-        {
+            useType->kind != TypeKindSem::Optional) {
             TypeRef innerType = storageType->innerType();
             if (innerType && innerType->equals(*useType))
                 return emitOptionalUnwrap(storedValue, innerType);
@@ -180,8 +166,7 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
 
     // Check for slot-based mutable variables first (e.g., loop variables)
     auto slotIt = slots_.find(expr->name);
-    if (slotIt != slots_.end())
-    {
+    if (slotIt != slots_.end()) {
         auto localTypeIt = localTypes_.find(expr->name);
         TypeRef storageType = (localTypeIt != localTypes_.end()) ? localTypeIt->second : nullptr;
         TypeRef useType = resolveIdentType(storageType);
@@ -191,8 +176,7 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
     }
 
     Value *local = lookupLocal(expr->name);
-    if (local)
-    {
+    if (local) {
         auto localTypeIt = localTypes_.find(expr->name);
         TypeRef storageType = (localTypeIt != localTypes_.end()) ? localTypeIt->second : nullptr;
         TypeRef useType = resolveIdentType(storageType);
@@ -200,14 +184,11 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
     }
 
     // Check for implicit field access (self.field) inside a value type method
-    if (currentValueType_)
-    {
+    if (currentValueType_) {
         const FieldLayout *field = currentValueType_->findField(expr->name);
-        if (field)
-        {
+        if (field) {
             Value selfPtr;
-            if (getSelfPtr(selfPtr))
-            {
+            if (getSelfPtr(selfPtr)) {
                 Value loaded = emitFieldLoad(field, selfPtr);
                 return {loaded, mapType(field->type)};
             }
@@ -215,14 +196,11 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
     }
 
     // Check for implicit field access (self.field) inside an entity method
-    if (currentEntityType_)
-    {
+    if (currentEntityType_) {
         const FieldLayout *field = currentEntityType_->findField(expr->name);
-        if (field)
-        {
+        if (field) {
             Value selfPtr;
-            if (getSelfPtr(selfPtr))
-            {
+            if (getSelfPtr(selfPtr)) {
                 Value loaded = emitFieldLoad(field, selfPtr);
                 return {loaded, mapType(field->type)};
             }
@@ -231,18 +209,15 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
 
     // Check for global constants (module-level const declarations)
     auto constIt = globalConstants_.find(expr->name);
-    if (constIt != globalConstants_.end())
-    {
+    if (constIt != globalConstants_.end()) {
         const Value &val = constIt->second;
         // Determine the type from the value kind
         Type ilType;
-        switch (val.kind)
-        {
+        switch (val.kind) {
             case Value::Kind::ConstFloat:
                 ilType = Type(Type::Kind::F64);
                 break;
-            case Value::Kind::ConstStr:
-            {
+            case Value::Kind::ConstStr: {
                 // String constants need to emit a const_str instruction to load the global
                 // The stored value's str field contains the global label (e.g., ".L10")
                 Value loaded = emitConstStr(val.str);
@@ -264,8 +239,7 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
 
     // Check for global mutable variables (module-level var declarations)
     auto globalIt = globalVariables_.find(expr->name);
-    if (globalIt != globalVariables_.end())
-    {
+    if (globalIt != globalVariables_.end()) {
         TypeRef storageType = globalIt->second;
         TypeRef useType = resolveIdentType(storageType);
         Type loadType = mapType(storageType ? storageType : useType);
@@ -276,8 +250,7 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
 
     // Check for auto-evaluated property getters (e.g., Pi → call Viper.Math.get_Pi())
     std::string autoGetter = sema_.autoEvalGetter(expr);
-    if (!autoGetter.empty())
-    {
+    if (!autoGetter.empty()) {
         TypeRef type = sema_.typeOf(expr);
         Type ilType = mapType(type);
         Value result = emitCallRet(ilType, autoGetter, {});
@@ -287,16 +260,14 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
     // Check if identifier refers to a function - return its address for function pointers
     // This enables passing functions to Thread.Start, callbacks, etc.
     std::string mangledName = mangleFunctionName(expr->name);
-    if (definedFunctions_.find(mangledName) != definedFunctions_.end())
-    {
+    if (definedFunctions_.find(mangledName) != definedFunctions_.end()) {
         // Function is defined in this module - return its address
         return {Value::global(mangledName), Type(Type::Kind::Ptr)};
     }
 
     // Check if it's an extern function (runtime API)
     Symbol *sym = sema_.findExternFunction(expr->name);
-    if (sym)
-    {
+    if (sym) {
         // External function reference - return its address
         return {Value::global(expr->name), Type(Type::Kind::Ptr)};
     }
@@ -309,8 +280,7 @@ LowerResult Lowerer::lowerIdent(IdentExpr *expr)
 // Ternary Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerTernary(TernaryExpr *expr)
-{
+LowerResult Lowerer::lowerTernary(TernaryExpr *expr) {
     auto cond = lowerExpr(expr->condition.get());
     TypeRef resultType = sema_.typeOf(expr);
     Type ilResultType = mapType(resultType);
@@ -338,17 +308,14 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr)
     {
         auto thenResult = lowerExpr(expr->thenExpr.get());
         Value thenValue = thenResult.value;
-        if (expectsOptional)
-        {
+        if (expectsOptional) {
             TypeRef thenType = sema_.typeOf(expr->thenExpr.get());
-            if (!thenType || thenType->kind != TypeKindSem::Optional)
-            {
+            if (!thenType || thenType->kind != TypeKindSem::Optional) {
                 if (optionalInner)
                     thenValue = emitOptionalWrap(thenResult.value, optionalInner);
             }
         }
-        if (ilResultType.kind != Type::Kind::Void)
-        {
+        if (ilResultType.kind != Type::Kind::Void) {
             il::core::Instr storeInstr;
             storeInstr.op = Opcode::Store;
             storeInstr.type = ilResultType;
@@ -363,17 +330,14 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr)
     {
         auto elseResult = lowerExpr(expr->elseExpr.get());
         Value elseValue = elseResult.value;
-        if (expectsOptional)
-        {
+        if (expectsOptional) {
             TypeRef elseType = sema_.typeOf(expr->elseExpr.get());
-            if (!elseType || elseType->kind != TypeKindSem::Optional)
-            {
+            if (!elseType || elseType->kind != TypeKindSem::Optional) {
                 if (optionalInner)
                     elseValue = emitOptionalWrap(elseResult.value, optionalInner);
             }
         }
-        if (ilResultType.kind != Type::Kind::Void)
-        {
+        if (ilResultType.kind != Type::Kind::Void) {
             il::core::Instr storeInstr;
             storeInstr.op = Opcode::Store;
             storeInstr.type = ilResultType;
@@ -404,8 +368,7 @@ LowerResult Lowerer::lowerTernary(TernaryExpr *expr)
 // If-Expression Lowering
 //=============================================================================
 
-LowerResult Lowerer::lowerIfExpr(IfExpr *expr)
-{
+LowerResult Lowerer::lowerIfExpr(IfExpr *expr) {
     auto cond = lowerExpr(expr->condition.get());
     TypeRef resultType = sema_.typeOf(expr);
     Type ilResultType = mapType(resultType);
@@ -433,17 +396,14 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr)
     {
         auto thenResult = lowerExpr(expr->thenBranch.get());
         Value thenValue = thenResult.value;
-        if (expectsOptional)
-        {
+        if (expectsOptional) {
             TypeRef thenType = sema_.typeOf(expr->thenBranch.get());
-            if (!thenType || thenType->kind != TypeKindSem::Optional)
-            {
+            if (!thenType || thenType->kind != TypeKindSem::Optional) {
                 if (optionalInner)
                     thenValue = emitOptionalWrap(thenResult.value, optionalInner);
             }
         }
-        if (ilResultType.kind != Type::Kind::Void)
-        {
+        if (ilResultType.kind != Type::Kind::Void) {
             il::core::Instr storeInstr;
             storeInstr.op = Opcode::Store;
             storeInstr.type = ilResultType;
@@ -458,17 +418,14 @@ LowerResult Lowerer::lowerIfExpr(IfExpr *expr)
     {
         auto elseResult = lowerExpr(expr->elseBranch.get());
         Value elseValue = elseResult.value;
-        if (expectsOptional)
-        {
+        if (expectsOptional) {
             TypeRef elseType = sema_.typeOf(expr->elseBranch.get());
-            if (!elseType || elseType->kind != TypeKindSem::Optional)
-            {
+            if (!elseType || elseType->kind != TypeKindSem::Optional) {
                 if (optionalInner)
                     elseValue = emitOptionalWrap(elseResult.value, optionalInner);
             }
         }
-        if (ilResultType.kind != Type::Kind::Void)
-        {
+        if (ilResultType.kind != Type::Kind::Void) {
             il::core::Instr storeInstr;
             storeInstr.op = Opcode::Store;
             storeInstr.type = ilResultType;

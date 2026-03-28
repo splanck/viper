@@ -18,12 +18,10 @@
 
 #include "codegen/aarch64/passes/PassManager.hpp"
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
 /// @brief Emit AArch64 assembly text from all MIR functions.
-class EmitPass final : public Pass
-{
+class EmitPass final : public Pass {
   public:
     /// @brief Run the emission pass: generate assembly text into AArch64Module::assembly.
     /// @param module Module state; mir must have physical registers assigned.

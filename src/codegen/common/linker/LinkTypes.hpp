@@ -26,27 +26,23 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Target platform for the linker.
-enum class LinkPlatform : uint8_t
-{
+enum class LinkPlatform : uint8_t {
     Linux,
     macOS,
     Windows,
 };
 
 /// Target architecture for the linker.
-enum class LinkArch : uint8_t
-{
+enum class LinkArch : uint8_t {
     X86_64,
     AArch64,
 };
 
 /// Detect host link platform.
-constexpr LinkPlatform detectLinkPlatform()
-{
+constexpr LinkPlatform detectLinkPlatform() {
 #if defined(__APPLE__)
     return LinkPlatform::macOS;
 #elif defined(_WIN32)
@@ -57,8 +53,7 @@ constexpr LinkPlatform detectLinkPlatform()
 }
 
 /// Detect host link architecture.
-constexpr LinkArch detectLinkArch()
-{
+constexpr LinkArch detectLinkArch() {
 #if defined(__aarch64__) || defined(__arm64__) || defined(_M_ARM64)
     return LinkArch::AArch64;
 #else
@@ -67,8 +62,7 @@ constexpr LinkArch detectLinkArch()
 }
 
 /// A chunk of data from one input section within an output section.
-struct InputChunk
-{
+struct InputChunk {
     size_t inputObjIndex; ///< Index into the linker's object file list.
     size_t inputSecIndex; ///< Index into that ObjFile's sections.
     size_t outputOffset;  ///< Byte offset within the output section.
@@ -76,8 +70,7 @@ struct InputChunk
 };
 
 /// A merged output section.
-struct OutputSection
-{
+struct OutputSection {
     std::string name;
     std::vector<uint8_t> data;      ///< Concatenated section bytes.
     std::vector<InputChunk> chunks; ///< Provenance info for each chunk.
@@ -90,8 +83,7 @@ struct OutputSection
 };
 
 /// Section classification for merging.
-enum class SectionClass : uint8_t
-{
+enum class SectionClass : uint8_t {
     Text,    ///< Executable code.
     Rodata,  ///< Read-only data.
     Data,    ///< Read-write data.
@@ -104,8 +96,7 @@ enum class SectionClass : uint8_t
 
 /// Check whether a Mach-O section name is ObjC metadata that must be preserved.
 /// The ObjC runtime locates classes, selectors, protocols, etc. by section name.
-inline bool isObjCSection(const std::string &name)
-{
+inline bool isObjCSection(const std::string &name) {
     return name.find("__objc_") != std::string::npos;
 }
 
@@ -113,10 +104,8 @@ inline bool isObjCSection(const std::string &name)
 inline SectionClass classifySection(const std::string &name,
                                     bool executable,
                                     bool writable,
-                                    bool tls)
-{
-    if (tls)
-    {
+                                    bool tls) {
+    if (tls) {
         if (name.find("bss") != std::string::npos || name.find("zerofill") != std::string::npos)
             return SectionClass::TlsBss;
         return SectionClass::TlsData;
@@ -127,8 +116,7 @@ inline SectionClass classifySection(const std::string &name,
         return SectionClass::ObjC;
     if (executable)
         return SectionClass::Text;
-    if (writable)
-    {
+    if (writable) {
         if (name.find("bss") != std::string::npos ||
             name.find("UNINITIALIZED") != std::string::npos)
             return SectionClass::Bss;
@@ -141,12 +129,10 @@ inline SectionClass classifySection(const std::string &name,
 }
 
 /// Global symbol table entry.
-struct GlobalSymEntry
-{
+struct GlobalSymEntry {
     std::string name;
 
-    enum Binding : uint8_t
-    {
+    enum Binding : uint8_t {
         Undefined,
         Global,
         Weak,
@@ -160,31 +146,27 @@ struct GlobalSymEntry
 };
 
 /// A GOT entry for dynamic symbol binding.
-struct GotEntry
-{
+struct GotEntry {
     std::string symbolName; ///< External symbol name (e.g., "printf").
     uint64_t gotAddr = 0;   ///< Virtual address of this GOT slot.
 };
 
 /// A location in the output that contains an absolute pointer needing ASLR rebase.
-struct RebaseEntry
-{
+struct RebaseEntry {
     size_t sectionIndex; ///< Index into LinkLayout::sections.
     size_t offset;       ///< Byte offset within the output section.
 };
 
 /// A data-pointer location that must be bound to a dynamic symbol at load time.
 /// Used for non-GOT references (e.g., ObjC classrefs) to external symbols.
-struct BindEntry
-{
+struct BindEntry {
     std::string symbolName; ///< External symbol name (e.g., "OBJC_CLASS_$_NSColor").
     size_t sectionIndex;    ///< Index into LinkLayout::sections.
     size_t offset;          ///< Byte offset within the output section.
 };
 
 /// Complete memory layout for the linked output.
-struct LinkLayout
-{
+struct LinkLayout {
     std::vector<OutputSection> sections;                        ///< Merged output sections.
     std::unordered_map<std::string, GlobalSymEntry> globalSyms; ///< All resolved symbols.
     uint64_t entryAddr = 0;                                     ///< Entry point virtual address.

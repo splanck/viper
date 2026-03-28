@@ -23,8 +23,7 @@
 #include "vm/VM.hpp"
 #include <cassert>
 
-int main()
-{
+int main() {
     using namespace il::core;
 
     Module m;
@@ -35,8 +34,7 @@ int main()
     BasicBlock bb;
     bb.label = "entry";
 
-    for (unsigned i = 0; i < 70; ++i)
-    {
+    for (unsigned i = 0; i < 70; ++i) {
         bb.instructions.emplace_back();
         Instr &in = bb.instructions.back();
         in.result = i;

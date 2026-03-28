@@ -23,16 +23,15 @@
 #pragma once
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Allocate an opaque object instance for Viper.Text.StringBuilder.
-    /// @details Bridges OOP allocation to the C runtime for use by the VM.
-    ///          Creates a heap-managed object with the appropriate vtable and
-    ///          internal state (an embedded rt_string_builder).
-    /// @return Opaque pointer to the new StringBuilder object; NULL on failure.
-    void *rt_sb_new(void);
+/// @brief Allocate an opaque object instance for Viper.Text.StringBuilder.
+/// @details Bridges OOP allocation to the C runtime for use by the VM.
+///          Creates a heap-managed object with the appropriate vtable and
+///          internal state (an embedded rt_string_builder).
+/// @return Opaque pointer to the new StringBuilder object; NULL on failure.
+void *rt_sb_new(void);
 
 #ifdef __cplusplus
 }

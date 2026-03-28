@@ -24,16 +24,14 @@
 
 #include "il/transform/PassRegistry.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Optimize check opcodes via redundancy elimination and loop hoisting.
 ///
 /// This pass identifies check instructions (IdxChk, SDivChk0, UDivChk0, etc.)
 /// that are redundant due to dominating equivalent checks, or that can be
 /// safely hoisted out of loops when their operands are loop-invariant.
-class CheckOpt : public FunctionPass
-{
+class CheckOpt : public FunctionPass {
   public:
     /// @brief Identifier used when registering the pass.
     std::string_view id() const override;

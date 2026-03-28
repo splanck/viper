@@ -19,8 +19,7 @@
 #include <fstream>
 #include <sstream>
 
-int main()
-{
+int main() {
     il::core::Module m;
     m.target = std::string("x86_64-unknown-linux-gnu");
     il::build::IRBuilder builder(m);

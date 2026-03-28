@@ -20,12 +20,10 @@
 
 #include <string>
 
-namespace viper::server
-{
+namespace viper::server {
 
 /// @brief Context extracted from cursor position for hover resolution.
-struct HoverContext
-{
+struct HoverContext {
     std::string identifier; ///< The identifier under the cursor
     std::string dotPrefix;  ///< Dot-chain prefix (e.g., "shell.app" for "shell.app.run")
     bool valid{false};      ///< False if cursor is on whitespace/operator

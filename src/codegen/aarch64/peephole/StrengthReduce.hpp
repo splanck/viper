@@ -28,8 +28,7 @@
 #include "../Peephole.hpp"
 #include "PeepholeCommon.hpp"
 
-namespace viper::codegen::aarch64::peephole
-{
+namespace viper::codegen::aarch64::peephole {
 
 /// @brief Rewrite cmp reg, #0 to tst reg, reg.
 [[nodiscard]] bool tryCmpZeroToTst(MInstr &instr, PeepholeStats &stats);

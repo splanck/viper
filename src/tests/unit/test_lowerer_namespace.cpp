@@ -26,8 +26,7 @@ using namespace il::frontends::basic;
 using namespace il::support;
 
 // Test: UsingDecl visitor has no side-effects (produces no IL)
-void test_using_no_il()
-{
+void test_using_no_il() {
     std::string source = R"(
 100 NAMESPACE System
 110 END NAMESPACE
@@ -55,8 +54,7 @@ void test_using_no_il()
 }
 
 // Test: qualify("T") under namespace A.B => "A.B.T"
-void test_qualify_simple_name()
-{
+void test_qualify_simple_name() {
     Lowerer lowerer;
 
     // No namespace active → unqualified
@@ -75,8 +73,7 @@ void test_qualify_simple_name()
 }
 
 // Test: qualify("A.B.T") => unchanged (fully-qualified)
-void test_qualify_fq_name()
-{
+void test_qualify_fq_name() {
     Lowerer lowerer;
 
     // No namespace active
@@ -95,8 +92,7 @@ void test_qualify_fq_name()
 }
 
 // Test: qualify() at global scope returns unqualified
-void test_qualify_global_scope()
-{
+void test_qualify_global_scope() {
     Lowerer lowerer;
 
     // No namespace → unqualified
@@ -105,8 +101,7 @@ void test_qualify_global_scope()
 }
 
 // Test: qualify() with empty string
-void test_qualify_empty()
-{
+void test_qualify_empty() {
     Lowerer lowerer;
 
     lowerer.pushNamespace({"A", "B"});
@@ -116,8 +111,7 @@ void test_qualify_empty()
 }
 
 // Test: pushNamespace and popNamespace stack behavior
-void test_namespace_stack()
-{
+void test_namespace_stack() {
     Lowerer lowerer;
 
     // Push A
@@ -141,8 +135,7 @@ void test_namespace_stack()
     assert(lowerer.qualify("T") == "T");
 }
 
-int main()
-{
+int main() {
     test_using_no_il();
     test_qualify_simple_name();
     test_qualify_fq_name();

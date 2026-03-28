@@ -48,8 +48,7 @@
 // Internal Structure
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     int64_t year;
     int64_t month;
     int64_t day;
@@ -59,13 +58,11 @@ typedef struct
 // Helper Functions
 //=============================================================================
 
-static int8_t is_leap_year(int64_t year)
-{
+static int8_t is_leap_year(int64_t year) {
     return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
 }
 
-static int64_t days_in_month_impl(int64_t year, int64_t month)
-{
+static int64_t days_in_month_impl(int64_t year, int64_t month) {
     static const int64_t days[] = {0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
     if (month < 1 || month > 12)
         return 0;
@@ -75,8 +72,7 @@ static int64_t days_in_month_impl(int64_t year, int64_t month)
 }
 
 // Convert date to days since epoch (Jan 1, 1970)
-static int64_t to_days_since_epoch(int64_t year, int64_t month, int64_t day)
-{
+static int64_t to_days_since_epoch(int64_t year, int64_t month, int64_t day) {
     // Adjust for months starting from March
     int64_t a = (14 - month) / 12;
     int64_t y = year + 4800 - a;
@@ -90,8 +86,7 @@ static int64_t to_days_since_epoch(int64_t year, int64_t month, int64_t day)
 }
 
 // Convert days since epoch to date components
-static void from_days_since_epoch(int64_t days, int64_t *year, int64_t *month, int64_t *day)
-{
+static void from_days_since_epoch(int64_t days, int64_t *year, int64_t *month, int64_t *day) {
     // Add Unix epoch offset
     int64_t jdn = days + 2440588;
 
@@ -112,8 +107,7 @@ static void from_days_since_epoch(int64_t days, int64_t *year, int64_t *month, i
 // DateOnly Creation
 //=============================================================================
 
-void *rt_dateonly_create(int64_t year, int64_t month, int64_t day)
-{
+void *rt_dateonly_create(int64_t year, int64_t month, int64_t day) {
     // Validate inputs
     if (month < 1 || month > 12)
         return NULL;
@@ -129,8 +123,7 @@ void *rt_dateonly_create(int64_t year, int64_t month, int64_t day)
     return d;
 }
 
-void *rt_dateonly_today(void)
-{
+void *rt_dateonly_today(void) {
     time_t now = time(NULL);
     struct tm tm_buf;
     struct tm *tm = rt_localtime_r(&now, &tm_buf);
@@ -139,8 +132,7 @@ void *rt_dateonly_today(void)
     return rt_dateonly_create(tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday);
 }
 
-void *rt_dateonly_parse(rt_string s)
-{
+void *rt_dateonly_parse(rt_string s) {
     const char *str = rt_string_cstr(s);
     int year, month, day;
 
@@ -150,8 +142,7 @@ void *rt_dateonly_parse(rt_string s)
     return rt_dateonly_create(year, month, day);
 }
 
-void *rt_dateonly_from_days(int64_t days)
-{
+void *rt_dateonly_from_days(int64_t days) {
     int64_t year, month, day;
     from_days_since_epoch(days, &year, &month, &day);
     return rt_dateonly_create(year, month, day);
@@ -164,8 +155,7 @@ void *rt_dateonly_from_days(int64_t days)
 /// @brief Perform dateonly year operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_dateonly_year(void *obj)
-{
+int64_t rt_dateonly_year(void *obj) {
     if (!obj)
         return 0;
     DateOnly *d = (DateOnly *)obj;
@@ -175,8 +165,7 @@ int64_t rt_dateonly_year(void *obj)
 /// @brief Perform dateonly month operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_dateonly_month(void *obj)
-{
+int64_t rt_dateonly_month(void *obj) {
     if (!obj)
         return 0;
     DateOnly *d = (DateOnly *)obj;
@@ -186,8 +175,7 @@ int64_t rt_dateonly_month(void *obj)
 /// @brief Perform dateonly day operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_dateonly_day(void *obj)
-{
+int64_t rt_dateonly_day(void *obj) {
     if (!obj)
         return 0;
     DateOnly *d = (DateOnly *)obj;
@@ -197,8 +185,7 @@ int64_t rt_dateonly_day(void *obj)
 /// @brief Perform dateonly day of week operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_dateonly_day_of_week(void *obj)
-{
+int64_t rt_dateonly_day_of_week(void *obj) {
     if (!obj)
         return 0;
     DateOnly *d = (DateOnly *)obj;
@@ -212,15 +199,13 @@ int64_t rt_dateonly_day_of_week(void *obj)
 /// @brief Perform dateonly day of year operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_dateonly_day_of_year(void *obj)
-{
+int64_t rt_dateonly_day_of_year(void *obj) {
     if (!obj)
         return 0;
     DateOnly *d = (DateOnly *)obj;
 
     int64_t doy = 0;
-    for (int64_t m = 1; m < d->month; m++)
-    {
+    for (int64_t m = 1; m < d->month; m++) {
         doy += days_in_month_impl(d->year, m);
     }
     doy += d->day;
@@ -230,8 +215,7 @@ int64_t rt_dateonly_day_of_year(void *obj)
 /// @brief Perform dateonly to days operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_dateonly_to_days(void *obj)
-{
+int64_t rt_dateonly_to_days(void *obj) {
     if (!obj)
         return 0;
     DateOnly *d = (DateOnly *)obj;
@@ -242,8 +226,7 @@ int64_t rt_dateonly_to_days(void *obj)
 // Date Arithmetic
 //=============================================================================
 
-void *rt_dateonly_add_days(void *obj, int64_t days)
-{
+void *rt_dateonly_add_days(void *obj, int64_t days) {
     if (!obj)
         return NULL;
     DateOnly *d = (DateOnly *)obj;
@@ -251,8 +234,7 @@ void *rt_dateonly_add_days(void *obj, int64_t days)
     return rt_dateonly_from_days(total);
 }
 
-void *rt_dateonly_add_months(void *obj, int64_t months)
-{
+void *rt_dateonly_add_months(void *obj, int64_t months) {
     if (!obj)
         return NULL;
     DateOnly *d = (DateOnly *)obj;
@@ -261,13 +243,11 @@ void *rt_dateonly_add_months(void *obj, int64_t months)
     int64_t month = d->month + months;
 
     // Normalize months
-    while (month > 12)
-    {
+    while (month > 12) {
         month -= 12;
         year++;
     }
-    while (month < 1)
-    {
+    while (month < 1) {
         month += 12;
         year--;
     }
@@ -281,8 +261,7 @@ void *rt_dateonly_add_months(void *obj, int64_t months)
     return rt_dateonly_create(year, month, day);
 }
 
-void *rt_dateonly_add_years(void *obj, int64_t years)
-{
+void *rt_dateonly_add_years(void *obj, int64_t years) {
     if (!obj)
         return NULL;
     DateOnly *d = (DateOnly *)obj;
@@ -292,8 +271,7 @@ void *rt_dateonly_add_years(void *obj, int64_t years)
     int64_t day = d->day;
 
     // Handle Feb 29 in non-leap years
-    if (month == 2 && day == 29 && !is_leap_year(year))
-    {
+    if (month == 2 && day == 29 && !is_leap_year(year)) {
         day = 28;
     }
 
@@ -304,8 +282,7 @@ void *rt_dateonly_add_years(void *obj, int64_t years)
 /// @param a
 /// @param b
 /// @return Result value.
-int64_t rt_dateonly_diff_days(void *a, void *b)
-{
+int64_t rt_dateonly_diff_days(void *a, void *b) {
     if (!a || !b)
         return 0;
     return rt_dateonly_to_days(a) - rt_dateonly_to_days(b);
@@ -318,8 +295,7 @@ int64_t rt_dateonly_diff_days(void *a, void *b)
 /// @brief Perform dateonly is leap year operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_dateonly_is_leap_year(void *obj)
-{
+int8_t rt_dateonly_is_leap_year(void *obj) {
     if (!obj)
         return 0;
     DateOnly *d = (DateOnly *)obj;
@@ -329,40 +305,35 @@ int8_t rt_dateonly_is_leap_year(void *obj)
 /// @brief Perform dateonly days in month operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_dateonly_days_in_month(void *obj)
-{
+int64_t rt_dateonly_days_in_month(void *obj) {
     if (!obj)
         return 0;
     DateOnly *d = (DateOnly *)obj;
     return days_in_month_impl(d->year, d->month);
 }
 
-void *rt_dateonly_start_of_month(void *obj)
-{
+void *rt_dateonly_start_of_month(void *obj) {
     if (!obj)
         return NULL;
     DateOnly *d = (DateOnly *)obj;
     return rt_dateonly_create(d->year, d->month, 1);
 }
 
-void *rt_dateonly_end_of_month(void *obj)
-{
+void *rt_dateonly_end_of_month(void *obj) {
     if (!obj)
         return NULL;
     DateOnly *d = (DateOnly *)obj;
     return rt_dateonly_create(d->year, d->month, days_in_month_impl(d->year, d->month));
 }
 
-void *rt_dateonly_start_of_year(void *obj)
-{
+void *rt_dateonly_start_of_year(void *obj) {
     if (!obj)
         return NULL;
     DateOnly *d = (DateOnly *)obj;
     return rt_dateonly_create(d->year, 1, 1);
 }
 
-void *rt_dateonly_end_of_year(void *obj)
-{
+void *rt_dateonly_end_of_year(void *obj) {
     if (!obj)
         return NULL;
     DateOnly *d = (DateOnly *)obj;
@@ -377,8 +348,7 @@ void *rt_dateonly_end_of_year(void *obj)
 /// @param a
 /// @param b
 /// @return Result value.
-int64_t rt_dateonly_cmp(void *a, void *b)
-{
+int64_t rt_dateonly_cmp(void *a, void *b) {
     if (!a && !b)
         return 0;
     if (!a)
@@ -400,8 +370,7 @@ int64_t rt_dateonly_cmp(void *a, void *b)
 /// @param a
 /// @param b
 /// @return Result value.
-int8_t rt_dateonly_equals(void *a, void *b)
-{
+int8_t rt_dateonly_equals(void *a, void *b) {
     return rt_dateonly_cmp(a, b) == 0 ? 1 : 0;
 }
 
@@ -412,8 +381,7 @@ int8_t rt_dateonly_equals(void *a, void *b)
 /// @brief Perform dateonly to string operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_dateonly_to_string(void *obj)
-{
+rt_string rt_dateonly_to_string(void *obj) {
     if (!obj)
         return rt_const_cstr("");
 
@@ -432,8 +400,7 @@ rt_string rt_dateonly_to_string(void *obj)
 /// @param obj
 /// @param fmt
 /// @return Result value.
-rt_string rt_dateonly_format(void *obj, rt_string fmt)
-{
+rt_string rt_dateonly_format(void *obj, rt_string fmt) {
     if (!obj)
         return rt_const_cstr("");
 
@@ -463,14 +430,11 @@ rt_string rt_dateonly_format(void *obj, rt_string fmt)
     char buf[256];
     int64_t buf_pos = 0;
 
-    for (int64_t i = 0; i < fmt_len && buf_pos < 255; i++)
-    {
-        if (fmt_str[i] == '%' && i + 1 < fmt_len)
-        {
+    for (int64_t i = 0; i < fmt_len && buf_pos < 255; i++) {
+        if (fmt_str[i] == '%' && i + 1 < fmt_len) {
             i++;
             char spec = fmt_str[i];
-            switch (spec)
-            {
+            switch (spec) {
                 case 'Y': // 4-digit year
                     buf_pos += snprintf(
                         buf + buf_pos, 256 - (size_t)buf_pos, "%04lld", (long long)d->year);
@@ -529,9 +493,7 @@ rt_string rt_dateonly_format(void *obj, rt_string fmt)
             }
             if (buf_pos > 255)
                 buf_pos = 255;
-        }
-        else
-        {
+        } else {
             buf[buf_pos++] = fmt_str[i];
         }
     }

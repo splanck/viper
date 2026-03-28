@@ -29,10 +29,8 @@
 #include <string>
 #include <utility>
 
-namespace il::vm::ops::common
-{
-namespace
-{
+namespace il::vm::ops::common {
+namespace {
 /// @brief Abort execution when a branch provides an incorrect number of arguments.
 /// @details Formats a descriptive trap message that includes the source and
 ///          destination labels along with the expected/provided counts, then
@@ -50,8 +48,7 @@ namespace
                                           size_t expected,
                                           size_t provided,
                                           const il::core::Instr &instr,
-                                          const Frame &frame)
-{
+                                          const Frame &frame) {
     const std::string sourceLabel = source ? source->label : std::string{};
     const std::string functionName = frame.func ? frame.func->name : std::string{};
 
@@ -73,12 +70,9 @@ namespace
 /// @param table Ordered list of case entries (singletons and ranges).
 /// @param default_tgt Target describing the default branch.
 /// @return Target describing the block that should be executed next.
-Target select_case(Scalar scrutinee, std::span<const Case> table, Target default_tgt)
-{
-    for (const Case &entry : table)
-    {
-        if (!entry.isRange)
-        {
+Target select_case(Scalar scrutinee, std::span<const Case> table, Target default_tgt) {
+    for (const Case &entry : table) {
+        if (!entry.isRange) {
             if (scrutinee.value == entry.lower.value)
                 return entry.target;
             continue;
@@ -100,25 +94,19 @@ Target select_case(Scalar scrutinee, std::span<const Case> table, Target default
 ///          pointer so the dispatch loop resumes at the new location.
 /// @param frame Active frame that owns the parameter storage.
 /// @param target Describes the branch instruction, destination map, and context.
-void jump(Frame &frame, Target target)
-{
-    try
-    {
+void jump(Frame &frame, Target target) {
+    try {
         assert(target.valid() && "attempted to jump to an invalid target");
 
         const il::core::BasicBlock *dest = nullptr;
-        if (auto *st = il::vm::detail::VMAccess::currentExecState(*target.vm))
-        {
+        if (auto *st = il::vm::detail::VMAccess::currentExecState(*target.vm)) {
             auto &cache = st->branchTargetCache;
             auto &resolved = cache[target.instr];
-            if (resolved.size() != target.instr->labels.size())
-            {
+            if (resolved.size() != target.instr->labels.size()) {
                 resolved.resize(target.instr->labels.size());
-                for (size_t i = 0; i < target.instr->labels.size(); ++i)
-                {
+                for (size_t i = 0; i < target.instr->labels.size(); ++i) {
                     auto it = target.blocks->find(target.instr->labels[i]);
-                    if (it == target.blocks->end())
-                    {
+                    if (it == target.blocks->end()) {
                         RuntimeBridge::trap(TrapKind::InvalidOperation,
                                             "branch target label not found",
                                             target.instr->loc,
@@ -130,12 +118,9 @@ void jump(Frame &frame, Target target)
                 }
             }
             dest = resolved[target.labelIndex];
-        }
-        else
-        {
+        } else {
             auto it = target.blocks->find(target.instr->labels[target.labelIndex]);
-            if (it == target.blocks->end())
-            {
+            if (it == target.blocks->end()) {
                 RuntimeBridge::trap(TrapKind::InvalidOperation,
                                     "branch target label not found",
                                     target.instr->loc,
@@ -154,15 +139,12 @@ void jump(Frame &frame, Target target)
         if (provided != expected)
             reportBranchArgMismatch(*dest, sourceBlock, expected, provided, *target.instr, frame);
 
-        if (provided > 0)
-        {
+        if (provided > 0) {
             const auto &args = target.instr->brArgs[target.labelIndex];
-            for (size_t i = 0; i < provided; ++i)
-            {
+            for (size_t i = 0; i < provided; ++i) {
                 const auto &param = dest->params[i];
                 const auto id = param.id;
-                if (id >= frame.params.size())
-                {
+                if (id >= frame.params.size()) {
                     RuntimeBridge::trap(TrapKind::InvalidOperation,
                                         "block parameter ID out of range",
                                         target.instr->loc,
@@ -172,8 +154,7 @@ void jump(Frame &frame, Target target)
 
                 Slot incoming = detail::VMAccess::eval(*target.vm, frame, args[i]);
 
-                if (param.type.kind == il::core::Type::Kind::Str)
-                {
+                if (param.type.kind == il::core::Type::Kind::Str) {
                     if (frame.paramsSet[id])
                         rt_str_release_maybe(frame.params[id].str);
 
@@ -190,9 +171,7 @@ void jump(Frame &frame, Target target)
 
         *target.currentBlock = dest;
         *target.ip = 0;
-    }
-    catch (const std::exception &ex)
-    {
+    } catch (const std::exception &ex) {
         const il::core::Instr *instr = target.instr;
         const std::string fnName = frame.func ? frame.func->name : std::string();
         const std::string blk = (target.currentBlock && *target.currentBlock)
@@ -216,8 +195,7 @@ void jump(Frame &frame, Target target)
 /// @param frame Active frame providing operand slots.
 /// @param instr Instruction containing the scrutinee operand metadata.
 /// @return Scalar representation of the scrutinee value.
-Scalar eval_scrutinee(Frame &frame, const il::core::Instr &instr)
-{
+Scalar eval_scrutinee(Frame &frame, const il::core::Instr &instr) {
     VM *vm = activeVMInstance();
     assert(vm != nullptr && "active VM instance required to evaluate scrutinee");
     Slot slot = detail::VMAccess::eval(*vm, frame, switchScrutinee(instr));

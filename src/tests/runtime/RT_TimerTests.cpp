@@ -16,8 +16,7 @@
 #include "viper/runtime/rt.h"
 #include <cassert>
 
-int main()
-{
+int main() {
     // Test 1: Call twice, second value >= first (monotonic)
     const int64_t t0 = rt_timer_ms();
     const int64_t t1 = rt_timer_ms();
@@ -38,8 +37,7 @@ int main()
 
     // Test 3: Multiple rapid calls should be monotonic
     int64_t prev = rt_timer_ms();
-    for (int i = 0; i < 100; ++i)
-    {
+    for (int i = 0; i < 100; ++i) {
         int64_t curr = rt_timer_ms();
         assert(curr >= prev);
         prev = curr;

@@ -20,10 +20,8 @@
 #include <string>
 #include <vector>
 
-int main(int argc, char **argv)
-{
-    if (argc != 3)
-    {
+int main(int argc, char **argv) {
+    if (argc != 3) {
         std::cerr << "usage: WatchTests <ilc> <il file>\n";
         return 1;
     }
@@ -38,8 +36,7 @@ int main(int argc, char **argv)
     std::string line;
     while (std::getline(out, line))
         lines.push_back(line);
-    if (lines.size() != 6)
-    {
+    if (lines.size() != 6) {
         std::cerr << "unexpected line count\n";
         return 1;
     }
@@ -51,8 +48,7 @@ int main(int argc, char **argv)
         "[WATCH] x=f64:2  (fn=@main blk=entry ip=#7)",
         "[WATCH] x=f64:3  (fn=@main blk=entry ip=#8)",
     };
-    if (lines != expected)
-    {
+    if (lines != expected) {
         std::cerr << "unexpected watch output\n";
         return 1;
     }

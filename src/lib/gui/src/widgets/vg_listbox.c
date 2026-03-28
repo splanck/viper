@@ -46,26 +46,22 @@ static vg_widget_vtable_t g_listbox_vtable = {
 // VTable Implementations
 //=============================================================================
 
-static void listbox_free_virtual_cache(vg_listbox_t *lb)
-{
+static void listbox_free_virtual_cache(vg_listbox_t *lb) {
     if (!lb->visible_cache)
         return;
 
-    for (size_t i = 0; i < lb->cache_capacity; i++)
-    {
+    for (size_t i = 0; i < lb->cache_capacity; i++) {
         free(lb->visible_cache[i].text);
         lb->visible_cache[i].text = NULL;
         lb->visible_cache[i].selected = false;
     }
 }
 
-static size_t listbox_virtual_item_count(const vg_listbox_t *lb)
-{
+static size_t listbox_virtual_item_count(const vg_listbox_t *lb) {
     return lb->virtual_mode ? lb->total_item_count : (size_t)lb->item_count;
 }
 
-static void listbox_clamp_scroll(vg_listbox_t *lb, float viewport_height)
-{
+static void listbox_clamp_scroll(vg_listbox_t *lb, float viewport_height) {
     if (!lb)
         return;
 
@@ -79,8 +75,7 @@ static void listbox_clamp_scroll(vg_listbox_t *lb, float viewport_height)
         lb->scroll_y = max_scroll;
 }
 
-static void listbox_ensure_virtual_cache(vg_listbox_t *lb, size_t needed)
-{
+static void listbox_ensure_virtual_cache(vg_listbox_t *lb, size_t needed) {
     if (needed <= lb->cache_capacity)
         return;
 
@@ -96,16 +91,14 @@ static void listbox_ensure_virtual_cache(vg_listbox_t *lb, size_t needed)
     lb->cache_capacity = needed;
 }
 
-static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height)
-{
+static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height) {
     if (!lb || !lb->virtual_mode)
         return;
 
     listbox_clamp_scroll(lb, viewport_height);
 
     size_t total = lb->total_item_count;
-    if (total == 0 || lb->item_height <= 0.0f)
-    {
+    if (total == 0 || lb->item_height <= 0.0f) {
         listbox_free_virtual_cache(lb);
         lb->visible_start = 0;
         lb->visible_count = 0;
@@ -121,10 +114,8 @@ static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height)
     if (!lb->visible_cache)
         return;
 
-    if (lb->visible_start == start && lb->visible_count == visible)
-    {
-        for (size_t i = 0; i < visible; i++)
-        {
+    if (lb->visible_start == start && lb->visible_count == visible) {
+        for (size_t i = 0; i < visible; i++) {
             size_t index = start + i;
             lb->visible_cache[i].selected =
                 index < lb->selection_bitmap_size && lb->selection_bitmap[index];
@@ -136,12 +127,10 @@ static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height)
     lb->visible_start = start;
     lb->visible_count = visible;
 
-    for (size_t i = 0; i < visible; i++)
-    {
+    for (size_t i = 0; i < visible; i++) {
         const char *text = "";
         size_t index = start + i;
-        if (lb->data_provider)
-        {
+        if (lb->data_provider) {
             lb->data_provider(&lb->base, index, &text, NULL, lb->data_provider_user_data);
         }
         lb->visible_cache[i].text = strdup(text ? text : "");
@@ -150,8 +139,10 @@ static void listbox_sync_virtual_cache(vg_listbox_t *lb, float viewport_height)
     }
 }
 
-static bool listbox_item_at_y(vg_listbox_t *lb, vg_widget_t *widget, float screen_y, size_t *index)
-{
+static bool listbox_item_at_y(vg_listbox_t *lb,
+                              vg_widget_t *widget,
+                              float screen_y,
+                              size_t *index) {
     if (!lb || !widget || !index || lb->item_height <= 0.0f)
         return false;
 
@@ -168,13 +159,11 @@ static bool listbox_item_at_y(vg_listbox_t *lb, vg_widget_t *widget, float scree
     return true;
 }
 
-static void listbox_select_virtual_index(vg_listbox_t *lb, size_t index)
-{
+static void listbox_select_virtual_index(vg_listbox_t *lb, size_t index) {
     if (!lb || !lb->virtual_mode || index >= lb->total_item_count)
         return;
 
-    if (!lb->multi_select && lb->selected_index < lb->selection_bitmap_size)
-    {
+    if (!lb->multi_select && lb->selected_index < lb->selection_bitmap_size) {
         lb->selection_bitmap[lb->selected_index] = false;
     }
 
@@ -183,8 +172,7 @@ static void listbox_select_virtual_index(vg_listbox_t *lb, size_t index)
         lb->selection_bitmap[index] = true;
 }
 
-static void listbox_destroy(vg_widget_t *widget)
-{
+static void listbox_destroy(vg_widget_t *widget) {
     vg_listbox_t *lb = (vg_listbox_t *)widget;
     vg_listbox_clear(lb);
     listbox_free_virtual_cache(lb);
@@ -196,8 +184,7 @@ static void listbox_destroy(vg_widget_t *widget)
     lb->selection_bitmap_size = 0;
 }
 
-static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h)
-{
+static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     vg_listbox_t *lb = (vg_listbox_t *)widget;
     (void)avail_w;
     (void)avail_h;
@@ -207,16 +194,14 @@ static void listbox_measure(vg_widget_t *widget, float avail_w, float avail_h)
     widget->measured_height = (float)(visible * (int)lb->item_height);
 }
 
-static void listbox_arrange(vg_widget_t *widget, float x, float y, float w, float h)
-{
+static void listbox_arrange(vg_widget_t *widget, float x, float y, float w, float h) {
     widget->x = x;
     widget->y = y;
     widget->width = w;
     widget->height = h;
 }
 
-static void listbox_paint(vg_widget_t *widget, void *canvas)
-{
+static void listbox_paint(vg_widget_t *widget, void *canvas) {
     vg_listbox_t *lb = (vg_listbox_t *)widget;
     vgfx_window_t win = (vgfx_window_t)canvas;
     int32_t x = (int32_t)widget->x, y = (int32_t)widget->y;
@@ -229,12 +214,10 @@ static void listbox_paint(vg_widget_t *widget, void *canvas)
     float item_y = widget->y - lb->scroll_y;
     float ih = lb->item_height;
 
-    if (lb->virtual_mode)
-    {
+    if (lb->virtual_mode) {
         listbox_sync_virtual_cache(lb, widget->height);
         item_y = widget->y + (float)lb->visible_start * ih - lb->scroll_y;
-        for (size_t i = 0; i < lb->visible_count; i++)
-        {
+        for (size_t i = 0; i < lb->visible_count; i++) {
             size_t index = lb->visible_start + i;
             uint32_t bg = lb->item_bg;
             if (index == lb->selected_index)
@@ -246,8 +229,7 @@ static void listbox_paint(vg_widget_t *widget, void *canvas)
             int32_t ih32 = (int32_t)ih;
             vgfx_fill_rect(win, x + 1, iy, w - 2, ih32, bg);
 
-            if (lb->visible_cache[i].text && lb->font)
-            {
+            if (lb->visible_cache[i].text && lb->font) {
                 float ty = item_y + ih * 0.7f;
                 vg_font_draw_text(canvas,
                                   lb->font,
@@ -260,14 +242,10 @@ static void listbox_paint(vg_widget_t *widget, void *canvas)
 
             item_y += ih;
         }
-    }
-    else
-    {
-        for (vg_listbox_item_t *item = lb->first_item; item; item = item->next)
-        {
+    } else {
+        for (vg_listbox_item_t *item = lb->first_item; item; item = item->next) {
             float item_bottom = item_y + ih;
-            if (item_bottom < widget->y)
-            {
+            if (item_bottom < widget->y) {
                 item_y += ih;
                 continue;
             }
@@ -286,8 +264,7 @@ static void listbox_paint(vg_widget_t *widget, void *canvas)
             int32_t ih32 = (int32_t)ih;
             vgfx_fill_rect(win, x + 1, iy, w - 2, ih32, bg);
 
-            if (item->text && lb->font)
-            {
+            if (item->text && lb->font) {
                 float ty = item_y + ih * 0.7f;
                 vg_font_draw_text(canvas,
                                   lb->font,
@@ -309,19 +286,14 @@ static void listbox_paint(vg_widget_t *widget, void *canvas)
     vgfx_rect(win, x, y, w, h, border);
 }
 
-static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_listbox_t *lb = (vg_listbox_t *)widget;
 
-    switch (event->type)
-    {
-        case VG_EVENT_MOUSE_DOWN:
-        {
+    switch (event->type) {
+        case VG_EVENT_MOUSE_DOWN: {
             size_t idx = 0;
-            if (lb->virtual_mode)
-            {
-                if (listbox_item_at_y(lb, widget, event->mouse.screen_y, &idx))
-                {
+            if (lb->virtual_mode) {
+                if (listbox_item_at_y(lb, widget, event->mouse.screen_y, &idx)) {
                     listbox_select_virtual_index(lb, idx);
                     if (lb->on_select)
                         lb->on_select(widget, NULL, lb->on_select_data);
@@ -329,19 +301,15 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
                     event->handled = true;
                     return true;
                 }
-            }
-            else
-            {
+            } else {
                 /* Find which item was clicked */
                 float ry = event->mouse.screen_y - widget->y + lb->scroll_y;
                 int idx32 = (lb->item_height > 0) ? (int)(ry / lb->item_height) : -1;
-                if (idx32 >= 0 && idx32 < lb->item_count)
-                {
+                if (idx32 >= 0 && idx32 < lb->item_count) {
                     vg_listbox_item_t *item = lb->first_item;
                     for (int i = 0; i < idx32 && item; i++)
                         item = item->next;
-                    if (item)
-                    {
+                    if (item) {
                         vg_listbox_select(lb, item);
                         event->handled = true;
                         return true;
@@ -351,22 +319,17 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
             break;
         }
 
-        case VG_EVENT_MOUSE_MOVE:
-        {
-            if (lb->virtual_mode)
-            {
+        case VG_EVENT_MOUSE_MOVE: {
+            if (lb->virtual_mode) {
                 size_t idx = 0;
                 lb->hovered_index = SIZE_MAX;
                 if (listbox_item_at_y(lb, widget, event->mouse.screen_y, &idx))
                     lb->hovered_index = idx;
-            }
-            else
-            {
+            } else {
                 float ry = event->mouse.screen_y - widget->y + lb->scroll_y;
                 int idx = (lb->item_height > 0) ? (int)(ry / lb->item_height) : -1;
                 vg_listbox_item_t *hovered = NULL;
-                if (idx >= 0 && idx < lb->item_count)
-                {
+                if (idx >= 0 && idx < lb->item_count) {
                     hovered = lb->first_item;
                     for (int i = 0; i < idx && hovered; i++)
                         hovered = hovered->next;
@@ -376,15 +339,13 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
             break;
         }
 
-        case VG_EVENT_MOUSE_LEAVE:
-        {
+        case VG_EVENT_MOUSE_LEAVE: {
             lb->hovered = NULL;
             lb->hovered_index = SIZE_MAX;
             break;
         }
 
-        case VG_EVENT_MOUSE_WHEEL:
-        {
+        case VG_EVENT_MOUSE_WHEEL: {
             float scroll_delta = -event->wheel.delta_y * lb->item_height;
             lb->scroll_y += scroll_delta;
             listbox_clamp_scroll(lb, widget->height);
@@ -392,19 +353,14 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
             return true;
         }
 
-        case VG_EVENT_DOUBLE_CLICK:
-        {
-            if (lb->virtual_mode)
-            {
-                if (lb->selected_index != SIZE_MAX && lb->on_activate)
-                {
+        case VG_EVENT_DOUBLE_CLICK: {
+            if (lb->virtual_mode) {
+                if (lb->selected_index != SIZE_MAX && lb->on_activate) {
                     lb->on_activate(widget, NULL, lb->on_activate_data);
                     event->handled = true;
                     return true;
                 }
-            }
-            else if (lb->selected && lb->on_activate)
-            {
+            } else if (lb->selected && lb->on_activate) {
                 lb->on_activate(widget, lb->selected, lb->on_activate_data);
                 event->handled = true;
                 return true;
@@ -412,8 +368,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
             break;
         }
 
-        case VG_EVENT_KEY_DOWN:
-        {
+        case VG_EVENT_KEY_DOWN: {
             int total = lb->virtual_mode ? (int)lb->total_item_count : lb->item_count;
             if (total <= 0)
                 return false;
@@ -424,8 +379,7 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
             int current_idx = (int)vg_listbox_get_selected_index(lb);
             int new_idx = current_idx;
 
-            switch (event->key.key)
-            {
+            switch (event->key.key) {
                 case VG_KEY_UP:
                     new_idx = (current_idx > 0) ? current_idx - 1 : 0;
                     break;
@@ -449,13 +403,10 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
                         new_idx = total - 1;
                     break;
                 case VG_KEY_ENTER:
-                    if (lb->virtual_mode)
-                    {
+                    if (lb->virtual_mode) {
                         if (lb->selected_index != SIZE_MAX && lb->on_activate)
                             lb->on_activate(widget, NULL, lb->on_activate_data);
-                    }
-                    else if (lb->selected && lb->on_activate)
-                    {
+                    } else if (lb->selected && lb->on_activate) {
                         lb->on_activate(widget, lb->selected, lb->on_activate_data);
                     }
                     event->handled = true;
@@ -464,16 +415,12 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
                     break;
             }
 
-            if (new_idx != current_idx && new_idx >= 0 && new_idx < total)
-            {
-                if (lb->virtual_mode)
-                {
+            if (new_idx != current_idx && new_idx >= 0 && new_idx < total) {
+                if (lb->virtual_mode) {
                     listbox_select_virtual_index(lb, (size_t)new_idx);
                     if (lb->on_select)
                         lb->on_select(widget, NULL, lb->on_select_data);
-                }
-                else
-                {
+                } else {
                     vg_listbox_select_index(lb, (size_t)new_idx);
                 }
                 /* Scroll the selected item into view */
@@ -496,13 +443,11 @@ static bool listbox_handle_event(vg_widget_t *widget, vg_event_t *event)
     return false;
 }
 
-static bool listbox_can_focus(vg_widget_t *widget)
-{
+static bool listbox_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
-vg_listbox_t *vg_listbox_create(vg_widget_t *parent)
-{
+vg_listbox_t *vg_listbox_create(vg_widget_t *parent) {
     vg_listbox_t *listbox = calloc(1, sizeof(vg_listbox_t));
     if (!listbox)
         return NULL;
@@ -523,16 +468,14 @@ vg_listbox_t *vg_listbox_create(vg_widget_t *parent)
     listbox->selected_index = SIZE_MAX;
     listbox->hovered_index = SIZE_MAX;
 
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &listbox->base);
     }
 
     return listbox;
 }
 
-vg_listbox_item_t *vg_listbox_add_item(vg_listbox_t *listbox, const char *text, void *user_data)
-{
+vg_listbox_item_t *vg_listbox_add_item(vg_listbox_t *listbox, const char *text, void *user_data) {
     if (!listbox || !text)
         return NULL;
 
@@ -544,14 +487,11 @@ vg_listbox_item_t *vg_listbox_add_item(vg_listbox_t *listbox, const char *text, 
     item->user_data = user_data;
 
     // Add to end of list
-    if (listbox->last_item)
-    {
+    if (listbox->last_item) {
         listbox->last_item->next = item;
         item->prev = listbox->last_item;
         listbox->last_item = item;
-    }
-    else
-    {
+    } else {
         listbox->first_item = listbox->last_item = item;
     }
     listbox->item_count++;
@@ -560,8 +500,7 @@ vg_listbox_item_t *vg_listbox_add_item(vg_listbox_t *listbox, const char *text, 
 }
 
 /// @brief Listbox remove item.
-void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item)
-{
+void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item) {
     if (!listbox || !item)
         return;
 
@@ -586,14 +525,12 @@ void vg_listbox_remove_item(vg_listbox_t *listbox, vg_listbox_item_t *item)
 }
 
 /// @brief Listbox clear.
-void vg_listbox_clear(vg_listbox_t *listbox)
-{
+void vg_listbox_clear(vg_listbox_t *listbox) {
     if (!listbox)
         return;
 
     vg_listbox_item_t *item = listbox->first_item;
-    while (item)
-    {
+    while (item) {
         vg_listbox_item_t *next = item->next;
         free(item->text);
         free(item);
@@ -606,36 +543,30 @@ void vg_listbox_clear(vg_listbox_t *listbox)
 }
 
 /// @brief Listbox select.
-void vg_listbox_select(vg_listbox_t *listbox, vg_listbox_item_t *item)
-{
+void vg_listbox_select(vg_listbox_t *listbox, vg_listbox_item_t *item) {
     if (!listbox)
         return;
 
     // Clear previous selection if not multi-select
-    if (!listbox->multi_select && listbox->selected)
-    {
+    if (!listbox->multi_select && listbox->selected) {
         listbox->selected->selected = false;
     }
 
     listbox->selected = item;
-    if (item)
-    {
+    if (item) {
         item->selected = true;
-        if (listbox->on_select)
-        {
+        if (listbox->on_select) {
             listbox->on_select(&listbox->base, item, listbox->on_select_data);
         }
     }
 }
 
-vg_listbox_item_t *vg_listbox_get_selected(vg_listbox_t *listbox)
-{
+vg_listbox_item_t *vg_listbox_get_selected(vg_listbox_t *listbox) {
     return listbox ? listbox->selected : NULL;
 }
 
 /// @brief Listbox set font.
-void vg_listbox_set_font(vg_listbox_t *listbox, vg_font_t *font, float size)
-{
+void vg_listbox_set_font(vg_listbox_t *listbox, vg_font_t *font, float size) {
     if (!listbox)
         return;
     listbox->font = font;
@@ -645,8 +576,7 @@ void vg_listbox_set_font(vg_listbox_t *listbox, vg_font_t *font, float size)
 /// @brief Listbox set on select.
 void vg_listbox_set_on_select(vg_listbox_t *listbox,
                               vg_listbox_callback_t callback,
-                              void *user_data)
-{
+                              void *user_data) {
     if (!listbox)
         return;
     listbox->on_select = callback;
@@ -660,22 +590,19 @@ void vg_listbox_set_on_select(vg_listbox_t *listbox,
 void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
                                  bool enabled,
                                  size_t total_count,
-                                 float item_height)
-{
+                                 float item_height) {
     if (!listbox)
         return;
 
     listbox->virtual_mode = enabled;
     listbox->total_item_count = total_count;
     listbox->hovered_index = SIZE_MAX;
-    if (item_height > 0)
-    {
+    if (item_height > 0) {
         listbox->item_height = item_height;
     }
 
     // Initialize selection bitmap
-    if (enabled && total_count > 0)
-    {
+    if (enabled && total_count > 0) {
         free(listbox->selection_bitmap);
         listbox->selection_bitmap = calloc(total_count, sizeof(bool));
         listbox->selection_bitmap_size = total_count;
@@ -686,9 +613,7 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
         free(listbox->visible_cache);
         listbox->visible_cache = calloc(cap, sizeof(vg_listbox_cache_entry_t));
         listbox->cache_capacity = listbox->visible_cache ? cap : 0;
-    }
-    else
-    {
+    } else {
         listbox_free_virtual_cache(listbox);
         free(listbox->visible_cache);
         listbox->visible_cache = NULL;
@@ -710,8 +635,7 @@ void vg_listbox_set_virtual_mode(vg_listbox_t *listbox,
 /// @brief Listbox set data provider.
 void vg_listbox_set_data_provider(vg_listbox_t *listbox,
                                   vg_listbox_data_provider_t provider,
-                                  void *user_data)
-{
+                                  void *user_data) {
     if (!listbox)
         return;
 
@@ -720,19 +644,16 @@ void vg_listbox_set_data_provider(vg_listbox_t *listbox,
 }
 
 /// @brief Listbox set total count.
-void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count)
-{
+void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count) {
     if (!listbox || !listbox->virtual_mode)
         return;
 
     listbox->total_item_count = count;
 
     // Resize selection bitmap if needed
-    if (count > listbox->selection_bitmap_size)
-    {
+    if (count > listbox->selection_bitmap_size) {
         bool *new_bitmap = realloc(listbox->selection_bitmap, count * sizeof(bool));
-        if (new_bitmap)
-        {
+        if (new_bitmap) {
             // Zero out new entries
             memset(new_bitmap + listbox->selection_bitmap_size,
                    0,
@@ -743,8 +664,7 @@ void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count)
     }
 
     // Reset selection if out of bounds
-    if (listbox->selected_index >= count)
-    {
+    if (listbox->selected_index >= count) {
         listbox->selected_index = SIZE_MAX;
     }
 
@@ -752,8 +672,7 @@ void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count)
     float max_scroll = count * listbox->item_height - listbox->base.height;
     if (max_scroll < 0)
         max_scroll = 0;
-    if (listbox->scroll_y > max_scroll)
-    {
+    if (listbox->scroll_y > max_scroll) {
         listbox->scroll_y = max_scroll;
     }
 
@@ -761,16 +680,13 @@ void vg_listbox_set_total_count(vg_listbox_t *listbox, size_t count)
 }
 
 /// @brief Listbox invalidate items.
-void vg_listbox_invalidate_items(vg_listbox_t *listbox)
-{
+void vg_listbox_invalidate_items(vg_listbox_t *listbox) {
     if (!listbox)
         return;
 
     // Clear cache
-    if (listbox->visible_cache)
-    {
-        for (size_t i = 0; i < listbox->cache_capacity; i++)
-        {
+    if (listbox->visible_cache) {
+        for (size_t i = 0; i < listbox->cache_capacity; i++) {
             free(listbox->visible_cache[i].text);
             listbox->visible_cache[i].text = NULL;
         }
@@ -783,17 +699,15 @@ void vg_listbox_invalidate_items(vg_listbox_t *listbox)
 }
 
 /// @brief Listbox invalidate item.
-void vg_listbox_invalidate_item(vg_listbox_t *listbox, size_t index)
-{
+void vg_listbox_invalidate_item(vg_listbox_t *listbox, size_t index) {
     if (!listbox || !listbox->virtual_mode)
         return;
 
     // Check if item is in visible cache
-    if (index >= listbox->visible_start && index < listbox->visible_start + listbox->visible_count)
-    {
+    if (index >= listbox->visible_start &&
+        index < listbox->visible_start + listbox->visible_count) {
         size_t cache_index = index - listbox->visible_start;
-        if (cache_index < listbox->cache_capacity && listbox->visible_cache)
-        {
+        if (cache_index < listbox->cache_capacity && listbox->visible_cache) {
             free(listbox->visible_cache[cache_index].text);
             listbox->visible_cache[cache_index].text = NULL;
         }
@@ -803,17 +717,14 @@ void vg_listbox_invalidate_item(vg_listbox_t *listbox, size_t index)
 }
 
 /// @brief Listbox select index.
-void vg_listbox_select_index(vg_listbox_t *listbox, size_t index)
-{
+void vg_listbox_select_index(vg_listbox_t *listbox, size_t index) {
     if (!listbox)
         return;
 
-    if (!listbox->virtual_mode)
-    {
+    if (!listbox->virtual_mode) {
         // Non-virtual mode: find item at index
         vg_listbox_item_t *item = listbox->first_item;
-        for (size_t i = 0; i < index && item; i++)
-        {
+        for (size_t i = 0; i < index && item; i++) {
             item = item->next;
         }
         vg_listbox_select(listbox, item);
@@ -825,8 +736,7 @@ void vg_listbox_select_index(vg_listbox_t *listbox, size_t index)
         return;
 
     // Clear previous selection
-    if (!listbox->multi_select && listbox->selected_index < listbox->selection_bitmap_size)
-    {
+    if (!listbox->multi_select && listbox->selected_index < listbox->selection_bitmap_size) {
         listbox->selection_bitmap[listbox->selected_index] = false;
     }
 
@@ -837,19 +747,16 @@ void vg_listbox_select_index(vg_listbox_t *listbox, size_t index)
 }
 
 /// @brief Listbox get selected index.
-size_t vg_listbox_get_selected_index(vg_listbox_t *listbox)
-{
+size_t vg_listbox_get_selected_index(vg_listbox_t *listbox) {
     if (!listbox)
         return SIZE_MAX;
 
-    if (!listbox->virtual_mode)
-    {
+    if (!listbox->virtual_mode) {
         // Non-virtual mode: find index of selected item
         if (!listbox->selected)
             return SIZE_MAX;
         size_t index = 0;
-        for (vg_listbox_item_t *item = listbox->first_item; item; item = item->next)
-        {
+        for (vg_listbox_item_t *item = listbox->first_item; item; item = item->next) {
             if (item == listbox->selected)
                 return index;
             index++;

@@ -23,15 +23,13 @@
 #include <string>
 #include <vector>
 
-namespace viper::repl
-{
+namespace viper::repl {
 
 // Forward declaration
 class ReplSession;
 
 /// @brief A single meta-command entry.
-struct MetaCommandEntry
-{
+struct MetaCommandEntry {
     std::string name; ///< Command name (without dot).
     std::string help; ///< Short help description.
     std::function<void(ReplSession &, const std::string &)> handler; ///< Handler receiving args.
@@ -41,8 +39,7 @@ struct MetaCommandEntry
 /// @details Meta-commands are dot-prefixed (e.g., ".help", ".quit") and are
 ///          dispatched before any language compilation. The registry supports
 ///          multiple aliases for the same command (e.g., .quit and .exit).
-class ReplMetaCommands
-{
+class ReplMetaCommands {
   public:
     /// @brief Register a new meta-command.
     /// @param name Command name (without leading dot).

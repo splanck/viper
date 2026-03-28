@@ -33,16 +33,14 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::aarch64::ra
-{
+namespace viper::codegen::aarch64::ra {
 
 /// @brief CFG-aware liveness analysis over AArch64 Machine IR blocks.
 ///
 /// @details Builds the control-flow graph from Br/BCond/Cbz terminators,
 ///          computes gen/kill sets per block split by register class, and
 ///          delegates the fixed-point dataflow iteration to the shared solver.
-class LivenessAnalysis
-{
+class LivenessAnalysis {
   public:
     LivenessAnalysis() = default;
 
@@ -62,8 +60,7 @@ class LivenessAnalysis
     [[nodiscard]] const std::vector<std::size_t> &predecessors(std::size_t blockIdx) const;
 
     /// @brief Number of blocks in the analyzed function.
-    [[nodiscard]] std::size_t numBlocks() const
-    {
+    [[nodiscard]] std::size_t numBlocks() const {
         return succs_.size();
     }
 

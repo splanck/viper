@@ -29,8 +29,7 @@
 #include "LowerILToMIR.hpp"
 #include "Lowering.EmitCommon.hpp"
 
-namespace viper::codegen::x64::lowering
-{
+namespace viper::codegen::x64::lowering {
 
 /// @brief Lower an integer or floating-point add IL instruction.
 /// @details Selects MOV/ADD forms based on the destination register class and
@@ -38,8 +37,7 @@ namespace viper::codegen::x64::lowering
 ///          can be folded when possible.
 /// @param instr IL add instruction to lower.
 /// @param builder Machine IR builder receiving the emitted instructions.
-void emitAdd(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitAdd(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
     const RegClass cls = builder.regClassFor(instr.resultKind);
     const MOpcode opRR = cls == RegClass::GPR ? MOpcode::ADDrr : MOpcode::FADD;
@@ -53,8 +51,7 @@ void emitAdd(const ILInstr &instr, MIRBuilder &builder)
 ///          normalisation.
 /// @param instr IL subtract instruction to lower.
 /// @param builder Machine IR builder receiving the emitted instructions.
-void emitSub(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitSub(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
     const RegClass cls = builder.regClassFor(instr.resultKind);
     const MOpcode opRR = cls == RegClass::GPR ? MOpcode::SUBrr : MOpcode::FSUB;
@@ -67,8 +64,7 @@ void emitSub(const ILInstr &instr, MIRBuilder &builder)
 ///          locations.
 /// @param instr IL multiply instruction to lower.
 /// @param builder Machine IR builder receiving the emitted instructions.
-void emitMul(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitMul(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
     const RegClass cls = builder.regClassFor(instr.resultKind);
     const MOpcode opRR = cls == RegClass::GPR ? MOpcode::IMULrr : MOpcode::FMUL;
@@ -81,8 +77,7 @@ void emitMul(const ILInstr &instr, MIRBuilder &builder)
 ///          register classes.
 /// @param instr IL floating-point divide instruction.
 /// @param builder Machine IR builder receiving the emitted instructions.
-void emitFDiv(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitFDiv(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitBinary(instr, MOpcode::FDIV, MOpcode::FDIV, RegClass::XMM, false);
 }
 
@@ -92,10 +87,8 @@ void emitFDiv(const ILInstr &instr, MIRBuilder &builder)
 ///          sequence.
 /// @param instr IL integer compare instruction.
 /// @param builder Machine IR builder receiving the emitted instructions.
-void emitICmp(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (const auto cond = EmitCommon::icmpConditionCode(instr.opcode))
-    {
+void emitICmp(const ILInstr &instr, MIRBuilder &builder) {
+    if (const auto cond = EmitCommon::icmpConditionCode(instr.opcode)) {
         EmitCommon(builder).emitCmp(instr, RegClass::GPR, *cond);
     }
 }
@@ -108,25 +101,21 @@ void emitICmp(const ILInstr &instr, MIRBuilder &builder)
 ///          the generic @ref EmitCommon::emitCmp path.
 /// @param instr IL floating-point compare instruction.
 /// @param builder Machine IR builder receiving the emitted instructions.
-void emitFCmp(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (!instr.opcode.starts_with("fcmp_"))
-    {
+void emitFCmp(const ILInstr &instr, MIRBuilder &builder) {
+    if (!instr.opcode.starts_with("fcmp_")) {
         return;
     }
 
     const std::string_view suffix(instr.opcode.data() + 5, instr.opcode.size() - 5);
 
     // eq/ne/lt/le require NaN-safe multi-instruction sequences.
-    if (suffix == "eq" || suffix == "ne" || suffix == "lt" || suffix == "le")
-    {
+    if (suffix == "eq" || suffix == "ne" || suffix == "lt" || suffix == "le") {
         EmitCommon(builder).emitFCmpNanSafe(instr, suffix);
         return;
     }
 
     // gt/ge/ord/uno are already NaN-correct with a single SETcc.
-    if (const auto cond = EmitCommon::fcmpConditionCode(instr.opcode))
-    {
+    if (const auto cond = EmitCommon::fcmpConditionCode(instr.opcode)) {
         EmitCommon(builder).emitCmp(instr, RegClass::XMM, *cond);
     }
 }
@@ -137,8 +126,7 @@ void emitFCmp(const ILInstr &instr, MIRBuilder &builder)
 ///          into the destination virtual register.
 /// @param instr IL compare instruction with explicit operands.
 /// @param builder Machine IR builder receiving the emitted instructions.
-void emitCmpExplicit(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitCmpExplicit(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
     const RegClass cls =
         builder.regClassFor(instr.ops.empty() ? instr.resultKind : instr.ops.front().kind);
@@ -148,35 +136,30 @@ void emitCmpExplicit(const ILInstr &instr, MIRBuilder &builder)
 /// @brief Lower an overflow-checked integer add.
 /// @details Emits the ADDOvfrr pseudo-op which the post-lowering pass will
 ///          expand into ADD + JO (trap on overflow).
-void emitAddOvf(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitAddOvf(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
     emit.emitBinary(instr, MOpcode::ADDOvfrr, MOpcode::ADDOvfrr, RegClass::GPR, false);
 }
 
 /// @brief Lower an overflow-checked integer subtract.
 /// @details Emits the SUBOvfrr pseudo-op.
-void emitSubOvf(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitSubOvf(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
     emit.emitBinary(instr, MOpcode::SUBOvfrr, MOpcode::SUBOvfrr, RegClass::GPR, false);
 }
 
 /// @brief Lower an overflow-checked integer multiply.
 /// @details Emits the IMULOvfrr pseudo-op.
-void emitMulOvf(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitMulOvf(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
     emit.emitBinary(instr, MOpcode::IMULOvfrr, MOpcode::IMULOvfrr, RegClass::GPR, false);
 }
 
-void emitDivFamily(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitDivFamily(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitDivRem(instr, instr.opcode);
 }
 
-void emitZSTrunc(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitZSTrunc(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon emit(builder);
     emit.emitCast(
         instr,
@@ -185,13 +168,11 @@ void emitZSTrunc(const ILInstr &instr, MIRBuilder &builder)
         builder.regClassFor(instr.ops.empty() ? instr.resultKind : instr.ops.front().kind));
 }
 
-void emitSIToFP(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitSIToFP(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitCast(instr, MOpcode::CVTSI2SD, RegClass::XMM, RegClass::GPR);
 }
 
-void emitFPToSI(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitFPToSI(const ILInstr &instr, MIRBuilder &builder) {
     EmitCommon(builder).emitCast(instr, MOpcode::CVTTSD2SI, RegClass::GPR, RegClass::XMM);
 }
 
@@ -209,8 +190,7 @@ void emitFPToSI(const ILInstr &instr, MIRBuilder &builder)
 ///            ucomisd limit_lo, %src        ; re-check if src was genuinely INT64_MIN
 ///            jne     .Ltrap               ; not exactly −2^63 → overflow
 ///          .Ldone:
-void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder)
-{
+void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder) {
     if (instr.resultId < 0 || instr.ops.empty())
         return;
 
@@ -307,10 +287,8 @@ void emitFPToSIChecked(const ILInstr &instr, MIRBuilder &builder)
 ///          .Lsmall:
 ///            cvttsd2si %src, %dst
 ///          .Ldone:
-void emitFpToUi(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.resultId < 0 || instr.ops.empty())
-    {
+void emitFpToUi(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.resultId < 0 || instr.ops.empty()) {
         return;
     }
 
@@ -420,10 +398,8 @@ void emitFpToUi(const ILInstr &instr, MIRBuilder &builder)
 ///            cvtsi2sd %tmp, %dst
 ///            addsd  %dst, %dst      ; double back
 ///          .Ldone:
-void emitUiToFp(const ILInstr &instr, MIRBuilder &builder)
-{
-    if (instr.resultId < 0 || instr.ops.empty())
-    {
+void emitUiToFp(const ILInstr &instr, MIRBuilder &builder) {
+    if (instr.resultId < 0 || instr.ops.empty()) {
         return;
     }
 

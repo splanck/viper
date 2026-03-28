@@ -29,14 +29,13 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Helper returning the heap header associated with @p payload.
-    /// @param payload Array payload pointer (may be NULL).
-    /// @return Heap header describing the allocation, or NULL for NULL payloads.
-    rt_heap_hdr_t *rt_arr_i32_hdr(const int32_t *payload);
+/// @brief Helper returning the heap header associated with @p payload.
+/// @param payload Array payload pointer (may be NULL).
+/// @return Heap header describing the allocation, or NULL for NULL payloads.
+rt_heap_hdr_t *rt_arr_i32_hdr(const int32_t *payload);
 
 #if defined(__cplusplus)
 #define RT_ARR_NORETURN [[noreturn]]
@@ -46,81 +45,79 @@ extern "C"
 #define RT_ARR_NORETURN __attribute__((noreturn))
 #endif
 
-    /// @brief Allocate a new dynamic array of 32-bit integers.
-    /// @param len Number of elements to allocate.
-    /// @return Array payload pointer or NULL on allocation failure.
-    int32_t *rt_arr_i32_new(size_t len);
+/// @brief Allocate a new dynamic array of 32-bit integers.
+/// @param len Number of elements to allocate.
+/// @return Array payload pointer or NULL on allocation failure.
+int32_t *rt_arr_i32_new(size_t len);
 
-    /// @brief Increment the reference count for @p arr.
-    /// @param arr Array payload pointer (may be NULL).
-    void rt_arr_i32_retain(int32_t *arr);
+/// @brief Increment the reference count for @p arr.
+/// @param arr Array payload pointer (may be NULL).
+void rt_arr_i32_retain(int32_t *arr);
 
-    /// @brief Decrement the reference count for @p arr and free on zero.
-    /// @param arr Array payload pointer (may be NULL).
-    void rt_arr_i32_release(int32_t *arr);
+/// @brief Decrement the reference count for @p arr and free on zero.
+/// @param arr Array payload pointer (may be NULL).
+void rt_arr_i32_release(int32_t *arr);
 
-    /// @brief Query the current logical length of an array.
-    /// @param arr Array payload pointer returned by rt_arr_i32_new.
-    /// @return Number of accessible elements; 0 when @p arr is NULL.
-    size_t rt_arr_i32_len(int32_t *arr);
+/// @brief Query the current logical length of an array.
+/// @param arr Array payload pointer returned by rt_arr_i32_new.
+/// @return Number of accessible elements; 0 when @p arr is NULL.
+size_t rt_arr_i32_len(int32_t *arr);
 
-    /// @brief Query the current capacity in elements.
-    /// @param arr Array payload pointer returned by rt_arr_i32_new.
-    /// @return Capacity in elements; 0 when @p arr is NULL.
-    size_t rt_arr_i32_cap(int32_t *arr);
+/// @brief Query the current capacity in elements.
+/// @param arr Array payload pointer returned by rt_arr_i32_new.
+/// @return Capacity in elements; 0 when @p arr is NULL.
+size_t rt_arr_i32_cap(int32_t *arr);
 
-    /// @brief Read element at index @p idx with bounds checking.
-    /// @param arr Array payload pointer; must be non-null.
-    /// @param idx Zero-based index within the array length.
-    /// @return Stored value at @p idx.
-    /// @note Traps on out-of-bounds access.
-    int32_t rt_arr_i32_get(int32_t *arr, size_t idx);
+/// @brief Read element at index @p idx with bounds checking.
+/// @param arr Array payload pointer; must be non-null.
+/// @param idx Zero-based index within the array length.
+/// @return Stored value at @p idx.
+/// @note Traps on out-of-bounds access.
+int32_t rt_arr_i32_get(int32_t *arr, size_t idx);
 
-    /// @brief Write @p value to index @p idx with bounds checking.
-    /// @param arr Array payload pointer; must be non-null.
-    /// @param idx Zero-based index within the array length.
-    /// @param value Value to store.
-    /// @note Traps on out-of-bounds access.
-    void rt_arr_i32_set(int32_t *arr, size_t idx, int32_t value);
+/// @brief Write @p value to index @p idx with bounds checking.
+/// @param arr Array payload pointer; must be non-null.
+/// @param idx Zero-based index within the array length.
+/// @param value Value to store.
+/// @note Traps on out-of-bounds access.
+void rt_arr_i32_set(int32_t *arr, size_t idx, int32_t value);
 
-    /// @brief Read element at index @p idx WITHOUT bounds checking.
-    /// @param arr Array payload pointer; must be non-null and in range.
-    /// @param idx Zero-based index; caller guarantees idx < length.
-    /// @return Stored value at @p idx.
-    /// @warning No bounds checking! Use only when compiler has verified safety.
-    /// @note This is an inline function for maximum performance in tight loops.
-    static inline int32_t rt_arr_i32_get_unchecked(int32_t *arr, size_t idx)
-    {
-        return arr[idx];
-    }
+/// @brief Read element at index @p idx WITHOUT bounds checking.
+/// @param arr Array payload pointer; must be non-null and in range.
+/// @param idx Zero-based index; caller guarantees idx < length.
+/// @return Stored value at @p idx.
+/// @warning No bounds checking! Use only when compiler has verified safety.
+/// @note This is an inline function for maximum performance in tight loops.
+static inline int32_t rt_arr_i32_get_unchecked(int32_t *arr, size_t idx) {
+    return arr[idx];
+}
 
-    /// @brief Write @p value to index @p idx WITHOUT bounds checking.
-    /// @param arr Array payload pointer; must be non-null and in range.
-    /// @param idx Zero-based index; caller guarantees idx < length.
-    /// @param value Value to store.
-    /// @warning No bounds checking! Use only when compiler has verified safety.
-    /// @note This is an inline function for maximum performance in tight loops.
-    static inline void rt_arr_i32_set_unchecked(int32_t *arr, size_t idx, int32_t value)
-    {
-        arr[idx] = value;
-    }
+/// @brief Write @p value to index @p idx WITHOUT bounds checking.
+/// @param arr Array payload pointer; must be non-null and in range.
+/// @param idx Zero-based index; caller guarantees idx < length.
+/// @param value Value to store.
+/// @warning No bounds checking! Use only when compiler has verified safety.
+/// @note This is an inline function for maximum performance in tight loops.
+static inline void rt_arr_i32_set_unchecked(int32_t *arr, size_t idx, int32_t value) {
+    arr[idx] = value;
+}
 
-    /// @brief Resize an array to @p new_len elements with copy-on-resize semantics.
-    /// @param a_inout Address of the array payload pointer (may point to NULL).
-    /// @param new_len Requested logical length.
-    /// @return 0 on success, -1 on allocation failure; pointer may be rebound on success.
-    int rt_arr_i32_resize(int32_t **a_inout, size_t new_len);
+/// @brief Resize an array to @p new_len elements with copy-on-resize semantics.
+/// @param a_inout Address of the array payload pointer (may point to NULL).
+/// @param new_len Requested logical length.
+/// @return 0 on success, -1 on allocation failure; pointer may be rebound on success.
+int rt_arr_i32_resize(int32_t **a_inout, size_t new_len);
 
-    /// @brief Copy @p count elements between array payloads, trapping on invalid buffers.
-    /// @param dst Destination payload pointer; must be non-null when @p count > 0.
-    /// @param src Source payload pointer; must be non-null when @p count > 0.
-    /// @param count Number of elements to copy.
-    void rt_arr_i32_copy_payload(int32_t *dst, const int32_t *src, size_t count);
+/// @brief Copy @p count elements between array payloads, trapping on invalid buffers.
+/// @param dst Destination payload pointer; must be non-null when @p count > 0.
+/// @param src Source payload pointer; must be non-null when @p count > 0.
+/// @param count Number of elements to copy.
+void rt_arr_i32_copy_payload(int32_t *dst, const int32_t *src, size_t count);
 
-    /// @brief Abort execution due to an out-of-bounds access.
-    /// @param idx Failing index.
-    /// @param len Array length observed by the caller.
-    RT_ARR_NORETURN void rt_arr_oob_panic(size_t idx, size_t len);
+/// @brief Abort execution due to an out-of-bounds access.
+/// @param idx Failing index.
+/// @param len Array length observed by the caller.
+RT_ARR_NORETURN void rt_arr_oob_panic(size_t idx, size_t len);
 
 #ifdef __cplusplus
 }

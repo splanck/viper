@@ -17,11 +17,9 @@
 
 #include <string>
 
-namespace il::frontends::basic::sem
-{
+namespace il::frontends::basic::sem {
 
-namespace
-{
+namespace {
 /// @brief Emit an error diagnostic for a reference to an unknown label.
 ///
 /// @details Constructs a canonical "unknown line" message that mirrors the
@@ -36,8 +34,7 @@ namespace
 void emitUnknownLabel(ControlCheckContext &context,
                       int label,
                       const il::support::SourceLoc &loc,
-                      uint32_t width)
-{
+                      uint32_t width) {
     const std::string labelText = std::to_string(label);
     context.diagnostics().emit(
         diag::BasicDiag::UnknownLineLabel,
@@ -57,8 +54,7 @@ void emitUnknownLabel(ControlCheckContext &context,
 ///
 /// @param analyzer Semantic analyzer currently traversing the program.
 /// @param stmt     Parsed @c GOTO statement to analyse.
-void analyzeGoto(SemanticAnalyzer &analyzer, const GotoStmt &stmt)
-{
+void analyzeGoto(SemanticAnalyzer &analyzer, const GotoStmt &stmt) {
     ControlCheckContext context(analyzer);
     context.insertLabelReference(stmt.target);
     if (!context.hasKnownLabel(stmt.target))
@@ -74,8 +70,7 @@ void analyzeGoto(SemanticAnalyzer &analyzer, const GotoStmt &stmt)
 ///
 /// @param analyzer Semantic analyzer currently traversing the program.
 /// @param stmt     Parsed @c GOSUB statement to analyse.
-void analyzeGosub(SemanticAnalyzer &analyzer, const GosubStmt &stmt)
-{
+void analyzeGosub(SemanticAnalyzer &analyzer, const GosubStmt &stmt) {
     ControlCheckContext context(analyzer);
     context.insertLabelReference(stmt.targetLine);
     if (!context.hasKnownLabel(stmt.targetLine))
@@ -91,11 +86,9 @@ void analyzeGosub(SemanticAnalyzer &analyzer, const GosubStmt &stmt)
 ///
 /// @param analyzer Semantic analyzer providing procedure state.
 /// @param stmt     Parsed @c ON ERROR GOTO statement to analyse.
-void analyzeOnErrorGoto(SemanticAnalyzer &analyzer, const OnErrorGoto &stmt)
-{
+void analyzeOnErrorGoto(SemanticAnalyzer &analyzer, const OnErrorGoto &stmt) {
     ControlCheckContext context(analyzer);
-    if (stmt.toZero)
-    {
+    if (stmt.toZero) {
         context.clearErrorHandler();
         return;
     }
@@ -117,11 +110,9 @@ void analyzeOnErrorGoto(SemanticAnalyzer &analyzer, const OnErrorGoto &stmt)
 ///
 /// @param analyzer Semantic analyzer providing the execution context.
 /// @param stmt     Parsed @c RESUME statement to analyse.
-void analyzeResume(SemanticAnalyzer &analyzer, const Resume &stmt)
-{
+void analyzeResume(SemanticAnalyzer &analyzer, const Resume &stmt) {
     ControlCheckContext context(analyzer);
-    if (!context.hasActiveErrorHandler())
-    {
+    if (!context.hasActiveErrorHandler()) {
         std::string msg = "RESUME requires an active error handler";
         context.diagnostics().emit(
             il::support::Severity::Error, "B1012", stmt.loc, 6, std::move(msg));
@@ -146,19 +137,14 @@ void analyzeResume(SemanticAnalyzer &analyzer, const Resume &stmt)
 /// @param analyzer Semantic analyzer providing access to control-flow state.
 /// @param stmt     Parsed @c RETURN statement to analyse; may be rewritten to
 ///                 mark GOSUB return behaviour.
-void analyzeReturn(SemanticAnalyzer &analyzer, ReturnStmt &stmt)
-{
+void analyzeReturn(SemanticAnalyzer &analyzer, ReturnStmt &stmt) {
     ControlCheckContext context(analyzer);
-    if (!context.hasActiveProcScope())
-    {
-        if (stmt.value)
-        {
+    if (!context.hasActiveProcScope()) {
+        if (stmt.value) {
             std::string msg = "RETURN with value not allowed at top level";
             context.diagnostics().emit(
                 il::support::Severity::Error, "B1008", stmt.loc, 6, std::move(msg));
-        }
-        else
-        {
+        } else {
             stmt.isGosubReturn = true;
         }
     }

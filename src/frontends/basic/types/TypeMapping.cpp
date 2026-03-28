@@ -16,8 +16,7 @@
 
 #include "frontends/basic/types/TypeMapping.hpp"
 
-namespace il::frontends::basic::types
-{
+namespace il::frontends::basic::types {
 
 /// @brief Map an IL core type to a BASIC scalar type.
 /// @details Supports integer, floating-point, string, boolean, and pointer
@@ -26,11 +25,9 @@ namespace il::frontends::basic::types
 ///          procedures. Unsupported kinds return `std::nullopt`.
 /// @param ilType IL core type to map.
 /// @return BASIC scalar type when supported; otherwise `std::nullopt`.
-std::optional<Type> mapIlToBasic(const il::core::Type &ilType)
-{
+std::optional<Type> mapIlToBasic(const il::core::Type &ilType) {
     using K = il::core::Type::Kind;
-    switch (ilType.kind)
-    {
+    switch (ilType.kind) {
         case K::I32:
             // Map 32-bit integers to BASIC integer type (64-bit internal).
             return Type::I64;

@@ -23,10 +23,8 @@ using viper::tui::ui::Event;
 using viper::tui::widgets::HSplitter;
 using viper::tui::widgets::VSplitter;
 
-struct StubWidget : viper::tui::ui::Widget
-{
-    void layout(const viper::tui::ui::Rect &r) override
-    {
+struct StubWidget : viper::tui::ui::Widget {
+    void layout(const viper::tui::ui::Rect &r) override {
         viper::tui::ui::Widget::layout(r);
         last = r;
     }
@@ -36,8 +34,7 @@ struct StubWidget : viper::tui::ui::Widget
     viper::tui::ui::Rect last{};
 };
 
-TEST(TUI, SplitterKeyboard)
-{
+TEST(TUI, SplitterKeyboard) {
     // Horizontal splitter ratio adjustments
     auto left = std::make_unique<StubWidget>();
     auto right = std::make_unique<StubWidget>();
@@ -80,8 +77,7 @@ TEST(TUI, SplitterKeyboard)
     ASSERT_EQ(tp->last.h, 95);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

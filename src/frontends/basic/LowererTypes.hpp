@@ -29,8 +29,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // Import StringHash from common library for backward compatibility
 using ::il::frontends::common::StringHash;
@@ -42,30 +41,26 @@ using RVal = ::il::frontends::common::ExprResult;
 /// @brief Result of lowering a PRINT# argument to a string.
 /// @details Pairs the lowered string value with an optional runtime feature that
 ///          must be declared when the string was produced via a runtime conversion.
-struct PrintChArgString
-{
+struct PrintChArgString {
     il::core::Value text; ///< IL value holding the string result.
     std::optional<il::runtime::RuntimeFeature>
         feature; ///< Runtime feature needed for the conversion, if any.
 };
 
 /// @brief Result of lowering an array access expression.
-struct ArrayAccess
-{
+struct ArrayAccess {
     il::core::Value base;  ///< Array handle loaded from the BASIC slot.
     il::core::Value index; ///< Zero-based element index, coerced to i64.
 };
 
 /// @brief Classify how an array access will be consumed.
-enum class ArrayAccessKind
-{
+enum class ArrayAccessKind {
     Load,  ///< The caller will read from the computed element.
     Store, ///< The caller will write to the computed element.
 };
 
 /// @brief Aggregated metadata for a BASIC symbol.
-struct SymbolInfo
-{
+struct SymbolInfo {
     Type type{Type::I64};           ///< BASIC type derived from declarations or suffixes.
     bool hasType{false};            ///< True when @ref type was explicitly recorded.
     bool isArray{false};            ///< True when symbol refers to an array.
@@ -82,8 +77,7 @@ struct SymbolInfo
 
 /// @brief Slot type and metadata for variable storage.
 /// @details Describes the IL type and semantic flags for a materialized stack slot.
-struct SlotType
-{
+struct SlotType {
     il::core::Type type{il::core::Type(il::core::Type::Kind::I64)}; ///< IL type of the slot.
     bool isArray{false};     ///< True when the slot holds an array handle.
     bool isBoolean{false};   ///< True when the slot holds a boolean scalar.
@@ -94,27 +88,23 @@ struct SlotType
 /// @brief Variable storage location and metadata.
 /// @details Combines the slot type descriptor with the IL pointer value
 ///          produced by alloca or field offset computation.
-struct VariableStorage
-{
+struct VariableStorage {
     SlotType slotInfo;       ///< Type and semantic flags for the storage.
     il::core::Value pointer; ///< IL value pointing to the storage location.
     bool isField{false};     ///< True when the storage refers to a class field.
 };
 
 /// @brief Cached signature for a user-defined procedure.
-struct ProcedureSignature
-{
+struct ProcedureSignature {
     il::core::Type retType{il::core::Type(il::core::Type::Kind::I64)}; ///< Declared return type.
     std::vector<il::core::Type> paramTypes; ///< Declared parameter types.
     std::vector<bool> byRefFlags;           ///< True when parameter is BYREF.
 };
 
 /// @brief Computed memory layout for a BASIC CLASS or TYPE declaration.
-struct ClassLayout
-{
+struct ClassLayout {
     /// @brief Metadata describing a single field within the class layout.
-    struct Field
-    {
+    struct Field {
         std::string name;
         Type type{Type::I64};
         std::size_t offset{0};
@@ -145,23 +135,18 @@ struct ClassLayout
     /// @brief Look up a field by name with case-insensitive fallback.
     /// @param name Field identifier to search for.
     /// @return Pointer to the matching Field, or nullptr when not found.
-    [[nodiscard]] const Field *findField(std::string_view name) const
-    {
+    [[nodiscard]] const Field *findField(std::string_view name) const {
         // Try exact match first
         auto it = fieldIndex.find(std::string(name));
         if (it != fieldIndex.end())
             return &fields[it->second];
         // Case-insensitive fallback (BASIC is case-insensitive)
-        for (const auto &kv : fieldIndex)
-        {
-            if (kv.first.size() == name.size())
-            {
+        for (const auto &kv : fieldIndex) {
+            if (kv.first.size() == name.size()) {
                 bool match = true;
-                for (std::size_t i = 0; i < name.size(); ++i)
-                {
+                for (std::size_t i = 0; i < name.size(); ++i) {
                     if (std::tolower(static_cast<unsigned char>(kv.first[i])) !=
-                        std::tolower(static_cast<unsigned char>(name[i])))
-                    {
+                        std::tolower(static_cast<unsigned char>(name[i]))) {
                         match = false;
                         break;
                     }
@@ -175,8 +160,7 @@ struct ClassLayout
 };
 
 /// @brief Describes the address and type of a resolved member field.
-struct MemberFieldAccess
-{
+struct MemberFieldAccess {
     il::core::Value ptr; ///< Pointer to the field storage.
     il::core::Type ilType{
         il::core::Type(il::core::Type::Kind::I64)}; ///< IL type used for loads/stores.
@@ -187,16 +171,14 @@ struct MemberFieldAccess
 /// @brief Field scope for tracking fields during class method lowering.
 /// @details Active during class method lowering to make instance fields visible
 ///          as implicit locals. Pairs the class layout with a per-field symbol map.
-struct FieldScope
-{
+struct FieldScope {
     const ClassLayout *layout{nullptr}; ///< Layout of the class whose fields are in scope.
     std::unordered_map<std::string, SymbolInfo, StringHash, std::equal_to<>>
         symbols; ///< Field symbols indexed by name.
 };
 
 /// @brief Layout of blocks emitted for an IF/ELSEIF chain.
-struct IfBlocks
-{
+struct IfBlocks {
     std::vector<std::size_t> tests; ///< indexes of test blocks
     std::vector<std::size_t> thens; ///< indexes of THEN blocks
     std::size_t elseIdx;            ///< index of ELSE block
@@ -209,16 +191,14 @@ struct IfBlocks
 ///          lowering step. Helpers mark `fallthrough` when execution can
 ///          reach `after` without an explicit transfer, ensuring callers
 ///          can reason about terminators consistently.
-struct CtrlState
-{
+struct CtrlState {
     il::core::BasicBlock *cur{nullptr};   ///< Block left active after lowering.
     il::core::BasicBlock *after{nullptr}; ///< Merge/done block if retained.
     bool fallthrough{false};              ///< True when `after` remains reachable.
 
     /// @brief Check if the control-flow state represents a terminated block.
     /// @return True when no current block exists or the current block has a terminator.
-    [[nodiscard]] bool terminated() const
-    {
+    [[nodiscard]] bool terminated() const {
         return !cur || cur->terminated;
     }
 };

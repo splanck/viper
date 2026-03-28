@@ -23,13 +23,11 @@
 
 #include <cstddef>
 
-namespace il::core
-{
+namespace il::core {
 
 /// @brief All instruction opcodes defined by the IL.
 /// @see docs/il-guide.md#reference §3 for opcode descriptions.
-enum class Opcode
-{
+enum class Opcode {
 #define IL_OPCODE(NAME, ...) NAME,
 #include "il/core/Opcode.def"
 #undef IL_OPCODE

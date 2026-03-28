@@ -32,13 +32,11 @@
 #include <fstream>
 #include <stdexcept>
 
-extern "C"
-{
-    uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
+extern "C" {
+uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
 }
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 //=============================================================================
 // ZIP Constants
@@ -63,14 +61,12 @@ static constexpr int kEndRecordSize = 22;
 // Helpers
 //=============================================================================
 
-static inline void putU16(uint8_t *p, uint16_t v)
-{
+static inline void putU16(uint8_t *p, uint16_t v) {
     p[0] = static_cast<uint8_t>(v & 0xFF);
     p[1] = static_cast<uint8_t>((v >> 8) & 0xFF);
 }
 
-static inline void putU32(uint8_t *p, uint32_t v)
-{
+static inline void putU32(uint8_t *p, uint32_t v) {
     p[0] = static_cast<uint8_t>(v & 0xFF);
     p[1] = static_cast<uint8_t>((v >> 8) & 0xFF);
     p[2] = static_cast<uint8_t>((v >> 16) & 0xFF);
@@ -81,38 +77,32 @@ static inline void putU32(uint8_t *p, uint32_t v)
 // ZipWriter Implementation
 //=============================================================================
 
-ZipWriter::ZipWriter()
-{
+ZipWriter::ZipWriter() {
     buffer_.reserve(65536);
 }
 
 ZipWriter::~ZipWriter() = default;
 
-void ZipWriter::writeBytes(const uint8_t *data, size_t len)
-{
+void ZipWriter::writeBytes(const uint8_t *data, size_t len) {
     buffer_.insert(buffer_.end(), data, data + len);
 }
 
-void ZipWriter::writeU16(uint16_t v)
-{
+void ZipWriter::writeU16(uint16_t v) {
     uint8_t buf[2];
     putU16(buf, v);
     writeBytes(buf, 2);
 }
 
-void ZipWriter::writeU32(uint32_t v)
-{
+void ZipWriter::writeU32(uint32_t v) {
     uint8_t buf[4];
     putU32(buf, v);
     writeBytes(buf, 4);
 }
 
-void ZipWriter::getDosTime(uint16_t &time, uint16_t &date)
-{
+void ZipWriter::getDosTime(uint16_t &time, uint16_t &date) {
     std::time_t now = std::time(nullptr);
     struct tm *t = std::localtime(&now);
-    if (!t)
-    {
+    if (!t) {
         time = 0;
         date = 0x0021; // 1980-01-01
         return;
@@ -121,8 +111,10 @@ void ZipWriter::getDosTime(uint16_t &time, uint16_t &date)
     date = static_cast<uint16_t>(t->tm_mday | ((t->tm_mon + 1) << 5) | ((t->tm_year - 80) << 9));
 }
 
-void ZipWriter::addFile(const std::string &name, const uint8_t *data, size_t len, uint32_t unixMode)
-{
+void ZipWriter::addFile(const std::string &name,
+                        const uint8_t *data,
+                        size_t len,
+                        uint32_t unixMode) {
     uint32_t crc = rt_crc32_compute(data, len);
 
     // Decide compression
@@ -131,11 +123,9 @@ void ZipWriter::addFile(const std::string &name, const uint8_t *data, size_t len
     size_t writeLen = len;
     std::vector<uint8_t> compressed;
 
-    if (len > 64)
-    {
+    if (len > 64) {
         compressed = deflate(data, len);
-        if (compressed.size() < len)
-        {
+        if (compressed.size() < len) {
             method = kMethodDeflate;
             writeData = compressed.data();
             writeLen = compressed.size();
@@ -177,13 +167,11 @@ void ZipWriter::addFile(const std::string &name, const uint8_t *data, size_t len
 
 void ZipWriter::addFileString(const std::string &name,
                               const std::string &content,
-                              uint32_t unixMode)
-{
+                              uint32_t unixMode) {
     addFile(name, reinterpret_cast<const uint8_t *>(content.data()), content.size(), unixMode);
 }
 
-void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode)
-{
+void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode) {
     std::string dirName = name;
     if (dirName.empty() || dirName.back() != '/')
         dirName += '/';
@@ -218,8 +206,7 @@ void ZipWriter::addDirectory(const std::string &name, uint32_t unixMode)
     entries_.push_back(std::move(e));
 }
 
-void ZipWriter::addSymlink(const std::string &name, const std::string &target)
-{
+void ZipWriter::addSymlink(const std::string &name, const std::string &target) {
     // Symlinks store the target path as file data
     auto *data = reinterpret_cast<const uint8_t *>(target.data());
     size_t len = target.size();
@@ -256,12 +243,10 @@ void ZipWriter::addSymlink(const std::string &name, const std::string &target)
     entries_.push_back(std::move(e));
 }
 
-void ZipWriter::writeCentralDirectory()
-{
+void ZipWriter::writeCentralDirectory() {
     uint32_t cdOffset = static_cast<uint32_t>(buffer_.size());
 
-    for (const auto &e : entries_)
-    {
+    for (const auto &e : entries_) {
         uint8_t ch[kCentralHeaderSize];
         putU32(ch + 0, kCentralHeaderSig);
         putU16(ch + 4, kVersionMadeBy);
@@ -301,8 +286,7 @@ void ZipWriter::writeCentralDirectory()
     writeBytes(eocd, kEndRecordSize);
 }
 
-void ZipWriter::finish(const std::string &path)
-{
+void ZipWriter::finish(const std::string &path) {
     writeCentralDirectory();
 
     std::ofstream out(path, std::ios::binary);
@@ -315,8 +299,7 @@ void ZipWriter::finish(const std::string &path)
         throw std::runtime_error("ZipWriter: failed to write " + path);
 }
 
-std::vector<uint8_t> ZipWriter::finishToVector()
-{
+std::vector<uint8_t> ZipWriter::finishToVector() {
     writeCentralDirectory();
     return std::move(buffer_);
 }

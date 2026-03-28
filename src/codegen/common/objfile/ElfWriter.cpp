@@ -32,8 +32,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::objfile
-{
+namespace viper::codegen::objfile {
 
 // =============================================================================
 // ELF Constants
@@ -101,10 +100,8 @@ static constexpr uint16_t kSecNoteGnuStack = 7;
 // Helpers: appendLE16/32/64, alignUp, padTo are provided by ObjFileWriterUtil.hpp.
 
 /// Map RelocKind to ELF relocation type.
-static uint32_t elfRelocType(RelocKind kind, ObjArch arch)
-{
-    switch (kind)
-    {
+static uint32_t elfRelocType(RelocKind kind, ObjArch arch) {
+    switch (kind) {
         // x86_64
         case RelocKind::PCRel32:
             return kRX86_64_Pc32;
@@ -135,9 +132,11 @@ static uint32_t elfRelocType(RelocKind kind, ObjArch arch)
 // =============================================================================
 
 /// Write an Elf64_Ehdr (64 bytes).
-static void writeEhdr(
-    std::vector<uint8_t> &out, uint16_t machine, uint64_t shoff, uint16_t shnum, uint16_t shstrndx)
-{
+static void writeEhdr(std::vector<uint8_t> &out,
+                      uint16_t machine,
+                      uint64_t shoff,
+                      uint16_t shnum,
+                      uint16_t shstrndx) {
     // e_ident
     out.insert(out.end(), kElfMagic, kElfMagic + 4);
     out.push_back(kElfClass64);
@@ -171,8 +170,7 @@ static void writeShdr(std::vector<uint8_t> &out,
                       uint32_t link,
                       uint32_t info,
                       uint64_t addralign,
-                      uint64_t entsize)
-{
+                      uint64_t entsize) {
     appendLE32(out, name);
     appendLE32(out, type);
     appendLE64(out, flags);
@@ -192,8 +190,7 @@ static void writeSym(std::vector<uint8_t> &out,
                      uint8_t other,
                      uint16_t shndx,
                      uint64_t value,
-                     uint64_t size)
-{
+                     uint64_t size) {
     appendLE32(out, name);
     out.push_back(info);
     out.push_back(other);
@@ -203,8 +200,7 @@ static void writeSym(std::vector<uint8_t> &out,
 }
 
 /// Write an Elf64_Rela (24 bytes).
-static void writeRela(std::vector<uint8_t> &out, uint64_t offset, uint64_t info, int64_t addend)
-{
+static void writeRela(std::vector<uint8_t> &out, uint64_t offset, uint64_t info, int64_t addend) {
     appendLE64(out, offset);
     appendLE64(out, info);
     appendLE64(out, static_cast<uint64_t>(addend));
@@ -217,8 +213,7 @@ static void writeRela(std::vector<uint8_t> &out, uint64_t offset, uint64_t info,
 bool ElfWriter::write(const std::string &path,
                       const CodeSection &text,
                       const CodeSection &rodata,
-                      std::ostream &err)
-{
+                      std::ostream &err) {
     // --- 1. Build .shstrtab (section name string table) ---
     StringTable shstrtab;
     uint32_t shNameNull = 0; // empty string at offset 0
@@ -244,8 +239,7 @@ bool ElfWriter::write(const std::string &path,
 
     // Collect symbols from both text and rodata sections.
     // We need a unified symbol table.
-    struct ElfSym
-    {
+    struct ElfSym {
         uint32_t strOffset;
         uint8_t info;
         uint16_t shndx;
@@ -279,8 +273,7 @@ bool ElfWriter::write(const std::string &path,
     // For simplicity, treat all defined symbols as globals (they're exported functions).
 
     // Process text section symbols.
-    struct PendingSym
-    {
+    struct PendingSym {
         uint32_t origIdx;
         const Symbol *sym;
         uint16_t shndx;
@@ -289,23 +282,17 @@ bool ElfWriter::write(const std::string &path,
 
     std::vector<PendingSym> pendingLocals, pendingGlobals;
 
-    for (uint32_t i = 1; i < text.symbols().count(); ++i)
-    {
+    for (uint32_t i = 1; i < text.symbols().count(); ++i) {
         const Symbol &s = text.symbols().at(i);
         PendingSym ps{i, &s, 0, true};
 
-        if (s.binding == SymbolBinding::External)
-        {
+        if (s.binding == SymbolBinding::External) {
             ps.shndx = kShnUndef;
             pendingGlobals.push_back(ps);
-        }
-        else if (s.binding == SymbolBinding::Local)
-        {
+        } else if (s.binding == SymbolBinding::Local) {
             ps.shndx = kSecText;
             pendingLocals.push_back(ps);
-        }
-        else
-        {
+        } else {
             // Global defined symbol.
             ps.shndx = kSecText;
             pendingGlobals.push_back(ps);
@@ -313,31 +300,24 @@ bool ElfWriter::write(const std::string &path,
     }
 
     // Process rodata section symbols.
-    for (uint32_t i = 1; i < rodata.symbols().count(); ++i)
-    {
+    for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
         const Symbol &s = rodata.symbols().at(i);
         PendingSym ps{i, &s, 0, false};
 
-        if (s.binding == SymbolBinding::External)
-        {
+        if (s.binding == SymbolBinding::External) {
             ps.shndx = kShnUndef;
             pendingGlobals.push_back(ps);
-        }
-        else if (s.binding == SymbolBinding::Local)
-        {
+        } else if (s.binding == SymbolBinding::Local) {
             ps.shndx = kSecRodata;
             pendingLocals.push_back(ps);
-        }
-        else
-        {
+        } else {
             ps.shndx = kSecRodata;
             pendingGlobals.push_back(ps);
         }
     }
 
     // Write local symbols first.
-    for (const auto &ps : pendingLocals)
-    {
+    for (const auto &ps : pendingLocals) {
         uint32_t nameOff = strtab.add(ps.sym->name);
         uint8_t type = (ps.sym->section == SymbolSection::Undefined) ? kSttNotype : kSttFunc;
         writeSym(symtabBytes,
@@ -359,8 +339,7 @@ bool ElfWriter::write(const std::string &path,
 
     // Write global/external symbols.
     uint32_t elfGlobalIdx = elfLocalCount;
-    for (const auto &ps : pendingGlobals)
-    {
+    for (const auto &ps : pendingGlobals) {
         uint32_t nameOff = strtab.add(ps.sym->name);
         uint8_t type = (ps.sym->binding == SymbolBinding::External) ? kSttNotype : kSttFunc;
         uint16_t shndx = (ps.sym->binding == SymbolBinding::External) ? kShnUndef : ps.shndx;
@@ -377,17 +356,13 @@ bool ElfWriter::write(const std::string &path,
 
     // --- 3. Build .rela.text ---
     std::vector<uint8_t> relaBytes;
-    for (const auto &rel : text.relocations())
-    {
+    for (const auto &rel : text.relocations()) {
         // Map symbol index to ELF index.
         uint32_t elfSymIdx = 0;
         auto it = textSymMap.find(rel.symbolIndex);
-        if (it != textSymMap.end())
-        {
+        if (it != textSymMap.end()) {
             elfSymIdx = it->second;
-        }
-        else
-        {
+        } else {
             // Symbol might be in rodata (cross-section reference).
             // For cross-section relocs, use the .rodata section symbol.
             auto rit = rodataSymMap.find(rel.symbolIndex);
@@ -533,15 +508,13 @@ bool ElfWriter::write(const std::string &path,
 
     // --- 6. Write to disk ---
     std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
-    if (!ofs)
-    {
+    if (!ofs) {
         err << "ElfWriter: cannot open " << path << " for writing\n";
         return false;
     }
     ofs.write(reinterpret_cast<const char *>(file.data()),
               static_cast<std::streamsize>(file.size()));
-    if (!ofs)
-    {
+    if (!ofs) {
         err << "ElfWriter: write failed for " << path << "\n";
         return false;
     }
@@ -559,11 +532,9 @@ bool ElfWriter::write(const std::string &path,
 bool ElfWriter::write(const std::string &path,
                       const std::vector<CodeSection> &textSections,
                       const CodeSection &rodata,
-                      std::ostream &err)
-{
+                      std::ostream &err) {
     // For 0 or 1 text sections, delegate to single-section write.
-    if (textSections.size() <= 1)
-    {
+    if (textSections.size() <= 1) {
         if (textSections.size() == 1)
             return write(path, textSections[0], rodata, err);
         CodeSection empty;
@@ -575,14 +546,11 @@ bool ElfWriter::write(const std::string &path,
 
     // --- 1. Extract function names from each text section ---
     std::vector<std::string> funcNames(N);
-    for (size_t i = 0; i < N; ++i)
-    {
+    for (size_t i = 0; i < N; ++i) {
         funcNames[i] = "func_" + std::to_string(i);
-        for (uint32_t j = 1; j < textSections[i].symbols().count(); ++j)
-        {
+        for (uint32_t j = 1; j < textSections[i].symbols().count(); ++j) {
             const auto &s = textSections[i].symbols().at(j);
-            if (s.binding == SymbolBinding::Global && s.section == SymbolSection::Text)
-            {
+            if (s.binding == SymbolBinding::Global && s.section == SymbolSection::Text) {
                 funcNames[i] = s.name;
                 break;
             }
@@ -650,8 +618,7 @@ bool ElfWriter::write(const std::string &path,
     std::vector<std::unordered_map<uint32_t, uint32_t>> textSymMaps(N);
     std::unordered_map<uint32_t, uint32_t> rodataSymMap;
 
-    struct PendingSym
-    {
+    struct PendingSym {
         uint32_t origIdx;
         const Symbol *sym;
         uint16_t shndx;
@@ -661,26 +628,19 @@ bool ElfWriter::write(const std::string &path,
     std::vector<PendingSym> pendingLocals, pendingDefinedGlobals, pendingExternals;
 
     // Collect symbols from all text sections.
-    for (size_t ti = 0; ti < N; ++ti)
-    {
+    for (size_t ti = 0; ti < N; ++ti) {
         const auto &sec = textSections[ti];
-        for (uint32_t i = 1; i < sec.symbols().count(); ++i)
-        {
+        for (uint32_t i = 1; i < sec.symbols().count(); ++i) {
             const auto &s = sec.symbols().at(i);
             PendingSym ps{i, &s, 0, ti};
 
-            if (s.binding == SymbolBinding::External)
-            {
+            if (s.binding == SymbolBinding::External) {
                 ps.shndx = kShnUndef;
                 pendingExternals.push_back(ps);
-            }
-            else if (s.binding == SymbolBinding::Local)
-            {
+            } else if (s.binding == SymbolBinding::Local) {
                 ps.shndx = secText(ti);
                 pendingLocals.push_back(ps);
-            }
-            else
-            {
+            } else {
                 ps.shndx = secText(ti);
                 pendingDefinedGlobals.push_back(ps);
             }
@@ -688,31 +648,24 @@ bool ElfWriter::write(const std::string &path,
     }
 
     // Collect rodata symbols.
-    for (uint32_t i = 1; i < rodata.symbols().count(); ++i)
-    {
+    for (uint32_t i = 1; i < rodata.symbols().count(); ++i) {
         const auto &s = rodata.symbols().at(i);
         PendingSym ps{i, &s, 0, SIZE_MAX};
 
-        if (s.binding == SymbolBinding::External)
-        {
+        if (s.binding == SymbolBinding::External) {
             ps.shndx = kShnUndef;
             pendingExternals.push_back(ps);
-        }
-        else if (s.binding == SymbolBinding::Local)
-        {
+        } else if (s.binding == SymbolBinding::Local) {
             ps.shndx = secRodata;
             pendingLocals.push_back(ps);
-        }
-        else
-        {
+        } else {
             ps.shndx = secRodata;
             pendingDefinedGlobals.push_back(ps);
         }
     }
 
     // Write local symbols first (ELF requires locals before globals).
-    for (const auto &ps : pendingLocals)
-    {
+    for (const auto &ps : pendingLocals) {
         uint32_t nameOff = strtab.add(ps.sym->name);
         uint8_t type = (ps.sym->section == SymbolSection::Undefined) ? kSttNotype : kSttFunc;
         writeSym(symtabBytes,
@@ -735,11 +688,9 @@ bool ElfWriter::write(const std::string &path,
     std::unordered_map<std::string, uint32_t> globalNameMap;
     uint32_t elfGlobalIdx = elfLocalCount;
 
-    for (const auto &ps : pendingDefinedGlobals)
-    {
+    for (const auto &ps : pendingDefinedGlobals) {
         auto it = globalNameMap.find(ps.sym->name);
-        if (it != globalNameMap.end())
-        {
+        if (it != globalNameMap.end()) {
             if (ps.textIdx != SIZE_MAX)
                 textSymMaps[ps.textIdx][ps.origIdx] = it->second;
             else
@@ -763,11 +714,9 @@ bool ElfWriter::write(const std::string &path,
     }
 
     // Then write external (undefined) symbols (reuse if name already present).
-    for (const auto &ps : pendingExternals)
-    {
+    for (const auto &ps : pendingExternals) {
         auto it = globalNameMap.find(ps.sym->name);
-        if (it != globalNameMap.end())
-        {
+        if (it != globalNameMap.end()) {
             if (ps.textIdx != SIZE_MAX)
                 textSymMaps[ps.textIdx][ps.origIdx] = it->second;
             else
@@ -787,18 +736,13 @@ bool ElfWriter::write(const std::string &path,
 
     // --- 5. Build .rela.text.* entries ---
     std::vector<std::vector<uint8_t>> allRelaBytes(N);
-    for (size_t ti = 0; ti < N; ++ti)
-    {
-        for (const auto &rel : textSections[ti].relocations())
-        {
+    for (size_t ti = 0; ti < N; ++ti) {
+        for (const auto &rel : textSections[ti].relocations()) {
             uint32_t elfSymIdx = 0;
             auto it = textSymMaps[ti].find(rel.symbolIndex);
-            if (it != textSymMaps[ti].end())
-            {
+            if (it != textSymMaps[ti].end()) {
                 elfSymIdx = it->second;
-            }
-            else
-            {
+            } else {
                 // Fallback: check rodata map (cross-section reference).
                 auto rit = rodataSymMap.find(rel.symbolIndex);
                 if (rit != rodataSymMap.end())
@@ -819,8 +763,7 @@ bool ElfWriter::write(const std::string &path,
     std::vector<uint64_t> textOffsets(N);
     std::vector<uint64_t> textSizes(N);
     uint64_t cursor = kEhSize;
-    for (size_t i = 0; i < N; ++i)
-    {
+    for (size_t i = 0; i < N; ++i) {
         textSizes[i] = textSections[i].bytes().size();
         textOffsets[i] = alignUp(cursor, textAlign);
         cursor = textOffsets[i] + textSizes[i];
@@ -833,8 +776,7 @@ bool ElfWriter::write(const std::string &path,
     // .rela.text.* offsets (always allocated, even if empty).
     std::vector<uint64_t> relaOffsets(N);
     std::vector<uint64_t> relaSizes(N);
-    for (size_t i = 0; i < N; ++i)
-    {
+    for (size_t i = 0; i < N; ++i) {
         relaSizes[i] = allRelaBytes[i].size();
         relaOffsets[i] = alignUp(cursor, 8);
         cursor = relaOffsets[i] + relaSizes[i];
@@ -865,8 +807,7 @@ bool ElfWriter::write(const std::string &path,
     writeEhdr(file, machine, offShtab, numSections, secShstrtab);
 
     // .text.* section data
-    for (size_t i = 0; i < N; ++i)
-    {
+    for (size_t i = 0; i < N; ++i) {
         padTo(file, static_cast<size_t>(textOffsets[i]));
         file.insert(file.end(), textSections[i].bytes().begin(), textSections[i].bytes().end());
     }
@@ -876,10 +817,8 @@ bool ElfWriter::write(const std::string &path,
     file.insert(file.end(), rodata.bytes().begin(), rodata.bytes().end());
 
     // .rela.text.* data
-    for (size_t i = 0; i < N; ++i)
-    {
-        if (!allRelaBytes[i].empty())
-        {
+    for (size_t i = 0; i < N; ++i) {
+        if (!allRelaBytes[i].empty()) {
             padTo(file, static_cast<size_t>(relaOffsets[i]));
             file.insert(file.end(), allRelaBytes[i].begin(), allRelaBytes[i].end());
         }
@@ -916,8 +855,7 @@ bool ElfWriter::write(const std::string &path,
     writeShdr(file, 0, kShtNull, 0, 0, 0, 0, 0, 0, 0);
 
     // [1..N] .text.funcname sections
-    for (size_t i = 0; i < N; ++i)
-    {
+    for (size_t i = 0; i < N; ++i) {
         writeShdr(file,
                   shNameText[i],
                   kShtProgbits,
@@ -934,8 +872,7 @@ bool ElfWriter::write(const std::string &path,
     writeShdr(file, shNameRodata, kShtProgbits, kShfAlloc, offRodata, rodataSize, 0, 0, 8, 0);
 
     // [N+2..2N+1] .rela.text.funcname sections
-    for (size_t i = 0; i < N; ++i)
-    {
+    for (size_t i = 0; i < N; ++i) {
         writeShdr(file,
                   shNameRelaText[i],
                   kShtRela,
@@ -967,15 +904,13 @@ bool ElfWriter::write(const std::string &path,
 
     // --- 9. Write to disk ---
     std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
-    if (!ofs)
-    {
+    if (!ofs) {
         err << "ElfWriter: cannot open " << path << " for writing\n";
         return false;
     }
     ofs.write(reinterpret_cast<const char *>(file.data()),
               static_cast<std::streamsize>(file.size()));
-    if (!ofs)
-    {
+    if (!ofs) {
         err << "ElfWriter: write failed for " << path << "\n";
         return false;
     }

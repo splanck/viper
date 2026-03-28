@@ -31,10 +31,8 @@
 ///          canonical storage and mutation helpers for that table, keeping the
 ///          behaviour uniform across the various registration modules.
 
-namespace il::runtime::signatures
-{
-namespace
-{
+namespace il::runtime::signatures {
+namespace {
 /// @brief Access the process-wide container that owns runtime signatures.
 /// @details The helper wraps a function-local static so the vector is lazily
 ///          constructed upon first use yet guaranteed to survive until program
@@ -44,8 +42,7 @@ namespace
 ///          so previously returned references remain valid for diagnostic tools
 ///          that snapshot the registry contents.
 /// @return Mutable vector storing registered signatures in insertion order.
-std::vector<Signature> &registry()
-{
+std::vector<Signature> &registry() {
     static std::vector<Signature> g_signatures;
     return g_signatures;
 }
@@ -58,8 +55,7 @@ std::vector<Signature> &registry()
 ///          coordination.  Consumers that require uniqueness can deduplicate the
 ///          returned array themselves without mutating the canonical storage.
 /// @param signature Signature metadata describing a runtime helper.
-Signature apply_effect_overrides(Signature signature)
-{
+Signature apply_effect_overrides(Signature signature) {
     const auto effects = il::runtime::classifyHelperEffects(signature.name);
     signature.nothrow = signature.nothrow || effects.nothrow;
     signature.readonly = signature.readonly || effects.readonly;
@@ -67,8 +63,7 @@ Signature apply_effect_overrides(Signature signature)
     return signature;
 }
 
-void register_signature(const Signature &signature)
-{
+void register_signature(const Signature &signature) {
     registry().push_back(apply_effect_overrides(signature));
 }
 
@@ -79,8 +74,7 @@ void register_signature(const Signature &signature)
 ///          Subsequent registrations may invalidate iterators but never the
 ///          reference itself, matching standard library container semantics.
 /// @return Read-only view of the registered signatures in insertion order.
-const std::vector<Signature> &all_signatures()
-{
+const std::vector<Signature> &all_signatures() {
     return registry();
 }
 

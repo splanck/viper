@@ -21,15 +21,13 @@
 #include <optional>
 #include <string>
 
-namespace
-{
+namespace {
 using viper::tests::CodegenComparisonOptions;
 using viper::tests::CodegenComparisonResult;
 using viper::tests::CodegenFixture;
 using viper::tests::CodegenRunConfig;
 
-struct CliScenario
-{
+struct CliScenario {
     const char *name;
     CodegenRunConfig config;
     CodegenComparisonOptions options;
@@ -86,27 +84,22 @@ exit:
                                                   {}},
                                                  {false, std::nullopt}}}};
 
-CodegenComparisonResult runScenario(CodegenFixture &fixture, const CliScenario &scenario)
-{
+CodegenComparisonResult runScenario(CodegenFixture &fixture, const CliScenario &scenario) {
     return fixture.compareVmAndNative(scenario.config, scenario.options);
 }
 
 } // namespace
 
-int main()
-{
+int main() {
     CodegenFixture fixture;
-    if (!fixture.isReady())
-    {
+    if (!fixture.isReady()) {
         std::cerr << fixture.setupError();
         return EXIT_FAILURE;
     }
 
-    for (const CliScenario &scenario : kScenarios)
-    {
+    for (const CliScenario &scenario : kScenarios) {
         const CodegenComparisonResult result = runScenario(fixture, scenario);
-        if (!result.success)
-        {
+        if (!result.success) {
             std::cerr << result.message;
             return EXIT_FAILURE;
         }

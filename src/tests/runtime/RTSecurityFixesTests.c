@@ -27,11 +27,9 @@ static int tests_run = 0;
 static int tests_failed = 0;
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+        if (!(cond)) {                                                                             \
             tests_failed++;                                                                        \
             fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                        \
         }                                                                                          \
@@ -41,8 +39,7 @@ static int tests_failed = 0;
 // S-11: ReDoS — regex step limit
 //=============================================================================
 
-static void test_regex_redos_catastrophic_pattern(void)
-{
+static void test_regex_redos_catastrophic_pattern(void) {
     // (a+)+ matched against "aaaa...!": exponential backtracking without limit.
     // With RE_MAX_STEPS=1,000,000, should return 0 (no match) rather than hang.
     rt_string text = rt_string_from_bytes("aaaaaaaaaaaaaaaaaaaab", 21);
@@ -56,8 +53,7 @@ static void test_regex_redos_catastrophic_pattern(void)
     rt_string_unref(pat);
 }
 
-static void test_regex_normal_match(void)
-{
+static void test_regex_normal_match(void) {
     rt_string text = rt_string_from_bytes("hello world", 11);
     rt_string pat = rt_string_from_bytes("hello.*world", 12);
     ASSERT(rt_pattern_is_match(text, pat) == 1);
@@ -65,8 +61,7 @@ static void test_regex_normal_match(void)
     rt_string_unref(pat);
 }
 
-static void test_regex_no_match(void)
-{
+static void test_regex_no_match(void) {
     rt_string text = rt_string_from_bytes("goodbye", 7);
     rt_string pat = rt_string_from_bytes("hello", 5);
     ASSERT(rt_pattern_is_match(text, pat) == 0);
@@ -78,16 +73,14 @@ static void test_regex_no_match(void)
 // S-13: XSS — javascript: and data: URL blocking in Markdown
 //=============================================================================
 
-static int str_contains(rt_string s, const char *needle)
-{
+static int str_contains(rt_string s, const char *needle) {
     if (!s)
         return 0;
     const char *cstr = rt_string_cstr(s);
     return cstr ? (strstr(cstr, needle) != NULL) : 0;
 }
 
-static void test_markdown_javascript_url_blocked(void)
-{
+static void test_markdown_javascript_url_blocked(void) {
     // javascript: scheme must be replaced with '#'
     rt_string md = rt_string_from_bytes("[click](javascript:alert(1))", 28);
     rt_string html = rt_markdown_to_html(md);
@@ -98,8 +91,7 @@ static void test_markdown_javascript_url_blocked(void)
     rt_string_unref(html);
 }
 
-static void test_markdown_data_url_blocked(void)
-{
+static void test_markdown_data_url_blocked(void) {
     // data: scheme must be blocked
     rt_string md = rt_string_from_bytes("[img](data:text/html,<script>x</script>)", 40);
     rt_string html = rt_markdown_to_html(md);
@@ -108,8 +100,7 @@ static void test_markdown_data_url_blocked(void)
     rt_string_unref(html);
 }
 
-static void test_markdown_vbscript_url_blocked(void)
-{
+static void test_markdown_vbscript_url_blocked(void) {
     rt_string md = rt_string_from_bytes("[x](vbscript:msgbox(1))", 23);
     rt_string html = rt_markdown_to_html(md);
     ASSERT(!str_contains(html, "vbscript:"));
@@ -117,8 +108,7 @@ static void test_markdown_vbscript_url_blocked(void)
     rt_string_unref(html);
 }
 
-static void test_markdown_https_url_allowed(void)
-{
+static void test_markdown_https_url_allowed(void) {
     // Safe https: links must pass through unchanged
     rt_string md = rt_string_from_bytes("[ok](https://example.com)", 25);
     rt_string html = rt_markdown_to_html(md);
@@ -127,8 +117,7 @@ static void test_markdown_https_url_allowed(void)
     rt_string_unref(html);
 }
 
-static void test_markdown_javascript_case_insensitive(void)
-{
+static void test_markdown_javascript_case_insensitive(void) {
     // Case-insensitive scheme blocking: JAVASCRIPT: must be blocked
     rt_string md = rt_string_from_bytes("[x](JAVASCRIPT:alert(1))", 24);
     rt_string html = rt_markdown_to_html(md);
@@ -141,37 +130,32 @@ static void test_markdown_javascript_case_insensitive(void)
 // S-14: TOML — rt_toml_is_valid correctly returns 0 for invalid TOML
 //=============================================================================
 
-static void test_toml_valid_simple(void)
-{
+static void test_toml_valid_simple(void) {
     rt_string src = rt_string_from_bytes("key = \"value\"\n", 14);
     ASSERT(rt_toml_is_valid(src) == 1);
     rt_string_unref(src);
 }
 
-static void test_toml_valid_section(void)
-{
+static void test_toml_valid_section(void) {
     rt_string src = rt_string_from_bytes("[section]\nkey = \"v\"\n", 20);
     ASSERT(rt_toml_is_valid(src) == 1);
     rt_string_unref(src);
 }
 
-static void test_toml_invalid_missing_equals(void)
-{
+static void test_toml_invalid_missing_equals(void) {
     // "key value" with no '=' is invalid TOML
     rt_string src = rt_string_from_bytes("key value\n", 10);
     ASSERT(rt_toml_is_valid(src) == 0);
     rt_string_unref(src);
 }
 
-static void test_toml_empty_is_valid(void)
-{
+static void test_toml_empty_is_valid(void) {
     rt_string src = rt_string_from_bytes("", 0);
     ASSERT(rt_toml_is_valid(src) == 1);
     rt_string_unref(src);
 }
 
-static void test_toml_comment_only_valid(void)
-{
+static void test_toml_comment_only_valid(void) {
     rt_string src = rt_string_from_bytes("# just a comment\n", 18);
     ASSERT(rt_toml_is_valid(src) == 1);
     rt_string_unref(src);
@@ -181,8 +165,7 @@ static void test_toml_comment_only_valid(void)
 // S-15: TOML — memcpy type-punning fix doesn't break get/get_str
 //=============================================================================
 
-static void test_toml_get_str_works(void)
-{
+static void test_toml_get_str_works(void) {
     rt_string src = rt_string_from_bytes("name = \"Alice\"\n", 15);
     void *map = rt_toml_parse(src);
     ASSERT(map != NULL);
@@ -201,8 +184,7 @@ static void test_toml_get_str_works(void)
 //=============================================================================
 
 /* Build a deeply-nested JSON object like {"a":{"a":{"a":...}}} */
-static rt_string make_deep_json(int depth)
-{
+static rt_string make_deep_json(int depth) {
     int total = depth * 7 + 3; // "{\"a\":" * depth + "0" + "}" * depth + NUL
     char *buf = (char *)malloc((size_t)total + 4);
     if (!buf)
@@ -219,8 +201,7 @@ static rt_string make_deep_json(int depth)
     return s;
 }
 
-static void test_json_depth_within_limit(void)
-{
+static void test_json_depth_within_limit(void) {
     // 50 levels — within the 200-level limit — must parse OK
     rt_string src = make_deep_json(50);
     void *v = rt_json_parse(src);
@@ -228,8 +209,7 @@ static void test_json_depth_within_limit(void)
     rt_string_unref(src);
 }
 
-static void test_json_depth_exceeds_limit(void)
-{
+static void test_json_depth_exceeds_limit(void) {
     // 500 levels — beyond the 200-level limit — parse returns NULL or partial
     rt_string src = make_deep_json(500);
     // We just verify the parser returns without crashing; result may be NULL
@@ -243,8 +223,7 @@ static void test_json_depth_exceeds_limit(void)
 // S-17: XML — element nesting depth limit
 //=============================================================================
 
-static rt_string make_deep_xml(int depth)
-{
+static rt_string make_deep_xml(int depth) {
     // <a><a><a>...</a></a></a>
     int total = depth * 7 + depth * 4 + 1; // "<a>" + "</a>" per level
     char *buf = (char *)malloc((size_t)total + 4);
@@ -261,8 +240,7 @@ static rt_string make_deep_xml(int depth)
     return s;
 }
 
-static void test_xml_depth_within_limit(void)
-{
+static void test_xml_depth_within_limit(void) {
     // 50 levels — must parse OK
     rt_string src = make_deep_xml(50);
     void *doc = rt_xml_parse(src);
@@ -270,8 +248,7 @@ static void test_xml_depth_within_limit(void)
     rt_string_unref(src);
 }
 
-static void test_xml_depth_exceeds_limit(void)
-{
+static void test_xml_depth_exceeds_limit(void) {
     // 500 levels — must return without crashing (depth guard triggers)
     rt_string src = make_deep_xml(500);
     void *doc = rt_xml_parse(src);
@@ -284,8 +261,7 @@ static void test_xml_depth_exceeds_limit(void)
 // S-17 / O-04: XML text_content — correctness after refactor
 //=============================================================================
 
-static void test_xml_text_content_basic(void)
-{
+static void test_xml_text_content_basic(void) {
     rt_string src = rt_string_from_bytes("<root>Hello World</root>", 24);
     void *doc = rt_xml_parse(src);
     ASSERT(doc != NULL);
@@ -306,8 +282,7 @@ static void test_xml_text_content_basic(void)
 // S-18: YAML — recursion depth limit
 //=============================================================================
 
-static rt_string make_deep_yaml(int depth)
-{
+static rt_string make_deep_yaml(int depth) {
     // Build: "key:\n  key:\n    key:\n      value\n"
     // Each level i writes 2*i spaces + "key:\n" (5 chars) = 2*i+5 bytes.
     // Sum over depth levels: sum(2*i+5, i=0..depth-1) = depth^2 + 4*depth.
@@ -316,8 +291,7 @@ static rt_string make_deep_yaml(int depth)
     if (!buf)
         return rt_string_from_bytes("key: val\n", 9);
     size_t pos = 0;
-    for (int i = 0; i < depth; i++)
-    {
+    for (int i = 0; i < depth; i++) {
         for (int j = 0; j < i * 2; j++)
             buf[pos++] = ' ';
         pos += (size_t)snprintf(buf + pos, total - pos, "key:\n");
@@ -327,8 +301,7 @@ static rt_string make_deep_yaml(int depth)
     return s;
 }
 
-static void test_yaml_depth_within_limit(void)
-{
+static void test_yaml_depth_within_limit(void) {
     rt_string src = make_deep_yaml(30);
     void *v = rt_yaml_parse(src);
     (void)v;
@@ -336,8 +309,7 @@ static void test_yaml_depth_within_limit(void)
     rt_string_unref(src);
 }
 
-static void test_yaml_depth_exceeds_limit(void)
-{
+static void test_yaml_depth_exceeds_limit(void) {
     rt_string src = make_deep_yaml(300);
     void *v = rt_yaml_parse(src);
     (void)v;
@@ -349,8 +321,7 @@ static void test_yaml_depth_exceeds_limit(void)
 // S-20: Decompression bomb — output size cap
 //=============================================================================
 
-static void test_compress_roundtrip_small(void)
-{
+static void test_compress_roundtrip_small(void) {
     // Normal compress/decompress roundtrip must still work after the size cap
     const char *data = "hello hello hello hello hello";
     int64_t datalen = (int64_t)strlen(data);
@@ -374,8 +345,7 @@ static void test_compress_roundtrip_small(void)
 // main
 //=============================================================================
 
-int main(void)
-{
+int main(void) {
     // S-11: ReDoS step limit
     test_regex_redos_catastrophic_pattern();
     test_regex_normal_match();

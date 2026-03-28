@@ -39,8 +39,7 @@
 #include "support/diagnostics.hpp"
 #include <memory>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 //===----------------------------------------------------------------------===//
 /// @name Forward Declarations
 /// @brief Forward declarations for AST node types and smart pointer aliases.

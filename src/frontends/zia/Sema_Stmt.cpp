@@ -12,32 +12,27 @@
 
 #include "frontends/zia/Sema.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //=============================================================================
 // Statement Analysis
 //=============================================================================
 
-void Sema::analyzeStmt(Stmt *stmt)
-{
+void Sema::analyzeStmt(Stmt *stmt) {
     if (!stmt)
         return;
 
-    switch (stmt->kind)
-    {
+    switch (stmt->kind) {
         case StmtKind::Block:
             analyzeBlockStmt(static_cast<BlockStmt *>(stmt));
             break;
-        case StmtKind::Expr:
-        {
+        case StmtKind::Expr: {
             auto *exprStmt = static_cast<ExprStmt *>(stmt);
             TypeRef resultType = analyzeExpr(exprStmt->expr.get());
 
             // W014: Unused result — call returning non-void value discarded
             if (exprStmt->expr->kind == ExprKind::Call && resultType &&
-                resultType->kind != TypeKindSem::Void && resultType->kind != TypeKindSem::Unknown)
-            {
+                resultType->kind != TypeKindSem::Void && resultType->kind != TypeKindSem::Unknown) {
                 warn(WarningCode::W014_UnusedResult,
                      exprStmt->loc,
                      "Result of function call is unused");
@@ -64,8 +59,7 @@ void Sema::analyzeStmt(Stmt *stmt)
             break;
         case StmtKind::Break:
         case StmtKind::Continue:
-            if (loopDepth_ == 0)
-            {
+            if (loopDepth_ == 0) {
                 error(stmt->loc,
                       stmt->kind == StmtKind::Break ? "break used outside of loop"
                                                     : "continue used outside of loop");
@@ -77,15 +71,13 @@ void Sema::analyzeStmt(Stmt *stmt)
         case StmtKind::Match:
             analyzeMatchStmt(static_cast<MatchStmt *>(stmt));
             break;
-        case StmtKind::Try:
-        {
+        case StmtKind::Try: {
             auto *tryStmt = static_cast<TryStmt *>(stmt);
             if (tryStmt->tryBody)
                 analyzeStmt(tryStmt->tryBody.get());
 
             // Validate typed catch error type name.
-            if (!tryStmt->catchTypeName.empty())
-            {
+            if (!tryStmt->catchTypeName.empty()) {
                 static const char *const validErrorTypes[] = {
                     "DivideByZero",
                     "Overflow",
@@ -102,26 +94,21 @@ void Sema::analyzeStmt(Stmt *stmt)
                     "Error", // catch-all alias
                 };
                 bool found = false;
-                for (const auto *name : validErrorTypes)
-                {
-                    if (tryStmt->catchTypeName == name)
-                    {
+                for (const auto *name : validErrorTypes) {
+                    if (tryStmt->catchTypeName == name) {
                         found = true;
                         break;
                     }
                 }
-                if (!found)
-                {
+                if (!found) {
                     error(tryStmt->loc,
                           "unknown error type '" + tryStmt->catchTypeName + "' in catch clause");
                 }
             }
 
-            if (tryStmt->catchBody)
-            {
+            if (tryStmt->catchBody) {
                 pushScope(tryStmt->loc);
-                if (!tryStmt->catchVar.empty())
-                {
+                if (!tryStmt->catchVar.empty()) {
                     Symbol sym;
                     sym.kind = Symbol::Kind::Variable;
                     sym.name = tryStmt->catchVar;
@@ -136,8 +123,7 @@ void Sema::analyzeStmt(Stmt *stmt)
                 analyzeStmt(tryStmt->finallyBody.get());
             break;
         }
-        case StmtKind::Throw:
-        {
+        case StmtKind::Throw: {
             auto *throwStmt = static_cast<ThrowStmt *>(stmt);
             if (throwStmt->value)
                 analyzeExpr(throwStmt->value.get());
@@ -147,15 +133,13 @@ void Sema::analyzeStmt(Stmt *stmt)
 }
 
 /// @brief Check if a statement unconditionally terminates (return/break/continue/throw).
-static bool stmtTerminates(const Stmt *s)
-{
+static bool stmtTerminates(const Stmt *s) {
     if (!s)
         return false;
     if (s->kind == StmtKind::Return || s->kind == StmtKind::Break ||
         s->kind == StmtKind::Continue || s->kind == StmtKind::Throw)
         return true;
-    if (s->kind == StmtKind::Block)
-    {
+    if (s->kind == StmtKind::Block) {
         auto *block = static_cast<const BlockStmt *>(s);
         if (!block->statements.empty())
             return stmtTerminates(block->statements.back().get());
@@ -163,16 +147,13 @@ static bool stmtTerminates(const Stmt *s)
     return false;
 }
 
-void Sema::analyzeBlockStmt(BlockStmt *stmt)
-{
+void Sema::analyzeBlockStmt(BlockStmt *stmt) {
     pushScope(stmt->loc);
     bool afterTerminator = false;
     int guardNarrowings = 0;
-    for (auto &s : stmt->statements)
-    {
+    for (auto &s : stmt->statements) {
         // W002: Unreachable code after return/break/continue
-        if (afterTerminator)
-        {
+        if (afterTerminator) {
             warn(WarningCode::W002_UnreachableCode,
                  s->loc,
                  "Unreachable code after return/break/continue");
@@ -182,29 +163,23 @@ void Sema::analyzeBlockStmt(BlockStmt *stmt)
         analyzeStmt(s.get());
 
         if (s->kind == StmtKind::Return || s->kind == StmtKind::Break ||
-            s->kind == StmtKind::Continue)
-        {
+            s->kind == StmtKind::Continue) {
             afterTerminator = true;
         }
 
         // Guard-clause narrowing: if (x == null) return; → x is non-null after
-        if (s->kind == StmtKind::If)
-        {
+        if (s->kind == StmtKind::If) {
             auto *ifStmt = static_cast<IfStmt *>(s.get());
-            if (!ifStmt->elseBranch && stmtTerminates(ifStmt->thenBranch.get()))
-            {
+            if (!ifStmt->elseBranch && stmtTerminates(ifStmt->thenBranch.get())) {
                 std::string nullCheckVar;
                 bool isNotNull = false;
-                if (tryExtractNullCheck(ifStmt->condition.get(), nullCheckVar, isNotNull))
-                {
+                if (tryExtractNullCheck(ifStmt->condition.get(), nullCheckVar, isNotNull)) {
                     // if (x == null) return; → x is non-null after
                     // if (x != null) return; → x is null after (less useful, but correct)
                     TypeRef varType = lookupVarType(nullCheckVar);
-                    if (varType && varType->kind == TypeKindSem::Optional)
-                    {
+                    if (varType && varType->kind == TypeKindSem::Optional) {
                         TypeRef narrowed = isNotNull ? nullptr : varType->innerType();
-                        if (!isNotNull && narrowed)
-                        {
+                        if (!isNotNull && narrowed) {
                             pushNarrowingScope();
                             narrowType(nullCheckVar, narrowed);
                             guardNarrowings++;
@@ -219,30 +194,24 @@ void Sema::analyzeBlockStmt(BlockStmt *stmt)
     popScope(scopeEndForStmt(stmt));
 }
 
-void Sema::analyzeVarStmt(VarStmt *stmt)
-{
+void Sema::analyzeVarStmt(VarStmt *stmt) {
     TypeRef declaredType = stmt->type ? resolveTypeNode(stmt->type.get()) : nullptr;
     TypeRef initType = stmt->initializer ? analyzeExpr(stmt->initializer.get()) : nullptr;
 
     TypeRef varType;
-    if (declaredType && initType)
-    {
+    if (declaredType && initType) {
         // BUG-VL-001: Allow integer literals in Byte range (0-255) to be assigned to Byte
-        if (declaredType->kind == TypeKindSem::Byte && initType->kind == TypeKindSem::Integer)
-        {
-            if (stmt->initializer->kind == ExprKind::IntLiteral)
-            {
+        if (declaredType->kind == TypeKindSem::Byte && initType->kind == TypeKindSem::Integer) {
+            if (stmt->initializer->kind == ExprKind::IntLiteral) {
                 auto *lit = static_cast<IntLiteralExpr *>(stmt->initializer.get());
-                if (lit->value >= 0 && lit->value <= 255)
-                {
+                if (lit->value >= 0 && lit->value <= 255) {
                     initType = types::byte(); // Treat as Byte literal
                 }
             }
         }
 
         // W003: Implicit narrowing (Number assigned to Integer variable)
-        if (declaredType->kind == TypeKindSem::Integer && initType->kind == TypeKindSem::Number)
-        {
+        if (declaredType->kind == TypeKindSem::Integer && initType->kind == TypeKindSem::Number) {
             warn(WarningCode::W003_ImplicitNarrowing,
                  stmt->loc,
                  "Implicit narrowing from Number to Integer in initialization of '" + stmt->name +
@@ -250,33 +219,24 @@ void Sema::analyzeVarStmt(VarStmt *stmt)
         }
 
         // Both declared and inferred - check compatibility
-        if (!declaredType->isAssignableFrom(*initType))
-        {
+        if (!declaredType->isAssignableFrom(*initType)) {
             errorTypeMismatch(stmt->loc, declaredType, initType);
         }
         varType = declaredType;
-    }
-    else if (declaredType)
-    {
+    } else if (declaredType) {
         varType = declaredType;
-    }
-    else if (initType)
-    {
+    } else if (initType) {
         varType = initType;
-    }
-    else
-    {
+    } else {
         error(stmt->loc, "Cannot infer type without initializer");
         varType = types::unknown();
     }
 
     // W004: Variable shadowing — check if name shadows a variable in parent scope
-    if (currentScope_ && currentScope_->parent())
-    {
+    if (currentScope_ && currentScope_->parent()) {
         Symbol *existing = currentScope_->parent()->lookup(stmt->name);
-        if (existing &&
-            (existing->kind == Symbol::Kind::Variable || existing->kind == Symbol::Kind::Parameter))
-        {
+        if (existing && (existing->kind == Symbol::Kind::Variable ||
+                         existing->kind == Symbol::Kind::Parameter)) {
             warn(WarningCode::W004_VariableShadowing,
                  stmt->loc,
                  "Variable '" + stmt->name + "' shadows a variable in an outer scope");
@@ -291,20 +251,16 @@ void Sema::analyzeVarStmt(VarStmt *stmt)
     defineSymbol(stmt->name, sym, stmt->loc);
 
     // Track definite initialization
-    if (stmt->initializer)
-    {
+    if (stmt->initializer) {
         markInitialized(stmt->name);
     }
 }
 
-void Sema::analyzeIfStmt(IfStmt *stmt)
-{
+void Sema::analyzeIfStmt(IfStmt *stmt) {
     // W007: Assignment in condition (e.g., `if (x = 5)`)
-    if (stmt->condition->kind == ExprKind::Binary)
-    {
+    if (stmt->condition->kind == ExprKind::Binary) {
         auto *binary = static_cast<BinaryExpr *>(stmt->condition.get());
-        if (binary->op == BinaryOp::Assign)
-        {
+        if (binary->op == BinaryOp::Assign) {
             warn(WarningCode::W007_AssignmentInCondition,
                  stmt->condition->loc,
                  "Assignment in condition; did you mean '=='?");
@@ -312,17 +268,14 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
     }
 
     TypeRef condType = analyzeExpr(stmt->condition.get());
-    if (condType->kind != TypeKindSem::Boolean)
-    {
+    if (condType->kind != TypeKindSem::Boolean) {
         error(stmt->condition->loc, "Condition must be Boolean");
     }
 
     // W013: Empty if body
-    if (stmt->thenBranch && stmt->thenBranch->kind == StmtKind::Block)
-    {
+    if (stmt->thenBranch && stmt->thenBranch->kind == StmtKind::Block) {
         auto *block = static_cast<BlockStmt *>(stmt->thenBranch.get());
-        if (block->statements.empty())
-        {
+        if (block->statements.empty()) {
             warn(WarningCode::W013_EmptyBody,
                  stmt->loc,
                  "Empty if-body; consider removing or adding a comment");
@@ -330,11 +283,9 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
     }
 
     // W013: Empty else body
-    if (stmt->elseBranch && stmt->elseBranch->kind == StmtKind::Block)
-    {
+    if (stmt->elseBranch && stmt->elseBranch->kind == StmtKind::Block) {
         auto *block = static_cast<BlockStmt *>(stmt->elseBranch.get());
-        if (block->statements.empty())
-        {
+        if (block->statements.empty()) {
             warn(WarningCode::W013_EmptyBody,
                  stmt->elseBranch->loc,
                  "Empty else-body; consider removing or adding a comment");
@@ -347,12 +298,10 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
     bool hasNullCheck = tryExtractNullCheck(stmt->condition.get(), nullCheckVar, isNotNull);
 
     TypeRef narrowedType = nullptr;
-    if (hasNullCheck)
-    {
+    if (hasNullCheck) {
         // Look up the variable's current type
         TypeRef varType = lookupVarType(nullCheckVar);
-        if (varType && varType->kind == TypeKindSem::Optional)
-        {
+        if (varType && varType->kind == TypeKindSem::Optional) {
             // Get the inner (non-optional) type
             narrowedType = varType->innerType();
         }
@@ -362,36 +311,29 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
     auto preIfState = saveInitState();
 
     // Analyze then-branch with narrowing if condition is "x != null"
-    if (hasNullCheck && isNotNull && narrowedType)
-    {
+    if (hasNullCheck && isNotNull && narrowedType) {
         pushNarrowingScope();
         narrowType(nullCheckVar, narrowedType);
         analyzeStmt(stmt->thenBranch.get());
         popNarrowingScope();
-    }
-    else
-    {
+    } else {
         analyzeStmt(stmt->thenBranch.get());
     }
 
     auto thenState = saveInitState();
 
     // Analyze else-branch with narrowing if condition is "x == null"
-    if (stmt->elseBranch)
-    {
+    if (stmt->elseBranch) {
         // Restore pre-if state before analyzing else-branch
         initializedVars_ = preIfState;
 
-        if (hasNullCheck && !isNotNull && narrowedType)
-        {
+        if (hasNullCheck && !isNotNull && narrowedType) {
             // In else branch of "x == null", x is not null
             pushNarrowingScope();
             narrowType(nullCheckVar, narrowedType);
             analyzeStmt(stmt->elseBranch.get());
             popNarrowingScope();
-        }
-        else
-        {
+        } else {
             analyzeStmt(stmt->elseBranch.get());
         }
 
@@ -399,23 +341,18 @@ void Sema::analyzeIfStmt(IfStmt *stmt)
 
         // After if/else: only keep variables initialized in BOTH branches
         intersectInitState(thenState, elseState);
-    }
-    else
-    {
+    } else {
         // No else branch — conservatively restore pre-if state
         // (the then-branch may not execute)
         initializedVars_ = preIfState;
     }
 }
 
-void Sema::analyzeWhileStmt(WhileStmt *stmt)
-{
+void Sema::analyzeWhileStmt(WhileStmt *stmt) {
     // W007: Assignment in condition
-    if (stmt->condition->kind == ExprKind::Binary)
-    {
+    if (stmt->condition->kind == ExprKind::Binary) {
         auto *binary = static_cast<BinaryExpr *>(stmt->condition.get());
-        if (binary->op == BinaryOp::Assign)
-        {
+        if (binary->op == BinaryOp::Assign) {
             warn(WarningCode::W007_AssignmentInCondition,
                  stmt->condition->loc,
                  "Assignment in while-condition; did you mean '=='?");
@@ -423,17 +360,14 @@ void Sema::analyzeWhileStmt(WhileStmt *stmt)
     }
 
     TypeRef condType = analyzeExpr(stmt->condition.get());
-    if (condType->kind != TypeKindSem::Boolean)
-    {
+    if (condType->kind != TypeKindSem::Boolean) {
         error(stmt->condition->loc, "Condition must be Boolean");
     }
 
     // W006: Empty loop body
-    if (stmt->body && stmt->body->kind == StmtKind::Block)
-    {
+    if (stmt->body && stmt->body->kind == StmtKind::Block) {
         auto *block = static_cast<BlockStmt *>(stmt->body.get());
-        if (block->statements.empty())
-        {
+        if (block->statements.empty()) {
             warn(WarningCode::W006_EmptyLoopBody, stmt->loc, "Empty while-loop body");
         }
     }
@@ -443,16 +377,13 @@ void Sema::analyzeWhileStmt(WhileStmt *stmt)
     loopDepth_--;
 }
 
-void Sema::analyzeForStmt(ForStmt *stmt)
-{
+void Sema::analyzeForStmt(ForStmt *stmt) {
     pushScope(stmt->loc);
     if (stmt->init)
         analyzeStmt(stmt->init.get());
-    if (stmt->condition)
-    {
+    if (stmt->condition) {
         TypeRef condType = analyzeExpr(stmt->condition.get());
-        if (condType->kind != TypeKindSem::Boolean)
-        {
+        if (condType->kind != TypeKindSem::Boolean) {
             error(stmt->condition->loc, "Condition must be Boolean");
         }
     }
@@ -460,11 +391,9 @@ void Sema::analyzeForStmt(ForStmt *stmt)
         analyzeExpr(stmt->update.get());
 
     // W006: Empty loop body
-    if (stmt->body && stmt->body->kind == StmtKind::Block)
-    {
+    if (stmt->body && stmt->body->kind == StmtKind::Block) {
         auto *block = static_cast<BlockStmt *>(stmt->body.get());
-        if (block->statements.empty())
-        {
+        if (block->statements.empty()) {
             warn(WarningCode::W006_EmptyLoopBody, stmt->loc, "Empty for-loop body");
         }
     }
@@ -475,8 +404,7 @@ void Sema::analyzeForStmt(ForStmt *stmt)
     popScope(stmt->body ? scopeEndForStmt(stmt->body.get()) : stmt->loc);
 }
 
-void Sema::analyzeForInStmt(ForInStmt *stmt)
-{
+void Sema::analyzeForInStmt(ForInStmt *stmt) {
     pushScope(stmt->loc);
 
     TypeRef iterableType = analyzeExpr(stmt->iterable.get());
@@ -485,72 +413,51 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
     TypeRef elementType = types::unknown();
     TypeRef secondType = types::unknown();
 
-    if (iterableType->kind == TypeKindSem::List || iterableType->kind == TypeKindSem::Set)
-    {
+    if (iterableType->kind == TypeKindSem::List || iterableType->kind == TypeKindSem::Set) {
         elementType = iterableType->elementType();
-    }
-    else if (iterableType->kind == TypeKindSem::Map)
-    {
+    } else if (iterableType->kind == TypeKindSem::Map) {
         elementType = iterableType->keyType() ? iterableType->keyType() : types::string();
         secondType = iterableType->valueType();
-    }
-    else if (stmt->iterable && stmt->iterable->kind == ExprKind::Range)
-    {
+    } else if (stmt->iterable && stmt->iterable->kind == ExprKind::Range) {
         elementType = types::integer();
-    }
-    else if (iterableType->kind == TypeKindSem::Ptr &&
-             iterableType->name == "Viper.Collections.Seq" && !iterableType->typeArgs.empty())
-    {
+    } else if (iterableType->kind == TypeKindSem::Ptr &&
+               iterableType->name == "Viper.Collections.Seq" && !iterableType->typeArgs.empty()) {
         // Typed seq (e.g. from Str.Split, Dir.FilesSeq) — element type is typeArgs[0]
         elementType = iterableType->typeArgs[0];
-    }
-    else
-    {
+    } else {
         error(stmt->iterable->loc, "Expression is not iterable");
     }
 
-    if (stmt->isTuple)
-    {
-        if (iterableType->kind == TypeKindSem::Map)
-        {
+    if (stmt->isTuple) {
+        if (iterableType->kind == TypeKindSem::Map) {
             // Map iteration binds (key, value)
-        }
-        else if (iterableType->kind == TypeKindSem::List || iterableType->kind == TypeKindSem::Set)
-        {
+        } else if (iterableType->kind == TypeKindSem::List ||
+                   iterableType->kind == TypeKindSem::Set) {
             // List/Set iteration with tuple binding: (index, element)
             secondType = elementType;       // Element goes to second variable
             elementType = types::integer(); // Index goes to first variable
-        }
-        else if (iterableType->kind == TypeKindSem::Tuple)
-        {
+        } else if (iterableType->kind == TypeKindSem::Tuple) {
             const auto &elements = iterableType->tupleElementTypes();
-            if (elements.size() == 2)
-            {
+            if (elements.size() == 2) {
                 elementType = elements[0];
                 secondType = elements[1];
             }
-        }
-        else
-        {
+        } else {
             error(stmt->loc, "Tuple binding requires Map, List, Set, or Tuple elements");
         }
     }
 
-    if (stmt->variableType)
-    {
+    if (stmt->variableType) {
         TypeRef explicitType = resolveTypeNode(stmt->variableType.get());
-        if (elementType && !explicitType->isAssignableFrom(*elementType))
-        {
+        if (elementType && !explicitType->isAssignableFrom(*elementType)) {
             error(stmt->loc, "Loop variable type does not match iterable element type");
         }
         elementType = explicitType;
     }
 
-    if (stmt->isTuple && stmt->secondVariableType)
-    {
+    if (stmt->isTuple && stmt->secondVariableType) {
         TypeRef explicitType = resolveTypeNode(stmt->secondVariableType.get());
-        if (secondType && !explicitType->isAssignableFrom(*secondType))
-        {
+        if (secondType && !explicitType->isAssignableFrom(*secondType)) {
             error(stmt->loc, "Loop variable type does not match iterable element type");
         }
         secondType = explicitType;
@@ -564,8 +471,7 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
     defineSymbol(stmt->variable, sym, stmt->loc);
     markInitialized(stmt->variable);
 
-    if (stmt->isTuple)
-    {
+    if (stmt->isTuple) {
         Symbol secondSym;
         secondSym.kind = Symbol::Kind::Variable;
         secondSym.name = stmt->secondVariable;
@@ -581,62 +487,49 @@ void Sema::analyzeForInStmt(ForInStmt *stmt)
     popScope(stmt->body ? scopeEndForStmt(stmt->body.get()) : stmt->loc);
 }
 
-void Sema::analyzeReturnStmt(ReturnStmt *stmt)
-{
-    if (stmt->value)
-    {
+void Sema::analyzeReturnStmt(ReturnStmt *stmt) {
+    if (stmt->value) {
         TypeRef valueType = analyzeExpr(stmt->value.get());
-        if (expectedReturnType_ && !expectedReturnType_->isAssignableFrom(*valueType))
-        {
+        if (expectedReturnType_ && !expectedReturnType_->isAssignableFrom(*valueType)) {
             // Allow implicit Number -> Integer conversion in return statements
             // This enables returning Floor/Ceil/Round/Trunc results from Integer functions
             bool allowedNarrowing = (expectedReturnType_->kind == TypeKindSem::Integer &&
                                      valueType->kind == TypeKindSem::Number);
-            if (!allowedNarrowing)
-            {
+            if (!allowedNarrowing) {
                 errorTypeMismatch(stmt->value->loc, expectedReturnType_, valueType);
             }
         }
-    }
-    else
-    {
+    } else {
         // No value - must be void return
-        if (expectedReturnType_ && expectedReturnType_->kind != TypeKindSem::Void)
-        {
+        if (expectedReturnType_ && expectedReturnType_->kind != TypeKindSem::Void) {
             error(stmt->loc, "Expected return value");
         }
     }
 }
 
-void Sema::analyzeGuardStmt(GuardStmt *stmt)
-{
+void Sema::analyzeGuardStmt(GuardStmt *stmt) {
     TypeRef condType = analyzeExpr(stmt->condition.get());
-    if (condType->kind != TypeKindSem::Boolean)
-    {
+    if (condType->kind != TypeKindSem::Boolean) {
         error(stmt->condition->loc, "Condition must be Boolean");
     }
 
     analyzeStmt(stmt->elseBlock.get());
-    if (!stmtAlwaysExits(stmt->elseBlock.get()))
-    {
+    if (!stmtAlwaysExits(stmt->elseBlock.get())) {
         error(stmt->loc, "Guard else block must exit the scope");
     }
 }
 
-void Sema::analyzeMatchStmt(MatchStmt *stmt)
-{
+void Sema::analyzeMatchStmt(MatchStmt *stmt) {
     TypeRef scrutineeType = analyzeExpr(stmt->scrutinee.get());
 
     MatchCoverage coverage;
-    for (auto &arm : stmt->arms)
-    {
+    for (auto &arm : stmt->arms) {
         std::unordered_map<std::string, TypeRef> bindings;
         pushScope(stmt->loc);
 
         analyzeMatchPattern(arm.pattern, scrutineeType, coverage, bindings);
 
-        for (const auto &binding : bindings)
-        {
+        for (const auto &binding : bindings) {
             Symbol sym;
             sym.kind = Symbol::Kind::Variable;
             sym.name = binding.first;
@@ -645,11 +538,9 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt)
             defineSymbol(binding.first, sym, stmt->loc);
         }
 
-        if (arm.pattern.guard)
-        {
+        if (arm.pattern.guard) {
             TypeRef guardType = analyzeExpr(arm.pattern.guard.get());
-            if (guardType->kind != TypeKindSem::Boolean)
-            {
+            if (guardType->kind != TypeKindSem::Boolean) {
                 error(arm.pattern.guard->loc, "Match guard must be Boolean");
             }
         }
@@ -658,31 +549,22 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt)
         popScope(arm.body ? arm.body->loc : stmt->loc);
     }
 
-    if (!coverage.hasIrrefutable)
-    {
-        if (scrutineeType && scrutineeType->kind == TypeKindSem::Boolean)
-        {
-            if (coverage.coveredBooleans.size() < 2)
-            {
+    if (!coverage.hasIrrefutable) {
+        if (scrutineeType && scrutineeType->kind == TypeKindSem::Boolean) {
+            if (coverage.coveredBooleans.size() < 2) {
                 error(stmt->loc,
                       "Non-exhaustive patterns: match on Boolean must cover both true "
                       "and false, or use a wildcard (_)");
             }
-        }
-        else if (scrutineeType && scrutineeType->kind == TypeKindSem::Enum)
-        {
+        } else if (scrutineeType && scrutineeType->kind == TypeKindSem::Enum) {
             auto it = enumDecls_.find(scrutineeType->name);
-            if (it != enumDecls_.end())
-            {
+            if (it != enumDecls_.end()) {
                 size_t totalVariants = it->second->variants.size();
-                if (coverage.coveredEnumVariants.size() < totalVariants)
-                {
+                if (coverage.coveredEnumVariants.size() < totalVariants) {
                     std::string missing;
-                    for (const auto &v : it->second->variants)
-                    {
+                    for (const auto &v : it->second->variants) {
                         if (coverage.coveredEnumVariants.find(v.name) ==
-                            coverage.coveredEnumVariants.end())
-                        {
+                            coverage.coveredEnumVariants.end()) {
                             if (!missing.empty())
                                 missing += ", ";
                             missing += scrutineeType->name + "." + v.name;
@@ -691,17 +573,12 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt)
                     error(stmt->loc, "Non-exhaustive patterns: missing variants " + missing);
                 }
             }
-        }
-        else if (scrutineeType && scrutineeType->isIntegral())
-        {
+        } else if (scrutineeType && scrutineeType->isIntegral()) {
             error(stmt->loc,
                   "Non-exhaustive patterns: match on Integer requires a wildcard (_) or "
                   "else case to be exhaustive");
-        }
-        else if (scrutineeType && scrutineeType->kind == TypeKindSem::Optional)
-        {
-            if (!(coverage.coversNull && coverage.coversSome))
-            {
+        } else if (scrutineeType && scrutineeType->kind == TypeKindSem::Optional) {
+            if (!(coverage.coversNull && coverage.coversSome)) {
                 error(stmt->loc,
                       "Non-exhaustive patterns: match on optional type should use a "
                       "wildcard (_) or handle all cases");
@@ -710,31 +587,26 @@ void Sema::analyzeMatchStmt(MatchStmt *stmt)
     }
 }
 
-bool Sema::stmtAlwaysExits(Stmt *stmt)
-{
+bool Sema::stmtAlwaysExits(Stmt *stmt) {
     if (!stmt)
         return false;
 
-    switch (stmt->kind)
-    {
+    switch (stmt->kind) {
         case StmtKind::Return:
         case StmtKind::Break:
         case StmtKind::Continue:
             return true;
 
-        case StmtKind::Block:
-        {
+        case StmtKind::Block: {
             auto *block = static_cast<BlockStmt *>(stmt);
-            for (auto &inner : block->statements)
-            {
+            for (auto &inner : block->statements) {
                 if (stmtAlwaysExits(inner.get()))
                     return true;
             }
             return false;
         }
 
-        case StmtKind::If:
-        {
+        case StmtKind::If: {
             auto *ifStmt = static_cast<IfStmt *>(stmt);
             if (!ifStmt->elseBranch)
                 return false;

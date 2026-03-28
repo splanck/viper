@@ -39,8 +39,7 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 //===----------------------------------------------------------------------===//
 /// @name Statement Nodes
 /// @brief AST nodes representing statements that perform actions.
@@ -51,8 +50,7 @@ namespace il::frontends::zia
 
 /// @brief Enumerates all kinds of statement nodes.
 /// @details Used for runtime type identification when processing statements.
-enum class StmtKind
-{
+enum class StmtKind {
     /// @brief Block of statements: `{ stmt1; stmt2; }`.
     /// @see BlockStmt
     Block,
@@ -115,8 +113,7 @@ enum class StmtKind
 /// and expressions. Unlike expressions, statements don't produce values.
 ///
 /// @invariant `kind` correctly identifies the concrete subclass type.
-struct Stmt
-{
+struct Stmt {
     /// @brief Identifies the concrete statement kind for downcasting.
     StmtKind kind;
 
@@ -135,8 +132,7 @@ struct Stmt
 /// @brief Block statement: `{ stmt1; stmt2; }`.
 /// @details Groups multiple statements into a single compound statement.
 /// Creates a new scope for local variables.
-struct BlockStmt : Stmt
-{
+struct BlockStmt : Stmt {
     /// @brief The statements within this block.
     std::vector<StmtPtr> statements;
 
@@ -144,9 +140,7 @@ struct BlockStmt : Stmt
     /// @param l Source location.
     /// @param s The statements.
     BlockStmt(SourceLoc l, std::vector<StmtPtr> s)
-        : Stmt(StmtKind::Block, l), statements(std::move(s))
-    {
-    }
+        : Stmt(StmtKind::Block, l), statements(std::move(s)) {}
 };
 
 /// @brief Block expression: `{ stmts; expr }`.
@@ -161,8 +155,7 @@ struct BlockStmt : Stmt
 ///     temp * 2  // This is the block's value
 /// };
 /// ```
-struct BlockExpr : Expr
-{
+struct BlockExpr : Expr {
     /// @brief The statements executed before the final expression.
     std::vector<StmtPtr> statements;
 
@@ -174,15 +167,12 @@ struct BlockExpr : Expr
     /// @param s The statements.
     /// @param v The final value expression.
     BlockExpr(SourceLoc l, std::vector<StmtPtr> s, ExprPtr v)
-        : Expr(ExprKind::Block, l), statements(std::move(s)), value(std::move(v))
-    {
-    }
+        : Expr(ExprKind::Block, l), statements(std::move(s)), value(std::move(v)) {}
 };
 
 /// @brief Expression statement: `f();`, `x = 5;`.
 /// @details Evaluates an expression for its side effects, discarding the value.
-struct ExprStmt : Stmt
-{
+struct ExprStmt : Stmt {
     /// @brief The expression to evaluate.
     ExprPtr expr;
 
@@ -200,8 +190,7 @@ struct ExprStmt : Stmt
 /// - `var x = 1;` - Mutable integer (type inferred)
 /// - `var x: Integer = 1;` - Mutable integer (explicit type)
 /// - `final PI = 3.14159;` - Immutable constant
-struct VarStmt : Stmt
-{
+struct VarStmt : Stmt {
     /// @brief The variable name.
     std::string name;
 
@@ -222,16 +211,13 @@ struct VarStmt : Stmt
     /// @param final True if immutable.
     VarStmt(SourceLoc l, std::string n, TypePtr t, ExprPtr init, bool final)
         : Stmt(StmtKind::Var, l), name(std::move(n)), type(std::move(t)),
-          initializer(std::move(init)), isFinal(final)
-    {
-    }
+          initializer(std::move(init)), isFinal(final) {}
 };
 
 /// @brief Conditional if-statement: `if (c) { ... } else { ... }`.
 /// @details Executes the then-branch if condition is true, else-branch otherwise.
 /// Unlike if-expressions, the else-branch is optional.
-struct IfStmt : Stmt
-{
+struct IfStmt : Stmt {
     /// @brief The condition to test.
     ExprPtr condition;
 
@@ -248,15 +234,12 @@ struct IfStmt : Stmt
     /// @param e Else branch (nullptr if none).
     IfStmt(SourceLoc l, ExprPtr c, StmtPtr t, StmtPtr e)
         : Stmt(StmtKind::If, l), condition(std::move(c)), thenBranch(std::move(t)),
-          elseBranch(std::move(e))
-    {
-    }
+          elseBranch(std::move(e)) {}
 };
 
 /// @brief While loop statement: `while (c) { ... }`.
 /// @details Repeatedly executes the body while condition is true.
-struct WhileStmt : Stmt
-{
+struct WhileStmt : Stmt {
     /// @brief The loop condition.
     ExprPtr condition;
 
@@ -268,9 +251,7 @@ struct WhileStmt : Stmt
     /// @param c Condition.
     /// @param b Body.
     WhileStmt(SourceLoc l, ExprPtr c, StmtPtr b)
-        : Stmt(StmtKind::While, l), condition(std::move(c)), body(std::move(b))
-    {
-    }
+        : Stmt(StmtKind::While, l), condition(std::move(c)), body(std::move(b)) {}
 };
 
 /// @brief C-style for loop: `for (init; cond; update) { ... }`.
@@ -283,8 +264,7 @@ struct WhileStmt : Stmt
 ///     print(i);
 /// }
 /// ```
-struct ForStmt : Stmt
-{
+struct ForStmt : Stmt {
     /// @brief Initialization (VarStmt or ExprStmt).
     StmtPtr init;
 
@@ -305,9 +285,7 @@ struct ForStmt : Stmt
     /// @param b Body.
     ForStmt(SourceLoc l, StmtPtr i, ExprPtr c, ExprPtr u, StmtPtr b)
         : Stmt(StmtKind::For, l), init(std::move(i)), condition(std::move(c)), update(std::move(u)),
-          body(std::move(b))
-    {
-    }
+          body(std::move(b)) {}
 };
 
 /// @brief For-in loop statement: `for (x in collection) { ... }`.
@@ -319,8 +297,7 @@ struct ForStmt : Stmt
 /// for (i in 0..10) { ... }
 /// for (key in myMap) { ... }
 /// ```
-struct ForInStmt : Stmt
-{
+struct ForInStmt : Stmt {
     /// @brief The loop variable name (bound to each element).
     std::string variable;
 
@@ -349,9 +326,7 @@ struct ForInStmt : Stmt
     /// @param b Body.
     ForInStmt(SourceLoc l, std::string v, ExprPtr i, StmtPtr b)
         : Stmt(StmtKind::ForIn, l), variable(std::move(v)), iterable(std::move(i)),
-          body(std::move(b))
-    {
-    }
+          body(std::move(b)) {}
 
     /// @brief Construct a tuple-binding for-in statement.
     /// @param l Source location.
@@ -361,16 +336,13 @@ struct ForInStmt : Stmt
     /// @param b Body.
     ForInStmt(SourceLoc l, std::string first, std::string second, ExprPtr i, StmtPtr b)
         : Stmt(StmtKind::ForIn, l), variable(std::move(first)), isTuple(true),
-          secondVariable(std::move(second)), iterable(std::move(i)), body(std::move(b))
-    {
-    }
+          secondVariable(std::move(second)), iterable(std::move(i)), body(std::move(b)) {}
 };
 
 /// @brief Return statement: `return expr;`.
 /// @details Returns from the current function with an optional value.
 /// The value type must match the function's return type.
-struct ReturnStmt : Stmt
-{
+struct ReturnStmt : Stmt {
     /// @brief The return value (nullptr for void/unit return).
     ExprPtr value;
 
@@ -382,8 +354,7 @@ struct ReturnStmt : Stmt
 
 /// @brief Break statement: `break;`.
 /// @details Exits the innermost enclosing loop.
-struct BreakStmt : Stmt
-{
+struct BreakStmt : Stmt {
     /// @brief Construct a break statement.
     /// @param l Source location.
     BreakStmt(SourceLoc l) : Stmt(StmtKind::Break, l) {}
@@ -391,8 +362,7 @@ struct BreakStmt : Stmt
 
 /// @brief Continue statement: `continue;`.
 /// @details Skips to the next iteration of the innermost enclosing loop.
-struct ContinueStmt : Stmt
-{
+struct ContinueStmt : Stmt {
     /// @brief Construct a continue statement.
     /// @param l Source location.
     ContinueStmt(SourceLoc l) : Stmt(StmtKind::Continue, l) {}
@@ -409,8 +379,7 @@ struct ContinueStmt : Stmt
 /// }
 /// // user is now known to be non-null
 /// ```
-struct GuardStmt : Stmt
-{
+struct GuardStmt : Stmt {
     /// @brief The condition that must be true to continue.
     ExprPtr condition;
 
@@ -422,9 +391,7 @@ struct GuardStmt : Stmt
     /// @param c Condition.
     /// @param e Else block.
     GuardStmt(SourceLoc l, ExprPtr c, StmtPtr e)
-        : Stmt(StmtKind::Guard, l), condition(std::move(c)), elseBlock(std::move(e))
-    {
-    }
+        : Stmt(StmtKind::Guard, l), condition(std::move(c)), elseBlock(std::move(e)) {}
 };
 
 /// @brief Pattern matching statement: `match x { ... }`.
@@ -439,8 +406,7 @@ struct GuardStmt : Stmt
 ///     _ => processCommand(command);
 /// }
 /// ```
-struct MatchStmt : Stmt
-{
+struct MatchStmt : Stmt {
     /// @brief The value being matched.
     ExprPtr scrutinee;
 
@@ -452,9 +418,7 @@ struct MatchStmt : Stmt
     /// @param s The scrutinee.
     /// @param a The arms.
     MatchStmt(SourceLoc l, ExprPtr s, std::vector<MatchArm> a)
-        : Stmt(StmtKind::Match, l), scrutinee(std::move(s)), arms(std::move(a))
-    {
-    }
+        : Stmt(StmtKind::Match, l), scrutinee(std::move(s)), arms(std::move(a)) {}
 };
 
 /// @brief Try/catch/finally statement.
@@ -470,8 +434,7 @@ struct MatchStmt : Stmt
 ///     cleanup();
 /// }
 /// ```
-struct TryStmt : Stmt
-{
+struct TryStmt : Stmt {
     /// @brief The try body.
     StmtPtr tryBody;
 
@@ -501,8 +464,7 @@ struct TryStmt : Stmt
 /// ```
 /// throw "something went wrong";
 /// ```
-struct ThrowStmt : Stmt
-{
+struct ThrowStmt : Stmt {
     /// @brief The value to throw (may be nullptr for bare `throw;`).
     ExprPtr value;
 

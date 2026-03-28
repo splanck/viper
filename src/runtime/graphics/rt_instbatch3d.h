@@ -22,17 +22,16 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    void *rt_instbatch3d_new(void *mesh, void *material);
-    void rt_instbatch3d_add(void *batch, void *transform);
-    void rt_instbatch3d_remove(void *batch, int64_t index);
-    void rt_instbatch3d_set(void *batch, int64_t index, void *transform);
-    void rt_instbatch3d_clear(void *batch);
-    int64_t rt_instbatch3d_count(void *batch);
-    void rt_canvas3d_draw_instanced(void *canvas, void *batch);
+void *rt_instbatch3d_new(void *mesh, void *material);
+void rt_instbatch3d_add(void *batch, void *transform);
+void rt_instbatch3d_remove(void *batch, int64_t index);
+void rt_instbatch3d_set(void *batch, int64_t index, void *transform);
+void rt_instbatch3d_clear(void *batch);
+int64_t rt_instbatch3d_count(void *batch);
+void rt_canvas3d_draw_instanced(void *canvas, void *batch);
 
 #ifdef __cplusplus
 }

@@ -21,8 +21,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     {
         std::string src = "10 DO WHILE X < 10\n"
                           "20 PRINT X\n"

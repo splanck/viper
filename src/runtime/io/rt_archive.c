@@ -82,21 +82,18 @@
 // Internal Bytes Access
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     int64_t len;
     uint8_t *data;
 } bytes_impl;
 
-static inline uint8_t *bytes_data(void *obj)
-{
+static inline uint8_t *bytes_data(void *obj) {
     if (!obj)
         return NULL;
     return ((bytes_impl *)obj)->data;
 }
 
-static inline int64_t bytes_len(void *obj)
-{
+static inline int64_t bytes_len(void *obj) {
     if (!obj)
         return 0;
     return ((bytes_impl *)obj)->len;
@@ -106,8 +103,7 @@ static inline int64_t bytes_len(void *obj)
 // ZIP Entry Structure
 //=============================================================================
 
-typedef struct zip_entry
-{
+typedef struct zip_entry {
     char *name;                 // Entry name (allocated)
     uint32_t crc32;             // CRC-32 of uncompressed data
     uint32_t compressed_size;   // Size after compression
@@ -123,8 +119,7 @@ typedef struct zip_entry
 // Archive Structure
 //=============================================================================
 
-typedef struct rt_archive
-{
+typedef struct rt_archive {
     rt_string path;   // File path or NULL if from bytes
     uint8_t *data;    // Archive data (mmap or copy)
     size_t data_len;  // Length of data
@@ -150,24 +145,20 @@ typedef struct rt_archive
 // Little-Endian Helpers
 //=============================================================================
 
-static inline uint16_t read_u16(const uint8_t *p)
-{
+static inline uint16_t read_u16(const uint8_t *p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
-static inline uint32_t read_u32(const uint8_t *p)
-{
+static inline uint32_t read_u32(const uint8_t *p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
 }
 
-static inline void write_u16(uint8_t *p, uint16_t v)
-{
+static inline void write_u16(uint8_t *p, uint16_t v) {
     p[0] = (uint8_t)(v & 0xFF);
     p[1] = (uint8_t)((v >> 8) & 0xFF);
 }
 
-static inline void write_u32(uint8_t *p, uint32_t v)
-{
+static inline void write_u32(uint8_t *p, uint32_t v) {
     p[0] = (uint8_t)(v & 0xFF);
     p[1] = (uint8_t)((v >> 8) & 0xFF);
     p[2] = (uint8_t)((v >> 16) & 0xFF);
@@ -178,8 +169,7 @@ static inline void write_u32(uint8_t *p, uint32_t v)
 // Archive Allocation
 //=============================================================================
 
-static rt_archive_t *archive_alloc(void)
-{
+static rt_archive_t *archive_alloc(void) {
     size_t total = sizeof(rt_archive_t);
     rt_archive_t *ar = (rt_archive_t *)rt_obj_new_i64(0, (int64_t)total);
     if (!ar)
@@ -189,21 +179,16 @@ static rt_archive_t *archive_alloc(void)
     return ar;
 }
 
-static void archive_free_entries(rt_archive_t *ar)
-{
-    if (ar->entries)
-    {
-        for (int i = 0; i < ar->entry_count; i++)
-        {
+static void archive_free_entries(rt_archive_t *ar) {
+    if (ar->entries) {
+        for (int i = 0; i < ar->entry_count; i++) {
             free(ar->entries[i].name);
         }
         free(ar->entries);
         ar->entries = NULL;
     }
-    if (ar->write_entries)
-    {
-        for (int i = 0; i < ar->write_entry_count; i++)
-        {
+    if (ar->write_entries) {
+        for (int i = 0; i < ar->write_entry_count; i++) {
             free(ar->write_entries[i].name);
         }
         free(ar->write_entries);
@@ -216,8 +201,7 @@ static void archive_free_entries(rt_archive_t *ar)
 //=============================================================================
 
 /// @brief Find the End of Central Directory record
-static bool find_eocd(const uint8_t *data, size_t len, size_t *eocd_offset)
-{
+static bool find_eocd(const uint8_t *data, size_t len, size_t *eocd_offset) {
     if (len < ZIP_END_RECORD_SIZE)
         return false;
 
@@ -226,11 +210,9 @@ static bool find_eocd(const uint8_t *data, size_t len, size_t *eocd_offset)
     size_t search_len =
         len < (ZIP_END_RECORD_SIZE + max_comment) ? len : (ZIP_END_RECORD_SIZE + max_comment);
 
-    for (size_t i = ZIP_END_RECORD_SIZE; i <= search_len; i++)
-    {
+    for (size_t i = ZIP_END_RECORD_SIZE; i <= search_len; i++) {
         size_t offset = len - i;
-        if (read_u32(data + offset) == ZIP_END_RECORD_SIG)
-        {
+        if (read_u32(data + offset) == ZIP_END_RECORD_SIG) {
             *eocd_offset = offset;
             return true;
         }
@@ -239,8 +221,7 @@ static bool find_eocd(const uint8_t *data, size_t len, size_t *eocd_offset)
 }
 
 /// @brief Parse the central directory
-static bool parse_central_directory(rt_archive_t *ar)
-{
+static bool parse_central_directory(rt_archive_t *ar) {
     size_t eocd_offset;
     if (!find_eocd(ar->data, ar->data_len, &eocd_offset))
         return false;
@@ -272,10 +253,8 @@ static bool parse_central_directory(rt_archive_t *ar)
     const uint8_t *p = ar->data + cd_offset;
     const uint8_t *cd_end = p + cd_size;
 
-    for (int i = 0; i < total_entries && p + ZIP_CENTRAL_HEADER_SIZE <= cd_end; i++)
-    {
-        if (read_u32(p) != ZIP_CENTRAL_HEADER_SIG)
-        {
+    for (int i = 0; i < total_entries && p + ZIP_CENTRAL_HEADER_SIZE <= cd_end; i++) {
+        if (read_u32(p) != ZIP_CENTRAL_HEADER_SIG) {
             archive_free_entries(ar);
             return false;
         }
@@ -284,8 +263,7 @@ static bool parse_central_directory(rt_archive_t *ar)
         uint16_t extra_len = read_u16(p + 30);
         uint16_t comment_len = read_u16(p + 32);
 
-        if (p + ZIP_CENTRAL_HEADER_SIZE + name_len + extra_len + comment_len > cd_end)
-        {
+        if (p + ZIP_CENTRAL_HEADER_SIZE + name_len + extra_len + comment_len > cd_end) {
             archive_free_entries(ar);
             return false;
         }
@@ -301,8 +279,7 @@ static bool parse_central_directory(rt_archive_t *ar)
 
         // Copy name
         e->name = (char *)malloc(name_len + 1);
-        if (!e->name)
-        {
+        if (!e->name) {
             archive_free_entries(ar);
             return false;
         }
@@ -319,10 +296,8 @@ static bool parse_central_directory(rt_archive_t *ar)
 }
 
 /// @brief Find entry by name
-static zip_entry_t *find_entry(rt_archive_t *ar, const char *name)
-{
-    for (int i = 0; i < ar->entry_count; i++)
-    {
+static zip_entry_t *find_entry(rt_archive_t *ar, const char *name) {
+    for (int i = 0; i < ar->entry_count; i++) {
         if (strcmp(ar->entries[i].name, name) == 0)
             return &ar->entries[i];
     }
@@ -330,8 +305,7 @@ static zip_entry_t *find_entry(rt_archive_t *ar, const char *name)
 }
 
 /// @brief Read entry data (decompressing if needed)
-static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e)
-{
+static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e) {
     // Find local header
     if (e->local_offset + ZIP_LOCAL_HEADER_SIZE > ar->data_len)
         rt_trap("Archive: corrupt local header offset");
@@ -350,8 +324,7 @@ static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e)
     const uint8_t *compressed = ar->data + data_offset;
 
     // Handle uncompressed (stored) data
-    if (e->method == ZIP_METHOD_STORED)
-    {
+    if (e->method == ZIP_METHOD_STORED) {
         // Verify CRC
         uint32_t crc = rt_crc32_compute(compressed, e->uncompressed_size);
         if (crc != e->crc32)
@@ -363,8 +336,7 @@ static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e)
     }
 
     // Handle deflated data
-    if (e->method == ZIP_METHOD_DEFLATE)
-    {
+    if (e->method == ZIP_METHOD_DEFLATE) {
         // Create bytes with compressed data
         void *comp_bytes = rt_bytes_new(e->compressed_size);
         memcpy(bytes_data(comp_bytes), compressed, e->compressed_size);
@@ -392,10 +364,8 @@ static void *read_entry_data(rt_archive_t *ar, zip_entry_t *e)
 // Writing Helpers
 //=============================================================================
 
-static void write_ensure(rt_archive_t *ar, size_t need)
-{
-    if (ar->write_len + need > ar->write_cap)
-    {
+static void write_ensure(rt_archive_t *ar, size_t need) {
+    if (ar->write_len + need > ar->write_cap) {
         size_t new_cap = ar->write_cap * 2;
         if (new_cap < ar->write_len + need)
             new_cap = ar->write_len + need + 4096;
@@ -407,17 +377,14 @@ static void write_ensure(rt_archive_t *ar, size_t need)
     }
 }
 
-static void write_bytes(rt_archive_t *ar, const uint8_t *data, size_t len)
-{
+static void write_bytes(rt_archive_t *ar, const uint8_t *data, size_t len) {
     write_ensure(ar, len);
     memcpy(ar->write_buf + ar->write_len, data, len);
     ar->write_len += len;
 }
 
-static void add_write_entry(rt_archive_t *ar, zip_entry_t *e)
-{
-    if (ar->write_entry_count >= ar->write_entry_cap)
-    {
+static void add_write_entry(rt_archive_t *ar, zip_entry_t *e) {
+    if (ar->write_entry_count >= ar->write_entry_cap) {
         int new_cap = ar->write_entry_cap == 0 ? 16 : ar->write_entry_cap * 2;
         zip_entry_t *new_entries =
             (zip_entry_t *)realloc(ar->write_entries, new_cap * sizeof(zip_entry_t));
@@ -430,15 +397,9 @@ static void add_write_entry(rt_archive_t *ar, zip_entry_t *e)
 }
 
 /// @brief Normalize entry name (forward slashes, no dot segments, no absolute paths).
-typedef enum
-{
-    NAME_OK = 0,
-    NAME_INVALID,
-    NAME_OOM
-} name_result_t;
+typedef enum { NAME_OK = 0, NAME_INVALID, NAME_OOM } name_result_t;
 
-static name_result_t normalize_name(const char *name, char **out)
-{
+static name_result_t normalize_name(const char *name, char **out) {
     if (!name || !*name)
         return NAME_INVALID;
 
@@ -455,8 +416,7 @@ static name_result_t normalize_name(const char *name, char **out)
 
     size_t j = 0;
     const char *p = name;
-    while (*p)
-    {
+    while (*p) {
         while (*p == '/' || *p == '\\')
             ++p;
         if (!*p)
@@ -471,13 +431,11 @@ static name_result_t normalize_name(const char *name, char **out)
 
         if (seg_len == 1 && seg_start[0] == '.')
             continue;
-        if (seg_len == 2 && seg_start[0] == '.' && seg_start[1] == '.')
-        {
+        if (seg_len == 2 && seg_start[0] == '.' && seg_start[1] == '.') {
             free(result);
             return NAME_INVALID;
         }
-        if (memchr(seg_start, ':', seg_len))
-        {
+        if (memchr(seg_start, ':', seg_len)) {
             free(result);
             return NAME_INVALID;
         }
@@ -488,8 +446,7 @@ static name_result_t normalize_name(const char *name, char **out)
         j += seg_len;
     }
 
-    if (j == 0)
-    {
+    if (j == 0) {
         free(result);
         return NAME_INVALID;
     }
@@ -499,8 +456,7 @@ static name_result_t normalize_name(const char *name, char **out)
     return NAME_OK;
 }
 
-static bool name_ends_with_sep(const char *name)
-{
+static bool name_ends_with_sep(const char *name) {
     if (!name)
         return false;
     size_t len = strlen(name);
@@ -509,14 +465,12 @@ static bool name_ends_with_sep(const char *name)
     return name[len - 1] == '/' || name[len - 1] == '\\';
 }
 
-static char *ensure_trailing_slash(char *name)
-{
+static char *ensure_trailing_slash(char *name) {
     size_t len = strlen(name);
     if (len > 0 && name[len - 1] == '/')
         return name;
     char *new_name = (char *)realloc(name, len + 2);
-    if (!new_name)
-    {
+    if (!new_name) {
         free(name);
         rt_trap("Archive: memory allocation failed");
     }
@@ -526,8 +480,7 @@ static char *ensure_trailing_slash(char *name)
 }
 
 /// @brief Get current DOS time/date
-static void get_dos_time(uint16_t *time, uint16_t *date)
-{
+static void get_dos_time(uint16_t *time, uint16_t *date) {
     // Use a fixed time for reproducibility (could use actual time)
     *time = 0;                        // 00:00:00
     *date = (21 << 9) | (1 << 5) | 1; // 2001-01-01
@@ -537,8 +490,7 @@ static void get_dos_time(uint16_t *time, uint16_t *date)
 // Public API - Creation/Opening
 //=============================================================================
 
-void *rt_archive_open(rt_string path)
-{
+void *rt_archive_open(rt_string path) {
     const char *cpath = rt_string_cstr(path);
     if (!cpath || *cpath == '\0')
         rt_trap("Archive: invalid path");
@@ -551,22 +503,19 @@ void *rt_archive_open(rt_string path)
         rt_trap("Archive: file not found");
 
     LARGE_INTEGER size;
-    if (!GetFileSizeEx(h, &size))
-    {
+    if (!GetFileSizeEx(h, &size)) {
         CloseHandle(h);
         rt_trap("Archive: failed to get file size");
     }
 
     uint8_t *data = (uint8_t *)malloc((size_t)size.QuadPart);
-    if (!data)
-    {
+    if (!data) {
         CloseHandle(h);
         rt_trap("Archive: memory allocation failed");
     }
 
     DWORD read;
-    if (!ReadFile(h, data, (DWORD)size.QuadPart, &read, NULL) || read != (DWORD)size.QuadPart)
-    {
+    if (!ReadFile(h, data, (DWORD)size.QuadPart, &read, NULL) || read != (DWORD)size.QuadPart) {
         free(data);
         CloseHandle(h);
         rt_trap("Archive: failed to read file");
@@ -580,15 +529,13 @@ void *rt_archive_open(rt_string path)
         rt_trap("Archive: file not found");
 
     struct stat st;
-    if (fstat(fd, &st) != 0)
-    {
+    if (fstat(fd, &st) != 0) {
         close(fd);
         rt_trap("Archive: failed to get file size");
     }
 
     uint8_t *data = (uint8_t *)malloc((size_t)st.st_size);
-    if (!data)
-    {
+    if (!data) {
         close(fd);
         rt_trap("Archive: memory allocation failed");
     }
@@ -596,8 +543,7 @@ void *rt_archive_open(rt_string path)
     ssize_t n = read(fd, data, (size_t)st.st_size);
     close(fd);
 
-    if (n != st.st_size)
-    {
+    if (n != st.st_size) {
         free(data);
         rt_trap("Archive: failed to read file");
     }
@@ -612,8 +558,7 @@ void *rt_archive_open(rt_string path)
     ar->owns_data = true;
     ar->is_writing = false;
 
-    if (!parse_central_directory(ar))
-    {
+    if (!parse_central_directory(ar)) {
         free(ar->data);
         rt_trap("Archive: not a valid ZIP file");
     }
@@ -621,8 +566,7 @@ void *rt_archive_open(rt_string path)
     return ar;
 }
 
-void *rt_archive_create(rt_string path)
-{
+void *rt_archive_create(rt_string path) {
     const char *cpath = rt_string_cstr(path);
     if (!cpath || *cpath == '\0')
         rt_trap("Archive: invalid path");
@@ -652,8 +596,7 @@ void *rt_archive_create(rt_string path)
     return ar;
 }
 
-void *rt_archive_from_bytes(void *data)
-{
+void *rt_archive_from_bytes(void *data) {
     if (!data)
         rt_trap("Archive: NULL data");
 
@@ -673,8 +616,7 @@ void *rt_archive_from_bytes(void *data)
     ar->owns_data = true;
     ar->is_writing = false;
 
-    if (!parse_central_directory(ar))
-    {
+    if (!parse_central_directory(ar)) {
         free(ar->data);
         rt_trap("Archive: not a valid ZIP archive");
     }
@@ -686,16 +628,14 @@ void *rt_archive_from_bytes(void *data)
 // Properties
 //=============================================================================
 
-rt_string rt_archive_path(void *obj)
-{
+rt_string rt_archive_path(void *obj) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
         return rt_str_empty();
     return ar->path ? ar->path : rt_str_empty();
 }
 
-int64_t rt_archive_count(void *obj)
-{
+int64_t rt_archive_count(void *obj) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
         return 0;
@@ -704,26 +644,20 @@ int64_t rt_archive_count(void *obj)
     return ar->entry_count;
 }
 
-void *rt_archive_names(void *obj)
-{
+void *rt_archive_names(void *obj) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     void *seq = rt_seq_new();
 
     if (!ar)
         return seq;
 
-    if (ar->is_writing)
-    {
-        for (int i = 0; i < ar->write_entry_count; i++)
-        {
+    if (ar->is_writing) {
+        for (int i = 0; i < ar->write_entry_count; i++) {
             rt_string name = rt_const_cstr(ar->write_entries[i].name);
             rt_seq_push(seq, name);
         }
-    }
-    else
-    {
-        for (int i = 0; i < ar->entry_count; i++)
-        {
+    } else {
+        for (int i = 0; i < ar->entry_count; i++) {
             rt_string name = rt_const_cstr(ar->entries[i].name);
             rt_seq_push(seq, name);
         }
@@ -736,8 +670,7 @@ void *rt_archive_names(void *obj)
 // Reading Methods
 //=============================================================================
 
-int8_t rt_archive_has(void *obj, rt_string name)
-{
+int8_t rt_archive_has(void *obj, rt_string name) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar || ar->is_writing)
         return 0;
@@ -761,8 +694,7 @@ int8_t rt_archive_has(void *obj, rt_string name)
     return found;
 }
 
-void *rt_archive_read(void *obj, rt_string name)
-{
+void *rt_archive_read(void *obj, rt_string name) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
         rt_trap("Archive: NULL archive");
@@ -788,14 +720,12 @@ void *rt_archive_read(void *obj, rt_string name)
     return read_entry_data(ar, e);
 }
 
-rt_string rt_archive_read_str(void *obj, rt_string name)
-{
+rt_string rt_archive_read_str(void *obj, rt_string name) {
     void *data = rt_archive_read(obj, name);
     return rt_bytes_to_str(data);
 }
 
-void rt_archive_extract(void *obj, rt_string name, rt_string dest_path)
-{
+void rt_archive_extract(void *obj, rt_string name, rt_string dest_path) {
     void *data = rt_archive_read(obj, name);
 
     const char *cpath = rt_string_cstr(dest_path);
@@ -813,8 +743,7 @@ void rt_archive_extract(void *obj, rt_string name, rt_string dest_path)
         rt_trap("Archive: failed to create destination file");
 
     DWORD written;
-    if (!WriteFile(h, bytes_data(data), (DWORD)bytes_len(data), &written, NULL))
-    {
+    if (!WriteFile(h, bytes_data(data), (DWORD)bytes_len(data), &written, NULL)) {
         CloseHandle(h);
         rt_trap("Archive: failed to write destination file");
     }
@@ -832,8 +761,7 @@ void rt_archive_extract(void *obj, rt_string name, rt_string dest_path)
 #endif
 }
 
-void rt_archive_extract_all(void *obj, rt_string dest_dir)
-{
+void rt_archive_extract_all(void *obj, rt_string dest_dir) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
         rt_trap("Archive: NULL archive");
@@ -846,8 +774,7 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir)
 
     size_t dir_len = strlen(cdir);
 
-    for (int i = 0; i < ar->entry_count; i++)
-    {
+    for (int i = 0; i < ar->entry_count; i++) {
         zip_entry_t *e = &ar->entries[i];
 
         char *norm_name = NULL;
@@ -870,24 +797,19 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir)
         full_path[path_len] = '\0';
 
         // Convert forward slashes to platform separator
-        for (size_t j = dir_len + 1; j < path_len; j++)
-        {
+        for (size_t j = dir_len + 1; j < path_len; j++) {
             if (full_path[j] == '/')
                 full_path[j] = PATH_SEP;
         }
 
-        if (e->is_directory)
-        {
+        if (e->is_directory) {
             // Create directory
             rt_string dir_path = rt_const_cstr(full_path);
             rt_dir_make_all(dir_path);
-        }
-        else
-        {
+        } else {
             // Create parent directory
             char *last_sep = strrchr(full_path, PATH_SEP);
-            if (last_sep && last_sep > full_path + dir_len)
-            {
+            if (last_sep && last_sep > full_path + dir_len) {
                 *last_sep = '\0';
                 rt_string parent = rt_const_cstr(full_path);
                 rt_dir_make_all(parent);
@@ -905,8 +827,7 @@ void rt_archive_extract_all(void *obj, rt_string dest_dir)
     }
 }
 
-void *rt_archive_info(void *obj, rt_string name)
-{
+void *rt_archive_info(void *obj, rt_string name) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
         rt_trap("Archive: NULL archive");
@@ -984,8 +905,7 @@ void *rt_archive_info(void *obj, rt_string name)
 // Writing Methods
 //=============================================================================
 
-void rt_archive_add(void *obj, rt_string name, void *data)
-{
+void rt_archive_add(void *obj, rt_string name, void *data) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
         rt_trap("Archive: NULL archive");
@@ -1021,8 +941,7 @@ void rt_archive_add(void *obj, rt_string name, void *data)
     {
         compressed = rt_compress_deflate(data);
         size_t comp_len = (size_t)bytes_len(compressed);
-        if (comp_len < raw_len)
-        {
+        if (comp_len < raw_len) {
             method = ZIP_METHOD_DEFLATE;
             write_data = bytes_data(compressed);
             write_len = comp_len;
@@ -1062,14 +981,12 @@ void rt_archive_add(void *obj, rt_string name, void *data)
     add_write_entry(ar, &e);
 }
 
-void rt_archive_add_str(void *obj, rt_string name, rt_string text)
-{
+void rt_archive_add_str(void *obj, rt_string name, rt_string text) {
     void *data = rt_bytes_from_str(text);
     rt_archive_add(obj, name, data);
 }
 
-void rt_archive_add_file(void *obj, rt_string name, rt_string src_path)
-{
+void rt_archive_add_file(void *obj, rt_string name, rt_string src_path) {
     const char *cpath = rt_string_cstr(src_path);
     if (!cpath || *cpath == '\0')
         rt_trap("Archive: invalid source path");
@@ -1082,16 +999,14 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path)
         rt_trap("Archive: source file not found");
 
     LARGE_INTEGER size;
-    if (!GetFileSizeEx(h, &size))
-    {
+    if (!GetFileSizeEx(h, &size)) {
         CloseHandle(h);
         rt_trap("Archive: failed to get file size");
     }
 
     void *data = rt_bytes_new((int64_t)size.QuadPart);
     DWORD read_count;
-    if (!ReadFile(h, bytes_data(data), (DWORD)size.QuadPart, &read_count, NULL))
-    {
+    if (!ReadFile(h, bytes_data(data), (DWORD)size.QuadPart, &read_count, NULL)) {
         CloseHandle(h);
         rt_trap("Archive: failed to read source file");
     }
@@ -1102,8 +1017,7 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path)
         rt_trap("Archive: source file not found");
 
     struct stat st;
-    if (fstat(fd, &st) != 0)
-    {
+    if (fstat(fd, &st) != 0) {
         close(fd);
         rt_trap("Archive: failed to get file size");
     }
@@ -1119,8 +1033,7 @@ void rt_archive_add_file(void *obj, rt_string name, rt_string src_path)
     rt_archive_add(obj, name, data);
 }
 
-void rt_archive_add_dir(void *obj, rt_string name)
-{
+void rt_archive_add_dir(void *obj, rt_string name) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
         rt_trap("Archive: NULL archive");
@@ -1142,11 +1055,9 @@ void rt_archive_add_dir(void *obj, rt_string name)
 
     // Ensure name ends with /
     size_t len = strlen(norm_name);
-    if (len == 0 || norm_name[len - 1] != '/')
-    {
+    if (len == 0 || norm_name[len - 1] != '/') {
         char *new_name = (char *)realloc(norm_name, len + 2);
-        if (!new_name)
-        {
+        if (!new_name) {
             free(norm_name);
             rt_trap("Archive: memory allocation failed");
         }
@@ -1187,8 +1098,7 @@ void rt_archive_add_dir(void *obj, rt_string name)
     add_write_entry(ar, &e);
 }
 
-void rt_archive_finish(void *obj)
-{
+void rt_archive_finish(void *obj) {
     rt_archive_t *ar = (rt_archive_t *)obj;
     if (!ar)
         rt_trap("Archive: NULL archive");
@@ -1201,8 +1111,7 @@ void rt_archive_finish(void *obj)
     uint32_t cd_offset = (uint32_t)ar->write_len;
 
     // Write central directory
-    for (int i = 0; i < ar->write_entry_count; i++)
-    {
+    for (int i = 0; i < ar->write_entry_count; i++) {
         zip_entry_t *e = &ar->write_entries[i];
         size_t name_len = strlen(e->name);
 
@@ -1254,8 +1163,7 @@ void rt_archive_finish(void *obj)
 
     DWORD written;
     if (!WriteFile(h, ar->write_buf, (DWORD)ar->write_len, &written, NULL) ||
-        written != ar->write_len)
-    {
+        written != ar->write_len) {
         CloseHandle(h);
         rt_trap("Archive: failed to write archive file");
     }
@@ -1285,8 +1193,7 @@ void rt_archive_finish(void *obj)
 // Static Methods
 //=============================================================================
 
-int8_t rt_archive_is_zip(rt_string path)
-{
+int8_t rt_archive_is_zip(rt_string path) {
     const char *cpath = rt_string_cstr(path);
     if (!cpath || *cpath == '\0')
         return 0;
@@ -1322,8 +1229,7 @@ int8_t rt_archive_is_zip(rt_string path)
     return (magic == ZIP_LOCAL_HEADER_SIG || magic == ZIP_END_RECORD_SIG) ? 1 : 0;
 }
 
-int8_t rt_archive_is_zip_bytes(void *data)
-{
+int8_t rt_archive_is_zip_bytes(void *data) {
     if (!data)
         return 0;
 

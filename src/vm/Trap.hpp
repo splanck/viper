@@ -19,8 +19,7 @@
 #include <string>
 #include <string_view>
 
-namespace il::vm
-{
+namespace il::vm {
 
 /// @brief Categorises runtime traps for diagnostic reporting.
 #ifdef EOF
@@ -28,8 +27,7 @@ namespace il::vm
 #undef EOF
 #define IL_VM_TRAP_RESTORE_EOF 1
 #endif
-enum class TrapKind : int32_t
-{
+enum class TrapKind : int32_t {
     DivideByZero = 0,     ///< Integer division or remainder by zero.
     Overflow = 1,         ///< Arithmetic or conversion overflow.
     InvalidCast = 2,      ///< Invalid cast or conversion semantics.
@@ -45,8 +43,7 @@ enum class TrapKind : int32_t
 };
 
 /// @brief Structured representation of a VM error record.
-struct VmError
-{
+struct VmError {
     TrapKind kind = TrapKind::RuntimeError; ///< Trap classification.
     int32_t code = 0;                       ///< Secondary error code.
     uint64_t ip = 0;                        ///< Instruction pointer within block.
@@ -54,8 +51,7 @@ struct VmError
 };
 
 /// @brief Execution context metadata used for trap formatting.
-struct FrameInfo
-{
+struct FrameInfo {
     std::string function;          ///< Function in which the trap occurred.
     std::string block;             ///< Block label where the trap occurred.
     uint64_t ip = 0;               ///< Instruction pointer of the trap.
@@ -67,10 +63,8 @@ struct FrameInfo
 /// @param kind Enumerated trap kind.
 /// @return Stable string view naming the trap category.
 /// @note Constexpr for compile-time string resolution when possible.
-constexpr std::string_view toString(TrapKind kind) noexcept
-{
-    switch (kind)
-    {
+constexpr std::string_view toString(TrapKind kind) noexcept {
+    switch (kind) {
         case TrapKind::DivideByZero:
             return "DivideByZero";
         case TrapKind::Overflow:
@@ -103,10 +97,8 @@ constexpr std::string_view toString(TrapKind kind) noexcept
 /// @param value Integer supplied by IL operands.
 /// @return Enumerated trap kind, defaulting to RuntimeError for unknown values.
 /// @note Constexpr for compile-time value resolution when possible.
-constexpr TrapKind trapKindFromValue(int32_t value) noexcept
-{
-    switch (value)
-    {
+constexpr TrapKind trapKindFromValue(int32_t value) noexcept {
+    switch (value) {
         case static_cast<int32_t>(TrapKind::DivideByZero):
             return TrapKind::DivideByZero;
         case static_cast<int32_t>(TrapKind::Overflow):

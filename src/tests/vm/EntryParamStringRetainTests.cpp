@@ -26,16 +26,13 @@
 
 using namespace il::core;
 
-namespace
-{
-constexpr il::support::SourceLoc kLoc(unsigned line)
-{
+namespace {
+constexpr il::support::SourceLoc kLoc(unsigned line) {
     return {1, static_cast<uint32_t>(line), 0};
 }
 } // namespace
 
-int main()
-{
+int main() {
     Module module;
     il::build::IRBuilder builder(module);
     builder.addExtern("rt_str_release_maybe", Type(Type::Kind::Void), {Type(Type::Kind::Str)});
@@ -89,11 +86,9 @@ int main()
     if (header->refcnt != initialRef + 1)
         return 1;
 
-    while (true)
-    {
+    while (true) {
         auto result = il::vm::VMTestHook::step(vm, state);
-        if (result)
-        {
+        if (result) {
             if (result->i64 != 0)
                 return 1;
             break;

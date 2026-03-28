@@ -38,17 +38,14 @@
 #endif
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Get bytes data pointer
-static uint8_t *get_bytes_data(void *bytes)
-{
-    struct bytes_impl
-    {
+static uint8_t *get_bytes_data(void *bytes) {
+    struct bytes_impl {
         int64_t len;
         uint8_t *data;
     };
@@ -57,14 +54,12 @@ static uint8_t *get_bytes_data(void *bytes)
 }
 
 /// @brief Get bytes length
-static int64_t get_bytes_len(void *bytes)
-{
+static int64_t get_bytes_len(void *bytes) {
     return rt_bytes_len(bytes);
 }
 
 /// @brief Create bytes from string literal
-static void *make_bytes_str(const char *str)
-{
+static void *make_bytes_str(const char *str) {
     size_t len = strlen(str);
     void *bytes = rt_bytes_new((int64_t)len);
     memcpy(get_bytes_data(bytes), str, len);
@@ -75,17 +70,14 @@ static void *make_bytes_str(const char *str)
 static std::atomic<bool> server_ready{false};
 static std::atomic<bool> server_done{false};
 
-static bool localhost_bind_available()
-{
-    static const bool available = []()
-    {
+static bool localhost_bind_available() {
+    static const bool available = []() {
 #if defined(_WIN32)
         WSADATA wsa;
         if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
             return false;
         SOCKET fd = socket(AF_INET, SOCK_STREAM, 0);
-        if (fd == INVALID_SOCKET)
-        {
+        if (fd == INVALID_SOCKET) {
             WSACleanup();
             return false;
         }
@@ -114,27 +106,23 @@ static bool localhost_bind_available()
 }
 
 /// @brief Echo server thread function
-static void echo_server_thread(int port, int num_clients)
-{
+static void echo_server_thread(int port, int num_clients) {
     void *server = rt_tcp_server_listen(port);
     assert(server != nullptr);
 
     printf("  Echo server started on port %d\n", port);
     server_ready = true;
 
-    for (int i = 0; i < num_clients; i++)
-    {
+    for (int i = 0; i < num_clients; i++) {
         void *client = rt_tcp_server_accept(server);
         if (!client)
             break;
 
         // Echo loop - receive and send back
-        while (rt_tcp_is_open(client))
-        {
+        while (rt_tcp_is_open(client)) {
             void *data = rt_tcp_recv(client, 1024);
             int64_t len = get_bytes_len(data);
-            if (len == 0)
-            {
+            if (len == 0) {
                 // Connection closed
                 break;
             }
@@ -151,8 +139,7 @@ static void echo_server_thread(int port, int num_clients)
 }
 
 /// @brief Test server listen and client connect
-static void test_server_client_connect()
-{
+static void test_server_client_connect() {
     printf("\nTesting Server/Client Connect:\n");
 
     const int port = 19876;
@@ -163,8 +150,7 @@ static void test_server_client_connect()
     std::thread server_thread(echo_server_thread, port, 1);
 
     // Wait for server to be ready
-    while (!server_ready)
-    {
+    while (!server_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -184,8 +170,7 @@ static void test_server_client_connect()
 }
 
 /// @brief Test send and receive
-static void test_send_recv()
-{
+static void test_send_recv() {
     printf("\nTesting Send/Receive:\n");
 
     const int port = 19877;
@@ -194,8 +179,7 @@ static void test_send_recv()
 
     std::thread server_thread(echo_server_thread, port, 1);
 
-    while (!server_ready)
-    {
+    while (!server_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -235,8 +219,7 @@ static void test_send_recv()
 }
 
 /// @brief Test SendAll and RecvExact
-static void test_send_all_recv_exact()
-{
+static void test_send_all_recv_exact() {
     printf("\nTesting SendAll/RecvExact:\n");
 
     const int port = 19878;
@@ -245,8 +228,7 @@ static void test_send_all_recv_exact()
 
     std::thread server_thread(echo_server_thread, port, 1);
 
-    while (!server_ready)
-    {
+    while (!server_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -258,8 +240,7 @@ static void test_send_all_recv_exact()
     const int data_size = 4096;
     void *large_data = rt_bytes_new(data_size);
     uint8_t *ptr = get_bytes_data(large_data);
-    for (int i = 0; i < data_size; i++)
-    {
+    for (int i = 0; i < data_size; i++) {
         ptr[i] = (uint8_t)(i & 0xFF);
     }
 
@@ -276,21 +257,18 @@ static void test_send_all_recv_exact()
 }
 
 /// @brief Line server thread function - sends lines
-static void line_server_thread(int port)
-{
+static void line_server_thread(int port) {
     void *server = rt_tcp_server_listen(port);
     assert(server != nullptr);
 
     server_ready = true;
 
     void *client = rt_tcp_server_accept(server);
-    if (client)
-    {
+    if (client) {
         // Send lines
         const char *lines[] = {"Line 1\n", "Line 2 with CRLF\r\n", "Last line\n"};
 
-        for (int i = 0; i < 3; i++)
-        {
+        for (int i = 0; i < 3; i++) {
             rt_string line = rt_const_cstr(lines[i]);
             rt_tcp_send_str(client, line);
         }
@@ -303,8 +281,7 @@ static void line_server_thread(int port)
 }
 
 /// @brief Test RecvLine
-static void test_recv_line()
-{
+static void test_recv_line() {
     printf("\nTesting RecvLine:\n");
 
     const int port = 19879;
@@ -313,8 +290,7 @@ static void test_recv_line()
 
     std::thread server_thread(line_server_thread, port);
 
-    while (!server_ready)
-    {
+    while (!server_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -339,8 +315,7 @@ static void test_recv_line()
 }
 
 /// @brief Test server properties
-static void test_server_properties()
-{
+static void test_server_properties() {
     printf("\nTesting Server Properties:\n");
 
     const int port = 19880;
@@ -360,8 +335,7 @@ static void test_server_properties()
 }
 
 /// @brief Test client properties
-static void test_client_properties()
-{
+static void test_client_properties() {
     printf("\nTesting Client Properties:\n");
 
     const int port = 19881;
@@ -370,8 +344,7 @@ static void test_client_properties()
 
     std::thread server_thread(echo_server_thread, port, 1);
 
-    while (!server_ready)
-    {
+    while (!server_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -394,8 +367,7 @@ static void test_client_properties()
 }
 
 /// @brief Test accept with timeout
-static void test_accept_timeout()
-{
+static void test_accept_timeout() {
     printf("\nTesting Accept Timeout:\n");
 
     const int port = 19882;
@@ -418,8 +390,7 @@ static void test_accept_timeout()
 
 /// @brief Test connect with timeout - just test that ConnectFor compiles and works
 /// Note: Testing actual timeout with non-routable addresses would trap and terminate
-static void test_connect_with_timeout()
-{
+static void test_connect_with_timeout() {
     printf("\nTesting ConnectFor:\n");
 
     const int port = 19884;
@@ -428,8 +399,7 @@ static void test_connect_with_timeout()
 
     std::thread server_thread(echo_server_thread, port, 1);
 
-    while (!server_ready)
-    {
+    while (!server_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -445,8 +415,7 @@ static void test_connect_with_timeout()
 }
 
 /// @brief Test ListenAt on specific address
-static void test_listen_at()
-{
+static void test_listen_at() {
     printf("\nTesting ListenAt:\n");
 
     const int port = 19883;
@@ -467,8 +436,7 @@ static void test_listen_at()
 //=============================================================================
 
 /// @brief Test UDP socket creation and properties
-static void test_udp_new()
-{
+static void test_udp_new() {
     printf("\nTesting UDP New:\n");
 
     void *sock = rt_udp_new();
@@ -480,8 +448,7 @@ static void test_udp_new()
 }
 
 /// @brief Test UDP bind
-static void test_udp_bind()
-{
+static void test_udp_bind() {
     printf("\nTesting UDP Bind:\n");
 
     const int port = 19890;
@@ -498,8 +465,7 @@ static void test_udp_bind()
 }
 
 /// @brief Test UDP bind at specific address
-static void test_udp_bind_at()
-{
+static void test_udp_bind_at() {
     printf("\nTesting UDP BindAt:\n");
 
     const int port = 19891;
@@ -517,8 +483,7 @@ static void test_udp_bind_at()
 }
 
 /// @brief Test UDP send and receive on localhost
-static void test_udp_send_recv()
-{
+static void test_udp_send_recv() {
     printf("\nTesting UDP Send/Recv:\n");
 
     const int recv_port = 19892;
@@ -553,8 +518,7 @@ static void test_udp_send_recv()
 }
 
 /// @brief Test UDP send and receive string
-static void test_udp_send_recv_str()
-{
+static void test_udp_send_recv_str() {
     printf("\nTesting UDP SendToStr:\n");
 
     const int recv_port = 19894;
@@ -581,8 +545,7 @@ static void test_udp_send_recv_str()
 }
 
 /// @brief Test UDP RecvFrom with sender info
-static void test_udp_recv_from()
-{
+static void test_udp_recv_from() {
     printf("\nTesting UDP RecvFrom:\n");
 
     const int recv_port = 19896;
@@ -615,8 +578,7 @@ static void test_udp_recv_from()
 }
 
 /// @brief Test UDP receive timeout
-static void test_udp_recv_timeout()
-{
+static void test_udp_recv_timeout() {
     printf("\nTesting UDP RecvFor timeout:\n");
 
     const int port = 19898;
@@ -637,8 +599,7 @@ static void test_udp_recv_timeout()
 }
 
 /// @brief Test UDP broadcast enable
-static void test_udp_broadcast()
-{
+static void test_udp_broadcast() {
     printf("\nTesting UDP SetBroadcast:\n");
 
     void *sock = rt_udp_new();
@@ -655,8 +616,7 @@ static void test_udp_broadcast()
 }
 
 /// @brief Test UDP set receive timeout
-static void test_udp_set_recv_timeout()
-{
+static void test_udp_set_recv_timeout() {
     printf("\nTesting UDP SetRecvTimeout:\n");
 
     const int port = 19899;
@@ -686,8 +646,7 @@ static void test_udp_set_recv_timeout()
 //=============================================================================
 
 /// @brief Test DNS resolve localhost
-static void test_dns_resolve_localhost()
-{
+static void test_dns_resolve_localhost() {
     printf("\nTesting DNS Resolve localhost:\n");
 
     rt_string hostname = rt_const_cstr("localhost");
@@ -699,8 +658,7 @@ static void test_dns_resolve_localhost()
 }
 
 /// @brief Test DNS resolve4 localhost
-static void test_dns_resolve4_localhost()
-{
+static void test_dns_resolve4_localhost() {
     printf("\nTesting DNS Resolve4 localhost:\n");
 
     rt_string hostname = rt_const_cstr("localhost");
@@ -712,8 +670,7 @@ static void test_dns_resolve4_localhost()
 }
 
 /// @brief Test DNS IsIPv4
-static void test_dns_is_ipv4()
-{
+static void test_dns_is_ipv4() {
     printf("\nTesting DNS IsIPv4:\n");
 
     test_result("IsIPv4('127.0.0.1') = true", rt_dns_is_ipv4(rt_const_cstr("127.0.0.1")) == 1);
@@ -729,8 +686,7 @@ static void test_dns_is_ipv4()
 }
 
 /// @brief Test DNS IsIPv6
-static void test_dns_is_ipv6()
-{
+static void test_dns_is_ipv6() {
     printf("\nTesting DNS IsIPv6:\n");
 
     test_result("IsIPv6('::1') = true", rt_dns_is_ipv6(rt_const_cstr("::1")) == 1);
@@ -743,8 +699,7 @@ static void test_dns_is_ipv6()
 }
 
 /// @brief Test DNS IsIP
-static void test_dns_is_ip()
-{
+static void test_dns_is_ip() {
     printf("\nTesting DNS IsIP:\n");
 
     test_result("IsIP('127.0.0.1') = true", rt_dns_is_ip(rt_const_cstr("127.0.0.1")) == 1);
@@ -754,8 +709,7 @@ static void test_dns_is_ip()
 }
 
 /// @brief Test DNS LocalHost
-static void test_dns_local_host()
-{
+static void test_dns_local_host() {
     printf("\nTesting DNS LocalHost:\n");
 
     rt_string hostname = rt_dns_local_host();
@@ -766,8 +720,7 @@ static void test_dns_local_host()
 }
 
 /// @brief Test DNS LocalAddrs
-static void test_dns_local_addrs()
-{
+static void test_dns_local_addrs() {
     printf("\nTesting DNS LocalAddrs:\n");
 
     void *addrs = rt_dns_local_addrs();
@@ -787,8 +740,7 @@ static void test_dns_local_addrs()
 }
 
 /// @brief Test DNS ResolveAll localhost
-static void test_dns_resolve_all()
-{
+static void test_dns_resolve_all() {
     printf("\nTesting DNS ResolveAll localhost:\n");
 
     rt_string hostname = rt_const_cstr("localhost");
@@ -799,8 +751,7 @@ static void test_dns_resolve_all()
     test_result("DNS ResolveAll has entries", count > 0);
 
     // Check first entry is localhost IP
-    if (count > 0)
-    {
+    if (count > 0) {
         rt_string first = (rt_string)rt_seq_get(addrs, 0);
         const char *ip = rt_string_cstr(first);
         printf("  First address: %s\n", ip);
@@ -817,29 +768,25 @@ static void test_dns_resolve_all()
 #include "rt_map.h"
 
 /// @brief Mock HTTP server - returns fixed response
-static void http_server_thread(int port, const char *response_body, int response_status)
-{
+static void http_server_thread(int port, const char *response_body, int response_status) {
     void *server = rt_tcp_server_listen(port);
     assert(server != nullptr);
 
     server_ready = true;
 
     void *client = rt_tcp_server_accept(server);
-    if (client)
-    {
+    if (client) {
         // Read request line and headers (drain them)
         char buf[4096];
         int pos = 0;
-        while (pos < (int)sizeof(buf) - 1)
-        {
+        while (pos < (int)sizeof(buf) - 1) {
             void *data = rt_tcp_recv(client, 1);
             if (get_bytes_len(data) == 0)
                 break;
             buf[pos++] = get_bytes_data(data)[0];
             // Look for end of headers
             if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' && buf[pos - 2] == '\r' &&
-                buf[pos - 1] == '\n')
-            {
+                buf[pos - 1] == '\n') {
                 break;
             }
         }
@@ -868,28 +815,24 @@ static void http_server_thread(int port, const char *response_body, int response
 }
 
 /// @brief Mock HTTP server for chunked encoding
-static void http_chunked_server_thread(int port)
-{
+static void http_chunked_server_thread(int port) {
     void *server = rt_tcp_server_listen(port);
     assert(server != nullptr);
 
     server_ready = true;
 
     void *client = rt_tcp_server_accept(server);
-    if (client)
-    {
+    if (client) {
         // Read request line and headers
         char buf[4096];
         int pos = 0;
-        while (pos < (int)sizeof(buf) - 1)
-        {
+        while (pos < (int)sizeof(buf) - 1) {
             void *data = rt_tcp_recv(client, 1);
             if (get_bytes_len(data) == 0)
                 break;
             buf[pos++] = get_bytes_data(data)[0];
             if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' && buf[pos - 2] == '\r' &&
-                buf[pos - 1] == '\n')
-            {
+                buf[pos - 1] == '\n') {
                 break;
             }
         }
@@ -914,28 +857,24 @@ static void http_chunked_server_thread(int port)
 }
 
 /// @brief Mock HTTP server for redirects
-static void http_redirect_server_thread(int port, int target_port)
-{
+static void http_redirect_server_thread(int port, int target_port) {
     void *server = rt_tcp_server_listen(port);
     assert(server != nullptr);
 
     server_ready = true;
 
     void *client = rt_tcp_server_accept(server);
-    if (client)
-    {
+    if (client) {
         // Read request
         char buf[4096];
         int pos = 0;
-        while (pos < (int)sizeof(buf) - 1)
-        {
+        while (pos < (int)sizeof(buf) - 1) {
             void *data = rt_tcp_recv(client, 1);
             if (get_bytes_len(data) == 0)
                 break;
             buf[pos++] = get_bytes_data(data)[0];
             if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' && buf[pos - 2] == '\r' &&
-                buf[pos - 1] == '\n')
-            {
+                buf[pos - 1] == '\n') {
                 break;
             }
         }
@@ -961,8 +900,7 @@ static void http_redirect_server_thread(int port, int target_port)
 }
 
 /// @brief Test Http.Get with mock server
-static void test_http_get()
-{
+static void test_http_get() {
     printf("\nTesting Http.Get:\n");
 
     const int port = 19901;
@@ -972,8 +910,7 @@ static void test_http_get()
 
     std::thread server_thread(http_server_thread, port, body, 200);
 
-    while (!server_ready)
-    {
+    while (!server_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -991,8 +928,7 @@ static void test_http_get()
 }
 
 /// @brief Test Http.GetBytes with mock server
-static void test_http_get_bytes()
-{
+static void test_http_get_bytes() {
     printf("\nTesting Http.GetBytes:\n");
 
     const int port = 19902;
@@ -1002,8 +938,7 @@ static void test_http_get_bytes()
 
     std::thread server_thread(http_server_thread, port, body, 200);
 
-    while (!server_ready)
-    {
+    while (!server_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -1022,8 +957,7 @@ static void test_http_get_bytes()
 }
 
 /// @brief Test Http.Head with mock server
-static void test_http_head()
-{
+static void test_http_head() {
     printf("\nTesting Http.Head:\n");
 
     const int port = 19903;
@@ -1032,8 +966,7 @@ static void test_http_head()
 
     std::thread server_thread(http_server_thread, port, "ignored body", 200);
 
-    while (!server_ready)
-    {
+    while (!server_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -1056,8 +989,7 @@ static void test_http_head()
 }
 
 /// @brief Test chunked transfer encoding
-static void test_http_chunked()
-{
+static void test_http_chunked() {
     printf("\nTesting Http chunked encoding:\n");
 
     const int port = 19904;
@@ -1066,8 +998,7 @@ static void test_http_chunked()
 
     std::thread server_thread(http_chunked_server_thread, port);
 
-    while (!server_ready)
-    {
+    while (!server_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -1085,8 +1016,7 @@ static void test_http_chunked()
 }
 
 /// @brief Test HttpReq builder pattern
-static void test_http_req_builder()
-{
+static void test_http_req_builder() {
     printf("\nTesting HttpReq builder:\n");
 
     const int port = 19905;
@@ -1095,8 +1025,7 @@ static void test_http_req_builder()
 
     std::thread server_thread(http_server_thread, port, "response body", 201);
 
-    while (!server_ready)
-    {
+    while (!server_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -1143,8 +1072,7 @@ static void test_http_req_builder()
 }
 
 /// @brief Test HTTP redirects
-static void test_http_redirect()
-{
+static void test_http_redirect() {
     printf("\nTesting Http redirect:\n");
 
     const int redirect_port = 19906;
@@ -1155,52 +1083,45 @@ static void test_http_redirect()
     // Start redirect server
     std::thread redirect_thread(http_redirect_server_thread, redirect_port, target_port);
 
-    while (!server_ready)
-    {
+    while (!server_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
     // Start target server
     std::atomic<bool> target_ready{false};
-    std::thread target_thread(
-        [target_port, &target_ready]()
-        {
-            void *server = rt_tcp_server_listen(target_port);
-            assert(server != nullptr);
-            target_ready = true;
+    std::thread target_thread([target_port, &target_ready]() {
+        void *server = rt_tcp_server_listen(target_port);
+        assert(server != nullptr);
+        target_ready = true;
 
-            void *client = rt_tcp_server_accept(server);
-            if (client)
-            {
-                // Drain request
-                char buf[4096];
-                int pos = 0;
-                while (pos < (int)sizeof(buf) - 1)
-                {
-                    void *data = rt_tcp_recv(client, 1);
-                    if (get_bytes_len(data) == 0)
-                        break;
-                    buf[pos++] = get_bytes_data(data)[0];
-                    if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' &&
-                        buf[pos - 2] == '\r' && buf[pos - 1] == '\n')
-                    {
-                        break;
-                    }
+        void *client = rt_tcp_server_accept(server);
+        if (client) {
+            // Drain request
+            char buf[4096];
+            int pos = 0;
+            while (pos < (int)sizeof(buf) - 1) {
+                void *data = rt_tcp_recv(client, 1);
+                if (get_bytes_len(data) == 0)
+                    break;
+                buf[pos++] = get_bytes_data(data)[0];
+                if (pos >= 4 && buf[pos - 4] == '\r' && buf[pos - 3] == '\n' &&
+                    buf[pos - 2] == '\r' && buf[pos - 1] == '\n') {
+                    break;
                 }
-
-                const char *response = "HTTP/1.1 200 OK\r\n"
-                                       "Content-Type: text/plain\r\n"
-                                       "Content-Length: 12\r\n"
-                                       "\r\nFinal target";
-
-                rt_tcp_send_str(client, rt_const_cstr(response));
-                rt_tcp_close(client);
             }
-            rt_tcp_server_close(server);
-        });
 
-    while (!target_ready)
-    {
+            const char *response = "HTTP/1.1 200 OK\r\n"
+                                   "Content-Type: text/plain\r\n"
+                                   "Content-Length: 12\r\n"
+                                   "\r\nFinal target";
+
+            rt_tcp_send_str(client, rt_const_cstr(response));
+            rt_tcp_close(client);
+        }
+        rt_tcp_server_close(server);
+    });
+
+    while (!target_ready) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -1221,8 +1142,7 @@ static void test_http_redirect()
 //=============================================================================
 
 /// @brief Test URL parsing with all components.
-static void test_url_parse_full()
-{
+static void test_url_parse_full() {
     printf("  test_url_parse_full...\n");
 
     void *url = rt_url_parse(rt_const_cstr(
@@ -1248,8 +1168,7 @@ static void test_url_parse_full()
 }
 
 /// @brief Test URL parsing with minimal URL.
-static void test_url_parse_minimal()
-{
+static void test_url_parse_minimal() {
     printf("  test_url_parse_minimal...\n");
 
     void *url = rt_url_parse(rt_const_cstr("http://localhost"));
@@ -1266,8 +1185,7 @@ static void test_url_parse_minimal()
 }
 
 /// @brief Test URL building from scratch.
-static void test_url_new()
-{
+static void test_url_new() {
     printf("  test_url_new...\n");
 
     void *url = rt_url_new();
@@ -1286,8 +1204,7 @@ static void test_url_new()
 }
 
 /// @brief Test HostPort with default and non-default ports.
-static void test_url_host_port()
-{
+static void test_url_host_port() {
     printf("  test_url_host_port...\n");
 
     // With default port
@@ -1302,8 +1219,7 @@ static void test_url_host_port()
 }
 
 /// @brief Test Authority string.
-static void test_url_authority()
-{
+static void test_url_authority() {
     printf("  test_url_authority...\n");
 
     void *url = rt_url_parse(rt_const_cstr("ftp://admin:secret@ftp.example.com:21/"));
@@ -1314,8 +1230,7 @@ static void test_url_authority()
 }
 
 /// @brief Test query parameter manipulation.
-static void test_url_query_params()
-{
+static void test_url_query_params() {
     printf("  test_url_query_params...\n");
 
     void *url = rt_url_parse(rt_const_cstr("http://example.com/?a=1&b=2"));
@@ -1346,8 +1261,7 @@ static void test_url_query_params()
 }
 
 /// @brief Test QueryMap.
-static void test_url_query_map()
-{
+static void test_url_query_map() {
     printf("  test_url_query_map...\n");
 
     void *url = rt_url_parse(rt_const_cstr("http://example.com/?name=John&age=30"));
@@ -1363,8 +1277,7 @@ static void test_url_query_map()
 }
 
 /// @brief Test URL clone.
-static void test_url_clone()
-{
+static void test_url_clone() {
     printf("  test_url_clone...\n");
 
     void *url = rt_url_parse(rt_const_cstr("https://example.com/path?query=1#frag"));
@@ -1381,8 +1294,7 @@ static void test_url_clone()
 }
 
 /// @brief Test URL resolve (relative URL resolution).
-static void test_url_resolve()
-{
+static void test_url_resolve() {
     printf("  test_url_resolve...\n");
 
     void *base = rt_url_parse(rt_const_cstr("http://example.com/a/b/c"));
@@ -1405,8 +1317,7 @@ static void test_url_resolve()
 }
 
 /// @brief Test percent encoding/decoding.
-static void test_url_encode_decode()
-{
+static void test_url_encode_decode() {
     printf("  test_url_encode_decode...\n");
 
     // Test encoding
@@ -1428,8 +1339,7 @@ static void test_url_encode_decode()
 }
 
 /// @brief Test query string encoding/decoding.
-static void test_url_encode_decode_query()
-{
+static void test_url_encode_decode_query() {
     printf("  test_url_encode_decode_query...\n");
 
     // Create a map and encode it
@@ -1451,8 +1361,7 @@ static void test_url_encode_decode_query()
 }
 
 /// @brief Test URL validation.
-static void test_url_is_valid()
-{
+static void test_url_is_valid() {
     printf("  test_url_is_valid...\n");
 
     test_result("Valid http URL", rt_url_is_valid(rt_const_cstr("http://example.com")) == 1);
@@ -1463,8 +1372,7 @@ static void test_url_is_valid()
 }
 
 /// @brief Test scheme is lowercased.
-static void test_url_scheme_case()
-{
+static void test_url_scheme_case() {
     printf("  test_url_scheme_case...\n");
 
     void *url = rt_url_parse(rt_const_cstr("HTTP://EXAMPLE.COM"));
@@ -1473,12 +1381,10 @@ static void test_url_scheme_case()
     test_result("Scheme is lowercased", strcmp(scheme, "http") == 0);
 }
 
-int main()
-{
+int main() {
     const bool canBindLocal = localhost_bind_available();
 
-    if (canBindLocal)
-    {
+    if (canBindLocal) {
         printf("=== Viper.Network.Tcp/TcpServer Tests ===\n");
 
         test_server_properties();
@@ -1502,9 +1408,7 @@ int main()
         test_udp_recv_timeout();
         test_udp_broadcast();
         test_udp_set_recv_timeout();
-    }
-    else
-    {
+    } else {
         printf("=== Viper.Network Tcp/Udp Tests ===\n");
         printf("  SKIP: local bind unavailable in this environment\n");
     }

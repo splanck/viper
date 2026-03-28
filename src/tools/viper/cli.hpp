@@ -20,17 +20,14 @@
 #include <string>
 #include <vector>
 
-namespace il::support
-{
+namespace il::support {
 class SourceManager;
 }
 
-namespace ilc
-{
+namespace ilc {
 
 /// @brief Shared configuration for viper subcommands that execute IL.
-struct SharedCliOptions
-{
+struct SharedCliOptions {
     /// @brief Trace settings requested via --trace flags.
     il::vm::TraceConfig trace{};
 
@@ -78,8 +75,7 @@ struct SharedCliOptions
 };
 
 /// @brief Result of attempting to parse a shared CLI option.
-enum class SharedOptionParseResult
-{
+enum class SharedOptionParseResult {
     NotMatched, ///< Argument does not correspond to a shared option.
     Parsed,     ///< Argument consumed and reflected in the configuration.
     Error       ///< Argument looked like a shared option but was malformed.

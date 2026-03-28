@@ -38,8 +38,7 @@ using namespace viper::codegen::aarch64;
 //
 // Expected: both vregs return the SAME FP-relative offset.
 // -------------------------------------------------------------------------
-TEST(AArch64SpillReuse, NonOverlappingSharesSlot)
-{
+TEST(AArch64SpillReuse, NonOverlappingSharesSlot) {
     MFunction mf{};
     FrameBuilder fb{mf};
 
@@ -58,8 +57,7 @@ TEST(AArch64SpillReuse, NonOverlappingSharesSlot)
 //
 // Expected: vregs get DIFFERENT FP-relative offsets.
 // -------------------------------------------------------------------------
-TEST(AArch64SpillReuse, OverlappingAllocatesSeparateSlots)
-{
+TEST(AArch64SpillReuse, OverlappingAllocatesSeparateSlots) {
     MFunction mf{};
     FrameBuilder fb{mf};
 
@@ -78,8 +76,7 @@ TEST(AArch64SpillReuse, OverlappingAllocatesSeparateSlots)
 //
 // Expected: all three get the SAME offset; exactly one distinct slot offset.
 // -------------------------------------------------------------------------
-TEST(AArch64SpillReuse, ThreeSequentialVregsShareOneSlot)
-{
+TEST(AArch64SpillReuse, ThreeSequentialVregsShareOneSlot) {
     MFunction mf{};
     FrameBuilder fb{mf};
 
@@ -99,8 +96,7 @@ TEST(AArch64SpillReuse, ThreeSequentialVregsShareOneSlot)
 // -------------------------------------------------------------------------
 // Test 4: Repeated call for the same vreg returns the same offset (idempotent).
 // -------------------------------------------------------------------------
-TEST(AArch64SpillReuse, SameVregReturnsSameOffset)
-{
+TEST(AArch64SpillReuse, SameVregReturnsSameOffset) {
     MFunction mf{};
     FrameBuilder fb{mf};
 
@@ -116,8 +112,7 @@ TEST(AArch64SpillReuse, SameVregReturnsSameOffset)
 //   Non-overlapping: 4 vregs → one 8-byte slot → 16 bytes (16-byte aligned).
 //   Overlapping:     4 vregs → four 8-byte slots → 32 bytes.
 // -------------------------------------------------------------------------
-TEST(AArch64SpillReuse, ReusedFrameSmallerThanUniqueSlots)
-{
+TEST(AArch64SpillReuse, ReusedFrameSmallerThanUniqueSlots) {
     // Scenario A: 4 non-overlapping vregs — all reuse one slot.
     {
         MFunction mf{};
@@ -143,8 +138,7 @@ TEST(AArch64SpillReuse, ReusedFrameSmallerThanUniqueSlots)
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

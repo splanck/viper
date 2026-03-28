@@ -22,21 +22,17 @@
 
 namespace fs = std::filesystem;
 
-namespace il::tools::common
-{
+namespace il::tools::common {
 
-namespace
-{
+namespace {
 
 /// @brief Make a diagnostic error with a message.
-il::support::Diag makeErr(const std::string &msg)
-{
+il::support::Diag makeErr(const std::string &msg) {
     return il::support::Diagnostic{il::support::Severity::Error, msg, {}, {}};
 }
 
 /// @brief Make a diagnostic error with file:line context.
-il::support::Diag makeManifestErr(const std::string &path, int line, const std::string &msg)
-{
+il::support::Diag makeManifestErr(const std::string &path, int line, const std::string &msg) {
     std::string full = path + ":" + std::to_string(line) + ": " + msg;
     return il::support::Diagnostic{il::support::Severity::Error, full, {}, {}};
 }
@@ -48,8 +44,7 @@ il::support::Diag makeManifestErr(const std::string &path, int line, const std::
 /// @return Sorted list of absolute file paths.
 std::vector<std::string> collectFiles(const fs::path &dir,
                                       const std::string &ext,
-                                      const std::vector<std::string> &excludes)
-{
+                                      const std::vector<std::string> &excludes) {
     std::vector<std::string> result;
     if (!fs::is_directory(dir))
         return result;
@@ -57,17 +52,13 @@ std::vector<std::string> collectFiles(const fs::path &dir,
     for (auto it =
              fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied);
          it != fs::recursive_directory_iterator();
-         ++it)
-    {
+         ++it) {
         // Check excludes against the relative path from dir
-        if (it->is_directory())
-        {
+        if (it->is_directory()) {
             auto rel = fs::relative(it->path(), dir).string();
-            for (const auto &ex : excludes)
-            {
+            for (const auto &ex : excludes) {
                 // Match if the relative path starts with the exclude prefix
-                if (rel == ex || rel.rfind(ex, 0) == 0)
-                {
+                if (rel == ex || rel.rfind(ex, 0) == 0) {
                     it.disable_recursion_pending();
                     break;
                 }
@@ -75,8 +66,7 @@ std::vector<std::string> collectFiles(const fs::path &dir,
             continue;
         }
 
-        if (it->is_regular_file() && it->path().extension() == ext)
-        {
+        if (it->is_regular_file() && it->path().extension() == ext) {
             result.push_back(fs::canonical(it->path()).string());
         }
     }
@@ -87,8 +77,7 @@ std::vector<std::string> collectFiles(const fs::path &dir,
 
 /// @brief Check if a file contains a Zia entry point (func start() or func main()).
 /// Uses lightweight text scanning, not full parsing.
-bool hasZiaEntryPoint(const std::string &path)
-{
+bool hasZiaEntryPoint(const std::string &path) {
     std::ifstream file(path);
     if (!file.is_open())
         return false;
@@ -96,8 +85,7 @@ bool hasZiaEntryPoint(const std::string &path)
     // Match "func start(" or "func main(" with optional whitespace
     static const std::regex entryPattern(R"(^\s*func\s+(start|main)\s*\()");
     std::string line;
-    while (std::getline(file, line))
-    {
+    while (std::getline(file, line)) {
         if (std::regex_search(line, entryPattern))
             return true;
     }
@@ -105,16 +93,14 @@ bool hasZiaEntryPoint(const std::string &path)
 }
 
 /// @brief Check if a BASIC file has AddFile directives (indicating a root file).
-bool hasBasicAddFile(const std::string &path)
-{
+bool hasBasicAddFile(const std::string &path) {
     std::ifstream file(path);
     if (!file.is_open())
         return false;
 
     static const std::regex addFilePattern(R"(^\s*AddFile\s+)");
     std::string line;
-    while (std::getline(file, line))
-    {
+    while (std::getline(file, line)) {
         if (std::regex_search(line, addFilePattern))
             return true;
     }
@@ -123,8 +109,7 @@ bool hasBasicAddFile(const std::string &path)
 
 /// @brief Check if a BASIC file has top-level executable statements
 /// (not just SUB/FUNCTION definitions).
-bool hasBasicTopLevelCode(const std::string &path)
-{
+bool hasBasicTopLevelCode(const std::string &path) {
     std::ifstream file(path);
     if (!file.is_open())
         return false;
@@ -138,8 +123,7 @@ bool hasBasicTopLevelCode(const std::string &path)
         std::regex::icase);
 
     std::string line;
-    while (std::getline(file, line))
-    {
+    while (std::getline(file, line)) {
         // Skip blank lines and comments
         if (line.empty())
             continue;
@@ -159,27 +143,23 @@ bool hasBasicTopLevelCode(const std::string &path)
 }
 
 /// @brief Find the Zia entry file from a list of source files.
-il::support::Expected<std::string> findZiaEntry(const std::vector<std::string> &files)
-{
+il::support::Expected<std::string> findZiaEntry(const std::vector<std::string> &files) {
     // Priority 1: file named main.zia
-    for (const auto &f : files)
-    {
+    for (const auto &f : files) {
         if (fs::path(f).filename() == "main.zia")
             return f;
     }
 
     // Priority 2: scan for func start() or func main()
     std::vector<std::string> candidates;
-    for (const auto &f : files)
-    {
+    for (const auto &f : files) {
         if (hasZiaEntryPoint(f))
             candidates.push_back(f);
     }
 
     if (candidates.size() == 1)
         return candidates[0];
-    if (candidates.size() > 1)
-    {
+    if (candidates.size() > 1) {
         std::string msg = "multiple entry points found:";
         for (const auto &c : candidates)
             msg += " " + fs::path(c).filename().string();
@@ -192,27 +172,23 @@ il::support::Expected<std::string> findZiaEntry(const std::vector<std::string> &
 }
 
 /// @brief Find the BASIC entry file from a list of source files.
-il::support::Expected<std::string> findBasicEntry(const std::vector<std::string> &files)
-{
+il::support::Expected<std::string> findBasicEntry(const std::vector<std::string> &files) {
     // Priority 1: file named main.bas
-    for (const auto &f : files)
-    {
+    for (const auto &f : files) {
         if (fs::path(f).filename() == "main.bas")
             return f;
     }
 
     // Priority 2: look for files with AddFile directives (root files)
     std::vector<std::string> roots;
-    for (const auto &f : files)
-    {
+    for (const auto &f : files) {
         if (hasBasicAddFile(f))
             roots.push_back(f);
     }
 
     if (roots.size() == 1)
         return roots[0];
-    if (roots.size() > 1)
-    {
+    if (roots.size() > 1) {
         std::string msg = "multiple root files found:";
         for (const auto &r : roots)
             msg += " " + fs::path(r).filename().string();
@@ -222,8 +198,7 @@ il::support::Expected<std::string> findBasicEntry(const std::vector<std::string>
 
     // Priority 3: look for files with top-level executable statements
     std::vector<std::string> execFiles;
-    for (const auto &f : files)
-    {
+    for (const auto &f : files) {
         if (hasBasicTopLevelCode(f))
             execFiles.push_back(f);
     }
@@ -240,8 +215,7 @@ il::support::Expected<std::string> findBasicEntry(const std::vector<std::string>
 
 /// @brief Discover project configuration by convention (no manifest).
 il::support::Expected<ProjectConfig> discoverConvention(const fs::path &dir,
-                                                        const std::vector<std::string> &excludes)
-{
+                                                        const std::vector<std::string> &excludes) {
     auto ziaFiles = collectFiles(dir, ".zia", excludes);
     auto basFiles = collectFiles(dir, ".bas", excludes);
 
@@ -249,8 +223,7 @@ il::support::Expected<ProjectConfig> discoverConvention(const fs::path &dir,
     if (ziaFiles.empty() && basFiles.empty())
         return makeErr("no source files found in " + dir.string());
 
-    if (!ziaFiles.empty() && !basFiles.empty())
-    {
+    if (!ziaFiles.empty() && !basFiles.empty()) {
         // Mixed project detected — require a viper.project manifest to
         // specify the entry point and 'lang mixed'.
         return makeErr("mixed .zia and .bas files in " + dir.string() +
@@ -261,8 +234,7 @@ il::support::Expected<ProjectConfig> discoverConvention(const fs::path &dir,
     config.rootDir = fs::canonical(dir).string();
     config.name = dir.filename().string();
 
-    if (!ziaFiles.empty())
-    {
+    if (!ziaFiles.empty()) {
         config.lang = ProjectLang::Zia;
         config.sourceFiles = std::move(ziaFiles);
 
@@ -270,9 +242,7 @@ il::support::Expected<ProjectConfig> discoverConvention(const fs::path &dir,
         if (!entry)
             return il::support::Expected<ProjectConfig>(entry.error());
         config.entryFile = std::move(entry.value());
-    }
-    else
-    {
+    } else {
         config.lang = ProjectLang::Basic;
         config.sourceFiles = std::move(basFiles);
 
@@ -289,8 +259,7 @@ il::support::Expected<ProjectConfig> discoverConvention(const fs::path &dir,
 il::support::Expected<bool> parseBool(const std::string &val,
                                       const std::string &manifestPath,
                                       int line,
-                                      const std::string &directive)
-{
+                                      const std::string &directive) {
     if (val == "on" || val == "true" || val == "yes")
         return true;
     if (val == "off" || val == "false" || val == "no")
@@ -302,8 +271,7 @@ il::support::Expected<bool> parseBool(const std::string &val,
 
 } // anonymous namespace
 
-il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPath)
-{
+il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPath) {
     std::ifstream file(manifestPath);
     if (!file.is_open())
         return makeErr("cannot open manifest: " + manifestPath);
@@ -330,8 +298,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
 
     std::string line;
     int lineNum = 0;
-    while (std::getline(file, line))
-    {
+    while (std::getline(file, line)) {
         ++lineNum;
 
         // Strip leading/trailing whitespace
@@ -356,22 +323,17 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         std::string directive = line.substr(0, spacePos);
         std::string value = line.substr(line.find_first_not_of(" \t", spacePos));
 
-        if (directive == "project")
-        {
+        if (directive == "project") {
             if (hasProject)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'project'");
             hasProject = true;
             config.name = value;
-        }
-        else if (directive == "version")
-        {
+        } else if (directive == "version") {
             if (hasVersion)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'version'");
             hasVersion = true;
             config.version = value;
-        }
-        else if (directive == "lang")
-        {
+        } else if (directive == "lang") {
             if (hasLang)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'lang'");
             hasLang = true;
@@ -386,24 +348,16 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                                        lineNum,
                                        "invalid language '" + value +
                                            "'; expected 'zia', 'basic', or 'mixed'");
-        }
-        else if (directive == "entry")
-        {
+        } else if (directive == "entry") {
             if (hasEntry)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'entry'");
             hasEntry = true;
             config.entryFile = (manifestDir / value).string();
-        }
-        else if (directive == "sources")
-        {
+        } else if (directive == "sources") {
             sourceDirs.push_back(value);
-        }
-        else if (directive == "exclude")
-        {
+        } else if (directive == "exclude") {
             excludes.push_back(value);
-        }
-        else if (directive == "optimize")
-        {
+        } else if (directive == "optimize") {
             if (hasOptimize)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'optimize'");
             hasOptimize = true;
@@ -413,9 +367,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                                        "invalid optimize level '" + value +
                                            "'; expected O0, O1, or O2");
             config.optimizeLevel = value;
-        }
-        else if (directive == "bounds-checks")
-        {
+        } else if (directive == "bounds-checks") {
             if (hasBoundsChecks)
                 return makeManifestErr(
                     manifestPath, lineNum, "duplicate directive 'bounds-checks'");
@@ -424,9 +376,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (!b)
                 return il::support::Expected<ProjectConfig>(b.error());
             config.boundsChecks = b.value();
-        }
-        else if (directive == "overflow-checks")
-        {
+        } else if (directive == "overflow-checks") {
             if (hasOverflowChecks)
                 return makeManifestErr(
                     manifestPath, lineNum, "duplicate directive 'overflow-checks'");
@@ -435,9 +385,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             if (!b)
                 return il::support::Expected<ProjectConfig>(b.error());
             config.overflowChecks = b.value();
-        }
-        else if (directive == "null-checks")
-        {
+        } else if (directive == "null-checks") {
             if (hasNullChecks)
                 return makeManifestErr(manifestPath, lineNum, "duplicate directive 'null-checks'");
             hasNullChecks = true;
@@ -449,41 +397,26 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         //=================================================================
         // Package directives (new for VAPS)
         //=================================================================
-        else if (directive == "package-name")
-        {
+        else if (directive == "package-name") {
             config.packageConfig.displayName = value;
-        }
-        else if (directive == "package-author")
-        {
+        } else if (directive == "package-author") {
             // Value may be quoted
             if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
                 value = value.substr(1, value.size() - 2);
             config.packageConfig.author = value;
-        }
-        else if (directive == "package-description")
-        {
+        } else if (directive == "package-description") {
             if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
                 value = value.substr(1, value.size() - 2);
             config.packageConfig.description = value;
-        }
-        else if (directive == "package-homepage")
-        {
+        } else if (directive == "package-homepage") {
             config.packageConfig.homepage = value;
-        }
-        else if (directive == "package-license")
-        {
+        } else if (directive == "package-license") {
             config.packageConfig.license = value;
-        }
-        else if (directive == "package-identifier")
-        {
+        } else if (directive == "package-identifier") {
             config.packageConfig.identifier = value;
-        }
-        else if (directive == "package-icon")
-        {
+        } else if (directive == "package-icon") {
             config.packageConfig.iconPath = value;
-        }
-        else if (directive == "asset")
-        {
+        } else if (directive == "asset") {
             // Format: asset <source-path> <target-relative-dir>
             auto sp = value.find_first_of(" \t");
             if (sp == std::string::npos)
@@ -492,9 +425,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             std::string src = value.substr(0, sp);
             std::string tgt = value.substr(value.find_first_not_of(" \t", sp));
             config.packageConfig.assets.push_back({src, tgt});
-        }
-        else if (directive == "file-assoc")
-        {
+        } else if (directive == "file-assoc") {
             // Format: file-assoc <extension> <description> <mime-type>
             // Extension is first token, description is quoted, mime is last
             auto sp1 = value.find_first_of(" \t");
@@ -507,8 +438,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             std::string rest = value.substr(value.find_first_not_of(" \t", sp1));
             // Description may be quoted
             std::string desc, mime;
-            if (rest.front() == '"')
-            {
+            if (rest.front() == '"') {
                 auto closeQuote = rest.find('"', 1);
                 if (closeQuote == std::string::npos)
                     return makeManifestErr(
@@ -516,68 +446,48 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
                 desc = rest.substr(1, closeQuote - 1);
                 auto mimeStart = rest.find_first_not_of(" \t", closeQuote + 1);
                 mime = (mimeStart != std::string::npos) ? rest.substr(mimeStart) : "";
-            }
-            else
-            {
+            } else {
                 auto sp2 = rest.find_first_of(" \t");
                 desc = rest.substr(0, sp2);
                 if (sp2 != std::string::npos)
                     mime = rest.substr(rest.find_first_not_of(" \t", sp2));
             }
             config.packageConfig.fileAssociations.push_back({ext, desc, mime});
-        }
-        else if (directive == "shortcut-desktop")
-        {
+        } else if (directive == "shortcut-desktop") {
             auto b = parseBool(value, manifestPath, lineNum, "shortcut-desktop");
             if (!b)
                 return il::support::Expected<ProjectConfig>(b.error());
             config.packageConfig.shortcutDesktop = b.value();
-        }
-        else if (directive == "shortcut-menu")
-        {
+        } else if (directive == "shortcut-menu") {
             auto b = parseBool(value, manifestPath, lineNum, "shortcut-menu");
             if (!b)
                 return il::support::Expected<ProjectConfig>(b.error());
             config.packageConfig.shortcutMenu = b.value();
-        }
-        else if (directive == "min-os-windows")
-        {
+        } else if (directive == "min-os-windows") {
             config.packageConfig.minOsWindows = value;
-        }
-        else if (directive == "min-os-macos")
-        {
+        } else if (directive == "min-os-macos") {
             config.packageConfig.minOsMacos = value;
-        }
-        else if (directive == "target-arch")
-        {
+        } else if (directive == "target-arch") {
             if (value != "x64" && value != "arm64")
                 return makeManifestErr(manifestPath,
                                        lineNum,
                                        "invalid target-arch '" + value +
                                            "'; expected 'x64' or 'arm64'");
             config.packageConfig.targetArchitectures.push_back(value);
-        }
-        else if (directive == "package-category")
-        {
+        } else if (directive == "package-category") {
             config.packageConfig.category = value;
-        }
-        else if (directive == "package-depends")
-        {
+        } else if (directive == "package-depends") {
             // Comma-separated list: "libc6, libx11-6, libssl3"
             std::string depToken;
-            for (char c : value)
-            {
-                if (c == ',')
-                {
+            for (char c : value) {
+                if (c == ',') {
                     // Trim whitespace
                     size_t ds = depToken.find_first_not_of(' ');
                     size_t de = depToken.find_last_not_of(' ');
                     if (ds != std::string::npos)
                         config.packageConfig.depends.push_back(depToken.substr(ds, de - ds + 1));
                     depToken.clear();
-                }
-                else
-                {
+                } else {
                     depToken.push_back(c);
                 }
             }
@@ -586,17 +496,11 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             size_t de = depToken.find_last_not_of(' ');
             if (ds != std::string::npos)
                 config.packageConfig.depends.push_back(depToken.substr(ds, de - ds + 1));
-        }
-        else if (directive == "post-install")
-        {
+        } else if (directive == "post-install") {
             config.packageConfig.postInstallScript = value;
-        }
-        else if (directive == "pre-uninstall")
-        {
+        } else if (directive == "pre-uninstall") {
             config.packageConfig.preUninstallScript = value;
-        }
-        else
-        {
+        } else {
             return makeManifestErr(manifestPath, lineNum, "unknown directive '" + directive + "'");
         }
     }
@@ -608,12 +512,10 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     std::string ext = (config.lang == ProjectLang::Zia) ? ".zia" : ".bas";
 
     // If no lang specified, auto-detect before collecting
-    if (!hasLang)
-    {
+    if (!hasLang) {
         // Scan all source dirs for both extensions
         std::vector<std::string> allZia, allBas;
-        for (const auto &sd : sourceDirs)
-        {
+        for (const auto &sd : sourceDirs) {
             fs::path srcDir = manifestDir / sd;
             auto zia = collectFiles(srcDir, ".zia", excludes);
             auto bas = collectFiles(srcDir, ".bas", excludes);
@@ -621,33 +523,24 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             allBas.insert(allBas.end(), bas.begin(), bas.end());
         }
 
-        if (!allZia.empty() && allBas.empty())
-        {
+        if (!allZia.empty() && allBas.empty()) {
             config.lang = ProjectLang::Zia;
             ext = ".zia";
-        }
-        else if (!allBas.empty() && allZia.empty())
-        {
+        } else if (!allBas.empty() && allZia.empty()) {
             config.lang = ProjectLang::Basic;
             ext = ".bas";
-        }
-        else if (!allZia.empty() && !allBas.empty())
-        {
+        } else if (!allZia.empty() && !allBas.empty()) {
             // Auto-detect mixed: requires 'entry' directive.
             config.lang = ProjectLang::Mixed;
             ext = ".zia"; // Will collect both below.
-        }
-        else
-        {
+        } else {
             return makeErr("no source files found in project directories");
         }
     }
 
-    if (config.lang == ProjectLang::Mixed)
-    {
+    if (config.lang == ProjectLang::Mixed) {
         // Mixed projects: collect both .zia and .bas files.
-        for (const auto &sd : sourceDirs)
-        {
+        for (const auto &sd : sourceDirs) {
             fs::path srcDir = manifestDir / sd;
             if (!fs::is_directory(srcDir))
                 return makeErr("sources directory not found: " + srcDir.string());
@@ -659,11 +552,8 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
             config.sourceFiles.insert(config.sourceFiles.end(), zia.begin(), zia.end());
             config.sourceFiles.insert(config.sourceFiles.end(), bas.begin(), bas.end());
         }
-    }
-    else
-    {
-        for (const auto &sd : sourceDirs)
-        {
+    } else {
+        for (const auto &sd : sourceDirs) {
             fs::path srcDir = manifestDir / sd;
             if (!fs::is_directory(srcDir))
                 return makeErr("sources directory not found: " + srcDir.string());
@@ -681,8 +571,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         return makeErr("no source files found in project directories");
 
     // Entry point resolution
-    if (!hasEntry)
-    {
+    if (!hasEntry) {
         if (config.lang == ProjectLang::Mixed)
             return makeErr("mixed-language projects require an 'entry' directive in viper.project");
 
@@ -692,9 +581,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         if (!entry)
             return il::support::Expected<ProjectConfig>(entry.error());
         config.entryFile = std::move(entry.value());
-    }
-    else
-    {
+    } else {
         // Verify entry file exists
         if (!fs::exists(config.entryFile))
             return makeErr("entry file not found: " + config.entryFile);
@@ -703,8 +590,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     return config;
 }
 
-il::support::Expected<ProjectConfig> resolveProject(const std::string &target)
-{
+il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
     // Determine what the target is
     fs::path targetPath(target);
 
@@ -716,8 +602,7 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target)
         return makeErr("target not found: " + target);
 
     // Case 1: Single .zia file
-    if (fs::is_regular_file(targetPath) && targetPath.extension() == ".zia")
-    {
+    if (fs::is_regular_file(targetPath) && targetPath.extension() == ".zia") {
         ProjectConfig config;
         auto canonical = fs::canonical(targetPath);
         config.lang = ProjectLang::Zia;
@@ -729,8 +614,7 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target)
     }
 
     // Case 2: Single .bas file
-    if (fs::is_regular_file(targetPath) && targetPath.extension() == ".bas")
-    {
+    if (fs::is_regular_file(targetPath) && targetPath.extension() == ".bas") {
         ProjectConfig config;
         auto canonical = fs::canonical(targetPath);
         config.lang = ProjectLang::Basic;
@@ -742,19 +626,16 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target)
     }
 
     // Case 3: Explicit manifest file
-    if (fs::is_regular_file(targetPath))
-    {
+    if (fs::is_regular_file(targetPath)) {
         auto filename = targetPath.filename().string();
-        if (filename == "viper.project" || targetPath.extension() == ".project")
-        {
+        if (filename == "viper.project" || targetPath.extension() == ".project") {
             return parseManifest(fs::canonical(targetPath).string());
         }
         return makeErr(target + " is not a .zia, .bas, or viper.project file");
     }
 
     // Case 4: Directory
-    if (fs::is_directory(targetPath))
-    {
+    if (fs::is_directory(targetPath)) {
         auto canonical = fs::canonical(targetPath);
 
         // Check for viper.project in directory

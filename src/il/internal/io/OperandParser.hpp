@@ -22,12 +22,10 @@
 #include <string>
 #include <vector>
 
-namespace il::io::detail
-{
+namespace il::io::detail {
 
 /// @brief Parses operand tokens for an instruction currently under construction.
-class OperandParser
-{
+class OperandParser {
   public:
     /// @brief Construct an operand parser bound to the current parser state and instruction.
     /// @param state Parser state supplying temporary mappings and diagnostics.

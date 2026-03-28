@@ -35,13 +35,11 @@
 
 #include "tui/text/text_buffer.hpp"
 
-namespace viper::tui::text
-{
+namespace viper::tui::text {
 /// @brief Byte-range result of a text search operation.
 /// @details Represents a contiguous match within the text buffer, stored as
 ///          a starting byte offset and a length in bytes.
-struct Match
-{
+struct Match {
     size_t start{0};
     size_t length{0};
 };

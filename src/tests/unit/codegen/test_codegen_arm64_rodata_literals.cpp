@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,8 +43,7 @@ static std::string readFile(const std::string &path)
 }
 
 // Test 1: Large immediate that cannot be encoded inline
-TEST(Arm64Rodata, LargeImmediate)
-{
+TEST(Arm64Rodata, LargeImmediate) {
     const std::string in = outPath("arm64_rodata_large.il");
     const std::string out = outPath("arm64_rodata_large.s");
     // 0x123456789ABCDEF0 cannot be encoded in a single mov instruction
@@ -68,8 +64,7 @@ TEST(Arm64Rodata, LargeImmediate)
 }
 
 // Test 2: Floating-point constant
-TEST(Arm64Rodata, FloatConstant)
-{
+TEST(Arm64Rodata, FloatConstant) {
     const std::string in = outPath("arm64_rodata_fp.il");
     const std::string out = outPath("arm64_rodata_fp.s");
     const std::string il = "il 0.1\n"
@@ -89,8 +84,7 @@ TEST(Arm64Rodata, FloatConstant)
 }
 
 // Test 3: String constant
-TEST(Arm64Rodata, StringConstant)
-{
+TEST(Arm64Rodata, StringConstant) {
     const std::string in = outPath("arm64_rodata_str.il");
     const std::string out = outPath("arm64_rodata_str.s");
     const std::string il = "il 0.1\n"
@@ -113,8 +107,7 @@ TEST(Arm64Rodata, StringConstant)
 }
 
 // Test 4: Multiple different large constants (within i64 signed range)
-TEST(Arm64Rodata, MultipleLargeConstants)
-{
+TEST(Arm64Rodata, MultipleLargeConstants) {
     const std::string in = outPath("arm64_rodata_multi.il");
     const std::string out = outPath("arm64_rodata_multi.s");
     // Use large values within signed i64 range
@@ -137,8 +130,7 @@ TEST(Arm64Rodata, MultipleLargeConstants)
 }
 
 // Test 5: Zero and all-ones (special cases)
-TEST(Arm64Rodata, ZeroAndOnes)
-{
+TEST(Arm64Rodata, ZeroAndOnes) {
     const std::string in = outPath("arm64_rodata_special.il");
     const std::string out = outPath("arm64_rodata_special.s");
     const std::string il = "il 0.1\n"
@@ -160,8 +152,7 @@ TEST(Arm64Rodata, ZeroAndOnes)
 }
 
 // Test 6: FP special values
-TEST(Arm64Rodata, FPSpecialValues)
-{
+TEST(Arm64Rodata, FPSpecialValues) {
     const std::string in = outPath("arm64_rodata_fp_special.il");
     const std::string out = outPath("arm64_rodata_fp_special.s");
     const std::string il = "il 0.1\n"
@@ -183,8 +174,7 @@ TEST(Arm64Rodata, FPSpecialValues)
 }
 
 // Test 7: Constant used multiple times (should be deduplicated)
-TEST(Arm64Rodata, ConstantDeduplication)
-{
+TEST(Arm64Rodata, ConstantDeduplication) {
     const std::string in = outPath("arm64_rodata_dedup.il");
     const std::string out = outPath("arm64_rodata_dedup.s");
     const std::string il = "il 0.1\n"
@@ -204,8 +194,7 @@ TEST(Arm64Rodata, ConstantDeduplication)
 }
 
 // Test 8: Negative large constant
-TEST(Arm64Rodata, NegativeLarge)
-{
+TEST(Arm64Rodata, NegativeLarge) {
     const std::string in = outPath("arm64_rodata_neg.il");
     const std::string out = outPath("arm64_rodata_neg.s");
     const std::string il = "il 0.1\n"
@@ -220,8 +209,7 @@ TEST(Arm64Rodata, NegativeLarge)
     EXPECT_FALSE(asmText.empty());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

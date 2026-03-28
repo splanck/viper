@@ -35,15 +35,13 @@
 
 #include "tui/render/screen.hpp"
 
-namespace viper::tui::syntax
-{
+namespace viper::tui::syntax {
 
 /// @brief Associates a regular expression pattern with a visual style for highlighting.
 /// @details When the pattern matches a region of text, the corresponding style is
 ///          applied to that region during rendering. Rules are evaluated in order
 ///          against each line of text.
-struct SyntaxRule
-{
+struct SyntaxRule {
     std::regex pattern;  ///< Regular expression to match.
     render::Style style; ///< Style applied to matches.
 };
@@ -52,8 +50,7 @@ struct SyntaxRule
 /// @details Records the byte offset, length, and visual style for a syntax-highlighted
 ///          region. Multiple spans can cover a single line; the renderer applies them
 ///          in order during painting.
-struct Span
-{
+struct Span {
     std::size_t start{0};  ///< Byte offset within line.
     std::size_t length{0}; ///< Length in bytes.
     render::Style style{}; ///< Style for the span.
@@ -64,8 +61,7 @@ struct Span
 ///          to text lines, and caches the resulting styled spans for efficient
 ///          re-rendering. Cache entries are automatically invalidated when line
 ///          content changes.
-class SyntaxRuleSet
-{
+class SyntaxRuleSet {
   public:
     /// @brief Load syntax highlighting rules from a JSON configuration file.
     /// @details Parses the file for pattern/style pairs and compiles the regex

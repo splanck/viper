@@ -30,33 +30,28 @@
 #include <variant>
 #include <vector>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 /// \brief Identifies a virtual register allocated by the Machine IR builder.
-struct VReg
-{
+struct VReg {
     uint16_t id{0U};             ///< Unique id within a function.
     RegClass cls{RegClass::GPR}; ///< Register class constraining the allocation.
 };
 
 /// \brief Describes a register operand that may reference a virtual or physical register.
-struct OpReg
-{
+struct OpReg {
     bool isPhys{false};          ///< True when referencing a physical register.
     RegClass cls{RegClass::GPR}; ///< Register class of the operand.
     uint16_t idOrPhys{0U};       ///< Virtual id (if !isPhys) or PhysReg enum value.
 };
 
 /// \brief Immediate operand for integer values.
-struct OpImm
-{
+struct OpImm {
     int64_t val{0};
 };
 
 /// \brief Memory operand using a base (+ optional index*scale) plus displacement (RIP-less).
-struct OpMem
-{
+struct OpMem {
     OpReg base{};         ///< Base register supplying the address.
     OpReg index{};        ///< Optional index register (cls must be GPR when used).
     uint8_t scale{1};     ///< Scale for the index (1, 2, 4, 8).
@@ -65,14 +60,12 @@ struct OpMem
 };
 
 /// \brief Symbolic label operand (basic blocks, functions, jump targets).
-struct OpLabel
-{
+struct OpLabel {
     std::string name{}; ///< Symbol name.
 };
 
 /// \brief RIP-relative label operand representing a memory reference without a base register.
-struct OpRipLabel
-{
+struct OpRipLabel {
     std::string name{}; ///< Symbol name referenced relative to RIP.
 };
 
@@ -80,8 +73,7 @@ struct OpRipLabel
 using Operand = std::variant<OpReg, OpImm, OpMem, OpLabel, OpRipLabel>;
 
 /// \brief Enumerates the opcode set required for Phase A.
-enum class MOpcode
-{
+enum class MOpcode {
     MOVrr,     ///< Move register to register.
     MOVrm,     ///< Move register to memory.
     MOVmr,     ///< Move memory to register.
@@ -143,8 +135,7 @@ enum class MOpcode
 };
 
 /// \brief Machine instruction: opcode with ordered operands.
-struct MInstr
-{
+struct MInstr {
     MOpcode opcode{MOpcode::MOVrr};  ///< Opcode for the instruction.
     std::vector<Operand> operands{}; ///< Operands in emission order.
     il::support::SourceLoc loc{};    ///< Source location (for debug info).
@@ -168,8 +159,7 @@ struct MInstr
 };
 
 /// \brief A sequence of machine instructions labelled for control flow.
-struct MBasicBlock
-{
+struct MBasicBlock {
     std::string label{};                ///< Symbolic label for the block.
     std::vector<MInstr> instructions{}; ///< Ordered list of instructions.
 
@@ -180,14 +170,12 @@ struct MBasicBlock
 };
 
 /// \brief Metadata associated with a machine function.
-struct FunctionMetadata
-{
+struct FunctionMetadata {
     bool isVarArg{false}; ///< True when the function accepts variable arguments.
 };
 
 /// \brief Machine function: entry name, blocks, and metadata.
-struct MFunction
-{
+struct MFunction {
     std::string name{};                ///< Symbolic name of the function.
     std::vector<MBasicBlock> blocks{}; ///< Basic blocks forming the body.
     FunctionMetadata metadata{};       ///< Ancillary metadata about the function.

@@ -44,8 +44,7 @@
 ///          memory and encodes length, capacity, and element kind.
 /// @param payload Array payload pointer or NULL.
 /// @return Heap header pointer, or NULL if @p payload is NULL.
-rt_heap_hdr_t *rt_arr_i64_hdr(const int64_t *payload)
-{
+rt_heap_hdr_t *rt_arr_i64_hdr(const int64_t *payload) {
     return payload ? rt_heap_hdr((void *)(uintptr_t)payload) : NULL;
 }
 
@@ -58,8 +57,7 @@ RT_ARR_DEFINE_PAYLOAD_BYTES_FN(rt_arr_i64_payload_bytes, int64_t)
 /// @brief Assert that a header is a 64-bit numeric array (I64 or F64).
 /// @details Some operations (retain/release/len) are valid for both types.
 /// @param hdr Heap header to validate (must be non-NULL).
-static void rt_arr_64bit_assert_header(rt_heap_hdr_t *hdr)
-{
+static void rt_arr_64bit_assert_header(rt_heap_hdr_t *hdr) {
     assert(hdr);
     assert(hdr->kind == RT_HEAP_ARRAY);
     assert(hdr->elem_kind == RT_ELEM_I64 || hdr->elem_kind == RT_ELEM_F64);
@@ -70,8 +68,7 @@ static void rt_arr_64bit_assert_header(rt_heap_hdr_t *hdr)
 ///          beyond the current logical length.
 /// @param arr Array payload pointer.
 /// @param idx Element index to validate.
-static void rt_arr_i64_validate_bounds(int64_t *arr, size_t idx)
-{
+static void rt_arr_i64_validate_bounds(int64_t *arr, size_t idx) {
     if (!arr)
         rt_arr_oob_panic(idx, 0);
 
@@ -87,8 +84,7 @@ static void rt_arr_i64_validate_bounds(int64_t *arr, size_t idx)
 /// @details Allocates a runtime heap array with matching length and capacity.
 /// @param len Number of elements to allocate.
 /// @return Payload pointer or NULL on allocation failure.
-int64_t *rt_arr_i64_new(size_t len)
-{
+int64_t *rt_arr_i64_new(size_t len) {
     return (int64_t *)rt_heap_alloc(RT_HEAP_ARRAY, RT_ELEM_I64, sizeof(int64_t), len, len);
 }
 
@@ -96,8 +92,7 @@ int64_t *rt_arr_i64_new(size_t len)
 /// @details Accepts both I64 and F64 arrays for shared retain logic. No-op
 ///          when @p arr is NULL.
 /// @param arr Array payload pointer.
-void rt_arr_i64_retain(int64_t *arr)
-{
+void rt_arr_i64_retain(int64_t *arr) {
     if (!arr)
         return;
     rt_heap_hdr_t *hdr = rt_arr_i64_hdr(arr);
@@ -109,8 +104,7 @@ void rt_arr_i64_retain(int64_t *arr)
 /// @details Accepts both I64 and F64 arrays for shared release logic. No-op
 ///          when @p arr is NULL.
 /// @param arr Array payload pointer.
-void rt_arr_i64_release(int64_t *arr)
-{
+void rt_arr_i64_release(int64_t *arr) {
     if (!arr)
         return;
     rt_heap_hdr_t *hdr = rt_arr_i64_hdr(arr);
@@ -123,8 +117,7 @@ void rt_arr_i64_release(int64_t *arr)
 ///          0 for NULL arrays.
 /// @param arr Array payload pointer (may be NULL).
 /// @return Number of elements in the array.
-size_t rt_arr_i64_len(int64_t *arr)
-{
+size_t rt_arr_i64_len(int64_t *arr) {
     if (!arr)
         return 0;
     rt_heap_hdr_t *hdr = rt_arr_i64_hdr(arr);
@@ -136,8 +129,7 @@ size_t rt_arr_i64_len(int64_t *arr)
 /// @details Returns 0 for NULL arrays.
 /// @param arr Array payload pointer (may be NULL).
 /// @return Capacity in elements.
-size_t rt_arr_i64_cap(int64_t *arr)
-{
+size_t rt_arr_i64_cap(int64_t *arr) {
     if (!arr)
         return 0;
     rt_heap_hdr_t *hdr = rt_arr_i64_hdr(arr);
@@ -150,8 +142,7 @@ size_t rt_arr_i64_cap(int64_t *arr)
 /// @param arr Array payload pointer.
 /// @param idx Element index to read.
 /// @return The element value at @p idx.
-int64_t rt_arr_i64_get(int64_t *arr, size_t idx)
-{
+int64_t rt_arr_i64_get(int64_t *arr, size_t idx) {
     rt_arr_i64_validate_bounds(arr, idx);
     return arr[idx];
 }
@@ -161,8 +152,7 @@ int64_t rt_arr_i64_get(int64_t *arr, size_t idx)
 /// @param arr Array payload pointer.
 /// @param idx Element index to write.
 /// @param value Value to store.
-void rt_arr_i64_set(int64_t *arr, size_t idx, int64_t value)
-{
+void rt_arr_i64_set(int64_t *arr, size_t idx, int64_t value) {
     rt_arr_i64_validate_bounds(arr, idx);
     arr[idx] = value;
 }
@@ -172,8 +162,7 @@ void rt_arr_i64_set(int64_t *arr, size_t idx, int64_t value)
 /// @param dst Destination payload pointer.
 /// @param src Source payload pointer.
 /// @param count Number of elements to copy.
-void rt_arr_i64_copy_payload(int64_t *dst, const int64_t *src, size_t count)
-{
+void rt_arr_i64_copy_payload(int64_t *dst, const int64_t *src, size_t count) {
     if (count == 0)
         return;
 

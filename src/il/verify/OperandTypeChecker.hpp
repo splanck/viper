@@ -41,12 +41,10 @@
 
 #include <string_view>
 
-namespace il::verify::detail
-{
+namespace il::verify::detail {
 
 /// @brief Ensures an instruction's operands satisfy the metadata type requirements.
-class OperandTypeChecker
-{
+class OperandTypeChecker {
   public:
     OperandTypeChecker(const VerifyCtx &ctx, const InstructionSpec &spec);
 

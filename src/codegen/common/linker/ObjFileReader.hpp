@@ -29,12 +29,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Relocation in a parsed object file.
-struct ObjReloc
-{
+struct ObjReloc {
     size_t offset;     ///< Byte offset within the section.
     uint32_t type;     ///< Format-native relocation type (e.g., R_X86_64_PLT32).
     uint32_t symIndex; ///< Index into ObjFile::symbols.
@@ -42,17 +40,10 @@ struct ObjReloc
 };
 
 /// Symbol in a parsed object file.
-struct ObjSymbol
-{
+struct ObjSymbol {
     std::string name;
 
-    enum Binding : uint8_t
-    {
-        Local,
-        Global,
-        Weak,
-        Undefined
-    } binding = Undefined;
+    enum Binding : uint8_t { Local, Global, Weak, Undefined } binding = Undefined;
 
     uint32_t sectionIndex = 0; ///< Index into ObjFile::sections (0 = undefined).
     size_t offset = 0;         ///< Byte offset within section.
@@ -60,8 +51,7 @@ struct ObjSymbol
 };
 
 /// Section in a parsed object file.
-struct ObjSection
-{
+struct ObjSection {
     std::string name;
     std::vector<uint8_t> data;
     std::vector<ObjReloc> relocs;
@@ -74,8 +64,7 @@ struct ObjSection
 };
 
 /// Detected object file format.
-enum class ObjFileFormat : uint8_t
-{
+enum class ObjFileFormat : uint8_t {
     ELF,
     MachO,
     COFF,
@@ -83,8 +72,7 @@ enum class ObjFileFormat : uint8_t
 };
 
 /// Complete parsed object file.
-struct ObjFile
-{
+struct ObjFile {
     std::string name; ///< Source file name or archive member name.
     ObjFileFormat format = ObjFileFormat::Unknown;
     bool is64bit = true;

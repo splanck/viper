@@ -32,16 +32,14 @@
 // Helper: create a small runtime object to use as a map/queue value.
 // The object has refcount 1 on return; caller is responsible for release.
 // ---------------------------------------------------------------------------
-static void *make_obj(int64_t tag)
-{
+static void *make_obj(int64_t tag) {
     return rt_obj_new_i64(tag, (int64_t)sizeof(int64_t));
 }
 
 // ---------------------------------------------------------------------------
 // Helper: build an rt_string from a C literal, refcount 1 on return.
 // ---------------------------------------------------------------------------
-static rt_string make_key(const char *s)
-{
+static rt_string make_key(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
@@ -50,8 +48,7 @@ static rt_string make_key(const char *s)
 //=============================================================================
 
 // Basic set and get round-trip.
-static void test_concmap_set_get(void)
-{
+static void test_concmap_set_get(void) {
     void *map = rt_concmap_new();
     assert(map);
 
@@ -72,16 +69,14 @@ static void test_concmap_set_get(void)
 }
 
 // Insert many entries, verify count and retrieval.
-static void test_concmap_many_entries(void)
-{
+static void test_concmap_many_entries(void) {
     void *map = rt_concmap_new();
     assert(map);
 
     void *vals[32];
     rt_string keys[32];
     char buf[16];
-    for (int i = 0; i < 32; i++)
-    {
+    for (int i = 0; i < 32; i++) {
         snprintf(buf, sizeof(buf), "key%d", i);
         keys[i] = make_key(buf);
         vals[i] = make_obj((int64_t)i);
@@ -90,14 +85,12 @@ static void test_concmap_many_entries(void)
 
     assert(rt_concmap_len(map) == 32);
 
-    for (int i = 0; i < 32; i++)
-    {
+    for (int i = 0; i < 32; i++) {
         assert(rt_concmap_get(map, keys[i]) == vals[i]);
     }
 
     // Cleanup keys and values (map retains its own refs)
-    for (int i = 0; i < 32; i++)
-    {
+    for (int i = 0; i < 32; i++) {
         rt_string_unref(keys[i]);
         if (rt_obj_release_check0(vals[i]))
             rt_obj_free(vals[i]);
@@ -110,8 +103,7 @@ static void test_concmap_many_entries(void)
 
 // Set the same key twice — exercises the free_entry path on the replaced value
 // via rt_concmap_set's "update existing entry" branch.
-static void test_concmap_set_replaces_value(void)
-{
+static void test_concmap_set_replaces_value(void) {
     void *map = rt_concmap_new();
     assert(map);
 
@@ -137,8 +129,7 @@ static void test_concmap_set_replaces_value(void)
 }
 
 // Remove an entry — exercises the rt_concmap_remove -> free_entry path.
-static void test_concmap_remove(void)
-{
+static void test_concmap_remove(void) {
     void *map = rt_concmap_new();
     assert(map);
 
@@ -164,16 +155,14 @@ static void test_concmap_remove(void)
 }
 
 // Clear all entries — exercises cm_clear_unlocked -> free_entry for every node.
-static void test_concmap_clear(void)
-{
+static void test_concmap_clear(void) {
     void *map = rt_concmap_new();
     assert(map);
 
     void *vals[8];
     rt_string keys[8];
     char buf[8];
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         snprintf(buf, sizeof(buf), "k%d", i);
         keys[i] = make_key(buf);
         vals[i] = make_obj((int64_t)i);
@@ -185,8 +174,7 @@ static void test_concmap_clear(void)
     assert(rt_concmap_len(map) == 0);
     assert(rt_concmap_is_empty(map));
 
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         rt_string_unref(keys[i]);
         if (rt_obj_release_check0(vals[i]))
             rt_obj_free(vals[i]);
@@ -200,8 +188,7 @@ static void test_concmap_clear(void)
 //=============================================================================
 
 // Enqueue one item, verify try_dequeue returns it.
-static void test_concqueue_enqueue_dequeue(void)
-{
+static void test_concqueue_enqueue_dequeue(void) {
     void *q = rt_concqueue_new();
     assert(q);
     assert(rt_concqueue_is_empty(q));
@@ -226,33 +213,26 @@ static void test_concqueue_enqueue_dequeue(void)
 }
 
 // Enqueue many items and verify FIFO dequeue order.
-static void test_concqueue_fifo_order(void)
-{
+static void test_concqueue_fifo_order(void) {
     void *q = rt_concqueue_new();
     assert(q);
 
-    enum
-    {
-        N = 16
-    };
+    enum { N = 16 };
 
     void *items[N];
-    for (int i = 0; i < N; i++)
-    {
+    for (int i = 0; i < N; i++) {
         items[i] = make_obj((int64_t)i);
         rt_concqueue_enqueue(q, items[i]);
     }
     assert(rt_concqueue_len(q) == N);
 
-    for (int i = 0; i < N; i++)
-    {
+    for (int i = 0; i < N; i++) {
         void *got = rt_concqueue_try_dequeue(q);
         assert(got == items[i]);
     }
     assert(rt_concqueue_len(q) == 0);
 
-    for (int i = 0; i < N; i++)
-    {
+    for (int i = 0; i < N; i++) {
         if (rt_obj_release_check0(items[i]))
             rt_obj_free(items[i]);
     }
@@ -261,14 +241,12 @@ static void test_concqueue_fifo_order(void)
 }
 
 // Clear a populated queue — exercises the rt_concqueue_clear path.
-static void test_concqueue_clear(void)
-{
+static void test_concqueue_clear(void) {
     void *q = rt_concqueue_new();
     assert(q);
 
     void *vals[4];
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         vals[i] = make_obj((int64_t)i);
         rt_concqueue_enqueue(q, vals[i]);
     }
@@ -278,8 +256,7 @@ static void test_concqueue_clear(void)
     assert(rt_concqueue_len(q) == 0);
     assert(rt_concqueue_is_empty(q));
 
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         if (rt_obj_release_check0(vals[i]))
             rt_obj_free(vals[i]);
     }
@@ -288,14 +265,12 @@ static void test_concqueue_clear(void)
 }
 
 // Destroy a non-empty queue — exercises the cq_finalizer path.
-static void test_concqueue_destroy_nonempty(void)
-{
+static void test_concqueue_destroy_nonempty(void) {
     void *q = rt_concqueue_new();
     assert(q);
 
     void *vals[3];
-    for (int i = 0; i < 3; i++)
-    {
+    for (int i = 0; i < 3; i++) {
         vals[i] = make_obj((int64_t)i);
         rt_concqueue_enqueue(q, vals[i]);
     }
@@ -305,16 +280,14 @@ static void test_concqueue_destroy_nonempty(void)
         rt_obj_free(q);
 
     // The items were retained by the queue; release our references.
-    for (int i = 0; i < 3; i++)
-    {
+    for (int i = 0; i < 3; i++) {
         if (rt_obj_release_check0(vals[i]))
             rt_obj_free(vals[i]);
     }
 }
 
 // Peek does not remove the front item.
-static void test_concqueue_peek(void)
-{
+static void test_concqueue_peek(void) {
     void *q = rt_concqueue_new();
     assert(q);
 
@@ -343,8 +316,7 @@ static void test_concqueue_peek(void)
 
 // Schedule a task with zero delay and poll immediately — it must appear in the
 // result seq. This also exercises the rt_scheduler_poll name-transfer path.
-static void test_scheduler_poll_immediate(void)
-{
+static void test_scheduler_poll_immediate(void) {
     void *sched = rt_scheduler_new();
     assert(sched);
     assert(rt_scheduler_pending(sched) == 0);
@@ -373,8 +345,7 @@ static void test_scheduler_poll_immediate(void)
 }
 
 // Poll with no tasks returns an empty seq.
-static void test_scheduler_poll_empty(void)
-{
+static void test_scheduler_poll_empty(void) {
     void *sched = rt_scheduler_new();
     assert(sched);
 
@@ -389,8 +360,7 @@ static void test_scheduler_poll_empty(void)
 }
 
 // Schedule a task with a large delay — poll should NOT return it.
-static void test_scheduler_future_task_not_due(void)
-{
+static void test_scheduler_future_task_not_due(void) {
     void *sched = rt_scheduler_new();
     assert(sched);
 
@@ -415,8 +385,7 @@ static void test_scheduler_future_task_not_due(void)
 }
 
 // Cancel a task by name.
-static void test_scheduler_cancel(void)
-{
+static void test_scheduler_cancel(void) {
     void *sched = rt_scheduler_new();
     assert(sched);
 
@@ -437,20 +406,15 @@ static void test_scheduler_cancel(void)
 }
 
 // Schedule multiple zero-delay tasks; poll should return all of them.
-static void test_scheduler_poll_multiple(void)
-{
+static void test_scheduler_poll_multiple(void) {
     void *sched = rt_scheduler_new();
     assert(sched);
 
-    enum
-    {
-        NT = 5
-    };
+    enum { NT = 5 };
 
     rt_string names[NT];
     const char *name_strs[NT] = {"alpha", "beta", "gamma", "delta", "epsilon"};
-    for (int i = 0; i < NT; i++)
-    {
+    for (int i = 0; i < NT; i++) {
         names[i] = make_key(name_strs[i]);
         rt_scheduler_schedule(sched, names[i], 0);
     }
@@ -461,8 +425,7 @@ static void test_scheduler_poll_multiple(void)
     assert(rt_scheduler_pending(sched) == 0);
 
     // Release name references transferred to caller
-    for (int64_t i = 0; i < rt_seq_len(due); i++)
-    {
+    for (int64_t i = 0; i < rt_seq_len(due); i++) {
         rt_string s = (rt_string)rt_seq_get(due, i);
         rt_string_unref(s);
     }
@@ -477,8 +440,7 @@ static void test_scheduler_poll_multiple(void)
 }
 
 // Clear scheduler with pending tasks.
-static void test_scheduler_clear(void)
-{
+static void test_scheduler_clear(void) {
     void *sched = rt_scheduler_new();
     assert(sched);
 
@@ -501,8 +463,7 @@ static void test_scheduler_clear(void)
 // Entry point
 //=============================================================================
 
-int main(void)
-{
+int main(void) {
     // ConcurrentMap
     test_concmap_set_get();
     test_concmap_many_entries();

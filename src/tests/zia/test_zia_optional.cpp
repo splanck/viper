@@ -18,12 +18,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test that optional types and coalesce operator work correctly.
-TEST(ZiaOptional, OptionalAndCoalesce)
-{
+TEST(ZiaOptional, OptionalAndCoalesce) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -55,11 +53,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for OptionalAndCoalesce:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -68,14 +64,10 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool foundCoalesceBlock = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "main")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                if (block.label.find("coalesce") != std::string::npos)
-                {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "main") {
+            for (const auto &block : fn.blocks) {
+                if (block.label.find("coalesce") != std::string::npos) {
                     foundCoalesceBlock = true;
                     break;
                 }
@@ -86,8 +78,7 @@ func start() {
 }
 
 /// @brief Test that optional chaining and optional returns lower correctly.
-TEST(ZiaOptional, OptionalChainAndReturnWrap)
-{
+TEST(ZiaOptional, OptionalChainAndReturnWrap) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -128,11 +119,9 @@ func start() {
 
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for OptionalChainAndReturnWrap:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -141,16 +130,12 @@ func start() {
     EXPECT_TRUE(result.succeeded());
 
     bool foundBox = false;
-    for (const auto &fn : result.module.functions)
-    {
-        if (fn.name == "maybeAge")
-        {
-            for (const auto &block : fn.blocks)
-            {
-                for (const auto &instr : block.instructions)
-                {
-                    if (instr.op == il::core::Opcode::Call && instr.callee == "Viper.Core.Box.I64")
-                    {
+    for (const auto &fn : result.module.functions) {
+        if (fn.name == "maybeAge") {
+            for (const auto &block : fn.blocks) {
+                for (const auto &instr : block.instructions) {
+                    if (instr.op == il::core::Opcode::Call &&
+                        instr.callee == "Viper.Core.Box.I64") {
                         foundBox = true;
                     }
                 }
@@ -162,7 +147,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

@@ -18,16 +18,14 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 //===----------------------------------------------------------------------===//
 // Arithmetic Operators
 //===----------------------------------------------------------------------===//
 
 /// @brief Test addition operator.
-TEST(ZiaOperators, Addition)
-{
+TEST(ZiaOperators, Addition) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -49,8 +47,7 @@ func start() {
 }
 
 /// @brief Test subtraction operator.
-TEST(ZiaOperators, Subtraction)
-{
+TEST(ZiaOperators, Subtraction) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -72,8 +69,7 @@ func start() {
 }
 
 /// @brief Test multiplication operator.
-TEST(ZiaOperators, Multiplication)
-{
+TEST(ZiaOperators, Multiplication) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -95,8 +91,7 @@ func start() {
 }
 
 /// @brief Test division operator.
-TEST(ZiaOperators, Division)
-{
+TEST(ZiaOperators, Division) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -118,8 +113,7 @@ func start() {
 }
 
 /// @brief Test modulo operator.
-TEST(ZiaOperators, Modulo)
-{
+TEST(ZiaOperators, Modulo) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -142,8 +136,7 @@ func start() {
 }
 
 /// @brief Test unary negation.
-TEST(ZiaOperators, UnaryNegation)
-{
+TEST(ZiaOperators, UnaryNegation) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -166,8 +159,7 @@ func start() {
 }
 
 /// @brief Test operator precedence.
-TEST(ZiaOperators, Precedence)
-{
+TEST(ZiaOperators, Precedence) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -200,8 +192,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test equality operators.
-TEST(ZiaOperators, Equality)
-{
+TEST(ZiaOperators, Equality) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -226,8 +217,7 @@ func start() {
 }
 
 /// @brief Test relational operators.
-TEST(ZiaOperators, Relational)
-{
+TEST(ZiaOperators, Relational) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -256,8 +246,7 @@ func start() {
 }
 
 /// @brief Test string comparison.
-TEST(ZiaOperators, StringComparison)
-{
+TEST(ZiaOperators, StringComparison) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -286,8 +275,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test logical AND (both forms).
-TEST(ZiaOperators, LogicalAnd)
-{
+TEST(ZiaOperators, LogicalAnd) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -319,8 +307,7 @@ func start() {
 }
 
 /// @brief Test logical OR (both forms).
-TEST(ZiaOperators, LogicalOr)
-{
+TEST(ZiaOperators, LogicalOr) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -352,8 +339,7 @@ func start() {
 }
 
 /// @brief Test logical NOT (both forms).
-TEST(ZiaOperators, LogicalNot)
-{
+TEST(ZiaOperators, LogicalNot) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -383,8 +369,7 @@ func start() {
 }
 
 /// @brief Test short-circuit evaluation.
-TEST(ZiaOperators, ShortCircuit)
-{
+TEST(ZiaOperators, ShortCircuit) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -419,8 +404,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test ternary conditional operator.
-TEST(ZiaOperators, Ternary)
-{
+TEST(ZiaOperators, Ternary) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -445,8 +429,7 @@ func start() {
 }
 
 /// @brief Test nested ternary expressions.
-TEST(ZiaOperators, NestedTernary)
-{
+TEST(ZiaOperators, NestedTernary) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -470,8 +453,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test basic assignment.
-TEST(ZiaOperators, Assignment)
-{
+TEST(ZiaOperators, Assignment) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -492,8 +474,7 @@ func start() {
 }
 
 /// @brief Test chained assignment.
-TEST(ZiaOperators, ChainedAssignment)
-{
+TEST(ZiaOperators, ChainedAssignment) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -524,8 +505,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test null coalescing operator.
-TEST(ZiaOperators, NullCoalescing)
-{
+TEST(ZiaOperators, NullCoalescing) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -550,8 +530,7 @@ func start() {
 }
 
 /// @brief Test optional chaining operator.
-TEST(ZiaOperators, OptionalChaining)
-{
+TEST(ZiaOperators, OptionalChaining) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -579,7 +558,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

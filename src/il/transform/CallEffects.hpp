@@ -26,28 +26,24 @@
 
 #include <string_view>
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Describe the side-effect classification of a call instruction.
 /// @details Used by optimization passes to determine what transformations
 ///          are safe. The flags are conservative: if any source indicates
 ///          an effect is absent, that information is used.
-struct CallEffects
-{
+struct CallEffects {
     bool pure = false;     ///< Call has no observable side effects (can eliminate if unused).
     bool readonly = false; ///< Call may read memory but performs no writes (can reorder).
     bool nothrow = false;  ///< Call cannot throw or trap (can hoist across exception boundaries).
 
     /// @brief Returns true if the call can be safely eliminated when its result is unused.
-    [[nodiscard]] constexpr bool canEliminateIfUnused() const noexcept
-    {
+    [[nodiscard]] constexpr bool canEliminateIfUnused() const noexcept {
         return pure;
     }
 
     /// @brief Returns true if the call can be safely reordered with memory operations.
-    [[nodiscard]] constexpr bool canReorderWithMemory() const noexcept
-    {
+    [[nodiscard]] constexpr bool canReorderWithMemory() const noexcept {
         return pure || readonly;
     }
 };
@@ -63,8 +59,7 @@ struct CallEffects
 ///
 /// @param instr The call instruction to classify.
 /// @return Effect classification for the call.
-inline CallEffects classifyCallEffects(const il::core::Instr &instr)
-{
+inline CallEffects classifyCallEffects(const il::core::Instr &instr) {
     CallEffects effects;
 
     if (instr.op != il::core::Opcode::Call)
@@ -85,10 +80,8 @@ inline CallEffects classifyCallEffects(const il::core::Instr &instr)
         return effects;
 
     // 3. Check runtime signature registry (comprehensive, slightly slower)
-    for (const auto &sig : il::runtime::signatures::all_signatures())
-    {
-        if (sig.name == instr.callee)
-        {
+    for (const auto &sig : il::runtime::signatures::all_signatures()) {
+        if (sig.name == instr.callee) {
             effects.pure = effects.pure || sig.pure;
             effects.readonly = effects.readonly || sig.readonly;
             effects.nothrow = effects.nothrow || sig.nothrow;
@@ -103,8 +96,7 @@ inline CallEffects classifyCallEffects(const il::core::Instr &instr)
 /// @details Useful when the full instruction is not available.
 /// @param callee The callee name to classify.
 /// @return Effect classification for the callee.
-inline CallEffects classifyCalleeEffects(std::string_view callee)
-{
+inline CallEffects classifyCalleeEffects(std::string_view callee) {
     CallEffects effects;
 
     // 1. Check HelperEffects constexpr table (fast, covers common helpers)
@@ -118,10 +110,8 @@ inline CallEffects classifyCalleeEffects(std::string_view callee)
         return effects;
 
     // 2. Check runtime signature registry (comprehensive)
-    for (const auto &sig : il::runtime::signatures::all_signatures())
-    {
-        if (sig.name == callee)
-        {
+    for (const auto &sig : il::runtime::signatures::all_signatures()) {
+        if (sig.name == callee) {
             effects.pure = effects.pure || sig.pure;
             effects.readonly = effects.readonly || sig.readonly;
             effects.nothrow = effects.nothrow || sig.nothrow;

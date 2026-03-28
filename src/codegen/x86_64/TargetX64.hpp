@@ -23,13 +23,11 @@
 #include <array>
 #include <vector>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 /// \brief Enumerates the physical registers recognised by the SysV AMD64 ABI.
 /// \details Covers the 64-bit general-purpose registers and the XMM vector register file.
-enum class PhysReg
-{
+enum class PhysReg {
     RAX,
     RBX,
     RCX,
@@ -65,11 +63,7 @@ enum class PhysReg
 };
 
 /// \brief Register classification used by the allocator and instruction selector.
-enum class RegClass
-{
-    GPR,
-    XMM
-};
+enum class RegClass { GPR, XMM };
 
 // -----------------------------------------------------------------------------
 // Architecture constants
@@ -131,8 +125,7 @@ inline constexpr std::size_t kMaxFPArgs = kMaxFPArgsSysV;
 
 /// \brief Captures the architectural contract for an x86-64 ABI.
 /// \invariant Vectors are populated once during singleton creation and remain constant.
-struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, 6, 8>
-{
+struct TargetInfo : viper::codegen::common::TargetInfoBase<PhysReg, 6, 8> {
     /// \brief Whether the ABI specifies a red zone.
     /// Phase A: do not rely on red zone.
     bool hasRedZone{true};

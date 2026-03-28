@@ -24,12 +24,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::server
-{
+namespace viper::server {
 
 /// @brief Configuration for parameterizing shared LSP/MCP handlers.
-struct ServerConfig
-{
+struct ServerConfig {
     std::string serverName; ///< "zia-server" or "vbasic-server"
     std::string version;    ///< "0.1.0"
     std::string sourceName; ///< "zia" or "vbasic" (LSP diagnostic source)
@@ -43,8 +41,7 @@ struct ServerConfig
 /// Both Zia and BASIC language servers implement this interface to provide
 /// compilation, IDE features, and runtime queries through the shared
 /// LSP and MCP handlers.
-class ICompilerBridge
-{
+class ICompilerBridge {
   public:
     virtual ~ICompilerBridge() = default;
 

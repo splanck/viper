@@ -12,18 +12,15 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
@@ -32,22 +29,19 @@ static bool str_eq(rt_string s, const char *expected)
 // Decimals
 // ---------------------------------------------------------------------------
 
-static void test_decimals_basic()
-{
+static void test_decimals_basic() {
     rt_string r = rt_numfmt_decimals(3.14159, 2);
     assert(str_eq(r, "3.14"));
     rt_string_unref(r);
 }
 
-static void test_decimals_zero()
-{
+static void test_decimals_zero() {
     rt_string r = rt_numfmt_decimals(3.14, 0);
     assert(str_eq(r, "3"));
     rt_string_unref(r);
 }
 
-static void test_decimals_padding()
-{
+static void test_decimals_padding() {
     rt_string r = rt_numfmt_decimals(5.0, 3);
     assert(str_eq(r, "5.000"));
     rt_string_unref(r);
@@ -57,8 +51,7 @@ static void test_decimals_padding()
 // Thousands
 // ---------------------------------------------------------------------------
 
-static void test_thousands_basic()
-{
+static void test_thousands_basic() {
     rt_string sep = make_str(",");
     rt_string r = rt_numfmt_thousands(1234567, sep);
     assert(str_eq(r, "1,234,567"));
@@ -66,8 +59,7 @@ static void test_thousands_basic()
     rt_string_unref(sep);
 }
 
-static void test_thousands_small()
-{
+static void test_thousands_small() {
     rt_string sep = make_str(",");
     rt_string r = rt_numfmt_thousands(999, sep);
     assert(str_eq(r, "999"));
@@ -75,8 +67,7 @@ static void test_thousands_small()
     rt_string_unref(sep);
 }
 
-static void test_thousands_negative()
-{
+static void test_thousands_negative() {
     rt_string sep = make_str(",");
     rt_string r = rt_numfmt_thousands(-1000000, sep);
     assert(str_eq(r, "-1,000,000"));
@@ -84,8 +75,7 @@ static void test_thousands_negative()
     rt_string_unref(sep);
 }
 
-static void test_thousands_custom_sep()
-{
+static void test_thousands_custom_sep() {
     rt_string sep = make_str(".");
     rt_string r = rt_numfmt_thousands(1000000, sep);
     assert(str_eq(r, "1.000.000"));
@@ -97,8 +87,7 @@ static void test_thousands_custom_sep()
 // Currency
 // ---------------------------------------------------------------------------
 
-static void test_currency_basic()
-{
+static void test_currency_basic() {
     rt_string sym = make_str("$");
     rt_string r = rt_numfmt_currency(1234.56, sym);
     assert(str_eq(r, "$1,234.56"));
@@ -106,8 +95,7 @@ static void test_currency_basic()
     rt_string_unref(sym);
 }
 
-static void test_currency_negative()
-{
+static void test_currency_negative() {
     rt_string sym = make_str("$");
     rt_string r = rt_numfmt_currency(-42.50, sym);
     assert(str_eq(r, "-$42.50"));
@@ -115,8 +103,7 @@ static void test_currency_negative()
     rt_string_unref(sym);
 }
 
-static void test_currency_euro()
-{
+static void test_currency_euro() {
     rt_string sym = make_str("\xe2\x82\xac"); // Euro sign UTF-8
     rt_string r = rt_numfmt_currency(1000.00, sym);
     assert(str_eq(r,
@@ -130,22 +117,19 @@ static void test_currency_euro()
 // Percent
 // ---------------------------------------------------------------------------
 
-static void test_percent_basic()
-{
+static void test_percent_basic() {
     rt_string r = rt_numfmt_percent(0.756);
     assert(str_eq(r, "75.6%"));
     rt_string_unref(r);
 }
 
-static void test_percent_whole()
-{
+static void test_percent_whole() {
     rt_string r = rt_numfmt_percent(0.5);
     assert(str_eq(r, "50%"));
     rt_string_unref(r);
 }
 
-static void test_percent_zero()
-{
+static void test_percent_zero() {
     rt_string r = rt_numfmt_percent(0.0);
     assert(str_eq(r, "0%"));
     rt_string_unref(r);
@@ -155,8 +139,7 @@ static void test_percent_zero()
 // Ordinal
 // ---------------------------------------------------------------------------
 
-static void test_ordinal()
-{
+static void test_ordinal() {
     rt_string r;
     r = rt_numfmt_ordinal(1);
     assert(str_eq(r, "1st"));
@@ -200,8 +183,7 @@ static void test_ordinal()
 // To words
 // ---------------------------------------------------------------------------
 
-static void test_to_words()
-{
+static void test_to_words() {
     rt_string r;
     r = rt_numfmt_to_words(0);
     assert(str_eq(r, "zero"));
@@ -233,8 +215,7 @@ static void test_to_words()
 // Bytes
 // ---------------------------------------------------------------------------
 
-static void test_bytes()
-{
+static void test_bytes() {
     rt_string r;
     r = rt_numfmt_bytes(0);
     assert(str_eq(r, "0 B"));
@@ -260,8 +241,7 @@ static void test_bytes()
 // Pad
 // ---------------------------------------------------------------------------
 
-static void test_pad()
-{
+static void test_pad() {
     rt_string r;
     r = rt_numfmt_pad(42, 5);
     assert(str_eq(r, "00042"));
@@ -281,8 +261,7 @@ static void test_pad()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     // Decimals
     test_decimals_basic();
     test_decimals_zero();

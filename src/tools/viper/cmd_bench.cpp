@@ -40,20 +40,17 @@
 #include <stdlib.h>
 
 // Windows doesn't have setenv, use _putenv_s instead
-inline int setenv(const char *name, const char *value, int /*overwrite*/)
-{
+inline int setenv(const char *name, const char *value, int /*overwrite*/) {
     return _putenv_s(name, value);
 }
 #endif
 
 using namespace il;
 
-namespace
-{
+namespace {
 
 /// @brief Benchmark configuration parsed from command-line.
-struct BenchConfig
-{
+struct BenchConfig {
     std::vector<std::string> ilFiles;
     uint32_t iterations = 3;
     uint64_t maxSteps = 0;
@@ -67,8 +64,7 @@ struct BenchConfig
 };
 
 /// @brief Result of a single benchmark run.
-struct BenchResult
-{
+struct BenchResult {
     std::string file;
     std::string strategy;
     uint64_t instructions = 0;
@@ -79,8 +75,7 @@ struct BenchResult
 };
 
 /// @brief Print usage information for the bench subcommand.
-void benchUsage()
-{
+void benchUsage() {
     std::cerr << "Usage: ilc bench <file.il> [file2.il ...] [options]\n"
               << "Options:\n"
               << "  -n <N>            Number of iterations (default: 3)\n"
@@ -104,91 +99,66 @@ void benchUsage()
 /// @param argv Argument vector.
 /// @param config Output configuration.
 /// @return True if parsing succeeded, false on error.
-bool parseBenchArgs(int argc, char **argv, BenchConfig &config)
-{
+bool parseBenchArgs(int argc, char **argv, BenchConfig &config) {
     bool strategySpecified = false;
 
-    for (int i = 0; i < argc; ++i)
-    {
+    for (int i = 0; i < argc; ++i) {
         std::string_view arg = argv[i];
 
-        if (arg == "-n")
-        {
-            if (i + 1 >= argc)
-            {
+        if (arg == "-n") {
+            if (i + 1 >= argc) {
                 benchUsage();
                 return false;
             }
             config.iterations = static_cast<uint32_t>(std::stoul(argv[++i]));
-        }
-        else if (arg == "--max-steps")
-        {
-            if (i + 1 >= argc)
-            {
+        } else if (arg == "--max-steps") {
+            if (i + 1 >= argc) {
                 benchUsage();
                 return false;
             }
             config.maxSteps = std::stoull(argv[++i]);
-        }
-        else if (arg == "--table")
-        {
-            if (!strategySpecified)
-            {
+        } else if (arg == "--table") {
+            if (!strategySpecified) {
                 config.runTable = false;
                 config.runSwitch = false;
                 config.runThreaded = false;
                 strategySpecified = true;
             }
             config.runTable = true;
-        }
-        else if (arg == "--switch")
-        {
-            if (!strategySpecified)
-            {
+        } else if (arg == "--switch") {
+            if (!strategySpecified) {
                 config.runTable = false;
                 config.runSwitch = false;
                 config.runThreaded = false;
                 strategySpecified = true;
             }
             config.runSwitch = true;
-        }
-        else if (arg == "--threaded")
-        {
-            if (!strategySpecified)
-            {
+        } else if (arg == "--threaded") {
+            if (!strategySpecified) {
                 config.runTable = false;
                 config.runSwitch = false;
                 config.runThreaded = false;
                 strategySpecified = true;
             }
             config.runThreaded = true;
-        }
-        else if (arg == "--bc-switch")
-        {
-            if (!strategySpecified)
-            {
+        } else if (arg == "--bc-switch") {
+            if (!strategySpecified) {
                 config.runTable = false;
                 config.runSwitch = false;
                 config.runThreaded = false;
                 strategySpecified = true;
             }
             config.runBytecodeSwitch = true;
-        }
-        else if (arg == "--bc-threaded")
-        {
-            if (!strategySpecified)
-            {
+        } else if (arg == "--bc-threaded") {
+            if (!strategySpecified) {
                 config.runTable = false;
                 config.runSwitch = false;
                 config.runThreaded = false;
                 strategySpecified = true;
             }
             config.runBytecodeThreaded = true;
-        }
-        else if (arg == "--bytecode")
-        {
-            if (!strategySpecified)
-            {
+        } else if (arg == "--bytecode") {
+            if (!strategySpecified) {
                 config.runTable = false;
                 config.runSwitch = false;
                 config.runThreaded = false;
@@ -196,43 +166,30 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config)
             }
             config.runBytecodeSwitch = true;
             config.runBytecodeThreaded = true;
-        }
-        else if (arg == "--all")
-        {
+        } else if (arg == "--all") {
             config.runTable = true;
             config.runSwitch = true;
             config.runThreaded = true;
             config.runBytecodeSwitch = true;
             config.runBytecodeThreaded = true;
             strategySpecified = true;
-        }
-        else if (arg == "--json")
-        {
+        } else if (arg == "--json") {
             config.jsonOutput = true;
-        }
-        else if (arg == "-v" || arg == "--verbose")
-        {
+        } else if (arg == "-v" || arg == "--verbose") {
             config.verbose = true;
-        }
-        else if (arg == "--help" || arg == "-h")
-        {
+        } else if (arg == "--help" || arg == "-h") {
             benchUsage();
             return false;
-        }
-        else if (arg[0] == '-')
-        {
+        } else if (arg[0] == '-') {
             std::cerr << "Unknown option: " << arg << "\n";
             benchUsage();
             return false;
-        }
-        else
-        {
+        } else {
             config.ilFiles.push_back(std::string(arg));
         }
     }
 
-    if (config.ilFiles.empty())
-    {
+    if (config.ilFiles.empty()) {
         std::cerr << "No input files specified\n";
         benchUsage();
         return false;
@@ -248,8 +205,7 @@ bool parseBenchArgs(int argc, char **argv, BenchConfig &config)
 /// @return Benchmark result.
 BenchResult runBenchmarkIteration(const core::Module &mod,
                                   const std::string &strategy,
-                                  uint64_t maxSteps)
-{
+                                  uint64_t maxSteps) {
     BenchResult result;
     result.strategy = strategy;
 
@@ -262,14 +218,11 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
 
     auto start = std::chrono::steady_clock::now();
 
-    try
-    {
+    try {
         vm::Runner runner(mod, std::move(runCfg));
         result.returnValue = runner.run();
         result.instructions = runner.instructionCount();
-    }
-    catch (const std::exception &)
-    {
+    } catch (const std::exception &) {
         result.success = false;
         return result;
     }
@@ -278,8 +231,7 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
     result.timeMs =
         std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
 
-    if (result.timeMs > 0)
-    {
+    if (result.timeMs > 0) {
         result.insnsPerSec = (result.instructions / result.timeMs) * 1000.0;
     }
 
@@ -293,8 +245,7 @@ BenchResult runBenchmarkIteration(const core::Module &mod,
 /// @return Benchmark result.
 BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
                                           const viper::bytecode::BytecodeModule &bcModule,
-                                          const std::string &strategy)
-{
+                                          const std::string &strategy) {
     BenchResult result;
     result.strategy = strategy;
 
@@ -302,8 +253,7 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
 
     auto start = std::chrono::steady_clock::now();
 
-    try
-    {
+    try {
         viper::bytecode::BytecodeVM vm;
         vm.setThreadedDispatch(useThreaded);
         vm.setRuntimeBridgeEnabled(true);
@@ -313,14 +263,11 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
         result.returnValue = retSlot.i64;
         result.instructions = vm.instrCount();
 
-        if (vm.state() == viper::bytecode::VMState::Trapped)
-        {
+        if (vm.state() == viper::bytecode::VMState::Trapped) {
             result.success = false;
             return result;
         }
-    }
-    catch (const std::exception &)
-    {
+    } catch (const std::exception &) {
         result.success = false;
         return result;
     }
@@ -329,8 +276,7 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
     result.timeMs =
         std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
 
-    if (result.timeMs > 0)
-    {
+    if (result.timeMs > 0) {
         result.insnsPerSec = (result.instructions / result.timeMs) * 1000.0;
     }
 
@@ -338,8 +284,7 @@ BenchResult runBytecodeBenchmarkIteration(const core::Module &mod,
 }
 
 /// @brief Compute median of a vector of doubles.
-double computeMedian(std::vector<double> values)
-{
+double computeMedian(std::vector<double> values) {
     if (values.empty())
         return 0.0;
     std::sort(values.begin(), values.end());
@@ -356,20 +301,17 @@ double computeMedian(std::vector<double> values)
 /// @return True if benchmarking succeeded.
 bool benchmarkFile(const std::string &file,
                    const BenchConfig &config,
-                   std::vector<BenchResult> &results)
-{
+                   std::vector<BenchResult> &results) {
     il::support::SourceManager sm;
     core::Module mod;
 
     auto load = il::tools::common::loadModuleFromFile(file, mod, std::cerr);
-    if (!load.succeeded())
-    {
+    if (!load.succeeded()) {
         std::cerr << "Failed to load: " << file << "\n";
         return false;
     }
 
-    if (!il::tools::common::verifyModule(mod, std::cerr, &sm))
-    {
+    if (!il::tools::common::verifyModule(mod, std::cerr, &sm)) {
         std::cerr << "Verification failed: " << file << "\n";
         return false;
     }
@@ -383,25 +325,21 @@ bool benchmarkFile(const std::string &file,
     if (config.runThreaded)
         strategies.push_back("threaded");
 
-    for (const auto &strategy : strategies)
-    {
+    for (const auto &strategy : strategies) {
         std::vector<double> times;
         std::vector<double> insnsPerSec;
         uint64_t instructions = 0;
         int64_t returnValue = 0;
         bool allSuccess = true;
 
-        if (config.verbose)
-        {
+        if (config.verbose) {
             std::cerr << "Running " << file << " with " << strategy << " (" << config.iterations
                       << " iterations)...\n";
         }
 
-        for (uint32_t iter = 0; iter < config.iterations; ++iter)
-        {
+        for (uint32_t iter = 0; iter < config.iterations; ++iter) {
             auto iterResult = runBenchmarkIteration(mod, strategy, config.maxSteps);
-            if (!iterResult.success)
-            {
+            if (!iterResult.success) {
                 allSuccess = false;
                 break;
             }
@@ -418,8 +356,7 @@ bool benchmarkFile(const std::string &file,
         result.instructions = instructions;
         result.returnValue = returnValue;
 
-        if (allSuccess && !times.empty())
-        {
+        if (allSuccess && !times.empty()) {
             result.timeMs = computeMedian(times);
             result.insnsPerSec = computeMedian(insnsPerSec);
         }
@@ -434,31 +371,26 @@ bool benchmarkFile(const std::string &file,
     if (config.runBytecodeThreaded)
         bcStrategies.push_back("bc-threaded");
 
-    if (!bcStrategies.empty())
-    {
+    if (!bcStrategies.empty()) {
         // Compile IL to bytecode once
         viper::bytecode::BytecodeCompiler compiler;
         viper::bytecode::BytecodeModule bcModule = compiler.compile(mod);
 
-        for (const auto &strategy : bcStrategies)
-        {
+        for (const auto &strategy : bcStrategies) {
             std::vector<double> times;
             std::vector<double> insnsPerSec;
             uint64_t instructions = 0;
             int64_t returnValue = 0;
             bool allSuccess = true;
 
-            if (config.verbose)
-            {
+            if (config.verbose) {
                 std::cerr << "Running " << file << " with " << strategy << " (" << config.iterations
                           << " iterations)...\n";
             }
 
-            for (uint32_t iter = 0; iter < config.iterations; ++iter)
-            {
+            for (uint32_t iter = 0; iter < config.iterations; ++iter) {
                 auto iterResult = runBytecodeBenchmarkIteration(mod, bcModule, strategy);
-                if (!iterResult.success)
-                {
+                if (!iterResult.success) {
                     allSuccess = false;
                     break;
                 }
@@ -475,8 +407,7 @@ bool benchmarkFile(const std::string &file,
             result.instructions = instructions;
             result.returnValue = returnValue;
 
-            if (allSuccess && !times.empty())
-            {
+            if (allSuccess && !times.empty()) {
                 result.timeMs = computeMedian(times);
                 result.insnsPerSec = computeMedian(insnsPerSec);
             }
@@ -489,12 +420,9 @@ bool benchmarkFile(const std::string &file,
 }
 
 /// @brief Print results in text format.
-void printTextResults(const std::vector<BenchResult> &results)
-{
-    for (const auto &r : results)
-    {
-        if (!r.success)
-        {
+void printTextResults(const std::vector<BenchResult> &results) {
+    for (const auto &r : results) {
+        if (!r.success) {
             std::cout << "BENCH " << r.file << " " << r.strategy << " FAILED\n";
             continue;
         }
@@ -506,11 +434,9 @@ void printTextResults(const std::vector<BenchResult> &results)
 }
 
 /// @brief Print results in JSON format.
-void printJsonResults(const std::vector<BenchResult> &results)
-{
+void printJsonResults(const std::vector<BenchResult> &results) {
     std::cout << "[\n";
-    for (size_t i = 0; i < results.size(); ++i)
-    {
+    for (size_t i = 0; i < results.size(); ++i) {
         const auto &r = results[i];
         std::cout << "  {\n";
         std::cout << "    \"file\": \"" << r.file << "\",\n";
@@ -533,36 +459,28 @@ void printJsonResults(const std::vector<BenchResult> &results)
 /// @param argc Number of arguments after "bench".
 /// @param argv Argument vector.
 /// @return Exit status; 0 on success.
-int cmdBench(int argc, char **argv)
-{
+int cmdBench(int argc, char **argv) {
     BenchConfig config;
-    if (!parseBenchArgs(argc, argv, config))
-    {
+    if (!parseBenchArgs(argc, argv, config)) {
         return 1;
     }
 
     std::vector<BenchResult> allResults;
 
-    for (const auto &file : config.ilFiles)
-    {
-        if (!benchmarkFile(file, config, allResults))
-        {
+    for (const auto &file : config.ilFiles) {
+        if (!benchmarkFile(file, config, allResults)) {
             // Continue with other files
         }
     }
 
-    if (allResults.empty())
-    {
+    if (allResults.empty()) {
         std::cerr << "No benchmark results\n";
         return 1;
     }
 
-    if (config.jsonOutput)
-    {
+    if (config.jsonOutput) {
         printJsonResults(allResults);
-    }
-    else
-    {
+    } else {
         printTextResults(allResults);
     }
 

@@ -39,8 +39,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
 enum class OperandOrder;
 enum class OperandKind;
@@ -51,12 +50,10 @@ struct EncodingRow;
 
 /// \brief Emits AT&T-style assembly for Machine IR functions and rodata pools.
 /// \details Includes support for trap sequences (UD2) and alignment masks (ANDri).
-class AsmEmitter
-{
+class AsmEmitter {
   public:
     /// \brief Literal pool owning the module-level .rodata contents.
-    class RoDataPool
-    {
+    class RoDataPool {
       public:
         /// \brief Add a byte string literal to the pool, returning its index.
         [[nodiscard]] int addStringLiteral(std::string bytes);
@@ -80,26 +77,22 @@ class AsmEmitter
         [[nodiscard]] bool empty() const noexcept;
 
         /// \brief Number of string literals in the pool.
-        [[nodiscard]] std::size_t stringCount() const noexcept
-        {
+        [[nodiscard]] std::size_t stringCount() const noexcept {
             return stringLiterals_.size();
         }
 
         /// \brief Number of f64 literals in the pool.
-        [[nodiscard]] std::size_t f64Count() const noexcept
-        {
+        [[nodiscard]] std::size_t f64Count() const noexcept {
             return f64Literals_.size();
         }
 
         /// \brief Retrieve the raw bytes for a stored string literal.
-        [[nodiscard]] const std::string &stringBytes(int index) const
-        {
+        [[nodiscard]] const std::string &stringBytes(int index) const {
             return stringLiterals_[static_cast<std::size_t>(index)];
         }
 
         /// \brief Retrieve the double value for a stored f64 literal.
-        [[nodiscard]] double f64Value(int index) const
-        {
+        [[nodiscard]] double f64Value(int index) const {
             return f64Literals_[static_cast<std::size_t>(index)];
         }
 
@@ -227,8 +220,7 @@ class AsmEmitter
 };
 
 /// \brief Enumerates operand orderings handled by the emitter table.
-enum class OperandOrder
-{
+enum class OperandOrder {
     NONE,      ///< Instruction does not print operands.
     DIRECT,    ///< Emit operands exactly as provided.
     R,         ///< Single register operand.
@@ -251,8 +243,7 @@ enum class OperandOrder
 };
 
 /// \brief Categorises operand variants for encoding table matching.
-enum class OperandKind
-{
+enum class OperandKind {
     None,            ///< No operand expected in this slot.
     Reg,             ///< Register operand.
     Imm,             ///< Immediate operand.
@@ -266,8 +257,7 @@ enum class OperandKind
 };
 
 /// \brief Describes high-level encoding forms used to differentiate rows.
-enum class EncodingForm
-{
+enum class EncodingForm {
     Nullary,   ///< No explicit operands (e.g. CQO, RET).
     Unary,     ///< Single explicit operand (e.g. JMP target).
     RegReg,    ///< Register destination with register source.
@@ -284,8 +274,7 @@ enum class EncodingForm
 };
 
 /// \brief Flags describing ModRM, SIB, immediate, and prefix requirements.
-enum class EncodingFlag : std::uint32_t
-{
+enum class EncodingFlag : std::uint32_t {
     None = 0U,
     RequiresModRM = 1U << 0, ///< Instruction consumes a ModRM byte.
     UsesImm8 = 1U << 1,      ///< Instruction encodes an 8-bit immediate.
@@ -296,15 +285,13 @@ enum class EncodingFlag : std::uint32_t
 };
 
 /// \brief Operand pattern describing the expected operand kinds for a row.
-struct OperandPattern
-{
+struct OperandPattern {
     std::array<OperandKind, 3> kinds{}; ///< Ordered operand kinds.
     std::uint8_t count{0U};             ///< Number of operands expected.
 };
 
 /// \brief Descriptor tying opcodes to textual mnemonics and operand policies.
-struct EncodingRow
-{
+struct EncodingRow {
     MOpcode opcode;            ///< Opcode handled by this specification.
     std::string_view mnemonic; ///< Canonical mnemonic without condition suffixes.
     EncodingForm form;         ///< Encoding form describing operand semantics.

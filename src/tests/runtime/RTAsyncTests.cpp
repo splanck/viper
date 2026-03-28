@@ -13,8 +13,7 @@
 #include <cstring>
 #include <thread>
 
-extern "C"
-{
+extern "C" {
 #include "rt_async.h"
 #include "rt_cancellation.h"
 #include "rt_future.h"
@@ -24,16 +23,14 @@ extern "C"
 #include "rt_string.h"
 #include "rt_threads.h"
 
-    /// @brief Vm_trap.
-    void vm_trap(const char *msg)
-    {
-        fprintf(stderr, "TRAP: %s\n", msg);
-        rt_abort(msg);
-    }
+/// @brief Vm_trap.
+void vm_trap(const char *msg) {
+    fprintf(stderr, "TRAP: %s\n", msg);
+    rt_abort(msg);
+}
 }
 
-static void *make_obj()
-{
+static void *make_obj() {
     return rt_obj_new_i64(0, 8);
 }
 
@@ -41,39 +38,33 @@ static void *make_obj()
 // Callbacks for testing
 //=============================================================================
 
-extern "C"
-{
-    static void *identity_cb(void *arg)
-    {
-        return arg;
-    }
+extern "C" {
+static void *identity_cb(void *arg) {
+    return arg;
+}
 
-    static void *slow_cb(void *arg)
-    {
-        rt_thread_sleep(50);
-        return arg;
-    }
+static void *slow_cb(void *arg) {
+    rt_thread_sleep(50);
+    return arg;
+}
 
-    static void *add_one_mapper(void *val, void *arg)
-    {
-        (void)arg;
-        // Return a new object (simulating a transformation)
-        return make_obj();
-    }
+static void *add_one_mapper(void *val, void *arg) {
+    (void)arg;
+    // Return a new object (simulating a transformation)
+    return make_obj();
+}
 
-    static void *cancellable_cb(void *arg, void *token)
-    {
-        (void)arg;
-        // Simulate work that checks cancellation
-        int i;
-        for (i = 0; i < 50; i++)
-        {
-            if (token && rt_cancellation_is_cancelled(token))
-                return NULL;
-            rt_thread_sleep(2);
-        }
-        return make_obj();
+static void *cancellable_cb(void *arg, void *token) {
+    (void)arg;
+    // Simulate work that checks cancellation
+    int i;
+    for (i = 0; i < 50; i++) {
+        if (token && rt_cancellation_is_cancelled(token))
+            return NULL;
+        rt_thread_sleep(2);
     }
+    return make_obj();
+}
 
 } // extern "C"
 
@@ -81,8 +72,7 @@ extern "C"
 // rt_async_run tests
 //=============================================================================
 
-static void test_async_run_basic()
-{
+static void test_async_run_basic() {
     void *val = make_obj();
     void *future = rt_async_run((void *)identity_cb, val);
     assert(future != NULL);
@@ -91,8 +81,7 @@ static void test_async_run_basic()
     assert(result == val);
 }
 
-static void test_async_run_null_arg()
-{
+static void test_async_run_null_arg() {
     void *future = rt_async_run((void *)identity_cb, NULL);
     assert(future != NULL);
 
@@ -100,21 +89,18 @@ static void test_async_run_null_arg()
     assert(result == NULL);
 }
 
-static void test_async_run_multiple()
-{
+static void test_async_run_multiple() {
     const int N = 5;
     void *vals[5];
     void *futures[5];
     int i;
 
-    for (i = 0; i < N; i++)
-    {
+    for (i = 0; i < N; i++) {
         vals[i] = make_obj();
         futures[i] = rt_async_run((void *)identity_cb, vals[i]);
     }
 
-    for (i = 0; i < N; i++)
-    {
+    for (i = 0; i < N; i++) {
         void *result = rt_future_get(futures[i]);
         assert(result == vals[i]);
     }
@@ -124,8 +110,7 @@ static void test_async_run_multiple()
 // rt_async_delay tests
 //=============================================================================
 
-static void test_async_delay()
-{
+static void test_async_delay() {
     auto start = std::chrono::steady_clock::now();
     void *future = rt_async_delay(50);
     assert(future != NULL);
@@ -139,16 +124,14 @@ static void test_async_delay()
     assert(elapsed >= 30); // Allow some variance
 }
 
-static void test_async_delay_zero()
-{
+static void test_async_delay_zero() {
     void *future = rt_async_delay(0);
     assert(future != NULL);
     rt_future_wait(future);
     assert(rt_future_is_done(future) == 1);
 }
 
-static void test_async_delay_negative()
-{
+static void test_async_delay_negative() {
     void *future = rt_async_delay(-100);
     assert(future != NULL);
     rt_future_wait(future);
@@ -159,8 +142,7 @@ static void test_async_delay_negative()
 // rt_async_all tests
 //=============================================================================
 
-static void test_async_all_basic()
-{
+static void test_async_all_basic() {
     void *futures = rt_seq_new();
     void *val1 = make_obj();
     void *val2 = make_obj();
@@ -181,8 +163,7 @@ static void test_async_all_basic()
     assert(rt_seq_get(results, 2) == val3);
 }
 
-static void test_async_all_empty()
-{
+static void test_async_all_empty() {
     void *futures = rt_seq_new();
     void *all_future = rt_async_all(futures);
     assert(all_future != NULL);
@@ -192,8 +173,7 @@ static void test_async_all_empty()
     assert(rt_seq_len(results) == 0);
 }
 
-static void test_async_all_null()
-{
+static void test_async_all_null() {
     void *all_future = rt_async_all(NULL);
     assert(all_future != NULL);
 
@@ -206,8 +186,7 @@ static void test_async_all_null()
 // rt_async_any tests
 //=============================================================================
 
-static void test_async_any_basic()
-{
+static void test_async_any_basic() {
     void *futures = rt_seq_new();
     void *fast_val = make_obj();
 
@@ -224,8 +203,7 @@ static void test_async_any_basic()
     assert(result == fast_val);
 }
 
-static void test_async_any_empty()
-{
+static void test_async_any_empty() {
     void *futures = rt_seq_new();
     void *any_future = rt_async_any(futures);
     assert(any_future != NULL);
@@ -239,8 +217,7 @@ static void test_async_any_empty()
 // rt_async_map tests
 //=============================================================================
 
-static void test_async_map_basic()
-{
+static void test_async_map_basic() {
     void *val = make_obj();
     void *source = rt_async_run((void *)identity_cb, val);
 
@@ -252,8 +229,7 @@ static void test_async_map_basic()
     assert(result != val); // Should be a new object
 }
 
-static void test_async_map_chained()
-{
+static void test_async_map_chained() {
     void *val = make_obj();
     void *f1 = rt_async_run((void *)identity_cb, val);
     void *f2 = rt_async_map(f1, (void *)add_one_mapper, NULL);
@@ -267,8 +243,7 @@ static void test_async_map_chained()
 // rt_async_run_cancellable tests
 //=============================================================================
 
-static void test_cancellable_normal()
-{
+static void test_cancellable_normal() {
     void *token = rt_cancellation_new();
     void *future = rt_async_run_cancellable((void *)cancellable_cb, NULL, token);
     assert(future != NULL);
@@ -279,8 +254,7 @@ static void test_cancellable_normal()
     assert(rt_future_is_error(future) == 0);
 }
 
-static void test_cancellable_cancelled()
-{
+static void test_cancellable_cancelled() {
     void *token = rt_cancellation_new();
     void *future = rt_async_run_cancellable((void *)cancellable_cb, NULL, token);
     assert(future != NULL);
@@ -294,8 +268,7 @@ static void test_cancellable_cancelled()
     assert(rt_future_is_error(future) == 1);
 }
 
-static void test_cancellable_null_token()
-{
+static void test_cancellable_null_token() {
     // Should work like a normal async run
     void *future = rt_async_run_cancellable((void *)cancellable_cb, NULL, NULL);
     assert(future != NULL);
@@ -309,8 +282,7 @@ static void test_cancellable_null_token()
 // Timing tests
 //=============================================================================
 
-static void test_async_runs_concurrently()
-{
+static void test_async_runs_concurrently() {
     auto start = std::chrono::steady_clock::now();
 
     // Launch 5 tasks each sleeping 50ms
@@ -334,8 +306,7 @@ static void test_async_runs_concurrently()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_async_run_basic();
     test_async_run_null_arg();
     test_async_run_multiple();

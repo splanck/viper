@@ -15,17 +15,12 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-static bool hasCallee(const il::core::Module &mod, const std::string &callee)
-{
-    for (const auto &fn : mod.functions)
-    {
-        for (const auto &bb : fn.blocks)
-        {
-            for (const auto &in : bb.instructions)
-            {
+static bool hasCallee(const il::core::Module &mod, const std::string &callee) {
+    for (const auto &fn : mod.functions) {
+        for (const auto &bb : fn.blocks) {
+            for (const auto &in : bb.instructions) {
                 if (in.op == il::core::Opcode::Call && in.callee == callee)
                     return true;
             }
@@ -34,8 +29,7 @@ static bool hasCallee(const il::core::Module &mod, const std::string &callee)
     return false;
 }
 
-TEST(ZiaStringInstanceMethods, ResolvesAndLowersRuntimeStringCalls)
-{
+TEST(ZiaStringInstanceMethods, ResolvesAndLowersRuntimeStringCalls) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -60,10 +54,8 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+    if (!result.succeeded()) {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -80,8 +72,7 @@ func start() {
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

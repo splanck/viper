@@ -24,8 +24,7 @@
 
 using namespace il::frontends::basic;
 
-int main()
-{
+int main() {
     // Build an empty program and run the registry builder to trigger seeding.
     Program prog;
     NamespaceRegistry ns;

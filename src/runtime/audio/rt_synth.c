@@ -53,8 +53,7 @@
 /// @brief Fast sine approximation using Bhaskara I's formula.
 /// @param phase Phase in range [0.0, 1.0) representing [0, 2*PI).
 /// @return Sine value in range [-1.0, 1.0].
-static double synth_sin(double phase)
-{
+static double synth_sin(double phase) {
     /* Normalize phase to [0, 1) */
     phase = phase - (double)(int64_t)phase;
     if (phase < 0.0)
@@ -65,8 +64,7 @@ static double synth_sin(double phase)
 
     /* Reduce to [0, PI] using sin(PI+x) = -sin(x) */
     int negate = 0;
-    if (x > SYNTH_PI)
-    {
+    if (x > SYNTH_PI) {
         x -= SYNTH_PI;
         negate = 1;
     }
@@ -84,8 +82,7 @@ static double synth_sin(double phase)
 //===----------------------------------------------------------------------===//
 
 /// @brief Write a minimal WAV header for mono 16-bit PCM data.
-static void write_wav_header(uint8_t *buf, int32_t num_samples)
-{
+static void write_wav_header(uint8_t *buf, int32_t num_samples) {
     int32_t data_size = num_samples * SYNTH_CHANNELS * (SYNTH_BITS / 8);
     int32_t file_size = WAV_HEADER_SIZE + data_size - 8;
     int32_t byte_rate = SYNTH_SAMPLE_RATE * SYNTH_CHANNELS * (SYNTH_BITS / 8);
@@ -124,15 +121,13 @@ static void write_wav_header(uint8_t *buf, int32_t num_samples)
 /// @param phase Normalized phase [0.0, 1.0).
 /// @param waveform Waveform type constant.
 /// @return Sample value in [-1.0, 1.0].
-static double waveform_sample(double phase, int64_t waveform)
-{
+static double waveform_sample(double phase, int64_t waveform) {
     /* Normalize */
     phase = phase - (double)(int64_t)phase;
     if (phase < 0.0)
         phase += 1.0;
 
-    switch (waveform)
-    {
+    switch (waveform) {
         case RT_WAVE_SQUARE:
             return phase < 0.5 ? 1.0 : -1.0;
 
@@ -161,8 +156,7 @@ static double waveform_sample(double phase, int64_t waveform)
 /// @param samples Array of int16_t PCM samples.
 /// @param num_samples Number of samples.
 /// @return Sound object or NULL on failure.
-static void *samples_to_sound(const int16_t *samples, int32_t num_samples)
-{
+static void *samples_to_sound(const int16_t *samples, int32_t num_samples) {
     int32_t data_size = num_samples * (int32_t)sizeof(int16_t);
     int32_t wav_size = WAV_HEADER_SIZE + data_size;
 
@@ -183,8 +177,7 @@ static void *samples_to_sound(const int16_t *samples, int32_t num_samples)
 // Clamp Helpers
 //===----------------------------------------------------------------------===//
 
-static int64_t clamp_i64(int64_t v, int64_t lo, int64_t hi)
-{
+static int64_t clamp_i64(int64_t v, int64_t lo, int64_t hi) {
     if (v < lo)
         return lo;
     if (v > hi)
@@ -196,8 +189,7 @@ static int64_t clamp_i64(int64_t v, int64_t lo, int64_t hi)
 // Public API
 //===----------------------------------------------------------------------===//
 
-void *rt_synth_tone(int64_t freq_hz, int64_t duration_ms, int64_t waveform)
-{
+void *rt_synth_tone(int64_t freq_hz, int64_t duration_ms, int64_t waveform) {
     freq_hz = clamp_i64(freq_hz, 20, 20000);
     duration_ms = clamp_i64(duration_ms, 1, 10000);
     waveform = clamp_i64(waveform, 0, 3);
@@ -213,8 +205,7 @@ void *rt_synth_tone(int64_t freq_hz, int64_t duration_ms, int64_t waveform)
     double phase = 0.0;
     double phase_inc = (double)freq_hz / (double)SYNTH_SAMPLE_RATE;
 
-    for (int32_t i = 0; i < num_samples; i++)
-    {
+    for (int32_t i = 0; i < num_samples; i++) {
         double val = waveform_sample(phase, waveform);
 
         /* Apply a short fade-in/fade-out to avoid clicks (10ms each) */
@@ -234,8 +225,7 @@ void *rt_synth_tone(int64_t freq_hz, int64_t duration_ms, int64_t waveform)
     return sound;
 }
 
-void *rt_synth_sweep(int64_t start_hz, int64_t end_hz, int64_t duration_ms, int64_t waveform)
-{
+void *rt_synth_sweep(int64_t start_hz, int64_t end_hz, int64_t duration_ms, int64_t waveform) {
     start_hz = clamp_i64(start_hz, 20, 20000);
     end_hz = clamp_i64(end_hz, 20, 20000);
     duration_ms = clamp_i64(duration_ms, 1, 10000);
@@ -251,8 +241,7 @@ void *rt_synth_sweep(int64_t start_hz, int64_t end_hz, int64_t duration_ms, int6
 
     double phase = 0.0;
 
-    for (int32_t i = 0; i < num_samples; i++)
-    {
+    for (int32_t i = 0; i < num_samples; i++) {
         /* Linear frequency interpolation */
         double t = (double)i / (double)num_samples;
         double freq = (double)start_hz + ((double)end_hz - (double)start_hz) * t;
@@ -277,8 +266,7 @@ void *rt_synth_sweep(int64_t start_hz, int64_t end_hz, int64_t duration_ms, int6
     return sound;
 }
 
-void *rt_synth_noise(int64_t duration_ms, int64_t volume)
-{
+void *rt_synth_noise(int64_t duration_ms, int64_t volume) {
     duration_ms = clamp_i64(duration_ms, 1, 10000);
     volume = clamp_i64(volume, 0, 100);
 
@@ -294,8 +282,7 @@ void *rt_synth_noise(int64_t duration_ms, int64_t volume)
     uint32_t rng_state = 0x12345678;
     double vol_scale = (double)volume / 100.0;
 
-    for (int32_t i = 0; i < num_samples; i++)
-    {
+    for (int32_t i = 0; i < num_samples; i++) {
         /* LCG: state = state * 1103515245 + 12345 */
         rng_state = rng_state * 1103515245u + 12345u;
         int16_t noise_val = (int16_t)(rng_state >> 16);
@@ -318,14 +305,12 @@ void *rt_synth_noise(int64_t duration_ms, int64_t volume)
 //===----------------------------------------------------------------------===//
 
 /// @brief Generate "jump" sound: quick ascending frequency sweep.
-static void *sfx_jump(void)
-{
+static void *sfx_jump(void) {
     return rt_synth_sweep(200, 600, 150, RT_WAVE_SQUARE);
 }
 
 /// @brief Generate "coin" sound: two quick high-pitched tones.
-static void *sfx_coin(void)
-{
+static void *sfx_coin(void) {
     /* Two-tone coin: 880Hz + 1760Hz, 80ms total */
     int32_t half = (int32_t)(80 * SYNTH_SAMPLE_RATE / 1000) / 2;
     int32_t num_samples = half * 2;
@@ -335,8 +320,7 @@ static void *sfx_coin(void)
         return NULL;
 
     double phase = 0.0;
-    for (int32_t i = 0; i < num_samples; i++)
-    {
+    for (int32_t i = 0; i < num_samples; i++) {
         double freq = (i < half) ? 880.0 : 1760.0;
         double phase_inc = freq / (double)SYNTH_SAMPLE_RATE;
 
@@ -365,33 +349,27 @@ static void *sfx_coin(void)
 }
 
 /// @brief Generate "hit" sound: short noise burst with fast decay.
-static void *sfx_hit(void)
-{
+static void *sfx_hit(void) {
     return rt_synth_noise(80, 90);
 }
 
 /// @brief Generate "explosion" sound: longer noise with slow decay.
-static void *sfx_explosion(void)
-{
+static void *sfx_explosion(void) {
     return rt_synth_noise(500, 100);
 }
 
 /// @brief Generate "powerup" sound: ascending sweep with triangle wave.
-static void *sfx_powerup(void)
-{
+static void *sfx_powerup(void) {
     return rt_synth_sweep(300, 1200, 400, RT_WAVE_TRIANGLE);
 }
 
 /// @brief Generate "laser" sound: quick descending sweep with sawtooth.
-static void *sfx_laser(void)
-{
+static void *sfx_laser(void) {
     return rt_synth_sweep(1500, 200, 120, RT_WAVE_SAWTOOTH);
 }
 
-void *rt_synth_sfx(int64_t sfx_type)
-{
-    switch (sfx_type)
-    {
+void *rt_synth_sfx(int64_t sfx_type) {
+    switch (sfx_type) {
         case RT_SFX_JUMP:
             return sfx_jump();
         case RT_SFX_COIN:

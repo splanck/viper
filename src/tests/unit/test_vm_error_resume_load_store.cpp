@@ -22,8 +22,7 @@
 
 #include <cassert>
 
-int main()
-{
+int main() {
     using il::core::Opcode;
     using il::core::Type;
     using il::vm::Frame;

@@ -19,8 +19,7 @@
 #include <stdexcept>
 #include <string>
 
-int main()
-{
+int main() {
     using namespace il::core;
     Module m;
     il::build::IRBuilder b(m);
@@ -28,12 +27,9 @@ int main()
     auto &bb = b.addBlock(fn, "entry");
     b.setInsertPoint(bb);
     bool caught = false;
-    try
-    {
+    try {
         b.emitCall("unknown", {}, std::nullopt, {});
-    }
-    catch (const std::logic_error &err)
-    {
+    } catch (const std::logic_error &err) {
         caught = true;
         // Verify error message mentions the unknown callee
         if (std::string(err.what()).find("unknown") == std::string::npos)

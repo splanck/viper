@@ -28,18 +28,15 @@
 #include <CommonCrypto/CommonDigest.h>
 #endif
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 using encoding::writeBE32;
 using encoding::writeBE64;
 
-namespace
-{
+namespace {
 
 /// Compute SHA-256 hash of data. Returns 32 bytes.
-void sha256(const uint8_t *data, size_t len, uint8_t out[32])
-{
+void sha256(const uint8_t *data, size_t len, uint8_t out[32]) {
 #if defined(__APPLE__)
     CC_SHA256(data, static_cast<CC_LONG>(len), out);
 #else
@@ -56,8 +53,7 @@ std::vector<uint8_t> buildCodeSignature(const std::vector<uint8_t> &file,
                                         size_t codeLimit,
                                         const std::string &identifier,
                                         uint64_t textSegFileOff,
-                                        uint64_t textSegFileSize)
-{
+                                        uint64_t textSegFileSize) {
     // CodeDirectory constants (all big-endian in output).
     static constexpr uint32_t CSMAGIC_EMBEDDED_SIGNATURE = 0xFADE0CC0;
     static constexpr uint32_t CSMAGIC_CODEDIRECTORY = 0xFADE0C02;
@@ -103,8 +99,7 @@ std::vector<uint8_t> buildCodeSignature(const std::vector<uint8_t> &file,
     cd.push_back(0);
 
     // Code slot hashes: SHA-256 of each 4KB page.
-    for (uint32_t i = 0; i < nCodeSlots; ++i)
-    {
+    for (uint32_t i = 0; i < nCodeSlots; ++i) {
         size_t pageStart = static_cast<size_t>(i) * 4096;
         size_t pageEnd = std::min(pageStart + 4096, codeLimit);
         uint8_t hash[32];

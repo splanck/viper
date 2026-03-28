@@ -30,8 +30,7 @@
 #include <string_view>
 #include <utility>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Register the minimal statement parsers required for core BASIC.
 ///
@@ -43,8 +42,7 @@ namespace il::frontends::basic
 ///
 /// @param registry Dispatcher that maps statement-starting tokens to Parser
 ///        member functions.
-void Parser::registerCoreParsers(StatementParserRegistry &registry)
-{
+void Parser::registerCoreParsers(StatementParserRegistry &registry) {
     registry.registerHandler(TokenKind::KeywordLet, &Parser::parseLetStatement);
     registry.registerHandler(TokenKind::KeywordConst, &Parser::parseConstStatement);
     registry.registerHandler(TokenKind::KeywordFunction, &Parser::parseFunctionStatement);
@@ -63,8 +61,7 @@ void Parser::registerCoreParsers(StatementParserRegistry &registry)
 ///          keywords are absent.
 ///
 /// @param registry Dispatcher that records keyword-to-handler mappings.
-void Parser::registerOopParsers(StatementParserRegistry &registry)
-{
+void Parser::registerOopParsers(StatementParserRegistry &registry) {
     registry.registerHandler(TokenKind::KeywordClass, &Parser::parseClassDecl);
     registry.registerHandler(TokenKind::KeywordInterface, &Parser::parseInterfaceDecl);
     registry.registerHandler(TokenKind::KeywordType, &Parser::parseTypeDecl);
@@ -89,10 +86,8 @@ void Parser::registerOopParsers(StatementParserRegistry &registry)
 /// @param line One-based line number attached to the statement from the
 ///        original source listing.
 /// @return Owned AST node on success; @c nullptr when recovery is required.
-StmtPtr Parser::parseStatement(int line)
-{
-    if (++stmtDepth_ > kMaxStmtDepth)
-    {
+StmtPtr Parser::parseStatement(int line) {
+    if (++stmtDepth_ > kMaxStmtDepth) {
         --stmtDepth_;
         emitError("B0001", peek(), "statement nesting too deep (limit: 512)");
         // Consume tokens to the next line boundary so the collectStatements
@@ -102,12 +97,10 @@ StmtPtr Parser::parseStatement(int line)
         return nullptr;
     }
 
-    struct DepthGuard
-    {
+    struct DepthGuard {
         unsigned &d;
 
-        ~DepthGuard()
-        {
+        ~DepthGuard() {
             --d;
         }
     } stmtGuard_{stmtDepth_};
@@ -118,10 +111,8 @@ StmtPtr Parser::parseStatement(int line)
 
     // 2. Soft keyword: LINE INPUT (identifier "LINE" followed by INPUT keyword).
     //    Must be checked before registry lookup since LINE is not a reserved keyword.
-    if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordInput)
-    {
-        if (string_utils::to_upper(peek().lexeme) == "LINE")
-        {
+    if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordInput) {
+        if (string_utils::to_upper(peek().lexeme) == "LINE") {
             return parseLineInputStatement();
         }
     }
@@ -146,38 +137,32 @@ StmtPtr Parser::parseStatement(int line)
     Token offendingTok = peek();
     reportUnknownStatement(offendingTok);
     resyncAfterError();
-    while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
-    {
+    while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine)) {
         consume();
     }
     return nullptr;
 }
 
-Parser::StmtResult Parser::parseRegisteredStatement(int line)
-{
+Parser::StmtResult Parser::parseRegisteredStatement(int line) {
     const Token tok = peek(); // Copy to avoid reference invalidation
 
     // BUG-OOP-021: Soft keywords (COLOR, FLOOR, RANDOM, etc.) should be treated as
     // identifiers when followed by '=' (assignment) or '(' (array subscript/call).
     // This allows using these keywords as variable names: color = 5
-    if (isSoftIdentToken(tok.kind) && tok.kind != TokenKind::Identifier)
-    {
+    if (isSoftIdentToken(tok.kind) && tok.kind != TokenKind::Identifier) {
         TokenKind next = peek(1).kind;
-        if (next == TokenKind::Equal || next == TokenKind::LParen)
-        {
+        if (next == TokenKind::Equal || next == TokenKind::LParen) {
             // Treat as identifier, fall through to implicit LET or call parsing.
             return std::nullopt;
         }
     }
 
     const auto [noArg, withLine] = statementRegistry().lookup(tok.kind);
-    if (noArg)
-    {
+    if (noArg) {
         auto stmt = (this->*noArg)();
         return StmtResult(std::move(stmt));
     }
-    if (withLine)
-    {
+    if (withLine) {
         auto stmt = (this->*withLine)(line);
         return StmtResult(std::move(stmt));
     }
@@ -189,8 +174,7 @@ Parser::StmtResult Parser::parseRegisteredStatement(int line)
 ///          like `Foo.Bar.Baz`, tolerates an optional end-of-line, and then
 ///          collects nested statements until `END NAMESPACE`.
 /// @return Newly allocated NamespaceDecl node.
-StmtPtr Parser::parseNamespaceDecl()
-{
+StmtPtr Parser::parseNamespaceDecl() {
     auto loc = peek().loc;
     consume(); // NAMESPACE
 
@@ -200,8 +184,7 @@ StmtPtr Parser::parseNamespaceDecl()
     if (first.kind == TokenKind::Identifier)
         path.push_back(first.lexeme);
     // Parse optional `.Ident` segments.
-    while (at(TokenKind::Dot))
-    {
+    while (at(TokenKind::Dot)) {
         consume();
         Token seg = expect(TokenKind::Identifier);
         if (seg.kind != TokenKind::Identifier)
@@ -232,21 +215,18 @@ StmtPtr Parser::parseNamespaceDecl()
 ///          Recovers from malformed syntax by building a UsingDecl with empty
 ///          path so semantic analysis can emit precise diagnostics.
 /// @return Newly allocated UsingDecl or UsingStmt node.
-StmtPtr Parser::parseUsingDecl()
-{
+StmtPtr Parser::parseUsingDecl() {
     auto loc = peek().loc;
     consume(); // USING
 
     // Check for resource statement form: USING identifier AS ...
     // This is allowed inside procedures (unlike namespace USING).
-    if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordAs)
-    {
+    if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::KeywordAs) {
         return parseUsingStatement(loc);
     }
 
     // Reject namespace USING inside procedures.
-    if (procDepth_ > 0)
-    {
+    if (procDepth_ > 0) {
         emitError("B0001", loc, "USING is not allowed inside procedures");
         // Attempt to recover by skipping to end of line.
         while (!at(TokenKind::EndOfFile) && !at(TokenKind::EndOfLine))
@@ -260,29 +240,23 @@ StmtPtr Parser::parseUsingDecl()
     decl->loc = loc;
 
     // Check for alias form: "Identifier = ..."
-    if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::Equal)
-    {
+    if (at(TokenKind::Identifier) && peek(1).kind == TokenKind::Equal) {
         Token aliasTok = consume();
         decl->alias = aliasTok.lexeme;
         consume(); // =
     }
 
     // Parse dotted namespace path: Identifier ('.' Identifier)*
-    if (at(TokenKind::Identifier))
-    {
+    if (at(TokenKind::Identifier)) {
         Token first = consume();
         decl->namespacePath.push_back(first.lexeme);
 
-        while (at(TokenKind::Dot))
-        {
+        while (at(TokenKind::Dot)) {
             consume(); // .
-            if (at(TokenKind::Identifier))
-            {
+            if (at(TokenKind::Identifier)) {
                 Token seg = consume();
                 decl->namespacePath.push_back(seg.lexeme);
-            }
-            else
-            {
+            } else {
                 // Trailing dot or malformed path; stop and let semantics report error.
                 break;
             }
@@ -299,14 +273,12 @@ StmtPtr Parser::parseUsingDecl()
 /// @brief Parse a USING resource statement (USING x AS Type = expr ... END USING).
 /// @param loc Source location of the USING keyword.
 /// @return Newly allocated UsingStmt node.
-StmtPtr Parser::parseUsingStatement(il::support::SourceLoc loc)
-{
+StmtPtr Parser::parseUsingStatement(il::support::SourceLoc loc) {
     auto stmt = std::make_unique<UsingStmt>();
     stmt->loc = loc;
 
     // Parse variable name
-    if (!at(TokenKind::Identifier))
-    {
+    if (!at(TokenKind::Identifier)) {
         emitError("B0002", loc, "expected variable name after USING");
         return nullptr;
     }
@@ -314,40 +286,33 @@ StmtPtr Parser::parseUsingStatement(il::support::SourceLoc loc)
     stmt->varName = varTok.lexeme;
 
     // Consume AS
-    if (!at(TokenKind::KeywordAs))
-    {
+    if (!at(TokenKind::KeywordAs)) {
         emitError("B0002", loc, "expected AS after variable name in USING");
         return nullptr;
     }
     consume(); // AS
 
     // Parse qualified type name: Identifier ('.' Identifier)*
-    if (!at(TokenKind::Identifier))
-    {
+    if (!at(TokenKind::Identifier)) {
         emitError("B0002", loc, "expected type name after AS in USING");
         return nullptr;
     }
     Token typeTok = consume();
     stmt->typeQualified.push_back(typeTok.lexeme);
 
-    while (at(TokenKind::Dot))
-    {
+    while (at(TokenKind::Dot)) {
         consume(); // .
-        if (at(TokenKind::Identifier))
-        {
+        if (at(TokenKind::Identifier)) {
             Token seg = consume();
             stmt->typeQualified.push_back(seg.lexeme);
-        }
-        else
-        {
+        } else {
             emitError("B0002", loc, "expected identifier after '.' in type name");
             break;
         }
     }
 
     // Expect '=' and initializer expression
-    if (!at(TokenKind::Equal))
-    {
+    if (!at(TokenKind::Equal)) {
         emitError("B0002", loc, "expected '=' after type in USING statement");
         return nullptr;
     }
@@ -355,8 +320,7 @@ StmtPtr Parser::parseUsingStatement(il::support::SourceLoc loc)
 
     // Parse initializer expression (typically NEW ClassName(...))
     stmt->initExpr = parseExpression();
-    if (!stmt->initExpr)
-    {
+    if (!stmt->initExpr) {
         emitError("B0002", loc, "expected initializer expression in USING statement");
         return nullptr;
     }
@@ -367,8 +331,7 @@ StmtPtr Parser::parseUsingStatement(il::support::SourceLoc loc)
     return stmt;
 }
 
-Parser::StmtResult Parser::parseLeadingLineNumberError()
-{
+Parser::StmtResult Parser::parseLeadingLineNumberError() {
     if (!at(TokenKind::Number))
         return std::nullopt;
 
@@ -377,11 +340,9 @@ Parser::StmtResult Parser::parseLeadingLineNumberError()
     return StmtResult(StmtPtr{});
 }
 
-void Parser::reportUnexpectedLineNumber(const Token &tok)
-{
+void Parser::reportUnexpectedLineNumber(const Token &tok) {
     auto diagId = diag::BasicDiag::UnexpectedLineNumber;
-    if (emitter_)
-    {
+    if (emitter_) {
         emitter_->emit(diag::getSeverity(diagId),
                        std::string(diag::getCode(diagId)),
                        tok.loc,
@@ -389,18 +350,14 @@ void Parser::reportUnexpectedLineNumber(const Token &tok)
                        diag::formatMessage(diagId,
                                            std::initializer_list<diag::Replacement>{
                                                diag::Replacement{"token", tok.lexeme}}));
-    }
-    else
-    {
+    } else {
         std::fprintf(stderr, "unexpected line number '%s' before statement\n", tok.lexeme.c_str());
     }
 }
 
-void Parser::reportUnknownStatement(const Token &tok)
-{
+void Parser::reportUnknownStatement(const Token &tok) {
     auto diagId = diag::BasicDiag::UnknownStatement;
-    if (emitter_)
-    {
+    if (emitter_) {
         emitter_->emit(diag::getSeverity(diagId),
                        std::string(diag::getCode(diagId)),
                        tok.loc,
@@ -408,17 +365,14 @@ void Parser::reportUnknownStatement(const Token &tok)
                        diag::formatMessage(diagId,
                                            std::initializer_list<diag::Replacement>{
                                                diag::Replacement{"token", tok.lexeme}}));
-    }
-    else
-    {
+    } else {
         std::fprintf(stderr,
                      "unknown statement '%s'; expected keyword or procedure call\n",
                      tok.lexeme.c_str());
     }
 }
 
-void Parser::resyncAfterError()
-{
+void Parser::resyncAfterError() {
     syncToStmtBoundary();
 }
 
@@ -432,10 +386,8 @@ void Parser::resyncAfterError()
 ///
 /// @param kind Token to examine.
 /// @return True when a handler or structural keyword introduces a new statement.
-bool Parser::isStatementStart(TokenKind kind) const
-{
-    switch (kind)
-    {
+bool Parser::isStatementStart(TokenKind kind) const {
+    switch (kind) {
         case TokenKind::KeywordAnd:
         case TokenKind::KeywordOr:
         case TokenKind::KeywordNot:
@@ -456,8 +408,7 @@ bool Parser::isStatementStart(TokenKind kind) const
     return statementRegistry().contains(kind);
 }
 
-std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
-{
+std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader() {
     auto loc = peek().loc;
     consume(); // FUNCTION
     Token nameTok = expect(TokenKind::Identifier);
@@ -466,21 +417,17 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
     fn->name = nameTok.lexeme;
     fn->ret = typeFromSuffix(nameTok.lexeme);
     fn->params = parseParamList();
-    if (at(TokenKind::KeywordAs))
-    {
+    if (at(TokenKind::KeywordAs)) {
         consume();
         fn->explicitRetType = parseBasicType();
-        if (fn->explicitRetType == BasicType::Unknown)
-        {
+        if (fn->explicitRetType == BasicType::Unknown) {
             // Parse a qualified class name: Ident ('.' Ident)*
-            if (at(TokenKind::Identifier))
-            {
+            if (at(TokenKind::Identifier)) {
                 std::vector<std::string> segs;
                 // consume first
                 segs.push_back(CanonicalizeIdent(peek().lexeme));
                 consume();
-                while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier)
-                {
+                while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier) {
                     consume(); // dot
                     segs.push_back(CanonicalizeIdent(peek().lexeme));
                     consume();
@@ -505,21 +452,20 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionHeader()
 /// @param endKind Keyword expected after END to close the body.
 /// @param body Destination vector for parsed statements.
 /// @return Source location of the terminating END token.
-il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector<StmtPtr> &body)
-{
+il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector<StmtPtr> &body) {
     auto ctx = statementSequencer();
     const bool isProcBody = (endKind != TokenKind::KeywordNamespace);
     if (isProcBody)
         ++procDepth_;
-    auto info =
-        ctx.collectStatements([&](int, il::support::SourceLoc)
-                              { return at(TokenKind::KeywordEnd) && peek(1).kind == endKind; },
-                              [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &)
-                              {
-                                  consume();
-                                  consume();
-                              },
-                              body);
+    auto info = ctx.collectStatements(
+        [&](int, il::support::SourceLoc) {
+            return at(TokenKind::KeywordEnd) && peek(1).kind == endKind;
+        },
+        [&](int, il::support::SourceLoc, StatementSequencer::TerminatorInfo &) {
+            consume();
+            consume();
+        },
+        body);
     if (isProcBody)
         --procDepth_;
     return info.loc;
@@ -533,8 +479,7 @@ il::support::SourceLoc Parser::parseProcedureBody(TokenKind endKind, std::vector
 ///          downstream diagnostics.
 ///
 /// @param fn Function declaration to populate with body statements.
-void Parser::parseFunctionBody(FunctionDecl *fn)
-{
+void Parser::parseFunctionBody(FunctionDecl *fn) {
     fn->endLoc = parseProcedureBody(TokenKind::KeywordFunction, fn->body);
 }
 

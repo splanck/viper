@@ -33,16 +33,12 @@
 #include <string_view>
 #include <vector>
 
-namespace il::transform
-{
+namespace il::transform {
 
-class PipelineExecutor
-{
+class PipelineExecutor {
   public:
-    struct PassMetrics
-    {
-        struct IRSize
-        {
+    struct PassMetrics {
+        struct IRSize {
             std::size_t blocks = 0;
             std::size_t instructions = 0;
         };
@@ -54,8 +50,7 @@ class PipelineExecutor
     };
 
     /// @brief Configuration for instrumentation hooks around pass execution.
-    struct Instrumentation
-    {
+    struct Instrumentation {
         viper::pass::PassManager::PrintHook printBefore;
         viper::pass::PassManager::PrintHook printAfter;
         viper::pass::PassManager::VerifyHook verifyEach;

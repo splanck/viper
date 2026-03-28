@@ -28,8 +28,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -37,20 +36,17 @@ static int tests_passed = 0;
 static int tests_total = 0;
 
 #define TEST(name)                                                                                 \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_total++;                                                                             \
         printf("  [%d] %s... ", tests_total, name);                                                \
     } while (0)
 #define PASS()                                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_passed++;                                                                            \
         printf("ok\n");                                                                            \
     } while (0)
 
-static void test_step_table_size(void)
-{
+static void test_step_table_size(void) {
     TEST("Step table has 89 entries");
     // Verify first and last values
     assert(rt_adpcm_step_table[0] == 7);
@@ -58,16 +54,14 @@ static void test_step_table_size(void)
     PASS();
 }
 
-static void test_index_table_size(void)
-{
+static void test_index_table_size(void) {
     TEST("Index table has 16 entries");
     assert(rt_adpcm_index_table[0] == -1);
     assert(rt_adpcm_index_table[7] == 8);
     PASS();
 }
 
-static void test_encode_decode_roundtrip(void)
-{
+static void test_encode_decode_roundtrip(void) {
     TEST("Encode/decode round-trip (sine wave)");
 
     // Generate 1-second 44100 Hz sine wave
@@ -92,8 +86,7 @@ static void test_encode_decode_roundtrip(void)
 
     // Check tolerance: ADPCM has ~4-bit quantization noise
     int max_err = 0;
-    for (int64_t i = 0; i < dec_samples && i < sample_count; i++)
-    {
+    for (int64_t i = 0; i < dec_samples && i < sample_count; i++) {
         int err = abs(pcm[i] - decoded[i]);
         if (err > max_err)
             max_err = err;
@@ -107,8 +100,7 @@ static void test_encode_decode_roundtrip(void)
     PASS();
 }
 
-static void test_encode_preserves_first_sample(void)
-{
+static void test_encode_preserves_first_sample(void) {
     TEST("Encode preserves first sample exactly");
     int16_t pcm[10] = {12345, 12400, 12500, 12300, 12100, 12000, 11900, 11800, 11700, 11600};
     uint8_t encoded[64];
@@ -124,8 +116,7 @@ static void test_encode_preserves_first_sample(void)
     PASS();
 }
 
-static void test_compression_ratio(void)
-{
+static void test_compression_ratio(void) {
     TEST("Compression ratio ~4:1");
     int64_t n = 4096;
     int16_t *pcm = (int16_t *)malloc((size_t)n * sizeof(int16_t));
@@ -146,24 +137,21 @@ static void test_compression_ratio(void)
     PASS();
 }
 
-static void test_empty_input(void)
-{
+static void test_empty_input(void) {
     TEST("Empty input returns 0");
     assert(rt_adpcm_encode_block(NULL, 0, NULL, 0) == 0);
     assert(rt_adpcm_decode_block(NULL, 0, NULL, 0) == 0);
     PASS();
 }
 
-static void test_vaf_format_detection(void)
-{
+static void test_vaf_format_detection(void) {
     TEST("VAF format detection on non-existent file");
     assert(rt_audio_is_vaf("/tmp/nonexistent.vaf") == 0);
     assert(rt_audio_is_vaf(NULL) == 0);
     PASS();
 }
 
-int main()
-{
+int main() {
     printf("test_rt_audio_codec:\n");
     test_step_table_size();
     test_index_table_size();

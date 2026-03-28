@@ -42,8 +42,7 @@ static vg_widget_vtable_t g_button_vtable = {.destroy = button_destroy,
 // Helper: Draw rounded rectangle
 //=============================================================================
 
-static void draw_filled_rect(void *canvas, float x, float y, float w, float h, uint32_t color)
-{
+static void draw_filled_rect(void *canvas, float x, float y, float w, float h, uint32_t color) {
     vgfx_fill_rect((vgfx_window_t)canvas, (int32_t)x, (int32_t)y, (int32_t)w, (int32_t)h, color);
 }
 
@@ -51,8 +50,7 @@ static void draw_filled_rect(void *canvas, float x, float y, float w, float h, u
 // Button Implementation
 //=============================================================================
 
-vg_button_t *vg_button_create(vg_widget_t *parent, const char *text)
-{
+vg_button_t *vg_button_create(vg_widget_t *parent, const char *text) {
     vg_button_t *button = calloc(1, sizeof(vg_button_t));
     if (!button)
         return NULL;
@@ -82,19 +80,16 @@ vg_button_t *vg_button_create(vg_widget_t *parent, const char *text)
     button->base.constraints.min_width = 60.0f;
 
     // Add to parent
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &button->base);
     }
 
     return button;
 }
 
-static void button_destroy(vg_widget_t *widget)
-{
+static void button_destroy(vg_widget_t *widget) {
     vg_button_t *button = (vg_button_t *)widget;
-    if (button->text)
-    {
+    if (button->text) {
         free((void *)button->text);
         button->text = NULL;
     }
@@ -102,8 +97,7 @@ static void button_destroy(vg_widget_t *widget)
     button->icon_text = NULL;
 }
 
-static void button_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void button_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_button_t *button = (vg_button_t *)widget;
     (void)available_width;
     (void)available_height;
@@ -116,19 +110,16 @@ static void button_measure(vg_widget_t *widget, float available_width, float ava
     float height = theme->button.height;
 
     // If we have a font, measure text and/or icon
-    if (button->font)
-    {
+    if (button->font) {
         float content_w = 0;
 
-        if (button->text && button->text[0])
-        {
+        if (button->text && button->text[0]) {
             vg_text_metrics_t metrics;
             vg_font_measure_text(button->font, button->font_size, button->text, &metrics);
             content_w = metrics.width;
         }
 
-        if (button->icon_text && button->icon_text[0])
-        {
+        if (button->icon_text && button->icon_text[0]) {
             vg_text_metrics_t icon_metrics;
             vg_font_measure_text(button->font, button->font_size, button->icon_text, &icon_metrics);
             content_w += icon_metrics.width;
@@ -136,8 +127,7 @@ static void button_measure(vg_widget_t *widget, float available_width, float ava
                 content_w += 4.0f; // gap between icon and label
         }
 
-        if (content_w > 0)
-        {
+        if (content_w > 0) {
             width = content_w + padding * 2;
             if (width < widget->constraints.min_width)
                 width = widget->constraints.min_width;
@@ -148,19 +138,17 @@ static void button_measure(vg_widget_t *widget, float available_width, float ava
     widget->measured_height = height;
 
     // Apply constraints
-    if (widget->constraints.max_width > 0 && widget->measured_width > widget->constraints.max_width)
-    {
+    if (widget->constraints.max_width > 0 &&
+        widget->measured_width > widget->constraints.max_width) {
         widget->measured_width = widget->constraints.max_width;
     }
     if (widget->constraints.max_height > 0 &&
-        widget->measured_height > widget->constraints.max_height)
-    {
+        widget->measured_height > widget->constraints.max_height) {
         widget->measured_height = widget->constraints.max_height;
     }
 }
 
-static void button_paint(vg_widget_t *widget, void *canvas)
-{
+static void button_paint(vg_widget_t *widget, void *canvas) {
     vg_button_t *button = (vg_button_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
 
@@ -168,18 +156,13 @@ static void button_paint(vg_widget_t *widget, void *canvas)
     uint32_t bg_color = button->bg_color;
     uint32_t fg_color = button->fg_color;
 
-    if (widget->state & VG_STATE_DISABLED)
-    {
+    if (widget->state & VG_STATE_DISABLED) {
         bg_color = theme->colors.bg_disabled;
         fg_color = theme->colors.fg_disabled;
-    }
-    else if (widget->state & VG_STATE_PRESSED)
-    {
+    } else if (widget->state & VG_STATE_PRESSED) {
         bg_color = theme->colors.bg_active;
         fg_color = 0xFFFFFFFF; // White text on active
-    }
-    else if (widget->state & VG_STATE_HOVERED)
-    {
+    } else if (widget->state & VG_STATE_HOVERED) {
         bg_color = theme->colors.bg_hover;
     }
 
@@ -197,8 +180,7 @@ static void button_paint(vg_widget_t *widget, void *canvas)
               border);
 
     // Draw icon and/or text
-    if (button->font)
-    {
+    if (button->font) {
         vg_font_metrics_t font_metrics;
         vg_font_get_metrics(button->font, button->font_size, &font_metrics);
         float baseline_y = widget->y +
@@ -208,11 +190,9 @@ static void button_paint(vg_widget_t *widget, void *canvas)
         bool has_text = button->text && button->text[0];
         bool has_icon = button->icon_text && button->icon_text[0];
 
-        if (!has_icon)
-        {
+        if (!has_icon) {
             // Text-only (original behaviour)
-            if (has_text)
-            {
+            if (has_text) {
                 vg_text_metrics_t metrics;
                 vg_font_measure_text(button->font, button->font_size, button->text, &metrics);
                 float text_x = widget->x + (widget->width - metrics.width) / 2.0f;
@@ -224,9 +204,7 @@ static void button_paint(vg_widget_t *widget, void *canvas)
                                   button->text,
                                   fg_color);
             }
-        }
-        else
-        {
+        } else {
             // Measure both pieces
             vg_text_metrics_t icon_m = {0};
             vg_text_metrics_t text_m = {0};
@@ -238,8 +216,7 @@ static void button_paint(vg_widget_t *widget, void *canvas)
             float total_w = icon_m.width + gap + text_m.width;
             float start_x = widget->x + (widget->width - total_w) / 2.0f;
 
-            if (button->icon_pos == 1)
-            {
+            if (button->icon_pos == 1) {
                 // icon on the right
                 float text_x = start_x;
                 if (has_text)
@@ -258,9 +235,7 @@ static void button_paint(vg_widget_t *widget, void *canvas)
                                   baseline_y,
                                   button->icon_text,
                                   fg_color);
-            }
-            else
-            {
+            } else {
                 // icon on the left (default)
                 vg_font_draw_text(canvas,
                                   button->font,
@@ -269,8 +244,7 @@ static void button_paint(vg_widget_t *widget, void *canvas)
                                   baseline_y,
                                   button->icon_text,
                                   fg_color);
-                if (has_text)
-                {
+                if (has_text) {
                     float text_x = start_x + icon_m.width + gap;
                     vg_font_draw_text(canvas,
                                       button->font,
@@ -285,33 +259,26 @@ static void button_paint(vg_widget_t *widget, void *canvas)
     }
 }
 
-static bool button_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool button_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_button_t *button = (vg_button_t *)widget;
 
-    if (widget->state & VG_STATE_DISABLED)
-    {
+    if (widget->state & VG_STATE_DISABLED) {
         return false;
     }
 
-    if (event->type == VG_EVENT_CLICK)
-    {
-        if (button->on_click)
-        {
+    if (event->type == VG_EVENT_CLICK) {
+        if (button->on_click) {
             button->on_click(widget, button->user_data);
         }
         // Also call widget's generic on_click if set
-        if (widget->on_click)
-        {
+        if (widget->on_click) {
             widget->on_click(widget, widget->callback_data);
         }
         return true;
     }
 
-    if (event->type == VG_EVENT_KEY_DOWN)
-    {
-        if (event->key.key == VG_KEY_SPACE || event->key.key == VG_KEY_ENTER)
-        {
+    if (event->type == VG_EVENT_KEY_DOWN) {
+        if (event->key.key == VG_KEY_SPACE || event->key.key == VG_KEY_ENTER) {
             if (button->on_click)
                 button->on_click(widget, button->user_data);
             if (widget->on_click)
@@ -324,8 +291,7 @@ static bool button_handle_event(vg_widget_t *widget, vg_event_t *event)
     return false;
 }
 
-static bool button_can_focus(vg_widget_t *widget)
-{
+static bool button_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
@@ -333,13 +299,11 @@ static bool button_can_focus(vg_widget_t *widget)
 // Button API
 //=============================================================================
 
-void vg_button_set_text(vg_button_t *button, const char *text)
-{
+void vg_button_set_text(vg_button_t *button, const char *text) {
     if (!button)
         return;
 
-    if (button->text)
-    {
+    if (button->text) {
         free((void *)button->text);
     }
     button->text = text ? strdup(text) : strdup("");
@@ -347,14 +311,12 @@ void vg_button_set_text(vg_button_t *button, const char *text)
     button->base.needs_paint = true;
 }
 
-const char *vg_button_get_text(vg_button_t *button)
-{
+const char *vg_button_get_text(vg_button_t *button) {
     return button ? button->text : NULL;
 }
 
 /// @brief Button set on click.
-void vg_button_set_on_click(vg_button_t *button, vg_button_callback_t callback, void *user_data)
-{
+void vg_button_set_on_click(vg_button_t *button, vg_button_callback_t callback, void *user_data) {
     if (!button)
         return;
 
@@ -363,8 +325,7 @@ void vg_button_set_on_click(vg_button_t *button, vg_button_callback_t callback, 
 }
 
 /// @brief Button set style.
-void vg_button_set_style(vg_button_t *button, vg_button_style_t style)
-{
+void vg_button_set_style(vg_button_t *button, vg_button_style_t style) {
     if (!button)
         return;
 
@@ -372,8 +333,7 @@ void vg_button_set_style(vg_button_t *button, vg_button_style_t style)
     vg_theme_t *theme = vg_theme_get_current();
 
     // Update colors based on style
-    switch (style)
-    {
+    switch (style) {
         case VG_BUTTON_STYLE_PRIMARY:
             button->bg_color = theme->colors.accent_primary;
             button->fg_color = 0xFFFFFFFF; // White
@@ -400,8 +360,7 @@ void vg_button_set_style(vg_button_t *button, vg_button_style_t style)
 }
 
 /// @brief Button set font.
-void vg_button_set_font(vg_button_t *button, vg_font_t *font, float size)
-{
+void vg_button_set_font(vg_button_t *button, vg_font_t *font, float size) {
     if (!button)
         return;
 
@@ -412,8 +371,7 @@ void vg_button_set_font(vg_button_t *button, vg_font_t *font, float size)
 }
 
 /// @brief Button set icon.
-void vg_button_set_icon(vg_button_t *button, const char *icon)
-{
+void vg_button_set_icon(vg_button_t *button, const char *icon) {
     if (!button)
         return;
 
@@ -424,8 +382,7 @@ void vg_button_set_icon(vg_button_t *button, const char *icon)
 }
 
 /// @brief Button set icon position.
-void vg_button_set_icon_position(vg_button_t *button, int pos)
-{
+void vg_button_set_icon_position(vg_button_t *button, int pos) {
     if (!button)
         return;
 

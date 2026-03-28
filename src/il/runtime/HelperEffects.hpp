@@ -20,12 +20,10 @@
 #include <array>
 #include <string_view>
 
-namespace il::runtime
-{
+namespace il::runtime {
 
 /// @brief Describe behavioural flags associated with a runtime helper.
-struct HelperEffects
-{
+struct HelperEffects {
     bool nothrow = false;  ///< Helper cannot throw or trap under defined behaviour.
     bool readonly = false; ///< Helper may read memory but performs no writes.
     bool pure = false;     ///< Helper has no observable side effects.
@@ -40,10 +38,8 @@ struct HelperEffects
 ///          - pure: No observable side effects; can eliminate if result unused
 ///          - readonly: May read memory but no writes; can reorder with stores
 ///          - nothrow: Cannot throw or trap; can hoist across exception boundaries
-inline HelperEffects classifyHelperEffects(std::string_view name)
-{
-    struct Entry
-    {
+inline HelperEffects classifyHelperEffects(std::string_view name) {
+    struct Entry {
         std::string_view name;
         HelperEffects effects;
     };

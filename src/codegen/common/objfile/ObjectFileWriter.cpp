@@ -20,21 +20,17 @@
 #include "codegen/common/objfile/ElfWriter.hpp"
 #include "codegen/common/objfile/MachOWriter.hpp"
 
-namespace viper::codegen::objfile
-{
+namespace viper::codegen::objfile {
 
 bool ObjectFileWriter::write(const std::string &path,
                              const std::vector<CodeSection> &textSections,
                              const CodeSection &rodata,
-                             std::ostream &err)
-{
+                             std::ostream &err) {
     // Default: merge all text sections into one and delegate to single-section write().
     CodeSection merged;
-    for (const auto &ts : textSections)
-    {
+    for (const auto &ts : textSections) {
         // Copy symbols from this text section into the merged section.
-        for (uint32_t i = 1; i < ts.symbols().count(); ++i)
-        {
+        for (uint32_t i = 1; i < ts.symbols().count(); ++i) {
             const auto &sym = ts.symbols().at(i);
             if (sym.binding == SymbolBinding::External || sym.section == SymbolSection::Undefined)
                 merged.findOrDeclareSymbol(sym.name);
@@ -49,16 +45,14 @@ bool ObjectFileWriter::write(const std::string &path,
         merged.emitBytes(ts.bytes().data(), ts.bytes().size());
 
         // Copy relocations, adjusting offsets and remapping symbol indices.
-        for (const auto &rel : ts.relocations())
-        {
+        for (const auto &rel : ts.relocations()) {
             const auto &sym = ts.symbols().at(rel.symbolIndex);
             uint32_t mergedSymIdx = merged.findOrDeclareSymbol(sym.name);
             merged.addRelocationAt(baseOffset + rel.offset, rel.kind, mergedSymIdx, rel.addend);
         }
 
         // Copy compact unwind entries, remapping symbol indices.
-        for (const auto &ue : ts.unwindEntries())
-        {
+        for (const auto &ue : ts.unwindEntries()) {
             const auto &sym = ts.symbols().at(ue.symbolIndex);
             uint32_t mergedSymIdx = merged.findOrDeclareSymbol(sym.name);
             merged.addUnwindEntry({mergedSymIdx, ue.functionLength, ue.encoding});
@@ -67,10 +61,8 @@ bool ObjectFileWriter::write(const std::string &path,
     return write(path, merged, rodata, err);
 }
 
-std::unique_ptr<ObjectFileWriter> createObjectFileWriter(ObjFormat format, ObjArch arch)
-{
-    switch (format)
-    {
+std::unique_ptr<ObjectFileWriter> createObjectFileWriter(ObjFormat format, ObjArch arch) {
+    switch (format) {
         case ObjFormat::ELF:
             return std::make_unique<ElfWriter>(arch);
         case ObjFormat::MachO:

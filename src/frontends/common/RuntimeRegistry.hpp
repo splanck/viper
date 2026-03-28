@@ -42,12 +42,10 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::frontends::common
-{
+namespace il::frontends::common {
 
 /// @brief Return type classification for frontend semantic analysis.
-enum class RuntimeReturnKind
-{
+enum class RuntimeReturnKind {
     Void,    ///< No return value (void)
     Integer, ///< 64-bit integer (i64)
     Boolean, ///< Boolean (i1)
@@ -59,8 +57,7 @@ enum class RuntimeReturnKind
 };
 
 /// @brief Argument type for signature validation.
-enum class RuntimeArgKind
-{
+enum class RuntimeArgKind {
     Integer, ///< i64
     Boolean, ///< i1
     Float,   ///< f64
@@ -70,8 +67,7 @@ enum class RuntimeArgKind
 };
 
 /// @brief Full signature information for a runtime function.
-struct RuntimeFunctionInfo
-{
+struct RuntimeFunctionInfo {
     std::string_view canonicalName;       ///< Viper.* canonical name
     std::string_view runtimeSymbol;       ///< C rt_* symbol
     std::string_view signature;           ///< Signature string e.g., "i64(str,i64)"
@@ -80,8 +76,7 @@ struct RuntimeFunctionInfo
 };
 
 /// @brief Class information for OOP-style APIs.
-struct RuntimeClassInfo
-{
+struct RuntimeClassInfo {
     std::string_view name;                            ///< Class name (e.g., "Viper.String")
     std::string_view constructor;                     ///< Constructor canonical name or empty
     std::vector<runtime::RuntimeProperty> properties; ///< Class properties
@@ -106,8 +101,7 @@ struct RuntimeClassInfo
 ///       for (const auto& method : cls->methods) { ... }
 ///   }
 /// @endcode
-class RuntimeRegistry
-{
+class RuntimeRegistry {
   public:
     /// @brief Get the singleton registry instance.
     /// @return Reference to the process-wide registry.

@@ -21,8 +21,7 @@
 #include <cstdlib>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -30,8 +29,7 @@ extern "C" void vm_trap(const char *msg)
 // Constructor Tests
 // ============================================================================
 
-static void test_new()
-{
+static void test_new() {
     void *p = rt_pixels_new(100, 50);
     assert(p != nullptr);
     assert(rt_pixels_width(p) == 100);
@@ -39,8 +37,7 @@ static void test_new()
     printf("test_new: PASSED\n");
 }
 
-static void test_new_zero_dimensions()
-{
+static void test_new_zero_dimensions() {
     void *p = rt_pixels_new(0, 0);
     assert(p != nullptr);
     assert(rt_pixels_width(p) == 0);
@@ -48,8 +45,7 @@ static void test_new_zero_dimensions()
     printf("test_new_zero_dimensions: PASSED\n");
 }
 
-static void test_new_negative_dimensions()
-{
+static void test_new_negative_dimensions() {
     void *p = rt_pixels_new(-10, -20);
     assert(p != nullptr);
     assert(rt_pixels_width(p) == 0);
@@ -61,8 +57,7 @@ static void test_new_negative_dimensions()
 // Pixel Access Tests
 // ============================================================================
 
-static void test_get_set()
-{
+static void test_get_set() {
     void *p = rt_pixels_new(10, 10);
 
     // Initially should be 0 (transparent black)
@@ -76,8 +71,7 @@ static void test_get_set()
     printf("test_get_set: PASSED\n");
 }
 
-static void test_get_out_of_bounds()
-{
+static void test_get_out_of_bounds() {
     void *p = rt_pixels_new(10, 10);
 
     // Out of bounds should return 0
@@ -90,8 +84,7 @@ static void test_get_out_of_bounds()
     printf("test_get_out_of_bounds: PASSED\n");
 }
 
-static void test_set_out_of_bounds()
-{
+static void test_set_out_of_bounds() {
     void *p = rt_pixels_new(10, 10);
 
     // Set out of bounds - should be silently ignored
@@ -101,10 +94,8 @@ static void test_set_out_of_bounds()
     rt_pixels_set(p, 0, 10, 0xFFFFFFFF);
 
     // All pixels should still be 0
-    for (int64_t y = 0; y < 10; y++)
-    {
-        for (int64_t x = 0; x < 10; x++)
-        {
+    for (int64_t y = 0; y < 10; y++) {
+        for (int64_t x = 0; x < 10; x++) {
             assert(rt_pixels_get(p, x, y) == 0);
         }
     }
@@ -112,8 +103,7 @@ static void test_set_out_of_bounds()
     printf("test_set_out_of_bounds: PASSED\n");
 }
 
-static void test_corners()
-{
+static void test_corners() {
     void *p = rt_pixels_new(5, 5);
 
     int64_t tl = 0x11111111;
@@ -138,17 +128,14 @@ static void test_corners()
 // Fill Operations Tests
 // ============================================================================
 
-static void test_fill()
-{
+static void test_fill() {
     void *p = rt_pixels_new(5, 5);
     int64_t color = 0xAABBCCDD;
 
     rt_pixels_fill(p, color);
 
-    for (int64_t y = 0; y < 5; y++)
-    {
-        for (int64_t x = 0; x < 5; x++)
-        {
+    for (int64_t y = 0; y < 5; y++) {
+        for (int64_t x = 0; x < 5; x++) {
             assert(rt_pixels_get(p, x, y) == color);
         }
     }
@@ -156,8 +143,7 @@ static void test_fill()
     printf("test_fill: PASSED\n");
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *p = rt_pixels_new(5, 5);
 
     // Fill with non-zero color
@@ -166,10 +152,8 @@ static void test_clear()
     // Clear to transparent black
     rt_pixels_clear(p);
 
-    for (int64_t y = 0; y < 5; y++)
-    {
-        for (int64_t x = 0; x < 5; x++)
-        {
+    for (int64_t y = 0; y < 5; y++) {
+        for (int64_t x = 0; x < 5; x++) {
             assert(rt_pixels_get(p, x, y) == 0);
         }
     }
@@ -181,16 +165,13 @@ static void test_clear()
 // Copy Operations Tests
 // ============================================================================
 
-static void test_copy_basic()
-{
+static void test_copy_basic() {
     void *src = rt_pixels_new(10, 10);
     void *dst = rt_pixels_new(10, 10);
 
     // Create a pattern in source
-    for (int64_t y = 0; y < 5; y++)
-    {
-        for (int64_t x = 0; x < 5; x++)
-        {
+    for (int64_t y = 0; y < 5; y++) {
+        for (int64_t x = 0; x < 5; x++) {
             rt_pixels_set(src, x, y, (int64_t)(y * 5 + x));
         }
     }
@@ -199,10 +180,8 @@ static void test_copy_basic()
     rt_pixels_copy(dst, 2, 2, src, 0, 0, 5, 5);
 
     // Verify copy
-    for (int64_t y = 0; y < 5; y++)
-    {
-        for (int64_t x = 0; x < 5; x++)
-        {
+    for (int64_t y = 0; y < 5; y++) {
+        for (int64_t x = 0; x < 5; x++) {
             int64_t expected = y * 5 + x;
             assert(rt_pixels_get(dst, x + 2, y + 2) == expected);
         }
@@ -211,8 +190,7 @@ static void test_copy_basic()
     printf("test_copy_basic: PASSED\n");
 }
 
-static void test_copy_clipping()
-{
+static void test_copy_clipping() {
     void *src = rt_pixels_new(10, 10);
     void *dst = rt_pixels_new(5, 5);
 
@@ -223,10 +201,8 @@ static void test_copy_clipping()
     rt_pixels_copy(dst, 0, 0, src, 0, 0, 10, 10);
 
     // Destination should be filled (clipped to its size)
-    for (int64_t y = 0; y < 5; y++)
-    {
-        for (int64_t x = 0; x < 5; x++)
-        {
+    for (int64_t y = 0; y < 5; y++) {
+        for (int64_t x = 0; x < 5; x++) {
             assert(rt_pixels_get(dst, x, y) == 0x12345678);
         }
     }
@@ -234,8 +210,7 @@ static void test_copy_clipping()
     printf("test_copy_clipping: PASSED\n");
 }
 
-static void test_copy_negative_dest()
-{
+static void test_copy_negative_dest() {
     void *src = rt_pixels_new(10, 10);
     void *dst = rt_pixels_new(10, 10);
 
@@ -246,10 +221,8 @@ static void test_copy_negative_dest()
     rt_pixels_copy(dst, -2, -2, src, 0, 0, 5, 5);
 
     // Only 3x3 pixels should be copied to (0,0)-(2,2)
-    for (int64_t y = 0; y < 3; y++)
-    {
-        for (int64_t x = 0; x < 3; x++)
-        {
+    for (int64_t y = 0; y < 3; y++) {
+        for (int64_t x = 0; x < 3; x++) {
             assert(rt_pixels_get(dst, x, y) == 0xABCDEF00);
         }
     }
@@ -260,8 +233,7 @@ static void test_copy_negative_dest()
     printf("test_copy_negative_dest: PASSED\n");
 }
 
-static void test_copy_overlap_forward()
-{
+static void test_copy_overlap_forward() {
     void *p = rt_pixels_new(4, 4);
 
     for (int64_t y = 0; y < 4; y++)
@@ -277,8 +249,7 @@ static void test_copy_overlap_forward()
     printf("test_copy_overlap_forward: PASSED\n");
 }
 
-static void test_copy_overlap_backward()
-{
+static void test_copy_overlap_backward() {
     void *p = rt_pixels_new(4, 4);
 
     for (int64_t y = 0; y < 4; y++)
@@ -294,15 +265,12 @@ static void test_copy_overlap_backward()
     printf("test_copy_overlap_backward: PASSED\n");
 }
 
-static void test_clone()
-{
+static void test_clone() {
     void *p = rt_pixels_new(5, 5);
 
     // Create a pattern
-    for (int64_t y = 0; y < 5; y++)
-    {
-        for (int64_t x = 0; x < 5; x++)
-        {
+    for (int64_t y = 0; y < 5; y++) {
+        for (int64_t x = 0; x < 5; x++) {
             rt_pixels_set(p, x, y, (int64_t)(y * 5 + x));
         }
     }
@@ -315,10 +283,8 @@ static void test_clone()
     assert(rt_pixels_height(clone) == rt_pixels_height(p));
 
     // Verify all pixels match
-    for (int64_t y = 0; y < 5; y++)
-    {
-        for (int64_t x = 0; x < 5; x++)
-        {
+    for (int64_t y = 0; y < 5; y++) {
+        for (int64_t x = 0; x < 5; x++) {
             assert(rt_pixels_get(clone, x, y) == rt_pixels_get(p, x, y));
         }
     }
@@ -334,8 +300,7 @@ static void test_clone()
 // Byte Conversion Tests
 // ============================================================================
 
-static void test_to_bytes()
-{
+static void test_to_bytes() {
     void *p = rt_pixels_new(2, 2);
 
     // Set 4 pixels with distinct RGBA values
@@ -351,8 +316,7 @@ static void test_to_bytes()
     printf("test_to_bytes: PASSED\n");
 }
 
-static void test_from_bytes()
-{
+static void test_from_bytes() {
     // Create bytes for a 2x2 image
     void *bytes = rt_bytes_new(16);
 
@@ -391,15 +355,12 @@ static void test_from_bytes()
     printf("test_from_bytes: PASSED\n");
 }
 
-static void test_round_trip()
-{
+static void test_round_trip() {
     void *original = rt_pixels_new(10, 10);
 
     // Create a pattern
-    for (int64_t y = 0; y < 10; y++)
-    {
-        for (int64_t x = 0; x < 10; x++)
-        {
+    for (int64_t y = 0; y < 10; y++) {
+        for (int64_t x = 0; x < 10; x++) {
             rt_pixels_set(original, x, y, (int64_t)((y << 24) | (x << 16) | 0xFF));
         }
     }
@@ -409,10 +370,8 @@ static void test_round_trip()
     void *restored = rt_pixels_from_bytes(10, 10, bytes);
 
     // Verify all pixels match
-    for (int64_t y = 0; y < 10; y++)
-    {
-        for (int64_t x = 0; x < 10; x++)
-        {
+    for (int64_t y = 0; y < 10; y++) {
+        for (int64_t x = 0; x < 10; x++) {
             assert(rt_pixels_get(restored, x, y) == rt_pixels_get(original, x, y));
         }
     }
@@ -424,8 +383,7 @@ static void test_round_trip()
 // Edge Case Tests
 // ============================================================================
 
-static void test_large_image()
-{
+static void test_large_image() {
     // Create a reasonably large image
     void *p = rt_pixels_new(1000, 1000);
     assert(p != nullptr);
@@ -446,8 +404,7 @@ static void test_large_image()
     printf("test_large_image: PASSED\n");
 }
 
-static void test_single_pixel()
-{
+static void test_single_pixel() {
     void *p = rt_pixels_new(1, 1);
     assert(p != nullptr);
     assert(rt_pixels_width(p) == 1);
@@ -463,8 +420,7 @@ static void test_single_pixel()
 // BMP Load/Save Tests
 // ============================================================================
 
-static void test_bmp_save_load_roundtrip()
-{
+static void test_bmp_save_load_roundtrip() {
     // Create a test image with known colors
     void *p = rt_pixels_new(10, 10);
     assert(p != nullptr);
@@ -477,10 +433,8 @@ static void test_bmp_save_load_roundtrip()
     rt_pixels_set(p, 9, 9, 0xFFFFFFFF); // White
 
     // Fill middle with gray
-    for (int y = 3; y < 7; y++)
-    {
-        for (int x = 3; x < 7; x++)
-        {
+    for (int y = 3; y < 7; y++) {
+        for (int x = 3; x < 7; x++) {
             rt_pixels_set(p, x, y, 0x808080FF); // Gray
         }
     }
@@ -529,8 +483,7 @@ static void test_bmp_save_load_roundtrip()
     printf("test_bmp_save_load_roundtrip: PASSED\n");
 }
 
-static void test_bmp_load_invalid_path()
-{
+static void test_bmp_load_invalid_path() {
     const char *invalid = "/nonexistent/path/file.bmp";
     rt_string path = rt_string_from_bytes(invalid, strlen(invalid));
     void *p = rt_pixels_load_bmp(path);
@@ -539,8 +492,7 @@ static void test_bmp_load_invalid_path()
     printf("test_bmp_load_invalid_path: PASSED\n");
 }
 
-static void test_bmp_save_null_inputs()
-{
+static void test_bmp_save_null_inputs() {
     // Save with null pixels should return 0
     const char *tmp = "/tmp/test.bmp";
     rt_string path = rt_string_from_bytes(tmp, strlen(tmp));
@@ -553,17 +505,14 @@ static void test_bmp_save_null_inputs()
     printf("test_bmp_save_null_inputs: PASSED\n");
 }
 
-static void test_bmp_odd_dimensions()
-{
+static void test_bmp_odd_dimensions() {
     // BMP row padding test - use width that requires padding
     void *p = rt_pixels_new(7, 5); // 7 pixels = 21 bytes, needs 3 bytes padding to reach 24
     assert(p != nullptr);
 
     // Fill with a checkerboard pattern
-    for (int y = 0; y < 5; y++)
-    {
-        for (int x = 0; x < 7; x++)
-        {
+    for (int y = 0; y < 5; y++) {
+        for (int x = 0; x < 7; x++) {
             if ((x + y) % 2 == 0)
                 rt_pixels_set(p, x, y, 0xFF0000FF); // Red
             else
@@ -591,10 +540,8 @@ static void test_bmp_odd_dimensions()
     assert(rt_pixels_height(loaded) == 5);
 
     // Verify checkerboard pattern
-    for (int y = 0; y < 5; y++)
-    {
-        for (int x = 0; x < 7; x++)
-        {
+    for (int y = 0; y < 5; y++) {
+        for (int x = 0; x < 7; x++) {
             int64_t color = rt_pixels_get(loaded, x, y);
             if ((x + y) % 2 == 0)
                 assert((color & 0xFFFFFF00) == 0xFF000000); // Red
@@ -613,8 +560,7 @@ static void test_bmp_odd_dimensions()
 // Transform Tests
 // ============================================================================
 
-static void test_flip_h()
-{
+static void test_flip_h() {
     // Create a 3x2 image with distinct colors in each corner
     // [R G B]
     // [C M Y]
@@ -645,8 +591,7 @@ static void test_flip_h()
     printf("test_flip_h: PASSED\n");
 }
 
-static void test_flip_v()
-{
+static void test_flip_v() {
     // Create a 2x3 image
     void *p = rt_pixels_new(2, 3);
     rt_pixels_set(p, 0, 0, 0x11111111); // row 0
@@ -673,8 +618,7 @@ static void test_flip_v()
     printf("test_flip_v: PASSED\n");
 }
 
-static void test_rotate_cw()
-{
+static void test_rotate_cw() {
     // Create a 3x2 image
     // [A B C]
     // [D E F]
@@ -706,8 +650,7 @@ static void test_rotate_cw()
     printf("test_rotate_cw: PASSED\n");
 }
 
-static void test_rotate_ccw()
-{
+static void test_rotate_ccw() {
     // Create a 3x2 image
     // [A B C]
     // [D E F]
@@ -739,8 +682,7 @@ static void test_rotate_ccw()
     printf("test_rotate_ccw: PASSED\n");
 }
 
-static void test_rotate_180()
-{
+static void test_rotate_180() {
     // Create a 3x2 image
     // [A B C]
     // [D E F]
@@ -771,8 +713,7 @@ static void test_rotate_180()
     printf("test_rotate_180: PASSED\n");
 }
 
-static void test_scale_up()
-{
+static void test_scale_up() {
     // Create a 2x2 image and scale to 4x4
     void *p = rt_pixels_new(2, 2);
     rt_pixels_set(p, 0, 0, 0x11111111); // top-left
@@ -813,8 +754,7 @@ static void test_scale_up()
     printf("test_scale_up: PASSED\n");
 }
 
-static void test_scale_down()
-{
+static void test_scale_down() {
     // Create a 4x4 image with different colors in each quadrant
     void *p = rt_pixels_new(4, 4);
 
@@ -861,8 +801,7 @@ static void test_scale_down()
 // BlendPixel Tests
 // ============================================================================
 
-static void test_blend_fully_opaque()
-{
+static void test_blend_fully_opaque() {
     void *p = rt_pixels_new(4, 4);
     // Black canvas; blend fully-opaque red (alpha=255) at (1,1)
     rt_pixels_blend_pixel(p, 1, 1, 0x00FF0000, 255);
@@ -872,8 +811,7 @@ static void test_blend_fully_opaque()
     printf("test_blend_fully_opaque: PASSED\n");
 }
 
-static void test_blend_transparent()
-{
+static void test_blend_transparent() {
     void *p = rt_pixels_new(4, 4);
     rt_pixels_fill(p, (int64_t)0xFF000000); // red opaque background
     // Blend with alpha=0 — no change expected
@@ -884,8 +822,7 @@ static void test_blend_transparent()
     printf("test_blend_transparent: PASSED\n");
 }
 
-static void test_blend_50_percent()
-{
+static void test_blend_50_percent() {
     void *p = rt_pixels_new(4, 4);
     // Set background pixel to opaque white (0xFFFFFFFF in RGBA)
     rt_pixels_set(p, 2, 2, (int64_t)0xFFFFFFFF);
@@ -902,8 +839,7 @@ static void test_blend_50_percent()
     printf("test_blend_50_percent: PASSED\n");
 }
 
-static void test_blend_out_of_bounds()
-{
+static void test_blend_out_of_bounds() {
     // Should silently clip — no crash
     void *p = rt_pixels_new(4, 4);
     rt_pixels_blend_pixel(p, -1, -1, 0x00FF0000, 255);
@@ -911,8 +847,7 @@ static void test_blend_out_of_bounds()
     printf("test_blend_out_of_bounds: PASSED\n");
 }
 
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
     printf("Test skipped: POSIX temp paths not available on Windows\n");

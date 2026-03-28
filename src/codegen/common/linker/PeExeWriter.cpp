@@ -24,8 +24,7 @@
 #include <cstring>
 #include <fstream>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 using encoding::padTo;
 using encoding::writeLE16;
@@ -33,8 +32,7 @@ using encoding::writeLE32;
 using encoding::writeLE64;
 using encoding::writePad;
 
-namespace
-{
+namespace {
 
 static constexpr uint16_t IMAGE_FILE_MACHINE_AMD64 = 0x8664;
 static constexpr uint16_t IMAGE_FILE_MACHINE_ARM64 = 0xAA64;
@@ -53,8 +51,7 @@ bool writePeExe(const std::string &path,
                 const LinkLayout &layout,
                 LinkArch arch,
                 const std::vector<DllImport> & /*imports*/,
-                std::ostream &err)
-{
+                std::ostream &err) {
     const uint16_t machine =
         (arch == LinkArch::AArch64) ? IMAGE_FILE_MACHINE_ARM64 : IMAGE_FILE_MACHINE_AMD64;
     const uint64_t imageBase = 0x140000000ULL;
@@ -79,8 +76,7 @@ bool writePeExe(const std::string &path,
 
     // Collect alloc and non-alloc sections.
     std::vector<size_t> allocIndices, debugIndices;
-    for (size_t i = 0; i < layout.sections.size(); ++i)
-    {
+    for (size_t i = 0; i < layout.sections.size(); ++i) {
         if (layout.sections[i].data.empty())
             continue;
         if (!layout.sections[i].alloc)
@@ -128,8 +124,7 @@ bool writePeExe(const std::string &path,
 
     // SizeOfImage: VA of last alloc section + its aligned size.
     uint32_t sizeOfImage = sectionAlignment; // At least first page.
-    for (size_t idx : allocIndices)
-    {
+    for (size_t idx : allocIndices) {
         const auto &sec = layout.sections[idx];
         uint32_t secEnd = static_cast<uint32_t>(sec.virtualAddr - imageBase +
                                                 alignUp(sec.data.size(), sectionAlignment));
@@ -155,15 +150,13 @@ bool writePeExe(const std::string &path,
     writeLE32(file, 16);                  // NumberOfRvaAndSizes
 
     // Data directories (16 entries × 8 bytes = 128 bytes).
-    for (int i = 0; i < 16; ++i)
-    {
+    for (int i = 0; i < 16; ++i) {
         writeLE32(file, 0); // VirtualAddress
         writeLE32(file, 0); // Size
     }
 
     // === Section Headers ===
-    struct PeSection
-    {
+    struct PeSection {
         size_t layoutIdx;
         uint32_t virtualAddress;
         uint32_t virtualSize;
@@ -177,8 +170,7 @@ bool writePeExe(const std::string &path,
     uint32_t currentFileOff = sizeOfHeaders;
 
     // Alloc sections.
-    for (size_t idx : allocIndices)
-    {
+    for (size_t idx : allocIndices) {
         const auto &sec = layout.sections[idx];
         PeSection ps;
         ps.layoutIdx = idx;
@@ -201,8 +193,7 @@ bool writePeExe(const std::string &path,
     }
 
     // Non-alloc debug sections (IMAGE_SCN_MEM_DISCARDABLE | CNT_INITIALIZED_DATA | MEM_READ).
-    for (size_t idx : debugIndices)
-    {
+    for (size_t idx : debugIndices) {
         const auto &sec = layout.sections[idx];
         PeSection ps;
         ps.layoutIdx = idx;
@@ -216,8 +207,7 @@ bool writePeExe(const std::string &path,
     }
 
     // Write section headers (40 bytes each).
-    for (const auto &ps : peSections)
-    {
+    for (const auto &ps : peSections) {
         const auto &sec = layout.sections[ps.layoutIdx];
         // Section name (8 bytes, NUL-padded).
         char secName[8] = {};
@@ -248,8 +238,7 @@ bool writePeExe(const std::string &path,
     padTo(file, sizeOfHeaders);
 
     // Write section data (file-aligned).
-    for (const auto &ps : peSections)
-    {
+    for (const auto &ps : peSections) {
         const auto &sec = layout.sections[ps.layoutIdx];
         padTo(file, ps.pointerToRawData);
         file.insert(file.end(), sec.data.begin(), sec.data.end());
@@ -259,14 +248,12 @@ bool writePeExe(const std::string &path,
 
     // Write file.
     std::ofstream f(path, std::ios::binary);
-    if (!f)
-    {
+    if (!f) {
         err << "error: cannot open '" << path << "' for writing\n";
         return false;
     }
     f.write(reinterpret_cast<const char *>(file.data()), static_cast<std::streamsize>(file.size()));
-    if (!f)
-    {
+    if (!f) {
         err << "error: write failed to '" << path << "'\n";
         return false;
     }

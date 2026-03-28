@@ -78,8 +78,7 @@
 #include <windows.h>
 #endif
 
-namespace il::vm
-{
+namespace il::vm {
 
 // =============================================================================
 // Platform interrupt support
@@ -92,22 +91,19 @@ namespace il::vm
 static std::atomic<bool> s_interruptRequested{false};
 
 #if defined(_WIN32)
-static BOOL WINAPI windowsCtrlHandler(DWORD /*ctrlType*/)
-{
+static BOOL WINAPI windowsCtrlHandler(DWORD /*ctrlType*/) {
     s_interruptRequested.store(true, std::memory_order_relaxed);
     return TRUE; // We handled it; do not call the next handler.
 }
 #else
-static void posixSigintHandler(int /*signum*/)
-{
+static void posixSigintHandler(int /*signum*/) {
     // async-signal-safe: std::atomic store is safe here.
     s_interruptRequested.store(true, std::memory_order_relaxed);
 }
 #endif
 
 /// @brief Register the process-level interrupt handler (called once per process).
-static void registerInterruptHandler()
-{
+static void registerInterruptHandler() {
     // Guard against redundant registration when multiple VMs are created.
     static std::atomic<bool> registered{false};
     bool expected = false;
@@ -145,8 +141,7 @@ using il::core::Opcode;
 using il::core::Value;
 
 /// @brief Interface for pluggable interpreter dispatch strategies.
-struct VM::DispatchDriver
-{
+struct VM::DispatchDriver {
     /// @brief Ensure derived classes clean up correctly.
     virtual ~DispatchDriver() = default;
 
@@ -165,20 +160,17 @@ struct VM::DispatchDriver
 /// @details Allows @c std::unique_ptr to own forward-declared dispatch
 ///          implementations without exposing their concrete types to headers.
 /// @param driver Heap-allocated driver to destroy.
-void VM::DispatchDriverDeleter::operator()(DispatchDriver *driver) const
-{
+void VM::DispatchDriverDeleter::operator()(DispatchDriver *driver) const {
     delete driver;
 }
 
 // Forward declarations for strategy creation
 std::unique_ptr<DispatchStrategy> createDispatchStrategy(VM::DispatchKind kind);
 
-namespace detail
-{
+namespace detail {
 
 /// @brief Dispatch driver that uses an opcode-to-function table.
-class FnTableDispatchDriver final : public VM::DispatchDriver
-{
+class FnTableDispatchDriver final : public VM::DispatchDriver {
   private:
     std::unique_ptr<DispatchStrategy> strategy;
 
@@ -191,15 +183,13 @@ class FnTableDispatchDriver final : public VM::DispatchDriver
     /// @param ctx VM context for trap and debug handling.
     /// @param state Execution state being advanced.
     /// @return True when the VM exited cleanly, false when a pause was requested.
-    bool run(VM &vm, VMContext &ctx, VM::ExecState &state) override
-    {
+    bool run(VM &vm, VMContext &ctx, VM::ExecState &state) override {
         return runSharedDispatchLoop(vm, ctx, state, *strategy);
     }
 };
 
 /// @brief Dispatch driver that expands handlers as a large switch statement.
-class SwitchDispatchDriver final : public VM::DispatchDriver
-{
+class SwitchDispatchDriver final : public VM::DispatchDriver {
   private:
     std::unique_ptr<DispatchStrategy> strategy;
 
@@ -212,8 +202,7 @@ class SwitchDispatchDriver final : public VM::DispatchDriver
     /// @param ctx VM context for trap and debug handling.
     /// @param state Execution state being advanced.
     /// @return True when the VM exited normally, false when paused.
-    bool run(VM &vm, VMContext &ctx, VM::ExecState &state) override
-    {
+    bool run(VM &vm, VMContext &ctx, VM::ExecState &state) override {
         return runSharedDispatchLoop(vm, ctx, state, *strategy);
     }
 };
@@ -223,8 +212,7 @@ class SwitchDispatchDriver final : public VM::DispatchDriver
 /// @note This implementation uses an optimized fast-path dispatch that inlines
 ///       the common case (next instruction in same block) to minimize overhead.
 ///       The slow path handles block transitions, debug hooks, and exit checks.
-class ThreadedDispatchDriver final : public VM::DispatchDriver
-{
+class ThreadedDispatchDriver final : public VM::DispatchDriver {
   public:
     /// @brief Execute the interpreter using computed gotos for dispatch.
     /// @details Uses an optimized dispatch loop that inlines the fast path:
@@ -237,8 +225,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
     /// @param context Context used to handle traps and debugging requests.
     /// @param state Execution state under control of the dispatcher.
     /// @return True when execution terminated normally; false otherwise.
-    bool run(VM &vm, VMContext &context, VM::ExecState &state) override
-    {
+    bool run(VM &vm, VMContext &context, VM::ExecState &state) override {
         // Cache frequently accessed state in locals for faster access
         const il::core::Instr *currentInstr = nullptr;
         il::core::Opcode opcode = il::core::Opcode::Trap;
@@ -264,8 +251,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
         // This macro inlines that path to avoid function call overhead.
         // =====================================================================
 #define DISPATCH_TO(OPCODE_VALUE)                                                                  \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         size_t index = static_cast<size_t>(OPCODE_VALUE);                                          \
         if (index >= kOpLabelCount - 1) [[unlikely]]                                               \
             index = kOpLabelCount - 1;                                                             \
@@ -284,10 +270,8 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
         // When tracingActive_ is set, we fall through to the slow path which
         // handles setCurrentContext, traceInstruction, and shouldPause.
 #define DISPATCH_NEXT_FAST()                                                                       \
-    do                                                                                             \
-    {                                                                                              \
-        if (state.ip < state.bb->instructions.size()) [[likely]]                                   \
-        {                                                                                          \
+    do {                                                                                           \
+        if (state.ip < state.bb->instructions.size()) [[likely]] {                                 \
             if (vm.tracingActive_) [[unlikely]]                                                    \
                 goto LBL_SLOW_PATH;                                                                \
             ++vm.instrCount;                                                                       \
@@ -300,11 +284,9 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
         goto LBL_SLOW_PATH;                                                                        \
     } while (false)
 
-        for (;;)
-        {
+        for (;;) {
             vm.clearCurrentContext();
-            try
-            {
+            try {
                 // =============================================================
                 // Slow path entry: handles first instruction and block transitions
                 // =============================================================
@@ -313,8 +295,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
                 state.hasPendingResult = false;
 
                 // Check for block exhaustion
-                if (!state.bb || state.ip >= state.bb->instructions.size()) [[unlikely]]
-                {
+                if (!state.bb || state.ip >= state.bb->instructions.size()) [[unlikely]] {
                     vm.clearCurrentContext();
                     Slot zero{};
                     zero.i64 = 0;
@@ -358,8 +339,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
                 state.hasPendingResult = false;
 
                 // Check for block exhaustion
-                if (!state.bb || state.ip >= state.bb->instructions.size()) [[unlikely]]
-                {
+                if (!state.bb || state.ip >= state.bb->instructions.size()) [[unlikely]] {
                     vm.clearCurrentContext();
                     Slot zero{};
                     zero.i64 = 0;
@@ -398,13 +378,8 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
                 // =============================================================
 #include "vm/ops/generated/ThreadedCases.inc"
 
-            LBL_UNIMPL:
-            {
-                vm.trapUnimplemented(opcode);
-            }
-            }
-            catch (const VM::TrapDispatchSignal &signal)
-            {
+            LBL_UNIMPL: { vm.trapUnimplemented(opcode); }
+            } catch (const VM::TrapDispatchSignal &signal) {
                 if (!context.handleTrapDispatch(signal, state))
                     throw;
             }
@@ -428,8 +403,7 @@ class ThreadedDispatchDriver final : public VM::DispatchDriver
 VM::TrapDispatchSignal::TrapDispatchSignal(ExecState *targetState) : target(targetState) {}
 
 /// @brief Retrieve the diagnostic message associated with trap dispatch signals.
-const char *VM::TrapDispatchSignal::what() const noexcept
-{
+const char *VM::TrapDispatchSignal::what() const noexcept {
     return "VM trap dispatch";
 }
 
@@ -449,16 +423,14 @@ const char *VM::TrapDispatchSignal::what() const noexcept
 ///
 /// @returns Signed 64-bit exit code produced by the program's @c main function.
 /// @retval 1 When the module lacks an entry point, after printing "missing main".
-int64_t VM::run()
-{
+int64_t VM::run() {
     // Ensure Ctrl-C is caught and converted to a graceful trap rather than an
     // abrupt process kill.  Registration is idempotent — safe to call for every
     // top-level run() invocation including from threaded VMs.
     registerInterruptHandler();
 
     auto it = fnMap.find("main");
-    if (it == fnMap.end())
-    {
+    if (it == fnMap.end()) {
         std::cerr << "missing main" << std::endl;
         return 1;
     }
@@ -467,15 +439,13 @@ int64_t VM::run()
 
 /// @brief Request a graceful interrupt of any currently-running VM on this process.
 /// Equivalent to the user pressing Ctrl-C.  Thread-safe.
-void VM::requestInterrupt() noexcept
-{
+void VM::requestInterrupt() noexcept {
     s_interruptRequested.store(true, std::memory_order_relaxed);
 }
 
 /// @brief Reset the global interrupt flag.  Must be called after handling an
 /// interrupt if the same process will continue running programs.
-void VM::clearInterrupt() noexcept
-{
+void VM::clearInterrupt() noexcept {
     s_interruptRequested.store(false, std::memory_order_relaxed);
 }
 
@@ -496,17 +466,14 @@ void VM::clearInterrupt() noexcept
 /// @param ip     [in,out] Instruction index within @p bb.
 /// @return Execution result capturing control-flow effects and return value.
 VM::ExecResult VM::executeOpcode(
-    Frame &fr, const Instr &in, const BlockMap &blocks, const BasicBlock *&bb, size_t &ip)
-{
+    Frame &fr, const Instr &in, const BlockMap &blocks, const BasicBlock *&bb, size_t &ip) {
     const size_t index = static_cast<size_t>(in.op);
     const auto &table = (handlerTable_ != nullptr) ? *handlerTable_ : getOpcodeHandlers();
     OpcodeHandler handler = index < table.size() ? table[index] : nullptr;
-    if (!handler)
-    {
+    if (!handler) {
         const std::string blockLabel = bb ? bb->label : std::string();
         std::string detail = "unimplemented opcode: " + opcodeMnemonic(in.op);
-        if (!blockLabel.empty())
-        {
+        if (!blockLabel.empty()) {
             detail += " (block " + blockLabel + ')';
         }
         RuntimeBridge::trap(TrapKind::InvalidOperation, detail, in.loc, fr.func->name, blockLabel);
@@ -525,15 +492,13 @@ VM::ExecResult VM::executeOpcode(
 /// @param in      Instruction involved in the decision or @c nullptr when none.
 /// @param postExec True when invoked after executing @p in.
 /// @return Optional slot containing the pause sentinel.
-std::optional<Slot> VM::shouldPause(ExecState &st, const Instr *in, bool postExec)
-{
+std::optional<Slot> VM::shouldPause(ExecState &st, const Instr *in, bool postExec) {
     return processDebugControl(st, in, postExec);
 }
 
 /// @brief Reset per-iteration state before dispatching an instruction.
 /// @param state Execution state to prepare.
-void VM::beginDispatch(ExecState &state)
-{
+void VM::beginDispatch(ExecState &state) {
     state.exitRequested = false;
     state.hasPendingResult = false;
     state.currentInstr = nullptr;
@@ -546,10 +511,8 @@ void VM::beginDispatch(ExecState &state)
 /// @param state Execution state being advanced.
 /// @param instr Output pointer receiving the selected instruction when present.
 /// @return False when execution should stop (due to exit or pause), true otherwise.
-bool VM::selectInstruction(ExecState &state, const Instr *&instr)
-{
-    if (!state.bb || state.ip >= state.bb->instructions.size()) [[unlikely]]
-    {
+bool VM::selectInstruction(ExecState &state, const Instr *&instr) {
+    if (!state.bb || state.ip >= state.bb->instructions.size()) [[unlikely]] {
         clearCurrentContext();
         Slot zero{};
         zero.i64 = 0;
@@ -585,8 +548,7 @@ bool VM::selectInstruction(ExecState &state, const Instr *&instr)
 /// @details Uses the cached tracingActive_ flag for fast-path bypass when tracing
 ///          is disabled. This reduces per-instruction overhead from a function call
 ///          plus internal enabled() check to a single boolean test.
-void VM::traceInstruction(const Instr &instr, Frame &frame)
-{
+void VM::traceInstruction(const Instr &instr, Frame &frame) {
     ++instrCount;
 #if !defined(VIPER_VM_TRACE) || VIPER_VM_TRACE
     // Fast-path: skip tracer call entirely when tracing is disabled.
@@ -605,14 +567,11 @@ void VM::traceInstruction(const Instr &instr, Frame &frame)
 /// @param state Execution state being advanced.
 /// @param exec Result returned by the opcode handler.
 /// @return True when execution of the enclosing function has completed.
-bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
-{
+bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec) {
     VIPER_VM_DISPATCH_AFTER(state,
                             state.currentInstr ? state.currentInstr->op : il::core::Opcode::Trap);
-    if (state.exitRequested) [[unlikely]]
-    {
-        if (!state.hasPendingResult)
-        {
+    if (state.exitRequested) [[unlikely]] {
+        if (!state.hasPendingResult) {
             Slot s{};
             s.i64 = kDebugPauseSentinel;
             state.pendingResult = s;
@@ -620,8 +579,7 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
         }
         return true;
     }
-    if (exec.returned) [[unlikely]]
-    {
+    if (exec.returned) [[unlikely]] {
         state.pendingResult = exec.value;
         state.hasPendingResult = true;
         state.exitRequested = true;
@@ -636,8 +594,7 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
     // Only check debug pause when step-mode is active (stepBudget > 0).
     // This avoids the function-call overhead of shouldPause on every instruction
     // during normal (non-debug) execution.
-    if (stepBudget > 0) [[unlikely]]
-    {
+    if (stepBudget > 0) [[unlikely]] {
         if (auto pause = shouldPause(state, nullptr, true)) [[unlikely]]
         {
             state.pendingResult = *pause;
@@ -656,10 +613,8 @@ bool VM::finalizeDispatch(ExecState &state, const ExecResult &exec)
 /// @param kind Dispatch strategy to instantiate.
 /// @return Unique pointer owning the created driver.
 std::unique_ptr<VM::DispatchDriver, VM::DispatchDriverDeleter> VM::makeDispatchDriver(
-    DispatchKind kind)
-{
-    switch (kind)
-    {
+    DispatchKind kind) {
+    switch (kind) {
         case DispatchKind::FnTable:
             return std::unique_ptr<DispatchDriver, DispatchDriverDeleter>(
                 new detail::FnTableDispatchDriver());
@@ -687,8 +642,7 @@ std::unique_ptr<VM::DispatchDriver, VM::DispatchDriverDeleter> VM::makeDispatchD
 /// @return True if the signal targeted this state and was handled.
 static inline bool handleTrapDispatchInternal(VM &vm,
                                               const VM::TrapDispatchSignal &signal,
-                                              VM::ExecState &state)
-{
+                                              VM::ExecState &state) {
     if (signal.target != &state)
         return false;
     vm.clearCurrentContext();
@@ -703,23 +657,19 @@ static inline bool handleTrapDispatchInternal(VM &vm,
 /// but the hot-path macros (VIPER_VM_DISPATCH_BEFORE/AFTER) now use ExecState directly,
 /// avoiding the need to access VMContext on every instruction. This eliminates the
 /// overhead described in CRITICAL-1 of vm_issues.txt.
-Slot VM::runFunctionLoop(ExecState &st)
-{
+Slot VM::runFunctionLoop(ExecState &st) {
     VMContext context(*this);
-    for (;;)
-    {
+    for (;;) {
         // Check for a pending Ctrl-C / programmatic interrupt.  We test at the
         // top of every iteration (i.e. every function-call boundary) rather than
         // every instruction to keep overhead negligible.
-        if (s_interruptRequested.load(std::memory_order_relaxed))
-        {
+        if (s_interruptRequested.load(std::memory_order_relaxed)) {
             s_interruptRequested.store(false, std::memory_order_relaxed);
             RuntimeBridge::trap(TrapKind::Interrupt, "interrupted", {}, "", "");
         }
 
         clearCurrentContext();
-        try
-        {
+        try {
             if (!dispatchDriver)
                 dispatchDriver = makeDispatchDriver(dispatchKind);
 
@@ -741,23 +691,19 @@ Slot VM::runFunctionLoop(ExecState &st)
             // the driver via requestPause).  Without this second check the
             // interrupt would never be observed for programs whose dispatch loop
             // never yields on its own (e.g. tight branch loops).
-            if (s_interruptRequested.load(std::memory_order_relaxed))
-            {
+            if (s_interruptRequested.load(std::memory_order_relaxed)) {
                 s_interruptRequested.store(false, std::memory_order_relaxed);
                 RuntimeBridge::trap(TrapKind::Interrupt, "interrupted", {}, "", "");
             }
 
-            if (finished)
-            {
+            if (finished) {
                 if (st.hasPendingResult)
                     return st.pendingResult;
                 Slot zero{};
                 zero.i64 = 0;
                 return zero;
             }
-        }
-        catch (const TrapDispatchSignal &signal)
-        {
+        } catch (const TrapDispatchSignal &signal) {
             // Use inline handler instead of VMContext for efficiency
             if (!handleTrapDispatchInternal(*this, signal, st))
                 throw;
@@ -774,10 +720,8 @@ Slot VM::runFunctionLoop(ExecState &st)
 /// @details C++ exceptions on MSVC are implemented via SEH with exception code
 ///          0xE06D7363 ("msc" + prefix).  We must let those propagate so that
 ///          TrapDispatchSignal reaches its C++ catch handler.
-static int sehFilter(unsigned int code)
-{
-    switch (code)
-    {
+static int sehFilter(unsigned int code) {
+    switch (code) {
         case EXCEPTION_ACCESS_VIOLATION:
         case EXCEPTION_INT_DIVIDE_BY_ZERO:
         case EXCEPTION_STACK_OVERFLOW:
@@ -789,15 +733,11 @@ static int sehFilter(unsigned int code)
     }
 }
 
-static int sehRunStep(int (*fn)(void *), void *ctx)
-{
+static int sehRunStep(int (*fn)(void *), void *ctx) {
     int r = 0;
-    __try
-    {
+    __try {
         r = fn(ctx);
-    }
-    __except (sehFilter(GetExceptionCode()))
-    {
+    } __except (sehFilter(GetExceptionCode())) {
         r = -1;
     }
     return r;
@@ -805,26 +745,22 @@ static int sehRunStep(int (*fn)(void *), void *ctx)
 
 /// @brief Execute one dispatch step, translating Windows hardware exceptions into
 /// Viper traps.
-bool VM::runDispatchStep(VMContext &context, ExecState &st)
-{
-    struct Args
-    {
+bool VM::runDispatchStep(VMContext &context, ExecState &st) {
+    struct Args {
         VM *vm;
         VMContext *ctx;
         ExecState *st;
     } args{this, &context, &st};
 
     int result = sehRunStep(
-        [](void *p) -> int
-        {
+        [](void *p) -> int {
             auto *a = static_cast<Args *>(p);
             if (a->vm->dispatchDriver)
                 return a->vm->dispatchDriver->run(*a->vm, *a->ctx, *a->st) ? 1 : 0;
             return 0;
         },
         &args);
-    if (result < 0)
-    {
+    if (result < 0) {
         RuntimeBridge::trap(
             TrapKind::RuntimeError,
             "hardware exception (access violation, divide by zero, or stack overflow)",
@@ -837,10 +773,8 @@ bool VM::runDispatchStep(VMContext &context, ExecState &st)
 #endif
 
 /// @brief Custom deleter implementation for RtContext.
-void VM::RtContextDeleter::operator()(RtContext *ctx) const noexcept
-{
-    if (ctx)
-    {
+void VM::RtContextDeleter::operator()(RtContext *ctx) const noexcept {
+    if (ctx) {
         rt_context_cleanup(ctx);
         delete ctx;
     }
@@ -850,16 +784,14 @@ void VM::RtContextDeleter::operator()(RtContext *ctx) const noexcept
 // Section 4: VM LIFECYCLE AND RESOURCE MANAGEMENT
 //===----------------------------------------------------------------------===//
 
-VM::ProgramState::~ProgramState()
-{
+VM::ProgramState::~ProgramState() {
     for (auto &entry : mutableGlobalMap)
         std::free(entry.second);
 }
 
 /// @brief Release resources owned by the VM, including cached strings, mutable globals, and runtime
 /// context.
-VM::~VM()
-{
+VM::~VM() {
     inlineLiteralCache.clear();
 }
 
@@ -894,15 +826,13 @@ VM::~VM()
 /// @param fn   Function to execute.
 /// @param args Argument slots passed to the entry block parameters.
 /// @return Slot containing the function's return value.
-Slot VM::execFunction(const Function &fn, std::span<const Slot> args)
-{
+Slot VM::execFunction(const Function &fn, std::span<const Slot> args) {
     ActiveVMGuard guard(this);
     lastTrap = {};
     trapToken = {};
 
     // Check for stack overflow before pushing a new frame
-    if (execStack.size() >= kMaxRecursionDepth)
-    {
+    if (execStack.size() >= kMaxRecursionDepth) {
         RuntimeBridge::trap(TrapKind::RuntimeError,
                             "stack overflow: maximum recursion depth exceeded",
                             {},
@@ -914,8 +844,7 @@ Slot VM::execFunction(const Function &fn, std::span<const Slot> args)
     // Reconstruct call-site info from the active execution state on the stack
     // rather than currentContext, which may be stale when the fast-path dispatch
     // skips setCurrentContext() for performance.
-    if (!execStack.empty())
-    {
+    if (!execStack.empty()) {
         const ExecState *caller = execStack.back();
         st.callSiteBlock = caller->bb;
         st.callSiteIp = caller->ip;
@@ -923,9 +852,7 @@ Slot VM::execFunction(const Function &fn, std::span<const Slot> args)
             st.callSiteLoc = caller->bb->instructions[caller->ip].loc;
         else
             st.callSiteLoc = {};
-    }
-    else
-    {
+    } else {
         st.callSiteBlock = currentContext.block;
         st.callSiteIp = currentContext.hasInstruction ? currentContext.instructionIndex : 0;
         st.callSiteLoc = currentContext.loc;
@@ -939,8 +866,8 @@ Slot VM::execFunction(const Function &fn, std::span<const Slot> args)
     // If the return value is a string, retain it before releasing frame buffers.
     // releaseFrameBuffers will release all regIsStr registers, which would drop
     // the refcount on the return value before the caller can retain it.
-    if (st.fr.func && st.fr.func->retType.kind == il::core::Type::Kind::Str && st.hasPendingResult)
-    {
+    if (st.fr.func && st.fr.func->retType.kind == il::core::Type::Kind::Str &&
+        st.hasPendingResult) {
         rt_str_retain_maybe(result.str);
     }
 
@@ -952,14 +879,12 @@ Slot VM::execFunction(const Function &fn, std::span<const Slot> args)
 
 /// @brief Return the number of instructions executed by the VM instance.
 /// @return Cumulative instruction count since construction or last reset.
-uint64_t VM::getInstrCount() const
-{
+uint64_t VM::getInstrCount() const {
     return instrCount;
 }
 
 /// @brief Emit a tail-call event to the trace sink when enabled.
-void VM::onTailCall(const Function *from, const Function *to)
-{
+void VM::onTailCall(const Function *from, const Function *to) {
 #if !defined(VIPER_VM_TRACE) || VIPER_VM_TRACE
     tracer.onTailCall(from, to);
 #else
@@ -969,18 +894,15 @@ void VM::onTailCall(const Function *from, const Function *to)
 }
 
 #if VIPER_VM_OPCOUNTS
-const std::array<uint64_t, il::core::kNumOpcodes> &VM::opcodeCounts() const
-{
+const std::array<uint64_t, il::core::kNumOpcodes> &VM::opcodeCounts() const {
     return opCounts_;
 }
 
-void VM::resetOpcodeCounts()
-{
+void VM::resetOpcodeCounts() {
     opCounts_.fill(0);
 }
 
-std::vector<std::pair<int, uint64_t>> VM::topOpcodes(std::size_t n) const
-{
+std::vector<std::pair<int, uint64_t>> VM::topOpcodes(std::size_t n) const {
     std::vector<std::pair<int, uint64_t>> items;
     items.reserve(opCounts_.size());
     for (std::size_t i = 0; i < opCounts_.size(); ++i)
@@ -1005,8 +927,7 @@ std::vector<std::pair<int, uint64_t>> VM::topOpcodes(std::size_t n) const
 /// @param bb Basic block housing the instruction.
 /// @param ip Index of the instruction within the block.
 /// @param in Instruction being executed.
-void VM::setCurrentContext(Frame &fr, const BasicBlock *bb, size_t ip, const Instr &in)
-{
+void VM::setCurrentContext(Frame &fr, const BasicBlock *bb, size_t ip, const Instr &in) {
     // Optimize: only update fields that changed (common case: same function/block)
     if (currentContext.function != fr.func) [[unlikely]]
         currentContext.function = fr.func;
@@ -1018,8 +939,7 @@ void VM::setCurrentContext(Frame &fr, const BasicBlock *bb, size_t ip, const Ins
 }
 
 /// @brief Reset the recorded execution context.
-void VM::clearCurrentContext()
-{
+void VM::clearCurrentContext() {
     currentContext.function = nullptr;
     currentContext.block = nullptr;
     currentContext.instructionIndex = 0;
@@ -1027,19 +947,16 @@ void VM::clearCurrentContext()
     currentContext.loc = {};
 }
 
-VM::TrapContext VM::currentTrapContext() const
-{
+VM::TrapContext VM::currentTrapContext() const {
     // Prefer execStack (always current) over currentContext (may be stale
     // when fast-path dispatch skips setCurrentContext).
-    if (!execStack.empty())
-    {
+    if (!execStack.empty()) {
         const ExecState *st = execStack.back();
         TrapContext ctx{};
         ctx.function = st->fr.func;
         ctx.block = st->bb;
         ctx.instructionIndex = st->ip;
-        if (st->bb && st->ip < st->bb->instructions.size())
-        {
+        if (st->bb && st->ip < st->bb->instructions.size()) {
             ctx.hasInstruction = true;
             ctx.loc = st->bb->instructions[st->ip].loc;
         }
@@ -1057,16 +974,14 @@ VM::TrapContext VM::currentTrapContext() const
 ///          resume state and error slots before transferring control.
 /// @param error Error structure describing the trap condition; updated in place.
 /// @return True when a handler was found and control transferred.
-bool VM::prepareTrap(VmError &error)
-{
+bool VM::prepareTrap(VmError &error) {
     // Derive trap context from execution stack for better performance.
     // This avoids updating currentContext on every instruction dispatch.
     const BasicBlock *faultBlock = nullptr;
     size_t faultIp = 0;
     il::support::SourceLoc faultLoc{};
 
-    if (!execStack.empty())
-    {
+    if (!execStack.empty()) {
         // Get context from the active execution state
         const ExecState *activeState = execStack.back();
         faultBlock = activeState->bb;
@@ -1074,9 +989,7 @@ bool VM::prepareTrap(VmError &error)
         // Get source location from the current instruction
         if (faultBlock && faultIp < faultBlock->instructions.size())
             faultLoc = faultBlock->instructions[faultIp].loc;
-    }
-    else if (currentContext.hasInstruction)
-    {
+    } else if (currentContext.hasInstruction) {
         // Fallback to currentContext if no active execution state
         faultBlock = currentContext.block;
         faultIp = currentContext.instructionIndex;
@@ -1086,13 +999,11 @@ bool VM::prepareTrap(VmError &error)
     // Use index-based iteration to avoid potential iterator invalidation
     // if exception handling modifies the execution stack
     const size_t stackSize = execStack.size();
-    for (size_t i = 0; i < stackSize; ++i)
-    {
+    for (size_t i = 0; i < stackSize; ++i) {
         // Iterate in reverse order (from top of stack)
         ExecState *st = execStack[stackSize - 1 - i];
         Frame &fr = st->fr;
-        if (!fr.ehStack.empty())
-        {
+        if (!fr.ehStack.empty()) {
             const auto &record = fr.ehStack.back();
 
             fr.activeError = error;
@@ -1114,18 +1025,15 @@ bool VM::prepareTrap(VmError &error)
             Slot tokSlot{};
             tokSlot.ptr = &fr.resumeState;
 
-            if (record.handler)
-            {
+            if (record.handler) {
                 // Use reverse map for O(1) lookup instead of O(N*M) linear scan
                 const Function *ownerFn = nullptr;
                 auto it = blockToFunction.find(record.handler);
-                if (it != blockToFunction.end())
-                {
+                if (it != blockToFunction.end()) {
                     ownerFn = it->second;
                 }
 
-                if (ownerFn && fr.func != ownerFn)
-                {
+                if (ownerFn && fr.func != ownerFn) {
                     fr.func = ownerFn;
                     fr.regs.clear();
 
@@ -1139,18 +1047,14 @@ bool VM::prepareTrap(VmError &error)
                 }
             }
 
-            if (record.handler && !record.handler->params.empty())
-            {
+            if (record.handler && !record.handler->params.empty()) {
                 const auto &params = record.handler->params;
-                if (params[0].id < fr.params.size())
-                {
+                if (params[0].id < fr.params.size()) {
                     fr.params[params[0].id] = errSlot;
                     fr.paramsSet[params[0].id] = 1;
                 }
-                if (params.size() > 1)
-                {
-                    if (params[1].id < fr.params.size())
-                    {
+                if (params.size() > 1) {
+                    if (params[1].id < fr.params.size()) {
                         fr.params[params[1].id] = tokSlot;
                         fr.paramsSet[params[1].id] = 1;
                     }
@@ -1181,8 +1085,7 @@ bool VM::prepareTrap(VmError &error)
 
 /// @brief Throw a trap-dispatch signal targeting the supplied execution state.
 /// @param target Execution state that should resume after handling the trap.
-[[noreturn]] void VM::throwForTrap(ExecState *target)
-{
+[[noreturn]] void VM::throwForTrap(ExecState *target) {
     throw TrapDispatchSignal(target);
 }
 

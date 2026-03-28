@@ -21,8 +21,7 @@
 #include <ostream>
 #include <string>
 
-namespace il::io::detail
-{
+namespace il::io::detail {
 
 /// @brief Parse a single top-level directive such as extern, global, or func.
 bool parseModuleHeader(std::istream &is, std::string &line, ParserState &st, std::ostream &err);

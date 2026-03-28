@@ -27,33 +27,27 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
-const il::core::Function *findMain(const il::core::Module &module)
-{
-    for (const auto &fn : module.functions)
-    {
+const il::core::Function *findMain(const il::core::Module &module) {
+    for (const auto &fn : module.functions) {
         if (fn.name == "main")
             return &fn;
     }
     return nullptr;
 }
 
-const il::core::BasicBlock *findBlockByLabel(const il::core::Function &fn, const std::string &label)
-{
-    for (const auto &bb : fn.blocks)
-    {
+const il::core::BasicBlock *findBlockByLabel(const il::core::Function &fn,
+                                             const std::string &label) {
+    for (const auto &bb : fn.blocks) {
         if (bb.label == label)
             return &bb;
     }
     return nullptr;
 }
 
-bool blockPrintsConstant(const il::core::BasicBlock &bb, long long value)
-{
-    for (const auto &instr : bb.instructions)
-    {
+bool blockPrintsConstant(const il::core::BasicBlock &bb, long long value) {
+    for (const auto &instr : bb.instructions) {
         if (instr.op != il::core::Opcode::Call)
             continue;
         if (instr.callee != "rt_print_i64" && instr.callee != "Viper.Terminal.PrintI64")
@@ -67,12 +61,9 @@ bool blockPrintsConstant(const il::core::BasicBlock &bb, long long value)
     return false;
 }
 
-const il::core::Instr *findSwitch(const il::core::Function &fn)
-{
-    for (const auto &bb : fn.blocks)
-    {
-        for (const auto &instr : bb.instructions)
-        {
+const il::core::Instr *findSwitch(const il::core::Function &fn) {
+    for (const auto &bb : fn.blocks) {
+        for (const auto &instr : bb.instructions) {
             if (instr.op == il::core::Opcode::SwitchI32)
                 return &instr;
         }
@@ -80,8 +71,7 @@ const il::core::Instr *findSwitch(const il::core::Function &fn)
     return nullptr;
 }
 
-il::core::Module lowerSnippet(const std::string &src)
-{
+il::core::Module lowerSnippet(const std::string &src) {
     SourceManager sm;
     uint32_t fid = sm.addFile("select_case.bas");
     Parser parser(src, fid);
@@ -92,15 +82,13 @@ il::core::Module lowerSnippet(const std::string &src)
     return lowerer.lowerProgram(*program);
 }
 
-struct LowerWithDiagnosticsResult
-{
+struct LowerWithDiagnosticsResult {
     il::core::Module module;
     size_t errorCount = 0;
     std::string diagnostics;
 };
 
-LowerWithDiagnosticsResult lowerSnippetWithDiagnostics(const std::string &src)
-{
+LowerWithDiagnosticsResult lowerSnippetWithDiagnostics(const std::string &src) {
     SourceManager sm;
     uint32_t fid = sm.addFile("select_case.bas");
 
@@ -123,8 +111,7 @@ LowerWithDiagnosticsResult lowerSnippetWithDiagnostics(const std::string &src)
 
 } // namespace
 
-int main()
-{
+int main() {
     {
         const std::string src = "10 SELECT CASE \"foo\"\n"
                                 "20 CASE \"foo\"\n"
@@ -139,10 +126,8 @@ int main()
 
         size_t eqCalls = 0;
         bool sawSwitch = false;
-        for (const auto &bb : mainFn->blocks)
-        {
-            for (const auto &instr : bb.instructions)
-            {
+        for (const auto &bb : mainFn->blocks) {
+            for (const auto &instr : bb.instructions) {
                 if (instr.op == il::core::Opcode::Call && instr.callee == "rt_str_eq")
                     ++eqCalls;
                 if (instr.op == il::core::Opcode::SwitchI32)
@@ -170,10 +155,8 @@ int main()
         size_t cmpLe = 0;
         size_t andCount = 0;
         bool sawSwitch = false;
-        for (const auto &bb : mainFn->blocks)
-        {
-            for (const auto &instr : bb.instructions)
-            {
+        for (const auto &bb : mainFn->blocks) {
+            for (const auto &instr : bb.instructions) {
                 if (instr.op == il::core::Opcode::SCmpGE)
                     ++cmpGe;
                 if (instr.op == il::core::Opcode::SCmpLE)

@@ -253,8 +253,7 @@ static const uint8_t empty_glyph[8] = {0, 0, 0, 0, 0, 0, 0, 0};
 ///          (32-126). Characters outside that range return @ref empty_glyph.
 /// @param c ASCII character code.
 /// @return Pointer to 8 bytes of glyph data.
-const uint8_t *rt_font_get_glyph(int c)
-{
+const uint8_t *rt_font_get_glyph(int c) {
     if (c >= 32 && c <= 126)
         return font_data[c - 32];
     return empty_glyph;
@@ -263,15 +262,13 @@ const uint8_t *rt_font_get_glyph(int c)
 /// @brief Return the width of a font glyph in pixels.
 /// @details The font is fixed-width and always 8 pixels wide.
 /// @return Glyph width in pixels (8).
-int rt_font_char_width(void)
-{
+int rt_font_char_width(void) {
     return 8;
 }
 
 /// @brief Return the height of a font glyph in pixels.
 /// @details The font is fixed-height and always 8 pixels tall.
 /// @return Glyph height in pixels (8).
-int rt_font_char_height(void)
-{
+int rt_font_char_height(void) {
     return 8;
 }

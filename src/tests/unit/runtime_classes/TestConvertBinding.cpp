@@ -67,15 +67,13 @@
 /// @details Searches the runtime class catalog for Viper.Convert and verifies
 /// it contains all the expected conversion methods.
 ///
-TEST(RuntimeClassConvertBinding, CatalogContainsConvert)
-{
+TEST(RuntimeClassConvertBinding, CatalogContainsConvert) {
     const auto &cat = il::runtime::runtimeClassCatalog();
 
     // Find Viper.Convert in the catalog
-    auto it =
-        std::find_if(cat.begin(),
-                     cat.end(),
-                     [](const auto &c) { return std::string(c.qname) == "Viper.Core.Convert"; });
+    auto it = std::find_if(cat.begin(), cat.end(), [](const auto &c) {
+        return std::string(c.qname) == "Viper.Core.Convert";
+    });
     ASSERT_NE(it, cat.end());
 
     // Verify expected conversion methods are present
@@ -83,8 +81,7 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert)
     bool hasToDouble = false;
     bool hasToStringInt = false;
     bool hasToStringDouble = false;
-    for (const auto &m : it->methods)
-    {
+    for (const auto &m : it->methods) {
         hasToInt64 = hasToInt64 || std::string(m.name) == "ToInt64";
         hasToDouble = hasToDouble || std::string(m.name) == "ToDouble";
         hasToStringInt = hasToStringInt || std::string(m.name) == "ToString_Int";
@@ -102,8 +99,7 @@ TEST(RuntimeClassConvertBinding, CatalogContainsConvert)
 /// lookups to their canonical extern names for IL code generation.
 /// Note that ToString variants delegate to Viper.Strings functions.
 ///
-TEST(RuntimeClassConvertBinding, MethodIndexTargets)
-{
+TEST(RuntimeClassConvertBinding, MethodIndexTargets) {
     // Initialize the method index
     il::frontends::basic::runtimeMethodIndex().seed();
     auto &midx = il::frontends::basic::runtimeMethodIndex();
@@ -130,8 +126,7 @@ TEST(RuntimeClassConvertBinding, MethodIndexTargets)
 }
 
 /// @brief Test entry point.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

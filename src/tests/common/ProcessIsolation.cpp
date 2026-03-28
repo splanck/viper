@@ -53,8 +53,7 @@
 #include <unistd.h>
 #endif
 
-namespace viper::tests
-{
+namespace viper::tests {
 
 // ─── Shared state for Windows child dispatch ────────────────────────────────
 
@@ -62,8 +61,7 @@ static std::function<void()> g_childFunction;
 static const char *const kChildRunFlag = "--viper-child-run";
 static const char *const kChildILFlag = "--viper-child-il=";
 
-void setChildFunction(std::function<void()> fn)
-{
+void setChildFunction(std::function<void()> fn) {
     g_childFunction = std::move(fn);
 }
 
@@ -72,8 +70,7 @@ void setChildFunction(std::function<void()> fn)
 #if defined(_WIN32)
 
 /// Suppress all Windows debug/error dialogs in the child process.
-static void suppressDialogs()
-{
+static void suppressDialogs() {
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
 #ifdef _DEBUG
@@ -87,12 +84,10 @@ static void suppressDialogs()
 }
 
 /// RAII wrapper for Windows HANDLEs.
-struct HandleGuard
-{
+struct HandleGuard {
     HANDLE h = INVALID_HANDLE_VALUE;
 
-    ~HandleGuard()
-    {
+    ~HandleGuard() {
         if (h != INVALID_HANDLE_VALUE && h != nullptr)
             CloseHandle(h);
     }
@@ -104,15 +99,12 @@ struct HandleGuard
     HandleGuard(const HandleGuard &) = delete;
     HandleGuard &operator=(const HandleGuard &) = delete;
 
-    HandleGuard(HandleGuard &&o) noexcept : h(o.h)
-    {
+    HandleGuard(HandleGuard &&o) noexcept : h(o.h) {
         o.h = INVALID_HANDLE_VALUE;
     }
 
-    HandleGuard &operator=(HandleGuard &&o) noexcept
-    {
-        if (this != &o)
-        {
+    HandleGuard &operator=(HandleGuard &&o) noexcept {
+        if (this != &o) {
             if (h != INVALID_HANDLE_VALUE && h != nullptr)
                 CloseHandle(h);
             h = o.h;
@@ -121,13 +113,11 @@ struct HandleGuard
         return *this;
     }
 
-    [[nodiscard]] HANDLE get() const noexcept
-    {
+    [[nodiscard]] HANDLE get() const noexcept {
         return h;
     }
 
-    HANDLE release() noexcept
-    {
+    HANDLE release() noexcept {
         HANDLE tmp = h;
         h = INVALID_HANDLE_VALUE;
         return tmp;
@@ -136,14 +126,12 @@ struct HandleGuard
 
 /// Launch the current executable as a child process with the given extra
 /// argument, capturing stderr. The child is sandboxed in a Job Object.
-static ChildResult launchChild(const std::string &extraArg, unsigned timeoutMs)
-{
+static ChildResult launchChild(const std::string &extraArg, unsigned timeoutMs) {
     ChildResult result;
 
     // Get path to current executable
     char exePath[MAX_PATH];
-    if (GetModuleFileNameA(nullptr, exePath, MAX_PATH) == 0)
-    {
+    if (GetModuleFileNameA(nullptr, exePath, MAX_PATH) == 0) {
         result.exited = true;
         result.exitCode = -1;
         result.stderrText = "ProcessIsolation: GetModuleFileNameA failed";
@@ -160,8 +148,7 @@ static ChildResult launchChild(const std::string &extraArg, unsigned timeoutMs)
 
     HANDLE pipeRead = INVALID_HANDLE_VALUE;
     HANDLE pipeWrite = INVALID_HANDLE_VALUE;
-    if (!CreatePipe(&pipeRead, &pipeWrite, &sa, 0))
-    {
+    if (!CreatePipe(&pipeRead, &pipeWrite, &sa, 0)) {
         result.exited = true;
         result.exitCode = -1;
         result.stderrText = "ProcessIsolation: CreatePipe failed";
@@ -175,8 +162,7 @@ static ChildResult launchChild(const std::string &extraArg, unsigned timeoutMs)
 
     // Create Job Object with kill-on-close
     HandleGuard job(CreateJobObjectA(nullptr, nullptr));
-    if (job.get() == nullptr)
-    {
+    if (job.get() == nullptr) {
         result.exited = true;
         result.exitCode = -1;
         result.stderrText = "ProcessIsolation: CreateJobObjectA failed";
@@ -229,8 +215,7 @@ static ChildResult launchChild(const std::string &extraArg, unsigned timeoutMs)
     std::array<char, 512> temp{};
     DWORD bytesRead = 0;
     while (ReadFile(pipeRead, temp.data(), static_cast<DWORD>(temp.size()), &bytesRead, nullptr) &&
-           bytesRead > 0)
-    {
+           bytesRead > 0) {
         buffer.append(temp.data(), static_cast<std::size_t>(bytesRead));
     }
 
@@ -238,8 +223,7 @@ static ChildResult launchChild(const std::string &extraArg, unsigned timeoutMs)
     DWORD waitResult =
         WaitForSingleObject(pi.hProcess, timeoutMs == 0 ? INFINITE : static_cast<DWORD>(timeoutMs));
 
-    if (waitResult == WAIT_TIMEOUT)
-    {
+    if (waitResult == WAIT_TIMEOUT) {
         TerminateProcess(pi.hProcess, 1);
         WaitForSingleObject(pi.hProcess, 1000);
         result.exited = true;
@@ -258,14 +242,12 @@ static ChildResult launchChild(const std::string &extraArg, unsigned timeoutMs)
     return result;
 }
 
-ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs)
-{
+ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs) {
     setChildFunction(std::move(childFn));
     return launchChild(kChildRunFlag, timeoutMs);
 }
 
-ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs)
-{
+ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs) {
     // Serialize the module to a temp file
     char tempPath[MAX_PATH];
     char tempDir[MAX_PATH];
@@ -274,8 +256,7 @@ ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs)
 
     {
         std::ofstream ofs(tempPath);
-        if (!ofs)
-        {
+        if (!ofs) {
             ChildResult r;
             r.exited = true;
             r.exitCode = -1;
@@ -293,33 +274,26 @@ ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs)
     return result;
 }
 
-bool dispatchChild(int argc, char *argv[])
-{
-    for (int i = 1; i < argc; ++i)
-    {
-        if (std::strcmp(argv[i], kChildRunFlag) == 0)
-        {
+bool dispatchChild(int argc, char *argv[]) {
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], kChildRunFlag) == 0) {
             suppressDialogs();
-            if (g_childFunction)
-            {
+            if (g_childFunction) {
                 g_childFunction();
             }
             _exit(0);
         }
-        if (std::strncmp(argv[i], kChildILFlag, std::strlen(kChildILFlag)) == 0)
-        {
+        if (std::strncmp(argv[i], kChildILFlag, std::strlen(kChildILFlag)) == 0) {
             suppressDialogs();
             const char *path = argv[i] + std::strlen(kChildILFlag);
             std::ifstream ifs(path);
-            if (!ifs)
-            {
+            if (!ifs) {
                 std::fprintf(stderr, "ProcessIsolation: cannot open IL file: %s\n", path);
                 _exit(2);
             }
             il::core::Module m;
             auto parseResult = il::io::Parser::parse(ifs, m);
-            if (!parseResult)
-            {
+            if (!parseResult) {
                 std::fprintf(stderr, "ProcessIsolation: IL parse failed: %s\n", path);
                 _exit(2);
             }
@@ -335,15 +309,13 @@ bool dispatchChild(int argc, char *argv[])
 
 #else
 
-ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs)
-{
+ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs) {
     (void)timeoutMs; // POSIX: waitpid blocks; timeout not implemented
 
     ChildResult result;
 
     std::array<int, 2> fds{};
-    if (::pipe(fds.data()) != 0)
-    {
+    if (::pipe(fds.data()) != 0) {
         result.exited = true;
         result.exitCode = -1;
         result.stderrText = "ProcessIsolation: pipe() failed";
@@ -355,8 +327,7 @@ ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs)
     std::fflush(stderr);
 
     const pid_t pid = ::fork();
-    if (pid < 0)
-    {
+    if (pid < 0) {
         ::close(fds[0]);
         ::close(fds[1]);
         result.exited = true;
@@ -365,8 +336,7 @@ ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs)
         return result;
     }
 
-    if (pid == 0)
-    {
+    if (pid == 0) {
         // Child: redirect stderr to pipe, run the function, exit
         ::close(fds[0]);
         ::dup2(fds[1], STDERR_FILENO);
@@ -379,8 +349,7 @@ ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs)
     ::close(fds[1]);
     std::string buffer;
     std::array<char, 512> temp{};
-    while (true)
-    {
+    while (true) {
         const ssize_t count = ::read(fds[0], temp.data(), temp.size());
         if (count <= 0)
             break;
@@ -402,19 +371,16 @@ ChildResult runIsolated(std::function<void()> childFn, unsigned timeoutMs)
     return result;
 }
 
-ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs)
-{
+ChildResult runModuleIsolated(il::core::Module &module, unsigned timeoutMs) {
     return runIsolated(
-        [&module]()
-        {
+        [&module]() {
             il::vm::VM vm(module);
             vm.run();
         },
         timeoutMs);
 }
 
-bool dispatchChild([[maybe_unused]] int argc, [[maybe_unused]] char *argv[])
-{
+bool dispatchChild([[maybe_unused]] int argc, [[maybe_unused]] char *argv[]) {
     // On POSIX, fork-based isolation doesn't need self-relaunch dispatch.
     return false;
 }

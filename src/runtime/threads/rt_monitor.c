@@ -47,16 +47,14 @@
 #include <windows.h>
 
 /// @brief Waiter state enumeration for Windows.
-enum
-{
+enum {
     RT_MON_WAITER_WAITING_PAUSE = 0, ///< Thread called Wait(), waiting for Pause signal.
     RT_MON_WAITER_WAITING_LOCK = 1,  ///< Thread waiting to acquire the lock.
     RT_MON_WAITER_ACQUIRED = 2,      ///< Thread has been granted ownership.
 };
 
 /// @brief Represents a thread waiting on a monitor (Windows version).
-typedef struct RtMonitorWaiter
-{
+typedef struct RtMonitorWaiter {
     struct RtMonitorWaiter *next; ///< Next waiter in queue (singly linked).
     CONDITION_VARIABLE cv;        ///< Per-waiter condition variable.
     DWORD threadId;               ///< The waiting thread's ID.
@@ -65,8 +63,7 @@ typedef struct RtMonitorWaiter
 } RtMonitorWaiter;
 
 /// @brief The monitor state associated with an object (Windows version).
-typedef struct RtMonitor
-{
+typedef struct RtMonitor {
     CRITICAL_SECTION cs;        ///< Critical section protecting all monitor state.
     DWORD owner;                ///< Current owner thread ID.
     int owner_valid;            ///< Non-zero if monitor is currently owned.
@@ -78,8 +75,7 @@ typedef struct RtMonitor
 } RtMonitor;
 
 /// @brief Hash table entry mapping object address to monitor.
-typedef struct RtMonitorEntry
-{
+typedef struct RtMonitorEntry {
     void *key;                   ///< Object address (hash key).
     struct RtMonitorEntry *next; ///< Next entry in hash chain.
     RtMonitor monitor;           ///< The monitor state.
@@ -91,8 +87,7 @@ static CRITICAL_SECTION g_monitor_table_cs;
 static INIT_ONCE g_monitor_table_cs_once = INIT_ONCE_STATIC_INIT;
 static RtMonitorEntry *g_monitor_table[RT_MONITOR_BUCKETS];
 
-static BOOL WINAPI init_table_cs_once(PINIT_ONCE once, PVOID param, PVOID *ctx)
-{
+static BOOL WINAPI init_table_cs_once(PINIT_ONCE once, PVOID param, PVOID *ctx) {
     (void)once;
     (void)param;
     (void)ctx;
@@ -100,15 +95,13 @@ static BOOL WINAPI init_table_cs_once(PINIT_ONCE once, PVOID param, PVOID *ctx)
     return TRUE;
 }
 
-static void ensure_table_cs_init(void)
-{
+static void ensure_table_cs_init(void) {
     /* InitOnceExecuteOnce is thread-safe: exactly one thread runs the
        callback and all concurrent callers block until it completes. */
     InitOnceExecuteOnce(&g_monitor_table_cs_once, init_table_cs_once, NULL, NULL);
 }
 
-static size_t hash_ptr(void *p)
-{
+static size_t hash_ptr(void *p) {
     uintptr_t x = (uintptr_t)p;
     x >>= 4;
     x ^= x >> 16;
@@ -116,17 +109,14 @@ static size_t hash_ptr(void *p)
     return (size_t)(x & (RT_MONITOR_BUCKETS - 1u));
 }
 
-static RtMonitor *get_monitor_for(void *obj)
-{
+static RtMonitor *get_monitor_for(void *obj) {
     ensure_table_cs_init();
     size_t idx = hash_ptr(obj);
 
     EnterCriticalSection(&g_monitor_table_cs);
     RtMonitorEntry *it = g_monitor_table[idx];
-    while (it)
-    {
-        if (it->key == obj)
-        {
+    while (it) {
+        if (it->key == obj) {
             LeaveCriticalSection(&g_monitor_table_cs);
             return &it->monitor;
         }
@@ -134,8 +124,7 @@ static RtMonitor *get_monitor_for(void *obj)
     }
 
     RtMonitorEntry *node = (RtMonitorEntry *)calloc(1, sizeof(*node));
-    if (!node)
-    {
+    if (!node) {
         LeaveCriticalSection(&g_monitor_table_cs);
         rt_trap("rt_monitor: alloc failed");
         return NULL;
@@ -150,13 +139,11 @@ static RtMonitor *get_monitor_for(void *obj)
     return &node->monitor;
 }
 
-static int monitor_is_owner(const RtMonitor *m, DWORD self)
-{
+static int monitor_is_owner(const RtMonitor *m, DWORD self) {
     return m->owner_valid && m->owner == self;
 }
 
-static void monitor_grant_next_waiter(RtMonitor *m)
-{
+static void monitor_grant_next_waiter(RtMonitor *m) {
     RtMonitorWaiter *w = m->acq_head;
     if (!w)
         return;
@@ -172,29 +159,22 @@ static void monitor_grant_next_waiter(RtMonitor *m)
     WakeConditionVariable(&w->cv);
 }
 
-static void monitor_enqueue_acq(RtMonitor *m, RtMonitorWaiter *w)
-{
+static void monitor_enqueue_acq(RtMonitor *m, RtMonitorWaiter *w) {
     w->next = NULL;
-    if (m->acq_tail)
-    {
+    if (m->acq_tail) {
         m->acq_tail->next = w;
         m->acq_tail = w;
-    }
-    else
-    {
+    } else {
         m->acq_head = w;
         m->acq_tail = w;
     }
 }
 
-static void monitor_remove_acq(RtMonitor *m, RtMonitorWaiter *w)
-{
+static void monitor_remove_acq(RtMonitor *m, RtMonitorWaiter *w) {
     RtMonitorWaiter *prev = NULL;
     RtMonitorWaiter *cur = m->acq_head;
-    while (cur)
-    {
-        if (cur == w)
-        {
+    while (cur) {
+        if (cur == w) {
             if (prev)
                 prev->next = cur->next;
             else
@@ -209,29 +189,22 @@ static void monitor_remove_acq(RtMonitor *m, RtMonitorWaiter *w)
     }
 }
 
-static void monitor_enqueue_wait(RtMonitor *m, RtMonitorWaiter *w)
-{
+static void monitor_enqueue_wait(RtMonitor *m, RtMonitorWaiter *w) {
     w->next = NULL;
-    if (m->wait_tail)
-    {
+    if (m->wait_tail) {
         m->wait_tail->next = w;
         m->wait_tail = w;
-    }
-    else
-    {
+    } else {
         m->wait_head = w;
         m->wait_tail = w;
     }
 }
 
-static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w)
-{
+static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w) {
     RtMonitorWaiter *prev = NULL;
     RtMonitorWaiter *cur = m->wait_head;
-    while (cur)
-    {
-        if (cur == w)
-        {
+    while (cur) {
+        if (cur == w) {
             if (prev)
                 prev->next = cur->next;
             else
@@ -246,22 +219,18 @@ static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w)
     }
 }
 
-static void monitor_enter_blocking(RtMonitor *m, DWORD self, DWORD timeout_ms, int timed)
-{
-    if (!m)
-    {
+static void monitor_enter_blocking(RtMonitor *m, DWORD self, DWORD timeout_ms, int timed) {
+    if (!m) {
         rt_trap("rt_monitor: null monitor");
         return;
     }
 
-    if (monitor_is_owner(m, self))
-    {
+    if (monitor_is_owner(m, self)) {
         m->recursion += 1;
         return;
     }
 
-    if (!m->owner_valid && m->acq_head == NULL)
-    {
+    if (!m->owner_valid && m->acq_head == NULL) {
         m->owner = self;
         m->owner_valid = 1;
         m->recursion = 1;
@@ -276,17 +245,13 @@ static void monitor_enter_blocking(RtMonitor *m, DWORD self, DWORD timeout_ms, i
     monitor_enqueue_acq(m, &w);
 
     ULONGLONG start = GetTickCount64();
-    while (w.state != RT_MON_WAITER_ACQUIRED)
-    {
+    while (w.state != RT_MON_WAITER_ACQUIRED) {
         DWORD wait_time = INFINITE;
-        if (timed)
-        {
+        if (timed) {
             ULONGLONG elapsed = GetTickCount64() - start;
-            if (elapsed >= timeout_ms)
-            {
+            if (elapsed >= timeout_ms) {
                 // Timeout
-                if (w.state != RT_MON_WAITER_ACQUIRED)
-                {
+                if (w.state != RT_MON_WAITER_ACQUIRED) {
                     monitor_remove_acq(m, &w);
                     return;
                 }
@@ -296,16 +261,14 @@ static void monitor_enter_blocking(RtMonitor *m, DWORD self, DWORD timeout_ms, i
         }
 
         BOOL ok = SleepConditionVariableCS(&w.cv, &m->cs, wait_time);
-        if (!ok && GetLastError() == ERROR_TIMEOUT && w.state != RT_MON_WAITER_ACQUIRED)
-        {
+        if (!ok && GetLastError() == ERROR_TIMEOUT && w.state != RT_MON_WAITER_ACQUIRED) {
             monitor_remove_acq(m, &w);
             return;
         }
     }
 }
 
-void rt_monitor_enter(void *obj)
-{
+void rt_monitor_enter(void *obj) {
     if (!obj)
         rt_trap("Monitor.Enter: null object");
     if (!obj)
@@ -318,8 +281,7 @@ void rt_monitor_enter(void *obj)
     LeaveCriticalSection(&m->cs);
 }
 
-int8_t rt_monitor_try_enter(void *obj)
-{
+int8_t rt_monitor_try_enter(void *obj) {
     if (!obj)
         rt_trap("Monitor.Enter: null object");
     if (!obj)
@@ -330,14 +292,12 @@ int8_t rt_monitor_try_enter(void *obj)
     DWORD self = GetCurrentThreadId();
 
     EnterCriticalSection(&m->cs);
-    if (monitor_is_owner(m, self))
-    {
+    if (monitor_is_owner(m, self)) {
         m->recursion += 1;
         LeaveCriticalSection(&m->cs);
         return 1;
     }
-    if (!m->owner_valid && m->acq_head == NULL)
-    {
+    if (!m->owner_valid && m->acq_head == NULL) {
         m->owner = self;
         m->owner_valid = 1;
         m->recursion = 1;
@@ -348,8 +308,7 @@ int8_t rt_monitor_try_enter(void *obj)
     return 0;
 }
 
-int8_t rt_monitor_try_enter_for(void *obj, int64_t ms)
-{
+int8_t rt_monitor_try_enter_for(void *obj, int64_t ms) {
     if (!obj)
         rt_trap("Monitor.Enter: null object");
     if (!obj)
@@ -362,14 +321,12 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms)
     DWORD self = GetCurrentThreadId();
 
     EnterCriticalSection(&m->cs);
-    if (monitor_is_owner(m, self))
-    {
+    if (monitor_is_owner(m, self)) {
         m->recursion += 1;
         LeaveCriticalSection(&m->cs);
         return 1;
     }
-    if (!m->owner_valid && m->acq_head == NULL)
-    {
+    if (!m->owner_valid && m->acq_head == NULL) {
         m->owner = self;
         m->owner_valid = 1;
         m->recursion = 1;
@@ -386,13 +343,10 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms)
 
     ULONGLONG start = GetTickCount64();
     DWORD timeout_ms = (DWORD)ms;
-    while (w.state != RT_MON_WAITER_ACQUIRED)
-    {
+    while (w.state != RT_MON_WAITER_ACQUIRED) {
         ULONGLONG elapsed = GetTickCount64() - start;
-        if (elapsed >= timeout_ms)
-        {
-            if (w.state != RT_MON_WAITER_ACQUIRED)
-            {
+        if (elapsed >= timeout_ms) {
+            if (w.state != RT_MON_WAITER_ACQUIRED) {
                 monitor_remove_acq(m, &w);
                 LeaveCriticalSection(&m->cs);
                 return 0;
@@ -402,8 +356,7 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms)
         DWORD wait_time = (DWORD)(timeout_ms - elapsed);
 
         BOOL ok = SleepConditionVariableCS(&w.cv, &m->cs, wait_time);
-        if (!ok && GetLastError() == ERROR_TIMEOUT && w.state != RT_MON_WAITER_ACQUIRED)
-        {
+        if (!ok && GetLastError() == ERROR_TIMEOUT && w.state != RT_MON_WAITER_ACQUIRED) {
             monitor_remove_acq(m, &w);
             LeaveCriticalSection(&m->cs);
             return 0;
@@ -414,8 +367,7 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms)
     return 1;
 }
 
-void rt_monitor_exit(void *obj)
-{
+void rt_monitor_exit(void *obj) {
     if (!obj)
         rt_trap("Monitor.Exit: null object");
     if (!obj)
@@ -426,14 +378,12 @@ void rt_monitor_exit(void *obj)
     DWORD self = GetCurrentThreadId();
 
     EnterCriticalSection(&m->cs);
-    if (!monitor_is_owner(m, self))
-    {
+    if (!monitor_is_owner(m, self)) {
         LeaveCriticalSection(&m->cs);
         rt_trap("Monitor.Exit: not owner");
         return;
     }
-    if (m->recursion > 1)
-    {
+    if (m->recursion > 1) {
         m->recursion -= 1;
         LeaveCriticalSection(&m->cs);
         return;
@@ -445,8 +395,7 @@ void rt_monitor_exit(void *obj)
     LeaveCriticalSection(&m->cs);
 }
 
-void rt_monitor_wait(void *obj)
-{
+void rt_monitor_wait(void *obj) {
     if (!obj)
         rt_trap("Monitor.Wait: not owner");
     if (!obj)
@@ -457,8 +406,7 @@ void rt_monitor_wait(void *obj)
     DWORD self = GetCurrentThreadId();
     EnterCriticalSection(&m->cs);
 
-    if (!monitor_is_owner(m, self))
-    {
+    if (!monitor_is_owner(m, self)) {
         LeaveCriticalSection(&m->cs);
         rt_trap("Monitor.Wait: not owner");
         return;
@@ -478,22 +426,19 @@ void rt_monitor_wait(void *obj)
     w.desired_recursion = saved_recursion;
     monitor_enqueue_wait(m, &w);
 
-    while (w.state == RT_MON_WAITER_WAITING_PAUSE)
-    {
+    while (w.state == RT_MON_WAITER_WAITING_PAUSE) {
         SleepConditionVariableCS(&w.cv, &m->cs, INFINITE);
     }
 
     // Wait for re-acquisition.
-    while (w.state != RT_MON_WAITER_ACQUIRED)
-    {
+    while (w.state != RT_MON_WAITER_ACQUIRED) {
         SleepConditionVariableCS(&w.cv, &m->cs, INFINITE);
     }
 
     LeaveCriticalSection(&m->cs);
 }
 
-int8_t rt_monitor_wait_for(void *obj, int64_t ms)
-{
+int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
     if (!obj)
         rt_trap("Monitor.Wait: not owner");
     if (!obj)
@@ -504,8 +449,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms)
     DWORD self = GetCurrentThreadId();
     EnterCriticalSection(&m->cs);
 
-    if (!monitor_is_owner(m, self))
-    {
+    if (!monitor_is_owner(m, self)) {
         LeaveCriticalSection(&m->cs);
         rt_trap("Monitor.Wait: not owner");
         return 0;
@@ -531,13 +475,10 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms)
     int timed_out = 0;
     ULONGLONG start = GetTickCount64();
     DWORD timeout_ms = (DWORD)ms;
-    while (w.state == RT_MON_WAITER_WAITING_PAUSE)
-    {
+    while (w.state == RT_MON_WAITER_WAITING_PAUSE) {
         ULONGLONG elapsed = GetTickCount64() - start;
-        if (elapsed >= timeout_ms)
-        {
-            if (w.state == RT_MON_WAITER_WAITING_PAUSE)
-            {
+        if (elapsed >= timeout_ms) {
+            if (w.state == RT_MON_WAITER_WAITING_PAUSE) {
                 timed_out = 1;
                 break;
             }
@@ -545,15 +486,13 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms)
         }
         DWORD wait_time = (DWORD)(timeout_ms - elapsed);
         BOOL ok = SleepConditionVariableCS(&w.cv, &m->cs, wait_time);
-        if (!ok && GetLastError() == ERROR_TIMEOUT && w.state == RT_MON_WAITER_WAITING_PAUSE)
-        {
+        if (!ok && GetLastError() == ERROR_TIMEOUT && w.state == RT_MON_WAITER_WAITING_PAUSE) {
             timed_out = 1;
             break;
         }
     }
 
-    if (timed_out)
-    {
+    if (timed_out) {
         // Timeout while still in the wait queue: remove and begin fair re-acquire.
         monitor_remove_wait(m, &w);
         w.state = RT_MON_WAITER_WAITING_LOCK;
@@ -562,8 +501,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms)
             monitor_grant_next_waiter(m);
     }
 
-    while (w.state != RT_MON_WAITER_ACQUIRED)
-    {
+    while (w.state != RT_MON_WAITER_ACQUIRED) {
         SleepConditionVariableCS(&w.cv, &m->cs, INFINITE);
     }
 
@@ -571,8 +509,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms)
     return timed_out ? 0 : 1;
 }
 
-void rt_monitor_pause(void *obj)
-{
+void rt_monitor_pause(void *obj) {
     if (!obj)
         rt_trap("Monitor.Pause: not owner");
     if (!obj)
@@ -583,16 +520,14 @@ void rt_monitor_pause(void *obj)
     DWORD self = GetCurrentThreadId();
     EnterCriticalSection(&m->cs);
 
-    if (!monitor_is_owner(m, self))
-    {
+    if (!monitor_is_owner(m, self)) {
         LeaveCriticalSection(&m->cs);
         rt_trap("Monitor.Pause: not owner");
         return;
     }
 
     RtMonitorWaiter *w = m->wait_head;
-    if (w)
-    {
+    if (w) {
         m->wait_head = w->next;
         if (!m->wait_head)
             m->wait_tail = NULL;
@@ -606,8 +541,7 @@ void rt_monitor_pause(void *obj)
     LeaveCriticalSection(&m->cs);
 }
 
-void rt_monitor_pause_all(void *obj)
-{
+void rt_monitor_pause_all(void *obj) {
     if (!obj)
         rt_trap("Monitor.PauseAll: not owner");
     if (!obj)
@@ -618,15 +552,13 @@ void rt_monitor_pause_all(void *obj)
     DWORD self = GetCurrentThreadId();
     EnterCriticalSection(&m->cs);
 
-    if (!monitor_is_owner(m, self))
-    {
+    if (!monitor_is_owner(m, self)) {
         LeaveCriticalSection(&m->cs);
         rt_trap("Monitor.PauseAll: not owner");
         return;
     }
 
-    while (m->wait_head)
-    {
+    while (m->wait_head) {
         RtMonitorWaiter *w = m->wait_head;
         m->wait_head = w->next;
         if (!m->wait_head)
@@ -652,8 +584,7 @@ void rt_monitor_pause_all(void *obj)
 ///
 /// Tracks the state of a thread waiting on a monitor, used for the
 /// FIFO-fair handoff mechanism.
-enum
-{
+enum {
     RT_MON_WAITER_WAITING_PAUSE = 0, ///< Thread called Wait(), waiting for Pause signal.
     RT_MON_WAITER_WAITING_LOCK = 1,  ///< Thread waiting to acquire the lock.
     RT_MON_WAITER_ACQUIRED = 2,      ///< Thread has been granted ownership.
@@ -671,8 +602,7 @@ enum
 ///           │
 /// [Wait]  ──┴──▶ WAITING_PAUSE ──(Pause)──▶ WAITING_LOCK ──▶ ACQUIRED
 /// ```
-typedef struct RtMonitorWaiter
-{
+typedef struct RtMonitorWaiter {
     struct RtMonitorWaiter *next; ///< Next waiter in queue (singly linked).
     pthread_cond_t cv;            ///< Per-waiter condition variable.
     pthread_t thread;             ///< The waiting thread's ID.
@@ -700,8 +630,7 @@ typedef struct RtMonitorWaiter
 /// │ wait_head/tail│ Queue of threads that called Wait() │
 /// └───────────────┴─────────────────────────────────────┘
 /// ```
-typedef struct RtMonitor
-{
+typedef struct RtMonitor {
     pthread_mutex_t mu;         ///< Mutex protecting all monitor state.
     pthread_t owner;            ///< Current owner thread.
     int owner_valid;            ///< Non-zero if monitor is currently owned.
@@ -716,8 +645,7 @@ typedef struct RtMonitor
 ///
 /// Monitors are looked up by object address. The hash table uses separate
 /// chaining for collision resolution.
-typedef struct RtMonitorEntry
-{
+typedef struct RtMonitorEntry {
     void *key;                   ///< Object address (hash key).
     struct RtMonitorEntry *next; ///< Next entry in hash chain.
     RtMonitor monitor;           ///< The monitor state.
@@ -728,8 +656,7 @@ typedef struct RtMonitorEntry
 static pthread_mutex_t g_monitor_table_mu = PTHREAD_MUTEX_INITIALIZER;
 static RtMonitorEntry *g_monitor_table[RT_MONITOR_BUCKETS];
 
-static size_t hash_ptr(void *p)
-{
+static size_t hash_ptr(void *p) {
     uintptr_t x = (uintptr_t)p;
     x >>= 4;
     x ^= x >> 16;
@@ -737,16 +664,13 @@ static size_t hash_ptr(void *p)
     return (size_t)(x & (RT_MONITOR_BUCKETS - 1u));
 }
 
-static RtMonitor *get_monitor_for(void *obj)
-{
+static RtMonitor *get_monitor_for(void *obj) {
     size_t idx = hash_ptr(obj);
 
     pthread_mutex_lock(&g_monitor_table_mu);
     RtMonitorEntry *it = g_monitor_table[idx];
-    while (it)
-    {
-        if (it->key == obj)
-        {
+    while (it) {
+        if (it->key == obj) {
             pthread_mutex_unlock(&g_monitor_table_mu);
             return &it->monitor;
         }
@@ -754,8 +678,7 @@ static RtMonitor *get_monitor_for(void *obj)
     }
 
     RtMonitorEntry *node = (RtMonitorEntry *)calloc(1, sizeof(*node));
-    if (!node)
-    {
+    if (!node) {
         pthread_mutex_unlock(&g_monitor_table_mu);
         rt_trap("rt_monitor: alloc failed");
         return NULL;
@@ -770,13 +693,11 @@ static RtMonitor *get_monitor_for(void *obj)
     return &node->monitor;
 }
 
-static int monitor_is_owner(const RtMonitor *m, pthread_t self)
-{
+static int monitor_is_owner(const RtMonitor *m, pthread_t self) {
     return m->owner_valid && pthread_equal(m->owner, self);
 }
 
-static void monitor_grant_next_waiter(RtMonitor *m)
-{
+static void monitor_grant_next_waiter(RtMonitor *m) {
     RtMonitorWaiter *w = m->acq_head;
     if (!w)
         return;
@@ -792,29 +713,22 @@ static void monitor_grant_next_waiter(RtMonitor *m)
     pthread_cond_signal(&w->cv);
 }
 
-static void monitor_enqueue_acq(RtMonitor *m, RtMonitorWaiter *w)
-{
+static void monitor_enqueue_acq(RtMonitor *m, RtMonitorWaiter *w) {
     w->next = NULL;
-    if (m->acq_tail)
-    {
+    if (m->acq_tail) {
         m->acq_tail->next = w;
         m->acq_tail = w;
-    }
-    else
-    {
+    } else {
         m->acq_head = w;
         m->acq_tail = w;
     }
 }
 
-static void monitor_remove_acq(RtMonitor *m, RtMonitorWaiter *w)
-{
+static void monitor_remove_acq(RtMonitor *m, RtMonitorWaiter *w) {
     RtMonitorWaiter *prev = NULL;
     RtMonitorWaiter *cur = m->acq_head;
-    while (cur)
-    {
-        if (cur == w)
-        {
+    while (cur) {
+        if (cur == w) {
             if (prev)
                 prev->next = cur->next;
             else
@@ -829,29 +743,22 @@ static void monitor_remove_acq(RtMonitor *m, RtMonitorWaiter *w)
     }
 }
 
-static void monitor_enqueue_wait(RtMonitor *m, RtMonitorWaiter *w)
-{
+static void monitor_enqueue_wait(RtMonitor *m, RtMonitorWaiter *w) {
     w->next = NULL;
-    if (m->wait_tail)
-    {
+    if (m->wait_tail) {
         m->wait_tail->next = w;
         m->wait_tail = w;
-    }
-    else
-    {
+    } else {
         m->wait_head = w;
         m->wait_tail = w;
     }
 }
 
-static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w)
-{
+static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w) {
     RtMonitorWaiter *prev = NULL;
     RtMonitorWaiter *cur = m->wait_head;
-    while (cur)
-    {
-        if (cur == w)
-        {
+    while (cur) {
+        if (cur == w) {
             if (prev)
                 prev->next = cur->next;
             else
@@ -866,8 +773,7 @@ static void monitor_remove_wait(RtMonitor *m, RtMonitorWaiter *w)
     }
 }
 
-static struct timespec abs_time_ms_from_now(int64_t ms)
-{
+static struct timespec abs_time_ms_from_now(int64_t ms) {
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
     if (ms <= 0)
@@ -877,8 +783,7 @@ static struct timespec abs_time_ms_from_now(int64_t ms)
     int64_t add_ns = ms * kNsPerMs;
     int64_t sec = (int64_t)ts.tv_sec + add_ns / 1000000000;
     int64_t ns = (int64_t)ts.tv_nsec + add_ns % 1000000000;
-    if (ns >= 1000000000)
-    {
+    if (ns >= 1000000000) {
         sec += 1;
         ns -= 1000000000;
     }
@@ -887,22 +792,18 @@ static struct timespec abs_time_ms_from_now(int64_t ms)
     return ts;
 }
 
-static void monitor_enter_blocking(RtMonitor *m, pthread_t self, int64_t timeout_ms, int timed)
-{
-    if (!m)
-    {
+static void monitor_enter_blocking(RtMonitor *m, pthread_t self, int64_t timeout_ms, int timed) {
+    if (!m) {
         rt_trap("rt_monitor: null monitor");
         return;
     }
 
-    if (monitor_is_owner(m, self))
-    {
+    if (monitor_is_owner(m, self)) {
         m->recursion += 1;
         return;
     }
 
-    if (!m->owner_valid && m->acq_head == NULL)
-    {
+    if (!m->owner_valid && m->acq_head == NULL) {
         m->owner = self;
         m->owner_valid = 1;
         m->recursion = 1;
@@ -918,19 +819,14 @@ static void monitor_enter_blocking(RtMonitor *m, pthread_t self, int64_t timeout
 
     int rc = 0;
     const struct timespec deadline = abs_time_ms_from_now(timeout_ms);
-    while (w.state != RT_MON_WAITER_ACQUIRED)
-    {
-        if (!timed)
-        {
+    while (w.state != RT_MON_WAITER_ACQUIRED) {
+        if (!timed) {
             rc = pthread_cond_wait(&w.cv, &m->mu);
-        }
-        else
-        {
+        } else {
             rc = pthread_cond_timedwait(&w.cv, &m->mu, &deadline);
         }
 
-        if (timed && rc == ETIMEDOUT && w.state != RT_MON_WAITER_ACQUIRED)
-        {
+        if (timed && rc == ETIMEDOUT && w.state != RT_MON_WAITER_ACQUIRED) {
             monitor_remove_acq(m, &w);
             pthread_cond_destroy(&w.cv);
             return;
@@ -970,8 +866,7 @@ static void monitor_enter_blocking(RtMonitor *m, pthread_t self, int64_t timeout
 /// @see rt_monitor_exit For releasing the monitor
 /// @see rt_monitor_try_enter For non-blocking acquisition
 /// @see rt_monitor_try_enter_for For acquisition with timeout
-void rt_monitor_enter(void *obj)
-{
+void rt_monitor_enter(void *obj) {
     if (!obj)
         rt_trap("Monitor.Enter: null object");
     if (!obj)
@@ -1014,8 +909,7 @@ void rt_monitor_enter(void *obj)
 ///
 /// @see rt_monitor_enter For blocking acquisition
 /// @see rt_monitor_try_enter_for For acquisition with timeout
-int8_t rt_monitor_try_enter(void *obj)
-{
+int8_t rt_monitor_try_enter(void *obj) {
     if (!obj)
         rt_trap("Monitor.Enter: null object");
     if (!obj)
@@ -1026,14 +920,12 @@ int8_t rt_monitor_try_enter(void *obj)
     pthread_t self = pthread_self();
 
     pthread_mutex_lock(&m->mu);
-    if (monitor_is_owner(m, self))
-    {
+    if (monitor_is_owner(m, self)) {
         m->recursion += 1;
         pthread_mutex_unlock(&m->mu);
         return 1;
     }
-    if (!m->owner_valid && m->acq_head == NULL)
-    {
+    if (!m->owner_valid && m->acq_head == NULL) {
         m->owner = self;
         m->owner_valid = 1;
         m->recursion = 1;
@@ -1044,8 +936,7 @@ int8_t rt_monitor_try_enter(void *obj)
     return 0;
 }
 
-int8_t rt_monitor_try_enter_for(void *obj, int64_t ms)
-{
+int8_t rt_monitor_try_enter_for(void *obj, int64_t ms) {
     if (!obj)
         rt_trap("Monitor.Enter: null object");
     if (!obj)
@@ -1058,14 +949,12 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms)
     pthread_t self = pthread_self();
 
     pthread_mutex_lock(&m->mu);
-    if (monitor_is_owner(m, self))
-    {
+    if (monitor_is_owner(m, self)) {
         m->recursion += 1;
         pthread_mutex_unlock(&m->mu);
         return 1;
     }
-    if (!m->owner_valid && m->acq_head == NULL)
-    {
+    if (!m->owner_valid && m->acq_head == NULL) {
         m->owner = self;
         m->owner_valid = 1;
         m->recursion = 1;
@@ -1082,11 +971,9 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms)
 
     const struct timespec deadline = abs_time_ms_from_now(ms);
     int rc = 0;
-    while (w.state != RT_MON_WAITER_ACQUIRED)
-    {
+    while (w.state != RT_MON_WAITER_ACQUIRED) {
         rc = pthread_cond_timedwait(&w.cv, &m->mu, &deadline);
-        if (rc == ETIMEDOUT && w.state != RT_MON_WAITER_ACQUIRED)
-        {
+        if (rc == ETIMEDOUT && w.state != RT_MON_WAITER_ACQUIRED) {
             monitor_remove_acq(m, &w);
             pthread_cond_destroy(&w.cv);
             pthread_mutex_unlock(&m->mu);
@@ -1123,8 +1010,7 @@ int8_t rt_monitor_try_enter_for(void *obj, int64_t ms)
 /// @note FIFO-fair: wakes the thread that has been waiting longest.
 ///
 /// @see rt_monitor_enter For acquiring the monitor
-void rt_monitor_exit(void *obj)
-{
+void rt_monitor_exit(void *obj) {
     if (!obj)
         rt_trap("Monitor.Exit: null object");
     if (!obj)
@@ -1135,14 +1021,12 @@ void rt_monitor_exit(void *obj)
     pthread_t self = pthread_self();
 
     pthread_mutex_lock(&m->mu);
-    if (!monitor_is_owner(m, self))
-    {
+    if (!monitor_is_owner(m, self)) {
         pthread_mutex_unlock(&m->mu);
         rt_trap("Monitor.Exit: not owner");
         return;
     }
-    if (m->recursion > 1)
-    {
+    if (m->recursion > 1) {
         m->recursion -= 1;
         pthread_mutex_unlock(&m->mu);
         return;
@@ -1192,8 +1076,7 @@ void rt_monitor_exit(void *obj)
 /// @see rt_monitor_pause For waking one waiting thread
 /// @see rt_monitor_pause_all For waking all waiting threads
 /// @see rt_monitor_wait_for For waiting with timeout
-void rt_monitor_wait(void *obj)
-{
+void rt_monitor_wait(void *obj) {
     if (!obj)
         rt_trap("Monitor.Wait: not owner");
     if (!obj)
@@ -1204,8 +1087,7 @@ void rt_monitor_wait(void *obj)
     pthread_t self = pthread_self();
     pthread_mutex_lock(&m->mu);
 
-    if (!monitor_is_owner(m, self))
-    {
+    if (!monitor_is_owner(m, self)) {
         pthread_mutex_unlock(&m->mu);
         rt_trap("Monitor.Wait: not owner");
         return;
@@ -1225,14 +1107,12 @@ void rt_monitor_wait(void *obj)
     w.desired_recursion = saved_recursion;
     monitor_enqueue_wait(m, &w);
 
-    while (w.state == RT_MON_WAITER_WAITING_PAUSE)
-    {
+    while (w.state == RT_MON_WAITER_WAITING_PAUSE) {
         (void)pthread_cond_wait(&w.cv, &m->mu);
     }
 
     // Wait for re-acquisition.
-    while (w.state != RT_MON_WAITER_ACQUIRED)
-    {
+    while (w.state != RT_MON_WAITER_ACQUIRED) {
         (void)pthread_cond_wait(&w.cv, &m->mu);
     }
 
@@ -1240,8 +1120,7 @@ void rt_monitor_wait(void *obj)
     pthread_mutex_unlock(&m->mu);
 }
 
-int8_t rt_monitor_wait_for(void *obj, int64_t ms)
-{
+int8_t rt_monitor_wait_for(void *obj, int64_t ms) {
     if (!obj)
         rt_trap("Monitor.Wait: not owner");
     if (!obj)
@@ -1252,8 +1131,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms)
     pthread_t self = pthread_self();
     pthread_mutex_lock(&m->mu);
 
-    if (!monitor_is_owner(m, self))
-    {
+    if (!monitor_is_owner(m, self)) {
         pthread_mutex_unlock(&m->mu);
         rt_trap("Monitor.Wait: not owner");
         return 0;
@@ -1278,18 +1156,15 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms)
 
     int timed_out = 0;
     const struct timespec deadline = abs_time_ms_from_now(ms);
-    while (w.state == RT_MON_WAITER_WAITING_PAUSE)
-    {
+    while (w.state == RT_MON_WAITER_WAITING_PAUSE) {
         const int rc = pthread_cond_timedwait(&w.cv, &m->mu, &deadline);
-        if (rc == ETIMEDOUT && w.state == RT_MON_WAITER_WAITING_PAUSE)
-        {
+        if (rc == ETIMEDOUT && w.state == RT_MON_WAITER_WAITING_PAUSE) {
             timed_out = 1;
             break;
         }
     }
 
-    if (timed_out)
-    {
+    if (timed_out) {
         // Timeout while still in the wait queue: remove and begin fair re-acquire.
         monitor_remove_wait(m, &w);
         w.state = RT_MON_WAITER_WAITING_LOCK;
@@ -1298,8 +1173,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms)
             monitor_grant_next_waiter(m);
     }
 
-    while (w.state != RT_MON_WAITER_ACQUIRED)
-    {
+    while (w.state != RT_MON_WAITER_ACQUIRED) {
         (void)pthread_cond_wait(&w.cv, &m->mu);
     }
 
@@ -1338,8 +1212,7 @@ int8_t rt_monitor_wait_for(void *obj, int64_t ms)
 ///
 /// @see rt_monitor_pause_all For waking all waiting threads
 /// @see rt_monitor_wait For entering the wait state
-void rt_monitor_pause(void *obj)
-{
+void rt_monitor_pause(void *obj) {
     if (!obj)
         rt_trap("Monitor.Pause: not owner");
     if (!obj)
@@ -1350,16 +1223,14 @@ void rt_monitor_pause(void *obj)
     pthread_t self = pthread_self();
     pthread_mutex_lock(&m->mu);
 
-    if (!monitor_is_owner(m, self))
-    {
+    if (!monitor_is_owner(m, self)) {
         pthread_mutex_unlock(&m->mu);
         rt_trap("Monitor.Pause: not owner");
         return;
     }
 
     RtMonitorWaiter *w = m->wait_head;
-    if (w)
-    {
+    if (w) {
         m->wait_head = w->next;
         if (!m->wait_head)
             m->wait_tail = NULL;
@@ -1404,8 +1275,7 @@ void rt_monitor_pause(void *obj)
 ///
 /// @see rt_monitor_pause For waking just one thread
 /// @see rt_monitor_wait For entering the wait state
-void rt_monitor_pause_all(void *obj)
-{
+void rt_monitor_pause_all(void *obj) {
     if (!obj)
         rt_trap("Monitor.PauseAll: not owner");
     if (!obj)
@@ -1416,15 +1286,13 @@ void rt_monitor_pause_all(void *obj)
     pthread_t self = pthread_self();
     pthread_mutex_lock(&m->mu);
 
-    if (!monitor_is_owner(m, self))
-    {
+    if (!monitor_is_owner(m, self)) {
         pthread_mutex_unlock(&m->mu);
         rt_trap("Monitor.PauseAll: not owner");
         return;
     }
 
-    while (m->wait_head)
-    {
+    while (m->wait_head) {
         RtMonitorWaiter *w = m->wait_head;
         m->wait_head = w->next;
         if (!m->wait_head)

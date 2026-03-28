@@ -25,15 +25,12 @@
 #include <fstream>
 #include <sstream>
 
-namespace il::tools::common
-{
+namespace il::tools::common {
 
 il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
-                                                     il::support::SourceManager &sm)
-{
+                                                     il::support::SourceManager &sm) {
     std::ifstream in(path, std::ios::binary);
-    if (!in)
-    {
+    if (!in) {
         return il::support::Expected<LoadedSource>(il::support::Diagnostic{
             il::support::Severity::Error, "unable to open " + path, {}, {}});
     }
@@ -43,8 +40,7 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     auto fileSize = in.tellg();
     in.seekg(0, std::ios::beg);
     constexpr auto kMaxSourceSize = static_cast<std::streamoff>(256ULL * 1024 * 1024);
-    if (fileSize < 0 || fileSize > kMaxSourceSize)
-    {
+    if (fileSize < 0 || fileSize > kMaxSourceSize) {
         return il::support::Expected<LoadedSource>(
             il::support::Diagnostic{il::support::Severity::Error,
                                     "source file too large: " + path + " (limit: 256 MB)",
@@ -53,21 +49,17 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     }
 
     std::string contents;
-    try
-    {
+    try {
         std::ostringstream ss;
         ss << in.rdbuf();
         contents = ss.str();
-    }
-    catch (const std::bad_alloc &)
-    {
+    } catch (const std::bad_alloc &) {
         return il::support::Expected<LoadedSource>(il::support::Diagnostic{
             il::support::Severity::Error, "out of memory reading " + path, {}, {}});
     }
 
     const uint32_t fileId = sm.addFile(path);
-    if (fileId == 0)
-    {
+    if (fileId == 0) {
         return il::support::Expected<LoadedSource>(il::support::makeError(
             {}, std::string{il::support::kSourceManagerFileIdOverflowMessage}));
     }
@@ -78,11 +70,9 @@ il::support::Expected<LoadedSource> loadSourceBuffer(const std::string &path,
     return il::support::Expected<LoadedSource>(std::move(source));
 }
 
-il::support::Expected<std::string> loadSourceFile(const std::string &path)
-{
+il::support::Expected<std::string> loadSourceFile(const std::string &path) {
     std::ifstream in(path, std::ios::binary);
-    if (!in)
-    {
+    if (!in) {
         return il::support::Expected<std::string>(il::support::Diagnostic{
             il::support::Severity::Error, "unable to open " + path, {}, {}});
     }
@@ -91,8 +81,7 @@ il::support::Expected<std::string> loadSourceFile(const std::string &path)
     auto fileSize = in.tellg();
     in.seekg(0, std::ios::beg);
     constexpr auto kMaxSourceSize = static_cast<std::streamoff>(256ULL * 1024 * 1024);
-    if (fileSize < 0 || fileSize > kMaxSourceSize)
-    {
+    if (fileSize < 0 || fileSize > kMaxSourceSize) {
         return il::support::Expected<std::string>(
             il::support::Diagnostic{il::support::Severity::Error,
                                     "source file too large: " + path + " (limit: 256 MB)",
@@ -100,14 +89,11 @@ il::support::Expected<std::string> loadSourceFile(const std::string &path)
                                     {}});
     }
 
-    try
-    {
+    try {
         std::ostringstream ss;
         ss << in.rdbuf();
         return il::support::Expected<std::string>(ss.str());
-    }
-    catch (const std::bad_alloc &)
-    {
+    } catch (const std::bad_alloc &) {
         return il::support::Expected<std::string>(il::support::Diagnostic{
             il::support::Severity::Error, "out of memory reading " + path, {}, {}});
     }

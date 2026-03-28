@@ -60,12 +60,10 @@
 #include <unordered_set>
 #include <vector>
 
-namespace il::build
-{
+namespace il::build {
 
 /// @brief Helper to construct IL modules and enforce block termination.
-class IRBuilder
-{
+class IRBuilder {
   public:
     /// @brief Create builder operating on module @p m.
     /// @param m Module to mutate.
@@ -187,20 +185,17 @@ class IRBuilder
     unsigned reserveTempId();
 
     /// @brief Save the current temp ID counter (for lambda context switching).
-    unsigned saveTempId() const
-    {
+    unsigned saveTempId() const {
         return nextTemp;
     }
 
     /// @brief Restore a previously saved temp ID counter.
-    void restoreTempId(unsigned saved)
-    {
+    void restoreTempId(unsigned saved) {
         nextTemp = saved;
     }
 
     /// @brief Restore the current function pointer (for lambda context switching).
-    void restoreFunction(il::core::Function *fn)
-    {
+    void restoreFunction(il::core::Function *fn) {
         curFunc = fn;
     }
 

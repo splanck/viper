@@ -21,8 +21,7 @@
 
 using namespace il::core;
 
-static il::core::Module build_tco_eh_module()
-{
+static il::core::Module build_tco_eh_module() {
     Module m;
     il::build::IRBuilder b(m);
 
@@ -68,8 +67,7 @@ static il::core::Module build_tco_eh_module()
     BasicBlock *entry = nullptr;
     BasicBlock *recover = nullptr;
     BasicBlock *handler = nullptr;
-    for (auto &bb : mainFn.blocks)
-    {
+    for (auto &bb : mainFn.blocks) {
         if (bb.label == "entry")
             entry = &bb;
         else if (bb.label == "recover")
@@ -147,8 +145,7 @@ static il::core::Module build_tco_eh_module()
     return m;
 }
 
-int main()
-{
+int main() {
     std::fprintf(stderr, "[EH] build module\n");
     std::fflush(stderr);
     Module m = build_tco_eh_module();
@@ -165,11 +162,9 @@ int main()
     auto state = il::vm::VMTestHook::prepare(vm, *it);
     std::fprintf(stderr, "[EH] prepared state\n");
     std::fflush(stderr);
-    while (true)
-    {
+    while (true) {
         auto res = il::vm::VMTestHook::step(vm, state);
-        if (res)
-        {
+        if (res) {
             // Exception from callee is caught by caller and recover returns 99
             assert(res->i64 == 99);
             break;

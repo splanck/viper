@@ -23,8 +23,7 @@
 #include "MachineIR.hpp"
 #include "il/core/Instr.hpp"
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Lower a single IL instruction to MIR.
 /// @details This function handles a subset of opcodes that have been extracted

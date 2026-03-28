@@ -34,13 +34,11 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 std::filesystem::path write_file(const std::filesystem::path &dir,
                                  const std::string &name,
-                                 const std::string &contents)
-{
+                                 const std::string &contents) {
     std::filesystem::create_directories(dir);
     std::filesystem::path path = dir / name;
     std::ofstream out(path);
@@ -51,8 +49,7 @@ std::filesystem::path write_file(const std::filesystem::path &dir,
 
 std::string run_and_collect_errors(const std::string &srcPath,
                                    const std::string &source,
-                                   size_t &outErrs)
-{
+                                   size_t &outErrs) {
     SourceManager sm;
     uint32_t fid = sm.addFile(srcPath);
     DiagnosticEngine de;
@@ -70,8 +67,7 @@ std::string run_and_collect_errors(const std::string &srcPath,
 
 } // namespace
 
-int main()
-{
+int main() {
     namespace fs = std::filesystem;
     const fs::path tempRoot = fs::temp_directory_path() / "viper_addfile_tests" /
                               std::to_string(static_cast<unsigned long long>(::getpid()));
@@ -85,8 +81,7 @@ int main()
         size_t errs = 0;
         std::string diag =
             run_and_collect_errors(mainPath.string(), "10 ADDFILE \"inc.bas\"\n20 END\n", errs);
-        if (errs != 0)
-        {
+        if (errs != 0) {
             std::cerr << diag << std::endl;
         }
         assert(errs == 0);
@@ -113,8 +108,7 @@ int main()
         size_t errs = 0;
         std::string diag =
             run_and_collect_errors(mainPath.string(), "10 ADDFILE \"nope.bas\"\n20 END\n", errs);
-        if (errs != 1)
-        {
+        if (errs != 1) {
             std::cerr << diag << std::endl;
         }
         assert(errs == 1);
@@ -131,8 +125,7 @@ int main()
         size_t errs = 0;
         std::string diag =
             run_and_collect_errors(mainPath.string(), "10 ADDFILE \"b.bas\"\n20 END\n", errs);
-        if (errs != 1)
-        {
+        if (errs != 1) {
             std::cerr << diag << std::endl;
         }
         assert(errs == 1);
@@ -145,17 +138,13 @@ int main()
         fs::create_directories(dir);
         // Generate inc01.bas .. inc33.bas where each includes the next.
         const int chainLen = 33;
-        for (int i = 1; i <= chainLen; ++i)
-        {
+        for (int i = 1; i <= chainLen; ++i) {
             char nextName[16];
             std::snprintf(nextName, sizeof(nextName), "inc%02d.bas", i + 1);
             std::string contents;
-            if (i < chainLen)
-            {
+            if (i < chainLen) {
                 contents = std::string{"10 ADDFILE \""} + nextName + "\"\n20 END\n";
-            }
-            else
-            {
+            } else {
                 contents = "10 END\n";
             }
             char curName[16];

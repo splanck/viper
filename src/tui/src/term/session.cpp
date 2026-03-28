@@ -34,8 +34,7 @@
 #include "tui/term/session.hpp"
 #include "tui/term/term_io.hpp"
 
-namespace viper::tui
-{
+namespace viper::tui {
 
 /// @brief Determine whether terminal interaction is globally disabled.
 /// @details Reads the `VIPERTUI_NO_TTY` environment variable and returns true
@@ -43,8 +42,7 @@ namespace viper::tui
 ///          all platforms so unit tests and headless environments can run the
 ///          TUI code paths without touching real terminals.
 /// @return True when the caller should avoid configuring the terminal.
-static inline bool env_no_tty()
-{
+static inline bool env_no_tty() {
     const char *v = std::getenv("VIPERTUI_NO_TTY");
     return v && *v == '1';
 }
@@ -56,8 +54,7 @@ static inline bool env_no_tty()
 ///          false which keeps feature toggles opt-in.
 /// @param name Environment variable to query.
 /// @return True when the variable exists and encodes a truthy value.
-static inline bool env_true(const char *name)
-{
+static inline bool env_true(const char *name) {
     const char *v = std::getenv(name);
     if (!v)
         return false;
@@ -73,22 +70,18 @@ static inline bool env_true(const char *name)
 ///          are honoured.  Successful setup pushes the terminal into the
 ///          alternate screen buffer, hides the cursor, and optionally enables
 ///          mouse reporting when requested via `VIPERTUI_MOUSE`.
-TerminalSession::TerminalSession()
-{
-    if (env_no_tty())
-    {
+TerminalSession::TerminalSession() {
+    if (env_no_tty()) {
         active_ = false;
         return;
     }
 
 #if VIPERTUI_POSIX
-    if (!isatty(STDIN_FILENO))
-    {
+    if (!isatty(STDIN_FILENO)) {
         active_ = false;
         return;
     }
-    if (tcgetattr(STDIN_FILENO, &orig_) != 0)
-    {
+    if (tcgetattr(STDIN_FILENO, &orig_) != 0) {
         active_ = false;
         return;
     }
@@ -99,8 +92,7 @@ TerminalSession::TerminalSession()
     raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
     raw.c_cc[VMIN] = 1;
     raw.c_cc[VTIME] = 0;
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) != 0)
-    {
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) != 0) {
         active_ = false;
         return;
     }
@@ -109,10 +101,8 @@ TerminalSession::TerminalSession()
 #if defined(_WIN32)
     // Configure stdout for virtual terminal processing (ANSI escape sequences)
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hOut && hOut != INVALID_HANDLE_VALUE)
-    {
-        if (GetConsoleMode(hOut, &orig_out_mode_))
-        {
+    if (hOut && hOut != INVALID_HANDLE_VALUE) {
+        if (GetConsoleMode(hOut, &orig_out_mode_)) {
             DWORD mode = orig_out_mode_ | ENABLE_VIRTUAL_TERMINAL_PROCESSING;
             SetConsoleMode(hOut, mode);
         }
@@ -120,10 +110,8 @@ TerminalSession::TerminalSession()
 
     // Configure stdin for raw input with virtual terminal input (ANSI sequences)
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
-    if (hIn && hIn != INVALID_HANDLE_VALUE)
-    {
-        if (GetConsoleMode(hIn, &orig_in_mode_))
-        {
+    if (hIn && hIn != INVALID_HANDLE_VALUE) {
+        if (GetConsoleMode(hIn, &orig_in_mode_)) {
             // Enable virtual terminal input to receive ANSI escape sequences
             // Disable line input, echo, and processed input for raw mode
             DWORD mode = orig_in_mode_;
@@ -138,8 +126,7 @@ TerminalSession::TerminalSession()
     io.write("\x1b[?1049h\x1b[?2004h\x1b[?25l"); // alt screen, bracketed paste on, cursor hide
     io.flush();
 
-    if (!env_no_tty() && env_true("VIPERTUI_MOUSE"))
-    {
+    if (!env_no_tty() && env_true("VIPERTUI_MOUSE")) {
         ::viper::tui::term::RealTermIO mouse_io;
         mouse_io.write("\x1b[?1000h\x1b[?1002h\x1b[?1006h"); // enable mouse + SGR
         mouse_io.flush();
@@ -155,13 +142,11 @@ TerminalSession::TerminalSession()
 ///          Platform-specific state such as POSIX `termios` or the Windows
 ///          console mode is reinstated to its captured value.  Inactive sessions
 ///          skip all operations to avoid altering unrelated terminal state.
-TerminalSession::~TerminalSession()
-{
+TerminalSession::~TerminalSession() {
     if (!active_)
         return;
 
-    if (!env_no_tty() && env_true("VIPERTUI_MOUSE"))
-    {
+    if (!env_no_tty() && env_true("VIPERTUI_MOUSE")) {
         ::viper::tui::term::RealTermIO io;
         io.write("\x1b[?1006l\x1b[?1002l\x1b[?1000l"); // disable SGR + motion + mouse
         io.flush();
@@ -176,13 +161,11 @@ TerminalSession::~TerminalSession()
 #endif
 #if defined(_WIN32)
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (hOut && hOut != INVALID_HANDLE_VALUE)
-    {
+    if (hOut && hOut != INVALID_HANDLE_VALUE) {
         SetConsoleMode(hOut, orig_out_mode_);
     }
     HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);
-    if (hIn && hIn != INVALID_HANDLE_VALUE)
-    {
+    if (hIn && hIn != INVALID_HANDLE_VALUE) {
         SetConsoleMode(hIn, orig_in_mode_);
     }
 #endif
@@ -193,8 +176,7 @@ TerminalSession::~TerminalSession()
 ///          configuration steps.  Callers can use this to decide whether to
 ///          emit escape sequences or to fall back to non-interactive output.
 /// @return True when the session successfully initialized and remains active.
-bool TerminalSession::active() const
-{
+bool TerminalSession::active() const {
     return active_;
 }
 

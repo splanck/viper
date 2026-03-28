@@ -47,16 +47,14 @@
 #include <io.h>
 #endif
 
-namespace viper::repl
-{
+namespace viper::repl {
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 /// @brief Skip leading whitespace and return the offset of the first non-space.
-static size_t skipWS(const std::string &s, size_t pos = 0)
-{
+static size_t skipWS(const std::string &s, size_t pos = 0) {
     while (pos < s.size() && std::isspace(static_cast<unsigned char>(s[pos])))
         ++pos;
     return pos;
@@ -64,19 +62,16 @@ static size_t skipWS(const std::string &s, size_t pos = 0)
 
 /// @brief Case-insensitive check whether @p s starts with keyword @p kw at @p offset.
 ///        Keyword must be followed by space, '(', or end of string.
-static bool startsWithKW(const std::string &s, size_t offset, const char *kw)
-{
+static bool startsWithKW(const std::string &s, size_t offset, const char *kw) {
     size_t kwLen = std::strlen(kw);
     if (s.size() - offset < kwLen)
         return false;
-    for (size_t i = 0; i < kwLen; ++i)
-    {
+    for (size_t i = 0; i < kwLen; ++i) {
         if (std::toupper(static_cast<unsigned char>(s[offset + i])) !=
             std::toupper(static_cast<unsigned char>(kw[i])))
             return false;
     }
-    if (offset + kwLen < s.size())
-    {
+    if (offset + kwLen < s.size()) {
         char next = s[offset + kwLen];
         return std::isspace(static_cast<unsigned char>(next)) || next == '(';
     }
@@ -89,19 +84,16 @@ static bool startsWithKW(const std::string &s, size_t offset, const char *kw)
 
 BasicReplAdapter::BasicReplAdapter() = default;
 
-std::string_view BasicReplAdapter::languageName() const
-{
+std::string_view BasicReplAdapter::languageName() const {
     return "basic";
 }
 
-void BasicReplAdapter::reset()
-{
+void BasicReplAdapter::reset() {
     definedProcs_.clear();
     persistentVars_.clear();
 }
 
-InputKind BasicReplAdapter::classifyInput(const std::string &input)
-{
+InputKind BasicReplAdapter::classifyInput(const std::string &input) {
     return ReplInputClassifier::classifyBasic(input);
 }
 
@@ -109,19 +101,14 @@ InputKind BasicReplAdapter::classifyInput(const std::string &input)
 // Persistent variable management
 // ---------------------------------------------------------------------------
 
-BasicPersistentVar *BasicReplAdapter::findPersistentVar(const std::string &name)
-{
-    for (auto &pv : persistentVars_)
-    {
+BasicPersistentVar *BasicReplAdapter::findPersistentVar(const std::string &name) {
+    for (auto &pv : persistentVars_) {
         // Case-insensitive compare for BASIC
-        if (pv.name.size() == name.size())
-        {
+        if (pv.name.size() == name.size()) {
             bool match = true;
-            for (size_t i = 0; i < name.size(); ++i)
-            {
+            for (size_t i = 0; i < name.size(); ++i) {
                 if (std::toupper(static_cast<unsigned char>(pv.name[i])) !=
-                    std::toupper(static_cast<unsigned char>(name[i])))
-                {
+                    std::toupper(static_cast<unsigned char>(name[i]))) {
                     match = false;
                     break;
                 }
@@ -133,18 +120,13 @@ BasicPersistentVar *BasicReplAdapter::findPersistentVar(const std::string &name)
     return nullptr;
 }
 
-const BasicPersistentVar *BasicReplAdapter::findPersistentVar(const std::string &name) const
-{
-    for (const auto &pv : persistentVars_)
-    {
-        if (pv.name.size() == name.size())
-        {
+const BasicPersistentVar *BasicReplAdapter::findPersistentVar(const std::string &name) const {
+    for (const auto &pv : persistentVars_) {
+        if (pv.name.size() == name.size()) {
             bool match = true;
-            for (size_t i = 0; i < name.size(); ++i)
-            {
+            for (size_t i = 0; i < name.size(); ++i) {
                 if (std::toupper(static_cast<unsigned char>(pv.name[i])) !=
-                    std::toupper(static_cast<unsigned char>(name[i])))
-                {
+                    std::toupper(static_cast<unsigned char>(name[i]))) {
                     match = false;
                     break;
                 }
@@ -160,20 +142,17 @@ const BasicPersistentVar *BasicReplAdapter::findPersistentVar(const std::string 
 // Input classification
 // ---------------------------------------------------------------------------
 
-bool BasicReplAdapter::isSubOrFunc(const std::string &input) const
-{
+bool BasicReplAdapter::isSubOrFunc(const std::string &input) const {
     size_t start = skipWS(input);
     return startsWithKW(input, start, "SUB") || startsWithKW(input, start, "FUNCTION");
 }
 
-bool BasicReplAdapter::isDimDecl(const std::string &input) const
-{
+bool BasicReplAdapter::isDimDecl(const std::string &input) const {
     size_t start = skipWS(input);
     return startsWithKW(input, start, "DIM");
 }
 
-bool BasicReplAdapter::isAssignment(const std::string &input) const
-{
+bool BasicReplAdapter::isAssignment(const std::string &input) const {
     size_t pos = skipWS(input);
     if (pos >= input.size() ||
         !(std::isalpha(static_cast<unsigned char>(input[pos])) || input[pos] == '_'))
@@ -199,8 +178,7 @@ bool BasicReplAdapter::isAssignment(const std::string &input) const
     return findPersistentVar(ident) != nullptr;
 }
 
-bool BasicReplAdapter::isLikelyExpression(const std::string &input) const
-{
+bool BasicReplAdapter::isLikelyExpression(const std::string &input) const {
     size_t start = skipWS(input);
     if (start >= input.size())
         return false;
@@ -210,8 +188,7 @@ bool BasicReplAdapter::isLikelyExpression(const std::string &input) const
         "DIM",  "IF",    "FOR",   "WHILE",  "DO",   "SUB", "FUNCTION", "SELECT", "CLASS",
         "TYPE", "PRINT", "INPUT", "RETURN", "EXIT", "END", "NEXT",     "WEND",   "LOOP",
         "GOTO", "GOSUB", "ON",    "CALL",   "LET",  "REM", "TRY",      "THROW",  "NAMESPACE"};
-    for (const char *kw : stmtKeywords)
-    {
+    for (const char *kw : stmtKeywords) {
         if (startsWithKW(input, start, kw))
             return false;
     }
@@ -231,8 +208,7 @@ bool BasicReplAdapter::isLikelyExpression(const std::string &input) const
 // Name / type extraction
 // ---------------------------------------------------------------------------
 
-std::string BasicReplAdapter::extractProcName(const std::string &input) const
-{
+std::string BasicReplAdapter::extractProcName(const std::string &input) const {
     size_t pos = skipWS(input);
     // Skip SUB or FUNCTION keyword
     if (startsWithKW(input, pos, "SUB"))
@@ -250,8 +226,8 @@ std::string BasicReplAdapter::extractProcName(const std::string &input) const
     return input.substr(nameStart, pos - nameStart);
 }
 
-std::pair<std::string, std::string> BasicReplAdapter::extractDimInfo(const std::string &input) const
-{
+std::pair<std::string, std::string> BasicReplAdapter::extractDimInfo(
+    const std::string &input) const {
     // DIM name AS Type [= value]
     size_t pos = skipWS(input);
     if (!startsWithKW(input, pos, "DIM"))
@@ -269,8 +245,7 @@ std::pair<std::string, std::string> BasicReplAdapter::extractDimInfo(const std::
     pos = skipWS(input, pos);
 
     std::string type = "Variant";
-    if (startsWithKW(input, pos, "AS"))
-    {
+    if (startsWithKW(input, pos, "AS")) {
         pos += 2;
         pos = skipWS(input, pos);
         size_t typeStart = pos;
@@ -283,8 +258,7 @@ std::pair<std::string, std::string> BasicReplAdapter::extractDimInfo(const std::
     return {name, type};
 }
 
-std::string BasicReplAdapter::extractAssignTarget(const std::string &input) const
-{
+std::string BasicReplAdapter::extractAssignTarget(const std::string &input) const {
     size_t pos = skipWS(input);
     size_t idStart = pos;
     while (pos < input.size() &&
@@ -297,34 +271,29 @@ std::string BasicReplAdapter::extractAssignTarget(const std::string &input) cons
 // Source building
 // ---------------------------------------------------------------------------
 
-std::string BasicReplAdapter::buildSource(const std::string &input) const
-{
+std::string BasicReplAdapter::buildSource(const std::string &input) const {
     std::string src;
     src.reserve(2048);
 
     // SUB/FUNCTION definitions go first (they are top-level in BASIC)
-    for (const auto &[name, procSrc] : definedProcs_)
-    {
+    for (const auto &[name, procSrc] : definedProcs_) {
         src += procSrc;
         src += "\n\n";
     }
 
     // Replay persistent variable declarations and assignments
-    for (const auto &pv : persistentVars_)
-    {
+    for (const auto &pv : persistentVars_) {
         src += pv.dimStmt;
         src += "\n";
 
-        if (!pv.lastAssign.empty())
-        {
+        if (!pv.lastAssign.empty()) {
             src += pv.lastAssign;
             src += "\n";
         }
     }
 
     // Current user input as top-level code
-    if (!input.empty())
-    {
+    if (!input.empty()) {
         src += input;
         src += "\n";
     }
@@ -336,8 +305,7 @@ std::string BasicReplAdapter::buildSource(const std::string &input) const
 // Compilation helpers
 // ---------------------------------------------------------------------------
 
-bool BasicReplAdapter::tryCompileOnly(const std::string &source) const
-{
+bool BasicReplAdapter::tryCompileOnly(const std::string &source) const {
     using namespace il::frontends::basic;
     il::support::SourceManager sm;
     BasicCompilerOptions opts;
@@ -348,8 +316,7 @@ bool BasicReplAdapter::tryCompileOnly(const std::string &source) const
     return verification.hasValue();
 }
 
-EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
-{
+EvalResult BasicReplAdapter::compileAndRun(const std::string &source) {
     using namespace il::frontends::basic;
 
     EvalResult result;
@@ -358,8 +325,7 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
     BasicCompilerOptions opts;
     auto compileResult = compileBasic({source, "<repl>"}, opts, sm);
 
-    if (!compileResult.succeeded())
-    {
+    if (!compileResult.succeeded()) {
         std::ostringstream errStream;
         if (compileResult.emitter)
             compileResult.emitter->printAll(errStream);
@@ -369,8 +335,7 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
     }
 
     auto verification = il::verify::Verifier::verify(compileResult.module);
-    if (!verification)
-    {
+    if (!verification) {
         result.success = false;
         result.errorMessage = "Type error: " + verification.error().message;
         return result;
@@ -393,8 +358,7 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
     int pipeFds[2] = {-1, -1};
 
 #if defined(__unix__) || defined(__APPLE__)
-    if (pipe(pipeFds) == 0)
-    {
+    if (pipe(pipeFds) == 0) {
         savedStdout = dup(STDOUT_FILENO);
         dup2(pipeFds[1], STDOUT_FILENO);
         close(pipeFds[1]);
@@ -402,8 +366,7 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
         captured = true;
     }
 #elif defined(_WIN32)
-    if (_pipe(pipeFds, 65536, _O_BINARY) == 0)
-    {
+    if (_pipe(pipeFds, 65536, _O_BINARY) == 0) {
         savedStdout = _dup(_fileno(stdout));
         _dup2(pipeFds[1], _fileno(stdout));
         _close(pipeFds[1]);
@@ -415,8 +378,7 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
     bcVm.exec("main", {});
 
     std::string capturedOutput;
-    if (captured)
-    {
+    if (captured) {
         std::fflush(stdout);
 
 #if defined(__unix__) || defined(__APPLE__)
@@ -427,8 +389,7 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
         ssize_t n;
         int flags = fcntl(pipeFds[0], F_GETFL);
         fcntl(pipeFds[0], F_SETFL, flags | O_NONBLOCK);
-        while ((n = read(pipeFds[0], readBuf, sizeof(readBuf))) > 0)
-        {
+        while ((n = read(pipeFds[0], readBuf, sizeof(readBuf))) > 0) {
             capturedOutput.append(readBuf, static_cast<size_t>(n));
         }
         close(pipeFds[0]);
@@ -438,16 +399,14 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
 
         char readBuf[4096];
         int n;
-        while ((n = _read(pipeFds[0], readBuf, sizeof(readBuf))) > 0)
-        {
+        while ((n = _read(pipeFds[0], readBuf, sizeof(readBuf))) > 0) {
             capturedOutput.append(readBuf, static_cast<size_t>(n));
         }
         _close(pipeFds[0]);
 #endif
     }
 
-    if (bcVm.state() == viper::bytecode::VMState::Trapped)
-    {
+    if (bcVm.state() == viper::bytecode::VMState::Trapped) {
         result.success = false;
         result.trapped = true;
         result.errorMessage = "Runtime error: " + bcVm.trapMessage();
@@ -463,16 +422,13 @@ EvalResult BasicReplAdapter::compileAndRun(const std::string &source)
 // eval() — main REPL evaluation entry point
 // ---------------------------------------------------------------------------
 
-EvalResult BasicReplAdapter::eval(const std::string &input)
-{
+EvalResult BasicReplAdapter::eval(const std::string &input) {
     EvalResult result;
 
     // --- SUB / FUNCTION definitions ---
-    if (isSubOrFunc(input))
-    {
+    if (isSubOrFunc(input)) {
         std::string procName = extractProcName(input);
-        if (procName.empty())
-        {
+        if (procName.empty()) {
             result.success = false;
             result.errorMessage = "Could not parse SUB/FUNCTION name.";
             return result;
@@ -485,8 +441,7 @@ EvalResult BasicReplAdapter::eval(const std::string &input)
 
         definedProcs_[procName] = input;
         std::string testSrc = buildSource("");
-        if (!tryCompileOnly(testSrc))
-        {
+        if (!tryCompileOnly(testSrc)) {
             if (oldProcSrc.empty())
                 definedProcs_.erase(procName);
             else
@@ -509,8 +464,7 @@ EvalResult BasicReplAdapter::eval(const std::string &input)
 
     // --- Expression auto-print ---
     // Wrap the input with PRINT to display the result.
-    if (isLikelyExpression(input))
-    {
+    if (isLikelyExpression(input)) {
         // Strip trailing whitespace
         std::string expr = input;
         while (!expr.empty() && std::isspace(static_cast<unsigned char>(expr.back())))
@@ -518,8 +472,7 @@ EvalResult BasicReplAdapter::eval(const std::string &input)
 
         std::string wrapped = "PRINT " + expr;
         std::string testSource = buildSource(wrapped);
-        if (tryCompileOnly(testSource))
-        {
+        if (tryCompileOnly(testSource)) {
             result = compileAndRun(testSource);
             if (result.success)
                 result.resultType = ResultType::Statement;
@@ -530,12 +483,10 @@ EvalResult BasicReplAdapter::eval(const std::string &input)
     }
 
     // --- Variable assignment persistence ---
-    if (isAssignment(input))
-    {
+    if (isAssignment(input)) {
         std::string target = extractAssignTarget(input);
         BasicPersistentVar *pv = findPersistentVar(target);
-        if (pv)
-        {
+        if (pv) {
             std::string oldAssign = pv->lastAssign;
             std::string cleanInput = input;
             while (!cleanInput.empty() &&
@@ -546,8 +497,7 @@ EvalResult BasicReplAdapter::eval(const std::string &input)
             std::string source = buildSource("");
             result = compileAndRun(source);
 
-            if (!result.success)
-            {
+            if (!result.success) {
                 pv->lastAssign = oldAssign;
             }
             return result;
@@ -559,24 +509,19 @@ EvalResult BasicReplAdapter::eval(const std::string &input)
     result = compileAndRun(source);
 
     // Track new variable declarations on success
-    if (result.success && isDimDecl(input))
-    {
+    if (result.success && isDimDecl(input)) {
         auto [varName, varType] = extractDimInfo(input);
-        if (!varName.empty())
-        {
+        if (!varName.empty()) {
             std::string cleanDecl = input;
             while (!cleanDecl.empty() && std::isspace(static_cast<unsigned char>(cleanDecl.back())))
                 cleanDecl.pop_back();
 
             BasicPersistentVar *existing = findPersistentVar(varName);
-            if (existing)
-            {
+            if (existing) {
                 existing->dimStmt = cleanDecl;
                 existing->lastAssign.clear();
                 existing->type = varType;
-            }
-            else
-            {
+            } else {
                 persistentVars_.push_back({varName, varType, cleanDecl, ""});
             }
         }
@@ -592,8 +537,7 @@ EvalResult BasicReplAdapter::eval(const std::string &input)
 // Tab completion (BASIC keyword completion)
 // ---------------------------------------------------------------------------
 
-std::vector<std::string> BasicReplAdapter::complete(const std::string &input, size_t cursor)
-{
+std::vector<std::string> BasicReplAdapter::complete(const std::string &input, size_t cursor) {
     std::vector<std::string> matches;
 
     if (input.empty())
@@ -627,40 +571,34 @@ std::vector<std::string> BasicReplAdapter::complete(const std::string &input, si
         "PROPERTY", "GET",    "SET",      "NEW",    "NOTHING", "NULL",     "TRY",    "CATCH",
         "FINALLY",  "THROW",  "NAMESPACE"};
 
-    for (const char *kw : keywords)
-    {
+    for (const char *kw : keywords) {
         std::string kwStr(kw);
         if (kwStr.size() >= upperPrefix.size() &&
-            kwStr.compare(0, upperPrefix.size(), upperPrefix) == 0)
-        {
+            kwStr.compare(0, upperPrefix.size(), upperPrefix) == 0) {
             matches.push_back(beforeToken + kwStr + afterCursor);
         }
     }
 
     // Session variables
-    for (const auto &pv : persistentVars_)
-    {
+    for (const auto &pv : persistentVars_) {
         std::string upperName = pv.name;
         for (char &c : upperName)
             c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 
         if (upperName.size() >= upperPrefix.size() &&
-            upperName.compare(0, upperPrefix.size(), upperPrefix) == 0)
-        {
+            upperName.compare(0, upperPrefix.size(), upperPrefix) == 0) {
             matches.push_back(beforeToken + pv.name + afterCursor);
         }
     }
 
     // Session SUBs/FUNCTIONs
-    for (const auto &[name, src] : definedProcs_)
-    {
+    for (const auto &[name, src] : definedProcs_) {
         std::string upperName = name;
         for (char &c : upperName)
             c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 
         if (upperName.size() >= upperPrefix.size() &&
-            upperName.compare(0, upperPrefix.size(), upperPrefix) == 0)
-        {
+            upperName.compare(0, upperPrefix.size(), upperPrefix) == 0) {
             matches.push_back(beforeToken + name + afterCursor);
         }
     }
@@ -672,21 +610,17 @@ std::vector<std::string> BasicReplAdapter::complete(const std::string &input, si
 // Session state queries
 // ---------------------------------------------------------------------------
 
-std::vector<VarInfo> BasicReplAdapter::listVariables() const
-{
+std::vector<VarInfo> BasicReplAdapter::listVariables() const {
     std::vector<VarInfo> vars;
-    for (const auto &pv : persistentVars_)
-    {
+    for (const auto &pv : persistentVars_) {
         vars.push_back({pv.name, pv.type});
     }
     return vars;
 }
 
-std::vector<FuncInfo> BasicReplAdapter::listFunctions() const
-{
+std::vector<FuncInfo> BasicReplAdapter::listFunctions() const {
     std::vector<FuncInfo> funcs;
-    for (const auto &[name, src] : definedProcs_)
-    {
+    for (const auto &[name, src] : definedProcs_) {
         // Extract the signature: everything from name to end of first line
         size_t newline = src.find('\n');
         std::string sig = (newline != std::string::npos) ? src.substr(0, newline) : src;
@@ -695,8 +629,7 @@ std::vector<FuncInfo> BasicReplAdapter::listFunctions() const
     return funcs;
 }
 
-std::vector<std::string> BasicReplAdapter::listBinds() const
-{
+std::vector<std::string> BasicReplAdapter::listBinds() const {
     // BASIC has no bind system
     return {};
 }

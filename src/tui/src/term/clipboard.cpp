@@ -33,10 +33,8 @@
 #include <string>
 #include <string_view>
 
-namespace viper::tui::term
-{
-namespace
-{
+namespace viper::tui::term {
+namespace {
 static const char kB64Table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 /// @brief Encode a byte string into base64 for OSC payloads.
@@ -47,13 +45,11 @@ static const char kB64Table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstu
 ///          for latency-sensitive clipboard operations.
 /// @param in UTF-8 text to encode.
 /// @return Base64 string ready for insertion into an OSC 52 sequence.
-std::string base64_encode(std::string_view in)
-{
+std::string base64_encode(std::string_view in) {
     std::string out;
     out.reserve(((in.size() + 2) / 3) * 4);
     std::size_t i = 0;
-    while (i + 3 <= in.size())
-    {
+    while (i + 3 <= in.size()) {
         unsigned triple = (static_cast<unsigned char>(in[i]) << 16) |
                           (static_cast<unsigned char>(in[i + 1]) << 8) |
                           (static_cast<unsigned char>(in[i + 2]));
@@ -63,24 +59,19 @@ std::string base64_encode(std::string_view in)
         out.push_back(kB64Table[triple & 0x3F]);
         i += 3;
     }
-    if (i < in.size())
-    {
+    if (i < in.size()) {
         unsigned triple = static_cast<unsigned char>(in[i]) << 16;
         bool two = false;
-        if (i + 1 < in.size())
-        {
+        if (i + 1 < in.size()) {
             triple |= static_cast<unsigned char>(in[i + 1]) << 8;
             two = true;
         }
         out.push_back(kB64Table[(triple >> 18) & 0x3F]);
         out.push_back(kB64Table[(triple >> 12) & 0x3F]);
-        if (two)
-        {
+        if (two) {
             out.push_back(kB64Table[(triple >> 6) & 0x3F]);
             out.push_back('=');
-        }
-        else
-        {
+        } else {
             out.push_back('=');
             out.push_back('=');
         }
@@ -95,8 +86,7 @@ std::string base64_encode(std::string_view in)
 ///          clipboards emit identical sequences.
 /// @param text Clipboard text to transmit.
 /// @return Escape sequence that copies @p text into the terminal clipboard.
-std::string build_seq(std::string_view text)
-{
+std::string build_seq(std::string_view text) {
     std::string seq("\x1b]52;c;");
     seq += base64_encode(text);
     seq.push_back('\x07');
@@ -109,8 +99,7 @@ std::string build_seq(std::string_view text)
 ///          allows developers to opt out of clipboard writes in environments
 ///          where OSC 52 is unsupported or undesirable.
 /// @return @c true when OSC 52 emission should be skipped.
-bool osc52_disabled()
-{
+bool osc52_disabled() {
     const char *v = std::getenv("VIPERTUI_DISABLE_OSC52");
     return v && v[0] == '1';
 }
@@ -129,10 +118,8 @@ Osc52Clipboard::Osc52Clipboard(TermIO &io) : io_(io) {}
 ///          terminal, and flushes the output to ensure immediate delivery.
 /// @param text UTF-8 payload to copy to the clipboard.
 /// @return @c true when the copy succeeded; @c false if OSC 52 is disabled.
-bool Osc52Clipboard::copy(std::string_view text)
-{
-    if (osc52_disabled())
-    {
+bool Osc52Clipboard::copy(std::string_view text) {
+    if (osc52_disabled()) {
         return false;
     }
     io_.write(build_seq(text));
@@ -146,8 +133,7 @@ bool Osc52Clipboard::copy(std::string_view text)
 ///          programmatically while keeping the API symmetrical with the mock
 ///          clipboard used in tests.
 /// @return Always returns an empty string.
-std::string Osc52Clipboard::paste()
-{
+std::string Osc52Clipboard::paste() {
     return {};
 }
 
@@ -157,10 +143,8 @@ std::string Osc52Clipboard::paste()
 ///          same disable flag to accurately simulate runtime behaviour.
 /// @param text Clipboard text to encode.
 /// @return @c true when the sequence was recorded; @c false when disabled.
-bool MockClipboard::copy(std::string_view text)
-{
-    if (osc52_disabled())
-    {
+bool MockClipboard::copy(std::string_view text) {
+    if (osc52_disabled()) {
         last_.clear();
         return false;
     }
@@ -175,8 +159,7 @@ bool MockClipboard::copy(std::string_view text)
 ///          behaviour of terminal implementations that ignore malformed
 ///          payloads.
 /// @return Decoded clipboard contents, or an empty string on failure.
-std::string MockClipboard::paste()
-{
+std::string MockClipboard::paste() {
     // Expect: ESC ] 52 ; c ; <base64> BEL   (or ST terminator)
     auto find_last_semicolon = last_.rfind(';');
     if (find_last_semicolon == std::string::npos)
@@ -184,12 +167,10 @@ std::string MockClipboard::paste()
 
     // Find terminator: BEL (\x07) or ST (\x1b\\)
     std::size_t end = last_.find('\x07', find_last_semicolon + 1);
-    if (end == std::string::npos)
-    {
+    if (end == std::string::npos) {
         // Look for ST: ESC \\ terminator
         std::size_t esc = last_.find('\x1b', find_last_semicolon + 1);
-        if (esc != std::string::npos && esc + 1 < last_.size() && last_[esc + 1] == '\\')
-        {
+        if (esc != std::string::npos && esc + 1 < last_.size() && last_[esc + 1] == '\\') {
             end = esc;
         }
     }
@@ -199,8 +180,7 @@ std::string MockClipboard::paste()
     std::string_view b64 =
         std::string_view(last_).substr(find_last_semicolon + 1, end - (find_last_semicolon + 1));
 
-    auto dec = [](char c) -> int
-    {
+    auto dec = [](char c) -> int {
         if (c >= 'A' && c <= 'Z')
             return c - 'A';
         if (c >= 'a' && c <= 'z')
@@ -219,19 +199,16 @@ std::string MockClipboard::paste()
     std::string out;
     int val = 0;
     int valb = -8;
-    for (char c : b64)
-    {
+    for (char c : b64) {
         int d = dec(c);
-        if (d < 0)
-        {
+        if (d < 0) {
             if (d == -2)
                 break; // stop at padding
             continue;  // skip invalid
         }
         val = (val << 6) | d;
         valb += 6;
-        if (valb >= 0)
-        {
+        if (valb >= 0) {
             out.push_back(char((val >> valb) & 0xFF));
             valb -= 8;
         }
@@ -243,16 +220,14 @@ std::string MockClipboard::paste()
 /// @details Exposes @ref last_ so assertions can compare the emitted escape
 ///          sequence byte-for-byte against expected values.
 /// @return Reference to the internally stored sequence.
-const std::string &MockClipboard::last() const
-{
+const std::string &MockClipboard::last() const {
     return last_;
 }
 
 /// @brief Reset the captured OSC 52 sequence to an empty state.
 /// @details Clears @ref last_ so subsequent test scenarios begin with a clean
 ///          slate and do not accidentally observe earlier clipboard operations.
-void MockClipboard::clear()
-{
+void MockClipboard::clear() {
     last_.clear();
 }
 

@@ -25,8 +25,7 @@
 #include <cassert>
 #include <cstdio>
 
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -34,8 +33,7 @@ static void test_result(const char *name, bool passed)
 //=============================================================================
 // A-026: Deque heap allocation
 //=============================================================================
-static void test_deque_heap()
-{
+static void test_deque_heap() {
     printf("Testing Deque heap alloc (A-026):\n");
     void *d = rt_deque_new();
     test_result("Deque created", d != NULL);
@@ -52,8 +50,7 @@ static void test_deque_heap()
 //=============================================================================
 // A-027: SortedSet heap allocation
 //=============================================================================
-static void test_sortedset_heap()
-{
+static void test_sortedset_heap() {
     printf("Testing SortedSet heap alloc (A-027):\n");
     void *s = rt_sortedset_new();
     test_result("SortedSet created", s != NULL);
@@ -68,8 +65,7 @@ static void test_sortedset_heap()
 //=============================================================================
 // A-046: Future/Promise heap allocation
 //=============================================================================
-static void test_future_heap()
-{
+static void test_future_heap() {
     printf("Testing Future/Promise heap alloc (A-046):\n");
     void *p = rt_promise_new();
     test_result("Promise created", p != NULL);
@@ -88,8 +84,7 @@ static void test_future_heap()
 //=============================================================================
 // A-055: Timer heap allocation
 //=============================================================================
-static void test_timer_heap()
-{
+static void test_timer_heap() {
     printf("Testing Timer heap alloc (A-055):\n");
     rt_timer t = rt_timer_new();
     test_result("Timer created", t != NULL);
@@ -106,8 +101,7 @@ static void test_timer_heap()
 //=============================================================================
 // A-056: Tween heap allocation
 //=============================================================================
-static void test_tween_heap()
-{
+static void test_tween_heap() {
     printf("Testing Tween heap alloc (A-056):\n");
     rt_tween tw = rt_tween_new();
     test_result("Tween created", tw != NULL);
@@ -126,8 +120,7 @@ static void test_tween_heap()
 //=============================================================================
 // A-057: SmoothValue heap allocation
 //=============================================================================
-static void test_smoothvalue_heap()
-{
+static void test_smoothvalue_heap() {
     printf("Testing SmoothValue heap alloc (A-057):\n");
     rt_smoothvalue sv = rt_smoothvalue_new(0.0, 0.5);
     test_result("SmoothValue created", sv != NULL);
@@ -144,8 +137,7 @@ static void test_smoothvalue_heap()
 //=============================================================================
 // A-058: PathFollow heap allocation
 //=============================================================================
-static void test_pathfollow_heap()
-{
+static void test_pathfollow_heap() {
     printf("Testing PathFollow heap alloc (A-058):\n");
     rt_pathfollow pf = rt_pathfollow_new();
     test_result("PathFollow created", pf != NULL);
@@ -164,8 +156,7 @@ static void test_pathfollow_heap()
 //=============================================================================
 // A-059: ScreenFX heap allocation
 //=============================================================================
-static void test_screenfx_heap()
-{
+static void test_screenfx_heap() {
     printf("Testing ScreenFX heap alloc (A-059):\n");
     rt_screenfx fx = rt_screenfx_new();
     test_result("ScreenFX created", fx != NULL);
@@ -181,8 +172,7 @@ static void test_screenfx_heap()
 //=============================================================================
 // A-060: CollisionRect heap allocation
 //=============================================================================
-static void test_collision_heap()
-{
+static void test_collision_heap() {
     printf("Testing CollisionRect heap alloc (A-060):\n");
     rt_collision_rect r = rt_collision_rect_new(10.0, 20.0, 50.0, 30.0);
     test_result("CollisionRect created", r != NULL);
@@ -199,8 +189,7 @@ static void test_collision_heap()
 //=============================================================================
 // Entry Point
 //=============================================================================
-int main()
-{
+int main() {
     printf("=== RT Heap Allocation Tests (Phase 1) ===\n\n");
 
     test_deque_heap();

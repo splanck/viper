@@ -43,35 +43,30 @@ extern void rt_trap(const char *msg);
 #define MAX_ROUTE_SEGMENTS 32
 #define MAX_ROUTES 256
 
-typedef enum
-{
+typedef enum {
     SEG_LITERAL, // Exact match: "users"
     SEG_PARAM,   // Parameter capture: ":id"
     SEG_WILDCARD // Wildcard capture: "*path"
 } segment_type_t;
 
-typedef struct
-{
+typedef struct {
     segment_type_t type;
     char *value; // Literal text, or param name (without : or *)
 } segment_t;
 
-typedef struct
-{
+typedef struct {
     char *method;  // "GET", "POST", etc.
     char *pattern; // Original pattern string
     segment_t segments[MAX_ROUTE_SEGMENTS];
     int segment_count;
 } route_t;
 
-typedef struct
-{
+typedef struct {
     route_t routes[MAX_ROUTES];
     int route_count;
 } rt_http_router_impl;
 
-typedef struct
-{
+typedef struct {
     int route_index;
     char *pattern;
     void *params; // Map of param name -> value
@@ -82,8 +77,7 @@ typedef struct
 //=============================================================================
 
 /// @brief Parse a URL pattern into segments.
-static int parse_pattern(const char *pattern, segment_t *segments, int max_segments)
-{
+static int parse_pattern(const char *pattern, segment_t *segments, int max_segments) {
     if (!pattern || *pattern == '\0')
         return 0;
 
@@ -92,43 +86,33 @@ static int parse_pattern(const char *pattern, segment_t *segments, int max_segme
         p++; // Skip leading /
 
     int count = 0;
-    while (*p && count < max_segments)
-    {
+    while (*p && count < max_segments) {
         const char *end = strchr(p, '/');
         size_t len = end ? (size_t)(end - p) : strlen(p);
 
-        if (len == 0)
-        {
+        if (len == 0) {
             p = end ? end + 1 : p + strlen(p);
             continue;
         }
 
-        if (*p == ':' && len > 1)
-        {
+        if (*p == ':' && len > 1) {
             segments[count].type = SEG_PARAM;
             segments[count].value = (char *)malloc(len);
-            if (segments[count].value)
-            {
+            if (segments[count].value) {
                 memcpy(segments[count].value, p + 1, len - 1);
                 segments[count].value[len - 1] = '\0';
             }
-        }
-        else if (*p == '*' && len > 1)
-        {
+        } else if (*p == '*' && len > 1) {
             segments[count].type = SEG_WILDCARD;
             segments[count].value = (char *)malloc(len);
-            if (segments[count].value)
-            {
+            if (segments[count].value) {
                 memcpy(segments[count].value, p + 1, len - 1);
                 segments[count].value[len - 1] = '\0';
             }
-        }
-        else
-        {
+        } else {
             segments[count].type = SEG_LITERAL;
             segments[count].value = (char *)malloc(len + 1);
-            if (segments[count].value)
-            {
+            if (segments[count].value) {
                 memcpy(segments[count].value, p, len);
                 segments[count].value[len] = '\0';
             }
@@ -147,8 +131,7 @@ static int parse_pattern(const char *pattern, segment_t *segments, int max_segme
 
 /// @brief Match a request path against a parsed route.
 /// @return params Map on match, NULL on no match.
-static void *match_route(const route_t *route, const char *path)
-{
+static void *match_route(const route_t *route, const char *path) {
     if (!path || *path == '\0')
         path = "/";
 
@@ -159,12 +142,10 @@ static void *match_route(const route_t *route, const char *path)
     void *params = rt_map_new();
     int seg_idx = 0;
 
-    while (seg_idx < route->segment_count)
-    {
+    while (seg_idx < route->segment_count) {
         const segment_t *seg = &route->segments[seg_idx];
 
-        if (seg->type == SEG_WILDCARD)
-        {
+        if (seg->type == SEG_WILDCARD) {
             // Capture the rest of the path
             size_t rest_len = strlen(p);
             rt_string name = rt_string_from_bytes(seg->value, strlen(seg->value));
@@ -181,26 +162,21 @@ static void *match_route(const route_t *route, const char *path)
         const char *seg_end = strchr(p, '/');
         size_t seg_len = seg_end ? (size_t)(seg_end - p) : strlen(p);
 
-        if (seg_len == 0 && *p == '\0')
-        {
+        if (seg_len == 0 && *p == '\0') {
             // Path exhausted but route has more segments
             if (rt_obj_release_check0(params))
                 rt_obj_free(params);
             return NULL;
         }
 
-        if (seg->type == SEG_LITERAL)
-        {
+        if (seg->type == SEG_LITERAL) {
             // Exact match required
-            if (strlen(seg->value) != seg_len || strncmp(seg->value, p, seg_len) != 0)
-            {
+            if (strlen(seg->value) != seg_len || strncmp(seg->value, p, seg_len) != 0) {
                 if (rt_obj_release_check0(params))
                     rt_obj_free(params);
                 return NULL;
             }
-        }
-        else if (seg->type == SEG_PARAM)
-        {
+        } else if (seg->type == SEG_PARAM) {
             // Capture parameter
             rt_string name = rt_string_from_bytes(seg->value, strlen(seg->value));
             rt_string val = rt_string_from_bytes(p, seg_len);
@@ -215,8 +191,7 @@ static void *match_route(const route_t *route, const char *path)
     // Check that path is fully consumed (allow trailing /)
     while (*p == '/')
         p++;
-    if (*p != '\0')
-    {
+    if (*p != '\0') {
         if (rt_obj_release_check0(params))
             rt_obj_free(params);
         return NULL;
@@ -229,8 +204,7 @@ static void *match_route(const route_t *route, const char *path)
 // Finalizers
 //=============================================================================
 
-static void free_route(route_t *route)
-{
+static void free_route(route_t *route) {
     free(route->method);
     free(route->pattern);
     for (int i = 0; i < route->segment_count; i++)
@@ -238,8 +212,7 @@ static void free_route(route_t *route)
     memset(route, 0, sizeof(*route));
 }
 
-static void rt_http_router_finalize(void *obj)
-{
+static void rt_http_router_finalize(void *obj) {
     if (!obj)
         return;
     rt_http_router_impl *router = (rt_http_router_impl *)obj;
@@ -247,8 +220,7 @@ static void rt_http_router_finalize(void *obj)
         free_route(&router->routes[i]);
 }
 
-static void rt_route_match_finalize(void *obj)
-{
+static void rt_route_match_finalize(void *obj) {
     if (!obj)
         return;
     rt_route_match_impl *match = (rt_route_match_impl *)obj;
@@ -263,8 +235,7 @@ static void rt_route_match_finalize(void *obj)
 // Public API
 //=============================================================================
 
-void *rt_http_router_new(void)
-{
+void *rt_http_router_new(void) {
     rt_http_router_impl *router =
         (rt_http_router_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_http_router_impl));
     if (!router)
@@ -274,8 +245,7 @@ void *rt_http_router_new(void)
     return router;
 }
 
-static void *add_route(void *obj, const char *method, const char *pattern)
-{
+static void *add_route(void *obj, const char *method, const char *pattern) {
     if (!obj)
         rt_trap("HttpRouter: NULL router");
 
@@ -292,8 +262,7 @@ static void *add_route(void *obj, const char *method, const char *pattern)
     return obj;
 }
 
-void *rt_http_router_add(void *router, rt_string method, rt_string pattern)
-{
+void *rt_http_router_add(void *router, rt_string method, rt_string pattern) {
     const char *m = rt_string_cstr(method);
     const char *p = rt_string_cstr(pattern);
     if (!m || !p)
@@ -301,28 +270,23 @@ void *rt_http_router_add(void *router, rt_string method, rt_string pattern)
     return add_route(router, m, p);
 }
 
-void *rt_http_router_get(void *router, rt_string pattern)
-{
+void *rt_http_router_get(void *router, rt_string pattern) {
     return add_route(router, "GET", rt_string_cstr(pattern));
 }
 
-void *rt_http_router_post(void *router, rt_string pattern)
-{
+void *rt_http_router_post(void *router, rt_string pattern) {
     return add_route(router, "POST", rt_string_cstr(pattern));
 }
 
-void *rt_http_router_put(void *router, rt_string pattern)
-{
+void *rt_http_router_put(void *router, rt_string pattern) {
     return add_route(router, "PUT", rt_string_cstr(pattern));
 }
 
-void *rt_http_router_delete(void *router, rt_string pattern)
-{
+void *rt_http_router_delete(void *router, rt_string pattern) {
     return add_route(router, "DELETE", rt_string_cstr(pattern));
 }
 
-void *rt_http_router_match(void *obj, rt_string method, rt_string path)
-{
+void *rt_http_router_match(void *obj, rt_string method, rt_string path) {
     if (!obj)
         return NULL;
 
@@ -332,8 +296,7 @@ void *rt_http_router_match(void *obj, rt_string method, rt_string path)
     if (!m || !p)
         return NULL;
 
-    for (int i = 0; i < router->route_count; i++)
-    {
+    for (int i = 0; i < router->route_count; i++) {
         route_t *route = &router->routes[i];
 
         // Check method match
@@ -342,13 +305,11 @@ void *rt_http_router_match(void *obj, rt_string method, rt_string path)
 
         // Try path match
         void *params = match_route(route, p);
-        if (params)
-        {
+        if (params) {
             // Create match object
             rt_route_match_impl *match =
                 (rt_route_match_impl *)rt_obj_new_i64(0, (int64_t)sizeof(rt_route_match_impl));
-            if (!match)
-            {
+            if (!match) {
                 if (rt_obj_release_check0(params))
                     rt_obj_free(params);
                 return NULL;
@@ -365,15 +326,13 @@ void *rt_http_router_match(void *obj, rt_string method, rt_string path)
     return NULL; // No match
 }
 
-int64_t rt_http_router_count(void *obj)
-{
+int64_t rt_http_router_count(void *obj) {
     if (!obj)
         return 0;
     return ((rt_http_router_impl *)obj)->route_count;
 }
 
-rt_string rt_route_match_param(void *obj, rt_string name)
-{
+rt_string rt_route_match_param(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_route_match_impl *match = (rt_route_match_impl *)obj;
@@ -386,15 +345,13 @@ rt_string rt_route_match_param(void *obj, rt_string name)
     return (rt_string)val;
 }
 
-int64_t rt_route_match_index(void *obj)
-{
+int64_t rt_route_match_index(void *obj) {
     if (!obj)
         return -1;
     return ((rt_route_match_impl *)obj)->route_index;
 }
 
-rt_string rt_route_match_pattern(void *obj)
-{
+rt_string rt_route_match_pattern(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_route_match_impl *match = (rt_route_match_impl *)obj;

@@ -19,8 +19,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -29,8 +28,7 @@ static void test_result(const char *name, bool passed)
 // TempFile Tests
 //=============================================================================
 
-static void test_tempfile()
-{
+static void test_tempfile() {
     printf("Testing TempFile:\n");
 
     // Test 1: Dir returns a valid path
@@ -68,8 +66,7 @@ static void test_tempfile()
         // Check file was created (it should exist)
         FILE *f = fopen(rt_string_cstr(path), "r");
         test_result("Create creates file", f != NULL);
-        if (f)
-        {
+        if (f) {
             fclose(f);
             // Clean up
             remove(rt_string_cstr(path));
@@ -91,8 +88,7 @@ static void test_tempfile()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT TempFile Tests ===\n\n");
 
     test_tempfile();

@@ -24,13 +24,11 @@
 #include <type_traits>
 #include <utility>
 
-namespace il::support
-{
+namespace il::support {
 using Diag = Diagnostic;
 
 /// @brief Tag type selecting the value constructor for Expected<Diag>.
-struct SuccessDiagTag
-{
+struct SuccessDiagTag {
     explicit SuccessDiagTag() = default;
 };
 
@@ -41,17 +39,14 @@ inline constexpr SuccessDiagTag kSuccessDiag{};
 /// @tparam T Stored value type when the operation succeeds.
 /// @note Mirrors a subset of std::expected for tool-only usage until the
 ///       standard type becomes universally available on our toolchain.
-template <class T> class Expected
-{
+template <class T> class Expected {
   public:
     /// @brief Construct a successful result containing @p value.
     /// @param value Value produced by a successful computation.
     /// @details Enabled only when the provided value does not decay to Diag to
     ///          avoid colliding with the diagnostic constructor below.
     template <class U = T, class = std::enable_if_t<!std::is_same_v<std::decay_t<U>, Diag>>>
-    Expected(U &&value) : value_(std::forward<U>(value))
-    {
-    }
+    Expected(U &&value) : value_(std::forward<U>(value)) {}
 
     /// @brief Construct an error result holding diagnostic @p diag.
     /// @param diag Diagnostic to return to the caller.
@@ -61,47 +56,39 @@ template <class T> class Expected
     /// @param tag Tag used to disambiguate value-vs-error construction.
     /// @param value Diagnostic stored as the success payload.
     template <class U = T, std::enable_if_t<std::is_same_v<U, Diag>, int> = 0>
-    Expected(SuccessDiagTag, Diag value) : value_(std::move(value))
-    {
-    }
+    Expected(SuccessDiagTag, Diag value) : value_(std::move(value)) {}
 
     /// @brief Create a successful Expected<Diag> from a diagnostic payload.
     /// @param tag Tag selecting the success overload.
     /// @param value Diagnostic stored as the success payload.
     template <class U = T, std::enable_if_t<std::is_same_v<U, Diag>, int> = 0>
-    static Expected success(SuccessDiagTag tag, Diag value)
-    {
+    static Expected success(SuccessDiagTag tag, Diag value) {
         return Expected(tag, std::move(value));
     }
 
     /// @brief Check whether a value is present.
     /// @return True when the Expected stores a value.
-    [[nodiscard]] bool hasValue() const
-    {
+    [[nodiscard]] bool hasValue() const {
         return value_.has_value();
     }
 
     /// @brief Allow use in boolean contexts to test success.
-    explicit operator bool() const
-    {
+    explicit operator bool() const {
         return hasValue();
     }
 
     /// @brief Access the stored value; requires hasValue().
-    T &value()
-    {
+    T &value() {
         return *value_;
     }
 
     /// @brief Access the stored value; requires hasValue().
-    const T &value() const
-    {
+    const T &value() const {
         return *value_;
     }
 
     /// @brief Access the diagnostic describing the failure.
-    const Diag &error() const &
-    {
+    const Diag &error() const & {
         return *error_;
     }
 
@@ -111,8 +98,7 @@ template <class T> class Expected
 };
 
 /// @brief Expected specialization for void success type.
-template <> class Expected<void>
-{
+template <> class Expected<void> {
   public:
     /// @brief Construct a successful result with no payload.
     Expected() = default;
@@ -134,8 +120,7 @@ template <> class Expected<void>
     std::optional<Diag> error_;
 };
 
-namespace detail
-{
+namespace detail {
 /// @brief Convert diagnostic severity to lowercase string.
 const char *diagSeverityToString(Severity severity);
 } // namespace detail

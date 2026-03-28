@@ -23,8 +23,7 @@
 
 #include "frontends/basic/BuiltinRegistry.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 using semantic_analyzer_detail::builtinName;
 
@@ -38,8 +37,7 @@ using semantic_analyzer_detail::builtinName;
 ///
 /// @param c Builtin call AST node to analyse.
 /// @return Resulting semantic type inferred for the call.
-SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExpr &c)
-{
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExpr &c) {
     std::vector<Type> argTys;
     for (auto &a : c.args)
         argTys.push_back(a ? visitExpr(*a) : Type::Unknown);
@@ -65,10 +63,8 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinCall(const BuiltinCallExp
 bool SemanticAnalyzer::checkArgCount(const BuiltinCallExpr &c,
                                      const std::vector<Type> &args,
                                      size_t min,
-                                     size_t max)
-{
-    if (args.size() < min || args.size() > max)
-    {
+                                     size_t max) {
+    if (args.size() < min || args.size() > max) {
         std::ostringstream oss;
         oss << builtinName(c.builtin) << ": expected ";
         if (min == max)
@@ -97,8 +93,7 @@ bool SemanticAnalyzer::checkArgCount(const BuiltinCallExpr &c,
 bool SemanticAnalyzer::checkArgType(const BuiltinCallExpr &c,
                                     size_t idx,
                                     Type argTy,
-                                    std::span<const Type> allowed)
-{
+                                    std::span<const Type> allowed) {
     if (argTy == Type::Unknown)
         return true;
     // Special case: STR$ accepts BOOLEAN (fixes BUG-012)
@@ -110,8 +105,7 @@ bool SemanticAnalyzer::checkArgType(const BuiltinCallExpr &c,
     il::support::SourceLoc loc = (idx < c.args.size() && c.args[idx]) ? c.args[idx]->loc : c.loc;
     bool wantString = false;
     bool wantNumber = false;
-    for (Type t : allowed)
-    {
+    for (Type t : allowed) {
         if (t == Type::String)
             wantString = true;
         if (t == Type::Int || t == Type::Float)
@@ -130,8 +124,7 @@ bool SemanticAnalyzer::checkArgType(const BuiltinCallExpr &c,
     return false;
 }
 
-namespace
-{
+namespace {
 using SemanticType = SemanticAnalyzer::Type;
 using BuiltinArgSpec = SemanticAnalyzer::BuiltinArgSpec;
 using BuiltinSignature = SemanticAnalyzer::BuiltinSignature;
@@ -254,8 +247,7 @@ static constexpr std::array<BuiltinSignature, 41> kBuiltinSignatures{{
 /// @param builtin Builtin enumerator to inspect.
 /// @return Reference to the static signature describing arity and result type.
 const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
-    BuiltinCallExpr::Builtin builtin)
-{
+    BuiltinCallExpr::Builtin builtin) {
     using B = BuiltinCallExpr::Builtin;
     // Single-source truth for argument counts for key runtime builtins that were
     // added later; avoid relying on a potentially out-of-sync static table.
@@ -282,8 +274,7 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
                                           /*args*/ nullptr,
                                           /*count*/ 0,
                                           /*result*/ Type::Int};
-    switch (builtin)
-    {
+    switch (builtin) {
         case B::Argc:
             return kArgcSig;
         case B::ArgGet:
@@ -296,8 +287,7 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
             break;
     }
     // Prefer a full semantic signature view from the registry when available.
-    if (const auto *view = getBuiltinSemanticSignature(builtin))
-    {
+    if (const auto *view = getBuiltinSemanticSignature(builtin)) {
         static BuiltinSignature cached; // reused per-call; safe since we return a reference
         cached.requiredArgs = view->minArgs;
         cached.optionalArgs =
@@ -312,11 +302,9 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
             Type::Int, Type::Float, Type::String, Type::Bool};
 
         auto maskToAllowed =
-            [&](BuiltinArgTypeMask m) -> std::pair<const SemanticAnalyzer::Type *, std::size_t>
-        {
+            [&](BuiltinArgTypeMask m) -> std::pair<const SemanticAnalyzer::Type *, std::size_t> {
             using M = BuiltinArgTypeMask;
-            switch (m)
-            {
+            switch (m) {
                 case M::Int:
                     return {allowedInt, 1};
                 case M::Float:
@@ -336,8 +324,7 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
         };
 
         const std::size_t n = std::min<std::size_t>(view->argCount, 8);
-        for (std::size_t i = 0; i < n; ++i)
-        {
+        for (std::size_t i = 0; i < n; ++i) {
             argSpecs[i].optional = view->args[i].optional;
             auto [ptr, cnt] = maskToAllowed(view->args[i].allowed);
             argSpecs[i].allowed = ptr;
@@ -345,8 +332,7 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
         }
         cached.arguments = (n > 0) ? argSpecs : nullptr;
         cached.argumentCount = n;
-        switch (view->result)
-        {
+        switch (view->result) {
             case BuiltinResultKind::Int:
                 cached.result = Type::Int;
                 break;
@@ -372,8 +358,7 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
         (idx < kBuiltinSignatures.size()) ? kBuiltinSignatures[idx] : kDefault;
     static BuiltinSignature scratch;
     scratch = legacy;
-    switch (getBuiltinFixedResult(builtin))
-    {
+    switch (getBuiltinFixedResult(builtin)) {
         case BuiltinResultKind::Int:
             scratch.result = Type::Int;
             break;
@@ -402,8 +387,7 @@ const SemanticAnalyzer::BuiltinSignature &SemanticAnalyzer::builtinSignature(
 /// @return @c true when the invocation satisfies the signature.
 bool SemanticAnalyzer::validateBuiltinArgs(const BuiltinCallExpr &c,
                                            const std::vector<Type> &args,
-                                           const BuiltinSignature &signature)
-{
+                                           const BuiltinSignature &signature) {
     // Derive arity from the BuiltinRegistry to avoid table drift.
     const auto arity = getBuiltinArity(c.builtin);
     const std::size_t minArgs = arity.minArgs;
@@ -418,22 +402,18 @@ bool SemanticAnalyzer::validateBuiltinArgs(const BuiltinCallExpr &c,
         signature.argumentCount > args.size() ? signature.argumentCount - args.size() : 0;
     std::size_t argIndex = 0;
     for (std::size_t specIndex = 0; specIndex < signature.argumentCount && argIndex < args.size();
-         ++specIndex)
-    {
+         ++specIndex) {
         const BuiltinArgSpec &spec = signature.arguments[specIndex];
-        if (spec.optional && missing > 0)
-        {
+        if (spec.optional && missing > 0) {
             const std::size_t remainingSpecs = signature.argumentCount - specIndex - 1;
             const std::size_t remainingArgs = args.size() - argIndex;
-            if (remainingSpecs >= remainingArgs)
-            {
+            if (remainingSpecs >= remainingArgs) {
                 --missing;
                 continue;
             }
         }
 
-        if (spec.allowed != nullptr && spec.allowedCount > 0)
-        {
+        if (spec.allowed != nullptr && spec.allowedCount > 0) {
             std::span<const Type> allowed(spec.allowed, spec.allowedCount);
             checkArgType(c, argIndex, args[argIndex], allowed);
         }
@@ -454,8 +434,7 @@ bool SemanticAnalyzer::validateBuiltinArgs(const BuiltinCallExpr &c,
 /// @param signature Signature describing arity and return type.
 /// @return Semantic type produced by the builtin.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinWithSignature(
-    const BuiltinCallExpr &c, const std::vector<Type> &args, const BuiltinSignature &signature)
-{
+    const BuiltinCallExpr &c, const std::vector<Type> &args, const BuiltinSignature &signature) {
     validateBuiltinArgs(c, args, signature);
     return signature.result;
 }
@@ -473,8 +452,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBuiltinWithSignature(
 /// @return Resulting semantic type for the call.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeAbs(const BuiltinCallExpr &c,
                                                     const std::vector<Type> &args,
-                                                    const BuiltinSignature &signature)
-{
+                                                    const BuiltinSignature &signature) {
     const bool countOk = validateBuiltinArgs(c, args, signature);
     if (!countOk || args.empty())
         return Type::Int;
@@ -501,8 +479,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeAbs(const BuiltinCallExpr &c,
 /// @return Resulting semantic type for the call.
 SemanticAnalyzer::Type SemanticAnalyzer::analyzeInstr(const BuiltinCallExpr &c,
                                                       const std::vector<Type> &args,
-                                                      const BuiltinSignature &signature)
-{
+                                                      const BuiltinSignature &signature) {
     validateBuiltinArgs(c, args, signature);
     return signature.result;
 }

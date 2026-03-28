@@ -14,40 +14,35 @@
 #include <cstdio>
 #include <cstdlib>
 
-extern "C"
-{
-    void rt_randomize_i64(long long seed);
-    double rt_rnd(void);
-    long long rt_rand_int(long long max);
-    long long rt_rand_range(long long min, long long max);
-    double rt_rand_gaussian(double mean, double stddev);
-    double rt_rand_exponential(double lambda);
-    long long rt_rand_dice(long long sides);
-    long long rt_rand_chance(double probability);
+extern "C" {
+void rt_randomize_i64(long long seed);
+double rt_rnd(void);
+long long rt_rand_int(long long max);
+long long rt_rand_range(long long min, long long max);
+double rt_rand_gaussian(double mean, double stddev);
+double rt_rand_exponential(double lambda);
+long long rt_rand_dice(long long sides);
+long long rt_rand_chance(double probability);
 }
 
-static void test_rand_range()
-{
+static void test_rand_range() {
     printf("Testing rt_rand_range...\n");
     rt_randomize_i64(12345);
 
     // Test normal range
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         long long r = rt_rand_range(1, 10);
         assert(r >= 1 && r <= 10);
     }
 
     // Test inverted range (should auto-swap)
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         long long r = rt_rand_range(10, 1);
         assert(r >= 1 && r <= 10);
     }
 
     // Test single value range
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         long long r = rt_rand_range(5, 5);
         assert(r == 5);
     }
@@ -55,8 +50,7 @@ static void test_rand_range()
     printf("  PASSED\n");
 }
 
-static void test_rand_gaussian()
-{
+static void test_rand_gaussian() {
     printf("Testing rt_rand_gaussian...\n");
     rt_randomize_i64(12345);
 
@@ -67,8 +61,7 @@ static void test_rand_gaussian()
     const double mean = 100.0;
     const double stddev = 15.0;
 
-    for (int i = 0; i < N; i++)
-    {
+    for (int i = 0; i < N; i++) {
         double g = rt_rand_gaussian(mean, stddev);
         sum += g;
         sum_sq += g * g;
@@ -85,8 +78,7 @@ static void test_rand_gaussian()
     assert(fabs(sample_stddev - stddev) < stddev * 0.15);
 
     // Test zero stddev returns mean
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         double g = rt_rand_gaussian(50.0, 0.0);
         assert(g == 50.0);
     }
@@ -94,8 +86,7 @@ static void test_rand_gaussian()
     printf("  PASSED\n");
 }
 
-static void test_rand_exponential()
-{
+static void test_rand_exponential() {
     printf("Testing rt_rand_exponential...\n");
     rt_randomize_i64(12345);
 
@@ -104,8 +95,7 @@ static void test_rand_exponential()
     const int N = 10000;
     const double lambda = 2.0;
 
-    for (int i = 0; i < N; i++)
-    {
+    for (int i = 0; i < N; i++) {
         double e = rt_rand_exponential(lambda);
         assert(e >= 0.0); // Exponential is always non-negative
         sum += e;
@@ -124,23 +114,20 @@ static void test_rand_exponential()
     printf("  PASSED\n");
 }
 
-static void test_rand_dice()
-{
+static void test_rand_dice() {
     printf("Testing rt_rand_dice...\n");
     rt_randomize_i64(12345);
 
     // Test 6-sided die
     int counts[7] = {0};
-    for (int i = 0; i < 6000; i++)
-    {
+    for (int i = 0; i < 6000; i++) {
         long long d = rt_rand_dice(6);
         assert(d >= 1 && d <= 6);
         counts[d]++;
     }
 
     // Each side should appear roughly 1000 times (within 20%)
-    for (int i = 1; i <= 6; i++)
-    {
+    for (int i = 1; i <= 6; i++) {
         assert(counts[i] > 800 && counts[i] < 1200);
     }
 
@@ -152,16 +139,14 @@ static void test_rand_dice()
     printf("  PASSED\n");
 }
 
-static void test_rand_chance()
-{
+static void test_rand_chance() {
     printf("Testing rt_rand_chance...\n");
     rt_randomize_i64(12345);
 
     // Test 50% probability
     int trues = 0;
     const int N = 10000;
-    for (int i = 0; i < N; i++)
-    {
+    for (int i = 0; i < N; i++) {
         if (rt_rand_chance(0.5))
             trues++;
     }
@@ -171,8 +156,7 @@ static void test_rand_chance()
     assert(ratio > 0.45 && ratio < 0.55);
 
     // Test edge cases
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         assert(rt_rand_chance(0.0) == 0);
         assert(rt_rand_chance(1.0) == 1);
         assert(rt_rand_chance(-0.5) == 0);
@@ -182,8 +166,7 @@ static void test_rand_chance()
     printf("  PASSED\n");
 }
 
-static void test_determinism()
-{
+static void test_determinism() {
     printf("Testing determinism...\n");
 
     // Same seed should produce same sequence
@@ -217,8 +200,7 @@ static void test_determinism()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     printf("=== Random Distribution Tests ===\n");
 
     test_rand_range();

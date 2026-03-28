@@ -51,25 +51,21 @@
 
 #define WM_INITIAL_CAP 16
 
-typedef struct
-{
+typedef struct {
     rt_string key;
     void *value; // NOT retained (weak reference)
     int8_t occupied;
 } wm_entry;
 
-typedef struct
-{
+typedef struct {
     wm_entry *entries;
     int64_t capacity;
     int64_t count;
 } rt_weakmap_data;
 
-static uint64_t wm_hash_str(const char *s)
-{
+static uint64_t wm_hash_str(const char *s) {
     uint64_t h = 14695981039346656037ULL;
-    for (; *s; s++)
-    {
+    for (; *s; s++) {
         h ^= (uint64_t)(unsigned char)*s;
         h *= 1099511628211ULL;
     }
@@ -78,12 +74,10 @@ static uint64_t wm_hash_str(const char *s)
 
 static void wm_grow(rt_weakmap_data *data);
 
-static int64_t wm_find_slot(rt_weakmap_data *data, const char *key_cstr)
-{
+static int64_t wm_find_slot(rt_weakmap_data *data, const char *key_cstr) {
     uint64_t h = wm_hash_str(key_cstr);
     int64_t idx = (int64_t)(h % (uint64_t)data->capacity);
-    for (int64_t i = 0; i < data->capacity; i++)
-    {
+    for (int64_t i = 0; i < data->capacity; i++) {
         int64_t slot = (idx + i) % data->capacity;
         if (!data->entries[slot].occupied)
             return slot;
@@ -93,8 +87,7 @@ static int64_t wm_find_slot(rt_weakmap_data *data, const char *key_cstr)
     return -1;
 }
 
-static void wm_grow(rt_weakmap_data *data)
-{
+static void wm_grow(rt_weakmap_data *data) {
     int64_t old_cap = data->capacity;
     wm_entry *old_entries = data->entries;
 
@@ -104,10 +97,8 @@ static void wm_grow(rt_weakmap_data *data)
     data->entries = (wm_entry *)calloc((size_t)data->capacity, sizeof(wm_entry));
     data->count = 0;
 
-    for (int64_t i = 0; i < old_cap; i++)
-    {
-        if (old_entries[i].occupied)
-        {
+    for (int64_t i = 0; i < old_cap; i++) {
+        if (old_entries[i].occupied) {
             int64_t slot = wm_find_slot(data, rt_string_cstr(old_entries[i].key));
             data->entries[slot].key = old_entries[i].key;
             data->entries[slot].value = old_entries[i].value;
@@ -118,13 +109,10 @@ static void wm_grow(rt_weakmap_data *data)
     free(old_entries);
 }
 
-static void weakmap_finalizer(void *obj)
-{
+static void weakmap_finalizer(void *obj) {
     rt_weakmap_data *data = (rt_weakmap_data *)obj;
-    if (data->entries)
-    {
-        for (int64_t i = 0; i < data->capacity; i++)
-        {
+    if (data->entries) {
+        for (int64_t i = 0; i < data->capacity; i++) {
             if (data->entries[i].occupied && data->entries[i].key)
                 rt_string_unref(data->entries[i].key);
         }
@@ -135,8 +123,7 @@ static void weakmap_finalizer(void *obj)
 
 // --- Public API ---
 
-void *rt_weakmap_new(void)
-{
+void *rt_weakmap_new(void) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_weakmap_data));
     rt_weakmap_data *data = (rt_weakmap_data *)obj;
     data->entries = (wm_entry *)calloc(WM_INITIAL_CAP, sizeof(wm_entry));
@@ -151,8 +138,7 @@ void *rt_weakmap_new(void)
 /// @brief Perform weakmap len operation.
 /// @param map
 /// @return Result value.
-int64_t rt_weakmap_len(void *map)
-{
+int64_t rt_weakmap_len(void *map) {
     if (!map)
         return 0;
     return ((rt_weakmap_data *)map)->count;
@@ -161,8 +147,7 @@ int64_t rt_weakmap_len(void *map)
 /// @brief Perform weakmap is empty operation.
 /// @param map
 /// @return Result value.
-int8_t rt_weakmap_is_empty(void *map)
-{
+int8_t rt_weakmap_is_empty(void *map) {
     return rt_weakmap_len(map) == 0 ? 1 : 0;
 }
 
@@ -170,8 +155,7 @@ int8_t rt_weakmap_is_empty(void *map)
 /// @param map
 /// @param key
 /// @param value
-void rt_weakmap_set(void *map, rt_string key, void *value)
-{
+void rt_weakmap_set(void *map, rt_string key, void *value) {
     if (!map || !key)
         return;
     rt_weakmap_data *data = (rt_weakmap_data *)map;
@@ -185,13 +169,10 @@ void rt_weakmap_set(void *map, rt_string key, void *value)
     if (slot < 0)
         return;
 
-    if (data->entries[slot].occupied)
-    {
+    if (data->entries[slot].occupied) {
         // Update existing - don't retain/release value (weak)
         data->entries[slot].value = value;
-    }
-    else
-    {
+    } else {
         // New entry
         data->entries[slot].key = key;
         rt_obj_retain_maybe(key);
@@ -201,8 +182,7 @@ void rt_weakmap_set(void *map, rt_string key, void *value)
     }
 }
 
-void *rt_weakmap_get(void *map, rt_string key)
-{
+void *rt_weakmap_get(void *map, rt_string key) {
     if (!map || !key)
         return NULL;
     rt_weakmap_data *data = (rt_weakmap_data *)map;
@@ -216,8 +196,7 @@ void *rt_weakmap_get(void *map, rt_string key)
 /// @param map
 /// @param key
 /// @return Result value.
-int8_t rt_weakmap_has(void *map, rt_string key)
-{
+int8_t rt_weakmap_has(void *map, rt_string key) {
     if (!map || !key)
         return 0;
     rt_weakmap_data *data = (rt_weakmap_data *)map;
@@ -229,8 +208,7 @@ int8_t rt_weakmap_has(void *map, rt_string key)
 /// @param map
 /// @param key
 /// @return Result value.
-int8_t rt_weakmap_remove(void *map, rt_string key)
-{
+int8_t rt_weakmap_remove(void *map, rt_string key) {
     if (!map || !key)
         return 0;
     rt_weakmap_data *data = (rt_weakmap_data *)map;
@@ -246,8 +224,7 @@ int8_t rt_weakmap_remove(void *map, rt_string key)
 
     // Rehash subsequent entries to maintain open addressing
     int64_t next = (slot + 1) % data->capacity;
-    while (data->entries[next].occupied)
-    {
+    while (data->entries[next].occupied) {
         wm_entry tmp = data->entries[next];
         data->entries[next].occupied = 0;
         data->count--;
@@ -260,14 +237,12 @@ int8_t rt_weakmap_remove(void *map, rt_string key)
     return 1;
 }
 
-void *rt_weakmap_keys(void *map)
-{
+void *rt_weakmap_keys(void *map) {
     void *seq = rt_seq_new();
     if (!map)
         return seq;
     rt_weakmap_data *data = (rt_weakmap_data *)map;
-    for (int64_t i = 0; i < data->capacity; i++)
-    {
+    for (int64_t i = 0; i < data->capacity; i++) {
         if (data->entries[i].occupied)
             rt_seq_push(seq, data->entries[i].key);
     }
@@ -276,15 +251,12 @@ void *rt_weakmap_keys(void *map)
 
 /// @brief Perform weakmap clear operation.
 /// @param map
-void rt_weakmap_clear(void *map)
-{
+void rt_weakmap_clear(void *map) {
     if (!map)
         return;
     rt_weakmap_data *data = (rt_weakmap_data *)map;
-    for (int64_t i = 0; i < data->capacity; i++)
-    {
-        if (data->entries[i].occupied)
-        {
+    for (int64_t i = 0; i < data->capacity; i++) {
+        if (data->entries[i].occupied) {
             rt_string_unref(data->entries[i].key);
             data->entries[i].key = NULL;
             data->entries[i].value = NULL;
@@ -297,16 +269,14 @@ void rt_weakmap_clear(void *map)
 /// @brief Perform weakmap compact operation.
 /// @param map
 /// @return Result value.
-int64_t rt_weakmap_compact(void *map)
-{
+int64_t rt_weakmap_compact(void *map) {
     if (!map)
         return 0;
     rt_weakmap_data *data = (rt_weakmap_data *)map;
 
     // Count dead entries (NULL values)
     int64_t removed = 0;
-    for (int64_t i = 0; i < data->capacity; i++)
-    {
+    for (int64_t i = 0; i < data->capacity; i++) {
         if (data->entries[i].occupied && data->entries[i].value == NULL)
             removed++;
     }
@@ -325,22 +295,16 @@ int64_t rt_weakmap_compact(void *map)
     data->entries = fresh;
     data->count = 0;
 
-    for (int64_t i = 0; i < old_cap; i++)
-    {
-        if (old[i].occupied)
-        {
-            if (old[i].value == NULL)
-            {
+    for (int64_t i = 0; i < old_cap; i++) {
+        if (old[i].occupied) {
+            if (old[i].value == NULL) {
                 // Dead entry — release key, don't reinsert
                 rt_string_unref(old[i].key);
-            }
-            else
-            {
+            } else {
                 // Live entry — reinsert into fresh table
                 const char *key_cstr = rt_string_cstr(old[i].key);
                 int64_t slot = wm_find_slot(data, key_cstr);
-                if (slot >= 0)
-                {
+                if (slot >= 0) {
                     data->entries[slot] = old[i];
                     data->count++;
                 }

@@ -36,8 +36,7 @@
 
 using namespace il::core;
 
-namespace il::verify
-{
+namespace il::verify {
 using il::support::Expected;
 using il::support::makeError;
 
@@ -51,18 +50,14 @@ using il::support::makeError;
 /// @param bb Candidate handler block to validate.
 /// @return Optional handler signature when the block is well-formed.
 Expected<std::optional<HandlerSignature>> analyzeHandlerBlock(const Function &fn,
-                                                              const BasicBlock &bb)
-{
+                                                              const BasicBlock &bb) {
     if (bb.instructions.empty())
         return std::optional<HandlerSignature>{};
 
     const Instr &first = bb.instructions.front();
-    if (first.op != Opcode::EhEntry)
-    {
-        for (size_t idx = 1; idx < bb.instructions.size(); ++idx)
-        {
-            if (bb.instructions[idx].op == Opcode::EhEntry)
-            {
+    if (first.op != Opcode::EhEntry) {
+        for (size_t idx = 1; idx < bb.instructions.size(); ++idx) {
+            if (bb.instructions[idx].op == Opcode::EhEntry) {
                 return Expected<std::optional<HandlerSignature>>{
                     makeError(bb.instructions[idx].loc,
                               formatInstrDiag(

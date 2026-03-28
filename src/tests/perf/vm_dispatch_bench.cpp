@@ -44,8 +44,7 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 constexpr size_t kLoopIterations = 500'000;
 constexpr size_t kBenchmarkRuns = 3;
@@ -53,11 +52,9 @@ constexpr size_t kBranchIterations = 200'000;
 constexpr size_t kMemoryIterations = 100'000;
 constexpr size_t kCallIterations = 100'000;
 
-int64_t computeExpectedSum(size_t iterations)
-{
+int64_t computeExpectedSum(size_t iterations) {
     int64_t sum = 0;
-    for (size_t i = 0; i < iterations; ++i)
-    {
+    for (size_t i = 0; i < iterations; ++i) {
         const int64_t idx = static_cast<int64_t>(i);
         const int64_t tmp1 = idx + 1;
         const int64_t tmp2 = tmp1 * 2;
@@ -69,8 +66,7 @@ int64_t computeExpectedSum(size_t iterations)
     return sum;
 }
 
-Module buildArithmeticModule(size_t iterations)
-{
+Module buildArithmeticModule(size_t iterations) {
     Module module;
 
     Function fn;
@@ -222,14 +218,12 @@ Module buildArithmeticModule(size_t iterations)
     return module;
 }
 
-struct BenchResult
-{
+struct BenchResult {
     double milliseconds;
     int64_t checksum;
 };
 
-BenchResult runDispatchBench(const char *mode, size_t iterations)
-{
+BenchResult runDispatchBench(const char *mode, size_t iterations) {
     if (mode != nullptr)
         ::setenv("VIPER_DISPATCH", mode, 1);
     else
@@ -245,8 +239,7 @@ BenchResult runDispatchBench(const char *mode, size_t iterations)
 
     int64_t total = 0;
     const auto start = std::chrono::steady_clock::now();
-    for (size_t i = 0; i < kBenchmarkRuns; ++i)
-    {
+    for (size_t i = 0; i < kBenchmarkRuns; ++i) {
         const int64_t result = vm.run();
         if (result != expected)
             throw std::runtime_error("benchmark run produced unexpected result");
@@ -263,17 +256,14 @@ BenchResult runDispatchBench(const char *mode, size_t iterations)
     return BenchResult{elapsedMs, total};
 }
 
-class DispatchEnvGuard
-{
+class DispatchEnvGuard {
   public:
-    DispatchEnvGuard()
-    {
+    DispatchEnvGuard() {
         if (const char *value = std::getenv("VIPER_DISPATCH"); value != nullptr)
             original = value;
     }
 
-    ~DispatchEnvGuard()
-    {
+    ~DispatchEnvGuard() {
         if (original.has_value())
             ::setenv("VIPER_DISPATCH", original->c_str(), 1);
         else
@@ -286,8 +276,7 @@ class DispatchEnvGuard
 
 } // namespace
 
-int main()
-{
+int main() {
     DispatchEnvGuard guard;
 
     const BenchResult table = runDispatchBench("table", kLoopIterations);
@@ -297,16 +286,14 @@ int main()
     const BenchResult threaded = runDispatchBench("threaded", kLoopIterations);
 #endif
 
-    if (table.checksum != switchResult.checksum)
-    {
+    if (table.checksum != switchResult.checksum) {
         std::cerr << "Dispatch benchmark checksum mismatch between table and switch modes."
                   << std::endl;
         return 1;
     }
 
 #if VIPER_THREADING_SUPPORTED
-    if (table.checksum != threaded.checksum)
-    {
+    if (table.checksum != threaded.checksum) {
         std::cerr << "Dispatch benchmark checksum mismatch between table and threaded modes."
                   << std::endl;
         return 1;

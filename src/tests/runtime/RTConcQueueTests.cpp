@@ -14,26 +14,22 @@
 #include <cstring>
 #include <thread>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_new()
-{
+static void test_new() {
     void *q = rt_concqueue_new();
     assert(q != NULL);
     assert(rt_concqueue_len(q) == 0);
     assert(rt_concqueue_is_empty(q) == 1);
 }
 
-static void test_enqueue_dequeue()
-{
+static void test_enqueue_dequeue() {
     void *q = rt_concqueue_new();
     rt_string v1 = make_str("first");
     rt_string v2 = make_str("second");
@@ -47,14 +43,12 @@ static void test_enqueue_dequeue()
     assert(rt_concqueue_len(q) == 0);
 }
 
-static void test_try_dequeue_empty()
-{
+static void test_try_dequeue_empty() {
     void *q = rt_concqueue_new();
     assert(rt_concqueue_try_dequeue(q) == NULL);
 }
 
-static void test_peek()
-{
+static void test_peek() {
     void *q = rt_concqueue_new();
     rt_string v = make_str("peeked");
     rt_concqueue_enqueue(q, v);
@@ -63,8 +57,7 @@ static void test_peek()
     assert(rt_concqueue_len(q) == 1); // Still there
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *q = rt_concqueue_new();
     rt_concqueue_enqueue(q, make_str("a"));
     rt_concqueue_enqueue(q, make_str("b"));
@@ -75,26 +68,22 @@ static void test_clear()
     assert(rt_concqueue_try_dequeue(q) == NULL);
 }
 
-static void test_timeout_empty()
-{
+static void test_timeout_empty() {
     void *q = rt_concqueue_new();
     // Should return NULL after ~10ms timeout
     void *result = rt_concqueue_dequeue_timeout(q, 10);
     assert(result == NULL);
 }
 
-static void producer_fn(void *queue, int count)
-{
-    for (int i = 0; i < count; i++)
-    {
+static void producer_fn(void *queue, int count) {
+    for (int i = 0; i < count; i++) {
         char buf[32];
         snprintf(buf, sizeof(buf), "item_%d", i);
         rt_concqueue_enqueue(queue, make_str(buf));
     }
 }
 
-static void test_concurrent_produce_consume()
-{
+static void test_concurrent_produce_consume() {
     void *q = rt_concqueue_new();
     const int N = 100;
 
@@ -102,8 +91,7 @@ static void test_concurrent_produce_consume()
 
     // Consumer: dequeue all N items
     int received = 0;
-    while (received < N)
-    {
+    while (received < N) {
         void *item = rt_concqueue_dequeue_timeout(q, 500);
         if (item)
             received++;
@@ -114,8 +102,7 @@ static void test_concurrent_produce_consume()
     assert(rt_concqueue_len(q) == 0);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_concqueue_len(NULL) == 0);
     assert(rt_concqueue_is_empty(NULL) == 1);
     assert(rt_concqueue_try_dequeue(NULL) == NULL);
@@ -124,8 +111,7 @@ static void test_null_safety()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_new();
     test_enqueue_dequeue();
     test_try_dequeue_empty();

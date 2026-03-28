@@ -26,32 +26,27 @@ using namespace viper::server;
 
 // ===== check() =====
 
-TEST(BasicBridge, CheckValidSource)
-{
+TEST(BasicBridge, CheckValidSource) {
     BasicCompilerBridge bridge;
     auto diags = bridge.check("PRINT 42\nEND\n", "test.bas");
-    for (const auto &d : diags)
-    {
+    for (const auto &d : diags) {
         EXPECT_TRUE(d.severity != 2);
     }
 }
 
-TEST(BasicBridge, CheckReportsError)
-{
+TEST(BasicBridge, CheckReportsError) {
     BasicCompilerBridge bridge;
     auto diags = bridge.check("PRINT x + \nEND\n", "test.bas");
     EXPECT_TRUE(diags.size() > 0u);
     bool hasError = false;
-    for (const auto &d : diags)
-    {
+    for (const auto &d : diags) {
         if (d.severity == 2)
             hasError = true;
     }
     EXPECT_TRUE(hasError);
 }
 
-TEST(BasicBridge, CheckReturnsDiagnosticFields)
-{
+TEST(BasicBridge, CheckReturnsDiagnosticFields) {
     BasicCompilerBridge bridge;
     auto diags = bridge.check("PRINT x + \nEND\n", "test.bas");
     EXPECT_TRUE(diags.size() > 0u);
@@ -60,19 +55,16 @@ TEST(BasicBridge, CheckReturnsDiagnosticFields)
 
 // ===== compile() =====
 
-TEST(BasicBridge, CompileValidSource)
-{
+TEST(BasicBridge, CompileValidSource) {
     BasicCompilerBridge bridge;
     auto result = bridge.compile("PRINT 42\nEND\n", "test.bas");
     EXPECT_TRUE(result.succeeded);
-    for (const auto &d : result.diagnostics)
-    {
+    for (const auto &d : result.diagnostics) {
         EXPECT_TRUE(d.severity != 2);
     }
 }
 
-TEST(BasicBridge, CompileInvalidSource)
-{
+TEST(BasicBridge, CompileInvalidSource) {
     BasicCompilerBridge bridge;
     auto result = bridge.compile("PRINT x + \nEND\n", "test.bas");
     // May or may not succeed depending on error recovery, but should not crash
@@ -81,8 +73,7 @@ TEST(BasicBridge, CompileInvalidSource)
 
 // ===== completions() =====
 
-TEST(BasicBridge, CompletionsReturnsResults)
-{
+TEST(BasicBridge, CompletionsReturnsResults) {
     BasicCompilerBridge bridge;
     std::string source = "DIM x AS INTEGER\nPRI\n";
     auto items = bridge.completions(source, 2, 4, "test.bas");
@@ -90,8 +81,7 @@ TEST(BasicBridge, CompletionsReturnsResults)
     EXPECT_TRUE(items.size() > 0u);
 }
 
-TEST(BasicBridge, CompletionsAtEmptyPosition)
-{
+TEST(BasicBridge, CompletionsAtEmptyPosition) {
     BasicCompilerBridge bridge;
     std::string source = "DIM x AS INTEGER\n\n";
     auto items = bridge.completions(source, 2, 1, "test.bas");
@@ -102,8 +92,7 @@ TEST(BasicBridge, CompletionsAtEmptyPosition)
 
 // ===== hover() =====
 
-TEST(BasicBridge, HoverOnVariable)
-{
+TEST(BasicBridge, HoverOnVariable) {
     BasicCompilerBridge bridge;
     // Line 2: "PRINT x" — cursor on 'x' at col 7
     // Note: BASIC lexer uppercases all identifiers, so hover returns "X" not "x"
@@ -114,8 +103,7 @@ TEST(BasicBridge, HoverOnVariable)
     EXPECT_TRUE(result.find("INTEGER") != std::string::npos);
 }
 
-TEST(BasicBridge, HoverOnConst)
-{
+TEST(BasicBridge, HoverOnConst) {
     BasicCompilerBridge bridge;
     // CONST names are already uppercase in source, so they match directly
     std::string source = "CONST MAX = 100\nPRINT MAX\nEND\n";
@@ -125,30 +113,26 @@ TEST(BasicBridge, HoverOnConst)
     EXPECT_TRUE(result.find("CONST") != std::string::npos);
 }
 
-TEST(BasicBridge, HoverOnSubName)
-{
+TEST(BasicBridge, HoverOnSubName) {
     BasicCompilerBridge bridge;
     // BASIC lexer uppercases: "Hello" → "HELLO"
     std::string source = "SUB Hello()\n  PRINT \"hi\"\nEND SUB\nHello\nEND\n";
     auto result = bridge.hover(source, 4, 1, "test.bas");
     // Should find the SUB declaration (uppercase)
-    if (!result.empty())
-    {
+    if (!result.empty()) {
         EXPECT_TRUE(result.find("HELLO") != std::string::npos);
         EXPECT_TRUE(result.find("SUB") != std::string::npos);
     }
 }
 
-TEST(BasicBridge, HoverOnWhitespace)
-{
+TEST(BasicBridge, HoverOnWhitespace) {
     BasicCompilerBridge bridge;
     std::string source = "DIM x AS INTEGER\n   PRINT x\nEND\n";
     auto result = bridge.hover(source, 2, 1, "test.bas");
     EXPECT_TRUE(result.empty());
 }
 
-TEST(BasicBridge, HoverOnInvalidSource)
-{
+TEST(BasicBridge, HoverOnInvalidSource) {
     BasicCompilerBridge bridge;
     auto result = bridge.hover("this is not valid basic", 1, 1, "test.bas");
     // Should not crash; empty result is acceptable
@@ -157,28 +141,24 @@ TEST(BasicBridge, HoverOnInvalidSource)
 
 // ===== symbols() =====
 
-TEST(BasicBridge, SymbolsListsDeclarations)
-{
+TEST(BasicBridge, SymbolsListsDeclarations) {
     BasicCompilerBridge bridge;
     // BASIC lexer uppercases all identifiers
     auto syms = bridge.symbols("DIM x AS INTEGER\nPRINT x\nEND\n", "test.bas");
     bool foundX = false;
-    for (const auto &s : syms)
-    {
+    for (const auto &s : syms) {
         if (s.name == "X")
             foundX = true;
     }
     EXPECT_TRUE(foundX);
 }
 
-TEST(BasicBridge, SymbolsIncludesProcedures)
-{
+TEST(BasicBridge, SymbolsIncludesProcedures) {
     BasicCompilerBridge bridge;
     // BASIC lexer uppercases: "Hello" → "HELLO"
     auto syms = bridge.symbols("SUB Hello()\n  PRINT \"hi\"\nEND SUB\nHello\nEND\n", "test.bas");
     bool foundHello = false;
-    for (const auto &s : syms)
-    {
+    for (const auto &s : syms) {
         if (s.name == "HELLO" || s.name == "Hello")
             foundHello = true;
     }
@@ -187,16 +167,14 @@ TEST(BasicBridge, SymbolsIncludesProcedures)
 
 // ===== dumpIL() =====
 
-TEST(BasicBridge, DumpILValidSource)
-{
+TEST(BasicBridge, DumpILValidSource) {
     BasicCompilerBridge bridge;
     auto il = bridge.dumpIL("PRINT 42\nEND\n", "test.bas", false);
     EXPECT_TRUE(il.find("Compilation failed") == std::string::npos);
     EXPECT_TRUE(!il.empty());
 }
 
-TEST(BasicBridge, DumpILInvalidSource)
-{
+TEST(BasicBridge, DumpILInvalidSource) {
     BasicCompilerBridge bridge;
     auto il = bridge.dumpIL("PRINT x + \nEND\n", "test.bas", false);
     // Should contain error message or partial output — should not crash
@@ -205,16 +183,14 @@ TEST(BasicBridge, DumpILInvalidSource)
 
 // ===== dumpAst() =====
 
-TEST(BasicBridge, DumpAstValidSource)
-{
+TEST(BasicBridge, DumpAstValidSource) {
     BasicCompilerBridge bridge;
     auto ast = bridge.dumpAst("PRINT 42\nEND\n", "test.bas");
     EXPECT_TRUE(!ast.empty());
     EXPECT_TRUE(ast != "(no AST produced)");
 }
 
-TEST(BasicBridge, DumpAstInvalidSyntax)
-{
+TEST(BasicBridge, DumpAstInvalidSyntax) {
     BasicCompilerBridge bridge;
     auto ast = bridge.dumpAst("this is not valid basic source", "test.bas");
     // May produce partial AST or "(no AST produced)" — should not crash
@@ -223,8 +199,7 @@ TEST(BasicBridge, DumpAstInvalidSyntax)
 
 // ===== dumpTokens() =====
 
-TEST(BasicBridge, DumpTokensValidSource)
-{
+TEST(BasicBridge, DumpTokensValidSource) {
     BasicCompilerBridge bridge;
     auto tokens = bridge.dumpTokens("PRINT 42\nEND\n", "test.bas");
     EXPECT_TRUE(!tokens.empty());
@@ -232,8 +207,7 @@ TEST(BasicBridge, DumpTokensValidSource)
                 tokens.find("Print") != std::string::npos);
 }
 
-TEST(BasicBridge, DumpTokensEmptySource)
-{
+TEST(BasicBridge, DumpTokensEmptySource) {
     BasicCompilerBridge bridge;
     auto tokens = bridge.dumpTokens("", "test.bas");
     // Empty source should produce empty or near-empty token output
@@ -242,41 +216,35 @@ TEST(BasicBridge, DumpTokensEmptySource)
 
 // ===== runtimeClasses() =====
 
-TEST(BasicBridge, RuntimeClassesNotEmpty)
-{
+TEST(BasicBridge, RuntimeClassesNotEmpty) {
     BasicCompilerBridge bridge;
     auto classes = bridge.runtimeClasses();
     EXPECT_TRUE(classes.size() > 0u);
 }
 
-TEST(BasicBridge, RuntimeClassesHaveNames)
-{
+TEST(BasicBridge, RuntimeClassesHaveNames) {
     BasicCompilerBridge bridge;
     auto classes = bridge.runtimeClasses();
-    for (const auto &cls : classes)
-    {
+    for (const auto &cls : classes) {
         EXPECT_TRUE(!cls.qname.empty());
     }
 }
 
 // ===== runtimeMembers() =====
 
-TEST(BasicBridge, RuntimeMembersForKnownClass)
-{
+TEST(BasicBridge, RuntimeMembersForKnownClass) {
     BasicCompilerBridge bridge;
     auto members = bridge.runtimeMembers("Viper.Terminal");
     EXPECT_TRUE(members.size() > 0u);
     bool foundSay = false;
-    for (const auto &m : members)
-    {
+    for (const auto &m : members) {
         if (m.name == "Say")
             foundSay = true;
     }
     EXPECT_TRUE(foundSay);
 }
 
-TEST(BasicBridge, RuntimeMembersForUnknownClass)
-{
+TEST(BasicBridge, RuntimeMembersForUnknownClass) {
     BasicCompilerBridge bridge;
     auto members = bridge.runtimeMembers("NonExistent.Class");
     EXPECT_EQ(members.size(), 0u);
@@ -284,22 +252,19 @@ TEST(BasicBridge, RuntimeMembersForUnknownClass)
 
 // ===== runtimeSearch() =====
 
-TEST(BasicBridge, RuntimeSearchFindsResults)
-{
+TEST(BasicBridge, RuntimeSearchFindsResults) {
     BasicCompilerBridge bridge;
     auto results = bridge.runtimeSearch("Say");
     EXPECT_TRUE(results.size() > 0u);
 }
 
-TEST(BasicBridge, RuntimeSearchNoResults)
-{
+TEST(BasicBridge, RuntimeSearchNoResults) {
     BasicCompilerBridge bridge;
     auto results = bridge.runtimeSearch("zzzzNonExistentApiNamezzzz");
     EXPECT_EQ(results.size(), 0u);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

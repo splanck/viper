@@ -43,23 +43,19 @@
 using namespace il;
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Configuration for the stress test.
-struct StressConfig
-{
+struct StressConfig {
     int numThreads = 8;              ///< Number of concurrent threads.
     int iterationsPerThread = 100;   ///< Number of VM runs per thread.
     bool enableDebugLogging = false; ///< Enable verbose debug output.
 };
 
 /// @brief Thread-safe logging for debug output.
-class DebugLog
-{
+class DebugLog {
   public:
-    void log(int threadId, const std::string &msg)
-    {
+    void log(int threadId, const std::string &msg) {
         if (!enabled)
             return;
         std::lock_guard<std::mutex> lock(mutex);
@@ -78,8 +74,7 @@ DebugLog gDebugLog;
 /// @param threadId Thread identifier embedded in the result.
 /// @param iteration Iteration number embedded in the result.
 /// @return Module returning threadId * 10000 + iteration.
-Module buildSimpleModule(int threadId, int iteration)
-{
+Module buildSimpleModule(int threadId, int iteration) {
     Module module;
     build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -97,8 +92,7 @@ Module buildSimpleModule(int threadId, int iteration)
 /// @param threadId Thread identifier.
 /// @param iteration Iteration number.
 /// @return Module that computes threadId * 10000 + iteration using actual IL ops.
-Module buildArithmeticModule(int threadId, int iteration)
-{
+Module buildArithmeticModule(int threadId, int iteration) {
     Module module;
     build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -130,8 +124,7 @@ Module buildArithmeticModule(int threadId, int iteration)
 /// @param threadId Thread identifier for unique labeling.
 /// @param iteration Iteration for unique labeling.
 /// @return Module that calls Viper.Math.AbsInt and returns a known value.
-Module buildRuntimeCallModule(int threadId, int iteration)
-{
+Module buildRuntimeCallModule(int threadId, int iteration) {
     Module module;
     build::IRBuilder builder(module);
 
@@ -177,8 +170,7 @@ Module buildRuntimeCallModule(int threadId, int iteration)
 /// @param threadId Thread identifier.
 /// @param iteration Iteration number.
 /// @return Module that does multiple operations and returns threadId * 10000 + iteration.
-Module buildComplexArithmeticModule(int threadId, int iteration)
-{
+Module buildComplexArithmeticModule(int threadId, int iteration) {
     Module module;
     build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
@@ -230,8 +222,7 @@ Module buildComplexArithmeticModule(int threadId, int iteration)
 }
 
 /// @brief Statistics collected during stress test.
-struct StressStats
-{
+struct StressStats {
     std::atomic<int64_t> successfulRuns{0};
     std::atomic<int64_t> failedRuns{0};
     std::atomic<int64_t> contextMismatches{0};
@@ -242,78 +233,62 @@ struct StressStats
 /// @param threadId Unique identifier for this thread.
 /// @param config Test configuration.
 /// @param stats Shared statistics for verification.
-void runStressThread(int threadId, const StressConfig &config, StressStats &stats)
-{
+void runStressThread(int threadId, const StressConfig &config, StressStats &stats) {
     std::mt19937 rng(threadId * 12345 + 1);
     std::uniform_int_distribution<int> testDist(0, 2);
 
-    for (int iter = 0; iter < config.iterationsPerThread; ++iter)
-    {
+    for (int iter = 0; iter < config.iterationsPerThread; ++iter) {
         int testType = testDist(rng);
         gDebugLog.log(threadId,
                       "Iteration " + std::to_string(iter) + " type " + std::to_string(testType));
 
-        try
-        {
-            switch (testType)
-            {
-                case 0:
-                {
+        try {
+            switch (testType) {
+                case 0: {
                     // Simple arithmetic test
                     auto module = buildArithmeticModule(threadId, iter);
                     vm::VM vm(module);
                     int64_t result = vm.run();
                     int64_t expected = static_cast<int64_t>(threadId) * 10000 + iter;
-                    if (result != expected)
-                    {
+                    if (result != expected) {
                         gDebugLog.log(threadId,
                                       "MISMATCH: got " + std::to_string(result) + " expected " +
                                           std::to_string(expected));
                         stats.failedRuns++;
-                    }
-                    else
-                    {
+                    } else {
                         stats.successfulRuns++;
                     }
                     break;
                 }
-                case 1:
-                {
+                case 1: {
                     // Runtime call test
                     auto module = buildRuntimeCallModule(threadId, iter);
                     vm::VM vm(module);
                     int64_t result = vm.run();
                     // abs(-42) + threadId*10000 + iter = 42 + threadId*10000 + iter
                     int64_t expected = 42 + static_cast<int64_t>(threadId) * 10000 + iter;
-                    if (result != expected)
-                    {
+                    if (result != expected) {
                         gDebugLog.log(threadId,
                                       "RUNTIME MISMATCH: got " + std::to_string(result) +
                                           " expected " + std::to_string(expected));
                         stats.failedRuns++;
-                    }
-                    else
-                    {
+                    } else {
                         stats.successfulRuns++;
                     }
                     break;
                 }
-                case 2:
-                {
+                case 2: {
                     // Complex arithmetic test
                     auto module = buildComplexArithmeticModule(threadId, iter);
                     vm::VM vm(module);
                     int64_t result = vm.run();
                     int64_t expected = static_cast<int64_t>(threadId) * 10000 + iter;
-                    if (result != expected)
-                    {
+                    if (result != expected) {
                         gDebugLog.log(threadId,
                                       "COMPLEX MISMATCH: got " + std::to_string(result) +
                                           " expected " + std::to_string(expected));
                         stats.failedRuns++;
-                    }
-                    else
-                    {
+                    } else {
                         stats.successfulRuns++;
                     }
                     break;
@@ -321,14 +296,11 @@ void runStressThread(int threadId, const StressConfig &config, StressStats &stat
             }
 
             // Verify thread-local state is clean after each run
-            if (vm::activeVMInstance() != nullptr)
-            {
+            if (vm::activeVMInstance() != nullptr) {
                 gDebugLog.log(threadId, "ERROR: Active VM not null after run!");
                 stats.contextMismatches++;
             }
-        }
-        catch (const std::exception &e)
-        {
+        } catch (const std::exception &e) {
             gDebugLog.log(threadId, "Exception: " + std::string(e.what()));
             stats.failedRuns++;
         }
@@ -336,8 +308,7 @@ void runStressThread(int threadId, const StressConfig &config, StressStats &stat
 }
 
 /// @brief Test ActiveVMGuard nesting across callbacks.
-void testNestedCallbackGuards()
-{
+void testNestedCallbackGuards() {
     auto module = buildSimpleModule(999, 0);
     vm::VM vm(module);
 
@@ -364,8 +335,7 @@ void testNestedCallbackGuards()
 }
 
 /// @brief Test that clearing guard with nullptr works correctly.
-void testNullGuard()
-{
+void testNullGuard() {
     auto module = buildSimpleModule(0, 0);
     vm::VM vm(module);
 
@@ -384,37 +354,30 @@ void testNullGuard()
 }
 
 /// @brief Test rapid VM creation and destruction across threads.
-void testRapidVMLifecycle()
-{
+void testRapidVMLifecycle() {
     constexpr int kNumThreads = 4;
     constexpr int kIterations = 50;
     std::atomic<int> completedThreads{0};
     std::atomic<bool> anyFailure{false};
 
     std::vector<std::thread> threads;
-    for (int t = 0; t < kNumThreads; ++t)
-    {
-        threads.emplace_back(
-            [t, &completedThreads, &anyFailure]()
-            {
-                for (int i = 0; i < kIterations && !anyFailure; ++i)
-                {
-                    auto module = buildArithmeticModule(t, i);
-                    vm::VM vm(module);
-                    int64_t result = vm.run();
-                    int64_t expected = static_cast<int64_t>(t) * 10000 + i;
-                    if (result != expected)
-                    {
-                        anyFailure = true;
-                    }
-                    // Verify clean state
-                    if (vm::activeVMInstance() != nullptr)
-                    {
-                        anyFailure = true;
-                    }
+    for (int t = 0; t < kNumThreads; ++t) {
+        threads.emplace_back([t, &completedThreads, &anyFailure]() {
+            for (int i = 0; i < kIterations && !anyFailure; ++i) {
+                auto module = buildArithmeticModule(t, i);
+                vm::VM vm(module);
+                int64_t result = vm.run();
+                int64_t expected = static_cast<int64_t>(t) * 10000 + i;
+                if (result != expected) {
+                    anyFailure = true;
                 }
-                completedThreads++;
-            });
+                // Verify clean state
+                if (vm::activeVMInstance() != nullptr) {
+                    anyFailure = true;
+                }
+            }
+            completedThreads++;
+        });
     }
 
     for (auto &th : threads)
@@ -425,34 +388,26 @@ void testRapidVMLifecycle()
 }
 
 /// @brief Test interleaved runtime calls across threads.
-void testInterleavedRuntimeCalls()
-{
+void testInterleavedRuntimeCalls() {
     constexpr int kNumThreads = 4;
     std::atomic<int> successCount{0};
     std::atomic<bool> anyMismatch{false};
 
     std::vector<std::thread> threads;
-    for (int t = 0; t < kNumThreads; ++t)
-    {
-        threads.emplace_back(
-            [t, &successCount, &anyMismatch]()
-            {
-                for (int i = 0; i < 25 && !anyMismatch; ++i)
-                {
-                    auto module = buildRuntimeCallModule(t, i);
-                    vm::VM vm(module);
-                    int64_t result = vm.run();
-                    int64_t expected = 42 + static_cast<int64_t>(t) * 10000 + i;
-                    if (result != expected)
-                    {
-                        anyMismatch = true;
-                    }
-                    else
-                    {
-                        successCount++;
-                    }
+    for (int t = 0; t < kNumThreads; ++t) {
+        threads.emplace_back([t, &successCount, &anyMismatch]() {
+            for (int i = 0; i < 25 && !anyMismatch; ++i) {
+                auto module = buildRuntimeCallModule(t, i);
+                vm::VM vm(module);
+                int64_t result = vm.run();
+                int64_t expected = 42 + static_cast<int64_t>(t) * 10000 + i;
+                if (result != expected) {
+                    anyMismatch = true;
+                } else {
+                    successCount++;
                 }
-            });
+            }
+        });
     }
 
     for (auto &th : threads)
@@ -464,25 +419,18 @@ void testInterleavedRuntimeCalls()
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     StressConfig config;
 
     // Parse command line for debug mode
-    for (int i = 1; i < argc; ++i)
-    {
+    for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "--debug" || arg == "-d")
-        {
+        if (arg == "--debug" || arg == "-d") {
             config.enableDebugLogging = true;
             gDebugLog.enabled = true;
-        }
-        else if (arg == "--threads" && i + 1 < argc)
-        {
+        } else if (arg == "--threads" && i + 1 < argc) {
             config.numThreads = std::stoi(argv[++i]);
-        }
-        else if (arg == "--iterations" && i + 1 < argc)
-        {
+        } else if (arg == "--iterations" && i + 1 < argc) {
             config.iterationsPerThread = std::stoi(argv[++i]);
         }
     }
@@ -513,8 +461,7 @@ int main(int argc, char **argv)
     std::vector<std::thread> threads;
     threads.reserve(config.numThreads);
 
-    for (int t = 0; t < config.numThreads; ++t)
-    {
+    for (int t = 0; t < config.numThreads; ++t) {
         threads.emplace_back(runStressThread, t, std::cref(config), std::ref(stats));
     }
 

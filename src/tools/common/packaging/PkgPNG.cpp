@@ -30,13 +30,11 @@
 #include <cstring>
 #include <fstream>
 
-extern "C"
-{
-    uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
+extern "C" {
+uint32_t rt_crc32_compute(const uint8_t *data, size_t len);
 }
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 //=============================================================================
 // PNG Constants
@@ -48,14 +46,12 @@ static const uint8_t kPNGSignature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
 // Helpers
 //=============================================================================
 
-static uint32_t readBE32(const uint8_t *p)
-{
+static uint32_t readBE32(const uint8_t *p) {
     return (static_cast<uint32_t>(p[0]) << 24) | (static_cast<uint32_t>(p[1]) << 16) |
            (static_cast<uint32_t>(p[2]) << 8) | static_cast<uint32_t>(p[3]);
 }
 
-static void writeBE32(uint8_t *p, uint32_t v)
-{
+static void writeBE32(uint8_t *p, uint32_t v) {
     p[0] = static_cast<uint8_t>((v >> 24) & 0xFF);
     p[1] = static_cast<uint8_t>((v >> 16) & 0xFF);
     p[2] = static_cast<uint8_t>((v >> 8) & 0xFF);
@@ -63,14 +59,12 @@ static void writeBE32(uint8_t *p, uint32_t v)
 }
 
 /// @brief PNG CRC-32 over type + data bytes
-static uint32_t pngCRC(const uint8_t *data, size_t len)
-{
+static uint32_t pngCRC(const uint8_t *data, size_t len) {
     return rt_crc32_compute(data, len);
 }
 
 /// @brief Paeth predictor (RFC 2083)
-static uint8_t paethPredict(uint8_t a, uint8_t b, uint8_t c)
-{
+static uint8_t paethPredict(uint8_t a, uint8_t b, uint8_t c) {
     int p = static_cast<int>(a) + static_cast<int>(b) - static_cast<int>(c);
     int pa = p > static_cast<int>(a) ? p - static_cast<int>(a) : static_cast<int>(a) - p;
     int pb = p > static_cast<int>(b) ? p - static_cast<int>(b) : static_cast<int>(b) - p;
@@ -83,11 +77,9 @@ static uint8_t paethPredict(uint8_t a, uint8_t b, uint8_t c)
 }
 
 /// @brief Compute Adler-32 checksum
-static uint32_t adler32(const uint8_t *data, size_t len)
-{
+static uint32_t adler32(const uint8_t *data, size_t len) {
     uint32_t a = 1, b = 0;
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         a = (a + data[i]) % 65521;
         b = (b + a) % 65521;
     }
@@ -98,8 +90,7 @@ static uint32_t adler32(const uint8_t *data, size_t len)
 // PNG Reader
 //=============================================================================
 
-PkgImage pngReadMemory(const uint8_t *data, size_t len)
-{
+PkgImage pngReadMemory(const uint8_t *data, size_t len) {
     if (len < 8 || std::memcmp(data, kPNGSignature, 8) != 0)
         throw PNGError("PNG: invalid signature");
 
@@ -108,8 +99,7 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len)
     std::vector<uint8_t> idatBuf;
     size_t pos = 8;
 
-    while (pos + 12 <= len)
-    {
+    while (pos + 12 <= len) {
         uint32_t chunkLen = readBE32(data + pos);
         const uint8_t *chunkType = data + pos + 4;
         const uint8_t *chunkData = data + pos + 8;
@@ -117,21 +107,16 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len)
         if (pos + 12 + chunkLen > len)
             break;
 
-        if (std::memcmp(chunkType, "IHDR", 4) == 0 && chunkLen >= 13)
-        {
+        if (std::memcmp(chunkType, "IHDR", 4) == 0 && chunkLen >= 13) {
             width = readBE32(chunkData);
             height = readBE32(chunkData + 4);
             uint8_t bitDepth = chunkData[8];
             colorType = chunkData[9];
             if (bitDepth != 8 || (colorType != 2 && colorType != 6))
                 throw PNGError("PNG: unsupported format (need 8-bit RGB or RGBA)");
-        }
-        else if (std::memcmp(chunkType, "IDAT", 4) == 0)
-        {
+        } else if (std::memcmp(chunkType, "IDAT", 4) == 0) {
             idatBuf.insert(idatBuf.end(), chunkData, chunkData + chunkLen);
-        }
-        else if (std::memcmp(chunkType, "IEND", 4) == 0)
-        {
+        } else if (std::memcmp(chunkType, "IEND", 4) == 0) {
             break;
         }
 
@@ -153,22 +138,19 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len)
 
     // Apply scanline filters
     std::vector<uint8_t> img(stride * height);
-    for (uint32_t y = 0; y < height; y++)
-    {
+    for (uint32_t y = 0; y < height; y++) {
         uint8_t filter = raw[y * (stride + 1)];
         const uint8_t *src = raw.data() + y * (stride + 1) + 1;
         uint8_t *dst = img.data() + y * stride;
         const uint8_t *prev = (y > 0) ? img.data() + (y - 1) * stride : nullptr;
 
-        for (size_t i = 0; i < stride; i++)
-        {
+        for (size_t i = 0; i < stride; i++) {
             uint8_t rawByte = src[i];
             uint8_t a = (i >= static_cast<size_t>(channels)) ? dst[i - channels] : 0;
             uint8_t b = prev ? prev[i] : 0;
             uint8_t c = (prev && i >= static_cast<size_t>(channels)) ? prev[i - channels] : 0;
 
-            switch (filter)
-            {
+            switch (filter) {
                 case 0:
                     dst[i] = rawByte;
                     break;
@@ -197,10 +179,8 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len)
     result.height = height;
     result.pixels.resize(width * height * 4);
 
-    for (uint32_t y = 0; y < height; y++)
-    {
-        for (uint32_t x = 0; x < width; x++)
-        {
+    for (uint32_t y = 0; y < height; y++) {
+        for (uint32_t x = 0; x < width; x++) {
             const uint8_t *px = img.data() + (y * stride) + x * channels;
             uint8_t *dst = result.pixels.data() + (y * width + x) * 4;
             dst[0] = px[0];                          // R
@@ -213,8 +193,7 @@ PkgImage pngReadMemory(const uint8_t *data, size_t len)
     return result;
 }
 
-PkgImage pngRead(const std::string &path)
-{
+PkgImage pngRead(const std::string &path) {
     std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f)
         throw PNGError("PNG: cannot open " + path);
@@ -234,8 +213,10 @@ PkgImage pngRead(const std::string &path)
 //=============================================================================
 
 /// @brief Write a PNG chunk to a buffer.
-static void writeChunk(std::vector<uint8_t> &buf, const char *type, const uint8_t *data, size_t len)
-{
+static void writeChunk(std::vector<uint8_t> &buf,
+                       const char *type,
+                       const uint8_t *data,
+                       size_t len) {
     // Length (big-endian)
     uint8_t lenBuf[4];
     writeBE32(lenBuf, static_cast<uint32_t>(len));
@@ -256,8 +237,7 @@ static void writeChunk(std::vector<uint8_t> &buf, const char *type, const uint8_
     buf.insert(buf.end(), crcBuf, crcBuf + 4);
 }
 
-std::vector<uint8_t> pngEncode(const PkgImage &img)
-{
+std::vector<uint8_t> pngEncode(const PkgImage &img) {
     if (img.width == 0 || img.height == 0)
         throw PNGError("PNG: empty image");
 
@@ -283,8 +263,7 @@ std::vector<uint8_t> pngEncode(const PkgImage &img)
     size_t rawLen = (stride + 1) * img.height;
     std::vector<uint8_t> raw(rawLen);
 
-    for (uint32_t y = 0; y < img.height; y++)
-    {
+    for (uint32_t y = 0; y < img.height; y++) {
         raw[y * (stride + 1)] = 0; // Filter: None
         std::memcpy(raw.data() + y * (stride + 1) + 1, img.pixels.data() + y * stride, stride);
     }
@@ -311,8 +290,7 @@ std::vector<uint8_t> pngEncode(const PkgImage &img)
     return result;
 }
 
-void pngWrite(const std::string &path, const PkgImage &img)
-{
+void pngWrite(const std::string &path, const PkgImage &img) {
     auto data = pngEncode(img);
 
     std::ofstream out(path, std::ios::binary);
@@ -329,8 +307,7 @@ void pngWrite(const std::string &path, const PkgImage &img)
 // Bilinear Image Resize
 //=============================================================================
 
-PkgImage imageResize(const PkgImage &src, uint32_t newWidth, uint32_t newHeight)
-{
+PkgImage imageResize(const PkgImage &src, uint32_t newWidth, uint32_t newHeight) {
     if (newWidth == 0)
         newWidth = 1;
     if (newHeight == 0)
@@ -341,14 +318,12 @@ PkgImage imageResize(const PkgImage &src, uint32_t newWidth, uint32_t newHeight)
     result.height = newHeight;
     result.pixels.resize(newWidth * newHeight * 4);
 
-    if (src.width == 0 || src.height == 0)
-    {
+    if (src.width == 0 || src.height == 0) {
         std::memset(result.pixels.data(), 0, result.pixels.size());
         return result;
     }
 
-    for (uint32_t y = 0; y < newHeight; y++)
-    {
+    for (uint32_t y = 0; y < newHeight; y++) {
         // Map dest y to source y with 8-bit fractional part
         int64_t srcY256 = (static_cast<int64_t>(y) * src.height * 256) / newHeight;
         int64_t srcY = srcY256 >> 8;
@@ -362,8 +337,7 @@ PkgImage imageResize(const PkgImage &src, uint32_t newWidth, uint32_t newHeight)
         if (srcY >= static_cast<int64_t>(src.height) - 1)
             fracY = 255;
 
-        for (uint32_t x = 0; x < newWidth; x++)
-        {
+        for (uint32_t x = 0; x < newWidth; x++) {
             int64_t srcX256 = (static_cast<int64_t>(x) * src.width * 256) / newWidth;
             int64_t srcX = srcX256 >> 8;
             int64_t fracX = srcX256 & 0xFF;
@@ -386,8 +360,7 @@ PkgImage imageResize(const PkgImage &src, uint32_t newWidth, uint32_t newHeight)
             int64_t invFracY = 256 - fracY;
 
             uint8_t *dst = result.at(x, y);
-            for (int ch = 0; ch < 4; ch++)
-            {
+            for (int ch = 0; ch < 4; ch++) {
                 int64_t v = (p00[ch] * invFracX * invFracY + p10[ch] * fracX * invFracY +
                              p01[ch] * invFracX * fracY + p11[ch] * fracX * fracY) >>
                             16;

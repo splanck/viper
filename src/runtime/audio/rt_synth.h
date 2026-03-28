@@ -29,55 +29,52 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// Waveform type constants.
-    typedef enum
-    {
-        RT_WAVE_SINE = 0,
-        RT_WAVE_SQUARE = 1,
-        RT_WAVE_SAWTOOTH = 2,
-        RT_WAVE_TRIANGLE = 3,
-    } rt_wave_type_t;
+/// Waveform type constants.
+typedef enum {
+    RT_WAVE_SINE = 0,
+    RT_WAVE_SQUARE = 1,
+    RT_WAVE_SAWTOOTH = 2,
+    RT_WAVE_TRIANGLE = 3,
+} rt_wave_type_t;
 
-    /// SFX preset type constants.
-    typedef enum
-    {
-        RT_SFX_JUMP = 0,
-        RT_SFX_COIN = 1,
-        RT_SFX_HIT = 2,
-        RT_SFX_EXPLOSION = 3,
-        RT_SFX_POWERUP = 4,
-        RT_SFX_LASER = 5,
-    } rt_sfx_preset_t;
+/// SFX preset type constants.
+typedef enum {
+    RT_SFX_JUMP = 0,
+    RT_SFX_COIN = 1,
+    RT_SFX_HIT = 2,
+    RT_SFX_EXPLOSION = 3,
+    RT_SFX_POWERUP = 4,
+    RT_SFX_LASER = 5,
+} rt_sfx_preset_t;
 
-    /// @brief Generate a tone at a fixed frequency.
-    /// @param freq_hz Frequency in Hz (20-20000).
-    /// @param duration_ms Duration in milliseconds (1-10000).
-    /// @param waveform Waveform type (0=sine, 1=square, 2=saw, 3=triangle).
-    /// @return Sound object, or NULL on failure.
-    void *rt_synth_tone(int64_t freq_hz, int64_t duration_ms, int64_t waveform);
+/// @brief Generate a tone at a fixed frequency.
+/// @param freq_hz Frequency in Hz (20-20000).
+/// @param duration_ms Duration in milliseconds (1-10000).
+/// @param waveform Waveform type (0=sine, 1=square, 2=saw, 3=triangle).
+/// @return Sound object, or NULL on failure.
+void *rt_synth_tone(int64_t freq_hz, int64_t duration_ms, int64_t waveform);
 
-    /// @brief Generate a frequency sweep between two frequencies.
-    /// @param start_hz Starting frequency in Hz.
-    /// @param end_hz Ending frequency in Hz.
-    /// @param duration_ms Duration in milliseconds.
-    /// @param waveform Waveform type.
-    /// @return Sound object, or NULL on failure.
-    void *rt_synth_sweep(int64_t start_hz, int64_t end_hz, int64_t duration_ms, int64_t waveform);
+/// @brief Generate a frequency sweep between two frequencies.
+/// @param start_hz Starting frequency in Hz.
+/// @param end_hz Ending frequency in Hz.
+/// @param duration_ms Duration in milliseconds.
+/// @param waveform Waveform type.
+/// @return Sound object, or NULL on failure.
+void *rt_synth_sweep(int64_t start_hz, int64_t end_hz, int64_t duration_ms, int64_t waveform);
 
-    /// @brief Generate white noise.
-    /// @param duration_ms Duration in milliseconds.
-    /// @param volume Volume level (0-100).
-    /// @return Sound object, or NULL on failure.
-    void *rt_synth_noise(int64_t duration_ms, int64_t volume);
+/// @brief Generate white noise.
+/// @param duration_ms Duration in milliseconds.
+/// @param volume Volume level (0-100).
+/// @return Sound object, or NULL on failure.
+void *rt_synth_noise(int64_t duration_ms, int64_t volume);
 
-    /// @brief Generate a preset game sound effect.
-    /// @param sfx_type SFX type (0=jump, 1=coin, 2=hit, 3=explosion, 4=powerup, 5=laser).
-    /// @return Sound object, or NULL on failure.
-    void *rt_synth_sfx(int64_t sfx_type);
+/// @brief Generate a preset game sound effect.
+/// @param sfx_type SFX type (0=jump, 1=coin, 2=hit, 3=explosion, 4=powerup, 5=laser).
+/// @return Sound object, or NULL on failure.
+void *rt_synth_sfx(int64_t sfx_type);
 
 #ifdef __cplusplus
 }

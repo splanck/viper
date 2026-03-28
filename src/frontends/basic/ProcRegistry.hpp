@@ -65,31 +65,22 @@
 #include "frontends/basic/SemanticDiagnostics.hpp"
 #include "frontends/basic/ast/DeclNodes.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Hash functor for heterogeneous string lookup (C++20).
-struct ProcStringHash
-{
+struct ProcStringHash {
     using is_transparent = void;
 
-    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept
-    {
+    template <typename T> [[nodiscard]] std::size_t operator()(const T &key) const noexcept {
         return std::hash<std::string_view>{}(std::string_view(key));
     }
 };
 
-struct ProcSignature
-{
-    enum class Kind
-    {
-        Function,
-        Sub
-    } kind{Kind::Function};
+struct ProcSignature {
+    enum class Kind { Function, Sub } kind{Kind::Function};
     std::optional<Type> retType;
 
-    struct Param
-    {
+    struct Param {
         Type type{Type::I64};
         bool is_array{false};
     };
@@ -99,21 +90,15 @@ struct ProcSignature
 
 using ProcTable = std::unordered_map<std::string, ProcSignature, ProcStringHash, std::equal_to<>>;
 
-class ProcRegistry
-{
+class ProcRegistry {
   public:
     explicit ProcRegistry(SemanticDiagnostics &d);
 
     void clear();
 
-    enum class ProcKind : std::uint8_t
-    {
-        User,
-        BuiltinExtern
-    };
+    enum class ProcKind : std::uint8_t { User, BuiltinExtern };
 
-    struct ProcEntry
-    {
+    struct ProcEntry {
         const void *node{nullptr};
         il::support::SourceLoc loc{};
         ProcKind kind{ProcKind::User};
@@ -137,8 +122,7 @@ class ProcRegistry
     void seedRuntimeBuiltins();
 
   private:
-    struct ProcDescriptor
-    {
+    struct ProcDescriptor {
         ProcSignature::Kind kind;
         std::optional<Type> retType;
         std::span<const Param> params;

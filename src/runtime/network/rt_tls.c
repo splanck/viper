@@ -62,8 +62,7 @@ extern void rt_net_init_wsa(void);
 #define SEND_FLAGS 0
 #endif
 
-static void suppress_sigpipe(socket_t sock)
-{
+static void suppress_sigpipe(socket_t sock) {
 #if defined(__APPLE__) && defined(SO_NOSIGPIPE)
     int val = 1;
     setsockopt(sock, SOL_SOCKET, SO_NOSIGPIPE, &val, sizeof(val));
@@ -102,49 +101,42 @@ static void suppress_sigpipe(socket_t sock)
 // and struct rt_tls_session are defined in rt_tls_internal.h.
 
 // Helper: write big-endian uint16
-static void write_u16(uint8_t *p, uint16_t v)
-{
+static void write_u16(uint8_t *p, uint16_t v) {
     p[0] = (v >> 8) & 0xFF;
     p[1] = v & 0xFF;
 }
 
 // Helper: write big-endian uint24
-static void write_u24(uint8_t *p, uint32_t v)
-{
+static void write_u24(uint8_t *p, uint32_t v) {
     p[0] = (v >> 16) & 0xFF;
     p[1] = (v >> 8) & 0xFF;
     p[2] = v & 0xFF;
 }
 
 // Helper: read big-endian uint16
-static uint16_t read_u16(const uint8_t *p)
-{
+static uint16_t read_u16(const uint8_t *p) {
     return ((uint16_t)p[0] << 8) | p[1];
 }
 
 // Helper: read big-endian uint24
-static uint32_t read_u24(const uint8_t *p)
-{
+static uint32_t read_u24(const uint8_t *p) {
     return ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
 }
 
 // Update transcript hash.
 // Returns 0 on success, -1 if the buffer overflows (H-10 fix: abort instead of
 // silently hashing a truncated transcript which corrupts all key derivation).
-static void transcript_init(rt_tls_session_t *session)
-{
+static void transcript_init(rt_tls_session_t *session) {
     session->transcript_len = 0;
     rt_sha256_init(&session->transcript_ctx);
     rt_sha256(NULL, 0, session->transcript_hash);
 }
 
-static int transcript_update(rt_tls_session_t *session, const uint8_t *data, size_t len)
-{
+static int transcript_update(rt_tls_session_t *session, const uint8_t *data, size_t len) {
     if (session->error)
         return -1; // Already in error state
 
-    if (session->transcript_len + len > sizeof(session->transcript_buffer))
-    {
+    if (session->transcript_len + len > sizeof(session->transcript_buffer)) {
         session->error = "TLS: handshake transcript buffer overflow "
                          "(certificate chain too large)";
         return -1;
@@ -159,8 +151,7 @@ static int transcript_update(rt_tls_session_t *session, const uint8_t *data, siz
 }
 
 // Derive handshake traffic keys
-static void derive_handshake_keys(rt_tls_session_t *session, const uint8_t shared_secret[32])
-{
+static void derive_handshake_keys(rt_tls_session_t *session, const uint8_t shared_secret[32]) {
     uint8_t zero_key[32] = {0};
     uint8_t early_secret[32];
     uint8_t derived[32];
@@ -210,8 +201,7 @@ static void derive_handshake_keys(rt_tls_session_t *session, const uint8_t share
 }
 
 // Derive application traffic keys
-static void derive_application_keys(rt_tls_session_t *session)
-{
+static void derive_application_keys(rt_tls_session_t *session) {
     uint8_t derived[32];
     uint8_t zero_key[32] = {0};
     uint8_t empty_hash[32];
@@ -262,11 +252,9 @@ static void derive_application_keys(rt_tls_session_t *session)
 }
 
 // Build nonce from IV and sequence number
-static void build_nonce(const uint8_t iv[12], uint64_t seq, uint8_t nonce[12])
-{
+static void build_nonce(const uint8_t iv[12], uint64_t seq, uint8_t nonce[12]) {
     memcpy(nonce, iv, 12);
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         nonce[12 - 1 - i] ^= (seq >> (i * 8)) & 0xFF;
     }
 }
@@ -275,15 +263,13 @@ static void build_nonce(const uint8_t iv[12], uint64_t seq, uint8_t nonce[12])
 static int send_record(rt_tls_session_t *session,
                        uint8_t content_type,
                        const uint8_t *data,
-                       size_t len)
-{
+                       size_t len) {
     // ~32KB stack allocation (TLS_MAX_CIPHERTEXT). Consider heap allocation
     // if stack depth is a concern in deeply nested call chains.
     uint8_t record[5 + TLS_MAX_CIPHERTEXT];
     size_t record_len;
 
-    if (session->keys_established)
-    {
+    if (session->keys_established) {
         // Encrypted record
         uint8_t plaintext[TLS_MAX_RECORD_SIZE + 1];
         memcpy(plaintext, data, len);
@@ -310,15 +296,12 @@ static int send_record(rt_tls_session_t *session,
         record_len = 5 + ciphertext_len;
 
         // H-8: RFC 8446 §5.5 — close before sequence number wraps (nonce uniqueness)
-        if (++session->write_keys.seq_num == 0)
-        {
+        if (++session->write_keys.seq_num == 0) {
             session->error =
                 "TLS: write sequence number overflow; connection must be re-established";
             return RT_TLS_ERROR;
         }
-    }
-    else
-    {
+    } else {
         // Plaintext record
         record[0] = content_type;
         write_u16(record + 1, TLS_VERSION_1_2);
@@ -328,14 +311,12 @@ static int send_record(rt_tls_session_t *session,
     }
 
     size_t sent = 0;
-    while (sent < record_len)
-    {
+    while (sent < record_len) {
         int n = send(session->socket_fd,
                      (const char *)(record + sent),
                      (int)(record_len - sent),
                      SEND_FLAGS);
-        if (n < 0)
-        {
+        if (n < 0) {
             if (EINTR_CHECK)
                 continue;
             session->error = "send failed";
@@ -351,23 +332,19 @@ static int send_record(rt_tls_session_t *session,
 static int recv_record(rt_tls_session_t *session,
                        uint8_t *content_type,
                        uint8_t *data,
-                       size_t *data_len)
-{
+                       size_t *data_len) {
     // Read header
     uint8_t header[5];
     size_t pos = 0;
-    while (pos < 5)
-    {
+    while (pos < 5) {
         int n = recv(session->socket_fd, (char *)(header + pos), (int)(5 - pos), 0);
-        if (n < 0)
-        {
+        if (n < 0) {
             if (EINTR_CHECK || EAGAIN_CHECK)
                 continue;
             session->error = "recv header failed";
             return RT_TLS_ERROR_SOCKET;
         }
-        if (n == 0)
-        {
+        if (n == 0) {
             session->error = "connection closed";
             return RT_TLS_ERROR_CLOSED;
         }
@@ -377,8 +354,7 @@ static int recv_record(rt_tls_session_t *session,
     uint8_t type = header[0];
     size_t length = read_u16(header + 3);
 
-    if (length > TLS_MAX_CIPHERTEXT)
-    {
+    if (length > TLS_MAX_CIPHERTEXT) {
         session->error = "record too large";
         return RT_TLS_ERROR;
     }
@@ -386,26 +362,22 @@ static int recv_record(rt_tls_session_t *session,
     // Read payload
     uint8_t payload[TLS_MAX_CIPHERTEXT];
     pos = 0;
-    while (pos < length)
-    {
+    while (pos < length) {
         int n = recv(session->socket_fd, (char *)(payload + pos), (int)(length - pos), 0);
-        if (n < 0)
-        {
+        if (n < 0) {
             if (EINTR_CHECK || EAGAIN_CHECK)
                 continue;
             session->error = "recv payload failed";
             return RT_TLS_ERROR_SOCKET;
         }
-        if (n == 0)
-        {
+        if (n == 0) {
             session->error = "connection closed";
             return RT_TLS_ERROR_CLOSED;
         }
         pos += n;
     }
 
-    if (session->keys_established && type == TLS_CONTENT_APPLICATION)
-    {
+    if (session->keys_established && type == TLS_CONTENT_APPLICATION) {
         // Decrypt
         uint8_t aad[5];
         memcpy(aad, header, 5);
@@ -420,15 +392,13 @@ static int recv_record(rt_tls_session_t *session,
         else
             plaintext_len = rt_chacha20_poly1305_decrypt(
                 session->read_keys.key, nonce, aad, 5, payload, length, data);
-        if (plaintext_len < 0)
-        {
+        if (plaintext_len < 0) {
             session->error = "decryption failed";
             return RT_TLS_ERROR;
         }
 
         // H-8: RFC 8446 §5.5 — close before sequence number wraps (nonce uniqueness)
-        if (++session->read_keys.seq_num == 0)
-        {
+        if (++session->read_keys.seq_num == 0) {
             session->error =
                 "TLS: read sequence number overflow; connection must be re-established";
             return RT_TLS_ERROR;
@@ -437,16 +407,13 @@ static int recv_record(rt_tls_session_t *session,
         // Remove padding and get inner content type
         while (plaintext_len > 0 && data[plaintext_len - 1] == 0)
             plaintext_len--;
-        if (plaintext_len == 0)
-        {
+        if (plaintext_len == 0) {
             session->error = "empty inner record";
             return RT_TLS_ERROR;
         }
         *content_type = data[plaintext_len - 1];
         *data_len = plaintext_len - 1;
-    }
-    else
-    {
+    } else {
         // Plaintext record
         *content_type = type;
         memcpy(data, payload, length);
@@ -457,8 +424,7 @@ static int recv_record(rt_tls_session_t *session,
 }
 
 // Build and send ClientHello
-static int send_client_hello(rt_tls_session_t *session)
-{
+static int send_client_hello(rt_tls_session_t *session) {
     uint8_t msg[1024];
     size_t pos = 0;
 
@@ -491,11 +457,9 @@ static int send_client_hello(rt_tls_session_t *session)
     pos += 2; // Length placeholder
 
     // SNI extension
-    if (session->hostname[0] != '\0')
-    {
+    if (session->hostname[0] != '\0') {
         size_t name_len = strlen(session->hostname);
-        if (pos + name_len + 11 > sizeof(msg) - 64)
-        {
+        if (pos + name_len + 11 > sizeof(msg) - 64) {
             session->error = "ClientHello: hostname too long";
             return RT_TLS_ERROR;
         }
@@ -559,10 +523,8 @@ static int send_client_hello(rt_tls_session_t *session)
 }
 
 // Process ServerHello
-static int process_server_hello(rt_tls_session_t *session, const uint8_t *data, size_t len)
-{
-    if (len < 38)
-    {
+static int process_server_hello(rt_tls_session_t *session, const uint8_t *data, size_t len) {
+    if (len < 38) {
         session->error = "ServerHello too short";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -573,8 +535,7 @@ static int process_server_hello(rt_tls_session_t *session, const uint8_t *data, 
     size_t pos = 34;
 
     // Session ID — bounds-check before advancing (S-02 fix)
-    if (pos >= len)
-    {
+    if (pos >= len) {
         session->error = "ServerHello: session_id length field missing";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -591,8 +552,7 @@ static int process_server_hello(rt_tls_session_t *session, const uint8_t *data, 
     pos += 2;
 
     if (session->cipher_suite != TLS_AES_128_GCM_SHA256 &&
-        session->cipher_suite != TLS_CHACHA20_POLY1305_SHA256)
-    {
+        session->cipher_suite != TLS_CHACHA20_POLY1305_SHA256) {
         session->error = "unsupported cipher suite";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -601,8 +561,7 @@ static int process_server_hello(rt_tls_session_t *session, const uint8_t *data, 
     pos++;
 
     // Parse extensions
-    if (pos + 2 > len)
-    {
+    if (pos + 2 > len) {
         session->error = "no extensions";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -613,25 +572,21 @@ static int process_server_hello(rt_tls_session_t *session, const uint8_t *data, 
     int found_key_share = 0;
     int found_supported_versions = 0; // M-11: track TLS 1.3 version confirmation
 
-    while (pos + 4 <= ext_end)
-    {
+    while (pos + 4 <= ext_end) {
         uint16_t ext_type = read_u16(data + pos);
         uint16_t ext_data_len = read_u16(data + pos + 2);
         pos += 4;
 
-        if (ext_type == TLS_EXT_KEY_SHARE && ext_data_len >= 36)
-        {
+        if (ext_type == TLS_EXT_KEY_SHARE && ext_data_len >= 36) {
             uint16_t group = read_u16(data + pos);
             uint16_t key_len = read_u16(data + pos + 2);
-            if (group == 0x001D && key_len == 32)
-            {
+            if (group == 0x001D && key_len == 32) {
                 memcpy(session->server_public_key, data + pos + 4, 32);
                 found_key_share = 1;
             }
         }
         // M-11: RFC 8446 §4.2.1 — ServerHello must confirm TLS 1.3 via supported_versions
-        else if (ext_type == TLS_EXT_SUPPORTED_VERSIONS && ext_data_len == 2)
-        {
+        else if (ext_type == TLS_EXT_SUPPORTED_VERSIONS && ext_data_len == 2) {
             uint16_t negotiated = read_u16(data + pos);
             if (negotiated == TLS_VERSION_1_3)
                 found_supported_versions = 1;
@@ -639,16 +594,14 @@ static int process_server_hello(rt_tls_session_t *session, const uint8_t *data, 
         pos += ext_data_len;
     }
 
-    if (!found_key_share)
-    {
+    if (!found_key_share) {
         session->error = "no key share";
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
     // M-11: Reject the handshake if the server didn't confirm TLS 1.3.
     // A middlebox performing a version downgrade attack would omit this extension.
-    if (!found_supported_versions)
-    {
+    if (!found_supported_versions) {
         session->error = "TLS: ServerHello missing supported_versions=TLS1.3 (version downgrade?)";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -663,8 +616,7 @@ static int process_server_hello(rt_tls_session_t *session, const uint8_t *data, 
 }
 
 // Send Finished message
-static int send_finished(rt_tls_session_t *session)
-{
+static int send_finished(rt_tls_session_t *session) {
     uint8_t finished_key[32];
     rt_hkdf_expand_label(
         session->client_handshake_traffic_secret, "finished", NULL, 0, finished_key, 32);
@@ -683,8 +635,7 @@ static int send_finished(rt_tls_session_t *session)
 }
 
 // Constant-time memory comparison (H-9 fix: prevent timing attacks on Finished MAC)
-static int ct_memcmp(const uint8_t *a, const uint8_t *b, size_t n)
-{
+static int ct_memcmp(const uint8_t *a, const uint8_t *b, size_t n) {
     uint8_t diff = 0;
     for (size_t i = 0; i < n; i++)
         diff |= a[i] ^ b[i];
@@ -692,10 +643,8 @@ static int ct_memcmp(const uint8_t *a, const uint8_t *b, size_t n)
 }
 
 // Verify server Finished
-static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_t len)
-{
-    if (len != 32)
-    {
+static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_t len) {
+    if (len != 32) {
         session->error = "invalid Finished length";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -707,8 +656,7 @@ static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_
     uint8_t expected[32];
     rt_hmac_sha256(finished_key, 32, session->transcript_hash, 32, expected);
 
-    if (ct_memcmp(data, expected, 32))
-    {
+    if (ct_memcmp(data, expected, 32)) {
         session->error = "Finished verification failed";
         return RT_TLS_ERROR_HANDSHAKE;
     }
@@ -723,8 +671,7 @@ static int verify_finished(rt_tls_session_t *session, const uint8_t *data, size_
 // Public API
 //=============================================================================
 
-void rt_tls_config_init(rt_tls_config_t *config)
-{
+void rt_tls_config_init(rt_tls_config_t *config) {
     memset(config, 0, sizeof(*config));
     // CS-6 resolved: certificate validation now implemented (CS-1/CS-2/CS-3).
     // verify_cert=1 enables full chain validation + hostname verification + CertVerify.
@@ -732,8 +679,7 @@ void rt_tls_config_init(rt_tls_config_t *config)
     config->timeout_ms = 30000;
 }
 
-rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config)
-{
+rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config) {
     rt_tls_session_t *session =
         (rt_tls_session_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_tls_session_t));
     memset(session, 0, sizeof(rt_tls_session_t));
@@ -743,21 +689,18 @@ rt_tls_session_t *rt_tls_new(int socket_fd, const rt_tls_config_t *config)
     session->verify_cert = config ? config->verify_cert : 1;
     transcript_init(session);
 
-    if (config && config->hostname)
-    {
+    if (config && config->hostname) {
         strncpy(session->hostname, config->hostname, sizeof(session->hostname) - 1);
     }
 
     return session;
 }
 
-int rt_tls_handshake(rt_tls_session_t *session)
-{
+int rt_tls_handshake(rt_tls_session_t *session) {
     if (!session)
         return RT_TLS_ERROR_INVALID_ARG;
 
-    if (session->state != TLS_STATE_INITIAL)
-    {
+    if (session->state != TLS_STATE_INITIAL) {
         session->error = "invalid state for handshake";
         return RT_TLS_ERROR;
     }
@@ -768,8 +711,7 @@ int rt_tls_handshake(rt_tls_session_t *session)
         return rc;
 
     // Process handshake messages
-    while (session->state != TLS_STATE_CONNECTED && session->state != TLS_STATE_ERROR)
-    {
+    while (session->state != TLS_STATE_CONNECTED && session->state != TLS_STATE_ERROR) {
         uint8_t content_type;
         uint8_t data[TLS_MAX_RECORD_SIZE];
         size_t data_len;
@@ -778,28 +720,24 @@ int rt_tls_handshake(rt_tls_session_t *session)
         if (rc != RT_TLS_OK)
             return rc;
 
-        if (content_type == TLS_CONTENT_ALERT)
-        {
+        if (content_type == TLS_CONTENT_ALERT) {
             session->error = "received alert";
             session->state = TLS_STATE_ERROR;
             return RT_TLS_ERROR_HANDSHAKE;
         }
 
-        if (content_type != TLS_CONTENT_HANDSHAKE)
-        {
+        if (content_type != TLS_CONTENT_HANDSHAKE) {
             session->error = "unexpected content type";
             return RT_TLS_ERROR_HANDSHAKE;
         }
 
         // Parse handshake messages
         size_t pos = 0;
-        while (pos + 4 <= data_len)
-        {
+        while (pos + 4 <= data_len) {
             uint8_t hs_type = data[pos];
             uint32_t hs_len = read_u24(data + pos + 1);
 
-            if (pos + 4 + hs_len > data_len)
-            {
+            if (pos + 4 + hs_len > data_len) {
                 session->error = "incomplete handshake message";
                 return RT_TLS_ERROR_HANDSHAKE;
             }
@@ -810,8 +748,7 @@ int rt_tls_handshake(rt_tls_session_t *session)
 
             const uint8_t *hs_data = data + pos + 4;
 
-            switch (hs_type)
-            {
+            switch (hs_type) {
                 case TLS_HS_SERVER_HELLO:
                     rc = process_server_hello(session, hs_data, hs_len);
                     if (rc != RT_TLS_OK)
@@ -829,8 +766,7 @@ int rt_tls_handshake(rt_tls_session_t *session)
                     if (rc != RT_TLS_OK)
                         return rc;
 
-                    if (session->verify_cert)
-                    {
+                    if (session->verify_cert) {
                         // CS-1: Chain validation via OS trust store
                         rc = tls_verify_chain(session);
                         if (rc != RT_TLS_OK)
@@ -848,8 +784,7 @@ int rt_tls_handshake(rt_tls_session_t *session)
                     break;
 
                 case TLS_HS_CERTIFICATE_VERIFY:
-                    if (session->verify_cert)
-                    {
+                    if (session->verify_cert) {
                         // CS-3: Verify server's proof of private key ownership
                         rc = tls_verify_cert_verify(session, hs_data, hs_len);
                         if (rc != RT_TLS_OK)
@@ -886,8 +821,7 @@ int rt_tls_handshake(rt_tls_session_t *session)
     return session->state == TLS_STATE_CONNECTED ? RT_TLS_OK : RT_TLS_ERROR_HANDSHAKE;
 }
 
-long rt_tls_send(rt_tls_session_t *session, const void *data, size_t len)
-{
+long rt_tls_send(rt_tls_session_t *session, const void *data, size_t len) {
     if (!session || session->state != TLS_STATE_CONNECTED)
         return RT_TLS_ERROR;
 
@@ -898,8 +832,7 @@ long rt_tls_send(rt_tls_session_t *session, const void *data, size_t len)
     const uint8_t *ptr = (const uint8_t *)data;
     size_t remaining = len;
 
-    while (remaining > 0)
-    {
+    while (remaining > 0) {
         size_t chunk = remaining > TLS_MAX_RECORD_SIZE ? TLS_MAX_RECORD_SIZE : remaining;
         int rc = send_record(session, TLS_CONTENT_APPLICATION, ptr, chunk);
         if (rc != RT_TLS_OK)
@@ -911,14 +844,12 @@ long rt_tls_send(rt_tls_session_t *session, const void *data, size_t len)
     return (long)len;
 }
 
-long rt_tls_recv(rt_tls_session_t *session, void *buffer, size_t len)
-{
+long rt_tls_recv(rt_tls_session_t *session, void *buffer, size_t len) {
     if (!session || session->state != TLS_STATE_CONNECTED)
         return RT_TLS_ERROR;
 
     // Return buffered data first
-    if (session->app_buffer_pos < session->app_buffer_len)
-    {
+    if (session->app_buffer_pos < session->app_buffer_len) {
         size_t avail = session->app_buffer_len - session->app_buffer_pos;
         size_t copy = avail < len ? avail : len;
         memcpy(buffer, session->app_buffer + session->app_buffer_pos, copy);
@@ -936,18 +867,15 @@ retry_recv:;
     if (rc != RT_TLS_OK)
         return rc;
 
-    if (content_type == TLS_CONTENT_ALERT)
-    {
+    if (content_type == TLS_CONTENT_ALERT) {
         session->state = TLS_STATE_CLOSED;
         return 0;
     }
 
-    if (content_type != TLS_CONTENT_APPLICATION)
-    {
+    if (content_type != TLS_CONTENT_APPLICATION) {
         // Skip non-application records (e.g., NewSessionTicket post-handshake messages).
         // Limit retries to prevent CPU starvation from malicious servers.
-        if (++non_app_retries > 100)
-        {
+        if (++non_app_retries > 100) {
             session->error = "TLS: too many non-application records";
             return RT_TLS_ERROR;
         }
@@ -964,13 +892,11 @@ retry_recv:;
     return (long)copy;
 }
 
-void rt_tls_close(rt_tls_session_t *session)
-{
+void rt_tls_close(rt_tls_session_t *session) {
     if (!session)
         return;
 
-    if (session->state == TLS_STATE_CONNECTED)
-    {
+    if (session->state == TLS_STATE_CONNECTED) {
         // Send close_notify alert
         uint8_t alert[2] = {1, 0}; // warning, close_notify
         send_record(session, TLS_CONTENT_ALERT, alert, 2);
@@ -980,8 +906,7 @@ void rt_tls_close(rt_tls_session_t *session)
         // close_notify before considering the connection fully closed.
         // Bound the drain loop to avoid hanging if the server never responds.
         int drain = 0;
-        while (drain < 32)
-        {
+        while (drain < 32) {
             uint8_t content_type;
             size_t data_len;
             uint8_t buf[TLS_MAX_RECORD_SIZE + 256];
@@ -997,29 +922,25 @@ void rt_tls_close(rt_tls_session_t *session)
     session->state = TLS_STATE_CLOSED;
 }
 
-const char *rt_tls_get_error(rt_tls_session_t *session)
-{
+const char *rt_tls_get_error(rt_tls_session_t *session) {
     if (!session)
         return "null session";
     return session->error ? session->error : "no error";
 }
 
-int rt_tls_has_buffered_data(rt_tls_session_t *session)
-{
+int rt_tls_has_buffered_data(rt_tls_session_t *session) {
     if (!session)
         return 0;
     return session->app_buffer_pos < session->app_buffer_len ? 1 : 0;
 }
 
-int rt_tls_get_socket(rt_tls_session_t *session)
-{
+int rt_tls_get_socket(rt_tls_session_t *session) {
     if (!session)
         return -1;
     return (int)session->socket_fd;
 }
 
-rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_config_t *config)
-{
+rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_config_t *config) {
 #ifdef _WIN32
     // Initialize Winsock
     rt_net_init_wsa();
@@ -1063,34 +984,28 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
     freeaddrinfo(res);
     res = NULL;
 
-    if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0)
-    {
+    if (connect(sock, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         CLOSE_SOCKET(sock);
         return NULL;
     }
 
     // Create TLS session
     rt_tls_config_t cfg;
-    if (config)
-    {
+    if (config) {
         cfg = *config;
-    }
-    else
-    {
+    } else {
         rt_tls_config_init(&cfg);
     }
     cfg.hostname = host;
 
     rt_tls_session_t *session = rt_tls_new((int)sock, &cfg);
-    if (!session)
-    {
+    if (!session) {
         CLOSE_SOCKET(sock);
         return NULL;
     }
 
     // Perform handshake
-    if (rt_tls_handshake(session) != RT_TLS_OK)
-    {
+    if (rt_tls_handshake(session) != RT_TLS_OK) {
         rt_tls_close(session);
         CLOSE_SOCKET(sock);
         return NULL;
@@ -1113,29 +1028,25 @@ rt_tls_session_t *rt_tls_connect(const char *host, uint16_t port, const rt_tls_c
 #include "rt_string.h"
 
 /// @brief Internal structure for Viper TLS objects.
-typedef struct rt_viper_tls
-{
+typedef struct rt_viper_tls {
     rt_tls_session_t *session;
     char *host;
     int64_t port;
 } rt_viper_tls_t;
 
 /// @brief Finalizer for TLS objects.
-static void rt_viper_tls_finalize(void *obj)
-{
+static void rt_viper_tls_finalize(void *obj) {
     if (!obj)
         return;
     rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
-    if (tls->session)
-    {
+    if (tls->session) {
         int fd = rt_tls_get_socket(tls->session);
         rt_tls_close(tls->session);
         if (fd >= 0)
             CLOSE_SOCKET(fd);
         tls->session = NULL;
     }
-    if (tls->host)
-    {
+    if (tls->host) {
         free(tls->host);
         tls->host = NULL;
     }
@@ -1145,8 +1056,7 @@ static void rt_viper_tls_finalize(void *obj)
 /// @param host Hostname to connect to.
 /// @param port Port number.
 /// @return TLS object or NULL on error.
-void *rt_viper_tls_connect(rt_string host, int64_t port)
-{
+void *rt_viper_tls_connect(rt_string host, int64_t port) {
     if (!host || port < 1 || port > 65535)
         return NULL;
 
@@ -1164,8 +1074,7 @@ void *rt_viper_tls_connect(rt_string host, int64_t port)
 
     // Create Viper TLS object
     rt_viper_tls_t *tls = (rt_viper_tls_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_viper_tls_t));
-    if (!tls)
-    {
+    if (!tls) {
         rt_tls_close(session);
         return NULL;
     }
@@ -1176,8 +1085,7 @@ void *rt_viper_tls_connect(rt_string host, int64_t port)
     rt_obj_set_finalizer(tls, rt_viper_tls_finalize);
 
     tls->host = strdup(host_cstr);
-    if (!tls->host)
-    {
+    if (!tls->host) {
         if (rt_obj_release_check0(tls))
             rt_obj_free(tls);
         return NULL;
@@ -1191,8 +1099,7 @@ void *rt_viper_tls_connect(rt_string host, int64_t port)
 /// @param port Port number.
 /// @param timeout_ms Timeout in milliseconds.
 /// @return TLS object or NULL on error.
-void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
-{
+void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms) {
     if (!host || port < 1 || port > 65535)
         return NULL;
 
@@ -1211,8 +1118,7 @@ void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
 
     // Create Viper TLS object
     rt_viper_tls_t *tls = (rt_viper_tls_t *)rt_obj_new_i64(0, (int64_t)sizeof(rt_viper_tls_t));
-    if (!tls)
-    {
+    if (!tls) {
         rt_tls_close(session);
         return NULL;
     }
@@ -1223,8 +1129,7 @@ void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
     rt_obj_set_finalizer(tls, rt_viper_tls_finalize);
 
     tls->host = strdup(host_cstr);
-    if (!tls->host)
-    {
+    if (!tls->host) {
         if (rt_obj_release_check0(tls))
             rt_obj_free(tls);
         return NULL;
@@ -1234,8 +1139,7 @@ void *rt_viper_tls_connect_for(rt_string host, int64_t port, int64_t timeout_ms)
 }
 
 /// @brief Get the hostname of the TLS connection.
-rt_string rt_viper_tls_host(void *obj)
-{
+rt_string rt_viper_tls_host(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
     rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
@@ -1244,8 +1148,7 @@ rt_string rt_viper_tls_host(void *obj)
 }
 
 /// @brief Get the port of the TLS connection.
-int64_t rt_viper_tls_port(void *obj)
-{
+int64_t rt_viper_tls_port(void *obj) {
     if (!obj)
         return 0;
     rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
@@ -1253,8 +1156,7 @@ int64_t rt_viper_tls_port(void *obj)
 }
 
 /// @brief Check if the TLS connection is open.
-int8_t rt_viper_tls_is_open(void *obj)
-{
+int8_t rt_viper_tls_is_open(void *obj) {
     if (!obj)
         return 0;
     rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
@@ -1265,8 +1167,7 @@ int8_t rt_viper_tls_is_open(void *obj)
 /// @param obj TLS object.
 /// @param data Bytes object to send.
 /// @return Number of bytes sent, or -1 on error.
-int64_t rt_viper_tls_send(void *obj, void *data)
-{
+int64_t rt_viper_tls_send(void *obj, void *data) {
     if (!obj || !data)
         return -1;
 
@@ -1294,8 +1195,7 @@ int64_t rt_viper_tls_send(void *obj, void *data)
 /// @param obj TLS object.
 /// @param text String to send.
 /// @return Number of bytes sent, or -1 on error.
-int64_t rt_viper_tls_send_str(void *obj, rt_string text)
-{
+int64_t rt_viper_tls_send_str(void *obj, rt_string text) {
     if (!obj || !text)
         return -1;
 
@@ -1318,8 +1218,7 @@ int64_t rt_viper_tls_send_str(void *obj, rt_string text)
 /// @param obj TLS object.
 /// @param max_bytes Maximum bytes to receive.
 /// @return Bytes object with received data, or NULL on error.
-void *rt_viper_tls_recv(void *obj, int64_t max_bytes)
-{
+void *rt_viper_tls_recv(void *obj, int64_t max_bytes) {
     if (!obj || max_bytes <= 0)
         return NULL;
 
@@ -1334,8 +1233,7 @@ void *rt_viper_tls_recv(void *obj, int64_t max_bytes)
         return NULL;
 
     long received = rt_tls_recv(tls->session, buffer, buf_size);
-    if (received <= 0)
-    {
+    if (received <= 0) {
         free(buffer);
         return received == 0 ? rt_bytes_new(0) : NULL;
     }
@@ -1353,8 +1251,7 @@ void *rt_viper_tls_recv(void *obj, int64_t max_bytes)
 /// @param obj TLS object.
 /// @param max_bytes Maximum bytes to receive.
 /// @return String with received data, or empty string on error.
-rt_string rt_viper_tls_recv_str(void *obj, int64_t max_bytes)
-{
+rt_string rt_viper_tls_recv_str(void *obj, int64_t max_bytes) {
     if (!obj || max_bytes <= 0)
         return rt_string_from_bytes("", 0);
 
@@ -1369,8 +1266,7 @@ rt_string rt_viper_tls_recv_str(void *obj, int64_t max_bytes)
         return rt_string_from_bytes("", 0);
 
     long received = rt_tls_recv(tls->session, buffer, buf_size);
-    if (received <= 0)
-    {
+    if (received <= 0) {
         free(buffer);
         return rt_string_from_bytes("", 0);
     }
@@ -1382,8 +1278,7 @@ rt_string rt_viper_tls_recv_str(void *obj, int64_t max_bytes)
 }
 
 /// @brief Read a line (up to \n) from the TLS connection.
-rt_string rt_viper_tls_recv_line(void *obj)
-{
+rt_string rt_viper_tls_recv_line(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -1397,18 +1292,15 @@ rt_string rt_viper_tls_recv_line(void *obj)
     if (!line)
         return rt_string_from_bytes("", 0);
 
-    while (1)
-    {
+    while (1) {
         char c;
         long received = rt_tls_recv(tls->session, &c, 1);
-        if (received <= 0)
-        {
+        if (received <= 0) {
             // Connection closed or error before newline
             break;
         }
 
-        if (c == '\n')
-        {
+        if (c == '\n') {
             // Strip trailing CR if present
             if (len > 0 && line[len - 1] == '\r')
                 len--;
@@ -1417,20 +1309,17 @@ rt_string rt_viper_tls_recv_line(void *obj)
 
         // Cap at 64KB to prevent unbounded memory growth from a malicious peer
         // (matches the limit in rt_tcp_recv_line).
-        if (len >= 65536)
-        {
+        if (len >= 65536) {
             free(line);
             return rt_string_from_bytes("", 0);
         }
 
-        if (len >= cap)
-        {
+        if (len >= cap) {
             cap *= 2;
             if (cap > 65536)
                 cap = 65536;
             char *new_line = (char *)realloc(line, cap);
-            if (!new_line)
-            {
+            if (!new_line) {
                 free(line);
                 return rt_string_from_bytes("", 0);
             }
@@ -1445,32 +1334,27 @@ rt_string rt_viper_tls_recv_line(void *obj)
 }
 
 /// @brief Close the TLS connection.
-void rt_viper_tls_close(void *obj)
-{
+void rt_viper_tls_close(void *obj) {
     if (!obj)
         return;
 
     rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
-    if (tls->session)
-    {
+    if (tls->session) {
         rt_tls_close(tls->session);
         tls->session = NULL;
     }
 }
 
 /// @brief Get the last error message.
-rt_string rt_viper_tls_error(void *obj)
-{
+rt_string rt_viper_tls_error(void *obj) {
     const char *msg;
-    if (!obj)
-    {
+    if (!obj) {
         msg = "null object";
         return rt_string_from_bytes(msg, strlen(msg));
     }
 
     rt_viper_tls_t *tls = (rt_viper_tls_t *)obj;
-    if (!tls->session)
-    {
+    if (!tls->session) {
         msg = "connection closed";
         return rt_string_from_bytes(msg, strlen(msg));
     }

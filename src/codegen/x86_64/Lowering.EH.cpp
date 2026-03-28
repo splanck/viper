@@ -18,31 +18,26 @@
 #include "LowerILToMIR.hpp"
 #include "MachineIR.hpp"
 
-namespace viper::codegen::x64::lowering
-{
+namespace viper::codegen::x64::lowering {
 
-void emitEhPush(const ILInstr &, MIRBuilder &)
-{
+void emitEhPush(const ILInstr &, MIRBuilder &) {
     // eh.push registers a handler label for trap recovery.  In native codegen
     // the runtime's thread-local jmp_buf-based recovery (rt_trap_set_recovery /
     // rt_trap / longjmp) handles trap recovery at the C level.  Full setjmp-
     // based handler dispatch in generated code is not yet implemented.
 }
 
-void emitEhPop(const ILInstr &, MIRBuilder &)
-{
+void emitEhPop(const ILInstr &, MIRBuilder &) {
     // eh.pop clears the current handler.  The runtime clears recovery via
     // rt_trap_clear_recovery when appropriate.
 }
 
-void emitEhEntry(const ILInstr &, MIRBuilder &)
-{
+void emitEhEntry(const ILInstr &, MIRBuilder &) {
     // Handler block entry — no-op.  The handler block is already materialised
     // as a MIR block with a label.
 }
 
-void emitTrap(const ILInstr &, MIRBuilder &builder)
-{
+void emitTrap(const ILInstr &, MIRBuilder &builder) {
     // Emit a call to rt_trap(NULL) which will longjmp to the thread-local
     // recovery point if one is set, or abort the process otherwise.
     // The trap message (if any) is not forwarded in the current implementation;

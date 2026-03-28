@@ -17,8 +17,7 @@
 
 #include "vm/VM.hpp"
 
-namespace il::vm
-{
+namespace il::vm {
 
 /**
  * @brief RAII guard that installs a VM as the thread-local active instance.
@@ -59,8 +58,7 @@ namespace il::vm
  * @invariant In debug builds, asserts on invalid re-entry patterns.
  * @ownership Does not own the VM pointer; lifetime is managed by the caller.
  */
-struct ActiveVMGuard
-{
+struct ActiveVMGuard {
     /**
      * @brief Install @p vm as the active VM for this thread.
      * @param vm VM to activate; may be nullptr to clear active state.
@@ -93,8 +91,7 @@ struct ActiveVMGuard
  * @invariant Wraps a valid VM reference throughout its lifetime.
  * @ownership Non-owning reference to VM; caller manages VM lifetime.
  */
-class VMContext
-{
+class VMContext {
   public:
     /**
      * @brief Construct a context bound to the given VM instance.
@@ -212,8 +209,7 @@ class VMContext
   private:
     VM *vmInstance = nullptr; ///< Bound VM instance.
   public:
-    struct Config
-    {
+    struct Config {
         bool enableOpcodeCounts = true;
     } config; ///< Lightweight runtime config snapshot used by macros.
 };

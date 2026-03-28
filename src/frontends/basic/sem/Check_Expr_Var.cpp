@@ -29,8 +29,7 @@
 
 #include <limits>
 
-namespace il::frontends::basic::sem
-{
+namespace il::frontends::basic::sem {
 
 /// @brief Type-check a BASIC variable reference and compute its type.
 ///
@@ -41,22 +40,19 @@ namespace il::frontends::basic::sem
 /// @param analyzer Semantic analyzer coordinating the current compilation.
 /// @param expr Variable expression to validate.
 /// @return Semantic type of the variable (or Unknown if undefined).
-SemanticAnalyzer::Type analyzeVarExpr(SemanticAnalyzer &analyzer, VarExpr &expr)
-{
+SemanticAnalyzer::Type analyzeVarExpr(SemanticAnalyzer &analyzer, VarExpr &expr) {
     using Type = SemanticAnalyzer::Type;
 
     // Special case: NOTHING keyword represents a null pointer.
     // It's parsed as VarExpr{"NOTHING"} and lowering emits Value::null().
-    if (expr.name == "NOTHING")
-    {
+    if (expr.name == "NOTHING") {
         return Type::Unknown; // Null pointer has Unknown type in BASIC semantics
     }
 
     ExprCheckContext context(analyzer);
     context.resolveAndTrackSymbolRef(expr.name);
 
-    if (!context.hasSymbol(expr.name))
-    {
+    if (!context.hasSymbol(expr.name)) {
         // Enum names are not variables — suppress the error when the name
         // matches a declared enum (e.g., `Tint.RED` parses as VarExpr("TINT")
         // + MemberAccessExpr).  The lowerer resolves the variant via OopIndex.
@@ -66,19 +62,16 @@ SemanticAnalyzer::Type analyzeVarExpr(SemanticAnalyzer &analyzer, VarExpr &expr)
         // Find closest matching symbol for suggestion using Levenshtein distance
         std::string best;
         std::size_t bestDist = std::numeric_limits<std::size_t>::max();
-        for (const auto &s : context.symbols())
-        {
+        for (const auto &s : context.symbols()) {
             std::size_t d = semantic_analyzer_detail::levenshtein(expr.name, s);
-            if (d < bestDist)
-            {
+            if (d < bestDist) {
                 bestDist = d;
                 best = s;
             }
         }
 
         std::string suggestion;
-        if (!best.empty())
-        {
+        if (!best.empty()) {
             suggestion = "; did you mean '" + best + "'?";
         }
 
@@ -97,8 +90,7 @@ SemanticAnalyzer::Type analyzeVarExpr(SemanticAnalyzer &analyzer, VarExpr &expr)
         return *varTy;
 
     // Apply BASIC suffix rules for implicit types
-    if (!expr.name.empty())
-    {
+    if (!expr.name.empty()) {
         if (expr.name.back() == '$')
             return Type::String;
         if (expr.name.back() == '#' || expr.name.back() == '!')

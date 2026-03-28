@@ -64,8 +64,7 @@
 #include "frontends/basic/Token.hpp"
 #include "frontends/basic/ast/DeclNodes.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// \brief Fold constant expressions within a BASIC program AST.
 /// \param prog Program to transform in place.

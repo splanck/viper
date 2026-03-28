@@ -18,11 +18,9 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 // Build a module that uses AddrOf to get the address of an alloca'd value
-void buildAddrOfModule(Module &module, int64_t value)
-{
+void buildAddrOfModule(Module &module, int64_t value) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -72,8 +70,7 @@ void buildAddrOfModule(Module &module, int64_t value)
     bb.instructions.push_back(ret);
 }
 
-int64_t runAddrOf(int64_t value)
-{
+int64_t runAddrOf(int64_t value) {
     Module module;
     buildAddrOfModule(module, value);
     viper::tests::VmFixture fixture;
@@ -82,8 +79,7 @@ int64_t runAddrOf(int64_t value)
 
 } // namespace
 
-int main()
-{
+int main() {
     //=========================================================================
     // AddrOf tests
     //=========================================================================

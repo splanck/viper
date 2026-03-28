@@ -54,8 +54,7 @@
 #include <math.h>
 
 /// @brief State for a single gamepad
-typedef struct
-{
+typedef struct {
     bool connected;
     char name[64];
 
@@ -108,15 +107,13 @@ static void platform_pad_vibrate(int64_t index, double left, double right);
 #include <IOKit/hid/IOHIDManager.h>
 #include <IOKit/hid/IOHIDUsageTables.h>
 
-typedef struct
-{
+typedef struct {
     IOHIDElementRef element;
     CFIndex min;
     CFIndex max;
 } mac_axis;
 
-typedef struct
-{
+typedef struct {
     IOHIDDeviceRef device;
     mac_axis left_x;
     mac_axis left_y;
@@ -134,8 +131,7 @@ static IOHIDManagerRef g_hid_manager = NULL;
 static mac_pad g_mac_pads[VIPER_PAD_MAX];
 static bool g_mac_initialized = false;
 
-static void mac_release_axis(mac_axis *axis)
-{
+static void mac_release_axis(mac_axis *axis) {
     if (axis->element)
         CFRelease(axis->element);
     axis->element = NULL;
@@ -143,8 +139,7 @@ static void mac_release_axis(mac_axis *axis)
     axis->max = 0;
 }
 
-static void mac_clear_pad(mac_pad *pad)
-{
+static void mac_clear_pad(mac_pad *pad) {
     if (pad->device)
         CFRelease(pad->device);
     pad->device = NULL;
@@ -159,16 +154,14 @@ static void mac_clear_pad(mac_pad *pad)
     pad->hat = NULL;
     pad->hat_min = 0;
     pad->hat_max = 0;
-    for (int i = 0; i < VIPER_PAD_BUTTON_MAX; ++i)
-    {
+    for (int i = 0; i < VIPER_PAD_BUTTON_MAX; ++i) {
         if (pad->buttons[i])
             CFRelease(pad->buttons[i]);
         pad->buttons[i] = NULL;
     }
 }
 
-static CFMutableDictionaryRef mac_make_match(uint32_t usage)
-{
+static CFMutableDictionaryRef mac_make_match(uint32_t usage) {
     CFMutableDictionaryRef dict = CFDictionaryCreateMutable(
         kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     int page = kHIDPage_GenericDesktop;
@@ -181,8 +174,7 @@ static CFMutableDictionaryRef mac_make_match(uint32_t usage)
     return dict;
 }
 
-static void mac_store_axis(mac_axis *axis, IOHIDElementRef element)
-{
+static void mac_store_axis(mac_axis *axis, IOHIDElementRef element) {
     if (axis->element)
         CFRelease(axis->element);
     axis->element = element;
@@ -191,10 +183,8 @@ static void mac_store_axis(mac_axis *axis, IOHIDElementRef element)
     axis->max = IOHIDElementGetLogicalMax(element);
 }
 
-static int mac_button_index(uint32_t usage)
-{
-    switch (usage)
-    {
+static int mac_button_index(uint32_t usage) {
+    switch (usage) {
         case 1:
             return VIPER_PAD_A;
         case 2:
@@ -222,10 +212,8 @@ static int mac_button_index(uint32_t usage)
     }
 }
 
-static void mac_scan_devices(void)
-{
-    for (int i = 0; i < VIPER_PAD_MAX; ++i)
-    {
+static void mac_scan_devices(void) {
+    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
         mac_clear_pad(&g_mac_pads[i]);
         g_pads[i].connected = false;
         g_pads[i].name[0] = '\0';
@@ -239,23 +227,20 @@ static void mac_scan_devices(void)
         return;
 
     CFIndex count = CFSetGetCount(devices);
-    if (count <= 0)
-    {
+    if (count <= 0) {
         CFRelease(devices);
         return;
     }
 
     IOHIDDeviceRef *device_list = (IOHIDDeviceRef *)calloc((size_t)count, sizeof(IOHIDDeviceRef));
-    if (!device_list)
-    {
+    if (!device_list) {
         CFRelease(devices);
         return;
     }
     CFSetGetValues(devices, (const void **)(void *)device_list);
 
     int pad_index = 0;
-    for (CFIndex i = 0; i < count && pad_index < VIPER_PAD_MAX; ++i)
-    {
+    for (CFIndex i = 0; i < count && pad_index < VIPER_PAD_MAX; ++i) {
         IOHIDDeviceRef device = device_list[i];
         if (!device)
             continue;
@@ -265,15 +250,12 @@ static void mac_scan_devices(void)
         CFRetain(device);
 
         CFTypeRef product = IOHIDDeviceGetProperty(device, CFSTR(kIOHIDProductKey));
-        if (product && CFGetTypeID(product) == CFStringGetTypeID())
-        {
+        if (product && CFGetTypeID(product) == CFStringGetTypeID()) {
             CFStringGetCString((CFStringRef)product,
                                g_pads[pad_index].name,
                                sizeof(g_pads[pad_index].name),
                                kCFStringEncodingUTF8);
-        }
-        else
-        {
+        } else {
             snprintf(g_pads[pad_index].name,
                      sizeof(g_pads[pad_index].name),
                      "HID Gamepad %d",
@@ -282,11 +264,9 @@ static void mac_scan_devices(void)
         g_pads[pad_index].connected = true;
 
         CFArrayRef elements = IOHIDDeviceCopyMatchingElements(device, NULL, kIOHIDOptionsTypeNone);
-        if (elements)
-        {
+        if (elements) {
             CFIndex elem_count = CFArrayGetCount(elements);
-            for (CFIndex e = 0; e < elem_count; ++e)
-            {
+            for (CFIndex e = 0; e < elem_count; ++e) {
                 IOHIDElementRef elem =
                     (IOHIDElementRef)(uintptr_t)CFArrayGetValueAtIndex(elements, e);
                 if (!elem)
@@ -294,17 +274,14 @@ static void mac_scan_devices(void)
 
                 IOHIDElementType type = IOHIDElementGetType(elem);
                 if (type != kIOHIDElementTypeInput_Button && type != kIOHIDElementTypeInput_Misc &&
-                    type != kIOHIDElementTypeInput_Axis)
-                {
+                    type != kIOHIDElementTypeInput_Axis) {
                     continue;
                 }
 
                 uint32_t page = IOHIDElementGetUsagePage(elem);
                 uint32_t usage = IOHIDElementGetUsage(elem);
-                if (page == kHIDPage_GenericDesktop)
-                {
-                    switch (usage)
-                    {
+                if (page == kHIDPage_GenericDesktop) {
+                    switch (usage) {
                         case kHIDUsage_GD_X:
                             mac_store_axis(&pad->left_x, elem);
                             break;
@@ -338,12 +315,9 @@ static void mac_scan_devices(void)
                         default:
                             break;
                     }
-                }
-                else if (page == kHIDPage_Button)
-                {
+                } else if (page == kHIDPage_Button) {
                     int index = mac_button_index(usage);
-                    if (index >= 0 && index < VIPER_PAD_BUTTON_MAX && !pad->buttons[index])
-                    {
+                    if (index >= 0 && index < VIPER_PAD_BUTTON_MAX && !pad->buttons[index]) {
                         pad->buttons[index] = elem;
                         CFRetain(elem);
                     }
@@ -359,14 +333,12 @@ static void mac_scan_devices(void)
     CFRelease(devices);
 }
 
-static void mac_init_manager(void)
-{
+static void mac_init_manager(void) {
     if (g_mac_initialized)
         return;
 
     g_hid_manager = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
-    if (g_hid_manager)
-    {
+    if (g_hid_manager) {
         CFMutableDictionaryRef matches[3];
         matches[0] = mac_make_match(kHIDUsage_GD_GamePad);
         matches[1] = mac_make_match(kHIDUsage_GD_Joystick);
@@ -386,16 +358,14 @@ static void mac_init_manager(void)
     g_mac_initialized = true;
 }
 
-static double mac_normalize_axis(CFIndex value, CFIndex min, CFIndex max)
-{
+static double mac_normalize_axis(CFIndex value, CFIndex min, CFIndex max) {
     if (max == min)
         return 0.0;
     double norm = ((double)value - (double)min) / ((double)max - (double)min);
     return norm * 2.0 - 1.0;
 }
 
-static double mac_normalize_trigger(CFIndex value, CFIndex min, CFIndex max)
-{
+static double mac_normalize_trigger(CFIndex value, CFIndex min, CFIndex max) {
     if (max == min)
         return 0.0;
     double norm = ((double)value - (double)min) / ((double)max - (double)min);
@@ -406,8 +376,7 @@ static double mac_normalize_trigger(CFIndex value, CFIndex min, CFIndex max)
     return norm;
 }
 
-static bool mac_read_value(IOHIDDeviceRef device, IOHIDElementRef element, CFIndex *out)
-{
+static bool mac_read_value(IOHIDDeviceRef device, IOHIDElementRef element, CFIndex *out) {
     IOHIDValueRef value_ref = NULL;
     if (!element)
         return false;
@@ -417,15 +386,13 @@ static bool mac_read_value(IOHIDDeviceRef device, IOHIDElementRef element, CFInd
     return true;
 }
 
-static void mac_apply_hat(rt_pad_state *pad, int hat_value)
-{
+static void mac_apply_hat(rt_pad_state *pad, int hat_value) {
     bool up = false;
     bool down = false;
     bool left = false;
     bool right = false;
 
-    switch (hat_value)
-    {
+    switch (hat_value) {
         case 0: // Up
             up = true;
             break;
@@ -464,8 +431,7 @@ static void mac_apply_hat(rt_pad_state *pad, int hat_value)
     pad->buttons[VIPER_PAD_RIGHT] = right;
 }
 
-static void platform_pad_poll(void)
-{
+static void platform_pad_poll(void) {
     if (!g_mac_initialized)
         mac_init_manager();
 
@@ -475,11 +441,9 @@ static void platform_pad_poll(void)
     if (!g_pads[0].connected)
         mac_scan_devices();
 
-    for (int i = 0; i < VIPER_PAD_MAX; ++i)
-    {
+    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
         mac_pad *pad = &g_mac_pads[i];
-        if (!pad->device)
-        {
+        if (!pad->device) {
             g_pads[i].connected = false;
             continue;
         }
@@ -510,8 +474,7 @@ static void platform_pad_poll(void)
             g_pads[i].right_trigger =
                 mac_normalize_trigger(value, pad->right_trigger.min, pad->right_trigger.max);
 
-        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; ++b)
-        {
+        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; ++b) {
             if (!pad->buttons[b])
                 continue;
             CFIndex btn_value = 0;
@@ -519,15 +482,13 @@ static void platform_pad_poll(void)
                 g_pads[i].buttons[b] = btn_value != 0;
         }
 
-        if (pad->hat && mac_read_value(pad->device, pad->hat, &value))
-        {
+        if (pad->hat && mac_read_value(pad->device, pad->hat, &value)) {
             mac_apply_hat(&g_pads[i], (int)value);
         }
     }
 }
 
-static void platform_pad_vibrate(int64_t index, double left, double right)
-{
+static void platform_pad_vibrate(int64_t index, double left, double right) {
     (void)index;
     (void)left;
     (void)right;
@@ -546,8 +507,7 @@ static void platform_pad_vibrate(int64_t index, double left, double right)
 #include <sys/ioctl.h>
 #include <unistd.h>
 
-typedef struct
-{
+typedef struct {
     int fd;
     bool has_rumble;
     int rumble_id;
@@ -558,15 +518,13 @@ typedef struct
 static linux_pad g_linux_pads[VIPER_PAD_MAX];
 static bool g_linux_initialized = false;
 
-static bool linux_test_bit(const unsigned long *bits, int bit)
-{
+static bool linux_test_bit(const unsigned long *bits, int bit) {
     return (bits[bit / (int)(8 * sizeof(unsigned long))] >>
             (bit % (int)(8 * sizeof(unsigned long)))) &
            1UL;
 }
 
-static bool linux_is_gamepad(int fd)
-{
+static bool linux_is_gamepad(int fd) {
     unsigned long ev_bits[(EV_MAX + 8 * sizeof(unsigned long)) / (8 * sizeof(unsigned long))];
     unsigned long key_bits[(KEY_MAX + 8 * sizeof(unsigned long)) / (8 * sizeof(unsigned long))];
 
@@ -584,30 +542,26 @@ static bool linux_is_gamepad(int fd)
            linux_test_bit(key_bits, BTN_SOUTH) || linux_test_bit(key_bits, BTN_NORTH);
 }
 
-static void linux_reset_pad(linux_pad *pad)
-{
+static void linux_reset_pad(linux_pad *pad) {
     if (pad->fd >= 0)
         close(pad->fd);
     pad->fd = -1;
     pad->has_rumble = false;
     pad->rumble_id = -1;
-    for (int i = 0; i <= ABS_MAX; ++i)
-    {
+    for (int i = 0; i <= ABS_MAX; ++i) {
         pad->abs_min[i] = -32768;
         pad->abs_max[i] = 32767;
     }
 }
 
-static double linux_normalize_axis(int value, int min, int max)
-{
+static double linux_normalize_axis(int value, int min, int max) {
     if (max == min)
         return 0.0;
     double norm = ((double)value - (double)min) / ((double)max - (double)min);
     return norm * 2.0 - 1.0;
 }
 
-static double linux_normalize_trigger(int value, int min, int max)
-{
+static double linux_normalize_trigger(int value, int min, int max) {
     if (max == min)
         return 0.0;
     double norm = ((double)value - (double)min) / ((double)max - (double)min);
@@ -618,32 +572,25 @@ static double linux_normalize_trigger(int value, int min, int max)
     return norm;
 }
 
-static void linux_apply_hat(rt_pad_state *pad, int value, bool is_x)
-{
-    if (is_x)
-    {
+static void linux_apply_hat(rt_pad_state *pad, int value, bool is_x) {
+    if (is_x) {
         pad->buttons[VIPER_PAD_LEFT] = value < 0;
         pad->buttons[VIPER_PAD_RIGHT] = value > 0;
-    }
-    else
-    {
+    } else {
         pad->buttons[VIPER_PAD_UP] = value < 0;
         pad->buttons[VIPER_PAD_DOWN] = value > 0;
     }
 }
 
-static void linux_pad_init(void)
-{
+static void linux_pad_init(void) {
     if (g_linux_initialized)
         return;
 
-    for (int i = 0; i < VIPER_PAD_MAX; ++i)
-    {
+    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
         g_linux_pads[i].fd = -1;
         g_linux_pads[i].has_rumble = false;
         g_linux_pads[i].rumble_id = -1;
-        for (int j = 0; j <= ABS_MAX; ++j)
-        {
+        for (int j = 0; j <= ABS_MAX; ++j) {
             g_linux_pads[i].abs_min[j] = -32768;
             g_linux_pads[i].abs_max[j] = 32767;
         }
@@ -652,16 +599,14 @@ static void linux_pad_init(void)
     }
 
     DIR *dir = opendir("/dev/input");
-    if (!dir)
-    {
+    if (!dir) {
         g_linux_initialized = true;
         return;
     }
 
     struct dirent *ent;
     int pad_index = 0;
-    while ((ent = readdir(dir)) != NULL && pad_index < VIPER_PAD_MAX)
-    {
+    while ((ent = readdir(dir)) != NULL && pad_index < VIPER_PAD_MAX) {
         if (strncmp(ent->d_name, "event", 5) != 0)
             continue;
 
@@ -674,8 +619,7 @@ static void linux_pad_init(void)
         if (fd < 0)
             continue;
 
-        if (!linux_is_gamepad(fd))
-        {
+        if (!linux_is_gamepad(fd)) {
             close(fd);
             continue;
         }
@@ -684,12 +628,9 @@ static void linux_pad_init(void)
         pad->fd = fd;
 
         char name[64];
-        if (ioctl(fd, EVIOCGNAME(sizeof(name)), name) >= 0)
-        {
+        if (ioctl(fd, EVIOCGNAME(sizeof(name)), name) >= 0) {
             snprintf(g_pads[pad_index].name, sizeof(g_pads[pad_index].name), "%s", name);
-        }
-        else
-        {
+        } else {
             snprintf(g_pads[pad_index].name,
                      sizeof(g_pads[pad_index].name),
                      "Linux Gamepad %d",
@@ -699,17 +640,14 @@ static void linux_pad_init(void)
         unsigned long ff_bits[(FF_MAX + 8 * sizeof(unsigned long)) / (8 * sizeof(unsigned long))];
         memset(ff_bits, 0, sizeof(ff_bits));
         if (ioctl(fd, EVIOCGBIT(EV_FF, sizeof(ff_bits)), ff_bits) >= 0 &&
-            linux_test_bit(ff_bits, FF_RUMBLE))
-        {
+            linux_test_bit(ff_bits, FF_RUMBLE)) {
             pad->has_rumble = true;
         }
 
         int abs_codes[] = {ABS_X, ABS_Y, ABS_RX, ABS_RY, ABS_Z, ABS_RZ, ABS_HAT0X, ABS_HAT0Y};
-        for (size_t a = 0; a < sizeof(abs_codes) / sizeof(abs_codes[0]); ++a)
-        {
+        for (size_t a = 0; a < sizeof(abs_codes) / sizeof(abs_codes[0]); ++a) {
             struct input_absinfo absinfo;
-            if (ioctl(fd, EVIOCGABS(abs_codes[a]), &absinfo) == 0)
-            {
+            if (ioctl(fd, EVIOCGABS(abs_codes[a]), &absinfo) == 0) {
                 pad->abs_min[abs_codes[a]] = absinfo.minimum;
                 pad->abs_max[abs_codes[a]] = absinfo.maximum;
             }
@@ -723,15 +661,12 @@ static void linux_pad_init(void)
     g_linux_initialized = true;
 }
 
-static void platform_pad_poll(void)
-{
+static void platform_pad_poll(void) {
     linux_pad_init();
 
-    for (int i = 0; i < VIPER_PAD_MAX; ++i)
-    {
+    for (int i = 0; i < VIPER_PAD_MAX; ++i) {
         linux_pad *pad = &g_linux_pads[i];
-        if (pad->fd < 0)
-        {
+        if (pad->fd < 0) {
             g_pads[i].connected = false;
             continue;
         }
@@ -740,13 +675,10 @@ static void platform_pad_poll(void)
 
         struct input_event ev;
         ssize_t n = 0;
-        while ((n = read(pad->fd, &ev, sizeof(ev))) == (ssize_t)sizeof(ev))
-        {
-            if (ev.type == EV_KEY)
-            {
+        while ((n = read(pad->fd, &ev, sizeof(ev))) == (ssize_t)sizeof(ev)) {
+            if (ev.type == EV_KEY) {
                 bool down = ev.value != 0;
-                switch (ev.code)
-                {
+                switch (ev.code) {
                     case BTN_SOUTH:
                         g_pads[i].buttons[VIPER_PAD_A] = down;
                         break;
@@ -795,11 +727,8 @@ static void platform_pad_poll(void)
                     default:
                         break;
                 }
-            }
-            else if (ev.type == EV_ABS)
-            {
-                switch (ev.code)
-                {
+            } else if (ev.type == EV_ABS) {
+                switch (ev.code) {
                     case ABS_X:
                         g_pads[i].left_x = linux_normalize_axis(
                             ev.value, pad->abs_min[ABS_X], pad->abs_max[ABS_X]);
@@ -836,8 +765,7 @@ static void platform_pad_poll(void)
             }
         }
 
-        if (n < 0 && errno == ENODEV)
-        {
+        if (n < 0 && errno == ENODEV) {
             linux_reset_pad(pad);
             g_pads[i].connected = false;
             g_pads[i].name[0] = '\0';
@@ -845,8 +773,7 @@ static void platform_pad_poll(void)
     }
 }
 
-static void platform_pad_vibrate(int64_t index, double left, double right)
-{
+static void platform_pad_vibrate(int64_t index, double left, double right) {
     if (index < 0 || index >= VIPER_PAD_MAX)
         return;
     linux_pad *pad = &g_linux_pads[index];
@@ -873,8 +800,7 @@ static void platform_pad_vibrate(int64_t index, double left, double right)
     effect.replay.length = 1000;
     effect.replay.delay = 0;
 
-    if (ioctl(pad->fd, EVIOCSFF, &effect) < 0)
-    {
+    if (ioctl(pad->fd, EVIOCSFF, &effect) < 0) {
         pad->has_rumble = false;
         return;
     }
@@ -907,14 +833,11 @@ static void platform_pad_vibrate(int64_t index, double left, double right)
 #include <Xinput.h>
 #include <windows.h>
 
-static void platform_pad_poll(void)
-{
-    for (DWORD i = 0; i < VIPER_PAD_MAX; ++i)
-    {
+static void platform_pad_poll(void) {
+    for (DWORD i = 0; i < VIPER_PAD_MAX; ++i) {
         XINPUT_STATE state;
         DWORD result = XInputGetState(i, &state);
-        if (result == ERROR_SUCCESS)
-        {
+        if (result == ERROR_SUCCESS) {
             g_pads[i].connected = true;
             snprintf(g_pads[i].name, sizeof(g_pads[i].name), "XInput Pad %lu", (unsigned long)i);
 
@@ -951,9 +874,7 @@ static void platform_pad_poll(void)
 
             g_pads[i].left_trigger = state.Gamepad.bLeftTrigger / 255.0;
             g_pads[i].right_trigger = state.Gamepad.bRightTrigger / 255.0;
-        }
-        else
-        {
+        } else {
             g_pads[i].connected = false;
             g_pads[i].name[0] = '\0';
             for (int b = 0; b < VIPER_PAD_BUTTON_MAX; ++b)
@@ -968,8 +889,7 @@ static void platform_pad_poll(void)
     }
 }
 
-static void platform_pad_vibrate(int64_t index, double left, double right)
-{
+static void platform_pad_vibrate(int64_t index, double left, double right) {
     if (index < 0 || index >= VIPER_PAD_MAX)
         return;
 
@@ -995,13 +915,11 @@ static void platform_pad_vibrate(int64_t index, double left, double right)
 // Unsupported Platform
 //-----------------------------------------------------------------------------
 
-static void platform_pad_poll(void)
-{
+static void platform_pad_poll(void) {
     // No gamepad support on this platform
 }
 
-static void platform_pad_vibrate(int64_t index, double left, double right)
-{
+static void platform_pad_vibrate(int64_t index, double left, double right) {
     (void)index;
     (void)left;
     (void)right;
@@ -1014,8 +932,7 @@ static void platform_pad_vibrate(int64_t index, double left, double right)
 //=============================================================================
 
 /// @brief Apply per-axis deadzone to stick value
-static double apply_deadzone(double value)
-{
+static double apply_deadzone(double value) {
     if (g_pad_deadzone <= 0.0)
         return value;
 
@@ -1029,8 +946,7 @@ static double apply_deadzone(double value)
 }
 
 /// @brief Clamp value to valid range
-static double clamp_axis(double value, double min_val, double max_val)
-{
+static double clamp_axis(double value, double min_val, double max_val) {
     if (value < min_val)
         return min_val;
     if (value > max_val)
@@ -1042,19 +958,16 @@ static double clamp_axis(double value, double min_val, double max_val)
 // Initialization
 //=============================================================================
 
-void rt_pad_init(void)
-{
+void rt_pad_init(void) {
     RT_ASSERT_MAIN_THREAD();
     if (g_pad_initialized)
         return;
 
-    for (int i = 0; i < VIPER_PAD_MAX; i++)
-    {
+    for (int i = 0; i < VIPER_PAD_MAX; i++) {
         g_pads[i].connected = false;
         g_pads[i].name[0] = '\0';
 
-        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++)
-        {
+        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++) {
             g_pads[i].buttons[b] = false;
             g_pads[i].pressed[b] = false;
             g_pads[i].released[b] = false;
@@ -1074,32 +987,26 @@ void rt_pad_init(void)
     g_pad_initialized = true;
 }
 
-void rt_pad_begin_frame(void)
-{
+void rt_pad_begin_frame(void) {
     RT_ASSERT_MAIN_THREAD();
     // Clear per-frame event flags
-    for (int i = 0; i < VIPER_PAD_MAX; i++)
-    {
-        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++)
-        {
+    for (int i = 0; i < VIPER_PAD_MAX; i++) {
+        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++) {
             g_pads[i].pressed[b] = false;
             g_pads[i].released[b] = false;
         }
     }
 }
 
-void rt_pad_poll(void)
-{
+void rt_pad_poll(void) {
     RT_ASSERT_MAIN_THREAD();
     if (!g_pad_initialized)
         rt_pad_init();
 
     // Store previous button states for edge detection
     bool prev_buttons[VIPER_PAD_MAX][VIPER_PAD_BUTTON_MAX];
-    for (int i = 0; i < VIPER_PAD_MAX; i++)
-    {
-        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++)
-        {
+    for (int i = 0; i < VIPER_PAD_MAX; i++) {
+        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++) {
             prev_buttons[i][b] = g_pads[i].buttons[b];
         }
     }
@@ -1108,13 +1015,11 @@ void rt_pad_poll(void)
     platform_pad_poll();
 
     // Detect button press/release events
-    for (int i = 0; i < VIPER_PAD_MAX; i++)
-    {
+    for (int i = 0; i < VIPER_PAD_MAX; i++) {
         if (!g_pads[i].connected)
             continue;
 
-        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++)
-        {
+        for (int b = 0; b < VIPER_PAD_BUTTON_MAX; b++) {
             bool was_down = prev_buttons[i][b];
             bool is_down = g_pads[i].buttons[b];
 
@@ -1130,28 +1035,24 @@ void rt_pad_poll(void)
 // Controller Enumeration
 //=============================================================================
 
-int64_t rt_pad_count(void)
-{
+int64_t rt_pad_count(void) {
     RT_ASSERT_MAIN_THREAD();
     int64_t count = 0;
-    for (int i = 0; i < VIPER_PAD_MAX; i++)
-    {
+    for (int i = 0; i < VIPER_PAD_MAX; i++) {
         if (g_pads[i].connected)
             count++;
     }
     return count;
 }
 
-int8_t rt_pad_is_connected(int64_t index)
-{
+int8_t rt_pad_is_connected(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0;
     return g_pads[index].connected ? 1 : 0;
 }
 
-rt_string rt_pad_name(int64_t index)
-{
+rt_string rt_pad_name(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX || !g_pads[index].connected)
         return rt_string_from_bytes("", 0);
@@ -1163,8 +1064,7 @@ rt_string rt_pad_name(int64_t index)
 // Button State (Polling)
 //=============================================================================
 
-int8_t rt_pad_is_down(int64_t index, int64_t button)
-{
+int8_t rt_pad_is_down(int64_t index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0;
@@ -1176,8 +1076,7 @@ int8_t rt_pad_is_down(int64_t index, int64_t button)
     return g_pads[index].buttons[button] ? 1 : 0;
 }
 
-int8_t rt_pad_is_up(int64_t index, int64_t button)
-{
+int8_t rt_pad_is_up(int64_t index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 1;
@@ -1193,8 +1092,7 @@ int8_t rt_pad_is_up(int64_t index, int64_t button)
 // Button Events (Since Last Poll)
 //=============================================================================
 
-int8_t rt_pad_was_pressed(int64_t index, int64_t button)
-{
+int8_t rt_pad_was_pressed(int64_t index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0;
@@ -1206,8 +1104,7 @@ int8_t rt_pad_was_pressed(int64_t index, int64_t button)
     return g_pads[index].pressed[button] ? 1 : 0;
 }
 
-int8_t rt_pad_was_released(int64_t index, int64_t button)
-{
+int8_t rt_pad_was_released(int64_t index, int64_t button) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0;
@@ -1223,8 +1120,7 @@ int8_t rt_pad_was_released(int64_t index, int64_t button)
 // Analog Inputs
 //=============================================================================
 
-double rt_pad_left_x(int64_t index)
-{
+double rt_pad_left_x(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0.0;
@@ -1234,8 +1130,7 @@ double rt_pad_left_x(int64_t index)
     return apply_deadzone(clamp_axis(g_pads[index].left_x, -1.0, 1.0));
 }
 
-double rt_pad_left_y(int64_t index)
-{
+double rt_pad_left_y(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0.0;
@@ -1245,8 +1140,7 @@ double rt_pad_left_y(int64_t index)
     return apply_deadzone(clamp_axis(g_pads[index].left_y, -1.0, 1.0));
 }
 
-double rt_pad_right_x(int64_t index)
-{
+double rt_pad_right_x(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0.0;
@@ -1256,8 +1150,7 @@ double rt_pad_right_x(int64_t index)
     return apply_deadzone(clamp_axis(g_pads[index].right_x, -1.0, 1.0));
 }
 
-double rt_pad_right_y(int64_t index)
-{
+double rt_pad_right_y(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0.0;
@@ -1267,8 +1160,7 @@ double rt_pad_right_y(int64_t index)
     return apply_deadzone(clamp_axis(g_pads[index].right_y, -1.0, 1.0));
 }
 
-double rt_pad_left_trigger(int64_t index)
-{
+double rt_pad_left_trigger(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0.0;
@@ -1278,8 +1170,7 @@ double rt_pad_left_trigger(int64_t index)
     return clamp_axis(g_pads[index].left_trigger, 0.0, 1.0);
 }
 
-double rt_pad_right_trigger(int64_t index)
-{
+double rt_pad_right_trigger(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return 0.0;
@@ -1293,14 +1184,12 @@ double rt_pad_right_trigger(int64_t index)
 // Deadzone Handling
 //=============================================================================
 
-void rt_pad_set_deadzone(double radius)
-{
+void rt_pad_set_deadzone(double radius) {
     RT_ASSERT_MAIN_THREAD();
     g_pad_deadzone = clamp_axis(radius, 0.0, 1.0);
 }
 
-double rt_pad_get_deadzone(void)
-{
+double rt_pad_get_deadzone(void) {
     RT_ASSERT_MAIN_THREAD();
     return g_pad_deadzone;
 }
@@ -1309,8 +1198,7 @@ double rt_pad_get_deadzone(void)
 // Vibration/Rumble
 //=============================================================================
 
-void rt_pad_vibrate(int64_t index, double left_motor, double right_motor)
-{
+void rt_pad_vibrate(int64_t index, double left_motor, double right_motor) {
     RT_ASSERT_MAIN_THREAD();
     if (index < 0 || index >= VIPER_PAD_MAX)
         return;
@@ -1326,8 +1214,7 @@ void rt_pad_vibrate(int64_t index, double left_motor, double right_motor)
     platform_pad_vibrate(index, left, right);
 }
 
-void rt_pad_stop_vibration(int64_t index)
-{
+void rt_pad_stop_vibration(int64_t index) {
     RT_ASSERT_MAIN_THREAD();
     rt_pad_vibrate(index, 0.0, 0.0);
 }
@@ -1336,77 +1223,62 @@ void rt_pad_stop_vibration(int64_t index)
 // Button Constant Getters
 //=============================================================================
 
-int64_t rt_pad_button_a(void)
-{
+int64_t rt_pad_button_a(void) {
     return VIPER_PAD_A;
 }
 
-int64_t rt_pad_button_b(void)
-{
+int64_t rt_pad_button_b(void) {
     return VIPER_PAD_B;
 }
 
-int64_t rt_pad_button_x(void)
-{
+int64_t rt_pad_button_x(void) {
     return VIPER_PAD_X;
 }
 
-int64_t rt_pad_button_y(void)
-{
+int64_t rt_pad_button_y(void) {
     return VIPER_PAD_Y;
 }
 
-int64_t rt_pad_button_lb(void)
-{
+int64_t rt_pad_button_lb(void) {
     return VIPER_PAD_LB;
 }
 
-int64_t rt_pad_button_rb(void)
-{
+int64_t rt_pad_button_rb(void) {
     return VIPER_PAD_RB;
 }
 
-int64_t rt_pad_button_back(void)
-{
+int64_t rt_pad_button_back(void) {
     return VIPER_PAD_BACK;
 }
 
-int64_t rt_pad_button_start(void)
-{
+int64_t rt_pad_button_start(void) {
     return VIPER_PAD_START;
 }
 
-int64_t rt_pad_button_lstick(void)
-{
+int64_t rt_pad_button_lstick(void) {
     return VIPER_PAD_LSTICK;
 }
 
-int64_t rt_pad_button_rstick(void)
-{
+int64_t rt_pad_button_rstick(void) {
     return VIPER_PAD_RSTICK;
 }
 
-int64_t rt_pad_button_up(void)
-{
+int64_t rt_pad_button_up(void) {
     return VIPER_PAD_UP;
 }
 
-int64_t rt_pad_button_down(void)
-{
+int64_t rt_pad_button_down(void) {
     return VIPER_PAD_DOWN;
 }
 
-int64_t rt_pad_button_left(void)
-{
+int64_t rt_pad_button_left(void) {
     return VIPER_PAD_LEFT;
 }
 
-int64_t rt_pad_button_right(void)
-{
+int64_t rt_pad_button_right(void) {
     return VIPER_PAD_RIGHT;
 }
 
-int64_t rt_pad_button_guide(void)
-{
+int64_t rt_pad_button_guide(void) {
     return VIPER_PAD_GUIDE;
 }

@@ -47,8 +47,7 @@
 #include <string.h>
 
 /// Internal slot structure.
-struct pool_slot
-{
+struct pool_slot {
     int64_t data;        ///< User data.
     int64_t next_free;   ///< Next free slot index (-1 if end).
     int64_t next_active; ///< Next active slot index (-1 if tail of active list).
@@ -56,8 +55,7 @@ struct pool_slot
 };
 
 /// Internal pool structure.
-struct rt_objpool_impl
-{
+struct rt_objpool_impl {
     struct pool_slot *slots; ///< Slot array.
     int64_t capacity;        ///< Total capacity.
     int64_t active_count;    ///< Number of active slots.
@@ -65,8 +63,7 @@ struct rt_objpool_impl
     int64_t active_head;     ///< Head of active list (-1 if none). O(1) iteration.
 };
 
-static void objpool_finalizer(void *obj)
-{
+static void objpool_finalizer(void *obj) {
     if (!obj)
         return;
     struct rt_objpool_impl *pool = (struct rt_objpool_impl *)obj;
@@ -77,8 +74,7 @@ static void objpool_finalizer(void *obj)
 /// @brief Perform objpool new operation.
 /// @param capacity
 /// @return Result value.
-rt_objpool rt_objpool_new(int64_t capacity)
-{
+rt_objpool rt_objpool_new(int64_t capacity) {
     if (capacity < 1)
         capacity = 1;
     if (capacity > RT_OBJPOOL_MAX)
@@ -89,8 +85,7 @@ rt_objpool rt_objpool_new(int64_t capacity)
         return NULL;
 
     pool->slots = calloc((size_t)capacity, sizeof(struct pool_slot));
-    if (!pool->slots)
-    {
+    if (!pool->slots) {
         if (rt_obj_release_check0(pool))
             rt_obj_free(pool);
         return NULL;
@@ -102,8 +97,7 @@ rt_objpool rt_objpool_new(int64_t capacity)
     pool->active_head = -1;
 
     // Initialize free list
-    for (int64_t i = 0; i < capacity; i++)
-    {
+    for (int64_t i = 0; i < capacity; i++) {
         pool->slots[i].data = 0;
         pool->slots[i].active = 0;
         pool->slots[i].next_free = (i + 1 < capacity) ? i + 1 : -1;
@@ -116,8 +110,7 @@ rt_objpool rt_objpool_new(int64_t capacity)
 
 /// @brief Perform objpool destroy operation.
 /// @param pool
-void rt_objpool_destroy(rt_objpool pool)
-{
+void rt_objpool_destroy(rt_objpool pool) {
     // Object is GC-managed; finalizer frees internal data.
     (void)pool;
 }
@@ -125,8 +118,7 @@ void rt_objpool_destroy(rt_objpool pool)
 /// @brief Perform objpool acquire operation.
 /// @param pool
 /// @return Result value.
-int64_t rt_objpool_acquire(rt_objpool pool)
-{
+int64_t rt_objpool_acquire(rt_objpool pool) {
     if (!pool)
         return -1;
     if (pool->free_head < 0)
@@ -149,8 +141,7 @@ int64_t rt_objpool_acquire(rt_objpool pool)
 /// @param pool
 /// @param slot
 /// @return Result value.
-int8_t rt_objpool_release(rt_objpool pool, int64_t slot)
-{
+int8_t rt_objpool_release(rt_objpool pool, int64_t slot) {
     if (!pool)
         return 0;
     if (slot < 0 || slot >= pool->capacity)
@@ -161,12 +152,9 @@ int8_t rt_objpool_release(rt_objpool pool, int64_t slot)
     pool->slots[slot].active = 0;
     pool->slots[slot].data = 0;
     // Remove from active list (O(active_count))
-    if (pool->active_head == slot)
-    {
+    if (pool->active_head == slot) {
         pool->active_head = pool->slots[slot].next_active;
-    }
-    else
-    {
+    } else {
         int64_t prev = pool->active_head;
         while (prev >= 0 && pool->slots[prev].next_active != slot)
             prev = pool->slots[prev].next_active;
@@ -186,8 +174,7 @@ int8_t rt_objpool_release(rt_objpool pool, int64_t slot)
 /// @param pool
 /// @param slot
 /// @return Result value.
-int8_t rt_objpool_is_active(rt_objpool pool, int64_t slot)
-{
+int8_t rt_objpool_is_active(rt_objpool pool, int64_t slot) {
     if (!pool)
         return 0;
     if (slot < 0 || slot >= pool->capacity)
@@ -198,47 +185,41 @@ int8_t rt_objpool_is_active(rt_objpool pool, int64_t slot)
 /// @brief Perform objpool active count operation.
 /// @param pool
 /// @return Result value.
-int64_t rt_objpool_active_count(rt_objpool pool)
-{
+int64_t rt_objpool_active_count(rt_objpool pool) {
     return pool ? pool->active_count : 0;
 }
 
 /// @brief Perform objpool free count operation.
 /// @param pool
 /// @return Result value.
-int64_t rt_objpool_free_count(rt_objpool pool)
-{
+int64_t rt_objpool_free_count(rt_objpool pool) {
     return pool ? pool->capacity - pool->active_count : 0;
 }
 
 /// @brief Perform objpool capacity operation.
 /// @param pool
 /// @return Result value.
-int64_t rt_objpool_capacity(rt_objpool pool)
-{
+int64_t rt_objpool_capacity(rt_objpool pool) {
     return pool ? pool->capacity : 0;
 }
 
 /// @brief Perform objpool is full operation.
 /// @param pool
 /// @return Result value.
-int8_t rt_objpool_is_full(rt_objpool pool)
-{
+int8_t rt_objpool_is_full(rt_objpool pool) {
     return pool ? (pool->active_count >= pool->capacity ? 1 : 0) : 1;
 }
 
 /// @brief Perform objpool is empty operation.
 /// @param pool
 /// @return Result value.
-int8_t rt_objpool_is_empty(rt_objpool pool)
-{
+int8_t rt_objpool_is_empty(rt_objpool pool) {
     return pool ? (pool->active_count == 0 ? 1 : 0) : 1;
 }
 
 /// @brief Perform objpool clear operation.
 /// @param pool
-void rt_objpool_clear(rt_objpool pool)
-{
+void rt_objpool_clear(rt_objpool pool) {
     if (!pool)
         return;
 
@@ -246,8 +227,7 @@ void rt_objpool_clear(rt_objpool pool)
     pool->free_head = 0;
     pool->active_head = -1;
 
-    for (int64_t i = 0; i < pool->capacity; i++)
-    {
+    for (int64_t i = 0; i < pool->capacity; i++) {
         pool->slots[i].data = 0;
         pool->slots[i].active = 0;
         pool->slots[i].next_free = (i + 1 < pool->capacity) ? i + 1 : -1;
@@ -258,8 +238,7 @@ void rt_objpool_clear(rt_objpool pool)
 /// @brief Perform objpool first active operation.
 /// @param pool
 /// @return Result value.
-int64_t rt_objpool_first_active(rt_objpool pool)
-{
+int64_t rt_objpool_first_active(rt_objpool pool) {
     // O(1): return head of the maintained active list
     return pool ? pool->active_head : -1;
 }
@@ -268,8 +247,7 @@ int64_t rt_objpool_first_active(rt_objpool pool)
 /// @param pool
 /// @param after
 /// @return Result value.
-int64_t rt_objpool_next_active(rt_objpool pool, int64_t after)
-{
+int64_t rt_objpool_next_active(rt_objpool pool, int64_t after) {
     // O(1): follow the intrusive next_active pointer
     if (!pool || after < 0 || after >= pool->capacity)
         return -1;
@@ -281,8 +259,7 @@ int64_t rt_objpool_next_active(rt_objpool pool, int64_t after)
 /// @param slot
 /// @param data
 /// @return Result value.
-int8_t rt_objpool_set_data(rt_objpool pool, int64_t slot, int64_t data)
-{
+int8_t rt_objpool_set_data(rt_objpool pool, int64_t slot, int64_t data) {
     if (!pool)
         return 0;
     if (slot < 0 || slot >= pool->capacity)
@@ -297,8 +274,7 @@ int8_t rt_objpool_set_data(rt_objpool pool, int64_t slot, int64_t data)
 /// @param pool
 /// @param slot
 /// @return Result value.
-int64_t rt_objpool_get_data(rt_objpool pool, int64_t slot)
-{
+int64_t rt_objpool_get_data(rt_objpool pool, int64_t slot) {
     if (!pool)
         return 0;
     if (slot < 0 || slot >= pool->capacity)

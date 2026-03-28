@@ -25,8 +25,7 @@ using il::core::Param;
 using il::runtime::signatures::make_signature;
 using il::runtime::signatures::Signature;
 
-TEST(Attrs, FunctionAttributesRoundTrip)
-{
+TEST(Attrs, FunctionAttributesRoundTrip) {
     Function fn;
     EXPECT_FALSE(fn.attrs().nothrow);
     EXPECT_FALSE(fn.attrs().readonly);
@@ -41,8 +40,7 @@ TEST(Attrs, FunctionAttributesRoundTrip)
     EXPECT_FALSE(fn.attrs().pure);
 }
 
-TEST(Attrs, ParamAttributesSetters)
-{
+TEST(Attrs, ParamAttributesSetters) {
     Param param;
     EXPECT_FALSE(param.isNoAlias());
     EXPECT_FALSE(param.isNoCapture());
@@ -65,8 +63,7 @@ TEST(Attrs, ParamAttributesSetters)
     EXPECT_FALSE(param.isNonNull());
 }
 
-TEST(Attrs, CallInstructionAttributes)
-{
+TEST(Attrs, CallInstructionAttributes) {
     Instr call;
     call.op = Opcode::Call;
 
@@ -83,8 +80,7 @@ TEST(Attrs, CallInstructionAttributes)
     EXPECT_TRUE(call.CallAttr.pure);
 }
 
-TEST(Attrs, RuntimeSignatureAttributeConstruction)
-{
+TEST(Attrs, RuntimeSignatureAttributeConstruction) {
     Signature sig = make_signature("rt_probe", {}, {}, true, true, false);
 
     EXPECT_TRUE(sig.nothrow);
@@ -92,8 +88,7 @@ TEST(Attrs, RuntimeSignatureAttributeConstruction)
     EXPECT_FALSE(sig.pure);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

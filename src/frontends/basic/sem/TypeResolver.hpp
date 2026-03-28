@@ -20,8 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Resolves type names using namespace registry and using context.
 ///
@@ -32,20 +31,17 @@ namespace il::frontends::basic
 ///
 /// @invariant All lookups are case-insensitive.
 /// @invariant Ambiguity produces deterministic (sorted) contender lists.
-class TypeResolver
-{
+class TypeResolver {
   public:
     /// @brief Type kind discriminator.
-    enum class Kind
-    {
+    enum class Kind {
         Unknown,   ///< Type not found or ambiguous.
         Class,     ///< Resolved to a class type.
         Interface, ///< Resolved to an interface type.
     };
 
     /// @brief Result of type name resolution.
-    struct Result
-    {
+    struct Result {
         /// True if exactly one type was found; false if none or ambiguous.
         bool found{false};
 

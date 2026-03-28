@@ -23,8 +23,7 @@
 #endif
 
 // .CRT$XIB initializers must return int (0 = success, non-zero = abort).
-static int viper_suppress_win_dialogs(void)
-{
+static int viper_suppress_win_dialogs(void) {
     // Suppress abort() message box and Windows Error Reporting.
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 

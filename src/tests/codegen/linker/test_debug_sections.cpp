@@ -33,10 +33,8 @@ using namespace viper::codegen::linker;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -45,8 +43,7 @@ static void check(bool cond, const char *msg, int line)
 #define CHECK(cond) check((cond), #cond, __LINE__)
 
 /// Helper: create an ObjFile with given sections.
-static ObjFile makeObj(const std::string &name, const std::vector<ObjSection> &secs)
-{
+static ObjFile makeObj(const std::string &name, const std::vector<ObjSection> &secs) {
     ObjFile obj;
     obj.name = name;
     obj.format = ObjFileFormat::ELF;
@@ -58,8 +55,7 @@ static ObjFile makeObj(const std::string &name, const std::vector<ObjSection> &s
 }
 
 static ObjSection makeAllocSection(
-    const std::string &name, size_t size, bool exec, bool write, uint32_t align = 1)
-{
+    const std::string &name, size_t size, bool exec, bool write, uint32_t align = 1) {
     ObjSection sec;
     sec.name = name;
     sec.data.resize(size, 0xCC);
@@ -70,8 +66,7 @@ static ObjSection makeAllocSection(
     return sec;
 }
 
-static ObjSection makeDebugSection(const std::string &name, size_t size, uint32_t align = 1)
-{
+static ObjSection makeDebugSection(const std::string &name, size_t size, uint32_t align = 1) {
     ObjSection sec;
     sec.name = name;
     sec.data.resize(size, 0xDB); // Debug bytes.
@@ -82,8 +77,7 @@ static ObjSection makeDebugSection(const std::string &name, size_t size, uint32_
     return sec;
 }
 
-int main()
-{
+int main() {
     // --- Test 1: Debug sections are collected into non-alloc OutputSections ---
     {
         std::vector<ObjFile> objects;
@@ -100,15 +94,12 @@ int main()
 
         // Should have text + debug_line.
         bool foundText = false, foundDebug = false;
-        for (const auto &sec : layout.sections)
-        {
-            if (sec.name == ".text")
-            {
+        for (const auto &sec : layout.sections) {
+            if (sec.name == ".text") {
                 foundText = true;
                 CHECK(sec.alloc);
             }
-            if (sec.name == ".debug_line")
-            {
+            if (sec.name == ".debug_line") {
                 foundDebug = true;
                 CHECK(!sec.alloc);
                 CHECK(sec.data.size() == 100);
@@ -133,14 +124,10 @@ int main()
         bool ok = mergeSections(objects, LinkPlatform::Linux, LinkArch::X86_64, layout, err);
         CHECK(ok);
 
-        for (const auto &sec : layout.sections)
-        {
-            if (!sec.alloc)
-            {
+        for (const auto &sec : layout.sections) {
+            if (!sec.alloc) {
                 CHECK(sec.virtualAddr == 0);
-            }
-            else
-            {
+            } else {
                 CHECK(sec.virtualAddr != 0);
             }
         }
@@ -163,8 +150,7 @@ int main()
 
         // All alloc sections should come before non-alloc.
         bool seenNonAlloc = false;
-        for (const auto &sec : layout.sections)
-        {
+        for (const auto &sec : layout.sections) {
             if (!sec.alloc)
                 seenNonAlloc = true;
             else
@@ -194,10 +180,8 @@ int main()
 
         // Should have one merged .debug_line output section.
         int debugCount = 0;
-        for (const auto &sec : layout.sections)
-        {
-            if (sec.name == ".debug_line")
-            {
+        for (const auto &sec : layout.sections) {
+            if (sec.name == ".debug_line") {
                 debugCount++;
                 CHECK(!sec.alloc);
                 CHECK(sec.data.size() >= 100); // 40 + 60, possibly with alignment padding.
@@ -264,8 +248,7 @@ int main()
     {
         // Build two layouts: one with debug sections and one without.
         // Alloc section VAs should be identical.
-        auto buildLayout = [](bool withDebug)
-        {
+        auto buildLayout = [](bool withDebug) {
             std::vector<ObjFile> objects;
             std::vector<ObjSection> secs = {
                 makeAllocSection(".text", 64, true, false),
@@ -298,15 +281,12 @@ int main()
 
         // VAs should match for alloc sections in both layouts.
         size_t ai = 0;
-        for (const auto &sec : withDebug.sections)
-        {
+        for (const auto &sec : withDebug.sections) {
             if (!sec.alloc)
                 continue;
             // Find matching section in withoutDebug.
-            for (const auto &sec2 : withoutDebug.sections)
-            {
-                if (sec2.name == sec.name && sec2.alloc)
-                {
+            for (const auto &sec2 : withoutDebug.sections) {
+                if (sec2.name == sec.name && sec2.alloc) {
                     CHECK(sec.virtualAddr == sec2.virtualAddr);
                     break;
                 }
@@ -336,8 +316,7 @@ int main()
         bool ok = mergeSections(objects, LinkPlatform::Linux, LinkArch::X86_64, layout, err);
         CHECK(ok);
 
-        for (const auto &sec : layout.sections)
-        {
+        for (const auto &sec : layout.sections) {
             if (sec.name != ".debug_line")
                 continue;
             CHECK(sec.data.size() == 64);
@@ -361,10 +340,8 @@ int main()
         CHECK(ok);
         CHECK(layout.pageSize == 0x4000);
 
-        for (const auto &sec : layout.sections)
-        {
-            if (!sec.alloc)
-            {
+        for (const auto &sec : layout.sections) {
+            if (!sec.alloc) {
                 CHECK(sec.virtualAddr == 0);
             }
         }

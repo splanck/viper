@@ -40,19 +40,16 @@
 #include <string_view>
 #include <utility>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
-namespace
-{
+namespace {
 
 /// @brief Report an error when no lowering rule matches an instruction.
 /// @details Throws an exception to signal the unsupported instruction in both
 ///          debug and release builds. This ensures invalid IL is never silently
 ///          ignored.
 /// @param instr Instruction that failed to match any rule.
-[[noreturn]] void reportNoRule(const ILInstr &instr)
-{
+[[noreturn]] void reportNoRule(const ILInstr &instr) {
     std::string msg = "No lowering rule matched instruction: ";
     msg += instr.opcode;
     phaseAUnsupported(msg.c_str());
@@ -68,38 +65,32 @@ namespace
 /// @param lower Adapter that provides lowering utilities and state.
 /// @param block Machine IR block that will receive emitted instructions.
 MIRBuilder::MIRBuilder(LowerILToMIR &lower, MBasicBlock &block) noexcept
-    : lower_{&lower}, block_{&block}
-{
-}
+    : lower_{&lower}, block_{&block} {}
 
 /// @brief Access the mutable machine block being populated.
 /// @return Reference to the target machine block.
-MBasicBlock &MIRBuilder::block() noexcept
-{
+MBasicBlock &MIRBuilder::block() noexcept {
     assert(block_ && "MIRBuilder missing block");
     return *block_;
 }
 
 /// @brief Access the machine block being populated (const view).
 /// @return Const reference to the target machine block.
-const MBasicBlock &MIRBuilder::block() const noexcept
-{
+const MBasicBlock &MIRBuilder::block() const noexcept {
     assert(block_ && "MIRBuilder missing block");
     return *block_;
 }
 
 /// @brief Access the owning adapter for helper services.
 /// @return Reference to the lowering adapter.
-LowerILToMIR &MIRBuilder::lower() noexcept
-{
+LowerILToMIR &MIRBuilder::lower() noexcept {
     assert(lower_ && "MIRBuilder missing adapter");
     return *lower_;
 }
 
 /// @brief Access the owning adapter (const view).
 /// @return Const reference to the lowering adapter.
-const LowerILToMIR &MIRBuilder::lower() const noexcept
-{
+const LowerILToMIR &MIRBuilder::lower() const noexcept {
     assert(lower_ && "MIRBuilder missing adapter");
     return *lower_;
 }
@@ -107,16 +98,14 @@ const LowerILToMIR &MIRBuilder::lower() const noexcept
 /// @brief Retrieve target information describing registers and calling
 ///        conventions.
 /// @return Const reference to the target description.
-const TargetInfo &MIRBuilder::target() const noexcept
-{
+const TargetInfo &MIRBuilder::target() const noexcept {
     assert(lower_ && lower_->target_ && "Target info unavailable");
     return *lower_->target_;
 }
 
 /// @brief Access the read-only data pool used to materialise literals.
 /// @return Reference to the shared rodata pool.
-AsmEmitter::RoDataPool &MIRBuilder::roData() const noexcept
-{
+AsmEmitter::RoDataPool &MIRBuilder::roData() const noexcept {
     assert(lower_ && lower_->roDataPool_ && "RoData pool unavailable");
     return *lower_->roDataPool_;
 }
@@ -124,8 +113,7 @@ AsmEmitter::RoDataPool &MIRBuilder::roData() const noexcept
 /// @brief Map an IL value kind to a machine register class.
 /// @param kind IL value classification (integer, float, pointer, etc.).
 /// @return Register class that should represent the value.
-RegClass MIRBuilder::regClassFor(ILValue::Kind kind) const noexcept
-{
+RegClass MIRBuilder::regClassFor(ILValue::Kind kind) const noexcept {
     assert(lower_);
     return LowerILToMIR::regClassFor(kind);
 }
@@ -135,8 +123,7 @@ RegClass MIRBuilder::regClassFor(ILValue::Kind kind) const noexcept
 /// @param id SSA identifier from the IL.
 /// @param kind IL value kind associated with the identifier.
 /// @return Virtual register assigned to the identifier.
-VReg MIRBuilder::ensureVReg(int id, ILValue::Kind kind)
-{
+VReg MIRBuilder::ensureVReg(int id, ILValue::Kind kind) {
     assert(lower_);
     return lower_->ensureVReg(id, kind);
 }
@@ -144,8 +131,7 @@ VReg MIRBuilder::ensureVReg(int id, ILValue::Kind kind)
 /// @brief Allocate a fresh temporary virtual register.
 /// @param cls Register class to assign to the new temporary.
 /// @return Newly allocated virtual register.
-VReg MIRBuilder::makeTempVReg(RegClass cls)
-{
+VReg MIRBuilder::makeTempVReg(RegClass cls) {
     assert(lower_);
     return lower_->makeTempVReg(cls);
 }
@@ -154,8 +140,7 @@ VReg MIRBuilder::makeTempVReg(RegClass cls)
 /// @param value IL value to translate.
 /// @param cls Preferred register class when a temporary must be created.
 /// @return Machine operand referencing the value.
-Operand MIRBuilder::makeOperandForValue(const ILValue &value, RegClass cls)
-{
+Operand MIRBuilder::makeOperandForValue(const ILValue &value, RegClass cls) {
     assert(lower_ && block_);
     return lower_->makeOperandForValue(*block_, value, cls);
 }
@@ -163,8 +148,7 @@ Operand MIRBuilder::makeOperandForValue(const ILValue &value, RegClass cls)
 /// @brief Translate a label IL value into a machine operand.
 /// @param value IL label value.
 /// @return Machine operand referencing the label.
-Operand MIRBuilder::makeLabelOperand(const ILValue &value) const
-{
+Operand MIRBuilder::makeLabelOperand(const ILValue &value) const {
     assert(lower_);
     return lower_->makeLabelOperand(value);
 }
@@ -172,22 +156,19 @@ Operand MIRBuilder::makeLabelOperand(const ILValue &value) const
 /// @brief Determine whether an IL value encodes a literal immediate.
 /// @param value IL value to inspect.
 /// @return True when the value should be emitted as an immediate operand.
-bool MIRBuilder::isImmediate(const ILValue &value) const noexcept
-{
+bool MIRBuilder::isImmediate(const ILValue &value) const noexcept {
     assert(lower_);
     return lower_->isImmediate(value);
 }
 
 /// @brief Set the source location for subsequently emitted instructions.
-void MIRBuilder::setCurrentLoc(il::support::SourceLoc loc) noexcept
-{
+void MIRBuilder::setCurrentLoc(il::support::SourceLoc loc) noexcept {
     currentLoc_ = loc;
 }
 
 /// @brief Append a machine instruction to the current block.
 /// @param instr Machine instruction to insert.
-void MIRBuilder::append(MInstr instr)
-{
+void MIRBuilder::append(MInstr instr) {
     assert(block_);
     instr.loc = currentLoc_;
     block_->append(std::move(instr));
@@ -195,8 +176,7 @@ void MIRBuilder::append(MInstr instr)
 
 /// @brief Record a call-lowering plan produced by a rule.
 /// @param plan Plan describing register shuffles and call conventions.
-void MIRBuilder::recordCallPlan(CallLoweringPlan plan)
-{
+void MIRBuilder::recordCallPlan(CallLoweringPlan plan) {
     assert(lower_);
     lower_->callPlans_.push_back(std::move(plan));
 }
@@ -209,22 +189,18 @@ void MIRBuilder::recordCallPlan(CallLoweringPlan plan)
 /// @param target Target description including register assignment details.
 /// @param roData Read-only data pool used for literal materialisation.
 LowerILToMIR::LowerILToMIR(const TargetInfo &target, AsmEmitter::RoDataPool &roData) noexcept
-    : target_{&target}, roDataPool_{&roData}
-{
-}
+    : target_{&target}, roDataPool_{&roData} {}
 
 /// @brief Expose the call-lowering plans accumulated during lowering.
 /// @return Reference to the vector of plans emitted by call rules.
-const std::vector<CallLoweringPlan> &LowerILToMIR::callPlans() const noexcept
-{
+const std::vector<CallLoweringPlan> &LowerILToMIR::callPlans() const noexcept {
     return callPlans_;
 }
 
 /// @brief Reset per-function caches before lowering a new function.
 /// @details Clears virtual register assignments, block metadata, and pending
 ///          call plans so state from the previous function does not leak.
-void LowerILToMIR::resetFunctionState()
-{
+void LowerILToMIR::resetFunctionState() {
     nextVReg_ = 1U;
     // Note: nextLocalLabel_ is intentionally NOT reset — it is a module-wide
     // counter so that local labels (e.g. .Lfptosi_chk_trap_N) stay unique
@@ -234,18 +210,15 @@ void LowerILToMIR::resetFunctionState()
     callPlans_.clear();
 }
 
-uint32_t LowerILToMIR::nextLocalLabelId() noexcept
-{
+uint32_t LowerILToMIR::nextLocalLabelId() noexcept {
     return nextLocalLabel_++;
 }
 
 /// @brief Map an IL value kind to a machine register class for the target.
 /// @param kind IL value classification.
 /// @return Register class capable of representing the value.
-RegClass LowerILToMIR::regClassFor(ILValue::Kind kind) noexcept
-{
-    switch (kind)
-    {
+RegClass LowerILToMIR::regClassFor(ILValue::Kind kind) noexcept {
+    switch (kind) {
         case ILValue::Kind::I64:
         case ILValue::Kind::I1:
         case ILValue::Kind::PTR:
@@ -265,12 +238,10 @@ RegClass LowerILToMIR::regClassFor(ILValue::Kind kind) noexcept
 /// @param id SSA identifier number.
 /// @param kind IL value kind associated with @p id.
 /// @return Virtual register descriptor for the identifier.
-VReg LowerILToMIR::ensureVReg(int id, ILValue::Kind kind)
-{
+VReg LowerILToMIR::ensureVReg(int id, ILValue::Kind kind) {
     assert(id >= 0 && "SSA value without identifier");
     const auto it = valueToVReg_.find(id);
-    if (it != valueToVReg_.end())
-    {
+    if (it != valueToVReg_.end()) {
         assert(it->second.cls == regClassFor(kind) && "SSA id reused with new type");
         return it->second;
     }
@@ -282,24 +253,21 @@ VReg LowerILToMIR::ensureVReg(int id, ILValue::Kind kind)
 /// @brief Allocate a fresh temporary virtual register owned by the adapter.
 /// @param cls Register class assigned to the temporary.
 /// @return Newly allocated virtual register descriptor.
-VReg LowerILToMIR::makeTempVReg(RegClass cls)
-{
+VReg LowerILToMIR::makeTempVReg(RegClass cls) {
     return VReg{nextVReg_++, cls};
 }
 
 /// @brief Determine whether an IL value should be emitted as an immediate.
 /// @param value IL value candidate.
 /// @return True when the value encodes a literal rather than an SSA id.
-bool LowerILToMIR::isImmediate(const ILValue &value) const noexcept
-{
+bool LowerILToMIR::isImmediate(const ILValue &value) const noexcept {
     return value.id < 0;
 }
 
 /// @brief Translate an IL label into a machine operand.
 /// @param value Label-valued IL operand.
 /// @return Machine operand referencing the label target.
-Operand LowerILToMIR::makeLabelOperand(const ILValue &value) const
-{
+Operand LowerILToMIR::makeLabelOperand(const ILValue &value) const {
     assert(value.kind == ILValue::Kind::LABEL && "label operand expected");
     return x64::makeLabelOperand(value.label);
 }
@@ -311,15 +279,12 @@ Operand LowerILToMIR::makeLabelOperand(const ILValue &value) const
 /// @param value IL value to translate.
 /// @param cls Preferred register class when literals must be materialised.
 /// @return Machine operand representing the value.
-Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &value, RegClass cls)
-{
-    if (value.kind == ILValue::Kind::LABEL)
-    {
+Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &value, RegClass cls) {
+    if (value.kind == ILValue::Kind::LABEL) {
         return makeLabelOperand(value);
     }
 
-    if (!isImmediate(value))
-    {
+    if (!isImmediate(value)) {
         // Entry block parameters are now handled at function entry via MOV instructions
         // that copy from physical argument registers to virtual registers. This ensures
         // the values are properly preserved across function calls.
@@ -327,14 +292,12 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
         return makeVRegOperand(vreg.cls, vreg.id);
     }
 
-    switch (value.kind)
-    {
+    switch (value.kind) {
         case ILValue::Kind::I64:
         case ILValue::Kind::I1:
         case ILValue::Kind::PTR:
             return makeImmOperand(value.i64);
-        case ILValue::Kind::F64:
-        {
+        case ILValue::Kind::F64: {
             assert(cls == RegClass::XMM && "f64 operands must target XMM registers");
             assert(roDataPool_ && "RoData pool unavailable for f64 literals");
             const int poolIndex = roDataPool_->addF64Literal(value.f64);
@@ -346,16 +309,14 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
                                       std::vector<Operand>{cloneOperand(tempOperand), ripOperand}));
             return tempOperand;
         }
-        case ILValue::Kind::STR:
-        {
+        case ILValue::Kind::STR: {
             assert(cls == RegClass::GPR && "string literals expect GPR destinations");
             assert(roDataPool_ && "RoData pool unavailable for string literals");
             assert(target_ && "Target info unavailable for string literal lowering");
 
             std::string literalBytes = value.str;
             const auto requestedLen = static_cast<std::size_t>(value.strLen);
-            if (literalBytes.size() != requestedLen)
-            {
+            if (literalBytes.size() != requestedLen) {
                 literalBytes.resize(requestedLen);
             }
 
@@ -421,41 +382,31 @@ Operand LowerILToMIR::makeOperandForValue(MBasicBlock &block, const ILValue &val
 ///          before emitting the copy.
 /// @param source IL block providing edge metadata.
 /// @param block Machine block receiving the copies.
-void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
-{
-    for (const auto &edge : source.terminatorEdges)
-    {
+void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block) {
+    for (const auto &edge : source.terminatorEdges) {
         const auto destIt = blockInfo_.find(edge.to);
-        if (destIt == blockInfo_.end())
-        {
+        if (destIt == blockInfo_.end()) {
             phaseAUnsupported(("edge references non-existent block: " + edge.to).c_str());
         }
-        if (destIt->second.paramVRegs.empty())
-        {
+        if (destIt->second.paramVRegs.empty()) {
             continue;
         }
         const auto &params = destIt->second.paramVRegs;
-        if (edge.argIds.empty())
-        {
+        if (edge.argIds.empty()) {
             continue;
         }
 
         MInstr px = MInstr::make(MOpcode::PX_COPY, {});
-        for (std::size_t idx = 0; idx < params.size() && idx < edge.argIds.size(); ++idx)
-        {
+        for (std::size_t idx = 0; idx < params.size() && idx < edge.argIds.size(); ++idx) {
             Operand srcOp;
-            if (edge.argIds[idx] >= 0)
-            {
+            if (edge.argIds[idx] >= 0) {
                 // SSA temp: look up the existing vreg mapping.
                 const auto valIt = valueToVReg_.find(edge.argIds[idx]);
-                if (valIt == valueToVReg_.end())
-                {
+                if (valIt == valueToVReg_.end()) {
                     continue;
                 }
                 srcOp = makeVRegOperand(valIt->second.cls, valIt->second.id);
-            }
-            else
-            {
+            } else {
                 // Constant: materialize into a fresh vreg.
                 // PX_COPY requires register operands, so we must emit a MOV
                 // instruction that loads the constant into a temporary vreg.
@@ -464,8 +415,7 @@ void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
                 const ILValue &val = edge.argValues[idx];
                 const RegClass cls = params[idx].cls;
 
-                if (cls == RegClass::XMM)
-                {
+                if (cls == RegClass::XMM) {
                     // F64 constant: load from rodata pool into XMM vreg.
                     assert(roDataPool_ && "RoData pool unavailable for f64 block arg");
                     const int poolIdx = roDataPool_->addF64Literal(val.f64);
@@ -475,9 +425,7 @@ void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
                     const Operand ripOp = makeRipLabelOperand(label);
                     block.append(MInstr::make(MOpcode::MOVSDmr,
                                               std::vector<Operand>{cloneOperand(srcOp), ripOp}));
-                }
-                else
-                {
+                } else {
                     // Integer/pointer/bool constant: MOVri into GPR vreg.
                     const VReg tmp = makeTempVReg(RegClass::GPR);
                     srcOp = makeVRegOperand(tmp.cls, tmp.id);
@@ -490,8 +438,7 @@ void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
             px.operands.push_back(srcOp);
         }
 
-        if (!px.operands.empty())
-        {
+        if (!px.operands.empty()) {
             block.append(std::move(px));
         }
     }
@@ -502,8 +449,7 @@ void LowerILToMIR::emitEdgeCopies(const ILBlock &source, MBasicBlock &block)
 ///          dispatcher for every instruction, and emits block-parameter copies.
 /// @param func IL function to lower.
 /// @return Machine function containing the lowered instructions.
-MFunction LowerILToMIR::lower(const ILFunction &func)
-{
+MFunction LowerILToMIR::lower(const ILFunction &func) {
     resetFunctionState();
 
     MFunction result{};
@@ -511,8 +457,7 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
 
     result.blocks.reserve(func.blocks.size());
 
-    for (std::size_t idx = 0; idx < func.blocks.size(); ++idx)
-    {
+    for (std::size_t idx = 0; idx < func.blocks.size(); ++idx) {
         const auto &ilBlock = func.blocks[idx];
         BlockInfo info{};
         info.index = idx;
@@ -522,12 +467,10 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
         block.label = ".L_" + func.name + "_" + ilBlock.name;
 
         info.paramVRegs.reserve(ilBlock.paramIds.size());
-        for (std::size_t p = 0; p < ilBlock.paramIds.size() && p < ilBlock.paramKinds.size(); ++p)
-        {
+        for (std::size_t p = 0; p < ilBlock.paramIds.size() && p < ilBlock.paramKinds.size(); ++p) {
             const int paramId = ilBlock.paramIds[p];
             const auto kind = ilBlock.paramKinds[p];
-            if (paramId >= 0)
-            {
+            if (paramId >= 0) {
                 info.paramVRegs.push_back(ensureVReg(paramId, kind));
             }
         }
@@ -541,8 +484,7 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
 
     // Build a map from entry block parameter IDs to their ABI physical registers
     // or stack offsets for stack-passed parameters
-    struct StackParam
-    {
+    struct StackParam {
         int paramId;
         int32_t offset;
         ILValue::Kind kind;
@@ -550,33 +492,26 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
 
     std::unordered_map<int, Operand> entryParamToPhysReg{};
     std::vector<StackParam> stackParams{};
-    if (!func.blocks.empty() && !func.blocks[0].paramIds.empty())
-    {
+    if (!func.blocks.empty() && !func.blocks[0].paramIds.empty()) {
         const auto &entryParams = func.blocks[0];
         std::size_t gprArgIdx = 0;
         std::size_t xmmArgIdx = 0;
         std::size_t stackArgIdx = 0;
         for (std::size_t p = 0;
              p < entryParams.paramIds.size() && p < entryParams.paramKinds.size();
-             ++p)
-        {
+             ++p) {
             const int paramId = entryParams.paramIds[p];
             const auto kind = entryParams.paramKinds[p];
-            if (paramId < 0)
-            {
+            if (paramId < 0) {
                 continue;
             }
             const RegClass cls = regClassFor(kind);
-            if (cls == RegClass::XMM)
-            {
-                if (xmmArgIdx < target_->maxFPArgs)
-                {
+            if (cls == RegClass::XMM) {
+                if (xmmArgIdx < target_->maxFPArgs) {
                     const PhysReg argReg = target_->f64ArgOrder[xmmArgIdx++];
                     entryParamToPhysReg[paramId] =
                         makePhysRegOperand(RegClass::XMM, static_cast<uint16_t>(argReg));
-                }
-                else
-                {
+                } else {
                     // Stack-passed XMM argument.
                     // Offset from RBP after standard prologue:
                     //   SysV AMD64:  16 + stackArgIdx*8  (8 saved RBP + 8 return address)
@@ -588,17 +523,12 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
                     stackParams.push_back({paramId, offset, kind});
                     ++stackArgIdx;
                 }
-            }
-            else
-            {
-                if (gprArgIdx < target_->maxGPRArgs)
-                {
+            } else {
+                if (gprArgIdx < target_->maxGPRArgs) {
                     const PhysReg argReg = target_->intArgOrder[gprArgIdx++];
                     entryParamToPhysReg[paramId] =
                         makePhysRegOperand(RegClass::GPR, static_cast<uint16_t>(argReg));
-                }
-                else
-                {
+                } else {
                     // Stack-passed GPR argument.
                     // SysV AMD64:  16 + stackArgIdx*8
                     // Windows x64: shadowSpace + 16 + stackArgIdx*8
@@ -622,15 +552,13 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
     // Using PX_COPY instead of individual MOVs ensures the coalescer resolves
     // the parallel move correctly (topological sort + cycle-breaking), avoiding
     // write-before-read hazards when physical register destinations alias sources.
-    if (!entryParamToPhysReg.empty() && !result.blocks.empty())
-    {
+    if (!entryParamToPhysReg.empty() && !result.blocks.empty()) {
         auto &entryBlock = result.blocks[0];
         MInstr px = MInstr::make(MOpcode::PX_COPY, {});
 
         // Iterate in parameter declaration order (deterministic), not map order.
         const auto &entryParams = func.blocks[0];
-        for (std::size_t p = 0; p < entryParams.paramIds.size(); ++p)
-        {
+        for (std::size_t p = 0; p < entryParams.paramIds.size(); ++p) {
             const int paramId = entryParams.paramIds[p];
             auto it = entryParamToPhysReg.find(paramId);
             if (it == entryParamToPhysReg.end())
@@ -645,58 +573,48 @@ MFunction LowerILToMIR::lower(const ILFunction &func)
             px.operands.push_back(it->second);
         }
 
-        if (!px.operands.empty())
-        {
+        if (!px.operands.empty()) {
             entryBlock.instructions.insert(entryBlock.instructions.begin(), std::move(px));
         }
     }
 
     // Emit loads for stack-passed parameters at the start of the entry block
-    if (!stackParams.empty() && !result.blocks.empty())
-    {
+    if (!stackParams.empty() && !result.blocks.empty()) {
         auto &entryBlock = result.blocks[0];
-        for (const auto &sp : stackParams)
-        {
+        for (const auto &sp : stackParams) {
             // Create a vreg for this parameter and emit a load from stack
             const VReg vreg = ensureVReg(sp.paramId, sp.kind);
             const Operand dest = makeVRegOperand(vreg.cls, vreg.id);
             const Operand src = makeMemOperand(makePhysBase(PhysReg::RBP), sp.offset);
             // Emit MOVmr to load from stack into vreg
-            if (vreg.cls == RegClass::XMM)
-            {
+            if (vreg.cls == RegClass::XMM) {
                 entryBlock.instructions.push_back(MInstr::make(MOpcode::MOVSDmr, {dest, src}));
-            }
-            else
-            {
+            } else {
                 entryBlock.instructions.push_back(MInstr::make(MOpcode::MOVmr, {dest, src}));
             }
         }
     }
 
-    for (std::size_t idx = 0; idx < func.blocks.size(); ++idx)
-    {
+    for (std::size_t idx = 0; idx < func.blocks.size(); ++idx) {
         const auto &ilBlock = func.blocks[idx];
         auto &mirBlock = result.blocks[idx];
         MIRBuilder builder{*this, mirBlock};
 
-        for (std::size_t instrIdx = 0; instrIdx < ilBlock.instrs.size(); ++instrIdx)
-        {
+        for (std::size_t instrIdx = 0; instrIdx < ilBlock.instrs.size(); ++instrIdx) {
             const auto &instr = ilBlock.instrs[instrIdx];
 
             // Detect terminator instructions and emit edge copies BEFORE the terminator.
             // This ensures block arguments are passed correctly before the branch.
             const bool isTerminator = instr.opcode == "br" || instr.opcode == "cbr" ||
                                       instr.opcode == "ret" || instr.opcode == "switch_i32";
-            if (isTerminator)
-            {
+            if (isTerminator) {
                 emitEdgeCopies(ilBlock, mirBlock);
             }
 
             builder.setCurrentLoc(instr.loc);
 
             const LoweringRule *rule = viper_select_rule(instr);
-            if (!rule)
-            {
+            if (!rule) {
                 reportNoRule(instr);
             }
             rule->emit(instr, builder);

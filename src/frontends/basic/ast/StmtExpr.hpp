@@ -22,15 +22,12 @@
 #include <utility>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Item within a PRINT statement.
-struct PrintItem
-{
+struct PrintItem {
     /// Kind of item to output.
-    enum class Kind
-    {
+    enum class Kind {
         Expr,      ///< Expression to print.
         Comma,     ///< Insert a space.
         Semicolon, ///< Insert nothing.
@@ -43,10 +40,8 @@ struct PrintItem
 /// @brief PRINT statement outputting a sequence of expressions and separators.
 /// Trailing semicolon suppresses the automatic newline.
 /// @invariant items.size() > 0
-struct PrintStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct PrintStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Print;
     }
 
@@ -57,14 +52,11 @@ struct PrintStmt : Stmt
 };
 
 /// @brief PRINT # statement that outputs to a file channel.
-struct PrintChStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct PrintChStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::PrintCh;
     }
-    enum class Mode
-    {
+    enum class Mode {
         Print,
         Write,
     } mode{Mode::Print};
@@ -82,10 +74,8 @@ struct PrintChStmt : Stmt
 };
 
 /// @brief BEEP statement emitting a bell/beep sound.
-struct BeepStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct BeepStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Beep;
     }
 
@@ -94,10 +84,8 @@ struct BeepStmt : Stmt
 };
 
 /// @brief CALL statement invoking a user-defined SUB or instance method.
-struct CallStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct CallStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Call;
     }
 
@@ -109,10 +97,8 @@ struct CallStmt : Stmt
 };
 
 /// @brief CLS statement clearing the screen.
-struct ClsStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct ClsStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Cls;
     }
 
@@ -121,10 +107,8 @@ struct ClsStmt : Stmt
 };
 
 /// @brief COLOR statement changing the palette.
-struct ColorStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct ColorStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Color;
     }
 
@@ -139,10 +123,8 @@ struct ColorStmt : Stmt
 };
 
 /// @brief SLEEP statement blocking for a duration in milliseconds.
-struct SleepStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct SleepStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Sleep;
     }
 
@@ -154,10 +136,8 @@ struct SleepStmt : Stmt
 };
 
 /// @brief LOCATE statement moving the cursor.
-struct LocateStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct LocateStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Locate;
     }
 
@@ -181,10 +161,8 @@ struct LocateStmt : Stmt
 };
 
 /// @brief CURSOR statement controlling cursor visibility.
-struct CursorStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct CursorStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Cursor;
     }
 
@@ -196,10 +174,8 @@ struct CursorStmt : Stmt
 };
 
 /// @brief ALTSCREEN statement controlling alternate screen buffer.
-struct AltScreenStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct AltScreenStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::AltScreen;
     }
 
@@ -211,10 +187,8 @@ struct AltScreenStmt : Stmt
 };
 
 /// @brief LET statement assigning to an lvalue.
-struct LetStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct LetStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Let;
     }
 
@@ -230,10 +204,8 @@ struct LetStmt : Stmt
 
 /// @brief CONST statement declaring a constant.
 /// @invariant Initializer expression must be non-null.
-struct ConstStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct ConstStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Const;
     }
 
@@ -251,10 +223,8 @@ struct ConstStmt : Stmt
 };
 
 /// @brief DIM statement declaring a variable or array.
-struct DimStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct DimStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Dim;
     }
 
@@ -293,10 +263,8 @@ struct DimStmt : Stmt
 };
 
 /// @brief STATIC statement declaring a persistent procedure-local variable.
-struct StaticStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct StaticStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Static;
     }
 
@@ -316,31 +284,25 @@ struct StaticStmt : Stmt
 ///          analyser already allows accessing module-level variables from
 ///          procedures, so this statement is effectively a no-op and primarily
 ///          exists for compatibility and better diagnostics.
-struct SharedStmt : Stmt
-{
+struct SharedStmt : Stmt {
     std::vector<std::string> names; ///< Names listed in the SHARED statement.
 
-    [[nodiscard]] Kind stmtKind() const noexcept override
-    {
+    [[nodiscard]] Kind stmtKind() const noexcept override {
         return Kind::Shared;
     }
 
-    void accept(StmtVisitor &visitor) const override
-    {
+    void accept(StmtVisitor &visitor) const override {
         visitor.visit(*this);
     }
 
-    void accept(MutStmtVisitor &visitor) override
-    {
+    void accept(MutStmtVisitor &visitor) override {
         visitor.visit(*this);
     }
 };
 
 /// @brief REDIM statement resizing an existing array.
-struct ReDimStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct ReDimStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::ReDim;
     }
 
@@ -355,10 +317,8 @@ struct ReDimStmt : Stmt
 };
 
 /// @brief SWAP statement for exchanging values of two variables.
-struct SwapStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct SwapStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Swap;
     }
 
@@ -373,10 +333,8 @@ struct SwapStmt : Stmt
 };
 
 /// @brief RANDOMIZE statement seeding the pseudo-random generator.
-struct RandomizeStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct RandomizeStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Randomize;
     }
 
@@ -387,10 +345,8 @@ struct RandomizeStmt : Stmt
 };
 
 /// @brief OPEN statement configuring a file channel.
-struct OpenStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct OpenStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Open;
     }
 
@@ -398,8 +354,7 @@ struct OpenStmt : Stmt
     ExprPtr pathExpr;
 
     /// File mode keyword.
-    enum class Mode
-    {
+    enum class Mode {
         Input,
         Output,
         Append,
@@ -415,10 +370,8 @@ struct OpenStmt : Stmt
 };
 
 /// @brief CLOSE statement closing a file channel.
-struct CloseStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct CloseStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Close;
     }
 
@@ -429,10 +382,8 @@ struct CloseStmt : Stmt
 };
 
 /// @brief SEEK statement moving a file position.
-struct SeekStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct SeekStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Seek;
     }
 
@@ -447,10 +398,8 @@ struct SeekStmt : Stmt
 };
 
 /// @brief INPUT statement to read from stdin into a variable, optionally displaying a prompt.
-struct InputStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct InputStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Input;
     }
 
@@ -464,8 +413,7 @@ struct InputStmt : Stmt
 };
 
 /// @brief Reference to a BASIC identifier together with its source location.
-struct NameRef
-{
+struct NameRef {
     /// Identifier text, including optional type suffix.
     Identifier name;
 
@@ -474,10 +422,8 @@ struct NameRef
 };
 
 /// @brief INPUT # statement reading a field from a file channel.
-struct InputChStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct InputChStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::InputCh;
     }
 
@@ -492,10 +438,8 @@ struct InputChStmt : Stmt
 };
 
 /// @brief LINE INPUT # statement reading an entire line from a file channel.
-struct LineInputChStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct LineInputChStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::LineInputCh;
     }
 
@@ -510,10 +454,8 @@ struct LineInputChStmt : Stmt
 };
 
 /// @brief DELETE statement releasing an object reference.
-struct DeleteStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct DeleteStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Delete;
     }
 

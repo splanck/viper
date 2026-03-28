@@ -34,19 +34,15 @@
 #define NATIVE_ARM64 0
 #endif
 
-namespace
-{
+namespace {
 
 // Find the build directory by looking for CMakeCache.txt
-std::string findBuildDir()
-{
+std::string findBuildDir() {
     namespace fs = std::filesystem;
     std::error_code ec;
     fs::path cur = fs::current_path(ec);
-    if (!ec)
-    {
-        for (int depth = 0; depth < 8; ++depth)
-        {
+    if (!ec) {
+        for (int depth = 0; depth < 8; ++depth) {
             if (fs::exists(cur / "CMakeCache.txt", ec))
                 return cur.string();
             if (!cur.has_parent_path())
@@ -89,16 +85,14 @@ entry:
 constexpr int64_t kExpectedFib35 = 9227465;
 
 // Helper to write content to a file
-void writeFile(const std::string &path, const std::string &content)
-{
+void writeFile(const std::string &path, const std::string &content) {
     std::ofstream ofs(path);
     ASSERT_TRUE(ofs.is_open());
     ofs << content;
 }
 
 // Helper to read a file into a string
-std::string readFile(const std::string &path)
-{
+std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream oss;
     oss << ifs.rdbuf();
@@ -109,8 +103,7 @@ std::string readFile(const std::string &path)
 
 #if NATIVE_ARM64
 
-TEST(NativeArm64Perf, FibCompileAndLink)
-{
+TEST(NativeArm64Perf, FibCompileAndLink) {
     // This test verifies the native codegen pipeline produces correct results
     const std::string tmpDir = "/tmp";
     const std::string ilFile = tmpDir + "/perf_fib_test.il";
@@ -135,11 +128,9 @@ TEST(NativeArm64Perf, FibCompileAndLink)
     // Step 3: Link with runtime library (use full runtime to satisfy all dependencies)
     const std::string buildDir = findBuildDir();
     std::string linkCmd = "clang++ " + objFile;
-    if (!buildDir.empty())
-    {
+    if (!buildDir.empty()) {
         const std::string runtimeLib = buildDir + "/src/runtime/libviper_runtime.a";
-        if (std::filesystem::exists(runtimeLib))
-        {
+        if (std::filesystem::exists(runtimeLib)) {
             linkCmd += " " + runtimeLib;
         }
     }
@@ -173,16 +164,14 @@ TEST(NativeArm64Perf, FibCompileAndLink)
 
 #else // !NATIVE_ARM64
 
-TEST(NativeArm64Perf, FibCompileAndLink)
-{
+TEST(NativeArm64Perf, FibCompileAndLink) {
     // Skip on non-ARM64 platforms
     std::cout << "  [SKIPPED] Not an ARM64 platform\n";
 }
 
 #endif // NATIVE_ARM64
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

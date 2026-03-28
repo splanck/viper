@@ -27,14 +27,12 @@
 #include <algorithm>
 #include <limits>
 
-namespace il::frontends::basic::semantic_analyzer_detail
-{
+namespace il::frontends::basic::semantic_analyzer_detail {
 
 /// @brief Case-insensitive lowercase for qualified names (preserves dots).
 /// @param s The qualified name string to convert (e.g., "Viper.Graphics.Canvas").
 /// @return Lowercase version of the input string.
-static std::string toLowerQualified(std::string_view s)
-{
+static std::string toLowerQualified(std::string_view s) {
     std::string out;
     out.reserve(s.size());
     for (unsigned char c : s)
@@ -45,19 +43,15 @@ static std::string toLowerQualified(std::string_view s)
 /// @brief Check if an expression represents a runtime namespace chain (starting with "Viper").
 /// @param expr The expression to check.
 /// @return True if the expression is a qualified name chain starting with "Viper".
-static bool isRuntimeNamespaceChain(const Expr &expr)
-{
+static bool isRuntimeNamespaceChain(const Expr &expr) {
     std::vector<std::string> parts;
     const Expr *cur = &expr;
-    while (cur)
-    {
-        if (auto *var = as<const VarExpr>(*cur))
-        {
+    while (cur) {
+        if (auto *var = as<const VarExpr>(*cur)) {
             parts.push_back(var->name);
             break;
         }
-        if (auto *mem = as<const MemberAccessExpr>(*cur))
-        {
+        if (auto *mem = as<const MemberAccessExpr>(*cur)) {
             parts.push_back(mem->member);
             cur = mem->base.get();
             continue;
@@ -75,18 +69,14 @@ static bool isRuntimeNamespaceChain(const Expr &expr)
 /// @param expr The expression to traverse (VarExpr or MemberAccessExpr chain).
 /// @param out Output vector to store name segments in order.
 /// @return True if successful, false if expression is not a valid name chain.
-static bool collectQualifiedChain(const Expr &expr, std::vector<std::string> &out)
-{
+static bool collectQualifiedChain(const Expr &expr, std::vector<std::string> &out) {
     const Expr *cur = &expr;
-    while (cur)
-    {
-        if (auto *var = as<const VarExpr>(*cur))
-        {
+    while (cur) {
+        if (auto *var = as<const VarExpr>(*cur)) {
             out.push_back(var->name);
             break;
         }
-        if (auto *mem = as<const MemberAccessExpr>(*cur))
-        {
+        if (auto *mem = as<const MemberAccessExpr>(*cur)) {
             out.push_back(mem->member);
             cur = mem->base.get();
             continue;
@@ -102,8 +92,7 @@ static bool collectQualifiedChain(const Expr &expr, std::vector<std::string> &ou
 /// @brief Extract the fully-qualified runtime class name from an expression.
 /// @param expr The expression representing a runtime class reference.
 /// @return The qualified name (e.g., "Viper.Graphics.Canvas") if valid, nullopt otherwise.
-static std::optional<std::string> runtimeClassQNameFromExpr(const Expr &expr)
-{
+static std::optional<std::string> runtimeClassQNameFromExpr(const Expr &expr) {
     std::vector<std::string> parts;
     if (!collectQualifiedChain(expr, parts))
         return std::nullopt;
@@ -115,8 +104,7 @@ static std::optional<std::string> runtimeClassQNameFromExpr(const Expr &expr)
 /// @brief Map runtime IL type names to BASIC semantic types.
 /// @param ty The IL type string (e.g., "i64", "f64", "str").
 /// @return The corresponding SemanticAnalyzer::Type, or nullopt if unknown.
-static std::optional<SemanticAnalyzer::Type> semanticTypeFromRuntimeType(std::string_view ty)
-{
+static std::optional<SemanticAnalyzer::Type> semanticTypeFromRuntimeType(std::string_view ty) {
     if (ty == "i64")
         return SemanticAnalyzer::Type::Int;
     if (ty == "f64")
@@ -137,19 +125,13 @@ static std::optional<SemanticAnalyzer::Type> semanticTypeFromRuntimeType(std::st
 /// @details Handles both direct class references (Canvas.Width) and variable
 ///          references to runtime class instances.
 static std::optional<SemanticAnalyzer::Type> resolveRuntimePropertyType(
-    SemanticAnalyzer &analyzer, const MemberAccessExpr &expr)
-{
+    SemanticAnalyzer &analyzer, const MemberAccessExpr &expr) {
     const il::runtime::RuntimeClass *klass = nullptr;
-    if (expr.base)
-    {
-        if (auto qname = runtimeClassQNameFromExpr(*expr.base))
-        {
+    if (expr.base) {
+        if (auto qname = runtimeClassQNameFromExpr(*expr.base)) {
             klass = il::runtime::findRuntimeClassByQName(*qname);
-        }
-        else if (auto *var = as<const VarExpr>(*expr.base))
-        {
-            if (auto qname2 = analyzer.lookupObjectClassQName(var->name))
-            {
+        } else if (auto *var = as<const VarExpr>(*expr.base)) {
+            if (auto qname2 = analyzer.lookupObjectClassQName(var->name)) {
                 klass = il::runtime::findRuntimeClassByQName(*qname2);
             }
         }
@@ -158,8 +140,7 @@ static std::optional<SemanticAnalyzer::Type> resolveRuntimePropertyType(
     if (!klass)
         return std::nullopt;
 
-    for (const auto &prop : klass->properties)
-    {
+    for (const auto &prop : klass->properties) {
         if (string_utils::iequals(prop.name, expr.member))
             return semanticTypeFromRuntimeType(prop.type ? prop.type : "");
     }
@@ -169,8 +150,7 @@ static std::optional<SemanticAnalyzer::Type> resolveRuntimePropertyType(
 
 } // namespace il::frontends::basic::semantic_analyzer_detail
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 using semantic_analyzer_detail::astToSemanticType;
 using semantic_analyzer_detail::isRuntimeNamespaceChain;
@@ -185,109 +165,90 @@ using semantic_analyzer_detail::toLowerQualified;
 ///          or returns an immediate type for literals.  The visitor stores the
 ///          resulting semantic type so callers can retrieve it after walking an
 ///          expression tree.
-class SemanticAnalyzerExprVisitor final : public MutExprVisitor
-{
+class SemanticAnalyzerExprVisitor final : public MutExprVisitor {
   public:
     /// @brief Create a visitor bound to @p analyzer.
-    explicit SemanticAnalyzerExprVisitor(SemanticAnalyzer &analyzer) noexcept : analyzer_(analyzer)
-    {
-    }
+    explicit SemanticAnalyzerExprVisitor(SemanticAnalyzer &analyzer) noexcept
+        : analyzer_(analyzer) {}
 
     /// @brief Literal integers yield the integer semantic type.
-    void visit(IntExpr &) override
-    {
+    void visit(IntExpr &) override {
         result_ = SemanticAnalyzer::Type::Int;
     }
 
     /// @brief Literal floats evaluate to floating-point semantic type.
-    void visit(FloatExpr &) override
-    {
+    void visit(FloatExpr &) override {
         result_ = SemanticAnalyzer::Type::Float;
     }
 
     /// @brief Literal strings evaluate to string semantic type.
-    void visit(StringExpr &) override
-    {
+    void visit(StringExpr &) override {
         result_ = SemanticAnalyzer::Type::String;
     }
 
     /// @brief Boolean literals propagate the boolean semantic type.
-    void visit(BoolExpr &) override
-    {
+    void visit(BoolExpr &) override {
         result_ = SemanticAnalyzer::Type::Bool;
     }
 
     /// @brief Variables defer to SemanticAnalyzer for resolution.
-    void visit(VarExpr &expr) override
-    {
+    void visit(VarExpr &expr) override {
         result_ = analyzer_.analyzeVar(expr);
     }
 
     /// @brief Array expressions trigger array-specific analysis.
-    void visit(ArrayExpr &expr) override
-    {
+    void visit(ArrayExpr &expr) override {
         result_ = analyzer_.analyzeArray(expr);
     }
 
     /// @brief Unary expressions are analysed via SemanticAnalyzer helpers.
-    void visit(UnaryExpr &expr) override
-    {
+    void visit(UnaryExpr &expr) override {
         result_ = analyzer_.analyzeUnary(expr);
     }
 
     /// @brief Binary expressions defer to SemanticAnalyzer::analyzeBinary.
-    void visit(BinaryExpr &expr) override
-    {
+    void visit(BinaryExpr &expr) override {
         result_ = analyzer_.analyzeBinary(expr);
     }
 
     /// @brief Builtin calls delegate to dedicated builtin analysis.
-    void visit(BuiltinCallExpr &expr) override
-    {
+    void visit(BuiltinCallExpr &expr) override {
         result_ = analyzer_.analyzeBuiltinCall(expr);
     }
 
     /// @brief LBOUND expressions compute integer results via analyser logic.
-    void visit(LBoundExpr &expr) override
-    {
+    void visit(LBoundExpr &expr) override {
         result_ = analyzer_.analyzeLBound(expr);
     }
 
     /// @brief UBOUND expressions compute integer results via analyser logic.
-    void visit(UBoundExpr &expr) override
-    {
+    void visit(UBoundExpr &expr) override {
         result_ = analyzer_.analyzeUBound(expr);
     }
 
     /// @brief Procedure calls re-use general call analysis.
-    void visit(CallExpr &expr) override
-    {
+    void visit(CallExpr &expr) override {
         result_ = analyzer_.analyzeCall(expr);
     }
 
     /// @brief NEW expressions analyse constructor signatures before returning Unknown.
-    void visit(NewExpr &expr) override
-    {
+    void visit(NewExpr &expr) override {
         result_ = analyzer_.analyzeNew(expr);
     }
 
     /// @brief ME references are currently untyped placeholders.
-    void visit(MeExpr &) override
-    {
+    void visit(MeExpr &) override {
         result_ = SemanticAnalyzer::Type::Unknown;
     }
 
     /// @brief Member access expressions remain Unknown until OOP analysis matures.
     /// However, we validate the base expression to catch undefined variables.
-    void visit(MemberAccessExpr &expr) override
-    {
+    void visit(MemberAccessExpr &expr) override {
         // Validate base expression (catches undefined variables like 'A' in 'A.B')
-        if (expr.base && !isRuntimeNamespaceChain(*expr.base))
-        {
+        if (expr.base && !isRuntimeNamespaceChain(*expr.base)) {
             analyzer_.visitExpr(*expr.base);
         }
-        if (auto rtType = resolveRuntimePropertyType(analyzer_, expr))
-        {
+        if (auto rtType = resolveRuntimePropertyType(analyzer_, expr)) {
             result_ = *rtType;
             return;
         }
@@ -296,18 +257,14 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
 
     /// @brief Method calls are treated as Unknown until OOP semantics are added.
     /// However, we validate the base expression to catch undefined variables.
-    void visit(MethodCallExpr &expr) override
-    {
+    void visit(MethodCallExpr &expr) override {
         // Validate base expression (catches undefined variables in nested calls)
-        if (expr.base)
-        {
+        if (expr.base) {
             analyzer_.visitExpr(*expr.base);
         }
         // Validate arguments
-        for (auto &arg : expr.args)
-        {
-            if (arg)
-            {
+        for (auto &arg : expr.args) {
+            if (arg) {
                 analyzer_.visitExpr(*arg);
             }
         }
@@ -315,38 +272,32 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
     }
 
     /// @brief IS expressions evaluate to boolean; validate operands and type name.
-    void visit(IsExpr &expr) override
-    {
+    void visit(IsExpr &expr) override {
         // Check left operand type; reject obvious primitives.
         SemanticAnalyzer::Type lhsType = analyzer_.visitExpr(*expr.value);
-        auto isPrimitive = [&](SemanticAnalyzer::Type t)
-        {
+        auto isPrimitive = [&](SemanticAnalyzer::Type t) {
             using T = SemanticAnalyzer::Type;
             return t == T::Int || t == T::Float || t == T::Bool || t == T::String ||
                    t == T::ArrayInt;
         };
 
         // Resolve right-hand dotted type to class or interface.
-        auto existsQ = [&](const std::string &q) -> bool
-        {
+        auto existsQ = [&](const std::string &q) -> bool {
             if (analyzer_.oopIndex_.interfacesByQname().contains(q))
                 return true;
             return analyzer_.oopIndex_.findClass(q) != nullptr;
         };
 
         std::string dotted;
-        if (!expr.typeName.empty())
-        {
-            if (expr.typeName.size() == 1)
-            {
+        if (!expr.typeName.empty()) {
+            if (expr.typeName.size() == 1) {
                 // Unqualified: resolve with parent-walk then imports.
                 std::string ident = Canon(expr.typeName[0]);
                 std::vector<std::string> prefix;
                 for (const auto &seg : analyzer_.nsStack_)
                     prefix.push_back(Canon(seg));
                 std::vector<std::string> hits;
-                for (std::size_t n = prefix.size(); n > 0; --n)
-                {
+                for (std::size_t n = prefix.size(); n > 0; --n) {
                     std::vector<std::string> parts(prefix.begin(),
                                                    prefix.begin() + static_cast<std::ptrdiff_t>(n));
                     parts.push_back(ident);
@@ -358,13 +309,10 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
                     hits.push_back(ident);
                 if (hits.size() == 1)
                     dotted = hits[0];
-                else if (hits.empty())
-                {
-                    if (!analyzer_.usingStack_.empty())
-                    {
+                else if (hits.empty()) {
+                    if (!analyzer_.usingStack_.empty()) {
                         const auto &cur = analyzer_.usingStack_.back();
-                        for (const auto &ns : cur.imports)
-                        {
+                        for (const auto &ns : cur.imports) {
                             std::string q = ns + "." + ident;
                             if (existsQ(q))
                                 hits.push_back(q);
@@ -373,17 +321,13 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
                     if (hits.size() == 1)
                         dotted = hits[0];
                 }
-                if (dotted.empty())
-                {
+                if (dotted.empty()) {
                     // Default to single ident (unknown handling occurs below)
                     dotted = ident;
                 }
-            }
-            else
-            {
+            } else {
                 // Qualified: join as-is
-                for (size_t i = 0; i < expr.typeName.size(); ++i)
-                {
+                for (size_t i = 0; i < expr.typeName.size(); ++i) {
                     if (i)
                         dotted.push_back('.');
                     dotted += expr.typeName[i];
@@ -392,17 +336,14 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
         }
         bool resolved = existsQ(dotted);
 
-        if (!resolved)
-        {
+        if (!resolved) {
             std::string msg = std::string("unknown type '") + dotted + "'";
             analyzer_.de.emit(il::support::Severity::Error,
                               "B2111",
                               expr.loc,
                               static_cast<uint32_t>(dotted.size()),
                               std::move(msg));
-        }
-        else if (isPrimitive(lhsType))
-        {
+        } else if (isPrimitive(lhsType)) {
             analyzer_.de.emit(il::support::Severity::Error,
                               "B2121",
                               expr.loc,
@@ -414,35 +355,29 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
     }
 
     /// @brief AS expressions yield the inner value's type; validate operands and type name.
-    void visit(AsExpr &expr) override
-    {
+    void visit(AsExpr &expr) override {
         // Preserve operand type; runtime returns NULL on failure.
         SemanticAnalyzer::Type lhsType = analyzer_.visitExpr(*expr.value);
-        auto isPrimitive = [&](SemanticAnalyzer::Type t)
-        {
+        auto isPrimitive = [&](SemanticAnalyzer::Type t) {
             using T = SemanticAnalyzer::Type;
             return t == T::Int || t == T::Float || t == T::Bool || t == T::String ||
                    t == T::ArrayInt;
         };
 
         std::string dotted;
-        if (!expr.typeName.empty())
-        {
-            if (expr.typeName.size() == 1)
-            {
+        if (!expr.typeName.empty()) {
+            if (expr.typeName.size() == 1) {
                 std::string ident = Canon(expr.typeName[0]);
                 std::vector<std::string> prefix;
                 for (const auto &seg : analyzer_.nsStack_)
                     prefix.push_back(Canon(seg));
                 std::vector<std::string> hits;
-                auto existsQ = [&](const std::string &q) -> bool
-                {
+                auto existsQ = [&](const std::string &q) -> bool {
                     if (analyzer_.oopIndex_.interfacesByQname().contains(q))
                         return true;
                     return analyzer_.oopIndex_.findClass(q) != nullptr;
                 };
-                for (std::size_t n = prefix.size(); n > 0; --n)
-                {
+                for (std::size_t n = prefix.size(); n > 0; --n) {
                     std::vector<std::string> parts(prefix.begin(),
                                                    prefix.begin() + static_cast<std::ptrdiff_t>(n));
                     parts.push_back(ident);
@@ -454,13 +389,10 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
                     hits.push_back(ident);
                 if (hits.size() == 1)
                     dotted = hits[0];
-                else if (hits.empty())
-                {
-                    if (!analyzer_.usingStack_.empty())
-                    {
+                else if (hits.empty()) {
+                    if (!analyzer_.usingStack_.empty()) {
                         const auto &cur = analyzer_.usingStack_.back();
-                        for (const auto &ns : cur.imports)
-                        {
+                        for (const auto &ns : cur.imports) {
                             std::string q = ns + "." + ident;
                             if (existsQ(q))
                                 hits.push_back(q);
@@ -471,25 +403,20 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
                 }
                 if (dotted.empty())
                     dotted = ident;
-            }
-            else
-            {
+            } else {
                 // Qualified: apply alias expansion to the first segment, if present.
                 std::vector<std::string> segs = expr.typeName;
-                if (!analyzer_.usingStack_.empty() && !segs.empty())
-                {
+                if (!analyzer_.usingStack_.empty() && !segs.empty()) {
                     std::string firstCanon = Canon(segs[0]);
                     const auto &aliases = analyzer_.usingStack_.back().aliases;
                     auto it = aliases.find(firstCanon);
-                    if (it != aliases.end())
-                    {
+                    if (it != aliases.end()) {
                         std::vector<std::string> expanded = SplitDots(it->second);
                         expanded.insert(expanded.end(), segs.begin() + 1, segs.end());
                         segs = std::move(expanded);
                     }
                 }
-                for (size_t i = 0; i < segs.size(); ++i)
-                {
+                for (size_t i = 0; i < segs.size(); ++i) {
                     if (i)
                         dotted.push_back('.');
                     dotted += segs[i];
@@ -499,30 +426,24 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
         bool resolved = false;
         if (analyzer_.oopIndex_.interfacesByQname().contains(dotted))
             resolved = true;
-        if (!resolved)
-        {
-            for (const auto &entry : analyzer_.oopIndex_.classes())
-            {
+        if (!resolved) {
+            for (const auto &entry : analyzer_.oopIndex_.classes()) {
                 // Case-insensitive comparison since BASIC is case-insensitive
-                if (string_utils::iequals(entry.second.qualifiedName, dotted))
-                {
+                if (string_utils::iequals(entry.second.qualifiedName, dotted)) {
                     resolved = true;
                     break;
                 }
             }
         }
 
-        if (!resolved)
-        {
+        if (!resolved) {
             std::string msg = std::string("unknown type '") + dotted + "'";
             analyzer_.de.emit(il::support::Severity::Error,
                               "B2111",
                               expr.loc,
                               static_cast<uint32_t>(dotted.size()),
                               std::move(msg));
-        }
-        else if (isPrimitive(lhsType))
-        {
+        } else if (isPrimitive(lhsType)) {
             // E_CAST_INVALID: cannot cast value of type '{From}' to '{To}'.
             std::string from = std::string(semantic_analyzer_detail::semanticTypeName(lhsType));
             std::string to = dotted;
@@ -535,16 +456,14 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
     }
 
     /// @brief ADDRESSOF expressions yield a function pointer type (Unknown in BASIC semantics).
-    void visit(AddressOfExpr &) override
-    {
+    void visit(AddressOfExpr &) override {
         // ADDRESSOF produces a function pointer, which is represented as Unknown
         // in BASIC's type system since it's not a traditional BASIC value type.
         result_ = SemanticAnalyzer::Type::Unknown;
     }
 
     /// @brief Retrieve the semantic type computed during visitation.
-    [[nodiscard]] SemanticAnalyzer::Type result() const noexcept
-    {
+    [[nodiscard]] SemanticAnalyzer::Type result() const noexcept {
         return result_;
     }
 
@@ -560,8 +479,7 @@ class SemanticAnalyzerExprVisitor final : public MutExprVisitor
 ///
 /// @param v Variable expression under analysis.
 /// @return Semantic type inferred for the variable.
-SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
-{
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v) {
     return sem::analyzeVarExpr(*this, v);
 }
 
@@ -569,8 +487,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeVar(VarExpr &v)
 ///
 /// @param u Unary expression AST node.
 /// @return Semantic type computed by @ref sem::analyzeUnaryExpr.
-SemanticAnalyzer::Type SemanticAnalyzer::analyzeUnary(const UnaryExpr &u)
-{
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeUnary(const UnaryExpr &u) {
     return sem::analyzeUnaryExpr(*this, u);
 }
 
@@ -578,8 +495,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeUnary(const UnaryExpr &u)
 ///
 /// @param b Binary expression AST node.
 /// @return Semantic type computed by @ref sem::analyzeBinaryExpr.
-SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
-{
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b) {
     return sem::analyzeBinaryExpr(*this, b);
 }
 
@@ -594,21 +510,17 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeBinary(const BinaryExpr &b)
 ///
 /// @param expr NEW expression being analysed.
 /// @return Semantic type observed for the NEW expression (currently Unknown).
-SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
-{
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr) {
     // Helper: map canonical qualified name to declared-case name in OOP index.
-    auto mapCanonicalToDeclared = [&](const std::string &qcanon) -> std::string
-    {
+    auto mapCanonicalToDeclared = [&](const std::string &qcanon) -> std::string {
         if (const ClassInfo *ci = oopIndex_.findClass(qcanon))
             return ci->qualifiedName;
-        auto toCanonQ = [](const std::string &q) -> std::string
-        {
+        auto toCanonQ = [](const std::string &q) -> std::string {
             std::vector<std::string> segs = SplitDots(q);
             return CanonJoin(segs);
         };
         std::string want = toCanonQ(qcanon);
-        for (const auto &kv : oopIndex_.classes())
-        {
+        for (const auto &kv : oopIndex_.classes()) {
             const std::string &decl = kv.second.qualifiedName;
             if (toCanonQ(decl) == want)
                 return decl;
@@ -618,20 +530,17 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
 
     // Treat a single qualified segment as an unqualified type name so USING and
     // parent-walk resolution apply.
-    if (expr.qualifiedType.size() == 1)
-    {
+    if (expr.qualifiedType.size() == 1) {
         expr.className = expr.qualifiedType.front();
         expr.qualifiedType.clear();
     }
 
     // Apply alias expansion for qualified type, if present.
-    if (!expr.qualifiedType.empty() && !usingStack_.empty())
-    {
+    if (!expr.qualifiedType.empty() && !usingStack_.empty()) {
         std::string firstCanon = Canon(expr.qualifiedType[0]);
         const auto &aliases = usingStack_.back().aliases;
         auto it = aliases.find(firstCanon);
-        if (it != aliases.end())
-        {
+        if (it != aliases.end()) {
             std::vector<std::string> expanded = SplitDots(it->second);
             expanded.insert(
                 expanded.end(), expr.qualifiedType.begin() + 1, expr.qualifiedType.end());
@@ -641,11 +550,9 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
     }
 
     // If unqualified type, resolve using parent-walk then USING imports.
-    if (expr.qualifiedType.empty())
-    {
+    if (expr.qualifiedType.empty()) {
         std::vector<std::string> attempts;
-        auto existsQ = [&](const std::string &q) -> bool
-        {
+        auto existsQ = [&](const std::string &q) -> bool {
             std::string decl = mapCanonicalToDeclared(q);
             if (oopIndex_.interfacesByQname().contains(decl))
                 return true;
@@ -656,14 +563,12 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
         // Parent-walk: A.B.Point -> A.Point -> Point
         std::vector<std::string> prefixCanon;
         prefixCanon.reserve(nsStack_.size());
-        for (const auto &seg : nsStack_)
-        {
+        for (const auto &seg : nsStack_) {
             std::string cseg = Canon(seg);
             prefixCanon.push_back(cseg.empty() ? seg : cseg);
         }
         std::vector<std::string> hits;
-        for (std::size_t n = prefixCanon.size(); n > 0; --n)
-        {
+        for (std::size_t n = prefixCanon.size(); n > 0; --n) {
             std::vector<std::string> parts(prefixCanon.begin(),
                                            prefixCanon.begin() + static_cast<std::ptrdiff_t>(n));
             parts.push_back(ident);
@@ -677,13 +582,11 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
         if (existsQ(ident))
             hits.push_back(ident);
 
-        auto reportAmbiguous = [&](const std::vector<std::string> &cands)
-        {
+        auto reportAmbiguous = [&](const std::vector<std::string> &cands) {
             std::vector<std::string> sorted = cands;
             std::sort(sorted.begin(), sorted.end());
             std::string msg = std::string("ambiguous type '") + expr.className + "' (candidates: ";
-            for (size_t i = 0; i < sorted.size(); ++i)
-            {
+            for (size_t i = 0; i < sorted.size(); ++i) {
                 if (i)
                     msg += ", ";
                 msg += sorted[i];
@@ -696,24 +599,17 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
                     std::move(msg));
         };
 
-        if (hits.size() == 1)
-        {
+        if (hits.size() == 1) {
             expr.className = mapCanonicalToDeclared(hits[0]);
-        }
-        else if (hits.size() > 1)
-        {
+        } else if (hits.size() > 1) {
             reportAmbiguous(hits);
             return Type::Unknown;
-        }
-        else
-        {
+        } else {
             // Try USING imports
             std::vector<std::string> importHits;
-            if (!usingStack_.empty())
-            {
+            if (!usingStack_.empty()) {
                 const UsingScope &cur = usingStack_.back();
-                for (const auto &ns : cur.imports)
-                {
+                for (const auto &ns : cur.imports) {
                     std::string q = ns;
                     if (!q.empty())
                         q.push_back('.');
@@ -723,31 +619,23 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
                         importHits.push_back(q);
                 }
             }
-            if (importHits.size() == 1)
-            {
+            if (importHits.size() == 1) {
                 expr.className = mapCanonicalToDeclared(importHits[0]);
-            }
-            else if (importHits.size() > 1)
-            {
+            } else if (importHits.size() > 1) {
                 reportAmbiguous(importHits);
                 return Type::Unknown;
-            }
-            else
-            {
+            } else {
                 // Unknown type with tried list
                 std::string msg = std::string("unknown type '") + expr.className + "'";
-                if (!attempts.empty())
-                {
+                if (!attempts.empty()) {
                     msg += " (tried: ";
                     size_t limit = std::min<std::size_t>(attempts.size(), 8);
-                    for (size_t i = 0; i < limit; ++i)
-                    {
+                    for (size_t i = 0; i < limit; ++i) {
                         if (i)
                             msg += ", ";
                         msg += attempts[i];
                     }
-                    if (attempts.size() > limit)
-                    {
+                    if (attempts.size() > limit) {
                         msg += ", +" + std::to_string(attempts.size() - limit) + " more";
                     }
                     msg += ")";
@@ -770,12 +658,9 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
     // Allow NEW for runtime classes defined in the catalog when a ctor helper exists.
     {
         auto &tyreg = runtimeTypeRegistry();
-        if (tyreg.kindOf(expr.className) == TypeKind::BuiltinExternalType)
-        {
-            if (const auto *found = il::runtime::findRuntimeClassByQName(expr.className))
-            {
-                if (!found->ctor || std::string(found->ctor).empty())
-                {
+        if (tyreg.kindOf(expr.className) == TypeKind::BuiltinExternalType) {
+            if (const auto *found = il::runtime::findRuntimeClassByQName(expr.className)) {
+                if (!found->ctor || std::string(found->ctor).empty()) {
                     std::string msg = "runtime class '" + expr.className + "' has no constructor";
                     de.emit(il::support::Severity::Error,
                             "E_RUNTIME_CLASS_NO_CTOR",
@@ -795,8 +680,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
         return Type::Unknown;
 
     // Instantiation of abstract classes is not allowed.
-    if (klass->isAbstract)
-    {
+    if (klass->isAbstract) {
         std::string msg = "cannot instantiate abstract class '" + expr.className + "'";
         de.emit(il::support::Severity::Error,
                 "B2106",
@@ -808,8 +692,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
     }
 
     const std::size_t expectedCount = klass->ctorParams.size();
-    if (expr.args.size() != expectedCount)
-    {
+    if (expr.args.size() != expectedCount) {
         std::string msg = "constructor for '" + expr.className + "' expects " +
                           std::to_string(expectedCount) + " argument" +
                           (expectedCount == 1 ? "" : "s") + ", got " +
@@ -822,17 +705,14 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
         return Type::Unknown;
     }
 
-    for (std::size_t i = 0; i < expectedCount; ++i)
-    {
+    for (std::size_t i = 0; i < expectedCount; ++i) {
         const auto &param = klass->ctorParams[i];
         const Expr *argExpr = expr.args[i].get();
         Type argTy = argTypes[i];
 
-        if (param.isArray)
-        {
+        if (param.isArray) {
             const auto *var = as<const VarExpr>(*argExpr);
-            if (!var || !arrays_.contains(var->name))
-            {
+            if (!var || !arrays_.contains(var->name)) {
                 il::support::SourceLoc loc = argExpr ? argExpr->loc : expr.loc;
                 std::string msg = "constructor argument " + std::to_string(i + 1) + " for '" +
                                   expr.className + "' must be an array variable (ByRef)";
@@ -846,8 +726,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
             continue;
 
         Type want = astToSemanticType(expectTy);
-        if (argTy != Type::Unknown && argTy != want)
-        {
+        if (argTy != Type::Unknown && argTy != want) {
             il::support::SourceLoc loc = argExpr ? argExpr->loc : expr.loc;
             std::string msg = "constructor argument type mismatch for '" + expr.className + "'";
             de.emit(il::support::Severity::Error, "B2001", loc, 1, std::move(msg));
@@ -865,8 +744,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeNew(NewExpr &expr)
 ///
 /// @param expr Expression requiring a conversion.
 /// @param targetType Type to which the expression should be coerced.
-void SemanticAnalyzer::markImplicitConversion(const Expr &expr, Type targetType)
-{
+void SemanticAnalyzer::markImplicitConversion(const Expr &expr, Type targetType) {
     implicitConversions_[&expr] = targetType;
 }
 
@@ -879,8 +757,7 @@ void SemanticAnalyzer::markImplicitConversion(const Expr &expr, Type targetType)
 ///
 /// @param expr Expression slated for conversion.
 /// @param target Semantic type to coerce the expression to.
-void SemanticAnalyzer::insertImplicitCast(Expr &expr, Type target)
-{
+void SemanticAnalyzer::insertImplicitCast(Expr &expr, Type target) {
     auto it = implicitConversions_.find(&expr);
     if (it != implicitConversions_.end() && it->second == target)
         return;
@@ -896,8 +773,7 @@ void SemanticAnalyzer::insertImplicitCast(Expr &expr, Type target)
 ///
 /// @param a Array expression under analysis.
 /// @return Semantic type of the accessed element or Unknown on error.
-SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
-{
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a) {
     return sem::analyzeArrayExpr(*this, a);
 }
 
@@ -908,8 +784,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeArray(ArrayExpr &a)
 ///
 /// @param expr LBOUND expression node.
 /// @return Integer type on success or Unknown when diagnostics were emitted.
-SemanticAnalyzer::Type SemanticAnalyzer::analyzeLBound(LBoundExpr &expr)
-{
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeLBound(LBoundExpr &expr) {
     return sem::analyzeLBoundExpr(*this, expr);
 }
 
@@ -920,8 +795,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeLBound(LBoundExpr &expr)
 ///
 /// @param expr UBOUND expression node.
 /// @return Integer type on success or Unknown when diagnostics were emitted.
-SemanticAnalyzer::Type SemanticAnalyzer::analyzeUBound(UBoundExpr &expr)
-{
+SemanticAnalyzer::Type SemanticAnalyzer::analyzeUBound(UBoundExpr &expr) {
     return sem::analyzeUBoundExpr(*this, expr);
 }
 
@@ -929,8 +803,7 @@ SemanticAnalyzer::Type SemanticAnalyzer::analyzeUBound(UBoundExpr &expr)
 ///
 /// @param e Expression to analyse.
 /// @return Semantic type determined by the visitor.
-SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(Expr &e)
-{
+SemanticAnalyzer::Type SemanticAnalyzer::visitExpr(Expr &e) {
     SemanticAnalyzerExprVisitor visitor(*this);
     e.accept(visitor);
     return visitor.result();

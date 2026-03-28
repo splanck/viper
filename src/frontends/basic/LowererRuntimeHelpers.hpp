@@ -18,14 +18,12 @@
 #include <array>
 #include <cstddef>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Manual runtime helpers that require explicit tracking.
 /// @details These are helpers not covered by the RuntimeFeature enum but
 ///          still need declaration in the IL module when used.
-enum class ManualRuntimeHelper : std::size_t
-{
+enum class ManualRuntimeHelper : std::size_t {
     Trap = 0,
     ArrayI32New,
     ArrayI32Resize,
@@ -90,8 +88,7 @@ inline constexpr std::size_t kManualRuntimeHelperCount =
     static_cast<std::size_t>(ManualRuntimeHelper::Count);
 
 /// @brief Convert a ManualRuntimeHelper to its array index.
-inline constexpr std::size_t manualRuntimeHelperIndex(ManualRuntimeHelper helper) noexcept
-{
+inline constexpr std::size_t manualRuntimeHelperIndex(ManualRuntimeHelper helper) noexcept {
     return static_cast<std::size_t>(helper);
 }
 

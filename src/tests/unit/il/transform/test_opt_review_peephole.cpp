@@ -25,15 +25,13 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 // Build a module with: cmp = op(a, b); cbr cmp, "true_bb", "false_bb"; ret in each
 Module buildCmpBrModule(Opcode cmpOp,
                         Value lhs,
                         Value rhs,
-                        Type::Kind resultTypeKind = Type::Kind::I1)
-{
+                        Type::Kind resultTypeKind = Type::Kind::I1) {
     Module module;
     Function fn;
     fn.name = "cmp_br_test";
@@ -87,8 +85,7 @@ Module buildCmpBrModule(Opcode cmpOp,
 }
 
 // Check if peephole converted the CBr to an unconditional Br
-bool cbrSimplifiedToTarget(const Module &module, const std::string &expectedTarget)
-{
+bool cbrSimplifiedToTarget(const Module &module, const std::string &expectedTarget) {
     const Function &fn = module.functions.front();
     const BasicBlock &entry = fn.blocks.front();
     const Instr &term = entry.instructions.back();
@@ -98,8 +95,7 @@ bool cbrSimplifiedToTarget(const Module &module, const std::string &expectedTarg
 }
 
 // Build a module with reflexive comparison: op(temp, temp) used in CBr
-Module buildReflexiveCmpModule(Opcode cmpOp)
-{
+Module buildReflexiveCmpModule(Opcode cmpOp) {
     Module module;
     Function fn;
     fn.name = "reflexive_test";
@@ -139,14 +135,12 @@ Module buildReflexiveCmpModule(Opcode cmpOp)
 }
 
 // After peephole, check if the reflexive cmp was replaced with a constant
-bool reflexiveCmpReplacedWith(const Module &module, long long expectedVal)
-{
+bool reflexiveCmpReplacedWith(const Module &module, long long expectedVal) {
     const Function &fn = module.functions.front();
     const BasicBlock &entry = fn.blocks.front();
     // The ret should now use a constant instead of temp(1)
     const Instr &ret = entry.instructions.back();
-    if (ret.op == Opcode::Ret && !ret.operands.empty())
-    {
+    if (ret.op == Opcode::Ret && !ret.operands.empty()) {
         const Value &v = ret.operands[0];
         if (v.kind == Value::Kind::ConstInt && v.i64 == expectedVal)
             return true;
@@ -155,8 +149,7 @@ bool reflexiveCmpReplacedWith(const Module &module, long long expectedVal)
 }
 
 // After peephole, check that the reflexive cmp was NOT folded (still uses temp)
-bool reflexiveCmpSurvived(const Module &module)
-{
+bool reflexiveCmpSurvived(const Module &module) {
     const Function &fn = module.functions.front();
     const BasicBlock &entry = fn.blocks.front();
     const Instr &ret = entry.instructions.back();
@@ -169,40 +162,35 @@ bool reflexiveCmpSurvived(const Module &module)
 
 // --- Unsigned comparison folding in CBr ---
 
-TEST(Peephole, UCmpLT_ConstFoldInCBr)
-{
+TEST(Peephole, UCmpLT_ConstFoldInCBr) {
     // 3 < 5 (unsigned) = true => should branch to true_bb
     Module m = buildCmpBrModule(Opcode::UCmpLT, Value::constInt(3), Value::constInt(5));
     il::transform::peephole(m);
     EXPECT_TRUE(cbrSimplifiedToTarget(m, "true_bb"));
 }
 
-TEST(Peephole, UCmpLT_ConstFoldFalseInCBr)
-{
+TEST(Peephole, UCmpLT_ConstFoldFalseInCBr) {
     // 5 < 3 (unsigned) = false => should branch to false_bb
     Module m = buildCmpBrModule(Opcode::UCmpLT, Value::constInt(5), Value::constInt(3));
     il::transform::peephole(m);
     EXPECT_TRUE(cbrSimplifiedToTarget(m, "false_bb"));
 }
 
-TEST(Peephole, UCmpLE_ConstFoldInCBr)
-{
+TEST(Peephole, UCmpLE_ConstFoldInCBr) {
     // 5 <= 5 (unsigned) = true
     Module m = buildCmpBrModule(Opcode::UCmpLE, Value::constInt(5), Value::constInt(5));
     il::transform::peephole(m);
     EXPECT_TRUE(cbrSimplifiedToTarget(m, "true_bb"));
 }
 
-TEST(Peephole, UCmpGT_ConstFoldInCBr)
-{
+TEST(Peephole, UCmpGT_ConstFoldInCBr) {
     // 10 > 3 (unsigned) = true
     Module m = buildCmpBrModule(Opcode::UCmpGT, Value::constInt(10), Value::constInt(3));
     il::transform::peephole(m);
     EXPECT_TRUE(cbrSimplifiedToTarget(m, "true_bb"));
 }
 
-TEST(Peephole, UCmpGE_ConstFoldInCBr)
-{
+TEST(Peephole, UCmpGE_ConstFoldInCBr) {
     // 3 >= 5 (unsigned) = false
     Module m = buildCmpBrModule(Opcode::UCmpGE, Value::constInt(3), Value::constInt(5));
     il::transform::peephole(m);
@@ -211,56 +199,49 @@ TEST(Peephole, UCmpGE_ConstFoldInCBr)
 
 // --- Float comparison folding in CBr ---
 
-TEST(Peephole, FCmpEQ_ConstFoldInCBr)
-{
+TEST(Peephole, FCmpEQ_ConstFoldInCBr) {
     // 3.0 == 3.0 = true
     Module m = buildCmpBrModule(Opcode::FCmpEQ, Value::constFloat(3.0), Value::constFloat(3.0));
     il::transform::peephole(m);
     EXPECT_TRUE(cbrSimplifiedToTarget(m, "true_bb"));
 }
 
-TEST(Peephole, FCmpNE_ConstFoldInCBr)
-{
+TEST(Peephole, FCmpNE_ConstFoldInCBr) {
     // 3.0 != 5.0 = true
     Module m = buildCmpBrModule(Opcode::FCmpNE, Value::constFloat(3.0), Value::constFloat(5.0));
     il::transform::peephole(m);
     EXPECT_TRUE(cbrSimplifiedToTarget(m, "true_bb"));
 }
 
-TEST(Peephole, FCmpLT_ConstFoldInCBr)
-{
+TEST(Peephole, FCmpLT_ConstFoldInCBr) {
     // 2.5 < 3.5 = true
     Module m = buildCmpBrModule(Opcode::FCmpLT, Value::constFloat(2.5), Value::constFloat(3.5));
     il::transform::peephole(m);
     EXPECT_TRUE(cbrSimplifiedToTarget(m, "true_bb"));
 }
 
-TEST(Peephole, FCmpLT_ConstFoldFalseInCBr)
-{
+TEST(Peephole, FCmpLT_ConstFoldFalseInCBr) {
     // 5.0 < 3.0 = false
     Module m = buildCmpBrModule(Opcode::FCmpLT, Value::constFloat(5.0), Value::constFloat(3.0));
     il::transform::peephole(m);
     EXPECT_TRUE(cbrSimplifiedToTarget(m, "false_bb"));
 }
 
-TEST(Peephole, FCmpLE_ConstFoldInCBr)
-{
+TEST(Peephole, FCmpLE_ConstFoldInCBr) {
     // 3.0 <= 3.0 = true
     Module m = buildCmpBrModule(Opcode::FCmpLE, Value::constFloat(3.0), Value::constFloat(3.0));
     il::transform::peephole(m);
     EXPECT_TRUE(cbrSimplifiedToTarget(m, "true_bb"));
 }
 
-TEST(Peephole, FCmpGT_ConstFoldInCBr)
-{
+TEST(Peephole, FCmpGT_ConstFoldInCBr) {
     // 10.0 > 3.0 = true
     Module m = buildCmpBrModule(Opcode::FCmpGT, Value::constFloat(10.0), Value::constFloat(3.0));
     il::transform::peephole(m);
     EXPECT_TRUE(cbrSimplifiedToTarget(m, "true_bb"));
 }
 
-TEST(Peephole, FCmpGE_ConstFoldInCBr)
-{
+TEST(Peephole, FCmpGE_ConstFoldInCBr) {
     // 3.0 >= 5.0 = false
     Module m = buildCmpBrModule(Opcode::FCmpGE, Value::constFloat(3.0), Value::constFloat(5.0));
     il::transform::peephole(m);
@@ -269,29 +250,25 @@ TEST(Peephole, FCmpGE_ConstFoldInCBr)
 
 // --- Reflexive unsigned comparison rules ---
 
-TEST(Peephole, UCmpLT_ReflexiveFoldsToFalse)
-{
+TEST(Peephole, UCmpLT_ReflexiveFoldsToFalse) {
     Module m = buildReflexiveCmpModule(Opcode::UCmpLT);
     il::transform::peephole(m);
     EXPECT_TRUE(reflexiveCmpReplacedWith(m, 0));
 }
 
-TEST(Peephole, UCmpLE_ReflexiveFoldsToTrue)
-{
+TEST(Peephole, UCmpLE_ReflexiveFoldsToTrue) {
     Module m = buildReflexiveCmpModule(Opcode::UCmpLE);
     il::transform::peephole(m);
     EXPECT_TRUE(reflexiveCmpReplacedWith(m, 1));
 }
 
-TEST(Peephole, UCmpGT_ReflexiveFoldsToFalse)
-{
+TEST(Peephole, UCmpGT_ReflexiveFoldsToFalse) {
     Module m = buildReflexiveCmpModule(Opcode::UCmpGT);
     il::transform::peephole(m);
     EXPECT_TRUE(reflexiveCmpReplacedWith(m, 0));
 }
 
-TEST(Peephole, UCmpGE_ReflexiveFoldsToTrue)
-{
+TEST(Peephole, UCmpGE_ReflexiveFoldsToTrue) {
     Module m = buildReflexiveCmpModule(Opcode::UCmpGE);
     il::transform::peephole(m);
     EXPECT_TRUE(reflexiveCmpReplacedWith(m, 1));
@@ -301,48 +278,42 @@ TEST(Peephole, UCmpGE_ReflexiveFoldsToTrue)
 // Float reflexive comparisons must NOT be folded because NaN != NaN (IEEE 754).
 // The operand could be NaN at runtime; we can't statically prove otherwise.
 
-TEST(Peephole, FCmpEQ_ReflexiveNotFolded)
-{
+TEST(Peephole, FCmpEQ_ReflexiveNotFolded) {
     // NaN == NaN is false, so fcmp.eq %x, %x cannot fold to true
     Module m = buildReflexiveCmpModule(Opcode::FCmpEQ);
     il::transform::peephole(m);
     EXPECT_TRUE(reflexiveCmpSurvived(m));
 }
 
-TEST(Peephole, FCmpNE_ReflexiveNotFolded)
-{
+TEST(Peephole, FCmpNE_ReflexiveNotFolded) {
     // NaN != NaN is true, so fcmp.ne %x, %x cannot fold to false
     Module m = buildReflexiveCmpModule(Opcode::FCmpNE);
     il::transform::peephole(m);
     EXPECT_TRUE(reflexiveCmpSurvived(m));
 }
 
-TEST(Peephole, FCmpLT_ReflexiveNotFolded)
-{
+TEST(Peephole, FCmpLT_ReflexiveNotFolded) {
     // NaN < NaN is false, but we can't prove x is not NaN
     Module m = buildReflexiveCmpModule(Opcode::FCmpLT);
     il::transform::peephole(m);
     EXPECT_TRUE(reflexiveCmpSurvived(m));
 }
 
-TEST(Peephole, FCmpLE_ReflexiveNotFolded)
-{
+TEST(Peephole, FCmpLE_ReflexiveNotFolded) {
     // NaN <= NaN is false, so fcmp.le %x, %x cannot fold to true
     Module m = buildReflexiveCmpModule(Opcode::FCmpLE);
     il::transform::peephole(m);
     EXPECT_TRUE(reflexiveCmpSurvived(m));
 }
 
-TEST(Peephole, FCmpGT_ReflexiveNotFolded)
-{
+TEST(Peephole, FCmpGT_ReflexiveNotFolded) {
     // NaN > NaN is false, but we can't prove x is not NaN
     Module m = buildReflexiveCmpModule(Opcode::FCmpGT);
     il::transform::peephole(m);
     EXPECT_TRUE(reflexiveCmpSurvived(m));
 }
 
-TEST(Peephole, FCmpGE_ReflexiveNotFolded)
-{
+TEST(Peephole, FCmpGE_ReflexiveNotFolded) {
     // NaN >= NaN is false, so fcmp.ge %x, %x cannot fold to true
     Module m = buildReflexiveCmpModule(Opcode::FCmpGE);
     il::transform::peephole(m);
@@ -350,8 +321,7 @@ TEST(Peephole, FCmpGE_ReflexiveNotFolded)
 }
 
 /// @brief Main.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

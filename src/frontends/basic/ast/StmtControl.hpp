@@ -26,14 +26,11 @@
 #include <utility>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Pseudo statement that only carries a line label.
-struct LabelStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct LabelStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Label;
     }
 
@@ -42,16 +39,13 @@ struct LabelStmt : Stmt
 };
 
 /// @brief IF statement with optional ELSEIF chain and ELSE branch.
-struct IfStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct IfStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::If;
     }
 
     /// @brief ELSEIF arm.
-    struct ElseIf
-    {
+    struct ElseIf {
         /// Condition expression controlling this arm; owned and non-null.
         ExprPtr cond;
 
@@ -75,14 +69,11 @@ struct IfStmt : Stmt
 };
 
 /// @brief Arm within a SELECT CASE statement.
-struct CaseArm
-{
+struct CaseArm {
     /// @brief Relational guard matched by the arm.
-    struct CaseRel
-    {
+    struct CaseRel {
         /// @brief Relational operation kind.
-        enum Op
-        {
+        enum Op {
             LT, ///< Selector must be less than rhs.
             LE, ///< Selector must be less than or equal to rhs.
             EQ, ///< Selector must equal rhs.
@@ -120,10 +111,8 @@ struct CaseArm
 };
 
 /// @brief SELECT CASE statement with zero or more CASE arms and optional ELSE body.
-struct SelectCaseStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct SelectCaseStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::SelectCase;
     }
 
@@ -160,10 +149,8 @@ struct SelectCaseStmt : Stmt
 /// At least one of CATCH or FINALLY must be present.
 /// The finally block always executes after try/catch regardless of whether
 /// an exception occurred, providing guaranteed cleanup semantics.
-struct TryCatchStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct TryCatchStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::TryCatch;
     }
 
@@ -187,10 +174,8 @@ struct TryCatchStmt : Stmt
 };
 
 /// @brief WHILE ... WEND loop statement.
-struct WhileStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct WhileStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::While;
     }
 
@@ -204,23 +189,19 @@ struct WhileStmt : Stmt
 };
 
 /// @brief DO ... LOOP statement supporting WHILE and UNTIL tests.
-struct DoStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct DoStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Do;
     }
     /// Condition kind controlling loop continuation.
-    enum class CondKind
-    {
+    enum class CondKind {
         None,  ///< No explicit condition; loop runs until EXIT.
         While, ///< Continue while condition evaluates to true.
         Until, ///< Continue until condition evaluates to true.
     } condKind{CondKind::None};
 
     /// Whether condition is evaluated before or after executing the body.
-    enum class TestPos
-    {
+    enum class TestPos {
         Pre,  ///< Evaluate condition before each iteration.
         Post, ///< Evaluate condition after executing the body.
     } testPos{TestPos::Pre};
@@ -235,10 +216,8 @@ struct DoStmt : Stmt
 };
 
 /// @brief FOR ... NEXT loop statement.
-struct ForStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct ForStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::For;
     }
 
@@ -267,10 +246,8 @@ struct ForStmt : Stmt
 /// @details Iterates over all elements of an array, assigning each element
 ///          to the loop variable in sequence. The loop runs from the first
 ///          to the last element of the array.
-struct ForEachStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct ForEachStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::ForEach;
     }
 
@@ -288,10 +265,8 @@ struct ForEachStmt : Stmt
 };
 
 /// @brief NEXT statement closing a FOR.
-struct NextStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct NextStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Next;
     }
 
@@ -302,15 +277,12 @@ struct NextStmt : Stmt
 };
 
 /// @brief EXIT statement leaving the innermost enclosing loop.
-struct ExitStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct ExitStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Exit;
     }
     /// Loop type targeted by this EXIT.
-    enum class LoopKind
-    {
+    enum class LoopKind {
         For,      ///< EXIT FOR
         While,    ///< EXIT WHILE
         Do,       ///< EXIT DO
@@ -323,10 +295,8 @@ struct ExitStmt : Stmt
 };
 
 /// @brief GOTO statement transferring control to a line number.
-struct GotoStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct GotoStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Goto;
     }
 
@@ -337,10 +307,8 @@ struct GotoStmt : Stmt
 };
 
 /// @brief GOSUB statement invoking a line label as a subroutine.
-struct GosubStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct GosubStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Gosub;
     }
 
@@ -351,10 +319,8 @@ struct GosubStmt : Stmt
 };
 
 /// @brief ON ERROR GOTO statement configuring error handler target.
-struct OnErrorGoto : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct OnErrorGoto : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::OnErrorGoto;
     }
 
@@ -368,15 +334,12 @@ struct OnErrorGoto : Stmt
 };
 
 /// @brief RESUME statement controlling error-handler resumption.
-struct Resume : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct Resume : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Resume;
     }
     /// Resumption strategy following an error handler.
-    enum class Mode
-    {
+    enum class Mode {
         Same,  ///< Resume execution at the failing statement.
         Next,  ///< Resume at the statement following the failure site.
         Label, ///< Resume at a labeled line.
@@ -389,10 +352,8 @@ struct Resume : Stmt
 };
 
 /// @brief END statement terminating program execution.
-struct EndStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct EndStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::End;
     }
 
@@ -401,10 +362,8 @@ struct EndStmt : Stmt
 };
 
 /// @brief RETURN statement optionally yielding a value.
-struct ReturnStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct ReturnStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::Return;
     }
 
@@ -434,10 +393,8 @@ struct ReturnStmt : Stmt
 ///   END TRY
 ///
 /// Guarantees cleanup of the resource when the USING block exits.
-struct UsingStmt : Stmt
-{
-    [[nodiscard]] constexpr Kind stmtKind() const noexcept override
-    {
+struct UsingStmt : Stmt {
+    [[nodiscard]] constexpr Kind stmtKind() const noexcept override {
         return Kind::UsingStmt;
     }
 
@@ -453,13 +410,11 @@ struct UsingStmt : Stmt
     /// Body statements executed within the USING block.
     std::vector<StmtPtr> body;
 
-    void accept(StmtVisitor &visitor) const override
-    {
+    void accept(StmtVisitor &visitor) const override {
         visitor.visit(*this);
     }
 
-    void accept(MutStmtVisitor &visitor) override
-    {
+    void accept(MutStmtVisitor &visitor) override {
         visitor.visit(*this);
     }
 };

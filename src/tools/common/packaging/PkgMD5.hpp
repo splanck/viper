@@ -25,8 +25,7 @@
 #include <cstdint>
 #include <string>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Compute MD5 digest of input data.
 /// @param data Input bytes.

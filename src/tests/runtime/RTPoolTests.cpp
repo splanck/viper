@@ -25,8 +25,7 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     fprintf(stderr, "TRAP: %s\n", msg);
     rt_abort(msg);
 }
@@ -35,8 +34,7 @@ extern "C" void vm_trap(const char *msg)
 // test_alloc_64 — Allocate 64-byte block, write to it, free
 // ============================================================================
 
-static void test_alloc_64(void)
-{
+static void test_alloc_64(void) {
     void *p = rt_pool_alloc(64);
     assert(p != nullptr);
     memset(p, 0xAB, 64);
@@ -48,8 +46,7 @@ static void test_alloc_64(void)
 // test_alloc_128 — Allocate 128-byte block, write to it, free
 // ============================================================================
 
-static void test_alloc_128(void)
-{
+static void test_alloc_128(void) {
     void *p = rt_pool_alloc(128);
     assert(p != nullptr);
     memset(p, 0xCD, 128);
@@ -61,8 +58,7 @@ static void test_alloc_128(void)
 // test_alloc_256 — Allocate 256-byte block, write to it, free
 // ============================================================================
 
-static void test_alloc_256(void)
-{
+static void test_alloc_256(void) {
     void *p = rt_pool_alloc(256);
     assert(p != nullptr);
     memset(p, 0xEF, 256);
@@ -74,8 +70,7 @@ static void test_alloc_256(void)
 // test_alloc_512 — Allocate 512-byte block, write to it, free
 // ============================================================================
 
-static void test_alloc_512(void)
-{
+static void test_alloc_512(void) {
     void *p = rt_pool_alloc(512);
     assert(p != nullptr);
     memset(p, 0x42, 512);
@@ -87,8 +82,7 @@ static void test_alloc_512(void)
 // test_alloc_large — Allocate >512 bytes (falls through to malloc)
 // ============================================================================
 
-static void test_alloc_large(void)
-{
+static void test_alloc_large(void) {
     void *p = rt_pool_alloc(1024);
     assert(p != nullptr);
     memset(p, 0xFF, 1024);
@@ -100,14 +94,12 @@ static void test_alloc_large(void)
 // test_zeroed — Allocated memory must be zeroed
 // ============================================================================
 
-static void test_zeroed(void)
-{
+static void test_zeroed(void) {
     void *p = rt_pool_alloc(64);
     assert(p != nullptr);
 
     const unsigned char *bytes = static_cast<const unsigned char *>(p);
-    for (size_t i = 0; i < 64; i++)
-    {
+    for (size_t i = 0; i < 64; i++) {
         assert(bytes[i] == 0 && "pool-allocated memory must be zeroed");
     }
 
@@ -119,8 +111,7 @@ static void test_zeroed(void)
 // test_reuse — Alloc, free, alloc same size should recycle the block
 // ============================================================================
 
-static void test_reuse(void)
-{
+static void test_reuse(void) {
     void *first = rt_pool_alloc(64);
     assert(first != nullptr);
     void *saved = first;
@@ -133,8 +124,7 @@ static void test_reuse(void)
 
     // Recycled block must still be zeroed.
     const unsigned char *bytes = static_cast<const unsigned char *>(second);
-    for (size_t i = 0; i < 64; i++)
-    {
+    for (size_t i = 0; i < 64; i++) {
         assert(bytes[i] == 0 && "recycled block must be zeroed");
     }
 
@@ -146,8 +136,7 @@ static void test_reuse(void)
 // test_stats — Verify rt_pool_stats reports correct counts
 // ============================================================================
 
-static void test_stats(void)
-{
+static void test_stats(void) {
     // Shut down pools to get a clean baseline.
     rt_pool_shutdown();
 
@@ -180,28 +169,23 @@ static void test_stats(void)
 // test_many_allocs — Allocate 200+ small blocks, verify all non-NULL, free all
 // ============================================================================
 
-static void test_many_allocs(void)
-{
+static void test_many_allocs(void) {
     static const int kCount = 200;
     void *ptrs[kCount];
 
-    for (int i = 0; i < kCount; i++)
-    {
+    for (int i = 0; i < kCount; i++) {
         ptrs[i] = rt_pool_alloc(64);
         assert(ptrs[i] != nullptr);
     }
 
     // All pointers must be distinct.
-    for (int i = 0; i < kCount; i++)
-    {
-        for (int j = i + 1; j < kCount; j++)
-        {
+    for (int i = 0; i < kCount; i++) {
+        for (int j = i + 1; j < kCount; j++) {
             assert(ptrs[i] != ptrs[j] && "all allocations must be distinct");
         }
     }
 
-    for (int i = 0; i < kCount; i++)
-    {
+    for (int i = 0; i < kCount; i++) {
         rt_pool_free(ptrs[i], 64);
     }
 
@@ -212,8 +196,7 @@ static void test_many_allocs(void)
 // test_null_free — rt_pool_free(NULL, size) must not crash
 // ============================================================================
 
-static void test_null_free(void)
-{
+static void test_null_free(void) {
     rt_pool_free(nullptr, 64);
     rt_pool_free(nullptr, 128);
     rt_pool_free(nullptr, 256);
@@ -226,8 +209,7 @@ static void test_null_free(void)
 // test_mixed_sizes — Allocate blocks of different sizes interleaved
 // ============================================================================
 
-static void test_mixed_sizes(void)
-{
+static void test_mixed_sizes(void) {
     void *a = rt_pool_alloc(32);  // -> 64-byte class
     void *b = rt_pool_alloc(100); // -> 128-byte class
     void *c = rt_pool_alloc(200); // -> 256-byte class
@@ -290,8 +272,7 @@ static void test_mixed_sizes(void)
 // Entry point
 // ============================================================================
 
-int main(void)
-{
+int main(void) {
     printf("=== RT Pool Tests ===\n\n");
 
     test_alloc_64();

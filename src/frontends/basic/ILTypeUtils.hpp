@@ -24,8 +24,7 @@
 
 #include <string_view>
 
-namespace il::frontends::basic::il_utils
-{
+namespace il::frontends::basic::il_utils {
 
 // Re-export common type utilities for backwards compatibility
 using ::il::frontends::common::type_utils::areTypesCompatible;
@@ -42,13 +41,11 @@ using ::il::frontends::common::type_utils::isVoidType;
 } // namespace il::frontends::basic::il_utils
 
 // Forward declare BASIC AST Type enum
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 enum class Type : std::uint8_t;
 }
 
-namespace il::frontends::basic::type_conv
-{
+namespace il::frontends::basic::type_conv {
 
 /// @brief Translate a BASIC AST type into the corresponding IL core type.
 ///

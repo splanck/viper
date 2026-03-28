@@ -19,20 +19,16 @@
 #include <iostream>
 #include <string>
 
-namespace viper::codegen::x64
-{
-namespace
-{
-[[nodiscard]] ILValue makeI64Param(int id) noexcept
-{
+namespace viper::codegen::x64 {
+namespace {
+[[nodiscard]] ILValue makeI64Param(int id) noexcept {
     ILValue value{};
     value.kind = ILValue::Kind::I64;
     value.id = id;
     return value;
 }
 
-[[nodiscard]] ILValue makeI64Const(int64_t val) noexcept
-{
+[[nodiscard]] ILValue makeI64Const(int64_t val) noexcept {
     ILValue constant{};
     constant.kind = ILValue::Kind::I64;
     constant.id = -1;
@@ -40,16 +36,14 @@ namespace
     return constant;
 }
 
-[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept
-{
+[[nodiscard]] ILValue makeValueRef(int id, ILValue::Kind kind) noexcept {
     ILValue ref{};
     ref.kind = kind;
     ref.id = id;
     return ref;
 }
 
-[[nodiscard]] ILModule makeBitwiseModule()
-{
+[[nodiscard]] ILModule makeBitwiseModule() {
     ILValue a = makeI64Param(0);
     ILValue b = makeI64Param(1);
 
@@ -90,8 +84,7 @@ namespace
     return module;
 }
 
-[[nodiscard]] bool containsImmediateAnd(const std::string &asmText)
-{
+[[nodiscard]] bool containsImmediateAnd(const std::string &asmText) {
     const bool hexMatch = asmText.find("andq $0xff00ff00") != std::string::npos ||
                           asmText.find("andq $0x00000000ff00ff00") != std::string::npos;
     const bool decMatch = asmText.find("andq $-16711936") != std::string::npos;
@@ -101,23 +94,20 @@ namespace
 } // namespace
 } // namespace viper::codegen::x64
 
-int main()
-{
+int main() {
     using namespace viper::codegen::x64;
 
     const ILModule module = makeBitwiseModule();
     const CodegenResult result = emitModuleToAssembly(module, {});
 
-    if (!result.errors.empty())
-    {
+    if (!result.errors.empty()) {
         std::cerr << result.errors;
         return EXIT_FAILURE;
     }
 
     if (!containsImmediateAnd(result.asmText) ||
         result.asmText.find("orq $") == std::string::npos ||
-        result.asmText.find("xorq %") == std::string::npos)
-    {
+        result.asmText.find("xorq %") == std::string::npos) {
         std::cerr << "Unexpected bitwise assembly:\n" << result.asmText;
         return EXIT_FAILURE;
     }

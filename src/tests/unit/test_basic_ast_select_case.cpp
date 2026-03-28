@@ -22,25 +22,21 @@
 
 using namespace il::frontends::basic;
 
-namespace
-{
-ExprPtr makeInt(int64_t value)
-{
+namespace {
+ExprPtr makeInt(int64_t value) {
     auto expr = std::make_unique<IntExpr>();
     expr->value = value;
     return expr;
 }
 
-ExprPtr makeVar(std::string name)
-{
+ExprPtr makeVar(std::string name) {
     auto expr = std::make_unique<VarExpr>();
     expr->name = std::move(name);
     return expr;
 }
 } // namespace
 
-int main()
-{
+int main() {
     auto select = std::make_unique<SelectCaseStmt>();
     select->line = 100;
     select->selector = makeVar("CHOICE");

@@ -17,8 +17,7 @@
 #include <cstdint>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -26,8 +25,7 @@ extern "C" void vm_trap(const char *msg)
 // Basic Bitwise Operations
 // ============================================================================
 
-static void test_and()
-{
+static void test_and() {
     assert(rt_bits_and(0xFF, 0x0F) == 0x0F);
     assert(rt_bits_and(0xFF00, 0x00FF) == 0);
     assert(rt_bits_and(-1, 0xFFFF) == 0xFFFF);
@@ -35,8 +33,7 @@ static void test_and()
     printf("test_and: PASSED\n");
 }
 
-static void test_or()
-{
+static void test_or() {
     assert(rt_bits_or(0xF0, 0x0F) == 0xFF);
     assert(rt_bits_or(0xFF00, 0x00FF) == 0xFFFF);
     assert(rt_bits_or(0, 0) == 0);
@@ -44,8 +41,7 @@ static void test_or()
     printf("test_or: PASSED\n");
 }
 
-static void test_xor()
-{
+static void test_xor() {
     assert(rt_bits_xor(0xFF, 0xFF) == 0);
     assert(rt_bits_xor(0xFF, 0x00) == 0xFF);
     assert(rt_bits_xor(0xAAAA, 0x5555) == 0xFFFF);
@@ -53,8 +49,7 @@ static void test_xor()
     printf("test_xor: PASSED\n");
 }
 
-static void test_not()
-{
+static void test_not() {
     assert(rt_bits_not(0) == -1);
     assert(rt_bits_not(-1) == 0);
     assert((rt_bits_not(0xFF) & 0xFF) == 0);
@@ -65,8 +60,7 @@ static void test_not()
 // Shift Operations
 // ============================================================================
 
-static void test_shl()
-{
+static void test_shl() {
     assert(rt_bits_shl(1, 0) == 1);
     assert(rt_bits_shl(1, 1) == 2);
     assert(rt_bits_shl(1, 4) == 16);
@@ -77,8 +71,7 @@ static void test_shl()
     printf("test_shl: PASSED\n");
 }
 
-static void test_shr()
-{
+static void test_shr() {
     // Arithmetic shift right (sign-extended)
     assert(rt_bits_shr(16, 2) == 4);
     assert(rt_bits_shr(256, 4) == 16);
@@ -91,8 +84,7 @@ static void test_shr()
     printf("test_shr: PASSED\n");
 }
 
-static void test_ushr()
-{
+static void test_ushr() {
     // Logical shift right (zero-fill)
     assert(rt_bits_ushr(16, 2) == 4);
     assert(rt_bits_ushr(256, 4) == 16);
@@ -111,8 +103,7 @@ static void test_ushr()
 // Rotate Operations
 // ============================================================================
 
-static void test_rotl()
-{
+static void test_rotl() {
     assert(rt_bits_rotl(1, 0) == 1);
     assert(rt_bits_rotl(1, 1) == 2);
     assert(rt_bits_rotl(1, 63) == (int64_t)(1ULL << 63));
@@ -121,8 +112,7 @@ static void test_rotl()
     printf("test_rotl: PASSED\n");
 }
 
-static void test_rotr()
-{
+static void test_rotr() {
     assert(rt_bits_rotr(1, 0) == 1);
     assert(rt_bits_rotr(2, 1) == 1);
     assert(rt_bits_rotr(1, 1) == (int64_t)(1ULL << 63)); // Rotate low bit to high
@@ -134,8 +124,7 @@ static void test_rotr()
 // Bit Counting Operations
 // ============================================================================
 
-static void test_count()
-{
+static void test_count() {
     assert(rt_bits_count(0) == 0);
     assert(rt_bits_count(1) == 1);
     assert(rt_bits_count(3) == 2);
@@ -147,8 +136,7 @@ static void test_count()
     printf("test_count: PASSED\n");
 }
 
-static void test_leadz()
-{
+static void test_leadz() {
     assert(rt_bits_leadz(0) == 64);
     assert(rt_bits_leadz(1) == 63);
     assert(rt_bits_leadz(2) == 62);
@@ -158,8 +146,7 @@ static void test_leadz()
     printf("test_leadz: PASSED\n");
 }
 
-static void test_trailz()
-{
+static void test_trailz() {
     assert(rt_bits_trailz(0) == 64);
     assert(rt_bits_trailz(1) == 0);
     assert(rt_bits_trailz(2) == 1);
@@ -175,8 +162,7 @@ static void test_trailz()
 // Bit Manipulation Operations
 // ============================================================================
 
-static void test_flip()
-{
+static void test_flip() {
     // Reversing 0 should give 0
     assert(rt_bits_flip(0) == 0);
     // Reversing all 1s should give all 1s
@@ -191,8 +177,7 @@ static void test_flip()
     printf("test_flip: PASSED\n");
 }
 
-static void test_swap()
-{
+static void test_swap() {
     // Byte swap
     assert(rt_bits_swap(0) == 0);
     assert(rt_bits_swap(0x0102030405060708LL) == 0x0807060504030201LL);
@@ -206,8 +191,7 @@ static void test_swap()
 // Single Bit Operations
 // ============================================================================
 
-static void test_get()
-{
+static void test_get() {
     assert(rt_bits_get(1, 0) == 1);
     assert(rt_bits_get(1, 1) == 0);
     assert(rt_bits_get(2, 0) == 0);
@@ -221,8 +205,7 @@ static void test_get()
     printf("test_get: PASSED\n");
 }
 
-static void test_set()
-{
+static void test_set() {
     assert(rt_bits_set(0, 0) == 1);
     assert(rt_bits_set(0, 1) == 2);
     assert(rt_bits_set(0, 3) == 8);
@@ -234,8 +217,7 @@ static void test_set()
     printf("test_set: PASSED\n");
 }
 
-static void test_clear()
-{
+static void test_clear() {
     assert(rt_bits_clear(1, 0) == 0);
     assert(rt_bits_clear(3, 0) == 2);
     assert(rt_bits_clear(3, 1) == 1);
@@ -247,8 +229,7 @@ static void test_clear()
     printf("test_clear: PASSED\n");
 }
 
-static void test_toggle()
-{
+static void test_toggle() {
     assert(rt_bits_toggle(0, 0) == 1);
     assert(rt_bits_toggle(1, 0) == 0);
     assert(rt_bits_toggle(0, 3) == 8);
@@ -264,8 +245,7 @@ static void test_toggle()
 // Combined/Edge Case Tests
 // ============================================================================
 
-static void test_combined_operations()
-{
+static void test_combined_operations() {
     // Test that set then clear restores original
     int64_t val = 0x1234;
     assert(rt_bits_clear(rt_bits_set(val, 20), 20) == val);
@@ -283,8 +263,7 @@ static void test_combined_operations()
     printf("test_combined_operations: PASSED\n");
 }
 
-static void test_edge_cases()
-{
+static void test_edge_cases() {
     // Maximum positive value
     int64_t max_pos = 0x7FFFFFFFFFFFFFFFLL;
     assert(rt_bits_count(max_pos) == 63);
@@ -299,8 +278,7 @@ static void test_edge_cases()
     printf("test_edge_cases: PASSED\n");
 }
 
-int main()
-{
+int main() {
     printf("=== Viper.Bits Tests ===\n\n");
 
     // Basic operations

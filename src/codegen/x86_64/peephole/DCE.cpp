@@ -29,14 +29,11 @@
 #include <optional>
 #include <unordered_set>
 
-namespace viper::codegen::x64::peephole
-{
-namespace
-{
+namespace viper::codegen::x64::peephole {
+namespace {
 
 /// @brief Check if an instruction modifies RSP (the stack pointer).
-[[nodiscard]] bool modifiesRSP(const MInstr &instr) noexcept
-{
+[[nodiscard]] bool modifiesRSP(const MInstr &instr) noexcept {
     if (instr.operands.empty())
         return false;
 
@@ -49,14 +46,12 @@ namespace
 }
 
 /// @brief Check if an instruction has observable side effects.
-[[nodiscard]] bool dceHasSideEffects(const MInstr &instr) noexcept
-{
+[[nodiscard]] bool dceHasSideEffects(const MInstr &instr) noexcept {
     // RSP modifications are always significant - they affect the stack frame
     if (modifiesRSP(instr))
         return true;
 
-    switch (instr.opcode)
-    {
+    switch (instr.opcode) {
         // Memory stores
         case MOpcode::MOVrm:
         case MOpcode::MOVSDrm:
@@ -89,13 +84,11 @@ namespace
 }
 
 /// @brief Get the destination register from an instruction, if it defines one.
-[[nodiscard]] std::optional<uint16_t> getDefReg(const MInstr &instr) noexcept
-{
+[[nodiscard]] std::optional<uint16_t> getDefReg(const MInstr &instr) noexcept {
     if (instr.operands.empty())
         return std::nullopt;
 
-    switch (instr.opcode)
-    {
+    switch (instr.opcode) {
         case MOpcode::MOVrr:
         case MOpcode::MOVmr:
         case MOpcode::MOVri:
@@ -133,8 +126,7 @@ namespace
         case MOpcode::FDIV:
         case MOpcode::CVTSI2SD:
         case MOpcode::CVTTSD2SI:
-        case MOpcode::MOVQrx:
-        {
+        case MOpcode::MOVQrx: {
             const auto *reg = std::get_if<OpReg>(&instr.operands[0]);
             if (reg && reg->isPhys)
                 return reg->idOrPhys;
@@ -146,22 +138,18 @@ namespace
 }
 
 /// @brief Collect all physical registers used by an instruction.
-void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs)
-{
+void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs) {
     // Helper to add a register if it's physical
-    auto addIfPhysReg = [&usedRegs](const Operand &op)
-    {
+    auto addIfPhysReg = [&usedRegs](const Operand &op) {
         const auto *reg = std::get_if<OpReg>(&op);
         if (reg && reg->isPhys)
             usedRegs.insert(reg->idOrPhys);
     };
 
     // Helper to add registers from memory operand
-    auto addMemRegs = [&usedRegs](const Operand &op)
-    {
+    auto addMemRegs = [&usedRegs](const Operand &op) {
         const auto *mem = std::get_if<OpMem>(&op);
-        if (mem)
-        {
+        if (mem) {
             // Base register is always valid in OpMem
             if (mem->base.isPhys)
                 usedRegs.insert(mem->base.idOrPhys);
@@ -171,8 +159,7 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
         }
     };
 
-    switch (instr.opcode)
-    {
+    switch (instr.opcode) {
         case MOpcode::MOVrr:
         case MOpcode::MOVSDrr:
         case MOpcode::CVTSI2SD:
@@ -285,8 +272,7 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
 
         default:
             // For other instructions, conservatively assume all operand registers are used
-            for (const auto &op : instr.operands)
-            {
+            for (const auto &op : instr.operands) {
                 addIfPhysReg(op);
                 addMemRegs(op);
             }
@@ -295,41 +281,34 @@ void collectUsedRegs(const MInstr &instr, std::unordered_set<uint16_t> &usedRegs
 }
 
 /// @brief Traits for the shared DCE template (x86-64 backend).
-struct X64DCETraits
-{
+struct X64DCETraits {
     using MInstr = ::viper::codegen::x64::MInstr;
     using RegKey = uint16_t;
 
     static constexpr bool kIterateToFixpoint = true;
 
-    static bool hasSideEffects(const ::viper::codegen::x64::MInstr &instr) noexcept
-    {
+    static bool hasSideEffects(const ::viper::codegen::x64::MInstr &instr) noexcept {
         return dceHasSideEffects(instr);
     }
 
-    static std::optional<RegKey> getDefRegKey(const MInstr &instr) noexcept
-    {
+    static std::optional<RegKey> getDefRegKey(const MInstr &instr) noexcept {
         return getDefReg(instr);
     }
 
-    static void collectUsedRegKeys(const MInstr &instr, std::unordered_set<RegKey> &live) noexcept
-    {
+    static void collectUsedRegKeys(const MInstr &instr, std::unordered_set<RegKey> &live) noexcept {
         collectUsedRegs(instr, live);
     }
 
-    static void addBlockExitLiveKeys(std::unordered_set<RegKey> &live) noexcept
-    {
+    static void addBlockExitLiveKeys(std::unordered_set<RegKey> &live) noexcept {
         const auto &exitRegs = getBlockExitLiveRegs();
         live.insert(exitRegs.begin(), exitRegs.end());
     }
 
-    static bool isLabelOrBranchTarget(const MInstr &instr) noexcept
-    {
+    static bool isLabelOrBranchTarget(const MInstr &instr) noexcept {
         return instr.opcode == MOpcode::LABEL;
     }
 
-    static void addAllAllocatableKeys(std::unordered_set<RegKey> &live) noexcept
-    {
+    static void addAllAllocatableKeys(std::unordered_set<RegKey> &live) noexcept {
         const auto &allRegs = getAllAllocatableRegs();
         live.insert(allRegs.begin(), allRegs.end());
     }
@@ -337,8 +316,7 @@ struct X64DCETraits
 
 } // namespace
 
-std::size_t runBlockDCE(std::vector<MInstr> &instrs, PeepholeStats &stats)
-{
+std::size_t runBlockDCE(std::vector<MInstr> &instrs, PeepholeStats &stats) {
     std::size_t eliminated = viper::codegen::common::runBlockDCE<X64DCETraits>(instrs);
     stats.deadCodeEliminated += eliminated;
     return eliminated;

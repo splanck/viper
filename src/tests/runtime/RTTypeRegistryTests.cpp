@@ -31,8 +31,7 @@ static void mock_iface_method(void) {}
 
 static void *itable_base[1] = {(void *)mock_iface_method};
 
-int main()
-{
+int main() {
     // Type IDs for our test classes
     const int TYPE_BASE = 100;
     const int TYPE_DERIVED = 101;

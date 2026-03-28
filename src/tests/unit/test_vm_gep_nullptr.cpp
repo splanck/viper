@@ -28,11 +28,9 @@
 #include <cstdint>
 #include <limits>
 
-namespace
-{
+namespace {
 
-il::core::Module makeModule()
-{
+il::core::Module makeModule() {
     using namespace il::core;
 
     Module m;
@@ -67,8 +65,7 @@ il::core::Module makeModule()
     return m;
 }
 
-il::core::Module makeMinOffsetModule()
-{
+il::core::Module makeMinOffsetModule() {
     using namespace il::core;
 
     Module m;
@@ -105,8 +102,7 @@ il::core::Module makeMinOffsetModule()
 
 } // namespace
 
-int main()
-{
+int main() {
     {
         il::core::Module module = makeModule();
         il::vm::VM vm(module);

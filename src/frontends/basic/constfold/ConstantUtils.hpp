@@ -29,14 +29,12 @@
 
 #include "frontends/basic/constfold/Dispatch.hpp"
 
-namespace il::frontends::basic::constfold
-{
+namespace il::frontends::basic::constfold {
 
 /// @brief Construct a boolean constant with coherent numeric metadata.
 /// @param value Boolean payload to encode.
 /// @return Constant describing @p value as a boolean literal.
-inline Constant make_bool_constant(bool value) noexcept
-{
+inline Constant make_bool_constant(bool value) noexcept {
     Constant constant;
     constant.kind = LiteralKind::Bool;
     constant.boolValue = value;

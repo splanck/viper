@@ -20,8 +20,7 @@
 #include <optional>
 #include <string>
 
-static void buildAndRun()
-{
+static void buildAndRun() {
     using namespace il::core;
     Module module;
     il::build::IRBuilder builder(module);
@@ -37,8 +36,7 @@ static void buildAndRun()
     vm.run();
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

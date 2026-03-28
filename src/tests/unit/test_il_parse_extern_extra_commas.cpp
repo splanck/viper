@@ -21,8 +21,7 @@
 #include <sstream>
 #include <string>
 
-int main()
-{
+int main() {
     const std::string source = R"(il 0.2.0
 extern @foo(i64,, i64) -> i64
 func @main() -> i64 {

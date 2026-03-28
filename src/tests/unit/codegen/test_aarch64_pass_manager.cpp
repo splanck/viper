@@ -43,13 +43,11 @@ using namespace viper::codegen::aarch64::passes;
 // Helpers
 // ---------------------------------------------------------------------------
 
-namespace
-{
+namespace {
 
 /// Parse an IL text string into an il::core::Module.
 /// Returns a default-constructed Module on parse failure.
-static il::core::Module parseIL(const std::string &src)
-{
+static il::core::Module parseIL(const std::string &src) {
     std::istringstream ss(src);
     il::core::Module mod;
     if (!il::io::Parser::parse(ss, mod))
@@ -58,8 +56,7 @@ static il::core::Module parseIL(const std::string &src)
 }
 
 /// Build a PassManager with the standard AArch64 full pipeline.
-static PassManager buildFullPipeline()
-{
+static PassManager buildFullPipeline() {
     PassManager pm;
     pm.addPass(std::make_unique<LoweringPass>());
     pm.addPass(std::make_unique<RegAllocPass>());
@@ -81,8 +78,7 @@ static PassManager buildFullPipeline()
 //   - A move immediate (mov x0, #42 or similar)
 //   - A ret instruction
 //
-TEST(AArch64PassManager, PipelineRoundtrip)
-{
+TEST(AArch64PassManager, PipelineRoundtrip) {
     const std::string il = "il 0.1\n"
                            "func @forty_two() -> i64 {\n"
                            "entry:\n"
@@ -122,8 +118,7 @@ TEST(AArch64PassManager, PipelineRoundtrip)
 //
 // Running only the LoweringPass should populate mir but not assembly.
 //
-TEST(AArch64PassManager, PartialPipeline)
-{
+TEST(AArch64PassManager, PartialPipeline) {
     const std::string il = "il 0.1\n"
                            "func @add_two(%a:i64, %b:i64) -> i64 {\n"
                            "entry:\n"
@@ -160,23 +155,19 @@ TEST(AArch64PassManager, PartialPipeline)
 // A pass that returns false should prevent later passes from running.
 // We verify this by checking that assembly remains empty when RA fails.
 //
-namespace
-{
+namespace {
 
 /// Stub pass that always fails without modifying module state.
-class AlwaysFailPass final : public Pass
-{
+class AlwaysFailPass final : public Pass {
   public:
-    bool run(AArch64Module & /*module*/, Diagnostics & /*diags*/) override
-    {
+    bool run(AArch64Module & /*module*/, Diagnostics & /*diags*/) override {
         return false;
     }
 };
 
 } // namespace
 
-TEST(AArch64PassManager, FailPassShortCircuit)
-{
+TEST(AArch64PassManager, FailPassShortCircuit) {
     const std::string il = "il 0.1\n"
                            "func @simple() -> i64 {\n"
                            "entry:\n"
@@ -211,8 +202,7 @@ TEST(AArch64PassManager, FailPassShortCircuit)
 // ---------------------------------------------------------------------------
 // Test 4: Empty IL module — pipeline succeeds with no MIR and no output.
 // ---------------------------------------------------------------------------
-TEST(AArch64PassManager, EmptyModule)
-{
+TEST(AArch64PassManager, EmptyModule) {
     const std::string il = "il 0.1\n";
 
     il::core::Module mod = parseIL(il);
@@ -232,8 +222,7 @@ TEST(AArch64PassManager, EmptyModule)
     EXPECT_TRUE(m.mir.empty());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

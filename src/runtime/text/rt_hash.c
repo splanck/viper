@@ -44,8 +44,7 @@
 // MD5 Implementation (RFC 1321)
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     uint32_t state[4];
     uint32_t count[2];
     uint8_t buffer[64];
@@ -83,13 +82,11 @@ typedef struct
         (a) += (b);                                                                                \
     }
 
-static void md5_transform(uint32_t state[4], const uint8_t block[64])
-{
+static void md5_transform(uint32_t state[4], const uint8_t block[64]) {
     uint32_t a = state[0], b = state[1], c = state[2], d = state[3];
     uint32_t x[16];
 
-    for (int i = 0; i < 16; i++)
-    {
+    for (int i = 0; i < 16; i++) {
         x[i] = ((uint32_t)block[i * 4]) | ((uint32_t)block[i * 4 + 1] << 8) |
                ((uint32_t)block[i * 4 + 2] << 16) | ((uint32_t)block[i * 4 + 3] << 24);
     }
@@ -172,8 +169,7 @@ static void md5_transform(uint32_t state[4], const uint8_t block[64])
     state[3] += d;
 }
 
-static void md5_init(MD5_CTX *ctx)
-{
+static void md5_init(MD5_CTX *ctx) {
     ctx->count[0] = ctx->count[1] = 0;
     ctx->state[0] = 0x67452301;
     ctx->state[1] = 0xefcdab89;
@@ -181,8 +177,7 @@ static void md5_init(MD5_CTX *ctx)
     ctx->state[3] = 0x10325476;
 }
 
-static void md5_update(MD5_CTX *ctx, const uint8_t *data, size_t len)
-{
+static void md5_update(MD5_CTX *ctx, const uint8_t *data, size_t len) {
     size_t i, index, partLen;
 
     index = (size_t)((ctx->count[0] >> 3) & 0x3F);
@@ -193,27 +188,22 @@ static void md5_update(MD5_CTX *ctx, const uint8_t *data, size_t len)
 
     partLen = 64 - index;
 
-    if (len >= partLen)
-    {
+    if (len >= partLen) {
         memcpy(&ctx->buffer[index], data, partLen);
         md5_transform(ctx->state, ctx->buffer);
 
-        for (i = partLen; i + 63 < len; i += 64)
-        {
+        for (i = partLen; i + 63 < len; i += 64) {
             md5_transform(ctx->state, &data[i]);
         }
         index = 0;
-    }
-    else
-    {
+    } else {
         i = 0;
     }
 
     memcpy(&ctx->buffer[index], &data[i], len - i);
 }
 
-static void md5_final(uint8_t digest[16], MD5_CTX *ctx)
-{
+static void md5_final(uint8_t digest[16], MD5_CTX *ctx) {
     static const uint8_t padding[64] = {0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                         0,    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                                         0,    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -221,8 +211,7 @@ static void md5_final(uint8_t digest[16], MD5_CTX *ctx)
     uint8_t bits[8];
     size_t index, padLen;
 
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         bits[i] = (uint8_t)(ctx->count[0] >> (i * 8));
         bits[i + 4] = (uint8_t)(ctx->count[1] >> (i * 8));
     }
@@ -232,8 +221,7 @@ static void md5_final(uint8_t digest[16], MD5_CTX *ctx)
     md5_update(ctx, padding, padLen);
     md5_update(ctx, bits, 8);
 
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         digest[i] = (uint8_t)(ctx->state[0] >> (i * 8));
         digest[i + 4] = (uint8_t)(ctx->state[1] >> (i * 8));
         digest[i + 8] = (uint8_t)(ctx->state[2] >> (i * 8));
@@ -241,8 +229,7 @@ static void md5_final(uint8_t digest[16], MD5_CTX *ctx)
     }
 }
 
-static void compute_md5(const uint8_t *data, size_t len, uint8_t digest[16])
-{
+static void compute_md5(const uint8_t *data, size_t len, uint8_t digest[16]) {
     MD5_CTX ctx;
     md5_init(&ctx);
     md5_update(&ctx, data, len);
@@ -253,8 +240,7 @@ static void compute_md5(const uint8_t *data, size_t len, uint8_t digest[16])
 // SHA1 Implementation (RFC 3174 / FIPS 180-1)
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     uint32_t state[5];
     uint32_t count[2];
     uint8_t buffer[64];
@@ -262,18 +248,15 @@ typedef struct
 
 #define SHA1_ROL(value, bits) (((value) << (bits)) | ((value) >> (32 - (bits))))
 
-static void sha1_transform(uint32_t state[5], const uint8_t buffer[64])
-{
+static void sha1_transform(uint32_t state[5], const uint8_t buffer[64]) {
     uint32_t a, b, c, d, e;
     uint32_t w[80];
 
-    for (int i = 0; i < 16; i++)
-    {
+    for (int i = 0; i < 16; i++) {
         w[i] = ((uint32_t)buffer[i * 4] << 24) | ((uint32_t)buffer[i * 4 + 1] << 16) |
                ((uint32_t)buffer[i * 4 + 2] << 8) | buffer[i * 4 + 3];
     }
-    for (int i = 16; i < 80; i++)
-    {
+    for (int i = 16; i < 80; i++) {
         w[i] = SHA1_ROL(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
     }
 
@@ -283,8 +266,7 @@ static void sha1_transform(uint32_t state[5], const uint8_t buffer[64])
     d = state[3];
     e = state[4];
 
-    for (int i = 0; i < 20; i++)
-    {
+    for (int i = 0; i < 20; i++) {
         uint32_t temp = SHA1_ROL(a, 5) + ((b & c) | ((~b) & d)) + e + w[i] + 0x5A827999;
         e = d;
         d = c;
@@ -292,8 +274,7 @@ static void sha1_transform(uint32_t state[5], const uint8_t buffer[64])
         b = a;
         a = temp;
     }
-    for (int i = 20; i < 40; i++)
-    {
+    for (int i = 20; i < 40; i++) {
         uint32_t temp = SHA1_ROL(a, 5) + (b ^ c ^ d) + e + w[i] + 0x6ED9EBA1;
         e = d;
         d = c;
@@ -301,8 +282,7 @@ static void sha1_transform(uint32_t state[5], const uint8_t buffer[64])
         b = a;
         a = temp;
     }
-    for (int i = 40; i < 60; i++)
-    {
+    for (int i = 40; i < 60; i++) {
         uint32_t temp = SHA1_ROL(a, 5) + ((b & c) | (b & d) | (c & d)) + e + w[i] + 0x8F1BBCDC;
         e = d;
         d = c;
@@ -310,8 +290,7 @@ static void sha1_transform(uint32_t state[5], const uint8_t buffer[64])
         b = a;
         a = temp;
     }
-    for (int i = 60; i < 80; i++)
-    {
+    for (int i = 60; i < 80; i++) {
         uint32_t temp = SHA1_ROL(a, 5) + (b ^ c ^ d) + e + w[i] + 0xCA62C1D6;
         e = d;
         d = c;
@@ -327,8 +306,7 @@ static void sha1_transform(uint32_t state[5], const uint8_t buffer[64])
     state[4] += e;
 }
 
-static void sha1_init(SHA1_CTX *ctx)
-{
+static void sha1_init(SHA1_CTX *ctx) {
     ctx->state[0] = 0x67452301;
     ctx->state[1] = 0xEFCDAB89;
     ctx->state[2] = 0x98BADCFE;
@@ -337,8 +315,7 @@ static void sha1_init(SHA1_CTX *ctx)
     ctx->count[0] = ctx->count[1] = 0;
 }
 
-static void sha1_update(SHA1_CTX *ctx, const uint8_t *data, size_t len)
-{
+static void sha1_update(SHA1_CTX *ctx, const uint8_t *data, size_t len) {
     size_t i, j;
 
     j = (ctx->count[0] >> 3) & 63;
@@ -346,50 +323,41 @@ static void sha1_update(SHA1_CTX *ctx, const uint8_t *data, size_t len)
         ctx->count[1]++;
     ctx->count[1] += (uint32_t)(len >> 29);
 
-    if ((j + len) > 63)
-    {
+    if ((j + len) > 63) {
         memcpy(&ctx->buffer[j], data, (i = 64 - j));
         sha1_transform(ctx->state, ctx->buffer);
-        for (; i + 63 < len; i += 64)
-        {
+        for (; i + 63 < len; i += 64) {
             sha1_transform(ctx->state, &data[i]);
         }
         j = 0;
-    }
-    else
-    {
+    } else {
         i = 0;
     }
     memcpy(&ctx->buffer[j], &data[i], len - i);
 }
 
-static void sha1_final(uint8_t digest[20], SHA1_CTX *ctx)
-{
+static void sha1_final(uint8_t digest[20], SHA1_CTX *ctx) {
     uint8_t finalcount[8];
     uint8_t c;
 
-    for (int i = 0; i < 8; i++)
-    {
+    for (int i = 0; i < 8; i++) {
         finalcount[i] = (uint8_t)((ctx->count[(i >= 4 ? 0 : 1)] >> ((3 - (i & 3)) * 8)) & 255);
     }
 
     c = 0x80;
     sha1_update(ctx, &c, 1);
-    while ((ctx->count[0] & 504) != 448)
-    {
+    while ((ctx->count[0] & 504) != 448) {
         c = 0x00;
         sha1_update(ctx, &c, 1);
     }
     sha1_update(ctx, finalcount, 8);
 
-    for (int i = 0; i < 20; i++)
-    {
+    for (int i = 0; i < 20; i++) {
         digest[i] = (uint8_t)((ctx->state[i >> 2] >> ((3 - (i & 3)) * 8)) & 255);
     }
 }
 
-static void compute_sha1(const uint8_t *data, size_t len, uint8_t digest[20])
-{
+static void compute_sha1(const uint8_t *data, size_t len, uint8_t digest[20]) {
     SHA1_CTX ctx;
     sha1_init(&ctx);
     sha1_update(&ctx, data, len);
@@ -400,8 +368,7 @@ static void compute_sha1(const uint8_t *data, size_t len, uint8_t digest[20])
 // SHA256 Implementation (RFC 6234 / FIPS 180-4)
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     uint32_t state[8];
     uint64_t bitcount;
     uint8_t buffer[64];
@@ -425,17 +392,14 @@ static const uint32_t sha256_k[64] = {
 #define SHA256_SIG0(x) (SHA256_ROTR(x, 7) ^ SHA256_ROTR(x, 18) ^ ((x) >> 3))
 #define SHA256_SIG1(x) (SHA256_ROTR(x, 17) ^ SHA256_ROTR(x, 19) ^ ((x) >> 10))
 
-static void sha256_transform(SHA256_CTX *ctx, const uint8_t data[64])
-{
+static void sha256_transform(SHA256_CTX *ctx, const uint8_t data[64]) {
     uint32_t a, b, c, d, e, f, g, h, t1, t2, m[64];
 
-    for (int i = 0, j = 0; i < 16; ++i, j += 4)
-    {
+    for (int i = 0, j = 0; i < 16; ++i, j += 4) {
         m[i] = ((uint32_t)data[j] << 24) | ((uint32_t)data[j + 1] << 16) |
                ((uint32_t)data[j + 2] << 8) | ((uint32_t)data[j + 3]);
     }
-    for (int i = 16; i < 64; ++i)
-    {
+    for (int i = 16; i < 64; ++i) {
         m[i] = SHA256_SIG1(m[i - 2]) + m[i - 7] + SHA256_SIG0(m[i - 15]) + m[i - 16];
     }
 
@@ -448,8 +412,7 @@ static void sha256_transform(SHA256_CTX *ctx, const uint8_t data[64])
     g = ctx->state[6];
     h = ctx->state[7];
 
-    for (int i = 0; i < 64; ++i)
-    {
+    for (int i = 0; i < 64; ++i) {
         t1 = h + SHA256_EP1(e) + SHA256_CH(e, f, g) + sha256_k[i] + m[i];
         t2 = SHA256_EP0(a) + SHA256_MAJ(a, b, c);
         h = g;
@@ -472,8 +435,7 @@ static void sha256_transform(SHA256_CTX *ctx, const uint8_t data[64])
     ctx->state[7] += h;
 }
 
-static void sha256_init(SHA256_CTX *ctx)
-{
+static void sha256_init(SHA256_CTX *ctx) {
     ctx->bitcount = 0;
     ctx->state[0] = 0x6a09e667;
     ctx->state[1] = 0xbb67ae85;
@@ -485,15 +447,13 @@ static void sha256_init(SHA256_CTX *ctx)
     ctx->state[7] = 0x5be0cd19;
 }
 
-static void sha256_update(SHA256_CTX *ctx, const uint8_t *data, size_t len)
-{
+static void sha256_update(SHA256_CTX *ctx, const uint8_t *data, size_t len) {
     size_t idx = (size_t)(ctx->bitcount / 8 % 64);
     ctx->bitcount += (uint64_t)len * 8;
 
     // Fill remaining buffer space
     size_t fill = 64 - idx;
-    if (len >= fill)
-    {
+    if (len >= fill) {
         memcpy(ctx->buffer + idx, data, fill);
         sha256_transform(ctx, ctx->buffer);
         size_t offset = fill;
@@ -508,14 +468,12 @@ static void sha256_update(SHA256_CTX *ctx, const uint8_t *data, size_t len)
     memcpy(ctx->buffer + idx, data, len);
 }
 
-static void sha256_final(uint8_t hash[32], SHA256_CTX *ctx)
-{
+static void sha256_final(uint8_t hash[32], SHA256_CTX *ctx) {
     size_t i = ctx->bitcount / 8 % 64;
 
     ctx->buffer[i++] = 0x80;
 
-    if (i > 56)
-    {
+    if (i > 56) {
         while (i < 64)
             ctx->buffer[i++] = 0x00;
         sha256_transform(ctx, ctx->buffer);
@@ -525,14 +483,12 @@ static void sha256_final(uint8_t hash[32], SHA256_CTX *ctx)
     while (i < 56)
         ctx->buffer[i++] = 0x00;
 
-    for (int j = 7; j >= 0; --j)
-    {
+    for (int j = 7; j >= 0; --j) {
         ctx->buffer[i++] = (uint8_t)(ctx->bitcount >> (j * 8));
     }
     sha256_transform(ctx, ctx->buffer);
 
-    for (int j = 0; j < 8; ++j)
-    {
+    for (int j = 0; j < 8; ++j) {
         hash[j * 4] = (ctx->state[j] >> 24) & 0xff;
         hash[j * 4 + 1] = (ctx->state[j] >> 16) & 0xff;
         hash[j * 4 + 2] = (ctx->state[j] >> 8) & 0xff;
@@ -540,8 +496,7 @@ static void sha256_final(uint8_t hash[32], SHA256_CTX *ctx)
     }
 }
 
-static void compute_sha256(const uint8_t *data, size_t len, uint8_t hash[32])
-{
+static void compute_sha256(const uint8_t *data, size_t len, uint8_t hash[32]) {
     SHA256_CTX ctx;
     sha256_init(&ctx);
     sha256_update(&ctx, data, len);
@@ -593,8 +548,7 @@ static void compute_sha256(const uint8_t *data, size_t len, uint8_t hash[32])
 ///
 /// @see rt_hash_sha256 For a secure alternative
 /// @see rt_hash_md5_bytes For hashing Bytes objects
-rt_string rt_hash_md5(rt_string str)
-{
+rt_string rt_hash_md5(rt_string str) {
     const char *cstr = rt_string_cstr(str);
     if (!cstr)
         cstr = "";
@@ -631,8 +585,7 @@ rt_string rt_hash_md5(rt_string str)
 ///
 /// @see rt_hash_md5 For hashing strings
 /// @see rt_hash_sha256_bytes For a secure alternative
-rt_string rt_hash_md5_bytes(void *bytes)
-{
+rt_string rt_hash_md5_bytes(void *bytes) {
     size_t len;
     uint8_t *data = rt_bytes_extract_raw(bytes, &len);
     uint8_t digest[16];
@@ -681,8 +634,7 @@ rt_string rt_hash_md5_bytes(void *bytes)
 ///
 /// @see rt_hash_sha256 For a secure alternative
 /// @see rt_hash_sha1_bytes For hashing Bytes objects
-rt_string rt_hash_sha1(rt_string str)
-{
+rt_string rt_hash_sha1(rt_string str) {
     const char *cstr = rt_string_cstr(str);
     if (!cstr)
         cstr = "";
@@ -718,8 +670,7 @@ rt_string rt_hash_sha1(rt_string str)
 ///
 /// @see rt_hash_sha1 For hashing strings
 /// @see rt_hash_sha256_bytes For a secure alternative
-rt_string rt_hash_sha1_bytes(void *bytes)
-{
+rt_string rt_hash_sha1_bytes(void *bytes) {
     size_t len;
     uint8_t *data = rt_bytes_extract_raw(bytes, &len);
     uint8_t digest[20];
@@ -782,8 +733,7 @@ rt_string rt_hash_sha1_bytes(void *bytes)
 ///
 /// @see rt_hash_sha256_bytes For hashing Bytes objects
 /// @see rt_hash_md5 For legacy/checksum uses (NOT secure)
-rt_string rt_hash_sha256(rt_string str)
-{
+rt_string rt_hash_sha256(rt_string str) {
     const char *cstr = rt_string_cstr(str);
     if (!cstr)
         cstr = "";
@@ -828,8 +778,7 @@ rt_string rt_hash_sha256(rt_string str)
 ///
 /// @see rt_hash_sha256 For hashing strings
 /// @see rt_hash_md5_bytes For legacy/checksum uses (NOT secure)
-rt_string rt_hash_sha256_bytes(void *bytes)
-{
+rt_string rt_hash_sha256_bytes(void *bytes) {
     size_t len;
     uint8_t *data = rt_bytes_extract_raw(bytes, &len);
     uint8_t hash[32];
@@ -893,8 +842,7 @@ rt_string rt_hash_sha256_bytes(void *bytes)
 ///
 /// @see rt_hash_crc32_bytes For computing CRC32 of Bytes objects
 /// @see rt_hash_sha256 For security-sensitive applications
-int64_t rt_hash_crc32(rt_string str)
-{
+int64_t rt_hash_crc32(rt_string str) {
     const char *cstr = rt_string_cstr(str);
     if (!cstr)
         return (int64_t)rt_crc32_compute(NULL, 0);
@@ -939,8 +887,7 @@ int64_t rt_hash_crc32(rt_string str)
 ///
 /// @see rt_hash_crc32 For computing CRC32 of strings
 /// @see rt_hash_sha256_bytes For security-sensitive applications
-int64_t rt_hash_crc32_bytes(void *bytes)
-{
+int64_t rt_hash_crc32_bytes(void *bytes) {
     size_t len;
     uint8_t *data = rt_bytes_extract_raw(bytes, &len);
     uint32_t result = rt_crc32_compute(data ? data : (const uint8_t *)"", len);
@@ -971,27 +918,22 @@ static void hmac_compute(hash_fn_t hash_fn,
                          size_t key_len,
                          const uint8_t *data,
                          size_t data_len,
-                         uint8_t *out)
-{
+                         uint8_t *out) {
     uint8_t k_padded[HMAC_BLOCK_SIZE];
     uint8_t k_ipad[HMAC_BLOCK_SIZE];
     uint8_t k_opad[HMAC_BLOCK_SIZE];
 
     // If key is longer than block size, hash it first
-    if (key_len > HMAC_BLOCK_SIZE)
-    {
+    if (key_len > HMAC_BLOCK_SIZE) {
         hash_fn(key, key_len, k_padded);
         memset(k_padded + digest_size, 0, HMAC_BLOCK_SIZE - digest_size);
-    }
-    else
-    {
+    } else {
         memcpy(k_padded, key, key_len);
         memset(k_padded + key_len, 0, HMAC_BLOCK_SIZE - key_len);
     }
 
     // XOR key with ipad and opad
-    for (int i = 0; i < HMAC_BLOCK_SIZE; i++)
-    {
+    for (int i = 0; i < HMAC_BLOCK_SIZE; i++) {
         k_ipad[i] = k_padded[i] ^ 0x36;
         k_opad[i] = k_padded[i] ^ 0x5c;
     }
@@ -1018,22 +960,19 @@ static void hmac_compute(hash_fn_t hash_fn,
 
 /// @brief Compute HMAC-MD5 with raw bytes.
 static void hmac_md5_raw(
-    const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[16])
-{
+    const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[16]) {
     hmac_compute((hash_fn_t)compute_md5, 16, key, key_len, data, data_len, out);
 }
 
 /// @brief Compute HMAC-SHA1 with raw bytes.
 static void hmac_sha1_raw(
-    const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[20])
-{
+    const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[20]) {
     hmac_compute((hash_fn_t)compute_sha1, 20, key, key_len, data, data_len, out);
 }
 
 /// @brief Compute HMAC-SHA256 with raw bytes (exported for PBKDF2).
 void rt_hash_hmac_sha256_raw(
-    const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[32])
-{
+    const uint8_t *key, size_t key_len, const uint8_t *data, size_t data_len, uint8_t out[32]) {
     hmac_compute((hash_fn_t)compute_sha256, 32, key, key_len, data, data_len, out);
 }
 
@@ -1042,8 +981,7 @@ void rt_hash_hmac_sha256_raw(
 //=============================================================================
 
 /// @brief Compute HMAC-MD5 of string data with string key.
-rt_string rt_hash_hmac_md5(rt_string key, rt_string data)
-{
+rt_string rt_hash_hmac_md5(rt_string key, rt_string data) {
     const char *key_cstr = rt_string_cstr(key);
     const char *data_cstr = rt_string_cstr(data);
     if (!key_cstr)
@@ -1061,8 +999,7 @@ rt_string rt_hash_hmac_md5(rt_string key, rt_string data)
 }
 
 /// @brief Compute HMAC-MD5 of Bytes data with Bytes key.
-rt_string rt_hash_hmac_md5_bytes(void *key, void *data)
-{
+rt_string rt_hash_hmac_md5_bytes(void *key, void *data) {
     size_t key_len, data_len;
     uint8_t *key_data = rt_bytes_extract_raw(key, &key_len);
     uint8_t *msg_data = rt_bytes_extract_raw(data, &data_len);
@@ -1083,8 +1020,7 @@ rt_string rt_hash_hmac_md5_bytes(void *key, void *data)
 }
 
 /// @brief Compute HMAC-SHA1 of string data with string key.
-rt_string rt_hash_hmac_sha1(rt_string key, rt_string data)
-{
+rt_string rt_hash_hmac_sha1(rt_string key, rt_string data) {
     const char *key_cstr = rt_string_cstr(key);
     const char *data_cstr = rt_string_cstr(data);
     if (!key_cstr)
@@ -1102,8 +1038,7 @@ rt_string rt_hash_hmac_sha1(rt_string key, rt_string data)
 }
 
 /// @brief Compute HMAC-SHA1 of Bytes data with Bytes key.
-rt_string rt_hash_hmac_sha1_bytes(void *key, void *data)
-{
+rt_string rt_hash_hmac_sha1_bytes(void *key, void *data) {
     size_t key_len, data_len;
     uint8_t *key_data = rt_bytes_extract_raw(key, &key_len);
     uint8_t *msg_data = rt_bytes_extract_raw(data, &data_len);
@@ -1124,8 +1059,7 @@ rt_string rt_hash_hmac_sha1_bytes(void *key, void *data)
 }
 
 /// @brief Compute HMAC-SHA256 of string data with string key.
-rt_string rt_hash_hmac_sha256(rt_string key, rt_string data)
-{
+rt_string rt_hash_hmac_sha256(rt_string key, rt_string data) {
     const char *key_cstr = rt_string_cstr(key);
     const char *data_cstr = rt_string_cstr(data);
     if (!key_cstr)
@@ -1143,8 +1077,7 @@ rt_string rt_hash_hmac_sha256(rt_string key, rt_string data)
 }
 
 /// @brief Compute HMAC-SHA256 of Bytes data with Bytes key.
-rt_string rt_hash_hmac_sha256_bytes(void *key, void *data)
-{
+rt_string rt_hash_hmac_sha256_bytes(void *key, void *data) {
     size_t key_len, data_len;
     uint8_t *key_data = rt_bytes_extract_raw(key, &key_len);
     uint8_t *msg_data = rt_bytes_extract_raw(data, &data_len);
@@ -1173,8 +1106,7 @@ rt_string rt_hash_hmac_sha256_bytes(void *key, void *data)
 /// @brief Compute fast hash of a string (FNV-1a).
 /// @param str Input string.
 /// @return 64-bit hash value.
-int64_t rt_hash_fast(rt_string str)
-{
+int64_t rt_hash_fast(rt_string str) {
     const char *cstr = rt_string_cstr(str);
     if (!cstr)
         return (int64_t)rt_fnv1a("", 0);
@@ -1184,8 +1116,7 @@ int64_t rt_hash_fast(rt_string str)
 /// @brief Compute fast hash of a Bytes object (FNV-1a).
 /// @param bytes Input Bytes object.
 /// @return 64-bit hash value.
-int64_t rt_hash_fast_bytes(void *bytes)
-{
+int64_t rt_hash_fast_bytes(void *bytes) {
     if (!bytes)
         return (int64_t)rt_fnv1a("", 0);
     size_t len;
@@ -1200,7 +1131,6 @@ int64_t rt_hash_fast_bytes(void *bytes)
 /// @brief Compute fast FNV-1a hash of an integer value.
 /// @param value Input integer.
 /// @return 64-bit hash value.
-int64_t rt_hash_fast_int(int64_t value)
-{
+int64_t rt_hash_fast_int(int64_t value) {
     return (int64_t)rt_fnv1a(&value, sizeof(value));
 }

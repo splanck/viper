@@ -33,8 +33,7 @@ using il::support::makeError;
 using il::verify::detail::fitsInIntegerKind;
 using il::verify::detail::kindFromCategory;
 
-namespace il::verify::detail
-{
+namespace il::verify::detail {
 
 /// @brief Construct an operand checker bound to a verification context.
 /// @details Stores references to the current @ref VerifyCtx and opcode metadata
@@ -43,9 +42,7 @@ namespace il::verify::detail
 /// @param ctx Verification context for the instruction under inspection.
 /// @param info Opcode metadata describing operand expectations.
 OperandTypeChecker::OperandTypeChecker(const VerifyCtx &ctx, const InstructionSpec &spec)
-    : ctx_(ctx), spec_(spec)
-{
-}
+    : ctx_(ctx), spec_(spec) {}
 
 /// @brief Validate each operand against the opcode's type requirements.
 /// @details Iterates over the instruction operands, mapping opcode categories to
@@ -54,44 +51,33 @@ OperandTypeChecker::OperandTypeChecker(const VerifyCtx &ctx, const InstructionSp
 ///          type information results in diagnostics.  Success returns an empty
 ///          Expected; failures propagate the diagnostic produced by @ref report.
 /// @return Empty Expected on success or the emitted diagnostic on failure.
-Expected<void> OperandTypeChecker::run() const
-{
+Expected<void> OperandTypeChecker::run() const {
     const auto &instr = ctx_.instr;
 
     for (size_t index = 0; index < instr.operands.size() && index < spec_.operandTypes.size();
-         ++index)
-    {
+         ++index) {
         const TypeCategory category = spec_.operandTypes[index];
         if (category == TypeCategory::None || category == TypeCategory::Any ||
             category == TypeCategory::Dynamic)
             continue;
 
         il::core::Type::Kind expectedKind;
-        if (category == TypeCategory::InstrType)
-        {
-            if (instr.type.kind == il::core::Type::Kind::Void)
-            {
+        if (category == TypeCategory::InstrType) {
+            if (instr.type.kind == il::core::Type::Kind::Void) {
                 return report("instruction type must be non-void");
             }
             expectedKind = instr.type.kind;
-        }
-        else if (auto mapped = kindFromCategory(category))
-        {
+        } else if (auto mapped = kindFromCategory(category)) {
             expectedKind = *mapped;
-        }
-        else
-        {
+        } else {
             continue;
         }
 
         const auto &operand = instr.operands[index];
-        if (operand.kind == il::core::Value::Kind::ConstInt)
-        {
-            switch (expectedKind)
-            {
+        if (operand.kind == il::core::Value::Kind::ConstInt) {
+            switch (expectedKind) {
                 case il::core::Type::Kind::I1:
-                    if (!fitsInIntegerKind(operand.i64, expectedKind))
-                    {
+                    if (!fitsInIntegerKind(operand.i64, expectedKind)) {
                         std::ostringstream ss;
                         ss << "operand " << index << " constant out of range for i1";
                         return report(ss.str());
@@ -100,8 +86,7 @@ Expected<void> OperandTypeChecker::run() const
                 case il::core::Type::Kind::I16:
                 case il::core::Type::Kind::I32:
                 case il::core::Type::Kind::I64:
-                    if (!fitsInIntegerKind(operand.i64, expectedKind))
-                    {
+                    if (!fitsInIntegerKind(operand.i64, expectedKind)) {
                         std::ostringstream ss;
                         ss << "operand " << index << " constant out of range for "
                            << kindToString(expectedKind);
@@ -115,23 +100,18 @@ Expected<void> OperandTypeChecker::run() const
 
         bool missing = false;
         const il::core::Type actual = ctx_.types.valueType(operand, &missing);
-        if (missing)
-        {
+        if (missing) {
             std::ostringstream ss;
             ss << "operand " << index << " type is unknown";
             return report(ss.str());
         }
 
-        if (actual.kind != expectedKind)
-        {
+        if (actual.kind != expectedKind) {
             std::ostringstream ss;
             ss << "operand type mismatch: ";
-            if (expectedKind == il::core::Type::Kind::Ptr)
-            {
+            if (expectedKind == il::core::Type::Kind::Ptr) {
                 ss << "pointer type mismatch: operand " << index << " must be ptr";
-            }
-            else
-            {
+            } else {
                 ss << "operand " << index << " must be " << kindToString(expectedKind);
             }
             return report(ss.str());
@@ -146,8 +126,7 @@ Expected<void> OperandTypeChecker::run() const
 ///          receive actionable feedback.
 /// @param message Human-readable description of the violation.
 /// @return Expected containing the emitted diagnostic for chaining.
-Expected<void> OperandTypeChecker::report(std::string_view message) const
-{
+Expected<void> OperandTypeChecker::report(std::string_view message) const {
     return Expected<void>{
         makeError(ctx_.instr.loc, formatInstrDiag(ctx_.fn, ctx_.block, ctx_.instr, message))};
 }

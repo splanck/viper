@@ -17,15 +17,13 @@
 #include <cmath>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
 static const double EPSILON = 1e-9;
 
-static bool approx_eq(double a, double b)
-{
+static bool approx_eq(double a, double b) {
     return fabs(a - b) < EPSILON;
 }
 
@@ -33,8 +31,7 @@ static bool approx_eq(double a, double b)
 // Constructors
 // ============================================================================
 
-static void test_new()
-{
+static void test_new() {
     void *v = rt_vec3_new(3.0, 4.0, 5.0);
     assert(v != nullptr);
     assert(approx_eq(rt_vec3_x(v), 3.0));
@@ -43,8 +40,7 @@ static void test_new()
     printf("test_new: PASSED\n");
 }
 
-static void test_zero()
-{
+static void test_zero() {
     void *v = rt_vec3_zero();
     assert(v != nullptr);
     assert(approx_eq(rt_vec3_x(v), 0.0));
@@ -53,8 +49,7 @@ static void test_zero()
     printf("test_zero: PASSED\n");
 }
 
-static void test_one()
-{
+static void test_one() {
     void *v = rt_vec3_one();
     assert(v != nullptr);
     assert(approx_eq(rt_vec3_x(v), 1.0));
@@ -67,8 +62,7 @@ static void test_one()
 // Arithmetic Operations
 // ============================================================================
 
-static void test_add()
-{
+static void test_add() {
     void *a = rt_vec3_new(1.0, 2.0, 3.0);
     void *b = rt_vec3_new(4.0, 5.0, 6.0);
     void *c = rt_vec3_add(a, b);
@@ -78,8 +72,7 @@ static void test_add()
     printf("test_add: PASSED\n");
 }
 
-static void test_sub()
-{
+static void test_sub() {
     void *a = rt_vec3_new(5.0, 7.0, 9.0);
     void *b = rt_vec3_new(2.0, 3.0, 4.0);
     void *c = rt_vec3_sub(a, b);
@@ -89,8 +82,7 @@ static void test_sub()
     printf("test_sub: PASSED\n");
 }
 
-static void test_mul()
-{
+static void test_mul() {
     void *v = rt_vec3_new(3.0, 4.0, 5.0);
     void *r = rt_vec3_mul(v, 2.0);
     assert(approx_eq(rt_vec3_x(r), 6.0));
@@ -99,8 +91,7 @@ static void test_mul()
     printf("test_mul: PASSED\n");
 }
 
-static void test_div()
-{
+static void test_div() {
     void *v = rt_vec3_new(6.0, 8.0, 10.0);
     void *r = rt_vec3_div(v, 2.0);
     assert(approx_eq(rt_vec3_x(r), 3.0));
@@ -109,8 +100,7 @@ static void test_div()
     printf("test_div: PASSED\n");
 }
 
-static void test_neg()
-{
+static void test_neg() {
     void *v = rt_vec3_new(3.0, -4.0, 5.0);
     void *r = rt_vec3_neg(v);
     assert(approx_eq(rt_vec3_x(r), -3.0));
@@ -123,8 +113,7 @@ static void test_neg()
 // Vector Products
 // ============================================================================
 
-static void test_dot()
-{
+static void test_dot() {
     void *a = rt_vec3_new(1.0, 2.0, 3.0);
     void *b = rt_vec3_new(4.0, 5.0, 6.0);
     double d = rt_vec3_dot(a, b);
@@ -133,8 +122,7 @@ static void test_dot()
     printf("test_dot: PASSED\n");
 }
 
-static void test_cross()
-{
+static void test_cross() {
     // Test: i × j = k (unit vectors)
     void *i = rt_vec3_new(1.0, 0.0, 0.0);
     void *j = rt_vec3_new(0.0, 1.0, 0.0);
@@ -159,8 +147,7 @@ static void test_cross()
     printf("test_cross: PASSED\n");
 }
 
-static void test_cross_general()
-{
+static void test_cross_general() {
     // General cross product: (1,2,3) × (4,5,6)
     // = (2*6 - 3*5, 3*4 - 1*6, 1*5 - 2*4)
     // = (12 - 15, 12 - 6, 5 - 8)
@@ -178,8 +165,7 @@ static void test_cross_general()
 // Length and Distance
 // ============================================================================
 
-static void test_len()
-{
+static void test_len() {
     // 3-4-5 right triangle in 3D: (0,3,4) has length 5
     void *v = rt_vec3_new(0.0, 3.0, 4.0);
     double len = rt_vec3_len(v);
@@ -187,8 +173,7 @@ static void test_len()
     printf("test_len: PASSED\n");
 }
 
-static void test_len_sq()
-{
+static void test_len_sq() {
     void *v = rt_vec3_new(1.0, 2.0, 2.0);
     double len_sq = rt_vec3_len_sq(v);
     // 1 + 4 + 4 = 9
@@ -196,8 +181,7 @@ static void test_len_sq()
     printf("test_len_sq: PASSED\n");
 }
 
-static void test_dist()
-{
+static void test_dist() {
     void *a = rt_vec3_new(0.0, 0.0, 0.0);
     void *b = rt_vec3_new(0.0, 3.0, 4.0);
     double d = rt_vec3_dist(a, b);
@@ -209,8 +193,7 @@ static void test_dist()
 // Normalization and Interpolation
 // ============================================================================
 
-static void test_norm()
-{
+static void test_norm() {
     void *v = rt_vec3_new(0.0, 3.0, 4.0);
     void *n = rt_vec3_norm(v);
     assert(approx_eq(rt_vec3_x(n), 0.0));
@@ -221,8 +204,7 @@ static void test_norm()
     printf("test_norm: PASSED\n");
 }
 
-static void test_norm_zero()
-{
+static void test_norm_zero() {
     void *v = rt_vec3_zero();
     void *n = rt_vec3_norm(v);
     // Should return zero vector
@@ -232,8 +214,7 @@ static void test_norm_zero()
     printf("test_norm_zero: PASSED\n");
 }
 
-static void test_lerp()
-{
+static void test_lerp() {
     void *a = rt_vec3_new(0.0, 0.0, 0.0);
     void *b = rt_vec3_new(10.0, 20.0, 30.0);
 
@@ -259,8 +240,7 @@ static void test_lerp()
 // Combined Tests
 // ============================================================================
 
-static void test_perpendicular()
-{
+static void test_perpendicular() {
     void *a = rt_vec3_new(1.0, 0.0, 0.0);
     void *b = rt_vec3_new(0.0, 1.0, 0.0);
 
@@ -274,8 +254,7 @@ static void test_perpendicular()
     printf("test_perpendicular: PASSED\n");
 }
 
-static void test_cross_perpendicular()
-{
+static void test_cross_perpendicular() {
     // Cross product is perpendicular to both input vectors
     void *a = rt_vec3_new(1.0, 2.0, 3.0);
     void *b = rt_vec3_new(4.0, 5.0, 6.0);
@@ -288,8 +267,7 @@ static void test_cross_perpendicular()
     printf("test_cross_perpendicular: PASSED\n");
 }
 
-int main()
-{
+int main() {
     printf("=== Viper.Vec3 Tests ===\n\n");
 
     // Constructors

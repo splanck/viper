@@ -20,8 +20,7 @@
 using namespace viper::codegen::aarch64;
 
 /// Unsigned division by 8 (power of 2) should become lsr by 3.
-TEST(AArch64DivStrength, UDivByPowerOf2BecomesLsr)
-{
+TEST(AArch64DivStrength, UDivByPowerOf2BecomesLsr) {
     MFunction fn{};
     fn.name = "test_udiv_pow2";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -46,8 +45,7 @@ TEST(AArch64DivStrength, UDivByPowerOf2BecomesLsr)
 }
 
 /// Unsigned division by 1 (2^0) should become lsr by 0 (identity).
-TEST(AArch64DivStrength, UDivBy1BecomesLsr0)
-{
+TEST(AArch64DivStrength, UDivBy1BecomesLsr0) {
     MFunction fn{};
     fn.name = "test_udiv_by_1";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -69,8 +67,7 @@ TEST(AArch64DivStrength, UDivBy1BecomesLsr0)
 
 /// Signed division by power-of-2 should be reduced to sign-corrected shift.
 /// For x / 4 (k=2): asr tmp, x, #63; lsr tmp, tmp, #62; add tmp, x, tmp; asr dst, tmp, #2
-TEST(AArch64DivStrength, SDivByPowerOf2BecomesShift)
-{
+TEST(AArch64DivStrength, SDivByPowerOf2BecomesShift) {
     MFunction fn{};
     fn.name = "test_sdiv_pow2";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -98,8 +95,7 @@ TEST(AArch64DivStrength, SDivByPowerOf2BecomesShift)
 
 /// Signed division by arbitrary constant should be reduced to magic multiply.
 /// For x / 7: smulh tmp, x, M; asr tmp, tmp, #S; lsr sign, tmp, #63; add dst, tmp, sign
-TEST(AArch64DivStrength, SDivByConstantBecomesMagicMultiply)
-{
+TEST(AArch64DivStrength, SDivByConstantBecomesMagicMultiply) {
     MFunction fn{};
     fn.name = "test_sdiv_const";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -127,8 +123,7 @@ TEST(AArch64DivStrength, SDivByConstantBecomesMagicMultiply)
 }
 
 /// Non-power-of-2 divisor for UDIV should not be reduced (unsigned magic not implemented).
-TEST(AArch64DivStrength, UDivByNonPowerOf2NotReduced)
-{
+TEST(AArch64DivStrength, UDivByNonPowerOf2NotReduced) {
     MFunction fn{};
     fn.name = "test_udiv_non_pow2";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -148,8 +143,7 @@ TEST(AArch64DivStrength, UDivByNonPowerOf2NotReduced)
 }
 
 /// UREM by power-of-2: udiv+msub -> and mask
-TEST(AArch64DivStrength, URemByPowerOf2BecomesAnd)
-{
+TEST(AArch64DivStrength, URemByPowerOf2BecomesAnd) {
     MFunction fn{};
     fn.name = "test_urem_pow2";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -177,10 +171,8 @@ TEST(AArch64DivStrength, URemByPowerOf2BecomesAnd)
     EXPECT_TRUE(stats.strengthReductions >= 1);
     // Find the AndRI instruction
     bool foundAnd = false;
-    for (const auto &instr : bb.instrs)
-    {
-        if (instr.opc == MOpcode::AndRI)
-        {
+    for (const auto &instr : bb.instrs) {
+        if (instr.opc == MOpcode::AndRI) {
             foundAnd = true;
             EXPECT_EQ(instr.ops[2].imm, 7); // 8-1 = 7
             break;
@@ -190,8 +182,7 @@ TEST(AArch64DivStrength, URemByPowerOf2BecomesAnd)
 }
 
 /// SREM by power-of-2: sdiv+msub -> sign-corrected and+sub
-TEST(AArch64DivStrength, SRemByPowerOf2BecomesSignCorrectedAnd)
-{
+TEST(AArch64DivStrength, SRemByPowerOf2BecomesSignCorrectedAnd) {
     MFunction fn{};
     fn.name = "test_srem_pow2";
     fn.blocks.push_back(MBasicBlock{"entry", {}});
@@ -220,8 +211,7 @@ TEST(AArch64DivStrength, SRemByPowerOf2BecomesSignCorrectedAnd)
     // The SDivRRR and MSubRRRR should both be gone
     bool foundSDiv = false;
     bool foundMSub = false;
-    for (const auto &instr : bb.instrs)
-    {
+    for (const auto &instr : bb.instrs) {
         if (instr.opc == MOpcode::SDivRRR)
             foundSDiv = true;
         if (instr.opc == MOpcode::MSubRRRR)
@@ -231,8 +221,7 @@ TEST(AArch64DivStrength, SRemByPowerOf2BecomesSignCorrectedAnd)
     EXPECT_FALSE(foundMSub);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

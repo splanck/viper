@@ -23,24 +23,20 @@
 #include <cstdio>
 #include <cstdlib>
 
-static size_t refcount(int32_t *arr)
-{
+static size_t refcount(int32_t *arr) {
     rt_heap_hdr_t *hdr = rt_arr_i32_hdr(arr);
     assert(hdr != nullptr);
     return hdr->refcnt;
 }
 
-static void resize_or_abort(int32_t **arr, size_t new_len)
-{
-    if (rt_arr_i32_resize(arr, new_len) != 0)
-    {
+static void resize_or_abort(int32_t **arr, size_t new_len) {
+    if (rt_arr_i32_resize(arr, new_len) != 0) {
         std::fprintf(stderr, "rt_arr_i32_resize failed for len=%zu\n", new_len);
         std::abort();
     }
 }
 
-static void test_refcount_lifecycle()
-{
+static void test_refcount_lifecycle() {
     int32_t *arr = rt_arr_i32_new(3);
     assert(arr != nullptr);
     assert(refcount(arr) == 1);
@@ -55,8 +51,7 @@ static void test_refcount_lifecycle()
     assert(remaining == 0);
 }
 
-static void test_aliasing_visibility()
-{
+static void test_aliasing_visibility() {
     int32_t *a = rt_arr_i32_new(2);
     assert(a != nullptr);
     rt_arr_i32_set(a, 0, 11);
@@ -74,8 +69,7 @@ static void test_aliasing_visibility()
     rt_arr_i32_release(a);
 }
 
-static void test_copy_on_resize()
-{
+static void test_copy_on_resize() {
     int32_t *a = rt_arr_i32_new(2);
     assert(a != nullptr);
     rt_arr_i32_set(a, 0, 5);
@@ -107,8 +101,7 @@ static void test_copy_on_resize()
     rt_arr_i32_release(a);
 }
 
-static void test_self_assignment_no_refcount_change()
-{
+static void test_self_assignment_no_refcount_change() {
     int32_t *arr = rt_arr_i32_new(1);
     assert(arr != nullptr);
     assert(refcount(arr) == 1);
@@ -120,8 +113,7 @@ static void test_self_assignment_no_refcount_change()
     rt_arr_i32_release(arr);
 }
 
-int main()
-{
+int main() {
     test_refcount_lifecycle();
     test_aliasing_visibility();
     test_copy_on_resize();

@@ -45,8 +45,7 @@
 #include <stdlib.h>
 
 /// Internal structure for CollisionRect.
-struct rt_collision_rect_impl
-{
+struct rt_collision_rect_impl {
     double x;      ///< Left edge.
     double y;      ///< Top edge.
     double width;  ///< Width.
@@ -59,8 +58,7 @@ struct rt_collision_rect_impl
 /// @param width
 /// @param height
 /// @return Result value.
-rt_collision_rect rt_collision_rect_new(double x, double y, double width, double height)
-{
+rt_collision_rect rt_collision_rect_new(double x, double y, double width, double height) {
     struct rt_collision_rect_impl *rect = (struct rt_collision_rect_impl *)rt_obj_new_i64(
         0, (int64_t)sizeof(struct rt_collision_rect_impl));
     if (!rect)
@@ -76,8 +74,7 @@ rt_collision_rect rt_collision_rect_new(double x, double y, double width, double
 
 /// @brief Perform collision rect destroy operation.
 /// @param rect
-void rt_collision_rect_destroy(rt_collision_rect rect)
-{
+void rt_collision_rect_destroy(rt_collision_rect rect) {
     if (rect && rt_obj_release_check0(rect))
         rt_obj_free(rect);
 }
@@ -85,64 +82,56 @@ void rt_collision_rect_destroy(rt_collision_rect rect)
 /// @brief Perform collision rect x operation.
 /// @param rect
 /// @return Result value.
-double rt_collision_rect_x(rt_collision_rect rect)
-{
+double rt_collision_rect_x(rt_collision_rect rect) {
     return rect ? rect->x : 0.0;
 }
 
 /// @brief Perform collision rect y operation.
 /// @param rect
 /// @return Result value.
-double rt_collision_rect_y(rt_collision_rect rect)
-{
+double rt_collision_rect_y(rt_collision_rect rect) {
     return rect ? rect->y : 0.0;
 }
 
 /// @brief Perform collision rect width operation.
 /// @param rect
 /// @return Result value.
-double rt_collision_rect_width(rt_collision_rect rect)
-{
+double rt_collision_rect_width(rt_collision_rect rect) {
     return rect ? rect->width : 0.0;
 }
 
 /// @brief Perform collision rect height operation.
 /// @param rect
 /// @return Result value.
-double rt_collision_rect_height(rt_collision_rect rect)
-{
+double rt_collision_rect_height(rt_collision_rect rect) {
     return rect ? rect->height : 0.0;
 }
 
 /// @brief Perform collision rect right operation.
 /// @param rect
 /// @return Result value.
-double rt_collision_rect_right(rt_collision_rect rect)
-{
+double rt_collision_rect_right(rt_collision_rect rect) {
     return rect ? rect->x + rect->width : 0.0;
 }
 
 /// @brief Perform collision rect bottom operation.
 /// @param rect
 /// @return Result value.
-double rt_collision_rect_bottom(rt_collision_rect rect)
-{
+double rt_collision_rect_bottom(rt_collision_rect rect) {
     return rect ? rect->y + rect->height : 0.0;
 }
 
 /// @brief Perform collision rect center x operation.
 /// @param rect
 /// @return Result value.
-double rt_collision_rect_center_x(rt_collision_rect rect)
-{
+double rt_collision_rect_center_x(rt_collision_rect rect) {
     return rect ? rect->x + rect->width * 0.5 : 0.0;
 }
 
 /// @brief Perform collision rect center y operation.
 /// @param rect
 /// @return Result value.
-double rt_collision_rect_center_y(rt_collision_rect rect)
-{
+double rt_collision_rect_center_y(rt_collision_rect rect) {
     return rect ? rect->y + rect->height * 0.5 : 0.0;
 }
 
@@ -150,8 +139,7 @@ double rt_collision_rect_center_y(rt_collision_rect rect)
 /// @param rect
 /// @param x
 /// @param y
-void rt_collision_rect_set_position(rt_collision_rect rect, double x, double y)
-{
+void rt_collision_rect_set_position(rt_collision_rect rect, double x, double y) {
     if (!rect)
         return;
     rect->x = x;
@@ -162,8 +150,7 @@ void rt_collision_rect_set_position(rt_collision_rect rect, double x, double y)
 /// @param rect
 /// @param width
 /// @param height
-void rt_collision_rect_set_size(rt_collision_rect rect, double width, double height)
-{
+void rt_collision_rect_set_size(rt_collision_rect rect, double width, double height) {
     if (!rect)
         return;
     rect->width = width > 0 ? width : 0;
@@ -176,8 +163,8 @@ void rt_collision_rect_set_size(rt_collision_rect rect, double width, double hei
 /// @param y
 /// @param width
 /// @param height
-void rt_collision_rect_set(rt_collision_rect rect, double x, double y, double width, double height)
-{
+void rt_collision_rect_set(
+    rt_collision_rect rect, double x, double y, double width, double height) {
     if (!rect)
         return;
     rect->x = x;
@@ -190,8 +177,7 @@ void rt_collision_rect_set(rt_collision_rect rect, double x, double y, double wi
 /// @param rect
 /// @param cx
 /// @param cy
-void rt_collision_rect_set_center(rt_collision_rect rect, double cx, double cy)
-{
+void rt_collision_rect_set_center(rt_collision_rect rect, double cx, double cy) {
     if (!rect)
         return;
     rect->x = cx - rect->width * 0.5;
@@ -202,8 +188,7 @@ void rt_collision_rect_set_center(rt_collision_rect rect, double cx, double cy)
 /// @param rect
 /// @param dx
 /// @param dy
-void rt_collision_rect_move(rt_collision_rect rect, double dx, double dy)
-{
+void rt_collision_rect_move(rt_collision_rect rect, double dx, double dy) {
     if (!rect)
         return;
     rect->x += dx;
@@ -215,8 +200,7 @@ void rt_collision_rect_move(rt_collision_rect rect, double dx, double dy)
 /// @param px
 /// @param py
 /// @return Result value.
-int8_t rt_collision_rect_contains_point(rt_collision_rect rect, double px, double py)
-{
+int8_t rt_collision_rect_contains_point(rt_collision_rect rect, double px, double py) {
     if (!rect)
         return 0;
     return px >= rect->x && px < rect->x + rect->width && py >= rect->y &&
@@ -227,16 +211,14 @@ int8_t rt_collision_rect_contains_point(rt_collision_rect rect, double px, doubl
 /// @param rect
 /// @param other
 /// @return Result value.
-int8_t rt_collision_rect_overlaps(rt_collision_rect rect, rt_collision_rect other)
-{
+int8_t rt_collision_rect_overlaps(rt_collision_rect rect, rt_collision_rect other) {
     if (!rect || !other)
         return 0;
     return rt_collision_rect_overlaps_rect(rect, other->x, other->y, other->width, other->height);
 }
 
 int8_t rt_collision_rect_overlaps_rect(
-    rt_collision_rect rect, double ox, double oy, double ow, double oh)
-{
+    rt_collision_rect rect, double ox, double oy, double ow, double oh) {
     if (!rect)
         return 0;
 
@@ -251,8 +233,7 @@ int8_t rt_collision_rect_overlaps_rect(
     double r2_bottom = oy + oh;
 
     // Check for no overlap
-    if (r1_right <= r2_left || r2_right <= r1_left || r1_bottom <= r2_top || r2_bottom <= r1_top)
-    {
+    if (r1_right <= r2_left || r2_right <= r1_left || r1_bottom <= r2_top || r2_bottom <= r1_top) {
         return 0;
     }
     return 1;
@@ -262,8 +243,7 @@ int8_t rt_collision_rect_overlaps_rect(
 /// @param rect
 /// @param other
 /// @return Result value.
-double rt_collision_rect_overlap_x(rt_collision_rect rect, rt_collision_rect other)
-{
+double rt_collision_rect_overlap_x(rt_collision_rect rect, rt_collision_rect other) {
     if (!rect || !other)
         return 0.0;
 
@@ -287,8 +267,7 @@ double rt_collision_rect_overlap_x(rt_collision_rect rect, rt_collision_rect oth
 /// @param rect
 /// @param other
 /// @return Result value.
-double rt_collision_rect_overlap_y(rt_collision_rect rect, rt_collision_rect other)
-{
+double rt_collision_rect_overlap_y(rt_collision_rect rect, rt_collision_rect other) {
     if (!rect || !other)
         return 0.0;
 
@@ -311,8 +290,7 @@ double rt_collision_rect_overlap_y(rt_collision_rect rect, rt_collision_rect oth
 /// @brief Perform collision rect expand operation.
 /// @param rect
 /// @param margin
-void rt_collision_rect_expand(rt_collision_rect rect, double margin)
-{
+void rt_collision_rect_expand(rt_collision_rect rect, double margin) {
     if (!rect)
         return;
     rect->x -= margin;
@@ -331,8 +309,7 @@ void rt_collision_rect_expand(rt_collision_rect rect, double margin)
 /// @param rect
 /// @param other
 /// @return Result value.
-int8_t rt_collision_rect_contains_rect(rt_collision_rect rect, rt_collision_rect other)
-{
+int8_t rt_collision_rect_contains_rect(rt_collision_rect rect, rt_collision_rect other) {
     if (!rect || !other)
         return 0;
 
@@ -346,10 +323,8 @@ int8_t rt_collision_rect_contains_rect(rt_collision_rect rect, rt_collision_rect
 //=============================================================================
 
 int8_t rt_collision_rects_overlap(
-    double x1, double y1, double w1, double h1, double x2, double y2, double w2, double h2)
-{
-    if (x1 + w1 <= x2 || x2 + w2 <= x1 || y1 + h1 <= y2 || y2 + h2 <= y1)
-    {
+    double x1, double y1, double w1, double h1, double x2, double y2, double w2, double h2) {
+    if (x1 + w1 <= x2 || x2 + w2 <= x1 || y1 + h1 <= y2 || y2 + h2 <= y1) {
         return 0;
     }
     return 1;
@@ -363,14 +338,13 @@ int8_t rt_collision_rects_overlap(
 /// @param rw
 /// @param rh
 /// @return Result value.
-int8_t rt_collision_point_in_rect(double px, double py, double rx, double ry, double rw, double rh)
-{
+int8_t rt_collision_point_in_rect(
+    double px, double py, double rx, double ry, double rw, double rh) {
     return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
 }
 
 int8_t rt_collision_circles_overlap(
-    double x1, double y1, double r1, double x2, double y2, double r2)
-{
+    double x1, double y1, double r1, double x2, double y2, double r2) {
     double dx = x2 - x1;
     double dy = y2 - y1;
     double dist_sq = dx * dx + dy * dy;
@@ -385,16 +359,14 @@ int8_t rt_collision_circles_overlap(
 /// @param cy
 /// @param r
 /// @return Result value.
-int8_t rt_collision_point_in_circle(double px, double py, double cx, double cy, double r)
-{
+int8_t rt_collision_point_in_circle(double px, double py, double cx, double cy, double r) {
     double dx = px - cx;
     double dy = py - cy;
     return dx * dx + dy * dy < r * r;
 }
 
 int8_t rt_collision_circle_rect(
-    double cx, double cy, double r, double rx, double ry, double rw, double rh)
-{
+    double cx, double cy, double r, double rx, double ry, double rw, double rh) {
     // Find closest point on rectangle to circle center
     double closest_x = cx;
     double closest_y = cy;
@@ -421,8 +393,7 @@ int8_t rt_collision_circle_rect(
 /// @param x2
 /// @param y2
 /// @return Result value.
-double rt_collision_distance(double x1, double y1, double x2, double y2)
-{
+double rt_collision_distance(double x1, double y1, double x2, double y2) {
     double dx = x2 - x1;
     double dy = y2 - y1;
     return sqrt(dx * dx + dy * dy);
@@ -434,8 +405,7 @@ double rt_collision_distance(double x1, double y1, double x2, double y2)
 /// @param x2
 /// @param y2
 /// @return Result value.
-double rt_collision_distance_squared(double x1, double y1, double x2, double y2)
-{
+double rt_collision_distance_squared(double x1, double y1, double x2, double y2) {
     double dx = x2 - x1;
     double dy = y2 - y1;
     return dx * dx + dy * dy;

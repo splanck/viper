@@ -63,8 +63,7 @@
 /// @note Uses the Win32 Sleep() function.
 ///
 /// @see rt_timer_ms For measuring elapsed time
-void rt_sleep_ms(int32_t ms)
-{
+void rt_sleep_ms(int32_t ms) {
     if (ms < 0)
         ms = 0;
     Sleep((DWORD)ms);
@@ -91,12 +90,10 @@ void rt_sleep_ms(int32_t ms)
 /// @note Never decreases, even if system time is changed.
 ///
 /// @see rt_clock_ticks_us For microsecond resolution
-int64_t rt_timer_ms(void)
-{
+int64_t rt_timer_ms(void) {
     // Use QueryPerformanceCounter for high-resolution monotonic time
     LARGE_INTEGER freq, counter;
-    if (!QueryPerformanceFrequency(&freq) || freq.QuadPart == 0)
-    {
+    if (!QueryPerformanceFrequency(&freq) || freq.QuadPart == 0) {
         // Fallback to GetTickCount64 if QPC unavailable
         return (int64_t)GetTickCount64();
     }
@@ -130,12 +127,10 @@ int64_t rt_timer_ms(void)
 /// @note 1 millisecond = 1000 microseconds.
 ///
 /// @see rt_timer_ms For millisecond resolution
-int64_t rt_clock_ticks_us(void)
-{
+int64_t rt_clock_ticks_us(void) {
     // Use QueryPerformanceCounter for high-resolution monotonic time
     LARGE_INTEGER freq, counter;
-    if (!QueryPerformanceFrequency(&freq) || freq.QuadPart == 0)
-    {
+    if (!QueryPerformanceFrequency(&freq) || freq.QuadPart == 0) {
         // Fallback to GetTickCount64 (milliseconds) * 1000 for microseconds
         return (int64_t)GetTickCount64() * 1000LL;
     }
@@ -156,27 +151,23 @@ int64_t rt_clock_ticks_us(void)
 #include <errno.h>
 #include <time.h>
 
-void rt_sleep_ms(int32_t ms)
-{
+void rt_sleep_ms(int32_t ms) {
     if (ms < 0)
         ms = 0;
     struct timespec req;
     req.tv_sec = ms / 1000;
     req.tv_nsec = (long)(ms % 1000) * 1000000L;
-    while (nanosleep(&req, &req) == -1 && errno == EINTR)
-    {
+    while (nanosleep(&req, &req) == -1 && errno == EINTR) {
     }
 }
 
-int64_t rt_timer_ms(void)
-{
+int64_t rt_timer_ms(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)ts.tv_sec * 1000 + (int64_t)(ts.tv_nsec / 1000000);
 }
 
-int64_t rt_clock_ticks_us(void)
-{
+int64_t rt_clock_ticks_us(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)ts.tv_sec * 1000000 + (int64_t)(ts.tv_nsec / 1000);
@@ -215,8 +206,7 @@ int64_t rt_clock_ticks_us(void)
 /// @note Resolution is typically 1ms or better on modern systems.
 ///
 /// @see rt_timer_ms For measuring elapsed time
-void rt_sleep_ms(int32_t ms)
-{
+void rt_sleep_ms(int32_t ms) {
     if (ms < 0)
         ms = 0;
 
@@ -225,8 +215,7 @@ void rt_sleep_ms(int32_t ms)
     long nsec = (long)(ms % 1000) * 1000000L;
     req.tv_nsec = nsec;
 
-    while (nanosleep(&req, &req) == -1 && errno == EINTR)
-    {
+    while (nanosleep(&req, &req) == -1 && errno == EINTR) {
         // Retry with remaining time in req.
     }
 }
@@ -256,14 +245,12 @@ void rt_sleep_ms(int32_t ms)
 /// @note Resolution is typically 1ms or better.
 ///
 /// @see rt_clock_ticks_us For microsecond resolution
-int64_t rt_timer_ms(void)
-{
+int64_t rt_timer_ms(void) {
     // Use CLOCK_MONOTONIC for monotonic time since unspecified epoch
     struct timespec ts;
 
 #ifdef CLOCK_MONOTONIC
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
-    {
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
         // Convert to milliseconds: seconds * 1000 + nanoseconds / 1000000
         int64_t ms = (int64_t)ts.tv_sec * 1000LL + (int64_t)ts.tv_nsec / 1000000LL;
         return ms;
@@ -271,8 +258,7 @@ int64_t rt_timer_ms(void)
 #endif
 
     // Fallback to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable
-    if (clock_gettime(CLOCK_REALTIME, &ts) == 0)
-    {
+    if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
         int64_t ms = (int64_t)ts.tv_sec * 1000LL + (int64_t)ts.tv_nsec / 1000000LL;
         return ms;
     }
@@ -301,14 +287,12 @@ int64_t rt_timer_ms(void)
 /// @note Typical resolution is 1 microsecond on modern systems.
 ///
 /// @see rt_timer_ms For millisecond resolution
-int64_t rt_clock_ticks_us(void)
-{
+int64_t rt_clock_ticks_us(void) {
     // Use CLOCK_MONOTONIC for monotonic time since unspecified epoch
     struct timespec ts;
 
 #ifdef CLOCK_MONOTONIC
-    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0)
-    {
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
         // Convert to microseconds: seconds * 1000000 + nanoseconds / 1000
         int64_t us = (int64_t)ts.tv_sec * 1000000LL + (int64_t)ts.tv_nsec / 1000LL;
         return us;
@@ -316,8 +300,7 @@ int64_t rt_clock_ticks_us(void)
 #endif
 
     // Fallback to CLOCK_REALTIME if CLOCK_MONOTONIC unavailable
-    if (clock_gettime(CLOCK_REALTIME, &ts) == 0)
-    {
+    if (clock_gettime(CLOCK_REALTIME, &ts) == 0) {
         int64_t us = (int64_t)ts.tv_sec * 1000000LL + (int64_t)ts.tv_nsec / 1000LL;
         return us;
     }
@@ -358,8 +341,7 @@ int64_t rt_clock_ticks_us(void)
 ///
 /// @see rt_sleep_ms For the underlying implementation
 /// @see rt_clock_ticks For measuring elapsed time
-void rt_clock_sleep(int64_t ms)
-{
+void rt_clock_sleep(int64_t ms) {
     // Clamp to int32_t range for rt_sleep_ms
     if (ms < 0)
         ms = 0;
@@ -387,7 +369,6 @@ void rt_clock_sleep(int64_t ms)
 ///
 /// @see rt_timer_ms For implementation details
 /// @see rt_clock_ticks_us For microsecond resolution
-int64_t rt_clock_ticks(void)
-{
+int64_t rt_clock_ticks(void) {
     return rt_timer_ms();
 }

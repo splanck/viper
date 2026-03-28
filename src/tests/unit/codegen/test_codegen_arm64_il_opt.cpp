@@ -21,23 +21,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -45,8 +42,7 @@ static std::string readFile(const std::string &path)
 }
 
 /// Simple arithmetic loop — verifies -O2 produces assembly without crashing.
-TEST(Arm64ILOpt, O2ProducesValidAssembly)
-{
+TEST(Arm64ILOpt, O2ProducesValidAssembly) {
     const std::string il = "il 0.1.2\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
@@ -78,8 +74,7 @@ TEST(Arm64ILOpt, O2ProducesValidAssembly)
 }
 
 /// Verify -O1 also works.
-TEST(Arm64ILOpt, O1ProducesValidAssembly)
-{
+TEST(Arm64ILOpt, O1ProducesValidAssembly) {
     const std::string il = "il 0.1.2\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
@@ -100,8 +95,7 @@ TEST(Arm64ILOpt, O1ProducesValidAssembly)
 }
 
 /// Verify -O0 (no optimization) works.
-TEST(Arm64ILOpt, O0ProducesValidAssembly)
-{
+TEST(Arm64ILOpt, O0ProducesValidAssembly) {
     const std::string il = "il 0.1.2\n"
                            "func @main() -> i64 {\n"
                            "entry:\n"
@@ -121,8 +115,7 @@ TEST(Arm64ILOpt, O0ProducesValidAssembly)
 }
 
 /// Multi-function module with -O2: inlining should inline small helpers.
-TEST(Arm64ILOpt, O2InlinesSmallHelpers)
-{
+TEST(Arm64ILOpt, O2InlinesSmallHelpers) {
     const std::string il = "il 0.1.2\n"
                            "func @add_one(%x:i64) -> i64 {\n"
                            "entry:\n"
@@ -147,8 +140,7 @@ TEST(Arm64ILOpt, O2InlinesSmallHelpers)
     EXPECT_NE(asmText.find("ret"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

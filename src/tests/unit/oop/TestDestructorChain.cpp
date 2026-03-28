@@ -22,8 +22,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-TEST(BasicOOPDestructorChainTest, DerivedThenBase)
-{
+TEST(BasicOOPDestructorChainTest, DerivedThenBase) {
     constexpr const char *src = R"BASIC(
 CLASS B
   DESTRUCTOR
@@ -65,8 +64,7 @@ END
     (void)fx.run(module);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

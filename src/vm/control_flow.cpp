@@ -24,8 +24,7 @@
 
 #include "vm/OpHandlers_Control.hpp"
 
-namespace il::vm::detail::control
-{
+namespace il::vm::detail::control {
 /// @brief Sentinel namespace used solely to preserve linkage expectations.
 /// @details Control-flow opcode handlers previously lived in this namespace.
 ///          They were moved into dedicated files under `vm/ops`, but the empty

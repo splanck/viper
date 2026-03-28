@@ -31,11 +31,9 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
-void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs, int64_t rhs)
-{
+void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs, int64_t rhs) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -58,16 +56,14 @@ void buildBinaryFunction(Module &module, Opcode op, Type::Kind type, int64_t lhs
     bb.instructions.push_back(ret);
 }
 
-int64_t runBinary(Opcode op, Type::Kind type, int64_t lhs, int64_t rhs)
-{
+int64_t runBinary(Opcode op, Type::Kind type, int64_t lhs, int64_t rhs) {
     Module module;
     buildBinaryFunction(module, op, type, lhs, rhs);
     viper::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
-void expectTrap(Opcode op, Type::Kind type, int64_t lhs, int64_t rhs, const char *trapKind)
-{
+void expectTrap(Opcode op, Type::Kind type, int64_t lhs, int64_t rhs, const char *trapKind) {
     Module module;
     buildBinaryFunction(module, op, type, lhs, rhs);
     viper::tests::VmFixture fixture;
@@ -77,8 +73,7 @@ void expectTrap(Opcode op, Type::Kind type, int64_t lhs, int64_t rhs, const char
 
 } // namespace
 
-int main()
-{
+int main() {
     //=========================================================================
     // I32 Checked Overflow (IAddOvf, ISubOvf, IMulOvf at i32)
     //=========================================================================

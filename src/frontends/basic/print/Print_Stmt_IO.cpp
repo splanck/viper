@@ -16,8 +16,7 @@
 
 #include "frontends/basic/print/Print_Stmt_Common.hpp"
 
-namespace il::frontends::basic::print_stmt
-{
+namespace il::frontends::basic::print_stmt {
 
 /// @brief Render a `PRINT` statement and its mixed item list.
 /// @details Iterates through the collected items, emitting either expressions or
@@ -26,15 +25,12 @@ namespace il::frontends::basic::print_stmt
 ///          trailing parenthesis.
 /// @param stmt PRINT statement describing printable items.
 /// @param ctx Printer context responsible for expression rendering.
-void printPrint(const PrintStmt &stmt, Context &ctx)
-{
+void printPrint(const PrintStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(PRINT";
-    for (const auto &item : stmt.items)
-    {
+    for (const auto &item : stmt.items) {
         os << ' ';
-        switch (item.kind)
-        {
+        switch (item.kind) {
             case PrintItem::Kind::Expr:
                 ctx.printExpr(*item.expr);
                 break;
@@ -56,36 +52,27 @@ void printPrint(const PrintStmt &stmt, Context &ctx)
 ///          when the statement suppresses the trailing newline.
 /// @param stmt Channel-based print/write statement.
 /// @param ctx Printer context mediating style-specific formatting.
-void printPrintChannel(const PrintChStmt &stmt, Context &ctx)
-{
+void printPrintChannel(const PrintChStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
-    if (stmt.mode == PrintChStmt::Mode::Write)
-    {
+    if (stmt.mode == PrintChStmt::Mode::Write) {
         os << "(WRITE#";
-    }
-    else
-    {
+    } else {
         os << "(PRINT#";
     }
     ctx.style.writeChannelPrefix();
     ctx.printOptionalExpr(stmt.channelExpr.get());
     ctx.style.writeArgsPrefix();
     bool first = true;
-    for (const auto &arg : stmt.args)
-    {
+    for (const auto &arg : stmt.args) {
         ctx.style.separate(first);
-        if (arg)
-        {
+        if (arg) {
             ctx.printExpr(*arg);
-        }
-        else
-        {
+        } else {
             ctx.style.writeNull();
         }
     }
     ctx.style.writeArgsSuffix();
-    if (!stmt.trailingNewline)
-    {
+    if (!stmt.trailingNewline) {
         ctx.style.writeNoNewlineTag();
     }
     os << ')';
@@ -97,8 +84,7 @@ void printPrintChannel(const PrintChStmt &stmt, Context &ctx)
 ///          operands so absent expressions appear as the style's null token.
 /// @param stmt OPEN statement with mode and channel metadata.
 /// @param ctx Printer context used to format child expressions.
-void printOpen(const OpenStmt &stmt, Context &ctx)
-{
+void printOpen(const OpenStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(OPEN mode=" << openModeToString(stmt.mode) << '(' << static_cast<int>(stmt.mode)
        << ") path=";
@@ -113,8 +99,7 @@ void printOpen(const OpenStmt &stmt, Context &ctx)
 ///          insert the `#` prefix when appropriate.
 /// @param stmt CLOSE statement referencing a channel.
 /// @param ctx Printer context that writes the stream decorations.
-void printClose(const CloseStmt &stmt, Context &ctx)
-{
+void printClose(const CloseStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(CLOSE";
     ctx.style.writeChannelPrefix();
@@ -128,8 +113,7 @@ void printClose(const CloseStmt &stmt, Context &ctx)
 ///          format used across BASIC printer output.
 /// @param stmt SEEK statement containing channel and position expressions.
 /// @param ctx Printer context providing formatting helpers.
-void printSeek(const SeekStmt &stmt, Context &ctx)
-{
+void printSeek(const SeekStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(SEEK";
     ctx.style.writeChannelPrefix();
@@ -146,30 +130,23 @@ void printSeek(const SeekStmt &stmt, Context &ctx)
 ///          simplify reading golden test fixtures.
 /// @param stmt INPUT statement listing prompt and variable names.
 /// @param ctx Printer context used for expression emission.
-void printInput(const InputStmt &stmt, Context &ctx)
-{
+void printInput(const InputStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(INPUT";
     bool firstItem = true;
-    auto writeItemPrefix = [&]
-    {
-        if (firstItem)
-        {
+    auto writeItemPrefix = [&] {
+        if (firstItem) {
             os << ' ';
             firstItem = false;
-        }
-        else
-        {
+        } else {
             os << ", ";
         }
     };
-    if (stmt.prompt)
-    {
+    if (stmt.prompt) {
         writeItemPrefix();
         ctx.printExpr(*stmt.prompt);
     }
-    for (const auto &name : stmt.vars)
-    {
+    for (const auto &name : stmt.vars) {
         writeItemPrefix();
         os << name;
     }
@@ -181,21 +158,16 @@ void printInput(const InputStmt &stmt, Context &ctx)
 ///          using style hooks to insert the canonical channel prefix.
 /// @param stmt Channel input statement containing channel and target metadata.
 /// @param ctx Printer context that formats the stream decorations.
-void printInputChannel(const InputChStmt &stmt, Context &ctx)
-{
+void printInputChannel(const InputChStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(INPUT#";
     ctx.style.writeChannelPrefix();
     os << stmt.channel;
     os << " targets=";
-    if (stmt.targets.empty())
-    {
+    if (stmt.targets.empty()) {
         ctx.style.writeNull();
-    }
-    else
-    {
-        for (std::size_t i = 0; i < stmt.targets.size(); ++i)
-        {
+    } else {
+        for (std::size_t i = 0; i < stmt.targets.size(); ++i) {
             if (i)
                 os << ',';
             os << stmt.targets[i].name;
@@ -210,19 +182,15 @@ void printInputChannel(const InputChStmt &stmt, Context &ctx)
 ///          a destination.
 /// @param stmt Line input statement for channels.
 /// @param ctx Printer context responsible for optional expression formatting.
-void printLineInputChannel(const LineInputChStmt &stmt, Context &ctx)
-{
+void printLineInputChannel(const LineInputChStmt &stmt, Context &ctx) {
     auto &os = ctx.stream();
     os << "(LINE-INPUT#";
     ctx.style.writeChannelPrefix();
     ctx.printOptionalExpr(stmt.channelExpr.get());
     os << " target=";
-    if (stmt.targetVar)
-    {
+    if (stmt.targetVar) {
         ctx.printExpr(*stmt.targetVar);
-    }
-    else
-    {
+    } else {
         ctx.style.writeNull();
     }
     os << ')';

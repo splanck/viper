@@ -28,8 +28,7 @@
 
 #include <string>
 
-namespace viper::server
-{
+namespace viper::server {
 
 class Transport;
 
@@ -40,8 +39,7 @@ class Transport;
 ///
 /// Parameterized via ICompilerBridge (language-specific compiler) and ServerConfig
 /// (language-specific strings: server name, diagnostic source, etc.).
-class LspHandler
-{
+class LspHandler {
   public:
     /// @brief Construct a handler that dispatches to the given bridge.
     /// @param bridge The compiler bridge (must outlive this handler).

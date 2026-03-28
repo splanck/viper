@@ -26,8 +26,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace il::frontends::basic::detail
-{
+namespace il::frontends::basic::detail {
 
 //===----------------------------------------------------------------------===//
 // Helper Validation Functions
@@ -83,12 +82,10 @@ void emitMissingReturn(const ClassDecl &klass,
 /// @brief Context for building the OOP index, holding shared state across phases.
 /// @details This class encapsulates all the logic for scanning the AST,
 ///          resolving base classes, building vtables, and checking conformance.
-class OopIndexBuilder
-{
+class OopIndexBuilder {
   public:
-    OopIndexBuilder(OopIndex &index, DiagnosticEmitter *emitter) : index_(index), emitter_(emitter)
-    {
-    }
+    OopIndexBuilder(OopIndex &index, DiagnosticEmitter *emitter)
+        : index_(index), emitter_(emitter) {}
 
     /// @brief Build the complete OOP index from a parsed program.
     /// @param program The parsed BASIC program.
@@ -105,8 +102,7 @@ class OopIndexBuilder
     std::unordered_map<std::string, std::pair<std::string, il::support::SourceLoc>> rawBases_;
 
     // USING directive context
-    struct UsingContext
-    {
+    struct UsingContext {
         std::unordered_set<std::string> imports;
         std::unordered_map<std::string, std::string> aliases;
     } usingCtx_;

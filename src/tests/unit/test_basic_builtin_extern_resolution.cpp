@@ -26,8 +26,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-static std::string analyzeAndGetOutput(const std::string &source)
-{
+static std::string analyzeAndGetOutput(const std::string &source) {
     SourceManager sm;
     uint32_t fileId = sm.addFile("test.bas");
     Parser parser(source, fileId);
@@ -42,8 +41,7 @@ static std::string analyzeAndGetOutput(const std::string &source)
     return oss.str();
 }
 
-static void test_direct_qualified_builtin_call()
-{
+static void test_direct_qualified_builtin_call() {
     // Fully-qualified dotted call to builtin extern.
     // Accept either zero diagnostics or parser choosing a different path that still compiles.
     const std::string src = R"(
@@ -54,8 +52,7 @@ static void test_direct_qualified_builtin_call()
     assert(out.find("unknown procedure 'viper.console.printi64'") == std::string::npos);
 }
 
-static void test_using_import_then_unqualified_call()
-{
+static void test_using_import_then_unqualified_call() {
     // Import the Terminal namespace, then call PrintI64 unqualified.
     const std::string src = R"(
 10 USING Viper.Terminal
@@ -66,8 +63,7 @@ static void test_using_import_then_unqualified_call()
     assert(out.find("unknown procedure") == std::string::npos);
 }
 
-static void test_shadowing_builtin_extern()
-{
+static void test_shadowing_builtin_extern() {
     // Attempt to declare a user SUB that collides with a builtin extern.
     const std::string src = R"(
 100 SUB Viper.Terminal.PrintI64(x AS INTEGER)
@@ -79,8 +75,7 @@ static void test_shadowing_builtin_extern()
            out.find("shadows builtin extern") != std::string::npos);
 }
 
-int main()
-{
+int main() {
     test_direct_qualified_builtin_call();
     test_using_import_then_unqualified_call();
     test_shadowing_builtin_extern();

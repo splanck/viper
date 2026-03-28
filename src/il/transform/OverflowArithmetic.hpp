@@ -23,11 +23,9 @@
 
 #ifdef _MSC_VER
 
-namespace il::transform::detail
-{
+namespace il::transform::detail {
 
-inline bool overflow_add(long long a, long long b, long long *result)
-{
+inline bool overflow_add(long long a, long long b, long long *result) {
     *result = static_cast<long long>(static_cast<unsigned long long>(a) +
                                      static_cast<unsigned long long>(b));
     if (b >= 0)
@@ -36,8 +34,7 @@ inline bool overflow_add(long long a, long long b, long long *result)
         return *result > a;
 }
 
-inline bool overflow_sub(long long a, long long b, long long *result)
-{
+inline bool overflow_sub(long long a, long long b, long long *result) {
     *result = static_cast<long long>(static_cast<unsigned long long>(a) -
                                      static_cast<unsigned long long>(b));
     if (b >= 0)
@@ -46,27 +43,22 @@ inline bool overflow_sub(long long a, long long b, long long *result)
         return *result < a;
 }
 
-inline bool overflow_mul(long long a, long long b, long long *result)
-{
-    if (a == 0 || b == 0)
-    {
+inline bool overflow_mul(long long a, long long b, long long *result) {
+    if (a == 0 || b == 0) {
         *result = 0;
         return false;
     }
-    if (a == (std::numeric_limits<long long>::min)() && b == -1)
-    {
+    if (a == (std::numeric_limits<long long>::min)() && b == -1) {
         *result = (std::numeric_limits<long long>::min)();
         return true;
     }
-    if (b == (std::numeric_limits<long long>::min)() && a == -1)
-    {
+    if (b == (std::numeric_limits<long long>::min)() && a == -1) {
         *result = (std::numeric_limits<long long>::min)();
         return true;
     }
     long long abs_a = a < 0 ? -a : a;
     long long abs_b = b < 0 ? -b : b;
-    if (abs_a > (std::numeric_limits<long long>::max)() / abs_b)
-    {
+    if (abs_a > (std::numeric_limits<long long>::max)() / abs_b) {
         *result = static_cast<long long>(static_cast<unsigned long long>(a) *
                                          static_cast<unsigned long long>(b));
         return true;

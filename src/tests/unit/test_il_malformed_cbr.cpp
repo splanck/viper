@@ -23,8 +23,7 @@
 #include <cassert>
 #include <string>
 
-int main()
-{
+int main() {
     using namespace il::core;
     Module m;
     Function f;

@@ -13,26 +13,22 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void test_new()
-{
+static void test_new() {
     rt_string def = make_str("default");
     void *m = rt_defaultmap_new(def);
     assert(m != NULL);
     assert(rt_defaultmap_len(m) == 0);
 }
 
-static void test_get_default()
-{
+static void test_get_default() {
     rt_string def = make_str("DEFAULT");
     void *m = rt_defaultmap_new(def);
 
@@ -43,8 +39,7 @@ static void test_get_default()
     rt_string_unref(key);
 }
 
-static void test_set_and_get()
-{
+static void test_set_and_get() {
     rt_string def = make_str("DEFAULT");
     void *m = rt_defaultmap_new(def);
 
@@ -58,8 +53,7 @@ static void test_set_and_get()
     rt_string_unref(k);
 }
 
-static void test_has()
-{
+static void test_has() {
     rt_string def = make_str("DEFAULT");
     void *m = rt_defaultmap_new(def);
 
@@ -75,8 +69,7 @@ static void test_has()
     rt_string_unref(missing);
 }
 
-static void test_remove()
-{
+static void test_remove() {
     rt_string def = make_str("DEFAULT");
     void *m = rt_defaultmap_new(def);
 
@@ -93,8 +86,7 @@ static void test_remove()
     rt_string_unref(k);
 }
 
-static void test_keys()
-{
+static void test_keys() {
     rt_string def = make_str("D");
     void *m = rt_defaultmap_new(def);
 
@@ -112,15 +104,13 @@ static void test_keys()
     rt_string_unref(k2);
 }
 
-static void test_get_default_value()
-{
+static void test_get_default_value() {
     rt_string def = make_str("MY_DEFAULT");
     void *m = rt_defaultmap_new(def);
     assert(rt_defaultmap_get_default(m) == def);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     rt_string def = make_str("D");
     void *m = rt_defaultmap_new(def);
 
@@ -134,16 +124,14 @@ static void test_clear()
     rt_string_unref(k);
 }
 
-static void test_null_default()
-{
+static void test_null_default() {
     void *m = rt_defaultmap_new(NULL);
     rt_string k = make_str("key");
     assert(rt_defaultmap_get(m, k) == NULL);
     rt_string_unref(k);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_defaultmap_len(NULL) == 0);
     assert(rt_defaultmap_get(NULL, NULL) == NULL);
     assert(rt_defaultmap_has(NULL, NULL) == 0);
@@ -152,8 +140,7 @@ static void test_null_safety()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_new();
     test_get_default();
     test_set_and_get();

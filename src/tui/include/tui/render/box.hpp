@@ -19,8 +19,7 @@
 
 #include "tui/render/screen.hpp"
 
-namespace viper::tui::render
-{
+namespace viper::tui::render {
 
 /// @brief Draw a bordered box with optional fill into a screen buffer.
 /// @details Renders a rectangular border using ASCII box-drawing characters

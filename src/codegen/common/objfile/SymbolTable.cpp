@@ -18,17 +18,14 @@
 
 #include "codegen/common/objfile/SymbolTable.hpp"
 
-namespace viper::codegen::objfile
-{
+namespace viper::codegen::objfile {
 
-SymbolTable::SymbolTable()
-{
+SymbolTable::SymbolTable() {
     // Index 0 is the null symbol (ELF requirement, harmless for other formats).
     symbols_.push_back(Symbol{"", SymbolBinding::Local, SymbolSection::Undefined, 0, 0});
 }
 
-uint32_t SymbolTable::add(Symbol sym)
-{
+uint32_t SymbolTable::add(Symbol sym) {
     auto index = static_cast<uint32_t>(symbols_.size());
     if (!sym.name.empty())
         nameIndex_[sym.name] = index;
@@ -36,8 +33,7 @@ uint32_t SymbolTable::add(Symbol sym)
     return index;
 }
 
-uint32_t SymbolTable::findOrAdd(const std::string &name)
-{
+uint32_t SymbolTable::findOrAdd(const std::string &name) {
     auto it = nameIndex_.find(name);
     if (it != nameIndex_.end())
         return it->second;

@@ -17,18 +17,15 @@
 #include <cassert>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
@@ -37,8 +34,7 @@ static bool str_eq(rt_string s, const char *expected)
 // CamelCase tests
 // ---------------------------------------------------------------------------
 
-static void test_camel_from_spaces()
-{
+static void test_camel_from_spaces() {
     rt_string s = make_str("hello world");
     rt_string r = rt_str_camel_case(s);
     assert(str_eq(r, "helloWorld"));
@@ -46,8 +42,7 @@ static void test_camel_from_spaces()
     rt_string_unref(s);
 }
 
-static void test_camel_from_snake()
-{
+static void test_camel_from_snake() {
     rt_string s = make_str("hello_world_test");
     rt_string r = rt_str_camel_case(s);
     assert(str_eq(r, "helloWorldTest"));
@@ -55,8 +50,7 @@ static void test_camel_from_snake()
     rt_string_unref(s);
 }
 
-static void test_camel_from_kebab()
-{
+static void test_camel_from_kebab() {
     rt_string s = make_str("hello-world-test");
     rt_string r = rt_str_camel_case(s);
     assert(str_eq(r, "helloWorldTest"));
@@ -64,8 +58,7 @@ static void test_camel_from_kebab()
     rt_string_unref(s);
 }
 
-static void test_camel_from_pascal()
-{
+static void test_camel_from_pascal() {
     rt_string s = make_str("HelloWorld");
     rt_string r = rt_str_camel_case(s);
     assert(str_eq(r, "helloWorld"));
@@ -73,8 +66,7 @@ static void test_camel_from_pascal()
     rt_string_unref(s);
 }
 
-static void test_camel_single_word()
-{
+static void test_camel_single_word() {
     rt_string s = make_str("hello");
     rt_string r = rt_str_camel_case(s);
     assert(str_eq(r, "hello"));
@@ -82,8 +74,7 @@ static void test_camel_single_word()
     rt_string_unref(s);
 }
 
-static void test_camel_empty()
-{
+static void test_camel_empty() {
     rt_string s = make_str("");
     rt_string r = rt_str_camel_case(s);
     assert(str_eq(r, ""));
@@ -95,8 +86,7 @@ static void test_camel_empty()
 // PascalCase tests
 // ---------------------------------------------------------------------------
 
-static void test_pascal_from_spaces()
-{
+static void test_pascal_from_spaces() {
     rt_string s = make_str("hello world");
     rt_string r = rt_str_pascal_case(s);
     assert(str_eq(r, "HelloWorld"));
@@ -104,8 +94,7 @@ static void test_pascal_from_spaces()
     rt_string_unref(s);
 }
 
-static void test_pascal_from_snake()
-{
+static void test_pascal_from_snake() {
     rt_string s = make_str("hello_world_test");
     rt_string r = rt_str_pascal_case(s);
     assert(str_eq(r, "HelloWorldTest"));
@@ -113,8 +102,7 @@ static void test_pascal_from_snake()
     rt_string_unref(s);
 }
 
-static void test_pascal_from_camel()
-{
+static void test_pascal_from_camel() {
     rt_string s = make_str("helloWorld");
     rt_string r = rt_str_pascal_case(s);
     assert(str_eq(r, "HelloWorld"));
@@ -126,8 +114,7 @@ static void test_pascal_from_camel()
 // SnakeCase tests
 // ---------------------------------------------------------------------------
 
-static void test_snake_from_camel()
-{
+static void test_snake_from_camel() {
     rt_string s = make_str("helloWorld");
     rt_string r = rt_str_snake_case(s);
     assert(str_eq(r, "hello_world"));
@@ -135,8 +122,7 @@ static void test_snake_from_camel()
     rt_string_unref(s);
 }
 
-static void test_snake_from_pascal()
-{
+static void test_snake_from_pascal() {
     rt_string s = make_str("HelloWorldTest");
     rt_string r = rt_str_snake_case(s);
     assert(str_eq(r, "hello_world_test"));
@@ -144,8 +130,7 @@ static void test_snake_from_pascal()
     rt_string_unref(s);
 }
 
-static void test_snake_from_spaces()
-{
+static void test_snake_from_spaces() {
     rt_string s = make_str("hello world test");
     rt_string r = rt_str_snake_case(s);
     assert(str_eq(r, "hello_world_test"));
@@ -153,8 +138,7 @@ static void test_snake_from_spaces()
     rt_string_unref(s);
 }
 
-static void test_snake_from_kebab()
-{
+static void test_snake_from_kebab() {
     rt_string s = make_str("hello-world");
     rt_string r = rt_str_snake_case(s);
     assert(str_eq(r, "hello_world"));
@@ -166,8 +150,7 @@ static void test_snake_from_kebab()
 // KebabCase tests
 // ---------------------------------------------------------------------------
 
-static void test_kebab_from_camel()
-{
+static void test_kebab_from_camel() {
     rt_string s = make_str("helloWorld");
     rt_string r = rt_str_kebab_case(s);
     assert(str_eq(r, "hello-world"));
@@ -175,8 +158,7 @@ static void test_kebab_from_camel()
     rt_string_unref(s);
 }
 
-static void test_kebab_from_snake()
-{
+static void test_kebab_from_snake() {
     rt_string s = make_str("hello_world_test");
     rt_string r = rt_str_kebab_case(s);
     assert(str_eq(r, "hello-world-test"));
@@ -184,8 +166,7 @@ static void test_kebab_from_snake()
     rt_string_unref(s);
 }
 
-static void test_kebab_from_pascal()
-{
+static void test_kebab_from_pascal() {
     rt_string s = make_str("HelloWorld");
     rt_string r = rt_str_kebab_case(s);
     assert(str_eq(r, "hello-world"));
@@ -197,8 +178,7 @@ static void test_kebab_from_pascal()
 // ScreamingSnake tests
 // ---------------------------------------------------------------------------
 
-static void test_screaming_from_camel()
-{
+static void test_screaming_from_camel() {
     rt_string s = make_str("helloWorld");
     rt_string r = rt_str_screaming_snake(s);
     assert(str_eq(r, "HELLO_WORLD"));
@@ -206,8 +186,7 @@ static void test_screaming_from_camel()
     rt_string_unref(s);
 }
 
-static void test_screaming_from_snake()
-{
+static void test_screaming_from_snake() {
     rt_string s = make_str("hello_world");
     rt_string r = rt_str_screaming_snake(s);
     assert(str_eq(r, "HELLO_WORLD"));
@@ -215,8 +194,7 @@ static void test_screaming_from_snake()
     rt_string_unref(s);
 }
 
-static void test_screaming_from_spaces()
-{
+static void test_screaming_from_spaces() {
     rt_string s = make_str("hello world test");
     rt_string r = rt_str_screaming_snake(s);
     assert(str_eq(r, "HELLO_WORLD_TEST"));
@@ -228,8 +206,7 @@ static void test_screaming_from_spaces()
 // Mixed / edge cases
 // ---------------------------------------------------------------------------
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     rt_string r = rt_str_camel_case(NULL);
     assert(str_eq(r, ""));
     rt_string_unref(r);
@@ -251,8 +228,7 @@ static void test_null_safety()
     rt_string_unref(r);
 }
 
-static void test_mixed_separators()
-{
+static void test_mixed_separators() {
     rt_string s = make_str("hello_world-test case");
     rt_string r = rt_str_camel_case(s);
     assert(str_eq(r, "helloWorldTestCase"));
@@ -260,8 +236,7 @@ static void test_mixed_separators()
     rt_string_unref(s);
 }
 
-static void test_acronym_handling()
-{
+static void test_acronym_handling() {
     rt_string s = make_str("XMLParser");
     rt_string r = rt_str_snake_case(s);
     // "XML" should be split as "XM" + "LParser" -> "xm_l_parser"
@@ -302,8 +277,7 @@ static void test_acronym_handling()
     rt_string_unref(s);
 }
 
-int main()
-{
+int main() {
     // CamelCase
     test_camel_from_spaces();
     test_camel_from_snake();

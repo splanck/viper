@@ -31,15 +31,12 @@
 #include <intrin.h>
 #endif
 
-namespace il::core
-{
+namespace il::core {
 struct BasicBlock;
 }
 
-namespace il::vm::detail
-{
-namespace ops
-{
+namespace il::vm::detail {
+namespace ops {
 
 #ifdef _MSC_VER
 // MSVC doesn't have __builtin_*_overflow, so we implement our own
@@ -52,8 +49,7 @@ namespace ops
 /// @return True when the addition overflowed.
 template <typename T>
 [[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type checked_add_impl(
-    T lhs, T rhs, T *result)
-{
+    T lhs, T rhs, T *result) {
     // Signed overflow: if signs are the same but result sign differs
     *result = static_cast<T>(static_cast<typename std::make_unsigned<T>::type>(lhs) +
                              static_cast<typename std::make_unsigned<T>::type>(rhs));
@@ -71,8 +67,7 @@ template <typename T>
 /// @return True when the addition wrapped around.
 template <typename T>
 [[nodiscard]] inline typename std::enable_if<std::is_unsigned<T>::value, bool>::type
-checked_add_impl(T lhs, T rhs, T *result)
-{
+checked_add_impl(T lhs, T rhs, T *result) {
     *result = lhs + rhs;
     return *result < lhs; // Unsigned wrap-around
 }
@@ -85,8 +80,7 @@ checked_add_impl(T lhs, T rhs, T *result)
 /// @return True when the subtraction overflowed.
 template <typename T>
 [[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type checked_sub_impl(
-    T lhs, T rhs, T *result)
-{
+    T lhs, T rhs, T *result) {
     *result = static_cast<T>(static_cast<typename std::make_unsigned<T>::type>(lhs) -
                              static_cast<typename std::make_unsigned<T>::type>(rhs));
     if (rhs >= 0)
@@ -103,8 +97,7 @@ template <typename T>
 /// @return True when the subtraction underflowed.
 template <typename T>
 [[nodiscard]] inline typename std::enable_if<std::is_unsigned<T>::value, bool>::type
-checked_sub_impl(T lhs, T rhs, T *result)
-{
+checked_sub_impl(T lhs, T rhs, T *result) {
     *result = lhs - rhs;
     return lhs < rhs; // Unsigned underflow
 }
@@ -117,39 +110,31 @@ checked_sub_impl(T lhs, T rhs, T *result)
 /// @return True when the multiplication overflowed.
 template <typename T>
 [[nodiscard]] inline typename std::enable_if<std::is_signed<T>::value, bool>::type checked_mul_impl(
-    T lhs, T rhs, T *result)
-{
+    T lhs, T rhs, T *result) {
     using U = typename std::make_unsigned<T>::type;
     // Use double-width multiplication for 32-bit types
-    if constexpr (sizeof(T) <= 4)
-    {
+    if constexpr (sizeof(T) <= 4) {
         int64_t wide = static_cast<int64_t>(lhs) * static_cast<int64_t>(rhs);
         *result = static_cast<T>(wide);
         return wide < static_cast<int64_t>(std::numeric_limits<T>::min()) ||
                wide > static_cast<int64_t>(std::numeric_limits<T>::max());
-    }
-    else
-    {
+    } else {
         // For 64-bit, check for overflow before computing
-        if (lhs == 0 || rhs == 0)
-        {
+        if (lhs == 0 || rhs == 0) {
             *result = 0;
             return false;
         }
-        if (lhs == std::numeric_limits<T>::min() && rhs == -1)
-        {
+        if (lhs == std::numeric_limits<T>::min() && rhs == -1) {
             *result = std::numeric_limits<T>::min();
             return true;
         }
-        if (rhs == std::numeric_limits<T>::min() && lhs == -1)
-        {
+        if (rhs == std::numeric_limits<T>::min() && lhs == -1) {
             *result = std::numeric_limits<T>::min();
             return true;
         }
         T abs_lhs = lhs < 0 ? -lhs : lhs;
         T abs_rhs = rhs < 0 ? -rhs : rhs;
-        if (abs_lhs > std::numeric_limits<T>::max() / abs_rhs)
-        {
+        if (abs_lhs > std::numeric_limits<T>::max() / abs_rhs) {
             *result = static_cast<T>(static_cast<U>(lhs) * static_cast<U>(rhs));
             return true;
         }
@@ -166,10 +151,8 @@ template <typename T>
 /// @return True when the multiplication overflowed.
 template <typename T>
 [[nodiscard]] inline typename std::enable_if<std::is_unsigned<T>::value, bool>::type
-checked_mul_impl(T lhs, T rhs, T *result)
-{
-    if (lhs == 0 || rhs == 0)
-    {
+checked_mul_impl(T lhs, T rhs, T *result) {
+    if (lhs == 0 || rhs == 0) {
         *result = 0;
         return false;
     }
@@ -186,8 +169,7 @@ checked_mul_impl(T lhs, T rhs, T *result)
 /// @param result Pointer receiving the computed value.
 /// @return True when the operation overflowed.
 /// @note Force-inlined for optimal performance in hot interpreter loops.
-template <typename T> [[nodiscard]] inline bool checked_add(T lhs, T rhs, T *result)
-{
+template <typename T> [[nodiscard]] inline bool checked_add(T lhs, T rhs, T *result) {
 #ifdef _MSC_VER
     return checked_add_impl(lhs, rhs, result);
 #else
@@ -202,8 +184,7 @@ template <typename T> [[nodiscard]] inline bool checked_add(T lhs, T rhs, T *res
 /// @param result Pointer receiving the computed value.
 /// @return True when the operation overflowed.
 /// @note Force-inlined for optimal performance in hot interpreter loops.
-template <typename T> [[nodiscard]] inline bool checked_sub(T lhs, T rhs, T *result)
-{
+template <typename T> [[nodiscard]] inline bool checked_sub(T lhs, T rhs, T *result) {
 #ifdef _MSC_VER
     return checked_sub_impl(lhs, rhs, result);
 #else
@@ -218,8 +199,7 @@ template <typename T> [[nodiscard]] inline bool checked_sub(T lhs, T rhs, T *res
 /// @param result Pointer receiving the computed value.
 /// @return True when the operation overflowed.
 /// @note Force-inlined for optimal performance in hot interpreter loops.
-template <typename T> [[nodiscard]] inline bool checked_mul(T lhs, T rhs, T *result)
-{
+template <typename T> [[nodiscard]] inline bool checked_mul(T lhs, T rhs, T *result) {
 #ifdef _MSC_VER
     return checked_mul_impl(lhs, rhs, result);
 #else
@@ -232,8 +212,7 @@ template <typename T> [[nodiscard]] inline bool checked_mul(T lhs, T rhs, T *res
 /// @param lhs Left operand.
 /// @param rhs Right operand.
 /// @return Result of the addition with wrap-around semantics.
-template <typename T> inline T wrap_add(T lhs, T rhs)
-{
+template <typename T> inline T wrap_add(T lhs, T rhs) {
     T result{};
     (void)checked_add(lhs, rhs, &result);
     return result;
@@ -244,8 +223,7 @@ template <typename T> inline T wrap_add(T lhs, T rhs)
 /// @param lhs Left operand.
 /// @param rhs Right operand.
 /// @return Result of the subtraction with wrap-around semantics.
-template <typename T> inline T wrap_sub(T lhs, T rhs)
-{
+template <typename T> inline T wrap_sub(T lhs, T rhs) {
     T result{};
     (void)checked_sub(lhs, rhs, &result);
     return result;
@@ -256,8 +234,7 @@ template <typename T> inline T wrap_sub(T lhs, T rhs)
 /// @param lhs Left operand.
 /// @param rhs Right operand.
 /// @return Result of the multiplication with wrap-around semantics.
-template <typename T> inline T wrap_mul(T lhs, T rhs)
-{
+template <typename T> inline T wrap_mul(T lhs, T rhs) {
     T result{};
     (void)checked_mul(lhs, rhs, &result);
     return result;
@@ -271,10 +248,8 @@ template <typename T> inline T wrap_mul(T lhs, T rhs)
 /// @param result Pointer receiving the computed value.
 /// @param trap Policy invoked when overflow occurs.
 /// @return True when the result is valid, false if overflow triggered the trap.
-template <typename T, typename Trap> inline bool trap_add(T lhs, T rhs, T *result, Trap &&trap)
-{
-    if (checked_add(lhs, rhs, result))
-    {
+template <typename T, typename Trap> inline bool trap_add(T lhs, T rhs, T *result, Trap &&trap) {
+    if (checked_add(lhs, rhs, result)) {
         std::forward<Trap>(trap)();
         return false;
     }
@@ -289,10 +264,8 @@ template <typename T, typename Trap> inline bool trap_add(T lhs, T rhs, T *resul
 /// @param result Pointer receiving the computed value.
 /// @param trap Policy invoked when overflow occurs.
 /// @return True when the result is valid, false if overflow triggered the trap.
-template <typename T, typename Trap> inline bool trap_sub(T lhs, T rhs, T *result, Trap &&trap)
-{
-    if (checked_sub(lhs, rhs, result))
-    {
+template <typename T, typename Trap> inline bool trap_sub(T lhs, T rhs, T *result, Trap &&trap) {
+    if (checked_sub(lhs, rhs, result)) {
         std::forward<Trap>(trap)();
         return false;
     }
@@ -307,10 +280,8 @@ template <typename T, typename Trap> inline bool trap_sub(T lhs, T rhs, T *resul
 /// @param result Pointer receiving the computed value.
 /// @param trap Policy invoked when overflow occurs.
 /// @return True when the result is valid, false if overflow triggered the trap.
-template <typename T, typename Trap> inline bool trap_mul(T lhs, T rhs, T *result, Trap &&trap)
-{
-    if (checked_mul(lhs, rhs, result))
-    {
+template <typename T, typename Trap> inline bool trap_mul(T lhs, T rhs, T *result, Trap &&trap) {
+    if (checked_mul(lhs, rhs, result)) {
         std::forward<Trap>(trap)();
         return false;
     }
@@ -336,23 +307,19 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val);
 [[nodiscard]] inline Slot evalFast(VM &vm,
                                    Frame &fr,
                                    const ResolvedOp &op,
-                                   const il::core::Value &original) noexcept
-{
-    switch (op.kind)
-    {
+                                   const il::core::Value &original) noexcept {
+    switch (op.kind) {
         case ResolvedOp::Kind::Reg:
             // Hot path: register read — bounds check guards rare out-of-range errors
             if (op.regId < fr.regs.size()) [[likely]]
                 return fr.regs[op.regId];
             return detail::VMAccess::eval(vm, fr, original); // let VM::eval() report the error
-        case ResolvedOp::Kind::ImmI64:
-        {
+        case ResolvedOp::Kind::ImmI64: {
             Slot s{};
             s.i64 = op.numVal;
             return s;
         }
-        case ResolvedOp::Kind::ImmF64:
-        {
+        case ResolvedOp::Kind::ImmF64: {
             Slot s{};
             s.f64 = std::bit_cast<double>(op.numVal);
             return s;
@@ -368,23 +335,21 @@ void storeResult(Frame &fr, const il::core::Instr &in, const Slot &val);
 ///       since the compute/compare functor immediately overwrites it.
 ///       When @c ExecState::blockCache is populated the pre-resolved @c ResolvedOp
 ///       array is used to avoid the @c std::vector<Value> heap indirection.
-struct OperandDispatcher
-{
+struct OperandDispatcher {
     template <typename Compute>
-    static VM::ExecResult runBinary(VM &vm, Frame &fr, const il::core::Instr &in, Compute &&compute)
-    {
+    static VM::ExecResult runBinary(VM &vm,
+                                    Frame &fr,
+                                    const il::core::Instr &in,
+                                    Compute &&compute) {
         Slot lhs, rhs;
         // Fast path: use pre-resolved operand cache when available.
         const auto *state = detail::VMAccess::currentExecState(vm);
         const auto *bc = state ? state->blockCache : nullptr;
-        if (bc && state->ip < bc->instrOpOffset.size()) [[likely]]
-        {
+        if (bc && state->ip < bc->instrOpOffset.size()) [[likely]] {
             const uint32_t off = bc->instrOpOffset[state->ip];
             lhs = evalFast(vm, fr, bc->resolvedOps[off], in.operands[0]);
             rhs = evalFast(vm, fr, bc->resolvedOps[off + 1], in.operands[1]);
-        }
-        else
-        {
+        } else {
             lhs = vm.eval(fr, in.operands[0]);
             rhs = vm.eval(fr, in.operands[1]);
         }
@@ -398,20 +363,16 @@ struct OperandDispatcher
     static VM::ExecResult runCompare(VM &vm,
                                      Frame &fr,
                                      const il::core::Instr &in,
-                                     Compare &&compare)
-    {
+                                     Compare &&compare) {
         Slot lhs, rhs;
         // Fast path: use pre-resolved operand cache when available.
         const auto *state = detail::VMAccess::currentExecState(vm);
         const auto *bc = state ? state->blockCache : nullptr;
-        if (bc && state->ip < bc->instrOpOffset.size()) [[likely]]
-        {
+        if (bc && state->ip < bc->instrOpOffset.size()) [[likely]] {
             const uint32_t off = bc->instrOpOffset[state->ip];
             lhs = evalFast(vm, fr, bc->resolvedOps[off], in.operands[0]);
             rhs = evalFast(vm, fr, bc->resolvedOps[off + 1], in.operands[1]);
-        }
-        else
-        {
+        } else {
             lhs = vm.eval(fr, in.operands[0]);
             rhs = vm.eval(fr, in.operands[1]);
         }
@@ -430,8 +391,7 @@ struct OperandDispatcher
 /// @param compute Functor that writes the computed result into the provided output slot.
 /// @return Execution result signalling normal fallthrough.
 template <typename Compute>
-VM::ExecResult applyBinary(VM &vm, Frame &fr, const il::core::Instr &in, Compute &&compute)
-{
+VM::ExecResult applyBinary(VM &vm, Frame &fr, const il::core::Instr &in, Compute &&compute) {
     return OperandDispatcher::runBinary(vm, fr, in, std::forward<Compute>(compute));
 }
 
@@ -443,14 +403,12 @@ VM::ExecResult applyBinary(VM &vm, Frame &fr, const il::core::Instr &in, Compute
 /// @param compare Functor returning true when the predicate holds.
 /// @return Execution result signalling normal fallthrough.
 template <typename Compare>
-VM::ExecResult applyCompare(VM &vm, Frame &fr, const il::core::Instr &in, Compare &&compare)
-{
+VM::ExecResult applyCompare(VM &vm, Frame &fr, const il::core::Instr &in, Compare &&compare) {
     return OperandDispatcher::runCompare(vm, fr, in, std::forward<Compare>(compare));
 }
 } // namespace ops
 
-namespace control
-{
+namespace control {
 /// @brief Extract a valid resume token from a slot, or return nullptr if invalid.
 /// @param fr Active frame holding the resume state metadata.
 /// @param slot Slot expected to contain a resume token pointer.

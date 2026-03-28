@@ -24,8 +24,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     std::string src = "10 PRINT X\n20 END\n";
     SourceManager sm;
     uint32_t fid = sm.addFile("test.bas");

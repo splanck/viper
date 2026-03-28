@@ -31,86 +31,80 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    //=========================================================================
-    // BitmapFont Loading
-    //=========================================================================
+//=========================================================================
+// BitmapFont Loading
+//=========================================================================
 
-    /// @brief Load a BDF (Bitmap Distribution Format) font file.
-    /// @param path Path to the .bdf file.
-    /// @return BitmapFont handle, or NULL on failure.
-    void *rt_bitmapfont_load_bdf(rt_string path);
+/// @brief Load a BDF (Bitmap Distribution Format) font file.
+/// @param path Path to the .bdf file.
+/// @return BitmapFont handle, or NULL on failure.
+void *rt_bitmapfont_load_bdf(rt_string path);
 
-    /// @brief Load a PSF (PC Screen Font) v1 or v2 file.
-    /// @param path Path to the .psf file.
-    /// @return BitmapFont handle, or NULL on failure.
-    void *rt_bitmapfont_load_psf(rt_string path);
+/// @brief Load a PSF (PC Screen Font) v1 or v2 file.
+/// @param path Path to the .psf file.
+/// @return BitmapFont handle, or NULL on failure.
+void *rt_bitmapfont_load_psf(rt_string path);
 
-    /// @brief GC finalizer — free glyph bitmap data.
-    void rt_bitmapfont_destroy(void *font);
+/// @brief GC finalizer — free glyph bitmap data.
+void rt_bitmapfont_destroy(void *font);
 
-    //=========================================================================
-    // BitmapFont Properties
-    //=========================================================================
+//=========================================================================
+// BitmapFont Properties
+//=========================================================================
 
-    /// @brief Get the maximum glyph width (0 for proportional fonts).
-    int64_t rt_bitmapfont_char_width(void *font);
+/// @brief Get the maximum glyph width (0 for proportional fonts).
+int64_t rt_bitmapfont_char_width(void *font);
 
-    /// @brief Get the line height in pixels.
-    int64_t rt_bitmapfont_char_height(void *font);
+/// @brief Get the line height in pixels.
+int64_t rt_bitmapfont_char_height(void *font);
 
-    /// @brief Get the number of loaded glyphs.
-    int64_t rt_bitmapfont_glyph_count(void *font);
+/// @brief Get the number of loaded glyphs.
+int64_t rt_bitmapfont_glyph_count(void *font);
 
-    /// @brief Check if all glyphs have the same advance width.
-    int8_t rt_bitmapfont_is_monospace(void *font);
+/// @brief Check if all glyphs have the same advance width.
+int8_t rt_bitmapfont_is_monospace(void *font);
 
-    //=========================================================================
-    // Text Measurement
-    //=========================================================================
+//=========================================================================
+// Text Measurement
+//=========================================================================
 
-    /// @brief Measure the pixel width of a string rendered with this font.
-    int64_t rt_bitmapfont_text_width(void *font, rt_string text);
+/// @brief Measure the pixel width of a string rendered with this font.
+int64_t rt_bitmapfont_text_width(void *font, rt_string text);
 
-    /// @brief Get the text height (same as line height).
-    int64_t rt_bitmapfont_text_height(void *font);
+/// @brief Get the text height (same as line height).
+int64_t rt_bitmapfont_text_height(void *font);
 
-    //=========================================================================
-    // Canvas Drawing with Custom Font
-    //=========================================================================
+//=========================================================================
+// Canvas Drawing with Custom Font
+//=========================================================================
 
-    /// @brief Draw text at (x,y) using a custom BitmapFont.
-    void rt_canvas_text_font(
-        void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t color);
+/// @brief Draw text at (x,y) using a custom BitmapFont.
+void rt_canvas_text_font(
+    void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t color);
 
-    /// @brief Draw text with foreground and background colors.
-    void rt_canvas_text_font_bg(void *canvas,
-                                int64_t x,
-                                int64_t y,
-                                rt_string text,
-                                void *font,
-                                int64_t fg_color,
-                                int64_t bg_color);
+/// @brief Draw text with foreground and background colors.
+void rt_canvas_text_font_bg(void *canvas,
+                            int64_t x,
+                            int64_t y,
+                            rt_string text,
+                            void *font,
+                            int64_t fg_color,
+                            int64_t bg_color);
 
-    /// @brief Draw text with integer scaling (1=normal, 2=double, etc.).
-    void rt_canvas_text_font_scaled(void *canvas,
-                                    int64_t x,
-                                    int64_t y,
-                                    rt_string text,
-                                    void *font,
-                                    int64_t scale,
-                                    int64_t color);
+/// @brief Draw text with integer scaling (1=normal, 2=double, etc.).
+void rt_canvas_text_font_scaled(
+    void *canvas, int64_t x, int64_t y, rt_string text, void *font, int64_t scale, int64_t color);
 
-    /// @brief Draw text horizontally centered on the canvas.
-    void rt_canvas_text_font_centered(
-        void *canvas, int64_t y, rt_string text, void *font, int64_t color);
+/// @brief Draw text horizontally centered on the canvas.
+void rt_canvas_text_font_centered(
+    void *canvas, int64_t y, rt_string text, void *font, int64_t color);
 
-    /// @brief Draw text right-aligned with a margin from the right edge.
-    void rt_canvas_text_font_right(
-        void *canvas, int64_t margin, int64_t y, rt_string text, void *font, int64_t color);
+/// @brief Draw text right-aligned with a margin from the right edge.
+void rt_canvas_text_font_right(
+    void *canvas, int64_t margin, int64_t y, rt_string text, void *font, int64_t color);
 
 #ifdef __cplusplus
 }

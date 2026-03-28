@@ -24,12 +24,10 @@
 
 #include "il/transform/PassRegistry.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Configuration for the inline cost model.
-struct InlineCostConfig
-{
+struct InlineCostConfig {
     /// Base instruction count threshold for inlining.
     /// Raised from 32 to 80 to capture medium-sized helper functions.
     unsigned instrThreshold = 80;
@@ -68,8 +66,7 @@ struct InlineCostConfig
 ///          arguments, and rewires return values. Recursive and EH-sensitive
 ///          callees are always skipped. Total code growth across the module is
 ///          capped by @ref InlineCostConfig::maxCodeGrowth.
-class Inliner : public ModulePass
-{
+class Inliner : public ModulePass {
   public:
     /// @brief Construct an inliner with default cost configuration.
     Inliner() = default;
@@ -89,15 +86,13 @@ class Inliner : public ModulePass
 
     /// @brief Override the instruction count threshold for inlining decisions.
     /// @param n New threshold (callee instructions must not exceed this).
-    void setInstructionThreshold(unsigned n)
-    {
+    void setInstructionThreshold(unsigned n) {
         config_.instrThreshold = n;
     }
 
     /// @brief Replace the entire cost configuration.
     /// @param config New cost model configuration to use.
-    void setConfig(InlineCostConfig config)
-    {
+    void setConfig(InlineCostConfig config) {
         config_ = config;
     }
 

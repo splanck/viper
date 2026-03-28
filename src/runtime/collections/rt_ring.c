@@ -42,8 +42,7 @@
 #include <string.h>
 
 /// @brief Ring buffer implementation structure.
-typedef struct rt_ring_impl
-{
+typedef struct rt_ring_impl {
     void **vptr;     ///< Vtable pointer placeholder.
     void **items;    ///< Array of element pointers.
     size_t capacity; ///< Maximum number of elements.
@@ -63,8 +62,7 @@ typedef struct rt_ring_impl
 ///       like Stack and Queue, which store references without owning them.
 ///
 /// @param obj Pointer to the Ring object being finalized. May be NULL (no-op).
-static void rt_ring_finalize(void *obj)
-{
+static void rt_ring_finalize(void *obj) {
     if (!obj)
         return;
     rt_ring_impl *ring = (rt_ring_impl *)obj;
@@ -119,8 +117,7 @@ static void rt_ring_finalize(void *obj)
 /// @see rt_ring_push For adding elements to the Ring
 /// @see rt_ring_pop For removing elements from the Ring
 /// @see rt_ring_finalize For cleanup behavior
-void *rt_ring_new(int64_t capacity)
-{
+void *rt_ring_new(int64_t capacity) {
     if (capacity <= 0)
         capacity = 1; // Minimum capacity of 1
 
@@ -130,8 +127,7 @@ void *rt_ring_new(int64_t capacity)
 
     ring->vptr = NULL;
     ring->items = (void **)calloc((size_t)capacity, sizeof(void *));
-    if (!ring->items)
-    {
+    if (!ring->items) {
         ring->capacity = 0;
         ring->head = 0;
         ring->count = 0;
@@ -146,8 +142,7 @@ void *rt_ring_new(int64_t capacity)
 }
 
 /// @brief Creates a new Ring with default capacity (16).
-void *rt_ring_new_default(void)
-{
+void *rt_ring_new_default(void) {
     return rt_ring_new(16);
 }
 
@@ -170,8 +165,7 @@ void *rt_ring_new_default(void)
 ///
 /// @see rt_ring_cap For the maximum capacity
 /// @see rt_ring_is_empty For checking if the Ring is empty
-int64_t rt_ring_len(void *obj)
-{
+int64_t rt_ring_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_ring_impl *)obj)->count;
@@ -193,8 +187,7 @@ int64_t rt_ring_len(void *obj)
 /// @see rt_ring_new For creating a Ring with a specific capacity
 /// @see rt_ring_len For the current number of elements
 /// @see rt_ring_is_full For checking if the Ring is at capacity
-int64_t rt_ring_cap(void *obj)
-{
+int64_t rt_ring_cap(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_ring_impl *)obj)->capacity;
@@ -218,8 +211,7 @@ int64_t rt_ring_cap(void *obj)
 ///
 /// @see rt_ring_is_full For the opposite check
 /// @see rt_ring_len For the exact count of elements
-int8_t rt_ring_is_empty(void *obj)
-{
+int8_t rt_ring_is_empty(void *obj) {
     return rt_ring_len(obj) == 0;
 }
 
@@ -243,8 +235,7 @@ int8_t rt_ring_is_empty(void *obj)
 ///
 /// @see rt_ring_is_empty For the opposite check
 /// @see rt_ring_push For the behavior when pushing to a full Ring
-int8_t rt_ring_is_full(void *obj)
-{
+int8_t rt_ring_is_full(void *obj) {
     if (!obj)
         return 0;
     rt_ring_impl *ring = (rt_ring_impl *)obj;
@@ -291,8 +282,7 @@ int8_t rt_ring_is_full(void *obj)
 ///
 /// @see rt_ring_pop For removing and returning the oldest element
 /// @see rt_ring_is_full For checking if push will overwrite
-void rt_ring_push(void *obj, void *elem)
-{
+void rt_ring_push(void *obj, void *elem) {
     if (!obj)
         return;
 
@@ -303,17 +293,14 @@ void rt_ring_push(void *obj, void *elem)
     // Calculate tail position (where new element goes)
     size_t tail = (ring->head + ring->count) % ring->capacity;
 
-    if (ring->count == ring->capacity)
-    {
+    if (ring->count == ring->capacity) {
         // Ring is full - overwrite oldest element (caller-owned; not released here
         // since ring does not retain elements). Data loss is by design for ring buffers.
         ring->items[ring->head] = elem;
         // Advance head to next oldest
         ring->head = (ring->head + 1) % ring->capacity;
         // count stays the same (still full)
-    }
-    else
-    {
+    } else {
         // Ring has space - add to tail
         ring->items[tail] = elem;
         ring->count++;
@@ -356,8 +343,7 @@ void rt_ring_push(void *obj, void *elem)
 /// @see rt_ring_peek For reading the oldest element without removing it
 /// @see rt_ring_push For adding elements
 /// @see rt_ring_is_empty For checking if the Ring has elements to pop
-void *rt_ring_pop(void *obj)
-{
+void *rt_ring_pop(void *obj) {
     if (!obj)
         return NULL;
 
@@ -404,8 +390,7 @@ void *rt_ring_pop(void *obj)
 ///
 /// @see rt_ring_pop For removing and returning the oldest element
 /// @see rt_ring_get For accessing elements by logical index
-void *rt_ring_peek(void *obj)
-{
+void *rt_ring_peek(void *obj) {
     if (!obj)
         return NULL;
 
@@ -458,8 +443,7 @@ void *rt_ring_peek(void *obj)
 ///
 /// @see rt_ring_peek For accessing just the oldest element (index 0)
 /// @see rt_ring_len For determining valid index range
-void *rt_ring_get(void *obj, int64_t index)
-{
+void *rt_ring_get(void *obj, int64_t index) {
     if (!obj)
         return NULL;
 
@@ -506,8 +490,7 @@ void *rt_ring_get(void *obj, int64_t index)
 ///
 /// @see rt_ring_pop For removing elements one at a time with retrieval
 /// @see rt_ring_finalize For the destructor behavior
-void rt_ring_clear(void *obj)
-{
+void rt_ring_clear(void *obj) {
     if (!obj)
         return;
 
@@ -516,8 +499,7 @@ void rt_ring_clear(void *obj)
         return;
 
     // Clear element pointers (container doesn't own them)
-    for (size_t i = 0; i < ring->count; i++)
-    {
+    for (size_t i = 0; i < ring->count; i++) {
         size_t idx = (ring->head + i) % ring->capacity;
         ring->items[idx] = NULL;
     }
@@ -526,8 +508,7 @@ void rt_ring_clear(void *obj)
     ring->count = 0;
 }
 
-int8_t rt_ring_has(void *obj, void *elem)
-{
+int8_t rt_ring_has(void *obj, void *elem) {
     if (!obj)
         return 0;
 
@@ -535,8 +516,7 @@ int8_t rt_ring_has(void *obj, void *elem)
     if (!ring->items)
         return 0;
 
-    for (size_t i = 0; i < ring->count; i++)
-    {
+    for (size_t i = 0; i < ring->count; i++) {
         size_t idx = (ring->head + i) % ring->capacity;
         if (ring->items[idx] == elem)
             return 1;
@@ -544,13 +524,11 @@ int8_t rt_ring_has(void *obj, void *elem)
     return 0;
 }
 
-void *rt_ring_first(void *obj)
-{
+void *rt_ring_first(void *obj) {
     return rt_ring_peek(obj);
 }
 
-void *rt_ring_last(void *obj)
-{
+void *rt_ring_last(void *obj) {
     if (!obj)
         return NULL;
 
@@ -562,8 +540,7 @@ void *rt_ring_last(void *obj)
     return ring->items[idx];
 }
 
-void rt_ring_reverse(void *obj)
-{
+void rt_ring_reverse(void *obj) {
     if (!obj)
         return;
 
@@ -571,8 +548,7 @@ void rt_ring_reverse(void *obj)
     if (ring->count < 2 || !ring->items)
         return;
 
-    for (size_t i = 0; i < ring->count / 2; i++)
-    {
+    for (size_t i = 0; i < ring->count / 2; i++) {
         size_t front_idx = (ring->head + i) % ring->capacity;
         size_t back_idx = (ring->head + ring->count - 1 - i) % ring->capacity;
 
@@ -582,8 +558,7 @@ void rt_ring_reverse(void *obj)
     }
 }
 
-void *rt_ring_clone(void *obj)
-{
+void *rt_ring_clone(void *obj) {
     if (!obj)
         return rt_ring_new(1);
 
@@ -593,8 +568,7 @@ void *rt_ring_clone(void *obj)
     if (!new_ring)
         return NULL;
 
-    for (size_t i = 0; i < ring->count; i++)
-    {
+    for (size_t i = 0; i < ring->count; i++) {
         size_t idx = (ring->head + i) % ring->capacity;
         rt_ring_push(new_ring, ring->items[idx]);
     }

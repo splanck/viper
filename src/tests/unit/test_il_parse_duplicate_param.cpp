@@ -20,8 +20,7 @@
 #include <cassert>
 #include <sstream>
 
-int main()
-{
+int main() {
     static constexpr const char *kSource = R"(il 0.2.0
 func @dup(i32 %x, i32 %x) -> void {
 entry:

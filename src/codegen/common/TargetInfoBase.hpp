@@ -21,15 +21,13 @@
 #include <cstddef>
 #include <vector>
 
-namespace viper::codegen::common
-{
+namespace viper::codegen::common {
 
 /// @brief Target-independent base struct for backend ABI descriptions.
 /// @tparam PhysRegT   Backend-specific physical register enum type.
 /// @tparam MaxIntArgs Maximum number of integer arguments passed in registers.
 /// @tparam MaxFPArgs  Maximum number of floating-point arguments passed in registers.
-template <typename PhysRegT, std::size_t MaxIntArgs, std::size_t MaxFPArgs> struct TargetInfoBase
-{
+template <typename PhysRegT, std::size_t MaxIntArgs, std::size_t MaxFPArgs> struct TargetInfoBase {
     /// @brief Caller-saved general purpose registers.
     std::vector<PhysRegT> callerSavedGPR{};
     /// @brief Callee-saved general purpose registers.

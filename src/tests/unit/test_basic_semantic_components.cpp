@@ -23,8 +23,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     // ScopeTracker behaviour
     ScopeTracker st;
     st.pushScope();

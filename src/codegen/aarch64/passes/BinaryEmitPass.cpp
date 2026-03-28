@@ -26,13 +26,10 @@
 
 #include <utility>
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
-bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags)
-{
-    if (!module.ti)
-    {
+bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags) {
+    if (!module.ti) {
         diags.error("BinaryEmitPass: ti must be non-null");
         return false;
     }
@@ -40,8 +37,7 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags)
     module.binaryTextSections.clear();
     module.debugLineData.clear();
 
-    if (module.mir.empty())
-    {
+    if (module.mir.empty()) {
         // Not an error — modules with no functions produce empty output.
         module.binaryText.emplace();
         module.binaryRodata.emplace();
@@ -59,8 +55,7 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags)
     debugLines.addFile("<source>");
     encoder.setDebugLineTable(&debugLines);
 
-    for (const auto &fn : module.mir)
-    {
+    for (const auto &fn : module.mir) {
         // Emit each function into its own CodeSection for per-function dead stripping.
         module.binaryTextSections.emplace_back();
         binenc::A64BinaryEncoder funcEncoder;
@@ -72,8 +67,7 @@ bool BinaryEmitPass::run(AArch64Module &module, Diagnostics &diags)
 
     // Emit rodata pool entries as raw bytes into the rodata CodeSection.
     // Each entry is a NUL-terminated string (matching .asciz assembly semantics).
-    for (const auto &[label, content] : module.rodataPool.entries())
-    {
+    for (const auto &[label, content] : module.rodataPool.entries()) {
         rodata.defineSymbol(label, objfile::SymbolBinding::Local, objfile::SymbolSection::Rodata);
         rodata.emitBytes(content.data(), content.size());
         rodata.emit8(0); // NUL terminator

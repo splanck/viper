@@ -19,40 +19,34 @@
 #include <cstdint>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
 /* Sum combiner: interprets void* as int64_t (boxed integer). */
-static void *sum_combine(void *a, void *b)
-{
+static void *sum_combine(void *a, void *b) {
     int64_t va = (int64_t)(intptr_t)a;
     int64_t vb = (int64_t)(intptr_t)b;
     return (void *)(intptr_t)(va + vb);
 }
 
 /* Max combiner. */
-static void *max_combine(void *a, void *b)
-{
+static void *max_combine(void *a, void *b) {
     int64_t va = (int64_t)(intptr_t)a;
     int64_t vb = (int64_t)(intptr_t)b;
     return (void *)(intptr_t)(va > vb ? va : vb);
 }
 
 /* Product combiner. */
-static void *mul_combine(void *a, void *b)
-{
+static void *mul_combine(void *a, void *b) {
     int64_t va = (int64_t)(intptr_t)a;
     int64_t vb = (int64_t)(intptr_t)b;
     return (void *)(intptr_t)(va * vb);
 }
 
-static void *make_int_seq(const int64_t *vals, int n)
-{
+static void *make_int_seq(const int64_t *vals, int n) {
     void *seq = rt_seq_new();
-    for (int i = 0; i < n; i++)
-    {
+    for (int i = 0; i < n; i++) {
         rt_seq_push(seq, (void *)(intptr_t)vals[i]);
     }
     return seq;
@@ -62,8 +56,7 @@ static void *make_int_seq(const int64_t *vals, int n)
 // Tests
 // ============================================================================
 
-static void test_reduce_sum()
-{
+static void test_reduce_sum() {
     int64_t vals[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
     void *seq = make_int_seq(vals, 10);
 
@@ -73,8 +66,7 @@ static void test_reduce_sum()
     printf("test_reduce_sum: PASSED\n");
 }
 
-static void test_reduce_empty()
-{
+static void test_reduce_empty() {
     void *seq = rt_seq_new();
     void *result = rt_parallel_reduce(seq, (void *)sum_combine, (void *)(intptr_t)42);
     int64_t val = (int64_t)(intptr_t)result;
@@ -82,8 +74,7 @@ static void test_reduce_empty()
     printf("test_reduce_empty: PASSED\n");
 }
 
-static void test_reduce_single()
-{
+static void test_reduce_single() {
     int64_t vals[] = {7};
     void *seq = make_int_seq(vals, 1);
 
@@ -93,8 +84,7 @@ static void test_reduce_single()
     printf("test_reduce_single: PASSED\n");
 }
 
-static void test_reduce_max()
-{
+static void test_reduce_max() {
     int64_t vals[] = {3, 1, 4, 1, 5, 9, 2, 6, 5, 3};
     void *seq = make_int_seq(vals, 10);
 
@@ -104,8 +94,7 @@ static void test_reduce_max()
     printf("test_reduce_max: PASSED\n");
 }
 
-static void test_reduce_product()
-{
+static void test_reduce_product() {
     int64_t vals[] = {1, 2, 3, 4, 5};
     void *seq = make_int_seq(vals, 5);
 
@@ -115,13 +104,11 @@ static void test_reduce_product()
     printf("test_reduce_product: PASSED\n");
 }
 
-static void test_reduce_large()
-{
+static void test_reduce_large() {
     /* Large sequence to ensure parallel chunking works. */
     void *seq = rt_seq_new();
     int64_t expected = 0;
-    for (int64_t i = 1; i <= 1000; i++)
-    {
+    for (int64_t i = 1; i <= 1000; i++) {
         rt_seq_push(seq, (void *)(intptr_t)i);
         expected += i;
     }
@@ -132,16 +119,14 @@ static void test_reduce_large()
     printf("test_reduce_large: PASSED\n");
 }
 
-static void test_reduce_null_seq()
-{
+static void test_reduce_null_seq() {
     void *result = rt_parallel_reduce(NULL, (void *)sum_combine, (void *)(intptr_t)99);
     int64_t val = (int64_t)(intptr_t)result;
     assert(val == 99); /* Should return identity */
     printf("test_reduce_null_seq: PASSED\n");
 }
 
-int main()
-{
+int main() {
     printf("=== Parallel.Reduce Tests ===\n\n");
 
     test_reduce_sum();

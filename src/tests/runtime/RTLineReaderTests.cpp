@@ -18,33 +18,28 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
 static const char *test_file = "/tmp/viper_linereader_test.txt";
 
-static rt_string make_string(const char *s)
-{
+static rt_string make_string(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
-static void cleanup_test_file()
-{
+static void cleanup_test_file() {
     remove(test_file);
 }
 
-static void write_raw_file(const char *data, size_t len)
-{
+static void write_raw_file(const char *data, size_t len) {
     FILE *fp = fopen(test_file, "wb");
     assert(fp != nullptr);
     fwrite(data, 1, len, fp);
     fclose(fp);
 }
 
-static void test_open_close()
-{
+static void test_open_close() {
     cleanup_test_file();
     write_raw_file("test\n", 5);
 
@@ -60,8 +55,7 @@ static void test_open_close()
     cleanup_test_file();
 }
 
-static void test_read_lf_lines()
-{
+static void test_read_lf_lines() {
     cleanup_test_file();
 
     // Unix-style LF line endings
@@ -93,8 +87,7 @@ static void test_read_lf_lines()
     cleanup_test_file();
 }
 
-static void test_read_crlf_lines()
-{
+static void test_read_crlf_lines() {
     cleanup_test_file();
 
     // Windows-style CRLF line endings
@@ -121,8 +114,7 @@ static void test_read_crlf_lines()
     cleanup_test_file();
 }
 
-static void test_read_cr_lines()
-{
+static void test_read_cr_lines() {
     cleanup_test_file();
 
     // Classic Mac CR line endings
@@ -149,8 +141,7 @@ static void test_read_cr_lines()
     cleanup_test_file();
 }
 
-static void test_read_mixed_endings()
-{
+static void test_read_mixed_endings() {
     cleanup_test_file();
 
     // Mixed line endings
@@ -182,8 +173,7 @@ static void test_read_mixed_endings()
     cleanup_test_file();
 }
 
-static void test_read_char()
-{
+static void test_read_char() {
     cleanup_test_file();
 
     const char *content = "ABC";
@@ -205,8 +195,7 @@ static void test_read_char()
     cleanup_test_file();
 }
 
-static void test_peek_char()
-{
+static void test_peek_char() {
     cleanup_test_file();
 
     const char *content = "XYZ";
@@ -238,8 +227,7 @@ static void test_peek_char()
     cleanup_test_file();
 }
 
-static void test_peek_then_read_line()
-{
+static void test_peek_then_read_line() {
     cleanup_test_file();
 
     const char *content = "hello\nworld\n";
@@ -261,8 +249,7 @@ static void test_peek_then_read_line()
     cleanup_test_file();
 }
 
-static void test_read_all()
-{
+static void test_read_all() {
     cleanup_test_file();
 
     const char *content = "Hello, World!\nThis is a test.\n";
@@ -282,8 +269,7 @@ static void test_read_all()
     cleanup_test_file();
 }
 
-static void test_read_all_partial()
-{
+static void test_read_all_partial() {
     cleanup_test_file();
 
     const char *content = "line1\nline2\nline3\n";
@@ -305,8 +291,7 @@ static void test_read_all_partial()
     cleanup_test_file();
 }
 
-static void test_read_all_with_peek()
-{
+static void test_read_all_with_peek() {
     cleanup_test_file();
 
     const char *content = "ABCDEF";
@@ -331,8 +316,7 @@ static void test_read_all_with_peek()
     cleanup_test_file();
 }
 
-static void test_empty_file()
-{
+static void test_empty_file() {
     cleanup_test_file();
     write_raw_file("", 0);
 
@@ -349,8 +333,7 @@ static void test_empty_file()
     cleanup_test_file();
 }
 
-static void test_empty_lines()
-{
+static void test_empty_lines() {
     cleanup_test_file();
 
     // Three empty lines
@@ -382,14 +365,12 @@ static void test_empty_lines()
     cleanup_test_file();
 }
 
-static void test_long_line()
-{
+static void test_long_line() {
     cleanup_test_file();
 
     // Create a line longer than initial buffer (256)
     char content[1000];
-    for (int i = 0; i < 999; ++i)
-    {
+    for (int i = 0; i < 999; ++i) {
         content[i] = 'X';
     }
     content[999] = '\0';
@@ -410,8 +391,7 @@ static void test_long_line()
     cleanup_test_file();
 }
 
-static void test_null_handling()
-{
+static void test_null_handling() {
     // Null operations should return safe defaults
     assert(rt_linereader_eof(nullptr) == 1);
 
@@ -419,8 +399,7 @@ static void test_null_handling()
     rt_linereader_close(nullptr);
 }
 
-int main()
-{
+int main() {
 #ifdef _WIN32
     // Skip on Windows: test uses /tmp paths not available on Windows
     printf("Test skipped: POSIX temp paths not available on Windows\n");

@@ -55,8 +55,7 @@ static vg_widget_vtable_t g_menubar_vtable = {.destroy = menubar_destroy,
 // Helper Functions
 //=============================================================================
 
-static void free_menu_item(vg_menu_item_t *item)
-{
+static void free_menu_item(vg_menu_item_t *item) {
     if (!item)
         return;
 
@@ -66,11 +65,9 @@ static void free_menu_item(vg_menu_item_t *item)
         free(item->shortcut);
 
     // Recursively free submenu
-    if (item->submenu)
-    {
+    if (item->submenu) {
         vg_menu_item_t *sub = item->submenu->first_item;
-        while (sub)
-        {
+        while (sub) {
             vg_menu_item_t *next = sub->next;
             free_menu_item(sub);
             sub = next;
@@ -83,14 +80,12 @@ static void free_menu_item(vg_menu_item_t *item)
     free(item);
 }
 
-static void free_menu(vg_menu_t *menu)
-{
+static void free_menu(vg_menu_t *menu) {
     if (!menu)
         return;
 
     vg_menu_item_t *item = menu->first_item;
-    while (item)
-    {
+    while (item) {
         vg_menu_item_t *next = item->next;
         free_menu_item(item);
         item = next;
@@ -105,8 +100,7 @@ static void free_menu(vg_menu_t *menu)
 // MenuBar Implementation
 //=============================================================================
 
-vg_menubar_t *vg_menubar_create(vg_widget_t *parent)
-{
+vg_menubar_t *vg_menubar_create(vg_widget_t *parent) {
     vg_menubar_t *menubar = calloc(1, sizeof(vg_menubar_t));
     if (!menubar)
         return NULL;
@@ -147,16 +141,14 @@ vg_menubar_t *vg_menubar_create(vg_widget_t *parent)
     menubar->base.constraints.preferred_height = menubar->height;
 
     // Add to parent
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &menubar->base);
     }
 
     return menubar;
 }
 
-static void menubar_destroy(vg_widget_t *widget)
-{
+static void menubar_destroy(vg_widget_t *widget) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
 
     // Release input capture if this menubar holds it
@@ -164,16 +156,14 @@ static void menubar_destroy(vg_widget_t *widget)
         vg_widget_release_input_capture();
 
     vg_menu_t *menu = menubar->first_menu;
-    while (menu)
-    {
+    while (menu) {
         vg_menu_t *next = menu->next;
         free_menu(menu);
         menu = next;
     }
 }
 
-static void menubar_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void menubar_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
     (void)available_height;
 
@@ -181,8 +171,7 @@ static void menubar_measure(vg_widget_t *widget, float available_width, float av
     widget->measured_height = menubar->height;
 }
 
-static void menubar_paint(vg_widget_t *widget, void *canvas)
-{
+static void menubar_paint(vg_widget_t *widget, void *canvas) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
     vgfx_window_t win = (vgfx_window_t)canvas;
 
@@ -206,8 +195,7 @@ static void menubar_paint(vg_widget_t *widget, void *canvas)
     float menu_x = widget->x;
 
     // Draw each menu title
-    for (vg_menu_t *menu = menubar->first_menu; menu; menu = menu->next)
-    {
+    for (vg_menu_t *menu = menubar->first_menu; menu; menu = menu->next) {
         if (!menu->title)
             continue;
 
@@ -217,8 +205,7 @@ static void menubar_paint(vg_widget_t *widget, void *canvas)
         float menu_width = metrics.width + menubar->menu_padding * 2;
 
         // Draw highlight if this menu is open
-        if (menu == menubar->open_menu)
-        {
+        if (menu == menubar->open_menu) {
             vgfx_fill_rect(win,
                            (int32_t)menu_x,
                            (int32_t)widget->y,
@@ -244,8 +231,7 @@ static void menubar_paint(vg_widget_t *widget, void *canvas)
 }
 
 // Paint overlay - called after all widgets are painted to draw popups on top
-static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
-{
+static void menubar_paint_overlay(vg_widget_t *widget, void *canvas) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
 
     // Only draw if a menu is open
@@ -259,10 +245,8 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
 
     // Find position of open menu
     float dropdown_x = widget->x;
-    for (vg_menu_t *menu = menubar->first_menu; menu != menubar->open_menu; menu = menu->next)
-    {
-        if (menu->title)
-        {
+    for (vg_menu_t *menu = menubar->first_menu; menu != menubar->open_menu; menu = menu->next) {
+        if (menu->title) {
             vg_text_metrics_t metrics;
             vg_font_measure_text(menubar->font, menubar->font_size, menu->title, &metrics);
             dropdown_x += metrics.width + menubar->menu_padding * 2;
@@ -314,10 +298,8 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
 
     // Draw menu items
     float item_y = dropdown_y;
-    for (vg_menu_item_t *item = menubar->open_menu->first_item; item; item = item->next)
-    {
-        if (item->separator)
-        {
+    for (vg_menu_item_t *item = menubar->open_menu->first_item; item; item = item->next) {
+        if (item->separator) {
             // Draw separator line
             int32_t sep_margin = 8;
             int32_t sep_y = (int32_t)(item_y + item_height / 2);
@@ -327,12 +309,9 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
                            (int32_t)dropdown_width - sep_margin * 2,
                            1,
                            theme->colors.border_secondary);
-        }
-        else
-        {
+        } else {
             // Draw highlight if highlighted
-            if (item == menubar->highlighted)
-            {
+            if (item == menubar->highlighted) {
                 vgfx_fill_rect(win,
                                (int32_t)dropdown_x + 1,
                                (int32_t)item_y,
@@ -342,8 +321,7 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
             }
 
             // Draw item text
-            if (item->text)
-            {
+            if (item->text) {
                 float item_text_y =
                     item_y + (item_height + font_metrics.ascent + font_metrics.descent) / 2.0f;
                 uint32_t color = item->enabled ? menubar->text_color : menubar->disabled_color;
@@ -356,8 +334,7 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
                                   color);
 
                 // Draw shortcut if present
-                if (item->shortcut)
-                {
+                if (item->shortcut) {
                     vg_text_metrics_t shortcut_metrics;
                     vg_font_measure_text(
                         menubar->font, menubar->font_size, item->shortcut, &shortcut_metrics);
@@ -373,8 +350,7 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
                 }
 
                 // Draw check mark if checked
-                if (item->checked)
-                {
+                if (item->checked) {
                     float check_x = dropdown_x + 4;
                     float check_y = item_y + item_height / 2;
                     vgfx_fill_rect(
@@ -388,8 +364,7 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
                 }
 
                 // Draw submenu arrow if has submenu
-                if (item->submenu)
-                {
+                if (item->submenu) {
                     float arrow_x = dropdown_x + dropdown_width - 12;
                     float arrow_y = item_y + item_height / 2;
                     vgfx_fill_rect(
@@ -410,14 +385,12 @@ static void menubar_paint_overlay(vg_widget_t *widget, void *canvas)
     }
 }
 
-static vg_menu_t *find_menu_at_x(vg_menubar_t *menubar, float x)
-{
+static vg_menu_t *find_menu_at_x(vg_menubar_t *menubar, float x) {
     if (!menubar->font)
         return NULL;
 
     float menu_x = 0;
-    for (vg_menu_t *menu = menubar->first_menu; menu; menu = menu->next)
-    {
+    for (vg_menu_t *menu = menubar->first_menu; menu; menu = menu->next) {
         if (!menu->title)
             continue;
 
@@ -425,8 +398,7 @@ static vg_menu_t *find_menu_at_x(vg_menubar_t *menubar, float x)
         vg_font_measure_text(menubar->font, menubar->font_size, menu->title, &metrics);
         float menu_width = metrics.width + menubar->menu_padding * 2;
 
-        if (x >= menu_x && x < menu_x + menu_width)
-        {
+        if (x >= menu_x && x < menu_x + menu_width) {
             return menu;
         }
 
@@ -435,32 +407,25 @@ static vg_menu_t *find_menu_at_x(vg_menubar_t *menubar, float x)
     return NULL;
 }
 
-static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_menubar_t *menubar = (vg_menubar_t *)widget;
 
-    switch (event->type)
-    {
-        case VG_EVENT_MOUSE_MOVE:
-        {
+    switch (event->type) {
+        case VG_EVENT_MOUSE_MOVE: {
             float local_x = event->mouse.x;
             float local_y = event->mouse.y;
 
             // Check if in menu bar area
-            if (local_y < menubar->height)
-            {
+            if (local_y < menubar->height) {
                 vg_menu_t *menu = find_menu_at_x(menubar, local_x);
-                if (menubar->menu_active && menu != menubar->open_menu)
-                {
+                if (menubar->menu_active && menu != menubar->open_menu) {
                     menubar->open_menu = menu;
                     if (menu)
                         menu->open = true;
                     menubar->highlighted = NULL;
                     widget->needs_paint = true;
                 }
-            }
-            else if (menubar->open_menu)
-            {
+            } else if (menubar->open_menu) {
                 // Check if in dropdown area — scale item_height by ui_scale.
                 float _hs = vg_theme_get_current()->ui_scale;
                 if (_hs <= 0.0f)
@@ -472,48 +437,39 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
                 menubar->highlighted = NULL;
 
                 int idx = 0;
-                for (vg_menu_item_t *item = menubar->open_menu->first_item; item; item = item->next)
-                {
-                    if (idx == item_index && !item->separator)
-                    {
+                for (vg_menu_item_t *item = menubar->open_menu->first_item; item;
+                     item = item->next) {
+                    if (idx == item_index && !item->separator) {
                         menubar->highlighted = item;
                         break;
                     }
                     idx++;
                 }
 
-                if (old_highlight != menubar->highlighted)
-                {
+                if (old_highlight != menubar->highlighted) {
                     widget->needs_paint = true;
                 }
             }
             return false;
         }
 
-        case VG_EVENT_CLICK:
-        {
+        case VG_EVENT_CLICK: {
             float local_x = event->mouse.x;
             float local_y = event->mouse.y;
 
             // Check if clicking menu bar
-            if (local_y >= 0 && local_y < menubar->height && local_x >= 0)
-            {
+            if (local_y >= 0 && local_y < menubar->height && local_x >= 0) {
                 vg_menu_t *menu = find_menu_at_x(menubar, local_x);
-                if (menu)
-                {
-                    if (menubar->open_menu == menu)
-                    {
+                if (menu) {
+                    if (menubar->open_menu == menu) {
                         // Close menu
                         menubar->open_menu = NULL;
                         menubar->menu_active = false;
                         menu->open = false;
                         vg_widget_release_input_capture();
-                    }
-                    else
-                    {
+                    } else {
                         // Open menu
-                        if (menubar->open_menu)
-                        {
+                        if (menubar->open_menu) {
                             menubar->open_menu->open = false;
                         }
                         menubar->open_menu = menu;
@@ -526,13 +482,11 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
                 }
             }
 
-            if (menubar->open_menu && menubar->highlighted)
-            {
+            if (menubar->open_menu && menubar->highlighted) {
                 // Execute highlighted item
                 vg_menu_item_t *item = menubar->highlighted;
                 item->was_clicked = true;
-                if (item->enabled && item->action)
-                {
+                if (item->enabled && item->action) {
                     item->action(item->action_data);
                 }
 
@@ -547,8 +501,7 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
             }
 
             // Click outside both menubar and dropdown area — close menu
-            if (menubar->open_menu)
-            {
+            if (menubar->open_menu) {
                 menubar->open_menu->open = false;
                 menubar->open_menu = NULL;
                 menubar->menu_active = false;
@@ -562,17 +515,14 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
         }
 
         case VG_EVENT_MOUSE_LEAVE:
-            if (!menubar->menu_active)
-            {
+            if (!menubar->menu_active) {
                 widget->needs_paint = true;
             }
             return false;
 
         case VG_EVENT_KEY_DOWN:
-            if (menubar->open_menu)
-            {
-                switch (event->key.key)
-                {
+            if (menubar->open_menu) {
+                switch (event->key.key) {
                     case VG_KEY_ESCAPE:
                         menubar->open_menu->open = false;
                         menubar->open_menu = NULL;
@@ -584,11 +534,9 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
 
                     case VG_KEY_UP:
                         // Move highlight up
-                        if (menubar->highlighted && menubar->highlighted->prev)
-                        {
+                        if (menubar->highlighted && menubar->highlighted->prev) {
                             menubar->highlighted = menubar->highlighted->prev;
-                            while (menubar->highlighted && menubar->highlighted->separator)
-                            {
+                            while (menubar->highlighted && menubar->highlighted->separator) {
                                 menubar->highlighted = menubar->highlighted->prev;
                             }
                             widget->needs_paint = true;
@@ -597,22 +545,16 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
 
                     case VG_KEY_DOWN:
                         // Move highlight down
-                        if (menubar->highlighted)
-                        {
-                            if (menubar->highlighted->next)
-                            {
+                        if (menubar->highlighted) {
+                            if (menubar->highlighted->next) {
                                 menubar->highlighted = menubar->highlighted->next;
-                                while (menubar->highlighted && menubar->highlighted->separator)
-                                {
+                                while (menubar->highlighted && menubar->highlighted->separator) {
                                     menubar->highlighted = menubar->highlighted->next;
                                 }
                             }
-                        }
-                        else if (menubar->open_menu->first_item)
-                        {
+                        } else if (menubar->open_menu->first_item) {
                             menubar->highlighted = menubar->open_menu->first_item;
-                            while (menubar->highlighted && menubar->highlighted->separator)
-                            {
+                            while (menubar->highlighted && menubar->highlighted->separator) {
                                 menubar->highlighted = menubar->highlighted->next;
                             }
                         }
@@ -621,8 +563,7 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
 
                     case VG_KEY_LEFT:
                         // Move to previous menu
-                        if (menubar->open_menu->prev)
-                        {
+                        if (menubar->open_menu->prev) {
                             menubar->open_menu->open = false;
                             menubar->open_menu = menubar->open_menu->prev;
                             menubar->open_menu->open = true;
@@ -633,8 +574,7 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
 
                     case VG_KEY_RIGHT:
                         // Move to next menu
-                        if (menubar->open_menu->next)
-                        {
+                        if (menubar->open_menu->next) {
                             menubar->open_menu->open = false;
                             menubar->open_menu = menubar->open_menu->next;
                             menubar->open_menu->open = true;
@@ -645,11 +585,9 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
 
                     case VG_KEY_ENTER:
                         // Execute highlighted item
-                        if (menubar->highlighted && menubar->highlighted->enabled)
-                        {
+                        if (menubar->highlighted && menubar->highlighted->enabled) {
                             menubar->highlighted->was_clicked = true;
-                            if (menubar->highlighted->action)
-                            {
+                            if (menubar->highlighted->action) {
                                 menubar->highlighted->action(menubar->highlighted->action_data);
                             }
                             menubar->open_menu->open = false;
@@ -678,8 +616,7 @@ static bool menubar_handle_event(vg_widget_t *widget, vg_event_t *event)
 // MenuBar API
 //=============================================================================
 
-vg_menu_t *vg_menubar_add_menu(vg_menubar_t *menubar, const char *title)
-{
+vg_menu_t *vg_menubar_add_menu(vg_menubar_t *menubar, const char *title) {
     if (!menubar)
         return NULL;
 
@@ -695,14 +632,11 @@ vg_menu_t *vg_menubar_add_menu(vg_menubar_t *menubar, const char *title)
     menu->enabled = true;
 
     // Add to end of list
-    if (menubar->last_menu)
-    {
+    if (menubar->last_menu) {
         menubar->last_menu->next = menu;
         menu->prev = menubar->last_menu;
         menubar->last_menu = menu;
-    }
-    else
-    {
+    } else {
         menubar->first_menu = menu;
         menubar->last_menu = menu;
     }
@@ -714,8 +648,7 @@ vg_menu_t *vg_menubar_add_menu(vg_menubar_t *menubar, const char *title)
 }
 
 vg_menu_item_t *vg_menu_add_item(
-    vg_menu_t *menu, const char *text, const char *shortcut, void (*action)(void *), void *data)
-{
+    vg_menu_t *menu, const char *text, const char *shortcut, void (*action)(void *), void *data) {
     if (!menu)
         return NULL;
 
@@ -733,14 +666,11 @@ vg_menu_item_t *vg_menu_add_item(
     item->submenu = NULL;
 
     // Add to end of list
-    if (menu->last_item)
-    {
+    if (menu->last_item) {
         menu->last_item->next = item;
         item->prev = menu->last_item;
         menu->last_item = item;
-    }
-    else
-    {
+    } else {
         menu->first_item = item;
         menu->last_item = item;
     }
@@ -749,8 +679,7 @@ vg_menu_item_t *vg_menu_add_item(
     return item;
 }
 
-vg_menu_item_t *vg_menu_add_separator(vg_menu_t *menu)
-{
+vg_menu_item_t *vg_menu_add_separator(vg_menu_t *menu) {
     if (!menu)
         return NULL;
 
@@ -762,14 +691,11 @@ vg_menu_item_t *vg_menu_add_separator(vg_menu_t *menu)
     item->enabled = false;
 
     // Add to end of list
-    if (menu->last_item)
-    {
+    if (menu->last_item) {
         menu->last_item->next = item;
         item->prev = menu->last_item;
         menu->last_item = item;
-    }
-    else
-    {
+    } else {
         menu->first_item = item;
         menu->last_item = item;
     }
@@ -778,8 +704,7 @@ vg_menu_item_t *vg_menu_add_separator(vg_menu_t *menu)
     return item;
 }
 
-vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title)
-{
+vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title) {
     if (!menu)
         return NULL;
 
@@ -797,26 +722,21 @@ vg_menu_t *vg_menu_add_submenu(vg_menu_t *menu, const char *title)
 }
 
 /// @brief Menu item set enabled.
-void vg_menu_item_set_enabled(vg_menu_item_t *item, bool enabled)
-{
-    if (item)
-    {
+void vg_menu_item_set_enabled(vg_menu_item_t *item, bool enabled) {
+    if (item) {
         item->enabled = enabled;
     }
 }
 
 /// @brief Menu item set checked.
-void vg_menu_item_set_checked(vg_menu_item_t *item, bool checked)
-{
-    if (item)
-    {
+void vg_menu_item_set_checked(vg_menu_item_t *item, bool checked) {
+    if (item) {
         item->checked = checked;
     }
 }
 
 /// @brief Menu remove item.
-void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item)
-{
+void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item) {
     if (!menu || !item)
         return;
 
@@ -835,14 +755,12 @@ void vg_menu_remove_item(vg_menu_t *menu, vg_menu_item_t *item)
 }
 
 /// @brief Menu clear.
-void vg_menu_clear(vg_menu_t *menu)
-{
+void vg_menu_clear(vg_menu_t *menu) {
     if (!menu)
         return;
 
     vg_menu_item_t *item = menu->first_item;
-    while (item)
-    {
+    while (item) {
         vg_menu_item_t *next = item->next;
         free_menu_item(item);
         item = next;
@@ -853,8 +771,7 @@ void vg_menu_clear(vg_menu_t *menu)
 }
 
 /// @brief Menubar remove menu.
-void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu)
-{
+void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
     if (!menubar || !menu)
         return;
 
@@ -878,8 +795,7 @@ void vg_menubar_remove_menu(vg_menubar_t *menubar, vg_menu_t *menu)
 }
 
 /// @brief Menubar set font.
-void vg_menubar_set_font(vg_menubar_t *menubar, vg_font_t *font, float size)
-{
+void vg_menubar_set_font(vg_menubar_t *menubar, vg_font_t *font, float size) {
     if (!menubar)
         return;
 
@@ -893,8 +809,7 @@ void vg_menubar_set_font(vg_menubar_t *menubar, vg_font_t *font, float size)
 //=============================================================================
 
 // Key name to key code mapping
-typedef struct
-{
+typedef struct {
     const char *name;
     int key;
 } key_mapping_t;
@@ -987,20 +902,16 @@ static const key_mapping_t g_key_mappings[] = {
     {"`", VG_KEY_GRAVE},
     {NULL, 0}};
 
-static int lookup_key(const char *name)
-{
-    for (const key_mapping_t *m = g_key_mappings; m->name; m++)
-    {
-        if (strcasecmp(name, m->name) == 0)
-        {
+static int lookup_key(const char *name) {
+    for (const key_mapping_t *m = g_key_mappings; m->name; m++) {
+        if (strcasecmp(name, m->name) == 0) {
             return m->key;
         }
     }
     return VG_KEY_UNKNOWN;
 }
 
-bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel)
-{
+bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel) {
     if (!shortcut || !accel)
         return false;
 
@@ -1015,8 +926,7 @@ bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel)
     char *saveptr;
     char *token = strtok_r(str, "+", &saveptr);
 
-    while (token)
-    {
+    while (token) {
         // Trim whitespace
         while (*token == ' ')
             token++;
@@ -1025,25 +935,16 @@ bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel)
             *end-- = '\0';
 
         // Check for modifiers
-        if (strcasecmp(token, "Ctrl") == 0 || strcasecmp(token, "Control") == 0)
-        {
+        if (strcasecmp(token, "Ctrl") == 0 || strcasecmp(token, "Control") == 0) {
             accel->modifiers |= VG_MOD_CTRL;
-        }
-        else if (strcasecmp(token, "Cmd") == 0 || strcasecmp(token, "Command") == 0 ||
-                 strcasecmp(token, "Meta") == 0 || strcasecmp(token, "Super") == 0)
-        {
+        } else if (strcasecmp(token, "Cmd") == 0 || strcasecmp(token, "Command") == 0 ||
+                   strcasecmp(token, "Meta") == 0 || strcasecmp(token, "Super") == 0) {
             accel->modifiers |= VG_MOD_SUPER;
-        }
-        else if (strcasecmp(token, "Shift") == 0)
-        {
+        } else if (strcasecmp(token, "Shift") == 0) {
             accel->modifiers |= VG_MOD_SHIFT;
-        }
-        else if (strcasecmp(token, "Alt") == 0 || strcasecmp(token, "Option") == 0)
-        {
+        } else if (strcasecmp(token, "Alt") == 0 || strcasecmp(token, "Option") == 0) {
             accel->modifiers |= VG_MOD_ALT;
-        }
-        else
-        {
+        } else {
             // Must be the key
             accel->key = lookup_key(token);
         }
@@ -1058,8 +959,7 @@ bool vg_parse_accelerator(const char *shortcut, vg_accelerator_t *accel)
 /// @brief Menubar register accelerator.
 void vg_menubar_register_accelerator(vg_menubar_t *menubar,
                                      vg_menu_item_t *item,
-                                     const char *shortcut)
-{
+                                     const char *shortcut) {
     if (!menubar || !item || !shortcut)
         return;
 
@@ -1081,31 +981,25 @@ void vg_menubar_register_accelerator(vg_menubar_t *menubar,
     menubar->accel_table = entry;
 }
 
-static void rebuild_accels_for_menu(vg_menubar_t *menubar, vg_menu_t *menu)
-{
-    for (vg_menu_item_t *item = menu->first_item; item; item = item->next)
-    {
-        if (item->shortcut)
-        {
+static void rebuild_accels_for_menu(vg_menubar_t *menubar, vg_menu_t *menu) {
+    for (vg_menu_item_t *item = menu->first_item; item; item = item->next) {
+        if (item->shortcut) {
             vg_menubar_register_accelerator(menubar, item, item->shortcut);
         }
-        if (item->submenu)
-        {
+        if (item->submenu) {
             rebuild_accels_for_menu(menubar, item->submenu);
         }
     }
 }
 
 /// @brief Menubar rebuild accelerators.
-void vg_menubar_rebuild_accelerators(vg_menubar_t *menubar)
-{
+void vg_menubar_rebuild_accelerators(vg_menubar_t *menubar) {
     if (!menubar)
         return;
 
     // Free existing accelerator table
     vg_accel_entry_t *entry = menubar->accel_table;
-    while (entry)
-    {
+    while (entry) {
         vg_accel_entry_t *next = entry->next;
         free(entry);
         entry = next;
@@ -1113,22 +1007,19 @@ void vg_menubar_rebuild_accelerators(vg_menubar_t *menubar)
     menubar->accel_table = NULL;
 
     // Rebuild from all menus
-    for (vg_menu_t *menu = menubar->first_menu; menu; menu = menu->next)
-    {
+    for (vg_menu_t *menu = menubar->first_menu; menu; menu = menu->next) {
         rebuild_accels_for_menu(menubar, menu);
     }
 }
 
-bool vg_menubar_handle_accelerator(vg_menubar_t *menubar, int key, uint32_t modifiers)
-{
+bool vg_menubar_handle_accelerator(vg_menubar_t *menubar, int key, uint32_t modifiers) {
     if (!menubar)
         return false;
 
     // Normalize modifiers: treat Ctrl and Super as equivalent on Mac
     uint32_t norm_mods = modifiers & (VG_MOD_CTRL | VG_MOD_SUPER | VG_MOD_SHIFT | VG_MOD_ALT);
 
-    for (vg_accel_entry_t *entry = menubar->accel_table; entry; entry = entry->next)
-    {
+    for (vg_accel_entry_t *entry = menubar->accel_table; entry; entry = entry->next) {
         // Check for match
         uint32_t entry_mods = entry->accel.modifiers;
 
@@ -1141,11 +1032,9 @@ bool vg_menubar_handle_accelerator(vg_menubar_t *menubar, int key, uint32_t modi
         bool shift_match = ((norm_mods & VG_MOD_SHIFT) != 0) == ((entry_mods & VG_MOD_SHIFT) != 0);
         bool alt_match = ((norm_mods & VG_MOD_ALT) != 0) == ((entry_mods & VG_MOD_ALT) != 0);
 
-        if (entry->accel.key == key && ctrl_match && shift_match && alt_match)
-        {
+        if (entry->accel.key == key && ctrl_match && shift_match && alt_match) {
             vg_menu_item_t *item = entry->item;
-            if (item->enabled && item->action)
-            {
+            if (item->enabled && item->action) {
                 item->action(item->action_data);
                 return true;
             }

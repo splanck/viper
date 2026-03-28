@@ -22,8 +22,7 @@
 #include <utility>
 #include <vector>
 
-namespace il::support
-{
+namespace il::support {
 /// @brief Simple bump allocator for fast allocations.
 ///
 /// Uses a contiguous internal buffer and a bump-pointer strategy to satisfy
@@ -32,8 +31,7 @@ namespace il::support
 /// cannot be freed; invoke reset() to make the entire buffer reusable.
 /// @invariant Allocations are not individually freed; use reset() to reuse.
 /// @ownership Owns its internal buffer.
-class Arena
-{
+class Arena {
   public:
     /// @brief Create arena with @p size bytes of storage.
     /// @param size Capacity in bytes.
@@ -68,8 +66,7 @@ class Arena
 ///
 /// @invariant Individual allocations cannot be freed; reset() reclaims all memory.
 /// @ownership Owns all allocated chunks and manages object destruction.
-class GrowingArena
-{
+class GrowingArena {
   public:
     /// @brief Create a growing arena with specified initial and growth chunk sizes.
     /// @param initialChunkSize Size of the first chunk in bytes (default 4KB).
@@ -101,14 +98,12 @@ class GrowingArena
     /// @details For trivially-destructible types, no tracking overhead is incurred.
     ///          For types with non-trivial destructors, the destructor will be
     ///          called when the arena is destroyed or reset.
-    template <typename T, typename... Args> T *create(Args &&...args)
-    {
+    template <typename T, typename... Args> T *create(Args &&...args) {
         void *mem = allocate(sizeof(T), alignof(T));
         T *obj = new (mem) T(std::forward<Args>(args)...);
 
         // Track objects that need destruction
-        if constexpr (!std::is_trivially_destructible_v<T>)
-        {
+        if constexpr (!std::is_trivially_destructible_v<T>) {
             destructors_.push_back({obj, [](void *p) { static_cast<T *>(p)->~T(); }});
         }
 
@@ -124,15 +119,13 @@ class GrowingArena
     [[nodiscard]] size_t totalAllocated() const noexcept;
 
     /// @brief Get number of chunks allocated.
-    [[nodiscard]] size_t chunkCount() const noexcept
-    {
+    [[nodiscard]] size_t chunkCount() const noexcept {
         return chunks_.size();
     }
 
   private:
     /// @brief A memory chunk with bump-pointer allocation.
-    struct Chunk
-    {
+    struct Chunk {
         std::unique_ptr<std::byte[]> data;
         size_t size = 0;
         size_t offset = 0;
@@ -156,8 +149,7 @@ class GrowingArena
     };
 
     /// @brief Destructor record for non-trivially-destructible objects.
-    struct DestructorRecord
-    {
+    struct DestructorRecord {
         void *object;
         void (*destroy)(void *);
     };

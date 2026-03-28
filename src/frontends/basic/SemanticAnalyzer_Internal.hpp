@@ -29,8 +29,7 @@
 #include "frontends/basic/SemanticAnalyzer_Stmts_Runtime.hpp"
 #include "frontends/basic/SemanticAnalyzer_Stmts_Shared.hpp"
 
-namespace il::frontends::basic::sem
-{
+namespace il::frontends::basic::sem {
 class ExprCheckContext;
 
 /// @brief Analyzes a unary expression and determines its result type.
@@ -123,8 +122,7 @@ SemanticAnalyzer::Type analyzeUBoundExpr(SemanticAnalyzer &analyzer, UBoundExpr 
 /// the semantic analyzer implementation. These are not part of the public
 /// API and may change without notice. External code should use the
 /// SemanticAnalyzer class directly.
-namespace il::frontends::basic::semantic_analyzer_detail
-{
+namespace il::frontends::basic::semantic_analyzer_detail {
 
 /// @brief Defines validation and type computation rules for binary operators.
 ///
@@ -134,8 +132,7 @@ namespace il::frontends::basic::semantic_analyzer_detail
 /// analysis of binary expressions.
 ///
 /// @see exprRule() to look up rules by operator
-struct ExprRule
-{
+struct ExprRule {
     /// @brief Function pointer type for validating operand type combinations.
     ///
     /// Called during binary expression analysis to check if the left and right

@@ -23,8 +23,7 @@
 // but we can test the string functions that the ListView API uses.
 
 // Test string operations that ListView uses
-static void test_string_creation()
-{
+static void test_string_creation() {
     rt_string s = rt_const_cstr("Hello");
     const char *cstr = rt_string_cstr(s);
     assert(cstr != nullptr);
@@ -32,8 +31,7 @@ static void test_string_creation()
     printf("test_string_creation: PASSED\n");
 }
 
-static void test_string_from_bytes()
-{
+static void test_string_from_bytes() {
     const char *data = "Test Item";
     rt_string s = rt_string_from_bytes(data, 9);
     const char *cstr = rt_string_cstr(s);
@@ -42,8 +40,7 @@ static void test_string_from_bytes()
     printf("test_string_from_bytes: PASSED\n");
 }
 
-static void test_empty_string()
-{
+static void test_empty_string() {
     rt_string s = rt_const_cstr("");
     const char *cstr = rt_string_cstr(s);
     assert(cstr != nullptr);
@@ -56,8 +53,7 @@ static void test_empty_string()
 // requires the GUI system to be initialized which isn't available in unit tests.
 // They verify that the function declarations compile and link correctly.
 
-static void test_listbox_api_declarations()
-{
+static void test_listbox_api_declarations() {
     // These declarations exist in rt_gui.h
     // Actual testing would require GUI initialization
     // For now, just verify the test file compiles with the new API
@@ -65,8 +61,7 @@ static void test_listbox_api_declarations()
     printf("test_listbox_api_declarations: PASSED (compile-time verification)\n");
 }
 
-int main()
-{
+int main() {
     printf("Running ListView (ListBox) enhancement tests...\n\n");
 
     // String tests (these functions are used by ListView internally)

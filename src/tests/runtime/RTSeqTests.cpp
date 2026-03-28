@@ -19,15 +19,13 @@
 #include <csetjmp>
 #include <cstring>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
@@ -35,20 +33,17 @@ extern "C" void vm_trap(const char *msg)
 }
 
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
         g_last_trap = nullptr;                                                                     \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             expr;                                                                                  \
             assert(false && "Expected trap did not occur");                                        \
         }                                                                                          \
         g_trap_expected = false;                                                                   \
     } while (0)
 
-static void test_new_and_basic_properties()
-{
+static void test_new_and_basic_properties() {
     void *seq = rt_seq_new();
     assert(seq != nullptr);
     assert(rt_seq_len(seq) == 0);
@@ -56,8 +51,7 @@ static void test_new_and_basic_properties()
     assert(rt_seq_is_empty(seq) == 1);
 }
 
-static void test_with_capacity()
-{
+static void test_with_capacity() {
     void *seq = rt_seq_with_capacity(100);
     assert(seq != nullptr);
     assert(rt_seq_len(seq) == 0);
@@ -74,8 +68,7 @@ static void test_with_capacity()
     assert(rt_seq_cap(seq3) >= 1);
 }
 
-static void test_push_and_get()
-{
+static void test_push_and_get() {
     void *seq = rt_seq_new();
 
     int a = 10, b = 20, c = 30;
@@ -92,8 +85,7 @@ static void test_push_and_get()
     assert(rt_seq_get(seq, 2) == &c);
 }
 
-static void test_push_all_appends()
-{
+static void test_push_all_appends() {
     void *a = rt_seq_new();
     void *b = rt_seq_new();
 
@@ -113,8 +105,7 @@ static void test_push_all_appends()
     assert(rt_seq_get(a, 2) == &v3);
 }
 
-static void test_push_all_self_doubles()
-{
+static void test_push_all_self_doubles() {
     void *seq = rt_seq_new();
 
     int a = 10;
@@ -132,8 +123,7 @@ static void test_push_all_self_doubles()
     assert(rt_seq_get(seq, 3) == &b);
 }
 
-static void test_set()
-{
+static void test_set() {
     void *seq = rt_seq_new();
 
     int a = 10, b = 20, c = 30;
@@ -145,8 +135,7 @@ static void test_set()
     assert(rt_seq_get(seq, 0) == &c);
 }
 
-static void test_pop()
-{
+static void test_pop() {
     void *seq = rt_seq_new();
 
     int a = 10, b = 20, c = 30;
@@ -169,8 +158,7 @@ static void test_pop()
     assert(rt_seq_is_empty(seq) == 1);
 }
 
-static void test_peek()
-{
+static void test_peek() {
     void *seq = rt_seq_new();
 
     int a = 10, b = 20;
@@ -184,8 +172,7 @@ static void test_peek()
     assert(rt_seq_peek(seq) == &a);
 }
 
-static void test_first_and_last()
-{
+static void test_first_and_last() {
     void *seq = rt_seq_new();
 
     int a = 10, b = 20, c = 30;
@@ -203,8 +190,7 @@ static void test_first_and_last()
     assert(rt_seq_last(seq2) == &b);
 }
 
-static void test_insert()
-{
+static void test_insert() {
     void *seq = rt_seq_new();
 
     int a = 10, b = 20, c = 30, d = 40;
@@ -236,8 +222,7 @@ static void test_insert()
     assert(rt_seq_get(seq, 3) == &c);
 }
 
-static void test_remove()
-{
+static void test_remove() {
     void *seq = rt_seq_new();
 
     int a = 10, b = 20, c = 30, d = 40;
@@ -268,8 +253,7 @@ static void test_remove()
     assert(rt_seq_get(seq, 0) == &c);
 }
 
-static void test_clear()
-{
+static void test_clear() {
     void *seq = rt_seq_new();
 
     int a = 10, b = 20;
@@ -286,8 +270,7 @@ static void test_clear()
     assert(rt_seq_len(seq) == 0);
 }
 
-static void test_find_and_has()
-{
+static void test_find_and_has() {
     void *seq = rt_seq_new();
 
     int a = 10, b = 20, c = 30, d = 40;
@@ -306,8 +289,7 @@ static void test_find_and_has()
     assert(rt_seq_has(seq, &d) == 0);
 }
 
-static void test_reverse()
-{
+static void test_reverse() {
     // Empty sequence
     void *seq0 = rt_seq_new();
     rt_seq_reverse(seq0); // should not crash
@@ -344,8 +326,7 @@ static void test_reverse()
     assert(rt_seq_get(seq3, 2) == &a);
 }
 
-static void test_shuffle_deterministic()
-{
+static void test_shuffle_deterministic() {
     RtContext ctx;
     rt_context_init(&ctx);
     rt_set_current_context(&ctx);
@@ -375,8 +356,7 @@ static void test_shuffle_deterministic()
     rt_context_cleanup(&ctx);
 }
 
-static void test_slice()
-{
+static void test_slice() {
     void *seq = rt_seq_new();
 
     int a = 10, b = 20, c = 30, d = 40, e = 50;
@@ -425,8 +405,7 @@ static void test_slice()
     assert(rt_seq_len(slice7) == 0);
 }
 
-static void test_clone()
-{
+static void test_clone() {
     void *seq = rt_seq_new();
 
     int a = 10, b = 20, c = 30;
@@ -453,14 +432,12 @@ static void test_clone()
     assert(rt_seq_len(cloned_empty) == 0);
 }
 
-static void test_capacity_growth()
-{
+static void test_capacity_growth() {
     void *seq = rt_seq_with_capacity(2);
     int64_t initial_cap = rt_seq_cap(seq);
 
     int vals[100];
-    for (int i = 0; i < 100; ++i)
-    {
+    for (int i = 0; i < 100; ++i) {
         vals[i] = i;
         rt_seq_push(seq, &vals[i]);
     }
@@ -469,14 +446,12 @@ static void test_capacity_growth()
     assert(rt_seq_cap(seq) > initial_cap);
 
     // Verify all elements
-    for (int i = 0; i < 100; ++i)
-    {
+    for (int i = 0; i < 100; ++i) {
         assert(rt_seq_get(seq, i) == &vals[i]);
     }
 }
 
-static void test_null_handling()
-{
+static void test_null_handling() {
     // Most operations on null should return safe defaults or 0
     assert(rt_seq_len(nullptr) == 0);
     assert(rt_seq_cap(nullptr) == 0);
@@ -501,8 +476,7 @@ static void test_null_handling()
     assert(rt_seq_len(cloned) == 0);
 }
 
-static void test_bounds_errors()
-{
+static void test_bounds_errors() {
     void *seq = rt_seq_new();
     int a = 10;
     rt_seq_push(seq, &a);
@@ -535,8 +509,7 @@ static void test_bounds_errors()
     EXPECT_TRAP(rt_seq_last(seq));
 }
 
-static void test_null_seq_errors()
-{
+static void test_null_seq_errors() {
     int a = 10;
 
     EXPECT_TRAP(rt_seq_get(nullptr, 0));
@@ -554,8 +527,7 @@ static void test_null_seq_errors()
 // Sort tests
 //=============================================================================
 
-static void test_sort_strings()
-{
+static void test_sort_strings() {
     void *seq = rt_seq_new();
 
     // Create string handles for testing (using raw pointers as mock strings)
@@ -581,15 +553,13 @@ static void test_sort_strings()
     assert(rt_seq_has(seq, (void *)s4));
 }
 
-static void test_sort_empty()
-{
+static void test_sort_empty() {
     void *seq = rt_seq_new();
     rt_seq_sort(seq); // Should not crash
     assert(rt_seq_len(seq) == 0);
 }
 
-static void test_sort_single()
-{
+static void test_sort_single() {
     void *seq = rt_seq_new();
     int a = 10;
     rt_seq_push(seq, &a);
@@ -598,14 +568,12 @@ static void test_sort_single()
     assert(rt_seq_get(seq, 0) == &a);
 }
 
-static void test_sort_null()
-{
+static void test_sort_null() {
     rt_seq_sort(nullptr);      // Should not crash
     rt_seq_sort_desc(nullptr); // Should not crash
 }
 
-static void test_sort_desc()
-{
+static void test_sort_desc() {
     void *seq = rt_seq_new();
 
     int a = 10, b = 20, c = 30;
@@ -626,8 +594,7 @@ static void test_sort_desc()
 // Take and Drop tests
 //=============================================================================
 
-static void test_take()
-{
+static void test_take() {
     void *seq = rt_seq_new();
     int a = 1, b = 2, c = 3, d = 4, e = 5;
     rt_seq_push(seq, &a);
@@ -663,8 +630,7 @@ static void test_take()
     assert(rt_seq_len(taken_null) == 0);
 }
 
-static void test_drop()
-{
+static void test_drop() {
     void *seq = rt_seq_new();
     int a = 1, b = 2, c = 3, d = 4, e = 5;
     rt_seq_push(seq, &a);
@@ -705,40 +671,34 @@ static void test_drop()
 //=============================================================================
 
 // Predicate: returns true if pointer value is even (for testing)
-static int8_t is_even_ptr(void *p)
-{
+static int8_t is_even_ptr(void *p) {
     return ((intptr_t)p % 2) == 0 ? 1 : 0;
 }
 
 // Predicate: always true
-static int8_t always_true(void *p)
-{
+static int8_t always_true(void *p) {
     (void)p;
     return 1;
 }
 
 // Predicate: always false
-static int8_t always_false(void *p)
-{
+static int8_t always_false(void *p) {
     (void)p;
     return 0;
 }
 
 // Transform: returns the same pointer (identity)
-static void *identity(void *p)
-{
+static void *identity(void *p) {
     return p;
 }
 
 // Reducer: just returns the element (for testing fold)
-static void *take_second(void *acc, void *elem)
-{
+static void *take_second(void *acc, void *elem) {
     (void)acc;
     return elem;
 }
 
-static void test_keep()
-{
+static void test_keep() {
     void *seq = rt_seq_new();
     int a = 2, b = 3, c = 4, d = 5, e = 6;
     rt_seq_push(seq, &a);
@@ -764,8 +724,7 @@ static void test_keep()
     assert(rt_seq_len(from_null) == 0);
 }
 
-static void test_reject()
-{
+static void test_reject() {
     void *seq = rt_seq_new();
     int a = 2, b = 3, c = 4;
     rt_seq_push(seq, &a);
@@ -785,8 +744,7 @@ static void test_reject()
     assert(rt_seq_len(from_null) == 0);
 }
 
-static void test_apply()
-{
+static void test_apply() {
     void *seq = rt_seq_new();
     int a = 1, b = 2, c = 3;
     rt_seq_push(seq, &a);
@@ -809,8 +767,7 @@ static void test_apply()
     assert(rt_seq_len(from_null) == 0);
 }
 
-static void test_all_any_none()
-{
+static void test_all_any_none() {
     void *seq = rt_seq_new();
     int a = 1, b = 2, c = 3;
     rt_seq_push(seq, &a);
@@ -850,8 +807,7 @@ static void test_all_any_none()
     assert(rt_seq_none(seq, nullptr) == 1);
 }
 
-static void test_count_where()
-{
+static void test_count_where() {
     void *seq = rt_seq_new();
     int a = 1, b = 2, c = 3;
     rt_seq_push(seq, &a);
@@ -864,8 +820,7 @@ static void test_count_where()
     assert(rt_seq_count_where(nullptr, always_true) == 0);
 }
 
-static void test_find_where()
-{
+static void test_find_where() {
     void *seq = rt_seq_new();
     int a = 1, b = 2, c = 3;
     rt_seq_push(seq, &a);
@@ -882,8 +837,7 @@ static void test_find_where()
     assert(rt_seq_find_where(empty, always_true) == nullptr);
 }
 
-static void test_take_while_drop_while()
-{
+static void test_take_while_drop_while() {
     void *seq = rt_seq_new();
     int a = 1, b = 2, c = 3;
     rt_seq_push(seq, &a);
@@ -913,8 +867,7 @@ static void test_take_while_drop_while()
     assert(rt_seq_len(rt_seq_drop_while(seq, nullptr)) == 0); // null pred = empty
 }
 
-static void test_fold()
-{
+static void test_fold() {
     void *seq = rt_seq_new();
     int a = 1, b = 2, c = 3;
     rt_seq_push(seq, &a);
@@ -940,8 +893,7 @@ static void test_fold()
     assert(result == &init);
 }
 
-int main()
-{
+int main() {
     test_new_and_basic_properties();
     test_with_capacity();
     test_push_and_get();

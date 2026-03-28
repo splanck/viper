@@ -46,29 +46,23 @@ void usage() {}
 // are available within this translation unit.
 #include "tools/viper/cmd_front_basic.cpp"
 
-namespace il::support
-{
-struct SourceManagerTestAccess
-{
-    static void setNextFileId(SourceManager &sm, uint64_t next)
-    {
+namespace il::support {
+struct SourceManagerTestAccess {
+    static void setNextFileId(SourceManager &sm, uint64_t next) {
         sm.next_file_id_ = next;
     }
 };
 } // namespace il::support
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-bool BasicCompilerResult::succeeded() const
-{
+bool BasicCompilerResult::succeeded() const {
     return emitter && emitter->errorCount() == 0;
 }
 
 BasicCompilerResult compileBasic(const BasicCompilerInput &input,
                                  const BasicCompilerOptions & /*options*/,
-                                 il::support::SourceManager &sm)
-{
+                                 il::support::SourceManager &sm) {
     BasicCompilerResult result{};
     result.emitter = std::make_unique<DiagnosticEmitter>(result.diagnostics, sm);
 
@@ -101,8 +95,7 @@ BasicCompilerResult compileBasic(const BasicCompilerInput &input,
 
 } // namespace il::frontends::basic
 
-int main()
-{
+int main() {
     namespace fs = std::filesystem;
 
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
@@ -149,8 +142,7 @@ int main()
     const bool reportedExhaustion = saturatedText.find(exhaustionMessage) != std::string::npos;
     size_t overflowCount = 0;
     size_t overflowPos = saturatedText.find(exhaustionMessage);
-    while (overflowPos != std::string::npos)
-    {
+    while (overflowPos != std::string::npos) {
         ++overflowCount;
         overflowPos = saturatedText.find(exhaustionMessage, overflowPos + exhaustionMessage.size());
     }

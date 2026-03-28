@@ -13,23 +13,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-TEST(Arm64CLI, EmitAsmAndLinkExe)
-{
+TEST(Arm64CLI, EmitAsmAndLinkExe) {
     namespace fs = std::filesystem;
     const std::string in = outPath("emit_link.il");
     const std::string asmOut = outPath("emit_link.s");
@@ -52,8 +49,7 @@ TEST(Arm64CLI, EmitAsmAndLinkExe)
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

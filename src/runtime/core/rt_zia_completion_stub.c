@@ -43,8 +43,7 @@
 
 /// @brief Weak stub: returns an empty string.
 /// Overridden by rt_zia_completion.cpp when fe_zia is linked.
-RT_WEAK rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col)
-{
+RT_WEAK rt_string rt_zia_complete(rt_string source, int64_t line, int64_t col) {
     (void)source;
     (void)line;
     (void)col;

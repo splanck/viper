@@ -38,8 +38,7 @@ static vg_widget_vtable_t g_dropdown_vtable = {.destroy = dropdown_destroy,
                                                .can_focus = dropdown_can_focus,
                                                .on_focus = NULL};
 
-static void dropdown_destroy(vg_widget_t *widget)
-{
+static void dropdown_destroy(vg_widget_t *widget) {
     vg_dropdown_t *dd = (vg_dropdown_t *)widget;
     for (int i = 0; i < dd->item_count; i++)
         free(dd->items[i]);
@@ -49,8 +48,7 @@ static void dropdown_destroy(vg_widget_t *widget)
     dd->item_capacity = 0;
 }
 
-static void dropdown_measure(vg_widget_t *widget, float avail_w, float avail_h)
-{
+static void dropdown_measure(vg_widget_t *widget, float avail_w, float avail_h) {
     vg_theme_t *theme = vg_theme_get_current();
     (void)avail_w;
     (void)avail_h;
@@ -60,13 +58,11 @@ static void dropdown_measure(vg_widget_t *widget, float avail_w, float avail_h)
 }
 
 // Height of one item row in the dropdown panel
-static float dropdown_item_height(vg_dropdown_t *dd)
-{
+static float dropdown_item_height(vg_dropdown_t *dd) {
     return dd->font_size > 0 ? (dd->font_size * 1.6f) : 24.0f;
 }
 
-static void dropdown_paint(vg_widget_t *widget, void *canvas)
-{
+static void dropdown_paint(vg_widget_t *widget, void *canvas) {
     vg_dropdown_t *dd = (vg_dropdown_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
     vgfx_window_t win = (vgfx_window_t)canvas;
@@ -91,8 +87,7 @@ static void dropdown_paint(vg_widget_t *widget, void *canvas)
     const char *label = (dd->selected_index >= 0 && dd->selected_index < dd->item_count)
                             ? dd->items[dd->selected_index]
                             : dd->placeholder;
-    if (label && dd->font)
-    {
+    if (label && dd->font) {
         float ty = widget->y + widget->height * 0.5f + dd->font_size * 0.35f;
         vg_font_draw_text(canvas,
                           dd->font,
@@ -121,8 +116,7 @@ static void dropdown_paint(vg_widget_t *widget, void *canvas)
               dd->text_color);
 
     // Draw open panel below header
-    if (dd->open && dd->item_count > 0)
-    {
+    if (dd->open && dd->item_count > 0) {
         float ih = dropdown_item_height(dd);
         float panel_h = ih * dd->item_count;
         if (panel_h > dd->dropdown_height)
@@ -141,8 +135,7 @@ static void dropdown_paint(vg_widget_t *widget, void *canvas)
         if (start_item < 0)
             start_item = 0;
 
-        for (int i = start_item; i < dd->item_count && i < start_item + visible_count + 1; i++)
-        {
+        for (int i = start_item; i < dd->item_count && i < start_item + visible_count + 1; i++) {
             float iy = py + (i - start_item) * ih;
             int32_t iy32 = (int32_t)iy;
 
@@ -151,8 +144,7 @@ static void dropdown_paint(vg_widget_t *widget, void *canvas)
             else if (i == dd->selected_index)
                 vgfx_fill_rect(win, px + 1, iy32, pw - 2, (int32_t)ih, dd->selected_bg);
 
-            if (dd->items[i] && dd->font)
-            {
+            if (dd->items[i] && dd->font) {
                 float ty2 = iy + ih * 0.7f;
                 vg_font_draw_text(canvas,
                                   dd->font,
@@ -166,8 +158,7 @@ static void dropdown_paint(vg_widget_t *widget, void *canvas)
     }
 }
 
-static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_dropdown_t *dd = (vg_dropdown_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
     (void)theme;
@@ -175,27 +166,20 @@ static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event)
     if (!widget->enabled)
         return false;
 
-    switch (event->type)
-    {
-        case VG_EVENT_CLICK:
-        {
-            if (!dd->open)
-            {
+    switch (event->type) {
+        case VG_EVENT_CLICK: {
+            if (!dd->open) {
                 dd->open = true;
                 dd->hovered_index = dd->selected_index;
                 vg_widget_set_input_capture(widget);
-            }
-            else
-            {
+            } else {
                 // Check if click is inside the panel
                 float ih = dropdown_item_height(dd);
                 float panel_top = widget->y + widget->height;
                 float rel_y = event->mouse.screen_y - panel_top + dd->scroll_y;
-                if (rel_y >= 0)
-                {
+                if (rel_y >= 0) {
                     int idx = (int)(rel_y / ih);
-                    if (idx >= 0 && idx < dd->item_count)
-                    {
+                    if (idx >= 0 && idx < dd->item_count) {
                         vg_dropdown_set_selected(dd, idx);
                     }
                 }
@@ -209,8 +193,7 @@ static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event)
         }
 
         case VG_EVENT_MOUSE_MOVE:
-            if (dd->open)
-            {
+            if (dd->open) {
                 float ih = dropdown_item_height(dd);
                 float panel_top = widget->y + widget->height;
                 float rel_y = event->mouse.screen_y - panel_top + dd->scroll_y;
@@ -225,8 +208,7 @@ static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event)
         case VG_EVENT_KEY_DOWN:
             if (!dd->open)
                 return false;
-            if (event->key.key == VG_KEY_ESCAPE)
-            {
+            if (event->key.key == VG_KEY_ESCAPE) {
                 dd->open = false;
                 dd->hovered_index = -1;
                 vg_widget_release_input_capture();
@@ -234,22 +216,19 @@ static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event)
                 event->handled = true;
                 return true;
             }
-            if (event->key.key == VG_KEY_DOWN)
-            {
+            if (event->key.key == VG_KEY_DOWN) {
                 if (dd->hovered_index < dd->item_count - 1)
                     dd->hovered_index++;
                 widget->needs_paint = true;
                 return true;
             }
-            if (event->key.key == VG_KEY_UP)
-            {
+            if (event->key.key == VG_KEY_UP) {
                 if (dd->hovered_index > 0)
                     dd->hovered_index--;
                 widget->needs_paint = true;
                 return true;
             }
-            if (event->key.key == VG_KEY_ENTER)
-            {
+            if (event->key.key == VG_KEY_ENTER) {
                 if (dd->hovered_index >= 0 && dd->hovered_index < dd->item_count)
                     vg_dropdown_set_selected(dd, dd->hovered_index);
                 dd->open = false;
@@ -266,13 +245,11 @@ static bool dropdown_handle_event(vg_widget_t *widget, vg_event_t *event)
     }
 }
 
-static bool dropdown_can_focus(vg_widget_t *widget)
-{
+static bool dropdown_can_focus(vg_widget_t *widget) {
     return widget->enabled && widget->visible;
 }
 
-vg_dropdown_t *vg_dropdown_create(vg_widget_t *parent)
-{
+vg_dropdown_t *vg_dropdown_create(vg_widget_t *parent) {
     vg_dropdown_t *dropdown = calloc(1, sizeof(vg_dropdown_t));
     if (!dropdown)
         return NULL;
@@ -294,8 +271,7 @@ vg_dropdown_t *vg_dropdown_create(vg_widget_t *parent)
     dropdown->hover_bg = 0xFF094771;
     dropdown->selected_bg = 0xFF094771;
 
-    if (parent)
-    {
+    if (parent) {
         vg_widget_add_child(parent, &dropdown->base);
     }
 
@@ -303,14 +279,12 @@ vg_dropdown_t *vg_dropdown_create(vg_widget_t *parent)
 }
 
 /// @brief Dropdown add item.
-int vg_dropdown_add_item(vg_dropdown_t *dropdown, const char *text)
-{
+int vg_dropdown_add_item(vg_dropdown_t *dropdown, const char *text) {
     if (!dropdown || !text)
         return -1;
 
     // Grow array if needed
-    if (dropdown->item_count >= dropdown->item_capacity)
-    {
+    if (dropdown->item_count >= dropdown->item_capacity) {
         int new_cap = dropdown->item_capacity * 2;
         char **new_items = realloc(dropdown->items, new_cap * sizeof(char *));
         if (!new_items)
@@ -324,39 +298,32 @@ int vg_dropdown_add_item(vg_dropdown_t *dropdown, const char *text)
 }
 
 /// @brief Dropdown remove item.
-void vg_dropdown_remove_item(vg_dropdown_t *dropdown, int index)
-{
+void vg_dropdown_remove_item(vg_dropdown_t *dropdown, int index) {
     if (!dropdown || index < 0 || index >= dropdown->item_count)
         return;
 
     free(dropdown->items[index]);
 
     // Shift remaining items
-    for (int i = index; i < dropdown->item_count - 1; i++)
-    {
+    for (int i = index; i < dropdown->item_count - 1; i++) {
         dropdown->items[i] = dropdown->items[i + 1];
     }
     dropdown->item_count--;
 
     // Adjust selected index
-    if (dropdown->selected_index == index)
-    {
+    if (dropdown->selected_index == index) {
         dropdown->selected_index = -1;
-    }
-    else if (dropdown->selected_index > index)
-    {
+    } else if (dropdown->selected_index > index) {
         dropdown->selected_index--;
     }
 }
 
 /// @brief Dropdown clear.
-void vg_dropdown_clear(vg_dropdown_t *dropdown)
-{
+void vg_dropdown_clear(vg_dropdown_t *dropdown) {
     if (!dropdown)
         return;
 
-    for (int i = 0; i < dropdown->item_count; i++)
-    {
+    for (int i = 0; i < dropdown->item_count; i++) {
         free(dropdown->items[i]);
     }
     dropdown->item_count = 0;
@@ -364,23 +331,18 @@ void vg_dropdown_clear(vg_dropdown_t *dropdown)
 }
 
 /// @brief Dropdown set selected.
-void vg_dropdown_set_selected(vg_dropdown_t *dropdown, int index)
-{
+void vg_dropdown_set_selected(vg_dropdown_t *dropdown, int index) {
     if (!dropdown)
         return;
 
     int old_index = dropdown->selected_index;
-    if (index < -1 || index >= dropdown->item_count)
-    {
+    if (index < -1 || index >= dropdown->item_count) {
         dropdown->selected_index = -1;
-    }
-    else
-    {
+    } else {
         dropdown->selected_index = index;
     }
 
-    if (old_index != dropdown->selected_index && dropdown->on_change)
-    {
+    if (old_index != dropdown->selected_index && dropdown->on_change) {
         dropdown->on_change(&dropdown->base,
                             dropdown->selected_index,
                             vg_dropdown_get_selected_text(dropdown),
@@ -389,24 +351,20 @@ void vg_dropdown_set_selected(vg_dropdown_t *dropdown, int index)
 }
 
 /// @brief Dropdown get selected.
-int vg_dropdown_get_selected(vg_dropdown_t *dropdown)
-{
+int vg_dropdown_get_selected(vg_dropdown_t *dropdown) {
     return dropdown ? dropdown->selected_index : -1;
 }
 
-const char *vg_dropdown_get_selected_text(vg_dropdown_t *dropdown)
-{
+const char *vg_dropdown_get_selected_text(vg_dropdown_t *dropdown) {
     if (!dropdown || dropdown->selected_index < 0 ||
-        dropdown->selected_index >= dropdown->item_count)
-    {
+        dropdown->selected_index >= dropdown->item_count) {
         return NULL;
     }
     return dropdown->items[dropdown->selected_index];
 }
 
 /// @brief Dropdown set placeholder.
-void vg_dropdown_set_placeholder(vg_dropdown_t *dropdown, const char *text)
-{
+void vg_dropdown_set_placeholder(vg_dropdown_t *dropdown, const char *text) {
     if (!dropdown)
         return;
     // Free existing placeholder if owned
@@ -414,8 +372,7 @@ void vg_dropdown_set_placeholder(vg_dropdown_t *dropdown, const char *text)
 }
 
 /// @brief Dropdown set font.
-void vg_dropdown_set_font(vg_dropdown_t *dropdown, vg_font_t *font, float size)
-{
+void vg_dropdown_set_font(vg_dropdown_t *dropdown, vg_font_t *font, float size) {
     if (!dropdown)
         return;
     dropdown->font = font;
@@ -425,8 +382,7 @@ void vg_dropdown_set_font(vg_dropdown_t *dropdown, vg_font_t *font, float size)
 /// @brief Dropdown set on change.
 void vg_dropdown_set_on_change(vg_dropdown_t *dropdown,
                                vg_dropdown_callback_t callback,
-                               void *user_data)
-{
+                               void *user_data) {
     if (!dropdown)
         return;
     dropdown->on_change = callback;

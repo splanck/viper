@@ -40,21 +40,14 @@
 // Internal Structure
 //=============================================================================
 
-typedef enum
-{
-    VALUE_PTR = 0,
-    VALUE_STR = 1,
-    VALUE_I64 = 2
-} ValueType;
+typedef enum { VALUE_PTR = 0, VALUE_STR = 1, VALUE_I64 = 2 } ValueType;
 
-typedef struct
-{
+typedef struct {
     int8_t evaluated;
     ValueType value_type;
     void *(*supplier)(void);
 
-    union
-    {
+    union {
         void *ptr;
         rt_string str;
         int64_t i64;
@@ -65,19 +58,15 @@ typedef struct
 // Lazy Finalizer
 //=============================================================================
 
-static void lazy_finalizer(void *obj)
-{
+static void lazy_finalizer(void *obj) {
     Lazy *l = (Lazy *)obj;
     if (!l || !l->evaluated)
         return;
-    if (l->value_type == VALUE_PTR && l->value.ptr)
-    {
+    if (l->value_type == VALUE_PTR && l->value.ptr) {
         if (rt_obj_release_check0(l->value.ptr))
             rt_obj_free(l->value.ptr);
         l->value.ptr = NULL;
-    }
-    else if (l->value_type == VALUE_STR && l->value.str)
-    {
+    } else if (l->value_type == VALUE_STR && l->value.str) {
         rt_str_release_maybe(l->value.str);
         l->value.str = NULL;
     }
@@ -87,8 +76,7 @@ static void lazy_finalizer(void *obj)
 // Lazy Creation
 //=============================================================================
 
-void *rt_lazy_new(void *(*supplier)(void))
-{
+void *rt_lazy_new(void *(*supplier)(void)) {
     Lazy *l = (Lazy *)rt_obj_new_i64(0, (int64_t)sizeof(Lazy));
 
     l->evaluated = 0;
@@ -99,8 +87,7 @@ void *rt_lazy_new(void *(*supplier)(void))
     return l;
 }
 
-void *rt_lazy_of(void *value)
-{
+void *rt_lazy_of(void *value) {
     Lazy *l = (Lazy *)rt_obj_new_i64(0, (int64_t)sizeof(Lazy));
 
     l->evaluated = 1;
@@ -111,8 +98,7 @@ void *rt_lazy_of(void *value)
     return l;
 }
 
-void *rt_lazy_of_str(rt_string value)
-{
+void *rt_lazy_of_str(rt_string value) {
     Lazy *l = (Lazy *)rt_obj_new_i64(0, (int64_t)sizeof(Lazy));
 
     l->evaluated = 1;
@@ -123,8 +109,7 @@ void *rt_lazy_of_str(rt_string value)
     return l;
 }
 
-void *rt_lazy_of_i64(int64_t value)
-{
+void *rt_lazy_of_i64(int64_t value) {
     Lazy *l = (Lazy *)rt_obj_new_i64(0, (int64_t)sizeof(Lazy));
 
     l->evaluated = 1;
@@ -139,22 +124,19 @@ void *rt_lazy_of_i64(int64_t value)
 // Lazy Access
 //=============================================================================
 
-static void evaluate(Lazy *l)
-{
+static void evaluate(Lazy *l) {
     // Use atomic load/store for thread safety on ARM64 and other weak-memory platforms.
     // Double evaluation is possible but benign (Lazy contract assumes pure suppliers).
     if (__atomic_load_n(&l->evaluated, __ATOMIC_ACQUIRE))
         return;
 
-    if (l->supplier)
-    {
+    if (l->supplier) {
         l->value.ptr = l->supplier();
     }
     __atomic_store_n(&l->evaluated, 1, __ATOMIC_RELEASE);
 }
 
-void *rt_lazy_get(void *obj)
-{
+void *rt_lazy_get(void *obj) {
     if (!obj)
         return NULL;
     Lazy *l = (Lazy *)obj;
@@ -166,16 +148,14 @@ void *rt_lazy_get(void *obj)
 /// @brief Perform lazy get str operation.
 /// @param obj
 /// @return Result value.
-rt_string rt_lazy_get_str(void *obj)
-{
+rt_string rt_lazy_get_str(void *obj) {
     if (!obj)
         return rt_const_cstr("");
     Lazy *l = (Lazy *)obj;
 
     evaluate(l);
 
-    if (l->value_type == VALUE_STR)
-    {
+    if (l->value_type == VALUE_STR) {
         return l->value.str;
     }
     return rt_const_cstr("");
@@ -184,16 +164,14 @@ rt_string rt_lazy_get_str(void *obj)
 /// @brief Perform lazy get i64 operation.
 /// @param obj
 /// @return Result value.
-int64_t rt_lazy_get_i64(void *obj)
-{
+int64_t rt_lazy_get_i64(void *obj) {
     if (!obj)
         return 0;
     Lazy *l = (Lazy *)obj;
 
     evaluate(l);
 
-    if (l->value_type == VALUE_I64)
-    {
+    if (l->value_type == VALUE_I64) {
         return l->value.i64;
     }
     return 0;
@@ -206,8 +184,7 @@ int64_t rt_lazy_get_i64(void *obj)
 /// @brief Perform lazy is evaluated operation.
 /// @param obj
 /// @return Result value.
-int8_t rt_lazy_is_evaluated(void *obj)
-{
+int8_t rt_lazy_is_evaluated(void *obj) {
     if (!obj)
         return 1;
     Lazy *l = (Lazy *)obj;
@@ -216,8 +193,7 @@ int8_t rt_lazy_is_evaluated(void *obj)
 
 /// @brief Perform lazy force operation.
 /// @param obj
-void rt_lazy_force(void *obj)
-{
+void rt_lazy_force(void *obj) {
     if (!obj)
         return;
     Lazy *l = (Lazy *)obj;
@@ -228,16 +204,14 @@ void rt_lazy_force(void *obj)
 // Transformation
 //=============================================================================
 
-void *rt_lazy_map(void *obj, void *(*fn)(void *))
-{
+void *rt_lazy_map(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return obj;
 
     Lazy *l = (Lazy *)obj;
 
     // If already evaluated, apply fn immediately
-    if (l->evaluated)
-    {
+    if (l->evaluated) {
         void *new_value = fn(l->value.ptr);
         return rt_lazy_of(new_value);
     }
@@ -250,8 +224,7 @@ void *rt_lazy_map(void *obj, void *(*fn)(void *))
     return rt_lazy_of(new_value);
 }
 
-void *rt_lazy_flat_map(void *obj, void *(*fn)(void *))
-{
+void *rt_lazy_flat_map(void *obj, void *(*fn)(void *)) {
     if (!obj || !fn)
         return obj;
 

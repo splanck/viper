@@ -26,8 +26,7 @@
 
 #include <utility>
 
-namespace viper::pass
-{
+namespace viper::pass {
 
 /// @brief Register a pass implementation under a unique identifier.
 /// @details Pass callbacks are stored by value so they remain valid for the
@@ -35,8 +34,7 @@ namespace viper::pass
 ///          existing callback, allowing tests to override passes in isolation.
 /// @param id Stable identifier used when building pipelines.
 /// @param callback Callable that executes the pass and returns success status.
-void PassManager::registerPass(std::string id, PassCallback callback)
-{
+void PassManager::registerPass(std::string id, PassCallback callback) {
     passes_[std::move(id)] = std::move(callback);
 }
 
@@ -44,8 +42,7 @@ void PassManager::registerPass(std::string id, PassCallback callback)
 /// @details The hook receives the pass identifier, enabling drivers to print the
 ///          IR or log progress.  Passing an empty callable clears the hook.
 /// @param hook Callback invoked prior to every pass execution.
-void PassManager::setPrintBeforeHook(PrintHook hook)
-{
+void PassManager::setPrintBeforeHook(PrintHook hook) {
     printBefore_ = std::move(hook);
 }
 
@@ -55,8 +52,7 @@ void PassManager::setPrintBeforeHook(PrintHook hook)
 ///          after transformations.  Assigning an empty callable disables the
 ///          instrumentation.
 /// @param hook Callback invoked after each pass executes successfully.
-void PassManager::setPrintAfterHook(PrintHook hook)
-{
+void PassManager::setPrintAfterHook(PrintHook hook) {
     printAfter_ = std::move(hook);
 }
 
@@ -65,8 +61,7 @@ void PassManager::setPrintAfterHook(PrintHook hook)
 ///          @c true when the IR remains valid.  Returning @c false terminates the
 ///          pipeline early, matching the behaviour of the historical manager.
 /// @param hook Callable that verifies the IR after each pass.
-void PassManager::setVerifyEachHook(VerifyHook hook)
-{
+void PassManager::setVerifyEachHook(VerifyHook hook) {
     verifyEach_ = std::move(hook);
 }
 
@@ -77,10 +72,8 @@ void PassManager::setVerifyEachHook(VerifyHook hook)
 ///          return @c false.  Successful completion yields @c true.
 /// @param pipeline Ordered sequence of pass identifiers to execute.
 /// @return @c true when every pass and verifier succeeds; otherwise @c false.
-bool PassManager::runPipeline(const Pipeline &pipeline) const
-{
-    for (const auto &passId : pipeline)
-    {
+bool PassManager::runPipeline(const Pipeline &pipeline) const {
+    for (const auto &passId : pipeline) {
         if (printBefore_)
             printBefore_(passId);
 

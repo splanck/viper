@@ -25,8 +25,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     // In standard BASIC, backslash is a regular character, not an escape.
     // So "HELLO\nWORLD" should be 12 characters: H E L L O \ n W O R L D
     const std::string src = "10 PRINT \"PATH\\TO\\FILE\"\n"
@@ -43,16 +42,14 @@ int main()
     il::core::Module module = lowerer.lowerProgram(*program);
 
     std::unordered_map<std::string, std::string> values;
-    for (const auto &global : module.globals)
-    {
+    for (const auto &global : module.globals) {
         values[global.name] = global.init;
     }
 
     // Verify backslash is treated as literal character
     bool foundPath = false;
     bool foundBackslash = false;
-    for (const auto &entry : values)
-    {
+    for (const auto &entry : values) {
         // "PATH\\TO\\FILE" in C++ is "PATH\TO\FILE" as literal string
         if (entry.second == "PATH\\TO\\FILE")
             foundPath = true;

@@ -20,11 +20,9 @@
 #include <iostream>
 #include <string_view>
 
-namespace
-{
+namespace {
 
-void printUsage()
-{
+void printUsage() {
     std::cerr << "ilrun v" << VIPER_VERSION_STR << " - IL Program Runner\n"
               << "\n"
               << "Usage: ilrun [options] <file.il>\n"
@@ -55,8 +53,7 @@ void printUsage()
               << "  - See documentation for debugging features\n";
 }
 
-void printVersion()
-{
+void printVersion() {
     std::cout << "ilrun v" << VIPER_VERSION_STR << "\n";
     std::cout << "IL Program Runner\n";
     std::cout << "IL version: " << VIPER_IL_VERSION_STR << "\n";
@@ -72,23 +69,19 @@ void printVersion()
 ///
 /// @details Simple wrapper that delegates to cmdRunIL with all arguments.
 ///          Provides a cleaner interface than `ilc -run` for users.
-int main(int argc, char **argv)
-{
-    if (argc < 2)
-    {
+int main(int argc, char **argv) {
+    if (argc < 2) {
         printUsage();
         return 1;
     }
 
     // Handle help/version flags
     std::string_view arg1 = argv[1];
-    if (arg1 == "-h" || arg1 == "--help")
-    {
+    if (arg1 == "-h" || arg1 == "--help") {
         printUsage();
         return 0;
     }
-    if (arg1 == "--version")
-    {
+    if (arg1 == "--version") {
         printVersion();
         return 0;
     }

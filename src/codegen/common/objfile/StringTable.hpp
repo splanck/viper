@@ -26,15 +26,13 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::objfile
-{
+namespace viper::codegen::objfile {
 
 /// A serializable string table for object file formats.
 ///
 /// Accumulates NUL-terminated strings and returns byte offsets.
 /// ELF convention: offset 0 is the empty string (single NUL byte).
-class StringTable
-{
+class StringTable {
   public:
     /// Initialize with a single NUL byte at offset 0 (empty string).
     StringTable();
@@ -46,14 +44,12 @@ class StringTable
     uint32_t find(std::string_view str) const;
 
     /// Raw table bytes (NUL-separated strings).
-    const std::vector<char> &data() const
-    {
+    const std::vector<char> &data() const {
         return data_;
     }
 
     /// Total byte size of the table.
-    uint32_t size() const
-    {
+    uint32_t size() const {
         return static_cast<uint32_t>(data_.size());
     }
 

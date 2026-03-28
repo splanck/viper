@@ -12,31 +12,29 @@
 
 #include "tests/TestHarness.hpp"
 
-extern "C"
-{
-    void *rt_animstate_new(void);
-    void rt_animstate_add_state(void *asm_,
-                                int64_t state_id,
-                                int64_t start_frame,
-                                int64_t end_frame,
-                                int64_t frame_duration,
-                                int8_t loop);
-    int8_t rt_animstate_set_initial(void *asm_, int64_t state_id);
-    int8_t rt_animstate_transition(void *asm_, int64_t state_id);
-    void rt_animstate_update(void *asm_);
-    void rt_animstate_clear_flags(void *asm_);
-    int64_t rt_animstate_current_state(void *asm_);
-    int64_t rt_animstate_previous_state(void *asm_);
-    int8_t rt_animstate_just_entered(void *asm_);
-    int8_t rt_animstate_just_exited(void *asm_);
-    int64_t rt_animstate_frames_in_state(void *asm_);
-    int64_t rt_animstate_current_frame(void *asm_);
-    int8_t rt_animstate_is_anim_finished(void *asm_);
-    int64_t rt_animstate_progress(void *asm_);
+extern "C" {
+void *rt_animstate_new(void);
+void rt_animstate_add_state(void *asm_,
+                            int64_t state_id,
+                            int64_t start_frame,
+                            int64_t end_frame,
+                            int64_t frame_duration,
+                            int8_t loop);
+int8_t rt_animstate_set_initial(void *asm_, int64_t state_id);
+int8_t rt_animstate_transition(void *asm_, int64_t state_id);
+void rt_animstate_update(void *asm_);
+void rt_animstate_clear_flags(void *asm_);
+int64_t rt_animstate_current_state(void *asm_);
+int64_t rt_animstate_previous_state(void *asm_);
+int8_t rt_animstate_just_entered(void *asm_);
+int8_t rt_animstate_just_exited(void *asm_);
+int64_t rt_animstate_frames_in_state(void *asm_);
+int64_t rt_animstate_current_frame(void *asm_);
+int8_t rt_animstate_is_anim_finished(void *asm_);
+int64_t rt_animstate_progress(void *asm_);
 }
 
-TEST(AnimState, CreateAndInitial)
-{
+TEST(AnimState, CreateAndInitial) {
     void *a = rt_animstate_new();
     ASSERT_TRUE(a != nullptr);
 
@@ -55,8 +53,7 @@ TEST(AnimState, CreateAndInitial)
     EXPECT_EQ(rt_animstate_just_entered(a), 1);
 }
 
-TEST(AnimState, TransitionChangesClip)
-{
+TEST(AnimState, TransitionChangesClip) {
     void *a = rt_animstate_new();
     rt_animstate_add_state(a, 0, 0, 3, 6, 1); // IDLE
     rt_animstate_add_state(a, 1, 4, 7, 4, 1); // WALK
@@ -75,8 +72,7 @@ TEST(AnimState, TransitionChangesClip)
     EXPECT_EQ(rt_animstate_transition(a, 1), 0);
 }
 
-TEST(AnimState, UpdateAdvancesFrame)
-{
+TEST(AnimState, UpdateAdvancesFrame) {
     void *a = rt_animstate_new();
     // Single frame duration = 2 (advance every 2 updates)
     rt_animstate_add_state(a, 0, 10, 12, 2, 1);
@@ -100,8 +96,7 @@ TEST(AnimState, UpdateAdvancesFrame)
     EXPECT_EQ(rt_animstate_current_frame(a), 10);
 }
 
-TEST(AnimState, OneShotFinishes)
-{
+TEST(AnimState, OneShotFinishes) {
     void *a = rt_animstate_new();
     // One-shot clip: frames 0-2, duration 1, no loop
     rt_animstate_add_state(a, 0, 0, 2, 1, 0);
@@ -121,8 +116,7 @@ TEST(AnimState, OneShotFinishes)
     EXPECT_EQ(rt_animstate_current_frame(a), 2); // stays at last frame
 }
 
-TEST(AnimState, FramesInStateAndProgress)
-{
+TEST(AnimState, FramesInStateAndProgress) {
     void *a = rt_animstate_new();
     rt_animstate_add_state(a, 0, 0, 3, 1, 1);
     rt_animstate_set_initial(a, 0);
@@ -137,8 +131,7 @@ TEST(AnimState, FramesInStateAndProgress)
     EXPECT_EQ(rt_animstate_progress(a), 66);
 }
 
-TEST(AnimState, ClearFlags)
-{
+TEST(AnimState, ClearFlags) {
     void *a = rt_animstate_new();
     rt_animstate_add_state(a, 0, 0, 3, 6, 1);
     rt_animstate_add_state(a, 1, 4, 7, 4, 1);
@@ -156,8 +149,7 @@ TEST(AnimState, ClearFlags)
     EXPECT_EQ(rt_animstate_just_entered(a), 0);
 }
 
-TEST(AnimState, TransitionResetsAnimation)
-{
+TEST(AnimState, TransitionResetsAnimation) {
     void *a = rt_animstate_new();
     rt_animstate_add_state(a, 0, 0, 3, 1, 1);
     rt_animstate_add_state(a, 1, 10, 15, 1, 1);
@@ -175,8 +167,7 @@ TEST(AnimState, TransitionResetsAnimation)
     EXPECT_EQ(rt_animstate_frames_in_state(a), 0);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

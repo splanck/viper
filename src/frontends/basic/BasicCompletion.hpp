@@ -28,12 +28,10 @@
 #include <string_view>
 #include <vector>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Category of a completion item (matches Zia's CompletionKind for LSP mapping).
-enum class CompletionKind : uint8_t
-{
+enum class CompletionKind : uint8_t {
     Keyword = 0,
     Snippet = 1,
     Variable = 2,
@@ -50,8 +48,7 @@ enum class CompletionKind : uint8_t
 };
 
 /// @brief A single code-completion suggestion.
-struct CompletionItem
-{
+struct CompletionItem {
     std::string label;      ///< Text shown in the popup list
     std::string insertText; ///< Text inserted into the editor buffer
     CompletionKind kind{CompletionKind::Variable};
@@ -64,8 +61,7 @@ struct CompletionItem
 /// `complete()` accepts a full source file and a 1-based cursor position,
 /// returning ranked suggestions. A one-entry LRU cache avoids re-parsing
 /// on consecutive keystrokes.
-class BasicCompletionEngine
-{
+class BasicCompletionEngine {
   public:
     BasicCompletionEngine();
     ~BasicCompletionEngine();
@@ -88,15 +84,13 @@ class BasicCompletionEngine
 
   private:
     /// @brief Trigger kind for completion dispatch.
-    enum class TriggerKind : uint8_t
-    {
+    enum class TriggerKind : uint8_t {
         CtrlSpace,    ///< Explicit request — provide all in-scope symbols
         MemberAccess, ///< Dot ('.') — enumerate members of LHS object
     };
 
     /// @brief Parsed context at the completion cursor.
-    struct Context
-    {
+    struct Context {
         TriggerKind trigger{TriggerKind::CtrlSpace};
         std::string triggerExpr; ///< Expression left of '.'
         std::string prefix;      ///< Typed prefix after trigger
@@ -124,8 +118,7 @@ class BasicCompletionEngine
     // --- Cache ---
     static uint64_t fnv1a(std::string_view data);
 
-    struct Cache
-    {
+    struct Cache {
         uint64_t hash{0};
         std::string filePath;
         std::unique_ptr<BasicAnalysisResult> result;

@@ -19,17 +19,14 @@
 #include <cstddef>
 #include <string_view>
 
-int main()
-{
+int main() {
     const auto &cat = il::runtime::runtimeClassCatalog();
     assert(cat.size() >= 1);
 
     // Find Viper.String in the catalog (order-independent)
     const il::runtime::RuntimeClass *stringCls = nullptr;
-    for (const auto &cls : cat)
-    {
-        if (std::string_view(cls.qname) == std::string_view("Viper.String"))
-        {
+    for (const auto &cls : cat) {
+        if (std::string_view(cls.qname) == std::string_view("Viper.String")) {
             stringCls = &cls;
             break;
         }
@@ -40,8 +37,7 @@ int main()
 
     // Find Length and IsEmpty properties (order-independent)
     bool hasLength = false, hasIsEmpty = false;
-    for (const auto &prop : stringCls->properties)
-    {
+    for (const auto &prop : stringCls->properties) {
         if (std::string_view(prop.name) == std::string_view("Length"))
             hasLength = true;
         if (std::string_view(prop.name) == std::string_view("IsEmpty"))

@@ -31,10 +31,8 @@ using namespace viper::codegen::linker;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -45,8 +43,7 @@ static void check(bool cond, const char *msg, int line)
 /// Helper: create a minimal ObjFile with named sections.
 static ObjFile makeObj(const std::string &name,
                        const std::vector<std::string> &secNames,
-                       size_t dataSize = 16)
-{
+                       size_t dataSize = 16) {
     ObjFile obj;
     obj.name = name;
     obj.format = ObjFileFormat::ELF;
@@ -54,8 +51,7 @@ static ObjFile makeObj(const std::string &name,
     // Section 0: null.
     obj.sections.push_back({});
 
-    for (const auto &sn : secNames)
-    {
+    for (const auto &sn : secNames) {
         ObjSection sec;
         sec.name = sn;
         sec.data.resize(dataSize, 0xCC);
@@ -77,8 +73,7 @@ static void addSymbol(ObjFile &obj,
                       const std::string &name,
                       uint32_t secIdx,
                       ObjSymbol::Binding binding,
-                      size_t offset = 0)
-{
+                      size_t offset = 0) {
     ObjSymbol sym;
     sym.name = name;
     sym.sectionIndex = secIdx;
@@ -87,8 +82,7 @@ static void addSymbol(ObjFile &obj,
     obj.symbols.push_back(sym);
 }
 
-int main()
-{
+int main() {
     // --- Single object: global symbol resolves ---
     {
         auto obj = makeObj("main.o", {".text"});
@@ -405,8 +399,7 @@ int main()
     }
 
     // --- Result ---
-    if (gFail == 0)
-    {
+    if (gFail == 0) {
         std::cout << "All SymbolResolver tests passed.\n";
         return EXIT_SUCCESS;
     }

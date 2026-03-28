@@ -23,8 +23,7 @@
 #include <cstddef>
 #include <string_view>
 
-namespace il::frontends::basic::type_conv
-{
+namespace il::frontends::basic::type_conv {
 
 /// @brief Convert a BASIC AST scalar type to an IL core type.
 /// @details Returns the canonical IL kind used by the lowering pipeline for the
@@ -32,11 +31,9 @@ namespace il::frontends::basic::type_conv
 ///          I64 to keep lowering resilient.
 /// @param ty BASIC AST type enumerator.
 /// @return Corresponding IL core type.
-il::core::Type astToIlType(::il::frontends::basic::Type ty) noexcept
-{
+il::core::Type astToIlType(::il::frontends::basic::Type ty) noexcept {
     using IlType = il::core::Type;
-    switch (ty)
-    {
+    switch (ty) {
         case ::il::frontends::basic::Type::I64:
             return IlType(IlType::Kind::I64);
         case ::il::frontends::basic::Type::F64:
@@ -55,12 +52,10 @@ il::core::Type astToIlType(::il::frontends::basic::Type ty) noexcept
 ///          as 64-bit, booleans as 1 byte, and integers as 8 bytes.
 /// @param type BASIC field type.
 /// @return Size in bytes for the type's storage representation.
-std::size_t getFieldSize(::il::frontends::basic::Type type) noexcept
-{
+std::size_t getFieldSize(::il::frontends::basic::Type type) noexcept {
     constexpr std::size_t kPointerSize = sizeof(void *);
 
-    switch (type)
-    {
+    switch (type) {
         case ::il::frontends::basic::Type::Str:
             return kPointerSize;
         case ::il::frontends::basic::Type::F64:
@@ -73,11 +68,9 @@ std::size_t getFieldSize(::il::frontends::basic::Type type) noexcept
     }
 }
 
-il::core::Type::Kind basicTypeToIlKind(BasicType t) noexcept
-{
+il::core::Type::Kind basicTypeToIlKind(BasicType t) noexcept {
     using Kind = il::core::Type::Kind;
-    switch (t)
-    {
+    switch (t) {
         case BasicType::String:
             return Kind::Str;
         case BasicType::Float:
@@ -95,8 +88,7 @@ il::core::Type::Kind basicTypeToIlKind(BasicType t) noexcept
     }
 }
 
-il::core::Type runtimeScalarToType(std::string_view token) noexcept
-{
+il::core::Type runtimeScalarToType(std::string_view token) noexcept {
     using IlType = il::core::Type;
     if (token == "i64")
         return IlType(IlType::Kind::I64);

@@ -16,8 +16,7 @@
 
 #include "il/runtime/signatures/Registry.hpp"
 
-namespace il::runtime::signatures
-{
+namespace il::runtime::signatures {
 
 /// @brief OOP signatures are registered via extern registry, not here.
 /// @details OOP runtime functions like rt_get_class_vtable, rt_register_class_*,
@@ -25,8 +24,7 @@ namespace il::runtime::signatures
 ///          registered with the VM's extern registry during initialization.
 ///          They don't use the RuntimeDescriptor table, so registering them
 ///          here would cause validation failures.
-void register_oop_signatures()
-{
+void register_oop_signatures() {
     // Intentionally empty - OOP functions use extern registry
 }
 

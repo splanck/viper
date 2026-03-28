@@ -41,13 +41,11 @@
 #include "support/source_location.hpp"
 #include <string>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 /// @brief All token kinds recognized by the BASIC lexer.
 /// @details Kinds are organized into markers, literals, identifiers,
 /// keywords, operators, and punctuation to guide later parsing stages.
-enum class TokenKind
-{
+enum class TokenKind {
 #define TOKEN(K, S) K,
 #include "frontends/basic/TokenKinds.def"
 #undef TOKEN
@@ -58,8 +56,7 @@ enum class TokenKind
 /// @brief A lexical token produced by the BASIC lexer.
 /// @details Tokens are value types that own their lexeme and track the
 /// starting source location.
-struct Token
-{
+struct Token {
     /// @brief Classification of this token.
     TokenKind kind;
 

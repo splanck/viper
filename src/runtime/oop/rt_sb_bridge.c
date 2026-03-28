@@ -35,14 +35,12 @@
 // The StringBuilder object layout:
 // [0..7]   : vptr (for vtable)
 // [8..]    : embedded rt_string_builder struct
-typedef struct
-{
+typedef struct {
     void *vptr;                // vtable pointer (8 bytes)
     rt_string_builder builder; // embedded builder state
 } StringBuilder;
 
-static void rt_sb_finalize(void *obj)
-{
+static void rt_sb_finalize(void *obj) {
     if (!obj)
         return;
     StringBuilder *sb = (StringBuilder *)obj;
@@ -57,15 +55,13 @@ static void rt_sb_finalize(void *obj)
 ///          initialized in-place so callers receive a ready-to-use object.
 ///
 /// @return Opaque pointer to the created object or NULL on allocation failure.
-void *rt_sb_new(void)
-{
+void *rt_sb_new(void) {
     // Allocate enough space for vptr + embedded builder
     const int64_t kClassId = 0;
     const int64_t kObjectSize = sizeof(StringBuilder);
 
     StringBuilder *sb = (StringBuilder *)rt_obj_new_i64(kClassId, kObjectSize);
-    if (sb)
-    {
+    if (sb) {
         // Initialize the embedded builder
         rt_sb_init(&sb->builder);
         rt_obj_set_finalizer(sb, rt_sb_finalize);

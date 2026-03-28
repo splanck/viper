@@ -22,11 +22,9 @@
 #include <unordered_map>
 #include <vector>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
-namespace lowering
-{
+namespace lowering {
 
 const std::array<RuleSpec, 51> kLoweringRuleTable = {
     // === Arithmetic Operations ===
@@ -588,8 +586,7 @@ const std::array<RuleSpec, 51> kLoweringRuleTable = {
 
 } // namespace lowering
 
-namespace
-{
+namespace {
 
 using lowering::hasFlag;
 using lowering::OperandKindPattern;
@@ -603,14 +600,11 @@ using lowering::RuleSpec;
 ///          those referenced by the declarative lowering table.
 /// @param value Operand extracted from an IL instruction.
 /// @return Operand kind classification used by the rule engine.
-OperandKindPattern classifyOperand(const ILValue &value) noexcept
-{
-    if (value.kind == ILValue::Kind::LABEL)
-    {
+OperandKindPattern classifyOperand(const ILValue &value) noexcept {
+    if (value.kind == ILValue::Kind::LABEL) {
         return OperandKindPattern::Label;
     }
-    if (value.id < 0)
-    {
+    if (value.id < 0) {
         return OperandKindPattern::Immediate;
     }
     return OperandKindPattern::Value;
@@ -623,39 +617,31 @@ OperandKindPattern classifyOperand(const ILValue &value) noexcept
 /// @param shape Operand requirements captured in the lowering rule.
 /// @param instr Instruction whose operands are being tested.
 /// @return True when all mandatory constraints are met.
-bool matchesOperandPattern(const lowering::OperandShape &shape, const ILInstr &instr) noexcept
-{
+bool matchesOperandPattern(const lowering::OperandShape &shape, const ILInstr &instr) noexcept {
     const std::size_t arity = instr.ops.size();
-    if (arity < shape.minArity)
-    {
+    if (arity < shape.minArity) {
         return false;
     }
-    if (shape.maxArity != std::numeric_limits<std::uint8_t>::max() && arity > shape.maxArity)
-    {
+    if (shape.maxArity != std::numeric_limits<std::uint8_t>::max() && arity > shape.maxArity) {
         return false;
     }
 
     const std::size_t checkCount = std::min<std::size_t>(shape.kindCount, arity);
-    for (std::size_t idx = 0; idx < checkCount; ++idx)
-    {
+    for (std::size_t idx = 0; idx < checkCount; ++idx) {
         const OperandKindPattern expected = shape.kinds[idx];
-        if (expected == OperandKindPattern::Any)
-        {
+        if (expected == OperandKindPattern::Any) {
             continue;
         }
 
         const OperandKindPattern actual = classifyOperand(instr.ops[idx]);
-        if (expected == OperandKindPattern::Value)
-        {
-            if (actual == OperandKindPattern::Label)
-            {
+        if (expected == OperandKindPattern::Value) {
+            if (actual == OperandKindPattern::Label) {
                 return false;
             }
             continue;
         }
 
-        if (expected != actual)
-        {
+        if (expected != actual) {
             return false;
         }
     }
@@ -669,17 +655,14 @@ bool matchesOperandPattern(const lowering::OperandShape &shape, const ILInstr &i
 /// @param spec Rule specification to evaluate.
 /// @param opcode Opcode mnemonic from the instruction.
 /// @return True when the opcode falls within the rule's domain.
-bool opcodeMatches(const RuleSpec &spec, std::string_view opcode) noexcept
-{
-    if (hasFlag(spec.flags, RuleFlags::Prefix))
-    {
+bool opcodeMatches(const RuleSpec &spec, std::string_view opcode) noexcept {
+    if (hasFlag(spec.flags, RuleFlags::Prefix)) {
         return opcode.starts_with(spec.opcode);
     }
     return opcode == spec.opcode;
 }
 
-struct DispatchTables
-{
+struct DispatchTables {
     std::unordered_map<std::string_view, std::vector<const RuleSpec *>> exact{};
     std::vector<const RuleSpec *> prefix{};
 };
@@ -689,17 +672,12 @@ struct DispatchTables
 ///          groups so that hot-path lookups can avoid scanning unrelated rules.
 ///          The resulting structure is consumed by @ref dispatchTables().
 /// @return Aggregated dispatch tables ready for reuse across lookups.
-DispatchTables buildDispatchTables()
-{
+DispatchTables buildDispatchTables() {
     DispatchTables tables{};
-    for (const auto &spec : lowering::kLoweringRuleTable)
-    {
-        if (hasFlag(spec.flags, RuleFlags::Prefix))
-        {
+    for (const auto &spec : lowering::kLoweringRuleTable) {
+        if (hasFlag(spec.flags, RuleFlags::Prefix)) {
             tables.prefix.push_back(&spec);
-        }
-        else
-        {
+        } else {
             tables.exact[spec.opcode].push_back(&spec);
         }
     }
@@ -711,8 +689,7 @@ DispatchTables buildDispatchTables()
 ///          returns the cached instance on subsequent invocations.  Thread-safe
 ///          initialisation is guaranteed by the C++ static initialisation rules.
 /// @return Reference to the cached dispatch tables.
-const DispatchTables &dispatchTables()
-{
+const DispatchTables &dispatchTables() {
     static const DispatchTables tables = buildDispatchTables();
     return tables;
 }
@@ -725,10 +702,8 @@ const DispatchTables &dispatchTables()
 /// @param spec Candidate rule specification.
 /// @param instr Instruction being lowered.
 /// @return True when the rule constraints are satisfied.
-bool matchesRuleSpec(const lowering::RuleSpec &spec, const ILInstr &instr)
-{
-    if (!opcodeMatches(spec, instr.opcode))
-    {
+bool matchesRuleSpec(const lowering::RuleSpec &spec, const ILInstr &instr) {
+    if (!opcodeMatches(spec, instr.opcode)) {
         return false;
     }
     return matchesOperandPattern(spec.operands, instr);
@@ -739,26 +714,20 @@ bool matchesRuleSpec(const lowering::RuleSpec &spec, const ILInstr &instr)
 ///          returning as soon as a compatible candidate is identified.
 /// @param instr Instruction that requires a lowering rule.
 /// @return Pointer to the matching rule or nullptr if none applies.
-const lowering::RuleSpec *lookupRuleSpec(const ILInstr &instr)
-{
+const lowering::RuleSpec *lookupRuleSpec(const ILInstr &instr) {
     const auto &tables = dispatchTables();
 
-    if (const auto it = tables.exact.find(instr.opcode); it != tables.exact.end())
-    {
-        for (const auto *candidate : it->second)
-        {
-            if (matchesOperandPattern(candidate->operands, instr))
-            {
+    if (const auto it = tables.exact.find(instr.opcode); it != tables.exact.end()) {
+        for (const auto *candidate : it->second) {
+            if (matchesOperandPattern(candidate->operands, instr)) {
                 return candidate;
             }
         }
     }
 
-    for (const auto *candidate : tables.prefix)
-    {
+    for (const auto *candidate : tables.prefix) {
         if (opcodeMatches(*candidate, instr.opcode) &&
-            matchesOperandPattern(candidate->operands, instr))
-        {
+            matchesOperandPattern(candidate->operands, instr)) {
             return candidate;
         }
     }

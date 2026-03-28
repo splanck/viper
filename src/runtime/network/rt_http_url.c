@@ -42,8 +42,7 @@ extern void rt_trap_net(const char *msg, int err_code);
 //=============================================================================
 
 /// @brief URL structure.
-typedef struct rt_url
-{
+typedef struct rt_url {
     char *scheme;   // URL scheme (e.g., "http", "https")
     char *user;     // Username (optional)
     char *pass;     // Password (optional)
@@ -56,8 +55,7 @@ typedef struct rt_url
 
 /// @brief Get default port for a scheme.
 /// @return Default port or 0 if unknown.
-static int64_t default_port_for_scheme(const char *scheme)
-{
+static int64_t default_port_for_scheme(const char *scheme) {
     if (!scheme)
         return 0;
     if (strcmp(scheme, "http") == 0)
@@ -88,8 +86,7 @@ static int64_t default_port_for_scheme(const char *scheme)
 }
 
 /// @brief Check if character is unreserved (RFC 3986).
-static bool is_unreserved(char c)
-{
+static bool is_unreserved(char c) {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
            c == '.' || c == '_' || c == '~';
 }
@@ -98,8 +95,7 @@ static bool is_unreserved(char c)
 
 /// @brief Percent-encode a string.
 /// @return Allocated string, caller must free.
-static char *percent_encode(const char *str, bool encode_slash)
-{
+static char *percent_encode(const char *str, bool encode_slash) {
     if (!str)
         return strdup("");
 
@@ -112,15 +108,11 @@ static char *percent_encode(const char *str, bool encode_slash)
         return NULL;
 
     char *p = result;
-    for (size_t i = 0; i < len; i++)
-    {
+    for (size_t i = 0; i < len; i++) {
         char c = str[i];
-        if (is_unreserved(c) || (!encode_slash && c == '/'))
-        {
+        if (is_unreserved(c) || (!encode_slash && c == '/')) {
             *p++ = c;
-        }
-        else
-        {
+        } else {
             *p++ = '%';
             *p++ = rt_hex_chars_upper[(unsigned char)c >> 4];
             *p++ = rt_hex_chars_upper[(unsigned char)c & 0x0F];
@@ -132,8 +124,7 @@ static char *percent_encode(const char *str, bool encode_slash)
 
 /// @brief Percent-decode a string.
 /// @return Allocated string, caller must free.
-static char *percent_decode(const char *str)
-{
+static char *percent_decode(const char *str) {
     if (!str)
         return strdup("");
 
@@ -143,17 +134,13 @@ static char *percent_decode(const char *str)
         return NULL;
 
     char *p = result;
-    for (size_t i = 0; i < len; i++)
-    {
-        if (str[i] == '%' && i + 2 < len)
-        {
+    for (size_t i = 0; i < len; i++) {
+        if (str[i] == '%' && i + 2 < len) {
             int high = rt_hex_digit_value(str[i + 1]);
             int low = rt_hex_digit_value(str[i + 2]);
-            if (high >= 0 && low >= 0)
-            {
+            if (high >= 0 && low >= 0) {
                 char decoded = (char)((high << 4) | low);
-                if (decoded == '\0')
-                {
+                if (decoded == '\0') {
                     // Reject %00 NUL byte injection — pass through un-decoded
                     *p++ = '%';
                     continue;
@@ -162,9 +149,7 @@ static char *percent_decode(const char *str)
                 i += 2;
                 continue;
             }
-        }
-        else if (str[i] == '+')
-        {
+        } else if (str[i] == '+') {
             // Plus is space in query strings
             *p++ = ' ';
             continue;
@@ -176,8 +161,7 @@ static char *percent_decode(const char *str)
 }
 
 /// @brief Duplicate a string safely (handles NULL).
-static char *safe_strdup(const char *str)
-{
+static char *safe_strdup(const char *str) {
     return str ? strdup(str) : NULL;
 }
 
@@ -185,8 +169,7 @@ static void free_url(rt_url_t *url);
 
 /// @brief Internal URL parsing.
 /// @return 0 on success, -1 on error.
-static int parse_url_full(const char *url_str, rt_url_t *result)
-{
+static int parse_url_full(const char *url_str, rt_url_t *result) {
     memset(result, 0, sizeof(*result));
 
     if (!url_str || *url_str == '\0')
@@ -197,8 +180,7 @@ static int parse_url_full(const char *url_str, rt_url_t *result)
     // Parse scheme (if present)
     const char *scheme_end = strstr(p, "://");
     bool has_authority = false;
-    if (scheme_end)
-    {
+    if (scheme_end) {
         size_t scheme_len = scheme_end - p;
         result->scheme = (char *)malloc(scheme_len + 1);
         if (!result->scheme)
@@ -207,25 +189,21 @@ static int parse_url_full(const char *url_str, rt_url_t *result)
         result->scheme[scheme_len] = '\0';
 
         // Convert scheme to lowercase
-        for (char *s = result->scheme; *s; s++)
-        {
+        for (char *s = result->scheme; *s; s++) {
             if (*s >= 'A' && *s <= 'Z')
                 *s = *s + ('a' - 'A');
         }
 
         p = scheme_end + 3; // Skip "://"
         has_authority = true;
-    }
-    else if (p[0] == '/' && p[1] == '/')
-    {
+    } else if (p[0] == '/' && p[1] == '/') {
         // Network-path reference (starts with //)
         p += 2;
         has_authority = true;
     }
 
     // Parse authority (userinfo@host:port) - only if we have a scheme or //
-    if (has_authority && *p && *p != '/' && *p != '?' && *p != '#')
-    {
+    if (has_authority && *p && *p != '/' && *p != '?' && *p != '#') {
         // Find end of authority
         const char *auth_end = p;
         while (*auth_end && *auth_end != '/' && *auth_end != '?' && *auth_end != '#')
@@ -233,55 +211,44 @@ static int parse_url_full(const char *url_str, rt_url_t *result)
 
         // Check for userinfo (@)
         const char *at_sign = NULL;
-        for (const char *s = p; s < auth_end; s++)
-        {
-            if (*s == '@')
-            {
+        for (const char *s = p; s < auth_end; s++) {
+            if (*s == '@') {
                 at_sign = s;
                 break;
             }
         }
 
         const char *host_start = p;
-        if (at_sign)
-        {
+        if (at_sign) {
             // Parse userinfo
             const char *colon = NULL;
-            for (const char *s = p; s < at_sign; s++)
-            {
-                if (*s == ':')
-                {
+            for (const char *s = p; s < at_sign; s++) {
+                if (*s == ':') {
                     colon = s;
                     break;
                 }
             }
 
-            if (colon)
-            {
+            if (colon) {
                 // user:pass
                 size_t user_len = colon - p;
                 result->user = (char *)malloc(user_len + 1);
-                if (result->user)
-                {
+                if (result->user) {
                     memcpy(result->user, p, user_len);
                     result->user[user_len] = '\0';
                 }
 
                 size_t pass_len = at_sign - colon - 1;
                 result->pass = (char *)malloc(pass_len + 1);
-                if (result->pass)
-                {
+                if (result->pass) {
                     memcpy(result->pass, colon + 1, pass_len);
                     result->pass[pass_len] = '\0';
                 }
-            }
-            else
-            {
+            } else {
                 // Just user
                 size_t user_len = at_sign - p;
                 result->user = (char *)malloc(user_len + 1);
-                if (result->user)
-                {
+                if (result->user) {
                     memcpy(result->user, p, user_len);
                     result->user[user_len] = '\0';
                 }
@@ -292,30 +259,23 @@ static int parse_url_full(const char *url_str, rt_url_t *result)
         // Parse host:port
         // Check for IPv6 literal [...]
         const char *port_colon = NULL;
-        if (*host_start == '[')
-        {
+        if (*host_start == '[') {
             // IPv6 literal
             const char *bracket_end = strchr(host_start, ']');
-            if (bracket_end && bracket_end < auth_end)
-            {
+            if (bracket_end && bracket_end < auth_end) {
                 size_t host_len = bracket_end - host_start + 1;
                 result->host = (char *)malloc(host_len + 1);
-                if (result->host)
-                {
+                if (result->host) {
                     memcpy(result->host, host_start, host_len);
                     result->host[host_len] = '\0';
                 }
                 if (bracket_end + 1 < auth_end && *(bracket_end + 1) == ':')
                     port_colon = bracket_end + 1;
             }
-        }
-        else
-        {
+        } else {
             // Regular host
-            for (const char *s = host_start; s < auth_end; s++)
-            {
-                if (*s == ':')
-                {
+            for (const char *s = host_start; s < auth_end; s++) {
+                if (*s == ':') {
                     port_colon = s;
                     break;
                 }
@@ -324,33 +284,27 @@ static int parse_url_full(const char *url_str, rt_url_t *result)
             const char *host_end = port_colon ? port_colon : auth_end;
             size_t host_len = host_end - host_start;
             result->host = (char *)malloc(host_len + 1);
-            if (result->host)
-            {
+            if (result->host) {
                 memcpy(result->host, host_start, host_len);
                 result->host[host_len] = '\0';
             }
         }
 
         // Parse port
-        if (port_colon && port_colon + 1 < auth_end)
-        {
+        if (port_colon && port_colon + 1 < auth_end) {
             result->port = 0;
-            for (const char *s = port_colon + 1; s < auth_end && *s >= '0' && *s <= '9'; s++)
-            {
+            for (const char *s = port_colon + 1; s < auth_end && *s >= '0' && *s <= '9'; s++) {
                 result->port = result->port * 10 + (*s - '0');
             }
         }
 
         p = auth_end;
-    }
-    else if (has_authority)
-    {
+    } else if (has_authority) {
         free_url(result);
         return -1;
     }
 
-    if (has_authority && (!result->host || result->host[0] == '\0'))
-    {
+    if (has_authority && (!result->host || result->host[0] == '\0')) {
         free_url(result);
         return -1;
     }
@@ -361,12 +315,10 @@ static int parse_url_full(const char *url_str, rt_url_t *result)
     while (*path_end && *path_end != '?' && *path_end != '#')
         path_end++;
 
-    if (path_end > path_start)
-    {
+    if (path_end > path_start) {
         size_t path_len = path_end - path_start;
         result->path = (char *)malloc(path_len + 1);
-        if (result->path)
-        {
+        if (result->path) {
             memcpy(result->path, path_start, path_len);
             result->path[path_len] = '\0';
         }
@@ -375,8 +327,7 @@ static int parse_url_full(const char *url_str, rt_url_t *result)
     p = path_end;
 
     // Parse query
-    if (*p == '?')
-    {
+    if (*p == '?') {
         p++;
         const char *query_end = p;
         while (*query_end && *query_end != '#')
@@ -384,8 +335,7 @@ static int parse_url_full(const char *url_str, rt_url_t *result)
 
         size_t query_len = query_end - p;
         result->query = (char *)malloc(query_len + 1);
-        if (result->query)
-        {
+        if (result->query) {
             memcpy(result->query, p, query_len);
             result->query[query_len] = '\0';
         }
@@ -394,13 +344,11 @@ static int parse_url_full(const char *url_str, rt_url_t *result)
     }
 
     // Parse fragment
-    if (*p == '#')
-    {
+    if (*p == '#') {
         p++;
         size_t frag_len = strlen(p);
         result->fragment = (char *)malloc(frag_len + 1);
-        if (result->fragment)
-        {
+        if (result->fragment) {
             memcpy(result->fragment, p, frag_len);
             result->fragment[frag_len] = '\0';
         }
@@ -410,8 +358,7 @@ static int parse_url_full(const char *url_str, rt_url_t *result)
 }
 
 /// @brief Free URL structure contents.
-static void free_url(rt_url_t *url)
-{
+static void free_url(rt_url_t *url) {
     if (url->scheme)
         free(url->scheme);
     if (url->user)
@@ -429,16 +376,14 @@ static void free_url(rt_url_t *url)
     memset(url, 0, sizeof(*url));
 }
 
-static void rt_url_finalize(void *obj)
-{
+static void rt_url_finalize(void *obj) {
     if (!obj)
         return;
     rt_url_t *url = (rt_url_t *)obj;
     free_url(url);
 }
 
-void *rt_url_parse(rt_string url_str)
-{
+void *rt_url_parse(rt_string url_str) {
     const char *str = rt_string_cstr(url_str);
     if (!str)
         rt_trap_net("URL: Invalid URL string", Err_InvalidUrl);
@@ -450,16 +395,14 @@ void *rt_url_parse(rt_string url_str)
     memset(url, 0, sizeof(*url));
     rt_obj_set_finalizer(url, rt_url_finalize);
 
-    if (parse_url_full(str, url) != 0)
-    {
+    if (parse_url_full(str, url) != 0) {
         rt_trap_net("URL: Failed to parse URL", Err_InvalidUrl);
     }
 
     return url;
 }
 
-void *rt_url_new(void)
-{
+void *rt_url_new(void) {
     rt_url_t *url = (rt_url_t *)rt_obj_new_i64(0, sizeof(rt_url_t));
     if (!url)
         rt_trap("URL: Memory allocation failed");
@@ -469,8 +412,7 @@ void *rt_url_new(void)
     return url;
 }
 
-rt_string rt_url_scheme(void *obj)
-{
+rt_string rt_url_scheme(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -481,8 +423,7 @@ rt_string rt_url_scheme(void *obj)
     return rt_string_from_bytes(url->scheme, strlen(url->scheme));
 }
 
-void rt_url_set_scheme(void *obj, rt_string scheme)
-{
+void rt_url_set_scheme(void *obj, rt_string scheme) {
     if (!obj)
         return;
 
@@ -497,18 +438,15 @@ void rt_url_set_scheme(void *obj, rt_string scheme)
     url->scheme = dup;
 
     // Convert to lowercase
-    if (url->scheme)
-    {
-        for (char *p = url->scheme; *p; p++)
-        {
+    if (url->scheme) {
+        for (char *p = url->scheme; *p; p++) {
             if (*p >= 'A' && *p <= 'Z')
                 *p = *p + ('a' - 'A');
         }
     }
 }
 
-rt_string rt_url_host(void *obj)
-{
+rt_string rt_url_host(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -519,8 +457,7 @@ rt_string rt_url_host(void *obj)
     return rt_string_from_bytes(url->host, strlen(url->host));
 }
 
-void rt_url_set_host(void *obj, rt_string host)
-{
+void rt_url_set_host(void *obj, rt_string host) {
     if (!obj)
         return;
 
@@ -535,16 +472,14 @@ void rt_url_set_host(void *obj, rt_string host)
     url->host = dup;
 }
 
-int64_t rt_url_port(void *obj)
-{
+int64_t rt_url_port(void *obj) {
     if (!obj)
         return 0;
 
     return ((rt_url_t *)obj)->port;
 }
 
-void rt_url_set_port(void *obj, int64_t port)
-{
+void rt_url_set_port(void *obj, int64_t port) {
     if (!obj)
         return;
 
@@ -557,8 +492,7 @@ void rt_url_set_port(void *obj, int64_t port)
     ((rt_url_t *)obj)->port = port;
 }
 
-rt_string rt_url_path(void *obj)
-{
+rt_string rt_url_path(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -569,8 +503,7 @@ rt_string rt_url_path(void *obj)
     return rt_string_from_bytes(url->path, strlen(url->path));
 }
 
-void rt_url_set_path(void *obj, rt_string path)
-{
+void rt_url_set_path(void *obj, rt_string path) {
     if (!obj)
         return;
 
@@ -585,8 +518,7 @@ void rt_url_set_path(void *obj, rt_string path)
     url->path = dup;
 }
 
-rt_string rt_url_query(void *obj)
-{
+rt_string rt_url_query(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -597,8 +529,7 @@ rt_string rt_url_query(void *obj)
     return rt_string_from_bytes(url->query, strlen(url->query));
 }
 
-void rt_url_set_query(void *obj, rt_string query)
-{
+void rt_url_set_query(void *obj, rt_string query) {
     if (!obj)
         return;
 
@@ -613,8 +544,7 @@ void rt_url_set_query(void *obj, rt_string query)
     url->query = dup;
 }
 
-rt_string rt_url_fragment(void *obj)
-{
+rt_string rt_url_fragment(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -625,8 +555,7 @@ rt_string rt_url_fragment(void *obj)
     return rt_string_from_bytes(url->fragment, strlen(url->fragment));
 }
 
-void rt_url_set_fragment(void *obj, rt_string fragment)
-{
+void rt_url_set_fragment(void *obj, rt_string fragment) {
     if (!obj)
         return;
 
@@ -641,8 +570,7 @@ void rt_url_set_fragment(void *obj, rt_string fragment)
     url->fragment = dup;
 }
 
-rt_string rt_url_user(void *obj)
-{
+rt_string rt_url_user(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -653,8 +581,7 @@ rt_string rt_url_user(void *obj)
     return rt_string_from_bytes(url->user, strlen(url->user));
 }
 
-void rt_url_set_user(void *obj, rt_string user)
-{
+void rt_url_set_user(void *obj, rt_string user) {
     if (!obj)
         return;
 
@@ -669,8 +596,7 @@ void rt_url_set_user(void *obj, rt_string user)
     url->user = dup;
 }
 
-rt_string rt_url_pass(void *obj)
-{
+rt_string rt_url_pass(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -681,8 +607,7 @@ rt_string rt_url_pass(void *obj)
     return rt_string_from_bytes(url->pass, strlen(url->pass));
 }
 
-void rt_url_set_pass(void *obj, rt_string pass)
-{
+void rt_url_set_pass(void *obj, rt_string pass) {
     if (!obj)
         return;
 
@@ -697,8 +622,7 @@ void rt_url_set_pass(void *obj, rt_string pass)
     url->pass = dup;
 }
 
-rt_string rt_url_authority(void *obj)
-{
+rt_string rt_url_authority(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -706,8 +630,7 @@ rt_string rt_url_authority(void *obj)
 
     // Calculate size: user:pass@host:port
     size_t size = 0;
-    if (url->user)
-    {
+    if (url->user) {
         size += strlen(url->user);
         if (url->pass)
             size += 1 + strlen(url->pass); // :pass
@@ -727,8 +650,7 @@ rt_string rt_url_authority(void *obj)
 
     char *p = result;
     char *end = result + size + 1;
-    if (url->user)
-    {
+    if (url->user) {
         p += snprintf(p, (size_t)(end - p), "%s", url->user);
         if (url->pass)
             p += snprintf(p, (size_t)(end - p), ":%s", url->pass);
@@ -744,8 +666,7 @@ rt_string rt_url_authority(void *obj)
     return str;
 }
 
-rt_string rt_url_host_port(void *obj)
-{
+rt_string rt_url_host_port(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -764,8 +685,7 @@ rt_string rt_url_host_port(void *obj)
 
     if (show_port)
         snprintf(result, size + 1, "%s:%lld", url->host, (long long)url->port);
-    else
-    {
+    else {
         size_t hlen = strlen(url->host);
         memcpy(result, url->host, hlen + 1);
     }
@@ -775,8 +695,7 @@ rt_string rt_url_host_port(void *obj)
     return str;
 }
 
-rt_string rt_url_full(void *obj)
-{
+rt_string rt_url_full(void *obj) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -786,8 +705,7 @@ rt_string rt_url_full(void *obj)
     size_t size = 0;
     if (url->scheme)
         size += strlen(url->scheme) + 3; // scheme://
-    if (url->user)
-    {
+    if (url->user) {
         size += strlen(url->user);
         if (url->pass)
             size += 1 + strlen(url->pass);
@@ -815,8 +733,7 @@ rt_string rt_url_full(void *obj)
     char *end = result + size + 1;
     if (url->scheme)
         p += snprintf(p, (size_t)(end - p), "%s://", url->scheme);
-    if (url->user)
-    {
+    if (url->user) {
         p += snprintf(p, (size_t)(end - p), "%s", url->user);
         if (url->pass)
             p += snprintf(p, (size_t)(end - p), ":%s", url->pass);
@@ -824,8 +741,7 @@ rt_string rt_url_full(void *obj)
     }
     if (url->host)
         p += snprintf(p, (size_t)(end - p), "%s", url->host);
-    if (url->port > 0)
-    {
+    if (url->port > 0) {
         int64_t default_port = default_port_for_scheme(url->scheme);
         if (url->port != default_port)
             p += snprintf(p, (size_t)(end - p), ":%lld", (long long)url->port);
@@ -842,8 +758,7 @@ rt_string rt_url_full(void *obj)
     return str;
 }
 
-void *rt_url_set_query_param(void *obj, rt_string name, rt_string value)
-{
+void *rt_url_set_query_param(void *obj, rt_string name, rt_string value) {
     if (!obj)
         return obj;
 
@@ -858,8 +773,7 @@ void *rt_url_set_query_param(void *obj, rt_string name, rt_string value)
     char *enc_name = percent_encode(name_str, true);
     char *enc_value = value_str ? percent_encode(value_str, true) : strdup("");
 
-    if (!enc_name || !enc_value)
-    {
+    if (!enc_name || !enc_value) {
         free(enc_name);
         free(enc_value);
         return obj;
@@ -894,8 +808,7 @@ void *rt_url_set_query_param(void *obj, rt_string name, rt_string value)
     return obj;
 }
 
-rt_string rt_url_get_query_param(void *obj, rt_string name)
-{
+rt_string rt_url_get_query_param(void *obj, rt_string name) {
     if (!obj)
         return rt_string_from_bytes("", 0);
 
@@ -921,8 +834,7 @@ rt_string rt_url_get_query_param(void *obj, rt_string name)
     return result;
 }
 
-int8_t rt_url_has_query_param(void *obj, rt_string name)
-{
+int8_t rt_url_has_query_param(void *obj, rt_string name) {
     if (!obj)
         return 0;
 
@@ -942,8 +854,7 @@ int8_t rt_url_has_query_param(void *obj, rt_string name)
     return result;
 }
 
-void *rt_url_del_query_param(void *obj, rt_string name)
-{
+void *rt_url_del_query_param(void *obj, rt_string name) {
     if (!obj)
         return obj;
 
@@ -972,8 +883,7 @@ void *rt_url_del_query_param(void *obj, rt_string name)
     return obj;
 }
 
-void *rt_url_query_map(void *obj)
-{
+void *rt_url_query_map(void *obj) {
     if (!obj)
         return rt_map_new();
 
@@ -984,8 +894,7 @@ void *rt_url_query_map(void *obj)
     return rt_url_decode_query(rt_string_from_bytes(url->query, strlen(url->query)));
 }
 
-void *rt_url_resolve(void *obj, rt_string relative)
-{
+void *rt_url_resolve(void *obj, rt_string relative) {
     if (!obj)
         rt_trap("URL: NULL base URL");
 
@@ -1009,8 +918,7 @@ void *rt_url_resolve(void *obj, rt_string relative)
     rt_obj_set_finalizer(result, rt_url_finalize);
 
     // RFC 3986 resolution algorithm
-    if (rel.scheme)
-    {
+    if (rel.scheme) {
         // Relative has scheme - use as-is
         result->scheme = safe_strdup(rel.scheme);
         result->user = safe_strdup(rel.user);
@@ -1019,11 +927,8 @@ void *rt_url_resolve(void *obj, rt_string relative)
         result->port = rel.port;
         result->path = safe_strdup(rel.path);
         result->query = safe_strdup(rel.query);
-    }
-    else
-    {
-        if (rel.host)
-        {
+    } else {
+        if (rel.host) {
             // Relative has authority
             result->scheme = safe_strdup(base->scheme);
             result->user = safe_strdup(rel.user);
@@ -1032,58 +937,43 @@ void *rt_url_resolve(void *obj, rt_string relative)
             result->port = rel.port;
             result->path = safe_strdup(rel.path);
             result->query = safe_strdup(rel.query);
-        }
-        else
-        {
+        } else {
             result->scheme = safe_strdup(base->scheme);
             result->user = safe_strdup(base->user);
             result->pass = safe_strdup(base->pass);
             result->host = safe_strdup(base->host);
             result->port = base->port;
 
-            if (!rel.path || *rel.path == '\0')
-            {
+            if (!rel.path || *rel.path == '\0') {
                 result->path = safe_strdup(base->path);
                 if (rel.query)
                     result->query = safe_strdup(rel.query);
                 else
                     result->query = safe_strdup(base->query);
-            }
-            else
-            {
-                if (rel.path[0] == '/')
-                {
+            } else {
+                if (rel.path[0] == '/') {
                     result->path = safe_strdup(rel.path);
-                }
-                else
-                {
+                } else {
                     // Merge paths
-                    if (!base->host || !base->path || *base->path == '\0')
-                    {
+                    if (!base->host || !base->path || *base->path == '\0') {
                         // No base authority or empty base path
                         size_t len = strlen(rel.path) + 2;
                         result->path = (char *)malloc(len);
                         if (result->path)
                             snprintf(result->path, len, "/%s", rel.path);
-                    }
-                    else
-                    {
+                    } else {
                         // Remove last segment of base path
                         const char *last_slash = strrchr(base->path, '/');
-                        if (last_slash)
-                        {
+                        if (last_slash) {
                             size_t base_len = last_slash - base->path + 1;
                             size_t len = base_len + strlen(rel.path) + 1;
                             result->path = (char *)malloc(len);
-                            if (result->path)
-                            {
+                            if (result->path) {
                                 memcpy(result->path, base->path, base_len);
                                 size_t rel_len = strlen(rel.path);
                                 memcpy(result->path + base_len, rel.path, rel_len + 1);
                             }
-                        }
-                        else
-                        {
+                        } else {
                             result->path = safe_strdup(rel.path);
                         }
                     }
@@ -1101,8 +991,7 @@ void *rt_url_resolve(void *obj, rt_string relative)
     return result;
 }
 
-void *rt_url_clone(void *obj)
-{
+void *rt_url_clone(void *obj) {
     if (!obj)
         return rt_url_new();
 
@@ -1125,8 +1014,7 @@ void *rt_url_clone(void *obj)
     return clone;
 }
 
-rt_string rt_url_encode(rt_string text)
-{
+rt_string rt_url_encode(rt_string text) {
     const char *str = rt_string_cstr(text);
     char *encoded = percent_encode(str, true);
     if (!encoded)
@@ -1137,8 +1025,7 @@ rt_string rt_url_encode(rt_string text)
     return result;
 }
 
-rt_string rt_url_decode(rt_string text)
-{
+rt_string rt_url_decode(rt_string text) {
     const char *str = rt_string_cstr(text);
     char *decoded = percent_decode(str);
     if (!decoded)
@@ -1149,8 +1036,7 @@ rt_string rt_url_decode(rt_string text)
     return result;
 }
 
-rt_string rt_url_encode_query(void *map)
-{
+rt_string rt_url_encode_query(void *map) {
     if (!map)
         return rt_string_from_bytes("", 0);
 
@@ -1167,19 +1053,15 @@ rt_string rt_url_encode_query(void *map)
         return rt_string_from_bytes("", 0);
 
     size_t pos = 0;
-    for (int64_t i = 0; i < len; i++)
-    {
+    for (int64_t i = 0; i < len; i++) {
         rt_string key = (rt_string)rt_seq_get(keys, i);
         void *value = rt_map_get(map, key);
 
         const char *key_str = rt_string_cstr(key);
         rt_string value_str_handle = NULL;
-        if (value && rt_box_type(value) == RT_BOX_STR)
-        {
+        if (value && rt_box_type(value) == RT_BOX_STR) {
             value_str_handle = rt_unbox_str(value);
-        }
-        else
-        {
+        } else {
             value_str_handle = (rt_string)value;
             if (value_str_handle)
                 rt_string_ref(value_str_handle);
@@ -1189,20 +1071,17 @@ rt_string rt_url_encode_query(void *map)
         char *enc_key = percent_encode(key_str, true);
         char *enc_value = value_str ? percent_encode(value_str, true) : strdup("");
 
-        if (!enc_key || !enc_value)
-        {
+        if (!enc_key || !enc_value) {
             free(enc_key);
             free(enc_value);
             continue;
         }
 
         size_t needed = strlen(enc_key) + 1 + strlen(enc_value) + 2; // key=value&
-        if (pos + needed >= cap)
-        {
+        if (pos + needed >= cap) {
             cap = (pos + needed) * 2;
             char *new_result = (char *)realloc(result, cap);
-            if (!new_result)
-            {
+            if (!new_result) {
                 free(enc_key);
                 free(enc_value);
                 break;
@@ -1226,8 +1105,7 @@ rt_string rt_url_encode_query(void *map)
     return str;
 }
 
-void *rt_url_decode_query(rt_string query)
-{
+void *rt_url_decode_query(rt_string query) {
     void *map = rt_map_new();
     const char *str = rt_string_cstr(query);
 
@@ -1235,26 +1113,21 @@ void *rt_url_decode_query(rt_string query)
         return map;
 
     const char *p = str;
-    while (*p)
-    {
+    while (*p) {
         // Find end of key
         const char *eq = strchr(p, '=');
         const char *amp = strchr(p, '&');
 
-        if (!eq || (amp && amp < eq))
-        {
+        if (!eq || (amp && amp < eq)) {
             // Key without value
             const char *end = amp ? amp : p + strlen(p);
-            if (end > p)
-            {
+            if (end > p) {
                 char *key = (char *)malloc(end - p + 1);
-                if (key)
-                {
+                if (key) {
                     memcpy(key, p, end - p);
                     key[end - p] = '\0';
                     char *dec_key = percent_decode(key);
-                    if (dec_key)
-                    {
+                    if (dec_key) {
                         rt_string key_str = rt_string_from_bytes(dec_key, strlen(dec_key));
                         rt_string empty = rt_string_from_bytes("", 0);
                         void *boxed = rt_box_str(empty);
@@ -1269,9 +1142,7 @@ void *rt_url_decode_query(rt_string query)
                 }
             }
             p = amp ? amp + 1 : p + strlen(p);
-        }
-        else
-        {
+        } else {
             // Key=Value
             size_t key_len = eq - p;
             const char *val_start = eq + 1;
@@ -1280,8 +1151,7 @@ void *rt_url_decode_query(rt_string query)
             char *key = (char *)malloc(key_len + 1);
             char *val = (char *)malloc(val_end - val_start + 1);
 
-            if (key && val)
-            {
+            if (key && val) {
                 memcpy(key, p, key_len);
                 key[key_len] = '\0';
                 memcpy(val, val_start, val_end - val_start);
@@ -1290,8 +1160,7 @@ void *rt_url_decode_query(rt_string query)
                 char *dec_key = percent_decode(key);
                 char *dec_val = percent_decode(val);
 
-                if (dec_key && dec_val)
-                {
+                if (dec_key && dec_val) {
                     rt_string key_str = rt_string_from_bytes(dec_key, strlen(dec_key));
                     rt_string val_str = rt_string_from_bytes(dec_val, strlen(dec_val));
                     void *boxed = rt_box_str(val_str);
@@ -1315,15 +1184,13 @@ void *rt_url_decode_query(rt_string query)
     return map;
 }
 
-int8_t rt_url_is_valid(rt_string url_str)
-{
+int8_t rt_url_is_valid(rt_string url_str) {
     const char *str = rt_string_cstr(url_str);
     if (!str || *str == '\0')
         return 0;
 
     // Reject strings with unencoded spaces (common non-URL indicator)
-    for (const char *p = str; *p; p++)
-    {
+    for (const char *p = str; *p; p++) {
         if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
             return 0;
     }
@@ -1334,13 +1201,11 @@ int8_t rt_url_is_valid(rt_string url_str)
 
     // Check for scheme - must have letters before ://
     const char *scheme_sep = strstr(str, "://");
-    if (scheme_sep)
-    {
+    if (scheme_sep) {
         // Scheme must be at least 1 character and only contain [a-zA-Z0-9+.-]
         if (scheme_sep == str)
             return 0; // Empty scheme
-        for (const char *p = str; p < scheme_sep; p++)
-        {
+        for (const char *p = str; p < scheme_sep; p++) {
             char c = *p;
             int valid = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
                         (c >= '0' && c <= '9') || c == '+' || c == '-' || c == '.';

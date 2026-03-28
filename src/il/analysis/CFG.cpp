@@ -32,8 +32,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::analysis
-{
+namespace viper::analysis {
 
 /// @brief Construct a CFG analysis context for the provided module.
 ///
@@ -43,13 +42,10 @@ namespace viper::analysis
 /// for every block encountered so that subsequent queries can resolve
 /// relationships efficiently.
 /// @param module IL module whose functions and blocks seed the CFG caches.
-CFGContext::CFGContext(il::core::Module &module) : module(&module)
-{
-    for (auto &fn : module.functions)
-    {
+CFGContext::CFGContext(il::core::Module &module) : module(&module) {
+    for (auto &fn : module.functions) {
         auto &labelMap = functionLabelToBlock[&fn];
-        for (auto &blk : fn.blocks)
-        {
+        for (auto &blk : fn.blocks) {
             blockToFunction[&blk] = &fn;
             labelMap.emplace(blk.label, &blk);
             blockSuccessors[&blk];
@@ -57,19 +53,16 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module)
         }
     }
 
-    for (auto &fn : module.functions)
-    {
+    for (auto &fn : module.functions) {
         auto &labelMap = functionLabelToBlock[&fn];
-        for (auto &blk : fn.blocks)
-        {
+        for (auto &blk : fn.blocks) {
             auto &succ = blockSuccessors[&blk];
             if (blk.instructions.empty())
                 continue;
 
             const il::core::Instr &term = blk.instructions.back();
             bool isBranchTerminator = false;
-            switch (term.op)
-            {
+            switch (term.op) {
                 case il::core::Opcode::Br:
                 case il::core::Opcode::CBr:
                 case il::core::Opcode::SwitchI32:
@@ -83,34 +76,28 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module)
             if (!isBranchTerminator)
                 continue;
 
-            auto appendLabel = [&](const std::string &label)
-            {
+            auto appendLabel = [&](const std::string &label) {
                 auto it = labelMap.find(label);
                 if (it == labelMap.end())
                     return;
                 succ.push_back(it->second);
             };
 
-            if (term.op == il::core::Opcode::SwitchI32)
-            {
-                if (!term.labels.empty())
-                {
+            if (term.op == il::core::Opcode::SwitchI32) {
+                if (!term.labels.empty()) {
                     appendLabel(il::core::switchDefaultLabel(term));
                     const std::size_t caseCount = il::core::switchCaseCount(term);
                     for (std::size_t idx = 0; idx < caseCount; ++idx)
                         appendLabel(il::core::switchCaseLabel(term, idx));
                 }
-            }
-            else
-            {
+            } else {
                 for (const auto &lbl : term.labels)
                     appendLabel(lbl);
             }
 
             std::unordered_set<il::core::Block *> recorded;
             recorded.reserve(succ.size());
-            for (auto *target : succ)
-            {
+            for (auto *target : succ) {
                 if (!target || recorded.contains(target))
                     continue;
                 recorded.insert(target);
@@ -132,8 +119,7 @@ CFGContext::CFGContext(il::core::Module &module) : module(&module)
 /// @return List of successor blocks; empty when the block was not indexed or
 ///         does not terminate with a branch.
 /// @invariant A valid CFGContext describing @p B's parent function is provided.
-std::vector<il::core::Block *> successors(const CFGContext &ctx, const il::core::Block &B)
-{
+std::vector<il::core::Block *> successors(const CFGContext &ctx, const il::core::Block &B) {
     auto it = ctx.blockSuccessors.find(&B);
     if (it == ctx.blockSuccessors.end())
         return {};
@@ -151,8 +137,7 @@ std::vector<il::core::Block *> successors(const CFGContext &ctx, const il::core:
 /// @param B Target block whose incoming edges are requested.
 /// @return List of predecessor blocks; empty if none are found.
 /// @note Blocks with non-branch terminators are ignored.
-std::vector<il::core::Block *> predecessors(const CFGContext &ctx, const il::core::Block &B)
-{
+std::vector<il::core::Block *> predecessors(const CFGContext &ctx, const il::core::Block &B) {
     auto it = ctx.blockPredecessors.find(&B);
     if (it == ctx.blockPredecessors.end())
         return {};
@@ -171,16 +156,14 @@ std::vector<il::core::Block *> predecessors(const CFGContext &ctx, const il::cor
 /// @param F Function whose blocks are traversed.
 /// @return Blocks in post-order; empty if @p F has no blocks.
 /// @note Unreachable blocks are omitted from the result.
-std::vector<il::core::Block *> postOrder(const CFGContext &ctx, il::core::Function &F)
-{
+std::vector<il::core::Block *> postOrder(const CFGContext &ctx, il::core::Function &F) {
     std::vector<il::core::Block *> out;
     if (F.blocks.empty())
         return out;
 
     std::unordered_set<il::core::Block *> visited;
 
-    struct Frame
-    {
+    struct Frame {
         il::core::Block *block;
         std::size_t idx;
         std::vector<il::core::Block *> succ;
@@ -192,20 +175,15 @@ std::vector<il::core::Block *> postOrder(const CFGContext &ctx, il::core::Functi
     stack.push_back({entry, 0, successors(ctx, *entry)});
     visited.insert(entry);
 
-    while (!stack.empty())
-    {
+    while (!stack.empty()) {
         Frame &f = stack.back();
-        if (f.idx < f.succ.size())
-        {
+        if (f.idx < f.succ.size()) {
             il::core::Block *next = f.succ[f.idx++];
-            if (!visited.contains(next))
-            {
+            if (!visited.contains(next)) {
                 visited.insert(next);
                 stack.push_back({next, 0, successors(ctx, *next)});
             }
-        }
-        else
-        {
+        } else {
             out.push_back(f.block);
             stack.pop_back();
         }
@@ -223,8 +201,7 @@ std::vector<il::core::Block *> postOrder(const CFGContext &ctx, il::core::Functi
 /// @param ctx Context providing successor lookups.
 /// @param F Function whose blocks are traversed.
 /// @return Blocks in reverse post-order; empty if @p F has no blocks.
-std::vector<il::core::Block *> reversePostOrder(const CFGContext &ctx, il::core::Function &F)
-{
+std::vector<il::core::Block *> reversePostOrder(const CFGContext &ctx, il::core::Function &F) {
     auto po = postOrder(ctx, F);
     std::reverse(po.begin(), po.end());
     return po;
@@ -242,8 +219,7 @@ std::vector<il::core::Block *> reversePostOrder(const CFGContext &ctx, il::core:
 /// @return Blocks in topological order or an empty list if @p F is empty
 /// or cyclic.
 /// @invariant @p ctx describes the module containing @p F.
-std::vector<il::core::Block *> topoOrder(const CFGContext &ctx, il::core::Function &F)
-{
+std::vector<il::core::Block *> topoOrder(const CFGContext &ctx, il::core::Function &F) {
     std::vector<il::core::Block *> out;
     if (F.blocks.empty())
         return out;
@@ -258,13 +234,11 @@ std::vector<il::core::Block *> topoOrder(const CFGContext &ctx, il::core::Functi
         if (indegree[&blk] == 0)
             q.push(&blk);
 
-    while (!q.empty())
-    {
+    while (!q.empty()) {
         auto *b = q.front();
         q.pop();
         out.push_back(b);
-        for (auto *succ : successors(ctx, *b))
-        {
+        for (auto *succ : successors(ctx, *b)) {
             auto it = indegree.find(succ);
             if (it == indegree.end())
                 continue;
@@ -287,8 +261,7 @@ std::vector<il::core::Block *> topoOrder(const CFGContext &ctx, il::core::Functi
 /// @param ctx Context providing successor and predecessor lookups.
 /// @param F Function whose CFG is inspected.
 /// @return `true` if @p F has no cycles or no blocks; otherwise `false`.
-bool isAcyclic(const CFGContext &ctx, il::core::Function &F)
-{
+bool isAcyclic(const CFGContext &ctx, il::core::Function &F) {
     if (F.blocks.empty())
         return true;
     auto order = topoOrder(ctx, F);

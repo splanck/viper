@@ -46,22 +46,19 @@ using namespace il::core;
 static Function makeFunc(const std::string &name,
                          Type retType,
                          std::vector<Param> params,
-                         Linkage linkage)
-{
+                         Linkage linkage) {
     Function fn;
     fn.name = name;
     fn.retType = retType;
     fn.params = std::move(params);
     fn.linkage = linkage;
 
-    if (linkage != Linkage::Import)
-    {
+    if (linkage != Linkage::Import) {
         BasicBlock entry;
         entry.label = "entry";
         Instr ret;
         ret.op = Opcode::Ret;
-        if (retType.kind != Type::Kind::Void)
-        {
+        if (retType.kind != Type::Kind::Void) {
             ret.type = retType;
             ret.operands.push_back(Value::constInt(42));
         }
@@ -73,8 +70,7 @@ static Function makeFunc(const std::string &name,
 }
 
 /// Create a main function that calls another function and returns the result.
-static Function makeMainCalling(const std::string &callee, Type calleeRetType)
-{
+static Function makeMainCalling(const std::string &callee, Type calleeRetType) {
     Function fn;
     fn.name = "main";
     fn.retType = Type(Type::Kind::I64);
@@ -107,8 +103,7 @@ static Function makeMainCalling(const std::string &callee, Type calleeRetType)
 // Tests
 // ---------------------------------------------------------------------------
 
-TEST(InteropIntegration, LinkTwoModulesWithExportImport)
-{
+TEST(InteropIntegration, LinkTwoModulesWithExportImport) {
     // Module A (entry): has main that calls "helper", imports "helper".
     Module modA;
     modA.functions.push_back(makeMainCalling("helper", Type(Type::Kind::I64)));
@@ -128,8 +123,7 @@ TEST(InteropIntegration, LinkTwoModulesWithExportImport)
     // The merged module should have "main" and "helper" (no import stubs).
     bool hasMain = false;
     bool hasHelper = false;
-    for (const auto &fn : result.module.functions)
-    {
+    for (const auto &fn : result.module.functions) {
         if (fn.name == "main")
             hasMain = true;
         if (fn.name == "helper")
@@ -141,8 +135,7 @@ TEST(InteropIntegration, LinkTwoModulesWithExportImport)
     EXPECT_TRUE(hasHelper);
 }
 
-TEST(InteropIntegration, BooleanThunksInsertedDuringLink)
-{
+TEST(InteropIntegration, BooleanThunksInsertedDuringLink) {
     // Zia exports isReady() -> i1, BASIC imports it expecting i64.
     Module ziaMod;
     ziaMod.functions.push_back(makeFunc("isReady", Type(Type::Kind::I1), {}, Linkage::Export));
@@ -161,10 +154,8 @@ TEST(InteropIntegration, BooleanThunksInsertedDuringLink)
 
     // Verify the thunk contains a Zext1 instruction.
     bool hasZext = false;
-    for (const auto &block : thunks[0].thunk.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : thunks[0].thunk.blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == Opcode::Zext1)
                 hasZext = true;
         }
@@ -172,8 +163,7 @@ TEST(InteropIntegration, BooleanThunksInsertedDuringLink)
     EXPECT_TRUE(hasZext);
 }
 
-TEST(InteropIntegration, MergedModuleHasNoImportFunctions)
-{
+TEST(InteropIntegration, MergedModuleHasNoImportFunctions) {
     // Two modules with matching export/import pair.
     Module modA;
     modA.functions.push_back(makeMainCalling("compute", Type(Type::Kind::I64)));
@@ -190,14 +180,12 @@ TEST(InteropIntegration, MergedModuleHasNoImportFunctions)
     ASSERT_TRUE(result.succeeded());
 
     // Verify no Import-linkage functions remain.
-    for (const auto &fn : result.module.functions)
-    {
+    for (const auto &fn : result.module.functions) {
         EXPECT_NE(fn.linkage, Linkage::Import);
     }
 }
 
-TEST(InteropIntegration, InternalNameCollisionsResolved)
-{
+TEST(InteropIntegration, InternalNameCollisionsResolved) {
     // Both modules have an Internal function named "helper".
     Module modA;
     modA.functions.push_back(makeMainCalling("helper", Type(Type::Kind::I64)));
@@ -217,8 +205,7 @@ TEST(InteropIntegration, InternalNameCollisionsResolved)
     // non-entry module's "helper" should be prefixed.
     bool hasOriginal = false;
     bool hasPrefixed = false;
-    for (const auto &fn : result.module.functions)
-    {
+    for (const auto &fn : result.module.functions) {
         if (fn.name == "helper")
             hasOriginal = true;
         if (fn.name.find("$helper") != std::string::npos)
@@ -228,8 +215,7 @@ TEST(InteropIntegration, InternalNameCollisionsResolved)
     EXPECT_TRUE(hasPrefixed);
 }
 
-TEST(InteropIntegration, ParamBooleanThunkGenerated)
-{
+TEST(InteropIntegration, ParamBooleanThunkGenerated) {
     // Export expects i1 param, Import passes i64 param.
     Module ziaMod;
     ziaMod.functions.push_back(makeFunc("setFlag",
@@ -251,10 +237,8 @@ TEST(InteropIntegration, ParamBooleanThunkGenerated)
     EXPECT_EQ(thunks[0].thunk.params[0].type.kind, Type::Kind::I64);
 
     bool hasIcmp = false;
-    for (const auto &block : thunks[0].thunk.blocks)
-    {
-        for (const auto &instr : block.instructions)
-        {
+    for (const auto &block : thunks[0].thunk.blocks) {
+        for (const auto &instr : block.instructions) {
             if (instr.op == Opcode::ICmpNe)
                 hasIcmp = true;
         }
@@ -262,8 +246,7 @@ TEST(InteropIntegration, ParamBooleanThunkGenerated)
     EXPECT_TRUE(hasIcmp);
 }
 
-TEST(InteropIntegration, ExternsMergedCorrectly)
-{
+TEST(InteropIntegration, ExternsMergedCorrectly) {
     // Both modules declare the same extern.
     Module modA;
     modA.functions.push_back(makeMainCalling("helper", Type(Type::Kind::I64)));
@@ -285,15 +268,13 @@ TEST(InteropIntegration, ExternsMergedCorrectly)
 
     // The shared extern should appear exactly once (deduplicated).
     int sayCount = 0;
-    for (const auto &ext : result.module.externs)
-    {
+    for (const auto &ext : result.module.externs) {
         if (ext.name == "Viper.Terminal.Say")
             sayCount++;
     }
     EXPECT_EQ(sayCount, 1);
 }
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

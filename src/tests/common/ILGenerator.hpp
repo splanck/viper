@@ -25,12 +25,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::tests
-{
+namespace viper::tests {
 
 /// @brief Configuration for IL program generation.
-struct ILGeneratorConfig
-{
+struct ILGeneratorConfig {
     /// @brief Minimum number of instructions to generate.
     std::size_t minInstructions = 3;
 
@@ -66,8 +64,7 @@ struct ILGeneratorConfig
 };
 
 /// @brief Result of IL generation including the module and metadata.
-struct ILGeneratorResult
-{
+struct ILGeneratorResult {
     /// @brief The generated module.
     il::core::Module module;
 
@@ -93,8 +90,7 @@ struct ILGeneratorResult
 ///
 /// @invariant All generated modules pass IL verification.
 /// @invariant Generated programs are deterministic given the same seed.
-class ILGenerator
-{
+class ILGenerator {
   public:
     /// @brief Create a generator with a random seed.
     ILGenerator();
@@ -109,8 +105,7 @@ class ILGenerator
     [[nodiscard]] ILGeneratorResult generate(const ILGeneratorConfig &config = {});
 
     /// @brief Get the current seed.
-    [[nodiscard]] std::uint64_t seed() const noexcept
-    {
+    [[nodiscard]] std::uint64_t seed() const noexcept {
         return seed_;
     }
 
@@ -157,8 +152,7 @@ class ILGenerator
                                               std::int64_t maxConst);
 
     /// @brief Pick a random element from an array.
-    template <typename T, std::size_t N> [[nodiscard]] const T &randomChoice(const T (&arr)[N])
-    {
+    template <typename T, std::size_t N> [[nodiscard]] const T &randomChoice(const T (&arr)[N]) {
         std::uniform_int_distribution<std::size_t> dist(0, N - 1);
         return arr[dist(rng_)];
     }

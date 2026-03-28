@@ -29,12 +29,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::repl
-{
+namespace viper::repl {
 
 /// @brief Result of a line editor read operation.
-enum class ReadResult
-{
+enum class ReadResult {
     Line,      ///< A complete line was entered (Enter pressed).
     Interrupt, ///< Ctrl-C was pressed (cancel current input).
     Eof,       ///< Ctrl-D was pressed (end of input).
@@ -53,8 +51,7 @@ using CompletionCallback =
 ///          history navigation (Up/Down arrows), word-level movement (Ctrl+Left,
 ///          Ctrl+Right), line kill (Ctrl-U, Ctrl-K), tab completion, and
 ///          signal handling (Ctrl-C, Ctrl-D).
-class ReplLineEditor
-{
+class ReplLineEditor {
   public:
     /// @brief Construct a line editor.
     /// @param maxHistory Maximum number of history entries to retain.

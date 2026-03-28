@@ -20,60 +20,51 @@
 #include <cmath>
 #include <cstdio>
 
-extern "C"
-{
-    extern void *rt_vec3_new(double x, double y, double z);
-    extern double rt_vec3_x(void *v);
-    extern double rt_vec3_y(void *v);
-    extern double rt_vec3_z(void *v);
-    extern void *rt_quat_new(double x, double y, double z, double w);
-    extern double rt_quat_w(void *q);
-    extern void *rt_mat4_new(double m0,
-                             double m1,
-                             double m2,
-                             double m3,
-                             double m4,
-                             double m5,
-                             double m6,
-                             double m7,
-                             double m8,
-                             double m9,
-                             double m10,
-                             double m11,
-                             double m12,
-                             double m13,
-                             double m14,
-                             double m15);
-    extern double rt_mat4_get(void *m, int64_t r, int64_t c);
+extern "C" {
+extern void *rt_vec3_new(double x, double y, double z);
+extern double rt_vec3_x(void *v);
+extern double rt_vec3_y(void *v);
+extern double rt_vec3_z(void *v);
+extern void *rt_quat_new(double x, double y, double z, double w);
+extern double rt_quat_w(void *q);
+extern void *rt_mat4_new(double m0,
+                         double m1,
+                         double m2,
+                         double m3,
+                         double m4,
+                         double m5,
+                         double m6,
+                         double m7,
+                         double m8,
+                         double m9,
+                         double m10,
+                         double m11,
+                         double m12,
+                         double m13,
+                         double m14,
+                         double m15);
+extern double rt_mat4_get(void *m, int64_t r, int64_t c);
 }
 
 static int tests_passed = 0;
 static int tests_run = 0;
 
 #define EXPECT_TRUE(cond, msg)                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+        if (!(cond)) {                                                                             \
             fprintf(stderr, "FAIL: %s\n", msg);                                                    \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
 
 #define EXPECT_NEAR(a, b, eps, msg)                                                                \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (fabs((double)(a) - (double)(b)) > (eps))                                               \
-        {                                                                                          \
+        if (fabs((double)(a) - (double)(b)) > (eps)) {                                             \
             fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));    \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
@@ -82,8 +73,7 @@ static int tests_run = 0;
  * Transform3D tests
  *=========================================================================*/
 
-static void test_transform_default()
-{
+static void test_transform_default() {
     void *xf = rt_transform3d_new();
     EXPECT_TRUE(xf != nullptr, "Transform3D created");
 
@@ -98,8 +88,7 @@ static void test_transform_default()
     EXPECT_NEAR(rt_vec3_z(scl), 1.0, 0.01, "Default scale Z = 1");
 }
 
-static void test_transform_position()
-{
+static void test_transform_position() {
     void *xf = rt_transform3d_new();
     rt_transform3d_set_position(xf, 3.0, 5.0, 7.0);
 
@@ -110,8 +99,7 @@ static void test_transform_position()
     EXPECT_NEAR(rt_mat4_get(mat, 2, 3), 7.0, 0.01, "Matrix tz = 7");
 }
 
-static void test_transform_scale()
-{
+static void test_transform_scale() {
     void *xf = rt_transform3d_new();
     rt_transform3d_set_scale(xf, 2.0, 3.0, 4.0);
 
@@ -122,8 +110,7 @@ static void test_transform_scale()
     EXPECT_NEAR(rt_mat4_get(mat, 2, 2), 4.0, 0.01, "Matrix sz = 4");
 }
 
-static void test_transform_translate()
-{
+static void test_transform_translate() {
     void *xf = rt_transform3d_new();
     rt_transform3d_set_position(xf, 1.0, 2.0, 3.0);
     rt_transform3d_translate(xf, rt_vec3_new(10.0, 20.0, 30.0));
@@ -134,8 +121,7 @@ static void test_transform_translate()
     EXPECT_NEAR(rt_vec3_z(pos), 33.0, 0.01, "Translate: Z = 3+30 = 33");
 }
 
-static void test_transform_euler()
-{
+static void test_transform_euler() {
     void *xf = rt_transform3d_new();
     /* 90° rotation around Y axis (yaw = π/2) */
     rt_transform3d_set_euler(xf, 0.0, 3.14159265358979323846 / 2.0, 0.0);
@@ -146,8 +132,7 @@ static void test_transform_euler()
     EXPECT_NEAR(fabs(w), 0.707, 0.02, "Euler 90° Y: quat w ≈ 0.707");
 }
 
-static void test_transform_dirty_flag()
-{
+static void test_transform_dirty_flag() {
     void *xf = rt_transform3d_new();
     void *mat1 = rt_transform3d_get_matrix(xf);     /* triggers compute */
     rt_transform3d_set_position(xf, 5.0, 0.0, 0.0); /* marks dirty */
@@ -160,8 +145,7 @@ static void test_transform_dirty_flag()
  * Path3D tests
  *=========================================================================*/
 
-static void test_path_linear()
-{
+static void test_path_linear() {
     void *path = rt_path3d_new();
     rt_path3d_add_point(path, rt_vec3_new(0, 0, 0));
     rt_path3d_add_point(path, rt_vec3_new(10, 0, 0));
@@ -176,8 +160,7 @@ static void test_path_linear()
     EXPECT_NEAR(rt_vec3_x(pm), 5.0, 0.5, "Path t=0.5: X ≈ 5");
 }
 
-static void test_path_catmull_rom()
-{
+static void test_path_catmull_rom() {
     void *path = rt_path3d_new();
     rt_path3d_add_point(path, rt_vec3_new(0, 0, 0));
     rt_path3d_add_point(path, rt_vec3_new(5, 3, 0));
@@ -194,8 +177,7 @@ static void test_path_catmull_rom()
     EXPECT_TRUE(rt_path3d_get_point_count(path) == 4, "Point count = 4");
 }
 
-static void test_path_direction()
-{
+static void test_path_direction() {
     void *path = rt_path3d_new();
     rt_path3d_add_point(path, rt_vec3_new(0, 0, 0));
     rt_path3d_add_point(path, rt_vec3_new(10, 0, 0));
@@ -206,8 +188,7 @@ static void test_path_direction()
     EXPECT_NEAR(rt_vec3_y(dir), 0.0, 0.1, "Direction Y ≈ 0");
 }
 
-static void test_path_length()
-{
+static void test_path_length() {
     void *path = rt_path3d_new();
     rt_path3d_add_point(path, rt_vec3_new(0, 0, 0));
     rt_path3d_add_point(path, rt_vec3_new(10, 0, 0));
@@ -216,8 +197,7 @@ static void test_path_length()
     EXPECT_NEAR(len, 10.0, 0.5, "Straight path length ≈ 10");
 }
 
-static void test_path_looping()
-{
+static void test_path_looping() {
     void *path = rt_path3d_new();
     rt_path3d_add_point(path, rt_vec3_new(0, 0, 0));
     rt_path3d_add_point(path, rt_vec3_new(5, 0, 0));
@@ -233,8 +213,7 @@ static void test_path_looping()
     EXPECT_NEAR(sqrt(dx * dx + dy * dy), 0.0, 1.0, "Looping path: t=0 ≈ t=1");
 }
 
-static void test_path_clear()
-{
+static void test_path_clear() {
     void *path = rt_path3d_new();
     rt_path3d_add_point(path, rt_vec3_new(0, 0, 0));
     rt_path3d_add_point(path, rt_vec3_new(5, 0, 0));
@@ -243,8 +222,7 @@ static void test_path_clear()
     EXPECT_TRUE(rt_path3d_get_point_count(path) == 0, "After clear: 0 points");
 }
 
-int main()
-{
+int main() {
     /* Transform3D */
     test_transform_default();
     test_transform_position();

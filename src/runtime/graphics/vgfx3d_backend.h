@@ -31,8 +31,7 @@
  * Draw command — submitted between begin_frame/end_frame
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     const vgfx3d_vertex_t *vertices;
     uint32_t vertex_count;
     const uint32_t *indices;
@@ -54,8 +53,7 @@ typedef struct
  * Camera parameters — passed to begin_frame
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     float view[16];       /* view matrix, row-major float */
     float projection[16]; /* projection matrix, row-major float */
     float position[3];    /* eye position (for specular) */
@@ -69,8 +67,7 @@ typedef struct
  * Lighting parameters — set before begin_frame
  *=========================================================================*/
 
-typedef struct
-{
+typedef struct {
     int32_t type; /* 0=directional, 1=point, 2=ambient */
     float direction[3];
     float position[3];
@@ -83,8 +80,7 @@ typedef struct
  * Backend vtable
  *=========================================================================*/
 
-typedef struct vgfx3d_backend
-{
+typedef struct vgfx3d_backend {
     const char *name; /* "software", "metal", "d3d11", "opengl" */
 
     /* Lifecycle */

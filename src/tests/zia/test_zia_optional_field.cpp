@@ -24,12 +24,10 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 /// @brief Test simple entity field access (sanity check).
-TEST(ZiaOptionalField, SimpleFieldAccess)
-{
+TEST(ZiaOptionalField, SimpleFieldAccess) {
     const std::string src = R"(
 module Test;
 
@@ -52,11 +50,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for AccessAfterNullCheck:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -66,8 +62,7 @@ func start() {
 }
 
 /// @brief Test accessing optional field and assigning to variable.
-TEST(ZiaOptionalField, OptionalFieldAssignment)
-{
+TEST(ZiaOptionalField, OptionalFieldAssignment) {
     const std::string src = R"(
 module Test;
 
@@ -91,11 +86,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for DirectAccessAfterCheck:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -106,8 +99,7 @@ func start() {
 
 /// @brief Test field access on optional variable after null check.
 /// This is the core of Bug #023.
-TEST(ZiaOptionalField, FieldAccessAfterNullCheck)
-{
+TEST(ZiaOptionalField, FieldAccessAfterNullCheck) {
     const std::string src = R"(
 module Test;
 
@@ -141,11 +133,9 @@ func start() {
     CompilerOptions opts{};
     auto result = compile(input, opts, sm);
 
-    if (!result.succeeded())
-    {
+    if (!result.succeeded()) {
         std::cerr << "Diagnostics for ChainedOptionalAccess:\n";
-        for (const auto &d : result.diagnostics.diagnostics())
-        {
+        for (const auto &d : result.diagnostics.diagnostics()) {
             std::cerr << "  [" << (d.severity == Severity::Error ? "ERROR" : "WARN") << "] "
                       << d.message << "\n";
         }
@@ -156,8 +146,7 @@ func start() {
 
 } // namespace
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

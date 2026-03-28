@@ -24,12 +24,10 @@
 
 #include <cstdint>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Format-independent relocation categories.
-enum class RelocAction
-{
+enum class RelocAction {
     PCRel32,      // S + A - P (32-bit)
     Abs64,        // S + A (64-bit)
     Abs32,        // S + A (32-bit)
@@ -47,10 +45,8 @@ enum class RelocAction
 
 // ── Per-format mapping functions ─────────────────────────────────────────
 
-inline RelocAction elfX64Action(uint32_t type)
-{
-    switch (type)
-    {
+inline RelocAction elfX64Action(uint32_t type) {
+    switch (type) {
         case elf_x64::kAbs64:
             return RelocAction::Abs64;
         case elf_x64::kPC32:
@@ -64,10 +60,8 @@ inline RelocAction elfX64Action(uint32_t type)
     }
 }
 
-inline RelocAction elfA64Action(uint32_t type)
-{
-    switch (type)
-    {
+inline RelocAction elfA64Action(uint32_t type) {
+    switch (type) {
         case elf_a64::kAbs64:
             return RelocAction::Abs64;
         case elf_a64::kAdrPrelPgHi21:
@@ -91,10 +85,8 @@ inline RelocAction elfA64Action(uint32_t type)
     }
 }
 
-inline RelocAction machoX64Action(uint32_t type)
-{
-    switch (type)
-    {
+inline RelocAction machoX64Action(uint32_t type) {
+    switch (type) {
         case macho_x64::kUnsigned:
             return RelocAction::Abs64;
         case macho_x64::kSigned:
@@ -106,10 +98,8 @@ inline RelocAction machoX64Action(uint32_t type)
     }
 }
 
-inline RelocAction machoA64Action(uint32_t type)
-{
-    switch (type)
-    {
+inline RelocAction machoA64Action(uint32_t type) {
+    switch (type) {
         case macho_a64::kUnsigned:
             return RelocAction::Abs64;
         case macho_a64::kBranch26:
@@ -134,10 +124,8 @@ inline RelocAction machoA64Action(uint32_t type)
     }
 }
 
-inline RelocAction coffX64Action(uint32_t type)
-{
-    switch (type)
-    {
+inline RelocAction coffX64Action(uint32_t type) {
+    switch (type) {
         case coff_x64::kAddr64:
             return RelocAction::Abs64;
         case coff_x64::kAddr32:
@@ -149,10 +137,8 @@ inline RelocAction coffX64Action(uint32_t type)
     }
 }
 
-inline RelocAction coffA64Action(uint32_t type)
-{
-    switch (type)
-    {
+inline RelocAction coffA64Action(uint32_t type) {
+    switch (type) {
         case coff_a64::kBranch26:
             return RelocAction::Branch26;
         case coff_a64::kPageRel21:
@@ -171,10 +157,8 @@ inline RelocAction coffA64Action(uint32_t type)
 // ── Top-level dispatcher ─────────────────────────────────────────────────
 
 /// Dispatch relocation type to action based on format and architecture.
-inline RelocAction classifyReloc(ObjFileFormat format, LinkArch arch, uint32_t type)
-{
-    switch (format)
-    {
+inline RelocAction classifyReloc(ObjFileFormat format, LinkArch arch, uint32_t type) {
+    switch (format) {
         case ObjFileFormat::ELF:
             return (arch == LinkArch::X86_64) ? elfX64Action(type) : elfA64Action(type);
         case ObjFileFormat::MachO:

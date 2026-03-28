@@ -29,8 +29,7 @@
 // Vertex format (80 bytes — final layout for all phases)
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     float pos[3];            /* object-space position */
     float normal[3];         /* vertex normal */
     float uv[2];             /* texture coordinates */
@@ -44,8 +43,7 @@ typedef struct
 // Mesh3D
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     vgfx3d_vertex_t *vertices;
     uint32_t vertex_count;
@@ -59,8 +57,7 @@ typedef struct
 // Camera3D
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     double view[16];       /* view matrix, row-major */
     double projection[16]; /* projection matrix, row-major */
@@ -83,8 +80,7 @@ typedef struct
 // Material3D
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     double diffuse[4]; /* RGBA diffuse color */
     double specular[3];
@@ -104,8 +100,7 @@ typedef struct
 // Light3D
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     int32_t type; /* 0=directional, 1=point, 2=ambient */
     double direction[3];
@@ -128,8 +123,7 @@ typedef struct vgfx3d_backend vgfx3d_backend_t;
 // CubeMap3D — 6-face cube map texture for skybox + reflections
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     void *faces[6];    /* Pixels objects: +X, -X, +Y, -Y, +Z, -Z */
     int64_t face_size; /* width = height per face (must be square) */
@@ -139,8 +133,7 @@ typedef struct
 // RenderTarget3D — offscreen color + depth buffers
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     uint8_t *color_buf; /* RGBA pixels (software path) */
     float *depth_buf;   /* float depth buffer */
     int32_t width;
@@ -148,16 +141,14 @@ typedef struct
     int32_t stride; /* width * 4 */
 } vgfx3d_rendertarget_t;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     vgfx3d_rendertarget_t *target;
     int64_t width;
     int64_t height;
 } rt_rendertarget3d;
 
-typedef struct
-{
+typedef struct {
     void *vptr;
     vgfx_window_t gfx_win; /* underlying vgfx window (owns framebuffer) */
     int32_t width;
@@ -232,8 +223,7 @@ typedef struct
 // Mat4 internal access (matches rt_mat4.c layout)
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     double m[16]; /* row-major: m[r*4+c] */
 } mat4_impl;
 

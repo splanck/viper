@@ -25,13 +25,10 @@
 
 #include <unordered_map>
 
-namespace viper::codegen::aarch64::passes
-{
+namespace viper::codegen::aarch64::passes {
 
-bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
-{
-    if (!module.ilMod || !module.ti)
-    {
+bool LoweringPass::run(AArch64Module &module, Diagnostics &diags) {
+    if (!module.ilMod || !module.ti) {
         diags.error("LoweringPass: ilMod and ti must be non-null");
         return false;
     }
@@ -54,8 +51,7 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
     LowerILToMIR lowerer{ti};
     const bool uniquify = (ilMod.functions.size() > 1);
 
-    for (const auto &fn : ilMod.functions)
-    {
+    for (const auto &fn : ilMod.functions) {
         MFunction mir = lowerer.lowerFunction(fn);
 
         // --- Expand overflow-checked arithmetic pseudo-ops ----
@@ -68,8 +64,7 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
 
         const std::string suffix = uniquify ? (std::string("_") + fn.name) : std::string{};
 
-        for (std::size_t bi = 0; bi < mir.blocks.size(); ++bi)
-        {
+        for (std::size_t bi = 0; bi < mir.blocks.size(); ++bi) {
             auto &bb = mir.blocks[bi];
             const std::string old = bb.name;
             // All block labels use the Mach-O assembler-local "L" prefix so
@@ -83,19 +78,15 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
         }
 
         // Remap branch target labels to their sanitized names.
-        for (auto &bb : mir.blocks)
-        {
-            for (auto &mi : bb.instrs)
-            {
-                auto remapBB = [&](std::string &lbl)
-                {
+        for (auto &bb : mir.blocks) {
+            for (auto &mi : bb.instrs) {
+                auto remapBB = [&](std::string &lbl) {
                     auto it = bbMap.find(lbl);
                     if (it != bbMap.end())
                         lbl = it->second;
                 };
 
-                switch (mi.opc)
-                {
+                switch (mi.opc) {
                     case MOpcode::Br:
                         if (!mi.ops.empty() && mi.ops[0].kind == MOperand::Kind::Label)
                             remapBB(mi.ops[0].label);
@@ -111,19 +102,16 @@ bool LoweringPass::run(AArch64Module &module, Diagnostics &diags)
                 }
 
                 // --- Rodata label remapping: IL global names → pool labels --
-                switch (mi.opc)
-                {
+                switch (mi.opc) {
                     case MOpcode::AdrPage:
-                        if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label)
-                        {
+                        if (mi.ops.size() >= 2 && mi.ops[1].kind == MOperand::Kind::Label) {
                             auto it = n2l.find(mi.ops[1].label);
                             if (it != n2l.end())
                                 mi.ops[1].label = it->second;
                         }
                         break;
                     case MOpcode::AddPageOff:
-                        if (mi.ops.size() >= 3 && mi.ops[2].kind == MOperand::Kind::Label)
-                        {
+                        if (mi.ops.size() >= 3 && mi.ops[2].kind == MOperand::Kind::Label) {
                             auto it = n2l.find(mi.ops[2].label);
                             if (it != n2l.end())
                                 mi.ops[2].label = it->second;

@@ -103,13 +103,11 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::runtime
-{
+namespace il::runtime {
 
 /// @brief Stable identifiers for runtime class types.
 /// @note Only RTCLS_String is seeded for RC-1; future classes extend this enum.
-enum class RuntimeTypeId : std::size_t
-{
+enum class RuntimeTypeId : std::size_t {
     RTCLS_String = 0,
     RTCLS_StringBuilder,
     RTCLS_Object,
@@ -420,8 +418,7 @@ enum class RuntimeTypeId : std::size_t
 /// @brief Describes a property on a runtime class.
 /// @details Properties surface as getters/setters. Setters may be null when
 ///          the property is read-only.
-struct RuntimeProperty
-{
+struct RuntimeProperty {
     const char *name;   ///< Property name (e.g., "Length").
     const char *type;   ///< IL scalar type (e.g., "i64", "i1").
     const char *getter; ///< Canonical extern target (e.g., "Viper.String.get_Length").
@@ -430,16 +427,14 @@ struct RuntimeProperty
 };
 
 /// @brief Describes a method on a runtime class.
-struct RuntimeMethod
-{
+struct RuntimeMethod {
     const char *name;      ///< Method name (e.g., "Substring").
     const char *signature; ///< Signature string in compact IL grammar.
     const char *target;    ///< Canonical extern target (e.g., "Viper.String.Substring").
 };
 
 /// @brief Describes a runtime class and its members.
-struct RuntimeClass
-{
+struct RuntimeClass {
     const char *qname;    ///< Fully-qualified name (e.g., "Viper.String").
     const char *layout;   ///< Layout descriptor (opaque until object model defined).
     const char *ctor;     ///< Optional ctor helper extern; may be nullptr.
@@ -456,8 +451,7 @@ struct RuntimeClass
 
 /// @brief Frontend-agnostic scalar types for runtime signatures.
 /// @details Frontends map these to their native type systems.
-enum class ILScalarType : std::uint8_t
-{
+enum class ILScalarType : std::uint8_t {
     Void,   ///< void return type
     I64,    ///< 64-bit signed integer
     F64,    ///< 64-bit floating point
@@ -469,8 +463,7 @@ enum class ILScalarType : std::uint8_t
 
 /// @brief Parsed signature with structured type information.
 /// @details Extracted from signature strings like "str(i64,i64)" or "seq<str>(str,str)".
-struct ParsedSignature
-{
+struct ParsedSignature {
     ILScalarType returnType{ILScalarType::Unknown};
     bool isOptionalReturn{false};
     std::vector<ILScalarType> params;
@@ -481,29 +474,25 @@ struct ParsedSignature
     std::string elementTypeName;
 
     /// @brief Check if the signature was parsed successfully.
-    [[nodiscard]] bool isValid() const
-    {
+    [[nodiscard]] bool isValid() const {
         return returnType != ILScalarType::Unknown;
     }
 
     /// @brief Get the number of parameters (excluding receiver).
-    [[nodiscard]] std::size_t arity() const
-    {
+    [[nodiscard]] std::size_t arity() const {
         return params.size();
     }
 };
 
 /// @brief Extended method descriptor with parsed signature.
-struct ParsedMethod
-{
+struct ParsedMethod {
     const char *name;   ///< Method name (e.g., "Substring").
     const char *target; ///< Canonical extern target.
     ParsedSignature signature;
 };
 
 /// @brief Extended property descriptor with parsed type.
-struct ParsedProperty
-{
+struct ParsedProperty {
     const char *name;   ///< Property name (e.g., "Length").
     ILScalarType type;  ///< Resolved property type.
     const char *getter; ///< Getter extern target.
@@ -534,8 +523,7 @@ ILScalarType mapILToken(std::string_view tok);
 ///     // method->signature.returnType, method->signature.params
 /// }
 /// ```
-class RuntimeRegistry
-{
+class RuntimeRegistry {
   public:
     /// @brief Get the singleton instance.
     static const RuntimeRegistry &instance();

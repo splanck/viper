@@ -29,12 +29,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::repl
-{
+namespace viper::repl {
 
 /// @brief Tracked persistent BASIC variable for cross-input replay.
-struct BasicPersistentVar
-{
+struct BasicPersistentVar {
     std::string name;       ///< Variable name.
     std::string type;       ///< BASIC type (e.g., "Integer", "String").
     std::string dimStmt;    ///< Full DIM statement (e.g., "DIM x AS Integer = 42").
@@ -45,8 +43,7 @@ struct BasicPersistentVar
 /// @details Compiles each REPL input by building a synthetic BASIC source file
 ///          from accumulated state (DIM declarations, SUB/FUNCTION definitions)
 ///          plus the current input as top-level code.
-class BasicReplAdapter : public ReplAdapter
-{
+class BasicReplAdapter : public ReplAdapter {
   public:
     BasicReplAdapter();
     ~BasicReplAdapter() override = default;

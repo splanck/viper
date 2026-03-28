@@ -18,8 +18,7 @@
 #include "frontends/basic/OopIndex.hpp"
 #include "frontends/basic/ast/NodeFwd.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 class DiagnosticEmitter;
 

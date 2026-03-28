@@ -89,8 +89,7 @@
 #include "frontends/zia/Sema.hpp"
 #include "il/runtime/classes/RuntimeClasses.hpp"
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 /// @brief Initializes all runtime function bindings for semantic analysis.
 ///
@@ -128,8 +127,7 @@ namespace il::frontends::zia
 /// methods/properties per class. With the current runtime library (~150
 /// classes, ~2000 methods), this takes negligible time.
 ///
-void Sema::initRuntimeFunctions()
-{
+void Sema::initRuntimeFunctions() {
     // Access the singleton RuntimeRegistry which contains all parsed signatures
     const auto &registry = il::runtime::RuntimeRegistry::instance();
     const auto &catalog = registry.rawCatalog();
@@ -142,8 +140,7 @@ void Sema::initRuntimeFunctions()
     // - Variable declarations: `var f: Viper.File`
     // - Constructor calls: `new Viper.File("path.txt")`
     // - Type comparisons and casts
-    for (const auto &cls : catalog)
-    {
+    for (const auto &cls : catalog) {
         typeRegistry_[cls.qname] = types::runtimeClass(cls.qname);
     }
 
@@ -161,13 +158,11 @@ void Sema::initRuntimeFunctions()
     //==========================================================================
     // This phase runs AFTER Phase 2 so that typed returns (e.g. seqOf(string)
     // for seq<str>-annotated methods) override the coarse ptr() from Phase 2.
-    for (const auto &cls : catalog)
-    {
+    for (const auto &cls : catalog) {
         //----------------------------------------------------------------------
         // Register all methods for this class
         //----------------------------------------------------------------------
-        for (const auto &m : cls.methods)
-        {
+        for (const auto &m : cls.methods) {
             // Parse the signature string (e.g., "str(i64,i64)") into structured form
             auto sig = il::runtime::parseRuntimeSignature(m.signature ? m.signature : "");
             if (!sig.isValid())
@@ -192,22 +187,19 @@ void Sema::initRuntimeFunctions()
         //----------------------------------------------------------------------
         // Register property getters and setters
         //----------------------------------------------------------------------
-        for (const auto &p : cls.properties)
-        {
+        for (const auto &p : cls.properties) {
             // Convert the property's IL type to a Zia type
             auto propType = toZiaType(il::runtime::mapILToken(p.type ? p.type : ""));
 
             // Register getter: no parameters, returns property type
             // Example: Viper.String.get_Length() -> Integer
-            if (p.getter)
-            {
+            if (p.getter) {
                 defineExternFunction(p.getter, propType, {});
             }
 
             // Register setter: takes property type, returns void
             // Example: Viper.GUI.Widget.set_Visible(Boolean) -> void
-            if (p.setter)
-            {
+            if (p.setter) {
                 defineExternFunction(p.setter, types::voidType(), {propType});
             }
         }

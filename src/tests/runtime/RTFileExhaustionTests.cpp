@@ -31,44 +31,38 @@
 #endif
 
 // -- vm_trap override ---------------------------------------------------------
-namespace
-{
+namespace {
 int g_trap_count = 0;
 std::string g_last_trap;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_trap_count++;
     g_last_trap = msg ? msg : "";
 }
 
-static rt_string make_string(const char *s)
-{
+static rt_string make_string(const char *s) {
     return rt_string_from_bytes(s, strlen(s));
 }
 
 // -- Test: BinFile.Open traps with path and strerror on fd exhaustion ----------
 // Strategy: Lower RLIMIT_NOFILE to a very small value, open files until
 // exhausted, then try rt_binfile_open -> should trap with descriptive message.
-static void test_binfile_open_fd_exhaustion()
-{
+static void test_binfile_open_fd_exhaustion() {
 #if !defined(_WIN32)
     // Lower the fd limit to something small so we can exhaust it quickly.
     // We need a few fds for stdin/stdout/stderr + internal use.
     struct rlimit rl;
     getrlimit(RLIMIT_NOFILE, &rl);
     struct rlimit low = {16, rl.rlim_max};
-    if (setrlimit(RLIMIT_NOFILE, &low) != 0)
-    {
+    if (setrlimit(RLIMIT_NOFILE, &low) != 0) {
         printf("  SKIP: setrlimit failed (insufficient privileges)\n");
         return;
     }
 
     // Open files until we run out of fds
     std::vector<FILE *> files;
-    for (int i = 0; i < 64; i++)
-    {
+    for (int i = 0; i < 64; i++) {
         FILE *f = fopen("/dev/null", "r");
         if (!f)
             break;
@@ -96,8 +90,7 @@ static void test_binfile_open_fd_exhaustion()
 #endif
 }
 
-int main()
-{
+int main() {
     test_binfile_open_fd_exhaustion();
     printf("  PASS: BinFile.Open traps with path on fd exhaustion\n");
 

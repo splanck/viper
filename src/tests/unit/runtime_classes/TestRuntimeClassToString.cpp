@@ -11,8 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 #include "tests/TestHarness.hpp"
-extern "C"
-{
+extern "C" {
 #include "rt_context.h"
 #include "rt_internal.h"
 #include "rt_object.h"
@@ -20,8 +19,7 @@ extern "C"
 #include "rt_string.h"
 }
 
-TEST(RuntimeClasses, ToString_UsesRegisteredQName)
-{
+TEST(RuntimeClasses, ToString_UsesRegisteredQName) {
     RtContext ctx{};
     rt_context_init(&ctx);
     rt_set_current_context(&ctx);
@@ -50,8 +48,7 @@ TEST(RuntimeClasses, ToString_UsesRegisteredQName)
     rt_set_current_context(nullptr);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

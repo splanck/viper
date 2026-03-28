@@ -36,8 +36,7 @@ using namespace viper::codegen::aarch64;
 //   - Rotated runs (wrap around MSB↔LSB)
 //   - Replicated N-bit elements where the element is a contiguous run
 // -------------------------------------------------------------------------
-TEST(LogicalImm, ValidImmediates)
-{
+TEST(LogicalImm, ValidImmediates) {
     // Simple contiguous runs from bit 0 upward (no rotation)
     EXPECT_TRUE(isLogicalImmediate(0x1ULL));        // single bit
     EXPECT_TRUE(isLogicalImmediate(0x3ULL));        // 2 bits
@@ -77,8 +76,7 @@ TEST(LogicalImm, ValidImmediates)
 //   - Values where no replication of any element size works
 //   - Values where the element has non-adjacent 1-bit runs
 // -------------------------------------------------------------------------
-TEST(LogicalImm, InvalidImmediates)
-{
+TEST(LogicalImm, InvalidImmediates) {
     // Boundary cases excluded by spec
     EXPECT_FALSE(isLogicalImmediate(0ULL));
     EXPECT_FALSE(isLogicalImmediate(~0ULL));
@@ -102,10 +100,8 @@ TEST(LogicalImm, InvalidImmediates)
 // -------------------------------------------------------------------------
 // Test 3: All single-bit values (powers of two) are valid logical immediates.
 // -------------------------------------------------------------------------
-TEST(LogicalImm, PowersOfTwo)
-{
-    for (int i = 0; i < 64; ++i)
-    {
+TEST(LogicalImm, PowersOfTwo) {
+    for (int i = 0; i < 64; ++i) {
         const uint64_t val = uint64_t(1) << i;
         EXPECT_TRUE(isLogicalImmediate(val));
     }
@@ -114,8 +110,7 @@ TEST(LogicalImm, PowersOfTwo)
 // -------------------------------------------------------------------------
 // Test 4: Common compiler-generated masks are encodable.
 // -------------------------------------------------------------------------
-TEST(LogicalImm, CommonMasks)
-{
+TEST(LogicalImm, CommonMasks) {
     EXPECT_TRUE(isLogicalImmediate(0xFFULL));               // byte mask (AND with 0xFF)
     EXPECT_TRUE(isLogicalImmediate(0xFFFFULL));             // 16-bit mask
     EXPECT_TRUE(isLogicalImmediate(0xFFFFFFFFULL));         // 32-bit mask (zext32)
@@ -127,8 +122,7 @@ TEST(LogicalImm, CommonMasks)
 // -------------------------------------------------------------------------
 // Test 5: MIR opcode constants for RI-form bitwise ops are distinct.
 // -------------------------------------------------------------------------
-TEST(LogicalImm, OpcodeDistinct)
-{
+TEST(LogicalImm, OpcodeDistinct) {
     EXPECT_TRUE(MOpcode::AndRI != MOpcode::AndRRR);
     EXPECT_TRUE(MOpcode::OrrRI != MOpcode::OrrRRR);
     EXPECT_TRUE(MOpcode::EorRI != MOpcode::EorRRR);
@@ -136,8 +130,7 @@ TEST(LogicalImm, OpcodeDistinct)
     EXPECT_TRUE(MOpcode::OrrRI != MOpcode::EorRI);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

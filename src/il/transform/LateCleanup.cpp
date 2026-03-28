@@ -30,18 +30,15 @@
 
 using namespace il::core;
 
-namespace il::transform
-{
+namespace il::transform {
 
-namespace
-{
+namespace {
 /// @brief Count the total number of instructions in a module.
 /// @details Sums instruction counts across all functions and blocks to provide
 ///          a coarse size metric for fixpoint detection.
 /// @param module Module to inspect.
 /// @return Total instruction count.
-std::size_t countInstructions(const Module &module)
-{
+std::size_t countInstructions(const Module &module) {
     std::size_t total = 0;
     for (const auto &fn : module.functions)
         for (const auto &block : fn.blocks)
@@ -54,8 +51,7 @@ std::size_t countInstructions(const Module &module)
 ///          fixpoint metric alongside instruction count.
 /// @param module Module to inspect.
 /// @return Total basic block count.
-std::size_t countBlocks(const Module &module)
-{
+std::size_t countBlocks(const Module &module) {
     std::size_t total = 0;
     for (const auto &fn : module.functions)
         total += fn.blocks.size();
@@ -66,8 +62,7 @@ std::size_t countBlocks(const Module &module)
 /// @brief Return the unique identifier for the LateCleanup pass.
 /// @details Used by the pass registry and pipeline definitions.
 /// @return The canonical pass id string "late-cleanup".
-std::string_view LateCleanup::id() const
-{
+std::string_view LateCleanup::id() const {
     return "late-cleanup";
 }
 
@@ -79,8 +74,7 @@ std::string_view LateCleanup::id() const
 /// @param module Module to optimize in place.
 /// @param analysis Analysis manager for CFG simplification requirements.
 /// @return Preserved analysis set; conservative invalidation on change.
-PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis)
-{
+PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis) {
     bool changedAny = false;
 
     constexpr unsigned kMaxIterations = 4;
@@ -90,21 +84,18 @@ PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis)
     std::size_t currentInstr = initialInstr;
     std::size_t currentBlocks = initialBlocks;
 
-    if (stats_)
-    {
+    if (stats_) {
         stats_->instrBefore = initialInstr;
         stats_->blocksBefore = initialBlocks;
     }
 
-    for (unsigned iter = 0; iter < kMaxIterations; ++iter)
-    {
+    for (unsigned iter = 0; iter < kMaxIterations; ++iter) {
         const std::size_t iterStartInstr = currentInstr;
         const std::size_t iterStartBlocks = currentBlocks;
         bool simplifyChanged = false;
 
         // Run SimplifyCFG on each function
-        for (auto &function : module.functions)
-        {
+        for (auto &function : module.functions) {
             SimplifyCFG cfgPass(/*aggressive=*/true);
             cfgPass.setModule(&module);
             cfgPass.setAnalysisManager(&analysis);
@@ -122,8 +113,7 @@ PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis)
         const bool sizeChanged = currentInstr != iterStartInstr || currentBlocks != iterStartBlocks;
         const bool iterChanged = simplifyChanged || sizeChanged;
 
-        if (stats_)
-        {
+        if (stats_) {
             stats_->instrPerIter.push_back(currentInstr);
             stats_->blocksPerIter.push_back(currentBlocks);
         }
@@ -133,8 +123,7 @@ PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis)
             break;
     }
 
-    if (stats_)
-    {
+    if (stats_) {
         stats_->iterations = static_cast<unsigned>(stats_->instrPerIter.size());
         stats_->instrAfter = currentInstr;
         stats_->blocksAfter = currentBlocks;
@@ -151,14 +140,11 @@ PreservedAnalyses LateCleanup::run(Module &module, AnalysisManager &analysis)
 /// @details Associates the "late-cleanup" identifier with a module-level
 ///          callback that constructs and runs the pass.
 /// @param registry Pass registry to update.
-void registerLateCleanupPass(PassRegistry &registry)
-{
-    registry.registerModulePass("late-cleanup",
-                                [](Module &module, AnalysisManager &analysis)
-                                {
-                                    LateCleanup pass;
-                                    return pass.run(module, analysis);
-                                });
+void registerLateCleanupPass(PassRegistry &registry) {
+    registry.registerModulePass("late-cleanup", [](Module &module, AnalysisManager &analysis) {
+        LateCleanup pass;
+        return pass.run(module, analysis);
+    });
 }
 
 } // namespace il::transform

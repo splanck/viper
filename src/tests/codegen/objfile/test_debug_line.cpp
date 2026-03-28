@@ -28,10 +28,8 @@ using namespace viper::codegen;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -40,25 +38,21 @@ static void check(bool cond, const char *msg, int line)
 #define CHECK(cond) check((cond), #cond, __LINE__)
 
 /// Read a little-endian uint16 from a byte buffer.
-static uint16_t readLE16(const uint8_t *p)
-{
+static uint16_t readLE16(const uint8_t *p) {
     return static_cast<uint16_t>(p[0] | (p[1] << 8));
 }
 
 /// Read a little-endian uint32 from a byte buffer.
-static uint32_t readLE32(const uint8_t *p)
-{
+static uint32_t readLE32(const uint8_t *p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
            (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
 }
 
 /// Decode a ULEB128 value from a byte buffer, advancing the pointer.
-static uint64_t readULEB128(const uint8_t *&p)
-{
+static uint64_t readULEB128(const uint8_t *&p) {
     uint64_t result = 0;
     unsigned shift = 0;
-    while (true)
-    {
+    while (true) {
         uint8_t byte = *p++;
         result |= static_cast<uint64_t>(byte & 0x7F) << shift;
         if ((byte & 0x80) == 0)
@@ -69,13 +63,11 @@ static uint64_t readULEB128(const uint8_t *&p)
 }
 
 /// Decode a SLEB128 value from a byte buffer, advancing the pointer.
-static int64_t readSLEB128(const uint8_t *&p)
-{
+static int64_t readSLEB128(const uint8_t *&p) {
     int64_t result = 0;
     unsigned shift = 0;
     uint8_t byte;
-    do
-    {
+    do {
         byte = *p++;
         result |= static_cast<int64_t>(byte & 0x7F) << shift;
         shift += 7;
@@ -85,8 +77,7 @@ static int64_t readSLEB128(const uint8_t *&p)
     return result;
 }
 
-int main()
-{
+int main() {
     // --- Test 1: Empty table produces non-empty output (header + end_sequence) ---
     {
         DebugLineTable table;
@@ -136,8 +127,7 @@ int main()
         // Search for file names in the encoded bytes.
         // They should appear as NUL-terminated strings in the file table.
         bool foundHello = false, foundWorld = false;
-        for (size_t i = 0; i + 9 < bytes.size(); ++i)
-        {
+        for (size_t i = 0; i + 9 < bytes.size(); ++i) {
             if (std::memcmp(bytes.data() + i, "hello.vpr", 9) == 0 && bytes[i + 9] == 0)
                 foundHello = true;
             if (std::memcmp(bytes.data() + i, "world.vpr", 9) == 0 && bytes[i + 9] == 0)
@@ -158,10 +148,8 @@ int main()
         // followed by ULEB128 length, then DW_LNE_set_address (2).
         // Find the extended opcode pattern: 0x00, length, 0x02, <8 bytes address>
         bool foundSetAddr = false;
-        for (size_t i = 0; i + 11 < bytes.size(); ++i)
-        {
-            if (bytes[i] == 0x00)
-            {
+        for (size_t i = 0; i + 11 < bytes.size(); ++i) {
+            if (bytes[i] == 0x00) {
                 const uint8_t *p = bytes.data() + i + 1;
                 uint64_t extLen = readULEB128(p);
                 if (extLen == 9 && *p == 0x02) // DW_LNE_set_address, 8-byte addr + 1 opcode byte
@@ -232,8 +220,7 @@ int main()
 
         // Search for DW_LNS_set_file (opcode 4) followed by ULEB128(2).
         bool foundSetFile = false;
-        for (size_t i = 0; i + 1 < bytes.size(); ++i)
-        {
+        for (size_t i = 0; i + 1 < bytes.size(); ++i) {
             if (bytes[i] == 4 && bytes[i + 1] == 2) // DW_LNS_set_file, file=2
             {
                 foundSetFile = true;
@@ -253,8 +240,7 @@ int main()
 
         // Search for DW_LNS_set_column (opcode 5) followed by ULEB128(10).
         bool foundSetCol = false;
-        for (size_t i = 0; i + 1 < bytes.size(); ++i)
-        {
+        for (size_t i = 0; i + 1 < bytes.size(); ++i) {
             if (bytes[i] == 5 && bytes[i + 1] == 10) // DW_LNS_set_column, col=10
             {
                 foundSetCol = true;
@@ -287,14 +273,12 @@ int main()
 
         // Should contain DW_LNS_advance_line (opcode 3) followed by SLEB128(-99).
         bool foundAdvanceLine = false;
-        for (size_t i = 0; i + 2 < bytes.size(); ++i)
-        {
+        for (size_t i = 0; i + 2 < bytes.size(); ++i) {
             if (bytes[i] == 3) // DW_LNS_advance_line
             {
                 const uint8_t *p = bytes.data() + i + 1;
                 int64_t val = readSLEB128(p);
-                if (val == -99)
-                {
+                if (val == -99) {
                     foundAdvanceLine = true;
                     break;
                 }

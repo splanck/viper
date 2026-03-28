@@ -30,10 +30,8 @@
 #include <string_view>
 #include <unordered_map>
 
-namespace il::frontends::basic
-{
-namespace
-{
+namespace il::frontends::basic {
+namespace {
 using B = BuiltinCallExpr::Builtin;
 using LowerRule = BuiltinLoweringRule;
 using ResultSpec = LowerRule::ResultSpec;
@@ -54,37 +52,30 @@ constexpr std::size_t kBuiltinCount = static_cast<std::size_t>(B::Err) + 1;
 ///          index.  Using a helper keeps the casting logic centralised.
 /// @param b Builtin enumerator being indexed.
 /// @return Zero-based array index corresponding to @p b.
-constexpr std::size_t idx(B b) noexcept
-{
+constexpr std::size_t idx(B b) noexcept {
     return static_cast<std::size_t>(b);
 }
 
-struct TransparentStringHash
-{
+struct TransparentStringHash {
     using is_transparent = void;
 
-    std::size_t operator()(std::string_view sv) const noexcept
-    {
+    std::size_t operator()(std::string_view sv) const noexcept {
         return std::hash<std::string_view>{}(sv);
     }
 
-    std::size_t operator()(const char *sv) const noexcept
-    {
+    std::size_t operator()(const char *sv) const noexcept {
         return std::hash<std::string_view>{}(sv);
     }
 
-    std::size_t operator()(const std::string &s) const noexcept
-    {
+    std::size_t operator()(const std::string &s) const noexcept {
         return std::hash<std::string_view>{}(s);
     }
 };
 
-struct TransparentStringEqual
-{
+struct TransparentStringEqual {
     using is_transparent = void;
 
-    bool operator()(std::string_view lhs, std::string_view rhs) const noexcept
-    {
+    bool operator()(std::string_view lhs, std::string_view rhs) const noexcept {
         return lhs == rhs;
     }
 };
@@ -98,15 +89,13 @@ using HandlerMap =
 ///          It is initialised on first use and thereafter reused without further
 ///          allocation.
 /// @return Reference to the mutable handler registry.
-HandlerMap &builtinHandlerRegistry()
-{
+HandlerMap &builtinHandlerRegistry() {
     static HandlerMap registry{};
     return registry;
 }
 
 /// @brief Describes broad type categories produced by a builtin.
-enum class TypeMask : std::uint8_t
-{
+enum class TypeMask : std::uint8_t {
     None = 0,
     I64 = 1U << 0U,
     F64 = 1U << 1U,
@@ -119,19 +108,16 @@ enum class TypeMask : std::uint8_t
 /// @param lhs First mask operand.
 /// @param rhs Second mask operand.
 /// @return Bitwise OR of the supplied masks.
-constexpr TypeMask operator|(TypeMask lhs, TypeMask rhs) noexcept
-{
+constexpr TypeMask operator|(TypeMask lhs, TypeMask rhs) noexcept {
     return static_cast<TypeMask>(static_cast<std::uint8_t>(lhs) | static_cast<std::uint8_t>(rhs));
 }
 
-struct Arity
-{
+struct Arity {
     std::uint8_t minArgs;
     std::uint8_t maxArgs;
 };
 
-struct BuiltinDescriptor
-{
+struct BuiltinDescriptor {
     const char *name;
     B builtin;
     Arity arity;
@@ -149,8 +135,7 @@ struct BuiltinDescriptor
 ///          table can populate other constant data structures without runtime
 ///          overhead.
 /// @return Fully populated descriptor table.
-constexpr std::array<BuiltinDescriptor, kBuiltinCount> makeBuiltinDescriptors()
-{
+constexpr std::array<BuiltinDescriptor, kBuiltinCount> makeBuiltinDescriptors() {
     std::array<BuiltinDescriptor, kBuiltinCount> descriptors{};
 #define BUILTIN(NAME, DESCRIPTOR_EXPR, LOWER_EXPR, SCAN_EXPR)                                      \
     descriptors[idx(B::NAME)] = DESCRIPTOR_EXPR;
@@ -166,8 +151,7 @@ constexpr auto kBuiltinDescriptors = makeBuiltinDescriptors();
 ///          so the semantic analyser can perform lookups without depending on
 ///          lowering metadata.
 /// @return Array mapping builtins to @ref BuiltinInfo records.
-constexpr std::array<BuiltinInfo, kBuiltinCount> makeBuiltinInfos()
-{
+constexpr std::array<BuiltinInfo, kBuiltinCount> makeBuiltinInfos() {
     std::array<BuiltinInfo, kBuiltinCount> infos{};
     for (const auto &desc : kBuiltinDescriptors)
         infos[idx(desc.builtin)] = BuiltinInfo{desc.name, desc.analyze};
@@ -180,8 +164,7 @@ constexpr auto kBuiltins = makeBuiltinInfos();
 /// @details Uses an immediately-invoked lambda so additional registration steps
 ///          (such as math builtins) can run after the table is initialised while
 ///          still keeping the storage static-duration.
-static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = []
-{
+static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = [] {
     std::array<LowerRule, kBuiltinCount> rules{};
 #define BUILTIN(NAME, DESCRIPTOR_EXPR, LOWER_EXPR, SCAN_EXPR) rules[idx(B::NAME)] = LOWER_EXPR;
 #include "frontends/basic/builtin_registry.inc"
@@ -194,8 +177,7 @@ static const std::array<LowerRule, kBuiltinCount> kBuiltinLoweringRules = []
 /// @details Similar to the lowering table, this lambda initialises the scan
 ///          metadata at static initialisation time while still allowing the math
 ///          builtin helpers to inject additional patterns.
-static const std::array<BuiltinScanRule, kBuiltinCount> kBuiltinScanRules = []
-{
+static const std::array<BuiltinScanRule, kBuiltinCount> kBuiltinScanRules = [] {
     std::array<BuiltinScanRule, kBuiltinCount> rules{};
 #define BUILTIN(NAME, DESCRIPTOR_EXPR, LOWER_EXPR, SCAN_EXPR) rules[idx(B::NAME)] = SCAN_EXPR;
 #include "frontends/basic/builtin_registry.inc"
@@ -210,10 +192,8 @@ static const std::array<BuiltinScanRule, kBuiltinCount> kBuiltinScanRules = []
 ///          on first use using descriptor data and cached for subsequent
 ///          lookups.
 /// @return Reference to the immutable name-to-enum map.
-const std::unordered_map<std::string_view, B> &builtinNameIndex()
-{
-    static const auto index = []
-    {
+const std::unordered_map<std::string_view, B> &builtinNameIndex() {
+    static const auto index = [] {
         std::unordered_map<std::string_view, B> map;
         map.reserve(kBuiltinDescriptors.size());
         for (const auto &desc : kBuiltinDescriptors)
@@ -230,8 +210,7 @@ const std::unordered_map<std::string_view, B> &builtinNameIndex()
 /// @pre @p b must be a valid BuiltinCallExpr::Builtin enumerator; passing an
 ///      out-of-range value results in undefined behavior due to direct array
 ///      indexing.
-const BuiltinInfo &getBuiltinInfo(BuiltinCallExpr::Builtin b)
-{
+const BuiltinInfo &getBuiltinInfo(BuiltinCallExpr::Builtin b) {
     return kBuiltins[static_cast<std::size_t>(b)];
 }
 
@@ -239,8 +218,7 @@ const BuiltinInfo &getBuiltinInfo(BuiltinCallExpr::Builtin b)
 /// @param b Builtin enumerator to inspect.
 /// @return Structure containing minimum and maximum argument counts.
 /// @pre @p b must be a valid BuiltinCallExpr::Builtin enumerator.
-BuiltinArity getBuiltinArity(BuiltinCallExpr::Builtin b)
-{
+BuiltinArity getBuiltinArity(BuiltinCallExpr::Builtin b) {
     const auto idx = static_cast<std::size_t>(b);
     if (idx >= kBuiltinCount)
         return BuiltinArity{0, 0};
@@ -254,8 +232,7 @@ BuiltinArity getBuiltinArity(BuiltinCallExpr::Builtin b)
 ///        including any suffix markers.
 /// @return Built-in enumerator on success; std::nullopt when the name is not
 ///         registered.
-std::optional<BuiltinCallExpr::Builtin> lookupBuiltin(std::string_view name)
-{
+std::optional<BuiltinCallExpr::Builtin> lookupBuiltin(std::string_view name) {
     const auto &index = builtinNameIndex();
     auto it = index.find(name);
     if (it != index.end())
@@ -279,16 +256,14 @@ std::optional<BuiltinCallExpr::Builtin> lookupBuiltin(std::string_view name)
 /// @brief Access the declarative scan rule for a BASIC builtin.
 /// @param b Builtin enumerator whose rule is requested.
 /// @return Reference to the rule describing argument traversal and runtime features.
-const BuiltinScanRule &getBuiltinScanRule(BuiltinCallExpr::Builtin b)
-{
+const BuiltinScanRule &getBuiltinScanRule(BuiltinCallExpr::Builtin b) {
     return kBuiltinScanRules[static_cast<std::size_t>(b)];
 }
 
 /// @brief Access the lowering rule for a BASIC builtin.
 /// @param b Builtin enumerator identifying the builtin.
 /// @return Reference to the declarative lowering description.
-const BuiltinLoweringRule &getBuiltinLoweringRule(BuiltinCallExpr::Builtin b)
-{
+const BuiltinLoweringRule &getBuiltinLoweringRule(BuiltinCallExpr::Builtin b) {
     return kBuiltinLoweringRules[static_cast<std::size_t>(b)];
 }
 
@@ -298,8 +273,7 @@ const BuiltinLoweringRule &getBuiltinLoweringRule(BuiltinCallExpr::Builtin b)
 ///          handler, allowing tests to restore the default behaviour.
 /// @param name Canonical builtin name in uppercase form.
 /// @param fn Handler function to associate with @p name, or nullptr to remove.
-void register_builtin(std::string_view name, BuiltinHandler fn)
-{
+void register_builtin(std::string_view name, BuiltinHandler fn) {
     auto &registry = builtinHandlerRegistry();
     if (fn)
         registry.insert_or_assign(std::string{name}, fn);
@@ -313,16 +287,14 @@ void register_builtin(std::string_view name, BuiltinHandler fn)
 ///          can fall back to the static registry.
 /// @param name Canonical builtin name to query.
 /// @return Installed handler or nullptr when none is registered.
-BuiltinHandler find_builtin(std::string_view name)
-{
+BuiltinHandler find_builtin(std::string_view name) {
     auto &registry = builtinHandlerRegistry();
     if (auto it = registry.find(name); it != registry.end())
         return it->second;
     return nullptr;
 }
 
-static il::frontends::basic::BuiltinResultKind resultKindFromMask(TypeMask m)
-{
+static il::frontends::basic::BuiltinResultKind resultKindFromMask(TypeMask m) {
     using RK = il::frontends::basic::BuiltinResultKind;
     const bool i = (static_cast<std::uint8_t>(m) & static_cast<std::uint8_t>(TypeMask::I64)) != 0;
     const bool f = (static_cast<std::uint8_t>(m) & static_cast<std::uint8_t>(TypeMask::F64)) != 0;
@@ -339,8 +311,7 @@ static il::frontends::basic::BuiltinResultKind resultKindFromMask(TypeMask m)
     return RK::Unknown;
 }
 
-BuiltinResultKind getBuiltinFixedResult(BuiltinCallExpr::Builtin b)
-{
+BuiltinResultKind getBuiltinFixedResult(BuiltinCallExpr::Builtin b) {
     const auto idxv = static_cast<std::size_t>(b);
     if (idxv >= kBuiltinCount)
         return BuiltinResultKind::Unknown;
@@ -369,11 +340,9 @@ static const SemanticSignatureView kCommandSemSig{/*min*/ 0,
                                                   /*count*/ 0,
                                                   /*result*/ BuiltinResultKind::String};
 
-const SemanticSignatureView *getBuiltinSemanticSignature(BuiltinCallExpr::Builtin b)
-{
+const SemanticSignatureView *getBuiltinSemanticSignature(BuiltinCallExpr::Builtin b) {
     using E = BuiltinCallExpr::Builtin;
-    switch (b)
-    {
+    switch (b) {
         case E::Argc:
             return &kArgcSemSig;
         case E::ArgGet:

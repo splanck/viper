@@ -22,8 +22,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     std::string src = "10 DIM A(2)\n20 LET Y = A(1)\n30 END\n";
     SourceManager sm;
     uint32_t fid = sm.addFile("single_index.bas");

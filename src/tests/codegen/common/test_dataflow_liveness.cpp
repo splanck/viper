@@ -30,15 +30,11 @@ static int gFail = 0;
 static int gPass = 0;
 
 #define CHECK(cond, msg)                                                                           \
-    do                                                                                             \
-    {                                                                                              \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+    do {                                                                                           \
+        if (!(cond)) {                                                                             \
             fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, (msg));                      \
             ++gFail;                                                                               \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             ++gPass;                                                                               \
         }                                                                                          \
     } while (0)
@@ -52,8 +48,7 @@ using viper::codegen::ra::solveBackwardDataflow;
 // ---------------------------------------------------------------------------
 // Test 1: Single straight-line block — no cross-block liveness.
 // ---------------------------------------------------------------------------
-static void testSingleBlock()
-{
+static void testSingleBlock() {
     // Block 0: gen={1}, kill={2} — no successors.
     std::vector<std::vector<std::size_t>> succs = {{}};
     std::vector<std::unordered_set<uint16_t>> gen = {{1}};
@@ -70,8 +65,7 @@ static void testSingleBlock()
 // Test 2: Linear chain B0 -> B1 -> B2.
 // v1 used in B2, defined nowhere — should propagate back to B0's liveIn.
 // ---------------------------------------------------------------------------
-static void testLinearChain()
-{
+static void testLinearChain() {
     // B0 -> B1 -> B2
     std::vector<std::vector<std::size_t>> succs = {{1}, {2}, {}};
     std::vector<std::unordered_set<uint16_t>> gen = {{}, {}, {1}};
@@ -90,8 +84,7 @@ static void testLinearChain()
 // Test 3: Kill stops propagation.
 // B0 -> B1 -> B2.  v1 used in B2, defined in B1.
 // ---------------------------------------------------------------------------
-static void testKillStopsPropagation()
-{
+static void testKillStopsPropagation() {
     std::vector<std::vector<std::size_t>> succs = {{1}, {2}, {}};
     std::vector<std::unordered_set<uint16_t>> gen = {{}, {}, {1}};
     std::vector<std::unordered_set<uint16_t>> kill = {{}, {1}, {}};
@@ -109,8 +102,7 @@ static void testKillStopsPropagation()
 //         B0 -> B1, B0 -> B2, B1 -> B3, B2 -> B3.
 //         v1 used in B3 only.
 // ---------------------------------------------------------------------------
-static void testDiamond()
-{
+static void testDiamond() {
     std::vector<std::vector<std::size_t>> succs = {{1, 2}, {3}, {3}, {}};
     std::vector<std::unordered_set<uint16_t>> gen = {{}, {}, {}, {1}};
     std::vector<std::unordered_set<uint16_t>> kill = {{}, {}, {}, {}};
@@ -127,8 +119,7 @@ static void testDiamond()
 // Test 5: Loop — B0 -> B1, B1 -> B1 (self-loop), B1 -> B2.
 //         v1 used in B1, defined in B1 (use-before-def within loop body).
 // ---------------------------------------------------------------------------
-static void testLoop()
-{
+static void testLoop() {
     std::vector<std::vector<std::size_t>> succs = {{1}, {1, 2}, {}};
     std::vector<std::unordered_set<uint16_t>> gen = {{}, {1}, {}};
     std::vector<std::unordered_set<uint16_t>> kill = {{}, {1}, {}};
@@ -144,8 +135,7 @@ static void testLoop()
 // Test 6: Multiple variables with different lifetimes.
 //         B0 -> B1.  v1 used in B1, v2 defined in B0 and used in B1.
 // ---------------------------------------------------------------------------
-static void testMultipleVars()
-{
+static void testMultipleVars() {
     std::vector<std::vector<std::size_t>> succs = {{1}, {}};
     std::vector<std::unordered_set<uint16_t>> gen = {{}, {1, 2}};
     std::vector<std::unordered_set<uint16_t>> kill = {{2}, {}};
@@ -161,8 +151,7 @@ static void testMultipleVars()
 // ---------------------------------------------------------------------------
 // Test 7: Empty CFG — no blocks, no crash.
 // ---------------------------------------------------------------------------
-static void testEmptyCFG()
-{
+static void testEmptyCFG() {
     std::vector<std::vector<std::size_t>> succs;
     std::vector<std::unordered_set<uint16_t>> gen;
     std::vector<std::unordered_set<uint16_t>> kill;
@@ -175,8 +164,7 @@ static void testEmptyCFG()
 // ---------------------------------------------------------------------------
 // Test 8: buildPredecessors utility.
 // ---------------------------------------------------------------------------
-static void testBuildPredecessors()
-{
+static void testBuildPredecessors() {
     //  B0 -> B1, B0 -> B2, B1 -> B3, B2 -> B3
     std::vector<std::vector<std::size_t>> succs = {{1, 2}, {3}, {3}, {}};
 
@@ -192,8 +180,7 @@ static void testBuildPredecessors()
 // Test 9: Nested loop — B0 -> B1, B1 -> B2, B2 -> B1, B2 -> B3.
 //         v1 defined in B0, used in B2. Should be live across the loop.
 // ---------------------------------------------------------------------------
-static void testNestedLoop()
-{
+static void testNestedLoop() {
     std::vector<std::vector<std::size_t>> succs = {{1}, {2}, {1, 3}, {}};
     std::vector<std::unordered_set<uint16_t>> gen = {{}, {}, {1}, {}};
     std::vector<std::unordered_set<uint16_t>> kill = {{1}, {}, {}, {}};
@@ -209,8 +196,7 @@ static void testNestedLoop()
 // ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
-int main()
-{
+int main() {
     testSingleBlock();
     testLinearChain();
     testKillStopsPropagation();

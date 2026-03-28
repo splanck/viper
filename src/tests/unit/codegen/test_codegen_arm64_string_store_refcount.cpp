@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,8 +43,7 @@ static std::string readFile(const std::string &path)
 }
 
 /// @brief Returns the expected mangled symbol name for a call target.
-static std::string blSym(const std::string &name)
-{
+static std::string blSym(const std::string &name) {
 #if defined(__APPLE__)
     return "bl _" + name;
 #else
@@ -56,8 +52,7 @@ static std::string blSym(const std::string &name)
 }
 
 // Test 1: Simple string store - uses store str, ptr, value
-TEST(Arm64StringStore, SimpleStore)
-{
+TEST(Arm64StringStore, SimpleStore) {
     const std::string in = outPath("arm64_str_store_simple.il");
     const std::string out = outPath("arm64_str_store_simple.s");
     const std::string il = "il 0.1\n"
@@ -75,8 +70,7 @@ TEST(Arm64StringStore, SimpleStore)
 }
 
 // Test 2: String retain
-TEST(Arm64StringStore, StringRetain)
-{
+TEST(Arm64StringStore, StringRetain) {
     const std::string in = outPath("arm64_str_retain.il");
     const std::string out = outPath("arm64_str_retain.s");
     const std::string il = "il 0.1\n"
@@ -95,8 +89,7 @@ TEST(Arm64StringStore, StringRetain)
 }
 
 // Test 3: String release
-TEST(Arm64StringStore, StringRelease)
-{
+TEST(Arm64StringStore, StringRelease) {
     const std::string in = outPath("arm64_str_release.il");
     const std::string out = outPath("arm64_str_release.s");
     const std::string il = "il 0.1\n"
@@ -115,8 +108,7 @@ TEST(Arm64StringStore, StringRelease)
 }
 
 // Test 4: String concatenation via runtime
-TEST(Arm64StringStore, StringConcat)
-{
+TEST(Arm64StringStore, StringConcat) {
     const std::string in = outPath("arm64_str_concat.il");
     const std::string out = outPath("arm64_str_concat.s");
     const std::string il = "il 0.1\n"
@@ -135,8 +127,7 @@ TEST(Arm64StringStore, StringConcat)
 }
 
 // Test 5: String field access via gep offset (simplified - no user types)
-TEST(Arm64StringStore, LoadStoreField)
-{
+TEST(Arm64StringStore, LoadStoreField) {
     const std::string in = outPath("arm64_str_field.il");
     const std::string out = outPath("arm64_str_field.s");
     // Test string field access using gep with byte offset (8 bytes for second field)
@@ -156,8 +147,7 @@ TEST(Arm64StringStore, LoadStoreField)
 }
 
 // Test 6: String in array
-TEST(Arm64StringStore, StringArray)
-{
+TEST(Arm64StringStore, StringArray) {
     const std::string in = outPath("arm64_str_array.il");
     const std::string out = outPath("arm64_str_array.s");
     const std::string il = "il 0.1\n"
@@ -177,8 +167,7 @@ TEST(Arm64StringStore, StringArray)
 // Test 7: Call returning Str must emit rt_str_retain_maybe (BUG-NAT-005).
 // Without the retain, a string returned by a call that is immediately passed to
 // a consuming function (like rt_str_concat) would be freed prematurely.
-TEST(Arm64StringStore, CallReturnedStringIsRetained)
-{
+TEST(Arm64StringStore, CallReturnedStringIsRetained) {
     const std::string in = outPath("arm64_str_call_retain.il");
     const std::string out = outPath("arm64_str_call_retain.s");
     // @get_str returns a string; @concat passes that result directly to
@@ -205,8 +194,7 @@ TEST(Arm64StringStore, CallReturnedStringIsRetained)
     EXPECT_NE(asmText.find(blSym("rt_str_retain_maybe")), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

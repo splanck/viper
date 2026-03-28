@@ -42,31 +42,27 @@ using namespace il::frontends::zia;
 
 namespace fs = std::filesystem;
 
-namespace
-{
+namespace {
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-static bool hasLabel(const std::vector<CompletionItem> &items, const std::string &label)
-{
+static bool hasLabel(const std::vector<CompletionItem> &items, const std::string &label) {
     return std::any_of(
         items.begin(), items.end(), [&](const CompletionItem &it) { return it.label == label; });
 }
 
 static bool hasKind(const std::vector<CompletionItem> &items,
                     const std::string &label,
-                    CompletionKind kind)
-{
+                    CompletionKind kind) {
     for (const auto &it : items)
         if (it.label == label && it.kind == kind)
             return true;
     return false;
 }
 
-static void writeFile(const fs::path &path, const std::string &contents)
-{
+static void writeFile(const fs::path &path, const std::string &contents) {
     fs::create_directories(path.parent_path());
     std::ofstream out(path);
     out << contents;
@@ -76,8 +72,7 @@ static void writeFile(const fs::path &path, const std::string &contents)
 // CtrlSpace — scope symbols + keywords
 // ---------------------------------------------------------------------------
 
-TEST(CompletionEngine, CtrlSpace_ReturnsGlobalFunction)
-{
+TEST(CompletionEngine, CtrlSpace_ReturnsGlobalFunction) {
     // Simple module with a function (no runtime calls that might stress the parser).
     const std::string source = "module Test;\n\nfunc greet() {}\n\n";
     CompletionEngine engine;
@@ -87,8 +82,7 @@ TEST(CompletionEngine, CtrlSpace_ReturnsGlobalFunction)
     EXPECT_TRUE(hasLabel(items, "greet"));
 }
 
-TEST(CompletionEngine, CtrlSpace_ReturnsKeywords)
-{
+TEST(CompletionEngine, CtrlSpace_ReturnsKeywords) {
     const std::string source = "module Test;\n\n";
     CompletionEngine engine;
     // maxResults=0 → unlimited. Keywords are priority=50; scope symbols priority=10.
@@ -100,8 +94,7 @@ TEST(CompletionEngine, CtrlSpace_ReturnsKeywords)
     EXPECT_TRUE(hasLabel(items, "while"));
 }
 
-TEST(CompletionEngine, PrefixFiltering_NarrowsResults)
-{
+TEST(CompletionEngine, PrefixFiltering_NarrowsResults) {
     // "fu" prefix — should match "func" but not "var"/"if" etc.
     // Source has "fu" on line 2; cursor at col 2 gives prefix="fu".
     const std::string srcWithPrefix = "module Test;\nfu\n";
@@ -116,8 +109,7 @@ TEST(CompletionEngine, PrefixFiltering_NarrowsResults)
 // Member access (dot trigger)
 // ---------------------------------------------------------------------------
 
-TEST(CompletionEngine, MemberAccess_EntityMembers)
-{
+TEST(CompletionEngine, MemberAccess_EntityMembers) {
     // Source with entity Box. We position the cursor in "Box.wi" (prefix="wi",
     // triggerExpr="Box"). "Box" is in global scope as a Type symbol so
     // resolveExprType() can find it and return the entity type for getMembersOf().
@@ -149,8 +141,7 @@ func main() {
 // AfterNew trigger
 // ---------------------------------------------------------------------------
 
-TEST(CompletionEngine, AfterNew_ReturnsTypeNames)
-{
+TEST(CompletionEngine, AfterNew_ReturnsTypeNames) {
     // Source with "new D" — cursor after 'D' gives prefix="D", trigger=AfterNew.
     const std::string src = R"(
 module Test;
@@ -178,8 +169,7 @@ func main() {
 // serialize()
 // ---------------------------------------------------------------------------
 
-TEST(CompletionEngine, Serialize_ProducesTabDelimited)
-{
+TEST(CompletionEngine, Serialize_ProducesTabDelimited) {
     std::vector<CompletionItem> items;
     CompletionItem a;
     a.label = "foo";
@@ -215,8 +205,7 @@ TEST(CompletionEngine, Serialize_ProducesTabDelimited)
 // Cache reuse
 // ---------------------------------------------------------------------------
 
-TEST(CompletionEngine, Cache_SameSourceReusesResult)
-{
+TEST(CompletionEngine, Cache_SameSourceReusesResult) {
     const std::string source = "module Test;\n\nfunc myFn() {}\n";
     CompletionEngine engine;
 
@@ -231,8 +220,7 @@ TEST(CompletionEngine, Cache_SameSourceReusesResult)
     EXPECT_TRUE(hasLabel(items1, "myFn"));
 }
 
-TEST(CompletionEngine, ClearCache_ForcesReparse)
-{
+TEST(CompletionEngine, ClearCache_ForcesReparse) {
     const std::string source = "module Test;\n\nfunc alpha() {}\n";
     CompletionEngine engine;
 
@@ -245,8 +233,7 @@ TEST(CompletionEngine, ClearCache_ForcesReparse)
     EXPECT_EQ(items1.size(), items2.size());
 }
 
-TEST(CompletionEngine, Cache_KeyIncludesFilePath)
-{
+TEST(CompletionEngine, Cache_KeyIncludesFilePath) {
     const fs::path tempRoot = fs::temp_directory_path() / "zia_completion_cache_paths";
     fs::remove_all(tempRoot);
 
@@ -274,8 +261,7 @@ func start() {}
 // MaxResults limit
 // ---------------------------------------------------------------------------
 
-TEST(CompletionEngine, MaxResults_LimitsOutput)
-{
+TEST(CompletionEngine, MaxResults_LimitsOutput) {
     const std::string source = "module Test;\n";
     CompletionEngine engine;
     auto items = engine.complete(source, 1, 0, "<test>", 3);
@@ -286,8 +272,7 @@ TEST(CompletionEngine, MaxResults_LimitsOutput)
 // Bound module alias (dot trigger on alias)
 // ---------------------------------------------------------------------------
 
-TEST(CompletionEngine, BoundAlias_MathMembers)
-{
+TEST(CompletionEngine, BoundAlias_MathMembers) {
     // Source with "bind Math = Viper.Math" and "Math.Sq" as an expression.
     // Cursor after "Sq" → prefix="Sq", trigger=MemberAccess, triggerExpr="Math".
     const std::string source = R"(
@@ -309,7 +294,6 @@ func compute() -> Number {
 
 } // anonymous namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

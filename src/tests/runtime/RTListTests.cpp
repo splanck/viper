@@ -18,16 +18,14 @@
 #include <csetjmp>
 #include <cstring>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 static int g_finalizer_calls = 0;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
@@ -35,53 +33,45 @@ extern "C" void vm_trap(const char *msg)
 }
 
 #define EXPECT_TRAP(expr)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         g_trap_expected = true;                                                                    \
         g_last_trap = nullptr;                                                                     \
-        if (setjmp(g_trap_jmp) == 0)                                                               \
-        {                                                                                          \
+        if (setjmp(g_trap_jmp) == 0) {                                                             \
             expr;                                                                                  \
             assert(false && "Expected trap did not occur");                                        \
         }                                                                                          \
         g_trap_expected = false;                                                                   \
     } while (0)
 
-static void rt_release_obj(void *p)
-{
+static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
 }
 
-static void *new_obj()
-{
+static void *new_obj() {
     void *p = rt_obj_new_i64(0, 8);
     assert(p != nullptr);
     return p;
 }
 
-static void count_finalizer(void *)
-{
+static void count_finalizer(void *) {
     ++g_finalizer_calls;
 }
 
-static void cleanup_list(void *list)
-{
+static void cleanup_list(void *list) {
     if (!list)
         return;
     rt_list_clear(list);
     rt_release_obj(list);
 }
 
-static void assert_item(void *list, int64_t index, void *expected)
-{
+static void assert_item(void *list, int64_t index, void *expected) {
     void *got = rt_list_get(list, index);
     assert(got == expected);
     rt_release_obj(got);
 }
 
-static void test_has_empty_and_nonempty()
-{
+static void test_has_empty_and_nonempty() {
     void *list = rt_list_new();
     assert(list != nullptr);
 
@@ -101,8 +91,7 @@ static void test_has_empty_and_nonempty()
     rt_release_obj(b);
 }
 
-static void test_find_returns_index_or_minus1()
-{
+static void test_find_returns_index_or_minus1() {
     void *list = rt_list_new();
     assert(list != nullptr);
 
@@ -127,8 +116,7 @@ static void test_find_returns_index_or_minus1()
     rt_release_obj(d);
 }
 
-static void test_insert_begin_middle_end()
-{
+static void test_insert_begin_middle_end() {
     void *list = rt_list_new();
     assert(list != nullptr);
 
@@ -157,8 +145,7 @@ static void test_insert_begin_middle_end()
     rt_release_obj(c);
 }
 
-static void test_remove_returns_bool_and_removes_first_only()
-{
+static void test_remove_returns_bool_and_removes_first_only() {
     void *list = rt_list_new();
     assert(list != nullptr);
 
@@ -188,8 +175,7 @@ static void test_remove_returns_bool_and_removes_first_only()
     rt_release_obj(missing);
 }
 
-static void test_insert_out_of_range_traps()
-{
+static void test_insert_out_of_range_traps() {
     void *list = rt_list_new();
     assert(list != nullptr);
     void *a = new_obj();
@@ -204,8 +190,7 @@ static void test_insert_out_of_range_traps()
     rt_release_obj(a);
 }
 
-static void test_list_finalizer_releases_elements()
-{
+static void test_list_finalizer_releases_elements() {
     void *list = rt_list_new();
     assert(list != nullptr);
 
@@ -224,8 +209,7 @@ static void test_list_finalizer_releases_elements()
     assert(g_finalizer_calls == 1);
 }
 
-static void test_is_empty()
-{
+static void test_is_empty() {
     void *list = rt_list_new();
     assert(list != nullptr);
 
@@ -240,8 +224,7 @@ static void test_is_empty()
     rt_release_obj(a);
 }
 
-static void test_pop()
-{
+static void test_pop() {
     void *list = rt_list_new();
     assert(list != nullptr);
 
@@ -277,8 +260,7 @@ static void test_pop()
     rt_release_obj(c);
 }
 
-int main()
-{
+int main() {
     test_has_empty_and_nonempty();
     test_find_returns_index_or_minus1();
     test_insert_begin_middle_end();

@@ -28,14 +28,12 @@
 #include <cstdlib>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     (void)msg;
 }
 
 /// @brief Helper: create rt_string from C literal.
-static rt_string S(const char *s)
-{
+static rt_string S(const char *s) {
     return rt_const_cstr(s);
 }
 
@@ -43,44 +41,37 @@ static rt_string S(const char *s)
 // Null Safety Tests (always run)
 // ============================================================================
 
-static void test_text_centered_null_canvas()
-{
+static void test_text_centered_null_canvas() {
     rt_canvas_text_centered(nullptr, 100, S("hello"), 0x00FFFFFF);
     printf("  test_text_centered_null_canvas: PASSED\n");
 }
 
-static void test_text_centered_null_text()
-{
+static void test_text_centered_null_text() {
     rt_canvas_text_centered(nullptr, 100, nullptr, 0x00FFFFFF);
     printf("  test_text_centered_null_text: PASSED\n");
 }
 
-static void test_text_right_null_canvas()
-{
+static void test_text_right_null_canvas() {
     rt_canvas_text_right(nullptr, 10, 100, S("hello"), 0x00FFFFFF);
     printf("  test_text_right_null_canvas: PASSED\n");
 }
 
-static void test_text_right_null_text()
-{
+static void test_text_right_null_text() {
     rt_canvas_text_right(nullptr, 10, 100, nullptr, 0x00FFFFFF);
     printf("  test_text_right_null_text: PASSED\n");
 }
 
-static void test_text_centered_scaled_null_canvas()
-{
+static void test_text_centered_scaled_null_canvas() {
     rt_canvas_text_centered_scaled(nullptr, 100, S("hello"), 0x00FFFFFF, 2);
     printf("  test_text_centered_scaled_null_canvas: PASSED\n");
 }
 
-static void test_text_centered_scaled_null_text()
-{
+static void test_text_centered_scaled_null_text() {
     rt_canvas_text_centered_scaled(nullptr, 100, nullptr, 0x00FFFFFF, 2);
     printf("  test_text_centered_scaled_null_text: PASSED\n");
 }
 
-static void test_text_centered_scaled_zero_scale()
-{
+static void test_text_centered_scaled_zero_scale() {
     // scale < 1 should early-return without crash
     rt_canvas_text_centered_scaled(nullptr, 100, S("hello"), 0x00FFFFFF, 0);
     rt_canvas_text_centered_scaled(nullptr, 100, S("hello"), 0x00FFFFFF, -1);
@@ -93,8 +84,7 @@ static void test_text_centered_scaled_zero_scale()
 
 #ifdef VIPER_ENABLE_GRAPHICS
 
-static void test_text_scaled_width_basic()
-{
+static void test_text_scaled_width_basic() {
     // "hello" = 5 chars, scale 1 → 5 * 8 * 1 = 40
     assert(rt_canvas_text_scaled_width(S("hello"), 1) == 40);
 
@@ -107,8 +97,7 @@ static void test_text_scaled_width_basic()
     printf("  test_text_scaled_width_basic: PASSED\n");
 }
 
-static void test_text_scaled_width_scaled()
-{
+static void test_text_scaled_width_scaled() {
     // "hello" = 5 chars, scale 2 → 5 * 8 * 2 = 80
     assert(rt_canvas_text_scaled_width(S("hello"), 2) == 80);
 
@@ -121,16 +110,14 @@ static void test_text_scaled_width_scaled()
     printf("  test_text_scaled_width_scaled: PASSED\n");
 }
 
-static void test_text_scaled_width_empty()
-{
+static void test_text_scaled_width_empty() {
     // Empty string → 0
     assert(rt_canvas_text_scaled_width(S(""), 1) == 0);
 
     printf("  test_text_scaled_width_empty: PASSED\n");
 }
 
-static void test_text_scaled_width_null()
-{
+static void test_text_scaled_width_null() {
     // NULL text → 0
     assert(rt_canvas_text_scaled_width(nullptr, 1) == 0);
 
@@ -145,8 +132,7 @@ static void test_text_scaled_width_null()
 // Fake Canvas Tests (exercises computation path, drawing is no-op)
 // ============================================================================
 
-static rt_canvas *make_fake_canvas()
-{
+static rt_canvas *make_fake_canvas() {
     rt_canvas *c = (rt_canvas *)calloc(1, sizeof(rt_canvas));
     assert(c != nullptr);
     c->vptr = nullptr;
@@ -159,8 +145,7 @@ static rt_canvas *make_fake_canvas()
     return c;
 }
 
-static void test_text_centered_runs_without_crash()
-{
+static void test_text_centered_runs_without_crash() {
     rt_canvas *c = make_fake_canvas();
     // gfx_win is NULL → rt_canvas_width returns 0, drawing is no-op
     // This exercises the full computation path without requiring a display
@@ -170,8 +155,7 @@ static void test_text_centered_runs_without_crash()
     printf("  test_text_centered_runs_without_crash: PASSED\n");
 }
 
-static void test_text_right_runs_without_crash()
-{
+static void test_text_right_runs_without_crash() {
     rt_canvas *c = make_fake_canvas();
     rt_canvas_text_right(c, 10, 100, S("Score: 42000"), 0x00FFFFFF);
     rt_canvas_text_right(c, 0, 200, S(""), 0x00FFFFFF);
@@ -179,8 +163,7 @@ static void test_text_right_runs_without_crash()
     printf("  test_text_right_runs_without_crash: PASSED\n");
 }
 
-static void test_text_centered_scaled_runs_without_crash()
-{
+static void test_text_centered_scaled_runs_without_crash() {
     rt_canvas *c = make_fake_canvas();
     rt_canvas_text_centered_scaled(c, 100, S("TITLE"), 0x00FFFFFF, 2);
     rt_canvas_text_centered_scaled(c, 100, S("TITLE"), 0x00FFFFFF, 3);
@@ -196,8 +179,7 @@ static void test_text_centered_scaled_runs_without_crash()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== RTCanvasTextLayoutTests ===\n\n");
 
     printf("--- Null Safety ---\n");

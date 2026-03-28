@@ -25,20 +25,17 @@
 
 #include <memory>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 class CompletionEngine;
 }
 
-namespace viper::server
-{
+namespace viper::server {
 
 /// @brief Protocol-agnostic facade wrapping Zia compiler APIs.
 ///
 /// Each method creates a fresh SourceManager per call for isolation.
 /// The CompletionEngine is shared across calls to benefit from its LRU cache.
-class CompilerBridge : public ICompilerBridge
-{
+class CompilerBridge : public ICompilerBridge {
   public:
     CompilerBridge();
     ~CompilerBridge() override;

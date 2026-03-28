@@ -31,26 +31,22 @@
 #include <string>
 #include <vector>
 
-namespace viper::repl
-{
+namespace viper::repl {
 
 /// @brief Information about a session variable.
-struct VarInfo
-{
+struct VarInfo {
     std::string name;
     std::string type;
 };
 
 /// @brief Information about a session function.
-struct FuncInfo
-{
+struct FuncInfo {
     std::string name;
     std::string signature;
 };
 
 /// @brief The detected type of a REPL expression result.
-enum class ResultType
-{
+enum class ResultType {
     None,      ///< No printable result (declaration, void call, etc.).
     Statement, ///< Statement that produced output via explicit Say/Print.
     Integer,   ///< Expression auto-printed as Integer.
@@ -61,8 +57,7 @@ enum class ResultType
 };
 
 /// @brief Result of evaluating a REPL input.
-struct EvalResult
-{
+struct EvalResult {
     bool success{false};                     ///< True if compilation and execution succeeded.
     std::string output;                      ///< Captured stdout from execution.
     std::string errorMessage;                ///< Error message on failure.
@@ -73,8 +68,7 @@ struct EvalResult
 /// @brief Language-specific REPL adapter interface.
 /// @details Implementations provide compilation, execution, completion, and
 ///          session state tracking for a specific language (Zia or BASIC).
-class ReplAdapter
-{
+class ReplAdapter {
   public:
     virtual ~ReplAdapter() = default;
 
@@ -104,8 +98,7 @@ class ReplAdapter
     /// @brief Get the inferred type of an expression (for .type command).
     /// @param expr The expression to analyze.
     /// @return Human-readable type string, or error message.
-    virtual std::string getExprType(const std::string &expr)
-    {
+    virtual std::string getExprType(const std::string &expr) {
         (void)expr;
         return "not supported";
     }
@@ -113,8 +106,7 @@ class ReplAdapter
     /// @brief Get the generated IL for an expression or statement (for .il command).
     /// @param input The code to compile.
     /// @return IL text or error message.
-    virtual std::string getIL(const std::string &input)
-    {
+    virtual std::string getIL(const std::string &input) {
         (void)input;
         return "not supported";
     }
@@ -124,8 +116,7 @@ class ReplAdapter
     ///          Default uses Zia-style bracket depth tracking.
     /// @param input The accumulated REPL input.
     /// @return Classification of the input.
-    virtual InputKind classifyInput(const std::string &input)
-    {
+    virtual InputKind classifyInput(const std::string &input) {
         return ReplInputClassifier::classify(input);
     }
 
@@ -136,8 +127,7 @@ class ReplAdapter
 /// @brief Core REPL session managing the read-eval-print loop.
 /// @details Orchestrates line editing, input classification, meta-command
 ///          dispatch, and language-specific evaluation via a ReplAdapter.
-class ReplSession
-{
+class ReplSession {
   public:
     /// @brief Construct a REPL session with the given language adapter.
     /// @param adapter Language-specific REPL adapter (takes ownership).
@@ -151,8 +141,7 @@ class ReplSession
     void requestExit();
 
     /// @brief Get the language adapter.
-    ReplAdapter &adapter()
-    {
+    ReplAdapter &adapter() {
         return *adapter_;
     }
 

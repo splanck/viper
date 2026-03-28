@@ -26,8 +26,7 @@ using namespace viper::server;
 
 // ===== check() =====
 
-TEST(CompilerBridge, CheckValidSource)
-{
+TEST(CompilerBridge, CheckValidSource) {
     CompilerBridge bridge;
     auto diags = bridge.check(R"(
 module Test;
@@ -38,14 +37,12 @@ func start() {
 )",
                               "test.zia");
     // No errors expected (there may be warnings, check for severity 2 = error)
-    for (const auto &d : diags)
-    {
+    for (const auto &d : diags) {
         EXPECT_TRUE(d.severity != 2);
     }
 }
 
-TEST(CompilerBridge, CheckReportsError)
-{
+TEST(CompilerBridge, CheckReportsError) {
     CompilerBridge bridge;
     auto diags = bridge.check(R"(
 module Test;
@@ -57,16 +54,14 @@ func start() {
     EXPECT_TRUE(diags.size() > 0u);
     // Should be an error severity
     bool hasError = false;
-    for (const auto &d : diags)
-    {
+    for (const auto &d : diags) {
         if (d.severity == 2)
             hasError = true;
     }
     EXPECT_TRUE(hasError);
 }
 
-TEST(CompilerBridge, CheckReturnsDiagnosticFields)
-{
+TEST(CompilerBridge, CheckReturnsDiagnosticFields) {
     CompilerBridge bridge;
     auto diags = bridge.check(R"(
 module Test;
@@ -84,8 +79,7 @@ func start() {
 
 // ===== compile() =====
 
-TEST(CompilerBridge, CompileValidSource)
-{
+TEST(CompilerBridge, CompileValidSource) {
     CompilerBridge bridge;
     auto result = bridge.compile(R"(
 module Test;
@@ -97,14 +91,12 @@ func start() {
                                  "test.zia");
     EXPECT_TRUE(result.succeeded);
     // No errors expected (warnings are acceptable)
-    for (const auto &d : result.diagnostics)
-    {
+    for (const auto &d : result.diagnostics) {
         EXPECT_TRUE(d.severity != 2);
     }
 }
 
-TEST(CompilerBridge, CompileInvalidSource)
-{
+TEST(CompilerBridge, CompileInvalidSource) {
     CompilerBridge bridge;
     auto result = bridge.compile(R"(
 module Test;
@@ -119,8 +111,7 @@ func start() {
 
 // ===== completions() =====
 
-TEST(CompilerBridge, CompletionsReturnsResults)
-{
+TEST(CompilerBridge, CompletionsReturnsResults) {
     CompilerBridge bridge;
     // Place cursor after "Viper." to trigger member completions
     std::string source = "module Test;\nfunc start() {\n    Viper.\n}\n";
@@ -129,8 +120,7 @@ TEST(CompilerBridge, CompletionsReturnsResults)
     EXPECT_TRUE(items.size() > 0u);
 }
 
-TEST(CompilerBridge, CompletionsAtEmptyPosition)
-{
+TEST(CompilerBridge, CompletionsAtEmptyPosition) {
     CompilerBridge bridge;
     // Cursor at start of empty function body — should get keyword completions
     std::string source = "module Test;\nfunc start() {\n    \n}\n";
@@ -142,8 +132,7 @@ TEST(CompilerBridge, CompletionsAtEmptyPosition)
 
 // ===== hover() =====
 
-TEST(CompilerBridge, HoverOnLocalVariable)
-{
+TEST(CompilerBridge, HoverOnLocalVariable) {
     CompilerBridge bridge;
     // Line 3: "    var x = 42;" — cursor on 'x' at col 9
     std::string source = "module Test;\nfunc start() {\n    var x = 42;\n}\n";
@@ -153,8 +142,7 @@ TEST(CompilerBridge, HoverOnLocalVariable)
     EXPECT_TRUE(result.find("Integer") != std::string::npos);
 }
 
-TEST(CompilerBridge, HoverOnFunctionParameter)
-{
+TEST(CompilerBridge, HoverOnFunctionParameter) {
     CompilerBridge bridge;
     // Line 3: "    return a + b;" — cursor on 'a' at col 12
     std::string source = "module Test;\n"
@@ -171,8 +159,7 @@ TEST(CompilerBridge, HoverOnFunctionParameter)
     EXPECT_TRUE(result.find("Parameter") != std::string::npos);
 }
 
-TEST(CompilerBridge, HoverOnGlobalFunction)
-{
+TEST(CompilerBridge, HoverOnGlobalFunction) {
     CompilerBridge bridge;
     // Line 2: "func start() {" — cursor on 'start' at col 6
     std::string source = "module Test;\nfunc start() {\n    var x = 10;\n}\n";
@@ -181,8 +168,7 @@ TEST(CompilerBridge, HoverOnGlobalFunction)
     EXPECT_TRUE(result.find("func start") != std::string::npos);
 }
 
-TEST(CompilerBridge, HoverOnEntityTypeName)
-{
+TEST(CompilerBridge, HoverOnEntityTypeName) {
     CompilerBridge bridge;
     // Line 10: "    var s: Ship = new Ship();" — cursor on 'Ship' type annotation at col 12
     std::string source = "module Test;\n"
@@ -202,8 +188,7 @@ TEST(CompilerBridge, HoverOnEntityTypeName)
     EXPECT_TRUE(result.find("entity Ship") != std::string::npos);
 }
 
-TEST(CompilerBridge, HoverOnEntityFieldInsideBody)
-{
+TEST(CompilerBridge, HoverOnEntityFieldInsideBody) {
     CompilerBridge bridge;
     // Line 7: "        return speed;" — cursor on 'speed' at col 16
     std::string source = "module Test;\n"
@@ -224,8 +209,7 @@ TEST(CompilerBridge, HoverOnEntityFieldInsideBody)
     (void)result;
 }
 
-TEST(CompilerBridge, HoverOnMethodViaDot)
-{
+TEST(CompilerBridge, HoverOnMethodViaDot) {
     CompilerBridge bridge;
     // Line 14: "    var r = s.getSpeed();" — cursor on 'getSpeed' at col 17
     std::string source = "module Test;\n"                            // 1
@@ -251,8 +235,7 @@ TEST(CompilerBridge, HoverOnMethodViaDot)
     EXPECT_TRUE(result.find("Member of") != std::string::npos);
 }
 
-TEST(CompilerBridge, HoverOnFieldViaDot)
-{
+TEST(CompilerBridge, HoverOnFieldViaDot) {
     CompilerBridge bridge;
     // Line 11: "    s.speed = 10;" — 's' at col 5, '.' at 6, 'speed' starts at col 7
     std::string source = "module Test;\n"              // 1
@@ -274,8 +257,7 @@ TEST(CompilerBridge, HoverOnFieldViaDot)
     EXPECT_TRUE(result.find("Integer") != std::string::npos);
 }
 
-TEST(CompilerBridge, HoverOnWhitespace)
-{
+TEST(CompilerBridge, HoverOnWhitespace) {
     CompilerBridge bridge;
     // Line 3, col 1: leading whitespace
     std::string source = "module Test;\nfunc start() {\n    var x = 42;\n}\n";
@@ -283,8 +265,7 @@ TEST(CompilerBridge, HoverOnWhitespace)
     EXPECT_TRUE(result.empty());
 }
 
-TEST(CompilerBridge, HoverOnOperator)
-{
+TEST(CompilerBridge, HoverOnOperator) {
     CompilerBridge bridge;
     // Line 3: "    var x = 1 + 2;" — cursor on '+' at col 15
     std::string source = "module Test;\nfunc start() {\n    var x = 1 + 2;\n}\n";
@@ -292,16 +273,14 @@ TEST(CompilerBridge, HoverOnOperator)
     EXPECT_TRUE(result.empty());
 }
 
-TEST(CompilerBridge, HoverOnInvalidSource)
-{
+TEST(CompilerBridge, HoverOnInvalidSource) {
     CompilerBridge bridge;
     auto result = bridge.hover("this is not valid zia", 1, 1, "test.zia");
     // Should not crash; empty result is acceptable
     (void)result;
 }
 
-TEST(CompilerBridge, HoverOnModuleAlias)
-{
+TEST(CompilerBridge, HoverOnModuleAlias) {
     CompilerBridge bridge;
     // Line 2: "bind IO = Viper.Terminal;" — cursor on 'IO' at col 6
     std::string source = "module Test;\n"
@@ -317,8 +296,7 @@ TEST(CompilerBridge, HoverOnModuleAlias)
     EXPECT_TRUE(result.find("Module namespace") != std::string::npos);
 }
 
-TEST(CompilerBridge, HoverOnRuntimeMethod)
-{
+TEST(CompilerBridge, HoverOnRuntimeMethod) {
     CompilerBridge bridge;
     // Line 5: "    IO.Say("hi");" — dotPrefix="IO", identifier="Say"
     std::string source = "module Test;\n"              // 1
@@ -333,8 +311,7 @@ TEST(CompilerBridge, HoverOnRuntimeMethod)
     EXPECT_TRUE(result.find("Say") != std::string::npos);
 }
 
-TEST(CompilerBridge, HoverOnFinalVariable)
-{
+TEST(CompilerBridge, HoverOnFinalVariable) {
     CompilerBridge bridge;
     // Line 4: "    Viper.Terminal.SayInt(MAX);" — 'MAX' starts at col 27
     std::string source = "module Test;\n"
@@ -347,8 +324,7 @@ TEST(CompilerBridge, HoverOnFinalVariable)
     EXPECT_TRUE(result.find("MAX") != std::string::npos);
 }
 
-TEST(CompilerBridge, HoverOnFunctionCallSite)
-{
+TEST(CompilerBridge, HoverOnFunctionCallSite) {
     CompilerBridge bridge;
     // Line 6: "    Viper.Terminal.SayInt(add(1, 2));" — 'add' starts at col 27
     std::string source = "module Test;\n"
@@ -366,8 +342,7 @@ TEST(CompilerBridge, HoverOnFunctionCallSite)
 
 // ===== symbols() =====
 
-TEST(CompilerBridge, SymbolsListsDeclarations)
-{
+TEST(CompilerBridge, SymbolsListsDeclarations) {
     CompilerBridge bridge;
     auto syms = bridge.symbols(R"(
 module Test;
@@ -378,16 +353,14 @@ func start() {
                                "test.zia");
     // Should at least have the "start" function
     bool foundStart = false;
-    for (const auto &s : syms)
-    {
+    for (const auto &s : syms) {
         if (s.name == "start")
             foundStart = true;
     }
     EXPECT_TRUE(foundStart);
 }
 
-TEST(CompilerBridge, SymbolsIncludesTypes)
-{
+TEST(CompilerBridge, SymbolsIncludesTypes) {
     CompilerBridge bridge;
     auto syms = bridge.symbols(R"(
 module Test;
@@ -402,8 +375,7 @@ func start() {
                                "test.zia");
     // Should include the "Point" type
     bool foundPoint = false;
-    for (const auto &s : syms)
-    {
+    for (const auto &s : syms) {
         if (s.name == "Point")
             foundPoint = true;
     }
@@ -412,8 +384,7 @@ func start() {
 
 // ===== dumpIL() =====
 
-TEST(CompilerBridge, DumpILValidSource)
-{
+TEST(CompilerBridge, DumpILValidSource) {
     CompilerBridge bridge;
     auto il = bridge.dumpIL(R"(
 module Test;
@@ -429,8 +400,7 @@ func start() {
     EXPECT_TRUE(!il.empty());
 }
 
-TEST(CompilerBridge, DumpILOptimized)
-{
+TEST(CompilerBridge, DumpILOptimized) {
     CompilerBridge bridge;
     auto il = bridge.dumpIL(R"(
 module Test;
@@ -444,8 +414,7 @@ func start() {
     EXPECT_TRUE(!il.empty());
 }
 
-TEST(CompilerBridge, DumpILInvalidSource)
-{
+TEST(CompilerBridge, DumpILInvalidSource) {
     CompilerBridge bridge;
     auto il = bridge.dumpIL(R"(
 module Test;
@@ -461,8 +430,7 @@ func start() {
 
 // ===== dumpAst() =====
 
-TEST(CompilerBridge, DumpAstValidSource)
-{
+TEST(CompilerBridge, DumpAstValidSource) {
     CompilerBridge bridge;
     auto ast = bridge.dumpAst(R"(
 module Test;
@@ -476,8 +444,7 @@ func start() {
     EXPECT_TRUE(ast != "(no AST produced)");
 }
 
-TEST(CompilerBridge, DumpAstInvalidSyntax)
-{
+TEST(CompilerBridge, DumpAstInvalidSyntax) {
     CompilerBridge bridge;
     auto ast = bridge.dumpAst("this is not valid zia source", "test.zia");
     // May produce partial AST or "(no AST produced)" — should not crash
@@ -486,8 +453,7 @@ TEST(CompilerBridge, DumpAstInvalidSyntax)
 
 // ===== dumpTokens() =====
 
-TEST(CompilerBridge, DumpTokensValidSource)
-{
+TEST(CompilerBridge, DumpTokensValidSource) {
     CompilerBridge bridge;
     auto tokens = bridge.dumpTokens("module Test;\nfunc start() { }\n", "test.zia");
     // Should contain token text for "module", "Test", etc.
@@ -497,8 +463,7 @@ TEST(CompilerBridge, DumpTokensValidSource)
     EXPECT_TRUE(tokens.find("start") != std::string::npos);
 }
 
-TEST(CompilerBridge, DumpTokensEmptySource)
-{
+TEST(CompilerBridge, DumpTokensEmptySource) {
     CompilerBridge bridge;
     auto tokens = bridge.dumpTokens("", "test.zia");
     // Empty source should produce empty token output (only EOF, which we skip)
@@ -507,44 +472,38 @@ TEST(CompilerBridge, DumpTokensEmptySource)
 
 // ===== runtimeClasses() =====
 
-TEST(CompilerBridge, RuntimeClassesNotEmpty)
-{
+TEST(CompilerBridge, RuntimeClassesNotEmpty) {
     CompilerBridge bridge;
     auto classes = bridge.runtimeClasses();
     // Should have at least some runtime classes (Terminal, Canvas, etc.)
     EXPECT_TRUE(classes.size() > 0u);
 }
 
-TEST(CompilerBridge, RuntimeClassesHaveNames)
-{
+TEST(CompilerBridge, RuntimeClassesHaveNames) {
     CompilerBridge bridge;
     auto classes = bridge.runtimeClasses();
-    for (const auto &cls : classes)
-    {
+    for (const auto &cls : classes) {
         EXPECT_TRUE(!cls.qname.empty());
     }
 }
 
 // ===== runtimeMembers() =====
 
-TEST(CompilerBridge, RuntimeMembersForKnownClass)
-{
+TEST(CompilerBridge, RuntimeMembersForKnownClass) {
     CompilerBridge bridge;
     // "Viper.Terminal" should exist and have methods
     auto members = bridge.runtimeMembers("Viper.Terminal");
     EXPECT_TRUE(members.size() > 0u);
     // Should have the "Say" method
     bool foundSay = false;
-    for (const auto &m : members)
-    {
+    for (const auto &m : members) {
         if (m.name == "Say")
             foundSay = true;
     }
     EXPECT_TRUE(foundSay);
 }
 
-TEST(CompilerBridge, RuntimeMembersForUnknownClass)
-{
+TEST(CompilerBridge, RuntimeMembersForUnknownClass) {
     CompilerBridge bridge;
     auto members = bridge.runtimeMembers("NonExistent.Class");
     EXPECT_EQ(members.size(), 0u);
@@ -552,16 +511,14 @@ TEST(CompilerBridge, RuntimeMembersForUnknownClass)
 
 // ===== runtimeSearch() =====
 
-TEST(CompilerBridge, RuntimeSearchFindsResults)
-{
+TEST(CompilerBridge, RuntimeSearchFindsResults) {
     CompilerBridge bridge;
     auto results = bridge.runtimeSearch("Say");
     // Should find Terminal.Say and possibly others
     EXPECT_TRUE(results.size() > 0u);
 }
 
-TEST(CompilerBridge, RuntimeSearchCaseInsensitive)
-{
+TEST(CompilerBridge, RuntimeSearchCaseInsensitive) {
     CompilerBridge bridge;
     auto lower = bridge.runtimeSearch("say");
     auto upper = bridge.runtimeSearch("SAY");
@@ -569,15 +526,13 @@ TEST(CompilerBridge, RuntimeSearchCaseInsensitive)
     EXPECT_EQ(lower.size(), upper.size());
 }
 
-TEST(CompilerBridge, RuntimeSearchNoResults)
-{
+TEST(CompilerBridge, RuntimeSearchNoResults) {
     CompilerBridge bridge;
     auto results = bridge.runtimeSearch("zzzzNonExistentApiNamezzzz");
     EXPECT_EQ(results.size(), 0u);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

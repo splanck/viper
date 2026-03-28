@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,8 +43,7 @@ static std::string readFile(const std::string &path)
 }
 
 // Test 1: Simple if-else with phi
-TEST(Arm64CrossBlockPhi, SimpleIfElsePhi)
-{
+TEST(Arm64CrossBlockPhi, SimpleIfElsePhi) {
     const std::string in = outPath("arm64_phi_simple.il");
     const std::string out = outPath("arm64_phi_simple.s");
     const std::string il = "il 0.1\n"
@@ -72,8 +68,7 @@ TEST(Arm64CrossBlockPhi, SimpleIfElsePhi)
 }
 
 // Test 2: Loop with phi and high register pressure
-TEST(Arm64CrossBlockPhi, LoopWithPressure)
-{
+TEST(Arm64CrossBlockPhi, LoopWithPressure) {
     const std::string in = outPath("arm64_phi_loop_pressure.il");
     const std::string out = outPath("arm64_phi_loop_pressure.s");
     const std::string il = "il 0.1\n"
@@ -102,8 +97,7 @@ TEST(Arm64CrossBlockPhi, LoopWithPressure)
 }
 
 // Test 3: Multiple phis in join block
-TEST(Arm64CrossBlockPhi, MultiplePhis)
-{
+TEST(Arm64CrossBlockPhi, MultiplePhis) {
     const std::string in = outPath("arm64_phi_multi.il");
     const std::string out = outPath("arm64_phi_multi.s");
     const std::string il = "il 0.1\n"
@@ -128,8 +122,7 @@ TEST(Arm64CrossBlockPhi, MultiplePhis)
 }
 
 // Test 4: Phi with FP values
-TEST(Arm64CrossBlockPhi, FPPhi)
-{
+TEST(Arm64CrossBlockPhi, FPPhi) {
     const std::string in = outPath("arm64_phi_fp.il");
     const std::string out = outPath("arm64_phi_fp.s");
     const std::string il = "il 0.1\n"
@@ -153,8 +146,7 @@ TEST(Arm64CrossBlockPhi, FPPhi)
 }
 
 // Test 5: Nested loop with phi
-TEST(Arm64CrossBlockPhi, NestedLoopPhi)
-{
+TEST(Arm64CrossBlockPhi, NestedLoopPhi) {
     const std::string in = outPath("arm64_phi_nested.il");
     const std::string out = outPath("arm64_phi_nested.s");
     const std::string il = "il 0.1\n"
@@ -188,8 +180,7 @@ TEST(Arm64CrossBlockPhi, NestedLoopPhi)
 }
 
 // Test 6: Phi with call in predecessor
-TEST(Arm64CrossBlockPhi, PhiAfterCall)
-{
+TEST(Arm64CrossBlockPhi, PhiAfterCall) {
     const std::string in = outPath("arm64_phi_call.il");
     const std::string out = outPath("arm64_phi_call.s");
     const std::string il = "il 0.1\n"
@@ -214,8 +205,7 @@ TEST(Arm64CrossBlockPhi, PhiAfterCall)
     EXPECT_NE(asmText.find("bl "), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

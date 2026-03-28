@@ -20,11 +20,9 @@
 #include <cassert>
 #include <string>
 
-namespace
-{
+namespace {
 
-il::core::Module buildRuntimeTrapModule(bool attachLoc)
-{
+il::core::Module buildRuntimeTrapModule(bool attachLoc) {
     using namespace il::core;
     Module m;
     il::build::IRBuilder b(m);
@@ -43,8 +41,7 @@ il::core::Module buildRuntimeTrapModule(bool attachLoc)
 
 } // namespace
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

@@ -57,21 +57,19 @@
 /// @details Searches the runtime class catalog for Viper.Terminal and verifies
 /// it contains the Say and ReadLine methods.
 ///
-TEST(RuntimeClassTerminalBinding, CatalogContainsTerminal)
-{
+TEST(RuntimeClassTerminalBinding, CatalogContainsTerminal) {
     const auto &cat = il::runtime::runtimeClassCatalog();
 
     // Find Viper.Terminal in the catalog
-    auto it = std::find_if(cat.begin(),
-                           cat.end(),
-                           [](const auto &c) { return std::string(c.qname) == "Viper.Terminal"; });
+    auto it = std::find_if(cat.begin(), cat.end(), [](const auto &c) {
+        return std::string(c.qname) == "Viper.Terminal";
+    });
     ASSERT_NE(it, cat.end());
 
     // Verify expected methods are present
     bool hasSay = false;
     bool hasReadLine = false;
-    for (const auto &m : it->methods)
-    {
+    for (const auto &m : it->methods) {
         hasSay = hasSay || std::string(m.name) == "Say";
         hasReadLine = hasReadLine || std::string(m.name) == "ReadLine";
     }
@@ -84,8 +82,7 @@ TEST(RuntimeClassTerminalBinding, CatalogContainsTerminal)
 /// @details Verifies the RuntimeMethodIndex correctly maps Terminal method
 /// lookups to their canonical extern names for IL code generation.
 ///
-TEST(RuntimeClassTerminalBinding, MethodIndexTargets)
-{
+TEST(RuntimeClassTerminalBinding, MethodIndexTargets) {
     // Initialize the method index
     il::frontends::basic::runtimeMethodIndex().seed();
     auto &midx = il::frontends::basic::runtimeMethodIndex();
@@ -102,8 +99,7 @@ TEST(RuntimeClassTerminalBinding, MethodIndexTargets)
 }
 
 /// @brief Test entry point.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

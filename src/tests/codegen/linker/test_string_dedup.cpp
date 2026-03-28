@@ -29,10 +29,8 @@ using namespace viper::codegen::linker;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -41,8 +39,7 @@ static void check(bool cond, const char *msg, int line)
 #define CHECK(cond) check((cond), #cond, __LINE__)
 
 /// Helper: create a minimal ObjFile with one rodata section containing a string.
-static ObjFile makeRodataObj(const std::string &name, const std::string &str)
-{
+static ObjFile makeRodataObj(const std::string &name, const std::string &str) {
     ObjFile obj;
     obj.name = name;
     obj.format = ObjFileFormat::ELF;
@@ -76,8 +73,7 @@ static ObjFile makeRodataObj(const std::string &name, const std::string &str)
     return obj;
 }
 
-int main()
-{
+int main() {
     // --- Identical strings across 3 objects are deduplicated ---
     {
         auto obj1 = makeRodataObj("a.o", "hello");
@@ -311,8 +307,7 @@ int main()
     }
 
     // --- Result ---
-    if (gFail == 0)
-    {
+    if (gFail == 0) {
         std::cout << "All StringDedup tests passed.\n";
         return EXIT_SUCCESS;
     }

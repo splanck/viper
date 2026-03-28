@@ -23,11 +23,9 @@
 #include <string>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 
-namespace
-{
+namespace {
 /// @brief Build the operand category array for an opcode definition.
 /// @details Provides a constexpr helper so the generated table entries stay
 ///          concise and default unspecified slots to @ref TypeCategory::None.
@@ -36,8 +34,7 @@ namespace
 /// @param c Third operand category (optional).
 /// @return Array describing up to three operand categories.
 constexpr std::array<TypeCategory, kMaxOperandCategories> makeOperands(
-    TypeCategory a, TypeCategory b = TypeCategory::None, TypeCategory c = TypeCategory::None)
-{
+    TypeCategory a, TypeCategory b = TypeCategory::None, TypeCategory c = TypeCategory::None) {
     return {a, b, c};
 }
 
@@ -49,8 +46,7 @@ constexpr std::array<TypeCategory, kMaxOperandCategories> makeOperands(
 /// @param role Optional semantic role name.
 /// @return Operand parse descriptor.
 constexpr OperandParseSpec makeParseSpec(OperandParseKind kind = OperandParseKind::None,
-                                         const char *role = nullptr)
-{
+                                         const char *role = nullptr) {
     return {kind, role};
 }
 
@@ -67,8 +63,7 @@ constexpr std::array<OperandParseSpec, kMaxOperandParseEntries> makeParseList(
     OperandParseSpec a = makeParseSpec(),
     OperandParseSpec b = makeParseSpec(),
     OperandParseSpec c = makeParseSpec(),
-    OperandParseSpec d = makeParseSpec())
-{
+    OperandParseSpec d = makeParseSpec()) {
     return {a, b, c, d};
 }
 } // namespace
@@ -114,8 +109,7 @@ static_assert(kOpcodeTable.size() == kNumOpcodes, "Opcode table must match enum 
 ///          size is guarded by a static assertion to catch enum/table drift.
 /// @param op Opcode whose metadata is required.
 /// @return Reference to the immutable opcode descriptor.
-const OpcodeInfo &getOpcodeInfo(Opcode op)
-{
+const OpcodeInfo &getOpcodeInfo(Opcode op) {
     return kOpcodeTable[static_cast<size_t>(op)];
 }
 
@@ -125,10 +119,8 @@ const OpcodeInfo &getOpcodeInfo(Opcode op)
 ///          Primarily used by tools that need to iterate over all opcodes in a
 ///          stable order for reporting or analysis.
 /// @return Const reference to vector populated with every opcode value.
-const std::vector<Opcode> &all_opcodes()
-{
-    static const std::vector<Opcode> ops = []()
-    {
+const std::vector<Opcode> &all_opcodes() {
+    static const std::vector<Opcode> ops = []() {
         std::vector<Opcode> v;
         v.reserve(kNumOpcodes);
         for (size_t index = 0; index < kNumOpcodes; ++index)
@@ -145,10 +137,8 @@ const std::vector<Opcode> &all_opcodes()
 ///          everything else defaults to @ref MemoryEffects::Unknown.
 /// @param op Opcode being classified.
 /// @return Memory effect classification for @p op.
-MemoryEffects memoryEffects(Opcode op) noexcept
-{
-    switch (op)
-    {
+MemoryEffects memoryEffects(Opcode op) noexcept {
+    switch (op) {
         case Opcode::Load:
             return MemoryEffects::Read;
         case Opcode::Store:
@@ -232,8 +222,7 @@ MemoryEffects memoryEffects(Opcode op) noexcept
 ///          agnostic of the exact encoding.
 /// @param value Encoded operand count.
 /// @return True when @p value represents a variadic operand count.
-bool isVariadicOperandCount(uint8_t value)
-{
+bool isVariadicOperandCount(uint8_t value) {
     return value == kVariadicOperandCount;
 }
 
@@ -242,8 +231,7 @@ bool isVariadicOperandCount(uint8_t value)
 ///          can detect branch fan-out encoded as variadic.
 /// @param value Encoded successor count.
 /// @return True when @p value represents a variadic successor count.
-bool isVariadicSuccessorCount(uint8_t value)
-{
+bool isVariadicSuccessorCount(uint8_t value) {
     return value == kVariadicOperandCount;
 }
 
@@ -253,8 +241,7 @@ bool isVariadicSuccessorCount(uint8_t value)
 ///          use this for diagnostics and serialization.
 /// @param op Opcode enumeration value to translate into a mnemonic string.
 /// @return Mnemonic string if the opcode is within range; otherwise an empty string.
-std::string opcode_mnemonic(Opcode op)
-{
+std::string opcode_mnemonic(Opcode op) {
     return toString(op);
 }
 

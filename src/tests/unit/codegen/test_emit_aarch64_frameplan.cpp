@@ -21,8 +21,7 @@
 
 using namespace viper::codegen::aarch64;
 
-TEST(AArch64Emit, FramePlanSavesGPRs)
-{
+TEST(AArch64Emit, FramePlanSavesGPRs) {
     auto &ti = darwinTarget();
     AsmEmitter emit{ti};
     FramePlan plan{};
@@ -45,8 +44,7 @@ TEST(AArch64Emit, FramePlanSavesGPRs)
     EXPECT_NE(text.find("ldp x29, x30, [sp], #16"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

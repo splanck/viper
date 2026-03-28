@@ -29,12 +29,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Parameters for generating a .lnk shortcut file.
-struct LnkParams
-{
+struct LnkParams {
     std::string targetPath;  ///< Target executable path (e.g. "C:\\Program Files\\App\\app.exe")
     std::string workingDir;  ///< Working directory for the target.
     std::string description; ///< Shortcut description/comment.

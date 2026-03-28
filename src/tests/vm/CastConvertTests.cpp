@@ -23,25 +23,21 @@
 
 using namespace il::core;
 
-namespace
-{
-int64_t doubleBits(double d)
-{
+namespace {
+int64_t doubleBits(double d) {
     int64_t bits;
     std::memcpy(&bits, &d, sizeof(bits));
     return bits;
 }
 
-double bitsToDouble(int64_t bits)
-{
+double bitsToDouble(int64_t bits) {
     double d;
     std::memcpy(&d, &bits, sizeof(d));
     return d;
 }
 
 // CastSiToFp: signed int to float (similar to Sitofp)
-void buildCastSiToFpFunction(Module &module, int64_t val)
-{
+void buildCastSiToFpFunction(Module &module, int64_t val) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -64,8 +60,7 @@ void buildCastSiToFpFunction(Module &module, int64_t val)
 }
 
 // CastUiToFp: unsigned int to float
-void buildCastUiToFpFunction(Module &module, int64_t val)
-{
+void buildCastUiToFpFunction(Module &module, int64_t val) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -88,8 +83,7 @@ void buildCastUiToFpFunction(Module &module, int64_t val)
 }
 
 // CastFpToSiRteChk: float to signed int with round-to-even and range check
-void buildCastFpToSiRteChkFunction(Module &module, double val)
-{
+void buildCastFpToSiRteChkFunction(Module &module, double val) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -120,8 +114,7 @@ void buildCastFpToSiRteChkFunction(Module &module, double val)
 }
 
 // CastFpToUiRteChk: float to unsigned int with round-to-even and range check
-void buildCastFpToUiRteChkFunction(Module &module, double val)
-{
+void buildCastFpToUiRteChkFunction(Module &module, double val) {
     il::build::IRBuilder builder(module);
     auto &fn = builder.startFunction("main", Type(Type::Kind::I64), {});
     auto &bb = builder.addBlock(fn, "entry");
@@ -151,47 +144,39 @@ void buildCastFpToUiRteChkFunction(Module &module, double val)
     bb.instructions.push_back(ret);
 }
 
-double runCastSiToFp(int64_t val)
-{
+double runCastSiToFp(int64_t val) {
     Module module;
     buildCastSiToFpFunction(module, val);
     viper::tests::VmFixture fixture;
     return bitsToDouble(fixture.run(module));
 }
 
-double runCastUiToFp(int64_t val)
-{
+double runCastUiToFp(int64_t val) {
     Module module;
     buildCastUiToFpFunction(module, val);
     viper::tests::VmFixture fixture;
     return bitsToDouble(fixture.run(module));
 }
 
-int64_t runCastFpToSiRteChk(double val)
-{
+int64_t runCastFpToSiRteChk(double val) {
     Module module;
     buildCastFpToSiRteChkFunction(module, val);
     viper::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
-int64_t runCastFpToUiRteChk(double val)
-{
+int64_t runCastFpToUiRteChk(double val) {
     Module module;
     buildCastFpToUiRteChkFunction(module, val);
     viper::tests::VmFixture fixture;
     return fixture.run(module);
 }
 
-void expectInvalidCastTrap(double val, bool isSigned)
-{
+void expectInvalidCastTrap(double val, bool isSigned) {
     Module module;
-    if (isSigned)
-    {
+    if (isSigned) {
         buildCastFpToSiRteChkFunction(module, val);
-    }
-    else
-    {
+    } else {
         buildCastFpToUiRteChkFunction(module, val);
     }
     viper::tests::VmFixture fixture;
@@ -201,8 +186,7 @@ void expectInvalidCastTrap(double val, bool isSigned)
 
 } // namespace
 
-int main()
-{
+int main() {
     const int64_t maxVal = std::numeric_limits<int64_t>::max();
     const int64_t minVal = std::numeric_limits<int64_t>::min();
     const double nan = std::numeric_limits<double>::quiet_NaN();

@@ -11,8 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 
-extern "C"
-{
+extern "C" {
 #include "rt_deque.h"
 #include "rt_internal.h"
 #include "rt_iter.h"
@@ -24,33 +23,27 @@ extern "C"
 #include "rt_set.h"
 #include "rt_string.h"
 
-    /// @brief Vm_trap.
-    void vm_trap(const char *msg)
-    {
-        fprintf(stderr, "TRAP: %s\n", msg);
-        rt_abort(msg);
-    }
+/// @brief Vm_trap.
+void vm_trap(const char *msg) {
+    fprintf(stderr, "TRAP: %s\n", msg);
+    rt_abort(msg);
+}
 }
 
 static int tests_run = 0;
 static int tests_passed = 0;
 
 #define ASSERT(cond, msg)                                                                          \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+        if (!(cond)) {                                                                             \
             fprintf(stderr, "FAIL [%s:%d]: %s\n", __FILE__, __LINE__, msg);                        \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
 
-static void *make_obj()
-{
+static void *make_obj() {
     return rt_obj_new_i64(0, 8);
 }
 
@@ -58,8 +51,7 @@ static void *make_obj()
 // Null safety
 //=============================================================================
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     ASSERT(rt_iter_from_seq(NULL) == NULL, "from_seq(null) = null");
     ASSERT(rt_iter_from_list(NULL) == NULL, "from_list(null) = null");
     ASSERT(rt_iter_from_deque(NULL) == NULL, "from_deque(null) = null");
@@ -82,8 +74,7 @@ static void test_null_safety()
 // Seq iterator tests
 //=============================================================================
 
-static void test_iter_from_seq()
-{
+static void test_iter_from_seq() {
     void *seq = rt_seq_new();
     void *a = make_obj();
     void *b = make_obj();
@@ -113,8 +104,7 @@ static void test_iter_from_seq()
     ASSERT(rt_iter_next(it) == NULL, "next returns null when exhausted");
 }
 
-static void test_iter_reset()
-{
+static void test_iter_reset() {
     void *seq = rt_seq_new();
     void *a = make_obj();
     void *b = make_obj();
@@ -132,13 +122,11 @@ static void test_iter_reset()
     ASSERT(rt_iter_next(it) == a, "first element after reset");
 }
 
-static void test_iter_skip()
-{
+static void test_iter_skip() {
     void *seq = rt_seq_new();
     void *objs[5];
     int i;
-    for (i = 0; i < 5; i++)
-    {
+    for (i = 0; i < 5; i++) {
         objs[i] = make_obj();
         rt_seq_push(seq, objs[i]);
     }
@@ -155,8 +143,7 @@ static void test_iter_skip()
     ASSERT(rt_iter_has_next(it) == 0, "exhausted after skip past end");
 }
 
-static void test_iter_to_seq()
-{
+static void test_iter_to_seq() {
     void *seq = rt_seq_new();
     void *a = make_obj();
     void *b = make_obj();
@@ -180,8 +167,7 @@ static void test_iter_to_seq()
 // List iterator tests
 //=============================================================================
 
-static void test_iter_from_list()
-{
+static void test_iter_from_list() {
     void *list = rt_list_new();
     void *a = make_obj();
     void *b = make_obj();
@@ -200,8 +186,7 @@ static void test_iter_from_list()
 // Deque iterator tests
 //=============================================================================
 
-static void test_iter_from_deque()
-{
+static void test_iter_from_deque() {
     void *dq = rt_deque_new();
     void *a = make_obj();
     void *b = make_obj();
@@ -219,8 +204,7 @@ static void test_iter_from_deque()
 // Map iterator tests
 //=============================================================================
 
-static void test_iter_from_map_keys()
-{
+static void test_iter_from_map_keys() {
     void *map = rt_map_new();
     void *v1 = make_obj();
     void *v2 = make_obj();
@@ -234,11 +218,9 @@ static void test_iter_from_map_keys()
     ASSERT(rt_iter_count(it) == 2, "map keys count = 2");
 
     int found_alpha = 0, found_beta = 0;
-    while (rt_iter_has_next(it))
-    {
+    while (rt_iter_has_next(it)) {
         void *key = rt_iter_next(it);
-        if (key)
-        {
+        if (key) {
             const char *s = rt_string_cstr((rt_string)key);
             if (s && strcmp(s, "alpha") == 0)
                 found_alpha = 1;
@@ -250,8 +232,7 @@ static void test_iter_from_map_keys()
     ASSERT(found_beta, "found key beta");
 }
 
-static void test_iter_from_map_values()
-{
+static void test_iter_from_map_values() {
     void *map = rt_map_new();
     void *v1 = make_obj();
     void *v2 = make_obj();
@@ -265,8 +246,7 @@ static void test_iter_from_map_values()
     ASSERT(rt_iter_count(it) == 2, "map values count = 2");
 
     int found_v1 = 0, found_v2 = 0;
-    while (rt_iter_has_next(it))
-    {
+    while (rt_iter_has_next(it)) {
         void *val = rt_iter_next(it);
         if (val == v1)
             found_v1 = 1;
@@ -281,8 +261,7 @@ static void test_iter_from_map_values()
 // Set iterator tests
 //=============================================================================
 
-static void test_iter_from_set()
-{
+static void test_iter_from_set() {
     void *set = rt_set_new();
     void *a = make_obj();
     void *b = make_obj();
@@ -296,8 +275,7 @@ static void test_iter_from_set()
     ASSERT(rt_iter_count(it) == 3, "set count = 3");
 
     int count = 0;
-    while (rt_iter_has_next(it))
-    {
+    while (rt_iter_has_next(it)) {
         rt_iter_next(it);
         count++;
     }
@@ -308,8 +286,7 @@ static void test_iter_from_set()
 // Ring iterator tests
 //=============================================================================
 
-static void test_iter_from_ring()
-{
+static void test_iter_from_ring() {
     void *ring = rt_ring_new(4);
     void *a = make_obj();
     void *b = make_obj();
@@ -327,8 +304,7 @@ static void test_iter_from_ring()
 // Empty collection tests
 //=============================================================================
 
-static void test_iter_empty_seq()
-{
+static void test_iter_empty_seq() {
     void *seq = rt_seq_new();
     void *it = rt_iter_from_seq(seq);
     ASSERT(rt_iter_count(it) == 0, "empty seq count = 0");
@@ -340,8 +316,7 @@ static void test_iter_empty_seq()
 }
 
 /// @brief Main.
-int main()
-{
+int main() {
     test_null_safety();
     test_iter_from_seq();
     test_iter_reset();

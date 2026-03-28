@@ -22,12 +22,10 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen
-{
+namespace viper::codegen {
 
 /// A single address-to-line mapping entry.
-struct AddressLineEntry
-{
+struct AddressLineEntry {
     uint64_t address;   ///< Code offset (relative to .text start).
     uint32_t fileIndex; ///< 1-based file index.
     uint32_t line;      ///< 1-based line number.
@@ -35,8 +33,7 @@ struct AddressLineEntry
 };
 
 /// Collects address→line mappings and encodes a DWARF v5 .debug_line section.
-class DebugLineTable
-{
+class DebugLineTable {
   public:
     /// Register a file path and return its 1-based index.
     /// If the path was already registered, returns the existing index.
@@ -46,8 +43,7 @@ class DebugLineTable
     void addEntry(uint64_t address, uint32_t fileIndex, uint32_t line, uint32_t column = 0);
 
     /// Return true if no entries have been recorded.
-    [[nodiscard]] bool empty() const
-    {
+    [[nodiscard]] bool empty() const {
         return entries_.empty();
     }
 

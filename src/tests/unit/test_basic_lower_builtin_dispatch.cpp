@@ -20,18 +20,15 @@ using il::frontends::basic::BuiltinCallExpr;
 using il::frontends::basic::Lowerer;
 using il::frontends::basic::lower::common::ensureBuiltinHandlersForTesting;
 
-namespace
-{
+namespace {
 
-il::frontends::basic::BuiltinHandler findHandler(BuiltinCallExpr::Builtin builtin)
-{
+il::frontends::basic::BuiltinHandler findHandler(BuiltinCallExpr::Builtin builtin) {
     return il::frontends::basic::find_builtin(il::frontends::basic::getBuiltinInfo(builtin).name);
 }
 
 } // namespace
 
-TEST(BasicLowerBuiltinDispatch, RegistersFamilies)
-{
+TEST(BasicLowerBuiltinDispatch, RegistersFamilies) {
     Lowerer lowerer;
     ensureBuiltinHandlersForTesting();
 
@@ -52,8 +49,7 @@ TEST(BasicLowerBuiltinDispatch, RegistersFamilies)
     EXPECT_EQ(mathHandler, findHandler(BuiltinCallExpr::Builtin::Rnd));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

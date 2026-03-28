@@ -20,16 +20,14 @@
 
 #include "vm/DiagFormat.hpp"
 
-namespace il::vm::diag
-{
+namespace il::vm::diag {
 
 /// @brief Format a message for an unsupported runtime kind.
 /// @details Produces: "runtime bridge does not support <op> kind '<kind>'".
 /// @param operation Operation name being performed.
 /// @param kind IL type kind that is unsupported.
 /// @return Newly constructed diagnostic string.
-std::string formatUnsupportedKind(std::string_view operation, il::core::Type::Kind kind)
-{
+std::string formatUnsupportedKind(std::string_view operation, il::core::Type::Kind kind) {
     // Pre-allocate buffer to avoid reallocation
     // Format: "runtime bridge does not support <op> kind '<kind>'"
     const auto kindStr = il::core::kindToString(kind);
@@ -47,8 +45,7 @@ std::string formatUnsupportedKind(std::string_view operation, il::core::Type::Ki
 /// @details Produces: "attempted to call unknown runtime helper '<name>'".
 /// @param name Runtime helper name supplied by the caller.
 /// @return Newly constructed diagnostic string.
-std::string formatUnknownRuntimeHelper(std::string_view name)
-{
+std::string formatUnknownRuntimeHelper(std::string_view name) {
     // Format: "attempted to call unknown runtime helper '<name>'"
     std::string result;
     result.reserve(48 + name.size());
@@ -67,8 +64,7 @@ std::string formatUnknownRuntimeHelper(std::string_view name)
 /// @return Newly constructed diagnostic string.
 std::string formatArgumentCountMismatch(std::string_view functionName,
                                         std::size_t expected,
-                                        std::size_t received)
-{
+                                        std::size_t received) {
     // Format: "argument count mismatch for function <name>: expected N argument(s), received M"
     std::string result;
     result.reserve(72 + functionName.size());
@@ -93,8 +89,7 @@ std::string formatArgumentCountMismatch(std::string_view functionName,
 std::string formatBranchArgMismatch(std::string_view targetLabel,
                                     std::string_view sourceLabel,
                                     std::size_t expected,
-                                    std::size_t provided)
-{
+                                    std::size_t provided) {
     // Format: "branch argument count mismatch targeting '<target>' [from '<source>']: expected N,
     // got M"
     std::string result;
@@ -102,8 +97,7 @@ std::string formatBranchArgMismatch(std::string_view targetLabel,
     result.append("branch argument count mismatch targeting '");
     result.append(targetLabel);
     result.push_back('\'');
-    if (!sourceLabel.empty())
-    {
+    if (!sourceLabel.empty()) {
         result.append(" from '");
         result.append(sourceLabel);
         result.push_back('\'');

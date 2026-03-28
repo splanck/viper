@@ -19,8 +19,7 @@
 #include "tui/version.hpp"
 #include "viper/version.hpp"
 
-namespace viper::tui
-{
+namespace viper::tui {
 /// @brief Expose the semantic version string for the Viper TUI component.
 /// @details The version is embedded at build time and returned as a pointer to
 ///          a string literal with static storage duration.  Consumers may cache
@@ -28,8 +27,7 @@ namespace viper::tui
 ///          valid for the lifetime of the program.  The function performs no
 ///          I/O and is safe to call from static constructors.
 /// @return Null-terminated UTF-8 string literal describing the library version.
-const char *viper_tui_version() noexcept
-{
+const char *viper_tui_version() noexcept {
     return VIPER_VERSION_STR;
 }
 } // namespace viper::tui

@@ -18,8 +18,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -28,8 +27,7 @@ static void test_result(const char *name, bool passed)
 // Scanner Tests
 //=============================================================================
 
-static void test_scanner_creation()
-{
+static void test_scanner_creation() {
     printf("Testing Scanner Creation:\n");
 
     // Test 1: Create scanner
@@ -45,8 +43,7 @@ static void test_scanner_creation()
     printf("\n");
 }
 
-static void test_scanner_peeking()
-{
+static void test_scanner_peeking() {
     printf("Testing Scanner Peeking:\n");
 
     rt_string src = rt_const_cstr("abc123");
@@ -76,8 +73,7 @@ static void test_scanner_peeking()
     printf("\n");
 }
 
-static void test_scanner_reading()
-{
+static void test_scanner_reading() {
     printf("Testing Scanner Reading:\n");
 
     // Test 1: Read single characters
@@ -125,8 +121,7 @@ static void test_scanner_reading()
     printf("\n");
 }
 
-static void test_scanner_matching()
-{
+static void test_scanner_matching() {
     printf("Testing Scanner Matching:\n");
 
     // Test 1: Match char
@@ -179,8 +174,7 @@ static void test_scanner_matching()
     printf("\n");
 }
 
-static void test_scanner_skipping()
-{
+static void test_scanner_skipping() {
     printf("Testing Scanner Skipping:\n");
 
     // Test 1: Skip
@@ -206,8 +200,7 @@ static void test_scanner_skipping()
     printf("\n");
 }
 
-static void test_scanner_tokens()
-{
+static void test_scanner_tokens() {
     printf("Testing Scanner Token Helpers:\n");
 
     // Test 1: ReadIdent
@@ -272,8 +265,7 @@ static void test_scanner_tokens()
     printf("\n");
 }
 
-static void test_scanner_predicates()
-{
+static void test_scanner_predicates() {
     printf("Testing Scanner Predicates:\n");
 
     test_result("'5' is digit", rt_scanner_is_digit('5') == 1);
@@ -289,8 +281,7 @@ static void test_scanner_predicates()
     printf("\n");
 }
 
-static void test_scanner_position()
-{
+static void test_scanner_position() {
     printf("Testing Scanner Position Control:\n");
 
     rt_string src = rt_const_cstr("hello world");
@@ -323,8 +314,7 @@ static void test_scanner_position()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Scanner Tests ===\n\n");
 
     test_scanner_creation();

@@ -23,52 +23,41 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C"
-{
-    extern rt_string rt_const_cstr(const char *s);
-    extern void *rt_mesh3d_new_box(double w, double h, double d);
+extern "C" {
+extern rt_string rt_const_cstr(const char *s);
+extern void *rt_mesh3d_new_box(double w, double h, double d);
 }
 
 static int tests_passed = 0;
 static int tests_run = 0;
 
 #define EXPECT_TRUE(cond, msg)                                                                     \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+        if (!(cond)) {                                                                             \
             fprintf(stderr, "FAIL: %s\n", msg);                                                    \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
 
 #define EXPECT_NEAR(a, b, eps, msg)                                                                \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (fabs((double)(a) - (double)(b)) > (eps))                                               \
-        {                                                                                          \
+        if (fabs((double)(a) - (double)(b)) > (eps)) {                                             \
             fprintf(stderr, "FAIL: %s (got %f, expected %f)\n", msg, (double)(a), (double)(b));    \
-        }                                                                                          \
-        else                                                                                       \
-        {                                                                                          \
+        } else {                                                                                   \
             tests_passed++;                                                                        \
         }                                                                                          \
     } while (0)
 
-static void test_create()
-{
+static void test_create() {
     void *mt = rt_morphtarget3d_new(10);
     EXPECT_TRUE(mt != nullptr, "MorphTarget3D.New returns non-null");
     EXPECT_TRUE(rt_morphtarget3d_get_shape_count(mt) == 0, "Initial shape count = 0");
 }
 
-static void test_add_shape()
-{
+static void test_add_shape() {
     void *mt = rt_morphtarget3d_new(4);
     int64_t idx = rt_morphtarget3d_add_shape(mt, rt_const_cstr("smile"));
     EXPECT_TRUE(idx == 0, "First shape index = 0");
@@ -78,8 +67,7 @@ static void test_add_shape()
     EXPECT_TRUE(idx2 == 1, "Second shape index = 1");
 }
 
-static void test_weight_zero()
-{
+static void test_weight_zero() {
     void *mt = rt_morphtarget3d_new(4);
     rt_morphtarget3d_add_shape(mt, rt_const_cstr("test"));
     rt_morphtarget3d_set_delta(mt, 0, 0, 1.0, 2.0, 3.0);
@@ -88,32 +76,28 @@ static void test_weight_zero()
     EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0), 0.0, 0.001, "Weight = 0.0");
 }
 
-static void test_weight_set_get()
-{
+static void test_weight_set_get() {
     void *mt = rt_morphtarget3d_new(4);
     rt_morphtarget3d_add_shape(mt, rt_const_cstr("test"));
     rt_morphtarget3d_set_weight(mt, 0, 0.75);
     EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0), 0.75, 0.001, "Weight = 0.75");
 }
 
-static void test_weight_by_name()
-{
+static void test_weight_by_name() {
     void *mt = rt_morphtarget3d_new(4);
     rt_morphtarget3d_add_shape(mt, rt_const_cstr("blink"));
     rt_morphtarget3d_set_weight_by_name(mt, rt_const_cstr("blink"), 0.5);
     EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0), 0.5, 0.001, "SetWeightByName works");
 }
 
-static void test_negative_weight()
-{
+static void test_negative_weight() {
     void *mt = rt_morphtarget3d_new(4);
     rt_morphtarget3d_add_shape(mt, rt_const_cstr("test"));
     rt_morphtarget3d_set_weight(mt, 0, -0.5);
     EXPECT_NEAR(rt_morphtarget3d_get_weight(mt, 0), -0.5, 0.001, "Negative weight = -0.5");
 }
 
-static void test_bounds_checks()
-{
+static void test_bounds_checks() {
     void *mt = rt_morphtarget3d_new(4);
     rt_morphtarget3d_add_shape(mt, rt_const_cstr("test"));
 
@@ -126,15 +110,13 @@ static void test_bounds_checks()
     EXPECT_TRUE(1, "Out-of-bounds vertex delta is no-op (no crash)");
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     rt_morphtarget3d_set_weight(NULL, 0, 1.0);
     EXPECT_NEAR(rt_morphtarget3d_get_weight(NULL, 0), 0.0, 0.001, "Null safety");
     EXPECT_TRUE(rt_morphtarget3d_get_shape_count(NULL) == 0, "Null shape count = 0");
 }
 
-int main()
-{
+int main() {
     test_create();
     test_add_shape();
     test_weight_zero();

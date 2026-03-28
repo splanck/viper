@@ -18,8 +18,7 @@
 #include <cassert>
 #include <cstdio>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -27,8 +26,7 @@ extern "C" void vm_trap(const char *msg)
 // Key Code Constants
 // ============================================================================
 
-static void test_key_constants()
-{
+static void test_key_constants() {
     // Test that key code getters return expected GLFW-compatible values
     assert(rt_keyboard_key_a() == 65);
     assert(rt_keyboard_key_z() == 90);
@@ -53,8 +51,7 @@ static void test_key_constants()
 // Keyboard State - Initial State
 // ============================================================================
 
-static void test_initial_state()
-{
+static void test_initial_state() {
     // Initialize keyboard system
     rt_keyboard_init();
 
@@ -70,8 +67,7 @@ static void test_initial_state()
 // Key Press/Release Events
 // ============================================================================
 
-static void test_key_press_release()
-{
+static void test_key_press_release() {
     rt_keyboard_init();
     rt_keyboard_begin_frame();
 
@@ -93,8 +89,7 @@ static void test_key_press_release()
 // Per-Frame Event Tracking
 // ============================================================================
 
-static void test_frame_events()
-{
+static void test_frame_events() {
     rt_keyboard_init();
 
     // Begin a new frame - should reset pressed/released lists
@@ -116,8 +111,7 @@ static void test_frame_events()
 // Key Name Helper
 // ============================================================================
 
-static void test_key_name()
-{
+static void test_key_name() {
     // Test key name lookup
     rt_string name_a = rt_keyboard_key_name(rt_keyboard_key_a());
     assert(name_a != nullptr);
@@ -150,8 +144,7 @@ static void test_key_name()
 // Modifier State
 // ============================================================================
 
-static void test_modifier_state()
-{
+static void test_modifier_state() {
     rt_keyboard_init();
 
     // Initially all modifiers should be off
@@ -167,8 +160,7 @@ static void test_modifier_state()
 // Text Input
 // ============================================================================
 
-static void test_text_input()
-{
+static void test_text_input() {
     rt_keyboard_init();
     rt_keyboard_begin_frame();
 
@@ -190,8 +182,7 @@ static void test_text_input()
 // Boundary Cases
 // ============================================================================
 
-static void test_boundary_cases()
-{
+static void test_boundary_cases() {
     rt_keyboard_init();
 
     // Test invalid key codes
@@ -209,8 +200,7 @@ static void test_boundary_cases()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Viper.Input.Keyboard Tests ===\n\n");
 
     test_key_constants();

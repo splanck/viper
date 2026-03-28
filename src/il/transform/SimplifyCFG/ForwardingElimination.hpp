@@ -24,8 +24,7 @@
 
 #include "il/transform/SimplifyCFG.hpp"
 
-namespace il::transform::simplify_cfg
-{
+namespace il::transform::simplify_cfg {
 
 /// @brief Remove trivial forwarding blocks from the current function.
 /// @details Scans for blocks that are safe to remove (single unconditional

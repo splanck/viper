@@ -20,13 +20,11 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// Build a module that runs idx.chk with the given index, lower, and upper bounds.
 /// Returns the normalized index on success.
-Module buildBoundsCheckModule(int64_t idx, int64_t lo, int64_t hi)
-{
+Module buildBoundsCheckModule(int64_t idx, int64_t lo, int64_t hi) {
     Module module;
     il::build::IRBuilder builder(module);
 
@@ -86,8 +84,7 @@ Module buildBoundsCheckModule(int64_t idx, int64_t lo, int64_t hi)
     return module;
 }
 
-int64_t runBoundsCheck(int64_t idx, int64_t lo, int64_t hi)
-{
+int64_t runBoundsCheck(int64_t idx, int64_t lo, int64_t hi) {
     Module module = buildBoundsCheckModule(idx, lo, hi);
     il::vm::VM vm(module);
     return vm.run();
@@ -95,8 +92,7 @@ int64_t runBoundsCheck(int64_t idx, int64_t lo, int64_t hi)
 
 } // namespace
 
-int main()
-{
+int main() {
     // Test 1: Zero-based array (lo=0): idx=7 in [0,10) -> normalized=7
     assert(runBoundsCheck(7, 0, 10) == 7);
 

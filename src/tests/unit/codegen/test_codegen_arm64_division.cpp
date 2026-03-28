@@ -22,23 +22,20 @@
 
 using namespace viper::tools::ilc;
 
-static std::string outPath(const std::string &name)
-{
+static std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-static void writeFile(const std::string &path, const std::string &text)
-{
+static void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
-static std::string readFile(const std::string &path)
-{
+static std::string readFile(const std::string &path) {
     std::ifstream ifs(path);
     std::ostringstream ss;
     ss << ifs.rdbuf();
@@ -46,8 +43,7 @@ static std::string readFile(const std::string &path)
 }
 
 // Test 1: Simple signed division
-TEST(Arm64Division, SDivSimple)
-{
+TEST(Arm64Division, SDivSimple) {
     const std::string in = outPath("arm64_div_sdiv.il");
     const std::string out = outPath("arm64_div_sdiv.s");
     const std::string il = "il 0.1\n"
@@ -65,8 +61,7 @@ TEST(Arm64Division, SDivSimple)
 }
 
 // Test 2: Simple unsigned division
-TEST(Arm64Division, UDivSimple)
-{
+TEST(Arm64Division, UDivSimple) {
     const std::string in = outPath("arm64_div_udiv.il");
     const std::string out = outPath("arm64_div_udiv.s");
     const std::string il = "il 0.1\n"
@@ -84,8 +79,7 @@ TEST(Arm64Division, UDivSimple)
 }
 
 // Test 3: Signed division with divide-by-zero check
-TEST(Arm64Division, SDivChk0)
-{
+TEST(Arm64Division, SDivChk0) {
     const std::string in = outPath("arm64_div_sdiv_chk0.il");
     const std::string out = outPath("arm64_div_sdiv_chk0.s");
     const std::string il = "il 0.1\n"
@@ -109,8 +103,7 @@ TEST(Arm64Division, SDivChk0)
 }
 
 // Test 4: Unsigned division with divide-by-zero check
-TEST(Arm64Division, UDivChk0)
-{
+TEST(Arm64Division, UDivChk0) {
     const std::string in = outPath("arm64_div_udiv_chk0.il");
     const std::string out = outPath("arm64_div_udiv_chk0.s");
     const std::string il = "il 0.1\n"
@@ -134,8 +127,7 @@ TEST(Arm64Division, UDivChk0)
 }
 
 // Test 5: Signed remainder (srem = a - (a/b)*b using msub)
-TEST(Arm64Division, SRemSimple)
-{
+TEST(Arm64Division, SRemSimple) {
     const std::string in = outPath("arm64_div_srem.il");
     const std::string out = outPath("arm64_div_srem.s");
     const std::string il = "il 0.1\n"
@@ -155,8 +147,7 @@ TEST(Arm64Division, SRemSimple)
 }
 
 // Test 6: Unsigned remainder
-TEST(Arm64Division, URemSimple)
-{
+TEST(Arm64Division, URemSimple) {
     const std::string in = outPath("arm64_div_urem.il");
     const std::string out = outPath("arm64_div_urem.s");
     const std::string il = "il 0.1\n"
@@ -176,8 +167,7 @@ TEST(Arm64Division, URemSimple)
 }
 
 // Test 7: Division by constant (could potentially be optimized)
-TEST(Arm64Division, DivByConstant)
-{
+TEST(Arm64Division, DivByConstant) {
     const std::string in = outPath("arm64_div_const.il");
     const std::string out = outPath("arm64_div_const.s");
     const std::string il = "il 0.1\n"
@@ -195,8 +185,7 @@ TEST(Arm64Division, DivByConstant)
     EXPECT_FALSE(asmText.empty());
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

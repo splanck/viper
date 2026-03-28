@@ -26,23 +26,19 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 // Verify a module passes the IL verifier
-void verifyOrDie(const Module &module)
-{
+void verifyOrDie(const Module &module) {
     auto result = il::verify::Verifier::verify(module);
-    if (!result)
-    {
+    if (!result) {
         il::support::printDiag(result.error(), std::cerr);
         ASSERT_TRUE(false);
     }
 }
 
 // Count total instructions across all functions
-size_t countInstructions(const Module &module)
-{
+size_t countInstructions(const Module &module) {
     size_t count = 0;
     for (const auto &fn : module.functions)
         for (const auto &bb : fn.blocks)
@@ -53,8 +49,7 @@ size_t countInstructions(const Module &module)
 // Build a canonical module with diverse IL constructs for pass testing.
 // Contains two functions: "callee" (simple) and "main_fn" (complex with loops,
 // branches, allocas, checked arithmetic, block params, etc.)
-Module buildCanonicalModule()
-{
+Module buildCanonicalModule() {
     Module module;
 
     // Add an extern declaration so calls to it are valid
@@ -262,8 +257,7 @@ Module buildCanonicalModule()
 }
 
 // Run a single pass on a fresh copy of the canonical module and check validity
-void testPassIsolation(const std::string &passId)
-{
+void testPassIsolation(const std::string &passId) {
     Module module = buildCanonicalModule();
     verifyOrDie(module);
 
@@ -279,8 +273,7 @@ void testPassIsolation(const std::string &passId)
     verifyOrDie(module);
 
     // Each function should still have at least one block with at least one instruction
-    for (const auto &fn : module.functions)
-    {
+    for (const auto &fn : module.functions) {
         ASSERT_FALSE(fn.blocks.empty());
         bool hasInstr = false;
         for (const auto &bb : fn.blocks)
@@ -293,94 +286,76 @@ void testPassIsolation(const std::string &passId)
 
 // --- One test per pass ---
 
-TEST(PassIsolation, SimplifyCFG)
-{
+TEST(PassIsolation, SimplifyCFG) {
     testPassIsolation("simplify-cfg");
 }
 
-TEST(PassIsolation, LoopSimplify)
-{
+TEST(PassIsolation, LoopSimplify) {
     testPassIsolation("loop-simplify");
 }
 
-TEST(PassIsolation, LICM)
-{
+TEST(PassIsolation, LICM) {
     testPassIsolation("licm");
 }
 
-TEST(PassIsolation, SCCP)
-{
+TEST(PassIsolation, SCCP) {
     testPassIsolation("sccp");
 }
 
-TEST(PassIsolation, ConstFold)
-{
+TEST(PassIsolation, ConstFold) {
     testPassIsolation("constfold");
 }
 
-TEST(PassIsolation, Peephole)
-{
+TEST(PassIsolation, Peephole) {
     testPassIsolation("peephole");
 }
 
-TEST(PassIsolation, DCE)
-{
+TEST(PassIsolation, DCE) {
     testPassIsolation("dce");
 }
 
-TEST(PassIsolation, Mem2Reg)
-{
+TEST(PassIsolation, Mem2Reg) {
     testPassIsolation("mem2reg");
 }
 
-TEST(PassIsolation, DSE)
-{
+TEST(PassIsolation, DSE) {
     testPassIsolation("dse");
 }
 
-TEST(PassIsolation, EarlyCSE)
-{
+TEST(PassIsolation, EarlyCSE) {
     testPassIsolation("earlycse");
 }
 
-TEST(PassIsolation, GVN)
-{
+TEST(PassIsolation, GVN) {
     testPassIsolation("gvn");
 }
 
-TEST(PassIsolation, IndVarSimplify)
-{
+TEST(PassIsolation, IndVarSimplify) {
     testPassIsolation("indvars");
 }
 
-TEST(PassIsolation, LoopUnroll)
-{
+TEST(PassIsolation, LoopUnroll) {
     testPassIsolation("loop-unroll");
 }
 
-TEST(PassIsolation, Inline)
-{
+TEST(PassIsolation, Inline) {
     testPassIsolation("inline");
 }
 
-TEST(PassIsolation, CheckOpt)
-{
+TEST(PassIsolation, CheckOpt) {
     testPassIsolation("check-opt");
 }
 
-TEST(PassIsolation, LateCleanup)
-{
+TEST(PassIsolation, LateCleanup) {
     testPassIsolation("late-cleanup");
 }
 
-TEST(PassIsolation, SiblingRecursion)
-{
+TEST(PassIsolation, SiblingRecursion) {
     testPassIsolation("sibling-recursion");
 }
 
 /// @brief Main.
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

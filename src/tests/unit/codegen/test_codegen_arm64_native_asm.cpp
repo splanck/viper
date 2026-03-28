@@ -31,27 +31,23 @@
 
 using namespace viper::tools::ilc;
 
-namespace
-{
+namespace {
 
-std::string outPath(const std::string &name)
-{
+std::string outPath(const std::string &name) {
     namespace fs = std::filesystem;
     const fs::path dir{"build/test-out/arm64-nativeasm"};
     fs::create_directories(dir);
     return (dir / name).string();
 }
 
-void writeFile(const std::string &path, const std::string &text)
-{
+void writeFile(const std::string &path, const std::string &text) {
     std::ofstream ofs(path);
     ASSERT_TRUE(static_cast<bool>(ofs));
     ofs << text;
 }
 
 /// Run cmd_codegen_arm64 with the given arguments and return the exit code.
-int runArm64(std::initializer_list<const char *> args)
-{
+int runArm64(std::initializer_list<const char *> args) {
     std::vector<char *> argv;
     for (const char *a : args)
         argv.push_back(const_cast<char *>(a));
@@ -63,8 +59,7 @@ int runArm64(std::initializer_list<const char *> args)
 // ---------------------------------------------------------------------------
 // 1. Basic return value — simplest possible native-asm E2E
 // ---------------------------------------------------------------------------
-TEST(NativeAsmArm64, BasicReturn0)
-{
+TEST(NativeAsmArm64, BasicReturn0) {
     const std::string in = outPath("nasm_ret0.il");
     writeFile(in,
               "il 0.1\n"
@@ -75,8 +70,7 @@ TEST(NativeAsmArm64, BasicReturn0)
     ASSERT_EQ(runArm64({in.c_str(), "--native-asm", "-run-native"}), 0);
 }
 
-TEST(NativeAsmArm64, BasicReturn42)
-{
+TEST(NativeAsmArm64, BasicReturn42) {
     const std::string in = outPath("nasm_ret42.il");
     writeFile(in,
               "il 0.1\n"
@@ -90,8 +84,7 @@ TEST(NativeAsmArm64, BasicReturn42)
 // ---------------------------------------------------------------------------
 // 2. Runtime call — tests external symbol relocation
 // ---------------------------------------------------------------------------
-TEST(NativeAsmArm64, RuntimeCallPrintI64)
-{
+TEST(NativeAsmArm64, RuntimeCallPrintI64) {
     const std::string in = outPath("nasm_print_i64.il");
     const std::string exe = outPath("nasm_print_i64_exe");
     writeFile(in,
@@ -110,8 +103,7 @@ TEST(NativeAsmArm64, RuntimeCallPrintI64)
 // ---------------------------------------------------------------------------
 // 3. String rodata — tests rodata pool + ADRP/ADD relocations
 // ---------------------------------------------------------------------------
-TEST(NativeAsmArm64, StringRodata)
-{
+TEST(NativeAsmArm64, StringRodata) {
     const std::string in = outPath("nasm_str.il");
     const std::string exe = outPath("nasm_str_exe");
     writeFile(in,
@@ -132,8 +124,7 @@ TEST(NativeAsmArm64, StringRodata)
 // ---------------------------------------------------------------------------
 // 4. Control flow — branches, conditional, block parameters
 // ---------------------------------------------------------------------------
-TEST(NativeAsmArm64, ControlFlowBranch)
-{
+TEST(NativeAsmArm64, ControlFlowBranch) {
     const std::string in = outPath("nasm_branch.il");
     writeFile(in,
               "il 0.1\n"
@@ -154,8 +145,7 @@ TEST(NativeAsmArm64, ControlFlowBranch)
 // ---------------------------------------------------------------------------
 // 5. Multi-function — cross-function call
 // ---------------------------------------------------------------------------
-TEST(NativeAsmArm64, MultiFunctionCall)
-{
+TEST(NativeAsmArm64, MultiFunctionCall) {
     const std::string in = outPath("nasm_multifunc.il");
     writeFile(in,
               "il 0.1\n"
@@ -175,8 +165,7 @@ TEST(NativeAsmArm64, MultiFunctionCall)
 // ---------------------------------------------------------------------------
 // 6. .o output only — verify object file creation
 // ---------------------------------------------------------------------------
-TEST(NativeAsmArm64, DotOOutput)
-{
+TEST(NativeAsmArm64, DotOOutput) {
     const std::string in = outPath("nasm_dot_o.il");
     const std::string obj = outPath("nasm_dot_o.o");
     writeFile(in,
@@ -212,8 +201,7 @@ TEST(NativeAsmArm64, DotOOutput)
 // ---------------------------------------------------------------------------
 // 7. Dual-path equivalence — native-asm exit code matches system-asm
 // ---------------------------------------------------------------------------
-TEST(NativeAsmArm64, EquivBasicReturn)
-{
+TEST(NativeAsmArm64, EquivBasicReturn) {
     const std::string in = outPath("nasm_equiv.il");
     const std::string sysExe = outPath("nasm_equiv_sys");
     const std::string natExe = outPath("nasm_equiv_nat");
@@ -244,8 +232,7 @@ TEST(NativeAsmArm64, EquivBasicReturn)
 // ---------------------------------------------------------------------------
 // 8. Arithmetic with overflow checks — tests IAddOvf lowering
 // ---------------------------------------------------------------------------
-TEST(NativeAsmArm64, OverflowArithmetic)
-{
+TEST(NativeAsmArm64, OverflowArithmetic) {
     const std::string in = outPath("nasm_ovf.il");
     writeFile(in,
               "il 0.2.0\n"
@@ -260,8 +247,7 @@ TEST(NativeAsmArm64, OverflowArithmetic)
 // ---------------------------------------------------------------------------
 // 9. Floating-point — tests FP register encoding and ABI
 // ---------------------------------------------------------------------------
-TEST(NativeAsmArm64, FloatingPoint)
-{
+TEST(NativeAsmArm64, FloatingPoint) {
     const std::string in = outPath("nasm_fp.il");
     writeFile(in,
               "il 0.2.0\n"
@@ -280,8 +266,7 @@ TEST(NativeAsmArm64, FloatingPoint)
 // ---------------------------------------------------------------------------
 // 10. Assembly output (-S) still works alongside --native-asm
 // ---------------------------------------------------------------------------
-TEST(NativeAsmArm64, AsmOutputStillWorks)
-{
+TEST(NativeAsmArm64, AsmOutputStillWorks) {
     const std::string in = outPath("nasm_asm_out.il");
     const std::string asmOut = outPath("nasm_asm_out.s");
     writeFile(in,
@@ -300,8 +285,7 @@ TEST(NativeAsmArm64, AsmOutputStillWorks)
     std::filesystem::remove(asmOut);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

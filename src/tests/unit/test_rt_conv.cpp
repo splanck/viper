@@ -17,8 +17,7 @@
 #include <cassert>
 #include <string>
 
-int main()
-{
+int main() {
     rt_string si = rt_int_to_str(-42);
     assert(si && std::string(rt_string_cstr(si), (size_t)rt_str_len(si)) == "-42");
     rt_string sf = rt_f64_to_str(3.5);

@@ -60,14 +60,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
-namespace viper::codegen::aarch64
-{
-namespace
-{
+namespace viper::codegen::aarch64 {
+namespace {
 using il::core::Opcode;
 
-static const char *condForOpcode(Opcode op)
-{
+static const char *condForOpcode(Opcode op) {
     return lookupCondition(op);
 }
 
@@ -78,8 +75,7 @@ static thread_local unsigned trapLabelCounter;
 
 } // namespace
 
-MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
-{
+MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const {
     MFunction mf{};
     mf.name = fn.name;
     // Reserve extra capacity for any helper/trap blocks we may append during lowering
@@ -90,8 +86,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
     trapLabelCounter = 0;
 
     // Pre-create MIR blocks with labels to mirror IL CFG shape.
-    for (const auto &bb : fn.blocks)
-    {
+    for (const auto &bb : fn.blocks) {
         mf.blocks.emplace_back();
         mf.blocks.back().name = bb.label;
     }
@@ -107,14 +102,10 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
     // Track which temps are allocas so we can exclude them from cross-block spilling
     std::unordered_set<unsigned> allocaTemps;
     FrameBuilder fb{mf};
-    for (const auto &bb : fn.blocks)
-    {
-        for (const auto &instr : bb.instructions)
-        {
-            if (instr.op == il::core::Opcode::Alloca && instr.result && !instr.operands.empty())
-            {
-                if (instr.operands[0].kind == il::core::Value::Kind::ConstInt)
-                {
+    for (const auto &bb : fn.blocks) {
+        for (const auto &instr : bb.instructions) {
+            if (instr.op == il::core::Opcode::Alloca && instr.result && !instr.operands.empty()) {
+                if (instr.operands[0].kind == il::core::Value::Kind::ConstInt) {
                     const int size = static_cast<int>(instr.operands[0].i64);
                     fb.addLocal(*instr.result, size, kSlotSizeBytes);
                     allocaTemps.insert(*instr.result);
@@ -137,16 +128,14 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
     for (std::size_t bi = 1; bi < fn.blocks.size(); ++bi) // Start at 1, skip entry block
     {
         const auto &bb = fn.blocks[bi];
-        if (!bb.params.empty())
-        {
+        if (!bb.params.empty()) {
             std::vector<uint16_t> ids;
             std::vector<RegClass> classes;
             std::vector<int> spillOffsets;
             ids.reserve(bb.params.size());
             classes.reserve(bb.params.size());
             spillOffsets.reserve(bb.params.size());
-            for (std::size_t pi = 0; pi < bb.params.size(); ++pi)
-            {
+            for (std::size_t pi = 0; pi < bb.params.size(); ++pi) {
                 uint16_t id = phiNextId++;
                 ids.push_back(id);
                 const auto &pt = bb.params[pi].type;
@@ -192,8 +181,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
     // entries, but the terminator loop for the DEFINING block needs the original vreg.
     std::vector<std::unordered_map<unsigned, uint16_t>> blockTempVRegSnapshot(fn.blocks.size());
 
-    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi)
-    {
+    for (std::size_t bi = 0; bi < fn.blocks.size(); ++bi) {
         const auto &bbIn = fn.blocks[bi];
         // NOTE: We use index bi to access mf.blocks[bi] instead of a reference because
         // instruction lowering can add new trap blocks via emplace_back(), which may
@@ -206,8 +194,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
         // Entry block (bi == 0): Spill function parameters to stack slots immediately.
         // This ensures parameters are preserved across function calls within the entry block.
         // ABI registers (x0-x7, v0-v7) are caller-saved and will be clobbered by calls.
-        if (bi == 0 && !bbIn.params.empty())
-        {
+        if (bi == 0 && !bbIn.params.empty()) {
             // ARM64 ABI: GPR and FPR parameters have independent indexing.
             // Integer/pointer params use x0, x1, x2...
             // Float params use d0, d1, d2... (independently numbered)
@@ -217,8 +204,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
             // AAPCS64: stack args are laid out in argument order regardless of class.
             std::size_t stackArgIdx = 0;
 
-            for (std::size_t pi = 0; pi < bbIn.params.size(); ++pi)
-            {
+            for (std::size_t pi = 0; pi < bbIn.params.size(); ++pi) {
                 const auto &param = bbIn.params[pi];
                 const RegClass cls =
                     (param.type.kind == il::core::Type::Kind::F64) ? RegClass::FPR : RegClass::GPR;
@@ -234,23 +220,19 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                 // Get the ABI register for this parameter using independent GPR/FPR indexing
                 bool isStackParam = false;
                 PhysReg src{};
-                if (cls == RegClass::FPR)
-                {
+                if (cls == RegClass::FPR) {
                     if (fprArgIdx < ti_->f64ArgOrder.size())
                         src = ti_->f64ArgOrder[fprArgIdx++];
                     else
                         isStackParam = true;
-                }
-                else
-                {
+                } else {
                     if (gprArgIdx < ti_->intArgOrder.size())
                         src = ti_->intArgOrder[gprArgIdx++];
                     else
                         isStackParam = true;
                 }
 
-                if (isStackParam)
-                {
+                if (isStackParam) {
                     // Stack parameter: load from caller's outgoing arg area.
                     // After prologue (stp x29, x30, [sp, #-16]!; mov x29, sp),
                     // caller's stack args are at [FP + 16 + stackArgIdx * 8].
@@ -262,8 +244,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                     // because the register allocator may have assigned that register to a
                     // vreg for an earlier parameter that is still live. Using a vreg lets
                     // the allocator pick a non-conflicting physical register.
-                    if (cls == RegClass::FPR)
-                    {
+                    if (cls == RegClass::FPR) {
                         const uint16_t tmpVid = nextVRegId++;
                         bbOutFn().instrs.push_back(MInstr{MOpcode::LdrFprFpImm,
                                                           {MOperand::vregOp(RegClass::FPR, tmpVid),
@@ -271,9 +252,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                         bbOutFn().instrs.push_back(MInstr{MOpcode::StrFprFpImm,
                                                           {MOperand::vregOp(RegClass::FPR, tmpVid),
                                                            MOperand::immOp(spillOffset)}});
-                    }
-                    else
-                    {
+                    } else {
                         const uint16_t tmpVid = nextVRegId++;
                         bbOutFn().instrs.push_back(MInstr{MOpcode::LdrRegFpImm,
                                                           {MOperand::vregOp(RegClass::GPR, tmpVid),
@@ -282,18 +261,13 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                                           {MOperand::vregOp(RegClass::GPR, tmpVid),
                                                            MOperand::immOp(spillOffset)}});
                     }
-                }
-                else
-                {
+                } else {
                     // Register parameter: store ABI register to spill slot
-                    if (cls == RegClass::FPR)
-                    {
+                    if (cls == RegClass::FPR) {
                         bbOutFn().instrs.push_back(
                             MInstr{MOpcode::StrFprFpImm,
                                    {MOperand::regOp(src), MOperand::immOp(spillOffset)}});
-                    }
-                    else
-                    {
+                    } else {
                         bbOutFn().instrs.push_back(
                             MInstr{MOpcode::StrRegFpImm,
                                    {MOperand::regOp(src), MOperand::immOp(spillOffset)}});
@@ -305,14 +279,11 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                 tempVReg[param.id] = vid;
                 tempRegClass[param.id] = cls;
 
-                if (cls == RegClass::FPR)
-                {
+                if (cls == RegClass::FPR) {
                     bbOutFn().instrs.push_back(MInstr{
                         MOpcode::LdrFprFpImm,
                         {MOperand::vregOp(RegClass::FPR, vid), MOperand::immOp(spillOffset)}});
-                }
-                else
-                {
+                } else {
                     bbOutFn().instrs.push_back(MInstr{
                         MOpcode::LdrRegFpImm,
                         {MOperand::vregOp(RegClass::GPR, vid), MOperand::immOp(spillOffset)}});
@@ -324,13 +295,11 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
         // The edge copies store values to these spill slots before branching here.
         auto itPhi = phiVregId.find(bbIn.label);
         auto itSpill = phiSpillOffset.find(bbIn.label);
-        if (itPhi != phiVregId.end() && itSpill != phiSpillOffset.end())
-        {
+        if (itPhi != phiVregId.end() && itSpill != phiSpillOffset.end()) {
             const auto &ids = itPhi->second;
             const auto &spillOffsets = itSpill->second;
             const auto &classes = phiRegClass[bbIn.label];
-            for (std::size_t pi = 0; pi < bbIn.params.size() && pi < ids.size(); ++pi)
-            {
+            for (std::size_t pi = 0; pi < bbIn.params.size() && pi < ids.size(); ++pi) {
                 const uint16_t vid = nextVRegId++;
                 tempVReg[bbIn.params[pi].id] = vid;
                 const auto &pt = bbIn.params[pi].type;
@@ -339,14 +308,11 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                 tempRegClass[bbIn.params[pi].id] = cls;
                 const int offset = spillOffsets[pi];
                 // Load from spill slot into vreg
-                if (cls == RegClass::FPR)
-                {
+                if (cls == RegClass::FPR) {
                     bbOutFn().instrs.push_back(
                         MInstr{MOpcode::LdrFprFpImm,
                                {MOperand::vregOp(RegClass::FPR, vid), MOperand::immOp(offset)}});
-                }
-                else
-                {
+                } else {
                     bbOutFn().instrs.push_back(
                         MInstr{MOpcode::LdrRegFpImm,
                                {MOperand::vregOp(RegClass::GPR, vid), MOperand::immOp(offset)}});
@@ -357,17 +323,13 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
         // Reload cross-block temps that are used in this block but defined elsewhere.
         // We need to reload them at block entry because the register allocator may have
         // reused their physical registers in intervening blocks.
-        for (const auto &ins : bbIn.instructions)
-        {
-            for (const auto &op : ins.operands)
-            {
-                if (op.kind == il::core::Value::Kind::Temp)
-                {
+        for (const auto &ins : bbIn.instructions) {
+            for (const auto &op : ins.operands) {
+                if (op.kind == il::core::Value::Kind::Temp) {
                     auto spillIt = liveness.crossBlockSpillOffset.find(op.id);
                     auto defIt = liveness.tempDefBlock.find(op.id);
                     if (spillIt != liveness.crossBlockSpillOffset.end() &&
-                        defIt != liveness.tempDefBlock.end() && defIt->second != bi)
-                    {
+                        defIt != liveness.tempDefBlock.end() && defIt->second != bi) {
                         // This temp is defined in another block and used here - reload it
                         // Only reload if we haven't already in this block
                         if (tempVReg.find(op.id) == tempVReg.end() ||
@@ -380,15 +342,12 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                             auto clsIt = tempRegClass.find(op.id);
                             const RegClass cls =
                                 (clsIt != tempRegClass.end()) ? clsIt->second : RegClass::GPR;
-                            if (cls == RegClass::FPR)
-                            {
+                            if (cls == RegClass::FPR) {
                                 bbOutFn().instrs.push_back(
                                     MInstr{MOpcode::LdrFprFpImm,
                                            {MOperand::vregOp(RegClass::FPR, vid),
                                             MOperand::immOp(offset)}});
-                            }
-                            else
-                            {
+                            } else {
                                 bbOutFn().instrs.push_back(
                                     MInstr{MOpcode::LdrRegFpImm,
                                            {MOperand::vregOp(RegClass::GPR, vid),
@@ -400,21 +359,16 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
             }
         }
         // Also check terminator for cross-block temp uses (CBr condition)
-        if (!bbIn.instructions.empty())
-        {
+        if (!bbIn.instructions.empty()) {
             const auto &term = bbIn.instructions.back();
-            if (term.op == il::core::Opcode::CBr && !term.operands.empty())
-            {
+            if (term.op == il::core::Opcode::CBr && !term.operands.empty()) {
                 const auto &cond = term.operands[0];
-                if (cond.kind == il::core::Value::Kind::Temp)
-                {
+                if (cond.kind == il::core::Value::Kind::Temp) {
                     auto spillIt = liveness.crossBlockSpillOffset.find(cond.id);
                     auto defIt = liveness.tempDefBlock.find(cond.id);
                     if (spillIt != liveness.crossBlockSpillOffset.end() &&
-                        defIt != liveness.tempDefBlock.end() && defIt->second != bi)
-                    {
-                        if (tempVReg.find(cond.id) == tempVReg.end())
-                        {
+                        defIt != liveness.tempDefBlock.end() && defIt->second != bi) {
+                        if (tempVReg.find(cond.id) == tempVReg.end()) {
                             const uint16_t vid = nextVRegId++;
                             tempVReg[cond.id] = vid;
                             const int offset = spillIt->second;
@@ -442,39 +396,31 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                             liveness.crossBlockTemps,
                             trapLabelCounter};
 
-        for (const auto &ins : bbIn.instructions)
-        {
+        for (const auto &ins : bbIn.instructions) {
             // Record instruction count so we can stamp source loc on new MInstrs.
             const size_t mirCountBefore = bbOutFn().instrs.size();
 
             // Try extracted handlers first; they return true if they handled the opcode
-            if (lowerInstruction(ins, bbIn, ctx, bi))
-            {
+            if (lowerInstruction(ins, bbIn, ctx, bi)) {
                 // Spill cross-block temps immediately after they are defined.
                 // This ensures the value is preserved in memory for use in other blocks.
-                if (ins.result)
-                {
+                if (ins.result) {
                     auto spillIt = liveness.crossBlockSpillOffset.find(*ins.result);
-                    if (spillIt != liveness.crossBlockSpillOffset.end())
-                    {
+                    if (spillIt != liveness.crossBlockSpillOffset.end()) {
                         auto vregIt = tempVReg.find(*ins.result);
-                        if (vregIt != tempVReg.end())
-                        {
+                        if (vregIt != tempVReg.end()) {
                             const uint16_t srcVreg = vregIt->second;
                             const int offset = spillIt->second;
                             // Respect the producing register class when spilling
                             auto clsIt = tempRegClass.find(*ins.result);
                             const RegClass cls =
                                 (clsIt != tempRegClass.end()) ? clsIt->second : RegClass::GPR;
-                            if (cls == RegClass::FPR)
-                            {
+                            if (cls == RegClass::FPR) {
                                 bbOutFn().instrs.push_back(
                                     MInstr{MOpcode::StrFprFpImm,
                                            {MOperand::vregOp(RegClass::FPR, srcVreg),
                                             MOperand::immOp(offset)}});
-                            }
-                            else
-                            {
+                            } else {
                                 bbOutFn().instrs.push_back(
                                     MInstr{MOpcode::StrRegFpImm,
                                            {MOperand::vregOp(RegClass::GPR, srcVreg),
@@ -486,15 +432,13 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                 continue;
             }
 
-            switch (ins.op)
-            {
+            switch (ins.op) {
                     // NOTE: Zext1, Trunc1, CastSiNarrowChk, CastUiNarrowChk, CastFpToSiRteChk,
                     // CastFpToUiRteChk, CastSiToFp, CastUiToFp, SRemChk0, SDivChk0, UDivChk0,
                     // URemChk0, FAdd, FSub, FMul, FDiv, FCmpEQ, FCmpNE, FCmpLT, FCmpLE, FCmpGT,
                     // FCmpGE, Sitofp, Fptosi are handled by lowerInstruction() above
 
-                case il::core::Opcode::SwitchI32:
-                {
+                case il::core::Opcode::SwitchI32: {
                     using namespace il::core;
                     // Scrutinee
                     uint16_t sv = 0;
@@ -508,13 +452,11 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                                                         tempRegClass,
                                                                         nextVRegId,
                                                                         sv,
-                                                                        scls))
-                    {
+                                                                        scls)) {
                         break;
                     }
                     const size_t ncases = switchCaseCount(ins);
-                    for (size_t ci = 0; ci < ncases; ++ci)
-                    {
+                    for (size_t ci = 0; ci < ncases; ++ci) {
                         const Value &cval = switchCaseValue(ins, ci);
                         const std::string &clabel = switchCaseLabel(ins, ci);
                         long long imm = 0;
@@ -525,13 +467,11 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                    {MOperand::vregOp(RegClass::GPR, sv), MOperand::immOp(imm)}});
                         // Phi copies for this case
                         auto itIds = phiVregId.find(clabel);
-                        if (itIds != phiVregId.end())
-                        {
+                        if (itIds != phiVregId.end()) {
                             const auto &classes = phiRegClass[clabel];
                             const auto &args = switchCaseArgs(ins, ci);
                             for (std::size_t ai = 0; ai < args.size() && ai < itIds->second.size();
-                                 ++ai)
-                            {
+                                 ++ai) {
                                 uint16_t pv = 0;
                                 RegClass pcls = RegClass::GPR;
                                 if (!materializeValueToVReg(args[ai],
@@ -547,10 +487,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                     continue;
                                 const uint16_t dstV = itIds->second[ai];
                                 const RegClass dstCls = classes[ai];
-                                if (dstCls == RegClass::FPR)
-                                {
-                                    if (pcls != RegClass::FPR)
-                                    {
+                                if (dstCls == RegClass::FPR) {
+                                    if (pcls != RegClass::FPR) {
                                         const uint16_t cvt = nextVRegId++;
                                         bbOutFn().instrs.push_back(
                                             MInstr{MOpcode::SCvtF,
@@ -563,11 +501,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                         MInstr{MOpcode::FMovRR,
                                                {MOperand::vregOp(RegClass::FPR, dstV),
                                                 MOperand::vregOp(RegClass::FPR, pv)}});
-                                }
-                                else
-                                {
-                                    if (pcls == RegClass::FPR)
-                                    {
+                                } else {
+                                    if (pcls == RegClass::FPR) {
                                         const uint16_t cvt = nextVRegId++;
                                         bbOutFn().instrs.push_back(
                                             MInstr{MOpcode::FCvtZS,
@@ -588,16 +523,13 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                     }
                     // Default
                     const std::string &defLbl = switchDefaultLabel(ins);
-                    if (!defLbl.empty())
-                    {
+                    if (!defLbl.empty()) {
                         auto itIds = phiVregId.find(defLbl);
-                        if (itIds != phiVregId.end())
-                        {
+                        if (itIds != phiVregId.end()) {
                             const auto &classes = phiRegClass[defLbl];
                             const auto &dargs = switchDefaultArgs(ins);
                             for (std::size_t ai = 0; ai < dargs.size() && ai < itIds->second.size();
-                                 ++ai)
-                            {
+                                 ++ai) {
                                 uint16_t pv = 0;
                                 RegClass pcls = RegClass::GPR;
                                 if (!materializeValueToVReg(dargs[ai],
@@ -613,10 +545,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                     continue;
                                 const uint16_t dstV = itIds->second[ai];
                                 const RegClass dstCls = classes[ai];
-                                if (dstCls == RegClass::FPR)
-                                {
-                                    if (pcls != RegClass::FPR)
-                                    {
+                                if (dstCls == RegClass::FPR) {
+                                    if (pcls != RegClass::FPR) {
                                         const uint16_t cvt = nextVRegId++;
                                         bbOutFn().instrs.push_back(
                                             MInstr{MOpcode::SCvtF,
@@ -629,11 +559,8 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                         MInstr{MOpcode::FMovRR,
                                                {MOperand::vregOp(RegClass::FPR, dstV),
                                                 MOperand::vregOp(RegClass::FPR, pv)}});
-                                }
-                                else
-                                {
-                                    if (pcls == RegClass::FPR)
-                                    {
+                                } else {
+                                    if (pcls == RegClass::FPR) {
                                         const uint16_t cvt = nextVRegId++;
                                         bbOutFn().instrs.push_back(
                                             MInstr{MOpcode::FCvtZS,
@@ -659,11 +586,9 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                 default:
                     // Handle binary ops and comparisons that may be referenced cross-block.
                     // This ensures values are materialized and cached in tempVReg for later use.
-                    if (ins.result && ins.operands.size() == 2)
-                    {
+                    if (ins.result && ins.operands.size() == 2) {
                         const auto *binOp = lookupBinaryOp(ins.op);
-                        if (binOp || isCompareOp(ins.op))
-                        {
+                        if (binOp || isCompareOp(ins.op)) {
                             uint16_t lhs = 0, rhs = 0;
                             RegClass lcls = RegClass::GPR, rcls = RegClass::GPR;
                             if (materializeValueToVReg(ins.operands[0],
@@ -685,16 +610,14 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                                        tempRegClass,
                                                        nextVRegId,
                                                        rhs,
-                                                       rcls))
-                            {
+                                                       rcls)) {
                                 // Use FPR register class for floating-point operations
                                 const RegClass rc =
                                     isFloatingPointOp(ins.op) ? RegClass::FPR : RegClass::GPR;
                                 const uint16_t dst = nextVRegId++;
                                 tempVReg[*ins.result] = dst;
                                 tempRegClass[*ins.result] = rc;
-                                if (binOp)
-                                {
+                                if (binOp) {
                                     // Check if we can use immediate form for this operation
                                     const bool hasConstRHS =
                                         ins.operands[1].kind == il::core::Value::Kind::ConstInt;
@@ -714,8 +637,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                     // 2. Operation supports immediate AND
                                     // 3. Value fits in the instruction's immediate field
                                     bool useImmediate = false;
-                                    if (hasConstRHS && binOp->supportsImmediate)
-                                    {
+                                    if (hasConstRHS && binOp->supportsImmediate) {
                                         const auto immVal = ins.operands[1].i64;
                                         if (isShift && isValidShiftAmount(immVal))
                                             useImmediate = true;
@@ -726,8 +648,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                             useImmediate = true;
                                     }
 
-                                    if (useImmediate)
-                                    {
+                                    if (useImmediate) {
                                         // Emit with immediate operand - no need to materialize RHS
                                         // Note: FP ops have supportsImmediate=false, so rc is
                                         // always GPR here
@@ -736,9 +657,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                                    {MOperand::vregOp(rc, dst),
                                                     MOperand::vregOp(rc, lhs),
                                                     MOperand::immOp(ins.operands[1].i64)}});
-                                    }
-                                    else
-                                    {
+                                    } else {
                                         // Emit binary op with all register operands
                                         bbOutFn().instrs.push_back(
                                             MInstr{binOp->mirOp,
@@ -746,24 +665,19 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                                     MOperand::vregOp(rc, lhs),
                                                     MOperand::vregOp(rc, rhs)}});
                                     }
-                                }
-                                else
-                                {
+                                } else {
                                     // Emit comparison (cmp + cset)
                                     // Check if RHS is a small constant for CmpRI form
                                     const bool rhsIsSmallConst =
                                         ins.operands[1].kind == il::core::Value::Kind::ConstInt &&
                                         isUImm12(ins.operands[1].i64);
 
-                                    if (rhsIsSmallConst)
-                                    {
+                                    if (rhsIsSmallConst) {
                                         bbOutFn().instrs.push_back(
                                             MInstr{MOpcode::CmpRI,
                                                    {MOperand::vregOp(RegClass::GPR, lhs),
                                                     MOperand::immOp(ins.operands[1].i64)}});
-                                    }
-                                    else
-                                    {
+                                    } else {
                                         bbOutFn().instrs.push_back(
                                             MInstr{MOpcode::CmpRR,
                                                    {MOperand::vregOp(RegClass::GPR, lhs),
@@ -776,9 +690,7 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
                                 }
                             }
                         }
-                    }
-                    else
-                    {
+                    } else {
                         // Opcode not handled by any dispatch path — emit a diagnostic
                         // so this doesn't silently produce wrong code.
                         fprintf(stderr,
@@ -793,30 +705,24 @@ MFunction LowerILToMIR::lowerFunction(const il::core::Function &fn) const
             // Spill cross-block temps immediately after they are defined.
             // This ensures the value is preserved in memory for use in other blocks,
             // since the register allocator may reuse the physical register.
-            if (ins.result)
-            {
+            if (ins.result) {
                 auto spillIt = liveness.crossBlockSpillOffset.find(*ins.result);
-                if (spillIt != liveness.crossBlockSpillOffset.end())
-                {
+                if (spillIt != liveness.crossBlockSpillOffset.end()) {
                     // This temp is used in another block - spill it now
                     auto vregIt = tempVReg.find(*ins.result);
-                    if (vregIt != tempVReg.end())
-                    {
+                    if (vregIt != tempVReg.end()) {
                         const uint16_t srcVreg = vregIt->second;
                         const int offset = spillIt->second;
                         // Check register class for this temp
                         auto clsIt = tempRegClass.find(*ins.result);
                         const RegClass cls =
                             (clsIt != tempRegClass.end()) ? clsIt->second : RegClass::GPR;
-                        if (cls == RegClass::FPR)
-                        {
+                        if (cls == RegClass::FPR) {
                             bbOutFn().instrs.push_back(
                                 MInstr{MOpcode::StrFprFpImm,
                                        {MOperand::vregOp(RegClass::FPR, srcVreg),
                                         MOperand::immOp(offset)}});
-                        }
-                        else
-                        {
+                        } else {
                             bbOutFn().instrs.push_back(
                                 MInstr{MOpcode::StrRegFpImm,
                                        {MOperand::vregOp(RegClass::GPR, srcVreg),

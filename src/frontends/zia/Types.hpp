@@ -91,8 +91,7 @@
 #include <string>
 #include <vector>
 
-namespace il::frontends::zia
-{
+namespace il::frontends::zia {
 
 //===----------------------------------------------------------------------===//
 /// @name Type Reference
@@ -119,8 +118,7 @@ using TypeRef = std::shared_ptr<const ViperType>;
 /// @details This enum categorizes all types in the Zia type system.
 /// Each kind has specific semantics for operations, memory layout, and
 /// code generation.
-enum class TypeKindSem
-{
+enum class TypeKindSem {
     // =========================================================================
     /// @name Primitive Types
     /// @brief Built-in value types with fixed representation.
@@ -333,8 +331,7 @@ enum class TypeKindSem
 /// - `elementType()`: For List[T] or Set[T], returns T
 /// - `keyType()`, `valueType()`: For Map[K,V]
 /// - `paramTypes()`, `returnType()`: For Function types
-struct ViperType
-{
+struct ViperType {
     /// @brief The type kind identifying this type's category.
     TypeKindSem kind;
 
@@ -380,17 +377,13 @@ struct ViperType
     /// @param args The type arguments.
     /// @details Used for user-defined generic types like MyList[T].
     ViperType(TypeKindSem k, std::string n, std::vector<TypeRef> args)
-        : kind(k), name(std::move(n)), typeArgs(std::move(args))
-    {
-    }
+        : kind(k), name(std::move(n)), typeArgs(std::move(args)) {}
 
     /// @brief Construct a fixed-size array type.
     /// @param elemType The element type (stored in typeArgs[0]).
     /// @param count Number of elements (stored in elementCount).
     ViperType(TypeKindSem k, TypeRef elemType, size_t count)
-        : kind(k), typeArgs({std::move(elemType)}), elementCount(count)
-    {
-    }
+        : kind(k), typeArgs({std::move(elemType)}), elementCount(count) {}
 
     //=========================================================================
     /// @name Type Predicates
@@ -402,10 +395,8 @@ struct ViperType
     /// @return True for Integer, Number, Boolean, String, Byte, Unit.
     /// @details Primitive types have fixed representation and built-in
     /// operations. They are always value types (copied on assignment).
-    bool isPrimitive() const
-    {
-        switch (kind)
-        {
+    bool isPrimitive() const {
+        switch (kind) {
             case TypeKindSem::Integer:
             case TypeKindSem::Number:
             case TypeKindSem::Boolean:
@@ -421,8 +412,7 @@ struct ViperType
     /// @brief Check if this is a numeric type.
     /// @return True for Integer, Number, Byte.
     /// @details Numeric types support arithmetic operations.
-    bool isNumeric() const
-    {
+    bool isNumeric() const {
         return kind == TypeKindSem::Integer || kind == TypeKindSem::Number ||
                kind == TypeKindSem::Byte;
     }
@@ -430,8 +420,7 @@ struct ViperType
     /// @brief Check if this is an integral (whole number) type.
     /// @return True for Integer, Byte.
     /// @details Integral types support bitwise operations and integer division.
-    bool isIntegral() const
-    {
+    bool isIntegral() const {
         return kind == TypeKindSem::Integer || kind == TypeKindSem::Byte;
     }
 
@@ -439,8 +428,7 @@ struct ViperType
     /// @return True for Entity, Interface, List, Map, Set.
     /// @details Reference types are heap-allocated and use reference semantics.
     /// They are passed by pointer and may be null when wrapped in Optional.
-    bool isReference() const
-    {
+    bool isReference() const {
         return kind == TypeKindSem::Entity || kind == TypeKindSem::Interface ||
                kind == TypeKindSem::List || kind == TypeKindSem::Map || kind == TypeKindSem::Set;
     }
@@ -448,80 +436,70 @@ struct ViperType
     /// @brief Check if this is an optional type.
     /// @return True for Optional[T] types.
     /// @details Optional types can hold either a value or null.
-    bool isOptional() const
-    {
+    bool isOptional() const {
         return kind == TypeKindSem::Optional;
     }
 
     /// @brief Check if this is a result type.
     /// @return True for Result[T] types.
     /// @details Result types can hold either a success value or an error.
-    bool isResult() const
-    {
+    bool isResult() const {
         return kind == TypeKindSem::Result;
     }
 
     /// @brief Check if this is the void type.
     /// @return True only for Void.
     /// @details Void indicates no return value from a function.
-    bool isVoid() const
-    {
+    bool isVoid() const {
         return kind == TypeKindSem::Void;
     }
 
     /// @brief Check if this is the unit type.
     /// @return True only for Unit.
     /// @details Unit is like void but has an actual value ().
-    bool isUnit() const
-    {
+    bool isUnit() const {
         return kind == TypeKindSem::Unit;
     }
 
     /// @brief Check if this is an unknown/unresolved type.
     /// @return True for Unknown types.
     /// @details Unknown types are placeholders during type inference.
-    bool isUnknown() const
-    {
+    bool isUnknown() const {
         return kind == TypeKindSem::Unknown;
     }
 
     /// @brief Check if this is the never (bottom) type.
     /// @return True only for Never.
     /// @details Never indicates a computation that never completes normally.
-    bool isNever() const
-    {
+    bool isNever() const {
         return kind == TypeKindSem::Never;
     }
 
     /// @brief Check if this is a callable (function) type.
     /// @return True for Function types.
     /// @details Callable types can be invoked with arguments.
-    bool isCallable() const
-    {
+    bool isCallable() const {
         return kind == TypeKindSem::Function;
     }
 
     /// @brief Check if this is a tuple type.
     /// @return True for Tuple types.
     /// @details Tuple types are fixed-size collections of potentially different types.
-    bool isTuple() const
-    {
+    bool isTuple() const {
         return kind == TypeKindSem::Tuple;
     }
 
     /// @brief Check if this is a generic type with type arguments.
     /// @return True if typeArgs is non-empty.
     /// @details Generic types have been instantiated with specific type arguments.
-    bool isGeneric() const
-    {
+    bool isGeneric() const {
         return !typeArgs.empty();
     }
 
     /// @brief Check if this is a user-defined type.
     /// @return True for Value, Entity, Interface types.
     /// @details User-defined types are declared in source code.
-    bool isUserDefined() const
-    {
+    bool isUserDefined() const {
         return kind == TypeKindSem::Value || kind == TypeKindSem::Entity ||
                kind == TypeKindSem::Interface || kind == TypeKindSem::Enum;
     }
@@ -536,8 +514,7 @@ struct ViperType
     /// @brief Get the inner type for Optional[T].
     /// @return The wrapped type T, or nullptr if not Optional.
     /// @details For `Integer?`, returns the Integer type.
-    TypeRef innerType() const
-    {
+    TypeRef innerType() const {
         if (kind == TypeKindSem::Optional && !typeArgs.empty())
             return typeArgs[0];
         return nullptr;
@@ -546,8 +523,7 @@ struct ViperType
     /// @brief Get the success type for Result[T].
     /// @return The success type T, or nullptr if not Result.
     /// @details For `Result[User]`, returns the User type.
-    TypeRef successType() const
-    {
+    TypeRef successType() const {
         if (kind == TypeKindSem::Result && !typeArgs.empty())
             return typeArgs[0];
         return nullptr;
@@ -556,8 +532,7 @@ struct ViperType
     /// @brief Get the element type for List[T], Set[T], or FixedArray T[N].
     /// @return The element type T, or nullptr if not a collection.
     /// @details For `List[Integer]` or `Integer[64]`, returns the Integer type.
-    TypeRef elementType() const
-    {
+    TypeRef elementType() const {
         if ((kind == TypeKindSem::List || kind == TypeKindSem::Set ||
              kind == TypeKindSem::FixedArray) &&
             !typeArgs.empty())
@@ -568,8 +543,7 @@ struct ViperType
     /// @brief Get the key type for Map[K, V].
     /// @return The key type K, or nullptr if not a Map.
     /// @details For `Map[String, Integer]`, returns the String type.
-    TypeRef keyType() const
-    {
+    TypeRef keyType() const {
         if (kind == TypeKindSem::Map && typeArgs.size() >= 2)
             return typeArgs[0];
         return nullptr;
@@ -578,8 +552,7 @@ struct ViperType
     /// @brief Get the value type for Map[K, V].
     /// @return The value type V, or nullptr if not a Map.
     /// @details For `Map[String, Integer]`, returns the Integer type.
-    TypeRef valueType() const
-    {
+    TypeRef valueType() const {
         if (kind == TypeKindSem::Map && typeArgs.size() >= 2)
             return typeArgs[1];
         return nullptr;
@@ -589,8 +562,7 @@ struct ViperType
     /// @return The return type, or nullptr if not a Function.
     /// @details For `(Int, Int) -> Bool`, returns Bool.
     /// The return type is the last element in typeArgs.
-    TypeRef returnType() const
-    {
+    TypeRef returnType() const {
         if (kind == TypeKindSem::Function && !typeArgs.empty())
             return typeArgs.back();
         return nullptr;
@@ -600,10 +572,8 @@ struct ViperType
     /// @return Vector of parameter types, empty if not a Function.
     /// @details For `(Int, Int) -> Bool`, returns [Int, Int].
     /// Parameters are all typeArgs except the last (return type).
-    std::vector<TypeRef> paramTypes() const
-    {
-        if (kind == TypeKindSem::Function && typeArgs.size() > 1)
-        {
+    std::vector<TypeRef> paramTypes() const {
+        if (kind == TypeKindSem::Function && typeArgs.size() > 1) {
             return std::vector<TypeRef>(typeArgs.begin(), typeArgs.end() - 1);
         }
         return {};
@@ -612,16 +582,14 @@ struct ViperType
     /// @brief Get the element types for Tuple types.
     /// @return Vector of element types, empty if not a Tuple.
     /// @details For `(Int, String)`, returns [Int, String].
-    const std::vector<TypeRef> &tupleElementTypes() const
-    {
+    const std::vector<TypeRef> &tupleElementTypes() const {
         return typeArgs;
     }
 
     /// @brief Get a specific tuple element type.
     /// @param index The element index.
     /// @return The type at the given index, or nullptr if out of bounds or not a tuple.
-    TypeRef tupleElementType(size_t index) const
-    {
+    TypeRef tupleElementType(size_t index) const {
         if (kind == TypeKindSem::Tuple && index < typeArgs.size())
             return typeArgs[index];
         return nullptr;
@@ -679,8 +647,7 @@ struct ViperType
 /// @brief Type factory namespace.
 /// @details Provides singleton instances for primitives and constructors
 /// for compound types. Using these functions ensures proper type interning.
-namespace types
-{
+namespace types {
 
 // =========================================================================
 /// @name Primitive Type Singletons

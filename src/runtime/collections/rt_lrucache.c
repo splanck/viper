@@ -53,8 +53,7 @@
 #include "rt_hash_util.h"
 
 /// @brief Doubly-linked list node with hash table chaining.
-typedef struct rt_lru_node
-{
+typedef struct rt_lru_node {
     char *key;                       ///< Owned copy of key string (null-terminated).
     size_t key_len;                  ///< Length of key string (excluding null terminator).
     void *value;                     ///< Retained reference to the value object.
@@ -64,8 +63,7 @@ typedef struct rt_lru_node
 } rt_lru_node;
 
 /// @brief LRU cache implementation structure.
-typedef struct rt_lrucache_impl
-{
+typedef struct rt_lrucache_impl {
     void **vptr;           ///< Vtable pointer placeholder (for OOP compatibility).
     rt_lru_node **buckets; ///< Hash table buckets array.
     size_t bucket_count;   ///< Number of hash table buckets.
@@ -75,11 +73,9 @@ typedef struct rt_lrucache_impl
     rt_lru_node *tail;     ///< Least recently used node (doubly-linked list tail).
 } rt_lrucache_impl;
 
-static const char *get_key_data(rt_string key, size_t *out_len)
-{
+static const char *get_key_data(rt_string key, size_t *out_len) {
     const char *cstr = rt_string_cstr(key);
-    if (!cstr)
-    {
+    if (!cstr) {
         *out_len = 0;
         return "";
     }
@@ -92,8 +88,7 @@ static const char *get_key_data(rt_string key, size_t *out_len)
 // ---------------------------------------------------------------------------
 
 /// Remove a node from the doubly-linked list (does NOT free it).
-static void list_remove(rt_lrucache_impl *cache, rt_lru_node *node)
-{
+static void list_remove(rt_lrucache_impl *cache, rt_lru_node *node) {
     if (node->prev)
         node->prev->next = node->next;
     else
@@ -109,8 +104,7 @@ static void list_remove(rt_lrucache_impl *cache, rt_lru_node *node)
 }
 
 /// Push a node to the front (MRU position) of the doubly-linked list.
-static void list_push_front(rt_lrucache_impl *cache, rt_lru_node *node)
-{
+static void list_push_front(rt_lrucache_impl *cache, rt_lru_node *node) {
     node->prev = NULL;
     node->next = cache->head;
 
@@ -123,8 +117,7 @@ static void list_push_front(rt_lrucache_impl *cache, rt_lru_node *node)
 }
 
 /// Move an existing node to the front (MRU position).
-static void list_move_to_front(rt_lrucache_impl *cache, rt_lru_node *node)
-{
+static void list_move_to_front(rt_lrucache_impl *cache, rt_lru_node *node) {
     if (cache->head == node)
         return; // Already at front
     list_remove(cache, node);
@@ -136,10 +129,8 @@ static void list_move_to_front(rt_lrucache_impl *cache, rt_lru_node *node)
 // ---------------------------------------------------------------------------
 
 /// Find a node in a bucket chain by key.
-static rt_lru_node *bucket_find(rt_lru_node *head, const char *key, size_t key_len)
-{
-    for (rt_lru_node *n = head; n; n = n->bucket_next)
-    {
+static rt_lru_node *bucket_find(rt_lru_node *head, const char *key, size_t key_len) {
+    for (rt_lru_node *n = head; n; n = n->bucket_next) {
         if (n->key_len == key_len && memcmp(n->key, key, key_len) == 0)
             return n;
     }
@@ -147,18 +138,15 @@ static rt_lru_node *bucket_find(rt_lru_node *head, const char *key, size_t key_l
 }
 
 /// Remove a node from its bucket chain.
-static void bucket_remove(rt_lrucache_impl *cache, rt_lru_node *node)
-{
+static void bucket_remove(rt_lrucache_impl *cache, rt_lru_node *node) {
     uint64_t hash = rt_fnv1a(node->key, node->key_len);
     size_t idx = hash % cache->bucket_count;
 
     rt_lru_node **prev_ptr = &cache->buckets[idx];
     rt_lru_node *curr = cache->buckets[idx];
 
-    while (curr)
-    {
-        if (curr == node)
-        {
+    while (curr) {
+        if (curr == node) {
             *prev_ptr = curr->bucket_next;
             curr->bucket_next = NULL;
             return;
@@ -169,8 +157,7 @@ static void bucket_remove(rt_lrucache_impl *cache, rt_lru_node *node)
 }
 
 /// Insert a node into its bucket chain.
-static void bucket_insert(rt_lrucache_impl *cache, rt_lru_node *node)
-{
+static void bucket_insert(rt_lrucache_impl *cache, rt_lru_node *node) {
     uint64_t hash = rt_fnv1a(node->key, node->key_len);
     size_t idx = hash % cache->bucket_count;
     node->bucket_next = cache->buckets[idx];
@@ -178,8 +165,7 @@ static void bucket_insert(rt_lrucache_impl *cache, rt_lru_node *node)
 }
 
 /// Resize the hash table when load factor is too high.
-static void maybe_resize(rt_lrucache_impl *cache)
-{
+static void maybe_resize(rt_lrucache_impl *cache) {
     if (cache->count * LRU_LOAD_FACTOR_DEN <= cache->bucket_count * LRU_LOAD_FACTOR_NUM)
         return;
 
@@ -191,11 +177,9 @@ static void maybe_resize(rt_lrucache_impl *cache)
         return; // Keep old buckets on failure
 
     // Rehash all nodes
-    for (size_t i = 0; i < cache->bucket_count; ++i)
-    {
+    for (size_t i = 0; i < cache->bucket_count; ++i) {
         rt_lru_node *node = cache->buckets[i];
-        while (node)
-        {
+        while (node) {
             rt_lru_node *next = node->bucket_next;
             uint64_t hash = rt_fnv1a(node->key, node->key_len);
             size_t idx = hash % new_bucket_count;
@@ -215,8 +199,7 @@ static void maybe_resize(rt_lrucache_impl *cache)
 // ---------------------------------------------------------------------------
 
 /// Free a node: release its key, value, and the node itself.
-static void free_node(rt_lru_node *node)
-{
+static void free_node(rt_lru_node *node) {
     if (!node)
         return;
     free(node->key);
@@ -226,8 +209,7 @@ static void free_node(rt_lru_node *node)
 }
 
 /// Evict the least-recently-used node (tail of the list).
-static void evict_lru(rt_lrucache_impl *cache)
-{
+static void evict_lru(rt_lrucache_impl *cache) {
     rt_lru_node *victim = cache->tail;
     if (!victim)
         return;
@@ -242,16 +224,14 @@ static void evict_lru(rt_lrucache_impl *cache)
 // Finalizer
 // ---------------------------------------------------------------------------
 
-static void rt_lrucache_finalize(void *obj)
-{
+static void rt_lrucache_finalize(void *obj) {
     if (!obj)
         return;
     rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
 
     // Free all nodes via the linked list (faster than iterating buckets)
     rt_lru_node *node = cache->head;
-    while (node)
-    {
+    while (node) {
         rt_lru_node *next = node->next;
         free_node(node);
         node = next;
@@ -269,8 +249,7 @@ static void rt_lrucache_finalize(void *obj)
 // Public API
 // ---------------------------------------------------------------------------
 
-void *rt_lrucache_new(int64_t capacity)
-{
+void *rt_lrucache_new(int64_t capacity) {
     if (capacity <= 0)
         capacity = 1; // Minimum capacity of 1
 
@@ -283,16 +262,14 @@ void *rt_lrucache_new(int64_t capacity)
     cache->bucket_count = LRU_INITIAL_BUCKETS;
     // If requested capacity is large, start with more buckets to avoid
     // immediate resizing
-    while (cache->bucket_count * LRU_LOAD_FACTOR_NUM / LRU_LOAD_FACTOR_DEN < (size_t)capacity)
-    {
+    while (cache->bucket_count * LRU_LOAD_FACTOR_NUM / LRU_LOAD_FACTOR_DEN < (size_t)capacity) {
         if (cache->bucket_count > SIZE_MAX / 2)
             break;
         cache->bucket_count *= 2;
     }
 
     cache->buckets = (rt_lru_node **)calloc(cache->bucket_count, sizeof(rt_lru_node *));
-    if (!cache->buckets)
-    {
+    if (!cache->buckets) {
         cache->bucket_count = 0;
         cache->count = 0;
         cache->max_cap = 0;
@@ -310,27 +287,23 @@ void *rt_lrucache_new(int64_t capacity)
     return cache;
 }
 
-int64_t rt_lrucache_len(void *obj)
-{
+int64_t rt_lrucache_len(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_lrucache_impl *)obj)->count;
 }
 
-int64_t rt_lrucache_cap(void *obj)
-{
+int64_t rt_lrucache_cap(void *obj) {
     if (!obj)
         return 0;
     return (int64_t)((rt_lrucache_impl *)obj)->max_cap;
 }
 
-int8_t rt_lrucache_is_empty(void *obj)
-{
+int8_t rt_lrucache_is_empty(void *obj) {
     return rt_lrucache_len(obj) == 0;
 }
 
-void rt_lrucache_put(void *obj, rt_string key, void *value)
-{
+void rt_lrucache_put(void *obj, rt_string key, void *value) {
     if (!obj)
         return;
 
@@ -345,8 +318,7 @@ void rt_lrucache_put(void *obj, rt_string key, void *value)
 
     // Check if key already exists
     rt_lru_node *existing = bucket_find(cache->buckets[idx], key_data, key_len);
-    if (existing)
-    {
+    if (existing) {
         // Update value and promote to MRU
         void *old_value = existing->value;
         rt_obj_retain_maybe(value);
@@ -367,8 +339,7 @@ void rt_lrucache_put(void *obj, rt_string key, void *value)
         return;
 
     node->key = (char *)malloc(key_len + 1);
-    if (!node->key)
-    {
+    if (!node->key) {
         free(node);
         return;
     }
@@ -390,8 +361,7 @@ void rt_lrucache_put(void *obj, rt_string key, void *value)
     maybe_resize(cache);
 }
 
-void *rt_lrucache_get(void *obj, rt_string key)
-{
+void *rt_lrucache_get(void *obj, rt_string key) {
     if (!obj)
         return NULL;
 
@@ -414,8 +384,7 @@ void *rt_lrucache_get(void *obj, rt_string key)
     return node->value;
 }
 
-void *rt_lrucache_peek(void *obj, rt_string key)
-{
+void *rt_lrucache_peek(void *obj, rt_string key) {
     if (!obj)
         return NULL;
 
@@ -432,8 +401,7 @@ void *rt_lrucache_peek(void *obj, rt_string key)
     return node ? node->value : NULL;
 }
 
-int8_t rt_lrucache_has(void *obj, rt_string key)
-{
+int8_t rt_lrucache_has(void *obj, rt_string key) {
     if (!obj)
         return 0;
 
@@ -449,8 +417,7 @@ int8_t rt_lrucache_has(void *obj, rt_string key)
     return bucket_find(cache->buckets[idx], key_data, key_len) ? 1 : 0;
 }
 
-int8_t rt_lrucache_remove(void *obj, rt_string key)
-{
+int8_t rt_lrucache_remove(void *obj, rt_string key) {
     if (!obj)
         return 0;
 
@@ -474,8 +441,7 @@ int8_t rt_lrucache_remove(void *obj, rt_string key)
     return 1;
 }
 
-int8_t rt_lrucache_remove_oldest(void *obj)
-{
+int8_t rt_lrucache_remove_oldest(void *obj) {
     if (!obj)
         return 0;
 
@@ -487,8 +453,7 @@ int8_t rt_lrucache_remove_oldest(void *obj)
     return 1;
 }
 
-void rt_lrucache_clear(void *obj)
-{
+void rt_lrucache_clear(void *obj) {
     if (!obj)
         return;
 
@@ -496,8 +461,7 @@ void rt_lrucache_clear(void *obj)
 
     // Free all nodes via the linked list
     rt_lru_node *node = cache->head;
-    while (node)
-    {
+    while (node) {
         rt_lru_node *next = node->next;
         free_node(node);
         node = next;
@@ -511,8 +475,7 @@ void rt_lrucache_clear(void *obj)
         memset(cache->buckets, 0, cache->bucket_count * sizeof(rt_lru_node *));
 }
 
-void *rt_lrucache_keys(void *obj)
-{
+void *rt_lrucache_keys(void *obj) {
     void *result = rt_seq_new();
     rt_seq_set_owns_elements(result, 1);
     if (!obj)
@@ -521,8 +484,7 @@ void *rt_lrucache_keys(void *obj)
     rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
 
     // Walk from head (MRU) to tail (LRU)
-    for (rt_lru_node *node = cache->head; node; node = node->next)
-    {
+    for (rt_lru_node *node = cache->head; node; node = node->next) {
         rt_string key_str = rt_string_from_bytes(node->key, node->key_len);
         rt_seq_push(result, (void *)key_str);
         rt_str_release_maybe(key_str);
@@ -531,8 +493,7 @@ void *rt_lrucache_keys(void *obj)
     return result;
 }
 
-void *rt_lrucache_values(void *obj)
-{
+void *rt_lrucache_values(void *obj) {
     void *result = rt_seq_new();
     if (!obj)
         return result;
@@ -540,8 +501,7 @@ void *rt_lrucache_values(void *obj)
     rt_lrucache_impl *cache = (rt_lrucache_impl *)obj;
 
     // Walk from head (MRU) to tail (LRU)
-    for (rt_lru_node *node = cache->head; node; node = node->next)
-    {
+    for (rt_lru_node *node = cache->head; node; node = node->next) {
         rt_seq_push(result, node->value);
     }
 

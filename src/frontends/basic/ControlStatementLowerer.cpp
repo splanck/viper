@@ -32,8 +32,7 @@ using il::frontends::basic::OverflowPolicy;
 ///          @ref Lowerer context to produce deterministic block graphs while
 ///          respecting runtime invariants around the continuation stack.
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 ControlStatementLowerer::ControlStatementLowerer(Lowerer &lowerer) : lowerer_(lowerer) {}
 
@@ -45,8 +44,7 @@ ControlStatementLowerer::ControlStatementLowerer(Lowerer &lowerer) : lowerer_(lo
 ///          looked up through @ref ProcedureContext::gosub so matching RETURN
 ///          statements can pop back to the correct block.
 /// @param stmt GOSUB statement providing the target line and source location.
-void ControlStatementLowerer::lowerGosub(const GosubStmt &stmt)
-{
+void ControlStatementLowerer::lowerGosub(const GosubStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
     Lowerer::ProcedureContext &ctx = lowerer_.context();
     Lowerer::Function *func = ctx.function();
@@ -127,13 +125,11 @@ void ControlStatementLowerer::lowerGosub(const GosubStmt &stmt)
 ///          Missing targets are ignored so unresolved labels can be diagnosed
 ///          later during verification.
 /// @param stmt GOTO statement pointing at a target line label.
-void ControlStatementLowerer::lowerGoto(const GotoStmt &stmt)
-{
+void ControlStatementLowerer::lowerGoto(const GotoStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
     auto &lineBlocks = lowerer_.context().blockNames().lineBlocks();
     auto it = lineBlocks.find(stmt.target);
-    if (it != lineBlocks.end())
-    {
+    if (it != lineBlocks.end()) {
         Lowerer::Function *func = lowerer_.context().function();
         assert(func && "lowerGoto requires an active function");
         lowerer_.emitBr(&func->blocks[it->second]);
@@ -148,8 +144,7 @@ void ControlStatementLowerer::lowerGoto(const GotoStmt &stmt)
 ///          RETURN statements manifest as runtime errors rather than silent
 ///          corruption.
 /// @param stmt RETURN statement appearing in GOSUB contexts.
-void ControlStatementLowerer::lowerGosubReturn(const ReturnStmt &stmt)
-{
+void ControlStatementLowerer::lowerGosubReturn(const ReturnStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
     Lowerer::ProcedureContext &ctx = lowerer_.context();
     Lowerer::Function *func = ctx.function();
@@ -228,8 +223,7 @@ void ControlStatementLowerer::lowerGosubReturn(const ReturnStmt &stmt)
     sw.brArgs.push_back({});
 
     const auto &continuations = gosubState.continuations();
-    for (unsigned i = 0; i < continuations.size(); ++i)
-    {
+    for (unsigned i = 0; i < continuations.size(); ++i) {
         sw.operands.push_back(Lowerer::Value::constInt(static_cast<long long>(i)));
         Lowerer::BasicBlock *target = &func->blocks[continuations[i]];
         if (target->label.empty())
@@ -250,19 +244,15 @@ void ControlStatementLowerer::lowerGosubReturn(const ReturnStmt &stmt)
 ///          For SUB/FUNCTION (returns void or other), emits trap since we
 ///          cannot return from a void procedure with a value.
 /// @param stmt END statement providing the source location.
-void ControlStatementLowerer::lowerEnd(const EndStmt &stmt)
-{
+void ControlStatementLowerer::lowerEnd(const EndStmt &stmt) {
     LocationScope loc(lowerer_, stmt.loc);
     // BUG-OOP-014 fix: Check if current function returns void (SUB) or i64 (main)
     // END in main should return 0; END in SUB/FUNCTION should trap to terminate.
     auto *func = lowerer_.context().function();
-    if (func && func->retType.kind == il::core::Type::Kind::I64)
-    {
+    if (func && func->retType.kind == il::core::Type::Kind::I64) {
         // In main() or FUNCTION returning INTEGER - return 0 for normal termination
         lowerer_.emitRet(Lowerer::Value::constInt(0));
-    }
-    else
-    {
+    } else {
         // In SUB (void) or other context - trap to terminate program
         lowerer_.emitTrap();
     }

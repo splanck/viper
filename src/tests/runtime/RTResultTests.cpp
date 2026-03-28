@@ -18,8 +18,7 @@
 #include <cstring>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -28,8 +27,7 @@ static void test_result(const char *name, bool passed)
 // Result Tests
 //=============================================================================
 
-static void test_result_ok_creation()
-{
+static void test_result_ok_creation() {
     printf("Testing Result Ok creation:\n");
 
     // Test 1: Create Ok with pointer
@@ -68,8 +66,7 @@ static void test_result_ok_creation()
     printf("\n");
 }
 
-static void test_result_err_creation()
-{
+static void test_result_err_creation() {
     printf("Testing Result Err creation:\n");
 
     // Test 1: Create Err with pointer
@@ -93,8 +90,7 @@ static void test_result_err_creation()
     printf("\n");
 }
 
-static void test_result_unwrap_or()
-{
+static void test_result_unwrap_or() {
     printf("Testing Result UnwrapOr:\n");
 
     // Test 1: UnwrapOr on Ok returns value
@@ -144,8 +140,7 @@ static void test_result_unwrap_or()
     printf("\n");
 }
 
-static void test_result_ok_err_value()
-{
+static void test_result_ok_err_value() {
     printf("Testing Result OkValue/ErrValue:\n");
 
     // Test 1: OkValue on Ok returns value
@@ -177,8 +172,7 @@ static void test_result_ok_err_value()
     printf("\n");
 }
 
-static void test_result_to_string()
-{
+static void test_result_to_string() {
     printf("Testing Result ToString:\n");
 
     // Test 1: Ok pointer
@@ -213,8 +207,7 @@ static void test_result_to_string()
     printf("\n");
 }
 
-static void test_result_equality()
-{
+static void test_result_equality() {
     printf("Testing Result Equality:\n");
 
     // Test 1: Two Ok i64 with same value
@@ -255,8 +248,7 @@ static void test_result_equality()
     printf("\n");
 }
 
-static void test_result_null_handling()
-{
+static void test_result_null_handling() {
     printf("Testing Result NULL handling:\n");
 
     // Test 1: IsOk on NULL
@@ -283,8 +275,7 @@ static void test_result_null_handling()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Result Tests ===\n\n");
 
     test_result_ok_creation();

@@ -62,23 +62,20 @@
 #endif
 
 // Helper to create rt_string from C string
-static inline void *str_from_cstr(const char *s)
-{
+static inline void *str_from_cstr(const char *s) {
     return s ? (void *)rt_string_from_bytes(s, strlen(s)) : NULL;
 }
 
 #define WATCHER_EVENT_QUEUE_SIZE 64
 
 /// @brief A single queued file system event.
-typedef struct watcher_event
-{
+typedef struct watcher_event {
     int64_t type; ///< Event type (RT_WATCH_EVENT_*)
     void *path;   ///< Path of affected file (rt_string)
 } watcher_event;
 
 /// @brief Internal watcher implementation structure.
-typedef struct rt_watcher_impl
-{
+typedef struct rt_watcher_impl {
     void *watch_path;    ///< The path being watched (rt_string)
     int8_t is_watching;  ///< 1 if actively watching
     int8_t is_directory; ///< 1 if watching a directory
@@ -109,15 +106,13 @@ typedef struct rt_watcher_impl
 } rt_watcher_impl;
 
 /// @brief Finalizer callback for Watcher.
-static void rt_watcher_finalize(void *obj)
-{
+static void rt_watcher_finalize(void *obj) {
     if (!obj)
         return;
     rt_watcher_impl *w = (rt_watcher_impl *)obj;
 
     // Stop watching if active
-    if (w->is_watching)
-    {
+    if (w->is_watching) {
 #if defined(__linux__)
         if (w->watch_descriptor >= 0)
             inotify_rm_watch(w->inotify_fd, w->watch_descriptor);
@@ -129,8 +124,7 @@ static void rt_watcher_finalize(void *obj)
         if (w->kqueue_fd >= 0)
             close(w->kqueue_fd);
 #elif defined(_WIN32)
-        if (w->dir_handle != INVALID_HANDLE_VALUE)
-        {
+        if (w->dir_handle != INVALID_HANDLE_VALUE) {
             CancelIo(w->dir_handle);
             CloseHandle(w->dir_handle);
         }
@@ -138,31 +132,25 @@ static void rt_watcher_finalize(void *obj)
     }
 
     // Clear event queue paths
-    for (int64_t i = 0; i < WATCHER_EVENT_QUEUE_SIZE; i++)
-    {
-        if (w->events[i].path)
-        {
+    for (int64_t i = 0; i < WATCHER_EVENT_QUEUE_SIZE; i++) {
+        if (w->events[i].path) {
             rt_string_unref(w->events[i].path);
             w->events[i].path = NULL;
         }
     }
-    if (w->last_event_path)
-    {
+    if (w->last_event_path) {
         rt_string_unref(w->last_event_path);
         w->last_event_path = NULL;
     }
-    if (w->watch_path)
-    {
+    if (w->watch_path) {
         rt_string_unref(w->watch_path);
         w->watch_path = NULL;
     }
 }
 
 /// @brief Queue an event internally.
-static void watcher_queue_event(rt_watcher_impl *w, int64_t type, const char *path)
-{
-    if (w->event_count >= WATCHER_EVENT_QUEUE_SIZE)
-    {
+static void watcher_queue_event(rt_watcher_impl *w, int64_t type, const char *path) {
+    if (w->event_count >= WATCHER_EVENT_QUEUE_SIZE) {
         // Queue full, drop oldest
         if (w->events[w->event_head].path)
             rt_string_unref(w->events[w->event_head].path);
@@ -177,8 +165,7 @@ static void watcher_queue_event(rt_watcher_impl *w, int64_t type, const char *pa
 }
 
 /// @brief Dequeue an event.
-static int watcher_dequeue_event(rt_watcher_impl *w, watcher_event *out)
-{
+static int watcher_dequeue_event(rt_watcher_impl *w, watcher_event *out) {
     if (w->event_count == 0)
         return 0;
 
@@ -191,16 +178,14 @@ static int watcher_dequeue_event(rt_watcher_impl *w, watcher_event *out)
 
 #if defined(__linux__)
 /// @brief Read and process inotify events (Linux).
-static void watcher_read_inotify_events(rt_watcher_impl *w)
-{
+static void watcher_read_inotify_events(rt_watcher_impl *w) {
     char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
     ssize_t len = read(w->inotify_fd, buf, sizeof(buf));
     if (len <= 0)
         return;
 
     char *ptr = buf;
-    while (ptr < buf + len)
-    {
+    while (ptr < buf + len) {
         struct inotify_event *event = (struct inotify_event *)ptr;
         int64_t type = RT_WATCH_EVENT_NONE;
 
@@ -213,8 +198,7 @@ static void watcher_read_inotify_events(rt_watcher_impl *w)
         else if (event->mask & (IN_MOVED_FROM | IN_MOVED_TO | IN_MOVE_SELF))
             type = RT_WATCH_EVENT_RENAMED;
 
-        if (type != RT_WATCH_EVENT_NONE)
-        {
+        if (type != RT_WATCH_EVENT_NONE) {
             const char *name = event->len > 0 ? event->name : "";
             watcher_queue_event(w, type, name);
         }
@@ -226,8 +210,7 @@ static void watcher_read_inotify_events(rt_watcher_impl *w)
 
 #if defined(__APPLE__)
 /// @brief Read and process kqueue events (macOS).
-static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms)
-{
+static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms) {
     struct kevent event;
     struct timespec ts;
     ts.tv_sec = timeout_ms / 1000;
@@ -252,14 +235,12 @@ static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms)
 
 #if defined(_WIN32)
 /// @brief Read and process Windows directory changes.
-static void watcher_read_windows_events(rt_watcher_impl *w)
-{
+static void watcher_read_windows_events(rt_watcher_impl *w) {
     if (!w->pending_read)
         return;
 
     DWORD bytes_returned = 0;
-    if (!GetOverlappedResult(w->dir_handle, &w->overlapped, &bytes_returned, FALSE))
-    {
+    if (!GetOverlappedResult(w->dir_handle, &w->overlapped, &bytes_returned, FALSE)) {
         if (GetLastError() == ERROR_IO_INCOMPLETE)
             return; // Still pending
         return;
@@ -271,11 +252,9 @@ static void watcher_read_windows_events(rt_watcher_impl *w)
         return;
 
     FILE_NOTIFY_INFORMATION *info = (FILE_NOTIFY_INFORMATION *)w->buffer;
-    while (1)
-    {
+    while (1) {
         int64_t type = RT_WATCH_EVENT_NONE;
-        switch (info->Action)
-        {
+        switch (info->Action) {
             case FILE_ACTION_ADDED:
                 type = RT_WATCH_EVENT_CREATED;
                 break;
@@ -291,15 +270,13 @@ static void watcher_read_windows_events(rt_watcher_impl *w)
                 break;
         }
 
-        if (type != RT_WATCH_EVENT_NONE)
-        {
+        if (type != RT_WATCH_EVENT_NONE) {
             // Convert wide string to UTF-8
             int name_len = info->FileNameLength / sizeof(WCHAR);
             int utf8_len =
                 WideCharToMultiByte(CP_UTF8, 0, info->FileName, name_len, NULL, 0, NULL, NULL);
             char *name = malloc(utf8_len + 1);
-            if (name)
-            {
+            if (name) {
                 WideCharToMultiByte(
                     CP_UTF8, 0, info->FileName, name_len, name, utf8_len, NULL, NULL);
                 name[utf8_len] = '\0';
@@ -328,8 +305,7 @@ static void watcher_read_windows_events(rt_watcher_impl *w)
 }
 #endif
 
-void *rt_watcher_new(rt_string path)
-{
+void *rt_watcher_new(rt_string path) {
     if (!path)
         rt_trap("Watcher.New: null path");
 
@@ -370,8 +346,7 @@ void *rt_watcher_new(rt_string path)
     return w;
 }
 
-rt_string rt_watcher_get_path(void *obj)
-{
+rt_string rt_watcher_get_path(void *obj) {
     if (!obj)
         return str_from_cstr("");
     rt_watcher_impl *w = (rt_watcher_impl *)obj;
@@ -380,15 +355,13 @@ rt_string rt_watcher_get_path(void *obj)
     return w->watch_path ? w->watch_path : str_from_cstr("");
 }
 
-int8_t rt_watcher_get_is_watching(void *obj)
-{
+int8_t rt_watcher_get_is_watching(void *obj) {
     if (!obj)
         return 0;
     return ((rt_watcher_impl *)obj)->is_watching;
 }
 
-void rt_watcher_start(void *obj)
-{
+void rt_watcher_start(void *obj) {
     if (!obj)
         rt_trap("Watcher.Start: null watcher");
 
@@ -408,8 +381,7 @@ void rt_watcher_start(void *obj)
         mask |= IN_DELETE_SELF | IN_MOVE_SELF;
 
     w->watch_descriptor = inotify_add_watch(w->inotify_fd, cpath, mask);
-    if (w->watch_descriptor < 0)
-    {
+    if (w->watch_descriptor < 0) {
         close(w->inotify_fd);
         w->inotify_fd = -1;
         rt_trap("Watcher.Start: failed to add watch");
@@ -421,8 +393,7 @@ void rt_watcher_start(void *obj)
         rt_trap("Watcher.Start: failed to create kqueue");
 
     w->watched_fd = open(cpath, O_EVTONLY);
-    if (w->watched_fd < 0)
-    {
+    if (w->watched_fd < 0) {
         close(w->kqueue_fd);
         w->kqueue_fd = -1;
         rt_trap("Watcher.Start: failed to open path for watching");
@@ -437,8 +408,7 @@ void rt_watcher_start(void *obj)
            0,
            NULL);
 
-    if (kevent(w->kqueue_fd, &change, 1, NULL, 0, NULL) < 0)
-    {
+    if (kevent(w->kqueue_fd, &change, 1, NULL, 0, NULL) < 0) {
         close(w->watched_fd);
         close(w->kqueue_fd);
         w->watched_fd = -1;
@@ -473,8 +443,7 @@ void rt_watcher_start(void *obj)
                                     NULL,
                                     &w->overlapped,
                                     NULL);
-    if (!ok)
-    {
+    if (!ok) {
         CloseHandle(w->overlapped.hEvent);
         CloseHandle(w->dir_handle);
         w->dir_handle = INVALID_HANDLE_VALUE;
@@ -489,8 +458,7 @@ void rt_watcher_start(void *obj)
     w->is_watching = 1;
 }
 
-void rt_watcher_stop(void *obj)
-{
+void rt_watcher_stop(void *obj) {
     if (!obj)
         return;
 
@@ -499,30 +467,25 @@ void rt_watcher_stop(void *obj)
         return;
 
 #if defined(__linux__)
-    if (w->watch_descriptor >= 0)
-    {
+    if (w->watch_descriptor >= 0) {
         inotify_rm_watch(w->inotify_fd, w->watch_descriptor);
         w->watch_descriptor = -1;
     }
-    if (w->inotify_fd >= 0)
-    {
+    if (w->inotify_fd >= 0) {
         close(w->inotify_fd);
         w->inotify_fd = -1;
     }
 #elif defined(__APPLE__)
-    if (w->watched_fd >= 0)
-    {
+    if (w->watched_fd >= 0) {
         close(w->watched_fd);
         w->watched_fd = -1;
     }
-    if (w->kqueue_fd >= 0)
-    {
+    if (w->kqueue_fd >= 0) {
         close(w->kqueue_fd);
         w->kqueue_fd = -1;
     }
 #elif defined(_WIN32)
-    if (w->dir_handle != INVALID_HANDLE_VALUE)
-    {
+    if (w->dir_handle != INVALID_HANDLE_VALUE) {
         CancelIo(w->dir_handle);
         CloseHandle(w->overlapped.hEvent);
         CloseHandle(w->dir_handle);
@@ -534,13 +497,11 @@ void rt_watcher_stop(void *obj)
     w->is_watching = 0;
 }
 
-int64_t rt_watcher_poll(void *obj)
-{
+int64_t rt_watcher_poll(void *obj) {
     return rt_watcher_poll_for(obj, 0);
 }
 
-int64_t rt_watcher_poll_for(void *obj, int64_t ms)
-{
+int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     if (!obj)
         return RT_WATCH_EVENT_NONE;
 
@@ -550,8 +511,7 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms)
 
     // First check if we have queued events
     watcher_event ev;
-    if (watcher_dequeue_event(w, &ev))
-    {
+    if (watcher_dequeue_event(w, &ev)) {
         // Store as last event
         if (w->last_event_path)
             rt_string_unref(w->last_event_path);
@@ -567,27 +527,23 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms)
     pfd.fd = w->inotify_fd;
     pfd.events = POLLIN;
     int timeout = ms < 0 ? -1 : (int)ms;
-    if (poll(&pfd, 1, timeout) > 0 && (pfd.revents & POLLIN))
-    {
+    if (poll(&pfd, 1, timeout) > 0 && (pfd.revents & POLLIN)) {
         watcher_read_inotify_events(w);
     }
 #elif defined(__APPLE__)
     watcher_read_kqueue_events(w, (int)ms);
 #elif defined(_WIN32)
-    if (w->pending_read)
-    {
+    if (w->pending_read) {
         DWORD wait_result =
             WaitForSingleObject(w->overlapped.hEvent, ms < 0 ? INFINITE : (DWORD)ms);
-        if (wait_result == WAIT_OBJECT_0)
-        {
+        if (wait_result == WAIT_OBJECT_0) {
             watcher_read_windows_events(w);
         }
     }
 #endif
 
     // Try to dequeue again after reading
-    if (watcher_dequeue_event(w, &ev))
-    {
+    if (watcher_dequeue_event(w, &ev)) {
         if (w->last_event_path)
             rt_string_unref(w->last_event_path);
         w->last_event_type = ev.type;
@@ -599,8 +555,7 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms)
     return RT_WATCH_EVENT_NONE;
 }
 
-rt_string rt_watcher_event_path(void *obj)
-{
+rt_string rt_watcher_event_path(void *obj) {
     if (!obj)
         rt_trap("Watcher.EventPath: null watcher");
 
@@ -613,8 +568,7 @@ rt_string rt_watcher_event_path(void *obj)
     return w->last_event_path ? w->last_event_path : str_from_cstr("");
 }
 
-int64_t rt_watcher_event_type(void *obj)
-{
+int64_t rt_watcher_event_type(void *obj) {
     if (!obj)
         return RT_WATCH_EVENT_NONE;
 
@@ -622,32 +576,27 @@ int64_t rt_watcher_event_type(void *obj)
     return w->has_last_event ? w->last_event_type : RT_WATCH_EVENT_NONE;
 }
 
-int64_t rt_watcher_event_none(void *self)
-{
+int64_t rt_watcher_event_none(void *self) {
     (void)self;
     return RT_WATCH_EVENT_NONE;
 }
 
-int64_t rt_watcher_event_created(void *self)
-{
+int64_t rt_watcher_event_created(void *self) {
     (void)self;
     return RT_WATCH_EVENT_CREATED;
 }
 
-int64_t rt_watcher_event_modified(void *self)
-{
+int64_t rt_watcher_event_modified(void *self) {
     (void)self;
     return RT_WATCH_EVENT_MODIFIED;
 }
 
-int64_t rt_watcher_event_deleted(void *self)
-{
+int64_t rt_watcher_event_deleted(void *self) {
     (void)self;
     return RT_WATCH_EVENT_DELETED;
 }
 
-int64_t rt_watcher_event_renamed(void *self)
-{
+int64_t rt_watcher_event_renamed(void *self) {
     (void)self;
     return RT_WATCH_EVENT_RENAMED;
 }

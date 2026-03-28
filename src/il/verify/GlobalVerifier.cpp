@@ -26,10 +26,8 @@
 
 using namespace il::core;
 
-namespace il::verify
-{
-namespace
-{
+namespace il::verify {
+namespace {
 using il::support::Expected;
 using il::support::makeError;
 } // namespace
@@ -39,8 +37,7 @@ using il::support::makeError;
 ///          instances stored inside the module so downstream passes can perform
 ///          O(1) lookups without rebuilding the index.  The returned reference is
 ///          valid for the lifetime of the verifier instance.
-[[nodiscard]] const GlobalVerifier::GlobalMap &GlobalVerifier::globals() const
-{
+[[nodiscard]] const GlobalVerifier::GlobalMap &GlobalVerifier::globals() const {
     return globals_;
 }
 
@@ -52,12 +49,10 @@ using il::support::makeError;
 /// @param module Module whose globals should be indexed.
 /// @param sink Diagnostic sink provided by the caller for reporting duplicates.
 /// @returns Empty result on success or a populated Expected containing the error.
-Expected<void> GlobalVerifier::run(const Module &module, [[maybe_unused]] DiagSink &sink)
-{
+Expected<void> GlobalVerifier::run(const Module &module, [[maybe_unused]] DiagSink &sink) {
     globals_.clear();
 
-    for (const auto &global : module.globals)
-    {
+    for (const auto &global : module.globals) {
         if (!globals_.emplace(global.name, &global).second)
             return Expected<void>{makeError({}, "duplicate global @" + global.name)};
     }

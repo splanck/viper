@@ -24,32 +24,27 @@
 #include <utility>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 struct Module;
 }
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Manages a pool of deduplicated read-only string data for AArch64 assembly emission.
 /// @details Collects string literals from IL global constants, deduplicates by content,
 ///          assigns unique assembly labels, and emits a `.section __DATA,__const` (macOS)
 ///          or `.rodata` (Linux) section containing `.asciz` directives.
-class RodataPool
-{
+class RodataPool {
   public:
     /// @brief Get the mapping from IL global string names to their pooled assembly labels.
     /// @return Const reference to the name-to-label map. Populated after buildFromModule().
-    const std::unordered_map<std::string, std::string> &nameToLabel() const noexcept
-    {
+    const std::unordered_map<std::string, std::string> &nameToLabel() const noexcept {
         return nameToLabel_;
     }
 
     /// @brief Get the ordered (label, content) pairs for binary emission.
     /// @return Const reference to the insertion-ordered pool entries.
-    const std::vector<std::pair<std::string, std::string>> &entries() const noexcept
-    {
+    const std::vector<std::pair<std::string, std::string>> &entries() const noexcept {
         return ordered_;
     }
 

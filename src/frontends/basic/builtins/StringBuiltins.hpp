@@ -27,8 +27,7 @@
 #include <string_view>
 #include <vector>
 
-namespace il::frontends::basic::builtins
-{
+namespace il::frontends::basic::builtins {
 using il::core::Type;
 using il::core::Value;
 
@@ -44,8 +43,7 @@ using StringRef = std::string_view;
 using LoweringFn = Value (*)(LowerCtx &, ArrayRef<Value>);
 
 /// @brief Specification record describing a registered builtin.
-struct BuiltinSpec
-{
+struct BuiltinSpec {
     std::string name;       ///< Canonical BASIC spelling of the builtin.
     int minArity{0};        ///< Minimum number of accepted arguments.
     int maxArity{0};        ///< Maximum number of accepted arguments.
@@ -58,8 +56,7 @@ struct BuiltinSpec
 const BuiltinSpec *findBuiltin(StringRef name);
 
 /// @brief Helper context exposing lowering utilities to builtin handlers.
-class LowerCtx
-{
+class LowerCtx {
   public:
     /// @brief Construct a lowering context.
     /// @param lowerer Owning lowering driver.

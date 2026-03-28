@@ -38,16 +38,13 @@ struct rt_string_impl;
 using rt_string = rt_string_impl *;
 
 // Forward declarations for runtime integration
-namespace il::vm
-{
+namespace il::vm {
 union Slot;
 struct RuntimeCallContext;
 } // namespace il::vm
 
-namespace viper
-{
-namespace bytecode
-{
+namespace viper {
+namespace bytecode {
 
 /// @brief Type alias for native function handlers invokable directly from bytecode.
 /// @details A NativeHandler receives a pointer to the argument slots, the argument
@@ -66,8 +63,7 @@ using NativeHandler = std::function<void(BCSlot *, uint32_t, BCSlot *)>;
 ///          Values 0-11 are aligned with il::vm::TrapKind (vm/Trap.hpp) so that
 ///          the TRAP_KIND bytecode opcode can use a direct cast instead of a
 ///          translation table. BytecodeVM-specific kinds live at 100+.
-enum class TrapKind : uint8_t
-{
+enum class TrapKind : uint8_t {
     // --- Aligned with il::vm::TrapKind (vm/Trap.hpp) ---
     DivideByZero = 0,     ///< Division or remainder by zero.
     Overflow = 1,         ///< Integer arithmetic overflow.
@@ -92,8 +88,7 @@ enum class TrapKind : uint8_t
 
 /// @brief VM execution state.
 /// @details Tracks the current phase of the virtual machine lifecycle.
-enum class VMState
-{
+enum class VMState {
     Ready,   ///< Module loaded, ready to execute.
     Running, ///< Currently executing bytecode.
     Halted,  ///< Execution completed normally.
@@ -104,8 +99,7 @@ enum class VMState
 /// @details Each call creates a new BCFrame that tracks the function being
 ///          executed, the program counter, pointers into the value stack for
 ///          locals and operand stack, and exception handler state.
-struct BCFrame
-{
+struct BCFrame {
     const BytecodeFunction *func; ///< Function being executed in this frame.
     uint32_t pc;                  ///< Program counter (index into func->code).
     BCSlot *locals;               ///< Pointer to the first local variable slot.
@@ -119,8 +113,7 @@ struct BCFrame
 /// @details Pushed by EH_PUSH and popped by EH_POP. When a trap occurs, the
 ///          VM walks the handler stack to find a matching handler for the
 ///          current frame.
-struct BCExceptionHandler
-{
+struct BCExceptionHandler {
     uint32_t handlerPc;   ///< PC of the handler entry point.
     uint32_t frameIndex;  ///< Call stack frame index when this handler was registered.
     BCSlot *stackPointer; ///< Operand stack pointer when this handler was registered.
@@ -147,8 +140,7 @@ using DebugCallback =
 ///          - Native function integration (via RuntimeBridge or registered handlers)
 ///          - Debug support (breakpoints, single-stepping, variable inspection)
 ///          - Optional threaded dispatch for higher throughput on GCC/Clang
-class BytecodeVM
-{
+class BytecodeVM {
   public:
     /// @brief Construct a new BytecodeVM in the Ready state.
     BytecodeVM();
@@ -181,35 +173,30 @@ class BytecodeVM
 
     /// @brief Get the current VM execution state.
     /// @return The current VMState (Ready, Running, Halted, or Trapped).
-    VMState state() const
-    {
+    VMState state() const {
         return state_;
     }
 
     /// @brief Get the kind of the last trap that occurred.
     /// @return The TrapKind of the most recent trap, or TrapKind::None.
-    TrapKind trapKind() const
-    {
+    TrapKind trapKind() const {
         return trapKind_;
     }
 
     /// @brief Get the human-readable message of the last trap.
     /// @return A reference to the trap message string (empty if no trap).
-    const std::string &trapMessage() const
-    {
+    const std::string &trapMessage() const {
         return trapMessage_;
     }
 
     /// @brief Get the total number of instructions executed (for profiling).
     /// @return Cumulative instruction count since the last reset.
-    uint64_t instrCount() const
-    {
+    uint64_t instrCount() const {
         return instrCount_;
     }
 
     /// @brief Reset the instruction counter to zero.
-    void resetInstrCount()
-    {
+    void resetInstrCount() {
         instrCount_ = 0;
     }
 
@@ -218,15 +205,13 @@ class BytecodeVM
     ///          RuntimeBridge. When disabled, only directly registered handlers
     ///          are used.
     /// @param enabled True to enable the RuntimeBridge; false to disable.
-    void setRuntimeBridgeEnabled(bool enabled)
-    {
+    void setRuntimeBridgeEnabled(bool enabled) {
         runtimeBridgeEnabled_ = enabled;
     }
 
     /// @brief Check whether the RuntimeBridge is enabled.
     /// @return True if native calls use the RuntimeBridge; false otherwise.
-    bool runtimeBridgeEnabled() const
-    {
+    bool runtimeBridgeEnabled() const {
         return runtimeBridgeEnabled_;
     }
 
@@ -242,15 +227,13 @@ class BytecodeVM
     ///          faster opcode dispatch. Only available on GCC and Clang.
     ///          Falls back to switch-based dispatch when not available.
     /// @param enabled True to enable threaded dispatch; false for switch-based.
-    void setThreadedDispatch(bool enabled)
-    {
+    void setThreadedDispatch(bool enabled) {
         useThreadedDispatch_ = enabled;
     }
 
     /// @brief Check whether threaded dispatch is enabled.
     /// @return True if threaded dispatch is active; false otherwise.
-    bool useThreadedDispatch() const
-    {
+    bool useThreadedDispatch() const {
         return useThreadedDispatch_;
     }
 
@@ -260,8 +243,7 @@ class BytecodeVM
 
     /// @brief Set the debug callback for breakpoints and single-stepping.
     /// @param callback The callback function to invoke on debug events.
-    void setDebugCallback(DebugCallback callback)
-    {
+    void setDebugCallback(DebugCallback callback) {
         debugCallback_ = std::move(callback);
     }
 
@@ -269,15 +251,13 @@ class BytecodeVM
     /// @details When enabled, the debug callback is invoked before each
     ///          instruction is executed.
     /// @param enabled True to enable single-stepping; false to disable.
-    void setSingleStep(bool enabled)
-    {
+    void setSingleStep(bool enabled) {
         singleStep_ = enabled;
     }
 
     /// @brief Check whether single-step mode is enabled.
     /// @return True if single-stepping is active; false otherwise.
-    bool singleStep() const
-    {
+    bool singleStep() const {
         return singleStep_;
     }
 
@@ -297,22 +277,19 @@ class BytecodeVM
     /// @brief Get the current program counter.
     /// @details Returns the PC of the current frame, or 0 if no frame is active.
     /// @return The current instruction index.
-    uint32_t currentPc() const
-    {
+    uint32_t currentPc() const {
         return fp_ ? fp_->pc : 0;
     }
 
     /// @brief Get the function currently being executed.
     /// @return Pointer to the current BytecodeFunction, or nullptr if idle.
-    const BytecodeFunction *currentFunction() const
-    {
+    const BytecodeFunction *currentFunction() const {
         return fp_ ? fp_->func : nullptr;
     }
 
     /// @brief Get the current exception handler stack depth.
     /// @return Number of exception handlers currently registered.
-    size_t exceptionHandlerDepth() const
-    {
+    size_t exceptionHandlerDepth() const {
         return ehStack_.size();
     }
 
@@ -465,8 +442,7 @@ const BytecodeModule *activeBytecodeModule();
 /// @details On construction, saves the previous active VM and sets a new one.
 ///          On destruction, restores the previous active VM. This ensures
 ///          that re-entrant native calls see the correct VM context.
-struct ActiveBytecodeVMGuard
-{
+struct ActiveBytecodeVMGuard {
     /// @brief Set @p vm as the active VM for this thread.
     /// @param vm The BytecodeVM to make active (must not be null).
     explicit ActiveBytecodeVMGuard(BytecodeVM *vm);

@@ -41,8 +41,7 @@ extern void rt_canvas_text_scaled(
 extern int64_t rt_canvas_width(void *canvas);
 
 // Helper: create a runtime string from a C string
-static rt_string make_string(const char *s)
-{
+static rt_string make_string(const char *s) {
     return rt_string_from_bytes(s, (int64_t)strlen(s));
 }
 
@@ -50,16 +49,14 @@ static rt_string make_string(const char *s)
 #define WATCH_NAME_MAX 32
 
 /// A single watch entry: name + integer value.
-typedef struct
-{
+typedef struct {
     char name[WATCH_NAME_MAX];
     int64_t value;
     int8_t active;
 } watch_entry_t;
 
 /// Internal DebugOverlay state.
-struct rt_debugoverlay_impl
-{
+struct rt_debugoverlay_impl {
     int8_t enabled;
     int64_t frame_times[RT_DEBUG_FPS_HISTORY]; ///< Ring buffer of dt values (ms).
     int64_t frame_index;                       ///< Current ring buffer write position.
@@ -71,8 +68,7 @@ struct rt_debugoverlay_impl
 
 /// @brief Perform debugoverlay new operation.
 /// @return Result value.
-rt_debugoverlay rt_debugoverlay_new(void)
-{
+rt_debugoverlay rt_debugoverlay_new(void) {
     struct rt_debugoverlay_impl *dbg = rt_obj_new_i64(0, sizeof(struct rt_debugoverlay_impl));
     if (!dbg)
         return NULL;
@@ -90,16 +86,14 @@ rt_debugoverlay rt_debugoverlay_new(void)
 
 /// @brief Perform debugoverlay destroy operation.
 /// @param dbg
-void rt_debugoverlay_destroy(rt_debugoverlay dbg)
-{
+void rt_debugoverlay_destroy(rt_debugoverlay dbg) {
     // GC-managed; no manual free needed.
     (void)dbg;
 }
 
 /// @brief Perform debugoverlay enable operation.
 /// @param dbg
-void rt_debugoverlay_enable(rt_debugoverlay dbg)
-{
+void rt_debugoverlay_enable(rt_debugoverlay dbg) {
     if (!dbg)
         return;
     dbg->enabled = 1;
@@ -107,8 +101,7 @@ void rt_debugoverlay_enable(rt_debugoverlay dbg)
 
 /// @brief Perform debugoverlay disable operation.
 /// @param dbg
-void rt_debugoverlay_disable(rt_debugoverlay dbg)
-{
+void rt_debugoverlay_disable(rt_debugoverlay dbg) {
     if (!dbg)
         return;
     dbg->enabled = 0;
@@ -116,8 +109,7 @@ void rt_debugoverlay_disable(rt_debugoverlay dbg)
 
 /// @brief Perform debugoverlay toggle operation.
 /// @param dbg
-void rt_debugoverlay_toggle(rt_debugoverlay dbg)
-{
+void rt_debugoverlay_toggle(rt_debugoverlay dbg) {
     if (!dbg)
         return;
     dbg->enabled = dbg->enabled ? 0 : 1;
@@ -126,8 +118,7 @@ void rt_debugoverlay_toggle(rt_debugoverlay dbg)
 /// @brief Perform debugoverlay is enabled operation.
 /// @param dbg
 /// @return Result value.
-int8_t rt_debugoverlay_is_enabled(rt_debugoverlay dbg)
-{
+int8_t rt_debugoverlay_is_enabled(rt_debugoverlay dbg) {
     if (!dbg)
         return 0;
     return dbg->enabled;
@@ -136,8 +127,7 @@ int8_t rt_debugoverlay_is_enabled(rt_debugoverlay dbg)
 /// @brief Perform debugoverlay update operation.
 /// @param dbg
 /// @param dt_ms
-void rt_debugoverlay_update(rt_debugoverlay dbg, int64_t dt_ms)
-{
+void rt_debugoverlay_update(rt_debugoverlay dbg, int64_t dt_ms) {
     if (!dbg)
         return;
 
@@ -150,10 +140,8 @@ void rt_debugoverlay_update(rt_debugoverlay dbg, int64_t dt_ms)
 
 /// Find a watch entry by name.
 /// Returns index, or -1 if not found.
-static int64_t find_watch(rt_debugoverlay dbg, const char *name)
-{
-    for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++)
-    {
+static int64_t find_watch(rt_debugoverlay dbg, const char *name) {
+    for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++) {
         if (dbg->watches[i].active && strcmp(dbg->watches[i].name, name) == 0)
             return i;
     }
@@ -164,8 +152,7 @@ static int64_t find_watch(rt_debugoverlay dbg, const char *name)
 /// @param dbg
 /// @param name
 /// @param value
-void rt_debugoverlay_watch(rt_debugoverlay dbg, rt_string name, int64_t value)
-{
+void rt_debugoverlay_watch(rt_debugoverlay dbg, rt_string name, int64_t value) {
     if (!dbg || !name)
         return;
 
@@ -175,17 +162,14 @@ void rt_debugoverlay_watch(rt_debugoverlay dbg, rt_string name, int64_t value)
 
     // Check if already exists — update value
     int64_t idx = find_watch(dbg, cname);
-    if (idx >= 0)
-    {
+    if (idx >= 0) {
         dbg->watches[idx].value = value;
         return;
     }
 
     // Find an empty slot
-    for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++)
-    {
-        if (!dbg->watches[i].active)
-        {
+    for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++) {
+        if (!dbg->watches[i].active) {
             size_t len = strlen(cname);
             if (len >= WATCH_NAME_MAX)
                 len = WATCH_NAME_MAX - 1;
@@ -204,8 +188,7 @@ void rt_debugoverlay_watch(rt_debugoverlay dbg, rt_string name, int64_t value)
 /// @param dbg
 /// @param name
 /// @return Result value.
-int8_t rt_debugoverlay_unwatch(rt_debugoverlay dbg, rt_string name)
-{
+int8_t rt_debugoverlay_unwatch(rt_debugoverlay dbg, rt_string name) {
     if (!dbg || !name)
         return 0;
 
@@ -225,12 +208,10 @@ int8_t rt_debugoverlay_unwatch(rt_debugoverlay dbg, rt_string name)
 
 /// @brief Perform debugoverlay clear operation.
 /// @param dbg
-void rt_debugoverlay_clear(rt_debugoverlay dbg)
-{
+void rt_debugoverlay_clear(rt_debugoverlay dbg) {
     if (!dbg)
         return;
-    for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++)
-    {
+    for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++) {
         dbg->watches[i].active = 0;
         dbg->watches[i].name[0] = '\0';
     }
@@ -240,8 +221,7 @@ void rt_debugoverlay_clear(rt_debugoverlay dbg)
 /// @brief Perform debugoverlay get fps operation.
 /// @param dbg
 /// @return Result value.
-int64_t rt_debugoverlay_get_fps(rt_debugoverlay dbg)
-{
+int64_t rt_debugoverlay_get_fps(rt_debugoverlay dbg) {
     if (!dbg || dbg->frame_count == 0)
         return 0;
 
@@ -260,35 +240,27 @@ int64_t rt_debugoverlay_get_fps(rt_debugoverlay dbg)
 
 /// Int-to-string helper for rendering. Writes into a caller-provided buffer.
 /// Returns pointer to the start of the number string.
-static char *i64_to_str(int64_t val, char *buf, size_t bufsize)
-{
+static char *i64_to_str(int64_t val, char *buf, size_t bufsize) {
     if (bufsize == 0)
         return buf;
 
     int negative = 0;
     uint64_t uval;
-    if (val < 0)
-    {
+    if (val < 0) {
         negative = 1;
         uval = (uint64_t)(-(val + 1)) + 1;
-    }
-    else
-    {
+    } else {
         uval = (uint64_t)val;
     }
 
     buf[bufsize - 1] = '\0';
     size_t pos = bufsize - 1;
 
-    if (uval == 0)
-    {
+    if (uval == 0) {
         if (pos > 0)
             buf[--pos] = '0';
-    }
-    else
-    {
-        while (uval > 0 && pos > 0)
-        {
+    } else {
+        while (uval > 0 && pos > 0) {
             buf[--pos] = '0' + (char)(uval % 10);
             uval /= 10;
         }
@@ -303,8 +275,7 @@ static char *i64_to_str(int64_t val, char *buf, size_t bufsize)
 /// @brief Perform debugoverlay draw operation.
 /// @param dbg
 /// @param canvas_ptr
-void rt_debugoverlay_draw(rt_debugoverlay dbg, void *canvas_ptr)
-{
+void rt_debugoverlay_draw(rt_debugoverlay dbg, void *canvas_ptr) {
     if (!dbg || !canvas_ptr || !dbg->enabled)
         return;
 
@@ -323,8 +294,7 @@ void rt_debugoverlay_draw(rt_debugoverlay dbg, void *canvas_ptr)
     // Count lines: FPS + DT + blank + watches
     int64_t num_lines = 2; // FPS + DT
     int64_t num_watches = 0;
-    for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++)
-    {
+    for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++) {
         if (dbg->watches[i].active)
             num_watches++;
     }
@@ -371,8 +341,7 @@ void rt_debugoverlay_draw(rt_debugoverlay dbg, void *canvas_ptr)
     {
         char line[48];
         int64_t dt = 0;
-        if (dbg->frame_count > 0)
-        {
+        if (dbg->frame_count > 0) {
             int64_t prev = (dbg->frame_index - 1 + RT_DEBUG_FPS_HISTORY) % RT_DEBUG_FPS_HISTORY;
             dt = dbg->frame_times[prev];
         }
@@ -391,12 +360,10 @@ void rt_debugoverlay_draw(rt_debugoverlay dbg, void *canvas_ptr)
     }
 
     // Watch variables
-    if (num_watches > 0)
-    {
+    if (num_watches > 0) {
         ty += LINE_H; // blank separator
 
-        for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++)
-        {
+        for (int64_t i = 0; i < RT_DEBUG_MAX_WATCHES; i++) {
             if (!dbg->watches[i].active)
                 continue;
 

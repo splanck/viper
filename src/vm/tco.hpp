@@ -36,8 +36,7 @@
 
 #include "vm/VM.hpp"
 
-namespace il::vm
-{
+namespace il::vm {
 
 /// @brief Try to perform a tail call by reusing the current frame.
 ///

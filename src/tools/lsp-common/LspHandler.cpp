@@ -22,18 +22,14 @@
 
 #include "tools/lsp-common/Transport.hpp"
 
-namespace viper::server
-{
+namespace viper::server {
 
 LspHandler::LspHandler(ICompilerBridge &bridge, Transport &transport, const ServerConfig &config)
-    : bridge_(bridge), transport_(transport), config_(config)
-{
-}
+    : bridge_(bridge), transport_(transport), config_(config) {}
 
 // --- Request dispatch ---
 
-std::string LspHandler::handleRequest(const JsonRpcRequest &req)
-{
+std::string LspHandler::handleRequest(const JsonRpcRequest &req) {
     if (req.method == "initialize")
         return handleInitialize(req);
 
@@ -47,18 +43,15 @@ std::string LspHandler::handleRequest(const JsonRpcRequest &req)
         return {}; // Notification — main loop should exit
 
     // Document sync notifications
-    if (req.method == "textDocument/didOpen")
-    {
+    if (req.method == "textDocument/didOpen") {
         handleDidOpen(req);
         return {};
     }
-    if (req.method == "textDocument/didChange")
-    {
+    if (req.method == "textDocument/didChange") {
         handleDidChange(req);
         return {};
     }
-    if (req.method == "textDocument/didClose")
-    {
+    if (req.method == "textDocument/didClose") {
         handleDidClose(req);
         return {};
     }
@@ -81,8 +74,7 @@ std::string LspHandler::handleRequest(const JsonRpcRequest &req)
 
 // --- Lifecycle ---
 
-std::string LspHandler::handleInitialize(const JsonRpcRequest &req)
-{
+std::string LspHandler::handleInitialize(const JsonRpcRequest &req) {
     auto capabilities = JsonValue::object({
         {"textDocumentSync", JsonValue(1)}, // Full sync
         {"completionProvider",
@@ -103,16 +95,14 @@ std::string LspHandler::handleInitialize(const JsonRpcRequest &req)
     return buildResponse(req.id, result);
 }
 
-std::string LspHandler::handleShutdown(const JsonRpcRequest &req)
-{
+std::string LspHandler::handleShutdown(const JsonRpcRequest &req) {
     shutdownRequested_ = true;
     return buildResponse(req.id, JsonValue());
 }
 
 // --- Document sync ---
 
-void LspHandler::handleDidOpen(const JsonRpcRequest &req)
-{
+void LspHandler::handleDidOpen(const JsonRpcRequest &req) {
     const auto &textDoc = req.params["textDocument"];
     std::string uri = textDoc["uri"].asString();
     int version = static_cast<int>(textDoc["version"].asInt());
@@ -122,15 +112,13 @@ void LspHandler::handleDidOpen(const JsonRpcRequest &req)
     publishDiagnostics(uri);
 }
 
-void LspHandler::handleDidChange(const JsonRpcRequest &req)
-{
+void LspHandler::handleDidChange(const JsonRpcRequest &req) {
     std::string uri = req.params["textDocument"]["uri"].asString();
     int version = static_cast<int>(req.params["textDocument"]["version"].asInt());
 
     // Full sync: take the last content change
     const auto &changes = req.params["contentChanges"];
-    if (changes.size() > 0)
-    {
+    if (changes.size() > 0) {
         std::string text = changes.at(changes.size() - 1)["text"].asString();
         store_.update(uri, version, std::move(text));
     }
@@ -138,8 +126,7 @@ void LspHandler::handleDidChange(const JsonRpcRequest &req)
     publishDiagnostics(uri);
 }
 
-void LspHandler::handleDidClose(const JsonRpcRequest &req)
-{
+void LspHandler::handleDidClose(const JsonRpcRequest &req) {
     std::string uri = req.params["textDocument"]["uri"].asString();
     store_.close(uri);
 
@@ -153,8 +140,7 @@ void LspHandler::handleDidClose(const JsonRpcRequest &req)
 
 // --- Completion ---
 
-std::string LspHandler::handleCompletion(const JsonRpcRequest &req)
-{
+std::string LspHandler::handleCompletion(const JsonRpcRequest &req) {
     std::string uri = req.params["textDocument"]["uri"].asString();
     int line = static_cast<int>(req.params["position"]["line"].asInt()) + 1; // LSP is 0-based
     int col =
@@ -169,8 +155,7 @@ std::string LspHandler::handleCompletion(const JsonRpcRequest &req)
 
     JsonValue::ArrayType arr;
     arr.reserve(items.size());
-    for (const auto &item : items)
-    {
+    for (const auto &item : items) {
         arr.push_back(JsonValue::object({
             {"label", JsonValue(item.label)},
             {"insertText", JsonValue(item.insertText)},
@@ -185,8 +170,7 @@ std::string LspHandler::handleCompletion(const JsonRpcRequest &req)
 
 // --- Hover ---
 
-std::string LspHandler::handleHover(const JsonRpcRequest &req)
-{
+std::string LspHandler::handleHover(const JsonRpcRequest &req) {
     std::string uri = req.params["textDocument"]["uri"].asString();
     int line = static_cast<int>(req.params["position"]["line"].asInt()) + 1;
     int col = static_cast<int>(req.params["position"]["character"].asInt()) + 1;
@@ -213,8 +197,7 @@ std::string LspHandler::handleHover(const JsonRpcRequest &req)
 
 // --- Document Symbols ---
 
-std::string LspHandler::handleDocumentSymbol(const JsonRpcRequest &req)
-{
+std::string LspHandler::handleDocumentSymbol(const JsonRpcRequest &req) {
     std::string uri = req.params["textDocument"]["uri"].asString();
 
     const std::string *content = store_.getContent(uri);
@@ -226,8 +209,7 @@ std::string LspHandler::handleDocumentSymbol(const JsonRpcRequest &req)
 
     JsonValue::ArrayType arr;
     arr.reserve(syms.size());
-    for (const auto &s : syms)
-    {
+    for (const auto &s : syms) {
         arr.push_back(JsonValue::object({
             {"name", JsonValue(s.name)},
             {"kind", JsonValue(symbolKindToLsp(s.kind))},
@@ -250,8 +232,7 @@ std::string LspHandler::handleDocumentSymbol(const JsonRpcRequest &req)
 
 // --- Diagnostic Publishing ---
 
-void LspHandler::publishDiagnostics(const std::string &uri)
-{
+void LspHandler::publishDiagnostics(const std::string &uri) {
     const std::string *content = store_.getContent(uri);
     if (!content)
         return;
@@ -261,11 +242,9 @@ void LspHandler::publishDiagnostics(const std::string &uri)
 
     JsonValue::ArrayType diagArr;
     diagArr.reserve(diags.size());
-    for (const auto &d : diags)
-    {
+    for (const auto &d : diags) {
         int lspSeverity;
-        switch (d.severity)
-        {
+        switch (d.severity) {
             case 0:
                 lspSeverity = 3; // LSP Information (Note)
                 break;
@@ -296,8 +275,7 @@ void LspHandler::publishDiagnostics(const std::string &uri)
             {"message", JsonValue(d.message)},
         });
 
-        if (!d.code.empty())
-        {
+        if (!d.code.empty()) {
             auto diagObj = diag.asObject();
             diagObj.push_back({"code", JsonValue(d.code)});
             diag = JsonValue(std::move(diagObj));
@@ -315,10 +293,8 @@ void LspHandler::publishDiagnostics(const std::string &uri)
 
 // --- Kind mapping ---
 
-int LspHandler::completionKindToLsp(int kind)
-{
-    switch (kind)
-    {
+int LspHandler::completionKindToLsp(int kind) {
+    switch (kind) {
         case 0:
             return 14; // Keyword
         case 1:
@@ -350,8 +326,7 @@ int LspHandler::completionKindToLsp(int kind)
     }
 }
 
-int LspHandler::symbolKindToLsp(const std::string &kind)
-{
+int LspHandler::symbolKindToLsp(const std::string &kind) {
     if (kind == "function")
         return 12;
     if (kind == "method")

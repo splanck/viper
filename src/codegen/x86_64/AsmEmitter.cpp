@@ -37,54 +37,44 @@
 #include <type_traits>
 #include <utility>
 
-namespace viper::codegen::x64
-{
+namespace viper::codegen::x64 {
 
-namespace
-{
+namespace {
 
 constexpr OperandPattern makePattern(OperandKind first = OperandKind::None,
                                      OperandKind second = OperandKind::None,
-                                     OperandKind third = OperandKind::None) noexcept
-{
+                                     OperandKind third = OperandKind::None) noexcept {
     OperandPattern pattern{};
     pattern.kinds[0] = first;
     pattern.kinds[1] = second;
     pattern.kinds[2] = third;
-    if (first != OperandKind::None)
-    {
+    if (first != OperandKind::None) {
         ++pattern.count;
     }
-    if (second != OperandKind::None)
-    {
+    if (second != OperandKind::None) {
         ++pattern.count;
     }
-    if (third != OperandKind::None)
-    {
+    if (third != OperandKind::None) {
         ++pattern.count;
     }
     return pattern;
 }
 
-constexpr EncodingFlag operator|(EncodingFlag lhs, EncodingFlag rhs) noexcept
-{
+constexpr EncodingFlag operator|(EncodingFlag lhs, EncodingFlag rhs) noexcept {
     return static_cast<EncodingFlag>(static_cast<std::uint32_t>(lhs) |
                                      static_cast<std::uint32_t>(rhs));
 }
 
 /// @brief Checks if flag exists.
-[[maybe_unused]] constexpr bool hasFlag(EncodingFlag value, EncodingFlag flag) noexcept
-{
+[[maybe_unused]] constexpr bool hasFlag(EncodingFlag value, EncodingFlag flag) noexcept {
     return (static_cast<std::uint32_t>(value) & static_cast<std::uint32_t>(flag)) != 0U;
 }
 
 // Include the generated encoding table
 #include "generated/EncodingTable.inc"
 
-[[nodiscard]] bool matchesOperandKind(OperandKind kind, const Operand &operand) noexcept
-{
-    switch (kind)
-    {
+[[nodiscard]] bool matchesOperandKind(OperandKind kind, const Operand &operand) noexcept {
+    switch (kind) {
         case OperandKind::None:
             return false;
         case OperandKind::Reg:
@@ -113,16 +103,12 @@ constexpr EncodingFlag operator|(EncodingFlag lhs, EncodingFlag rhs) noexcept
 }
 
 [[nodiscard]] bool matchesPattern(const OperandPattern &pattern,
-                                  std::span<const Operand> operands) noexcept
-{
-    if (static_cast<std::size_t>(pattern.count) != operands.size())
-    {
+                                  std::span<const Operand> operands) noexcept {
+    if (static_cast<std::size_t>(pattern.count) != operands.size()) {
         return false;
     }
-    for (std::size_t i = 0; i < operands.size(); ++i)
-    {
-        if (!matchesOperandKind(pattern.kinds[i], operands[i]))
-        {
+    for (std::size_t i = 0; i < operands.size(); ++i) {
+        if (!matchesOperandKind(pattern.kinds[i], operands[i])) {
             return false;
         }
     }
@@ -133,15 +119,13 @@ constexpr EncodingFlag operator|(EncodingFlag lhs, EncodingFlag rhs) noexcept
 /// @details Aggregates multiple lambda visitors into a single callable so
 ///          @ref std::visit can dispatch over operand kinds without defining a
 ///          bespoke struct at each call site.
-template <typename... Ts> struct Overload : Ts...
-{
+template <typename... Ts> struct Overload : Ts... {
     using Ts::operator()...;
 };
 
 template <typename... Ts> Overload(Ts...) -> Overload<Ts...>;
 
-enum : std::uint16_t
-{
+enum : std::uint16_t {
     kFmtDirect = 1U << 0U,
     kFmtShift = 1U << 1U,
     kFmtMovzx8 = 1U << 2U,
@@ -153,8 +137,7 @@ enum : std::uint16_t
     kFmtReg32 = 1U << 8U,
 };
 
-struct OpFmt
-{
+struct OpFmt {
     MOpcode opc;
     const char *mnemonic;
     std::uint8_t operandCount;
@@ -169,15 +152,13 @@ constexpr std::size_t kMOpcodeCount = 55;
 
 /// @brief Build a compile-time lookup table mapping MOpcode -> index in kOpFmt.
 /// @details Returns kOpFmt.size() (invalid index) for opcodes not in the table.
-constexpr std::array<std::size_t, kMOpcodeCount> buildOpFmtLookup() noexcept
-{
+constexpr std::array<std::size_t, kMOpcodeCount> buildOpFmtLookup() noexcept {
     std::array<std::size_t, kMOpcodeCount> lookup{};
     // Initialize all to invalid index
     for (auto &idx : lookup)
         idx = kOpFmt.size();
     // Populate valid entries
-    for (std::size_t i = 0; i < kOpFmt.size(); ++i)
-    {
+    for (std::size_t i = 0; i < kOpFmt.size(); ++i) {
         const auto opcIdx = static_cast<std::size_t>(kOpFmt[i].opc);
         if (opcIdx < kMOpcodeCount)
             lookup[opcIdx] = i;
@@ -190,8 +171,7 @@ static constexpr auto kOpFmtLookup = buildOpFmtLookup();
 
 /// @brief Retrieves fmt value using O(1) lookup table.
 /// @details Direct array indexing instead of linear search for better performance.
-const OpFmt *getFmt(MOpcode opc) noexcept
-{
+const OpFmt *getFmt(MOpcode opc) noexcept {
     const auto idx = static_cast<std::size_t>(opc);
     if (idx >= kMOpcodeCount)
         return nullptr;
@@ -204,39 +184,34 @@ const OpFmt *getFmt(MOpcode opc) noexcept
 [[nodiscard]] int encodeRegister(const OpReg &reg) noexcept;
 
 /// @brief Emits operand.
-template <typename Out> void emitOperand(const Operand &operand, Out &out, const TargetInfo &target)
-{
+template <typename Out>
+void emitOperand(const Operand &operand, Out &out, const TargetInfo &target) {
     static_cast<void>(target);
-    std::visit(Overload{[&](const OpReg &reg) { out << asmfmt::fmt_reg(encodeRegister(reg)); },
-                        [&](const OpImm &imm) { out << asmfmt::format_imm(imm.val); },
-                        [&](const OpMem &mem)
-                        {
-                            asmfmt::MemAddr addr{};
-                            addr.base = encodeRegister(mem.base);
-                            addr.disp = mem.disp;
-                            if (mem.hasIndex)
-                            {
-                                addr.index = encodeRegister(mem.index);
-                                addr.scale = mem.scale;
-                                addr.has_index = true;
-                            }
-                            out << asmfmt::format_mem(addr);
-                        },
-                        [&](const OpLabel &label) { out << asmfmt::format_label(label.name); },
-                        [&](const OpRipLabel &label)
-                        { out << asmfmt::format_rip_label(label.name); }},
-               operand);
+    std::visit(
+        Overload{[&](const OpReg &reg) { out << asmfmt::fmt_reg(encodeRegister(reg)); },
+                 [&](const OpImm &imm) { out << asmfmt::format_imm(imm.val); },
+                 [&](const OpMem &mem) {
+                     asmfmt::MemAddr addr{};
+                     addr.base = encodeRegister(mem.base);
+                     addr.disp = mem.disp;
+                     if (mem.hasIndex) {
+                         addr.index = encodeRegister(mem.index);
+                         addr.scale = mem.scale;
+                         addr.has_index = true;
+                     }
+                     out << asmfmt::format_mem(addr);
+                 },
+                 [&](const OpLabel &label) { out << asmfmt::format_label(label.name); },
+                 [&](const OpRipLabel &label) { out << asmfmt::format_rip_label(label.name); }},
+        operand);
 }
 
 template <typename Out>
 /// @brief Emits operands.
-void emitOperands(std::span<const Operand> operands, Out &out, const TargetInfo &target)
-{
+void emitOperands(std::span<const Operand> operands, Out &out, const TargetInfo &target) {
     bool first = true;
-    for (const auto &operand : operands)
-    {
-        if (!first)
-        {
+    for (const auto &operand : operands) {
+        if (!first) {
             out << ", ";
         }
         /// @brief Emits operand.
@@ -249,10 +224,8 @@ void emitOperands(std::span<const Operand> operands, Out &out, const TargetInfo 
 void emitRoDataPool(std::span<const std::string> stringLiterals,
                     std::span<const std::size_t> stringLengths,
                     std::span<const double> f64Literals,
-                    std::ostream &os)
-{
-    if (stringLiterals.empty() && f64Literals.empty())
-    {
+                    std::ostream &os) {
+    if (stringLiterals.empty() && f64Literals.empty()) {
         return;
     }
     assert(stringLiterals.size() == stringLengths.size());
@@ -264,8 +237,7 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
 #else
     os << ".section .rodata\n";
 #endif
-    for (std::size_t i = 0; i < stringLiterals.size(); ++i)
-    {
+    for (std::size_t i = 0; i < stringLiterals.size(); ++i) {
         std::string label;
         label.reserve(16U);
         label.append(".LC_str_");
@@ -273,12 +245,10 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
         os << label << ":\n";
         os << asmfmt::format_rodata_bytes(stringLiterals[i]);
     }
-    if (!f64Literals.empty())
-    {
+    if (!f64Literals.empty()) {
         os << "  .p2align 3\n";
     }
-    for (std::size_t i = 0; i < f64Literals.size(); ++i)
-    {
+    for (std::size_t i = 0; i < f64Literals.size(); ++i) {
         std::string label;
         label.reserve(16U);
         label.append(".LC_f64_");
@@ -294,10 +264,8 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
     }
 }
 
-[[nodiscard]] int encodeRegister(const OpReg &reg) noexcept
-{
-    if (reg.isPhys)
-    {
+[[nodiscard]] int encodeRegister(const OpReg &reg) noexcept {
+    if (reg.isPhys) {
         return static_cast<int>(reg.idOrPhys);
     }
     return -static_cast<int>(reg.idOrPhys) - 1;
@@ -312,16 +280,12 @@ void emitRoDataPool(std::span<const std::string> stringLiterals,
 /// @param op  Machine opcode to look up.
 /// @param operands  Instruction operands used for pattern matching.
 /// @return Pointer to the matching row, or nullptr if no encoding exists.
-const EncodingRow *find_encoding(MOpcode op, std::span<const Operand> operands) noexcept
-{
-    for (const auto &row : kEncodingTable)
-    {
-        if (row.opcode != op)
-        {
+const EncodingRow *find_encoding(MOpcode op, std::span<const Operand> operands) noexcept {
+    for (const auto &row : kEncodingTable) {
+        if (row.opcode != op) {
             continue;
         }
-        if (matchesPattern(row.pattern, operands))
-        {
+        if (matchesPattern(row.pattern, operands)) {
             return &row;
         }
     }
@@ -334,10 +298,8 @@ const EncodingRow *find_encoding(MOpcode op, std::span<const Operand> operands) 
 ///          assigned a stable numeric index.
 /// @param bytes Literal payload to store.
 /// @return Index referencing the canonicalised literal.
-int AsmEmitter::RoDataPool::addStringLiteral(std::string bytes)
-{
-    if (const auto it = stringLookup_.find(bytes); it != stringLookup_.end())
-    {
+int AsmEmitter::RoDataPool::addStringLiteral(std::string bytes) {
+    if (const auto it = stringLookup_.find(bytes); it != stringLookup_.end()) {
         return it->second;
     }
     const int index = static_cast<int>(stringLiterals_.size());
@@ -352,11 +314,9 @@ int AsmEmitter::RoDataPool::addStringLiteral(std::string bytes)
 ///          resulting bit pattern, ensuring `+0.0` and `-0.0` remain distinct.
 /// @param value Floating-point literal to store.
 /// @return Index referencing the canonical literal entry.
-int AsmEmitter::RoDataPool::addF64Literal(double value)
-{
+int AsmEmitter::RoDataPool::addF64Literal(double value) {
     const auto bits = std::bit_cast<std::uint64_t>(value);
-    if (const auto it = f64Lookup_.find(bits); it != f64Lookup_.end())
-    {
+    if (const auto it = f64Lookup_.find(bits); it != f64Lookup_.end()) {
         return it->second;
     }
     const int index = static_cast<int>(f64Literals_.size());
@@ -368,16 +328,14 @@ int AsmEmitter::RoDataPool::addF64Literal(double value)
 /// @brief Generate the assembly label for a stored string literal.
 /// @param index Pool index returned by @ref addStringLiteral.
 /// @return Mangled label suitable for use in assembly.
-std::string AsmEmitter::RoDataPool::stringLabel(int index) const
-{
+std::string AsmEmitter::RoDataPool::stringLabel(int index) const {
     return ".LC_str_" + std::to_string(index);
 }
 
 /// @brief Retrieve the byte length recorded for a string literal entry.
 /// @param index Pool index supplied by @ref addStringLiteral.
 /// @return Number of bytes stored for the literal.
-std::size_t AsmEmitter::RoDataPool::stringByteLength(int index) const
-{
+std::size_t AsmEmitter::RoDataPool::stringByteLength(int index) const {
     assert(index >= 0);
     const auto idx = static_cast<std::size_t>(index);
     assert(idx < stringLengths_.size());
@@ -387,8 +345,7 @@ std::size_t AsmEmitter::RoDataPool::stringByteLength(int index) const
 /// @brief Generate the assembly label for a stored 64-bit float literal.
 /// @param index Pool index returned by @ref addF64Literal.
 /// @return Mangled label suitable for use in assembly.
-std::string AsmEmitter::RoDataPool::f64Label(int index) const
-{
+std::string AsmEmitter::RoDataPool::f64Label(int index) const {
     return ".LC_f64_" + std::to_string(index);
 }
 
@@ -397,10 +354,8 @@ std::string AsmEmitter::RoDataPool::f64Label(int index) const
 ///          directives for each pooled string and floating literal. The method
 ///          preserves insertion order so indices map consistently to labels.
 /// @param os Output stream receiving assembly text.
-void AsmEmitter::RoDataPool::emit(std::ostream &os) const
-{
-    if (empty())
-    {
+void AsmEmitter::RoDataPool::emit(std::ostream &os) const {
+    if (empty()) {
         return;
     }
     /// @brief Emits rodatapool.
@@ -412,8 +367,7 @@ void AsmEmitter::RoDataPool::emit(std::ostream &os) const
 
 /// @brief Query whether the pool currently holds any literals.
 /// @return @c true when no string or floating literals have been interned.
-bool AsmEmitter::RoDataPool::empty() const noexcept
-{
+bool AsmEmitter::RoDataPool::empty() const noexcept {
     return stringLiterals_.empty() && f64Literals_.empty();
 }
 
@@ -432,8 +386,7 @@ AsmEmitter::AsmEmitter(RoDataPool &pool) noexcept : pool_{&pool} {}
 /// @param target Target lowering information controlling register selection.
 void AsmEmitter::emitFunction(std::ostream &os,
                               const MFunction &func,
-                              const TargetInfo &target) const
-{
+                              const TargetInfo &target) const {
     os << ".text\n";
     const std::string linkName = asmfmt::format_label(viper::common::MangleLink(func.name));
     os << ".globl " << linkName << "\n";
@@ -442,25 +395,19 @@ void AsmEmitter::emitFunction(std::ostream &os,
 #endif
     os << linkName << ":\n";
 
-    for (std::size_t i = 0; i < func.blocks.size(); ++i)
-    {
+    for (std::size_t i = 0; i < func.blocks.size(); ++i) {
         const auto &block = func.blocks[i];
         const bool isEntry = (i == 0U && block.label == func.name);
-        if (isEntry)
-        {
-            for (const auto &instr : block.instructions)
-            {
+        if (isEntry) {
+            for (const auto &instr : block.instructions) {
                 /// @brief Emits instruction.
                 emitInstruction(os, instr, target);
             }
-        }
-        else
-        {
+        } else {
             /// @brief Emits block.
             emitBlock(os, block, target);
         }
-        if (i + 1 < func.blocks.size())
-        {
+        if (i + 1 < func.blocks.size()) {
             os << '\n';
         }
     }
@@ -470,25 +417,21 @@ void AsmEmitter::emitFunction(std::ostream &os,
 /// @details Forwards to the shared pool only when it contains entries so that
 ///          translation units without literals avoid spurious section headers.
 /// @param os Output stream receiving the assembly.
-void AsmEmitter::emitRoData(std::ostream &os) const
-{
-    if (pool_ && !pool_->empty())
-    {
+void AsmEmitter::emitRoData(std::ostream &os) const {
+    if (pool_ && !pool_->empty()) {
         pool_->emit(os);
     }
 }
 
 /// @brief Access the underlying literal pool.
 /// @return Mutable reference to the associated pool.
-AsmEmitter::RoDataPool &AsmEmitter::roDataPool() noexcept
-{
+AsmEmitter::RoDataPool &AsmEmitter::roDataPool() noexcept {
     return *pool_;
 }
 
 /// @brief Access the underlying literal pool (const overload).
 /// @return Const reference to the associated pool.
-const AsmEmitter::RoDataPool &AsmEmitter::roDataPool() const noexcept
-{
+const AsmEmitter::RoDataPool &AsmEmitter::roDataPool() const noexcept {
     return *pool_;
 }
 
@@ -498,14 +441,11 @@ const AsmEmitter::RoDataPool &AsmEmitter::roDataPool() const noexcept
 /// @param os Output stream receiving the assembly.
 /// @param block Machine basic block to serialise.
 /// @param target Target lowering information controlling operand formatting.
-void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &block, const TargetInfo &target)
-{
-    if (!block.label.empty())
-    {
+void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &block, const TargetInfo &target) {
+    if (!block.label.empty()) {
         os << asmfmt::format_label(block.label) << ":\n";
     }
-    for (const auto &instr : block.instructions)
-    {
+    for (const auto &instr : block.instructions) {
         /// @brief Emits instruction.
         emitInstruction(os, instr, target);
     }
@@ -518,18 +458,14 @@ void AsmEmitter::emitBlock(std::ostream &os, const MBasicBlock &block, const Tar
 /// @param os Output stream receiving the assembly.
 /// @param instr Instruction to serialise.
 /// @param target Target lowering information controlling operand formatting.
-void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const TargetInfo &target)
-{
-    if (instr.opcode == MOpcode::LABEL)
-    {
-        if (instr.operands.empty())
-        {
+void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const TargetInfo &target) {
+    if (instr.opcode == MOpcode::LABEL) {
+        if (instr.operands.empty()) {
             os << ".L?\n";
             return;
         }
         const auto *label = std::get_if<OpLabel>(&instr.operands.front());
-        if (!label)
-        {
+        if (!label) {
             os << "# <invalid label>\n";
             return;
         }
@@ -537,15 +473,13 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
         return;
     }
 
-    if (instr.opcode == MOpcode::PX_COPY)
-    {
+    if (instr.opcode == MOpcode::PX_COPY) {
         std::string line;
         const auto estimate = 12U + instr.operands.size() * 24U;
         line.reserve(estimate);
         line.append("  # px_copy");
         bool first = true;
-        for (const auto &operand : instr.operands)
-        {
+        for (const auto &operand : instr.operands) {
             line.append(first ? " " : ", ");
             line.append(formatOperand(operand, target));
             first = false;
@@ -557,8 +491,7 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
 
     const auto operands = std::span<const Operand>{instr.operands};
     const auto *row = find_encoding(instr.opcode, operands);
-    if (!row)
-    {
+    if (!row) {
         // Emit diagnostic comment with opcode number and operand count
         os << "  # <unknown opcode: " << static_cast<int>(instr.opcode)
            << ", operands: " << operands.size() << ">\n";
@@ -572,20 +505,16 @@ void AsmEmitter::emitInstruction(std::ostream &os, const MInstr &instr, const Ta
 void AsmEmitter::emit_from_row(const EncodingRow &row,
                                std::span<const Operand> operands,
                                std::ostream &os,
-                               const TargetInfo &target)
-{
+                               const TargetInfo &target) {
     const auto *fmt = getFmt(row.opcode);
     const auto mnemonic = fmt ? std::string_view{fmt->mnemonic} : row.mnemonic;
-    if (fmt)
-    {
+    if (fmt) {
         assert(mnemonic == row.mnemonic);
     }
     os << "  " << mnemonic;
 
-    if (!fmt)
-    {
-        if (!operands.empty())
-        {
+    if (!fmt) {
+        if (!operands.empty()) {
             os << ' ';
             /// @brief Emits operands.
             emitOperands(operands, os, target);
@@ -594,18 +523,15 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
-    if (fmt->operandCount == 0U)
-    {
+    if (fmt->operandCount == 0U) {
         os << '\n';
         return;
     }
 
     const auto flags = fmt->flags;
 
-    if ((flags & kFmtLea) != 0U)
-    {
-        if (operands.size() < 2)
-        {
+    if ((flags & kFmtLea) != 0U) {
+        if (operands.size() < 2) {
             os << " #<missing>\n";
             return;
         }
@@ -614,17 +540,14 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
-    if ((flags & kFmtMovzx8) != 0U)
-    {
-        if (operands.size() < 2)
-        {
+    if ((flags & kFmtMovzx8) != 0U) {
+        if (operands.size() < 2) {
             os << " #<missing>\n";
             return;
         }
         const auto *dest = std::get_if<OpReg>(&operands[0]);
         const auto *src = std::get_if<OpReg>(&operands[1]);
-        if (!dest || !src)
-        {
+        if (!dest || !src) {
             os << " #<invalid>\n";
             return;
         }
@@ -632,17 +555,14 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
-    if ((flags & kFmtReg32) != 0U)
-    {
-        if (operands.size() < 2)
-        {
+    if ((flags & kFmtReg32) != 0U) {
+        if (operands.size() < 2) {
             os << " #<missing>\n";
             return;
         }
         const auto *dest = std::get_if<OpReg>(&operands[0]);
         const auto *src = std::get_if<OpReg>(&operands[1]);
-        if (!dest || !src)
-        {
+        if (!dest || !src) {
             os << " #<invalid>\n";
             return;
         }
@@ -650,10 +570,8 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
-    if ((flags & kFmtCall) != 0U)
-    {
-        if (operands.empty())
-        {
+    if ((flags & kFmtCall) != 0U) {
+        if (operands.empty()) {
             os << " #<missing>\n";
             return;
         }
@@ -661,60 +579,42 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
-    if ((flags & kFmtJump) != 0U)
-    {
-        if ((flags & kFmtCond) != 0U)
-        {
+    if ((flags & kFmtJump) != 0U) {
+        if ((flags & kFmtCond) != 0U) {
             const Operand *branchTarget = nullptr;
             const OpImm *cond = nullptr;
-            for (const auto &operand : operands)
-            {
-                if (!cond)
-                {
+            for (const auto &operand : operands) {
+                if (!cond) {
                     cond = std::get_if<OpImm>(&operand);
                 }
-                if (!branchTarget && std::holds_alternative<OpLabel>(operand))
-                {
+                if (!branchTarget && std::holds_alternative<OpLabel>(operand)) {
                     branchTarget = &operand;
                 }
             }
-            if (!branchTarget && !operands.empty())
-            {
+            if (!branchTarget && !operands.empty()) {
                 branchTarget = &operands.back();
             }
             const auto suffix = cond ? conditionSuffix(cond->val) : std::string_view{"e"};
             os << suffix << ' ';
-            if (branchTarget)
-            {
-                if (std::holds_alternative<OpLabel>(*branchTarget))
-                {
+            if (branchTarget) {
+                if (std::holds_alternative<OpLabel>(*branchTarget)) {
                     os << formatOperand(*branchTarget, target) << '\n';
-                }
-                else
-                {
+                } else {
                     os << '*' << formatOperand(*branchTarget, target) << '\n';
                 }
-            }
-            else
-            {
+            } else {
                 os << "#<missing>\n";
             }
-        }
-        else
-        {
-            if (operands.empty())
-            {
+        } else {
+            if (operands.empty()) {
                 os << " #<missing>\n";
                 return;
             }
             os << ' ';
             const auto &targetOp = operands.front();
-            if (std::holds_alternative<OpLabel>(targetOp))
-            {
+            if (std::holds_alternative<OpLabel>(targetOp)) {
                 os << formatOperand(targetOp, target) << '\n';
-            }
-            else
-            {
+            } else {
                 os << '*';
                 /// @brief Emits operand.
                 emitOperand(targetOp, os, target);
@@ -724,47 +624,35 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
-    if ((flags & kFmtSetcc) != 0U)
-    {
+    if ((flags & kFmtSetcc) != 0U) {
         const Operand *dest = nullptr;
         const OpImm *cond = nullptr;
-        for (const auto &operand : operands)
-        {
-            if (!cond)
-            {
+        for (const auto &operand : operands) {
+            if (!cond) {
                 cond = std::get_if<OpImm>(&operand);
             }
-            if (!dest &&
-                (std::holds_alternative<OpReg>(operand) || std::holds_alternative<OpMem>(operand)))
-            {
+            if (!dest && (std::holds_alternative<OpReg>(operand) ||
+                          std::holds_alternative<OpMem>(operand))) {
                 dest = &operand;
             }
         }
         const auto suffix = cond ? conditionSuffix(cond->val) : std::string_view{"e"};
         os << suffix << ' ';
-        if (dest)
-        {
+        if (dest) {
             // SETcc requires 8-bit destination register
-            if (const auto *reg = std::get_if<OpReg>(dest))
-            {
+            if (const auto *reg = std::get_if<OpReg>(dest)) {
                 os << formatReg8(*reg, target) << '\n';
-            }
-            else
-            {
+            } else {
                 os << formatOperand(*dest, target) << '\n';
             }
-        }
-        else
-        {
+        } else {
             os << "#<missing>\n";
         }
         return;
     }
 
-    if ((flags & kFmtShift) != 0U)
-    {
-        if (operands.size() < 2)
-        {
+    if ((flags & kFmtShift) != 0U) {
+        if (operands.size() < 2) {
             os << " #<missing>\n";
             return;
         }
@@ -773,10 +661,8 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
-    if ((flags & kFmtDirect) != 0U)
-    {
-        if (operands.empty())
-        {
+    if ((flags & kFmtDirect) != 0U) {
+        if (operands.empty()) {
             os << '\n';
             return;
         }
@@ -787,12 +673,9 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
         return;
     }
 
-    switch (fmt->operandCount)
-    {
-        case 1:
-        {
-            if (operands.empty())
-            {
+    switch (fmt->operandCount) {
+        case 1: {
+            if (operands.empty()) {
                 os << " #<missing>\n";
                 return;
             }
@@ -802,10 +685,8 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             os << '\n';
             return;
         }
-        case 2:
-        {
-            if (operands.size() < 2)
-            {
+        case 2: {
+            if (operands.size() < 2) {
                 os << " #<missing>\n";
                 return;
             }
@@ -818,10 +699,8 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             os << '\n';
             return;
         }
-        case 3:
-        {
-            if (operands.size() < 3)
-            {
+        case 3: {
+            if (operands.size() < 3) {
                 os << " #<missing>\n";
                 return;
             }
@@ -837,10 +716,8 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
             os << '\n';
             return;
         }
-        default:
-        {
-            if (operands.empty())
-            {
+        default: {
+            if (operands.empty()) {
                 os << '\n';
                 return;
             }
@@ -860,8 +737,7 @@ void AsmEmitter::emit_from_row(const EncodingRow &row,
 /// @param operand Operand to print.
 /// @param target Target lowering information controlling register names.
 /// @return Textual representation of the operand.
-std::string AsmEmitter::formatOperand(const Operand &operand, const TargetInfo &target)
-{
+std::string AsmEmitter::formatOperand(const Operand &operand, const TargetInfo &target) {
     std::ostringstream buffer;
     /// @brief Emits operand.
     emitOperand(operand, buffer, target);
@@ -875,23 +751,19 @@ std::string AsmEmitter::formatOperand(const Operand &operand, const TargetInfo &
 /// @param target Target lowering context (unused for now but preserved for
 ///               future extensions).
 /// @return Assembly string naming the register.
-std::string AsmEmitter::formatReg(const OpReg &reg, const TargetInfo &)
-{
+std::string AsmEmitter::formatReg(const OpReg &reg, const TargetInfo &) {
     return asmfmt::fmt_reg(encodeRegister(reg));
 }
 
-std::string AsmEmitter::formatReg8(const OpReg &reg, const TargetInfo &target)
-{
-    if (!reg.isPhys)
-    {
+std::string AsmEmitter::formatReg8(const OpReg &reg, const TargetInfo &target) {
+    if (!reg.isPhys) {
         std::ostringstream os;
         os << "%v" << static_cast<unsigned>(reg.idOrPhys) << ".b";
         return os.str();
     }
 
     const auto phys = static_cast<PhysReg>(reg.idOrPhys);
-    switch (phys)
-    {
+    switch (phys) {
         case PhysReg::RAX:
             return "%al";
         case PhysReg::RBX:
@@ -929,18 +801,15 @@ std::string AsmEmitter::formatReg8(const OpReg &reg, const TargetInfo &target)
     }
 }
 
-std::string AsmEmitter::formatReg32(const OpReg &reg, const TargetInfo &target)
-{
-    if (!reg.isPhys)
-    {
+std::string AsmEmitter::formatReg32(const OpReg &reg, const TargetInfo &target) {
+    if (!reg.isPhys) {
         std::ostringstream os;
         os << "%v" << static_cast<unsigned>(reg.idOrPhys) << ".d";
         return os.str();
     }
 
     const auto phys = static_cast<PhysReg>(reg.idOrPhys);
-    switch (phys)
-    {
+    switch (phys) {
         case PhysReg::RAX:
             return "%eax";
         case PhysReg::RBX:
@@ -981,8 +850,7 @@ std::string AsmEmitter::formatReg32(const OpReg &reg, const TargetInfo &target)
 /// @brief Format an immediate operand using AT&T syntax.
 /// @param imm Immediate operand to print.
 /// @return Assembly string beginning with '$'.
-std::string AsmEmitter::formatImm(const OpImm &imm)
-{
+std::string AsmEmitter::formatImm(const OpImm &imm) {
     return asmfmt::format_imm(imm.val);
 }
 
@@ -992,14 +860,12 @@ std::string AsmEmitter::formatImm(const OpImm &imm)
 /// @param mem Memory operand to print.
 /// @param target Target lowering information for register formatting.
 /// @return Assembly string describing the memory reference.
-std::string AsmEmitter::formatMem(const OpMem &mem, const TargetInfo &target)
-{
+std::string AsmEmitter::formatMem(const OpMem &mem, const TargetInfo &target) {
     static_cast<void>(target);
     asmfmt::MemAddr addr{};
     addr.base = encodeRegister(mem.base);
     addr.disp = mem.disp;
-    if (mem.hasIndex)
-    {
+    if (mem.hasIndex) {
         addr.index = encodeRegister(mem.index);
         addr.scale = mem.scale;
         addr.has_index = true;
@@ -1010,16 +876,14 @@ std::string AsmEmitter::formatMem(const OpMem &mem, const TargetInfo &target)
 /// @brief Format a label operand.
 /// @param label Label operand to print.
 /// @return Raw label text.
-std::string AsmEmitter::formatLabel(const OpLabel &label)
-{
+std::string AsmEmitter::formatLabel(const OpLabel &label) {
     return asmfmt::format_label(label.name);
 }
 
 /// @brief Format a RIP-relative label operand.
 /// @param label RIP-relative label to print.
 /// @return Label text suffixed with the RIP-relative addressing mode.
-std::string AsmEmitter::formatRipLabel(const OpRipLabel &label)
-{
+std::string AsmEmitter::formatRipLabel(const OpRipLabel &label) {
     return asmfmt::format_rip_label(label.name);
 }
 
@@ -1027,13 +891,10 @@ std::string AsmEmitter::formatRipLabel(const OpRipLabel &label)
 /// @param operand Operand describing the shift count.
 /// @param target Target lowering context for fallback formatting.
 /// @return Assembly string for the shift count operand.
-std::string AsmEmitter::formatShiftCount(const Operand &operand, const TargetInfo &target)
-{
-    if (const auto *reg = std::get_if<OpReg>(&operand))
-    {
+std::string AsmEmitter::formatShiftCount(const Operand &operand, const TargetInfo &target) {
+    if (const auto *reg = std::get_if<OpReg>(&operand)) {
         if (reg->isPhys && reg->cls == RegClass::GPR &&
-            reg->idOrPhys == static_cast<uint16_t>(PhysReg::RCX))
-        {
+            reg->idOrPhys == static_cast<uint16_t>(PhysReg::RCX)) {
             return "%cl";
         }
     }
@@ -1046,15 +907,14 @@ std::string AsmEmitter::formatShiftCount(const Operand &operand, const TargetInf
 /// @param operand Operand supplying the effective address computation.
 /// @param target Target lowering context for register/memory formatting.
 /// @return Assembly string representing the effective address source.
-std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo &target)
-{
-    return std::visit(Overload{[&](const OpLabel &label)
-                               { return asmfmt::format_rip_label(label.name); },
-                               [&](const OpMem &mem) { return formatMem(mem, target); },
-                               [&](const OpReg &reg) { return formatReg(reg, target); },
-                               [&](const OpImm &imm) { return formatImm(imm); },
-                               [&](const OpRipLabel &label) { return formatRipLabel(label); }},
-                      operand);
+std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo &target) {
+    return std::visit(
+        Overload{[&](const OpLabel &label) { return asmfmt::format_rip_label(label.name); },
+                 [&](const OpMem &mem) { return formatMem(mem, target); },
+                 [&](const OpReg &reg) { return formatReg(reg, target); },
+                 [&](const OpImm &imm) { return formatImm(imm); },
+                 [&](const OpRipLabel &label) { return formatRipLabel(label); }},
+        operand);
 }
 
 /// @brief Format the target operand for @c CALL instructions.
@@ -1063,11 +923,9 @@ std::string AsmEmitter::formatLeaSource(const Operand &operand, const TargetInfo
 /// @param operand Operand describing the call target.
 /// @param target Target lowering context for register/memory formatting.
 /// @return Assembly string representing the call target.
-std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInfo &target)
-{
+std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInfo &target) {
     return std::visit(
-        Overload{[&](const OpLabel &label)
-                 {
+        Overload{[&](const OpLabel &label) {
                      if (auto mapped = il::runtime::mapCanonicalRuntimeName(label.name))
                          return asmfmt::format_label(std::string{*mapped});
                      return asmfmt::format_label(viper::common::MangleLink(label.name));
@@ -1082,10 +940,8 @@ std::string AsmEmitter::formatCallTarget(const Operand &operand, const TargetInf
 /// @brief Translate a Machine IR condition code into an x86 suffix.
 /// @param code Integer encoding produced by the selector.
 /// @return String view containing the condition suffix, defaulting to "e".
-std::string_view AsmEmitter::conditionSuffix(std::int64_t code) noexcept
-{
-    switch (static_cast<int>(code))
-    {
+std::string_view AsmEmitter::conditionSuffix(std::int64_t code) noexcept {
+    switch (static_cast<int>(code)) {
         case 0:
             return "e";
         case 1:

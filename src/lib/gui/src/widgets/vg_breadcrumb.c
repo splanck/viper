@@ -40,8 +40,7 @@ static vg_widget_vtable_t g_breadcrumb_vtable = {.destroy = breadcrumb_destroy,
 // Breadcrumb Item Management
 //=============================================================================
 
-static void free_breadcrumb_item(vg_breadcrumb_item_t *item)
-{
+static void free_breadcrumb_item(vg_breadcrumb_item_t *item) {
     if (!item)
         return;
 
@@ -49,8 +48,7 @@ static void free_breadcrumb_item(vg_breadcrumb_item_t *item)
     free(item->tooltip);
     free(item->user_data);
 
-    for (size_t i = 0; i < item->dropdown_count; i++)
-    {
+    for (size_t i = 0; i < item->dropdown_count; i++) {
         free(item->dropdown_items[i].label);
     }
     free(item->dropdown_items);
@@ -60,8 +58,7 @@ static void free_breadcrumb_item(vg_breadcrumb_item_t *item)
 // Breadcrumb Implementation
 //=============================================================================
 
-vg_breadcrumb_t *vg_breadcrumb_create(void)
-{
+vg_breadcrumb_t *vg_breadcrumb_create(void) {
     vg_breadcrumb_t *bc = calloc(1, sizeof(vg_breadcrumb_t));
     if (!bc)
         return NULL;
@@ -87,12 +84,10 @@ vg_breadcrumb_t *vg_breadcrumb_create(void)
     return bc;
 }
 
-static void breadcrumb_destroy(vg_widget_t *widget)
-{
+static void breadcrumb_destroy(vg_widget_t *widget) {
     vg_breadcrumb_t *bc = (vg_breadcrumb_t *)widget;
 
-    for (size_t i = 0; i < bc->item_count; i++)
-    {
+    for (size_t i = 0; i < bc->item_count; i++) {
         free_breadcrumb_item(&bc->items[i]);
     }
     free(bc->items);
@@ -100,15 +95,13 @@ static void breadcrumb_destroy(vg_widget_t *widget)
 }
 
 /// @brief Breadcrumb destroy.
-void vg_breadcrumb_destroy(vg_breadcrumb_t *bc)
-{
+void vg_breadcrumb_destroy(vg_breadcrumb_t *bc) {
     if (!bc)
         return;
     vg_widget_destroy(&bc->base);
 }
 
-static void breadcrumb_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void breadcrumb_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_breadcrumb_t *bc = (vg_breadcrumb_t *)widget;
     (void)available_width;
     (void)available_height;
@@ -116,15 +109,13 @@ static void breadcrumb_measure(vg_widget_t *widget, float available_width, float
     float width = 0;
     float height = 0;
 
-    if (!bc->font)
-    {
+    if (!bc->font) {
         widget->measured_width = 0;
         widget->measured_height = 24;
         return;
     }
 
-    for (size_t i = 0; i < bc->item_count; i++)
-    {
+    for (size_t i = 0; i < bc->item_count; i++) {
         vg_breadcrumb_item_t *item = &bc->items[i];
 
         vg_text_metrics_t metrics;
@@ -135,8 +126,7 @@ static void breadcrumb_measure(vg_widget_t *widget, float available_width, float
             height = metrics.height;
 
         // Add separator width
-        if (i < bc->item_count - 1 && bc->separator)
-        {
+        if (i < bc->item_count - 1 && bc->separator) {
             vg_font_measure_text(bc->font, bc->font_size, bc->separator, &metrics);
             width += metrics.width + bc->separator_padding * 2;
         }
@@ -146,8 +136,7 @@ static void breadcrumb_measure(vg_widget_t *widget, float available_width, float
     widget->measured_height = height + 8; // Vertical padding
 }
 
-static void breadcrumb_paint(vg_widget_t *widget, void *canvas)
-{
+static void breadcrumb_paint(vg_widget_t *widget, void *canvas) {
     vg_breadcrumb_t *bc = (vg_breadcrumb_t *)widget;
 
     // Draw background (placeholder)
@@ -159,8 +148,7 @@ static void breadcrumb_paint(vg_widget_t *widget, void *canvas)
     float x = widget->x;
     float y = widget->y + 4; // Top padding
 
-    for (size_t i = 0; i < bc->item_count; i++)
-    {
+    for (size_t i = 0; i < bc->item_count; i++) {
         vg_breadcrumb_item_t *item = &bc->items[i];
 
         // Measure item
@@ -170,8 +158,7 @@ static void breadcrumb_paint(vg_widget_t *widget, void *canvas)
         float item_width = metrics.width + bc->item_padding * 2;
 
         // Draw hover background
-        if ((int)i == bc->hovered_index)
-        {
+        if ((int)i == bc->hovered_index) {
             // Draw hover background (placeholder)
             (void)bc->hover_bg;
         }
@@ -183,8 +170,7 @@ static void breadcrumb_paint(vg_widget_t *widget, void *canvas)
         x += item_width;
 
         // Draw separator
-        if (i < bc->item_count - 1 && bc->separator)
-        {
+        if (i < bc->item_count - 1 && bc->separator) {
             x += bc->separator_padding;
             vg_font_draw_text(
                 canvas, bc->font, bc->font_size, x, y, bc->separator, bc->separator_color);
@@ -194,16 +180,14 @@ static void breadcrumb_paint(vg_widget_t *widget, void *canvas)
     }
 
     // Draw dropdown if open
-    if (bc->dropdown_open && bc->dropdown_index >= 0 && bc->dropdown_index < (int)bc->item_count)
-    {
+    if (bc->dropdown_open && bc->dropdown_index >= 0 && bc->dropdown_index < (int)bc->item_count) {
         vg_breadcrumb_item_t *item = &bc->items[bc->dropdown_index];
         // Dropdown rendering would go here
         (void)item;
     }
 }
 
-static int find_item_at(vg_breadcrumb_t *bc, float px, float py)
-{
+static int find_item_at(vg_breadcrumb_t *bc, float px, float py) {
     (void)py;
 
     if (!bc->font)
@@ -211,8 +195,7 @@ static int find_item_at(vg_breadcrumb_t *bc, float px, float py)
 
     float x = bc->base.x;
 
-    for (size_t i = 0; i < bc->item_count; i++)
-    {
+    for (size_t i = 0; i < bc->item_count; i++) {
         vg_breadcrumb_item_t *item = &bc->items[i];
 
         vg_text_metrics_t metrics;
@@ -220,16 +203,14 @@ static int find_item_at(vg_breadcrumb_t *bc, float px, float py)
 
         float item_width = metrics.width + bc->item_padding * 2;
 
-        if (px >= x && px < x + item_width)
-        {
+        if (px >= x && px < x + item_width) {
             return (int)i;
         }
 
         x += item_width;
 
         // Skip separator
-        if (i < bc->item_count - 1 && bc->separator)
-        {
+        if (i < bc->item_count - 1 && bc->separator) {
             vg_font_measure_text(bc->font, bc->font_size, bc->separator, &metrics);
             x += metrics.width + bc->separator_padding * 2;
         }
@@ -238,17 +219,13 @@ static int find_item_at(vg_breadcrumb_t *bc, float px, float py)
     return -1;
 }
 
-static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_breadcrumb_t *bc = (vg_breadcrumb_t *)widget;
 
-    switch (event->type)
-    {
-        case VG_EVENT_MOUSE_MOVE:
-        {
+    switch (event->type) {
+        case VG_EVENT_MOUSE_MOVE: {
             int idx = find_item_at(bc, event->mouse.x, event->mouse.y);
-            if (idx != bc->hovered_index)
-            {
+            if (idx != bc->hovered_index) {
                 bc->hovered_index = idx;
                 bc->base.needs_paint = true;
             }
@@ -260,27 +237,21 @@ static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event)
             bc->base.needs_paint = true;
             return true;
 
-        case VG_EVENT_CLICK:
-        {
+        case VG_EVENT_CLICK: {
             int idx = find_item_at(bc, event->mouse.x, event->mouse.y);
-            if (idx >= 0)
-            {
+            if (idx >= 0) {
                 vg_breadcrumb_item_t *item = &bc->items[idx];
 
                 // Check if item has dropdown
-                if (item->dropdown_count > 0)
-                {
+                if (item->dropdown_count > 0) {
                     bc->dropdown_open = !bc->dropdown_open;
                     bc->dropdown_index = idx;
                     bc->dropdown_hovered = -1;
                     bc->base.needs_paint = true;
-                }
-                else
-                {
+                } else {
                     // Regular click
                     bc->dropdown_open = false;
-                    if (bc->on_click)
-                    {
+                    if (bc->on_click) {
                         bc->on_click(bc, idx, bc->user_data);
                     }
                 }
@@ -297,14 +268,12 @@ static bool breadcrumb_handle_event(vg_widget_t *widget, vg_event_t *event)
 }
 
 /// @brief Breadcrumb push.
-void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data)
-{
+void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data) {
     if (!bc || !label)
         return;
 
     // Expand capacity if needed
-    if (bc->item_count >= bc->item_capacity)
-    {
+    if (bc->item_count >= bc->item_capacity) {
         size_t new_cap = bc->item_capacity * 2;
         if (new_cap < 8)
             new_cap = 8;
@@ -317,8 +286,7 @@ void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data)
     }
 
     /* Enforce max_items: remove oldest (index 0) when limit exceeded */
-    if (bc->max_items > 0 && (int)bc->item_count >= bc->max_items)
-    {
+    if (bc->max_items > 0 && (int)bc->item_count >= bc->max_items) {
         free_breadcrumb_item(&bc->items[0]);
         memmove(&bc->items[0], &bc->items[1], (bc->item_count - 1) * sizeof(vg_breadcrumb_item_t));
         bc->item_count--;
@@ -334,8 +302,7 @@ void vg_breadcrumb_push(vg_breadcrumb_t *bc, const char *label, void *data)
 }
 
 /// @brief Breadcrumb pop.
-void vg_breadcrumb_pop(vg_breadcrumb_t *bc)
-{
+void vg_breadcrumb_pop(vg_breadcrumb_t *bc) {
     if (!bc || bc->item_count == 0)
         return;
 
@@ -347,13 +314,11 @@ void vg_breadcrumb_pop(vg_breadcrumb_t *bc)
 }
 
 /// @brief Breadcrumb clear.
-void vg_breadcrumb_clear(vg_breadcrumb_t *bc)
-{
+void vg_breadcrumb_clear(vg_breadcrumb_t *bc) {
     if (!bc)
         return;
 
-    for (size_t i = 0; i < bc->item_count; i++)
-    {
+    for (size_t i = 0; i < bc->item_count; i++) {
         free_breadcrumb_item(&bc->items[i]);
     }
     bc->item_count = 0;
@@ -366,14 +331,12 @@ void vg_breadcrumb_clear(vg_breadcrumb_t *bc)
 }
 
 /// @brief Breadcrumb item add dropdown.
-void vg_breadcrumb_item_add_dropdown(vg_breadcrumb_item_t *item, const char *label, void *data)
-{
+void vg_breadcrumb_item_add_dropdown(vg_breadcrumb_item_t *item, const char *label, void *data) {
     if (!item || !label)
         return;
 
     // Expand capacity if needed
-    if (item->dropdown_count >= item->dropdown_capacity)
-    {
+    if (item->dropdown_count >= item->dropdown_capacity) {
         size_t new_cap = item->dropdown_capacity * 2;
         if (new_cap < 4)
             new_cap = 4;
@@ -391,8 +354,7 @@ void vg_breadcrumb_item_add_dropdown(vg_breadcrumb_item_t *item, const char *lab
 }
 
 /// @brief Breadcrumb set separator.
-void vg_breadcrumb_set_separator(vg_breadcrumb_t *bc, const char *sep)
-{
+void vg_breadcrumb_set_separator(vg_breadcrumb_t *bc, const char *sep) {
     if (!bc)
         return;
 
@@ -405,8 +367,7 @@ void vg_breadcrumb_set_separator(vg_breadcrumb_t *bc, const char *sep)
 /// @brief Breadcrumb set on click.
 void vg_breadcrumb_set_on_click(vg_breadcrumb_t *bc,
                                 void (*callback)(vg_breadcrumb_t *, int, void *),
-                                void *user_data)
-{
+                                void *user_data) {
     if (!bc)
         return;
     bc->on_click = callback;
@@ -414,8 +375,7 @@ void vg_breadcrumb_set_on_click(vg_breadcrumb_t *bc,
 }
 
 /// @brief Breadcrumb set font.
-void vg_breadcrumb_set_font(vg_breadcrumb_t *bc, vg_font_t *font, float size)
-{
+void vg_breadcrumb_set_font(vg_breadcrumb_t *bc, vg_font_t *font, float size) {
     if (!bc)
         return;
 
@@ -426,16 +386,13 @@ void vg_breadcrumb_set_font(vg_breadcrumb_t *bc, vg_font_t *font, float size)
 }
 
 /// @brief Breadcrumb set max items.
-void vg_breadcrumb_set_max_items(vg_breadcrumb_t *bc, int max)
-{
+void vg_breadcrumb_set_max_items(vg_breadcrumb_t *bc, int max) {
     if (!bc)
         return;
     bc->max_items = max;
     /* Trim existing items if already over the limit */
-    if (max > 0)
-    {
-        while ((int)bc->item_count > max && bc->item_count > 0)
-        {
+    if (max > 0) {
+        while ((int)bc->item_count > max && bc->item_count > 0) {
             free_breadcrumb_item(&bc->items[0]);
             memmove(
                 &bc->items[0], &bc->items[1], (bc->item_count - 1) * sizeof(vg_breadcrumb_item_t));

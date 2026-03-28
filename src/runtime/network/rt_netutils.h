@@ -22,24 +22,23 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Check if a remote port is open (accepts connections).
-    int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms);
+/// @brief Check if a remote port is open (accepts connections).
+int8_t rt_netutils_is_port_open(rt_string host, int64_t port, int64_t timeout_ms);
 
-    /// @brief Get a free (available) port on the local machine.
-    int64_t rt_netutils_get_free_port(void);
+/// @brief Get a free (available) port on the local machine.
+int64_t rt_netutils_get_free_port(void);
 
-    /// @brief Check if an IP address matches a CIDR range (e.g., "10.0.0.0/8").
-    int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr);
+/// @brief Check if an IP address matches a CIDR range (e.g., "10.0.0.0/8").
+int8_t rt_netutils_match_cidr(rt_string ip, rt_string cidr);
 
-    /// @brief Check if an IP address is in a private range (RFC 1918).
-    int8_t rt_netutils_is_private_ip(rt_string ip);
+/// @brief Check if an IP address is in a private range (RFC 1918).
+int8_t rt_netutils_is_private_ip(rt_string ip);
 
-    /// @brief Get the primary local IPv4 address (non-loopback).
-    rt_string rt_netutils_local_ipv4(void);
+/// @brief Get the primary local IPv4 address (non-loopback).
+rt_string rt_netutils_local_ipv4(void);
 
 #ifdef __cplusplus
 }

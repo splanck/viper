@@ -30,16 +30,14 @@
 ///          nodes, update parser-managed symbol tables, and surface diagnostics
 ///          when syntax expectations are not met.
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 /// @brief Register parser callbacks for runtime-related statements.
 /// @details Populates the @ref StatementParserRegistry with handlers for
 ///          statements such as DIM, RANDOMIZE, and terminal commands.  The
 ///          registry invokes the member functions listed here when the parser
 ///          encounters the associated leading token.
 /// @param registry Registry that maps starting tokens to parser member functions.
-void Parser::registerRuntimeParsers(StatementParserRegistry &registry)
-{
+void Parser::registerRuntimeParsers(StatementParserRegistry &registry) {
     registry.registerHandler(TokenKind::KeywordOn, &Parser::parseOnErrorGotoStatement);
     registry.registerHandler(TokenKind::KeywordResume, &Parser::parseResumeStatement);
     registry.registerHandler(TokenKind::KeywordEnd, &Parser::parseEndStatement);
@@ -65,8 +63,7 @@ void Parser::registerRuntimeParsers(StatementParserRegistry &registry)
 ///          helper records whether the statement targets line zero so the
 ///          lowerer can emit a @c RESUME 0 semantic.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseOnErrorGotoStatement()
-{
+StmtPtr Parser::parseOnErrorGotoStatement() {
     auto loc = peek().loc;
     consume(); // ON
     expect(TokenKind::KeywordError);
@@ -74,14 +71,11 @@ StmtPtr Parser::parseOnErrorGotoStatement()
     Token targetTok = peek();
     int target = 0;
     bool toZero = false;
-    if (targetTok.kind == TokenKind::Identifier)
-    {
+    if (targetTok.kind == TokenKind::Identifier) {
         target = ensureLabelNumber(targetTok.lexeme);
         noteNamedLabelReference(targetTok, target);
         consume();
-    }
-    else
-    {
+    } else {
         target = std::atoi(targetTok.lexeme.c_str());
         expect(TokenKind::Number);
         noteNumericLabelUsage(target);
@@ -99,8 +93,7 @@ StmtPtr Parser::parseOnErrorGotoStatement()
 ///          at the current source location.  No operands or trailing tokens are
 ///          required for this statement form.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseEndStatement()
-{
+StmtPtr Parser::parseEndStatement() {
     auto loc = peek().loc;
     consume(); // END
     auto stmt = std::make_unique<EndStmt>();
@@ -112,30 +105,23 @@ StmtPtr Parser::parseEndStatement()
 /// @details Handles the optional @c NEXT keyword or numeric label.  When neither
 ///          is present the statement resumes at the point of the original error.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseResumeStatement()
-{
+StmtPtr Parser::parseResumeStatement() {
     auto loc = peek().loc;
     consume(); // RESUME
     auto stmt = std::make_unique<Resume>();
     stmt->loc = loc;
-    if (at(TokenKind::KeywordNext))
-    {
+    if (at(TokenKind::KeywordNext)) {
         consume();
         stmt->mode = Resume::Mode::Next;
-    }
-    else if (!(at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile) || at(TokenKind::Colon) ||
-               isStatementStart(peek().kind)))
-    {
+    } else if (!(at(TokenKind::EndOfLine) || at(TokenKind::EndOfFile) || at(TokenKind::Colon) ||
+                 isStatementStart(peek().kind))) {
         Token labelTok = peek();
         int target = 0;
-        if (labelTok.kind == TokenKind::Identifier)
-        {
+        if (labelTok.kind == TokenKind::Identifier) {
             target = ensureLabelNumber(labelTok.lexeme);
             noteNamedLabelReference(labelTok, target);
             consume();
-        }
-        else
-        {
+        } else {
             target = std::atoi(labelTok.lexeme.c_str());
             expect(TokenKind::Number);
             noteNumericLabelUsage(target);
@@ -152,28 +138,21 @@ StmtPtr Parser::parseResumeStatement()
 ///          later phases can generate runtime allocation requests. Supports optional
 ///          initializer syntax: DIM name = value
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseDimStatement()
-{
+StmtPtr Parser::parseDimStatement() {
     auto loc = peek().loc;
     consume(); // DIM
 
     // Parse a single DIM item: <name> [ ( <size> ) ] [ AS <type> ] [ = <expr> ]
-    auto parseOne = [&](Token firstNameTok = Token{}) -> StmtPtr
-    {
+    auto parseOne = [&](Token firstNameTok = Token{}) -> StmtPtr {
         // BUG-OOP-042 fix: Use the global isSoftIdentToken() function which includes
         // all soft keywords (BASE, FLOOR, RANDOM, NEXT, etc.) for variable names.
         Token nameTok;
         if (firstNameTok.kind == TokenKind::Identifier ||
-            (firstNameTok.kind != TokenKind::EndOfFile && isSoftIdentToken(firstNameTok.kind)))
-        {
+            (firstNameTok.kind != TokenKind::EndOfFile && isSoftIdentToken(firstNameTok.kind))) {
             nameTok = firstNameTok;
-        }
-        else if (isSoftIdentToken(peek().kind))
-        {
+        } else if (isSoftIdentToken(peek().kind)) {
             nameTok = consume();
-        }
-        else
-        {
+        } else {
             nameTok = expect(TokenKind::Identifier);
         }
 
@@ -182,84 +161,65 @@ StmtPtr Parser::parseDimStatement()
         node->name = nameTok.lexeme;
         node->type = typeFromSuffix(nameTok.lexeme);
 
-        if (at(TokenKind::LParen))
-        {
+        if (at(TokenKind::LParen)) {
             node->isArray = true;
             consume();
 
             // Parse comma-separated dimension sizes: DIM a(2,3,4)
             node->dimensions.push_back(parseExpression());
-            while (at(TokenKind::Comma))
-            {
+            while (at(TokenKind::Comma)) {
                 consume(); // ','
                 node->dimensions.push_back(parseExpression());
             }
 
             // For backward compatibility with single-dimensional arrays,
             // move the first dimension to 'size' field if there's only one
-            if (node->dimensions.size() == 1)
-            {
+            if (node->dimensions.size() == 1) {
                 node->size = std::move(node->dimensions[0]);
             }
 
             expect(TokenKind::RParen);
-            if (at(TokenKind::KeywordAs))
-            {
+            if (at(TokenKind::KeywordAs)) {
                 consume();
                 // Peek to decide between builtin keyword vs. qualified class name
-                if (at(TokenKind::Identifier))
-                {
+                if (at(TokenKind::Identifier)) {
                     std::string first = peek().lexeme;
                     std::string upper = string_utils::to_upper(first);
                     if (upper == "INTEGER" || upper == "INT" || upper == "LONG" ||
                         upper == "DOUBLE" || upper == "FLOAT" || upper == "SINGLE" ||
-                        upper == "STRING" || upper == "BOOLEAN")
-                    {
+                        upper == "STRING" || upper == "BOOLEAN") {
                         node->type = parseTypeKeyword();
-                    }
-                    else
-                    {
+                    } else {
                         // Parse qualified class name: Ident ('.' Ident)*
                         std::vector<std::string> segs;
                         segs.push_back(CanonicalizeIdent(first));
                         consume();
-                        while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier)
-                        {
+                        while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier) {
                             consume(); // dot
                             segs.push_back(CanonicalizeIdent(peek().lexeme));
                             consume();
                         }
                         node->explicitClassQname = std::move(segs);
                     }
-                }
-                else
-                {
+                } else {
                     node->type = parseTypeKeyword();
                 }
             }
             arrays_.insert(node->name);
-        }
-        else
-        {
+        } else {
             node->isArray = false;
-            if (at(TokenKind::KeywordAs))
-            {
+            if (at(TokenKind::KeywordAs)) {
                 consume();
                 // BUG-CARDS-001 fix: Support DIM x AS NEW ClassName() syntax
-                if (at(TokenKind::KeywordNew))
-                {
+                if (at(TokenKind::KeywordNew)) {
                     // Parse the NEW expression
                     auto newExpr = parseNewExpression();
                     // Extract class name from NewExpr
-                    if (auto *ne = as<NewExpr>(*newExpr))
-                    {
+                    if (auto *ne = as<NewExpr>(*newExpr)) {
                         // Set the explicit class name from the NEW expression
-                        if (!ne->qualifiedType.empty())
-                        {
+                        if (!ne->qualifiedType.empty()) {
                             node->explicitClassQname = ne->qualifiedType;
-                        }
-                        else
-                        {
+                        } else {
                             node->explicitClassQname = {ne->className};
                         }
                     }
@@ -279,41 +239,32 @@ StmtPtr Parser::parseDimStatement()
                     list->stmts.push_back(std::move(node));
                     list->stmts.push_back(std::move(assignStmt));
                     return list;
-                }
-                else if (at(TokenKind::Identifier))
-                {
+                } else if (at(TokenKind::Identifier)) {
                     std::string first = peek().lexeme;
                     std::string upper = string_utils::to_upper(first);
                     if (upper == "INTEGER" || upper == "INT" || upper == "LONG" ||
                         upper == "DOUBLE" || upper == "FLOAT" || upper == "SINGLE" ||
-                        upper == "STRING" || upper == "BOOLEAN")
-                    {
+                        upper == "STRING" || upper == "BOOLEAN") {
                         node->type = parseTypeKeyword();
-                    }
-                    else
-                    {
+                    } else {
                         std::vector<std::string> segs;
                         segs.push_back(CanonicalizeIdent(first));
                         consume();
-                        while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier)
-                        {
+                        while (at(TokenKind::Dot) && peek(1).kind == TokenKind::Identifier) {
                             consume();
                             segs.push_back(CanonicalizeIdent(peek().lexeme));
                             consume();
                         }
                         node->explicitClassQname = std::move(segs);
                     }
-                }
-                else
-                {
+                } else {
                     node->type = parseTypeKeyword();
                 }
             }
         }
 
         // Check for optional initializer: DIM name = value
-        if (at(TokenKind::Equal))
-        {
+        if (at(TokenKind::Equal)) {
             consume(); // '='
             auto initExpr = parseExpression();
 
@@ -344,13 +295,11 @@ StmtPtr Parser::parseDimStatement()
     auto first = parseOne();
 
     // If there are comma-separated continuations, gather them into a StmtList.
-    if (at(TokenKind::Comma))
-    {
+    if (at(TokenKind::Comma)) {
         auto list = std::make_unique<StmtList>();
         list->loc = loc;
         list->stmts.push_back(std::move(first));
-        while (at(TokenKind::Comma))
-        {
+        while (at(TokenKind::Comma)) {
             consume(); // ','
             list->stmts.push_back(parseOne());
         }
@@ -364,8 +313,7 @@ StmtPtr Parser::parseDimStatement()
 /// @details Declares a persistent procedure-local variable with module-level storage.
 ///          Supports: STATIC name [AS type]
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseStaticStatement()
-{
+StmtPtr Parser::parseStaticStatement() {
     auto loc = peek().loc;
     consume(); // STATIC
 
@@ -376,8 +324,7 @@ StmtPtr Parser::parseStaticStatement()
     node->name = nameTok.lexeme;
     node->type = typeFromSuffix(nameTok.lexeme);
 
-    if (at(TokenKind::KeywordAs))
-    {
+    if (at(TokenKind::KeywordAs)) {
         consume();
         node->type = parseTypeKeyword();
     }
@@ -389,8 +336,7 @@ StmtPtr Parser::parseStaticStatement()
 /// @details Declares that one or more names refer to module-level variables.
 ///          Syntax: SHARED name (, name)*
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseSharedStatement()
-{
+StmtPtr Parser::parseSharedStatement() {
     auto loc = peek().loc;
     consume(); // SHARED
 
@@ -399,8 +345,7 @@ StmtPtr Parser::parseSharedStatement()
     // At least one identifier
     Token nameTok = expect(TokenKind::Identifier);
     node->names.push_back(nameTok.lexeme);
-    while (at(TokenKind::Comma))
-    {
+    while (at(TokenKind::Comma)) {
         consume();
         Token more = expect(TokenKind::Identifier);
         node->names.push_back(more.lexeme);
@@ -412,8 +357,7 @@ StmtPtr Parser::parseSharedStatement()
 /// @details Re-sizes an existing array and records the declaration in the parser's
 ///          array set so later passes know the symbol represents an array.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseReDimStatement()
-{
+StmtPtr Parser::parseReDimStatement() {
     auto loc = peek().loc;
     consume(); // REDIM
     // Optionally consume PRESERVE keyword (REDIM already preserves by default)
@@ -437,8 +381,7 @@ StmtPtr Parser::parseReDimStatement()
 ///          keyword, parses the first lvalue, expects a comma separator, and
 ///          then parses the second lvalue.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseSwapStatement()
-{
+StmtPtr Parser::parseSwapStatement() {
     auto loc = peek().loc;
     consume(); // SWAP
     auto lhs = parseLetTarget();
@@ -455,8 +398,7 @@ StmtPtr Parser::parseSwapStatement()
 /// @details Constructs a @ref RandomizeStmt capturing the optional seed
 ///          expression, enabling deterministic seeding when present.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseRandomizeStatement()
-{
+StmtPtr Parser::parseRandomizeStatement() {
     auto loc = peek().loc;
     consume(); // RANDOMIZE
     auto stmt = std::make_unique<RandomizeStmt>();
@@ -469,8 +411,7 @@ StmtPtr Parser::parseRandomizeStatement()
 /// @details Consumes the @c BEEP keyword and emits a @ref BeepStmt node that
 ///          produces a beep/bell sound when executed.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseBeepStatement()
-{
+StmtPtr Parser::parseBeepStatement() {
     auto loc = consume().loc; // BEEP
     auto stmt = std::make_unique<BeepStmt>();
     stmt->loc = loc;
@@ -481,8 +422,7 @@ StmtPtr Parser::parseBeepStatement()
 /// @details Consumes the @c CLS keyword and emits a @ref ClsStmt node that clears
 ///          the terminal when executed.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseClsStatement()
-{
+StmtPtr Parser::parseClsStatement() {
     auto loc = consume().loc; // CLS
     auto stmt = std::make_unique<ClsStmt>();
     stmt->loc = loc;
@@ -493,14 +433,12 @@ StmtPtr Parser::parseClsStatement()
 /// @details Recognises the required foreground expression and optional
 ///          background expression separated by a comma.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseColorStatement()
-{
+StmtPtr Parser::parseColorStatement() {
     auto loc = consume().loc; // COLOR
     auto stmt = std::make_unique<ColorStmt>();
     stmt->loc = loc;
     stmt->fg = parseExpression();
-    if (at(TokenKind::Comma))
-    {
+    if (at(TokenKind::Comma)) {
         consume();
         stmt->bg = parseExpression();
     }
@@ -511,14 +449,12 @@ StmtPtr Parser::parseColorStatement()
 /// @details Parses the required row expression and optional column expression,
 ///          allowing BASIC programs to reposition the terminal cursor.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseLocateStatement()
-{
+StmtPtr Parser::parseLocateStatement() {
     auto loc = consume().loc; // LOCATE
     auto stmt = std::make_unique<LocateStmt>();
     stmt->loc = loc;
     stmt->row = parseExpression();
-    if (at(TokenKind::Comma))
-    {
+    if (at(TokenKind::Comma)) {
         consume();
         stmt->col = parseExpression();
     }
@@ -528,19 +464,15 @@ StmtPtr Parser::parseLocateStatement()
 /// @brief Parse a @c CURSOR statement.
 /// @details Recognises @c CURSOR ON or @c CURSOR OFF to control cursor visibility.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseCursorStatement()
-{
+StmtPtr Parser::parseCursorStatement() {
     auto loc = consume().loc; // CURSOR
     auto stmt = std::make_unique<CursorStmt>();
     stmt->loc = loc;
 
-    if (at(TokenKind::KeywordOn))
-    {
+    if (at(TokenKind::KeywordOn)) {
         consume(); // ON
         stmt->visible = true;
-    }
-    else
-    {
+    } else {
         expect(TokenKind::KeywordOff); // OFF
         stmt->visible = false;
     }
@@ -551,19 +483,15 @@ StmtPtr Parser::parseCursorStatement()
 /// @brief Parse an @c ALTSCREEN statement.
 /// @details Recognises @c ALTSCREEN ON or @c ALTSCREEN OFF to control alternate screen buffer.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseAltScreenStatement()
-{
+StmtPtr Parser::parseAltScreenStatement() {
     auto loc = consume().loc; // ALTSCREEN
     auto stmt = std::make_unique<AltScreenStmt>();
     stmt->loc = loc;
 
-    if (at(TokenKind::KeywordOn))
-    {
+    if (at(TokenKind::KeywordOn)) {
         consume(); // ON
         stmt->enable = true;
-    }
-    else
-    {
+    } else {
         expect(TokenKind::KeywordOff); // OFF
         stmt->enable = false;
     }
@@ -575,8 +503,7 @@ StmtPtr Parser::parseAltScreenStatement()
 /// @details Parses the required millisecond duration expression and constructs
 ///          a @ref SleepStmt capturing the operand.
 /// @return Newly constructed statement node.
-StmtPtr Parser::parseSleepStatement()
-{
+StmtPtr Parser::parseSleepStatement() {
     auto loc = consume().loc; // SLEEP
     auto stmt = std::make_unique<SleepStmt>();
     stmt->loc = loc;

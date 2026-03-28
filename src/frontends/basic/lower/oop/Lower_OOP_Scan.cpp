@@ -30,10 +30,8 @@
 #include <utility>
 #include <vector>
 
-namespace il::frontends::basic
-{
-namespace
-{
+namespace il::frontends::basic {
+namespace {
 constexpr std::size_t kFieldAlignment = 8;
 constexpr std::size_t kPointerSize = sizeof(void *);
 
@@ -44,8 +42,7 @@ constexpr std::size_t kPointerSize = sizeof(void *);
 /// @param value Offset being aligned.
 /// @param alignment Power-of-two alignment requirement.
 /// @return The smallest multiple of @p alignment greater than or equal to @p value.
-[[nodiscard]] std::size_t alignTo(std::size_t value, std::size_t alignment) noexcept
-{
+[[nodiscard]] std::size_t alignTo(std::size_t value, std::size_t alignment) noexcept {
     const std::size_t mask = alignment - 1;
     return (value + mask) & ~mask;
 }
@@ -59,13 +56,11 @@ constexpr std::size_t kPointerSize = sizeof(void *);
 /// @param fields Sequence of field metadata describing the class.
 /// @return Fully populated @ref Lowerer::ClassLayout.
 template <typename FieldRange>
-[[nodiscard]] Lowerer::ClassLayout buildLayout(const FieldRange &fields)
-{
+[[nodiscard]] Lowerer::ClassLayout buildLayout(const FieldRange &fields) {
     Lowerer::ClassLayout layout;
     // Reserve header for vptr at offset 0; fields start after pointer-sized header.
     std::size_t offset = kPointerSize;
-    for (const auto &field : fields)
-    {
+    for (const auto &field : fields) {
         offset = alignTo(offset, kFieldAlignment);
         Lowerer::ClassLayout::Field info{};
         info.name = field.name;
@@ -85,32 +80,26 @@ template <typename FieldRange>
 ///          and OOP expressions.  As it walks the program it constructs
 ///          @ref Lowerer::ClassLayout instances and records runtime dependencies
 ///          so the lowering phase can react accordingly.
-class OopScanWalker final : public BasicAstWalker<OopScanWalker>
-{
+class OopScanWalker final : public BasicAstWalker<OopScanWalker> {
   public:
     /// @brief Create a walker bound to the lowering state being populated.
     /// @param lowerer Lowerer state that accumulates layout and runtime data.
     /// @param oopIndex OOP index containing class hierarchy metadata.
     explicit OopScanWalker(Lowerer &lowerer, const OopIndex &oopIndex) noexcept
-        : lowerer_(lowerer), oopIndex_(oopIndex)
-    {
-    }
+        : lowerer_(lowerer), oopIndex_(oopIndex) {}
 
     /// @brief Traverse a BASIC program to collect OOP metadata.
     /// @details Visits both procedure declarations and main statements so class
     ///          declarations are discovered regardless of placement.  The walker
     ///          delegates to @ref after callbacks to record the actual data.
     /// @param prog Parsed BASIC program.
-    void evaluateProgram(const Program &prog)
-    {
-        for (const auto &decl : prog.procs)
-        {
+    void evaluateProgram(const Program &prog) {
+        for (const auto &decl : prog.procs) {
             if (!decl)
                 continue;
             decl->accept(*this);
         }
-        for (const auto &stmt : prog.main)
-        {
+        for (const auto &stmt : prog.main) {
             if (!stmt)
                 continue;
             stmt->accept(*this);
@@ -123,8 +112,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
     ///          later transfer to the lowering state. If the class has a base
     ///          class, inherited fields are included before the derived fields.
     /// @param decl Class declaration encountered during traversal.
-    void after(const ClassDecl &decl)
-    {
+    void after(const ClassDecl &decl) {
         // BUG-056: Arrays as class fields occupy pointer-sized storage.
         // Build layout manually so we can account for Field.isArray when
         // computing offsets and sizes. TypeDecl fields do not support arrays
@@ -138,13 +126,11 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
         std::vector<const ClassInfo::FieldInfo *> inheritedFields;
         // Note: decl.qualifiedName is often empty; use decl.name directly to look up in OopIndex
         // The OopIndex key is built the same way: just the class name when there's no namespace.
-        if (const ClassInfo *cinfo = oopIndex_.findClass(decl.name))
-        {
+        if (const ClassInfo *cinfo = oopIndex_.findClass(decl.name)) {
             // Walk base class chain and collect fields in reverse order (so we add them correctly)
             std::vector<const ClassInfo *> bases;
             const ClassInfo *cur = cinfo;
-            while (!cur->baseQualified.empty())
-            {
+            while (!cur->baseQualified.empty()) {
                 const ClassInfo *baseInfo = oopIndex_.findClass(cur->baseQualified);
                 if (!baseInfo)
                     break;
@@ -152,18 +138,15 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
                 cur = baseInfo;
             }
             // Process bases from most ancestral to most derived (so offsets are correct)
-            for (auto it = bases.rbegin(); it != bases.rend(); ++it)
-            {
-                for (const auto &field : (*it)->fields)
-                {
+            for (auto it = bases.rbegin(); it != bases.rend(); ++it) {
+                for (const auto &field : (*it)->fields) {
                     inheritedFields.push_back(&field);
                 }
             }
         }
 
         // Add inherited fields first
-        for (const auto *field : inheritedFields)
-        {
+        for (const auto *field : inheritedFields) {
             offset = alignTo(offset, kFieldAlignment);
             Lowerer::ClassLayout::Field info{};
             info.name = field->name;
@@ -179,8 +162,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
         }
 
         // Add this class's own fields
-        for (const auto &field : decl.fields)
-        {
+        for (const auto &field : decl.fields) {
             offset = alignTo(offset, kFieldAlignment);
             Lowerer::ClassLayout::Field info{};
             info.name = field.name;
@@ -208,8 +190,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
     /// @details Treats @ref TypeDecl uniformly with @ref ClassDecl so user-defined
     ///          type declarations participate in object layout computation.
     /// @param decl Type declaration encountered during traversal.
-    void after(const TypeDecl &decl)
-    {
+    void after(const TypeDecl &decl) {
         auto layout = buildLayout(decl.fields);
         layout.classId = nextClassId_++;
         layouts.emplace_back(decl.name, std::move(layout));
@@ -220,8 +201,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
     ///          expression is observed so the generated program links the
     ///          corresponding runtime helper.
     /// @param unused Ignored expression instance.
-    void after(const NewExpr &)
-    {
+    void after(const NewExpr &) {
         lowerer_.requestRuntimeFeature(il::runtime::RuntimeFeature::ObjNew);
     }
 
@@ -230,8 +210,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
     ///          linked when the program invokes methods that may manipulate
     ///          object lifetimes.
     /// @param unused Ignored expression instance.
-    void after(const MethodCallExpr &)
-    {
+    void after(const MethodCallExpr &) {
         using Feature = il::runtime::RuntimeFeature;
         lowerer_.requestRuntimeFeature(Feature::ObjRetainMaybe);
         lowerer_.requestRuntimeFeature(Feature::ObjReleaseChk0);
@@ -241,8 +220,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
     /// @details Member access can require retaining the receiver object; the
     ///          walker therefore requests the optional retain helper.
     /// @param unused Ignored expression instance.
-    void after(const MemberAccessExpr &)
-    {
+    void after(const MemberAccessExpr &) {
         lowerer_.requestRuntimeFeature(il::runtime::RuntimeFeature::ObjRetainMaybe);
     }
 
@@ -250,8 +228,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
     /// @details Requests the object free helper so generated programs can
     ///          dispose of dynamically allocated instances.
     /// @param unused Ignored statement instance.
-    void after(const DeleteStmt &)
-    {
+    void after(const DeleteStmt &) {
         lowerer_.requestRuntimeFeature(il::runtime::RuntimeFeature::ObjFree);
     }
 
@@ -270,8 +247,7 @@ class OopScanWalker final : public BasicAstWalker<OopScanWalker>
 ///          gathered layouts into the @ref Lowerer state.  The method forms the
 ///          bridge between parsing and IL lowering for OOP constructs.
 /// @param prog Program to inspect for class and runtime requirements.
-void Lowerer::scanOOP(const Program &prog)
-{
+void Lowerer::scanOOP(const Program &prog) {
     classLayouts_.clear();
     oopIndex_.clear();
 
@@ -280,8 +256,7 @@ void Lowerer::scanOOP(const Program &prog)
     OopScanWalker walker(*this, oopIndex_);
     walker.evaluateProgram(prog);
 
-    for (auto &entry : walker.layouts)
-    {
+    for (auto &entry : walker.layouts) {
         classLayouts_.emplace(std::move(entry.first), std::move(entry.second));
     }
 }

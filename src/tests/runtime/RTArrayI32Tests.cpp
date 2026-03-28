@@ -25,62 +25,52 @@
 #include <cstdlib>
 #include <string>
 
-static void expect_zero_range(int32_t *arr, size_t start, size_t end)
-{
+static void expect_zero_range(int32_t *arr, size_t start, size_t end) {
     for (size_t i = start; i < end; ++i)
         assert(rt_arr_i32_get(arr, i) == 0);
 }
 
-static void resize_or_abort(int32_t **arr, size_t new_len)
-{
-    if (rt_arr_i32_resize(arr, new_len) != 0)
-    {
+static void resize_or_abort(int32_t **arr, size_t new_len) {
+    if (rt_arr_i32_resize(arr, new_len) != 0) {
         std::fprintf(stderr, "rt_arr_i32_resize failed for len=%zu\n", new_len);
         std::abort();
     }
 }
 
-static void invoke_oob_get()
-{
+static void invoke_oob_get() {
     int32_t *panic_arr = rt_arr_i32_new(1);
     assert(panic_arr != nullptr);
     rt_arr_i32_get(panic_arr, 1);
 }
 
-static void invoke_oob_set()
-{
+static void invoke_oob_set() {
     int32_t *panic_arr = rt_arr_i32_new(1);
     assert(panic_arr != nullptr);
     rt_arr_i32_set(panic_arr, 1, 42);
 }
 
-static void invoke_copy_null_src()
-{
+static void invoke_copy_null_src() {
     int32_t *panic_dst = rt_arr_i32_new(1);
     assert(panic_dst != nullptr);
     rt_arr_i32_copy_payload(panic_dst, NULL, 1);
 }
 
-static void invoke_copy_null_dst()
-{
+static void invoke_copy_null_dst() {
     int32_t *panic_src = rt_arr_i32_new(1);
     assert(panic_src != nullptr);
     panic_src[0] = 99;
     rt_arr_i32_copy_payload(NULL, panic_src, 1);
 }
 
-static void expect_oob_message(const std::string &stderr_output)
-{
+static void expect_oob_message(const std::string &stderr_output) {
     bool saw_panic = stderr_output.find("rt_arr_i32: index") != std::string::npos;
-    if (!saw_panic)
-    {
+    if (!saw_panic) {
         std::fprintf(stderr, "expected panic message, got: %s\n", stderr_output.c_str());
         std::abort();
     }
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

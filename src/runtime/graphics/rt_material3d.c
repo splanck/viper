@@ -33,11 +33,9 @@
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_trap(const char *msg);
 
-void *rt_material3d_new(void)
-{
+void *rt_material3d_new(void) {
     rt_material3d *mat = (rt_material3d *)rt_obj_new_i64(0, (int64_t)sizeof(rt_material3d));
-    if (!mat)
-    {
+    if (!mat) {
         rt_trap("Material3D.New: memory allocation failed");
         return NULL;
     }
@@ -60,8 +58,7 @@ void *rt_material3d_new(void)
     return mat;
 }
 
-void *rt_material3d_new_color(double r, double g, double b)
-{
+void *rt_material3d_new_color(double r, double g, double b) {
     rt_material3d *mat = (rt_material3d *)rt_material3d_new();
     if (!mat)
         return NULL;
@@ -72,8 +69,7 @@ void *rt_material3d_new_color(double r, double g, double b)
     return mat;
 }
 
-void *rt_material3d_new_textured(void *pixels)
-{
+void *rt_material3d_new_textured(void *pixels) {
     rt_material3d *mat = (rt_material3d *)rt_material3d_new();
     if (!mat)
         return NULL;
@@ -86,8 +82,7 @@ void *rt_material3d_new_textured(void *pixels)
 /// @param r
 /// @param g
 /// @param b
-void rt_material3d_set_color(void *obj, double r, double g, double b)
-{
+void rt_material3d_set_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;
     rt_material3d *mat = (rt_material3d *)obj;
@@ -99,8 +94,7 @@ void rt_material3d_set_color(void *obj, double r, double g, double b)
 /// @brief Perform material3d set texture operation.
 /// @param obj
 /// @param pixels
-void rt_material3d_set_texture(void *obj, void *pixels)
-{
+void rt_material3d_set_texture(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->texture = pixels;
@@ -109,8 +103,7 @@ void rt_material3d_set_texture(void *obj, void *pixels)
 /// @brief Perform material3d set shininess operation.
 /// @param obj
 /// @param s
-void rt_material3d_set_shininess(void *obj, double s)
-{
+void rt_material3d_set_shininess(void *obj, double s) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->shininess = s;
@@ -119,8 +112,7 @@ void rt_material3d_set_shininess(void *obj, double s)
 /// @brief Perform material3d set unlit operation.
 /// @param obj
 /// @param unlit
-void rt_material3d_set_unlit(void *obj, int8_t unlit)
-{
+void rt_material3d_set_unlit(void *obj, int8_t unlit) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->unlit = unlit;
@@ -129,8 +121,7 @@ void rt_material3d_set_unlit(void *obj, int8_t unlit)
 /// @brief Perform material3d set alpha operation.
 /// @param obj
 /// @param alpha
-void rt_material3d_set_alpha(void *obj, double alpha)
-{
+void rt_material3d_set_alpha(void *obj, double alpha) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->alpha = alpha;
@@ -139,8 +130,7 @@ void rt_material3d_set_alpha(void *obj, double alpha)
 /// @brief Perform material3d get alpha operation.
 /// @param obj
 /// @return Result value.
-double rt_material3d_get_alpha(void *obj)
-{
+double rt_material3d_get_alpha(void *obj) {
     if (!obj)
         return 1.0;
     return ((rt_material3d *)obj)->alpha;
@@ -149,8 +139,7 @@ double rt_material3d_get_alpha(void *obj)
 /// @brief Perform material3d set normal map operation.
 /// @param obj
 /// @param pixels
-void rt_material3d_set_normal_map(void *obj, void *pixels)
-{
+void rt_material3d_set_normal_map(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->normal_map = pixels;
@@ -159,8 +148,7 @@ void rt_material3d_set_normal_map(void *obj, void *pixels)
 /// @brief Perform material3d set specular map operation.
 /// @param obj
 /// @param pixels
-void rt_material3d_set_specular_map(void *obj, void *pixels)
-{
+void rt_material3d_set_specular_map(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->specular_map = pixels;
@@ -169,8 +157,7 @@ void rt_material3d_set_specular_map(void *obj, void *pixels)
 /// @brief Perform material3d set emissive map operation.
 /// @param obj
 /// @param pixels
-void rt_material3d_set_emissive_map(void *obj, void *pixels)
-{
+void rt_material3d_set_emissive_map(void *obj, void *pixels) {
     if (!obj)
         return;
     ((rt_material3d *)obj)->emissive_map = pixels;
@@ -181,8 +168,7 @@ void rt_material3d_set_emissive_map(void *obj, void *pixels)
 /// @param r
 /// @param g
 /// @param b
-void rt_material3d_set_emissive_color(void *obj, double r, double g, double b)
-{
+void rt_material3d_set_emissive_color(void *obj, double r, double g, double b) {
     if (!obj)
         return;
     rt_material3d *m = (rt_material3d *)obj;

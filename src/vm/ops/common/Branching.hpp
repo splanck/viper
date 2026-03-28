@@ -24,18 +24,15 @@
 #include <cstdint>
 #include <span>
 
-namespace il::vm::ops::common
-{
+namespace il::vm::ops::common {
 
 /// @brief Scalar value used when selecting switch cases.
-struct Scalar
-{
+struct Scalar {
     int32_t value = 0; ///< Signed scalar payload.
 };
 
 /// @brief Describes a concrete branch destination.
-struct Target
-{
+struct Target {
     VM *vm = nullptr;                       ///< Owning VM required for evaluation.
     const il::core::Instr *instr = nullptr; ///< Source instruction providing metadata.
     size_t labelIndex = 0;                  ///< Index into @ref il::core::Instr::labels.
@@ -44,24 +41,21 @@ struct Target
     size_t *ip = nullptr; ///< Instruction pointer within current block.
 
     /// @brief Determine whether the target refers to a valid jump destination.
-    bool valid() const noexcept
-    {
+    bool valid() const noexcept {
         return vm != nullptr && instr != nullptr && blocks != nullptr && currentBlock != nullptr &&
                ip != nullptr && labelIndex < instr->labels.size();
     }
 };
 
 /// @brief Entry in a switch case table mapping ranges or exact values to targets.
-struct Case
-{
+struct Case {
     Scalar lower{};       ///< Lower bound of the case (inclusive).
     Scalar upper{};       ///< Upper bound when representing a range (inclusive).
     bool isRange = false; ///< Whether the case represents a range rather than a single value.
     Target target{};      ///< Branch destination associated with the case.
 
     /// @brief Construct an exact-match case entry.
-    static Case exact(Scalar value, Target target) noexcept
-    {
+    static Case exact(Scalar value, Target target) noexcept {
         Case entry{};
         entry.lower = value;
         entry.upper = value;
@@ -71,8 +65,7 @@ struct Case
     }
 
     /// @brief Construct an inclusive range case entry.
-    static Case range(Scalar lo, Scalar hi, Target target) noexcept
-    {
+    static Case range(Scalar lo, Scalar hi, Target target) noexcept {
         Case entry{};
         entry.lower = lo;
         entry.upper = hi;

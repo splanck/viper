@@ -21,11 +21,9 @@
 #include <string>
 #include <vector>
 
-namespace
-{
+namespace {
 
-int invokeWithFlag(const std::string &flag, const std::string &spec, std::string &stderrText)
-{
+int invokeWithFlag(const std::string &flag, const std::string &spec, std::string &stderrText) {
     std::string fileArg = "placeholder.il";
     std::vector<std::string> argStorage = {fileArg, flag, spec};
     std::vector<char *> argv = {argStorage[0].data(), argStorage[1].data(), argStorage[2].data()};
@@ -44,13 +42,11 @@ int invokeWithFlag(const std::string &flag, const std::string &spec, std::string
 
 static bool gUsageCalled = false;
 
-void usage()
-{
+void usage() {
     gUsageCalled = true;
 }
 
-int main()
-{
+int main() {
     std::string err;
 
     gUsageCalled = false;

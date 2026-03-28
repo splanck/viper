@@ -32,13 +32,11 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 struct Extern;
 }
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Function pointer signature used by instruction iterators.
 using VerifyInstrFn =

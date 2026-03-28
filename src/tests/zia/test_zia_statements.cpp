@@ -18,16 +18,14 @@
 using namespace il::frontends::zia;
 using namespace il::support;
 
-namespace
-{
+namespace {
 
 //===----------------------------------------------------------------------===//
 // Variable Declarations
 //===----------------------------------------------------------------------===//
 
 /// @brief Test var with type inference.
-TEST(ZiaStatements, VarInference)
-{
+TEST(ZiaStatements, VarInference) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -53,8 +51,7 @@ func start() {
 }
 
 /// @brief Test var with explicit type.
-TEST(ZiaStatements, VarExplicitType)
-{
+TEST(ZiaStatements, VarExplicitType) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -80,8 +77,7 @@ func start() {
 }
 
 /// @brief Test final (immutable) variable.
-TEST(ZiaStatements, FinalVariable)
-{
+TEST(ZiaStatements, FinalVariable) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -109,8 +105,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test basic if statement.
-TEST(ZiaStatements, IfBasic)
-{
+TEST(ZiaStatements, IfBasic) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -132,8 +127,7 @@ func start() {
 }
 
 /// @brief Test if-else statement.
-TEST(ZiaStatements, IfElse)
-{
+TEST(ZiaStatements, IfElse) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -157,8 +151,7 @@ func start() {
 }
 
 /// @brief Test nested if statements.
-TEST(ZiaStatements, IfNested)
-{
+TEST(ZiaStatements, IfNested) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -194,8 +187,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test basic while loop.
-TEST(ZiaStatements, WhileBasic)
-{
+TEST(ZiaStatements, WhileBasic) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -217,8 +209,7 @@ func start() {
 }
 
 /// @brief Test while with break.
-TEST(ZiaStatements, WhileBreak)
-{
+TEST(ZiaStatements, WhileBreak) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -244,8 +235,7 @@ func start() {
 }
 
 /// @brief Test while with continue.
-TEST(ZiaStatements, WhileContinue)
-{
+TEST(ZiaStatements, WhileContinue) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -274,8 +264,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test for-in loop with list.
-TEST(ZiaStatements, ForInList)
-{
+TEST(ZiaStatements, ForInList) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -296,8 +285,7 @@ func start() {
 }
 
 /// @brief Test for-in loop with range.
-TEST(ZiaStatements, ForInRange)
-{
+TEST(ZiaStatements, ForInRange) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -317,8 +305,7 @@ func start() {
 }
 
 /// @brief Test C-style for loop.
-TEST(ZiaStatements, ForCStyle)
-{
+TEST(ZiaStatements, ForCStyle) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -338,8 +325,7 @@ func start() {
 }
 
 /// @brief Test for with break.
-TEST(ZiaStatements, ForBreak)
-{
+TEST(ZiaStatements, ForBreak) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -367,8 +353,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test guard statement.
-TEST(ZiaStatements, Guard)
-{
+TEST(ZiaStatements, Guard) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -395,8 +380,7 @@ func start() {
 }
 
 /// @brief Test guard in loop.
-TEST(ZiaStatements, GuardInLoop)
-{
+TEST(ZiaStatements, GuardInLoop) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -424,8 +408,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test block scoping.
-TEST(ZiaStatements, BlockScoping)
-{
+TEST(ZiaStatements, BlockScoping) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -452,8 +435,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test return with value.
-TEST(ZiaStatements, ReturnValue)
-{
+TEST(ZiaStatements, ReturnValue) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -475,8 +457,7 @@ func start() {
 }
 
 /// @brief Test return without value (void).
-TEST(ZiaStatements, ReturnVoid)
-{
+TEST(ZiaStatements, ReturnVoid) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -507,8 +488,7 @@ func start() {
 //===----------------------------------------------------------------------===//
 
 /// @brief Test nested loops with break/continue.
-TEST(ZiaStatements, NestedLoops)
-{
+TEST(ZiaStatements, NestedLoops) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -533,8 +513,7 @@ func start() {
 }
 
 /// @brief Test complex condition chains.
-TEST(ZiaStatements, ComplexConditions)
-{
+TEST(ZiaStatements, ComplexConditions) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -572,8 +551,7 @@ func start() {
 }
 
 /// @brief Test 'match' keyword used as a variable name (contextual keyword).
-TEST(ZiaStatements, MatchAsVariableName)
-{
+TEST(ZiaStatements, MatchAsVariableName) {
     SourceManager sm;
     const std::string source = R"(
 module Test;
@@ -612,7 +590,6 @@ func start() {
 
 } // namespace
 
-int main()
-{
+int main() {
     return viper_test::run_all_tests();
 }

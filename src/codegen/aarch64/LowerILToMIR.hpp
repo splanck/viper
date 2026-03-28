@@ -23,8 +23,7 @@
 #include "codegen/aarch64/TargetAArch64.hpp"
 #include "il/core/Function.hpp"
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
 /// @brief Lowers IL functions to AArch64 Machine IR (MIR).
 ///
@@ -35,8 +34,7 @@ namespace viper::codegen::aarch64
 ///            state is cleared at the start of each lowerFunction() call.
 /// @invariant The TargetInfo reference must remain valid for the lifetime of
 ///            this object.
-class LowerILToMIR
-{
+class LowerILToMIR {
   public:
     explicit LowerILToMIR(const TargetInfo &ti) noexcept : ti_(&ti) {}
 

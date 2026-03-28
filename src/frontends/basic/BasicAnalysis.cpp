@@ -24,25 +24,21 @@
 #include "frontends/basic/Parser.hpp"
 #include "frontends/basic/passes/CollectProcs.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 std::unique_ptr<BasicAnalysisResult> parseAndAnalyzeBasic(const BasicCompilerInput &input,
-                                                          il::support::SourceManager &sm)
-{
+                                                          il::support::SourceManager &sm) {
     auto result = std::make_unique<BasicAnalysisResult>();
     result->emitter = std::make_unique<DiagnosticEmitter>(result->diagnostics, sm);
 
     uint32_t fileId = input.fileId.value_or(0);
-    if (fileId == 0)
-    {
+    if (fileId == 0) {
         std::string path = input.path.empty() ? std::string{"<input>"} : std::string{input.path};
         fileId = sm.addFile(std::move(path));
     }
     result->fileId = fileId;
 
-    if (fileId == 0)
-    {
+    if (fileId == 0) {
         result->emitter->emit(il::support::Severity::Error,
                               "B0005",
                               {},

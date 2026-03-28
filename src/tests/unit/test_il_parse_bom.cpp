@@ -20,8 +20,7 @@
 #include <cassert>
 #include <sstream>
 
-int main()
-{
+int main() {
     {
         const char src[] = "\xEF\xBB\xBFil 0.2.0\n"
                            "func @main() -> i64 {\n"
@@ -32,8 +31,7 @@ int main()
         il::core::Module m;
         std::ostringstream diag;
         auto pe = il::api::v2::parse_text_expected(in, m);
-        if (!pe)
-        {
+        if (!pe) {
             il::support::printDiag(pe.error(), diag);
         }
         assert(pe);
@@ -52,8 +50,7 @@ int main()
         il::core::Module m;
         std::ostringstream diag;
         auto pe = il::api::v2::parse_text_expected(in, m);
-        if (!pe)
-        {
+        if (!pe) {
             il::support::printDiag(pe.error(), diag);
         }
         assert(pe);

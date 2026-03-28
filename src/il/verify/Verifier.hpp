@@ -37,17 +37,14 @@
 
 #include "support/diag_expected.hpp"
 
-namespace il::core
-{
+namespace il::core {
 struct Module;
 }
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Verifies structural and type rules for a module.
-class Verifier
-{
+class Verifier {
   public:
     /// @brief Verify module @p m against the IL specification.
     /// @param m Module to verify.

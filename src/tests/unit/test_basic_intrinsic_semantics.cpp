@@ -24,8 +24,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     // Ill-typed call: first argument must be string.
     {
         std::string src = "10 PRINT LEFT$(42,3)\n20 END\n";

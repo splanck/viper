@@ -25,8 +25,7 @@
 #error "PARSE_ERROR_DIR must be defined"
 #endif
 
-int main()
-{
+int main() {
     const char *path = PARSE_ERROR_DIR "/duplicate_version.il";
     std::ifstream input(path);
     std::stringstream buffer;

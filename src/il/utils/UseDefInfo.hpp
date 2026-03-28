@@ -21,15 +21,13 @@
 #include <unordered_map>
 #include <vector>
 
-namespace il::core
-{
+namespace il::core {
 struct Function;
 struct BasicBlock;
 struct Instr;
 } // namespace il::core
 
-namespace viper::il
-{
+namespace viper::il {
 
 /// @brief Tracks use locations for SSA temporaries to enable O(1) replacement.
 /// @details Instead of scanning all instructions to replace uses of a temporary,
@@ -45,8 +43,7 @@ namespace viper::il
 /// @warning The use-def info becomes stale if instructions are added, removed,
 ///          or have their operands modified through other means. Rebuild after
 ///          such modifications.
-class UseDefInfo
-{
+class UseDefInfo {
   public:
     /// @brief Construct use-def chains for all temporaries in function @p F.
     /// @param F Function to analyze.

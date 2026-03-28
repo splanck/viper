@@ -29,8 +29,7 @@
 #include <thread>
 #include <vector>
 
-extern "C"
-{
+extern "C" {
 #include "rt_context.h"
 #include "rt_gc.h"
 #include "rt_internal.h"
@@ -40,19 +39,17 @@ extern "C"
 #include "rt_string.h"
 #include "rt_string_intern.h"
 
-    void vm_trap(const char *msg)
-    {
-        fprintf(stderr, "TRAP: %s\n", msg);
-        rt_abort(msg);
-    }
+void vm_trap(const char *msg) {
+    fprintf(stderr, "TRAP: %s\n", msg);
+    rt_abort(msg);
+}
 }
 
 //=============================================================================
 // CONC-001: GC lock init race — concurrent first use from multiple threads
 //=============================================================================
 
-static void test_gc_concurrent_first_use()
-{
+static void test_gc_concurrent_first_use() {
     printf("  test_gc_concurrent_first_use...");
 
     // Shut down GC to reset lock state, then hammer it from multiple threads.
@@ -62,22 +59,18 @@ static void test_gc_concurrent_first_use()
     std::atomic<bool> go{false};
     std::vector<std::thread> threads;
 
-    for (int i = 0; i < kThreads; i++)
-    {
-        threads.emplace_back(
-            [&go]()
-            {
-                while (!go.load(std::memory_order_acquire))
-                {
-                    // spin until all threads are ready
-                }
-                // All threads call GC functions simultaneously — first call
-                // must safely initialize the lock without corruption.
-                rt_gc_tracked_count();
-                rt_gc_is_tracked(nullptr);
-                int64_t n = rt_gc_collect();
-                (void)n;
-            });
+    for (int i = 0; i < kThreads; i++) {
+        threads.emplace_back([&go]() {
+            while (!go.load(std::memory_order_acquire)) {
+                // spin until all threads are ready
+            }
+            // All threads call GC functions simultaneously — first call
+            // must safely initialize the lock without corruption.
+            rt_gc_tracked_count();
+            rt_gc_is_tracked(nullptr);
+            int64_t n = rt_gc_collect();
+            (void)n;
+        });
     }
 
     // Release all threads at once
@@ -95,8 +88,7 @@ static void test_gc_concurrent_first_use()
 // CONC-002: String intern lock init race — concurrent first intern
 //=============================================================================
 
-static void test_string_intern_concurrent_first_use()
-{
+static void test_string_intern_concurrent_first_use() {
     printf("  test_string_intern_concurrent_first_use...");
 
     // Drain to reset state
@@ -107,20 +99,16 @@ static void test_string_intern_concurrent_first_use()
     std::vector<std::thread> threads;
     std::vector<rt_string> results(kThreads, nullptr);
 
-    for (int i = 0; i < kThreads; i++)
-    {
-        threads.emplace_back(
-            [&go, &results, i]()
-            {
-                while (!go.load(std::memory_order_acquire))
-                {
-                    // spin
-                }
-                // All threads intern the same string simultaneously
-                rt_string s = rt_string_from_bytes("concurrent_test", 15);
-                results[i] = rt_string_intern(s);
-                rt_string_unref(s);
-            });
+    for (int i = 0; i < kThreads; i++) {
+        threads.emplace_back([&go, &results, i]() {
+            while (!go.load(std::memory_order_acquire)) {
+                // spin
+            }
+            // All threads intern the same string simultaneously
+            rt_string s = rt_string_from_bytes("concurrent_test", 15);
+            results[i] = rt_string_intern(s);
+            rt_string_unref(s);
+        });
     }
 
     go.store(true, std::memory_order_release);
@@ -129,14 +117,12 @@ static void test_string_intern_concurrent_first_use()
         t.join();
 
     // All results should be the same canonical pointer
-    for (int i = 1; i < kThreads; i++)
-    {
+    for (int i = 1; i < kThreads; i++) {
         assert(results[i] == results[0] && "All interned strings must share the same pointer");
     }
 
     // Cleanup
-    for (int i = 0; i < kThreads; i++)
-    {
+    for (int i = 0; i < kThreads; i++) {
         if (results[i])
             rt_string_unref(results[i]);
     }
@@ -154,8 +140,7 @@ static std::atomic<int64_t> g_collect_count{0};
 // We need to count how many times rt_gc_collect is actually triggered.
 // Since we can't easily intercept it, we use rt_gc_pass_count() before and after.
 
-static void test_gc_notify_alloc_no_double_collect()
-{
+static void test_gc_notify_alloc_no_double_collect() {
     printf("  test_gc_notify_alloc_no_double_collect...");
 
     // Set a low threshold so the counter triggers frequently
@@ -168,20 +153,15 @@ static void test_gc_notify_alloc_no_double_collect()
     std::atomic<bool> go{false};
     std::vector<std::thread> threads;
 
-    for (int i = 0; i < kThreads; i++)
-    {
-        threads.emplace_back(
-            [&go]()
-            {
-                while (!go.load(std::memory_order_acquire))
-                {
-                    // spin
-                }
-                for (int j = 0; j < kAllocsPerThread; j++)
-                {
-                    rt_gc_notify_alloc();
-                }
-            });
+    for (int i = 0; i < kThreads; i++) {
+        threads.emplace_back([&go]() {
+            while (!go.load(std::memory_order_acquire)) {
+                // spin
+            }
+            for (int j = 0; j < kAllocsPerThread; j++) {
+                rt_gc_notify_alloc();
+            }
+        });
     }
 
     go.store(true, std::memory_order_release);
@@ -213,8 +193,7 @@ static void test_gc_notify_alloc_no_double_collect()
 // CONC-005: Pool alloc/free — volatile removal correctness
 //=============================================================================
 
-static void test_pool_concurrent_alloc_free()
-{
+static void test_pool_concurrent_alloc_free() {
     printf("  test_pool_concurrent_alloc_free...");
 
     constexpr int kThreads = 8;
@@ -222,29 +201,23 @@ static void test_pool_concurrent_alloc_free()
     std::atomic<bool> go{false};
     std::vector<std::thread> threads;
 
-    for (int i = 0; i < kThreads; i++)
-    {
-        threads.emplace_back(
-            [&go]()
-            {
-                while (!go.load(std::memory_order_acquire))
-                {
-                    // spin
-                }
-                // Allocate and free pool blocks from multiple threads
-                void *ptrs[kOpsPerThread];
-                for (int j = 0; j < kOpsPerThread; j++)
-                {
-                    ptrs[j] = rt_pool_alloc(64);
-                    assert(ptrs[j] != nullptr);
-                    // Write to the block to verify it's valid memory
-                    memset(ptrs[j], 0xAB, 64);
-                }
-                for (int j = 0; j < kOpsPerThread; j++)
-                {
-                    rt_pool_free(ptrs[j], 64);
-                }
-            });
+    for (int i = 0; i < kThreads; i++) {
+        threads.emplace_back([&go]() {
+            while (!go.load(std::memory_order_acquire)) {
+                // spin
+            }
+            // Allocate and free pool blocks from multiple threads
+            void *ptrs[kOpsPerThread];
+            for (int j = 0; j < kOpsPerThread; j++) {
+                ptrs[j] = rt_pool_alloc(64);
+                assert(ptrs[j] != nullptr);
+                // Write to the block to verify it's valid memory
+                memset(ptrs[j], 0xAB, 64);
+            }
+            for (int j = 0; j < kOpsPerThread; j++) {
+                rt_pool_free(ptrs[j], 64);
+            }
+        });
     }
 
     go.store(true, std::memory_order_release);
@@ -265,26 +238,21 @@ static void test_pool_concurrent_alloc_free()
 // CONC-007: Stack safety init — concurrent double-init is safe
 //=============================================================================
 
-static void test_stack_safety_concurrent_init()
-{
+static void test_stack_safety_concurrent_init() {
     printf("  test_stack_safety_concurrent_init...");
 
     constexpr int kThreads = 8;
     std::atomic<bool> go{false};
     std::vector<std::thread> threads;
 
-    for (int i = 0; i < kThreads; i++)
-    {
-        threads.emplace_back(
-            [&go]()
-            {
-                while (!go.load(std::memory_order_acquire))
-                {
-                    // spin
-                }
-                // Multiple threads call init simultaneously — should not crash
-                rt_init_stack_safety();
-            });
+    for (int i = 0; i < kThreads; i++) {
+        threads.emplace_back([&go]() {
+            while (!go.load(std::memory_order_acquire)) {
+                // spin
+            }
+            // Multiple threads call init simultaneously — should not crash
+            rt_init_stack_safety();
+        });
     }
 
     go.store(true, std::memory_order_release);
@@ -299,8 +267,7 @@ static void test_stack_safety_concurrent_init()
 // CONC-010: Context spinlock with yield — concurrent context binding
 //=============================================================================
 
-static void test_context_concurrent_bind_unbind()
-{
+static void test_context_concurrent_bind_unbind() {
     printf("  test_context_concurrent_bind_unbind...");
 
     // Each thread creates its own context, binds it, does work, unbinds.
@@ -313,25 +280,20 @@ static void test_context_concurrent_bind_unbind()
     // Ensure legacy context is initialized first
     (void)rt_legacy_context();
 
-    for (int i = 0; i < kThreads; i++)
-    {
-        threads.emplace_back(
-            [&go]()
-            {
-                while (!go.load(std::memory_order_acquire))
-                {
-                    // spin
-                }
-                for (int j = 0; j < kIterations; j++)
-                {
-                    RtContext ctx;
-                    rt_context_init(&ctx);
-                    rt_set_current_context(&ctx);
-                    assert(rt_get_current_context() == &ctx);
-                    rt_set_current_context(nullptr);
-                    rt_context_cleanup(&ctx);
-                }
-            });
+    for (int i = 0; i < kThreads; i++) {
+        threads.emplace_back([&go]() {
+            while (!go.load(std::memory_order_acquire)) {
+                // spin
+            }
+            for (int j = 0; j < kIterations; j++) {
+                RtContext ctx;
+                rt_context_init(&ctx);
+                rt_set_current_context(&ctx);
+                assert(rt_get_current_context() == &ctx);
+                rt_set_current_context(nullptr);
+                rt_context_cleanup(&ctx);
+            }
+        });
     }
 
     go.store(true, std::memory_order_release);
@@ -346,17 +308,14 @@ static void test_context_concurrent_bind_unbind()
 // CONC-001 + CONC-003: GC shutdown/reinit cycle — lock survives reset
 //=============================================================================
 
-static void test_gc_shutdown_reinit_cycle()
-{
+static void test_gc_shutdown_reinit_cycle() {
     printf("  test_gc_shutdown_reinit_cycle...");
 
     // Shut down and reinitialize the GC multiple times to verify the lock
     // reset logic works correctly (CONC-001: INIT_ONCE / PTHREAD_MUTEX_INITIALIZER).
-    for (int cycle = 0; cycle < 5; cycle++)
-    {
+    for (int cycle = 0; cycle < 5; cycle++) {
         rt_gc_set_threshold(100);
-        for (int i = 0; i < 200; i++)
-        {
+        for (int i = 0; i < 200; i++) {
             rt_gc_notify_alloc();
         }
         assert(rt_gc_pass_count() > 0);
@@ -365,8 +324,7 @@ static void test_gc_shutdown_reinit_cycle()
 
     // Verify it works after the last shutdown
     rt_gc_set_threshold(5);
-    for (int i = 0; i < 10; i++)
-    {
+    for (int i = 0; i < 10; i++) {
         rt_gc_notify_alloc();
     }
     assert(rt_gc_pass_count() > 0);
@@ -379,8 +337,7 @@ static void test_gc_shutdown_reinit_cycle()
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("RTConcurrencyTests:\n");
 
     test_gc_concurrent_first_use();

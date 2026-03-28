@@ -23,8 +23,7 @@
 using namespace il::frontends::basic;
 using namespace il::support;
 
-int main()
-{
+int main() {
     // Compose a small BASIC snippet that calls Viper.Terminal and Viper.Time.
     const std::string src = "SUB Demo()\n"
                             "    Viper.Terminal.SetPosition(1, 2)\n"
@@ -50,8 +49,7 @@ int main()
     {
         bool haveSetPos = false, haveSetColor = false, haveClear = false, haveSleep = false,
              haveTick = false;
-        for (const auto &kv : analyzer.procs())
-        {
+        for (const auto &kv : analyzer.procs()) {
             const std::string &name = kv.first;
             if (name == "Viper.Terminal.SetPosition")
                 haveSetPos = true;
@@ -64,8 +62,7 @@ int main()
             if (name == "Viper.Time.GetTickCount")
                 haveTick = true;
         }
-        if (!(haveSetPos && haveSetColor && haveClear && haveSleep && haveTick))
-        {
+        if (!(haveSetPos && haveSetColor && haveClear && haveSleep && haveTick)) {
             fprintf(stderr,
                     "ProcRegistry missing entries: pos=%d color=%d clear=%d sleep=%d tick=%d\n",
                     (int)haveSetPos,
@@ -79,8 +76,7 @@ int main()
 
     // Run semantic analysis and expect no unknown procedure errors.
     analyzer.analyze(*program);
-    if (de.errorCount() != 0)
-    {
+    if (de.errorCount() != 0) {
         std::ostringstream oss;
         emitter.printAll(oss);
         fprintf(stderr, "Diagnostics:\n%s\n", oss.str().c_str());

@@ -29,11 +29,9 @@ static int tests_run = 0;
 static int tests_failed = 0;
 
 #define ASSERT(cond)                                                                               \
-    do                                                                                             \
-    {                                                                                              \
+    do {                                                                                           \
         tests_run++;                                                                               \
-        if (!(cond))                                                                               \
-        {                                                                                          \
+        if (!(cond)) {                                                                             \
             tests_failed++;                                                                        \
             fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond);                        \
         }                                                                                          \
@@ -43,8 +41,7 @@ static int tests_failed = 0;
 // O-01 / O-02: rt_file_write_bytes / rt_file_read_bytes (chunked I/O)
 //=============================================================================
 
-static void test_file_write_bytes_roundtrip(void)
-{
+static void test_file_write_bytes_roundtrip(void) {
     // Write a known byte pattern using rt_file_write_bytes (O-01 fix),
     // then read it back using rt_file_read_bytes (O-02 fix).
     const int64_t N = 8192; // Large enough to exercise chunked paths
@@ -65,8 +62,7 @@ static void test_file_write_bytes_roundtrip(void)
     ASSERT(rt_bytes_len(dst_bytes) == N);
 
     int ok = 1;
-    for (int64_t i = 0; i < N && ok; i++)
-    {
+    for (int64_t i = 0; i < N && ok; i++) {
         if (rt_bytes_get(dst_bytes, i) != (i & 0xFF))
             ok = 0;
     }
@@ -77,8 +73,7 @@ static void test_file_write_bytes_roundtrip(void)
     rt_string_unref(path);
 }
 
-static void test_io_file_write_all_bytes_roundtrip(void)
-{
+static void test_io_file_write_all_bytes_roundtrip(void) {
     // Similarly test rt_io_file_write_all_bytes / rt_io_file_read_all_bytes
     const int64_t N = 4096;
 
@@ -98,8 +93,7 @@ static void test_io_file_write_all_bytes_roundtrip(void)
     ASSERT(rt_bytes_len(dst) == N);
 
     int ok = 1;
-    for (int64_t i = 0; i < N && ok; i++)
-    {
+    for (int64_t i = 0; i < N && ok; i++) {
         if (rt_bytes_get(dst, i) != ((N - i) & 0xFF))
             ok = 0;
     }
@@ -109,8 +103,7 @@ static void test_io_file_write_all_bytes_roundtrip(void)
     rt_string_unref(path);
 }
 
-static void test_file_write_bytes_empty(void)
-{
+static void test_file_write_bytes_empty(void) {
     void *empty = rt_bytes_new(0);
     rt_string path =
         rt_tempfile_path_with_ext(rt_const_cstr("rt_opt_empty_"), rt_const_cstr(".bin"));
@@ -125,8 +118,7 @@ static void test_file_write_bytes_empty(void)
 // O-04: rt_xml_text_content — O(n) builder produces correct output
 //=============================================================================
 
-static void test_xml_text_content_single_node(void)
-{
+static void test_xml_text_content_single_node(void) {
     rt_string src = rt_string_from_bytes("<r>Hello</r>", 12);
     void *doc = rt_xml_parse(src);
     ASSERT(doc != NULL);
@@ -142,8 +134,7 @@ static void test_xml_text_content_single_node(void)
     rt_string_unref(src);
 }
 
-static void test_xml_text_content_mixed_children(void)
-{
+static void test_xml_text_content_mixed_children(void) {
     // <r>Hello <b>world</b>!</r>
     rt_string src = rt_string_from_bytes("<r>Hello <b>world</b>!</r>", 26);
     void *doc = rt_xml_parse(src);
@@ -164,18 +155,15 @@ static void test_xml_text_content_mixed_children(void)
     rt_string_unref(src);
 }
 
-static void test_xml_text_content_empty_element(void)
-{
+static void test_xml_text_content_empty_element(void) {
     rt_string src = rt_string_from_bytes("<empty/>", 8);
     void *doc = rt_xml_parse(src);
     ASSERT(doc != NULL);
-    if (rt_xml_child_count(doc) > 0)
-    {
+    if (rt_xml_child_count(doc) > 0) {
         void *root = rt_xml_child_at(doc, 0);
         rt_string txt = rt_xml_text_content(root);
         // Empty element → empty or NULL text
-        if (txt)
-        {
+        if (txt) {
             const char *cs = rt_string_cstr(txt);
             ASSERT(cs == NULL || strlen(cs) == 0);
             rt_string_unref(txt);
@@ -189,8 +177,7 @@ static void test_xml_text_content_empty_element(void)
 // main
 //=============================================================================
 
-int main(void)
-{
+int main(void) {
     // O-01 / O-02: chunked file I/O
     test_file_write_bytes_roundtrip();
     test_io_file_write_all_bytes_roundtrip();

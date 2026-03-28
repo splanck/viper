@@ -28,8 +28,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Record a lowered array value into a stack slot owned by the procedure.
 ///
@@ -41,13 +40,11 @@ namespace il::frontends::basic
 ///
 /// @param slot Address where the array handle should be written.
 /// @param value Array value produced by the lowering routine.
-void Lowerer::storeArray(Value slot, Value value, AstType elementType)
-{
+void Lowerer::storeArray(Value slot, Value value, AstType elementType) {
     emitter().storeArray(slot, value, elementType, /*isObjectArray=*/false);
 }
 
-void Lowerer::storeArray(Value slot, Value value, AstType elementType, bool isObjectArray)
-{
+void Lowerer::storeArray(Value slot, Value value, AstType elementType, bool isObjectArray) {
     emitter().storeArray(slot, value, elementType, isObjectArray);
 }
 
@@ -60,8 +57,7 @@ void Lowerer::storeArray(Value slot, Value value, AstType elementType, bool isOb
 ///          deterministic order.
 ///
 /// @param paramNames Name set describing parameters that must be preserved.
-void Lowerer::releaseArrayLocals(const std::unordered_set<std::string> &paramNames)
-{
+void Lowerer::releaseArrayLocals(const std::unordered_set<std::string> &paramNames) {
     emitter().releaseArrayLocals(paramNames);
 }
 
@@ -75,28 +71,23 @@ void Lowerer::releaseArrayLocals(const std::unordered_set<std::string> &paramNam
 ///
 /// @param paramNames Identifier set describing the formal parameters that
 ///        should be handed back to the runtime.
-void Lowerer::releaseArrayParams(const std::unordered_set<std::string> &paramNames)
-{
+void Lowerer::releaseArrayParams(const std::unordered_set<std::string> &paramNames) {
     emitter().releaseArrayParams(paramNames);
 }
 
-void Lowerer::deferReleaseStr(Value v)
-{
+void Lowerer::deferReleaseStr(Value v) {
     emitter().deferReleaseStr(v);
 }
 
-void Lowerer::deferReleaseObj(Value v, const std::string &className)
-{
+void Lowerer::deferReleaseObj(Value v, const std::string &className) {
     emitter().deferReleaseObj(v, className);
 }
 
-void Lowerer::releaseDeferredTemps()
-{
+void Lowerer::releaseDeferredTemps() {
     emitter().releaseDeferredTemps();
 }
 
-void Lowerer::clearDeferredTemps()
-{
+void Lowerer::clearDeferredTemps() {
     emitter().clearDeferredTemps();
 }
 

@@ -42,8 +42,7 @@ static constexpr il::support::SourceLoc kLoc{1, 1, 0};
 /// @brief Build a module containing a tight loop: while(true) {}
 /// @details Creates entry -> loop -> loop (back-edge).  The dispatch driver will
 ///          spin indefinitely unless interrupted via poll or an external signal.
-static void buildInfiniteLoopModule(Module &mod)
-{
+static void buildInfiniteLoopModule(Module &mod) {
     il::build::IRBuilder b(mod);
     auto &fn = b.startFunction("main", Type(Type::Kind::Void), {});
 
@@ -61,8 +60,7 @@ static void buildInfiniteLoopModule(Module &mod)
 }
 
 /// @brief Build a module that immediately returns 42.
-static void buildReturnModule(Module &mod)
-{
+static void buildReturnModule(Module &mod) {
     il::build::IRBuilder b(mod);
     auto &fn = b.startFunction("main", Type(Type::Kind::I64), {});
     auto &entry = b.createBlock(fn, "entry", {});
@@ -74,8 +72,7 @@ static void buildReturnModule(Module &mod)
 // Test: requestInterrupt / clearInterrupt API
 // =============================================================================
 
-static int testInterruptApi()
-{
+static int testInterruptApi() {
     // clearInterrupt should be idempotent when no interrupt is pending.
     VM::clearInterrupt();
 
@@ -93,8 +90,7 @@ static int testInterruptApi()
 // Test: Interrupt fires and produces a trapped VM state
 // =============================================================================
 
-static void runInterruptChild()
-{
+static void runInterruptChild() {
     Module mod;
     buildInfiniteLoopModule(mod);
 
@@ -105,34 +101,28 @@ static void runInterruptChild()
     // returning false.  runFunctionLoop checks s_interruptRequested after
     // dispatchDriver->run() returns and raises TrapKind::Interrupt.
     int callCount = 0;
-    VMTestHook::setPoll(vm,
-                        500,
-                        [&callCount](VM &) -> bool
-                        {
-                            if (++callCount == 1)
-                                VM::requestInterrupt();
-                            return false; // Stop the driver so the post-dispatch check fires.
-                        });
+    VMTestHook::setPoll(vm, 500, [&callCount](VM &) -> bool {
+        if (++callCount == 1)
+            VM::requestInterrupt();
+        return false; // Stop the driver so the post-dispatch check fires.
+    });
 
     vm.run();
     // Unreachable: rt_abort terminates the child first.
 }
 
-static int testInterruptFires()
-{
+static int testInterruptFires() {
     auto result = viper::tests::runIsolated(runInterruptChild);
 
     // The child must have terminated with a non-zero exit code (rt_abort).
-    if (!result.trapped())
-    {
+    if (!result.trapped()) {
         std::fprintf(stderr, "[FAIL] testInterruptFires: child exited cleanly (expected trap)\n");
         return 1;
     }
 
     // stderr must mention 'Interrupt'.
     if (result.stderrText.find("Interrupt") == std::string::npos &&
-        result.stderrText.find("interrupt") == std::string::npos)
-    {
+        result.stderrText.find("interrupt") == std::string::npos) {
         std::fprintf(stderr,
                      "[FAIL] testInterruptFires: trap output does not mention 'interrupt': %s\n",
                      result.stderrText.c_str());
@@ -152,8 +142,7 @@ static int testInterruptFires()
 // Test: Normal program is unaffected by clearInterrupt
 // =============================================================================
 
-static int testNormalProgramAfterClear()
-{
+static int testNormalProgramAfterClear() {
     VM::clearInterrupt();
 
     Module mod;
@@ -161,8 +150,7 @@ static int testNormalProgramAfterClear()
     VM vm(mod);
     const int64_t result = vm.run();
 
-    if (result != 42)
-    {
+    if (result != 42) {
         std::fprintf(stderr,
                      "[FAIL] testNormalProgramAfterClear: expected 42, got %lld\n",
                      (long long)result);
@@ -173,8 +161,7 @@ static int testNormalProgramAfterClear()
     return 0;
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

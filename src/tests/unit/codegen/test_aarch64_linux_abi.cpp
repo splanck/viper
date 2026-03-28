@@ -53,11 +53,9 @@ using namespace viper::codegen::aarch64::passes;
 // Helpers
 // ---------------------------------------------------------------------------
 
-namespace
-{
+namespace {
 
-static il::core::Module parseIL(const std::string &src)
-{
+static il::core::Module parseIL(const std::string &src) {
     std::istringstream ss(src);
     il::core::Module mod;
     if (!il::io::Parser::parse(ss, mod))
@@ -66,8 +64,7 @@ static il::core::Module parseIL(const std::string &src)
 }
 
 /// Build the standard emit pipeline for the given target.
-static std::string compileToAsm(const std::string &il, const TargetInfo &ti)
-{
+static std::string compileToAsm(const std::string &il, const TargetInfo &ti) {
     il::core::Module mod = parseIL(il);
     if (mod.functions.empty())
         return {};
@@ -84,8 +81,8 @@ static std::string compileToAsm(const std::string &il, const TargetInfo &ti)
     return m.assembly;
 }
 
-static std::vector<std::string> compileToBinarySymbols(const std::string &il, const TargetInfo &ti)
-{
+static std::vector<std::string> compileToBinarySymbols(const std::string &il,
+                                                       const TargetInfo &ti) {
     il::core::Module mod = parseIL(il);
     if (mod.functions.empty())
         return {};
@@ -106,10 +103,8 @@ static std::vector<std::string> compileToBinarySymbols(const std::string &il, co
     return names;
 }
 
-static bool hasSymbol(const std::vector<std::string> &symbols, const std::string &name)
-{
-    for (const auto &sym : symbols)
-    {
+static bool hasSymbol(const std::vector<std::string> &symbols, const std::string &name) {
+    for (const auto &sym : symbols) {
         if (sym == name)
             return true;
     }
@@ -128,8 +123,7 @@ const char *kSimpleIL = "il 0.1\n"
 // ---------------------------------------------------------------------------
 // Test 1: Linux output must NOT have underscore prefix on function label.
 // ---------------------------------------------------------------------------
-TEST(AArch64LinuxABI, LinuxSymbolNoUnderscore)
-{
+TEST(AArch64LinuxABI, LinuxSymbolNoUnderscore) {
     const std::string asm_ = compileToAsm(kSimpleIL, linuxTarget());
     EXPECT_FALSE(asm_.empty());
 
@@ -137,8 +131,7 @@ TEST(AArch64LinuxABI, LinuxSymbolNoUnderscore)
     EXPECT_NE(asm_.find("hello_linux"), std::string::npos);
 
     // Must NOT contain '_hello_linux' (the Darwin-mangled name).
-    if (asm_.find("_hello_linux") != std::string::npos)
-    {
+    if (asm_.find("_hello_linux") != std::string::npos) {
         std::cerr << "Assembly contains Darwin-style underscore prefix on Linux target.\n"
                   << "Assembly:\n"
                   << asm_ << "\n";
@@ -149,15 +142,13 @@ TEST(AArch64LinuxABI, LinuxSymbolNoUnderscore)
 // ---------------------------------------------------------------------------
 // Test 2: Linux output must have .type sym, @function directive.
 // ---------------------------------------------------------------------------
-TEST(AArch64LinuxABI, LinuxTypeDirective)
-{
+TEST(AArch64LinuxABI, LinuxTypeDirective) {
     const std::string asm_ = compileToAsm(kSimpleIL, linuxTarget());
     EXPECT_FALSE(asm_.empty());
 
     // ELF requires .type to mark symbol as a function for the linker.
     const bool hasType = asm_.find(".type hello_linux, @function") != std::string::npos;
-    if (!hasType)
-    {
+    if (!hasType) {
         std::cerr << "Missing '.type hello_linux, @function' directive.\n"
                   << "Assembly:\n"
                   << asm_ << "\n";
@@ -168,15 +159,13 @@ TEST(AArch64LinuxABI, LinuxTypeDirective)
 // ---------------------------------------------------------------------------
 // Test 3: Linux output must have .size sym, .-sym directive after body.
 // ---------------------------------------------------------------------------
-TEST(AArch64LinuxABI, LinuxSizeDirective)
-{
+TEST(AArch64LinuxABI, LinuxSizeDirective) {
     const std::string asm_ = compileToAsm(kSimpleIL, linuxTarget());
     EXPECT_FALSE(asm_.empty());
 
     // ELF requires .size for debuggers and profilers to know function extents.
     const bool hasSize = asm_.find(".size hello_linux, .-hello_linux") != std::string::npos;
-    if (!hasSize)
-    {
+    if (!hasSize) {
         std::cerr << "Missing '.size hello_linux, .-hello_linux' directive.\n"
                   << "Assembly:\n"
                   << asm_ << "\n";
@@ -187,15 +176,13 @@ TEST(AArch64LinuxABI, LinuxSizeDirective)
 // ---------------------------------------------------------------------------
 // Test 4: Darwin output must still use '_' prefix (regression guard).
 // ---------------------------------------------------------------------------
-TEST(AArch64LinuxABI, DarwinRegressionPrefix)
-{
+TEST(AArch64LinuxABI, DarwinRegressionPrefix) {
     const std::string asm_ = compileToAsm(kSimpleIL, darwinTarget());
     EXPECT_FALSE(asm_.empty());
 
     // Darwin: symbol must be prefixed with '_'.
     const bool hasPrefixed = asm_.find("_hello_linux") != std::string::npos;
-    if (!hasPrefixed)
-    {
+    if (!hasPrefixed) {
         std::cerr << "Darwin assembly is missing '_hello_linux' prefix.\n"
                   << "Assembly:\n"
                   << asm_ << "\n";
@@ -214,8 +201,7 @@ TEST(AArch64LinuxABI, DarwinRegressionPrefix)
 // A function that calls another function should emit 'bl callee' (no '_')
 // when using the Linux target.
 //
-TEST(AArch64LinuxABI, LinuxCallSite)
-{
+TEST(AArch64LinuxABI, LinuxCallSite) {
     const std::string il = "il 0.1\n"
                            "func @callee() -> i64 {\n"
                            "entry:\n"
@@ -232,8 +218,7 @@ TEST(AArch64LinuxABI, LinuxCallSite)
 
     // The bl instruction for @callee must use the unmangled name.
     const bool hasBlCallee = asm_.find("bl callee") != std::string::npos;
-    if (!hasBlCallee)
-    {
+    if (!hasBlCallee) {
         std::cerr << "Expected 'bl callee' (no underscore) in Linux assembly.\n"
                   << "Assembly:\n"
                   << asm_ << "\n";
@@ -244,22 +229,19 @@ TEST(AArch64LinuxABI, LinuxCallSite)
     EXPECT_TRUE(asm_.find("bl _callee") == std::string::npos);
 }
 
-TEST(AArch64LinuxABI, LinuxBinarySymbolsStayUnprefixed)
-{
+TEST(AArch64LinuxABI, LinuxBinarySymbolsStayUnprefixed) {
     const auto symbols = compileToBinarySymbols(kSimpleIL, linuxTarget());
     EXPECT_TRUE(hasSymbol(symbols, "hello_linux"));
     EXPECT_FALSE(hasSymbol(symbols, "_hello_linux"));
 }
 
-TEST(AArch64LinuxABI, DarwinBinaryEncoderLeavesNamesUnprefixedForWriter)
-{
+TEST(AArch64LinuxABI, DarwinBinaryEncoderLeavesNamesUnprefixedForWriter) {
     const auto symbols = compileToBinarySymbols(kSimpleIL, darwinTarget());
     EXPECT_TRUE(hasSymbol(symbols, "hello_linux"));
     EXPECT_FALSE(hasSymbol(symbols, "_hello_linux"));
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

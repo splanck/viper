@@ -35,8 +35,7 @@
 
 using namespace il::core;
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Increment a loop induction slot by the given step value.
 ///
@@ -46,8 +45,7 @@ namespace il::frontends::basic
 ///          overflow trap reports the correct BASIC source line.
 /// @param slot Stack slot holding the loop induction variable.
 /// @param step Value representing the stride applied each iteration.
-void Lowerer::emitForStep(Value slot, Value step)
-{
+void Lowerer::emitForStep(Value slot, Value step) {
     Value load = emitLoad(Type(Type::Kind::I64), slot);
     Value add = emitCommon(curLoc).add_checked(load, step, OverflowPolicy::Checked);
     emitStore(Type(Type::Kind::I64), slot, add);
@@ -59,8 +57,7 @@ void Lowerer::emitForStep(Value slot, Value step)
 ///          and debug metadata remain centralised.  The helper is the common
 ///          exit path once a block's body has been fully lowered.
 /// @param target Destination block that becomes the current fallthrough.
-void Lowerer::emitBr(BasicBlock *target)
-{
+void Lowerer::emitBr(BasicBlock *target) {
     emitter().emitBr(target);
 }
 
@@ -73,8 +70,7 @@ void Lowerer::emitBr(BasicBlock *target)
 /// @param cond SSA value containing the branch condition.
 /// @param t Block reached on the true edge.
 /// @param f Block reached on the false edge.
-void Lowerer::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
-{
+void Lowerer::emitCBr(Value cond, BasicBlock *t, BasicBlock *f) {
     emitter().emitCBr(cond, t, f);
 }
 
@@ -92,20 +88,16 @@ void Lowerer::emitCBr(Value cond, BasicBlock *t, BasicBlock *f)
 void Lowerer::lowerCondBranch(const Expr &expr,
                               BasicBlock *trueBlk,
                               BasicBlock *falseBlk,
-                              il::support::SourceLoc loc)
-{
-    if (const auto *bin = as<const BinaryExpr>(expr))
-    {
+                              il::support::SourceLoc loc) {
+    if (const auto *bin = as<const BinaryExpr>(expr)) {
         const bool isAnd = bin->op == BinaryExpr::Op::LogicalAnd;
         const bool isOr = bin->op == BinaryExpr::Op::LogicalOr;
-        if (isAnd || isOr)
-        {
+        if (isAnd || isOr) {
             ProcedureContext &ctx = context();
             Function *func = ctx.function();
             assert(func && ctx.current());
 
-            auto indexOf = [&](BasicBlock *bb)
-            {
+            auto indexOf = [&](BasicBlock *bb) {
                 assert(bb && "lowerCondBranch requires non-null block");
                 return static_cast<size_t>(bb - &func->blocks[0]);
             };
@@ -148,8 +140,7 @@ void Lowerer::lowerCondBranch(const Expr &expr,
     // (e.g., array bounds checks) and invalidate the trueBlk/falseBlk pointers
     ProcedureContext &ctx = context();
     Function *func = ctx.function();
-    auto indexOf = [&](BasicBlock *bb)
-    {
+    auto indexOf = [&](BasicBlock *bb) {
         assert(bb && "lowerCondBranch requires non-null block");
         return static_cast<size_t>(bb - &func->blocks[0]);
     };
@@ -172,8 +163,7 @@ void Lowerer::lowerCondBranch(const Expr &expr,
 ///          metadata that mirrors runtime semantics.  Used when lowering BASIC
 ///          @c ON @c ERROR constructs.
 /// @param handler Entry block for the new handler region.
-void Lowerer::emitEhPush(BasicBlock *handler)
-{
+void Lowerer::emitEhPush(BasicBlock *handler) {
     emitter().emitEhPush(handler);
 }
 
@@ -181,8 +171,7 @@ void Lowerer::emitEhPush(BasicBlock *handler)
 ///
 /// @details Invoked when leaving protected regions so the runtime does not
 ///          retain stale handlers.  Delegates to the shared emitter instance.
-void Lowerer::emitEhPop()
-{
+void Lowerer::emitEhPop() {
     emitter().emitEhPop();
 }
 
@@ -191,8 +180,7 @@ void Lowerer::emitEhPop()
 /// @details Mirrors @ref emitEhPop but signals to the emitter that the pop is
 ///          happening during a return, allowing it to update bookkeeping that
 ///          tracks pending handlers.
-void Lowerer::emitEhPopForReturn()
-{
+void Lowerer::emitEhPopForReturn() {
     emitter().emitEhPopForReturn();
 }
 
@@ -201,8 +189,7 @@ void Lowerer::emitEhPopForReturn()
 /// @details Invoked when BASIC code disables @c ON @c ERROR or when a handler
 ///          scope expires.  Ensures subsequent statements observe a clean error
 ///          state.
-void Lowerer::clearActiveErrorHandler()
-{
+void Lowerer::clearActiveErrorHandler() {
     emitter().clearActiveErrorHandler();
 }
 
@@ -213,8 +200,7 @@ void Lowerer::clearActiveErrorHandler()
 ///          through a single code path so diagnostics remain consistent.
 /// @param targetLine Source line number referencing the handler label.
 /// @return Pointer to the block that should receive handler code.
-BasicBlock *Lowerer::ensureErrorHandlerBlock(int targetLine)
-{
+BasicBlock *Lowerer::ensureErrorHandlerBlock(int targetLine) {
     return emitter().ensureErrorHandlerBlock(targetLine);
 }
 
@@ -223,8 +209,7 @@ BasicBlock *Lowerer::ensureErrorHandlerBlock(int targetLine)
 /// @details Directly forwards to the emitter, which manages handler unwinding
 ///          and ensures the appropriate terminators are appended exactly once.
 /// @param v SSA value to return to the caller.
-void Lowerer::emitRet(Value v)
-{
+void Lowerer::emitRet(Value v) {
     emitter().emitRet(v);
 }
 
@@ -233,8 +218,7 @@ void Lowerer::emitRet(Value v)
 /// @details Complements @ref emitRet for procedures that do not produce a
 ///          result, allowing the emitter to reuse its centralised terminator
 ///          logic.
-void Lowerer::emitRetVoid()
-{
+void Lowerer::emitRetVoid() {
     emitter().emitRetVoid();
 }
 
@@ -243,8 +227,7 @@ void Lowerer::emitRetVoid()
 /// @details Useful for lowering constructs that must abort execution (for
 ///          example, invalid @c EXIT usage).  The emitter handles wiring in the
 ///          correct opcode and metadata.
-void Lowerer::emitTrap()
-{
+void Lowerer::emitTrap() {
     emitter().emitTrap();
 }
 
@@ -253,8 +236,7 @@ void Lowerer::emitTrap()
 /// @details Delegates to the emitter so the generated instruction references
 ///          @p errCode and participates in the Lowerer's diagnostics tracking.
 /// @param errCode Register holding the runtime error code.
-void Lowerer::emitTrapFromErr(Value errCode)
-{
+void Lowerer::emitTrapFromErr(Value errCode) {
     emitter().emitTrapFromErr(errCode);
 }
 

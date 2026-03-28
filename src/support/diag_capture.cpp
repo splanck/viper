@@ -29,8 +29,7 @@
 
 #include "support/diag_capture.hpp"
 
-namespace il::support
-{
+namespace il::support {
 /// @brief Write the given diagnostic to the supplied output stream.
 ///
 /// @details Simply forwards to @ref printDiag so all formatting (severity
@@ -41,8 +40,7 @@ namespace il::support
 ///
 /// @param out Destination stream that receives the formatted diagnostic text.
 /// @param diag Diagnostic instance to serialize.
-void DiagCapture::printTo(std::ostream &out, const Diag &diag)
-{
+void DiagCapture::printTo(std::ostream &out, const Diag &diag) {
     printDiag(diag, out);
 }
 
@@ -55,8 +53,7 @@ void DiagCapture::printTo(std::ostream &out, const Diag &diag)
 ///          return and a log entry.
 ///
 /// @return Diagnostic containing a copy of the captured text.
-Diag DiagCapture::toDiag() const
-{
+Diag DiagCapture::toDiag() const {
     return makeError({}, ss.str());
 }
 
@@ -72,10 +69,8 @@ Diag DiagCapture::toDiag() const
 /// @param ok Boolean indicating whether the preceding operation succeeded.
 /// @param capture Capture containing any error text produced by the operation.
 /// @return Successful Expected when @p ok is true; otherwise an error payload.
-Expected<void> capture_to_expected_impl(bool ok, DiagCapture &capture)
-{
-    if (ok)
-    {
+Expected<void> capture_to_expected_impl(bool ok, DiagCapture &capture) {
+    if (ok) {
         return Expected<void>{};
     }
     return Expected<void>{capture.toDiag()};

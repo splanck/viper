@@ -21,19 +21,16 @@
 using namespace viper::codegen::x64;
 using namespace viper::codegen::x64::ra;
 
-namespace
-{
+namespace {
 
-[[nodiscard]] MInstr makeMovImm(uint16_t id, int64_t value)
-{
+[[nodiscard]] MInstr makeMovImm(uint16_t id, int64_t value) {
     return MInstr::make(MOpcode::MOVri,
                         {makeVRegOperand(RegClass::GPR, id), makeImmOperand(value)});
 }
 
 } // namespace
 
-TEST(Coalescer, LowersParallelCopy)
-{
+TEST(Coalescer, LowersParallelCopy) {
     MFunction func{};
     MBasicBlock block{};
     block.label = "entry";
@@ -55,14 +52,12 @@ TEST(Coalescer, LowersParallelCopy)
 
     const auto &rewritten = func.blocks.front().instructions;
     EXPECT_TRUE(rewritten.size() > 3U);
-    for (const auto &instr : rewritten)
-    {
+    for (const auto &instr : rewritten) {
         EXPECT_NE(instr.opcode, MOpcode::PX_COPY);
     }
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, argv);
     return viper_test::run_all_tests();
 }

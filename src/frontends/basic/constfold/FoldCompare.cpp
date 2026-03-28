@@ -35,12 +35,9 @@
 #include <cmath>
 #include <optional>
 
-namespace il::frontends::basic::constfold
-{
-namespace
-{
-enum class Outcome : std::size_t
-{
+namespace il::frontends::basic::constfold {
+namespace {
+enum class Outcome : std::size_t {
     Less = 0,
     Equal = 1,
     Greater = 2,
@@ -51,8 +48,7 @@ constexpr std::size_t kOpCount = static_cast<std::size_t>(AST::BinaryExpr::Op::L
 
 using BinOpFn = std::optional<bool> (*)(Value, Value);
 
-struct TruthRow
-{
+struct TruthRow {
     AST::BinaryExpr::Op op;
     std::array<std::optional<bool>, 4> truth;
 };
@@ -74,12 +70,9 @@ constexpr std::array<TruthRow, 6> kTruthTable = {
 /// @param outcome Precomputed comparison category for the literal operands.
 /// @return Folded literal or @ref Value::invalid when the combination is
 ///         unsupported.
-[[nodiscard]] std::optional<bool> from_truth(AST::BinaryExpr::Op op, Outcome outcome)
-{
-    for (const auto &row : kTruthTable)
-    {
-        if (row.op == op)
-        {
+[[nodiscard]] std::optional<bool> from_truth(AST::BinaryExpr::Op op, Outcome outcome) {
+    for (const auto &row : kTruthTable) {
+        if (row.op == op) {
             return row.truth[static_cast<std::size_t>(outcome)];
         }
     }
@@ -93,10 +86,8 @@ constexpr std::array<TruthRow, 6> kTruthTable = {
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Comparison outcome describing the relationship between operands.
-[[nodiscard]] Outcome compare_ordered(Value lhs, Value rhs)
-{
-    if (lhs.isFloat() || rhs.isFloat())
-    {
+[[nodiscard]] Outcome compare_ordered(Value lhs, Value rhs) {
+    if (lhs.isFloat() || rhs.isFloat()) {
         double lv = lhs.asDouble();
         double rv = rhs.asDouble();
         if (std::isnan(lv) || std::isnan(rv))
@@ -121,8 +112,7 @@ constexpr std::array<TruthRow, 6> kTruthTable = {
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded literal representing the equality result.
-std::optional<bool> fold_eq(Value lhs, Value rhs)
-{
+std::optional<bool> fold_eq(Value lhs, Value rhs) {
     return from_truth(AST::BinaryExpr::Op::Eq, compare_ordered(lhs, rhs));
 }
 
@@ -133,8 +123,7 @@ std::optional<bool> fold_eq(Value lhs, Value rhs)
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded literal representing the not-equal result.
-std::optional<bool> fold_ne(Value lhs, Value rhs)
-{
+std::optional<bool> fold_ne(Value lhs, Value rhs) {
     return from_truth(AST::BinaryExpr::Op::Ne, compare_ordered(lhs, rhs));
 }
 
@@ -144,8 +133,7 @@ std::optional<bool> fold_ne(Value lhs, Value rhs)
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded literal or @ref Value::invalid when folding is unsafe.
-std::optional<bool> fold_lt(Value lhs, Value rhs)
-{
+std::optional<bool> fold_lt(Value lhs, Value rhs) {
     return from_truth(AST::BinaryExpr::Op::Lt, compare_ordered(lhs, rhs));
 }
 
@@ -155,8 +143,7 @@ std::optional<bool> fold_lt(Value lhs, Value rhs)
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded literal for the `<=` predicate or @ref Value::invalid.
-std::optional<bool> fold_le(Value lhs, Value rhs)
-{
+std::optional<bool> fold_le(Value lhs, Value rhs) {
     return from_truth(AST::BinaryExpr::Op::Le, compare_ordered(lhs, rhs));
 }
 
@@ -166,8 +153,7 @@ std::optional<bool> fold_le(Value lhs, Value rhs)
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded literal for the `>` predicate or invalid when unordered.
-std::optional<bool> fold_gt(Value lhs, Value rhs)
-{
+std::optional<bool> fold_gt(Value lhs, Value rhs) {
     return from_truth(AST::BinaryExpr::Op::Gt, compare_ordered(lhs, rhs));
 }
 
@@ -177,8 +163,7 @@ std::optional<bool> fold_gt(Value lhs, Value rhs)
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded literal representing the `>=` predicate or invalid.
-std::optional<bool> fold_ge(Value lhs, Value rhs)
-{
+std::optional<bool> fold_ge(Value lhs, Value rhs) {
     return from_truth(AST::BinaryExpr::Op::Ge, compare_ordered(lhs, rhs));
 }
 
@@ -188,8 +173,7 @@ std::optional<bool> fold_ge(Value lhs, Value rhs)
 ///          entries null so the dispatcher can efficiently skip unsupported
 ///          operations.
 /// @return Table mapping @ref AST::BinaryExpr::Op indices to folding routines.
-constexpr std::array<BinOpFn, kOpCount> make_compare_table()
-{
+constexpr std::array<BinOpFn, kOpCount> make_compare_table() {
     std::array<BinOpFn, kOpCount> table{};
     table.fill(nullptr);
     table[static_cast<std::size_t>(AST::BinaryExpr::Op::Eq)] = &fold_eq;
@@ -210,10 +194,8 @@ constexpr auto kCompareFold = make_compare_table();
 /// @param constant AST constant extracted from a literal expression.
 /// @return Value describing the literal, or @c std::nullopt when conversion
 ///         fails.
-[[nodiscard]] std::optional<Value> makeValueFromConstant(const Constant &constant)
-{
-    if (constant.kind == LiteralKind::Int || constant.kind == LiteralKind::Float)
-    {
+[[nodiscard]] std::optional<Value> makeValueFromConstant(const Constant &constant) {
+    if (constant.kind == LiteralKind::Int || constant.kind == LiteralKind::Float) {
         if (constant.stringValue.empty())
             return makeValue(constant.numeric);
 
@@ -223,8 +205,7 @@ constexpr auto kCompareFold = make_compare_table();
         return makeValue(constant.numeric);
     }
 
-    if (constant.kind == LiteralKind::Invalid && !constant.stringValue.empty())
-    {
+    if (constant.kind == LiteralKind::Invalid && !constant.stringValue.empty()) {
         auto parsed = detail::parseNumericLiteral(constant.stringValue);
         if (!parsed.ok)
             return std::nullopt;
@@ -243,8 +224,7 @@ constexpr auto kCompareFold = make_compare_table();
 /// @param lhs Left-hand literal operand.
 /// @param rhs Right-hand literal operand.
 /// @return Folded value or @c std::nullopt when folding is not possible.
-std::optional<bool> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
-{
+std::optional<bool> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs) {
     if (!lhs.valid || !rhs.valid)
         return std::nullopt;
     const auto index = static_cast<std::size_t>(op);
@@ -270,10 +250,8 @@ std::optional<bool> tryFold(AST::BinaryExpr::Op op, Value lhs, Value rhs)
 /// @return Folded constant when the comparison can be evaluated eagerly.
 std::optional<Constant> fold_compare(AST::BinaryExpr::Op op,
                                      const Constant &lhs,
-                                     const Constant &rhs)
-{
-    if (lhs.kind == LiteralKind::String && rhs.kind == LiteralKind::String)
-    {
+                                     const Constant &rhs) {
+    if (lhs.kind == LiteralKind::String && rhs.kind == LiteralKind::String) {
         if (op != AST::BinaryExpr::Op::Eq && op != AST::BinaryExpr::Op::Ne)
             return std::nullopt;
         const bool eq = lhs.stringValue == rhs.stringValue;

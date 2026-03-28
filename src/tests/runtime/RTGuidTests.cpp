@@ -23,15 +23,13 @@
 #include <string>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
 
 /// @brief Test that New() generates valid format.
-static void test_new_format()
-{
+static void test_new_format() {
     printf("Testing Guid.New() format:\n");
 
     rt_string guid = rt_guid_new();
@@ -48,13 +46,11 @@ static void test_new_format()
 
     // Check hex digits at other positions
     bool all_hex = true;
-    for (int i = 0; i < 36; i++)
-    {
+    for (int i = 0; i < 36; i++) {
         if (i == 8 || i == 13 || i == 18 || i == 23)
             continue;
         char c = str[i];
-        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')))
-        {
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
             all_hex = false;
             break;
         }
@@ -73,15 +69,13 @@ static void test_new_format()
 }
 
 /// @brief Test that New() generates unique values.
-static void test_new_uniqueness()
-{
+static void test_new_uniqueness() {
     printf("Testing Guid.New() uniqueness:\n");
 
     std::set<std::string> guids;
     const int count = 100;
 
-    for (int i = 0; i < count; i++)
-    {
+    for (int i = 0; i < count; i++) {
         rt_string guid = rt_guid_new();
         guids.insert(rt_string_cstr(guid));
     }
@@ -92,8 +86,7 @@ static void test_new_uniqueness()
 }
 
 /// @brief Test Empty property.
-static void test_empty()
-{
+static void test_empty() {
     printf("Testing Guid.Empty:\n");
 
     rt_string empty = rt_guid_empty();
@@ -109,8 +102,7 @@ static void test_empty()
 }
 
 /// @brief Test IsValid() with valid GUIDs.
-static void test_is_valid_positive()
-{
+static void test_is_valid_positive() {
     printf("Testing Guid.IsValid() positive cases:\n");
 
     // Test with generated GUID
@@ -136,8 +128,7 @@ static void test_is_valid_positive()
 }
 
 /// @brief Test IsValid() with invalid GUIDs.
-static void test_is_valid_negative()
-{
+static void test_is_valid_negative() {
     printf("Testing Guid.IsValid() negative cases:\n");
 
     // Too short
@@ -171,8 +162,7 @@ static void test_is_valid_negative()
 }
 
 /// @brief Test ToBytes/FromBytes roundtrip.
-static void test_bytes_roundtrip()
-{
+static void test_bytes_roundtrip() {
     printf("Testing ToBytes/FromBytes roundtrip:\n");
 
     // Generate a GUID and convert to bytes
@@ -212,14 +202,12 @@ static void test_bytes_roundtrip()
 }
 
 /// @brief Test FromBytes with manually constructed bytes.
-static void test_from_bytes_manual()
-{
+static void test_from_bytes_manual() {
     printf("Testing FromBytes with manual bytes:\n");
 
     // Create bytes manually
     void *bytes = rt_bytes_new(16);
-    for (int i = 0; i < 16; i++)
-    {
+    for (int i = 0; i < 16; i++) {
         rt_bytes_set(bytes, i, i * 17); // 0x00, 0x11, 0x22, ...
     }
 
@@ -236,32 +224,27 @@ static void test_from_bytes_manual()
 }
 
 /// @brief Test multiple consecutive generations maintain proper format.
-static void test_consecutive_generations()
-{
+static void test_consecutive_generations() {
     printf("Testing consecutive generations:\n");
 
     bool all_valid = true;
-    for (int i = 0; i < 50; i++)
-    {
+    for (int i = 0; i < 50; i++) {
         rt_string guid = rt_guid_new();
-        if (rt_guid_is_valid(guid) == 0)
-        {
+        if (rt_guid_is_valid(guid) == 0) {
             all_valid = false;
             break;
         }
 
         const char *str = rt_string_cstr(guid);
         // Verify version 4
-        if (str[14] != '4')
-        {
+        if (str[14] != '4') {
             all_valid = false;
             break;
         }
 
         // Verify variant
         char v = str[19];
-        if (!(v == '8' || v == '9' || v == 'a' || v == 'b'))
-        {
+        if (!(v == '8' || v == '9' || v == 'a' || v == 'b')) {
             all_valid = false;
             break;
         }
@@ -273,8 +256,7 @@ static void test_consecutive_generations()
 }
 
 /// @brief Entry point for Guid tests.
-int main()
-{
+int main() {
     printf("=== RT Guid Tests ===\n\n");
 
     test_new_format();

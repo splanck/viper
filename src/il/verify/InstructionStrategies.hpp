@@ -37,8 +37,7 @@
 #include <memory>
 #include <vector>
 
-namespace il::verify
-{
+namespace il::verify {
 
 /// @brief Construct the default set of instruction strategies used by FunctionVerifier.
 std::vector<std::unique_ptr<FunctionVerifier::InstructionStrategy>>

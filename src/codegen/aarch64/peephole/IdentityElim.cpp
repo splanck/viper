@@ -24,11 +24,9 @@
 
 #include "PeepholeCommon.hpp"
 
-namespace viper::codegen::aarch64::peephole
-{
+namespace viper::codegen::aarch64::peephole {
 
-bool isIdentityMovRR(const MInstr &instr) noexcept
-{
+bool isIdentityMovRR(const MInstr &instr) noexcept {
     if (instr.opc != MOpcode::MovRR)
         return false;
     if (instr.ops.size() != 2)
@@ -36,8 +34,7 @@ bool isIdentityMovRR(const MInstr &instr) noexcept
     return samePhysReg(instr.ops[0], instr.ops[1]);
 }
 
-bool isIdentityFMovRR(const MInstr &instr) noexcept
-{
+bool isIdentityFMovRR(const MInstr &instr) noexcept {
     if (instr.opc != MOpcode::FMovRR)
         return false;
     if (instr.ops.size() != 2)
@@ -45,8 +42,7 @@ bool isIdentityFMovRR(const MInstr &instr) noexcept
     return samePhysReg(instr.ops[0], instr.ops[1]);
 }
 
-bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
-{
+bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx + 1 >= instrs.size())
         return false;
 
@@ -63,10 +59,8 @@ bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, Peeph
         return false;
 
     const MOperand &r1 = first.ops[0];
-    if (isArgReg(r1))
-    {
-        for (std::size_t i = idx + 2; i < instrs.size(); ++i)
-        {
+    if (isArgReg(r1)) {
+        for (std::size_t i = idx + 2; i < instrs.size(); ++i) {
             if (instrs[i].opc == MOpcode::Bl || instrs[i].opc == MOpcode::Blr)
                 return false;
             if (definesReg(instrs[i], r1))
@@ -74,8 +68,7 @@ bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, Peeph
         }
     }
 
-    for (std::size_t i = idx + 2; i < instrs.size(); ++i)
-    {
+    for (std::size_t i = idx + 2; i < instrs.size(); ++i) {
         if (usesReg(instrs[i], r1))
             return false;
         if (definesReg(instrs[i], r1))
@@ -89,8 +82,7 @@ bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, Peeph
     return true;
 }
 
-bool tryFoldImmThenMove(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats)
-{
+bool tryFoldImmThenMove(std::vector<MInstr> &instrs, std::size_t idx, PeepholeStats &stats) {
     if (idx + 1 >= instrs.size())
         return false;
 
@@ -105,10 +97,8 @@ bool tryFoldImmThenMove(std::vector<MInstr> &instrs, std::size_t idx, PeepholeSt
         return false;
 
     const MOperand &rd = first.ops[0];
-    if (isArgReg(rd))
-    {
-        for (std::size_t i = idx + 2; i < instrs.size(); ++i)
-        {
+    if (isArgReg(rd)) {
+        for (std::size_t i = idx + 2; i < instrs.size(); ++i) {
             if (instrs[i].opc == MOpcode::Bl || instrs[i].opc == MOpcode::Blr)
                 return false;
             if (definesReg(instrs[i], rd))
@@ -116,8 +106,7 @@ bool tryFoldImmThenMove(std::vector<MInstr> &instrs, std::size_t idx, PeepholeSt
         }
     }
 
-    for (std::size_t i = idx + 2; i < instrs.size(); ++i)
-    {
+    for (std::size_t i = idx + 2; i < instrs.size(); ++i) {
         if (usesReg(instrs[i], rd))
             return false;
         if (definesReg(instrs[i], rd))

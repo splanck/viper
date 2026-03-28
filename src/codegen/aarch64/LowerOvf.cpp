@@ -36,17 +36,13 @@
 #include <utility>
 #include <vector>
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
-namespace
-{
+namespace {
 
 /// @brief Check if an opcode is an overflow-checked pseudo.
-[[nodiscard]] bool isOverflowPseudo(MOpcode opc)
-{
-    switch (opc)
-    {
+[[nodiscard]] bool isOverflowPseudo(MOpcode opc) {
+    switch (opc) {
         case MOpcode::AddOvfRRR:
         case MOpcode::SubOvfRRR:
         case MOpcode::AddOvfRI:
@@ -59,10 +55,8 @@ namespace
 }
 
 /// @brief Find a basic block by name in the function.
-[[nodiscard]] std::optional<std::size_t> findBlock(const MFunction &fn, const std::string &name)
-{
-    for (std::size_t i = 0; i < fn.blocks.size(); ++i)
-    {
+[[nodiscard]] std::optional<std::size_t> findBlock(const MFunction &fn, const std::string &name) {
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
         if (fn.blocks[i].name == name)
             return i;
     }
@@ -71,18 +65,15 @@ namespace
 
 } // namespace
 
-void lowerOverflowOps(MFunction &fn)
-{
+void lowerOverflowOps(MFunction &fn) {
     const std::string trapLabel = ".Ltrap_ovf_" + fn.name;
     std::optional<std::size_t> trapIndex{};
 
-    auto ensureTrapBlock = [&]() -> std::size_t
-    {
+    auto ensureTrapBlock = [&]() -> std::size_t {
         if (trapIndex)
             return *trapIndex;
 
-        if (auto existing = findBlock(fn, trapLabel))
-        {
+        if (auto existing = findBlock(fn, trapLabel)) {
             trapIndex = *existing;
             return *trapIndex;
         }
@@ -99,12 +90,9 @@ void lowerOverflowOps(MFunction &fn)
     // Pre-scan: if any overflow pseudo exists, create the trap block up front
     // so that fn.blocks is not reallocated while we hold references into it.
     bool hasOverflow = false;
-    for (const auto &block : fn.blocks)
-    {
-        for (const auto &instr : block.instrs)
-        {
-            if (isOverflowPseudo(instr.opc))
-            {
+    for (const auto &block : fn.blocks) {
+        for (const auto &instr : block.instrs) {
+            if (isOverflowPseudo(instr.opc)) {
                 hasOverflow = true;
                 break;
             }
@@ -132,17 +120,14 @@ void lowerOverflowOps(MFunction &fn)
                     maxVReg = std::max(maxVReg, op.reg.idOrPhys);
 
     const std::size_t blockCount = fn.blocks.size() - 1U;
-    for (std::size_t blockIdx = 0; blockIdx < blockCount; ++blockIdx)
-    {
+    for (std::size_t blockIdx = 0; blockIdx < blockCount; ++blockIdx) {
         auto &block = fn.blocks[blockIdx];
-        for (std::size_t i = 0; i < block.instrs.size(); ++i)
-        {
+        for (std::size_t i = 0; i < block.instrs.size(); ++i) {
             const MInstr &instr = block.instrs[i];
             if (!isOverflowPseudo(instr.opc))
                 continue;
 
-            if (instr.opc == MOpcode::MulOvfRRR)
-            {
+            if (instr.opc == MOpcode::MulOvfRRR) {
                 // Multiply overflow detection using smulh:
                 //   mul    Xd, Xn, Xm          // low 64 bits
                 //   smulh  Xtmp1, Xn, Xm       // high 64 bits (signed)
@@ -184,8 +169,7 @@ void lowerOverflowOps(MFunction &fn)
 
             // Determine the real flag-setting opcode.
             MOpcode realOpc;
-            switch (instr.opc)
-            {
+            switch (instr.opc) {
                 case MOpcode::AddOvfRRR:
                     realOpc = MOpcode::AddsRRR;
                     break;

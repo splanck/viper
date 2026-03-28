@@ -22,19 +22,16 @@
 
 #include "frontends/basic/TypeSuffix.hpp"
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // =============================================================================
 // Core Symbol Operations
 // =============================================================================
 
-SymbolInfo &SymbolTable::define(std::string_view name)
-{
+SymbolInfo &SymbolTable::define(std::string_view name) {
     std::string key(name);
     auto [it, inserted] = symbols_.emplace(std::move(key), SymbolInfo{});
-    if (inserted)
-    {
+    if (inserted) {
         // Initialize with BASIC defaults
         it->second.type = AstType::I64;
         it->second.hasType = false;
@@ -49,8 +46,7 @@ SymbolInfo &SymbolTable::define(std::string_view name)
     return it->second;
 }
 
-SymbolInfo *SymbolTable::lookup(std::string_view name)
-{
+SymbolInfo *SymbolTable::lookup(std::string_view name) {
     // Check main symbol table first (heterogeneous lookup, no allocation)
     if (auto it = symbols_.find(name); it != symbols_.end())
         return &it->second;
@@ -59,8 +55,7 @@ SymbolInfo *SymbolTable::lookup(std::string_view name)
     return lookupInFieldScopes(name);
 }
 
-const SymbolInfo *SymbolTable::lookup(std::string_view name) const
-{
+const SymbolInfo *SymbolTable::lookup(std::string_view name) const {
     // Heterogeneous lookup, no allocation
     if (auto it = symbols_.find(name); it != symbols_.end())
         return &it->second;
@@ -68,31 +63,25 @@ const SymbolInfo *SymbolTable::lookup(std::string_view name) const
     return lookupInFieldScopes(name);
 }
 
-bool SymbolTable::contains(std::string_view name) const
-{
+bool SymbolTable::contains(std::string_view name) const {
     return lookup(name) != nullptr;
 }
 
-bool SymbolTable::remove(std::string_view name)
-{
+bool SymbolTable::remove(std::string_view name) {
     // Heterogeneous lookup for erase
     auto it = symbols_.find(name);
-    if (it != symbols_.end())
-    {
+    if (it != symbols_.end()) {
         symbols_.erase(it);
         return true;
     }
     return false;
 }
 
-void SymbolTable::resetForNewProcedure()
-{
+void SymbolTable::resetForNewProcedure() {
     // Preserve symbols with string labels (for literal deduplication)
-    for (auto it = symbols_.begin(); it != symbols_.end();)
-    {
+    for (auto it = symbols_.begin(); it != symbols_.end();) {
         SymbolInfo &info = it->second;
-        if (!info.stringLabel.empty())
-        {
+        if (!info.stringLabel.empty()) {
             // Reset mutable state but keep the string label
             info.type = AstType::I64;
             info.hasType = false;
@@ -106,9 +95,7 @@ void SymbolTable::resetForNewProcedure()
             info.isStatic = false;
             info.isByRefParam = false;
             ++it;
-        }
-        else
-        {
+        } else {
             it = symbols_.erase(it);
         }
     }
@@ -117,8 +104,7 @@ void SymbolTable::resetForNewProcedure()
     fieldScopes_.clear();
 }
 
-void SymbolTable::clear()
-{
+void SymbolTable::clear() {
     symbols_.clear();
     fieldScopes_.clear();
 }
@@ -127,24 +113,21 @@ void SymbolTable::clear()
 // Type Operations
 // =============================================================================
 
-void SymbolTable::setType(std::string_view name, AstType type)
-{
+void SymbolTable::setType(std::string_view name, AstType type) {
     auto &info = define(name);
     info.type = type;
     info.hasType = true;
     info.isBoolean = !info.isArray && type == AstType::Bool;
 }
 
-std::optional<SymbolTable::AstType> SymbolTable::getType(std::string_view name) const
-{
+std::optional<SymbolTable::AstType> SymbolTable::getType(std::string_view name) const {
     const auto *info = lookup(name);
     if (!info)
         return std::nullopt;
     return info->type;
 }
 
-bool SymbolTable::hasExplicitType(std::string_view name) const
-{
+bool SymbolTable::hasExplicitType(std::string_view name) const {
     const auto *info = lookup(name);
     return info && info->hasType;
 }
@@ -153,22 +136,17 @@ bool SymbolTable::hasExplicitType(std::string_view name) const
 // Symbol Classification
 // =============================================================================
 
-void SymbolTable::markReferenced(std::string_view name, std::optional<AstType> inferredType)
-{
+void SymbolTable::markReferenced(std::string_view name, std::optional<AstType> inferredType) {
     if (name.empty())
         return;
 
     auto &info = define(name);
 
     // Apply inferred type if symbol doesn't have an explicit type
-    if (!info.hasType)
-    {
-        if (inferredType)
-        {
+    if (!info.hasType) {
+        if (inferredType) {
             info.type = *inferredType;
-        }
-        else
-        {
+        } else {
             // Fall back to suffix-based inference
             info.type = inferAstTypeFromName(name);
         }
@@ -179,8 +157,7 @@ void SymbolTable::markReferenced(std::string_view name, std::optional<AstType> i
     info.referenced = true;
 }
 
-void SymbolTable::markArray(std::string_view name)
-{
+void SymbolTable::markArray(std::string_view name) {
     if (name.empty())
         return;
 
@@ -191,8 +168,7 @@ void SymbolTable::markArray(std::string_view name)
         info.isBoolean = false;
 }
 
-void SymbolTable::markStatic(std::string_view name)
-{
+void SymbolTable::markStatic(std::string_view name) {
     if (name.empty())
         return;
 
@@ -200,8 +176,7 @@ void SymbolTable::markStatic(std::string_view name)
     info.isStatic = true;
 }
 
-void SymbolTable::markObject(std::string_view name, std::string className)
-{
+void SymbolTable::markObject(std::string_view name, std::string className) {
     if (name.empty())
         return;
 
@@ -211,8 +186,7 @@ void SymbolTable::markObject(std::string_view name, std::string className)
     info.hasType = true;
 }
 
-void SymbolTable::markByRef(std::string_view name)
-{
+void SymbolTable::markByRef(std::string_view name) {
     if (name.empty())
         return;
 
@@ -224,38 +198,32 @@ void SymbolTable::markByRef(std::string_view name)
 // Symbol Query
 // =============================================================================
 
-bool SymbolTable::isArray(std::string_view name) const
-{
+bool SymbolTable::isArray(std::string_view name) const {
     const auto *info = lookup(name);
     return info && info->isArray;
 }
 
-bool SymbolTable::isObject(std::string_view name) const
-{
+bool SymbolTable::isObject(std::string_view name) const {
     const auto *info = lookup(name);
     return info && info->isObject;
 }
 
-bool SymbolTable::isStatic(std::string_view name) const
-{
+bool SymbolTable::isStatic(std::string_view name) const {
     const auto *info = lookup(name);
     return info && info->isStatic;
 }
 
-bool SymbolTable::isByRef(std::string_view name) const
-{
+bool SymbolTable::isByRef(std::string_view name) const {
     const auto *info = lookup(name);
     return info && info->isByRefParam;
 }
 
-bool SymbolTable::isReferenced(std::string_view name) const
-{
+bool SymbolTable::isReferenced(std::string_view name) const {
     const auto *info = lookup(name);
     return info && info->referenced;
 }
 
-std::string SymbolTable::getObjectClass(std::string_view name) const
-{
+std::string SymbolTable::getObjectClass(std::string_view name) const {
     const auto *info = lookup(name);
     if (!info || !info->isObject)
         return {};
@@ -266,28 +234,24 @@ std::string SymbolTable::getObjectClass(std::string_view name) const
 // Slot Management
 // =============================================================================
 
-void SymbolTable::setSlotId(std::string_view name, unsigned slotId)
-{
+void SymbolTable::setSlotId(std::string_view name, unsigned slotId) {
     auto &info = define(name);
     info.slotId = slotId;
 }
 
-std::optional<unsigned> SymbolTable::getSlotId(std::string_view name) const
-{
+std::optional<unsigned> SymbolTable::getSlotId(std::string_view name) const {
     const auto *info = lookup(name);
     if (!info)
         return std::nullopt;
     return info->slotId;
 }
 
-void SymbolTable::setArrayLengthSlot(std::string_view name, unsigned slotId)
-{
+void SymbolTable::setArrayLengthSlot(std::string_view name, unsigned slotId) {
     auto &info = define(name);
     info.arrayLengthSlot = slotId;
 }
 
-std::optional<unsigned> SymbolTable::getArrayLengthSlot(std::string_view name) const
-{
+std::optional<unsigned> SymbolTable::getArrayLengthSlot(std::string_view name) const {
     const auto *info = lookup(name);
     if (!info)
         return std::nullopt;
@@ -298,22 +262,19 @@ std::optional<unsigned> SymbolTable::getArrayLengthSlot(std::string_view name) c
 // String Literal Caching
 // =============================================================================
 
-void SymbolTable::setStringLabel(std::string_view name, std::string label)
-{
+void SymbolTable::setStringLabel(std::string_view name, std::string label) {
     auto &info = define(name);
     info.stringLabel = std::move(label);
 }
 
-std::string SymbolTable::getStringLabel(std::string_view name) const
-{
+std::string SymbolTable::getStringLabel(std::string_view name) const {
     const auto *info = lookup(name);
     if (!info)
         return {};
     return info->stringLabel;
 }
 
-bool SymbolTable::hasStringLabel(std::string_view name) const
-{
+bool SymbolTable::hasStringLabel(std::string_view name) const {
     const auto *info = lookup(name);
     return info && !info->stringLabel.empty();
 }
@@ -322,16 +283,13 @@ bool SymbolTable::hasStringLabel(std::string_view name) const
 // Field Scope Management
 // =============================================================================
 
-void SymbolTable::pushFieldScope(const ClassLayout *layout)
-{
+void SymbolTable::pushFieldScope(const ClassLayout *layout) {
     FieldScope scope;
     scope.layout = layout;
 
-    if (layout)
-    {
+    if (layout) {
         // Populate field symbols from the class layout
-        for (const auto &field : layout->fields)
-        {
+        for (const auto &field : layout->fields) {
             SymbolInfo info;
             info.type = field.type;
             info.hasType = true;
@@ -347,28 +305,24 @@ void SymbolTable::pushFieldScope(const ClassLayout *layout)
     fieldScopes_.push_back(std::move(scope));
 }
 
-void SymbolTable::popFieldScope()
-{
+void SymbolTable::popFieldScope() {
     if (!fieldScopes_.empty())
         fieldScopes_.pop_back();
 }
 
-bool SymbolTable::isFieldInScope(std::string_view name) const
-{
+bool SymbolTable::isFieldInScope(std::string_view name) const {
     if (name.empty())
         return false;
 
     // Heterogeneous lookup, no allocation
-    for (auto it = fieldScopes_.rbegin(); it != fieldScopes_.rend(); ++it)
-    {
+    for (auto it = fieldScopes_.rbegin(); it != fieldScopes_.rend(); ++it) {
         if (it->symbols.find(name) != it->symbols.end())
             return true;
     }
     return false;
 }
 
-const FieldScope *SymbolTable::activeFieldScope() const
-{
+const FieldScope *SymbolTable::activeFieldScope() const {
     if (fieldScopes_.empty())
         return nullptr;
     return &fieldScopes_.back();
@@ -378,11 +332,9 @@ const FieldScope *SymbolTable::activeFieldScope() const
 // Internal Helpers
 // =============================================================================
 
-SymbolInfo *SymbolTable::lookupInFieldScopes(std::string_view name)
-{
+SymbolInfo *SymbolTable::lookupInFieldScopes(std::string_view name) {
     // Heterogeneous lookup, no allocation
-    for (auto scopeIt = fieldScopes_.rbegin(); scopeIt != fieldScopes_.rend(); ++scopeIt)
-    {
+    for (auto scopeIt = fieldScopes_.rbegin(); scopeIt != fieldScopes_.rend(); ++scopeIt) {
         auto symIt = scopeIt->symbols.find(name);
         if (symIt != scopeIt->symbols.end())
             return &symIt->second;
@@ -390,11 +342,9 @@ SymbolInfo *SymbolTable::lookupInFieldScopes(std::string_view name)
     return nullptr;
 }
 
-const SymbolInfo *SymbolTable::lookupInFieldScopes(std::string_view name) const
-{
+const SymbolInfo *SymbolTable::lookupInFieldScopes(std::string_view name) const {
     // Heterogeneous lookup, no allocation
-    for (auto scopeIt = fieldScopes_.rbegin(); scopeIt != fieldScopes_.rend(); ++scopeIt)
-    {
+    for (auto scopeIt = fieldScopes_.rbegin(); scopeIt != fieldScopes_.rend(); ++scopeIt) {
         auto symIt = scopeIt->symbols.find(name);
         if (symIt != scopeIt->symbols.end())
             return &symIt->second;

@@ -36,10 +36,8 @@ using namespace viper::codegen::objfile;
 
 static int gFail = 0;
 
-static void check(bool cond, const char *msg, int line)
-{
-    if (!cond)
-    {
+static void check(bool cond, const char *msg, int line) {
+    if (!cond) {
         std::cerr << "FAIL line " << line << ": " << msg << "\n";
         ++gFail;
     }
@@ -48,8 +46,7 @@ static void check(bool cond, const char *msg, int line)
 #define CHECK(cond) check((cond), #cond, __LINE__)
 
 /// Read a complete file into a byte vector.
-static std::vector<uint8_t> readFile(const std::string &path)
-{
+static std::vector<uint8_t> readFile(const std::string &path) {
     std::ifstream ifs(path, std::ios::binary | std::ios::ate);
     if (!ifs)
         return {};
@@ -61,21 +58,18 @@ static std::vector<uint8_t> readFile(const std::string &path)
 }
 
 /// Read a little-endian uint16_t from a byte vector.
-static uint16_t readLE16(const std::vector<uint8_t> &d, size_t off)
-{
+static uint16_t readLE16(const std::vector<uint8_t> &d, size_t off) {
     return static_cast<uint16_t>(d[off]) | (static_cast<uint16_t>(d[off + 1]) << 8);
 }
 
 /// Read a little-endian uint32_t.
-static uint32_t readLE32(const std::vector<uint8_t> &d, size_t off)
-{
+static uint32_t readLE32(const std::vector<uint8_t> &d, size_t off) {
     return static_cast<uint32_t>(d[off]) | (static_cast<uint32_t>(d[off + 1]) << 8) |
            (static_cast<uint32_t>(d[off + 2]) << 16) | (static_cast<uint32_t>(d[off + 3]) << 24);
 }
 
 /// Read a little-endian uint64_t.
-static uint64_t readLE64(const std::vector<uint8_t> &d, size_t off)
-{
+static uint64_t readLE64(const std::vector<uint8_t> &d, size_t off) {
     uint64_t val = 0;
     for (int i = 0; i < 8; ++i)
         val |= (static_cast<uint64_t>(d[off + i]) << (i * 8));
@@ -86,8 +80,7 @@ static uint64_t readLE64(const std::vector<uint8_t> &d, size_t off)
 // Test: Minimal ELF x86_64
 // =============================================================================
 
-static void testMinimalX64Elf()
-{
+static void testMinimalX64Elf() {
     // Create a minimal .text section with a few bytes.
     CodeSection text, rodata;
     text.emit8(0xC3); // ret
@@ -148,8 +141,7 @@ static void testMinimalX64Elf()
 // Test: Minimal ELF AArch64
 // =============================================================================
 
-static void testMinimalA64Elf()
-{
+static void testMinimalA64Elf() {
     CodeSection text, rodata;
     // ret → 0xD65F03C0 (little-endian: C0 03 5F D6)
     text.emit32LE(0xD65F03C0);
@@ -181,8 +173,7 @@ static void testMinimalA64Elf()
 // Test: Relocations in ELF x86_64
 // =============================================================================
 
-static void testX64Relocations()
-{
+static void testX64Relocations() {
     CodeSection text, rodata;
 
     // Emit a CALL instruction placeholder (5 bytes: E8 + 4 zero bytes)
@@ -238,8 +229,7 @@ static void testX64Relocations()
 // Test: AArch64 Relocations
 // =============================================================================
 
-static void testA64Relocations()
-{
+static void testA64Relocations() {
     CodeSection text, rodata;
 
     // Emit a BL instruction (0x94000000) with A64Call26 relocation.
@@ -279,8 +269,7 @@ static void testA64Relocations()
 // Test: Symbol Table Structure
 // =============================================================================
 
-static void testSymbolTable()
-{
+static void testSymbolTable() {
     CodeSection text, rodata;
     text.emit8(0xC3);
     text.defineSymbol("my_func", SymbolBinding::Global, SymbolSection::Text);
@@ -331,8 +320,7 @@ static void testSymbolTable()
 // Test: Factory creates ELF writer
 // =============================================================================
 
-static void testFactory()
-{
+static void testFactory() {
     auto writer = createObjectFileWriter(ObjFormat::ELF, ObjArch::X86_64);
     CHECK(writer != nullptr);
 
@@ -352,8 +340,7 @@ static void testFactory()
 // Test: Section header string table
 // =============================================================================
 
-static void testSectionNames()
-{
+static void testSectionNames() {
     CodeSection text, rodata;
     text.emit8(0xC3);
 
@@ -394,8 +381,7 @@ static void testSectionNames()
 // Test: Rodata section
 // =============================================================================
 
-static void testRodataSection()
-{
+static void testRodataSection() {
     CodeSection text, rodata;
     text.emit8(0xC3);
 
@@ -430,8 +416,7 @@ static void testRodataSection()
     std::remove(path.c_str());
 }
 
-int main()
-{
+int main() {
     testMinimalX64Elf();
     testMinimalA64Elf();
     testX64Relocations();

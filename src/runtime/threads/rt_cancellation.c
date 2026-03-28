@@ -49,8 +49,7 @@ extern void rt_trap(const char *msg);
 
 // --- Internal structures ---
 
-typedef struct
-{
+typedef struct {
 #if defined(_WIN32)
     volatile LONG cancelled;
 #else
@@ -59,16 +58,14 @@ typedef struct
     void *parent; // linked parent token (NULL if root)
 } rt_cancellation_data;
 
-static void cancellation_finalizer(void *obj)
-{
+static void cancellation_finalizer(void *obj) {
     (void)obj;
     // No dynamic allocations to free
 }
 
 // --- Platform-specific atomic helpers ---
 
-static inline void cancel_init(rt_cancellation_data *data, int value)
-{
+static inline void cancel_init(rt_cancellation_data *data, int value) {
 #if defined(_WIN32)
     InterlockedExchange(&data->cancelled, (LONG)value);
 #else
@@ -76,8 +73,7 @@ static inline void cancel_init(rt_cancellation_data *data, int value)
 #endif
 }
 
-static inline int cancel_load(rt_cancellation_data *data)
-{
+static inline int cancel_load(rt_cancellation_data *data) {
 #if defined(_WIN32)
     return (int)InterlockedCompareExchange(&data->cancelled, 0, 0);
 #else
@@ -85,8 +81,7 @@ static inline int cancel_load(rt_cancellation_data *data)
 #endif
 }
 
-static inline void cancel_store(rt_cancellation_data *data, int value)
-{
+static inline void cancel_store(rt_cancellation_data *data, int value) {
 #if defined(_WIN32)
     InterlockedExchange(&data->cancelled, (LONG)value);
 #else
@@ -96,8 +91,7 @@ static inline void cancel_store(rt_cancellation_data *data, int value)
 
 // --- Public API ---
 
-void *rt_cancellation_new(void)
-{
+void *rt_cancellation_new(void) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_cancellation_data));
     rt_cancellation_data *data = (rt_cancellation_data *)obj;
     cancel_init(data, 0);
@@ -109,8 +103,7 @@ void *rt_cancellation_new(void)
 /// @brief Perform cancellation is cancelled operation.
 /// @param token
 /// @return Result value.
-int8_t rt_cancellation_is_cancelled(void *token)
-{
+int8_t rt_cancellation_is_cancelled(void *token) {
     if (!token)
         return 0;
     rt_cancellation_data *data = (rt_cancellation_data *)token;
@@ -119,8 +112,7 @@ int8_t rt_cancellation_is_cancelled(void *token)
 
 /// @brief Perform cancellation cancel operation.
 /// @param token
-void rt_cancellation_cancel(void *token)
-{
+void rt_cancellation_cancel(void *token) {
     if (!token)
         return;
     rt_cancellation_data *data = (rt_cancellation_data *)token;
@@ -129,16 +121,14 @@ void rt_cancellation_cancel(void *token)
 
 /// @brief Perform cancellation reset operation.
 /// @param token
-void rt_cancellation_reset(void *token)
-{
+void rt_cancellation_reset(void *token) {
     if (!token)
         return;
     rt_cancellation_data *data = (rt_cancellation_data *)token;
     cancel_store(data, 0);
 }
 
-void *rt_cancellation_linked(void *parent)
-{
+void *rt_cancellation_linked(void *parent) {
     void *obj = rt_obj_new_i64(0, sizeof(rt_cancellation_data));
     rt_cancellation_data *data = (rt_cancellation_data *)obj;
     cancel_init(data, 0);
@@ -152,8 +142,7 @@ void *rt_cancellation_linked(void *parent)
 /// @brief Perform cancellation check operation.
 /// @param token
 /// @return Result value.
-int8_t rt_cancellation_check(void *token)
-{
+int8_t rt_cancellation_check(void *token) {
     if (!token)
         return 0;
     rt_cancellation_data *data = (rt_cancellation_data *)token;
@@ -166,8 +155,7 @@ int8_t rt_cancellation_check(void *token)
 
 /// @brief Perform cancellation throw if cancelled operation.
 /// @param token
-void rt_cancellation_throw_if_cancelled(void *token)
-{
+void rt_cancellation_throw_if_cancelled(void *token) {
     if (rt_cancellation_check(token))
         rt_trap("OperationCancelledException: cancellation was requested");
 }

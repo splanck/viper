@@ -16,8 +16,7 @@
 #include <cassert>
 #include <cstdio>
 
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -26,8 +25,7 @@ static void test_result(const char *name, bool passed)
 // List.Find / List.Has with boxed strings
 //=============================================================================
 
-static void test_list_find_boxed_strings()
-{
+static void test_list_find_boxed_strings() {
     printf("Testing List.Find/Has with boxed strings:\n");
 
     void *list = rt_list_new();
@@ -64,8 +62,7 @@ static void test_list_find_boxed_strings()
 // List.Find / List.Has with boxed integers
 //=============================================================================
 
-static void test_list_find_boxed_integers()
-{
+static void test_list_find_boxed_integers() {
     printf("Testing List.Find/Has with boxed integers:\n");
 
     void *list = rt_list_new();
@@ -96,8 +93,7 @@ static void test_list_find_boxed_integers()
 // List.Find / List.Has with boxed floats
 //=============================================================================
 
-static void test_list_find_boxed_floats()
-{
+static void test_list_find_boxed_floats() {
     printf("Testing List.Find/Has with boxed floats:\n");
 
     void *list = rt_list_new();
@@ -122,8 +118,7 @@ static void test_list_find_boxed_floats()
 // List.Remove with boxed values
 //=============================================================================
 
-static void test_list_remove_boxed()
-{
+static void test_list_remove_boxed() {
     printf("Testing List.Remove with boxed values:\n");
 
     void *list = rt_list_new();
@@ -161,8 +156,7 @@ static void test_list_remove_boxed()
 // Boxed booleans
 //=============================================================================
 
-static void test_list_find_boxed_booleans()
-{
+static void test_list_find_boxed_booleans() {
     printf("Testing List.Find/Has with boxed booleans:\n");
 
     void *list = rt_list_new();
@@ -184,8 +178,7 @@ static void test_list_find_boxed_booleans()
 // Main
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== List Box Content Equality Tests ===\n\n");
 
     test_list_find_boxed_strings();

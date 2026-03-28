@@ -27,21 +27,18 @@
 #include <thread>
 #include <vector>
 
-namespace
-{
+namespace {
 std::barrier<> trapBarrier(2);
 std::mutex trapMutex;
 std::vector<std::string> trapMessages;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     trapBarrier.arrive_and_wait();
     const auto *ctx = il::vm::RuntimeBridge::activeContext();
     std::ostringstream os;
     os << (msg ? msg : "trap");
-    if (ctx)
-    {
+    if (ctx) {
         os << ' ' << ctx->function << ": " << ctx->block;
         if (ctx->loc.isValid())
             os << " (" << ctx->loc.file_id << ':' << ctx->loc.line << ':' << ctx->loc.column << ')';
@@ -50,8 +47,7 @@ extern "C" void vm_trap(const char *msg)
     trapMessages.push_back(os.str());
 }
 
-int main()
-{
+int main() {
     trapMessages.clear();
 
     const std::array<std::string, 2> globals = {"g_msg_a", "g_msg_b"};
@@ -62,8 +58,7 @@ int main()
         il::support::SourceLoc{2, 20, 8},
     };
 
-    auto worker = [&](int idx)
-    {
+    auto worker = [&](int idx) {
         il::core::Module module;
         il::build::IRBuilder builder(module);
         builder.addExtern("rt_trap",
@@ -90,8 +85,7 @@ int main()
     assert(trapMessages.size() == 2);
     bool seenA = false;
     bool seenB = false;
-    for (const auto &entry : trapMessages)
-    {
+    for (const auto &entry : trapMessages) {
         if (entry.find("trap-A") != std::string::npos)
             seenA = entry.find("blockA") != std::string::npos &&
                     entry.find("(1:10:4)") != std::string::npos;

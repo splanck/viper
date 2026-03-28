@@ -34,15 +34,12 @@
 #include <limits>
 #include <optional>
 
-namespace il::frontends::basic::constfold
-{
-namespace
-{
+namespace il::frontends::basic::constfold {
+namespace {
 /// @brief Cast an expression to a string literal node when possible.
 /// @param expr Expression to inspect.
 /// @return Pointer to the string expression or @c nullptr when the cast fails.
-const StringExpr *as_string(const AST::Expr &expr)
-{
+const StringExpr *as_string(const AST::Expr &expr) {
     return as<const StringExpr>(expr);
 }
 
@@ -51,8 +48,7 @@ const StringExpr *as_string(const AST::Expr &expr)
 ///          point representations so slicing helpers respect BASIC semantics.
 /// @param expr Expression to interpret as an index.
 /// @return Parsed index when available.
-std::optional<long long> as_index(const AST::Expr &expr)
-{
+std::optional<long long> as_index(const AST::Expr &expr) {
     auto numeric = numeric_from_expr(expr);
     if (!numeric || numeric->isFloat)
         return std::nullopt;
@@ -66,8 +62,7 @@ std::optional<long long> as_index(const AST::Expr &expr)
 /// @param count Requested number of characters.
 /// @param limit Maximum characters that may be consumed.
 /// @return Safe count within the range [0, limit].
-std::size_t clamp_count(long long count, std::size_t limit)
-{
+std::size_t clamp_count(long long count, std::size_t limit) {
     if (count <= 0)
         return 0;
     auto capped = static_cast<unsigned long long>(count);
@@ -80,8 +75,7 @@ std::size_t clamp_count(long long count, std::size_t limit)
 /// @brief Create a new string literal expression node.
 /// @param value Text to embed within the AST node.
 /// @return Unique pointer owning the newly created string literal.
-AST::ExprPtr make_string(std::string value)
-{
+AST::ExprPtr make_string(std::string value) {
     auto out = std::make_unique<::il::frontends::basic::StringExpr>();
     out->value = std::move(value);
     return out;
@@ -92,8 +86,7 @@ AST::ExprPtr make_string(std::string value)
 ///          length exceeds the integer range.
 /// @param length Character count to encode.
 /// @return Unique pointer owning the integer literal node.
-AST::ExprPtr make_length(std::size_t length)
-{
+AST::ExprPtr make_length(std::size_t length) {
     auto out = std::make_unique<::il::frontends::basic::IntExpr>();
     if (length > static_cast<std::size_t>(std::numeric_limits<long long>::max()))
         out->value = std::numeric_limits<long long>::max();
@@ -113,8 +106,7 @@ AST::ExprPtr make_length(std::size_t length)
 /// @return Folded string constant or @c std::nullopt when folding is unsupported.
 std::optional<Constant> fold_strings(AST::BinaryExpr::Op op,
                                      const Constant &lhs,
-                                     const Constant &rhs)
-{
+                                     const Constant &rhs) {
     if (op != AST::BinaryExpr::Op::Add)
         return std::nullopt;
     if (lhs.kind != LiteralKind::String || rhs.kind != LiteralKind::String)
@@ -129,8 +121,7 @@ std::optional<Constant> fold_strings(AST::BinaryExpr::Op op,
 /// @param arg Expression passed to LEN().
 /// @return Integer literal describing the string length, or @c nullptr when the
 ///         argument is not literal.
-AST::ExprPtr foldLenLiteral(const AST::Expr &arg)
-{
+AST::ExprPtr foldLenLiteral(const AST::Expr &arg) {
     if (auto *s = as_string(arg))
         return make_length(s->value.size());
     return nullptr;
@@ -146,8 +137,7 @@ AST::ExprPtr foldLenLiteral(const AST::Expr &arg)
 /// @return String literal capturing the sliced substring or @c nullptr.
 AST::ExprPtr foldMidLiteral(const AST::Expr &source,
                             const AST::Expr &startExpr,
-                            const AST::Expr &lengthExpr)
-{
+                            const AST::Expr &lengthExpr) {
     auto *s = as_string(source);
     auto start = as_index(startExpr);
     auto length = as_index(lengthExpr);
@@ -170,8 +160,7 @@ AST::ExprPtr foldMidLiteral(const AST::Expr &source,
 /// @param source Source string expression.
 /// @param countExpr Expression describing the number of characters to keep.
 /// @return Folded string literal or @c nullptr when inputs are not literal.
-AST::ExprPtr foldLeftLiteral(const AST::Expr &source, const AST::Expr &countExpr)
-{
+AST::ExprPtr foldLeftLiteral(const AST::Expr &source, const AST::Expr &countExpr) {
     auto *s = as_string(source);
     auto count = as_index(countExpr);
     if (!s || !count)
@@ -190,8 +179,7 @@ AST::ExprPtr foldLeftLiteral(const AST::Expr &source, const AST::Expr &countExpr
 /// @param countExpr Expression describing the number of characters to take from
 ///                  the end.
 /// @return Folded string literal or @c nullptr when folding cannot proceed.
-AST::ExprPtr foldRightLiteral(const AST::Expr &source, const AST::Expr &countExpr)
-{
+AST::ExprPtr foldRightLiteral(const AST::Expr &source, const AST::Expr &countExpr) {
     auto *s = as_string(source);
     auto count = as_index(countExpr);
     if (!s || !count)
@@ -210,8 +198,7 @@ AST::ExprPtr foldRightLiteral(const AST::Expr &source, const AST::Expr &countExp
 /// @param arg Expression passed to CHR$().
 /// @return String literal containing the character, or @c nullptr when the
 ///         argument is not a valid literal integer in range.
-AST::ExprPtr foldChrLiteral(const AST::Expr &arg)
-{
+AST::ExprPtr foldChrLiteral(const AST::Expr &arg) {
     auto charCode = as_index(arg);
     if (!charCode)
         return nullptr;

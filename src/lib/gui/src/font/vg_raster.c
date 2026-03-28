@@ -28,13 +28,11 @@
 // Point and Edge Structures
 //=============================================================================
 
-typedef struct
-{
+typedef struct {
     float x, y;
 } raster_point_t;
 
-typedef struct
-{
+typedef struct {
     float x0, y0, x1, y1;
     float dx; // Precomputed 1/(y1-y0) for scanline intersection
 } raster_edge_t;
@@ -52,18 +50,15 @@ static int flatten_quadratic(float x0,
                              float tolerance,
                              raster_point_t *out,
                              int max_points,
-                             int count)
-{
+                             int count) {
     // Calculate flatness (distance from control point to line)
     float dx = x2 - x0;
     float dy = y2 - y0;
     float len_sq = dx * dx + dy * dy;
 
-    if (len_sq < 0.0001f)
-    {
+    if (len_sq < 0.0001f) {
         // Degenerate case - just add endpoint
-        if (count < max_points)
-        {
+        if (count < max_points) {
             out[count].x = x2;
             out[count].y = y2;
             return count + 1;
@@ -73,11 +68,9 @@ static int flatten_quadratic(float x0,
 
     float d = fabsf((x1 - x0) * dy - (y1 - y0) * dx) / sqrtf(len_sq);
 
-    if (d <= tolerance)
-    {
+    if (d <= tolerance) {
         // Flat enough, output line segment endpoint
-        if (count < max_points)
-        {
+        if (count < max_points) {
             out[count].x = x2;
             out[count].y = y2;
             return count + 1;
@@ -112,24 +105,20 @@ static int outline_to_polygon(float *points_x,
                               float offset_x,
                               float offset_y,
                               raster_point_t *out,
-                              int max_points)
-{
+                              int max_points) {
     int count = 0;
 
-    for (int c = 0; c < num_contours; c++)
-    {
+    for (int c = 0; c < num_contours; c++) {
         int contour_end = contour_ends[c];
         int contour_start = (c == 0) ? 0 : contour_ends[c - 1] + 1;
         int contour_len = contour_end - contour_start + 1;
 
-        if (contour_len < 2)
-        {
+        if (contour_len < 2) {
             continue;
         }
 
         // Process points in contour
-        for (int i = 0; i < contour_len; i++)
-        {
+        for (int i = 0; i < contour_len; i++) {
             int idx = contour_start + i;
             int next_idx = contour_start + ((i + 1) % contour_len);
 
@@ -141,39 +130,31 @@ static int outline_to_polygon(float *points_x,
             bool on0 = flags[idx];
             bool on1 = flags[next_idx];
 
-            if (on0 && on1)
-            {
+            if (on0 && on1) {
                 // Line segment
-                if (count < max_points)
-                {
+                if (count < max_points) {
                     out[count].x = x0;
                     out[count].y = y0;
                     count++;
                 }
-            }
-            else if (on0 && !on1)
-            {
+            } else if (on0 && !on1) {
                 // Current on-curve, next is control point
                 // Find the end point
                 int end_idx = contour_start + ((i + 2) % contour_len);
                 float x2, y2;
 
-                if (flags[end_idx])
-                {
+                if (flags[end_idx]) {
                     // End point is on-curve
                     x2 = points_x[end_idx] * scale + offset_x;
                     y2 = points_y[end_idx] * scale + offset_y;
-                }
-                else
-                {
+                } else {
                     // End point is also off-curve, use midpoint
                     x2 = (x1 + points_x[end_idx] * scale + offset_x) * 0.5f;
                     y2 = (y1 + points_y[end_idx] * scale + offset_y) * 0.5f;
                 }
 
                 // Start with current point
-                if (count < max_points)
-                {
+                if (count < max_points) {
                     out[count].x = x0;
                     out[count].y = y0;
                     count++;
@@ -182,16 +163,12 @@ static int outline_to_polygon(float *points_x,
                 // Flatten the curve
                 count = flatten_quadratic(
                     x0, y0, x1, y1, x2, y2, CURVE_TOLERANCE, out, max_points, count);
-            }
-            else if (!on0 && !on1)
-            {
+            } else if (!on0 && !on1) {
                 // Both off-curve - implicit on-curve at midpoint
                 // The midpoint becomes our "on-curve" start
                 // and x1,y1 is the control for next segment
                 // This case is handled by the previous iteration
-            }
-            else if (!on0 && on1)
-            {
+            } else if (!on0 && on1) {
                 // Current off-curve, next on-curve
                 // This is handled by previous point's curve
             }
@@ -205,15 +182,13 @@ static int outline_to_polygon(float *points_x,
 // Edge Comparison for Sorting
 //=============================================================================
 
-static int raster_cmp_float(const void *a, const void *b)
-{
+static int raster_cmp_float(const void *a, const void *b) {
     float fa = *(const float *)a;
     float fb = *(const float *)b;
     return (fa > fb) - (fa < fb);
 }
 
-static int compare_edges(const void *a, const void *b)
-{
+static int compare_edges(const void *a, const void *b) {
     const raster_edge_t *ea = (const raster_edge_t *)a;
     const raster_edge_t *eb = (const raster_edge_t *)b;
 
@@ -231,12 +206,10 @@ static int compare_edges(const void *a, const void *b)
 // Build Edge List from Polygon
 //=============================================================================
 
-static int build_edges(raster_point_t *points, int count, raster_edge_t *edges)
-{
+static int build_edges(raster_point_t *points, int count, raster_edge_t *edges) {
     int edge_count = 0;
 
-    for (int i = 0; i < count; i++)
-    {
+    for (int i = 0; i < count; i++) {
         int j = (i + 1) % count;
 
         // Skip horizontal edges
@@ -264,8 +237,7 @@ static int build_edges(raster_point_t *points, int count, raster_edge_t *edges)
 //=============================================================================
 
 static void rasterize_scanlines(
-    raster_point_t *points, int point_count, int width, int height, uint8_t *bitmap)
-{
+    raster_point_t *points, int point_count, int width, int height, uint8_t *bitmap) {
     // Clear bitmap
     memset(bitmap, 0, width * height);
 
@@ -281,36 +253,31 @@ static void rasterize_scanlines(
 
     // Supersampled scanline buffer
     float *coverage = calloc(width, sizeof(float));
-    if (!coverage)
-    {
+    if (!coverage) {
         free(edges);
         return;
     }
 
     // Process each row with supersampling
-    for (int y = 0; y < height; y++)
-    {
+    for (int y = 0; y < height; y++) {
         memset(coverage, 0, width * sizeof(float));
 
         // Supersample vertically
-        for (int sub = 0; sub < OVERSAMPLE; sub++)
-        {
+        for (int sub = 0; sub < OVERSAMPLE; sub++) {
             float scan_y = y + (sub + 0.5f) / OVERSAMPLE;
 
             // Find intersections with active edges
             float intersections[256];
             int num_intersections = 0;
 
-            for (int e = 0; e < edge_count; e++)
-            {
+            for (int e = 0; e < edge_count; e++) {
                 float y0 = edges[e].y0;
                 float y1 = edges[e].y1;
 
                 // Check if edge crosses this scanline
                 bool crosses = (y0 <= scan_y && y1 > scan_y) || (y1 <= scan_y && y0 > scan_y);
 
-                if (crosses && num_intersections < 256)
-                {
+                if (crosses && num_intersections < 256) {
                     // Calculate x intersection
                     float t = (scan_y - y0) / (y1 - y0);
                     float x = edges[e].x0 + t * (edges[e].x1 - edges[e].x0);
@@ -319,14 +286,12 @@ static void rasterize_scanlines(
             }
 
             // Sort intersections (qsort: O(n log n) vs previous O(n²) bubble sort)
-            if (num_intersections > 1)
-            {
+            if (num_intersections > 1) {
                 qsort(intersections, num_intersections, sizeof(float), raster_cmp_float);
             }
 
             // Fill between pairs (even-odd rule)
-            for (int i = 0; i + 1 < num_intersections; i += 2)
-            {
+            for (int i = 0; i + 1 < num_intersections; i += 2) {
                 float x0f = intersections[i];
                 float x1f = intersections[i + 1];
 
@@ -339,12 +304,10 @@ static void rasterize_scanlines(
                     x1 = width;
 
                 // Add coverage for this subsample
-                for (int x = x0; x < x1; x++)
-                {
+                for (int x = x0; x < x1; x++) {
                     float left = (x < x0f) ? x0f : x;
                     float right = (x + 1 > x1f) ? x1f : x + 1;
-                    if (right > left)
-                    {
+                    if (right > left) {
                         coverage[x] += (right - left) / OVERSAMPLE;
                     }
                 }
@@ -352,11 +315,9 @@ static void rasterize_scanlines(
         }
 
         // Convert coverage to 8-bit alpha
-        for (int x = 0; x < width; x++)
-        {
+        for (int x = 0; x < width; x++) {
             float c = coverage[x];
-            if (c > 0)
-            {
+            if (c > 0) {
                 if (c > 1.0f)
                     c = 1.0f;
                 bitmap[y * width + x] = (uint8_t)(c * 255.0f + 0.5f);
@@ -372,8 +333,7 @@ static void rasterize_scanlines(
 // Main Rasterization Entry Point
 //=============================================================================
 
-vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size)
-{
+vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size) {
     // Get glyph outline
     float *points_x = NULL;
     float *points_y = NULL;
@@ -389,8 +349,7 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size)
                                &flags,
                                &contour_ends,
                                &num_points,
-                               &num_contours))
-    {
+                               &num_contours)) {
         return NULL;
     }
 
@@ -403,8 +362,7 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size)
 
     // Allocate glyph
     vg_glyph_t *glyph = calloc(1, sizeof(vg_glyph_t));
-    if (!glyph)
-    {
+    if (!glyph) {
         free(points_x);
         free(points_y);
         free(flags);
@@ -415,8 +373,7 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size)
     glyph->advance = (int)(advance_width * scale + 0.5f);
 
     // Empty glyph (like space)
-    if (num_points == 0)
-    {
+    if (num_points == 0) {
         free(points_x);
         free(points_y);
         free(flags);
@@ -433,8 +390,7 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size)
     float min_x = points_x[0], max_x = points_x[0];
     float min_y = points_y[0], max_y = points_y[0];
 
-    for (int i = 1; i < num_points; i++)
-    {
+    for (int i = 1; i < num_points; i++) {
         if (points_x[i] < min_x)
             min_x = points_x[i];
         if (points_x[i] > max_x)
@@ -474,8 +430,7 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size)
 
     // Convert outline to polygon
     raster_point_t *polygon = malloc(MAX_POINTS * sizeof(raster_point_t));
-    if (!polygon)
-    {
+    if (!polygon) {
         free(glyph);
         free(points_x);
         free(points_y);
@@ -496,15 +451,13 @@ vg_glyph_t *vg_rasterize_glyph(vg_font_t *font, uint16_t glyph_id, float size)
                                            MAX_POINTS);
 
     // Flip y coordinates (TTF y-up to bitmap y-down)
-    for (int i = 0; i < polygon_count; i++)
-    {
+    for (int i = 0; i < polygon_count; i++) {
         polygon[i].y = bmp_height - polygon[i].y;
     }
 
     // Allocate and rasterize bitmap
     glyph->bitmap = calloc(bmp_width * bmp_height, 1);
-    if (glyph->bitmap)
-    {
+    if (glyph->bitmap) {
         rasterize_scanlines(polygon, polygon_count, bmp_width, bmp_height, glyph->bitmap);
     }
 

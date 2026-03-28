@@ -19,8 +19,7 @@
 #include <cstdio>
 
 /// @brief Helper to print test result.
-static void test_result(const char *name, bool passed)
-{
+static void test_result(const char *name, bool passed) {
     printf("  %s: %s\n", name, passed ? "PASS" : "FAIL");
     assert(passed);
 }
@@ -29,8 +28,7 @@ static void test_result(const char *name, bool passed)
 // Basic Operations Tests
 //=============================================================================
 
-static void test_set_new_empty()
-{
+static void test_set_new_empty() {
     printf("Testing Set.New and empty state:\n");
 
     void *set = rt_set_new();
@@ -41,8 +39,7 @@ static void test_set_new_empty()
     printf("\n");
 }
 
-static void test_set_add_has_boxed_strings()
-{
+static void test_set_add_has_boxed_strings() {
     printf("Testing Set.Add/Has with boxed strings (content equality):\n");
 
     void *set = rt_set_new();
@@ -76,8 +73,7 @@ static void test_set_add_has_boxed_strings()
     printf("\n");
 }
 
-static void test_set_add_has_boxed_integers()
-{
+static void test_set_add_has_boxed_integers() {
     printf("Testing Set.Add/Has with boxed integers:\n");
 
     void *set = rt_set_new();
@@ -102,8 +98,7 @@ static void test_set_add_has_boxed_integers()
     printf("\n");
 }
 
-static void test_set_add_has_boxed_floats()
-{
+static void test_set_add_has_boxed_floats() {
     printf("Testing Set.Add/Has with boxed floats:\n");
 
     void *set = rt_set_new();
@@ -122,8 +117,7 @@ static void test_set_add_has_boxed_floats()
     printf("\n");
 }
 
-static void test_set_add_has_boxed_booleans()
-{
+static void test_set_add_has_boxed_booleans() {
     printf("Testing Set.Add/Has with boxed booleans:\n");
 
     void *set = rt_set_new();
@@ -142,8 +136,7 @@ static void test_set_add_has_boxed_booleans()
     printf("\n");
 }
 
-static void test_set_remove_boxed()
-{
+static void test_set_remove_boxed() {
     printf("Testing Set.Remove with boxed values:\n");
 
     void *set = rt_set_new();
@@ -170,8 +163,7 @@ static void test_set_remove_boxed()
     printf("\n");
 }
 
-static void test_set_clear()
-{
+static void test_set_clear() {
     printf("Testing Set.Clear:\n");
 
     void *set = rt_set_new();
@@ -192,8 +184,7 @@ static void test_set_clear()
 // Set Operations Tests
 //=============================================================================
 
-static void test_set_union()
-{
+static void test_set_union() {
     printf("Testing Set.Union with boxed strings:\n");
 
     void *s1 = rt_set_new();
@@ -213,8 +204,7 @@ static void test_set_union()
     printf("\n");
 }
 
-static void test_set_intersect()
-{
+static void test_set_intersect() {
     printf("Testing Set.Intersect with boxed strings:\n");
 
     void *s1 = rt_set_new();
@@ -239,8 +229,7 @@ static void test_set_intersect()
     printf("\n");
 }
 
-static void test_set_diff()
-{
+static void test_set_diff() {
     printf("Testing Set.Diff (difference) with boxed strings:\n");
 
     void *s1 = rt_set_new();
@@ -266,8 +255,7 @@ static void test_set_diff()
     printf("\n");
 }
 
-static void test_set_subset_superset()
-{
+static void test_set_subset_superset() {
     printf("Testing Set.IsSubset/IsSuperset with boxed strings:\n");
 
     void *small = rt_set_new();
@@ -287,8 +275,7 @@ static void test_set_subset_superset()
     printf("\n");
 }
 
-static void test_set_disjoint()
-{
+static void test_set_disjoint() {
     printf("Testing Set.IsDisjoint with boxed strings:\n");
 
     void *s1 = rt_set_new();
@@ -313,8 +300,7 @@ static void test_set_disjoint()
 // Resize Tests
 //=============================================================================
 
-static void test_set_resize()
-{
+static void test_set_resize() {
     printf("Testing Set resize with many boxed elements:\n");
 
     void *set = rt_set_new();
@@ -322,8 +308,7 @@ static void test_set_resize()
     // Add many elements to trigger resize (initial capacity = 16)
     // Use rt_string_from_bytes (copies data) since rt_const_cstr stores pointer to original
     char buf[32];
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         int n = snprintf(buf, sizeof(buf), "element_%d", i);
         rt_set_add(set, rt_box_str(rt_string_from_bytes(buf, (size_t)n)));
     }
@@ -332,11 +317,9 @@ static void test_set_resize()
 
     // Verify all elements are present using DIFFERENT box objects
     bool all_present = true;
-    for (int i = 0; i < 100; i++)
-    {
+    for (int i = 0; i < 100; i++) {
         int n = snprintf(buf, sizeof(buf), "element_%d", i);
-        if (!rt_set_has(set, rt_box_str(rt_string_from_bytes(buf, (size_t)n))))
-        {
+        if (!rt_set_has(set, rt_box_str(rt_string_from_bytes(buf, (size_t)n)))) {
             printf("    Missing: %s\n", buf);
             all_present = false;
             break;
@@ -351,8 +334,7 @@ static void test_set_resize()
 // Mixed Type Tests
 //=============================================================================
 
-static void test_set_mixed_box_types()
-{
+static void test_set_mixed_box_types() {
     printf("Testing Set with mixed boxed types:\n");
 
     void *set = rt_set_new();
@@ -376,8 +358,7 @@ static void test_set_mixed_box_types()
     printf("\n");
 }
 
-static void test_set_items()
-{
+static void test_set_items() {
     printf("Testing Set.Items:\n");
 
     void *set = rt_set_new();
@@ -395,8 +376,7 @@ static void test_set_items()
 // Entry Point
 //=============================================================================
 
-int main()
-{
+int main() {
     printf("=== RT Set Tests ===\n\n");
 
     test_set_new_empty();

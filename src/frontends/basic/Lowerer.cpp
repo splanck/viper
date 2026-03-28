@@ -35,11 +35,9 @@
 using il::core::Type;
 using il::frontends::basic::BasicType;
 
-namespace
-{
+namespace {
 
-Type ilTypeForBasicRet(const std::string &fnName, BasicType hint)
-{
+Type ilTypeForBasicRet(const std::string &fnName, BasicType hint) {
     using K = Type::Kind;
     if (hint == BasicType::String)
         return Type(K::Str);
@@ -51,8 +49,7 @@ Type ilTypeForBasicRet(const std::string &fnName, BasicType hint)
         return Type(K::I1);
     if (hint == BasicType::Void)
         return Type(K::Void);
-    if (!fnName.empty())
-    {
+    if (!fnName.empty()) {
         char c = fnName.back();
         if (c == '$')
             return Type(K::Str);
@@ -64,21 +61,17 @@ Type ilTypeForBasicRet(const std::string &fnName, BasicType hint)
 
 } // namespace
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
-Lowerer::Type Lowerer::functionRetTypeFromHint(const std::string &fnName, BasicType hint) const
-{
+Lowerer::Type Lowerer::functionRetTypeFromHint(const std::string &fnName, BasicType hint) const {
     return ilTypeForBasicRet(fnName, hint);
 }
 
-void Lowerer::pushNamespace(const std::vector<std::string> &path)
-{
+void Lowerer::pushNamespace(const std::vector<std::string> &path) {
     nsStack_.insert(nsStack_.end(), path.begin(), path.end());
 }
 
-void Lowerer::popNamespace(std::size_t count)
-{
+void Lowerer::popNamespace(std::size_t count) {
     if (count == 0 || nsStack_.empty())
         return;
     if (count > nsStack_.size())
@@ -86,8 +79,7 @@ void Lowerer::popNamespace(std::size_t count)
     nsStack_.erase(nsStack_.end() - static_cast<std::ptrdiff_t>(count), nsStack_.end());
 }
 
-std::string Lowerer::qualify(const std::string &klass) const
-{
+std::string Lowerer::qualify(const std::string &klass) const {
     if (klass.empty())
         return klass;
 
@@ -104,8 +96,7 @@ std::string Lowerer::qualify(const std::string &klass) const
     for (const auto &s : nsStack_)
         size += s.size() + 1; // segment + dot
     out.reserve(size);
-    for (std::size_t i = 0; i < nsStack_.size(); ++i)
-    {
+    for (std::size_t i = 0; i < nsStack_.size(); ++i) {
         if (i)
             out.push_back('.');
         out.append(nsStack_[i]);
@@ -116,8 +107,7 @@ std::string Lowerer::qualify(const std::string &klass) const
 }
 
 std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
-    std::string_view className, std::string_view methodName) const
-{
+    std::string_view className, std::string_view methodName) const {
     if (className.empty())
         return std::nullopt;
 
@@ -138,15 +128,13 @@ std::optional<::il::frontends::basic::Type> Lowerer::findMethodReturnType(
 }
 
 std::string Lowerer::findMethodReturnClassName(std::string_view className,
-                                               std::string_view methodName) const
-{
+                                               std::string_view methodName) const {
     if (className.empty())
         return {};
 
     // Check user-defined classes first
     const ClassInfo *info = oopIndex_.findClass(std::string(className));
-    if (info)
-    {
+    if (info) {
         auto it = info->methods.find(std::string(methodName));
         if (it != info->methods.end() && !it->second.sig.returnClassName.empty())
             return it->second.sig.returnClassName;
@@ -154,26 +142,19 @@ std::string Lowerer::findMethodReturnClassName(std::string_view className,
 
     // Check runtime classes: if a method returns 'obj' and belongs to a known
     // runtime class, infer the class name from the method's target function.
-    if (const auto *rtClass = il::runtime::findRuntimeClassByQName(std::string(className)))
-    {
-        for (const auto &m : rtClass->methods)
-        {
-            if (m.name && string_utils::iequals(m.name, methodName) && m.signature)
-            {
+    if (const auto *rtClass = il::runtime::findRuntimeClassByQName(std::string(className))) {
+        for (const auto &m : rtClass->methods) {
+            if (m.name && string_utils::iequals(m.name, methodName) && m.signature) {
                 auto sig = il::runtime::parseRuntimeSignature(m.signature);
-                if (sig.returnType == il::runtime::ILScalarType::Object)
-                {
+                if (sig.returnType == il::runtime::ILScalarType::Object) {
                     // Method returns obj — check if target function belongs to
                     // a DIFFERENT runtime class (cross-class factory method).
-                    if (m.target)
-                    {
+                    if (m.target) {
                         std::string_view target(m.target);
                         auto lastDot = target.rfind('.');
-                        if (lastDot != std::string_view::npos)
-                        {
+                        if (lastDot != std::string_view::npos) {
                             std::string prefix(target.substr(0, lastDot));
-                            if (!string_utils::iequals(prefix, className))
-                            {
+                            if (!string_utils::iequals(prefix, className)) {
                                 if (il::runtime::findRuntimeClassByQName(prefix))
                                     return prefix;
                             }
@@ -187,12 +168,10 @@ std::string Lowerer::findMethodReturnClassName(std::string_view className,
                     // Collections have a "Get" or "Push" method — check for this.
                     {
                         bool isCollection = false;
-                        for (const auto &cm : rtClass->methods)
-                        {
+                        for (const auto &cm : rtClass->methods) {
                             if (cm.name && (std::string_view(cm.name) == "Push" ||
                                             std::string_view(cm.name) == "Set" ||
-                                            std::string_view(cm.name) == "Enqueue"))
-                            {
+                                            std::string_view(cm.name) == "Enqueue")) {
                                 isCollection = true;
                                 break;
                             }
@@ -210,9 +189,8 @@ std::string Lowerer::findMethodReturnClassName(std::string_view className,
     return {};
 }
 
-std::optional<::il::frontends::basic::Type> Lowerer::findFieldType(std::string_view className,
-                                                                   std::string_view fieldName) const
-{
+std::optional<::il::frontends::basic::Type> Lowerer::findFieldType(
+    std::string_view className, std::string_view fieldName) const {
     if (className.empty())
         return std::nullopt;
 
@@ -224,8 +202,7 @@ std::optional<::il::frontends::basic::Type> Lowerer::findFieldType(std::string_v
     return field->type;
 }
 
-bool Lowerer::isFieldArray(std::string_view className, std::string_view fieldName) const
-{
+bool Lowerer::isFieldArray(std::string_view className, std::string_view fieldName) const {
     if (className.empty())
         return false;
 
@@ -253,12 +230,9 @@ Lowerer::Lowerer(bool boundsChecks)
       coercionEngine_(std::make_unique<TypeCoercionEngine>(*this)),
       ioStmtLowerer_(std::make_unique<IoStatementLowerer>(*this)),
       ctrlStmtLowerer_(std::make_unique<ControlStatementLowerer>(*this)),
-      runtimeStmtLowerer_(std::make_unique<RuntimeStatementLowerer>(*this))
-{
-}
+      runtimeStmtLowerer_(std::make_unique<RuntimeStatementLowerer>(*this)) {}
 
-TypeCoercionEngine &Lowerer::coercion() noexcept
-{
+TypeCoercionEngine &Lowerer::coercion() noexcept {
     return *coercionEngine_;
 }
 
@@ -276,8 +250,7 @@ Lowerer::~Lowerer() = default;
 ///          compilation phases.
 /// @param prog Parsed BASIC program to translate.
 /// @return Populated IL module representing @p prog.
-Lowerer::Module Lowerer::lowerProgram(const Program &prog)
-{
+Lowerer::Module Lowerer::lowerProgram(const Program &prog) {
     Module module;
     programLowering->run(prog, module);
     return module;
@@ -289,8 +262,7 @@ Lowerer::Module Lowerer::lowerProgram(const Program &prog)
 ///          the implementation details reside in a single code path.
 /// @param prog Parsed BASIC program to translate.
 /// @return Populated IL module representing @p prog.
-Lowerer::Module Lowerer::lower(const Program &prog)
-{
+Lowerer::Module Lowerer::lower(const Program &prog) {
     return lowerProgram(prog);
 }
 
@@ -307,8 +279,7 @@ Lowerer::Module Lowerer::lower(const Program &prog)
 void Lowerer::lowerProcedure(const std::string &name,
                              const std::vector<Param> &params,
                              const std::vector<StmtPtr> &body,
-                             const ProcedureConfig &config)
-{
+                             const ProcedureConfig &config) {
     auto ctx = procedureLowering->makeContext(name, params, body, config);
     procedureLowering->resetContext(ctx);
     procedureLowering->collectProcedureInfo(ctx);

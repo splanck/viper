@@ -21,8 +21,7 @@
 #include <string>
 #include <string_view>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 // Internal helper functions shared between OOP lowering translation units.
 // These are implementation details and should not be exposed in the public Lowerer interface.

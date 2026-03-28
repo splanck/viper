@@ -30,11 +30,9 @@
 #include <string>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
-class ZipWriter
-{
+class ZipWriter {
   public:
     ZipWriter();
     ~ZipWriter();
@@ -76,8 +74,7 @@ class ZipWriter
     std::vector<uint8_t> finishToVector();
 
   private:
-    struct Entry
-    {
+    struct Entry {
         std::string name;
         uint32_t crc32;
         uint32_t compressedSize;

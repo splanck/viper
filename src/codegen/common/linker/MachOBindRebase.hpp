@@ -29,8 +29,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace viper::codegen::linker
-{
+namespace viper::codegen::linker {
 
 /// Build the bind opcode stream for non-lazy GOT binding + TLV descriptors.
 /// Appends bind opcodes to \p bindData, terminated with BIND_OPCODE_DONE.

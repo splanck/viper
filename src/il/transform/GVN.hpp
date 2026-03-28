@@ -24,8 +24,7 @@
 
 #include "il/transform/PassRegistry.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// @brief Global Value Numbering pass that eliminates redundant computations.
 /// @details Traverses the dominator tree in preorder, assigning value numbers
@@ -33,8 +32,7 @@ namespace il::transform
 ///          replaced with the dominating equivalent. Also performs redundant load
 ///          elimination using BasicAA memory disambiguation to track available
 ///          memory values.
-class GVN : public FunctionPass
-{
+class GVN : public FunctionPass {
   public:
     /// @brief Return the pass identifier string ("gvn").
     /// @return A string view identifying this pass in the registry.

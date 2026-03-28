@@ -64,8 +64,7 @@
 /// @param buf Buffer to fill.
 /// @param len Number of bytes to generate.
 /// @return 0 on success, -1 on failure.
-static int secure_random_fill(uint8_t *buf, size_t len)
-{
+static int secure_random_fill(uint8_t *buf, size_t len) {
     if (len == 0)
         return 0;
 
@@ -76,24 +75,20 @@ static int secure_random_fill(uint8_t *buf, size_t len)
 #else
     // Unix and ViperDOS: use /dev/urandom
     int fd = open("/dev/urandom", O_RDONLY);
-    if (fd < 0)
-    {
+    if (fd < 0) {
         return -1;
     }
 
     size_t bytes_read = 0;
-    while (bytes_read < len)
-    {
+    while (bytes_read < len) {
         ssize_t result = read(fd, buf + bytes_read, len - bytes_read);
-        if (result < 0)
-        {
+        if (result < 0) {
             if (errno == EINTR)
                 continue; // Interrupted, retry
             close(fd);
             return -1;
         }
-        if (result == 0)
-        {
+        if (result == 0) {
             // EOF on /dev/urandom shouldn't happen, but handle it
             close(fd);
             return -1;
@@ -107,23 +102,19 @@ static int secure_random_fill(uint8_t *buf, size_t len)
 }
 
 /// @brief Generate cryptographically secure random bytes.
-void *rt_crypto_rand_bytes(int64_t count)
-{
-    if (count < 1)
-    {
+void *rt_crypto_rand_bytes(int64_t count) {
+    if (count < 1) {
         rt_trap("Rand.Bytes: count must be at least 1");
     }
 
     // Allocate temporary buffer
     uint8_t *buf = (uint8_t *)malloc((size_t)count);
-    if (!buf)
-    {
+    if (!buf) {
         rt_trap("Rand.Bytes: memory allocation failed");
     }
 
     // Fill with random data
-    if (secure_random_fill(buf, (size_t)count) != 0)
-    {
+    if (secure_random_fill(buf, (size_t)count) != 0) {
         free(buf);
         rt_trap("Rand.Bytes: failed to generate random bytes");
     }
@@ -143,31 +134,23 @@ void *rt_crypto_rand_bytes(int64_t count)
 /// 2. Find the smallest power of 2 >= range
 /// 3. Generate random values in [0, 2^k) and reject if >= range
 /// 4. Add min to get final result
-int64_t rt_crypto_rand_int(int64_t min, int64_t max)
-{
-    if (min > max)
-    {
+int64_t rt_crypto_rand_int(int64_t min, int64_t max) {
+    if (min > max) {
         rt_trap("Rand.Int: min must not be greater than max");
     }
 
     // Special case: only one possible value
-    if (min == max)
-    {
+    if (min == max) {
         return min;
     }
 
     // Calculate range (max - min + 1), handling potential overflow
     uint64_t range;
-    if (min >= 0)
-    {
+    if (min >= 0) {
         range = (uint64_t)(max - min) + 1;
-    }
-    else if (max < 0)
-    {
+    } else if (max < 0) {
         range = (uint64_t)(max - min) + 1;
-    }
-    else
-    {
+    } else {
         // min < 0 && max >= 0
         range = (uint64_t)max - (uint64_t)min + 1;
     }
@@ -176,12 +159,10 @@ int64_t rt_crypto_rand_int(int64_t min, int64_t max)
     int bits = 64;
     uint64_t mask = UINT64_MAX;
 
-    if (range != 0)
-    { // range == 0 means full 64-bit range (overflow)
+    if (range != 0) { // range == 0 means full 64-bit range (overflow)
         bits = 0;
         uint64_t r = range - 1;
-        while (r > 0)
-        {
+        while (r > 0) {
             bits++;
             r >>= 1;
         }
@@ -193,19 +174,16 @@ int64_t rt_crypto_rand_int(int64_t min, int64_t max)
     int attempts = 0;
     const int max_attempts = 1000; // Safety limit
 
-    do
-    {
+    do {
         // Generate random bytes
         uint8_t buf[8];
-        if (secure_random_fill(buf, 8) != 0)
-        {
+        if (secure_random_fill(buf, 8) != 0) {
             rt_trap("Rand.Int: failed to generate random bytes");
         }
 
         // Convert to uint64 (little-endian)
         value = 0;
-        for (int i = 0; i < 8; i++)
-        {
+        for (int i = 0; i < 8; i++) {
             value |= ((uint64_t)buf[i]) << (i * 8);
         }
 
@@ -213,8 +191,7 @@ int64_t rt_crypto_rand_int(int64_t min, int64_t max)
         value &= mask;
 
         attempts++;
-        if (attempts >= max_attempts)
-        {
+        if (attempts >= max_attempts) {
             rt_trap("Rand.Int: too many rejection sampling attempts");
         }
     } while (range != 0 && value >= range);

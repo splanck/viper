@@ -32,13 +32,11 @@
 
 using namespace il::core;
 
-namespace
-{
+namespace {
 
 /// @brief Build a simple arithmetic module that returns 42.
 /// @details Computes (10 * 4) + 2 = 42.
-Module buildSimpleModule()
-{
+Module buildSimpleModule() {
     Module m;
     Function fn;
     fn.name = "main";
@@ -90,8 +88,7 @@ Module buildSimpleModule()
 /// @param m Module to execute.
 /// @param strategy Strategy name: "table", "switch", or "threaded".
 /// @return The result from VM::run().
-int64_t runWithStrategy(const Module &m, const char *strategy)
-{
+int64_t runWithStrategy(const Module &m, const char *strategy) {
     // Set environment variable to select dispatch strategy
     setenv("VIPER_DISPATCH", strategy, 1);
     il::vm::VM vm(m);
@@ -100,8 +97,7 @@ int64_t runWithStrategy(const Module &m, const char *strategy)
 
 } // namespace
 
-int main()
-{
+int main() {
     // Build a simple test program: (10 * 4) + 2 = 42
     Module m = buildSimpleModule();
 

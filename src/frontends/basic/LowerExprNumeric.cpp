@@ -31,8 +31,7 @@
 #include <optional>
 #include <utility>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 using namespace il::core;
 using namespace il::frontends::basic::runtime;
 
@@ -42,20 +41,17 @@ using IlKind = IlType::Kind;
 // Import shared numeric rules
 namespace nr = numeric_rules;
 
-namespace
-{
+namespace {
 
 // Use shared numeric rules for IL type predicates and promotion.
 // These inline wrappers preserve the original API while delegating
 // to the centralized implementation in NumericRules.hpp.
 
-bool isIntegerKind(IlKind kind)
-{
+bool isIntegerKind(IlKind kind) {
     return nr::isIlInteger(kind);
 }
 
-IlType integerArithmeticType(IlKind lhsKind, IlKind rhsKind)
-{
+IlType integerArithmeticType(IlKind lhsKind, IlKind rhsKind) {
     return IlType(nr::promoteIlInteger(lhsKind, rhsKind));
 }
 
@@ -77,8 +73,7 @@ NumericExprLowering::NumericExprLowering(Lowerer &lowerer) noexcept : lowerer_(&
 ///
 /// @param expr Binary expression node representing IDIV or MOD.
 /// @return Lowered r-value carrying the operation result.
-Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
-{
+Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr) {
     Lowerer &lowerer = *lowerer_;
     Lowerer::RVal lhs = lowerer.lowerExpr(*expr.lhs);
     Lowerer::RVal rhs = lowerer.lowerExpr(*expr.rhs);
@@ -107,17 +102,14 @@ Lowerer::RVal NumericExprLowering::lowerDivOrMod(const BinaryExpr &expr)
 /// @param rhs Right-hand side value to normalise (updated in place).
 /// @return Configuration describing operand category and result type.
 NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperands(
-    const BinaryExpr &expr, Lowerer::RVal &lhs, Lowerer::RVal &rhs)
-{
+    const BinaryExpr &expr, Lowerer::RVal &lhs, Lowerer::RVal &rhs) {
     Lowerer &lowerer = *lowerer_;
     NumericOpConfig config;
 
     // Use shared rule to determine if operator requires float operands
     const bool requiresFloat = nr::requiresFloatOperands(expr.op);
-    if (requiresFloat)
-    {
-        auto promoteToF64 = [&](Lowerer::RVal &value, const Expr *node)
-        {
+    if (requiresFloat) {
+        auto promoteToF64 = [&](Lowerer::RVal &value, const Expr *node) {
             if (value.type.kind == IlKind::F64)
                 return;
             il::support::SourceLoc loc = node ? node->loc : expr.loc;
@@ -135,8 +127,7 @@ NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperan
     }
 
     // Use shared rule to check if either operand is float
-    if (nr::isIlFloat(lhs.type.kind) || nr::isIlFloat(rhs.type.kind))
-    {
+    if (nr::isIlFloat(lhs.type.kind) || nr::isIlFloat(rhs.type.kind)) {
         lhs = lowerer.coerceToF64(std::move(lhs), expr.loc);
         rhs = lowerer.coerceToF64(std::move(rhs), expr.loc);
         config.isFloat = true;
@@ -151,25 +142,19 @@ NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperan
 
     const auto *lhsInt = as<const IntExpr>(*expr.lhs);
     const auto *rhsInt = as<const IntExpr>(*expr.rhs);
-    if (lhsInt && rhsInt)
-    {
-        const auto fits16 = [](long long v)
-        {
+    if (lhsInt && rhsInt) {
+        const auto fits16 = [](long long v) {
             return v >= std::numeric_limits<int16_t>::min() &&
                    v <= std::numeric_limits<int16_t>::max();
         };
-        const auto fits32 = [](long long v)
-        {
+        const auto fits32 = [](long long v) {
             return v >= std::numeric_limits<int32_t>::min() &&
                    v <= std::numeric_limits<int32_t>::max();
         };
-        if (fits16(lhsInt->value) && fits16(rhsInt->value))
-        {
+        if (fits16(lhsInt->value) && fits16(rhsInt->value)) {
             config.arithmeticType = IlType(IlKind::I16);
             config.resultType = config.arithmeticType;
-        }
-        else if (fits32(lhsInt->value) && fits32(rhsInt->value))
-        {
+        } else if (fits32(lhsInt->value) && fits32(rhsInt->value)) {
             config.arithmeticType = IlType(IlKind::I32);
             config.resultType = config.arithmeticType;
         }
@@ -177,13 +162,11 @@ NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperan
 
     // Coerce operands to match the chosen arithmetic type (fixes BUG-012: boolean
     // variables are i16, but TRUE/FALSE constants are i64, requiring promotion)
-    if (lhs.type.kind != config.arithmeticType.kind)
-    {
+    if (lhs.type.kind != config.arithmeticType.kind) {
         if (config.arithmeticType.kind == IlKind::I64)
             lhs = lowerer.coerceToI64(std::move(lhs), expr.loc);
     }
-    if (rhs.type.kind != config.arithmeticType.kind)
-    {
+    if (rhs.type.kind != config.arithmeticType.kind) {
         if (config.arithmeticType.kind == IlKind::I64)
             rhs = lowerer.coerceToI64(std::move(rhs), expr.loc);
     }
@@ -203,8 +186,7 @@ NumericExprLowering::NumericOpConfig NumericExprLowering::normalizeNumericOperan
 /// @param config Operand configuration returned by normalisation.
 /// @return Lowered value when a special case applies; `std::nullopt` otherwise.
 std::optional<Lowerer::RVal> NumericExprLowering::applySpecialConstantPatterns(
-    const BinaryExpr &expr, Lowerer::RVal &lhs, Lowerer::RVal &rhs, const NumericOpConfig &config)
-{
+    const BinaryExpr &expr, Lowerer::RVal &lhs, Lowerer::RVal &rhs, const NumericOpConfig &config) {
     (void)lhs;
     if (expr.op != BinaryExpr::Op::Sub || config.isFloat)
         return std::nullopt;
@@ -236,14 +218,12 @@ std::optional<Lowerer::RVal> NumericExprLowering::applySpecialConstantPatterns(
 /// @param config Operand configuration describing operand categories.
 /// @return Structure containing the opcode, result type, and promotion flags.
 NumericExprLowering::OpcodeSelection NumericExprLowering::selectNumericOpcode(
-    BinaryExpr::Op op, const NumericOpConfig &config)
-{
+    BinaryExpr::Op op, const NumericOpConfig &config) {
     Lowerer &lowerer = *lowerer_;
     OpcodeSelection selection;
     selection.resultType = config.arithmeticType;
 
-    switch (op)
-    {
+    switch (op) {
         case BinaryExpr::Op::Add:
             selection.opcode = config.isFloat ? Opcode::FAdd : Opcode::IAddOvf;
             break;
@@ -254,13 +234,10 @@ NumericExprLowering::OpcodeSelection NumericExprLowering::selectNumericOpcode(
             selection.opcode = config.isFloat ? Opcode::FMul : Opcode::IMulOvf;
             break;
         case BinaryExpr::Op::Div:
-            if (config.isFloat)
-            {
+            if (config.isFloat) {
                 selection.opcode = Opcode::FDiv;
                 selection.resultType = config.arithmeticType;
-            }
-            else
-            {
+            } else {
                 selection.opcode = Opcode::SDivChk0;
                 selection.resultType = IlType(IlKind::I64);
             }
@@ -314,8 +291,7 @@ NumericExprLowering::OpcodeSelection NumericExprLowering::selectNumericOpcode(
 /// @return Lowered value representing the power result.
 Lowerer::RVal NumericExprLowering::lowerPowBinary(const BinaryExpr &expr,
                                                   Lowerer::RVal lhs,
-                                                  Lowerer::RVal rhs)
-{
+                                                  Lowerer::RVal rhs) {
     Lowerer &lowerer = *lowerer_;
     NumericOpConfig config = normalizeNumericOperands(expr, lhs, rhs);
     lowerer.trackRuntime(Lowerer::RuntimeFeature::Pow);
@@ -338,12 +314,10 @@ Lowerer::RVal NumericExprLowering::lowerPowBinary(const BinaryExpr &expr,
 /// @return Lowered value storing the operation result.
 Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
                                                      Lowerer::RVal lhs,
-                                                     Lowerer::RVal rhs)
-{
+                                                     Lowerer::RVal rhs) {
     Lowerer &lowerer = *lowerer_;
     lowerer.curLoc = expr.loc;
-    if (expr.op == BinaryExpr::Op::Add)
-    {
+    if (expr.op == BinaryExpr::Op::Add) {
         // Ensure runtime signature is linked for string concatenation.
         lowerer.trackRuntime(Lowerer::RuntimeFeature::Concat);
         // BUG-110: Avoid per-iteration alloca spills; pass operands directly.
@@ -356,8 +330,7 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
     const char *rtFunc = nullptr;
     bool needsNegation = false;
 
-    switch (expr.op)
-    {
+    switch (expr.op) {
         case BinaryExpr::Op::Eq:
             rtFunc = "rt_str_eq";
             break;
@@ -394,8 +367,7 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
     Value zero = lowerer.emitConstI64(0);
     Value cmpLogical = lowerer.emitISub(zero, cmp);
 
-    if (needsNegation)
-    {
+    if (needsNegation) {
         Value res = lowerer.emitCommon(expr.loc).logical_xor(cmpLogical, lowerer.emitConstI64(-1));
         return {res, IlType(IlKind::I64)};
     }
@@ -415,8 +387,7 @@ Lowerer::RVal NumericExprLowering::lowerStringBinary(const BinaryExpr &expr,
 /// @return Lowered r-value carrying the operation result.
 Lowerer::RVal NumericExprLowering::lowerNumericBinary(const BinaryExpr &expr,
                                                       Lowerer::RVal lhs,
-                                                      Lowerer::RVal rhs)
-{
+                                                      Lowerer::RVal rhs) {
     Lowerer &lowerer = *lowerer_;
     NumericOpConfig config = normalizeNumericOperands(expr, lhs, rhs);
 
@@ -426,8 +397,7 @@ Lowerer::RVal NumericExprLowering::lowerNumericBinary(const BinaryExpr &expr,
     OpcodeSelection selection = selectNumericOpcode(expr.op, config);
     lowerer.curLoc = expr.loc;
     Value res = lowerer.emitBinary(selection.opcode, selection.resultType, lhs.value, rhs.value);
-    if (selection.promoteBoolToI64)
-    {
+    if (selection.promoteBoolToI64) {
         lowerer.curLoc = expr.loc;
         Value logical = lowerer.emitBasicLogicalI64(res);
         return {logical, IlType(IlKind::I64)};
@@ -439,8 +409,7 @@ Lowerer::RVal NumericExprLowering::lowerNumericBinary(const BinaryExpr &expr,
 ///
 /// @param expr Binary expression node representing IDIV or MOD.
 /// @return Lowered value after delegating to `NumericExprLowering`.
-Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &expr)
-{
+Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &expr) {
     NumericExprLowering lowering(*this);
     return lowering.lowerDivOrMod(expr);
 }
@@ -451,8 +420,7 @@ Lowerer::RVal Lowerer::lowerDivOrMod(const BinaryExpr &expr)
 /// @param lhs Left-hand operand already partially lowered.
 /// @param rhs Right-hand operand already partially lowered.
 /// @return Lowered value computed by the numeric helper.
-Lowerer::RVal Lowerer::lowerPowBinary(const BinaryExpr &expr, RVal lhs, RVal rhs)
-{
+Lowerer::RVal Lowerer::lowerPowBinary(const BinaryExpr &expr, RVal lhs, RVal rhs) {
     NumericExprLowering lowering(*this);
     return lowering.lowerPowBinary(expr, std::move(lhs), std::move(rhs));
 }
@@ -463,8 +431,7 @@ Lowerer::RVal Lowerer::lowerPowBinary(const BinaryExpr &expr, RVal lhs, RVal rhs
 /// @param lhs Left-hand operand.
 /// @param rhs Right-hand operand.
 /// @return Lowered value generated by the string helper.
-Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &expr, RVal lhs, RVal rhs)
-{
+Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &expr, RVal lhs, RVal rhs) {
     NumericExprLowering lowering(*this);
     return lowering.lowerStringBinary(expr, std::move(lhs), std::move(rhs));
 }
@@ -475,8 +442,7 @@ Lowerer::RVal Lowerer::lowerStringBinary(const BinaryExpr &expr, RVal lhs, RVal 
 /// @param lhs Left-hand operand.
 /// @param rhs Right-hand operand.
 /// @return Lowered value after delegating to `NumericExprLowering`.
-Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &expr, RVal lhs, RVal rhs)
-{
+Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &expr, RVal lhs, RVal rhs) {
     NumericExprLowering lowering(*this);
     return lowering.lowerNumericBinary(expr, std::move(lhs), std::move(rhs));
 }
@@ -486,8 +452,7 @@ Lowerer::RVal Lowerer::lowerNumericBinary(const BinaryExpr &expr, RVal lhs, RVal
 /// @param lowerer Lowering engine to use.
 /// @param expr Binary expression to lower.
 /// @return Lowered value provided by the helper.
-Lowerer::RVal lowerDivOrMod(Lowerer &lowerer, const BinaryExpr &expr)
-{
+Lowerer::RVal lowerDivOrMod(Lowerer &lowerer, const BinaryExpr &expr) {
     NumericExprLowering lowering(lowerer);
     return lowering.lowerDivOrMod(expr);
 }
@@ -502,8 +467,7 @@ Lowerer::RVal lowerDivOrMod(Lowerer &lowerer, const BinaryExpr &expr)
 Lowerer::RVal lowerPowBinary(Lowerer &lowerer,
                              const BinaryExpr &expr,
                              Lowerer::RVal lhs,
-                             Lowerer::RVal rhs)
-{
+                             Lowerer::RVal rhs) {
     NumericExprLowering lowering(lowerer);
     return lowering.lowerPowBinary(expr, std::move(lhs), std::move(rhs));
 }
@@ -518,8 +482,7 @@ Lowerer::RVal lowerPowBinary(Lowerer &lowerer,
 Lowerer::RVal lowerStringBinary(Lowerer &lowerer,
                                 const BinaryExpr &expr,
                                 Lowerer::RVal lhs,
-                                Lowerer::RVal rhs)
-{
+                                Lowerer::RVal rhs) {
     NumericExprLowering lowering(lowerer);
     return lowering.lowerStringBinary(expr, std::move(lhs), std::move(rhs));
 }
@@ -534,8 +497,7 @@ Lowerer::RVal lowerStringBinary(Lowerer &lowerer,
 Lowerer::RVal lowerNumericBinary(Lowerer &lowerer,
                                  const BinaryExpr &expr,
                                  Lowerer::RVal lhs,
-                                 Lowerer::RVal rhs)
-{
+                                 Lowerer::RVal rhs) {
     NumericExprLowering lowering(lowerer);
     return lowering.lowerNumericBinary(expr, std::move(lhs), std::move(rhs));
 }

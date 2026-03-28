@@ -30,33 +30,25 @@
 #include <algorithm>
 #include <cctype>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Case-insensitive string comparison.
-static bool iequals(std::string_view a, std::string_view b)
-{
+static bool iequals(std::string_view a, std::string_view b) {
     if (a.size() != b.size())
         return false;
-    return std::equal(a.begin(),
-                      a.end(),
-                      b.begin(),
-                      [](char ca, char cb)
-                      {
-                          return std::tolower(static_cast<unsigned char>(ca)) ==
-                                 std::tolower(static_cast<unsigned char>(cb));
-                      });
+    return std::equal(a.begin(), a.end(), b.begin(), [](char ca, char cb) {
+        return std::tolower(static_cast<unsigned char>(ca)) ==
+               std::tolower(static_cast<unsigned char>(cb));
+    });
 }
 
 /// @brief Analyze namespace declaration.
 /// @details Sets sawDecl_ to true to enforce USING placement rules.
 ///          Also maintains nsStack_ for nested namespace tracking.
-void SemanticAnalyzer::analyzeNamespaceDecl(NamespaceDecl &decl)
-{
+void SemanticAnalyzer::analyzeNamespaceDecl(NamespaceDecl &decl) {
     // Check for reserved "Viper" root namespace: declarations are never allowed
     // under the reserved root. Emit a dedicated diagnostic.
-    if (!decl.path.empty() && iequals(decl.path[0], "Viper"))
-    {
+    if (!decl.path.empty() && iequals(decl.path[0], "Viper")) {
         // Use the established E_NS_009 diagnostic for reserved root violations.
         de.emit(diag::BasicDiag::NsReservedViper, decl.loc, 1, {});
         return;
@@ -70,27 +62,23 @@ void SemanticAnalyzer::analyzeNamespaceDecl(NamespaceDecl &decl)
 
     // Inherit USING context from parent scope and then apply local USINGs.
     UsingScope child;
-    if (!usingStack_.empty())
-    {
+    if (!usingStack_.empty()) {
         // Inherit imports; aliases can be shadowed so keep local alias map empty.
         child.imports = usingStack_.back().imports;
     }
     usingStack_.push_back(std::move(child));
 
     // First pass: apply USING directives in this namespace to the current using scope.
-    for (const auto &stmt : decl.body)
-    {
+    for (const auto &stmt : decl.body) {
         if (!stmt)
             continue;
-        if (stmt->stmtKind() == Stmt::Kind::UsingDecl)
-        {
+        if (stmt->stmtKind() == Stmt::Kind::UsingDecl) {
             analyzeUsingDecl(static_cast<UsingDecl &>(*stmt));
         }
     }
 
     // Second pass: analyze remaining statements (children see combined parent + local using).
-    for (const auto &stmt : decl.body)
-    {
+    for (const auto &stmt : decl.body) {
         if (!stmt)
             continue;
         if (stmt->stmtKind() != Stmt::Kind::UsingDecl)
@@ -109,32 +97,27 @@ void SemanticAnalyzer::analyzeNamespaceDecl(NamespaceDecl &decl)
 
 /// @brief Analyze class declaration.
 /// @details Sets sawDecl_ to true and resolves base type and implemented interfaces.
-void SemanticAnalyzer::analyzeClassDecl(ClassDecl &decl)
-{
+void SemanticAnalyzer::analyzeClassDecl(ClassDecl &decl) {
     sawDecl_ = true;
 
     // Resolve base class if present.
-    if (decl.baseName)
-    {
+    if (decl.baseName) {
         std::string resolvedBase = resolveTypeRef(
             *decl.baseName, nsStack_, decl.loc, static_cast<uint32_t>(decl.baseName->size()));
         // Store resolved base for later use (error recovery - continue even if unresolved).
     }
 
     // Resolve implemented interfaces.
-    for (const auto &ifaceQN : decl.implementsQualifiedNames)
-    {
+    for (const auto &ifaceQN : decl.implementsQualifiedNames) {
         // Build dotted name from qualified segments.
         std::string ifaceName;
-        for (size_t i = 0; i < ifaceQN.size(); ++i)
-        {
+        for (size_t i = 0; i < ifaceQN.size(); ++i) {
             if (i > 0)
                 ifaceName.push_back('.');
             ifaceName += ifaceQN[i];
         }
 
-        if (!ifaceName.empty())
-        {
+        if (!ifaceName.empty()) {
             std::string resolvedIface = resolveTypeRef(
                 ifaceName, nsStack_, decl.loc, static_cast<uint32_t>(ifaceName.size()));
             // Store resolved interface for later use (error recovery - continue even if
@@ -145,8 +128,7 @@ void SemanticAnalyzer::analyzeClassDecl(ClassDecl &decl)
 
 /// @brief Analyze interface declaration.
 /// @details Sets sawDecl_ to true to enforce USING placement rules.
-void SemanticAnalyzer::analyzeInterfaceDecl(InterfaceDecl &decl)
-{
+void SemanticAnalyzer::analyzeInterfaceDecl(InterfaceDecl &decl) {
     sawDecl_ = true;
 }
 
@@ -157,26 +139,22 @@ void SemanticAnalyzer::analyzeInterfaceDecl(InterfaceDecl &decl)
 ///          - Referenced namespace must exist.
 ///          - Aliases must be unique and not shadow namespaces.
 ///          - "Viper" root is reserved.
-void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
-{
+void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl) {
     // Placement rules (per docs/basic-language.md):
     // - USING must appear at file scope (not inside namespace blocks)
     // - USING must appear before any namespace/class/interface declarations
     // - USING cannot appear inside procedures
 
     // Disallow inside procedures (parser should already prevent this, but keep as guard).
-    if (activeProcScope_ != nullptr)
-    {
+    if (activeProcScope_ != nullptr) {
         de.emit(diag::BasicDiag::NsUsingNotFileScope, decl.loc, 1, {});
         return;
     }
 
     // Reject USING inside namespace blocks (E_NS_008) unless runtime namespaces
     // are enabled (Phase 2 semantics permit scoped USING).
-    if (!nsStack_.empty())
-    {
-        if (!FrontendOptions::enableRuntimeNamespaces())
-        {
+    if (!nsStack_.empty()) {
+        if (!FrontendOptions::enableRuntimeNamespaces()) {
             de.emit(diag::BasicDiag::NsUsingNotFileScope, decl.loc, 1, {});
             return;
         }
@@ -187,8 +165,7 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
     // Inside a namespace block, analyzeNamespaceDecl processes USING directives
     // in a first pass before other declarations, so placement within the block
     // is handled there.
-    if (sawDecl_ && nsStack_.empty())
-    {
+    if (sawDecl_ && nsStack_.empty()) {
         de.emit(diag::BasicDiag::NsUsingAfterDecl, decl.loc, 1, {});
         return;
     }
@@ -205,12 +182,10 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
     // When runtime namespaces are enabled, permit USING for any Viper.* subtree
     // (Console, Strings, Convert, Parse, Diagnostics, Math, IO, ...). Bare
     // "USING Viper" (root only) remains rejected to avoid ambiguous imports.
-    if (!decl.namespacePath.empty() && iequals(decl.namespacePath[0], "Viper"))
-    {
+    if (!decl.namespacePath.empty() && iequals(decl.namespacePath[0], "Viper")) {
         const bool allow = FrontendOptions::enableRuntimeNamespaces() &&
                            decl.namespacePath.size() >= 2; // allow any Viper.<child>
-        if (!allow)
-        {
+        if (!allow) {
             de.emit(diag::BasicDiag::NsReservedViper, decl.loc, 1, {});
             return;
         }
@@ -218,8 +193,7 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
     }
 
     // E_NS_001: Namespace must exist in registry (error severity).
-    if (!nsPath.empty() && !ns_.namespaceExists(nsPath))
-    {
+    if (!nsPath.empty() && !ns_.namespaceExists(nsPath)) {
         // Print identifier in canonical BASIC uppercase form in diagnostics.
         std::string nsUpper = string_utils::to_upper(nsPath);
         de.emit(
@@ -230,16 +204,13 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
     }
 
     // Validate alias if present.
-    if (!usingStack_.empty())
-    {
+    if (!usingStack_.empty()) {
         UsingScope &cur = usingStack_.back();
 
-        if (!decl.alias.empty())
-        {
+        if (!decl.alias.empty()) {
             // Canonicalize alias to lowercase.
             std::string aliasLower = Canon(decl.alias);
-            if (aliasLower.find('.') != std::string::npos)
-            {
+            if (aliasLower.find('.') != std::string::npos) {
                 // Should not happen (parser enforces single identifier).
                 de.emit(diag::BasicDiag::NsDuplicateAlias,
                         decl.loc,
@@ -250,10 +221,8 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
 
             // E_NS_004: Duplicate alias in the same scope is not allowed unless
             // it refers to the same target namespace (idempotent seeding).
-            if (auto itDup = cur.aliases.find(aliasLower); itDup != cur.aliases.end())
-            {
-                if (itDup->second == nsPath)
-                {
+            if (auto itDup = cur.aliases.find(aliasLower); itDup != cur.aliases.end()) {
+                if (itDup->second == nsPath) {
                     // Ignore duplicate that maps to the same target.
                     return;
                 }
@@ -265,8 +234,7 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
             }
 
             // E_NS_007: Alias must not shadow a namespace name (only check exact alias).
-            if (ns_.namespaceExists(aliasLower))
-            {
+            if (ns_.namespaceExists(aliasLower)) {
                 de.emit(diag::BasicDiag::NsAliasShadowsNs,
                         decl.loc,
                         1,
@@ -276,9 +244,7 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
 
             cur.aliases.emplace(aliasLower, nsPath);
             cur.aliasLoc.emplace(aliasLower, decl.loc);
-        }
-        else
-        {
+        } else {
             if (!nsPath.empty())
                 cur.imports.insert(nsPath);
         }
@@ -298,16 +264,14 @@ void SemanticAnalyzer::analyzeUsingDecl(UsingDecl &decl)
 std::string SemanticAnalyzer::resolveTypeRef(const std::string &typeName,
                                              const std::vector<std::string> &currentNsChain,
                                              il::support::SourceLoc loc,
-                                             uint32_t length)
-{
+                                             uint32_t length) {
     if (!resolver_)
         return ""; // TypeResolver not initialized yet
 
     // Use TypeResolver to resolve the type.
     auto result = resolver_->resolve(typeName, currentNsChain);
 
-    if (result.found)
-    {
+    if (result.found) {
         // Successfully resolved.
         return result.qname;
     }
@@ -315,12 +279,10 @@ std::string SemanticAnalyzer::resolveTypeRef(const std::string &typeName,
     // Not found - check if it's a qualified name with existing namespace.
     bool isQualified = typeName.find('.') != std::string::npos;
 
-    if (isQualified && !result.contenders.empty())
-    {
+    if (isQualified && !result.contenders.empty()) {
         // E_NS_003: Ambiguous type with multiple contenders.
         std::string candidates;
-        for (size_t i = 0; i < result.contenders.size(); ++i)
-        {
+        for (size_t i = 0; i < result.contenders.size(); ++i) {
             if (i > 0)
                 candidates += ", ";
             candidates += result.contenders[i];
@@ -334,18 +296,15 @@ std::string SemanticAnalyzer::resolveTypeRef(const std::string &typeName,
         return "";
     }
 
-    if (isQualified)
-    {
+    if (isQualified) {
         // Check if namespace exists but type is missing (E_NS_002).
         // Split the qualified name to get namespace and type parts.
         size_t lastDot = typeName.rfind('.');
-        if (lastDot != std::string::npos)
-        {
+        if (lastDot != std::string::npos) {
             std::string nsPath = typeName.substr(0, lastDot);
             std::string typeOnly = typeName.substr(lastDot + 1);
 
-            if (ns_.namespaceExists(nsPath))
-            {
+            if (ns_.namespaceExists(nsPath)) {
                 // E_NS_002: Namespace exists but doesn't contain the type.
                 de.emit(diag::BasicDiag::NsTypeNotInNs,
                         loc,
@@ -357,12 +316,10 @@ std::string SemanticAnalyzer::resolveTypeRef(const std::string &typeName,
     }
 
     // Check for ambiguity even with simple names.
-    if (!result.contenders.empty())
-    {
+    if (!result.contenders.empty()) {
         // E_NS_003: Ambiguous type with multiple contenders.
         std::string candidates;
-        for (size_t i = 0; i < result.contenders.size(); ++i)
-        {
+        for (size_t i = 0; i < result.contenders.size(); ++i) {
             if (i > 0)
                 candidates += ", ";
             candidates += result.contenders[i];

@@ -19,13 +19,11 @@
 
 #include "support/diag_expected.hpp"
 
-namespace il::core
-{
+namespace il::core {
 struct Module;
 } // namespace il::core
 
-namespace il::api::v2
-{
+namespace il::api::v2 {
 /// @brief Parse IL text into a module while capturing diagnostics in an Expected result.
 /// @param is Input stream containing IL text.
 /// @param m Module instance populated on successful parse.

@@ -31,21 +31,18 @@
 #include <string>
 #include <vector>
 
-namespace viper::codegen::common
-{
+namespace viper::codegen::common {
 
 /// @brief Register class for a call argument.
 /// @details Target-independent classification used before register assignment.
 ///          Both backends map this to their target-specific RegClass enum.
-enum class CallArgClass : uint8_t
-{
+enum class CallArgClass : uint8_t {
     GPR, ///< General-purpose (integer/pointer) argument.
     FPR, ///< Floating-point argument.
 };
 
 /// @brief Describes a single argument in a call lowering plan.
-struct CallArg
-{
+struct CallArg {
     CallArgClass cls{CallArgClass::GPR}; ///< Register class for this argument.
     uint16_t vreg{0};                    ///< Virtual register holding the value (when !isImm).
     bool isImm{false};                   ///< True when the argument is a compile-time constant.
@@ -61,8 +58,7 @@ struct CallArg
 ///          x86-64 uses this directly in its CallLowering.cpp.
 ///          AArch64 can adopt this as its InstrLowering.cpp call handling
 ///          matures into a standalone module.
-struct CallLoweringPlan
-{
+struct CallLoweringPlan {
     std::string callee{};        ///< Symbolic name of the callee.
     std::vector<CallArg> args{}; ///< Ordered list of call arguments.
     bool returnsF64{false};      ///< True when the call returns FP in the FP return register.

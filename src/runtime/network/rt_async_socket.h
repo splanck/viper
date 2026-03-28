@@ -22,24 +22,23 @@
 #include <stdint.h>
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-    /// @brief Asynchronously connect to host:port. Returns a Future that resolves to a Tcp object.
-    void *rt_async_connect(rt_string host, int64_t port);
+/// @brief Asynchronously connect to host:port. Returns a Future that resolves to a Tcp object.
+void *rt_async_connect(rt_string host, int64_t port);
 
-    /// @brief Asynchronously send data over a TCP connection. Returns a Future[Integer].
-    void *rt_async_send(void *tcp, void *data);
+/// @brief Asynchronously send data over a TCP connection. Returns a Future[Integer].
+void *rt_async_send(void *tcp, void *data);
 
-    /// @brief Asynchronously receive data. Returns a Future[Bytes].
-    void *rt_async_recv(void *tcp, int64_t max_bytes);
+/// @brief Asynchronously receive data. Returns a Future[Bytes].
+void *rt_async_recv(void *tcp, int64_t max_bytes);
 
-    /// @brief Asynchronously perform HTTP GET. Returns a Future[String].
-    void *rt_async_http_get(rt_string url);
+/// @brief Asynchronously perform HTTP GET. Returns a Future[String].
+void *rt_async_http_get(rt_string url);
 
-    /// @brief Asynchronously perform HTTP POST. Returns a Future[String].
-    void *rt_async_http_post(rt_string url, rt_string body);
+/// @brief Asynchronously perform HTTP POST. Returns a Future[String].
+void *rt_async_http_post(rt_string url, rt_string body);
 
 #ifdef __cplusplus
 }

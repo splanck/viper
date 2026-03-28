@@ -62,35 +62,28 @@ extern void rt_trap(const char *msg);
 //=============================================================================
 
 /// @brief Generate a unique identifier using OS-provided entropy (S-21).
-static void generate_unique_id(char *buffer, size_t size)
-{
+static void generate_unique_id(char *buffer, size_t size) {
     uint64_t rnd = 0;
 
 #ifdef _WIN32
     /* Use CryptGenRandom for unpredictable IDs */
     HCRYPTPROV hProv;
-    if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT))
-    {
+    if (CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
         CryptGenRandom(hProv, sizeof(rnd), (BYTE *)&rnd);
         CryptReleaseContext(hProv, 0);
-    }
-    else
-    {
+    } else {
         /* Fallback: mix tick count with address entropy */
         rnd = (uint64_t)GetTickCount64() ^ (uint64_t)(uintptr_t)buffer;
     }
 #else
     /* Read from /dev/urandom for unpredictable IDs */
     int fd = open("/dev/urandom", O_RDONLY);
-    if (fd >= 0)
-    {
+    if (fd >= 0) {
         ssize_t n = read(fd, &rnd, sizeof(rnd));
         close(fd);
         if (n != (ssize_t)sizeof(rnd))
             rnd ^= (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid();
-    }
-    else
-    {
+    } else {
         rnd = (uint64_t)(uintptr_t)buffer ^ (uint64_t)getpid();
     }
 #endif
@@ -102,16 +95,13 @@ static void generate_unique_id(char *buffer, size_t size)
 // Public API
 //=============================================================================
 
-rt_string rt_tempfile_dir(void)
-{
+rt_string rt_tempfile_dir(void) {
 #ifdef _WIN32
     char buffer[MAX_PATH];
     DWORD len = GetTempPathA(MAX_PATH, buffer);
-    if (len > 0 && len < MAX_PATH)
-    {
+    if (len > 0 && len < MAX_PATH) {
         // Remove trailing backslash if present
-        if (len > 0 && (buffer[len - 1] == '\\' || buffer[len - 1] == '/'))
-        {
+        if (len > 0 && (buffer[len - 1] == '\\' || buffer[len - 1] == '/')) {
             buffer[len - 1] = '\0';
             len--;
         }
@@ -120,12 +110,10 @@ rt_string rt_tempfile_dir(void)
     return rt_const_cstr("C:\\Temp");
 #else
     const char *tmp = getenv("TMPDIR");
-    if (tmp && *tmp)
-    {
+    if (tmp && *tmp) {
         size_t len = strlen(tmp);
         // Remove trailing slash if present
-        if (len > 0 && tmp[len - 1] == '/')
-        {
+        if (len > 0 && tmp[len - 1] == '/') {
             char *copy = (char *)malloc(len);
             if (!copy)
                 rt_trap("rt_tempfile: memory allocation failed");
@@ -141,18 +129,15 @@ rt_string rt_tempfile_dir(void)
 #endif
 }
 
-rt_string rt_tempfile_path(void)
-{
+rt_string rt_tempfile_path(void) {
     return rt_tempfile_path_with_prefix(rt_const_cstr("viper_"));
 }
 
-rt_string rt_tempfile_path_with_prefix(rt_string prefix)
-{
+rt_string rt_tempfile_path_with_prefix(rt_string prefix) {
     return rt_tempfile_path_with_ext(prefix, rt_const_cstr(".tmp"));
 }
 
-rt_string rt_tempfile_path_with_ext(rt_string prefix, rt_string extension)
-{
+rt_string rt_tempfile_path_with_ext(rt_string prefix, rt_string extension) {
     char unique_id[64];
     generate_unique_id(unique_id, sizeof(unique_id));
 
@@ -177,13 +162,11 @@ rt_string rt_tempfile_path_with_ext(rt_string prefix, rt_string extension)
     return result;
 }
 
-rt_string rt_tempfile_create(void)
-{
+rt_string rt_tempfile_create(void) {
     return rt_tempfile_create_with_prefix(rt_const_cstr("viper_"));
 }
 
-rt_string rt_tempfile_create_with_prefix(rt_string prefix)
-{
+rt_string rt_tempfile_create_with_prefix(rt_string prefix) {
 #ifndef _WIN32
     /* S-21: Use mkstemp for atomic, exclusive, unpredictable file creation on POSIX */
     rt_string temp_dir = rt_tempfile_dir();
@@ -192,8 +175,7 @@ rt_string rt_tempfile_create_with_prefix(rt_string prefix)
 
     size_t tmpl_len = strlen(dir_cstr) + 1 + strlen(prefix_cstr) + 6 + 1;
     char *tmpl = (char *)malloc(tmpl_len);
-    if (!tmpl)
-    {
+    if (!tmpl) {
         rt_string_unref(temp_dir);
         return rt_tempfile_path_with_prefix(prefix);
     }
@@ -201,8 +183,7 @@ rt_string rt_tempfile_create_with_prefix(rt_string prefix)
     rt_string_unref(temp_dir);
 
     int fd = mkstemp(tmpl);
-    if (fd >= 0)
-    {
+    if (fd >= 0) {
         close(fd);
         rt_string result = rt_string_from_bytes(tmpl, strlen(tmpl));
         free(tmpl);
@@ -229,13 +210,11 @@ rt_string rt_tempfile_create_with_prefix(rt_string prefix)
     return path;
 }
 
-rt_string rt_tempdir_create(void)
-{
+rt_string rt_tempdir_create(void) {
     return rt_tempdir_create_with_prefix(rt_const_cstr("viper_"));
 }
 
-rt_string rt_tempdir_create_with_prefix(rt_string prefix)
-{
+rt_string rt_tempdir_create_with_prefix(rt_string prefix) {
     char unique_id[64];
     generate_unique_id(unique_id, sizeof(unique_id));
 

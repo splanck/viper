@@ -31,8 +31,7 @@
 #include <cstdlib>
 #include <string>
 
-namespace il::frontends::basic
-{
+namespace il::frontends::basic {
 
 /// @brief Bind the lowering helper to the owning @ref Lowerer instance.
 ///
@@ -49,8 +48,7 @@ SelectCaseLowering::SelectCaseLowering(Lowerer &lowerer) noexcept : lowerer_(low
 ///          front end treats them as no-ops.
 ///
 /// @param stmt Parsed SELECT CASE statement containing selector, arms, and else.
-void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
-{
+void SelectCaseLowering::lower(const SelectCaseStmt &stmt) {
     if (!stmt.selector)
         return;
 
@@ -62,8 +60,7 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
 
     // Defensive: if the current block is already terminated, start a fresh block
     // so the SELECT CASE lowering has a valid insertion point.
-    if (current->terminated)
-    {
+    if (current->terminated) {
         auto *namer = ctx.blockNames().namer();
         std::string label =
             namer ? namer->generic("select_start") : lowerer_.mangler.block("select_start");
@@ -79,8 +76,7 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
     il::core::Value stringSelector = selectorVal.value;
     il::core::Value selWide{};
     il::core::Value sel{};
-    if (!selectorIsString)
-    {
+    if (!selectorIsString) {
         selectorVal = lowerer_.ensureI64(std::move(selectorVal), stmt.selector->loc);
         selWide = selectorVal.value;
         sel = lowerer_.emitCommon(stmt.selector->loc).narrow_to(selectorVal.value, 64, 32);
@@ -94,26 +90,21 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
     const SelectModel &model = stmt.model;
     Blocks blocks = prepareBlocks(stmt, model.hasCaseElse, model.hasNumericRanges);
 
-    if (selectorIsString)
-    {
+    if (selectorIsString) {
         lowerStringArms(stmt, model, blocks, stringSelector);
-    }
-    else
-    {
+    } else {
         lowerNumericDispatch(stmt, model, blocks, selWide, sel);
     }
 
     // BUG-087 fix: Pass end block INDEX instead of pointer, since nested statements
     // (like IF) can cause func->blocks vector to reallocate, invalidating pointers.
-    for (size_t i = 0; i < stmt.arms.size(); ++i)
-    {
+    for (size_t i = 0; i < stmt.arms.size(); ++i) {
         func = ctx.function();
         auto *armBlk = &func->blocks[blocks.armIdx[i]];
         emitArmBody(stmt.arms[i].body, armBlk, stmt.arms[i].range.begin, blocks.endIdx);
     }
 
-    if (model.hasCaseElse)
-    {
+    if (model.hasCaseElse) {
         func = ctx.function();
         auto *caseElseBlk = &func->blocks[*blocks.elseIdx];
         emitArmBody(stmt.elseBody, caseElseBlk, stmt.range.end, blocks.endIdx);
@@ -139,8 +130,7 @@ void SelectCaseLowering::lower(const SelectCaseStmt &stmt)
 /// @return Structure enumerating the indices of the created blocks.
 SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStmt &stmt,
                                                              bool hasCaseElse,
-                                                             bool needsDispatch)
-{
+                                                             bool needsDispatch) {
     auto &ctx = lowerer_.context();
     auto *func = ctx.function();
     auto *current = ctx.current();
@@ -160,23 +150,20 @@ SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStm
     blocks.armIdx.resize(stmt.arms.size());
 
     // Append all SELECT blocks at the end using addBlock().
-    for (size_t i = 0; i < stmt.arms.size(); ++i)
-    {
+    for (size_t i = 0; i < stmt.arms.size(); ++i) {
         std::string label = blockNamer ? blockNamer->generic("select_arm")
                                        : lowerer_.mangler.block("select_arm_" + std::to_string(i));
         lowerer_.builder->addBlock(*func, label);
     }
 
-    if (hasCaseElse)
-    {
+    if (hasCaseElse) {
         std::string defaultLabel = blockNamer ? blockNamer->generic("select_default")
                                               : lowerer_.mangler.block("select_default");
         lowerer_.builder->addBlock(*func, defaultLabel);
         blocks.elseIdx = startIdx + stmt.arms.size();
     }
 
-    if (needsDispatch)
-    {
+    if (needsDispatch) {
         std::string dispatchLabel = blockNamer ? blockNamer->generic("select_dispatch")
                                                : lowerer_.mangler.block("select_dispatch");
         lowerer_.builder->addBlock(*func, dispatchLabel);
@@ -213,8 +200,7 @@ SelectCaseLowering::Blocks SelectCaseLowering::prepareBlocks(const SelectCaseStm
 void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
                                          const SelectModel &model,
                                          const Blocks &blocks,
-                                         il::core::Value stringSelector)
-{
+                                         il::core::Value stringSelector) {
     auto &ctx = lowerer_.context();
     auto *func = ctx.function();
 
@@ -224,8 +210,7 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
     std::vector<CasePlanEntry> plan;
     plan.reserve(model.stringLabels.size() + 1);
 
-    for (const auto &label : model.stringLabels)
-    {
+    for (const auto &label : model.stringLabels) {
         // BUG-017 fix: Store index instead of pointer to avoid invalidation
         CasePlanEntry entry{};
         entry.kind = CasePlanEntry::Kind::StringLabel;
@@ -242,8 +227,7 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
     defaultEntry.loc = stmt.range.end;
     plan.push_back(defaultEntry);
 
-    if (plan.size() == 1)
-    {
+    if (plan.size() == 1) {
         func = ctx.function();
         ctx.setCurrent(&func->blocks[blocks.currentIdx]);
         lowerer_.curLoc = stmt.loc;
@@ -255,8 +239,7 @@ void SelectCaseLowering::lowerStringArms(const SelectCaseStmt &stmt,
         return;
     }
 
-    ConditionEmitter emitter = [this, stringSelector](const CasePlanEntry &entry)
-    {
+    ConditionEmitter emitter = [this, stringSelector](const CasePlanEntry &entry) {
         assert(entry.kind == CasePlanEntry::Kind::StringLabel);
         std::string labelStr(entry.strLiteral);
         il::core::Value labelValue = lowerer_.emitConstStr(lowerer_.getStringLabel(labelStr));
@@ -287,23 +270,20 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
                                               const SelectModel &model,
                                               const Blocks &blocks,
                                               il::core::Value selWide,
-                                              il::core::Value selector)
-{
+                                              il::core::Value selector) {
     auto &ctx = lowerer_.context();
     auto *func = ctx.function();
 
     std::vector<CasePlanEntry> plan;
     plan.reserve(model.numericRelations.size() + model.numericRanges.size() + 1);
 
-    for (const auto &rel : model.numericRelations)
-    {
+    for (const auto &rel : model.numericRelations) {
         // BUG-017 fix: Store index instead of pointer to avoid invalidation
         CasePlanEntry entry{};
         entry.armIndex = rel.armIndex;
         entry.targetIdx = blocks.armIdx[rel.armIndex];
         entry.loc = rel.loc;
-        switch (rel.op)
-        {
+        switch (rel.op) {
             case SelectModel::NumericRelation::Op::LT:
                 entry.kind = CasePlanEntry::Kind::RelLT;
                 entry.valueRange.second = rel.rhs;
@@ -329,8 +309,7 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
         plan.push_back(entry);
     }
 
-    for (const auto &range : model.numericRanges)
-    {
+    for (const auto &range : model.numericRanges) {
         // BUG-017 fix: Store index instead of pointer to avoid invalidation
         CasePlanEntry entry{};
         entry.kind = CasePlanEntry::Kind::Range;
@@ -346,26 +325,19 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
 
     CasePlanEntry defaultEntry{};
     defaultEntry.kind = CasePlanEntry::Kind::Default;
-    if (model.hasNumericRanges)
-    {
+    if (model.hasNumericRanges) {
         defaultEntry.targetIdx = blocks.switchIdx;
-    }
-    else if (hasComparisons)
-    {
+    } else if (hasComparisons) {
         defaultEntry.targetIdx = SIZE_MAX; // Will be allocated later
-    }
-    else
-    {
+    } else {
         defaultEntry.targetIdx = blocks.switchIdx;
     }
     defaultEntry.loc = stmt.loc;
     plan.push_back(defaultEntry);
 
-    ConditionEmitter emitter = [this, selWide, &stmt](const CasePlanEntry &entry)
-    {
+    ConditionEmitter emitter = [this, selWide, &stmt](const CasePlanEntry &entry) {
         assert(entry.kind != CasePlanEntry::Kind::Default);
-        switch (entry.kind)
-        {
+        switch (entry.kind) {
             case CasePlanEntry::Kind::RelLT:
                 return lowerer_.emitBinary(
                     il::core::Opcode::SCmpLT,
@@ -396,8 +368,7 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
                     lowerer_.ilBoolTy(),
                     selWide,
                     il::core::Value::constInt(static_cast<long long>(entry.valueRange.first)));
-            case CasePlanEntry::Kind::Range:
-            {
+            case CasePlanEntry::Kind::Range: {
                 il::core::Value ge = lowerer_.emitBinary(
                     il::core::Opcode::SCmpGE,
                     lowerer_.ilBoolTy(),
@@ -440,8 +411,7 @@ void SelectCaseLowering::lowerNumericDispatch(const SelectCaseStmt &stmt,
 /// @return Index of the block that represents the default fall-through path.
 size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
                                             std::vector<CasePlanEntry> &plan,
-                                            const ConditionEmitter &emitCond)
-{
+                                            const ConditionEmitter &emitCond) {
     if (plan.empty())
         return startIdx;
 
@@ -454,8 +424,7 @@ size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
 
     // BUG-017 fix: Use index instead of pointer to avoid invalidation
     size_t defaultIdx = defaultEntry.targetIdx;
-    if (defaultIdx == SIZE_MAX)
-    {
+    if (defaultIdx == SIZE_MAX) {
         std::string label = blockNamer
                                 ? blockNamer->generic(std::string(blockTagFor(defaultEntry)))
                                 : lowerer_.mangler.block(std::string(blockTagFor(defaultEntry)));
@@ -471,14 +440,12 @@ size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
         defaultBlk->label = lowerer_.nextFallbackBlockLabel();
 
     size_t currentIdx = startIdx;
-    for (size_t i = 0; i + 1 < plan.size(); ++i)
-    {
+    for (size_t i = 0; i + 1 < plan.size(); ++i) {
         auto &entry = plan[i];
 
         bool needIntermediate = plan[i + 1].kind != CasePlanEntry::Kind::Default;
         size_t nextIdx = defaultIdx;
-        if (needIntermediate)
-        {
+        if (needIntermediate) {
             func = ctx.function();
             std::string label = blockNamer
                                     ? blockNamer->generic(std::string(blockTagFor(plan[i + 1])))
@@ -517,10 +484,8 @@ size_t SelectCaseLowering::emitCompareChain(size_t startIdx,
 ///
 /// @param entry Plan entry whose block tag should be determined.
 /// @return Short tag used for generated block names (e.g. "select_rel").
-std::string_view SelectCaseLowering::blockTagFor(const CasePlanEntry &entry)
-{
-    switch (entry.kind)
-    {
+std::string_view SelectCaseLowering::blockTagFor(const CasePlanEntry &entry) {
+    switch (entry.kind) {
         case CasePlanEntry::Kind::StringLabel:
             return "select_check";
         case CasePlanEntry::Kind::RelLT:
@@ -552,8 +517,7 @@ void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
                                              const SelectModel &model,
                                              const Blocks &blocks,
                                              il::core::Value selector,
-                                             size_t switchIdx)
-{
+                                             size_t switchIdx) {
     auto &ctx = lowerer_.context();
     auto *func = ctx.function();
     ctx.setCurrent(&func->blocks[switchIdx]);
@@ -561,8 +525,7 @@ void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
     std::vector<std::pair<int32_t, il::core::BasicBlock *>> caseTargets;
     caseTargets.reserve(model.numericLabels.size());
 
-    for (const auto &label : model.numericLabels)
-    {
+    for (const auto &label : model.numericLabels) {
         auto *armBlk = &func->blocks[blocks.armIdx[label.armIndex]];
         if (armBlk->label.empty())
             armBlk->label = lowerer_.nextFallbackBlockLabel();
@@ -581,8 +544,7 @@ void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
     sw.labels.push_back(caseElseBlk->label);
     sw.brArgs.emplace_back();
 
-    for (const auto &[value, target] : caseTargets)
-    {
+    for (const auto &[value, target] : caseTargets) {
         if (target->label.empty())
             target->label = lowerer_.nextFallbackBlockLabel();
         sw.operands.push_back(il::core::Value::constInt(static_cast<long long>(value)));
@@ -611,12 +573,10 @@ void SelectCaseLowering::emitSwitchJumpTable(const SelectCaseStmt &stmt,
 void SelectCaseLowering::emitArmBody(const std::vector<StmtPtr> &body,
                                      il::core::BasicBlock *entry,
                                      il::support::SourceLoc loc,
-                                     size_t endBlkIdx)
-{
+                                     size_t endBlkIdx) {
     auto &ctx = lowerer_.context();
     ctx.setCurrent(entry);
-    for (const auto &node : body)
-    {
+    for (const auto &node : body) {
         if (!node)
             continue;
         lowerer_.lowerStmt(*node);
@@ -626,8 +586,7 @@ void SelectCaseLowering::emitArmBody(const std::vector<StmtPtr> &body,
     }
 
     auto *bodyCur = ctx.current();
-    if (bodyCur && !bodyCur->terminated)
-    {
+    if (bodyCur && !bodyCur->terminated) {
         // BUG-087 fix: Refresh endBlk pointer after lowering statements, since
         // nested control flow (IF, FOR, etc.) can cause func->blocks to reallocate.
         auto *func = ctx.function();
@@ -640,8 +599,7 @@ void SelectCaseLowering::emitArmBody(const std::vector<StmtPtr> &body,
 /// @brief Entrypoint that lowers a SELECT CASE statement via @ref SelectCaseLowering.
 ///
 /// @param stmt AST node representing the SELECT CASE statement to lower.
-void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt)
-{
+void Lowerer::lowerSelectCase(const SelectCaseStmt &stmt) {
     CtrlState state = emitSelect(stmt);
     if (state.cur)
         context().setCurrent(state.cur);

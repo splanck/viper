@@ -92,11 +92,9 @@
 
 #include <algorithm>
 
-namespace viper::codegen::aarch64
-{
+namespace viper::codegen::aarch64 {
 
-void FrameBuilder::addLocal(unsigned tempId, int sizeBytes, int alignBytes)
-{
+void FrameBuilder::addLocal(unsigned tempId, int sizeBytes, int alignBytes) {
     // If already present, ignore.
     for (const auto &L : fn_->frame.locals)
         if (L.tempId == tempId)
@@ -106,13 +104,11 @@ void FrameBuilder::addLocal(unsigned tempId, int sizeBytes, int alignBytes)
     fn_->frame.locals.push_back(MFunction::StackLocal{tempId, sizeBytes, alignBytes, off});
 }
 
-int FrameBuilder::localOffset(unsigned tempId) const
-{
+int FrameBuilder::localOffset(unsigned tempId) const {
     return fn_->frame.getLocalOffset(tempId);
 }
 
-int FrameBuilder::ensureSpill(uint16_t vreg, int sizeBytes, int alignBytes)
-{
+int FrameBuilder::ensureSpill(uint16_t vreg, int sizeBytes, int alignBytes) {
     for (const auto &S : fn_->frame.spills)
         if (S.vreg == vreg)
             return S.offset;
@@ -125,8 +121,7 @@ int FrameBuilder::ensureSpillWithReuse(uint16_t vreg,
                                        unsigned lastUseInstrIdx,
                                        unsigned currentInstrIdx,
                                        int sizeBytes,
-                                       int alignBytes)
-{
+                                       int alignBytes) {
     // Fast path: this vreg was already assigned a slot (e.g., re-spill after reload).
     for (const auto &S : fn_->frame.spills)
         if (S.vreg == vreg)
@@ -138,10 +133,8 @@ int FrameBuilder::ensureSpillWithReuse(uint16_t vreg,
     //
     // Cross-epoch (cross-block) reuse is prohibited because currentInstrIdx
     // is a per-block counter that resets to 0 at each block boundary.
-    for (auto &L : slotLifetimes_)
-    {
-        if (L.sizeBytes == sizeBytes && L.epoch == blockEpoch_ && L.lastUseIdx < currentInstrIdx)
-        {
+    for (auto &L : slotLifetimes_) {
+        if (L.sizeBytes == sizeBytes && L.epoch == blockEpoch_ && L.lastUseIdx < currentInstrIdx) {
             // Recycle: update the vreg→offset mapping and refresh the lifetime.
             fn_->frame.spills.push_back(
                 MFunction::SpillSlot{vreg, sizeBytes, alignBytes, L.offset});
@@ -158,13 +151,11 @@ int FrameBuilder::ensureSpillWithReuse(uint16_t vreg,
     return off;
 }
 
-void FrameBuilder::setMaxOutgoingBytes(int bytes)
-{
+void FrameBuilder::setMaxOutgoingBytes(int bytes) {
     fn_->frame.maxOutgoingBytes = std::max(fn_->frame.maxOutgoingBytes, bytes);
 }
 
-void FrameBuilder::finalize()
-{
+void FrameBuilder::finalize() {
     // Account for any previously assigned locals/spills on the function as well as
     // slots assigned via this builder instance.
     int mostNegative = minOffset_;
@@ -182,8 +173,7 @@ void FrameBuilder::finalize()
     fn_->localFrameSize = usedBytes; // bridge for current emitter plan field
 }
 
-int FrameBuilder::assignAlignedSlot(int sizeBytes, int alignBytes)
-{
+int FrameBuilder::assignAlignedSlot(int sizeBytes, int alignBytes) {
     // Align the nextOffset downwards to the required alignment, then assign size.
     const int align = std::max(1, alignBytes);
     // Move nextOffset to the nearest multiple of 'align'.

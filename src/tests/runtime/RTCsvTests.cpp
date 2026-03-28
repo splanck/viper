@@ -19,8 +19,7 @@
 #include <cstdio>
 #include <cstring>
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
 
@@ -28,18 +27,15 @@ extern "C" void vm_trap(const char *msg)
 // Helper
 // ============================================================================
 
-static rt_string make_str(const char *s)
-{
+static rt_string make_str(const char *s) {
     return rt_const_cstr(s);
 }
 
-static const char *str_cstr(rt_string s)
-{
+static const char *str_cstr(rt_string s) {
     return rt_string_cstr(s);
 }
 
-static void assert_str_eq(rt_string s, const char *expected)
-{
+static void assert_str_eq(rt_string s, const char *expected) {
     const char *actual = str_cstr(s);
     assert(strcmp(actual, expected) == 0);
 }
@@ -48,8 +44,7 @@ static void assert_str_eq(rt_string s, const char *expected)
 // ParseLine Tests
 // ============================================================================
 
-static void test_parse_line_simple()
-{
+static void test_parse_line_simple() {
     void *fields = rt_csv_parse_line(make_str("a,b,c"));
 
     assert(rt_seq_len(fields) == 3);
@@ -60,8 +55,7 @@ static void test_parse_line_simple()
     printf("test_parse_line_simple: PASSED\n");
 }
 
-static void test_parse_line_quoted()
-{
+static void test_parse_line_quoted() {
     void *fields = rt_csv_parse_line(make_str("\"hello\",world,\"test\""));
 
     assert(rt_seq_len(fields) == 3);
@@ -72,8 +66,7 @@ static void test_parse_line_quoted()
     printf("test_parse_line_quoted: PASSED\n");
 }
 
-static void test_parse_line_escaped_quotes()
-{
+static void test_parse_line_escaped_quotes() {
     // CSV escapes quotes by doubling them: ""
     void *fields = rt_csv_parse_line(make_str("\"He said \"\"Hello\"\"\""));
 
@@ -83,8 +76,7 @@ static void test_parse_line_escaped_quotes()
     printf("test_parse_line_escaped_quotes: PASSED\n");
 }
 
-static void test_parse_line_embedded_comma()
-{
+static void test_parse_line_embedded_comma() {
     void *fields = rt_csv_parse_line(make_str("\"a,b\",c"));
 
     assert(rt_seq_len(fields) == 2);
@@ -94,8 +86,7 @@ static void test_parse_line_embedded_comma()
     printf("test_parse_line_embedded_comma: PASSED\n");
 }
 
-static void test_parse_line_empty_fields()
-{
+static void test_parse_line_empty_fields() {
     void *fields = rt_csv_parse_line(make_str("a,,c,"));
 
     assert(rt_seq_len(fields) == 4);
@@ -107,8 +98,7 @@ static void test_parse_line_empty_fields()
     printf("test_parse_line_empty_fields: PASSED\n");
 }
 
-static void test_parse_line_custom_delimiter()
-{
+static void test_parse_line_custom_delimiter() {
     void *fields = rt_csv_parse_line_with(make_str("a;b;c"), make_str(";"));
 
     assert(rt_seq_len(fields) == 3);
@@ -123,8 +113,7 @@ static void test_parse_line_custom_delimiter()
 // Parse (multi-line) Tests
 // ============================================================================
 
-static void test_parse_multiline()
-{
+static void test_parse_multiline() {
     void *rows = rt_csv_parse(make_str("a,b,c\n1,2,3\nx,y,z"));
 
     assert(rt_seq_len(rows) == 3);
@@ -144,8 +133,7 @@ static void test_parse_multiline()
     printf("test_parse_multiline: PASSED\n");
 }
 
-static void test_parse_newline_in_quotes()
-{
+static void test_parse_newline_in_quotes() {
     void *rows = rt_csv_parse(make_str("\"line1\nline2\",b"));
 
     assert(rt_seq_len(rows) == 1);
@@ -158,8 +146,7 @@ static void test_parse_newline_in_quotes()
     printf("test_parse_newline_in_quotes: PASSED\n");
 }
 
-static void test_parse_crlf()
-{
+static void test_parse_crlf() {
     void *rows = rt_csv_parse(make_str("a,b\r\nc,d"));
 
     assert(rt_seq_len(rows) == 2);
@@ -179,8 +166,7 @@ static void test_parse_crlf()
 // FormatLine Tests
 // ============================================================================
 
-static void test_format_line_simple()
-{
+static void test_format_line_simple() {
     void *fields = rt_seq_new();
     rt_seq_push(fields, (void *)make_str("a"));
     rt_seq_push(fields, (void *)make_str("b"));
@@ -192,8 +178,7 @@ static void test_format_line_simple()
     printf("test_format_line_simple: PASSED\n");
 }
 
-static void test_format_line_needs_quoting()
-{
+static void test_format_line_needs_quoting() {
     void *fields = rt_seq_new();
     rt_seq_push(fields, (void *)make_str("a,b"));
     rt_seq_push(fields, (void *)make_str("c"));
@@ -204,8 +189,7 @@ static void test_format_line_needs_quoting()
     printf("test_format_line_needs_quoting: PASSED\n");
 }
 
-static void test_format_line_escape_quotes()
-{
+static void test_format_line_escape_quotes() {
     void *fields = rt_seq_new();
     rt_seq_push(fields, (void *)make_str("He said \"Hello\""));
 
@@ -215,8 +199,7 @@ static void test_format_line_escape_quotes()
     printf("test_format_line_escape_quotes: PASSED\n");
 }
 
-static void test_format_line_newline()
-{
+static void test_format_line_newline() {
     void *fields = rt_seq_new();
     rt_seq_push(fields, (void *)make_str("line1\nline2"));
     rt_seq_push(fields, (void *)make_str("b"));
@@ -227,8 +210,7 @@ static void test_format_line_newline()
     printf("test_format_line_newline: PASSED\n");
 }
 
-static void test_format_line_custom_delimiter()
-{
+static void test_format_line_custom_delimiter() {
     void *fields = rt_seq_new();
     rt_seq_push(fields, (void *)make_str("a"));
     rt_seq_push(fields, (void *)make_str("b"));
@@ -244,8 +226,7 @@ static void test_format_line_custom_delimiter()
 // Format (multi-line) Tests
 // ============================================================================
 
-static void test_format_multiline()
-{
+static void test_format_multiline() {
     void *rows = rt_seq_new();
 
     void *row1 = rt_seq_new();
@@ -269,8 +250,7 @@ static void test_format_multiline()
 // Roundtrip Tests
 // ============================================================================
 
-static void test_roundtrip_simple()
-{
+static void test_roundtrip_simple() {
     const char *original = "a,b,c";
     void *parsed = rt_csv_parse_line(make_str(original));
     rt_string formatted = rt_csv_format_line(parsed);
@@ -279,8 +259,7 @@ static void test_roundtrip_simple()
     printf("test_roundtrip_simple: PASSED\n");
 }
 
-static void test_roundtrip_complex()
-{
+static void test_roundtrip_complex() {
     const char *original = "\"quoted,field\",normal,\"with \"\"escaped\"\"\"";
     void *parsed = rt_csv_parse_line(make_str(original));
     rt_string formatted = rt_csv_format_line(parsed);
@@ -293,8 +272,7 @@ static void test_roundtrip_complex()
 // Edge Cases
 // ============================================================================
 
-static void test_empty_input()
-{
+static void test_empty_input() {
     void *fields = rt_csv_parse_line(make_str(""));
     assert(rt_seq_len(fields) == 1);
     assert_str_eq((rt_string)rt_seq_get(fields, 0), "");
@@ -305,8 +283,7 @@ static void test_empty_input()
     printf("test_empty_input: PASSED\n");
 }
 
-static void test_single_field()
-{
+static void test_single_field() {
     void *fields = rt_csv_parse_line(make_str("hello"));
     assert(rt_seq_len(fields) == 1);
     assert_str_eq((rt_string)rt_seq_get(fields, 0), "hello");
@@ -318,8 +295,7 @@ static void test_single_field()
 // Main
 // ============================================================================
 
-int main()
-{
+int main() {
     printf("=== Viper.Text.Csv Tests ===\n\n");
 
     // ParseLine tests

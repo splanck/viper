@@ -26,8 +26,7 @@
 
 using namespace il::core;
 
-static void build_store_program(Module &m, unsigned &ptrTemp)
-{
+static void build_store_program(Module &m, unsigned &ptrTemp) {
     il::build::IRBuilder b(m);
     Function &fn = b.startFunction("main", Type(Type::Kind::Void), {});
     BasicBlock &bb = b.addBlock(fn, "entry");
@@ -58,8 +57,7 @@ static void build_store_program(Module &m, unsigned &ptrTemp)
     bb.terminated = true;
 }
 
-int main()
-{
+int main() {
     Module m;
     unsigned ptrId = 0;
     build_store_program(m, ptrId);
@@ -87,8 +85,7 @@ int main()
     auto hits = dbg.drainMemWatchEvents();
     assert(!hits.empty());
     bool hasStack = false;
-    for (const auto &h : hits)
-    {
+    for (const auto &h : hits) {
         if (h.tag == "stack")
             hasStack = true;
     }

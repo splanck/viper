@@ -22,8 +22,7 @@
 using namespace viper::codegen::aarch64;
 
 /// @brief Returns the expected mangled symbol name on Darwin.
-static std::string mangledSym(const std::string &name)
-{
+static std::string mangledSym(const std::string &name) {
 #if defined(__APPLE__)
     return "_" + name;
 #else
@@ -31,8 +30,7 @@ static std::string mangledSym(const std::string &name)
 #endif
 }
 
-TEST(AArch64MIR, PrologueAddEpilogue)
-{
+TEST(AArch64MIR, PrologueAddEpilogue) {
     auto &ti = darwinTarget();
     AsmEmitter emit{ti};
 
@@ -60,8 +58,7 @@ TEST(AArch64MIR, PrologueAddEpilogue)
     EXPECT_NE(asmText.find("ret\n"), std::string::npos);
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
     viper_test::init(&argc, &argv);
     return viper_test::run_all_tests();
 }

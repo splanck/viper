@@ -22,8 +22,7 @@
 #include <optional>
 #include <vector>
 
-namespace il::frontends::basic::lower
-{
+namespace il::frontends::basic::lower {
 /// @brief Determine the resulting type for a builtin call without lowering.
 ///
 /// @param lowerer Lowerer supplying symbol/type caches.
@@ -31,17 +30,14 @@ namespace il::frontends::basic::lower
 /// @return Classification describing the builtin's result type.
 Lowerer::ExprType scanBuiltinExprTypes(Lowerer &lowerer, const BuiltinCallExpr &expr);
 
-namespace detail
-{
+namespace detail {
 
 /// @brief Translate AST-level type annotations to Lowerer expression kinds.
 ///
 /// @param ty AST type enumerator recorded on declarations.
 /// @return Lowerer expression classification matching @p ty.
-Lowerer::ExprType exprTypeFromAstType(Type ty)
-{
-    switch (ty)
-    {
+Lowerer::ExprType exprTypeFromAstType(Type ty) {
+    switch (ty) {
         case Type::Str:
             return Lowerer::ExprType::Str;
         case Type::F64:
@@ -59,8 +55,7 @@ Lowerer::ExprType exprTypeFromAstType(Type ty)
 /// @details The scanner pushes inferred @ref Lowerer::ExprType values onto a
 ///          private stack while traversing the AST.  It cooperates with the
 ///          lowerer to resolve symbols without mutating IR generation state.
-class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
-{
+class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner> {
   public:
     /// @brief Construct a scanner bound to the owning lowering context.
     ///
@@ -73,8 +68,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     ///
     /// @param expr Expression to analyse.
     /// @return Expression category such as integer, floating, or string.
-    ExprType evaluateExpr(const Expr &expr)
-    {
+    ExprType evaluateExpr(const Expr &expr) {
         StackScope scope(*this);
         expr.accept(*this);
         return pop();
@@ -84,8 +78,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     ///
     /// @param expr Builtin call under inspection.
     /// @return False to prevent recursive descent.
-    bool shouldVisitChildren(const BuiltinCallExpr &)
-    {
+    bool shouldVisitChildren(const BuiltinCallExpr &) {
         return false;
     }
 
@@ -93,8 +86,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     ///
     /// @param expr Procedure call expression.
     /// @return False so the walker avoids visiting argument subtrees automatically.
-    bool shouldVisitChildren(const CallExpr &)
-    {
+    bool shouldVisitChildren(const CallExpr &) {
         return false;
     }
 
@@ -102,8 +94,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     ///
     /// @param expr Constructor call expression.
     /// @return False to defer traversal to helper routines.
-    bool shouldVisitChildren(const NewExpr &)
-    {
+    bool shouldVisitChildren(const NewExpr &) {
         return false;
     }
 
@@ -111,8 +102,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     ///
     /// @param expr Member access node.
     /// @return False to avoid automatic recursion.
-    bool shouldVisitChildren(const MemberAccessExpr &)
-    {
+    bool shouldVisitChildren(const MemberAccessExpr &) {
         return false;
     }
 
@@ -120,58 +110,49 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     ///
     /// @param expr Method call expression.
     /// @return False to maintain manual traversal order.
-    bool shouldVisitChildren(const MethodCallExpr &)
-    {
+    bool shouldVisitChildren(const MethodCallExpr &) {
         return false;
     }
 
     /// @brief Classify integer literals as 64-bit integers.
     ///
     /// @param expr Integer literal (value unused).
-    void after(const IntExpr &)
-    {
+    void after(const IntExpr &) {
         push(ExprType::I64);
     }
 
     /// @brief Classify floating literals as 64-bit floats.
     ///
     /// @param expr Floating literal.
-    void after(const FloatExpr &)
-    {
+    void after(const FloatExpr &) {
         push(ExprType::F64);
     }
 
     /// @brief Classify string literals as strings.
     ///
     /// @param expr String literal node.
-    void after(const StringExpr &)
-    {
+    void after(const StringExpr &) {
         push(ExprType::Str);
     }
 
     /// @brief Treat boolean literals as integer flags (historical BASIC rule).
     ///
     /// @param expr Boolean literal node.
-    void after(const BoolExpr &)
-    {
+    void after(const BoolExpr &) {
         push(ExprType::I64);
     }
 
     /// @brief Resolve variable references using known symbol metadata.
     ///
     /// @param expr Variable reference to analyse.
-    void after(const VarExpr &expr)
-    {
+    void after(const VarExpr &expr) {
         ExprType result = ExprType::I64;
-        if (const auto *info = lowerer_.findSymbol(expr.name))
-        {
+        if (const auto *info = lowerer_.findSymbol(expr.name)) {
             if (info->hasType)
                 result = exprTypeFromAstType(info->type);
             else
                 result = exprTypeFromAstType(inferAstTypeFromName(expr.name));
-        }
-        else
-        {
+        } else {
             result = exprTypeFromAstType(inferAstTypeFromName(expr.name));
         }
         push(result);
@@ -180,19 +161,15 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     /// @brief Infer array element access and consume optional index types.
     ///
     /// @param expr Array expression possibly containing an index.
-    void after(const ArrayExpr &expr)
-    {
+    void after(const ArrayExpr &expr) {
         // BUG-091 fix: Handle multi-dimensional arrays by discarding all index expressions
         // For backwards compatibility, check deprecated 'index' field first
-        if (expr.index != nullptr)
-        {
+        if (expr.index != nullptr) {
             (void)pop();
         }
         // Handle multi-dimensional arrays via 'indices' vector
-        else if (!expr.indices.empty())
-        {
-            for (size_t i = 0; i < expr.indices.size(); ++i)
-            {
+        else if (!expr.indices.empty()) {
+            for (size_t i = 0; i < expr.indices.size(); ++i) {
                 (void)pop();
             }
         }
@@ -200,20 +177,17 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     }
 
     /// @brief Treat LBOUND queries as integer expressions.
-    void after(const LBoundExpr &)
-    {
+    void after(const LBoundExpr &) {
         push(ExprType::I64);
     }
 
     /// @brief Treat UBOUND queries as integer expressions.
-    void after(const UBoundExpr &)
-    {
+    void after(const UBoundExpr &) {
         push(ExprType::I64);
     }
 
     /// @brief Propagate operand classification through unary operators.
-    void after(const UnaryExpr &)
-    {
+    void after(const UnaryExpr &) {
         ExprType operand = pop();
         push(operand);
     }
@@ -221,8 +195,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     /// @brief Combine operand types for binary operations.
     ///
     /// @param expr Binary expression describing the operator.
-    void after(const BinaryExpr &expr)
-    {
+    void after(const BinaryExpr &expr) {
         ExprType rhs = pop();
         ExprType lhs = pop();
         push(combineBinary(expr, lhs, rhs));
@@ -231,27 +204,22 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     /// @brief Delegate builtin classification to the shared helper.
     ///
     /// @param expr Builtin call expression.
-    void after(const BuiltinCallExpr &expr)
-    {
+    void after(const BuiltinCallExpr &expr) {
         push(::il::frontends::basic::lower::scanBuiltinExprTypes(lowerer_, expr));
     }
 
     /// @brief Use stored procedure signatures to classify call expressions.
     ///
     /// @param expr Procedure call expression.
-    void after(const CallExpr &expr)
-    {
-        for (const auto &arg : expr.args)
-        {
+    void after(const CallExpr &expr) {
+        for (const auto &arg : expr.args) {
             if (!arg)
                 continue;
             consumeExpr(*arg);
         }
-        if (const auto *sig = lowerer_.findProcSignature(expr.callee))
-        {
+        if (const auto *sig = lowerer_.findProcSignature(expr.callee)) {
             using K = il::core::Type::Kind;
-            switch (sig->retType.kind)
-            {
+            switch (sig->retType.kind) {
                 case K::F64:
                     push(ExprType::F64);
                     break;
@@ -270,9 +238,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
                     push(ExprType::I64);
                     break;
             }
-        }
-        else
-        {
+        } else {
             push(ExprType::I64);
         }
     }
@@ -280,10 +246,8 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     /// @brief Classify object construction expressions as integer handles.
     ///
     /// @param expr New expression containing constructor arguments.
-    void after(const NewExpr &expr)
-    {
-        for (const auto &arg : expr.args)
-        {
+    void after(const NewExpr &expr) {
+        for (const auto &arg : expr.args) {
             if (!arg)
                 continue;
             consumeExpr(*arg);
@@ -292,25 +256,21 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     }
 
     /// @brief Treat ME references as integer handles to the current object.
-    void after(const MeExpr &)
-    {
+    void after(const MeExpr &) {
         push(ExprType::I64);
     }
 
     /// @brief Resolve member access result types from cached class layouts.
     ///
     /// @param expr Member access expression being evaluated.
-    void after(const MemberAccessExpr &expr)
-    {
+    void after(const MemberAccessExpr &expr) {
         ExprType result = ExprType::I64;
-        if (expr.base)
-        {
+        if (expr.base) {
             consumeExpr(*expr.base);
             std::string className = lowerer_.resolveObjectClass(*expr.base);
             // BUG-011 fix: Use findClassLayout() instead of direct lookup to handle
             // case-insensitive class names and qualified/unqualified name variants.
-            if (const auto *layout = lowerer_.findClassLayout(className))
-            {
+            if (const auto *layout = lowerer_.findClassLayout(className)) {
                 if (const auto *field = layout->findField(expr.member))
                     result = exprTypeFromAstType(field->type);
             }
@@ -321,19 +281,16 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     /// @brief Treat method calls as integer-returning after consuming arguments.
     ///
     /// @param expr Method call expression encountered during scanning.
-    void after(const MethodCallExpr &expr)
-    {
+    void after(const MethodCallExpr &expr) {
         if (expr.base)
             consumeExpr(*expr.base);
-        for (const auto &arg : expr.args)
-        {
+        for (const auto &arg : expr.args) {
             if (!arg)
                 continue;
             consumeExpr(*arg);
         }
         ExprType result = ExprType::I64;
-        if (expr.base)
-        {
+        if (expr.base) {
             std::string className = lowerer_.resolveObjectClass(*expr.base);
             if (auto retTy = lowerer_.findMethodReturnType(className, expr.method))
                 result = exprTypeFromAstType(*retTy);
@@ -342,8 +299,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     }
 
   private:
-    struct StackScope
-    {
+    struct StackScope {
         /// @brief Reference to the owning walker used for validation.
         ExprTypeScanner &walker;
         /// @brief Depth snapshot captured on scope entry.
@@ -353,8 +309,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
         explicit StackScope(ExprTypeScanner &w) : walker(w), depth(w.exprStack_.size()) {}
 
         /// @brief Assert that the stack depth matches the entry snapshot.
-        ~StackScope()
-        {
+        ~StackScope() {
             assert(walker.exprStack_.size() == depth && "expression stack imbalance");
         }
     };
@@ -362,16 +317,14 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     /// @brief Push a classification onto the evaluation stack.
     ///
     /// @param ty Expression classification to record.
-    void push(ExprType ty)
-    {
+    void push(ExprType ty) {
         exprStack_.push_back(ty);
     }
 
     /// @brief Pop and return the most recent classification.
     ///
     /// @return Last computed classification.
-    ExprType pop()
-    {
+    ExprType pop() {
         assert(!exprStack_.empty());
         ExprType ty = exprStack_.back();
         exprStack_.pop_back();
@@ -381,8 +334,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     /// @brief Conditionally discard the most recent classification.
     ///
     /// @param condition When true the top of the stack is removed.
-    void discardIf(bool condition)
-    {
+    void discardIf(bool condition) {
         if (condition)
             (void)pop();
     }
@@ -391,8 +343,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     ///
     /// @param expr Expression subtree to consume.
     /// @return Computed classification of @p expr.
-    ExprType consumeExpr(const Expr &expr)
-    {
+    ExprType consumeExpr(const Expr &expr) {
         expr.accept(*this);
         return pop();
     }
@@ -403,8 +354,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
     /// @param lhs Left-hand operand classification.
     /// @param rhs Right-hand operand classification.
     /// @return Resulting classification after promotions.
-    ExprType combineBinary(const BinaryExpr &expr, ExprType lhs, ExprType rhs)
-    {
+    ExprType combineBinary(const BinaryExpr &expr, ExprType lhs, ExprType rhs) {
         using Op = BinaryExpr::Op;
         if (expr.op == Op::Pow)
             return ExprType::F64;
@@ -431,8 +381,7 @@ class ExprTypeScanner final : public BasicAstWalker<ExprTypeScanner>
 /// @param lowerer Lowerer providing symbol tables and inference caches.
 /// @param expr Expression to classify.
 /// @return Expression classification recorded by the scan.
-Lowerer::ExprType scanExprTypes(Lowerer &lowerer, const Expr &expr)
-{
+Lowerer::ExprType scanExprTypes(Lowerer &lowerer, const Expr &expr) {
     detail::ExprTypeScanner scanner(lowerer);
     return scanner.evaluateExpr(expr);
 }
@@ -442,13 +391,11 @@ Lowerer::ExprType scanExprTypes(Lowerer &lowerer, const Expr &expr)
 /// @param lowerer Lowerer providing rule lookup and expression scanner access.
 /// @param expr Builtin call to analyse.
 /// @return Resulting expression classification.
-Lowerer::ExprType scanBuiltinExprTypes(Lowerer &lowerer, const BuiltinCallExpr &expr)
-{
+Lowerer::ExprType scanBuiltinExprTypes(Lowerer &lowerer, const BuiltinCallExpr &expr) {
     const auto &rule = getBuiltinScanRule(expr.builtin);
     std::vector<std::optional<Lowerer::ExprType>> argTypes(expr.args.size());
 
-    auto scanArg = [&](std::size_t idx)
-    {
+    auto scanArg = [&](std::size_t idx) {
         if (idx >= expr.args.size())
             return;
         const auto &arg = expr.args[idx];
@@ -458,27 +405,22 @@ Lowerer::ExprType scanBuiltinExprTypes(Lowerer &lowerer, const BuiltinCallExpr &
         argTypes[idx] = scanner.evaluateExpr(*arg);
     };
 
-    if (rule.traversal == BuiltinScanRule::ArgTraversal::All)
-    {
+    if (rule.traversal == BuiltinScanRule::ArgTraversal::All) {
         for (std::size_t i = 0; i < expr.args.size(); ++i)
             scanArg(i);
-    }
-    else
-    {
+    } else {
         for (std::size_t idx : rule.explicitArgs)
             scanArg(idx);
     }
 
-    auto argType = [&](std::size_t idx) -> std::optional<Lowerer::ExprType>
-    {
+    auto argType = [&](std::size_t idx) -> std::optional<Lowerer::ExprType> {
         if (idx >= argTypes.size())
             return std::nullopt;
         return argTypes[idx];
     };
 
     Lowerer::ExprType result = rule.result.type;
-    if (rule.result.kind == BuiltinScanRule::ResultSpec::Kind::FromArg)
-    {
+    if (rule.result.kind == BuiltinScanRule::ResultSpec::Kind::FromArg) {
         if (auto ty = argType(rule.result.argIndex))
             result = *ty;
     }

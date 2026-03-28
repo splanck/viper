@@ -20,8 +20,7 @@
 #include <sstream>
 #include <string>
 
-int main()
-{
+int main() {
     constexpr const char *kProgram = R"(il 0.2.0
 global str @greeting = "hello"
 func @main() -> void {

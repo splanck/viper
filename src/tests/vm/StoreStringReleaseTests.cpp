@@ -25,16 +25,13 @@
 
 using namespace il::core;
 
-namespace
-{
-constexpr il::support::SourceLoc kLoc(unsigned line)
-{
+namespace {
+constexpr il::support::SourceLoc kLoc(unsigned line) {
     return {1, static_cast<uint32_t>(line), 0};
 }
 
 // Helper to get refcount from either heap or SSO string
-size_t get_string_refcount(rt_string s)
-{
+size_t get_string_refcount(rt_string s) {
     auto *impl = reinterpret_cast<rt_string_impl *>(s);
     if (!impl)
         return 0;
@@ -45,8 +42,7 @@ size_t get_string_refcount(rt_string s)
 }
 } // namespace
 
-int main()
-{
+int main() {
     Module module;
     il::build::IRBuilder builder(module);
     builder.addExtern("rt_str_i32_alloc", Type(Type::Kind::Str), {Type(Type::Kind::I32)});
@@ -113,8 +109,7 @@ int main()
     auto &mainFn = module.functions.front();
     il::vm::VMTestHook::State state = il::vm::VMTestHook::prepare(vm, mainFn);
 
-    auto stepExpectIp = [&](size_t expectedIp) -> bool
-    {
+    auto stepExpectIp = [&](size_t expectedIp) -> bool {
         auto result = il::vm::VMTestHook::step(vm, state);
         if (result)
             return true;
@@ -181,11 +176,9 @@ int main()
     if (stepExpectIp(10))
         return 1; // release literal string
 
-    while (true)
-    {
+    while (true) {
         auto result = il::vm::VMTestHook::step(vm, state);
-        if (result)
-        {
+        if (result) {
             if (result->i64 != 0)
                 return 1;
             break;

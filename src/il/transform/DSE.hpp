@@ -25,8 +25,7 @@
 #include "il/core/Function.hpp"
 #include "il/transform/AnalysisManager.hpp"
 
-namespace il::transform
-{
+namespace il::transform {
 
 /// \brief Eliminate trivially dead stores inside a function (intra-block).
 /// \details Performs a backward walk per basic block. A store to address P is

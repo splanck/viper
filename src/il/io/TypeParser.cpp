@@ -22,8 +22,7 @@
 
 #include "il/internal/io/TypeParser.hpp"
 
-namespace il::io
-{
+namespace il::io {
 
 /// @brief Resolve a primitive IL type token to a concrete Type value.
 /// @details Performs a string comparison against the canonical lowercase
@@ -38,10 +37,8 @@ namespace il::io
 /// @return Matching @ref il::core::Type on success or default constructed when unsupported.
 /// @note When @p ok is null the caller is opting out of explicit success signalling; failure is
 ///       observable via the returned default-constructed Type.
-il::core::Type parseType(const std::string &token, bool *ok)
-{
-    auto makeType = [ok](il::core::Type::Kind kind)
-    {
+il::core::Type parseType(const std::string &token, bool *ok) {
+    auto makeType = [ok](il::core::Type::Kind kind) {
         if (ok)
             *ok = true;
         return il::core::Type(kind);

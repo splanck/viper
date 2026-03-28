@@ -32,8 +32,7 @@
 #include <map>
 #include <vector>
 
-namespace viper::pkg
-{
+namespace viper::pkg {
 
 /// @brief Generate macOS ICNS icon data from a source image.
 ///

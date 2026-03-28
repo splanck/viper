@@ -19,8 +19,7 @@
 #include <cassert>
 #include <string>
 
-static void buildAndRun()
-{
+static void buildAndRun() {
     il::core::Module m;
     il::build::IRBuilder b(m);
     auto &fn = b.startFunction("main", il::core::Type(il::core::Type::Kind::I64), {});
@@ -35,8 +34,7 @@ static void buildAndRun()
     vm.run();
 }
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     if (viper::tests::dispatchChild(argc, argv))
         return 0;
 

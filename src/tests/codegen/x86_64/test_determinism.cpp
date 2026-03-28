@@ -42,39 +42,34 @@
 
 using namespace viper::codegen::x64;
 
-namespace
-{
+namespace {
 
 // ===----------------------------------------------------------------------===
 // Helper functions
 // ===----------------------------------------------------------------------===
 
-[[nodiscard]] ILValue val(int id) noexcept
-{
+[[nodiscard]] ILValue val(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::I64;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue valF(int id) noexcept
-{
+[[nodiscard]] ILValue valF(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::F64;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue valB(int id) noexcept
-{
+[[nodiscard]] ILValue valB(int id) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::I1;
     v.id = id;
     return v;
 }
 
-[[nodiscard]] ILValue imm(int64_t v) noexcept
-{
+[[nodiscard]] ILValue imm(int64_t v) noexcept {
     ILValue c{};
     c.kind = ILValue::Kind::I64;
     c.id = -1;
@@ -82,8 +77,7 @@ namespace
     return c;
 }
 
-[[nodiscard]] ILValue immF(double v) noexcept
-{
+[[nodiscard]] ILValue immF(double v) noexcept {
     ILValue c{};
     c.kind = ILValue::Kind::F64;
     c.id = -1;
@@ -91,8 +85,7 @@ namespace
     return c;
 }
 
-[[nodiscard]] ILValue lab(const char *name) noexcept
-{
+[[nodiscard]] ILValue lab(const char *name) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::LABEL;
     v.id = -1;
@@ -100,8 +93,7 @@ namespace
     return v;
 }
 
-[[nodiscard]] ILValue strLit(const char *s, std::size_t len) noexcept
-{
+[[nodiscard]] ILValue strLit(const char *s, std::size_t len) noexcept {
     ILValue v{};
     v.kind = ILValue::Kind::STR;
     v.id = -1;
@@ -113,8 +105,7 @@ namespace
 [[nodiscard]] ILInstr makeOp(const char *opc,
                              std::vector<ILValue> ops,
                              int res,
-                             ILValue::Kind k = ILValue::Kind::I64)
-{
+                             ILValue::Kind k = ILValue::Kind::I64) {
     ILInstr instr{};
     instr.opcode = opc;
     instr.ops = std::move(ops);
@@ -123,8 +114,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeRet(int id, ILValue::Kind k = ILValue::Kind::I64)
-{
+[[nodiscard]] ILInstr makeRet(int id, ILValue::Kind k = ILValue::Kind::I64) {
     ILInstr instr{};
     instr.opcode = "ret";
     ILValue ref{};
@@ -134,8 +124,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeRetImm(int64_t v)
-{
+[[nodiscard]] ILInstr makeRetImm(int64_t v) {
     ILInstr instr{};
     instr.opcode = "ret";
     instr.ops = {imm(v)};
@@ -143,8 +132,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeBr(const char *target)
-{
+[[nodiscard]] ILInstr makeBr(const char *target) {
     ILInstr instr{};
     instr.opcode = "br";
     instr.ops = {lab(target)};
@@ -152,8 +140,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeCbr(int condId, const char *trueTarget, const char *falseTarget)
-{
+[[nodiscard]] ILInstr makeCbr(int condId, const char *trueTarget, const char *falseTarget) {
     ILInstr instr{};
     instr.opcode = "cbr";
     instr.ops = {valB(condId), lab(trueTarget), lab(falseTarget)};
@@ -161,8 +148,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeCmp(int lhsId, int rhsId, int condCode, int resId)
-{
+[[nodiscard]] ILInstr makeCmp(int lhsId, int rhsId, int condCode, int resId) {
     ILInstr instr{};
     instr.opcode = "cmp";
     instr.ops = {val(lhsId), val(rhsId), imm(condCode)};
@@ -173,13 +159,11 @@ namespace
 
 [[nodiscard]] ILInstr makeSwitch(int scrutId,
                                  const std::vector<std::pair<int64_t, const char *>> &cases,
-                                 const char *defaultLabel)
-{
+                                 const char *defaultLabel) {
     ILInstr instr{};
     instr.opcode = "switch_i32";
     instr.ops.push_back(val(scrutId));
-    for (const auto &[caseVal, caseLab] : cases)
-    {
+    for (const auto &[caseVal, caseLab] : cases) {
         instr.ops.push_back(imm(caseVal));
         instr.ops.push_back(lab(caseLab));
     }
@@ -188,8 +172,7 @@ namespace
     return instr;
 }
 
-[[nodiscard]] ILInstr makeConstF64(double v, int resultId)
-{
+[[nodiscard]] ILInstr makeConstF64(double v, int resultId) {
     ILInstr instr{};
     instr.opcode = "const_f64";
     instr.ops = {immF(v)};
@@ -198,11 +181,9 @@ namespace
     return instr;
 }
 
-[[nodiscard]] std::string compileToAsm(const ILModule &m)
-{
+[[nodiscard]] std::string compileToAsm(const ILModule &m) {
     const CodegenResult res = emitModuleToAssembly(m, {});
-    if (!res.errors.empty())
-    {
+    if (!res.errors.empty()) {
         std::cerr << "Compilation error: " << res.errors << "\n";
     }
     return res.asmText;
@@ -215,27 +196,22 @@ namespace
 /// Replace all occurrences of a pattern prefix followed by digits with a stable placeholder.
 /// E.g., normalizePrefix(text, ".Lfptoui_trap_") replaces ".Lfptoui_trap_42" with
 /// ".Lfptoui_trap_X".
-void normalizePrefix(std::string &text, const std::string &prefix)
-{
+void normalizePrefix(std::string &text, const std::string &prefix) {
     std::size_t pos = 0;
-    while ((pos = text.find(prefix, pos)) != std::string::npos)
-    {
+    while ((pos = text.find(prefix, pos)) != std::string::npos) {
         const std::size_t digitStart = pos + prefix.size();
         std::size_t digitEnd = digitStart;
-        while (digitEnd < text.size() && text[digitEnd] >= '0' && text[digitEnd] <= '9')
-        {
+        while (digitEnd < text.size() && text[digitEnd] >= '0' && text[digitEnd] <= '9') {
             ++digitEnd;
         }
-        if (digitEnd > digitStart)
-        {
+        if (digitEnd > digitStart) {
             text.replace(digitStart, digitEnd - digitStart, "X");
         }
         pos = digitStart + 1;
     }
 }
 
-[[nodiscard]] std::string normalizeCounterLabels(const std::string &text)
-{
+[[nodiscard]] std::string normalizeCounterLabels(const std::string &text) {
     std::string result = text;
     normalizePrefix(result, ".Lfptoui_trap_");
     normalizePrefix(result, ".Lfptoui_sm_");
@@ -252,16 +228,13 @@ void normalizePrefix(std::string &text, const std::string &prefix)
 // ===----------------------------------------------------------------------===
 
 /// Find the line number and character position of the first difference between two strings.
-void printFirstDifference(const std::string &a, const std::string &b)
-{
+void printFirstDifference(const std::string &a, const std::string &b) {
     int line = 1;
     std::size_t lineStart = 0;
     const std::size_t minLen = std::min(a.size(), b.size());
 
-    for (std::size_t i = 0; i < minLen; ++i)
-    {
-        if (a[i] != b[i])
-        {
+    for (std::size_t i = 0; i < minLen; ++i) {
+        if (a[i] != b[i]) {
             // Find the full line in both strings
             std::size_t aEnd = a.find('\n', lineStart);
             if (aEnd == std::string::npos)
@@ -276,15 +249,13 @@ void printFirstDifference(const std::string &a, const std::string &b)
             std::cerr << "  current:  " << b.substr(lineStart, bEnd - lineStart) << "\n";
             return;
         }
-        if (a[i] == '\n')
-        {
+        if (a[i] == '\n') {
             ++line;
             lineStart = i + 1;
         }
     }
 
-    if (a.size() != b.size())
-    {
+    if (a.size() != b.size()) {
         std::cerr << "  strings have different lengths: " << a.size() << " vs " << b.size() << "\n";
     }
 }
@@ -293,37 +264,30 @@ void printFirstDifference(const std::string &a, const std::string &b)
 // Test bookkeeping
 // ===----------------------------------------------------------------------===
 
-struct CategoryStats
-{
+struct CategoryStats {
     const char *name;
     int total{0};
     int pass{0};
     int fail{0};
 };
 
-struct TestContext
-{
+struct TestContext {
     std::vector<CategoryStats> categories;
     int currentCat{-1};
     int globalFail{0};
 
-    void beginCategory(const char *name)
-    {
+    void beginCategory(const char *name) {
         categories.push_back({name, 0, 0, 0});
         currentCat = static_cast<int>(categories.size()) - 1;
     }
 
-    void checkEqual(const char *caseName, const std::string &baseline, const std::string &current)
-    {
+    void checkEqual(const char *caseName, const std::string &baseline, const std::string &current) {
         auto &cat = categories[static_cast<std::size_t>(currentCat)];
         ++cat.total;
 
-        if (baseline == current)
-        {
+        if (baseline == current) {
             ++cat.pass;
-        }
-        else
-        {
+        } else {
             ++cat.fail;
             ++globalFail;
             std::cerr << "FAIL [" << cat.name << "] " << caseName << "\n";
@@ -333,20 +297,16 @@ struct TestContext
 
     void checkEqualNormalized(const char *caseName,
                               const std::string &baseline,
-                              const std::string &current)
-    {
+                              const std::string &current) {
         auto &cat = categories[static_cast<std::size_t>(currentCat)];
         ++cat.total;
 
         const auto normA = normalizeCounterLabels(baseline);
         const auto normB = normalizeCounterLabels(current);
 
-        if (normA == normB)
-        {
+        if (normA == normB) {
             ++cat.pass;
-        }
-        else
-        {
+        } else {
             ++cat.fail;
             ++globalFail;
             std::cerr << "FAIL [" << cat.name << "] " << caseName
@@ -355,17 +315,13 @@ struct TestContext
         }
     }
 
-    void checkAsm(const char *caseName, const std::string &asmText, const std::string &expected)
-    {
+    void checkAsm(const char *caseName, const std::string &asmText, const std::string &expected) {
         auto &cat = categories[static_cast<std::size_t>(currentCat)];
         ++cat.total;
 
-        if (asmText.find(expected) != std::string::npos)
-        {
+        if (asmText.find(expected) != std::string::npos) {
             ++cat.pass;
-        }
-        else
-        {
+        } else {
             ++cat.fail;
             ++globalFail;
             std::cerr << "FAIL [" << cat.name << "] " << caseName << "\n"
@@ -376,19 +332,15 @@ struct TestContext
     void checkOrder(const char *caseName,
                     const std::string &text,
                     const std::string &first,
-                    const std::string &second)
-    {
+                    const std::string &second) {
         auto &cat = categories[static_cast<std::size_t>(currentCat)];
         ++cat.total;
 
         const auto posA = text.find(first);
         const auto posB = text.find(second);
-        if (posA != std::string::npos && posB != std::string::npos && posA < posB)
-        {
+        if (posA != std::string::npos && posB != std::string::npos && posA < posB) {
             ++cat.pass;
-        }
-        else
-        {
+        } else {
             ++cat.fail;
             ++globalFail;
             std::cerr << "FAIL [" << cat.name << "] " << caseName << "\n"
@@ -396,13 +348,11 @@ struct TestContext
         }
     }
 
-    void printSummary() const
-    {
+    void printSummary() const {
         std::cout << "\n=== x86-64 Determinism Stress Test ===\n";
         std::cout << "Category                   Total  Pass  Fail\n";
         int totalAll = 0, passAll = 0, failAll = 0;
-        for (const auto &cat : categories)
-        {
+        for (const auto &cat : categories) {
             std::string padded = cat.name;
             while (padded.size() < 27)
                 padded.push_back(' ');
@@ -425,8 +375,7 @@ struct TestContext
 /// Build a non-trivial multi-function module from scratch.
 /// Each call allocates fresh strings/vectors at different heap addresses.
 /// Deliberately avoids fptoui/uitofp/idx_check (static counter issue).
-[[nodiscard]] ILModule buildCanonicalModule()
-{
+[[nodiscard]] ILModule buildCanonicalModule() {
     // Function 1: canonical_arith(a, b) — arithmetic + diamond if/else
     ILBlock arithEntry{};
     arithEntry.name = "entry";
@@ -495,8 +444,7 @@ struct TestContext
         makeSwitch(3, {{1, "case1"}, {2, "case2"}, {3, "case3"}}, "default_blk"),
     };
 
-    auto makeRetBlock = [](const char *name, int baseId, int64_t addend)
-    {
+    auto makeRetBlock = [](const char *name, int baseId, int64_t addend) {
         ILBlock blk{};
         blk.name = name;
         blk.instrs = {
@@ -523,15 +471,13 @@ struct TestContext
 // Test 1: Repeated compilation (N=100)
 // ===----------------------------------------------------------------------===
 
-void testRepeatedCompilation(TestContext &ctx)
-{
+void testRepeatedCompilation(TestContext &ctx) {
     ctx.beginCategory("Repeated (N=100)");
 
     const ILModule mod = buildCanonicalModule();
     const auto baseline = compileToAsm(mod);
 
-    for (int i = 1; i < 100; ++i)
-    {
+    for (int i = 1; i < 100; ++i) {
         const auto current = compileToAsm(mod);
         ctx.checkEqual(("iter_" + std::to_string(i)).c_str(), baseline, current);
     }
@@ -541,8 +487,7 @@ void testRepeatedCompilation(TestContext &ctx)
 // Test 2: Register allocator pressure (N=50)
 // ===----------------------------------------------------------------------===
 
-void testRegAllocPressure(TestContext &ctx)
-{
+void testRegAllocPressure(TestContext &ctx) {
     ctx.beginCategory("RegAlloc pressure (N=50)");
 
     // 6 params + 10 computed values = 16 simultaneously live, exceeding 14 GPRs.
@@ -591,8 +536,7 @@ void testRegAllocPressure(TestContext &ctx)
 
     const auto baseline = compileToAsm(mod);
 
-    for (int i = 1; i < 50; ++i)
-    {
+    for (int i = 1; i < 50; ++i) {
         const auto current = compileToAsm(mod);
         ctx.checkEqual(("iter_" + std::to_string(i)).c_str(), baseline, current);
     }
@@ -602,8 +546,7 @@ void testRegAllocPressure(TestContext &ctx)
 // Test 3: RoData pool stability (N=50)
 // ===----------------------------------------------------------------------===
 
-void testRodataPool(TestContext &ctx)
-{
+void testRodataPool(TestContext &ctx) {
     ctx.beginCategory("RoData pool (N=50)");
 
     // Function 1: returns string "Hello"
@@ -690,8 +633,7 @@ void testRodataPool(TestContext &ctx)
     ctx.checkOrder("str_0_before_1", baseline, ".LC_str_0", ".LC_str_1");
     ctx.checkOrder("f64_0_before_1", baseline, ".LC_f64_0", ".LC_f64_1");
 
-    for (int i = 1; i < 50; ++i)
-    {
+    for (int i = 1; i < 50; ++i) {
         const auto current = compileToAsm(mod);
         ctx.checkEqual(("iter_" + std::to_string(i)).c_str(), baseline, current);
     }
@@ -701,13 +643,11 @@ void testRodataPool(TestContext &ctx)
 // Test 4: Multi-function ordering (N=50)
 // ===----------------------------------------------------------------------===
 
-void testMultiFunctionOrdering(TestContext &ctx)
-{
+void testMultiFunctionOrdering(TestContext &ctx) {
     ctx.beginCategory("Multi-function order (N=50)");
 
     ILModule mod{};
-    for (int i = 0; i < 10; ++i)
-    {
+    for (int i = 0; i < 10; ++i) {
         std::string name = "fn_";
         if (i < 10)
             name += "0";
@@ -731,15 +671,13 @@ void testMultiFunctionOrdering(TestContext &ctx)
     const auto baseline = compileToAsm(mod);
 
     // Verify ordering: fn_00 before fn_01 before ... before fn_09
-    for (int i = 0; i < 9; ++i)
-    {
+    for (int i = 0; i < 9; ++i) {
         std::string first = "fn_0" + std::to_string(i) + ":";
         std::string second = "fn_0" + std::to_string(i + 1) + ":";
         ctx.checkOrder(("order_" + std::to_string(i)).c_str(), baseline, first, second);
     }
 
-    for (int i = 1; i < 50; ++i)
-    {
+    for (int i = 1; i < 50; ++i) {
         const auto current = compileToAsm(mod);
         ctx.checkEqual(("iter_" + std::to_string(i)).c_str(), baseline, current);
     }
@@ -749,8 +687,7 @@ void testMultiFunctionOrdering(TestContext &ctx)
 // Test 5: Complex CFG (N=50)
 // ===----------------------------------------------------------------------===
 
-void testComplexCfg(TestContext &ctx)
-{
+void testComplexCfg(TestContext &ctx) {
     ctx.beginCategory("Complex CFG (N=50)");
 
     // entry: switch(param0) → 4 cases + default
@@ -834,8 +771,7 @@ void testComplexCfg(TestContext &ctx)
 
     const auto baseline = compileToAsm(mod);
 
-    for (int i = 1; i < 50; ++i)
-    {
+    for (int i = 1; i < 50; ++i) {
         const auto current = compileToAsm(mod);
         ctx.checkEqual(("iter_" + std::to_string(i)).c_str(), baseline, current);
     }
@@ -845,8 +781,7 @@ void testComplexCfg(TestContext &ctx)
 // Test 6: Separate construction (pointer independence)
 // ===----------------------------------------------------------------------===
 
-void testSeparateConstruction(TestContext &ctx)
-{
+void testSeparateConstruction(TestContext &ctx) {
     ctx.beginCategory("Separate construction");
 
     std::string asm1;
@@ -869,8 +804,7 @@ void testSeparateConstruction(TestContext &ctx)
 // Test 7: ISel pattern determinism (N=50)
 // ===----------------------------------------------------------------------===
 
-void testISelPatterns(TestContext &ctx)
-{
+void testISelPatterns(TestContext &ctx) {
     ctx.beginCategory("ISel patterns (N=50)");
 
     // Exercise strength reduction: mul by power-of-2, udiv by power-of-2,
@@ -916,8 +850,7 @@ void testISelPatterns(TestContext &ctx)
 
     const auto baseline = compileToAsm(mod);
 
-    for (int i = 1; i < 50; ++i)
-    {
+    for (int i = 1; i < 50; ++i) {
         const auto current = compileToAsm(mod);
         ctx.checkEqual(("iter_" + std::to_string(i)).c_str(), baseline, current);
     }
@@ -927,8 +860,7 @@ void testISelPatterns(TestContext &ctx)
 // Test 8: Static counter awareness
 // ===----------------------------------------------------------------------===
 
-void testPerFunctionLabelCounters(TestContext &ctx)
-{
+void testPerFunctionLabelCounters(TestContext &ctx) {
     ctx.beginCategory("Per-function label ids");
 
     // Build a module that triggers fptoui label generation.
@@ -956,8 +888,7 @@ void testPerFunctionLabelCounters(TestContext &ctx)
     ctx.checkAsm("label_starts_at_0", baseline, ".Lfptoui_trap_0");
 
     // Compile again — must be byte-identical (no counter drift)
-    for (int i = 1; i <= 10; ++i)
-    {
+    for (int i = 1; i <= 10; ++i) {
         const auto current = compileToAsm(mod);
         ctx.checkEqual(("iter_" + std::to_string(i)).c_str(), baseline, current);
     }
@@ -969,8 +900,7 @@ void testPerFunctionLabelCounters(TestContext &ctx)
 // Main
 // ===----------------------------------------------------------------------===
 
-int main()
-{
+int main() {
     TestContext ctx;
 
     testRepeatedCompilation(ctx);      // Test 1: N=100
@@ -984,8 +914,7 @@ int main()
 
     ctx.printSummary();
 
-    if (ctx.globalFail != 0)
-    {
+    if (ctx.globalFail != 0) {
         std::cerr << ctx.globalFail << " test(s) FAILED\n";
         return EXIT_FAILURE;
     }

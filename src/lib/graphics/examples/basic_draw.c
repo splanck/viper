@@ -27,8 +27,7 @@
 /// What: Entry point for the Basic Drawing example.
 /// Why:  Demonstrates ViperGFX window lifecycle and primitive rendering.
 /// How:  Creates a window, draws shapes, and processes events until exit.
-int main(void)
-{
+int main(void) {
     printf("ViperGFX v%d.%d.%d - Basic Drawing Example\n",
            VGFX_VERSION_MAJOR,
            VGFX_VERSION_MINOR,
@@ -42,8 +41,7 @@ int main(void)
     params.resizable = 1;
 
     vgfx_window_t win = vgfx_create_window(&params);
-    if (!win)
-    {
+    if (!win) {
         fprintf(stderr, "Failed to create window: %s\n", vgfx_get_last_error());
         return 1;
     }
@@ -68,34 +66,25 @@ int main(void)
 
     /* Event loop */
     int running = 1;
-    while (running)
-    {
+    while (running) {
         vgfx_event_t event;
-        while (vgfx_poll_event(win, &event))
-        {
-            if (event.type == VGFX_EVENT_CLOSE)
-            {
+        while (vgfx_poll_event(win, &event)) {
+            if (event.type == VGFX_EVENT_CLOSE) {
                 printf("Close event received\n");
                 running = 0;
-            }
-            else if (event.type == VGFX_EVENT_KEY_DOWN)
-            {
-                if (event.data.key.key == VGFX_KEY_ESCAPE)
-                {
+            } else if (event.type == VGFX_EVENT_KEY_DOWN) {
+                if (event.data.key.key == VGFX_KEY_ESCAPE) {
                     printf("ESC pressed, exiting\n");
                     running = 0;
                 }
-            }
-            else if (event.type == VGFX_EVENT_RESIZE)
-            {
+            } else if (event.type == VGFX_EVENT_RESIZE) {
                 printf(
                     "Window resized to %dx%d\n", event.data.resize.width, event.data.resize.height);
             }
         }
 
         /* Update display */
-        if (!vgfx_update(win))
-        {
+        if (!vgfx_update(win)) {
             fprintf(stderr, "Update failed: %s\n", vgfx_get_last_error());
             break;
         }

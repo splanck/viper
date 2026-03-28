@@ -23,8 +23,7 @@
 
 #include "il/transform/SimplifyCFG.hpp"
 
-namespace il::transform::simplify_cfg
-{
+namespace il::transform::simplify_cfg {
 
 /// @brief Remove blocks that are unreachable from the entry block.
 /// @details Performs a reachability traversal that follows branch, conditional

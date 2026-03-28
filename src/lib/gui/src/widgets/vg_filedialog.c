@@ -65,34 +65,26 @@ static vg_widget_vtable_t g_filedialog_vtable = {.destroy = filedialog_destroy,
 #ifdef _WIN32
 
 // Windows implementation of pattern matching (simple fnmatch equivalent)
-static bool win_match_pattern(const char *pattern, const char *filename)
-{
+static bool win_match_pattern(const char *pattern, const char *filename) {
     const char *p = pattern;
     const char *f = filename;
 
-    while (*p && *f)
-    {
-        if (*p == '*')
-        {
+    while (*p && *f) {
+        if (*p == '*') {
             p++;
             if (!*p)
                 return true; // Trailing * matches everything
             // Try to match rest of pattern at each position
-            while (*f)
-            {
+            while (*f) {
                 if (win_match_pattern(p, f))
                     return true;
                 f++;
             }
             return false;
-        }
-        else if (*p == '?')
-        {
+        } else if (*p == '?') {
             p++;
             f++;
-        }
-        else
-        {
+        } else {
             // Case-insensitive compare
             char pc = *p, fc = *f;
             if (pc >= 'A' && pc <= 'Z')
@@ -113,8 +105,7 @@ static bool win_match_pattern(const char *pattern, const char *filename)
 
 #endif
 
-static char *get_home_directory(void)
-{
+static char *get_home_directory(void) {
 #ifdef _WIN32
     // Try USERPROFILE first
     const char *userprofile = getenv("USERPROFILE");
@@ -124,12 +115,10 @@ static char *get_home_directory(void)
     // Fall back to HOMEDRIVE + HOMEPATH
     const char *homedrive = getenv("HOMEDRIVE");
     const char *homepath = getenv("HOMEPATH");
-    if (homedrive && homepath)
-    {
+    if (homedrive && homepath) {
         size_t len = strlen(homedrive) + strlen(homepath) + 1;
         char *result = malloc(len);
-        if (result)
-        {
+        if (result) {
             strcpy(result, homedrive);
             strcat(result, homepath);
             return result;
@@ -150,8 +139,7 @@ static char *get_home_directory(void)
 #endif
 }
 
-static char *join_path(const char *dir, const char *file)
-{
+static char *join_path(const char *dir, const char *file) {
     size_t dir_len = strlen(dir);
     size_t file_len = strlen(file);
 
@@ -168,8 +156,7 @@ static char *join_path(const char *dir, const char *file)
         return NULL;
 
     strcpy(result, dir);
-    if (need_sep)
-    {
+    if (need_sep) {
         result[dir_len] = sep;
         result[dir_len + 1] = '\0';
     }
@@ -178,10 +165,8 @@ static char *join_path(const char *dir, const char *file)
     return result;
 }
 
-static char *get_parent_directory(const char *path)
-{
-    if (!path || !*path)
-    {
+static char *get_parent_directory(const char *path) {
+    if (!path || !*path) {
 #ifdef _WIN32
         return _strdup("C:\\");
 #else
@@ -200,8 +185,7 @@ static char *get_parent_directory(const char *path)
     // Remove trailing slashes
     size_t len = strlen(result);
 #ifdef _WIN32
-    while (len > 1 && (result[len - 1] == '\\' || result[len - 1] == '/'))
-    {
+    while (len > 1 && (result[len - 1] == '\\' || result[len - 1] == '/')) {
         result[--len] = '\0';
     }
 
@@ -210,41 +194,28 @@ static char *get_parent_directory(const char *path)
     if (!last_slash)
         last_slash = strrchr(result, '/');
 
-    if (last_slash == result)
-    {
+    if (last_slash == result) {
         result[1] = '\0';
-    }
-    else if (last_slash == result + 2 && result[1] == ':')
-    {
+    } else if (last_slash == result + 2 && result[1] == ':') {
         // C:\ case
         result[3] = '\0';
-    }
-    else if (last_slash)
-    {
+    } else if (last_slash) {
         *last_slash = '\0';
-    }
-    else
-    {
+    } else {
         free(result);
         return _strdup(".");
     }
 #else
-    while (len > 1 && result[len - 1] == '/')
-    {
+    while (len > 1 && result[len - 1] == '/') {
         result[--len] = '\0';
     }
 
     char *last_slash = strrchr(result, '/');
-    if (last_slash == result)
-    {
+    if (last_slash == result) {
         result[1] = '\0';
-    }
-    else if (last_slash)
-    {
+    } else if (last_slash) {
         *last_slash = '\0';
-    }
-    else
-    {
+    } else {
         free(result);
         return strdup(".");
     }
@@ -253,8 +224,7 @@ static char *get_parent_directory(const char *path)
     return result;
 }
 
-static int compare_entries(const void *a, const void *b)
-{
+static int compare_entries(const void *a, const void *b) {
     const vg_file_entry_t *ea = *(const vg_file_entry_t **)a;
     const vg_file_entry_t *eb = *(const vg_file_entry_t **)b;
 
@@ -268,10 +238,8 @@ static int compare_entries(const void *a, const void *b)
     return strcasecmp(ea->name, eb->name);
 }
 
-static bool match_filter(const char *filename, const char *pattern)
-{
-    if (!pattern || !*pattern || strcmp(pattern, "*") == 0 || strcmp(pattern, "*.*") == 0)
-    {
+static bool match_filter(const char *filename, const char *pattern) {
+    if (!pattern || !*pattern || strcmp(pattern, "*") == 0 || strcmp(pattern, "*.*") == 0) {
         return true;
     }
 
@@ -293,8 +261,7 @@ static bool match_filter(const char *filename, const char *pattern)
     token = strtok_r(patterns, ";", &saveptr);
 #endif
 
-    while (token)
-    {
+    while (token) {
         // Trim whitespace
         while (*token == ' ')
             token++;
@@ -303,15 +270,13 @@ static bool match_filter(const char *filename, const char *pattern)
             *end-- = '\0';
 
 #ifdef _WIN32
-        if (win_match_pattern(token, filename))
-        {
+        if (win_match_pattern(token, filename)) {
             free(patterns);
             return true;
         }
         token = strtok_s(NULL, ";", &saveptr);
 #else
-        if (fnmatch(token, filename, FNM_CASEFOLD) == 0)
-        {
+        if (fnmatch(token, filename, FNM_CASEFOLD) == 0) {
             free(patterns);
             return true;
         }
@@ -323,27 +288,22 @@ static bool match_filter(const char *filename, const char *pattern)
     return false;
 }
 
-static void free_entry(vg_file_entry_t *entry)
-{
-    if (entry)
-    {
+static void free_entry(vg_file_entry_t *entry) {
+    if (entry) {
         free(entry->name);
         free(entry->full_path);
         free(entry);
     }
 }
 
-static void clear_entries(vg_filedialog_t *dialog)
-{
-    for (size_t i = 0; i < dialog->entry_count; i++)
-    {
+static void clear_entries(vg_filedialog_t *dialog) {
+    for (size_t i = 0; i < dialog->entry_count; i++) {
         free_entry(dialog->entries[i]);
     }
     dialog->entry_count = 0;
 }
 
-static void load_directory(vg_filedialog_t *dialog, const char *path)
-{
+static void load_directory(vg_filedialog_t *dialog, const char *path) {
     clear_entries(dialog);
 
     // Update current path
@@ -365,33 +325,28 @@ static void load_directory(vg_filedialog_t *dialog, const char *path)
     if (hFind == INVALID_HANDLE_VALUE)
         return;
 
-    do
-    {
+    do {
         // Skip . and ..
-        if (strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0)
-        {
+        if (strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0) {
             continue;
         }
 
         // Skip hidden files if not showing them
-        if (!dialog->show_hidden && (find_data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN))
-        {
+        if (!dialog->show_hidden && (find_data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN)) {
             continue;
         }
 
         bool is_dir = (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 
         // In folder select mode, only show directories
-        if (dialog->mode == VG_FILEDIALOG_SELECT_FOLDER && !is_dir)
-        {
+        if (dialog->mode == VG_FILEDIALOG_SELECT_FOLDER && !is_dir) {
             continue;
         }
 
         // Apply filter for non-directories
-        if (!is_dir && dialog->filter_count > 0 && dialog->active_filter < dialog->filter_count)
-        {
-            if (!match_filter(find_data.cFileName, dialog->filters[dialog->active_filter].pattern))
-            {
+        if (!is_dir && dialog->filter_count > 0 && dialog->active_filter < dialog->filter_count) {
+            if (!match_filter(find_data.cFileName,
+                              dialog->filters[dialog->active_filter].pattern)) {
                 continue;
             }
         }
@@ -415,13 +370,11 @@ static void load_directory(vg_filedialog_t *dialog, const char *path)
         fe->modified_time = (int64_t)((ull.QuadPart - 116444736000000000ULL) / 10000000ULL);
 
         // Add to array
-        if (dialog->entry_count >= dialog->entry_capacity)
-        {
+        if (dialog->entry_count >= dialog->entry_capacity) {
             size_t new_cap = dialog->entry_capacity == 0 ? 64 : dialog->entry_capacity * 2;
             vg_file_entry_t **new_entries =
                 realloc(dialog->entries, new_cap * sizeof(vg_file_entry_t *));
-            if (!new_entries)
-            {
+            if (!new_entries) {
                 free_entry(fe);
                 continue;
             }
@@ -441,17 +394,14 @@ static void load_directory(vg_filedialog_t *dialog, const char *path)
         return;
 
     struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL)
-    {
+    while ((entry = readdir(dir)) != NULL) {
         // Skip . and ..
-        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-        {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
             continue;
         }
 
         // Skip hidden files if not showing them
-        if (!dialog->show_hidden && entry->d_name[0] == '.')
-        {
+        if (!dialog->show_hidden && entry->d_name[0] == '.') {
             continue;
         }
 
@@ -461,8 +411,7 @@ static void load_directory(vg_filedialog_t *dialog, const char *path)
             continue;
 
         struct stat st;
-        if (stat(full_path, &st) != 0)
-        {
+        if (stat(full_path, &st) != 0) {
             free(full_path);
             continue;
         }
@@ -470,17 +419,14 @@ static void load_directory(vg_filedialog_t *dialog, const char *path)
         bool is_dir = S_ISDIR(st.st_mode);
 
         // In folder select mode, only show directories
-        if (dialog->mode == VG_FILEDIALOG_SELECT_FOLDER && !is_dir)
-        {
+        if (dialog->mode == VG_FILEDIALOG_SELECT_FOLDER && !is_dir) {
             free(full_path);
             continue;
         }
 
         // Apply filter for non-directories
-        if (!is_dir && dialog->filter_count > 0 && dialog->active_filter < dialog->filter_count)
-        {
-            if (!match_filter(entry->d_name, dialog->filters[dialog->active_filter].pattern))
-            {
+        if (!is_dir && dialog->filter_count > 0 && dialog->active_filter < dialog->filter_count) {
+            if (!match_filter(entry->d_name, dialog->filters[dialog->active_filter].pattern)) {
                 free(full_path);
                 continue;
             }
@@ -488,8 +434,7 @@ static void load_directory(vg_filedialog_t *dialog, const char *path)
 
         // Create entry
         vg_file_entry_t *fe = calloc(1, sizeof(vg_file_entry_t));
-        if (!fe)
-        {
+        if (!fe) {
             free(full_path);
             continue;
         }
@@ -501,13 +446,11 @@ static void load_directory(vg_filedialog_t *dialog, const char *path)
         fe->modified_time = st.st_mtime;
 
         // Add to array
-        if (dialog->entry_count >= dialog->entry_capacity)
-        {
+        if (dialog->entry_count >= dialog->entry_capacity) {
             size_t new_cap = dialog->entry_capacity == 0 ? 64 : dialog->entry_capacity * 2;
             vg_file_entry_t **new_entries =
                 realloc(dialog->entries, new_cap * sizeof(vg_file_entry_t *));
-            if (!new_entries)
-            {
+            if (!new_entries) {
                 free_entry(fe);
                 continue;
             }
@@ -522,8 +465,7 @@ static void load_directory(vg_filedialog_t *dialog, const char *path)
 #endif
 
     // Sort entries
-    if (dialog->entry_count > 0)
-    {
+    if (dialog->entry_count > 0) {
         qsort(dialog->entries, dialog->entry_count, sizeof(vg_file_entry_t *), compare_entries);
     }
 
@@ -531,32 +473,24 @@ static void load_directory(vg_filedialog_t *dialog, const char *path)
     dialog->selection_count = 0;
 }
 
-static void select_entry(vg_filedialog_t *dialog, size_t index)
-{
+static void select_entry(vg_filedialog_t *dialog, size_t index) {
     if (index >= dialog->entry_count)
         return;
 
-    if (!dialog->multi_select)
-    {
+    if (!dialog->multi_select) {
         dialog->selection_count = 1;
-        if (dialog->selection_capacity == 0)
-        {
+        if (dialog->selection_capacity == 0) {
             dialog->selected_indices = malloc(sizeof(int));
             dialog->selection_capacity = 1;
         }
         dialog->selected_indices[0] = (int)index;
-    }
-    else
-    {
+    } else {
         // Toggle selection
         bool found = false;
-        for (size_t i = 0; i < dialog->selection_count; i++)
-        {
-            if (dialog->selected_indices[i] == (int)index)
-            {
+        for (size_t i = 0; i < dialog->selection_count; i++) {
+            if (dialog->selected_indices[i] == (int)index) {
                 // Remove from selection
-                for (size_t j = i; j < dialog->selection_count - 1; j++)
-                {
+                for (size_t j = i; j < dialog->selection_count - 1; j++) {
                     dialog->selected_indices[j] = dialog->selected_indices[j + 1];
                 }
                 dialog->selection_count--;
@@ -565,11 +499,9 @@ static void select_entry(vg_filedialog_t *dialog, size_t index)
             }
         }
 
-        if (!found)
-        {
+        if (!found) {
             // Add to selection
-            if (dialog->selection_count >= dialog->selection_capacity)
-            {
+            if (dialog->selection_count >= dialog->selection_capacity) {
                 size_t new_cap =
                     dialog->selection_capacity == 0 ? 8 : dialog->selection_capacity * 2;
                 int *new_indices = realloc(dialog->selected_indices, new_cap * sizeof(int));
@@ -583,23 +515,18 @@ static void select_entry(vg_filedialog_t *dialog, size_t index)
     }
 }
 
-static bool is_selected(vg_filedialog_t *dialog, size_t index)
-{
-    for (size_t i = 0; i < dialog->selection_count; i++)
-    {
+static bool is_selected(vg_filedialog_t *dialog, size_t index) {
+    for (size_t i = 0; i < dialog->selection_count; i++) {
         if (dialog->selected_indices[i] == (int)index)
             return true;
     }
     return false;
 }
 
-static void confirm_selection(vg_filedialog_t *dialog)
-{
+static void confirm_selection(vg_filedialog_t *dialog) {
     // Free previous results
-    if (dialog->selected_files)
-    {
-        for (size_t i = 0; i < dialog->selected_file_count; i++)
-        {
+    if (dialog->selected_files) {
+        for (size_t i = 0; i < dialog->selected_file_count; i++) {
             free(dialog->selected_files[i]);
         }
         free(dialog->selected_files);
@@ -608,16 +535,12 @@ static void confirm_selection(vg_filedialog_t *dialog)
     }
 
     // Build result array
-    if (dialog->selection_count > 0)
-    {
+    if (dialog->selection_count > 0) {
         dialog->selected_files = malloc(dialog->selection_count * sizeof(char *));
-        if (dialog->selected_files)
-        {
-            for (size_t i = 0; i < dialog->selection_count; i++)
-            {
+        if (dialog->selected_files) {
+            for (size_t i = 0; i < dialog->selection_count; i++) {
                 int idx = dialog->selected_indices[i];
-                if (idx >= 0 && (size_t)idx < dialog->entry_count)
-                {
+                if (idx >= 0 && (size_t)idx < dialog->entry_count) {
 #ifdef _WIN32
                     dialog->selected_files[dialog->selected_file_count++] =
                         _strdup(dialog->entries[idx]->full_path);
@@ -628,13 +551,10 @@ static void confirm_selection(vg_filedialog_t *dialog)
                 }
             }
         }
-    }
-    else if (dialog->mode == VG_FILEDIALOG_SELECT_FOLDER)
-    {
+    } else if (dialog->mode == VG_FILEDIALOG_SELECT_FOLDER) {
         // In folder mode with no selection, return current directory
         dialog->selected_files = malloc(sizeof(char *));
-        if (dialog->selected_files)
-        {
+        if (dialog->selected_files) {
 #ifdef _WIN32
             dialog->selected_files[0] = _strdup(dialog->current_path);
 #else
@@ -648,8 +568,7 @@ static void confirm_selection(vg_filedialog_t *dialog)
     vg_dialog_close(&dialog->base, VG_DIALOG_RESULT_OK);
 
     // Invoke callback
-    if (dialog->on_select && dialog->selected_file_count > 0)
-    {
+    if (dialog->on_select && dialog->selected_file_count > 0) {
         dialog->on_select(
             dialog, dialog->selected_files, dialog->selected_file_count, dialog->user_data);
     }
@@ -659,8 +578,7 @@ static void confirm_selection(vg_filedialog_t *dialog)
 // FileDialog Implementation
 //=============================================================================
 
-vg_filedialog_t *vg_filedialog_create(vg_filedialog_mode_t mode)
-{
+vg_filedialog_t *vg_filedialog_create(vg_filedialog_mode_t mode) {
     vg_filedialog_t *dialog = calloc(1, sizeof(vg_filedialog_t));
     if (!dialog)
         return NULL;
@@ -709,8 +627,7 @@ vg_filedialog_t *vg_filedialog_create(vg_filedialog_mode_t mode)
     return dialog;
 }
 
-static void filedialog_destroy(vg_widget_t *widget)
-{
+static void filedialog_destroy(vg_widget_t *widget) {
     vg_filedialog_t *dialog = (vg_filedialog_t *)widget;
 
     // Free entries
@@ -721,16 +638,14 @@ static void filedialog_destroy(vg_widget_t *widget)
     free(dialog->selected_indices);
 
     // Free filters
-    for (size_t i = 0; i < dialog->filter_count; i++)
-    {
+    for (size_t i = 0; i < dialog->filter_count; i++) {
         free(dialog->filters[i].name);
         free(dialog->filters[i].pattern);
     }
     free(dialog->filters);
 
     // Free bookmarks
-    for (size_t i = 0; i < dialog->bookmark_count; i++)
-    {
+    for (size_t i = 0; i < dialog->bookmark_count; i++) {
         free(dialog->bookmarks[i].name);
         free(dialog->bookmarks[i].path);
     }
@@ -742,10 +657,8 @@ static void filedialog_destroy(vg_widget_t *widget)
     free(dialog->default_extension);
 
     // Free results
-    if (dialog->selected_files)
-    {
-        for (size_t i = 0; i < dialog->selected_file_count; i++)
-        {
+    if (dialog->selected_files) {
+        for (size_t i = 0; i < dialog->selected_file_count; i++) {
             free(dialog->selected_files[i]);
         }
         free(dialog->selected_files);
@@ -756,8 +669,7 @@ static void filedialog_destroy(vg_widget_t *widget)
     free((void *)dialog->base.message);
 }
 
-static void filedialog_measure(vg_widget_t *widget, float available_width, float available_height)
-{
+static void filedialog_measure(vg_widget_t *widget, float available_width, float available_height) {
     vg_filedialog_t *dialog = (vg_filedialog_t *)widget;
     (void)available_width;
     (void)available_height;
@@ -766,8 +678,7 @@ static void filedialog_measure(vg_widget_t *widget, float available_width, float
     widget->measured_height = dialog->base.min_height;
 }
 
-static void filedialog_paint(vg_widget_t *widget, void *canvas)
-{
+static void filedialog_paint(vg_widget_t *widget, void *canvas) {
     vg_filedialog_t *dialog = (vg_filedialog_t *)widget;
     vg_theme_t *theme = vg_theme_get_current();
 
@@ -783,8 +694,7 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas)
 
     // Draw modal overlay (dark semi-transparent background behind dialog)
     int32_t win_w = 0, win_h = 0;
-    if (vgfx_get_size(win, &win_w, &win_h) == 0)
-    {
+    if (vgfx_get_size(win, &win_w, &win_h) == 0) {
         vgfx_fill_rect(win, 0, 0, win_w, win_h, 0x60101010u);
     }
 
@@ -806,8 +716,7 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas)
     float list_height = h - title_height - path_height - 80.0f; // Leave room for buttons
 
     // Draw path
-    if (dialog->base.font && dialog->current_path)
-    {
+    if (dialog->base.font && dialog->current_path) {
         vg_font_draw_text(canvas,
                           dialog->base.font,
                           dialog->base.font_size,
@@ -819,10 +728,8 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas)
 
     // Draw bookmarks
     float bookmark_y = list_y + 5;
-    for (size_t i = 0; i < dialog->bookmark_count && bookmark_y < list_y + list_height; i++)
-    {
-        if (dialog->base.font)
-        {
+    for (size_t i = 0; i < dialog->bookmark_count && bookmark_y < list_y + list_height; i++) {
+        if (dialog->base.font) {
             vg_font_draw_text(canvas,
                               dialog->base.font,
                               dialog->base.font_size,
@@ -839,14 +746,12 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas)
     float file_x = x + sidebar_width + 10;
     float file_y = list_y + 5;
 
-    for (size_t i = 0; i < dialog->entry_count && file_y < list_y + list_height; i++)
-    {
+    for (size_t i = 0; i < dialog->entry_count && file_y < list_y + list_height; i++) {
         vg_file_entry_t *entry = dialog->entries[i];
 
         // Highlight if selected
         uint32_t text_color = theme->colors.fg_primary;
-        if (is_selected(dialog, i))
-        {
+        if (is_selected(dialog, i)) {
             vgfx_fill_rect(win,
                            (int32_t)(x + sidebar_width),
                            (int32_t)file_y,
@@ -857,8 +762,7 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas)
 
         // Draw icon indicator
         const char *icon = entry->is_directory ? "[D]" : "   ";
-        if (dialog->base.font)
-        {
+        if (dialog->base.font) {
             vg_font_draw_text(canvas,
                               dialog->base.font,
                               dialog->base.font_size,
@@ -880,8 +784,7 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas)
     }
 
     // Draw OK/Cancel buttons at bottom right
-    if (dialog->base.font)
-    {
+    if (dialog->base.font) {
         float btn_h = 28.0f;
         float btn_w = 80.0f;
         float btn_y = y + h - btn_h - 10.0f;
@@ -925,8 +828,7 @@ static void filedialog_paint(vg_widget_t *widget, void *canvas)
     }
 }
 
-static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event)
-{
+static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event) {
     vg_filedialog_t *dialog = (vg_filedialog_t *)widget;
 
     if (!dialog->base.is_open)
@@ -939,19 +841,15 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event)
     float list_height = widget->height - title_height - path_height - 80.0f;
     float row_height = 24.0f;
 
-    switch (event->type)
-    {
-        case VG_EVENT_MOUSE_DOWN:
-        {
+    switch (event->type) {
+        case VG_EVENT_MOUSE_DOWN: {
             float mx = event->mouse.x;
             float my = event->mouse.y;
 
             // Check if clicking in file list
-            if (mx > widget->x + sidebar_width && my > list_y && my < list_y + list_height)
-            {
+            if (mx > widget->x + sidebar_width && my > list_y && my < list_y + list_height) {
                 size_t clicked_index = (size_t)((my - list_y - 5) / row_height);
-                if (clicked_index < dialog->entry_count)
-                {
+                if (clicked_index < dialog->entry_count) {
                     select_entry(dialog, clicked_index);
                     widget->needs_paint = true;
                     return true;
@@ -959,11 +857,9 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event)
             }
 
             // Check if clicking in bookmarks
-            if (mx < widget->x + sidebar_width && my > list_y && my < list_y + list_height)
-            {
+            if (mx < widget->x + sidebar_width && my > list_y && my < list_y + list_height) {
                 size_t clicked_bookmark = (size_t)((my - list_y - 5) / 25.0f);
-                if (clicked_bookmark < dialog->bookmark_count)
-                {
+                if (clicked_bookmark < dialog->bookmark_count) {
                     load_directory(dialog, dialog->bookmarks[clicked_bookmark].path);
                     widget->needs_paint = true;
                     return true;
@@ -973,26 +869,20 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event)
             return false;
         }
 
-        case VG_EVENT_DOUBLE_CLICK:
-        {
+        case VG_EVENT_DOUBLE_CLICK: {
             float mx = event->mouse.x;
             float my = event->mouse.y;
 
             // Check double-click in file list
-            if (mx > widget->x + sidebar_width && my > list_y && my < list_y + list_height)
-            {
+            if (mx > widget->x + sidebar_width && my > list_y && my < list_y + list_height) {
                 size_t clicked_index = (size_t)((my - list_y - 5) / row_height);
-                if (clicked_index < dialog->entry_count)
-                {
+                if (clicked_index < dialog->entry_count) {
                     vg_file_entry_t *entry = dialog->entries[clicked_index];
-                    if (entry->is_directory)
-                    {
+                    if (entry->is_directory) {
                         // Navigate into directory
                         load_directory(dialog, entry->full_path);
                         widget->needs_paint = true;
-                    }
-                    else
-                    {
+                    } else {
                         // Select file and confirm
                         select_entry(dialog, clicked_index);
                         confirm_selection(dialog);
@@ -1003,28 +893,21 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event)
             return false;
         }
 
-        case VG_EVENT_KEY_DOWN:
-        {
-            if (event->key.key == VG_KEY_ESCAPE)
-            {
+        case VG_EVENT_KEY_DOWN: {
+            if (event->key.key == VG_KEY_ESCAPE) {
                 vg_dialog_close(&dialog->base, VG_DIALOG_RESULT_CANCEL);
-                if (dialog->on_cancel)
-                {
+                if (dialog->on_cancel) {
                     dialog->on_cancel(dialog, dialog->user_data);
                 }
                 return true;
             }
 
-            if (event->key.key == VG_KEY_ENTER)
-            {
-                if (dialog->selection_count > 0)
-                {
+            if (event->key.key == VG_KEY_ENTER) {
+                if (dialog->selection_count > 0) {
                     // If selected item is directory, navigate
                     int idx = dialog->selected_indices[0];
-                    if (idx >= 0 && (size_t)idx < dialog->entry_count)
-                    {
-                        if (dialog->entries[idx]->is_directory)
-                        {
+                    if (idx >= 0 && (size_t)idx < dialog->entry_count) {
+                        if (dialog->entries[idx]->is_directory) {
                             load_directory(dialog, dialog->entries[idx]->full_path);
                             widget->needs_paint = true;
                             return true;
@@ -1037,11 +920,9 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event)
             }
 
             // Backspace - go up
-            if (event->key.key == VG_KEY_BACKSPACE)
-            {
+            if (event->key.key == VG_KEY_BACKSPACE) {
                 char *parent = get_parent_directory(dialog->current_path);
-                if (parent)
-                {
+                if (parent) {
                     load_directory(dialog, parent);
                     free(parent);
                     widget->needs_paint = true;
@@ -1063,18 +944,15 @@ static bool filedialog_handle_event(vg_widget_t *widget, vg_event_t *event)
 // FileDialog API
 //=============================================================================
 
-void vg_filedialog_destroy(vg_filedialog_t *dialog)
-{
-    if (dialog)
-    {
+void vg_filedialog_destroy(vg_filedialog_t *dialog) {
+    if (dialog) {
         filedialog_destroy(&dialog->base.base);
         free(dialog);
     }
 }
 
 /// @brief Filedialog set title.
-void vg_filedialog_set_title(vg_filedialog_t *dialog, const char *title)
-{
+void vg_filedialog_set_title(vg_filedialog_t *dialog, const char *title) {
     if (!dialog)
         return;
     free((void *)dialog->base.title);
@@ -1086,8 +964,7 @@ void vg_filedialog_set_title(vg_filedialog_t *dialog, const char *title)
 }
 
 /// @brief Filedialog set initial path.
-void vg_filedialog_set_initial_path(vg_filedialog_t *dialog, const char *path)
-{
+void vg_filedialog_set_initial_path(vg_filedialog_t *dialog, const char *path) {
     if (!dialog)
         return;
     free(dialog->current_path);
@@ -1099,8 +976,7 @@ void vg_filedialog_set_initial_path(vg_filedialog_t *dialog, const char *path)
 }
 
 /// @brief Filedialog set filename.
-void vg_filedialog_set_filename(vg_filedialog_t *dialog, const char *filename)
-{
+void vg_filedialog_set_filename(vg_filedialog_t *dialog, const char *filename) {
     if (!dialog)
         return;
     free(dialog->default_filename);
@@ -1112,34 +988,29 @@ void vg_filedialog_set_filename(vg_filedialog_t *dialog, const char *filename)
 }
 
 /// @brief Filedialog set multi select.
-void vg_filedialog_set_multi_select(vg_filedialog_t *dialog, bool multi)
-{
+void vg_filedialog_set_multi_select(vg_filedialog_t *dialog, bool multi) {
     if (dialog)
         dialog->multi_select = multi;
 }
 
 /// @brief Filedialog set show hidden.
-void vg_filedialog_set_show_hidden(vg_filedialog_t *dialog, bool show)
-{
+void vg_filedialog_set_show_hidden(vg_filedialog_t *dialog, bool show) {
     if (dialog)
         dialog->show_hidden = show;
 }
 
 /// @brief Filedialog set confirm overwrite.
-void vg_filedialog_set_confirm_overwrite(vg_filedialog_t *dialog, bool confirm)
-{
+void vg_filedialog_set_confirm_overwrite(vg_filedialog_t *dialog, bool confirm) {
     if (dialog)
         dialog->confirm_overwrite = confirm;
 }
 
 /// @brief Filedialog add filter.
-void vg_filedialog_add_filter(vg_filedialog_t *dialog, const char *name, const char *pattern)
-{
+void vg_filedialog_add_filter(vg_filedialog_t *dialog, const char *name, const char *pattern) {
     if (!dialog || !name || !pattern)
         return;
 
-    if (dialog->filter_count >= dialog->filter_capacity)
-    {
+    if (dialog->filter_count >= dialog->filter_capacity) {
         size_t new_cap = dialog->filter_capacity == 0 ? 4 : dialog->filter_capacity * 2;
         vg_file_filter_t *new_filters =
             realloc(dialog->filters, new_cap * sizeof(vg_file_filter_t));
@@ -1160,13 +1031,11 @@ void vg_filedialog_add_filter(vg_filedialog_t *dialog, const char *name, const c
 }
 
 /// @brief Filedialog clear filters.
-void vg_filedialog_clear_filters(vg_filedialog_t *dialog)
-{
+void vg_filedialog_clear_filters(vg_filedialog_t *dialog) {
     if (!dialog)
         return;
 
-    for (size_t i = 0; i < dialog->filter_count; i++)
-    {
+    for (size_t i = 0; i < dialog->filter_count; i++) {
         free(dialog->filters[i].name);
         free(dialog->filters[i].pattern);
     }
@@ -1174,8 +1043,7 @@ void vg_filedialog_clear_filters(vg_filedialog_t *dialog)
 }
 
 /// @brief Filedialog set default extension.
-void vg_filedialog_set_default_extension(vg_filedialog_t *dialog, const char *ext)
-{
+void vg_filedialog_set_default_extension(vg_filedialog_t *dialog, const char *ext) {
     if (!dialog)
         return;
     free(dialog->default_extension);
@@ -1187,13 +1055,11 @@ void vg_filedialog_set_default_extension(vg_filedialog_t *dialog, const char *ex
 }
 
 /// @brief Filedialog add bookmark.
-void vg_filedialog_add_bookmark(vg_filedialog_t *dialog, const char *name, const char *path)
-{
+void vg_filedialog_add_bookmark(vg_filedialog_t *dialog, const char *name, const char *path) {
     if (!dialog || !name || !path)
         return;
 
-    if (dialog->bookmark_count >= dialog->bookmark_capacity)
-    {
+    if (dialog->bookmark_count >= dialog->bookmark_capacity) {
         size_t new_cap = dialog->bookmark_capacity == 0 ? 8 : dialog->bookmark_capacity * 2;
         vg_bookmark_t *new_bookmarks = realloc(dialog->bookmarks, new_cap * sizeof(vg_bookmark_t));
         if (!new_bookmarks)
@@ -1214,44 +1080,36 @@ void vg_filedialog_add_bookmark(vg_filedialog_t *dialog, const char *name, const
 }
 
 /// @brief Filedialog add default bookmarks.
-void vg_filedialog_add_default_bookmarks(vg_filedialog_t *dialog)
-{
+void vg_filedialog_add_default_bookmarks(vg_filedialog_t *dialog) {
     if (!dialog)
         return;
 
     char *home = get_home_directory();
-    if (home)
-    {
+    if (home) {
         vg_filedialog_add_bookmark(dialog, "Home", home);
 
         char *desktop = join_path(home, "Desktop");
-        if (desktop)
-        {
+        if (desktop) {
             struct stat st;
-            if (stat(desktop, &st) == 0 && S_ISDIR(st.st_mode))
-            {
+            if (stat(desktop, &st) == 0 && S_ISDIR(st.st_mode)) {
                 vg_filedialog_add_bookmark(dialog, "Desktop", desktop);
             }
             free(desktop);
         }
 
         char *documents = join_path(home, "Documents");
-        if (documents)
-        {
+        if (documents) {
             struct stat st;
-            if (stat(documents, &st) == 0 && S_ISDIR(st.st_mode))
-            {
+            if (stat(documents, &st) == 0 && S_ISDIR(st.st_mode)) {
                 vg_filedialog_add_bookmark(dialog, "Documents", documents);
             }
             free(documents);
         }
 
         char *downloads = join_path(home, "Downloads");
-        if (downloads)
-        {
+        if (downloads) {
             struct stat st;
-            if (stat(downloads, &st) == 0 && S_ISDIR(st.st_mode))
-            {
+            if (stat(downloads, &st) == 0 && S_ISDIR(st.st_mode)) {
                 vg_filedialog_add_bookmark(dialog, "Downloads", downloads);
             }
             free(downloads);
@@ -1270,13 +1128,11 @@ void vg_filedialog_add_default_bookmarks(vg_filedialog_t *dialog)
 }
 
 /// @brief Filedialog clear bookmarks.
-void vg_filedialog_clear_bookmarks(vg_filedialog_t *dialog)
-{
+void vg_filedialog_clear_bookmarks(vg_filedialog_t *dialog) {
     if (!dialog)
         return;
 
-    for (size_t i = 0; i < dialog->bookmark_count; i++)
-    {
+    for (size_t i = 0; i < dialog->bookmark_count; i++) {
         free(dialog->bookmarks[i].name);
         free(dialog->bookmarks[i].path);
     }
@@ -1284,8 +1140,7 @@ void vg_filedialog_clear_bookmarks(vg_filedialog_t *dialog)
 }
 
 /// @brief Filedialog show.
-void vg_filedialog_show(vg_filedialog_t *dialog)
-{
+void vg_filedialog_show(vg_filedialog_t *dialog) {
     if (!dialog)
         return;
 
@@ -1299,10 +1154,8 @@ void vg_filedialog_show(vg_filedialog_t *dialog)
     dialog->base.base.needs_paint = true;
 }
 
-char **vg_filedialog_get_selected_paths(vg_filedialog_t *dialog, size_t *count)
-{
-    if (!dialog)
-    {
+char **vg_filedialog_get_selected_paths(vg_filedialog_t *dialog, size_t *count) {
+    if (!dialog) {
         if (count)
             *count = 0;
         return NULL;
@@ -1314,8 +1167,7 @@ char **vg_filedialog_get_selected_paths(vg_filedialog_t *dialog, size_t *count)
 }
 
 /// @brief Filedialog get selected path.
-char *vg_filedialog_get_selected_path(vg_filedialog_t *dialog)
-{
+char *vg_filedialog_get_selected_path(vg_filedialog_t *dialog) {
     if (!dialog || dialog->selected_file_count == 0)
         return NULL;
     return dialog->selected_files[0];
@@ -1324,8 +1176,7 @@ char *vg_filedialog_get_selected_path(vg_filedialog_t *dialog)
 /// @brief Filedialog set on select.
 void vg_filedialog_set_on_select(vg_filedialog_t *dialog,
                                  void (*callback)(vg_filedialog_t *, char **, size_t, void *),
-                                 void *user_data)
-{
+                                 void *user_data) {
     if (!dialog)
         return;
     dialog->on_select = callback;
@@ -1335,8 +1186,7 @@ void vg_filedialog_set_on_select(vg_filedialog_t *dialog,
 /// @brief Filedialog set on cancel.
 void vg_filedialog_set_on_cancel(vg_filedialog_t *dialog,
                                  void (*callback)(vg_filedialog_t *, void *),
-                                 void *user_data)
-{
+                                 void *user_data) {
     if (!dialog)
         return;
     dialog->on_cancel = callback;
@@ -1350,8 +1200,7 @@ void vg_filedialog_set_on_cancel(vg_filedialog_t *dialog,
 char *vg_filedialog_open_file(const char *title,
                               const char *initial_path,
                               const char *filter_name,
-                              const char *filter_pattern)
-{
+                              const char *filter_pattern) {
     vg_filedialog_t *dialog = vg_filedialog_create(VG_FILEDIALOG_OPEN);
     if (!dialog)
         return NULL;
@@ -1360,8 +1209,7 @@ char *vg_filedialog_open_file(const char *title,
         vg_filedialog_set_title(dialog, title);
     if (initial_path)
         vg_filedialog_set_initial_path(dialog, initial_path);
-    if (filter_name && filter_pattern)
-    {
+    if (filter_name && filter_pattern) {
         vg_filedialog_add_filter(dialog, filter_name, filter_pattern);
     }
     vg_filedialog_add_default_bookmarks(dialog);
@@ -1371,8 +1219,7 @@ char *vg_filedialog_open_file(const char *title,
     // Note: In a real implementation, this would block and wait for the dialog
     // For now, we just return NULL - proper modal dialog requires event loop integration
     char *result = NULL;
-    if (dialog->selected_file_count > 0 && dialog->selected_files[0])
-    {
+    if (dialog->selected_file_count > 0 && dialog->selected_files[0]) {
 #ifdef _WIN32
         result = _strdup(dialog->selected_files[0]);
 #else
@@ -1389,8 +1236,7 @@ char *vg_filedialog_save_file(const char *title,
                               const char *initial_path,
                               const char *default_name,
                               const char *filter_name,
-                              const char *filter_pattern)
-{
+                              const char *filter_pattern) {
     vg_filedialog_t *dialog = vg_filedialog_create(VG_FILEDIALOG_SAVE);
     if (!dialog)
         return NULL;
@@ -1401,8 +1247,7 @@ char *vg_filedialog_save_file(const char *title,
         vg_filedialog_set_initial_path(dialog, initial_path);
     if (default_name)
         vg_filedialog_set_filename(dialog, default_name);
-    if (filter_name && filter_pattern)
-    {
+    if (filter_name && filter_pattern) {
         vg_filedialog_add_filter(dialog, filter_name, filter_pattern);
     }
     vg_filedialog_add_default_bookmarks(dialog);
@@ -1410,8 +1255,7 @@ char *vg_filedialog_save_file(const char *title,
     vg_filedialog_show(dialog);
 
     char *result = NULL;
-    if (dialog->selected_file_count > 0 && dialog->selected_files[0])
-    {
+    if (dialog->selected_file_count > 0 && dialog->selected_files[0]) {
 #ifdef _WIN32
         result = _strdup(dialog->selected_files[0]);
 #else
@@ -1424,8 +1268,7 @@ char *vg_filedialog_save_file(const char *title,
 }
 
 /// @brief Filedialog select folder.
-char *vg_filedialog_select_folder(const char *title, const char *initial_path)
-{
+char *vg_filedialog_select_folder(const char *title, const char *initial_path) {
     vg_filedialog_t *dialog = vg_filedialog_create(VG_FILEDIALOG_SELECT_FOLDER);
     if (!dialog)
         return NULL;
@@ -1439,8 +1282,7 @@ char *vg_filedialog_select_folder(const char *title, const char *initial_path)
     vg_filedialog_show(dialog);
 
     char *result = NULL;
-    if (dialog->selected_file_count > 0 && dialog->selected_files[0])
-    {
+    if (dialog->selected_file_count > 0 && dialog->selected_files[0]) {
 #ifdef _WIN32
         result = _strdup(dialog->selected_files[0]);
 #else

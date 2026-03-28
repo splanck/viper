@@ -23,8 +23,7 @@
 #include <cstdio>
 
 /// @brief Test that all opcodes have handlers in the function table.
-static void testHandlerTableCoverage()
-{
+static void testHandlerTableCoverage() {
     const auto &handlers = il::vm::generated::opcodeHandlers();
 
     // Static assertion is in HandlerTable.hpp, this is a runtime verification
@@ -32,10 +31,8 @@ static void testHandlerTableCoverage()
            "Handler table size does not match opcode count");
 
     size_t nullHandlers = 0;
-    for (size_t i = 0; i < il::core::kNumOpcodes; ++i)
-    {
-        if (handlers[i] == nullptr)
-        {
+    for (size_t i = 0; i < il::core::kNumOpcodes; ++i) {
+        if (handlers[i] == nullptr) {
             const char *name = il::core::toString(static_cast<il::core::Opcode>(i));
             std::fprintf(stderr, "WARNING: null handler for opcode %zu (%s)\n", i, name);
             ++nullHandlers;
@@ -47,15 +44,13 @@ static void testHandlerTableCoverage()
 }
 
 /// @brief Test that dispatch metadata matches opcode definitions.
-static void testDispatchMetadataConsistency()
-{
+static void testDispatchMetadataConsistency() {
     // The VMDispatch enum should have the same count as opcodes
     static_assert(il::vm::dispatch::kDispatchCount == il::core::kNumOpcodes,
                   "VMDispatch enum count mismatch with Opcode enum");
 
     // Verify each opcode has valid dispatch metadata
-    for (size_t i = 0; i < il::core::kNumOpcodes; ++i)
-    {
+    for (size_t i = 0; i < il::core::kNumOpcodes; ++i) {
         const auto &info = il::core::kOpcodeTable[i];
         // Verify dispatch kind is valid (must be less than Count)
         assert(static_cast<size_t>(info.vmDispatch) <
@@ -65,13 +60,11 @@ static void testDispatchMetadataConsistency()
 }
 
 /// @brief Test that handlers can be looked up by opcode.
-static void testHandlerLookupByOpcode()
-{
+static void testHandlerLookupByOpcode() {
     const auto &handlers = il::vm::generated::opcodeHandlers();
 
     // Test a few representative opcodes
-    auto checkOpcode = [&](il::core::Opcode op, const char *name)
-    {
+    auto checkOpcode = [&](il::core::Opcode op, const char *name) {
         size_t index = static_cast<size_t>(op);
         assert(index < handlers.size() && "Opcode index out of bounds");
         assert(handlers[index] != nullptr && "Handler is null");
@@ -91,8 +84,7 @@ static void testHandlerLookupByOpcode()
 }
 
 /// @brief Test the helper functions from DispatchMacros.hpp
-static void testDispatchMacroHelpers()
-{
+static void testDispatchMacroHelpers() {
     const auto &handlers = il::vm::generated::opcodeHandlers();
 
     // Test hasHandler
@@ -105,8 +97,7 @@ static void testDispatchMacroHelpers()
     assert(il::vm::dispatch::verifyAllHandlers(handlers) && "All handlers should be present");
 }
 
-int main()
-{
+int main() {
     testHandlerTableCoverage();
     testDispatchMetadataConsistency();
     testHandlerLookupByOpcode();

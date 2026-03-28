@@ -19,29 +19,25 @@
 #include <csetjmp>
 #include <cstring>
 
-namespace
-{
+namespace {
 static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
 
-extern "C" void vm_trap(const char *msg)
-{
+extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
     if (g_trap_expected)
         longjmp(g_trap_jmp, 1);
     rt_abort(msg);
 }
 
-static void rt_release_obj(void *p)
-{
+static void rt_release_obj(void *p) {
     if (p && rt_obj_release_check0(p))
         rt_obj_free(p);
 }
 
-static bool str_eq(rt_string s, const char *expected)
-{
+static bool str_eq(rt_string s, const char *expected) {
     const char *cstr = rt_string_cstr(s);
     return cstr && strcmp(cstr, expected) == 0;
 }
@@ -50,8 +46,7 @@ static bool str_eq(rt_string s, const char *expected)
 // Tests
 // ---------------------------------------------------------------------------
 
-static void test_new_bitset()
-{
+static void test_new_bitset() {
     void *bs = rt_bitset_new(128);
     assert(bs != nullptr);
     assert(rt_bitset_len(bs) == 128);
@@ -60,8 +55,7 @@ static void test_new_bitset()
     rt_release_obj(bs);
 }
 
-static void test_set_and_get()
-{
+static void test_set_and_get() {
     void *bs = rt_bitset_new(64);
 
     rt_bitset_set(bs, 0);
@@ -78,8 +72,7 @@ static void test_set_and_get()
     rt_release_obj(bs);
 }
 
-static void test_clear_bit()
-{
+static void test_clear_bit() {
     void *bs = rt_bitset_new(64);
 
     rt_bitset_set(bs, 10);
@@ -92,8 +85,7 @@ static void test_clear_bit()
     rt_release_obj(bs);
 }
 
-static void test_toggle()
-{
+static void test_toggle() {
     void *bs = rt_bitset_new(64);
 
     rt_bitset_toggle(bs, 7);
@@ -105,8 +97,7 @@ static void test_toggle()
     rt_release_obj(bs);
 }
 
-static void test_set_all_and_clear_all()
-{
+static void test_set_all_and_clear_all() {
     void *bs = rt_bitset_new(10);
 
     rt_bitset_set_all(bs);
@@ -124,8 +115,7 @@ static void test_set_all_and_clear_all()
     rt_release_obj(bs);
 }
 
-static void test_auto_grow()
-{
+static void test_auto_grow() {
     void *bs = rt_bitset_new(8);
     assert(rt_bitset_len(bs) == 8);
 
@@ -138,8 +128,7 @@ static void test_auto_grow()
     rt_release_obj(bs);
 }
 
-static void test_and()
-{
+static void test_and() {
     void *a = rt_bitset_new(8);
     void *b = rt_bitset_new(8);
 
@@ -164,8 +153,7 @@ static void test_and()
     rt_release_obj(result);
 }
 
-static void test_or()
-{
+static void test_or() {
     void *a = rt_bitset_new(8);
     void *b = rt_bitset_new(8);
 
@@ -188,8 +176,7 @@ static void test_or()
     rt_release_obj(result);
 }
 
-static void test_xor()
-{
+static void test_xor() {
     void *a = rt_bitset_new(8);
     void *b = rt_bitset_new(8);
 
@@ -211,8 +198,7 @@ static void test_xor()
     rt_release_obj(result);
 }
 
-static void test_not()
-{
+static void test_not() {
     void *bs = rt_bitset_new(4);
     rt_bitset_set(bs, 0);
     rt_bitset_set(bs, 2);
@@ -229,8 +215,7 @@ static void test_not()
     rt_release_obj(result);
 }
 
-static void test_to_string()
-{
+static void test_to_string() {
     void *bs = rt_bitset_new(8);
     rt_bitset_set(bs, 0); // bit 0 = LSB
     rt_bitset_set(bs, 2);
@@ -245,8 +230,7 @@ static void test_to_string()
     rt_release_obj(bs);
 }
 
-static void test_to_string_empty()
-{
+static void test_to_string_empty() {
     void *bs = rt_bitset_new(8);
     rt_string s = rt_bitset_to_string(bs);
     assert(str_eq(s, "0"));
@@ -255,8 +239,7 @@ static void test_to_string_empty()
     rt_release_obj(bs);
 }
 
-static void test_large_bitset()
-{
+static void test_large_bitset() {
     void *bs = rt_bitset_new(1000);
 
     rt_bitset_set(bs, 0);
@@ -272,8 +255,7 @@ static void test_large_bitset()
     rt_release_obj(bs);
 }
 
-static void test_different_sizes_or()
-{
+static void test_different_sizes_or() {
     void *a = rt_bitset_new(8);
     void *b = rt_bitset_new(128);
 
@@ -290,8 +272,7 @@ static void test_different_sizes_or()
     rt_release_obj(result);
 }
 
-static void test_null_safety()
-{
+static void test_null_safety() {
     assert(rt_bitset_len(NULL) == 0);
     assert(rt_bitset_count(NULL) == 0);
     assert(rt_bitset_is_empty(NULL) == 1);
@@ -303,8 +284,7 @@ static void test_null_safety()
     rt_bitset_clear_all(NULL); // No-op
 }
 
-static void test_negative_index()
-{
+static void test_negative_index() {
     void *bs = rt_bitset_new(64);
     // Negative indices should be handled gracefully
     assert(rt_bitset_get(bs, -1) == 0);
@@ -314,8 +294,7 @@ static void test_negative_index()
     rt_release_obj(bs);
 }
 
-int main()
-{
+int main() {
     test_new_bitset();
     test_set_and_get();
     test_clear_bit();

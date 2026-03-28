@@ -24,10 +24,8 @@
 #include <string>
 #include <utility>
 
-namespace viper::il::io
-{
-namespace
-{
+namespace viper::il::io {
+namespace {
 using viper::parse::Cursor;
 
 } // namespace
@@ -41,8 +39,7 @@ using viper::parse::Cursor;
 /// @param cur Cursor positioned at the operand start; advanced to the end.
 /// @param ctx Parsing context providing diagnostic helpers and state.
 /// @return ParseResult containing the parsed label or an error diagnostic.
-ParseResult parseLabelOperand(Cursor &cur, Context &ctx)
-{
+ParseResult parseLabelOperand(Cursor &cur, Context &ctx) {
     std::string text(cur.remaining());
     text = ::il::io::trim(text);
     if (text.rfind("label ", 0) == 0)
